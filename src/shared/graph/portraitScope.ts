@@ -93,8 +93,14 @@ export function portraitScopePlan(
     if (GLOBAL_SCOPE_GROUPS.has(spec.group)) {
       return { ...empty, disabled: true, reason: 'global' }
     }
-    if (PERSON_SCOPE_GROUPS.has(spec.group)) person = true
-    else face = true
+    if (spec.key === 'bodyToneUnify') {
+      person = true
+      face = true
+    } else if (PERSON_SCOPE_GROUPS.has(spec.group)) {
+      person = true
+    } else {
+      face = true
+    }
     hasLocal = true
   }
 

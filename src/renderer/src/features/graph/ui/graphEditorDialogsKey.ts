@@ -22,6 +22,10 @@ import type {
   PortraitRetouchState,
   PortraitManualRegion,
   PortraitAiLayer,
+  PortraitFaceAnalysis,
+  PortraitLiquifyStroke,
+  PortraitSpotHealPoint,
+  PortraitCubeLut,
   Stage2dPose,
   Stage2dRig,
   Stage2dSceneState,
@@ -118,6 +122,18 @@ export type GraphEditorDialogsApi = {
     setup: PortraitRetouchState | null
     /** 手动标注区域（发丝级没法自动定位的局部诉求） */
     regions: PortraitManualRegion[]
+    /** 当前生效的人脸关键点 */
+    face: PortraitFaceAnalysis | null
+    /** 检测到的人脸关键点列表（多人照按面积排序） */
+    faces: PortraitFaceAnalysis[]
+    /** 当前选中的人脸下标（多人照分人点选） */
+    pickedFaceIndex: number
+    /** 手动液化推拉/膨胀/收缩笔画列表 */
+    liquifyStrokes: PortraitLiquifyStroke[]
+    /** 手动污点祛痘点击列表 */
+    spotHeals: PortraitSpotHealPoint[]
+    /** 自定义 .cube 3D LUT */
+    customLut: PortraitCubeLut | null
     /** 编辑器内 AI 处理产出的版本栈 */
     layers: PortraitAiLayer[]
     /** 当前底图版本 id（'' = 上游原图） */

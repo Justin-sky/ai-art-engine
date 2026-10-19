@@ -15,6 +15,11 @@ import type { LightingSetupState } from './lightingSetup'
 import type { PortraitTextureState } from './portraitTexture'
 import type { PortraitAiLayer, PortraitRetouchState } from './portraitRetouch'
 import type { PortraitFacesPayload } from './portraitFace'
+import type {
+  PortraitCubeLut,
+  PortraitLiquifyStroke,
+  PortraitSpotHealPoint
+} from './portraitLiveMath'
 import type { EmotionPadState } from './emotionPad'
 import type { ImageUpscaleState } from './imageUpscale'
 import type { ImageExpandState } from './imageExpand'
@@ -1028,6 +1033,12 @@ export interface GraphNodeParams {
   portraitRetouch?: Partial<PortraitRetouchState>
   /** 人像处理：人脸分析缓存（关键点 + 源图指纹，避免每次 Cook 重新检测） */
   portraitFaces?: Partial<PortraitFacesPayload>
+  /** 人像处理：手动液化推拉/膨胀/收缩笔画列表（本地实时精修管线） */
+  portraitLiquifyStrokes?: PortraitLiquifyStroke[]
+  /** 人像处理：手动污点祛痘点击列表（本地实时精修管线） */
+  portraitSpotHeals?: PortraitSpotHealPoint[]
+  /** 人像处理：导入的自定义 .cube 3D LUT 色彩查找表 */
+  portraitCustomLut?: PortraitCubeLut | null
   /** 人像处理：编辑器内 AI 处理产出的版本栈 */
   portraitLayers?: PortraitAiLayer[]
   /** 人像处理：当前底图版本 id（缺省 = 上游原图） */

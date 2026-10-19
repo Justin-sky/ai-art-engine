@@ -842,6 +842,9 @@ import {
   type PortraitManualRegion,
   type PortraitAiLayer,
   type PortraitFaceAnalysis,
+  type PortraitLiquifyStroke,
+  type PortraitSpotHeal,
+  type PortraitCustomLut,
   buildPortraitAiPrompt,
   normalizePortraitManualRegions,
   normalizePortraitAiLayers,
@@ -6627,6 +6630,11 @@ const portrait = reactive({
   setup: null as PortraitRetouchState | null,
   regions: [] as PortraitManualRegion[],
   face: null as PortraitFaceAnalysis | null,
+  faces: [] as PortraitFaceAnalysis[],
+  pickedFaceIndex: 0,
+  liquifyStrokes: [] as PortraitLiquifyStroke[],
+  spotHeals: [] as PortraitSpotHeal[],
+  customLut: null as PortraitCustomLut | null,
   layers: [] as PortraitAiLayer[],
   baseLayerId: '' as string,
   sourceUrl: '' as string,
@@ -6755,7 +6763,23 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   portrait.nodeId = nodeId
   portrait.setup = readPortraitRetouchFromNode(node.params)
   portrait.regions = normalizePortraitManualRegions(portrait.setup.manualRegions)
+  const rawFaces = Array.isArray(node.params.portraitFaces?.faces)
+    ? (node.params.portraitFaces!.faces as PortraitFaceAnalysis[])
+    : []
+  const rawPicked =
+    typeof node.params.portraitFaces?.picked === 'number'
+      ? Math.max(0, Math.min(Math.max(0, rawFaces.length - 1), node.params.portraitFaces.picked))
+      : 0
+  portrait.faces = rawFaces
+  portrait.pickedFaceIndex = rawPicked
   portrait.face = readPortraitFace(node)
+  portrait.liquifyStrokes = Array.isArray(node.params.portraitLiquifyStrokes)
+    ? [...node.params.portraitLiquifyStrokes]
+    : []
+  portrait.spotHeals = Array.isArray(node.params.portraitSpotHeals)
+    ? [...node.params.portraitSpotHeals]
+    : []
+  portrait.customLut = node.params.portraitCustomLut ?? null
   portrait.layers = normalizePortraitAiLayers(node.params.portraitLayers)
   portrait.baseLayerId = node.params.portraitBaseLayerId?.trim() ?? ''
   portrait.sourceUrl = ''
@@ -6804,6 +6828,11 @@ function closePortrait(): void {
   portrait.setup = null
   portrait.regions = []
   portrait.face = null
+  portrait.faces = []
+  portrait.pickedFaceIndex = 0
+  portrait.liquifyStrokes = []
+  portrait.spotHeals = []
+  portrait.customLut = null
   portrait.layers = []
   portrait.baseLayerId = ''
   portrait.sourceUrl = ''
@@ -6875,6 +6904,11 @@ interface PortraitEditorPayload {
   portraitRetouch?: PortraitRetouchState
   /** 手动标注区域；随参数一起存进 portraitRetouch.manualRegions */
   manualRegions?: PortraitManualRegion[]
+  liquifyStrokes?: PortraitLiquifyStroke[]
+  spotHeals?: PortraitSpotHeal[]
+  customLut?: PortraitCustomLut | null
+  pickedFaceIndex?: number
+  faces?: PortraitFaceAnalysis[]
   generateModel?: string
   generateProviderInstanceId?: string
   /** 局部回贴开关：只改对应部位（'local'，默认）还是整图生效（'global'） */
@@ -6894,9 +6928,28 @@ function applyPortraitParams(payload: PortraitEditorPayload): void {
       ? { ...readPortraitRetouchFromNode(node.params), manualRegions: payload.manualRegions }
       : null
   const patch = retouch ? portraitRetouchToNodePatch(retouch) : {}
+  const existingFaces = node.params.portraitFaces
+  const nextFacesList = payload.faces ?? existingFaces?.faces ?? []
+  const nextPicked =
+    payload.pickedFaceIndex !== undefined ? payload.pickedFaceIndex : (existingFaces?.picked ?? 0)
+  const shouldPatchFaces = payload.faces !== undefined || payload.pickedFaceIndex !== undefined
   node.params = {
     ...node.params,
     ...patch,
+    ...(payload.liquifyStrokes !== undefined
+      ? { portraitLiquifyStrokes: payload.liquifyStrokes }
+      : {}),
+    ...(payload.spotHeals !== undefined ? { portraitSpotHeals: payload.spotHeals } : {}),
+    ...(payload.customLut !== undefined ? { portraitCustomLut: payload.customLut } : {}),
+    ...(shouldPatchFaces
+      ? {
+          portraitFaces: {
+            at: existingFaces?.at ?? new Date().toISOString(),
+            faces: nextFacesList,
+            picked: nextPicked
+          }
+        }
+      : {}),
     ...(payload.generateModel !== undefined ? { generateModel: payload.generateModel } : {}),
     ...(payload.generateProviderInstanceId !== undefined
       ? { generateProviderInstanceId: payload.generateProviderInstanceId }
@@ -6912,6 +6965,17 @@ function previewPortrait(payload: PortraitEditorPayload): void {
   if (payload.portraitRetouch) {
     portrait.setup = payload.portraitRetouch
     if (payload.manualRegions) portrait.regions = payload.manualRegions
+  }
+  if (payload.liquifyStrokes !== undefined) portrait.liquifyStrokes = payload.liquifyStrokes
+  if (payload.spotHeals !== undefined) portrait.spotHeals = payload.spotHeals
+  if (payload.customLut !== undefined) portrait.customLut = payload.customLut
+  if (payload.faces !== undefined) portrait.faces = payload.faces
+  if (payload.pickedFaceIndex !== undefined) {
+    portrait.pickedFaceIndex = payload.pickedFaceIndex
+  }
+  if (payload.faces !== undefined || payload.pickedFaceIndex !== undefined) {
+    const node = graph.nodes.find((n) => n.id === portrait.nodeId)
+    if (node) portrait.face = readPortraitFace(node)
   }
   // 模型选择也是即时写回的：宿主状态跟着节点走，免得编辑器里的 props 停在旧模型上
   if (payload.generateModel !== undefined) portrait.generateModel = payload.generateModel
@@ -7146,45 +7210,53 @@ async function runPortraitAi(payload: {
   const prompt = buildPortraitAiPrompt(payload.tool, payload.prompt)
   try {
     logBridge.onNodeUpdate(node.id, { status: 'running' })
-    const apiStarted = Date.now()
-    let result: { images: string[]; model: string }
-    try {
-      const inputReferences = payload.maskDataUrl ? [sourceUrl, payload.maskDataUrl] : [sourceUrl]
-      result = await window.studio.generateImage({
-        prompt,
-        model: payload.model || undefined,
-        providerInstanceId: payload.providerInstanceId || undefined,
-        inputReferences
-      })
-      logBridge.recordApiCall({
-        kind: 'generateImage',
-        request: {
+    let dataUrl = ''
+    let resolvedModel = payload.model
+    if (payload.tool === 'liveRetouch') {
+      dataUrl = sourceUrl
+      resolvedModel = 'local-live-engine'
+    } else {
+      const apiStarted = Date.now()
+      let result: { images: string[]; model: string }
+      try {
+        const inputReferences = payload.maskDataUrl ? [sourceUrl, payload.maskDataUrl] : [sourceUrl]
+        result = await window.studio.generateImage({
           prompt,
           model: payload.model || undefined,
           providerInstanceId: payload.providerInstanceId || undefined,
-          inputReferenceCount: inputReferences.length,
-          inputReferences: inputReferences.map((_, index) => ({
-            source: 'port' as const,
-            name: index === 0 ? 'portrait' : 'mask'
-          })),
-          inputReferenceUrls: summarizeReferenceListForLog(inputReferences)
-        },
-        response: { model: result.model, imageCount: result.images?.length ?? 0 },
-        durationMs: Math.max(0, Date.now() - apiStarted)
-      })
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : String(err)
-      const message = formatProviderErrorForLog(raw, String(locale.value))
-      logBridge.recordApiCall({
-        kind: 'generateImage',
-        request: { prompt, model: payload.model || undefined },
-        error: message,
-        durationMs: Math.max(0, Date.now() - apiStarted)
-      })
-      throw new Error(message)
+          inputReferences
+        })
+        logBridge.recordApiCall({
+          kind: 'generateImage',
+          request: {
+            prompt,
+            model: payload.model || undefined,
+            providerInstanceId: payload.providerInstanceId || undefined,
+            inputReferenceCount: inputReferences.length,
+            inputReferences: inputReferences.map((_, index) => ({
+              source: 'port' as const,
+              name: index === 0 ? 'portrait' : 'mask'
+            })),
+            inputReferenceUrls: summarizeReferenceListForLog(inputReferences)
+          },
+          response: { model: result.model, imageCount: result.images?.length ?? 0 },
+          durationMs: Math.max(0, Date.now() - apiStarted)
+        })
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err)
+        const message = formatProviderErrorForLog(raw, String(locale.value))
+        logBridge.recordApiCall({
+          kind: 'generateImage',
+          request: { prompt, model: payload.model || undefined },
+          error: message,
+          durationMs: Math.max(0, Date.now() - apiStarted)
+        })
+        throw new Error(message)
+      }
+      dataUrl = result.images?.[0]?.trim() ?? ''
+      resolvedModel = result.model || payload.model
     }
 
-    const dataUrl = result.images?.[0]?.trim()
     if (!dataUrl) throw fail(SHARED_ERRORS.noModelImage)
 
     const stamp = Date.now()
@@ -7200,22 +7272,36 @@ async function runPortraitAi(payload: {
       id: `portrait-ai-${stamp}`,
       tool: payload.tool,
       prompt,
-      model: result.model || payload.model,
+      model: resolvedModel,
       providerInstanceId: payload.providerInstanceId,
       relativePath,
       at: new Date().toISOString()
     }
     const layers = normalizePortraitAiLayers([...(node.params.portraitLayers ?? []), layer])
-    node.params = { ...node.params, portraitLayers: layers, portraitBaseLayerId: layer.id }
+    node.params = {
+      ...node.params,
+      portraitLayers: layers,
+      portraitBaseLayerId: layer.id,
+      ...(payload.tool === 'liveRetouch'
+        ? {
+            portraitBakedRelativePath: relativePath,
+            previewRelativePath: relativePath
+          }
+        : {})
+    }
     scheduleSave()
     graphEditorHosts.bumpRevision()
     recordGraphChange('portrait-ai', before)
 
     if (portrait.open && portrait.nodeId === nodeId) {
+      const previousSourceUrl = portrait.sourceUrl
       portrait.layers = layers
       portrait.baseLayerId = layer.id
       const url = await window.studio.getAssetFileUrl(relativePath).catch(() => '')
       if (portrait.open && portrait.nodeId === nodeId) {
+        if (!portrait.upstreamUrl && previousSourceUrl && previousSourceUrl !== (url || dataUrl)) {
+          portrait.upstreamUrl = previousSourceUrl
+        }
         portrait.sourceUrl = url || dataUrl
         portrait.sourceLoading = false
       }

@@ -59,6 +59,14 @@
               @pointerleave="onImagePointerUp"
               @contextmenu.prevent
             />
+            <!-- 本地 0-Token 实时计算摄影预览层（双频磨皮/MLS 液化/祛痘/美牙/3D LUT） -->
+            <img
+              v-if="livePreviewVisible"
+              class="live-preview-img"
+              :src="livePreviewDataUrl"
+              alt=""
+              draggable="false"
+            />
             <!-- 分割对比：左半压着原图（上游 / 所选版本前的底图），中缝可拖 -->
             <template v-if="splitActive">
               <img
@@ -102,6 +110,85 @@
               />
             </svg>
 
+            <!-- 68 点语义面部网格 + 多人脸高亮框 + 液化/污点笔刷轨迹可视化 -->
+            <svg
+              v-if="
+                showFaceMesh ||
+                (activeGroup === 'region' &&
+                  (draftLiquifyStrokes.length || draftSpotHeals.length || liquifyDrag.active))
+              "
+              class="mesh-layer"
+              viewBox="0 0 1 1"
+              preserveAspectRatio="none"
+            >
+              <template v-if="showFaceMesh">
+                <rect
+                  v-for="(f, idx) in facesList"
+                  :key="`face-box-${idx}`"
+                  :x="f.box.x"
+                  :y="f.box.y"
+                  :width="f.box.w"
+                  :height="f.box.h"
+                  :class="['face-box-svg', { picked: idx === activeFaceIdx }]"
+                />
+                <polygon
+                  v-if="activeFaceRegions?.faceSkinOutline.length"
+                  :points="svgPolygonPoints(activeFaceRegions.faceSkinOutline)"
+                  class="mesh-poly skin"
+                />
+                <polygon
+                  v-if="activeFaceRegions?.leftEye.length"
+                  :points="svgPolygonPoints(activeFaceRegions.leftEye)"
+                  class="mesh-poly feature"
+                />
+                <polygon
+                  v-if="activeFaceRegions?.rightEye.length"
+                  :points="svgPolygonPoints(activeFaceRegions.rightEye)"
+                  class="mesh-poly feature"
+                />
+                <polygon
+                  v-if="activeFaceRegions?.outerLip.length"
+                  :points="svgPolygonPoints(activeFaceRegions.outerLip)"
+                  class="mesh-poly lip"
+                />
+                <circle
+                  v-for="(pt, ptIdx) in activeFace?.landmarks ?? []"
+                  :key="`lm-${ptIdx}`"
+                  :cx="pt[0]"
+                  :cy="pt[1]"
+                  r="0.0032"
+                  class="mesh-pt"
+                />
+              </template>
+              <template v-if="showFaceMesh || activeGroup === 'region'">
+                <circle
+                  v-for="spot in draftSpotHeals"
+                  :key="spot.id"
+                  :cx="spot.x"
+                  :cy="spot.y"
+                  :r="spot.radius"
+                  class="spot-heal-circle"
+                />
+                <line
+                  v-for="stroke in draftLiquifyStrokes"
+                  :key="stroke.id"
+                  :x1="stroke.from[0]"
+                  :y1="stroke.from[1]"
+                  :x2="stroke.to[0]"
+                  :y2="stroke.to[1]"
+                  class="liquify-vector"
+                />
+                <line
+                  v-if="liquifyDrag.active"
+                  :x1="liquifyDrag.startX"
+                  :y1="liquifyDrag.startY"
+                  :x2="liquifyDrag.x"
+                  :y2="liquifyDrag.y"
+                  class="liquify-vector active"
+                />
+              </template>
+            </svg>
+
             <!-- 中缝手柄：按住拖 = 移动分割线；方向键微调 -->
             <div
               v-if="splitActive"
@@ -126,7 +213,7 @@
             </div>
 
             <span v-if="activeGroup === 'region'" class="draw-hint">
-              {{ t('graph.portrait.regionDrawHint') }}
+              {{ regionStageHint }}
             </span>
           </div>
         </div>
@@ -240,6 +327,50 @@
               ⟳
             </button>
           </span>
+          <span class="bar-sep" />
+          <!-- 实时计算摄影引擎开关 / 68 点网格 / 多人脸分人切换 / 0-Token 固化 -->
+          <button
+            type="button"
+            class="bar-btn compare-btn"
+            :class="{ active: livePreviewEnabled && hasLiveAdjustments }"
+            :disabled="!hasSource"
+            :title="t('graph.portrait.livePreviewHint')"
+            @click="livePreviewEnabled = !livePreviewEnabled"
+          >
+            ⚡ {{ t('graph.portrait.livePreviewToggle') }}
+          </button>
+          <button
+            type="button"
+            class="bar-btn compare-btn"
+            :class="{ active: showFaceMesh }"
+            :disabled="!hasSource"
+            :title="t('graph.portrait.faceMeshHint')"
+            @click="toggleFaceMesh"
+          >
+            🕸️ {{ t('graph.portrait.faceMeshToggle') }}
+          </button>
+          <span v-if="facesList.length > 1" class="view-group face-picker-group">
+            <button
+              v-for="(_, fIdx) in facesList"
+              :key="`pick-face-${fIdx}`"
+              type="button"
+              class="bar-btn compare-btn"
+              :class="{ active: activeFaceIdx === fIdx }"
+              @click="selectFaceIndex(fIdx)"
+            >
+              👥 #{{ fIdx + 1 }}
+            </button>
+          </span>
+          <button
+            v-if="hasLiveAdjustments"
+            type="button"
+            class="bar-btn compare-btn active"
+            :disabled="aiRunning || !hasSource"
+            :title="t('graph.portrait.bakeLiveHint')"
+            @click="bakeLiveRetouch"
+          >
+            💾 {{ t('graph.portrait.bakeLiveBtn') }}
+          </button>
         </div>
       </section>
 
@@ -314,7 +445,7 @@
             <p class="hint">{{ t('graph.portrait.presetHint') }}</p>
           </template>
 
-          <!-- 手动区域 -->
+          <!-- 手动区域 + 交互式液化推拉笔 + 污点祛痘笔 -->
           <template v-else-if="activeGroup === 'region'">
             <!-- 局部回贴：模型只认提示词、一次调用会重绘整图，勾上后按脸/人物/框的蒙版贴回 -->
             <label class="inline-check scope-check">
@@ -326,37 +457,153 @@
               <span>{{ t('graph.portrait.scopeLocal') }}</span>
             </label>
             <p class="hint">{{ t('graph.portrait.scopeLocalHint') }}</p>
-            <p class="hint">{{ t('graph.portrait.regionHint') }}</p>
-            <label class="row">
-              <span class="row-label">{{ t('graph.portrait.regionKind') }}</span>
-              <select v-model="activeRegionKind">
-                <option v-for="kind in REGION_KINDS" :key="kind" :value="kind">
-                  {{ t(`graph.portrait.regionKinds.${kind}`) }}
-                </option>
-              </select>
-            </label>
-            <div v-if="regionList.length" class="region-list">
-              <div v-for="(region, index) in regionList" :key="region.id" class="region-row">
-                <span class="region-index">{{ index + 1 }}</span>
-                <span class="region-kind">{{
-                  t(`graph.portrait.regionKinds.${region.kind}`)
-                }}</span>
-                <input
-                  class="region-note"
-                  type="text"
-                  :value="region.note"
-                  :placeholder="t('graph.portrait.regionNotePlaceholder')"
-                  @input="onRegionNote(region.id, $event)"
-                />
-                <button type="button" class="ghost-btn tiny" @click="removeRegion(region.id)">
-                  {{ t('graph.portrait.regionRemove') }}
+
+            <!-- 画布交互工具切换：区域框选 / 液化推拉笔 / 污点祛痘笔 -->
+            <div class="spec-block">
+              <span class="spec-label">{{ t('graph.portrait.canvasToolMode') }}</span>
+              <div class="segmented">
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: regionToolMode === 'box' }"
+                  @click="regionToolMode = 'box'"
+                >
+                  ▭ {{ t('graph.portrait.toolBox') }}
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: regionToolMode === 'liquify' }"
+                  @click="regionToolMode = 'liquify'"
+                >
+                  💧 {{ t('graph.portrait.toolLiquify') }}
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: regionToolMode === 'spotHeal' }"
+                  @click="regionToolMode = 'spotHeal'"
+                >
+                  🩹 {{ t('graph.portrait.toolSpotHeal') }}
                 </button>
               </div>
             </div>
-            <p v-else class="hint">{{ t('graph.portrait.regionEmpty') }}</p>
-            <button v-if="regionList.length" type="button" class="ghost-btn" @click="clearRegions">
-              {{ t('graph.portrait.regionClear') }}
-            </button>
+
+            <template v-if="regionToolMode === 'liquify'">
+              <p class="hint">{{ t('graph.portrait.liquifyHint') }}</p>
+              <div class="segmented">
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: liquifyMode === 'push' }"
+                  @click="liquifyMode = 'push'"
+                >
+                  {{ t('graph.portrait.liquifyPush') }}
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: liquifyMode === 'pucker' }"
+                  @click="liquifyMode = 'pucker'"
+                >
+                  {{ t('graph.portrait.liquifyPucker') }}
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: liquifyMode === 'bloat' }"
+                  @click="liquifyMode = 'bloat'"
+                >
+                  {{ t('graph.portrait.liquifyBloat') }}
+                </button>
+              </div>
+              <label class="row">
+                <span class="row-label">{{ t('graph.portrait.brushRadius') }}</span>
+                <input
+                  v-model.number="brushRadius"
+                  type="range"
+                  min="0.015"
+                  max="0.16"
+                  step="0.005"
+                />
+                <span>{{ Math.round(brushRadius * 1000) / 10 }}%</span>
+              </label>
+              <label class="row">
+                <span class="row-label">{{ t('graph.portrait.brushStrength') }}</span>
+                <input v-model.number="brushStrength" type="range" min="0.15" max="1" step="0.05" />
+                <span>{{ Math.round(brushStrength * 100) }}%</span>
+              </label>
+              <div v-if="draftLiquifyStrokes.length" class="preset-io">
+                <button type="button" class="ghost-btn tiny" @click="popLiquifyStroke">
+                  {{ t('graph.portrait.undoStroke') }} ({{ draftLiquifyStrokes.length }})
+                </button>
+                <button type="button" class="ghost-btn tiny" @click="clearLiquifyStrokes">
+                  {{ t('graph.portrait.clearStrokes') }}
+                </button>
+              </div>
+            </template>
+
+            <template v-else-if="regionToolMode === 'spotHeal'">
+              <p class="hint">{{ t('graph.portrait.spotHealHint') }}</p>
+              <label class="row">
+                <span class="row-label">{{ t('graph.portrait.brushRadius') }}</span>
+                <input
+                  v-model.number="brushRadius"
+                  type="range"
+                  min="0.006"
+                  max="0.06"
+                  step="0.002"
+                />
+                <span>{{ Math.round(brushRadius * 1000) / 10 }}%</span>
+              </label>
+              <div v-if="draftSpotHeals.length" class="preset-io">
+                <button type="button" class="ghost-btn tiny" @click="popSpotHeal">
+                  {{ t('graph.portrait.undoSpot') }} ({{ draftSpotHeals.length }})
+                </button>
+                <button type="button" class="ghost-btn tiny" @click="clearSpotHeals">
+                  {{ t('graph.portrait.clearSpots') }}
+                </button>
+              </div>
+            </template>
+
+            <template v-else>
+              <p class="hint">{{ t('graph.portrait.regionHint') }}</p>
+              <label class="row">
+                <span class="row-label">{{ t('graph.portrait.regionKind') }}</span>
+                <select v-model="activeRegionKind">
+                  <option v-for="kind in REGION_KINDS" :key="kind" :value="kind">
+                    {{ t(`graph.portrait.regionKinds.${kind}`) }}
+                  </option>
+                </select>
+              </label>
+              <div v-if="regionList.length" class="region-list">
+                <div v-for="(region, index) in regionList" :key="region.id" class="region-row">
+                  <span class="region-index">{{ index + 1 }}</span>
+                  <span class="region-kind">{{
+                    t(`graph.portrait.regionKinds.${region.kind}`)
+                  }}</span>
+                  <input
+                    class="region-note"
+                    type="text"
+                    :value="region.note"
+                    :placeholder="t('graph.portrait.regionNotePlaceholder')"
+                    @input="onRegionNote(region.id, $event)"
+                  />
+                  <button type="button" class="ghost-btn tiny" @click="removeRegion(region.id)">
+                    {{ t('graph.portrait.regionRemove') }}
+                  </button>
+                </div>
+              </div>
+              <p v-else class="hint">{{ t('graph.portrait.regionEmpty') }}</p>
+              <button
+                v-if="regionList.length"
+                type="button"
+                class="ghost-btn"
+                @click="clearRegions"
+              >
+                {{ t('graph.portrait.regionClear') }}
+              </button>
+            </template>
             <label class="row column">
               <span class="row-label">{{ t('graph.portrait.fields.extraNote') }}</span>
               <textarea
@@ -371,6 +618,17 @@
 
           <!-- AI 增强（编辑器内直调模型，结果作为版本存进节点） -->
           <template v-else-if="activeGroup === 'aiErase'">
+            <div class="spec-block">
+              <button
+                type="button"
+                class="ghost-btn"
+                :disabled="aiRunning || !sourceUrl || !hasLiveAdjustments"
+                @click="bakeLiveRetouch"
+              >
+                ⚡ {{ t('graph.portrait.aiLiveRetouch') }}
+              </button>
+              <p class="hint">{{ t('graph.portrait.bakeLiveHint') }}</p>
+            </div>
             <p class="hint">{{ t('graph.portrait.aiHint') }}</p>
             <textarea
               v-model="aiPrompt"
@@ -502,6 +760,37 @@
                 {{ t('graph.portrait.exportHint') }}
               </p>
             </div>
+
+            <!-- 影调组额外支持导入标准 .cube 3D LUT 文件实时映射 -->
+            <div v-if="activeGroup === 'color'" class="spec-block">
+              <div class="spec-head">
+                <span class="spec-label">{{ t('graph.portrait.customLutLabel') }}</span>
+                <span class="spec-hint">{{ t('graph.portrait.customLutHint') }}</span>
+              </div>
+              <div class="preset-io">
+                <button type="button" class="ghost-btn" @click="pickLutFile">
+                  {{
+                    draftCustomLut ? `🎞️ ${draftCustomLut.name}` : t('graph.portrait.importCubeLut')
+                  }}
+                </button>
+                <button
+                  v-if="draftCustomLut"
+                  type="button"
+                  class="ghost-btn tiny"
+                  @click="clearCustomLut"
+                >
+                  {{ t('graph.portrait.clearCubeLut') }}
+                </button>
+                <input
+                  ref="lutFileEl"
+                  class="hidden-input"
+                  type="file"
+                  accept=".cube,text/plain"
+                  @change="onLutFileChange"
+                />
+              </div>
+              <p v-if="lutMessage" class="hint">{{ lutMessage }}</p>
+            </div>
           </template>
 
           <!-- 提示词预览：参数区里的一个普通区块，不再是压着底边的一条 -->
@@ -584,27 +873,35 @@ import {
   buildPortraitPrompt,
   defaultPortraitRetouch,
   exportPortraitPreset,
+  extractFaceSemanticRegions,
+  hasPortraitLiveAdjustments,
   idPhotoSpecById,
   importPortraitPreset,
   normalizePortraitManualRegions,
   normalizePortraitRetouch,
+  parseCubeLut,
   portraitHighRiskTierCount,
   portraitSpecIsDefault,
   portraitSpecsForGroup,
   visiblePortraitSpecs,
   type PortraitAiLayer,
   type PortraitAiTool,
+  type PortraitCustomLut,
+  type PortraitFaceAnalysis,
+  type PortraitLiquifyStroke,
   type PortraitManualRegion,
   type PortraitManualRegionKind,
   type PortraitNeed,
   type PortraitParamSpec,
   type PortraitRetouchState,
+  type PortraitSpotHeal,
   type PortraitToolGroup,
   type PortraitToolGroupId,
   type PortraitTierSpec
 } from '@shared/graph'
 import type { YoloTaskKind } from '@shared/yolo'
-import { getYoloStatus } from '../features/yolo/api'
+import { dataUrlToRawInput, getYoloStatus, yoloFace } from '../features/yolo/api'
+import { renderPortraitLiveRetouch } from '../features/graph/portraitLiveEngine'
 import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
 import { viewportPointToImage } from '../features/graph/model/portraitViewportTransform'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -618,6 +915,12 @@ const props = withDefaults(
     nodeId?: string
     setup?: Partial<PortraitRetouchState> | null
     regions?: PortraitManualRegion[]
+    face?: PortraitFaceAnalysis | null
+    faces?: PortraitFaceAnalysis[]
+    pickedFaceIndex?: number
+    liquifyStrokes?: PortraitLiquifyStroke[]
+    spotHeals?: PortraitSpotHeal[]
+    customLut?: PortraitCustomLut | null
     layers?: PortraitAiLayer[]
     baseLayerId?: string
     sourceUrl?: string
@@ -642,6 +945,12 @@ const props = withDefaults(
     nodeId: '',
     setup: null,
     regions: () => [],
+    face: null,
+    faces: () => [],
+    pickedFaceIndex: 0,
+    liquifyStrokes: () => [],
+    spotHeals: () => [],
+    customLut: null,
     layers: () => [],
     baseLayerId: '',
     sourceUrl: '',
@@ -658,10 +967,15 @@ const props = withDefaults(
   }
 )
 
-/** 编辑器写回宿主的载荷：档位参数 + 手动区域 (+ 模型选择 + 局部开关) */
+/** 编辑器写回宿主的载荷：档位参数 + 手动区域 (+ 液化/污点/3D LUT/多人脸选择 + 模型选择 + 局部开关) */
 interface PortraitEditorPayload {
   portraitRetouch: PortraitRetouchState
   manualRegions: PortraitManualRegion[]
+  liquifyStrokes?: PortraitLiquifyStroke[]
+  spotHeals?: PortraitSpotHeal[]
+  customLut?: PortraitCustomLut | null
+  pickedFaceIndex?: number
+  faces?: PortraitFaceAnalysis[]
   generateModel?: string
   generateProviderInstanceId?: string
   scopeMode?: 'local' | 'global'
@@ -699,7 +1013,11 @@ const AI_TOOLS: Array<{ id: PortraitAiTool; labelKey: string }> = [
   { id: 'erase', labelKey: 'aiErase' },
   { id: 'background', labelKey: 'aiBackground' },
   { id: 'makeup', labelKey: 'aiMakeup' },
-  { id: 'upscale', labelKey: 'aiUpscale' }
+  { id: 'upscale', labelKey: 'aiUpscale' },
+  { id: 'deWrinkle', labelKey: 'aiDeWrinkle' },
+  { id: 'idAttire', labelKey: 'aiIdAttire' },
+  { id: 'hairVolume', labelKey: 'aiHairVolume' },
+  { id: 'relight3d', labelKey: 'aiRelight3d' }
 ]
 const AI_TOOL_LABEL_KEYS: Record<string, string> = {
   erase: 'aiErase',
@@ -707,7 +1025,12 @@ const AI_TOOL_LABEL_KEYS: Record<string, string> = {
   makeup: 'aiMakeup',
   upscale: 'aiUpscale',
   expand: 'aiUpscale',
-  skinTexture: 'aiMakeup'
+  skinTexture: 'aiMakeup',
+  deWrinkle: 'aiDeWrinkle',
+  idAttire: 'aiIdAttire',
+  hairVolume: 'aiHairVolume',
+  relight3d: 'aiRelight3d',
+  liveRetouch: 'aiLiveRetouch'
 }
 
 /** 档位按钮文案：全部走 `graph.portrait.tiers.<档位名>`（档位名即稳定令牌） */
@@ -717,6 +1040,235 @@ const windowTitle = computed(() => t('graph.portrait.appMark'))
 // ── 草稿状态 ───────────────────────────────────────────────────
 const draft = reactive<PortraitRetouchState>(normalizePortraitRetouch())
 const draftRegions = ref<PortraitManualRegion[]>([])
+const draftLiquifyStrokes = ref<PortraitLiquifyStroke[]>([])
+const draftSpotHeals = ref<PortraitSpotHeal[]>([])
+const draftCustomLut = ref<PortraitCustomLut | null>(null)
+const detectedFaces = ref<PortraitFaceAnalysis[]>([])
+const activeFaceIdx = ref(0)
+const showFaceMesh = ref(false)
+const livePreviewEnabled = ref(true)
+const livePreviewDataUrl = ref('')
+
+// 画布交互工具：框选区域 / 液化推拉笔 / 污点祛痘笔
+const regionToolMode = ref<'box' | 'liquify' | 'spotHeal'>('box')
+const liquifyMode = ref<'push' | 'bloat' | 'pucker'>('push')
+const brushRadius = ref(0.045)
+const brushStrength = ref(0.65)
+const liquifyDrag = reactive({ active: false, startX: 0, startY: 0, x: 0, y: 0 })
+
+const lutFileEl = ref<HTMLInputElement | null>(null)
+const lutMessage = ref('')
+
+const facesList = computed<PortraitFaceAnalysis[]>(() =>
+  detectedFaces.value.length
+    ? detectedFaces.value
+    : props.faces?.length
+      ? props.faces
+      : props.face
+        ? [props.face]
+        : []
+)
+const activeFace = computed<PortraitFaceAnalysis | null>(
+  () => facesList.value[activeFaceIdx.value] ?? props.face ?? facesList.value[0] ?? null
+)
+const activeFaceRegions = computed(() =>
+  activeFace.value?.landmarks?.length
+    ? extractFaceSemanticRegions(activeFace.value.landmarks)
+    : null
+)
+
+function svgPolygonPoints(pts: Array<[number, number]>): string {
+  return pts.map(([x, y]) => `${x},${y}`).join(' ')
+}
+
+const hasLiveAdjustments = computed(() =>
+  hasPortraitLiveAdjustments({
+    state: draft,
+    landmarks: activeFace.value?.landmarks,
+    liquifyStrokes: draftLiquifyStrokes.value,
+    spotHeals: draftSpotHeals.value,
+    customLut: draftCustomLut.value
+  })
+)
+
+const livePreviewVisible = computed(
+  () =>
+    livePreviewEnabled.value &&
+    !compareHeld.value &&
+    !!livePreviewDataUrl.value &&
+    hasLiveAdjustments.value
+)
+
+const regionStageHint = computed(() => {
+  if (regionToolMode.value === 'liquify') return t('graph.portrait.liquifyStageHint')
+  if (regionToolMode.value === 'spotHeal') return t('graph.portrait.spotHealStageHint')
+  return t('graph.portrait.regionDrawHint')
+})
+
+let liveRenderTimer: ReturnType<typeof setTimeout> | null = null
+let liveRenderSeq = 0
+
+function scheduleLivePreviewRender(): void {
+  if (liveRenderTimer) clearTimeout(liveRenderTimer)
+  const src = props.sourceUrl?.trim() ?? ''
+  if (!src || !hasLiveAdjustments.value) {
+    livePreviewDataUrl.value = ''
+    return
+  }
+  const seq = ++liveRenderSeq
+  liveRenderTimer = setTimeout(async () => {
+    liveRenderTimer = null
+    try {
+      const res = await renderPortraitLiveRetouch(
+        src,
+        {
+          state: draft,
+          landmarks: activeFace.value?.landmarks,
+          liquifyStrokes: draftLiquifyStrokes.value,
+          spotHeals: draftSpotHeals.value,
+          customLut: draftCustomLut.value
+        },
+        { highRes: false }
+      )
+      if (seq === liveRenderSeq) {
+        livePreviewDataUrl.value = res?.hasAdjustments ? res.dataUrl : ''
+      }
+    } catch {
+      /* 预览异常时静默保留底图 */
+    }
+  }, 16)
+}
+
+async function ensureFacesDetected(): Promise<void> {
+  const src = props.sourceUrl?.trim() ?? ''
+  if (!src) return
+  if (props.faces?.length || detectedFaces.value.length) return
+  try {
+    const rawImage = await dataUrlToRawInput(src, 1280)
+    const res = await yoloFace({ image: rawImage })
+    if (res.faces?.length) {
+      const w = Math.max(1, res.width)
+      const h = Math.max(1, res.height)
+      detectedFaces.value = res.faces.map((f) => ({
+        schema: 'canonical68' as const,
+        modelId: 'face-landmark',
+        box: {
+          x: f.box.x / w,
+          y: f.box.y / h,
+          w: f.box.width / w,
+          h: f.box.height / h
+        },
+        score: f.score,
+        landmarks: (f.landmarks68 ?? []).map((pt) => [pt.x / w, pt.y / h] as [number, number])
+      }))
+      activeFaceIdx.value = 0
+      emitUpdate()
+      scheduleLivePreviewRender()
+    }
+  } catch {
+    /* YOLO 服务未就绪时静默退回中心椭圆近似 */
+  }
+}
+
+function toggleFaceMesh(): void {
+  showFaceMesh.value = !showFaceMesh.value
+  if (showFaceMesh.value) {
+    void ensureFacesDetected()
+  }
+}
+
+function selectFaceIndex(idx: number): void {
+  activeFaceIdx.value = idx
+  emitUpdate()
+  scheduleLivePreviewRender()
+}
+
+async function bakeLiveRetouch(): Promise<void> {
+  const src = props.sourceUrl?.trim() ?? ''
+  if (!src || !hasLiveAdjustments.value || aiRunning.value) return
+  let bakedDataUrl = ''
+  try {
+    const res = await renderPortraitLiveRetouch(
+      src,
+      {
+        state: draft,
+        landmarks: activeFace.value?.landmarks,
+        liquifyStrokes: draftLiquifyStrokes.value,
+        spotHeals: draftSpotHeals.value,
+        customLut: draftCustomLut.value
+      },
+      { highRes: true }
+    )
+    bakedDataUrl = res?.dataUrl ?? ''
+  } catch {
+    bakedDataUrl = livePreviewDataUrl.value
+  }
+  if (!bakedDataUrl) bakedDataUrl = livePreviewDataUrl.value
+  if (!bakedDataUrl) return
+  emit('ai', {
+    tool: 'liveRetouch',
+    prompt: '',
+    model: 'local-live-engine',
+    providerInstanceId: '',
+    sourceDataUrl: bakedDataUrl
+  })
+}
+
+function popLiquifyStroke(): void {
+  if (!draftLiquifyStrokes.value.length) return
+  draftLiquifyStrokes.value = draftLiquifyStrokes.value.slice(0, -1)
+  pushHistory()
+}
+
+function clearLiquifyStrokes(): void {
+  draftLiquifyStrokes.value = []
+  pushHistory()
+}
+
+function popSpotHeal(): void {
+  if (!draftSpotHeals.value.length) return
+  draftSpotHeals.value = draftSpotHeals.value.slice(0, -1)
+  pushHistory()
+}
+
+function clearSpotHeals(): void {
+  draftSpotHeals.value = []
+  pushHistory()
+}
+
+function pickLutFile(): void {
+  lutFileEl.value?.click()
+}
+
+async function onLutFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const text = await file.text()
+    const parsed = parseCubeLut(text, file.name.replace(/\.cube$/i, ''))
+    if (!parsed) {
+      lutMessage.value = t('graph.portrait.lutParseError')
+      return
+    }
+    draftCustomLut.value = parsed
+    lutMessage.value = t('graph.portrait.lutLoaded', {
+      title: parsed.name,
+      size: parsed.size
+    })
+    pushHistory()
+  } catch (err) {
+    lutMessage.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function clearCustomLut(): void {
+  draftCustomLut.value = null
+  lutMessage.value = ''
+  pushHistory()
+}
+
 /**
  * 当前组用 `string` 而不是 `PortraitToolGroupId`：
  * 模板里 `activeGroup === 'preset'` 这类比较落在 Vue 的模板类型收窄上不稳定，
@@ -977,7 +1529,15 @@ let unregisterHistory: (() => void) | null = null
 let sizeObserver: ResizeObserver | null = null
 let updateTimer: ReturnType<typeof setTimeout> | null = null
 
-const history = ref<Array<{ state: PortraitRetouchState; regions: PortraitManualRegion[] }>>([])
+const history = ref<
+  Array<{
+    state: PortraitRetouchState
+    regions: PortraitManualRegion[]
+    liquifyStrokes: PortraitLiquifyStroke[]
+    spotHeals: PortraitSpotHeal[]
+    customLut: PortraitCustomLut | null
+  }>
+>([])
 const historyIndex = ref(-1)
 
 const activeGroupMeta = computed<PortraitToolGroup | undefined>(() =>
@@ -1074,11 +1634,16 @@ function groupTitle(group: PortraitToolGroup): string {
 }
 
 function groupActiveCount(groupId: string): number {
-  if (groupId === 'region') return draftRegions.value.length
+  if (groupId === 'region') {
+    return (
+      draftRegions.value.length + draftLiquifyStrokes.value.length + draftSpotHeals.value.length
+    )
+  }
   let count = 0
   for (const spec of portraitSpecsForGroup(groupId as PortraitToolGroupId)) {
     if ((draft as unknown as Record<string, unknown>)[spec.key] !== specDefaultOf(spec)) count++
   }
+  if (groupId === 'color' && draftCustomLut.value) count++
   return count
 }
 
@@ -1224,6 +1789,28 @@ function onImagePointerDown(event: PointerEvent): void {
   const point = mapPointerToImage(event)
   if (!point) return
   event.preventDefault()
+  if (regionToolMode.value === 'spotHeal') {
+    draftSpotHeals.value = [
+      ...draftSpotHeals.value,
+      {
+        id: `spot-${Date.now().toString(36)}-${draftSpotHeals.value.length}`,
+        x: point.x,
+        y: point.y,
+        radius: brushRadius.value
+      }
+    ]
+    pushHistory()
+    return
+  }
+  if (regionToolMode.value === 'liquify') {
+    liquifyDrag.active = true
+    liquifyDrag.startX = point.x
+    liquifyDrag.startY = point.y
+    liquifyDrag.x = point.x
+    liquifyDrag.y = point.y
+    imageEl.value?.setPointerCapture?.(event.pointerId)
+    return
+  }
   drawing.active = true
   drawing.startX = point.x
   drawing.startY = point.y
@@ -1233,6 +1820,13 @@ function onImagePointerDown(event: PointerEvent): void {
 }
 
 function onImagePointerMove(event: PointerEvent): void {
+  if (liquifyDrag.active) {
+    const point = mapPointerToImage(event)
+    if (!point) return
+    liquifyDrag.x = point.x
+    liquifyDrag.y = point.y
+    return
+  }
   if (!drawing.active) return
   const point = mapPointerToImage(event)
   if (!point) return
@@ -1242,6 +1836,29 @@ function onImagePointerMove(event: PointerEvent): void {
 
 function onImagePointerUp(): void {
   onSplitPointerUp()
+  if (liquifyDrag.active) {
+    liquifyDrag.active = false
+    const dx = liquifyDrag.x - liquifyDrag.startX
+    const dy = liquifyDrag.y - liquifyDrag.startY
+    const dist = Math.hypot(dx, dy)
+    if (liquifyMode.value === 'push' && dist < 0.002) return
+    draftLiquifyStrokes.value = [
+      ...draftLiquifyStrokes.value,
+      {
+        id: `liq-${Date.now().toString(36)}-${draftLiquifyStrokes.value.length}`,
+        mode: liquifyMode.value,
+        from: [liquifyDrag.startX, liquifyDrag.startY],
+        to: [
+          liquifyMode.value === 'push' ? liquifyDrag.x : liquifyDrag.startX + 0.015,
+          liquifyMode.value === 'push' ? liquifyDrag.y : liquifyDrag.startY
+        ],
+        radius: brushRadius.value,
+        strength: brushStrength.value
+      }
+    ]
+    pushHistory()
+    return
+  }
   if (!drawing.active) return
   // 先取框再清 active —— 顺序反了框就没了（见 currentDraftBox 注释）
   const box = currentDraftBox()
@@ -1345,7 +1962,15 @@ function resetGroup(): void {
   for (const spec of groupSpecs.value) {
     ;(draft as unknown as Record<string, unknown>)[spec.key] = defaults[spec.key]
   }
-  if (activeGroup.value === 'region') draftRegions.value = []
+  if (activeGroup.value === 'region') {
+    draftRegions.value = []
+    draftLiquifyStrokes.value = []
+    draftSpotHeals.value = []
+  }
+  if (activeGroup.value === 'color') {
+    draftCustomLut.value = null
+    lutMessage.value = ''
+  }
   draft.presetId = ''
   pushHistory()
 }
@@ -1353,17 +1978,30 @@ function resetGroup(): void {
 function resetAll(): void {
   Object.assign(draft, defaultPortraitRetouch())
   draftRegions.value = []
+  draftLiquifyStrokes.value = []
+  draftSpotHeals.value = []
+  draftCustomLut.value = null
+  lutMessage.value = ''
   pushHistory()
 }
 
 // ── 草稿级撤销 / 重做 ─────────────────────────────────────────
-function snapshot(): { state: PortraitRetouchState; regions: PortraitManualRegion[] } {
+function snapshot(): {
+  state: PortraitRetouchState
+  regions: PortraitManualRegion[]
+  liquifyStrokes: PortraitLiquifyStroke[]
+  spotHeals: PortraitSpotHeal[]
+  customLut: PortraitCustomLut | null
+} {
   return {
     state: { ...normalizePortraitRetouch(draft) },
     regions: draftRegions.value.map((region) => ({
       ...region,
       box: region.box ? { ...region.box } : null
-    }))
+    })),
+    liquifyStrokes: draftLiquifyStrokes.value.map((s) => ({ ...s })),
+    spotHeals: draftSpotHeals.value.map((s) => ({ ...s })),
+    customLut: draftCustomLut.value ? { ...draftCustomLut.value } : null
   }
 }
 
@@ -1375,11 +2013,15 @@ function pushHistory(): void {
   history.value = [...history.value.slice(0, historyIndex.value + 1), entry].slice(-HISTORY_LIMIT)
   historyIndex.value = history.value.length - 1
   emitUpdate()
+  scheduleLivePreviewRender()
 }
 
 function applySnapshot(entry: {
   state: PortraitRetouchState
   regions: PortraitManualRegion[]
+  liquifyStrokes: PortraitLiquifyStroke[]
+  spotHeals: PortraitSpotHeal[]
+  customLut: PortraitCustomLut | null
 }): void {
   hydrating = true
   Object.assign(draft, normalizePortraitRetouch(entry.state))
@@ -1387,9 +2029,13 @@ function applySnapshot(entry: {
     ...region,
     box: region.box ? { ...region.box } : null
   }))
+  draftLiquifyStrokes.value = entry.liquifyStrokes.map((s) => ({ ...s }))
+  draftSpotHeals.value = entry.spotHeals.map((s) => ({ ...s }))
+  draftCustomLut.value = entry.customLut ? { ...entry.customLut } : null
   void nextTick(() => {
     hydrating = false
     emitUpdate()
+    scheduleLivePreviewRender()
   })
 }
 
@@ -1459,6 +2105,11 @@ function buildPayload(): PortraitEditorPayload {
   return {
     portraitRetouch: normalizePortraitRetouch(draft),
     manualRegions: normalizePortraitManualRegions(draftRegions.value),
+    liquifyStrokes: [...draftLiquifyStrokes.value],
+    spotHeals: [...draftSpotHeals.value],
+    customLut: draftCustomLut.value,
+    pickedFaceIndex: activeFaceIdx.value,
+    ...(detectedFaces.value.length ? { faces: [...detectedFaces.value] } : {}),
     generateModel: model.generateModel,
     generateProviderInstanceId: model.generateProviderInstanceId,
     scopeMode: props.scopeMode === 'global' ? 'global' : 'local'
@@ -1496,6 +2147,13 @@ const dirty = computed(() => {
   const before = normalizePortraitRetouch(props.setup)
   const after = normalizePortraitRetouch(draft)
   if (JSON.stringify(before) !== JSON.stringify(after)) return true
+  if (
+    JSON.stringify(props.liquifyStrokes ?? []) !== JSON.stringify(draftLiquifyStrokes.value) ||
+    JSON.stringify(props.spotHeals ?? []) !== JSON.stringify(draftSpotHeals.value) ||
+    JSON.stringify(props.customLut ?? null) !== JSON.stringify(draftCustomLut.value)
+  ) {
+    return true
+  }
   return (
     JSON.stringify(normalizePortraitManualRegions(props.regions)) !==
     JSON.stringify(normalizePortraitManualRegions(draftRegions.value))
@@ -1562,7 +2220,10 @@ async function copyPrompt(): Promise<void> {
 
 // ── AI 增强 ────────────────────────────────────────────────────
 function runAi(tool: PortraitAiTool): void {
-  const source = props.sourceUrl?.trim()
+  const source =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : props.sourceUrl?.trim()
   if (!source) return
   const model = currentModelSelection()
   emit('ai', {
@@ -1588,13 +2249,23 @@ function hydrate(): void {
   hydrating = true
   Object.assign(draft, normalizePortraitRetouch(props.setup))
   draftRegions.value = normalizePortraitManualRegions(props.regions)
+  draftLiquifyStrokes.value = Array.isArray(props.liquifyStrokes)
+    ? props.liquifyStrokes.map((s) => ({ ...s }))
+    : []
+  draftSpotHeals.value = Array.isArray(props.spotHeals)
+    ? props.spotHeals.map((s) => ({ ...s }))
+    : []
+  draftCustomLut.value = props.customLut ? { ...props.customLut } : null
+  activeFaceIdx.value = typeof props.pickedFaceIndex === 'number' ? props.pickedFaceIndex : 0
   presetMessage.value = ''
+  lutMessage.value = ''
   aiPrompt.value = ''
   history.value = [snapshot()]
   historyIndex.value = 0
   resetView()
   void nextTick(() => {
     hydrating = false
+    scheduleLivePreviewRender()
   })
 }
 
@@ -1667,6 +2338,7 @@ onBeforeUnmount(() => {
   sizeObserver?.disconnect()
   sizeObserver = null
   if (updateTimer) clearTimeout(updateTimer)
+  if (liveRenderTimer) clearTimeout(liveRenderTimer)
   unregisterHistory?.()
   unregisterHistory = null
 })
@@ -1675,6 +2347,20 @@ watch(
   () => props.open,
   (open) => {
     if (open) hydrate()
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.sourceUrl,
+  (src) => {
+    detectedFaces.value = []
+    if (src) {
+      void ensureFacesDetected()
+      scheduleLivePreviewRender()
+    } else {
+      livePreviewDataUrl.value = ''
+    }
   },
   { immediate: true }
 )
@@ -2581,5 +3267,72 @@ select,
 
 .hidden-input {
   display: none;
+}
+
+.live-preview-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.mesh-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.face-box-svg {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.55);
+  stroke-width: 0.0025;
+  stroke-dasharray: 0.008 0.006;
+}
+
+.face-box-svg.picked {
+  stroke: rgba(56, 189, 248, 0.9);
+  stroke-width: 0.0035;
+}
+
+.mesh-poly {
+  fill: rgba(52, 211, 153, 0.06);
+  stroke: rgba(52, 211, 153, 0.65);
+  stroke-width: 0.0018;
+}
+
+.mesh-poly.feature {
+  fill: rgba(56, 189, 248, 0.1);
+  stroke: rgba(56, 189, 248, 0.85);
+}
+
+.mesh-poly.lip {
+  fill: rgba(244, 114, 182, 0.1);
+  stroke: rgba(244, 114, 182, 0.85);
+}
+
+.mesh-pt {
+  fill: rgba(56, 189, 248, 0.95);
+}
+
+.spot-heal-circle {
+  fill: rgba(248, 113, 113, 0.18);
+  stroke: rgba(248, 113, 113, 0.9);
+  stroke-width: 0.0025;
+}
+
+.liquify-vector {
+  stroke: rgba(167, 139, 250, 0.9);
+  stroke-width: 0.0035;
+  stroke-linecap: round;
+}
+
+.liquify-vector.active {
+  stroke: rgba(56, 189, 248, 0.98);
+  stroke-width: 0.0045;
 }
 </style>

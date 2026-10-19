@@ -117,6 +117,12 @@ export interface PortraitRetouchState {
   redEye: PortraitTier
   /** 碎发 */
   strayHair: PortraitTier
+  /** 消除双下巴 */
+  doubleChin: PortraitTier
+  /** 去眼镜反光 */
+  glassesGlare: PortraitTier
+  /** 补发际线 / 高颅顶 */
+  hairlineFill: PortraitTier
 
   // ── 2 肤质 ───────────────────────────────────────────────
   /** 磨皮 */
@@ -137,6 +143,8 @@ export interface PortraitRetouchState {
   skinDeYellow: PortraitTier
   /** 肤色调：暖 / 冷 */
   skinToneWarmth: PortraitWarmthTier
+  /** 脸颈手全身肤色统一 */
+  bodyToneUnify: PortraitTier
 
   // ── 4 五官 ───────────────────────────────────────────────
   /** 脸型（瘦脸） */
@@ -165,6 +173,10 @@ export interface PortraitRetouchState {
   eyeWhiten: PortraitTier
   /** 瞳孔 */
   pupilSize: PortraitTier
+  /** 美白牙齿 */
+  teethWhiten: PortraitTier
+  /** 牙齿整齐 / 补牙缝 */
+  teethAlign: PortraitTier
 
   // ── 6 妆容 ───────────────────────────────────────────────
   /** 妆面类型 */
@@ -177,10 +189,14 @@ export interface PortraitRetouchState {
   // ── 7 身形 ───────────────────────────────────────────────
   /** 肩颈（美肩 / 美颈） */
   shoulderNeck: PortraitTier
+  /** 直角肩 / 消除斜方肌富贵包副乳 */
+  neckShoulderLine: PortraitTier
   /** 腰身（瘦身 / 收腰） */
   waistSlim: PortraitTier
   /** 腿长 */
   legLengthen: PortraitTier
+  /** 衣物去褶皱 */
+  clothDeWrinkle: PortraitTier
 
   // ── 8 光影 ───────────────────────────────────────────────
   /** 补光 / 阴影提亮 */
@@ -241,6 +257,8 @@ export interface PortraitRetouchState {
   idPhotoSpecId: PortraitIdPhotoSpecId
   /** 底色 */
   idPhotoBg: PortraitIdPhotoBg
+  /** 证件照正装换装 */
+  idPhotoAttire: PortraitIdPhotoAttire
   /** 额外产出 5 寸相纸拼版（纯几何，不调模型） */
   idPhotoSheet: boolean
 
@@ -287,6 +305,8 @@ export type PortraitMakeupStyle =
 export type PortraitMakeupTone = 'off' | 'cool' | 'natural' | 'warm' | 'rosy'
 export type PortraitBackgroundMode = 'keep' | 'color' | 'gradient' | 'prompt' | 'blur'
 export type PortraitIdPhotoBg = 'white' | 'blue' | 'red' | 'gradient'
+export type PortraitIdPhotoAttire =
+  'keep' | 'maleSuit' | 'femaleSuit' | 'whiteShirt' | 'blueShirt' | 'academicGown'
 export type PortraitIdPhotoSpecId =
   | 'none'
   | 'oneInch'
@@ -419,6 +439,15 @@ export const PORTRAIT_TINT_PHRASES: PortraitTierPhrases = {
   magenta: '色调偏品红'
 }
 
+/** 证件照正装换装提示词片段 */
+export const PORTRAIT_ID_PHOTO_ATTIRE_PHRASES: PortraitPhrases = {
+  maleSuit: '人物服装替换为深色合身男士西装外套配白衬衫与深色领带，领口平整端庄', // cjk-ok（提示词数据）
+  femaleSuit: '人物服装替换为得体女士职业西装外套配浅色内搭，领口自然平整', // cjk-ok（提示词数据）
+  whiteShirt: '人物服装替换为干净挺括的白色正装翻领衬衫，衣领平整无褶皱', // cjk-ok（提示词数据）
+  blueShirt: '人物服装替换为浅蓝色正装翻领衬衫，衣领挺括整洁', // cjk-ok（提示词数据）
+  academicGown: '人物服装替换为标准学位服（学士/硕士服），垂坠端庄整洁' // cjk-ok（提示词数据）
+}
+
 /**
  * 通用五档字段的提示词片段表；`off` 永远为空。
  *
@@ -456,6 +485,24 @@ export const PORTRAIT_TIER_PHRASES: Readonly<
     strong: '去除全部飞散碎发，发际线整洁',
     max: '去除全部飞散碎发，发际线整洁锐利'
   },
+  doubleChin: {
+    light: '轻微收敛双下巴，保留自然颌下阴影', // cjk-ok（提示词数据）
+    standard: '消除双下巴赘肉，下巴与颈部衔接紧致自然', // cjk-ok（提示词数据）
+    strong: '明显消除双下巴，颌下轮廓干净利落', // cjk-ok（提示词数据）
+    max: '彻底消除双下巴与颌下赘肉，下颌与颈部线条紧致清晰' // cjk-ok（提示词数据）
+  },
+  glassesGlare: {
+    light: '轻微减弱眼镜片反光', // cjk-ok（提示词数据）
+    standard: '去除眼镜片反光与绿膜炫光，还原镜片后清晰眼部细节', // cjk-ok（提示词数据）
+    strong: '彻底消除眼镜片强反光，眼部神态清晰通透', // cjk-ok（提示词数据）
+    max: '完全消除眼镜片一切反光与白雾，镜片通透、眼部细节完整' // cjk-ok（提示词数据）
+  },
+  hairlineFill: {
+    light: '轻微填补发际线空缺', // cjk-ok（提示词数据）
+    standard: '自然填补发际线与发缝，修饰额角并适度饱满颅顶', // cjk-ok（提示词数据）
+    strong: '明显填密发际线与发缝，打造蓬松高颅顶头包脸效果', // cjk-ok（提示词数据）
+    max: '充分填补发际线并塑造饱满蓬松高颅顶，发丝边缘真实自然' // cjk-ok（提示词数据）
+  },
 
   // 肤质
   skinSmoothing: {
@@ -488,6 +535,12 @@ export const PORTRAIT_TIER_PHRASES: Readonly<
     standard: '肤色明显偏暖',
     strong: '肤色略偏冷调',
     max: '肤色明显偏冷调'
+  },
+  bodyToneUnify: {
+    light: '轻微统一脸部与颈部肤色', // cjk-ok（提示词数据）
+    standard: '统一脸部、颈部、肩膀与手臂肤色，消除假白与色差断层', // cjk-ok（提示词数据）
+    strong: '明显统一全身裸露皮肤（脸、颈、胸口、手臂）的明度与冷暖色调', // cjk-ok（提示词数据）
+    max: '严格统一全身所有裸露肌肤色相与明度，脸颈手零色差自然过渡' // cjk-ok（提示词数据）
   },
 
   // 五官
@@ -550,6 +603,18 @@ export const PORTRAIT_TIER_PHRASES: Readonly<
   },
   eyeWhiten: le('提亮眼白'),
   pupilSize: le('加深瞳孔'),
+  teethWhiten: {
+    light: '牙齿轻微提亮去黄', // cjk-ok（提示词数据）
+    standard: '美白牙齿，去除牙渍与黄气，保留自然牙釉质感', // cjk-ok（提示词数据）
+    strong: '牙齿明显洁白亮丽，保留真实光泽不假白', // cjk-ok（提示词数据）
+    max: '牙齿洁白亮泽、干净通透' // cjk-ok（提示词数据）
+  },
+  teethAlign: {
+    light: '轻微修整牙齿边缘', // cjk-ok（提示词数据）
+    standard: '修整牙齿排列使其整齐对称，自然修补牙缝', // cjk-ok（提示词数据）
+    strong: '明显修整牙齿排列与牙弓弧度，牙齿整齐饱满', // cjk-ok（提示词数据）
+    max: '深度精修牙齿排列与形态，呈现标准整齐微笑线' // cjk-ok（提示词数据）
+  },
 
   // 妆容浓度（表见 PORTRAIT_MAKEUP_INTENSITY_PHRASES，单独维护）
   makeupIntensity: PORTRAIT_MAKEUP_INTENSITY_PHRASES,
@@ -560,6 +625,12 @@ export const PORTRAIT_TIER_PHRASES: Readonly<
     standard: '肩线平顺、颈部修长自然',
     strong: '肩线明显平顺、颈部明显修长，头身比例自然',
     max: '肩线平滑、颈部修长，头身比例自然'
+  },
+  neckShoulderLine: {
+    light: '轻微平滑斜方肌线条', // cjk-ok（提示词数据）
+    standard: '弱化斜方肌与富贵包，修饰副乳，塑造平顺天鹅颈与直角肩', // cjk-ok（提示词数据）
+    strong: '明显消除斜方肌、富贵包与腋下副乳，肩颈线条平直修长', // cjk-ok（提示词数据）
+    max: '彻底重塑完美直角肩与修长天鹅颈，肩部与腋下轮廓干净紧致' // cjk-ok（提示词数据）
   },
   waistSlim: {
     light: '腰身轻微收窄',
@@ -572,6 +643,12 @@ export const PORTRAIT_TIER_PHRASES: Readonly<
     standard: '腿部拉长，身材比例更好',
     strong: '腿部明显拉长，身材比例修长',
     max: '腿部明显拉长，身材比例修长'
+  },
+  clothDeWrinkle: {
+    light: '轻微抚平衣物表面细小折痕', // cjk-ok（提示词数据）
+    standard: '去除衣物杂乱褶皱与折痕，保留面料自然垂坠主结构与纹理', // cjk-ok（提示词数据）
+    strong: '明显熨平衣物褶皱，服装平整挺括、质感高级', // cjk-ok（提示词数据）
+    max: '彻底抚平全身衣物杂乱褶皱，服装如新熨烫般平整顺滑且保留织物肌理' // cjk-ok（提示词数据）
   },
 
   // 光影
@@ -822,6 +899,9 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
   tier('shineRemoval', 'heal', 'shineRemoval', ['face']),
   tier('redEye', 'heal', 'redEye', ['face'], LIGHT_TO_STRONG),
   tier('strayHair', 'heal', 'strayHair'),
+  tier('doubleChin', 'heal', 'doubleChin', ['face']),
+  tier('glassesGlare', 'heal', 'glassesGlare', ['face'], LIGHT_TO_STRONG),
+  tier('hairlineFill', 'heal', 'hairlineFill', ['face']),
 
   // ── 2 肤质 ──
   tier('skinSmoothing', 'skin', 'skinSmoothing', ['face']),
@@ -836,6 +916,7 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
   biTier('skinToneWarmth', 'tone', 'skinToneWarmth', WARMTH_OPTIONS, PORTRAIT_WARMTH_PHRASES, [
     'face'
   ]),
+  tier('bodyToneUnify', 'tone', 'bodyToneUnify', ['face']),
 
   // ── 4 五官 ──
   tier('faceSlim', 'face', 'faceSlim', ['face']),
@@ -854,6 +935,8 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
   tier('catchlight', 'eyes', 'catchlight', ['face']),
   tier('eyeWhiten', 'eyes', 'eyeWhiten', ['face']),
   tier('pupilSize', 'eyes', 'pupilSize', ['face'], ['off', 'light', 'standard']),
+  tier('teethWhiten', 'eyes', 'teethWhiten', ['face']),
+  tier('teethAlign', 'eyes', 'teethAlign', ['face'], LIGHT_TO_STRONG),
 
   // ── 6 妆容 ──
   {
@@ -898,8 +981,10 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
 
   // ── 7 身形 ──
   tier('shoulderNeck', 'body', 'shoulderNeck', ['pose']),
+  tier('neckShoulderLine', 'body', 'neckShoulderLine', ['pose']),
   tier('waistSlim', 'body', 'waistSlim', ['pose']),
   tier('legLengthen', 'body', 'legLengthen', ['pose']),
+  tier('clothDeWrinkle', 'body', 'clothDeWrinkle', ['pose']),
 
   // ── 8 光影 ──
   tier('fillLight', 'light', 'fillLight', ['face']),
@@ -1076,6 +1161,15 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
     labelKey: 'idPhotoBg',
     default: 'white',
     options: ['white', 'blue', 'red', 'gradient']
+  },
+  {
+    kind: 'enum',
+    key: 'idPhotoAttire',
+    group: 'idPhoto',
+    labelKey: 'idPhotoAttire',
+    default: 'keep',
+    options: ['keep', 'maleSuit', 'femaleSuit', 'whiteShirt', 'blueShirt', 'academicGown'],
+    phrases: PORTRAIT_ID_PHOTO_ATTIRE_PHRASES
   },
   {
     kind: 'boolean',
@@ -1826,6 +1920,40 @@ export const PORTRAIT_PRESETS: readonly PortraitPresetDef[] = [
       rimLight: 'strong',
       lutId: 'blackGold'
     }
+  },
+  {
+    id: 'ecommerce',
+    labelKey: 'ecommerce',
+    patch: {
+      skinSmoothing: 'standard',
+      skinTexture: 'strong',
+      bodyToneUnify: 'strong',
+      clothDeWrinkle: 'strong',
+      neckShoulderLine: 'standard',
+      waistSlim: 'light',
+      legLengthen: 'light',
+      clarity: 'standard',
+      sharpness: 'standard',
+      lutId: 'clear'
+    }
+  },
+  {
+    id: 'businessPortrait',
+    labelKey: 'businessPortrait',
+    patch: {
+      skinSmoothing: 'standard',
+      skinTexture: 'strong',
+      blemishRemoval: 'strong',
+      underEye: 'standard',
+      doubleChin: 'standard',
+      glassesGlare: 'standard',
+      hairlineFill: 'light',
+      teethWhiten: 'standard',
+      faceContour: 'standard',
+      rimLight: 'light',
+      sharpness: 'standard',
+      lutId: 'clear'
+    }
   }
 ]
 
@@ -2013,14 +2141,29 @@ function groupNegativeClauses(
   if (heavy('skinSmoothing')) {
     put('skin', ['过度磨皮', '塑料感', '蜡像皮肤', '毛孔完全消失'])
   }
+  if (heavy('doubleChin')) {
+    put('heal', ['下颌过度削平', '颈部断层']) // cjk-ok（提示词数据：负面提示词）
+  }
+  if (heavy('hairlineFill')) {
+    put('heal', ['假发套感', '发际线生硬死黑']) // cjk-ok（提示词数据：负面提示词）
+  }
   if (heavy('softFocus')) put('texture', ['塑料感', '蜡像皮肤', '毛孔完全消失'])
   if (heavy('skinWhiten')) put('tone', ['肤色过白失真', '过曝'])
   if (heavy('faceSlim') || heavy('jawline') || heavy('chin')) {
     put('face', ['脸型扭曲', '骨相改变', '五官变形'])
   }
   if (heavy('eyeSize') || heavy('pupilSize')) put('face', ['眼睛比例失真', '瞳孔异常'])
+  if (heavy('teethWhiten') || heavy('teethAlign')) {
+    put('eyes', ['烤瓷假牙感', '牙齿过白失真']) // cjk-ok（提示词数据：负面提示词）
+  }
   if (heavy('noseShape') || heavy('lipShape')) put('face', ['鼻唇变形'])
-  if (heavy('waistSlim') || heavy('shoulderNeck') || heavy('legLengthen')) {
+  if (
+    heavy('waistSlim') ||
+    heavy('shoulderNeck') ||
+    heavy('legLengthen') ||
+    heavy('neckShoulderLine') ||
+    heavy('clothDeWrinkle')
+  ) {
     put('body', ['身体比例失真', '背景拉伸变形', '肢体扭曲'])
   }
   if (heavy('grain')) put('texture', ['噪点过重'])
@@ -2030,6 +2173,9 @@ function groupNegativeClauses(
   }
   if (state.idPhotoSpecId !== 'none') {
     put('idPhoto', ['歪头', '表情夸张', '侧脸', '额头或下巴被裁切'])
+  }
+  if (state.idPhotoAttire !== 'keep') {
+    put('idPhoto', ['衣领歪斜', '衣服不合身', '脖颈错位']) // cjk-ok（提示词数据：负面提示词）
   }
   if (state.lutId === 'bw') put('color', ['残留彩色'])
   return out
@@ -2051,6 +2197,7 @@ export function buildPortraitPrompt(input: PortraitPromptInput): PortraitPrompt 
   const parts: string[] = []
 
   // 证件照是「重构图」诉求，必须放在最前面，后面的美容诉求都是为它服务
+  const attireClause = PORTRAIT_ID_PHOTO_ATTIRE_PHRASES[state.idPhotoAttire]?.trim()
   if (input.idPhoto) {
     const info = input.idPhoto
     parts.push(
@@ -2058,6 +2205,10 @@ export function buildPortraitPrompt(input: PortraitPromptInput): PortraitPrompt 
         `头顶留出约 8% 边距、下巴完整可见`
     )
     parts.push(`证件照底色为${info.background}`)
+    if (attireClause) parts.push(attireClause)
+    appliedGroups.push('idPhoto')
+  } else if (attireClause) {
+    parts.push(attireClause)
     appliedGroups.push('idPhoto')
   }
 
@@ -2141,7 +2292,17 @@ export function portraitIdentityRiskKeys(state: PortraitRetouchState): PortraitT
 // 之所以保留：无破坏性试错与可回滚是编辑器的核心体验，与内部实现无关。
 
 export type PortraitAiTool =
-  'erase' | 'expand' | 'background' | 'makeup' | 'upscale' | 'skinTexture'
+  | 'erase'
+  | 'expand'
+  | 'background'
+  | 'makeup'
+  | 'upscale'
+  | 'skinTexture'
+  | 'deWrinkle'
+  | 'idAttire'
+  | 'hairVolume'
+  | 'relight3d'
+  | 'liveRetouch'
 
 /** 编辑器内 AI 处理产出的一个版本（存节点 params.portraitLayers） */
 export interface PortraitAiLayer {
@@ -2196,7 +2357,16 @@ export function buildPortraitAiPrompt(tool: PortraitAiTool, userPrompt?: string)
     background: '替换背景为指定场景，人物边缘自然融合，保留原人物光影与肤色不变', // cjk-ok（提示词数据）
     makeup: '在保留人物五官形状、肤质与身份特征的前提下，按描述补足妆容细节，妆面自然不糊脸', // cjk-ok（提示词数据）
     upscale: '提升分辨率并补足细节，保持人物身份特征与五官形状不变，不改变构图', // cjk-ok（提示词数据）
-    skinTexture: '在保留原始皮肤纹理与毛孔质感的前提下优化肤质，不做塑料感磨皮' // cjk-ok（提示词数据）
+    skinTexture: '在保留原始皮肤纹理与毛孔质感的前提下优化肤质，不做塑料感磨皮', // cjk-ok（提示词数据）
+    deWrinkle:
+      '去除人物全身衣物的杂乱折痕与褶皱，使服装平整挺括，同时完整保留织物纹理、纽扣、缝线与自然垂坠主结构，保持人物五官与身份完全不变', // cjk-ok（提示词数据）
+    idAttire:
+      '将人物服装替换为端庄合身的正装（西装/衬衫），领口与肩线自然贴合颈部，保持人物面部五官、发型与身份特征完全不变', // cjk-ok（提示词数据）
+    hairVolume:
+      '自然填补发际线与发缝空缺，适度增加颅顶蓬松度打造头包脸效果，发丝真实细腻，保持人物五官与身份特征完全不变', // cjk-ok（提示词数据）
+    relight3d:
+      '对人物面部与身体进行专业影棚级立体补光与眼神光塑造，提升面部骨相立体感与通透度，保持人物五官与身份特征完全不变', // cjk-ok（提示词数据）
+    liveRetouch: '本地实时计算摄影精修（关键点网格液化 + 高低频分频磨皮 + 分区调色）' // cjk-ok（提示词数据）
   }
   const tail = userPrompt?.trim()
   return tail ? `${base[tool]}。${tail}` : base[tool]
