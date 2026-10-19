@@ -162,9 +162,9 @@
             <code>src/main/services/claudeSkillRuntime.ts</code>（变量展开、<code>!`cmd`</code> 预处理、hooks / fork 子代理 / allowed-tools 治理）、
             <code>src/main/services/githubSkillInstaller.ts</code>（GitHub 技能直装）、
             <code>src/shared/graph/nodeCapabilities.ts</code>（画布节点原生能力定义）、
-            <code>src/shared/workflowMarket.ts</code>（契约与解析）、
+            <code>src/shared/skillMarket.ts</code>（契约与解析）、
             <code>src/main/services/marketPipeline.ts</code>（下载 / 缓存 / 原子安装）、
-            <code>src/main/services/workflowMarketService.ts</code>（目录、兼容性、安装记账）、
+            <code>src/main/services/skillMarketService.ts</code>（目录、兼容性、安装记账）、
             <code>src/renderer/src/views/MarketplaceView.vue</code>（界面）。
           </div>
         </header>
@@ -507,7 +507,7 @@ npm run check:market-plans   # 只校验，不一致退出码 1（CI 就在跑�
               与逐条<strong>脚本摘要</strong>（节点 key / 标题 / 声明用到的能力 / 代码字符数 / 短 hash）写进
               <code>index.json</code>；贡献者不手写这些字段（与 <code>requires.nodeTypes</code>、技能清单同理）。
             </li>
-            <li>客户端 <code>parseWorkflowMarketEntry</code> / <code>parseWorkflowBundle</code> 认这些字段并再校验一遍。</li>
+            <li>客户端 <code>parseSkillMarketEntry</code> / <code>parseWorkflowBundle</code> 认这些字段并再校验一遍。</li>
             <li>
               校验器对每个 <code>script.run</code> 节点核对边界：<code>code</code> 非空且 &lt; 100000 字符、
               <code>capabilities</code> 只能取白名单内的能力、端口 id 合法不重名、<code>limits</code> 不超硬顶
@@ -570,7 +570,7 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测</code></pre>
           <h3>7.2 在应用侧</h3>
           <ul>
             <li>
-              <strong>自建源</strong>：数据层支持把 <code>workflowMarket.source</code> 设成一个或多个地址
+              <strong>自建源</strong>：数据层支持把 <code>skillMarket.source</code> 设成一个或多个地址
               （空白 / 逗号分隔；填了就<strong>只用填的</strong>，不混入官方源，避免回退把排查带偏）。
               ⚠️ <strong>当前设置界面还没有暴露这个输入项</strong>，属于数据层能力。
             </li>

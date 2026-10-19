@@ -14,9 +14,9 @@
 > `src/main/services/claudeSkillRuntime.ts`（变量展开、`` !`cmd` `` 预处理、hooks / fork 子代理 / allowed-tools 治理）、
 > `src/main/services/githubSkillInstaller.ts`（GitHub 技能直装）、
 > `src/shared/graph/nodeCapabilities.ts`（画布节点原生能力定义）、
-> `src/shared/workflowMarket.ts`（市场条目契约与解析）、
+> `src/shared/skillMarket.ts`（市场条目契约与解析）、
 > `src/main/services/marketPipeline.ts`（下载 / 缓存 / 原子安装）、
-> `src/main/services/workflowMarketService.ts`（目录、兼容性、安装记账）、
+> `src/main/services/skillMarketService.ts`（目录、兼容性、安装记账）、
 > `src/renderer/src/views/MarketplaceView.vue`（界面）。
 
 ---
@@ -260,7 +260,7 @@ Agent 真正去跑脚本时，走的是 harness 的通用 shell（Windows 上是
 - 仓库 `build-index.mjs` 从 `plan` 派生 `hasExecutableCode: true` 与逐条**脚本摘要**
   （节点 key / 标题 / 声明用到的能力 / 代码字符数 / 短 hash）写进 `index.json`；
   贡献者不手写这些字段（与 `requires.nodeTypes`、技能清单同理）。
-- 客户端 `parseWorkflowMarketEntry` / `parseWorkflowBundle` 认这些字段并再校验一遍。
+- 客户端 `parseSkillMarketEntry` / `parseWorkflowBundle` 认这些字段并再校验一遍。
 - 校验器对每个 `script.run` 节点核对边界：`code` 非空且 < 100000 字符、`capabilities`
   只能取白名单内的能力、端口 id 合法不重名、`limits` 不超硬顶（timeout ≤ 120s、mem ≤ 512MB）。
   代码为空 / 超长这类**无法规整**的会**拒绝整条工作流**（代码是工作流的一部分，不像坏技能
@@ -307,7 +307,7 @@ node --test scripts/validate.test.mjs  # 校验器自身的单测
 
 ### 7.2 在应用侧
 
-- **自建源**：数据层支持把 `workflowMarket.source` 设成一个或多个地址
+- **自建源**：数据层支持把 `skillMarket.source` 设成一个或多个地址
   （空白 / 逗号分隔；填了就**只用填的**，不混入官方源，避免回退把排查带偏）。
   ⚠️ **当前设置界面还没有暴露这个输入项**，属于数据层能力。
 - 想验证「Agent 到底有没有真的加载技能」，最可靠的证据是 dsh 的会话日志

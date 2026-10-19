@@ -16,17 +16,17 @@
         <span class="label">{{ t('aiWorkflow.presetsLabel') }}</span>
         <div class="presets" role="list">
           <button
-            v-for="id in presetIds"
-            :key="id"
+            v-for="item in presetIds"
+            :key="item.id"
             type="button"
             class="preset"
             role="listitem"
-            :class="{ active: selectedPresetId === id }"
+            :class="{ active: selectedPresetId === item.id }"
             :disabled="busy"
-            :title="t(`aiWorkflow.presets.${id}.desc`)"
-            @click="emit('select-preset', id)"
+            :title="item.desc"
+            @click="emit('select-preset', item.id)"
           >
-            {{ t(`aiWorkflow.presets.${id}.title`) }}
+            {{ item.title }}
           </button>
         </div>
       </div>
@@ -154,8 +154,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AiWorkflowPresetId } from '../features/aiWorkflow/presets'
-import { hasAiWorkflowPresetPlan } from '../features/aiWorkflow/presets'
+import type { AiWorkflowPresetId, AiWorkflowPresetOption } from '../features/aiWorkflow/presets'
 import type { GenerateModelOption } from '../features/graph/model/generateModelOptions'
 import type { AiWorkflowPreview } from '../composables/useAiCreateWorkflow'
 import type { GraphNode } from '@shared/graph'
@@ -177,7 +176,7 @@ const props = defineProps<{
   textModelOptions: GenerateModelOption[]
   imageModelOptions: GenerateModelOption[]
   videoModelOptions: GenerateModelOption[]
-  presetIds: readonly AiWorkflowPresetId[]
+  presetIds: readonly AiWorkflowPresetOption[]
   selectedPresetId: AiWorkflowPresetId | null
   preview: AiWorkflowPreview | null
   previewWarnings: string[]
@@ -211,7 +210,7 @@ const hasPreview = computed(() => !!props.preview)
 const canPlanAi = computed(() => {
   if (!props.textModelKey) return false
   if (props.prompt.trim()) return true
-  return !!props.selectedPresetId && hasAiWorkflowPresetPlan(props.selectedPresetId)
+  return !!props.selectedPresetId && props.selectedPresetId !== 'custom'
 })
 
 const promptModel = computed({

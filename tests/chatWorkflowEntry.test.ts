@@ -13,7 +13,7 @@ const read = (...parts: string[]): string => readFileSync(resolve(...parts), 'ut
 
 const CHAT = read('src/renderer/src/components/ChatPanel.vue')
 const MCP = read('src/main/services/mcpServerService.ts')
-const SERVICE = read('src/main/services/workflowMarketService.ts')
+const SERVICE = read('src/main/services/skillMarketService.ts')
 const IPC = read('src/shared/ipc.ts')
 
 describe('对话面板：技能与工作流统一入口', () => {
@@ -29,7 +29,7 @@ describe('对话面板：技能与工作流统一入口', () => {
     expect(CHAT).toContain('listInstalledWorkflows()')
     expect(CHAT).toContain('getSessionSkills()')
     // 不该去拉远端目录：这是本机已装内容的入口
-    expect(CHAT).not.toContain('fetchWorkflowMarket')
+    expect(CHAT).not.toContain('fetchSkillMarket')
   })
 
   it('每次打开面板都重新拉技能与已安装工作流（刚在市场装完就能看到）', () => {

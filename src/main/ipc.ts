@@ -125,15 +125,15 @@ import {
 } from '@shared/externalMcp'
 import { describeExternalMcpError, probeExternalMcpServer } from './services/externalMcpClient'
 import {
-  fetchWorkflowCatalog,
-  fetchWorkflowCover,
-  installWorkflow,
+  fetchSkillCatalog,
+  fetchSkillCover,
+  installSkillFromMarket,
   listInstalledWorkflowDetails,
   readInstalledWorkflowPlan,
-  resetWorkflowMarketCache,
-  uninstallWorkflow
-} from './services/workflowMarketService'
-import type { WorkflowSkillManifest } from '@shared/workflowMarket'
+  resetSkillMarketCache,
+  uninstallSkillFromMarket
+} from './services/skillMarketService'
+import type { SkillMarketManifest } from '@shared/skillMarket'
 import {
   screenRecordingStatus,
   startScreenRecording,
@@ -574,13 +574,13 @@ export function registerIpcHandlers(): void {
     /**
      * 记住了改之前的市场源：改了源就必须清市场缓存。
      *
-     * `resetWorkflowMarketCache()` 的注释一直写着「设置里改了源地址后清缓存」，但**从来没有
+     * `resetSkillMarketCache()` 的注释一直写着「设置里改了源地址后清缓存」，但**从来没有
      * 任何调用点**（死导出）—— 于是换源之后内存里还是旧源的目录与封面，
      * 看起来像「换了地址却没生效」。
      */
-    const previousSource = settingsService.get().workflowMarket?.source ?? ''
+    const previousSource = settingsService.get().skillMarket?.source ?? ''
     const saved = settingsService.set(settings)
-    if ((saved.workflowMarket?.source ?? '') !== previousSource) resetWorkflowMarketCache()
+    if ((saved.skillMarket?.source ?? '') !== previousSource) resetSkillMarketCache()
     // 广播给所有窗口：插件市场是独立窗口，它保存后主窗口必须知道 ——
     // 编辑器偏好与生成模型下拉都是按窗口缓存的，不广播就会一直用旧值。
     broadcastToAllWindows(IpcChannels.SETTINGS_UPDATED, saved)
@@ -588,29 +588,27 @@ export function registerIpcHandlers(): void {
   })
 
   // 技能市场（远端 ai-art-engine-skills）
-  handle(IpcChannels.WORKFLOW_MARKET_FETCH, (input?: { force?: boolean }) =>
-    fetchWorkflowCatalog(input)
-  )
-  handle(IpcChannels.WORKFLOW_MARKET_COVER, (id: string) => fetchWorkflowCover(id))
+  handle(IpcChannels.SKILL_MARKET_FETCH, (input?: { force?: boolean }) => fetchSkillCatalog(input))
+  handle(IpcChannels.SKILL_MARKET_COVER, (id: string) => fetchSkillCover(id))
   handle(
-    IpcChannels.WORKFLOW_MARKET_INSTALL,
+    IpcChannels.SKILL_MARKET_INSTALL,
     (input: {
       id: string
       acceptMissingTypes?: boolean
-      skill?: WorkflowSkillManifest
+      skill?: SkillMarketManifest
       skillScriptsConsent?: boolean
       scriptConsent?: boolean
       semanticPacks?: {
         files: Array<{ path: string; sizeBytes?: number }>
         sizeBytes?: number
       }
-    }) => installWorkflow(input)
+    }) => installSkillFromMarket(input)
   )
-  handle(IpcChannels.WORKFLOW_MARKET_UNINSTALL, (id: string) => uninstallWorkflow({ id }))
-  handle(IpcChannels.WORKFLOW_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
+  handle(IpcChannels.SKILL_MARKET_UNINSTALL, (id: string) => uninstallSkillFromMarket({ id }))
+  handle(IpcChannels.SKILL_MARKET_INSTALLED, (): InstalledWorkflowRecordView[] =>
     listInstalledWorkflowDetails()
   )
-  handle(IpcChannels.WORKFLOW_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
+  handle(IpcChannels.SKILL_MARKET_BUNDLE, (id: string) => readInstalledWorkflowPlan(id))
 
   // 插件市场窗口（单例：已开着则聚焦）
   handle(IpcChannels.MARKETPLACE_OPEN_WINDOW, () => {

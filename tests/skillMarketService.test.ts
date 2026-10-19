@@ -103,7 +103,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => userDataDir }
 }))
 vi.mock('../src/main/services/settingsService', () => ({
-  settingsService: { get: () => ({ workflowMarket: { source } }) }
+  settingsService: { get: () => ({ skillMarket: { source } }) }
 }))
 vi.mock('../src/main/services/updateService', () => ({
   updateService: { getCurrentVersion: () => '7.1.3' }
@@ -164,10 +164,10 @@ afterEach(() => {
   userDataDir = ''
 })
 
-describe('fetchWorkflowCatalog：响应形状（回归守卫）', () => {
+describe('fetchSkillCatalog：响应形状（回归守卫）', () => {
   it('**entries 在响应顶层**，不在 catalog 里（曾因此让界面显示 0 条）', async () => {
-    const { fetchWorkflowCatalog } = await import('../src/main/services/workflowMarketService')
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog } = await import('../src/main/services/skillMarketService')
+    const result = await fetchSkillCatalog({ force: true })
 
     expect(result.ok).toBe(true)
     // 这一条断言就是那次事故的核心：渲染层读的是 result.entries
@@ -179,8 +179,8 @@ describe('fetchWorkflowCatalog：响应形状（回归守卫）', () => {
   })
 
   it('附带兼容性结论与安装状态字段（界面据此渲染）', async () => {
-    const { fetchWorkflowCatalog } = await import('../src/main/services/workflowMarketService')
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog } = await import('../src/main/services/skillMarketService')
+    const result = await fetchSkillCatalog({ force: true })
     const entry = result.entries![0]!
     expect(entry.missingNodeTypes).toEqual([])
     expect(entry.blockReason).toBeNull()
@@ -193,10 +193,10 @@ describe('fetchWorkflowCatalog：响应形状（回归守卫）', () => {
 
   it('失败时 reasonKey 在顶层，且没有 entries 字段被误读成空目录', async () => {
     source = 'http://127.0.0.1:1' // 必然连不上
-    const { fetchWorkflowCatalog, resetWorkflowMarketCache } =
-      await import('../src/main/services/workflowMarketService')
-    resetWorkflowMarketCache()
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog, resetSkillMarketCache } =
+      await import('../src/main/services/skillMarketService')
+    resetSkillMarketCache()
+    const result = await fetchSkillCatalog({ force: true })
     expect(result.ok).toBe(false)
     expect(result.reasonKey).toBe('network')
   })
@@ -204,12 +204,12 @@ describe('fetchWorkflowCatalog：响应形状（回归守卫）', () => {
 
 describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
   it('安装后 entries[].installed 变为 true，且能读回 plan', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
+    const service = await import('../src/main/services/skillMarketService')
 
-    const before = await service.fetchWorkflowCatalog({ force: true })
+    const before = await service.fetchSkillCatalog({ force: true })
     expect(before.entries![0]!.installed).toBe(false)
 
-    const installed = await service.installWorkflow({ id: 'demo-flow' })
+    const installed = await service.installSkillFromMarket({ id: 'demo-flow' })
     expect(installed.ok).toBe(true)
 
     // 落盘位置与内容
@@ -223,8 +223,8 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
     expect(records[0]!.version).toBe('1.0.0')
 
     // 目录视图随之更新
-    service.resetWorkflowMarketCache()
-    const after = await service.fetchWorkflowCatalog({ force: true })
+    service.resetSkillMarketCache()
+    const after = await service.fetchSkillCatalog({ force: true })
     expect(after.entries![0]!.installed).toBe(true)
     expect(after.entries![0]!.installedVersion).toBe('1.0.0')
     expect(after.entries![0]!.updatable).toBe(false)
@@ -237,7 +237,7 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
     expect(bundle.bundle?.plan).toMatchObject({ nodes: [{ key: 'n1' }] })
 
     // 卸载
-    expect(service.uninstallWorkflow({ id: 'demo-flow' }).ok).toBe(true)
+    expect(service.uninstallSkillFromMarket({ id: 'demo-flow' }).ok).toBe(true)
     expect(existsSync(target)).toBe(false)
     expect(service.listInstalledWorkflows()).toEqual([])
     expect(service.readInstalledWorkflowPlan('demo-flow')).toMatchObject({
@@ -247,8 +247,8 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
   })
 
   it('目录被手删后不再显示「已安装」（记录与磁盘对账）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    await service.installSkillFromMarket({ id: 'demo-flow' })
     expect(service.listInstalledWorkflows()).toHaveLength(1)
 
     rmSync(join(userDataDir, 'workflows', 'demo-flow'), { recursive: true, force: true })
@@ -256,14 +256,14 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
   })
 
   it('封面转成 data URL（渲染层 CSP 不允许 https 图片直连）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    const cover = await service.fetchWorkflowCover('demo-flow')
+    const service = await import('../src/main/services/skillMarketService')
+    const cover = await service.fetchSkillCover('demo-flow')
     expect(cover.ok).toBe(true)
     expect(cover.dataUrl?.startsWith('data:image/png;base64,')).toBe(true)
   })
 
   it('id 不存在时读取给出明确原因键（而不是抛错）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
+    const service = await import('../src/main/services/skillMarketService')
     expect(service.readInstalledWorkflowPlan('nope')).toMatchObject({
       ok: false,
       reasonKey: 'notInstalled'
@@ -271,8 +271,8 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
   })
 
   it('安装记录文件落成 JSON 数组（可人工检查/迁移）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    await service.installSkillFromMarket({ id: 'demo-flow' })
     const raw = JSON.parse(readFileSync(join(userDataDir, 'workflows', 'installed.json'), 'utf8'))
     expect(Array.isArray(raw)).toBe(true)
     expect(raw[0]).toMatchObject({ id: 'demo-flow', version: '1.0.0' })
@@ -282,8 +282,8 @@ describe('安装 → 记账 → 读取 → 卸载 全流程', () => {
 
 describe('listInstalledWorkflowDetails：供对话面板展示的已安装清单', () => {
   it('记账文件只有 id/版本，详情把标题 / 简介 / 规模补齐', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    await service.installSkillFromMarket({ id: 'demo-flow' })
 
     const details = service.listInstalledWorkflowDetails()
     expect(details).toHaveLength(1)
@@ -304,8 +304,8 @@ describe('listInstalledWorkflowDetails：供对话面板展示的已安装清单
   })
 
   it('包被改坏时**不隐藏**它，而是标 broken（悄悄消失会让用户以为「我明明装过」）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    await service.installSkillFromMarket({ id: 'demo-flow' })
 
     writeFileSync(join(userDataDir, 'workflows', 'demo-flow', 'workflow.json'), '{ 不是合法 JSON')
 
@@ -315,15 +315,15 @@ describe('listInstalledWorkflowDetails：供对话面板展示的已安装清单
   })
 
   it('没有任何安装时返回空数组（不抛错）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
+    const service = await import('../src/main/services/skillMarketService')
     expect(service.listInstalledWorkflowDetails()).toEqual([])
   })
 })
 
 describe('含可执行代码的工作流：逐次同意闸门', () => {
   it('缺 scriptConsent → 拒绝安装（scriptConsentRequired），磁盘上不落盘', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    const result = await service.installWorkflow({ id: 'script-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    const result = await service.installSkillFromMarket({ id: 'script-flow' })
     expect(result.ok).toBe(false)
     expect(result.reasonKey).toBe('scriptConsentRequired')
     expect(existsSync(join(userDataDir, 'workflows', 'script-flow'))).toBe(false)
@@ -331,9 +331,9 @@ describe('含可执行代码的工作流：逐次同意闸门', () => {
   })
 
   it('scriptConsent 不是字面 true（如 1）同样被拒', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
+    const service = await import('../src/main/services/skillMarketService')
     // 故意传一个真值但非字面 true，确认主进程只认 === true
-    const result = await service.installWorkflow({
+    const result = await service.installSkillFromMarket({
       id: 'script-flow',
       scriptConsent: 1 as unknown as boolean
     })
@@ -342,16 +342,16 @@ describe('含可执行代码的工作流：逐次同意闸门', () => {
   })
 
   it('scriptConsent === true → 安装成功并可读回 plan', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    const result = await service.installWorkflow({ id: 'script-flow', scriptConsent: true })
+    const service = await import('../src/main/services/skillMarketService')
+    const result = await service.installSkillFromMarket({ id: 'script-flow', scriptConsent: true })
     expect(result.ok).toBe(true)
     expect(existsSync(join(userDataDir, 'workflows', 'script-flow', 'workflow.json'))).toBe(true)
     expect(service.listInstalledWorkflows().map((w) => w.id)).toContain('script-flow')
   })
 
   it('不含代码的工作流不受闸门影响（无需 scriptConsent）', async () => {
-    const service = await import('../src/main/services/workflowMarketService')
-    const result = await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    const result = await service.installSkillFromMarket({ id: 'demo-flow' })
     expect(result.ok).toBe(true)
   })
 })

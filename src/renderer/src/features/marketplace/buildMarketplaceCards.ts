@@ -1,5 +1,5 @@
-import type { DshSkillsInfo, McpServerInfo, WorkflowMarketEntryView } from '@shared/ipc'
-import type { WorkflowSkillManifest } from '@shared/workflowMarket'
+import type { DshSkillsInfo, McpServerInfo, SkillMarketEntryView } from '@shared/ipc'
+import type { SkillMarketManifest } from '@shared/skillMarket'
 import type { ScriptNodeSummary } from '@shared/graph/scriptNode'
 import {
   EXTERNAL_MCP_CONFIG_REASON,
@@ -83,7 +83,7 @@ export interface MarketplaceCard {
    * 界面也用它显示「含技能 / 含脚本」——不显示的话，用户不会知道装完之后
    * agent 手里多了一份操作手册。
    */
-  skill?: WorkflowSkillManifest
+  skill?: SkillMarketManifest
   /**
    * 工作流市场卡：是否含可执行代码（存在 `script.run` 节点）。
    *
@@ -95,7 +95,13 @@ export interface MarketplaceCard {
   /** 工作流市场卡：脚本节点摘要（同意流逐条展示 key / 能力 / 代码规模与 hash） */
   scripts?: ScriptNodeSummary[]
   /** Semantic Pack 清单（安装时传回主进程） */
-  semanticPacks?: WorkflowMarketEntryView['semanticPacks']
+  semanticPacks?: SkillMarketEntryView['semanticPacks']
+  /** 工作流市场卡：场景标签（如「科普动画」「成片时间线」） */
+  tags?: string[]
+  /** 工作流市场卡：依赖的节点类型列表（如 `output.timeline`, `svg.anim`） */
+  nodeTypes?: string[]
+  /** 工作流市场卡：从节点管线派生的高阶能力 i18n 键列表 */
+  capabilityKeys?: string[]
   /** Claude Code 技能扩展元数据（仅 category === 'skills' 可选携带） */
   argumentHint?: string
   userInvocable?: boolean
@@ -112,8 +118,8 @@ export interface MarketplaceCard {
 export interface MarketplaceSources {
   mcp: McpServerInfo | null
   skills: DshSkillsInfo | null
-  /** 远端工作流市场的条目（由主进程带回，含兼容性结论） */
-  workflows: readonly WorkflowMarketEntryView[]
+  /** 远端技能市场的条目（由主进程带回，含兼容性结论） */
+  workflows: readonly SkillMarketEntryView[]
   /** 用户添加的第三方 MCP 服务 */
   external?: readonly ExternalMcpServer[]
 }
@@ -247,6 +253,52 @@ export function scriptConsentText(
   })
 }
 
+const WORKFLOW_CAPABILITY_RULES: ReadonlyArray<{
+  key: string
+  match: readonly string[]
+}> = [
+  { key: 'marketplace.workflows.capability.timeline', match: ['output.timeline'] },
+  { key: 'marketplace.workflows.capability.svgAnim', match: ['svg.gen', 'svg.anim'] },
+  { key: 'marketplace.workflows.capability.filmWorkbench', match: ['film.workbench'] },
+  { key: 'marketplace.workflows.capability.director3d', match: ['asset.motion'] },
+  {
+    key: 'marketplace.workflows.capability.spatialWorld',
+    match: ['asset.spatialWorld', 'spatialWorld.export']
+  },
+  {
+    key: 'marketplace.workflows.capability.layerSplit',
+    match: ['image.layerSplit', 'ui.layerSplit']
+  },
+  {
+    key: 'marketplace.workflows.capability.adVariants',
+    match: ['image.adVariants', 'prompt.adVariantMatrix']
+  },
+  { key: 'marketplace.workflows.capability.lipSync', match: ['video.lipSync'] },
+  {
+    key: 'marketplace.workflows.capability.voiceMusic',
+    match: ['asset.voice', 'asset.music', 'asset.sfx']
+  },
+  { key: 'marketplace.workflows.capability.comicLayout', match: ['comic.page'] },
+  { key: 'marketplace.workflows.capability.frameAnim', match: ['anim.2d', 'frame.animGen'] },
+  { key: 'marketplace.workflows.capability.iconPack', match: ['image.gridSplit'] },
+  { key: 'marketplace.workflows.capability.uiPipeline', match: ['ui.generate', 'ui.breakdown'] }
+]
+
+/**
+ * 从工作流实际引用的 `requires.nodeTypes` 派生核心能力徽章 i18n 键。
+ */
+export function deriveWorkflowCapabilityKeys(nodeTypes: readonly string[] | undefined): string[] {
+  if (!nodeTypes?.length) return []
+  const set = new Set(nodeTypes)
+  const keys: string[] = []
+  for (const rule of WORKFLOW_CAPABILITY_RULES) {
+    if (rule.match.some((t) => set.has(t))) {
+      keys.push(rule.key)
+    }
+  }
+  return keys
+}
+
 /**
  * 把三份来源归一成卡片数组。
  *
@@ -337,6 +389,8 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
 
   // ── 市场技能包（可附带画布工作流模板）：来自远端市场（`ai-art-engine-skills`），每条一张卡
   for (const entry of sources.workflows) {
+    const nodeTypes = entry.requires?.nodeTypes ?? []
+    const capabilityKeys = deriveWorkflowCapabilityKeys(nodeTypes)
     cards.push({
       key: `workflows:${entry.id}`,
       category: 'workflows',
@@ -353,6 +407,9 @@ export function buildMarketplaceCards(sources: MarketplaceSources): MarketplaceC
       blockReason: entry.blockReason,
       installed: entry.installed,
       updatable: entry.updatable,
+      ...(entry.tags?.length ? { tags: [...entry.tags] } : {}),
+      ...(nodeTypes.length ? { nodeTypes: [...nodeTypes] } : {}),
+      ...(capabilityKeys.length ? { capabilityKeys } : {}),
       ...(entry.skill ? { skill: entry.skill } : {}),
       ...(entry.hasExecutableCode ? { hasExecutableCode: true } : {}),
       ...(entry.scripts?.length ? { scripts: entry.scripts } : {}),
@@ -381,8 +438,8 @@ export function filterMarketplaceCards(
     if (options.category !== 'all' && card.category !== options.category) return false
     if (!query) return true
     /**
-     * 可搜索字段刻意包含 `author`：市场是社区内容，**按作者找**是主要发现路径之一
-     * （「我记得是某某做的那条」）。漏掉它会让这类查找无解。
+     * 可搜索字段刻意包含 `author`、`tags` 与 `nodeTypes`：市场是社区内容，按作者、场景标签
+     * 或节点类型（如 `output.timeline`、`svg.anim`）查找都是主要发现路径。
      */
     const haystack = [
       card.title,
@@ -390,7 +447,9 @@ export function filterMarketplaceCards(
       card.subtitle,
       card.sourceKey,
       card.subtitleKey,
-      card.author
+      card.author,
+      ...(card.tags ?? []),
+      ...(card.nodeTypes ?? [])
     ]
       .filter((part): part is string => typeof part === 'string')
       .join('\n')

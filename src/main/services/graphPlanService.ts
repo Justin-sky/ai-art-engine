@@ -4,8 +4,6 @@ import {
   buildGraphPlanPreview,
   cloneGraphPlan,
   ensureBoundaryProxyNodes,
-  getAiWorkflowPresetPlan,
-  hasAiWorkflowPresetPlan,
   inferHostInterfaceFromGraph,
   materializeGraphPlan,
   parseGraphPlanJson,
@@ -16,6 +14,7 @@ import {
 import { modelProviderFacade } from './modelProviders'
 import { fail, defErrSimple } from '@shared/errors/appError'
 import { projectService } from './projectService'
+import { readInstalledWorkflowPlan } from './skillMarketService'
 import type { AssetInfo } from '@shared/domain'
 
 // ── AI 规划管线个性错误（result.error 字段直接展示；模型输出内容不做翻译）──
@@ -162,8 +161,15 @@ function resolveSeedPlan(input: PlanAiWorkflowInput): GraphPlan | null {
   if (input.seedPlan && Array.isArray(input.seedPlan.nodes)) {
     return cloneGraphPlan(input.seedPlan)
   }
-  if (input.presetId && hasAiWorkflowPresetPlan(input.presetId)) {
-    return getAiWorkflowPresetPlan(input.presetId)
+  if (input.presetId && input.presetId !== 'custom') {
+    const kebabId = input.presetId.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+    for (const candidate of [input.presetId, kebabId]) {
+      const res = readInstalledWorkflowPlan(candidate)
+      if (res.ok && res.bundle?.plan && typeof res.bundle.plan === 'object') {
+        const plan = res.bundle.plan as GraphPlan
+        if (Array.isArray(plan.nodes)) return cloneGraphPlan(plan)
+      }
+    }
   }
   return null
 }

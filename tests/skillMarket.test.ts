@@ -1,17 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import {
-  WORKFLOW_MARKET_CATEGORIES,
-  WORKFLOW_MARKET_SCHEMA_VERSION,
+  SKILL_MARKET_CATEGORIES,
+  SKILL_MARKET_SCHEMA_VERSION,
   compareSemver,
   missingNodeTypes,
   nodeTypesOfPlan,
   parseWorkflowBundle,
-  parseWorkflowMarketEntry,
-  parseWorkflowMarketIndex,
-  workflowCategoryKey,
-  workflowEntryBlockReason,
-  workflowMarketUrls
-} from '../src/shared/workflowMarket'
+  parseSkillMarketEntry,
+  parseSkillMarketIndex,
+  skillCategoryKey,
+  skillEntryBlockReason,
+  skillMarketUrls
+} from '../src/shared/skillMarket'
 import { listNodeTypes } from '../src/shared/graph'
 
 /**
@@ -67,9 +67,9 @@ function indexWith(workflows: unknown[]): unknown {
   return { schemaVersion: 1, generatedAt: '2026-10-07T00:00:00Z', workflows }
 }
 
-describe('parseWorkflowMarketEntry：缺署名/许可的条目在解析层就被挡', () => {
+describe('parseSkillMarketEntry：缺署名/许可的条目在解析层就被挡', () => {
   it('正常条目完整解析', () => {
-    const entry = parseWorkflowMarketEntry(goodEntry)
+    const entry = parseSkillMarketEntry(goodEntry)
     expect(entry?.id).toBe('short-drama-9grid')
     expect(entry?.category).toBe('film')
     expect(entry?.author).toEqual({ name: 'kal-', url: 'https://github.com/kal' })
@@ -78,70 +78,66 @@ describe('parseWorkflowMarketEntry：缺署名/许可的条目在解析层就被
   })
 
   it('id 必须 kebab-case', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, id: 'Bad Id' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, id: 'a/b' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, id: '-lead' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, id: '' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, id: 'Bad Id' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, id: 'a/b' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, id: '-lead' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, id: '' })).toBeNull()
   })
 
   it('version 必须 semver 形态', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, version: '1.0' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, version: 'v1.0.0' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, version: '1.0.0-beta.1' })?.version).toBe(
+    expect(parseSkillMarketEntry({ ...goodEntry, version: '1.0' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, version: 'v1.0.0' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, version: '1.0.0-beta.1' })?.version).toBe(
       '1.0.0-beta.1'
     )
   })
 
   it('**缺 author 或 license 一律拒绝**（审核底线：无署名/无许可的内容有法律灰区）', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, author: undefined })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, author: { name: '  ' } })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, license: '' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, license: undefined })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, author: undefined })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, author: { name: '  ' } })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, license: '' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, license: undefined })).toBeNull()
   })
 
   it('author 允许写成裸字符串', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, author: 'kal-' })?.author).toEqual({
+    expect(parseSkillMarketEntry({ ...goodEntry, author: 'kal-' })?.author).toEqual({
       name: 'kal-'
     })
   })
 
   it('缺 title / summary 拒绝（卡片没有可展示的主文案）', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, title: '' })).toBeNull()
-    expect(parseWorkflowMarketEntry({ ...goodEntry, summary: '   ' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, title: '' })).toBeNull()
+    expect(parseSkillMarketEntry({ ...goodEntry, summary: '   ' })).toBeNull()
   })
 
   it('未知分类落到 utility 而不是整条作废（分类只是筛选维度）', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, category: 'unknown' })?.category).toBe(
-      'utility'
-    )
-    expect(parseWorkflowMarketEntry({ ...goodEntry, category: undefined })?.category).toBe(
-      'utility'
-    )
+    expect(parseSkillMarketEntry({ ...goodEntry, category: 'unknown' })?.category).toBe('utility')
+    expect(parseSkillMarketEntry({ ...goodEntry, category: undefined })?.category).toBe('utility')
   })
 
   it('缺 requires 时给空 nodeTypes（表示未声明，不当作非法）', () => {
-    expect(parseWorkflowMarketEntry({ ...goodEntry, requires: undefined })?.requires).toEqual({
+    expect(parseSkillMarketEntry({ ...goodEntry, requires: undefined })?.requires).toEqual({
       nodeTypes: []
     })
   })
 
   it('非对象 / 数组 / null 一律 null', () => {
     for (const bad of [null, undefined, 'x', 42, []]) {
-      expect(parseWorkflowMarketEntry(bad)).toBeNull()
+      expect(parseSkillMarketEntry(bad)).toBeNull()
     }
   })
 })
 
-describe('parseWorkflowMarketIndex：单条坏不拖垮整体，结构坏才整体失败', () => {
+describe('parseSkillMarketIndex：单条坏不拖垮整体，结构坏才整体失败', () => {
   it('正常索引解析并列 dropped: 0', () => {
-    const result = parseWorkflowMarketIndex(indexWith([goodEntry]))
+    const result = parseSkillMarketIndex(indexWith([goodEntry]))
     if (!result.ok) throw new Error('应当成功')
     expect(result.dropped).toBe(0)
     expect(result.index.workflows).toHaveLength(1)
   })
 
   it('**单条非法只丢那一条并计数**，其余照常可用', () => {
-    const result = parseWorkflowMarketIndex(
+    const result = parseSkillMarketIndex(
       indexWith([goodEntry, { id: 'bad id' }, null, { ...goodEntry, id: 'second-ok' }])
     )
     if (!result.ok) throw new Error('应当成功')
@@ -150,42 +146,42 @@ describe('parseWorkflowMarketIndex：单条坏不拖垮整体，结构坏才整�
   })
 
   it('**重复 id 视为非法**（会让安装目录与卡片互相覆盖）', () => {
-    const result = parseWorkflowMarketIndex(indexWith([goodEntry, { ...goodEntry }]))
+    const result = parseSkillMarketIndex(indexWith([goodEntry, { ...goodEntry }]))
     if (!result.ok) throw new Error('应当成功')
     expect(result.dropped).toBe(1)
     expect(result.index.workflows).toHaveLength(1)
   })
 
   it('整体结构崩坏 → 失败并给原因键，不半渲染', () => {
-    expect(parseWorkflowMarketIndex(null)).toEqual({ ok: false, reasonKey: 'notAnObject' })
-    expect(parseWorkflowMarketIndex([])).toEqual({ ok: false, reasonKey: 'notAnObject' })
-    expect(parseWorkflowMarketIndex({ schemaVersion: 1 })).toEqual({
+    expect(parseSkillMarketIndex(null)).toEqual({ ok: false, reasonKey: 'notAnObject' })
+    expect(parseSkillMarketIndex([])).toEqual({ ok: false, reasonKey: 'notAnObject' })
+    expect(parseSkillMarketIndex({ schemaVersion: 1 })).toEqual({
       ok: false,
       reasonKey: 'noWorkflows'
     })
-    expect(parseWorkflowMarketIndex({ schemaVersion: 1, workflows: 'nope' })).toEqual({
+    expect(parseSkillMarketIndex({ schemaVersion: 1, workflows: 'nope' })).toEqual({
       ok: false,
       reasonKey: 'noWorkflows'
     })
   })
 
   it('schemaVersion 高于本应用能读的版本 → 明确要求更新应用', () => {
-    const result = parseWorkflowMarketIndex({
-      schemaVersion: WORKFLOW_MARKET_SCHEMA_VERSION + 1,
+    const result = parseSkillMarketIndex({
+      schemaVersion: SKILL_MARKET_SCHEMA_VERSION + 1,
       workflows: []
     })
     expect(result).toEqual({ ok: false, reasonKey: 'schemaTooNew' })
   })
 
   it('空 workflows 是合法状态（市场还没内容）', () => {
-    const result = parseWorkflowMarketIndex(indexWith([]))
+    const result = parseSkillMarketIndex(indexWith([]))
     if (!result.ok) throw new Error('应当成功')
     expect(result.index.workflows).toEqual([])
     expect(result.dropped).toBe(0)
   })
 
   it('source 与 generatedAt 被带上（详情页要显示来源）', () => {
-    const result = parseWorkflowMarketIndex({
+    const result = parseSkillMarketIndex({
       schemaVersion: 1,
       generatedAt: '2026-10-07T00:00:00Z',
       source: { repo: 'https://github.com/x/y', ref: 'main' },
@@ -361,7 +357,7 @@ describe('兼容性判定：缺节点类型必须在使用前拦下', () => {
 
   it('appMinVersion 高于当前版本 → appTooOld', () => {
     expect(
-      workflowEntryBlockReason(
+      skillEntryBlockReason(
         { requires: { nodeTypes: [], appMinVersion: '9.0.0' } },
         { knownNodeTypes: known, appVersion: '7.1.3' }
       )
@@ -370,7 +366,7 @@ describe('兼容性判定：缺节点类型必须在使用前拦下', () => {
 
   it('版本刚好等于要求 → 放行（不要求严格大于）', () => {
     expect(
-      workflowEntryBlockReason(
+      skillEntryBlockReason(
         { requires: { nodeTypes: [], appMinVersion: '7.1.3' } },
         { knownNodeTypes: known, appVersion: '7.1.3' }
       )
@@ -379,7 +375,7 @@ describe('兼容性判定：缺节点类型必须在使用前拦下', () => {
 
   it('**缺类型的优先级高于版本过低**（先告诉用户最具体的问题）', () => {
     expect(
-      workflowEntryBlockReason(
+      skillEntryBlockReason(
         { requires: { nodeTypes: ['zzz.new'], appMinVersion: '9.0.0' } },
         { knownNodeTypes: known, appVersion: '7.1.3' }
       )
@@ -388,7 +384,7 @@ describe('兼容性判定：缺节点类型必须在使用前拦下', () => {
 
   it('无要求时放行', () => {
     expect(
-      workflowEntryBlockReason(
+      skillEntryBlockReason(
         { requires: { nodeTypes: [] } },
         { knownNodeTypes: known, appVersion: '7.1.3' }
       )
@@ -398,14 +394,14 @@ describe('兼容性判定：缺节点类型必须在使用前拦下', () => {
 
 describe('分类与地址', () => {
   it('分类键只产出枚举内的键（未知落 utility）', () => {
-    for (const category of WORKFLOW_MARKET_CATEGORIES) {
-      expect(workflowCategoryKey(category)).toBe(`marketplace.workflows.category.${category}`)
+    for (const category of SKILL_MARKET_CATEGORIES) {
+      expect(skillCategoryKey(category)).toBe(`marketplace.workflows.category.${category}`)
     }
-    expect(workflowCategoryKey('nonsense')).toBe('marketplace.workflows.category.utility')
+    expect(skillCategoryKey('nonsense')).toBe('marketplace.workflows.category.utility')
   })
 
   it('地址按仓库目录结构拼装，尾部斜杠不产生双斜杠', () => {
-    const urls = workflowMarketUrls('https://raw.example.com/repo/main/')
+    const urls = skillMarketUrls('https://raw.example.com/repo/main/')
     expect(urls.index).toBe('https://raw.example.com/repo/main/index.json')
     expect(urls.bundle('a-b')).toBe('https://raw.example.com/repo/main/workflows/a-b/workflow.json')
     expect(urls.cover({ id: 'a-b', cover: 'cover.png' })).toBe(
@@ -433,7 +429,7 @@ import {
   parseScriptSummaries,
   planHasExecutableCode,
   scriptSummariesOfPlan
-} from '../src/shared/workflowMarket'
+} from '../src/shared/skillMarket'
 import {
   SCRIPT_DEFAULT_CODE,
   SCRIPT_MAX_CODE_CHARS,
@@ -527,9 +523,9 @@ describe('parseWorkflowBundle：脚本参数越界 → 整体拒绝', () => {
   })
 })
 
-describe('parseWorkflowMarketEntry：从索引宽容读回脚本摘要', () => {
+describe('parseSkillMarketEntry：从索引宽容读回脚本摘要', () => {
   it('读回 scripts 并据非空推出 hasExecutableCode', () => {
-    const entry = parseWorkflowMarketEntry({
+    const entry = parseSkillMarketEntry({
       ...goodEntry,
       scripts: [
         {

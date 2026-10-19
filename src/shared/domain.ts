@@ -680,13 +680,13 @@ export interface AppSettings {
    */
   externalMcp: ExternalMcpServer[]
   /**
-   * 远端工作流市场。
+   * 远端技能市场（`ai-art-engine-skills`）。
    *
    * `source` 是仓库的 raw 根地址（默认官方仓库）；改它即可换镜像或指向自建市场 ——
    * 之所以做成可配置，是因为 GitHub raw 在部分网络下不可达，而自建/镜像市场是
    * 社区内容分发的正常需求。
    */
-  workflowMarket: {
+  skillMarket: {
     /** 留空则用官方仓库 */
     source: string
   }
@@ -2531,7 +2531,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   blenderMcp: createDefaultBlenderMcpSettings(),
   externalMcp: [],
-  workflowMarket: { source: '' }
+  skillMarket: { source: '' }
 }
 
 /** Blender 工具面默认值：addon.py 的默认监听地址 */

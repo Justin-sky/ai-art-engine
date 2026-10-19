@@ -121,33 +121,33 @@ export default {
     presets: {
       gameUaVideo: {
         title: 'Game UA',
-        desc: 'Script → keyframes → video',
+        desc: 'Character anchor → 3s hook + core gameplay + CTA → VO/BGM → timeline cut',
         prompt:
-          'Create a game UA short-video workflow: text nodes for pitch and VO script, image nodes for character/scene keyframes, then image-to-video for a ~15s vertical ad. Wire nodes in a sensible chain and leave room for human edits.'
+          'Create a pro game UA short-video workflow: write a 3-part UA script (3-second hook, core gameplay payoff, CTA reward), generate a character & style anchor image wired into hook and gameplay frames to lock identity, render three 9:16 clips plus punchy VO narrations and high-energy BGM, and wire everything into the cut timeline (output.timeline) to export a 15s vertical ad.'
       },
       characterSheet: {
         title: 'Character sheet',
-        desc: 'Bio + multi-angle art',
+        desc: 'Character bible → front anchor → side / back / 4-panel expressions / action pose',
         prompt:
-          'Create a character-sheet workflow: text for bio and look description, then image nodes for front/side/turnaround or expression variants, plus an upload node for style reference.'
+          'Create an industrial character concept sheet workflow: a text node holds the character bible, first generating a front full-body orthographic standing pose as the sole identity anchor, then wiring that front anchor via in-image into the side view, back turnaround, 2×2 facial expression sheet, and signature combat pose to guarantee 100% character consistency.'
       },
       storyboardVideo: {
         title: 'Storyboard to film',
-        desc: 'Shots to video',
+        desc: 'Shot list → protagonist anchor → 3 shots + videos + per-shot VO + BGM → timeline',
         prompt:
-          'Create a storyboard-to-film workflow: start from a script or shot list, generate several storyboard frames, image-to-video for key shots, and a note node for edit order.'
+          'Create a director storyboard-to-film workflow: start from a shot list and narration script, generate a protagonist & lighting anchor image wired into 3 storyboard frames (establishing wide, medium tracking, climax close-up) to lock look and color; turn each frame into a motion clip with per-shot voiceover and cinematic BGM, all wired into the cut timeline (output.timeline) for automatic audio-visual sync and subtitle burn-in.'
       },
       productAd: {
         title: 'Product ad',
-        desc: 'Copy + hero art + short video',
+        desc: 'Brand script → studio hero anchor → lifestyle/macro + 2 clips + VO/BGM → timeline',
         prompt:
-          'Create a product-ad workflow: text for selling points, image nodes for hero/product scenes, then a short video with product close-ups; include a product reference upload.'
+          'Create a commercial product TVC workflow: a text node distills the AIDA script, first generating a studio hero shot as the appearance anchor wired via in-image into a lifestyle usage scene and macro craftsmanship close-up; render hero reveal and lifestyle video clips, add brand voiceover and commercial BGM, and combine them in the cut timeline (output.timeline).'
       },
       gameUi: {
         title: 'Game UI screens',
-        desc: 'System design → UI split → UI gen',
+        desc: 'System design → UI split → UI gen → PSD layer split',
         prompt:
-          'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen, with global style reference images unifying the UI look.'
+          'Create a game UI workflow: a system-plan node produces the game system design, a UI split node breaks it into per-screen image prompts (without concrete colors or art style), and a UI generation node (dive into its inner graph) renders each screen and feeds a UI layer-split node to export layered PSDs and layout manifests.'
       },
       gameIcons: {
         title: 'Game icon pack',
@@ -157,9 +157,9 @@ export default {
       },
       ecomAdDeep: {
         title: 'E-commerce ads',
-        desc: 'Hero image → ad variants → layer split',
+        desc: 'Product hero anchor → scene/macro lock + A/B variants + PSD split + promo video',
         prompt:
-          'Create an e-commerce ad workflow: text for selling points, image nodes for the product hero and usage scene; an ad-variants node on the hero image produces multiple ad versions in batch; plus a layer-split node to break the hero image into layers for editing detail-page text.'
+          'Create a full-stack e-commerce conversion workflow: text holds the conversion strategy, first generating a studio hero image as the product anchor wired via in-image into lifestyle and macro close-up shots; the hero image also feeds the ad-variants matrix for batch A/B creative testing and the layer-split node for editable PSD export, while the lifestyle scene feeds a 3:4 product promo video.'
       },
       game3dAsset: {
         title: 'Game 3D assets',
@@ -181,9 +181,9 @@ export default {
       },
       courseNarrate: {
         title: 'Knowledge talking-head',
-        desc: 'Lecture script → voice + talking video → lip sync',
+        desc: 'Lecture script → digital-human lip sync + SVG motion board + B-roll + BGM → timeline',
         prompt:
-          'Create a knowledge-course talking-head workflow: text holds the lecture script, an image node generates the presenter look, a voice node narrates the script, and a video node turns the presenter image into a talking video; a lip-sync node takes the talking video plus the narration and outputs a lip-aligned clip.'
+          'Create a pro knowledge-course talking-head workflow: a text node holds the structured lecture script, generating the presenter portrait and talking base clip aligned with presenter voiceover via lip sync (video.lipSync); simultaneously generate an animated SVG concept diagram (svg.gen → svg.anim out-gif), case B-roll illustration, and classroom BGM, combining all tracks in the cut timeline (output.timeline).'
       },
       directorPreviz: {
         title: '3D director previz',
@@ -205,9 +205,27 @@ export default {
       },
       anim2dGif: {
         title: '2D frame anim',
-        desc: 'Sprite sheet → per-frame PNGs + GIF',
+        desc: 'Character anchor → AI sprite sheet (frame.animGen) → auto key, ground stabilize & GIF',
         prompt:
-          'Create a 2D frame-animation workflow: an image node generates a sprite sheet of the character walking as a 1×4 grid (seamless cells, identical character across cells), wired into the `in` port of a 2D frame animation node; the node slices the grid into frames and, with animGifFps set to 12, additionally emits a GIF on run.'
+          'Create a pro 2D frame-animation workflow: generate a side-view character reference anchor, feed it into the sprite-sheet generator node (frame.animGen, ai-sheet mode) for a 1×4 walk cycle sheet, and wire into the 2D frame animation node (anim.2d) for auto background keying, ground stabilization, per-frame PNGs, and looping GIF export.'
+      },
+      scienceExplainer: {
+        title: 'Science explainer',
+        desc: 'Article/script → SVG motion diagrams + science illustration + per-shot VO + BGM → timeline',
+        prompt:
+          'Create a full-pipeline science explainer animation workflow: from a science article or script, shots 1 and 2 use SVG generation (svg.gen) with SMIL animations baked via svg.anim (out-gif) into animated mechanism diagrams, while shot 3 renders a scientific illustration; pair with 3 per-shot voiceover narrations and exploratory BGM, all wired into the cut timeline (output.timeline) for automatic audio-visual sync, subtitle burn-in, and BGM ducking.'
+      },
+      musicMv: {
+        title: 'Music MV',
+        desc: 'Lyric/mood script → visual anchor + original song/BGM → 3-act motion clips → MV timeline',
+        prompt:
+          'Create a music video (MV) workflow: a text node defines the song mood and 3-act structure (Verse, Chorus, Outro), an anchor image locks protagonist look and color grading across all 3 act keyframes, a music node (asset.music) composes the theme track, and 3 image-to-video nodes render cinematic motion clips combined with the track in the cut timeline (output.timeline).'
+      },
+      storybookNarrate: {
+        title: 'Narrated storybook',
+        desc: 'Fairy-tale script → watercolor anchor → multi-page spreads + warm VO + SFX/BGM → timeline',
+        prompt:
+          'Create a narrated picture-book workflow: start from a multi-page story script, generate a protagonist & watercolor style anchor image wired via in-image into all 3 storybook spread illustrations; generate warm per-page storytelling voiceovers, night-forest SFX, and music-box lullaby BGM, and wire them into the cut timeline (output.timeline) to compose an animated audiobook video.'
       },
       custom: {
         title: 'Custom',
@@ -907,6 +925,25 @@ export default {
       size: 'Size',
       nodes: '{count} nodes',
       edges: '{count} edges',
+      pipeline: 'Node pipeline',
+      tags: 'Tags',
+      capabilities: 'Capabilities',
+      slashCommand: 'Slash command',
+      capability: {
+        timeline: 'Timeline cut',
+        svgAnim: 'SVG motion',
+        filmWorkbench: 'Film workbench',
+        director3d: '3D director',
+        spatialWorld: '3D world',
+        layerSplit: 'Layer split',
+        adVariants: 'A/B variants',
+        lipSync: 'Lip sync',
+        voiceMusic: 'Voice & BGM',
+        comicLayout: 'Comic layout',
+        frameAnim: '2D sprite anim',
+        iconPack: 'Icon pack',
+        uiPipeline: 'UI pipeline'
+      },
       status: 'Status',
       installedTag: 'Installed',
       updatable: 'Update available',
@@ -917,6 +954,12 @@ export default {
         'This workflow needs node types this build does not have:\n\n{types}\n\nIt will not run properly. Install anyway?',
       install: 'Install',
       installing: 'Installing…',
+      installAllSafe: '⚡ Install / Update All ({count})',
+      installingAll: 'Syncing ({done}/{total})…',
+      installedAll: 'Installed / updated {count} workflows & skills',
+      copySlash: 'Copy /{name}',
+      copiedSlash: 'Copied /{name} — paste in AI Chat to launch this pipeline',
+      skillManual: 'Director manual',
       installed: 'Installed “{title}”',
       /** 用户在脚本同意框里点了「取消」：说明书装上了，脚本没落盘 */
       installedWithoutScripts: 'Installed “{title}” (scripts not installed, as you chose)',

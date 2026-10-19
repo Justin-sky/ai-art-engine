@@ -28,7 +28,7 @@ let server: Server | null = null
 
 vi.mock('electron', () => ({ app: { getPath: () => userDataDir } }))
 vi.mock('../src/main/services/settingsService', () => ({
-  settingsService: { get: () => ({ workflowMarket: { source } }) }
+  settingsService: { get: () => ({ skillMarket: { source } }) }
 }))
 vi.mock('../src/main/services/updateService', () => ({
   updateService: { getCurrentVersion: () => '7.1.3' }
@@ -131,8 +131,8 @@ afterAll(() => {
   rmSync(userDataDir, { recursive: true, force: true })
 })
 
-const service = (): Promise<typeof import('../src/main/services/workflowMarketService')> =>
-  import('../src/main/services/workflowMarketService')
+const service = (): Promise<typeof import('../src/main/services/skillMarketService')> =>
+  import('../src/main/services/skillMarketService')
 
 const recordPath = (): string => join(userDataDir, 'workflows', 'installed.json')
 const skillDir = (): string => join(userDataDir, 'dsh-harness', 'skills', SKILL_NAME)
@@ -140,11 +140,11 @@ const skillDir = (): string => join(userDataDir, 'dsh-harness', 'skills', SKILL_
 describe('技能包：安装 → 卸载', () => {
   it('安装把技能落到 dsh 技能根，并记账 skillName', async () => {
     const svc = await service()
-    const catalog = await svc.fetchWorkflowCatalog({ force: true })
+    const catalog = await svc.fetchSkillCatalog({ force: true })
     const entry = (catalog.entries ?? []).find((item) => item.id === ID)
     expect(entry?.skill?.name).toBe(SKILL_NAME)
 
-    const result = await svc.installWorkflow({ id: ID, skill: entry!.skill })
+    const result = await svc.installSkillFromMarket({ id: ID, skill: entry!.skill })
     expect(result.ok, JSON.stringify(result)).toBe(true)
 
     expect(existsSync(join(skillDir(), 'SKILL.md'))).toBe(true)
@@ -157,7 +157,7 @@ describe('技能包：安装 → 卸载', () => {
   it('**读函数不许写盘**：对账只过滤，不改动记账文件', async () => {
     /*
       根因守卫。曾经 `listInstalledWorkflows` 在对账后 `writeRecords(reconciled)`，
-      于是一个**读**动作会抹掉记录 —— `uninstallWorkflow` 先删目录再取记录时，
+      于是一个**读**动作会抹掉记录 —— `uninstallSkillFromMarket` 先删目录再取记录时，
       `skillName` 就在取的那一刻被对账写没了。
 
       要触发它必须造出「目录已不在」的记录（那才是对账会动手的情形）；只是普通地
@@ -184,7 +184,7 @@ describe('技能包：安装 → 卸载', () => {
     const svc = await service()
     expect(existsSync(join(skillDir(), 'SKILL.md'))).toBe(true)
 
-    const result = svc.uninstallWorkflow({ id: ID })
+    const result = svc.uninstallSkillFromMarket({ id: ID })
     expect(result.ok, JSON.stringify(result)).toBe(true)
 
     expect(existsSync(skillDir())).toBe(false)
@@ -207,18 +207,18 @@ describe('封面：memo 失效与占位图', () => {
     coverPayload = PNG
 
     // 第一次安装 + 取封面：memo 里从此存着 PNG
-    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
-    const before = await svc.fetchWorkflowCover(ID)
+    expect((await svc.installSkillFromMarket({ id: ID })).ok).toBe(true)
+    const before = await svc.fetchSkillCover(ID)
     expect(before.ok).toBe(true)
     expect(before.dataUrl).toContain(PNG.toString('base64'))
 
     // 远端换了一张明显不同的封面，用户重装
     coverPayload = REAL_COVER
-    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
+    expect((await svc.installSkillFromMarket({ id: ID })).ok).toBe(true)
     expect(readFileSync(localCover())).toEqual(REAL_COVER)
 
     // 关键：拿到的必须是新的那张。memo 没清的话这里仍是旧图
-    const after = await svc.fetchWorkflowCover(ID)
+    const after = await svc.fetchSkillCover(ID)
     expect(after.ok).toBe(true)
     expect(after.dataUrl).toBe(`data:image/png;base64,${REAL_COVER.toString('base64')}`)
   }, 30_000)
@@ -228,12 +228,12 @@ describe('封面：memo 失效与占位图', () => {
     coverPayload = REAL_COVER
 
     // 装好之后本地是真实封面；把它换成占位图，模拟「封面更新之前装的」那批
-    expect((await svc.installWorkflow({ id: ID })).ok).toBe(true)
+    expect((await svc.installSkillFromMarket({ id: ID })).ok).toBe(true)
     writeFileSync(localCover(), Buffer.alloc(68, 1))
     // 清掉 memo，强制走到「本地 vs 远端」的判定（否则 memo 会先返回，测不到这条规则）
-    svc.resetWorkflowMarketCache()
+    svc.resetSkillMarketCache()
 
-    const result = await svc.fetchWorkflowCover(ID)
+    const result = await svc.fetchSkillCover(ID)
     expect(result.ok).toBe(true)
     expect(result.dataUrl, '占位图不该被当成封面用').toBe(
       `data:image/png;base64,${REAL_COVER.toString('base64')}`

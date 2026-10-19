@@ -167,9 +167,9 @@
             <code>src/main/services/claudeSkillRuntime.ts</code> (variable substitution, <code>!`cmd`</code> preprocessing, hooks / fork subagent / allowed-tools governance),
             <code>src/main/services/githubSkillInstaller.ts</code> (direct GitHub skill installer),
             <code>src/shared/graph/nodeCapabilities.ts</code> (native canvas node capabilities),
-            <code>src/shared/workflowMarket.ts</code> (contract and parsing),
+            <code>src/shared/skillMarket.ts</code> (contract and parsing),
             <code>src/main/services/marketPipeline.ts</code> (download / cache / atomic install),
-            <code>src/main/services/workflowMarketService.ts</code> (catalog, compatibility, install
+            <code>src/main/services/skillMarketService.ts</code> (catalog, compatibility, install
             bookkeeping), <code>src/renderer/src/views/MarketplaceView.vue</code> (the UI).
           </div>
         </header>
@@ -573,7 +573,7 @@ npm run check:market-plans   # verify only; exit code 1 on any mismatch (this is
               short hash) into <code>index.json</code>; contributors do not hand-write these fields (same as
               <code>requires.nodeTypes</code> and the skill manifest).
             </li>
-            <li>The client <code>parseWorkflowMarketEntry</code> / <code>parseWorkflowBundle</code> read those fields and re-validate.</li>
+            <li>The client <code>parseSkillMarketEntry</code> / <code>parseWorkflowBundle</code> read those fields and re-validate.</li>
             <li>
               The validator checks each <code>script.run</code> node’s bounds: <code>code</code> non-empty and
               &lt; 100000 chars, <code>capabilities</code> only from the whitelist, port ids valid and unique,
@@ -650,7 +650,7 @@ node --test scripts/validate.test.mjs  # unit tests for the validator itself</co
           <ul>
             <li>
               <strong>Custom sources</strong>: the data layer supports setting
-              <code>workflowMarket.source</code> to one or more addresses (blank / comma-separated; once set,
+              <code>skillMarket.source</code> to one or more addresses (blank / comma-separated; once set,
               <strong>only what you set is used</strong>, with no official source mixed in, so fallback can’t
               lead your debugging astray). ⚠️ <strong>The settings UI does not expose this input yet</strong> —
               it is a data-layer capability.

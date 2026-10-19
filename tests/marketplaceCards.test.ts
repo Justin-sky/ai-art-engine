@@ -14,7 +14,7 @@ import {
   type MarketplaceSources
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
 import { normalizeExternalMcpServer } from '../src/shared/externalMcp'
-import type { WorkflowMarketEntryView } from '../src/shared/ipc'
+import type { SkillMarketEntryView } from '../src/shared/ipc'
 
 /**
  * 插件市场的卡片归一与筛选（纯函数）。
@@ -24,7 +24,7 @@ import type { WorkflowMarketEntryView } from '../src/shared/ipc'
  * 组件依赖 Electron / three.js 无法挂载，所以判定逻辑刻意放在这里以便测试。
  */
 
-function workflowEntry(over: Partial<WorkflowMarketEntryView> = {}): WorkflowMarketEntryView {
+function workflowEntry(over: Partial<SkillMarketEntryView> = {}): SkillMarketEntryView {
   return {
     id: 'short-drama',
     title: '短剧分镜',
@@ -626,6 +626,7 @@ describe('卡片模型不含展示文案（文案只在 locale 文件）', () =>
  */
 import {
   cardHasExecutableCode,
+  deriveWorkflowCapabilityKeys,
   scriptConsentText
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
 
@@ -676,5 +677,54 @@ describe('工作流卡：可执行代码识别与同意正文', () => {
     expect(text).toContain('count=2')
     expect(text).toContain('改图 (s1) · generateImage · 120 chars · #abcd1234')
     expect(text).toContain('s2 · none · 30 chars · #ef567890')
+  })
+})
+
+describe('工作流卡：专业能力徽章、节点管线与场景标签检索', () => {
+  it('deriveWorkflowCapabilityKeys 按 requires.nodeTypes 派生对应能力 i18n 键', () => {
+    expect(
+      deriveWorkflowCapabilityKeys([
+        'play.script',
+        'svg.gen',
+        'svg.anim',
+        'asset.voice',
+        'asset.music',
+        'output.timeline'
+      ])
+    ).toEqual([
+      'marketplace.workflows.capability.timeline',
+      'marketplace.workflows.capability.svgAnim',
+      'marketplace.workflows.capability.voiceMusic'
+    ])
+    expect(deriveWorkflowCapabilityKeys([])).toEqual([])
+  })
+
+  it('工作流卡片携带 tags、nodeTypes 与 capabilityKeys，且支持按标签或节点类型搜索', () => {
+    const cards = buildMarketplaceCards(
+      sources({
+        workflows: [
+          workflowEntry({
+            id: 'science-explainer',
+            title: '科普动画全流程',
+            tags: ['科普动画', 'SVG原理动效', '成片时间线'],
+            requires: {
+              nodeTypes: ['play.script', 'svg.gen', 'svg.anim', 'asset.voice', 'output.timeline']
+            }
+          })
+        ]
+      })
+    )
+    const wfCard = cards.find((c) => c.category === 'workflows')!
+    expect(wfCard.tags).toEqual(['科普动画', 'SVG原理动效', '成片时间线'])
+    expect(wfCard.nodeTypes).toContain('output.timeline')
+    expect(wfCard.capabilityKeys).toContain('marketplace.workflows.capability.timeline')
+    expect(wfCard.capabilityKeys).toContain('marketplace.workflows.capability.svgAnim')
+
+    expect(
+      filterMarketplaceCards(cards, { category: 'workflows', query: 'SVG原理动效' })
+    ).toHaveLength(1)
+    expect(
+      filterMarketplaceCards(cards, { category: 'workflows', query: 'output.timeline' })
+    ).toHaveLength(1)
   })
 })

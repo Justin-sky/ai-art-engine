@@ -20,7 +20,7 @@ import { normalizeProjectRelativePath } from '@shared/mcpAssetWrite'
 import type { AssetInfo } from '@shared/domain'
 import { projectService } from '../projectService'
 import { modelProviderFacade } from '../modelProviders'
-import { installedWorkflowsDir } from '../workflowMarketService'
+import { installedWorkflowsDir } from '../skillMarketService'
 import { broadcastToAllWindows } from '../../broadcast'
 import { IpcChannels } from '@shared/ipc'
 import {

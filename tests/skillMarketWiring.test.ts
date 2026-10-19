@@ -13,9 +13,9 @@ const read = (...parts: string[]): string => readFileSync(resolve(...parts), 'ut
 
 const CARDS = read('src/renderer/src/features/marketplace/buildMarketplaceCards.ts')
 const VIEW = read('src/renderer/src/views/MarketplaceView.vue')
-const SERVICE = read('src/main/services/workflowMarketService.ts')
+const SERVICE = read('src/main/services/skillMarketService.ts')
 const PIPELINE = read('src/main/services/marketPipeline.ts')
-const CONTRACT = read('src/shared/workflowMarket.ts')
+const CONTRACT = read('src/shared/skillMarket.ts')
 const MAIN_IPC = read('src/main/ipc.ts')
 const PRELOAD = read('src/preload/index.ts')
 const IPC = read('src/shared/ipc.ts')
@@ -48,10 +48,10 @@ describe('分类枚举：plugins 已换成 workflows', () => {
 
 describe('远端契约：格式与兼容性在共享层判定', () => {
   it('索引 / 包 / 兼容性都有解析与判定函数', () => {
-    expect(CONTRACT).toContain('parseWorkflowMarketIndex')
+    expect(CONTRACT).toContain('parseSkillMarketIndex')
     expect(CONTRACT).toContain('parseWorkflowBundle')
     expect(CONTRACT).toContain('missingNodeTypes')
-    expect(CONTRACT).toContain('workflowEntryBlockReason')
+    expect(CONTRACT).toContain('skillEntryBlockReason')
     expect(CONTRACT).toContain('compareSemver')
   })
 
@@ -105,14 +105,14 @@ describe('主进程：安装必须走原子管道', () => {
 })
 
 describe('IPC 与 preload 齐备', () => {
-  it('五个通道都有声明与 handler', () => {
+  it('六个通道都有声明与 handler', () => {
     for (const channel of [
-      'WORKFLOW_MARKET_FETCH',
-      'WORKFLOW_MARKET_COVER',
-      'WORKFLOW_MARKET_INSTALL',
-      'WORKFLOW_MARKET_UNINSTALL',
-      'WORKFLOW_MARKET_INSTALLED',
-      'WORKFLOW_MARKET_BUNDLE'
+      'SKILL_MARKET_FETCH',
+      'SKILL_MARKET_COVER',
+      'SKILL_MARKET_INSTALL',
+      'SKILL_MARKET_UNINSTALL',
+      'SKILL_MARKET_INSTALLED',
+      'SKILL_MARKET_BUNDLE'
     ]) {
       expect(IPC, `ipc.ts 缺 ${channel}`).toContain(channel)
       expect(MAIN_IPC, `main/ipc.ts 未注册 ${channel}`).toContain(`IpcChannels.${channel}`)
@@ -127,7 +127,7 @@ describe('IPC 与 preload 齐备', () => {
 })
 
 describe('渲染层：「使用」走既有落盘链路', () => {
-  it('workflowMarket 的 category 用于二级筛选，且只在技能页签生效', () => {
+  it('skillMarket 的 category 用于二级筛选，且只在技能页签生效', () => {
     expect(VIEW).toContain('workflowCategory')
     expect(VIEW).toMatch(/if \(category\.value !== 'skills' \|\| !workflowCategory\.value\) return/)
   })
@@ -155,7 +155,7 @@ describe('渲染层：「使用」走既有落盘链路', () => {
 
   it('封面懒加载且有上限（避免一屏几十个请求）', () => {
     expect(VIEW).toContain('COVER_LAZY_LIMIT')
-    expect(VIEW).toMatch(/fetchWorkflowCover/)
+    expect(VIEW).toMatch(/fetchSkillCover/)
   })
 
   it('失败时不清空已有条目（断网仍能看到上次目录）', () => {

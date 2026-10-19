@@ -143,13 +143,31 @@
         <button
           type="button"
           class="mp-btn"
-          :disabled="workflowRefreshing"
+          :disabled="workflowRefreshing || batchInstalling"
           @click="refreshWorkflowCatalog()"
         >
           {{
             workflowRefreshing
               ? t('marketplace.workflows.refreshing')
               : t('marketplace.workflows.refresh')
+          }}
+        </button>
+        <button
+          v-if="pendingSafeWorkflowEntries.length > 0"
+          type="button"
+          class="mp-btn primary"
+          :disabled="batchInstalling || workflowRefreshing"
+          @click="installAllSafeWorkflows()"
+        >
+          {{
+            batchInstalling
+              ? t('marketplace.workflows.installingAll', {
+                  done: batchProgressDone,
+                  total: batchProgressTotal
+                })
+              : t('marketplace.workflows.installAllSafe', {
+                  count: pendingSafeWorkflowEntries.length
+                })
           }}
         </button>
         <span v-if="workflowError" class="mp-hint error">{{ workflowError }}</span>
@@ -192,7 +210,7 @@
           :aria-selected="workflowCategory === key"
           @click="workflowCategory = key"
         >
-          {{ t(workflowCategoryKey(key)) }}
+          {{ t(skillCategoryKey(key)) }}
         </button>
       </nav>
 
@@ -231,6 +249,15 @@
           </div>
 
           <p v-if="cardSubtitle(card)" class="mp-card-sub">{{ cardSubtitle(card) }}</p>
+
+          <div v-if="card.capabilityKeys?.length || card.tags?.length" class="mp-card-chips">
+            <span v-for="capKey in card.capabilityKeys ?? []" :key="capKey" class="mp-chip cap">
+              {{ t(capKey) }}
+            </span>
+            <span v-for="tag in (card.tags ?? []).slice(0, 4)" :key="tag" class="mp-chip tag">
+              #{{ tag }}
+            </span>
+          </div>
 
           <div class="mp-card-foot">
             <span v-if="card.sourceKey" class="mp-card-state" :class="{ on: card.active }">
@@ -299,6 +326,14 @@
                         : t('marketplace.workflows.reinstall')
                       : t('marketplace.workflows.install')
                 }}
+              </button>
+              <button
+                v-if="card.installed && card.skill?.name"
+                type="button"
+                class="mp-btn"
+                @click="copySlashCommand(card.skill.name)"
+              >
+                {{ t('marketplace.workflows.copySlash', { name: card.skill.name }) }}
               </button>
               <button
                 v-if="card.installed"
@@ -429,6 +464,40 @@
                     {{ t('marketplace.workflows.edges', { count: card.edgeCount ?? 0 }) }}
                   </dd>
                 </div>
+                <div v-if="card.skill" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.slashCommand') }}</dt>
+                  <dd>
+                    <code>/{{ card.skill.name }}</code>
+                  </dd>
+                </div>
+                <div v-if="card.skill?.description" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.skillManual') }}</dt>
+                  <dd>{{ card.skill.description }}</dd>
+                </div>
+                <div v-if="card.capabilityKeys?.length" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.capabilities') }}</dt>
+                  <dd class="mp-fact-chips">
+                    <span v-for="capKey in card.capabilityKeys" :key="capKey" class="mp-chip cap">
+                      {{ t(capKey) }}
+                    </span>
+                  </dd>
+                </div>
+                <div v-if="card.nodeTypes?.length" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.pipeline') }}</dt>
+                  <dd class="mp-fact-chips">
+                    <code v-for="nt in card.nodeTypes" :key="nt" class="mp-badge-code">
+                      {{ formatNodeTypeLabel(nt) }}
+                    </code>
+                  </dd>
+                </div>
+                <div v-if="card.tags?.length" class="mp-fact">
+                  <dt>{{ t('marketplace.workflows.tags') }}</dt>
+                  <dd class="mp-fact-chips">
+                    <span v-for="tag in card.tags" :key="tag" class="mp-chip tag">
+                      #{{ tag }}
+                    </span>
+                  </dd>
+                </div>
                 <div v-if="card.installed" class="mp-fact">
                   <dt>{{ t('marketplace.workflows.status') }}</dt>
                   <dd>
@@ -520,12 +589,13 @@ import type {
   GitHubDiscoveredSkillView,
   McpBlenderBridgeInfo,
   McpServerInfo,
-  WorkflowMarketEntryView
+  SkillMarketEntryView
 } from '@shared/ipc'
 import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
-import { plainSkillManifest, workflowCategoryKey } from '@shared/workflowMarket'
+import { listNodeTypes } from '@shared/graph'
+import { plainSkillManifest, skillCategoryKey } from '@shared/skillMarket'
 import { toPlain } from '../utils/toPlain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptConfirm } from '../composables/useStudioPrompt'
@@ -595,8 +665,8 @@ const selectedGitHubSkills = computed(() =>
   githubDiscovered.value.filter((item) => selectedGitHubSkillNames.value.includes(item.name))
 )
 
-/** 远端工作流市场（`ai-art-engine-skills`） */
-const workflowEntries = ref<WorkflowMarketEntryView[]>([])
+/** 远端技能市场（`ai-art-engine-skills`） */
+const workflowEntries = ref<SkillMarketEntryView[]>([])
 /** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
 const workflowStale = ref(false)
 /** 实际取到数据的源地址与是否用了镜像（用户有权知道数据从哪来） */
@@ -621,6 +691,36 @@ const workflowLoading = ref(false)
 /** 刷新失败但有旧内容可看：给软提示，不要用错误把已有内容顶掉 */
 const workflowRefreshFailed = ref(false)
 const installingId = ref<string | null>(null)
+const batchInstalling = ref(false)
+const batchProgressDone = ref(0)
+const batchProgressTotal = ref(0)
+
+/** 可一键静默安装/升级的官方工作流（不含可执行代码与技能脚本且当前客户端无缺失节点依赖） */
+const pendingSafeWorkflowEntries = computed(() =>
+  workflowEntries.value.filter(
+    (entry) =>
+      (!entry.installed || entry.updatable) &&
+      !entry.blockReason &&
+      !entry.hasExecutableCode &&
+      !entry.skill?.hasScripts
+  )
+)
+
+const nodeTypeLabelMap = computed(() => {
+  const map = new Map<string, string>()
+  for (const def of listNodeTypes()) {
+    const title = def.presentation?.defaultTitleKey
+      ? t(def.presentation.defaultTitleKey)
+      : def.defaultTitle
+    map.set(def.typeId, title || def.label || def.typeId)
+  }
+  return map
+})
+
+function formatNodeTypeLabel(typeId: string): string {
+  const title = nodeTypeLabelMap.value.get(typeId)
+  return title && title !== typeId ? `${title} (${typeId})` : typeId
+}
 
 const category = ref<MarketplaceFilter>('all')
 const query = ref('')
@@ -1065,7 +1165,7 @@ async function loadWorkflowCatalog(
   if (!options.silent) workflowRefreshing.value = true
   if (workflowEntries.value.length === 0) workflowLoading.value = true
   try {
-    const result = await window.studio.fetchWorkflowMarket({ force })
+    const result = await window.studio.fetchSkillMarket({ force })
     if (!result.ok) {
       /**
        * 失败时**保留已有条目**。首次加载失败给硬错误；刷新失败但手上有旧内容时只给软提示 ——
@@ -1142,7 +1242,7 @@ async function loadVisibleCovers(): Promise<void> {
   await Promise.all(
     pending.map(async (card) => {
       const id = card.marketId!
-      const result = await window.studio.fetchWorkflowCover(id)
+      const result = await window.studio.fetchSkillCover(id)
       if (result.ok && result.dataUrl) {
         workflowCovers.value = { ...workflowCovers.value, [id]: result.dataUrl }
       }
@@ -1226,7 +1326,7 @@ async function installMarketWorkflow(card: MarketplaceCard): Promise<void> {
 
   installingId.value = id
   try {
-    const result = await window.studio.installWorkflowMarket({
+    const result = await window.studio.installSkillMarket({
       id,
       acceptMissingTypes: missing.length > 0,
       // 把用户点的这条条目里的技能清单原样带过去：主进程会重新校验，
@@ -1309,7 +1409,7 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
     return
   }
   if (!ok) return
-  const result = await window.studio.uninstallWorkflowMarket(id)
+  const result = await window.studio.uninstallSkillMarket(id)
   if (!result.ok) {
     isError.value = true
     message.value = t(`marketplace.workflows.reason.${result.reasonKey ?? 'download'}`)
@@ -1322,6 +1422,66 @@ async function uninstallMarketWorkflow(card: MarketplaceCard): Promise<void> {
   // 后台刷新，同样不点亮「刷新目录」按钮（理由见 installMarketWorkflow）
   await loadWorkflowCatalog(true, { silent: true })
   await refreshSkills()
+}
+
+/**
+ * 批量同步所有无需脚本确认且无缺失依赖的官方工作流与技能。
+ */
+async function installAllSafeWorkflows(): Promise<void> {
+  const targets = pendingSafeWorkflowEntries.value
+  if (!targets.length || batchInstalling.value) return
+  batchInstalling.value = true
+  batchProgressDone.value = 0
+  batchProgressTotal.value = targets.length
+  isError.value = false
+  let okCount = 0
+  const updatedIds: string[] = []
+  try {
+    for (const entry of targets) {
+      const res = await window.studio.installSkillMarket({
+        id: entry.id,
+        ...(entry.skill ? { skill: plainSkillManifest(entry.skill) } : {}),
+        ...(entry.semanticPacks
+          ? {
+              semanticPacks: {
+                files: entry.semanticPacks.files.map((f) => ({
+                  path: f.path,
+                  ...(typeof f.sizeBytes === 'number' ? { sizeBytes: f.sizeBytes } : {})
+                })),
+                ...(typeof entry.semanticPacks.sizeBytes === 'number'
+                  ? { sizeBytes: entry.semanticPacks.sizeBytes }
+                  : {})
+              }
+            }
+          : {})
+      })
+      batchProgressDone.value += 1
+      if (res.ok) {
+        okCount += 1
+        updatedIds.push(entry.id)
+      }
+    }
+    invalidateCovers(updatedIds)
+    await loadWorkflowCatalog(true, { silent: true })
+    await refreshSkills()
+    message.value = t('marketplace.workflows.installedAll', { count: okCount })
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    batchInstalling.value = false
+  }
+}
+
+async function copySlashCommand(skillName: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(`/${skillName} `)
+    isError.value = false
+    message.value = t('marketplace.workflows.copiedSlash', { name: skillName })
+  } catch (e) {
+    isError.value = true
+    message.value = e instanceof Error ? e.message : String(e)
+  }
 }
 
 /**
@@ -1901,5 +2061,37 @@ onMounted(async () => {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.mp-card-chips,
+.mp-fact-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+
+.mp-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.35;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.mp-chip.cap {
+  border-color: rgba(90, 157, 255, 0.38);
+  background: rgba(90, 157, 255, 0.12);
+  color: #7ab3ff;
+  font-weight: 500;
+}
+
+.mp-chip.tag {
+  font-size: 10.5px;
+  opacity: 0.9;
 }
 </style>

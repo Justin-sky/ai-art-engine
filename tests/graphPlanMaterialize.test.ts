@@ -1,9 +1,9 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
-  AI_WORKFLOW_PRESET_IDS,
   applyDefaultGenerateModels,
   ensureBoundaryProxyNodes,
-  getAiWorkflowPresetPlan,
   inferHostInterfaceFromGraph,
   materializeGraphPlan,
   parseGraphPlanJson,
@@ -322,19 +322,61 @@ describe('graphPlan materialize', () => {
     expect(result.warnings.some((w) => w.includes('characterRefs'))).toBe(true)
   })
 
-  it('materializes every curated preset seed plan', () => {
-    // 直接遍历导出清单：新增预设自动纳入，避免「加了预设但漏了这条测试」
-    for (const id of AI_WORKFLOW_PRESET_IDS) {
-      if (id === 'custom') continue
-      const plan = getAiWorkflowPresetPlan(id)
-      expect(plan, id).toBeTruthy()
-      const result = materializeGraphPlan(plan!, {
-        scope: 'subgraphAsset',
-        assetType: 'subgraph'
-      })
-      expect(result.ok, `${id}: ${result.error}`).toBe(true)
-      expect(result.document!.nodes.length).toBeGreaterThanOrEqual(plan!.nodes.length)
-      expect(result.warnings, `${id}: ${result.warnings.join('; ')}`).toEqual([])
+  it('materializes multi-track timeline + anchor + svg workflow plan and all sibling market workflows when present', () => {
+    const timelinePlan: GraphPlan = {
+      title: '科普动画全流程',
+      nodes: [
+        { key: 'script', typeId: 'play.script', title: '科普脚本' },
+        { key: 'anchor', typeId: 'asset.image', title: '风格锚点' },
+        { key: 'svgGen', typeId: 'svg.gen', title: 'SVG 图解' },
+        { key: 'svgAnim', typeId: 'svg.anim', title: 'SVG 动效' },
+        { key: 'shot1Img', typeId: 'asset.image', title: '镜头1图' },
+        { key: 'shot1Vid', typeId: 'asset.video', title: '镜头1视频' },
+        { key: 'shot1Voice', typeId: 'asset.voice', title: '镜头1配音' },
+        { key: 'bgm', typeId: 'asset.music', title: '背景音乐' },
+        { key: 'timeline', typeId: 'output.timeline', title: '成片时间线' }
+      ],
+      edges: [
+        { from: 'script', to: 'anchor', fromPort: 'out', toPort: 'in-text' },
+        { from: 'script', to: 'svgGen', fromPort: 'out', toPort: 'in' },
+        { from: 'svgGen', to: 'svgAnim', fromPort: 'out', toPort: 'in' },
+        { from: 'script', to: 'shot1Img', fromPort: 'out', toPort: 'in-text' },
+        { from: 'anchor', to: 'shot1Img', fromPort: 'out', toPort: 'in-image' },
+        { from: 'shot1Img', to: 'shot1Vid', fromPort: 'out', toPort: 'in-image' },
+        { from: 'script', to: 'shot1Voice', fromPort: 'out', toPort: 'in-text' },
+        { from: 'svgAnim', to: 'timeline', fromPort: 'out-gif', toPort: 'in-image' },
+        { from: 'shot1Vid', to: 'timeline', fromPort: 'out', toPort: 'in' },
+        { from: 'shot1Voice', to: 'timeline', fromPort: 'out', toPort: 'in-voice' },
+        { from: 'bgm', to: 'timeline', fromPort: 'out', toPort: 'in-music' }
+      ]
+    }
+    const baseResult = materializeGraphPlan(timelinePlan, {
+      scope: 'subgraphAsset',
+      assetType: 'subgraph'
+    })
+    expect(baseResult.ok, baseResult.error).toBe(true)
+    expect(baseResult.warnings).toEqual([])
+    expect(baseResult.document!.nodes.some((n) => n.typeId === 'output.timeline')).toBe(true)
+
+    const skillsWorkflowsDir = resolve(process.cwd(), '../ai-art-engine-skills/workflows')
+    if (existsSync(skillsWorkflowsDir)) {
+      const slugs = readdirSync(skillsWorkflowsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name)
+      expect(slugs.length).toBeGreaterThanOrEqual(18)
+      for (const slug of slugs) {
+        const wfPath = resolve(skillsWorkflowsDir, slug, 'workflow.json')
+        if (!existsSync(wfPath)) continue
+        const wf = JSON.parse(readFileSync(wfPath, 'utf8')) as { plan?: GraphPlan }
+        expect(wf.plan, slug).toBeTruthy()
+        const result = materializeGraphPlan(wf.plan!, {
+          scope: 'subgraphAsset',
+          assetType: 'subgraph'
+        })
+        expect(result.ok, `${slug}: ${result.error}`).toBe(true)
+        expect(result.document!.nodes.length).toBeGreaterThanOrEqual(wf.plan!.nodes.length)
+        expect(result.warnings, `${slug}: ${result.warnings.join('; ')}`).toEqual([])
+      }
     }
   })
 
@@ -524,7 +566,29 @@ describe('graphPlan materialize', () => {
   })
 
   it('injects text/image/video models and aspect ratio into film.workbench and wires its plural output port to boundary.output', () => {
-    const plan = applyDefaultGenerateModels(getAiWorkflowPresetPlan('shortDrama')!, {
+    const rawShortDramaPlan: GraphPlan = {
+      title: '影视全流程（Agent 闭环）',
+      nodes: [
+        { key: 'script', typeId: 'play.script', title: '剧本' },
+        {
+          key: 'workbench',
+          typeId: 'film.workbench',
+          title: '影视工作台',
+          params: {
+            filmAspectRatio: '9:16',
+            filmTargetShots: 0,
+            filmReviewMaxRounds: 2,
+            filmCastKinds: 'character,location',
+            filmRenderMode: 'video',
+            filmRenderQc: true,
+            filmRenderMaxRetries: 1
+          }
+        },
+        { key: 'note', typeId: 'note.text', title: '流水线说明' }
+      ],
+      edges: [{ from: 'script', to: 'workbench', fromPort: 'out', toPort: 'in' }]
+    }
+    const plan = applyDefaultGenerateModels(rawShortDramaPlan, {
       textModel: 'txt-model',
       textProviderInstanceId: 'prov-txt',
       imageModel: 'img-model',

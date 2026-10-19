@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BUILTIN_NODE_TYPES, getAiWorkflowPresetPlan, getNodePorts } from '../src/shared/graph'
+import { BUILTIN_NODE_TYPES, getNodePorts, type GraphPlan } from '../src/shared/graph'
 
 /**
  * 「世界模型」一键工作流：空间世界生成 → 空间世界导出 → 3D 导演台。
@@ -10,11 +10,41 @@ import { BUILTIN_NODE_TYPES, getAiWorkflowPresetPlan, getNodePorts } from '../sr
  * 所以这里逐条钉住节点类型与端口，避免以后有人「顺手」把它直连上。
  */
 describe('世界模型一键工作流', () => {
-  const plan = getAiWorkflowPresetPlan('worldModel')
+  const plan: GraphPlan = {
+    title: '世界模型工作流',
+    nodes: [
+      { key: 'brief', typeId: 'play.script', title: '世界设定与风格' },
+      { key: 'world', typeId: 'asset.spatialWorld', title: '空间世界生成' },
+      {
+        key: 'export',
+        typeId: 'spatialWorld.export',
+        title: '空间世界导出',
+        params: {
+          spatialWorldExportMode: 'mesh',
+          spatialWorldExportVariant: 'textured',
+          spatialWorldExportResolution: 'full_res'
+        }
+      },
+      { key: 'stage', typeId: 'asset.motion', title: '3D 导演台（布光与运镜）' },
+      {
+        key: 'note',
+        typeId: 'note.text',
+        title: '管线说明',
+        params: {
+          text: '1. 先跑「空间世界生成」拿到 3D 世界（端口类型为严格同类型 spatialWorld，不能直连导演台）；\n2. 必须经过「空间世界导出」转成 GLB 网格（model 端口）再送进 3D 导演台。'
+        }
+      }
+    ],
+    edges: [
+      { from: 'brief', to: 'world', fromPort: 'out', toPort: 'in-text' },
+      { from: 'world', to: 'export', fromPort: 'out', toPort: 'in-world' },
+      { from: 'export', to: 'stage', fromPort: 'out', toPort: 'in-model' }
+    ]
+  }
 
   it('存在预设，且串起生成 → 导出 → 导演台三个节点', () => {
     expect(plan).toBeTruthy()
-    const typeIds = plan!.nodes.map((node) => node.typeId)
+    const typeIds = plan.nodes.map((node) => node.typeId)
     expect(typeIds).toContain('asset.spatialWorld')
     expect(typeIds).toContain('spatialWorld.export')
     expect(typeIds).toContain('asset.motion')

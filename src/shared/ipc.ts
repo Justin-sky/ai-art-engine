@@ -3,7 +3,7 @@ import type { ApprovalAnswer, ApprovalRequestView } from './dshApproval'
 import type { ExternalMcpServer } from './externalMcp'
 import type { GitFileDiffInput, GitFileDiffResult, GitStatusResult } from './git'
 import type { ProjectOutputFile } from './outputScan'
-import type { WorkflowSkillManifest } from './workflowMarket'
+import type { SkillMarketManifest } from './skillMarket'
 import type { ScriptNodeSummary } from './graph/scriptNode'
 import type { WorkspaceToolbarItem } from './workspaceToolbar'
 import type {
@@ -201,22 +201,22 @@ export const IpcChannels = {
    */
   MCP_EXTERNAL_PROBE: 'mcp:external-probe',
   /**
-   * 工作流市场：拉取远端目录。
+   * 技能市场：拉取远端目录。
    *
    * 失败返回 `ok:false` + reasonKey，**不抛异常** —— 断网是常态，界面需要把原因渲染在
    * 卡片区，并在有磁盘缓存时提示「离线，数据可能过期」。
    */
-  WORKFLOW_MARKET_FETCH: 'workflow-market:fetch',
-  /** 拉某条工作流的封面（主进程转 data URL：渲染层 CSP 不允许 https 图片直连） */
-  WORKFLOW_MARKET_COVER: 'workflow-market:cover',
-  /** 安装（或更新）一条工作流 */
-  WORKFLOW_MARKET_INSTALL: 'workflow-market:install',
+  SKILL_MARKET_FETCH: 'skill-market:fetch',
+  /** 拉某条技能/工作流包的封面（主进程转 data URL：渲染层 CSP 不允许 https 图片直连） */
+  SKILL_MARKET_COVER: 'skill-market:cover',
+  /** 安装（或更新）一条技能与工作流包 */
+  SKILL_MARKET_INSTALL: 'skill-market:install',
   /** 卸载 */
-  WORKFLOW_MARKET_UNINSTALL: 'workflow-market:uninstall',
+  SKILL_MARKET_UNINSTALL: 'skill-market:uninstall',
   /** 已安装清单（含版本，界面据此显示「已安装 / 可更新」） */
-  WORKFLOW_MARKET_INSTALLED: 'workflow-market:installed',
+  SKILL_MARKET_INSTALLED: 'skill-market:installed',
   /** 读取已安装工作流的 plan（「使用」时物化） */
-  WORKFLOW_MARKET_BUNDLE: 'workflow-market:bundle',
+  SKILL_MARKET_BUNDLE: 'skill-market:bundle',
 
   // Local vision (YOLO): onnxruntime 本地推理，数据不出机
   YOLO_STATUS: 'yolo:status',
@@ -1197,7 +1197,7 @@ export interface DshSkillsInfo {
  * 缺哪些节点类型、是否因此不可用、已装版本与是否可更新。这些结论必须在主进程算，
  * 因为只有它知道本版本注册了哪些节点类型。
  */
-export interface WorkflowMarketEntryView {
+export interface SkillMarketEntryView {
   id: string
   title: string
   titleEn?: string
@@ -1211,6 +1211,11 @@ export interface WorkflowMarketEntryView {
   nodeCount: number
   edgeCount: number
   sizeBytes?: number
+  /** 工作流依赖的节点类型列表与最低应用版本（来自索引 requires） */
+  requires?: {
+    nodeTypes: string[]
+    appMinVersion?: string
+  }
   /** 本应用缺哪些节点类型（空 = 可用） */
   missingNodeTypes: string[]
   /** 不可用原因键（null = 可用）：missingNodeTypes / appTooOld */
@@ -1219,7 +1224,7 @@ export interface WorkflowMarketEntryView {
   installedVersion: string | null
   updatable: boolean
   /** 随包附带的 dsh 技能包清单；有它时界面显示「含技能 / 含脚本」 */
-  skill?: WorkflowSkillManifest
+  skill?: SkillMarketManifest
   /** 含可执行代码（存在 script.run 节点）；界面标「含可执行代码」并驱动逐次同意流 */
   hasExecutableCode?: boolean
   /** 脚本节点摘要（key / 标题 / 所需能力 / 代码规模与短 hash），同意流逐条展示 */
@@ -1231,9 +1236,11 @@ export interface WorkflowMarketEntryView {
   }
 }
 
-export interface WorkflowMarketFetchResult {
+export type WorkflowMarketEntryView = SkillMarketEntryView
+
+export interface SkillMarketFetchResult {
   ok: boolean
-  entries?: WorkflowMarketEntryView[]
+  entries?: SkillMarketEntryView[]
   /** 被丢弃的非法条目数（界面提示「N 条被忽略」） */
   dropped?: number
   /** 目录来自磁盘缓存且本次刷新失败 → 界面提示「离线，数据可能过期」 */
@@ -1252,7 +1259,9 @@ export interface WorkflowMarketFetchResult {
   attempted?: Array<{ source: string; reasonKey: string; error?: string }>
 }
 
-export interface WorkflowCoverResult {
+export type WorkflowMarketFetchResult = SkillMarketFetchResult
+
+export interface SkillCoverResult {
   ok: boolean
   /** `data:image/png;base64,…` */
   dataUrl?: string
@@ -1260,11 +1269,15 @@ export interface WorkflowCoverResult {
   error?: string
 }
 
-export interface WorkflowMarketActionResult {
+export type WorkflowCoverResult = SkillCoverResult
+
+export interface SkillMarketActionResult {
   ok: boolean
   reasonKey?: string
   error?: string
 }
+
+export type WorkflowMarketActionResult = SkillMarketActionResult
 
 export interface InstalledWorkflowRecordView {
   id: string
@@ -2074,19 +2087,19 @@ export interface StudioApi {
    */
   probeExternalMcp: (server: ExternalMcpServer) => Promise<ExternalMcpProbeResult>
 
-  /** 拉取工作流市场目录（`force` 跳过 1 小时 TTL，用于用户手动刷新） */
-  fetchWorkflowMarket: (input?: { force?: boolean }) => Promise<WorkflowMarketFetchResult>
-  /** 拉某条工作流的封面并转成 data URL（渲染层 CSP 不允许 https 图片直连） */
-  fetchWorkflowCover: (id: string) => Promise<WorkflowCoverResult>
-  /** 安装（或更新）一条工作流；`acceptMissingTypes` 是「缺依赖也要装」的逃生门 */
-  installWorkflowMarket: (input: {
+  /** 拉取技能市场目录（`force` 跳过 1 小时 TTL，用于用户手动刷新） */
+  fetchSkillMarket: (input?: { force?: boolean }) => Promise<SkillMarketFetchResult>
+  /** 拉某条技能/工作流包的封面并转成 data URL（渲染层 CSP 不允许 https 图片直连） */
+  fetchSkillCover: (id: string) => Promise<SkillCoverResult>
+  /** 安装（或更新）一条技能与工作流包；`acceptMissingTypes` 是「缺依赖也要装」的逃生门 */
+  installSkillMarket: (input: {
     id: string
     acceptMissingTypes?: boolean
     /**
      * 随包附带的技能包清单（来自索引条目）。主进程会重新校验路径与 SKILL.md，
      * 因此这里传的是「用户点的那一条条目」而不是一份需要被信任的数据。
      */
-    skill?: WorkflowSkillManifest
+    skill?: SkillMarketManifest
     /**
      * 用户**明示同意**把技能包里的 `scripts/` 落到本机。
      *
@@ -2107,8 +2120,8 @@ export interface StudioApi {
       files: Array<{ path: string; sizeBytes?: number }>
       sizeBytes?: number
     }
-  }) => Promise<WorkflowMarketActionResult>
-  uninstallWorkflowMarket: (id: string) => Promise<WorkflowMarketActionResult>
+  }) => Promise<SkillMarketActionResult>
+  uninstallSkillMarket: (id: string) => Promise<SkillMarketActionResult>
   /** 已安装清单 */
   listInstalledWorkflows: () => Promise<InstalledWorkflowRecordView[]>
   /** 读取已安装工作流的本体（「使用」时物化用） */

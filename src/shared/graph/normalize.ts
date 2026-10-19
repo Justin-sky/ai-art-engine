@@ -178,7 +178,7 @@ function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddSc
   return next
 }
 
-/** 去掉 classic output.*（不兼容旧工程；出口改由 boundary 承担）。剧集 canvas 保留 timeline。 */
+/** 去掉 classic output.*（不兼容旧工程；出口改由 boundary 承担）。剧集 canvas 与子图保留 timeline。 */
 function stripClassicOutputNodes(
   scope: GraphAddScope,
   nodes: GraphNode[],
@@ -190,7 +190,10 @@ function stripClassicOutputNodes(
   }
   const removed = new Set(
     nodes
-      .filter((n) => n.category === 'output' || (n.typeId?.startsWith('output.') ?? false))
+      .filter((n) => {
+        if (scope === 'subgraphAsset' && n.typeId === 'output.timeline') return false
+        return n.category === 'output' || (n.typeId?.startsWith('output.') ?? false)
+      })
       .map((n) => n.id)
   )
   if (!removed.size) return { nodes, edges, runStates }

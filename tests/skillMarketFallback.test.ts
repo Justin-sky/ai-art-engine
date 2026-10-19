@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resolveWorkflowMarketSources, WORKFLOW_MARKET_SOURCES } from '../src/shared/workflowMarket'
+import { resolveSkillMarketSources, SKILL_MARKET_SOURCES } from '../src/shared/skillMarket'
 
 /**
  * 数据源自动降级（主源不通 → 镜像）。
@@ -25,7 +25,7 @@ vi.mock('electron', () => ({
   app: { getPath: () => userDataDir }
 }))
 vi.mock('../src/main/services/settingsService', () => ({
-  settingsService: { get: () => ({ workflowMarket: { source: configuredSource } }) }
+  settingsService: { get: () => ({ skillMarket: { source: configuredSource } }) }
 }))
 vi.mock('../src/main/services/updateService', () => ({
   updateService: { getCurrentVersion: () => '7.1.3' }
@@ -135,38 +135,36 @@ afterEach(() => {
   userDataDir = ''
 })
 
-describe('resolveWorkflowMarketSources：源解析（纯函数）', () => {
+describe('resolveSkillMarketSources：源解析（纯函数）', () => {
   it('留空 → 官方主源 + 镜像，主源在前', () => {
-    const sources = resolveWorkflowMarketSources('')
-    expect(sources).toEqual([...WORKFLOW_MARKET_SOURCES])
+    const sources = resolveSkillMarketSources('')
+    expect(sources).toEqual([...SKILL_MARKET_SOURCES])
     expect(sources.length).toBeGreaterThanOrEqual(2)
     expect(sources[0]).toContain('raw.githubusercontent.com')
     expect(sources[1]).toContain('gitee.com')
   })
 
   it('填一个 → 只用那一个（不偷偷混入官方源）', () => {
-    expect(resolveWorkflowMarketSources('https://my.test/market')).toEqual([
-      'https://my.test/market'
-    ])
+    expect(resolveSkillMarketSources('https://my.test/market')).toEqual(['https://my.test/market'])
   })
 
   it('填多个（换行 / 逗号 / 空格分隔）→ 按顺序全部保留', () => {
-    expect(resolveWorkflowMarketSources('https://a.test\nhttps://b.test')).toEqual([
+    expect(resolveSkillMarketSources('https://a.test\nhttps://b.test')).toEqual([
       'https://a.test',
       'https://b.test'
     ])
-    expect(resolveWorkflowMarketSources('https://a.test, https://b.test')).toEqual([
+    expect(resolveSkillMarketSources('https://a.test, https://b.test')).toEqual([
       'https://a.test',
       'https://b.test'
     ])
-    expect(resolveWorkflowMarketSources('https://a.test   https://b.test')).toEqual([
+    expect(resolveSkillMarketSources('https://a.test   https://b.test')).toEqual([
       'https://a.test',
       'https://b.test'
     ])
   })
 
   it('只有空白 / 逗号时视同留空', () => {
-    expect(resolveWorkflowMarketSources('   \n , ')).toEqual([...WORKFLOW_MARKET_SOURCES])
+    expect(resolveSkillMarketSources('   \n , ')).toEqual([...SKILL_MARKET_SOURCES])
   })
 })
 
@@ -176,10 +174,10 @@ describe('目录：主源不通自动降级到镜像', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${broken.base}\n${mirror.base}`
 
-    const { fetchWorkflowCatalog, resetWorkflowMarketCache } =
-      await import('../src/main/services/workflowMarketService')
-    resetWorkflowMarketCache()
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog, resetSkillMarketCache } =
+      await import('../src/main/services/skillMarketService')
+    resetSkillMarketCache()
+    const result = await fetchSkillCatalog({ force: true })
 
     expect(result.ok).toBe(true)
     expect(result.entries).toHaveLength(1)
@@ -194,10 +192,10 @@ describe('目录：主源不通自动降级到镜像', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${primary.base}\n${mirror.base}`
 
-    const { fetchWorkflowCatalog, resetWorkflowMarketCache } =
-      await import('../src/main/services/workflowMarketService')
-    resetWorkflowMarketCache()
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog, resetSkillMarketCache } =
+      await import('../src/main/services/skillMarketService')
+    resetSkillMarketCache()
+    const result = await fetchSkillCatalog({ force: true })
 
     expect(result.ok).toBe(true)
     expect(result.source).toBe(primary.base)
@@ -210,10 +208,10 @@ describe('目录：主源不通自动降级到镜像', () => {
     const b = await startMarket('broken')
     configuredSource = `${a.base}\n${b.base}`
 
-    const { fetchWorkflowCatalog, resetWorkflowMarketCache } =
-      await import('../src/main/services/workflowMarketService')
-    resetWorkflowMarketCache()
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog, resetSkillMarketCache } =
+      await import('../src/main/services/skillMarketService')
+    resetSkillMarketCache()
+    const result = await fetchSkillCatalog({ force: true })
 
     expect(result.ok).toBe(false)
     expect(result.reasonKey).toBe('network')
@@ -238,10 +236,10 @@ describe('目录：主源不通自动降级到镜像', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${badBase}\n${mirror.base}`
 
-    const { fetchWorkflowCatalog, resetWorkflowMarketCache } =
-      await import('../src/main/services/workflowMarketService')
-    resetWorkflowMarketCache()
-    const result = await fetchWorkflowCatalog({ force: true })
+    const { fetchSkillCatalog, resetSkillMarketCache } =
+      await import('../src/main/services/skillMarketService')
+    resetSkillMarketCache()
+    const result = await fetchSkillCatalog({ force: true })
 
     expect(result.ok).toBe(true)
     expect(result.source).toBe(mirror.base)
@@ -255,15 +253,15 @@ describe('安装 / 封面：与索引同源', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${broken.base}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
 
     // 先取目录 → 生效源落到镜像
-    const catalog = await service.fetchWorkflowCatalog({ force: true })
+    const catalog = await service.fetchSkillCatalog({ force: true })
     expect(catalog.source).toBe(mirror.base)
 
     const before = broken.hits.length
-    const installed = await service.installWorkflow({ id: 'demo-flow' })
+    const installed = await service.installSkillFromMarket({ id: 'demo-flow' })
     expect(installed.ok).toBe(true)
     // 安装期间没有再打主源
     expect(broken.hits.length).toBe(before)
@@ -278,9 +276,9 @@ describe('安装 / 封面：与索引同源', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${broken.base}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    const cover = await service.fetchWorkflowCover('demo-flow')
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    const cover = await service.fetchSkillCover('demo-flow')
     expect(cover.ok).toBe(true)
     expect(cover.dataUrl?.startsWith('data:image/png;base64,')).toBe(true)
   })
@@ -290,9 +288,9 @@ describe('安装 / 封面：与索引同源', () => {
     const b = await startMarket('broken')
     configuredSource = `${a.base}\n${b.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    const result = await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    const result = await service.installSkillFromMarket({ id: 'demo-flow' })
     expect(result.ok).toBe(false)
     expect(result.reasonKey).toBe('download')
     expect(result.error).toContain(a.base)
@@ -322,9 +320,9 @@ describe('安装 / 封面：与索引同源', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${base}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    const result = await service.installWorkflow({ id: 'demo-flow' })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    const result = await service.installSkillFromMarket({ id: 'demo-flow' })
     // 直接报 idMismatch，而不是悄悄用镜像的成功结果掩盖它
     expect(result.ok).toBe(false)
     expect(result.reasonKey).toBe('idMismatch')
@@ -335,9 +333,9 @@ describe('安装 / 封面：与索引同源', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${DEAD}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    const result = await service.fetchWorkflowCatalog({ force: true })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    const result = await service.fetchSkillCatalog({ force: true })
     expect(result.ok).toBe(true)
     expect(result.source).toBe(mirror.base)
     expect(result.usedFallback).toBe(true)
@@ -350,18 +348,18 @@ describe('跨源选择：新鲜数据优于过期数据', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${primary.base}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
 
     // 先让主源成功一次，留下它自己的磁盘缓存
-    const first = await service.fetchWorkflowCatalog({ force: true })
+    const first = await service.fetchSkillCatalog({ force: true })
     expect(first.source).toBe(primary.base)
     expect(first.stale).toBeFalsy()
 
     // 主源转为故障（它的缓存还在）；镜像仍新鲜
     primary.setMode('broken')
-    service.resetWorkflowMarketCache()
-    const second = await service.fetchWorkflowCatalog({ force: true })
+    service.resetSkillMarketCache()
+    const second = await service.fetchSkillCatalog({ force: true })
 
     // 关键：不能拿主源的过期缓存了事，应当用镜像的新鲜数据
     expect(second.ok).toBe(true)
@@ -374,13 +372,13 @@ describe('跨源选择：新鲜数据优于过期数据', () => {
     const primary = await startMarket('ok')
     configuredSource = primary.base
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    await service.fetchWorkflowCatalog({ force: true })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    await service.fetchSkillCatalog({ force: true })
 
     primary.setMode('broken')
-    service.resetWorkflowMarketCache()
-    const offline = await service.fetchWorkflowCatalog({ force: true })
+    service.resetSkillMarketCache()
+    const offline = await service.fetchSkillCatalog({ force: true })
 
     expect(offline.ok).toBe(true)
     expect(offline.stale).toBe(true)
@@ -393,9 +391,9 @@ describe('记住上次成功的源（跨重启不撞死源）', () => {
     const mirror = await startMarket('ok')
     configuredSource = `${DEAD}\n${mirror.base}`
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    const result = await service.fetchWorkflowCatalog({ force: true })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    const result = await service.fetchSkillCatalog({ force: true })
     expect(result.source).toBe(mirror.base)
 
     const preferred = JSON.parse(
@@ -408,9 +406,9 @@ describe('记住上次成功的源（跨重启不撞死源）', () => {
     const mirror = await startMarket('ok')
     configuredSource = mirror.base
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
-    await service.fetchWorkflowCatalog({ force: true })
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
+    await service.fetchSkillCatalog({ force: true })
 
     expect(configuredSource).toBe(mirror.base)
     expect(existsSync(join(userDataDir, 'workflow-market', 'preferred-source.json'))).toBe(true)
@@ -422,19 +420,19 @@ describe('每次打开都强制刷新（用户要求）', () => {
     const market = await startMarket('ok')
     configuredSource = market.base
 
-    const service = await import('../src/main/services/workflowMarketService')
-    service.resetWorkflowMarketCache()
+    const service = await import('../src/main/services/skillMarketService')
+    service.resetSkillMarketCache()
     const indexHits = (): number => market.hits.filter((url) => url === '/index.json').length
 
-    await service.fetchWorkflowCatalog({ force: true })
+    await service.fetchSkillCatalog({ force: true })
     expect(indexHits()).toBe(1)
 
     // 不 force：命中 TTL 缓存，不再打网络
-    await service.fetchWorkflowCatalog()
+    await service.fetchSkillCatalog()
     expect(indexHits()).toBe(1)
 
     // force：重新打网络 —— 这正是「每次打开市场都刷新」依赖的行为
-    await service.fetchWorkflowCatalog({ force: true })
+    await service.fetchSkillCatalog({ force: true })
     expect(indexHits()).toBe(2)
   }, 30_000)
 })

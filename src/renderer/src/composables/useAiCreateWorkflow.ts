@@ -1,4 +1,4 @@
-import { shallowRef, ref } from 'vue'
+import { computed, shallowRef, ref } from 'vue'
 import {
   applyDefaultGenerateModels,
   buildGraphPlanPreview,
@@ -8,15 +8,14 @@ import {
   materializeGraphPlan,
   type GraphPlan
 } from '@shared/graph'
+import type { InstalledWorkflowRecordView } from '@shared/ipc'
 import {
   AI_WORKFLOW_ASPECT_RATIO_KEY,
   AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
-  AI_WORKFLOW_PRESET_IDS,
   AI_WORKFLOW_VIDEO_MODEL_KEY,
-  getAiWorkflowPresetPlan,
-  hasAiWorkflowPresetPlan,
-  type AiWorkflowPresetId
+  type AiWorkflowPresetId,
+  type AiWorkflowPresetOption
 } from '../features/aiWorkflow/presets'
 import {
   loadGenerateModelOptions,
@@ -65,6 +64,8 @@ export function useAiCreateWorkflow() {
   const error = ref('')
   const draftPrompt = ref('')
   const selectedPresetId = ref<AiWorkflowPresetId | null>(null)
+  const installedWorkflows = ref<InstalledWorkflowRecordView[]>([])
+  const selectedSeedPlan = shallowRef<GraphPlan | null>(null)
   const textModelOptions = ref<GenerateModelOption[]>([])
   const imageModelOptions = ref<GenerateModelOption[]>([])
   const videoModelOptions = ref<GenerateModelOption[]>([])
@@ -79,6 +80,29 @@ export function useAiCreateWorkflow() {
   const saveDialogOpen = ref(false)
   const saveDefaultName = ref('')
   const saveDefaultFolderId = ref<string | null>(null)
+
+  const presetIds = computed<readonly AiWorkflowPresetOption[]>(() => [
+    ...installedWorkflows.value
+      .filter((w) => !w.broken)
+      .map((w) => ({
+        id: w.id,
+        title: w.title,
+        desc: w.summary
+      })),
+    {
+      id: 'custom',
+      title: t('aiWorkflow.presets.custom.title'),
+      desc: t('aiWorkflow.presets.custom.desc')
+    }
+  ])
+
+  async function loadInstalledPresets(): Promise<void> {
+    try {
+      installedWorkflows.value = await window.studio.listInstalledWorkflows()
+    } catch {
+      installedWorkflows.value = []
+    }
+  }
 
   async function loadModelOptions(): Promise<void> {
     const [text, image, video] = await Promise.all([
@@ -128,15 +152,26 @@ export function useAiCreateWorkflow() {
 
   async function applyPreset(id: AiWorkflowPresetId): Promise<void> {
     selectedPresetId.value = id
+    selectedSeedPlan.value = null
     clearPreview()
     if (id === 'custom') {
       draftPrompt.value = ''
       error.value = ''
       return
     }
-    draftPrompt.value = t(`aiWorkflow.presets.${id}.prompt`)
-    // 选模板即自动预览固化拓扑，无需再点“预览模板”
-    await planPreview('seed')
+    try {
+      const res = await window.studio.readWorkflowBundle(id)
+      if (!res.ok || !res.bundle?.plan) {
+        error.value = res.error || t('aiWorkflow.planFailed')
+        return
+      }
+      selectedSeedPlan.value = toPlain(res.bundle.plan as GraphPlan)
+      draftPrompt.value = res.bundle.summary || res.bundle.title
+      // 选已安装技能模板即自动预览固化拓扑
+      await planPreview('seed')
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : String(err)
+    }
   }
 
   function mediaModelPayload() {
@@ -156,11 +191,13 @@ export function useAiCreateWorkflow() {
   function openDialog(initialPrompt = ''): void {
     draftPrompt.value = initialPrompt
     selectedPresetId.value = null
+    selectedSeedPlan.value = null
     error.value = ''
     saveDialogOpen.value = false
     clearPreview()
     dialogOpen.value = true
     void loadModelOptions()
+    void loadInstalledPresets()
   }
 
   function closeDialog(): void {
@@ -177,7 +214,8 @@ export function useAiCreateWorkflow() {
     }
     const prompt = draftPrompt.value.trim()
     const presetId = selectedPresetId.value
-    const hasSeed = presetId != null && hasAiWorkflowPresetPlan(presetId)
+    const seedPlan = selectedSeedPlan.value
+    const hasSeed = presetId != null && presetId !== 'custom' && seedPlan != null
 
     if (mode === 'seed') {
       if (!hasSeed) {
@@ -201,10 +239,15 @@ export function useAiCreateWorkflow() {
 
     const logAiCalls = mode === 'ai'
     const runId = logAiCalls ? `ai-workflow-plan-${crypto.randomUUID()}` : null
+    const presetTitle =
+      installedWorkflows.value.find((w) => w.id === presetId)?.title ||
+      seedPlan?.title ||
+      presetId ||
+      ''
     const logTitle =
-      hasSeed && presetId
+      hasSeed && presetTitle
         ? t('aiWorkflow.planLog.titlePreset', {
-            name: t(`aiWorkflow.presets.${presetId}.title`)
+            name: presetTitle
           })
         : t('aiWorkflow.planLog.title')
     const nodeTitle = t('aiWorkflow.title')
@@ -237,7 +280,6 @@ export function useAiCreateWorkflow() {
     try {
       persistModelKeys()
       const text = parseModelKey(textModelKey.value)
-      const seedPlan = hasSeed && presetId ? getAiWorkflowPresetPlan(presetId) : null
 
       if (mode === 'seed' && seedPlan) {
         const plan = applyDefaultGenerateModels(cloneGraphPlan(seedPlan), {
@@ -496,7 +538,7 @@ export function useAiCreateWorkflow() {
     saveDialogOpen,
     saveDefaultName,
     saveDefaultFolderId,
-    presetIds: AI_WORKFLOW_PRESET_IDS,
+    presetIds,
     applyPreset,
     setTextModelKey,
     setImageModelKey,

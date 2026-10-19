@@ -9,6 +9,3 @@ npm run typecheck
 npm test
 node scripts/check-hardcoded-cjk.mjs --enforce
 node scripts/check-pack-externals.mjs
-if [ -d "../ai-art-engine-skills" ]; then
-  npm run check:market-plans
-fi

@@ -1,7 +1,7 @@
 /**
- * 工作流市场服务：把远端仓库的目录与工作流接进应用。
+ * 技能市场服务：把远端仓库（`ai-art-engine-skills`）的目录与技能/工作流一体包接进应用。
  *
- * 传输/缓存/原子落盘都在 `marketPipeline`（通用件）；这里只负责**工作流特有的事**：
+ * 传输/缓存/原子落盘都在 `marketPipeline`（通用件）；这里负责**技能市场特有的事**：
  * 格式校验、兼容性判定（依赖的节点类型是否都存在）、安装记账、封面转 data URL。
  *
  * ## 为什么封面要转 data URL
@@ -18,29 +18,37 @@
  */
 
 import { app } from 'electron'
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { listNodeTypes } from '@shared/graph'
 import type {
-  WorkflowBundleResult,
-  WorkflowCoverResult,
-  WorkflowMarketActionResult,
-  WorkflowMarketFetchResult
+  SkillCoverResult,
+  SkillMarketActionResult,
+  SkillMarketFetchResult,
+  WorkflowBundleResult
 } from '@shared/ipc'
 import {
-  DEFAULT_WORKFLOW_MARKET_SOURCE,
+  DEFAULT_SKILL_MARKET_SOURCE,
   missingNodeTypes,
+  parseSkillMarketIndex,
   parseWorkflowBundle,
-  parseWorkflowMarketIndex,
   planHasExecutableCode,
-  resolveWorkflowMarketSources,
+  resolveSkillMarketSources,
+  skillEntryBlockReason,
+  skillMarketUrls,
   validateSkillEntryText,
-  workflowEntryBlockReason,
-  workflowMarketUrls,
-  type WorkflowBundle,
-  type WorkflowMarketEntry,
-  type WorkflowSkillManifest
-} from '@shared/workflowMarket'
+  type SkillMarketEntry,
+  type SkillMarketManifest,
+  type WorkflowBundle
+} from '@shared/skillMarket'
 import { MarketPipeline, sha256OfBytes } from './marketPipeline'
 import { dshSkillsDir } from './dshPaths'
 import { settingsService } from './settingsService'
@@ -107,10 +115,17 @@ function getPipeline(): MarketPipeline {
  */
 let activeSource: string | null = null
 
+function configuredMarketSource(): string {
+  const settings = settingsService.get() as {
+    skillMarket?: { source?: string }
+    workflowMarket?: { source?: string }
+  }
+  return settings.skillMarket?.source ?? settings.workflowMarket?.source ?? ''
+}
+
 /** 候选源：用户配置的地址（可多个），留空则为官方主源 + 镜像 */
 function candidateSources(): string[] {
-  const configured = settingsService.get().workflowMarket?.source ?? ''
-  return resolveWorkflowMarketSources(configured)
+  return resolveSkillMarketSources(configuredMarketSource())
 }
 
 /**
@@ -120,7 +135,7 @@ function candidateSources(): string[] {
  * （黑洞路由下要等到超时）。记住它就能跨重启跳过死源。
  *
  * 这是**派生事实**不是用户配置，所以存在缓存目录而不是 settings —— 不能去覆盖用户填的
- * `workflowMarket.source`（那会让「我明明配了自建源」变得不可解释）。
+ * `skillMarket.source`（那会让「我明明配了自建源」变得不可解释）。
  */
 function preferredSourcePath(): string {
   return join(marketCacheDir(), 'preferred-source.json')
@@ -166,8 +181,130 @@ export function knownNodeTypeIds(): string[] {
 }
 
 /** 当前生效源（界面展示「正在用哪个源」用） */
-export function currentWorkflowMarketSource(): string {
-  return activeSource ?? candidateSources()[0] ?? DEFAULT_WORKFLOW_MARKET_SOURCE
+export function currentSkillMarketSource(): string {
+  return activeSource ?? candidateSources()[0] ?? DEFAULT_SKILL_MARKET_SOURCE
+}
+
+export const currentWorkflowMarketSource = currentSkillMarketSource
+
+let siblingAutoSynced = false
+
+/**
+ * 若当前处于默认官方源且相邻目录存在 `../ai-art-engine-skills/index.json`（开发态或离线捆绑包），
+ * 返回该本地仓库根目录；单测环境（`VITEST`）或用户显式配置了自定义源时返回 `null`。
+ */
+function localSiblingMarketRoot(): string | null {
+  if (process.env.VITEST) return null
+  if (configuredMarketSource().trim()) return null
+  const candidate = resolve(process.cwd(), '../ai-art-engine-skills')
+  if (existsSync(join(candidate, 'index.json'))) return candidate
+  return null
+}
+
+/**
+ * 从本地 `ai-art-engine-skills` 仓库目录同步安装/升级所有不含可执行脚本的官方工作流与技能包。
+ *
+ * 解决两个体验断层：
+ * 1. 主工程移除 `aiWorkflowPresets.ts` 后，首次打开「AI 创建工作流」弹窗不再是空白；
+ * 2. 本机旧版 `1.0.0` 工作流与封面自动无感升至最新 `2.0.0` 多轨拓扑。
+ */
+export function syncFromLocalMarketDir(marketRoot: string): number {
+  try {
+    const indexPath = join(marketRoot, 'index.json')
+    if (!existsSync(indexPath)) return 0
+    const parsedIndex = parseSkillMarketIndex(JSON.parse(readFileSync(indexPath, 'utf8')))
+    if (!parsedIndex.ok) return 0
+
+    const records = listInstalledWorkflows()
+    const recordMap = new Map(records.map((r) => [r.id, r]))
+    const known = knownNodeTypeIds()
+    let updatedCount = 0
+
+    for (const entry of parsedIndex.index.workflows) {
+      // 含可执行脚本的工作流必须走界面逐次同意流，绝不静默自动装
+      if (entry.hasExecutableCode || entry.skill?.hasScripts) continue
+      if (missingNodeTypes(entry, known).length > 0) continue
+
+      const srcDir = join(marketRoot, 'workflows', entry.id)
+      const srcWfPath = join(srcDir, 'workflow.json')
+      if (!existsSync(srcWfPath)) continue
+
+      const existing = recordMap.get(entry.id)
+      const localBundleDir = join(installedWorkflowsDir(), entry.id)
+      const targetCover = join(localBundleDir, 'cover.png')
+      const srcCover = join(srcDir, entry.cover || 'cover.png')
+      const coverChanged =
+        existsSync(srcCover) &&
+        (!existsSync(targetCover) || statSync(srcCover).size !== statSync(targetCover).size)
+
+      if (existing && existing.version === entry.version && !coverChanged) {
+        continue
+      }
+
+      const rawWfText = readFileSync(srcWfPath, 'utf8')
+      const parsedBundle = parseWorkflowBundle(JSON.parse(rawWfText))
+      if (!parsedBundle.ok || planHasExecutableCode(parsedBundle.bundle.plan)) continue
+
+      mkdirSync(localBundleDir, { recursive: true })
+      writeFileSync(join(localBundleDir, 'workflow.json'), rawWfText, 'utf8')
+      if (existsSync(srcCover)) {
+        copyFileSync(srcCover, targetCover)
+        coverMemo.delete(entry.id)
+      }
+
+      for (const pack of entry.semanticPacks?.files ?? []) {
+        const srcPack = join(srcDir, ...pack.path.split('/'))
+        const dstPack = join(localBundleDir, ...pack.path.split('/'))
+        if (existsSync(srcPack)) {
+          mkdirSync(dirname(dstPack), { recursive: true })
+          copyFileSync(srcPack, dstPack)
+        }
+      }
+
+      let installedSkillName: string | undefined
+      if (entry.skill && !entry.skill.hasScripts) {
+        const skillTargetDir = join(dshSkillsDir(), entry.skill.name)
+        mkdirSync(skillTargetDir, { recursive: true })
+        for (const f of entry.skill.files) {
+          if (f.path.startsWith('scripts/')) continue
+          const srcSkillFile = join(srcDir, 'skill', ...f.path.split('/'))
+          const dstSkillFile = join(skillTargetDir, ...f.path.split('/'))
+          if (existsSync(srcSkillFile)) {
+            mkdirSync(dirname(dstSkillFile), { recursive: true })
+            copyFileSync(srcSkillFile, dstSkillFile)
+          }
+        }
+        installedSkillName = entry.skill.name
+      }
+
+      recordMap.set(entry.id, {
+        id: entry.id,
+        version: entry.version,
+        installedAt: new Date().toISOString(),
+        source: DEFAULT_SKILL_MARKET_SOURCE,
+        contentHash: sha256OfBytes(
+          new TextEncoder().encode(JSON.stringify(parsedBundle.bundle.plan))
+        ).slice(0, 16),
+        ...(installedSkillName ? { skillName: installedSkillName } : {})
+      })
+      updatedCount += 1
+    }
+
+    if (updatedCount > 0) {
+      writeRecords([...recordMap.values()])
+    }
+    return updatedCount
+  } catch {
+    return 0
+  }
+}
+
+function ensureLocalSiblingSyncedOnce(): void {
+  if (siblingAutoSynced) return
+  const root = localSiblingMarketRoot()
+  if (!root) return
+  siblingAutoSynced = true
+  syncFromLocalMarketDir(root)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -175,7 +312,7 @@ export function currentWorkflowMarketSource(): string {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * 返回类型**直接复用 IPC 契约**（`WorkflowMarketFetchResult`），而不是在这里另立一个视图类型。
+ * 返回类型**直接复用 IPC 契约**（`SkillMarketFetchResult`），而不是在这里另立一个视图类型。
  *
  * 这里曾经返回 `{ ok, catalog: { entries } }` 而契约声明的是顶层 `entries`，渲染层读
  * `result.entries` 得到 `undefined`，界面于是显示「0 个工作流」——**主进程日志却显示 15 条**，
@@ -184,21 +321,22 @@ export function currentWorkflowMarketSource(): string {
  * 这个 bug 能溜过类型检查，是因为 `handle()` 是泛型 `<T>`、`ipcRenderer.invoke` 返回 `any`，
  * 两端之间没有任何类型约束。现在服务端与契约共用同一个类型，形状漂移会**直接编译报错**。
  */
-export async function fetchWorkflowCatalog(input?: {
+export async function fetchSkillCatalog(input?: {
   force?: boolean
-}): Promise<WorkflowMarketFetchResult> {
+}): Promise<SkillMarketFetchResult> {
+  ensureLocalSiblingSyncedOnce()
   const sources = orderedSources()
   const attempted: Array<{ source: string; reasonKey: string; error?: string }> = []
 
   /** 组装界面视图（各源共用） */
   const viewOf = (
     source: string,
-    index: { workflows: WorkflowMarketEntry[] },
+    index: { workflows: SkillMarketEntry[] },
     dropped: number,
     stale: boolean | undefined,
     cachedAt: string | undefined,
     error: string | undefined
-  ): WorkflowMarketFetchResult => {
+  ): SkillMarketFetchResult => {
     const known = knownNodeTypeIds()
     const appVersion = updateService.getCurrentVersion()
     const installed = listInstalledWorkflows()
@@ -207,7 +345,7 @@ export async function fetchWorkflowCatalog(input?: {
       return {
         ...entry,
         missingNodeTypes: missingNodeTypes(entry, known),
-        blockReason: workflowEntryBlockReason(entry, { knownNodeTypes: known, appVersion }),
+        blockReason: skillEntryBlockReason(entry, { knownNodeTypes: known, appVersion }),
         installedVersion: record?.version ?? null,
         updatable: !!record && !!record.version && record.version !== entry.version,
         installed: !!record
@@ -225,6 +363,27 @@ export async function fetchWorkflowCatalog(input?: {
     }
   }
 
+  // 若本地存在相邻 `ai-art-engine-skills` 仓库，直接以其最新 index.json 为准（未推送到远端前立即可见）
+  const siblingRoot = localSiblingMarketRoot()
+  if (siblingRoot) {
+    try {
+      const raw = JSON.parse(readFileSync(join(siblingRoot, 'index.json'), 'utf8'))
+      const parsed = parseSkillMarketIndex(raw)
+      if (parsed.ok) {
+        return viewOf(
+          DEFAULT_SKILL_MARKET_SOURCE,
+          parsed.index,
+          parsed.dropped,
+          false,
+          undefined,
+          undefined
+        )
+      }
+    } catch {
+      /* 回退远端源 */
+    }
+  }
+
   /**
    * 一个「离线但有缓存」的源**不会立刻结束循环**。
    *
@@ -232,15 +391,15 @@ export async function fetchWorkflowCatalog(input?: {
    * 就该用镜像的新数据，而不是把主源的旧缓存当成成功结果直接返回 ——
    * 那会让备用源在自己最该生效的场景下反而不生效。
    */
-  let bestStale: WorkflowMarketFetchResult | null = null
+  let bestStale: SkillMarketFetchResult | null = null
 
   for (const source of sources) {
-    const urls = workflowMarketUrls(source)
+    const urls = skillMarketUrls(source)
     const result = await getPipeline().fetchCatalog({
       url: urls.index,
       force: input?.force,
       parse: (raw) => {
-        const parsed = parseWorkflowMarketIndex(raw)
+        const parsed = parseSkillMarketIndex(raw)
         return parsed.ok
           ? { ok: true as const, catalog: { index: parsed.index, dropped: parsed.dropped } }
           : { ok: false as const, reasonKey: parsed.reasonKey }
@@ -291,6 +450,8 @@ export async function fetchWorkflowCatalog(input?: {
   }
 }
 
+export const fetchWorkflowCatalog = fetchSkillCatalog
+
 // ─────────────────────────────────────────────────────────────
 // 封面
 // ─────────────────────────────────────────────────────────────
@@ -303,13 +464,13 @@ const COVER_MEMO_MAX = 64
  * 本地封面小于这个字节数就当成**占位图**，不当真封面用。
  *
  * 市场上最早那批官方封面是 68 字节的 1×1 PNG（校验器只查「存在 + ≤300KB」，
- * 所以一直没人拦）。而 `fetchWorkflowCover` 对**已安装**的工作流是本地优先 ——
+ * 所以一直没人拦）。而 `fetchSkillCover` 对**已安装**的工作流是本地优先 ——
  * 于是**在封面更新之前装过**的每一条，本地都留着那张占位图，即使联网也永远显示不出来。
  * 2KB 远低于任何真实的 800×450 封面（实际都在 100KB 以上），不会误伤。
  */
 const MIN_REAL_COVER_BYTES = 2048
 
-export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResult> {
+export async function fetchSkillCover(id: string): Promise<SkillCoverResult> {
   const cached = coverMemo.get(id)
   if (cached) return { ok: true, dataUrl: cached }
 
@@ -327,16 +488,23 @@ export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResul
     if (localUsable) {
       bytes = new Uint8Array(readFileSync(local))
     } else {
+      const siblingRoot = localSiblingMarketRoot()
+      const siblingCover = siblingRoot ? join(siblingRoot, 'workflows', id, 'cover.png') : null
+      if (siblingCover && existsSync(siblingCover)) {
+        bytes = new Uint8Array(readFileSync(siblingCover))
+      }
       // 未安装（或本地只是占位图）的按源顺序尝试（与目录同序，避免只因为主源不通就没有封面）
       let lastError: unknown = null
-      for (const source of orderedSources()) {
-        const coverUrl = workflowMarketUrls(source).cover({ id, cover: 'cover.png' })
-        if (!coverUrl) continue
-        try {
-          bytes = await getPipeline().fetchBinary(coverUrl)
-          break
-        } catch (err) {
-          lastError = err
+      if (!bytes) {
+        for (const source of orderedSources()) {
+          const coverUrl = skillMarketUrls(source).cover({ id, cover: 'cover.png' })
+          if (!coverUrl) continue
+          try {
+            bytes = await getPipeline().fetchBinary(coverUrl)
+            break
+          } catch (err) {
+            lastError = err
+          }
         }
       }
       // 远端也拿不到时，宁可显示本地那张占位图，也不能什么都不显示（断网路径）
@@ -366,6 +534,8 @@ export async function fetchWorkflowCover(id: string): Promise<WorkflowCoverResul
     }
   }
 }
+
+export const fetchWorkflowCover = fetchSkillCover
 
 // ─────────────────────────────────────────────────────────────
 // 安装 / 卸载 / 记账
@@ -421,7 +591,7 @@ function writeRecords(records: InstalledWorkflowRecord[]): void {
     mkdirSync(installedWorkflowsDir(), { recursive: true })
     writeFileSync(recordPath(), `${JSON.stringify(records, null, 2)}\n`, 'utf8')
   } catch (err) {
-    console.warn('[workflowMarket] failed to write install records:', err) // cjk-ok：主进程开发日志
+    console.warn('[skillMarket] failed to write install records:', err) // cjk-ok：主进程开发日志
   }
 }
 
@@ -443,6 +613,7 @@ export function listInstalledWorkflowDetails(): Array<
     broken: boolean
   }
 > {
+  ensureLocalSiblingSyncedOnce()
   return listInstalledWorkflows().map((record) => {
     const file = join(installedWorkflowsDir(), record.id, 'workflow.json')
     try {
@@ -472,7 +643,7 @@ export function listInstalledWorkflowDetails(): Array<
 }
 
 /**
- * 安装（或更新）一条工作流。
+ * 安装（或更新）一条技能市场工作流包。
  *
  * `acceptMissingTypes` 是给「我知道缺类型但先装上」用的逃生门；默认 `false` ——
  * 缺依赖的安装应当被拦在界面层，而不是装进来一个用不了的东西。
@@ -480,7 +651,7 @@ export function listInstalledWorkflowDetails(): Array<
  * **整包（本体 + 封面）从同一个源取**：混源会出现「本体从镜像来、封面从主源来」，
  * 一旦主源不通，封面那一步就把整次安装拖挂，而用户看到的是一个说不清原因的失败。
  */
-export async function installWorkflow(input: {
+export async function installSkillFromMarket(input: {
   id: string
   acceptMissingTypes?: boolean
   /**
@@ -490,7 +661,7 @@ export async function installWorkflow(input: {
    * 否则会出现「卡片说含技能、装的却是另一份」的漂移。主进程仍会**重新校验**全部字段
    *（路径白名单 + SKILL.md frontmatter），所以这不等于信任界面。
    */
-  skill?: WorkflowSkillManifest
+  skill?: SkillMarketManifest
   /**
    * 用户**明示同意**安装技能包里的 `scripts/`。
    *
@@ -506,13 +677,19 @@ export async function installWorkflow(input: {
    */
   scriptConsent?: boolean
   /** 索引条目里的 Semantic Pack 文件清单（与 skill 同口径：界面传入、主进程再校验路径） */
-  semanticPacks?: WorkflowMarketEntry['semanticPacks']
-}): Promise<WorkflowMarketActionResult> {
+  semanticPacks?: SkillMarketEntry['semanticPacks']
+}): Promise<SkillMarketActionResult> {
+  const siblingRoot = localSiblingMarketRoot()
+  if (siblingRoot && existsSync(join(siblingRoot, 'workflows', input.id, 'workflow.json'))) {
+    const localRes = installFromLocalDir(siblingRoot, input)
+    if (localRes) return localRes
+  }
+
   const sources = orderedSources()
   const failures: string[] = []
 
   for (const source of sources) {
-    const urls = workflowMarketUrls(source)
+    const urls = skillMarketUrls(source)
     const result = await installFromSource(source, urls, input, failures)
     if (result) return result
   }
@@ -525,6 +702,107 @@ export async function installWorkflow(input: {
   }
 }
 
+export const installWorkflow = installSkillFromMarket
+
+function installFromLocalDir(
+  marketRoot: string,
+  input: {
+    id: string
+    acceptMissingTypes?: boolean
+    skill?: SkillMarketManifest
+    skillScriptsConsent?: boolean
+    scriptConsent?: boolean
+    semanticPacks?: SkillMarketEntry['semanticPacks']
+  }
+): SkillMarketActionResult | null {
+  try {
+    const srcDir = join(marketRoot, 'workflows', input.id)
+    const srcWfPath = join(srcDir, 'workflow.json')
+    if (!existsSync(srcWfPath)) return null
+    const rawText = readFileSync(srcWfPath, 'utf8')
+    const parsed = parseWorkflowBundle(JSON.parse(rawText))
+    if (!parsed.ok) return { ok: false, reasonKey: parsed.reasonKey }
+    const bundle: WorkflowBundle = parsed.bundle
+    if (bundle.id !== input.id) return { ok: false, reasonKey: 'idMismatch' }
+
+    const known = knownNodeTypeIds()
+    const missing = missingNodeTypes(bundle, known)
+    if (missing.length > 0 && !input.acceptMissingTypes) {
+      return { ok: false, reasonKey: 'missingNodeTypes', error: missing.join(', ') }
+    }
+    if (planHasExecutableCode(bundle.plan) && input.scriptConsent !== true) {
+      return { ok: false, reasonKey: 'scriptConsentRequired' }
+    }
+
+    const localBundleDir = join(installedWorkflowsDir(), bundle.id)
+    mkdirSync(localBundleDir, { recursive: true })
+    writeFileSync(join(localBundleDir, 'workflow.json'), rawText, 'utf8')
+    const srcCover = join(srcDir, bundle.cover || 'cover.png')
+    if (existsSync(srcCover)) {
+      copyFileSync(srcCover, join(localBundleDir, 'cover.png'))
+    }
+    for (const pack of input.semanticPacks?.files ?? []) {
+      const srcPack = join(srcDir, ...pack.path.split('/'))
+      const dstPack = join(localBundleDir, ...pack.path.split('/'))
+      if (existsSync(srcPack)) {
+        mkdirSync(dirname(dstPack), { recursive: true })
+        copyFileSync(srcPack, dstPack)
+      }
+    }
+
+    let skillName: string | undefined
+    let skillScripts = false
+    if (input.skill) {
+      const entryRel = input.skill.entry || 'SKILL.md'
+      const srcEntry = join(srcDir, 'skill', ...entryRel.split('/'))
+      if (!existsSync(srcEntry)) {
+        getPipeline().uninstall(localBundleDir)
+        return { ok: false, reasonKey: 'skillMissingEntry', error: entryRel }
+      }
+      const check = validateSkillEntryText(readFileSync(srcEntry, 'utf8'), input.skill.name)
+      if (!check.ok) {
+        getPipeline().uninstall(localBundleDir)
+        return { ok: false, reasonKey: check.reasonKey, error: input.skill.name }
+      }
+      const skillDir = join(dshSkillsDir(), input.skill.name)
+      mkdirSync(skillDir, { recursive: true })
+      for (const file of input.skill.files) {
+        const isScript = file.path.startsWith('scripts/')
+        if (isScript && input.skillScriptsConsent !== true) continue
+        const srcSkillFile = join(srcDir, 'skill', ...file.path.split('/'))
+        const dstSkillFile = join(skillDir, ...file.path.split('/'))
+        if (existsSync(srcSkillFile)) {
+          mkdirSync(dirname(dstSkillFile), { recursive: true })
+          copyFileSync(srcSkillFile, dstSkillFile)
+          if (isScript) skillScripts = true
+        }
+      }
+      skillName = input.skill.name
+    }
+
+    const records = listInstalledWorkflows().filter((item) => item.id !== bundle.id)
+    records.push({
+      id: bundle.id,
+      version: bundle.version,
+      installedAt: new Date().toISOString(),
+      source: DEFAULT_SKILL_MARKET_SOURCE,
+      contentHash: sha256OfBytes(new TextEncoder().encode(JSON.stringify(bundle.plan))).slice(
+        0,
+        16
+      ),
+      ...(skillName ? { skillName } : {}),
+      ...(skillScripts
+        ? { skillScripts: true, skillScriptsConsentAt: new Date().toISOString() }
+        : {})
+    })
+    writeRecords(records)
+    coverMemo.delete(bundle.id)
+    return { ok: true }
+  } catch {
+    return null
+  }
+}
+
 /**
  * 从单个源安装。成功或「仓库内容有错」时返回结果；**只有该源取不到文件**时才返回 `null`
  * 让调用方换下一个源。
@@ -534,17 +812,17 @@ export async function installWorkflow(input: {
  */
 async function installFromSource(
   source: string,
-  urls: ReturnType<typeof workflowMarketUrls>,
+  urls: ReturnType<typeof skillMarketUrls>,
   input: {
     id: string
     acceptMissingTypes?: boolean
-    skill?: WorkflowSkillManifest
+    skill?: SkillMarketManifest
     skillScriptsConsent?: boolean
     scriptConsent?: boolean
-    semanticPacks?: WorkflowMarketEntry['semanticPacks']
+    semanticPacks?: SkillMarketEntry['semanticPacks']
   },
   failures: string[]
-): Promise<WorkflowMarketActionResult | null> {
+): Promise<SkillMarketActionResult | null> {
   let bundleRaw: unknown
   try {
     bundleRaw = await getPipeline().fetchJson(urls.bundle(input.id))
@@ -654,7 +932,7 @@ async function installFromSource(
   /**
    * 装上/更新之后必须丢掉这个 id 的封面内存缓存。
    *
-   * 不丢的话「重装一次让封面刷新」这条自救路走不通：`fetchWorkflowCover` **先查 memo 再读本地**，
+   * 不丢的话「重装一次让封面刷新」这条自救路走不通：`fetchSkillCover` **先查 memo 再读本地**，
    * 而 memo 只在**卸载**时按 id 失效 —— 于是刚下载进 `<installed>/<id>/cover.png` 的新封面
    * 也显示不出来（用户看到的现象就是「这张卡没有封面」，重启应用才恢复）。
    */
@@ -677,9 +955,9 @@ async function installFromSource(
  * - **安装前校验 SKILL.md**：dsh 对不合法的技能是**静默忽略**，不校验就会「装上了却看不见」。
  */
 async function installSkillBundle(
-  urls: ReturnType<typeof workflowMarketUrls>,
+  urls: ReturnType<typeof skillMarketUrls>,
   workflowId: string,
-  manifest: WorkflowSkillManifest | undefined,
+  manifest: SkillMarketManifest | undefined,
   options: { allowScripts: boolean }
 ): Promise<
   | { ok: true; name: string; scriptsInstalled: boolean }
@@ -740,7 +1018,7 @@ function removeInstalledSkill(record: InstalledWorkflowRecord | undefined): void
   }
 }
 
-export function uninstallWorkflow(input: { id: string }): WorkflowMarketActionResult {
+export function uninstallSkillFromMarket(input: { id: string }): SkillMarketActionResult {
   const targetDir = join(installedWorkflowsDir(), input.id)
   /**
    * **先取记录，再删目录。** 记录本身也被磁盘对账过滤（目录不在就不返回），
@@ -755,6 +1033,8 @@ export function uninstallWorkflow(input: { id: string }): WorkflowMarketActionRe
   coverMemo.delete(input.id)
   return { ok: true }
 }
+
+export const uninstallWorkflow = uninstallSkillFromMarket
 
 /** 读取已安装的工作流本体的 plan，供界面「使用」时物化 */
 export function readInstalledWorkflowPlan(id: string): WorkflowBundleResult {
@@ -787,10 +1067,13 @@ export function readInstalledWorkflowPlan(id: string): WorkflowBundleResult {
 }
 
 /** 设置里改了源地址后清缓存（内存目录缓存 + 封面缓存） */
-export function resetWorkflowMarketCache(): void {
+export function resetSkillMarketCache(): void {
   pipelineInstance = null
+  siblingAutoSynced = false
   coverMemo.clear()
 }
+
+export const resetWorkflowMarketCache = resetSkillMarketCache
 
 /**
  * 将本地导出的工作流包（含可选技能脚手架）同步安装到本机客户端，供创作者导出后立即在工程与 AI 对话中自测。

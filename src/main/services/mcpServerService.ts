@@ -160,11 +160,11 @@ import {
 import { mcpActivityService } from './mcpActivityService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
-  fetchWorkflowCatalog,
-  installWorkflow,
+  fetchSkillCatalog,
+  installSkillFromMarket,
   listInstalledWorkflowDetails,
-  uninstallWorkflow
-} from './workflowMarketService'
+  uninstallSkillFromMarket
+} from './skillMarketService'
 import {
   buildStudioNodeCapabilitiesBridge,
   discoverInstalledClaudeSkills
@@ -3719,7 +3719,7 @@ const TOOL_DEFS: McpToolDef[] = [
       try {
         const [onlineRes, catalogRes] = await Promise.all([
           searchOnlineSkills({ query, limit }),
-          fetchWorkflowCatalog().catch(() => null)
+          fetchSkillCatalog().catch(() => null)
         ])
         const merged: OnlineSkillSearchItem[] = []
         const seenKeys = new Set<string>()
@@ -3889,7 +3889,7 @@ const TOOL_DEFS: McpToolDef[] = [
         let skippedScriptsFor: string[] = []
 
         if (marketId && !url) {
-          const catalog = await fetchWorkflowCatalog()
+          const catalog = await fetchSkillCatalog()
           if (!catalog.ok || !catalog.entries) {
             throw new Error(`获取官方技能市场目录失败：${catalog.reasonKey ?? 'network'}`)
           }
@@ -3904,7 +3904,7 @@ const TOOL_DEFS: McpToolDef[] = [
           if (!entry) {
             throw new Error(`未在官方技能市场找到条目：${marketId}`)
           }
-          const res = await installWorkflow({
+          const res = await installSkillFromMarket({
             id: entry.id,
             skill: entry.skill,
             skillScriptsConsent: allowScripts,
@@ -4002,7 +4002,7 @@ const TOOL_DEFS: McpToolDef[] = [
         (w) => w.id === rawName || w.skillName === rawName
       )
       if (marketMatch) {
-        const wfRes = uninstallWorkflow({ id: marketMatch.id })
+        const wfRes = uninstallSkillFromMarket({ id: marketMatch.id })
         if (!wfRes.ok) {
           throw new Error(`卸载市场技能失败：${wfRes.error ?? wfRes.reasonKey ?? 'removeFailed'}`)
         }

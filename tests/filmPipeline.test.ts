@@ -16,7 +16,6 @@ import {
   filmCastValue,
   filmStoryboardValue,
   findPrevSameSceneShot,
-  getAiWorkflowPresetPlan,
   getNodeType,
   GraphPortType,
   listAddableNodeTypes,
@@ -508,9 +507,55 @@ describe('film nodes', () => {
 })
 
 describe('film presets', () => {
+  const plans = {
+    shortDrama: {
+      title: '影视全流程（Agent 闭环）',
+      nodes: [
+        { key: 'script', typeId: 'play.script', title: '剧本' },
+        {
+          key: 'workbench',
+          typeId: 'film.workbench',
+          title: '影视工作台',
+          params: {
+            filmAspectRatio: '9:16',
+            filmTargetShots: 0,
+            filmReviewMaxRounds: 2,
+            filmCastKinds: 'character,location',
+            filmRenderMode: 'video',
+            filmRenderQc: true,
+            filmRenderMaxRetries: 1
+          }
+        },
+        { key: 'note', typeId: 'note.text', title: '流水线说明' }
+      ],
+      edges: [{ from: 'script', to: 'workbench', fromPort: 'out', toPort: 'in' }]
+    },
+    shortDrama9: {
+      title: '9 镜漫剧短视频（Agent 闭环）',
+      nodes: [
+        { key: 'script', typeId: 'play.script', title: '剧本' },
+        {
+          key: 'workbench',
+          typeId: 'film.workbench',
+          title: '影视工作台（9 镜）',
+          params: {
+            filmAspectRatio: '9:16',
+            filmTargetShots: 9,
+            filmReviewMaxRounds: 2,
+            filmCastKinds: 'character,location',
+            filmRenderMode: 'video',
+            filmRenderQc: true,
+            filmRenderMaxRetries: 1
+          }
+        },
+        { key: 'note', typeId: 'note.text', title: '流水线说明' }
+      ],
+      edges: [{ from: 'script', to: 'workbench', fromPort: 'out', toPort: 'in' }]
+    }
+  } as const
   for (const id of ['shortDrama', 'shortDrama9'] as const) {
     it(`${id} materializes with every edge connected`, () => {
-      const plan = getAiWorkflowPresetPlan(id)!
+      const plan = plans[id]
       const result = materializeGraphPlan(plan, { scope: 'subgraphAsset', assetType: 'subgraph' })
       expect(result.ok, result.error).toBe(true)
       expect(result.warnings).toEqual([])

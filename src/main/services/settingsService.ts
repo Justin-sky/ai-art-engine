@@ -65,7 +65,10 @@ class SettingsService {
   }
 
   get(): AppSettings {
-    const saved = this.ensure().get('settings') as Partial<AppSettings>
+    const saved = this.ensure().get('settings') as Partial<AppSettings> & {
+      workflowMarket?: { source?: string }
+    }
+    const rawMarketSource = saved.skillMarket?.source ?? saved.workflowMarket?.source
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
@@ -95,9 +98,8 @@ class SettingsService {
       blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp),
       // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层
       externalMcp: normalizeExternalMcpServers(saved.externalMcp),
-      workflowMarket: {
-        source:
-          typeof saved.workflowMarket?.source === 'string' ? saved.workflowMarket.source.trim() : ''
+      skillMarket: {
+        source: typeof rawMarketSource === 'string' ? rawMarketSource.trim() : ''
       }
     }
   }
@@ -123,11 +125,9 @@ class SettingsService {
       },
       blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp),
       externalMcp: normalizeExternalMcpServers(settings.externalMcp),
-      workflowMarket: {
+      skillMarket: {
         source:
-          typeof settings.workflowMarket?.source === 'string'
-            ? settings.workflowMarket.source.trim()
-            : ''
+          typeof settings.skillMarket?.source === 'string' ? settings.skillMarket.source.trim() : ''
       }
     }
     this.ensure().set('settings', normalized)

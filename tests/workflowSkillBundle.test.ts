@@ -9,12 +9,12 @@ import {
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
 import {
   isSafeSkillFilePath,
-  parseWorkflowMarketEntry,
-  parseWorkflowSkillManifest,
+  parseSkillMarketEntry,
+  parseSkillManifest,
   plainSkillManifest,
   validateSkillEntryText,
-  workflowMarketUrls
-} from '../src/shared/workflowMarket'
+  skillMarketUrls
+} from '../src/shared/skillMarket'
 
 /**
  * 工作流附带的 dsh 技能包：契约、路径安全、安装前校验。
@@ -51,9 +51,9 @@ workflow: world-model
 正文。
 `
 
-describe('parseWorkflowSkillManifest', () => {
+describe('parseSkillManifest', () => {
   it('解析合法技能包', () => {
-    const skill = parseWorkflowSkillManifest(validSkill)
+    const skill = parseSkillManifest(validSkill)
     expect(skill).not.toBeNull()
     expect(skill!.name).toBe('wf-world-model')
     expect(skill!.entry).toBe('SKILL.md')
@@ -64,34 +64,32 @@ describe('parseWorkflowSkillManifest', () => {
 
   it('缺 sizeBytes 时按文件体积求和', () => {
     const { sizeBytes: _drop, ...rest } = validSkill
-    expect(parseWorkflowSkillManifest(rest)!.sizeBytes).toBe(300)
+    expect(parseSkillManifest(rest)!.sizeBytes).toBe(300)
   })
 
   it('entry 不是 SKILL.md 时拒绝（dsh 只认 SKILL.md）', () => {
-    expect(parseWorkflowSkillManifest({ ...validSkill, entry: 'README.md' })).toBeNull()
+    expect(parseSkillManifest({ ...validSkill, entry: 'README.md' })).toBeNull()
   })
 
   it('清单里没有入口文件时拒绝 —— 装不出可用技能就别装', () => {
-    expect(
-      parseWorkflowSkillManifest({ ...validSkill, files: [{ path: 'references/a.md' }] })
-    ).toBeNull()
+    expect(parseSkillManifest({ ...validSkill, files: [{ path: 'references/a.md' }] })).toBeNull()
   })
 
   it('name 不是 kebab-case 时拒绝', () => {
-    expect(parseWorkflowSkillManifest({ ...validSkill, name: 'WF_World' })).toBeNull()
+    expect(parseSkillManifest({ ...validSkill, name: 'WF_World' })).toBeNull()
   })
 
   it('缺 description 时拒绝', () => {
-    expect(parseWorkflowSkillManifest({ ...validSkill, description: '' })).toBeNull()
+    expect(parseSkillManifest({ ...validSkill, description: '' })).toBeNull()
   })
 
   it('files 不是数组时拒绝', () => {
-    expect(parseWorkflowSkillManifest({ ...validSkill, files: 'SKILL.md' })).toBeNull()
+    expect(parseSkillManifest({ ...validSkill, files: 'SKILL.md' })).toBeNull()
   })
 
   it('重复路径时拒绝（后一份会静默覆盖前一份）', () => {
     expect(
-      parseWorkflowSkillManifest({
+      parseSkillManifest({
         ...validSkill,
         files: [{ path: 'SKILL.md' }, { path: 'SKILL.md' }]
       })
@@ -99,10 +97,8 @@ describe('parseWorkflowSkillManifest', () => {
   })
 
   it('hasScripts 只认布尔真值（字符串 "true" 不算）', () => {
-    expect(parseWorkflowSkillManifest({ ...validSkill, hasScripts: true })!.hasScripts).toBe(true)
-    expect(parseWorkflowSkillManifest({ ...validSkill, hasScripts: 'true' })!.hasScripts).toBe(
-      false
-    )
+    expect(parseSkillManifest({ ...validSkill, hasScripts: true })!.hasScripts).toBe(true)
+    expect(parseSkillManifest({ ...validSkill, hasScripts: 'true' })!.hasScripts).toBe(false)
   })
 
   const badPaths = [
@@ -117,7 +113,7 @@ describe('parseWorkflowSkillManifest', () => {
   ]
   for (const path of badPaths) {
     it(`拒绝危险路径 ${JSON.stringify(path)}`, () => {
-      expect(parseWorkflowSkillManifest({ ...validSkill, files: [{ path }] })).toBeNull()
+      expect(parseSkillManifest({ ...validSkill, files: [{ path }] })).toBeNull()
     })
   }
 
@@ -132,7 +128,7 @@ describe('parseWorkflowSkillManifest', () => {
 })
 
 describe('skillFile URL 构造', () => {
-  const urls = workflowMarketUrls('https://example.com/root')
+  const urls = skillMarketUrls('https://example.com/root')
 
   it('合法路径拼出完整地址', () => {
     expect(urls.skillFile('world-model', 'references/ports.md')).toBe(
@@ -162,18 +158,18 @@ describe('索引条目的技能段是可选且宽容的', () => {
   }
 
   it('没有 skill 字段时正常工作（向后兼容）', () => {
-    const entry = parseWorkflowMarketEntry(baseEntry)
+    const entry = parseSkillMarketEntry(baseEntry)
     expect(entry).not.toBeNull()
     expect(entry!.skill).toBeUndefined()
   })
 
   it('skill 合法时带上', () => {
-    const entry = parseWorkflowMarketEntry({ ...baseEntry, skill: validSkill })
+    const entry = parseSkillMarketEntry({ ...baseEntry, skill: validSkill })
     expect(entry!.skill?.name).toBe('wf-world-model')
   })
 
   it('skill 非法时**只丢技能段、保留整条工作流**', () => {
-    const entry = parseWorkflowMarketEntry({
+    const entry = parseSkillMarketEntry({
       ...baseEntry,
       skill: { ...validSkill, files: [{ path: '../evil.md' }] }
     })
@@ -243,7 +239,7 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
 }
 
-const SERVICE = read('src/main/services/workflowMarketService.ts')
+const SERVICE = read('src/main/services/skillMarketService.ts')
 const SERVICE_CODE = stripComments(SERVICE)
 const HARNESS = read('src/main/services/deepseekHarnessService.ts')
 const RUNTIME = read('src/main/services/claudeSkillRuntime.ts')

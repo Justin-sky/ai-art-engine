@@ -147,7 +147,7 @@ describe('每个源有独立的磁盘缓存', () => {
 
 describe('跨源选择：新鲜数据优于过期数据', () => {
   it('主源只有过期缓存、镜像新鲜 → 应当用镜像', async () => {
-    // 这个判断在服务层（workflowMarketService），此处先固定管道层的语义：
+    // 这个判断在服务层（skillMarketService），此处先固定管道层的语义：
     // 失败回退必须标 stale，成功不得标 stale —— 服务层据此区分。
     const a = await startServer(catalogFrom('alpha'))
     const cacheDir = tempDir()

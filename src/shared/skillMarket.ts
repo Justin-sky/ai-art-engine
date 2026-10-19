@@ -1,11 +1,13 @@
 /**
- * 远端工作流市场（`ai-art-engine-skills`）的契约与纯校验逻辑。
+ * 远端技能市场（`ai-art-engine-skills`）的契约与纯校验逻辑。
  *
- * ## 与技能市场的结构关系
+ * ## 技能与工作流拓扑一体包
  *
- * 两个市场的管道完全相同（拉索引 → 缓存 → 拉文件 → 校验 → 原子落盘 → 记账），
- * 差别只在**载荷**：技能是 `SKILL.md`，工作流是「元数据 + `GraphPlan`」。
- * 因此这里只负责**格式与兼容性判定**，传输与落盘交给通用管道。
+ * 技能市场里的每个包（`workflows/<id>/`）同时包含：
+ * - `skill/SKILL.md`（+ `references/ports.md`）：给 AI 对话 agent 的导演手册与操作规范；
+ * - `workflow.json`：画布工作流拓扑（`元数据 + GraphPlan`）。
+ *
+ * 这里负责**格式与兼容性判定**，传输与原子落盘交给通用管道（`MarketPipeline`）。
  *
  * ## 为什么 `plan` 要包一层
  *
@@ -30,8 +32,8 @@ import {
   type ScriptScannableNode
 } from './graph/scriptNode'
 
-/** 索引里一条工作流的**展示与兼容信息**（不含 `plan` 本体，控制索引体积） */
-export interface WorkflowMarketEntry {
+/** 索引里一条技能与工作流包的**展示与兼容信息**（不含 `plan` 本体，控制索引体积） */
+export interface SkillMarketEntry {
   id: string
   title: string
   titleEn?: string
@@ -43,13 +45,13 @@ export interface WorkflowMarketEntry {
   license: string
   /** 封面相对路径；卡片门面 */
   cover?: string
-  requires: WorkflowRequirement
+  requires: SkillRequirement
   nodeCount: number
   edgeCount: number
   /** 工作流文件体积（下载前可预判） */
   sizeBytes?: number
   /** 可选：随本条工作流一起安装的 dsh 技能包（清单由仓库脚本从磁盘派生） */
-  skill?: WorkflowSkillManifest
+  skill?: SkillMarketManifest
   /**
    * 该工作流是否含可执行代码（存在 `script.run` 节点）。
    *
@@ -70,8 +72,10 @@ export interface WorkflowMarketEntry {
   }
 }
 
+export type WorkflowMarketEntry = SkillMarketEntry
+
 /**
- * 工作流附带的 dsh 技能包（`workflows/<id>/skill/`）。
+ * 技能市场条目附带的 dsh 技能包清单（`workflows/<id>/skill/`）。
  *
  * 技能是**给 AI 对话 agent 的操作手册**，绑定到这条工作流：`plan` 表达不了的循环、
  * 分支、"先看结果再决定下一步"由 agent 承担。用户装上工作流，agent 也就学会了怎么用它。
@@ -79,7 +83,7 @@ export interface WorkflowMarketEntry {
  * 清单**只存在于索引里**：raw 源没有目录列表 API，客户端必须先知道每个文件路径才能下载；
  * 而这份清单由仓库脚本从磁盘派生，所以不可能与磁盘漂移。
  */
-export interface WorkflowSkillManifest {
+export interface SkillMarketManifest {
   /** 技能名，仓库侧强制为 `wf-<工作流 id>`（`wf-` 前缀用于避开内置技能） */
   name: string
   description: string
@@ -94,30 +98,38 @@ export interface WorkflowSkillManifest {
    */
   hasScripts: boolean
   /** 相对 `skill/` 的文件清单 */
-  files: WorkflowSkillFile[]
+  files: SkillManifestFile[]
   sizeBytes: number
 }
 
-export interface WorkflowSkillFile {
+export type WorkflowSkillManifest = SkillMarketManifest
+
+export interface SkillManifestFile {
   path: string
   sizeBytes?: number
 }
 
-/** 工作流对应用的要求 */
-export interface WorkflowRequirement {
+export type WorkflowSkillFile = SkillManifestFile
+
+/** 技能与工作流包对应用的要求 */
+export interface SkillRequirement {
   /** 该工作流用到的全部节点类型（由仓库脚本从 plan 派生，不允许手写） */
   nodeTypes: string[]
   /** 最低应用版本（semver）；缺省表示不限制 */
   appMinVersion?: string
 }
 
+export type WorkflowRequirement = SkillRequirement
+
 /** 索引文件（`index.json`） */
-export interface WorkflowMarketIndex {
+export interface SkillMarketIndex {
   schemaVersion: number
   generatedAt?: string
   source?: { repo?: string; ref?: string }
-  workflows: WorkflowMarketEntry[]
+  workflows: SkillMarketEntry[]
 }
+
+export type WorkflowMarketIndex = SkillMarketIndex
 
 /** 单个工作流包（`workflows/<id>/workflow.json`） */
 export interface WorkflowBundle {
@@ -132,7 +144,7 @@ export interface WorkflowBundle {
   /** 封面相对路径（包内）；缺省视作 `cover.png` */
   cover?: string
   /** **必填**（解析器总会填上）：兼容性判定的依据 */
-  requires: WorkflowRequirement
+  requires: SkillRequirement
   plan: GraphPlan
   /**
    * 可选：随工作流分发的 Semantic Pack 相对路径列表（包内 `semanticPacks/*.json`）。
@@ -141,8 +153,10 @@ export interface WorkflowBundle {
   semanticPacks?: string[]
 }
 
+export type SkillBundle = WorkflowBundle
+
 /** 分类枚举：与仓库 `validate.mjs` 里的集合必须一致（两侧测试共同钉住） */
-export const WORKFLOW_MARKET_CATEGORIES = [
+export const SKILL_MARKET_CATEGORIES = [
   'film',
   'ad',
   'game',
@@ -151,16 +165,21 @@ export const WORKFLOW_MARKET_CATEGORIES = [
   'utility'
 ] as const
 
-export type WorkflowMarketCategory = (typeof WORKFLOW_MARKET_CATEGORIES)[number]
+export const WORKFLOW_MARKET_CATEGORIES = SKILL_MARKET_CATEGORIES
+
+export type SkillMarketCategory = (typeof SKILL_MARKET_CATEGORIES)[number]
+export type WorkflowMarketCategory = SkillMarketCategory
 
 /** 索引 schema 版本（应用能读的最大版本） */
-export const WORKFLOW_MARKET_SCHEMA_VERSION = 1
+export const SKILL_MARKET_SCHEMA_VERSION = 1
+export const WORKFLOW_MARKET_SCHEMA_VERSION = SKILL_MARKET_SCHEMA_VERSION
 
 const ID_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const SEMVER_RE = /^\d+\.\d+\.\d+(?:-[-0-9A-Za-z.]+)?(?:\+[-0-9A-Za-z.]+)?$/
 
 /** 卡片标题里 summary 只有一行，超长会被截断成没意义的半句 */
-export const WORKFLOW_SUMMARY_MAX = 60
+export const SKILL_SUMMARY_MAX = 60
+export const WORKFLOW_SUMMARY_MAX = SKILL_SUMMARY_MAX
 
 // ─────────────────────────────────────────────────────────────
 // 基础取值助手（宽容读取：脏字段一律回落，不抛错）
@@ -196,7 +215,7 @@ function asAuthor(value: unknown): { name: string; url?: string } | null {
 }
 
 /** 归一化 `requires`；缺 `nodeTypes` 时给空数组（不当作非法，仅表示未声明） */
-function asRequirement(value: unknown): WorkflowRequirement {
+function asRequirement(value: unknown): SkillRequirement {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return { nodeTypes: [] }
   const obj = value as Record<string, unknown>
   const appMinVersion = asString(obj.appMinVersion)
@@ -207,13 +226,13 @@ function asRequirement(value: unknown): WorkflowRequirement {
 }
 
 /**
- * 归一化索引里的一条工作流；缺关键字段（id / title / summary / version / license / author）
+ * 归一化索引里的一条技能与工作流条目；缺关键字段（id / title / summary / version / license / author）
  * 返回 null 由调用方丢弃。
  *
  * `license` 与 `author` 是**审核底线**（缺署名的社区内容有法律灰区），所以在解析层就挡住，
  * 而不是靠界面提示。
  */
-export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | null {
+export function parseSkillMarketEntry(raw: unknown): SkillMarketEntry | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
   const id = asString(obj.id)
@@ -235,7 +254,7 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     ...(titleEn ? { titleEn } : {}),
     summary,
     // 未知分类不让整条作废：落到 utility，界面仍能显示（分类只是筛选维度）
-    category: (WORKFLOW_MARKET_CATEGORIES as readonly string[]).includes(category)
+    category: (SKILL_MARKET_CATEGORIES as readonly string[]).includes(category)
       ? category
       : 'utility',
     tags: asStringArray(obj.tags),
@@ -248,7 +267,7 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     edgeCount: asCount(obj.edgeCount),
     ...(sizeBytes > 0 ? { sizeBytes } : {}),
     ...(() => {
-      const skill = parseWorkflowSkillManifest(obj.skill)
+      const skill = parseSkillManifest(obj.skill)
       const semanticPacks = parseSemanticPacksManifest(obj.semanticPacks)
       const scripts = parseScriptSummaries(obj.scripts)
       const hasExecutableCode = obj.hasExecutableCode === true || scripts.length > 0
@@ -261,6 +280,8 @@ export function parseWorkflowMarketEntry(raw: unknown): WorkflowMarketEntry | nu
     })()
   }
 }
+
+export const parseWorkflowMarketEntry = parseSkillMarketEntry
 
 /**
  * 解析索引条目里的脚本摘要段（远端内容，宽容读取、逐字段重建）。
@@ -326,9 +347,7 @@ export function isSafeSemanticPackPath(path: string): boolean {
   return /^semanticPacks\/[a-z0-9][a-z0-9._-]*\.json$/i.test(path)
 }
 
-export function parseSemanticPacksManifest(
-  raw: unknown
-): WorkflowMarketEntry['semanticPacks'] | null {
+export function parseSemanticPacksManifest(raw: unknown): SkillMarketEntry['semanticPacks'] | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
   if (!Array.isArray(obj.files)) return null
@@ -362,7 +381,7 @@ export function parseSemanticPacksManifest(
  * - 类型由编译器看着，字段改名时这里会跟着报错，而不是静默丢一个键；
  * - 索引是**远端内容**，多余字段在过界时就被丢掉，不会顺手带到主进程。
  */
-export function plainSkillManifest(skill: WorkflowSkillManifest): WorkflowSkillManifest {
+export function plainSkillManifest(skill: SkillMarketManifest): SkillMarketManifest {
   return {
     name: skill.name,
     description: skill.description,
@@ -382,7 +401,7 @@ export function plainSkillManifest(skill: WorkflowSkillManifest): WorkflowSkillM
  * 非法时返回 `null` —— 调用方据此**只丢掉技能段、保留整条工作流**：
  * 一个坏技能不该让整条工作流从市场里消失。
  */
-export function parseWorkflowSkillManifest(raw: unknown): WorkflowSkillManifest | null {
+export function parseSkillManifest(raw: unknown): SkillMarketManifest | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
   const obj = raw as Record<string, unknown>
   const name = asString(obj.name)
@@ -391,7 +410,7 @@ export function parseWorkflowSkillManifest(raw: unknown): WorkflowSkillManifest 
   if (!ID_RE.test(name) || !description || entry !== 'SKILL.md') return null
   if (!Array.isArray(obj.files)) return null
 
-  const files: WorkflowSkillFile[] = []
+  const files: SkillManifestFile[] = []
   const seen = new Set<string>()
   for (const item of obj.files) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null
@@ -414,6 +433,8 @@ export function parseWorkflowSkillManifest(raw: unknown): WorkflowSkillManifest 
     sizeBytes: sizeBytes > 0 ? sizeBytes : files.reduce((sum, f) => sum + (f.sizeBytes ?? 0), 0)
   }
 }
+
+export const parseWorkflowSkillManifest = parseSkillManifest
 
 /** 扁平 frontmatter 解析（与仓库 validator 同一口径：只认 `key: value`） */
 export function parseSkillFrontmatter(text: string): Record<string, string> | null {
@@ -474,15 +495,15 @@ export function validateSkillEntryText(
  * 但整体结构崩坏（不是对象 / `workflows` 不是数组 / schemaVersion 过高）则整体失败，
  * 避免半渲染出一个误导性的空市场。
  */
-export function parseWorkflowMarketIndex(
+export function parseSkillMarketIndex(
   raw: unknown
-): { ok: true; index: WorkflowMarketIndex; dropped: number } | { ok: false; reasonKey: string } {
+): { ok: true; index: SkillMarketIndex; dropped: number } | { ok: false; reasonKey: string } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return { ok: false, reasonKey: 'notAnObject' }
   }
   const obj = raw as Record<string, unknown>
   const schemaVersion = typeof obj.schemaVersion === 'number' ? obj.schemaVersion : 0
-  if (schemaVersion > WORKFLOW_MARKET_SCHEMA_VERSION) {
+  if (schemaVersion > SKILL_MARKET_SCHEMA_VERSION) {
     // 新版本索引可能含本应用读不懂的字段：宁可明确报「需要更新应用」
     return { ok: false, reasonKey: 'schemaTooNew' }
   }
@@ -494,10 +515,10 @@ export function parseWorkflowMarketIndex(
   if (!rawEntries) return { ok: false, reasonKey: 'noWorkflows' }
 
   const seen = new Set<string>()
-  const workflows: WorkflowMarketEntry[] = []
+  const workflows: SkillMarketEntry[] = []
   let dropped = 0
   for (const item of rawEntries) {
-    const entry = parseWorkflowMarketEntry(item)
+    const entry = parseSkillMarketEntry(item)
     // 重复 id 视为非法：会让安装目录与卡片互相覆盖
     if (!entry || seen.has(entry.id)) {
       dropped += 1
@@ -514,7 +535,7 @@ export function parseWorkflowMarketIndex(
     ok: true,
     dropped,
     index: {
-      schemaVersion: schemaVersion || WORKFLOW_MARKET_SCHEMA_VERSION,
+      schemaVersion: schemaVersion || SKILL_MARKET_SCHEMA_VERSION,
       ...(generatedAt ? { generatedAt } : {}),
       ...(source
         ? {
@@ -529,6 +550,8 @@ export function parseWorkflowMarketIndex(
   }
 }
 
+export const parseWorkflowMarketIndex = parseSkillMarketIndex
+
 /** 解析单个工作流包；`plan` 形状不合法即整体拒绝 */
 export function parseWorkflowBundle(
   raw: unknown
@@ -538,7 +561,7 @@ export function parseWorkflowBundle(
   }
   const obj = raw as Record<string, unknown>
   const schemaVersion = typeof obj.schemaVersion === 'number' ? obj.schemaVersion : 0
-  if (schemaVersion > WORKFLOW_MARKET_SCHEMA_VERSION) {
+  if (schemaVersion > SKILL_MARKET_SCHEMA_VERSION) {
     return { ok: false, reasonKey: 'schemaTooNew' }
   }
   const id = asString(obj.id)
@@ -596,11 +619,11 @@ export function parseWorkflowBundle(
   return {
     ok: true,
     bundle: {
-      schemaVersion: schemaVersion || WORKFLOW_MARKET_SCHEMA_VERSION,
+      schemaVersion: schemaVersion || SKILL_MARKET_SCHEMA_VERSION,
       id,
       title,
       summary,
-      category: (WORKFLOW_MARKET_CATEGORIES as readonly string[]).includes(category)
+      category: (SKILL_MARKET_CATEGORIES as readonly string[]).includes(category)
         ? category
         : 'utility',
       version,
@@ -617,6 +640,8 @@ export function parseWorkflowBundle(
     }
   }
 }
+
+export const parseSkillBundle = parseWorkflowBundle
 
 /**
  * 从 `plan` 派生「用到哪些节点类型」。
@@ -708,8 +733,8 @@ function comparePrerelease(a: string[], b: string[]): number {
 }
 
 /** 本条目是否可安装/可使用；不可用时给出**可翻译**的原因键 */
-export function workflowEntryBlockReason(
-  entry: Pick<WorkflowMarketEntry, 'requires'>,
+export function skillEntryBlockReason(
+  entry: Pick<SkillMarketEntry, 'requires'>,
   context: { knownNodeTypes: readonly string[]; appVersion: string }
 ): string | null {
   const missing = missingNodeTypes(entry, context.knownNodeTypes)
@@ -723,9 +748,11 @@ export function workflowEntryBlockReason(
   return null
 }
 
+export const workflowEntryBlockReason = skillEntryBlockReason
+
 /** 该工作流引用了哪些本应用**没有**的节点类型（排序去重） */
 export function missingNodeTypes(
-  entry: Pick<WorkflowMarketEntry, 'requires'>,
+  entry: Pick<SkillMarketEntry, 'requires'>,
   knownNodeTypes: readonly string[]
 ): string[] {
   const known = new Set(knownNodeTypes)
@@ -733,16 +760,18 @@ export function missingNodeTypes(
 }
 
 /** 分类 → i18n 键（分类文案只在 locale 里） */
-export function workflowCategoryKey(category: string): string {
-  const known = (WORKFLOW_MARKET_CATEGORIES as readonly string[]).includes(category)
+export function skillCategoryKey(category: string): string {
+  const known = (SKILL_MARKET_CATEGORIES as readonly string[]).includes(category)
   return `marketplace.workflows.category.${known ? category : 'utility'}`
 }
 
+export const workflowCategoryKey = skillCategoryKey
+
 /** 数据源地址 → 索引与包的地址（与仓库目录结构绑定，集中一处便于将来换结构） */
-export function workflowMarketUrls(source: string): {
+export function skillMarketUrls(source: string): {
   index: string
   bundle: (id: string) => string
-  cover: (entry: Pick<WorkflowMarketEntry, 'id' | 'cover'>) => string | null
+  cover: (entry: Pick<SkillMarketEntry, 'id' | 'cover'>) => string | null
   /** 技能包内单个文件；路径不合法时返回 null（不发出请求） */
   skillFile: (id: string, filePath: string) => string | null
   /** Semantic Pack 文件（路径已含 `semanticPacks/` 前缀） */
@@ -764,6 +793,8 @@ export function workflowMarketUrls(source: string): {
   }
 }
 
+export const workflowMarketUrls = skillMarketUrls
+
 /**
  * 官方主源与镜像，**按尝试顺序**排列。
  *
@@ -773,24 +804,17 @@ export function workflowMarketUrls(source: string): {
  * 两个仓库的内容必须保持一致（逐字节）—— 不一致会造成「同一版本号、不同内容」，
  * 这是最难排查的一类状态。同步方式见仓库 README。
  */
-export const WORKFLOW_MARKET_SOURCES: readonly string[] = [
+export const SKILL_MARKET_SOURCES: readonly string[] = [
   'https://raw.githubusercontent.com/Justin-sky/ai-art-engine-skills/main',
   'https://gitee.com/beijing_blue_whale_era_zhangjian/ai-art-engine-skills/raw/main'
 ]
 
-/** 默认数据源（未配置时用主源） */
-export const DEFAULT_WORKFLOW_MARKET_SOURCE = WORKFLOW_MARKET_SOURCES[0]!
+export const WORKFLOW_MARKET_SOURCES = SKILL_MARKET_SOURCES
 
-/**
- * 解析候选数据源。
- *
- * `configured` 可以填**一个或多个**地址（空白 / 换行 / 逗号分隔），按填写顺序依次尝试 ——
- * 于是「自建主源 + 官方镜像」这种组合不需要额外机制。
- * 留空则用官方主源 + 镜像。
- *
- * 显式配置时**只**用配置的地址，不偷偷混入官方源：用户写死了一个源，就应该只打那一个，
- * 否则排查「为什么内容不对」时会被意料之外的回退误导。
- */
+/** 默认数据源（未配置时用主源） */
+export const DEFAULT_SKILL_MARKET_SOURCE = SKILL_MARKET_SOURCES[0]!
+export const DEFAULT_WORKFLOW_MARKET_SOURCE = DEFAULT_SKILL_MARKET_SOURCE
+
 /**
  * 将用户输入的 GitHub 仓库地址（如 `https://github.com/owner/repo` 或 `.../tree/branch`）
  * 自动转换为 raw 基础地址，方便直接填入 GitHub 仓库地址作为技能市场源。
@@ -810,17 +834,21 @@ export function normalizeMarketSourceUrl(raw: string): string {
   return trimmed
 }
 
-export function resolveWorkflowMarketSources(configured: string): string[] {
+export function resolveSkillMarketSources(configured: string): string[] {
   const parts = configured
     .split(/[\s,]+/)
     .map((item) => normalizeMarketSourceUrl(item))
     .filter(Boolean)
-  return parts.length > 0 ? parts : [...WORKFLOW_MARKET_SOURCES]
+  return parts.length > 0 ? parts : [...SKILL_MARKET_SOURCES]
 }
 
+export const resolveWorkflowMarketSources = resolveSkillMarketSources
+
 /** 把一串地址归一到「主地址」（用于界面展示当前使用的是哪个源） */
-export function workflowMarketSourceLabel(source: string): string {
-  if (source === WORKFLOW_MARKET_SOURCES[0]) return 'github'
-  if (source === WORKFLOW_MARKET_SOURCES[1]) return 'gitee'
+export function skillMarketSourceLabel(source: string): string {
+  if (source === SKILL_MARKET_SOURCES[0]) return 'github'
+  if (source === SKILL_MARKET_SOURCES[1]) return 'gitee'
   return 'custom'
 }
+
+export const workflowMarketSourceLabel = skillMarketSourceLabel

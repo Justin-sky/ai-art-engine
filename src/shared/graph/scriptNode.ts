@@ -6,7 +6,7 @@
  * - 代码在**受限 JS 沙箱**（QuickJS WASM）里跑：无 fs / 无网络 / 无 require / 无宿主全局。
  * - 沙箱只能 `await om.<capability>(...)`，`capability` 必须在节点的 `capabilities` 白名单里声明；
  *   每个 `om.*` 都转发到应用治理过的 `ctx` 能力（提供商 / 密钥 / 配额 / 日志），不是后门。
- * - 从市场导入带脚本节点的工作流必须逐次同意（见 workflowMarket 的识别与同意流）。
+ * - 从市场导入带脚本节点的工作流必须逐次同意（见 skillMarket 的识别与同意流）。
  */
 import { GraphPortType, type GraphPortDataType, type GraphPortDef } from './types'
 

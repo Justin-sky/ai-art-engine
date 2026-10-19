@@ -369,8 +369,8 @@ function cloneSettings(source: AppSettings): AppSettings {
      * （`setSettings` 是整对象替换）。
      */
     externalMcp: toRaw(raw.externalMcp ?? []).map((server) => ({ ...toRaw(server) })),
-    /** 工作流市场源同理：设置页不编辑它，但必须带走，否则用户配的镜像地址会被写没 */
-    workflowMarket: { source: toRaw(raw.workflowMarket?.source ?? '') }
+    /** 技能市场源同理：设置页不编辑它，但必须带走，否则用户配的镜像地址会被写没 */
+    skillMarket: { source: toRaw(raw.skillMarket?.source ?? '') }
   }
 }
 
@@ -395,8 +395,8 @@ function applyToForm(cloned: AppSettings): void {
   Object.assign(form.blenderMcp, cloned.blenderMcp)
   // 第三方 MCP 同上：不回填会把用户添加的外部服务整表清空（改由市场管理，设置页只带走）
   form.externalMcp.splice(0, form.externalMcp.length, ...cloned.externalMcp)
-  // 工作流市场源同理
-  form.workflowMarket.source = cloned.workflowMarket.source
+  // 技能市场源同理
+  form.skillMarket.source = cloned.skillMarket.source
 }
 
 function schedulePersist(): void {

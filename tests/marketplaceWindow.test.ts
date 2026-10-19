@@ -53,13 +53,13 @@ describe('主进程：设置广播与市场窗口', () => {
 
   it('设置里改了市场源就清市场缓存（那个清缓存函数不能是死导出）', () => {
     /*
-      `resetWorkflowMarketCache()` 的注释一直写着「设置里改了源地址后清缓存」，
+      `resetSkillMarketCache()` 的注释一直写着「设置里改了源地址后清缓存」，
       但全仓库没有任何调用点 —— 换了源之后内存里还是旧源的目录与封面，
       看起来就像「换了地址却没生效」。
     */
-    expect(MAIN_IPC, 'import 里要有它').toContain('resetWorkflowMarketCache,')
+    expect(MAIN_IPC, 'import 里要有它').toContain('resetSkillMarketCache,')
     expect(MAIN_IPC, '改了源才清（不能无条件清）').toMatch(
-      /previousSource[\s\S]{0,400}resetWorkflowMarketCache\(\)/
+      /previousSource[\s\S]{0,400}resetSkillMarketCache\(\)/
     )
   })
 

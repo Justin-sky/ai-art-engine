@@ -6,7 +6,7 @@ import {
   skillScriptPaths,
   skillScriptsConsentText
 } from '../src/renderer/src/features/marketplace/buildMarketplaceCards'
-import { parseWorkflowSkillManifest } from '../src/shared/workflowMarket'
+import { parseSkillManifest } from '../src/shared/skillMarket'
 
 /**
  * 技能包脚本的**明示同意**：脚本是会被 agent 在本机执行起来的代码。
@@ -28,7 +28,7 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '')
 }
 
-const SERVICE = read('src/main/services/workflowMarketService.ts')
+const SERVICE = read('src/main/services/skillMarketService.ts')
 const SERVICE_CODE = stripComments(SERVICE)
 const VIEW = read('src/renderer/src/views/MarketplaceView.vue')
 
@@ -48,7 +48,7 @@ const withScripts = {
 
 describe('技能包脚本的判定与确认文案', () => {
   it('列出全部脚本文件，且只列脚本（按清单顺序）', () => {
-    const skill = parseWorkflowSkillManifest(withScripts)!
+    const skill = parseSkillManifest(withScripts)!
     expect(skillScriptPaths(skill)).toEqual(['scripts/build-world.mjs', 'scripts/export.mjs'])
   })
 
@@ -61,7 +61,7 @@ describe('技能包脚本的判定与确认文案', () => {
   })
 
   it('确认文案**逐个列出**脚本文件，并带上文件数', () => {
-    const skill = parseWorkflowSkillManifest(withScripts)!
+    const skill = parseSkillManifest(withScripts)!
     const seen: Array<{ key: string; named: Record<string, unknown> }> = []
     const text = skillScriptsConsentText(skill, (key, named) => {
       seen.push({ key, named })
@@ -90,7 +90,7 @@ describe('界面：安装前必须确认，确认结果决定带不带同意', (
     // 确认必须在发起安装之前
     expect(body.indexOf('skillScriptsConsentText(card.skill')).toBeGreaterThan(-1)
     expect(body.indexOf('skillScriptsConsentText(card.skill')).toBeLessThan(
-      body.indexOf('installWorkflowMarket(')
+      body.indexOf('installSkillMarket(')
     )
     // 同意值必须由确认结果决定（不能是常量 true）
     expect(body).toMatch(/scriptsConsented\s*=/)

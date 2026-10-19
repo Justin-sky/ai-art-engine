@@ -63,7 +63,7 @@ describe('安装：点击不会被静默吞掉', () => {
     const body = fnBody('installMarketWorkflow')
     const tryAt = body.indexOf('try {')
     const confirmAt = body.indexOf('await promptConfirm(')
-    const ipcAt = body.indexOf('installWorkflowMarket(')
+    const ipcAt = body.indexOf('installSkillMarket(')
     expect(tryAt, '应当有 try').toBeGreaterThan(-1)
     expect(confirmAt).toBeGreaterThan(-1)
     // 确认发生在 try 内、且早于发起安装

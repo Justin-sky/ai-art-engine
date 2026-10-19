@@ -483,3 +483,7 @@ export function materializeGraphPlan(
     warnings
   }
 }
+
+export function cloneGraphPlan(plan: GraphPlan): GraphPlan {
+  return JSON.parse(JSON.stringify(plan)) as GraphPlan
+}

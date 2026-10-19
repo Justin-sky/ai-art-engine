@@ -5,7 +5,7 @@ import { join } from 'node:path'
  * dsh 的落盘路径。
  *
  * **为什么单独一个文件**：这两条路径被多个服务共用 —— 技能快照（`deepseekHarnessService`）
- * 与市场安装（`workflowMarketService`）必须用**同一个**技能目录，否则会出现「装进去了但
+ * 与市场安装（`skillMarketService`）必须用**同一个**技能目录，否则会出现「装进去了但
  * 快照不认」这类只在某些机器上复现的问题。
  *
  * 但不能因此让市场服务去 import `deepseekHarnessService`：后者引了 `virtual:` 开头的

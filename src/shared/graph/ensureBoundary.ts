@@ -131,11 +131,11 @@ export function wireDanglingOutsToBoundaryOutputs(
     }
 
     const hasOutEdgeIgnoringBoundary = (node: GraphNode): boolean =>
-      edges.some(
-        (edge) =>
-          edge.source === node.id &&
-          !isBoundaryProxyNode(byId.get(edge.target) ?? ({ typeId: '' } as GraphNode))
-      )
+      edges.some((edge) => {
+        if (edge.source !== node.id) return false
+        const target = byId.get(edge.target) ?? ({ typeId: '' } as GraphNode)
+        return !isBoundaryProxyNode(target) && target.category !== 'output'
+      })
 
     const preferredType =
       singularType === 'video'
