@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.0.0] — 2026-10-19
+
+8.0.0 里程碑大版本：**一键工作流全面解耦至独立技能市场仓库（`ai-art-engine-skills`）并统一收口为 `skillMarket`**（20 条工业级多模态创作管线 + 离线种子自动兜底）；AI 对话全面确立 **画布优先（Canvas-First）实时生成协议** 与 **知识/科普文档一键转成片管线**；MCP 新增 **全工作区 / Dive 子编辑器 / 3D 导演台实时操控能力**；同时升级成片时间线图片/GIF 轨道渲染与全站文档体系。
+
+- **架构重构 · 一键工作流解耦至独立技能市场仓库（`ai-art-engine-skills`）与 `skillMarket` 统一收口**：彻底移除客户端硬编码 `aiWorkflowPresets.ts`，一键工作流统一由独立技能市场仓库驱动（内置轻量离线种子兜底），主进程、共享层、IPC 通道与配置项全面由 `workflowMarket` 重构收口为 `skillMarket`（向后兼容旧版配置）。技能市场全量升级 17 条多模态生产管线（角色设定、电商广告、游戏买量、短剧分镜、漫剧出版、3D 资产、3D 导演预演、空间世界等），并新增 **「科普动画解说视频」（`science-explainer`）**、**「音乐 MV 全流程」（`music-mv`）** 与 **「儿童有声绘本视频」（`storybook-narrate`）** 三大工业级工作流技能包。
+- **新增 · 画布优先（Canvas-First）AI 创作路由与知识/科普文档一键转成片管线**：AI 对话生成图片、视频、配音、多人对话、音效、配乐、3D 模型与空间世界统一路由至实时画布节点（`graph_edit` + `task_run`）；支持自然语言输入文章/主题一键搭建「多段口播（`voice.tts`）+ 原理动图/画面（`svg.gen -> svg.anim` / `asset.image`）+ 自动闪避配乐（`audio.music`）+ 成片时间线（`output.timeline`）」完整管线并自动合成带逐句对齐字幕的 MP4 成片。
+- **新增 · 全工作区 / Dive 子编辑器 / 3D 导演台 AI 实时操控与 DSML 流式转译**：每次对话自动注入 `[Workspace Canvas & Node Context]`（当前画布、Dive 导航栈、3D 导演台及右侧属性面板完整状态），支持通过 `graph_edit` / `director_stage_edit` 一键操控 3D 演员、摄影机、灯光、比例假人姿态与任意节点属性；新增 DSML 工具调用流式转译器与图片魔数（Magic-Byte）MIME 自动嗅探。
+- **改进 · 成片时间线（`output.timeline`）预览渲染、3D 导演台假人取景与说明书原理图**：修复成片时间线 Dive 编辑器对静态图片与 GIF 轨道的采集、分镜配对、画面预览及字幕样式渲染；修复 3D 导演台内置假人动作裁切与近景/特写镜头面部取景；为全部节点说明书预设补齐 SVG 架构原理图，并重构中英双语手册与开发者文档站点。
+- **说明（发版提示）**：8.0.0 涉及主进程、共享层与渲染进程核心架构升级，升级后请**重启应用**。
+
 ## [7.8.0] — 2026-10-18
 
 7.8.0 功能版：DeepSeek Harness（`@deepseek-ai/dsh`）迎来 **全能力深度接入**（盘中实时转向、视觉多模态自检闭环、画布异步事件触发器、影视/美术四领域专属子代理矩阵、Todo/Goal/Schedule/Present 与会话导出/回退/全文检索）；**3D 导演台（`stage.3d`）** 全面升级虚拟摄影机轨道与抖动、内置比例假人、多通道控制图导出（Canny/Depth/Normal/Seg）与 AI 一键布景；同时升级 **统一技能市场（Claude Code Skills + GitHub 直装）**、**时间线 NLE 非编工作台**、**抽帧补拍拼接（`video.framePull`）** 与 **游戏界面/多引擎图层拆解（`ui.gen` / `image.layerSplit`）**。
