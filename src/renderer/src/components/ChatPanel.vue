@@ -5373,8 +5373,10 @@ onBeforeUnmount(() => {
 }
 
 .chat-empty {
-  margin: auto;
-  max-width: 240px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: auto 0;
   text-align: center;
   font-size: 12px;
   line-height: 1.7;
@@ -8131,9 +8133,12 @@ onBeforeUnmount(() => {
 
 .zero-key-demo-banner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
   padding: 12px 14px;
   border-radius: 10px;
   background: linear-gradient(
@@ -8149,8 +8154,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
-  flex: 1;
+  min-width: 160px;
+  flex: 1 1 180px;
 }
 
 .zero-key-demo-badge {
@@ -8208,7 +8213,7 @@ onBeforeUnmount(() => {
 
 .showcase-starter-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   gap: 8px;
   width: 100%;
 }
@@ -8216,7 +8221,10 @@ onBeforeUnmount(() => {
 .showcase-starter-card {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   gap: 6px;
   padding: 10px 11px;
   border-radius: 9px;
@@ -8279,7 +8287,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   width: 100%;
+  min-width: 0;
   margin-top: auto;
   padding-top: 4px;
 }
@@ -8288,6 +8298,10 @@ onBeforeUnmount(() => {
   font-size: 10px;
   color: var(--text-muted);
   font-family: var(--mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .showcase-card-go {
