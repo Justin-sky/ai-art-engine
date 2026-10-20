@@ -10,6 +10,7 @@ import {
 } from './hostInterface'
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
 import { resolveUiImageSystemPrompt } from './systemPromptSchemes'
+import { isExplicitOpaqueBgPrompt } from './userPromptSchemes'
 
 export type UiScreenKind = 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
 export type UiScreenAspectRatio = '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
@@ -349,6 +350,7 @@ export interface BuildUiSplitInnerGraphOptions {
   generateModel?: string
   generateProviderInstanceId?: string
   defaultAspectRatio?: UiScreenAspectRatio
+  generateTransparentBg?: boolean
   stylePreset?: UiGenStylePresetId
   styleImagesUseGlobal?: boolean
   generatedImages?: Array<{
@@ -380,6 +382,7 @@ export function buildUiSplitInnerGraph(
   const defaultAspect = options?.defaultAspectRatio ?? '9:16'
   const cleanBaseParams = {
     generateAspectRatio: defaultAspect,
+    generateTransparentBg: options?.generateTransparentBg !== false,
     styleImagesUseGlobal: options?.styleImagesUseGlobal !== false,
     styleReferenceSubject: 'ui' as const,
     generateSystemPrompt: uiImageSystemPrompt,
@@ -397,9 +400,12 @@ export function buildUiSplitInnerGraph(
     const screenAspectRatio =
       normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ?? defaultAspect
     const styledPrompt = applyUiGenStylePreset(screen.prompt, options?.stylePreset, locale)
+    const screenTransparentBg =
+      options?.generateTransparentBg !== false && !isExplicitOpaqueBgPrompt(screen.prompt)
     const screenBaseParams = {
       ...cleanBaseParams,
-      generateAspectRatio: screenAspectRatio
+      generateAspectRatio: screenAspectRatio,
+      generateTransparentBg: screenTransparentBg
     }
     const portIn = `in-${slot}`
     const portOut = uiSplitOutPortId(slot)

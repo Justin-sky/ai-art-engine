@@ -1,6 +1,7 @@
 import { formatGeneratedMediaStamp } from '../../domain'
 import type { GraphDocument, GraphNode, GraphNodeParams, GraphOutputKind } from '../types'
 import { GraphPortType } from '../types'
+import { appendImageTransparentBgPrompt, isExplicitOpaqueBgPrompt } from '../userPromptSchemes'
 import {
   graphValueHasPayload,
   mergeBoundarySoftValues,
@@ -731,10 +732,15 @@ export async function executeUiGenNode(
           defaultAspect
         const screenLayerPrompt =
           screen.layerPrompt?.trim() || buildDefaultUiLayerSplitPrompt(screen, ctx.locale)
+        const useTransparentBg =
+          node.params.generateTransparentBg !== false && !isExplicitOpaqueBgPrompt(screen.prompt)
         let previewUrl = ''
 
         if (trackMode === 'dual' || trackMode === 'preview-only') {
-          const styledPreview = applyUiGenStylePreset(screen.prompt, stylePreset, ctx.locale)
+          let styledPreview = applyUiGenStylePreset(screen.prompt, stylePreset, ctx.locale)
+          if (useTransparentBg) {
+            styledPreview = appendImageTransparentBgPrompt(styledPreview, ctx.locale)
+          }
           const fullPreviewPrompt = systemPrompt
             ? `${systemPrompt}\n\n${styledPreview}`
             : styledPreview
@@ -746,7 +752,22 @@ export async function executeUiGenNode(
             n: 1,
             inputReferences: baseInputRefs.length ? baseInputRefs : undefined
           })
-          const firstUrl = previewRes.images?.[0]?.trim() || ''
+          let firstUrl = previewRes.images?.[0]?.trim() || ''
+          if (
+            firstUrl &&
+            useTransparentBg &&
+            firstUrl.startsWith('data:image/') &&
+            ctx.removeImageSolidBackground
+          ) {
+            try {
+              const solidRes = await ctx.removeImageSolidBackground({ dataUrl: firstUrl })
+              if (solidRes.keyedRatio >= 0.02 && solidRes.dataUrl) {
+                firstUrl = solidRes.dataUrl
+              }
+            } catch {
+              /* 保持原图 */
+            }
+          }
           if (firstUrl) {
             previewUrl = firstUrl
             batch.push({
@@ -764,7 +785,10 @@ export async function executeUiGenNode(
             throw new DOMException('Aborted', 'AbortError')
           }
           const rawClean = screen.cleanPrompt?.trim() || buildTextlessUiPrompt(screen.prompt)
-          const styledClean = applyUiGenStylePreset(rawClean, stylePreset, ctx.locale)
+          let styledClean = applyUiGenStylePreset(rawClean, stylePreset, ctx.locale)
+          if (useTransparentBg) {
+            styledClean = appendImageTransparentBgPrompt(styledClean, ctx.locale)
+          }
           const fullCleanPrompt = systemPrompt ? `${systemPrompt}\n\n${styledClean}` : styledClean
           // 双轨模式下把同屏刚产出的带字图作为第一参考图，保证无字底板与带字预览 100% 布局对齐
           const cleanRefs = previewUrl ? [previewUrl, ...baseInputRefs].slice(0, 4) : baseInputRefs
@@ -776,7 +800,22 @@ export async function executeUiGenNode(
             n: 1,
             inputReferences: cleanRefs.length ? cleanRefs : undefined
           })
-          const cleanUrl = cleanRes.images?.[0]?.trim() || ''
+          let cleanUrl = cleanRes.images?.[0]?.trim() || ''
+          if (
+            cleanUrl &&
+            useTransparentBg &&
+            cleanUrl.startsWith('data:image/') &&
+            ctx.removeImageSolidBackground
+          ) {
+            try {
+              const solidRes = await ctx.removeImageSolidBackground({ dataUrl: cleanUrl })
+              if (solidRes.keyedRatio >= 0.02 && solidRes.dataUrl) {
+                cleanUrl = solidRes.dataUrl
+              }
+            } catch {
+              /* 保持原图 */
+            }
+          }
           if (cleanUrl) {
             batch.push({
               id: `uiGen:${node.id}:${stamp}:${slot}:clean`,

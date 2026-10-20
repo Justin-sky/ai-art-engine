@@ -33,6 +33,7 @@ import {
 } from './hostInterface'
 import { catalogValue } from './catalogValue'
 import { parsePromptPlan } from '../semanticTimeline'
+import { splitScreenplayByExplicitEpisodeMarkers } from './screenplayFormat'
 import { filmStoryboardToMarkdown, parseFilmCast, parseFilmStoryboard } from './film/storyboard'
 import { filmCastValue, filmStoryboardValue, parseFilmRenderCache } from './execute/film'
 
@@ -847,7 +848,7 @@ export function softResolveSourceOutput(
   // 图库节点：优先按 selected*Id 从 params 重算，避免缓存 out 与 Inspector 选中不一致
   const generated = node.params.generatedTexts
   if (Array.isArray(generated) && generated.length) {
-    const items = generated.map((item) => ({
+    let items = generated.map((item) => ({
       id: item.id,
       title: item.title,
       text: item.text ?? '',
@@ -858,6 +859,24 @@ export function softResolveSourceOutput(
       relativePath: item.relativePath,
       createdAt: item.createdAt
     }))
+    if (node.typeId === 'asset.screenplay' && items.length === 1) {
+      const candidateText =
+        items[0]!.text.trim() ||
+        (typeof node.params.text === 'string' ? node.params.text.trim() : '')
+      const explicitEpisodes = candidateText
+        ? splitScreenplayByExplicitEpisodeMarkers(candidateText, { includeSharedBios: true })
+        : []
+      if (explicitEpisodes.length >= 2) {
+        const baseId = items[0]!.id?.trim() || `${node.id}:ep`
+        items = explicitEpisodes.map((ep) => ({
+          id: `${baseId}:ep:${ep.index}`,
+          title: ep.title,
+          text: ep.text,
+          relativePath: undefined,
+          createdAt: items[0]!.createdAt
+        }))
+      }
+    }
     if (sourcePort === 'out-all') {
       return { kind: 'texts', items }
     }

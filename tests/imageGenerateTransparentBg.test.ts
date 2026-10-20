@@ -3,10 +3,12 @@ import { applyBorderFloodColorKey, samplePerimeterBackgroundColor } from '../src
 import {
   ALLOWED_PARAM_KEYS,
   appendImageTransparentBgPrompt,
+  createNodeFromType,
   executeImageGenerateNode,
   IMAGE_TRANSPARENT_BG_PROMPT_EN,
   IMAGE_TRANSPARENT_BG_PROMPT_ZH,
   imageGenerateParamsToNodePatch,
+  isExplicitOpaqueBgPrompt,
   readImageGenerateParamsFromNode,
   resolveImageGenerateParamsForApi,
   type GraphNode,
@@ -14,14 +16,23 @@ import {
 } from '../src/shared/graph'
 
 describe('imageGenerateParams transparentBg', () => {
-  it('reads and patches generateTransparentBg cleanly', () => {
-    const readOff = readImageGenerateParamsFromNode({})
+  it('defaults generateTransparentBg to true on node creation and parameter reading unless explicitly false', () => {
+    const defaultNode = createNodeFromType('asset.image', { x: 0, y: 0 })
+    expect(defaultNode.params.generateTransparentBg).toBe(true)
+
+    const uiGenNode = createNodeFromType('ui.gen', { x: 0, y: 0 })
+    expect(uiGenNode.params.generateTransparentBg).toBe(true)
+
+    const readDefault = readImageGenerateParamsFromNode({})
+    expect(readDefault.transparentBg).toBe(true)
+
+    const readOff = readImageGenerateParamsFromNode({ generateTransparentBg: false })
     expect(readOff.transparentBg).toBe(false)
 
     const readOn = readImageGenerateParamsFromNode({ generateTransparentBg: true })
     expect(readOn.transparentBg).toBe(true)
 
-    const resolved = resolveImageGenerateParamsForApi({ generateTransparentBg: true })
+    const resolved = resolveImageGenerateParamsForApi({})
     expect(resolved.transparentBg).toBe(true)
 
     const patch = imageGenerateParamsToNodePatch(resolved)
@@ -29,7 +40,7 @@ describe('imageGenerateParams transparentBg', () => {
     expect(ALLOWED_PARAM_KEYS.has('generateTransparentBg')).toBe(true)
   })
 
-  it('appends transparent background prompt in zh/en and is idempotent', () => {
+  it('appends transparent background prompt in zh/en, is idempotent, and skips when prompt explicitly requests opaque background', () => {
     const zh = appendImageTransparentBgPrompt('一把发光的魔法圣剑', 'zh-CN')
     expect(zh).toContain('一把发光的魔法圣剑')
     expect(zh).toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
@@ -39,6 +50,14 @@ describe('imageGenerateParams transparentBg', () => {
     expect(en).toContain('A glowing magic sword')
     expect(en).toContain(IMAGE_TRANSPARENT_BG_PROMPT_EN)
     expect(appendImageTransparentBgPrompt(en, 'en-US')).toBe(en)
+
+    const opaqueZh = '赛博朋克街头夜景，要求非透明背景，保留完整环境背景'
+    expect(isExplicitOpaqueBgPrompt(opaqueZh)).toBe(true)
+    expect(appendImageTransparentBgPrompt(opaqueZh, 'zh-CN')).toBe(opaqueZh)
+
+    const opaqueEn = 'A fantasy tavern interior with opaque background and full environment details'
+    expect(isExplicitOpaqueBgPrompt(opaqueEn)).toBe(true)
+    expect(appendImageTransparentBgPrompt(opaqueEn, 'en-US')).toBe(opaqueEn)
   })
 })
 
@@ -194,6 +213,71 @@ describe('executeImageGenerateNode with generateTransparentBg', () => {
     expect(out.out).toMatchObject({
       kind: 'image',
       dataUrl: 'data:image/png;base64,YOLO_CUTOUT_RGBA'
+    })
+  })
+
+  it('defaults to transparent background when generateTransparentBg is omitted, and bypasses keying when prompt explicitly asks for opaque background', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,RAW_IMG'],
+      model: 'test-model'
+    }))
+    const removeImageSolidBackground = vi.fn(async () => ({
+      dataUrl: 'data:image/png;base64,KEYED_RGBA',
+      width: 512,
+      height: 512,
+      keyedRatio: 0.4
+    }))
+
+    // 1. Omitted generateTransparentBg -> defaults to transparent background
+    const defaultNode: GraphNode = {
+      id: 'img-default',
+      category: 'asset',
+      typeId: 'asset.image',
+      assetType: 'image',
+      title: 'Image',
+      position: { x: 0, y: 0 },
+      params: {
+        generateInstruction: '游戏技能图标：冰霜新星'
+      }
+    }
+    const out1 = await executeImageGenerateNode({
+      node: defaultNode,
+      inputs: {},
+      locale: 'zh-CN',
+      generateImage,
+      removeImageSolidBackground
+    })
+    expect(generateImage.mock.calls[0]![0].prompt).toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
+    expect(removeImageSolidBackground).toHaveBeenCalledTimes(1)
+    expect(out1.out).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,KEYED_RGBA'
+    })
+
+    // 2. Prompt explicitly requests non-transparent background -> bypasses transparent prompt & keying
+    const opaqueNode: GraphNode = {
+      id: 'img-opaque',
+      category: 'asset',
+      typeId: 'asset.image',
+      assetType: 'image',
+      title: 'Image',
+      position: { x: 0, y: 0 },
+      params: {
+        generateInstruction: '江南雨巷全景，要求非透明背景，保留完整环境背景'
+      }
+    }
+    const out2 = await executeImageGenerateNode({
+      node: opaqueNode,
+      inputs: {},
+      locale: 'zh-CN',
+      generateImage,
+      removeImageSolidBackground
+    })
+    expect(generateImage.mock.calls[1]![0].prompt).not.toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
+    expect(removeImageSolidBackground).toHaveBeenCalledTimes(1)
+    expect(out2.out).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,RAW_IMG'
     })
   })
 })

@@ -1,4 +1,5 @@
 import type { GraphNode, GraphNodeParams } from '../types'
+import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
 import type {
   GraphAssetValue,
   GraphImageItem,
@@ -124,18 +125,49 @@ export function resolveGalleryOutputsFromNodeParams(
 
   const generatedTexts = params.generatedTexts
   if (Array.isArray(generatedTexts) && generatedTexts.length) {
-    const items: GraphTextItem[] = generatedTexts.map((item) => ({
+    let items: GraphTextItem[] = generatedTexts.map((item) => ({
       id: item.id,
       title: item.title,
       text: item.text ?? '',
       relativePath: item.relativePath,
       createdAt: item.createdAt
     }))
+    if (options?.typeId === 'asset.screenplay' && items.length === 1) {
+      const candidateText =
+        items[0]!.text.trim() || (typeof params.text === 'string' ? params.text.trim() : '')
+      const explicitEpisodes = candidateText
+        ? splitScreenplayByExplicitEpisodeMarkers(candidateText, { includeSharedBios: true })
+        : []
+      if (explicitEpisodes.length >= 2) {
+        const baseId = items[0]!.id?.trim() || 'ep'
+        items = explicitEpisodes.map((ep) => ({
+          id: `${baseId}:ep:${ep.index}`,
+          title: ep.title,
+          text: ep.text,
+          createdAt: items[0]!.createdAt
+        }))
+      }
+    }
     const selectedId = params.selectedTextId?.trim() || newestTextSelectedId(items)
     if (options?.typeId === 'ui.split') {
       return { out: { kind: 'texts', items } }
     }
     return dualTextGalleryOutputs(items, selectedId)
+  }
+
+  if (options?.typeId === 'asset.screenplay' && typeof params.text === 'string') {
+    const explicitEpisodes = splitScreenplayByExplicitEpisodeMarkers(params.text, {
+      includeSharedBios: true
+    })
+    if (explicitEpisodes.length >= 2) {
+      const items: GraphTextItem[] = explicitEpisodes.map((ep) => ({
+        id: `ep:${ep.index}`,
+        title: ep.title,
+        text: ep.text
+      }))
+      const selectedId = params.selectedTextId?.trim() || items[0]!.id || ''
+      return dualTextGalleryOutputs(items, selectedId)
+    }
   }
 
   const cameraShots = params.cameraShots

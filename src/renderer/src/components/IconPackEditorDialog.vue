@@ -526,6 +526,7 @@ function onClose(): void {
   justify-content: center;
   padding: 16px;
   overflow: auto;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -536,6 +537,7 @@ function onClose(): void {
 .canvas-wrap {
   position: relative;
   flex: 0 0 auto;
+  background: var(--image-checker-bg);
 }
 
 .source-img {

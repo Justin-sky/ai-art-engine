@@ -368,6 +368,7 @@ onBeforeUnmount(() => {
   overflow: auto;
   touch-action: none;
   cursor: move;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -378,38 +379,7 @@ onBeforeUnmount(() => {
 .preview-canvas {
   display: block;
   flex: 0 0 auto;
-  /*
-   * 透明底用棋盘格表示，白色 / 黑色填充一眼可辨。
-   * 格子线走主题变量 + `color-mix`（**不写死 rgba(255,255,255)**）：写死会被
-   * `tests/themeStylesAudit.test.ts` 的「媒体叠层硬编码白」规则拦下，深色主题下也刺眼。
-   */
-  background-image:
-    linear-gradient(
-      45deg,
-      var(--checker-line, color-mix(in srgb, var(--on-media-line) 12%, transparent)) 25%,
-      transparent 25%
-    ),
-    linear-gradient(
-      -45deg,
-      var(--checker-line, color-mix(in srgb, var(--on-media-line) 12%, transparent)) 25%,
-      transparent 25%
-    ),
-    linear-gradient(
-      45deg,
-      transparent 75%,
-      var(--checker-line, color-mix(in srgb, var(--on-media-line) 12%, transparent)) 75%
-    ),
-    linear-gradient(
-      -45deg,
-      transparent 75%,
-      var(--checker-line, color-mix(in srgb, var(--on-media-line) 12%, transparent)) 75%
-    );
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
+  background: var(--image-checker-bg);
   box-shadow: 0 0 0 1px var(--border);
 }
 

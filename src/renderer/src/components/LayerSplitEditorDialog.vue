@@ -2150,6 +2150,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   overflow: hidden;
   outline: none;
+  background: var(--image-checker-bg);
 }
 
 .stage.stage-exploded-3d {
@@ -2183,18 +2184,7 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 0 0 auto;
   margin: auto;
-  background-image:
-    linear-gradient(45deg, #3a3a3a 25%, transparent 25%),
-    linear-gradient(-45deg, #3a3a3a 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #3a3a3a 75%),
-    linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
-  background-color: #2a2a2a;
+  background: var(--image-checker-bg);
 }
 
 .canvas-wrap.exploded-3d {
@@ -2478,7 +2468,7 @@ onBeforeUnmount(() => {
   height: 36px;
   object-fit: contain;
   border-radius: 4px;
-  background: #111;
+  background: var(--image-checker-bg);
 }
 
 .thumb.placeholder {

@@ -2983,7 +2983,7 @@ watch(
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg-sunken, #14161a);
+  background: var(--image-checker-bg);
   overflow: hidden;
 }
 
@@ -3032,6 +3032,7 @@ watch(
   width: auto;
   height: auto;
   object-fit: contain;
+  background: var(--image-checker-bg);
   user-select: none;
   /* 触摸 / 手写笔拖动要自己接管，否则浏览器会当成滚动手势发 pointercancel，画框直接断掉 */
   touch-action: none;

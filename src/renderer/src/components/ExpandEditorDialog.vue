@@ -424,6 +424,7 @@ function onClose(): void {
   padding: 20px;
   box-sizing: border-box;
   overflow: auto;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -435,7 +436,7 @@ function onClose(): void {
   position: relative;
   flex: 0 0 auto;
   border: 1px solid var(--on-media-line);
-  background: var(--bg);
+  background: var(--image-checker-bg);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 

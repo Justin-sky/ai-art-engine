@@ -538,7 +538,7 @@ function save(): void {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--bg-input);
+  background: var(--image-checker-bg);
 }
 
 /* wrap 与 img 同尺寸，overlay 用百分比对齐图片真实渲染区域 */
@@ -548,6 +548,7 @@ function save(): void {
   max-width: 100%;
   max-height: 100%;
   line-height: 0;
+  background: var(--image-checker-bg);
 }
 
 .wrap img {

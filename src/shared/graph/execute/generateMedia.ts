@@ -19,7 +19,8 @@ import {
   appendImageTransparentBgPrompt,
   buildImagePrompt,
   buildVideoPrompt,
-  buildVoicePrompt
+  buildVoicePrompt,
+  isExplicitOpaqueBgPrompt
 } from '../userPromptSchemes'
 import { normalizeImageCutout } from '../imageCutout'
 import {
@@ -1097,7 +1098,9 @@ export async function executeImageGenerateNode(
     locale: ctx.locale,
     subject: node.params.styleReferenceSubject
   })
-  if (node.params.generateTransparentBg === true) {
+  const useTransparentBg =
+    node.params.generateTransparentBg !== false && !isExplicitOpaqueBgPrompt(userPrompt)
+  if (useTransparentBg) {
     userPrompt = appendImageTransparentBgPrompt(userPrompt, ctx.locale)
   }
   // 剧集流水线产物节点（如 9宫格拼图 / 4宫格拼图）：重跑时附加导演上次 FAIL 原因
@@ -1243,8 +1246,8 @@ export async function executeImageGenerateNode(
     }
   }
 
-  // 透明背景模式：优先做四边连通纯色背景键控 + 去光晕，纯色底不明显时回退本地 YOLO 实例抠图
-  if (genParams.transparentBg) {
+  // 透明背景模式：默认开启（除非显式设置 generateTransparentBg=false 或提示词明确要求非透明背景），优先做四边连通纯色背景键控 + 去光晕，纯色底不明显时回退本地 YOLO 实例抠图
+  if (useTransparentBg) {
     for (const item of batch) {
       if (!item.dataUrl?.startsWith('data:image/')) continue
       let keyed = false

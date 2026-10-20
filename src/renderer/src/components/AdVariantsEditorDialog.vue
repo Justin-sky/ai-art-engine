@@ -1700,7 +1700,7 @@ watch(
   max-height: 260px;
   object-fit: contain;
   border-radius: 6px;
-  background: var(--bg-elevated);
+  background: var(--image-checker-bg);
   display: block;
 }
 
@@ -1818,7 +1818,7 @@ watch(
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 6px;
-  background: var(--bg-elevated);
+  background: var(--image-checker-bg);
   display: block;
 }
 
@@ -1828,6 +1828,7 @@ watch(
   justify-content: center;
   font-size: 12px;
   color: var(--text-muted);
+  background: var(--bg-elevated);
 }
 
 .version-bar {

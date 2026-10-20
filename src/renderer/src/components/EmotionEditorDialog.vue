@@ -266,7 +266,7 @@ function onClose(): void {
   position: relative;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
   overflow: hidden;
   display: flex;
   align-items: center;

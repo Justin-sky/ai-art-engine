@@ -17,7 +17,7 @@ describe('resolveImageGenerateParamsForApi', () => {
     expect(resolved.count).toBe(1)
   })
 
-  it('keeps explicit node values', () => {
+  it('keeps explicit node values and defaults transparentBg to true unless explicitly false', () => {
     const resolved = resolveImageGenerateParamsForApi({
       generateAspectRatio: '1:1',
       generateResolution: '4K',
@@ -30,8 +30,13 @@ describe('resolveImageGenerateParamsForApi', () => {
       quality: 'high',
       count: 2,
       seedUseGlobal: true,
-      transparentBg: false
+      transparentBg: true
     })
+
+    const resolvedOff = resolveImageGenerateParamsForApi({
+      generateTransparentBg: false
+    })
+    expect(resolvedOff.transparentBg).toBe(false)
   })
 
   it('clamps invalid values into capability defaults', () => {

@@ -700,6 +700,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 12px;
   overflow: auto;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -711,21 +712,11 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 0 0 auto;
   box-shadow: 0 0 0 1px var(--wash-20);
+  background: var(--image-checker-bg);
 }
 
 .canvas-wrap-matte {
-  background-color: var(--slider-thumb-bg);
-  background-image:
-    linear-gradient(45deg, #a8a8a8 25%, transparent 25%),
-    linear-gradient(-45deg, #a8a8a8 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #a8a8a8 75%),
-    linear-gradient(-45deg, transparent 75%, #a8a8a8 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    0 8px,
-    8px -8px,
-    -8px 0;
+  background: var(--image-checker-bg);
 }
 
 .source-img {

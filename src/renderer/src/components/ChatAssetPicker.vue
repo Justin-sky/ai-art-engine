@@ -371,11 +371,16 @@ function confirm(): void {
   display: block;
 }
 
+.thumb:has(> img) {
+  background: var(--image-checker-bg);
+}
+
 .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  background: var(--image-checker-bg);
 }
 
 .thumb-fallback {

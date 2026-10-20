@@ -290,6 +290,7 @@ async function onImageClick(): Promise<void> {
 
 img.chat-asset-media {
   cursor: zoom-in;
+  background: var(--image-checker-bg);
 }
 
 .chat-asset-audio {

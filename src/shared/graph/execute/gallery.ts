@@ -331,6 +331,7 @@ export function dualTextGalleryOutputs(
       kind: 'text',
       text: picked?.text ?? '',
       id: picked?.id,
+      ...(picked?.title ? { title: picked.title } : {}),
       ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
     },
     [GRAPH_OUT_ALL_PORT_ID]: { kind: 'texts', items }

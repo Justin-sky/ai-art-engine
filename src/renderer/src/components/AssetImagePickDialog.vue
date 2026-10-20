@@ -243,7 +243,14 @@ function confirm(): void {
   cursor: default;
 }
 
-.card img,
+.card img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--image-checker-bg);
+  display: block;
+}
+
 .thumb-fallback {
   width: 100%;
   aspect-ratio: 4 / 3;

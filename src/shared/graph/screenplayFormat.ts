@@ -432,3 +432,367 @@ ZERO: Want to intercept me? Let's see if you dare follow me into the warp ventil
 △ Zero slams the nitro thruster; blue plasma roars from the exhaust as she dives vertically into the neon abyss!`
   }
 ]
+
+export interface ScreenplaySceneOutline {
+  /** 1-based 场次序号 */
+  index: number
+  /** 场次标题行（如 `第1场 【内景 · 星辰国际珠宝拍卖厅 - 夜】`） */
+  title: string
+  /** 在剧本正文中的 0-based 行号 */
+  lineIndex: number
+  /** 在剧本正文中的字符偏移量（用于编辑器光标跳转） */
+  charOffset: number
+  /** 该场次首条动作或对白摘要 */
+  preview: string
+}
+
+const PURE_SCENE_HEADER_RE =
+  /^(?:#+\s*)?(?:\*\*\s*)?(?:第\s*[0-9一二三四五六七八九十百千万]+\s*[场幕]|场次\s*[0-9一二三四五六七八九十]+|SCENE\s+\d+|(?:INT|EXT|INT\.\/EXT)\b)/i
+
+const EPISODE_HEADER_RE =
+  /^(?:#+\s*)?(?:\*\*\s*)?(?:【\s*第\s*[0-9一二三四五六七八九十百千万]+\s*集[^】]*】|第\s*[0-9一二三四五六七八九十百千万]+\s*集(?:\s*[:：·—-]\s*\S.*|\s+\S.*|\s*\*\*|$)|EPISODE\s+\d+(?:\b.*)?|EP\.?\s*\d+(?:\s*[:：-].*|\s*\*\*|$))/i
+
+/**
+ * 提取剧本中的场次大纲列表（用于工作台大纲导航与点击跳转）。
+ */
+export function extractScreenplayScenes(text: string): ScreenplaySceneOutline[] {
+  const raw = typeof text === 'string' ? text : ''
+  if (!raw.trim() || raw.trim() === '…') return []
+
+  const lines = raw.split(/\r?\n/)
+  const scenes: ScreenplaySceneOutline[] = []
+  let charCursor = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i]!
+    const line = rawLine.trim()
+    const lineOffset = charCursor
+    charCursor += rawLine.length + 1
+
+    if (!line) continue
+    if (PURE_SCENE_HEADER_RE.test(line)) {
+      let preview = ''
+      for (let j = i + 1; j < lines.length; j++) {
+        const nextLine = lines[j]!.trim()
+        if (!nextLine) continue
+        if (PURE_SCENE_HEADER_RE.test(nextLine) || EPISODE_HEADER_RE.test(nextLine)) break
+        preview = nextLine.length > 42 ? `${nextLine.slice(0, 42)}…` : nextLine
+        break
+      }
+      scenes.push({
+        index: scenes.length + 1,
+        title: line,
+        lineIndex: i,
+        charOffset: lineOffset,
+        preview
+      })
+    }
+  }
+
+  return scenes
+}
+
+export interface ScreenplaySplitOptions {
+  /**
+   * 拆分模式：
+   * - 'auto'（默认）：若检测到 >=2 个显式「第X集 / EPISODE X」标记则按集标记拆分，否则按每集场次数拆分
+   * - 'markers'：按「第X集 / EPISODE X」分集标题拆分
+   * - 'scenes'：按每集固定场次数（scenesPerEpisode）拆分
+   */
+  mode?: 'auto' | 'markers' | 'scenes'
+  /** 按场次拆分时每集包含的场次数（默认 2，范围 1~20） */
+  scenesPerEpisode?: number
+  /** 是否在拆分出的每一集头部自动携带共享的【人物小传】与剧名（默认 true） */
+  includeSharedBios?: boolean
+  /** 语言环境（默认 'zh-CN'） */
+  locale?: string
+}
+
+export interface ScreenplayEpisodeItem {
+  /** 1-based 集序号 */
+  index: number
+  /** 分集标题（如 `第1集` 或 `第1集：拍卖惊变`） */
+  title: string
+  /** 该集完整剧本文本（可选含共享【人物小传】） */
+  text: string
+  /** 该集场次数 */
+  sceneCount: number
+  /** 预估时长（秒） */
+  estimatedDurationSec: number
+}
+
+/**
+ * 提取剧本顶部的共享元信息与【人物小传】区块（位于第一个第X集或第X场之前）。
+ */
+export function extractSharedScreenplayHeader(text: string): {
+  sharedHeader: string
+  bodyText: string
+} {
+  const raw = typeof text === 'string' ? text : ''
+  const normalized = raw.replace(/\r\n/g, '\n').trim()
+  if (!normalized || normalized === '…') {
+    return { sharedHeader: '', bodyText: '' }
+  }
+
+  const lines = normalized.split('\n')
+  const headerLines: string[] = []
+  let firstContentIdx = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i]!.trim()
+    if (EPISODE_HEADER_RE.test(trimmed) || PURE_SCENE_HEADER_RE.test(trimmed)) {
+      firstContentIdx = i
+      break
+    }
+    headerLines.push(lines[i]!)
+    firstContentIdx = i + 1
+  }
+
+  const sharedHeader = headerLines.join('\n').trim()
+  const bodyText = lines.slice(firstContentIdx).join('\n').trim()
+  return { sharedHeader, bodyText }
+}
+
+function cleanEpisodeTitle(rawHeader: string, index: number, isEn: boolean): string {
+  const clean = rawHeader
+    .trim()
+    .replace(/^#+\s*/, '')
+    .replace(/^\*\*\s*/, '')
+    .replace(/\s*\*\*$/, '')
+    .replace(/^【\s*/, '')
+    .replace(/\s*】$/, '')
+    .trim()
+  if (clean) return clean
+  return isEn ? `Episode ${index}` : `第${index}集`
+}
+
+function deriveEpisodeTitleFromFirstScene(
+  firstSceneLine: string,
+  index: number,
+  isEn: boolean
+): string {
+  const base = isEn ? `Episode ${index}` : `第${index}集`
+  const bracketMatch = firstSceneLine.match(/【([^】]+)】|\[([^\]]+)\]/)
+  const rawLoc = (bracketMatch?.[1] || bracketMatch?.[2] || '').trim()
+  if (!rawLoc) return base
+  const cleanedLoc = rawLoc
+    .replace(/^(?:内景|外景|内外景|INT\.\/EXT\.|INT\.|EXT\.)\s*[·•-]*\s*/i, '')
+    .replace(/\s*[-—·•]\s*(?:日|夜|晨|昏|黄昏|清晨|傍晚|DAY|NIGHT|DUSK|DAWN)$/i, '')
+    .trim()
+  return cleanedLoc ? `${base} · ${cleanedLoc}` : base
+}
+
+function prependSharedHeaderIfNeeded(
+  episodeBody: string,
+  sharedHeader: string,
+  includeSharedBios: boolean
+): string {
+  const body = formatScreenplayText(episodeBody.trim())
+  if (!includeSharedBios || !sharedHeader.trim()) return body
+  const hasOwnBio = body.split(/\r?\n/).some((line) => BIO_SECTION_RE.test(line.trim()))
+  if (hasOwnBio) return body
+  return formatScreenplayText(`${sharedHeader.trim()}\n\n${body}`)
+}
+
+/**
+ * 将长剧本智能拆分为多集（支持按「第X集 / EPISODE X」标记拆分，或按每集固定场次数拆分，并自动保留共享【人物小传】）。
+ */
+export function splitScreenplayIntoEpisodes(
+  text: string,
+  options: ScreenplaySplitOptions = {}
+): ScreenplayEpisodeItem[] {
+  const raw = typeof text === 'string' ? text : ''
+  const normalized = raw.replace(/\r\n/g, '\n').trim()
+  if (!normalized || normalized === '…') return []
+
+  const mode = options.mode ?? 'auto'
+  const scenesPerEpisode = Math.max(1, Math.min(20, Math.round(options.scenesPerEpisode ?? 2)))
+  const includeSharedBios = options.includeSharedBios !== false
+  const isEn = (options.locale ?? 'zh-CN').toLowerCase().startsWith('en')
+
+  const { sharedHeader, bodyText } = extractSharedScreenplayHeader(normalized)
+  const workingText = bodyText || normalized
+  const lines = workingText.split('\n')
+
+  // 1. 扫描显式「第X集 / EPISODE X」标记
+  const markerIndices: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (EPISODE_HEADER_RE.test(lines[i]!.trim())) {
+      markerIndices.push(i)
+    }
+  }
+
+  const useMarkers =
+    mode === 'markers' ? markerIndices.length >= 1 : mode === 'auto' && markerIndices.length >= 2
+
+  if (useMarkers) {
+    const episodes: ScreenplayEpisodeItem[] = []
+    for (let m = 0; m < markerIndices.length; m++) {
+      const startLine = markerIndices[m]!
+      const endLine = m + 1 < markerIndices.length ? markerIndices[m + 1]! : lines.length
+      const headerLine = lines[startLine]!.trim()
+      const chunkBody = lines
+        .slice(startLine + 1, endLine)
+        .join('\n')
+        .trim()
+      const content = chunkBody || headerLine
+      const fullText = prependSharedHeaderIfNeeded(content, sharedHeader, includeSharedBios)
+      const stats = analyzeScreenplay(fullText)
+      const epIndex = episodes.length + 1
+      episodes.push({
+        index: epIndex,
+        title: cleanEpisodeTitle(headerLine, epIndex, isEn),
+        text: fullText,
+        sceneCount: stats.sceneCount,
+        estimatedDurationSec: stats.estimatedDurationSec
+      })
+    }
+    return episodes
+  }
+
+  // 2. 按场次标题（第X场 / SCENE X）切分
+  const sceneStartIndices: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (PURE_SCENE_HEADER_RE.test(lines[i]!.trim())) {
+      sceneStartIndices.push(i)
+    }
+  }
+
+  if (sceneStartIndices.length >= 2) {
+    const sceneBlocks: Array<{ header: string; blockText: string }> = []
+    for (let s = 0; s < sceneStartIndices.length; s++) {
+      const start = sceneStartIndices[s]!
+      const end = s + 1 < sceneStartIndices.length ? sceneStartIndices[s + 1]! : lines.length
+      const prefix = s === 0 && start > 0 ? `${lines.slice(0, start).join('\n').trim()}\n\n` : ''
+      const blockText = `${prefix}${lines.slice(start, end).join('\n').trim()}`.trim()
+      sceneBlocks.push({
+        header: lines[start]!.trim(),
+        blockText
+      })
+    }
+
+    const episodes: ScreenplayEpisodeItem[] = []
+    for (let i = 0; i < sceneBlocks.length; i += scenesPerEpisode) {
+      const group = sceneBlocks.slice(i, i + scenesPerEpisode)
+      if (!group.length) continue
+      const epIndex = episodes.length + 1
+      const combinedScenes = group.map((g) => g.blockText).join('\n\n')
+      const fullText = prependSharedHeaderIfNeeded(combinedScenes, sharedHeader, includeSharedBios)
+      const stats = analyzeScreenplay(fullText)
+      episodes.push({
+        index: epIndex,
+        title: deriveEpisodeTitleFromFirstScene(group[0]!.header, epIndex, isEn),
+        text: fullText,
+        sceneCount: stats.sceneCount,
+        estimatedDurationSec: stats.estimatedDurationSec
+      })
+    }
+    return episodes
+  }
+
+  // 3. 兜底：若只有 1 场或无显式场次标题，按空行段落均分为多集（至少保留 1 集）
+  const paragraphs = workingText
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+
+  if (paragraphs.length >= 2 && scenesPerEpisode >= 1) {
+    const chunkSize = Math.max(1, Math.ceil(paragraphs.length / Math.max(2, scenesPerEpisode)))
+    const episodes: ScreenplayEpisodeItem[] = []
+    for (let i = 0; i < paragraphs.length; i += chunkSize) {
+      const group = paragraphs.slice(i, i + chunkSize)
+      const epIndex = episodes.length + 1
+      const fullText = prependSharedHeaderIfNeeded(
+        group.join('\n\n'),
+        sharedHeader,
+        includeSharedBios
+      )
+      const stats = analyzeScreenplay(fullText)
+      episodes.push({
+        index: epIndex,
+        title: isEn ? `Episode ${epIndex}` : `第${epIndex}集`,
+        text: fullText,
+        sceneCount: stats.sceneCount,
+        estimatedDurationSec: stats.estimatedDurationSec
+      })
+    }
+    return episodes
+  }
+
+  const singleFull = formatScreenplayText(normalized)
+  const singleStats = analyzeScreenplay(singleFull)
+  return [
+    {
+      index: 1,
+      title: isEn ? 'Episode 1' : '第1集',
+      text: singleFull,
+      sceneCount: singleStats.sceneCount,
+      estimatedDurationSec: singleStats.estimatedDurationSec
+    }
+  ]
+}
+
+/**
+ * 仅当剧本正文中包含 >= 2 个显式「第X集 / EPISODE X」标题标记时，按标记拆分为多集；
+ * 若不足 2 个标记则返回空数组（不触发按场次或段落的启发式切分）。
+ */
+export function splitScreenplayByExplicitEpisodeMarkers(
+  text: string,
+  options: Pick<ScreenplaySplitOptions, 'includeSharedBios' | 'locale'> = {}
+): ScreenplayEpisodeItem[] {
+  const raw = typeof text === 'string' ? text : ''
+  const normalized = raw.replace(/\r\n/g, '\n').trim()
+  if (!normalized || normalized === '…') return []
+
+  const includeSharedBios = options.includeSharedBios !== false
+  const isEn = (options.locale ?? 'zh-CN').toLowerCase().startsWith('en')
+  const { sharedHeader, bodyText } = extractSharedScreenplayHeader(normalized)
+  const workingText = bodyText || normalized
+  const lines = workingText.split('\n')
+
+  const markerIndices: number[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (EPISODE_HEADER_RE.test(lines[i]!.trim())) {
+      markerIndices.push(i)
+    }
+  }
+  if (markerIndices.length < 2) return []
+
+  const episodes: ScreenplayEpisodeItem[] = []
+  for (let m = 0; m < markerIndices.length; m++) {
+    const startLine = markerIndices[m]!
+    const endLine = m + 1 < markerIndices.length ? markerIndices[m + 1]! : lines.length
+    const headerLine = lines[startLine]!.trim()
+    const chunkBody = lines
+      .slice(startLine + 1, endLine)
+      .join('\n')
+      .trim()
+    const content = chunkBody || headerLine
+    const fullText = prependSharedHeaderIfNeeded(content, sharedHeader, includeSharedBios)
+    const stats = analyzeScreenplay(fullText)
+    const epIndex = episodes.length + 1
+    episodes.push({
+      index: epIndex,
+      title: cleanEpisodeTitle(headerLine, epIndex, isEn),
+      text: fullText,
+      sceneCount: stats.sceneCount,
+      estimatedDurationSec: stats.estimatedDurationSec
+    })
+  }
+  return episodes
+}
+
+/**
+ * 构建「AI 续写下一集」指令提示词：携带人物小传与上一集结尾剧情脉络。
+ */
+export function buildNextEpisodeInstruction(
+  currentEpisodeTitle: string,
+  nextEpisodeIndex: number,
+  locale = 'zh-CN'
+): string {
+  const isEn = locale.toLowerCase().startsWith('en')
+  if (isEn) {
+    return `Continue writing Episode ${nextEpisodeIndex} following "${currentEpisodeTitle || `Episode ${nextEpisodeIndex - 1}`}": keep the [Character Bios] block at the top, resolve the previous cliffhanger, write 2-3 high-conflict scenes using SCENE X [INT./EXT. LOCATION - DAY/NIGHT], △ camera actions, and CHARACTER: dialogue, ending with a new suspense hook.`
+  }
+  return `承接「${currentEpisodeTitle || `第${nextEpisodeIndex - 1}集`}」结尾悬念，续写第${nextEpisodeIndex}集完整剧本：顶部保留【人物小传】，编写 2～3 场高冲突戏（使用「第X场 【内/外景 · 地点 - 日/夜】」、「△ 动作描写」与「角色名：台词」标准格式），并在集尾埋下新的反转钩子。` // cjk-ok
+}

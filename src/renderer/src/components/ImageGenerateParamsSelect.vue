@@ -121,7 +121,7 @@
               <button
                 type="button"
                 class="chip"
-                :class="{ active: local.transparentBg !== true }"
+                :class="{ active: local.transparentBg === false }"
                 @click="pickTransparentBg(false)"
               >
                 {{ t('graph.inspector.generate.imageParams.transparentBgOff') }}
@@ -129,7 +129,7 @@
               <button
                 type="button"
                 class="chip"
-                :class="{ active: local.transparentBg === true }"
+                :class="{ active: local.transparentBg !== false }"
                 :title="t('graph.inspector.generate.imageParams.transparentBgHint')"
                 @click="pickTransparentBg(true)"
               >
@@ -239,7 +239,7 @@ const summaryText = computed(() => {
   if (caps.value.counts.length && local.value.count != null) {
     parts.push(t('graph.inspector.generate.imageParams.countOption', { n: local.value.count }))
   }
-  if (local.value.transparentBg) {
+  if (local.value.transparentBg !== false) {
     parts.push(t('graph.inspector.generate.imageParams.transparentBgSummary'))
   }
   if (local.value.seedUseGlobal === false && local.value.seed != null) {

@@ -835,13 +835,14 @@ function onClearOutput(): void {
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .sheet-calibrator img {
   display: block;
   width: 100%;
   height: auto;
+  background: var(--image-checker-bg);
 }
 
 .grid-overlay {

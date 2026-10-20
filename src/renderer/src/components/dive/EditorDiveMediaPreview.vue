@@ -2,6 +2,7 @@
   <div
     ref="rootEl"
     class="media-preview"
+    :class="{ 'is-image': mediaKind === 'image' }"
     tabindex="0"
     @wheel.prevent="onWheel"
     @keydown="onKeydown"
@@ -273,7 +274,10 @@ function onBackdropClick(): void {
   /* 工具条浮在画面之上 */
   position: relative;
   outline: none;
-  background: #0b0b0d;
+  background: var(--graph-preview-bg);
+}
+.media-preview.is-image {
+  background: var(--image-checker-bg);
 }
 .viewport {
   flex: 1;
@@ -293,6 +297,7 @@ function onBackdropClick(): void {
   transform-origin: center center;
   cursor: grab;
   user-select: none;
+  background: var(--image-checker-bg);
 }
 .image.grabbing {
   cursor: grabbing;

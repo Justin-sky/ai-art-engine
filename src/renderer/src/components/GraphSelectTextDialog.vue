@@ -26,12 +26,12 @@
     <p class="hint">
       {{ t('graph.selectText.hint') }}
     </p>
-    <div v-if="!items.length" class="empty">
+    <div v-if="!displayItems.length" class="empty">
       {{ t('graph.selectText.empty') }}
     </div>
     <div v-else class="text-grid" role="listbox" :aria-label="t('graph.selectText.appMark')">
       <button
-        v-for="(item, index) in items"
+        v-for="(item, index) in displayItems"
         :key="itemKey(item, index)"
         type="button"
         class="card"
@@ -42,6 +42,7 @@
         @click="draftId = itemKey(item, index)"
         @dblclick.stop="openItem(item, index)"
       >
+        <div v-if="item.title?.trim()" class="card-title">{{ item.title.trim() }}</div>
         <pre class="snippet">{{ resolvedBody(item, index) }}</pre>
         <span class="caption">{{ index + 1 }}</span>
       </button>
@@ -59,7 +60,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { textItemKey, type GraphTextItem } from '@shared/graph'
+import {
+  splitScreenplayByExplicitEpisodeMarkers,
+  textItemKey,
+  type GraphTextItem
+} from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 import GraphTextNotepadDialog from './GraphTextNotepadDialog.vue'
@@ -76,7 +81,7 @@ const emit = defineEmits<{
   save: [selectedTextId: string]
 }>()
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 const draftId = ref('')
 const resolved = ref<Record<string, string>>({})
 let resolveToken = 0
@@ -89,9 +94,34 @@ function itemKey(item: GraphTextItem, index: number): string {
   return textItemKey(item, index)
 }
 
+const displayItems = computed((): GraphTextItem[] => {
+  if (props.items.length === 1) {
+    const first = props.items[0]!
+    const rawKey = itemKey(first, 0)
+    const body = (resolved.value[rawKey] ?? first.text ?? '').trim()
+    if (body) {
+      const explicitEpisodes = splitScreenplayByExplicitEpisodeMarkers(body, {
+        includeSharedBios: true,
+        locale: String(locale.value)
+      })
+      if (explicitEpisodes.length >= 2) {
+        const baseId = first.id?.trim() || rawKey
+        return explicitEpisodes.map((ep) => ({
+          id: `${baseId}:ep:${ep.index}`,
+          title: ep.title,
+          text: ep.text,
+          createdAt: first.createdAt,
+          ...(first.relativePath?.trim() ? { relativePath: first.relativePath.trim() } : {})
+        }))
+      }
+    }
+  }
+  return props.items
+})
+
 function resolvedBody(item: GraphTextItem, index: number): string {
   const key = itemKey(item, index)
-  const body = resolved.value[key] ?? item.text ?? ''
+  const body = item.text?.trim() ? item.text : (resolved.value[key] ?? '')
   const snippet = body.trim()
   if (!snippet) return item.relativePath?.trim() || '…'
   return snippet.length > 220 ? `${snippet.slice(0, 220)}…` : snippet
@@ -127,7 +157,8 @@ async function resolveBodies(): Promise<void> {
 }
 
 const dirty = computed(() => {
-  const current = props.selectedTextId ?? (props.items[0] ? itemKey(props.items[0], 0) : '')
+  const list = displayItems.value
+  const current = props.selectedTextId ?? (list[0] ? itemKey(list[0], 0) : '')
   return draftId.value !== current
 })
 
@@ -146,14 +177,17 @@ watch(
 )
 
 watch(
-  () => [props.open, props.items, props.selectedTextId] as const,
-  ([open]) => {
+  () => [props.open, displayItems.value, props.selectedTextId] as const,
+  ([open, list]) => {
     if (!open) return
-    if (props.selectedTextId) {
+    if (
+      props.selectedTextId &&
+      list.some((item, idx) => itemKey(item, idx) === props.selectedTextId)
+    ) {
       draftId.value = props.selectedTextId
       return
     }
-    draftId.value = props.items[0] ? itemKey(props.items[0], 0) : ''
+    draftId.value = list[0] ? itemKey(list[0], 0) : ''
   },
   { immediate: true, deep: true }
 )
@@ -165,8 +199,9 @@ function save(): void {
 
 async function openItem(item: GraphTextItem, index: number): Promise<void> {
   const key = itemKey(item, index)
-  const body = resolved.value[key] ?? (await loadTextBody(item))
-  notepadTitle.value = `${props.title} · ${index + 1}`
+  const body = item.text?.trim() ? item.text : (resolved.value[key] ?? (await loadTextBody(item)))
+  const label = item.title?.trim() || String(index + 1)
+  notepadTitle.value = `${props.title} · ${label}`
   notepadText.value = body
   notepadOpen.value = true
 }
@@ -247,6 +282,16 @@ function onClose(): void {
 .card.selected {
   border-color: var(--accent, #6ea8fe);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6ea8fe) 55%, transparent);
+}
+
+.card-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #6ea8fe);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .snippet {

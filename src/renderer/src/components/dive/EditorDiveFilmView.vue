@@ -3100,6 +3100,7 @@ textarea {
   border: 1px solid var(--border);
   cursor: zoom-in;
   flex-shrink: 0;
+  background: var(--image-checker-bg);
 }
 
 .shot-binding-panel {
@@ -3209,7 +3210,7 @@ textarea {
   border-radius: 6px;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--image-checker-bg);
   max-height: 180px;
   cursor: zoom-in;
   display: flex;
@@ -3220,6 +3221,7 @@ textarea {
 .card-media-preview.video {
   max-height: 220px;
   cursor: default;
+  background: var(--bg);
 }
 
 .card-media-preview img {
@@ -3227,6 +3229,7 @@ textarea {
   max-height: 180px;
   object-fit: cover;
   display: block;
+  background: var(--image-checker-bg);
 }
 
 .card-video-player {
@@ -3247,7 +3250,7 @@ textarea {
   border: 1px solid var(--border);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
   cursor: zoom-in;
-  background: #000;
+  background: var(--image-checker-bg);
 }
 
 .card-keyframe-corner img {

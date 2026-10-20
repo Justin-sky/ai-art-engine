@@ -416,7 +416,14 @@ onBeforeUnmount(() => {
   background: var(--bg-elevated);
 }
 
-.slot img,
+.slot img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: var(--image-checker-bg);
+}
+
 .slot-empty {
   display: block;
   width: 100%;

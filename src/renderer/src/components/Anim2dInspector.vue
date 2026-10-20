@@ -1185,20 +1185,7 @@ onBeforeUnmount(stopPlayback)
 }
 
 .anim-preview.bg-checker {
-  background-color: var(--bg-input);
-  background-image:
-    linear-gradient(
-      45deg,
-      var(--wash-16) 25%,
-      transparent 25%,
-      transparent 75%,
-      var(--wash-16) 75%
-    ),
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    8px 8px;
+  background: var(--image-checker-bg);
 }
 
 .anim-preview.bg-dark {
@@ -1365,7 +1352,7 @@ onBeforeUnmount(stopPlayback)
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-input);
+  background: var(--image-checker-bg);
   cursor: pointer;
   overflow: hidden;
   aspect-ratio: 1;

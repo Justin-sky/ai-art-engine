@@ -69,8 +69,9 @@
           系统提示词只给「文本类」节点：图片 / 剧本 / 视频 / 策划案会把它拼进 prompt 或
           作为 system 角色发给对话模型。声音节点不给 —— TTS 的 input 是「要被朗读的文本」，
           给模型的指令会被一并念出来（详见 generateMedia 声音分支的说明）。
+          剧本生成节点的系统提示词与详细精修移入全屏 Dive 工作台，保持右侧 Inspector 简洁。
         -->
-        <label v-if="!isVoice">
+        <label v-if="!isVoice && !isScreenplay">
           {{ t('graph.inspector.generate.systemPrompt') }}
           <ExpandableTextarea
             :key="`sys-${node.id}`"
@@ -229,22 +230,37 @@
       </div>
     </section>
 
-    <!-- 剧本生成节点（asset.screenplay）专属：AI 创作指令 + 实时结构统计 + 识别角色胶囊 + 排版与样板工作台 + 剧本正文编辑 -->
+    <!-- 剧本生成节点（asset.screenplay）轻量化概览：一键进入剧本与分集 Dive 工作台 + 核心指标 + 快捷指令 + 正文预览 -->
     <section v-if="isScreenplay" class="screenplay-studio">
+      <button type="button" class="screenplay-workbench-btn" @click="openScreenplayWorkbench">
+        {{ t('graph.scriptNode.workbench.openBtn') }}
+      </button>
+      <p class="section-hint">
+        {{ t('graph.scriptNode.workbench.openHint') }}
+      </p>
+
+      <div class="screenplay-telemetry">
+        <span class="stat-pill stat-accent">{{
+          t('graph.scriptNode.telemetry.episodes', { n: Math.max(1, generatedTexts.length) })
+        }}</span>
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.scenes', { n: screenplayAnalysis.sceneCount })
+        }}</span>
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.characters', {
+            n: screenplayAnalysis.characters.length
+          })
+        }}</span>
+        <span v-if="screenplayAnalysis.estimatedDurationSec > 0" class="stat-pill">{{
+          t('graph.scriptNode.telemetry.duration', {
+            s: screenplayAnalysis.estimatedDurationSec
+          })
+        }}</span>
+      </div>
+
       <div class="ai-assistant-box">
         <div class="ai-head">
           <span class="ai-title">{{ t('graph.scriptNode.aiAssistant.title') }}</span>
-        </div>
-        <div class="ai-presets">
-          <button
-            v-for="preset in screenplayAiPresets"
-            :key="preset.key"
-            type="button"
-            class="preset-chip"
-            @click="applyScreenplayAiPreset(preset.label)"
-          >
-            {{ preset.label }}
-          </button>
         </div>
         <ExpandableTextarea
           :key="`${node.id}-sp-inst`"
@@ -256,87 +272,21 @@
         />
       </div>
 
-      <div class="screenplay-telemetry">
-        <span class="stat-pill">{{
-          t('graph.scriptNode.telemetry.scenes', { n: screenplayAnalysis.sceneCount })
-        }}</span>
-        <span class="stat-pill">{{
-          t('graph.scriptNode.telemetry.characters', {
-            n: screenplayAnalysis.characters.length
-          })
-        }}</span>
-        <span class="stat-pill">{{
-          t('graph.scriptNode.telemetry.dialogues', { n: screenplayAnalysis.dialogueCount })
-        }}</span>
-        <span class="stat-pill">{{
-          t('graph.scriptNode.telemetry.actions', { n: screenplayAnalysis.actionCount })
-        }}</span>
-        <span v-if="screenplayAnalysis.estimatedDurationSec > 0" class="stat-pill stat-accent">{{
-          t('graph.scriptNode.telemetry.duration', {
-            s: screenplayAnalysis.estimatedDurationSec
-          })
-        }}</span>
-      </div>
-
-      <div v-if="screenplayAnalysis.characters.length" class="cast-bar">
-        <span class="cast-label">{{ t('graph.scriptNode.characterList') }}</span>
-        <div class="cast-chips">
-          <button
-            v-for="name in screenplayAnalysis.characters"
-            :key="name"
-            type="button"
-            class="cast-chip"
-            @click="insertSpeakerLine(name)"
-          >
-            {{ name }}
-          </button>
+      <div
+        class="inspector-draft-card"
+        :title="t('graph.scriptNode.workbench.openBtn')"
+        @click="openScreenplayWorkbench"
+      >
+        <div class="draft-card-head">
+          <span class="draft-card-title">{{
+            t('graph.scriptNode.workbench.inspectorDraftPreview')
+          }}</span>
+          <span class="draft-card-action">{{ t('graph.scriptNode.workbench.openBtn') }} →</span>
         </div>
+        <pre class="draft-card-snippet">{{
+          localText.trim() || t('graph.scriptNode.workbench.inspectorEmptyDraft')
+        }}</pre>
       </div>
-
-      <div class="screenplay-toolbar">
-        <select class="tpl-select" value="" @change="onSelectScreenplayTemplate">
-          <option value="" disabled>
-            {{ t('graph.scriptNode.toolbar.templatePlaceholder') }}
-          </option>
-          <option v-for="tpl in screenplayTemplates" :key="tpl.id" :value="tpl.id">
-            {{ t(`graph.scriptNode.templates.${tpl.id}`) }}
-          </option>
-        </select>
-
-        <div class="tool-btns">
-          <button type="button" class="tool-chip" @click="insertNextScene">
-            {{ t('graph.scriptNode.toolbar.addScene') }}
-          </button>
-          <button type="button" class="tool-chip" @click="insertCharacterBio">
-            {{ t('graph.scriptNode.toolbar.addBio') }}
-          </button>
-          <button type="button" class="tool-chip" @click="insertActionBeat">
-            {{ t('graph.scriptNode.toolbar.addAction') }}
-          </button>
-          <button type="button" class="tool-chip" @click="insertVoiceover">
-            {{ t('graph.scriptNode.toolbar.addVo') }}
-          </button>
-          <button type="button" class="tool-chip tool-chip-accent" @click="formatScreenplay">
-            {{
-              screenplayFormatFlash
-                ? t('graph.scriptNode.toolbar.formatDone')
-                : t('graph.scriptNode.toolbar.format')
-            }}
-          </button>
-        </div>
-      </div>
-
-      <label>
-        {{ t('graph.inspector.note.body') }}
-        <ExpandableTextarea
-          :key="`${node.id}-sp-body`"
-          v-model="localText"
-          :title="t('graph.inspector.note.body')"
-          :rows="11"
-          :placeholder="t('graph.scriptNode.placeholder')"
-          @change="persistScreenplayBody"
-        />
-      </label>
     </section>
 
     <section
@@ -345,9 +295,9 @@
       :aria-label="t('graph.inspector.generate.generatedTexts')"
     >
       <div class="section-head">
-        <span class="section-title">{{ t('graph.inspector.generate.generatedTexts') }}</span>
+        <span class="section-title">{{ t('graph.scriptNode.workbench.episodesTitle') }}</span>
         <span v-if="generatedTexts.length" class="section-count">
-          {{ t('graph.inspector.generate.generatedTextsCount', { n: generatedTexts.length }) }}
+          {{ t('graph.scriptNode.workbench.episodeCount', { n: generatedTexts.length }) }}
         </span>
       </div>
       <p class="section-hint">
@@ -368,8 +318,9 @@
             class="text-thumb"
             :title="t('graph.inspector.generate.setAsOutput')"
             @click="selectGeneratedText(item.id || `index:${index}`)"
-            @dblclick="openGeneratedText(item.id || `index:${index}`)"
+            @dblclick="openScreenplayWorkbench"
           >
+            <div v-if="item.title" class="text-ep-title">{{ item.title }}</div>
             <pre class="text-snippet">{{
               resolvedGeneratedText[item.id || `index:${index}`] || '…'
             }}</pre>
@@ -756,9 +707,6 @@ import {
 } from '@shared/voiceProfiles'
 import {
   analyzeScreenplay,
-  buildCharacterBioSnippet,
-  buildNextSceneSnippet,
-  buildVoiceoverSnippet,
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_EN,
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
   DEFAULT_GAME_SYSTEM_USER_PROMPT_EN,
@@ -774,7 +722,6 @@ import {
   defaultImageSystemPrompt,
   defaultScreenplaySystemPrompt,
   defaultVideoSystemPrompt,
-  formatScreenplayText,
   imageGenerateParamsToNodePatch,
   isProcessingAssetNode,
   readImageGenerateParamsFromNode,
@@ -784,7 +731,6 @@ import {
   resolveNodeType,
   resolveScreenplaySystemPrompt,
   resolveVideoSystemPrompt,
-  SCREENPLAY_TEMPLATES,
   videoGenerateParamsToNodePatch,
   type ImageGenerateParams,
   type VideoGenerateParams
@@ -817,6 +763,7 @@ import {
 import { dialogueSpeakers, parseDialogueScript } from '@shared/graph/dialogueScript'
 import { generateNodeModality, usesVoiceProfile } from '@shared/graph/generateNodeModality'
 import { useProjectStore } from '../stores/project'
+import { useWorkspaceStore } from '../stores/workspace'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
@@ -837,6 +784,7 @@ type StoredGeneratedImage = {
 
 type StoredGeneratedText = {
   id?: string
+  title?: string
   text: string
   createdAt?: string
   relativePath?: string
@@ -869,6 +817,7 @@ const {
   confirmSave
 } = useSaveCacheAsset()
 const editor = useEditorKernel()
+const workspace = useWorkspaceStore()
 
 const node = computed(() => {
   const selection = editor.selection.current.value
@@ -1332,24 +1281,25 @@ onBeforeUnmount(() => {
   resolveGeneratedTextToken += 1
 })
 
-const screenplayTemplates = SCREENPLAY_TEMPLATES
-const screenplayFormatFlash = ref(false)
 const editingTextId = ref<string | null>(null)
 
 const screenplayAnalysis = computed(() =>
   analyzeScreenplay(isScreenplay.value ? localText.value : '')
 )
 
-const screenplayAiPresets = computed(() => [
-  { key: 'expand', label: t('graph.scriptNode.aiAssistant.presetExpand') },
-  { key: 'conflict', label: t('graph.scriptNode.aiAssistant.presetConflict') },
-  { key: 'format', label: t('graph.scriptNode.aiAssistant.presetFormat') },
-  { key: 'continue', label: t('graph.scriptNode.aiAssistant.presetContinue') }
-])
-
-function applyScreenplayAiPreset(text: string): void {
-  instruction.value = text
-  persistGenerateConfig()
+function openScreenplayWorkbench(): void {
+  const current = node.value
+  const rootKey = workspace.activeDiveRootKey?.trim()
+  if (!rootKey || !hostId.value || !current) return
+  workspace.diveIntoView(
+    rootKey,
+    {
+      viewId: 'screenplay.workbench',
+      hostId: hostId.value,
+      nodeId: current.id
+    },
+    displayTitle.value
+  )
 }
 
 function persistScreenplayBody(): void {
@@ -1385,65 +1335,6 @@ function persistScreenplayBody(): void {
     graphEditorHosts.updateNode(hid, current.id, { text: nextText })
   }
   graphEditorHosts.bumpRevision()
-}
-
-function appendScreenplaySnippet(snippet: string): void {
-  const base = localText.value.trim()
-  const isPlaceholder = !base || base === '…'
-  localText.value = isPlaceholder
-    ? snippet.trimStart()
-    : `${localText.value.trimEnd()}\n\n${snippet.trimStart()}`
-  persistScreenplayBody()
-}
-
-function insertNextScene(): void {
-  appendScreenplaySnippet(buildNextSceneSnippet(localText.value, String(locale.value)))
-}
-
-function insertCharacterBio(): void {
-  appendScreenplaySnippet(buildCharacterBioSnippet(String(locale.value)))
-}
-
-function insertActionBeat(): void {
-  const isEn = String(locale.value).toLowerCase().startsWith('en')
-  appendScreenplaySnippet(
-    isEn ? '△ [Character / camera action beat]' : '△ 【人物动作 / 镜头画面描写】' // cjk-ok
-  )
-}
-
-function insertVoiceover(): void {
-  appendScreenplaySnippet(
-    buildVoiceoverSnippet(screenplayAnalysis.value.characters[0], String(locale.value))
-  )
-}
-
-function insertSpeakerLine(name: string): void {
-  const isEn = String(locale.value).toLowerCase().startsWith('en')
-  appendScreenplaySnippet(
-    isEn ? `${name}: (emotion) [Dialogue line]` : `${name}：（情绪）[台词内容]` // cjk-ok
-  )
-}
-
-function onSelectScreenplayTemplate(event: Event): void {
-  const select = event.target as HTMLSelectElement
-  const tplId = select.value
-  select.value = ''
-  if (!tplId) return
-  const tpl = screenplayTemplates.find((item) => item.id === tplId)
-  if (!tpl) return
-  const isEn = String(locale.value).toLowerCase().startsWith('en')
-  localText.value = isEn ? tpl.textEn : tpl.textZh
-  persistScreenplayBody()
-}
-
-function formatScreenplay(): void {
-  if (!localText.value.trim()) return
-  localText.value = formatScreenplayText(localText.value)
-  persistScreenplayBody()
-  screenplayFormatFlash.value = true
-  setTimeout(() => {
-    screenplayFormatFlash.value = false
-  }, 1400)
 }
 
 function isSelectedText(key: string): boolean {
@@ -1499,12 +1390,14 @@ function syncRunOutputsAfterGeneratedTextsChange(
         kind: 'text',
         text: picked?.text ?? '',
         id: picked?.id,
+        ...(picked?.title ? { title: picked.title } : {}),
         ...(picked?.relativePath ? { relativePath: picked.relativePath } : {})
       },
       'out-all': {
         kind: 'texts',
         items: items.map((item) => ({
           id: item.id,
+          ...(item.title ? { title: item.title } : {}),
           text: item.text,
           createdAt: item.createdAt,
           ...(item.relativePath ? { relativePath: item.relativePath } : {})
@@ -1540,18 +1433,6 @@ function removeGeneratedText(textId: string | undefined): void {
       console.warn('[ShotNodeInspector] delete graph text failed', relativePath, err)
     })
   }
-}
-
-async function openGeneratedText(key: string): Promise<void> {
-  const list = generatedTexts.value
-  const index = list.findIndex((item, i) => (item.id || `index:${i}`) === key)
-  const item = index >= 0 ? list[index] : undefined
-  if (!item) return
-  const body = await loadGeneratedTextBody(item)
-  editingTextId.value = item.id || null
-  textNotepadTitle.value = t('graph.inspector.generate.generatedTexts')
-  textNotepadBody.value = body
-  textNotepadOpen.value = true
 }
 
 function onSaveNotepadText(nextText: string): void {
@@ -2832,7 +2713,7 @@ textarea,
   width: 100%;
   padding: 0;
   border: none;
-  background: var(--graph-preview-bg, var(--bg-elevated));
+  background: var(--image-checker-bg);
   cursor: zoom-in;
   aspect-ratio: 1;
 }
@@ -2842,6 +2723,7 @@ textarea,
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: var(--image-checker-bg);
 }
 
 .shot-loading {
@@ -2906,6 +2788,79 @@ textarea,
   gap: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
+}
+
+.screenplay-workbench-btn {
+  width: 100%;
+  padding: 7px 12px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.screenplay-workbench-btn:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+}
+
+.inspector-draft-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.inspector-draft-card:hover {
+  border-color: var(--accent);
+}
+
+.draft-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.draft-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.draft-card-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.draft-card-snippet {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 84px;
+  overflow: hidden;
+}
+
+.text-ep-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .screenplay-telemetry {

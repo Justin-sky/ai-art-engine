@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createNodeFromType } from '../src/shared/graph/create'
 import { executeScreenplayGenerateNode } from '../src/shared/graph/execute/generateText'
+import { resolveGalleryOutputsFromNodeParams } from '../src/shared/graph/execute/helpers'
+import { executeSelectTextNode } from '../src/shared/graph/execute/select'
 import { createScriptRunNodeExecutor } from '../src/shared/graph/execute/scriptRun'
 import { executePlainTextNode } from '../src/shared/graph/execute/slots'
 import type { ScriptRunRequest, ScriptSandbox } from '../src/shared/graph/execute/scriptSandbox'
@@ -16,8 +18,12 @@ import {
 } from '../src/shared/graph/scriptNode'
 import {
   analyzeScreenplay,
+  buildNextEpisodeInstruction,
+  extractScreenplayScenes,
   formatScreenplayText,
-  SCREENPLAY_TEMPLATES
+  SCREENPLAY_TEMPLATES,
+  splitScreenplayByExplicitEpisodeMarkers,
+  splitScreenplayIntoEpisodes
 } from '../src/shared/graph/screenplayFormat'
 
 // ── 假沙箱：不跑 WASM，直接按注入的 handler 返回，让执行器测试又快又确定 ──
@@ -328,5 +334,208 @@ describe('剧本生成节点（asset.screenplay）与纯文本节点（text.plai
       out: { kind: 'text', text: '第1场 【内景 · 拍卖厅 - 夜】\n△ 灯光亮起。\n林晚：开始吧。' }
     })
     expect(patchNode).toHaveBeenCalled()
+  })
+
+  it('splitScreenplayIntoEpisodes 支持按「第X集」标记与按每集固定场次数拆分，并自动携带共享【人物小传】', () => {
+    const multiEpisodeScript = [
+      '【人物小传】',
+      '- 林晚（24岁，女）：天才设计师。',
+      '- 陆景深（29岁，男）：首席鉴宝师。',
+      '',
+      '第1集：拍卖惊变',
+      '第1场 【内景 · 拍卖厅 - 夜】',
+      '△ 聚光灯照亮展台。',
+      '林晚：这件作品暗藏第三道星轨。',
+      '',
+      '第2集：真相浮现',
+      '第1场 【内景 · 鉴定室 - 夜】',
+      '△ 紫外灯缓缓亮起。',
+      '陆景深：请看宝石切面里的签名。'
+    ].join('\n')
+
+    const byMarkers = splitScreenplayIntoEpisodes(multiEpisodeScript, {
+      mode: 'auto',
+      includeSharedBios: true
+    })
+    expect(byMarkers).toHaveLength(2)
+    expect(byMarkers[0]!.title).toBe('第1集：拍卖惊变')
+    expect(byMarkers[0]!.text).toContain('【人物小传】')
+    expect(byMarkers[0]!.text).toContain('林晚：这件作品暗藏第三道星轨。')
+    expect(byMarkers[1]!.title).toBe('第2集：真相浮现')
+    expect(byMarkers[1]!.text).toContain('【人物小传】')
+    expect(byMarkers[1]!.text).toContain('陆景深：请看宝石切面里的签名。')
+
+    const fourSceneScript = [
+      '【人物小传】',
+      '- 林晚（24岁，女）：天才设计师。',
+      '',
+      '第1场 【内景 · 珠宝展厅 - 夜】',
+      '△ 灯光璀璨。',
+      '林晚：开始了。',
+      '',
+      '第2场 【内景 · 后台走廊 - 夜】',
+      '△ 脚步急促。',
+      '林晚：拦住她。',
+      '',
+      '第3场 【内景 · 鉴定中心 - 夜】',
+      '△ 仪器运转。',
+      '林晚：证据在此。',
+      '',
+      '第4场 【外景 · 大厦天台 - 黎明】',
+      '△ 晨光破晓。',
+      '林晚：一切都结束了。'
+    ].join('\n')
+
+    const byScenes = splitScreenplayIntoEpisodes(fourSceneScript, {
+      mode: 'scenes',
+      scenesPerEpisode: 2,
+      includeSharedBios: true
+    })
+    expect(byScenes).toHaveLength(2)
+    expect(byScenes[0]!.title).toContain('第1集')
+    expect(byScenes[0]!.sceneCount).toBe(2)
+    expect(byScenes[0]!.text).toContain('【人物小传】')
+    expect(byScenes[0]!.text).toContain('第1场')
+    expect(byScenes[0]!.text).toContain('第2场')
+    expect(byScenes[1]!.title).toContain('第2集')
+    expect(byScenes[1]!.sceneCount).toBe(2)
+    expect(byScenes[1]!.text).toContain('【人物小传】')
+    expect(byScenes[1]!.text).toContain('第3场')
+    expect(byScenes[1]!.text).toContain('第4场')
+
+    const outlines = extractScreenplayScenes(fourSceneScript)
+    expect(outlines).toHaveLength(4)
+    expect(outlines[0]!.title).toContain('第1场')
+    expect(outlines[0]!.preview).toContain('灯光璀璨')
+
+    const nextPrompt = buildNextEpisodeInstruction('第1集：拍卖惊变', 2, 'zh-CN')
+    expect(nextPrompt).toContain('第2集')
+    expect(nextPrompt).toContain('人物小传')
+  })
+
+  it('screenplay.workbench Dive 工作台完成注册、卡片双击路由与 Inspector 精简入口接线', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const diveModel = readFileSync(
+      join(process.cwd(), 'src/renderer/src/features/graph/model/editorDive.ts'),
+      'utf8'
+    )
+    expect(diveModel).toContain("'screenplay.workbench'")
+
+    const hostCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/EditorDiveChildHost.vue'),
+      'utf8'
+    )
+    expect(hostCode).toContain("'screenplay.workbench'")
+    expect(hostCode).toContain('./dive/EditorDiveScreenplayView.vue')
+
+    const cardCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/GraphNodeCard.vue'),
+      'utf8'
+    )
+    expect(cardCode).toContain("viewId: 'screenplay.workbench'")
+
+    const inspectorCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/ShotNodeInspector.vue'),
+      'utf8'
+    )
+    expect(inspectorCode).toContain("viewId: 'screenplay.workbench'")
+    expect(inspectorCode).toContain('openScreenplayWorkbench')
+  })
+
+  it('剧本生成含2集时 out-all 自动展开为 2 条剧集并支持 text.select 按集选取', async () => {
+    const twoEpText = [
+      '【人物小传】',
+      '- 林晚（24岁，女）：天才设计师。',
+      '',
+      '## 第1集：雨夜惊变',
+      '第1场 【内景 · 拍卖厅 - 夜】',
+      '△ 聚光灯照亮展台。',
+      '林晚：这是第一集。',
+      '',
+      '## 第2集：真相水落石出',
+      '第1场 【内景 · 鉴定室 - 夜】',
+      '△ 紫外灯缓缓亮起。',
+      '林晚：这是第二集。'
+    ].join('\n')
+
+    const explicit = splitScreenplayByExplicitEpisodeMarkers(twoEpText)
+    expect(explicit).toHaveLength(2)
+    expect(explicit[0]!.title).toBe('第1集：雨夜惊变')
+    expect(explicit[1]!.title).toBe('第2集：真相水落石出')
+
+    // 单集多场次不应被显式分集标记误拆
+    const singleEpTwoScenes = [
+      '第1场 【内景 · 咖啡厅 - 日】',
+      '△ 陽光洒在桌面。',
+      '第2场 【外景 · 街道 - 夜】',
+      '△ 霓虹闪烁。'
+    ].join('\n')
+    expect(splitScreenplayByExplicitEpisodeMarkers(singleEpTwoScenes)).toHaveLength(0)
+
+    // 1. 剧本生成节点生成 2 集剧本时自动拆入 generatedTexts 与 out-all
+    const spNode = createNodeFromType('asset.screenplay', { x: 0, y: 0 }, { id: 'sp-2ep' })
+    const savedFiles: Record<string, string> = {}
+    const spResult = await executeScreenplayGenerateNode({
+      node: spNode,
+      document: { nodes: [spNode], edges: [] },
+      inputs: {},
+      generateText: async () => ({ text: twoEpText, model: 'mock' }),
+      saveRunText: async ({ key, content }) => {
+        const rel = `Texts/${key}.txt`
+        savedFiles[rel] = content
+        return rel
+      }
+    } as unknown as NodeExecuteContext)
+
+    expect(spNode.params.generatedTexts).toHaveLength(2)
+    expect(spNode.params.generatedTexts?.[0]?.title).toBe('第1集：雨夜惊变')
+    expect(spNode.params.generatedTexts?.[1]?.title).toBe('第2集：真相水落石出')
+
+    const outAll = spResult['out-all']
+    expect(outAll?.kind).toBe('texts')
+    if (outAll?.kind === 'texts') {
+      expect(outAll.items).toHaveLength(2)
+    }
+
+    // 2. 即使旧节点仅存了 1 条未拆分的 2 集剧本，resolveGalleryOutputsFromNodeParams 与 executeSelectTextNode 也能识别出 2 集并选出第 2 集
+    const legacyOutputs = resolveGalleryOutputsFromNodeParams(
+      {
+        text: twoEpText,
+        generatedTexts: [{ id: 'legacy-1', text: '', relativePath: 'Texts/legacy.txt' }]
+      },
+      { typeId: 'asset.screenplay' }
+    )
+    expect(legacyOutputs?.['out-all']).toMatchObject({
+      kind: 'texts',
+      items: [
+        { id: 'legacy-1:ep:1', title: '第1集：雨夜惊变' },
+        { id: 'legacy-1:ep:2', title: '第2集：真相水落石出' }
+      ]
+    })
+
+    const selectNode = createNodeFromType('text.select', { x: 200, y: 0 }, { id: 'sel-ep2' })
+    selectNode.params.selectedTextId = 'legacy-1:ep:2'
+    const selectOut = await executeSelectTextNode({
+      node: selectNode,
+      document: { nodes: [selectNode], edges: [] },
+      inputs: {
+        in: [
+          {
+            kind: 'texts',
+            items: [{ id: 'legacy-1', text: '', relativePath: 'Texts/legacy.txt' }]
+          }
+        ]
+      },
+      readRunText: async () => twoEpText
+    } as unknown as NodeExecuteContext)
+
+    expect(selectOut.out).toMatchObject({
+      kind: 'text'
+    })
+    if (selectOut.out?.kind === 'text') {
+      expect(selectOut.out.text).toContain('这是第二集')
+      expect(selectOut.out.text).not.toContain('这是第一集')
+    }
   })
 })

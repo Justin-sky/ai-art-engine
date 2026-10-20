@@ -95,6 +95,7 @@ onMounted(async () => {
           generateModel: node?.params?.generateModel,
           generateProviderInstanceId: node?.params?.generateProviderInstanceId,
           defaultAspectRatio: node?.params?.generateAspectRatio as never,
+          generateTransparentBg: node?.params?.generateTransparentBg !== false,
           stylePreset: node?.params?.uiGenStylePreset as never,
           styleImagesUseGlobal: node?.params?.styleImagesUseGlobal !== false,
           generatedImages: node?.params?.generatedImages

@@ -310,6 +310,33 @@ describe('theme CSS contract (main.css)', () => {
     }
   })
 
+  it('defines PS-style transparency checkerboard tokens across themes and applies them to node, inspector, and dive image previews', () => {
+    for (const key of ['checker-a', 'checker-b', 'image-checker-bg'] as const) {
+      expect(dark.get(key), `dark --${key}`).toBeTruthy()
+      expect(light.get(key), `light --${key}`).toBeTruthy()
+    }
+    expect(light.get('checker-a')).not.toBe(dark.get('checker-a'))
+    expect(light.get('checker-b')).not.toBe(dark.get('checker-b'))
+    expect(dark.get('image-checker-bg')).toContain('repeating-conic-gradient')
+
+    const previewSurfaces = [
+      'components/GraphNodeCard.vue',
+      'components/GraphNodeOutputPreview.vue',
+      'components/ShotNodeInspector.vue',
+      'components/AssetMediaPreview.vue',
+      'components/dive/EditorDiveMediaPreview.vue',
+      'components/PortraitEditorDialog.vue',
+      'components/LayerSplitEditorDialog.vue',
+      'components/CropEditorDialog.vue'
+    ]
+    for (const rel of previewSurfaces) {
+      const style = styleSections(read(join(RENDERER_SRC, rel)))
+      expect(style, `${rel} should use var(--image-checker-bg)`).toContain(
+        'var(--image-checker-bg)'
+      )
+    }
+  })
+
   it('textarea::-webkit-resizer background matches global textarea background token', () => {
     const css = read(MAIN_CSS).replace(/\r\n/g, '\n')
     const controlRule =

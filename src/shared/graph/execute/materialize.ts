@@ -11,6 +11,7 @@ import type {
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
+import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
 import {
   dedupeGalleryIds,
   dualImageGalleryOutputs,
@@ -129,7 +130,12 @@ export function extractScreenplayTitleFromText(text: string): string | undefined
 }
 
 /** 剧本生成落盘名：{宿主/剧本名}_{节点名}_{时间戳} */
-export function resolveScreenplayGenerationFileKey(ctx: NodeExecuteContext, text?: string): string {
+export function resolveScreenplayGenerationFileKey(
+  ctx: NodeExecuteContext,
+  text?: string,
+  index?: number | null,
+  stamp?: string | null
+): string {
   const fromText = text ? extractScreenplayTitleFromText(text) : undefined
   const host = ctx.resolveHostAssetName?.()?.trim()
   const boundId = ctx.node.assetId?.trim()
@@ -137,7 +143,8 @@ export function resolveScreenplayGenerationFileKey(ctx: NodeExecuteContext, text
   return buildGeneratedMediaFileKey({
     hostAssetName: fromText || host || bound || 'screenplay',
     nodeTitle: ctx.node.title || ctx.node.typeId || 'screenplay',
-    stamp: formatGeneratedMediaStamp()
+    stamp: stamp?.trim() || formatGeneratedMediaStamp(),
+    ...(typeof index === 'number' && index > 0 ? { index } : {})
   })
 }
 
@@ -145,18 +152,31 @@ export async function materializeGeneratedText(
   ctx: NodeExecuteContext,
   text: string,
   id: string,
-  createdAt: string
+  createdAt: string,
+  opts?: { title?: string; index?: number; stamp?: string }
 ): Promise<GraphTextItem> {
-  const item: GraphTextItem = { id, text, createdAt }
+  const title = opts?.title?.trim()
+  const item: GraphTextItem = {
+    id,
+    ...(title ? { title } : {}),
+    text,
+    createdAt
+  }
   if (!ctx.saveRunText || !text.trim()) return item
   try {
     const relativePath = await ctx.saveRunText({
       content: text,
-      key: resolveScreenplayGenerationFileKey(ctx, text),
+      key: resolveScreenplayGenerationFileKey(ctx, text, opts?.index, opts?.stamp),
       outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
       node: ctx.node
     })
-    return { id, text: '', createdAt, relativePath }
+    return {
+      id,
+      ...(title ? { title } : {}),
+      text: '',
+      createdAt,
+      relativePath
+    }
   } catch (err) {
     console.warn('[graph] materialize generated text failed', err)
     return item
@@ -170,9 +190,33 @@ export async function persistScreenplayGeneration(
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const id = `gen-text:${stamp}`
-  const materialized = await materializeGeneratedText(ctx, text, id, createdAt)
-  const generatedTexts = mergeGeneratedTexts(ctx, [materialized], `${stamp}:keep`).map((item) => ({
+  const explicitEpisodes =
+    ctx.node.typeId === 'asset.screenplay'
+      ? splitScreenplayByExplicitEpisodeMarkers(text, {
+          includeSharedBios: true,
+          locale: ctx.locale
+        })
+      : []
+
+  const batch: GraphTextItem[] = []
+  if (explicitEpisodes.length >= 2) {
+    for (const ep of explicitEpisodes) {
+      const epId = `${id}:${ep.index}`
+      const materialized = await materializeGeneratedText(ctx, ep.text, epId, createdAt, {
+        title: ep.title,
+        index: ep.index,
+        stamp
+      })
+      batch.push(materialized)
+    }
+  } else {
+    const materialized = await materializeGeneratedText(ctx, text, id, createdAt, { stamp })
+    batch.push(materialized)
+  }
+
+  const generatedTexts = mergeGeneratedTexts(ctx, batch, `${stamp}:keep`).map((item) => ({
     id: item.id?.trim() || id,
+    ...(item.title?.trim() ? { title: item.title.trim() } : {}),
     text: item.text,
     createdAt: item.createdAt ?? createdAt,
     ...(item.relativePath ? { relativePath: item.relativePath } : {})
@@ -202,7 +246,23 @@ export function commitInMemoryTextGallery(
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
   const id = `gen-text:${stamp}`
-  const generatedTexts = mergeGeneratedTexts(ctx, [{ id, text, createdAt }], `${stamp}:keep`)
+  const explicitEpisodes =
+    ctx.node.typeId === 'asset.screenplay'
+      ? splitScreenplayByExplicitEpisodeMarkers(text, {
+          includeSharedBios: true,
+          locale: ctx.locale
+        })
+      : []
+  const batch: GraphTextItem[] =
+    explicitEpisodes.length >= 2
+      ? explicitEpisodes.map((ep) => ({
+          id: `${id}:${ep.index}`,
+          title: ep.title,
+          text: ep.text,
+          createdAt
+        }))
+      : [{ id, text, createdAt }]
+  const generatedTexts = mergeGeneratedTexts(ctx, batch, `${stamp}:keep`)
   const selectedTextId = newestTextSelectedId(generatedTexts)
   const params = { text, generatedTexts, selectedTextId }
   ctx.node.params = { ...ctx.node.params, ...params }

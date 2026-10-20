@@ -3,7 +3,14 @@ import {
   resolveMotionPromptText,
   resolveMotionVideoItems
 } from '../motionShots'
-import type { GraphImageItem, GraphValue, GraphVideoItem, NodeExecuteContext } from './types'
+import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
+import type {
+  GraphImageItem,
+  GraphTextItem,
+  GraphValue,
+  GraphVideoItem,
+  NodeExecuteContext
+} from './types'
 import {
   flattenImagesValues,
   flattenTextsValues,
@@ -143,9 +150,31 @@ export function executeSelectImageNode(ctx: NodeExecuteContext): Record<string, 
 export async function executeSelectTextNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  const items = flattenTextsValues(collectIncomingValues(ctx.inputs)).filter(
+  let items = flattenTextsValues(collectIncomingValues(ctx.inputs)).filter(
     (item) => item.text?.trim() || item.relativePath?.trim()
   )
+  // 若仅收到 1 条剧本且正文中含 >= 2 个显式「第X集 / EPISODE X」标记，支持先落盘读取再按集展开选取
+  if (items.length === 1) {
+    const singleHydrated = (await hydrateTextItems(items, ctx.readRunText))[0]
+    const rawBody = singleHydrated?.text?.trim() ?? ''
+    const explicitEpisodes = rawBody
+      ? splitScreenplayByExplicitEpisodeMarkers(rawBody, {
+          includeSharedBios: true,
+          locale: ctx.locale
+        })
+      : []
+    if (explicitEpisodes.length >= 2) {
+      const baseId = items[0]!.id?.trim() || 'ep'
+      items = explicitEpisodes.map((ep): GraphTextItem => ({
+        id: `${baseId}:ep:${ep.index}`,
+        title: ep.title,
+        text: ep.text,
+        createdAt: items[0]!.createdAt
+      }))
+    } else if (singleHydrated) {
+      items = [singleHydrated]
+    }
+  }
   const picked = pickTextItem(items, ctx.node.params.selectedTextId)
   const selectedTextId = picked
     ? textItemKey(picked, Math.max(0, items.indexOf(picked)))

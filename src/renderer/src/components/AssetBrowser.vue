@@ -3900,7 +3900,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   overflow: hidden;
   border-radius: 4px;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .list-icon.list-thumb img {
@@ -3908,6 +3908,7 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: cover;
   display: block;
+  background: var(--image-checker-bg);
 }
 
 /* 导入引用媒体：不可编辑 — 弱化琥珀提示 */
@@ -3968,10 +3969,15 @@ onBeforeUnmount(() => {
   margin-bottom: 4px;
 }
 
+.thumb:has(> img) {
+  background: var(--image-checker-bg);
+}
+
 .thumb img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  background: var(--image-checker-bg);
 }
 
 /* 视频打点状态角标（缩略卡右下；打点中为旋转圆环，ok/skip 为圆形标记） */

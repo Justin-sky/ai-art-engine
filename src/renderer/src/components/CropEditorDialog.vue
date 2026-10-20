@@ -509,6 +509,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 16px;
   overflow: auto;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -520,6 +521,7 @@ onBeforeUnmount(() => {
   position: relative;
   flex: 0 0 auto;
   user-select: none;
+  background: var(--image-checker-bg);
 }
 
 .source-img {

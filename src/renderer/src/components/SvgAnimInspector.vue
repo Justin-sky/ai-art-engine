@@ -528,7 +528,7 @@ onBeforeUnmount(stopPlayback)
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .anim-preview img {
@@ -536,7 +536,7 @@ onBeforeUnmount(stopPlayback)
   width: 100%;
   max-height: 260px;
   object-fit: contain;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .anim-frame-badge {
@@ -602,7 +602,7 @@ onBeforeUnmount(stopPlayback)
   border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
   cursor: pointer;
 }
 
@@ -611,7 +611,7 @@ onBeforeUnmount(stopPlayback)
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .frame-card.active {

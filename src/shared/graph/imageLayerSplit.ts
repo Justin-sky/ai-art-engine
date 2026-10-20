@@ -1050,30 +1050,30 @@ export const UI_LAYER_SPLIT_PRESETS: readonly UiLayerSplitPreset[] = [
   {
     id: 'ui-hud',
     promptZh:
-      '拆解游戏战斗 HUD 界面图层：底层场景背景、左上角色头像框与血条/蓝条槽、右上小地图与资源货币栏、右下技能轮盘与普攻按钮、顶部首领血条与状态图标', // cjk-ok 游戏 HUD 拆层预设
+      '拆解游戏战斗 HUD 界面图层：底层场景背景、左上角色头像框与血条/蓝条槽、右上小地图与资源货币栏、右下技能轮盘与普攻按钮、顶部首领血条与状态图标，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏 HUD 拆层预设
     promptEn:
-      'Decompose game battle HUD layers: underlying scene backdrop, top-left avatar frame with HP/MP bars, top-right minimap & currency bar, bottom-right skill wheel & attack buttons, top boss HP bar & buff icons.'
+      'Decompose game battle HUD layers: underlying scene backdrop, top-left avatar frame with HP/MP bars, top-right minimap & currency bar, bottom-right skill wheel & attack buttons, top boss HP bar & buff icons, all widget layers with clean edges and transparent background.'
   },
   {
     id: 'ui-popup',
     promptZh:
-      '拆解游戏弹窗对话框图层：半透明遮罩与弹窗主底板、顶部标题横幅丝带与角花装饰、中部奖励槽位与内嵌子面板、底部确认/取消主次按钮与右上关闭按钮', // cjk-ok 游戏弹窗拆层预设
+      '拆解游戏弹窗对话框图层：半透明遮罩与弹窗主底板、顶部标题横幅丝带与角花装饰、中部奖励槽位与内嵌子面板、底部确认/取消主次按钮与右上关闭按钮，各图层均保持边缘干净与透明背景', // cjk-ok 游戏弹窗拆层预设
     promptEn:
-      'Decompose game modal popup layers: modal main frame & backdrop, top ribbon title banner & corner ornaments, center reward slots & inset sub-panel, bottom confirm/cancel buttons & top-right close button.'
+      'Decompose game modal popup layers: modal main frame & backdrop, top ribbon title banner & corner ornaments, center reward slots & inset sub-panel, bottom confirm/cancel buttons & top-right close button, all layers with clean edges and transparent background.'
   },
   {
     id: 'ui-inventory',
     promptZh:
-      '拆解背包与养成界面图层：全屏底板与立绘展示台、左侧页签导航栏、右侧网格物品槽位矩阵與滚动容器、底部强化/穿戴操作按钮与顶部资源栏', // cjk-ok 游戏背包养成拆层预设
+      '拆解背包与养成界面图层：全屏底板与立绘展示台、左侧页签导航栏、右侧网格物品槽位矩阵与滚动容器、底部强化/穿戴操作按钮与顶部资源栏，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏背包养成拆层预设
     promptEn:
-      'Decompose RPG inventory & progression UI layers: fullscreen background & character stage, left tab navigation bar, right item grid slots & scroll panel, bottom upgrade/equip action buttons & top resource bar.'
+      'Decompose RPG inventory & progression UI layers: fullscreen background & character stage, left tab navigation bar, right item grid slots & scroll panel, bottom upgrade/equip action buttons & top resource bar, all widget layers with clean edges and transparent background.'
   },
   {
     id: 'ui-card',
     promptZh:
-      '拆解抽卡与商店界面图层：史诗舞台背景、核心卡池横幅与角色立绘展示框、稀有度徽章与价格标签、底部单抽/十连抽高亮按钮与顶部代币栏', // cjk-ok 游戏抽卡商店拆层预设
+      '拆解抽卡与商店界面图层：史诗舞台背景、核心卡池横幅与角色立绘展示框、稀有度徽章与价格标签、底部单抽/十连抽高亮按钮与顶部代币栏，各组件层均保持边缘干净与透明背景', // cjk-ok 游戏抽卡商店拆层预设
     promptEn:
-      'Decompose gacha & shop UI layers: epic stage background, main banner & featured character frame, rarity badges & price tags, bottom single/10x pull CTA buttons & top currency bar.'
+      'Decompose gacha & shop UI layers: epic stage background, main banner & featured character frame, rarity badges & price tags, bottom single/10x pull CTA buttons & top currency bar, all widget layers with clean edges and transparent background.'
   }
 ]
 
@@ -1803,14 +1803,13 @@ function inpaintRectBilinearInPlace(
       const topIdx = (topSampleY * width + px) * 4
       const bottomIdx = (bottomSampleY * width + px) * 4
       const dstIdx = (py * width + px) * 4
-      for (let c = 0; c < 3; c++) {
+      for (let c = 0; c < 4; c++) {
         const horiz =
           sampleSourceRgba[leftIdx + c]! * (1 - tx) + sampleSourceRgba[rightIdx + c]! * tx
         const vert =
           sampleSourceRgba[topIdx + c]! * (1 - ty) + sampleSourceRgba[bottomIdx + c]! * ty
         targetRgba[dstIdx + c] = Math.round((horiz * wx + vert * wy) / wSum)
       }
-      targetRgba[dstIdx + 3] = 255
     }
   }
 }

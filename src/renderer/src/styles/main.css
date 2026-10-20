@@ -30,6 +30,10 @@
   --graph-node-output-from: #1a2838;
   --graph-node-processing-from: #1a2820;
   --graph-preview-bg: #12151a;
+  --checker-a: #363b44;
+  --checker-b: #242830;
+  --image-checker-bg: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0
+    0 / 16px 16px;
   --graph-text-preview-bg: #0e1218;
   --graph-text-preview: #d5dae3;
   --graph-instruction-bg: #161a1f;
@@ -143,6 +147,10 @@
   --graph-node-output-from: #e8f1fb;
   --graph-node-processing-from: #e8f5ee;
   --graph-preview-bg: #f0f2f5;
+  --checker-a: #ffffff;
+  --checker-b: #dfe3ea;
+  --image-checker-bg: repeating-conic-gradient(var(--checker-a) 0% 25%, var(--checker-b) 0% 50%) 0
+    0 / 16px 16px;
   --graph-text-preview-bg: #f7f8fa;
   --graph-text-preview: #1a1d21;
   --graph-instruction-bg: #ffffff;

@@ -245,6 +245,7 @@ function onClose(): void {
   justify-content: center;
   padding: 20px;
   overflow: hidden;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -262,7 +263,7 @@ function onClose(): void {
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid var(--border);
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--image-checker-bg);
 }
 
 .source-img {

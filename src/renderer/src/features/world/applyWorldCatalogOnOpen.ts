@@ -158,7 +158,8 @@ async function persistCatalog(
     const prev = readWorldElementGraphForNode(genParams, owner, kind)
     const next = syncWorldElementKindGraph(prev, catalog[kind], {
       style: catalog.style,
-      worldview: catalog.worldview
+      worldview: catalog.worldview,
+      kind
     })
     if (graphTopologyKey(prev) !== graphTopologyKey(next)) {
       genParams = withWorldElementGraphForNode(

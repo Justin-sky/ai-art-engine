@@ -2784,7 +2784,7 @@ onBeforeUnmount(() => {
   height: 32px;
   object-fit: contain;
   border-radius: 4px;
-  background: var(--bg-elevated);
+  background: var(--image-checker-bg);
 }
 
 .thumb-fallback {
@@ -3009,22 +3009,9 @@ onBeforeUnmount(() => {
   text-align: center;
 }
 
-/* 透明 PNG 棋盘底：wash 叠色跨主题自适应 */
+/* 透明 PNG 棋盘底：统一走专业 PS 棋盘格 */
 .checker {
-  background-color: var(--bg-input);
-  background-image:
-    linear-gradient(
-      45deg,
-      var(--wash-16) 25%,
-      transparent 25%,
-      transparent 75%,
-      var(--wash-16) 75%
-    ),
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    8px 8px;
+  background: var(--image-checker-bg);
 }
 
 .grid2 {

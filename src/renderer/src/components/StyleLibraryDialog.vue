@@ -272,7 +272,7 @@ function confirm(): void {
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
-  background: var(--media-letterbox);
+  background: var(--image-checker-bg);
 }
 
 .caption {

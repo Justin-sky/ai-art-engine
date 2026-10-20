@@ -1770,7 +1770,17 @@ const cardTextGridItems = computed((): string[] => {
   const items = props.node.params.generatedTexts ?? []
   if (items.length <= 1) return []
   return items
-    .map((item) => (item.text?.trim() || item.title?.trim() || '').slice(0, 80))
+    .map((item, idx) => {
+      const title = item.title?.trim()
+      const text = item.text?.trim()
+      if (title && text && !text.startsWith(title)) return `${title}\n${text}`.slice(0, 80)
+      if (text) return text.slice(0, 80)
+      if (title) return title.slice(0, 80)
+      if (item.relativePath?.trim()) {
+        return t('graph.scriptNode.workbench.episodeDefaultTitle', { n: idx + 1 })
+      }
+      return ''
+    })
     .filter(Boolean)
 })
 
@@ -2949,6 +2959,18 @@ function onPreviewDblClick(): void {
       return
     }
 
+    // 剧本生成节点：双击进入全屏剧本与分集工作台（无 dive 上下文时退回展开生成指令面板）
+    if (props.node.typeId === 'asset.screenplay' && isProcessingNode.value) {
+      const hostId = props.hostId?.trim()
+      if (hostId) {
+        const ok = await diveView(
+          { viewId: 'screenplay.workbench', hostId, nodeId: props.node.id },
+          title
+        )
+        if (ok) return
+      }
+    }
+
     // 生成剧本 / 策划案：双击展开生成指令面板（勿被正文预览抢成记事本）
     if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
       instructionOpen.value = !instructionOpen.value
@@ -3869,6 +3891,11 @@ function formatTime(sec: number): string {
   opacity: 0.85;
 }
 
+.preview:has(> img),
+.preview:has(> .card-preview-grid) {
+  background: var(--image-checker-bg);
+}
+
 .preview img,
 .preview video,
 .camera-live-preview {
@@ -3876,6 +3903,10 @@ function formatTime(sec: number): string {
   height: 100%;
   /* 任意比例均完整显示，留白用预览底色 letterbox */
   object-fit: contain;
+}
+
+.preview img {
+  background: var(--image-checker-bg);
 }
 
 .text-preview {
@@ -3921,7 +3952,7 @@ function formatTime(sec: number): string {
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .card-preview-grid.anim2d-live {
@@ -3932,6 +3963,7 @@ function formatTime(sec: number): string {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  background: var(--image-checker-bg);
 }
 
 .card-preview-grid.is-expanded {
@@ -3959,7 +3991,7 @@ function formatTime(sec: number): string {
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.3),
     0 6px 14px rgba(0, 0, 0, 0.34);
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
   /* origin 由 cardImageStackStyle 设为底部，便于扇形展开 */
   pointer-events: none;
 }
@@ -3970,7 +4002,7 @@ function formatTime(sec: number): string {
   min-height: 0;
   object-fit: contain;
   display: block;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .grid-expand-btn {

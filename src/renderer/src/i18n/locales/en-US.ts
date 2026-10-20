@@ -5200,10 +5200,12 @@ export default {
       title: 'Text',
       placeholder: 'Double-click to edit text…',
       telemetry: {
+        episodes: '{n} eps',
         scenes: '{n} scenes',
         characters: '{n} chars',
         dialogues: '{n} lines',
         actions: '{n} actions',
+        words: '{n} chars',
         duration: '~{s}s est.'
       },
       characterList: 'Detected Cast',
@@ -5229,7 +5231,47 @@ export default {
         presetExpand: 'Expand visual actions & details',
         presetConflict: 'Heighten dramatic conflict & twist',
         presetFormat: 'Convert to standard storyboard script',
-        presetContinue: 'Continue next climax scene'
+        presetContinue: 'Continue next climax scene',
+        presetMultiEpisode: 'Write 3-episode serial script (with EPISODE X markers & hooks)',
+        presetNextEpisode: 'Continue next episode from current ending'
+      },
+      workbench: {
+        title: 'Screenplay & Episode Workbench',
+        openBtn: 'Open Screenplay & Episode Workbench',
+        openHint:
+          'Double-click node or click button above to open full-screen studio: smart episode splitting, multi-episode management, scene outline jump & script polishing.',
+        episodesTitle: 'Episodes & Versions',
+        episodeCount: '{n} episodes',
+        episodeDefaultTitle: 'Episode {n}',
+        unsplitDraftTitle: 'Current Script (Unsplit)',
+        activeOutputBadge: 'Active Output',
+        setAsOutput: 'Set as active episode output for downstream nodes',
+        addEpisode: '+ New Episode',
+        aiNextEpisode: '✨ AI Next Episode',
+        duplicateEpisode: 'Duplicate episode',
+        moveUp: 'Move up',
+        moveDown: 'Move down',
+        deleteEpisode: 'Delete episode',
+        episodeTitlePlaceholder: 'Episode title (e.g. Episode 1 · Auction Twist)…',
+        splitBoxTitle: 'Smart Episode Splitter',
+        splitModeLabel: 'Split Mode',
+        splitModeAuto: 'Auto (Episode markers first, fallback to scenes)',
+        splitModeMarkers: 'By "Episode X" markers',
+        splitModeScenes: 'By scenes per episode',
+        scenesPerEpisode: 'Scenes / ep',
+        includeSharedBios: 'Prepend shared [Character Bios] to every episode',
+        splitNowBtn: '✂️ Split into Episodes',
+        splitDoneToast: 'Split into {n} episodes',
+        sceneOutlineTitle: 'Scene Outline',
+        sceneJumpHint: 'Click to jump to scene',
+        castJumpHint: 'Click to insert character dialogue line',
+        editorTitle: 'Screenplay Editor',
+        modelSectionTitle: 'Text Generation Model',
+        systemPromptToggle: 'Advanced: System Prompt',
+        inspectorActiveEpisode: 'Active Output Episode',
+        inspectorDraftPreview: 'Active Episode Preview',
+        inspectorEmptyDraft:
+          'No screenplay content yet. Open workbench to write or generate with AI.'
       }
     },
     scriptRun: {

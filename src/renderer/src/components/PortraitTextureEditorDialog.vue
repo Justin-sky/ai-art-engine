@@ -345,6 +345,7 @@ watch(modelDraft, () => emitPreview(), { deep: true })
   min-height: 0;
   object-fit: contain;
   display: block;
+  background: var(--image-checker-bg);
 }
 
 .preview-empty {

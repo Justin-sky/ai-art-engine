@@ -33,6 +33,7 @@ const BOUNDARY_DX = 200
 export interface WorldElementBriefInput {
   style?: string
   worldview?: string
+  kind?: string
 }
 
 function buildWorldElementBriefInstruction(brief?: WorldElementBriefInput): string {
@@ -309,6 +310,7 @@ export function syncWorldElementKindGraph(
       })
     )
 
+    const genTransparentBg = brief?.kind === 'scenes' ? false : true
     upsertManagedNode(
       nextNodes,
       foundGen,
@@ -318,6 +320,7 @@ export function syncWorldElementKindGraph(
           params: {
             worldElementId: item.id,
             generateInstruction: buildWorldElementBriefInstruction(brief),
+            generateTransparentBg: genTransparentBg,
             reviewStatus: normalizeReviewStatus(item.status)
           }
         }),
@@ -329,6 +332,9 @@ export function syncWorldElementKindGraph(
           ...node.params,
           worldElementId: item.id,
           generateInstruction: buildWorldElementBriefInstruction(brief),
+          ...(node.params.generateTransparentBg === undefined
+            ? { generateTransparentBg: genTransparentBg }
+            : {}),
           reviewStatus: normalizeReviewStatus(item.status)
         }
       })

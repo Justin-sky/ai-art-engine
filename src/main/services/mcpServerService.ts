@@ -2199,7 +2199,7 @@ const TOOL_DEFS: McpToolDef[] = [
       '对左侧打开或工程内的宿主画布、任意节点 Dive 视图、3D 导演台（director.stage）以及右侧检查器（Inspector）应用实时编辑操作（**所有图片/视频/配音/对话/音效/音乐/3D模型/空间世界生成与加工任务均须通过本工具创建或修改画布节点，再调用 `task_run` 在画布上实时执行**）：\n' +
       '1. **画布节点创建、修改与连线操作**：`node_upsert` / `node_add` / `node_update`（或 `update_params`） / `apply_preset` / `node_delete` / `edge_connect` / `edge_delete` / `node_select` / `group_add` / `group_update` / `group_delete` / `auto_layout`。\n' +
       '   - 常用生成节点 `typeId`：\n' +
-      '     * 图片生成：`asset.image`（`params: { prompt, aspectRatio, model, providerInstanceId, count, generateTransparentBg, referenceImageUrls }`）\n' +
+      '     * 图片生成：`asset.image`（`params: { prompt, aspectRatio, model, providerInstanceId, count, generateTransparentBg, referenceImageUrls }`，默认开启透明背景 `generateTransparentBg: true`，仅当明确要求非透明场景背景时传 `false`）\n' +
       '     * 视频生成：`asset.video`（`params: { prompt, aspectRatio, duration, generateAudio, model, providerInstanceId, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls }`）\n' +
       '     * 语音/配音：`voice.tts` 或 `asset.voice`（`params: { prompt, voice, voiceProfile, model, providerInstanceId }`）\n' +
       '     * 多说话人对话：`voice.dialogue`（`params: { script, voices, voice, voiceProfile, model, providerInstanceId }`）\n' +

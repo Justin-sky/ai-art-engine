@@ -6,12 +6,14 @@ import {
   filmCastSummary,
   filmStoryboardSummary,
   flattenImagesValues,
+  flattenTextsValues,
   graphValueHasPayload,
   isBoundaryOutputNode,
   parseFilmCast,
   parseFilmRenderCache,
   resolveNodeTextContent,
   softResolveBoundaryOutputValue,
+  splitScreenplayByExplicitEpisodeMarkers,
   type GraphDocument,
   type GraphNode,
   type GraphValue
@@ -657,6 +659,28 @@ function collectFallback(into: PreviewItem[]): void {
   }
 
   if (generatedTextItems.length) {
+    if (node.typeId === 'asset.screenplay' && generatedTextItems.length === 1) {
+      const single = generatedTextItems[0]!
+      const candidateText = single.text?.trim() || node.params.text?.trim() || ''
+      const explicitEpisodes = candidateText
+        ? splitScreenplayByExplicitEpisodeMarkers(candidateText, {
+            includeSharedBios: true,
+            locale: String(locale.value)
+          })
+        : []
+      if (explicitEpisodes.length >= 2) {
+        const baseId = single.id?.trim() || 'fallback-text:0'
+        for (const ep of explicitEpisodes) {
+          into.push({
+            key: `${baseId}:ep:${ep.index}`,
+            kind: 'text',
+            text: ep.text,
+            label: ep.title
+          })
+        }
+        return
+      }
+    }
     for (const [index, item] of generatedTextItems.entries()) {
       const rel = item.relativePath?.trim()
       const text = item.text?.trim() ?? ''
@@ -665,6 +689,7 @@ function collectFallback(into: PreviewItem[]): void {
         key: item.id?.trim() || `fallback-text:${index}`,
         kind: 'text',
         text,
+        ...(item.title?.trim() ? { label: item.title.trim() } : {}),
         ...(rel ? { relativePath: rel } : {})
       })
     }
@@ -927,6 +952,106 @@ function runOutHasTextItems(value: GraphValue | undefined): boolean {
   return false
 }
 
+function collectSelectTextCandidatePreviews(node: GraphNode, into: PreviewItem[]): void {
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, node.id)
+  for (const edge of incoming) {
+    const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+    if (!source) continue
+    const gallery = source.params.generatedTexts ?? []
+    if (gallery.length) {
+      if (source.typeId === 'asset.screenplay' && gallery.length === 1) {
+        const single = gallery[0]!
+        const candidateText = single.text?.trim() || source.params.text?.trim() || ''
+        const explicitEpisodes = candidateText
+          ? splitScreenplayByExplicitEpisodeMarkers(candidateText, {
+              includeSharedBios: true,
+              locale: String(locale.value)
+            })
+          : []
+        if (explicitEpisodes.length >= 2) {
+          const baseId = single.id?.trim() || `${source.id}:generated:0`
+          for (const ep of explicitEpisodes) {
+            into.push({
+              key: `${baseId}:ep:${ep.index}`,
+              kind: 'text',
+              text: ep.text,
+              label: ep.title
+            })
+          }
+          continue
+        }
+      }
+      for (const [index, gen] of gallery.entries()) {
+        const text = gen.text?.trim() ?? ''
+        const rel = gen.relativePath?.trim()
+        if (!text && !rel) continue
+        const defaultTitle =
+          source.typeId === 'asset.screenplay'
+            ? t('graph.scriptNode.workbench.episodeDefaultTitle', { n: index + 1 })
+            : undefined
+        into.push({
+          key: gen.id?.trim() || `${source.id}:generated:${index}`,
+          kind: 'text',
+          text,
+          ...(gen.title?.trim() || defaultTitle
+            ? { label: gen.title?.trim() || defaultTitle }
+            : {}),
+          ...(rel ? { relativePath: rel } : {})
+        })
+      }
+      continue
+    }
+
+    const sourcePort = edge.sourcePort ?? 'out'
+    const upstreamOut = graphRunHosts.get(props.hostId)?.runStates?.[source.id]?.outputs?.[
+      sourcePort
+    ]
+    if (upstreamOut) {
+      for (const [index, item] of flattenTextsValues([upstreamOut]).entries()) {
+        const text = item.text?.trim() ?? ''
+        const rel = item.relativePath?.trim()
+        if (!text && !rel) continue
+        into.push({
+          key: item.id?.trim() || `${source.id}:run:${index}`,
+          kind: 'text',
+          text,
+          ...(item.title?.trim() ? { label: item.title.trim() } : {}),
+          ...(rel ? { relativePath: rel } : {})
+        })
+      }
+      if (into.length) continue
+    }
+
+    const rawText = source.params.text?.trim() || ''
+    const rel = source.params.previewRelativePath?.trim()
+    if (rawText || rel) {
+      if (source.typeId === 'asset.screenplay' && rawText) {
+        const explicitEpisodes = splitScreenplayByExplicitEpisodeMarkers(rawText, {
+          includeSharedBios: true,
+          locale: String(locale.value)
+        })
+        if (explicitEpisodes.length >= 2) {
+          for (const ep of explicitEpisodes) {
+            into.push({
+              key: `${source.id}:ep:${ep.index}`,
+              kind: 'text',
+              text: ep.text,
+              label: ep.title
+            })
+          }
+          continue
+        }
+      }
+      into.push({
+        key: `${source.id}:preview`,
+        kind: 'text',
+        text: rawText,
+        ...(rel ? { relativePath: rel } : {})
+      })
+    }
+  }
+}
+
 const items = computed((): PreviewItem[] => {
   // 依赖资产列表，避免 generate 后 refreshAssets 前 resolve 失败而不再重试
   void project.assets.length
@@ -940,6 +1065,14 @@ const items = computed((): PreviewItem[] => {
     }
     if (!list.length) {
       collectFromValue(softResolveBoundaryPreview(node), list)
+    }
+  } else if (node.typeId === 'text.select') {
+    collectSelectTextCandidatePreviews(node, list)
+    if (!list.length) {
+      collectFromValue(runOut.value, list)
+      if (!list.length) {
+        collectFallback(list)
+      }
     }
   } else {
     // 累计图库优先：runStates.out 可能只含本批新图，重开后会被误当成「只有一张」
@@ -964,11 +1097,16 @@ const items = computed((): PreviewItem[] => {
       }
     }
   }
-  // 去重：同 key，或同 relativePath / 同正文
+  // 去重：同 key；对无显式图库 id 的临时文本再按 relativePath / 正文去重
   const seen = new Set<string>()
   return list.filter((item) => {
+    const isSyntheticTextKey =
+      item.key.startsWith('fallback-text:') ||
+      item.key.startsWith('texts:') ||
+      item.key.startsWith('out-texts:') ||
+      item.key.startsWith('node-text')
     const contentKey =
-      item.kind === 'text'
+      item.kind === 'text' && isSyntheticTextKey
         ? item.relativePath?.trim() ||
           (item.text?.trim() ? `text:${item.text.trim()}` : '') ||
           item.key
@@ -990,9 +1128,10 @@ const layoutKind = computed(() => {
   const hasText = textItems.value.length > 0
   if (hasMedia && hasText) return 'mixed'
   if (list.every((i) => i.kind === 'text')) {
-    // 剧本 / 目录拆解等带文本图库：用网格预览以便点选；其它单段文本仍用竖向堆叠
+    // 剧本 / 选择文本 / 目录拆解等带文本图库：用网格预览以便点选；其它单段文本仍用竖向堆叠
     const preferTextGrid =
       props.node.typeId === 'output.text' ||
+      props.node.typeId === 'text.select' ||
       props.node.params.outputKind === 'text' ||
       (props.node.typeId === 'asset.screenplay' && props.node.params.assetRef !== true) ||
       list.length > 1
@@ -1012,6 +1151,7 @@ function liveNode(): GraphNode {
 
 const canSelectGalleryOutput = computed(() => {
   const node = liveNode()
+  if (node.typeId === 'text.select') return items.value.length > 0
   return (
     !!(node.params.generatedImages ?? []).length ||
     !!(node.params.generatedVideos ?? []).length ||
@@ -1025,6 +1165,11 @@ function isSelectedPreview(item: PreviewItem): boolean {
   const node = liveNode()
   const id = item.key.trim()
   if (!id) return false
+  if (node.typeId === 'text.select' && item.kind === 'text') {
+    const selected = node.params.selectedTextId?.trim()
+    if (selected) return selected === id
+    return items.value[0]?.key === id
+  }
   if (item.kind === 'image') {
     const selected = node.params.selectedImageId?.trim()
     if (selected) return selected === id
@@ -1073,9 +1218,41 @@ function selectAsCurrentOutputCapture(item: PreviewItem, event: MouseEvent): voi
   if (!canSelectGalleryOutput.value) return
   const target = event.target as HTMLElement | null
   if (target?.closest('.card-actions, .media-index, .media-current')) return
+  const node = liveNode()
+  if (node.typeId === 'text.select' && item.kind === 'text') {
+    const selectedTextId = item.key.trim()
+    if (!selectedTextId) return
+    const text = (resolvedText.value[item.key] || item.text || '').trim()
+    const previewRelativePath = item.relativePath?.trim() || undefined
+    graphEditorHosts.updateNode(props.hostId, node.id, {
+      selectedTextId,
+      text,
+      previewRelativePath
+    })
+    const runHost = graphRunHosts.get(props.hostId)
+    if (runHost) {
+      const prev = runHost.runStates[node.id] ?? { status: 'done' as const }
+      runHost.runStates[node.id] = {
+        ...prev,
+        status: prev.status === 'idle' ? 'done' : prev.status,
+        outputs: {
+          ...(prev.outputs ?? {}),
+          out: {
+            kind: 'text',
+            text,
+            id: selectedTextId,
+            ...(item.label ? { title: item.label } : {}),
+            ...(previewRelativePath ? { relativePath: previewRelativePath } : {})
+          }
+        }
+      }
+    }
+    graphEditorHosts.bumpRevision()
+    return
+  }
   const id = galleryEntryId(item)
   if (!id) return
-  selectGalleryOutput(props.hostId, liveNode(), galleryKindOf(item), id)
+  selectGalleryOutput(props.hostId, node, galleryKindOf(item), id)
 }
 
 /** 单条可删（图库条目）；仅本次运行态产物时回退为整体清空 */
@@ -1568,7 +1745,9 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
         <p v-else class="hint">
           {{ t('graph.inspector.outputPreviewMissing') }}
         </p>
-        <span class="media-index">{{ index + 1 }}</span>
+        <span class="media-index">{{
+          item.kind === 'text' && item.label ? `${index + 1} · ${item.label}` : index + 1
+        }}</span>
         <span v-if="canSelectGalleryOutput && isSelectedPreview(item)" class="media-current">
           {{ t('graph.inspector.generate.selectedAsOutput') }}
         </span>
@@ -1711,13 +1890,17 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   background: var(--graph-preview-bg);
 }
 
+.single:has(> img) {
+  background: var(--image-checker-bg);
+}
+
 .single img {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: 240px;
   object-fit: contain;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .preview-actions {
@@ -1847,7 +2030,11 @@ const imagePreviewHint = computed(() => t('graph.selectImage.previewHint'))
   height: 100%;
   object-fit: contain;
   display: block;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
+}
+
+.media-card[data-kind='image'] {
+  background: var(--image-checker-bg);
 }
 
 .media-card[data-kind='image'],

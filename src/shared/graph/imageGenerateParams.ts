@@ -293,7 +293,7 @@ export function readImageGenerateParamsFromNode(params: {
         : undefined,
     seed: clampSeed(params.generateSeed),
     seedUseGlobal: params.generateSeedUseGlobal !== false,
-    transparentBg: params.generateTransparentBg === true
+    transparentBg: params.generateTransparentBg !== false
   }
 }
 
@@ -334,6 +334,6 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
       : {}),
     ...(clampSeed(params.seed) != null ? { generateSeed: clampSeed(params.seed) } : {}),
     generateSeedUseGlobal: params.seedUseGlobal !== false,
-    generateTransparentBg: params.transparentBg === true
+    generateTransparentBg: params.transparentBg !== false
   }
 }

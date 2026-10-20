@@ -415,20 +415,7 @@ onBeforeUnmount(() => {
 }
 
 .checker {
-  background-color: var(--bg-input);
-  background-image:
-    linear-gradient(
-      45deg,
-      var(--wash-16) 25%,
-      transparent 25%,
-      transparent 75%,
-      var(--wash-16) 75%
-    ),
-    linear-gradient(45deg, var(--wash-16) 25%, transparent 25%, transparent 75%, var(--wash-16) 75%);
-  background-size: 16px 16px;
-  background-position:
-    0 0,
-    8px 8px;
+  background: var(--image-checker-bg);
 }
 
 .sfp-canvas {

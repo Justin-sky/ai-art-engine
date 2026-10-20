@@ -923,6 +923,7 @@ import {
   imageItemKey,
   isWorldGenImageOutPortId,
   softResolveSourceOutput,
+  splitScreenplayByExplicitEpisodeMarkers,
   WORLD_GEN_IMAGE_OUT_PORTS,
   worldGenImageGroupOutputs,
   textItemKey,
@@ -6047,12 +6048,18 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
   const pushItem = (item: GraphTextItem): void => {
     const text = typeof item.text === 'string' ? item.text : ''
     const relativePath = item.relativePath?.trim() || ''
+    const title = item.title?.trim() || ''
     if (!text.trim() && !relativePath) return
-    const keys = [item.id?.trim(), relativePath, text.trim() || ''].filter((k): k is string => !!k)
+    // 有独立 id 或 relativePath 的分集不按正文文本去重，避免新建/复制分集因模板正文相同被静默吞掉
+    const idKey = item.id?.trim() ? `id:${item.id.trim()}` : ''
+    const relKey = relativePath ? `rel:${relativePath}` : ''
+    const textKey = !idKey && !relKey && text.trim() ? `text:${text.trim()}` : ''
+    const keys = [idKey, relKey, textKey].filter(Boolean)
     if (keys.some((k) => seen.has(k))) return
     for (const k of keys) seen.add(k)
     items.push({
       ...item,
+      ...(title ? { title } : {}),
       text,
       ...(relativePath ? { relativePath } : {})
     })
@@ -6063,12 +6070,50 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
     if ((edge.targetPort ?? 'in') !== 'in') continue
     const source = graph.nodes.find((n) => n.id === edge.source)
     if (!source) continue
+    const sourcePort = edge.sourcePort ?? 'out'
+
+    if (isAssetHostNode(source)) {
+      const soft = softResolveSourceOutput(buildGraphJson(), source.id, sourcePort, {})
+      if (soft && graphValueHasPayload(soft)) {
+        for (const item of flattenTextsValues([soft])) pushItem(item)
+      }
+      continue
+    }
 
     const gallery = source.params.generatedTexts ?? []
     if (gallery.length) {
+      if (source.typeId === 'asset.screenplay' && gallery.length === 1) {
+        const single = gallery[0]!
+        const candidateText = single.text?.trim() || source.params.text?.trim() || ''
+        const explicitEpisodes = candidateText
+          ? splitScreenplayByExplicitEpisodeMarkers(candidateText, {
+              includeSharedBios: true,
+              locale: String(locale.value)
+            })
+          : []
+        if (explicitEpisodes.length >= 2) {
+          const baseId = single.id?.trim() || `${source.id}:generated:0`
+          for (const ep of explicitEpisodes) {
+            pushItem({
+              id: `${baseId}:ep:${ep.index}`,
+              title: ep.title,
+              text: ep.text,
+              createdAt: single.createdAt
+            })
+          }
+          continue
+        }
+      }
       for (const [index, gen] of gallery.entries()) {
+        const defaultEpTitle =
+          source.typeId === 'asset.screenplay'
+            ? t('graph.scriptNode.workbench.episodeDefaultTitle', { n: index + 1 })
+            : ''
         pushItem({
           id: gen.id?.trim() || `${source.id}:generated:${index}`,
+          ...(gen.title?.trim() || defaultEpTitle
+            ? { title: gen.title?.trim() || defaultEpTitle }
+            : {}),
           text: gen.text?.trim() || '',
           createdAt: gen.createdAt,
           ...(gen.relativePath?.trim() ? { relativePath: gen.relativePath.trim() } : {})
@@ -6077,16 +6122,32 @@ function collectSelectTextItems(nodeId: string): GraphTextItem[] {
       continue
     }
 
-    const sourcePort = edge.sourcePort ?? 'out'
     const runOut = runStates[source.id]?.outputs?.[sourcePort]
     if (runOut) {
       for (const item of flattenTextsValues([runOut])) pushItem(item)
     }
 
     if (source.params.text?.trim() || source.params.previewRelativePath?.trim()) {
+      const rawText = source.params.text?.trim() || ''
+      if (source.typeId === 'asset.screenplay' && rawText) {
+        const explicitEpisodes = splitScreenplayByExplicitEpisodeMarkers(rawText, {
+          includeSharedBios: true,
+          locale: String(locale.value)
+        })
+        if (explicitEpisodes.length >= 2) {
+          for (const ep of explicitEpisodes) {
+            pushItem({
+              id: `${source.id}:ep:${ep.index}`,
+              title: ep.title,
+              text: ep.text
+            })
+          }
+          continue
+        }
+      }
       pushItem({
         id: `${source.id}:preview`,
-        text: source.params.text?.trim() || '',
+        text: rawText,
         ...(source.params.previewRelativePath?.trim()
           ? { relativePath: source.params.previewRelativePath.trim() }
           : {})
@@ -6123,15 +6184,30 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   const items = selectText.items
-  const picked = pickTextItem(items, selectedTextId)
+  let picked = pickTextItem(items, selectedTextId)
   const before = buildGraphJson()
   let text = picked?.text?.trim() || ''
-  const previewRelativePath = picked?.relativePath?.trim() || undefined
+  let previewRelativePath = picked?.relativePath?.trim() || undefined
+  // 支持单落盘文本在弹窗内按显式「第X集」标记动态展开后选取某集（如 id 含 :ep:N）
+  const epMatch = /:ep:(\d+)$/.exec(selectedTextId)
   if (!text && previewRelativePath) {
     try {
       text = (await readGraphRunText(previewRelativePath))?.trim() || ''
     } catch {
       text = ''
+    }
+  }
+  if (epMatch && text) {
+    const epIndex = Number(epMatch[1])
+    const explicitEpisodes = splitScreenplayByExplicitEpisodeMarkers(text, {
+      includeSharedBios: true,
+      locale: String(locale.value)
+    })
+    const matchedEp = explicitEpisodes.find((ep) => ep.index === epIndex)
+    if (matchedEp) {
+      text = matchedEp.text
+      previewRelativePath = undefined
+      picked = { id: selectedTextId, title: matchedEp.title, text }
     }
   }
   node.params = {
@@ -6140,9 +6216,25 @@ async function saveSelectText(selectedTextId: string): Promise<void> {
     text,
     previewRelativePath
   }
+  const prevState = runStates[nodeId] ?? { status: 'done' as const }
+  runStates[nodeId] = {
+    ...prevState,
+    status: prevState.status === 'idle' ? 'done' : prevState.status,
+    outputs: {
+      ...(prevState.outputs ?? {}),
+      out: {
+        kind: 'text',
+        text,
+        id: selectedTextId,
+        ...(picked?.title ? { title: picked.title } : {}),
+        ...(previewRelativePath ? { relativePath: previewRelativePath } : {})
+      }
+    }
+  }
   selectText.selectedTextId = selectedTextId
   scheduleSave()
   recordGraphChange('select-text', before)
+  graphEditorHosts.bumpRevision()
   closeSelectText()
 }
 

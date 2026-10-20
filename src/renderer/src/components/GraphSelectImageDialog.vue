@@ -260,7 +260,7 @@ function onClose(): void {
   width: 100%;
   aspect-ratio: 4 / 3;
   object-fit: cover;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
   display: block;
   cursor: zoom-in;
 }

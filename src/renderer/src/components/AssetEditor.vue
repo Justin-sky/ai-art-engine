@@ -433,8 +433,13 @@ async function onAttach(): Promise<void> {
   display: block;
 }
 
+.preview:has(> img.preview-image) {
+  background: var(--image-checker-bg);
+}
+
 .preview img.preview-image {
   cursor: zoom-in;
+  background: var(--image-checker-bg);
 }
 
 .preview audio {

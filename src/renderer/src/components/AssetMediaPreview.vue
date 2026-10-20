@@ -838,13 +838,17 @@ onBeforeUnmount(() => {
   background: var(--graph-preview-bg);
 }
 
+.media-wrap {
+  background: var(--image-checker-bg);
+}
+
 .media-wrap img {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: 240px;
   object-fit: contain;
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
   cursor: zoom-in;
 }
 

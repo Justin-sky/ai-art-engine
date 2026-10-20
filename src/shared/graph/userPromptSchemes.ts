@@ -82,6 +82,19 @@ export const IMAGE_TRANSPARENT_BG_PROMPT_EN =
 export const IMAGE_TRANSPARENT_BG_PROMPT_ZH =
   '主体独立居中，纯色均匀平涂背景，四周留出干净边缘，无背景杂物、无地面投影、无环境渐变、严禁绘制灰白棋盘格纹理。' // cjk-ok
 
+const EXPLICIT_OPAQUE_BG_RE =
+  /非透明背景|不透明背景|不要透明背景|不抠除背景|带完整背景|保留原背景|保留背景|实景背景|场景背景|环境背景|360\s*全景|全景氛围|\b(?:non-transparent\s+background|opaque\s+background|no\s+transparent\s+background|keep\s+(?:the\s+)?background|with\s+(?:a\s+)?full\s+background|detailed\s+(?:scene|environment)\s+background|360\s*panorama|equirectangular)\b/i // cjk-ok
+
+/**
+ * 判断提示词是否明确要求「非透明/带完整场景背景」：
+ * 生图与 UI 生成默认开启透明背景，仅当节点显式设置 `generateTransparentBg: false` 或提示词明确要求非透明背景时跳过透明抠底。
+ */
+export function isExplicitOpaqueBgPrompt(prompt: string): boolean {
+  const trimmed = prompt.trim()
+  if (!trimmed) return false
+  return EXPLICIT_OPAQUE_BG_RE.test(trimmed)
+}
+
 export function appendImageTransparentBgPrompt(prompt: string, locale?: string): string {
   const suffix = pickByLocale(
     locale,
@@ -90,6 +103,7 @@ export function appendImageTransparentBgPrompt(prompt: string, locale?: string):
   )
   const base = prompt.trim()
   if (!base) return suffix
+  if (isExplicitOpaqueBgPrompt(base)) return base
   if (
     base.includes(IMAGE_TRANSPARENT_BG_PROMPT_ZH) ||
     base.includes(IMAGE_TRANSPARENT_BG_PROMPT_EN)

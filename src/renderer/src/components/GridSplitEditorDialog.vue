@@ -691,6 +691,7 @@ function onClose(): void {
   justify-content: center;
   padding: 16px;
   overflow: auto;
+  background: var(--image-checker-bg);
 }
 
 .stage-empty {
@@ -701,6 +702,7 @@ function onClose(): void {
 .canvas-wrap {
   position: relative;
   flex: 0 0 auto;
+  background: var(--image-checker-bg);
 }
 
 .source-img {
@@ -884,7 +886,7 @@ function onClose(): void {
   object-fit: contain;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--graph-preview-bg);
+  background: var(--image-checker-bg);
 }
 
 .refine-fig figcaption {

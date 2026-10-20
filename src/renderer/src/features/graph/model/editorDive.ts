@@ -43,6 +43,7 @@ export type EditorDiveViewId =
   | 'anim.2d'
   | 'comic.page'
   | 'film.workbench'
+  | 'screenplay.workbench'
   | 'gamePlay.sandbox'
   | 'media.preview'
 
@@ -105,6 +106,7 @@ export type EditorDiveViewMeta =
   | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
   | { viewId: 'film.workbench'; hostId: string; nodeId: string }
+  | { viewId: 'screenplay.workbench'; hostId: string; nodeId: string }
   | { viewId: 'gamePlay.sandbox'; hostId?: string; nodeId?: string; gamePlayAssetId?: string }
   | {
       viewId: EditorDiveNodeToolViewId
@@ -190,6 +192,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
     case 'film.workbench':
       return `${root}/view:film.workbench:${meta.hostId}`
+    case 'screenplay.workbench':
+      return `${root}/view:screenplay.workbench:${meta.hostId}:${meta.nodeId}`
     case 'gamePlay.sandbox':
       return `${root}/view:gamePlay.sandbox:${meta.gamePlayAssetId || '_'}:${meta.hostId || '_'}:${meta.nodeId || '_'}`
     case 'media.preview':
