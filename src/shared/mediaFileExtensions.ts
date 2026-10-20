@@ -35,6 +35,16 @@ export const AUDIO_FILE_EXTENSIONS = ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac']
 /** 自包含交互页面 / 可玩 HTML */
 export const HTML_FILE_EXTENSIONS = ['html', 'htm'] as const
 
+/** 专业生产管线交付物（分层 PSD / 游戏引擎预制体 / 剪辑软件时间轴工程 / 打包资产） */
+export const DELIVERABLE_FILE_EXTENSIONS = [
+  'psd',
+  'prefab',
+  'tscn',
+  'fcpxml',
+  'otio',
+  'zip'
+] as const
+
 /**
  * 视频 / 动作资产的拣选扩展名。
  *

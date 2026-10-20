@@ -1144,12 +1144,22 @@ async function resolveLayerSplitSourceInfo(
   return { sourceUrl, sourceTitle, sourceLayerPrompt }
 }
 
+type ExtendedApiLayer = GenerateImageLayer & {
+  visible?: boolean
+  uiControlId?: string
+  uiControlName?: string
+  uiControlType?: import('../uiControlSpec').UiControlType
+  uiPartRole?: import('../uiControlSpec').UiControlPartRole
+  nineSliceBorders?: [number, number, number, number]
+  editableText?: import('../uiControlSpec').UiEditableTextMeta
+}
+
 function layersFromApiResult(
   ctx: NodeExecuteContext,
   stamp: number,
   result: {
     images: string[]
-    layers?: Array<GenerateImageLayer & { nineSliceBorders?: [number, number, number, number] }>
+    layers?: ExtendedApiLayer[]
   },
   canvasHint: { width: number; height: number }
 ): {
@@ -1177,6 +1187,86 @@ function layersFromApiResult(
     batch,
     canvasWidth: mapped.canvasWidth,
     canvasHeight: mapped.canvasHeight
+  }
+}
+
+function extractApiLayerHintsFromResult(
+  apiLayers: GenerateImageLayer[] | undefined,
+  canvasWidth: number,
+  canvasHeight: number
+): Array<{
+  name?: string
+  description?: string
+  left: number
+  top: number
+  width: number
+  height: number
+}> {
+  if (!apiLayers?.length) return []
+  const hints: Array<{
+    name?: string
+    description?: string
+    left: number
+    top: number
+    width: number
+    height: number
+  }> = []
+  for (const [idx, layer] of apiLayers.entries()) {
+    const z = typeof layer.zIndex === 'number' ? layer.zIndex : idx
+    if (z <= 0) continue
+    const abs = layer.boundingBox?.absolute
+    const norm = layer.boundingBox?.normalized
+    let left = 0
+    let top = 0
+    let width = 0
+    let height = 0
+    if (abs && abs.length >= 4) {
+      left = Math.round(abs[0])
+      top = Math.round(abs[1])
+      width = Math.max(1, Math.round(abs[2] - abs[0]))
+      height = Math.max(1, Math.round(abs[3] - abs[1]))
+    } else if (norm && norm.length >= 4 && canvasWidth > 0 && canvasHeight > 0) {
+      left = Math.round((norm[0] / 1000) * canvasWidth)
+      top = Math.round((norm[1] / 1000) * canvasHeight)
+      width = Math.max(1, Math.round(((norm[2] - norm[0]) / 1000) * canvasWidth))
+      height = Math.max(1, Math.round(((norm[3] - norm[1]) / 1000) * canvasHeight))
+    }
+    if (width > 4 && height > 4) {
+      hints.push({
+        ...(layer.name?.trim() ? { name: layer.name.trim() } : {}),
+        ...(layer.description?.trim() ? { description: layer.description.trim() } : {}),
+        left,
+        top,
+        width,
+        height
+      })
+    }
+  }
+  return hints
+}
+
+async function resolveCanvasSafeBaseDataUrl(
+  ctx: NodeExecuteContext,
+  rawUrl: string | undefined,
+  stamp: number
+): Promise<string | undefined> {
+  const trimmed = rawUrl?.trim() || ''
+  if (!trimmed) return undefined
+  if (isCanvasSafeImageSrc(trimmed)) return trimmed
+  if (!ctx.saveRunMedia || !ctx.resolveImageUrls) return undefined
+  try {
+    const [materialized] = await materializeGeneratedBatch(
+      ctx,
+      [{ id: `layerSplit:${ctx.node.id}:${stamp}:cleanBase`, dataUrl: trimmed }],
+      `layerSplit:${ctx.node.id}:${stamp}:cleanBase`
+    )
+    const rel = materialized?.relativePath?.trim()
+    if (!rel) return undefined
+    const resolved = await ctx.resolveImageUrls([{ relativePath: rel }])
+    const safeUrl = resolved[0]?.trim()
+    return safeUrl && isCanvasSafeImageSrc(safeUrl) ? safeUrl : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -1242,7 +1332,13 @@ function layersFromUiWidgetDecomposition(
       width: number
       height: number
       dataUrl: string
+      visible?: boolean
+      uiControlId?: string
+      uiControlName?: string
+      uiControlType?: import('../uiControlSpec').UiControlType
+      uiPartRole?: import('../uiControlSpec').UiControlPartRole
       nineSliceBorders?: [number, number, number, number]
+      editableText?: import('../uiControlSpec').UiEditableTextMeta
     }>
   },
   fallbackForegroundUrl: string,
@@ -1256,14 +1352,13 @@ function layersFromUiWidgetDecomposition(
   const cw = Math.max(1, decomposed.width)
   const ch = Math.max(1, decomposed.height)
   const baseUrl = overrideBaseUrl?.trim() || decomposed.baseDataUrl?.trim() || fallbackForegroundUrl
-  const apiLayers: Array<
-    GenerateImageLayer & { nineSliceBorders?: [number, number, number, number] }
-  > = [
+  const apiLayers: ExtendedApiLayer[] = [
     {
       url: baseUrl,
       zIndex: 0,
       size: `${cw}x${ch}`,
-      name: 'Base'
+      name: 'Base',
+      uiPartRole: 'canvas-base'
     }
   ]
 
@@ -1287,7 +1382,13 @@ function layersFromUiWidgetDecomposition(
           absolute: [x1, y1, x2, y2],
           normalized: [normX1, normY1, normX2, normY2]
         },
-        ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {})
+        ...(widget.visible !== undefined ? { visible: widget.visible } : {}),
+        ...(widget.uiControlId ? { uiControlId: widget.uiControlId } : {}),
+        ...(widget.uiControlName ? { uiControlName: widget.uiControlName } : {}),
+        ...(widget.uiControlType ? { uiControlType: widget.uiControlType } : {}),
+        ...(widget.uiPartRole ? { uiPartRole: widget.uiPartRole } : {}),
+        ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {}),
+        ...(widget.editableText ? { editableText: widget.editableText } : {})
       })
     }
   } else {
@@ -1316,7 +1417,8 @@ function layersFromUiWidgetDecomposition(
 
 /**
  * UI 图层分离：支持 4 种拆层引擎策略（auto / ai-inpaint-slice / ai-layers / local-slice）与任意图片模型，
- * 将 UI 界面拆分为无字干净底板 + 独立透明 UI 控件图层，并自动归入游戏 UI 标准 PSD 分组。
+ * 先识别 HTML5 / Unity UI Toolkit 标准 UI 控件，再拆解出控件内部子结构（如按钮文字、按钮常态背景、按下效果、滑动条轨道/填充/手柄），
+ * 最后生成二级嵌套 PSD 文件。
  */
 export async function executeLayerSplitNode(
   ctx: NodeExecuteContext
@@ -1408,45 +1510,50 @@ export async function executeLayerSplitNode(
         if (ctx.signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError')
         }
-        if (result.layers?.length && result.layers.length >= 2) {
+        const cleanBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
+        if (ctx.decomposeImageUiLayers && cleanBaseUrl) {
+          const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
+          const apiLayerHints = extractApiLayerHintsFromResult(
+            result.layers,
+            prev.canvasWidth || 1024,
+            prev.canvasHeight || 1024
+          )
+          const decomposed = await ctx.decomposeImageUiLayers({
+            sourceDataUrl: sourceUrl,
+            cleanBaseDataUrl: safeBaseDataUrl,
+            ...(apiLayerHints.length ? { apiLayerHints } : {})
+          })
+          mapped = layersFromUiWidgetDecomposition(
+            ctx,
+            stamp,
+            decomposed,
+            sourceUrl,
+            safeBaseDataUrl || cleanBaseUrl
+          )
+        } else if (result.layers?.length && result.layers.length >= 2) {
           mapped = layersFromApiResult(ctx, stamp, result, {
             width: prev.canvasWidth,
             height: prev.canvasHeight
           })
         } else {
-          const cleanBaseUrl = result.images?.[0]?.trim() || ''
           if (!cleanBaseUrl) {
             throw fail(SHARED_ERRORS.layerSplitNoLayers)
           }
-          if (ctx.decomposeImageUiLayers) {
-            const decomposed = await ctx.decomposeImageUiLayers({
-              sourceDataUrl: sourceUrl,
-              cleanBaseDataUrl: isCanvasSafeImageSrc(cleanBaseUrl) ? cleanBaseUrl : undefined
-            })
-            mapped = layersFromUiWidgetDecomposition(
-              ctx,
-              stamp,
-              decomposed,
-              sourceUrl,
-              cleanBaseUrl
-            )
-          } else {
-            mapped = layersFromApiResult(
-              ctx,
-              stamp,
-              {
-                images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
-              },
-              {
-                width: prev.canvasWidth || 1024,
-                height: prev.canvasHeight || 1024
-              }
-            )
-          }
+          mapped = layersFromApiResult(
+            ctx,
+            stamp,
+            {
+              images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
+            },
+            {
+              width: prev.canvasWidth || 1024,
+              height: prev.canvasHeight || 1024
+            }
+          )
         }
       }
     } else {
-      // 'ai-layers'（原生模型 layer_decomposition，若所选模型只返回单张图则自动接力智能控件切分）
+      // 'ai-layers'：调用原生 layerDecomposition，并结合标准 UI 控件识别与子部件结构拆解引擎生成按控件组织的 PSD
       if (!ctx.generateImage) {
         throw fail(SHARED_ERRORS.capabilityImageGenerate)
       }
@@ -1465,22 +1572,33 @@ export async function executeLayerSplitNode(
       if (ctx.signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError')
       }
-      if (!result.layers?.length && (result.images?.length ?? 0) < 2) {
-        const singleImg = result.images?.[0]?.trim() || ''
-        if (singleImg && ctx.decomposeImageUiLayers) {
-          const decomposed = await ctx.decomposeImageUiLayers({
-            sourceDataUrl: sourceUrl,
-            cleanBaseDataUrl: isCanvasSafeImageSrc(singleImg) ? singleImg : undefined
-          })
-          mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl, singleImg)
-        } else {
-          throw fail(SHARED_ERRORS.layerSplitNoLayers)
-        }
-      } else {
+      const rawBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
+      if (ctx.decomposeImageUiLayers && rawBaseUrl) {
+        const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, rawBaseUrl, stamp)
+        const apiLayerHints = extractApiLayerHintsFromResult(
+          result.layers,
+          prev.canvasWidth || 1024,
+          prev.canvasHeight || 1024
+        )
+        const decomposed = await ctx.decomposeImageUiLayers({
+          sourceDataUrl: sourceUrl,
+          cleanBaseDataUrl: safeBaseDataUrl,
+          ...(apiLayerHints.length ? { apiLayerHints } : {})
+        })
+        mapped = layersFromUiWidgetDecomposition(
+          ctx,
+          stamp,
+          decomposed,
+          sourceUrl,
+          safeBaseDataUrl || rawBaseUrl
+        )
+      } else if (result.layers?.length || (result.images?.length ?? 0) >= 2) {
         mapped = layersFromApiResult(ctx, stamp, result, {
           width: prev.canvasWidth,
           height: prev.canvasHeight
         })
+      } else {
+        throw fail(SHARED_ERRORS.layerSplitNoLayers)
       }
     }
 
@@ -1537,7 +1655,7 @@ export async function executeLayerSplitNode(
     try {
       const psdKey = buildGeneratedMediaFileKey({
         hostAssetName: ctx.resolveHostAssetName?.(),
-        nodeTitle: `${ctx.node.title || ctx.node.typeId || 'layerSplit'}_layers`,
+        nodeTitle: ctx.node.title || ctx.node.typeId || 'layerSplit',
         stamp: formatGeneratedMediaStamp(),
         index: null
       })

@@ -148,7 +148,13 @@
     "src/renderer/src/components/BeatTable.vue": [".review-status[data-status='已审核'] {"],
     "src/renderer/src/components/ChatPanel.vue": [
       "/仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(last.text) &&",
-      "/仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(text)"
+      "/仍在等待|尚未返回|已提交给模型|接手任务|Still waiting|Waiting for/.test(text)",
+      ": '仙侠装备界面UI · 6层3D样板间'",
+      ": '免配 Key 秒开：仙侠装备 UI · 6 层 3D 爆炸拆解样板间'",
+      ": '内置 6 张高清矢量透明图层与游戏 UI 自动分组，一键体验「🧊 3D 全息层叠爆炸视图」、导出真实 PSD 与可点击 HTML5/Godot/Unity 预制体。'",
+      "{{ isEnChat ? '🚀 Open Live Demo' : '🚀 秒开样板间' }}",
+      ": '✨ 一句话爆款创作配方（点击即在当前画布搭图运行）'",
+      "🚀 {{ isEnChat ? 'Open' : '打开文件' }}"
     ],
     "src/renderer/src/components/WorldTable.vue": [".review-status[data-status='已审核'] {"],
     "src/renderer/src/features/director/aiPoseParse.ts": [
@@ -1254,6 +1260,54 @@
       "`${joined}\\n上述编号图仅借鉴画风（色调、媒介、笔触、光影氛围、材质质感），` +",
       "`严禁迁移其中的人脸、五官、身份特征、体态、服饰细节、道具与构图；` +",
       "`主体与构图以用户提示词及其他参考为准。`"
+    ],
+    "src/renderer/src/components/ChatAssetPreview.vue": [
+      "🚀 {{ isEn ? 'Open File' : '一键打开文件' }}"
+    ],
+    "src/renderer/src/components/GraphStudioFocusStage.vue": [
+      "? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'",
+      "📸 {{ isZh ? '配方海报' : 'Recipe Poster' }}",
+      "? '⏳ 运行中…'",
+      "? '▶ 运行全流程'",
+      "<h3>{{ isZh ? '焦点创作舞台 (Studio Focus Mode)' : 'Studio Focus Stage' }}</h3>",
+      "? '告别复杂的连线迷宫！在左侧对话区输入灵感，或直接体验免 Key 6 层全息仙侠 UI 演示工程。'",
+      "⚡ {{ isZh ? '一键载入仙侠 UI 全息图层演示' : 'Load 6-Layer Game UI Demo' }}",
+      "🕸️ {{ isZh ? '切换到节点连线模式' : 'Switch to Node Graph' }}",
+      "🧊 {{ activeLayerCount }} {{ isZh ? '独立图层' : 'Layers' }}",
+      "PSD {{ isZh ? '已就绪' : 'Ready' }}",
+      "? '当前步骤尚未生成媒体产物，点击右上角「▶ 运行全流程」或进入精修工作台开始创作。'",
+      "🎨 {{ isZh ? '打开分层 PSD' : 'Open Layered PSD' }}",
+      "🛠️ {{ isZh ? '进入精修工作台' : 'Open Dive Workbench' }}",
+      "🕸️ {{ isZh ? '查看节点图' : 'Node Graph' }}",
+      "return isZh.value ? 'UI 图层分离 · PSD' : 'UI Layer Split · PSD'",
+      "if (node.typeId === 'image.upscale') return isZh.value ? '超清放大' : 'HD Upscale'",
+      "if (node.typeId === 'image.lighting') return isZh.value ? '3D 重打光' : '3D Relight'",
+      "if (node.typeId === 'image.multiAngle') return isZh.value ? '多机位视角' : 'Multi-Angle'",
+      "return isZh.value ? 'AI 画面生成' : 'Image Generate'",
+      "return isZh.value ? 'AI 视频生成' : 'Video Generate'",
+      "if (node.typeId === 'script.timeline') return isZh.value ? '多轨时间线剪辑' : 'Timeline Edit'"
+    ],
+    "src/renderer/src/components/LayerSplitEditorDialog.vue": [
+      "? '按 HTML5 / Unity UI Toolkit 标准控件规范拆解选中控件的子结构（按钮文字+常态底板+按下态、滑动条轨道+填充+手柄、面板底框+标题+词条）'",
+      "🧩 {{ isZhLocale ? '控件结构拆解' : 'Decompose Control' }}",
+      "? '3D 全息图层爆炸视图（在背景拖拽可旋转视角）'",
+      "🧊 {{ isZhLocale ? '3D 爆炸' : '3D Explode' }}",
+      ":title=\"isZhLocale ? 'Z 轴层间距' : 'Z-Depth Gap'\"",
+      "? '导出可点击交互的 HTML5 游戏 UI 原型（含音效与 3D 爆炸视图）'",
+      "title: isZhLocale.value ? 'AI 游戏 UI 交互原型' : 'AI Game UI Interactive Prototype',",
+      "? '已导出可点击交互的 HTML5 游戏 UI 原型'",
+      "? `已将「${target.name}」按标准控件规范拆解为 ${parts.length} 个子图层`"
+    ],
+    "src/renderer/src/components/NodeGraphEditor.vue": [
+      ":title=\"isZhLocale ? '专业节点图模式 (Node Graph Mode)' : 'Node Graph Mode'\"",
+      "🕸️ {{ isZhLocale ? '节点' : 'Graph' }}",
+      ":title=\"isZhLocale ? '极简焦点创作舞台 (Studio Focus Stage)' : 'Studio Focus Stage'\"",
+      "✨ {{ isZhLocale ? '焦点' : 'Focus' }}",
+      "? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'",
+      "📸 {{ isZhLocale ? '配方海报' : 'Recipe' }}",
+      "? `✨ 已从 PNG 配方海报一键复刻完整工作流（共 ${extracted.nodes.length} 个节点）`",
+      "(isZhLocale.value ? 'AI Art Engine 创作配方' : 'AI Art Engine Recipe')",
+      "? '📸 已导出 PNG 配方海报（已内嵌完整工作流，拖入画布即可一键复刻）'"
     ]
   }
 }

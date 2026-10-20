@@ -43,16 +43,25 @@ import { fingerprintMap, selectChangedFiles } from '@shared/git'
 import {
   MAX_ROUND_OUTPUT_FILES,
   groupRoundOutputs,
+  isDeliverableMediaPath,
   isHtmlMediaPath,
   normalizeOutputPathKey,
   selectRoundOutputs
 } from '@shared/outputScan'
+import {
+  CHAT_SHOWCASE_STARTERS,
+  buildZeroKeyLiveDemoGraph,
+  type ChatShowcaseStarter
+} from '@shared/chatShowcaseStarters'
+import { resolveChatNextActions, type ChatNextActionPill } from '@shared/chatNextActions'
+import { buildCanvasStarterGraph } from '@shared/graph'
 import { isModelFilePath } from '@shared/import'
 import { resolvePreviewMediaPath } from '@shared/media/thumbnailPath'
 import { ensureModelPreviewUrl } from '../features/media/ensureModelPreviewUrl'
 import { openGamePlaySandboxDialog } from '../features/media/gamePlaySandboxDialog'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { gameHtmlBrowserIssue } from '@shared/gamePlay'
+import { useDraftSave } from '../composables/useDraftSave'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
@@ -120,7 +129,10 @@ function onComposerResizePointerUp(event: PointerEvent): void {
   }
 }
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
+const isEnChat = computed(() => /^en/i.test(locale.value))
+const { createDraftAndOpen } = useDraftSave()
+const showcaseStarters = CHAT_SHOWCASE_STARTERS
 
 /** 历史会话：多会话持久化 + 输入框上方工具栏切换 */
 const {
@@ -2944,6 +2956,77 @@ async function onSend(): Promise<void> {
   await runTask(task)
 }
 
+/**
+ * 首屏「免 Key 秒开样板间」：立即打开预置 6 层仙侠装备 UI 与图层分离状态的交互画布，
+ * 无需配置任何 API Key 即可双击进入图层分离工作台体验 3D 全息爆炸视图与 PSD/引擎导出。
+ */
+function onLaunchZeroKeyDemo(): void {
+  const demoName = isEnChat.value
+    ? 'Xianxia UI · 6-Layer 3D Showcase'
+    : '仙侠装备界面UI · 6层3D样板间'
+  createDraftAndOpen('canvas', {
+    name: demoName,
+    genParams: {
+      canvasKind: 'free',
+      graphJson: buildZeroKeyLiveDemoGraph(locale.value)
+    }
+  })
+}
+
+async function onClickShowcaseStarter(card: ChatShowcaseStarter): Promise<void> {
+  if (!buildActiveCanvasContext()) {
+    createDraftAndOpen('canvas', {
+      name: isEnChat.value ? card.titleEn : card.titleZh,
+      genParams: {
+        canvasKind: 'free',
+        graphJson: buildCanvasStarterGraph()
+      }
+    })
+    await nextTick()
+  }
+  const promptText = isEnChat.value ? card.promptEn : card.promptZh
+  const task = buildTask(promptText)
+  if (running.value || preparingTask) {
+    enqueueSend(task)
+    return
+  }
+  await runTask(task)
+}
+
+function nextActionsForAsset(
+  msg: Pick<ChatMsg & { kind: 'asset' }, 'relativePath' | 'relatedPaths'>
+): ChatNextActionPill[] {
+  return resolveChatNextActions(msg.relativePath, msg.relatedPaths ?? [])
+}
+
+async function openDeliverableFile(relativePath: string): Promise<void> {
+  try {
+    await window.studio.openAssetWithDefaultApp(relativePath)
+  } catch {
+    // ignore
+  }
+}
+
+async function onClickNextActionPill(
+  msg: Pick<ChatMsg & { kind: 'asset' }, 'relativePath' | 'relatedPaths'>,
+  pill: ChatNextActionPill
+): Promise<void> {
+  const allPaths = [msg.relativePath, ...(msg.relatedPaths ?? [])].filter(Boolean)
+  const psdOrTarget = allPaths.find((p) => p.toLowerCase().endsWith('.psd')) || msg.relativePath
+  if (pill.localAction === 'open-default-app' || pill.localAction === 'reveal-in-folder') {
+    await openDeliverableFile(psdOrTarget)
+    return
+  }
+  const promptText = isEnChat.value ? pill.promptEn : pill.promptZh
+  if (!promptText.trim()) return
+  const task = buildTask(promptText)
+  if (running.value || preparingTask) {
+    enqueueSend(task)
+    return
+  }
+  await runTask(task)
+}
+
 async function abortCurrentRun(): Promise<void> {
   clientAbortSeq++
   abortIgnoreUntil = Date.now() + 600
@@ -3516,9 +3599,71 @@ onBeforeUnmount(() => {
     <div class="chat-messages-wrap">
       <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
         <div v-if="!messages.length" class="chat-empty">
-          {{ t('studio.chat.empty') }}
-          <div v-if="statusWarn && status?.message" class="chat-empty-hint">
-            {{ status.message }}
+          <div class="chat-empty-hero">
+            <div class="chat-empty-title">{{ t('studio.chat.empty') }}</div>
+            <div v-if="statusWarn && status?.message" class="chat-empty-hint">
+              {{ status.message }}
+            </div>
+            <div class="zero-key-demo-banner">
+              <div class="zero-key-demo-info">
+                <span class="zero-key-demo-badge">⚡ ZERO-KEY LIVE DEMO</span>
+                <strong class="zero-key-demo-title">
+                  {{
+                    isEnChat
+                      ? 'Instant 6-Layer Xianxia UI + 3D Exploded PSD Workbench'
+                      : '免配 Key 秒开：仙侠装备 UI · 6 层 3D 爆炸拆解样板间'
+                  }}
+                </strong>
+                <span class="zero-key-demo-desc">
+                  {{
+                    isEnChat
+                      ? 'Pre-loaded with 6 transparent UI layers & auto-grouped folders. Test 3D exploded view, PSD export, and HTML5/Godot/Unity exporters in 1 click.'
+                      : '内置 6 张高清矢量透明图层与游戏 UI 自动分组，一键体验「🧊 3D 全息层叠爆炸视图」、导出真实 PSD 与可点击 HTML5/Godot/Unity 预制体。'
+                  }}
+                </span>
+              </div>
+              <button type="button" class="zero-key-demo-btn" @click="onLaunchZeroKeyDemo">
+                {{ isEnChat ? '🚀 Open Live Demo' : '🚀 秒开样板间' }}
+              </button>
+            </div>
+          </div>
+
+          <div class="showcase-starter-section">
+            <div class="showcase-starter-header">
+              <span>{{
+                isEnChat
+                  ? '✨ 1-Click Blockbuster Workflows'
+                  : '✨ 一句话爆款创作配方（点击即在当前画布搭图运行）'
+              }}</span>
+            </div>
+            <div class="showcase-starter-grid">
+              <button
+                v-for="card in showcaseStarters"
+                :key="card.id"
+                type="button"
+                class="showcase-starter-card"
+                @click="onClickShowcaseStarter(card)"
+              >
+                <div class="showcase-card-top">
+                  <span class="showcase-card-icon" :style="{ background: card.accent }">
+                    {{ card.icon }}
+                  </span>
+                  <span class="showcase-card-badge">
+                    {{ isEnChat ? card.badgeEn : card.badgeZh }}
+                  </span>
+                </div>
+                <div class="showcase-card-title">
+                  {{ isEnChat ? card.titleEn : card.titleZh }}
+                </div>
+                <div class="showcase-card-desc">
+                  {{ isEnChat ? card.descEn : card.descZh }}
+                </div>
+                <div class="showcase-card-foot">
+                  <code class="showcase-card-pipeline">{{ card.pipelineTag }}</code>
+                  <span class="showcase-card-go">▶</span>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
         <template v-for="(msg, i) in messages" :key="i">
@@ -3769,6 +3914,14 @@ onBeforeUnmount(() => {
                 >
                   {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
                 </button>
+                <button
+                  v-if="isDeliverableMediaPath(msg.relativePath)"
+                  type="button"
+                  class="save-btn"
+                  @click.stop="openDeliverableFile(msg.relativePath)"
+                >
+                  🚀 {{ isEnChat ? 'Open' : '打开文件' }}
+                </button>
                 <template v-if="isHtmlMediaPath(msg.relativePath)">
                   <button
                     type="button"
@@ -3807,6 +3960,22 @@ onBeforeUnmount(() => {
                         ? t('common.saving')
                         : t('studio.chat.saveToLibrary')
                   }}
+                </button>
+              </div>
+              <!-- 上下文追击胶囊（Next-Action Pills）：一键拆 PSD / 2x 超分 / 3D 打光 / 动效延展 -->
+              <div v-if="nextActionsForAsset(msg).length" class="asset-next-pills">
+                <button
+                  v-for="pill in nextActionsForAsset(msg)"
+                  :key="pill.id"
+                  type="button"
+                  class="next-action-pill"
+                  :disabled="running && !pill.localAction"
+                  @click.stop="onClickNextActionPill(msg, pill)"
+                >
+                  <span class="next-pill-icon" aria-hidden="true">{{ pill.icon }}</span>
+                  <span class="next-pill-label">
+                    {{ isEnChat ? pill.labelEn : pill.labelZh }}
+                  </span>
                 </button>
               </div>
             </div>
@@ -7945,5 +8114,222 @@ onBeforeUnmount(() => {
 
 .md-body .md-pre code {
   font-family: inherit;
+}
+
+.chat-empty-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.chat-empty-title {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.zero-key-demo-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, #f59e0b 16%, var(--bg-elevated)),
+    color-mix(in srgb, #6366f1 16%, var(--bg-panel))
+  );
+  border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--border));
+  text-align: left;
+}
+
+.zero-key-demo-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.zero-key-demo-badge {
+  align-self: flex-start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+}
+
+.zero-key-demo-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.zero-key-demo-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.zero-key-demo-btn {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.zero-key-demo-btn:hover {
+  filter: brightness(1.08);
+}
+
+.showcase-starter-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.showcase-starter-header {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.showcase-starter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.showcase-starter-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.showcase-starter-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.showcase-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 6px;
+}
+
+.showcase-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.showcase-card-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+.showcase-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.showcase-card-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.showcase-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.showcase-card-pipeline {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--mono);
+}
+
+.showcase-card-go {
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.asset-next-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.next-action-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated));
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.next-action-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
+}
+
+.next-action-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.next-pill-icon {
+  font-size: 11px;
 }
 </style>

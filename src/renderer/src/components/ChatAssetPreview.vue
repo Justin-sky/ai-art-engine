@@ -11,6 +11,7 @@ import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import {
   chatPreviewAssetType,
   chatPreviewKind,
+  deliverableFormatBadge,
   type ChatPreviewKind
 } from '../features/media/chatPreviewKind'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
@@ -18,7 +19,8 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = defineProps<{ relativePath: string }>()
 
-const { assetTypeLabel } = useStudioI18n()
+const { assetTypeLabel, locale } = useStudioI18n()
+const isEn = computed(() => /^en/i.test(locale.value))
 
 /**
  * 按文件扩展名推断预览类型（未知类型降级为纯文本路径）。
@@ -30,6 +32,19 @@ const { assetTypeLabel } = useStudioI18n()
  * `ModelPreview`，所以扩展名清单必须与它支持的格式保持一致。
  */
 const kind = computed<ChatPreviewKind>(() => chatPreviewKind(props.relativePath))
+const deliverableMeta = computed(() => deliverableFormatBadge(props.relativePath))
+const fileShortName = computed(() => {
+  const norm = (props.relativePath ?? '').replace(/\\/g, '/')
+  return norm.split('/').pop() || props.relativePath
+})
+
+async function openDeliverableWithDefaultApp(): Promise<void> {
+  try {
+    await window.studio?.openAssetWithDefaultApp?.(props.relativePath)
+  } catch {
+    // ignore
+  }
+}
 
 /**
  * 左上角类型徽标文案（图片 / 视频 / 声音 / 3D 模型 / 高斯泼溅 …）。
@@ -91,8 +106,8 @@ async function loadPreview(): Promise<void> {
   const seq = ++loadSeq
   resolved.value = false
   releaseHtmlDoc()
-  // 3D 模型由 ModelPreview 自行加载；未知类型不需要媒体 URL
-  if (kind.value === 'model' || kind.value === 'file') {
+  // 3D 模型由 ModelPreview 自行加载；专业交付物与未知类型不需要媒体 URL
+  if (kind.value === 'model' || kind.value === 'deliverable' || kind.value === 'file') {
     resolved.value = true
     return
   }
@@ -192,6 +207,34 @@ async function onImageClick(): Promise<void> {
       />
       <span v-else-if="resolved" class="chat-asset-file">{{ props.relativePath }}</span>
     </template>
+    <div v-else-if="kind === 'deliverable'" class="deliverable-hero-card">
+      <div class="deliverable-hero-head">
+        <span class="deliverable-icon" aria-hidden="true">{{ deliverableMeta.icon }}</span>
+        <div class="deliverable-meta">
+          <div class="deliverable-title-row">
+            <span class="deliverable-code">{{ deliverableMeta.code }}</span>
+            <span class="deliverable-label">
+              {{ isEn ? deliverableMeta.labelEn : deliverableMeta.labelZh }}
+            </span>
+          </div>
+          <div class="deliverable-desc">
+            {{ isEn ? deliverableMeta.descEn : deliverableMeta.descZh }}
+          </div>
+          <div class="deliverable-filename" :title="props.relativePath">
+            {{ fileShortName }}
+          </div>
+        </div>
+      </div>
+      <div class="deliverable-actions">
+        <button
+          type="button"
+          class="deliverable-open-btn"
+          @click.stop="openDeliverableWithDefaultApp"
+        >
+          🚀 {{ isEn ? 'Open File' : '一键打开文件' }}
+        </button>
+      </div>
+    </div>
     <span v-else class="chat-asset-file">{{ props.relativePath }}</span>
   </div>
 </template>
@@ -267,5 +310,100 @@ img.chat-asset-media {
   font-size: 11px;
   color: var(--text-muted);
   word-break: break-all;
+}
+
+.deliverable-hero-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg-elevated)),
+    color-mix(in srgb, var(--bg-panel) 92%, transparent)
+  );
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.deliverable-hero-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.deliverable-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.deliverable-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.deliverable-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.deliverable-code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+}
+
+.deliverable-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.deliverable-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.deliverable-filename {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deliverable-actions {
+  flex-shrink: 0;
+}
+
+.deliverable-open-btn {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.deliverable-open-btn:hover {
+  filter: brightness(1.08);
 }
 </style>

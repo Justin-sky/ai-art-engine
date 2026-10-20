@@ -17,6 +17,7 @@
  */
 import {
   AUDIO_FILE_EXTENSIONS,
+  DELIVERABLE_FILE_EXTENSIONS,
   HTML_FILE_EXTENSIONS,
   IMAGE_FILE_EXTENSIONS,
   MODEL_FILE_EXTENSIONS,
@@ -64,7 +65,9 @@ const SCANNED_MEDIA_EXTS = new Set<string>([
   // 3D：网格 + 高斯泼溅（泼溅登记为 model 资产，也能预览）
   ...MODEL_FILE_EXTENSIONS,
   // 自包含交互页面 / HTML（技能产出的交互图解等）
-  ...HTML_FILE_EXTENSIONS
+  ...HTML_FILE_EXTENSIONS,
+  // 专业工程交付物（PSD 分层源文件 / Unity Prefab / Godot tscn / FCPXML / OTIO）
+  ...DELIVERABLE_FILE_EXTENSIONS
 ])
 
 /** 扫盘命中的单个产物文件 */
@@ -290,6 +293,18 @@ export function isSplatMediaPath(relativePath: string): boolean {
 export function isHtmlMediaPath(relativePath: string): boolean {
   const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
   return HTML_FILE_EXTENSIONS.some((ext) => clean.endsWith(`.${ext}`))
+}
+
+/** 是否 Photoshop 分层 PSD 产物 */
+export function isPsdMediaPath(relativePath: string): boolean {
+  const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
+  return clean.endsWith('.psd')
+}
+
+/** 是否专业工程交付物（PSD / Unity Prefab / Godot tscn / NLE 时间轴 / ZIP 包） */
+export function isDeliverableMediaPath(relativePath: string): boolean {
+  const clean = normalizeOutputPathKey(relativePath).split(/[?#]/)[0]?.toLowerCase() ?? ''
+  return DELIVERABLE_FILE_EXTENSIONS.some((ext) => clean.endsWith(`.${ext}`))
 }
 
 /**

@@ -1,4 +1,6 @@
 import {
+  computeNineSliceFromRgbaBuffer,
+  decomposeControlIntoStandardParts,
   decomposeRgbaBufferToUiLayers,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
@@ -7,7 +9,10 @@ import {
   sortLayersForCompose,
   type ImageLayerSplitLayer,
   type ImageLayerSplitRect,
-  type ImageLayerSplitState
+  type ImageLayerSplitState,
+  type UiControlPartRole,
+  type UiControlType,
+  type UiEditableTextMeta
 } from '@shared/graph'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
@@ -111,6 +116,14 @@ export async function decomposeImageUiLayers(input: {
   cleanBaseDataUrl?: string
   maxLayers?: number
   diffThreshold?: number
+  apiLayerHints?: Array<{
+    name?: string
+    description?: string
+    left: number
+    top: number
+    width: number
+    height: number
+  }>
 }): Promise<{
   width: number
   height: number
@@ -123,7 +136,13 @@ export async function decomposeImageUiLayers(input: {
     width: number
     height: number
     dataUrl: string
+    visible?: boolean
+    uiControlId?: string
+    uiControlName?: string
+    uiControlType?: UiControlType
+    uiPartRole?: UiControlPartRole
     nineSliceBorders?: [number, number, number, number]
+    editableText?: UiEditableTextMeta
   }>
 }> {
   const srcImg = await loadImage(input.sourceDataUrl)
@@ -160,7 +179,8 @@ export async function decomposeImageUiLayers(input: {
     width,
     height,
     cleanBaseRgba,
-    maxLayers: input.maxLayers
+    maxLayers: input.maxLayers,
+    apiLayerHints: input.apiLayerHints
   })
 
   const baseDataUrl = rgbaBufferToPngDataUrl(decomposed.baseRgba, width, height)
@@ -172,7 +192,13 @@ export async function decomposeImageUiLayers(input: {
     width: widget.width,
     height: widget.height,
     dataUrl: rgbaBufferToPngDataUrl(widget.rgba, widget.width, widget.height),
-    ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {})
+    ...(widget.visible !== undefined ? { visible: widget.visible } : {}),
+    ...(widget.uiControlId ? { uiControlId: widget.uiControlId } : {}),
+    ...(widget.uiControlName ? { uiControlName: widget.uiControlName } : {}),
+    ...(widget.uiControlType ? { uiControlType: widget.uiControlType } : {}),
+    ...(widget.uiPartRole ? { uiPartRole: widget.uiPartRole } : {}),
+    ...(widget.nineSliceBorders ? { nineSliceBorders: widget.nineSliceBorders } : {}),
+    ...(widget.editableText ? { editableText: widget.editableText } : {})
   }))
 
   return {
@@ -184,7 +210,85 @@ export async function decomposeImageUiLayers(input: {
 }
 
 /**
- * 手动框选切层（Box-Slice）：从源图（或基底图）按给定画布矩形框智能抠出独立透明图层 PNG。
+ * 将单个已切出的 UI 控件图层（如按钮、滑动条、面板）按 HTML5 / Unity UI Toolkit 标准控件规范拆解为结构化子部件图层。
+ */
+export async function decomposeSingleLayerUrlToControlParts(input: {
+  layer: ImageLayerSplitLayer
+  layerUrl: string
+  canvasWidth: number
+  canvasHeight: number
+  locale?: string
+}): Promise<
+  Array<{
+    idSuffix: string
+    name: string
+    description: string
+    left: number
+    top: number
+    width: number
+    height: number
+    dataUrl: string
+    visible: boolean
+    uiControlId: string
+    uiControlName: string
+    uiControlType: UiControlType
+    uiPartRole: UiControlPartRole
+    nineSliceBorders?: [number, number, number, number]
+    editableText?: UiEditableTextMeta
+  }>
+> {
+  const img = await loadImage(input.layerUrl)
+  const width = Math.max(1, Math.round(input.layer.width) || img.naturalWidth || img.width || 1)
+  const height = Math.max(1, Math.round(input.layer.height) || img.naturalHeight || img.height || 1)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+  ctx.drawImage(img, 0, 0, width, height)
+  const rgba = ctx.getImageData(0, 0, width, height).data
+
+  const nineSliceBorders =
+    input.layer.nineSliceBorders ?? computeNineSliceFromRgbaBuffer(rgba, width, height)
+  const controlId = input.layer.uiControlId?.trim() || `ctrl:${input.layer.id}`
+  const controlName = input.layer.uiControlName?.trim() || input.layer.name
+
+  const parts = decomposeControlIntoStandardParts({
+    nameHint: controlName,
+    descriptionHint: input.layer.description,
+    left: input.layer.left,
+    top: input.layer.top,
+    width,
+    height,
+    canvasWidth: Math.max(1, input.canvasWidth),
+    canvasHeight: Math.max(1, input.canvasHeight),
+    rgba,
+    nineSliceBorders,
+    locale: input.locale
+  })
+
+  return parts.map((part) => ({
+    idSuffix: part.idSuffix,
+    name: part.name,
+    description: part.description,
+    left: part.left,
+    top: part.top,
+    width: part.width,
+    height: part.height,
+    dataUrl: rgbaBufferToPngDataUrl(part.rgba, part.width, part.height),
+    visible: part.visible,
+    uiControlId: controlId,
+    uiControlName: controlName,
+    uiControlType: part.uiControlType,
+    uiPartRole: part.uiPartRole,
+    ...(part.nineSliceBorders ? { nineSliceBorders: part.nineSliceBorders } : {}),
+    ...(part.editableText ? { editableText: part.editableText } : {})
+  }))
+}
+
+/**
+ * 手动框选切层（Box-Slice）：从源图（或基底图）按给定画布矩形框智能抠出独立透明图层 PNG 及其结构化控件子部件。
  */
 export async function sliceUiLayerFromSourceCanvas(input: {
   sourceUrl: string
@@ -201,7 +305,26 @@ export async function sliceUiLayerFromSourceCanvas(input: {
   width: number
   height: number
   dataUrl: string
+  uiControlId?: string
+  uiControlName?: string
+  uiControlType?: UiControlType
   nineSliceBorders?: [number, number, number, number]
+  subParts: Array<{
+    name: string
+    description: string
+    left: number
+    top: number
+    width: number
+    height: number
+    dataUrl: string
+    visible: boolean
+    uiControlId?: string
+    uiControlName?: string
+    uiControlType?: UiControlType
+    uiPartRole?: UiControlPartRole
+    nineSliceBorders?: [number, number, number, number]
+    editableText?: UiEditableTextMeta
+  }>
 }> {
   const srcImg = await loadImage(input.sourceUrl)
   const width = Math.max(1, input.canvasWidth || srcImg.naturalWidth || srcImg.width || 1)
@@ -232,7 +355,7 @@ export async function sliceUiLayerFromSourceCanvas(input: {
     }
   }
 
-  const { layer: sliced } = sliceUiLayerFromRgbaRect({
+  const { layer: sliced, subParts } = sliceUiLayerFromRgbaRect({
     sourceRgba,
     width,
     height,
@@ -249,7 +372,26 @@ export async function sliceUiLayerFromSourceCanvas(input: {
     width: sliced.width,
     height: sliced.height,
     dataUrl: rgbaBufferToPngDataUrl(sliced.rgba, sliced.width, sliced.height),
-    ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {})
+    ...(sliced.uiControlId ? { uiControlId: sliced.uiControlId } : {}),
+    ...(sliced.uiControlName ? { uiControlName: sliced.uiControlName } : {}),
+    ...(sliced.uiControlType ? { uiControlType: sliced.uiControlType } : {}),
+    ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {}),
+    subParts: subParts.map((sp) => ({
+      name: sp.name,
+      description: sp.description,
+      left: sp.left,
+      top: sp.top,
+      width: sp.width,
+      height: sp.height,
+      dataUrl: rgbaBufferToPngDataUrl(sp.rgba, sp.width, sp.height),
+      visible: sp.visible !== false,
+      ...(sp.uiControlId ? { uiControlId: sp.uiControlId } : {}),
+      ...(sp.uiControlName ? { uiControlName: sp.uiControlName } : {}),
+      ...(sp.uiControlType ? { uiControlType: sp.uiControlType } : {}),
+      ...(sp.uiPartRole ? { uiPartRole: sp.uiPartRole } : {}),
+      ...(sp.nineSliceBorders ? { nineSliceBorders: sp.nineSliceBorders } : {}),
+      ...(sp.editableText ? { editableText: sp.editableText } : {})
+    }))
   }
 }
 

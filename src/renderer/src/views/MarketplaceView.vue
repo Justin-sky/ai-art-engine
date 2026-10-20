@@ -440,6 +440,20 @@
                     <code>{{ card.allowedTools.join(', ') }}</code>
                   </dd>
                 </div>
+                <div class="mp-fact">
+                  <dt>{{ t('marketplace.skill.depCheck') }}</dt>
+                  <dd>
+                    <span class="mp-card-state" :class="skillDepReport(card).ready ? 'on' : 'warn'">
+                      {{
+                        skillDepReport(card).ready
+                          ? t('marketplace.skill.depReady')
+                          : t('marketplace.skill.depMissingMcp', {
+                              services: skillDepReport(card).missingMcpServices.join(', ')
+                            })
+                      }}
+                    </span>
+                  </dd>
+                </div>
               </dl>
               <p class="mp-hint">{{ t('marketplace.skill.hint') }}</p>
             </template>
@@ -595,6 +609,10 @@ import type { AppSettings } from '@shared/domain'
 import { DEFAULT_SETTINGS } from '@shared/domain'
 import type { ExternalMcpServer } from '@shared/externalMcp'
 import { listNodeTypes } from '@shared/graph'
+import {
+  checkSkillRuntimeDependencies,
+  type SkillRuntimeDependencyReport
+} from '@shared/claudeSkill'
 import { plainSkillManifest, skillCategoryKey } from '@shared/skillMarket'
 import { toPlain } from '../utils/toPlain'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -720,6 +738,17 @@ const nodeTypeLabelMap = computed(() => {
 function formatNodeTypeLabel(typeId: string): string {
   const title = nodeTypeLabelMap.value.get(typeId)
   return title && title !== typeId ? `${title} (${typeId})` : typeId
+}
+
+function skillDepReport(card: MarketplaceCard): SkillRuntimeDependencyReport {
+  return checkSkillRuntimeDependencies({
+    allowedTools: card.allowedTools,
+    nodeTypes: card.nodeTypes,
+    registeredNodeTypes: new Set(nodeTypeLabelMap.value.keys()),
+    mcpRunning: mcp.value?.running ?? true,
+    blenderConnected: mcp.value?.blenderBridge?.connected ?? true,
+    configuredExternalMcpIds: externalMcp.value.filter((s) => s.enabled).map((s) => s.id)
+  })
 }
 
 const category = ref<MarketplaceFilter>('all')

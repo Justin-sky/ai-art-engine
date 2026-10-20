@@ -3,6 +3,7 @@
  * 刻意不用 sharp 等原生模块——主应用保持纯 JS 约定，跨平台零编译负担。
  * 支持 PNG / JPEG；WebP 请由渲染层 canvas 转 raw 传入。
  */
+import { closeSync, openSync, readSync } from 'fs'
 import { readFile } from 'fs/promises'
 import { decode as decodeJpeg } from 'jpeg-js'
 import { PNG } from 'pngjs'
@@ -52,7 +53,7 @@ export const JPEG_DECODE_OPTIONS = {
   maxResolutionInMP: JPEG_MAX_RESOLUTION_MP
 } as const
 
-function isPng(bytes: Uint8Array): boolean {
+export function isPngBytes(bytes: Uint8Array): boolean {
   return (
     bytes.length >= 8 &&
     bytes[0] === 0x89 &&
@@ -62,11 +63,11 @@ function isPng(bytes: Uint8Array): boolean {
   )
 }
 
-function isJpeg(bytes: Uint8Array): boolean {
+export function isJpegBytes(bytes: Uint8Array): boolean {
   return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
 }
 
-function isWebp(bytes: Uint8Array): boolean {
+export function isWebpBytes(bytes: Uint8Array): boolean {
   return (
     bytes.length >= 12 &&
     bytes[0] === 0x52 &&
@@ -80,16 +81,50 @@ function isWebp(bytes: Uint8Array): boolean {
   )
 }
 
+/** 内置纯 JS 解码器（pngjs / jpeg-js）能否直接解码该字节序列 */
+export function isBuiltinDecodableBytes(bytes: Uint8Array): boolean {
+  return isPngBytes(bytes) || isJpegBytes(bytes)
+}
+
+/**
+ * 仅读取文件前 12 字节判断是否为真实 PNG / JPEG：
+ * 防止后缀名为 `.png` / `.jpg` 但实际内容为 WebP / GIF / BMP 的伪装文件直接下发 worker 报错。
+ */
+export function isBuiltinDecodableImageFile(filePath: string): boolean {
+  try {
+    const fd = openSync(filePath, 'r')
+    const head = Buffer.alloc(12)
+    try {
+      const bytesRead = readSync(fd, head, 0, head.length, 0)
+      return isBuiltinDecodableBytes(head.subarray(0, bytesRead))
+    } finally {
+      closeSync(fd)
+    }
+  } catch {
+    return false
+  }
+}
+
+/** 判断 dataUrl 载荷是否为真实 PNG / JPEG */
+export function isBuiltinDecodableDataUrl(dataUrl: string): boolean {
+  try {
+    const { bytes } = dataUrlToBytes(dataUrl)
+    return isBuiltinDecodableBytes(bytes)
+  } catch {
+    return false
+  }
+}
+
 function decodeBytes(bytes: Uint8Array, sourceLabel: string): DecodedImage {
-  if (isPng(bytes)) {
+  if (isPngBytes(bytes)) {
     const png = PNG.sync.read(Buffer.from(bytes))
     return { width: png.width, height: png.height, rgba: Uint8Array.from(png.data) }
   }
-  if (isJpeg(bytes)) {
+  if (isJpegBytes(bytes)) {
     const raw = decodeJpeg(Buffer.from(bytes), JPEG_DECODE_OPTIONS)
     return { width: raw.width, height: raw.height, rgba: Uint8Array.from(raw.data) }
   }
-  if (isWebp(bytes)) {
+  if (isWebpBytes(bytes)) {
     throw new Error(
       `YOLO: webp image (${sourceLabel}) is not supported by the built-in decoder; pass raw RGBA instead`
     )

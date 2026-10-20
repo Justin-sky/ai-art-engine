@@ -403,3 +403,100 @@ export function lightingSphericalPoint(
     z: radius * cp * Math.cos(yaw)
   }
 }
+
+function clampByte(v: number): number {
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v)
+}
+
+/**
+ * Real-time 2.5D normal-estimated Lambertian + Blinn-Phong + Fresnel rim relighting
+ * on an RGBA pixel buffer, giving immediate interactive visual feedback in the lighting editor.
+ */
+export function apply25dRelightToRgba(
+  sourcePixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  setup: Partial<LightingSetupState> | null | undefined
+): Uint8ClampedArray {
+  const state = normalizeLightingSetup(setup)
+  const out = new Uint8ClampedArray(sourcePixels.length)
+  if (width <= 0 || height <= 0 || sourcePixels.length < width * height * 4) {
+    return out
+  }
+
+  const lightVec = lightingSphericalPoint(state.yaw, state.pitch, 1)
+  const hex = normalizeLightingColor(state.color)
+  const lr = parseInt(hex.slice(1, 3), 16) / 255
+  const lg = parseInt(hex.slice(3, 5), 16) / 255
+  const lb = parseInt(hex.slice(5, 7), 16) / 255
+  const intensity = (state.brightness / 100) * 1.45
+  const ambient = 0.36 + (state.brightness / 100) * 0.28
+
+  // Precompute luminance for Sobel micro-relief normals
+  const luma = new Float32Array(width * height)
+  for (let i = 0, p = 0; i < luma.length; i++, p += 4) {
+    luma[i] =
+      (0.299 * sourcePixels[p] + 0.587 * sourcePixels[p + 1] + 0.114 * sourcePixels[p + 2]) / 255
+  }
+
+  // Halfway vector H = normalize(L + V), where V = (0, 0, 1)
+  let hx = lightVec.x
+  let hy = lightVec.y
+  let hz = lightVec.z + 1
+  const hLen = Math.hypot(hx, hy, hz) || 1
+  hx /= hLen
+  hy /= hLen
+  hz /= hLen
+
+  for (let y = 0; y < height; y++) {
+    const nySphere = ((height * 0.5 - (y + 0.5)) / (height * 0.5)) * 0.72
+    const yPrev = Math.max(0, y - 1)
+    const yNext = Math.min(height - 1, y + 1)
+
+    for (let x = 0; x < width; x++) {
+      const nxSphere = ((x + 0.5 - width * 0.5) / (width * 0.5)) * 0.72
+      const xPrev = Math.max(0, x - 1)
+      const xNext = Math.min(width - 1, x + 1)
+
+      // Combine macro dome normal with micro luminance gradient
+      const gx = (luma[y * width + xNext] - luma[y * width + xPrev]) * 0.65
+      const gy = (luma[yPrev * width + x] - luma[yNext * width + x]) * 0.65
+
+      let nx = nxSphere - gx
+      let ny = nySphere - gy
+      let nz = Math.sqrt(Math.max(0.12, 1 - Math.min(0.88, nx * nx + ny * ny)))
+      const nLen = Math.hypot(nx, ny, nz) || 1
+      nx /= nLen
+      ny /= nLen
+      nz /= nLen
+
+      const ndotl = Math.max(0, nx * lightVec.x + ny * lightVec.y + nz * lightVec.z)
+      const ndoth = Math.max(0, nx * hx + ny * hy + nz * hz)
+      const spec = Math.pow(ndoth, 18) * 0.28 * intensity
+
+      // Rim light Fresnel term when rimLight is enabled
+      let rim = 0
+      if (state.rimLight) {
+        const fresnel = Math.pow(Math.max(0, 1 - nz), 2.2)
+        const oppDot = Math.max(0, -nx * lightVec.x - ny * lightVec.y + 0.35)
+        rim = fresnel * oppDot * 0.55
+      }
+
+      const idx = (y * width + x) * 4
+      const sr = sourcePixels[idx]
+      const sg = sourcePixels[idx + 1]
+      const sb = sourcePixels[idx + 2]
+
+      const gainR = ambient + ndotl * intensity * lr + rim * (0.65 + 0.35 * lr)
+      const gainG = ambient + ndotl * intensity * lg + rim * (0.72 + 0.28 * lg)
+      const gainB = ambient + ndotl * intensity * lb + rim * (0.85 + 0.15 * lb)
+
+      out[idx] = clampByte(sr * gainR + spec * lr * 255)
+      out[idx + 1] = clampByte(sg * gainG + spec * lg * 255)
+      out[idx + 2] = clampByte(sb * gainB + spec * lb * 255)
+      out[idx + 3] = sourcePixels[idx + 3]
+    }
+  }
+
+  return out
+}

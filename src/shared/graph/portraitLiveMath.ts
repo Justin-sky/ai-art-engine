@@ -6,8 +6,11 @@
  */
 
 import { PORTRAIT_LANDMARK_COUNT, portraitFaceBoxFromLandmarks } from './portraitFace'
+import { idPhotoSpecById } from './idPhoto'
 import {
   normalizePortraitRetouch,
+  type PortraitIdPhotoBg,
+  type PortraitIdPhotoSpecId,
   type PortraitLutId,
   type PortraitRetouchState,
   type PortraitTier
@@ -1356,4 +1359,394 @@ export function applyPortraitLivePixelPipeline(
   }
 
   return { pixels: out, appliedSteps }
+}
+
+// ── Millimeter-Exact Local ID Photo Auto-Crop & Print Sheet ─────
+
+export interface IdPhotoCropBoxResult {
+  /** Normalized crop rectangle in 0..1 of the source image */
+  x: number
+  y: number
+  w: number
+  h: number
+  /** Target pixel width at requested DPI (e.g. 295px for 1-inch @ 300 DPI) */
+  widthPx: number
+  /** Target pixel height at requested DPI (e.g. 413px for 1-inch @ 300 DPI) */
+  heightPx: number
+  /** Physical millimeter dimensions */
+  widthMm: number
+  heightMm: number
+  dpi: number
+}
+
+/**
+ * Computes a millimeter-exact ID photo crop box from 68-point facial landmarks
+ * (or fallback center portrait framing) so the crown has ~9% top headroom,
+ * the nose bridge is horizontally centered, and shoulders are framed cleanly.
+ */
+export function computeIdPhotoCropBox(
+  specId: PortraitIdPhotoSpecId | string,
+  landmarks?: readonly (readonly [number, number])[] | null,
+  sourceAspect = 1,
+  dpi = 300
+): IdPhotoCropBoxResult | null {
+  const spec = idPhotoSpecById(specId)
+  if (!spec) return null
+  const safeDpi = clamp(Number.isFinite(dpi) ? Math.round(dpi) : 300, 72, 600)
+  const widthPx = Math.max(64, Math.round((spec.widthMm / 25.4) * safeDpi))
+  const heightPx = Math.max(64, Math.round((spec.heightMm / 25.4) * safeDpi))
+  const targetAspect = spec.widthMm / spec.heightMm
+  const imgAspect = Number.isFinite(sourceAspect) && sourceAspect > 0.1 ? sourceAspect : 1
+
+  const regions = extractFaceSemanticRegions(landmarks)
+  let centerX = 0.5
+  let headTopY = 0.18
+  let chinY = 0.56
+
+  if (regions && landmarks && landmarks.length >= PORTRAIT_LANDMARK_COUNT) {
+    centerX = landmarks[27][0]
+    chinY = landmarks[8][1]
+    const browMinY = Math.min(
+      ...regions.leftBrow.map((p) => p[1]),
+      ...regions.rightBrow.map((p) => p[1])
+    )
+    const browToChin = Math.max(0.08, chinY - browMinY)
+    headTopY = Math.max(0.02, browMinY - browToChin * 0.52)
+  }
+
+  // Standard ID photo framing: head height (crown to chin) occupies ~56% of frame height,
+  // with ~9% top margin above crown.
+  const headSpan = Math.max(0.12, chinY - headTopY)
+  let cropH = clamp(headSpan / 0.56, 0.25, 1)
+  // Normalized width w = cropH * (targetAspect / imgAspect)
+  let cropW = cropH * (targetAspect / imgAspect)
+  if (cropW > 1) {
+    cropW = 1
+    cropH = clamp(cropW * (imgAspect / targetAspect), 0.15, 1)
+  }
+
+  let cropX = clamp(centerX - cropW * 0.5, 0, 1 - cropW)
+  let cropY = clamp(headTopY - cropH * 0.09, 0, 1 - cropH)
+
+  return {
+    x: cropX,
+    y: cropY,
+    w: cropW,
+    h: cropH,
+    widthPx,
+    heightPx,
+    widthMm: spec.widthMm,
+    heightMm: spec.heightMm,
+    dpi: safeDpi
+  }
+}
+
+function idPhotoBackdropRgb(
+  bg: PortraitIdPhotoBg | 'gray' | 'gradientBlue',
+  v: number
+): [number, number, number] {
+  switch (bg) {
+    case 'blue':
+      return [67, 142, 219]
+    case 'red':
+      return [217, 46, 46]
+    case 'gray':
+      return [218, 222, 228]
+    case 'gradient':
+    case 'gradientBlue': {
+      const t = clamp01(v)
+      return [
+        Math.round(52 * (1 - t) + 150 * t),
+        Math.round(126 * (1 - t) + 198 * t),
+        Math.round(208 * (1 - t) + 242 * t)
+      ]
+    }
+    case 'white':
+    default:
+      return [255, 255, 255]
+  }
+}
+
+/**
+ * Renders a millimeter-exact single ID photo RGBA buffer from the live portrait pipeline,
+ * cropping to the specification aspect ratio and optionally replacing the backdrop when
+ * edge background pixels are detected outside the head-and-shoulder silhouette.
+ */
+export function renderIdPhotoSingleRgba(
+  sourcePixels: Uint8ClampedArray,
+  srcW: number,
+  srcH: number,
+  input: PortraitLiveInput,
+  options?: { dpi?: number; replaceBackdrop?: boolean }
+): { pixels: Uint8ClampedArray; width: number; height: number; crop: IdPhotoCropBoxResult } | null {
+  const state = normalizePortraitRetouch(input.state)
+  const crop = computeIdPhotoCropBox(
+    state.idPhotoSpecId,
+    input.landmarks,
+    srcW / Math.max(1, srcH),
+    options?.dpi ?? (state.exportDpi || 300)
+  )
+  if (!crop) return null
+
+  const { pixels: retouched } = applyPortraitLivePixelPipeline(sourcePixels, srcW, srcH, input)
+  const dstW = crop.widthPx
+  const dstH = crop.heightPx
+  const out = new Uint8ClampedArray(dstW * dstH * 4)
+
+  // Sample outer top-left / top-right corner background reference color for clean local keying
+  const tlIdx =
+    (Math.min(srcH - 1, Math.max(0, Math.round(crop.y * srcH + 2))) * srcW +
+      Math.min(srcW - 1, Math.max(0, Math.round(crop.x * srcW + 2)))) *
+    4
+  const trIdx =
+    (Math.min(srcH - 1, Math.max(0, Math.round(crop.y * srcH + 2))) * srcW +
+      Math.min(srcW - 1, Math.max(0, Math.round((crop.x + crop.w) * srcW - 3)))) *
+    4
+  const bgRefR = (retouched[tlIdx] + retouched[trIdx]) * 0.5
+  const bgRefG = (retouched[tlIdx + 1] + retouched[trIdx + 1]) * 0.5
+  const bgRefB = (retouched[tlIdx + 2] + retouched[trIdx + 2]) * 0.5
+  const doBackdrop = options?.replaceBackdrop !== false
+
+  for (let y = 0; y < dstH; y++) {
+    const nv = (y + 0.5) / dstH
+    const su = crop.y + nv * crop.h
+    const sy = clamp(su * srcH - 0.5, 0, srcH - 1)
+    const y0 = Math.floor(sy)
+    const y1 = Math.min(srcH - 1, y0 + 1)
+    const fy = sy - y0
+
+    for (let x = 0; x < dstW; x++) {
+      const nu = (x + 0.5) / dstW
+      const sv = crop.x + nu * crop.w
+      const sx = clamp(sv * srcW - 0.5, 0, srcW - 1)
+      const x0 = Math.floor(sx)
+      const x1 = Math.min(srcW - 1, x0 + 1)
+      const fx = sx - x0
+
+      const p00 = (y0 * srcW + x0) * 4
+      const p10 = (y0 * srcW + x1) * 4
+      const p01 = (y1 * srcW + x0) * 4
+      const p11 = (y1 * srcW + x1) * 4
+
+      let r =
+        (retouched[p00] * (1 - fx) + retouched[p10] * fx) * (1 - fy) +
+        (retouched[p01] * (1 - fx) + retouched[p11] * fx) * fy
+      let g =
+        (retouched[p00 + 1] * (1 - fx) + retouched[p10 + 1] * fx) * (1 - fy) +
+        (retouched[p01 + 1] * (1 - fx) + retouched[p11 + 1] * fx) * fy
+      let b =
+        (retouched[p00 + 2] * (1 - fx) + retouched[p10 + 2] * fx) * (1 - fy) +
+        (retouched[p01 + 2] * (1 - fx) + retouched[p11 + 2] * fx) * fy
+      const a =
+        (retouched[p00 + 3] * (1 - fx) + retouched[p10 + 3] * fx) * (1 - fy) +
+        (retouched[p01 + 3] * (1 - fx) + retouched[p11 + 3] * fx) * fy
+
+      if (doBackdrop) {
+        // Head + shoulders geometric prior inside ID photo frame:
+        // head ellipse centered at (0.5, 0.38), shoulder trapezoid at (0.5, 0.88)
+        const headDx = (nu - 0.5) / 0.29
+        const headDy = (nv - 0.39) / 0.28
+        const headDist = Math.sqrt(headDx * headDx + headDy * headDy)
+        const shoulderDx = (nu - 0.5) / 0.48
+        const shoulderDy = (nv - 0.92) / 0.28
+        const shoulderDist = Math.sqrt(shoulderDx * shoulderDx + shoulderDy * shoulderDy)
+        const geoInside = Math.min(headDist, shoulderDist)
+        const colorDist = Math.hypot(r - bgRefR, g - bgRefG, b - bgRefB)
+        const alphaTrans = a < 250 ? 1 - a / 255 : 0
+        const bgSim = colorDist < 42 ? 1 - colorDist / 42 : 0
+        const outsideWeight =
+          geoInside > 1.05
+            ? clamp01((geoInside - 0.92) * 2.2) * Math.max(bgSim, alphaTrans)
+            : alphaTrans
+        if (outsideWeight > 0.01) {
+          const [br, bg, bb] = idPhotoBackdropRgb(state.idPhotoBg, nv)
+          r = r * (1 - outsideWeight) + br * outsideWeight
+          g = g * (1 - outsideWeight) + bg * outsideWeight
+          b = b * (1 - outsideWeight) + bb * outsideWeight
+        }
+      }
+
+      const dst = (y * dstW + x) * 4
+      out[dst] = clamp255(r)
+      out[dst + 1] = clamp255(g)
+      out[dst + 2] = clamp255(b)
+      out[dst + 3] = 255
+    }
+  }
+
+  return { pixels: out, width: dstW, height: dstH, crop }
+}
+
+/**
+ * Composes a multi-up ID photo print sheet (default 4×2 = 8-up on 6-inch paper)
+ * with clean white margins and L-shaped corner cut marks.
+ */
+export function composeIdPhotoPrintSheetRgba(
+  photoPixels: Uint8ClampedArray,
+  photoW: number,
+  photoH: number,
+  options?: {
+    columns?: number
+    rows?: number
+    gapPx?: number
+    marginPx?: number
+    cutMarks?: boolean
+  }
+): { pixels: Uint8ClampedArray; width: number; height: number; count: number } {
+  const cols = Math.max(1, Math.min(6, options?.columns ?? 4))
+  const rows = Math.max(1, Math.min(6, options?.rows ?? 2))
+  const gap = Math.max(4, options?.gapPx ?? Math.round(Math.min(photoW, photoH) * 0.08))
+  const margin = Math.max(8, options?.marginPx ?? Math.round(Math.min(photoW, photoH) * 0.14))
+  const drawCutMarks = options?.cutMarks !== false
+
+  const sheetW = margin * 2 + cols * photoW + (cols - 1) * gap
+  const sheetH = margin * 2 + rows * photoH + (rows - 1) * gap
+  const out = new Uint8ClampedArray(sheetW * sheetH * 4)
+  out.fill(255) // Pure white photo paper
+
+  const markLen = Math.max(4, Math.min(12, Math.floor(gap * 0.45)))
+
+  const setGrayPixel = (px: number, py: number, gray: number): void => {
+    if (px < 0 || px >= sheetW || py < 0 || py >= sheetH) return
+    const i = (py * sheetW + px) * 4
+    out[i] = gray
+    out[i + 1] = gray
+    out[i + 2] = gray
+    out[i + 3] = 255
+  }
+
+  for (let r = 0; r < rows; r++) {
+    const oy = margin + r * (photoH + gap)
+    for (let c = 0; c < cols; c++) {
+      const ox = margin + c * (photoW + gap)
+      for (let y = 0; y < photoH; y++) {
+        for (let x = 0; x < photoW; x++) {
+          const srcIdx = (y * photoW + x) * 4
+          const dstIdx = ((oy + y) * sheetW + (ox + x)) * 4
+          out[dstIdx] = photoPixels[srcIdx]
+          out[dstIdx + 1] = photoPixels[srcIdx + 1]
+          out[dstIdx + 2] = photoPixels[srcIdx + 2]
+          out[dstIdx + 3] = 255
+        }
+      }
+
+      if (drawCutMarks) {
+        // Subtle L-shaped corner cut ticks around each ID photo cell
+        const corners: Array<[number, number, number, number]> = [
+          [ox - 2, oy - 2, -1, -1],
+          [ox + photoW + 1, oy - 2, 1, -1],
+          [ox - 2, oy + photoH + 1, -1, 1],
+          [ox + photoW + 1, oy + photoH + 1, 1, 1]
+        ]
+        for (const [cx, cy, dx, dy] of corners) {
+          for (let k = 0; k < markLen; k++) {
+            setGrayPixel(cx + dx * k, cy, 168)
+            setGrayPixel(cx, cy + dy * k, 168)
+          }
+        }
+      }
+    }
+  }
+
+  return { pixels: out, width: sheetW, height: sheetH, count: cols * rows }
+}
+
+// ── Portrait Batch Sync Clipboard ────────────────────────────────
+
+export interface PortraitBatchClipboardPayload {
+  schema: 'ai-art-engine.portrait-batch-sync'
+  version: 1
+  state: PortraitRetouchState
+  customLut: PortraitCubeLut | null
+}
+
+export function serializePortraitBatchClipboard(input: {
+  state?: Partial<PortraitRetouchState> | null
+  customLut?: PortraitCubeLut | null
+}): string {
+  const payload: PortraitBatchClipboardPayload = {
+    schema: 'ai-art-engine.portrait-batch-sync',
+    version: 1,
+    state: normalizePortraitRetouch(input.state),
+    customLut: normalizePortraitCubeLut(input.customLut)
+  }
+  return JSON.stringify(payload)
+}
+
+export function parsePortraitBatchClipboard(raw: string): {
+  state: PortraitRetouchState
+  customLut: PortraitCubeLut | null
+} | null {
+  try {
+    const parsed = JSON.parse(raw) as Partial<PortraitBatchClipboardPayload>
+    if (!parsed || parsed.schema !== 'ai-art-engine.portrait-batch-sync') return null
+    return {
+      state: normalizePortraitRetouch(parsed.state),
+      customLut: normalizePortraitCubeLut(parsed.customLut)
+    }
+  } catch {
+    return null
+  }
+}
+
+// ── Multi-Shot Color Consistency (Mean/Std Reinhard Color Transfer) ──
+
+/**
+ * Matches the RGB channel mean and standard deviation of `sourcePixels` to `referencePixels`
+ * so multi-shot storyboards or batch portraits lock color grading consistently.
+ */
+export function matchShotColorHistogramRgba(
+  sourcePixels: Uint8ClampedArray,
+  referencePixels: Uint8ClampedArray,
+  strength = 0.85
+): Uint8ClampedArray {
+  const blend = clamp01(Number.isFinite(strength) ? strength : 0.85)
+  const out = new Uint8ClampedArray(sourcePixels)
+  if (blend <= 0 || sourcePixels.length < 4 || referencePixels.length < 4) return out
+
+  const stats = (
+    buf: Uint8ClampedArray
+  ): { mean: [number, number, number]; std: [number, number, number] } => {
+    const count = Math.max(1, Math.floor(buf.length / 4))
+    let mr = 0
+    let mg = 0
+    let mb = 0
+    for (let i = 0; i < buf.length; i += 4) {
+      mr += buf[i]
+      mg += buf[i + 1]
+      mb += buf[i + 2]
+    }
+    mr /= count
+    mg /= count
+    mb /= count
+    let vr = 0
+    let vg = 0
+    let vb = 0
+    for (let i = 0; i < buf.length; i += 4) {
+      vr += (buf[i] - mr) * (buf[i] - mr)
+      vg += (buf[i + 1] - mg) * (buf[i + 1] - mg)
+      vb += (buf[i + 2] - mb) * (buf[i + 2] - mb)
+    }
+    return {
+      mean: [mr, mg, mb],
+      std: [
+        Math.max(4, Math.sqrt(vr / count)),
+        Math.max(4, Math.sqrt(vg / count)),
+        Math.max(4, Math.sqrt(vb / count))
+      ]
+    }
+  }
+
+  const srcStat = stats(sourcePixels)
+  const refStat = stats(referencePixels)
+
+  for (let i = 0; i < out.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const val = sourcePixels[i + c]
+      const transferred =
+        (val - srcStat.mean[c]) * (refStat.std[c] / srcStat.std[c]) + refStat.mean[c]
+      out[i + c] = clamp255(val * (1 - blend) + transferred * blend)
+    }
+  }
+  return out
 }

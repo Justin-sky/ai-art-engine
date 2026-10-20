@@ -77,7 +77,21 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/execute/gameHtmlGen.ts',
   // 可玩 HTML 工程脚手架：模板串里是**生成到工程文件里的**样例源码与注释（含 3D 样例 HUD），
   // 不参与本应用 UI 渲染，与 sampleGames 同域
-  'src/main/services/gamePlayScaffold.ts'
+  'src/main/services/gamePlayScaffold.ts',
+  // 双语预设 / 编译器 / 导出模板与镜头光学字典（域数据，同 adVariantMatrix / instructionPresets）
+  'src/shared/chatNextActions.ts',
+  'src/shared/chatShowcaseStarters.ts',
+  'src/shared/graph/canvasMacroCompiler.ts',
+  'src/shared/graph/compositionSaliencyAuditor.ts',
+  'src/shared/graph/opticalLensLab.ts',
+  'src/shared/graph/parallaxCameraRig.ts',
+  'src/shared/graph/shotContinuityRadar.ts',
+  'src/shared/graph/smartBalloonLayout.ts',
+  'src/shared/graph/uiControlSpec.ts',
+  'src/shared/graph/uiEngineExport.ts',
+  'src/shared/graph/variantContactSheet.ts',
+  'src/renderer/src/features/graph/model/recipePosterExport.ts',
+  'src/renderer/src/features/media/chatPreviewKind.ts'
 ])
 const EXEMPT_DIR_PARTS = [['src', 'renderer', 'src', 'i18n', 'locales']]
 

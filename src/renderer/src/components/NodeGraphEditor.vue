@@ -220,6 +220,39 @@
         >
           {{ t('graph.qcOverview.open') }}
         </button>
+        <span class="view-mode-switch" role="group">
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ active: !studioFocusMode }"
+            :title="isZhLocale ? '专业节点图模式 (Node Graph Mode)' : 'Node Graph Mode'"
+            @click="studioFocusMode = false"
+          >
+            🕸️ {{ isZhLocale ? '节点' : 'Graph' }}
+          </button>
+          <button
+            type="button"
+            class="view-mode-btn"
+            :class="{ active: studioFocusMode }"
+            :title="isZhLocale ? '极简焦点创作舞台 (Studio Focus Stage)' : 'Studio Focus Stage'"
+            @click="studioFocusMode = true"
+          >
+            ✨ {{ isZhLocale ? '焦点' : 'Focus' }}
+          </button>
+        </span>
+        <button
+          type="button"
+          class="recipe-poster-btn"
+          :disabled="graph.nodes.length === 0"
+          :title="
+            isZhLocale
+              ? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'
+              : 'Export Recipe Poster PNG with embedded workflow graph'
+          "
+          @click="exportRecipePoster"
+        >
+          📸 {{ isZhLocale ? '配方海报' : 'Recipe' }}
+        </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
@@ -251,7 +284,22 @@
       {{ dropError }}
     </div>
 
+    <GraphStudioFocusStage
+      v-if="studioFocusMode"
+      :graph="graph"
+      :selected-node-id="toolbarSelectedNodeId ?? ''"
+      :preview-urls="focusStagePreviewUrls"
+      :is-running="isGraphOrTaskRunning"
+      @select-node="onFocusSelectNode"
+      @dive-node="onFocusDiveNode"
+      @run-graph="runWorkflow"
+      @export-poster="exportRecipePoster"
+      @switch-to-graph="studioFocusMode = false"
+      @load-demo="loadZeroKeyDemoOntoGraph"
+    />
+
     <GraphLayoutFloatingBar
+      v-show="!studioFocusMode"
       v-model:snap-enabled="snapToGridEnabled"
       v-model:grid-visible="gridVisible"
       v-model:minimap-visible="minimapVisible"
@@ -264,7 +312,7 @@
     />
 
     <GraphMinimap
-      v-if="minimapVisible"
+      v-if="minimapVisible && !studioFocusMode"
       :nodes="graph.nodes"
       :viewport="graph.viewport"
       :host-width="viewportHostSize.w"
@@ -274,7 +322,7 @@
     />
 
     <GraphRadialMenu
-      v-if="radialMenu"
+      v-if="radialMenu && !studioFocusMode"
       :x="radialMenu.x"
       :y="radialMenu.y"
       :anchor-x="radialAnchor?.x"
@@ -287,6 +335,7 @@
     />
 
     <div
+      v-show="!studioFocusMode"
       ref="viewportEl"
       class="graph-viewport"
       :class="{
@@ -668,6 +717,7 @@ import {
 import { resolveGraphCard } from '../graph/cards/registry'
 import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import GraphMinimap from './GraphMinimap.vue'
+import GraphStudioFocusStage from './GraphStudioFocusStage.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
@@ -904,9 +954,12 @@ import {
   isGraphOutputTerminalNode,
   summarizeReferenceListForLog,
   GraphPortType,
-  collectBlockedNodeIds
+  collectBlockedNodeIds,
+  extractGraphFromPngBytes
 } from '@shared/graph'
+import { buildZeroKeyLiveDemoGraph } from '@shared/chatShowcaseStarters'
 import { decomposeImageUiLayers } from '../features/graph/model/composeImageLayerStack'
+import { buildRecipePosterPngDataUrl } from '../features/graph/model/recipePosterExport'
 import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
@@ -4681,6 +4734,40 @@ async function onDrop(e: DragEvent): Promise<void> {
     return
   }
 
+  // 2.5) 检查拖入的 PNG 文件是否内嵌了 aiae:graph 节点配方海报隐写数据（病毒式社交复刻）
+  const rawFiles = e.dataTransfer?.files
+  if (rawFiles?.length) {
+    for (let i = 0; i < rawFiles.length; i += 1) {
+      const file = rawFiles[i]
+      if (
+        file &&
+        (file.type === 'image/png' || /\.png$/i.test(file.name || '')) &&
+        typeof file.arrayBuffer === 'function'
+      ) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          const extracted = extractGraphFromPngBytes(bytes)
+          if (extracted && extracted.nodes.length > 0) {
+            const before = buildGraphJson()
+            applyGraphDocument(extracted, { skipRenderWindow: true })
+            fitViewWhenHostReady()
+            scheduleSave()
+            recordGraphChange('import-recipe-png', before)
+            graphEditorHosts.bumpRevision()
+            runFailed.value = false
+            runSucceeded.value = true
+            runMessage.value = isZhLocale.value
+              ? `✨ 已从 PNG 配方海报一键复刻完整工作流（共 ${extracted.nodes.length} 个节点）`
+              : `✨ Restored workflow from Recipe Poster PNG (${extracted.nodes.length} nodes)`
+            return
+          }
+        } catch {
+          // 非配方海报或读取失败，继续走普通图片导入
+        }
+      }
+    }
+  }
+
   // 3) 仅处理带真实本地路径的系统文件；预览图/页内拖拽常有 files 却无 path，勿报错
   const allPaths = getDroppedFilePaths(e)
   const paths = allPaths.filter(isImportablePath)
@@ -6174,7 +6261,10 @@ async function resolveNodeEditorSourceUrl(
   nodeId: string,
   options?: { preferUpstream?: boolean }
 ): Promise<string> {
-  if (options?.preferUpstream) {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  const chainProcessOutput =
+    node?.typeId === 'image.process' && node.params.imageProcessChainFromOutput === true
+  if (options?.preferUpstream && !chainProcessOutput) {
     const upstream = await resolveNodeUpstreamPreviewUrl(nodeId)
     if (upstream) return upstream
     return resolveNodeOwnPreviewUrl(nodeId)
@@ -9820,6 +9910,171 @@ onBeforeUnmount(() => {
   }
 })
 
+const studioFocusMode = ref(false)
+const isZhLocale = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+)
+const focusStagePreviewUrls = reactive<Record<string, string>>({})
+
+async function refreshFocusStagePreviewUrls(): Promise<void> {
+  for (const node of graph.nodes) {
+    const directDataUrl =
+      typeof node.params?.previewDataUrl === 'string' ? node.params.previewDataUrl.trim() : ''
+    if (directDataUrl) {
+      focusStagePreviewUrls[node.id] = directDataUrl
+      continue
+    }
+    const relPath =
+      typeof node.params?.previewRelativePath === 'string'
+        ? node.params.previewRelativePath.trim()
+        : ''
+    if (relPath) {
+      const url = await resolveCachedAssetPreviewUrl(relPath)
+      if (url) {
+        focusStagePreviewUrls[node.id] = url
+        continue
+      }
+    }
+    const imgs = node.params.generatedImages ?? []
+    for (const item of imgs) {
+      if (item.dataUrl?.trim()) {
+        focusStagePreviewUrls[node.id] = item.dataUrl.trim()
+        break
+      }
+      if (item.relativePath?.trim()) {
+        const url = await resolveCachedAssetPreviewUrl(item.relativePath.trim())
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          break
+        }
+      }
+    }
+  }
+}
+
+watch(
+  () => [studioFocusMode.value, graph.nodes.length] as const,
+  ([focus]) => {
+    if (focus) void refreshFocusStagePreviewUrls()
+  },
+  { immediate: true }
+)
+
+function onFocusSelectNode(nodeId: string): void {
+  if (!graph.nodes.some((n) => n.id === nodeId)) return
+  setSingleNodeSelection(nodeId)
+  workspace.selectGraphNode(nodeId, graphHostId.value)
+}
+
+function onFocusDiveNode(nodeId: string): void {
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node) return
+  onFocusSelectNode(nodeId)
+  if (node.typeId === 'image.layerSplit') {
+    void onLayerSplitOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.upscale') {
+    void onUpscaleOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.lighting') {
+    void onLightingOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.multiAngle') {
+    void onMultiAngleOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.redraw') {
+    void onRedrawOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.erase') {
+    void onEraseOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.expand') {
+    void onExpandOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.matte') {
+    void onMatteOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.crop') {
+    void onCropOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.compose') {
+    void onComposeOpen(nodeId)
+    return
+  }
+  // 默认切回节点视图方便调整参数
+  studioFocusMode.value = false
+}
+
+function loadZeroKeyDemoOntoGraph(): void {
+  const before = buildGraphJson()
+  const demoDoc = buildZeroKeyLiveDemoGraph(String(locale.value || 'zh-CN'))
+  applyGraphDocument(demoDoc, { skipRenderWindow: true })
+  fitViewWhenHostReady()
+  scheduleSave()
+  recordGraphChange('load-zero-key-demo', before)
+  graphEditorHosts.bumpRevision()
+  void refreshFocusStagePreviewUrls()
+  const splitNode = demoDoc.nodes.find((n) => n.id === 'demo-ui-layersplit')
+  if (splitNode) {
+    onFocusSelectNode(splitNode.id)
+    void onLayerSplitOpen(splitNode.id)
+  }
+}
+
+async function exportRecipePoster(): Promise<void> {
+  if (!graph.nodes.length) return
+  try {
+    await refreshFocusStagePreviewUrls()
+    let heroImageUrl = ''
+    for (let i = graph.nodes.length - 1; i >= 0; i -= 1) {
+      const n = graph.nodes[i]!
+      const url = focusStagePreviewUrls[n.id]
+      if (url) {
+        heroImageUrl = url
+        break
+      }
+    }
+    const title =
+      graphAsset.value?.name?.trim() ||
+      graph.nodes[graph.nodes.length - 1]?.title?.trim() ||
+      (isZhLocale.value ? 'AI Art Engine 创作配方' : 'AI Art Engine Recipe')
+    const dataUrl = await buildRecipePosterPngDataUrl({
+      graph: buildGraphJson(),
+      title,
+      heroImageSrc: heroImageUrl,
+      locale: String(locale.value || 'zh-CN')
+    })
+    const base64 = dataUrl.split(',')[1] || ''
+    const bin = atob(base64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i)
+    const saved = await window.studio.saveBinaryFile({
+      data: bytes,
+      defaultPath: `${title.replace(/[<>:"/\\|?*]+/g, '_')}-recipe.png`,
+      filters: [{ name: 'Recipe Poster PNG (with Workflow)', extensions: ['png'] }]
+    })
+    if (!saved) return
+    runFailed.value = false
+    runSucceeded.value = true
+    runMessage.value = isZhLocale.value
+      ? '📸 已导出 PNG 配方海报（已内嵌完整工作流，拖入画布即可一键复刻）'
+      : '📸 Exported Recipe Poster PNG (drag into canvas to restore workflow)'
+  } catch (err) {
+    showDropError(err instanceof Error ? err.message : String(err))
+  }
+}
+
 function getGraphDocument(): GraphDocument {
   return buildGraphJson()
 }
@@ -9925,6 +10180,45 @@ defineExpose({
 .tools button {
   font-size: 11px;
   padding: 3px 8px;
+}
+
+.view-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+}
+
+.tools .view-mode-btn {
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tools .view-mode-btn.active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.18);
+  color: #7dd3fc;
+}
+
+.tools .recipe-poster-btn {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  font-weight: 600;
+}
+
+.tools .recipe-poster-btn:hover:not(:disabled) {
+  border-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.22);
 }
 
 .tools .edge-style-btn {

@@ -272,7 +272,8 @@ const capturePasses: Array<{ id: DirectorCapturePass; labelKey: string }> = [
   { id: 'rgb', labelKey: 'director.stage.capturePassRgb' },
   { id: 'depth', labelKey: 'director.stage.capturePassDepth' },
   { id: 'normal', labelKey: 'director.stage.capturePassNormal' },
-  { id: 'pose', labelKey: 'director.stage.capturePassPose' }
+  { id: 'pose', labelKey: 'director.stage.capturePassPose' },
+  { id: 'canny', labelKey: 'director.stage.capturePassCanny' }
 ]
 
 /* ------------------------------------------------------------------ *

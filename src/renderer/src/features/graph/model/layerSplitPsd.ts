@@ -1,4 +1,4 @@
-import { writePsdUint8Array, type Layer, type Psd } from 'ag-psd'
+import { writePsdUint8Array, type Layer, type LayerTextData, type Psd } from 'ag-psd'
 import { defErrSimple, fail } from '@shared/errors/appError'
 import {
   buildLayerSplitTree,
@@ -7,7 +7,8 @@ import {
   orderLayerSplitTreeForPsd,
   sortLayersForCompose,
   type ImageLayerSplitLayer,
-  type ImageLayerSplitState
+  type ImageLayerSplitState,
+  type UiEditableTextMeta
 } from '@shared/graph'
 
 /** PSD 导出侧错误：语境是「导出」而非执行期拆层，文案与 SHARED_ERRORS.layerSplit* 不同，单列条目 */
@@ -41,7 +42,48 @@ function layerDisplayName(layer: ImageLayerSplitLayer, isBase: boolean): string 
   return isBase ? 'Base' : `Layer ${layer.zIndex}`
 }
 
-/** 把图层拆分结果序列化为 PSD（底图 + 透明图层，保留分组层级/位置/尺寸/透明度/可见性/名称）。 */
+/**
+ * 构建 Photoshop 原生可编辑文本图层（`TySh`）描述符：
+ * 当图层包含 `editableText` 元数据时，Photoshop 打开 PSD 后除直接显示预渲染像素外，
+ * 用户可用文字工具（T）直接双击修改文案、字号与字体。
+ */
+export function buildAgPsdLayerTextData(
+  layerOrText: Pick<ImageLayerSplitLayer, 'editableText'> | UiEditableTextMeta,
+  left: number,
+  top: number,
+  width: number,
+  height: number
+): LayerTextData | undefined {
+  const et: UiEditableTextMeta | undefined =
+    'text' in layerOrText ? layerOrText : layerOrText.editableText
+  if (!et || !et.text?.trim()) return undefined
+  const fontSize = Math.max(10, Math.min(120, Math.round(et.fontSize || height * 0.72)))
+  const [r, g, b] = et.color ?? [248, 236, 200]
+  const baselineY = Math.round(top + height * 0.78)
+  const originX =
+    et.align === 'center'
+      ? Math.round(left + width * 0.5)
+      : et.align === 'right'
+        ? Math.round(left + width)
+        : left
+  return {
+    text: et.text.trim(),
+    transform: [1, 0, 0, 1, originX, baselineY],
+    antiAlias: 'smooth',
+    orientation: 'horizontal',
+    shapeType: 'point',
+    style: {
+      font: { name: et.fontName || 'MicrosoftYaHei-Bold' },
+      fontSize,
+      fillColor: { r, g, b }
+    },
+    paragraphStyle: {
+      justification: et.align === 'center' ? 'center' : et.align === 'right' ? 'right' : 'left'
+    }
+  }
+}
+
+/** 把图层拆分结果序列化为 PSD（底图 + 透明图层 + 二级控件文件夹 + 原生可编辑文本层，保留分组层级/位置/尺寸/透明度/可见性/名称）。 */
 export async function layerSplitToPsdUint8Array(input: {
   state: ImageLayerSplitState
   layerUrls: Record<string, string>
@@ -61,8 +103,9 @@ export async function layerSplitToPsdUint8Array(input: {
   const canvasWidth = Math.max(1, Math.round(state.canvasWidth) || baseImg.naturalWidth || 1)
   const canvasHeight = Math.max(1, Math.round(state.canvasHeight) || baseImg.naturalHeight || 1)
 
-  // 先把每个可绘制图层栅格化为像素，之后同步遍历分组树时按 id 取用。
-  const rendered = new Map<string, Layer>()
+  // 先把每个可绘制图层栅格化为像素，并同步构建原生可编辑文本元数据。
+  const renderedWithText = new Map<string, Layer>()
+  const renderedPixelOnly = new Map<string, Layer>()
   for (const layer of drawable) {
     const isBase = isLayerSplitBase(layer)
     const img = layer.id === base.id ? baseImg : await loadImage(urlFor(layer))
@@ -79,7 +122,7 @@ export async function layerSplitToPsdUint8Array(input: {
     ctx.drawImage(img, 0, 0, width, height)
     const imageData = ctx.getImageData(0, 0, width, height)
 
-    rendered.set(layer.id, {
+    const basePsdLayer: Layer = {
       name: layerDisplayName(layer, isBase),
       left,
       top,
@@ -88,14 +131,16 @@ export async function layerSplitToPsdUint8Array(input: {
       // 分组的可见性由分组节点自身承载，图层只反映自身开关，避免双重隐藏丢失原始状态。
       hidden: !layer.visible,
       imageData: { data: imageData.data, width, height }
-    })
+    }
+    renderedPixelOnly.set(layer.id, basePsdLayer)
+
+    const textData = isBase ? undefined : buildAgPsdLayerTextData(layer, left, top, width, height)
+    renderedWithText.set(layer.id, textData ? { ...basePsdLayer, text: textData } : basePsdLayer)
   }
 
-  // 按分组树写入 ag-psd children：叶 → 栅格化图层，枝 → 带 children 的分组节点（保留 折叠/可见）。
-  // ag-psd 的 children[0] 是最底层，orderLayerSplitTreeForPsd 已把「顶 → 底」的树反转成「底 → 顶」，
-  // 否则整摞图层会上下颠倒。
-  const children = orderLayerSplitTreeForPsd<Layer>(buildLayerSplitTree(state), {
-    layer: (layer) => rendered.get(layer.id) ?? null,
+  const tree = buildLayerSplitTree(state)
+  const childrenWithText = orderLayerSplitTreeForPsd<Layer>(tree, {
+    layer: (layer) => renderedWithText.get(layer.id) ?? null,
     group: (group, groupChildren) => ({
       name: group.name.trim() || group.id,
       opened: !group.collapsed,
@@ -105,13 +150,34 @@ export async function layerSplitToPsdUint8Array(input: {
       children: groupChildren
     })
   })
-  if (!children.length) throw fail(ERR_NO_EXPORTABLE_LAYERS)
+  if (!childrenWithText.length) throw fail(ERR_NO_EXPORTABLE_LAYERS)
 
-  const psd: Psd = {
-    width: canvasWidth,
-    height: canvasHeight,
-    children
+  try {
+    const psd: Psd = {
+      width: canvasWidth,
+      height: canvasHeight,
+      children: childrenWithText
+    }
+    return writePsdUint8Array(psd, { noBackground: true })
+  } catch {
+    const childrenPixelOnly = orderLayerSplitTreeForPsd<Layer>(tree, {
+      layer: (layer) => renderedPixelOnly.get(layer.id) ?? null,
+      group: (group, groupChildren) => ({
+        name: group.name.trim() || group.id,
+        opened: !group.collapsed,
+        hidden: group.visible === false,
+        blendMode: 'normal',
+        opacity: 1,
+        children: groupChildren
+      })
+    })
+    return writePsdUint8Array(
+      {
+        width: canvasWidth,
+        height: canvasHeight,
+        children: childrenPixelOnly
+      },
+      { noBackground: true }
+    )
   }
-
-  return writePsdUint8Array(psd, { noBackground: true })
 }

@@ -1538,10 +1538,17 @@ class ProjectService {
       const last = asset.visionTags
       if (last?.status === 'ok') continue
       // 上次 skipped 距今不足节流窗口（模型未就绪 / 视频抽帧失败等）：
-      // 避免批量永久失败随每次打开工程全量空转，跳过本次补漏
+      // 避免批量永久失败随每次打开工程全量空转，跳过本次补漏；
+      // 但若上次是因为伪装扩展名的 WebP 被内置解码器拒绝，已支持主进程转码后立即放行重试
       if (last?.status === 'skipped' && last.runAt) {
-        const lastRun = Date.parse(last.runAt)
-        if (Number.isFinite(lastRun) && now - lastRun < VISION_TAG_RETRY_INTERVAL_MS) continue
+        const isDecoderFormatError =
+          typeof last.error === 'string' &&
+          (last.error.includes('not supported by the built-in decoder') ||
+            last.error.includes('unsupported image format'))
+        if (!isDecoderFormatError) {
+          const lastRun = Date.parse(last.runAt)
+          if (Number.isFinite(lastRun) && now - lastRun < VISION_TAG_RETRY_INTERVAL_MS) continue
+        }
       }
       const rel = asset.relativePath?.trim()
       if (!rel) continue

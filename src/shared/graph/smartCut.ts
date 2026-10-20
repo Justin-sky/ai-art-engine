@@ -345,3 +345,91 @@ export function applySmartCutPlan(input: ApplySmartCutInput): ApplySmartCutResul
     totalDurationSec: Math.round(cursor * 10) / 10
   }
 }
+
+export interface BeatSnapOptions {
+  /** 最大吸附距离（秒），默认 0.45s */
+  maxSnapSec?: number
+  /** 片段最小时长（秒），默认 0.4s */
+  minClipDurationSec?: number
+}
+
+/**
+ * 将主视频轨切点自动吸附对齐到音乐节拍时间点（Beat-Cut Grid Sync）：
+ * - 对每个视频片段的结束切点寻找距离 `<= maxSnapSec` 的最近节拍点；
+ * - 后续视频片段起点紧随上一片段终点，保持无缝连续且不低于 `minClipDurationSec`。
+ */
+export function alignClipsToBeatMarkers(
+  clips: readonly ScriptTimelineClip[],
+  beatTimesSec: readonly number[],
+  options?: BeatSnapOptions
+): ScriptTimelineClip[] {
+  const maxSnapSec = Math.max(0.05, options?.maxSnapSec ?? 0.45)
+  const minDur = Math.max(0.2, options?.minClipDurationSec ?? 0.4)
+  const sortedBeats = [...beatTimesSec]
+    .filter((t) => Number.isFinite(t) && t > 0)
+    .sort((a, b) => a - b)
+  if (sortedBeats.length === 0) {
+    return clips.map((c) => ({ ...c }))
+  }
+
+  const videoClips = clips
+    .filter((c) => c.track === 'video')
+    .map((c) => ({ ...c }))
+    .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+  if (videoClips.length === 0) {
+    return clips.map((c) => ({ ...c }))
+  }
+
+  let cursor = Math.max(0, videoClips[0].startSec)
+  for (let i = 0; i < videoClips.length; i++) {
+    const clip = videoClips[i]
+    const rawEnd = cursor + Math.max(minDur, clip.durationSec)
+    let snappedEnd = rawEnd
+    let bestDist = maxSnapSec + 1e-6
+    for (const beat of sortedBeats) {
+      if (beat < cursor + minDur) continue
+      const dist = Math.abs(beat - rawEnd)
+      if (dist <= maxSnapSec && dist < bestDist) {
+        bestDist = dist
+        snappedEnd = beat
+      }
+    }
+    clip.startSec = Math.round(cursor * 1000) / 1000
+    clip.durationSec = Math.max(minDur, Math.round((snappedEnd - cursor) * 1000) / 1000)
+    cursor = clip.startSec + clip.durationSec
+  }
+
+  const byId = new Map(videoClips.map((c) => [c.id, c]))
+  return clips.map((c) => byId.get(c.id) ?? { ...c })
+}
+
+/**
+ * 计算影视叙事 J-Cut / L-Cut 声画错位剪辑：
+ * - `j-cut`（声先画后）：将紧邻画面切点的人声片段提前 `offsetSec` 入场并叠加柔和淡入；
+ * - `l-cut`（画切声留）：将人声片段尾部延长 `offsetSec` 越过画面切点并叠加柔和淡出。
+ */
+export function computeJLCutAudioOffsets(
+  clips: readonly ScriptTimelineClip[],
+  mode: 'j-cut' | 'l-cut',
+  offsetSec = 0.35
+): ScriptTimelineClip[] {
+  const safeOffset = Math.min(2.0, Math.max(0.08, Number.isFinite(offsetSec) ? offsetSec : 0.35))
+  return clips.map((clip) => {
+    if (clip.track !== 'voice') return { ...clip }
+    if (mode === 'j-cut') {
+      const nextStart = Math.max(0, Math.round((clip.startSec - safeOffset) * 1000) / 1000)
+      const shift = clip.startSec - nextStart
+      return {
+        ...clip,
+        startSec: nextStart,
+        durationSec: Math.round((clip.durationSec + shift) * 1000) / 1000,
+        fadeInSec: Math.max(clip.fadeInSec ?? 0, Math.round(safeOffset * 100) / 100)
+      }
+    }
+    return {
+      ...clip,
+      durationSec: Math.round((clip.durationSec + safeOffset) * 1000) / 1000,
+      fadeOutSec: Math.max(clip.fadeOutSec ?? 0, Math.round(safeOffset * 100) / 100)
+    }
+  })
+}

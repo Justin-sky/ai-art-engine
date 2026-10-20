@@ -234,7 +234,7 @@ export function applyCapturePassState(params: {
     return ctx
   }
 
-  if (pass === 'normal') {
+  if (pass === 'normal' || pass === 'canny') {
     scene.background = new THREE.Color(0x000000)
     scene.overrideMaterial = new THREE.MeshNormalMaterial()
     return ctx
@@ -301,6 +301,115 @@ export function restoreCapturePassState(
       }
     })
   }
+}
+
+/**
+ * 从 RGBA 缓冲（如法线图或 RGB 图）提取 ControlNet 标准白线黑底 Canny 边缘图：
+ * - 多通道最大 Sobel 梯度幅值与方向；
+ * - 4 方向非极大值抑制（NMS）+ 双阈值滞后连接（Hysteresis Thresholding）。
+ */
+export function computeCannyEdgePassRgba(
+  srcRgba: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number,
+  lowThreshold = 28,
+  highThreshold = 68
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(width * height * 4)
+  if (width < 3 || height < 3) return out
+
+  const mag = new Float32Array(width * height)
+  const dir = new Uint8Array(width * height)
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      let maxMag = 0
+      let bestGx = 0
+      let bestGy = 0
+      for (let c = 0; c < 3; c++) {
+        const tl = srcRgba[((y - 1) * width + (x - 1)) * 4 + c]
+        const tc = srcRgba[((y - 1) * width + x) * 4 + c]
+        const tr = srcRgba[((y - 1) * width + (x + 1)) * 4 + c]
+        const ml = srcRgba[(y * width + (x - 1)) * 4 + c]
+        const mr = srcRgba[(y * width + (x + 1)) * 4 + c]
+        const bl = srcRgba[((y + 1) * width + (x - 1)) * 4 + c]
+        const bc = srcRgba[((y + 1) * width + x) * 4 + c]
+        const br = srcRgba[((y + 1) * width + (x + 1)) * 4 + c]
+
+        const gx = -tl + tr - 2 * ml + 2 * mr - bl + br
+        const gy = -tl - 2 * tc - tr + bl + 2 * bc + br
+        const m = Math.hypot(gx, gy) * 0.25
+        if (m > maxMag) {
+          maxMag = m
+          bestGx = gx
+          bestGy = gy
+        }
+      }
+      const idx = y * width + x
+      mag[idx] = maxMag
+      const angle = ((Math.atan2(bestGy, bestGx) * 180) / Math.PI + 180) % 180
+      if (angle < 22.5 || angle >= 157.5) dir[idx] = 0
+      else if (angle < 67.5) dir[idx] = 1
+      else if (angle < 112.5) dir[idx] = 2
+      else dir[idx] = 3
+    }
+  }
+
+  const nms = new Uint8Array(width * height)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x
+      const m = mag[idx]
+      if (m < lowThreshold) continue
+      const d = dir[idx]
+      let m1 = 0
+      let m2 = 0
+      if (d === 0) {
+        m1 = mag[idx - 1]
+        m2 = mag[idx + 1]
+      } else if (d === 1) {
+        m1 = mag[(y - 1) * width + (x + 1)]
+        m2 = mag[(y + 1) * width + (x - 1)]
+      } else if (d === 2) {
+        m1 = mag[(y - 1) * width + x]
+        m2 = mag[(y + 1) * width + x]
+      } else {
+        m1 = mag[(y - 1) * width + (x - 1)]
+        m2 = mag[(y + 1) * width + (x + 1)]
+      }
+      if (m >= m1 && m >= m2) {
+        nms[idx] = m >= highThreshold ? 255 : 128
+      }
+    }
+  }
+
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = y * width + x
+      let val = nms[idx]
+      if (val === 128) {
+        const hasStrongNeighbor =
+          nms[idx - 1] === 255 ||
+          nms[idx + 1] === 255 ||
+          nms[idx - width] === 255 ||
+          nms[idx + width] === 255 ||
+          nms[idx - width - 1] === 255 ||
+          nms[idx - width + 1] === 255 ||
+          nms[idx + width - 1] === 255 ||
+          nms[idx + width + 1] === 255
+        val = hasStrongNeighbor ? 255 : 0
+      }
+      const p = idx * 4
+      out[p] = val
+      out[p + 1] = val
+      out[p + 2] = val
+      out[p + 3] = 255
+    }
+  }
+  for (let i = 3; i < out.length; i += 4) {
+    out[i] = 255
+  }
+  return out
 }
 
 /**

@@ -41,7 +41,7 @@ export function normalizeDirectorCompositionGuide(raw: unknown): DirectorComposi
 }
 
 /** 截屏 / 导出渲染通道（AOV 控制图） */
-export const DIRECTOR_CAPTURE_PASSES = ['rgb', 'depth', 'normal', 'pose'] as const
+export const DIRECTOR_CAPTURE_PASSES = ['rgb', 'depth', 'normal', 'pose', 'canny'] as const
 export type DirectorCapturePass = (typeof DIRECTOR_CAPTURE_PASSES)[number]
 
 export function normalizeDirectorCapturePass(raw: unknown): DirectorCapturePass {

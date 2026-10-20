@@ -80,6 +80,11 @@ function mediaPathOf(value: GraphValue | undefined): string | undefined {
         // 输出节点的 3D 产物在 items 里（images / videos / voices 都没有时才轮到它）
         lastRelativePath(value.items ?? [])
       )
+    case 'text': {
+      const p = value.relativePath?.trim() || value.text?.trim() || ''
+      if (/\.(psd|prefab|tscn|fcpxml|otio|zip)$/i.test(p)) return p
+      return undefined
+    }
     default:
       return undefined
   }

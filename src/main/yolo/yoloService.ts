@@ -43,6 +43,11 @@ import {
 } from '@shared/yoloFaceModels'
 import { settingsService } from '../services/settingsService'
 import { projectService } from '../services/projectService'
+import {
+  dataUrlToPngDataUrlViaNativeImage,
+  nativeImageToPngDataUrl
+} from '../services/assetVisionTagger'
+import { isBuiltinDecodableDataUrl, isBuiltinDecodableImageFile } from './imageDecoder'
 import type {
   YoloWorkerFaceParams,
   YoloWorkerInferParams,
@@ -140,7 +145,7 @@ class YoloService {
     const detectorPath = this.requireFaceModel(detector, 'detector', input.modelId)
     const params: YoloWorkerFaceParams = {
       ...input,
-      image: resolveImageInput(input.image),
+      image: await prepareWorkerImageInput(input.image),
       detectorPath,
       landmarkPath
     }
@@ -191,7 +196,7 @@ class YoloService {
     const modelPath = this.resolveModelPath(kind, input.modelId)
     const params: YoloWorkerInferParams = {
       ...input,
-      image: resolveImageInput(input.image),
+      image: await prepareWorkerImageInput(input.image),
       kind,
       modelPath,
       modelId: input.modelId ?? basenameWithoutExt(modelPath)
@@ -491,6 +496,35 @@ export function resolveImageInput(input: YoloImageInput): YoloImageInput {
     throw new Error(`YOLO: relative image path "${input.path}" but no project is open`)
   }
   return { kind: 'file', path: join(projectService.getRoot(), input.path) }
+}
+
+/**
+ * 下发 yoloWorker 前的图片输入规范化：
+ * worker 内置纯 JS 解码器只认真实 PNG / JPEG 文件头；若输入是 `.webp`、`.gif`、`.bmp`
+ * 或伪装成 `.png` / `.jpg` 后缀但实际头部为 WebP（RIFF....WEBP）的文件 / dataUrl，
+ * 在主进程先通过 Electron nativeImage / OS 缩略图转码为真实 PNG dataUrl 再下发 worker。
+ */
+export async function prepareWorkerImageInput(input: YoloImageInput): Promise<YoloImageInput> {
+  const resolved = resolveImageInput(input)
+  if (resolved.kind === 'file') {
+    if (!isBuiltinDecodableImageFile(resolved.path)) {
+      const pngDataUrl = await nativeImageToPngDataUrl(resolved.path)
+      if (pngDataUrl) {
+        return { kind: 'dataUrl', dataUrl: pngDataUrl }
+      }
+    }
+    return resolved
+  }
+  if (resolved.kind === 'dataUrl') {
+    if (!isBuiltinDecodableDataUrl(resolved.dataUrl)) {
+      const pngDataUrl = dataUrlToPngDataUrlViaNativeImage(resolved.dataUrl)
+      if (pngDataUrl) {
+        return { kind: 'dataUrl', dataUrl: pngDataUrl }
+      }
+    }
+    return resolved
+  }
+  return resolved
 }
 
 export const yoloService = new YoloService()

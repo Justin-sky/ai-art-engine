@@ -855,6 +855,9 @@ export default {
       context: '上下文',
       model: '模型',
       allowedTools: '白名单',
+      depCheck: '环境自检',
+      depReady: '✓ 依赖就绪',
+      depMissingMcp: '缺少 MCP 服务：{services}',
       hint: '该技能遵循 Claude Code 技能规范（SKILL.md），可在 AI 对话中通过 /指令 或由 Agent 自动触发。'
     },
     github: {
@@ -1388,6 +1391,8 @@ export default {
       root: '剧集',
       sep: '/',
       toolMissing: '工具不可用',
+      chainProcess: '链式叠加',
+      chainProcessHint: '开启后，切换图像处理子工具时以上一步产出图为底图继续无损叠加加工',
       gamePlay: {
         title: '可玩 HTML 沙盒',
         reload: '重载',
@@ -3053,17 +3058,20 @@ export default {
       capturePassDepth: '深度图 (Depth)',
       capturePassNormal: '法线图 (Normal)',
       capturePassPose: '3D骨架 (Pose)',
+      capturePassCanny: '线稿图 (Canny)',
       capturePasses: {
         rgb: '彩色画面 (RGB)',
         depth: '深度图 (Depth)',
         normal: '法线图 (Normal)',
-        pose: '3D骨架 (Pose)'
+        pose: '3D骨架 (Pose)',
+        canny: '线稿图 (Canny)'
       },
       capturePassShort: {
         rgb: '彩色',
         depth: '深度',
         normal: '法线',
-        pose: '骨架'
+        pose: '骨架',
+        canny: '线稿'
       },
       captureFirstLast: '拍首尾帧',
       captureFirstLastHint: '一键截取时间轴 0s 与末尾帧（直连视频首尾帧模式）',
@@ -3920,6 +3928,7 @@ export default {
       rimLight: '轮廓光',
       smartPromptPlaceholder: "例如：让画面光影变成'黄金时刻'",
       presetsTitle: '预设',
+      extractLightingDna: '吸取参考图光位',
       outputPrompt: '最终提示词',
       promptEmpty: '（根据当前打光参数生成）',
       resetParams: '重置参数',
@@ -4074,9 +4083,26 @@ export default {
       customLutLabel: '外部 3D LUT (.cube)',
       customLutHint: '导入商业调色师标准 .cube 3D LUT 文件，三线性插值实时映射色彩',
       importCubeLut: '导入 .cube 滤镜',
+      extractStyleDna: '吸取参考图基因',
+      exportCubeLut: '导出 .cube',
+      styleDnaApplied: '已反推参考图基因「{title}」并生成 3D LUT（主光方位 {yaw}° / {pitch}°）',
       clearCubeLut: '移除',
       lutParseError: '无法解析该 .cube 文件，请检查格式',
       lutLoaded: '已加载 3D LUT：{title}（{size}³）',
+      batchCopy: '复制追色参数',
+      batchPaste: '粘贴同场追色',
+      batchCopied: '已复制当前人像精修与调色参数，可在其他节点一键粘贴同步',
+      batchPasted: '已粘贴同步人像精修与调色参数',
+      batchPasteEmpty: '剪贴板中没有可识别的人像追色参数',
+      bakeLocalIdPhoto: '0-Token 本地标准裁切 / 六寸排版烘焙',
+      bakeLocalIdPhotoHint:
+        '零 API 成本本地按证件照头身比自动裁切、替换底色，若开启拼版则直接生成带 L 角裁切线的 6 寸冲印排版图并存为新版本',
+      bakeParallelSheet: '平行宇宙 2×2 比稿样张 (0 Token)',
+      bakeParallaxMotion: '2.5D 希区柯克视差帧 (0 Token)',
+      bakeInvisibleWatermark: '嵌入隐形盲水印 (PSNR>50dB)',
+      bakeOpticalLens: '阿莱宽银幕+胶片红晕仿真 (0 Token)',
+      bakeSaliencyHeatmap: '人眼注视热力+黄金构图诊断 (0 Token)',
+      bakeCameraExifPurify: '去AI伪影+注入哈苏X2D真机EXIF',
       aiHistory: '版本',
       aiBaseOriginal: '原图（上游）',
       chainFromOutput: '以上次出图结果为底继续精修',

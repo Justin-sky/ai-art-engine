@@ -145,6 +145,7 @@ import {
   applyPanoramaEnvironmentMap,
   applyCapturePassState,
   restoreCapturePassState,
+  computeCannyEdgePassRgba,
   applyCanvasDofBlurIfEnabled
 } from './directorRenderPasses'
 import {
@@ -625,7 +626,9 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       if (targetCanvas.height !== height) targetCanvas.height = height
       const ctx = targetCanvas.getContext('2d')
       if (!ctx) return false
-      const pixels = flipAndEncodeSrgb(buffer, width, height)
+      const rawPixels = flipAndEncodeSrgb(buffer, width, height)
+      const pixels =
+        capturePass === 'canny' ? computeCannyEdgePassRgba(rawPixels, width, height) : rawPixels
       const imageData = new ImageData(width, height)
       imageData.data.set(pixels)
       ctx.putImageData(imageData, 0, 0)

@@ -1071,6 +1071,14 @@ export interface NodeExecuteContext {
     cleanBaseDataUrl?: string
     maxLayers?: number
     diffThreshold?: number
+    apiLayerHints?: Array<{
+      name?: string
+      description?: string
+      left: number
+      top: number
+      width: number
+      height: number
+    }>
   }) => Promise<{
     width: number
     height: number
@@ -1083,7 +1091,13 @@ export interface NodeExecuteContext {
       width: number
       height: number
       dataUrl: string
+      visible?: boolean
+      uiControlId?: string
+      uiControlName?: string
+      uiControlType?: import('../uiControlSpec').UiControlType
+      uiPartRole?: import('../uiControlSpec').UiControlPartRole
       nineSliceBorders?: [number, number, number, number]
+      editableText?: import('../uiControlSpec').UiEditableTextMeta
     }>
   }>
   /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */

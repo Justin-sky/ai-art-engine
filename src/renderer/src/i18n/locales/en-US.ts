@@ -867,6 +867,9 @@ export default {
       context: 'Context',
       model: 'Model',
       allowedTools: 'Allowed tools',
+      depCheck: 'Runtime check',
+      depReady: '✓ Dependencies ready',
+      depMissingMcp: 'Missing MCP services: {services}',
       hint: 'This skill follows the Claude Code SKILL.md specification and can be invoked via /command or automatically by the agent in AI chat.'
     },
     github: {
@@ -1419,6 +1422,9 @@ export default {
       root: 'Series',
       sep: '/',
       toolMissing: 'Tool unavailable',
+      chainProcess: 'Chain output',
+      chainProcessHint:
+        'When enabled, switching image-process sub-tools uses the latest output image as the base for non-destructive chained processing',
       gamePlay: {
         title: 'Playable HTML sandbox',
         reload: 'Reload',
@@ -3129,17 +3135,20 @@ export default {
       capturePassDepth: 'Depth Map',
       capturePassNormal: 'Normal Map',
       capturePassPose: '3D OpenPose',
+      capturePassCanny: 'Canny Edge',
       capturePasses: {
         rgb: 'RGB Color',
         depth: 'Depth Map',
         normal: 'Normal Map',
-        pose: '3D OpenPose'
+        pose: '3D OpenPose',
+        canny: 'Canny Edge'
       },
       capturePassShort: {
         rgb: 'RGB',
         depth: 'DEPTH',
         normal: 'NORMAL',
-        pose: 'POSE'
+        pose: 'POSE',
+        canny: 'CANNY'
       },
       captureFirstLast: 'First/Last Pair',
       captureFirstLastHint: 'Capture 0s & end frames for downstream First/Last Frame video mode',
@@ -4023,6 +4032,7 @@ export default {
       rimLight: 'Rim light',
       smartPromptPlaceholder: "e.g. Make the lighting 'golden hour'",
       presetsTitle: 'Presets',
+      extractLightingDna: 'Extract Ref Light DNA',
       outputPrompt: 'Final prompt',
       promptEmpty: '(Built from current lighting params)',
       resetParams: 'Reset parameters',
@@ -4185,9 +4195,26 @@ export default {
       customLutLabel: 'External 3D LUT (.cube)',
       customLutHint: 'Import a standard .cube 3D LUT file for real-time trilinear color grading',
       importCubeLut: 'Import .cube LUT',
+      extractStyleDna: 'Extract Style DNA',
+      exportCubeLut: 'Export .cube',
+      styleDnaApplied: 'Applied reference Style DNA "{title}" & 3D LUT (Light {yaw}° / {pitch}°)',
       clearCubeLut: 'Clear',
       lutParseError: 'Could not parse the .cube file',
       lutLoaded: 'Loaded 3D LUT: {title} ({size}³)',
+      batchCopy: 'Copy batch sync',
+      batchPaste: 'Paste batch sync',
+      batchCopied: 'Copied portrait retouch & color parameters for batch sync',
+      batchPasted: 'Pasted portrait retouch & color parameters',
+      batchPasteEmpty: 'No valid portrait batch parameters found in clipboard',
+      bakeLocalIdPhoto: '0-Token Local ID Crop & 6-Inch Print Sheet',
+      bakeLocalIdPhotoHint:
+        'Zero-API local millimeter-exact ID photo crop, background replacement, and 6-inch 8-up print sheet with corner cut marks',
+      bakeParallelSheet: 'Parallel Universe 2×2 Sheet (0 Token)',
+      bakeParallaxMotion: '2.5D Hitchcock Parallax Frame (0 Token)',
+      bakeInvisibleWatermark: 'Embed Invisible Watermark (PSNR>50dB)',
+      bakeOpticalLens: 'ARRI Anamorphic & Film Halation (0 Token)',
+      bakeSaliencyHeatmap: 'Eye-Tracking Saliency & Golden Audit (0 Token)',
+      bakeCameraExifPurify: 'Purify AI Artifacts + Hasselblad X2D EXIF',
       aiHistory: 'Versions',
       aiBaseOriginal: 'Source (upstream)',
       chainFromOutput: 'Chain from the last output',

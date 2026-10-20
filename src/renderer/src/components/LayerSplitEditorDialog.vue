@@ -64,6 +64,19 @@
         <button
           type="button"
           class="tool-btn"
+          :disabled="!canDecomposeControlParts"
+          :title="
+            isZhLocale
+              ? '按 HTML5 / Unity UI Toolkit 标准控件规范拆解选中控件的子结构（按钮文字+常态底板+按下态、滑动条轨道+填充+手柄、面板底框+标题+词条）'
+              : 'Decompose selected UI control into standard HTML5 / Unity UI Toolkit sub-parts (Button label/normal/hover/pressed, Slider track/fill/thumb, Panel frame/title)'
+          "
+          @click="onDecomposeSelectedControlParts"
+        >
+          🧩 {{ isZhLocale ? '控件结构拆解' : 'Decompose Control' }}
+        </button>
+        <button
+          type="button"
+          class="tool-btn"
           :disabled="!canMergeDown"
           :title="t('graph.layerSplit.mergeDownHint')"
           @click="onMergeDownSelected"
@@ -88,6 +101,35 @@
         >
           {{ t('graph.layerSplit.autoUiGroup') }}
         </button>
+        <button
+          type="button"
+          class="tool-btn explode-3d-btn"
+          :class="{ active: exploded3d }"
+          :disabled="!hasCanvas"
+          :title="
+            isZhLocale
+              ? '3D 全息图层爆炸视图（在背景拖拽可旋转视角）'
+              : '3D Holographic Exploded Layer Stack (drag stage to orbit)'
+          "
+          @click="toggleExploded3d"
+        >
+          🧊 {{ isZhLocale ? '3D 爆炸' : '3D Explode' }}
+        </button>
+        <label
+          v-if="exploded3d"
+          class="explode-gap-ctl"
+          :title="isZhLocale ? 'Z 轴层间距' : 'Z-Depth Gap'"
+        >
+          <span>Z</span>
+          <input
+            v-model.number="explodeGap"
+            type="range"
+            min="10"
+            max="84"
+            step="2"
+            class="explode-slider"
+          />
+        </label>
         <span class="layer-count">
           {{ t('graph.layerSplit.layerCount', { n: draft.layers.length }) }}
         </span>
@@ -98,7 +140,11 @@
           ref="stageEl"
           class="stage"
           tabindex="0"
-          :class="{ 'space-pan': spaceHeld && hasCanvas, panning: pan.active }"
+          :class="{
+            'space-pan': spaceHeld && hasCanvas,
+            panning: pan.active || orbitDrag.active,
+            'stage-exploded-3d': exploded3d
+          }"
           @keydown="onKeydown"
           @dblclick.self="resetView"
           @wheel.prevent="onStageWheel"
@@ -114,7 +160,7 @@
             v-else
             ref="canvasWrapEl"
             class="canvas-wrap"
-            :class="{ 'box-slice-mode': boxSliceActive }"
+            :class="{ 'box-slice-mode': boxSliceActive, 'exploded-3d': exploded3d }"
             :style="canvasWrapStyle"
             @pointerdown="onCanvasWrapPointerDown"
             @dblclick.self="resetView"
@@ -129,7 +175,8 @@
               class="layer"
               :class="{
                 selected: layer.id === draft.selectedId,
-                base: isBase(layer)
+                base: isBase(layer),
+                'layer-exploded-3d': exploded3d
               }"
               :style="layerStyle(layer)"
               @pointerdown.stop="onLayerPointerDown($event, layer)"
@@ -141,7 +188,10 @@
                 draggable="false"
                 decoding="async"
               />
-              <template v-if="layer.id === draft.selectedId && !isBase(layer)">
+              <span v-if="exploded3d" class="layer-3d-badge">
+                z{{ layer.zIndex }} · {{ layerLabel(layer) }}
+              </span>
+              <template v-if="layer.id === draft.selectedId && !isBase(layer) && !exploded3d">
                 <span
                   v-for="handle in handles"
                   :key="handle"
@@ -262,6 +312,19 @@
                 @click="exportPsd"
               >
                 PSD
+              </button>
+              <button
+                type="button"
+                class="icon-btn psd-btn"
+                :disabled="!canExportAll"
+                :title="
+                  isZhLocale
+                    ? '导出可点击交互的 HTML5 游戏 UI 原型（含音效与 3D 爆炸视图）'
+                    : 'Export interactive HTML5 Game UI prototype (with click SFX & 3D Explode)'
+                "
+                @click="exportInteractiveHtmlPrototype"
+              >
+                HTML5
               </button>
               <button
                 type="button"
@@ -425,8 +488,13 @@ import {
   UI_LAYER_SPLIT_PRESETS,
   applyMergedLayerSplitPair,
   autoGroupLayersForGameUi,
+  buildGodotSceneTscn,
+  buildInteractiveUiPrototypeHtml,
   buildLayerSplitList,
   buildLayerSplitUiManifest,
+  buildUnityUguiEditorScriptCs,
+  buildUnityUiToolkitUss,
+  buildUnityUiToolkitUxml,
   collectLayerSplitGroupLayers,
   findMergeDownTargetLayer,
   layerSplitExportFolderSegments,
@@ -452,6 +520,7 @@ import {
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
+  decomposeSingleLayerUrlToControlParts,
   mergeTwoLayerImagesToDataUrl,
   sliceUiLayerFromSourceCanvas
 } from '../features/graph/model/composeImageLayerStack'
@@ -504,6 +573,11 @@ const emit = defineEmits<{
 }>()
 
 const { t, locale } = useStudioI18n()
+const isZhLocale = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+)
 const windowTitle = computed(() => t('graph.layerSplit.appMark'))
 const draft = reactive<ImageLayerSplitState>(normalizeImageLayerSplit())
 const stageEl = ref<HTMLElement | null>(null)
@@ -522,6 +596,17 @@ const pan = reactive({
   startY: 0,
   originX: 0,
   originY: 0
+})
+const exploded3d = ref(false)
+const explodeGap = ref(34)
+const orbitRotX = ref(18)
+const orbitRotY = ref(-24)
+const orbitDrag = reactive({
+  active: false,
+  startX: 0,
+  startY: 0,
+  originRotX: 18,
+  originRotY: -24
 })
 const hydrating = ref(false)
 const exporting = ref(false)
@@ -622,6 +707,12 @@ const canDeleteLayer = computed(() => {
   const layer = selectedLayer.value
   return !!layer && !isLayerSplitBase(layer) && !splitting.value && !slicing.value
 })
+const canDecomposeControlParts = computed(() => {
+  const layer = selectedLayer.value
+  return (
+    !!layer && !isLayerSplitBase(layer) && !splitting.value && !slicing.value && !!layerUrl(layer)
+  )
+})
 const mergeDownTarget = computed(() =>
   selectedLayer.value ? findMergeDownTargetLayer(draft, selectedLayer.value.id) : null
 )
@@ -660,11 +751,31 @@ const canExportAll = computed(
   () => !exporting.value && draft.layers.some((layer) => !!layerUrl(layer))
 )
 
-const canvasWrapStyle = computed(() => ({
-  width: `${Math.round(display.w * zoom.value)}px`,
-  height: `${Math.round(display.h * zoom.value)}px`,
-  transform: `translate(${Math.round(panOffset.x)}px, ${Math.round(panOffset.y)}px)`
-}))
+const canvasWrapStyle = computed(() => {
+  const baseTransform = `translate(${Math.round(panOffset.x)}px, ${Math.round(panOffset.y)}px)`
+  if (exploded3d.value) {
+    return {
+      width: `${Math.round(display.w * zoom.value)}px`,
+      height: `${Math.round(display.h * zoom.value)}px`,
+      transformStyle: 'preserve-3d' as const,
+      transform: `${baseTransform} rotateX(${orbitRotX.value}deg) rotateY(${orbitRotY.value}deg) scale(0.84)`
+    }
+  }
+  return {
+    width: `${Math.round(display.w * zoom.value)}px`,
+    height: `${Math.round(display.h * zoom.value)}px`,
+    transform: baseTransform
+  }
+})
+
+function toggleExploded3d(): void {
+  exploded3d.value = !exploded3d.value
+  if (exploded3d.value) {
+    boxSliceActive.value = false
+    orbitRotX.value = 18
+    orbitRotY.value = -24
+  }
+}
 
 const boxSliceRectStyle = computed(() => {
   const cw = Math.max(1, draft.canvasWidth)
@@ -810,6 +921,7 @@ async function exportLayerFiles(
 ): Promise<number | null> {
   const counts = new Map<string, number>()
   const files: Array<{ fileName: string; data: Uint8Array }> = []
+  const layerFileMap: Record<string, string> = {}
   for (const layer of layers) {
     const src = layerUrl(layer)
     if (!src) continue
@@ -825,8 +937,10 @@ async function exportLayerFiles(
     }
     const n = (counts.get(dirKey) ?? 0) + 1
     counts.set(dirKey, n)
+    const fileName = `${dirPrefix}${String(n).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`
+    layerFileMap[layer.id] = fileName
     files.push({
-      fileName: `${dirPrefix}${String(n).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`,
+      fileName,
       data
     })
   }
@@ -840,10 +954,80 @@ async function exportLayerFiles(
       fileName: 'ui-layout-manifest.json',
       data: encodeManifestBytes()
     })
+    files.push({
+      fileName: 'GameUiScreen.uxml',
+      data: new TextEncoder().encode(
+        buildUnityUiToolkitUxml({
+          state: draft,
+          styleSheetName: 'GameUiScreen.uss',
+          screenName: 'UILayerSplitRoot'
+        })
+      )
+    })
+    files.push({
+      fileName: 'GameUiScreen.uss',
+      data: new TextEncoder().encode(
+        buildUnityUiToolkitUss({
+          state: draft,
+          layerFileNames: layerFileMap
+        })
+      )
+    })
+    files.push({
+      fileName: 'UILayerSplitScene.tscn',
+      data: new TextEncoder().encode(
+        buildGodotSceneTscn({
+          state: draft,
+          sceneName: 'UILayerSplitRoot',
+          layerFileNames: layerFileMap
+        })
+      )
+    })
+    files.push({
+      fileName: 'UILayerSplitBuilder.cs',
+      data: new TextEncoder().encode(buildUnityUguiEditorScriptCs())
+    })
   }
   const result = await window.studio.saveBinaryFilesToDirectory({ files })
   if (result?.written == null) return null
   return options?.includeManifest ? imageCount : result.written
+}
+
+async function exportInteractiveHtmlPrototype(): Promise<void> {
+  if (exporting.value) return
+  const layers = sortLayersForCompose(draft.layers).filter((layer) => layerUrl(layer))
+  if (!layers.length) {
+    flashExportMessage(t('graph.layerSplit.exportNeedImage'), true)
+    return
+  }
+  exporting.value = true
+  try {
+    const html = buildInteractiveUiPrototypeHtml({
+      state: draft,
+      title: isZhLocale.value ? 'AI 游戏 UI 交互原型' : 'AI Game UI Interactive Prototype',
+      layerUrls: { ...props.layerUrls, ...localLayerUrls }
+    })
+    const data = new TextEncoder().encode(html)
+    const saved = await window.studio.saveBinaryFile({
+      data,
+      defaultPath: 'ui-interactive-prototype.html',
+      filters: [
+        { name: 'HTML5 Prototype', extensions: ['html'] },
+        { name: t('graph.output.exportFilterAll'), extensions: ['*'] }
+      ]
+    })
+    if (!saved) return
+    flashExportMessage(
+      isZhLocale.value
+        ? '已导出可点击交互的 HTML5 游戏 UI 原型'
+        : 'Interactive HTML5 Game UI prototype exported'
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    exporting.value = false
+  }
 }
 
 async function exportSelectedLayer(): Promise<void> {
@@ -966,13 +1150,17 @@ async function exportManifestJson(): Promise<void> {
 function layerStyle(layer: ImageLayerSplitLayer): Record<string, string> {
   const cw = Math.max(1, draft.canvasWidth)
   const ch = Math.max(1, draft.canvasHeight)
+  const zTranslate = exploded3d.value
+    ? `translateZ(${Math.round(layer.zIndex * explodeGap.value)}px)`
+    : ''
   if (isBase(layer)) {
     return {
       left: '0',
       top: '0',
       width: '100%',
       height: '100%',
-      zIndex: String(layer.zIndex)
+      zIndex: String(layer.zIndex),
+      ...(zTranslate ? { transform: zTranslate } : {})
     }
   }
   return {
@@ -980,7 +1168,8 @@ function layerStyle(layer: ImageLayerSplitLayer): Record<string, string> {
     top: `${(layer.top / ch) * 100}%`,
     width: `${(layer.width / cw) * 100}%`,
     height: `${(layer.height / ch) * 100}%`,
-    zIndex: String(layer.zIndex + 1)
+    zIndex: String(layer.zIndex + 1),
+    ...(zTranslate ? { transform: zTranslate } : {})
   }
 }
 
@@ -1167,41 +1356,163 @@ async function onBoxSlicePointerUp(): Promise<void> {
     })
     const maxZ = draft.layers.reduce((m, l) => Math.max(m, l.zIndex), 0)
     const stamp = Date.now()
-    const newId = `layerSplit:slice:${stamp}:z${maxZ + 1}`
-    localLayerUrls[newId] = sliced.dataUrl
-    extraImages.value = [
-      ...extraImages.value,
-      {
+    if (sliced.subParts && sliced.subParts.length >= 2) {
+      const addedLayers: ImageLayerSplitLayer[] = []
+      const newExtra: GraphImageItem[] = []
+      sliced.subParts.forEach((part, idx) => {
+        const partId = `layerSplit:slice:${stamp}:z${maxZ + idx + 1}`
+        localLayerUrls[partId] = part.dataUrl
+        newExtra.push({
+          id: partId,
+          title: part.name,
+          dataUrl: part.dataUrl,
+          createdAt: new Date().toISOString()
+        })
+        addedLayers.push({
+          id: partId,
+          imageId: partId,
+          zIndex: maxZ + idx + 1,
+          name: part.name,
+          description: part.description,
+          visible: part.visible,
+          left: part.left,
+          top: part.top,
+          width: part.width,
+          height: part.height,
+          role: 'layer',
+          originalAbsolute: [part.left, part.top, part.left + part.width, part.top + part.height],
+          ...(part.uiControlId ? { uiControlId: part.uiControlId } : {}),
+          ...(part.uiControlName ? { uiControlName: part.uiControlName } : {}),
+          ...(part.uiControlType ? { uiControlType: part.uiControlType } : {}),
+          ...(part.uiPartRole ? { uiPartRole: part.uiPartRole } : {}),
+          ...(part.nineSliceBorders ? { nineSliceBorders: part.nineSliceBorders } : {}),
+          ...(part.editableText ? { editableText: part.editableText } : {})
+        })
+      })
+      extraImages.value = [...extraImages.value, ...newExtra]
+      const nextState = autoGroupLayersForGameUi(
+        {
+          ...draft,
+          layers: [...draft.layers, ...addedLayers],
+          selectedId: addedLayers[addedLayers.length - 1]?.id || draft.selectedId
+        },
+        isZhLocale.value ? 'zh-CN' : 'en-US'
+      )
+      Object.assign(draft, nextState)
+    } else {
+      const newId = `layerSplit:slice:${stamp}:z${maxZ + 1}`
+      localLayerUrls[newId] = sliced.dataUrl
+      extraImages.value = [
+        ...extraImages.value,
+        {
+          id: newId,
+          title: sliced.name,
+          dataUrl: sliced.dataUrl,
+          createdAt: new Date().toISOString()
+        }
+      ]
+      const newLayer: ImageLayerSplitLayer = {
         id: newId,
-        title: sliced.name,
-        dataUrl: sliced.dataUrl,
-        createdAt: new Date().toISOString()
+        imageId: newId,
+        zIndex: maxZ + 1,
+        name: sliced.name,
+        description: sliced.description,
+        visible: true,
+        left: sliced.left,
+        top: sliced.top,
+        width: sliced.width,
+        height: sliced.height,
+        role: 'layer',
+        originalAbsolute: [
+          sliced.left,
+          sliced.top,
+          sliced.left + sliced.width,
+          sliced.top + sliced.height
+        ],
+        ...(sliced.uiControlId ? { uiControlId: sliced.uiControlId } : {}),
+        ...(sliced.uiControlName ? { uiControlName: sliced.uiControlName } : {}),
+        ...(sliced.uiControlType ? { uiControlType: sliced.uiControlType } : {}),
+        ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {})
       }
-    ]
-    const newLayer: ImageLayerSplitLayer = {
-      id: newId,
-      imageId: newId,
-      zIndex: maxZ + 1,
-      name: sliced.name,
-      description: sliced.description,
-      visible: true,
-      left: sliced.left,
-      top: sliced.top,
-      width: sliced.width,
-      height: sliced.height,
-      role: 'layer',
-      originalAbsolute: [
-        sliced.left,
-        sliced.top,
-        sliced.left + sliced.width,
-        sliced.top + sliced.height
-      ],
-      ...(sliced.nineSliceBorders ? { nineSliceBorders: sliced.nineSliceBorders } : {})
+      draft.layers = [...draft.layers, newLayer]
+      draft.selectedId = newId
     }
-    draft.layers = [...draft.layers, newLayer]
-    draft.selectedId = newId
     boxSliceActive.value = false
     flashExportMessage(t('graph.layerSplit.boxSliceDone', { name: sliced.name }))
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    slicing.value = false
+  }
+}
+
+async function onDecomposeSelectedControlParts(): Promise<void> {
+  const target = selectedLayer.value
+  if (!target || isBase(target) || !canDecomposeControlParts.value) return
+  const src = layerUrl(target)
+  if (!src) return
+
+  slicing.value = true
+  try {
+    pushDraftHistory()
+    const parts = await decomposeSingleLayerUrlToControlParts({
+      layer: target,
+      layerUrl: src,
+      canvasWidth: draft.canvasWidth,
+      canvasHeight: draft.canvasHeight,
+      locale: isZhLocale.value ? 'zh-CN' : 'en-US'
+    })
+    if (!parts.length) return
+    const stamp = Date.now()
+    const newLayers: ImageLayerSplitLayer[] = []
+    const newExtra: GraphImageItem[] = []
+    parts.forEach((part, idx) => {
+      const partId = `${target.id}:${part.idSuffix}:${stamp}:${idx}`
+      localLayerUrls[partId] = part.dataUrl
+      newExtra.push({
+        id: partId,
+        title: part.name,
+        dataUrl: part.dataUrl,
+        createdAt: new Date().toISOString()
+      })
+      newLayers.push({
+        id: partId,
+        imageId: partId,
+        zIndex: target.zIndex + idx,
+        name: part.name,
+        description: part.description,
+        visible: part.visible,
+        left: part.left,
+        top: part.top,
+        width: part.width,
+        height: part.height,
+        role: 'layer',
+        originalAbsolute: [part.left, part.top, part.left + part.width, part.top + part.height],
+        uiControlId: part.uiControlId,
+        uiControlName: part.uiControlName,
+        uiControlType: part.uiControlType,
+        uiPartRole: part.uiPartRole,
+        ...(part.nineSliceBorders ? { nineSliceBorders: part.nineSliceBorders } : {}),
+        ...(part.editableText ? { editableText: part.editableText } : {})
+      })
+    })
+    extraImages.value = [...extraImages.value, ...newExtra]
+    const remaining = draft.layers.filter((l) => l.id !== target.id)
+    const grouped = autoGroupLayersForGameUi(
+      {
+        ...draft,
+        layers: [...remaining, ...newLayers],
+        selectedId: newLayers.find((l) => l.visible)?.id || newLayers[0]!.id
+      },
+      isZhLocale.value ? 'zh-CN' : 'en-US'
+    )
+    Object.assign(draft, grouped)
+    flashExportMessage(
+      isZhLocale.value
+        ? `已将「${target.name}」按标准控件规范拆解为 ${parts.length} 个子图层`
+        : `Decomposed "${target.name}" into ${parts.length} standard control sub-layers`
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
@@ -1267,6 +1578,12 @@ async function onMergeDownSelected(): Promise<void> {
 function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): void {
   if (spaceHeld.value) {
     onStagePanStart(event)
+    return
+  }
+  if (exploded3d.value) {
+    draft.selectedId = layer.id
+    stageEl.value?.focus()
+    startOrbitDrag(event)
     return
   }
   if (boxSliceActive.value) {
@@ -1487,6 +1804,8 @@ function resetView(): void {
   zoom.value = 1
   panOffset.x = 0
   panOffset.y = 0
+  orbitRotX.value = 18
+  orbitRotY.value = -24
 }
 
 function onStageWheel(event: WheelEvent): void {
@@ -1513,13 +1832,44 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return !!el?.closest('input, textarea, select, [contenteditable="true"]')
 }
 
+function startOrbitDrag(event: PointerEvent): void {
+  if (!event.isPrimary) return
+  event.preventDefault()
+  orbitDrag.active = true
+  orbitDrag.startX = event.clientX
+  orbitDrag.startY = event.clientY
+  orbitDrag.originRotX = orbitRotX.value
+  orbitDrag.originRotY = orbitRotY.value
+  window.addEventListener('pointermove', onOrbitDragMove)
+  window.addEventListener('pointerup', onOrbitDragEnd)
+}
+
+function onOrbitDragMove(event: PointerEvent): void {
+  if (!orbitDrag.active) return
+  const dx = event.clientX - orbitDrag.startX
+  const dy = event.clientY - orbitDrag.startY
+  orbitRotY.value = Math.max(-55, Math.min(55, Math.round(orbitDrag.originRotY + dx * 0.25)))
+  orbitRotX.value = Math.max(-35, Math.min(48, Math.round(orbitDrag.originRotX - dy * 0.2)))
+}
+
+function onOrbitDragEnd(): void {
+  orbitDrag.active = false
+  window.removeEventListener('pointermove', onOrbitDragMove)
+  window.removeEventListener('pointerup', onOrbitDragEnd)
+}
+
 function endStagePan(): void {
   pan.active = false
+  onOrbitDragEnd()
   window.removeEventListener('pointermove', onStagePanMove)
   window.removeEventListener('pointerup', onStagePanEnd)
 }
 
 function onStagePanStart(event: PointerEvent): void {
+  if (exploded3d.value && !spaceHeld.value && hasCanvas.value && event.isPrimary) {
+    startOrbitDrag(event)
+    return
+  }
   if (!spaceHeld.value || !hasCanvas.value || !event.isPrimary) return
   event.preventDefault()
   pan.active = true
@@ -1605,6 +1955,7 @@ watch(
       resetLocalHistory()
       boxSliceActive.value = false
       boxSliceDrag.active = false
+      exploded3d.value = false
       return
     }
     resetLocalHistory()
@@ -1666,6 +2017,7 @@ function save(): void {
 
 function onClose(): void {
   onPointerUp()
+  onOrbitDragEnd()
   window.removeEventListener('pointermove', onBoxSlicePointerMove)
   window.removeEventListener('pointerup', onBoxSlicePointerUp)
   if (dirty.value) save()
@@ -1674,6 +2026,7 @@ function onClose(): void {
 
 onBeforeUnmount(() => {
   onPointerUp()
+  onOrbitDragEnd()
   window.removeEventListener('pointermove', onBoxSlicePointerMove)
   window.removeEventListener('pointerup', onBoxSlicePointerUp)
   window.removeEventListener('keydown', onWindowUndoKeydown, true)
@@ -1748,6 +2101,30 @@ onBeforeUnmount(() => {
   color: #7ab8ff;
 }
 
+.tool-btn.explode-3d-btn.active {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.2);
+  color: #7dd3fc;
+}
+
+.explode-gap-ctl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #7dd3fc;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+}
+
+.explode-slider {
+  width: 68px;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
 .tool-btn.danger-btn:hover:not(:disabled) {
   border-color: #e07070;
   color: #e07070;
@@ -1773,6 +2150,12 @@ onBeforeUnmount(() => {
   padding: 16px;
   overflow: hidden;
   outline: none;
+}
+
+.stage.stage-exploded-3d {
+  perspective: 1400px;
+  cursor: grab;
+  background: radial-gradient(circle at 50% 45%, rgba(56, 189, 248, 0.1), rgba(9, 13, 22, 0.92));
 }
 
 .stage.space-pan,
@@ -1814,6 +2197,12 @@ onBeforeUnmount(() => {
   background-color: #2a2a2a;
 }
 
+.canvas-wrap.exploded-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.08s ease-out;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
 .canvas-wrap.box-slice-mode,
 .canvas-wrap.box-slice-mode .layer {
   cursor: crosshair;
@@ -1844,6 +2233,35 @@ onBeforeUnmount(() => {
   position: absolute;
   box-sizing: border-box;
   cursor: move;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.28s ease;
+}
+
+.layer.layer-exploded-3d {
+  cursor: grab;
+  outline: 1px solid rgba(56, 189, 248, 0.55);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.55);
+}
+
+.layer.layer-exploded-3d.selected {
+  outline: 2px solid #f59e0b;
+  box-shadow: 0 18px 40px rgba(245, 158, 11, 0.35);
+}
+
+.layer-3d-badge {
+  position: absolute;
+  left: 0;
+  top: -20px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(10, 15, 28, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  color: #bae6fd;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .layer.base {

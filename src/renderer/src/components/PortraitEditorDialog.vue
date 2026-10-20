@@ -433,6 +433,12 @@
               <button type="button" class="ghost-btn" @click="pickPresetFile">
                 {{ t('graph.portrait.importPreset') }}
               </button>
+              <button type="button" class="ghost-btn" @click="copyBatchSync">
+                📋 {{ t('graph.portrait.batchCopy') }}
+              </button>
+              <button type="button" class="ghost-btn" @click="pasteBatchSync">
+                📥 {{ t('graph.portrait.batchPaste') }}
+              </button>
               <input
                 ref="presetFileEl"
                 class="hidden-input"
@@ -619,14 +625,64 @@
           <!-- AI 增强（编辑器内直调模型，结果作为版本存进节点） -->
           <template v-else-if="activeGroup === 'aiErase'">
             <div class="spec-block">
-              <button
-                type="button"
-                class="ghost-btn"
-                :disabled="aiRunning || !sourceUrl || !hasLiveAdjustments"
-                @click="bakeLiveRetouch"
-              >
-                ⚡ {{ t('graph.portrait.aiLiveRetouch') }}
-              </button>
+              <div class="preset-io">
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl || !hasLiveAdjustments"
+                  @click="bakeLiveRetouch"
+                >
+                  ⚡ {{ t('graph.portrait.aiLiveRetouch') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakeParallelUniverseSheet"
+                >
+                  🌌 {{ t('graph.portrait.bakeParallelSheet') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakeParallaxMotionFrame"
+                >
+                  🎬 {{ t('graph.portrait.bakeParallaxMotion') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakeWithInvisibleWatermark"
+                >
+                  🔐 {{ t('graph.portrait.bakeInvisibleWatermark') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakeOpticalLensSimulation"
+                >
+                  🔭 {{ t('graph.portrait.bakeOpticalLens') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakeEyeTrackingSaliencyAudit"
+                >
+                  👁️ {{ t('graph.portrait.bakeSaliencyHeatmap') }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn"
+                  :disabled="aiRunning || !sourceUrl"
+                  @click="bakePurifyAndCameraExif"
+                >
+                  📷 {{ t('graph.portrait.bakeCameraExifPurify') }}
+                </button>
+              </div>
               <p class="hint">{{ t('graph.portrait.bakeLiveHint') }}</p>
             </div>
             <p class="hint">{{ t('graph.portrait.aiHint') }}</p>
@@ -761,7 +817,23 @@
               </p>
             </div>
 
-            <!-- 影调组额外支持导入标准 .cube 3D LUT 文件实时映射 -->
+            <!-- 证件照组额外支持 0-Token 本地精准毫米裁切、换底色与六寸 8 连版排版烘焙 -->
+            <div
+              v-if="activeGroup === 'idPhoto' && draft.idPhotoSpecId !== 'none'"
+              class="spec-block"
+            >
+              <button
+                type="button"
+                class="ghost-btn"
+                :disabled="aiRunning || !sourceUrl"
+                @click="bakeLocalIdPhoto"
+              >
+                🪪 {{ t('graph.portrait.bakeLocalIdPhoto') }}
+              </button>
+              <p class="hint">{{ t('graph.portrait.bakeLocalIdPhotoHint') }}</p>
+            </div>
+
+            <!-- 影调组额外支持导入标准 .cube 3D LUT 文件实时映射 + 参考图基因反推 -->
             <div v-if="activeGroup === 'color'" class="spec-block">
               <div class="spec-head">
                 <span class="spec-label">{{ t('graph.portrait.customLutLabel') }}</span>
@@ -772,6 +844,17 @@
                   {{
                     draftCustomLut ? `🎞️ ${draftCustomLut.name}` : t('graph.portrait.importCubeLut')
                   }}
+                </button>
+                <button type="button" class="ghost-btn" @click="pickStyleDnaFile">
+                  🧬 {{ t('graph.portrait.extractStyleDna') }}
+                </button>
+                <button
+                  v-if="draftCustomLut"
+                  type="button"
+                  class="ghost-btn tiny"
+                  @click="exportSynthesizedCubeLut"
+                >
+                  📤 {{ t('graph.portrait.exportCubeLut') }}
                 </button>
                 <button
                   v-if="draftCustomLut"
@@ -787,6 +870,13 @@
                   type="file"
                   accept=".cube,text/plain"
                   @change="onLutFileChange"
+                />
+                <input
+                  ref="styleDnaFileEl"
+                  class="hidden-input"
+                  type="file"
+                  accept="image/*"
+                  @change="onStyleDnaFileChange"
                 />
               </div>
               <p v-if="lutMessage" class="hint">{{ lutMessage }}</p>
@@ -880,9 +970,12 @@ import {
   normalizePortraitManualRegions,
   normalizePortraitRetouch,
   parseCubeLut,
+  parsePortraitBatchClipboard,
   portraitHighRiskTierCount,
   portraitSpecIsDefault,
   portraitSpecsForGroup,
+  serializeCubeLutToText,
+  serializePortraitBatchClipboard,
   visiblePortraitSpecs,
   type PortraitAiLayer,
   type PortraitAiTool,
@@ -901,7 +994,17 @@ import {
 } from '@shared/graph'
 import type { YoloTaskKind } from '@shared/yolo'
 import { dataUrlToRawInput, getYoloStatus, yoloFace } from '../features/yolo/api'
-import { renderPortraitLiveRetouch } from '../features/graph/portraitLiveEngine'
+import {
+  embedPixelWatermarkInImageUrl,
+  extractReferenceStyleDnaFromUrl,
+  purifyAiArtifactsAndEmbedCameraExifLocal,
+  renderEyeTrackingSaliencyAuditLocal,
+  renderOpticalLensSimulationLocal,
+  renderParallaxMotionFrameLocal,
+  renderPortraitIdPhotoLocal,
+  renderPortraitLiveRetouch,
+  renderPortraitParallelContactSheetLocal
+} from '../features/graph/portraitLiveEngine'
 import { diveEditorHistory } from '../features/graph/ui/diveEditorHistory'
 import { viewportPointToImage } from '../features/graph/model/portraitViewportTransform'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -1214,6 +1317,65 @@ async function bakeLiveRetouch(): Promise<void> {
   })
 }
 
+async function bakeLocalIdPhoto(): Promise<void> {
+  const src = props.sourceUrl?.trim() ?? ''
+  if (!src || draft.idPhotoSpecId === 'none' || aiRunning.value) return
+  try {
+    const res = await renderPortraitIdPhotoLocal(src, {
+      state: draft,
+      landmarks: activeFace.value?.landmarks,
+      liquifyStrokes: draftLiquifyStrokes.value,
+      spotHeals: draftSpotHeals.value,
+      customLut: draftCustomLut.value
+    })
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: '',
+      model: 'local-id-photo',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+let memoryBatchClipboard = ''
+
+async function copyBatchSync(): Promise<void> {
+  const payload = serializePortraitBatchClipboard({
+    state: draft,
+    customLut: draftCustomLut.value
+  })
+  memoryBatchClipboard = payload
+  try {
+    await navigator.clipboard?.writeText(payload)
+  } catch {
+    /* 退回内存剪贴板 */
+  }
+  presetMessage.value = t('graph.portrait.batchCopied')
+}
+
+async function pasteBatchSync(): Promise<void> {
+  let raw = memoryBatchClipboard
+  try {
+    const clip = await navigator.clipboard?.readText()
+    if (clip?.trim()) raw = clip
+  } catch {
+    /* 退回内存剪贴板 */
+  }
+  const parsed = raw ? parsePortraitBatchClipboard(raw) : null
+  if (!parsed) {
+    presetMessage.value = t('graph.portrait.batchPasteEmpty')
+    return
+  }
+  Object.assign(draft, parsed.state)
+  draftCustomLut.value = parsed.customLut
+  presetMessage.value = t('graph.portrait.batchPasted')
+  pushHistory()
+}
+
 function popLiquifyStroke(): void {
   if (!draftLiquifyStrokes.value.length) return
   draftLiquifyStrokes.value = draftLiquifyStrokes.value.slice(0, -1)
@@ -1267,6 +1429,183 @@ function clearCustomLut(): void {
   draftCustomLut.value = null
   lutMessage.value = ''
   pushHistory()
+}
+
+const styleDnaFileEl = ref<HTMLInputElement | null>(null)
+
+function pickStyleDnaFile(): void {
+  styleDnaFileEl.value?.click()
+}
+
+async function onStyleDnaFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+    const title = file.name.replace(/\.[^.]+$/, '') || 'Style_DNA'
+    const res = await extractReferenceStyleDnaFromUrl(dataUrl, title)
+    if (!res) return
+    Object.assign(draft, res.dna.recommendedPortraitPatch)
+    draftCustomLut.value = res.cubeLut
+    lutMessage.value = t('graph.portrait.styleDnaApplied', {
+      title: res.cubeLut.name,
+      yaw: res.dna.estimatedYaw,
+      pitch: res.dna.estimatedPitch
+    })
+    pushHistory()
+  } catch (err) {
+    lutMessage.value = err instanceof Error ? err.message : String(err)
+  }
+}
+
+function exportSynthesizedCubeLut(): void {
+  if (!draftCustomLut.value) return
+  const text = serializeCubeLutToText(draftCustomLut.value)
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${draftCustomLut.value.name || 'Style_DNA'}.cube`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+async function bakeParallelUniverseSheet(): Promise<void> {
+  const src = props.sourceUrl?.trim() ?? ''
+  if (!src || aiRunning.value) return
+  try {
+    const res = await renderPortraitParallelContactSheetLocal(src, {
+      baseState: draft,
+      landmarks: activeFace.value?.landmarks
+    })
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: 'Parallel Universe 2x2 Contact Sheet',
+      model: 'local-parallel-sheet',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+async function bakeParallaxMotionFrame(): Promise<void> {
+  const src =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : (props.sourceUrl?.trim() ?? '')
+  if (!src || aiRunning.value) return
+  try {
+    const res = await renderParallaxMotionFrameLocal(src, 'dolly-zoom', 0.8, 1.1)
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: '2.5D Hitchcock Dolly Zoom Parallax',
+      model: 'local-parallax-25d',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+async function bakeWithInvisibleWatermark(): Promise<void> {
+  const src =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : (props.sourceUrl?.trim() ?? '')
+  if (!src || aiRunning.value) return
+  try {
+    const res = await embedPixelWatermarkInImageUrl(src, {
+      schema: 'aiae.pixel-watermark.v1',
+      nodeType: 'image.portrait',
+      recipeSummary: `${draft.lutId}|smooth:${draft.skinSmoothing}|whiten:${draft.skinWhiten}`,
+      timestamp: Date.now()
+    })
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: `Invisible Watermark (PSNR ${res.psnrDb}dB)`,
+      model: 'local-stego-watermark',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+async function bakeOpticalLensSimulation(): Promise<void> {
+  const src =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : (props.sourceUrl?.trim() ?? '')
+  if (!src || aiRunning.value) return
+  try {
+    const res = await renderOpticalLensSimulationLocal(src, 'arri-anamorphic')
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: 'ARRI Master Anamorphic + Kodak Film Halation',
+      model: 'local-optical-lens-lab',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+async function bakeEyeTrackingSaliencyAudit(): Promise<void> {
+  const src =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : (props.sourceUrl?.trim() ?? '')
+  if (!src || aiRunning.value) return
+  try {
+    const res = await renderEyeTrackingSaliencyAuditLocal(src)
+    if (!res?.heatmapDataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: `Eye-Tracking Saliency (${res.audit.overallScore}/100, SafeZone: ${res.audit.copywritingSafeZone.regionNameZh})`,
+      model: 'local-saliency-auditor',
+      providerInstanceId: '',
+      sourceDataUrl: res.heatmapDataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
+}
+
+async function bakePurifyAndCameraExif(): Promise<void> {
+  const src =
+    livePreviewVisible.value && livePreviewDataUrl.value
+      ? livePreviewDataUrl.value
+      : (props.sourceUrl?.trim() ?? '')
+  if (!src || aiRunning.value) return
+  try {
+    const res = await purifyAiArtifactsAndEmbedCameraExifLocal(src, 'hasselblad-x2d')
+    if (!res?.dataUrl) return
+    emit('ai', {
+      tool: 'liveRetouch',
+      prompt: `AI Purified + EXIF: ${res.cameraModelLabel}`,
+      model: 'local-camera-exif-purifier',
+      providerInstanceId: '',
+      sourceDataUrl: res.dataUrl
+    })
+  } catch {
+    /* 静默忽略 */
+  }
 }
 
 /**

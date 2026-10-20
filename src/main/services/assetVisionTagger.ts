@@ -33,6 +33,7 @@ import {
   type VisionObjectTag
 } from '@shared/visionTags'
 import { yoloService } from '../yolo/yoloService'
+import { isBuiltinDecodableImageFile } from '../yolo/imageDecoder'
 import { extractVideoFrames } from './videoFrameService'
 
 /** 内置纯 JS 解码器不支持的图片扩展名 → 需 nativeImage 转 PNG dataUrl */
@@ -135,8 +136,9 @@ async function detectOnce(root: string, rel: string): Promise<VisionAssetTags | 
         }
       }
       result = await yoloService.detect({ image: { kind: 'dataUrl', dataUrl: frame } })
-    } else if (NATIVE_FALLBACK_EXT.has(extOf(rel))) {
-      // 解码链：nativeImage 同步（buffer→path）→ Electron 系统缩略图（OS/Shell 解码）
+    } else if (NATIVE_FALLBACK_EXT.has(extOf(rel)) || !isBuiltinDecodableImageFile(abs)) {
+      // 解码链：nativeImage 同步（buffer→path，兼容伪装成 .png/.jpg 的真实 WebP/GIF/BMP）
+      // → Electron 系统缩略图（OS/Shell 解码）
       const dataUrl = await nativeImageToPngDataUrl(abs)
       if (!dataUrl) {
         console.warn('[vision-tag] image decode failed, skip', rel, describeFile(abs))
@@ -223,38 +225,61 @@ function loadImageViaNativeImage(abs: string): NativeImage | null {
   return null
 }
 
+function nativeImageToResizedPngDataUrl(image: NativeImage): string | null {
+  const { width, height } = image.getSize()
+  if (!width || !height) return null
+  const maxEdge = Math.max(width, height)
+  const resized =
+    maxEdge > NATIVE_FALLBACK_MAX_EDGE
+      ? image.resize({
+          width: Math.max(1, Math.round((width * NATIVE_FALLBACK_MAX_EDGE) / maxEdge)),
+          height: Math.max(1, Math.round((height * NATIVE_FALLBACK_MAX_EDGE) / maxEdge)),
+          quality: 'good'
+        })
+      : image
+  const png = resized.toPNG()
+  if (!png || png.length === 0) return null
+  return `data:image/png;base64,${png.toString('base64')}`
+}
+
 /**
- * webp/gif → PNG dataUrl。解码链：
+ * webp/gif/伪装扩展名图片 → PNG dataUrl。解码链：
  * 1) nativeImage 同步（buffer→path），可解伪装扩展名/主流格式；
  * 2) 同步失败再走 Electron 系统缩略图（OS/Shell 解码）——nativeImage 并不保证
  *    webp/gif 解码，系统缩略图是 thumbnailService 已验证的兜底。
  * 全部失败返回 null。
  */
-async function nativeImageToPngDataUrl(abs: string): Promise<string | null> {
+export async function nativeImageToPngDataUrl(abs: string): Promise<string | null> {
   try {
     const image = loadImageViaNativeImage(abs)
     if (image) {
-      const { width, height } = image.getSize()
-      if (width && height) {
-        const maxEdge = Math.max(width, height)
-        const resized =
-          maxEdge > NATIVE_FALLBACK_MAX_EDGE
-            ? image.resize({
-                width: Math.max(1, Math.round((width * NATIVE_FALLBACK_MAX_EDGE) / maxEdge)),
-                height: Math.max(1, Math.round((height * NATIVE_FALLBACK_MAX_EDGE) / maxEdge)),
-                quality: 'good'
-              })
-            : image
-        const png = resized.toPNG()
-        if (png && png.length > 0) {
-          return `data:image/png;base64,${png.toString('base64')}`
-        }
-      }
+      const encoded = nativeImageToResizedPngDataUrl(image)
+      if (encoded) return encoded
     }
   } catch {
     /* fall to system thumbnail */
   }
   return systemThumbnailDataUrl(abs)
+}
+
+/**
+ * 把非 PNG/JPEG 的 dataUrl（如 `data:image/webp;base64,...`）经 nativeImage 转为 PNG dataUrl。
+ */
+export function dataUrlToPngDataUrlViaNativeImage(dataUrl: string): string | null {
+  try {
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl)
+    if (!match) return null
+    const isBase64 = !!match[2]
+    const body = match[3] ?? ''
+    const buf = isBase64
+      ? Buffer.from(body, 'base64')
+      : Buffer.from(decodeURIComponent(body), 'latin1')
+    const image = nativeImage.createFromBuffer(buf)
+    if (image.isEmpty()) return null
+    return nativeImageToResizedPngDataUrl(image)
+  } catch {
+    return null
+  }
 }
 
 /** 解码失败时的诊断信息（字节数 + 头部 magic），用于确认是否伪装扩展名/损坏 */

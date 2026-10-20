@@ -13,6 +13,17 @@
       >
         {{ t(tab.labelKey) }}
       </button>
+      <div class="image-process-chain-wrap">
+        <button
+          type="button"
+          class="image-process-chain-btn"
+          :class="{ active: isProcessChainFromOutput }"
+          :title="t('studio.dive.chainProcessHint')"
+          @click="toggleProcessChainFromOutput"
+        >
+          ⛓ {{ t('studio.dive.chainProcess') }}
+        </button>
+      </div>
     </div>
 
     <div
@@ -588,6 +599,28 @@ useEditorDiveFrameFlush(
   }
 )
 
+const isProcessChainFromOutput = computed(() => {
+  void graphEditorHosts.revision.value
+  const node = graphEditorHosts.getNode(props.hostId, props.nodeId)
+  return node?.params?.imageProcessChainFromOutput === true
+})
+
+async function toggleProcessChainFromOutput(): Promise<void> {
+  if (switchingTool) return
+  switchingTool = true
+  try {
+    flushCurrent()
+    closeCurrent()
+    const next = !isProcessChainFromOutput.value
+    graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+      imageProcessChainFromOutput: next
+    })
+    await graphEditorNodeTools.open(props.hostId, activeViewId.value, props.nodeId)
+  } finally {
+    switchingTool = false
+  }
+}
+
 async function switchImageProcessTool(tab: ImageProcessToolTab): Promise<void> {
   if (tab.viewId === activeViewId.value || switchingTool) return
   switchingTool = true
@@ -794,6 +827,39 @@ function onClose(closeFn: () => void): void {
 .image-process-tool-tab.active {
   color: var(--text);
   background: var(--bg-elevated);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.image-process-chain-wrap {
+  margin-left: auto;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+}
+
+.image-process-chain-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.image-process-chain-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.image-process-chain-btn.active {
+  color: var(--accent);
+  background: rgba(99, 102, 241, 0.14);
   border-color: var(--accent);
   font-weight: 600;
 }

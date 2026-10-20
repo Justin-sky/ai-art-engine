@@ -5,8 +5,16 @@
  */
 
 import { normalizeExpandResolution } from './imageExpand'
+import {
+  decomposeControlIntoStandardParts,
+  getUiControlSpec,
+  recognizeUiControlType,
+  type UiControlPartRole,
+  type UiControlType,
+  type UiEditableTextMeta
+} from './uiControlSpec'
 
-export const LAYER_SPLIT_MAX_LAYERS = 16
+export const LAYER_SPLIT_MAX_LAYERS = 64
 export const LAYER_SPLIT_Z_MAX = 4096
 export const LAYER_SPLIT_RESOLUTIONS = ['auto', '1K', '1.5K', '2K'] as const
 export const LAYER_SPLIT_COMPOSITE_SUFFIX = 'composite'
@@ -28,10 +36,10 @@ export type LayerSplitResolution = (typeof LAYER_SPLIT_RESOLUTIONS)[number]
 
 /**
  * UI 图层分离引擎模式：
- * - 'auto': 智能自动（若所选模型原生返回多图层则优先使用；否则用所选图片模型重绘纯净底板 + 像素差分反混合抠出所有 UI 控件图层；无模型时回退本地智能拆层）
- * - 'ai-inpaint-slice': 通用图片模型底板重绘 + 像素级差分软抠层（支持所有图片模型，100% 保持原图控件位置与像素锐度）
- * - 'ai-layers': 原生多图层 API 拆解（Seedream 5.0 Pro layer_decomposition）
- * - 'local-slice': 本地零 API 智能 UI 连通域切层（毫秒级直出纯净底图 + 透明 UI 控件图层）
+ * - 'auto': 智能自动（识别 UI 标准控件 → 拆解控件结构子部件 → 生成二级嵌套 PSD）
+ * - 'ai-inpaint-slice': 通用图片模型底板重绘 + 标准 UI 控件结构拆解（按钮背景/文字/按下态、滑块轨道/填充/手柄、面板底框/正文）
+ * - 'ai-layers': 原生多图层 API 拆解 + 标准 UI 控件结构二次精拆
+ * - 'local-slice': 本地零 API 智能 UI 控件识别与结构拆解
  */
 export const UI_LAYER_SPLIT_MODES = [
   'auto',
@@ -86,6 +94,16 @@ export interface ImageLayerSplitLayer {
   originalNormalized?: [number, number, number, number]
   /** 像素自相似度测算的真实九宫格切线 [top, right, bottom, left]（像素） */
   nineSliceBorders?: [number, number, number, number]
+  /** 所属标准 UI 控件实例 ID（同一控件的文字、常态背景、按下态共享同一 uiControlId，归入同一 PSD 控件组） */
+  uiControlId?: string
+  /** 所属标准 UI 控件显示名称（如「祭炼升阶按钮」「灵力滑动条」） */
+  uiControlName?: string
+  /** 标准 UI 控件类型（对齐 HTML5 与 Unity UI Toolkit：button / slider / list-view / panel 等） */
+  uiControlType?: UiControlType
+  /** 控件内部解剖结构角色（button-label / button-bg-normal / button-bg-pressed / slider-thumb 等） */
+  uiPartRole?: UiControlPartRole
+  /** 原生 Photoshop 可编辑文本图层元数据（文字内容、估算字号、采样主色、对齐） */
+  editableText?: UiEditableTextMeta
 }
 
 export interface ImageLayerSplitGroup {
@@ -277,6 +295,39 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
   const nineSliceBorders = tuple4(row.nineSliceBorders)
   const groupId = typeof row.groupId === 'string' && row.groupId.trim() ? row.groupId.trim() : ''
   const role = normalizeLayerRole(row, zIndex, groupId)
+  const uiControlId =
+    typeof row.uiControlId === 'string' && row.uiControlId.trim() ? row.uiControlId.trim() : ''
+  const uiControlName =
+    typeof row.uiControlName === 'string' && row.uiControlName.trim()
+      ? row.uiControlName.trim()
+      : ''
+  const uiControlType =
+    typeof row.uiControlType === 'string' && row.uiControlType.trim()
+      ? (row.uiControlType.trim() as UiControlType)
+      : undefined
+  const uiPartRole =
+    typeof row.uiPartRole === 'string' && row.uiPartRole.trim()
+      ? (row.uiPartRole.trim() as UiControlPartRole)
+      : undefined
+  const editableText =
+    row.editableText &&
+    typeof row.editableText === 'object' &&
+    typeof row.editableText.text === 'string'
+      ? {
+          text: row.editableText.text,
+          fontSize: clampInt(row.editableText.fontSize, 20, 8, 256),
+          color:
+            Array.isArray(row.editableText.color) && row.editableText.color.length >= 3
+              ? ([
+                  clampInt(row.editableText.color[0], 240, 0, 255),
+                  clampInt(row.editableText.color[1], 230, 0, 255),
+                  clampInt(row.editableText.color[2], 200, 0, 255)
+                ] as [number, number, number])
+              : ([240, 230, 200] as [number, number, number]),
+          ...(row.editableText.align ? { align: row.editableText.align } : {}),
+          ...(row.editableText.fontName ? { fontName: row.editableText.fontName } : {})
+        }
+      : undefined
   return {
     id,
     imageId,
@@ -292,7 +343,12 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
     ...(groupId ? { groupId } : {}),
     ...(originalAbsolute ? { originalAbsolute } : {}),
     ...(originalNormalized ? { originalNormalized } : {}),
-    ...(nineSliceBorders ? { nineSliceBorders } : {})
+    ...(nineSliceBorders ? { nineSliceBorders } : {}),
+    ...(uiControlId ? { uiControlId } : {}),
+    ...(uiControlName ? { uiControlName } : {}),
+    ...(uiControlType ? { uiControlType } : {}),
+    ...(uiPartRole ? { uiPartRole } : {}),
+    ...(editableText ? { editableText } : {})
   }
 }
 
@@ -793,8 +849,14 @@ export interface LayerSplitApiLayerInput {
   size?: string
   name?: string
   description?: string
+  visible?: boolean
   boundingBox?: { absolute?: unknown; normalized?: unknown }
   nineSliceBorders?: [number, number, number, number]
+  uiControlId?: string
+  uiControlName?: string
+  uiControlType?: UiControlType
+  uiPartRole?: UiControlPartRole
+  editableText?: UiEditableTextMeta
 }
 
 export interface LayerSplitMappedItem {
@@ -856,7 +918,7 @@ export function mapDecompositionToLayers(input: {
       zIndex,
       name,
       description: row.description?.trim() || '',
-      visible: true,
+      visible: row.visible !== false,
       left: rect.left,
       top: rect.top,
       width: rect.width,
@@ -864,7 +926,12 @@ export function mapDecompositionToLayers(input: {
       role: isCanvasBase ? 'canvas-base' : 'layer',
       ...(originalAbsolute ? { originalAbsolute } : {}),
       ...(originalNormalized ? { originalNormalized } : {}),
-      ...(nineSliceBorders ? { nineSliceBorders } : {})
+      ...(nineSliceBorders ? { nineSliceBorders } : {}),
+      ...(row.uiControlId ? { uiControlId: row.uiControlId } : {}),
+      ...(row.uiControlName ? { uiControlName: row.uiControlName } : {}),
+      ...(row.uiControlType ? { uiControlType: row.uiControlType } : {}),
+      ...(row.uiPartRole ? { uiPartRole: row.uiPartRole } : {}),
+      ...(row.editableText ? { editableText: row.editableText } : {})
     })
     items.push({ id, title: name, url })
   }
@@ -1063,6 +1130,32 @@ function classifyGameUiLayerBucket(
   canvasWidth: number,
   canvasHeight: number
 ): GameUiAutoGroupBucket {
+  if (layer.uiControlType === 'hud-bar' || layer.uiControlType === 'tab-bar') {
+    return 'header'
+  }
+  if (
+    layer.uiControlType === 'panel' ||
+    layer.uiControlType === 'list-view' ||
+    layer.uiControlType === 'foldout'
+  ) {
+    return 'panels'
+  }
+  if (
+    layer.uiControlType === 'button' ||
+    layer.uiControlType === 'slider' ||
+    layer.uiControlType === 'progress-bar' ||
+    layer.uiControlType === 'item-slot' ||
+    layer.uiControlType === 'dropdown' ||
+    layer.uiControlType === 'radio-button' ||
+    layer.uiControlType === 'toggle' ||
+    layer.uiControlType === 'text-field' ||
+    layer.uiControlType === 'scroller' ||
+    layer.uiControlType === 'radial-progress' ||
+    layer.uiControlType === 'icon-badge'
+  ) {
+    return 'controls'
+  }
+
   const text = `${layer.name} ${layer.description ?? ''}`.toLowerCase()
   const areaRatio =
     (Math.max(1, layer.width) * Math.max(1, layer.height)) / Math.max(1, canvasWidth * canvasHeight)
@@ -1090,11 +1183,13 @@ function classifyGameUiLayerBucket(
 }
 
 /**
- * 一键按游戏 UI 工程规范将顶层前景图层归类到标准 PSD 文件夹：
- * - `01_顶栏与装饰`（高 zIndex）
+ * 一键按 HTML5 / Unity UI Toolkit 标准控件规范构建二级嵌套 PSD 文件夹树：
+ * 第一级（功能分区文件夹）：
+ * - `01_HUD与顶栏导航`（高 zIndex）
  * - `02_交互控件与按钮`（中 zIndex）
- * - `03_面板与容器底框`（低 zIndex，位于底图之上）
- * 已处于子拆层分组内的图层保持原分组不变。
+ * - `03_列表与容器面板`（低 zIndex，位于底图之上）
+ * 第二级（单个标准 UI 控件独立 PSD 文件夹，如 `[Button 按钮] 祭炼升阶`、`[Slider 滑动条] 灵力条`）：
+ * - 将同一控件拆解出的 `按钮文字`、`按钮图标`、`按钮背景·常态`、`按钮背景·按下效果` 聚合在同一 PSD 控件文件夹内！
  */
 export function autoGroupLayersForGameUi(
   inputState: ImageLayerSplitState,
@@ -1113,7 +1208,7 @@ export function autoGroupLayersForGameUi(
     {
       bucket: 'panels',
       id: 'group:ui-auto:panels',
-      name: isEn ? '03_Panels_Containers' : '03_面板与容器底框' // cjk-ok PSD 面板分组名
+      name: isEn ? '03_Panels_And_Containers' : '03_面板与容器底框' // cjk-ok PSD 面板分组名
     },
     {
       bucket: 'controls',
@@ -1123,13 +1218,15 @@ export function autoGroupLayersForGameUi(
     {
       bucket: 'header',
       id: 'group:ui-auto:header',
-      name: isEn ? '01_Header_Ornaments' : '01_顶栏与装饰' // cjk-ok PSD 顶栏分组名
+      name: isEn ? '01_Header_And_Ornaments' : '01_顶栏与装饰' // cjk-ok PSD 顶栏分组名
     }
   ]
   const autoGroupIds = new Set(autoGroupSpecs.map((spec) => spec.id))
 
-  // 保留非自动分组（如对单层执行「再次拆层」产生的嵌套分组）
-  const preservedGroups = state.groups.filter((group) => !autoGroupIds.has(group.id))
+  // 保留用户手动对单层执行「再次拆层」产生的自定义分组（排除自动生成的 group:ui-auto:* 与 group:ui-ctrl:*）
+  const preservedGroups = state.groups.filter(
+    (group) => !autoGroupIds.has(group.id) && !group.id.startsWith('group:ui-ctrl:')
+  )
   const preservedGroupIds = new Set(preservedGroups.map((group) => group.id))
 
   const bucketLayers = new Map<GameUiAutoGroupBucket, ImageLayerSplitLayer[]>([
@@ -1146,12 +1243,24 @@ export function autoGroupLayersForGameUi(
       customGroupedLayers.push(layer)
       continue
     }
-    const bucket = classifyGameUiLayerBucket(layer, state.canvasWidth, state.canvasHeight)
-    const spec = autoGroupSpecs.find((item) => item.bucket === bucket)!
-    bucketLayers.get(bucket)!.push({
+    const inferredType =
+      layer.uiControlType ??
+      recognizeUiControlType({
+        nameHint: layer.name,
+        descriptionHint: layer.description,
+        left: layer.left,
+        top: layer.top,
+        width: layer.width,
+        height: layer.height,
+        canvasWidth: state.canvasWidth || 1280,
+        canvasHeight: state.canvasHeight || 720
+      })
+    const enriched: ImageLayerSplitLayer = {
       ...layer,
-      groupId: spec.id
-    })
+      uiControlType: inferredType
+    }
+    const bucket = classifyGameUiLayerBucket(enriched, state.canvasWidth, state.canvasHeight)
+    bucketLayers.get(bucket)!.push(enriched)
   }
 
   let nextZ = 1
@@ -1168,11 +1277,49 @@ export function autoGroupLayersForGameUi(
       visible: true,
       sourceLayerId: baseLayer.id
     })
+
+    // 统计同一 uiControlId 下的子部件图层数量：若 >= 2（如按钮含文字+背景+按下态），创建二级控件专属 PSD 文件夹
+    const byControlId = new Map<string, ImageLayerSplitLayer[]>()
     for (const layer of list) {
-      reindexedForeground.push({
-        ...layer,
-        zIndex: nextZ++
-      })
+      const cid = layer.uiControlId?.trim() || ''
+      if (!cid) continue
+      const arr = byControlId.get(cid) ?? []
+      arr.push(layer)
+      byControlId.set(cid, arr)
+    }
+
+    const createdControlGroups = new Set<string>()
+    for (const layer of list) {
+      const cid = layer.uiControlId?.trim() || ''
+      const siblings = cid ? (byControlId.get(cid) ?? []) : []
+      if (cid && siblings.length >= 2) {
+        const ctrlGroupId = `group:ui-ctrl:${cid}`
+        if (!createdControlGroups.has(ctrlGroupId)) {
+          createdControlGroups.add(ctrlGroupId)
+          const cSpec = getUiControlSpec(layer.uiControlType)
+          const prefix = isEn ? cSpec.folderPrefixEn : cSpec.folderPrefixZh
+          const rawCtrlName = layer.uiControlName?.trim() || layer.name.split('·')[0]?.trim() || cid
+          createdAutoGroups.push({
+            id: ctrlGroupId,
+            name: `${prefix} ${rawCtrlName}`,
+            collapsed: false,
+            visible: true,
+            sourceLayerId: baseLayer.id,
+            parentGroupId: spec.id
+          })
+        }
+        reindexedForeground.push({
+          ...layer,
+          groupId: ctrlGroupId,
+          zIndex: nextZ++
+        })
+      } else {
+        reindexedForeground.push({
+          ...layer,
+          groupId: spec.id,
+          zIndex: nextZ++
+        })
+      }
     }
   }
 
@@ -1185,7 +1332,15 @@ export function autoGroupLayersForGameUi(
 
   return normalizeImageLayerSplit({
     ...state,
-    layers: [{ ...baseLayer, zIndex: 0, role: 'canvas-base' }, ...reindexedForeground],
+    layers: [
+      {
+        ...baseLayer,
+        zIndex: 0,
+        role: 'canvas-base',
+        uiPartRole: 'canvas-base'
+      },
+      ...reindexedForeground
+    ],
     groups: [...preservedGroups, ...createdAutoGroups]
   })
 }
@@ -1201,6 +1356,12 @@ export interface UiLayerManifestItem {
   name: string
   description: string
   role: 'base' | 'layer'
+  uiControlId?: string
+  uiControlType?: UiControlType
+  uiPartRole?: UiControlPartRole
+  html5StandardTag?: string
+  unityUiToolkitTag?: string
+  editableText?: UiEditableTextMeta
   zIndex: number
   visible: boolean
   groupPath: string[]
@@ -1430,29 +1591,39 @@ export function buildLayerSplitUiManifest(inputState: ImageLayerSplitState): UiL
       ...(group.parentGroupId ? { parentGroupId: group.parentGroupId } : {}),
       visible: group.visible
     })),
-    layers: ordered.map((layer) => ({
-      id: layer.id,
-      name: layer.name,
-      description: layer.description ?? '',
-      role: isLayerSplitBase(layer) ? 'base' : 'layer',
-      zIndex: layer.zIndex,
-      visible: isLayerSplitLayerDrawable(state, layer),
-      groupPath: layerSplitExportFolderSegments(state, layer.groupId),
-      rect: {
-        left: layer.left,
-        top: layer.top,
-        width: layer.width,
-        height: layer.height
-      },
-      normalizedRect: {
-        x: Number((layer.left / cw).toFixed(4)),
-        y: Number((layer.top / ch).toFixed(4)),
-        w: Number((layer.width / cw).toFixed(4)),
-        h: Number((layer.height / ch).toFixed(4))
-      },
-      anchor: inferLayerAnchor(layer, cw, ch),
-      nineSliceHint: inferNineSliceHint(layer, cw, ch)
-    }))
+    layers: ordered.map((layer) => {
+      const ctrlSpec = layer.uiControlType ? getUiControlSpec(layer.uiControlType) : undefined
+      return {
+        id: layer.id,
+        name: layer.name,
+        description: layer.description ?? '',
+        role: isLayerSplitBase(layer) ? 'base' : 'layer',
+        ...(layer.uiControlId ? { uiControlId: layer.uiControlId } : {}),
+        ...(layer.uiControlType ? { uiControlType: layer.uiControlType } : {}),
+        ...(layer.uiPartRole ? { uiPartRole: layer.uiPartRole } : {}),
+        ...(ctrlSpec
+          ? { html5StandardTag: ctrlSpec.html5Tag, unityUiToolkitTag: ctrlSpec.unityUiToolkitTag }
+          : {}),
+        ...(layer.editableText ? { editableText: layer.editableText } : {}),
+        zIndex: layer.zIndex,
+        visible: isLayerSplitLayerDrawable(state, layer),
+        groupPath: layerSplitExportFolderSegments(state, layer.groupId),
+        rect: {
+          left: layer.left,
+          top: layer.top,
+          width: layer.width,
+          height: layer.height
+        },
+        normalizedRect: {
+          x: Number((layer.left / cw).toFixed(4)),
+          y: Number((layer.top / ch).toFixed(4)),
+          w: Number((layer.width / cw).toFixed(4)),
+          h: Number((layer.height / ch).toFixed(4))
+        },
+        anchor: inferLayerAnchor(layer, cw, ch),
+        nineSliceHint: inferNineSliceHint(layer, cw, ch)
+      }
+    })
   }
 }
 
@@ -1474,13 +1645,13 @@ export function buildUiCleanBaseInpaintPrompt(
   if (isZh) {
     const scope = titleHint ? `（界面：${titleHint}）` : '' // cjk-ok 界面上下文
     const extra = custom ? `重点擦除并分离这些前景控件：${custom}。` : '' // cjk-ok 用户补充拆层指令
-    return `保持这张游戏 UI 画面${scope}的整体背景底图、环境光影与外层主画框完全不变，将画面上所有悬浮的前景 UI 交互按钮、图标徽章、货币资源胶囊、道具槽位、关闭按钮与浮动小控件干净擦除并无缝修补背景纹理，输出一张纯净无悬浮控件的 UI 背景底板图（严禁绘制任何文字或新增元素）。${extra}` // cjk-ok 通用生图模型底板重绘提示词
+    return `保持这张游戏 UI 画面${scope}的整体背景底图、环境光影与外层主画框完全不变，将画面上所有悬浮的前景 UI 交互按钮、滑动条、列表项槽位、图标徽章、货币资源胶囊、关闭按钮与浮动小控件干净擦除并无缝修补背景纹理，输出一张纯净无悬浮控件的 UI 背景底板图（严禁绘制任何文字或新增元素）。${extra}` // cjk-ok 通用生图模型底板重绘提示词
   }
   const scope = titleHint ? ` (${titleHint})` : ''
   const extra = custom
     ? ` Focus on removing and isolating these foreground widgets: ${custom}.`
     : ''
-  return `Keep the overall background scene, lighting, and outer main frame of this game UI screen${scope} unchanged, and cleanly remove and inpaint over all floating foreground interactive UI buttons, icon badges, currency pills, item slots, close buttons, and overlay widgets to produce a clean background base plate with no text or added elements.${extra}`
+  return `Keep the overall background scene, lighting, and outer main frame of this game UI screen${scope} unchanged, and cleanly remove and inpaint over all floating foreground interactive UI buttons, sliders, list slots, icon badges, currency pills, close buttons, and overlay widgets to produce a clean background base plate with no text or added elements.${extra}`
 }
 
 /**
@@ -1525,7 +1696,13 @@ export interface ExtractedUiLayerBuffer {
   width: number
   height: number
   rgba: Uint8ClampedArray
+  visible?: boolean
   nineSliceBorders?: [number, number, number, number]
+  uiControlId?: string
+  uiControlName?: string
+  uiControlType?: UiControlType
+  uiPartRole?: UiControlPartRole
+  editableText?: UiEditableTextMeta
 }
 
 export interface DecomposedRgbaUiLayersResult {
@@ -2040,6 +2217,7 @@ export function sliceUiLayerFromRgbaRect(input: {
   locale?: string
 }): {
   layer: ExtractedUiLayerBuffer
+  subParts: ExtractedUiLayerBuffer[]
   updatedBaseRgba: Uint8ClampedArray
 } {
   const width = Math.max(1, Math.round(input.width))
@@ -2076,11 +2254,55 @@ export function sliceUiLayerFromRgbaRect(input: {
   const zIndex = input.zIndex ?? 1
   const meta = inferExtractedUiWidgetName(clampedRect, width, height, zIndex, input.locale)
   const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, rw, rh)
+  const controlName = input.name?.trim() || meta.name
+  const controlId = input.layerId?.trim() || `manual-slice:${zIndex}`
+  const uiControlType = recognizeUiControlType({
+    nameHint: controlName,
+    descriptionHint: meta.description,
+    left,
+    top,
+    width: rw,
+    height: rh,
+    canvasWidth: width,
+    canvasHeight: height,
+    rgba: layerRgba
+  })
+  const decomposedParts = decomposeControlIntoStandardParts({
+    nameHint: controlName,
+    descriptionHint: meta.description,
+    left,
+    top,
+    width: rw,
+    height: rh,
+    canvasWidth: width,
+    canvasHeight: height,
+    rgba: layerRgba,
+    nineSliceBorders,
+    locale: input.locale
+  })
+  const subParts: ExtractedUiLayerBuffer[] = decomposedParts.map((part, pIdx) => ({
+    id: `${controlId}:${part.idSuffix}`,
+    name: part.name,
+    description: part.description,
+    zIndex: zIndex + pIdx,
+    left: part.left,
+    top: part.top,
+    width: part.width,
+    height: part.height,
+    rgba: part.rgba,
+    visible: part.visible,
+    uiControlId: controlId,
+    uiControlName: controlName,
+    uiControlType: part.uiControlType,
+    uiPartRole: part.uiPartRole,
+    ...(part.nineSliceBorders ? { nineSliceBorders: part.nineSliceBorders } : {}),
+    ...(part.editableText ? { editableText: part.editableText } : {})
+  }))
 
   return {
     layer: {
-      id: input.layerId?.trim() || `manual-slice:${zIndex}`,
-      name: input.name?.trim() || meta.name,
+      id: controlId,
+      name: controlName,
       description: meta.description,
       zIndex,
       left,
@@ -2088,8 +2310,13 @@ export function sliceUiLayerFromRgbaRect(input: {
       width: rw,
       height: rh,
       rgba: layerRgba,
+      visible: true,
+      uiControlId: controlId,
+      uiControlName: controlName,
+      uiControlType,
       ...(nineSliceBorders ? { nineSliceBorders } : {})
     },
+    subParts,
     updatedBaseRgba
   }
 }
@@ -2100,7 +2327,7 @@ export function sliceUiLayerFromRgbaRect(input: {
  * 2. 若未提供 `cleanBaseRgba`（本地零 API 拆层），自动建模多尺度背景底色定位独立 UI 控件岛；
  * 3. 支持「父容器 + 内部子控件」双层剥离（Hierarchical Parent-Child Peeling）：大弹窗/主面板内部的按钮与槽位自动剥离为上层独立图层，并在父面板底框上自动修补擦除子控件；
  * 4. 对每个前景控件执行全包围盒外部背景泛洪（Exterior Flood-Fill）+ 轮廓色彩反混合软抠图（Color Unmixing），使圆角按钮、圆形徽章四角 100% 纯净透明，内部文字不穿孔；
- * 5. 自动测算面板与按钮的真实像素九宫格切线（`nineSliceBorders`）。
+ * 5. 先识别标准 UI 控件类型（HTML5 / Unity UI Toolkit：Button、Slider、ProgressBar、ListView、TabBar、HUD、Panel），再将每个控件自动拆解为结构化子部件图层（如按钮文字、按钮图标、常态九宫格底板、悬停态、按下态）。
  */
 export function decomposeRgbaBufferToUiLayers(input: {
   width: number
@@ -2110,6 +2337,17 @@ export function decomposeRgbaBufferToUiLayers(input: {
   maxLayers?: number
   idPrefix?: string
   locale?: string
+  /** 是否将每个识别出的 UI 控件拆解为标准子部件图层（默认 true） */
+  decomposeControlParts?: boolean
+  /** 可选：来自 AI 图层分解 API 的候选控件边界框与语义名称提示（用于辅助识别控件与拆解子结构） */
+  apiLayerHints?: Array<{
+    name?: string
+    description?: string
+    left: number
+    top: number
+    width: number
+    height: number
+  }>
 }): DecomposedRgbaUiLayersResult {
   const width = Math.max(1, Math.round(input.width))
   const height = Math.max(1, Math.round(input.height))
@@ -2416,10 +2654,12 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  const maxLayers = Math.max(1, Math.min(LAYER_SPLIT_MAX_LAYERS - 1, input.maxLayers ?? 12))
+  const maxControlCount = Math.max(1, Math.min(20, input.maxLayers ?? 12))
   const minPxSide = Math.max(4, Math.min(12, Math.floor(Math.min(width, height) * 0.025)))
 
-  const candidateRects: Array<ImageLayerSplitRect & { score: number }> = []
+  const candidateRects: Array<
+    ImageLayerSplitRect & { score: number; hintName?: string; hintDescription?: string }
+  > = []
   for (const box of mergedBoxes) {
     const pad = step > 1 ? Math.min(4, step) : 0
     const left = Math.max(0, box.gx0 * step - pad)
@@ -2431,6 +2671,49 @@ export function decomposeRgbaBufferToUiLayers(input: {
     if (rw < minPxSide || rh < minPxSide) continue
     if (rw >= width * 0.95 && rh >= height * 0.95) continue
     candidateRects.push({ left, top, width: rw, height: rh, score: box.score })
+  }
+
+  // 若提供了 AI 图层边界框提示（apiLayerHints），融合其语义信息与未检出的独立控件框
+  if (input.apiLayerHints?.length) {
+    for (const hint of input.apiLayerHints) {
+      const hl = Math.max(0, Math.min(width - 1, Math.round(hint.left)))
+      const ht = Math.max(0, Math.min(height - 1, Math.round(hint.top)))
+      const hw = Math.max(1, Math.min(width - hl, Math.round(hint.width)))
+      const hh = Math.max(1, Math.min(height - ht, Math.round(hint.height)))
+      if (hw < minPxSide || hh < minPxSide) continue
+      if (hw >= width * 0.94 && hh >= height * 0.94) continue
+      const hintArea = hw * hh
+      let matched = false
+      for (const existing of candidateRects) {
+        const ix0 = Math.max(existing.left, hl)
+        const iy0 = Math.max(existing.top, ht)
+        const ix1 = Math.min(existing.left + existing.width, hl + hw)
+        const iy1 = Math.min(existing.top + existing.height, ht + hh)
+        if (ix1 > ix0 && iy1 > iy0) {
+          const inter = (ix1 - ix0) * (iy1 - iy0)
+          const minArea = Math.min(existing.width * existing.height, hintArea)
+          if (inter >= minArea * 0.45) {
+            matched = true
+            if (hint.name?.trim() && !existing.hintName) existing.hintName = hint.name.trim()
+            if (hint.description?.trim() && !existing.hintDescription) {
+              existing.hintDescription = hint.description.trim()
+            }
+            break
+          }
+        }
+      }
+      if (!matched) {
+        candidateRects.push({
+          left: hl,
+          top: ht,
+          width: hw,
+          height: hh,
+          score: 500 + hintArea * 0.05,
+          ...(hint.name?.trim() ? { hintName: hint.name.trim() } : {}),
+          ...(hint.description?.trim() ? { hintDescription: hint.description.trim() } : {})
+        })
+      }
+    }
   }
 
   // 父子容器双层剥离（Hierarchical Peeling）：对大面积容器面板内部扫描高对比度子控件（按钮/道具格）
@@ -2482,10 +2765,10 @@ export function decomposeRgbaBufferToUiLayers(input: {
     )
   }
 
-  // 先按显著度挑选前 maxLayers 个组件，再按面积从大到小赋 zIndex（大面板容器在下、内部子按钮与顶栏装饰在上）
+  // 先按显著度挑选前 maxControlCount 个控件，再按面积从大到小排序（大面板容器在下、内部子按钮与顶栏装饰在上）
   const topRects = candidateRects
     .sort((a, b) => b.score - a.score)
-    .slice(0, maxLayers)
+    .slice(0, maxControlCount)
     .sort((a, b) => b.width * b.height - a.width * a.height)
 
   // 若无外部 AI 底图，在本地对 baseRgba 执行边界色彩双线性修补（Inpainting），消除移动图层时的底图重影
@@ -2495,9 +2778,11 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  // 提取每个前景 UI 控件的透明 PNG 像素（若父容器包含上层子控件，自动在父容器层中修补擦除子控件区域！）
+  // 提取每个前景 UI 控件的透明 PNG 像素，并按标准控件规范拆解为结构化子部件图层
   const idPrefix = input.idPrefix?.trim() || 'ui-slice'
+  const shouldDecomposeParts = input.decomposeControlParts !== false
   const layers: ExtractedUiLayerBuffer[] = []
+  let nextZIndex = 1
 
   for (const [idx, rect] of topRects.entries()) {
     const lw = Math.max(1, rect.width)
@@ -2550,22 +2835,67 @@ export function decomposeRgbaBufferToUiLayers(input: {
       usePatchSearch: hasExternalBase && !parentContainer
     })
 
-    const zIndex = idx + 1
-    const meta = inferExtractedUiWidgetName(rect, width, height, zIndex, input.locale)
+    const controlIndex = idx + 1
+    const controlId = `${idPrefix}:ctrl:${controlIndex}`
+    const inferredMeta = inferExtractedUiWidgetName(rect, width, height, controlIndex, input.locale)
+    const controlName = rect.hintName || inferredMeta.name
+    const controlDesc = rect.hintDescription || inferredMeta.description
     const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, lw, lh)
 
-    layers.push({
-      id: `${idPrefix}:layer:${zIndex}`,
-      name: meta.name,
-      description: meta.description,
-      zIndex,
-      left: rect.left,
-      top: rect.top,
-      width: lw,
-      height: lh,
-      rgba: layerRgba,
-      ...(nineSliceBorders ? { nineSliceBorders } : {})
-    })
+    if (shouldDecomposeParts) {
+      const parts = decomposeControlIntoStandardParts({
+        nameHint: controlName,
+        descriptionHint: controlDesc,
+        left: rect.left,
+        top: rect.top,
+        width: lw,
+        height: lh,
+        canvasWidth: width,
+        canvasHeight: height,
+        rgba: layerRgba,
+        nineSliceBorders,
+        locale: input.locale
+      })
+      for (const part of parts) {
+        if (layers.length >= LAYER_SPLIT_MAX_LAYERS - 1) break
+        const z = nextZIndex++
+        layers.push({
+          id: `${controlId}:${part.idSuffix}`,
+          name: part.name,
+          description: part.description,
+          zIndex: z,
+          left: part.left,
+          top: part.top,
+          width: part.width,
+          height: part.height,
+          rgba: part.rgba,
+          visible: part.visible,
+          uiControlId: controlId,
+          uiControlName: controlName,
+          uiControlType: part.uiControlType,
+          uiPartRole: part.uiPartRole,
+          ...(part.nineSliceBorders ? { nineSliceBorders: part.nineSliceBorders } : {}),
+          ...(part.editableText ? { editableText: part.editableText } : {})
+        })
+      }
+    } else {
+      const z = nextZIndex++
+      layers.push({
+        id: `${idPrefix}:layer:${z}`,
+        name: controlName,
+        description: controlDesc,
+        zIndex: z,
+        left: rect.left,
+        top: rect.top,
+        width: lw,
+        height: lh,
+        rgba: layerRgba,
+        visible: true,
+        uiControlId: controlId,
+        uiControlName: controlName,
+        ...(nineSliceBorders ? { nineSliceBorders } : {})
+      })
+    }
   }
 
   return {

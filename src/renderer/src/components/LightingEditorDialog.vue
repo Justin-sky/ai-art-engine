@@ -125,6 +125,16 @@
 
           <div class="section-head spaced">
             <span>{{ t('graph.lighting.presetsTitle') }}</span>
+            <button type="button" class="preset-btn" @click="pickLightingDnaFile">
+              🧬 {{ t('graph.lighting.extractLightingDna') }}
+            </button>
+            <input
+              ref="lightingDnaFileEl"
+              type="file"
+              accept="image/*"
+              style="display: none"
+              @change="onLightingDnaFileChange"
+            />
           </div>
           <div class="presets">
             <button
@@ -170,6 +180,7 @@ import {
   DEFAULT_LIGHTING_SETUP,
   LIGHTING_DIRECTIONS,
   LIGHTING_PRESETS,
+  apply25dRelightToRgba,
   applyLightingDirection,
   applyLightingPreset,
   lightingSetupToNodePatch,
@@ -183,6 +194,7 @@ import {
   type LightingSetupState,
   type LightingViewMode
 } from '@shared/graph'
+import { extractReferenceStyleDnaFromUrl } from '../features/graph/portraitLiveEngine'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { themePreference } from '../editor/preferences'
 import ImageGenerateModelField from './ImageGenerateModelField.vue'
@@ -229,6 +241,33 @@ const draft = reactive<LightingSetupState>(normalizeLightingSetup())
 const canvasEl = ref<HTMLCanvasElement | null>(null)
 const spherePaneEl = ref<HTMLElement | null>(null)
 const previewImage = ref<HTMLImageElement | null>(null)
+const lightingDnaFileEl = ref<HTMLInputElement | null>(null)
+
+function pickLightingDnaFile(): void {
+  lightingDnaFileEl.value?.click()
+}
+
+async function onLightingDnaFileChange(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result ?? ''))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(file)
+    })
+    const res = await extractReferenceStyleDnaFromUrl(dataUrl, file.name)
+    if (!res) return
+    Object.assign(draft, res.dna.recommendedLightingSetup)
+    markCustom()
+    scheduleDraw()
+  } catch {
+    /* 静默忽略 */
+  }
+}
 const modelFieldEl = ref<{
   currentSelection: () => { generateModel: string; generateProviderInstanceId: string }
 } | null>(null)
@@ -668,9 +707,9 @@ function drawPreview(): void {
   ctx.strokeStyle = gridFront
   for (const line of gridLines) strokeGridSide(ctx, line, true)
 
-  // 中心参考图
+  // 中心参考图 + 2.5D 实时法线光影重打光预览
   const img = previewImage.value
-  const thumbR = Math.min(w, h) * 0.14
+  const thumbR = Math.min(w, h) * 0.22
   ctx.save()
   ctx.beginPath()
   ctx.arc(cx, cy, thumbR, 0, Math.PI * 2)
@@ -685,7 +724,44 @@ function drawPreview(): void {
       dh = thumbR * 2
       dw = dh * aspect
     }
-    ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
+    const offW = Math.max(32, Math.min(180, Math.round(thumbR * 2)))
+    const offH = offW
+    const offCanvas = document.createElement('canvas')
+    offCanvas.width = offW
+    offCanvas.height = offH
+    const offCtx = offCanvas.getContext('2d')
+    if (offCtx) {
+      const scale = offW / (thumbR * 2)
+      offCtx.drawImage(
+        img,
+        (offW - dw * scale) / 2,
+        (offH - dh * scale) / 2,
+        dw * scale,
+        dh * scale
+      )
+      try {
+        const srcData = offCtx.getImageData(0, 0, offW, offH)
+        const relit = apply25dRelightToRgba(srcData.data, offW, offH, draft)
+        offCtx.putImageData(new ImageData(new Uint8ClampedArray(relit), offW, offH), 0, 0)
+        ctx.drawImage(offCanvas, cx - thumbR, cy - thumbR, thumbR * 2, thumbR * 2)
+      } catch {
+        ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
+      }
+    } else {
+      ctx.drawImage(img, cx - dw / 2, cy - dh / 2, dw, dh)
+    }
+  } else {
+    // 无参考图时绘制 2.5D 漫反射测试法线球
+    const light = lightingSphericalPoint(draft.yaw, draft.pitch, 1)
+    const specX = cx + light.x * thumbR * 0.55
+    const specY = cy - light.y * thumbR * 0.55
+    const sphereGrad = ctx.createRadialGradient(specX, specY, thumbR * 0.08, cx, cy, thumbR * 1.05)
+    const intensity = 0.25 + (draft.brightness / 100) * 0.75
+    sphereGrad.addColorStop(0, hexToRgba(draft.color, Math.min(1, 0.92 * intensity)))
+    sphereGrad.addColorStop(0.55, hexToRgba(draft.color, 0.35 * intensity))
+    sphereGrad.addColorStop(1, 'rgba(12, 16, 24, 0.92)')
+    ctx.fillStyle = sphereGrad
+    ctx.fillRect(cx - thumbR, cy - thumbR, thumbR * 2, thumbR * 2)
   }
   ctx.restore()
 

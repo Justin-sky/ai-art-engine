@@ -2353,6 +2353,7 @@ import {
   applyVideoTransitionToAllCuts,
   beatCutWindowForDuration,
   buildCapCutDraftContent,
+  buildCapCutDraftMetaInfo,
   buildFcpxmlDocument,
   buildSmartCutPrompt,
   clampClipFreezeTailSec,
@@ -9175,12 +9176,30 @@ async function exportCapCutDraft(): Promise<void> {
         subtitleColor: subtitleColor.value
       }
     }
-    const json = buildCapCutDraftContent(doc, {
-      projectName: `Timeline-${Date.now()}`,
+    const projectName = `Timeline-${Date.now()}`
+    const nleOpts = {
+      projectName,
       width: exportWidth.value,
       height: exportHeight.value,
       fps: exportFps.value
-    })
+    }
+    const json = buildCapCutDraftContent(doc, nleOpts)
+    const metaJson = buildCapCutDraftMetaInfo(doc, nleOpts)
+    if (typeof window.studio.saveBinaryFilesToDirectory === 'function') {
+      const encoder = new TextEncoder()
+      const savedDir = await window.studio.saveBinaryFilesToDirectory({
+        files: [
+          { fileName: 'draft_content.json', data: encoder.encode(json) },
+          { fileName: 'draft_meta_info.json', data: encoder.encode(metaJson) }
+        ]
+      })
+      if (!savedDir?.directory) return
+      await promptAlert({
+        title: t('script.timeline.exportCapCut'),
+        message: t('script.timeline.exportNleDone', { path: savedDir.directory })
+      })
+      return
+    }
     const path = await window.studio.saveTextFile({
       content: json,
       defaultPath: 'draft_content.json',

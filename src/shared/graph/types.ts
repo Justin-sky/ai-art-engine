@@ -1124,6 +1124,8 @@ export interface GraphNodeParams {
   framePullSpliceHistory?: import('./framePull').FramePullSpliceRecord[]
   /** 图像处理综合节点（image.process）：当前激活子工具 */
   imageProcessTool?: import('./nodeRole').ImageProcessToolId
+  /** 图像处理综合节点（image.process）：子工具切换时是否以上一步产出图为底图继续链式加工 */
+  imageProcessChainFromOutput?: boolean
   /** 扩图参数 */
   imageExpand?: Partial<ImageExpandState>
   /** 重绘（inpaint）参数 */

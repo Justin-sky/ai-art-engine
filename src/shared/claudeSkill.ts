@@ -1099,3 +1099,160 @@ export function detectChatSkillInstallOrSearchIntent(rawTask: string): ChatOnlin
     matchedCurated
   }
 }
+
+export interface SubgraphToSkillExportInput {
+  name: string
+  description: string
+  nodes: ReadonlyArray<{ id: string; typeId: string; title?: string }>
+  edges: ReadonlyArray<{ source: string; target: string; sourcePort?: string; targetPort?: string }>
+  argumentHint?: string
+  author?: string
+  version?: string
+}
+
+/**
+ * 将画布子图 / 节点工作流一键打包生成符合 Claude Code 规范的 `SKILL.md` 文本：
+ * 自动汇总节点拓扑、所需工具权限（`allowed-tools`）与 `/skill-name` 参数说明。
+ */
+export function exportSubgraphToSkillMarkdown(input: SubgraphToSkillExportInput): string {
+  const safeName = sanitizeClaudeSkillName(input.name, 'custom-workflow-skill')
+  const desc = input.description.trim() || `Automated node workflow skill (${safeName})`
+  const argHint = input.argumentHint?.trim() || '[prompt-or-topic]'
+  const version = input.version?.trim() || '1.0.0'
+  const author = input.author?.trim()
+
+  const uniqueTypes = [...new Set(input.nodes.map((n) => n.typeId).filter(Boolean))]
+  const needsBlender = uniqueTypes.some((t) => t.startsWith('model.') || t === 'asset.motion')
+
+  const allowedTools = ['Read', 'Edit', 'mcp__aiartengine__*']
+  if (needsBlender) {
+    allowedTools.push('mcp__blender__*')
+  }
+
+  const nodeLines = input.nodes.map(
+    (n, idx) => `${idx + 1}. \`${n.id}\` (\`${n.typeId}\`)${n.title ? ` — ${n.title}` : ''}`
+  )
+  const edgeLines = input.edges.map(
+    (e) =>
+      `- \`${e.source}${e.sourcePort ? `:${e.sourcePort}` : ''}\` -> \`${e.target}${e.targetPort ? `:${e.targetPort}` : ''}\``
+  )
+
+  const bodyLines: string[] = [
+    `# ${safeName}`,
+    '',
+    desc,
+    '',
+    '## Input Arguments',
+    '',
+    '- `$ARGUMENTS`: User creative brief or target asset instruction.',
+    '',
+    '## Pipeline Topology',
+    '',
+    `Nodes (${input.nodes.length}):`,
+    ...(nodeLines.length ? nodeLines : ['- (Empty canvas)']),
+    '',
+    `Connections (${input.edges.length}):`,
+    ...(edgeLines.length ? edgeLines : ['- (No edges)']),
+    '',
+    '## Execution Steps',
+    '',
+    `1. Construct or verify the node pipeline (${uniqueTypes.join(', ') || 'default'}) on the active canvas.`,
+    '2. Inject `$ARGUMENTS` into the upstream prompt/input nodes.',
+    '3. Run the pipeline topological cook and verify outputs.'
+  ]
+
+  const rawMd = [
+    '---',
+    `name: ${safeName}`,
+    `description: ${escapeYamlDoubleQuoted(desc)}`,
+    `argument-hint: ${escapeYamlDoubleQuoted(argHint)}`,
+    `allowed-tools: ${escapeYamlDoubleQuoted(allowedTools.join(', '))}`,
+    `version: ${escapeYamlDoubleQuoted(version)}`,
+    ...(author ? [`author: ${escapeYamlDoubleQuoted(author)}`] : []),
+    '---',
+    '',
+    ...bodyLines
+  ].join('\n')
+
+  return normalizeClaudeSkillMarkdown(rawMd, safeName)
+}
+
+export interface SkillRuntimeDependencyInput {
+  allowedTools?: readonly string[]
+  nodeTypes?: readonly string[]
+  registeredNodeTypes?: ReadonlySet<string> | readonly string[]
+  mcpRunning?: boolean
+  blenderConnected?: boolean
+  configuredExternalMcpIds?: readonly string[]
+}
+
+export interface SkillRuntimeDependencyReport {
+  ready: boolean
+  missingNodeTypes: string[]
+  missingMcpServices: string[]
+  requiresBash: boolean
+}
+
+/**
+ * 技能与工作流运行期环境依赖自检器（Runtime Dependency Self-Check）：
+ * 检查技能声明的 `allowed-tools`（如 `mcp__blender__*`、`mcp__<ext>__*`、`Bash`）
+ * 与工作流声明的 `nodeTypes` 在当前客户端环境中是否全部就绪。
+ */
+export function checkSkillRuntimeDependencies(
+  input: SkillRuntimeDependencyInput
+): SkillRuntimeDependencyReport {
+  const regSet =
+    input.registeredNodeTypes instanceof Set
+      ? input.registeredNodeTypes
+      : new Set(input.registeredNodeTypes ?? [])
+  const missingNodeTypes: string[] = []
+  if (regSet.size > 0 && input.nodeTypes?.length) {
+    for (const nt of input.nodeTypes) {
+      if (nt && !regSet.has(nt) && !missingNodeTypes.includes(nt)) {
+        missingNodeTypes.push(nt)
+      }
+    }
+  }
+
+  const missingMcpServices: string[] = []
+  const extSet = new Set((input.configuredExternalMcpIds ?? []).map((id) => id.toLowerCase()))
+  let requiresBash = false
+
+  for (const rawTool of input.allowedTools ?? []) {
+    const tool = rawTool.trim().toLowerCase()
+    if (!tool) continue
+    if (tool === 'bash' || tool.startsWith('bash(')) {
+      requiresBash = true
+    }
+    if (tool.startsWith('mcp__aiartengine') && input.mcpRunning === false) {
+      if (!missingMcpServices.includes('aiartengine')) {
+        missingMcpServices.push('aiartengine')
+      }
+    } else if (tool.startsWith('mcp__blender') && input.blenderConnected === false) {
+      if (!missingMcpServices.includes('blender')) {
+        missingMcpServices.push('blender')
+      }
+    } else if (tool.startsWith('mcp__')) {
+      const parts = tool.split('__')
+      const serverName = parts[1]?.replace(/\*+$/, '').trim()
+      if (
+        serverName &&
+        serverName !== 'aiartengine' &&
+        serverName !== 'blender' &&
+        input.configuredExternalMcpIds !== undefined &&
+        !extSet.has(serverName)
+      ) {
+        if (!missingMcpServices.includes(serverName)) {
+          missingMcpServices.push(serverName)
+        }
+      }
+    }
+  }
+
+  return {
+    ready: missingNodeTypes.length === 0 && missingMcpServices.length === 0,
+    missingNodeTypes,
+    missingMcpServices,
+    requiresBash
+  }
+}

@@ -99,6 +99,8 @@ const LIVE_CANVAS_PARAM_KEYS = new Set([
   'generateDuration',
   'generateAudio',
   'generateFrameMode',
+  'imageLayerSplit',
+  'layerSplitPsdRelativePath',
   'notes'
 ])
 

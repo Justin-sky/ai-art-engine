@@ -971,3 +971,185 @@ function isClip(item: unknown): item is ScriptTimelineClip {
       row.track === 'sfx')
   )
 }
+
+export interface VoiceDuckingEnvelopePoint {
+  timeSec: number
+  gain: number
+}
+
+export interface VoiceDuckingOptions {
+  /** 闪避压低后的 BGM 增益比例（默认 0.25，约 -12dB） */
+  duckGain?: number
+  /** 对白入场前的渐降提前量（秒，默认 0.18s） */
+  attackSec?: number
+  /** 对白结束后的渐升恢复时长（秒，默认 0.35s） */
+  releaseSec?: number
+  /** 相邻对白间隔小于该阈值时合并闪避区间，避免音量忽高忽低（秒，默认 0.55s） */
+  mergeGapSec?: number
+}
+
+/**
+ * 根据时间线上的 `voice` 人声片段自动计算 BGM 音轨的平滑闪避增益包络（Auto-Ducking Envelope）。
+ */
+export function computeVoiceDuckingEnvelope(
+  clips: readonly ScriptTimelineClip[],
+  options?: VoiceDuckingOptions
+): VoiceDuckingEnvelopePoint[] {
+  const duckGain = Math.min(0.9, Math.max(0.05, options?.duckGain ?? 0.25))
+  const attackSec = Math.min(1.5, Math.max(0.04, options?.attackSec ?? 0.18))
+  const releaseSec = Math.min(2.0, Math.max(0.06, options?.releaseSec ?? 0.35))
+  const mergeGapSec = Math.max(attackSec + releaseSec, options?.mergeGapSec ?? 0.55)
+
+  const voiceIntervals = clips
+    .filter((c) => c.track === 'voice' && (c.volume ?? 1) > 0.01 && c.durationSec > 0.05)
+    .map((c) => ({
+      start: Math.max(0, c.startSec),
+      end: Math.max(0, c.startSec + c.durationSec)
+    }))
+    .sort((a, b) => a.start - b.start)
+
+  if (voiceIntervals.length === 0) {
+    return [{ timeSec: 0, gain: 1 }]
+  }
+
+  const merged: Array<{ start: number; end: number }> = []
+  for (const seg of voiceIntervals) {
+    const last = merged[merged.length - 1]
+    if (last && seg.start - last.end <= mergeGapSec) {
+      last.end = Math.max(last.end, seg.end)
+    } else {
+      merged.push({ ...seg })
+    }
+  }
+
+  const points: VoiceDuckingEnvelopePoint[] = []
+  if (merged[0].start > attackSec) {
+    points.push({ timeSec: 0, gain: 1 })
+  }
+  for (const seg of merged) {
+    const rampDownStart = Math.max(0, Number((seg.start - attackSec).toFixed(3)))
+    const duckStart = Number(seg.start.toFixed(3))
+    const duckEnd = Number(seg.end.toFixed(3))
+    const rampUpEnd = Number((seg.end + releaseSec).toFixed(3))
+    if (points.length === 0 || rampDownStart > points[points.length - 1].timeSec) {
+      points.push({ timeSec: rampDownStart, gain: 1 })
+    }
+    points.push({ timeSec: duckStart, gain: duckGain })
+    points.push({ timeSec: duckEnd, gain: duckGain })
+    points.push({ timeSec: rampUpEnd, gain: 1 })
+  }
+  return points
+}
+
+export type SubtitleStylePresetId =
+  'cinemaGold' | 'shortDramaPop' | 'minimalWhite' | 'neonCyber' | 'docBox'
+
+export interface SubtitleStylePresetDef {
+  id: SubtitleStylePresetId
+  labelKey: string
+  settings: Pick<
+    ScriptTimelineSettings,
+    | 'subtitleFontSize'
+    | 'subtitleYOffset'
+    | 'subtitleColor'
+    | 'subtitleBorderColor'
+    | 'subtitleBorderWidth'
+    | 'subtitleBoxEnabled'
+    | 'subtitleBoxColor'
+    | 'subtitleBoxOpacity'
+    | 'subtitleMotion'
+  >
+}
+
+export const SUBTITLE_STYLE_PRESETS: readonly SubtitleStylePresetDef[] = [
+  {
+    id: 'cinemaGold',
+    labelKey: 'timeline.subtitlePreset.cinemaGold',
+    settings: {
+      subtitleFontSize: 40,
+      subtitleYOffset: 68,
+      subtitleColor: '#f6d365',
+      subtitleBorderColor: '#141414',
+      subtitleBorderWidth: 3,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#000000',
+      subtitleBoxOpacity: 0.45,
+      subtitleMotion: 'fade'
+    }
+  },
+  {
+    id: 'shortDramaPop',
+    labelKey: 'timeline.subtitlePreset.shortDramaPop',
+    settings: {
+      subtitleFontSize: 52,
+      subtitleYOffset: 140,
+      subtitleColor: '#ffffff',
+      subtitleBorderColor: '#ff3b30',
+      subtitleBorderWidth: 5,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#000000',
+      subtitleBoxOpacity: 0.5,
+      subtitleMotion: 'fade'
+    }
+  },
+  {
+    id: 'minimalWhite',
+    labelKey: 'timeline.subtitlePreset.minimalWhite',
+    settings: {
+      subtitleFontSize: 36,
+      subtitleYOffset: 60,
+      subtitleColor: '#ffffff',
+      subtitleBorderColor: '#000000',
+      subtitleBorderWidth: 2,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#000000',
+      subtitleBoxOpacity: 0.4,
+      subtitleMotion: 'none'
+    }
+  },
+  {
+    id: 'neonCyber',
+    labelKey: 'timeline.subtitlePreset.neonCyber',
+    settings: {
+      subtitleFontSize: 44,
+      subtitleYOffset: 84,
+      subtitleColor: '#00f5d4',
+      subtitleBorderColor: '#3a0ca3',
+      subtitleBorderWidth: 4,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#090a10',
+      subtitleBoxOpacity: 0.6,
+      subtitleMotion: 'fade'
+    }
+  },
+  {
+    id: 'docBox',
+    labelKey: 'timeline.subtitlePreset.docBox',
+    settings: {
+      subtitleFontSize: 38,
+      subtitleYOffset: 64,
+      subtitleColor: '#f8f9fa',
+      subtitleBorderColor: '#000000',
+      subtitleBorderWidth: 0,
+      subtitleBoxEnabled: true,
+      subtitleBoxColor: '#101418',
+      subtitleBoxOpacity: 0.72,
+      subtitleMotion: 'fade'
+    }
+  }
+]
+
+/**
+ * 一键套用广播级/短剧级字幕排版预设到时间线设置。
+ */
+export function applySubtitleStylePreset(
+  current: ScriptTimelineSettings | undefined,
+  presetId: SubtitleStylePresetId
+): ScriptTimelineSettings {
+  const preset =
+    SUBTITLE_STYLE_PRESETS.find((item) => item.id === presetId) ?? SUBTITLE_STYLE_PRESETS[0]
+  return {
+    ...(current ?? {}),
+    ...preset.settings
+  }
+}
