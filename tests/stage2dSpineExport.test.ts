@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   buildStage2dSpineAtlasText,
   buildStage2dSpineData,
+  buildStage2dSpinePackedAtlasText,
   normalizeStage2dRig,
+  packStage2dSpineAtlas,
   stage2dSpineSafeName,
   type Stage2dRig
 } from '../src/shared/gameAssets'
@@ -182,7 +184,7 @@ describe('buildStage2dSpineData：部件挂点 → attach 骨 + 槽 + region', (
   })
 })
 
-describe('buildStage2dSpineAtlasText：atlas 文本', () => {
+describe('buildStage2dSpineAtlasText & packStage2dSpineAtlas：图集打包与动作时间轴', () => {
   it('每部件一页，含文件名 / 尺寸 / region', () => {
     const text = buildStage2dSpineAtlasText({
       pages: [
@@ -194,5 +196,87 @@ describe('buildStage2dSpineAtlasText：atlas 文本', () => {
     expect(text).toContain('size: 60, 120')
     expect(text).toContain('hero-head.png')
     expect(text).toMatch(/\nleg\n  rotate: false/)
+  })
+
+  it('packStage2dSpineAtlas 将多个部件紧凑排版进单张图集且无重叠', () => {
+    const packed = packStage2dSpineAtlas(
+      [
+        {
+          slotName: 'torso',
+          layerId: 'l1',
+          attachBone: 'attach_torso',
+          pageWidth: 100,
+          pageHeight: 140,
+          regionX: 0,
+          regionY: 0
+        },
+        {
+          slotName: 'head',
+          layerId: 'l2',
+          attachBone: 'attach_head',
+          pageWidth: 80,
+          pageHeight: 80,
+          regionX: 0,
+          regionY: 0
+        },
+        {
+          slotName: 'armL',
+          layerId: 'l3',
+          attachBone: 'attach_armL',
+          pageWidth: 40,
+          pageHeight: 90,
+          regionX: 0,
+          regionY: 0
+        }
+      ],
+      { padding: 2 }
+    )
+    expect(packed.width).toBeGreaterThanOrEqual(100)
+    expect(packed.height).toBeGreaterThanOrEqual(140)
+    expect(packed.regions).toHaveLength(3)
+    const atlasText = buildStage2dSpinePackedAtlasText({
+      fileName: 'hero-atlas.png',
+      pack: packed
+    })
+    expect(atlasText).toContain('hero-atlas.png')
+    expect(atlasText).toContain('torso\n  rotate: false')
+    expect(atlasText).toContain('head\n  rotate: false')
+  })
+
+  it('buildStage2dSpineData 将 actions 编译为 Spine 3.8 bones rotate/translate 关键帧曲线', () => {
+    const rig = makeRig()
+    const { skeleton } = buildStage2dSpineData({
+      rig,
+      parts: [],
+      actions: [
+        {
+          name: 'jump',
+          action: {
+            name: 'jump',
+            duration: 1,
+            loop: true,
+            keyframes: [
+              { time: 0, pose: {}, easing: 'easeInOut' },
+              { time: 0.5, pose: { chest: 30 }, rootOffset: { x: 0, y: -24 }, easing: 'easeInOut' },
+              { time: 1, pose: {} }
+            ]
+          }
+        }
+      ]
+    })
+    const animations = skeleton.animations as Record<string, { bones: Record<string, unknown> }>
+    expect(animations.jump).toBeDefined()
+    const chestTimeline = animations.jump.bones.chest as {
+      rotate: Array<{ time: number; angle: number; curve?: unknown }>
+    }
+    expect(chestTimeline.rotate).toHaveLength(3)
+    // Spine y-up 逆时针为正：舞台 +30° 对应 Spine -30°
+    expect(chestTimeline.rotate[1].angle).toBe(-30)
+    expect(chestTimeline.rotate[0].curve).toEqual([0.42, 0, 0.58, 1])
+    const rootTimeline = animations.jump.bones.root as {
+      translate: Array<{ time: number; x?: number; y?: number }>
+    }
+    // 舞台 y=-24（向上跳）对应 Spine y=+24
+    expect(rootTimeline.translate[1].y).toBe(24)
   })
 })

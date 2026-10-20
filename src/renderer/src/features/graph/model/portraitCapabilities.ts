@@ -16,15 +16,19 @@ import {
   PORTRAIT_MASK_FEATHER_RATIO,
   PORTRAIT_MASK_MAX_EDGE,
   clampScopeRect,
+  portraitExportMimeType,
   portraitFaceArea,
   portraitFaceBoxFromLandmarks,
   portraitFaceMaskShape,
+  type PortraitExportFormat,
   type PortraitFaceAnalysis,
+  type PortraitLiveInput,
   type PortraitScopeMask
 } from '@shared/graph'
 import { buildCutoutAlpha } from '@shared/yoloCutout'
 import { imageToRaw, loadImageElement } from '../../yolo/cutout'
 import { yoloFace, yoloSegment } from '../../yolo/api'
+import { renderPortraitLiveRetouch } from '../portraitLiveEngine'
 
 /** `studio-media://` 必须以 CORS 模式取图，否则 drawImage 后读像素会被判为跨源污染 */
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -37,11 +41,22 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-/** dataURL / 远端 URL → 主进程 YOLO 推理可吃的最小底图（限制长边，减少传输量） */
+function encodePortraitCanvas(
+  canvas: HTMLCanvasElement,
+  format?: PortraitExportFormat | string | null
+): string {
+  const mime = portraitExportMimeType(format)
+  return mime === 'image/png' ? canvas.toDataURL(mime) : canvas.toDataURL(mime, 0.92)
+}
+
+/** dataURL / 远端 URL → 主进程 YOLO 推理可吃的最小底图（限制长边，同时把 webp / studio-media:// 等统一转为 PNG dataUrl） */
 async function dataUrlToRawInput(sourceDataUrl: string, maxEdge: number): Promise<string> {
   const image = await loadImage(sourceDataUrl)
-  if (!maxEdge || (image.width <= maxEdge && image.height <= maxEdge)) return sourceDataUrl
-  const scale = maxEdge / Math.max(image.width, image.height)
+  const isDecodableDataUrl = /^data:image\/(png|jpe?g);base64,/i.test(sourceDataUrl)
+  if (isDecodableDataUrl && (!maxEdge || (image.width <= maxEdge && image.height <= maxEdge))) {
+    return sourceDataUrl
+  }
+  const scale = maxEdge ? Math.min(1, maxEdge / Math.max(image.width, image.height)) : 1
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(image.width * scale))
   canvas.height = Math.max(1, Math.round(image.height * scale))
@@ -72,13 +87,16 @@ export async function fitPortraitToSourceSize(input: {
   dataUrl: string
   width: number
   height: number
+  format?: PortraitExportFormat
   signal?: AbortSignal | null
 }): Promise<{ dataUrl: string; width: number; height: number }> {
   const width = Math.max(1, Math.round(input.width))
   const height = Math.max(1, Math.round(input.height))
   const image = await loadImage(input.dataUrl)
   if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-  if (image.width === width && image.height === height) {
+  const targetMime = portraitExportMimeType(input.format)
+  const sameFormat = !input.format || input.dataUrl.startsWith(`data:${targetMime}`)
+  if (image.width === width && image.height === height && sameFormat) {
     return { dataUrl: input.dataUrl, width, height }
   }
   const canvas = document.createElement('canvas')
@@ -89,7 +107,7 @@ export async function fitPortraitToSourceSize(input: {
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(image, 0, 0, width, height)
-  return { dataUrl: canvas.toDataURL('image/png'), width, height }
+  return { dataUrl: encodePortraitCanvas(canvas, input.format), width, height }
 }
 
 /**
@@ -160,6 +178,7 @@ export async function composePortraitIdPhoto(input: {
     height: number
     count: number
   } | null
+  format?: PortraitExportFormat
   signal?: AbortSignal | null
 }): Promise<{ dataUrl: string; sheetDataUrl: string | null }> {
   const image = await loadImage(input.sourceDataUrl)
@@ -187,7 +206,7 @@ export async function composePortraitIdPhoto(input: {
     cell.width,
     cell.height
   )
-  const dataUrl = cell.toDataURL('image/png')
+  const dataUrl = encodePortraitCanvas(cell, input.format)
 
   if (!input.sheet) return { dataUrl, sheetDataUrl: null }
   if (input.signal?.aborted) return { dataUrl, sheetDataUrl: null }
@@ -205,16 +224,29 @@ export async function composePortraitIdPhoto(input: {
   const gridH = input.sheet.rows * cell.height + (input.sheet.rows - 1) * gap
   const offsetX = Math.max(0, Math.round((sheet.width - gridW) / 2))
   const offsetY = Math.max(0, Math.round((sheet.height - gridH) / 2))
+  const tickLen = 8
+  sheetCtx.fillStyle = '#cbd5e1'
   for (let row = 0; row < input.sheet.rows; row++) {
     for (let col = 0; col < input.sheet.cols; col++) {
-      sheetCtx.drawImage(
-        cell,
-        offsetX + col * (cell.width + gap),
-        offsetY + row * (cell.height + gap)
-      )
+      const cx = offsetX + col * (cell.width + gap)
+      const cy = offsetY + row * (cell.height + gap)
+      sheetCtx.drawImage(cell, cx, cy)
+      // 绘制四角 L 型冲印裁切引导线（距离照片边缘 3px，避免侵入照片本体）
+      const corners: Array<[number, number, number, number]> = [
+        [cx - 3, cy - 3, -1, -1],
+        [cx + cell.width + 2, cy - 3, 1, -1],
+        [cx - 3, cy + cell.height + 2, -1, 1],
+        [cx + cell.width + 2, cy + cell.height + 2, 1, 1]
+      ]
+      for (const [bx, by, dx, dy] of corners) {
+        const xStart = dx > 0 ? bx : bx - (tickLen - 1)
+        const yStart = dy > 0 ? by : by - (tickLen - 1)
+        sheetCtx.fillRect(xStart, by, tickLen, 1)
+        sheetCtx.fillRect(bx, yStart, 1, tickLen)
+      }
     }
   }
-  return { dataUrl, sheetDataUrl: sheet.toDataURL('image/png') }
+  return { dataUrl, sheetDataUrl: encodePortraitCanvas(sheet, input.format) }
 }
 
 /** 分割模型缺省的最小接受置信度 / 蒙版羽化（分割输出像素） */
@@ -236,6 +268,7 @@ export async function composePortraitScopedRetouch(input: {
   generatedDataUrl: string
   mask: PortraitScopeMask
   landmarks?: ReadonlyArray<readonly [number, number]> | null
+  format?: PortraitExportFormat
   signal?: AbortSignal | null
 }): Promise<{ dataUrl: string; applied: boolean; coverRatio: number; notes: string[] }> {
   const notes: string[] = []
@@ -344,7 +377,7 @@ export async function composePortraitScopedRetouch(input: {
   outCtx.drawImage(source, 0, 0, width, height)
   outCtx.drawImage(layer, 0, 0)
 
-  return { dataUrl: out.toDataURL('image/png'), applied: true, coverRatio, notes }
+  return { dataUrl: encodePortraitCanvas(out, input.format), applied: true, coverRatio, notes }
 }
 
 /**
@@ -365,6 +398,7 @@ export async function flattenPortraitBackground(input: {
   mode: 'color' | 'gradient'
   color: string
   colorTo?: string
+  format?: PortraitExportFormat
   signal?: AbortSignal | null
 }): Promise<{ dataUrl: string; applied: boolean; personRatio: number; notes: string[] }> {
   const notes: string[] = []
@@ -419,7 +453,7 @@ export async function flattenPortraitBackground(input: {
   layerCtx.drawImage(personMask, 0, 0, width, height)
   ctx.drawImage(personLayer, 0, 0)
 
-  return { dataUrl: out.toDataURL('image/png'), applied: true, personRatio, notes }
+  return { dataUrl: encodePortraitCanvas(out, input.format), applied: true, personRatio, notes }
 }
 
 /** 蒙版覆盖率（alpha > 0.5 的像素占比）：用来判断「蒙版是不是空得没意义」 */
@@ -509,4 +543,60 @@ async function buildPersonMaskCanvas(
     notes.push(`person mask skipped: ${err instanceof Error ? err.message : String(err)}`)
     return null
   }
+}
+
+/**
+ * 提取与目标分辨率对齐的人物实例分割 Alpha 通道（0..255），供本地 0-Token 证件照换底使用；
+ * 若本地分割模型不可用或未检出人物则静默返回 `null`（交由几何+边缘色彩去溢色算法回退）。
+ */
+export async function extractPortraitPersonMaskAlpha(
+  sourceDataUrl: string,
+  targetWidth: number,
+  targetHeight: number
+): Promise<Uint8ClampedArray | null> {
+  try {
+    const source = await loadImage(sourceDataUrl)
+    const notes: string[] = []
+    const maskScale = Math.min(1, PORTRAIT_MASK_MAX_EDGE / Math.max(targetWidth, targetHeight))
+    const maskWidth = Math.max(1, Math.round(targetWidth * maskScale))
+    const maskHeight = Math.max(1, Math.round(targetHeight * maskScale))
+    const maskCanvas = await buildPersonMaskCanvas(source, maskWidth, maskHeight, notes)
+    if (!maskCanvas || maskCoverRatio(maskCanvas) <= 0.005) return null
+
+    const scaled = document.createElement('canvas')
+    scaled.width = targetWidth
+    scaled.height = targetHeight
+    const ctx = scaled.getContext('2d')
+    if (!ctx) return null
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(maskCanvas, 0, 0, targetWidth, targetHeight)
+    const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight)
+    const alpha = new Uint8ClampedArray(targetWidth * targetHeight)
+    for (let i = 0; i < alpha.length; i++) {
+      alpha[i] = data[i * 4 + 3]!
+    }
+    return alpha
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 本地实时计算摄影精修管线能力钩子（供 `executePortraitNode` 执行手动推拉液化笔触、
+ * 祛斑点修、68点MLS五官微调、高低频磨皮、定制 `.cube` 3D LUT 以及纯本地 100% 身份锁死出图）。
+ */
+export async function composePortraitLiveRetouch(input: {
+  sourceDataUrl: string
+  liveInput: PortraitLiveInput
+  signal?: AbortSignal | null
+}): Promise<{
+  dataUrl: string
+  width: number
+  height: number
+  appliedSteps: string[]
+  hasAdjustments: boolean
+} | null> {
+  if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  return await renderPortraitLiveRetouch(input.sourceDataUrl, input.liveInput, { highRes: true })
 }

@@ -149,7 +149,7 @@ export function apply(ctx: Context): void {
   ctx.editor.graphPolicy(name, {
     scopes: {
       'plugin.customCanvas': {
-        addableNodeTypes: ['plugin.custom', 'note.text', 'play.script']
+        addableNodeTypes: ['plugin.custom', 'note.text', 'text.plain']
       }
     }
   })
@@ -223,7 +223,7 @@ dragAssets: {
 
 API：`canConnectNodes(source, target, { sourcePort?, targetPort? })`。多输入口时需指定 `targetPort`（或由 `findCompatibleInPort` 按类型自动匹配）。
 
-文本类上游（如 `play.script`）只能连到 `text` 输入口；执行时文本合并到节点 `notes`。
+文本类上游（如 `text.plain`）只能连到 `text` 输入口；执行时文本合并到节点 `notes`。
 
 ## 检查器匹配
 

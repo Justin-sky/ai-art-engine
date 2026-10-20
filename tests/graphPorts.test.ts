@@ -190,7 +190,7 @@ describe('asset reference ports', () => {
 })
 
 describe('port type matching', () => {
-  const playScript = createNodeFromType('play.script', { x: 0, y: 0 })
+  const playScript = createNodeFromType('text.plain', { x: 0, y: 0 })
 
   it('timeline output exposes a square videos input besides single video in', () => {
     const timeline = createNodeFromType('output.timeline', { x: 0, y: 0 })
@@ -221,14 +221,14 @@ describe('port type matching', () => {
     expect(canConnectNodes(videoSelect, timeline)).toBe(true)
   })
 
-  it('connects play.script (text) to screenplay processing', () => {
+  it('connects text.plain (text) to screenplay processing', () => {
     const screenplay = createNodeFromType('asset.screenplay', { x: 100, y: 0 })
     const motion = createNodeFromType('asset.motion', { x: 100, y: 80 })
     expect(canConnectNodes(playScript, screenplay)).toBe(true)
     expect(canConnectNodes(playScript, motion, { targetPort: 'in-text' })).toBe(false)
   })
 
-  it('connects play.script (text) to audio processing text input', () => {
+  it('connects text.plain (text) to audio processing text input', () => {
     const processing = createNodeFromType('asset.voice', { x: 100, y: 0 })
     expect(canConnectNodes(playScript, processing)).toBe(true)
     expect(canConnectNodes(playScript, processing, { targetPort: 'in-text' })).toBe(true)
@@ -268,13 +268,13 @@ describe('port type matching', () => {
     expect(canConnectNodes(imageRef, processing, { targetPort: 'in-image' })).toBe(true)
   })
 
-  it('connects play.script (text) to image generate text input', () => {
+  it('connects text.plain (text) to image generate text input', () => {
     const image = createNodeFromType('asset.image', { x: 100, y: 0 })
     expect(canConnectNodes(playScript, image)).toBe(true)
     expect(canConnectNodes(playScript, image, { targetPort: 'in-text' })).toBe(true)
   })
 
-  it('connects play.script (text) to video generate text input', () => {
+  it('connects text.plain (text) to video generate text input', () => {
     const video = createNodeFromType('asset.video', { x: 100, y: 0 })
     expect(canConnectNodes(playScript, video)).toBe(true)
     expect(canConnectNodes(playScript, video, { targetPort: 'in-text' })).toBe(true)
@@ -304,7 +304,7 @@ describe('port type matching', () => {
     expect(canConnectNodes(timbreRef, video, { targetPort: 'in-voice' })).toBe(true)
   })
 
-  it('screenplay processing accepts play.script and screenplay asset refs', () => {
+  it('screenplay processing accepts text.plain and screenplay asset refs', () => {
     const screenplay = createNodeFromType('asset.screenplay', { x: 100, y: 0 })
     const screenplayRef = createAssetGraphNode(
       '00000000-0000-4000-8000-000000000301',

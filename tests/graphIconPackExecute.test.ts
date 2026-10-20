@@ -20,7 +20,7 @@ describe('image.iconPack 执行产物契约', () => {
 
   function buildGraph() {
     const names = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       { id: 'names', params: { text: NAME_LINES.join('\n') } }
     )

@@ -183,7 +183,7 @@ function hasUsablePriorOutputs(prior?: GraphNodeRunState): boolean {
 
 /**
  * 锁定：优先图库（尊重当前 selected*），否则复用 prior runStates，
- * 再 soft-resolve params / 预览（如 play.script 的 text）。
+ * 再 soft-resolve params / 预览（如 text.plain 的 text）。
  * 不调用节点 execute，避免无缓存时误触发生成。
  */
 function resolveLockedOutputs(
@@ -569,6 +569,7 @@ async function executeOneNode(
     inspectImageSize: options.inspectImageSize,
     fitPortraitToSourceSize: options.fitPortraitToSourceSize,
     flattenPortraitBackground: options.flattenPortraitBackground,
+    composePortraitLiveRetouch: options.composePortraitLiveRetouch,
     inspectModelSkeleton: options.inspectModelSkeleton,
     runBlenderDshJob: options.runBlenderDshJob,
     buildGamePlayProject: options.buildGamePlayProject,

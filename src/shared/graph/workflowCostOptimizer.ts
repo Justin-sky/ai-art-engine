@@ -85,6 +85,7 @@ function estimateSingleNodeProfile(node: GraphNode): {
     tid.startsWith('asset.') ||
     tid.startsWith('output.') ||
     tid.startsWith('note.') ||
+    tid === 'text.plain' ||
     tid.endsWith('.select') ||
     tid === 'media.bundle' ||
     tid === 'image.crop' ||
@@ -156,8 +157,7 @@ function estimateSingleNodeProfile(node: GraphNode): {
     tid.startsWith('voice.') ||
     tid.startsWith('prompt.') ||
     tid.startsWith('film.') ||
-    tid.startsWith('decisions.') ||
-    tid === 'play.script'
+    tid.startsWith('decisions.')
   ) {
     return {
       apiCalls: 1,

@@ -88,6 +88,15 @@
           >
             ✂️ {{ t('stage2d.autoCut') }}
           </button>
+          <button
+            type="button"
+            class="icon"
+            :disabled="autoCutBusy"
+            :title="t('stage2d.autoCutEditSubtitle')"
+            @click="openAutoCutDialog"
+          >
+            🖌 {{ t('stage2d.autoCutEditOpen') }}
+          </button>
         </div>
         <p
           v-if="autoCutMsg"
@@ -348,7 +357,7 @@
             <svg
               v-if="rigOverlayVisible"
               class="rig-overlay"
-              :class="{ readonly: panel !== 'rig' }"
+              :class="{ readonly: panel !== 'rig' && panel !== 'action' }"
               :viewBox="`0 0 ${scene.canvasWidth} ${scene.canvasHeight}`"
               preserveAspectRatio="none"
             >
@@ -451,10 +460,23 @@
                 >
                   ⟲ {{ t('stage2d.rigToolRotate') }}
                 </button>
+                <button
+                  type="button"
+                  class="tab"
+                  :class="{ on: rigTool === 'ik' }"
+                  :title="t('stage2d.rigToolIkTip')"
+                  @click="rigTool = 'ik'"
+                >
+                  🎯 {{ t('stage2d.rigToolIk') }}
+                </button>
               </div>
               <p class="hint rig-tool-hint">
                 {{
-                  rigTool === 'move' ? t('stage2d.rigToolMoveHint') : t('stage2d.rigToolRotateHint')
+                  rigTool === 'move'
+                    ? t('stage2d.rigToolMoveHint')
+                    : rigTool === 'rotate'
+                      ? t('stage2d.rigToolRotateHint')
+                      : t('stage2d.rigToolIkHint')
                 }}
               </p>
             </template>
@@ -690,7 +712,18 @@
                     @input="onActionScrub($event)"
                   />
                 </label>
-                <div class="row">
+                <div class="row timeline-kf-bar">
+                  <select
+                    v-model="keyframeEasing"
+                    class="kf-easing-select"
+                    :title="t('stage2d.keyframeEasing')"
+                  >
+                    <option value="easeInOut">{{ t('stage2d.easingEaseInOut') }}</option>
+                    <option value="linear">{{ t('stage2d.easingLinear') }}</option>
+                    <option value="easeIn">{{ t('stage2d.easingEaseIn') }}</option>
+                    <option value="easeOut">{{ t('stage2d.easingEaseOut') }}</option>
+                    <option value="stepped">{{ t('stage2d.easingStepped') }}</option>
+                  </select>
                   <button
                     type="button"
                     class="icon"
@@ -699,6 +732,29 @@
                   >
                     ⏺ {{ t('stage2d.recordKeyframe') }}
                   </button>
+                </div>
+                <div v-if="actionCurrent.keyframes.length" class="kf-chips">
+                  <span
+                    v-for="(kf, kfIdx) in actionCurrent.keyframes"
+                    :key="kfIdx"
+                    class="kf-chip"
+                    :class="{
+                      active:
+                        Math.abs((actionClock % (actionCurrent.duration || 1)) - kf.time) < 0.03
+                    }"
+                    @click="jumpToKeyframe(kf.time)"
+                  >
+                    ◆ {{ formatActionTime(kf.time) }}s
+                    <button
+                      v-if="actionCurrent.keyframes.length > 1"
+                      type="button"
+                      class="kf-del"
+                      :title="t('stage2d.deleteKeyframe')"
+                      @click.stop="deletePoseKeyframe(kfIdx)"
+                    >
+                      ×
+                    </button>
+                  </span>
                 </div>
               </div>
               <button type="button" class="action-video-btn" @click="openVideoActionDialog">
@@ -947,6 +1003,16 @@
     @close="videoActionOpen = false"
     @applied="applyVideoAction"
   />
+
+  <Stage2dAutoCutDialog
+    :open="autoCutDialogOpen"
+    :scene="scene"
+    :rig="rig"
+    :frame-layer-id="autoCutTargetLayerId"
+    :resolve-layer-url="resolveLayerUrl"
+    @close="autoCutDialogOpen = false"
+    @applied="applyAutoCutDialogResult"
+  />
 </template>
 
 <script setup lang="ts">
@@ -958,7 +1024,8 @@ import {
   createStage2dJoint,
   normalizeStage2dAction,
   normalizeStage2dRig,
-  sampleStage2dAction,
+  sampleStage2dActionFrame,
+  solveStage2dTwoBoneIk,
   packStage2dActionAsset,
   readStage2dActionAssetFromGenParams,
   stage2dActionAssetGenParams,
@@ -967,6 +1034,7 @@ import {
   STAGE2D_ACTION_PRESETS,
   STAGE2D_CANVAS_PRESETS,
   type Stage2dAction,
+  type Stage2dEasing,
   type Stage2dLayer,
   type Stage2dPose,
   type Stage2dRig
@@ -982,11 +1050,15 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { composeStage2dSpineExport } from '../features/graph/model/composeStage2dSpineExport'
-import { autoCutStage2dLayer } from '../features/graph/model/composeStage2dAutoCut'
+import {
+  autoCutStage2dLayer,
+  type Stage2dAutoCutResult
+} from '../features/graph/model/composeStage2dAutoCut'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { useProjectStore } from '../stores/project'
 import AssetImagePickDialog from './AssetImagePickDialog.vue'
 import Stage2dActionFromVideoDialog from './Stage2dActionFromVideoDialog.vue'
+import Stage2dAutoCutDialog from './Stage2dAutoCutDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
 type StageLayer = Stage2dSceneState['layers'][number]
@@ -1245,8 +1317,13 @@ const parentCandidates = computed(() => {
   return rig.value.joints.filter((joint) => joint.id !== id)
 })
 
-/** 关节世界变换（FK 实时结果，随摆姿更新） */
-const rigJoints = computed(() => computeStage2dRigTransforms(rig.value, pose.value))
+/** 根节点附加位移（跳跃/呼吸起伏，随动作采样更新） */
+const rootOffset = ref<{ x: number; y: number }>({ x: 0, y: 0 })
+
+/** 关节世界变换（FK 实时结果，随摆姿与根节点偏移更新） */
+const rigJoints = computed(() =>
+  computeStage2dRigTransforms(rig.value, pose.value, rootOffset.value)
+)
 
 /** 骨骼连线（父→子世界坐标，供视口叠层） */
 const rigSegments = computed(() => {
@@ -1298,6 +1375,7 @@ function useHumanoidTemplate(): void {
   })
   rig.value = next
   pose.value = {}
+  rootOffset.value = { x: 0, y: 0 }
   selectedJointId.value =
     next.joints.find((joint) => joint.id === 'pelvis')?.id ?? next.joints[0]?.id ?? ''
   panel.value = 'rig'
@@ -1364,6 +1442,7 @@ function setJointPose(event: Event): void {
 function resetPose(): void {
   stopActionPlayback()
   pose.value = {}
+  rootOffset.value = { x: 0, y: 0 }
 }
 
 /* 动作试播：内置动作循环播放期间用采样 pose 实时驱动骨骼与挂件（只预览不改数据）。
@@ -1373,8 +1452,10 @@ const CUSTOM_ACTION_ID = 'custom'
 const actionId = ref('')
 const actionMode = ref<'off' | 'playing' | 'paused'>('off')
 const actionClock = ref(0)
+const keyframeEasing = ref<Stage2dEasing>('easeInOut')
 let actionAnchorMs = 0
 let actionSavedPose: Stage2dPose | null = null
+let actionSavedRootOffset: { x: number; y: number } | null = null
 let actionRaf = 0
 
 const actionPresets = STAGE2D_ACTION_PRESETS
@@ -1415,6 +1496,7 @@ function cancelActionLoop(): void {
   actionMode.value = 'off'
   actionClock.value = 0
   actionSavedPose = null
+  actionSavedRootOffset = null
 }
 
 function actionTick(now: number): void {
@@ -1424,7 +1506,9 @@ function actionTick(now: number): void {
     return
   }
   actionClock.value = (now - actionAnchorMs) / 1000
-  pose.value = sampleStage2dAction(action, actionClock.value)
+  const sampled = sampleStage2dActionFrame(action, actionClock.value)
+  pose.value = sampled.pose
+  rootOffset.value = sampled.rootOffset
   // 播放时每帧必须立即重绘；走 scheduleRender 的 120ms 防抖会导致
   // pose 持续更新时渲染被无限推迟，表现为骨骼 SVG 在动、皮肤画布不动。
   if (renderTimer) {
@@ -1456,6 +1540,7 @@ function toggleActionPlay(): void {
     return
   }
   actionSavedPose = { ...pose.value }
+  actionSavedRootOffset = { ...rootOffset.value }
   actionClock.value = 0
   actionMode.value = 'playing'
   startActionLoop()
@@ -1465,38 +1550,51 @@ function toggleActionPlay(): void {
 function stopActionPlayback(): void {
   if (actionMode.value === 'off' && !actionRaf) return
   const restore = actionSavedPose
+  const restoreOffset = actionSavedRootOffset
   cancelActionLoop()
   if (restore) pose.value = restore
+  rootOffset.value = restoreOffset ?? { x: 0, y: 0 }
 }
 
 /** 把当前采样帧定格为用户的摆姿并退出试播（暂停态用已停的时钟值） */
 function freezeActionFrame(): void {
   const action = actionCurrent.value
   if (actionMode.value === 'off' || !action) return
-  pose.value = sampleStage2dAction(action, actionClock.value)
+  const sampled = sampleStage2dActionFrame(action, actionClock.value)
+  pose.value = sampled.pose
+  rootOffset.value = sampled.rootOffset
   cancelActionLoop()
 }
 
-/** 时间轴拖拽采样：暂停播放并实时跳到对应时刻 */
-function onActionScrub(event: Event): void {
+/** 时间轴跳转至指定时刻并采样 */
+function jumpToKeyframe(nextTime: number): void {
   const action = actionCurrent.value
   if (!action) return
-  const nextTime = Math.max(0, Number((event.target as HTMLInputElement).value) || 0)
+  const clampedTime = Math.max(0, nextTime)
   if (actionMode.value === 'playing') {
     cancelAnimationFrame(actionRaf)
     actionRaf = 0
     actionMode.value = 'paused'
   } else if (actionMode.value === 'off') {
     actionSavedPose = { ...pose.value }
+    actionSavedRootOffset = { ...rootOffset.value }
     actionMode.value = 'paused'
   }
-  actionClock.value = nextTime
-  pose.value = sampleStage2dAction(action, nextTime)
+  actionClock.value = clampedTime
+  const sampled = sampleStage2dActionFrame(action, clampedTime)
+  pose.value = sampled.pose
+  rootOffset.value = sampled.rootOffset
   if (renderTimer) {
     clearTimeout(renderTimer)
     renderTimer = null
   }
   void render()
+}
+
+/** 时间轴拖拽采样：暂停播放并实时跳到对应时刻 */
+function onActionScrub(event: Event): void {
+  const nextTime = Math.max(0, Number((event.target as HTMLInputElement).value) || 0)
+  jumpToKeyframe(nextTime)
 }
 
 /** 把当前关节摆姿打点记录到当前时间轴时刻（自动转为可持久化的自定义动作） */
@@ -1512,13 +1610,34 @@ function recordPoseKeyframe(): void {
   const targetTime = Math.round((actionClock.value % duration) * 100) / 100
   const nextPose = normalizeStage2dPose(rig.value, pose.value)
   const filtered = base.keyframes.filter((kf) => Math.abs(kf.time - targetTime) > 0.015)
-  filtered.push({ time: targetTime, pose: nextPose })
+  filtered.push({
+    time: targetTime,
+    pose: nextPose,
+    ...(rootOffset.value.x || rootOffset.value.y ? { rootOffset: { ...rootOffset.value } } : {}),
+    ...(keyframeEasing.value !== 'linear' ? { easing: keyframeEasing.value } : {})
+  })
   filtered.sort((a, b) => a.time - b.time)
   const updated = normalizeStage2dAction({
     name: base.id === CUSTOM_ACTION_ID ? base.name || 'custom' : `${base.id}-custom`,
     duration,
     loop: base.loop ?? true,
     keyframes: filtered
+  })
+  customAction.value = updated
+  actionId.value = CUSTOM_ACTION_ID
+}
+
+/** 删除指定关键帧（自动转为自定义动作） */
+function deletePoseKeyframe(index: number): void {
+  const base = actionCurrent.value
+  if (!base || base.keyframes.length <= 1) return
+  const nextFrames = base.keyframes.filter((_, idx) => idx !== index)
+  if (!nextFrames.length) return
+  const updated = normalizeStage2dAction({
+    name: base.id === CUSTOM_ACTION_ID ? base.name || 'custom' : `${base.id}-custom`,
+    duration: Math.max(0.2, base.duration ?? 1.2),
+    loop: base.loop ?? true,
+    keyframes: nextFrames
   })
   customAction.value = updated
   actionId.value = CUSTOM_ACTION_ID
@@ -1695,9 +1814,54 @@ const attachLayers = computed(() =>
 const autoCutBusy = ref(false)
 const autoCutMsg = ref('')
 const autoCutMsgKind = ref<'ok' | 'warn' | 'error'>('ok')
+const autoCutDialogOpen = ref(false)
+const autoCutTargetLayerId = ref('')
 function setAutoCutMsg(text: string, kind: 'ok' | 'warn' | 'error' = 'ok'): void {
   autoCutMsg.value = text
   autoCutMsgKind.value = kind
+}
+function pickWholeFrameLayer(): Stage2dLayer | null {
+  const attachedIds = new Set(rig.value.attachments.map((attachment) => attachment.layerId))
+  const wholeLayer = (layer: Stage2dLayer) =>
+    layer.visible && !layer.frame && !attachedIds.has(layer.id)
+  return (
+    (selected.value && wholeLayer(selected.value) ? selected.value : null) ??
+    scene.value.layers.find((layer) => wholeLayer(layer)) ??
+    null
+  )
+}
+function openAutoCutDialog(): void {
+  if (autoCutBusy.value) return
+  setAutoCutMsg('', 'ok')
+  if (!rig.value.joints.length) {
+    setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
+    return
+  }
+  const frameLayer = pickWholeFrameLayer()
+  if (!frameLayer) {
+    setAutoCutMsg(t('stage2d.autoCutNeedLayer'), 'warn')
+    return
+  }
+  stopActionPlayback()
+  pose.value = normalizeStage2dPose(rig.value, null)
+  rootOffset.value = { x: 0, y: 0 }
+  autoCutTargetLayerId.value = frameLayer.id
+  autoCutDialogOpen.value = true
+}
+function applyAutoCutDialogResult(result: Stage2dAutoCutResult): void {
+  autoCutDialogOpen.value = false
+  if (!result || result.partCount < 1) {
+    setAutoCutMsg(t('stage2d.autoCutFail'), 'warn')
+    return
+  }
+  scene.value = result.state
+  rig.value = result.rig
+  const firstPart = result.state.layers.find(
+    (layer) => layer.id !== autoCutTargetLayerId.value && layer.visible
+  )
+  if (firstPart) selectedId.value = firstPart.id
+  void render()
+  setAutoCutMsg(t('stage2d.autoCutDone', { count: String(result.partCount) }), 'ok')
 }
 async function autoCutWholeLayer(): Promise<void> {
   if (autoCutBusy.value) return
@@ -1706,13 +1870,7 @@ async function autoCutWholeLayer(): Promise<void> {
     setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
     return
   }
-  const attachedIds = new Set(rig.value.attachments.map((attachment) => attachment.layerId))
-  const wholeLayer = (layer: Stage2dLayer) =>
-    layer.visible && !layer.frame && !attachedIds.has(layer.id)
-  const frameLayer =
-    (selected.value && wholeLayer(selected.value) ? selected.value : null) ??
-    scene.value.layers.find((layer) => wholeLayer(layer)) ??
-    null
+  const frameLayer = pickWholeFrameLayer()
   if (!frameLayer) {
     setAutoCutMsg(t('stage2d.autoCutNeedLayer'), 'warn')
     return
@@ -1722,6 +1880,7 @@ async function autoCutWholeLayer(): Promise<void> {
   try {
     // 拆件以绑定姿势为参考：先复位摆姿，切完后画布（绑定姿势）即原图
     pose.value = normalizeStage2dPose(rig.value, null)
+    rootOffset.value = { x: 0, y: 0 }
     const result = await autoCutStage2dLayer({
       state: scene.value,
       rig: rig.value,
@@ -1762,6 +1921,7 @@ async function exportSpineSkeleton(): Promise<void> {
       state: sceneState,
       rig: rig.value,
       pose: pose.value,
+      customAction: customAction.value,
       resolveLayerUrl,
       baseName
     })
@@ -1827,17 +1987,18 @@ async function exportActionFrames(): Promise<void> {
     })
     const count = exportFrameCount.value
     const duration = action.duration ?? 0
-    const framePoses: Stage2dPose[] = []
+    const sampledFrames: Array<{ pose: Stage2dPose; rootOffset: { x: number; y: number } }> = []
     for (let index = 0; index < count; index++) {
       const t = duration > 0 ? (index * duration) / count : 0
-      framePoses.push(sampleStage2dAction(action, t))
+      sampledFrames.push(sampleStage2dActionFrame(action, t))
     }
     const frames: string[] = []
-    for (let index = 0; index < framePoses.length; index++) {
+    for (let index = 0; index < sampledFrames.length; index++) {
       const out = await composeStage2dCanvas({
         state: composeScene,
         rig: rig.value,
-        pose: framePoses[index]
+        pose: sampledFrames[index].pose,
+        rootOffset: sampledFrames[index].rootOffset
       })
       frames.push(out.dataUrl)
       exportProgress.value = index + 1
@@ -1921,7 +2082,8 @@ async function exportLayerVariantsPackage(): Promise<void> {
       const composed = await composeStage2dCanvas({
         state: variantScene,
         rig: rig.value,
-        pose: pose.value
+        pose: pose.value,
+        rootOffset: rootOffset.value
       })
       const safeLayerName =
         (variantLayer.name || `variant-${i}`).replace(/[^\w\u4e00-\u9fa5-]+/g, '-') ||
@@ -2020,23 +2182,28 @@ function patchAttachOffset(layerId: string, key: 'offsetX' | 'offsetY', event: E
   })
 }
 
-/* 视口手柄改绑定姿势（装配）：工具决定拖关节圆点的效果。
+/* 视口手柄改绑定姿势（装配）与 IK 摆姿：工具决定拖关节圆点的效果。
    移动 = 平移该骨骼点（世界位移换算回父关节局部系写绑定 x/y，整条子链跟随）；
-   旋转 = 以关节为圆心转（FK 驱动子链），把生效角的增量写进绑定 rotation。 */
-const rigTool = ref<'move' | 'rotate'>('move')
+   旋转 = 以关节为圆心转（FK 驱动子链），把生效角的增量写进绑定 rotation；
+   IK = 拖拽手腕/脚踝等末端关节，利用二骨解析 IK 自动解算上臂+前臂 / 大腿+小腿摆姿旋转。 */
+const rigTool = ref<'move' | 'rotate' | 'ik'>('move')
 const rigOverlayVisible = computed(
   () => (panel.value === 'rig' || panel.value === 'action') && rig.value.joints.length > 0
 )
 
 interface RigJointDrag {
   jointId: string
-  tool: 'move' | 'rotate'
+  isRootJoint: boolean
+  tool: 'move' | 'rotate' | 'ik'
   /** 按下时指针的舞台坐标（保持抓取点不漂移） */
   startPointerX: number
   startPointerY: number
   /** 按下时该关节的世界坐标 */
   startJointX: number
   startJointY: number
+  /** 按下时根节点的位移偏置（供拖拽 pelvis 调节跳跃/沉浮重心） */
+  startRootOffsetX: number
+  startRootOffsetY: number
   /** 父关节（无父时用 rig.root）的世界坐标与旋转：世界位移 ↔ 绑定局部偏移换算基准 */
   parentX: number
   parentY: number
@@ -2070,7 +2237,11 @@ function parentFrameOf(joint: Stage2dRig['joints'][number]): {
     const parent = rigJoints.value.find((entry) => entry.jointId === joint.parentId)
     if (parent) return { x: parent.x, y: parent.y, rotation: parent.rotation }
   }
-  return { x: rig.value.root.x, y: rig.value.root.y, rotation: 0 }
+  return {
+    x: rig.value.root.x + rootOffset.value.x,
+    y: rig.value.root.y + rootOffset.value.y,
+    rotation: 0
+  }
 }
 
 function commitJointPatch(
@@ -2102,9 +2273,12 @@ function wrapDeg(deg: number): number {
 }
 
 function startJointDrag(jointId: string, event: PointerEvent): void {
-  // 绑定姿势只在「骨骼」页可编辑；动作页叠层只读预览
-  if (panel.value !== 'rig') return
-  stopActionPlayback()
+  if (panel.value !== 'rig' && panel.value !== 'action') return
+  if (actionMode.value === 'playing') {
+    cancelAnimationFrame(actionRaf)
+    actionRaf = 0
+    actionMode.value = 'paused'
+  }
   const joint = rig.value.joints.find((entry) => entry.id === jointId)
   const item = rigJoints.value.find((entry) => entry.jointId === jointId)
   if (!joint || !item) return
@@ -2113,11 +2287,14 @@ function startJointDrag(jointId: string, event: PointerEvent): void {
   const parent = parentFrameOf(joint)
   jointDrag = {
     jointId,
-    tool: rigTool.value,
+    isRootJoint: !joint.parentId,
+    tool: panel.value === 'action' ? 'ik' : rigTool.value,
     startPointerX: point.x,
     startPointerY: point.y,
     startJointX: item.x,
     startJointY: item.y,
+    startRootOffsetX: rootOffset.value.x,
+    startRootOffsetY: rootOffset.value.y,
     parentX: parent.x,
     parentY: parent.y,
     parentRotation: parent.rotation,
@@ -2131,6 +2308,24 @@ function moveJointDrag(event: PointerEvent): void {
   const drag = jointDrag
   if (!drag) return
   const point = screenToScene(event.clientX, event.clientY)
+  if (drag.tool === 'ik') {
+    if (drag.isRootJoint) {
+      rootOffset.value = {
+        x: round1(drag.startRootOffsetX + (point.x - drag.startPointerX)),
+        y: round1(drag.startRootOffsetY + (point.y - drag.startPointerY))
+      }
+      return
+    }
+    pose.value = solveStage2dTwoBoneIk({
+      rig: rig.value,
+      pose: pose.value,
+      rootOffset: rootOffset.value,
+      effectorJointId: drag.jointId,
+      targetX: point.x,
+      targetY: point.y
+    })
+    return
+  }
   if (drag.tool === 'rotate') {
     const item = rigJoints.value.find((entry) => entry.jointId === drag.jointId)
     if (!item) return
@@ -2252,7 +2447,8 @@ async function render(): Promise<void> {
     const out = await composeStage2dCanvas({
       state: composeScene,
       rig: rig.value,
-      pose: pose.value
+      pose: pose.value,
+      rootOffset: rootOffset.value
     })
     if (token !== renderToken) return
     previewUrl.value = out.dataUrl
@@ -2348,7 +2544,7 @@ watch(scene, () => {
   scheduleRender()
 })
 
-watch([rig, pose], () => {
+watch([rig, pose, rootOffset], () => {
   if (!props.open) return
   scheduleRender()
 })
@@ -2981,5 +3177,59 @@ button.primary.on:hover {
   border-radius: 6px;
   background: var(--bg-input);
   border: 1px solid var(--border);
+}
+
+.timeline-kf-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kf-easing-select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+.kf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.kf-chip.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  color: var(--text);
+}
+
+.kf-del {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.kf-del:hover {
+  color: var(--danger);
 }
 </style>

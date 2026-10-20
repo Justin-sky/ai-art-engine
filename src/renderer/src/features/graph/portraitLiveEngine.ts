@@ -12,6 +12,7 @@ import {
   extractImageStyleDna,
   hasPortraitLiveAdjustments,
   normalizePortraitRetouch,
+  portraitExportMimeType,
   purifyAiArtifactsAndInjectSensorGrainRgba,
   renderEyeTrackingHeatmapRgba,
   renderIdPhotoSingleRgba,
@@ -27,12 +28,22 @@ import {
   type ParallaxMotionPresetId,
   type PixelWatermarkPayload,
   type PortraitCubeLut,
+  type PortraitExportFormat,
   type PortraitLiveInput,
   type PortraitRetouchState
 } from '@shared/graph'
+import { extractPortraitPersonMaskAlpha } from './model/portraitCapabilities'
 
 const LIVE_PREVIEW_MAX_EDGE = 960
 const LIVE_EXPORT_MAX_EDGE = 2048
+
+function canvasToPortraitDataUrl(
+  canvas: HTMLCanvasElement,
+  format?: PortraitExportFormat | string | null
+): string {
+  const mime = portraitExportMimeType(format)
+  return mime === 'image/png' ? canvas.toDataURL(mime) : canvas.toDataURL(mime, 0.92)
+}
 
 const ERR_LIVE_PREVIEW_LOAD = defErrSimple(
   'graph.portrait.livePreviewLoadFailed',
@@ -117,7 +128,12 @@ export async function renderPortraitLiveRetouch(
 ): Promise<PortraitLiveRenderResult | null> {
   const trimmed = sourceUrl.trim()
   if (!trimmed) return null
-  if (!hasPortraitLiveAdjustments(input)) {
+  const exportFormat = options?.highRes ? input.state?.exportFormat : 'png'
+  const needsFormatConvert =
+    Boolean(options?.highRes) &&
+    Boolean(exportFormat && exportFormat !== 'png') &&
+    !trimmed.startsWith(`data:${portraitExportMimeType(exportFormat)}`)
+  if (!hasPortraitLiveAdjustments(input) && !needsFormatConvert) {
     return {
       dataUrl: trimmed,
       width: 0,
@@ -143,7 +159,7 @@ export async function renderPortraitLiveRetouch(
   const outData = new ImageData(new Uint8ClampedArray(outPixels), width, height)
   ctx.putImageData(outData, 0, 0)
   return {
-    dataUrl: canvas.toDataURL('image/png'),
+    dataUrl: canvasToPortraitDataUrl(canvas, exportFormat),
     width,
     height,
     appliedSteps,
@@ -164,9 +180,11 @@ export async function renderPortraitIdPhotoLocal(
   const state = normalizePortraitRetouch(input.state)
   if (state.idPhotoSpecId === 'none') return null
   const { width, height, pixels } = await getSourceRaster(trimmed, LIVE_EXPORT_MAX_EDGE)
+  const personMaskAlpha = await extractPortraitPersonMaskAlpha(trimmed, width, height)
   const single = renderIdPhotoSingleRgba(pixels, width, height, input, {
     dpi: state.exportDpi || 300,
-    replaceBackdrop: true
+    replaceBackdrop: true,
+    personMaskAlpha
   })
   if (!single) return null
 
@@ -186,7 +204,7 @@ export async function renderPortraitIdPhotoLocal(
   )
   ctx.putImageData(outData, 0, 0)
   return {
-    dataUrl: canvas.toDataURL('image/png'),
+    dataUrl: canvasToPortraitDataUrl(canvas, state.exportFormat),
     width: finalBuf.width,
     height: finalBuf.height
   }

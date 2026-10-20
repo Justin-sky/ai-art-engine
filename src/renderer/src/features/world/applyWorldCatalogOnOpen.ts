@@ -94,7 +94,7 @@ export function catalogFromWorldGenParams(
         prompt: '',
         status: normalizeReviewStatus(undefined)
       }
-      if (node.typeId === 'play.script') {
+      if (node.typeId === 'text.plain') {
         prev.prompt = node.params.text?.trim() || ''
         if (node.title?.trim()) prev.name = node.title.trim()
       } else if (node.typeId === 'asset.image') {
@@ -222,7 +222,7 @@ export async function saveWorldCatalog(
 
 /**
  * 将世界元素目录 JSON 同步到四类 elementWorkflow 图
- *（为每条目录创建/更新：play.script → asset.image → boundary.output）。
+ *（为每条目录创建/更新：text.plain → asset.image → boundary.output）。
  * 由世界元素资产编辑器在导入目录 JSON（对话框 / 运行结果）时调用。
  */
 export async function applyWorldCatalog(

@@ -12,7 +12,7 @@
     ],
     "src/main/services/graphPlanService.ts": [
       "const FEW_SHOT_EXAMPLE = `示例（游戏买量骨架）：",
-      "{\"title\":\"游戏买量\",\"nodes\":[{\"key\":\"script\",\"typeId\":\"play.script\",\"title\":\"旁白\",\"params\":{\"text\":\"卖点文案\"}},{\"key\":\"img\",\"typeId\":\"asset.image\",\"title\":\"关键帧\",\"params\":{\"generateInstruction\":\"竖屏关键帧\"}},{\"key\":\"vid\",\"typeId\":\"asset.video\",\"title\":\"视频\",\"params\":{\"generateDuration\":15,\"generateAspectRatio\":\"9:16\"}},{\"key\":\"note\",\"typeId\":\"note.text\",\"title\":\"备注\",\"params\":{\"text\":\"剪辑说明\"}}],\"edges\":[{\"from\":\"script\",\"to\":\"img\"},{\"from\":\"img\",\"to\":\"vid\"}]}`",
+      "{\"title\":\"游戏买量\",\"nodes\":[{\"key\":\"script\",\"typeId\":\"text.plain\",\"title\":\"旁白\",\"params\":{\"text\":\"卖点文案\"}},{\"key\":\"img\",\"typeId\":\"asset.image\",\"title\":\"关键帧\",\"params\":{\"generateInstruction\":\"竖屏关键帧\"}},{\"key\":\"vid\",\"typeId\":\"asset.video\",\"title\":\"视频\",\"params\":{\"generateDuration\":15,\"generateAspectRatio\":\"9:16\"}},{\"key\":\"note\",\"typeId\":\"note.text\",\"title\":\"备注\",\"params\":{\"text\":\"剪辑说明\"}}],\"edges\":[{\"from\":\"script\",\"to\":\"img\"},{\"from\":\"img\",\"to\":\"vid\"}]}`",
       "? `\\n8. 必须基于下列种子 GraphPlan 调整（可改 title/params/增删少量节点，但保持主数据流）：\\n${JSON.stringify(seedPlan)}`",
       "return `你是节点图画布编排助手。根据用户需求输出一个 GraphPlan JSON（不要 Markdown，不要解释）。",
       "规则：",
@@ -29,7 +29,7 @@
       "`${userPrompt}\\n\\n上次计划存在问题：${materialized.error || '结构需修正'}\\n警告：${warnings.join('；') || '无'}\\n请修正 typeId 与连线后重新输出完整 GraphPlan JSON。`,",
       "(w) => w.includes('端口不兼容') || w.includes('不存在的节点')",
       "prompt || '请基于种子 GraphPlan 输出完整计划（可按常见业务略作润色 title 与 params）。'",
-      "6. 常见链：play.script / prompt.optimize → asset.image → asset.video；影视 / 短剧 / 分镜链（剧本→成片必须用它，镜头数随剧情、不要手搭 9 宫格）：play.script → film.breakdown → film.review（剧本另接 film.review 的 in-script）→ film.cast → film.render（film.cast 的 out 接 film.render 的 in-cast；filmRenderMode=video 时同时出镜头视频），需要精修单镜时 film.review → film.shot（+ film.cast→in-cast）→ asset.image（out→in-text，out-refs→in-image）→ asset.video（out-motion→in-text）；漫画连载链：play.script → 角色定妆 asset.image（连入各分镜图 in-image 锁形象）→ 多页分镜图 asset.image → 多张 comic.page；备注用 note.text；矢量图 / SVG 动画用 svg.gen（要帧序列或 GIF 再接 svg.anim，端口 svg → in；注意 image ≠ svg，位图端口接不进矢量口）。"
+      "6. 常见链：text.plain / prompt.optimize → asset.image → asset.video；影视 / 短剧 / 分镜链（剧本→成片必须用它，镜头数随剧情、不要手搭 9 宫格）：text.plain → film.breakdown → film.review（剧本另接 film.review 的 in-script）→ film.cast → film.render（film.cast 的 out 接 film.render 的 in-cast；filmRenderMode=video 时同时出镜头视频），需要精修单镜时 film.review → film.shot（+ film.cast→in-cast）→ asset.image（out→in-text，out-refs→in-image）→ asset.video（out-motion→in-text）；漫画连载链：text.plain → 角色定妆 asset.image（连入各分镜图 in-image 锁形象）→ 多页分镜图 asset.image → 多张 comic.page；备注用 note.text；矢量图 / SVG 动画用 svg.gen（要帧序列或 GIF 再接 svg.anim，端口 svg → in；注意 image ≠ svg，位图端口接不进矢量口）。"
     ],
     "src/main/services/modelProviders/comfyui/adapter.ts": [
       "name: input.name ?? `声音 ${new Date().toLocaleString()}`,"

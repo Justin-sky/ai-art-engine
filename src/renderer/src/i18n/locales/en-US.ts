@@ -2035,8 +2035,20 @@ export default {
       'Move tool active: drag a joint handle to relocate the bone point (edits bind offset x/y)',
     rigToolRotateHint:
       'Rotate tool active: drag a joint handle to spin the bone about the joint (edits bind rotation)',
+    rigToolIk: 'IK Drag',
+    rigToolIkTip:
+      '2-Bone Inverse Kinematics (IK): drag an end joint (wrist/ankle) to automatically solve upper + lower limb bend angles',
+    rigToolIkHint:
+      'IK tool active: drag a wrist or ankle joint to naturally bend the two-bone limb chain',
+    keyframeEasing: 'Keyframe Easing',
+    easingEaseInOut: 'Ease In-Out',
+    easingLinear: 'Linear',
+    easingEaseIn: 'Ease In',
+    easingEaseOut: 'Ease Out',
+    easingStepped: 'Stepped',
+    deleteKeyframe: 'Delete keyframe',
     rigStageHint:
-      'Wheel to zoom; dragging a joint handle edits the bind pose with the selected tool (Move / Rotate), dragging empty space pans the view',
+      'Wheel to zoom; dragging a joint handle edits the bind/pose with the selected tool (Move / Rotate / IK), dragging empty space pans the view',
     actionTitle: 'Action preview',
     actionNoRig: 'Assemble a rig first (or use 🧍 humanoid template) to preview actions',
     actionPick: 'Action',
@@ -2052,13 +2064,41 @@ export default {
     spineExportName: 'Pack name',
     spineExportButton: 'Export Spine pack',
     spineExportNote:
-      'Exports joint-attached visible part layers as skeleton.json + .atlas + part PNGs (current pose folded into the setup pose; parts keep their original orientation)',
+      'Exports joint-attached visible part layers and all animation timelines as skeleton.json + .atlas + packed texture atlas PNG',
     spineExporting: 'Assembling Spine skeleton pack…',
     spineNoAttach:
       'Drop a part image onto the canvas in the “Layers” tab, then select the target joint in the “Rig” tab and bind the layer to it',
     spineExportDone:
-      'Written to {path} ({count} part pages + skeleton.json + .atlas); library refreshed',
+      'Written to {path} ({count} texture atlas + skeleton.json + .atlas); library refreshed',
     autoCut: 'Auto-cut parts from whole image',
+    autoCutEditOpen: 'Refine Cut',
+    autoCutEditTitle: 'Interactive Part Segmentation & Edge Refinement',
+    autoCutEditSubtitle:
+      'Refine part pixel assignment with box or brush; joint pivot cap overlap is automatically generated on commit',
+    autoCutEditPreparing: 'Computing skeletal part segmentation…',
+    autoCutEditFailHint:
+      'Please build and align a humanoid rig on the Rig tab first, and ensure the layer is an unbound transparent PNG',
+    autoCutEditCancel: 'Cancel',
+    autoCutEditApply: 'Commit Parts & Bind Rig',
+    autoCutEditTools: 'Refinement Tools',
+    autoCutEditToolPan: 'Pan View',
+    autoCutEditToolAssign: 'Box Assign',
+    autoCutEditToolBrush: 'Brush Paint',
+    autoCutEditToolErase: 'Box Erase',
+    autoCutEditBrushRadius: 'Brush Radius',
+    autoCutEditToolPanHint: 'Drag to pan, wheel to zoom',
+    autoCutEditToolAssignHint: 'Pick a target part slot below, then drag a box to assign pixels',
+    autoCutEditToolBrushHint:
+      'Pick a target part slot and paint seams; painting with no slot selected erases pixels',
+    autoCutEditToolEraseHint: 'Drag a box to erase pixels in that region',
+    autoCutEditParts: 'Part Slots ({count} active)',
+    autoCutEditRenameTip: 'Click to rename the generated part layer',
+    autoCutEditEraseSlot: 'Clear all pixels in this slot',
+    autoCutEditPickSlot: 'Select a target part slot from the list first',
+    autoCutEditUndo: 'Undo',
+    autoCutEditReset: 'Reset',
+    autoCutEditFooterHint:
+      'Committing automatically adds feathered circular joint caps at pivots to prevent rotation gaps',
     autoCutHint:
       'Slices the whole illustration into part layers along the skeleton joints and attaches them automatically (build/align a humanoid rig on the Rig tab first; cut happens at the bind pose and resets the pose, so the canvas shows the original image afterwards)',
     autoCutNeedRig: 'Build and roughly align a humanoid rig on the Rig tab first, then auto-cut',
@@ -4343,6 +4383,9 @@ export default {
         '1K': '1K',
         '2K': '2K',
         '4K': '4K',
+        png: 'PNG (Lossless)',
+        jpeg: 'JPEG (High Quality)',
+        webp: 'WebP (High Fidelity)',
         oneInch: '1 inch 25×35mm',
         smallOneInch: 'Small 1 inch 22×32mm',
         largeOneInch: 'Large 1 inch 33×48mm',
@@ -4502,6 +4545,7 @@ export default {
         idPhotoAttire: 'Formal attire',
         idPhotoSheet: 'Print sheet (5-inch paper)',
         outputSize: 'Output size',
+        exportFormat: 'Export format',
         exportDpi: 'DPI'
       }
     },
@@ -5154,31 +5198,87 @@ export default {
     scriptNode: {
       badge: 'Text',
       title: 'Text',
-      placeholder: 'Double-click to edit text…'
+      placeholder: 'Double-click to edit text…',
+      telemetry: {
+        scenes: '{n} scenes',
+        characters: '{n} chars',
+        dialogues: '{n} lines',
+        actions: '{n} actions',
+        duration: '~{s}s est.'
+      },
+      characterList: 'Detected Cast',
+      toolbar: {
+        addScene: '+ Scene',
+        addBio: '+ Cast Bio',
+        addAction: '+ Action △',
+        addVo: '+ VO / OS',
+        format: '✨ Auto-Format',
+        formatDone: '✓ Formatted',
+        templatePlaceholder: 'Load screenplay template…'
+      },
+      templates: {
+        urbanShort: 'Urban Counterattack Short · Auction Twist',
+        suspenseTwist: 'Suspense Thriller · Rainy Clock Shop',
+        xianxiaFantasy: 'Xianxia Fantasy · Sword Cliff Duel',
+        scifiChase: 'Cyberpunk Sci-Fi · Maglev Skyway Chase'
+      },
+      aiAssistant: {
+        title: 'AI Screenplay Co-Writer / Polish',
+        placeholder:
+          'Enter a logline or revision instruction (e.g., Expand into a 3-scene high-conflict short drama with character bios and △ camera actions), then click Run above…',
+        presetExpand: 'Expand visual actions & details',
+        presetConflict: 'Heighten dramatic conflict & twist',
+        presetFormat: 'Convert to standard storyboard script',
+        presetContinue: 'Continue next climax scene'
+      }
     },
     scriptRun: {
-      hint: 'Run sandboxed JavaScript: read upstream inputs, call the capabilities you enable (om.*), return outputs. No file / network / require.',
+      hint: 'Run sandboxed JavaScript: read upstream inputs, call enabled capabilities (om.*), inspect console.log, and return outputs. No file / network / require.',
       ports: 'Ports',
       inPortsShort: 'in',
       outPortsShort: 'out',
       expandEditor: 'Expand',
-      expandEditorHint: 'Edit the code in a large resizable window with type hints',
+      expandEditorHint: 'Edit code in a full-size IDE window (or double-click the canvas node)',
       editor: {
         title: 'Edit code · {name}',
-        appMark: 'Script',
+        appMark: 'Script IDE',
         close: 'Close',
         saveHint: 'Save code (also auto-saves on close)',
         unsaved: 'Unsaved',
-        saved: 'Saved'
+        saved: 'Saved',
+        run: '▶ Run Script',
+        running: 'Running…',
+        toggleDebug: 'Debug Panel (Inputs / Console)'
+      },
+      templates: {
+        label: 'Script Templates',
+        placeholder: 'Load built-in script template (auto-sets ports & capabilities)…',
+        textClean: 'Text Clean & Strip Code Fences (1 in, 1 out)',
+        jsonRouter: 'JSON Parse & Multi-Port Router (1 in, 2 out)',
+        batchPromptMatrix: 'Batch Prompt Cartesian Matrix (2 in, 1 out)',
+        aiImageRefine: 'LLM Prompt Refine + AI Image Gen (with om.*)',
+        conditionalFilter: 'Conditional Text Filter & Summary (1 in, 2 out)'
+      },
+      inputsPreview: {
+        title: 'Live Upstream inputs Snapshot',
+        empty: 'No connected upstream input values yet',
+        copy: 'Copy JSON',
+        copied: 'Copied'
+      },
+      console: {
+        title: 'Console & Diagnostics',
+        empty: 'No console output yet (use console.log / warn / error and run the node)',
+        clear: 'Clear',
+        duration: '{ms}ms'
       },
       inputs: 'Input ports',
       outputs: 'Output ports',
       capabilities: 'Capabilities',
       capabilitiesHint:
-        'Only the om.* capabilities you check are callable from the script; all off by default.',
+        'Only checked om.* capabilities are callable; host I/O wait time is excluded from CPU timeout.',
       code: 'Code',
       limits: 'Resource limits',
-      timeoutMs: 'Timeout (ms)',
+      timeoutMs: 'CPU Timeout (ms)',
       memoryMb: 'Memory (MB)',
       addPort: 'Add port',
       portId: 'Port ID',
@@ -5579,9 +5679,6 @@ export default {
         texture: '3D Texture',
         animation: '3D Animation'
       },
-      play: {
-        script: 'Text'
-      },
       image: {
         process: 'Image processing',
         select: 'Select image',
@@ -5630,6 +5727,7 @@ export default {
         judge: 'Decisions'
       },
       text: {
+        plain: 'Text',
         select: 'Select text'
       },
       ui: {

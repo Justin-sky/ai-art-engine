@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   assignStage2dAutoPartRegion,
+  computeStage2dSlotJointCapMask,
   eraseStage2dAutoPartSlot,
+  paintStage2dAutoPartBrush,
   partitionStage2dAutoPart,
   recomputeStage2dAutoPieces,
   extractAlphaPlane,
@@ -329,5 +331,51 @@ describe('extractAlphaPlane：RGBA → alpha 单通道', () => {
   it('长度不足 / 非法尺寸返回 null', () => {
     expect(extractAlphaPlane(new Uint8Array(3), 2, 1)).toBeNull()
     expect(extractAlphaPlane(new Uint8Array(100), 0, 5)).toBeNull()
+  })
+})
+
+describe('paintStage2dAutoPartBrush & computeStage2dSlotJointCapMask：画笔精修与关节圆弧防裂帽', () => {
+  it('圆形画笔只改投已归属像素，不复活透明背景', () => {
+    const width = 10
+    const height = 10
+    const assignment = new Int32Array(width * height).fill(0)
+    assignment[5 * width + 5] = -1 // 中心 1px 透明
+    const painted = paintStage2dAutoPartBrush({
+      assignment,
+      width,
+      cx: 5,
+      cy: 5,
+      radius: 2.5,
+      to: 1
+    })
+    expect(painted[5 * width + 5]).toBe(-1)
+    expect(painted[5 * width + 4]).toBe(1)
+    expect(painted[0]).toBe(0)
+  })
+
+  it('computeStage2dSlotJointCapMask 在枢轴处向相邻部位扩展圆弧重叠包络且不拉入透明背景', () => {
+    const width = 20
+    const height = 30
+    const assignment = new Int32Array(width * height).fill(-1)
+    // x: 6..13，y: 0..14 属于上臂(slot 0)，y: 15..29 属于前臂(slot 1)
+    for (let y = 0; y < 15; y += 1) {
+      for (let x = 6; x < 14; x += 1) assignment[y * width + x] = 0
+    }
+    for (let y = 15; y < 30; y += 1) {
+      for (let x = 6; x < 14; x += 1) assignment[y * width + x] = 1
+    }
+    // 前臂挂点在肘部 (10, 15)：圆弧帽应向上（y < 15 的 slot 0 区域）扩展重叠
+    const cap = computeStage2dSlotJointCapMask({
+      width,
+      height,
+      assignment,
+      slotIndex: 1,
+      pivot: { x: 10, y: 15 },
+      capRadius: 4
+    })
+    expect(cap.crop.y).toBeLessThan(15)
+    expect(cap.mask[12 * width + 10]).toBe(255)
+    // 透明背景 x=2 不会被拉入
+    expect(cap.mask[15 * width + 2]).toBe(0)
   })
 })

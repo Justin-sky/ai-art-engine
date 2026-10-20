@@ -19,6 +19,7 @@ import {
   normalizePortraitManualRegion,
   normalizePortraitManualRegions,
   normalizePortraitRetouch,
+  portraitExportMimeType,
   portraitGroupEnabled,
   portraitHighRiskTierCount,
   portraitIdentityRiskKeys,
@@ -1068,5 +1069,19 @@ describe('portraitRetouch 编辑器 AI 版本栈', () => {
       `${buildPortraitAiPrompt('erase')}。把左边路人去掉`
     )
     expect(buildPortraitAiPrompt('erase', '   ')).toBe(buildPortraitAiPrompt('erase'))
+  })
+
+  it('exportFormat 支持 png / jpeg / webp，兼容 jpg 与 MIME 大小写归一', () => {
+    expect(defaultPortraitRetouch().exportFormat).toBe('png')
+    expect(normalizePortraitRetouch({ exportFormat: 'webp' }).exportFormat).toBe('webp')
+    expect(normalizePortraitRetouch({ exportFormat: 'WEBP' as never }).exportFormat).toBe('webp')
+    expect(normalizePortraitRetouch({ exportFormat: 'image/webp' as never }).exportFormat).toBe(
+      'webp'
+    )
+    expect(normalizePortraitRetouch({ exportFormat: 'jpg' as never }).exportFormat).toBe('jpeg')
+    expect(normalizePortraitRetouch({ exportFormat: 'tiff' as never }).exportFormat).toBe('png')
+    expect(portraitExportMimeType('webp')).toBe('image/webp')
+    expect(portraitExportMimeType('jpeg')).toBe('image/jpeg')
+    expect(portraitExportMimeType('png')).toBe('image/png')
   })
 })

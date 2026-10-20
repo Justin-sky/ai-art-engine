@@ -30,13 +30,23 @@ import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 import {
   buildPortraitPrompt,
+  defaultPortraitRetouch,
   normalizePortraitAiLayers,
   normalizePortraitRetouch,
+  portraitExportMimeType,
   readPortraitRetouchFromNode,
   type PortraitAiLayer,
+  type PortraitExportFormat,
   type PortraitOutputSize,
   type PortraitRetouchState
 } from '../portraitRetouch'
+import {
+  hasPortraitLiveAdjustments,
+  parseCubeLut,
+  type PortraitCubeLut,
+  type PortraitLiquifyStroke,
+  type PortraitSpotHealPoint
+} from '../portraitLiveMath'
 import {
   idPhotoBackgroundColors,
   idPhotoBackgroundLabel,
@@ -114,6 +124,7 @@ async function applyPortraitScope(
     sourceUrl: string
     generatedDataUrl: string
     landmarks: ReadonlyArray<readonly [number, number]> | null
+    format?: PortraitExportFormat
   }
 ): Promise<string> {
   const compose = ctx.composePortraitScopedRetouch
@@ -124,6 +135,7 @@ async function applyPortraitScope(
       generatedDataUrl: input.generatedDataUrl,
       mask: { face: input.plan.face, person: input.plan.person, regions: input.plan.regions },
       landmarks: input.landmarks,
+      ...(input.format && input.format !== 'png' ? { format: input.format } : {}),
       signal: ctx.signal
     })
     for (const note of result.notes) ctx.log?.(`scoped retouch: ${note}`)
@@ -316,15 +328,48 @@ async function resolveSourceSize(
   return { width: 900, height: 1200, measured: false }
 }
 
+function resolveCustomLutParam(raw: unknown): PortraitCubeLut | null {
+  if (!raw) return null
+  if (typeof raw === 'string') return parseCubeLut(raw.trim())
+  if (
+    typeof raw === 'object' &&
+    'size' in raw &&
+    'table' in raw &&
+    typeof (raw as PortraitCubeLut).size === 'number' &&
+    Array.isArray((raw as PortraitCubeLut).table)
+  ) {
+    return raw as PortraitCubeLut
+  }
+  return null
+}
+
 export async function executePortraitNode(
   ctx: NodeExecuteContext
 ): Promise<Record<string, GraphValue>> {
-  if (!ctx.generateImage) {
+  const state = readPortraitRetouchFromNode(ctx.node.params)
+  const liquifyStrokes: PortraitLiquifyStroke[] = Array.isArray(
+    ctx.node.params.portraitLiquifyStrokes
+  )
+    ? (ctx.node.params.portraitLiquifyStrokes as PortraitLiquifyStroke[])
+    : []
+  const spotHeals: PortraitSpotHealPoint[] = Array.isArray(ctx.node.params.portraitSpotHeals)
+    ? (ctx.node.params.portraitSpotHeals as PortraitSpotHealPoint[])
+    : []
+  const customLut = resolveCustomLutParam(ctx.node.params.portraitCustomLut)
+  const hasManualOrLut = liquifyStrokes.length > 0 || spotHeals.length > 0 || customLut !== null
+  const forceLocalEngine =
+    String(ctx.node.params.generateModel ?? '').trim() === 'local-live-engine'
+  const canFallbackToLocal =
+    !ctx.generateImage &&
+    Boolean(ctx.composePortraitLiveRetouch) &&
+    (forceLocalEngine ||
+      hasPortraitLiveAdjustments({ state, liquifyStrokes, spotHeals, customLut }))
+
+  if (!ctx.generateImage && !canFallbackToLocal) {
     throw fail(SHARED_ERRORS.capabilityImageGenerate)
   }
 
   const sourceUrls = await resolveSourceUrls(ctx)
-  const state = readPortraitRetouchFromNode(ctx.node.params)
   const spec = idPhotoSpecById(state.idPhotoSpecId)
   const needs = portraitNeedsFor(state)
   if (needs.pose) ctx.log?.('body tiers requested: pose landmarks needed')
@@ -390,14 +435,6 @@ export async function executePortraitNode(
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
     // ── 画幅与尺寸：源图尺寸 → 模型参数 ──
-    //
-    // 线上问题（7.0.x）：这里原先只发 resolution（档位）与 quality，**不发 aspectRatio**，
-    // 于是模型按自己的默认画幅出图（多数 1:1），修完的图和原图尺寸对不上、构图也变了。
-    // 画幅必须走接口参数（系统提示词里那句「取景与原片一致」拦不住模型）。
-    //
-    // 「输出尺寸 = 自动」的语义是**跟随原图**：按源图最大边选一个够用的档，
-    // 出图后再由本地能力缝精确缩放到原图尺寸（见下方 fitPortraitToSourceSize）。
-    // 显式选 1K/2K/4K 时不改尺寸（用户要的就是那个档），画幅仍跟随原图。
     const frameSize = await resolveSourceSize(ctx, sourceUrl)
     const aspectRatio = portraitAspectRatioForSize(frameSize.width, frameSize.height)
     const resolution =
@@ -422,7 +459,6 @@ export async function executePortraitNode(
       if (size.measured) {
         ctx.log?.(`source size: ${size.width}×${size.height}`)
       } else if (face) {
-        // 量不到尺寸仍有脸：裁切框按关键点 + 假定画布算，尺度可能不准（不谎报「居中」）
         ctx.log?.('source size unavailable: ID-photo crop uses landmarks on an assumed 3:4 frame')
       } else {
         ctx.log?.('source size unavailable: ID-photo crop falls back to a centred frame')
@@ -456,23 +492,87 @@ export async function executePortraitNode(
           }
         : null
     })
-    if (!prompt.main.trim()) throw new Error('GRAPH_PROCESS_EMPTY_PROMPT')
-    if (index === 0) {
-      if (prompt.skippedGroups.length) {
-        ctx.log?.(`skipped groups (missing inputs): ${prompt.skippedGroups.join(', ')}`)
-      }
+
+    const runPureLocal =
+      Boolean(ctx.composePortraitLiveRetouch) &&
+      (forceLocalEngine || !ctx.generateImage || (!prompt.main.trim() && hasManualOrLut))
+
+    if (!prompt.main.trim() && !runPureLocal) {
+      throw new Error('GRAPH_PROCESS_EMPTY_PROMPT')
     }
-    // 负面提示词没有独立的 API 字段，与 imageEdit 同一口径拼在正文之后
-    const negative = prompt.negative ? `。负面提示：${prompt.negative}` : ''
-    const withExtra = extra.trim()
-      ? `${prompt.main}${negative}。补充要求：${extra.trim()}`
-      : `${prompt.main}${negative}`
-    const fullPrompt = systemPrompt.trim() ? `${systemPrompt.trim()}\n\n${withExtra}` : withExtra
-    if (index === 0) firstPrompt = fullPrompt
+    if (index === 0 && prompt.skippedGroups.length) {
+      ctx.log?.(`skipped groups (missing inputs): ${prompt.skippedGroups.join(', ')}`)
+    }
 
-    if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    let effectiveSourceUrl = sourceUrl
+    let fullPrompt = ''
+    const origGenerateImage = ctx.generateImage
 
-    // ── 唯一的执行路径：调图片模型 ──
+    if (runPureLocal && ctx.composePortraitLiveRetouch) {
+      const liveRes = await ctx.composePortraitLiveRetouch({
+        sourceDataUrl: sourceUrl,
+        liveInput: {
+          state,
+          landmarks: face?.landmarks ?? null,
+          liquifyStrokes,
+          spotHeals,
+          customLut
+        },
+        signal: ctx.signal
+      })
+      const stepsNote = liveRes?.appliedSteps.length
+        ? liveRes.appliedSteps.join(', ')
+        : 'identity-locked'
+      fullPrompt = `[local-live-engine] ${stepsNote}`
+      if (index === 0) {
+        firstPrompt = fullPrompt
+        ctx.log?.(`local live computational retouch applied (${stepsNote})`)
+      }
+      const localUrl = liveRes?.dataUrl || sourceUrl
+      ctx.generateImage = async () => ({ images: [localUrl], model: 'local-live-engine' })
+    } else {
+      // 混合管线前置：若用户在视口绘制了手动推拉液化笔触或祛斑修复点，先在参考底图上确定性生效
+      if (ctx.composePortraitLiveRetouch && (liquifyStrokes.length > 0 || spotHeals.length > 0)) {
+        try {
+          const pre = await ctx.composePortraitLiveRetouch({
+            sourceDataUrl: sourceUrl,
+            liveInput: {
+              state: defaultPortraitRetouch(),
+              landmarks: face?.landmarks ?? null,
+              liquifyStrokes,
+              spotHeals,
+              customLut: null
+            },
+            signal: ctx.signal
+          })
+          if (pre?.dataUrl && pre.hasAdjustments) {
+            effectiveSourceUrl = pre.dataUrl
+            if (index === 0) {
+              ctx.log?.(`pre-applied manual portrait edits (${pre.appliedSteps.join(', ')})`)
+            }
+          }
+        } catch (err) {
+          ctx.log?.(
+            `pre-apply manual edits skipped: ${err instanceof Error ? err.message : String(err)}`
+          )
+        }
+      }
+
+      // 负面提示词没有独立的 API 字段，与 imageEdit 同一口径拼在正文之后
+      const negative = prompt.negative ? `。负面提示：${prompt.negative}` : ''
+      const withExtra = extra.trim()
+        ? `${prompt.main}${negative}。补充要求：${extra.trim()}`
+        : `${prompt.main}${negative}`
+      fullPrompt = systemPrompt.trim() ? `${systemPrompt.trim()}\n\n${withExtra}` : withExtra
+      if (index === 0) firstPrompt = fullPrompt
+    }
+
+    if (ctx.signal?.aborted) {
+      ctx.generateImage = origGenerateImage
+      throw new DOMException('Aborted', 'AbortError')
+    }
+    if (!ctx.generateImage) throw fail(SHARED_ERRORS.capabilityImageGenerate)
+
     const result = await ctx.generateImage({
       prompt: fullPrompt,
       model: ctx.node.params.generateModel || undefined,
@@ -482,8 +582,9 @@ export async function executePortraitNode(
       aspectRatio,
       quality: 'high',
       n: 1,
-      inputReferences: [sourceUrl]
+      inputReferences: [effectiveSourceUrl]
     })
+    ctx.generateImage = origGenerateImage
 
     if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
 
@@ -495,13 +596,39 @@ export async function executePortraitNode(
       produced++
 
       // 局部回贴先于规格裁切：先把「只改对应部位」的像素定下来，再按证件照规格裁
-      const scoped = await applyPortraitScope(ctx, {
-        enabled: useScope,
-        plan: scopePlan,
-        sourceUrl,
-        generatedDataUrl: dataUrl,
-        landmarks: face?.landmarks ?? null
-      })
+      const formatOpt = state.exportFormat !== 'png' ? { format: state.exportFormat } : {}
+      let scoped = runPureLocal
+        ? dataUrl
+        : await applyPortraitScope(ctx, {
+            enabled: useScope,
+            plan: scopePlan,
+            sourceUrl: effectiveSourceUrl,
+            generatedDataUrl: dataUrl,
+            landmarks: face?.landmarks ?? null,
+            ...formatOpt
+          })
+
+      // 混合管线后置：若挂载了自定义 `.cube` 3D LUT 且走的是 AI 模型链路，在回贴后执行确定性三维色彩映射
+      if (!runPureLocal && customLut && ctx.composePortraitLiveRetouch) {
+        try {
+          const postLut = await ctx.composePortraitLiveRetouch({
+            sourceDataUrl: scoped,
+            liveInput: {
+              state: { ...defaultPortraitRetouch(), exportFormat: state.exportFormat },
+              customLut
+            },
+            signal: ctx.signal
+          })
+          if (postLut?.dataUrl && postLut.hasAdjustments) {
+            scoped = postLut.dataUrl
+            if (index === 0) {
+              ctx.log?.(`applied custom 3D LUT (${customLut.name})`)
+            }
+          }
+        } catch (err) {
+          ctx.log?.(`custom 3D LUT skipped: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
 
       // ── 本地强制清底（开关默认开）──────────────────────────────
       //
@@ -518,6 +645,7 @@ export async function executePortraitNode(
             mode: flatPlan.mode,
             color: flatPlan.color,
             ...(flatPlan.colorTo ? { colorTo: flatPlan.colorTo } : {}),
+            ...formatOpt,
             signal: ctx.signal
           })
           if (flat.applied) {
@@ -548,12 +676,34 @@ export async function executePortraitNode(
             dataUrl: flattened,
             width: frameSize.width,
             height: frameSize.height,
+            ...formatOpt,
             signal: ctx.signal
           })
           framed = fitted.dataUrl
         } catch (err) {
           ctx.log?.(
             `fit to source size skipped: ${err instanceof Error ? err.message : String(err)}`
+          )
+        }
+      } else if (
+        state.exportFormat !== 'png' &&
+        !plan &&
+        ctx.fitPortraitToSourceSize &&
+        !framed.startsWith(`data:${portraitExportMimeType(state.exportFormat)}`)
+      ) {
+        try {
+          const outSize = await resolveSourceSize(ctx, framed)
+          const converted = await ctx.fitPortraitToSourceSize({
+            dataUrl: framed,
+            width: outSize.width,
+            height: outSize.height,
+            format: state.exportFormat,
+            signal: ctx.signal
+          })
+          framed = converted.dataUrl
+        } catch (err) {
+          ctx.log?.(
+            `export format encode skipped: ${err instanceof Error ? err.message : String(err)}`
           )
         }
       }
@@ -569,6 +719,7 @@ export async function executePortraitNode(
             outputWidth: plan.outputWidth,
             outputHeight: plan.outputHeight,
             sheet: plan.sheet,
+            ...formatOpt,
             signal: ctx.signal
           })
           if (composed.dataUrl) {

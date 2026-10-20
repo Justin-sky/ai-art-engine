@@ -176,4 +176,54 @@ describe('脚本沙箱：资源与取消', () => {
     )
     expect(r.ok).toBe(false)
   }, 15000)
+
+  it('宿主异步调用（await om.*）I/O 等待时长不计入沙箱 CPU 超时配额', async () => {
+    // CPU 超时设为 120ms，但宿主 I/O 耗时 260ms：旧实现会在回调返回后立刻误判超时中断
+    const r = await run(
+      `export default async function ({ om }) {
+        const res = await om.slowIo({ prompt: 'test' })
+        return { out: { kind: 'text', text: res.text } }
+      }`,
+      {
+        timeoutMs: 120,
+        allowed: ['slowIo'],
+        hostCall: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 260))
+          return { text: 'done-after-io' }
+        }
+      }
+    )
+    expect(r).toEqual({
+      ok: true,
+      outputs: { out: { kind: 'text', text: 'done-after-io' } }
+    })
+  })
+
+  it('console.log / warn / error 在沙箱内可用并收集到 logs，且报错行号精确对应作者代码行', async () => {
+    const okRes = await run(
+      `export default async function () {
+        console.log('hello', { a: 1 })
+        console.warn('careful')
+        return { out: { kind: 'text', text: 'ok' } }
+      }`
+    )
+    expect(okRes.ok).toBe(true)
+    expect(okRes.logs).toEqual([
+      { level: 'info', message: 'hello {"a":1}' },
+      { level: 'warn', message: 'careful' }
+    ])
+
+    const errRes = await run(
+      `export default async function () {
+        console.error('before crash')
+        throw new Error('line3-crash')
+      }`
+    )
+    expect(errRes.ok).toBe(false)
+    if (!errRes.ok) {
+      expect(errRes.error).toContain('line3-crash')
+      expect(errRes.error).toMatch(/line 3\b/)
+      expect(errRes.logs).toEqual([{ level: 'error', message: 'before crash' }])
+    }
+  })
 })

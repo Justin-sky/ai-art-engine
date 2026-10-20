@@ -1,14 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createNodeFromType } from '../src/shared/graph/create'
+import { executeScreenplayGenerateNode } from '../src/shared/graph/execute/generateText'
 import { createScriptRunNodeExecutor } from '../src/shared/graph/execute/scriptRun'
+import { executePlainTextNode } from '../src/shared/graph/execute/slots'
 import type { ScriptRunRequest, ScriptSandbox } from '../src/shared/graph/execute/scriptSandbox'
 import type { NodeExecuteContext } from '../src/shared/graph/execute/types'
 import {
   readScriptNodeParams,
+  readScriptRunDiagnostics,
   scriptNodeDefaultParams,
   scriptNodePorts,
   validateScriptNodeParams,
-  SCRIPT_MAX_LIMITS
+  SCRIPT_MAX_LIMITS,
+  SCRIPT_NODE_TEMPLATES
 } from '../src/shared/graph/scriptNode'
+import {
+  analyzeScreenplay,
+  formatScreenplayText,
+  SCREENPLAY_TEMPLATES
+} from '../src/shared/graph/screenplayFormat'
 
 // ── 假沙箱：不跑 WASM，直接按注入的 handler 返回，让执行器测试又快又确定 ──
 function fakeSandbox(
@@ -202,5 +212,121 @@ describe('脚本执行器：能力白名单与治理转发', () => {
     expect(saveRunMedia).toHaveBeenCalledWith(
       expect.objectContaining({ dataUrl: 'data:image/png;base64,Q', key: 'k', node: ctx.node })
     )
+  })
+
+  it('内置商用脚本模板全部通过参数校验，执行器将 console 日志与诊断写回节点 params', async () => {
+    expect(SCRIPT_NODE_TEMPLATES.length).toBeGreaterThanOrEqual(5)
+    for (const tpl of SCRIPT_NODE_TEMPLATES) {
+      const p = readScriptNodeParams({
+        code: tpl.code,
+        ports: tpl.ports,
+        capabilities: tpl.capabilities
+      })
+      expect(validateScriptNodeParams(p)).toEqual([])
+    }
+
+    const logSpy = vi.fn()
+    const patchSpy = vi.fn()
+    const run = createScriptRunNodeExecutor({
+      sandbox: {
+        async run() {
+          return {
+            ok: true,
+            outputs: { out: { kind: 'text', text: 'done' } },
+            logs: [{ level: 'info', message: 'step 1 ok' }]
+          }
+        }
+      }
+    })
+    const ctx = ctxWith(
+      { ports: scriptNodeDefaultParams().ports },
+      {},
+      { log: logSpy, patchNode: patchSpy }
+    )
+    await run(ctx)
+    expect(logSpy).toHaveBeenCalledWith('step 1 ok', 'info')
+    expect(patchSpy).toHaveBeenCalled()
+    const diag = readScriptRunDiagnostics(ctx.node.params as Record<string, unknown>)
+    expect(diag.logs).toEqual([{ level: 'info', message: 'step 1 ok' }])
+    expect(diag.error).toBe('')
+    expect(typeof diag.runMs).toBe('number')
+  })
+})
+
+describe('剧本生成节点（asset.screenplay）与纯文本节点（text.plain）', () => {
+  it('analyzeScreenplay 准确识别场次、人物小传与对白角色、动作段与预估时长', () => {
+    const tpl = SCREENPLAY_TEMPLATES[0]!
+    const stats = analyzeScreenplay(tpl.textZh)
+    expect(stats.sceneCount).toBe(1)
+    expect(stats.characters).toEqual(['林晚', '苏蔓', '陆景深'])
+    expect(stats.dialogueCount).toBe(3)
+    expect(stats.actionCount).toBe(4)
+    expect(stats.estimatedDurationSec).toBeGreaterThanOrEqual(15)
+  })
+
+  it('formatScreenplayText 规范化场次标题、△ 动作标记与中文对白冒号括号', () => {
+    const messy = [
+      '第 1 场:  【内景 · 咖啡馆 - 日】',
+      '▲ 林晚推门走进来。',
+      '[动作] 顾沉放下咖啡杯。',
+      '林晚(OS): 这就是他约我见面的地方？',
+      '',
+      '',
+      '顾沉: 坐吧。'
+    ].join('\n')
+    const formatted = formatScreenplayText(messy)
+    expect(formatted).toContain('第1场 【内景 · 咖啡馆 - 日】')
+    expect(formatted).toContain('△ 林晚推门走进来。')
+    expect(formatted).toContain('△ 顾沉放下咖啡杯。')
+    expect(formatted).toContain('林晚（OS）：这就是他约我见面的地方？')
+    expect(formatted).toContain('顾沉：坐吧。')
+  })
+
+  it('text.plain 仅同步透传纯文本', () => {
+    const plainNode = createNodeFromType(
+      'text.plain',
+      { x: 0, y: 0 },
+      { params: { text: '纯文本内容' } }
+    )
+    expect(plainNode.typeId).toBe('text.plain')
+    const syncOut = executePlainTextNode({
+      node: plainNode,
+      inputs: {}
+    } as unknown as NodeExecuteContext)
+    expect(syncOut).toEqual({ out: { kind: 'text', text: '纯文本内容' } })
+  })
+
+  it('executeScreenplayGenerateNode 将节点内草稿合并进提示词并调用文本模型写回 params.text', async () => {
+    const generateText = vi.fn(async () => ({
+      text: '第1场 【内景 · 拍卖厅 - 夜】\n△ 灯光亮起。\n林晚：开始吧。',
+      model: 'mock-llm'
+    }))
+    const patchNode = vi.fn()
+    const aiCtx = {
+      node: {
+        id: 's2',
+        typeId: 'asset.screenplay',
+        category: 'asset',
+        assetType: 'screenplay',
+        position: { x: 0, y: 0 },
+        params: {
+          text: '林晚在拍卖会反击苏蔓',
+          generateInstruction: '扩写为标准短剧第一场'
+        }
+      },
+      inputs: {},
+      generateText,
+      patchNode
+    } as unknown as NodeExecuteContext
+
+    const aiOut = await executeScreenplayGenerateNode(aiCtx)
+    expect(generateText).toHaveBeenCalledTimes(1)
+    const promptSent = (generateText.mock.calls[0] as unknown as [{ prompt: string }])[0].prompt
+    expect(promptSent).toContain('扩写为标准短剧第一场')
+    expect(promptSent).toContain('林晚在拍卖会反击苏蔓')
+    expect(aiOut).toMatchObject({
+      out: { kind: 'text', text: '第1场 【内景 · 拍卖厅 - 夜】\n△ 灯光亮起。\n林晚：开始吧。' }
+    })
+    expect(patchNode).toHaveBeenCalled()
   })
 })

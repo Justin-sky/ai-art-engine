@@ -9,7 +9,6 @@
     </p>
 
     <GraphNodeRunControl
-      v-if="hasInPort"
       :status="runStatus"
       :is-running="isGraphRunning"
       :blocked="blocked"
@@ -20,6 +19,19 @@
       <span class="field-label">{{ t('graph.inspector.displayName') }}</span>
       <input v-model="localTitle" @change="persistTitle" />
     </label>
+
+    <!-- 商用脚本模板 -->
+    <section class="block">
+      <div class="block-head">
+        <span class="block-title">{{ t('graph.scriptRun.templates.label') }}</span>
+      </div>
+      <select class="template-select" value="" @change="onSelectTemplate">
+        <option value="" disabled>{{ t('graph.scriptRun.templates.placeholder') }}</option>
+        <option v-for="tpl in templates" :key="tpl.id" :value="tpl.id">
+          {{ t(`graph.scriptRun.templates.${tpl.id}`) }}
+        </option>
+      </select>
+    </section>
 
     <!-- 端口声明 -->
     <section class="block">
@@ -90,6 +102,51 @@
       <CodeEditor v-model="draft.code" :extra-lib="typings" @change="persistCode" />
     </section>
 
+    <!-- 实时上游 inputs 快照 -->
+    <section class="block">
+      <details class="advanced" :open="hasConnectedInputs">
+        <summary>{{ t('graph.scriptRun.inputsPreview.title') }}</summary>
+        <pre class="inputs-pre">{{ inputsPreviewJson }}</pre>
+      </details>
+    </section>
+
+    <!-- 控制台与执行诊断 (Console) -->
+    <section class="block">
+      <div class="block-head">
+        <span class="block-title">{{ t('graph.scriptRun.console.title') }}</span>
+        <div class="block-head-right">
+          <span v-if="diagnostics.runMs != null" class="block-count">
+            {{ t('graph.scriptRun.console.duration', { ms: diagnostics.runMs }) }}
+          </span>
+          <button
+            v-if="diagnostics.logs.length || diagnostics.error"
+            type="button"
+            class="expand-btn"
+            @click="clearDiagnostics"
+          >
+            {{ t('graph.scriptRun.console.clear') }}
+          </button>
+        </div>
+      </div>
+      <div class="console-box">
+        <div v-if="diagnostics.error" class="console-error">
+          {{ diagnostics.error }}
+        </div>
+        <div
+          v-for="(entry, idx) in diagnostics.logs"
+          :key="idx"
+          class="console-line"
+          :class="`lv-${entry.level}`"
+        >
+          <span class="lv-tag">{{ entry.level.toUpperCase() }}</span>
+          <span class="lv-msg">{{ entry.message }}</span>
+        </div>
+        <div v-if="!diagnostics.error && !diagnostics.logs.length" class="console-empty">
+          {{ t('graph.scriptRun.console.empty') }}
+        </div>
+      </div>
+    </section>
+
     <!-- 资源上限 -->
     <section class="block">
       <details class="advanced">
@@ -137,7 +194,14 @@
       :title="t('graph.scriptRun.editor.title', { name: displayTitle })"
       :code="draft.code"
       :extra-lib="typings"
+      :inputs-preview="inputsPreview"
+      :diagnostics="diagnostics"
+      :can-run="!blocked"
+      :is-running="runStatus === 'running'"
       @save="onDialogSave"
+      @run="onDialogRun"
+      @apply-template="applyTemplate"
+      @clear-logs="clearDiagnostics"
       @close="codeDialogOpen = false"
     />
   </div>
@@ -150,12 +214,15 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   readScriptNodeParams,
+  readScriptRunDiagnostics,
   SCRIPT_CAPABILITIES,
   SCRIPT_MAX_CODE_CHARS,
   SCRIPT_MAX_LIMITS,
+  SCRIPT_NODE_TEMPLATES,
   type GraphNodeParams,
   type ScriptCapability,
   type ScriptNodeParams,
+  type ScriptNodeTemplate,
   type ScriptPortDecl
 } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -168,7 +235,11 @@ import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
-import { buildScriptNodeTypings } from '../features/graph/model/scriptNodeTypings'
+import {
+  buildScriptNodeTypings,
+  buildUpstreamInputsPreview,
+  scriptCodeDialogRequest
+} from '../features/graph/model/scriptNodeTypings'
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -187,14 +258,16 @@ const hostId = computed(() => {
   return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
-const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
+const { runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
 const typeLabel = computed(() => graphTypeLabel('script.run'))
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const allCapabilities = SCRIPT_CAPABILITIES
 const maxLimits = SCRIPT_MAX_LIMITS
+const templates = SCRIPT_NODE_TEMPLATES
 const localTitle = ref('')
 const codeDialogOpen = ref(false)
+let lastDialogReqSeq = scriptCodeDialogRequest.value?.seq ?? 0
 
 /** 端口数概览：N 入 · M 出（装前就能看出接线规模） */
 const portCountLabel = computed(
@@ -233,6 +306,19 @@ watch(
   { immediate: true }
 )
 
+// 画布双击 script.run 卡片时，自动打开独立大编辑窗
+watch(
+  [node, scriptCodeDialogRequest],
+  ([current, req]) => {
+    if (!current || !req || req.seq === lastDialogReqSeq) return
+    if (req.hostId === hostId.value && req.nodeId === current.id) {
+      lastDialogReqSeq = req.seq
+      codeDialogOpen.value = true
+    }
+  },
+  { immediate: true }
+)
+
 const typings = computed(() =>
   buildScriptNodeTypings({
     inputs: draft.ports.inputs,
@@ -241,10 +327,28 @@ const typings = computed(() =>
   })
 )
 
-function persist(patch: Partial<ScriptNodeParams>): void {
+const inputsPreview = computed(() => {
+  void graphEditorHosts.revision.value
+  if (!node.value || !hostId.value) return {}
+  const doc = graphEditorHosts.getDocument(hostId.value)
+  return buildUpstreamInputsPreview(doc, node.value.id, draft.ports.inputs)
+})
+
+const hasConnectedInputs = computed(() =>
+  Object.values(inputsPreview.value).some((arr) => Array.isArray(arr) && arr.length > 0)
+)
+
+const inputsPreviewJson = computed(() => JSON.stringify(inputsPreview.value, null, 2))
+
+const diagnostics = computed(() => {
+  void graphEditorHosts.revision.value
+  return readScriptRunDiagnostics(node.value?.params as Record<string, unknown> | undefined)
+})
+
+function persist(patch: Partial<GraphNodeParams>): void {
   if (!node.value) return
   const selection = editor.selection.current.value
-  graphEditorHosts.updateNode(selection.hostId, node.value.id, patch as Partial<GraphNodeParams>)
+  graphEditorHosts.updateNode(selection.hostId, node.value.id, patch)
 }
 
 function persistTitle(): void {
@@ -253,26 +357,60 @@ function persistTitle(): void {
   graphEditorHosts.updateNode(selection.hostId, node.value.id, {}, localTitle.value)
 }
 function persistCode(): void {
-  persist({ code: draft.code })
+  persist({ code: draft.code } as unknown as Partial<GraphNodeParams>)
 }
 /** 大编辑窗保存：写回草稿（同步内嵌编辑器）并落盘 */
 function onDialogSave(code: string): void {
   draft.code = code
   persistCode()
 }
+function onDialogRun(code: string): void {
+  if (draft.code !== code) {
+    draft.code = code
+    persistCode()
+  }
+  toggleRun()
+}
 function persistLimits(): void {
-  persist({ limits: { ...draft.limits } })
+  persist({ limits: { ...draft.limits } } as unknown as Partial<GraphNodeParams>)
 }
 function updatePorts(side: 'inputs' | 'outputs', ports: ScriptPortDecl[]): void {
   draft.ports = { ...draft.ports, [side]: ports }
-  persist({ ports: { ...draft.ports } })
+  persist({ ports: { ...draft.ports } } as unknown as Partial<GraphNodeParams>)
 }
 function toggleCapability(cap: ScriptCapability, on: boolean): void {
   const set = new Set(draft.capabilities)
   if (on) set.add(cap)
   else set.delete(cap)
   draft.capabilities = [...set]
-  persist({ capabilities: draft.capabilities })
+  persist({ capabilities: draft.capabilities } as unknown as Partial<GraphNodeParams>)
+}
+function applyTemplate(tpl: ScriptNodeTemplate): void {
+  draft.code = tpl.code
+  draft.ports = {
+    inputs: tpl.ports.inputs.map((p) => ({ ...p })),
+    outputs: tpl.ports.outputs.map((p) => ({ ...p }))
+  }
+  draft.capabilities = [...tpl.capabilities]
+  persist({
+    code: draft.code,
+    ports: draft.ports,
+    capabilities: draft.capabilities
+  } as unknown as Partial<GraphNodeParams>)
+}
+function onSelectTemplate(ev: Event): void {
+  const select = ev.target as HTMLSelectElement
+  const tplId = select.value
+  select.value = ''
+  const tpl = templates.find((item) => item.id === tplId)
+  if (tpl) applyTemplate(tpl)
+}
+function clearDiagnostics(): void {
+  persist({
+    scriptLastLogs: [],
+    scriptLastError: '',
+    scriptLastRunMs: undefined
+  })
 }
 </script>
 
@@ -308,6 +446,14 @@ function toggleCapability(cap: ScriptCapability, on: boolean): void {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+.template-select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input, var(--bg-panel));
+  color: var(--text);
+  font-size: 12px;
 }
 
 /* 每个区块一个顶边分隔 + 小标题行，让端口 / 能力 / 代码 / 上限各成一段，便于扫读 */
@@ -415,7 +561,78 @@ function toggleCapability(cap: ScriptCapability, on: boolean): void {
 
 .code-section {
   flex: 1 1 auto;
-  min-height: 260px;
+  min-height: 240px;
+}
+
+.inputs-pre {
+  margin: 6px 0 0;
+  padding: 6px 8px;
+  max-height: 160px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input, var(--bg-panel));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow: auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input, var(--bg-panel));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+.console-error {
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.14);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.console-line {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.lv-tag {
+  flex: none;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(148, 163, 184, 0.18);
+  color: var(--text-muted);
+}
+.lv-warn .lv-tag {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+.lv-error .lv-tag {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+.lv-msg {
+  color: var(--text);
+  white-space: pre-wrap;
+}
+.console-empty {
+  color: var(--text-muted);
+  font-family: inherit;
 }
 
 .advanced summary {

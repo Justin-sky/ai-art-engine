@@ -36,7 +36,7 @@ import {
   executeMotionAssetRefNode,
   executeNoteNode,
   executeOutputNode,
-  executePlayScriptNode,
+  executePlainTextNode,
   executeComicPageNode,
   executeHostInputSlotNode,
   executeBoundaryInputNode,
@@ -1025,7 +1025,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeBundleNode
   },
   {
-    typeId: 'play.script',
+    typeId: 'text.plain',
     category: 'note',
     label: 'Text',
     icon: '📄',
@@ -1046,7 +1046,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       textPlaceholderKey: 'graph.scriptNode.placeholder'
     },
     contributeToGeneration: false,
-    execute: executePlayScriptNode
+    execute: executePlainTextNode
   },
   {
     typeId: 'graph.input.slot',

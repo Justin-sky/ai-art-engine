@@ -198,12 +198,16 @@ export function normalizeStage2dRig(raw?: Stage2dRigInput | null): Stage2dRig {
 /**
  * 正向运动学：自根向下算出每个关节的世界变换（顺序与 joints 一致）。
  * pose 中出现的关节用其角度覆盖绑定旋转（POSE 不改写绑定值）。
+ * rootOffset 可选叠加在 rig.root 之上（用于跳跃、跑步重心起伏等根骨骼位移）。
  */
 export function computeStage2dRigTransforms(
   rig: Stage2dRig,
-  pose?: Stage2dPose | null
+  pose?: Stage2dPose | null,
+  rootOffset?: { x: number; y: number } | null
 ): Stage2dJointTransform[] {
   const s = normalizeStage2dRig(rig)
+  const rootX = s.root.x + num(rootOffset?.x, 0)
+  const rootY = s.root.y + num(rootOffset?.y, 0)
   const transforms = new Map<Stage2dJointId, Stage2dJointTransform>()
   const resolve = (joint: Stage2dJoint): Stage2dJointTransform => {
     const cached = transforms.get(joint.id)
@@ -211,7 +215,7 @@ export function computeStage2dRigTransforms(
     const parent = joint.parentId ? s.joints.find((item) => item.id === joint.parentId) : undefined
     const base: Stage2dJointTransform = parent
       ? resolve(parent)
-      : { jointId: '', x: s.root.x, y: s.root.y, rotation: 0 }
+      : { jointId: '', x: rootX, y: rootY, rotation: 0 }
     const parentRotation = base.rotation
     const local = rotate(joint.x, joint.y, parentRotation)
     const rotation = normalizeAngle(parentRotation + (pose?.[joint.id] ?? joint.rotation))
@@ -230,14 +234,17 @@ export function computeStage2dRigTransforms(
 /** 部件挂点世界变换：关节世界变换 + 挂点局部偏移（随关节旋转） */
 export function computeStage2dAttachmentTransforms(
   rig: Stage2dRig,
-  pose?: Stage2dPose | null
+  pose?: Stage2dPose | null,
+  rootOffset?: { x: number; y: number } | null
 ): Stage2dAttachmentTransform[] {
   const s = normalizeStage2dRig(rig)
-  const joints = computeStage2dRigTransforms(s, pose)
+  const rootX = s.root.x + num(rootOffset?.x, 0)
+  const rootY = s.root.y + num(rootOffset?.y, 0)
+  const joints = computeStage2dRigTransforms(s, pose, rootOffset)
   return s.attachments.map((attachment) => {
     const joint =
       joints.find((item) => item.jointId === attachment.jointId) ??
-      ({ jointId: attachment.jointId, x: s.root.x, y: s.root.y, rotation: 0 } as const)
+      ({ jointId: attachment.jointId, x: rootX, y: rootY, rotation: 0 } as const)
     const local = rotate(attachment.offsetX, attachment.offsetY, joint.rotation)
     return {
       layerId: attachment.layerId,
@@ -247,6 +254,120 @@ export function computeStage2dAttachmentTransforms(
       rotation: normalizeAngle(joint.rotation + attachment.rotation)
     }
   })
+}
+
+export interface Stage2dTwoBoneIkInput {
+  rig: Stage2dRig
+  pose?: Stage2dPose | null
+  rootOffset?: { x: number; y: number } | null
+  /** 末端关节 id（如 wristL / wristR / ankleL / ankleR） */
+  effectorJointId: Stage2dJointId
+  /** 目标世界坐标（舞台像素） */
+  targetX: number
+  targetY: number
+  /** 弯曲方向偏好（+1 或 -1）；省略时自动选择离当前中段关节最近的一侧防翻转 */
+  bendDirection?: 1 | -1
+}
+
+/**
+ * 2D 双骨解析反向运动学（Two-Bone Analytic IK）：
+ * 给定末端关节（effector，如手腕/脚踝）与目标舞台坐标 (targetX, targetY)，
+ * 自动反解其父关节（mid，如肘/膝）与祖父关节（upper，如肩/髋）的局部旋转角。
+ * 若该关节不足两级父链（如胸/头），则退化为单骨朝向指向目标。
+ */
+export function solveStage2dTwoBoneIk(input: Stage2dTwoBoneIkInput): Stage2dPose {
+  const s = normalizeStage2dRig(input.rig)
+  const nextPose: Stage2dPose = { ...(input.pose ?? {}) }
+  const byId = new Map(s.joints.map((j) => [j.id, j]))
+  const effector = byId.get(input.effectorJointId)
+  if (!effector || !effector.parentId) return nextPose
+
+  const currentTransforms = computeStage2dRigTransforms(s, nextPose, input.rootOffset)
+  const tfById = new Map(currentTransforms.map((t) => [t.jointId, t]))
+
+  const childCount = new Map<string, number>()
+  for (const j of s.joints) {
+    if (j.parentId) {
+      childCount.set(j.parentId, (childCount.get(j.parentId) ?? 0) + 1)
+    }
+  }
+
+  const mid = byId.get(effector.parentId)
+  if (!mid) return nextPose
+
+  // 单骨退化：effector 的父关节已经是根级关节，或祖父关节是多分支躯干枢纽（如 chest / pelvis）时直接单段对准目标
+  const rawUpper = mid.parentId ? byId.get(mid.parentId) : undefined
+  const upper = rawUpper && (childCount.get(rawUpper.id) ?? 0) <= 1 ? rawUpper : undefined
+  if (!upper) {
+    const midTf = tfById.get(mid.id)
+    if (!midTf) return nextPose
+    const l2 = Math.hypot(effector.x, effector.y)
+    const dx = input.targetX - midTf.x
+    const dy = input.targetY - midTf.y
+    if (l2 < 1e-4 || Math.hypot(dx, dy) < 1e-4) return nextPose
+    const restDeg = (Math.atan2(effector.y, effector.x) * 180) / Math.PI
+    const targetDeg = (Math.atan2(dy, dx) * 180) / Math.PI
+    const parentRot = mid.parentId ? (tfById.get(mid.parentId)?.rotation ?? 0) : 0
+    nextPose[mid.id] = normalizeAngle(targetDeg - restDeg - parentRot)
+    return nextPose
+  }
+
+  const upperTf = tfById.get(upper.id)
+  const curMidTf = tfById.get(mid.id)
+  if (!upperTf || !curMidTf) return nextPose
+
+  const l1 = Math.hypot(mid.x, mid.y)
+  const l2 = Math.hypot(effector.x, effector.y)
+  const dx = input.targetX - upperTf.x
+  const dy = input.targetY - upperTf.y
+  const dist = Math.hypot(dx, dy)
+  if (l1 < 1e-4 || l2 < 1e-4 || dist < 1e-4) return nextPose
+
+  const alpha1 = (Math.atan2(mid.y, mid.x) * 180) / Math.PI
+  const alpha2 = (Math.atan2(effector.y, effector.x) * 180) / Math.PI
+  const phi = (Math.atan2(dy, dx) * 180) / Math.PI
+  const upperParentRot = upper.parentId ? (tfById.get(upper.parentId)?.rotation ?? 0) : 0
+
+  const clampedDist = clamp(dist, Math.abs(l1 - l2) + 1e-4, l1 + l2 - 1e-4)
+  const cosBeta1 = clamp(
+    (l1 * l1 + clampedDist * clampedDist - l2 * l2) / (2 * l1 * clampedDist),
+    -1,
+    1
+  )
+  const beta1 = (Math.acos(cosBeta1) * 180) / Math.PI
+
+  // 决定弯曲侧（+1 或 -1）：未显式指定时选择使 mid 关节世界坐标更贴近当前位置的一侧
+  let sign: 1 | -1 = input.bendDirection ?? 1
+  if (!input.bendDirection) {
+    const rotPlus = phi + beta1 - alpha1
+    const midPlus = rotate(mid.x, mid.y, rotPlus)
+    const dPlus = Math.hypot(upperTf.x + midPlus.x - curMidTf.x, upperTf.y + midPlus.y - curMidTf.y)
+
+    const rotMinus = phi - beta1 - alpha1
+    const midMinus = rotate(mid.x, mid.y, rotMinus)
+    const dMinus = Math.hypot(
+      upperTf.x + midMinus.x - curMidTf.x,
+      upperTf.y + midMinus.y - curMidTf.y
+    )
+    sign = dMinus < dPlus ? -1 : 1
+  }
+
+  const upperWorldRot = phi + sign * beta1 - alpha1
+  const solvedMidOffset = rotate(mid.x, mid.y, upperWorldRot)
+  const solvedMidX = upperTf.x + solvedMidOffset.x
+  const solvedMidY = upperTf.y + solvedMidOffset.y
+
+  const toTargetDx = input.targetX - solvedMidX
+  const toTargetDy = input.targetY - solvedMidY
+  const bcWorldDeg =
+    Math.hypot(toTargetDx, toTargetDy) > 1e-4
+      ? (Math.atan2(toTargetDy, toTargetDx) * 180) / Math.PI
+      : phi
+  const midWorldRot = bcWorldDeg - alpha2
+
+  nextPose[upper.id] = normalizeAngle(upperWorldRot - upperParentRot)
+  nextPose[mid.id] = normalizeAngle(midWorldRot - upperWorldRot)
+  return nextPose
 }
 
 /** 新建关节（绑定姿势）：只做字段归一化，parentId 是否合法由 rig 装配时校验 */

@@ -11,6 +11,8 @@ import {
   extractFaceSemanticRegions,
   parseCubeLut,
   pointInPolygon,
+  polygonFeatherWeight,
+  renderIdPhotoSingleRgba,
   sampleLiquifySourceCoord
 } from '../src/shared/graph'
 
@@ -117,7 +119,7 @@ describe('commercial portrait specialties & live computational engine', () => {
     expect(buildPortraitAiPrompt('relight3d', '')).toContain('影棚级立体补光')
   })
 
-  it('extracts 68-point facial semantic regions and tests polygon containment', () => {
+  it('extracts 68-point facial semantic regions and tests polygon containment & C1 feathering', () => {
     const landmarks = makeCanonical68Landmarks()
     const regions = extractFaceSemanticRegions(landmarks)
     expect(regions).not.toBeNull()
@@ -132,6 +134,22 @@ describe('commercial portrait specialties & live computational engine', () => {
     expect(pointInPolygon(0.05, 0.05, regions!.faceSkinOutline)).toBe(false)
     // 口腔中心在内唇多边形内
     expect(pointInPolygon(0.5, 0.58, regions!.innerMouth)).toBe(true)
+
+    // 验证多边形 C1 平滑羽化权重：中心为 1，外部远处为 0，边界过渡带在 (0, 1) 之间连续单调
+    const square: Array<[number, number]> = [
+      [0.3, 0.3],
+      [0.7, 0.3],
+      [0.7, 0.7],
+      [0.3, 0.7]
+    ]
+    expect(polygonFeatherWeight(0.5, 0.5, square, 0.05)).toBe(1)
+    expect(polygonFeatherWeight(0.1, 0.1, square, 0.05)).toBe(0)
+    const onEdge = polygonFeatherWeight(0.3, 0.5, square, 0.05)
+    const slightIn = polygonFeatherWeight(0.32, 0.5, square, 0.05)
+    const slightOut = polygonFeatherWeight(0.28, 0.5, square, 0.05)
+    expect(onEdge).toBeCloseTo(0.5, 2)
+    expect(slightIn).toBeGreaterThan(onEdge)
+    expect(slightOut).toBeLessThan(onEdge)
   })
 
   it('computes 68-point MLS liquify control vectors and interactive brush warps', () => {
@@ -233,5 +251,47 @@ describe('commercial portrait specialties & live computational engine', () => {
     // 中心瑕疵点被周围健康肤色修复并提亮，R 通道显著高于原始暗斑 90
     const centerIdx = (16 * width + 16) * 4
     expect(res.pixels[centerIdx]!).toBeGreaterThan(170)
+  })
+
+  it('supports personMaskAlpha neural segmentation mask and edge defringe in renderIdPhotoSingleRgba', () => {
+    const width = 32
+    const height = 32
+    const src = new Uint8ClampedArray(width * height * 4)
+    const personMask = new Uint8ClampedArray(width * height)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = (y * width + x) * 4
+        const inPerson = x >= 8 && x <= 24 && y >= 6
+        // 原图背景为浅绿色摄影棚背景，人物中心为暖肤色
+        src[idx] = inPerson ? 210 : 120
+        src[idx + 1] = inPerson ? 170 : 200
+        src[idx + 2] = inPerson ? 150 : 130
+        src[idx + 3] = 255
+        personMask[y * width + x] = inPerson ? 255 : 0
+      }
+    }
+    const single = renderIdPhotoSingleRgba(
+      src,
+      width,
+      height,
+      {
+        state: {
+          ...defaultPortraitRetouch(),
+          idPhotoSpecId: 'oneInch',
+          idPhotoBg: 'blue'
+        },
+        landmarks: makeCanonical68Landmarks()
+      },
+      {
+        dpi: 72,
+        replaceBackdrop: true,
+        personMaskAlpha: personMask
+      }
+    )
+    expect(single).not.toBeNull()
+    // 顶部背景角点应被替换为标准证件照蓝底 [67, 142, 219]
+    expect(single!.pixels[0]).toBe(67)
+    expect(single!.pixels[1]).toBe(142)
+    expect(single!.pixels[2]).toBe(219)
   })
 })

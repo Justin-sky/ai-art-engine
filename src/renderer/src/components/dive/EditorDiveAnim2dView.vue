@@ -496,7 +496,7 @@ import {
   type AnimPlayMode,
   type AnimStabilizeMode
 } from '@shared/graph'
-import { buildSpriteManifest } from '@shared/gameAssets'
+import { buildEngineSpriteSheetJson, buildSpriteManifest } from '@shared/gameAssets'
 import { resolveCacheOutputRoot } from '@shared/domain'
 import SaveAssetDialog from '../SaveAssetDialog.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
@@ -946,22 +946,40 @@ async function onSaveConfirm(payload: { name: string; folderId: string | null })
     })
     if (saveMode.value === 'sheet' && sheetInfo && asset.relativePath) {
       const anchorMode = stabilize.value === 'center' ? 'center' : 'ground'
+      const imageFileName = asset.relativePath.split('/').pop() || `${payload.name}.png`
+      const frameNames = activeCells.value.map((cell, idx) => `${payload.name}-${cell.key || idx}`)
       const manifest = buildSpriteManifest({
         canvasWidth: sheetInfo.frameWidth,
         canvasHeight: sheetInfo.frameHeight,
         anchor: anchorMode,
-        sprites: activeCells.value.map((cell, idx) => ({
-          name: `${payload.name}-${cell.key || idx}`,
-          fileName: asset.relativePath.split('/').pop() || `${payload.name}.png`,
+        sprites: frameNames.map((name) => ({
+          name,
+          fileName: imageFileName,
           width: sheetInfo.frameWidth,
           height: sheetInfo.frameHeight
         }))
       })
+      const engineAtlas = buildEngineSpriteSheetJson({
+        imageFileName,
+        frameWidth: sheetInfo.frameWidth,
+        frameHeight: sheetInfo.frameHeight,
+        frameNames,
+        columns: sheetInfo.columns,
+        fps: fps.value,
+        anchor: anchorMode,
+        playMode: playMode.value,
+        tagName: payload.name
+      })
       const manifestPath = asset.relativePath.replace(/\.png$/i, '.manifest.json')
+      const atlasPath = asset.relativePath.replace(/\.png$/i, '.atlas.json')
       try {
         await window.studio.writeProjectFile({
           relativePath: manifestPath,
           content: JSON.stringify(manifest, null, 2)
+        })
+        await window.studio.writeProjectFile({
+          relativePath: atlasPath,
+          content: JSON.stringify(engineAtlas, null, 2)
         })
       } catch {
         /* ignore */

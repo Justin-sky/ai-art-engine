@@ -12,7 +12,7 @@ function buildSampleGraph(): {
   const plan: GraphPlan = {
     title: 'sample',
     nodes: [
-      { key: 'script', typeId: 'play.script', title: '剧本' },
+      { key: 'script', typeId: 'text.plain', title: '剧本' },
       { key: 'img', typeId: 'asset.image', title: '分镜图' },
       { key: 'vid', typeId: 'asset.video', title: '视频' }
     ],

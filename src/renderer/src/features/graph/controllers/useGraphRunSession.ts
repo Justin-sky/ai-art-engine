@@ -59,6 +59,7 @@ import { composeImageLayerStack, decomposeImageUiLayers } from '../model/compose
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import {
   composePortraitIdPhoto,
+  composePortraitLiveRetouch,
   composePortraitScopedRetouch,
   detectPortraitFaces,
   fitPortraitToSourceSize,
@@ -1667,6 +1668,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inspectImageSize,
         fitPortraitToSourceSize,
         flattenPortraitBackground,
+        composePortraitLiveRetouch,
         inspectModelSkeleton,
         runBlenderDshJob: (input) => runBlenderDshJob({ ...input, logRunId: run.runId }),
         buildGamePlayProject: buildGamePlayProjectForNode,

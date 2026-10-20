@@ -9,21 +9,6 @@
           <span class="muted">{{ project.config?.name }}</span>
           <span class="path" :title="project.rootPath ?? ''">{{ shortPath }}</span>
         </div>
-        <nav class="topbar-actions">
-          <!--
-            插件市场属于「应用级」入口（装工作流/技能/扩展），不依赖当前工程，放在顶栏右侧；
-            设置入口已移至左侧工具栏（WorkspaceToolbar）最下方齿轮按钮。
-          -->
-          <button
-            type="button"
-            class="topbar-btn"
-            :title="t('marketplace.open')"
-            :aria-label="t('marketplace.open')"
-            @click="openMarketplace"
-          >
-            {{ t('marketplace.open') }}
-          </button>
-        </nav>
       </header>
       <main class="content">
         <!-- 设置打开时仍保留主界面，半透明遮罩才能透出后面内容 -->
@@ -60,7 +45,6 @@ import { useWorkspaceStore } from './stores/workspace'
 import { useMcpActivitiesStore } from './stores/mcpActivities'
 import { registerMcpTaskRunner } from './features/mcp/mcpTaskRunner'
 import { registerMcpRenderJobRunner } from './features/mcp/renderJobHandlers'
-import { useStudioI18n } from './composables/useStudioI18n'
 import HomeView from './views/HomeView.vue'
 import StudioView from './views/StudioView.vue'
 import SettingsView from './views/SettingsView.vue'
@@ -82,7 +66,6 @@ import { applyEditorPreferences } from './editor/preferences'
 import { invalidateGenerateModelSettingsCache } from './features/graph/model/generateModelOptions'
 import { diveEditorHistory } from './features/graph/ui/diveEditorHistory'
 
-const { t } = useStudioI18n()
 const route = useRoute()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
@@ -114,16 +97,6 @@ const shortPath = computed(() => {
   if (!p) return ''
   return p.length > 48 ? '…' + p.slice(-46) : p
 })
-
-/**
- * 打开插件市场窗口（MCP / 技能 / 工作流 / 扩展）。
- *
- * 走主进程建窗而不是 `window.open`：主进程侧能保证单例（重复点只聚焦，不叠加），
- * 也能让新窗口自动套用同一套窗口外观（`browser-window-created` 统一处理）。
- */
-function openMarketplace(): void {
-  void window.studio.openMarketplaceWindow()
-}
 
 function onEditorShortcut(event: KeyboardEvent): void {
   if (event.defaultPrevented) return
@@ -266,20 +239,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.topbar-actions {
-  display: flex;
-  gap: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.topbar-btn {
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .content {

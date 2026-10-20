@@ -684,7 +684,7 @@ describe('工作流卡：专业能力徽章、节点管线与场景标签检索'
   it('deriveWorkflowCapabilityKeys 按 requires.nodeTypes 派生对应能力 i18n 键', () => {
     expect(
       deriveWorkflowCapabilityKeys([
-        'play.script',
+        'text.plain',
         'svg.gen',
         'svg.anim',
         'asset.voice',
@@ -708,7 +708,7 @@ describe('工作流卡：专业能力徽章、节点管线与场景标签检索'
             title: '科普动画全流程',
             tags: ['科普动画', 'SVG原理动效', '成片时间线'],
             requires: {
-              nodeTypes: ['play.script', 'svg.gen', 'svg.anim', 'asset.voice', 'output.timeline']
+              nodeTypes: ['text.plain', 'svg.gen', 'svg.anim', 'asset.voice', 'output.timeline']
             }
           })
         ]

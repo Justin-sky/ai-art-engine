@@ -959,4 +959,121 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
       expect(run.generateCalls[0]!.prompt).toContain('背景')
     })
   })
+
+  describe('混合管线与纯本地确定性计算摄影执行（推拉液化 / 祛斑修复 / 3D LUT / local-live-engine）', () => {
+    const SAMPLE_CUBE_LUT = [
+      'TITLE "CinemaWarm"',
+      'LUT_3D_SIZE 2',
+      '0 0 0',
+      '1 0 0',
+      '0 1 0',
+      '1 1 0',
+      '0 0 1',
+      '1 0 1',
+      '0 1 1',
+      '0.95 0.9 0.85'
+    ].join('\n')
+
+    it('混合模式：视口绘制的手动液化笔触与祛斑点在调用 AI 模型前预烘焙，自定义 .cube 3D LUT 在回贴后确定性套用', async () => {
+      const run = buildStub()
+      const liveCalls: Array<{ sourceDataUrl: string; steps: string[] }> = []
+      const { result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: retouchWithClause(),
+          portraitLiquifyStrokes: [
+            {
+              id: 's1',
+              mode: 'push',
+              from: [0.45, 0.5],
+              to: [0.48, 0.5],
+              radius: 0.08,
+              strength: 0.7
+            }
+          ],
+          portraitSpotHeals: [{ id: 'h1', x: 0.5, y: 0.45, radius: 0.02 }],
+          portraitCustomLut: SAMPLE_CUBE_LUT
+        },
+        {
+          composePortraitLiveRetouch: async (input: {
+            sourceDataUrl: string
+            liveInput: {
+              liquifyStrokes?: unknown[]
+              spotHeals?: unknown[]
+              customLut?: { name: string } | null
+            }
+          }) => {
+            const steps: string[] = []
+            if (input.liveInput.liquifyStrokes?.length) steps.push('liquifyWarp')
+            if (input.liveInput.spotHeals?.length) steps.push('spotHeal')
+            if (input.liveInput.customLut)
+              steps.push(`customCubeLut:${input.liveInput.customLut.name}`)
+            liveCalls.push({ sourceDataUrl: input.sourceDataUrl, steps })
+            return {
+              dataUrl: `${input.sourceDataUrl}#${steps.join('+')}`,
+              width: 1200,
+              height: 1600,
+              appliedSteps: steps,
+              hasAdjustments: steps.length > 0
+            }
+          }
+        }
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      // 第 1 次调用：AI 生成前预烘焙液化笔触与祛斑点；第 2 次调用：AI 生成后套用 .cube 3D LUT
+      expect(liveCalls).toHaveLength(2)
+      expect(liveCalls[0]!.steps).toEqual(['liquifyWarp', 'spotHeal'])
+      expect(run.generateCalls[0]!.inputReferences).toEqual([`${SOURCE_URL}#liquifyWarp+spotHeal`])
+      expect(liveCalls[1]!.steps).toEqual(['customCubeLut:CinemaWarm'])
+      expect(run.saved[0]!.dataUrl).toContain('#customCubeLut:CinemaWarm')
+    })
+
+    it('纯本地模式：仅涂抹祛斑/推拉液化或选定 local-live-engine 时，0 Token 走本地确定性管线且不报空提示词错误', async () => {
+      const run = buildStub()
+      const { node, result } = await runPortrait(
+        run,
+        {
+          portraitSpotHeals: [{ id: 'h1', x: 0.52, y: 0.48, radius: 0.025 }]
+        },
+        {
+          composePortraitLiveRetouch: async (input: { sourceDataUrl: string }) => ({
+            dataUrl: `${input.sourceDataUrl}#localHealed`,
+            width: 1200,
+            height: 1600,
+            appliedSteps: ['spotHeal'],
+            hasAdjustments: true
+          })
+        }
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls).toHaveLength(0)
+      expect(run.saved[0]!.dataUrl).toContain('#localHealed')
+      expect(node.params.portraitPrompt).toBe('[local-live-engine] spotHeal')
+    })
+
+    it('WebP 格式支持：接受 image/webp 输入并按 exportFormat=webp 将导出编码格式传给回贴与尺寸适配能力缝', async () => {
+      const run = buildStub()
+      const webpInput =
+        'data:image/webp;base64,UklGRh4AAABXRUJQVlA4TBEAAAAvAAAAAAfQ//73v/+BiOh/AAA='
+      const { result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: retouchWithClause({
+            exportFormat: 'webp',
+            outputSize: 'auto'
+          })
+        },
+        {
+          resolveImageUrls: async () => [webpInput]
+        }
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls[0]!.inputReferences).toEqual([webpInput])
+      expect(run.fitCalls).toHaveLength(1)
+      expect((run.fitCalls[0] as unknown as { format?: string }).format).toBe('webp')
+    })
+  })
 })

@@ -59,7 +59,7 @@ export function apply(ctx: Context): void {
   ctx.editor.graphPolicy(GRAPH_DEMO_EXTENSION_ID, {
     scopes: {
       [GRAPH_DEMO_SCOPE_ID]: {
-        addableNodeTypes: [GRAPH_DEMO_NODE_TYPE_ID, 'note.text', 'play.script']
+        addableNodeTypes: [GRAPH_DEMO_NODE_TYPE_ID, 'note.text', 'text.plain']
       },
       workflow: {
         addableNodeTypes: [GRAPH_DEMO_NODE_TYPE_ID]

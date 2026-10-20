@@ -26,7 +26,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.sfx',
   'asset.music',
   'note.text',
-  'play.script',
+  'text.plain',
   'image.adVariants',
   'image.align',
   'image.emotion',

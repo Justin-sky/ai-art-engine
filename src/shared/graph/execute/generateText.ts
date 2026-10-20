@@ -72,9 +72,20 @@ export async function executeScreenplayGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
+  const localDraft = normalizeLocalScreenplayText(node.params.text)
+  const draftIsPreviousOutput = (node.params.generatedTexts ?? []).some(
+    (item) => (item.text ?? '').trim() === localDraft
+  )
+
   let prompt = buildScreenplayPrompt(instruction, ctx.locale)
   if (incomingText) {
     prompt = `${prompt.trim()}\n\n${incomingText}`
+  }
+  if (localDraft && !draftIsPreviousOutput) {
+    const lead = (ctx.locale ?? '').toLowerCase().startsWith('en')
+      ? 'Existing screenplay draft to expand / refine / continue:'
+      : '当前已有剧本底稿（请在此基础上按上述指令创作、扩写或润色，保持标准影视剧本格式）：' // cjk-ok
+    prompt = `${prompt.trim()}\n\n${lead}\n\n${localDraft}`
   }
 
   const result = await ctx.generateText({

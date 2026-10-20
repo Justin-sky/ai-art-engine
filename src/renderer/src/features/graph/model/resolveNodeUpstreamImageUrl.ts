@@ -28,7 +28,7 @@ function pickFromRunOut(runOut: GraphValue | undefined, assets: AssetInfo[]): Pr
     }
     if (runOut.kind === 'asset' && runOut.assetType === 'image' && runOut.assetId) {
       const asset = assets.find((item) => item.id === runOut.assetId)
-      return resolveRel(asset?.thumbnailPath || asset?.relativePath)
+      return (await resolveRel(asset?.thumbnailPath)) || (await resolveRel(asset?.relativePath))
     }
     return ''
   })()
@@ -74,7 +74,8 @@ export async function resolveNodeUpstreamImageUrl(input: {
 
     if (source.assetType === 'image' && source.assetId) {
       const asset = assets.find((item) => item.id === source.assetId)
-      const url = await resolveRel(asset?.thumbnailPath || asset?.relativePath)
+      const url =
+        (await resolveRel(asset?.thumbnailPath)) || (await resolveRel(asset?.relativePath))
       if (url) return url
     }
 

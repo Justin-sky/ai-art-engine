@@ -305,7 +305,7 @@
           <h3>2.1 一条短剧是怎么跑出来的</h3>
           <p>理解了上面的概念，就能看懂短剧 / 影视流水线的完整闭环数据流：</p>
           <ol>
-            <li><strong>剧本</strong>（<code>play.script</code>）→ 连入<strong>影视工作台</strong>（<code>film.workbench</code>）。</li>
+            <li><strong>剧本</strong>（<code>text.plain</code>）→ 连入<strong>影视工作台</strong>（<code>film.workbench</code>）。</li>
             <li><strong>① 分镜拆解</strong>：文本模型按剧情自动拆出结构化镜头列表（景别、运镜、单镜时长、台词、画面与动态提示词，镜头数随剧情决定）与角色 / 场景 / 道具实体表。</li>
             <li><strong>② 导演审核</strong>：AI 导演对照剧本逐镜审查，不通过的镜头自动重写修订并复审（已锁定的镜头不改写）。</li>
             <li><strong>③ 角色场景设定</strong>：按实体表批量生成角色定妆与场景环境<strong>设定锚点图</strong>（支持单卡独立重画与指纹缓存）。</li>

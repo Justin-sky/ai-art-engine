@@ -57,7 +57,7 @@ export * from './mediaReview'
 export * from './mediaRework'
 export {
   executeNoteNode,
-  executePlayScriptNode,
+  executePlainTextNode,
   executeHostInputSlotNode,
   executeBoundaryInputNode,
   executeBoundaryOutputNode

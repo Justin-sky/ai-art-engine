@@ -229,6 +229,116 @@
       </div>
     </section>
 
+    <!-- 剧本生成节点（asset.screenplay）专属：AI 创作指令 + 实时结构统计 + 识别角色胶囊 + 排版与样板工作台 + 剧本正文编辑 -->
+    <section v-if="isScreenplay" class="screenplay-studio">
+      <div class="ai-assistant-box">
+        <div class="ai-head">
+          <span class="ai-title">{{ t('graph.scriptNode.aiAssistant.title') }}</span>
+        </div>
+        <div class="ai-presets">
+          <button
+            v-for="preset in screenplayAiPresets"
+            :key="preset.key"
+            type="button"
+            class="preset-chip"
+            @click="applyScreenplayAiPreset(preset.label)"
+          >
+            {{ preset.label }}
+          </button>
+        </div>
+        <ExpandableTextarea
+          :key="`${node.id}-sp-inst`"
+          v-model="instruction"
+          :title="t('graph.scriptNode.aiAssistant.title')"
+          :rows="3"
+          :placeholder="t('graph.scriptNode.aiAssistant.placeholder')"
+          @change="persistGenerateConfig"
+        />
+      </div>
+
+      <div class="screenplay-telemetry">
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.scenes', { n: screenplayAnalysis.sceneCount })
+        }}</span>
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.characters', {
+            n: screenplayAnalysis.characters.length
+          })
+        }}</span>
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.dialogues', { n: screenplayAnalysis.dialogueCount })
+        }}</span>
+        <span class="stat-pill">{{
+          t('graph.scriptNode.telemetry.actions', { n: screenplayAnalysis.actionCount })
+        }}</span>
+        <span v-if="screenplayAnalysis.estimatedDurationSec > 0" class="stat-pill stat-accent">{{
+          t('graph.scriptNode.telemetry.duration', {
+            s: screenplayAnalysis.estimatedDurationSec
+          })
+        }}</span>
+      </div>
+
+      <div v-if="screenplayAnalysis.characters.length" class="cast-bar">
+        <span class="cast-label">{{ t('graph.scriptNode.characterList') }}</span>
+        <div class="cast-chips">
+          <button
+            v-for="name in screenplayAnalysis.characters"
+            :key="name"
+            type="button"
+            class="cast-chip"
+            @click="insertSpeakerLine(name)"
+          >
+            {{ name }}
+          </button>
+        </div>
+      </div>
+
+      <div class="screenplay-toolbar">
+        <select class="tpl-select" value="" @change="onSelectScreenplayTemplate">
+          <option value="" disabled>
+            {{ t('graph.scriptNode.toolbar.templatePlaceholder') }}
+          </option>
+          <option v-for="tpl in screenplayTemplates" :key="tpl.id" :value="tpl.id">
+            {{ t(`graph.scriptNode.templates.${tpl.id}`) }}
+          </option>
+        </select>
+
+        <div class="tool-btns">
+          <button type="button" class="tool-chip" @click="insertNextScene">
+            {{ t('graph.scriptNode.toolbar.addScene') }}
+          </button>
+          <button type="button" class="tool-chip" @click="insertCharacterBio">
+            {{ t('graph.scriptNode.toolbar.addBio') }}
+          </button>
+          <button type="button" class="tool-chip" @click="insertActionBeat">
+            {{ t('graph.scriptNode.toolbar.addAction') }}
+          </button>
+          <button type="button" class="tool-chip" @click="insertVoiceover">
+            {{ t('graph.scriptNode.toolbar.addVo') }}
+          </button>
+          <button type="button" class="tool-chip tool-chip-accent" @click="formatScreenplay">
+            {{
+              screenplayFormatFlash
+                ? t('graph.scriptNode.toolbar.formatDone')
+                : t('graph.scriptNode.toolbar.format')
+            }}
+          </button>
+        </div>
+      </div>
+
+      <label>
+        {{ t('graph.inspector.note.body') }}
+        <ExpandableTextarea
+          :key="`${node.id}-sp-body`"
+          v-model="localText"
+          :title="t('graph.inspector.note.body')"
+          :rows="11"
+          :placeholder="t('graph.scriptNode.placeholder')"
+          @change="persistScreenplayBody"
+        />
+      </label>
+    </section>
+
     <section
       v-if="isScreenplay"
       class="generated-texts"
@@ -546,7 +656,8 @@
       :open="textNotepadOpen"
       :title="textNotepadTitle"
       :text="textNotepadBody"
-      :editable="false"
+      :editable="isScreenplay"
+      @save="onSaveNotepadText"
       @close="textNotepadOpen = false"
     />
     <SaveAssetDialog
@@ -644,6 +755,10 @@ import {
   type VoiceProfile
 } from '@shared/voiceProfiles'
 import {
+  analyzeScreenplay,
+  buildCharacterBioSnippet,
+  buildNextSceneSnippet,
+  buildVoiceoverSnippet,
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_EN,
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
   DEFAULT_GAME_SYSTEM_USER_PROMPT_EN,
@@ -659,6 +774,7 @@ import {
   defaultImageSystemPrompt,
   defaultScreenplaySystemPrompt,
   defaultVideoSystemPrompt,
+  formatScreenplayText,
   imageGenerateParamsToNodePatch,
   isProcessingAssetNode,
   readImageGenerateParamsFromNode,
@@ -668,6 +784,7 @@ import {
   resolveNodeType,
   resolveScreenplaySystemPrompt,
   resolveVideoSystemPrompt,
+  SCREENPLAY_TEMPLATES,
   videoGenerateParamsToNodePatch,
   type ImageGenerateParams,
   type VideoGenerateParams
@@ -1215,6 +1332,120 @@ onBeforeUnmount(() => {
   resolveGeneratedTextToken += 1
 })
 
+const screenplayTemplates = SCREENPLAY_TEMPLATES
+const screenplayFormatFlash = ref(false)
+const editingTextId = ref<string | null>(null)
+
+const screenplayAnalysis = computed(() =>
+  analyzeScreenplay(isScreenplay.value ? localText.value : '')
+)
+
+const screenplayAiPresets = computed(() => [
+  { key: 'expand', label: t('graph.scriptNode.aiAssistant.presetExpand') },
+  { key: 'conflict', label: t('graph.scriptNode.aiAssistant.presetConflict') },
+  { key: 'format', label: t('graph.scriptNode.aiAssistant.presetFormat') },
+  { key: 'continue', label: t('graph.scriptNode.aiAssistant.presetContinue') }
+])
+
+function applyScreenplayAiPreset(text: string): void {
+  instruction.value = text
+  persistGenerateConfig()
+}
+
+function persistScreenplayBody(): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid || !isScreenplay.value) return
+  const nextText = localText.value
+  const list = [...(current.params.generatedTexts ?? [])]
+  const selectedId = current.params.selectedTextId?.trim() || list[list.length - 1]?.id || ''
+  if (list.length > 0 && selectedId) {
+    const idx = list.findIndex((item) => item.id === selectedId)
+    if (idx >= 0) {
+      list[idx] = { ...list[idx]!, text: nextText }
+    }
+    syncRunOutputsAfterGeneratedTextsChange(list, selectedId)
+    graphEditorHosts.updateNode(hid, current.id, {
+      text: nextText,
+      generatedTexts: list
+    })
+  } else {
+    const host = graphRunHosts.get(hid)
+    if (host) {
+      const prev = host.runStates[current.id] ?? { status: 'done' as const }
+      host.runStates[current.id] = {
+        ...prev,
+        status: prev.status === 'idle' ? 'done' : prev.status,
+        outputs: {
+          ...(prev.outputs ?? {}),
+          out: { kind: 'text', text: nextText }
+        }
+      }
+    }
+    graphEditorHosts.updateNode(hid, current.id, { text: nextText })
+  }
+  graphEditorHosts.bumpRevision()
+}
+
+function appendScreenplaySnippet(snippet: string): void {
+  const base = localText.value.trim()
+  const isPlaceholder = !base || base === '…'
+  localText.value = isPlaceholder
+    ? snippet.trimStart()
+    : `${localText.value.trimEnd()}\n\n${snippet.trimStart()}`
+  persistScreenplayBody()
+}
+
+function insertNextScene(): void {
+  appendScreenplaySnippet(buildNextSceneSnippet(localText.value, String(locale.value)))
+}
+
+function insertCharacterBio(): void {
+  appendScreenplaySnippet(buildCharacterBioSnippet(String(locale.value)))
+}
+
+function insertActionBeat(): void {
+  const isEn = String(locale.value).toLowerCase().startsWith('en')
+  appendScreenplaySnippet(
+    isEn ? '△ [Character / camera action beat]' : '△ 【人物动作 / 镜头画面描写】' // cjk-ok
+  )
+}
+
+function insertVoiceover(): void {
+  appendScreenplaySnippet(
+    buildVoiceoverSnippet(screenplayAnalysis.value.characters[0], String(locale.value))
+  )
+}
+
+function insertSpeakerLine(name: string): void {
+  const isEn = String(locale.value).toLowerCase().startsWith('en')
+  appendScreenplaySnippet(
+    isEn ? `${name}: (emotion) [Dialogue line]` : `${name}：（情绪）[台词内容]` // cjk-ok
+  )
+}
+
+function onSelectScreenplayTemplate(event: Event): void {
+  const select = event.target as HTMLSelectElement
+  const tplId = select.value
+  select.value = ''
+  if (!tplId) return
+  const tpl = screenplayTemplates.find((item) => item.id === tplId)
+  if (!tpl) return
+  const isEn = String(locale.value).toLowerCase().startsWith('en')
+  localText.value = isEn ? tpl.textEn : tpl.textZh
+  persistScreenplayBody()
+}
+
+function formatScreenplay(): void {
+  if (!localText.value.trim()) return
+  localText.value = formatScreenplayText(localText.value)
+  persistScreenplayBody()
+  screenplayFormatFlash.value = true
+  setTimeout(() => {
+    screenplayFormatFlash.value = false
+  }, 1400)
+}
+
 function isSelectedText(key: string): boolean {
   const current = node.value
   if (!current) return false
@@ -1225,17 +1456,20 @@ function isSelectedText(key: string): boolean {
   return Boolean(last && (last.id || '') === key)
 }
 
-function selectGeneratedText(key: string): void {
+async function selectGeneratedText(key: string): Promise<void> {
   const current = node.value
   const hid = hostId.value
   if (!current || !hid) return
   const list = generatedTexts.value
   const item = list.find((entry, i) => (entry.id || `index:${i}`) === key)
   if (!item?.id) return
+  const body = (await loadGeneratedTextBody(item)).trim()
+  const nextText = body || item.text?.trim() || current.params.text || ''
+  localText.value = nextText === '…' ? '' : nextText
   syncRunOutputsAfterGeneratedTextsChange(list, item.id)
   graphEditorHosts.updateNode(hid, current.id, {
     selectedTextId: item.id,
-    text: item.text?.trim() ? item.text : current.params.text
+    text: nextText
   })
   graphEditorHosts.bumpRevision()
 }
@@ -1314,9 +1548,36 @@ async function openGeneratedText(key: string): Promise<void> {
   const item = index >= 0 ? list[index] : undefined
   if (!item) return
   const body = await loadGeneratedTextBody(item)
+  editingTextId.value = item.id || null
   textNotepadTitle.value = t('graph.inspector.generate.generatedTexts')
   textNotepadBody.value = body
   textNotepadOpen.value = true
+}
+
+function onSaveNotepadText(nextText: string): void {
+  textNotepadBody.value = nextText
+  localText.value = nextText
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid || !isScreenplay.value) return
+  const targetId = editingTextId.value || current.params.selectedTextId?.trim() || ''
+  const list = [...(current.params.generatedTexts ?? [])]
+  if (list.length > 0 && targetId) {
+    const idx = list.findIndex((item) => item.id === targetId)
+    if (idx >= 0) {
+      list[idx] = { ...list[idx]!, text: nextText }
+    }
+    syncRunOutputsAfterGeneratedTextsChange(list, targetId)
+    graphEditorHosts.updateNode(hid, current.id, {
+      selectedTextId: targetId,
+      text: nextText,
+      generatedTexts: list
+    })
+  } else {
+    persistScreenplayBody()
+    return
+  }
+  graphEditorHosts.bumpRevision()
 }
 
 const generatedVoices = computed((): StoredGeneratedVoice[] => {
@@ -1722,7 +1983,8 @@ watch(
     localLabel.value = current.params.label ?? ''
     localWeight.value = current.params.weight ?? 0.85
     localNotes.value = current.params.notes ?? ''
-    localText.value = current.params.text ?? ''
+    const rawText = current.params.text ?? ''
+    localText.value = current.assetType === 'screenplay' && rawText.trim() === '…' ? '' : rawText
     volume.value = current.params.volume ?? 1
     muted.value = current.params.muted === true
     loop.value = current.params.loop === true
@@ -1761,8 +2023,10 @@ watch(
 watch(
   () => node.value?.params.text,
   (text) => {
-    if (text !== undefined && text !== localText.value) {
-      localText.value = text
+    if (text === undefined) return
+    const next = isScreenplay.value && text.trim() === '…' ? '' : text
+    if (next !== localText.value) {
+      localText.value = next
     }
   }
 )
@@ -2634,5 +2898,162 @@ textarea,
 .shot-delete:hover {
   background: rgba(180, 60, 60, 0.9);
   color: #fff;
+}
+
+.screenplay-studio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.screenplay-telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.stat-pill.stat-accent {
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.cast-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+
+.cast-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.cast-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.cast-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+  cursor: pointer;
+}
+
+.cast-chip:hover {
+  background: rgba(245, 158, 11, 0.22);
+}
+
+.screenplay-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tpl-select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.tool-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.tool-chip {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tool-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.tool-chip-accent {
+  color: #93c5fd;
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.14);
+  font-weight: 600;
+}
+
+.ai-assistant-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+}
+
+.ai-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ai-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.preset-chip {
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.preset-chip:hover {
+  color: var(--text);
+  border-color: var(--accent);
 }
 </style>

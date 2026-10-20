@@ -10,7 +10,12 @@
     body-class="pad-none"
     @close="onClose"
   >
-    <div ref="rootEl" class="portrait-root" :style="{ '--portrait-panel-w': `${panelWidth}px` }">
+    <div
+      ref="rootEl"
+      class="portrait-root"
+      :class="{ 'is-compact': compactLayout, 'is-stacked': !resizable }"
+      :style="{ '--portrait-panel-w': `${panelWidth}px` }"
+    >
       <!-- 顶：工具轨（横向，铺满整宽） -->
       <aside class="tool-rail">
         <button
@@ -875,7 +880,7 @@
                   ref="styleDnaFileEl"
                   class="hidden-input"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,.webp,.png,.jpg,.jpeg"
                   @change="onStyleDnaFileChange"
                 />
               </div>
@@ -1651,8 +1656,17 @@ const PANEL_WIDTH_KEY = 'portrait.panelWidth'
 const DEFAULT_PANEL_WIDTH = 360
 const panelWidth = ref(DEFAULT_PANEL_WIDTH)
 
+/** 拖拽只在并排档有意义；窄到堆叠时滑块不存在 */
+const resizable = ref(true)
+const compactLayout = ref(false)
+const rootEl = ref<HTMLElement | null>(null)
+const resizerEl = ref<HTMLElement | null>(null)
+const resizing = ref(false)
+const resizeStart = { x: 0, width: DEFAULT_PANEL_WIDTH }
+
 function clampPanelWidth(value: number): number {
-  const max = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, window.innerWidth - 360))
+  const hostWidth = rootEl.value?.clientWidth || window.innerWidth
+  const max = Math.max(PANEL_MIN_WIDTH, Math.min(PANEL_MAX_WIDTH, hostWidth - 360))
   return Math.round(Math.min(max, Math.max(PANEL_MIN_WIDTH, value)))
 }
 
@@ -1672,13 +1686,6 @@ function persistPanelWidth(): void {
     /* 同上 */
   }
 }
-
-/** 拖拽只在并排档有意义；窄到堆叠时滑块不存在 */
-const resizable = ref(true)
-const rootEl = ref<HTMLElement | null>(null)
-const resizerEl = ref<HTMLElement | null>(null)
-const resizing = ref(false)
-const resizeStart = { x: 0, width: DEFAULT_PANEL_WIDTH }
 
 function onResizePointerDown(event: PointerEvent): void {
   if (event.button !== 0) return
@@ -2584,7 +2591,7 @@ function onChainToggle(event: Event): void {
 }
 
 // ── 生命周期 ───────────────────────────────────────────────────
-function hydrate(): void {
+function hydrate(resetViewport = true): void {
   hydrating = true
   Object.assign(draft, normalizePortraitRetouch(props.setup))
   draftRegions.value = normalizePortraitManualRegions(props.regions)
@@ -2601,7 +2608,7 @@ function hydrate(): void {
   aiPrompt.value = ''
   history.value = [snapshot()]
   historyIndex.value = 0
-  resetView()
+  if (resetViewport) resetView()
   void nextTick(() => {
     hydrating = false
     scheduleLivePreviewRender()
@@ -2646,6 +2653,37 @@ function onWindowPointerUp(): void {
   onSplitPointerUp()
 }
 
+function syncRootLayoutWidth(width: number): void {
+  if (width <= 0) return
+  resizable.value = width > 820
+  compactLayout.value = width > 820 && width <= 1180
+  if (width > 1180) {
+    panelWidth.value = clampPanelWidth(panelWidth.value)
+  }
+}
+
+function attachRootResizeObserver(el: HTMLElement | null): void {
+  sizeObserver?.disconnect()
+  sizeObserver = null
+  if (el && typeof ResizeObserver !== 'undefined') {
+    sizeObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width ?? el.clientWidth ?? 0
+      resizable.value = width > 820
+      syncRootLayoutWidth(width)
+    })
+    sizeObserver.observe(el)
+    syncRootLayoutWidth(el.clientWidth)
+  }
+}
+
+watch(
+  rootEl,
+  (el) => {
+    attachRootResizeObserver(el)
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
@@ -2653,14 +2691,7 @@ onMounted(() => {
   window.addEventListener('pointerup', onWindowPointerUp)
   void loadYoloKinds()
   // 与 CSS 的 @container 阈值保持一致：容器窄到堆叠档时滑块必须消失
-  if (rootEl.value && typeof ResizeObserver !== 'undefined') {
-    sizeObserver = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0
-      resizable.value = width > 820
-    })
-    sizeObserver.observe(rootEl.value)
-    resizable.value = rootEl.value.clientWidth > 820
-  }
+  attachRootResizeObserver(rootEl.value)
   unregisterHistory = diveEditorHistory.register({
     canUndo: () => historyIndex.value > 0,
     canRedo: () => historyIndex.value < history.value.length - 1,
@@ -2685,7 +2716,7 @@ onBeforeUnmount(() => {
 watch(
   () => props.open,
   (open) => {
-    if (open) hydrate()
+    if (open) hydrate(true)
   },
   { immediate: true }
 )
@@ -2708,9 +2739,17 @@ watch(
   () => props.setup,
   (value, previous) => {
     if (hydrating || !props.open) return
-    // 宿主从外部改了参数（撤销 / MCP / 换版本）才重新灌入草稿
+    // 宿主从外部改了参数（撤销 / MCP / 换版本）才重新灌入草稿；
+    // 本组件自身修改参数并通过 emit('update') 回写宿主后回流下来的同值 props.setup 必须忽略，
+    // 且外部改参时只同步草稿数据（hydrate(false)），不重置用户当前的滚轮缩放、旋转与平移视角。
     if (JSON.stringify(value) === JSON.stringify(previous)) return
-    hydrate()
+    if (
+      JSON.stringify(normalizePortraitRetouch(value)) ===
+      JSON.stringify(normalizePortraitRetouch(draft))
+    ) {
+      return
+    }
+    hydrate(false)
   }
 )
 </script>
@@ -2744,6 +2783,10 @@ watch(
   height: 100%;
   min-height: 0;
   container-type: inline-size;
+}
+
+.portrait-root.portrait-root {
+  flex: 1 1 0%;
 }
 
 .portrait-root > * {
@@ -2814,6 +2857,10 @@ watch(
   }
 }
 
+.portrait-root.is-compact {
+  grid-template-columns: auto 6px minmax(260px, 1fr) 300px;
+}
+
 /**
  * 窄兜底（第二档）：改成「画面在上、参数在下」的两行堆叠。
  *
@@ -2824,6 +2871,10 @@ watch(
  *
  * ⚠️ 堆叠后只剩一列，必须把 `.stage` / `.panel` 的基础 `grid-column` 改回第 1 列，
  * 否则它们会落在一个不存在的列上（网格会自动补列，宽度直接失控）。
+ *
+ * ⚠️ CSS 容器查询规范中，带有 `container-type: inline-size` 的元素自身不会匹配针对它自己的 `@container`，
+ * 必须依赖父级容器（`.sfw-body.pad-none`）的 `container-type: inline-size` + 本组件的 `.is-stacked` 双重保障，
+ * 防止子元素 `.panel` 落到第 3 行时 `.portrait-root` 仍停留在 2 行模板而把第 2 行 `.stage` 压成 0px。
  */
 @container (max-width: 820px) {
   .portrait-root {
@@ -2852,6 +2903,32 @@ watch(
   .panel-resizer {
     display: none;
   }
+}
+
+.portrait-root.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(220px, 1fr) minmax(0, 1fr);
+}
+
+.portrait-root.is-stacked .stage {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.portrait-root.is-stacked .tool-rail {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.portrait-root.is-stacked .panel {
+  grid-column: 1;
+  grid-row: 3;
+  border-left: none;
+  border-top: 1px solid var(--border);
+}
+
+.portrait-root.is-stacked .panel-resizer {
+  display: none;
 }
 
 .tool-rail {

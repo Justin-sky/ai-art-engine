@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   computeStage2dAttachmentTransforms,
   computeStage2dRigTransforms,
+  createHumanoidStage2dRig,
   createStage2dJoint,
   normalizeStage2dRig,
+  solveStage2dTwoBoneIk,
   type Stage2dRig
 } from '../src/shared/gameAssets'
 
@@ -98,11 +100,11 @@ describe('computeStage2dRigTransforms：平面正向运动学', () => {
     expect(back.find((item) => item.jointId === 'armL')).toMatchObject({ x: 50, y: -100 })
   })
 
-  it('root 平移整体生效（根关节跟随 rig.root）', () => {
+  it('root 平移与 rootOffset 整体生效（根关节跟随 rig.root + rootOffset）', () => {
     const rig = makeRig({ root: { x: 120, y: 240 } })
-    const transforms = computeStage2dRigTransforms(rig)
-    expect(transforms[0]).toMatchObject({ x: 120, y: 240 })
-    expect(transforms[2]).toMatchObject({ x: 170, y: 140 })
+    const transforms = computeStage2dRigTransforms(rig, null, { x: 5, y: -20 })
+    expect(transforms[0]).toMatchObject({ x: 125, y: 220 })
+    expect(transforms[2]).toMatchObject({ x: 175, y: 120 })
   })
 })
 
@@ -126,11 +128,40 @@ describe('computeStage2dAttachmentTransforms：部件挂点', () => {
   })
 })
 
-describe('createStage2dJoint', () => {
+describe('createStage2dJoint & solveStage2dTwoBoneIk：二骨解析 IK', () => {
   it('补齐 name / 空 parentId，角度与坐标归一化', () => {
     const joint = createStage2dJoint({ id: 'hand', x: 12.4, y: -3, rotation: -450 })
     expect(joint).toMatchObject({ id: 'hand', name: 'hand', parentId: null })
     expect(joint.x).toBe(12.4)
     expect(joint.rotation).toBe(-90)
+  })
+
+  it('solveStage2dTwoBoneIk 精确解算三关节链使末端命中目标世界坐标', () => {
+    const rig = createHumanoidStage2dRig({ x: 256, groundY: 480, height: 360 })
+    const before = computeStage2dRigTransforms(rig)
+    const shoulder = before.find((j) => j.jointId === 'shoulderL')!
+    const targetX = shoulder.x - 45
+    const targetY = shoulder.y + 35
+    const solvedPose = solveStage2dTwoBoneIk({
+      rig,
+      effectorJointId: 'wristL',
+      targetX,
+      targetY
+    })
+    const after = computeStage2dRigTransforms(rig, solvedPose)
+    const wrist = after.find((j) => j.jointId === 'wristL')!
+    expect(Math.hypot(wrist.x - targetX, wrist.y - targetY)).toBeLessThan(1.5)
+  })
+
+  it('拖拽头部或肘部时自动在多分支躯干枢纽（chest）处截断为单骨朝向，不带动整躯干旋转', () => {
+    const rig = createHumanoidStage2dRig({ x: 256, groundY: 480, height: 360 })
+    const solvedHead = solveStage2dTwoBoneIk({
+      rig,
+      effectorJointId: 'head',
+      targetX: 280,
+      targetY: 160
+    })
+    expect(solvedHead.chest).toBeUndefined()
+    expect(typeof solvedHead.neck).toBe('number')
   })
 })

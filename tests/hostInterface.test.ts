@@ -89,7 +89,7 @@ describe('hostInterface sanitize', () => {
 describe('encapsulation', () => {
   function makeDoc(): GraphDocument {
     const a = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 40, y: 40 },
       {
         title: 'A',
@@ -156,9 +156,9 @@ describe('encapsulation', () => {
   })
 
   it('encapsulates multi-in multi-out selection', () => {
-    const left1 = createNodeFromType('play.script', { x: 0, y: 0 }, { title: 'L1' })
+    const left1 = createNodeFromType('text.plain', { x: 0, y: 0 }, { title: 'L1' })
     left1.id = 'l1'
-    const left2 = createNodeFromType('play.script', { x: 0, y: 120 }, { title: 'L2' })
+    const left2 = createNodeFromType('text.plain', { x: 0, y: 120 }, { title: 'L2' })
     left2.id = 'l2'
     const mid1 = createNodeFromType('prompt.optimize', { x: 200, y: 0 }, { title: 'M1' })
     mid1.id = 'm1'

@@ -32,7 +32,7 @@ import {
   readStage2dActionFromNode,
   readStage2dAnimFpsFromNode
 } from '../stage2dAction'
-import { sampleStage2dAction } from '../../gameAssets/stage2dAction'
+import { sampleStage2dActionFrame } from '../../gameAssets/stage2dAction'
 import { buildGeneratedMediaFileKey } from '../../domain'
 
 /** 可直接交给 <img> 绘制的层源；其余视为项目相对路径，经 resolver 读成 dataUrl */
@@ -187,8 +187,13 @@ async function composeStage2dActionFrames(
   const frames: Array<{ dataUrl: string; relativePath: string }> = []
   for (const [index, time] of times.entries()) {
     await ensureAlive(ctx)
-    const pose = sampleStage2dAction(action, time)
-    const composed = await composeCanvas({ state: input.scene, rig: input.rig, pose })
+    const sampled = sampleStage2dActionFrame(action, time)
+    const composed = await composeCanvas({
+      state: input.scene,
+      rig: input.rig,
+      pose: sampled.pose,
+      rootOffset: sampled.rootOffset
+    })
     const dataUrl = composed.dataUrl?.trim()
     if (!dataUrl) continue
     try {

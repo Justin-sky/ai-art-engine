@@ -273,12 +273,26 @@ export interface PortraitRetouchState {
   // ── 14 导出 ──────────────────────────────────────────────
   /** 模型输出尺寸偏好 */
   outputSize: PortraitOutputSize
+  /** 导出编码格式（PNG 无损 / JPEG 高画质 / WebP 高压缩高保真） */
+  exportFormat: PortraitExportFormat
   /** 证件照 DPI（决定裁切后的像素尺寸） */
   exportDpi: number
 }
 
 /** 模型输出尺寸偏好：与 /images 的 resolution 参数同口径 */
 export type PortraitOutputSize = 'auto' | '1K' | '2K' | '4K'
+/** 人像成片导出格式 */
+export type PortraitExportFormat = 'png' | 'jpeg' | 'webp'
+
+/** 导出格式 → 标准 Canvas `toDataURL` MIME 类型 */
+export function portraitExportMimeType(
+  format?: PortraitExportFormat | string | null
+): 'image/png' | 'image/jpeg' | 'image/webp' {
+  const norm = typeof format === 'string' ? format.trim().toLowerCase() : ''
+  if (norm === 'webp' || norm === 'image/webp') return 'image/webp'
+  if (norm === 'jpeg' || norm === 'jpg' || norm === 'image/jpeg') return 'image/jpeg'
+  return 'image/png'
+}
 export type PortraitWarmthTier = 'off' | 'coolLight' | 'cool' | 'warm' | 'warmStrong'
 export type PortraitSpacingTier = 'off' | 'narrow' | 'slightNarrow' | 'slightWide' | 'wide'
 export type PortraitLightRatio = 'off' | 'soft' | 'natural' | 'dramatic' | 'hard'
@@ -1181,10 +1195,9 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
 
   // ── 14 导出 ──
   //
-  // 只保留**真的会被消费**的两项：`outputSize` → 发给图片模型的 resolution；
+  // `outputSize` → 发给图片模型的 resolution；
+  // `exportFormat` → 成片编码格式（png / jpeg / webp）；
   // `exportDpi` → 证件照裁切的目标像素密度。
-  // 曾经还有 exportFormat / exportQuality / exportMaxEdge，但执行改为「调模型出图」后
-  // 没有任何一环会重新编码或缩放模型返回的图 —— 留着只会让 UI 承诺不存在的功能。
   {
     kind: 'enum',
     key: 'outputSize',
@@ -1192,6 +1205,14 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
     labelKey: 'outputSize',
     default: '2K',
     options: ['auto', '1K', '2K', '4K']
+  },
+  {
+    kind: 'enum',
+    key: 'exportFormat',
+    group: 'export',
+    labelKey: 'exportFormat',
+    default: 'png',
+    options: ['png', 'jpeg', 'webp']
   },
   {
     kind: 'number',
@@ -1401,7 +1422,20 @@ function pickTier(value: unknown, spec: PortraitTierSpec): PortraitTier {
   return spec.tiers.includes(value as PortraitTier) ? (value as PortraitTier) : 'off'
 }
 
+function normalizeExportFormatValue(value: unknown): string {
+  if (typeof value !== 'string') return ''
+  const lower = value.trim().toLowerCase()
+  if (lower === 'jpg' || lower === 'image/jpeg') return 'jpeg'
+  if (lower === 'image/webp') return 'webp'
+  if (lower === 'image/png') return 'png'
+  return lower
+}
+
 function pickEnum(value: unknown, spec: PortraitEnumSpec): string {
+  if (spec.key === 'exportFormat') {
+    const norm = normalizeExportFormatValue(value)
+    return spec.options.includes(norm) ? norm : spec.default
+  }
   return spec.options.includes(value as string) ? (value as string) : spec.default
 }
 /** v1（103 个 0..100 滑块）→ v2 档位。阈值取「旧默认值附近」以免迁移后观感突变。 */
@@ -1579,6 +1613,7 @@ function portraitRetouchFromV1(raw: Record<string, unknown>): PortraitRetouchSta
   // 枚举也走域校验：`{ v: 1, idPhotoSpecId: 'threeInch' }` 不该产出越域状态
   assignIfValid(out, 'idPhotoSpecId', raw.idPhotoSpecId)
   assignIfValid(out, 'idPhotoBg', raw.idPhotoBg)
+  assignIfValid(out, 'exportFormat', normalizeExportFormatValue(raw.exportFormat))
   if (typeof raw.idPhotoSheet === 'boolean') out.idPhotoSheet = raw.idPhotoSheet
   if (typeof raw.bgFlatten === 'boolean') out.bgFlatten = raw.bgFlatten
   if (typeof raw.makeupSaturation === 'number' && raw.makeupSaturation > 50) {

@@ -3,9 +3,11 @@ import {
   STAGE2D_ACTION_PRESETS,
   computeStage2dRigTransforms,
   createHumanoidStage2dRig,
+  evaluateStage2dEasing,
   interpolateStage2dPose,
   normalizeStage2dAction,
   sampleStage2dAction,
+  sampleStage2dActionFrame,
   stage2dActionDuration,
   stage2dActionPresetById
 } from '../src/shared/gameAssets'
@@ -206,5 +208,15 @@ describe('内置动作预设', () => {
     })
     expect(stage2dActionDuration(action)).toBe(2.5)
     expect(stage2dActionDuration(normalizeStage2dAction(null))).toBe(0)
+  })
+
+  it('支持关键帧 easing 曲线与 rootOffset 根骨位移插值', () => {
+    expect(evaluateStage2dEasing('easeInOut', 0.5)).toBeCloseTo(0.5, 5)
+    expect(evaluateStage2dEasing('easeIn', 0.25)).toBeCloseTo(0.0625, 5)
+    expect(evaluateStage2dEasing('stepped', 0.7)).toBe(0)
+
+    const jump = stage2dActionPresetById('jump')!
+    const mid = sampleStage2dActionFrame(jump, 0.45)
+    expect(mid.rootOffset.y).toBeLessThan(-10)
   })
 })

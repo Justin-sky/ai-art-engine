@@ -1992,8 +1992,19 @@ export default {
       '旋转骨骼：拖住关节圆点绕自身中心转动，改写该关节的绑定旋转（驱动整条子链），用于摆正骨骼方向',
     rigToolMoveHint: '当前为「移动」：拖住关节圆点移动该骨骼点（改绑定偏移 x/y）',
     rigToolRotateHint: '当前为「旋转」：拖住关节圆点绕自身中心转动骨骼（改绑定旋转）',
+    rigToolIk: 'IK 牵引',
+    rigToolIkTip:
+      '二骨反向动力学（IK）：拖动手腕/脚踝等末端关节，自动解算大臂+小臂 / 大腿+小腿的自然弯曲角度',
+    rigToolIkHint: '当前为「IK 牵引」：拖动手腕/脚踝等末端关节，自动联动整条肢体自然弯曲',
+    keyframeEasing: '关键帧插值曲线',
+    easingEaseInOut: '平滑缓入缓出',
+    easingLinear: '线性匀速',
+    easingEaseIn: '加速缓入',
+    easingEaseOut: '减速缓出',
+    easingStepped: '定格阶跃',
+    deleteKeyframe: '删除该关键帧',
     rigStageHint:
-      '滚轮缩放；拖关节圆点＝按「手柄工具」改绑定姿势（移动 / 旋转），拖空白处＝平移视口',
+      '滚轮缩放；拖关节圆点＝按「手柄工具」改绑定姿势（移动 / 旋转 / IK），拖空白处＝平移视口',
     actionTitle: '动作试播',
     actionNoRig: '先装配骨骼（或点「🧍 人形模板」）再试播动作',
     actionPick: '动作',
@@ -2009,12 +2020,36 @@ export default {
     spineExportName: '包名',
     spineExportButton: '导出 Spine 包',
     spineExportNote:
-      '把挂到关节的可见部件层导出为 skeleton.json + .atlas + 部件 PNG（当前摆姿并入初始姿态，组件保持未翻转的原始方向）',
+      '把挂到关节的可见部件层与全部动作时间轴导出为 skeleton.json + .atlas + 紧凑图集 PNG（当前摆姿并入初始姿态）',
     spineExporting: '正在组装 Spine 骨架包…',
     spineNoAttach:
       '先在「层」页把部件图拖入画布，再回到「骨骼」页选中关节后点「绑定当前层到选中关节」',
-    spineExportDone: '已写入 {path}（{count} 个部件页 + skeleton.json + .atlas），素材库已刷新',
+    spineExportDone: '已写入 {path}（{count} 张纹理图集 + skeleton.json + .atlas），素材库已刷新',
     autoCut: '从整图自动拆件',
+    autoCutEditOpen: '精修拆件',
+    autoCutEditTitle: '交互式立绘拆件与边缘精修',
+    autoCutEditSubtitle: '框选或画笔涂抹修正各部位像素归属，落层时自动生成关节圆弧重叠防裂帽',
+    autoCutEditPreparing: '正在计算立绘骨架分区…',
+    autoCutEditFailHint: '请先在「骨骼」页建立并对齐标准人形骨架，并确保当前图层是未绑定的透明 PNG',
+    autoCutEditCancel: '取消',
+    autoCutEditApply: '生成部件并绑定骨骼',
+    autoCutEditTools: '精修工具',
+    autoCutEditToolPan: '平移画布',
+    autoCutEditToolAssign: '框选归并',
+    autoCutEditToolBrush: '画笔涂抹',
+    autoCutEditToolErase: '框选抠除',
+    autoCutEditBrushRadius: '画笔半径',
+    autoCutEditToolPanHint: '按住左键拖拽平移，滚轮缩放',
+    autoCutEditToolAssignHint: '先在下方点选目标部位，再框选像素归入该部位',
+    autoCutEditToolBrushHint: '点选目标部位后涂抹修正接缝；未选部位时涂抹即为擦除',
+    autoCutEditToolEraseHint: '框选区域将该处像素设为透明未归属',
+    autoCutEditParts: '部件槽位（{count} 个有效）',
+    autoCutEditRenameTip: '点击修改生成的部件层名称',
+    autoCutEditEraseSlot: '清空该槽位全部像素',
+    autoCutEditPickSlot: '请先在列表中点击选择一个目标部位',
+    autoCutEditUndo: '撤销',
+    autoCutEditReset: '重置初始分区',
+    autoCutEditFooterHint: '落层提交时会自动在肘/膝/肩枢轴处生成圆弧重叠羽化帽，防止旋转漏缝',
     autoCutHint:
       '把整图立绘沿骨骼关节切成部件层并自动挂点（需先在「骨骼」页建好/对齐人形骨架；拆件以绑定姿势为参考，切完摆姿复位，当前画布即原图）',
     autoCutNeedRig: '先到「骨骼」页建好并大致对齐人形骨架，再回来拆件',
@@ -4230,6 +4265,9 @@ export default {
         '1K': '1K',
         '2K': '2K',
         '4K': '4K',
+        png: 'PNG（无损）',
+        jpeg: 'JPEG（高画质）',
+        webp: 'WebP（高压缩高保真）',
         oneInch: '一寸 25×35mm',
         smallOneInch: '小一寸 22×32mm',
         largeOneInch: '大一寸 33×48mm',
@@ -4385,6 +4423,7 @@ export default {
         idPhotoAttire: '正装换装',
         idPhotoSheet: '拼版（5 寸相纸）',
         outputSize: '输出尺寸',
+        exportFormat: '导出格式',
         exportDpi: 'DPI'
       }
     },
@@ -5023,30 +5062,86 @@ export default {
     scriptNode: {
       badge: '文本',
       title: '文本',
-      placeholder: '双击编辑文本内容…'
+      placeholder: '双击编辑文本内容…',
+      telemetry: {
+        scenes: '{n} 场',
+        characters: '{n} 角色',
+        dialogues: '{n} 句对白',
+        actions: '{n} 动作段',
+        duration: '预估 ~{s}s'
+      },
+      characterList: '识别角色',
+      toolbar: {
+        addScene: '+ 场次',
+        addBio: '+ 人物小传',
+        addAction: '+ 动作 △',
+        addVo: '+ 旁白/OS',
+        format: '✨ 规范排版',
+        formatDone: '✓ 已排版',
+        templatePlaceholder: '套用商用剧本样板…'
+      },
+      templates: {
+        urbanShort: '都市逆袭爽剧 · 珠宝拍卖反转',
+        suspenseTwist: '悬疑惊悚短片 · 雨夜钟表铺',
+        xianxiaFantasy: '仙侠古风燃战 · 断魂崖问剑',
+        scifiChase: '赛博科幻追逐 · 霓虹磁浮狂飙'
+      },
+      aiAssistant: {
+        title: 'AI 剧本创作 / 扩写 / 润色',
+        placeholder:
+          '输入一句话梗概或改写要求（如：扩写为3场高冲突竖屏爽剧，补全【人物小传】与 △ 镜头动作描写），再点上方运行即可生成并写回正文…',
+        presetExpand: '扩写镜头动作与细节',
+        presetConflict: '强化戏剧冲突与反转爽点',
+        presetFormat: '规范化为标准分镜前导剧本',
+        presetContinue: '续写下一场高潮戏'
+      }
     },
     scriptRun: {
-      hint: '在沙箱中运行自定义 JavaScript：读取上游输入，可调用已勾选的应用能力（om.*），返回输出。禁止文件 / 网络 / require。',
+      hint: '在沙箱中运行自定义 JavaScript：读取上游输入，可调用已勾选的应用能力（om.*），支持 console.log 调试，返回输出。禁止文件 / 网络 / require。',
       ports: '端口',
       inPortsShort: '入',
       outPortsShort: '出',
       expandEditor: '展开编辑',
-      expandEditorHint: '在独立大窗口里编辑代码（可拖拽缩放、带类型提示）',
+      expandEditorHint: '在独立大窗口里编辑代码（或直接双击画布节点卡片打开）',
       editor: {
         title: '编辑代码 · {name}',
-        appMark: '脚本',
+        appMark: '脚本 IDE',
         close: '关闭',
         saveHint: '保存代码（关闭窗口也会自动保存）',
         unsaved: '未保存',
-        saved: '已保存'
+        saved: '已保存',
+        run: '▶ 运行脚本',
+        running: '运行中…',
+        toggleDebug: '调试栏 (Inputs / Console)'
+      },
+      templates: {
+        label: '商用脚本模板',
+        placeholder: '选择内置脚本模板（一键配齐端口与能力）…',
+        textClean: '文本清洗与去除代码块围栏 (1入1出)',
+        jsonRouter: 'JSON 解析与多端口分流路由 (1入2出)',
+        batchPromptMatrix: '批量提示词笛卡尔积矩阵 (2入1出)',
+        aiImageRefine: 'LLM 扩写提示词 + AI 生图落盘 (含能力)',
+        conditionalFilter: '多文本条件过滤与编号汇总 (1入2出)'
+      },
+      inputsPreview: {
+        title: '实时上游 inputs 快照',
+        empty: '暂无已连接的上游输入数据',
+        copy: '复制 JSON',
+        copied: '已复制'
+      },
+      console: {
+        title: '控制台与执行诊断 (Console)',
+        empty: '暂无日志输出（在代码中调用 console.log / warn / error 后运行即可查看）',
+        clear: '清空日志',
+        duration: '{ms}ms'
       },
       inputs: '输入端口',
       outputs: '输出端口',
       capabilities: '可用能力',
-      capabilitiesHint: '仅勾选的 om.* 能力可在脚本中调用；默认全部关闭。',
+      capabilitiesHint: '仅勾选的 om.* 能力可在脚本中调用；宿主 I/O 耗时不计入脚本 CPU 超时。',
       code: '代码',
       limits: '资源上限',
-      timeoutMs: '超时（毫秒）',
+      timeoutMs: 'CPU 超时（毫秒）',
       memoryMb: '内存（MB）',
       addPort: '添加端口',
       portId: '端口 ID',
@@ -5441,9 +5536,6 @@ export default {
         texture: '3D 贴图',
         animation: '3D 动画'
       },
-      play: {
-        script: '文本'
-      },
       image: {
         process: '图像处理',
         select: '选取图片',
@@ -5492,6 +5584,7 @@ export default {
         judge: '决策判定'
       },
       text: {
+        plain: '文本',
         select: '选择文本'
       },
       ui: {

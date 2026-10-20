@@ -63,7 +63,7 @@ describe('instruction mentions', () => {
     expect(shouldKeepInstructionMentionToken({ typeId: 'video.reshoot' })).toBe(true)
     // 输出文本的图片节点不保留 @n
     expect(shouldKeepInstructionMentionToken({ typeId: 'image.toPrompt' })).toBe(false)
-    expect(shouldKeepInstructionMentionToken({ typeId: 'play.script' })).toBe(false)
+    expect(shouldKeepInstructionMentionToken({ typeId: 'text.plain' })).toBe(false)
     // 语义管线：带媒体产物的（语义重建）保留 @n —— 它的 typeId 从 video.* 改名后
     // 不再被前缀命中，靠显式列表兜住；产出文档 / 提示词计划的（语义分析 / 语义编译）不保留
     expect(shouldKeepInstructionMentionToken({ typeId: 'semantic.rebuild' })).toBe(true)

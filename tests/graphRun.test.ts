@@ -12,9 +12,9 @@ const TEXT_OUTPUT_ID = graphOutputNodeId('text')
 const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
 
 describe('graph run', () => {
-  it('merges play.script text through screenplay processing into output notes', async () => {
+  it('merges text.plain text through screenplay processing into output notes', async () => {
     const text = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         params: { text: '开场独白' }
@@ -60,7 +60,7 @@ describe('graph run', () => {
 
   it('preserves outside nodes when running to a target with preserveOutsideSubset', async () => {
     const a = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         id: 'a',
@@ -101,7 +101,7 @@ describe('graph run', () => {
 
   it('generates screenplay text via generateText service and patches node', async () => {
     const text = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         params: { text: '草稿' }
@@ -160,7 +160,7 @@ describe('graph run', () => {
 
   it('onlyTargetNode executes a single node without re-running upstream generateText', async () => {
     const text = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         id: 't1',
@@ -435,7 +435,7 @@ describe('graph run', () => {
 
   it('skipCompletedNodes never skips any multi-target sink', async () => {
     const shared = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         id: 'shared',
@@ -513,7 +513,7 @@ describe('graph run', () => {
 
   it('skipCompletedNodes reuses done upstream and still runs the target', async () => {
     const mid = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 120, y: 0 },
       {
         id: 'mid',
@@ -1009,7 +1009,7 @@ describe('graph run', () => {
     const graph = {
       nodes: [
         createNodeFromType(
-          'play.script',
+          'text.plain',
           { x: 0, y: 0 },
           {
             id: 'a',

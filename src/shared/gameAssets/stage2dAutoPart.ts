@@ -296,6 +296,168 @@ export function eraseStage2dAutoPartSlot(input: {
   return out
 }
 
+/**
+ * 圆形画笔涂抹改投 / 擦除（不可变编辑）：把以 (cx, cy) 为圆心、radius 为半径的
+ * 圆域内已归属像素改投到 to 槽（to=-1 表示抠除为透明）。
+ * 与 assignStage2dAutoPartRegion 一致，已为 -1（透明）的背景像素不会被复活。
+ */
+export function paintStage2dAutoPartBrush(input: {
+  assignment: Int32Array
+  width: number
+  cx: number
+  cy: number
+  radius: number
+  to: number
+}): Int32Array {
+  const width = Math.max(1, Math.round(input.width))
+  const src = input.assignment
+  const height = Math.max(1, Math.round(src.length / width))
+  const out = new Int32Array(src.length)
+  out.set(src)
+  if (!Number.isFinite(input.to)) return out
+  const r = Math.max(0.5, Number(input.radius) || 1)
+  const rSq = r * r
+  const cx = Number(input.cx) || 0
+  const cy = Number(input.cy) || 0
+
+  const x0 = Math.max(0, Math.floor(cx - r))
+  const x1 = Math.min(width - 1, Math.ceil(cx + r))
+  const y0 = Math.max(0, Math.floor(cy - r))
+  const y1 = Math.min(height - 1, Math.ceil(cy + r))
+  const to = Math.round(input.to)
+
+  for (let y = y0; y <= y1; y += 1) {
+    const dy = y + 0.5 - cy
+    const row = y * width
+    for (let x = x0; x <= x1; x += 1) {
+      const dx = x + 0.5 - cx
+      if (dx * dx + dy * dy > rSq) continue
+      const idx = row + x
+      const cur = src[idx]
+      if (cur >= 0 && cur !== to) out[idx] = to
+    }
+  }
+  return out
+}
+
+/**
+ * 计算部件的「关节圆弧防裂补全掩码（Joint Pivot Cap Overlap）」：
+ *
+ * 单纯按 Voronoi 最近骨段硬切时，上臂与前臂、大腿与小腿在肘/膝枢轴处是平直切缝（零重叠），
+ * 旋转超过 20° 就会裂开三角形透明缺口。
+ * 本函数在部件原有归属像素（权重 255）基础上，围绕其挂点枢轴 `pivot` 向相邻已归属像素
+ * 扩展一个半径为 `capRadius` 的圆形重叠包络（边缘 1.5px 抗锯齿羽化），并返回包含该圆弧帽
+ * 的外接裁剪框 `crop` 与更新后的 `pivot`，使关节大角度弯曲时上下肢体圆弧自然交叠不漏缝。
+ */
+export function computeStage2dSlotJointCapMask(input: {
+  width: number
+  height: number
+  assignment: Int32Array
+  slotIndex: number
+  pivot: Stage2dAutoPoint
+  /** 关节圆弧半径（px）；省略时按部件自身尺寸自适应估算 */
+  capRadius?: number
+}): {
+  mask: Uint8Array
+  crop: Stage2dAutoRect
+  pivot: Stage2dAutoPoint
+  pixelCount: number
+} {
+  const width = Math.max(1, Math.round(input.width))
+  const height = Math.max(1, Math.round(input.height))
+  const total = width * height
+  const assignment = input.assignment
+  const slotIndex = Math.round(input.slotIndex)
+  const mask = new Uint8Array(total)
+
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  let baseCount = 0
+
+  for (let i = 0; i < total; i += 1) {
+    if (assignment[i] !== slotIndex) continue
+    mask[i] = 255
+    baseCount += 1
+    const px = i % width
+    const py = (i / width) | 0
+    if (px < minX) minX = px
+    if (px > maxX) maxX = px
+    if (py < minY) minY = py
+    if (py > maxY) maxY = py
+  }
+
+  if (baseCount === 0 || maxX < 0) {
+    return {
+      mask,
+      crop: { x: 0, y: 0, width: 1, height: 1 },
+      pivot: { x: input.pivot.x, y: input.pivot.y },
+      pixelCount: 0
+    }
+  }
+
+  const baseW = maxX - minX + 1
+  const baseH = maxY - minY + 1
+  const autoRadius = Math.max(2, Math.min(20, Math.round(Math.min(baseW, baseH) * 0.35)))
+  const radius =
+    typeof input.capRadius === 'number' && Number.isFinite(input.capRadius)
+      ? Math.max(0, input.capRadius)
+      : autoRadius
+
+  if (radius > 0) {
+    const feather = 1.5
+    const outerR = radius + feather
+    const outerRSq = outerR * outerR
+    const cx = input.pivot.x
+    const cy = input.pivot.y
+    const x0 = Math.max(0, Math.floor(cx - outerR))
+    const x1 = Math.min(width - 1, Math.ceil(cx + outerR))
+    const y0 = Math.max(0, Math.floor(cy - outerR))
+    const y1 = Math.min(height - 1, Math.ceil(cy + outerR))
+
+    for (let y = y0; y <= y1; y += 1) {
+      const dy = y + 0.5 - cy
+      const row = y * width
+      for (let x = x0; x <= x1; x += 1) {
+        const idx = row + x
+        // 只吸收角色主体内已归属的像素（不把透明背景拉进来）
+        if (assignment[idx] < 0 || mask[idx] === 255) continue
+        const dx = x + 0.5 - cx
+        const dSq = dx * dx + dy * dy
+        if (dSq > outerRSq) continue
+        const d = Math.sqrt(dSq)
+        const weight =
+          d <= radius ? 255 : Math.max(0, Math.min(255, Math.round(((outerR - d) / feather) * 255)))
+        if (weight > mask[idx]) {
+          mask[idx] = weight
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
+    }
+  }
+
+  let pixelCount = 0
+  for (let i = 0; i < total; i += 1) {
+    if (mask[i] > 0) pixelCount += 1
+  }
+
+  const clampedPivot: Stage2dAutoPoint = {
+    x: Math.min(Math.max(input.pivot.x, minX + 0.5), maxX + 0.5),
+    y: Math.min(Math.max(input.pivot.y, minY + 0.5), maxY + 0.5)
+  }
+
+  return {
+    mask,
+    crop: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 },
+    pivot: clampedPivot,
+    pixelCount
+  }
+}
+
 /** 内容 alpha 平面提取（RGBA → 单通道 alpha），宽高校验失败返回 null */
 export function extractAlphaPlane(
   data: ArrayLike<number>,

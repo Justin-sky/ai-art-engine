@@ -217,8 +217,8 @@ describe('asset editor graph', () => {
     }
   })
 
-  it('keeps screenplay processing node id and play.script edges across normalize reload', () => {
-    const play = createNodeFromType('play.script', { x: 0, y: 0 }, { id: 'play-1' })
+  it('keeps screenplay processing node id and text.plain edges across normalize reload', () => {
+    const play = createNodeFromType('text.plain', { x: 0, y: 0 }, { id: 'play-1' })
     const processing = createNodeFromType('asset.screenplay', { x: 200, y: 0 }, { id: 'sp-edit-1' })
     const output = createOutputGraphNode(
       'text',

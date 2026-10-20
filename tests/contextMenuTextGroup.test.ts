@@ -36,7 +36,7 @@ function typeIdsOf(id: string): string[] {
 describe('右键菜单文本分组', () => {
   it('文本分组收齐文本 / 备注 / 提示词三类节点', () => {
     expect(typeIdsOf('text')).toEqual([
-      'play.script',
+      'text.plain',
       'text.select',
       'note.text',
       'prompt.optimize',

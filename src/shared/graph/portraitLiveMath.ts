@@ -290,6 +290,101 @@ export function pointInPolygon(
   return inside
 }
 
+export interface FeatheredPolygon {
+  poly: ReadonlyArray<readonly [number, number]>
+  minX: number
+  maxX: number
+  minY: number
+  maxY: number
+  feather: number
+  featherSq: number
+}
+
+export function prepareFeatheredPolygon(
+  poly: ReadonlyArray<readonly [number, number]>,
+  feather: number
+): FeatheredPolygon {
+  const f = Math.max(0, feather)
+  if (!poly.length) {
+    return { poly, minX: 1, maxX: 0, minY: 1, maxY: 0, feather: f, featherSq: f * f }
+  }
+  let minX = poly[0][0]
+  let maxX = poly[0][0]
+  let minY = poly[0][1]
+  let maxY = poly[0][1]
+  for (let i = 1; i < poly.length; i++) {
+    const px = poly[i][0]
+    const py = poly[i][1]
+    if (px < minX) minX = px
+    if (px > maxX) maxX = px
+    if (py < minY) minY = py
+    if (py > maxY) maxY = py
+  }
+  return {
+    poly,
+    minX: minX - f,
+    maxX: maxX + f,
+    minY: minY - f,
+    maxY: maxY + f,
+    feather: f,
+    featherSq: f * f
+  }
+}
+
+/**
+ * Evaluates a C1-smooth feathered polygon weight in [0..1] using signed distance to the polygon boundary.
+ * Performs O(1) AABB rejection and avoids sqrt outside the narrow feather band.
+ */
+export function sampleFeatheredPolygon(x: number, y: number, fp: FeatheredPolygon): number {
+  if (x < fp.minX || x > fp.maxX || y < fp.minY || y > fp.maxY) return 0
+  const { poly, feather, featherSq } = fp
+  const n = poly.length
+  if (n < 3) return 0
+  let inside = false
+  let minDistSq = Number.POSITIVE_INFINITY
+
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i][0]
+    const yi = poly[i][1]
+    const xj = poly[j][0]
+    const yj = poly[j][1]
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi
+    if (intersect) inside = !inside
+
+    if (featherSq > 1e-12) {
+      const vx = xj - xi
+      const vy = yj - yi
+      const wx = x - xi
+      const wy = y - yi
+      const lenSq = vx * vx + vy * vy
+      let t = lenSq > 1e-12 ? (wx * vx + wy * vy) / lenSq : 0
+      if (t < 0) t = 0
+      else if (t > 1) t = 1
+      const dx = x - (xi + t * vx)
+      const dy = y - (yi + t * vy)
+      const dSq = dx * dx + dy * dy
+      if (dSq < minDistSq) minDistSq = dSq
+    }
+  }
+
+  if (featherSq <= 1e-12) return inside ? 1 : 0
+  if (minDistSq >= featherSq) return inside ? 1 : 0
+  const dist = Math.sqrt(minDistSq)
+  const signedDist = inside ? dist : -dist
+  const t = clamp01((signedDist + feather) / (2 * feather))
+  return t * t * (3 - 2 * t)
+}
+
+/** Convenience wrapper for evaluating feathered polygon mask weight at (x, y) */
+export function polygonFeatherWeight(
+  x: number,
+  y: number,
+  poly: ReadonlyArray<readonly [number, number]>,
+  feather = 0.015
+): number {
+  return sampleFeatheredPolygon(x, y, prepareFeatheredPolygon(poly, feather))
+}
+
 // ── Landmark MLS / Radial Control Vectors for Face Liquify ───────
 
 export interface LiquifyControlVector {
@@ -1078,6 +1173,36 @@ export function applyPortraitLivePixelPipeline(
 
   const out = new Uint8ClampedArray(working.length)
 
+  // Precompute feathered semantic polygons so strong retouching never leaves hard polygon seams
+  const faceMinDim = regions ? Math.min(regions.box.w, regions.box.h) : 0
+  const feFaceSkin = regions
+    ? prepareFeatheredPolygon(regions.faceSkinOutline, Math.max(0.008, faceMinDim * 0.035))
+    : null
+  const feLeftEye = regions
+    ? prepareFeatheredPolygon(regions.leftEye, Math.max(0.003, faceMinDim * 0.012))
+    : null
+  const feRightEye = regions
+    ? prepareFeatheredPolygon(regions.rightEye, Math.max(0.003, faceMinDim * 0.012))
+    : null
+  const feLeftBrow = regions
+    ? prepareFeatheredPolygon(regions.leftBrow, Math.max(0.004, faceMinDim * 0.016))
+    : null
+  const feRightBrow = regions
+    ? prepareFeatheredPolygon(regions.rightBrow, Math.max(0.004, faceMinDim * 0.016))
+    : null
+  const feOuterLip = regions
+    ? prepareFeatheredPolygon(regions.outerLip, Math.max(0.003, faceMinDim * 0.014))
+    : null
+  const feInnerMouth = regions
+    ? prepareFeatheredPolygon(regions.innerMouth, Math.max(0.003, faceMinDim * 0.014))
+    : null
+  const feLeftInfra = regions
+    ? prepareFeatheredPolygon(regions.leftInfraorbital, Math.max(0.006, faceMinDim * 0.028))
+    : null
+  const feRightInfra = regions
+    ? prepareFeatheredPolygon(regions.rightInfraorbital, Math.max(0.006, faceMinDim * 0.028))
+    : null
+
   for (let y = 0; y < height; y++) {
     const v = (y + 0.5) / height
     for (let x = 0; x < width; x++) {
@@ -1097,27 +1222,30 @@ export function applyPortraitLivePixelPipeline(
       const hfG = g - lfG
       const hfB = b - lfB
 
-      // Semantic region checks
-      const inLeftEye = regions ? pointInPolygon(u, v, regions.leftEye) : false
-      const inRightEye = regions ? pointInPolygon(u, v, regions.rightEye) : false
-      const inEye = inLeftEye || inRightEye
-      const inBrow = regions
-        ? pointInPolygon(u, v, regions.leftBrow) || pointInPolygon(u, v, regions.rightBrow)
-        : false
-      const inOuterLip = regions ? pointInPolygon(u, v, regions.outerLip) : false
-      const inInnerMouth = regions ? pointInPolygon(u, v, regions.innerMouth) : false
-      const inFacePoly = regions ? pointInPolygon(u, v, regions.faceSkinOutline) : false
+      // Feathered semantic region weights (0..1 with C1 smoothstep transitions)
+      const leftEyeW = feLeftEye ? sampleFeatheredPolygon(u, v, feLeftEye) : 0
+      const rightEyeW = feRightEye ? sampleFeatheredPolygon(u, v, feRightEye) : 0
+      const eyeW = Math.max(leftEyeW, rightEyeW)
+      const browW =
+        feLeftBrow && feRightBrow
+          ? Math.max(
+              sampleFeatheredPolygon(u, v, feLeftBrow),
+              sampleFeatheredPolygon(u, v, feRightBrow)
+            )
+          : 0
+      const outerLipW = feOuterLip ? sampleFeatheredPolygon(u, v, feOuterLip) : 0
+      const innerMouthW = feInnerMouth ? sampleFeatheredPolygon(u, v, feInnerMouth) : 0
+      const facePolyW = feFaceSkin ? sampleFeatheredPolygon(u, v, feFaceSkin) : 0
 
       const skinConf = skinToneConfidence(r, g, b)
-      // Semantic skin mask: high inside face polygon (excluding eyes/brows/lips), or skin-tone confidence for neck/body
-      const isFeatureExcluded = inEye || inBrow || inOuterLip
-      const faceSkinWeight = isFeatureExcluded
-        ? 0
-        : regions
-          ? inFacePoly
-            ? Math.max(0.65, skinConf)
-            : skinConf * (bodyUnifyW > 0 ? 0.9 : 0.45)
-          : skinConf
+      // Semantic skin mask: smooth inside face polygon (excluding eyes/brows/lips), or skin-tone confidence for neck/body
+      const featureExclW = Math.max(eyeW, browW, outerLipW)
+      const inFaceWeight = Math.max(0.65, skinConf)
+      const nonFaceWeight = skinConf * (bodyUnifyW > 0 ? 0.9 : 0.45)
+      const rawSkinWeight = regions
+        ? facePolyW * inFaceWeight + (1 - facePolyW) * nonFaceWeight
+        : skinConf
+      const faceSkinWeight = rawSkinWeight * (1 - featureExclW)
 
       // 1) Frequency Separation Skin Smoothing + Pore Retention
       if (faceSkinWeight > 0.05 && lowFreq && (smoothW > 0 || textureW > 0)) {
@@ -1132,15 +1260,19 @@ export function applyPortraitLivePixelPipeline(
       }
 
       // 2) Under-Eye Dark Circle & Eye-Bag Lift
-      if (underEyeW > 0 && regions && !inEye) {
-        const inInfra =
-          pointInPolygon(u, v, regions.leftInfraorbital) ||
-          pointInPolygon(u, v, regions.rightInfraorbital)
-        if (inInfra) {
-          const lift = underEyeW * 18
-          r = lfR * 0.45 + r * 0.55 + lift
-          g = lfG * 0.45 + g * 0.55 + lift * 0.92
-          b = lfB * 0.45 + b * 0.55 + lift * 0.85
+      if (underEyeW > 0 && feLeftInfra && feRightInfra && eyeW < 0.99) {
+        const infraW =
+          Math.max(
+            sampleFeatheredPolygon(u, v, feLeftInfra),
+            sampleFeatheredPolygon(u, v, feRightInfra)
+          ) *
+          (1 - eyeW)
+        if (infraW > 0.01) {
+          const blend = 0.45 * infraW
+          const lift = underEyeW * 18 * infraW
+          r = lfR * blend + r * (1 - blend) + lift
+          g = lfG * blend + g * (1 - blend) + lift * 0.92
+          b = lfB * blend + b * (1 - blend) + lift * 0.85
         }
       }
 
@@ -1156,24 +1288,25 @@ export function applyPortraitLivePixelPipeline(
       }
 
       // 4) Eyes Polish: Sclera Whitening & Catchlight
-      if (inEye && (eyeWhitenW > 0 || catchlightW > 0)) {
+      if (eyeW > 0.01 && (eyeWhitenW > 0 || catchlightW > 0)) {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b
         // Sclera pixels have moderate-to-high luminance (not dark pupil/iris)
         if (eyeWhitenW > 0 && luma > 95) {
-          const boost = eyeWhitenW * 20
-          r = luma + (r - luma) * (1 - eyeWhitenW * 0.45) + boost
-          g = luma + (g - luma) * (1 - eyeWhitenW * 0.45) + boost
-          b = luma + (b - luma) * (1 - eyeWhitenW * 0.35) + boost * 1.08
+          const effEyeWhiten = eyeWhitenW * eyeW
+          const boost = effEyeWhiten * 20
+          r = luma + (r - luma) * (1 - effEyeWhiten * 0.45) + boost
+          g = luma + (g - luma) * (1 - effEyeWhiten * 0.45) + boost
+          b = luma + (b - luma) * (1 - effEyeWhiten * 0.35) + boost * 1.08
         }
         // Catchlight reflection dot slightly upper-right of eye center
         if (catchlightW > 0 && regions) {
-          const eyeCenter = inLeftEye ? regions.leftEyeCenter : regions.rightEyeCenter
+          const eyeCenter = leftEyeW >= rightEyeW ? regions.leftEyeCenter : regions.rightEyeCenter
           const cx = eyeCenter[0] + regions.box.w * 0.014
           const cy = eyeCenter[1] - regions.box.h * 0.012
           const rad = regions.box.w * 0.012
           const dSq = (u - cx) * (u - cx) + (v - cy) * (v - cy)
           if (dSq < rad * rad) {
-            const spec = (1 - dSq / (rad * rad)) * catchlightW * 75
+            const spec = (1 - dSq / (rad * rad)) * catchlightW * 75 * eyeW
             r += spec
             g += spec
             b += spec
@@ -1182,14 +1315,15 @@ export function applyPortraitLivePixelPipeline(
       }
 
       // 5) Teeth Whitening inside Inner Mouth
-      if (inInnerMouth && teethWhitenW > 0) {
+      if (innerMouthW > 0.01 && teethWhitenW > 0) {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b
         // Tooth pixels: bright and slightly warm/yellow, not deep red gum/tongue
         if (luma > 105 && r - g < 45) {
-          const whiten = teethWhitenW * 24
-          r = luma + (r - luma) * (1 - teethWhitenW * 0.6) + whiten
-          g = luma + (g - luma) * (1 - teethWhitenW * 0.55) + whiten
-          b = luma + (b - luma) * (1 - teethWhitenW * 0.35) + whiten * 1.12
+          const effTeethWhiten = teethWhitenW * innerMouthW
+          const whiten = effTeethWhiten * 24
+          r = luma + (r - luma) * (1 - effTeethWhiten * 0.6) + whiten
+          g = luma + (g - luma) * (1 - effTeethWhiten * 0.55) + whiten
+          b = luma + (b - luma) * (1 - effTeethWhiten * 0.35) + whiten * 1.12
         }
       }
 
@@ -1233,10 +1367,10 @@ export function applyPortraitLivePixelPipeline(
         g += shadowLift
         b += shadowLift
       }
-      if (contourW > 0 && regions && inFacePoly) {
+      if (contourW > 0 && regions && facePolyW > 0.01) {
         // Brighten T-zone/center face, subtly sculpt lateral jawline
         const dx = Math.abs(u - (regions.box.x + regions.box.w * 0.5)) / (regions.box.w * 0.5)
-        const sculpt = (0.45 - dx) * contourW * 16
+        const sculpt = (0.45 - dx) * contourW * 16 * facePolyW
         r += sculpt
         g += sculpt
         b += sculpt
@@ -1477,7 +1611,12 @@ export function renderIdPhotoSingleRgba(
   srcW: number,
   srcH: number,
   input: PortraitLiveInput,
-  options?: { dpi?: number; replaceBackdrop?: boolean }
+  options?: {
+    dpi?: number
+    replaceBackdrop?: boolean
+    /** Optional person foreground alpha mask (length srcW * srcH, values 0..1 or 0..255) from ONNX segmentation */
+    personMaskAlpha?: Uint8ClampedArray | Float32Array | null
+  }
 ): { pixels: Uint8ClampedArray; width: number; height: number; crop: IdPhotoCropBoxResult } | null {
   const state = normalizePortraitRetouch(input.state)
   const crop = computeIdPhotoCropBox(
@@ -1493,19 +1632,47 @@ export function renderIdPhotoSingleRgba(
   const dstH = crop.heightPx
   const out = new Uint8ClampedArray(dstW * dstH * 4)
 
-  // Sample outer top-left / top-right corner background reference color for clean local keying
-  const tlIdx =
-    (Math.min(srcH - 1, Math.max(0, Math.round(crop.y * srcH + 2))) * srcW +
-      Math.min(srcW - 1, Math.max(0, Math.round(crop.x * srcW + 2)))) *
-    4
-  const trIdx =
-    (Math.min(srcH - 1, Math.max(0, Math.round(crop.y * srcH + 2))) * srcW +
-      Math.min(srcW - 1, Math.max(0, Math.round((crop.x + crop.w) * srcW - 3)))) *
-    4
-  const bgRefR = (retouched[tlIdx] + retouched[trIdx]) * 0.5
-  const bgRefG = (retouched[tlIdx + 1] + retouched[trIdx + 1]) * 0.5
-  const bgRefB = (retouched[tlIdx + 2] + retouched[trIdx + 2]) * 0.5
+  // Multi-point border background estimation across 8 perimeter sample points (top + upper left/right margins)
+  const borderSampleCoords: Array<[number, number]> = [
+    [crop.x + crop.w * 0.03, crop.y + crop.h * 0.02],
+    [crop.x + crop.w * 0.18, crop.y + crop.h * 0.02],
+    [crop.x + crop.w * 0.82, crop.y + crop.h * 0.02],
+    [crop.x + crop.w * 0.97, crop.y + crop.h * 0.02],
+    [crop.x + crop.w * 0.02, crop.y + crop.h * 0.18],
+    [crop.x + crop.w * 0.98, crop.y + crop.h * 0.18],
+    [crop.x + crop.w * 0.02, crop.y + crop.h * 0.38],
+    [crop.x + crop.w * 0.98, crop.y + crop.h * 0.38]
+  ]
+  const samplesR: number[] = []
+  const samplesG: number[] = []
+  const samplesB: number[] = []
+  for (const [u, v] of borderSampleCoords) {
+    const sx = clamp(Math.round(u * (srcW - 1)), 0, srcW - 1)
+    const sy = clamp(Math.round(v * (srcH - 1)), 0, srcH - 1)
+    const idx = (sy * srcW + sx) * 4
+    samplesR.push(retouched[idx])
+    samplesG.push(retouched[idx + 1])
+    samplesB.push(retouched[idx + 2])
+  }
+  samplesR.sort((a, b) => a - b)
+  samplesG.sort((a, b) => a - b)
+  samplesB.sort((a, b) => a - b)
+  // Trimmed median (middle 4 of 8 samples) for outlier-resilient background color reference
+  const bgRefR = (samplesR[2] + samplesR[3] + samplesR[4] + samplesR[5]) * 0.25
+  const bgRefG = (samplesG[2] + samplesG[3] + samplesG[4] + samplesG[5]) * 0.25
+  const bgRefB = (samplesB[2] + samplesB[3] + samplesB[4] + samplesB[5]) * 0.25
+  const bgSpread = Math.hypot(
+    samplesR[5] - samplesR[2],
+    samplesG[5] - samplesG[2],
+    samplesB[5] - samplesB[2]
+  )
+  const bgTolerance = clamp(44 + bgSpread * 0.65, 42, 76)
   const doBackdrop = options?.replaceBackdrop !== false
+  const maskBuf =
+    options?.personMaskAlpha && options.personMaskAlpha.length === srcW * srcH
+      ? options.personMaskAlpha
+      : null
+  const maskScale = maskBuf instanceof Uint8ClampedArray ? 1 / 255 : 1
 
   for (let y = 0; y < dstH; y++) {
     const nv = (y + 0.5) / dstH
@@ -1523,10 +1690,15 @@ export function renderIdPhotoSingleRgba(
       const x1 = Math.min(srcW - 1, x0 + 1)
       const fx = sx - x0
 
-      const p00 = (y0 * srcW + x0) * 4
-      const p10 = (y0 * srcW + x1) * 4
-      const p01 = (y1 * srcW + x0) * 4
-      const p11 = (y1 * srcW + x1) * 4
+      const i00 = y0 * srcW + x0
+      const i10 = y0 * srcW + x1
+      const i01 = y1 * srcW + x0
+      const i11 = y1 * srcW + x1
+
+      const p00 = i00 * 4
+      const p10 = i10 * 4
+      const p01 = i01 * 4
+      const p11 = i11 * 4
 
       let r =
         (retouched[p00] * (1 - fx) + retouched[p10] * fx) * (1 - fy) +
@@ -1542,8 +1714,19 @@ export function renderIdPhotoSingleRgba(
         (retouched[p01 + 3] * (1 - fx) + retouched[p11 + 3] * fx) * fy
 
       if (doBackdrop) {
+        let maskTrans = 0
+        if (maskBuf) {
+          const mVal =
+            ((maskBuf[i00] * (1 - fx) + maskBuf[i10] * fx) * (1 - fy) +
+              (maskBuf[i01] * (1 - fx) + maskBuf[i11] * fx) * fy) *
+            maskScale
+          maskTrans = clamp01(1 - clamp01(mVal))
+        }
+        const alphaTrans = a < 252 ? clamp01(1 - a / 255) : 0
+        const segOutside = Math.max(alphaTrans, maskTrans)
+
         // Head + shoulders geometric prior inside ID photo frame:
-        // head ellipse centered at (0.5, 0.38), shoulder trapezoid at (0.5, 0.88)
+        // head ellipse centered at (0.5, 0.39), shoulder trapezoid at (0.5, 0.92)
         const headDx = (nu - 0.5) / 0.29
         const headDy = (nv - 0.39) / 0.28
         const headDist = Math.sqrt(headDx * headDx + headDy * headDy)
@@ -1552,13 +1735,19 @@ export function renderIdPhotoSingleRgba(
         const shoulderDist = Math.sqrt(shoulderDx * shoulderDx + shoulderDy * shoulderDy)
         const geoInside = Math.min(headDist, shoulderDist)
         const colorDist = Math.hypot(r - bgRefR, g - bgRefG, b - bgRefB)
-        const alphaTrans = a < 250 ? 1 - a / 255 : 0
-        const bgSim = colorDist < 42 ? 1 - colorDist / 42 : 0
-        const outsideWeight =
-          geoInside > 1.05
-            ? clamp01((geoInside - 0.92) * 2.2) * Math.max(bgSim, alphaTrans)
-            : alphaTrans
+        const bgSim = colorDist < bgTolerance ? 1 - colorDist / bgTolerance : 0
+        const geoOutside = geoInside > 0.92 ? clamp01((geoInside - 0.92) * 2.2) * bgSim : 0
+        const outsideWeight = Math.max(segOutside, geoOutside)
+
         if (outsideWeight > 0.01) {
+          // Chromatic edge defringe (color-spill suppression) in the hair/shoulder transition band
+          if (outsideWeight < 0.96 && colorDist < bgTolerance * 1.15) {
+            const spillW = outsideWeight * (1 - outsideWeight) * 1.65
+            const fgWeight = Math.max(0.25, 1 - outsideWeight * 0.75)
+            r = clamp255(r + ((r - bgRefR * outsideWeight) / fgWeight - r) * spillW)
+            g = clamp255(g + ((g - bgRefG * outsideWeight) / fgWeight - g) * spillW)
+            b = clamp255(b + ((b - bgRefB * outsideWeight) / fgWeight - b) * spillW)
+          }
           const [br, bg, bb] = idPhotoBackdropRgb(state.idPhotoBg, nv)
           r = r * (1 - outsideWeight) + br * outsideWeight
           g = g * (1 - outsideWeight) + bg * outsideWeight

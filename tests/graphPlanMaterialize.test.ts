@@ -14,17 +14,17 @@ import { boundaryOutputNodeId } from '../src/shared/graph/hostInterface'
 describe('graphPlan materialize', () => {
   it('parses fenced JSON GraphPlan', () => {
     const plan = parseGraphPlanJson(`\`\`\`json
-{"title":"UA","nodes":[{"key":"a","typeId":"play.script"}],"edges":[]}
+{"title":"UA","nodes":[{"key":"a","typeId":"text.plain"}],"edges":[]}
 \`\`\``)
     expect(plan.title).toBe('UA')
-    expect(plan.nodes[0]?.typeId).toBe('play.script')
+    expect(plan.nodes[0]?.typeId).toBe('text.plain')
   })
 
   it('materializes a simple script → image → video chain', () => {
     const plan: GraphPlan = {
       title: '买量视频',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '剧本' },
+        { key: 'script', typeId: 'text.plain', title: '剧本' },
         { key: 'img', typeId: 'asset.image', title: '分镜图' },
         { key: 'vid', typeId: 'asset.video', title: '视频' }
       ],
@@ -41,7 +41,7 @@ describe('graphPlan materialize', () => {
     expect(result.document).toBeTruthy()
     expect(result.title).toBe('买量视频')
     const typeIds = result.document!.nodes.map((n) => n.typeId)
-    expect(typeIds).toContain('play.script')
+    expect(typeIds).toContain('text.plain')
     expect(typeIds).toContain('asset.image')
     expect(typeIds).toContain('asset.video')
     expect(result.document!.edges.length).toBeGreaterThanOrEqual(2)
@@ -50,7 +50,7 @@ describe('graphPlan materialize', () => {
   it('skips unknown typeIds and incompatible edges', () => {
     const plan: GraphPlan = {
       nodes: [
-        { key: 'a', typeId: 'play.script' },
+        { key: 'a', typeId: 'text.plain' },
         { key: 'bad', typeId: 'not.a.real.type' },
         { key: 'b', typeId: 'asset.video' }
       ],
@@ -88,7 +88,7 @@ describe('graphPlan materialize', () => {
         },
         { key: 'vid', typeId: 'asset.video' },
         { key: 'upscale', typeId: 'image.upscale' },
-        { key: 'txt', typeId: 'play.script' }
+        { key: 'txt', typeId: 'text.plain' }
       ],
       edges: []
     }
@@ -326,7 +326,7 @@ describe('graphPlan materialize', () => {
     const timelinePlan: GraphPlan = {
       title: '科普动画全流程',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '科普脚本' },
+        { key: 'script', typeId: 'text.plain', title: '科普脚本' },
         { key: 'anchor', typeId: 'asset.image', title: '风格锚点' },
         { key: 'svgGen', typeId: 'svg.gen', title: 'SVG 图解' },
         { key: 'svgAnim', typeId: 'svg.anim', title: 'SVG 动效' },
@@ -385,7 +385,7 @@ describe('graphPlan materialize', () => {
       {
         title: 'UA',
         nodes: [
-          { key: 'script', typeId: 'play.script' },
+          { key: 'script', typeId: 'text.plain' },
           { key: 'img', typeId: 'asset.image' },
           { key: 'vid', typeId: 'asset.video' }
         ],
@@ -407,7 +407,7 @@ describe('graphPlan materialize', () => {
       {
         title: '角色设定',
         nodes: [
-          { key: 'bio', typeId: 'play.script', title: '人设描述' },
+          { key: 'bio', typeId: 'text.plain', title: '人设描述' },
           {
             key: 'front',
             typeId: 'asset.image',
@@ -466,7 +466,7 @@ describe('graphPlan materialize', () => {
     const plan: GraphPlan = {
       title: 'Collapse outputs',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '剧本' },
+        { key: 'script', typeId: 'text.plain', title: '剧本' },
         ...videoKeys.map((key) => ({ key, typeId: 'asset.video', title: `视频 ${key}` })),
         ...reviewKeys.map((key) => ({
           key,
@@ -569,7 +569,7 @@ describe('graphPlan materialize', () => {
     const rawShortDramaPlan: GraphPlan = {
       title: '影视全流程（Agent 闭环）',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '剧本' },
+        { key: 'script', typeId: 'text.plain', title: '剧本' },
         {
           key: 'workbench',
           typeId: 'film.workbench',

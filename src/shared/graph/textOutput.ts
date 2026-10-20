@@ -73,7 +73,7 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   // 脚本节点：category=note 但双击应打开代码编辑器，不是记事本
   if (node.typeId === 'script.run') return false
   if (node.category === 'note') return true
-  if (node.typeId === 'note.text' || node.typeId === 'play.script') return true
+  if (node.typeId === 'note.text' || node.typeId === 'text.plain') return true
   if (isTextToolNode(node)) return true
   if (isProcessingAssetNode(node) && node.assetType === 'screenplay') return true
   if (isTextOutputNode(node)) return true
@@ -83,7 +83,7 @@ export function isNodeTextCapable(node: GraphNode): boolean {
 }
 
 function preferredField(node: GraphNode): GraphNodeTextField | null {
-  if (node.category === 'note' || node.typeId === 'note.text' || node.typeId === 'play.script') {
+  if (node.category === 'note' || node.typeId === 'note.text' || node.typeId === 'text.plain') {
     return 'text'
   }
   if (isTextToolNode(node)) return 'text'

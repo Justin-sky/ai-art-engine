@@ -27,6 +27,7 @@ import {
   type Stage2dPose,
   type Stage2dRig
 } from './stage2dRig'
+import { normalizeStage2dAction, type Stage2dAction, type Stage2dEasing } from './stage2dAction'
 
 /** Spine JSON 宽松结构（可 JSON.stringify，键为 spine 规范名） */
 export type SpineJson = Record<string, unknown>
@@ -85,6 +86,12 @@ export interface Stage2dSpineBuildResult {
   pages: Stage2dSpinePageInfo[]
 }
 
+/** 参与导出的单个动作条目 */
+export interface Stage2dSpineActionEntry {
+  name: string
+  action: Stage2dAction
+}
+
 export interface Stage2dSpineBuildInput {
   /** 骨骼装配（含关节层级与部件挂点） */
   rig: Stage2dRig
@@ -92,6 +99,8 @@ export interface Stage2dSpineBuildInput {
   pose?: Stage2dPose | null
   /** 参与导出的部件（通常只传挂到关节且可见的层） */
   parts: Stage2dSpinePartInput[]
+  /** 可选导出动作表：将每个动作编译为 Spine 3.8 animations.<name>.bones 时间轴 */
+  actions?: Stage2dSpineActionEntry[] | null
   /** 元数据 */
   meta?: {
     /** 骨架名（进 skeleton.hash 的可读线索，非必填） */
@@ -131,6 +140,92 @@ function makeHash(name: string): string {
     h = Math.imul(h, 16777619)
   }
   return (h >>> 0).toString(36)
+}
+
+function spineCurveForEasing(easing?: Stage2dEasing): string | number[] | undefined {
+  switch (easing) {
+    case 'stepped':
+      return 'stepped'
+    case 'easeIn':
+      return [0.42, 0, 1, 1]
+    case 'easeOut':
+      return [0, 0, 0.58, 1]
+    case 'easeInOut':
+      return [0.42, 0, 0.58, 1]
+    case 'linear':
+    default:
+      return undefined
+  }
+}
+
+/**
+ * 将 Stage2dAction 编译为 Spine 3.8 单个 animation 对象：
+ * - `bones.<jointId>.rotate`: 相对 setup pose 的角度增量（Spine y-up 取反）；
+ * - `bones.root.translate`: 根节点相对 setup root 的位移增量（Spine y-up 对 y 取反）。
+ */
+export function buildStage2dSpineAnimation(input: {
+  rig: Stage2dRig
+  setupPose?: Stage2dPose | null
+  action: Stage2dAction
+}): SpineJson | null {
+  const action = normalizeStage2dAction(input.action)
+  if (!action.keyframes.length) return null
+  const validJointIds = new Set(input.rig.joints.map((j) => j.id))
+  const setupPose = input.setupPose ?? null
+
+  // 收集在任意关键帧出现过或 setupPose 非 0 的关节
+  const animatedJoints = new Set<string>()
+  let hasRootTranslate = false
+  for (const kf of action.keyframes) {
+    for (const jointId of Object.keys(kf.pose)) {
+      if (validJointIds.has(jointId)) animatedJoints.add(jointId)
+    }
+    if (kf.rootOffset && (Math.abs(kf.rootOffset.x) > 1e-6 || Math.abs(kf.rootOffset.y) > 1e-6)) {
+      hasRootTranslate = true
+    }
+  }
+  if (!animatedJoints.size && !hasRootTranslate) return null
+
+  const bonesAnim: Record<string, SpineJson> = {}
+
+  if (hasRootTranslate) {
+    const translateTrack: SpineJson[] = action.keyframes.map((kf, idx) => {
+      const dx = round1(kf.rootOffset?.x ?? 0)
+      const dy = round1(-(kf.rootOffset?.y ?? 0))
+      const entry: SpineJson = {
+        time: roundTime(kf.time)
+      }
+      if (dx !== 0) entry.x = dx
+      if (dy !== 0) entry.y = dy
+      if (idx < action.keyframes.length - 1) {
+        const curve = spineCurveForEasing(kf.easing)
+        if (curve) entry.curve = curve
+      }
+      return entry
+    })
+    bonesAnim.root = { translate: translateTrack }
+  }
+
+  for (const jointId of animatedJoints) {
+    const setupOffset = Number(setupPose?.[jointId]) || 0
+    const rotateTrack: SpineJson[] = action.keyframes.map((kf, idx) => {
+      const kfOffset = Number(kf.pose[jointId]) || 0
+      // Spine rotate timeline 角度相对 bone 的 setup rotation；y-up 下旋转取反
+      const angle = round1(normalizeAngle(-(kfOffset - setupOffset)))
+      const entry: SpineJson = {
+        time: roundTime(kf.time),
+        angle
+      }
+      if (idx < action.keyframes.length - 1) {
+        const curve = spineCurveForEasing(kf.easing)
+        if (curve) entry.curve = curve
+      }
+      return entry
+    })
+    bonesAnim[jointId] = { rotate: rotateTrack }
+  }
+
+  return { bones: bonesAnim }
 }
 
 /**
@@ -241,6 +336,27 @@ export function buildStage2dSpineData(input: Stage2dSpineBuildInput): Stage2dSpi
     })
   }
 
+  const animations: Record<string, SpineJson> = {}
+  const usedAnimNames = new Set<string>()
+  for (const item of input.actions ?? []) {
+    if (!item || !item.action) continue
+    const compiled = buildStage2dSpineAnimation({
+      rig,
+      setupPose: pose,
+      action: item.action
+    })
+    if (!compiled) continue
+    const baseName = stage2dSpineSafeName(item.name || item.action.name, 'anim')
+    let animName = baseName
+    let suffix = 2
+    while (usedAnimNames.has(animName)) {
+      animName = `${baseName}-${suffix}`
+      suffix += 1
+    }
+    usedAnimNames.add(animName)
+    animations[animName] = compiled
+  }
+
   const skeleton: SpineJson = {
     skeleton: {
       spine: '3.8.99',
@@ -255,7 +371,7 @@ export function buildStage2dSpineData(input: Stage2dSpineBuildInput): Stage2dSpi
     transform: [],
     paths: [],
     skins: [{ name: 'default', attachments: skinSlots }],
-    animations: {}
+    animations
   }
 
   return { skeleton, pages }
@@ -263,6 +379,11 @@ export function buildStage2dSpineData(input: Stage2dSpineBuildInput): Stage2dSpi
 
 function round1(n: number): number {
   const r = Math.round(n * 10) / 10
+  return r === 0 ? 0 : r
+}
+
+function roundTime(n: number): number {
+  const r = Math.round(n * 1000) / 1000
   return r === 0 ? 0 : r
 }
 
@@ -288,9 +409,119 @@ export function buildStage2dSpineAtlasText(input: {
         `  size: ${w}, ${h}`,
         `  orig: ${w}, ${h}`,
         '  offset: 0, 0',
-        '  index: 0'
+        '  index: -1'
       ].join('\n')
     )
   }
   return chunks.join('\n\n')
+}
+
+/** 单张合并纹理图集中的部件排布项 */
+export interface Stage2dSpinePackedRegion extends Stage2dSpinePageInfo {
+  /** 在合并图集中的左上角像素 X */
+  x: number
+  /** 在合并图集中的左上角像素 Y */
+  y: number
+  /** 对应输入 pages 的原始下标 */
+  pageIndex: number
+}
+
+export interface Stage2dSpineAtlasPackResult {
+  width: number
+  height: number
+  padding: number
+  regions: Stage2dSpinePackedRegion[]
+}
+
+/**
+ * 将多个部件页通过 Shelf 算法紧密拼合为单张纹理图集布局（带透明间距防采样溢色）。
+ */
+export function packStage2dSpineAtlas(
+  pages: Stage2dSpinePageInfo[],
+  options?: { padding?: number; maxWidth?: number }
+): Stage2dSpineAtlasPackResult {
+  const padding = Math.max(0, Math.round(options?.padding ?? 2))
+  if (!pages.length) {
+    return { width: 1, height: 1, padding, regions: [] }
+  }
+  const indexed = pages.map((page, pageIndex) => ({
+    ...page,
+    pageWidth: Math.max(1, Math.round(page.pageWidth)),
+    pageHeight: Math.max(1, Math.round(page.pageHeight)),
+    pageIndex
+  }))
+
+  const totalArea = indexed.reduce(
+    (sum, p) => sum + (p.pageWidth + padding * 2) * (p.pageHeight + padding * 2),
+    0
+  )
+  const maxPartW = indexed.reduce((m, p) => Math.max(m, p.pageWidth + padding * 2), 1)
+  const targetWidth = Math.max(
+    maxPartW,
+    Math.min(options?.maxWidth ?? 2048, Math.ceil(Math.sqrt(totalArea * 1.25)))
+  )
+
+  // 按高度降序排列以提升 Shelf 紧致度，打包后再恢复原 pages 顺序
+  const sorted = [...indexed].sort(
+    (a, b) => b.pageHeight - a.pageHeight || a.pageIndex - b.pageIndex
+  )
+  let cursorX = padding
+  let cursorY = padding
+  let rowHeight = 0
+  let usedWidth = 1
+  const placed: Stage2dSpinePackedRegion[] = []
+
+  for (const item of sorted) {
+    if (cursorX > padding && cursorX + item.pageWidth + padding > targetWidth) {
+      cursorX = padding
+      cursorY += rowHeight + padding
+      rowHeight = 0
+    }
+    placed.push({
+      ...item,
+      x: cursorX,
+      y: cursorY
+    })
+    cursorX += item.pageWidth + padding
+    if (cursorX > usedWidth) usedWidth = cursorX
+    if (item.pageHeight > rowHeight) rowHeight = item.pageHeight
+  }
+
+  const usedHeight = Math.max(1, cursorY + rowHeight + padding)
+  placed.sort((a, b) => a.pageIndex - b.pageIndex)
+
+  return {
+    width: Math.max(1, usedWidth),
+    height: usedHeight,
+    padding,
+    regions: placed
+  }
+}
+
+/** 由单张合并图集布局生成标准 Spine .atlas 文本（单张 PNG 承载全部部件 region） */
+export function buildStage2dSpinePackedAtlasText(input: {
+  fileName: string
+  pack: Stage2dSpineAtlasPackResult
+}): string {
+  const w = Math.max(1, Math.round(input.pack.width))
+  const h = Math.max(1, Math.round(input.pack.height))
+  const header = [
+    input.fileName,
+    `size: ${w}, ${h}`,
+    'format: RGBA8888',
+    'filter: Linear, Linear',
+    'repeat: none'
+  ]
+  const blocks = input.pack.regions.map((reg) =>
+    [
+      reg.slotName,
+      '  rotate: false',
+      `  xy: ${reg.x}, ${reg.y}`,
+      `  size: ${reg.pageWidth}, ${reg.pageHeight}`,
+      `  orig: ${reg.pageWidth}, ${reg.pageHeight}`,
+      '  offset: 0, 0',
+      '  index: -1'
+    ].join('\n')
+  )
+  return [...header, ...blocks].join('\n')
 }

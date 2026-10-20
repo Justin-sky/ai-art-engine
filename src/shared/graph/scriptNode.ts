@@ -302,3 +302,198 @@ export function validateScriptNodesInPlan(
   }
   return out
 }
+
+export interface ScriptNodeTemplate {
+  id: 'textClean' | 'jsonRouter' | 'batchPromptMatrix' | 'aiImageRefine' | 'conditionalFilter'
+  ports: ScriptPorts
+  capabilities: ScriptCapability[]
+  code: string
+}
+
+/** 内置商用脚本模板：一键配置端口、所需受控能力与示例代码 */
+export const SCRIPT_NODE_TEMPLATES: readonly ScriptNodeTemplate[] = [
+  {
+    id: 'textClean',
+    ports: {
+      inputs: [{ id: 'in', dataType: GraphPortType.text, label: 'In' }],
+      outputs: [{ id: 'out', dataType: GraphPortType.text, label: 'Out' }]
+    },
+    capabilities: [],
+    code: `export default async function ({ inputs }) {
+  const raw = inputs.in?.[0]?.text ?? ''
+  // Strip markdown code fences, normalize whitespace, and remove empty lines
+  const cleaned = raw
+    .replace(/^\`\`\`[\\w-]*\\s*/i, '')
+    .replace(/\`\`\`\\s*$/i, '')
+    .split('\\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\\n')
+  console.log('cleaned chars:', cleaned.length)
+  return {
+    out: { kind: 'text', text: cleaned }
+  }
+}
+`
+  },
+  {
+    id: 'jsonRouter',
+    ports: {
+      inputs: [{ id: 'in', dataType: GraphPortType.text, label: 'JSON In' }],
+      outputs: [
+        { id: 'outPrompt', dataType: GraphPortType.text, label: 'Prompt' },
+        { id: 'outMeta', dataType: GraphPortType.text, label: 'Meta' }
+      ]
+    },
+    capabilities: [],
+    code: `export default async function ({ inputs }) {
+  const raw = inputs.in?.[0]?.text ?? '{}'
+  let data = {}
+  try {
+    const jsonBlock = raw.match(/\\{[\\s\\S]*\\}/)?.[0] ?? raw
+    data = JSON.parse(jsonBlock)
+  } catch (err) {
+    console.warn('JSON parse fallback:', String(err))
+    data = { prompt: raw }
+  }
+  const prompt = String(data.prompt || data.visualPrompt || data.text || raw).trim()
+  const meta = JSON.stringify(
+    { style: data.style ?? 'cinematic', aspectRatio: data.aspectRatio ?? '16:9', tags: data.tags ?? [] },
+    null,
+    2
+  )
+  console.log('routed prompt:', prompt.slice(0, 60))
+  return {
+    outPrompt: { kind: 'text', text: prompt },
+    outMeta: { kind: 'text', text: meta }
+  }
+}
+`
+  },
+  {
+    id: 'batchPromptMatrix',
+    ports: {
+      inputs: [
+        { id: 'inSubjects', dataType: GraphPortType.text, label: 'Subjects' },
+        { id: 'inStyles', dataType: GraphPortType.text, label: 'Styles' }
+      ],
+      outputs: [{ id: 'out', dataType: GraphPortType.texts, label: 'Prompts' }]
+    },
+    capabilities: [],
+    code: `export default async function ({ inputs }) {
+  const splitLines = (s) =>
+    String(s ?? '')
+      .split(/\\r?\\n/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+
+  const subjects = splitLines(inputs.inSubjects?.[0]?.text || 'Cyberpunk detective\\nAncient mech guardian')
+  const styles = splitLines(inputs.inStyles?.[0]?.text || '35mm film noir lighting\\nAnime cel-shaded key visual')
+
+  const items = []
+  for (const subject of subjects) {
+    for (const style of styles) {
+      items.push({ text: \`\${subject}, \${style}, ultra-detailed, masterpiece\` })
+    }
+  }
+  console.log(\`matrix generated \${items.length} prompts (\${subjects.length} x \${styles.length})\`)
+  return {
+    out: { kind: 'texts', items }
+  }
+}
+`
+  },
+  {
+    id: 'aiImageRefine',
+    ports: {
+      inputs: [{ id: 'in', dataType: GraphPortType.text, label: 'Concept' }],
+      outputs: [
+        { id: 'out', dataType: GraphPortType.image, label: 'Image' },
+        { id: 'outPrompt', dataType: GraphPortType.text, label: 'Prompt' }
+      ]
+    },
+    capabilities: ['generateText', 'generateImage', 'saveMedia'],
+    code: `export default async function ({ inputs, om }) {
+  const concept = inputs.in?.[0]?.text?.trim() || 'A cinematic neon-lit alley in rainy Tokyo at night'
+  console.log('1. Refining prompt with LLM...')
+  const refined = await om.generateText({
+    system: 'You are a visual prompt director. Output ONLY one vivid image generation prompt without markdown.',
+    prompt: \`Expand this concept into a rich cinematic image prompt:\\n\${concept}\`
+  })
+  const finalPrompt = refined.text.trim() || concept
+  console.log('2. Generating image:', finalPrompt.slice(0, 80))
+
+  const imgRes = await om.generateImage({ prompt: finalPrompt, aspectRatio: '16:9' })
+  const dataUrl = imgRes.images?.[0] ?? ''
+  const relativePath = dataUrl ? await om.saveMedia({ dataUrl, key: 'script-img' }) : undefined
+
+  return {
+    out: { kind: 'image', dataUrl, ...(relativePath ? { relativePath } : {}) },
+    outPrompt: { kind: 'text', text: finalPrompt }
+  }
+}
+`
+  },
+  {
+    id: 'conditionalFilter',
+    ports: {
+      inputs: [{ id: 'in', dataType: GraphPortType.texts, label: 'Items', multiple: true }],
+      outputs: [
+        { id: 'outMatched', dataType: GraphPortType.texts, label: 'Matched' },
+        { id: 'outSummary', dataType: GraphPortType.text, label: 'Summary' }
+      ]
+    },
+    capabilities: [],
+    code: `export default async function ({ inputs }) {
+  const rawList = inputs.in ?? []
+  const allTexts = []
+  for (const val of rawList) {
+    if (Array.isArray(val.items)) {
+      for (const item of val.items) {
+        if (item?.text?.trim()) allTexts.push(item.text.trim())
+      }
+    } else if (typeof val.text === 'string' && val.text.trim()) {
+      allTexts.push(val.text.trim())
+    }
+  }
+  const matched = allTexts.filter((t) => t.length >= 10)
+  console.log(\`filtered \${matched.length} / \${allTexts.length} items\`)
+  return {
+    outMatched: { kind: 'texts', items: matched.map((text) => ({ text })) },
+    outSummary: { kind: 'text', text: matched.map((t, i) => \`[\${i + 1}] \${t}\`).join('\\n\\n') }
+  }
+}
+`
+  }
+]
+
+export interface ScriptRunDiagnostics {
+  logs: Array<{ level: 'info' | 'warn' | 'error'; message: string }>
+  runMs: number | null
+  error: string
+  runAt: string
+}
+
+/** 读取节点 params 上持久化的最近一次脚本执行诊断信息 */
+export function readScriptRunDiagnostics(
+  params: Record<string, unknown> | undefined
+): ScriptRunDiagnostics {
+  const raw = (params ?? {}) as Record<string, unknown>
+  const logs: Array<{ level: 'info' | 'warn' | 'error'; message: string }> = []
+  if (Array.isArray(raw.scriptLastLogs)) {
+    for (const item of raw.scriptLastLogs) {
+      if (!item || typeof item !== 'object') continue
+      const entry = item as Record<string, unknown>
+      const level = entry.level === 'warn' || entry.level === 'error' ? entry.level : 'info'
+      const message = typeof entry.message === 'string' ? entry.message : ''
+      if (message) logs.push({ level, message })
+    }
+  }
+  const runMs =
+    typeof raw.scriptLastRunMs === 'number' && Number.isFinite(raw.scriptLastRunMs)
+      ? Math.max(0, Math.round(raw.scriptLastRunMs))
+      : null
+  const error = typeof raw.scriptLastError === 'string' ? raw.scriptLastError : ''
+  const runAt = typeof raw.scriptLastRunAt === 'string' ? raw.scriptLastRunAt : ''
+  return { logs, runMs, error, runAt }
+}

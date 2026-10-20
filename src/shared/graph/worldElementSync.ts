@@ -1,6 +1,6 @@
 /**
  * 将世界元素目录条目同步到 elementWorkflow 子图：
- * 每条：play.script（提示词）→ asset.image → graph.boundary.output（image）
+ * 每条：text.plain（提示词）→ asset.image → graph.boundary.output（image）
  * 无边界输入；结果从边界输出 runStates 汇集为世界元素实体。
  */
 import { createNodeFromType } from './create'
@@ -105,10 +105,14 @@ function upsertManagedNode(
   nextNodes.push(create())
 }
 
+function isPlainTextScriptNode(node: Pick<GraphNode, 'typeId'>): boolean {
+  return node.typeId === 'text.plain'
+}
+
 function isManagedWorldElementNode(node: GraphNode): boolean {
   if (readWorldElementIdFromNodeParams(node.params)) {
     return (
-      node.typeId === 'play.script' || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
+      isPlainTextScriptNode(node) || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
     )
   }
   return isBoundaryInputNode(node) || node.typeId === 'output.image' || node.category === 'output'
@@ -185,7 +189,7 @@ function collectElementChains(
     const node = nodeById.get(currentId)
     if (!node) return
     const traversable =
-      node.typeId === 'play.script' || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
+      isPlainTextScriptNode(node) || node.typeId === 'asset.image' || isBoundaryOutputNode(node)
     if (!traversable) return
     // 不跨元素：已带其它 worldElementId 的节点不并入本链
     const wid = readWorldElementIdFromNodeParams(node.params)
@@ -230,7 +234,7 @@ export function syncWorldElementKindGraph(
   for (const node of doc.nodes) {
     const id = readWorldElementIdFromNodeParams(node.params)
     if (!id) continue
-    if (node.typeId === 'play.script') managedScripts.set(id, node)
+    if (isPlainTextScriptNode(node)) managedScripts.set(id, node)
     else if (node.typeId === 'asset.image') managedGens.set(id, node)
   }
 
@@ -284,7 +288,7 @@ export function syncWorldElementKindGraph(
       nextNodes,
       foundScript,
       () =>
-        createNodeFromType('play.script', pos.script, {
+        createNodeFromType('text.plain', pos.script, {
           id: worldElementScriptNodeId(item.id),
           title: item.name,
           params: {
@@ -294,6 +298,7 @@ export function syncWorldElementKindGraph(
         }),
       (node) => ({
         ...node,
+        typeId: 'text.plain',
         title: item.name,
         position: pos.script,
         params: {
@@ -417,7 +422,7 @@ export function syncWorldElementKindGraph(
     if (!source || !target) return false
     const sid = readWorldElementIdFromNodeParams(source.params)
     const tid = readWorldElementIdFromNodeParams(target.params)
-    const scriptToGen = source.typeId === 'play.script' && target.typeId === 'asset.image'
+    const scriptToGen = isPlainTextScriptNode(source) && target.typeId === 'asset.image'
     const genToBoundary = source.typeId === 'asset.image' && isBoundaryOutputNode(target)
     if (scriptToGen || genToBoundary) return !!sid && sid === tid
     if (isManagedWorldElementNode(source) || isManagedWorldElementNode(target)) return false
@@ -426,7 +431,7 @@ export function syncWorldElementKindGraph(
 
   for (const item of items) {
     const script = alignedNodes.find(
-      (n) => n.typeId === 'play.script' && readWorldElementIdFromNodeParams(n.params) === item.id
+      (n) => isPlainTextScriptNode(n) && readWorldElementIdFromNodeParams(n.params) === item.id
     )
     const gen = alignedNodes.find(
       (n) => n.typeId === 'asset.image' && readWorldElementIdFromNodeParams(n.params) === item.id

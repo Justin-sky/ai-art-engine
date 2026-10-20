@@ -612,7 +612,7 @@ function sourceTitle(node: GraphNode): string {
 }
 
 /** 文本产出/透传节点：指令窗口引用芯片统一显示文本图标 */
-const TEXT_ICON_TYPE_IDS = new Set(['play.script', 'text.select', 'output.text', 'prompt.optimize'])
+const TEXT_ICON_TYPE_IDS = new Set(['text.plain', 'text.select', 'output.text', 'prompt.optimize'])
 
 function sourceIcon(node: GraphNode): string {
   if (node.assetType && ASSET_TYPE_ICONS[node.assetType]) {

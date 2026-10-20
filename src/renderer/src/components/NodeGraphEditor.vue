@@ -2338,23 +2338,28 @@ const radialMenu = ref<{ x: number; y: number } | null>(null)
 const radialHoveredId = ref<string | null>(null)
 
 const radialMenuItems = computed((): RadialMenuItem[] => {
-  if (isGraphOrTaskRunning.value) {
-    return [
-      {
-        id: 'stop',
-        label: t('graph.radial.stop'),
-        icon: 'stop' as const
-      }
-    ]
+  if (!toolbarSelectedNode.value) {
+    if (isGraphOrTaskRunning.value) {
+      return [
+        {
+          id: 'stop',
+          label: t('graph.radial.stop'),
+          icon: 'stop' as const
+        }
+      ]
+    }
+    return []
   }
-  if (!toolbarSelectedNode.value) return []
+  const selectedId = toolbarSelectedNode.value.id
+  const runBlocked = hasActiveTaskForCurrentGraph.value || activeRunNodeIds.value.has(selectedId)
   const items: RadialMenuItem[] = [
     {
       id: 'run-current',
       label: toolbarCurrentIsRerun.value
         ? t('graph.radial.rerunCurrent')
         : t('graph.radial.runCurrent'),
-      icon: (toolbarCurrentIsRerun.value ? 'replay' : 'play') as 'replay' | 'play'
+      icon: (toolbarCurrentIsRerun.value ? 'replay' : 'play') as 'replay' | 'play',
+      disabled: runBlocked
     }
   ]
   // 宿主 / 批量子图编排：显式 Cook 子图；「执行当前」默认不入队嵌套子图
@@ -2366,26 +2371,37 @@ const radialMenuItems = computed((): RadialMenuItem[] => {
     items.push({
       id: 'cook-host',
       label: t('graph.radial.cookSubgraph'),
-      icon: 'cook' as const
+      icon: 'cook' as const,
+      disabled: runBlocked
     })
   }
   items.push(
     {
       id: 'run-skip',
       label: t('graph.radial.runSkip'),
-      icon: 'forward' as const
+      icon: 'forward' as const,
+      disabled: runBlocked
     },
     {
       id: 'run-force',
       label: t('graph.radial.runForce'),
-      icon: 'rewind' as const
+      icon: 'rewind' as const,
+      disabled: runBlocked
     }
   )
   if (toolbarSelectedIsOutput.value) {
     items.push({
       id: 'enqueue',
       label: t('graph.radial.enqueue'),
-      icon: 'queue' as const
+      icon: 'queue' as const,
+      disabled: hasActiveTaskForCurrentGraph.value
+    })
+  }
+  if (isGraphOrTaskRunning.value) {
+    items.push({
+      id: 'stop',
+      label: t('graph.radial.stop'),
+      icon: 'stop' as const
     })
   }
   return items
@@ -3539,7 +3555,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'text',
-    typeIds: ['play.script', 'text.select', 'note.text', 'prompt.optimize', 'image.toPrompt']
+    typeIds: ['text.plain', 'text.select', 'note.text', 'prompt.optimize', 'image.toPrompt']
   },
   {
     id: 'game',
@@ -6270,7 +6286,9 @@ async function resolveNodeUpstreamPreviewUrl(nodeId: string): Promise<string> {
       }
       if (runOut.kind === 'asset' && runOut.assetType === 'image' && runOut.assetId) {
         const asset = project.assets.find((item) => item.id === runOut.assetId)
-        const url = await resolveAssetFileUrl(asset?.thumbnailPath || asset?.relativePath)
+        const url =
+          (await resolveAssetFileUrl(asset?.thumbnailPath)) ||
+          (await resolveAssetFileUrl(asset?.relativePath))
         if (url) return url
       }
     }
@@ -6298,7 +6316,9 @@ async function resolveNodeUpstreamPreviewUrl(nodeId: string): Promise<string> {
 
     if (source.assetType === 'image' && source.assetId) {
       const asset = project.assets.find((item) => item.id === source.assetId)
-      const url = await resolveAssetFileUrl(asset?.thumbnailPath || asset?.relativePath)
+      const url =
+        (await resolveAssetFileUrl(asset?.thumbnailPath)) ||
+        (await resolveAssetFileUrl(asset?.relativePath))
       if (url) return url
     }
 
@@ -10082,7 +10102,7 @@ async function refreshFocusStagePreviewUrls(): Promise<void> {
         const text = (await fetchTextFromAssetRelativePath(pickedText.relativePath.trim())).trim()
         if (text) focusStageTextPreviews[node.id] = text
       }
-    } else if (node.assetId && (node.assetType === 'screenplay' || node.typeId === 'play.script')) {
+    } else if (node.assetId && (node.assetType === 'screenplay' || node.typeId === 'text.plain')) {
       try {
         const text = (await resolveAssetText(node.assetId))?.trim() || ''
         if (text) focusStageTextPreviews[node.id] = text

@@ -4,12 +4,12 @@ import type { GraphAssetValue } from './execute/types'
 import type { GraphDocument, GraphNode } from './types'
 
 function directTextFromNode(node: GraphNode): string | undefined {
-  if (node.typeId !== 'play.script') return undefined
+  if (node.typeId !== 'text.plain') return undefined
   const text = node.params.text?.trim()
   return text || undefined
 }
 
-/** 收集节点直接连入的 play.script 文本（与执行器 flattenTextValues 对齐） */
+/** 收集节点直接连入的 text.plain 文本（与执行器 flattenTextValues 对齐） */
 export function collectDirectTextInputs(graph: GraphDocument, nodeId: string): string {
   const parts: string[] = []
   for (const edge of graph.edges) {

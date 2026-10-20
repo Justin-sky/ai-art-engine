@@ -1,6 +1,7 @@
 import {
   computeStage2dLayerPlacements,
   computeStage2dRigTransforms,
+  computeStage2dSlotJointCapMask,
   extractAlphaBounds,
   normalizeStage2dRig,
   normalizeStage2dScene,
@@ -114,13 +115,14 @@ function extractContentRgba(image: HTMLImageElement): {
   return { rgba, contentWidth, contentHeight, bounds }
 }
 
-/** 由整图层内容 + 分区结果合成一张部件 PNG dataUrl */
+/** 由整图层内容 + 分区结果（或含关节圆弧帽的权重掩码）合成一张部件 PNG dataUrl */
 export function buildAutoPartDataUrl(
   contentRgba: Uint8ClampedArray,
   contentWidth: number,
   assignment: Int32Array,
   slotIndex: number,
-  crop: Stage2dAutoPartPiece['crop']
+  crop: Stage2dAutoPartPiece['crop'],
+  mask?: Uint8Array
 ): string {
   const canvas = document.createElement('canvas')
   canvas.width = crop.width
@@ -134,13 +136,20 @@ export function buildAutoPartDataUrl(
     for (let x = 0; x < crop.width; x += 1) {
       const contentX = crop.x + x
       const srcIdx = contentY * contentWidth + contentX
-      if (assignment[srcIdx] !== slotIndex) continue
+      let weight = 255
+      if (mask) {
+        weight = mask[srcIdx] ?? 0
+        if (weight <= 0) continue
+      } else if (assignment[srcIdx] !== slotIndex) {
+        continue
+      }
       const inOff = srcIdx * 4
       const outOff = (y * crop.width + x) * 4
       out[outOff] = contentRgba[inOff]
       out[outOff + 1] = contentRgba[inOff + 1]
       out[outOff + 2] = contentRgba[inOff + 2]
-      out[outOff + 3] = contentRgba[inOff + 3]
+      out[outOff + 3] =
+        weight >= 255 ? contentRgba[inOff + 3] : Math.round((contentRgba[inOff + 3] * weight) / 255)
     }
   }
   ctx.putImageData(img, 0, 0)
@@ -275,7 +284,8 @@ export async function prepareStage2dAutoCutSession(input: {
 
 /**
  * 落层提交：把「编辑后的 assignment」烧成部件层 + 附件挂点。
- * 同步执行（像素已在内存），不触碰 session 输入。
+ * 每个部件围绕其挂点枢轴自动补全圆弧防裂重叠帽（computeStage2dSlotJointCapMask），
+ * 确保肘/膝/肩大角度旋转时不裂开透明缺口。
  */
 export function commitStage2dAutoCutSession(
   session: Stage2dAutoCutSession,
@@ -300,7 +310,7 @@ export function commitStage2dAutoCutSession(
   })
   if (!pieces.length) return { state: scene, rig, partCount: 0 }
 
-  // 每个部件：生成 PNG、建层、算挂点（frame 共享整图层几何 + pivot 枢轴）
+  // 每个部件：生成含关节圆弧重叠帽的 PNG、建层、算挂点（frame 共享整图层几何 + pivot 枢轴）
   const layers = scene.layers.map((layer) =>
     layer.id === frameLayerId ? { ...layer, visible: false } : layer
   )
@@ -312,14 +322,26 @@ export function commitStage2dAutoCutSession(
   )
   for (const piece of pieces) {
     const layerId = uniqueLayerId(layers, `part-${piece.id}`)
+    const slot = slots[piece.slotIndex]
+    const anchorPt = slot?.polyline[0] ?? piece.pivot
+    const capped = computeStage2dSlotJointCapMask({
+      width: contentWidth,
+      height: contentHeight,
+      assignment,
+      slotIndex: piece.slotIndex,
+      pivot: anchorPt
+    })
+    const finalCrop = capped.pixelCount > 0 ? capped.crop : piece.crop
+    const finalPivot = capped.pixelCount > 0 ? capped.pivot : piece.pivot
     const dataUrl = buildAutoPartDataUrl(
       contentRgba,
       contentWidth,
       assignment,
       piece.slotIndex,
-      piece.crop
+      finalCrop,
+      capped.pixelCount > 0 ? capped.mask : undefined
     )
-    const pivotContent = piece.pivot
+    const pivotContent = finalPivot
     const pivotWorld = {
       x: frame.dstX + pivotContent.x * frame.scale,
       y: frame.dstY + pivotContent.y * frame.scale
@@ -348,13 +370,13 @@ export function commitStage2dAutoCutSession(
       frame: {
         layerId: frameLayerId,
         crop: {
-          x: piece.crop.x,
-          y: piece.crop.y,
-          width: piece.crop.width,
-          height: piece.crop.height
+          x: finalCrop.x,
+          y: finalCrop.y,
+          width: finalCrop.width,
+          height: finalCrop.height
         }
       },
-      pivot: { x: piece.pivot.x - piece.crop.x, y: piece.pivot.y - piece.crop.y },
+      pivot: { x: finalPivot.x - finalCrop.x, y: finalPivot.y - finalCrop.y },
       visible: true
     })
     attachments.push({

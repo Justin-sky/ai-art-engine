@@ -32,7 +32,7 @@ describe('text.select node', () => {
   })
 
   it('rejects a single text node into text.select', () => {
-    const text = createNodeFromType('play.script', { x: 0, y: 0 })
+    const text = createNodeFromType('text.plain', { x: 0, y: 0 })
     const select = createNodeFromType('text.select', { x: 120, y: 0 })
     const optimize = createNodeFromType('prompt.optimize', { x: 240, y: 0 })
     expect(canConnectNodes(text, select)).toBe(false)

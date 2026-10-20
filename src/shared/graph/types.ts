@@ -228,7 +228,7 @@ export type GraphNodeTypeId =
   | 'output.timeline'
   | 'note.text'
   | 'media.bundle'
-  | 'play.script'
+  | 'text.plain'
   | 'prompt.optimize'
   | 'image.select'
   | 'video.select'
@@ -1334,6 +1334,14 @@ export interface GraphNodeParams {
   filmBreakdownInstruction?: string
   filmReviewInstruction?: string
   filmCastInstruction?: string
+  /** 脚本节点（script.run）：最近一次执行的 console 日志快照 */
+  scriptLastLogs?: Array<{ level: 'info' | 'warn' | 'error'; message: string }>
+  /** 脚本节点（script.run）：最近一次执行耗时（毫秒） */
+  scriptLastRunMs?: number
+  /** 脚本节点（script.run）：最近一次执行错误信息 */
+  scriptLastError?: string
+  /** 脚本节点（script.run）：最近一次执行时间戳（ISO 字符串） */
+  scriptLastRunAt?: string
 }
 
 export interface GraphPortDef {

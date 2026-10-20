@@ -46,6 +46,7 @@ const cy = computed(() => size.value / 2)
 /** 扇区内容区最大宽度：按弦长估算，避免文字溢出相邻扇区 */
 const contentMaxWidth = computed(() => {
   const n = Math.max(1, props.items.length)
+  if (n === 1) return 96
   const midR = (props.innerRadius + props.outerRadius) / 2
   const chord = 2 * midR * Math.sin(Math.PI / n)
   return Math.max(48, Math.min(96, Math.floor(chord * 0.78)))
@@ -95,8 +96,28 @@ const wedges = computed(() => {
 })
 
 function donutSlice(x: number, y: number, r0: number, r1: number, a0: number, a1: number): string {
-  const large = a1 - a0 > Math.PI ? 1 : 0
+  const span = a1 - a0
   const p = (r: number, a: number) => [x + Math.cos(a) * r, y + Math.sin(a) * r] as const
+  // SVG 椭圆弧在起点与终点重合（360° 整环，即单扇区 n === 1）时会退化为 0 长度线段而完全不渲染，
+  // 需拆分为两段 180° 半弧分别闭合外环与内环。
+  if (span >= Math.PI * 2 - 1e-4) {
+    const aMid = a0 + Math.PI
+    const [ox0, oy0] = p(r1, a0)
+    const [ox1, oy1] = p(r1, aMid)
+    const [ix0, iy0] = p(r0, a0)
+    const [ix1, iy1] = p(r0, aMid)
+    return [
+      `M ${ox0} ${oy0}`,
+      `A ${r1} ${r1} 0 1 1 ${ox1} ${oy1}`,
+      `A ${r1} ${r1} 0 1 1 ${ox0} ${oy0}`,
+      'Z',
+      `M ${ix0} ${iy0}`,
+      `A ${r0} ${r0} 0 1 0 ${ix1} ${iy1}`,
+      `A ${r0} ${r0} 0 1 0 ${ix0} ${iy0}`,
+      'Z'
+    ].join(' ')
+  }
+  const large = span > Math.PI ? 1 : 0
   const [x0, y0] = p(r1, a0)
   const [x1, y1] = p(r1, a1)
   const [x2, y2] = p(r0, a1)

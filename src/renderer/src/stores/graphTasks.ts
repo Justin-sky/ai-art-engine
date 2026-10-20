@@ -81,6 +81,7 @@ import {
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import {
   composePortraitIdPhoto,
+  composePortraitLiveRetouch,
   composePortraitScopedRetouch,
   detectPortraitFaces,
   fitPortraitToSourceSize,
@@ -1670,6 +1671,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         inspectImageSize,
         fitPortraitToSourceSize,
         flattenPortraitBackground,
+        composePortraitLiveRetouch,
         inspectModelSkeleton,
         runBlenderDshJob,
         buildGamePlayProject: buildGamePlayProjectForNode,

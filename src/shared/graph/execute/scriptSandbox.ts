@@ -34,8 +34,14 @@ export interface ScriptRunRequest {
   signal?: AbortSignal
 }
 
+export interface ScriptLogEntry {
+  level: 'info' | 'warn' | 'error'
+  message: string
+}
+
 export type ScriptRunResult =
-  { ok: true; outputs: Record<string, unknown> } | { ok: false; error: string }
+  | { ok: true; outputs: Record<string, unknown>; logs?: ScriptLogEntry[] }
+  | { ok: false; error: string; logs?: ScriptLogEntry[] }
 
 export interface ScriptSandbox {
   run(request: ScriptRunRequest): Promise<ScriptRunResult>

@@ -20,7 +20,7 @@ describe('syncWorldElementKindGraph', () => {
       { id: 'c2', name: 'Villain', prompt: 'a villain', status: 'draft' }
     ])
 
-    const scripts = doc.nodes.filter((node) => node.typeId === 'play.script')
+    const scripts = doc.nodes.filter((node) => node.typeId === 'text.plain')
     const gens = doc.nodes.filter((node) => node.typeId === 'asset.image')
     const boundaries = doc.nodes.filter((node) => isBoundaryOutputNode(node))
     expect(scripts).toHaveLength(2)
@@ -73,7 +73,7 @@ describe('syncWorldElementKindGraph', () => {
     ])
     const ids = [...new Set(next.nodes.map((node) => node.params.worldElementId).filter(Boolean))]
     expect(ids).toEqual(['c1'])
-    expect(next.nodes.filter((n) => n.typeId === 'play.script')).toHaveLength(1)
+    expect(next.nodes.filter((n) => n.typeId === 'text.plain')).toHaveLength(1)
     expect(next.nodes.filter((n) => n.typeId === 'asset.image')).toHaveLength(1)
     expect(next.nodes.filter((n) => isBoundaryOutputNode(n))).toHaveLength(1)
     expect(next.nodes.some((n) => isBoundaryInputNode(n))).toBe(false)
@@ -84,7 +84,7 @@ describe('syncWorldElementKindGraph', () => {
     const base = syncWorldElementKindGraph(null, [
       { id: 'c1', name: 'Hero', prompt: 'a hero', status: 'draft' }
     ])
-    const script = base.nodes.find((node) => node.typeId === 'play.script')!
+    const script = base.nodes.find((node) => node.typeId === 'text.plain')!
     const managedGen = base.nodes.find(
       (node) => node.typeId === 'asset.image' && node.params.worldElementId === 'c1'
     )!
@@ -158,7 +158,7 @@ describe('syncWorldElementKindGraph', () => {
     const base = syncWorldElementKindGraph(null, [
       { id: 'c1', name: 'Hero', prompt: 'a hero', status: 'draft' }
     ])
-    const script = base.nodes.find((node) => node.typeId === 'play.script')!
+    const script = base.nodes.find((node) => node.typeId === 'text.plain')!
     const gen = base.nodes.find(
       (node) => node.typeId === 'asset.image' && node.params.worldElementId === 'c1'
     )!

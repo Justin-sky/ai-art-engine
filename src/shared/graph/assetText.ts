@@ -154,7 +154,7 @@ function textFromGraphNodes(graphJson: unknown): string {
   if (fromProcessing) return fromProcessing
 
   const noteParts = nodes
-    .filter((node) => node.typeId === 'play.script' || node.typeId === 'note.text')
+    .filter((node) => node.typeId === 'text.plain' || node.typeId === 'note.text')
     .map((node) => normalizePlaceholderText(node.params.text))
     .filter(Boolean)
   return noteParts.join('\n\n')

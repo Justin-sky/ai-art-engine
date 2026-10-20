@@ -163,7 +163,7 @@
           </p>
           <ul>
             <li>
-              <strong>“Film pipeline” (<code>short-drama</code>)</strong>: a compact <code>Script (play.script)</code> → <code>Film Workbench (film.workbench)</code> closed loop (defaults to vertical <code>9:16</code>, switchable to <code>16:9</code> and other ratios inside the workbench). Ideal for generating a whole short-drama or animated-comic episode end-to-end with incremental retakes.
+              <strong>“Film pipeline” (<code>short-drama</code>)</strong>: a compact <code>Script (text.plain)</code> → <code>Film Workbench (film.workbench)</code> closed loop (defaults to vertical <code>9:16</code>, switchable to <code>16:9</code> and other ratios inside the workbench). Ideal for generating a whole short-drama or animated-comic episode end-to-end with incremental retakes.
             </li>
             <li>
               <strong>“Film · single-shot polish” (<code>short-drama9</code>)</strong>: <code>Script</code> → <code>Film Workbench (film.workbench)</code> → <code>Shot (film.shot)</code> → <code>Keyframe (asset.image)</code> → <code>Shot clip (asset.video)</code>. Ideal when you want to finish breakdown and cast sheets in the workbench, then pull out individual shots by index and route them through dedicated image generation, the 10-in-1 <strong>Image Processing (<code>image.process</code>)</strong> workbench and video nodes.
@@ -184,7 +184,7 @@
           </p>
           <ul>
             <li>
-              <strong><code>Script</code> (<code>play.script</code>)</strong>: paste your full script or story synopsis here (or feed it from an upstream “Script generation” node).
+              <strong><code>Script</code> (<code>text.plain</code>)</strong>: paste your full script or story synopsis here (or feed it from an upstream “Script generation” node).
             </li>
             <li>
               <strong><code>Film Workbench</code> (<code>film.workbench</code>)</strong>:

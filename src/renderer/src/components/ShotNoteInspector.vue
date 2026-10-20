@@ -122,7 +122,7 @@ const hostId = computed(() => {
   return selection.kind === 'graph.node' ? (selection.hostId ?? '') : ''
 })
 
-const isTextNode = computed(() => node.value?.typeId === 'play.script')
+const isTextNode = computed(() => node.value?.typeId === 'text.plain')
 const isInputSlot = computed(() => node.value?.typeId === GRAPH_INPUT_SLOT_TYPE_ID)
 const isBoundary = computed(() => !!node.value && isBoundaryProxyNode(node.value))
 const isBoundaryInput = computed(() => !!node.value && isBoundaryInputNode(node.value))

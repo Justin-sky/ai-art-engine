@@ -742,8 +742,10 @@ onBeforeUnmount(() => {
 }
 
 .sfw-body.pad-none {
+  width: 100%;
   padding: 0;
   overflow: hidden;
+  container-type: inline-size;
 }
 
 .sfw-body.pad-none > * {

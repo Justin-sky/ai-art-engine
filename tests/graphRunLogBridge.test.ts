@@ -9,7 +9,7 @@ const IMAGE_OUTPUT_ID = graphOutputNodeId('image')
 
 function sampleGraph(): GraphDocument {
   const text = createNodeFromType(
-    'play.script',
+    'text.plain',
     { x: 0, y: 0 },
     {
       id: 'n-text',

@@ -57,10 +57,12 @@ export async function composeStage2dCanvas(input: {
   rig?: Stage2dRig | null
   /** 摆姿（关节旋转覆盖值） */
   pose?: Stage2dPose | null
+  /** 根节点附加位移（跳跃/呼吸起伏等） */
+  rootOffset?: { x: number; y: number } | null
 }): Promise<{ dataUrl: string; width: number; height: number }> {
   const scene = normalizeStage2dScene(input.state)
   const rigTransforms = input.rig
-    ? computeStage2dAttachmentTransforms(input.rig, input.pose ?? null)
+    ? computeStage2dAttachmentTransforms(input.rig, input.pose ?? null, input.rootOffset ?? null)
     : []
   const rigByLayer = new Map(rigTransforms.map((item) => [item.layerId, item]))
   // 全部层都要探源：部件层（frame）需要参考层（可能是隐藏的整图层）的计划几何

@@ -43,7 +43,7 @@ describe('graph scopes', () => {
     const dispose = registerGraphScope({
       id: 'plugin.demo',
       output: { kind: 'image', title: 'Demo output' },
-      persistNode: (node) => node.typeId === 'play.script'
+      persistNode: (node) => node.typeId === 'text.plain'
     })
     const def = getGraphScopeDefinition('plugin.demo')
     expect(def.output.title).toBe('Demo output')

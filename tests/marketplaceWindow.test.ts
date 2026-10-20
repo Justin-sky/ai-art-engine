@@ -20,6 +20,7 @@ const WINDOW_SERVICE = read('src/main/services/marketplaceWindow.ts')
 const APP = read('src/renderer/src/App.vue')
 const ROUTER = read('src/renderer/src/router/index.ts')
 const STUDIO = read('src/renderer/src/views/StudioView.vue')
+const WORKSPACE_TOOLBAR = read('src/renderer/src/components/WorkspaceToolbar.vue')
 const SETTINGS = read('src/renderer/src/views/SettingsView.vue')
 const MARKETPLACE = read('src/renderer/src/views/MarketplaceView.vue')
 
@@ -120,18 +121,14 @@ describe('渲染层：路由与 App 外壳', () => {
 })
 
 describe('入口与设置页迁移', () => {
-  it('顶栏有插件市场按钮并调用 IPC（放在设置左边）', () => {
-    /*
-      市场原先挂在工作室工具栏里 —— 那样只有**开了工程**才够得着，而它和设置一样是
-      应用级入口（装工作流/技能、改偏好），都不依赖当前工程。现在两者同在顶栏，
-      市场在设置左边。位置本身由 topbarMarketplacePlacement.test.ts 钉住。
-    */
-    expect(APP).toMatch(/@click="openMarketplace"/)
-    expect(APP).toMatch(/window\.studio\.openMarketplaceWindow\(\)/)
-    expect(APP).toContain("t('marketplace.open')")
+  it('左侧工具栏底部有技能市场图标按钮并调用 IPC（放在设置齿轮图标上方）', () => {
+    expect(WORKSPACE_TOOLBAR).toMatch(/@click="openMarketplace"/)
+    expect(WORKSPACE_TOOLBAR).toMatch(/window\.studio\.openMarketplaceWindow\(\)/)
+    expect(WORKSPACE_TOOLBAR).toContain("t('marketplace.open')")
+    expect(WORKSPACE_TOOLBAR).toContain('<MarketplaceIcon')
   })
 
-  it('工作室工具栏不再有市场按钮（移动而非复制）', () => {
+  it('工作室横栏不再有市场按钮（移动而非复制）', () => {
     expect(STUDIO).not.toContain('openMarketplace')
     expect(STUDIO).not.toContain("t('marketplace.open')")
   })

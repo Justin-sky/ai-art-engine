@@ -48,6 +48,15 @@
               </button>
               <button
                 type="button"
+                class="ac-tool"
+                :class="{ active: tool === 'brush' }"
+                :title="t('stage2d.autoCutEditToolBrush')"
+                @click="tool = 'brush'"
+              >
+                🖌
+              </button>
+              <button
+                type="button"
                 class="ac-tool ac-tool-erase"
                 :class="{ active: tool === 'erase' }"
                 :title="t('stage2d.autoCutEditToolErase')"
@@ -56,13 +65,19 @@
                 🩹
               </button>
             </div>
+            <label v-if="tool === 'brush'" class="ac-brush-slider">
+              <span>{{ t('stage2d.autoCutEditBrushRadius') }}: {{ brushRadius }}px</span>
+              <input v-model.number="brushRadius" type="range" min="2" max="48" step="1" />
+            </label>
             <div class="ac-toolhint">
               {{
                 tool === 'pan'
                   ? t('stage2d.autoCutEditToolPanHint')
                   : tool === 'assign'
                     ? t('stage2d.autoCutEditToolAssignHint')
-                    : t('stage2d.autoCutEditToolEraseHint')
+                    : tool === 'brush'
+                      ? t('stage2d.autoCutEditToolBrushHint')
+                      : t('stage2d.autoCutEditToolEraseHint')
               }}
             </div>
           </div>
@@ -160,6 +175,7 @@ import {
   assignStage2dAutoPartRegion,
   DEFAULT_STAGE2D_RIG,
   eraseStage2dAutoPartSlot,
+  paintStage2dAutoPartBrush,
   recomputeStage2dAutoPieces,
   type Stage2dRig,
   type Stage2dSceneState
@@ -174,7 +190,7 @@ import {
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 
-type Tool = 'pan' | 'assign' | 'erase'
+type Tool = 'pan' | 'assign' | 'brush' | 'erase'
 
 const props = defineProps<{
   open: boolean
@@ -209,6 +225,7 @@ const PALETTE = [
 const busy = ref(false)
 const session = ref<Stage2dAutoCutSession | null>(null)
 const tool = ref<Tool>('assign')
+const brushRadius = ref(12)
 const editSlotIndex = ref(-1)
 const assignment = ref<Int32Array | null>(null)
 /** 初始自动分区副本，供「重置」 */
@@ -244,7 +261,8 @@ let mounted = true
 /** 指针交互 */
 type Drag = { kind: 'pan'; sx: number; sy: number; tx: number; ty: number }
 type RectDrag = { kind: 'rect'; x0: number; y0: number; x1: number; y1: number }
-let drag: (Drag | RectDrag) | null = null
+type BrushDrag = { kind: 'brush'; cx: number; cy: number; before: Int32Array }
+let drag: (Drag | RectDrag | BrushDrag) | null = null
 
 function slotColor(index: number): string {
   return PALETTE[index % PALETTE.length] ?? '#f43f5e'
@@ -476,7 +494,7 @@ function draw(): void {
   })
   ctx.restore()
 
-  // 拖拽矩形（CSS 坐标绘制，线宽恒定）
+  // 拖拽矩形或画笔圆环（CSS 坐标绘制，线宽恒定）
   if (drag && drag.kind === 'rect') {
     const x0 = Math.min(drag.x0, drag.x1)
     const y0 = Math.min(drag.y0, drag.y1)
@@ -490,6 +508,17 @@ function draw(): void {
     ctx.strokeStyle = stroke
     ctx.lineWidth = 1.5
     ctx.strokeRect(c(x0), c(y0), (x1 - x0) * view.value.scale, (y1 - y0) * view.value.scale)
+  } else if (drag && drag.kind === 'brush') {
+    const cxCss = drag.cx * view.value.scale + view.value.tx
+    const cyCss = drag.cy * view.value.scale + view.value.ty
+    const rCss = Math.max(2, brushRadius.value * view.value.scale)
+    ctx.beginPath()
+    ctx.arc(cxCss, cyCss, rCss, 0, Math.PI * 2)
+    ctx.fillStyle = editSlotIndex.value < 0 ? 'rgba(239,68,68,0.18)' : 'rgba(56,189,248,0.18)'
+    ctx.fill()
+    ctx.strokeStyle = editSlotIndex.value < 0 ? 'rgba(239,68,68,0.95)' : 'rgba(56,189,248,0.95)'
+    ctx.lineWidth = 1.5
+    ctx.stroke()
   }
 }
 
@@ -516,6 +545,24 @@ function onWheel(e: WheelEvent): void {
   requestRedraw()
 }
 
+function applyBrushStep(cx: number, cy: number): void {
+  const s = session.value
+  const as = assignment.value
+  if (!s || !as) return
+  const to = editSlotIndex.value < 0 ? -1 : editSlotIndex.value
+  const next = paintStage2dAutoPartBrush({
+    assignment: as,
+    width: s.contentWidth,
+    cx,
+    cy,
+    radius: brushRadius.value,
+    to
+  })
+  assignment.value = next
+  rebuildMask(next)
+  requestRedraw()
+}
+
 function onPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return
   const el = canvasEl.value
@@ -529,6 +576,13 @@ function onPointerDown(e: PointerEvent): void {
     return
   }
   const pt = contentFromCss(px, py)
+  if (tool.value === 'brush') {
+    const as = assignment.value
+    if (!as) return
+    drag = { kind: 'brush', cx: pt.x, cy: pt.y, before: as.slice() }
+    applyBrushStep(pt.x, pt.y)
+    return
+  }
   drag = { kind: 'rect', x0: pt.x, y0: pt.y, x1: pt.x, y1: pt.y }
 }
 
@@ -542,6 +596,12 @@ function onPointerMove(e: PointerEvent): void {
   if (drag.kind === 'pan') {
     view.value.tx = drag.tx + (px - drag.sx)
     view.value.ty = drag.ty + (py - drag.sy)
+  } else if (drag.kind === 'brush') {
+    const pt = contentFromCss(px, py)
+    drag.cx = pt.x
+    drag.cy = pt.y
+    applyBrushStep(pt.x, pt.y)
+    return
   } else {
     const pt = contentFromCss(px, py)
     drag.x1 = pt.x
@@ -555,6 +615,15 @@ function onPointerUp(): void {
   if (drag.kind === 'pan') {
     drag = null
     requestRedraw()
+    return
+  }
+  if (drag.kind === 'brush') {
+    const before = drag.before
+    drag = null
+    undoStack.value.push(before)
+    if (undoStack.value.length > 8) undoStack.value.shift()
+    edited.value = true
+    refreshVisuals()
     return
   }
   const rect = drag
@@ -751,6 +820,19 @@ function nextTickFit(): Promise<void> {
 .ac-tool.active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-panel));
+}
+
+.ac-brush-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.ac-brush-slider input[type='range'] {
+  width: 100%;
 }
 
 .ac-toolhint {

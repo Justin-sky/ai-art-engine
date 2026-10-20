@@ -20,7 +20,7 @@ import {
 const nodeIcon = (typeId: string): string =>
   BUILTIN_NODE_TYPES.find((def) => def.typeId === typeId)?.icon ?? ''
 const TEXT_GROUP = contextMenuResourceGroupIcon('text')
-const TEXT_NODE = () => nodeIcon('play.script')
+const TEXT_NODE = () => nodeIcon('text.plain')
 const NOTE_NODE = () => nodeIcon('note.text')
 const SELECT_NODE = () => nodeIcon('text.select')
 

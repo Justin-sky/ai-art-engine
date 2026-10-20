@@ -40,8 +40,8 @@ describe('graph policy', () => {
     expect(matchesTypeIdPattern('*', 'plugin.any.node')).toBe(true)
     expect(matchesTypeIdPattern('asset.*', 'asset.image')).toBe(true)
     expect(matchesTypeIdPattern('output.*', 'output.video')).toBe(true)
-    expect(matchesTypeIdPattern('asset.*', 'play.script')).toBe(false)
-    expect(matchesTypeIdPattern('play.script', 'play.script')).toBe(true)
+    expect(matchesTypeIdPattern('asset.*', 'text.plain')).toBe(false)
+    expect(matchesTypeIdPattern('text.plain', 'text.plain')).toBe(true)
   })
 
   it('all builtin scopes use the all-node addable wildcard', () => {
@@ -103,7 +103,7 @@ describe('graph policy', () => {
         'asset.sfx',
         'asset.music',
         'note.text',
-        'play.script',
+        'text.plain',
         'image.adVariants',
         'image.align',
         'image.emotion',

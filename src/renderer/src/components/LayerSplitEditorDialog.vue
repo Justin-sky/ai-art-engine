@@ -2314,8 +2314,9 @@ onBeforeUnmount(() => {
 }
 
 .sidebar {
-  width: 236px;
-  flex: 0 0 236px;
+  width: 276px;
+  flex: 0 0 276px;
+  box-sizing: border-box;
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -2327,21 +2328,24 @@ onBeforeUnmount(() => {
 
 .side-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
   flex: 0 0 auto;
   margin-bottom: 8px;
 }
 
 .side-title {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text-muted);
 }
 
 .side-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;

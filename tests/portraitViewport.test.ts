@@ -84,9 +84,14 @@ describe('人像处理面板视口变换', () => {
     expect(source).toContain('event.shiftKey')
   })
 
-  it('平移 / 缩放 / 复位都不丢旋转角', () => {
+  it('平移 / 缩放 / 复位都不丢旋转角，且修改修图参数不会自动重置缩放', () => {
     expect(source).toContain('rotationDeg.value = 0')
     expect(source).toMatch(/function resetView\(\)[\s\S]*?rotationDeg\.value = 0[\s\S]*?\n\}/)
+    // 修改任意修图参数并通过 emit('update') 回写宿主再回流 props.setup 时，绝不能触发 resetView()
+    expect(source).toContain('function hydrate(resetViewport = true)')
+    expect(source).toContain('if (resetViewport) resetView()')
+    expect(source).toContain('hydrate(false)')
+    expect(source).toContain('JSON.stringify(normalizePortraitRetouch(draft))')
   })
 
   it('视口文案中英两侧齐全', () => {
@@ -170,6 +175,23 @@ describe('人像处理面板布局', () => {
     expect(stackThreshold).toBeGreaterThan(stageMin + panelMin)
     // 中窄档必须真的把面板收窄（否则它没有存在意义）
     expect(containerRules.some((px) => px > stageMin + panelMin)).toBe(true)
+  })
+
+  it('Dive 嵌入模式下父容器提供 container-type 且 .portrait-root 同步 is-stacked/is-compact，防止图片区高度被压成 0px', () => {
+    const sfwSource = read('src/renderer/src/components/StudioFloatingWindow.vue')
+    const padNoneRule = /\.sfw-body\.pad-none\s*\{([\s\S]*?)\n\}/.exec(sfwSource)
+    expect(padNoneRule, 'StudioFloatingWindow 缺少 .sfw-body.pad-none 规则').toBeTruthy()
+    // 关键：CSS @container 只会查询祖先容器，元素自身带 container-type 不会匹配针对它自己的 @container。
+    // 若父级 .sfw-body.pad-none 没有 container-type: inline-size，Dive 进窄工作区（<=820px）时
+    // 子元素 .panel 会匹配 @container 跳到 grid-row: 3（隐式 auto 行），而 .portrait-root 仍停在 2 行模板，
+    // 导致第 2 行 .stage（图片区域）高度被压成 0px。
+    expect(padNoneRule![1]).toContain('container-type: inline-size')
+    expect(source).toContain("'is-compact': compactLayout")
+    expect(source).toContain("'is-stacked': !resizable")
+    expect(source).toMatch(
+      /\.portrait-root\.is-stacked\s*\{[\s\S]*?grid-template-rows:\s*auto\s+minmax\(220px,\s*1fr\)\s+minmax\(0,\s*1fr\)/
+    )
+    expect(source).toContain('const hostWidth = rootEl.value?.clientWidth || window.innerWidth')
   })
 
   it('面板自身有 min-width 兜底（父容器异常变窄时也不会塌成一条）', () => {

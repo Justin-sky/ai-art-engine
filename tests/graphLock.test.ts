@@ -108,9 +108,9 @@ describe('generate node lock', () => {
     })
   })
 
-  it('locked play.script reuses params.text without GRAPH_LOCK_NO_CACHE', async () => {
+  it('locked text.plain reuses params.text without GRAPH_LOCK_NO_CACHE', async () => {
     const script = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       {
         id: 'script',

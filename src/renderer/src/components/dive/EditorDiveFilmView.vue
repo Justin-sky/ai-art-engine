@@ -627,6 +627,15 @@
                       >
                         + {{ ch.name }}
                       </button>
+                      <button
+                        v-for="prop in unboundPropsForShot(shot)"
+                        :key="prop.id"
+                        type="button"
+                        class="binding-add-btn"
+                        @click="bindPropToShot(shot.id, prop.name)"
+                      >
+                        + {{ prop.name }}
+                      </button>
                     </div>
                   </div>
 
@@ -1319,6 +1328,7 @@ import {
   matchFilmCastForShot,
   mergeFilmCasts,
   parseFilmCast,
+  parseFilmCastKinds,
   parseFilmRenderCache,
   parseFilmStoryboard,
   readFilmVideoParamsFromNode,
@@ -1836,6 +1846,21 @@ function bindCharacterToShot(shotId: string, name: string): void {
   )
 }
 
+function bindPropToShot(shotId: string, name: string): void {
+  writeStoryboard((shots) =>
+    shots.map((shot) => {
+      if (shot.id !== shotId) return shot
+      if (shot.props.some((p) => filmNameKey(p) === filmNameKey(name))) return shot
+      return {
+        ...shot,
+        props: [...shot.props, name],
+        locked: true,
+        status: 'approved' as const
+      }
+    })
+  )
+}
+
 function unbindEntityFromShot(shotId: string, entityKind: FilmEntityKind, name: string): void {
   const key = filmNameKey(name)
   writeStoryboard((shots) =>
@@ -1864,13 +1889,7 @@ function unbindEntityFromShot(shotId: string, entityKind: FilmEntityKind, name: 
 
 // ─── 设定库 ───
 const castKinds = computed((): FilmEntityKind[] => {
-  const raw = params.value.filmCastKinds ?? 'character,location'
-  return CAST_KINDS.filter((k) =>
-    raw
-      .split(',')
-      .map((s) => s.trim())
-      .includes(k)
-  )
+  return parseFilmCastKinds(params.value.filmCastKinds)
 })
 const selectedCastKindsLabel = computed(() =>
   castKinds.value.map((k) => t(`graph.inspector.film.kind.${k}`)).join(' / ')
@@ -1902,7 +1921,7 @@ function toggleCastKind(castKind: FilmEntityKind): void {
   const next = castKinds.value.includes(castKind)
     ? castKinds.value.filter((k) => k !== castKind)
     : [...castKinds.value, castKind]
-  patchParams({ filmCastKinds: (next.length ? next : ['character']).join(',') })
+  patchParams({ filmCastKinds: (next.length ? next : ['character']).join(', ') })
 }
 
 function toggleCastLock(id: string): void {
@@ -2425,6 +2444,14 @@ function unboundCharactersForShot(shot: FilmShot): FilmEntity[] {
   const existing = new Set(shot.characters.map((c) => filmNameKey(c)))
   return (doc?.entities ?? []).filter(
     (e) => e.kind === 'character' && !existing.has(filmNameKey(e.name))
+  )
+}
+
+function unboundPropsForShot(shot: FilmShot): FilmEntity[] {
+  const doc = displayStoryboard.value ?? effectiveStoryboard.value
+  const existing = new Set(shot.props.map((p) => filmNameKey(p)))
+  return (doc?.entities ?? []).filter(
+    (e) => e.kind === 'prop' && !existing.has(filmNameKey(e.name))
   )
 }
 </script>

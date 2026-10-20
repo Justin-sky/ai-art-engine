@@ -728,6 +728,7 @@ import {
 } from '../features/graph/model/editorDive'
 import { graphEditorNodeTools } from '../features/graph/ui/graphEditorNodeTools'
 import { resolveGraphNodeDisplayTitle } from '../features/graph/model/graphNodeDisplayTitle'
+import { requestOpenScriptCodeDialog } from '../features/graph/model/scriptNodeTypings'
 
 const { t, te, locale, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
@@ -2698,8 +2699,11 @@ function onPreviewDblClick(): void {
   void (async () => {
     const title = displayTitle.value
 
-    // 脚本节点：代码在右侧检查器里编辑（单击选中即展开），双击不走记事本、也不另开弹窗
+    // 脚本节点：双击直接打开全尺寸 Monaco 代码编辑与调试窗（含模板、实时 inputs 快照与 Console）
     if (props.node.typeId === 'script.run') {
+      if (props.hostId) {
+        requestOpenScriptCodeDialog(props.hostId, props.node.id)
+      }
       return
     }
 

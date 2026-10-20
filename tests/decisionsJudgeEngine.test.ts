@@ -42,7 +42,7 @@ function makeResult(): GenerateDecisionsResult {
 
 function buildGraph() {
   const source = createNodeFromType(
-    'play.script',
+    'text.plain',
     { x: 0, y: 0 },
     { params: { text: '今天天气怎样' } }
   )

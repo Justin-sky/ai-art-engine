@@ -14,11 +14,11 @@ import { useGraphRunSession } from '../src/renderer/src/features/graph/controlle
  * 应能同时进行；共用上游时后到的一趟被拒绝并回调提示。
  */
 function buildGraph(options: { sharedUpstream?: boolean } = {}): GraphDocument {
-  const scriptA = createNodeFromType('play.script', { x: 0, y: 0 }, { params: { text: 'a' } })
+  const scriptA = createNodeFromType('text.plain', { x: 0, y: 0 }, { params: { text: 'a' } })
   const noteA = createNodeFromType('note.text', { x: 200, y: 0 })
-  const scriptB = createNodeFromType('play.script', { x: 0, y: 200 }, { params: { text: 'b' } })
+  const scriptB = createNodeFromType('text.plain', { x: 0, y: 200 }, { params: { text: 'b' } })
   const noteB = createNodeFromType('note.text', { x: 200, y: 200 })
-  const shared = createNodeFromType('play.script', { x: -200, y: 100 }, { params: { text: 's' } })
+  const shared = createNodeFromType('text.plain', { x: -200, y: 100 }, { params: { text: 's' } })
   const out = createOutputGraphNode(
     'text',
     { x: 400, y: 0 },

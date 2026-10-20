@@ -1070,7 +1070,7 @@ export function softResolveSourceOutput(
         typeId === 'asset.screenplay' ||
         typeId === 'text.select' ||
         typeId === 'note.text' ||
-        typeId === 'play.script' ||
+        typeId === 'text.plain' ||
         typeId === GRAPH_INPUT_SLOT_TYPE_ID ||
         readHostInputSlot(node) != null
       if (isTextLike) {

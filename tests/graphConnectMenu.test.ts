@@ -19,7 +19,7 @@ describe('connect menu type filter', () => {
   })
 
   it('from text out only lists text-accepting addable types', () => {
-    const source = createNodeFromType('play.script', { x: 0, y: 0 })
+    const source = createNodeFromType('text.plain', { x: 0, y: 0 })
     const addable = listAddableNodeTypes('directorAsset')
     const allowed = addable.filter((def) =>
       canConnectToNodeType(source, def, {

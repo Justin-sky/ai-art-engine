@@ -17,12 +17,12 @@ import { readIconPackRefinesFromNode } from '../src/shared/graph/iconPack'
  */
 function buildGameIconsDoc(): GraphDocument {
   const theme = createNodeFromType(
-    'play.script',
+    'text.plain',
     { x: 0, y: 0 },
     { id: 'theme', title: '画风主题', params: { text: '暖色 2D 卡通、浅色卡片底、描边统一' } }
   )
   const names = createNodeFromType(
-    'play.script',
+    'text.plain',
     { x: 0, y: 120 },
     {
       id: 'names',

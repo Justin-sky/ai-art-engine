@@ -130,7 +130,7 @@ function catalogPromptBlock(): string {
 }
 
 const FEW_SHOT_EXAMPLE = `示例（游戏买量骨架）：
-{"title":"游戏买量","nodes":[{"key":"script","typeId":"play.script","title":"旁白","params":{"text":"卖点文案"}},{"key":"img","typeId":"asset.image","title":"关键帧","params":{"generateInstruction":"竖屏关键帧"}},{"key":"vid","typeId":"asset.video","title":"视频","params":{"generateDuration":15,"generateAspectRatio":"9:16"}},{"key":"note","typeId":"note.text","title":"备注","params":{"text":"剪辑说明"}}],"edges":[{"from":"script","to":"img"},{"from":"img","to":"vid"}]}`
+{"title":"游戏买量","nodes":[{"key":"script","typeId":"text.plain","title":"旁白","params":{"text":"卖点文案"}},{"key":"img","typeId":"asset.image","title":"关键帧","params":{"generateInstruction":"竖屏关键帧"}},{"key":"vid","typeId":"asset.video","title":"视频","params":{"generateDuration":15,"generateAspectRatio":"9:16"}},{"key":"note","typeId":"note.text","title":"备注","params":{"text":"剪辑说明"}}],"edges":[{"from":"script","to":"img"},{"from":"img","to":"vid"}]}`
 
 function buildSystemPrompt(seedPlan?: GraphPlan | null): string {
   const seedBlock = seedPlan
@@ -144,7 +144,7 @@ function buildSystemPrompt(seedPlan?: GraphPlan | null): string {
 3. 边的 from/to 使用节点 key；端口 dataType 必须相同（image≠images，单数不能进复数口）。
 4. 不要编造 assetId；不要填写 generateModel / generateProviderInstanceId（由客户端注入）。
 5. params 用节点声明的键：公共生成参数为 text, generateInstruction, generateSystemPrompt, generateAspectRatio, generateResolution, generateQuality, generateDuration, generateCount, generateSeed, generateSeedUseGlobal, generateFrameMode, generateAudio, notes, label, inputDataType；参考图参数为 styleReferenceSubject（"ui"＝UI 界面生图，允许复刻参考图界面语言）、styleImagesUseGlobal（false＝用节点本地风格图，须同时给 styleImages）、styleImages（条目须为 {"libraryId":"<风格库 id>"} 或 {"dataUrl":"data:..."}；不确定风格库 id 就别写）、characterRefs（条目须为 {"name":"角色名","imageUrl":"工程相对路径或 data URL"}，只写名字会被丢弃）；节点私有参数（如 anim.2d 的 animRows / animCols / animGifFps；comic.page 的 comicPage 序列化 JSON 字符串，含 panels 分格布局、斜切 cornerOffsets、镜头特效 effectType 及 bubbles 台词气泡 shape/speaker/text/x/y/tail/tailTipX/tailTipY，漫画工作流须按用户剧本把每页每格的台词、旁白框 narration、咆哮气泡 shout、心声气泡 thought 与拟声词 sfx 同步写进 comicPage）按 typeId 语义填写。编造的键会被忽略。
-6. 常见链：play.script / prompt.optimize → asset.image → asset.video；影视 / 短剧 / 分镜链（剧本→成片必须用它，镜头数随剧情、不要手搭 9 宫格）：play.script → film.workbench（一站式完成分镜拆解、导演审核、角色场景设定与批量拍摄；filmRenderMode=video 时同时出镜头视频），需要精修单镜时 film.workbench → film.shot（out→in，out-cast→in-cast）→ asset.image（out→in-text，out-refs→in-image）→ asset.video（out-motion→in-text）；漫画连载链：play.script → 角色定妆 asset.image（连入各分镜图 in-image 锁形象）→ 多页分镜图 asset.image → 多张 comic.page；备注用 note.text；矢量图 / SVG 动画用 svg.gen（要帧序列或 GIF 再接 svg.anim，端口 svg → in；注意 image ≠ svg，位图端口接不进矢量口）。${'' /* cjk-ok */}
+6. 常见链：text.plain / prompt.optimize → asset.image → asset.video；影视 / 短剧 / 分镜链（剧本→成片必须用它，镜头数随剧情、不要手搭 9 宫格）：text.plain → film.workbench（一站式完成分镜拆解、导演审核、角色场景设定与批量拍摄；filmRenderMode=video 时同时出镜头视频），需要精修单镜时 film.workbench → film.shot（out→in，out-cast→in-cast）→ asset.image（out→in-text，out-refs→in-image）→ asset.video（out-motion→in-text）；漫画连载链：text.plain → 角色定妆 asset.image（连入各分镜图 in-image 锁形象）→ 多页分镜图 asset.image → 多张 comic.page；备注用 note.text；矢量图 / SVG 动画用 svg.gen（要帧序列或 GIF 再接 svg.anim，端口 svg → in；注意 image ≠ svg，位图端口接不进矢量口）。${'' /* cjk-ok */}
 7. 输出严格为此 JSON 形状：
 {"title":"短标题","nodes":[{"key":"a","typeId":"...","title":"可选","params":{}}],"edges":[{"from":"a","to":"b","fromPort":"out","toPort":"in"}]}
 ${FEW_SHOT_EXAMPLE}${seedBlock}

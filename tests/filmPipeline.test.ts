@@ -262,29 +262,40 @@ describe('film nodes', () => {
     expect(node.params.filmReviewVerdict).toBe('PASS')
   })
 
-  it('cast generates one design sheet per entity and skips unchanged ones next run', async () => {
+  it('cast generates one design sheet per entity (including props by default) and skips unchanged ones next run', async () => {
     const node = createNodeFromType('film.cast', { x: 0, y: 0 })
     const generateImage = vi
       .fn()
       .mockResolvedValue({ images: ['data:image/png;base64,AAAA'], model: 'img' })
     const saveRunMedia = vi.fn(async ({ key }: { key: string }) => `Cast/${key}.png`)
-    const inputs = { in: [filmStoryboardValue(sampleStoryboard())] }
+    const sbWithProp = sampleStoryboard()
+    sbWithProp.entities.push({
+      id: 'prop-flashlight',
+      kind: 'prop',
+      name: '复古铜手电筒',
+      description: '黄铜外壳，表面斑驳磨损，玻璃镜片'
+    })
+    sbWithProp.shots[0] = { ...sbWithProp.shots[0], props: ['复古铜手电筒'] }
+    const inputs = { in: [filmStoryboardValue(sbWithProp)] }
     await executeFilmCastNode(ctxFor(node, inputs, { generateImage, saveRunMedia }))
     const cast = parseFilmCast(node.params.filmCast ?? '')
-    // 默认只做角色 + 地点：林夏、老周、旧公寓走廊
-    expect(cast?.entries).toHaveLength(3)
+    // 默认覆盖角色 + 地点 + 道具：林夏、老周、旧公寓走廊、复古铜手电筒
+    expect(cast?.entries).toHaveLength(4)
+    expect(
+      cast?.entries.some((entry) => entry.kind === 'prop' && entry.name === '复古铜手电筒')
+    ).toBe(true)
     expect(cast?.entries.every((entry) => !!entry.imageRelativePath)).toBe(true)
-    expect(generateImage).toHaveBeenCalledTimes(3)
+    expect(generateImage).toHaveBeenCalledTimes(4)
 
     await executeFilmCastNode(ctxFor(node, inputs, { generateImage, saveRunMedia }))
-    expect(generateImage).toHaveBeenCalledTimes(3)
+    expect(generateImage).toHaveBeenCalledTimes(4)
 
     // 单卡片执行：仅重绘指定条目（忽略 locked 与 hash 缓存），并自动清空 filmCastOnlyId
     const beforeCast = parseFilmCast(node.params.filmCast ?? '')!
     const targetEntryId = beforeCast.entries[0].id
     node.params.filmCastOnlyId = targetEntryId
     await executeFilmCastNode(ctxFor(node, inputs, { generateImage, saveRunMedia }))
-    expect(generateImage).toHaveBeenCalledTimes(4)
+    expect(generateImage).toHaveBeenCalledTimes(5)
     expect(node.params.filmCastOnlyId).toBe('')
   })
 
@@ -511,7 +522,7 @@ describe('film presets', () => {
     shortDrama: {
       title: '影视全流程（Agent 闭环）',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '剧本' },
+        { key: 'script', typeId: 'text.plain', title: '剧本' },
         {
           key: 'workbench',
           typeId: 'film.workbench',
@@ -533,7 +544,7 @@ describe('film presets', () => {
     shortDrama9: {
       title: '9 镜漫剧短视频（Agent 闭环）',
       nodes: [
-        { key: 'script', typeId: 'play.script', title: '剧本' },
+        { key: 'script', typeId: 'text.plain', title: '剧本' },
         {
           key: 'workbench',
           typeId: 'film.workbench',

@@ -4,7 +4,7 @@ import { createNodeFromType, runGraph } from '../src/shared/graph'
 describe('image.iconPack 多口输入取值', () => {
   it('in 口有图片时仍能从 in-text 口收集名单（不早退只读 in）', async () => {
     const names = createNodeFromType(
-      'play.script',
+      'text.plain',
       { x: 0, y: 0 },
       { id: 'names', params: { text: '火焰斩\n冰霜护盾\n雷击\n治疗术' } }
     )

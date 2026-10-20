@@ -16,11 +16,11 @@ import { graphOutputNodeId } from '../src/shared/graph/types'
  * 另有 `shared -> b`、`shared -> d` 作为共用上游。
  */
 function buildGraph(): GraphDocument {
-  const a = createNodeFromType('play.script', { x: 0, y: 0 }, { params: { text: 'a' } })
+  const a = createNodeFromType('text.plain', { x: 0, y: 0 }, { params: { text: 'a' } })
   const b = createNodeFromType('note.text', { x: 200, y: 0 })
-  const c = createNodeFromType('play.script', { x: 0, y: 200 }, { params: { text: 'c' } })
+  const c = createNodeFromType('text.plain', { x: 0, y: 200 }, { params: { text: 'c' } })
   const d = createNodeFromType('note.text', { x: 200, y: 200 })
-  const shared = createNodeFromType('play.script', { x: -200, y: 100 }, { params: { text: 's' } })
+  const shared = createNodeFromType('text.plain', { x: -200, y: 100 }, { params: { text: 's' } })
   const out = createOutputGraphNode(
     'text',
     { x: 400, y: 0 },

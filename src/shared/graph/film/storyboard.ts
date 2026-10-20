@@ -680,10 +680,14 @@ export function stringifyFilmCast(cast: FilmCast): string {
 }
 
 export function parseFilmCastKinds(raw: string | undefined | null): FilmEntityKind[] {
-  const kinds = strList(raw ?? '')
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed || trimmed === 'character,location') {
+    return ['character', 'location', 'prop']
+  }
+  const kinds = strList(trimmed)
     .map((part) => normalizeEntityKind(part))
     .filter((kind): kind is FilmEntityKind => !!kind)
-  return kinds.length ? [...new Set(kinds)] : ['character', 'location']
+  return kinds.length ? [...new Set(kinds)] : ['character', 'location', 'prop']
 }
 
 /**

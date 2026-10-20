@@ -20,7 +20,7 @@ const STORYBOARD_SCHEMA_DOC = `{
   "style": "全片视觉风格（画风/色调/年代质感/镜头质感）",
   "aspectRatio": "16:9",
   "entities": [
-    { "kind": "character|location|prop", "name": "全片唯一称呼", "description": "可直接用于生成设定图的视觉描述：外貌年龄体型、发型、服装配色材质、标志物；地点写空间结构、陈设、光线时段" }
+    { "kind": "character|location|prop", "name": "全片唯一称呼", "description": "可直接用于生成设定图的视觉描述：外貌年龄体型、发型、服装配色材质、标志物；地点写空间结构、陈设、光线时段；关键道具写造型结构、材质配色与磨损细节" }
   ],
   "scenes": [
     { "id": "scene-1", "heading": "INT. 地点 - 夜", "location": "地点实体名", "time": "夜", "summary": "本场剧情" }
@@ -56,7 +56,7 @@ ${STORYBOARD_SCHEMA_DOC}
 
 硬性要求：
 1. 镜头数量与单镜时长：完整覆盖起承转合，不丢情节、不丢对白。未指定单镜时长时默认每镜 3~8 秒；若用户指定了单镜目标时长（如 10 秒、15 秒等长分镜），必须将每个镜头的 durationSec 设为该目标时长左右，把连续的多阶段剧情动作合并在同一长镜头内完成调度，严禁拆成 3 秒左右的碎镜头。
-2. 实体名全片统一：shots 里的 characters / location / props 必须与 entities 里的 name 完全一致；每个出场角色、实景地点都要在 entities 里有完整视觉描述。注意：黑屏、黑场、白场、字幕卡、纯色转场等非实景镜头，location 必须填 ""（空字符串），严禁把「黑屏 / 黑场 / 字幕卡」放进 entities 地点列表。
+2. 实体名全片统一：shots 里的 characters / location / props 必须与 entities 里的 name 完全一致；每个出场角色、实景地点、关键道具都要在 entities 里有完整视觉描述。注意：黑屏、黑场、白场、字幕卡、纯色转场等非实景镜头，location 必须填 ""（空字符串），严禁把「黑屏 / 黑场 / 字幕卡」放进 entities 地点列表。
 3. imagePrompt 只写这一帧「看得见」的内容：构图、主体位置与姿态表情、前中后景、光线方向与色调。人物服装发型等外观只写实体名，不重复描述（外观由设定图锁定）。
 4. videoPrompt 必须按明确的时间区间分段编写（如 0-1s：…；1-4s：…；若是 15s 长分镜则按 0-2s：…；2-6s：…；6-11s：…；11-15s：… 划分为多个连续时间段，完整覆盖 0~durationSec 秒），逐段写清主体动作演变（预备-发力-缓冲/转折）、运镜轨迹与环境物理反馈；对白逐字放进 dialogue，不要改写。
 5. 镜头语法：景别有递进与对比，避免连续同景别；同场主光方向恒定；人物站位遵守 180° 轴线；冲突前收紧、冲突后放松。
@@ -68,7 +68,7 @@ ${STORYBOARD_SCHEMA_DOC}
 
 Hard rules:
 1. Shot count and duration: cover the full story arc, never drop plot or dialogue. Default to 3–8 s per shot when unspecified; if the user specifies a target shot duration (e.g. 10 s, 15 s long takes), set each shot's durationSec around that target and stage a continuous multi-beat action sequence within each long shot instead of splitting into short ~3 s clips.
-2. Entity names are global: characters / location / props in shots must exactly match entities[].name; every character and real physical location that appears needs a full visual description in entities. Never put non-spatial placeholders such as "Black screen", "Fade to black", or "Title card" into entities or shot.location (use "" for shot.location on non-spatial shots).
+2. Entity names are global: characters / location / props in shots must exactly match entities[].name; every character, real physical location, and key prop that appears needs a full visual description in entities. Never put non-spatial placeholders such as "Black screen", "Fade to black", or "Title card" into entities or shot.location (use "" for shot.location on non-spatial shots).
 3. imagePrompt describes only what is visible in this frame: composition, subject placement, pose and expression, fore/mid/background, light direction and palette. Refer to people by entity name only — never restate their outfit/hair (design sheets lock appearance).
 4. videoPrompt MUST be written in explicit time segments covering 0 to durationSec seconds (e.g. 0-1s: ...; 1-4s: ...; for a 15 s long shot, divide into contiguous segments like 0-2s: ...; 2-6s: ...; 6-11s: ...; 11-15s: ...), detailing each segment's action progression, camera trajectory and environment physics; put dialogue verbatim into dialogue — never paraphrase.
 5. Shot grammar: vary and progress shot sizes, avoid consecutive identical sizes; constant key-light direction per scene; respect the 180° axis; tighten before conflict, loosen after.

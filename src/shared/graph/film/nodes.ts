@@ -152,7 +152,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmReviewReport: '',
       filmReviewVerdict: '',
       filmCast: '',
-      filmCastKinds: 'character,location',
+      filmCastKinds: 'character,location,prop',
       filmRenders: '',
       filmRenderMode: 'keyframe',
       filmShotRange: '',
@@ -301,7 +301,7 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       generateResolution: '',
       text: '',
       filmCast: '',
-      filmCastKinds: 'character,location',
+      filmCastKinds: 'character,location,prop',
       filmForce: false,
       filmRenderConcurrency: 3,
       mediaOutputDir: ''

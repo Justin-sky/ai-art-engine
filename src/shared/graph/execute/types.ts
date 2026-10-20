@@ -950,6 +950,7 @@ export interface NodeExecuteContext {
     state: import('../stage2d').Stage2dSceneState
     rig?: import('../stage2dRig').Stage2dRig | null
     pose?: import('../stage2dRig').Stage2dPose | null
+    rootOffset?: { x: number; y: number } | null
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
    * 2D 骨骼动作帧序列 → sheet：把逐帧图片按自适应列数拼成一张拼版 PNG。
@@ -1133,9 +1134,10 @@ export interface NodeExecuteContext {
       height: number
       count: number
     } | null
+    format?: import('../portraitRetouch').PortraitExportFormat
     signal?: AbortSignal | null
   }) => Promise<{ dataUrl: string; sheetDataUrl: string | null }>
-  /** 人像处理：人脸关键点检测（渲染层经 IPC 调主进程 `yolo:face`）。 */
+  /** 人脸关键点检测（渲染层经 IPC 调主进程 `yolo:face`）。 */
   detectPortraitFaces?: (input: {
     sourceDataUrl: string
     signal?: AbortSignal | null
@@ -1157,6 +1159,7 @@ export interface NodeExecuteContext {
     mask: import('../portraitScope').PortraitScopeMask
     /** canonical-68 归一化关键点；缺省时脸这一块做不出来 */
     landmarks?: ReadonlyArray<readonly [number, number]> | null
+    format?: import('../portraitRetouch').PortraitExportFormat
     signal?: AbortSignal | null
   }) => Promise<{
     dataUrl: string
@@ -1182,6 +1185,7 @@ export interface NodeExecuteContext {
     dataUrl: string
     width: number
     height: number
+    format?: import('../portraitRetouch').PortraitExportFormat
     signal?: AbortSignal | null
   }) => Promise<{ dataUrl: string; width: number; height: number }>
   /**
@@ -1195,8 +1199,24 @@ export interface NodeExecuteContext {
     mode: 'color' | 'gradient'
     color: string
     colorTo?: string
+    format?: import('../portraitRetouch').PortraitExportFormat
     signal?: AbortSignal | null
   }) => Promise<{ dataUrl: string; applied: boolean; personRatio: number; notes: string[] }>
+  /**
+   * 人像处理：本地确定性计算摄影精修管线（交互推拉液化笔触、祛斑点修、68点MLS五官微调、
+   * 高低频磨皮、定制 `.cube` 3D LUT 以及纯本地 100% 身份锁死出图）。
+   */
+  composePortraitLiveRetouch?: (input: {
+    sourceDataUrl: string
+    liveInput: import('../portraitLiveMath').PortraitLiveInput
+    signal?: AbortSignal | null
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    appliedSteps: string[]
+    hasAdjustments: boolean
+  } | null>
   /**
    * 读取 3D 模型骨骼层级（蒙皮主链）。预览 / 导演台 FK 用。
    */
@@ -1469,6 +1489,7 @@ export interface GraphRunOptions {
   inspectImageSize?: NodeExecuteContext['inspectImageSize']
   fitPortraitToSourceSize?: NodeExecuteContext['fitPortraitToSourceSize']
   flattenPortraitBackground?: NodeExecuteContext['flattenPortraitBackground']
+  composePortraitLiveRetouch?: NodeExecuteContext['composePortraitLiveRetouch']
   inspectModelSkeleton?: NodeExecuteContext['inspectModelSkeleton']
   runBlenderDshJob?: NodeExecuteContext['runBlenderDshJob']
   buildGamePlayProject?: NodeExecuteContext['buildGamePlayProject']

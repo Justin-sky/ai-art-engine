@@ -21,7 +21,7 @@ export function executeNoteNode(ctx: NodeExecuteContext): Record<string, GraphVa
   }
 }
 
-export function executePlayScriptNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
+export function executePlainTextNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const text = ctx.node.params.text?.trim() ?? ''
   return {
     out: { kind: 'text', text }

@@ -21,7 +21,7 @@ import { resolveGraphTypeLabel } from '../src/renderer/src/features/graph/model/
 /** 真正该用记事本卡的 typeId */
 const NOTE_CARD_ALLOWLIST = new Set([
   'note.text',
-  'play.script',
+  'text.plain',
   'graph.input.slot',
   'graph.boundary.input',
   'graph.boundary.output'

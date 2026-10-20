@@ -595,7 +595,11 @@ async function referenceToBlob(ref: string): Promise<{ blob: Blob; filename: str
     const buf = isBase64
       ? Buffer.from(payload, 'base64')
       : Buffer.from(decodeURIComponent(payload), 'utf8')
-    const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'png'
+    const ext = mime.includes('webp')
+      ? 'webp'
+      : mime.includes('jpeg') || mime.includes('jpg')
+        ? 'jpg'
+        : 'png'
     return {
       blob: new Blob([new Uint8Array(buf)], { type: mime }),
       filename: `reference-${Date.now()}.${ext}`

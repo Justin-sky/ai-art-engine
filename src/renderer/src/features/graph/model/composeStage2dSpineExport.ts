@@ -1,14 +1,18 @@
 import {
-  buildStage2dSpineAtlasText,
+  STAGE2D_ACTION_PRESETS,
   buildStage2dSpineData,
+  buildStage2dSpinePackedAtlasText,
   computeStage2dLayerPlacements,
   extractAlphaBounds,
   normalizeStage2dRig,
   normalizeStage2dScene,
+  packStage2dSpineAtlas,
   stage2dSpineSafeName,
+  type Stage2dAction,
   type Stage2dPose,
   type Stage2dRig,
-  type Stage2dSceneState
+  type Stage2dSceneState,
+  type Stage2dSpineActionEntry
 } from '@shared/gameAssets'
 import { loadImageElement } from '../../yolo/cutout'
 
@@ -16,8 +20,7 @@ import { loadImageElement } from '../../yolo/cutout'
  * Spine 骨架包像素拼装（5.4「Spine 骨骼拆件与装配数据」导出侧）。
  * 承接 stage2dSpineExport 纯几何：对每个「挂到关节的可见层」按放置计划
  * 从源图裁出实际绘制主体（plan.bounds 区域）并缩放到部件页尺寸，产出
- * 透明 PNG 页（不翻转位图——Spine 图像顶部朝 +y，与 y-down 舞台翻转到
- * y-up 后视觉一致）；几何换算全部交给共享纯函数，这里只做像素搬运。
+ * 透明 PNG 页 + 紧密拼合的单张合并图集（-atlas.png）+ 带完整动画轨的 skeleton.json。
  */
 
 async function probeStageSprite(url: string): Promise<{
@@ -56,12 +59,14 @@ export interface Stage2dSpineExportFile {
   dataUrl: string
 }
 
-/** Spine 骨架包拼装结果：skeleton JSON 文本 + atlas 文本 + 部件页 PNG */
+/** Spine 骨架包拼装结果：skeleton JSON 文本 + atlas 文本 + 合并图集与部件页 PNG */
 export interface Stage2dSpineExportResult {
   skeletonName: string
   jsonText: string
   atlasText: string
-  /** 部件页文件（每层一页） */
+  /** 导出的动画轨数量 */
+  animationCount: number
+  /** 纹理文件（含合并图集 -atlas.png 与各部件页 PNG） */
   files: Stage2dSpineExportFile[]
 }
 
@@ -71,6 +76,10 @@ export async function composeStage2dSpineExport(input: {
   rig: Stage2dRig
   /** 当前摆姿（并入 setup 旋转） */
   pose?: Stage2dPose | null
+  /** 当前自定义动作（可选，一并写入 animations） */
+  customAction?: Stage2dAction | null
+  /** 显式指定的动作表（缺省导出 customAction + 全部匹配的内置动作预设） */
+  actions?: Stage2dSpineActionEntry[] | null
   /** 层 sourceUrl → 可绘制 URL 的 resolver（相对路径需读成 dataUrl） */
   resolveLayerUrl: (sourceUrl: string) => Promise<string>
   /** 骨架包文件名前缀（默认取自场景名） */
@@ -110,10 +119,7 @@ export async function composeStage2dSpineExport(input: {
     const layer = scene.layers[layerIndex]
     const probe = probes[layerIndex]
     const { plan } = placements[layerIndex]
-    // 与纯函数过滤口径一致（尺寸非正不产出），保证页与几何元数据 1:1；
-    // 只导出可见部件层（拆件后的整图层隐藏，不出页）
     if (!layer.visible || !probe || !plan || plan.dstW < 1 || plan.dstH < 1) continue
-    // 枢轴（内容像素系，相对本层内容框左上角）→ 页像素：pivot * pageW / bounds.width
     const bw = Math.max(1, plan.bounds.width)
     const bh = Math.max(1, plan.bounds.height)
     const layerPivot = layer.pivot
@@ -136,12 +142,26 @@ export async function composeStage2dSpineExport(input: {
   }
   if (!parts.length) return null
 
+  const actionEntries: Stage2dSpineActionEntry[] = input.actions ?? [
+    ...(input.customAction && input.customAction.keyframes.length
+      ? [{ name: input.customAction.name || 'custom', action: input.customAction }]
+      : []),
+    ...STAGE2D_ACTION_PRESETS.map((preset) => ({ name: preset.id, action: preset }))
+  ]
+
   const skeletonName = stage2dSpineSafeName(input.baseName || 'stage2d', 'skeleton')
-  const built = buildStage2dSpineData({ rig, pose, parts, meta: { name: skeletonName } })
+  const built = buildStage2dSpineData({
+    rig,
+    pose,
+    parts,
+    actions: actionEntries,
+    meta: { name: skeletonName }
+  })
   if (!built.pages.length) return null
 
-  // 逐页裁源主体并缩放到部件页尺寸（顺序与 parts 一致，纯函数过滤不会丢弃合法部件）
-  const files: Stage2dSpineExportFile[] = built.pages.map((page, index) => {
+  // 1) 逐部件页裁切 PNG
+  const partCanvases: HTMLCanvasElement[] = []
+  const partFiles: Stage2dSpineExportFile[] = built.pages.map((page, index) => {
     const crop = crops[index]
     const pageCanvas = document.createElement('canvas')
     pageCanvas.width = page.pageWidth
@@ -160,23 +180,42 @@ export async function composeStage2dSpineExport(input: {
       page.pageWidth,
       page.pageHeight
     )
+    partCanvases.push(pageCanvas)
     return {
       fileName: `${skeletonName}-${page.slotName}.png`,
       dataUrl: pageCanvas.toDataURL('image/png')
     }
   })
 
+  // 2) 合成单张紧致图集纹理（<skeletonName>-atlas.png）与对应的 .atlas 描述文本
+  const pack = packStage2dSpineAtlas(built.pages, { padding: 2 })
+  const atlasCanvas = document.createElement('canvas')
+  atlasCanvas.width = pack.width
+  atlasCanvas.height = pack.height
+  const atlasCtx = atlasCanvas.getContext('2d')
+  if (!atlasCtx) throw new Error('STAGE_CANVAS_UNAVAILABLE')
+  atlasCtx.clearRect(0, 0, pack.width, pack.height)
+  for (const region of pack.regions) {
+    const partCanvas = partCanvases[region.pageIndex]
+    if (partCanvas) {
+      atlasCtx.drawImage(partCanvas, region.x, region.y)
+    }
+  }
+  const atlasFileName = `${skeletonName}-atlas.png`
+  const atlasFile: Stage2dSpineExportFile = {
+    fileName: atlasFileName,
+    dataUrl: atlasCanvas.toDataURL('image/png')
+  }
+
+  const animationsObj = (built.skeleton.animations ?? {}) as Record<string, unknown>
   return {
     skeletonName,
     jsonText: JSON.stringify(built.skeleton, null, 2),
-    atlasText: buildStage2dSpineAtlasText({
-      pages: built.pages.map((page, index) => ({
-        fileName: files[index].fileName,
-        slotName: page.slotName,
-        width: page.pageWidth,
-        height: page.pageHeight
-      }))
+    atlasText: buildStage2dSpinePackedAtlasText({
+      fileName: atlasFileName,
+      pack
     }),
-    files
+    animationCount: Object.keys(animationsObj).length,
+    files: [atlasFile, ...partFiles]
   }
 }

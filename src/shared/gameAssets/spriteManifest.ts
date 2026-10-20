@@ -98,3 +98,135 @@ export function buildSpriteManifest(input: BuildSpriteManifestInput): SpriteMani
     sprites
   }
 }
+
+export interface EngineSpriteSheetFrame {
+  frame: { x: number; y: number; w: number; h: number }
+  rotated: boolean
+  trimmed: boolean
+  spriteSourceSize: { x: number; y: number; w: number; h: number }
+  sourceSize: { w: number; h: number }
+  /** 单帧持续毫秒（兼容 Aseprite / Phaser / Godot 帧时长） */
+  duration: number
+  /** 归一化枢轴 0..1（兼容 TexturePacker / Unity / Phaser） */
+  pivot: { x: number; y: number }
+}
+
+export interface EngineSpriteSheetTag {
+  name: string
+  from: number
+  to: number
+  direction: 'forward' | 'pingpong'
+}
+
+export interface EngineSpriteSheetSlice {
+  name: string
+  color: string
+  keys: Array<{
+    frame: number
+    bounds: { x: number; y: number; w: number; h: number }
+    pivot?: { x: number; y: number }
+  }>
+}
+
+export interface EngineSpriteSheetJson {
+  frames: Record<string, EngineSpriteSheetFrame>
+  meta: {
+    app: string
+    version: string
+    image: string
+    format: 'RGBA8888'
+    size: { w: number; h: number }
+    scale: string
+    fps: number
+    frameTags: EngineSpriteSheetTag[]
+    slices: EngineSpriteSheetSlice[]
+  }
+}
+
+/**
+ * 构建通用游戏引擎 Sprite Sheet Atlas JSON（兼容 TexturePacker / Aseprite / Godot / Unity / Phaser）。
+ * 包含逐帧裁剪矩形 `frame`、毫秒帧长 `duration`、归一化锚点 `pivot`、
+ * 动画剪辑标签 `meta.frameTags` 以及受击框/挂点切片 `meta.slices`。
+ */
+export function buildEngineSpriteSheetJson(input: {
+  imageFileName: string
+  frameWidth: number
+  frameHeight: number
+  frameNames: string[]
+  columns?: number
+  fps?: number
+  anchor?: SpriteManifestAnchor
+  playMode?: 'loop' | 'once' | 'pingpong'
+  tagName?: string
+}): EngineSpriteSheetJson {
+  const frameWidth = clampInt(input.frameWidth, 1, 8192)
+  const frameHeight = clampInt(input.frameHeight, 1, 8192)
+  const fps = clampInt(input.fps ?? 12, 1, 120)
+  const durationMs = Math.max(8, Math.round(1000 / fps))
+  const anchor: SpriteManifestAnchor = input.anchor === 'center' ? 'center' : 'ground'
+  const pivot = anchor === 'ground' ? { x: 0.5, y: 1 } : { x: 0.5, y: 0.5 }
+  const names = input.frameNames.length ? input.frameNames : ['frame-0']
+  const columns = clampInt(input.columns ?? names.length, 1, Math.max(1, names.length))
+  const rows = Math.max(1, Math.ceil(names.length / columns))
+  const frames: Record<string, EngineSpriteSheetFrame> = {}
+
+  names.forEach((rawName, idx) => {
+    const key = rawName.trim() || `frame-${idx}`
+    const col = idx % columns
+    const row = Math.floor(idx / columns)
+    frames[key] = {
+      frame: { x: col * frameWidth, y: row * frameHeight, w: frameWidth, h: frameHeight },
+      rotated: false,
+      trimmed: false,
+      spriteSourceSize: { x: 0, y: 0, w: frameWidth, h: frameHeight },
+      sourceSize: { w: frameWidth, h: frameHeight },
+      duration: durationMs,
+      pivot
+    }
+  })
+
+  const tagName = (input.tagName ?? '').trim() || 'default'
+  const direction: 'forward' | 'pingpong' = input.playMode === 'pingpong' ? 'pingpong' : 'forward'
+  const hurtboxW = Math.max(1, Math.round(frameWidth * 0.6))
+  const hurtboxH = Math.max(1, Math.round(frameHeight * 0.8))
+  const hurtboxX = Math.round((frameWidth - hurtboxW) / 2)
+  const hurtboxY =
+    anchor === 'ground' ? frameHeight - hurtboxH : Math.round((frameHeight - hurtboxH) / 2)
+
+  return {
+    frames,
+    meta: {
+      app: 'ai-art-engine',
+      version: '1.0',
+      image: input.imageFileName.trim() || 'sheet.png',
+      format: 'RGBA8888',
+      size: { w: frameWidth * columns, h: frameHeight * rows },
+      scale: '1',
+      fps,
+      frameTags: [
+        {
+          name: tagName,
+          from: 0,
+          to: Math.max(0, names.length - 1),
+          direction
+        }
+      ],
+      slices: [
+        {
+          name: 'hurtbox',
+          color: '#0000ffff',
+          keys: [
+            {
+              frame: 0,
+              bounds: { x: hurtboxX, y: hurtboxY, w: hurtboxW, h: hurtboxH },
+              pivot: {
+                x: Math.round(frameWidth * pivot.x) - hurtboxX,
+                y: Math.round(frameHeight * pivot.y) - hurtboxY
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

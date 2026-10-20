@@ -5,16 +5,26 @@
  * matches what the node can actually call: a method only appears on `om.` once its
  * capability is checked, mirroring the executor whitelist (see scriptRun.ts).
  */
-import type { ScriptCapability, ScriptPortDecl } from '@shared/graph'
+import { ref } from 'vue'
+import type { GraphDocument, ScriptCapability, ScriptPortDecl } from '@shared/graph'
 
 const GRAPH_VALUE_DTS = `
 /** A graph value passed between nodes (discriminated by kind; common fields below, other provider fields read as needed). */
 type GraphValue =
   | { kind: 'text'; text: string }
+  | { kind: 'texts'; items: Array<{ text: string; relativePath?: string }> }
   | { kind: 'image'; dataUrl?: string; relativePath?: string; id?: string }
   | { kind: 'video'; relativePath?: string; dataUrl?: string; id?: string }
   | { kind: 'images'; items: Array<{ dataUrl?: string; relativePath?: string }> }
   | { kind: string; [k: string]: unknown }
+
+/** Sandbox console logger: captured in the node's Console panel and forwarded to task logs. */
+declare const console: {
+  log(...args: unknown[]): void
+  info(...args: unknown[]): void
+  warn(...args: unknown[]): void
+  error(...args: unknown[]): void
+}
 `
 
 /** Capability name -> signature (for display; loose params, follow the docs). */
@@ -75,4 +85,91 @@ ${outputKeys}
 /** Write a default-exported async function: read inputs, await om.* as needed, return outputs. */
 declare const __hint__: (args: ScriptArgs) => Promise<ScriptOutputs>
 `
+}
+
+/** 画布双击 `script.run` 卡片时，通知 `ScriptRunInspector` 打开全尺寸代码编辑窗 */
+export const scriptCodeDialogRequest = ref<{
+  hostId: string
+  nodeId: string
+  seq: number
+} | null>(null)
+
+export function requestOpenScriptCodeDialog(hostId: string, nodeId: string): void {
+  scriptCodeDialogRequest.value = {
+    hostId,
+    nodeId,
+    seq: (scriptCodeDialogRequest.value?.seq ?? 0) + 1
+  }
+}
+
+function compactPreviewValue(val: unknown): unknown {
+  if (typeof val === 'string') {
+    if (val.startsWith('data:') && val.length > 96) {
+      const prefix = val.slice(0, 36)
+      const kb = (val.length / 1024).toFixed(1)
+      return `${prefix}…[${kb}KB]`
+    }
+    if (val.length > 500) {
+      return `${val.slice(0, 500)}…[${val.length} chars]`
+    }
+    return val
+  }
+  if (Array.isArray(val)) {
+    return val.map(compactPreviewValue)
+  }
+  if (val && typeof val === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      out[k] = compactPreviewValue(v)
+    }
+    return out
+  }
+  return val
+}
+
+/**
+ * 从当前画布文档的入边与上游节点（runStates 或静态 params）拼出实时 `inputs` 快照预览，
+ * 让脚本作者无需盲写就能看清 `inputs.<portId>[0]` 的真实字段结构。
+ */
+export function buildUpstreamInputsPreview(
+  doc: GraphDocument | null,
+  nodeId: string,
+  inputPorts: readonly ScriptPortDecl[]
+): Record<string, unknown[]> {
+  const result: Record<string, unknown[]> = {}
+  for (const port of inputPorts) {
+    result[port.id] = []
+  }
+  if (!doc) return result
+  const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+  for (const edge of doc.edges) {
+    if (edge.target !== nodeId) continue
+    const targetPort = edge.targetPort || 'in'
+    if (!(targetPort in result)) continue
+    const sourcePort = edge.sourcePort || 'out'
+    const runOut = doc.runStates?.[edge.source]?.outputs?.[sourcePort]
+    if (runOut) {
+      result[targetPort]!.push(compactPreviewValue(runOut))
+      continue
+    }
+    const sourceNode = nodeById.get(edge.source)
+    if (!sourceNode) continue
+    const text = sourceNode.params.text?.trim()
+    if (text && text !== '…') {
+      result[targetPort]!.push(compactPreviewValue({ kind: 'text', text }))
+      continue
+    }
+    const rel = sourceNode.params.previewRelativePath?.trim()
+    const dataUrl = sourceNode.params.previewDataUrl?.trim()
+    if (rel || dataUrl) {
+      result[targetPort]!.push(
+        compactPreviewValue({
+          kind: sourceNode.assetType === 'video' ? 'video' : 'image',
+          ...(rel ? { relativePath: rel } : {}),
+          ...(dataUrl ? { dataUrl } : {})
+        })
+      )
+    }
+  }
+  return result
 }

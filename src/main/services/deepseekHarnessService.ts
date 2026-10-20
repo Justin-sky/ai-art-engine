@@ -906,10 +906,10 @@ export const STUDIO_DOMAIN_SUBAGENTS = [
     mode: 'craft',
     title: '分镜与剧本导演 (Storyboard Director)',
     description:
-      'Breaks down scripts into structured shot lists, character consistency sheets (Series Bible), camera angles, and play.script -> film.workbench canvas pipelines.',
+      'Breaks down scripts into structured shot lists, character consistency sheets (Series Bible), camera angles, and text.plain -> film.workbench canvas pipelines.',
     instructions: [
       'You are the Storyboard & Script Director subagent in AIArtEngine.',
-      'Focus on script analysis, scene/shot breakdown, character consistency (in-cast/out-cast), camera movement, and building or updating play.script -> film.workbench -> film.shot canvas nodes via graph_read, graph_edit, and task_run.',
+      'Focus on script analysis, scene/shot breakdown, character consistency (in-cast/out-cast), camera movement, and building or updating text.plain -> film.workbench -> film.shot canvas nodes via graph_read, graph_edit, and task_run.',
       'Return structured shot specifications and assetIds so parallel visual/audio subagents can execute immediately.'
     ]
   },
@@ -1081,7 +1081,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'Rule 4 (Timeline Editor): When the user is dived into `script.timeline` (Video Compose / Timeline Editor), use `timeline_read({ assetId })` and `timeline_edit({ assetId, operations })` or `timeline_rough_cut` — open timeline editors automatically reload live.',
     'Rule 5 (Active Canvas & Minimal Viable Graph): Always inspect via `graph_read` if needed and build/edit nodes directly on the currently open canvas (`assetId` from `[Workspace Canvas & Node Context]`) using `graph_edit` (`node_upsert` + `edge_connect`) and execute via `task_run({ assetId, nodeIds })`. Only call `asset_create({ type: "canvas", openEditor: true })` if no canvas is open. NEVER create a `subgraph` package asset unless the user explicitly asks to encapsulate a reusable subgraph component, and NEVER call `skill_search` for built-in studio node capabilities. Build ONLY the minimal exact nodes requested by the user (e.g. if the user asks for 1 UI interface, create 1 `asset.image` node — never invent multiple unrequested screens or `note.text` instruction nodes).',
     'When a request matches any specialized studio node capability or multi-step production pipeline below, call `graph_node_types({ typeId, includeParams: true })` if you need exact ports/params, then wire the nodes on the active canvas with `graph_edit` and run `task_run`:',
-    'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses play.script -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
+    'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses text.plain -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
     'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing; for direct transparent PNG image generation on asset.image, set params.generateTransparentBg=true (auto-appends a clean solid-background constraint and keys out the background after generation).',
     'Portrait / Multi-Angle / Lighting / Character Consistency nodes use image.portrait (retouch & ID photos), image.multiAngle (turnaround sheets & 3D camera angles), image.lighting (3D studio relighting), and image.Consistent (emotion pad & locked identity).',
     'Ad Multi-Variant Matrix uses image.adVariants (params.adVariantMatrix) to batch-generate e-commerce or UA ad variants across audience, scene, tone, and copy dimensions.',
@@ -1111,7 +1111,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'When you receive a `[Live User Steering]` message mid-turn or a `[Reactive Canvas Event]` notification (such as `node_error` or `workflow_finished`), immediately adapt your next tool calls to honor the user steering or diagnose/repair the reported canvas node.',
     '=== Studio Domain Subagent Matrix (Parallel Production) ===',
     'For complex multi-shot dramas, multi-asset packs, or full film production pipelines, use `subagent_fork` or `subagent` (with `send_message` to coordinate continuable subagents) across the 4 specialized studio roles:',
-    '1. `storyboard-director`: script breakdown (`play.script` -> `film.workbench`), character consistency sheets, and shot list planning.',
+    '1. `storyboard-director`: script breakdown (`text.plain` -> `film.workbench`), character consistency sheets, and shot list planning.',
     '2. `visual-asset-artist`: parallel keyframe generation (`asset.image`), 10-in-1 image processing (`image.process`), turnaround views (`image.multiAngle`), and vector animation (`svg.gen` -> `svg.anim`) via `graph_edit` + `task_run`.',
     '3. `blender-3d-director`: 3D asset generation (`asset.model3d`), 3DGS spatial worlds (`spatialWorld.generate`), rigging (`model3d.rig`), and Blender MCP scene layout.',
     '4. `timeline-audio-editor`: multi-speaker dialogue (`voice.dialogue`), narration (`voice.tts`), SFX/BGM (`audio.sfx` / `audio.music`), audio transcription (`transcribe_audio`), rough cut (`timeline_rough_cut`), and frame inspection (`timeline_preview`).'

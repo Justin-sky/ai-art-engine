@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildSpriteManifest, SPRITE_MANIFEST_VERSION } from '../src/shared/gameAssets'
+import {
+  buildEngineSpriteSheetJson,
+  buildSpriteManifest,
+  SPRITE_MANIFEST_VERSION
+} from '../src/shared/gameAssets'
 
 describe('buildSpriteManifest：对齐产物清单构建', () => {
   it('基础字段与条目保序、保留逐条锚点', () => {
@@ -83,5 +87,44 @@ describe('buildSpriteManifest：对齐产物清单构建', () => {
     })
     expect(m.sprites.map((s) => s.name)).toEqual(['big', 'ok'])
     expect(m.sprites[0]).toMatchObject({ anchorX: 0, anchorY: 64 })
+  })
+})
+
+describe('buildEngineSpriteSheetJson：通用引擎 Sprite Sheet Atlas JSON', () => {
+  it('产出兼容 TexturePacker / Aseprite 的 frames、duration、pivot、frameTags 与 hurtbox slice', () => {
+    const atlas = buildEngineSpriteSheetJson({
+      imageFileName: 'hero-run.png',
+      frameWidth: 128,
+      frameHeight: 128,
+      frameNames: ['run-0', 'run-1', 'run-2', 'run-3'],
+      fps: 10,
+      anchor: 'ground',
+      playMode: 'pingpong',
+      tagName: 'run'
+    })
+    expect(atlas.meta.image).toBe('hero-run.png')
+    expect(atlas.meta.size).toEqual({ w: 512, h: 128 })
+    expect(atlas.meta.frameTags).toEqual([{ name: 'run', from: 0, to: 3, direction: 'pingpong' }])
+    expect(atlas.frames['run-2']).toMatchObject({
+      frame: { x: 256, y: 0, w: 128, h: 128 },
+      duration: 100,
+      pivot: { x: 0.5, y: 1 }
+    })
+    expect(atlas.meta.slices[0]?.name).toBe('hurtbox')
+  })
+
+  it('支持多行换行网格（columns 参数）正确计算 row/col 像素坐标与图集总尺寸', () => {
+    const atlas = buildEngineSpriteSheetJson({
+      imageFileName: 'hero-12f.png',
+      frameWidth: 64,
+      frameHeight: 64,
+      frameNames: Array.from({ length: 10 }, (_, i) => `f-${i}`),
+      columns: 8,
+      fps: 12
+    })
+    expect(atlas.meta.size).toEqual({ w: 512, h: 128 })
+    expect(atlas.frames['f-7']?.frame).toEqual({ x: 448, y: 0, w: 64, h: 64 })
+    expect(atlas.frames['f-8']?.frame).toEqual({ x: 0, y: 64, w: 64, h: 64 })
+    expect(atlas.frames['f-9']?.frame).toEqual({ x: 64, y: 64, w: 64, h: 64 })
   })
 })

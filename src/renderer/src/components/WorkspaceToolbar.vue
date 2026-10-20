@@ -19,6 +19,20 @@
     </button>
     <button
       type="button"
+      class="tool-btn tool-btn-marketplace"
+      :aria-label="t('marketplace.open')"
+      @click="openMarketplace"
+      @mouseenter="showTip($event, t('marketplace.open'))"
+      @mouseleave="hideTip"
+      @focus="showTip($event, t('marketplace.open'))"
+      @blur="hideTip"
+    >
+      <span class="tool-icon" aria-hidden="true">
+        <MarketplaceIcon :size="16" />
+      </span>
+    </button>
+    <button
+      type="button"
       class="tool-btn tool-btn-settings"
       :aria-label="t('app.nav.settings')"
       @click="goSettings"
@@ -49,6 +63,7 @@ import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNaviga
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptText, promptAlert } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
+import MarketplaceIcon from './icons/MarketplaceIcon.vue'
 import SettingsGearIcon from './icons/SettingsGearIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
@@ -75,6 +90,11 @@ const { t, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 const activeTip = ref<string | null>(null)
 const tipStyle = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+
+function openMarketplace(): void {
+  hideTip()
+  void window.studio.openMarketplaceWindow()
+}
 
 function goSettings(): void {
   hideTip()
@@ -198,7 +218,7 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
   cursor: wait;
 }
 
-.tool-btn-settings {
+.tool-btn-marketplace {
   margin-top: auto;
 }
 

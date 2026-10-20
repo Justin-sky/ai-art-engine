@@ -13,7 +13,7 @@ describe('世界模型一键工作流', () => {
   const plan: GraphPlan = {
     title: '世界模型工作流',
     nodes: [
-      { key: 'brief', typeId: 'play.script', title: '世界设定与风格' },
+      { key: 'brief', typeId: 'text.plain', title: '世界设定与风格' },
       { key: 'world', typeId: 'asset.spatialWorld', title: '空间世界生成' },
       {
         key: 'export',
@@ -79,7 +79,7 @@ describe('世界模型一键工作流', () => {
   })
 
   it('文本设定喂给世界生成节点的文本口', () => {
-    const brief = plan!.nodes.find((node) => node.typeId === 'play.script')!
+    const brief = plan!.nodes.find((node) => node.typeId === 'text.plain')!
     const world = plan!.nodes.find((node) => node.typeId === 'asset.spatialWorld')!
     expect(plan!.edges).toContainEqual({
       from: brief.key,

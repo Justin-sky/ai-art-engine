@@ -109,7 +109,7 @@ describe('qc overview', () => {
 
   it('projects run failures from runStates into the error panel', () => {
     const nodes = [
-      createNodeFromType('play.script', { x: 0, y: 0 }, { id: 'n1', title: '脚本' }),
+      createNodeFromType('text.plain', { x: 0, y: 0 }, { id: 'n1', title: '脚本' }),
       createNodeFromType('asset.image', { x: 0, y: 0 }, { id: 'n2' }),
       createNodeFromType('media.review', { x: 0, y: 0 }, { id: 'n3', title: '质检' })
     ]

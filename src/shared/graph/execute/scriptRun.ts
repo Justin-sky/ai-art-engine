@@ -93,20 +93,32 @@ export function createScriptRunNodeExecutor(deps: ScriptRunDeps) {
     ctx: NodeExecuteContext
   ): Promise<Record<string, GraphValue>> {
     const params = readScriptNodeParams(ctx.node.params as Record<string, unknown>)
+    const startMs = Date.now()
+    const collectedLogs: Array<{ level: 'info' | 'warn' | 'error'; message: string }> = []
 
     // 组装允许的 host 调用：声明过 + 本环境真有该能力
     const bridge = new Map<string, (args: unknown) => Promise<unknown>>()
     const unavailable: string[] = []
     for (const cap of params.capabilities) {
+      if (cap === 'log') {
+        bridge.set('log', async (a) => {
+          const input = (a ?? {}) as { message?: unknown; level?: 'info' | 'warn' | 'error' }
+          const level = input.level === 'warn' || input.level === 'error' ? input.level : 'info'
+          const message = String(input.message ?? '')
+          collectedLogs.push({ level, message })
+          ctx.log?.(message, level)
+          return null
+        })
+        continue
+      }
       const fn = resolveHostCall(ctx, cap)
       if (fn) bridge.set(cap, fn)
       else unavailable.push(cap)
     }
     if (unavailable.length) {
-      ctx.log?.(
-        `脚本声明的能力在当前环境不可用，已忽略：${unavailable.join('、')}`, // cjk-ok
-        'warn'
-      )
+      const warnMsg = `脚本声明的能力在当前环境不可用，已忽略：${unavailable.join('、')}` // cjk-ok
+      collectedLogs.push({ level: 'warn', message: warnMsg })
+      ctx.log?.(warnMsg, 'warn')
     }
 
     const hostCall = async (call: ScriptHostCall): Promise<unknown> => {
@@ -124,7 +136,28 @@ export function createScriptRunNodeExecutor(deps: ScriptRunDeps) {
       ...(ctx.signal ? { signal: ctx.signal } : {})
     })
 
+    if (result.logs?.length) {
+      for (const entry of result.logs) {
+        collectedLogs.push(entry)
+        ctx.log?.(entry.message, entry.level)
+      }
+    }
+
+    const runMs = Math.max(0, Date.now() - startMs)
+    const runAt = new Date().toISOString()
+    const persistDiagnostics = (errorMsg: string): void => {
+      const patch = {
+        scriptLastLogs: collectedLogs.slice(-200),
+        scriptLastRunMs: runMs,
+        scriptLastError: errorMsg,
+        scriptLastRunAt: runAt
+      }
+      ctx.node.params = { ...ctx.node.params, ...patch }
+      ctx.patchNode?.({ params: patch })
+    }
+
     if (!result.ok) {
+      persistDiagnostics(result.error)
       throw new Error(
         (ctx.locale ?? '').toLowerCase().startsWith('en')
           ? `script node failed: ${result.error}`
@@ -138,21 +171,22 @@ export function createScriptRunNodeExecutor(deps: ScriptRunDeps) {
     for (const [portId, value] of Object.entries(result.outputs)) {
       if (!declared.has(portId)) continue
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error(
-          (ctx.locale ?? '').toLowerCase().startsWith('en')
-            ? `output port "${portId}" must be a GraphValue object`
-            : `输出端口「${portId}」必须是 GraphValue 对象` // cjk-ok
-        )
+        const errMsg = (ctx.locale ?? '').toLowerCase().startsWith('en')
+          ? `output port "${portId}" must be a GraphValue object`
+          : `输出端口「${portId}」必须是 GraphValue 对象` // cjk-ok
+        persistDiagnostics(errMsg)
+        throw new Error(errMsg)
       }
       if (typeof (value as { kind?: unknown }).kind !== 'string') {
-        throw new Error(
-          (ctx.locale ?? '').toLowerCase().startsWith('en')
-            ? `output port "${portId}" is missing a "kind" field`
-            : `输出端口「${portId}」缺少 kind 字段` // cjk-ok
-        )
+        const errMsg = (ctx.locale ?? '').toLowerCase().startsWith('en')
+          ? `output port "${portId}" is missing a "kind" field`
+          : `输出端口「${portId}」缺少 kind 字段` // cjk-ok
+        persistDiagnostics(errMsg)
+        throw new Error(errMsg)
       }
       outputs[portId] = value as GraphValue
     }
+    persistDiagnostics('')
     return outputs
   }
 }

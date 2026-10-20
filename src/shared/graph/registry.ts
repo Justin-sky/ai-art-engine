@@ -138,7 +138,7 @@ export function inferNodeTypeId(
     return node.typeId as GraphNodeTypeId
   }
   if (node.category === 'note') {
-    if (node.typeId === 'play.script') return 'play.script'
+    if (node.typeId === 'text.plain') return 'text.plain'
     // 脚本节点是 note 分类但不是记事本：registry 尚未挂上时也不能降成 note.text
     if (node.typeId === 'script.run') return 'script.run'
     return 'note.text'
