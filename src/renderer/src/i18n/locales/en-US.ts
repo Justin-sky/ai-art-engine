@@ -3531,7 +3531,13 @@ export default {
       selectTitle: 'Select (click / marquee)',
       panTitle: 'Pan (drag with left button)',
       collapse: 'Collapse toolbar',
-      expand: 'Expand toolbar'
+      expand: 'Expand toolbar',
+      modeGraph: 'Graph',
+      modeGraphTitle: 'Node Graph View',
+      modeFocus: 'Focus',
+      modeFocusTitle: 'Studio Focus Stage',
+      recipePoster: 'Recipe',
+      recipePosterTitle: 'Export Recipe Poster PNG with embedded workflow graph'
     },
     editor: {
       loadingSource: 'Loading image…'

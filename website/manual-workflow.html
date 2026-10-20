@@ -550,10 +550,14 @@
               编辑器内的 AI 增强（智能消除 / 换背景 / 妆容增强 / 超分）直接调图片模型，结果作为版本存回节点可回滚；
               检查器提供统一「输出预览」（缩略图 / 全屏 / 存资产库 / 多版本点选），下次进面板默认显示当前输出那张图。
             </li>
+            <li id="layer-split">
+              <strong>图层拆分工作台</strong>（<code>image.layerSplit</code>）：支持四大工业级拆层模式——
+              <strong>① UI 控件拆分（<code>ui</code>）</strong>：自动识别 16 类标准 HTML5 / Unity UI Toolkit 控件（<code>button</code>、<code>toggle</code>、<code>slider</code>、<code>progress-bar</code>、<code>input-field</code>、<code>scroll-view</code>、<code>panel</code>、<code>modal-dialog</code>、<code>tab-bar</code>、<code>list-item</code>、<code>slot-grid</code>、<code>icon-badge</code>、<code>avatar-frame</code>、<code>tooltip-bubble</code>、<code>hud-bar</code>、<code>text-label</code>），支持<strong>跨平台本地离线 OCR</strong>（Windows 原生 WinRT <code>Windows.Media.Ocr</code> / macOS <code>Vision.framework</code> / Linux <code>tesseract</code>）与云端 VLM OCR 精准提取按钮/面板文字、字芯主色（<code>color</code>）与描边色/粗细（<code>strokeColor</code> / <code>strokeWidth</code>），自动抹除字迹补全九宫格拉伸底板（<code>nineSlice</code>）并合成 <code>:hover</code> / <code>:active</code> 交互态；一键导出<strong>保留二级嵌套分组与原生 Photoshop <code>TySh</code> 可编辑文本图层的 <code>.psd</code></strong>，以及 <strong>Unity UI Toolkit（<code>.uxml/.uss</code>）· Unity UGUI（<code>.cs</code>）· Godot 4（<code>.tscn</code>）· HTML5</strong> 界面代码；
+              <strong>② 2D 立绘拆件（<code>rig2d</code>）</strong>：语义部件拆解 + 遮挡扩边补全 + 自动父子骨骼层级，直连 2D 舞台绑定与 Spine 导出；
+              <strong>③ 场景前后景分层（<code>scene</code>）</strong> 与 <strong>④ 自动拆层（<code>auto</code>）</strong>（支持 Seedream 5.0 Pro 云端分层或本地实例分割 + LaMa 背景补全）。
+            </li>
             <li>
-              <strong>图层分离</strong>（Seedream 5.0 Pro <code>layer_decomposition</code>）：把图片拆成底图 +
-              最多 16 张透明 PNG，在 dive 编辑器中调整层级后本地重组；支持滚轮缩放与空格平移查看，
-              导出 PSD（保留层级、位置、尺寸、透明通道、名称与嵌套分组）或按分组建子目录的 PNG。
+              <strong>PNG 即工作流（<code>aiae:graph</code> 隐写分享）</strong>：节点图导出的 PNG 产物会自动在 iTXt 块嵌入完整工作流拓扑与随机种子；把任意导出的 PNG 拖回画布，即可一键完整还原整条生成管线。
             </li>
             <li>
               精修 / 图片编辑在 Dive 中操作；选项与提示词会<strong>实时写回</strong>节点

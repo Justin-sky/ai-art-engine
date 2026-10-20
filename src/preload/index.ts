@@ -222,6 +222,8 @@ const api: StudioApi = {
     ipcRenderer.on(IpcChannels.YOLO_MODEL_DOWNLOAD_PROGRESS, listener)
     return () => ipcRenderer.removeListener(IpcChannels.YOLO_MODEL_DOWNLOAD_PROGRESS, listener)
   },
+  recognizeImageText: (input: { dataUrl: string }) =>
+    ipcRenderer.invoke(IpcChannels.VISION_OCR_RECOGNIZE, input),
 
   getAppVersion: () => ipcRenderer.invoke(IpcChannels.APP_GET_VERSION),
   checkForUpdates: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK),

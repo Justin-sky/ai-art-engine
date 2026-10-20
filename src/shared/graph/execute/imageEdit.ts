@@ -56,6 +56,12 @@ import {
   type ImageLayerSplitLayer,
   type ImageLayerSplitState
 } from '../imageLayerSplit'
+import {
+  buildVlmUiControlDetectionPrompt,
+  parseVlmUiControlDetectionResponse,
+  type UiControlType,
+  type UiVlmDetectedControlHint
+} from '../uiControlSpec'
 import type { GraphImageItem, GraphValue, NodeExecuteContext } from './types'
 import type { GenerateImageLayer } from '../../modelProvider'
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
@@ -1245,6 +1251,98 @@ function extractApiLayerHintsFromResult(
   return hints
 }
 
+async function detectUiControlsViaVlmIfAvailable(
+  ctx: NodeExecuteContext,
+  sourceUrl: string,
+  userHint: string,
+  sourceTitle: string | undefined,
+  canvasWidth: number,
+  canvasHeight: number
+): Promise<UiVlmDetectedControlHint[]> {
+  if (!ctx.generateText || !sourceUrl) return []
+  try {
+    let cw = canvasWidth
+    let ch = canvasHeight
+    if ((cw <= 0 || ch <= 0) && ctx.inspectImageSize) {
+      try {
+        const size = await ctx.inspectImageSize({ sourceDataUrl: sourceUrl })
+        if (size && size.width > 0 && size.height > 0) {
+          cw = size.width
+          ch = size.height
+        }
+      } catch {
+        // ignore size inspection error
+      }
+    }
+    const { system, prompt } = buildVlmUiControlDetectionPrompt({
+      locale: ctx.locale,
+      userHint,
+      sourceTitle
+    })
+    const res = await ctx.generateText({
+      prompt,
+      system,
+      images: [sourceUrl]
+    })
+    if (!res?.text?.trim()) return []
+    return parseVlmUiControlDetectionResponse(res.text, cw || 1024, ch || 1024)
+  } catch {
+    return []
+  }
+}
+
+function mergeUiControlHints(
+  apiHints: Array<{
+    name?: string
+    description?: string
+    left: number
+    top: number
+    width: number
+    height: number
+    controlType?: UiControlType
+    ocrText?: string
+  }>,
+  vlmHints: UiVlmDetectedControlHint[]
+): Array<{
+  name?: string
+  description?: string
+  left: number
+  top: number
+  width: number
+  height: number
+  controlType?: UiControlType
+  ocrText?: string
+}> {
+  if (!vlmHints.length) return apiHints
+  if (!apiHints.length) return vlmHints
+  const merged = vlmHints.map((h) => ({ ...h }))
+  for (const apiHint of apiHints) {
+    let matched = false
+    for (const existing of merged) {
+      const ix0 = Math.max(existing.left, apiHint.left)
+      const iy0 = Math.max(existing.top, apiHint.top)
+      const ix1 = Math.min(existing.left + existing.width, apiHint.left + apiHint.width)
+      const iy1 = Math.min(existing.top + existing.height, apiHint.top + apiHint.height)
+      if (ix1 > ix0 && iy1 > iy0) {
+        const inter = (ix1 - ix0) * (iy1 - iy0)
+        const minArea = Math.min(existing.width * existing.height, apiHint.width * apiHint.height)
+        if (inter >= Math.max(1, minArea) * 0.45) {
+          matched = true
+          if (!existing.name && apiHint.name) existing.name = apiHint.name
+          if (!existing.description && apiHint.description) {
+            existing.description = apiHint.description
+          }
+          break
+        }
+      }
+    }
+    if (!matched) {
+      merged.push({ ...apiHint })
+    }
+  }
+  return merged
+}
+
 async function resolveCanvasSafeBaseDataUrl(
   ctx: NodeExecuteContext,
   rawUrl: string | undefined,
@@ -1351,7 +1449,8 @@ function layersFromUiWidgetDecomposition(
 } {
   const cw = Math.max(1, decomposed.width)
   const ch = Math.max(1, decomposed.height)
-  const baseUrl = overrideBaseUrl?.trim() || decomposed.baseDataUrl?.trim() || fallbackForegroundUrl
+  // 优先采用经 ROI 掩码抗幻觉融合与局部色差校准后的 decomposed.baseDataUrl，兜底再使用原始 overrideBaseUrl
+  const baseUrl = decomposed.baseDataUrl?.trim() || overrideBaseUrl?.trim() || fallbackForegroundUrl
   const apiLayers: ExtendedApiLayer[] = [
     {
       url: baseUrl,
@@ -1417,8 +1516,9 @@ function layersFromUiWidgetDecomposition(
 
 /**
  * UI 图层分离：支持 4 种拆层引擎策略（auto / ai-inpaint-slice / ai-layers / local-slice）与任意图片模型，
- * 先识别 HTML5 / Unity UI Toolkit 标准 UI 控件，再拆解出控件内部子结构（如按钮文字、按钮常态背景、按下效果、滑动条轨道/填充/手柄），
- * 最后生成二级嵌套 PSD 文件。
+ * 并行调度 VLM 多模态 UI 控件检测与真实 OCR 文本识别（16 类 HTML5 / Unity UI Toolkit 标准控件），
+ * 自动拆解控件内部子结构（如按钮文字、按钮常态背景、按下效果、滑动条轨道/填充/手柄），
+ * 并通过 ROI 掩码抗幻觉底板融合与二次边缘去杂色生成商用级二级嵌套 PSD 文件。
  */
 export async function executeLayerSplitNode(
   ctx: NodeExecuteContext
@@ -1473,8 +1573,17 @@ export async function executeLayerSplitNode(
 
     if (strategy === 'local-slice') {
       if (ctx.decomposeImageUiLayers) {
+        const vlmHints = await detectUiControlsViaVlmIfAvailable(
+          ctx,
+          sourceUrl,
+          effectiveUserPrompt,
+          sourceTitle,
+          prev.canvasWidth || 1024,
+          prev.canvasHeight || 1024
+        )
         const decomposed = await ctx.decomposeImageUiLayers({
-          sourceDataUrl: sourceUrl
+          sourceDataUrl: sourceUrl,
+          ...(vlmHints.length ? { apiLayerHints: vlmHints } : {})
         })
         mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
       } else {
@@ -1488,7 +1597,18 @@ export async function executeLayerSplitNode(
     } else if (strategy === 'ai-inpaint-slice') {
       if (!ctx.generateImage) {
         if (ctx.decomposeImageUiLayers) {
-          const decomposed = await ctx.decomposeImageUiLayers({ sourceDataUrl: sourceUrl })
+          const vlmHints = await detectUiControlsViaVlmIfAvailable(
+            ctx,
+            sourceUrl,
+            effectiveUserPrompt,
+            sourceTitle,
+            prev.canvasWidth || 1024,
+            prev.canvasHeight || 1024
+          )
+          const decomposed = await ctx.decomposeImageUiLayers({
+            sourceDataUrl: sourceUrl,
+            ...(vlmHints.length ? { apiLayerHints: vlmHints } : {})
+          })
           mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
         } else {
           throw fail(SHARED_ERRORS.capabilityImageGenerate)
@@ -1500,24 +1620,35 @@ export async function executeLayerSplitNode(
         })
         const normalizedRes =
           prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
-        const result = await ctx.generateImage({
-          prompt: inpaintPrompt,
-          model,
-          providerInstanceId,
-          resolution: normalizedRes,
-          inputReferences: [sourceUrl]
-        })
+        const [result, vlmHints] = await Promise.all([
+          ctx.generateImage({
+            prompt: inpaintPrompt,
+            model,
+            providerInstanceId,
+            resolution: normalizedRes,
+            inputReferences: [sourceUrl]
+          }),
+          detectUiControlsViaVlmIfAvailable(
+            ctx,
+            sourceUrl,
+            effectiveUserPrompt,
+            sourceTitle,
+            prev.canvasWidth || 1024,
+            prev.canvasHeight || 1024
+          )
+        ])
         if (ctx.signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError')
         }
         const cleanBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
         if (ctx.decomposeImageUiLayers && cleanBaseUrl) {
           const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
-          const apiLayerHints = extractApiLayerHintsFromResult(
+          const rawApiLayerHints = extractApiLayerHintsFromResult(
             result.layers,
             prev.canvasWidth || 1024,
             prev.canvasHeight || 1024
           )
+          const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
           const decomposed = await ctx.decomposeImageUiLayers({
             sourceDataUrl: sourceUrl,
             cleanBaseDataUrl: safeBaseDataUrl,
@@ -1561,25 +1692,36 @@ export async function executeLayerSplitNode(
         locale: ctx.locale,
         sourceTitle
       })
-      const result = await ctx.generateImage({
-        prompt: effectivePrompt,
-        model,
-        providerInstanceId,
-        resolution: prev.resolution,
-        inputReferences: [sourceUrl],
-        layerDecomposition: true
-      })
+      const [result, vlmHints] = await Promise.all([
+        ctx.generateImage({
+          prompt: effectivePrompt,
+          model,
+          providerInstanceId,
+          resolution: prev.resolution,
+          inputReferences: [sourceUrl],
+          layerDecomposition: true
+        }),
+        detectUiControlsViaVlmIfAvailable(
+          ctx,
+          sourceUrl,
+          effectiveUserPrompt,
+          sourceTitle,
+          prev.canvasWidth || 1024,
+          prev.canvasHeight || 1024
+        )
+      ])
       if (ctx.signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError')
       }
       const rawBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
       if (ctx.decomposeImageUiLayers && rawBaseUrl) {
         const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, rawBaseUrl, stamp)
-        const apiLayerHints = extractApiLayerHintsFromResult(
+        const rawApiLayerHints = extractApiLayerHintsFromResult(
           result.layers,
           prev.canvasWidth || 1024,
           prev.canvasHeight || 1024
         )
+        const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
         const decomposed = await ctx.decomposeImageUiLayers({
           sourceDataUrl: sourceUrl,
           cleanBaseDataUrl: safeBaseDataUrl,

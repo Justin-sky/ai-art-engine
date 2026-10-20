@@ -143,6 +143,17 @@ Graph 编辑端口已迁到 `features/graph/model/graphEditorHosts.ts`，不再�
    - `resolveActiveWorkspaceTargets()` 实时解析左窗当前打开的画布、Dive 下钻栈顶节点与当前选中节点。当用户在 Dive 视图或选中某节点直接下达口语指令时，即使 AI 省略 `assetId` 或 `nodeId`，`mcpTaskRunner.ts` 也会自动绑定到当前焦点节点并实时热更新内存宿主。
    - `formatNodeEditableSchemaSummary()` 按需将当前下钻或选中节点的完整可编辑路径、枚举值、简写键名与预设注入 AI 上下文窗口。
 
+## 工业级工程产物交付与本地服务（Production Deliverable Exporters）
+
+- **游戏 UI 16 类控件拆解与多引擎导出**
+  - `src/shared/graph/uiControlSpec.ts`：定义 16 类标准 HTML5 / Unity UI Toolkit 控件语义（`button`、`toggle`、`slider`、`progress-bar`、`input-field`、`scroll-view`、`panel`、`modal-dialog`、`tab-bar`、`list-item`、`slot-grid`、`icon-badge`、`avatar-frame`、`tooltip-bubble`、`hud-bar`、`text-label`）、九宫格切线自适应估算、字芯颜色（`color`）与描边（`strokeColor` / `strokeWidth`）环带采样、`hover`/`active` 状态像素合成，以及本地 OCR 文本框回填匹配（`matchOcrBoxesToControlRect`）。
+  - `src/main/services/localOcrService.ts`：跨平台零配置本地离线 OCR 服务（Windows WinRT `Windows.Media.Ocr.OcrEngine` / macOS `Vision.framework` `VNRecognizeTextRequest` / Linux `tesseract` TSV），将检测到的行与单词聚类为紧致文本包围盒。
+  - `src/shared/psdExport.ts` & `src/renderer/src/features/graph/model/composeImageLayerStack.ts`：导出支持二级嵌套分组（`groupPath`）与原生 Photoshop `TySh` 可编辑文本图层的 `.psd` 文件。
+  - `src/shared/graph/uiEngineExport.ts`：一键导出 Unity UI Toolkit（`.uxml` + `.uss`）、Unity UGUI（C# 组装脚本）、Godot 4（`.tscn`）与响应式 HTML5 工程代码包。
+- **PNG 即工作流（`src/shared/pngWorkflowCodec.ts`）**：在 PNG `iTXt` 块（关键字 `aiae:graph`）无损嵌入/提取完整 `NodeGraphDocument` JSON，支持拖拽任意产出 PNG 到画布一键复现整条生成管线。
+- **剪映 / CapCut 多轨草稿工程导出（`src/shared/timelineNleExport.ts`）**：将时间线的视频、画中画、配音、音乐、音效与字幕轨编译为微秒级精度的 `draft_content.json` 与 `draft_meta_info.json`，并归档本地媒体至 `materials/`。
+- **零配置即刻体验示例工程（`src/main/services/demoProjectService.ts`）**：离线生成自包含的 4 镜赛博朋克短剧示例工程（含合成 SVG/PNG 分镜、BMP-to-MP4 预演视频、可运行节点图与完整多轨时间线）。
+
 ## 后续迁移
 
 - [x] 资产、分镜和节点主要编辑路径已包装为 `EditorCommand`，支持合并与文档级 Undo/Redo。
@@ -152,6 +163,7 @@ Graph 编辑端口已迁到 `features/graph/model/graphEditorHosts.ts`，不再�
 - [x] 主进程已拆出 Asset、Project、Autosave 与原子 JSON Repository。
 - [x] 已实现外部声明式插件发现、API/权限校验和设置页清单；出于安全考虑不执行任意外部脚本。
 - [x] 已落地四支柱全工作区 AI 对话直控架构（运行时自省、智能深层补丁、焦点上下文注入与 3D 导演台全量指令操控）。
+- [x] 已落地 16 类游戏 UI 控件拆层、跨平台离线 OCR、原生 `TySh` 可编辑 PSD 导出、Unity/Godot/HTML5 代码导出、PNG 隐写工作流与剪映草稿工程导出。
 
 ## 自动化验证
 
@@ -163,5 +175,6 @@ Graph 编辑端口已迁到 `features/graph/model/graphEditorHosts.ts`，不再�
 - Graph Document 深拷贝和原位替换
 - 全量内置节点与动态新注册节点的零配置自省、深层点路径/JSON 透明补丁、预设联动与焦点感知注入（`tests/universalWorkspaceControl.test.ts`）
 - 左窗全态感知与 3D 导演台全量场景/骨骼/灯光/镜头操控（`tests/leftWindowPerceptionAndDirectorMcp.test.ts`）
+- 16 类 UI 控件拆解、跨平台离线 OCR 聚类/匹配、PSD `TySh` 文本层导出、PNG 隐写编解码与剪映草稿导出（`tests/imageLayerSplit.test.ts`、`tests/blockbusterFeatures.test.ts`）
 
 运行：`npm test`

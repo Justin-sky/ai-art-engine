@@ -314,34 +314,45 @@
             </li>
           </ul>
 
-          <h3>10.7 Export</h3>
+          <h3>10.7 Export film &amp; JianyingPro / CapCut NLE drafts</h3>
           <p>
-            The timeline toolbar offers <strong>Export film</strong>: set the resolution (preset or custom width
-            / height), frame rate and bitrate. It prefers the local ffmpeg to mux an MP4 and falls back to WebM
-            recording when ffmpeg isn't installed. Export progress and the result path are reported in the UI.
-            Use “Fit width” to zoom the timeline.
+            The timeline toolbar provides two production export channels:
           </p>
+          <ul>
+            <li>
+              <strong>Export film (MP4 / WebM)</strong>: set the resolution (preset or custom width / height), frame rate and bitrate. It prefers local ffmpeg to mux an MP4 and falls back to WebM recording when ffmpeg isn't installed.
+            </li>
+            <li>
+              <strong>Export JianyingPro / CapCut NLE draft (<code>🎬 Export CapCut Draft</code>)</strong>: packages all video, PiP, voice-over, music, SFX and subtitle tracks (converted to microsecond timelines with local media copied into <code>materials/</code>) into a standard JianyingPro / CapCut draft directory (<code>draft_content.json</code> + <code>draft_meta_info.json</code>) ready for non-linear finishing.
+            </li>
+          </ul>
         </section>
 
         <section id="canvas">
-          <h2>11. Free canvas &amp; cast / scene settings</h2>
+          <h2>11. Free canvas, <code>#variant</code> anchors &amp; 2D rig stage</h2>
 
-          <h3>11.1 Canvas assets</h3>
+          <h3>11.1 Canvas assets &amp; PNG-as-Workflow</h3>
           <ul>
             <li>
               <strong>Free canvas</strong>: a blank node canvas — right-click to add nodes, or drag assets in
-              from the asset library. Creating another yields “Free Canvas 2” and so on. To build video
+              from the asset library. Dragging any PNG exported by AIArtEngine (containing an embedded <code>aiae:graph</code> chunk) onto the canvas automatically reconstructs the full node graph. To build video
               generation and reference video on a canvas, see
               <a href="guide-video.en.html">Free canvas: video generation &amp; reference video</a>.
             </li>
           </ul>
 
-          <h3>11.2 Cast &amp; scene settings and shot list</h3>
+          <h3>11.2 Cast &amp; scene settings with <code>#variant</code> wardrobe lock</h3>
           <ul>
             <li>
               Double-click a <strong>Film Workbench</strong> (<code>film.workbench</code>) node to enter its Dive view:
-              the “Storyboard Breakdown” stage edits shot framing, camera moves, duration, action, dialogue and cast bindings;
-              the “Character &amp; Scene Design” stage manages reusable character, scene and prop anchor sheets with per-item regeneration.
+              in “Character &amp; Scene Design” you can maintain multiple wardrobe or form variants per character (e.g. <code>@Heroine#stealth-suit</code>, <code>@Heroine#casual</code>) so each shot automatically binds the exact outfit reference sheet and description.
+            </li>
+          </ul>
+
+          <h3 id="frame2d">11.3 2D Stage &amp; Spine 2D skeleton export</h3>
+          <ul>
+            <li>
+              Double-click a <strong>2D Stage</strong> (<code>stage.2d</code>) node to open the 2D rigging &amp; animation workbench: feed in body-part layers from an upstream “Layer Split (<code>rig2d</code> mode)”, bind parent-child bones and IK constraints, animate keyframes or apply procedural idle/walk/attack presets, and one-click export a standard <strong>Spine 2D package (<code>skeleton.json</code> + <code>.atlas</code> + part textures)</strong> for Unity, Godot or Cocos.
             </li>
           </ul>
         </section>

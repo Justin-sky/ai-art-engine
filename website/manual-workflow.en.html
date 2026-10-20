@@ -663,11 +663,14 @@
               versions; the inspector carries the shared output preview (thumbnails / full screen / save to
               library / pick a version), and reopening the panel defaults to the node's current output.
             </li>
+            <li id="layer-split">
+              <strong>Layer Split Workbench</strong> (<code>image.layerSplit</code>): supports four production decomposition modes —
+              <strong>① Game UI Control Split (<code>ui</code>)</strong>: recognizes 16 standard HTML5 / Unity UI Toolkit control classes (<code>button</code>, <code>toggle</code>, <code>slider</code>, <code>progress-bar</code>, <code>input-field</code>, <code>scroll-view</code>, <code>panel</code>, <code>modal-dialog</code>, <code>tab-bar</code>, <code>list-item</code>, <code>slot-grid</code>, <code>icon-badge</code>, <code>avatar-frame</code>, <code>tooltip-bubble</code>, <code>hud-bar</code>, <code>text-label</code>), runs <strong>cross-platform local offline OCR</strong> (Windows WinRT <code>Windows.Media.Ocr</code> / macOS <code>Vision.framework</code> / Linux <code>tesseract</code>) and cloud VLM OCR to extract text, core glyph fill (<code>color</code>) and outline (<code>strokeColor</code> / <code>strokeWidth</code>), inpaints clean 9-slice plates (<code>nineSlice</code>) and synthesizes <code>:hover</code> / <code>:active</code> states; exports a <strong>2-level nested <code>.psd</code> with native Photoshop <code>TySh</code> editable text layers</strong> plus <strong>Unity UI Toolkit (<code>.uxml/.uss</code>) · Unity UGUI (<code>.cs</code>) · Godot 4 (<code>.tscn</code>) · HTML5</strong> code;
+              <strong>② 2D Rig Part Split (<code>rig2d</code>)</strong>: semantic body-part cutting + occluded edge dilation inpainting + auto bone hierarchy for 2D Stage &amp; Spine export;
+              <strong>③ Scene Depth Split (<code>scene</code>)</strong> and <strong>④ Auto Layer Split (<code>auto</code>)</strong> (Seedream 5.0 Pro cloud decomposition or local instance segmentation + LaMa background inpainting).
+            </li>
             <li>
-              <strong>Layer separation</strong> (Seedream 5.0 Pro <code>layer_decomposition</code>): split an
-              image into a base image plus up to 16 transparent PNGs, reorder layers in the dive editor and
-              recompose locally; supports wheel zoom and Space-drag panning, and exports PSD (preserving layer
-              order, position, size, alpha channel, names and nested groups) or PNGs grouped into subfolders.
+              <strong>PNG-as-Workflow (<code>aiae:graph</code> steganography)</strong>: exported PNGs automatically embed the full node graph topology and seeds inside a PNG iTXt chunk; drag any exported PNG back onto the canvas to restore the entire pipeline.
             </li>
             <li>
               Retouching / image editing happens in Dive; options and prompts are

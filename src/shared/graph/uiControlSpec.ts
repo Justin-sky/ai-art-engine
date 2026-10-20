@@ -127,6 +127,12 @@ export interface UiEditableTextMeta {
   fontSize: number
   /** 采样自文字笔画像素的主色调 RGB (0-255) */
   color: [number, number, number]
+  /** 采样自文字外圈轮廓的描边色 RGB (0-255，若存在明显描边则自动提取) */
+  strokeColor?: [number, number, number]
+  /** 估算文字描边宽度（px） */
+  strokeWidth?: number
+  /** 离线笔画连通投影检测出的字符/字形个数 */
+  glyphCount?: number
   /** 文本对齐方式 */
   align?: 'left' | 'center' | 'right'
   /** PostScript 字体名（默认 MicrosoftYaHei-Bold） */
@@ -494,10 +500,124 @@ export interface DecomposedControlSubPart {
   editableText?: UiEditableTextMeta
 }
 
+export interface LocalOcrTextBox {
+  /** 识别出的文本内容 */
+  text: string
+  /** 文本行/词组在画布上的像素左边界 */
+  left: number
+  /** 文本行/词组在画布上的像素上边界 */
+  top: number
+  /** 像素宽度 */
+  width: number
+  /** 像素高度 */
+  height: number
+  /** 可选置信度 (0..1) */
+  confidence?: number
+}
+
+/**
+ * 规范化本地 OCR 引擎（如 Windows.Media.Ocr）识别出的文本：
+ * 自动剔除中文字符之间、中文与数字/加减号之间被分词器插入的多余空格，同时保留英文单词间的正常空格。
+ */
+export function normalizeOcrDetectedText(rawText: string): string {
+  return rawText
+    .replace(/\r?\n+/g, ' ')
+    .replace(/([\u3000-\u9fff\uff00-\uffef])\s+(?=[\u3000-\u9fff\uff00-\uffef])/g, '$1')
+    .replace(/([\u3000-\u9fff\uff00-\uffef])\s+(?=[+\-0-9%])/g, '$1')
+    .replace(/([+\-0-9%])\s+(?=[\u3000-\u9fff\uff00-\uffef])/g, '$1')
+    .replace(/([+\-])\s+(?=[0-9])/g, '$1')
+    .replace(/([0-9])\s*,\s*(?=[0-9])/g, '$1,')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+/**
+ * 将全画布 OCR 识别出的文本框集合与指定 UI 控件/子部件矩形框进行空间交集匹配：
+ * - 若提供 `excludedChildRects`（如大面板内部已剥离的子按钮矩形），自动排除落入子控件内的文字，防止子按钮文字串入父面板；
+ * - 按阅读顺序（自上而下、自左向右）拼接匹配到的文本。
+ */
+export function matchOcrBoxesToControlRect(
+  ocrBoxes: ReadonlyArray<LocalOcrTextBox> | undefined,
+  rect: { left: number; top: number; width: number; height: number },
+  excludedChildRects?: ReadonlyArray<{ left: number; top: number; width: number; height: number }>
+): string | undefined {
+  if (!ocrBoxes?.length) return undefined
+  const rx0 = rect.left
+  const ry0 = rect.top
+  const rx1 = rect.left + rect.width
+  const ry1 = rect.top + rect.height
+
+  const matched: LocalOcrTextBox[] = []
+  for (const box of ocrBoxes) {
+    const clean = normalizeOcrDetectedText(box.text ?? '')
+    if (!clean) continue
+    const bw = Math.max(1, box.width)
+    const bh = Math.max(1, box.height)
+    const bx0 = box.left
+    const by0 = box.top
+    const bx1 = bx0 + bw
+    const by1 = by0 + bh
+    const bcx = bx0 + bw * 0.5
+    const bcy = by0 + bh * 0.5
+
+    const ix0 = Math.max(rx0, bx0)
+    const iy0 = Math.max(ry0, by0)
+    const ix1 = Math.min(rx1, bx1)
+    const iy1 = Math.min(ry1, by1)
+    const interArea = ix1 > ix0 && iy1 > iy0 ? (ix1 - ix0) * (iy1 - iy0) : 0
+    const boxArea = bw * bh
+    const centerInside = bcx >= rx0 && bcx <= rx1 && bcy >= ry0 && bcy <= ry1
+    if (!centerInside && interArea < boxArea * 0.42) continue
+
+    if (excludedChildRects?.length) {
+      let insideChild = false
+      for (const child of excludedChildRects) {
+        const cx0 = child.left
+        const cy0 = child.top
+        const cx1 = child.left + child.width
+        const cy1 = child.top + child.height
+        if (bcx >= cx0 && bcx <= cx1 && bcy >= cy0 && bcy <= cy1) {
+          insideChild = true
+          break
+        }
+        const cix0 = Math.max(cx0, bx0)
+        const ciy0 = Math.max(cy0, by0)
+        const cix1 = Math.min(cx1, bx1)
+        const ciy1 = Math.min(cy1, by1)
+        if (cix1 > cix0 && ciy1 > ciy0 && (cix1 - cix0) * (ciy1 - ciy0) >= boxArea * 0.5) {
+          insideChild = true
+          break
+        }
+      }
+      if (insideChild) continue
+    }
+
+    matched.push({ ...box, text: clean })
+  }
+
+  if (!matched.length) return undefined
+
+  matched.sort((a, b) => {
+    const cyA = a.top + a.height * 0.5
+    const cyB = b.top + b.height * 0.5
+    const lineTol = Math.max(a.height, b.height, 10) * 0.65
+    if (Math.abs(cyA - cyB) > lineTol) return cyA - cyB
+    return a.left - b.left
+  })
+
+  const joined = normalizeOcrDetectedText(matched.map((m) => m.text).join(' '))
+  return joined || undefined
+}
+
 export interface RecognizedUiControlInput {
   controlId?: string
+  controlType?: UiControlType
   nameHint?: string
   descriptionHint?: string
+  /** VLM / OCR 识别出的画面真实文本内容（优先写入 PSD TySh 可编辑文本层） */
+  ocrText?: string
+  /** 可选：全画布或局部 OCR 文本框列表，支持对面板标题/正文等多文本子部件进行精确空间匹配 */
+  ocrBoxes?: ReadonlyArray<LocalOcrTextBox>
   left: number
   top: number
   width: number
@@ -509,45 +629,302 @@ export interface RecognizedUiControlInput {
   locale?: string
 }
 
+export interface UiVlmDetectedControlHint {
+  name?: string
+  description?: string
+  controlType?: UiControlType
+  /** 画面真实 OCR 识别出的文本（如 "祭炼升阶"、"+15"、"法宝炼器"） */
+  ocrText?: string
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 /**
- * 从前景笔画像素与控件名称中自动测算 Photoshop 原生可编辑文本图层（`TySh`）的字色、字号与默认文案。
+ * 构建多模态 VLM UI 控件结构化检测 + 真实 OCR 识字提示词：
+ * 指导视觉大模型直接输出画面中所有独立 UI 控件的精确坐标框、16 类标准控件类型及真实 OCR 文本。
+ */
+export function buildVlmUiControlDetectionPrompt(options?: {
+  locale?: string
+  userHint?: string
+  sourceTitle?: string
+}): { system: string; prompt: string } {
+  const isEn = typeof options?.locale === 'string' && /^en\b/i.test(options.locale.trim())
+  const allowedTypes = Object.keys(UI_CONTROL_SPECS).join(' | ')
+  const system = isEn
+    ? `You are an expert Game UI & Unity UI Toolkit / HTML5 structural layout analyzer and OCR engine.
+Analyze the input game UI image and detect all distinct interactive controls, HUD bars, item slots, tabs, and panels.
+Return ONLY a valid JSON array (no markdown explanation) where each item has:
+- "name": concise semantic name of the control (e.g. "Upgrade Button", "Weapon Slot 1", "HP Bar")
+- "controlType": one of [${allowedTypes}]
+- "ocrText": exact visible text inside this control (empty string "" if no text)
+- "box_2d": [ymin, xmin, ymax, xmax] normalized to 0..1000 integers.`
+    : `你是专业的游戏 UI 视觉结构分析器与高精度 OCR 识字引擎（遵循 HTML5 与 Unity UI Toolkit 16 类标准控件规范）。
+请仔细扫描输入的 UI 界面图片，识别出画面中所有独立的交互按钮、道具装备槽、进度/滑动条、页签栏、下拉框、列表容器、顶部资源栏与弹窗面板，并准确识别每个控件上的真实文字（OCR）。
+只输出合法的 JSON 数组（不要任何额外解释文本），数组每项格式严格为：
+{
+  "name": "控件中文语义名称（如：祭炼升阶按钮、神兵槽位1、灵力滑动条、法宝详情面板）",
+  "controlType": "${allowedTypes} 之一",
+  "ocrText": "该控件内部实际显示的准确文字内容（如：祭炼升阶、+12、99999；无文字则填 \"\"）",
+  "box_2d": [ymin, xmin, ymax, xmax] // 0~1000 归一化整数坐标
+}`
+
+  const extra = [options?.sourceTitle?.trim(), options?.userHint?.trim()]
+    .filter(Boolean)
+    .join(' | ')
+  const prompt = isEn
+    ? `Detect up to 18 UI controls and their exact OCR text in this UI screen.${extra ? ` Context: ${extra}` : ''} Output JSON array only.`
+    : `请检测此界面中的全部关键 UI 控件（最多 18 个），返回其 0~1000 归一化坐标框 box_2d、标准控件类型 controlType 以及画面上的真实 OCR 文字 ocrText。${extra ? `补充上下文：${extra}。` : ''}仅输出 JSON 数组。`
+
+  return { system, prompt }
+}
+
+/**
+ * 解析多模态 VLM 返回的 UI 控件检测 + OCR JSON 结果，转换为像素级 `UiVlmDetectedControlHint[]`。
+ */
+export function parseVlmUiControlDetectionResponse(
+  rawText: string,
+  canvasWidth: number,
+  canvasHeight: number
+): UiVlmDetectedControlHint[] {
+  const cw = Math.max(1, Math.round(canvasWidth))
+  const ch = Math.max(1, Math.round(canvasHeight))
+  const trimmed = rawText?.trim() || ''
+  if (!trimmed) return []
+
+  // 提取代码块或首尾 [...] JSON 数组
+  const fenceMatch = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed)
+  const candidate = fenceMatch ? fenceMatch[1]!.trim() : trimmed
+  const startBracket = candidate.indexOf('[')
+  const endBracket = candidate.lastIndexOf(']')
+  if (startBracket < 0 || endBracket <= startBracket) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(candidate.slice(startBracket, endBracket + 1))
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const validTypes = new Set<string>(Object.keys(UI_CONTROL_SPECS))
+  const results: UiVlmDetectedControlHint[] = []
+
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue
+    const rec = item as Record<string, unknown>
+    const rawBox =
+      (Array.isArray(rec.box_2d) && rec.box_2d) ||
+      (Array.isArray(rec.box2d) && rec.box2d) ||
+      (Array.isArray(rec.bbox) && rec.bbox) ||
+      null
+    if (!rawBox || rawBox.length < 4) continue
+    const n0 = Number(rawBox[0])
+    const n1 = Number(rawBox[1])
+    const n2 = Number(rawBox[2])
+    const n3 = Number(rawBox[3])
+    if (![n0, n1, n2, n3].every(Number.isFinite)) continue
+
+    // 自动兼容 0..1 归一化小数与 0..1000 归一化整数
+    const isUnitScale = Math.max(n0, n1, n2, n3) <= 1.05
+    const scale = isUnitScale ? 1000 : 1
+    // box_2d 约定为 [ymin, xmin, ymax, xmax]，若字段名为 bbox 则按 [xmin, ymin, xmax, ymax]
+    const isXyxy =
+      Array.isArray(rec.bbox) && !Array.isArray(rec.box_2d) && !Array.isArray(rec.box2d)
+    const yminNorm = (isXyxy ? n1 : n0) * scale
+    const xminNorm = (isXyxy ? n0 : n1) * scale
+    const ymaxNorm = (isXyxy ? n3 : n2) * scale
+    const xmaxNorm = (isXyxy ? n2 : n3) * scale
+
+    const left = Math.max(
+      0,
+      Math.min(cw - 1, Math.round((Math.min(xminNorm, xmaxNorm) / 1000) * cw))
+    )
+    const top = Math.max(
+      0,
+      Math.min(ch - 1, Math.round((Math.min(yminNorm, ymaxNorm) / 1000) * ch))
+    )
+    const right = Math.max(
+      left + 1,
+      Math.min(cw, Math.round((Math.max(xminNorm, xmaxNorm) / 1000) * cw))
+    )
+    const bottom = Math.max(
+      top + 1,
+      Math.min(ch, Math.round((Math.max(yminNorm, ymaxNorm) / 1000) * ch))
+    )
+    const width = right - left
+    const height = bottom - top
+    if (width < 8 || height < 8) continue
+    if (width >= cw * 0.96 && height >= ch * 0.96) continue
+
+    const name = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : undefined
+    const description =
+      typeof rec.description === 'string' && rec.description.trim()
+        ? rec.description.trim()
+        : undefined
+    const ocrText =
+      typeof rec.ocrText === 'string' && rec.ocrText.trim()
+        ? rec.ocrText.trim()
+        : typeof rec.text === 'string' && rec.text.trim()
+          ? rec.text.trim()
+          : undefined
+    const rawType = typeof rec.controlType === 'string' ? rec.controlType.trim().toLowerCase() : ''
+    const controlType: UiControlType | undefined = validTypes.has(rawType)
+      ? (rawType as UiControlType)
+      : undefined
+
+    results.push({
+      ...(name ? { name } : {}),
+      ...(description ? { description } : {}),
+      ...(controlType ? { controlType } : {}),
+      ...(ocrText ? { ocrText } : {}),
+      left,
+      top,
+      width,
+      height
+    })
+  }
+
+  return results
+}
+
+/**
+ * 从前景笔画像素与控件名称/OCR 结果中自动测算 Photoshop 原生可编辑文本图层（`TySh`）的：
+ * - 字芯填充色（`color`）与外轮廓描边色（`strokeColor` / `strokeWidth`）双层分离；
+ * - 离线水平投影谷底切分（Glyph Projection Segmentation）测算字符个数 `glyphCount` 与真实字高字号；
+ * - 基于笔画质心的左/中/右对齐方式与离线数字/文案回退推断。
  */
 export function estimateEditableTextMeta(input: {
   foregroundRgba: Uint8ClampedArray
   width: number
   height: number
   rawName: string
+  ocrText?: string
   fallbackText?: string
   align?: 'left' | 'center' | 'right'
 }): UiEditableTextMeta {
-  const { foregroundRgba, height, rawName, fallbackText, align } = input
-  let rSum = 0
-  let gSum = 0
-  let bSum = 0
-  let wSum = 0
+  const { foregroundRgba, width, height, rawName, ocrText, fallbackText, align } = input
+  const w = Math.max(1, Math.round(width))
+  const h = Math.max(1, Math.round(height))
 
-  for (let i = 0; i < foregroundRgba.length; i += 4) {
-    const a = foregroundRgba[i + 3]!
-    if (a < 64) continue
-    const r = foregroundRgba[i]!
-    const g = foregroundRgba[i + 1]!
-    const b = foregroundRgba[i + 2]!
-    const luma = 0.299 * r + 0.587 * g + 0.114 * b
-    const weight = (a / 255) * (0.4 + luma / 255)
-    rSum += r * weight
-    gSum += g * weight
-    bSum += b * weight
-    wSum += weight
+  let coreR = 0
+  let coreG = 0
+  let coreB = 0
+  let coreW = 0
+
+  let edgeR = 0
+  let edgeG = 0
+  let edgeB = 0
+  let edgeW = 0
+
+  let allR = 0
+  let allG = 0
+  let allB = 0
+  let allW = 0
+
+  const colActive = new Uint8Array(w)
+  let minY = h
+  let maxY = -1
+  let xWeightSum = 0
+  let activeCount = 0
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const pIdx = y * w + x
+      const i = pIdx * 4
+      const a = foregroundRgba[i + 3]!
+      if (a < 56) continue
+      const r = foregroundRgba[i]!
+      const g = foregroundRgba[i + 1]!
+      const b = foregroundRgba[i + 2]!
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b
+      const weight = (a / 255) * (0.4 + luma / 255)
+      allR += r * weight
+      allG += g * weight
+      allB += b * weight
+      allW += weight
+
+      if (a >= 88) {
+        colActive[x] = 1
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        xWeightSum += x
+        activeCount++
+      }
+
+      // 判断是字芯内部像素还是笔画外圈轮廓像素
+      const leftA = x > 0 ? foregroundRgba[i - 4 + 3]! : 0
+      const rightA = x + 1 < w ? foregroundRgba[i + 4 + 3]! : 0
+      const topA = y > 0 ? foregroundRgba[i - w * 4 + 3]! : 0
+      const botA = y + 1 < h ? foregroundRgba[i + w * 4 + 3]! : 0
+      const isCore = a >= 160 && leftA >= 96 && rightA >= 96 && topA >= 96 && botA >= 96
+      if (isCore) {
+        coreR += r * weight
+        coreG += g * weight
+        coreB += b * weight
+        coreW += weight
+      } else {
+        const edgeWeight = a / 255
+        edgeR += r * edgeWeight
+        edgeG += g * edgeWeight
+        edgeB += b * edgeWeight
+        edgeW += edgeWeight
+      }
+    }
   }
 
-  const color: [number, number, number] =
-    wSum > 0
-      ? [
-          Math.min(255, Math.max(0, Math.round(rSum / wSum))),
-          Math.min(255, Math.max(0, Math.round(gSum / wSum))),
-          Math.min(255, Math.max(0, Math.round(bSum / wSum)))
-        ]
-      : [248, 236, 200]
+  const fillR = coreW > 0 ? coreR / coreW : allW > 0 ? allR / allW : 248
+  const fillG = coreW > 0 ? coreG / coreW : allW > 0 ? allG / allW : 236
+  const fillB = coreW > 0 ? coreB / coreW : allW > 0 ? allB / allW : 200
+  const color: [number, number, number] = [
+    Math.min(255, Math.max(0, Math.round(fillR))),
+    Math.min(255, Math.max(0, Math.round(fillG))),
+    Math.min(255, Math.max(0, Math.round(fillB)))
+  ]
+
+  let strokeColor: [number, number, number] | undefined
+  let strokeWidth: number | undefined
+  if (coreW > 0 && edgeW > 0) {
+    const er = edgeR / edgeW
+    const eg = edgeG / edgeW
+    const eb = edgeB / edgeW
+    const diff = Math.hypot(fillR - er, fillG - eg, fillB - eb)
+    if (diff >= 26) {
+      strokeColor = [
+        Math.min(255, Math.max(0, Math.round(er))),
+        Math.min(255, Math.max(0, Math.round(eg))),
+        Math.min(255, Math.max(0, Math.round(eb)))
+      ]
+      strokeWidth = Math.max(1, Math.min(4, Math.round(h * 0.055)))
+    }
+  }
+
+  // 水平投影谷底切分（统计独立字符段个数 glyphCount）
+  let glyphCount = 0
+  let inRun = false
+  let runLen = 0
+  const minGap = Math.max(1, Math.floor(h * 0.06))
+  let gapLen = 0
+  for (let x = 0; x < w; x++) {
+    if (colActive[x]) {
+      if (!inRun) {
+        inRun = true
+        runLen = 1
+      } else {
+        runLen++
+      }
+      gapLen = 0
+    } else if (inRun) {
+      gapLen++
+      if (gapLen >= minGap) {
+        if (runLen >= 2) glyphCount++
+        inRun = false
+        runLen = 0
+      }
+    }
+  }
+  if (inRun && runLen >= 2) glyphCount++
 
   const cleanedText = rawName
     .replace(/^\[[^\]]+\]\s*/g, '')
@@ -558,14 +935,24 @@ export function estimateEditableTextMeta(input: {
     )
     .trim()
 
-  const text = cleanedText || fallbackText || 'UI Text'
-  const fontSize = Math.max(12, Math.min(72, Math.round(height * 0.72)))
+  const text = ocrText?.trim() || cleanedText || fallbackText || 'UI Text'
+  const effectiveGlyphH = maxY > minY ? Math.max(10, maxY - minY + 1) : Math.round(h * 0.72)
+  const fontSize = Math.max(12, Math.min(72, Math.round(Math.max(effectiveGlyphH, h * 0.68))))
+
+  let resolvedAlign: 'left' | 'center' | 'right' = align ?? 'center'
+  if (!align && activeCount >= 8 && w >= 32) {
+    const centerRatio = xWeightSum / activeCount / w
+    if (centerRatio < 0.36) resolvedAlign = 'left'
+    else if (centerRatio > 0.64) resolvedAlign = 'right'
+  }
 
   return {
     text,
     fontSize,
     color,
-    align: align ?? 'center',
+    ...(strokeColor ? { strokeColor, strokeWidth } : {}),
+    ...(glyphCount > 0 ? { glyphCount } : {}),
+    align: resolvedAlign,
     fontName: 'MicrosoftYaHei-Bold'
   }
 }
@@ -576,6 +963,7 @@ export function estimateEditableTextMeta(input: {
 export function recognizeUiControlType(input: {
   nameHint?: string
   descriptionHint?: string
+  ocrText?: string
   left: number
   top: number
   width: number
@@ -584,7 +972,6 @@ export function recognizeUiControlType(input: {
   canvasHeight: number
   rgba?: Uint8ClampedArray
 }): UiControlType {
-  const hay = `${input.nameHint ?? ''} ${input.descriptionHint ?? ''}`.toLowerCase()
   const cw = Math.max(1, input.canvasWidth)
   const ch = Math.max(1, input.canvasHeight)
   const w = Math.max(1, input.width)
@@ -592,6 +979,8 @@ export function recognizeUiControlType(input: {
   const aspect = w / h
   const areaRatio = (w * h) / (cw * ch)
   const cy = (input.top + h / 2) / ch
+  const hay =
+    `${input.nameHint ?? ''} ${input.descriptionHint ?? ''} ${areaRatio <= 0.14 ? (input.ocrText ?? '') : ''}`.toLowerCase()
 
   // 1. 显式语义优先识别（16 类全覆盖）
   if (
@@ -634,7 +1023,7 @@ export function recognizeUiControlType(input: {
     return areaRatio <= 0.06 && aspect >= 0.72 && aspect <= 1.38 ? 'item-slot' : 'list-view'
   }
   if (
-    /button|btn|cta|按钮|升阶|镶嵌|确认|取消|购买|领取|强化|穿戴|突破|锻造|合成|前往|开始|关闭|祭炼/i.test(
+    /button|btn|cta|按钮|升阶|镶嵌|确认|取消|购买|领取|强化|穿戴|突破|锻造|合成|前往|开始|关闭|祭炼|飞升|渡劫|升级|兑换|召唤/i.test(
       hay
     )
   ) {
@@ -1087,7 +1476,7 @@ export function separateInteriorForegroundAndCleanPlate(input: {
     }
   }
 
-  // 3) 对被提取的前景笔画做 1px 膨胀掩码后，执行「同行真实背景纹理块采样 + 双线性扫描修补」
+  // 3) 对被提取的前景笔画做 1px 膨胀掩码后，执行「2D 四向逆距离调和插值 + 各向同性扩散 + 2D 真实纹理块迁移」
   const repairMask = new Uint8Array(total)
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
@@ -1102,60 +1491,213 @@ export function separateInteriorForegroundAndCleanPlate(input: {
     }
   }
 
-  for (let y = y0; y < y1; y++) {
-    const br = Math.round(rowBgR[y]!)
-    const bg = Math.round(rowBgG[y]!)
-    const bb = Math.round(rowBgB[y]!)
+  // 预计算每个掩码像素在左/右/上/下四个方向上最近的非掩码干净背景坐标
+  const leftCleanX = new Int16Array(total)
+  const rightCleanX = new Int16Array(total)
+  const topCleanY = new Int16Array(total)
+  const botCleanY = new Int16Array(total)
+  const cleanPixels: number[] = []
 
-    // 收集当前行内未被掩码覆盖的真实纯净背景列索引，供纹理块循环采样
-    const cleanCols: number[] = []
-    for (let cx = x0; cx < x1; cx++) {
-      if (!repairMask[y * width + cx]) {
-        cleanCols.push(cx)
+  for (let y = y0; y < y1; y++) {
+    let lastClean = Math.max(0, x0 - 1)
+    for (let x = x0; x < x1; x++) {
+      const pIdx = y * width + x
+      if (!repairMask[pIdx]) {
+        lastClean = x
+        if (rgba[pIdx * 4 + 3]! >= 96) cleanPixels.push(pIdx)
+      }
+      leftCleanX[pIdx] = lastClean
+    }
+    let nextClean = Math.min(width - 1, x1)
+    for (let x = x1 - 1; x >= x0; x--) {
+      const pIdx = y * width + x
+      if (!repairMask[pIdx]) {
+        nextClean = x
+      }
+      rightCleanX[pIdx] = nextClean
+    }
+  }
+
+  for (let x = x0; x < x1; x++) {
+    let lastClean = Math.max(0, y0 - 1)
+    for (let y = y0; y < y1; y++) {
+      const pIdx = y * width + x
+      if (!repairMask[pIdx]) {
+        lastClean = y
+      }
+      topCleanY[pIdx] = lastClean
+    }
+    let nextClean = Math.min(height - 1, y1)
+    for (let y = y1 - 1; y >= y0; y--) {
+      const pIdx = y * width + x
+      if (!repairMask[pIdx]) {
+        nextClean = y
+      }
+      botCleanY[pIdx] = nextClean
+    }
+  }
+
+  // Pass 1：2D 四向逆距离调和插值（上下邻域距离短、权重高，彻底消除单行拉丝伪影）
+  for (let y = y0; y < y1; y++) {
+    const br = rowBgR[y]!
+    const bg = rowBgG[y]!
+    const bb = rowBgB[y]!
+    for (let x = x0; x < x1; x++) {
+      const pIdx = y * width + x
+      if (!repairMask[pIdx]) continue
+
+      const lx = leftCleanX[pIdx]!
+      const rx = rightCleanX[pIdx]!
+      const ty = topCleanY[pIdx]!
+      const by = botCleanY[pIdx]!
+
+      const dL = Math.max(1, x - lx)
+      const dR = Math.max(1, rx - x)
+      const dT = Math.max(1, y - ty)
+      const dB = Math.max(1, by - y)
+
+      const wL = 1 / Math.pow(dL, 1.35)
+      const wR = 1 / Math.pow(dR, 1.35)
+      const wT = 1.35 / Math.pow(dT, 1.35)
+      const wB = 1.35 / Math.pow(dB, 1.35)
+      const wSum = wL + wR + wT + wB
+
+      const lIdx = (y * width + lx) * 4
+      const rIdx = (y * width + rx) * 4
+      const tIdx = (ty * width + x) * 4
+      const bIdx = (by * width + x) * 4
+
+      const harmR =
+        (rgba[lIdx]! * wL + rgba[rIdx]! * wR + rgba[tIdx]! * wT + rgba[bIdx]! * wB) / wSum
+      const harmG =
+        (rgba[lIdx + 1]! * wL +
+          rgba[rIdx + 1]! * wR +
+          rgba[tIdx + 1]! * wT +
+          rgba[bIdx + 1]! * wB) /
+        wSum
+      const harmB =
+        (rgba[lIdx + 2]! * wL +
+          rgba[rIdx + 2]! * wR +
+          rgba[tIdx + 2]! * wT +
+          rgba[bIdx + 2]! * wB) /
+        wSum
+
+      const dst = pIdx * 4
+      cleanPlateRgba[dst] = Math.round(harmR * 0.78 + br * 0.22)
+      cleanPlateRgba[dst + 1] = Math.round(harmG * 0.78 + bg * 0.22)
+      cleanPlateRgba[dst + 2] = Math.round(harmB * 0.78 + bb * 0.22)
+    }
+  }
+
+  // Pass 2：2 轮 2D 3×3 各向同性扩散平滑（消除四向交界折痕）
+  const tempPlate = new Uint8ClampedArray(cleanPlateRgba)
+  for (let iter = 0; iter < 2; iter++) {
+    tempPlate.set(cleanPlateRgba)
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const pIdx = y * width + x
+        if (!repairMask[pIdx]) continue
+        let rAcc = 0
+        let gAcc = 0
+        let bAcc = 0
+        let wAcc = 0
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = Math.min(height - 1, Math.max(0, y + dy))
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = Math.min(width - 1, Math.max(0, x + dx))
+            const nWeight = dx === 0 && dy === 0 ? 2 : dx === 0 || dy === 0 ? 1 : 0.7
+            const nIdx = (ny * width + nx) * 4
+            rAcc += tempPlate[nIdx]! * nWeight
+            gAcc += tempPlate[nIdx + 1]! * nWeight
+            bAcc += tempPlate[nIdx + 2]! * nWeight
+            wAcc += nWeight
+          }
+        }
+        const dst = pIdx * 4
+        cleanPlateRgba[dst] = Math.round(rAcc / wAcc)
+        cleanPlateRgba[dst + 1] = Math.round(gAcc / wAcc)
+        cleanPlateRgba[dst + 2] = Math.round(bAcc / wAcc)
       }
     }
+  }
 
-    let x = x0
-    while (x < x1) {
-      if (!repairMask[y * width + x]) {
-        x++
-        continue
-      }
-      const spanStart = x
-      while (x < x1 && repairMask[y * width + x]) x++
-      const spanEnd = x - 1
-      const leftSampleX = Math.max(0, spanStart - 1)
-      const rightSampleX = Math.min(width - 1, spanEnd + 1)
-      const lIdx = (y * width + leftSampleX) * 4
-      const rIdx = (y * width + rightSampleX) * 4
-      const spanLen = Math.max(1, spanEnd - spanStart + 1)
+  // Pass 3：对称镜像与 3×3 块匹配纹理合成（Symmetric Mirror + 3×3 PatchMatch Exemplar Synthesis）
+  // 优先匹配水平对称位置（还原对称暗纹/浮雕/龙凤纹章）及同梯度行 3×3 最小 SSD 干净样本块
+  if (cleanPixels.length >= 4) {
+    tempPlate.set(cleanPlateRgba)
+    for (let y = y0; y < y1; y++) {
+      const rowP = y * width
+      for (let x = x0; x < x1; x++) {
+        const pIdx = rowP + x
+        if (!repairMask[pIdx]) continue
 
-      for (let px = spanStart; px <= spanEnd; px++) {
-        const t = (px - spanStart + 0.5) / spanLen
-        const dst = (y * width + px) * 4
-        const interpR = cleanPlateRgba[lIdx]! * (1 - t) + cleanPlateRgba[rIdx]! * t
-        const interpG = cleanPlateRgba[lIdx + 1]! * (1 - t) + cleanPlateRgba[rIdx + 1]! * t
-        const interpB = cleanPlateRgba[lIdx + 2]! * (1 - t) + cleanPlateRgba[rIdx + 2]! * t
+        const lx = Math.max(0, leftCleanX[pIdx]! - ((x - leftCleanX[pIdx]!) % 3))
+        const rx = Math.min(width - 1, rightCleanX[pIdx]! + ((rightCleanX[pIdx]! - x) % 3))
+        const mx = width - 1 - x
 
-        // 若同行存在真实背景像素池，镜像采样真实纹理高频分量并叠加到平滑基底上
-        if (cleanCols.length >= 4) {
-          const mirrorIdx = (px * 3 + y * 5) % cleanCols.length
-          const texX = cleanCols[mirrorIdx]!
-          const texIdx = (y * width + texX) * 4
-          const texDeltaR = rgba[texIdx]! - br
-          const texDeltaG = rgba[texIdx + 1]! - bg
-          const texDeltaB = rgba[texIdx + 2]! - bb
-          const baseR = interpR * 0.65 + br * 0.35 + texDeltaR * 0.45
-          const baseG = interpG * 0.65 + bg * 0.35 + texDeltaG * 0.45
-          const baseB = interpB * 0.65 + bb * 0.35 + texDeltaB * 0.45
-          cleanPlateRgba[dst] = Math.min(255, Math.max(0, Math.round(baseR)))
-          cleanPlateRgba[dst + 1] = Math.min(255, Math.max(0, Math.round(baseG)))
-          cleanPlateRgba[dst + 2] = Math.min(255, Math.max(0, Math.round(baseB)))
-        } else {
-          cleanPlateRgba[dst] = Math.round(interpR * 0.65 + br * 0.35)
-          cleanPlateRgba[dst + 1] = Math.round(interpG * 0.65 + bg * 0.35)
-          cleanPlateRgba[dst + 2] = Math.round(interpB * 0.65 + bb * 0.35)
+        const candidates = [
+          rowP + mx,
+          rowP + lx,
+          rowP + rx,
+          cleanPixels[(x * 7 + y * 13) % cleanPixels.length]!,
+          cleanPixels[(x * 17 + y * 31 + 5) % cleanPixels.length]!
+        ]
+
+        let bestPIdx = candidates[3]!
+        let bestScore = Number.POSITIVE_INFINITY
+        let bestIsMirror = false
+
+        for (let c = 0; c < candidates.length; c++) {
+          const candPIdx = candidates[c]!
+          if (candPIdx < 0 || candPIdx >= total || repairMask[candPIdx]) continue
+          const cRgbaIdx = candPIdx * 4
+          if (rgba[cRgbaIdx + 3]! < 96) continue
+          const cy = Math.floor(candPIdx / width)
+          const cx = candPIdx - cy * width
+
+          // 计算 3×3 邻域结构 SSD（对比 guide 邻域与候选块邻域）
+          let ssd = Math.abs(cy - y) * 6
+          for (let dy = -1; dy <= 1; dy += 2) {
+            const gNy = Math.min(height - 1, Math.max(0, y + dy))
+            const cNy = Math.min(height - 1, Math.max(0, cy + dy))
+            for (let dx = -1; dx <= 1; dx += 2) {
+              const gNx = Math.min(width - 1, Math.max(0, x + dx))
+              const cNx = Math.min(width - 1, Math.max(0, cx + (c === 0 ? -dx : dx)))
+              const gIdx = (gNy * width + gNx) * 4
+              const sIdx = (cNy * width + cNx) * 4
+              ssd +=
+                Math.abs(tempPlate[gIdx]! - rgba[sIdx]!) +
+                Math.abs(tempPlate[gIdx + 1]! - rgba[sIdx + 1]!) +
+                Math.abs(tempPlate[gIdx + 2]! - rgba[sIdx + 2]!)
+            }
+          }
+          if (c === 0) ssd *= 0.82 // 水平对称位置赋予先验优先权
+          if (ssd < bestScore) {
+            bestScore = ssd
+            bestPIdx = candPIdx
+            bestIsMirror = c === 0
+          }
         }
+
+        const sampleY = Math.floor(bestPIdx / width)
+        const sIdx = bestPIdx * 4
+        const texDeltaR = rgba[sIdx]! - rowBgR[sampleY]!
+        const texDeltaG = rgba[sIdx + 1]! - rowBgG[sampleY]!
+        const texDeltaB = rgba[sIdx + 2]! - rowBgB[sampleY]!
+        const blendGain = bestIsMirror ? 0.68 : 0.48
+        const dst = pIdx * 4
+        cleanPlateRgba[dst] = Math.min(
+          255,
+          Math.max(0, Math.round(tempPlate[dst]! + texDeltaR * blendGain))
+        )
+        cleanPlateRgba[dst + 1] = Math.min(
+          255,
+          Math.max(0, Math.round(tempPlate[dst + 1]! + texDeltaG * blendGain))
+        )
+        cleanPlateRgba[dst + 2] = Math.min(
+          255,
+          Math.max(0, Math.round(tempPlate[dst + 2]! + texDeltaB * blendGain))
+        )
       }
     }
   }
@@ -1256,14 +1798,63 @@ export function synthesizeButtonStateBuffers(
 
 /**
  * 将单个已识别的 UI 控件按 HTML5 / Unity UI Toolkit 标准控件规范拆解为结构化子部件图层序列（由底到顶排序）。
+ * 若 `input.ocrText` 或 `input.ocrBoxes` 提供（来自本地离线 OCR 引擎或多模态 VLM 真实 OCR 识字），自动将其注入控件的文字子图层 `editableText` 中。
  */
 export function decomposeControlIntoStandardParts(
+  input: RecognizedUiControlInput
+): DecomposedControlSubPart[] {
+  const parts = decomposeControlIntoStandardPartsCore(input)
+  const controlLevelOcr =
+    input.ocrText?.trim() ||
+    matchOcrBoxesToControlRect(input.ocrBoxes, {
+      left: input.left,
+      top: input.top,
+      width: input.width,
+      height: input.height
+    })
+
+  let anySubPartMatched = false
+  if (input.ocrBoxes?.length) {
+    for (const part of parts) {
+      if (!part.editableText) continue
+      const subMatched = matchOcrBoxesToControlRect(input.ocrBoxes, {
+        left: Math.max(0, part.left - 4),
+        top: Math.max(0, part.top - 4),
+        width: part.width + 8,
+        height: part.height + 8
+      })
+      if (subMatched) {
+        part.editableText = {
+          ...part.editableText,
+          text: subMatched
+        }
+        anySubPartMatched = true
+      }
+    }
+  }
+
+  if (controlLevelOcr && !anySubPartMatched) {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const part = parts[i]!
+      if (part.editableText) {
+        part.editableText = {
+          ...part.editableText,
+          text: controlLevelOcr
+        }
+        break
+      }
+    }
+  }
+  return parts
+}
+
+function decomposeControlIntoStandardPartsCore(
   input: RecognizedUiControlInput
 ): DecomposedControlSubPart[] {
   const { width, height, left, top, rgba, nineSliceBorders } = input
   const locale = input.locale ?? 'zh-CN'
   const isZh = locale.toLowerCase().startsWith('zh')
-  const controlType = recognizeUiControlType(input)
+  const controlType = input.controlType ?? recognizeUiControlType(input)
   const baseName =
     input.nameHint?.trim() ||
     (isZh ? getUiControlSpec(controlType).badgeZh : getUiControlSpec(controlType).badgeEn)

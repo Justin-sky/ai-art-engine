@@ -1078,6 +1078,8 @@ export interface NodeExecuteContext {
       top: number
       width: number
       height: number
+      controlType?: import('../uiControlSpec').UiControlType
+      ocrText?: string
     }>
   }) => Promise<{
     width: number

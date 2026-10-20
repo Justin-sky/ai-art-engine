@@ -109,6 +109,7 @@ import {
   setYoloModelDir
 } from './yolo/yoloModelManager'
 import { yoloService } from './yolo/yoloService'
+import { recognizeImageTextFromDataUrl } from './services/localOcrService'
 import type { YoloInferenceInput } from '@shared/yolo'
 import { commitAiWorkflow, planAiWorkflow } from './services/graphPlanService'
 import { uploadProjectMedia } from './services/objectStorageUploadService'
@@ -673,6 +674,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.YOLO_MODEL_DELETE, (modelId: string) => deleteYoloModel(modelId))
   handle(IpcChannels.YOLO_MODEL_DIR_CHOOSE, () => chooseYoloModelDir())
   handle(IpcChannels.YOLO_MODEL_DIR_SET, (dir: string) => setYoloModelDir(dir))
+  handle(IpcChannels.VISION_OCR_RECOGNIZE, (input: { dataUrl: string }) =>
+    recognizeImageTextFromDataUrl(input)
+  )
 
   handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>

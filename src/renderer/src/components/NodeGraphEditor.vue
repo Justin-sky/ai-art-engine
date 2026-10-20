@@ -220,39 +220,6 @@
         >
           {{ t('graph.qcOverview.open') }}
         </button>
-        <span class="view-mode-switch" role="group">
-          <button
-            type="button"
-            class="view-mode-btn"
-            :class="{ active: !studioFocusMode }"
-            :title="isZhLocale ? '专业节点图模式 (Node Graph Mode)' : 'Node Graph Mode'"
-            @click="studioFocusMode = false"
-          >
-            🕸️ {{ isZhLocale ? '节点' : 'Graph' }}
-          </button>
-          <button
-            type="button"
-            class="view-mode-btn"
-            :class="{ active: studioFocusMode }"
-            :title="isZhLocale ? '极简焦点创作舞台 (Studio Focus Stage)' : 'Studio Focus Stage'"
-            @click="studioFocusMode = true"
-          >
-            ✨ {{ isZhLocale ? '焦点' : 'Focus' }}
-          </button>
-        </span>
-        <button
-          type="button"
-          class="recipe-poster-btn"
-          :disabled="graph.nodes.length === 0"
-          :title="
-            isZhLocale
-              ? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'
-              : 'Export Recipe Poster PNG with embedded workflow graph'
-          "
-          @click="exportRecipePoster"
-        >
-          📸 {{ isZhLocale ? '配方海报' : 'Recipe' }}
-        </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
       </div>
     </div>
@@ -286,9 +253,11 @@
 
     <GraphStudioFocusStage
       v-if="studioFocusMode"
+      ref="focusStageRef"
       :graph="graph"
       :selected-node-id="toolbarSelectedNodeId ?? ''"
       :preview-urls="focusStagePreviewUrls"
+      :text-previews="focusStageTextPreviews"
       :is-running="isGraphOrTaskRunning"
       @select-node="onFocusSelectNode"
       @dive-node="onFocusDiveNode"
@@ -320,6 +289,111 @@
       :selected-node-ids="selectedNodeIds"
       @pan-to="panViewportToWorldCenter"
     />
+
+    <div
+      v-if="!hideToolbar"
+      class="graph-bottom-hud"
+      role="toolbar"
+      :aria-label="t('graph.toolbar.toolMode')"
+      @mousedown.stop
+      @pointerdown.stop
+    >
+      <div class="hud-mode-group" role="group">
+        <button
+          type="button"
+          class="hud-mode-btn"
+          :class="{ active: !studioFocusMode }"
+          :title="t('graph.toolbar.modeGraphTitle')"
+          :aria-pressed="!studioFocusMode"
+          @click="studioFocusMode = false"
+        >
+          <svg
+            class="hud-icon"
+            viewBox="0 0 16 16"
+            width="13"
+            height="13"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle cx="3.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.35" />
+            <circle cx="3.5" cy="11.5" r="1.75" stroke="currentColor" stroke-width="1.35" />
+            <circle cx="12.5" cy="8" r="1.75" stroke="currentColor" stroke-width="1.35" />
+            <path
+              d="M5.2 5.1L10.8 7.3M5.2 10.9L10.8 8.7"
+              stroke="currentColor"
+              stroke-width="1.3"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span>{{ t('graph.toolbar.modeGraph') }}</span>
+        </button>
+        <button
+          type="button"
+          class="hud-mode-btn"
+          :class="{ active: studioFocusMode }"
+          :title="t('graph.toolbar.modeFocusTitle')"
+          :aria-pressed="studioFocusMode"
+          @click="studioFocusMode = true"
+        >
+          <svg
+            class="hud-icon"
+            viewBox="0 0 16 16"
+            width="13"
+            height="13"
+            fill="none"
+            aria-hidden="true"
+          >
+            <rect
+              x="2.2"
+              y="3"
+              width="11.6"
+              height="10"
+              rx="2.2"
+              stroke="currentColor"
+              stroke-width="1.35"
+            />
+            <circle cx="8" cy="8" r="2.1" stroke="currentColor" stroke-width="1.35" />
+          </svg>
+          <span>{{ t('graph.toolbar.modeFocus') }}</span>
+        </button>
+      </div>
+      <span class="hud-sep" aria-hidden="true" />
+      <button
+        type="button"
+        class="hud-action-btn"
+        :disabled="graph.nodes.length === 0"
+        :title="t('graph.toolbar.recipePosterTitle')"
+        @click="exportRecipePoster"
+      >
+        <svg
+          class="hud-icon"
+          viewBox="0 0 16 16"
+          width="13"
+          height="13"
+          fill="none"
+          aria-hidden="true"
+        >
+          <rect
+            x="2"
+            y="3.8"
+            width="12"
+            height="9.2"
+            rx="2"
+            stroke="currentColor"
+            stroke-width="1.35"
+          />
+          <circle cx="8" cy="8.4" r="2.15" stroke="currentColor" stroke-width="1.35" />
+          <path
+            d="M5.5 3.8L6.3 2.3H9.7L10.5 3.8"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <span>{{ t('graph.toolbar.recipePoster') }}</span>
+      </button>
+    </div>
 
     <GraphRadialMenu
       v-if="radialMenu && !studioFocusMode"
@@ -952,6 +1026,8 @@ import {
   stringifyBeatRows,
   isBoundaryOutputNode,
   isGraphOutputTerminalNode,
+  parseFilmCast,
+  parseFilmRenderCache,
   summarizeReferenceListForLog,
   GraphPortType,
   collectBlockedNodeIds,
@@ -994,6 +1070,7 @@ import { useGraphNodeInteraction } from '../graph/useGraphNodeInteraction'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
   clearAssetUrlCaches,
+  fetchTextFromAssetRelativePath,
   resolveAssetFileUrl as resolveCachedAssetFileUrl,
   resolveAssetPreviewUrl as resolveCachedAssetPreviewUrl
 } from '../features/media/assetUrlCache'
@@ -4040,6 +4117,10 @@ function setAllNodePreviewsCollapsed(collapsed: boolean): void {
 let pendingExternalFitView = false
 
 function fitView(): void {
+  if (studioFocusMode.value) {
+    focusStageRef.value?.resetView()
+    return
+  }
   const host = viewportEl.value
   if (!host) return
   const targets = selectedLayoutNodes.value.length > 0 ? selectedLayoutNodes.value : graph.nodes
@@ -9821,7 +9902,7 @@ onMounted(() => {
       // 顶栏/浮动工具条上的点击不进平移，避免切工具时误拖画布
       if (
         target?.closest(
-          '.graph-toolbar, .layout-float, .graph-minimap, .ctx-menu, .radial-menu, .run-banner'
+          '.graph-toolbar, .graph-bottom-hud, .focus-stage-root, .layout-float, .graph-minimap, .ctx-menu, .radial-menu, .run-banner'
         )
       ) {
         return
@@ -9911,51 +9992,378 @@ onBeforeUnmount(() => {
 })
 
 const studioFocusMode = ref(false)
+const focusStageRef = ref<{ resetView: () => void } | null>(null)
 const isZhLocale = computed(() =>
   String(locale.value || '')
     .toLowerCase()
     .startsWith('zh')
 )
 const focusStagePreviewUrls = reactive<Record<string, string>>({})
+const focusStageTextPreviews = reactive<Record<string, string>>({})
+
+function extractMediaCleanPath(url: string): string {
+  const trimmed = (url || '').trim()
+  if (!trimmed || trimmed.startsWith('data:')) return trimmed
+  if (trimmed.startsWith('studio-media://')) {
+    try {
+      const parsed = new URL(trimmed)
+      const pathParam = parsed.searchParams.get('path')
+      if (pathParam) return decodeURIComponent(pathParam).replace(/\\/g, '/')
+    } catch {
+      const match = /[?&]path=([^&#]+)/i.exec(trimmed)
+      if (match?.[1]) {
+        try {
+          return decodeURIComponent(match[1]).replace(/\\/g, '/')
+        } catch {
+          return match[1]
+        }
+      }
+    }
+  }
+  return trimmed.split(/[?#]/)[0] ?? trimmed
+}
+
+function isPlayableOrRenderableMediaUrl(url: string): boolean {
+  if (!url) return false
+  if (
+    url.startsWith('data:image/') ||
+    url.startsWith('data:video/') ||
+    url.startsWith('data:audio/')
+  ) {
+    return true
+  }
+  if (url.startsWith('data:')) return false
+  const clean = extractMediaCleanPath(url)
+  return /\.(png|jpe?g|webp|gif|svg|bmp|ico|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|aac|flac)$/i.test(
+    clean
+  )
+}
+
+function isPosterRenderableImageUrl(url: string): boolean {
+  if (!url) return false
+  if (url.startsWith('data:image/')) return true
+  if (url.startsWith('data:')) return false
+  const clean = extractMediaCleanPath(url)
+  return /\.(png|jpe?g|webp|gif|svg|bmp|ico|avif)$/i.test(clean)
+}
 
 async function refreshFocusStagePreviewUrls(): Promise<void> {
+  const isStreamMediaPath = (p: string): boolean =>
+    /\.(mp4|webm|mov|m4v|mp3|wav|ogg|m4a|aac|flac|gif|svg)(?=[?&#]|$)/i.test(p)
+  const isTextSidecarPath = (p: string): boolean => /\.(txt|md)(?=[?&#]|$)/i.test(p)
+  const isRawNonMediaPath = (p: string): boolean =>
+    /\.(json|html|htm|splat|ksplat|spz|ply)(?=[?&#]|$)/i.test(p)
+
+  const resolveMediaUrlFromRelPath = async (rel: string | undefined | null): Promise<string> => {
+    const p = rel?.trim() || ''
+    if (!p || isTextSidecarPath(p) || isRawNonMediaPath(p)) return ''
+    const url = isStreamMediaPath(p)
+      ? await resolveCachedAssetFileUrl(p)
+      : await resolveCachedAssetPreviewUrl(p)
+    return url && isPlayableOrRenderableMediaUrl(url) ? url : ''
+  }
+
   for (const node of graph.nodes) {
+    // 1) 异步读取旁挂文本（.txt / .md 或绑定剧本资产）
+    const relForText =
+      typeof node.params?.previewRelativePath === 'string'
+        ? node.params.previewRelativePath.trim()
+        : ''
+    if (relForText && isTextSidecarPath(relForText)) {
+      const text = (await fetchTextFromAssetRelativePath(relForText)).trim()
+      if (text) focusStageTextPreviews[node.id] = text
+    } else if (Array.isArray(node.params?.generatedTexts) && node.params.generatedTexts.length) {
+      const selectedTextId = node.params.selectedTextId?.trim() || ''
+      const pickedText =
+        (selectedTextId
+          ? node.params.generatedTexts.find((item) => item.id === selectedTextId)
+          : undefined) ?? node.params.generatedTexts[node.params.generatedTexts.length - 1]
+      if (!pickedText?.text?.trim() && pickedText?.relativePath?.trim()) {
+        const text = (await fetchTextFromAssetRelativePath(pickedText.relativePath.trim())).trim()
+        if (text) focusStageTextPreviews[node.id] = text
+      }
+    } else if (node.assetId && (node.assetType === 'screenplay' || node.typeId === 'play.script')) {
+      try {
+        const text = (await resolveAssetText(node.assetId))?.trim() || ''
+        if (text) focusStageTextPreviews[node.id] = text
+      } catch {
+        /* ignore */
+      }
+    }
+
+    // 2) 解析节点媒体预览 URL
     const directDataUrl =
       typeof node.params?.previewDataUrl === 'string' ? node.params.previewDataUrl.trim() : ''
-    if (directDataUrl) {
+    if (directDataUrl && isPlayableOrRenderableMediaUrl(directDataUrl)) {
       focusStagePreviewUrls[node.id] = directDataUrl
       continue
     }
+
     const relPath =
       typeof node.params?.previewRelativePath === 'string'
         ? node.params.previewRelativePath.trim()
         : ''
     if (relPath) {
-      const url = await resolveCachedAssetPreviewUrl(relPath)
+      const url = await resolveMediaUrlFromRelPath(relPath)
       if (url) {
         focusStagePreviewUrls[node.id] = url
         continue
       }
     }
+
     const imgs = node.params.generatedImages ?? []
-    for (const item of imgs) {
-      if (item.dataUrl?.trim()) {
-        focusStagePreviewUrls[node.id] = item.dataUrl.trim()
-        break
-      }
-      if (item.relativePath?.trim()) {
-        const url = await resolveCachedAssetPreviewUrl(item.relativePath.trim())
-        if (url) {
-          focusStagePreviewUrls[node.id] = url
+    let resolved = false
+    if (imgs.length) {
+      const selectedImgId = node.params.selectedImageId?.trim() || ''
+      const orderedImgs = selectedImgId
+        ? [
+            ...imgs.filter((item) => item.id === selectedImgId),
+            ...imgs.filter((item) => item.id !== selectedImgId).reverse()
+          ]
+        : [...imgs].reverse()
+      for (const item of orderedImgs) {
+        if (item.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(item.dataUrl.trim())) {
+          focusStagePreviewUrls[node.id] = item.dataUrl.trim()
+          resolved = true
           break
         }
+        const url = await resolveMediaUrlFromRelPath(item.relativePath)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
+    const videos = node.params.generatedVideos ?? []
+    if (videos.length) {
+      const selectedVidId = node.params.selectedVideoId?.trim() || ''
+      const orderedVids = selectedVidId
+        ? [
+            ...videos.filter((item) => item.id === selectedVidId),
+            ...videos.filter((item) => item.id !== selectedVidId).reverse()
+          ]
+        : [...videos].reverse()
+      for (const item of orderedVids) {
+        if (item.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(item.dataUrl.trim())) {
+          focusStagePreviewUrls[node.id] = item.dataUrl.trim()
+          resolved = true
+          break
+        }
+        const url = await resolveMediaUrlFromRelPath(item.relativePath)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
+    const voices = node.params.generatedVoices ?? []
+    if (voices.length) {
+      const selectedVoiceId = node.params.selectedVoiceId?.trim() || ''
+      const orderedVoices = selectedVoiceId
+        ? [
+            ...voices.filter((item) => item.id === selectedVoiceId),
+            ...voices.filter((item) => item.id !== selectedVoiceId).reverse()
+          ]
+        : [...voices].reverse()
+      for (const item of orderedVoices) {
+        const url = await resolveMediaUrlFromRelPath(item.relativePath)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
+    // 3D 导演台（motion）机位截图 / 录屏视频
+    for (const vid of [...(node.params.cameraVideos ?? [])].reverse()) {
+      if (vid.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(vid.dataUrl.trim())) {
+        focusStagePreviewUrls[node.id] = vid.dataUrl.trim()
+        resolved = true
+        break
+      }
+      const url = await resolveMediaUrlFromRelPath(vid.relativePath)
+      if (url) {
+        focusStagePreviewUrls[node.id] = url
+        resolved = true
+        break
+      }
+    }
+    if (resolved) continue
+
+    for (const shot of [...(node.params.cameraShots ?? [])].reverse()) {
+      if (shot.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(shot.dataUrl.trim())) {
+        focusStagePreviewUrls[node.id] = shot.dataUrl.trim()
+        resolved = true
+        break
+      }
+      const url = await resolveMediaUrlFromRelPath(shot.relativePath)
+      if (url) {
+        focusStagePreviewUrls[node.id] = url
+        resolved = true
+        break
+      }
+    }
+    if (resolved) continue
+
+    // 影视拍摄缓存（film.render / film.workbench）与美术设定表（film.cast / film.workbench）
+    if (node.params.filmRenders) {
+      const cache = parseFilmRenderCache(node.params.filmRenders)
+      for (const entry of Object.values(cache)) {
+        const mediaCandidate = entry?.video?.trim() || entry?.keyframe?.trim() || ''
+        if (!mediaCandidate) continue
+        if (mediaCandidate.startsWith('data:') && isPlayableOrRenderableMediaUrl(mediaCandidate)) {
+          focusStagePreviewUrls[node.id] = mediaCandidate
+          resolved = true
+          break
+        }
+        const url = await resolveMediaUrlFromRelPath(mediaCandidate)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
+    if (typeof node.params.filmCast === 'string' && node.params.filmCast.trim()) {
+      const cast = parseFilmCast(node.params.filmCast)
+      for (const entry of cast?.entries ?? []) {
+        const inlineUrl = entry.imageUrl?.trim() || ''
+        if (inlineUrl.startsWith('data:') && isPlayableOrRenderableMediaUrl(inlineUrl)) {
+          focusStagePreviewUrls[node.id] = inlineUrl
+          resolved = true
+          break
+        }
+        const rel =
+          entry.imageRelativePath?.trim() || (!inlineUrl.startsWith('data:') ? inlineUrl : '')
+        const url = await resolveMediaUrlFromRelPath(rel)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
+    // SVG 节点内联源码
+    const svgRaw =
+      typeof (node.params as Record<string, unknown>)?.svgCode === 'string'
+        ? String((node.params as Record<string, unknown>).svgCode).trim()
+        : typeof (node.params as Record<string, unknown>)?.svgSource === 'string'
+          ? String((node.params as Record<string, unknown>).svgSource).trim()
+          : ''
+    if ((node.typeId === 'svg.gen' || node.typeId === 'svg.anim') && svgRaw.startsWith('<svg')) {
+      focusStagePreviewUrls[node.id] = `data:image/svg+xml;utf8,${encodeURIComponent(svgRaw)}`
+      continue
+    }
+
+    // 实时运行态输出（runStates[node.id].outputs.out）
+    const runOut = runStates[node.id]?.outputs?.out
+    if (runOut) {
+      for (const item of flattenImagesValues([runOut])) {
+        if (item.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(item.dataUrl.trim())) {
+          focusStagePreviewUrls[node.id] = item.dataUrl.trim()
+          resolved = true
+          break
+        }
+        const url = await resolveMediaUrlFromRelPath(item.relativePath)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+      if (!resolved) {
+        for (const item of flattenVideosValues([runOut])) {
+          if (item.dataUrl?.trim() && isPlayableOrRenderableMediaUrl(item.dataUrl.trim())) {
+            focusStagePreviewUrls[node.id] = item.dataUrl.trim()
+            resolved = true
+            break
+          }
+          const url = await resolveMediaUrlFromRelPath(item.relativePath)
+          if (url) {
+            focusStagePreviewUrls[node.id] = url
+            resolved = true
+            break
+          }
+        }
+      }
+      if (!resolved) {
+        for (const item of flattenVoicesValues([runOut])) {
+          const url = await resolveMediaUrlFromRelPath(item.relativePath)
+          if (url) {
+            focusStagePreviewUrls[node.id] = url
+            resolved = true
+            break
+          }
+        }
+      }
+      if (resolved) continue
+    }
+
+    // 绑定工程资产（asset.image / asset.video / asset.voice / asset.model3d / asset.spatialWorld 等）
+    if (node.assetId) {
+      const asset = project.assets.find((item) => item.id === node.assetId)
+      if (asset) {
+        if (asset.type === 'video' || asset.type === 'voice') {
+          const url = await resolveMediaUrlFromRelPath(asset.relativePath)
+          if (url) {
+            focusStagePreviewUrls[node.id] = url
+            continue
+          }
+        } else {
+          const url =
+            (await resolveMediaUrlFromRelPath(asset.thumbnailPath)) ||
+            (await resolveMediaUrlFromRelPath(asset.relativePath))
+          if (url) {
+            focusStagePreviewUrls[node.id] = url
+            continue
+          }
+        }
+      }
+    }
+  }
+
+  // 3) 汇点/选择器节点（output.* / graph.boundary.output / *.select）无本地产物时继承上游预览
+  for (const node of graph.nodes) {
+    const tId = node.typeId ?? ''
+    const isPassThroughOrOutput =
+      node.category === 'output' ||
+      tId.startsWith('output.') ||
+      tId === 'graph.boundary.output' ||
+      tId.endsWith('.select')
+    if (!isPassThroughOrOutput) continue
+    for (const edge of graph.edges) {
+      if (edge.target !== node.id) continue
+      if (!focusStagePreviewUrls[node.id] && focusStagePreviewUrls[edge.source]) {
+        focusStagePreviewUrls[node.id] = focusStagePreviewUrls[edge.source]!
+      }
+      if (!focusStageTextPreviews[node.id] && focusStageTextPreviews[edge.source]) {
+        focusStageTextPreviews[node.id] = focusStageTextPreviews[edge.source]!
       }
     }
   }
 }
 
 watch(
-  () => [studioFocusMode.value, graph.nodes.length] as const,
+  () =>
+    [
+      studioFocusMode.value,
+      graph.nodes.length,
+      graphEditorHosts.revision.value,
+      isRunning.value,
+      project.assets.length
+    ] as const,
   ([focus]) => {
     if (focus) void refreshFocusStagePreviewUrls()
   },
@@ -10012,6 +10420,70 @@ function onFocusDiveNode(nodeId: string): void {
     void onComposeOpen(nodeId)
     return
   }
+  if (node.typeId === 'image.portrait') {
+    void onPortraitOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.portraitTexture') {
+    void onPortraitTextureOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.emotion') {
+    void onEmotionOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.transform') {
+    void onTransformOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.gridSplit') {
+    void onGridSplitOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.iconPack') {
+    void onIconPackOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.cutout') {
+    void onCutoutOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.align') {
+    void onAlignOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.adVariants') {
+    void onAdVariantsOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'stage.2d') {
+    onStage2dOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'video.framePull') {
+    void onFramePullOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'image.select') {
+    void onSelectImageOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'video.select') {
+    void onSelectVideoOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'voice.select') {
+    void onSelectVoiceOpen(nodeId)
+    return
+  }
+  if (node.typeId === 'text.select') {
+    onSelectTextOpen(nodeId)
+    return
+  }
+  if (resolveNodeTextContent(node, runStates[nodeId])) {
+    onTextOpen(nodeId)
+    return
+  }
   // 默认切回节点视图方便调整参数
   studioFocusMode.value = false
 }
@@ -10039,8 +10511,21 @@ async function exportRecipePoster(): Promise<void> {
     let heroImageUrl = ''
     for (let i = graph.nodes.length - 1; i >= 0; i -= 1) {
       const n = graph.nodes[i]!
-      const url = focusStagePreviewUrls[n.id]
-      if (url) {
+      const directDataUrl =
+        typeof n.params?.previewDataUrl === 'string' ? n.params.previewDataUrl.trim() : ''
+      if (directDataUrl && isPosterRenderableImageUrl(directDataUrl)) {
+        heroImageUrl = directDataUrl
+        break
+      }
+      const genDataUrl = n.params?.generatedImages?.find(
+        (item) => item.dataUrl?.trim() && isPosterRenderableImageUrl(item.dataUrl.trim())
+      )?.dataUrl
+      if (genDataUrl) {
+        heroImageUrl = genDataUrl.trim()
+        break
+      }
+      const url = focusStagePreviewUrls[n.id]?.trim() || ''
+      if (url && isPosterRenderableImageUrl(url)) {
         heroImageUrl = url
         break
       }
@@ -10182,43 +10667,88 @@ defineExpose({
   padding: 3px 8px;
 }
 
-.view-mode-switch {
+.graph-bottom-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 24;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.hud-mode-group {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 2px;
-  border-radius: 7px;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
 }
 
-.tools .view-mode-btn {
-  padding: 2px 8px;
-  border-radius: 5px;
+.hud-mode-btn,
+.hud-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease;
 }
 
-.tools .view-mode-btn.active {
-  border-color: rgba(56, 189, 248, 0.55);
-  background: rgba(56, 189, 248, 0.18);
-  color: #7dd3fc;
+.hud-mode-btn:hover:not(:disabled),
+.hud-action-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: transparent;
 }
 
-.tools .recipe-poster-btn {
-  border-color: rgba(245, 158, 11, 0.45);
-  background: rgba(245, 158, 11, 0.12);
-  color: #fcd34d;
+.hud-mode-btn.active {
+  color: var(--text);
   font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-panel));
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
 }
 
-.tools .recipe-poster-btn:hover:not(:disabled) {
-  border-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.22);
+.hud-action-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.hud-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.hud-icon {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.hud-mode-btn.active .hud-icon {
+  color: var(--accent);
+  opacity: 1;
 }
 
 .tools .edge-style-btn {

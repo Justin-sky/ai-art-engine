@@ -5,15 +5,75 @@ import {
   type GraphNode
 } from '@shared/graph'
 
-function loadSafeImage(src: string): Promise<HTMLImageElement | null> {
-  const clean = src?.trim() ?? ''
-  if (!clean || !isCanvasSafeImageSrc(clean)) return Promise.resolve(null)
+function isImageCanvasUntainted(img: HTMLImageElement): boolean {
+  try {
+    const probe = document.createElement('canvas')
+    probe.width = 1
+    probe.height = 1
+    const pctx = probe.getContext('2d')
+    if (!pctx) return true
+    pctx.drawImage(img, 0, 0, 1, 1)
+    probe.toDataURL('image/png')
+    return true
+  } catch {
+    return false
+  }
+}
+
+function loadRawImageElement(
+  src: string,
+  useAnonymousCors: boolean
+): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image()
+    if (useAnonymousCors) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = () => resolve(null)
-    img.src = clean
+    img.src = src
   })
+}
+
+async function fetchAsDataUrl(url: string): Promise<string | null> {
+  if (typeof fetch !== 'function') return null
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+async function loadSafeImage(src: string): Promise<HTMLImageElement | null> {
+  const clean = src?.trim() ?? ''
+  if (!clean || !isCanvasSafeImageSrc(clean)) return null
+
+  const needsCors =
+    !clean.startsWith('data:') && !clean.startsWith('blob:') && !clean.startsWith('file:')
+  const direct = await loadRawImageElement(clean, needsCors)
+  if (direct && isImageCanvasUntainted(direct)) {
+    return direct
+  }
+
+  // Fallback: fetch bytes (e.g. studio-media://) and convert to inline data: URL so canvas can never be tainted
+  if (!clean.startsWith('data:')) {
+    const dataUrl = await fetchAsDataUrl(clean)
+    if (dataUrl) {
+      const fromData = await loadRawImageElement(dataUrl, false)
+      if (fromData && isImageCanvasUntainted(fromData)) {
+        return fromData
+      }
+    }
+  }
+  return null
 }
 
 function drawRoundedRect(
@@ -146,14 +206,30 @@ export async function buildRecipePosterPngDataUrl(input: {
   ctx.clip()
 
   const heroImg = input.heroImageSrc ? await loadSafeImage(input.heroImageSrc) : null
+  let drewHero = false
   if (heroImg && heroImg.naturalWidth > 0 && heroImg.naturalHeight > 0) {
-    const scale = Math.min(heroW / heroImg.naturalWidth, heroH / heroImg.naturalHeight)
-    const dw = heroImg.naturalWidth * scale
-    const dh = heroImg.naturalHeight * scale
-    const dx = heroX + (heroW - dw) / 2
-    const dy = heroY + (heroH - dh) / 2
-    ctx.drawImage(heroImg, dx, dy, dw, dh)
-  } else {
+    try {
+      const scale = Math.min(heroW / heroImg.naturalWidth, heroH / heroImg.naturalHeight)
+      const dw = Math.max(1, Math.round(heroImg.naturalWidth * scale))
+      const dh = Math.max(1, Math.round(heroImg.naturalHeight * scale))
+      const dx = heroX + (heroW - dw) / 2
+      const dy = heroY + (heroH - dh) / 2
+      const safeBuffer = document.createElement('canvas')
+      safeBuffer.width = dw
+      safeBuffer.height = dh
+      const sctx = safeBuffer.getContext('2d')
+      if (sctx) {
+        sctx.drawImage(heroImg, 0, 0, dw, dh)
+        // Verify safeBuffer is untainted before touching the main poster canvas
+        safeBuffer.toDataURL('image/png')
+        ctx.drawImage(safeBuffer, dx, dy, dw, dh)
+        drewHero = true
+      }
+    } catch {
+      drewHero = false
+    }
+  }
+  if (!drewHero) {
     // 无预览图时绘制精致拓扑示意图
     ctx.fillStyle = '#64748b'
     ctx.font = 'bold 26px sans-serif'

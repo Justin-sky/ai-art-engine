@@ -1265,8 +1265,6 @@
       "🚀 {{ isEn ? 'Open File' : '一键打开文件' }}"
     ],
     "src/renderer/src/components/GraphStudioFocusStage.vue": [
-      "? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'",
-      "📸 {{ isZh ? '配方海报' : 'Recipe Poster' }}",
       "? '⏳ 运行中…'",
       "? '▶ 运行全流程'",
       "<h3>{{ isZh ? '焦点创作舞台 (Studio Focus Mode)' : 'Studio Focus Stage' }}</h3>",
@@ -1299,12 +1297,6 @@
       "? `已将「${target.name}」按标准控件规范拆解为 ${parts.length} 个子图层`"
     ],
     "src/renderer/src/components/NodeGraphEditor.vue": [
-      ":title=\"isZhLocale ? '专业节点图模式 (Node Graph Mode)' : 'Node Graph Mode'\"",
-      "🕸️ {{ isZhLocale ? '节点' : 'Graph' }}",
-      ":title=\"isZhLocale ? '极简焦点创作舞台 (Studio Focus Stage)' : 'Studio Focus Stage'\"",
-      "✨ {{ isZhLocale ? '焦点' : 'Focus' }}",
-      "? '导出内嵌完整节点工作流的 PNG 配方海报（其他人拖入画布即可一键复刻）'",
-      "📸 {{ isZhLocale ? '配方海报' : 'Recipe' }}",
       "? `✨ 已从 PNG 配方海报一键复刻完整工作流（共 ${extracted.nodes.length} 个节点）`",
       "(isZhLocale.value ? 'AI Art Engine 创作配方' : 'AI Art Engine Recipe')",
       "? '📸 已导出 PNG 配方海报（已内嵌完整工作流，拖入画布即可一键复刻）'"

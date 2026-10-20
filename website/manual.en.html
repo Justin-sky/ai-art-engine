@@ -150,18 +150,18 @@
           <p class="eyebrow">Manual · Overview</p>
           <h1>Manual</h1>
           <p class="lede">
-            The complete operating reference for AI Art Engine <strong>7.5</strong>, organized into six parts by workflow. This page covers preparation and core concepts; everything else is under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
+            The complete operating reference for AI Art Engine <strong>8.0</strong>, organized into six parts by workflow. This page covers preparation and core concepts; everything else is under “Manual chapters” below or in the sidebar. Wording follows the in-app UI — switch the app to English under Settings → General → Language. Video walkthroughs are on <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">Bilibili</a>.
           </p>
         </header>
 
         <div class="entry-cards" aria-label="Quick paths">
           <a class="entry-card" href="quickstart.en.html">
             <strong>First time here?</strong>
-            <span>Follow the quickstart and ship your first film in 5 minutes</span>
+            <span>Zero-Key instant demo &amp; 3-minute quickstart</span>
           </a>
           <a class="entry-card" href="#concepts">
             <strong>Learn a few concepts</strong>
-            <span>What host assets, Film Workbench and cast anchor sheets mean</span>
+            <span>Host assets, Film Workbench, anchor sheets &amp; production deliverables</span>
           </a>
           <a class="entry-card" href="guide-short-video.en.html">
             <strong>Short drama pipeline</strong>
@@ -176,15 +176,15 @@
         <section id="intro">
           <h2>1. Overview &amp; preparation</h2>
           <p>
-            AIArtEngine is an agent-native AI art asset engine for short drama, advertising, games and e-commerce.
+            AIArtEngine is an agent-native multimodal AI studio and production asset engine for games, short drama, comics, advertising and e-commerce.
+            Beyond flat images and clips, it directly ships <strong>layered editable PSDs (with native <code>TySh</code> text layers)</strong>, <strong>Unity / Godot 4 / HTML5 UI code</strong>, <strong>Spine 2D skeleton packages</strong>, <strong>CapCut / Jianying multi-track NLE drafts</strong> and <strong>playable HTML5 games</strong>.
             Projects and media live in a local directory you choose; text / image / video / audio generation
             runs through the model providers you configure (OpenRouter, OpenAI, DeepSeek, Zhipu, Kimi, xAI,
             Google, vLLM, Ollama, LM Studio, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ModelScope,
-            ComfyUI, MagicRouter, …), and 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI
-            and Lux3D. Spatial world generation (turning text or reference images into an explorable 3D world)
-            supports World Labs (Marble). OpenRouter additionally offers decision models (the Decisions API), configured per modality
-            like text / image / video. Use <strong>One-Click Workflow</strong> to turn a template or a
-            plain-language request into a reusable host asset, then drag it onto the canvas to keep building.
+            ComfyUI, MagicRouter, …), and 3D model generation supports Meshy, Tripo, Rodin (Hyper3D), Luma AI,
+            Lux3D and live Blender MCP modeling. Spatial world generation (turning text or reference images into an explorable 3D world)
+            supports World Labs (Marble). Use <strong>One-Click Workflow</strong> to turn a template or a
+            plain-language request into a reusable host asset, or drag any exported <strong>PNG (with embedded <code>aiae:graph</code> workflow metadata)</strong> onto the canvas to restore the full pipeline.
           </p>
           <h3>First-time setup</h3>
           <ol>

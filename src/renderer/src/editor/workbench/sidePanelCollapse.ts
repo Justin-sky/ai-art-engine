@@ -7,8 +7,8 @@ export type SidePanelId = 'assets' | 'inspector'
 
 export const SIDE_PANEL_IDS: readonly SidePanelId[] = ['assets', 'inspector']
 
-const COLLAPSED_STORAGE_PREFIX = 'studio.dock.sideCollapsed.'
-const WIDTH_STORAGE_PREFIX = 'studio.dock.sideWidth.'
+const COLLAPSED_STORAGE_PREFIX = 'studio.dock.sideCollapsed.v3.'
+const WIDTH_STORAGE_PREFIX = 'studio.dock.sideWidth.v3.'
 const WORKSPACE_PANEL_ID = 'workspace'
 
 function readSideCollapsedPreference(id: SidePanelId): boolean {
@@ -726,9 +726,11 @@ function otherSidePanelId(id: SidePanelId): SidePanelId {
 }
 
 /**
- * Rail order is assets (upper) then inspector.
- * When expanding inspector while assets is empty, open beside the workspace (upper slot).
- * When collapsing, park the zero-width group to the far right so it does not leave a gap.
+ * Modern 4-column layout:
+ * - `assets` sits on the far left (left of `workspace-tools` / `workspace`)
+ * - `inspector` sits on the right of `workspace` (and left of `chat`)
+ * Because `setSidePanelGroupVisible(api, visible)` hides/restores each group in-place
+ * within Dockview's splitview, non-tabbed panels stay anchored in their natural slot.
  */
 function placeSidePanel(dock: DockviewApi, id: SidePanelId, expanding: boolean): void {
   const panel = dock.getPanel(id)
@@ -736,58 +738,12 @@ function placeSidePanel(dock: DockviewApi, id: SidePanelId, expanding: boolean):
 
   // Tab 合并组：收起 = 切到另一个 Tab，展开 = 切回本 Tab，两侧都收起则隐藏整组。
   // 不做位移摆放、宽度收窄与 group 级收起样式——共享 group 上这些都会连带压没另一个面板。
-  // 该分支不依赖工作区面板，需先于 workspace 判空执行。
   if (areSidePanelsTabbed(dock)) {
     syncTabbedGroupActiveState(dock, expanding ? id : undefined)
     return
   }
 
-  const workspace = dock.getPanel(WORKSPACE_PANEL_ID)
-  if (!workspace) return
-
-  if (expanding) {
-    if (id === 'inspector' && sidePanelCollapsed.assets) {
-      // 上方为空 → 贴工作区右侧打开，并把收起的资产挪到更外侧
-      panel.api.moveTo({ group: workspace.group, position: 'right' })
-      const assets = dock.getPanel('assets')
-      if (assets) {
-        assets.api.moveTo({ group: panel.group, position: 'right' })
-        applyCollapsedState(assets.api, assets, true)
-      }
-      return
-    }
-    if (id === 'inspector') {
-      const assets = dock.getPanel('assets')
-      if (assets) {
-        panel.api.moveTo({ group: assets.group, position: 'right' })
-      }
-      return
-    }
-    // assets：始终占靠工作区的上方位
-    panel.api.moveTo({ group: workspace.group, position: 'right' })
-    if (!sidePanelCollapsed.inspector) {
-      const inspector = dock.getPanel('inspector')
-      if (inspector) {
-        inspector.api.moveTo({ group: panel.group, position: 'right' })
-      }
-    } else {
-      const inspector = dock.getPanel('inspector')
-      if (inspector) {
-        inspector.api.moveTo({ group: panel.group, position: 'right' })
-        applyCollapsedState(inspector.api, inspector, true)
-      }
-    }
-    return
-  }
-
-  // collapsing：挪到任意仍展开的侧栏右侧，避免中间空挡
-  const otherId = otherSidePanelId(id)
-  if (!sidePanelCollapsed[otherId]) {
-    const other = dock.getPanel(otherId)
-    if (other && other.group.id !== panel.group.id) {
-      panel.api.moveTo({ group: other.group, position: 'right' })
-    }
-  }
+  void WORKSPACE_PANEL_ID
 }
 
 /** moveTo 之后再断言一次收起隐藏，避免 0 宽组重新入局形成灰洞 */
@@ -802,6 +758,132 @@ function reassertCollapsedHidden(dock: DockviewApi): void {
   }
 }
 
+function readDockContainerWidth(dock: DockviewApi): number {
+  const dockW = (dock as { width?: number }).width
+  if (typeof dockW === 'number' && dockW > 0) return dockW
+  if (typeof document !== 'undefined') {
+    const el = document.querySelector('.studio-dock')
+    if (el instanceof HTMLElement && el.clientWidth > 0) return el.clientWidth
+  }
+  return typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1600
+}
+
+/**
+ * 在四栏水平布局 `[ assets | workspace | inspector | chat ]` 中，
+ * Dockview 的 `splitview.resizeView(index, width)` 默认推动 `index` 右侧的分割条：
+ * 若直接对 `inspector` 调 `setSize`，会移动 `inspector | chat` 分割条从而抢占 `chat` 宽度；
+ * 若对 `inspector` 或 `chat` 调 `setVisible(false)`，释放出的宽度也会堆进相邻侧栏而非中心画布。
+ *
+ * 因此每次显隐切换或重置尺寸时，统一由左向右依次设定 `assets → workspace → inspector → chat`，
+ * 让中心 `workspace`（画布）吸收全部宽度变化，保持 `inspector` 与 `chat` 各自宽度互不侵占。
+ */
+export function rebalanceHorizontalColumns(
+  dock: DockviewApi,
+  overrides?: Partial<Record<'assets' | 'inspector' | 'chat', number>>
+): void {
+  if (areSidePanelsTabbed(dock)) return
+  const assetsPanel = dock.getPanel('assets')
+  const inspectorPanel = dock.getPanel('inspector')
+  if (
+    assetsPanel &&
+    inspectorPanel &&
+    !sidePanelCollapsed.assets &&
+    !sidePanelCollapsed.inspector &&
+    areSidePanelsStackedVertically(assetsPanel, inspectorPanel)
+  ) {
+    return
+  }
+
+  const workspacePanel = dock.getPanel(WORKSPACE_PANEL_ID)
+  if (!workspacePanel) return
+  const chatPanel = dock.getPanel('chat')
+
+  const totalW = readDockContainerWidth(dock)
+  const assetsVisible =
+    !!assetsPanel && !sidePanelCollapsed.assets && assetsPanel.api.isVisible !== false
+  const inspectorVisible =
+    !!inspectorPanel && !sidePanelCollapsed.inspector && inspectorPanel.api.isVisible !== false
+  const chatVisible = !!chatPanel && chatPanel.api.isVisible !== false
+
+  const assetsW = assetsVisible
+    ? Math.round(
+        overrides?.assets ?? resolveExpandedWidth('assets', resolveSidePanelSizeOptions('assets'))
+      )
+    : 0
+  const inspectorW = inspectorVisible
+    ? Math.round(
+        overrides?.inspector ??
+          resolveExpandedWidth('inspector', resolveSidePanelSizeOptions('inspector'))
+      )
+    : 0
+  const rawChatW = overrides?.chat ?? (chatPanel ? readPanelWidth(chatPanel.api) : 0)
+  const chatW = chatVisible
+    ? Math.round(rawChatW > 16 ? rawChatW : Math.min(420, Math.max(240, totalW * 0.21)))
+    : 0
+
+  const workspaceW = Math.max(320, Math.round(totalW - assetsW - inspectorW - chatW))
+
+  const prevUnlocking = unlockingConstraints
+  unlockingConstraints = true
+  try {
+    // 严格从左至右依次定宽：Sash 0 (assets|workspace) → Sash 1 (workspace|inspector) → Sash 2 (inspector|chat)
+    if (assetsVisible && assetsPanel) {
+      assetsPanel.api.setSize({ width: assetsW })
+    }
+    workspacePanel.api.setSize({ width: workspaceW })
+    if (inspectorVisible && inspectorPanel) {
+      inspectorPanel.api.setSize({ width: inspectorW })
+    }
+    if (chatVisible && chatPanel) {
+      chatPanel.api.setSize({ width: chatW })
+    }
+  } finally {
+    unlockingConstraints = prevUnlocking
+  }
+}
+
+let lastChatExpandedWidth = 0
+
+/**
+ * 切换右侧 AI 对话面板显隐：
+ * 在 unlockingConstraints 保护下切换 group 可见性并重排四栏，
+ * 防止 Dockview 将隐藏的 chat 宽度倾倒进相邻的 inspector 并污染记忆宽度。
+ */
+export function setChatPanelVisible(
+  dock: DockviewApi,
+  visible: boolean,
+  defaultChatWidth = 340
+): void {
+  const chatPanel = dock.getPanel('chat')
+  if (!chatPanel) return
+  const assetsPanel = dock.getPanel('assets')
+  const inspectorPanel = dock.getPanel('inspector')
+  const assetsPreW = assetsPanel && !sidePanelCollapsed.assets ? readPanelWidth(assetsPanel.api) : 0
+  const inspectorPreW =
+    inspectorPanel && !sidePanelCollapsed.inspector ? readPanelWidth(inspectorPanel.api) : 0
+  if (!visible) {
+    const liveChatW = readPanelWidth(chatPanel.api)
+    if (liveChatW >= 200) {
+      lastChatExpandedWidth = Math.round(Math.min(480, liveChatW))
+    }
+  }
+  const targetChatW =
+    lastChatExpandedWidth >= 200 ? lastChatExpandedWidth : Math.round(defaultChatWidth)
+  const prevUnlocking = unlockingConstraints
+  unlockingConstraints = true
+  try {
+    chatPanel.api.group?.api.setVisible(visible)
+    if (visible) chatPanel.api.setActive()
+    rebalanceHorizontalColumns(dock, {
+      ...(assetsPreW > 16 ? { assets: assetsPreW } : {}),
+      ...(inspectorPreW > 16 ? { inspector: inspectorPreW } : {}),
+      ...(visible ? { chat: targetChatW } : {})
+    })
+  } finally {
+    unlockingConstraints = prevUnlocking
+  }
+}
+
 export function setSidePanelCollapsed(
   api: DockviewPanelApi,
   collapsed: boolean,
@@ -810,10 +892,20 @@ export function setSidePanelCollapsed(
 ): void {
   const id = api.id
   if (!isSidePanelId(id)) return
-  const target = resolvePanel(api, panel)
+  const target = resolvePanel(api, targetPanelFallback(panel))
   const dock = dockApiRef
   // Tab 合并组：group 由两个面板共享，group 级隐藏 / 0 宽 / 收起样式会连带压没另一个面板
   const tabbed = !!dock && areSidePanelsTabbed(dock)
+
+  // 在改变 visible 之前先快照其它可见侧栏（尤其是右侧 chat）的当前宽度，
+  // 防止 setVisible 触发 splitview 把宽度倾倒或挤压到相邻侧栏。
+  const otherId = otherSidePanelId(id)
+  const otherPanel = dock?.getPanel(otherId)
+  const otherPreWidth =
+    otherPanel && !sidePanelCollapsed[otherId] ? readPanelWidth(otherPanel.api) : 0
+  const chatPanel = dock?.getPanel('chat')
+  const chatPreWidth =
+    chatPanel && chatPanel.api.isVisible !== false ? readPanelWidth(chatPanel.api) : 0
 
   if (collapsed) {
     rememberCurrentWidth(api, id)
@@ -822,13 +914,24 @@ export function setSidePanelCollapsed(
     if (dock) placeSidePanel(dock, id, false)
     // placeSidePanel 已按收起状态切好 Tab（两侧都收起时隐藏整组），不能再做几何收起
     if (!tabbed) {
-      applyCollapsedState(api, resolvePanel(api, target), true)
-      if (dock) reassertCollapsedHidden(dock)
+      unlockingConstraints = true
+      try {
+        applyCollapsedState(api, resolvePanel(api, target), true)
+        if (dock) {
+          reassertCollapsedHidden(dock)
+          rebalanceHorizontalColumns(dock, {
+            ...(otherPreWidth > 16 ? { [otherId]: otherPreWidth } : {}),
+            ...(chatPreWidth > 16 ? { chat: chatPreWidth } : {})
+          })
+        }
+      } finally {
+        unlockingConstraints = false
+      }
     }
     return
   }
 
-  // 先放开约束并显示，再 move，避免新 group 继承收起态
+  // 先放开约束并显示，再恢复记忆宽度，并由中心画布让出宽度（不挤占右侧 AI 对话）
   sidePanelCollapsed[id] = false
   writeSideCollapsedPreference(id, false)
   if (tabbed) {
@@ -836,33 +939,33 @@ export function setSidePanelCollapsed(
     if (dock) placeSidePanel(dock, id, true)
     return
   }
-  const liveBeforeMove = resolvePanel(api, target)
-  applyCollapsedState(api, liveBeforeMove, false, opts)
-  if (dock) placeSidePanel(dock, id, true)
-
   const width = resolveExpandedWidth(id, opts)
   const live = resolvePanel(api, target)
-  applyCollapsedState(api, live, false, opts)
-  api.setSize({ width })
+  unlockingConstraints = true
+  try {
+    applyCollapsedState(api, live, false, opts)
+    if (dock) {
+      rebalanceHorizontalColumns(dock, {
+        [id]: width,
+        ...(otherPreWidth > 16 ? { [otherId]: otherPreWidth } : {}),
+        ...(chatPreWidth > 16 ? { chat: chatPreWidth } : {})
+      })
+    } else {
+      api.setSize({ width })
+    }
+  } finally {
+    unlockingConstraints = false
+  }
   writeStoredWidth(id, width)
 
-  // 资产展开且参数仍开着时，参数被挪到资产右侧，需恢复其展开约束与宽度
-  if (id === 'assets' && dock && !sidePanelCollapsed.inspector) {
-    const inspector = dock.getPanel('inspector')
-    if (inspector) {
-      const inspectorOpts = resolveSidePanelSizeOptions('inspector')
-      const inspectorWidth = resolveExpandedWidth('inspector', inspectorOpts)
-      applyCollapsedState(inspector.api, inspector, false, inspectorOpts)
-      inspector.api.setSize({ width: inspectorWidth })
-      writeStoredWidth('inspector', inspectorWidth)
-    }
-  }
-
-  // 展开一侧时另一侧可能被 moveTo 带出；再藏一次收起侧，去掉灰洞
   if (dock) {
     reassertCollapsedHidden(dock)
     attachExpandedWidthWatchers(dock)
   }
+}
+
+function targetPanelFallback(panel?: IDockviewPanel): IDockviewPanel | undefined {
+  return panel
 }
 
 export function toggleSidePanelCollapsed(

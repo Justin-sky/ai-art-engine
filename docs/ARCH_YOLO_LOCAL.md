@@ -278,3 +278,20 @@ v1（本地像素流水线）用 468 点语义稠密环把妆容 / 牙齿 / 磨�
 **仍缺**：模型的下载源（见下节许可闸门）。在此之前用户只能手动放置两个 ONNX。
 
 **许可证闸门（必须先行确认）**：模型必须可商用、可再分发。候选：MediaPipe Face Mesh（Apache-2.0，需 TFLite→ONNX 转换并自测精度）、PIPNet 68/98 点（Apache-2.0）。**排除**：InsightFace `2d106det`（非商用研究许可）、YOLO11n-face 派生（AGPL-3.0，与包内 YOLO 同源但风险更高 —— 现有 YOLO 权重的 AGPL 风险见第 6 节末的许可提示）。确认后把仓库 URL、版本、许可证与 SHA-256 一并写进 fetch 脚本注释与本文件。
+
+## 12. 跨平台本地离线 OCR 服务（`localOcrService.ts`）与 WebP 容错解码
+
+在游戏 UI 图层拆分（`image.layerSplit` 的 `ui` 模式）中，除云端 VLM OCR 外，系统内置了**零外部 NPM 原生依赖、零额外安装包体积**的跨平台本地离线 OCR 服务（`src/main/services/localOcrService.ts`，IPC 通道 `ocr:recognize-local`）：
+
+| 平台        | 原生引擎                                                  | 运行机制与特点                                                                                                                                       |
+| ----------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Windows** | `Windows.Media.Ocr.OcrEngine` (WinRT)                     | 通过 PowerShell 调用 Windows 10/11 系统内置 WinRT OCR API（`TryCreateFromUserProfileLanguages()`），原生输出行文本及每个词的 `(X, Y, Width, Height)` |
+| **macOS**   | Apple `Vision.framework` (`VNRecognizeTextRequest`)       | 首次调用时用 `/usr/bin/swiftc` 将内置 Swift 脚本编译为 `os.tmpdir()` 下的原生二进制缓存，开启 `.accurate` 识别级与自动语言检测（中/英/日/韩）        |
+| **Linux**   | 系统 `tesseract` CLI（`--psm 11 -l chi_sim+eng/eng tsv`） | 自动探测 `tesseract --list-langs` 并解析 TSV 词级坐标（`parseTesseractTsvToOcrLines`），无环境时优雅降级返回空列表，绝不抛错中断拆层流水线           |
+
+### 词级聚类与控件回填管线（`src/shared/graph/uiControlSpec.ts`）
+
+1. **同行邻近词聚类（`clusterOcrLineWordsIntoBoxes`）**：按阅读顺序扫描同一行的单词框，对间距不超过字高 `1.35×` 的相邻词合并（CJK 相邻字符零空格拼接，ASCII 单词自动保留空格），生成紧致 `LocalOcrTextBox`（归一化 `0..1` 坐标）。
+2. **父子排他匹配（`matchOcrBoxesToControlRect`）**：将 OCR 文本框匹配到 16 类 UI 控件框时，自动排除落在子控件（`enclosedChildren`）内部的文字，避免父级 `panel` / `modal-dialog` 把内部按钮的文字重复吞并。
+3. **字芯与描边色彩双采样（`estimateUiControlTextStyleFromRgba`）**：基于自适应色差掩码区分背景、字芯主色（`color`）与 1px 邻域环带描边（`strokeColor` / `strokeWidth`），最终写入 PSD 的原生 `TySh` 可编辑文本图层与 Unity / Godot / HTML5 界面代码。
+4. **伪装后缀 WebP 透明容错（`src/renderer/src/features/yolo/api.ts`）**：当资产文件扩展名为 `.png`/`.jpg` 但文件头实际为 `RIFF....WEBP` 时，`yoloService.ts` 在 `utilityProcess` 解码前或报错含 `webp image` 时自动由渲染层通过 `filePathToRawImage()`（Chromium 原生 WebP 解码）转换为 `YoloImageInputRaw` 重试，彻底消除伪装 WebP 报错。

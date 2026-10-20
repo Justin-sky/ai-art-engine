@@ -21,13 +21,11 @@ export interface WorkspaceToolbarItem {
   enabled?: boolean
 }
 
-/** 默认顺序：自由画布 → 宿主资产 → 剧本 → 分镜 → 世界元素 → 叙事 → 导演台 → 图片 → 视频 → 声音 */
+/** 默认顺序：自由画布 → 宿主资产 → 剧本 → 导演台 → 2D 动作 → 图片 → 视频 → 声音 */
 export const WORKSPACE_TOOLBAR_ITEMS: WorkspaceToolbarItem[] = [
   { id: 'freeCanvas', assetType: 'canvas', icon: 'free-canvas', openOnCreate: true },
   { id: 'subgraph', assetType: 'subgraph', openOnCreate: true },
   { id: 'screenplay', assetType: 'screenplay', openOnCreate: true },
-  { id: 'world', assetType: 'world', openOnCreate: true },
-  { id: 'beat', assetType: 'beat', openOnCreate: true },
   { id: 'motion', assetType: 'motion', openOnCreate: true },
   // 2D 动作没有独立编辑页（纯 JSON 文档，由 stage.2d 节点对话框保存 / 载入）：
   // 三个「新建」入口都走 useAssetCreation 的 createMotion2dActionAsset（建好 + 选中 +

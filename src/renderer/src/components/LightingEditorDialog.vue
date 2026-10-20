@@ -381,6 +381,14 @@ watch(
       return
     }
     const img = new Image()
+    const cleanUrl = url.trim()
+    if (
+      !cleanUrl.startsWith('data:') &&
+      !cleanUrl.startsWith('blob:') &&
+      !cleanUrl.startsWith('file:')
+    ) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => {
       if (token !== previewLoadToken) return
       previewImage.value = img
@@ -391,7 +399,7 @@ watch(
       previewImage.value = null
       afterFloatingBodyReady(initPreviewSurface)
     }
-    img.src = url
+    img.src = cleanUrl
   },
   { immediate: true }
 )

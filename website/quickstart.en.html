@@ -135,11 +135,14 @@
 
         <section id="before">
           <h2>1. What you need</h2>
+          <div class="tip">
+            <strong>⚡ No API keys yet? Try the Zero-Key Live Demo:</strong> Right on the welcome screen, click <strong>"⚡ Try Live Demo Project"</strong> to instantly spin up a pre-built 4-shot cyberpunk short-drama project with synthesized preview clips, an interactive node graph, and a multi-track timeline — or test local ONNX vision &amp; offline OCR UI layer splitting right away.
+          </div>
           <ol>
             <li>
-              <strong>An API key for at least one model provider</strong>. The app ships with no built-in models:
-              text, image and video generation all run through your own provider account (OpenRouter, DeepSeek,
-              Zhipu, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, …). For your first run, prepare
+              <strong>An API key for at least one model provider (for cloud generation)</strong>. The app never locks you into a subscription:
+              text, image and video generation run through your own provider account or local server (OpenRouter, DeepSeek,
+              Zhipu, Volcengine Ark, Kling, MiniMax, Tongyi Qianwen, ComfyUI, Ollama, …). For your first run, prepare
               <strong>one text model plus one image model</strong> and add video models later.
             </li>
             <li>
@@ -147,13 +150,11 @@
               result stays on your own disk.
             </li>
             <li>
-              <strong>About 15 minutes</strong>. Most of that goes into the first-time model setup; every run
-              after that takes about 2 minutes.
+              <strong>About 3–5 minutes</strong>. Once your provider key is saved, running a full pipeline or splitting a game UI into PSD + engine code takes just a couple of minutes.
             </li>
           </ol>
           <div class="tip">
-            You <strong>don't need a discrete GPU</strong> when using cloud APIs — only local models (such as
-            ComfyUI or Ollama) require one.
+            You <strong>don't need a discrete GPU</strong> when using cloud APIs — and built-in cross-platform offline OCR plus local ONNX vision (cutout, detection, 468-pt FaceMesh) run in seconds on a standard CPU.
           </div>
         </section>
 

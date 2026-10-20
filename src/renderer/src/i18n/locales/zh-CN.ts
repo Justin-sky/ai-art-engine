@@ -3439,7 +3439,13 @@ export default {
       selectTitle: '选择（左键点选/框选）',
       panTitle: '平移（左键拖动画布）',
       collapse: '收起工具栏',
-      expand: '展开工具栏'
+      expand: '展开工具栏',
+      modeGraph: '节点',
+      modeGraphTitle: '节点画布视图',
+      modeFocus: '焦点',
+      modeFocusTitle: '焦点创作舞台',
+      recipePoster: '配方海报',
+      recipePosterTitle: '导出内嵌完整节点工作流的 PNG 配方海报（拖入画布即可复刻）'
     },
     editor: {
       loadingSource: '正在加载图片…'

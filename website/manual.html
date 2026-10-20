@@ -151,18 +151,18 @@
           <p class="eyebrow">Manual · Overview</p>
           <h1>使用手册</h1>
           <p class="lede">
-            AI Art Engine <strong>7.5</strong> 的完整操作参考，按使用路径分为六个部分：本页介绍准备工作与核心概念，其余内容见下方「手册章节」或侧栏目录。文案以应用内中文界面为准；视频演示见 <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">B 站教程</a>。
+            AI Art Engine <strong>8.0</strong> 的完整操作参考，按使用路径分为六个部分：本页介绍准备工作与核心概念，其余内容见下方「手册章节」或侧栏目录。文案以应用内中文界面为准；视频演示见 <a href="https://space.bilibili.com/3707036976024122" target="_blank" rel="noopener noreferrer">B 站教程</a>。
           </p>
         </header>
 
         <div class="entry-cards" aria-label="新手路径">
           <a class="entry-card" href="quickstart.html">
             <strong>第一次用？</strong>
-            <span>跟着快速上手，5 分钟跑通第一条片</span>
+            <span>支持零配置即刻体验，3 分钟跑通第一条片</span>
           </a>
           <a class="entry-card" href="#concepts">
             <strong>先懂几个概念</strong>
-            <span>宿主资产、影视工作台、设定锚点指什么</span>
+            <span>宿主资产、影视工作台、设定锚点与工业交付包</span>
           </a>
           <a class="entry-card" href="guide-short-video.html">
             <strong>短剧成片全流程</strong>
@@ -177,12 +177,12 @@
         <section id="intro">
           <h2>1. 概述与准备</h2>
           <p>
-            AIArtEngine 是 Agent 原生的 AI 美术资产引擎，服务短剧、广告、游戏与电商内容生产。工程与素材保存在你指定的本机目录；文本 /
+            AIArtEngine 是 Agent 原生的全模态 AI 创作与工业资产引擎，服务游戏研发、短剧漫剧、广告与电商内容生产。它不止生成单张扁平图或视频，更能直接交付<strong>分层可编辑 PSD（含原生 <code>TySh</code> 文本图层）</strong>、<strong>Unity / Godot 4 / HTML5 界面代码</strong>、<strong>Spine 2D 骨骼动画包</strong>、<strong>剪映 / CapCut 多轨草稿工程</strong>与<strong>可玩 HTML5 游戏</strong>。工程与素材保存在你指定的本机目录；文本 /
             图片 / 视频 / 声音生成通过你配置的模型提供商完成（OpenRouter、OpenAI、DeepSeek、智谱、Kimi、xAI、Google、vLLM、Ollama、LM Studio、火山方舟、可灵、MiniMax、通义千问、魔塔、ComfyUI、MagicRouter 等），
             其中 OpenRouter 另提供决策模型（Decisions API），与文本 / 图片 / 视频一样按模态配置。
-            3D 模型生成支持 Meshy、Tripo、Rodin（Hyper3D）、Luma AI 与 Lux3D。
+            3D 模型生成支持 Meshy、Tripo、Rodin（Hyper3D）、Luma AI 与 Lux3D 及 Blender MCP 实时建模。
             空间世界生成（从文本 / 参考图生成可漫游 3D 世界）支持 World Labs（Marble）。
-            可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，再拖入画布继续编排。
+            可用<strong>一键工作流</strong>从模板或自然语言快速生成可复用宿主资产，也可直接把导出的 <strong>PNG（内置 <code>aiae:graph</code> 隐写工作流）</strong>拖入画布一键复现整条生成管线。
           </p>
           <h3>首次使用建议</h3>
           <ol>

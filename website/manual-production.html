@@ -266,28 +266,40 @@
             <li>字幕与成片一并导出，也可单独<strong>导出字幕 SRT</strong>。</li>
           </ul>
 
-          <h3>10.7 导出</h3>
+          <h3>10.7 导出成片与剪映 / CapCut 草稿工程</h3>
           <p>
-            时间线工具栏提供<strong>导出成片</strong>：可设分辨率（预设或自定义宽高）、帧率与码率，优先用本机
-            ffmpeg 合成 MP4，未安装时回退为 WebM 录制；导出进度与结果路径会提示在界面中。时间线缩放可用「适应宽度」。
+            时间线工具栏提供两种工业级交付通道：
           </p>
+          <ul>
+            <li>
+              <strong>导出成片（MP4 / WebM）</strong>：可设分辨率（预设或自定义宽高）、帧率与码率，优先用本机
+              ffmpeg 合成 MP4，未安装时回退为 WebM 录制；导出进度与结果路径会提示在界面中。
+            </li>
+            <li>
+              <strong>导出剪映 / CapCut 草稿包（<code>🎬 导出剪映草稿</code>）</strong>：一键将视频轨、画中画、配音、音乐、音效与字幕（转换为微秒级时间轴并自动拷贝本地媒体到 <code>materials/</code>）打包输出为标准剪映专业版 / CapCut 工程目录（含 <code>draft_content.json</code> 与 <code>draft_meta_info.json</code>），可直接导入剪映继续精剪与包装。
+            </li>
+          </ul>
         </section>
 
         <section id="canvas">
-          <h2>11. 自由画布与角色场景设定</h2>
+          <h2>11. 自由画布、角色服装锚点与 2D 骨骼舞台</h2>
 
-          <h3>11.1 画布资产</h3>
+          <h3>11.1 画布资产与 PNG 隐写复现</h3>
           <ul>
             <li>
-              <strong>自由画布</strong>：空白节点画布；右键添加节点，或从资产库拖入资产。多次新建会得到「自由画布
-              2」等名称。在画布上搭视频生成与参考视频，见
+              <strong>自由画布</strong>：空白节点画布；右键添加节点，或从资产库拖入资产。将本软件导出的任意 PNG 图片（含 <code>aiae:graph</code> 隐写块）直接拖入画布，即可自动还原整条生成节点图。在画布上搭视频生成与参考视频，见
               <a href="guide-video.html">自由画布：视频生成与参考视频</a>。
             </li>
           </ul>
 
-          <h3>11.2 角色场景设定与分镜表</h3>
+          <h3>11.2 角色场景设定与 <code>#variant</code> 服装/形态锁定</h3>
           <ul>
-            <li>双击<strong>影视工作台</strong>（<code>film.workbench</code>）节点进入 Dive 视图：在「分镜拆解」阶段可按表格/卡片查看与编辑景别、运镜、时长、动作、台词与出场角色；在「角色场景设定」阶段集中管理角色、场景与道具设定图，支持增删条目与单条重生成。</li>
+            <li>双击<strong>影视工作台</strong>（<code>film.workbench</code>）节点进入 Dive 视图：在「角色场景设定」阶段支持为同一角色维护多套服装或年龄形态（如 <code>@女主#夜行衣</code>、<code>@女主#常服</code>），分镜绑定后自动注入对应变体参考图与提示词描述，彻底解决跨场换装串色问题。</li>
+          </ul>
+
+          <h3 id="frame2d">11.3 2D 舞台与 Spine 骨骼包导出</h3>
+          <ul>
+            <li>双击 <strong>2D 舞台</strong>（<code>stage.2d</code>）进入 2D 骨骼绑定与动作工作台：可接收上游「图层拆分（<code>rig2d</code> 立绘拆件模式）」自动切好并扩边补全的部件图层，绑定父子骨骼与 IK 约束，打关键帧或套用呼吸/待机/行走/攻击预设，除渲染透明序列帧与视频外，支持一键导出标准 <strong>Spine 2D 工程包（<code>skeleton.json</code> + <code>.atlas</code> + 部件贴图）</strong>直通 Unity / Godot / Cocos。</li>
           </ul>
         </section>
 

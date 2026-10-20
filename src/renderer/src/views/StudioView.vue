@@ -7,6 +7,48 @@
   </div>
   <div v-else class="studio">
     <div class="studio-toolbar">
+      <div class="toolbar-panel-toggles toolbar-panel-toggles-left">
+        <button
+          type="button"
+          class="panel-toggle-btn"
+          :class="{ 'is-active': !sidePanelCollapsed.assets }"
+          :title="`${!sidePanelCollapsed.assets ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.assets')} (Ctrl+B)`"
+          :aria-label="`${!sidePanelCollapsed.assets ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.assets')}`"
+          :aria-pressed="!sidePanelCollapsed.assets"
+          @click="toggleSidePanel('assets')"
+        >
+          <svg
+            class="panel-toggle-svg"
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            aria-hidden="true"
+          >
+            <rect
+              x="1.5"
+              y="2.5"
+              width="13"
+              height="11"
+              rx="2"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <line x1="6" y1="2.5" x2="6" y2="13.5" stroke="currentColor" stroke-width="1.3" />
+            <rect
+              v-if="!sidePanelCollapsed.assets"
+              x="2.6"
+              y="3.6"
+              width="2.4"
+              height="8.8"
+              rx="0.6"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="panel-toggle-label">{{ t('studio.panel.assets') }}</span>
+        </button>
+      </div>
+      <span class="toolbar-sep" aria-hidden="true" />
       <span class="hint">{{ t('studio.toolbar.hint') }}</span>
       <button
         type="button"
@@ -48,95 +90,91 @@
         {{ t('studio.toolbar.logs') }}
         <span v-if="runLogsStore.activeRunId" class="tasks-badge live">·</span>
       </button>
-      <div class="layout-menu">
+      <span class="toolbar-sep" aria-hidden="true" />
+      <div class="toolbar-panel-toggles toolbar-panel-toggles-right">
         <button
-          ref="layoutMenuBtnEl"
           type="button"
-          class="layout-menu-btn"
-          :aria-expanded="layoutMenuOpen"
-          :aria-haspopup="true"
-          :title="t('studio.layout.menuAria')"
-          :aria-label="t('studio.layout.menuAria')"
-          @click="toggleLayoutMenu"
+          class="panel-toggle-btn"
+          :class="{ 'is-active': !sidePanelCollapsed.inspector }"
+          :title="`${!sidePanelCollapsed.inspector ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.inspector')} (Ctrl+I)`"
+          :aria-label="`${!sidePanelCollapsed.inspector ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.inspector')}`"
+          :aria-pressed="!sidePanelCollapsed.inspector"
+          @click="toggleSidePanel('inspector')"
         >
-          {{ t('studio.layout.menu') }}
-          <span class="layout-caret" aria-hidden="true">▾</span>
-        </button>
-        <Teleport to="body">
-          <div
-            v-if="layoutMenuOpen"
-            ref="layoutMenuEl"
-            class="layout-menu-panel"
-            :style="layoutMenuStyle"
-            role="menu"
-            @mousedown.stop
-            @click.stop
+          <svg
+            class="panel-toggle-svg"
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            aria-hidden="true"
           >
-            <button
-              v-for="preset in layouts.presets"
-              :key="preset.id"
-              type="button"
-              class="layout-menu-item"
-              role="menuitemradio"
-              :aria-checked="preset.id === layouts.activeId"
-              @click="onLayoutMenuSelect(preset.id)"
-            >
-              <span class="layout-check" aria-hidden="true">{{
-                preset.id === layouts.activeId ? '✓' : ''
-              }}</span>
-              <span class="layout-item-label">{{ presetLabel(preset) }}</span>
-            </button>
-            <div class="layout-menu-sep" role="separator" />
-            <button
-              type="button"
-              class="layout-menu-item"
-              role="menuitem"
-              @click="onLayoutMenuAction(openSaveLayoutDialog)"
-            >
-              <span class="layout-check" aria-hidden="true" />
-              <span class="layout-item-label">{{ t('studio.layout.save') }}…</span>
-            </button>
-            <button
-              type="button"
-              class="layout-menu-item"
-              role="menuitem"
-              :disabled="!canDeleteActive"
-              @click="onLayoutMenuAction(removeActiveLayout)"
-            >
-              <span class="layout-check" aria-hidden="true" />
-              <span class="layout-item-label">{{ t('studio.layout.delete') }}</span>
-            </button>
-            <div class="layout-menu-sep" role="separator" />
-            <button
-              type="button"
-              class="layout-menu-item"
-              role="menuitem"
-              @click="onLayoutMenuAction(triggerImportLayout)"
-            >
-              <span class="layout-check" aria-hidden="true" />
-              <span class="layout-item-label">{{ t('studio.layout.fromFile') }}</span>
-            </button>
-            <button
-              type="button"
-              class="layout-menu-item"
-              role="menuitem"
-              @click="onLayoutMenuAction(exportActiveLayout)"
-            >
-              <span class="layout-check" aria-hidden="true" />
-              <span class="layout-item-label">{{ t('studio.layout.toFile') }}</span>
-            </button>
-          </div>
-        </Teleport>
+            <rect
+              x="1.5"
+              y="2.5"
+              width="13"
+              height="11"
+              rx="2"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <line x1="7" y1="2.5" x2="7" y2="13.5" stroke="currentColor" stroke-width="1.3" />
+            <line x1="11" y1="2.5" x2="11" y2="13.5" stroke="currentColor" stroke-width="1.3" />
+            <rect
+              v-if="!sidePanelCollapsed.inspector"
+              x="7.9"
+              y="3.6"
+              width="2.2"
+              height="8.8"
+              rx="0.5"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="panel-toggle-label">{{ t('studio.panel.inspector') }}</span>
+        </button>
+        <button
+          type="button"
+          class="panel-toggle-btn"
+          :class="{ 'is-active': chatPanelVisible }"
+          :title="`${chatPanelVisible ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.chat')} (Ctrl+J)`"
+          :aria-label="`${chatPanelVisible ? t('studio.panel.collapse') : t('studio.panel.expand')} · ${t('studio.panel.chat')}`"
+          :aria-pressed="chatPanelVisible"
+          @click="toggleChatPanel()"
+        >
+          <svg
+            class="panel-toggle-svg"
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            aria-hidden="true"
+          >
+            <rect
+              x="1.5"
+              y="2.5"
+              width="13"
+              height="11"
+              rx="2"
+              stroke="currentColor"
+              stroke-width="1.3"
+            />
+            <line x1="10" y1="2.5" x2="10" y2="13.5" stroke="currentColor" stroke-width="1.3" />
+            <rect
+              v-if="chatPanelVisible"
+              x="11"
+              y="3.6"
+              width="2.4"
+              height="8.8"
+              rx="0.6"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="panel-toggle-label">{{ t('studio.panel.chat') }}</span>
+        </button>
       </div>
-      <input
-        ref="importInputEl"
-        type="file"
-        accept=".json,application/json"
-        hidden
-        @change="onImportFile"
-      />
     </div>
     <div class="studio-main">
+      <WorkspaceToolbar class="studio-left-tool-rail" />
       <DockviewVue
         class="studio-dock"
         :theme="dockTheme"
@@ -155,12 +193,6 @@
       :default-folder-id="saveDefaultFolderId"
       @confirm="onSaveDraftConfirm"
       @cancel="closeSaveDialog"
-    />
-    <SaveLayoutDialog
-      :open="saveLayoutOpen"
-      :default-name="saveLayoutDefaultName"
-      @confirm="onSaveLayoutConfirm"
-      @cancel="closeSaveLayoutDialog"
     />
     <AiCreateWorkflowDialog
       :open="aiWorkflowDialogOpen"
@@ -209,7 +241,6 @@ import {
   defineComponent,
   h,
   markRaw,
-  nextTick,
   onBeforeUnmount,
   onMounted,
   ref,
@@ -236,14 +267,13 @@ import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
-import SaveLayoutDialog from '../components/SaveLayoutDialog.vue'
 import AiCreateWorkflowDialog from '../components/AiCreateWorkflowDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
+import WorkspaceToolbar from '../components/WorkspaceToolbar.vue'
 import { useAiCreateWorkflow } from '../composables/useAiCreateWorkflow'
 import { aiWorkflowOpenRequest } from '../features/aiWorkflow/openRequest'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { placeFixedMenu } from '../utils/clampFixedMenuPosition'
 import {
   createEditorWindowComponents,
   executeEditorCommand,
@@ -265,45 +295,49 @@ import {
   noteSidePanelWillStackDrop,
   registerSidePanelDockApi,
   registerSidePanelSizeProvider,
+  rebalanceHorizontalColumns,
   rememberedExpandedSideWidth,
+  resolveSidePanelSizeOptions,
+  setChatPanelVisible,
   shouldPreventSidePanelDrop,
   shouldPreventSidePanelOverlay,
   sidePanelCollapsed,
   sidePanelInitialWidth,
   syncSidePanelCollapseState,
+  toggleSidePanelCollapsed,
   type SidePanelId
 } from '../editor/workbench/sidePanelCollapse'
-import { promptAlert, promptConfirm } from '../composables/useStudioPrompt'
+import { promptAlert } from '../composables/useStudioPrompt'
 import {
   DEFAULT_LAYOUT_ID,
-  buildLayoutFile,
-  deleteLayout,
-  downloadLayoutFile,
   getActivePreset,
   isDockLayoutData,
   loadLayoutsState,
-  readLayoutFileFromInput,
   saveLayoutsState,
   updateActiveLayoutData,
-  upsertNamedLayout,
   healDockLayoutMissingPanelRefs,
   sanitizeSidePanelCollapseFromLayoutData,
   stripPanelsFromDockLayout,
-  type StudioLayoutPreset,
   type StudioLayoutsState
 } from '../utils/studioLayouts'
 
-const PANEL_IDS = ['workspace-tools', 'workspace', 'assets', 'inspector'] as const
+const PANEL_IDS = ['workspace', 'assets', 'inspector'] as const
 const CENTER_PANEL_ID = 'workspace'
 const WORKSPACE_TOOLS_PANEL_ID = 'workspace-tools'
+const CHAT_PANEL_ID = 'chat'
+const CHAT_PANEL_MIN_WIDTH = 240
 const dockTheme = computed(() => (themePreference.value === 'light' ? themeLight : themeDark))
-const WORKSPACE_TOOLS_WIDTH = 44
 const LOCKED_PANEL_IDS = new Set([CENTER_PANEL_ID, WORKSPACE_TOOLS_PANEL_ID])
-/** 默认布局：资产与参数同宽，各约占 25%（上限放宽以便更宽） */
+/**
+ * 现代简洁布局（左至右）：
+ * [ 左侧工具条 ] | [ 资产面板 (assets) ] | [ 画布 (workspace) ] | [ 属性 (inspector) ] | [ 会话 (chat) ]
+ */
 const DEFAULT_LAYOUT_RATIO = {
-  side: 0.25,
-  minSide: 300,
-  maxSide: 480
+  assets: 0.17,
+  inspector: 0.18,
+  chat: 0.21,
+  minSide: 220,
+  maxSide: 420
 } as const
 const VALID_DOCK_COMPONENTS = new Set(listPersistentEditorWindowIds())
 
@@ -402,66 +436,6 @@ const saveDefaultName = ref('')
 const saveDefaultFolderId = ref<string | null>(null)
 
 const layouts = ref<StudioLayoutsState>(loadLayoutsState('Default'))
-const saveLayoutOpen = ref(false)
-const saveLayoutDefaultName = ref('')
-const importInputEl = ref<HTMLInputElement | null>(null)
-const layoutMenuOpen = ref(false)
-const layoutMenuBtnEl = ref<HTMLButtonElement | null>(null)
-const layoutMenuEl = ref<HTMLElement | null>(null)
-const layoutMenuPos = ref({ x: 0, y: 0 })
-
-const layoutMenuStyle = computed(() => ({
-  left: `${layoutMenuPos.value.x}px`,
-  top: `${layoutMenuPos.value.y}px`
-}))
-
-const canDeleteActive = computed(() => {
-  const active = getActivePreset(layouts.value)
-  return active.id !== DEFAULT_LAYOUT_ID && !active.builtIn
-})
-
-function closeLayoutMenu(): void {
-  layoutMenuOpen.value = false
-}
-
-async function openLayoutMenu(): Promise<void> {
-  const btn = layoutMenuBtnEl.value
-  if (!btn) return
-  const rect = btn.getBoundingClientRect()
-  layoutMenuOpen.value = true
-  layoutMenuPos.value = { x: rect.left, y: rect.bottom + 4 }
-  await nextTick()
-  const panel = layoutMenuEl.value
-  if (!panel) return
-  layoutMenuPos.value = placeFixedMenu(panel, rect.left, rect.bottom + 4)
-}
-
-function toggleLayoutMenu(): void {
-  if (layoutMenuOpen.value) {
-    closeLayoutMenu()
-    return
-  }
-  void openLayoutMenu()
-}
-
-function onLayoutMenuSelect(id: string): void {
-  closeLayoutMenu()
-  void applyLayoutById(id)
-}
-
-function onLayoutMenuAction(action: () => void): void {
-  closeLayoutMenu()
-  action()
-}
-
-function onLayoutMenuOutside(event: MouseEvent): void {
-  if (!layoutMenuOpen.value) return
-  const target = event.target as Node | null
-  if (!target) return
-  if (layoutMenuBtnEl.value?.contains(target)) return
-  if (layoutMenuEl.value?.contains(target)) return
-  closeLayoutMenu()
-}
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let layoutDisposable: { dispose: () => void } | null = null
@@ -474,25 +448,9 @@ let willDragPanelDisposable: { dispose: () => void } | null = null
 /** Suppress ensureCorePanels / persist while rebuilding layout */
 let layoutMutating = false
 
-function presetLabel(preset: StudioLayoutPreset): string {
-  if (preset.id === DEFAULT_LAYOUT_ID) return t('studio.layout.default')
-  return preset.name
-}
-
 function commitLayouts(next: StudioLayoutsState): void {
   layouts.value = next
   saveLayoutsState(next)
-}
-
-function closeSaveLayoutDialog(): void {
-  saveLayoutOpen.value = false
-}
-
-function openSaveLayoutDialog(): void {
-  const active = getActivePreset(layouts.value)
-  saveLayoutDefaultName.value =
-    active.id === DEFAULT_LAYOUT_ID ? t('studio.layout.newName') : active.name
-  saveLayoutOpen.value = true
 }
 
 function sanitizeShellLayoutData(data: Record<string, unknown>): Record<string, unknown> {
@@ -501,135 +459,6 @@ function sanitizeShellLayoutData(data: Record<string, unknown>): Record<string, 
     minSide: DEFAULT_LAYOUT_RATIO.minSide,
     fallbackWidth: (id) => rememberedExpandedSideWidth(id, sidePanelSizeOptions(id))
   })
-}
-
-function onSaveLayoutConfirm(name: string): void {
-  const api = dockApi.value
-  if (!api) return
-  const data = api.toJSON() as unknown
-  if (!isDockLayoutData(data)) {
-    alert(t('studio.layout.invalid'))
-    return
-  }
-  const shellOnly = sanitizeShellLayoutData(data)
-  if (!isDockLayoutData(shellOnly)) {
-    alert(t('studio.layout.invalid'))
-    return
-  }
-  const active = getActivePreset(layouts.value)
-  try {
-    const next = upsertNamedLayout(layouts.value, name, shellOnly, {
-      targetId: active.id === DEFAULT_LAYOUT_ID ? null : active.id
-    })
-    commitLayouts(next)
-    closeSaveLayoutDialog()
-  } catch {
-    alert(t('validation.nameRequired'))
-  }
-}
-
-async function applyLayoutById(id: string): Promise<void> {
-  const api = dockApi.value
-  if (!api) return
-  const preset = layouts.value.presets.find((p) => p.id === id)
-  if (!preset) return
-  const previousId = layouts.value.activeId
-  commitLayouts({ ...layouts.value, activeId: id })
-  if (preset.id === DEFAULT_LAYOUT_ID || !preset.data) {
-    resetLayout()
-    return
-  }
-  const raw = JSON.stringify(preset.data)
-  if (!isStoredLayoutCompatible(raw)) {
-    console.error('[studio] stored layout incompatible', preset.id)
-    commitLayouts({ ...layouts.value, activeId: previousId })
-    return
-  }
-  applyStoredLayout(
-    api,
-    sanitizeSidePanelCollapseFromLayoutData(healDockLayoutMissingPanelRefs(preset.data), {
-      minSide: DEFAULT_LAYOUT_RATIO.minSide,
-      fallbackWidth: (id) => rememberedExpandedSideWidth(id, sidePanelSizeOptions(id))
-    })
-  )
-}
-
-function applyStoredLayout(api: DockviewApi, data: Record<string, unknown>): void {
-  layoutMutating = true
-  try {
-    api.clear()
-    api.fromJSON(data as unknown as Parameters<DockviewApi['fromJSON']>[0])
-    removeDocumentEditorPanels(api)
-    applyCorePanelTitles(api)
-    configureWorkspaceToolsPanel(api)
-  } catch (err) {
-    console.error('[studio] apply layout failed', err)
-    api.clear()
-    addDefaultPanels(api)
-    requestAnimationFrame(() => {
-      configureWorkspaceToolsPanel(api)
-      applyDefaultLayoutSizes(api)
-    })
-  } finally {
-    layoutMutating = false
-  }
-  // ensureCorePanels 在 layoutMutating 时会直接 return；恢复后补核心面板与侧栏收起态
-  ensureCorePanels(api)
-  applyCorePanelTitles(api)
-  applySidePanelCollapseSync(api)
-}
-
-function exportActiveLayout(): void {
-  const api = dockApi.value
-  if (!api) return
-  const data = api.toJSON() as unknown
-  if (!isDockLayoutData(data)) {
-    alert(t('studio.layout.invalid'))
-    return
-  }
-  const active = getActivePreset(layouts.value)
-  const name = active.id === DEFAULT_LAYOUT_ID ? t('studio.layout.default') : active.name
-  downloadLayoutFile(buildLayoutFile(name, sanitizeShellLayoutData(data)))
-}
-
-function triggerImportLayout(): void {
-  importInputEl.value?.click()
-}
-
-async function onImportFile(event: Event): Promise<void> {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  input.value = ''
-  if (!file) return
-  try {
-    const imported = await readLayoutFileFromInput(file)
-    const shellOnly = sanitizeShellLayoutData(imported.layout)
-    if (!isDockLayoutData(shellOnly)) {
-      alert(t('studio.layout.invalidFile'))
-      return
-    }
-    const next = upsertNamedLayout(layouts.value, imported.name, shellOnly)
-    commitLayouts(next)
-    const api = dockApi.value
-    if (api) applyStoredLayout(api, shellOnly)
-  } catch (e) {
-    console.error('[studio] import layout failed', e)
-    alert(t('studio.layout.invalidFile'))
-  }
-}
-
-async function removeActiveLayout(): Promise<void> {
-  const active = getActivePreset(layouts.value)
-  if (active.id === DEFAULT_LAYOUT_ID) return
-  const ok = await promptConfirm({
-    title: t('studio.layout.deleteConfirmTitle'),
-    message: t('studio.layout.deleteConfirm', { name: active.name }),
-    confirmLabel: t('common.delete')
-  })
-  if (!ok) return
-  const next = deleteLayout(layouts.value, active.id)
-  commitLayouts(next)
-  void applyLayoutById(next.activeId)
 }
 
 function closeSaveDialog(): void {
@@ -661,10 +490,77 @@ async function onSaveDraftConfirm(payload: {
   }
 }
 
+const chatPanelVisible = ref(true)
+
+function syncChatPanelState(api: DockviewApi): void {
+  const panel = api.getPanel(CHAT_PANEL_ID)
+  chatPanelVisible.value = !!panel && panel.api.isVisible
+}
+
+function toggleSidePanel(id: SidePanelId): void {
+  const api = dockApi.value?.getPanel(id)?.api
+  if (!api) return
+  toggleSidePanelCollapsed(api, resolveSidePanelSizeOptions(id))
+}
+
+function toggleChatPanel(): void {
+  const api = dockApi.value
+  if (!api) return
+  const { chat } = defaultSideWidths()
+  const panel = api.getPanel(CHAT_PANEL_ID)
+  if (!panel) {
+    api.addPanel({
+      id: CHAT_PANEL_ID,
+      component: 'chat',
+      title: t('studio.panel.chat'),
+      position: {
+        referencePanel: api.getPanel('inspector')?.id ?? CENTER_PANEL_ID,
+        direction: 'right'
+      },
+      initialWidth: chat,
+      minimumWidth: CHAT_PANEL_MIN_WIDTH
+    })
+    rebalanceHorizontalColumns(api, { chat })
+    syncChatPanelState(api)
+    return
+  }
+  const nextVisible = !panel.api.isVisible
+  setChatPanelVisible(api, nextVisible, chat)
+  syncChatPanelState(api)
+}
+
+function isEditableKeyboardTarget(target: HTMLElement | null): boolean {
+  if (!target) return false
+  if (target.isContentEditable) return true
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
 function onGlobalKeyDown(e: KeyboardEvent): void {
-  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return
+  if (!(e.ctrlKey || e.metaKey)) return
   const target = e.target as HTMLElement | null
   if (target?.closest('.sfw-mask')) return
+  const key = e.key.toLowerCase()
+
+  if (!e.shiftKey && !e.altKey && !isEditableKeyboardTarget(target)) {
+    if (key === 'b') {
+      e.preventDefault()
+      toggleSidePanel('assets')
+      return
+    }
+    if (key === 'i') {
+      e.preventDefault()
+      toggleSidePanel('inspector')
+      return
+    }
+    if (key === 'j') {
+      e.preventDefault()
+      toggleChatPanel()
+      return
+    }
+  }
+
+  if (key !== 's') return
   const draftId = activeDraftId()
   e.preventDefault()
   if (draftId) {
@@ -717,15 +613,20 @@ function readDockWidth(): number {
   return window.innerWidth > 0 ? window.innerWidth : 1600
 }
 
-function clampSideWidth(width: number): number {
-  return Math.round(
-    Math.min(DEFAULT_LAYOUT_RATIO.maxSide, Math.max(DEFAULT_LAYOUT_RATIO.minSide, width))
-  )
+function clampRange(width: number, min: number, max: number): number {
+  return Math.round(Math.min(max, Math.max(min, width)))
 }
 
-function defaultSideWidths(totalWidth = readDockWidth()): { assets: number; inspector: number } {
-  const side = clampSideWidth(totalWidth * DEFAULT_LAYOUT_RATIO.side)
-  return { assets: side, inspector: side }
+function defaultSideWidths(totalWidth = readDockWidth()): {
+  assets: number
+  inspector: number
+  chat: number
+} {
+  return {
+    assets: clampRange(totalWidth * DEFAULT_LAYOUT_RATIO.assets, 220, 320),
+    inspector: clampRange(totalWidth * DEFAULT_LAYOUT_RATIO.inspector, 240, 340),
+    chat: clampRange(totalWidth * DEFAULT_LAYOUT_RATIO.chat, CHAT_PANEL_MIN_WIDTH, 420)
+  }
 }
 
 function sidePanelSizeOptions(id: SidePanelId) {
@@ -739,16 +640,17 @@ function sidePanelSizeOptions(id: SidePanelId) {
 
 function applySidePanelCollapseSync(api: DockviewApi): void {
   syncSidePanelCollapseState(api, sidePanelSizeOptions)
+  syncChatPanelState(api)
   // 布局 fromJSON / moveTo 后尺寸可能下一帧才稳定，再同步一次去掉灰洞
   requestAnimationFrame(() => {
     if (dockApi.value !== api) return
     syncSidePanelCollapseState(api, sidePanelSizeOptions)
+    syncChatPanelState(api)
   })
 }
 
 function corePanelTitles(): Record<(typeof PANEL_IDS)[number] | 'chat', string> {
   return {
-    'workspace-tools': t('studio.panel.tools'),
     workspace: t('studio.panel.workspace'),
     assets: t('studio.panel.assets'),
     inspector: t('studio.panel.inspector'),
@@ -767,54 +669,29 @@ function applyCorePanelTitles(api: DockviewApi): void {
 
 function applyDefaultLayoutSizes(api: DockviewApi): void {
   applySidePanelCollapseSync(api)
-  const { assets, inspector } = defaultSideWidths()
-  // Dockview 会从左侧相邻组腾出空间；先设右侧参数栏，再设资产栏，
-  // 避免参数栏的第二次 resize 把资产栏重新压窄。
-  // 默认布局强制用比例宽度（已 clamp 到 maxSide），不用侧栏记忆宽度。
-  if (!sidePanelCollapsed.inspector) {
-    api.getPanel('inspector')?.api.setSize({ width: inspector })
-  }
-  if (!sidePanelCollapsed.assets) {
-    api.getPanel('assets')?.api.setSize({ width: assets })
-  }
+  const totalWidth = readDockWidth()
+  const { assets, inspector, chat } = defaultSideWidths(totalWidth)
+  rebalanceHorizontalColumns(api, { assets, inspector, chat })
 }
 
 function centerReferenceId(api: DockviewApi): string {
   return api.getPanel(CENTER_PANEL_ID)?.id ?? CENTER_PANEL_ID
 }
 
-function addWorkspaceToolsPanel(api: DockviewApi, referencePanelId: string): void {
-  if (api.getPanel(WORKSPACE_TOOLS_PANEL_ID)) return
-  api.addPanel({
-    id: WORKSPACE_TOOLS_PANEL_ID,
-    component: 'workspaceToolbar',
-    title: t('studio.panel.tools'),
-    tabComponent: 'lockedTab',
-    position: { referencePanel: referencePanelId, direction: 'left' },
-    initialWidth: WORKSPACE_TOOLS_WIDTH,
-    minimumWidth: WORKSPACE_TOOLS_WIDTH,
-    maximumWidth: WORKSPACE_TOOLS_WIDTH
-  })
-  configureWorkspaceToolsPanel(api)
-}
-
 function configureWorkspaceToolsPanel(api: DockviewApi): void {
-  const panel = api.getPanel(WORKSPACE_TOOLS_PANEL_ID)
-  if (!panel) return
-  const group = panel.group as { header?: { hidden?: boolean } }
-  if (group.header) group.header.hidden = true
+  const legacyTools = api.getPanel(WORKSPACE_TOOLS_PANEL_ID)
+  if (legacyTools) api.removePanel(legacyTools)
 }
 
 function addDefaultPanels(api: DockviewApi): void {
-  const { assets, inspector } = defaultSideWidths()
+  const { assets, inspector, chat } = defaultSideWidths()
   api.addPanel({
     id: CENTER_PANEL_ID,
     component: 'workspace',
     title: t('studio.panel.workspace'),
     tabComponent: 'lockedTab'
   })
-  addWorkspaceToolsPanel(api, CENTER_PANEL_ID)
-  // 默认布局不用记忆宽度，避免历史过大的参数区把工作区压没
+  // 左栏：资产面板（紧邻最左侧固定工具条右侧、画布左侧）
   const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide, {
     useRememberedWidth: false
   })
@@ -822,11 +699,12 @@ function addDefaultPanels(api: DockviewApi): void {
     id: 'assets',
     component: 'assets',
     title: t('studio.panel.assets'),
-    position: { referencePanel: CENTER_PANEL_ID, direction: 'right' },
+    position: { referencePanel: CENTER_PANEL_ID, direction: 'left' },
     initialWidth: assetsInit.initialWidth,
     minimumWidth: assetsInit.minimumWidth,
     ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
   })
+  // 中右栏：属性面板（位于画布右侧）
   const inspectorInit = sidePanelInitialWidth(
     'inspector',
     inspector,
@@ -839,10 +717,19 @@ function addDefaultPanels(api: DockviewApi): void {
     id: 'inspector',
     component: 'inspector',
     title: t('studio.panel.inspector'),
-    position: { referencePanel: 'assets', direction: 'right' },
+    position: { referencePanel: CENTER_PANEL_ID, direction: 'right' },
     initialWidth: inspectorInit.initialWidth,
     minimumWidth: inspectorInit.minimumWidth,
     ...(inspectorInit.maximumWidth != null ? { maximumWidth: inspectorInit.maximumWidth } : {})
+  })
+  // 最右栏：AI 会话面板（位于属性面板右侧）
+  api.addPanel({
+    id: CHAT_PANEL_ID,
+    component: 'chat',
+    title: t('studio.panel.chat'),
+    position: { referencePanel: 'inspector', direction: 'right' },
+    initialWidth: chat,
+    minimumWidth: CHAT_PANEL_MIN_WIDTH
   })
   api.getPanel(CENTER_PANEL_ID)?.api.setActive()
 }
@@ -863,6 +750,9 @@ function createDefaultLayout(api: DockviewApi): void {
 
 function ensureCorePanels(api: DockviewApi): void {
   if (layoutMutating) return
+
+  const legacyTools = api.getPanel(WORKSPACE_TOOLS_PANEL_ID)
+  if (legacyTools) api.removePanel(legacyTools)
 
   const titleMap = corePanelTitles()
 
@@ -887,8 +777,7 @@ function ensureCorePanels(api: DockviewApi): void {
   }
 
   const centerId = centerReferenceId(api)
-  addWorkspaceToolsPanel(api, centerId)
-  const { assets, inspector } = defaultSideWidths()
+  const { assets, inspector, chat } = defaultSideWidths()
 
   if (!api.getPanel('assets')) {
     const assetsInit = sidePanelInitialWidth('assets', assets, DEFAULT_LAYOUT_RATIO.minSide)
@@ -896,7 +785,7 @@ function ensureCorePanels(api: DockviewApi): void {
       id: 'assets',
       component: 'assets',
       title: titleMap.assets,
-      position: { referencePanel: centerId, direction: 'right' },
+      position: { referencePanel: centerId, direction: 'left' },
       initialWidth: assetsInit.initialWidth,
       minimumWidth: assetsInit.minimumWidth,
       ...(assetsInit.maximumWidth != null ? { maximumWidth: assetsInit.maximumWidth } : {})
@@ -904,7 +793,6 @@ function ensureCorePanels(api: DockviewApi): void {
   }
 
   if (!api.getPanel('inspector')) {
-    const assetsRef = api.getPanel('assets')?.id ?? centerId
     const inspectorInit = sidePanelInitialWidth(
       'inspector',
       inspector,
@@ -914,25 +802,25 @@ function ensureCorePanels(api: DockviewApi): void {
       id: 'inspector',
       component: 'inspector',
       title: titleMap.inspector,
-      position: { referencePanel: assetsRef, direction: 'right' },
+      position: { referencePanel: centerId, direction: 'right' },
       initialWidth: inspectorInit.initialWidth,
       minimumWidth: inspectorInit.minimumWidth,
       ...(inspectorInit.maximumWidth != null ? { maximumWidth: inspectorInit.maximumWidth } : {})
     })
   }
 
-  // AI 对话面板：普通面板（不在 PANEL_IDS），用户可关闭；默认在参数面板右侧
-  if (!api.getPanel('chat')) {
+  // AI 会话面板：位于属性面板右侧
+  if (!api.getPanel(CHAT_PANEL_ID)) {
     api.addPanel({
-      id: 'chat',
+      id: CHAT_PANEL_ID,
       component: 'chat',
       title: titleMap.chat,
       position: {
         referencePanel: api.getPanel('inspector')?.id ?? centerId,
         direction: 'right'
       },
-      initialWidth: 320,
-      minimumWidth: 220
+      initialWidth: chat,
+      minimumWidth: CHAT_PANEL_MIN_WIDTH
     })
   }
 
@@ -978,7 +866,9 @@ function persistLayout(api: DockviewApi): void {
 /** 文档编辑器属于工程会话，不应随 dock 布局跨工程保留 */
 function removeDocumentEditorPanels(api: DockviewApi): void {
   for (const panel of [...api.panels]) {
-    if (parseEditorPanelId(panel.id)) api.removePanel(panel)
+    if (panel.id === WORKSPACE_TOOLS_PANEL_ID || parseEditorPanelId(panel.id)) {
+      api.removePanel(panel)
+    }
   }
   workspace.resetSession()
 }
@@ -986,7 +876,10 @@ function removeDocumentEditorPanels(api: DockviewApi): void {
 function stripDocumentEditorPanelsFromLayoutData(
   data: Record<string, unknown>
 ): Record<string, unknown> {
-  return stripPanelsFromDockLayout(data, (panelId) => parseEditorPanelId(panelId) != null)
+  return stripPanelsFromDockLayout(
+    data,
+    (panelId) => panelId === WORKSPACE_TOOLS_PANEL_ID || parseEditorPanelId(panelId) != null
+  )
 }
 
 function tryRestoreLayout(api: DockviewApi): boolean {
@@ -1075,6 +968,7 @@ function onReady(event: DockviewReadyEvent): void {
   layoutDisposable = api.onDidLayoutChange(() => {
     persistLayout(api)
     handleSidePanelLayoutMaybeStacked(api)
+    syncChatPanelState(api)
     // location 变更会重置 drop zones，需维持上下 1/2 激活区
     configureSidePanelStackDropTargets(api)
   })
@@ -1128,6 +1022,9 @@ function onReady(event: DockviewReadyEvent): void {
     }
     if (panel.id.startsWith('director-editor-')) {
       cleanupDraftEditor(panel.id, 'director-editor-', workspace.consumeDirectorEditor)
+    }
+    if (panel.id === CHAT_PANEL_ID) {
+      chatPanelVisible.value = false
     }
     if ((PANEL_IDS as readonly string[]).includes(panel.id)) {
       ensureCorePanels(api)
@@ -1294,17 +1191,9 @@ function getTabContextMenuItems(params: GetTabContextMenuItemsParams) {
   return items
 }
 
-function onLayoutMenuKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape' && layoutMenuOpen.value) {
-    closeLayoutMenu()
-  }
-}
-
 onMounted(() => {
   registerSidePanelSizeProvider(sidePanelSizeOptions)
   window.addEventListener('keydown', onGlobalKeyDown)
-  window.addEventListener('mousedown', onLayoutMenuOutside, true)
-  window.addEventListener('keydown', onLayoutMenuKeydown)
   window.addEventListener('pointerup', cleanupStrayDockDropOverlays, true)
   window.addEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
 })
@@ -1313,8 +1202,6 @@ onBeforeUnmount(() => {
   registerSidePanelSizeProvider(null)
   registerSidePanelDockApi(null)
   window.removeEventListener('keydown', onGlobalKeyDown)
-  window.removeEventListener('mousedown', onLayoutMenuOutside, true)
-  window.removeEventListener('keydown', onLayoutMenuKeydown)
   window.removeEventListener('pointerup', cleanupStrayDockDropOverlays, true)
   window.removeEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
   if (saveTimer) clearTimeout(saveTimer)
@@ -1358,98 +1245,75 @@ onBeforeUnmount(() => {
 .studio-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   flex-shrink: 0;
+}
+
+.toolbar-panel-toggles {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.panel-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.panel-toggle-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.panel-toggle-btn.is-active {
+  color: var(--text);
+  background: var(--accent-25);
+  border-color: var(--accent);
+}
+
+.panel-toggle-svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+.panel-toggle-label {
+  white-space: nowrap;
+  user-select: none;
 }
 
 .hint {
   color: var(--text-muted);
   font-size: 12px;
   margin-right: auto;
-}
-
-.layout-menu {
-  position: relative;
-  display: inline-flex;
-}
-
-.layout-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.layout-caret {
-  font-size: 10px;
-  opacity: 0.75;
-  line-height: 1;
-}
-
-.layout-menu-panel {
-  position: fixed;
-  z-index: 4200;
-  min-width: 200px;
-  max-width: min(280px, calc(100vw - 16px));
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.layout-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  margin: 0;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.layout-menu-item:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.layout-menu-item:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.layout-check {
-  flex: 0 0 14px;
-  width: 14px;
-  text-align: center;
-  color: var(--accent);
-  font-size: 12px;
-  line-height: 1;
-}
-
-.layout-item-label {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.layout-menu-sep {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--border);
 }
 
 .tasks-btn {
@@ -1484,6 +1348,12 @@ onBeforeUnmount(() => {
   display: flex;
   min-height: 0;
   min-width: 0;
+}
+
+.studio-left-tool-rail {
+  width: 44px;
+  flex: 0 0 44px;
+  height: 100%;
 }
 
 /*

@@ -10,6 +10,7 @@ import {
   type ImageLayerSplitLayer,
   type ImageLayerSplitRect,
   type ImageLayerSplitState,
+  type LocalOcrTextBox,
   type UiControlPartRole,
   type UiControlType,
   type UiEditableTextMeta
@@ -17,6 +18,23 @@ import {
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { layerSplitToPsdUint8Array } from './layerSplitPsd'
+
+async function runLocalOcrIfAvailable(dataUrl: string): Promise<LocalOcrTextBox[]> {
+  try {
+    const studio = (
+      globalThis as {
+        studio?: {
+          recognizeImageText?: (input: { dataUrl: string }) => Promise<LocalOcrTextBox[]>
+        }
+      }
+    ).studio
+    if (!studio?.recognizeImageText) return []
+    const boxes = await studio.recognizeImageText({ dataUrl })
+    return Array.isArray(boxes) ? boxes : []
+  } catch {
+    return []
+  }
+}
 
 function uint8ArrayToDataUrl(bytes: Uint8Array, mime: string): string {
   const chunkSize = 0x8000
@@ -35,6 +53,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   }
   return new Promise((resolve, reject) => {
     const img = new Image()
+    if (!url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith('file:')) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error('LAYER_SPLIT_SOURCE_LOAD_FAILED'))
     img.src = url
@@ -123,6 +144,8 @@ export async function decomposeImageUiLayers(input: {
     top: number
     width: number
     height: number
+    controlType?: UiControlType
+    ocrText?: string
   }>
 }): Promise<{
   width: number
@@ -157,6 +180,8 @@ export async function decomposeImageUiLayers(input: {
   srcCtx.drawImage(srcImg, 0, 0, width, height)
   const sourceRgba = srcCtx.getImageData(0, 0, width, height).data
 
+  const ocrPromise = runLocalOcrIfAvailable(srcCanvas.toDataURL('image/png'))
+
   let cleanBaseRgba: Uint8ClampedArray | undefined
   if (input.cleanBaseDataUrl?.trim()) {
     try {
@@ -174,13 +199,16 @@ export async function decomposeImageUiLayers(input: {
     }
   }
 
+  const ocrBoxes = await ocrPromise
+
   const decomposed = decomposeRgbaBufferToUiLayers({
     sourceRgba,
     width,
     height,
     cleanBaseRgba,
     maxLayers: input.maxLayers,
-    apiLayerHints: input.apiLayerHints
+    apiLayerHints: input.apiLayerHints,
+    ocrBoxes
   })
 
   const baseDataUrl = rgbaBufferToPngDataUrl(decomposed.baseRgba, width, height)
@@ -249,6 +277,13 @@ export async function decomposeSingleLayerUrlToControlParts(input: {
   ctx.drawImage(img, 0, 0, width, height)
   const rgba = ctx.getImageData(0, 0, width, height).data
 
+  const localOcrBoxes = await runLocalOcrIfAvailable(canvas.toDataURL('image/png'))
+  const shiftedOcrBoxes: LocalOcrTextBox[] = localOcrBoxes.map((b) => ({
+    ...b,
+    left: input.layer.left + b.left,
+    top: input.layer.top + b.top
+  }))
+
   const nineSliceBorders =
     input.layer.nineSliceBorders ?? computeNineSliceFromRgbaBuffer(rgba, width, height)
   const controlId = input.layer.uiControlId?.trim() || `ctrl:${input.layer.id}`
@@ -257,6 +292,9 @@ export async function decomposeSingleLayerUrlToControlParts(input: {
   const parts = decomposeControlIntoStandardParts({
     nameHint: controlName,
     descriptionHint: input.layer.description,
+    controlType: input.layer.uiControlType,
+    ocrText: input.layer.editableText?.text,
+    ocrBoxes: shiftedOcrBoxes,
     left: input.layer.left,
     top: input.layer.top,
     width,
@@ -338,6 +376,8 @@ export async function sliceUiLayerFromSourceCanvas(input: {
   srcCtx.drawImage(srcImg, 0, 0, width, height)
   const sourceRgba = srcCtx.getImageData(0, 0, width, height).data
 
+  const ocrPromise = runLocalOcrIfAvailable(srcCanvas.toDataURL('image/png'))
+
   let cleanBaseRgba: Uint8ClampedArray | undefined
   if (input.baseUrl?.trim() && input.baseUrl.trim() !== input.sourceUrl.trim()) {
     try {
@@ -355,13 +395,16 @@ export async function sliceUiLayerFromSourceCanvas(input: {
     }
   }
 
+  const ocrBoxes = await ocrPromise
+
   const { layer: sliced, subParts } = sliceUiLayerFromRgbaRect({
     sourceRgba,
     width,
     height,
     rect: input.rect,
     baseRgba: cleanBaseRgba,
-    zIndex: input.layerIndex
+    zIndex: input.layerIndex,
+    ocrBoxes
   })
 
   return {

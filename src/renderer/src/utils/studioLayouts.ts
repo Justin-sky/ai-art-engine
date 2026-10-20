@@ -1,6 +1,6 @@
 /** 工作室 dock 命名布局：本地存储 + 导入导出 */
 
-export const STUDIO_LAYOUTS_KEY = 'studio.dock.layouts.v1'
+export const STUDIO_LAYOUTS_KEY = 'studio.dock.layouts.v4'
 
 export const DEFAULT_LAYOUT_ID = 'default'
 export const LAYOUT_FILE_FORMAT = 'aiartengine-layout'

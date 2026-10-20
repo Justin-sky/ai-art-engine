@@ -30,6 +30,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   }
   return new Promise((resolve, reject) => {
     const img = new Image()
+    if (!url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith('file:')) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = () => reject(new Error('LAYER_SPLIT_SOURCE_LOAD_FAILED'))
     img.src = url
@@ -66,6 +69,19 @@ export function buildAgPsdLayerTextData(
       : et.align === 'right'
         ? Math.round(left + width)
         : left
+  const strokeStyle =
+    et.strokeColor && et.strokeColor.length === 3
+      ? {
+          strokeFlag: true,
+          fillFirst: true,
+          outlineWidth: Math.max(1, et.strokeWidth ?? 2),
+          strokeColor: {
+            r: et.strokeColor[0],
+            g: et.strokeColor[1],
+            b: et.strokeColor[2]
+          }
+        }
+      : {}
   return {
     text: et.text.trim(),
     transform: [1, 0, 0, 1, originX, baselineY],
@@ -75,7 +91,8 @@ export function buildAgPsdLayerTextData(
     style: {
       font: { name: et.fontName || 'MicrosoftYaHei-Bold' },
       fontSize,
-      fillColor: { r, g, b }
+      fillColor: { r, g, b },
+      ...strokeStyle
     },
     paragraphStyle: {
       justification: et.align === 'center' ? 'center' : et.align === 'right' ? 'right' : 'left'

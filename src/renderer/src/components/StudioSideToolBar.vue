@@ -26,7 +26,9 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { DockviewApi, IDockviewPanel } from 'dockview-vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
+  rebalanceHorizontalColumns,
   resolveSidePanelSizeOptions,
+  setChatPanelVisible,
   SIDE_PANEL_IDS,
   sidePanelCollapsed,
   toggleSidePanelCollapsed,
@@ -95,11 +97,6 @@ function syncChatState(api: DockviewApi): void {
   chatOpen.value = !!panel && panel.api.isVisible
 }
 
-/** dockview 面板级 API 无 setVisible，需作用于所在 group（与侧栏收起一致） */
-function setChatVisible(panel: IDockviewPanel, visible: boolean): void {
-  panel.api.group?.api.setVisible(visible)
-}
-
 function toggleChat(): void {
   const api = props.dockApi
   if (!api) return
@@ -116,12 +113,12 @@ function toggleChat(): void {
       initialWidth: CHAT_PANEL_WIDTH,
       minimumWidth: CHAT_PANEL_MIN_WIDTH
     })
+    rebalanceHorizontalColumns(api, { chat: CHAT_PANEL_WIDTH })
     syncChatState(api)
     return
   }
   const nextVisible = !panel.api.isVisible
-  setChatVisible(panel, nextVisible)
-  if (nextVisible) panel.api.setActive()
+  setChatPanelVisible(api, nextVisible, CHAT_PANEL_WIDTH)
   syncChatState(api)
 }
 
@@ -152,12 +149,12 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .studio-side-rail {
+  display: none;
   flex-shrink: 0;
   order: 1;
   width: 28px;
   height: 100%;
   box-sizing: border-box;
-  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 2px;

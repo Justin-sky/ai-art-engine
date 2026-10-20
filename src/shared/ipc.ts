@@ -240,6 +240,8 @@ export const IpcChannels = {
   YOLO_MODEL_DIR_CHOOSE: 'yolo:model-dir-choose',
   /** 立即把模型目录写入持久化设置（空字符串 = 恢复默认；随后 yolo:status 即按新目录扫描） */
   YOLO_MODEL_DIR_SET: 'yolo:model-dir-set',
+  /** 本地离线 OCR 识别（Windows.Media.Ocr / Vision）：输入 dataUrl，输出带精确像素坐标框的文字列表 */
+  VISION_OCR_RECOGNIZE: 'vision:ocr-recognize',
 
   // App version & updates
   APP_GET_VERSION: 'app:get-version',
@@ -2169,6 +2171,10 @@ export interface StudioApi {
   onYoloModelDownloadProgress: (
     callback: (payload: YoloModelDownloadProgress) => void
   ) => () => void
+  /** 本地离线 OCR 识别（Windows.Media.Ocr）：输入图片 dataUrl，返回识别出的真实文字与像素坐标框列表 */
+  recognizeImageText: (input: {
+    dataUrl: string
+  }) => Promise<import('./graph/uiControlSpec').LocalOcrTextBox[]>
 
   getAppVersion: () => Promise<string>
   checkForUpdates: () => Promise<import('./update').AppUpdateCheckResult>

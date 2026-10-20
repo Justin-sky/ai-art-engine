@@ -8,7 +8,9 @@ import { normalizeExpandResolution } from './imageExpand'
 import {
   decomposeControlIntoStandardParts,
   getUiControlSpec,
+  matchOcrBoxesToControlRect,
   recognizeUiControlType,
+  type LocalOcrTextBox,
   type UiControlPartRole,
   type UiControlType,
   type UiEditableTextMeta
@@ -1788,11 +1790,16 @@ function inpaintRectBilinearInPlace(
   const spanH = Math.max(1, y1 - y0 + 1)
 
   for (let py = y0; py <= y1; py++) {
-    const ty = (py - y0) / spanH
+    const ty = (py - y0 + 0.5) / spanH
+    const distY = Math.min(py - y0 + 1, y1 - py + 1)
+    const wy = 1 / Math.pow(distY, 1.35)
     const leftIdx = (py * width + leftSampleX) * 4
     const rightIdx = (py * width + rightSampleX) * 4
     for (let px = x0; px <= x1; px++) {
-      const tx = (px - x0) / spanW
+      const tx = (px - x0 + 0.5) / spanW
+      const distX = Math.min(px - x0 + 1, x1 - px + 1)
+      const wx = 1 / Math.pow(distX, 1.35)
+      const wSum = wx + wy
       const topIdx = (topSampleY * width + px) * 4
       const bottomIdx = (bottomSampleY * width + px) * 4
       const dstIdx = (py * width + px) * 4
@@ -1801,7 +1808,7 @@ function inpaintRectBilinearInPlace(
           sampleSourceRgba[leftIdx + c]! * (1 - tx) + sampleSourceRgba[rightIdx + c]! * tx
         const vert =
           sampleSourceRgba[topIdx + c]! * (1 - ty) + sampleSourceRgba[bottomIdx + c]! * ty
-        targetRgba[dstIdx + c] = Math.round((horiz + vert) * 0.5)
+        targetRgba[dstIdx + c] = Math.round((horiz * wx + vert * wy) / wSum)
       }
       targetRgba[dstIdx + 3] = 255
     }
@@ -1884,11 +1891,11 @@ function computePatchAlignedDiff(
 }
 
 /**
- * 全包围盒圆角/异形轮廓软抠图 + 外部泛洪（Exterior Flood-Fill）+ 边缘去溢色（Color Decontamination）：
- * - 从控件矩形框四条外边界向内对背景近似像素执行 8-连通泛洪（Exterior Flood-Fill）：
+ * 全包围盒圆角/异形轮廓软抠图 + 外部泛洪（Exterior Flood-Fill）+ 双通道边缘去溢色（2-Pass Color Decontamination）：
+ * - 从控件矩形框四条外边界向内对背景近似像素执行 8-连通泛洪（Exterior Flood-Fill，同时融合四角背景采样色）：
  *   凡是与外框连通的背景区（如圆角按钮的四个外三角、圆形徽章外围、异形标签凹角）均被精确识别为外部背景并透明化；
- * - 控件闭合轮廓内部的文字、高光、纹章即使局部颜色接近底色，因不与外框背景连通而受到 100% 不透明度保护（绝不抠穿孔洞）；
- * - 在轮廓交界带（Contour Transition Band）执行色彩反混合（Color Unmixing），彻底消除黑边/白边与锯齿。
+ * - 控件闭合轮廓内部的文字、高光、纹章即使局部颜色接近底色，因不与外框背景连通而受到 100% 不透明度保护（拓扑孔洞闭合，绝不抠穿孔洞）；
+ * - 在轮廓交界带（Contour Transition Band）执行色彩反混合（Color Unmixing）+ 实心内邻域色彩净化（Interior Neighbor Color Clamping），彻底消除半透明金光/暗影边缘的黑边与脏边。
  */
 function extractWidgetRgbaWithContourMatting(input: {
   src: Uint8ClampedArray
@@ -1908,6 +1915,30 @@ function extractWidgetRgbaWithContourMatting(input: {
   const refBgR = new Uint8Array(total)
   const refBgG = new Uint8Array(total)
   const refBgB = new Uint8Array(total)
+
+  // 采样矩形框四个外角的源图像素均值，作为圆角外侧背景参考色补充
+  const cornerCoords: Array<[number, number]> = [
+    [0, 0],
+    [lw - 1, 0],
+    [0, lh - 1],
+    [lw - 1, lh - 1]
+  ]
+  let cornerR = 0
+  let cornerG = 0
+  let cornerB = 0
+  let cornerN = 0
+  for (const [cx, cy] of cornerCoords) {
+    const px = Math.min(canvasWidth - 1, Math.max(0, rect.left + cx))
+    const py = Math.min(canvasHeight - 1, Math.max(0, rect.top + cy))
+    const cIdx = (py * canvasWidth + px) * 4
+    cornerR += src[cIdx]!
+    cornerG += src[cIdx + 1]!
+    cornerB += src[cIdx + 2]!
+    cornerN++
+  }
+  cornerR = cornerN > 0 ? cornerR / cornerN : 0
+  cornerG = cornerN > 0 ? cornerG / cornerN : 0
+  cornerB = cornerN > 0 ? cornerB / cornerN : 0
 
   for (let ly = 0; ly < lh; ly++) {
     const py = rect.top + ly
@@ -1939,10 +1970,26 @@ function extractWidgetRgbaWithContourMatting(input: {
   let qTail = 0
   const floodThreshold = 24
 
+  const isBgLikeAt = (lx: number, ly: number, idx: number): boolean => {
+    if (maxDiffMap[idx]! <= floodThreshold) return true
+    // 若位于四角 18% 圆角三角区内且与四角均值接近，也视为外围圆角背景
+    const isCornerZone = (lx < lw * 0.18 || lx >= lw * 0.82) && (ly < lh * 0.18 || ly >= lh * 0.82)
+    if (!isCornerZone) return false
+    const px = Math.min(canvasWidth - 1, Math.max(0, rect.left + lx))
+    const py = Math.min(canvasHeight - 1, Math.max(0, rect.top + ly))
+    const sIdx = (py * canvasWidth + px) * 4
+    const cDiff = Math.max(
+      Math.abs(src[sIdx]! - cornerR),
+      Math.abs(src[sIdx + 1]! - cornerG),
+      Math.abs(src[sIdx + 2]! - cornerB)
+    )
+    return cDiff <= 18
+  }
+
   const trySeed = (lx: number, ly: number): void => {
     const idx = ly * lw + lx
     if (exteriorBg[idx]) return
-    if (maxDiffMap[idx]! <= floodThreshold) {
+    if (isBgLikeAt(lx, ly, idx)) {
       exteriorBg[idx] = 1
       floodQueue[qTail++] = idx
     }
@@ -1969,7 +2016,7 @@ function extractWidgetRgbaWithContourMatting(input: {
         const nx = cx + dx
         if (nx < 0 || nx >= lw) continue
         const nIdx = ny * lw + nx
-        if (!exteriorBg[nIdx] && maxDiffMap[nIdx]! <= floodThreshold) {
+        if (!exteriorBg[nIdx] && isBgLikeAt(nx, ny, nIdx)) {
           exteriorBg[nIdx] = 1
           floodQueue[qTail++] = nIdx
         }
@@ -2012,7 +2059,36 @@ function extractWidgetRgbaWithContourMatting(input: {
     }
   }
 
-  // 逐像素合成透明图层（外部圆角背景透明 + 轮廓带 Color-Unmixing 去溢色 + 闭合内部 100% 保护）
+  // 统计控件实心高对比区域的代表性前景色 F_dom 與边框峰值对比度（用于闭合式颜色线投影 Alpha 解耦与毛玻璃面板识别）
+  const totalLocal = lw * lh
+  let domR = 0
+  let domG = 0
+  let domB = 0
+  let domCount = 0
+  let peakDiff = 0
+  for (let i = 0; i < totalLocal; i++) {
+    const d = maxDiffMap[i]!
+    if (d > peakDiff) peakDiff = d
+    if (!exteriorBg[i] && d >= 36) {
+      const ly = Math.floor(i / lw)
+      const lx = i - ly * lw
+      const py = rect.top + ly
+      const px = rect.left + lx
+      if (py >= 0 && py < canvasHeight && px >= 0 && px < canvasWidth) {
+        const sIdx = (py * canvasWidth + px) * 4
+        domR += src[sIdx]!
+        domG += src[sIdx + 1]!
+        domB += src[sIdx + 2]!
+        domCount++
+      }
+    }
+  }
+  const fDomR = domCount > 0 ? domR / domCount : 220
+  const fDomG = domCount > 0 ? domG / domCount : 185
+  const fDomB = domCount > 0 ? domB / domCount : 110
+  const isLargeGlassCandidate = totalLocal >= 1600 && peakDiff >= 72
+
+  // Pass 1：Trimap 三区合成（外部背景区 + 粒子外发光/抗锯齿色彩线投影反混合带 + 内部实心/毛玻璃区）
   for (let ly = 0; ly < lh; ly++) {
     const py = rect.top + ly
     if (py < 0 || py >= canvasHeight) continue
@@ -2040,17 +2116,54 @@ function extractWidgetRgbaWithContourMatting(input: {
       }
 
       if (!contourBand[localIdx]) {
-        // 控件闭合轮廓内部：100% 保留原始像素与锐度，防止内部文字或图标被误伤
-        layerRgba[dstIdx] = sr
-        layerRgba[dstIdx + 1] = sg
-        layerRgba[dstIdx + 2] = sb
-        layerRgba[dstIdx + 3] = sa
+        // 检测是否为大面积半透明磨砂毛玻璃内芯（外框高对比度 >= 72，而内芯透出底层背景 14 <= maxDiff <= 48）
+        if (isLargeGlassCandidate && maxDiff >= 14 && maxDiff <= 48) {
+          const glassAlphaNorm = Math.min(0.88, Math.max(0.42, maxDiff / 56))
+          const glassAlpha = Math.round(glassAlphaNorm * sa)
+          layerRgba[dstIdx] = Math.min(
+            255,
+            Math.max(0, Math.round((sr - (1 - glassAlphaNorm) * br) / glassAlphaNorm))
+          )
+          layerRgba[dstIdx + 1] = Math.min(
+            255,
+            Math.max(0, Math.round((sg - (1 - glassAlphaNorm) * bg) / glassAlphaNorm))
+          )
+          layerRgba[dstIdx + 2] = Math.min(
+            255,
+            Math.max(0, Math.round((sb - (1 - glassAlphaNorm) * bb) / glassAlphaNorm))
+          )
+          layerRgba[dstIdx + 3] = glassAlpha
+        } else {
+          // 控件闭合轮廓内部：100% 保留原始像素与锐度，防止内部文字或同色区域穿孔
+          layerRgba[dstIdx] = sr
+          layerRgba[dstIdx + 1] = sg
+          layerRgba[dstIdx + 2] = sb
+          layerRgba[dstIdx + 3] = sa
+        }
       } else {
-        // 轮廓过渡带：色彩反混合软抠图（Color Unmixing）+ 前景色去污（Decontamination）
-        const rawAlpha = Math.min(1, Math.max(0, (maxDiff - 8) / 28))
+        // 轮廓过渡带与外发光光晕区：融合「闭合式颜色线向量投影 (Color-Line Projection)」与「滤色加法光晕解耦 (Additive Screen Glow Unmixing)」
+        const vR = fDomR - br
+        const vG = fDomG - bg
+        const vB = fDomB - bb
+        const vNormSq = vR * vR + vG * vG + vB * vB + 64
+        const projAlpha = Math.max(
+          0,
+          Math.min(1, ((sr - br) * vR + (sg - bg) * vG + (sb - bb) * vB) / vNormSq)
+        )
+
+        // 若像素比背景更亮，计算 Additive Screen 光晕分量（保留金色/灵气粒子半透明外发光）
+        const screenA = Math.max(
+          0,
+          (sr - br) / Math.max(32, 255 - br),
+          (sg - bg) / Math.max(32, 255 - bg),
+          (sb - bb) / Math.max(32, 255 - bb)
+        )
+
+        const diffAlpha = (maxDiff - 8) / 28
+        const rawAlpha = Math.min(1, Math.max(0, diffAlpha, projAlpha * 0.85, screenA * 0.9))
         const alpha = Math.round(rawAlpha * sa)
         if (alpha <= 3) continue
-        const aNorm = Math.max(0.12, alpha / 255)
+        const aNorm = Math.max(0.16, alpha / 255)
         const unmixR = Math.min(255, Math.max(0, Math.round((sr - (1 - aNorm) * br) / aNorm)))
         const unmixG = Math.min(255, Math.max(0, Math.round((sg - (1 - aNorm) * bg) / aNorm)))
         const unmixB = Math.min(255, Math.max(0, Math.round((sb - (1 - aNorm) * bb) / aNorm)))
@@ -2058,6 +2171,86 @@ function extractWidgetRgbaWithContourMatting(input: {
         layerRgba[dstIdx + 1] = unmixG
         layerRgba[dstIdx + 2] = unmixB
         layerRgba[dstIdx + 3] = alpha
+      }
+    }
+  }
+
+  // Pass 2：3×3 保边导向 Alpha 滤波（Edge-Preserving Guided Alpha Filter）与实心内圈前景色去污（Edge Halo Decontamination）
+  const rawAlphaCopy = new Uint8Array(totalLocal)
+  for (let i = 0; i < totalLocal; i++) {
+    rawAlphaCopy[i] = layerRgba[i * 4 + 3]!
+  }
+
+  for (let ly = 0; ly < lh; ly++) {
+    const py = rect.top + ly
+    if (py < 0 || py >= canvasHeight) continue
+    for (let lx = 0; lx < lw; lx++) {
+      const px = rect.left + lx
+      if (px < 0 || px >= canvasWidth) continue
+      const localIdx = ly * lw + lx
+      if (!contourBand[localIdx]) continue
+      const dstIdx = localIdx * 4
+      const centerAlpha = rawAlphaCopy[localIdx]!
+      if (centerAlpha === 0 || centerAlpha >= 242) continue
+
+      const cSrcIdx = (py * canvasWidth + px) * 4
+      const cr = src[cSrcIdx]!
+      const cg = src[cSrcIdx + 1]!
+      const cb = src[cSrcIdx + 2]!
+
+      let guidedAlphaSum = 0
+      let guidedWeightSum = 0
+      let solidR = 0
+      let solidG = 0
+      let solidB = 0
+      let solidCount = 0
+
+      for (let dy = -2; dy <= 2; dy++) {
+        const ny = ly + dy
+        if (ny < 0 || ny >= lh) continue
+        const npy = rect.top + ny
+        if (npy < 0 || npy >= canvasHeight) continue
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = lx + dx
+          if (nx < 0 || nx >= lw) continue
+          const npx = rect.left + nx
+          if (npx < 0 || npx >= canvasWidth) continue
+          const nLocal = ny * lw + nx
+
+          if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
+            const nSrcIdx = (npy * canvasWidth + npx) * 4
+            const photoDist =
+              Math.abs(cr - src[nSrcIdx]!) +
+              Math.abs(cg - src[nSrcIdx + 1]!) +
+              Math.abs(cb - src[nSrcIdx + 2]!)
+            const w = (dx === 0 && dy === 0 ? 2.5 : 1.0) / (1 + photoDist * 0.06)
+            guidedAlphaSum += rawAlphaCopy[nLocal]! * w
+            guidedWeightSum += w
+          }
+
+          if (!contourBand[nLocal] && rawAlphaCopy[nLocal]! >= 240) {
+            solidR += layerRgba[nLocal * 4]!
+            solidG += layerRgba[nLocal * 4 + 1]!
+            solidB += layerRgba[nLocal * 4 + 2]!
+            solidCount++
+          }
+        }
+      }
+
+      const refinedAlpha =
+        guidedWeightSum > 0
+          ? Math.min(255, Math.max(0, Math.round(guidedAlphaSum / guidedWeightSum)))
+          : centerAlpha
+      layerRgba[dstIdx + 3] = refinedAlpha
+
+      if (solidCount > 0 && refinedAlpha > 0) {
+        const meanR = solidR / solidCount
+        const meanG = solidG / solidCount
+        const meanB = solidB / solidCount
+        const blend = (1 - refinedAlpha / 255) * 0.48
+        layerRgba[dstIdx] = Math.round(layerRgba[dstIdx]! * (1 - blend) + meanR * blend)
+        layerRgba[dstIdx + 1] = Math.round(layerRgba[dstIdx + 1]! * (1 - blend) + meanG * blend)
+        layerRgba[dstIdx + 2] = Math.round(layerRgba[dstIdx + 2]! * (1 - blend) + meanB * blend)
       }
     }
   }
@@ -2215,6 +2408,8 @@ export function sliceUiLayerFromRgbaRect(input: {
   name?: string
   zIndex?: number
   locale?: string
+  ocrText?: string
+  ocrBoxes?: ReadonlyArray<LocalOcrTextBox>
 }): {
   layer: ExtractedUiLayerBuffer
   subParts: ExtractedUiLayerBuffer[]
@@ -2254,6 +2449,8 @@ export function sliceUiLayerFromRgbaRect(input: {
   const zIndex = input.zIndex ?? 1
   const meta = inferExtractedUiWidgetName(clampedRect, width, height, zIndex, input.locale)
   const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, rw, rh)
+  const matchedOcr =
+    input.ocrText?.trim() || matchOcrBoxesToControlRect(input.ocrBoxes, clampedRect)
   const controlName = input.name?.trim() || meta.name
   const controlId = input.layerId?.trim() || `manual-slice:${zIndex}`
   const uiControlType = recognizeUiControlType({
@@ -2270,6 +2467,8 @@ export function sliceUiLayerFromRgbaRect(input: {
   const decomposedParts = decomposeControlIntoStandardParts({
     nameHint: controlName,
     descriptionHint: meta.description,
+    ocrText: matchedOcr,
+    ocrBoxes: input.ocrBoxes,
     left,
     top,
     width: rw,
@@ -2322,12 +2521,182 @@ export function sliceUiLayerFromRgbaRect(input: {
 }
 
 /**
+ * 校准外部 AI 生成底图的全局曝光与白平衡微漂移：
+ * 采样画布外圈与低差异背景像素，计算通道中位偏移并纠偏，防止全局色偏产生伪显著度噪点。
+ */
+function calibrateExternalCleanBaseInPlace(
+  src: Uint8ClampedArray,
+  baseRgba: Uint8ClampedArray,
+  width: number,
+  height: number
+): void {
+  let drSum = 0
+  let dgSum = 0
+  let dbSum = 0
+  let count = 0
+  const stepX = Math.max(1, Math.floor(width / 48))
+  const stepY = Math.max(1, Math.floor(height / 48))
+  const borderBandX = Math.max(1, Math.floor(width * 0.08))
+  const borderBandY = Math.max(1, Math.floor(height * 0.08))
+
+  for (let y = 0; y < height; y += stepY) {
+    for (let x = 0; x < width; x += stepX) {
+      const isBorder =
+        x < borderBandX || x >= width - borderBandX || y < borderBandY || y >= height - borderBandY
+      if (!isBorder) continue
+      const idx = (y * width + x) * 4
+      if (src[idx + 3]! < 128) continue
+      const dr = baseRgba[idx]! - src[idx]!
+      const dg = baseRgba[idx + 1]! - src[idx + 1]!
+      const db = baseRgba[idx + 2]! - src[idx + 2]!
+      // 仅统计属于背景微漂移的样本（排除刚好压在画布边缘的高对比前景控件）
+      if (Math.abs(dr) <= 36 && Math.abs(dg) <= 36 && Math.abs(db) <= 36) {
+        drSum += dr
+        dgSum += dg
+        dbSum += db
+        count++
+      }
+    }
+  }
+
+  if (count < 4) return
+  const shiftR = drSum / count
+  const shiftG = dgSum / count
+  const shiftB = dbSum / count
+  if (Math.abs(shiftR) < 1.2 && Math.abs(shiftG) < 1.2 && Math.abs(shiftB) < 1.2) return
+
+  const total = width * height * 4
+  for (let i = 0; i < total; i += 4) {
+    baseRgba[i] = Math.max(0, Math.min(255, Math.round(baseRgba[i]! - shiftR)))
+    baseRgba[i + 1] = Math.max(0, Math.min(255, Math.round(baseRgba[i + 1]! - shiftG)))
+    baseRgba[i + 2] = Math.max(0, Math.min(255, Math.round(baseRgba[i + 2]! - shiftB)))
+  }
+}
+
+/**
+ * ROI 掩码引导底板融合（ROI Mask-Guided Clean Base Compositing）：
+ * - 在检出的 UI 控件框（`rects`）之外 100% 保留原图 `src` 像素，彻底根除 AI 生图模型在背景区域的纹理幻觉与模糊；
+ * - 在 `rects` 内部对 AI 擦除底板执行局部外环色彩对齐，并在控件外围 `featherPx` 带宽内执行余弦平滑羽化过渡。
+ */
+function compositeRoiMaskedCleanBaseInPlace(
+  src: Uint8ClampedArray,
+  baseRgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  rects: ReadonlyArray<ImageLayerSplitRect>
+): void {
+  if (!rects.length) return
+  const calibratedBase = new Uint8ClampedArray(baseRgba)
+
+  // 对每个控件框内部做局部外环色差对齐，消除局部重绘色温偏差
+  for (const rect of rects) {
+    const x0 = Math.max(0, rect.left)
+    const y0 = Math.max(0, rect.top)
+    const x1 = Math.min(width - 1, rect.left + rect.width - 1)
+    const y1 = Math.min(height - 1, rect.top + rect.height - 1)
+    const ringX0 = Math.max(0, x0 - 2)
+    const ringY0 = Math.max(0, y0 - 2)
+    const ringX1 = Math.min(width - 1, x1 + 2)
+    const ringY1 = Math.min(height - 1, y1 + 2)
+
+    let drSum = 0
+    let dgSum = 0
+    let dbSum = 0
+    let ringCount = 0
+
+    for (let y = ringY0; y <= ringY1; y++) {
+      for (let x = ringX0; x <= ringX1; x++) {
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue
+        const idx = (y * width + x) * 4
+        const dr = src[idx]! - baseRgba[idx]!
+        const dg = src[idx + 1]! - baseRgba[idx + 1]!
+        const db = src[idx + 2]! - baseRgba[idx + 2]!
+        if (Math.abs(dr) <= 48 && Math.abs(dg) <= 48 && Math.abs(db) <= 48) {
+          drSum += dr
+          dgSum += dg
+          dbSum += db
+          ringCount++
+        }
+      }
+    }
+
+    if (ringCount >= 4) {
+      const addR = drSum / ringCount
+      const addG = dgSum / ringCount
+      const addB = dbSum / ringCount
+      if (Math.abs(addR) >= 1 || Math.abs(addG) >= 1 || Math.abs(addB) >= 1) {
+        for (let y = ringY0; y <= ringY1; y++) {
+          for (let x = ringX0; x <= ringX1; x++) {
+            const idx = (y * width + x) * 4
+            calibratedBase[idx] = Math.max(0, Math.min(255, Math.round(baseRgba[idx]! + addR)))
+            calibratedBase[idx + 1] = Math.max(
+              0,
+              Math.min(255, Math.round(baseRgba[idx + 1]! + addG))
+            )
+            calibratedBase[idx + 2] = Math.max(
+              0,
+              Math.min(255, Math.round(baseRgba[idx + 2]! + addB))
+            )
+          }
+        }
+      }
+    }
+  }
+
+  const featherPx = Math.max(2, Math.min(6, Math.round(Math.min(width, height) * 0.015)))
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let minDist = featherPx + 1
+      for (let rIdx = 0; rIdx < rects.length; rIdx++) {
+        const r = rects[rIdx]!
+        const rx0 = r.left
+        const ry0 = r.top
+        const rx1 = r.left + r.width - 1
+        const ry1 = r.top + r.height - 1
+        const dx = x < rx0 ? rx0 - x : x > rx1 ? x - rx1 : 0
+        const dy = y < ry0 ? ry0 - y : y > ry1 ? y - ry1 : 0
+        if (dx === 0 && dy === 0) {
+          minDist = 0
+          break
+        }
+        if (dx <= featherPx && dy <= featherPx) {
+          const dist = Math.hypot(dx, dy)
+          if (dist < minDist) minDist = dist
+        }
+      }
+
+      const idx = (y * width + x) * 4
+      if (minDist <= 0) {
+        baseRgba[idx] = calibratedBase[idx]!
+        baseRgba[idx + 1] = calibratedBase[idx + 1]!
+        baseRgba[idx + 2] = calibratedBase[idx + 2]!
+        baseRgba[idx + 3] = calibratedBase[idx + 3]!
+      } else if (minDist >= featherPx) {
+        // 控件 ROI + 羽化带之外：100% 锁定原图像素，零 AI 幻觉
+        baseRgba[idx] = src[idx]!
+        baseRgba[idx + 1] = src[idx + 1]!
+        baseRgba[idx + 2] = src[idx + 2]!
+        baseRgba[idx + 3] = src[idx + 3]!
+      } else {
+        const w = 0.5 * (1 + Math.cos((Math.PI * minDist) / featherPx))
+        const invW = 1 - w
+        baseRgba[idx] = Math.round(calibratedBase[idx]! * w + src[idx]! * invW)
+        baseRgba[idx + 1] = Math.round(calibratedBase[idx + 1]! * w + src[idx + 1]! * invW)
+        baseRgba[idx + 2] = Math.round(calibratedBase[idx + 2]! * w + src[idx + 2]! * invW)
+        baseRgba[idx + 3] = Math.round(calibratedBase[idx + 3]! * w + src[idx + 3]! * invW)
+      }
+    }
+  }
+}
+
+/**
  * 商用级像素游戏 UI 图层分解引擎（兼容任意生图模型差分重绘底板与零 API 本地智能拆层）：
- * 1. 若提供 `cleanBaseRgba`（由任意图片模型擦除前景控件后生成），采用 `3×3` 邻域对齐最小色差（Patch-Aligned Diff）抵消重绘微漂移；
- * 2. 若未提供 `cleanBaseRgba`（本地零 API 拆层），自动建模多尺度背景底色定位独立 UI 控件岛；
+ * 1. 若提供 `cleanBaseRgba`（由任意图片模型擦除前景控件后生成），先校准全局曝光色偏，再采用 `3×3` 邻域对齐最小色差（Patch-Aligned Diff）抵消重绘微漂移，并通过 ROI 掩码余弦羽化在控件外 100% 锁定原图背景（零背景幻觉）；
+ * 2. 若未提供 `cleanBaseRgba`（本地零 API 拆层），自动建模多尺度背景底色定位独立 UI 控件岛，并使用 2D 四向逆距离调和修复底板；
  * 3. 支持「父容器 + 内部子控件」双层剥离（Hierarchical Parent-Child Peeling）：大弹窗/主面板内部的按钮与槽位自动剥离为上层独立图层，并在父面板底框上自动修补擦除子控件；
- * 4. 对每个前景控件执行全包围盒外部背景泛洪（Exterior Flood-Fill）+ 轮廓色彩反混合软抠图（Color Unmixing），使圆角按钮、圆形徽章四角 100% 纯净透明，内部文字不穿孔；
- * 5. 先识别标准 UI 控件类型（HTML5 / Unity UI Toolkit：Button、Slider、ProgressBar、ListView、TabBar、HUD、Panel），再将每个控件自动拆解为结构化子部件图层（如按钮文字、按钮图标、常态九宫格底板、悬停态、按下态）。
+ * 4. 对每个前景控件执行四角背景采样外部泛洪（Exterior Flood-Fill）+ 轮廓色彩反混合软抠图（Color Unmixing）+ 二次实心内缩去黑边/去白边（Edge Decontamination），使圆角按钮、发光徽章四角 100% 纯净透明，内部文字不穿孔；
+ * 5. 先识别标准 UI 控件类型（支持多模态 VLM 16 类控件检测与真实 OCR 文本识别），再将每个控件自动拆解为结构化子部件图层（如按钮文字、按钮图标、常态九宫格底板、悬停态、按下态）。
  */
 export function decomposeRgbaBufferToUiLayers(input: {
   width: number
@@ -2339,7 +2708,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
   locale?: string
   /** 是否将每个识别出的 UI 控件拆解为标准子部件图层（默认 true） */
   decomposeControlParts?: boolean
-  /** 可选：来自 AI 图层分解 API 的候选控件边界框与语义名称提示（用于辅助识别控件与拆解子结构） */
+  /** 可选：来自 AI 图层分解 API 或 VLM 多模态检测的候选控件边界框、控件类型与真实 OCR 文本提示 */
   apiLayerHints?: Array<{
     name?: string
     description?: string
@@ -2347,7 +2716,11 @@ export function decomposeRgbaBufferToUiLayers(input: {
     top: number
     width: number
     height: number
+    controlType?: UiControlType
+    ocrText?: string
   }>
+  /** 可选：本地离线 OCR 引擎（Windows.Media.Ocr / Vision）识别出的全画布真实文本框列表 */
+  ocrBoxes?: ReadonlyArray<LocalOcrTextBox>
 }): DecomposedRgbaUiLayersResult {
   const width = Math.max(1, Math.round(input.width))
   const height = Math.max(1, Math.round(input.height))
@@ -2360,6 +2733,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
   const baseRgba = new Uint8ClampedArray(totalPixels * 4)
   if (hasExternalBase && input.cleanBaseRgba) {
     baseRgba.set(input.cleanBaseRgba.subarray(0, totalPixels * 4))
+    calibrateExternalCleanBaseInPlace(src, baseRgba, width, height)
   } else {
     baseRgba.set(src)
   }
@@ -2404,11 +2778,79 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  // 计算每个网格单元的前景显著度与参考背景色
+  // 计算每个网格单元在源图自身的本征前景显著度（srcSalience）与参考背景色，用于抑制 AI 底图在平滑背景区产生的幻觉伪影
   const bgR = new Float32Array(gw * gh)
   const bgG = new Float32Array(gw * gh)
   const bgB = new Float32Array(gw * gh)
+  const srcSalience = new Float32Array(gw * gh)
   const salience = new Float32Array(gw * gh)
+
+  let borderR = 0
+  let borderG = 0
+  let borderB = 0
+  let borderCount = 0
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      if (gx === 0 || gy === 0 || gx === gw - 1 || gy === gh - 1) {
+        const gIdx = gy * gw + gx
+        borderR += gridR[gIdx]!
+        borderG += gridG[gIdx]!
+        borderB += gridB[gIdx]!
+        borderCount++
+      }
+    }
+  }
+  const globalBgR = borderCount > 0 ? borderR / borderCount : 32
+  const globalBgG = borderCount > 0 ? borderG / borderCount : 32
+  const globalBgB = borderCount > 0 ? borderB / borderCount : 40
+
+  const radius = Math.max(2, Math.round(Math.min(gw, gh) * 0.14))
+  for (let gy = 0; gy < gh; gy++) {
+    for (let gx = 0; gx < gw; gx++) {
+      const gIdx = gy * gw + gx
+      let ringR = 0
+      let ringG = 0
+      let ringB = 0
+      let ringN = 0
+      const sampleOffsets = [
+        [-radius, 0],
+        [radius, 0],
+        [0, -radius],
+        [0, radius],
+        [-radius, -radius],
+        [radius, -radius],
+        [-radius, radius],
+        [radius, radius]
+      ] as const
+      for (const [ox, oy] of sampleOffsets) {
+        const sx = Math.min(gw - 1, Math.max(0, gx + ox))
+        const sy = Math.min(gh - 1, Math.max(0, gy + oy))
+        const sIdx = sy * gw + sx
+        ringR += gridR[sIdx]!
+        ringG += gridG[sIdx]!
+        ringB += gridB[sIdx]!
+        ringN++
+      }
+      const estR = ringN > 0 ? (ringR / ringN) * 0.55 + globalBgR * 0.45 : globalBgR
+      const estG = ringN > 0 ? (ringG / ringN) * 0.55 + globalBgG * 0.45 : globalBgG
+      const estB = ringN > 0 ? (ringB / ringN) * 0.55 + globalBgB * 0.45 : globalBgB
+      bgR[gIdx] = estR
+      bgG[gIdx] = estG
+      bgB[gIdx] = estB
+
+      const dr = Math.abs(gridR[gIdx]! - globalBgR)
+      const dg = Math.abs(gridG[gIdx]! - globalBgG)
+      const db = Math.abs(gridB[gIdx]! - globalBgB)
+      const dGlobal = Math.max(dr, dg, db) + 0.3 * (dr + dg + db)
+
+      const ldr = Math.abs(gridR[gIdx]! - estR)
+      const ldg = Math.abs(gridG[gIdx]! - estG)
+      const ldb = Math.abs(gridB[gIdx]! - estB)
+      const dLocal = Math.max(ldr, ldg, ldb) + 0.3 * (ldr + ldg + ldb)
+
+      srcSalience[gIdx] = Math.max(dGlobal * 0.85, dLocal)
+    }
+  }
 
   if (hasExternalBase) {
     for (let gy = 0; gy < gh; gy++) {
@@ -2437,81 +2879,26 @@ export function decomposeRgbaBufferToUiLayers(input: {
         bgR[gIdx] = rSum * inv
         bgG[gIdx] = gSum * inv
         bgB[gIdx] = bSum * inv
-        salience[gIdx] = maxDiff
+        // 若源图在该网格本身是平坦背景（srcSalience < 16），则 baseRgba 的剧烈差异属于 AI 重绘幻觉，直接门控抑制
+        const intrinsic = srcSalience[gIdx]!
+        salience[gIdx] = intrinsic < 16 ? Math.min(maxDiff, intrinsic * 1.2) : maxDiff
       }
     }
   } else {
-    // 零 API 本地模式：用外圈边框采样 + 粗网格平滑估计底层背景场
-    let borderR = 0
-    let borderG = 0
-    let borderB = 0
-    let borderCount = 0
-    for (let gy = 0; gy < gh; gy++) {
-      for (let gx = 0; gx < gw; gx++) {
-        if (gx === 0 || gy === 0 || gx === gw - 1 || gy === gh - 1) {
-          const gIdx = gy * gw + gx
-          borderR += gridR[gIdx]!
-          borderG += gridG[gIdx]!
-          borderB += gridB[gIdx]!
-          borderCount++
-        }
-      }
-    }
-    const globalBgR = borderCount > 0 ? borderR / borderCount : 32
-    const globalBgG = borderCount > 0 ? borderG / borderCount : 32
-    const globalBgB = borderCount > 0 ? borderB / borderCount : 40
+    salience.set(srcSalience)
+  }
 
-    const radius = Math.max(2, Math.round(Math.min(gw, gh) * 0.14))
-    for (let gy = 0; gy < gh; gy++) {
-      for (let gx = 0; gx < gw; gx++) {
-        const gIdx = gy * gw + gx
-        let ringR = 0
-        let ringG = 0
-        let ringB = 0
-        let ringN = 0
-        const sampleOffsets = [
-          [-radius, 0],
-          [radius, 0],
-          [0, -radius],
-          [0, radius],
-          [-radius, -radius],
-          [radius, -radius],
-          [-radius, radius],
-          [radius, radius]
-        ] as const
-        for (const [ox, oy] of sampleOffsets) {
-          const sx = Math.min(gw - 1, Math.max(0, gx + ox))
-          const sy = Math.min(gh - 1, Math.max(0, gy + oy))
-          const sIdx = sy * gw + sx
-          ringR += gridR[sIdx]!
-          ringG += gridG[sIdx]!
-          ringB += gridB[sIdx]!
-          ringN++
-        }
-        const estR = ringN > 0 ? (ringR / ringN) * 0.55 + globalBgR * 0.45 : globalBgR
-        const estG = ringN > 0 ? (ringG / ringN) * 0.55 + globalBgG * 0.45 : globalBgG
-        const estB = ringN > 0 ? (ringB / ringN) * 0.55 + globalBgB * 0.45 : globalBgB
-        bgR[gIdx] = estR
-        bgG[gIdx] = estG
-        bgB[gIdx] = estB
-
-        const dr = Math.abs(gridR[gIdx]! - globalBgR)
-        const dg = Math.abs(gridG[gIdx]! - globalBgG)
-        const db = Math.abs(gridB[gIdx]! - globalBgB)
-        const dGlobal = Math.max(dr, dg, db) + 0.3 * (dr + dg + db)
-
-        const ldr = Math.abs(gridR[gIdx]! - estR)
-        const ldg = Math.abs(gridG[gIdx]! - estG)
-        const ldb = Math.abs(gridB[gIdx]! - estB)
-        const dLocal = Math.max(ldr, ldg, ldb) + 0.3 * (ldr + ldg + ldb)
-
-        salience[gIdx] = Math.max(dGlobal * 0.85, dLocal)
-      }
+  // 自适应显著度阈值（若 AI 重绘底图在背景区域存在高频微噪点，动态抬升底噪门限防止碎块误检）
+  let threshold = hasExternalBase ? 26 : 32
+  if (hasExternalBase && gw * gh >= 16) {
+    const sortedSalience = Array.from(salience).sort((a, b) => a - b)
+    const p25 = sortedSalience[Math.floor(sortedSalience.length * 0.25)] ?? 0
+    if (p25 > 6) {
+      threshold = Math.max(26, Math.min(58, Math.round(22 + p25 * 1.15)))
     }
   }
 
   // 二值化前景掩码 + 1 轮膨胀闭运算使按钮内文字与边框连成整体
-  const threshold = hasExternalBase ? 26 : 32
   const rawMask = new Uint8Array(gw * gh)
   for (let i = 0; i < gw * gh; i++) {
     if (gridA[i]! > 16 && salience[i]! >= threshold) {
@@ -2654,13 +3041,116 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
+  // 投影谷底分水岭解粘连（Watershed Projection Valley De-Clumping）：
+  // 若多个紧邻的同级按钮/道具格因 1 格形态学膨胀被粘连为同一个大框，且外周并非连续闭合面板边框，则沿 rawMask 全贯通零值谷底切回独立控件实例
+  const declumpedBoxes: GridBox[] = []
+  for (const box of mergedBoxes) {
+    const bw = box.gx1 - box.gx0 + 1
+    const bh = box.gy1 - box.gy0 + 1
+    if (bw < 5 && bh < 5) {
+      declumpedBoxes.push(box)
+      continue
+    }
+
+    let topBorderHits = 0
+    let botBorderHits = 0
+    for (let gx = box.gx0; gx <= box.gx1; gx++) {
+      if (rawMask[box.gy0 * gw + gx]) topBorderHits++
+      if (rawMask[box.gy1 * gw + gx]) botBorderHits++
+    }
+    let leftBorderHits = 0
+    let rightBorderHits = 0
+    for (let gy = box.gy0; gy <= box.gy1; gy++) {
+      if (rawMask[gy * gw + box.gx0]) leftBorderHits++
+      if (rawMask[gy * gw + box.gx1]) rightBorderHits++
+    }
+    const isContinuousFramedPanel =
+      topBorderHits >= bw * 0.82 &&
+      botBorderHits >= bw * 0.82 &&
+      leftBorderHits >= bh * 0.82 &&
+      rightBorderHits >= bh * 0.82
+
+    if (isContinuousFramedPanel) {
+      declumpedBoxes.push(box)
+      continue
+    }
+
+    // 1) 沿水平 X 方向检测 rawMask 零值贯通窄谷
+    const xSegments: Array<[number, number]> = []
+    let segStart = -1
+    for (let gx = box.gx0; gx <= box.gx1; gx++) {
+      let colHits = 0
+      for (let gy = box.gy0; gy <= box.gy1; gy++) {
+        if (rawMask[gy * gw + gx]) colHits++
+      }
+      if (colHits > 0) {
+        if (segStart < 0) segStart = gx
+      } else if (segStart >= 0) {
+        if (gx - segStart >= 2) xSegments.push([segStart, gx - 1])
+        segStart = -1
+      }
+    }
+    if (segStart >= 0 && box.gx1 - segStart + 1 >= 2) {
+      xSegments.push([segStart, box.gx1])
+    }
+
+    const effectiveXSegs =
+      xSegments.length >= 2 ? xSegments : ([[box.gx0, box.gx1]] as Array<[number, number]>)
+
+    // 2) 对每个水平子段沿垂直 Y 方向检测 rawMask 零值贯通窄谷
+    for (const [sx0, sx1] of effectiveXSegs) {
+      const ySegments: Array<[number, number]> = []
+      let yStart = -1
+      for (let gy = box.gy0; gy <= box.gy1; gy++) {
+        let rowHits = 0
+        for (let gx = sx0; gx <= sx1; gx++) {
+          if (rawMask[gy * gw + gx]) rowHits++
+        }
+        if (rowHits > 0) {
+          if (yStart < 0) yStart = gy
+        } else if (yStart >= 0) {
+          if (gy - yStart >= 2) ySegments.push([yStart, gy - 1])
+          yStart = -1
+        }
+      }
+      if (yStart >= 0 && box.gy1 - yStart + 1 >= 2) {
+        ySegments.push([yStart, box.gy1])
+      }
+
+      const effectiveYSegs =
+        ySegments.length >= 2 ? ySegments : ([[box.gy0, box.gy1]] as Array<[number, number]>)
+
+      for (const [sy0, sy1] of effectiveYSegs) {
+        let subScore = 0
+        for (let gy = sy0; gy <= sy1; gy++) {
+          for (let gx = sx0; gx <= sx1; gx++) {
+            subScore += salience[gy * gw + gx]!
+          }
+        }
+        declumpedBoxes.push({
+          gx0: sx0,
+          gy0: sy0,
+          gx1: sx1,
+          gy1: sy1,
+          score: subScore
+        })
+      }
+    }
+  }
+
   const maxControlCount = Math.max(1, Math.min(20, input.maxLayers ?? 12))
   const minPxSide = Math.max(4, Math.min(12, Math.floor(Math.min(width, height) * 0.025)))
 
   const candidateRects: Array<
-    ImageLayerSplitRect & { score: number; hintName?: string; hintDescription?: string }
+    ImageLayerSplitRect & {
+      score: number
+      hintName?: string
+      hintDescription?: string
+      hintControlType?: UiControlType
+      hintOcrText?: string
+    }
   > = []
-  for (const box of mergedBoxes) {
+  for (const box of declumpedBoxes) {
     const pad = step > 1 ? Math.min(4, step) : 0
     const left = Math.max(0, box.gx0 * step - pad)
     const top = Math.max(0, box.gy0 * step - pad)
@@ -2673,7 +3163,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
     candidateRects.push({ left, top, width: rw, height: rh, score: box.score })
   }
 
-  // 若提供了 AI 图层边界框提示（apiLayerHints），融合其语义信息与未检出的独立控件框
+  // 若提供了 AI 图层边界框提示或 VLM 多模态检测提示（apiLayerHints），融合其语义信息、控件类型、真实 OCR 文本与未检出的独立控件框
   if (input.apiLayerHints?.length) {
     for (const hint of input.apiLayerHints) {
       const hl = Math.max(0, Math.min(width - 1, Math.round(hint.left)))
@@ -2698,6 +3188,12 @@ export function decomposeRgbaBufferToUiLayers(input: {
             if (hint.description?.trim() && !existing.hintDescription) {
               existing.hintDescription = hint.description.trim()
             }
+            if (hint.controlType && !existing.hintControlType) {
+              existing.hintControlType = hint.controlType
+            }
+            if (hint.ocrText?.trim() && !existing.hintOcrText) {
+              existing.hintOcrText = hint.ocrText.trim()
+            }
             break
           }
         }
@@ -2710,7 +3206,9 @@ export function decomposeRgbaBufferToUiLayers(input: {
           height: hh,
           score: 500 + hintArea * 0.05,
           ...(hint.name?.trim() ? { hintName: hint.name.trim() } : {}),
-          ...(hint.description?.trim() ? { hintDescription: hint.description.trim() } : {})
+          ...(hint.description?.trim() ? { hintDescription: hint.description.trim() } : {}),
+          ...(hint.controlType ? { hintControlType: hint.controlType } : {}),
+          ...(hint.ocrText?.trim() ? { hintOcrText: hint.ocrText.trim() } : {})
         })
       }
     }
@@ -2771,8 +3269,12 @@ export function decomposeRgbaBufferToUiLayers(input: {
     .slice(0, maxControlCount)
     .sort((a, b) => b.width * b.height - a.width * a.height)
 
-  // 若无外部 AI 底图，在本地对 baseRgba 执行边界色彩双线性修补（Inpainting），消除移动图层时的底图重影
-  if (!hasExternalBase) {
+  // 底图净化与抗幻觉融合：
+  // - 若提供外部 AI 底图，执行 ROI 掩码引导羽化融合（控件外 100% 保留原图像素，根除 AI 背景幻觉）；
+  // - 若无外部 AI 底图，在本地对 baseRgba 执行 2D 四向逆距离调和修补（Inpainting），消除移动图层时的底图重影。
+  if (hasExternalBase) {
+    compositeRoiMaskedCleanBaseInPlace(src, baseRgba, width, height, topRects)
+  } else {
     for (const rect of topRects) {
       inpaintRectBilinearInPlace(baseRgba, width, height, src, rect)
     }
@@ -2838,6 +3340,26 @@ export function decomposeRgbaBufferToUiLayers(input: {
     const controlIndex = idx + 1
     const controlId = `${idPrefix}:ctrl:${controlIndex}`
     const inferredMeta = inferExtractedUiWidgetName(rect, width, height, controlIndex, input.locale)
+    const effectiveOcrBoxes = input.ocrBoxes?.length
+      ? input.ocrBoxes.filter((box) => {
+          const bcx = box.left + Math.max(1, box.width) * 0.5
+          const bcy = box.top + Math.max(1, box.height) * 0.5
+          for (const child of enclosedChildren) {
+            if (
+              bcx >= child.left &&
+              bcx <= child.left + child.width &&
+              bcy >= child.top &&
+              bcy <= child.top + child.height
+            ) {
+              return false
+            }
+          }
+          return true
+        })
+      : undefined
+    const matchedOcr =
+      rect.hintOcrText?.trim() ||
+      matchOcrBoxesToControlRect(effectiveOcrBoxes, rect, enclosedChildren)
     const controlName = rect.hintName || inferredMeta.name
     const controlDesc = rect.hintDescription || inferredMeta.description
     const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, lw, lh)
@@ -2846,6 +3368,9 @@ export function decomposeRgbaBufferToUiLayers(input: {
       const parts = decomposeControlIntoStandardParts({
         nameHint: controlName,
         descriptionHint: controlDesc,
+        controlType: rect.hintControlType,
+        ocrText: matchedOcr,
+        ocrBoxes: effectiveOcrBoxes,
         left: rect.left,
         top: rect.top,
         width: lw,
@@ -2893,6 +3418,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
         visible: true,
         uiControlId: controlId,
         uiControlName: controlName,
+        ...(rect.hintControlType ? { uiControlType: rect.hintControlType } : {}),
         ...(nineSliceBorders ? { nineSliceBorders } : {})
       })
     }

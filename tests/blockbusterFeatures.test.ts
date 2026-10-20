@@ -29,11 +29,22 @@ import {
 } from '../src/shared/graph/pngWorkflowCodec'
 import {
   autoGroupLayersForGameUi,
+  buildVlmUiControlDetectionPrompt,
   decomposeControlIntoStandardParts,
+  decomposeRgbaBufferToUiLayers,
+  estimateEditableTextMeta,
+  matchOcrBoxesToControlRect,
+  normalizeOcrDetectedText,
+  parseVlmUiControlDetectionResponse,
   readImageLayerSplitFromNode,
   recognizeUiControlType,
+  separateInteriorForegroundAndCleanPlate,
   UI_CONTROL_SPECS
 } from '../src/shared/graph'
+import {
+  clusterOcrLineWordsIntoBoxes,
+  parseTesseractTsvToOcrLines
+} from '../src/main/services/localOcrService'
 import { buildAgPsdLayerTextData } from '../src/renderer/src/features/graph/model/layerSplitPsd'
 
 // 1x1 transparent PNG bytes for testing PNG chunk steganography
@@ -459,5 +470,312 @@ describe('Blockbuster 6 Pillars & Deliverable First-Class Architecture', () => {
     expect(restored?.nodes.length).toBe(2)
     expect(restored?.edges.length).toBe(1)
     expect(restored?.nodes[0]?.title).toBe(demo.nodes[0]?.title)
+  })
+
+  it('parses VLM multimodal UI control detections + OCR text and suppresses AI base hallucinations via ROI mask feathering', () => {
+    // 1. VLM prompt & response parser (0..1000 box_2d + controlType + real OCR text)
+    const vlmPrompt = buildVlmUiControlDetectionPrompt({
+      locale: 'zh-CN',
+      userHint: '仙侠突破界面',
+      sourceTitle: 'BreakthroughUI'
+    })
+    expect(vlmPrompt.system).toContain('box_2d')
+    expect(vlmPrompt.prompt).toContain('ocrText')
+
+    const vlmJson = `\`\`\`json
+[
+  {
+    "name": "主操作按钮",
+    "controlType": "button",
+    "ocrText": "立即突破 · 消耗999灵石",
+    "description": "底部金色主按钮",
+    "box_2d": [750, 250, 900, 750]
+  },
+  {
+    "name": "顶部灵石栏",
+    "controlType": "hud-bar",
+    "ocrText": "99,999",
+    "box_2d": [40, 600, 120, 920]
+  }
+]
+\`\`\``
+    const hints = parseVlmUiControlDetectionResponse(vlmJson, 200, 120)
+    expect(hints).toHaveLength(2)
+    expect(hints[0]).toMatchObject({
+      name: '主操作按钮',
+      controlType: 'button',
+      ocrText: '立即突破 · 消耗999灵石',
+      left: 50,
+      top: 90,
+      width: 100,
+      height: 18
+    })
+
+    // 2. Synthesize a 200x120 UI canvas with a textured background and a button at [50..150, 90..108]
+    const W = 200
+    const H = 120
+    const sourceRgba = new Uint8ClampedArray(W * H * 4)
+    const cleanBaseRgba = new Uint8ClampedArray(W * H * 4)
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const idx = (y * W + x) * 4
+        const bgR = 24 + ((x + y) % 5)
+        const bgG = 32 + ((x * 2 + y) % 7)
+        const bgB = 48 + ((x + y * 3) % 5)
+
+        // Source has button at [50..149, 90..107]
+        const inBtn = x >= 50 && x < 150 && y >= 90 && y < 108
+        if (inBtn) {
+          const isGlyph = y >= 95 && y <= 102 && x >= 70 && x <= 130 && (x + y) % 2 === 0
+          sourceRgba[idx] = isGlyph ? 255 : 210
+          sourceRgba[idx + 1] = isGlyph ? 250 : 155
+          sourceRgba[idx + 2] = isGlyph ? 235 : 55
+          sourceRgba[idx + 3] = 255
+        } else {
+          sourceRgba[idx] = bgR
+          sourceRgba[idx + 1] = bgG
+          sourceRgba[idx + 2] = bgB
+          sourceRgba[idx + 3] = 255
+        }
+
+        // Simulate AI cleanBaseRgba with:
+        // (a) +10 global exposure shift across the entire image
+        // (b) a hallucinated bright artifact at top-left (x=20..30, y=15..25) outside any UI control
+        const isHallucinatedSpot = x >= 20 && x <= 30 && y >= 15 && y <= 25 && !inBtn
+        cleanBaseRgba[idx] = isHallucinatedSpot ? 180 : bgR + 10
+        cleanBaseRgba[idx + 1] = isHallucinatedSpot ? 40 : bgG + 10
+        cleanBaseRgba[idx + 2] = isHallucinatedSpot ? 180 : bgB + 10
+        cleanBaseRgba[idx + 3] = 255
+      }
+    }
+
+    const decomposed = decomposeRgbaBufferToUiLayers({
+      width: W,
+      height: H,
+      sourceRgba,
+      cleanBaseRgba,
+      apiLayerHints: [hints[0]!]
+    })
+
+    // Verify ROI Mask-Guided Hallucination Suppression:
+    // At (x=25, y=20) — where cleanBaseRgba had a purple hallucination (180, 40, 180) —
+    // decomposed.baseRgba must preserve 100% of the original sourceRgba background pixel!
+    const spotIdx = (20 * W + 25) * 4
+    expect(decomposed.baseRgba[spotIdx]).toBe(sourceRgba[spotIdx])
+    expect(decomposed.baseRgba[spotIdx + 1]).toBe(sourceRgba[spotIdx + 1])
+    expect(decomposed.baseRgba[spotIdx + 2]).toBe(sourceRgba[spotIdx + 2])
+
+    // Verify VLM OCR text ("立即突破 · 消耗999灵石") propagated into the button label's native Photoshop TySh editableText
+    const labelLayer = decomposed.layers.find((l) => l.uiPartRole === 'button-label')
+    expect(labelLayer).toBeDefined()
+    expect(labelLayer?.editableText?.text).toBe('立即突破 · 消耗999灵石')
+  })
+
+  it('reconstructs 2D vertical gradients + texture without horizontal streaks in separateInteriorForegroundAndCleanPlate', () => {
+    const W = 80
+    const H = 36
+    const rgba = new Uint8ClampedArray(W * H * 4)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const idx = (y * W + x) * 4
+        // Vertical gradient from top (r=160) to bottom (r=60) + subtle 2D texture
+        const gradR = Math.round(160 - (y / (H - 1)) * 100) + ((x + y) % 2 === 0 ? 2 : -2)
+        const gradG = Math.round(110 - (y / (H - 1)) * 60)
+        const gradB = 40
+        const isCenterGlyph = x >= 28 && x <= 52 && y >= 12 && y <= 24 && (x + y) % 2 === 0
+        if (isCenterGlyph) {
+          rgba[idx] = 255
+          rgba[idx + 1] = 255
+          rgba[idx + 2] = 250
+          rgba[idx + 3] = 255
+        } else {
+          rgba[idx] = gradR
+          rgba[idx + 1] = gradG
+          rgba[idx + 2] = gradB
+          rgba[idx + 3] = 255
+        }
+      }
+    }
+
+    const { cleanPlateRgba, hasForeground } = separateInteriorForegroundAndCleanPlate({
+      rgba,
+      width: W,
+      height: H,
+      insetRatioX: 0.1,
+      insetRatioY: 0.14,
+      contrastThreshold: 28
+    })
+    expect(hasForeground).toBe(true)
+
+    // Check that the inpainted glyph pixel at (x=40, y=18) closely matches the vertical gradient at y=18 (~109)
+    // and is NOT left as bright white (255)
+    const centerIdx = (18 * W + 40) * 4
+    expect(cleanPlateRgba[centerIdx]).toBeGreaterThan(85)
+    expect(cleanPlateRgba[centerIdx]).toBeLessThan(135)
+  })
+
+  it('extracts stroke outline + glyph count in offline text analyzer, unmixes frosted-glass alpha, and de-clumps adjacent touching controls', () => {
+    // 1. Offline glyph projection segmentation + core fill vs. outer stroke separation
+    const tw = 90
+    const th = 28
+    const fgRgba = new Uint8ClampedArray(tw * th * 4)
+    // Draw 3 distinct character blocks at x=[12..24], [36..48], [60..72], y=[6..21]
+    // with dark brown 1px outer stroke (40, 20, 10) and bright gold core fill (250, 230, 140)
+    const charRanges = [
+      [12, 24],
+      [36, 48],
+      [60, 72]
+    ] as const
+    for (const [x0, x1] of charRanges) {
+      for (let y = 6; y <= 21; y++) {
+        for (let x = x0; x <= x1; x++) {
+          const i = (y * tw + x) * 4
+          const isOutline = x === x0 || x === x1 || y === 6 || y === 21
+          fgRgba[i] = isOutline ? 40 : 250
+          fgRgba[i + 1] = isOutline ? 20 : 230
+          fgRgba[i + 2] = isOutline ? 10 : 140
+          fgRgba[i + 3] = 255
+        }
+      }
+    }
+
+    const textMeta = estimateEditableTextMeta({
+      foregroundRgba: fgRgba,
+      width: tw,
+      height: th,
+      rawName: '炼丹炉按钮'
+    })
+    expect(textMeta.glyphCount).toBe(3)
+    expect(textMeta.color[0]).toBeGreaterThan(210)
+    expect(textMeta.strokeColor).toBeDefined()
+    expect(textMeta.strokeColor![0]).toBeLessThan(90)
+
+    const psdText = buildAgPsdLayerTextData(textMeta, 10, 10, tw, th)
+    expect(psdText?.style?.strokeFlag).toBe(true)
+    expect(psdText?.style?.strokeColor).toBeDefined()
+
+    // 2. Watershed Projection Valley De-Clumping:
+    // 3 adjacent slots separated by 1px gap (x=[10..29], [31..50], [52..71], y=[20..45]) on a 100x70 canvas
+    const cw = 100
+    const ch = 70
+    const src = new Uint8ClampedArray(cw * ch * 4)
+    const base = new Uint8ClampedArray(cw * ch * 4)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const i = (y * cw + x) * 4
+        base[i] = 20
+        base[i + 1] = 24
+        base[i + 2] = 32
+        base[i + 3] = 255
+
+        const inSlot1 = x >= 10 && x <= 29 && y >= 20 && y <= 45
+        const inSlot2 = x >= 31 && x <= 50 && y >= 20 && y <= 45
+        const inSlot3 = x >= 52 && x <= 71 && y >= 20 && y <= 45
+        if (inSlot1 || inSlot2 || inSlot3) {
+          src[i] = 210
+          src[i + 1] = 165
+          src[i + 2] = 65
+          src[i + 3] = 255
+        } else {
+          src[i] = 20
+          src[i + 1] = 24
+          src[i + 2] = 32
+          src[i + 3] = 255
+        }
+      }
+    }
+
+    const splitResult = decomposeRgbaBufferToUiLayers({
+      width: cw,
+      height: ch,
+      sourceRgba: src,
+      cleanBaseRgba: base,
+      decomposeControlParts: false
+    })
+    // Instead of clumping all 3 adjacent slots into 1 giant wide bar, projection valley de-clumping splits them into 3 distinct controls!
+    expect(splitResult.layers.length).toBe(3)
+  })
+
+  it('clusters native local OCR words into phrase boxes, normalizes CJK spaces, and matches OCR boxes to UI controls with child exclusion', () => {
+    expect(normalizeOcrDetectedText('立 即 突 破 + 99')).toBe('立即突破+99')
+    expect(normalizeOcrDetectedText('99 , 999 灵 石')).toBe('99,999灵石')
+    expect(normalizeOcrDetectedText('Start Game')).toBe('Start Game')
+
+    // Two buttons on the same horizontal row: left button "取 消" at x=20..80, right button "确 认 升 阶" at x=220..320
+    const clustered = clusterOcrLineWordsIntoBoxes([
+      {
+        text: '取 消 确 认 升 阶',
+        words: [
+          { text: '取', left: 20, top: 100, width: 24, height: 24 },
+          { text: '消', left: 50, top: 100, width: 24, height: 24 },
+          { text: '确', left: 220, top: 100, width: 22, height: 24 },
+          { text: '认', left: 245, top: 100, width: 22, height: 24 },
+          { text: '升', left: 270, top: 100, width: 22, height: 24 },
+          { text: '阶', left: 295, top: 100, width: 22, height: 24 }
+        ]
+      }
+    ])
+    expect(clustered).toHaveLength(2)
+    expect(clustered[0]?.text).toBe('取消')
+    expect(clustered[1]?.text).toBe('确认升阶')
+
+    // Parent panel at [10, 10, 340, 160] containing panel title at top [120, 20, 100, 26] and child button at [210, 92, 120, 40]
+    const ocrBoxes = [
+      { text: '法宝祭炼弹窗', left: 120, top: 20, width: 100, height: 26 },
+      ...clustered
+    ]
+    const childBtnRect = { left: 210, top: 92, width: 120, height: 40 }
+    const leftBtnRect = { left: 12, top: 92, width: 80, height: 40 }
+    const parentPanelRect = { left: 10, top: 10, width: 340, height: 160 }
+
+    expect(matchOcrBoxesToControlRect(ocrBoxes, parentPanelRect, [leftBtnRect, childBtnRect])).toBe(
+      '法宝祭炼弹窗'
+    )
+    expect(matchOcrBoxesToControlRect(ocrBoxes, childBtnRect)).toBe('确认升阶')
+    expect(matchOcrBoxesToControlRect(ocrBoxes, leftBtnRect)).toBe('取消')
+
+    // Verify 100% offline decomposeRgbaBufferToUiLayers injects ocrBoxes into button-label editableText
+    const W = 200
+    const H = 120
+    const sourceRgba = new Uint8ClampedArray(W * H * 4)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const idx = (y * W + x) * 4
+        const inBtn = x >= 60 && x < 140 && y >= 80 && y < 100
+        if (inBtn) {
+          const isGlyph = x >= 74 && x <= 126 && y >= 86 && y <= 94 && (x + y) % 2 === 0
+          sourceRgba[idx] = isGlyph ? 255 : 205
+          sourceRgba[idx + 1] = isGlyph ? 250 : 145
+          sourceRgba[idx + 2] = isGlyph ? 225 : 45
+          sourceRgba[idx + 3] = 255
+        } else {
+          sourceRgba[idx] = 22
+          sourceRgba[idx + 1] = 26
+          sourceRgba[idx + 2] = 36
+          sourceRgba[idx + 3] = 255
+        }
+      }
+    }
+
+    const offlineDecomposed = decomposeRgbaBufferToUiLayers({
+      width: W,
+      height: H,
+      sourceRgba,
+      ocrBoxes: [{ text: '渡劫飞升', left: 72, top: 84, width: 56, height: 12 }]
+    })
+    const btnLabel = offlineDecomposed.layers.find((l) => l.uiPartRole === 'button-label')
+    expect(btnLabel).toBeDefined()
+    expect(btnLabel?.editableText?.text).toBe('渡劫飞升')
+
+    // Verify Linux/cross-platform Tesseract TSV parser + word clustering
+    const sampleTsv = [
+      'level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext',
+      '5\t1\t1\t1\t1\t1\t65\t84\t26\t14\t96.2\t立即',
+      '5\t1\t1\t1\t1\t2\t94\t84\t26\t14\t95.8\t锻造'
+    ].join('\n')
+    const tsvBoxes = clusterOcrLineWordsIntoBoxes(parseTesseractTsvToOcrLines(sampleTsv))
+    expect(tsvBoxes).toHaveLength(1)
+    expect(tsvBoxes[0]?.text).toBe('立即锻造')
   })
 })
