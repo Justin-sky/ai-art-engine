@@ -3,16 +3,19 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * 顶栏里「插件市场」与「设置」的相对位置。
+ * 顶栏「插件市场」与左侧工具栏底部「设置（齿轮 icon）」的位置守卫。
  *
- * 这两条都是**应用级**入口（装工作流/技能、改偏好），都不依赖当前工程，所以同放顶栏。
- * 位置是被明确要求过的（市场在设置左边），且很容易在后续调整顶栏时被无意挪走 ——
- * 而这类回归不会报错、只会让按钮换个地方，靠人肉 review 很容易漏。
+ * - 插件市场放在顶栏右侧分组（`topbar-actions`）；
+ * - 设置按钮移至左侧竖向工具栏（`WorkspaceToolbar.vue`）的最下方（`margin-top: auto`），并采用齿轮 SVG 图标。
  *
  * 用源码级守卫而不是挂载组件：本仓库的 vitest 是 node 环境，没有 jsdom / @vue/test-utils。
  */
 const APP = readFileSync(resolve('src/renderer/src/App.vue'), 'utf8')
 const STUDIO = readFileSync(resolve('src/renderer/src/views/StudioView.vue'), 'utf8')
+const WORKSPACE_TOOLBAR = readFileSync(
+  resolve('src/renderer/src/components/WorkspaceToolbar.vue'),
+  'utf8'
+)
 
 /** 取 `topbar-actions` 这一段（到该 nav 结束），只看顶栏右侧分组内部 */
 function topbarActions(): string {
@@ -23,20 +26,21 @@ function topbarActions(): string {
   return APP.slice(start, end)
 }
 
-describe('顶栏：插件市场在设置左边', () => {
-  it('两者都在同一个顶栏分组里', () => {
+describe('顶栏插件市场与左侧工具栏底部设置齿轮按钮', () => {
+  it('顶栏保留插件市场按钮，不再放文字版设置按钮', () => {
     const block = topbarActions()
     expect(block).toContain("t('marketplace.open')")
-    expect(block).toContain("t('app.nav.settings')")
+    expect(block).not.toContain("t('app.nav.settings')")
   })
 
-  it('市场的按钮**排在设置之前**', () => {
-    const block = topbarActions()
-    const market = block.indexOf("t('marketplace.open')")
-    const settings = block.indexOf("t('app.nav.settings')")
-    expect(market).toBeGreaterThan(-1)
-    expect(settings).toBeGreaterThan(-1)
-    expect(market, '插件市场必须排在设置左边').toBeLessThan(settings)
+  it('设置按钮位于左侧工具栏（WorkspaceToolbar）最下方且使用齿轮图标', () => {
+    const createLoop = WORKSPACE_TOOLBAR.indexOf('v-for="item in displayItems"')
+    const settingsBtn = WORKSPACE_TOOLBAR.indexOf('class="tool-btn tool-btn-settings"')
+    expect(createLoop).toBeGreaterThan(-1)
+    expect(settingsBtn).toBeGreaterThan(createLoop)
+    expect(WORKSPACE_TOOLBAR).toContain("t('app.nav.settings')")
+    expect(WORKSPACE_TOOLBAR).toContain('<SettingsGearIcon')
+    expect(WORKSPACE_TOOLBAR).toMatch(/\.tool-btn-settings\s*\{[\s\S]*?margin-top:\s*auto/)
   })
 
   it('市场按钮唤起主进程窗口（保持单例与统一外观）', () => {

@@ -51,8 +51,8 @@ function onReady(el: HTMLDivElement): void {
 
 onBeforeUnmount(() => {
   scene.flushPreview()
-  clearActiveDirectorStageScene(scene)
   workspace.focusProjectGlobals()
+  clearActiveDirectorStageScene(scene)
 })
 </script>
 

@@ -53,6 +53,7 @@ import FilmInspector from '../components/FilmInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
 import { isAssetRefInputHostType, isFilmNodeTypeId, type GraphNode } from '@shared/graph'
+import { activeDirectorStageScene } from '../features/director/activeDirectorStageScene'
 
 function isStageInspectorTarget(kind: string): boolean {
   return (
@@ -81,7 +82,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.stage',
     order: 10,
     component: DirectorStageInspector,
-    match: (target) => isStageInspectorTarget(target.kind),
+    match: (target) => isStageInspectorTarget(target.kind) && !!activeDirectorStageScene.value,
     props: () => ({ embedded: true })
   },
   {

@@ -17,6 +17,20 @@
         <WorkspaceItemIcon :icon="item.icon" :item-id="item.id" :size="16" />
       </span>
     </button>
+    <button
+      type="button"
+      class="tool-btn tool-btn-settings"
+      :aria-label="t('app.nav.settings')"
+      @click="goSettings"
+      @mouseenter="showTip($event, t('app.nav.settings'))"
+      @mouseleave="hideTip"
+      @focus="showTip($event, t('app.nav.settings'))"
+      @blur="hideTip"
+    >
+      <span class="tool-icon" aria-hidden="true">
+        <SettingsGearIcon :size="16" />
+      </span>
+    </button>
     <Teleport to="body">
       <div v-if="activeTip" class="tool-tip-floating" :style="tipStyle">
         {{ activeTip }}
@@ -31,9 +45,11 @@ import type { ResolvedWorkspaceToolbarItem } from '@shared/workspaceToolbar'
 import { buildCanvasStarterGraph } from '@shared/graph'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
+import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { promptText, promptAlert } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
+import SettingsGearIcon from './icons/SettingsGearIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 const props = withDefaults(
@@ -54,10 +70,16 @@ const displayItems = computed(() => props.items ?? listRegisteredToolbarItems({ 
 
 const { createAsset, createMotion2dActionAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
+const { openSettingsPanel } = useSettingsPanelNavigator()
 const { t, toolbarCreateLabel } = useStudioI18n()
 const busyId = ref<string | null>(null)
 const activeTip = ref<string | null>(null)
 const tipStyle = ref<{ top: string; left: string }>({ top: '0px', left: '0px' })
+
+function goSettings(): void {
+  hideTip()
+  void openSettingsPanel()
+}
 
 function itemLabel(item: ResolvedWorkspaceToolbarItem): string {
   return toolbarCreateLabel(item.id, item.assetType)
@@ -174,6 +196,10 @@ async function onCreate(item: ResolvedWorkspaceToolbarItem): Promise<void> {
 .tool-btn:disabled {
   opacity: 0.55;
   cursor: wait;
+}
+
+.tool-btn-settings {
+  margin-top: auto;
 }
 
 .tool-icon {

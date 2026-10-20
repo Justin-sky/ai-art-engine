@@ -11,8 +11,8 @@
         </div>
         <nav class="topbar-actions">
           <!--
-            插件市场与设置同属「应用级」入口（装工作流/技能、改偏好），都不依赖当前工程，
-            所以放在同一个顶栏分组里、紧挨设置左边；原先它挂在工作室工具栏里，只有开了工程才够得着。
+            插件市场属于「应用级」入口（装工作流/技能/扩展），不依赖当前工程，放在顶栏右侧；
+            设置入口已移至左侧工具栏（WorkspaceToolbar）最下方齿轮按钮。
           -->
           <button
             type="button"
@@ -22,9 +22,6 @@
             @click="openMarketplace"
           >
             {{ t('marketplace.open') }}
-          </button>
-          <button type="button" class="topbar-btn" @click="goSettings">
-            {{ t('app.nav.settings') }}
           </button>
         </nav>
       </header>
@@ -57,7 +54,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { isNavigationFailure, useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useProjectStore } from './stores/project'
 import { useWorkspaceStore } from './stores/workspace'
 import { useMcpActivitiesStore } from './stores/mcpActivities'
@@ -86,7 +83,6 @@ import { invalidateGenerateModelSettingsCache } from './features/graph/model/gen
 import { diveEditorHistory } from './features/graph/ui/diveEditorHistory'
 
 const { t } = useStudioI18n()
-const router = useRouter()
 const route = useRoute()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
@@ -118,15 +114,6 @@ const shortPath = computed(() => {
   if (!p) return ''
   return p.length > 48 ? '…' + p.slice(-46) : p
 })
-
-async function goSettings(): Promise<void> {
-  try {
-    await router.push({ name: 'settings' })
-  } catch (error) {
-    if (isNavigationFailure(error)) return
-    throw error
-  }
-}
 
 /**
  * 打开插件市场窗口（MCP / 技能 / 工作流 / 扩展）。
