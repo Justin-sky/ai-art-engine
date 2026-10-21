@@ -19,8 +19,9 @@ describe('SFX_PRESETS', () => {
     expect(SFX_PRESETS.length).toBeGreaterThanOrEqual(15)
   })
 
-  it('每个预设均有中英文名称与 prompt', () => {
+  it('每个预设均有图标、中英文名称与 prompt', () => {
     for (const preset of SFX_PRESETS) {
+      expect(preset.icon.trim().length).toBeGreaterThan(0)
       expect(preset.name.zh.trim().length).toBeGreaterThan(0)
       expect(preset.name.en.trim().length).toBeGreaterThan(0)
       expect(preset.prompt.zh.trim().length).toBeGreaterThan(0)
@@ -45,6 +46,7 @@ describe('SFX_PRESETS', () => {
     const ids = SFX_PRESET_CATEGORIES.map((c) => c.id)
     expect(ids.sort()).toEqual([...VALID_CATEGORIES].sort())
     for (const meta of SFX_PRESET_CATEGORIES) {
+      expect(meta.icon.trim().length).toBeGreaterThan(0)
       expect(meta.label.zh.trim().length).toBeGreaterThan(0)
       expect(meta.label.en.trim().length).toBeGreaterThan(0)
     }

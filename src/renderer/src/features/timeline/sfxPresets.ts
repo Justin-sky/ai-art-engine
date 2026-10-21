@@ -13,6 +13,8 @@ export interface LocalizedText {
 export interface SfxPreset {
   id: string
   category: SfxPresetCategory
+  /** 视觉图标（Emoji 徽标） */
+  icon: string
   /** 双语显示名 */
   name: LocalizedText
   /** 双语生成 prompt（instrumental 描述：音色 / 情绪 / 场景） */
@@ -23,13 +25,14 @@ export interface SfxPreset {
 
 export interface SfxPresetCategoryMeta {
   id: SfxPresetCategory
+  icon: string
   label: LocalizedText
 }
 
 export const SFX_PRESET_CATEGORIES: SfxPresetCategoryMeta[] = [
-  { id: 'transition', label: { zh: '转场', en: 'Transitions' } },
-  { id: 'ui', label: { zh: 'UI 音效', en: 'UI sounds' } },
-  { id: 'ambient', label: { zh: '环境音', en: 'Ambience' } }
+  { id: 'transition', icon: '⚡', label: { zh: '转场', en: 'Transitions' } },
+  { id: 'ui', icon: '🔔', label: { zh: 'UI 音效', en: 'UI sounds' } },
+  { id: 'ambient', icon: '🌿', label: { zh: '环境音', en: 'Ambience' } }
 ]
 
 export const SFX_PRESETS: SfxPreset[] = [
@@ -37,6 +40,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-whoosh',
     category: 'transition',
+    icon: '💨',
     name: { zh: '呼啸转场', en: 'Whoosh transition' },
     prompt: {
       zh: '短促的呼啸风声式转场音效，气流快速划过，干净利落，无杂音',
@@ -47,6 +51,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-whoosh-quick',
     category: 'transition',
+    icon: '🍃',
     name: { zh: '快速轻转场', en: 'Quick swoosh' },
     prompt: {
       zh: '轻盈快速的 swoosh 转场音效，一瞬划过，轻巧利落',
@@ -57,6 +62,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-impact',
     category: 'transition',
+    icon: '💥',
     name: { zh: '重击转场', en: 'Impact hit' },
     prompt: {
       zh: '有力的低频重击转场音效，伴随短促轰鸣，冲击感强',
@@ -67,6 +73,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-riser',
     category: 'transition',
+    icon: '📈',
     name: { zh: '上升紧张转场', en: 'Riser build-up' },
     prompt: {
       zh: '渐强的上升紧张感转场音效，由弱到强推至顶点，悬疑张力',
@@ -77,6 +84,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-downlifter',
     category: 'transition',
+    icon: '📉',
     name: { zh: '下坠收尾转场', en: 'Downlifter' },
     prompt: {
       zh: '从高处下坠收束的转场音效，音高渐降沉底，干净收尾',
@@ -87,6 +95,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-glitch',
     category: 'transition',
+    icon: '⚡',
     name: { zh: '故障电子转场', en: 'Glitch transition' },
     prompt: {
       zh: '数字化故障感的电子转场音效，短促失真与抖动，科技未来感',
@@ -97,6 +106,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-swish',
     category: 'transition',
+    icon: '🌪️',
     name: { zh: '挥动甩镜转场', en: 'Swish' },
     prompt: {
       zh: '挥动甩镜式转场音效，快速划破空气，力量与速度感',
@@ -107,6 +117,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'transition-boom',
     category: 'transition',
+    icon: '🥁',
     name: { zh: '低频轰隆转场', en: 'Boom' },
     prompt: {
       zh: '低频轰隆转场音效，厚重绵长的轰鸣，宏大庄重',
@@ -119,6 +130,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-click',
     category: 'ui',
+    icon: '🖱️',
     name: { zh: '清脆点击', en: 'Click' },
     prompt: {
       zh: '清脆短促的按钮点击音效，颗粒感清晰，干净不拖尾',
@@ -129,6 +141,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-soft-tap',
     category: 'ui',
+    icon: '👆',
     name: { zh: '轻柔点按', en: 'Soft tap' },
     prompt: {
       zh: '轻柔温和的触控点按音效，柔和不发闷',
@@ -139,6 +152,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-beep',
     category: 'ui',
+    icon: '📟',
     name: { zh: '提示音', en: 'Beep' },
     prompt: {
       zh: '单声简洁的提示音效，音调明亮清晰',
@@ -149,6 +163,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-notification',
     category: 'ui',
+    icon: '🔔',
     name: { zh: '通知提示', en: 'Notification' },
     prompt: {
       zh: '三连音的通知提示音效，轻快醒目，现代感',
@@ -159,6 +174,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-pop',
     category: 'ui',
+    icon: '🫧',
     name: { zh: '弹出音效', en: 'Pop' },
     prompt: {
       zh: '气泡弹出般的轻快音效，短促俏皮',
@@ -169,6 +185,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-confirm',
     category: 'ui',
+    icon: '✅',
     name: { zh: '确认成功', en: 'Confirm' },
     prompt: {
       zh: '上扬明快的确认成功音效，积极干脆',
@@ -179,6 +196,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ui-error-buzz',
     category: 'ui',
+    icon: '⚠️',
     name: { zh: '操作错误', en: 'Error buzz' },
     prompt: {
       zh: '低频短促的提示错误音效，轻微嗡鸣，不刺耳',
@@ -191,6 +209,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-rain',
     category: 'ambient',
+    icon: '🌧️',
     name: { zh: '雨天环境', en: 'Rain' },
     prompt: {
       zh: '持续的雨声环境音，均匀细雨落在地面的沙沙声，舒缓宁静',
@@ -201,6 +220,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-forest',
     category: 'ambient',
+    icon: '🌲',
     name: { zh: '森林鸟鸣', en: 'Forest birds' },
     prompt: {
       zh: '清晨森林环境音，远近鸟鸣与微风轻拂树叶，自然清新',
@@ -211,6 +231,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-crowd',
     category: 'ambient',
+    icon: '👥',
     name: { zh: '人群嘈杂', en: 'Crowd murmur' },
     prompt: {
       zh: '远处人群交谈的嘈杂环境音，混响温和，适合街景背景',
@@ -221,6 +242,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-wind',
     category: 'ambient',
+    icon: '🌬️',
     name: { zh: '风声', en: 'Wind' },
     prompt: {
       zh: '持续的风声环境音，气流平稳起伏，空旷悠远',
@@ -231,6 +253,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-waves',
     category: 'ambient',
+    icon: '🌊',
     name: { zh: '海浪', en: 'Ocean waves' },
     prompt: {
       zh: '海边海浪拍岸环境音，波浪起伏循环，放松治愈',
@@ -241,6 +264,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-coffee-shop',
     category: 'ambient',
+    icon: '☕',
     name: { zh: '咖啡馆环境', en: 'Coffee shop' },
     prompt: {
       zh: '咖啡馆环境音，低语人声、杯碟轻响与柔和背景氛围，慵懒惬意',
@@ -251,6 +275,7 @@ export const SFX_PRESETS: SfxPreset[] = [
   {
     id: 'ambient-thunder',
     category: 'ambient',
+    icon: '⛈️',
     name: { zh: '雷雨', en: 'Thunderstorm' },
     prompt: {
       zh: '远处闷雷与雨声交织的环境音，低沉酝酿，戏剧氛围',

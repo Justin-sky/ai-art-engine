@@ -14,10 +14,16 @@
  * - 单条指令失败只记 failure 继续跑其余的：批量编辑里一条 typo 不该让整批白干，
  *   但失败项必须原样回报给调用方，绝不能静默跳过。
  */
-import type {
-  ScriptTimelineClip,
-  ScriptTimelineDocument,
-  ScriptTimelineTrackKind
+import {
+  isTimelineEaseType,
+  isTimelineMainCameraPreset,
+  isTimelineTweenInPreset,
+  isTimelineTweenLoopPreset,
+  isTimelineTweenOutPreset,
+  normalizeTimelineKeyframes,
+  type ScriptTimelineClip,
+  type ScriptTimelineDocument,
+  type ScriptTimelineTrackKind
 } from './scriptTimeline'
 import type { TimelineTimeRange } from './timelineCut'
 
@@ -128,7 +134,21 @@ const EDITABLE_PATCH_KEYS = new Set([
   'overlayY',
   'overlayWidth',
   'overlayHeight',
+  'overlayRotation',
   'opacity',
+  'tweenIn',
+  'tweenInDurationSec',
+  'tweenInEase',
+  'tweenOut',
+  'tweenOutDurationSec',
+  'tweenOutEase',
+  'tweenLoop',
+  'tweenLoopSpeedHz',
+  'tweenLoopIntensity',
+  'cameraMotion',
+  'keyframes',
+  'stickerId',
+  'stickerColor',
   'transitionInSec',
   'transitionOutSec',
   'transitionType'
@@ -151,10 +171,15 @@ const NUMERIC_PATCH_RULES: Record<string, { min: number; max?: number; strictMin
   fadeOutSec: { min: 0 },
   transitionInSec: { min: 0 },
   transitionOutSec: { min: 0 },
-  overlayX: { min: 0, max: 1 },
-  overlayY: { min: 0, max: 1 },
-  overlayWidth: { min: 0, max: 1 },
-  overlayHeight: { min: 0, max: 1 }
+  overlayX: { min: -1, max: 2 },
+  overlayY: { min: -1, max: 2 },
+  overlayWidth: { min: 0.02, max: 2 },
+  overlayHeight: { min: 0.02, max: 2 },
+  overlayRotation: { min: -720, max: 720 },
+  tweenInDurationSec: { min: 0.05, max: 10 },
+  tweenOutDurationSec: { min: 0.05, max: 10 },
+  tweenLoopSpeedHz: { min: 0.2, max: 6 },
+  tweenLoopIntensity: { min: 0.1, max: 3 }
 }
 
 function round4(value: number): number {
@@ -256,6 +281,30 @@ function sanitizeClipPatch(patch: TimelineClipPatch | undefined | null): {
     }
     if (key === 'transitionType') {
       if (typeof raw === 'string' && TRANSITION_TYPES.includes(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'tweenIn') {
+      if (isTimelineTweenInPreset(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'tweenOut') {
+      if (isTimelineTweenOutPreset(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'tweenLoop') {
+      if (isTimelineTweenLoopPreset(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'tweenInEase' || key === 'tweenOutEase') {
+      if (isTimelineEaseType(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'cameraMotion') {
+      if (isTimelineMainCameraPreset(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'keyframes') {
+      if (Array.isArray(raw)) out[key] = normalizeTimelineKeyframes(raw)
       continue
     }
     if (typeof raw === 'string') out[key] = raw

@@ -204,6 +204,31 @@
               </div>
             </div>
           </section>
+
+          <section class="source-group sticker-library-section">
+            <div class="source-group-head">
+              <span>{{ t('script.timeline.stickerSection') }}</span>
+              <span class="source-group-count">{{ builtinStickers.length }}</span>
+            </div>
+            <div
+              v-for="preset in builtinStickers"
+              :key="preset.id"
+              class="source-card sticker-preset-card"
+              draggable="true"
+              :title="t('script.timeline.stickerAddHint')"
+              @dragstart="onBuiltinStickerDragStart($event, preset)"
+              @click="addBuiltinStickerToOverlay(preset)"
+            >
+              <span class="source-thumb sticker-thumb" aria-hidden="true">
+                <img :src="builtinStickerPreviewUrl(preset)" alt="" draggable="false" />
+              </span>
+              <span class="source-meta">
+                <span class="source-name" :title="t(`script.timeline.stickerPreset.${preset.id}`)">
+                  {{ t(`script.timeline.stickerPreset.${preset.id}`) }}
+                </span>
+              </span>
+            </div>
+          </section>
         </div>
 
         <div class="source-size-footer">
@@ -293,22 +318,39 @@
                 playsinline
                 preload="metadata"
               />
-              <video
-                v-for="clip in previewOverlayClips"
-                v-show="isOverlayClipActive(clip)"
-                :key="clip.id"
-                :ref="(el) => bindOverlayVideo(el as HTMLVideoElement | null, clip.id)"
-                class="overlay-video"
-                :style="overlayVideoStyle(clip)"
-                playsinline
-                preload="metadata"
-                @pointerdown.stop="onOverlayPointerDown($event, clip)"
-              />
+              <template v-for="clip in previewOverlayClips" :key="clip.id">
+                <img
+                  v-if="isImageOrGifClip(clip)"
+                  v-show="isOverlayClipActive(clip)"
+                  class="overlay-video overlay-sticker-img"
+                  :src="overlayImageSrc(clip)"
+                  :style="overlayVideoStyle(clip)"
+                  alt=""
+                  draggable="false"
+                  @pointerdown.stop="onOverlayPointerDown($event, clip)"
+                />
+                <video
+                  v-else
+                  v-show="isOverlayClipActive(clip)"
+                  :ref="(el) => bindOverlayVideo(el as HTMLVideoElement | null, clip.id)"
+                  class="overlay-video"
+                  :style="overlayVideoStyle(clip)"
+                  playsinline
+                  preload="metadata"
+                  @pointerdown.stop="onOverlayPointerDown($event, clip)"
+                />
+              </template>
               <div
                 v-if="selectedOverlayClip"
                 class="overlay-selection"
                 :style="overlaySelectionStyle(selectedOverlayClip)"
               >
+                <span
+                  class="overlay-handle rotate-top"
+                  data-corner="rotate"
+                  :title="t('script.timeline.overlayRotate')"
+                  @pointerdown.stop="onOverlayPointerDown($event, selectedOverlayClip)"
+                />
                 <span
                   class="overlay-handle corner-tl"
                   data-corner="tl"
@@ -677,6 +719,23 @@
                 </button>
               </div>
             </template>
+            <div class="inspector-section-title">
+              {{ t('script.timeline.cameraMotionSection') }}
+            </div>
+            <label class="inspector-field">
+              <select
+                :value="selectedClip.cameraMotion ?? 'none'"
+                @change="
+                  onClipCameraMotionChange(
+                    ($event.target as HTMLSelectElement).value as TimelineCameraMotionPreset
+                  )
+                "
+              >
+                <option v-for="cam in TIMELINE_CAMERA_MOTION_PRESETS" :key="cam" :value="cam">
+                  {{ t(`script.timeline.cameraMotion.${cam}`) }}
+                </option>
+              </select>
+            </label>
           </template>
           <template v-if="selectedClip.track === 'video' || selectedClip.track === 'overlay'">
             <div class="inspector-section-title inspector-section-row">
@@ -1021,6 +1080,32 @@
               </label>
             </div>
             <label class="inspector-field">
+              <span>{{ t('script.timeline.overlayRotate') }}</span>
+              <div class="mixer-slider-row">
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  step="1"
+                  :value="selectedClip.overlayRotation ?? 0"
+                  @input="
+                    onOverlayRotationChange(Number(($event.target as HTMLInputElement).value))
+                  "
+                />
+                <input
+                  type="number"
+                  class="compact-num"
+                  min="-360"
+                  max="360"
+                  step="1"
+                  :value="Math.round(selectedClip.overlayRotation ?? 0)"
+                  @change="
+                    onOverlayRotationChange(Number(($event.target as HTMLInputElement).value))
+                  "
+                />
+              </div>
+            </label>
+            <label class="inspector-field">
               <span>{{ t('script.timeline.overlayOpacity') }}</span>
               <input
                 type="range"
@@ -1033,7 +1118,7 @@
                 "
               />
             </label>
-            <label class="inspector-field">
+            <label v-if="!isImageOrGifClip(selectedClip)" class="inspector-field">
               <span>{{ t('script.timeline.overlayVolume') }}</span>
               <input
                 type="range"
@@ -1049,6 +1134,280 @@
             <button type="button" class="ghost-btn inspector-reset" @click="resetOverlayTransform">
               {{ t('script.timeline.overlayReset') }}
             </button>
+
+            <template v-if="selectedClip.stickerId">
+              <div class="inspector-section-title">
+                {{ t('script.timeline.stickerStyleSection') }}
+              </div>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.stickerPresetField') }}</span>
+                <select
+                  :value="selectedClip.stickerId"
+                  @change="onOverlayStickerPresetChange(($event.target as HTMLSelectElement).value)"
+                >
+                  <option v-for="preset in builtinStickers" :key="preset.id" :value="preset.id">
+                    {{ t(`script.timeline.stickerPreset.${preset.id}`) }}
+                  </option>
+                </select>
+              </label>
+              <div class="inspector-grid">
+                <label class="inspector-field">
+                  <span>{{ t('script.timeline.stickerTextField') }}</span>
+                  <input
+                    type="text"
+                    maxlength="32"
+                    :value="selectedClip.text || selectedClip.title"
+                    @change="onOverlayStickerTextChange(($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+                <label class="inspector-field">
+                  <span>{{ t('script.timeline.stickerColorField') }}</span>
+                  <input
+                    type="color"
+                    class="color-input"
+                    :value="selectedClip.stickerColor || '#ff3b5c'"
+                    @input="onOverlayStickerColorChange(($event.target as HTMLInputElement).value)"
+                  />
+                </label>
+              </div>
+            </template>
+
+            <div class="inspector-section-title inspector-section-row">
+              <span>{{ t('script.timeline.tweenSection') }}</span>
+              <button
+                v-if="hasOverlayClipTween(selectedClip)"
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                @click="resetOverlayTweens"
+              >
+                {{ t('script.timeline.tweenReset') }}
+              </button>
+            </div>
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.tweenInLabel') }}</span>
+              <select
+                :value="selectedClip.tweenIn ?? 'none'"
+                @change="
+                  onOverlayTweenPatch({
+                    tweenIn: ($event.target as HTMLSelectElement).value as TimelineTweenInPreset
+                  })
+                "
+              >
+                <option v-for="preset in TIMELINE_TWEEN_IN_PRESETS" :key="preset" :value="preset">
+                  {{ t(`script.timeline.tweenIn.${preset}`) }}
+                </option>
+              </select>
+            </label>
+            <div
+              v-if="selectedClip.tweenIn && selectedClip.tweenIn !== 'none'"
+              class="inspector-grid"
+            >
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenInDuration') }}</span>
+                <input
+                  type="number"
+                  min="0.05"
+                  max="5"
+                  step="0.05"
+                  :value="selectedClip.tweenInDurationSec ?? 0.45"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenInDurationSec: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenInEase') }}</span>
+                <select
+                  :value="selectedClip.tweenInEase ?? 'outBack'"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenInEase: ($event.target as HTMLSelectElement).value as TimelineEaseType
+                    })
+                  "
+                >
+                  <option v-for="ease in TIMELINE_EASE_TYPES" :key="ease" :value="ease">
+                    {{ t(`script.timeline.ease.${ease}`) }}
+                  </option>
+                </select>
+              </label>
+            </div>
+
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.tweenLoopLabel') }}</span>
+              <select
+                :value="selectedClip.tweenLoop ?? 'none'"
+                @change="
+                  onOverlayTweenPatch({
+                    tweenLoop: ($event.target as HTMLSelectElement).value as TimelineTweenLoopPreset
+                  })
+                "
+              >
+                <option v-for="preset in TIMELINE_TWEEN_LOOP_PRESETS" :key="preset" :value="preset">
+                  {{ t(`script.timeline.tweenLoop.${preset}`) }}
+                </option>
+              </select>
+            </label>
+            <div
+              v-if="selectedClip.tweenLoop && selectedClip.tweenLoop !== 'none'"
+              class="inspector-grid"
+            >
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenLoopSpeed') }}</span>
+                <input
+                  type="number"
+                  min="0.2"
+                  max="8"
+                  step="0.1"
+                  :value="selectedClip.tweenLoopSpeedHz ?? 1.2"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenLoopSpeedHz: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenLoopIntensity') }}</span>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="3"
+                  step="0.1"
+                  :value="selectedClip.tweenLoopIntensity ?? 1"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenLoopIntensity: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+            </div>
+
+            <label class="inspector-field">
+              <span>{{ t('script.timeline.tweenOutLabel') }}</span>
+              <select
+                :value="selectedClip.tweenOut ?? 'none'"
+                @change="
+                  onOverlayTweenPatch({
+                    tweenOut: ($event.target as HTMLSelectElement).value as TimelineTweenOutPreset
+                  })
+                "
+              >
+                <option v-for="preset in TIMELINE_TWEEN_OUT_PRESETS" :key="preset" :value="preset">
+                  {{ t(`script.timeline.tweenOut.${preset}`) }}
+                </option>
+              </select>
+            </label>
+            <div
+              v-if="selectedClip.tweenOut && selectedClip.tweenOut !== 'none'"
+              class="inspector-grid"
+            >
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenOutDuration') }}</span>
+                <input
+                  type="number"
+                  min="0.05"
+                  max="5"
+                  step="0.05"
+                  :value="selectedClip.tweenOutDurationSec ?? 0.35"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenOutDurationSec: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>{{ t('script.timeline.tweenOutEase') }}</span>
+                <select
+                  :value="selectedClip.tweenOutEase ?? 'inBack'"
+                  @change="
+                    onOverlayTweenPatch({
+                      tweenOutEase: ($event.target as HTMLSelectElement).value as TimelineEaseType
+                    })
+                  "
+                >
+                  <option v-for="ease in TIMELINE_EASE_TYPES" :key="ease" :value="ease">
+                    {{ t(`script.timeline.ease.${ease}`) }}
+                  </option>
+                </select>
+              </label>
+            </div>
+
+            <div class="inspector-section-title inspector-section-row">
+              <span>
+                {{ t('script.timeline.keyframeSection') }}
+                <span v-if="selectedClip.keyframes?.length" class="inspector-badge">
+                  {{ selectedClip.keyframes.length }}
+                </span>
+              </span>
+              <button
+                v-if="selectedClip.keyframes?.length"
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                @click="clearOverlayKeyframes"
+              >
+                {{ t('script.timeline.keyframeClearAll') }}
+              </button>
+            </div>
+            <button
+              type="button"
+              class="ghost-btn keyframe-add-btn"
+              @click="addOrUpdateOverlayKeyframeAtPlayhead"
+            >
+              {{
+                hasKeyframeNearPlayhead(selectedClip)
+                  ? t('script.timeline.keyframeUpdateAtPlayhead')
+                  : t('script.timeline.keyframeAddAtPlayhead')
+              }}
+            </button>
+            <div v-if="selectedClip.keyframes?.length" class="keyframe-list">
+              <div
+                v-for="(kf, kfIndex) in selectedClip.keyframes"
+                :key="`kf-row-${kfIndex}-${kf.offsetSec}`"
+                class="keyframe-row"
+                :class="{ active: isKeyframeAtPlayhead(selectedClip, kf.offsetSec) }"
+              >
+                <button
+                  type="button"
+                  class="keyframe-time-pill"
+                  :title="t('script.timeline.keyframeJumpHint')"
+                  @click="seekToClipKeyframe(selectedClip, kf)"
+                >
+                  ◆ {{ kf.offsetSec.toFixed(2) }}s
+                </button>
+                <select
+                  class="keyframe-ease-select"
+                  :value="kf.ease ?? 'outCubic'"
+                  @change="
+                    onOverlayKeyframeEaseChange(
+                      kf.offsetSec,
+                      ($event.target as HTMLSelectElement).value as TimelineEaseType
+                    )
+                  "
+                >
+                  <option v-for="ease in TIMELINE_EASE_TYPES" :key="ease" :value="ease">
+                    {{ t(`script.timeline.ease.${ease}`) }}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  class="keyframe-del-btn"
+                  :title="t('script.timeline.keyframeRemoveHint')"
+                  @click="removeOverlayKeyframe(kf.offsetSec)"
+                >
+                  ×
+                </button>
+              </div>
+              <div class="inspector-hint">
+                {{ t('script.timeline.keyframeAutoHint') }}
+              </div>
+            </div>
+            <div v-else class="inspector-hint">
+              {{ t('script.timeline.keyframeEmptyHint') }}
+            </div>
           </template>
           <template
             v-if="
@@ -1182,7 +1541,7 @@
     <section
       class="timeline-dock"
       :class="{ collapsed: timelineCollapsed }"
-      :style="{ height: `${timelineHeight}px` }"
+      :style="timelineCollapsed ? undefined : { height: `${timelineHeight}px` }"
     >
       <header ref="timelineBarEl" class="timeline-bar">
         <div class="timeline-controls" @pointerdown.stop>
@@ -1639,6 +1998,26 @@
                 >
                   ⬒
                 </span>
+                <span
+                  v-if="clipHasTweenBadge(clip)"
+                  class="clip-tween-badge"
+                  :title="t('script.timeline.tweenBadgeHint')"
+                >
+                  ✦
+                </span>
+                <span
+                  v-for="(kf, kfIdx) in clip.keyframes ?? []"
+                  :key="`kf-mark-${kfIdx}-${kf.offsetSec}`"
+                  class="clip-keyframe-diamond"
+                  :class="{ active: isKeyframeAtPlayhead(clip, kf.offsetSec) }"
+                  :style="{
+                    left: `${Math.min(98, Math.max(2, (kf.offsetSec / Math.max(0.1, clip.durationSec)) * 100)).toFixed(2)}%`
+                  }"
+                  :title="`◆ ${kf.offsetSec.toFixed(2)}s (${kf.ease ?? 'outCubic'})`"
+                  @pointerdown.stop="seekToClipKeyframe(clip, kf)"
+                >
+                  ◆
+                </span>
                 <button
                   v-if="clip.nodeId"
                   type="button"
@@ -2069,24 +2448,42 @@
             v-for="cat in ['all', ...SFX_PRESET_CATEGORIES.map((c) => c.id)]"
             :key="cat"
             type="button"
-            class="ghost-btn"
+            class="ghost-btn sfx-library-tab"
             :class="{ active: sfxLibraryCategory === cat }"
             @click="setSfxLibraryCategory(cat as 'all' | SfxPresetCategory)"
           >
-            {{ sfxLibraryCategoryLabels[cat as 'all' | SfxPresetCategory] }}
+            <span class="sfx-library-tab-icon" aria-hidden="true">
+              {{ sfxLibraryCategoryIcons[cat as 'all' | SfxPresetCategory] }}
+            </span>
+            <span>{{ sfxLibraryCategoryLabels[cat as 'all' | SfxPresetCategory] }}</span>
           </button>
         </div>
         <div class="sfx-preset-grid">
-          <div v-for="preset in filteredSfxPresets" :key="preset.id" class="sfx-preset-card">
-            <div class="sfx-preset-name">
-              {{ localizedText(locale, preset.name) }}
+          <div
+            v-for="preset in filteredSfxPresets"
+            :key="preset.id"
+            class="sfx-preset-card"
+            :class="`cat-${preset.category}`"
+          >
+            <div class="sfx-preset-head">
+              <span class="sfx-preset-icon" :class="preset.category" aria-hidden="true">
+                {{ preset.icon }}
+              </span>
+              <div class="sfx-preset-title-wrap">
+                <div class="sfx-preset-name">
+                  {{ localizedText(locale, preset.name) }}
+                </div>
+                <span class="sfx-preset-cat-badge" :class="preset.category">
+                  {{ sfxLibraryCategoryLabels[preset.category] }}
+                </span>
+              </div>
             </div>
             <div class="sfx-preset-prompt">
               {{ localizedText(locale, preset.prompt) }}
             </div>
             <div class="sfx-preset-foot">
               <span v-if="preset.durationSec" class="sfx-preset-duration">
-                ~{{ preset.durationSec }}s
+                ⏱ ~{{ preset.durationSec }}s
               </span>
               <button
                 type="button"
@@ -2105,7 +2502,8 @@
         <div v-if="projectAudioAssets.length" class="sfx-library-assets">
           <div v-for="asset in projectAudioAssets" :key="asset.id" class="sfx-library-asset-row">
             <span class="sfx-library-asset-name" :title="asset.relativePath">
-              {{ asset.name }}
+              <span class="sfx-library-asset-icon" aria-hidden="true">🎧</span>
+              <span>{{ asset.name }}</span>
             </span>
             <button
               type="button"
@@ -2362,22 +2760,35 @@ import {
   clampMixEqGainDb,
   clampTrackGain,
   closeTimelineTrackGaps,
+  evaluateMainClipCameraTransform,
+  evaluateOverlayClipTransform,
   EXPORT_PLATFORMS,
   exportPlatformById,
   exportPlatformSafeRect,
   exportPlatformSubtitleOffset,
+  hasOverlayClipTween,
   isExportDurationOverLimit,
   isSubtitleWithinSafeArea,
   normalizeClipCropRect,
   normalizePlaybackRate,
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
+  normalizeTimelineKeyframes,
   parseSmartCutPlan,
   readScriptTimelineFromGenParams,
+  removeTimelineClipKeyframeAt,
+  renderTimelineBuiltinStickerDataUrl,
   SMART_CUT_DEFAULT_TRANSITION_SEC,
   SMART_CUT_TRANSITIONS,
   splitTimelineClipAtTime,
+  TIMELINE_BUILTIN_STICKERS,
+  TIMELINE_CAMERA_MOTION_PRESETS,
+  TIMELINE_EASE_TYPES,
+  TIMELINE_TWEEN_IN_PRESETS,
+  TIMELINE_TWEEN_LOOP_PRESETS,
+  TIMELINE_TWEEN_OUT_PRESETS,
   trimTimelineClipToTime,
+  upsertTimelineClipKeyframe,
   withScriptTimeline,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
@@ -2388,8 +2799,15 @@ import {
   type ScriptTimelineTrackKind,
   type ScriptTimelineTransitionType,
   type SmartCutEdit,
+  type TimelineBuiltinStickerPreset,
+  type TimelineCameraMotionPreset,
+  type TimelineClipKeyframe,
+  type TimelineEaseType,
   type TimelineExportClip,
-  type TimelineMixGains
+  type TimelineMixGains,
+  type TimelineTweenInPreset,
+  type TimelineTweenLoopPreset,
+  type TimelineTweenOutPreset
 } from '@shared/graph'
 import { planRippleCut } from '@shared/graph/timelineCut'
 import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
@@ -2537,7 +2955,7 @@ const previewVideoMeta = ref({ width: 0, height: 0 })
 const timelineBoardEl = ref<HTMLElement | null>(null)
 const timelineBarEl = ref<HTMLElement | null>(null)
 const timelineCollapsed = ref(false)
-const timelineHeight = ref(336)
+const timelineHeight = ref(384)
 const trackHeight = ref(52)
 const splitterDrag = ref<{
   pointerId: number
@@ -2712,14 +3130,18 @@ const transitionDrag = ref<{
 const overlayDrag = ref<{
   clipId: string
   pointerId: number
-  mode: 'move' | 'scale'
-  corner: 'tl' | 'tr' | 'bl' | 'br'
+  mode: 'move' | 'scale' | 'rotate'
+  corner: 'tl' | 'tr' | 'bl' | 'br' | 'rotate'
   startX: number
   startY: number
   startLeft: number
   startTop: number
   startWidth: number
   startHeight: number
+  startRotation: number
+  centerX: number
+  centerY: number
+  startAngleDeg: number
   moved: boolean
   beforeClips: ScriptTimelineClip[]
 } | null>(null)
@@ -2958,14 +3380,8 @@ const timelineInnerHeight = computed(
     TIMELINE_BOTTOM_PAD
 )
 
-/** 时间线面板最小高度：恰好显示到最末一条轨道下方（含头部栏），拖拽缩小到此为止 */
-const timelineMinHeight = computed(
-  () => (timelineBarEl.value?.offsetHeight ?? 36) + timelineInnerHeight.value
-)
-
-watch(timelineMinHeight, (min) => {
-  if (timelineHeight.value < min) timelineHeight.value = min
-})
+/** 时间线面板最小展开高度（允许向下拖拽收窄，轨道区内部自动出现纵向滚动条可下拉到底） */
+const timelineMinHeight = computed(() => 116)
 
 function trackTopOffset(kind: ScriptTimelineTrackKind): number {
   let top = 28
@@ -3220,6 +3636,16 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     } else if (type === 'zoomin') {
       outgoingTransform = `scale(${(1 + 0.24 * progress).toFixed(3)})`
     }
+  }
+
+  if (
+    !outgoingTransform &&
+    activeClip?.track === 'video' &&
+    activeClip.cameraMotion &&
+    activeClip.cameraMotion !== 'none'
+  ) {
+    const cam = evaluateMainClipCameraTransform(activeClip, playheadSec.value - activeClip.startSec)
+    outgoingTransform = `translate(${cam.translateXPercent.toFixed(2)}%, ${cam.translateYPercent.toFixed(2)}%) scale(${cam.scale.toFixed(3)})`
   }
 
   const extras: Record<string, string> = {
@@ -4776,10 +5202,31 @@ function isImageOrGifUrl(url?: string | null): boolean {
   return /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(clean)
 }
 
-function isImageOrGifClip(clip?: { relativePath?: string; assetId?: string } | null): boolean {
+const overlayImageUrls = ref<Record<string, string>>({})
+
+function isImageOrGifClip(
+  clip?: { relativePath?: string; assetId?: string; stickerId?: string } | null
+): boolean {
   if (!clip) return false
+  if (typeof clip.stickerId === 'string' && clip.stickerId.trim()) return true
   const rel = sourceRelativePath(clip)
-  return isImageOrGifUrl(rel)
+  if (isImageOrGifUrl(rel)) return true
+  const aid = clip.assetId?.trim()
+  if (aid) {
+    const asset = project.assets.find((a) => a.id === aid)
+    if (asset?.type === 'image') return true
+  }
+  return false
+}
+
+function overlayImageSrc(clip: ScriptTimelineClip): string {
+  if (clip.stickerId?.trim()) {
+    return renderTimelineBuiltinStickerDataUrl(clip.stickerId, {
+      text: clip.text,
+      color: clip.stickerColor
+    })
+  }
+  return overlayImageUrls.value[clip.id] ?? ''
 }
 
 async function generateVideoStrip(clip: ScriptTimelineClip): Promise<string | null> {
@@ -5202,24 +5649,38 @@ function overlayRect(clip: ScriptTimelineClip): {
 }
 
 function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
-  const rect = overlayRect(clip)
+  const localSec = playheadSec.value - clip.startSec
+  const tf = evaluateOverlayClipTransform(clip, localSec)
   const filter = buildCssColorFilter(clip)
   const cropClip = !(cropMode.value && selectedCroppableClip.value?.id === clip.id)
     ? buildCssCropClipPath(clip)
     : ''
   return {
-    left: `${rect.left * 100}%`,
-    top: `${rect.top * 100}%`,
-    width: `${rect.width * 100}%`,
-    height: `${rect.height * 100}%`,
-    opacity: `${clamp01(clip.opacity ?? 1)}`,
+    left: `${(tf.left * 100).toFixed(3)}%`,
+    top: `${(tf.top * 100).toFixed(3)}%`,
+    width: `${(tf.width * 100).toFixed(3)}%`,
+    height: `${(tf.height * 100).toFixed(3)}%`,
+    opacity: `${clamp01(tf.opacity).toFixed(3)}`,
+    ...(Math.abs(tf.rotation) > 0.01
+      ? { transform: `rotate(${tf.rotation.toFixed(2)}deg)`, transformOrigin: 'center center' }
+      : {}),
     ...(filter ? { filter } : {}),
     ...(cropClip ? { clipPath: cropClip } : {})
   }
 }
 
 function overlaySelectionStyle(clip: ScriptTimelineClip): Record<string, string> {
-  return overlayVideoStyle(clip)
+  const localSec = playheadSec.value - clip.startSec
+  const tf = evaluateOverlayClipTransform(clip, localSec)
+  return {
+    left: `${(tf.left * 100).toFixed(3)}%`,
+    top: `${(tf.top * 100).toFixed(3)}%`,
+    width: `${(tf.width * 100).toFixed(3)}%`,
+    height: `${(tf.height * 100).toFixed(3)}%`,
+    ...(Math.abs(tf.rotation) > 0.01
+      ? { transform: `rotate(${tf.rotation.toFixed(2)}deg)`, transformOrigin: 'center center' }
+      : {})
+  }
 }
 
 function isOverlayClipActive(clip: ScriptTimelineClip): boolean {
@@ -5582,6 +6043,26 @@ function zoomFit(): void {
 function onTimelineWheel(e: WheelEvent): void {
   const board = timelineBoardEl.value
   if (!board) return
+  const target = e.target as HTMLElement | null
+  const onRuler = Boolean(target?.closest('.ruler-row'))
+  const hasVScroll = board.scrollHeight > board.clientHeight + 2
+  const zoomModifier = e.ctrlKey || e.metaKey || e.altKey
+
+  // 当轨道窗口存在纵向溢出且未按 Ctrl/Alt/Meta、也未悬停在时间标尺上时，滚轮优先用于上下滚动轨道到底部
+  if (hasVScroll && !zoomModifier && !onRuler && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+    board.scrollTop = Math.max(
+      0,
+      Math.min(board.scrollHeight - board.clientHeight, board.scrollTop + e.deltaY)
+    )
+    if (e.deltaX !== 0) {
+      board.scrollLeft = Math.max(
+        0,
+        Math.min(board.scrollWidth - board.clientWidth, board.scrollLeft + e.deltaX)
+      )
+    }
+    return
+  }
+
   const rect = board.getBoundingClientRect()
   const cursorLaneX = e.clientX - rect.left + board.scrollLeft - TRACK_LABEL_W
   const timeAtCursor = Math.max(0, cursorLaneX / pxPerSec.value)
@@ -5599,7 +6080,19 @@ function onTimelineWheel(e: WheelEvent): void {
   })
 }
 
-async function resolveSrc(source: { relativePath?: string; assetId?: string }): Promise<string> {
+async function resolveSrc(source: {
+  relativePath?: string
+  assetId?: string
+  stickerId?: string
+  text?: string
+  stickerColor?: string
+}): Promise<string> {
+  if (typeof source.stickerId === 'string' && source.stickerId.trim()) {
+    return renderTimelineBuiltinStickerDataUrl(source.stickerId, {
+      text: source.text,
+      color: source.stickerColor
+    })
+  }
   const rel = sourceRelativePath(source)
   if (!rel) return ''
   try {
@@ -5611,6 +6104,9 @@ async function resolveSrc(source: { relativePath?: string; assetId?: string }): 
 
 async function probeDuration(src: string, media: 'video' | 'audio' = 'video'): Promise<number> {
   if (!src) return 3
+  if (media === 'video' && isImageOrGifUrl(src) && !/\.gif($|\?)/i.test(src)) {
+    return 3
+  }
   return new Promise((resolve) => {
     const el = media === 'audio' ? document.createElement('audio') : document.createElement('video')
     el.preload = 'metadata'
@@ -5715,6 +6211,17 @@ const sfxLibraryCategoryLabels = computed<Record<'all' | SfxPresetCategory, stri
   for (const meta of SFX_PRESET_CATEGORIES)
     labels[meta.id] = localizedText(locale.value, meta.label)
   return labels
+})
+
+const sfxLibraryCategoryIcons = computed<Record<'all' | SfxPresetCategory, string>>(() => {
+  const icons: Record<'all' | SfxPresetCategory, string> = {
+    all: '🎵',
+    ui: '🔔',
+    transition: '⚡',
+    ambient: '🌿'
+  }
+  for (const meta of SFX_PRESET_CATEGORIES) icons[meta.id] = meta.icon
+  return icons
 })
 
 const filteredSfxPresets = computed(() =>
@@ -6213,6 +6720,32 @@ function onOverlayFieldChange(
   } else {
     next[field] = clamp01(value)
   }
+  if (next.keyframes?.length && field !== 'volume') {
+    const localSec = Math.max(0, Math.min(next.durationSec, playheadSec.value - next.startSec))
+    next.keyframes = upsertTimelineClipKeyframe(next, localSec, {
+      x: next.overlayX,
+      y: next.overlayY,
+      width: next.overlayWidth,
+      height: next.overlayHeight,
+      rotation: next.overlayRotation ?? 0,
+      opacity: next.opacity ?? 1
+    })
+  }
+  clips.value = clips.value.map((c) => (c.id === clip.id ? next : c))
+  scheduleSave()
+}
+
+function onOverlayRotationChange(value: number): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const rot = Number.isFinite(value)
+    ? Math.max(-360, Math.min(360, Math.round(value * 10) / 10))
+    : 0
+  const next: ScriptTimelineClip = { ...clip, overlayRotation: rot }
+  if (next.keyframes?.length) {
+    const localSec = Math.max(0, Math.min(next.durationSec, playheadSec.value - next.startSec))
+    next.keyframes = upsertTimelineClipKeyframe(next, localSec, { rotation: rot })
+  }
   clips.value = clips.value.map((c) => (c.id === clip.id ? next : c))
   scheduleSave()
 }
@@ -6229,12 +6762,242 @@ function resetOverlayTransform(): void {
             overlayY: 0.12,
             overlayWidth: 0.36,
             overlayHeight: 0.36,
+            overlayRotation: 0,
             opacity: 1,
             volume: 1
           }
         : c
     )
   )
+  scheduleSave()
+}
+
+function onOverlayTweenPatch(patch: Partial<ScriptTimelineClip>): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, ...patch } : c)))
+  scheduleSave()
+}
+
+function resetOverlayTweens(): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            tweenIn: undefined,
+            tweenInDurationSec: undefined,
+            tweenInEase: undefined,
+            tweenOut: undefined,
+            tweenOutDurationSec: undefined,
+            tweenOutEase: undefined,
+            tweenLoop: undefined,
+            tweenLoopSpeedHz: undefined,
+            tweenLoopIntensity: undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onClipCameraMotionChange(motion: TimelineCameraMotionPreset): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track !== 'video' || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id ? { ...c, cameraMotion: motion === 'none' ? undefined : motion } : c
+    )
+  )
+  scheduleSave()
+}
+
+function isKeyframeAtPlayhead(
+  clip: ScriptTimelineClip,
+  kfOrOffset: TimelineClipKeyframe | number
+): boolean {
+  const offsetSec = typeof kfOrOffset === 'number' ? kfOrOffset : kfOrOffset.offsetSec
+  const localSec = playheadSec.value - clip.startSec
+  return Math.abs(offsetSec - localSec) <= 0.04
+}
+
+function hasKeyframeNearPlayhead(clip: ScriptTimelineClip): boolean {
+  if (!clip.keyframes?.length) return false
+  return clip.keyframes.some((kf) => isKeyframeAtPlayhead(clip, kf))
+}
+
+function addOrUpdateOverlayKeyframeAtPlayhead(): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const localSec = Math.max(0, Math.min(clip.durationSec, playheadSec.value - clip.startSec))
+  const tf = evaluateOverlayClipTransform(clip, localSec)
+  const keyframes = upsertTimelineClipKeyframe(clip, localSec, {
+    x: tf.left,
+    y: tf.top,
+    width: tf.width,
+    height: tf.height,
+    rotation: tf.rotation,
+    opacity: tf.opacity
+  })
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, keyframes } : c)))
+  scheduleSave()
+}
+
+function removeOverlayKeyframe(offsetSec: number): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const keyframes = removeTimelineClipKeyframeAt(clip.keyframes, offsetSec)
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id ? { ...c, keyframes: keyframes.length ? keyframes : undefined } : c
+    )
+  )
+  scheduleSave()
+}
+
+function clearOverlayKeyframes(): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, keyframes: undefined } : c)))
+  scheduleSave()
+}
+
+function onOverlayKeyframeEaseChange(offsetSec: number, easeRaw: string): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || !clip.keyframes?.length || lockedTracks.value.has(clip.track)) return
+  const ease = (TIMELINE_EASE_TYPES as readonly string[]).includes(easeRaw)
+    ? (easeRaw as TimelineEaseType)
+    : ('outCubic' as TimelineEaseType)
+  const keyframes = normalizeTimelineKeyframes(
+    clip.keyframes.map((kf) => (Math.abs(kf.offsetSec - offsetSec) <= 0.04 ? { ...kf, ease } : kf)),
+    clip.durationSec
+  )
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, keyframes } : c)))
+  scheduleSave()
+}
+
+function seekToClipKeyframe(
+  clip: ScriptTimelineClip,
+  kfOrOffset: TimelineClipKeyframe | number
+): void {
+  const offsetSec = typeof kfOrOffset === 'number' ? kfOrOffset : kfOrOffset.offsetSec
+  playheadSec.value = Math.min(totalDuration.value, Math.max(0, clip.startSec + offsetSec))
+  void syncPreviewToPlayhead()
+}
+
+function clipHasTweenBadge(clip: ScriptTimelineClip): boolean {
+  if (clip.track === 'overlay') return hasOverlayClipTween(clip)
+  if (clip.track === 'video') return Boolean(clip.cameraMotion && clip.cameraMotion !== 'none')
+  return false
+}
+
+const builtinStickers = TIMELINE_BUILTIN_STICKERS
+
+function builtinStickerPreviewUrl(sticker: TimelineBuiltinStickerPreset): string {
+  return renderTimelineBuiltinStickerDataUrl(sticker.id, {
+    text: sticker.defaultText,
+    color: sticker.defaultColor
+  })
+}
+
+async function addBuiltinStickerToOverlay(
+  sticker: TimelineBuiltinStickerPreset,
+  startSec?: number
+): Promise<void> {
+  if (lockedTracks.value.has('overlay')) return
+  const durationSec = 3
+  const targetStart =
+    startSec != null
+      ? fitClipStart('overlay', startSec, durationSec)
+      : fitClipStart('overlay', Math.max(0, playheadSec.value), durationSec)
+  const clip: ScriptTimelineClip = {
+    id: newClipId(),
+    track: 'overlay',
+    sourceId: `sticker:${sticker.id}:${Date.now().toString(36)}`,
+    title: t(sticker.labelKey),
+    stickerId: sticker.id,
+    stickerColor: sticker.defaultColor,
+    ...(sticker.defaultText ? { text: sticker.defaultText } : {}),
+    startSec: targetStart,
+    durationSec,
+    overlayX: Math.max(0, Math.min(1 - sticker.defaultWidth, (1 - sticker.defaultWidth) / 2)),
+    overlayY: Math.max(0, Math.min(1 - sticker.defaultHeight, 0.18)),
+    overlayWidth: sticker.defaultWidth,
+    overlayHeight: sticker.defaultHeight,
+    overlayRotation: 0,
+    opacity: 1,
+    volume: 0,
+    tweenIn: sticker.defaultTweenIn,
+    tweenInDurationSec: 0.45,
+    tweenInEase: sticker.defaultTweenIn === 'elasticIn' ? 'outElastic' : 'outBack',
+    tweenLoop: sticker.defaultTweenLoop,
+    tweenLoopSpeedHz: 1.4,
+    tweenLoopIntensity: 1,
+    tweenOut: 'popOut',
+    tweenOutDurationSec: 0.35,
+    tweenOutEase: 'inBack'
+  }
+  commitClips([...clips.value, clip])
+  activeClipId.value = clip.id
+  setSingleClipSelection(clip.id)
+  playheadSec.value = clip.startSec
+  scheduleSave()
+  void syncPreviewToPlayhead()
+}
+
+function onBuiltinStickerDragStart(e: DragEvent, sticker: TimelineBuiltinStickerPreset): void {
+  if (!e.dataTransfer) return
+  e.dataTransfer.setData(
+    DRAFT_MIME,
+    JSON.stringify({
+      id: `sticker:${sticker.id}`,
+      title: t(sticker.labelKey),
+      stickerId: sticker.id,
+      stickerColor: sticker.defaultColor,
+      text: sticker.defaultText,
+      mediaKind: 'video'
+    })
+  )
+  e.dataTransfer.effectAllowed = 'copy'
+}
+
+function onOverlayStickerPresetChange(stickerId: string): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const preset = TIMELINE_BUILTIN_STICKERS.find((s) => s.id === stickerId)
+  if (!preset) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            stickerId: preset.id,
+            title: t(preset.labelKey),
+            stickerColor: c.stickerColor || preset.defaultColor,
+            text: c.text || preset.defaultText
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onOverlayStickerTextChange(value: string): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const text = value.trim()
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, text } : c)))
+  scheduleSave()
+}
+
+function onOverlayStickerColorChange(value: string): void {
+  const clip = selectedOverlayClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const color = value.trim()
+  if (!/^#[0-9a-fA-F]{6}$/.test(color)) return
+  commitClips(clips.value.map((c) => (c.id === clip.id ? { ...c, stickerColor: color } : c)))
   scheduleSave()
 }
 
@@ -6255,20 +7018,34 @@ function onOverlayPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   selectClip(clip)
   const target = e.target as HTMLElement | null
   const handle = target?.closest('.overlay-handle') as HTMLElement | null
-  const corner = (handle?.dataset.corner as 'tl' | 'tr' | 'bl' | 'br' | undefined) ?? 'br'
-  const rect = overlayRect(clip)
+  const corner =
+    (handle?.dataset.corner as 'tl' | 'tr' | 'bl' | 'br' | 'rotate' | undefined) ?? 'br'
+  const tf = evaluateOverlayClipTransform(clip, playheadSec.value - clip.startSec)
+  const canvas = previewCanvasEl.value
+  const canvasRect = canvas?.getBoundingClientRect()
+  const centerX = canvasRect
+    ? canvasRect.left + (tf.left + tf.width / 2) * canvasRect.width
+    : e.clientX
+  const centerY = canvasRect
+    ? canvasRect.top + (tf.top + tf.height / 2) * canvasRect.height
+    : e.clientY
+  const startAngleDeg = (Math.atan2(e.clientY - centerY, e.clientX - centerX) * 180) / Math.PI
   unbindOverlayDragListeners()
   overlayDrag.value = {
     clipId: clip.id,
     pointerId: e.pointerId,
-    mode: handle ? 'scale' : 'move',
+    mode: corner === 'rotate' ? 'rotate' : handle ? 'scale' : 'move',
     corner,
     startX: e.clientX,
     startY: e.clientY,
-    startLeft: rect.left,
-    startTop: rect.top,
-    startWidth: rect.width,
-    startHeight: rect.height,
+    startLeft: tf.left,
+    startTop: tf.top,
+    startWidth: tf.width,
+    startHeight: tf.height,
+    startRotation: tf.rotation,
+    centerX,
+    centerY,
+    startAngleDeg,
     moved: false,
     beforeClips: snapshotClips()
   }
@@ -6287,15 +7064,43 @@ function onOverlayPointerMove(e: PointerEvent): void {
   const dy = (e.clientY - session.startY) / rect.height
   const minSize = 0.08
 
+  if (session.mode === 'rotate') {
+    const angleDeg =
+      (Math.atan2(e.clientY - session.centerY, e.clientX - session.centerX) * 180) / Math.PI
+    let deltaDeg = angleDeg - session.startAngleDeg
+    if (deltaDeg > 180) deltaDeg -= 360
+    if (deltaDeg < -180) deltaDeg += 360
+    let nextRot = Math.round((session.startRotation + deltaDeg) * 10) / 10
+    if (e.shiftKey) {
+      nextRot = Math.round(nextRot / 15) * 15
+    }
+    nextRot = Math.max(-360, Math.min(360, nextRot))
+    session.moved = true
+    clips.value = clips.value.map((c) => {
+      if (c.id !== session.clipId) return c
+      const localSec = Math.max(0, Math.min(c.durationSec, playheadSec.value - c.startSec))
+      const keyframes = c.keyframes?.length
+        ? upsertTimelineClipKeyframe(c, localSec, { rotation: nextRot })
+        : c.keyframes
+      return { ...c, overlayRotation: nextRot, keyframes }
+    })
+    return
+  }
+
   if (session.mode === 'move') {
     const left = clamp01(session.startLeft + dx)
     const top = clamp01(session.startTop + dy)
     const x = Math.min(left, Math.max(0, 1 - session.startWidth))
     const y = Math.min(top, Math.max(0, 1 - session.startHeight))
     session.moved = true
-    clips.value = clips.value.map((c) =>
-      c.id === session.clipId ? { ...c, overlayX: x, overlayY: y } : c
-    )
+    clips.value = clips.value.map((c) => {
+      if (c.id !== session.clipId) return c
+      const localSec = Math.max(0, Math.min(c.durationSec, playheadSec.value - c.startSec))
+      const keyframes = c.keyframes?.length
+        ? upsertTimelineClipKeyframe(c, localSec, { x, y })
+        : c.keyframes
+      return { ...c, overlayX: x, overlayY: y, keyframes }
+    })
     return
   }
 
@@ -6327,17 +7132,26 @@ function onOverlayPointerMove(e: PointerEvent): void {
   width = clamp01(width)
   height = clamp01(height)
   session.moved = true
-  clips.value = clips.value.map((c) =>
-    c.id === session.clipId
-      ? {
-          ...c,
-          overlayX: left,
-          overlayY: top,
-          overlayWidth: width,
-          overlayHeight: height
-        }
-      : c
-  )
+  clips.value = clips.value.map((c) => {
+    if (c.id !== session.clipId) return c
+    const localSec = Math.max(0, Math.min(c.durationSec, playheadSec.value - c.startSec))
+    const keyframes = c.keyframes?.length
+      ? upsertTimelineClipKeyframe(c, localSec, {
+          x: left,
+          y: top,
+          width,
+          height
+        })
+      : c.keyframes
+    return {
+      ...c,
+      overlayX: left,
+      overlayY: top,
+      overlayWidth: width,
+      overlayHeight: height,
+      keyframes
+    }
+  })
 }
 
 function onOverlayPointerUp(e: PointerEvent): void {
@@ -7290,8 +8104,8 @@ function hasExternalFiles(e: DragEvent): boolean {
 }
 
 function canDropAssetOnTrack(asset: AssetInfo, kind: ScriptTimelineTrackKind): boolean {
-  if (kind === 'video') return asset.type === 'video'
-  if (kind === 'overlay') return asset.type === 'video'
+  if (kind === 'video') return asset.type === 'video' || asset.type === 'image'
+  if (kind === 'overlay') return asset.type === 'video' || asset.type === 'image'
   if (kind === 'voice' || kind === 'music' || kind === 'sfx') return asset.type === 'voice'
   if (kind === 'subtitle') return asset.type === 'video' || asset.type === 'voice'
   return false
@@ -7311,6 +8125,9 @@ function resolveTargetTrack(
   if (asset.type === 'video') {
     if (requested === 'overlay') return 'overlay'
     return requested === 'subtitle' ? 'subtitle' : 'video'
+  }
+  if (asset.type === 'image') {
+    return requested === 'video' ? 'video' : 'overlay'
   }
   return null
 }
@@ -7386,7 +8203,7 @@ function onTrackDragLeave(e: DragEvent, kind: ScriptTimelineTrackKind): void {
 }
 
 function assetToSource(asset: AssetInfo): ScriptTimelineSource | null {
-  if (asset.type !== 'video' && asset.type !== 'voice') return null
+  if (asset.type !== 'video' && asset.type !== 'voice' && asset.type !== 'image') return null
   const relativePath = asset.relativePath?.trim()
   if (!relativePath && !asset.id) return null
   return {
@@ -7439,7 +8256,7 @@ function filterImportableMediaPaths(paths: string[]): string[] {
     if (!isImportablePath(path)) return false
     try {
       const type = detectImportAssetType(path)
-      return type === 'video' || type === 'voice'
+      return type === 'video' || type === 'voice' || type === 'image'
     } catch {
       return false
     }
@@ -7536,10 +8353,19 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
       _moveClipId?: string
       durationSec?: number
       text?: string
+      stickerId?: string
+      stickerColor?: string
     }
     try {
       payload = JSON.parse(raw)
     } catch {
+      return
+    }
+    if (payload.stickerId) {
+      const preset = TIMELINE_BUILTIN_STICKERS.find((s) => s.id === payload.stickerId)
+      if (preset) {
+        await addBuiltinStickerToOverlay(preset, dropStart)
+      }
       return
     }
     if (kind === 'overlay' && payload.mediaKind === 'voice') return
@@ -7953,7 +8779,11 @@ function disposePreviewAudioGraph(): void {
 async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
   syncPreviewMixerSettings()
   const audioClips = clips.value.filter(
-    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'overlay' || c.track === 'sfx'
+    (c) =>
+      c.track === 'voice' ||
+      c.track === 'music' ||
+      c.track === 'sfx' ||
+      (c.track === 'overlay' && !isImageOrGifClip(c))
   )
   const alive = new Set(audioClips.map((c) => c.id))
   for (const id of [...audioEls.keys()]) {
@@ -8041,6 +8871,15 @@ async function syncPreviewToPlayhead(): Promise<void> {
 async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
   await nextTick()
   for (const clip of visibleClipsOn('overlay')) {
+    if (isImageOrGifClip(clip)) {
+      if (!clip.stickerId?.trim() && !overlayImageUrls.value[clip.id]) {
+        const url = await resolveSrc(clip)
+        if (url) {
+          overlayImageUrls.value = { ...overlayImageUrls.value, [clip.id]: url }
+        }
+      }
+      continue
+    }
     const el = overlayEls.get(clip.id)
     if (!el) continue
     const local = playheadSec.value - clip.startSec
@@ -8827,11 +9666,25 @@ async function exportTimeline(): Promise<void> {
         overlayY: c.overlayY,
         overlayWidth: c.overlayWidth,
         overlayHeight: c.overlayHeight,
+        overlayRotation: c.overlayRotation,
         cropX: c.cropX,
         cropY: c.cropY,
         cropWidth: c.cropWidth,
         cropHeight: c.cropHeight,
         opacity: c.opacity,
+        tweenIn: c.tweenIn,
+        tweenInDurationSec: c.tweenInDurationSec,
+        tweenInEase: c.tweenInEase,
+        tweenOut: c.tweenOut,
+        tweenOutDurationSec: c.tweenOutDurationSec,
+        tweenOutEase: c.tweenOutEase,
+        tweenLoop: c.tweenLoop,
+        tweenLoopSpeedHz: c.tweenLoopSpeedHz,
+        tweenLoopIntensity: c.tweenLoopIntensity,
+        keyframes: c.keyframes,
+        cameraMotion: c.cameraMotion,
+        stickerId: c.stickerId,
+        stickerColor: c.stickerColor,
         transitionInSec: c.transitionInSec,
         transitionOutSec: c.transitionOutSec,
         transitionType: c.transitionType
@@ -9222,10 +10075,11 @@ async function exportCapCutDraft(): Promise<void> {
 
 function onVerticalSplitterDown(e: PointerEvent): void {
   if (e.button !== 0) return
+  const barH = timelineBarEl.value?.offsetHeight ?? 36
   splitterDrag.value = {
     pointerId: e.pointerId,
     startY: e.clientY,
-    startHeight: timelineHeight.value
+    startHeight: timelineCollapsed.value ? barH : timelineHeight.value
   }
   window.addEventListener('pointermove', onVerticalSplitterMove)
   window.addEventListener('pointerup', onVerticalSplitterUp)
@@ -9237,12 +10091,16 @@ function onVerticalSplitterMove(e: PointerEvent): void {
   const session = splitterDrag.value
   if (!session || e.pointerId !== session.pointerId) return
   const root = rootEl.value
-  const max = Math.max(140, (root?.clientHeight ?? 480) - 120)
-  const next = Math.min(
-    Math.max(max, timelineMinHeight.value),
-    Math.max(timelineMinHeight.value, session.startHeight + (session.startY - e.clientY))
-  )
-  timelineHeight.value = next
+  const max = Math.max(140, (root?.clientHeight ?? 480) - 100)
+  const raw = session.startHeight + (session.startY - e.clientY)
+  if (raw < 68) {
+    timelineCollapsed.value = true
+    return
+  }
+  if (timelineCollapsed.value) {
+    timelineCollapsed.value = false
+  }
+  timelineHeight.value = Math.min(max, Math.max(timelineMinHeight.value, raw))
 }
 
 function onVerticalSplitterUp(e: PointerEvent): void {
@@ -9888,6 +10746,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .folder-empty {
+  grid-column: 1 / -1;
   padding: 6px 4px;
   font-size: 11px;
   color: var(--text-muted);
@@ -9898,8 +10757,8 @@ defineExpose({ flushSave: persist, reloadSources })
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--source-card-size, 72px), 1fr));
   gap: 6px;
-  flex: 1;
-  min-height: 64px;
+  align-content: start;
+  min-height: 44px;
   border-radius: 8px;
   border: 1px solid transparent;
   padding: 2px;
@@ -9913,8 +10772,28 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .panel-empty.subtle {
-  padding: 10px 4px;
+  grid-column: 1 / -1;
+  padding: 8px 4px;
   font-size: 11px;
+}
+
+.sticker-library-section .source-group-head {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.source-thumb.sticker-thumb {
+  padding: 6px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--accent) 16%, var(--bg-elevated)),
+    var(--bg-input)
+  );
+}
+
+.source-thumb.sticker-thumb img {
+  object-fit: contain;
 }
 
 .source-ctx-menu {
@@ -10458,10 +11337,16 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .timeline-dock {
   flex: none;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--border);
   background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.timeline-dock.collapsed {
+  height: auto !important;
 }
 
 .timeline-bar {
@@ -10691,6 +11576,17 @@ defineExpose({ flushSave: persist, reloadSources })
   margin-bottom: 8px;
 }
 
+.sfx-library-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sfx-library-tab-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
 .sfx-library-tabs .ghost-btn.active {
   border-color: #4a90d9;
   color: #4a90d9;
@@ -10699,29 +11595,111 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .sfx-preset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
   margin-bottom: 10px;
 }
 
 .sfx-preset-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px;
+  gap: 6px;
+  padding: 10px;
   border: 1px solid rgba(127, 127, 127, 0.25);
-  border-radius: 8px;
+  border-radius: 10px;
   background: rgba(127, 127, 127, 0.06);
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.sfx-preset-card:hover {
+  border-color: rgba(100, 175, 255, 0.45);
+  background: rgba(127, 127, 127, 0.11);
+  transform: translateY(-1px);
+}
+
+.sfx-preset-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.sfx-preset-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  background: rgba(127, 127, 127, 0.14);
+}
+
+.sfx-preset-icon.transition {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(59, 130, 246, 0.12));
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.sfx-preset-icon.ui {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.12));
+  border-color: rgba(168, 85, 247, 0.35);
+}
+
+.sfx-preset-icon.ambient {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(20, 184, 166, 0.12));
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.sfx-preset-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .sfx-preset-name {
   font-weight: 600;
   font-size: 13px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sfx-preset-cat-badge {
+  align-self: flex-start;
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 1px 6px;
+  border-radius: 999px;
+  opacity: 0.85;
+  background: rgba(127, 127, 127, 0.16);
+}
+
+.sfx-preset-cat-badge.transition {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.14);
+}
+
+.sfx-preset-cat-badge.ui {
+  color: #d8b4fe;
+  background: rgba(168, 85, 247, 0.14);
+}
+
+.sfx-preset-cat-badge.ambient {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.14);
 }
 
 .sfx-preset-prompt {
   font-size: 12px;
-  opacity: 0.7;
+  opacity: 0.72;
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -10734,12 +11712,13 @@ defineExpose({ flushSave: persist, reloadSources })
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: auto;
+  padding-top: 2px;
 }
 
 .sfx-preset-duration {
   font-size: 11px;
-  opacity: 0.55;
+  opacity: 0.6;
 }
 
 .sfx-library-assets {
@@ -10762,11 +11741,20 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .sfx-library-asset-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sfx-library-asset-icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .sfx-library-empty {
@@ -11007,14 +11995,16 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .timeline-board {
-  flex: none;
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--bg-panel);
 }
 
 .timeline-board.scrollable {
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 .timeline-inner {
@@ -11044,7 +12034,11 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .ruler-row {
+  position: sticky;
+  top: 0;
+  z-index: 4;
   height: 28px;
+  background: var(--bg-elevated);
 }
 
 .track-row {
@@ -12253,5 +13247,260 @@ defineExpose({ flushSave: persist, reloadSources })
   border-style: solid;
   border-width: 8px 6px 0 6px;
   border-color: var(--success) transparent transparent transparent;
+}
+
+/* ── 内置矢量贴纸库 & DOTween 动画面板 & 关键帧菱形标记 ── */
+.builtin-stickers-details {
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+
+.builtin-stickers-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  user-select: none;
+  padding: 2px 4px;
+}
+
+.builtin-stickers-icon {
+  color: var(--accent);
+}
+
+.builtin-stickers-hint {
+  margin: 4px 4px 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.builtin-stickers-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 2px 2px 6px;
+}
+
+.builtin-sticker-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: grab;
+  text-align: left;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.builtin-sticker-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+
+.builtin-sticker-thumb {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.builtin-sticker-label {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overlay-image,
+.overlay-video.overlay-sticker-img {
+  position: absolute;
+  background: transparent;
+  object-fit: contain;
+  pointer-events: auto;
+  cursor: move;
+  user-select: none;
+}
+
+.overlay-handle-rotate,
+.overlay-handle.rotate-top {
+  top: -20px;
+  left: calc(50% - 7px);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffd43b;
+  border: 2px solid #fff;
+  cursor: grab;
+}
+
+.tween-sub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-2) 75%, transparent);
+  border: 1px solid var(--border);
+}
+
+.tween-sub-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+
+.inspector-text-input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.inspector-color-input {
+  width: 32px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.keyframe-empty-hint {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.keyframe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.keyframe-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 10px;
+}
+
+.keyframe-row.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--panel-2));
+}
+
+.keyframe-jump-btn,
+.keyframe-time-pill {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.keyframe-summary {
+  flex: 1 1 auto;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keyframe-ease-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  font-size: 10px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.keyframe-del-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 3px;
+}
+
+.keyframe-del-btn:hover {
+  color: var(--danger, #ff4757);
+}
+
+.clip-tween-badge {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 3px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.clip-keyframes-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  height: 10px;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.clip-keyframe-diamond {
+  position: absolute;
+  bottom: 1px;
+  transform: translateX(-50%);
+  border: none;
+  background: transparent;
+  color: #ffd43b;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 3;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.clip-keyframe-diamond.active,
+.clip-keyframe-diamond:hover {
+  color: #fff;
+  transform: translateX(-50%) scale(1.25);
 }
 </style>

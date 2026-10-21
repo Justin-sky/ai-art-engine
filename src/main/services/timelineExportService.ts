@@ -10,14 +10,18 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
-  statSync
+  statSync,
+  writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
 import { join, basename, dirname, extname } from 'path'
 import {
+  buildMainClipCameraFfmpegFilter,
+  buildOverlayClipFfmpegFilterSteps,
   clampClipFreezeTailSec,
   clampClipSpeed,
   normalizeClipCropRect,
+  renderTimelineBuiltinStickerSvg,
   type ScriptTimelineScaleMode,
   type ScriptTimelineTrackKind,
   type TimelineExportClip,
@@ -152,7 +156,7 @@ function buildClipCropFilter(clip: TimelineExportClip): string {
 const audioStreamProbeCache = new Map<string, boolean>()
 
 function isStillImagePath(filePath: string): boolean {
-  return /\.(png|jpe?g|webp|bmp)$/i.test(filePath.trim())
+  return /\.(png|jpe?g|webp|bmp|svg)$/i.test(filePath.trim())
 }
 
 function isAnimatedGifPath(filePath: string): boolean {
@@ -229,13 +233,40 @@ async function probeAudioPathsForTimeline(
 function resolveClipPath(clip: TimelineExportClip): string | null {
   if (clip.absPath && existsSync(clip.absPath)) return clip.absPath
   const rel = clip.relativePath?.trim()
-  if (!rel || !projectService.isOpen()) return null
-  try {
-    const abs = join(projectService.getRoot(), rel)
-    return existsSync(abs) ? abs : null
-  } catch {
-    return null
+  if (rel && projectService.isOpen()) {
+    try {
+      const abs = join(projectService.getRoot(), rel)
+      if (existsSync(abs)) return abs
+    } catch {
+      /* fall through */
+    }
   }
+  if (clip.stickerId && typeof clip.stickerId === 'string' && clip.stickerId.trim()) {
+    try {
+      const rootDir = projectService.isOpen()
+        ? join(projectService.getRoot(), 'Cache', 'stickers')
+        : join(tmpdir(), 'aiart-stickers')
+      mkdirSync(rootDir, { recursive: true })
+      const safeId = clip.stickerId.trim().replace(/[^a-zA-Z0-9_-]/g, '_')
+      const colorTag = (clip.stickerColor ?? '').replace(/[^a-zA-Z0-9]/g, '')
+      const textTag = Buffer.from(String(clip.text ?? clip.title ?? ''), 'utf-8')
+        .toString('hex')
+        .slice(0, 16)
+      const svgPath = join(rootDir, `${safeId}-${colorTag || 'def'}-${textTag || '0'}.svg`)
+      writeFileSync(
+        svgPath,
+        renderTimelineBuiltinStickerSvg(clip.stickerId.trim(), {
+          text: clip.text || clip.title,
+          color: clip.stickerColor
+        }),
+        'utf-8'
+      )
+      return svgPath
+    } catch {
+      return null
+    }
+  }
+  return null
 }
 
 export function buildFilterGraph(
@@ -467,10 +498,12 @@ export function buildFilterGraph(
         return
       }
 
-      const scaleExpr =
+      const baseScaleExpr =
         scaleMode === 'cover'
           ? `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
           : `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
+      const camExpr = buildMainClipCameraFfmpegFilter(clip.cameraMotion, width, height, winDurSec)
+      const scaleExpr = camExpr ? `${baseScaleExpr},${camExpr}` : baseScaleExpr
 
       filterParts.push(
         `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},format=yuv420p[${label}]`
@@ -560,7 +593,6 @@ export function buildFilterGraph(
   }
 
   for (const clip of overlays) {
-    const start = Math.max(0, clip.startSec)
     const dur = Math.max(0.05, clip.durationSec)
     const speed = clampClipSpeed(clip.speed)
     const freezeTail = Math.min(Math.max(0, dur - 0.05), clampClipFreezeTailSec(clip.freezeTailSec))
@@ -577,30 +609,26 @@ export function buildFilterGraph(
     const colorEq = buildClipColorEqFilter(clip)
     const eqOpt = colorEq ? `,${colorEq}` : ''
 
-    const opacity = Number.isFinite(clip.opacity) ? Math.min(1, Math.max(0, clip.opacity!)) : 1
-    const relX = Number.isFinite(clip.overlayX) ? Math.min(1, Math.max(0, clip.overlayX!)) : 0.12
-    const relY = Number.isFinite(clip.overlayY) ? Math.min(1, Math.max(0, clip.overlayY!)) : 0.12
-    const relW = Number.isFinite(clip.overlayWidth)
-      ? Math.min(1, Math.max(0.05, clip.overlayWidth!))
-      : 0.36
-    const relH = Number.isFinite(clip.overlayHeight)
-      ? Math.min(1, Math.max(0.05, clip.overlayHeight!))
-      : 0.36
-    const ow = Math.max(2, Math.round(width * relW))
-    const oh = Math.max(2, Math.round(height * relH))
-    const x = Math.max(0, Math.min(width - ow, Math.round(width * relX)))
-    const y = Math.max(0, Math.min(height - oh, Math.round(height * relY)))
-    const vLabel = `pip${clip.inputIndex}`
-    const ovLabel = `pipov${clip.inputIndex}`
-    const prev = lastVideo
     const srcStart = clipSourceOffsetSec(clip)
-    filterParts.push(
-      `[${clip.inputIndex}:v]trim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcTrimDur).toFixed(3)}` : `0:${srcTrimDur.toFixed(3)}`},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},scale=${ow}:${oh}:force_original_aspect_ratio=decrease,pad=${ow}:${oh}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=rgba,colorchannelmixer=aa=${opacity.toFixed(3)}[${vLabel}]`
-    )
-    filterParts.push(
-      `[${prev}][${vLabel}]overlay=${x}:${y}:enable='between(t\\,${start.toFixed(3)}\\,${(start + dur).toFixed(3)})'[${ovLabel}]`
-    )
-    lastVideo = ovLabel
+    const srcTrimExpr =
+      srcStart > 0
+        ? `${srcStart}:${(srcStart + srcTrimDur).toFixed(3)}`
+        : `0:${srcTrimDur.toFixed(3)}`
+    const overlayBuilt = buildOverlayClipFfmpegFilterSteps({
+      clip,
+      inputIndex: clip.inputIndex,
+      srcTrimExpr,
+      ptsExpr,
+      tpadOpt,
+      cropOpt,
+      eqOpt,
+      width,
+      height,
+      fps,
+      prevVideoLabel: lastVideo
+    })
+    filterParts.push(...overlayBuilt.steps)
+    lastVideo = overlayBuilt.outVideoLabel
   }
 
   const font = findDrawtextFont()

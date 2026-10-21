@@ -18,6 +18,18 @@ import {
   type ScriptTimelineClip
 } from '../src/shared/graph/scriptTimeline'
 import { buildCapCutDraftContent, buildFcpxmlDocument } from '../src/shared/graph/timelineNleExport'
+import {
+  evaluateMainClipCameraTransform,
+  evaluateOverlayClipTransform,
+  evaluateTimelineEase,
+  hasOverlayClipTween,
+  removeTimelineClipKeyframeAt,
+  renderTimelineBuiltinStickerDataUrl,
+  renderTimelineBuiltinStickerSvg,
+  TIMELINE_BUILTIN_STICKERS,
+  upsertTimelineClipKeyframe
+} from '../src/shared/graph/timelineTween'
+import { applyTimelineEdits } from '../src/shared/graph/timelineEdit'
 import { buildAtempoChain, buildFilterGraph } from '../src/main/services/timelineExportService'
 import { executeTimelineOutputNode } from '../src/shared/graph/execute/narrative'
 import { GraphPortType } from '../src/shared/graph/types'
@@ -616,5 +628,186 @@ describe('Stage 4 · 裁剪工具（Trim In/Out + Frame Crop）与专业片段�
     )
     expect(graph.filter).toContain('crop=iw*0.8000:ih*0.6000:iw*0.1000:ih*0.2000')
     expect(graph.filter).toContain('xfade=transition=zoomin:duration=0.500')
+  })
+
+  it('DOTween 缓动与双层叠加动画引擎（预设进出/循环 + 多关键帧 Sequence）求值与持久化一致', () => {
+    expect(evaluateTimelineEase('linear', 0.5)).toBeCloseTo(0.5, 4)
+    // outBack 在中后段会产生 > 1 的回弹过冲
+    expect(evaluateTimelineEase('outBack', 0.6)).toBeGreaterThan(1)
+    expect(evaluateTimelineEase('outBounce', 1)).toBeCloseTo(1, 4)
+    expect(evaluateTimelineEase('outElastic', 1)).toBeCloseTo(1, 4)
+
+    const clip: ScriptTimelineClip = {
+      id: 'ov-1',
+      track: 'overlay',
+      sourceId: 'sticker:badge-important',
+      title: '重点贴纸',
+      stickerId: 'badge-important',
+      stickerColor: '#ff4757',
+      text: '重点',
+      startSec: 1,
+      durationSec: 4,
+      overlayX: 0.2,
+      overlayY: 0.2,
+      overlayWidth: 0.3,
+      overlayHeight: 0.2,
+      overlayRotation: 10,
+      opacity: 0.9,
+      tweenIn: 'popIn',
+      tweenInDurationSec: 0.5,
+      tweenInEase: 'outBack',
+      tweenLoop: 'floatY',
+      tweenLoopSpeedHz: 1.5,
+      tweenLoopIntensity: 1,
+      tweenOut: 'fadeOut',
+      tweenOutDurationSec: 0.4,
+      tweenOutEase: 'inCubic'
+    }
+
+    expect(hasOverlayClipTween(clip)).toBe(true)
+    const tfStart = evaluateOverlayClipTransform(clip, 0)
+    expect(tfStart.opacity).toBeLessThan(0.1)
+    expect(tfStart.width).toBeLessThan(0.1)
+
+    const tfMid = evaluateOverlayClipTransform(clip, 1.5)
+    expect(tfMid.opacity).toBeCloseTo(0.9, 2)
+    expect(tfMid.rotation).toBeCloseTo(10, 1)
+
+    // 关键帧 Sequence 插值
+    let kfs = upsertTimelineClipKeyframe(clip, 0, {
+      x: 0.1,
+      y: 0.1,
+      width: 0.2,
+      height: 0.2,
+      rotation: 0,
+      opacity: 1,
+      ease: 'linear'
+    })
+    kfs = upsertTimelineClipKeyframe({ ...clip, keyframes: kfs }, 2, {
+      x: 0.5,
+      y: 0.3,
+      width: 0.4,
+      height: 0.4,
+      rotation: 30,
+      opacity: 0.5,
+      ease: 'linear'
+    })
+    const clipWithKf: ScriptTimelineClip = {
+      ...clip,
+      tweenIn: 'none',
+      tweenLoop: 'none',
+      tweenOut: 'none',
+      keyframes: kfs
+    }
+    const tfKfMid = evaluateOverlayClipTransform(clipWithKf, 1)
+    expect(tfKfMid.left).toBeCloseTo(0.3, 2)
+    expect(tfKfMid.top).toBeCloseTo(0.2, 2)
+    expect(tfKfMid.rotation).toBeCloseTo(15, 2)
+    expect(tfKfMid.opacity).toBeCloseTo(0.75, 2)
+
+    const afterRemove = removeTimelineClipKeyframeAt(kfs, 0)
+    expect(afterRemove).toHaveLength(1)
+
+    // 持久化往返
+    const saved = withScriptTimeline({}, { clips: [clipWithKf] })
+    const loaded = readScriptTimelineFromGenParams(saved)
+    expect(loaded.clips[0]?.stickerId).toBe('badge-important')
+    expect(loaded.clips[0]?.stickerColor).toBe('#ff4757')
+    expect(loaded.clips[0]?.overlayRotation).toBe(10)
+    expect(loaded.clips[0]?.keyframes).toHaveLength(2)
+  })
+
+  it('内置参数化矢量贴纸库生成合法 SVG 与 DataURL，且支持主轨运镜与 FFmpeg 表达式编译', () => {
+    expect(TIMELINE_BUILTIN_STICKERS.length).toBeGreaterThanOrEqual(8)
+    for (const preset of TIMELINE_BUILTIN_STICKERS) {
+      const svg = renderTimelineBuiltinStickerSvg(preset.id, {
+        text: preset.defaultText ?? 'TEST',
+        color: preset.defaultColor
+      })
+      expect(svg).toContain('<svg')
+      const url = renderTimelineBuiltinStickerDataUrl(preset.id)
+      expect(url.startsWith('data:image/svg+xml;utf8,')).toBe(true)
+    }
+
+    const camStart = evaluateMainClipCameraTransform(
+      { durationSec: 4, cameraMotion: 'kenBurnsIn' },
+      0
+    )
+    const camEnd = evaluateMainClipCameraTransform(
+      { durationSec: 4, cameraMotion: 'kenBurnsIn' },
+      4
+    )
+    expect(camStart.scale).toBeCloseTo(1, 3)
+    expect(camEnd.scale).toBeGreaterThan(1.15)
+
+    // applyTimelineEdits 支持贴纸、DOTween 与关键帧
+    const editRes = applyTimelineEdits({ clips: [] }, [
+      {
+        op: 'add',
+        clips: [
+          {
+            track: 'overlay',
+            stickerId: 'focus-circle',
+            stickerColor: '#00d2d3',
+            tweenIn: 'elasticIn',
+            tweenLoop: 'pulse',
+            overlayRotation: 15,
+            durationSec: 3
+          }
+        ]
+      }
+    ])
+    expect(editRes.added).toBe(1)
+    expect(editRes.document.clips[0]?.stickerId).toBe('focus-circle')
+    expect(editRes.document.clips[0]?.tweenIn).toBe('elasticIn')
+    expect(editRes.document.clips[0]?.tweenLoop).toBe('pulse')
+
+    // buildFilterGraph 为含 DOTween 动画的画中画/贴纸与主轨运镜生成透明通道与动态表达式
+    const graph = buildFilterGraph(
+      [
+        {
+          track: 'video',
+          title: 'Main',
+          path: 'v1.mp4',
+          startSec: 0,
+          durationSec: 4,
+          cameraMotion: 'kenBurnsIn',
+          inputIndex: 0
+        }
+      ],
+      [
+        {
+          track: 'overlay',
+          title: 'Sticker',
+          path: 'sticker.png',
+          startSec: 0.5,
+          durationSec: 2.5,
+          overlayX: 0.2,
+          overlayY: 0.2,
+          overlayWidth: 0.25,
+          overlayHeight: 0.25,
+          overlayRotation: 12,
+          tweenIn: 'popIn',
+          tweenLoop: 'floatY',
+          tweenOut: 'fadeOut',
+          inputIndex: 1
+        }
+      ],
+      [],
+      [],
+      2,
+      4,
+      1,
+      1280,
+      720,
+      30,
+      36,
+      80,
+      '#ffffff'
+    )
+    expect(graph.filter).toContain('eval=frame,crop=1280:720')
+    expect(graph.filter).toContain('color=black@0.0')
+    expect(graph.filter).toContain('rotate=')
+    expect(graph.filter).toContain("overlay=x='")
   })
 })

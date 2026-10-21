@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ModelPreview from './ModelPreview.vue'
 import {
   isAnimatedPlaybackPath,
@@ -16,8 +16,10 @@ import {
 } from '../features/media/chatPreviewKind'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useProjectStore } from '../stores/project'
 
 const props = defineProps<{ relativePath: string }>()
+const project = useProjectStore()
 
 const { assetTypeLabel, locale } = useStudioI18n()
 const isEn = computed(() => /^en/i.test(locale.value))
@@ -147,12 +149,13 @@ onMounted(() => {
   void loadPreview()
 })
 
-watch(
-  () => props.relativePath,
-  () => {
-    void loadPreview()
-  }
-)
+onActivated(() => {
+  if (!fileUrl.value) void loadPreview()
+})
+
+watch([() => props.relativePath, () => project.sessionEpoch, () => project.rootPath], () => {
+  void loadPreview()
+})
 
 onBeforeUnmount(() => {
   disposed = true

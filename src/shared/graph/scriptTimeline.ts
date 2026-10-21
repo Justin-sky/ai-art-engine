@@ -1,4 +1,17 @@
 /** 成片时间线：存于剧本资产 genParams.scriptTimeline */
+import {
+  normalizeTimelineKeyframes,
+  type TimelineBuiltinStickerId,
+  type TimelineClipKeyframe,
+  type TimelineEaseType,
+  type TimelineMainCameraPreset,
+  type TimelineTweenInPreset,
+  type TimelineTweenLoopPreset,
+  type TimelineTweenOutPreset
+} from './timelineTween'
+
+export * from './timelineTween'
+
 export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music' | 'sfx'
 
 /** 混音轨级增益（0~2，1=原始音量；缺省按 1） */
@@ -160,8 +173,36 @@ export type ScriptTimelineClip = {
   overlayWidth?: number
   /** 画中画高度（相对导出画布高度，0~1） */
   overlayHeight?: number
+  /** 画中画/贴纸旋转角度（度，-360~360，缺省 0） */
+  overlayRotation?: number
   /** 画中画不透明度（0~1） */
   opacity?: number
+  /** DOTween 入场补间预设（画中画 / 贴纸） */
+  tweenIn?: TimelineTweenInPreset
+  /** DOTween 入场时长（秒，缺省 0.45） */
+  tweenInDurationSec?: number
+  /** DOTween 入场缓动曲线 */
+  tweenInEase?: TimelineEaseType
+  /** DOTween 出场补间预设（画中画 / 贴纸） */
+  tweenOut?: TimelineTweenOutPreset
+  /** DOTween 出场时长（秒，缺省 0.4） */
+  tweenOutDurationSec?: number
+  /** DOTween 出场缓动曲线 */
+  tweenOutEase?: TimelineEaseType
+  /** DOTween 循环待机动画预设（画中画 / 贴纸） */
+  tweenLoop?: TimelineTweenLoopPreset
+  /** DOTween 循环频率（Hz，缺省 1.2） */
+  tweenLoopSpeedHz?: number
+  /** DOTween 循环幅度倍率（0.1~3，缺省 1） */
+  tweenLoopIntensity?: number
+  /** 主视频轨（或画中画）Ken Burns 推拉摇移运镜预设 */
+  cameraMotion?: TimelineMainCameraPreset
+  /** DOTween Sequence 多关键帧序列（局部时间 offsetSec 升序） */
+  keyframes?: TimelineClipKeyframe[]
+  /** 内置参数化贴纸 ID（由贴纸库插入时记录） */
+  stickerId?: TimelineBuiltinStickerId | string
+  /** 内置参数化贴纸主色覆盖（#RRGGBB） */
+  stickerColor?: string
   /** 入场淡入转场时长（秒，视频轨） */
   transitionInSec?: number
   /** 出场淡出转场时长（秒，视频轨） */
@@ -287,7 +328,21 @@ export type TimelineExportClip = {
   overlayY?: number
   overlayWidth?: number
   overlayHeight?: number
+  overlayRotation?: number
   opacity?: number
+  tweenIn?: TimelineTweenInPreset
+  tweenInDurationSec?: number
+  tweenInEase?: TimelineEaseType
+  tweenOut?: TimelineTweenOutPreset
+  tweenOutDurationSec?: number
+  tweenOutEase?: TimelineEaseType
+  tweenLoop?: TimelineTweenLoopPreset
+  tweenLoopSpeedHz?: number
+  tweenLoopIntensity?: number
+  cameraMotion?: TimelineMainCameraPreset
+  keyframes?: TimelineClipKeyframe[]
+  stickerId?: TimelineBuiltinStickerId | string
+  stickerColor?: string
   transitionInSec?: number
   transitionOutSec?: number
   transitionType?: ScriptTimelineTransitionType
@@ -679,6 +734,7 @@ export function splitTimelineClipAtTime(
   delete first.fadeOutSec
   delete first.transitionOutSec
   delete first.freezeTailSec
+  delete first.tweenOut
 
   const second: ScriptTimelineClip = {
     ...clip,
@@ -691,6 +747,19 @@ export function splitTimelineClipAtTime(
   }
   delete second.fadeInSec
   delete second.transitionInSec
+  delete second.tweenIn
+  if (Array.isArray(clip.keyframes) && clip.keyframes.length > 0) {
+    first.keyframes = normalizeTimelineKeyframes(
+      clip.keyframes.filter((k) => k.offsetSec <= delta + 0.01),
+      delta
+    )
+    second.keyframes = normalizeTimelineKeyframes(
+      clip.keyframes
+        .filter((k) => k.offsetSec >= delta - 0.01)
+        .map((k) => ({ ...k, offsetSec: Math.max(0, k.offsetSec - delta) })),
+      remain
+    )
+  }
 
   return [first, second]
 }

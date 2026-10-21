@@ -2,6 +2,7 @@
 import {
   computed,
   nextTick,
+  onActivated,
   onBeforeUnmount,
   onMounted,
   reactive,
@@ -35,7 +36,7 @@ import {
   type ChatMsg
 } from '../composables/useChatHistory'
 import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
-import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
+import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { getChatAssetFingerprint } from '../features/media/chatAssetFingerprint'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
@@ -984,13 +985,36 @@ function isAbsoluteMediaPath(path: string): boolean {
   return /^[A-Za-z]:\//.test(p) || p.startsWith('/')
 }
 
-/** 解析媒体预览 URL：工程相对路径走资产缩略图；本地绝对路径直接构造 studio-media URL */
-function resolveMediaUrl(path: string): Promise<string> {
-  const p = path.replace(/\\/g, '/')
+/** 解析媒体预览 URL：工程相对路径走资产缩略图（回退原图与资产表同名匹配）；本地绝对路径直接构造 studio-media URL */
+async function resolveMediaUrl(path: string): Promise<string> {
+  const p = path.replace(/\\/g, '/').trim()
+  if (!p) return ''
   if (isAbsoluteMediaPath(p)) {
-    return Promise.resolve(`studio-media://local/?path=${encodeURIComponent(p)}&t=${Date.now()}`)
+    return `studio-media://local/?path=${encodeURIComponent(p)}&t=${Date.now()}`
   }
-  return resolveAssetPreviewUrl(p)
+  const preview = await resolveAssetPreviewUrl(p)
+  if (preview) return preview
+  const file = await resolveAssetFileUrl(p)
+  if (file) return file
+  // 若直接路径未命中（例如资产被移动到了子目录或写成了裸文件名 @5.jpg），从当前工程资产列表按相对路径后缀/文件名兜底匹配
+  const baseName = p.split('/').pop()?.toLowerCase() ?? ''
+  if (baseName && project.assets.length > 0) {
+    const matched = project.assets.find((a) => {
+      const rel = (a.relativePath ?? '').replace(/\\/g, '/').trim()
+      if (!rel) return false
+      const relLower = rel.toLowerCase()
+      return (
+        relLower === p.toLowerCase() ||
+        relLower.endsWith(`/${baseName}`) ||
+        a.name.trim().toLowerCase() === baseName
+      )
+    })
+    const matchedRel = matched?.relativePath?.replace(/\\/g, '/').trim()
+    if (matchedRel && matchedRel !== p) {
+      return (await resolveAssetPreviewUrl(matchedRel)) || (await resolveAssetFileUrl(matchedRel))
+    }
+  }
+  return ''
 }
 
 /** 助手气泡：Markdown 渲染（标题 / 列表 / 代码块 / 表格等），内联引用与图片卡片沿用既有语义 */
@@ -1015,23 +1039,29 @@ async function onCodeCopyClick(event: MouseEvent): Promise<void> {
 /**
  * 消息气泡内图片卡片：把 data-src 解析为预览 URL；加载失败/文件缺失回退为文本 chip。
  * 动图（GIF）沿用资产卡口径：静态缩略图先顶上，进入视口后才换原文件播动画。
+ *
+ * 注意：StudioView 处于 KeepAlive 离屏缓存或 Dockview 面板尚未挂载到 document 时，
+ * `img.isConnected` 为 false，但 `img.parentElement` 仍有效。
+ * 绝不能用 `!img.isConnected` 提前丢弃已摘除 `data-src` 的 `<img>`，否则切回 StudioView 后会永久残留无 src 的破图。
  */
 function resolveChatImages(root: HTMLElement): void {
   root.querySelectorAll<HTMLImageElement>('img[data-src]').forEach((img) => {
     const path = img.dataset.src
     if (!path) return
+    img.dataset.chatSrc = path
     img.removeAttribute('data-src')
     const fallback = (): void => {
-      if (!img.isConnected) return
+      if (!img.parentElement) return
       const chip = document.createElement('span')
       chip.className = 'inline-ref'
+      chip.dataset.chatImgFallback = path
       chip.textContent = `@${path}`
       img.replaceWith(chip)
     }
     img.addEventListener('error', fallback, { once: true })
     resolveMediaUrl(path)
       .then((url) => {
-        if (!img.isConnected) return
+        if (!img.parentElement) return
         if (!url) {
           fallback()
           return
@@ -1042,6 +1072,31 @@ function resolveChatImages(root: HTMLElement): void {
       })
       .catch(fallback)
   })
+}
+
+/**
+ * 当工程完成打开 / 切换 / KeepAlive 激活或资产库刷新后，重新扫描消息列表中：
+ * 1) 尚未赋上 `src` 的 `img[data-chat-src]`；
+ * 2) 工程未就绪时临时降级为 `span[data-chat-img-fallback]` 的节点，恢复为图片卡片并重新解析。
+ */
+function retryUnresolvedChatImages(): void {
+  const root = listRef.value
+  if (!root) return
+  root.querySelectorAll<HTMLImageElement>('img[data-chat-src]').forEach((img) => {
+    if (!img.getAttribute('src') && img.dataset.chatSrc) {
+      img.dataset.src = img.dataset.chatSrc
+    }
+  })
+  root.querySelectorAll<HTMLElement>('span[data-chat-img-fallback]').forEach((chip) => {
+    const path = chip.dataset.chatImgFallback
+    if (!path) return
+    const img = document.createElement('img')
+    img.dataset.src = path
+    img.dataset.chatSrc = path
+    img.alt = path.split('/').pop() ?? path
+    chip.replaceWith(img)
+  })
+  resolveChatImages(root)
 }
 
 /** v-chat-img：v-html 更新后同步解析气泡内图片卡片 */
@@ -2112,9 +2167,14 @@ watch(currentProjectChatScope, (nextScope, prevScope) => {
   scheduleMenuOpen.value = false
   loadHistory(nextScope)
   loadActiveMessages()
+  void nextTick(() => retryUnresolvedChatImages())
   void refreshSessionSkills()
   void refreshInstalledWorkflows()
   void refreshStatus()
+})
+
+watch([() => project.sessionEpoch, () => project.rootPath, () => project.assets.length], () => {
+  void nextTick(() => retryUnresolvedChatImages())
 })
 
 /** 发送前静默记录基线（不插卡）；失败时退化为「下次采集视为首轮」 */
@@ -3362,6 +3422,10 @@ onMounted(async () => {
   }
 })
 
+onActivated(() => {
+  void nextTick(() => retryUnresolvedChatImages())
+})
+
 onBeforeUnmount(() => {
   stopEvent?.()
   stopActivity?.()
@@ -3700,7 +3764,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
         </div>
-        <template v-for="(msg, i) in messages" :key="i">
+        <template v-for="(msg, i) in messages" :key="`${activeId}:${i}`">
           <template v-if="msg.kind === 'user'">
             <div class="msg-row user">
               <!-- 操作条：常显在气泡上方，动作均用图标 -->
@@ -7945,6 +8009,11 @@ onBeforeUnmount(() => {
   max-height: 280px;
   object-fit: contain;
   border-radius: 6px;
+}
+
+.chat-msg-card img:not([src]),
+.chat-msg-card img[src=''] {
+  display: none;
 }
 
 .chat-msg-card-name {

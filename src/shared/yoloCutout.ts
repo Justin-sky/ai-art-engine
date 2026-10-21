@@ -175,7 +175,8 @@ export function buildCutoutAlpha(input: CutoutAlphaInput): Float32Array {
   const effThreshold = clamp(threshold - chokeShift, 0.03, 0.97)
 
   if (input.continuousAlpha && soft) {
-    const band = clamp(0.14 + Math.max(0, input.feather ?? 0) * 0.015, 0.08, 0.34)
+    // 保留高精抠图模型在 (0.06, 0.94) 区间的连续半透明发丝响应，避免窄带 smoothstep 将发丝间隙背景压成全不透明
+    const band = clamp(0.42 + Math.max(0, input.feather ?? 0) * 0.01, 0.18, 0.46)
     const low = Math.max(0.01, effThreshold - band)
     const high = Math.min(0.99, effThreshold + band)
     for (let i = 0; i < out.length; i++) {
@@ -566,7 +567,157 @@ export function refineCutoutAlphaGuided(
     // 将 [0.03, 0.97] 映射到 [0, 1] 以消除极低/极高处的残余底灰
     out[i] = smoothstep(0.03, 0.97, shifted)
   }
+
+  // Step 4: 边界连通背景剥离与发丝间隙色彩线抠图（Boundary-Connected Hair Interstice Matting）
+  // 解决痛点：高精显著性模型（BiRefNet / RMBG）在稀疏碎发外圈常输出包络式高 alpha，
+  // 且当窗口内同时存在「亮肤色 + 深色细发 + 亮白背景」三色时，局部仿射引导滤波无法线性分离同亮度的背景与肤色。
+  // 做法：从外部纯背景（alpha < 0.12）向内传播最近背景色 B_ext，若局部窗口存在高对比前景锚点 F_anchor（如深色发丝），
+  // 则将边界与发丝间隙像素投影到色彩线 B_ext -> F_anchor，精准剥离夹在发丝之间的背景色，同时通过正交色差残差保护暖色皮肤与同色衣物。
+  if (radius > 0 && colorStrength > 0) {
+    peelBoundaryHairInterstices(rgba, out, width, height, r)
+  }
   return out
+}
+
+function peelBoundaryHairInterstices(
+  rgba: Uint8ClampedArray | Uint8Array,
+  alpha: Float32Array,
+  width: number,
+  height: number,
+  r: number
+): void {
+  const total = width * height
+  const maxDist = Math.max(12, Math.min(28, r * 6))
+  const dist = new Int16Array(total).fill(32767)
+  const bgR = new Float32Array(total)
+  const bgG = new Float32Array(total)
+  const bgB = new Float32Array(total)
+  const queue = new Int32Array(total)
+  let head = 0
+  let tail = 0
+
+  for (let i = 0; i < total; i++) {
+    if (alpha[i]! < 0.12) {
+      dist[i] = 0
+      const off = i * 4
+      bgR[i] = rgba[off]!
+      bgG[i] = rgba[off + 1]!
+      bgB[i] = rgba[off + 2]!
+      queue[tail++] = i
+    }
+  }
+  if (tail === 0) return
+
+  const dirX = [-1, 1, 0, 0, -1, 1, -1, 1]
+  const dirY = [0, 0, -1, 1, -1, -1, 1, 1]
+
+  while (head < tail) {
+    const cur = queue[head++]!
+    const d = dist[cur]!
+    if (d >= maxDist) continue
+    const cx = cur % width
+    const cy = (cur - cx) / width
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + dirX[k]!
+      const ny = cy + dirY[k]!
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+      const ni = ny * width + nx
+      if (dist[ni]! <= d + 1) continue
+      dist[ni] = d + 1
+      bgR[ni] = bgR[cur]!
+      bgG[ni] = bgG[cur]!
+      bgB[ni] = bgB[cur]!
+      queue[tail++] = ni
+    }
+  }
+
+  const baseAlpha = Float32Array.from(alpha)
+  const winR = Math.min(10, Math.max(4, r * 2 + 2))
+  const step = winR > 6 ? 2 : 1
+
+  for (let y = 0; y < height; y++) {
+    const row = y * width
+    for (let x = 0; x < width; x++) {
+      const i = row + x
+      const d = dist[i]!
+      if (d <= 0 || d > maxDist) continue
+      const off = i * 4
+      const cr = rgba[off]!
+      const cg = rgba[off + 1]!
+      const cb = rgba[off + 2]!
+      const br = bgR[i]!
+      const bg = bgG[i]!
+      const bb = bgB[i]!
+
+      let contrastSumR = 0
+      let contrastSumG = 0
+      let contrastSumB = 0
+      let contrastW = 0
+      let fgTotal = 0
+      let fgHighContrast = 0
+      let maxContrast = 0
+
+      const y0 = Math.max(0, y - winR)
+      const y1 = Math.min(height - 1, y + winR)
+      const x0 = Math.max(0, x - winR)
+      const x1 = Math.min(width - 1, x + winR)
+      for (let wy = y0; wy <= y1; wy += step) {
+        const wRow = wy * width
+        for (let wx = x0; wx <= x1; wx += step) {
+          const wi = wRow + wx
+          const wa = baseAlpha[wi]!
+          if (wa < 0.35) continue
+          fgTotal++
+          const woff = wi * 4
+          const wr = rgba[woff]! - br
+          const wg = rgba[woff + 1]! - bg
+          const wb = rgba[woff + 2]! - bb
+          const cDist = Math.sqrt((wr * wr + wg * wg + wb * wb) / 3)
+          if (cDist >= 38) {
+            fgHighContrast++
+            const w = cDist * wa
+            contrastSumR += rgba[woff]! * w
+            contrastSumG += rgba[woff + 1]! * w
+            contrastSumB += rgba[woff + 2]! * w
+            contrastW += w
+            if (cDist > maxContrast) maxContrast = cDist
+          }
+        }
+      }
+
+      // 仅当局部窗口内存在足够比例的高对比前景（如深色发丝/轮廓，排除白衣贴白底的低对比边界）时才执行剥离
+      if (contrastW > 0 && maxContrast >= 42 && fgHighContrast >= Math.max(2, fgTotal * 0.25)) {
+        const fR = contrastSumR / contrastW
+        const fG = contrastSumG / contrastW
+        const fB = contrastSumB / contrastW
+        const dfR = fR - br
+        const dfG = fG - bg
+        const dfB = fB - bb
+        const dfLenSq = dfR * dfR + dfG * dfG + dfB * dfB
+        if (dfLenSq >= 900) {
+          const projAlpha = clamp(
+            ((cr - br) * dfR + (cg - bg) * dfG + (cb - bb) * dfB) / dfLenSq,
+            0,
+            1
+          )
+          const reconR = br + projAlpha * dfR
+          const reconG = bg + projAlpha * dfG
+          const reconB = bb + projAlpha * dfB
+          const dr = cr - reconR
+          const dg = cg - reconG
+          const db = cb - reconB
+          const perpErr = Math.sqrt((dr * dr + dg * dg + db * db) / 3)
+          if (perpErr < 24 && projAlpha < alpha[i]!) {
+            const cleaned = smoothstep(0.14, 0.96, projAlpha)
+            const peelDist = Math.floor(maxDist * 0.62)
+            const blend =
+              d <= peelDist ? 0.95 : Math.max(0, ((maxDist - d) / (maxDist - peelDist)) * 0.95)
+            alpha[i] = alpha[i]! * (1 - blend) + cleaned * blend
+          }
+        }
+      }
+    }
+  }
 }
 
 export interface HolePunchOptions {
@@ -775,7 +926,7 @@ export function applyCutoutBrushStrokes(
     if (!stroke.points || stroke.points.length === 0) continue
     const target = stroke.mode === 'keep' ? 1 : 0
     const rPx = Math.max(1.5, clamp(stroke.radius, 0.002, 0.3) * shortSide * outScale)
-    const innerR = rPx * 0.68
+    const innerR = stroke.mode === 'erase' ? rPx * 0.82 : rPx * 0.68
     const rSq = rPx * rPx
 
     const toOutPt = (p: CutoutBrushPoint): { x: number; y: number } => ({
@@ -824,6 +975,111 @@ export function applyCutoutBrushStrokes(
     }
   }
   return out
+}
+
+export interface BrushDirtyRect {
+  minX: number
+  minY: number
+  dirtyW: number
+  dirtyH: number
+}
+
+/**
+ * 将单段画笔线段 (p0 -> p1) 增量光栅化到 workingAlpha 与 workingRgba，
+ * 仅遍历线段局部外接框像素并返回脏矩形，供 Canvas `putImageData` 局部微秒级刷新（< 0.15ms）。
+ */
+export function stampCutoutBrushSegment(params: {
+  workingAlpha: Float32Array
+  workingRgba: Uint8ClampedArray | Uint8Array
+  rawSourceRgba: Uint8ClampedArray | Uint8Array
+  mode: 'keep' | 'erase'
+  radiusNorm: number
+  p0: CutoutBrushPoint
+  p1: CutoutBrushPoint
+  srcWidth: number
+  srcHeight: number
+  region: CutoutRegion
+  outScale: number
+  outWidth: number
+  outHeight: number
+}): BrushDirtyRect | null {
+  const {
+    workingAlpha,
+    workingRgba,
+    rawSourceRgba,
+    mode,
+    radiusNorm,
+    p0,
+    p1,
+    srcWidth,
+    srcHeight,
+    region,
+    outScale,
+    outWidth: outW,
+    outHeight: outH
+  } = params
+  if (outW <= 0 || outH <= 0) return null
+  const srcW = Math.max(1, Math.floor(srcWidth))
+  const srcH = Math.max(1, Math.floor(srcHeight))
+  const shortSide = Math.min(srcW, srcH)
+  const rPx = Math.max(1.5, clamp(radiusNorm, 0.002, 0.3) * shortSide * outScale)
+  const innerR = mode === 'erase' ? rPx * 0.82 : rPx * 0.68
+  const rSq = rPx * rPx
+  const target = mode === 'keep' ? 1 : 0
+
+  const x0 = (clamp(p0.x, 0, 1) * srcW - region.x) * outScale
+  const y0 = (clamp(p0.y, 0, 1) * srcH - region.y) * outScale
+  const x1 = (clamp(p1.x, 0, 1) * srcW - region.x) * outScale
+  const y1 = (clamp(p1.y, 0, 1) * srcH - region.y) * outScale
+
+  const minX = clampInt(Math.floor(Math.min(x0, x1) - rPx - 1), 0, outW - 1)
+  const maxX = clampInt(Math.ceil(Math.max(x0, x1) + rPx + 1), 0, outW - 1)
+  const minY = clampInt(Math.floor(Math.min(y0, y1) - rPx - 1), 0, outH - 1)
+  const maxY = clampInt(Math.ceil(Math.max(y0, y1) + rPx + 1), 0, outH - 1)
+  if (minX > maxX || minY > maxY) return null
+
+  const vx = x1 - x0
+  const vy = y1 - y0
+  const lenSq = vx * vx + vy * vy
+
+  for (let y = minY; y <= maxY; y++) {
+    const py = y + 0.5
+    const row = y * outW
+    for (let x = minX; x <= maxX; x++) {
+      const px = x + 0.5
+      let t = 0
+      if (lenSq > 1e-6) {
+        t = clamp(((px - x0) * vx + (py - y0) * vy) / lenSq, 0, 1)
+      }
+      const cx = x0 + t * vx
+      const cy = y0 + t * vy
+      const dx = px - cx
+      const dy = py - cy
+      const dSq = dx * dx + dy * dy
+      if (dSq > rSq) continue
+      const d = Math.sqrt(dSq)
+      const idx = row + x
+      const nextA =
+        d <= innerR
+          ? target
+          : workingAlpha[idx]! + (target - workingAlpha[idx]!) * (1 - smoothstep(innerR, rPx, d))
+      workingAlpha[idx] = nextA
+      const off = idx * 4
+      if (mode === 'keep') {
+        workingRgba[off] = rawSourceRgba[off]!
+        workingRgba[off + 1] = rawSourceRgba[off + 1]!
+        workingRgba[off + 2] = rawSourceRgba[off + 2]!
+      }
+      workingRgba[off + 3] = Math.round(clamp(nextA, 0, 1) * 255)
+    }
+  }
+
+  return {
+    minX,
+    minY,
+    dirtyW: maxX - minX + 1,
+    dirtyH: maxY - minY + 1
+  }
 }
 
 /**
@@ -1178,13 +1434,57 @@ export function defringeRgba(
       const estBr = br / bWeight
       const estBg = bg / bWeight
       const estBb = bb / bWeight
-      const inv = 1 / Math.max(a, 0.05)
+
+      // 搜索邻域内高对比度前景锚点（如深色发丝），避免半透明发梢向远端浅色皮肤去污染导致残留灰白光晕
+      let hcR = 0
+      let hcG = 0
+      let hcB = 0
+      let hcW = 0
+      if (a < 0.65) {
+        const y0 = Math.max(0, y - 6)
+        const y1 = Math.min(height - 1, y + 6)
+        const x0 = Math.max(0, x - 6)
+        const x1 = Math.min(width - 1, x + 6)
+        for (let wy = y0; wy <= y1; wy += 2) {
+          const wRow = wy * width
+          for (let wx = x0; wx <= x1; wx += 2) {
+            const wi = wRow + wx
+            if (wi === i) continue
+            const wa = alpha[wi]!
+            if (wa < 0.6) continue
+            const woff = wi * 4
+            const wr = rgba[woff]!
+            const wg = rgba[woff + 1]!
+            const wb = rgba[woff + 2]!
+            const dbr = wr - estBr
+            const dbg = wg - estBg
+            const dbb = wb - estBb
+            const cDist = Math.sqrt((dbr * dbr + dbg * dbg + dbb * dbb) / 3)
+            if (cDist >= 38) {
+              const w = cDist * wa
+              hcR += wr * w
+              hcG += wg * w
+              hcB += wb * w
+              hcW += w
+            }
+          }
+        }
+      }
+
+      const inv = 1 / Math.max(a, 0.08)
       const off = i * 4
       let r = (rgba[off]! - (1 - a) * estBr) * inv
       let g = (rgba[off + 1]! - (1 - a) * estBg) * inv
       let b = (rgba[off + 2]! - (1 - a) * estBb) * inv
-      // 极低 alpha 时结合最近邻实心前景色抑制反混合过冲噪声
-      if (fWeight > 0 && a < 0.35) {
+      if (hcW > 0 && a < 0.65) {
+        const refR = hcR / hcW
+        const refG = hcG / hcW
+        const refB = hcB / hcW
+        const reg = clamp((0.65 - a) / 0.65, 0, 0.72)
+        r = r * (1 - reg) + refR * reg
+        g = g * (1 - reg) + refG * reg
+        b = b * (1 - reg) + refB * reg
+      } else if (fWeight > 0 && a < 0.35) {
         const refR = fr / fWeight
         const refG = fg / fWeight
         const refB = fb / fWeight

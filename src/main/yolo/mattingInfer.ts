@@ -43,36 +43,89 @@ function inferSpecFromId(modelId: string): {
   return { inputSize: 1024, norm: 'rmbg' }
 }
 
-/** 采样源图四边的平均色作为 letterbox 填充色，避免灰色填充带在图像边界产生伪边缘 */
-function sampleBorderRgb(
-  rgba: Uint8Array,
-  width: number,
-  height: number
-): [number, number, number] {
-  let r = 0
-  let g = 0
-  let b = 0
-  let count = 0
-  const stepX = Math.max(1, Math.floor(width / 32))
-  const stepY = Math.max(1, Math.floor(height / 32))
-  for (let x = 0; x < width; x += stepX) {
-    const top = x * 4
-    const bot = ((height - 1) * width + x) * 4
-    r += rgba[top]! + rgba[bot]!
-    g += rgba[top + 1]! + rgba[bot + 1]!
-    b += rgba[top + 2]! + rgba[bot + 2]!
-    count += 2
+/**
+ * 抑制高精抠图概率图中远离主体的微小离散伪影岛（如背景毯子边缘的小印花/角落暗影）。
+ * 以 0.36 为核心前景连通阈值提取连通域，剔除面积不足最大连通域 4% 的外围孤立块，
+ * 同时对保留连通域外扩 5px 软光环，确保主体的游离发梢与半透明边缘完整保留。
+ */
+function suppressPeripheralNoiseIslands(probGrid: Float32Array, hw: number): void {
+  const total = hw * hw
+  if (total <= 0) return
+  const compId = new Int32Array(total).fill(-1)
+  const compSizes: number[] = []
+  const queue = new Int32Array(total)
+  let maxCompArea = 0
+
+  for (let i = 0; i < total; i++) {
+    if (compId[i] !== -1 || probGrid[i]! < 0.36) continue
+    const cid = compSizes.length
+    let head = 0
+    let tail = 0
+    compId[i] = cid
+    queue[tail++] = i
+    while (head < tail) {
+      const cur = queue[head++]!
+      const cx = cur % hw
+      const cy = (cur - cx) / hw
+      if (cx > 0 && compId[cur - 1] === -1 && probGrid[cur - 1]! >= 0.36) {
+        compId[cur - 1] = cid
+        queue[tail++] = cur - 1
+      }
+      if (cx + 1 < hw && compId[cur + 1] === -1 && probGrid[cur + 1]! >= 0.36) {
+        compId[cur + 1] = cid
+        queue[tail++] = cur + 1
+      }
+      if (cy > 0 && compId[cur - hw] === -1 && probGrid[cur - hw]! >= 0.36) {
+        compId[cur - hw] = cid
+        queue[tail++] = cur - hw
+      }
+      if (cy + 1 < hw && compId[cur + hw] === -1 && probGrid[cur + hw]! >= 0.36) {
+        compId[cur + hw] = cid
+        queue[tail++] = cur + hw
+      }
+    }
+    compSizes.push(tail)
+    if (tail > maxCompArea) maxCompArea = tail
   }
-  for (let y = 0; y < height; y += stepY) {
-    const left = y * width * 4
-    const right = (y * width + (width - 1)) * 4
-    r += rgba[left]! + rgba[right]!
-    g += rgba[left + 1]! + rgba[right + 1]!
-    b += rgba[left + 2]! + rgba[right + 2]!
-    count += 2
+
+  if (maxCompArea <= 0 || compSizes.length <= 1) return
+
+  const minKeepArea = maxCompArea * 0.04
+  const keepDist = new Int16Array(total).fill(32767)
+  let head = 0
+  let tail = 0
+  for (let i = 0; i < total; i++) {
+    const cid = compId[i]!
+    if (cid >= 0 && compSizes[cid]! >= minKeepArea) {
+      keepDist[i] = 0
+      queue[tail++] = i
+    }
   }
-  if (count === 0) return [114, 114, 114]
-  return [Math.round(r / count), Math.round(g / count), Math.round(b / count)]
+  const maxHalo = 6
+  while (head < tail) {
+    const cur = queue[head++]!
+    const d = keepDist[cur]!
+    if (d >= maxHalo) continue
+    const cx = cur % hw
+    const cy = (cur - cx) / hw
+    const nbrs = [
+      cx > 0 ? cur - 1 : -1,
+      cx + 1 < hw ? cur + 1 : -1,
+      cy > 0 ? cur - hw : -1,
+      cy + 1 < hw ? cur + hw : -1
+    ]
+    for (const n of nbrs) {
+      if (n >= 0 && keepDist[n]! > d + 1) {
+        keepDist[n] = d + 1
+        queue[tail++] = n
+      }
+    }
+  }
+  for (let i = 0; i < total; i++) {
+    if (keepDist[i]! > maxHalo) {
+      probGrid[i] = 0
+    }
+  }
 }
 
 function normalizeChannel(
@@ -116,24 +169,19 @@ export async function inferMattingSubject(
   const padX = Math.floor((size - newW) / 2)
   const padY = Math.floor((size - newH) / 2)
 
-  const [padR, padG, padB] = sampleBorderRgb(rgba, srcWidth, srcHeight)
+  // BiRefNet-Lite / RMBG-1.4 / MODNet 均在全画幅直接双线性缩放（无 letterbox 填充条）分布上训练；
+  // 直接缩放到 size×size 既能保留短边 100% 原生推理分辨率，又避免人工填充边导致贴边背景褶皱被误检为前景。
   const plane = size * size
   const tensor = new Float32Array(3 * plane)
-  const fillR = normalizeChannel(padR, 0, spec.norm)
-  const fillG = normalizeChannel(padG, 1, spec.norm)
-  const fillB = normalizeChannel(padB, 2, spec.norm)
-  tensor.fill(fillR, 0, plane)
-  tensor.fill(fillG, plane, plane * 2)
-  tensor.fill(fillB, plane * 2, plane * 3)
 
-  for (let y = 0; y < newH; y++) {
-    const sy = Math.min(srcHeight - 1, Math.max(0, (y + 0.5) / scale - 0.5))
+  for (let y = 0; y < size; y++) {
+    const sy = Math.min(srcHeight - 1, Math.max(0, ((y + 0.5) * srcHeight) / size - 0.5))
     const y0 = Math.floor(sy)
     const y1 = Math.min(srcHeight - 1, y0 + 1)
     const fy = sy - y0
-    const dstRow = (y + padY) * size + padX
-    for (let x = 0; x < newW; x++) {
-      const sx = Math.min(srcWidth - 1, Math.max(0, (x + 0.5) / scale - 0.5))
+    const dstRow = y * size
+    for (let x = 0; x < size; x++) {
+      const sx = Math.min(srcWidth - 1, Math.max(0, ((x + 0.5) * srcWidth) / size - 0.5))
       const x0 = Math.floor(sx)
       const x1 = Math.min(srcWidth - 1, x0 + 1)
       const fx = sx - x0
@@ -195,13 +243,17 @@ export async function inferMattingSubject(
     }
   }
 
-  // 保持模型原生输出分辨率（如 1024×1024 或 512×512），剔除 letterbox 填充区
+  suppressPeripheralNoiseIslands(probGrid, outHw)
+
+  // 将全画幅推理概率图重映射至统一的 letterbox 掩码坐标系（与 YOLO 实例分割及上层采样保持几何对齐）
   const maskHw = Math.min(MATTING_OUTPUT_MASK_HW, Math.max(512, outHw))
   const maskData = new Uint8Array(maskHw * maskHw)
   const padXMin = (padX / size) * maskHw
   const padXMax = ((padX + newW) / size) * maskHw
   const padYMin = (padY / size) * maskHw
   const padYMax = ((padY + newH) / size) * maskHw
+  const contentW = Math.max(1e-5, padXMax - padXMin)
+  const contentH = Math.max(1e-5, padYMax - padYMin)
 
   let minX = maskHw
   let minY = maskHw
@@ -210,13 +262,15 @@ export async function inferMattingSubject(
 
   for (let my = 0; my < maskHw; my++) {
     if (my + 0.5 < padYMin || my + 0.5 > padYMax) continue
-    const sy = ((my + 0.5) / maskHw) * outHw - 0.5
+    const vNorm = (my + 0.5 - padYMin) / contentH
+    const sy = vNorm * outHw - 0.5
     const y0 = Math.max(0, Math.min(outHw - 1, Math.floor(sy)))
     const y1 = Math.max(0, Math.min(outHw - 1, y0 + 1))
     const fy = Math.max(0, sy - y0)
     for (let mx = 0; mx < maskHw; mx++) {
       if (mx + 0.5 < padXMin || mx + 0.5 > padXMax) continue
-      const sx = ((mx + 0.5) / maskHw) * outHw - 0.5
+      const uNorm = (mx + 0.5 - padXMin) / contentW
+      const sx = uNorm * outHw - 0.5
       const x0 = Math.max(0, Math.min(outHw - 1, Math.floor(sx)))
       const x1 = Math.max(0, Math.min(outHw - 1, x0 + 1))
       const fx = Math.max(0, sx - x0)

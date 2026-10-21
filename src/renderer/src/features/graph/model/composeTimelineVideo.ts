@@ -474,14 +474,28 @@ export async function composeTimelineVideoForNode(input: {
       overlayY: c.overlayY,
       overlayWidth: c.overlayWidth,
       overlayHeight: c.overlayHeight,
+      overlayRotation: c.overlayRotation,
       opacity: c.opacity,
+      tweenIn: c.tweenIn,
+      tweenInDurationSec: c.tweenInDurationSec,
+      tweenInEase: c.tweenInEase,
+      tweenOut: c.tweenOut,
+      tweenOutDurationSec: c.tweenOutDurationSec,
+      tweenOutEase: c.tweenOutEase,
+      tweenLoop: c.tweenLoop,
+      tweenLoopSpeedHz: c.tweenLoopSpeedHz,
+      tweenLoopIntensity: c.tweenLoopIntensity,
+      cameraMotion: c.cameraMotion,
+      keyframes: c.keyframes,
+      stickerId: c.stickerId,
+      stickerColor: c.stickerColor,
       transitionInSec: c.transitionInSec,
       transitionOutSec: c.transitionOutSec,
       transitionType: c.transitionType
     }))
 
   const hasExportableMedia = exportClips.some(
-    (c) => c.track !== 'subtitle' && !!c.relativePath?.trim()
+    (c) => c.track !== 'subtitle' && (!!c.relativePath?.trim() || !!c.stickerId)
   )
   if (!hasExportableMedia) return null
 

@@ -233,43 +233,83 @@
           <div class="section-label">
             {{ t('cutout.result') }}
           </div>
-          <div class="backdrop-swatches">
+          <div class="result-head-actions">
             <button
               type="button"
-              class="swatch checker"
-              :class="{ active: previewBackdrop === 'checker' }"
-              :title="t('cutout.bgChecker')"
-              @click="previewBackdrop = 'checker'"
-            />
+              class="tool-chip erase"
+              :class="{ active: brushMode === 'erase' }"
+              @click="brushMode = brushMode === 'erase' ? 'off' : 'erase'"
+            >
+              {{ t('cutout.resultEraser') }}
+            </button>
             <button
               type="button"
-              class="swatch dark"
-              :class="{ active: previewBackdrop === 'dark' }"
-              :title="t('cutout.bgDark')"
-              @click="previewBackdrop = 'dark'"
-            />
+              class="tool-chip keep"
+              :class="{ active: brushMode === 'keep' }"
+              @click="brushMode = brushMode === 'keep' ? 'off' : 'keep'"
+            >
+              {{ t('cutout.resultKeep') }}
+            </button>
             <button
+              v-if="brushStrokes.length > 0"
               type="button"
-              class="swatch light"
-              :class="{ active: previewBackdrop === 'light' }"
-              :title="t('cutout.bgLight')"
-              @click="previewBackdrop = 'light'"
-            />
+              class="tool-chip"
+              @click="undoBrushStroke"
+            >
+              {{ t('cutout.brushUndo') }}
+            </button>
             <button
+              v-if="brushStrokes.length > 0"
               type="button"
-              class="swatch green"
-              :class="{ active: previewBackdrop === 'green' }"
-              :title="t('cutout.bgGreen')"
-              @click="previewBackdrop = 'green'"
-            />
+              class="tool-chip"
+              @click="clearBrushStrokes"
+            >
+              {{ t('cutout.brushClear', { n: brushStrokes.length }) }}
+            </button>
+            <div class="backdrop-swatches">
+              <button
+                type="button"
+                class="swatch checker"
+                :class="{ active: previewBackdrop === 'checker' }"
+                :title="t('cutout.bgChecker')"
+                @click="previewBackdrop = 'checker'"
+              />
+              <button
+                type="button"
+                class="swatch dark"
+                :class="{ active: previewBackdrop === 'dark' }"
+                :title="t('cutout.bgDark')"
+                @click="previewBackdrop = 'dark'"
+              />
+              <button
+                type="button"
+                class="swatch light"
+                :class="{ active: previewBackdrop === 'light' }"
+                :title="t('cutout.bgLight')"
+                @click="previewBackdrop = 'light'"
+              />
+              <button
+                type="button"
+                class="swatch green"
+                :class="{ active: previewBackdrop === 'green' }"
+                :title="t('cutout.bgGreen')"
+                @click="previewBackdrop = 'green'"
+              />
+            </div>
           </div>
+        </div>
+        <div v-if="brushMode !== 'off'" class="result-brush-size">
+          <span
+            >{{ t('cutout.brushSize') }} <b>{{ brushSizePx }}px</b></span
+          >
+          <input v-model.number="brushSizePx" type="range" min="4" max="72" step="2" />
         </div>
         <div
           class="stage"
           :class="[
             `bg-${previewBackdrop}`,
             {
-              paintable: brushMode !== 'off' && !!resultUrl,
+              paintable: brushMode !== 'off' && hasResult,
               pannable: brushMode === 'off' && stageZoom > 1.01
             }
           ]"
@@ -280,8 +320,8 @@
           @pointercancel="onStagePointerUp"
           @pointerleave="onStagePointerLeave('result')"
         >
-          <div v-if="resultUrl" class="stage-canvas-wrap" :style="stageTransformStyle">
-            <img ref="resultImgRef" :src="resultUrl" alt="" draggable="false" />
+          <div v-show="hasResult" class="stage-canvas-wrap" :style="stageTransformStyle">
+            <canvas ref="resultCanvasEl" class="result-canvas" />
             <svg
               v-if="hoverStage === 'result' && brushMode !== 'off' && resultCursorNorm"
               class="brush-overlay"
@@ -291,18 +331,18 @@
               <circle
                 :cx="resultCursorNorm.x * 1000"
                 :cy="resultCursorNorm.y * 1000"
-                :r="normalizedBrushRadius * 1000"
+                :r="resultStrokeWidth(normalizedBrushRadius) / 2"
                 :class="['brush-cursor', brushMode]"
               />
             </svg>
           </div>
-          <p v-else class="hint">
+          <p v-if="!hasResult" class="hint">
             {{ t('cutout.resultEmpty') }}
           </p>
         </div>
         <div class="row">
-          <span v-if="resultUrl" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
-          <button type="button" class="primary" :disabled="!resultUrl || saving" @click="save">
+          <span v-if="hasResult" class="hint">{{ resultWidth }}×{{ resultHeight }}</span>
+          <button type="button" class="primary" :disabled="!hasResult || saving" @click="save">
             {{ saving ? t('cutout.saving') : t('cutout.save') }}
           </button>
         </div>
@@ -326,12 +366,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { resolveCacheOutputRoot } from '@shared/domain'
 import type { CutoutBrushPoint, CutoutBrushStroke, CutoutRegion } from '@shared/yoloCutout'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { closeCutoutDialog, cutoutDialogState } from '../features/yolo/cutoutDialog'
-import { analyzeCutout, renderCutoutPng, type CutoutAnalysis } from '../features/yolo/cutout'
+import {
+  analyzeCutout,
+  buildCutoutInteractiveSession,
+  replayStrokesOnSession,
+  stampSegmentOnSession,
+  type CutoutAnalysis,
+  type CutoutInteractiveSession
+} from '../features/yolo/cutout'
 import { useProjectStore } from '../stores/project'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -345,7 +392,7 @@ const image = ref<HTMLImageElement | null>(null)
 const selected = ref<number[]>([])
 const detectConf = ref(0.25)
 const threshold = ref(0.5)
-const feather = ref(1)
+const feather = ref(0)
 const edgeGuidedRadius = ref(4)
 const edgeChoke = ref(0)
 const holePunch = ref(true)
@@ -354,17 +401,19 @@ const cropToSubject = ref(true)
 const brushMode = ref<'off' | 'keep' | 'erase'>('off')
 const brushSizePx = ref(20)
 const brushStrokes = ref<CutoutBrushStroke[]>([])
-const activeStroke = ref<CutoutBrushStroke | null>(null)
+const activeStroke = shallowRef<CutoutBrushStroke | null>(null)
+let activePoints: CutoutBrushPoint[] = []
 const hoverStage = ref<'source' | 'result' | null>(null)
-const cursorNorm = ref<CutoutBrushPoint | null>(null)
-const resultCursorNorm = ref<CutoutBrushPoint | null>(null)
+const cursorNorm = shallowRef<CutoutBrushPoint | null>(null)
+const resultCursorNorm = shallowRef<CutoutBrushPoint | null>(null)
 const sourceImgRef = ref<HTMLImageElement | null>(null)
-const resultImgRef = ref<HTMLImageElement | null>(null)
+const resultCanvasEl = ref<HTMLCanvasElement | null>(null)
 const currentRegion = ref<CutoutRegion | null>(null)
 const previewBackdrop = ref<'checker' | 'dark' | 'light' | 'green'>('checker')
 const stageZoom = ref(1)
 const stagePan = ref({ x: 0, y: 0 })
 let panStart: { clientX: number; clientY: number; panX: number; panY: number } | null = null
+let interactiveSession: CutoutInteractiveSession | null = null
 
 const stageTransformStyle = computed(() => ({
   transform: `translate(${stagePan.value.x}px, ${stagePan.value.y}px) scale(${stageZoom.value})`,
@@ -392,12 +441,9 @@ const error = ref('')
 const saveAssetOpen = ref(false)
 const saveAssetDefaultName = ref('')
 const saveAssetRef = ref<InstanceType<typeof SaveAssetDialog> | null>(null)
-const resultUrl = ref('')
+const hasResult = ref(false)
 const resultWidth = ref(0)
 const resultHeight = ref(0)
-const resultCanvas = ref<HTMLCanvasElement | null>(null)
-/** 渲染请求递增号：快速连续切换时丢弃过期结果并释放其 blob */
-let renderToken = 0
 
 const instances = computed(() => analysis.value?.instances ?? [])
 const normalizedBrushRadius = computed(() =>
@@ -423,11 +469,20 @@ function strokeToSvgPath(points: readonly CutoutBrushPoint[]): string {
     .join(' ')
 }
 
+function resultStrokeWidth(radiusNorm: number): number {
+  const a = analysis.value
+  const reg = currentRegion.value
+  if (!a || !reg || reg.width <= 0 || reg.height <= 0) return radiusNorm * 2000
+  const shortSide = Math.min(a.srcWidth, a.srcHeight)
+  const avgRegSide = (reg.width + reg.height) * 0.5
+  return ((radiusNorm * shortSide) / Math.max(1, avgRegSide)) * 2000
+}
+
 function mapEventToSourceNorm(
   e: PointerEvent,
   stage: 'source' | 'result'
 ): { srcNorm: CutoutBrushPoint; resNorm?: CutoutBrushPoint } | null {
-  const el = stage === 'source' ? sourceImgRef.value : resultImgRef.value
+  const el = stage === 'source' ? sourceImgRef.value : resultCanvasEl.value
   if (!el) return null
   const rect = el.getBoundingClientRect()
   if (rect.width <= 1 || rect.height <= 1) return null
@@ -472,10 +527,23 @@ function onStagePointerDown(e: PointerEvent, stage: 'source' | 'result'): void {
   hoverStage.value = stage
   cursorNorm.value = mapped.srcNorm
   resultCursorNorm.value = mapped.resNorm ?? null
-  activeStroke.value = {
-    mode: brushMode.value,
-    radius: normalizedBrushRadius.value,
-    points: [mapped.srcNorm]
+  activePoints = [mapped.srcNorm]
+  if (stage === 'source') {
+    activeStroke.value = {
+      mode: brushMode.value,
+      radius: normalizedBrushRadius.value,
+      points: activePoints
+    }
+  }
+  if (interactiveSession && resultCanvasEl.value) {
+    stampSegmentOnSession(
+      interactiveSession,
+      brushMode.value,
+      normalizedBrushRadius.value,
+      mapped.srcNorm,
+      mapped.srcNorm,
+      resultCanvasEl.value
+    )
   }
 }
 
@@ -493,11 +561,27 @@ function onStagePointerMove(e: PointerEvent, stage: 'source' | 'result'): void {
   hoverStage.value = stage
   cursorNorm.value = mapped.srcNorm
   resultCursorNorm.value = mapped.resNorm ?? null
-  if (!activeStroke.value) return
-  const pts = activeStroke.value.points
-  const last = pts[pts.length - 1]
-  if (!last || Math.hypot(mapped.srcNorm.x - last.x, mapped.srcNorm.y - last.y) >= 0.002) {
-    pts.push(mapped.srcNorm)
+  if (activePoints.length === 0) return
+  const last = activePoints[activePoints.length - 1]!
+  if (Math.hypot(mapped.srcNorm.x - last.x, mapped.srcNorm.y - last.y) >= 0.0015) {
+    activePoints.push(mapped.srcNorm)
+    if (interactiveSession && resultCanvasEl.value) {
+      stampSegmentOnSession(
+        interactiveSession,
+        brushMode.value,
+        normalizedBrushRadius.value,
+        last,
+        mapped.srcNorm,
+        resultCanvasEl.value
+      )
+    }
+    if (stage === 'source') {
+      activeStroke.value = {
+        mode: brushMode.value,
+        radius: normalizedBrushRadius.value,
+        points: [...activePoints]
+      }
+    }
   }
 }
 
@@ -506,11 +590,37 @@ function onStagePointerUp(): void {
     panStart = null
     return
   }
-  if (!activeStroke.value) return
-  const finished = activeStroke.value
+  if (activePoints.length === 0 || brushMode.value === 'off') return
+  const finished: CutoutBrushStroke = {
+    mode: brushMode.value,
+    radius: normalizedBrushRadius.value,
+    points: activePoints
+  }
+  activePoints = []
   activeStroke.value = null
-  if (finished.points.length > 0) {
-    brushStrokes.value = [...brushStrokes.value, finished]
+  brushStrokes.value = [...brushStrokes.value, finished]
+  // 若还未建立基础会话，或用户在裁剪模式下用「+保留」涂抹到了当前裁剪框外部，则重算基础框
+  if (!interactiveSession) {
+    renderBase()
+    return
+  }
+  if (finished.mode === 'keep' && cropToSubject.value && analysis.value && currentRegion.value) {
+    const a = analysis.value
+    const reg = currentRegion.value
+    const rPx = finished.radius * Math.min(a.srcWidth, a.srcHeight)
+    const expanded = finished.points.some((pt) => {
+      const px = pt.x * a.srcWidth
+      const py = pt.y * a.srcHeight
+      return (
+        px - rPx < reg.x ||
+        py - rPx < reg.y ||
+        px + rPx > reg.x + reg.width ||
+        py + rPx > reg.y + reg.height
+      )
+    })
+    if (expanded) {
+      renderBase()
+    }
   }
 }
 
@@ -523,24 +633,33 @@ function onStagePointerLeave(stage: 'source' | 'result'): void {
 function undoBrushStroke(): void {
   if (!brushStrokes.value.length) return
   brushStrokes.value = brushStrokes.value.slice(0, -1)
+  if (interactiveSession) {
+    replayStrokesOnSession(interactiveSession, brushStrokes.value, resultCanvasEl.value)
+  } else {
+    renderBase()
+  }
 }
 
 function clearBrushStrokes(): void {
   brushStrokes.value = []
+  if (interactiveSession) {
+    replayStrokesOnSession(interactiveSession, [], resultCanvasEl.value)
+  } else {
+    renderBase()
+  }
 }
 
-async function render(): Promise<void> {
+function renderBase(): void {
   const a = analysis.value
   const img = image.value
   const hasKeepBrush = brushStrokes.value.some((s) => s.mode === 'keep' && s.points.length > 0)
   if (!a || !img || (selected.value.length === 0 && !hasKeepBrush)) {
-    resultUrl.value = ''
-    resultCanvas.value = null
+    interactiveSession = null
+    hasResult.value = false
     return
   }
-  const token = ++renderToken
   try {
-    const out = await renderCutoutPng({
+    const session = buildCutoutInteractiveSession({
       image: img,
       analysis: a,
       selected: selected.value,
@@ -552,19 +671,19 @@ async function render(): Promise<void> {
       holePunch: holePunch.value,
       brushStrokes: brushStrokes.value
     })
-    if (token !== renderToken) {
-      URL.revokeObjectURL(out.url)
-      return
+    interactiveSession = session
+    resultWidth.value = session.width
+    resultHeight.value = session.height
+    currentRegion.value = session.region
+    hasResult.value = true
+    const cvs = resultCanvasEl.value
+    if (cvs) {
+      if (cvs.width !== session.width) cvs.width = session.width
+      if (cvs.height !== session.height) cvs.height = session.height
+      cvs.getContext('2d')?.putImageData(session.workingImageData, 0, 0)
     }
-    if (resultUrl.value) URL.revokeObjectURL(resultUrl.value)
-    resultUrl.value = out.url
-    resultWidth.value = out.width
-    resultHeight.value = out.height
-    resultCanvas.value = out.canvas
-    currentRegion.value = out.region
     error.value = ''
   } catch (err) {
-    if (token !== renderToken) return
     error.value = err instanceof Error ? err.message : String(err)
   }
 }
@@ -582,10 +701,11 @@ async function analyze(): Promise<void> {
     image.value = res.image
     const mattingInst = res.analysis.instances.find((i) => i.label === 'matting-subject')
     selected.value = mattingInst ? [mattingInst.index] : res.analysis.instances.map((i) => i.index)
-    void render()
+    renderBase()
   } catch (err) {
     analysis.value = null
-    resultUrl.value = ''
+    interactiveSession = null
+    hasResult.value = false
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
     busy.value = false
@@ -595,7 +715,7 @@ async function analyze(): Promise<void> {
 /** 点「保存到资产库」：先弹出选择目标文件夹与命名对话框 */
 function save(): void {
   if (saving.value) return
-  if (!resultUrl.value) {
+  if (!hasResult.value || !resultCanvasEl.value) {
     error.value = t('cutout.resultEmpty')
     return
   }
@@ -612,12 +732,12 @@ async function onSaveToLibraryConfirm(payload: {
   name: string
   folderId: string | null
 }): Promise<void> {
-  if (saving.value) return
+  if (saving.value || !resultCanvasEl.value) return
   saving.value = true
   error.value = ''
   saveAssetRef.value?.setSaving(true)
   try {
-    const dataUrl = await resultToDataUrl(resultCanvas.value, resultUrl.value)
+    const dataUrl = resultCanvasEl.value.toDataURL('image/png')
     const cacheRoot = resolveCacheOutputRoot(project.config?.cacheOutputDir)
     const tmpRel = await window.studio.saveGraphRunMedia({
       dataUrl,
@@ -647,19 +767,6 @@ async function onSaveToLibraryConfirm(payload: {
   }
 }
 
-async function resultToDataUrl(canvas: HTMLCanvasElement | null, url: string): Promise<string> {
-  if (canvas) return canvas.toDataURL('image/png')
-  const res = await fetch(url)
-  if (!res.ok) throw new Error('YOLO: failed to read result image')
-  const blob = await res.blob()
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(String(reader.result))
-    reader.onerror = () => reject(reader.error ?? new Error('YOLO: failed to read result image'))
-    reader.readAsDataURL(blob)
-  })
-}
-
 function reset(): void {
   if (renderTimer) {
     clearTimeout(renderTimer)
@@ -669,13 +776,13 @@ function reset(): void {
   image.value = null
   selected.value = []
   brushStrokes.value = []
+  activePoints = []
   activeStroke.value = null
   brushMode.value = 'off'
   currentRegion.value = null
+  interactiveSession = null
   resetView()
-  if (resultUrl.value) URL.revokeObjectURL(resultUrl.value)
-  resultUrl.value = ''
-  resultCanvas.value = null
+  hasResult.value = false
   resultWidth.value = 0
   resultHeight.value = 0
   saveAssetOpen.value = false
@@ -694,25 +801,13 @@ watch(
 )
 
 let renderTimer: ReturnType<typeof setTimeout> | null = null
-watch(
-  [
-    threshold,
-    feather,
-    edgeGuidedRadius,
-    edgeChoke,
-    holePunch,
-    cropToSubject,
-    selected,
-    brushStrokes
-  ],
-  () => {
-    if (renderTimer) clearTimeout(renderTimer)
-    renderTimer = setTimeout(() => {
-      renderTimer = null
-      void render()
-    }, 90)
-  }
-)
+watch([threshold, feather, edgeGuidedRadius, edgeChoke, holePunch, cropToSubject, selected], () => {
+  if (renderTimer) clearTimeout(renderTimer)
+  renderTimer = setTimeout(() => {
+    renderTimer = null
+    renderBase()
+  }, 60)
+})
 </script>
 
 <style scoped>
@@ -787,10 +882,13 @@ watch(
   max-height: 308px;
 }
 
-.stage img {
+.stage img,
+.stage .result-canvas {
   display: block;
   max-width: 100%;
   max-height: 308px;
+  width: auto;
+  height: auto;
   object-fit: contain;
   pointer-events: none;
 }
@@ -868,6 +966,45 @@ watch(
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.result-head-actions {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.tool-chip.erase.active {
+  border-color: #ff5b6b;
+  background: rgba(255, 91, 107, 0.2);
+  color: #ff5b6b;
+  font-weight: 600;
+}
+
+.tool-chip.keep.active {
+  border-color: #34c77b;
+  background: rgba(52, 199, 123, 0.2);
+  color: #34c77b;
+  font-weight: 600;
+}
+
+.result-brush-size {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.result-brush-size input[type='range'] {
+  flex: 1;
 }
 
 .swatch {

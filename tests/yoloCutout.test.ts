@@ -9,7 +9,8 @@ import {
   letterboxGeometryFor,
   punchInteriorBackgroundHoles,
   refineCutoutAlphaGuided,
-  resolveCutoutRegion
+  resolveCutoutRegion,
+  stampCutoutBrushSegment
 } from '../src/shared/yoloCutout'
 
 const MASK_HW = 160
@@ -328,6 +329,50 @@ describe('refineCutoutAlphaGuided', () => {
     expect(refined[12 * w + 11]!).toBeGreaterThan(0.85)
     expect(refined[12 * w + 12]!).toBeLessThan(0.15)
   })
+
+  it('peels trapped bright background between fine dark hair strands in a 3-color hairline window', () => {
+    const w = 32
+    const h = 32
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    const coarseAlpha = new Float32Array(w * h)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x
+        // y < 8: 外部纯白背景 (alpha=0)
+        // 8 <= y < 18: 稀疏深色发丝 (x % 3 !== 2 为深色发丝 [32,28,26]，x % 3 === 2 为夹在发丝间的白底 [242,238,238])，
+        //              粗掩码把整个发丝包络区 (8..18) 都给了 0.92 的高 alpha
+        // y >= 18: 内部暖色额头皮肤 [222, 180, 162] (alpha=1)
+        if (y < 8) {
+          rgba[idx * 4] = 242
+          rgba[idx * 4 + 1] = 238
+          rgba[idx * 4 + 2] = 238
+          rgba[idx * 4 + 3] = 255
+          coarseAlpha[idx] = 0
+        } else if (y < 18) {
+          const isHairStrand = x % 3 !== 2
+          rgba[idx * 4] = isHairStrand ? 32 : 242
+          rgba[idx * 4 + 1] = isHairStrand ? 28 : 238
+          rgba[idx * 4 + 2] = isHairStrand ? 26 : 238
+          rgba[idx * 4 + 3] = 255
+          coarseAlpha[idx] = 0.92
+        } else {
+          rgba[idx * 4] = 222
+          rgba[idx * 4 + 1] = 180
+          rgba[idx * 4 + 2] = 162
+          rgba[idx * 4 + 3] = 255
+          coarseAlpha[idx] = 1
+        }
+      }
+    }
+    const refined = refineCutoutAlphaGuided(rgba, coarseAlpha, w, h, {
+      radius: 4,
+      colorMattingStrength: 0.4
+    })
+    // 发丝本体 (y=12, x=12) 保持高不透明度
+    expect(refined[12 * w + 12]!).toBeGreaterThan(0.8)
+    // 夹在发丝之间的白底间隙 (y=12, x=14) 被显著剥离透明
+    expect(refined[12 * w + 14]!).toBeLessThan(0.2)
+  })
 })
 
 describe('punchInteriorBackgroundHoles', () => {
@@ -390,6 +435,36 @@ describe('applyCutoutBrushStrokes', () => {
     })
     expect(region.x + region.width).toBeGreaterThanOrEqual(85)
     expect(region.y + region.height).toBeGreaterThanOrEqual(85)
+  })
+
+  it('incrementally stamps a brush segment and returns the minimal dirty rect', () => {
+    const w = 64
+    const h = 64
+    const workingAlpha = new Float32Array(w * h).fill(1)
+    const rawSourceRgba = new Uint8ClampedArray(w * h * 4).fill(200)
+    const workingRgba = new Uint8ClampedArray(rawSourceRgba)
+    const dirty = stampCutoutBrushSegment({
+      workingAlpha,
+      workingRgba,
+      rawSourceRgba,
+      mode: 'erase',
+      radiusNorm: 0.08,
+      p0: { x: 0.5, y: 0.5 },
+      p1: { x: 0.55, y: 0.5 },
+      srcWidth: w,
+      srcHeight: h,
+      region: { x: 0, y: 0, width: w, height: h },
+      outScale: 1,
+      outWidth: w,
+      outHeight: h
+    })
+    expect(dirty).not.toBeNull()
+    expect(dirty!.dirtyW).toBeLessThan(24)
+    expect(dirty!.dirtyH).toBeLessThan(24)
+    expect(workingAlpha[32 * w + 32]).toBe(0)
+    expect(workingRgba[(32 * w + 32) * 4 + 3]).toBe(0)
+    // 脏矩形外部像素完全不受影响
+    expect(workingAlpha[2 * w + 2]).toBe(1)
   })
 })
 
