@@ -292,7 +292,7 @@ export async function executeTimelineOutputNode(
     if (!title) return null
     const m =
       title.match(
-        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image)\s*#?(\d+)/i
       ) ??
       title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
       title.match(/(\d+)/)
@@ -327,14 +327,20 @@ export async function executeTimelineOutputNode(
             item.edge.targetPort === 'in-videos')
       )
 
+    const usedImgEdgeIndices = new Set<number>()
     images = images.map((img, idx) => {
       const matched =
-        imageSourceEdges.find(({ node: n }) =>
-          n.params?.generatedImages?.some(
-            (g) =>
-              (g.id && g.id === img.id) || (g.relativePath && g.relativePath === img.relativePath)
-          )
+        imageSourceEdges.find(
+          ({ node: n, edgeIdx }) =>
+            !usedImgEdgeIndices.has(edgeIdx) &&
+            (n.params?.generatedImages?.some(
+              (g) =>
+                (g.relativePath && g.relativePath === img.relativePath) ||
+                (g.id && g.id !== 'ref:0' && g.id === img.id)
+            ) ||
+              (img.relativePath && n.params?.previewRelativePath === img.relativePath))
         ) ?? imageSourceEdges[idx]
+      if (matched) usedImgEdgeIndices.add(matched.edgeIdx)
       const matchedNode = matched?.node
       if (!matchedNode) {
         orderedVisuals.push({
@@ -373,13 +379,20 @@ export async function executeTimelineOutputNode(
       return upgraded
     })
 
+    const usedVidEdgeIndices = new Set<number>()
     videos.forEach((v, idx) => {
       const matched =
-        videoSourceEdges.find(({ node: n }) =>
-          n.params?.generatedVideos?.some(
-            (g) => (g.id && g.id === v.id) || (g.relativePath && g.relativePath === v.relativePath)
-          )
+        videoSourceEdges.find(
+          ({ node: n, edgeIdx }) =>
+            !usedVidEdgeIndices.has(edgeIdx) &&
+            (n.params?.generatedVideos?.some(
+              (g) =>
+                (g.relativePath && g.relativePath === v.relativePath) ||
+                (g.id && g.id !== 'ref:0' && g.id === v.id)
+            ) ||
+              (v.relativePath && n.params?.previewRelativePath === v.relativePath))
         ) ?? videoSourceEdges[idx]
+      if (matched) usedVidEdgeIndices.add(matched.edgeIdx)
       const title = matched?.node.title?.trim()
       const shotNum = extractShotNum(title)
       orderedVisuals.push({

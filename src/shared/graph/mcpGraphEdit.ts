@@ -329,22 +329,24 @@ function buildLockedMediaRefParams(
   typeId: 'asset.image' | 'asset.video' | 'asset.model3d' | 'asset.voice',
   rawUrl: string
 ): GraphNodeParams {
-  const url = rawUrl.trim()
-  const isInline = isDataOrHttpUrl(url)
+  const rawTrimmed = rawUrl.trim()
+  const isInline = isDataOrHttpUrl(rawTrimmed)
+  const url = isInline ? rawTrimmed : rawTrimmed.replace(/^@+/, '').trim()
   const now = new Date().toISOString()
+  const refItemId = `ref:${isInline ? now : url || now}`
   if (typeId === 'asset.image') {
     return {
       locked: true,
       ...(isInline ? { previewDataUrl: url } : { previewRelativePath: url }),
       generatedImages: [
         {
-          id: 'ref:0',
+          id: refItemId,
           dataUrl: isInline ? url : '',
           ...(isInline ? {} : { relativePath: url }),
           createdAt: now
         }
       ],
-      selectedImageId: 'ref:0'
+      selectedImageId: refItemId
     }
   }
   if (typeId === 'asset.video') {
@@ -353,13 +355,13 @@ function buildLockedMediaRefParams(
       ...(isInline ? { previewDataUrl: url } : { previewRelativePath: url }),
       generatedVideos: [
         {
-          id: 'ref:0',
+          id: refItemId,
           dataUrl: isInline ? url : '',
           ...(isInline ? {} : { relativePath: url }),
           createdAt: now
         }
       ],
-      selectedVideoId: 'ref:0'
+      selectedVideoId: refItemId
     }
   }
   if (typeId === 'asset.model3d') {
@@ -368,12 +370,12 @@ function buildLockedMediaRefParams(
       previewRelativePath: url,
       generatedModels: [
         {
-          id: 'ref:0',
+          id: refItemId,
           relativePath: url,
           createdAt: now
         }
       ],
-      selectedModelId: 'ref:0'
+      selectedModelId: refItemId
     }
   }
   return {
@@ -381,12 +383,12 @@ function buildLockedMediaRefParams(
     previewRelativePath: url,
     generatedVoices: [
       {
-        id: 'ref:0',
+        id: refItemId,
         relativePath: url,
         createdAt: now
       }
     ],
-    selectedVoiceId: 'ref:0'
+    selectedVoiceId: refItemId
   }
 }
 
@@ -397,7 +399,8 @@ function upsertLockedMediaRefNodeAndConnect(
   refTitle: string,
   rawUrl: string,
   targetNode: GraphNode,
-  preferredToPort?: string
+  preferredToPort?: string,
+  yOffset = 0
 ): void {
   let refNode = findNode(graph, refNodeId)
   const refParams = buildLockedMediaRefParams(refTypeId, rawUrl)
@@ -406,7 +409,7 @@ function upsertLockedMediaRefNodeAndConnect(
       refTypeId,
       {
         x: Math.max(0, (targetNode.position?.x ?? 320) - 340),
-        y: targetNode.position?.y ?? 0
+        y: (targetNode.position?.y ?? 0) + yOffset
       },
       { title: refTitle }
     )
@@ -502,25 +505,31 @@ function wireInlineReferenceMedia(
   const rawRefImgs =
     combinedParams.referenceImageUrls ??
     combinedParams.referenceImages ??
+    combinedParams.imageUrls ??
+    combinedParams.photos ??
     (typeof combinedParams.referenceImageUrl === 'string'
       ? [combinedParams.referenceImageUrl]
       : undefined)
   if (rawRefImgs !== undefined) {
     delete combinedParams.referenceImageUrls
     delete combinedParams.referenceImages
+    delete combinedParams.imageUrls
+    delete combinedParams.photos
     delete combinedParams.referenceImageUrl
     const list = (Array.isArray(rawRefImgs) ? rawRefImgs : [rawRefImgs])
       .filter((u): u is string => typeof u === 'string' && u.trim().length > 0)
       .map((u) => u.trim())
+    const isTimeline = targetNode.typeId === 'output.timeline'
     for (const [idx, url] of list.entries()) {
       upsertLockedMediaRefNodeAndConnect(
         graph,
-        `${targetNode.id}-ref-img-${idx + 1}`,
+        isTimeline ? `${targetNode.id}-photo-${idx + 1}` : `${targetNode.id}-ref-img-${idx + 1}`,
         'asset.image',
-        list.length > 1 ? `参考图 ${idx + 1}` : '参考图',
+        isTimeline ? `照片 ${idx + 1}` : list.length > 1 ? `参考图 ${idx + 1}` : '参考图',
         url,
         targetNode,
-        'in-image'
+        'in-image',
+        idx * 170
       )
       wiredEdge = true
     }

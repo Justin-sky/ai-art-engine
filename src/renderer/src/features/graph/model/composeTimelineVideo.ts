@@ -21,7 +21,7 @@ function resolveMediaRelPath(
   item: { relativePath?: string; id?: string; assetId?: string },
   projectAssets: Array<{ id: string; relativePath?: string }>
 ): string | undefined {
-  const rel = item.relativePath?.trim()
+  const rel = item.relativePath?.trim().replace(/^@+/, '').trim()
   if (rel) return rel
   const aid = (item.assetId ?? item.id)?.trim()
   if (!aid) return undefined
@@ -31,6 +31,14 @@ function resolveMediaRelPath(
 function isImageOrGifPath(rel: string): boolean {
   return /\.(png|jpe?g|webp|bmp|gif|svg)$/i.test(rel.trim())
 }
+
+function isStaticPhotoPath(rel: string): boolean {
+  return /\.(png|jpe?g|webp|bmp|svg)$/i.test(rel.trim())
+}
+
+const AUTO_PHOTO_CAMERA_MOTIONS = ['kenBurnsIn', 'kenBurnsOut', 'panRight', 'panLeft'] as const
+
+const AUTO_PHOTO_TRANSITIONS = ['dissolve', 'fade', 'smoothleft', 'circleopen'] as const
 
 /** 探测工程内音频或视频文件的真实时长（秒）；失败或非音视频时返回 null */
 async function probeMediaDurationSec(
@@ -201,7 +209,7 @@ export async function composeTimelineVideoForNode(input: {
     if (!title) return null
     const m =
       title.match(
-        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image)\s*#?(\d+)/i
       ) ??
       title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
       title.match(/(\d+)/)
@@ -318,10 +326,12 @@ export async function composeTimelineVideoForNode(input: {
 
       if (vis) {
         const isStillOrGif = vis.kind === 'image' || isImageOrGifPath(vis.rel)
+        const isStaticPhoto = isStaticPhotoPath(vis.rel)
         const freezeTailSec =
           !isStillOrGif && nativeVisDur !== null && shotDur > nativeVisDur + 0.08
             ? Math.round((shotDur - nativeVisDur) * 100) / 100
             : undefined
+        const hasMultiShots = shotSlots.length > 1
         clips.push({
           id: `clip:auto:v:${i}:${stamp}`,
           track: 'video',
@@ -330,7 +340,19 @@ export async function composeTimelineVideoForNode(input: {
           relativePath: vis.rel,
           startSec: cursor,
           durationSec: shotDur,
-          ...(freezeTailSec ? { freezeTailSec } : {})
+          ...(freezeTailSec ? { freezeTailSec } : {}),
+          ...(isStaticPhoto
+            ? {
+                cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length]
+              }
+            : {}),
+          ...(isStaticPhoto && hasMultiShots
+            ? {
+                transitionType: AUTO_PHOTO_TRANSITIONS[i % AUTO_PHOTO_TRANSITIONS.length],
+                ...(i > 0 ? { transitionInSec: 0.4 } : {}),
+                ...(i < shotSlots.length - 1 ? { transitionOutSec: 0.4 } : {})
+              }
+            : {})
         })
       } else if (canAutoBuildVideo && resolvedVisuals.length > 0) {
         // 配音段数多于画面段数时，自动延长最后一个画面片段覆盖当前配音，避免黑场
@@ -411,6 +433,7 @@ export async function composeTimelineVideoForNode(input: {
     clips = clips.filter((c) => !(c.track === 'music' && c.id.startsWith('clip:auto:')))
     const totalDur = Math.max(4, contentEndSecOfTimeline(clips))
     const bgm = resolvedMusic[0]!
+    const hasVoiceTrack = clips.some((c) => c.track === 'voice')
     clips.push({
       id: `clip:auto:bgm:0:${Date.now().toString(36)}`,
       track: 'music',
@@ -420,7 +443,7 @@ export async function composeTimelineVideoForNode(input: {
       ...(bgm.id ? { assetId: bgm.id } : {}),
       startSec: 0,
       durationSec: totalDur,
-      volume: 0.35,
+      volume: hasVoiceTrack ? 0.35 : 0.85,
       fadeInSec: 1,
       fadeOutSec: Math.min(1.5, Math.max(0.3, totalDur * 0.15))
     })

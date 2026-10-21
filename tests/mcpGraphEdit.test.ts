@@ -515,4 +515,108 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
       '源源不断地输送能量'
     ])
   })
+
+  it('支持给定多张 @Assets 照片与背景乐通过 output.timeline 生成音乐相册（自动剥离 @ 前缀并保持照片顺序）', async () => {
+    const doc = { version: 1 as const, nodes: [], edges: [] }
+    const res = applyGraphEditOps(doc, [
+      {
+        op: 'node_upsert',
+        nodeId: 'photo-1',
+        typeId: 'asset.image',
+        title: '照片 1',
+        locked: true,
+        params: { sourceRelativePath: '@Assets/Images/photo1.jpg' }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'photo-2',
+        typeId: 'asset.image',
+        title: '照片 2',
+        locked: true,
+        params: { sourceRelativePath: '@Assets/Images/photo2.jpg' }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'photo-3',
+        typeId: 'asset.image',
+        title: '照片 3',
+        locked: true,
+        params: { sourceRelativePath: '@Assets/Images/photo3.jpg' }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'bgm-1',
+        typeId: 'asset.music',
+        title: '相册背景音乐',
+        params: { prompt: '温馨怀旧的木吉他轻音乐', instrumental: true }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'timeline-out',
+        typeId: 'output.timeline',
+        title: '成片时间线'
+      },
+      { op: 'edge_add', from: 'photo-1', to: 'timeline-out' },
+      { op: 'edge_add', from: 'photo-2', to: 'timeline-out' },
+      { op: 'edge_add', from: 'photo-3', to: 'timeline-out' },
+      { op: 'edge_add', from: 'bgm-1', to: 'timeline-out' }
+    ])
+
+    expect(res.warnings).toEqual([])
+    const p1 = res.graph.nodes.find((n) => n.id === 'photo-1')!
+    const p2 = res.graph.nodes.find((n) => n.id === 'photo-2')!
+    const p3 = res.graph.nodes.find((n) => n.id === 'photo-3')!
+    expect(p1.params.previewRelativePath).toBe('Assets/Images/photo1.jpg')
+    expect(p2.params.previewRelativePath).toBe('Assets/Images/photo2.jpg')
+    expect(p3.params.previewRelativePath).toBe('Assets/Images/photo3.jpg')
+    expect(p1.params.generatedImages?.[0]?.id).not.toBe(p2.params.generatedImages?.[0]?.id)
+
+    const { executeTimelineOutputNode } = await import('../src/shared/graph/execute/narrative')
+    const timelineNode = res.graph.nodes.find((n) => n.id === 'timeline-out')!
+    let capturedVisuals: unknown[] = []
+    await executeTimelineOutputNode({
+      node: timelineNode,
+      document: res.graph,
+      inputs: {
+        'in-image': [
+          {
+            kind: 'image',
+            id: p1.params.generatedImages![0]!.id,
+            dataUrl: '',
+            relativePath: 'Assets/Images/photo1.jpg'
+          },
+          {
+            kind: 'image',
+            id: p2.params.generatedImages![0]!.id,
+            dataUrl: '',
+            relativePath: 'Assets/Images/photo2.jpg'
+          },
+          {
+            kind: 'image',
+            id: p3.params.generatedImages![0]!.id,
+            dataUrl: '',
+            relativePath: 'Assets/Images/photo3.jpg'
+          }
+        ],
+        'in-music': [
+          {
+            kind: 'voice',
+            id: 'bgm-item-1',
+            relativePath: 'Cache/Music/bgm.mp3'
+          }
+        ]
+      },
+      composeTimelineVideo: async (input) => {
+        capturedVisuals = input.visuals ?? []
+        return { relativePath: 'Cache/TimelineCompose/album.mp4', assetId: 'album-1' }
+      }
+    })
+
+    expect(capturedVisuals.map((v: any) => v.relativePath)).toEqual([
+      'Assets/Images/photo1.jpg',
+      'Assets/Images/photo2.jpg',
+      'Assets/Images/photo3.jpg'
+    ])
+    expect(capturedVisuals.map((v: any) => v.title)).toEqual(['照片 1', '照片 2', '照片 3'])
+  })
 })
