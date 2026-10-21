@@ -12,7 +12,12 @@
       <code v-if="statusReady && yoloStatus?.ortVersion" class="meta"
         >onnxruntime {{ yoloStatus.ortVersion }}</code
       >
-      <span v-if="statusReady && yoloStatus?.backend" class="meta">· {{ yoloStatus.backend }}</span>
+      <span
+        v-if="statusReady && yoloStatus?.backend"
+        class="pill"
+        :class="{ ok: yoloStatus.backend !== 'cpu' }"
+        >{{ backendLabel }}</span
+      >
       <span class="spacer" />
       <button type="button" class="ghost-btn" :disabled="loading" @click="refreshAll">
         {{ t('settings.yoloModels.refresh') }}
@@ -385,6 +390,14 @@ let confirmTimer: ReturnType<typeof setTimeout> | null = null
 const progressClearTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 const statusReady = computed(() => !!yoloStatus.value?.ready)
+const backendLabel = computed(() => {
+  const b = yoloStatus.value?.backend
+  if (b === 'dml') return 'GPU (DirectML)'
+  if (b === 'cuda') return 'GPU (CUDA)'
+  if (b === 'coreml') return 'GPU (CoreML)'
+  if (b === 'webgpu') return 'GPU (WebGPU)'
+  return 'CPU'
+})
 const hasCustomDir = computed(() => !!yolo.value.modelDir?.trim())
 const installedModels = computed<YoloModelInfo[]>(() => yoloStatus.value?.models ?? [])
 const installedSam2 = computed(() => yoloStatus.value?.sam2Models ?? [])

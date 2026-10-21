@@ -6,6 +6,7 @@
  */
 import { findMattingCatalogModel, type MattingNormalizationKind } from '@shared/mattingCatalog'
 import type { YoloBox, YoloLetterboxGeometry } from '@shared/yolo'
+import { createOrtSession } from './ortSession'
 
 type OrtModule = typeof import('onnxruntime-node')
 type OrtSession = import('onnxruntime-node').InferenceSession
@@ -19,10 +20,7 @@ async function getMattingSession(mod: OrtModule, modelPath: string): Promise<Ort
   if (cachedMatting && cachedMatting.path === modelPath) {
     return cachedMatting.session
   }
-  const session = await mod.InferenceSession.create(modelPath, {
-    executionProviders: ['cpu'],
-    graphOptimizationLevel: 'all'
-  })
+  const session = await createOrtSession(mod, modelPath)
   cachedMatting = { path: modelPath, session }
   return session
 }

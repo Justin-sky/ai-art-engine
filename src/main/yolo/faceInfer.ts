@@ -25,6 +25,7 @@ import {
   type FaceKeypoint
 } from '@shared/faceMesh'
 import { decodeImage } from './imageDecoder'
+import { createOrtSession } from './ortSession'
 import type { YoloWorkerFaceParams } from './protocol'
 
 type OrtModule = typeof import('onnxruntime-node')
@@ -47,10 +48,7 @@ const sessions = new Map<string, InferenceSession>()
 async function getSession(mod: OrtModule, path: string): Promise<InferenceSession> {
   const cached = sessions.get(path)
   if (cached) return cached
-  const session = await mod.InferenceSession.create(path, {
-    executionProviders: ['cpu'],
-    graphOptimizationLevel: 'all'
-  })
+  const session = await createOrtSession(mod, path)
   sessions.set(path, session)
   return session
 }

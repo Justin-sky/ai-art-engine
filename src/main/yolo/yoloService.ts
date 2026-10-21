@@ -103,7 +103,13 @@ class YoloService {
     }
     try {
       const ws = (await this.call('status', undefined, 5000)) as YoloWorkerStatus
-      return { ...base, ready: ws.ready, ortVersion: ws.ortVersion, error: ws.error }
+      return {
+        ...base,
+        ready: ws.ready,
+        ortVersion: ws.ortVersion,
+        backend: ws.backend ?? base.backend,
+        error: ws.error
+      }
     } catch (err) {
       return { ...base, error: err instanceof Error ? err.message : String(err) }
     }

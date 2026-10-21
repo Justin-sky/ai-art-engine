@@ -25,6 +25,7 @@ import {
   fuseYoloInstanceWithMattingMask,
   inferMattingSubject
 } from './mattingInfer'
+import { createOrtSession, getActiveOrtBackend } from './ortSession'
 import { rgbaToLetterboxTensor } from './preprocess'
 import { composeMask, parseSegOutput, parseYoloOutput, type Candidate } from './postprocess'
 import type {
@@ -85,10 +86,7 @@ async function getSession(
     lastSession = cached
     return cached.session
   }
-  const session = await mod.InferenceSession.create(modelPath, {
-    executionProviders: ['cpu'],
-    graphOptimizationLevel: 'all'
-  })
+  const session = await createOrtSession(mod, modelPath)
   const entry: CachedSession = { path: modelPath, kind, session }
   sessionCache.set(key, entry)
   for (const [otherKey, other] of [...sessionCache]) {
@@ -305,7 +303,7 @@ function currentStatus(): YoloWorkerStatus {
   return {
     ready: !!ort,
     ortVersion: ort?.env?.versions?.node,
-    backend: 'cpu',
+    backend: getActiveOrtBackend(ort),
     loadedSession: lastSession
       ? { modelId: basename(lastSession.path), kind: lastSession.kind }
       : undefined,

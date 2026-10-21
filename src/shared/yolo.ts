@@ -156,8 +156,8 @@ export interface YoloModelInfo {
   sizeMb: number
 }
 
-/** 推理后端（预留：后续可加 'dml' 需安装 onnxruntime-directml） */
-export type YoloBackend = 'cpu'
+/** 推理后端：Windows DirectML (`dml`) / NVIDIA CUDA (`cuda`) / Apple CoreML (`coreml`) / WebGPU / CPU */
+export type YoloBackend = 'dml' | 'cuda' | 'coreml' | 'webgpu' | 'cpu'
 
 /** yolo:status 返回的整体状态 */
 export interface YoloStatus {
