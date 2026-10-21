@@ -16,13 +16,17 @@ import {
   PORTRAIT_MASK_FEATHER_RATIO,
   PORTRAIT_MASK_MAX_EDGE,
   clampScopeRect,
+  lockPortraitIdentityRgba,
+  matchCorrespondingFaceLandmarks,
   portraitExportMimeType,
   portraitFaceArea,
   portraitFaceBoxFromLandmarks,
   portraitFaceMaskShape,
   type PortraitExportFormat,
   type PortraitFaceAnalysis,
+  type PortraitIdentityLockMode,
   type PortraitLiveInput,
+  type PortraitRetouchState,
   type PortraitScopeMask
 } from '@shared/graph'
 import { buildCutoutAlpha } from '@shared/yoloCutout'
@@ -268,6 +272,8 @@ export async function composePortraitScopedRetouch(input: {
   generatedDataUrl: string
   mask: PortraitScopeMask
   landmarks?: ReadonlyArray<readonly [number, number]> | null
+  state?: Partial<PortraitRetouchState> | null
+  extraInstruction?: string | null
   format?: PortraitExportFormat
   signal?: AbortSignal | null
 }): Promise<{ dataUrl: string; applied: boolean; coverRatio: number; notes: string[] }> {
@@ -358,7 +364,13 @@ export async function composePortraitScopedRetouch(input: {
     return { dataUrl: input.generatedDataUrl, applied: false, coverRatio, notes }
   }
 
-  // 生成图按蒙版留出 alpha，再盖回原图：未覆盖处直接就是原图像素
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = height
+  const outCtx = out.getContext('2d')
+  if (!outCtx) throw new Error('canvas 2d context unavailable')
+  outCtx.drawImage(source, 0, 0, width, height)
+
   const layer = document.createElement('canvas')
   layer.width = width
   layer.height = height
@@ -366,18 +378,145 @@ export async function composePortraitScopedRetouch(input: {
   if (!layerCtx) throw new Error('canvas 2d context unavailable')
   layerCtx.imageSmoothingQuality = 'high'
   layerCtx.drawImage(generated, 0, 0, width, height)
+
+  // 三重身份锁（Triple Identity Lock）：当存在 68 点人脸关键点时，在回贴前先执行
+  // 1) 生成图关键点普氏/MLS 几何回正（Dewarp）+ 2) 外部换装原图面部锁死 或 高低频分离微纹理融合
+  if (
+    input.mask.face &&
+    input.landmarks &&
+    input.landmarks.length >= PORTRAIT_LANDMARK_COUNT &&
+    !input.signal?.aborted
+  ) {
+    try {
+      const srcData = outCtx.getImageData(0, 0, width, height)
+      const genData = layerCtx.getImageData(0, 0, width, height)
+      const genFaces = await detectPortraitFaces({
+        sourceDataUrl: input.generatedDataUrl,
+        signal: input.signal
+      })
+      const genLandmarks =
+        matchCorrespondingFaceLandmarks(
+          input.landmarks,
+          genFaces.map((f) => f.landmarks)
+        ) ?? input.landmarks
+      const locked = lockPortraitIdentityRgba({
+        sourcePixels: srcData.data,
+        generatedPixels: genData.data,
+        width,
+        height,
+        sourceLandmarks: input.landmarks,
+        generatedLandmarks: genLandmarks,
+        state: input.state,
+        extraInstruction: input.extraInstruction
+      })
+      layerCtx.putImageData(
+        new ImageData(new Uint8ClampedArray(locked.pixels), width, height),
+        0,
+        0
+      )
+      notes.push(`identity-lock:${locked.mode}`)
+    } catch {
+      /* 身份锁降级时不阻断回贴主流程 */
+    }
+  }
+
+  // 生成图按蒙版留出 alpha，再盖回原图：未覆盖处直接就是原图像素
   layerCtx.globalCompositeOperation = 'destination-in'
   layerCtx.drawImage(maskCanvas, 0, 0, width, height)
 
-  const out = document.createElement('canvas')
-  out.width = width
-  out.height = height
-  const outCtx = out.getContext('2d')
-  if (!outCtx) throw new Error('canvas 2d context unavailable')
-  outCtx.drawImage(source, 0, 0, width, height)
   outCtx.drawImage(layer, 0, 0)
 
   return { dataUrl: encodePortraitCanvas(out, input.format), applied: true, coverRatio, notes }
+}
+
+/**
+ * 独立三重身份锁合成能力（供证件照换正装、自由描述换背景、发际线重塑、以及编辑器内一键 AI 动作调用）。
+ *
+ * 即使因全局语义（换底 / 证件照构图 / 调色）跳过了局部椭圆回贴，只要有人脸关键点，
+ * 依然通过「生成图 68 点 MLS 几何回正 + 外部换装原图面部锁死 / 高低频分离微特征融合」
+ * 确保人物骨相、眼神、五官比例与真实毛孔 100% 保持原图本人身份。
+ */
+export async function composePortraitIdentityLock(input: {
+  sourceDataUrl: string
+  generatedDataUrl: string
+  landmarks: ReadonlyArray<readonly [number, number]> | null | undefined
+  state?: Partial<PortraitRetouchState> | null
+  extraInstruction?: string | null
+  modeOverride?: PortraitIdentityLockMode
+  format?: PortraitExportFormat
+  signal?: AbortSignal | null
+}): Promise<{
+  dataUrl: string
+  applied: boolean
+  mode: PortraitIdentityLockMode
+  maxDriftPx: number
+  appliedSteps: string[]
+}> {
+  if (!input.landmarks || input.landmarks.length < PORTRAIT_LANDMARK_COUNT) {
+    return {
+      dataUrl: input.generatedDataUrl,
+      applied: false,
+      mode: 'landmark-frequency-fusion',
+      maxDriftPx: 0,
+      appliedSteps: []
+    }
+  }
+  const [source, generated] = await Promise.all([
+    loadImage(input.sourceDataUrl),
+    loadImage(input.generatedDataUrl)
+  ])
+  if (input.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+  const width = Math.max(1, generated.naturalWidth || generated.width || source.width)
+  const height = Math.max(1, generated.naturalHeight || generated.height || source.height)
+
+  const srcCanvas = document.createElement('canvas')
+  srcCanvas.width = width
+  srcCanvas.height = height
+  const srcCtx = srcCanvas.getContext('2d')
+  if (!srcCtx) throw new Error('canvas 2d context unavailable')
+  srcCtx.imageSmoothingQuality = 'high'
+  srcCtx.drawImage(source, 0, 0, width, height)
+
+  const genCanvas = document.createElement('canvas')
+  genCanvas.width = width
+  genCanvas.height = height
+  const genCtx = genCanvas.getContext('2d')
+  if (!genCtx) throw new Error('canvas 2d context unavailable')
+  genCtx.imageSmoothingQuality = 'high'
+  genCtx.drawImage(generated, 0, 0, width, height)
+
+  const genFaces = await detectPortraitFaces({
+    sourceDataUrl: input.generatedDataUrl,
+    signal: input.signal
+  })
+  const genLandmarks =
+    matchCorrespondingFaceLandmarks(
+      input.landmarks,
+      genFaces.map((f) => f.landmarks)
+    ) ?? input.landmarks
+
+  const srcData = srcCtx.getImageData(0, 0, width, height)
+  const genData = genCtx.getImageData(0, 0, width, height)
+  const locked = lockPortraitIdentityRgba({
+    sourcePixels: srcData.data,
+    generatedPixels: genData.data,
+    width,
+    height,
+    sourceLandmarks: input.landmarks,
+    generatedLandmarks: genLandmarks,
+    state: input.state,
+    extraInstruction: input.extraInstruction,
+    modeOverride: input.modeOverride
+  })
+
+  genCtx.putImageData(new ImageData(new Uint8ClampedArray(locked.pixels), width, height), 0, 0)
+  return {
+    dataUrl: encodePortraitCanvas(genCanvas, input.format),
+    applied: true,
+    mode: locked.mode,
+    maxDriftPx: locked.maxDriftPx,
+    appliedSteps: locked.appliedSteps
+  }
 }
 
 /**

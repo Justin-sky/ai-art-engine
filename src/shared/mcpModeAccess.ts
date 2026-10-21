@@ -88,6 +88,7 @@ const READ_TOOLS = new Set([
   'skill_list',
   'skill_search',
   'skill_inspect_github',
+  'web_extract_article',
   'ask_user'
 ])
 

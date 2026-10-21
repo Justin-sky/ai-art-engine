@@ -4,9 +4,21 @@ import { portraitSourceHash } from '../src/shared/graph/execute/portrait'
 import {
   PORTRAIT_FACES_VERSION,
   PORTRAIT_TIER_PHRASES,
+  alignPortraitByProcrustesSimilarityRgba,
+  applyPortraitLivePixelPipeline,
+  buildFaceLiquifyControlVectors,
   canonicalFaceTemplate,
+  classifyPortraitExecutionStrategy,
+  composeExteriorOnlyIdentityLockRgba,
+  computeProcrustesSimilarityTransform,
+  computeTargetRetouchedLandmarks,
+  dewarpPortraitByLandmarksRgba,
+  fusePortraitIdentityHybridRgba,
+  lockPortraitIdentityRgba,
+  matchCorrespondingFaceLandmarks,
   normalizePortraitRetouch,
   resolvePortraitRetouchSystemPrompt,
+  synthesizeProceduralSkinPore,
   type PortraitFaceAnalysis,
   type PortraitFacesPayload,
   type PortraitRetouchState
@@ -1074,6 +1086,375 @@ describe('image.portrait 执行器（全部走图片模型）', () => {
       expect(run.generateCalls[0]!.inputReferences).toEqual([webpInput])
       expect(run.fitCalls).toHaveLength(1)
       expect((run.fitCalls[0] as unknown as { format?: string }).format).toBe('webp')
+    })
+
+    it('智能双擎分流（smart-hybrid）：仅开启磨皮/瘦脸/追光等计算摄影项时自动走本地 0 漂移管线，不调用云端大模型', async () => {
+      const run = buildStub()
+      const { node, result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: normalizePortraitRetouch({
+            skinSmoothing: 'standard',
+            blemishRemoval: 'strong',
+            faceSlim: 'light',
+            rimLight: 'standard'
+          }),
+          portraitEngineMode: 'smart'
+        },
+        {
+          composePortraitLiveRetouch: async (input: { sourceDataUrl: string }) => ({
+            dataUrl: `${input.sourceDataUrl}#smartLocalRetouch`,
+            width: 1200,
+            height: 1600,
+            appliedSteps: [
+              'liquify',
+              'frequencySeparationSkin',
+              'autoBlemishHeal',
+              'normalMapRelighting'
+            ],
+            hasAdjustments: true
+          })
+        }
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls).toHaveLength(0)
+      expect(run.saved[0]!.dataUrl).toContain('#smartLocalRetouch')
+      expect(String(node.params.portraitPrompt)).toContain('[local-live-engine]')
+    })
+
+    it('三重身份锁（composePortraitIdentityLock）：证件照换装跳过椭圆回贴时自动锁定原图人脸身份', async () => {
+      const run = buildStub()
+      const lockCalls: Array<{ sourceDataUrl: string; generatedDataUrl: string; attire?: string }> =
+        []
+      const { result } = await runPortrait(
+        run,
+        {
+          portraitRetouch: normalizePortraitRetouch({
+            idPhotoSpecId: 'oneInch',
+            idPhotoBg: 'blue',
+            idPhotoAttire: 'maleSuit',
+            skinSmoothing: 'standard'
+          }),
+          portraitFaces: cachedFaces(portraitSourceHash(SOURCE_URL))
+        },
+        {
+          composePortraitIdentityLock: async (input: {
+            sourceDataUrl: string
+            generatedDataUrl: string
+            state?: Partial<PortraitRetouchState> | null
+          }) => {
+            lockCalls.push({
+              sourceDataUrl: input.sourceDataUrl,
+              generatedDataUrl: input.generatedDataUrl,
+              attire: input.state?.idPhotoAttire
+            })
+            return {
+              dataUrl: `${input.generatedDataUrl}#identityLocked`,
+              applied: true,
+              mode: 'exterior-face-lock' as const,
+              maxDriftPx: 3.4,
+              appliedSteps: ['localBaseRetouch', 'landmarkDewarp:3.4px', 'exteriorFaceIdentityLock']
+            }
+          }
+        }
+      )
+
+      expect(result.ok, result.error).toBe(true)
+      expect(run.generateCalls).toHaveLength(1)
+      expect(lockCalls).toHaveLength(1)
+      expect(lockCalls[0]!.attire).toBe('maleSuit')
+      expect(run.flatCalls[0]!.dataUrl).toBe(`${MODEL_IMAGE}#identityLocked`)
+      expect(
+        run.logs.some((line) => line.includes('identity lock applied (exterior-face-lock'))
+      ).toBe(true)
+    })
+
+    it('算法单测：智能双擎分类器、68点MLS几何回正、换装面部锁死、高低频微特征融合与自动祛痘/2.5D追光', () => {
+      // 1. 智能双擎分类器
+      const localStrat = classifyPortraitExecutionStrategy({
+        skinSmoothing: 'strong',
+        blemishRemoval: 'standard',
+        faceSlim: 'light',
+        rimLight: 'standard',
+        idPhotoSpecId: 'oneInch',
+        idPhotoBg: 'blue'
+      })
+      expect(localStrat.recommendedEngine).toBe('local-deterministic')
+      expect(localStrat.requiresGenerativeModel).toBe(false)
+      expect(localStrat.identityLockMode).toBe('full-local')
+
+      const exteriorStrat = classifyPortraitExecutionStrategy({
+        skinSmoothing: 'standard',
+        idPhotoSpecId: 'oneInch',
+        idPhotoAttire: 'maleSuit',
+        hairlineFill: 'standard'
+      })
+      expect(exteriorStrat.recommendedEngine).toBe('hybrid-exterior-lock')
+      expect(exteriorStrat.requiresGenerativeModel).toBe(true)
+      expect(exteriorStrat.identityLockMode).toBe('exterior-face-lock')
+
+      const facialStrat = classifyPortraitExecutionStrategy({
+        skinSmoothing: 'standard',
+        glassesGlare: 'strong'
+      })
+      expect(facialStrat.recommendedEngine).toBe('hybrid-frequency-fusion')
+      expect(facialStrat.requiresGenerativeModel).toBe(true)
+      expect(facialStrat.identityLockMode).toBe('landmark-frequency-fusion')
+
+      // 2. 68点关键点目标形变与生成图 MLS 几何回正（Dewarp）
+      const w = 64
+      const h = 64
+      const baseLandmarks = canonicalFaceTemplate()
+      const targetLandmarks = computeTargetRetouchedLandmarks(
+        { faceSlim: 'strong' },
+        baseLandmarks
+      )!
+      expect(targetLandmarks).toHaveLength(68)
+      // 模拟大模型将鼻子顶点 (idx=30) 偏移了 +0.05 (约 3.2px)
+      const driftedLandmarks = targetLandmarks.map(
+        ([x, y]) => [Math.min(0.98, x + 0.05), y] as [number, number]
+      )
+      const genPixels = new Uint8ClampedArray(w * h * 4)
+      const noseTargetX = Math.round(targetLandmarks[30]![0] * (w - 1))
+      const noseDriftedX = Math.round(driftedLandmarks[30]![0] * (w - 1))
+      const noseY = Math.round(targetLandmarks[30]![1] * (h - 1))
+      // 在漂移后的鼻子坐标放一个高亮标记像素
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const p = ((noseY + dy) * w + (noseDriftedX + dx)) * 4
+          genPixels[p] = 250
+          genPixels[p + 1] = 220
+          genPixels[p + 2] = 200
+          genPixels[p + 3] = 255
+        }
+      }
+      const dewarped = dewarpPortraitByLandmarksRgba(
+        genPixels,
+        w,
+        h,
+        driftedLandmarks,
+        targetLandmarks
+      )
+      expect(dewarped.applied).toBe(true)
+      expect(dewarped.maxDriftPx).toBeGreaterThan(1)
+      // 回正后，原本在 noseDriftedX 的高亮特征被精确拉回 noseTargetX
+      const recoveredIdx = (noseY * w + noseTargetX) * 4
+      expect(dewarped.pixels[recoveredIdx]).toBeGreaterThan(150)
+
+      // 3. 外部换装面部锁死（composeExteriorOnlyIdentityLockRgba）与完整 lockPortraitIdentityRgba
+      const srcPixels = new Uint8ClampedArray(w * h * 4)
+      const suitAiPixels = new Uint8ClampedArray(w * h * 4)
+      for (let i = 0; i < w * h * 4; i += 4) {
+        // 原图：暖调真实肤色 (210, 170, 150)
+        srcPixels[i] = 210
+        srcPixels[i + 1] = 170
+        srcPixels[i + 2] = 150
+        srcPixels[i + 3] = 255
+        // AI 换装图：冷蓝西装与被污染的假脸 (40, 60, 120)
+        suitAiPixels[i] = 40
+        suitAiPixels[i + 1] = 60
+        suitAiPixels[i + 2] = 120
+        suitAiPixels[i + 3] = 255
+      }
+      const lockedSuit = composeExteriorOnlyIdentityLockRgba(
+        srcPixels,
+        suitAiPixels,
+        w,
+        h,
+        baseLandmarks,
+        { idPhotoAttire: 'maleSuit' }
+      )
+      // 面部中心像素 (鼻子附近) 100% 锁定为原图肤色，而底部服装角落保持 AI 生成的深蓝西装
+      const faceCenterIdx = (noseY * w + Math.round(baseLandmarks[30]![0] * (w - 1))) * 4
+      const cornerSuitIdx = ((h - 2) * w + 2) * 4
+      expect(lockedSuit[faceCenterIdx]).toBeGreaterThan(195)
+      expect(lockedSuit[cornerSuitIdx]).toBe(40)
+      expect(lockedSuit[cornerSuitIdx + 2]).toBe(120)
+
+      // 4. 高低频分离微特征融合 + 自动祛痘 + 2.5D 法线追光
+      // 在脸颊注入一颗红色痘印点，验证自动祛痘与 2.5D 轮廓追光生效
+      const cheekX = Math.round(baseLandmarks[2]![0] * (w - 1)) + 4
+      const cheekY = Math.round(baseLandmarks[2]![1] * (h - 1))
+      const acneIdx = (cheekY * w + cheekX) * 4
+      srcPixels[acneIdx] = 252
+      srcPixels[acneIdx + 1] = 110
+      srcPixels[acneIdx + 2] = 110
+
+      const liveOut = applyPortraitLivePixelPipeline(srcPixels, w, h, {
+        state: {
+          blemishRemoval: 'strong',
+          skinSmoothing: 'standard',
+          rimLight: 'strong',
+          faceContour: 'standard',
+          lightRatio: 'dramatic'
+        },
+        landmarks: baseLandmarks
+      })
+      expect(liveOut.appliedSteps).toContain('autoBlemishHeal')
+      expect(liveOut.appliedSteps).toContain('normalMapRelighting')
+      // 红色痘印的 G 通道被自动修复抬升（不再是刺眼的红点 110）
+      expect(liveOut.pixels[acneIdx + 1]).toBeGreaterThan(135)
+
+      // 验证完整三重身份锁管线在面部精修融合模式下正常产出
+      const hybridRes = lockPortraitIdentityRgba({
+        sourcePixels: srcPixels,
+        generatedPixels: suitAiPixels,
+        width: w,
+        height: h,
+        sourceLandmarks: baseLandmarks,
+        generatedLandmarks: driftedLandmarks,
+        state: { skinSmoothing: 'standard', glassesGlare: 'standard' }
+      })
+      expect(hybridRes.mode).toBe('landmark-frequency-fusion')
+      expect(hybridRes.appliedSteps).toContain('frequencyHybridIdentityLock')
+      expect(
+        fusePortraitIdentityHybridRgba(srcPixels, suitAiPixels, w, h, baseLandmarks).length
+      ).toBe(w * h * 4)
+    })
+
+    it('SOTA 算法全链路单测：4频段小波美肤、程序化真皮微孔、丝绒彩妆/红眼/双眼皮、天鹅颈腰腿液化、多人脸匹配与 2D Procrustes 姿态对齐', () => {
+      const w = 64
+      const h = 64
+      const baseLandmarks = canonicalFaceTemplate()
+
+      // 1. 妆容现已升级为本地参数化丝绒彩妆（0-Token 零漂移），不再触发生成式大模型
+      const makeupOnlyStrat = classifyPortraitExecutionStrategy({
+        skinSmoothing: 'standard',
+        makeupStyle: 'hongkong',
+        makeupIntensity: 'standard',
+        makeupTone: 'warm',
+        redEye: 'standard',
+        doubleEyelid: 'standard',
+        brows: 'standard',
+        pupilSize: 'light',
+        shoulderNeck: 'standard',
+        neckShoulderLine: 'standard',
+        waistSlim: 'standard',
+        legLengthen: 'standard'
+      })
+      expect(makeupOnlyStrat.recommendedEngine).toBe('local-deterministic')
+      expect(makeupOnlyStrat.requiresGenerativeModel).toBe(false)
+
+      // 2. 天鹅颈/直角肩/瘦腰/长腿 + 瞳孔放大 MLS 控制向量生成，且不污染 68 点面部关键点回正基准
+      const bodyVectors = buildFaceLiquifyControlVectors(
+        {
+          pupilSize: 'strong',
+          shoulderNeck: 'strong',
+          neckShoulderLine: 'strong',
+          waistSlim: 'strong',
+          legLengthen: 'strong'
+        },
+        baseLandmarks
+      )
+      expect(bodyVectors).toHaveLength(9)
+      const faceOnlyTarget = computeTargetRetouchedLandmarks(
+        {
+          shoulderNeck: 'strong',
+          neckShoulderLine: 'strong',
+          waistSlim: 'strong',
+          legLengthen: 'strong'
+        },
+        baseLandmarks
+      )!
+      // 纯身体形变不应改变面部 68 个解剖学关键点坐标
+      expect(faceOnlyTarget[30]![0]).toBeCloseTo(baseLandmarks[30]![0], 5)
+      expect(faceOnlyTarget[30]![1]).toBeCloseTo(baseLandmarks[30]![1], 5)
+
+      // 3. 4频段小波金字塔美肤 + 程序化真皮微孔合成 + 参数化丝绒彩妆 + 去红眼/双眼皮/眉毛加密
+      const flatSkinPixels = new Uint8ClampedArray(w * h * 4)
+      for (let i = 0; i < w * h * 4; i += 4) {
+        flatSkinPixels[i] = 212
+        flatSkinPixels[i + 1] = 175
+        flatSkinPixels[i + 2] = 158
+        flatSkinPixels[i + 3] = 255
+      }
+      // 在左眼中心区域注入闪光灯红眼像素块
+      const leftEyeX = Math.round((baseLandmarks[37]![0] + baseLandmarks[40]![0]) * 0.5 * (w - 1))
+      const leftEyeY = Math.round((baseLandmarks[37]![1] + baseLandmarks[40]![1]) * 0.5 * (h - 1))
+      const redEyeIdx = (leftEyeY * w + leftEyeX) * 4
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const p = ((leftEyeY + dy) * w + (leftEyeX + dx)) * 4
+          flatSkinPixels[p] = 240
+          flatSkinPixels[p + 1] = 35
+          flatSkinPixels[p + 2] = 40
+        }
+      }
+
+      const sotaLive = applyPortraitLivePixelPipeline(flatSkinPixels, w, h, {
+        state: {
+          skinSmoothing: 'strong',
+          wrinkles: 'strong',
+          underEye: 'strong',
+          skinTexture: 'strong',
+          makeupStyle: 'hongkong',
+          makeupIntensity: 'strong',
+          makeupTone: 'warm',
+          redEye: 'strong',
+          doubleEyelid: 'strong',
+          brows: 'strong'
+        },
+        landmarks: baseLandmarks
+      })
+      expect(sotaLive.appliedSteps).toContain('wavelet4BandSkin')
+      expect(sotaLive.appliedSteps).toContain('proceduralSkinPore')
+      expect(sotaLive.appliedSteps).toContain('parametricMakeup')
+      expect(sotaLive.appliedSteps).toContain('redEye')
+      expect(sotaLive.appliedSteps).toContain('doubleEyelid')
+      expect(sotaLive.appliedSteps).toContain('brows')
+      // 红眼像素的 R 通道被显著压制
+      expect(sotaLive.pixels[redEyeIdx]!).toBeLessThan(120)
+      // 程序化真皮微孔发生器可产生正负向双极微阴影与高光
+      const poreVal = synthesizeProceduralSkinPore(18.3, 24.7, 0.35, -0.25)
+      expect(Math.abs(poreVal)).toBeLessThanOrEqual(1.5)
+
+      // 4. 多人脸空间最近邻身份匹配（解决双人/合照张冠李戴）
+      const leftPerson = baseLandmarks.map(([x, y]) => [x * 0.45, y] as [number, number])
+      const rightPerson = baseLandmarks.map(([x, y]) => [0.52 + x * 0.45, y] as [number, number])
+      // 模拟大模型出图后人脸检测数组顺序颠倒：[rightPerson, leftPerson]
+      const matchedLeft = matchCorrespondingFaceLandmarks(leftPerson, [
+        { landmarks: rightPerson },
+        { landmarks: leftPerson }
+      ])
+      expect(matchedLeft).toEqual(leftPerson)
+
+      // 5. 2D Procrustes 刚性相似变换姿态对齐（解决证件照/换装中大模型微缩/平移头部导致领口错位）
+      const transformedLandmarks = baseLandmarks.map(([x, y]) => {
+        // 模拟大模型将头部整体缩小到 0.90 倍并向下平移 +0.04
+        const cx = 0.5
+        const cy = 0.5
+        return [cx + (x - cx) * 0.9 + 0.02, cy + (y - cy) * 0.9 + 0.04] as [number, number]
+      })
+      const procrustes = computeProcrustesSimilarityTransform(
+        baseLandmarks,
+        transformedLandmarks,
+        w,
+        h
+      )
+      expect(procrustes.isIdentity).toBe(false)
+      expect(procrustes.scale).toBeCloseTo(0.9, 1)
+
+      const aligned = alignPortraitByProcrustesSimilarityRgba(
+        flatSkinPixels,
+        w,
+        h,
+        baseLandmarks,
+        transformedLandmarks
+      )
+      expect(aligned.applied).toBe(true)
+
+      const procrustesLockRes = lockPortraitIdentityRgba({
+        sourcePixels: flatSkinPixels,
+        generatedPixels: flatSkinPixels,
+        width: w,
+        height: h,
+        sourceLandmarks: baseLandmarks,
+        generatedLandmarks: transformedLandmarks,
+        state: { idPhotoSpecId: 'oneInch', idPhotoAttire: 'femaleSuit', skinSmoothing: 'standard' }
+      })
+      expect(procrustesLockRes.mode).toBe('exterior-face-lock')
+      expect(procrustesLockRes.appliedSteps).toContain('procrustesPoseAlign')
     })
   })
 })

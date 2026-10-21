@@ -932,6 +932,47 @@
             :generate-provider-instance-id="generateProviderInstanceId"
             @change="onModelChange"
           />
+          <!-- SOTA 双擎精度路由与三重身份锁控制栏 -->
+          <div class="engine-strategy-bar">
+            <div class="engine-mode-row">
+              <span class="engine-mode-label">{{ t('graph.portrait.engineModeLabel') }}</span>
+              <div class="engine-mode-pills">
+                <button
+                  type="button"
+                  class="engine-pill"
+                  :class="{ active: engineMode === 'smart' }"
+                  @click="setEngineMode('smart')"
+                >
+                  {{ t('graph.portrait.engineModeSmart') }}
+                </button>
+                <button
+                  type="button"
+                  class="engine-pill"
+                  :class="{ active: engineMode === 'local' }"
+                  @click="setEngineMode('local')"
+                >
+                  {{ t('graph.portrait.engineModeLocal') }}
+                </button>
+                <button
+                  type="button"
+                  class="engine-pill"
+                  :class="{ active: engineMode === 'cloud' }"
+                  @click="setEngineMode('cloud')"
+                >
+                  {{ t('graph.portrait.engineModeCloud') }}
+                </button>
+              </div>
+              <label class="identity-lock-toggle">
+                <input
+                  type="checkbox"
+                  :checked="identityLock !== false"
+                  @change="onIdentityLockChange"
+                />
+                <span>{{ t('graph.portrait.identityLockToggle') }}</span>
+              </label>
+            </div>
+            <p class="hint route-badge">{{ activeRouteBadgeText }}</p>
+          </div>
           <p v-if="runRunning" class="hint accent">{{ t('graph.portrait.runRunning') }}</p>
           <p v-else-if="runError" class="hint error">
             {{ t('graph.portrait.runFailed', { message: runError }) }}
@@ -966,6 +1007,7 @@ import {
   PORTRAIT_TOOL_GROUPS,
   applyPortraitPreset,
   buildPortraitPrompt,
+  classifyPortraitExecutionStrategy,
   defaultPortraitRetouch,
   exportPortraitPreset,
   extractFaceSemanticRegions,
@@ -1039,6 +1081,10 @@ const props = withDefaults(
     generateProviderInstanceId?: string
     /** 局部回贴开关：'local' = 只改对应部位（默认），'global' = 整图生效 */
     scopeMode?: 'local' | 'global'
+    /** 双擎执行模式：'smart'（智能双擎，默认）| 'local'（纯本地零漂移）| 'cloud'（云端生成） */
+    engineMode?: 'smart' | 'local' | 'cloud'
+    /** 三重身份锁开关（默认 true） */
+    identityLock?: boolean
     /** 以上次「保存并出图」的产物为底继续精修（默认关：每次从上游原图重来，避免叠加劣化） */
     chainFromOutput?: boolean
     aiRunning?: boolean
@@ -1067,6 +1113,8 @@ const props = withDefaults(
     generateModel: '',
     generateProviderInstanceId: '',
     scopeMode: 'local',
+    engineMode: 'smart',
+    identityLock: true,
     chainFromOutput: false,
     aiRunning: false,
     aiError: '',
@@ -1087,6 +1135,8 @@ interface PortraitEditorPayload {
   generateModel?: string
   generateProviderInstanceId?: string
   scopeMode?: 'local' | 'global'
+  engineMode?: 'smart' | 'local' | 'cloud'
+  identityLock?: boolean
 }
 
 const emit = defineEmits<{
@@ -2286,6 +2336,34 @@ function onScopeModeChange(event: Event): void {
   emit('update', { ...buildPayload(), scopeMode: local ? 'local' : 'global' })
 }
 
+const executionStrategy = computed(() =>
+  classifyPortraitExecutionStrategy(draft, {
+    liquifyStrokes: draftLiquifyStrokes.value,
+    spotHeals: draftSpotHeals.value,
+    customLut: draftCustomLut.value
+  })
+)
+
+const activeRouteBadgeText = computed(() => {
+  const mode = props.engineMode ?? 'smart'
+  if (mode === 'local' || (mode === 'smart' && !executionStrategy.value.requiresGenerativeModel)) {
+    return t('graph.portrait.routeLocalDeterministic')
+  }
+  if (executionStrategy.value.recommendedEngine === 'hybrid-exterior-lock') {
+    return t('graph.portrait.routeExteriorLock')
+  }
+  return t('graph.portrait.routeHybridFusion')
+})
+
+function setEngineMode(mode: 'smart' | 'local' | 'cloud'): void {
+  emit('update', { ...buildPayload(), engineMode: mode })
+}
+
+function onIdentityLockChange(event: Event): void {
+  const locked = (event.target as HTMLInputElement).checked
+  emit('update', { ...buildPayload(), identityLock: locked })
+}
+
 /**
  * 枚举 / 具名选项的显示文案：统一走 `graph.portrait.options.<选项值>`（选项值即稳定令牌）。
  *
@@ -2458,7 +2536,10 @@ function buildPayload(): PortraitEditorPayload {
     ...(detectedFaces.value.length ? { faces: [...detectedFaces.value] } : {}),
     generateModel: model.generateModel,
     generateProviderInstanceId: model.generateProviderInstanceId,
-    scopeMode: props.scopeMode === 'global' ? 'global' : 'local'
+    scopeMode: props.scopeMode === 'global' ? 'global' : 'local',
+    engineMode:
+      props.engineMode === 'local' ? 'local' : props.engineMode === 'cloud' ? 'cloud' : 'smart',
+    identityLock: props.identityLock !== false
   }
 }
 
@@ -3751,5 +3832,70 @@ select,
 .liquify-vector.active {
   stroke: rgba(56, 189, 248, 0.98);
   stroke-width: 0.0045;
+}
+
+.engine-strategy-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+}
+
+.engine-mode-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.engine-mode-label {
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.78);
+  font-weight: 500;
+}
+
+.engine-mode-pills {
+  display: inline-flex;
+  gap: 3px;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.65);
+}
+
+.engine-pill {
+  padding: 2px 7px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(203, 213, 225, 0.8);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.engine-pill.active {
+  background: rgba(56, 189, 248, 0.22);
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.identity-lock-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgba(167, 243, 208, 0.92);
+  cursor: pointer;
+  user-select: none;
+}
+
+.route-badge {
+  margin: 0;
+  font-size: 11px;
+  color: rgba(125, 211, 252, 0.92);
 }
 </style>

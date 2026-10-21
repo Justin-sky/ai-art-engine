@@ -208,7 +208,8 @@ const api: StudioApi = {
   getYoloModelCatalog: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_CATALOG),
   downloadYoloModel: (modelId: string, sourceUrl?: string) =>
     ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD, modelId, sourceUrl),
-  cancelYoloModelDownload: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL),
+  cancelYoloModelDownload: (modelId?: string) =>
+    ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL, modelId),
   deleteYoloModel: (modelId: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DELETE, modelId),
   chooseYoloModelDir: () => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DIR_CHOOSE),
   setYoloModelDir: (dir: string) => ipcRenderer.invoke(IpcChannels.YOLO_MODEL_DIR_SET, dir),

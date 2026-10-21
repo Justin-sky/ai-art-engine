@@ -136,9 +136,36 @@ const MAX_MESSAGES_PER_SESSION = 600
 /** 会话标题长度上限 */
 const MAX_TITLE_LENGTH = 24
 
-function readSessions(): ChatSession[] {
+/**
+ * 计算工程级会话隔离作用域标识：
+ * - 优先使用工程唯一 ID（`project.config.id`，每次新建项目均为全新 UUID，即使复用同一磁盘路径也不会串入旧项目会话）；
+ * - 其次回退归一化后的工程根路径（`rootPath`）；
+ * - 未打开工程或单测无参调用时返回空串 `""`（使用默认键，保持向后兼容）。
+ */
+export function resolveProjectChatScope(
+  projectId?: string | null,
+  rootPath?: string | null
+): string {
+  const id = projectId?.trim()
+  if (id) return `id:${id}`
+  const root = rootPath?.trim()
+  if (root) return `path:${root.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()}`
+  return ''
+}
+
+export function sessionsStorageKey(scope = ''): string {
+  const normalized = scope.trim()
+  return normalized ? `${SESSIONS_KEY}:${normalized}` : SESSIONS_KEY
+}
+
+export function activeSessionStorageKey(scope = ''): string {
+  const normalized = scope.trim()
+  return normalized ? `${ACTIVE_KEY}:${normalized}` : ACTIVE_KEY
+}
+
+function readSessions(scope = ''): ChatSession[] {
   try {
-    const raw = localStorage.getItem(SESSIONS_KEY)
+    const raw = localStorage.getItem(sessionsStorageKey(scope))
     if (!raw) return []
     const parsed = JSON.parse(raw) as unknown
     if (!Array.isArray(parsed)) return []
@@ -161,7 +188,7 @@ function withoutInvalidContextUsed(session: ChatSession): ChatSession {
   return session
 }
 
-function writeSessions(sessions: ChatSession[]): void {
+function writeSessions(sessions: ChatSession[], scope = ''): void {
   try {
     // 单会话消息过多时按需截断，避免 localStorage 超限
     const trimmed = sessions.map((s) =>
@@ -172,7 +199,7 @@ function writeSessions(sessions: ChatSession[]): void {
           }
         : s
     )
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(trimmed))
+    localStorage.setItem(sessionsStorageKey(scope), JSON.stringify(trimmed))
   } catch {
     // 存储失败（如超出配额）不阻塞聊天：历史只是尽力而为
   }
@@ -194,11 +221,16 @@ function titleFromMessages(messages: ChatMsg[]): string {
 export function useChatHistory() {
   const sessions = ref<ChatSession[]>([])
   const activeId = ref('')
+  const scope = ref('')
 
-  /** 打开面板时加载本地历史，恢复上次会话；无任何历史则创建一个空会话 */
-  function load(): void {
-    sessions.value = readSessions()
-    const saved = localStorage.getItem(ACTIVE_KEY)
+  /** 打开面板或切换工程时加载对应工程作用域下的本地历史，恢复上次会话；无任何历史则创建一个空会话 */
+  function load(projectScope?: string): void {
+    if (projectScope !== undefined) {
+      scope.value = projectScope.trim()
+    }
+    const activeKey = activeSessionStorageKey(scope.value)
+    sessions.value = readSessions(scope.value)
+    const saved = localStorage.getItem(activeKey)
     if (saved && sessions.value.some((s) => s.id === saved)) {
       activeId.value = saved
     } else if (sessions.value.length) {
@@ -215,14 +247,14 @@ export function useChatHistory() {
         }
       ]
     }
-    localStorage.setItem(ACTIVE_KEY, activeId.value)
+    localStorage.setItem(activeKey, activeId.value)
   }
 
   /** 当前会话（始终存在；调用前需先 load） */
   const activeSession = computed(() => sessions.value.find((s) => s.id === activeId.value) ?? null)
 
   function persist(): void {
-    writeSessions(sessions.value)
+    writeSessions(sessions.value, scope.value)
   }
 
   /** 新建空会话并激活 */
@@ -237,7 +269,7 @@ export function useChatHistory() {
     }
     sessions.value = [session, ...sessions.value]
     activeId.value = session.id
-    localStorage.setItem(ACTIVE_KEY, session.id)
+    localStorage.setItem(activeSessionStorageKey(scope.value), session.id)
     persist()
   }
 
@@ -264,20 +296,21 @@ export function useChatHistory() {
       sessions.value = copy
     }
     activeId.value = next.id
-    localStorage.setItem(ACTIVE_KEY, next.id)
+    localStorage.setItem(activeSessionStorageKey(scope.value), next.id)
     persist()
     return oldId && oldId !== next.id ? oldId : null
   }
 
   /** 删除会话；删除当前会话后自动激活最近一个 */
   function remove(id: string): void {
+    const activeKey = activeSessionStorageKey(scope.value)
     sessions.value = sessions.value.filter((s) => s.id !== id)
     if (activeId.value === id) {
       activeId.value = sessions.value[0]?.id ?? ''
       if (activeId.value) {
-        localStorage.setItem(ACTIVE_KEY, activeId.value)
+        localStorage.setItem(activeKey, activeId.value)
       } else {
-        localStorage.removeItem(ACTIVE_KEY)
+        localStorage.removeItem(activeKey)
         create()
         return
       }
@@ -289,7 +322,7 @@ export function useChatHistory() {
   function activate(id: string): void {
     if (!sessions.value.some((s) => s.id === id)) return
     activeId.value = id
-    localStorage.setItem(ACTIVE_KEY, id)
+    localStorage.setItem(activeSessionStorageKey(scope.value), id)
   }
 
   /** 把消息写入当前会话（覆盖式，供外层在状态变化后调用） */
@@ -345,7 +378,7 @@ export function useChatHistory() {
     }
     sessions.value = [session, ...sessions.value]
     activeId.value = session.id
-    localStorage.setItem(ACTIVE_KEY, session.id)
+    localStorage.setItem(activeSessionStorageKey(scope.value), session.id)
     persist()
   }
 
@@ -353,6 +386,7 @@ export function useChatHistory() {
     sessions,
     activeId,
     activeSession,
+    scope,
     load,
     persist,
     create,

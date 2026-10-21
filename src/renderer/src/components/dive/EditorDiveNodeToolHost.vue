@@ -175,6 +175,8 @@
         :generate-model="api.portrait.generateModel"
         :generate-provider-instance-id="api.portrait.generateProviderInstanceId"
         :scope-mode="api.portrait.scopeMode"
+        :engine-mode="api.portrait.engineMode"
+        :identity-lock="api.portrait.identityLock"
         :chain-from-output="api.portrait.chainFromOutput"
         :ai-running="api.portrait.aiRunning"
         :ai-error="api.portrait.aiError"

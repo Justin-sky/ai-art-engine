@@ -58,6 +58,7 @@ import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import { composeImageLayerStack, decomposeImageUiLayers } from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import {
+  composePortraitIdentityLock,
   composePortraitIdPhoto,
   composePortraitLiveRetouch,
   composePortraitScopedRetouch,
@@ -1664,6 +1665,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,
+        composePortraitIdentityLock,
         detectPortraitFaces,
         inspectImageSize,
         fitPortraitToSourceSize,

@@ -33,6 +33,7 @@ import {
   LOCAL_MODELS_DIR_NAME,
   YOLO_MODEL_SUBDIR
 } from '@shared/localModelLayout'
+import { MATTING_SUBDIR, pickPreferredMattingModel } from '@shared/mattingCatalog'
 import { SAM2_CATALOG, SAM2_SUBDIR, sam2OnnxFileNames } from '@shared/sam2Catalog'
 import { migrateLocalModelLayout } from './localModelMigrate'
 import {
@@ -87,7 +88,8 @@ class YoloService {
       backend: 'cpu',
       modelDir: this.modelDir(),
       models,
-      sam2Models: this.scanSam2Models()
+      sam2Models: this.scanSam2Models(),
+      mattingModels: this.scanMattingModels()
     }
     if (this.crashed) {
       return { ...base, error: 'YOLO: inference process crashed; restart the app to retry' }
@@ -193,13 +195,32 @@ class YoloService {
   private async infer(input: YoloInferenceInput, kind: YoloTaskKind): Promise<unknown> {
     this.ensureBundledModels()
     await this.ensureStarted()
-    const modelPath = this.resolveModelPath(kind, input.modelId)
+    const pickedMatting =
+      kind === 'segment' && input.useMatting
+        ? pickPreferredMattingModel(this.scanMattingModels())
+        : undefined
+    let modelPath: string
+    try {
+      modelPath = this.resolveModelPath(kind, input.modelId)
+    } catch (err) {
+      if (pickedMatting) {
+        modelPath = pickedMatting.path
+      } else {
+        throw err
+      }
+    }
     const params: YoloWorkerInferParams = {
       ...input,
       image: await prepareWorkerImageInput(input.image),
       kind,
       modelPath,
-      modelId: input.modelId ?? basenameWithoutExt(modelPath)
+      modelId: input.modelId ?? basenameWithoutExt(modelPath),
+      ...(pickedMatting
+        ? {
+            mattingModelPath: pickedMatting.path,
+            mattingModelId: pickedMatting.id
+          }
+        : {})
     }
     return this.call('infer', params, YOLO_INFER_TIMEOUT_MS)
   }
@@ -465,6 +486,15 @@ class YoloService {
       files.push({ id: model.id, kind: 'segment', path: encoder, sizeMb })
     }
     return files.sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  /** 高精抠图模型：扫描 `<模型目录>/matting/*.onnx`，供抠图管线优先选用。 */
+  private scanMattingModels(): YoloModelInfo[] {
+    const dir = join(this.modelDir(), MATTING_SUBDIR)
+    if (!existsSync(dir)) return []
+    return this.scanOnnxDir(dir)
+      .map((item) => ({ ...item, kind: 'segment' as const }))
+      .sort((a, b) => a.id.localeCompare(b.id))
   }
 }
 

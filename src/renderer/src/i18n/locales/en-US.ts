@@ -722,6 +722,8 @@ export default {
       installedTitle: 'Installed models',
       installedEmpty: {
         yolo: 'No YOLO models yet. Drop yolo11*.onnx files into local-models/yolo, or download from the YOLO tab below.',
+        matting:
+          'No high-precision matting models yet. Download RMBG-1.4 or BiRefNet-Lite from the Matting tab below.',
         face: 'No face models yet. The bundled copies land in local-models/face, or download them from the Face tab below.',
         sam2: 'No SAM 2.1 weights yet. Download them from the SAM 2.1 tab below.'
       },
@@ -734,6 +736,7 @@ export default {
       catalogTitle: 'Downloadable models',
       tab: {
         yolo: 'YOLO',
+        matting: 'Matting',
         face: 'Face',
         sam2: 'SAM 2.1'
       },
@@ -760,7 +763,18 @@ export default {
       facePresetMissing: 'Not placed yet',
       sam2Title: 'SAM 2.1',
       sam2Hint:
-        'SAM 2.1 weights that onnxruntime can load (Apache-2.0). Each size downloads one archive and extracts an image encoder plus a mask decoder into local-models/sam2, for point or box segmentation of a still frame. YOLO detection keeps using the models in the yolo subfolder. Tiny is about 111 MB; large is about 768 MB.'
+        'SAM 2.1 weights that onnxruntime can load (Apache-2.0). Each size downloads one archive and extracts an image encoder plus a mask decoder into local-models/sam2, for point or box segmentation of a still frame. YOLO detection keeps using the models in the yolo subfolder. Tiny is about 111 MB; large is about 768 MB.',
+      mattingHint:
+        'High-resolution (1024×1024 / 512×512) dichotomous segmentation & alpha matting models designed for hair strands, semi-transparent edges, hollow loops, and non-COCO game props/icons (saved in local-models/matting). Once installed, local cutout uses them automatically.',
+      mattingDesc: {
+        'rmbg-1_4-q8':
+          'Recommended · BRIA RMBG-1.4 Quantized (1024px, fast & accurate for general props/characters)',
+        'birefnet-lite':
+          'Flagship · BiRefNet-Lite Bilateral Reference (1024px, best for fine hair & hollow interiors)',
+        'rmbg-1_4': 'Full FP32 · BRIA RMBG-1.4 (1024px, commercial-grade subject segmentation)',
+        modnet:
+          'Lightweight · MODNet Portrait Matting (512px, compact & fast portrait alpha matting)'
+      }
     },
     objectStorage: {
       hint: 'Configure object storage for media upload and public access. Supports Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS, and Amazon S3–compatible services.',
@@ -1850,14 +1864,34 @@ export default {
     rerun: 'Re-detect',
     inferenceMs: 'inference {ms}ms',
     subjects: 'Detected subjects ({n})',
-    empty: 'No subject detected — try lowering the detection confidence',
+    empty: 'No subject detected — try lowering confidence or paint with Keep Brush',
     notAnalyzed: 'Press "Detect" to find subjects in the image',
-    params: 'Parameters',
+    params: 'Edge refinement',
     detectConf: 'Detection confidence',
     threshold: 'Mask threshold',
     feather: 'Edge feather',
+    edgeGuided: 'Guided edge matting',
+    edgeChoke: 'Edge choke / shift',
+    holePunch: 'Punch enclosed background holes',
     crop: 'Crop to subject',
     personOnly: 'People only',
+    brushTitle: 'Touch-up brush (paint on Source or Result)',
+    brushOff: 'View',
+    brushKeep: '+ Keep',
+    brushErase: '− Erase',
+    brushSize: 'Brush size',
+    brushUndo: 'Undo',
+    brushClear: 'Clear ({n})',
+    brushHint:
+      'Use "+ Keep" to restore missed foreground, or "− Erase" to remove leftover background',
+    engineMatting: 'Matting model: {id}',
+    engineGuided:
+      'Built-in YOLO + Guided Matting (download RMBG / BiRefNet in Settings → Local Vision → Matting)',
+    bgChecker: 'Checkerboard',
+    bgDark: 'Dark (inspect light fringe)',
+    bgLight: 'Light (inspect dark fringe)',
+    bgGreen: 'Chroma green',
+    zoomReset: 'Reset zoom',
     result: 'Result',
     resultEmpty: 'The transparent PNG preview shows up here after detection',
     save: 'Save to library',
@@ -1866,7 +1900,7 @@ export default {
     saveToSubtitle: 'Choose a target folder and file name',
     loadingSource: 'Loading source image…',
     apply: 'Apply to node',
-    applyHint: 'Parameters and selected subjects are written to the current node'
+    applyHint: 'Parameters, selected subjects, and brush strokes are written to the current node'
   },
   compose: {
     title: 'Smart framing',
@@ -4266,6 +4300,17 @@ export default {
       chainFromOutput: 'Chain from the last output',
       chainFromOutputHint:
         'By default every "Save & generate" starts again from the upstream source image, so repeating a run never stacks up. Turn this on to keep working on top of the previous result — repeated passes do compound quality loss, and with several upstream images only the first uses it.',
+      engineModeLabel: 'Retouch Engine Strategy',
+      engineModeSmart: 'Smart Hybrid (Recommended)',
+      engineModeLocal: 'Local Deterministic (0-Token · Zero Drift)',
+      engineModeCloud: 'Full Cloud Redraw (Model Only)',
+      identityLockToggle: '100% Bone & Pore Identity Lock',
+      routeLocalDeterministic:
+        'Skin/makeup/sculpt/lighting only → Runs 0-Token local deterministic engine (100% zero identity drift)',
+      routeExteriorLock:
+        'ID photo/attire/bg active → Cloud exterior + local Procrustes pose alignment & multi-band Laplacian face lock',
+      routeHybridFusion:
+        'Hairline/expression active → Cloud generation + local 68-pt bone alignment & high-frequency pore injection',
       aiLogTitle: 'Portrait retouch · AI enhance ({name})',
       aiLogStart: 'AI enhance started: {tool}',
       aiLogDone: 'AI enhance finished: {tool}',

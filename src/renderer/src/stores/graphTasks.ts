@@ -80,6 +80,7 @@ import {
 } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import {
+  composePortraitIdentityLock,
   composePortraitIdPhoto,
   composePortraitLiveRetouch,
   composePortraitScopedRetouch,
@@ -1667,6 +1668,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,
+        composePortraitIdentityLock,
         detectPortraitFaces,
         inspectImageSize,
         fitPortraitToSourceSize,

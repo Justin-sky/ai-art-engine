@@ -1058,6 +1058,17 @@ export interface GraphNodeParams {
    * 未请求部位保持原图像素；'global' = 整图生效（旧行为）。
    */
   portraitScopeMode?: 'local' | 'global'
+  /**
+   * 人像处理：引擎分流策略。
+   * - 'smart'：智能双擎路由（纯计算摄影项走本地 0 漂移管线，含生成项走大模型 + 三重身份锁）
+   * - 'local'：强制走本地确定性计算摄影引擎
+   * - 'cloud'：走生图大模型 + 三重身份锁
+   */
+  portraitEngineMode?: 'smart' | 'cloud' | 'local'
+  /**
+   * 人像处理：大模型三重身份锁开关（默认 true 开启：68 点 MLS 几何回正 + 换装面部锁死 / 高低频微纹理融合）。
+   */
+  portraitIdentityLock?: boolean
   /** 人像处理：最近一次 Cook **实际发给模型**的完整提示词（含系统提示词与负面提示） */
   portraitPrompt?: string
   /** 人像处理：最近一次证件照几何计划（规格 / 裁切框 / 拼版） */

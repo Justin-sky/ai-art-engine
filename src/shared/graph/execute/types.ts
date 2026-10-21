@@ -1159,6 +1159,9 @@ export interface NodeExecuteContext {
     mask: import('../portraitScope').PortraitScopeMask
     /** canonical-68 归一化关键点；缺省时脸这一块做不出来 */
     landmarks?: ReadonlyArray<readonly [number, number]> | null
+    /** 当前精修参数与附加指令（供三重身份锁判断换装/换背景 vs 高低频融合） */
+    state?: Partial<import('../portraitRetouch').PortraitRetouchState> | null
+    extraInstruction?: string | null
     format?: import('../portraitRetouch').PortraitExportFormat
     signal?: AbortSignal | null
   }) => Promise<{
@@ -1169,6 +1172,29 @@ export interface NodeExecuteContext {
     coverRatio: number
     /** 降级说明（缺关键点 / 缺分割模型 / 没检出人物…） */
     notes: string[]
+  }>
+  /**
+   * 人像处理：三重身份锁（Triple Identity Lock）。
+   *
+   * 针对证件照换正装、换背景、发际线重塑或全局 AI 精修等跳过局部椭圆回贴的场景，
+   * 利用 68 点关键点执行「生成图 MLS 几何回正 + 外部换装原图面部锁死 / 高低频分离微特征融合」，
+   * 确保大模型重绘后人物骨相、眼神、五官比例与真实毛孔 100% 保持原图本人身份。
+   */
+  composePortraitIdentityLock?: (input: {
+    sourceDataUrl: string
+    generatedDataUrl: string
+    landmarks: ReadonlyArray<readonly [number, number]> | null | undefined
+    state?: Partial<import('../portraitRetouch').PortraitRetouchState> | null
+    extraInstruction?: string | null
+    modeOverride?: import('../portraitLiveMath').PortraitIdentityLockMode
+    format?: import('../portraitRetouch').PortraitExportFormat
+    signal?: AbortSignal | null
+  }) => Promise<{
+    dataUrl: string
+    applied: boolean
+    mode: import('../portraitLiveMath').PortraitIdentityLockMode
+    maxDriftPx: number
+    appliedSteps: string[]
   }>
   /** 读取图片的像素尺寸（人像处理按规格裁切时要算归一化框）。 */
   inspectImageSize?: (input: {
@@ -1486,6 +1512,7 @@ export interface GraphRunOptions {
   composePortraitIdPhoto?: NodeExecuteContext['composePortraitIdPhoto']
   detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']
   composePortraitScopedRetouch?: NodeExecuteContext['composePortraitScopedRetouch']
+  composePortraitIdentityLock?: NodeExecuteContext['composePortraitIdentityLock']
   inspectImageSize?: NodeExecuteContext['inspectImageSize']
   fitPortraitToSourceSize?: NodeExecuteContext['fitPortraitToSourceSize']
   flattenPortraitBackground?: NodeExecuteContext['flattenPortraitBackground']

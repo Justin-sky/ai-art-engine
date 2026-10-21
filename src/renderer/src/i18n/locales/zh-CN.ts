@@ -712,6 +712,7 @@ export default {
       installedTitle: '已安装模型',
       installedEmpty: {
         yolo: '暂无 YOLO 模型。可将 yolo11*.onnx 放入 local-models/yolo，或在下方 YOLO 页签下载。',
+        matting: '暂无高精抠图模型。可在下方「高精抠图」页签一键下载 RMBG-1.4 或 BiRefNet-Lite。',
         face: '暂无人脸模型。随包副本会放进 local-models/face，也可在下方人脸页签下载。',
         sam2: '暂无 SAM 2.1。在下方 SAM 2.1 页签下载。'
       },
@@ -723,6 +724,7 @@ export default {
       catalogTitle: '可下载模型',
       tab: {
         yolo: 'YOLO',
+        matting: '高精抠图',
         face: '人脸',
         sam2: 'SAM 2.1'
       },
@@ -749,7 +751,15 @@ export default {
       facePresetMissing: '待放置',
       sam2Title: 'SAM 2.1',
       sam2Hint:
-        '可被 onnxruntime 加载的 SAM 2.1 权重（Apache-2.0）。每个档位下载一个压缩包，解压为图像编码器和掩码解码器两个 ONNX，保存在 local-models/sam2，供按点或框分割单帧使用。YOLO 检测继续使用 yolo 子目录里的模型。tiny 约 111 MB，large 约 768 MB。'
+        '可被 onnxruntime 加载的 SAM 2.1 权重（Apache-2.0）。每个档位下载一个压缩包，解压为图像编码器和掩码解码器两个 ONNX，保存在 local-models/sam2，供按点或框分割单帧使用。YOLO 检测继续使用 yolo 子目录里的模型。tiny 约 111 MB，large 约 768 MB。',
+      mattingHint:
+        '专为发丝级软边、半透明薄纱、复杂镂空及非 COCO 游戏道具/图标设计的 1024×1024 / 512×512 显著性抠图模型（保存在 local-models/matting）。安装任意一款后，本地一键抠图与抠图节点会自动优先调用，配合内置引导图像滤波达到商业级抠图精度。',
+      mattingDesc: {
+        'rmbg-1_4-q8': '推荐 · BRIA RMBG-1.4 量化版（1024px，速度与精度均衡，通用道具/立绘首选）',
+        'birefnet-lite': '旗舰 · BiRefNet-Lite 双边参考高精分割（1024px，发丝与镂空内洞表现极佳）',
+        'rmbg-1_4': '完整 · BRIA RMBG-1.4 FP32 完整精度版（1024px，电商与游戏资产高精度主体分割）',
+        modnet: '轻量 · MODNet 人像发丝软边 Alpha 抠图（512px，超小体积高速人像专用）'
+      }
     },
     objectStorage: {
       hint: '配置对象存储后可用于媒体上传与公网访问。支持火山引擎 TOS、阿里云 OSS、腾讯云 COS，以及兼容 Amazon S3 的服务。',
@@ -1813,14 +1823,32 @@ export default {
     rerun: '重新识别',
     inferenceMs: '推理 {ms}ms',
     subjects: '检出主体（{n}）',
-    empty: '未检出可抠主体，试试调低检测置信度',
+    empty: '未检出可抠主体，试试调低检测置信度或直接用「保留画笔」涂抹主体',
     notAnalyzed: '点「开始识别」检出画面主体',
-    params: '参数',
+    params: '边缘精修参数',
     detectConf: '检测置信度',
     threshold: '掩码阈值',
     feather: '边缘羽化',
+    edgeGuided: '引导滤波精修',
+    edgeChoke: '边缘收缩/扩张',
+    holePunch: '穿透封闭背景内洞',
     crop: '裁剪到主体',
     personOnly: '只保留人物',
+    brushTitle: '修补画笔（可在源图或结果图直接涂抹）',
+    brushOff: '浏览',
+    brushKeep: '+ 保留画笔',
+    brushErase: '− 擦除画笔',
+    brushSize: '画笔大小',
+    brushUndo: '撤销',
+    brushClear: '清空 ({n})',
+    brushHint: '选「+ 保留」涂抹漏抠的主体细节，选「− 擦除」涂抹残留背景',
+    engineMatting: '高精模型: {id}',
+    engineGuided: '内置 YOLO + 引导滤波（可在「设置 → 本地视觉 → 高精抠图」下载 RMBG / BiRefNet）',
+    bgChecker: '棋盘格',
+    bgDark: '纯黑底（查白边）',
+    bgLight: '纯白底（查暗边）',
+    bgGreen: '绿幕底',
+    zoomReset: '重置缩放',
     result: '结果',
     resultEmpty: '识别后在此预览透明 PNG',
     save: '保存到资产库',
@@ -1829,7 +1857,7 @@ export default {
     saveToSubtitle: '选择目标文件夹并输入文件名',
     loadingSource: '加载源图中…',
     apply: '应用到节点',
-    applyHint: '参数与勾选的主体将写入当前节点'
+    applyHint: '参数、勾选的主体与画笔修补将一并写入当前节点'
   },
   compose: {
     title: '智能构图',
@@ -4149,6 +4177,17 @@ export default {
       chainFromOutput: '以上次出图结果为底继续精修',
       chainFromOutputHint:
         '默认每次「保存并出图」都从上游原图重来（连点不会叠加、不会越修越糊）。打开后以上一版产物为底图继续处理 —— 反复叠加会累积劣化；上游接多张时只有第一张用它。',
+      engineModeLabel: '精修引擎策略',
+      engineModeSmart: '智能协同 (推荐)',
+      engineModeLocal: '纯本地确定性 (0-Token · 零漂移)',
+      engineModeCloud: '全云端重绘 (大模型全权)',
+      identityLockToggle: '骨相与微纹理 100% 锁定',
+      routeLocalDeterministic:
+        '当前仅调皮肤/妆容/塑形/光影 → 将自动走 0-Token 本地确定性精修（100% 零身份漂移）',
+      routeExteriorLock:
+        '当前含证件照/换装/换背景 → 云端重绘外围 + 本地五官骨相 Procrustes 对齐与多频金字塔无缝锁死',
+      routeHybridFusion:
+        '当前含发际线/植发/表情生成 → 云端生图 + 本地 68 点骨相对齐与高频真皮毛孔回注',
       aiLogTitle: '人像处理 · AI 增强（{name}）',
       aiLogStart: 'AI 处理开始：{tool}',
       aiLogDone: 'AI 处理完成：{tool}',

@@ -146,6 +146,10 @@ export type GraphEditorDialogsApi = {
     generateProviderInstanceId: string
     /** 局部回贴开关：'local'（默认，只改对应部位）| 'global'（整图生效） */
     scopeMode: 'local' | 'global'
+    /** 双擎执行模式：'smart'（智能双擎，默认）| 'local'（纯本地零漂移）| 'cloud'（云端生成） */
+    engineMode: 'smart' | 'local' | 'cloud'
+    /** 三重身份锁开关（默认 true） */
+    identityLock: boolean
     /** 出图底图来源：true = 以上次「保存并出图」的产物为底（默认 false = 上游原图） */
     chainFromOutput: boolean
     /** AI 处理进行中（编辑器据此禁用按钮并显示进度） */

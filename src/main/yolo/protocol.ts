@@ -15,6 +15,10 @@ export interface YoloWorkerInferParams extends YoloInferenceInput {
   modelPath: string
   /** 模型名（错误信息用） */
   modelId: string
+  /** 高精抠图模型绝对路径（kind === 'segment' 且 useMatting 时注入） */
+  mattingModelPath?: string
+  /** 高精抠图模型 id（如 birefnet-lite / rmbg-1.4-q8） */
+  mattingModelId?: string
 }
 
 /** face 的参数：两段式人脸管线要两个模型（检测器 + FaceMesh） */

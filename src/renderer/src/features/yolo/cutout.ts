@@ -1,14 +1,20 @@
 /**
- * 渲染层一键抠图：本地 YOLO 实例分割 → 透明通道 PNG 资产。
+ * 渲染层高精抠图：本地高精抠图模型（BiRefNet / RMBG / MODNet）+ YOLO 实例分割
+ * + 引导图像滤波（Guided Image Filter）+ 封闭内洞穿透 + 保留/擦除修补画笔 → 透明通道 PNG 资产。
  *
  * 几何换算与软边合成在 @shared/yoloCutout（纯函数，可单测），
- * 本文件只负责：源图解码、推理输入选择、结果合成与落盘。
+ * 本文件负责：源图解码、推理输入选择、零样本显著性兜底、结果合成与落盘。
  */
 import {
   applyAlphaToRgba,
+  applyCutoutBrushStrokes,
   buildCutoutAlpha,
+  buildSalientSubjectMask,
   defringeRgba,
+  punchInteriorBackgroundHoles,
+  refineCutoutAlphaGuided,
   resolveCutoutRegion,
+  type CutoutBrushStroke,
   type CutoutRegion
 } from '@shared/yoloCutout'
 import {
@@ -19,7 +25,7 @@ import {
 } from '@shared/yolo'
 import { yoloSegment } from './api'
 
-/** 推理输入的最长边：模型本身只吃 640，再大只是浪费 IPC 与解码 */
+/** 推理输入的最长边：兼顾 1024 高精抠图模型与 IPC 传输效率 */
 const MAX_INFER_SIDE = 1600
 /** 抠图产物目录（落在资产库内，保存后自动登记为资产） */
 export const CUTOUT_OUTPUT_DIR = 'Assets/Cutouts'
@@ -48,6 +54,8 @@ export interface CutoutAnalysis {
   /** mask 是否为 0~255 概率（softMask 请求） */
   soft: boolean
   letterbox?: YoloLetterboxGeometry
+  /** 本次使用的本地高精抠图模型 id（未安装时为空，走内置 YOLO + 引导滤波） */
+  mattingModelId?: string
 }
 
 export interface CutoutSource {
@@ -90,10 +98,10 @@ export function imageToRaw(
 }
 
 /**
- * 跑一次本地实例分割，拿到可选实例与掩码。
- * png/jpeg 走 file 输入（主进程解码，掩码即原图分辨率）；
- * webp 等解码器不支持的格式由渲染层 canvas 解码成 raw 传入，
- * 此时掩码坐标系是缩小图，合成时按 outputScale 还原到原图分辨率。
+ * 跑一次本地高精抠图 / 实例分割，拿到可选实例与掩码。
+ * - 若已安装高精抠图模型（RMBG / BiRefNet / MODNet），主进程自动注入并返回高精主体掩码；
+ * - 若未安装高精模型且图片为非 COCO 类别（如游戏武器/图标/药水/奇幻立绘）导致检出 0 实例，
+ *   自动回退到零样本显著性色彩抠图（buildSalientSubjectMask），彻底杜绝「未检出主体」失败。
  */
 export async function analyzeCutout(
   source: CutoutSource,
@@ -104,18 +112,63 @@ export async function analyzeCutout(
   const rel = source.relativePath?.trim() || ''
   let input: YoloImageInput
   let outputScale = 1
+  let cachedRaw: { width: number; height: number; rgba: Uint8Array } | null = null
   if (rel && IMAGE_FILE_RE.test(rel)) {
     input = { kind: 'file', path: rel }
   } else {
-    const raw = imageToRaw(image, MAX_INFER_SIDE)
-    input = { kind: 'raw', width: raw.width, height: raw.height, rgba: raw.rgba }
-    const naturalW = image.naturalWidth || image.width || raw.width
-    outputScale = naturalW > 0 ? naturalW / raw.width : 1
+    cachedRaw = imageToRaw(image, MAX_INFER_SIDE)
+    input = { kind: 'raw', width: cachedRaw.width, height: cachedRaw.height, rgba: cachedRaw.rgba }
+    const naturalW = image.naturalWidth || image.width || cachedRaw.width
+    outputScale = naturalW > 0 ? naturalW / cachedRaw.width : 1
   }
 
-  const result = await yoloSegment({ image: input, confThreshold, softMask: true })
-  const maskHw = result.masks[0]?.width ?? 0
-  const instances: CutoutInstance[] = result.boxes.map((box, index) => ({
+  let boxes: YoloBox[] = []
+  let masks: Uint8Array[] = []
+  let maskHw = 0
+  let srcWidth = image.naturalWidth || image.width || 1
+  let srcHeight = image.naturalHeight || image.height || 1
+  let inferenceMs = 0
+  let letterbox: YoloLetterboxGeometry | undefined
+  let mattingModelId: string | undefined
+
+  try {
+    const result = await yoloSegment({
+      image: input,
+      confThreshold,
+      softMask: true,
+      useMatting: true
+    })
+    boxes = result.boxes
+    masks = result.masks.map((m) => m.data)
+    maskHw = result.masks[0]?.width ?? 0
+    srcWidth = result.width
+    srcHeight = result.height
+    inferenceMs = result.inferenceMs
+    letterbox = result.letterbox
+    mattingModelId = result.mattingModelId
+  } catch (err) {
+    console.warn('[cutout] yoloSegment failed, falling back to salient subject extraction:', err)
+  }
+
+  // 零样本显著性主体兜底：当 COCO 80 类未命中任何实例时，用图像色彩分布+内洞穿透构造主体实例
+  if (boxes.length === 0 || masks.length === 0 || maskHw <= 0) {
+    const started = performance.now()
+    const raw = cachedRaw ?? imageToRaw(image, 1024)
+    const naturalW = image.naturalWidth || image.width || raw.width
+    srcWidth = raw.width
+    srcHeight = raw.height
+    outputScale = naturalW > 0 ? naturalW / raw.width : 1
+    const salient = buildSalientSubjectMask(raw.rgba, raw.width, raw.height)
+    if (salient) {
+      boxes = [salient.box]
+      masks = [salient.mask]
+      maskHw = salient.maskHw
+      letterbox = salient.letterbox
+      if (!inferenceMs) inferenceMs = Math.max(1, Math.round(performance.now() - started))
+    }
+  }
+
+  const instances: CutoutInstance[] = boxes.map((box, index) => ({
     index,
     label: box.label,
     labelZh: cocoLabelZh(box.label),
@@ -125,22 +178,23 @@ export async function analyzeCutout(
 
   return {
     analysis: {
-      srcWidth: result.width,
-      srcHeight: result.height,
+      srcWidth,
+      srcHeight,
       outputScale,
-      inferenceMs: result.inferenceMs,
+      inferenceMs,
       instances,
-      masks: result.masks.map((m) => m.data),
+      masks,
       maskHw,
       soft: true,
-      letterbox: result.letterbox
+      letterbox,
+      mattingModelId
     },
     image
   }
 }
 
 export interface CutoutRenderParams {
-  /** 已加载的源图（原分辨率，用于取色） */
+  /** 已加载的源图（原分辨率，用于取色与引导滤波） */
   image: HTMLImageElement
   analysis: CutoutAnalysis
   /** 要保留的实例下标 */
@@ -151,6 +205,14 @@ export interface CutoutRenderParams {
   feather: number
   /** 裁剪到主体外接框；关闭时保持原图构图（背景透明） */
   cropToSubject: boolean
+  /** 引导图像滤波边缘精修半径（0~16，默认 4） */
+  edgeGuidedRadius?: number
+  /** 边缘收缩/扩展（-10~+10，默认 0） */
+  edgeChoke?: number
+  /** 自动穿透封闭背景内洞（默认 true） */
+  holePunch?: boolean
+  /** 保留/擦除修补画笔轨迹 */
+  brushStrokes?: readonly CutoutBrushStroke[] | null
 }
 
 export interface CutoutRenderResult {
@@ -160,6 +222,8 @@ export interface CutoutRenderResult {
   height: number
   /** 结果画布，保存导出时再转 dataUrl（仅一次，可接受） */
   canvas: HTMLCanvasElement
+  /** 本次渲染对应的源图坐标系区域（供结果视图画笔反算归一化原图坐标） */
+  region: CutoutRegion
 }
 
 /**
@@ -181,33 +245,25 @@ export async function renderCutoutPng(params: CutoutRenderParams): Promise<Cutou
     width: analysis.srcWidth,
     height: analysis.srcHeight
   }
+  const hasKeepStrokes = (params.brushStrokes ?? []).some(
+    (s) => s.mode === 'keep' && s.points.length > 0
+  )
   const region =
-    params.cropToSubject && boxes.length > 0
+    params.cropToSubject && (boxes.length > 0 || hasKeepStrokes)
       ? resolveCutoutRegion({
           boxes,
           srcWidth: analysis.srcWidth,
           srcHeight: analysis.srcHeight,
-          feather: params.feather,
-          margin: 2
+          feather: Math.max(params.feather, params.edgeGuidedRadius ?? 4),
+          margin: 4,
+          brushStrokes: params.brushStrokes
         })
       : fullRegion
 
   const outScale = analysis.outputScale
-  const alpha = buildCutoutAlpha({
-    masks,
-    maskHw: analysis.maskHw,
-    soft: analysis.soft,
-    letterbox: analysis.letterbox,
-    srcWidth: analysis.srcWidth,
-    srcHeight: analysis.srcHeight,
-    region,
-    threshold: params.threshold,
-    feather: params.feather,
-    outScale
-  })
-
   const outW = Math.max(1, Math.round(region.width * outScale))
   const outH = Math.max(1, Math.round(region.height * outScale))
+
   const canvas = document.createElement('canvas')
   canvas.width = outW
   canvas.height = outH
@@ -225,8 +281,67 @@ export async function renderCutoutPng(params: CutoutRenderParams): Promise<Cutou
     outH
   )
   const imageData = ctx.getImageData(0, 0, outW, outH)
+
+  const guidedRadius = Math.max(0, Math.round(params.edgeGuidedRadius ?? 4))
+  const edgeChoke = params.edgeChoke ?? 0
+
+  let alpha = buildCutoutAlpha({
+    masks,
+    maskHw: analysis.maskHw,
+    soft: analysis.soft,
+    letterbox: analysis.letterbox,
+    srcWidth: analysis.srcWidth,
+    srcHeight: analysis.srcHeight,
+    region,
+    threshold: params.threshold,
+    feather: params.feather,
+    outScale,
+    continuousAlpha: guidedRadius > 0 || Boolean(analysis.mattingModelId),
+    edgeChoke
+  })
+
+  // 1. 穿透封闭背景内洞（如叉腰、双腿间、环形道具中心的背景残留）
+  if (params.holePunch !== false) {
+    alpha = punchInteriorBackgroundHoles(imageData.data, alpha, outW, outH)
+  }
+
+  // 2. 若有修补画笔，先作为 Trimap 先验输入给 3×3 RGB 引导滤波器（使画笔外圈自动吸附到物体真实色彩边缘）
+  const hasBrushes = Boolean(params.brushStrokes && params.brushStrokes.length > 0)
+  if (hasBrushes) {
+    alpha = applyCutoutBrushStrokes(alpha, params.brushStrokes, {
+      srcWidth: analysis.srcWidth,
+      srcHeight: analysis.srcHeight,
+      region,
+      outScale
+    })
+  }
+
+  // 3. 3×3 RGB 协方差引导图像滤波 + 窄带颜色亲和度 Matting 边缘精修
+  if (guidedRadius > 0 || edgeChoke !== 0) {
+    alpha = refineCutoutAlphaGuided(imageData.data, alpha, outW, outH, {
+      radius: guidedRadius,
+      edgeChoke,
+      // 若已由 1024 高精抠图模型产出掩码，颜色投影权重适度降低以尊重神经网络预测的半透明发丝
+      colorMattingStrength: analysis.mattingModelId ? 0.35 : 0.6
+    })
+  }
+
+  // 4. 用修补画笔的实心核心半径（0.65×radius）做保底锁定，确保用户明确涂抹的中心区域 100% 保留或擦除
+  if (hasBrushes) {
+    const coreStrokes = params.brushStrokes!.map((s) => ({
+      ...s,
+      radius: Math.max(0.002, s.radius * 0.65)
+    }))
+    alpha = applyCutoutBrushStrokes(alpha, coreStrokes, {
+      srcWidth: analysis.srcWidth,
+      srcHeight: analysis.srcHeight,
+      region,
+      outScale
+    })
+  }
+
   applyAlphaToRgba(imageData.data, alpha)
-  // 去除半透明边缘的背景色污染，消除发丝 / 轮廓四周的光晕
+  // 4. 八方向前景约束去污染，消除半透明发丝 / 轮廓四周的背景色光晕
   defringeRgba(imageData.data, alpha, outW, outH)
   ctx.putImageData(imageData, 0, 0)
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -235,7 +350,7 @@ export async function renderCutoutPng(params: CutoutRenderParams): Promise<Cutou
       'image/png'
     )
   })
-  return { url: URL.createObjectURL(blob), width: outW, height: outH, canvas }
+  return { url: URL.createObjectURL(blob), width: outW, height: outH, canvas, region }
 }
 
 /** 把抠图结果写入资产库目录，返回工程内相对路径 */

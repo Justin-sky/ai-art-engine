@@ -2155,12 +2155,12 @@ export interface StudioApi {
    */
   getYoloModelCatalog: () => Promise<YoloCatalogModel[]>
   /**
-   * 下载目录模型到模型目录（单任务；耗时取决于体积与网络，进度经 onYoloModelDownloadProgress 推送）。
+   * 下载目录模型到模型目录（支持多任务并发下载；进度经 onYoloModelDownloadProgress 按 modelId 推送）。
    * `sourceUrl` 可选：覆盖目录里的地址（人脸两段式托管在本仓 Release），主进程按白名单校验。
    */
   downloadYoloModel: (modelId: string, sourceUrl?: string) => Promise<YoloModelOperationResult>
-  /** 取消进行中的模型下载 */
-  cancelYoloModelDownload: () => Promise<void>
+  /** 取消进行中的模型下载（传入 modelId 仅取消该模型；缺省取消全部进行中的下载） */
+  cancelYoloModelDownload: (modelId?: string) => Promise<void>
   /** 删除模型目录中的某模型文件（内置随包模型删除后不会自动复活） */
   deleteYoloModel: (modelId: string) => Promise<YoloModelOperationResult>
   /** 弹系统目录选择器挑选 YOLO 模型目录；不写设置（由调用方结合 setSettings 落盘）；取消返回 null */

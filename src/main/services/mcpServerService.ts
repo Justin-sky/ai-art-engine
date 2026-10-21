@@ -158,6 +158,7 @@ import {
   getExternalMcpSession
 } from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
+import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
   fetchSkillCatalog,
@@ -842,6 +843,79 @@ const TOOL_DEFS: McpToolDef[] = [
           basename: item.basename
         })),
         skipped: result.skipped
+      }
+    }
+  },
+  {
+    name: 'web_extract_article',
+    title: '无头浏览器抓取技术文章图文',
+    description:
+      '在应用主进程内启动本地无头 Chromium 浏览器渲染指定网页 URL（支持掘金、知乎、微信公众号、CSDN、Medium、技术文档站及动态 SPA 页面），自动触发懒加载滚动，按阅读顺序提取文章标题、章节正文、代码块与原位配图上下文，并将文章内的架构图/流程图/代码截图/配图自动下载落盘到当前工程 `Cache/imports/` 目录下。返回结构化 `markdown`（内含 `@Cache/imports/...` 引用）与 `images` 列表（每项含 `relativePath`、`sectionHeading`、`caption`、`contextText`）。提取出的 `relativePath` 可直接作为画布节点的锁定图片素材（`typeId: "asset.image", locked: true, params: { sourceRelativePath: relativePath }`）连入 `output.timeline` 成片时间线，或作为 `asset.video` / `asset.image` 的 `firstFrameImageUrl` / `referenceImageUrls` 参考图生成短视频。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: {
+          type: 'string',
+          description: '目标网页或技术文章 URL（http:// 或 https://）'
+        },
+        maxImages: {
+          type: 'number',
+          description: '最多提取并下载到工程 Cache/imports/ 的文章配图数量（默认 8，上限 16）'
+        },
+        capturePageScreenshot: {
+          type: 'boolean',
+          description: '是否额外截取网页首屏高清快照存入 Cache/imports/（默认 false）'
+        }
+      },
+      required: ['url']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const url = readString(args, 'url')
+      const maxImages = optionalNumber(args, 'maxImages')
+      const capturePageScreenshot =
+        typeof args.capturePageScreenshot === 'boolean' ? args.capturePageScreenshot : undefined
+      const extracted = await runGenActivity(
+        'asset_import',
+        `无头浏览器抓取文章图文：${url.slice(0, 60)}`,
+        undefined,
+        async () =>
+          extractWebArticleWithHeadlessBrowser({
+            url,
+            ...(maxImages !== undefined ? { maxImages } : {}),
+            ...(capturePageScreenshot !== undefined ? { capturePageScreenshot } : {})
+          }),
+        (res) => {
+          const relativePaths = res.images
+            .map((img) => img.relativePath)
+            .filter((p): p is string => !!p?.trim())
+          if (res.pageScreenshotRelativePath) {
+            relativePaths.push(res.pageScreenshotRelativePath)
+          }
+          return {
+            relativePath: relativePaths[0],
+            relativePaths
+          }
+        },
+        undefined,
+        undefined,
+        url
+      )
+      const imagePaths = extracted.images.map((img) => img.relativePath)
+      const visualImages = readVisualCheckImagesForRelativePaths(imagePaths, 3)
+      return {
+        url: extracted.url,
+        title: extracted.title,
+        siteName: extracted.siteName,
+        author: extracted.author,
+        description: extracted.description,
+        renderedByHeadlessBrowser: extracted.renderedByHeadlessBrowser,
+        markdown: extracted.markdown,
+        images: extracted.images,
+        ...(extracted.pageScreenshotRelativePath
+          ? { pageScreenshotRelativePath: extracted.pageScreenshotRelativePath }
+          : {}),
+        ...(visualImages.length > 0 ? { mcpImages: visualImages } : {})
       }
     }
   },

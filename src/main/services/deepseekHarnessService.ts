@@ -66,6 +66,7 @@ import {
   installGitHubSkills,
   searchOnlineSkills
 } from './githubSkillInstaller'
+import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
 import { isDshQuotaError } from './deepseekHarnessFailure'
 import {
   appendNodeRequireOption,
@@ -1052,6 +1053,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'Do not retry with --no-sandbox or any other flag, and never try to escalate or bypass the sandbox just to run a browser.',
     'To rasterize or visually check an SVG or HTML artifact, call the render_svg tool instead:',
     'it renders the file with the app own engine and returns the picture to you, with no browser involved.',
+    'To render and extract any external web page or technical article URL (including SPA/JS pages, WeChat Official Accounts, Zhihu, Juejin, CSDN, Medium, or docs) together with its embedded figures/diagrams, call the studio MCP tool `web_extract_article({ url })`: it runs a real local headless Chromium browser inside the privileged host process, scrolls to trigger lazy-loaded `data-src` images, extracts structured Markdown, and automatically downloads the article images into `Cache/imports/` for direct use on canvas nodes.',
     'To bake assets into the project, use the studio path: wire `svg.gen` into `svg.anim` on the active canvas via `graph_edit` and run `task_run`, then read the baked PNG frames and the GIF reported by the task result.',
     'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.',
     '=== Generated media must not land in the project root ===',
@@ -1087,7 +1089,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'Ad Multi-Variant Matrix uses image.adVariants (params.adVariantMatrix) to batch-generate e-commerce or UA ad variants across audience, scene, tone, and copy dimensions.',
     '2D Frame Animation & 2D Stage Director use anim.2d (sprite sheet slicing/GIF baking, frame interpolation, 2D bones), image.align (sprite background keying, defringe, 9-slice, seamless tile), and stage.2d (multi-layer Z-depth stage, skeletal action baking, Spine export).',
     'SVG Vector & Animation use svg.gen -> svg.anim to generate pure vector SVG assets and bake SMIL animations into PNG frame sequences and GIFs.',
-    'Knowledge / Popular-Science / Explainer Document-to-Video Pipeline: Whenever the user gives a short natural command like "根据下面文章生成科普视频" / "把这篇文档做成视频" / "生成知识解说视频" (or provides any knowledge/popular-science/technical article or topic and asks for a video, without needing to mention any node names), automatically build the complete Audio-First multi-node pipeline on the active canvas in a single `graph_edit` call and run the sink `output.timeline` node via `task_run`: (1) Break the document into 3–5 clear sections (`分镜1`..`分镜N`); (2) For each section `i`, create a narration node (`typeId: "asset.voice"`, `nodeId: "voice-i"`, `title: "分镜i旁白"`, `params: { prompt: "该段口播旁白正文..." }`) and a matching visual node — choose `svg.gen` (`aspectRatio: "16:9"`, `background: "black"`, with SMIL `<animate>`/`<animateTransform>` motion for mechanisms/flowcharts/data charts) wired into `svg.anim` (`nodeId: "svg-anim-i"`, `title: "分镜i原理动图"`, `aspectRatio: "16:9"`), or `asset.image` / `asset.video` (`title: "分镜i画面"`, `aspectRatio: "16:9"`); (3) Create a BGM node (`typeId: "asset.music"`, `nodeId: "bgm-1"`, `title: "科普背景音乐"`, `params: { prompt: "轻快温暖的科普背景纯音乐", instrumental: true }`); (4) Create `typeId: "output.timeline"` (`nodeId: "timeline-out"`, `title: "成片时间线"`) and connect all visual nodes (`svg-anim-i` / `image-i` / `video-i`), all `voice-i` nodes, and `bgm-1` into `timeline-out`; (5) Call `task_run({ assetId, nodeIds: ["timeline-out"] })` — `output.timeline` automatically runs all upstream nodes in topological order, probes each TTS voiceover duration to align every visual shot, generates synchronized sentence-level subtitles from each voice node script, mixes BGM with auto-ducking, and exports the final MP4.',
+    'Knowledge / Popular-Science / Explainer Document-to-Video Pipeline: Whenever the user gives a short natural command like "根据下面文章生成科普视频" / "把这篇文档做成视频" / "生成知识解说视频" or provides a technical/popular-science article URL (e.g. "根据这个技术文章 URL 生成短视频", without needing to mention any node names), automatically build the complete Audio-First multi-node pipeline on the active canvas in a single `graph_edit` call and run the sink `output.timeline` node via `task_run`: (0) If the user provided a web URL and `[Studio Host Pre-Extracted Web Article]` is not already present in the prompt, first call `web_extract_article({ url })` to render the page with the local headless browser, extract structured Markdown, and download the article figures into `Cache/imports/...`; (1) Break the document into 3–5 clear sections (`分镜1`..`分镜N`); (2) For each section `i`, create a narration node (`typeId: "asset.voice"`, `nodeId: "voice-i"`, `title: "分镜i旁白"`, `params: { prompt: "该段口播旁白正文..." }`) and a matching visual node — if the section matches an extracted article figure from `Cache/imports/...`, wire that original figure directly as a locked image node (`typeId: "asset.image"`, `nodeId: "image-i"`, `title: "分镜i文章原图"`, `locked: true`, `params: { sourceRelativePath: "Cache/imports/..." }`) or pass it as `firstFrameImageUrl` / `referenceImageUrls: ["Cache/imports/..."]` on `asset.video` / `asset.image`; otherwise choose `svg.gen` (`aspectRatio: "16:9"`, `background: "black"`, with SMIL `<animate>`/`<animateTransform>` motion for mechanisms/flowcharts/data charts) wired into `svg.anim` (`nodeId: "svg-anim-i"`, `title: "分镜i原理动图"`, `aspectRatio: "16:9"`), or `asset.image` / `asset.video` (`title: "分镜i画面"`, `aspectRatio: "16:9"`); (3) Create a BGM node (`typeId: "asset.music"`, `nodeId: "bgm-1"`, `title: "科普背景音乐"`, `params: { prompt: "轻快温暖的科普背景纯音乐", instrumental: true }`); (4) Create `typeId: "output.timeline"` (`nodeId: "timeline-out"`, `title: "成片时间线"`) and connect all visual nodes (`svg-anim-i` / `image-i` / `video-i`), all `voice-i` nodes, and `bgm-1` into `timeline-out`; (5) Call `task_run({ assetId, nodeIds: ["timeline-out"] })` — `output.timeline` automatically runs all upstream nodes in topological order, probes each TTS voiceover duration to align every visual shot, generates synchronized sentence-level subtitles from each voice node script, mixes BGM with auto-ducking, and exports the final MP4.',
     'Semantic Video Analysis & Rebuild use semantic.analyze -> semantic.compile -> semantic.rebuild for shot-level video deconstruction, product/character replacement, and non-destructive video rebuild.',
     'Spatial World & 3D Rigging/Animation use world.graph -> world.panoramic -> world.extract -> world.splatView for 360 panoramas and 3DGS camera walkthroughs, and model.rigSkin -> model.pose -> model.animation for Blender 3D rigging, posing, and keyframe animation.',
     'Game UI, PSD Layer Split, Icons, Comic & Audio Compose: for a single UI interface + layer decomposition / PSD export (e.g. "创建仙侠游戏装备界面UI并拆分出PSD"), wire `asset.image` (generate the single UI screen) -> `image.layerSplit` (UI layer split, which decomposes the UI into a clean base + transparent widget PNG layers, auto-groups them into standard game UI PSD folders, and writes the `.psd` file to `Cache/Images/` under `out-psd` / `params.layerSplitPsdRelativePath`); only use `asset.gameSystem -> ui.split -> ui.gen` when breaking down a full multi-screen game system specification document. Use `image.iconPack` for batch icons, `comic.page` for manga/comic page layout, `voice.design` / `voice.tts` / `audio.music` / `audio.separate` for audio, and `output.timeline` for multi-track video/image/GIF/voice/music/subtitle timeline synthesis.',
@@ -2791,6 +2793,94 @@ async function preprocessOnlineSkillInstallIntent(input: {
         name: 'skill_search',
         state: 'done',
         detail: '在线技能检索完成'
+      })
+    }
+  }
+
+  // 3. 用户提供了普通网页/技术文章 URL 并要求生成短视频/解说视频/提取图文时：
+  //    宿主主进程直接启动本地无头 Chromium 浏览器渲染页面、滚动触发懒加载、提取正文并将文章配图下载到 Cache/imports/，
+  //    把正文与 @Cache/imports/... 图片路径一并注入本轮提示词，免去模型用纯文本 web_fetch 丢图。
+  const generalHttpUrls =
+    taskText
+      .match(/https?:\/\/[^\s，。；！？"',)>]+/gi)
+      ?.map((u) => u.replace(/[.,;:!?)'"`]+$/, '')) ?? []
+  const articleUrls = [
+    ...new Set(
+      generalHttpUrls.filter(
+        (u) =>
+          !validGhUrls.includes(u) &&
+          !/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(u) &&
+          !/\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|wav|glb|gltf|zip)(?:$|[?#])/i.test(u)
+      )
+    )
+  ]
+  const asksArticleVideoOrExtract =
+    articleUrls.length > 0 &&
+    /(?:视频|短视频|成片|解说|科普|分镜|动画|教程|文章|网页|链接|内容|总结|生成|制作|转成|做成|video|short|article|explainer)/i.test(
+      taskText
+    )
+
+  if (asksArticleVideoOrExtract && mode === 'craft') {
+    const targetUrl = articleUrls[0]!
+    const extractCallId = `host-web-extract:${Date.now()}`
+    emit({
+      type: 'tool',
+      id: extractCallId,
+      name: 'web_extract_article',
+      state: 'start',
+      detail: `正在启动本地无头浏览器抓取图文：${targetUrl}`
+    })
+    try {
+      const extracted = await extractWebArticleWithHeadlessBrowser({
+        url: targetUrl,
+        maxImages: 8,
+        projectRootOverride: workspaceRoot
+      })
+      emit({
+        type: 'tool',
+        id: extractCallId,
+        name: 'web_extract_article',
+        state: 'done',
+        detail: `已提取《${extracted.title}》正文及 ${extracted.images.length} 张文章配图`
+      })
+      const imagesManifest =
+        extracted.images.length > 0
+          ? extracted.images
+              .map(
+                (img) =>
+                  `- 图${img.index}: relativePath="${img.relativePath}" | 章节="${img.sectionHeading}" | 图注="${img.caption || img.alt || '无'}" | 上下文="${img.contextText.slice(0, 120)}"`
+              )
+              .join('\n')
+          : '（该页面未提取到独立内容配图，请使用 svg.gen -> svg.anim 或 asset.image / asset.video 生成配套画面）'
+
+      return [
+        taskText,
+        '',
+        '[Studio Host Pre-Extracted Web Article (via Local Headless Chromium Browser)]',
+        `IMPORTANT: The studio host has ALREADY rendered ${extracted.url} in a local headless Chromium browser, scrolled lazy-loaded images, extracted the structured article text, and downloaded ${extracted.images.length} article figure(s) into the project's \`Cache/imports/\` directory.`,
+        'Do NOT call `web_fetch` or `web_extract_article` on this URL again — use the extracted content and downloaded `Cache/imports/...` image paths below directly!',
+        'When building a video pipeline on the active canvas via `graph_edit` + `task_run`:',
+        '1. For sections that correspond to a downloaded article figure (`Cache/imports/...`), either create a locked image node (`typeId: "asset.image", locked: true, params: { sourceRelativePath: "Cache/imports/..." }`) wired into `output.timeline`, OR pass `"Cache/imports/..."` as `firstFrameImageUrl` / `referenceImageUrls` on `asset.video` / `asset.image`.',
+        '2. For sections without a matching original figure (or where animated diagrams are better), wire `svg.gen -> svg.anim` or `asset.image` / `asset.video` into `output.timeline`.',
+        '3. Create per-section `voice.tts` narration nodes and an `audio.music` (`instrumental: true`) BGM node, connect everything into `output.timeline`, and call `task_run({ assetId, nodeIds: ["timeline-out"] })`.',
+        '',
+        `Article Title: ${extracted.title}`,
+        `Source URL: ${extracted.url}`,
+        ...(extracted.author ? [`Author: ${extracted.author}`] : []),
+        '',
+        'Downloaded Article Figures in Cache/imports/:',
+        imagesManifest,
+        '',
+        'Extracted Article Markdown:',
+        extracted.markdown
+      ].join('\n')
+    } catch (err) {
+      emit({
+        type: 'tool',
+        id: extractCallId,
+        name: 'web_extract_article',
+        state: 'done',
+        detail: `无头浏览器提取提示：${err instanceof Error ? err.message : String(err)}`
       })
     }
   }

@@ -10,7 +10,10 @@
  * 「用量上报不得搅乱会话列表顺序」两条约定。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useChatHistory } from '../src/renderer/src/composables/useChatHistory'
+import {
+  resolveProjectChatScope,
+  useChatHistory
+} from '../src/renderer/src/composables/useChatHistory'
 
 /** 内存版 localStorage：同一实例内共享，用来模拟「重启应用后浏览器存储仍在」 */
 class MemoryStorage {
@@ -150,5 +153,46 @@ describe('useChatHistory 的上下文用量持久化', () => {
     history.load()
 
     expect(history.activeSession.value?.contextUsed).toBe(0)
+  })
+
+  it('按项目（config.id / rootPath）严格隔离 AI 会话：新建项目绝不带入其它项目的历史会话，切回原项目可恢复', () => {
+    installStorage()
+    const history = useChatHistory()
+
+    // 项目 A 中有对话历史与多个会话
+    const scopeA = resolveProjectChatScope('proj-uuid-a', 'F:\\Projects\\Alpha')
+    history.load(scopeA)
+    const projASession1 = history.activeId.value
+    history.commitMessages([
+      { kind: 'user', text: '项目A的第一条消息' },
+      { kind: 'assistant', text: '项目A的回复', final: true }
+    ])
+    history.persist()
+    history.create()
+    const projASession2 = history.activeId.value
+    history.commitMessages([{ kind: 'user', text: '项目A的第二段对话' }])
+    history.persist()
+    expect(history.sessions.value).toHaveLength(2)
+
+    // 新建项目 B：使用全新的 project.config.id，会话列表应为全新空白会话，绝不包含项目 A 的任何会话
+    const scopeB = resolveProjectChatScope('proj-uuid-b', 'F:\\Projects\\Beta')
+    history.load(scopeB)
+    expect(history.sessions.value).toHaveLength(1)
+    expect(history.activeId.value).not.toBe(projASession1)
+    expect(history.activeId.value).not.toBe(projASession2)
+    expect(history.activeSession.value?.messages).toEqual([])
+    expect(history.activeSession.value?.title).toBe('')
+
+    // 在项目 B 中写入消息并保存
+    history.commitMessages([{ kind: 'user', text: '项目B的独立消息' }])
+    history.persist()
+
+    // 切回项目 A：完整恢复项目 A 的 2 个会话与当前激活会话
+    history.load(scopeA)
+    expect(history.sessions.value).toHaveLength(2)
+    expect(history.activeId.value).toBe(projASession2)
+    expect(history.activeSession.value?.messages).toEqual([
+      { kind: 'user', text: '项目A的第二段对话' }
+    ])
   })
 })

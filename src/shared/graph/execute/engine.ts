@@ -566,6 +566,7 @@ async function executeOneNode(
     composePortraitIdPhoto: options.composePortraitIdPhoto,
     detectPortraitFaces: options.detectPortraitFaces,
     composePortraitScopedRetouch: options.composePortraitScopedRetouch,
+    composePortraitIdentityLock: options.composePortraitIdentityLock,
     inspectImageSize: options.inspectImageSize,
     fitPortraitToSourceSize: options.fitPortraitToSourceSize,
     flattenPortraitBackground: options.flattenPortraitBackground,

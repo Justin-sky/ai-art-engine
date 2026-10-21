@@ -833,6 +833,10 @@ import {
   type AssetType
 } from '@shared/domain'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
+import {
+  composePortraitIdentityLock,
+  detectPortraitFaces
+} from '../features/graph/model/portraitCapabilities'
 import { resolveGraphImageUrls } from '../features/graph/model/resolveGraphImageUrls'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
 import { readGraphRunText } from '../features/graph/readGraphRunText'
@@ -6928,6 +6932,10 @@ const portrait = reactive({
   generateProviderInstanceId: '' as string,
   /** 局部回贴开关：'local' = 只改对应部位（默认），'global' = 整图生效 */
   scopeMode: 'local' as 'local' | 'global',
+  /** 双擎执行模式：'smart'（默认）| 'local' | 'cloud' */
+  engineMode: 'smart' as 'smart' | 'local' | 'cloud',
+  /** 三重身份锁开关（默认 true） */
+  identityLock: true,
   /** 出图底图来源：true = 以上次「保存并出图」的产物为底（默认 false = 上游原图） */
   chainFromOutput: false,
   aiRunning: false,
@@ -7071,6 +7079,13 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   portrait.generateModel = node.params.generateModel ?? ''
   portrait.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   portrait.scopeMode = node.params.portraitScopeMode === 'global' ? 'global' : 'local'
+  portrait.engineMode =
+    node.params.portraitEngineMode === 'local'
+      ? 'local'
+      : node.params.portraitEngineMode === 'cloud'
+        ? 'cloud'
+        : 'smart'
+  portrait.identityLock = node.params.portraitIdentityLock !== false
   portrait.chainFromOutput = node.params.portraitChainFromOutput === true
   portrait.aiRunning = false
   portrait.aiError = ''
@@ -7124,6 +7139,8 @@ function closePortrait(): void {
   portrait.generateModel = ''
   portrait.generateProviderInstanceId = ''
   portrait.scopeMode = 'local'
+  portrait.engineMode = 'smart'
+  portrait.identityLock = true
   portrait.aiRunning = false
   portrait.aiError = ''
   portrait.runRunning = false
@@ -7196,6 +7213,10 @@ interface PortraitEditorPayload {
   generateProviderInstanceId?: string
   /** 局部回贴开关：只改对应部位（'local'，默认）还是整图生效（'global'） */
   scopeMode?: 'local' | 'global'
+  /** 双擎执行模式：'smart' | 'local' | 'cloud' */
+  engineMode?: 'smart' | 'local' | 'cloud'
+  /** 三重身份锁开关 */
+  identityLock?: boolean
 }
 
 /** 预览与保存共用的写回（参数变化即时落盘到节点） */
@@ -7237,7 +7258,9 @@ function applyPortraitParams(payload: PortraitEditorPayload): void {
     ...(payload.generateProviderInstanceId !== undefined
       ? { generateProviderInstanceId: payload.generateProviderInstanceId }
       : {}),
-    ...(payload.scopeMode !== undefined ? { portraitScopeMode: payload.scopeMode } : {})
+    ...(payload.scopeMode !== undefined ? { portraitScopeMode: payload.scopeMode } : {}),
+    ...(payload.engineMode !== undefined ? { portraitEngineMode: payload.engineMode } : {}),
+    ...(payload.identityLock !== undefined ? { portraitIdentityLock: payload.identityLock } : {})
   }
   scheduleSave()
   graphEditorHosts.bumpRevision()
@@ -7266,6 +7289,8 @@ function previewPortrait(payload: PortraitEditorPayload): void {
     portrait.generateProviderInstanceId = payload.generateProviderInstanceId
   }
   if (payload.scopeMode !== undefined) portrait.scopeMode = payload.scopeMode
+  if (payload.engineMode !== undefined) portrait.engineMode = payload.engineMode
+  if (payload.identityLock !== undefined) portrait.identityLock = payload.identityLock
 }
 
 function savePortrait(payload: PortraitEditorPayload): void {
@@ -7279,6 +7304,8 @@ function savePortrait(payload: PortraitEditorPayload): void {
     portrait.generateProviderInstanceId = payload.generateProviderInstanceId
   }
   if (payload.scopeMode !== undefined) portrait.scopeMode = payload.scopeMode
+  if (payload.engineMode !== undefined) portrait.engineMode = payload.engineMode
+  if (payload.identityLock !== undefined) portrait.identityLock = payload.identityLock
   portrait.historyBefore = null
   recordGraphChange('portrait', before)
   closePortrait()
@@ -7538,6 +7565,36 @@ async function runPortraitAi(payload: {
       }
       dataUrl = result.images?.[0]?.trim() ?? ''
       resolvedModel = result.model || payload.model
+
+      // 编辑器内 AI 动作（证件照换装 / AI 换背景 / 衣物去皱 / 高颅顶 / AI 美妆 / 3D 打光）：
+      // 自动套用三重身份锁（68 点 MLS 几何回正 + 外部换装原图面部锁死 / 高低频分离微特征融合）
+      if (dataUrl && payload.tool !== 'erase') {
+        try {
+          let landmarks = portrait.face?.landmarks ?? null
+          if (!landmarks?.length) {
+            const detected = await detectPortraitFaces({ sourceDataUrl: sourceUrl })
+            landmarks = detected[0]?.landmarks ?? null
+          }
+          if (landmarks?.length) {
+            const exteriorTools = new Set(['idAttire', 'background', 'deWrinkle', 'hairVolume'])
+            const modeOverride = exteriorTools.has(payload.tool)
+              ? 'exterior-face-lock'
+              : 'landmark-frequency-fusion'
+            const locked = await composePortraitIdentityLock({
+              sourceDataUrl: sourceUrl,
+              generatedDataUrl: dataUrl,
+              landmarks,
+              state: portrait.setup,
+              modeOverride
+            })
+            if (locked.applied && locked.dataUrl) {
+              dataUrl = locked.dataUrl
+            }
+          }
+        } catch {
+          /* 身份锁降级时不阻断 AI 图层落盘 */
+        }
+      }
     }
 
     if (!dataUrl) throw fail(SHARED_ERRORS.noModelImage)

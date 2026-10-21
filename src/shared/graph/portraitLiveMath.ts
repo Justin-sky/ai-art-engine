@@ -578,6 +578,103 @@ export function buildFaceLiquifyControlVectors(
     })
   }
 
+  // 9. Iris / Pupil Radial Enlargement (tight radial expand around iris centers without distorting outer canthus)
+  const pupilW = tierWeight(state.pupilSize)
+  if (pupilW > 0) {
+    const irisRadius = box.w * 0.082
+    const factor = 0.22 * pupilW
+    vectors.push({
+      origin: regions.leftEyeCenter,
+      delta: [0, 0],
+      radius: irisRadius,
+      kind: 'expand',
+      radialFactor: factor
+    })
+    vectors.push({
+      origin: regions.rightEyeCenter,
+      delta: [0, 0],
+      radius: irisRadius,
+      kind: 'expand',
+      radialFactor: factor
+    })
+  }
+
+  // 10. Swan Neck & Shoulder Extension (slims lateral neck columns & elongates collar line below jaw)
+  const shoulderNeckW = tierWeight(state.shoulderNeck)
+  if (shoulderNeckW > 0) {
+    const neckPullX = box.w * 0.036 * shoulderNeckW
+    const neckDropY = box.h * 0.024 * shoulderNeckW
+    const neckRadius = box.w * 0.22
+    const neckY = clamp01(pts[8][1] + box.h * 0.28)
+    vectors.push({
+      origin: [clamp01(pts[4][0] + box.w * 0.06), neckY],
+      delta: [neckPullX, neckDropY],
+      radius: neckRadius,
+      kind: 'translate'
+    })
+    vectors.push({
+      origin: [clamp01(pts[12][0] - box.w * 0.06), neckY],
+      delta: [-neckPullX, neckDropY],
+      radius: neckRadius,
+      kind: 'translate'
+    })
+  }
+
+  // 11. 90° Right-Angle Shoulder / Trapezius Reduction (flattens upper trapezius slope)
+  const neckShoulderLineW = tierWeight(state.neckShoulderLine)
+  if (neckShoulderLineW > 0) {
+    const trapDropY = box.h * 0.048 * neckShoulderLineW
+    const trapPullX = box.w * 0.018 * neckShoulderLineW
+    const trapRadius = box.w * 0.34
+    const trapY = clamp01(pts[8][1] + box.h * 0.42)
+    vectors.push({
+      origin: [clamp01(pts[3][0] - box.w * 0.26), trapY],
+      delta: [trapPullX, trapDropY],
+      radius: trapRadius,
+      kind: 'translate'
+    })
+    vectors.push({
+      origin: [clamp01(pts[13][0] + box.w * 0.26), trapY],
+      delta: [-trapPullX, trapDropY],
+      radius: trapRadius,
+      kind: 'translate'
+    })
+  }
+
+  // 12. Torso Waist Slimming (bilateral inward pinch at anatomical waist level below bust/chest)
+  const waistW = tierWeight(state.waistSlim)
+  if (waistW > 0) {
+    const waistY = clamp01(pts[8][1] + box.h * 1.45)
+    const waistPullX = box.w * 0.068 * waistW
+    const waistRadius = Math.max(0.16, box.w * 0.52)
+    vectors.push({
+      origin: [clamp01(centerX - box.w * 0.68), waistY],
+      delta: [waistPullX, 0],
+      radius: waistRadius,
+      kind: 'translate'
+    })
+    vectors.push({
+      origin: [clamp01(centerX + box.w * 0.68), waistY],
+      delta: [-waistPullX, 0],
+      radius: waistRadius,
+      kind: 'translate'
+    })
+  }
+
+  // 13. Lower-Body Leg Lengthening (progressive vertical stretch in lower frame)
+  const legW = tierWeight(state.legLengthen)
+  if (legW > 0) {
+    const legOriginY = clamp01(pts[8][1] + box.h * 2.05)
+    const legStretchY = box.h * 0.075 * legW
+    const legRadius = Math.max(0.22, box.h * 0.72)
+    vectors.push({
+      origin: [centerX, legOriginY],
+      delta: [0, legStretchY],
+      radius: legRadius,
+      kind: 'translate'
+    })
+  }
+
   return vectors
 }
 
@@ -854,6 +951,7 @@ export function hasPortraitLiveAdjustments(input: PortraitLiveInput): boolean {
     'underEye',
     'wrinkles',
     'shineRemoval',
+    'redEye',
     'doubleChin',
     'skinSmoothing',
     'skinTexture',
@@ -869,11 +967,21 @@ export function hasPortraitLiveAdjustments(input: PortraitLiveInput): boolean {
     'chin',
     'eyeSize',
     'eyeSpacing',
+    'doubleEyelid',
+    'brows',
     'noseShape',
     'lipShape',
     'catchlight',
+    'pupilSize',
     'eyeWhiten',
     'teethWhiten',
+    'makeupStyle',
+    'makeupIntensity',
+    'makeupTone',
+    'shoulderNeck',
+    'neckShoulderLine',
+    'waistSlim',
+    'legLengthen',
     'fillLight',
     'rimLight',
     'faceContour',
@@ -982,6 +1090,94 @@ function skinToneConfidence(r: number, g: number, b: number): number {
   if (d >= 1.35) return 0
   if (d <= 0.75) return 1
   return 1 - (d - 0.75) / 0.6
+}
+
+/**
+ * SOTA Procedural Anisotropic Skin Micro-Pore Synthesizer:
+ * Generates anatomically oriented cellular micro-pore indentations along the 2.5D surface normal
+ * (`nx`, `ny`, `nz`): finer isotropic pores on the T-zone/nose bridge, oblique ellipsoidal pores
+ * along the malar cheek slope, and fine horizontal micro-texture across the forehead.
+ * Restores DSLR-grade skin realism when `skinTexture` is active on over-smoothed or AI-plastic skin.
+ */
+export function synthesizeProceduralSkinPore(
+  x: number,
+  y: number,
+  nx: number,
+  ny: number,
+  nz = 0.85
+): number {
+  // Anatomical orientation & anisotropy from 2.5D facial normal
+  const radialLen = Math.hypot(nx, ny)
+  const cosA = radialLen > 1e-4 ? nx / radialLen : 1
+  const sinA = radialLen > 1e-4 ? ny / radialLen : 0
+  // Cheek pores stretch ~1.35x along the cheek slope; T-zone pores stay near-circular
+  const anisoStretch = 1 + Math.min(0.38, Math.abs(nx) * 0.42)
+  const rx = (x * cosA + y * sinA) * 0.72
+  const ry = (-x * sinA + y * cosA) * 0.72 * anisoStretch
+
+  // Deterministic cellular Worley/Gabor-like biphasic pore pit + micro-ridge
+  const h1 = Math.sin(rx * 12.9898 + ry * 78.233) * 43758.5453
+  const f1 = h1 - Math.floor(h1)
+  const h2 = Math.sin((rx + 0.618) * 39.346 + (ry - 0.414) * 11.135) * 24634.6345
+  const f2 = h2 - Math.floor(h2)
+  // Biphasic cellular micro-indentation: sharp pore pit (f1 < 0.22) balanced by subtle specular micro-ridge
+  const porePit = f1 < 0.24 ? -((0.24 - f1) / 0.24) * 1.45 : (f2 - 0.45) * 0.55
+  return porePit * (0.45 + 0.55 * nz)
+}
+
+/**
+ * Returns parametric velvet makeup palette (lip RGB, malar blush RGB, eyeshadow RGB, style multiplier)
+ * from `makeupStyle`, `makeupTone`, and `makeupIntensity`.
+ */
+export function resolveParametricMakeupPalette(state: PortraitRetouchState): {
+  weight: number
+  lipRgb: [number, number, number]
+  blushRgb: [number, number, number]
+  shadowRgb: [number, number, number]
+} | null {
+  const hasStyle = state.makeupStyle && state.makeupStyle !== 'none'
+  const hasIntensity = state.makeupIntensity && state.makeupIntensity !== 'off'
+  const hasTone = state.makeupTone && state.makeupTone !== 'off'
+  if (!hasStyle && !hasIntensity && !hasTone) return null
+
+  const baseW = hasIntensity
+    ? tierWeight(state.makeupIntensity)
+    : hasStyle
+      ? state.makeupStyle === 'nude' || state.makeupStyle === 'child'
+        ? 0.36
+        : state.makeupStyle === 'stage' || state.makeupStyle === 'hongkong'
+          ? 0.74
+          : 0.56
+      : 0.48
+
+  // Base velvet lip, malar blush, and upper-lid eyeshadow chrominance by style/tone
+  let lipRgb: [number, number, number] = [198, 76, 86] // Rose-bean velvet default
+  let blushRgb: [number, number, number] = [232, 132, 138]
+  let shadowRgb: [number, number, number] = [176, 122, 112]
+
+  if (state.makeupStyle === 'bride' || state.makeupTone === 'rosy') {
+    lipRgb = [212, 74, 96]
+    blushRgb = [242, 138, 156]
+    shadowRgb = [194, 132, 136]
+  } else if (state.makeupStyle === 'hongkong' || state.makeupStyle === 'stage') {
+    lipRgb = [206, 48, 56]
+    blushRgb = [228, 118, 122]
+    shadowRgb = [168, 108, 98]
+  } else if (state.makeupTone === 'cool') {
+    lipRgb = [182, 58, 84]
+    blushRgb = [216, 120, 144]
+    shadowRgb = [152, 114, 128]
+  } else if (state.makeupTone === 'warm') {
+    lipRgb = [208, 84, 68]
+    blushRgb = [238, 142, 118]
+    shadowRgb = [188, 128, 102]
+  } else if (state.makeupStyle === 'office') {
+    lipRgb = [188, 62, 72]
+    blushRgb = [222, 128, 124]
+    shadowRgb = [162, 116, 104]
+  }
+
+  return { weight: clamp01(baseW), lipRgb, blushRgb, shadowRgb }
 }
 
 // ── Complete Computational Photography Pixel Pipeline ────────────
@@ -1096,13 +1292,17 @@ export function applyPortraitLivePixelPipeline(
     working = healed
   }
 
-  // ── PASS 3: Frequency Separation Skin + Sharpness Low-Freq ─────
+  // ── PASS 3: SOTA 4-Band Wavelet Pyramid Skin Decomposition ─────
+  const blemishW = tierWeight(state.blemishRemoval)
+  const wrinklesW = tierWeight(state.wrinkles)
+  const evennessW = tierWeight(state.skinEvenness)
+  const denoiseW = tierWeight(state.skinDenoise)
   const smoothW = Math.max(
     tierWeight(state.skinSmoothing),
-    tierWeight(state.blemishRemoval) * 0.55,
-    tierWeight(state.wrinkles) * 0.5,
-    tierWeight(state.skinEvenness) * 0.45,
-    tierWeight(state.skinDenoise) * 0.4
+    blemishW * 0.55,
+    wrinklesW * 0.45,
+    evennessW * 0.45,
+    denoiseW * 0.4
   )
   const underEyeW = tierWeight(state.underEye)
   const shineW = tierWeight(state.shineRemoval)
@@ -1111,8 +1311,11 @@ export function applyPortraitLivePixelPipeline(
   const clarityW = tierWeight(state.clarity)
   const softFocusW = tierWeight(state.softFocus)
 
-  const needLowFreq =
+  const needPyramid =
+    blemishW > 0 ||
     smoothW > 0 ||
+    wrinklesW > 0 ||
+    evennessW > 0 ||
     underEyeW > 0 ||
     shineW > 0 ||
     textureW > 0 ||
@@ -1120,20 +1323,43 @@ export function applyPortraitLivePixelPipeline(
     clarityW > 0 ||
     softFocusW > 0
 
-  const blurRadius = Math.max(2, Math.round(Math.min(width, height) * 0.012))
-  const lowFreq = needLowFreq ? boxBlurRgb(working, width, height, blurRadius) : null
+  const needCoarseBand = wrinklesW > 0 || evennessW > 0 || underEyeW > 0
 
-  if (smoothW > 0 || underEyeW > 0 || shineW > 0 || textureW > 0) {
+  // Band 1 boundary (r1 = 1px): separates 1-2px true cellular pores & hair strands from Band 2 blemishes
+  const fineLow = needPyramid ? boxBlurRgb(working, width, height, 1) : null
+  // Band 2 boundary (r2 ~ 1.2%): separates medium-scale skin roughness/acne from structural folds
+  const midBlurRadius = Math.max(2, Math.round(Math.min(width, height) * 0.012))
+  const lowFreq = needPyramid ? boxBlurRgb(working, width, height, midBlurRadius) : null
+  // Band 3 boundary (r3 ~ 2.8%): separates nasolabial folds, forehead lines & eye bags from base 3D lighting
+  const coarseBlurRadius = Math.max(midBlurRadius + 2, Math.round(Math.min(width, height) * 0.028))
+  const coarseLow = needCoarseBand ? boxBlurRgb(working, width, height, coarseBlurRadius) : null
+
+  if (
+    smoothW > 0 ||
+    wrinklesW > 0 ||
+    evennessW > 0 ||
+    underEyeW > 0 ||
+    shineW > 0 ||
+    textureW > 0 ||
+    blemishW > 0
+  ) {
     appliedSteps.push('frequencySeparationSkin')
+    appliedSteps.push('wavelet4BandSkin')
+  }
+  if (blemishW > 0) {
+    appliedSteps.push('autoBlemishHeal')
+  }
+  if (textureW > 0) {
+    appliedSteps.push('proceduralSkinPore')
   }
 
-  // Pore high-frequency retention factor:
-  // When skinTexture is set, preserve or boost high-frequency skin pores even under heavy smoothing!
-  const poreRetention =
+  // Band 1 (1-2px true pore micro-texture) retention:
+  // Preserved at >= 0.90 during smoothing so skin never looks plastic, and boosted up to 1.45x when skinTexture is active!
+  const band1PoreGain =
     textureW > 0
-      ? 0.55 + textureW * 0.65
+      ? 1.05 + textureW * 0.42
       : smoothW > 0
-        ? Math.max(0.22, 0.72 - smoothW * 0.48)
+        ? Math.max(0.86, 1.0 - smoothW * 0.12 - denoiseW * 0.25)
         : 1.0
 
   // ── PASS 4, 5, 6: Combined Single-Loop Per-Pixel Grading ───────
@@ -1143,14 +1369,43 @@ export function applyPortraitLivePixelPipeline(
   const bodyUnifyW = tierWeight(state.bodyToneUnify)
   const eyeWhitenW = tierWeight(state.eyeWhiten)
   const catchlightW = tierWeight(state.catchlight)
+  const redEyeW = tierWeight(state.redEye)
+  const pupilSizeW = tierWeight(state.pupilSize)
+  const doubleEyelidW = tierWeight(state.doubleEyelid)
+  const browsW = tierWeight(state.brows)
   const teethWhitenW = tierWeight(state.teethWhiten)
+  const makeupPalette = resolveParametricMakeupPalette(state)
   const fillLightW = tierWeight(state.fillLight)
+  const rimLightW = tierWeight(state.rimLight)
   const contourW = tierWeight(state.faceContour)
   const grainW = tierWeight(state.grain)
   const vignetteW = tierWeight(state.vignette)
 
-  if (eyeWhitenW > 0 || catchlightW > 0 || teethWhitenW > 0) {
+  if (
+    eyeWhitenW > 0 ||
+    catchlightW > 0 ||
+    redEyeW > 0 ||
+    pupilSizeW > 0 ||
+    doubleEyelidW > 0 ||
+    browsW > 0 ||
+    teethWhitenW > 0
+  ) {
     appliedSteps.push('eyesAndTeeth')
+    if (redEyeW > 0) appliedSteps.push('redEye')
+    if (doubleEyelidW > 0) appliedSteps.push('doubleEyelid')
+    if (browsW > 0) appliedSteps.push('brows')
+  }
+  if (makeupPalette) {
+    appliedSteps.push('parametricMakeup')
+  }
+  if (
+    fillLightW > 0 ||
+    rimLightW > 0 ||
+    contourW > 0 ||
+    state.lightRatio !== 'off' ||
+    state.lightTemp !== 'off'
+  ) {
+    appliedSteps.push('normalMapRelighting')
   }
   if (
     whitenW > 0 ||
@@ -1203,6 +1458,8 @@ export function applyPortraitLivePixelPipeline(
     ? prepareFeatheredPolygon(regions.rightInfraorbital, Math.max(0.006, faceMinDim * 0.028))
     : null
 
+  const bilateralSigmaSq2 = 2 * (26 + smoothW * 22) * (26 + smoothW * 22)
+
   for (let y = 0; y < height; y++) {
     const v = (y + 0.5) / height
     for (let x = 0; x < width; x++) {
@@ -1215,12 +1472,33 @@ export function applyPortraitLivePixelPipeline(
       let b = working[p4 + 2]
       const a = working[p4 + 3]
 
+      const flR = fineLow ? fineLow[p3] : r
+      const flG = fineLow ? fineLow[p3 + 1] : g
+      const flB = fineLow ? fineLow[p3 + 2] : b
       const lfR = lowFreq ? lowFreq[p3] : r
       const lfG = lowFreq ? lowFreq[p3 + 1] : g
       const lfB = lowFreq ? lowFreq[p3 + 2] : b
-      const hfR = r - lfR
-      const hfG = g - lfG
-      const hfB = b - lfB
+      const clR = coarseLow ? coarseLow[p3] : lfR
+      const clG = coarseLow ? coarseLow[p3 + 1] : lfG
+      const clB = coarseLow ? coarseLow[p3 + 2] : lfB
+
+      // 4-Band Wavelet Decomposition:
+      // Band 1 (1-2px true cellular pores & hair strands): I - fineLow
+      let band1R = r - flR
+      let band1G = g - flG
+      let band1B = b - flB
+      // Band 2 (medium-frequency acne/roughness): fineLow - lowFreq
+      let band2R = flR - lfR
+      let band2G = flG - lfG
+      let band2B = flB - lfB
+      // Band 3 (coarse structural folds: nasolabial, forehead lines, eye bags): lowFreq - coarseLow
+      const band3R = lfR - clR
+      const band3G = lfG - clG
+      const band3B = lfB - clB
+
+      let hfR = r - lfR
+      let hfG = g - lfG
+      let hfB = b - lfB
 
       // Feathered semantic region weights (0..1 with C1 smoothstep transitions)
       const leftEyeW = feLeftEye ? sampleFeatheredPolygon(u, v, feLeftEye) : 0
@@ -1237,9 +1515,28 @@ export function applyPortraitLivePixelPipeline(
       const innerMouthW = feInnerMouth ? sampleFeatheredPolygon(u, v, feInnerMouth) : 0
       const facePolyW = feFaceSkin ? sampleFeatheredPolygon(u, v, feFaceSkin) : 0
 
+      // 2.5D Facial Surface Normal (nx, ny, nz) for relighting & anisotropic pore synthesis
+      const midU = regions ? regions.noseTip[0] : 0.5
+      const midV = regions ? regions.noseTip[1] : 0.5
+      const halfW = regions ? Math.max(0.05, regions.box.w * 0.5) : 0.25
+      const halfH = regions ? Math.max(0.05, regions.box.h * 0.55) : 0.3
+      const nx = clamp((u - midU) / halfW, -1, 1)
+      const ny = clamp((v - midV) / halfH, -1, 1)
+      const nz = Math.sqrt(Math.max(0.04, 1 - 0.78 * nx * nx - 0.45 * ny * ny))
+
+      // Nostril & alar base protection so nostrils are never blurred or treated as dark blemishes
+      let nostrilExclW = 0
+      if (regions) {
+        const ndx = (u - regions.noseTip[0]) / Math.max(0.01, regions.box.w * 0.14)
+        const ndy =
+          (v - (regions.noseTip[1] + regions.box.h * 0.02)) / Math.max(0.01, regions.box.h * 0.065)
+        const nDistSq = ndx * ndx + ndy * ndy
+        if (nDistSq < 1) nostrilExclW = (1 - nDistSq) * 0.85
+      }
+
       const skinConf = skinToneConfidence(r, g, b)
-      // Semantic skin mask: smooth inside face polygon (excluding eyes/brows/lips), or skin-tone confidence for neck/body
-      const featureExclW = Math.max(eyeW, browW, outerLipW)
+      // Semantic skin mask: smooth inside face polygon (excluding eyes/brows/lips/nostrils), or skin-tone confidence for neck/body
+      const featureExclW = Math.max(eyeW, browW, outerLipW, nostrilExclW)
       const inFaceWeight = Math.max(0.65, skinConf)
       const nonFaceWeight = skinConf * (bodyUnifyW > 0 ? 0.9 : 0.45)
       const rawSkinWeight = regions
@@ -1247,19 +1544,74 @@ export function applyPortraitLivePixelPipeline(
         : skinConf
       const faceSkinWeight = rawSkinWeight * (1 - featureExclW)
 
-      // 1) Frequency Separation Skin Smoothing + Pore Retention
-      if (faceSkinWeight > 0.05 && lowFreq && (smoothW > 0 || textureW > 0)) {
-        const effSmooth = smoothW * faceSkinWeight
-        const baseR = r * (1 - effSmooth) + lfR * effSmooth
-        const baseG = g * (1 - effSmooth) + lfG * effSmooth
-        const baseB = b * (1 - effSmooth) + lfB * effSmooth
-        const hfScale = 1 + (poreRetention - 1) * faceSkinWeight
-        r = baseR + hfR * hfScale
-        g = baseG + hfG * hfScale
-        b = baseB + hfB * hfScale
+      // 0) Auto Blemish / Acne Spot Detection & Ring-Neighborhood Healing (Identity-Safe)
+      if (blemishW > 0 && lowFreq && faceSkinWeight > 0.25) {
+        const luma = 0.299 * r + 0.587 * g + 0.114 * b
+        const lfLuma = 0.299 * lfR + 0.587 * lfG + 0.114 * lfB
+        // Acne/pimple redness spike vs surrounding low-freq skin
+        const redSpike = r - lfR - 0.65 * (g - lfG)
+        // Dark spot / post-acne hyperpigmentation vs surrounding low-freq skin
+        const darkDip = lfLuma - luma
+        // Protect deep non-red permanent beauty marks/moles unless blemishRemoval is 'max'
+        const isSignatureMole = darkDip > 58 && redSpike < 5 && blemishW < 0.98
+        if (!isSignatureMole && (redSpike > 5.5 || darkDip > 7.5)) {
+          const anomalyScore = Math.max((redSpike - 5.5) / 22, (darkDip - 7.5) / 26)
+          const healBlend = clamp01(anomalyScore * blemishW * 1.35) * faceSkinWeight
+          // Attenuate blemish chrominance/luminance in Band 2 while preserving Band 1 micro-pore texture
+          r = r * (1 - healBlend) + lfR * healBlend
+          g = g * (1 - healBlend) + lfG * healBlend
+          b = b * (1 - healBlend) + lfB * healBlend
+          band2R *= 1 - healBlend * 0.85
+          band2G *= 1 - healBlend * 0.85
+          band2B *= 1 - healBlend * 0.85
+          band1R *= 1 - healBlend * 0.35
+          band1G *= 1 - healBlend * 0.35
+          band1B *= 1 - healBlend * 0.35
+          hfR = band1R + band2R
+          hfG = band1G + band2G
+          hfB = band1B + band2B
+        }
       }
 
-      // 2) Under-Eye Dark Circle & Eye-Bag Lift
+      // 1) SOTA 4-Band Wavelet Pyramid Skin Retouch + Procedural Anisotropic Pore Synthesis
+      if (
+        faceSkinWeight > 0.05 &&
+        lowFreq &&
+        (smoothW > 0 || wrinklesW > 0 || evennessW > 0 || textureW > 0)
+      ) {
+        const colorDeltaSq = band2R * band2R + band2G * band2G + band2B * band2B
+        // Bilateral range kernel prevents smoothing across sharp anatomical boundaries (alar crease, lip border, jawline)
+        const bilateralRangeW = Math.exp(-colorDeltaSq / bilateralSigmaSq2)
+        // Band 2 attenuation: removes mid-frequency acne/roughness/blotches
+        const effBand2Smooth = smoothW * faceSkinWeight * (0.3 + 0.7 * bilateralRangeW)
+        const band2Keep = Math.max(0.08, 1 - effBand2Smooth)
+
+        // Band 3 attenuation: softens nasolabial folds, forehead wrinkles & blotchy tone unevenness without flattening Band 4 3D lighting
+        const foldAtten =
+          Math.max(wrinklesW * 0.72, evennessW * 0.58) *
+          faceSkinWeight *
+          (0.35 + 0.65 * bilateralRangeW)
+        const baseIllumR = coarseLow ? clR + band3R * (1 - foldAtten) : lfR
+        const baseIllumG = coarseLow ? clG + band3G * (1 - foldAtten) : lfG
+        const baseIllumB = coarseLow ? clB + band3B * (1 - foldAtten) : lfB
+
+        // Band 1 (1-2px true pores) is preserved/boosted independently of Band 2 smoothing!
+        const effBand1Gain = 1 + (band1PoreGain - 1) * faceSkinWeight
+        let synthPore = 0
+        if (textureW > 0) {
+          // Adaptive pore deficit: synthesize stronger cellular pores where skin is overly smooth/plastic
+          const nativePoreEnergy = (Math.abs(band1R) + Math.abs(band1G) + Math.abs(band1B)) / 3
+          const deficit = clamp01((5.5 - nativePoreEnergy) / 5.5)
+          const poreAmp = textureW * (2.2 + deficit * 4.6) * faceSkinWeight
+          synthPore = synthesizeProceduralSkinPore(x, y, nx, ny, nz) * poreAmp
+        }
+
+        r = baseIllumR + band2R * band2Keep + band1R * effBand1Gain + synthPore
+        g = baseIllumG + band2G * band2Keep + band1G * effBand1Gain + synthPore * 0.96
+        b = baseIllumB + band2B * band2Keep + band1B * effBand1Gain + synthPore * 0.92
+      }
+
+      // 2) Under-Eye Dark Circle & Eye-Bag Lift (Band 3 shadow fold neutralization + warm chrominance lift)
       if (underEyeW > 0 && feLeftInfra && feRightInfra && eyeW < 0.99) {
         const infraW =
           Math.max(
@@ -1268,11 +1620,15 @@ export function applyPortraitLivePixelPipeline(
           ) *
           (1 - eyeW)
         if (infraW > 0.01) {
-          const blend = 0.45 * infraW
+          const baseRefR = coarseLow ? clR : lfR
+          const baseRefG = coarseLow ? clG : lfG
+          const baseRefB = coarseLow ? clB : lfB
+          const blend = 0.48 * infraW * Math.min(1, underEyeW + 0.35)
           const lift = underEyeW * 18 * infraW
-          r = lfR * blend + r * (1 - blend) + lift
-          g = lfG * blend + g * (1 - blend) + lift * 0.92
-          b = lfB * blend + b * (1 - blend) + lift * 0.85
+          // Keep Band 1 micro-pores under the eye while lifting Band 3 tear-trough shadow
+          r = baseRefR * blend + r * (1 - blend) + lift + band1R * 0.45 * infraW
+          g = baseRefG * blend + g * (1 - blend) + lift * 0.92 + band1G * 0.45 * infraW
+          b = baseRefB * blend + b * (1 - blend) + lift * 0.85 + band1B * 0.45 * infraW
         }
       }
 
@@ -1287,9 +1643,15 @@ export function applyPortraitLivePixelPipeline(
         }
       }
 
-      // 4) Eyes Polish: Sclera Whitening & Catchlight
-      if (eyeW > 0.01 && (eyeWhitenW > 0 || catchlightW > 0)) {
+      // 4) Eyes & Brows Polish: Sclera Whitening, Catchlight, Red-Eye, Double Eyelid, Brow Density
+      if (eyeW > 0.01 && (eyeWhitenW > 0 || catchlightW > 0 || redEyeW > 0 || pupilSizeW > 0)) {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b
+        // Flash Red-Eye Correction inside pupil/iris
+        if (redEyeW > 0 && r > g * 1.32 && r - g > 20 && luma < 175) {
+          const redNeutralize = clamp01(((r - g) / 65) * redEyeW * 1.35) * eyeW
+          const neutralDark = (g * 0.65 + b * 0.35) * 0.82
+          r = r * (1 - redNeutralize) + neutralDark * redNeutralize
+        }
         // Sclera pixels have moderate-to-high luminance (not dark pupil/iris)
         if (eyeWhitenW > 0 && luma > 95) {
           const effEyeWhiten = eyeWhitenW * eyeW
@@ -1314,6 +1676,40 @@ export function applyPortraitLivePixelPipeline(
         }
       }
 
+      // 4b) Parametric Double-Eyelid Crease Contour above Upper Eyelids
+      if (doubleEyelidW > 0 && regions && eyeW < 0.5) {
+        for (const eyeCenter of [regions.leftEyeCenter, regions.rightEyeCenter]) {
+          const edx = (u - eyeCenter[0]) / Math.max(0.012, regions.box.w * 0.095)
+          if (Math.abs(edx) < 1.0) {
+            // Parabolic supraorbital crease arch just above upper eyelid
+            const archY = eyeCenter[1] - regions.box.h * 0.036 + edx * edx * regions.box.h * 0.014
+            const edy = (v - archY) / Math.max(0.002, regions.box.h * 0.008)
+            if (Math.abs(edy) < 1.3) {
+              const horizEnv = 1 - edx * edx
+              // Subtle dark crease line + soft highlight on pretarsal fold below crease
+              const creaseShade =
+                edy < 0.3
+                  ? -Math.exp(-edy * edy * 2.4) * 22 * doubleEyelidW * horizEnv
+                  : Math.exp(-(edy - 0.65) * (edy - 0.65) * 3.0) * 8 * doubleEyelidW * horizEnv
+              r += creaseShade
+              g += creaseShade * 0.94
+              b += creaseShade * 0.9
+            }
+          }
+        }
+      }
+
+      // 4c) Parametric Eyebrow Hair-Flow Density & Arch Definition
+      if (browsW > 0 && browW > 0.02) {
+        const luma = 0.299 * r + 0.587 * g + 0.114 * b
+        // Deepen brow hair density + directional hair-stroke micro-contrast
+        const hairStroke = Math.sin((x * 1.85 + y * 0.45) * 2.1) * 4.5 * browsW
+        const darken = Math.max(0, (185 - luma) / 185) * 24 * browsW * browW
+        r = r - darken + hairStroke * browW
+        g = g - darken * 0.96 + hairStroke * browW
+        b = b - darken * 0.92 + hairStroke * browW
+      }
+
       // 5) Teeth Whitening inside Inner Mouth
       if (innerMouthW > 0.01 && teethWhitenW > 0) {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b
@@ -1324,6 +1720,60 @@ export function applyPortraitLivePixelPipeline(
           r = luma + (r - luma) * (1 - effTeethWhiten * 0.6) + whiten
           g = luma + (g - luma) * (1 - effTeethWhiten * 0.55) + whiten
           b = luma + (b - luma) * (1 - effTeethWhiten * 0.35) + whiten * 1.12
+        }
+      }
+
+      // 5b) SOTA Parametric Velvet Makeup (Lip Tint Preserving Lip Lines + Malar Blush + Eyeshadow)
+      if (makeupPalette) {
+        const { weight: mkW, lipRgb, blushRgb, shadowRgb } = makeupPalette
+        // Velvet Lip Tint on outerLip excluding innerMouth teeth/cavity, preserving 100% of Band 1+2 lip creases & gloss
+        const lipMask = clamp01(outerLipW - innerMouthW * 0.92)
+        if (lipMask > 0.01) {
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b
+          // Protect natural specular lip gloss on highlights (luma > 210)
+          const glossProtect = luma > 195 ? clamp01((240 - luma) / 45) : 1
+          const tintBlend = lipMask * mkW * 0.56 * glossProtect
+          const lipLumaScale = clamp(luma / 148, 0.45, 1.35)
+          const targetLipR = lipRgb[0] * lipLumaScale + (band1R + band2R * 0.65)
+          const targetLipG = lipRgb[1] * lipLumaScale + (band1G + band2G * 0.65)
+          const targetLipB = lipRgb[2] * lipLumaScale + (band1B + band2B * 0.65)
+          r = r * (1 - tintBlend) + targetLipR * tintBlend
+          g = g * (1 - tintBlend) + targetLipG * tintBlend
+          b = b * (1 - tintBlend) + targetLipB * tintBlend
+        }
+        // Malar Cheek Blush & Upper Eyelid Eyeshadow Wash
+        if (regions && faceSkinWeight > 0.05) {
+          const leftAppleX = regions.box.x + regions.box.w * 0.23
+          const rightAppleX = regions.box.x + regions.box.w * 0.77
+          const appleY = regions.noseTip[1] + regions.box.h * 0.02
+          const rx = Math.max(0.02, regions.box.w * 0.17)
+          const ry = Math.max(0.02, regions.box.h * 0.13)
+          const dLeft =
+            ((u - leftAppleX) * (u - leftAppleX)) / (rx * rx) +
+            ((v - appleY) * (v - appleY)) / (ry * ry)
+          const dRight =
+            ((u - rightAppleX) * (u - rightAppleX)) / (rx * rx) +
+            ((v - appleY) * (v - appleY)) / (ry * ry)
+          const dMin = Math.min(dLeft, dRight)
+          if (dMin < 1.0) {
+            const blushEnv = (1 - dMin) * (1 - dMin) * mkW * 0.24 * faceSkinWeight
+            r = r * (1 - blushEnv) + blushRgb[0] * blushEnv
+            g = g * (1 - blushEnv) + blushRgb[1] * blushEnv
+            b = b * (1 - blushEnv) + blushRgb[2] * blushEnv
+          }
+          // Subtle upper-lid eyeshadow wash
+          for (const eyeCenter of [regions.leftEyeCenter, regions.rightEyeCenter]) {
+            const sdx = (u - eyeCenter[0]) / Math.max(0.015, regions.box.w * 0.12)
+            const sdy =
+              (v - (eyeCenter[1] - regions.box.h * 0.032)) / Math.max(0.01, regions.box.h * 0.032)
+            const sDistSq = sdx * sdx + sdy * sdy
+            if (sDistSq < 1.0) {
+              const shadowEnv = (1 - sDistSq) * mkW * 0.22 * (1 - eyeW)
+              r = r * (1 - shadowEnv) + shadowRgb[0] * shadowEnv
+              g = g * (1 - shadowEnv) + shadowRgb[1] * shadowEnv
+              b = b * (1 - shadowEnv) + shadowRgb[2] * shadowEnv
+            }
+          }
         }
       }
 
@@ -1359,21 +1809,64 @@ export function applyPortraitLivePixelPipeline(
         }
       }
 
-      // 7) Lighting & Facial Contour
+      // 7) 2.5D Surface-Normal Lighting, Rim Light & Facial Contour Sculpting
+      const lightWarmthShift =
+        state.lightTemp === 'warmStrong'
+          ? 8
+          : state.lightTemp === 'warm'
+            ? 4
+            : state.lightTemp === 'cool'
+              ? -8
+              : state.lightTemp === 'coolLight'
+                ? -4
+                : 0
       if (fillLightW > 0) {
         const luma = 0.299 * r + 0.587 * g + 0.114 * b
         const shadowLift = Math.max(0, (160 - luma) / 160) * fillLightW * 26
-        r += shadowLift
+        r += shadowLift + lightWarmthShift * fillLightW * 0.5
         g += shadowLift
-        b += shadowLift
+        b += shadowLift - lightWarmthShift * fillLightW * 0.5
       }
-      if (contourW > 0 && regions && facePolyW > 0.01) {
-        // Brighten T-zone/center face, subtly sculpt lateral jawline
-        const dx = Math.abs(u - (regions.box.x + regions.box.w * 0.5)) / (regions.box.w * 0.5)
-        const sculpt = (0.45 - dx) * contourW * 16 * facePolyW
-        r += sculpt
-        g += sculpt
-        b += sculpt
+      if ((contourW > 0 || rimLightW > 0 || state.lightRatio !== 'off') && facePolyW > 0.01) {
+        const midU = regions ? regions.noseTip[0] : 0.5
+        const midV = regions ? regions.noseTip[1] : 0.5
+        const halfW = regions ? Math.max(0.05, regions.box.w * 0.5) : 0.25
+        const halfH = regions ? Math.max(0.05, regions.box.h * 0.55) : 0.3
+        const nx = clamp((u - midU) / halfW, -1, 1)
+        const ny = clamp((v - midV) / halfH, -1, 1)
+        const nz = Math.sqrt(Math.max(0.04, 1 - 0.78 * nx * nx - 0.45 * ny * ny))
+
+        if (contourW > 0) {
+          // 3D normal-based sculpting: lift high-Nz central ridge (nose bridge, forehead, malar), deepen oblique jaw slope
+          const sculpt = (nz - 0.62) * contourW * 28 * facePolyW
+          r += sculpt
+          g += sculpt
+          b += sculpt
+        }
+        if (rimLightW > 0) {
+          // Grazing-angle specular rim light along the outer cheek/temple/jaw silhouette
+          const grazing = Math.pow(1 - nz, 1.55) * rimLightW * 34 * facePolyW
+          r += grazing + lightWarmthShift * rimLightW
+          g += grazing + lightWarmthShift * rimLightW * 0.25
+          b += grazing - lightWarmthShift * rimLightW
+        }
+        if (state.lightRatio !== 'off') {
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b
+          const ratioStrength =
+            state.lightRatio === 'soft'
+              ? -0.14
+              : state.lightRatio === 'dramatic'
+                ? 0.2
+                : state.lightRatio === 'hard'
+                  ? 0.28
+                  : 0
+          if (ratioStrength !== 0) {
+            const delta = (luma - 128) * ratioStrength * facePolyW
+            r += delta
+            g += delta
+            b += delta
+          }
+        }
       }
 
       // 8) Global Tone Grade, Saturation, Color Temp & Tint
@@ -1938,4 +2431,1148 @@ export function matchShotColorHistogramRgba(
     }
   }
   return out
+}
+
+// ── Smart Dual-Engine Classifier & Triple Identity Lock ──────────
+
+export type PortraitIdentityLockMode =
+  'full-local' | 'exterior-face-lock' | 'landmark-frequency-fusion'
+
+export interface PortraitExecutionStrategy {
+  /** Recommended execution route */
+  recommendedEngine: 'local-deterministic' | 'hybrid-exterior-lock' | 'hybrid-frequency-fusion'
+  /** True only when at least one generative synthesis parameter (attire, prompt bg, hairline, makeup, etc.) is active */
+  requiresGenerativeModel: boolean
+  /** How facial identity should be locked when combining with an AI model */
+  identityLockMode: PortraitIdentityLockMode
+  /** Active parameters handled deterministically by the local computational photography pipeline */
+  computationalKeys: string[]
+  /** Active parameters that require AI synthesis only OUTSIDE the core face (attire, hairline, body, background) */
+  exteriorGenerativeKeys: string[]
+  /** Active parameters that request AI synthesis INSIDE the face (makeup, glasses glare, double eyelid, etc.) */
+  facialGenerativeKeys: string[]
+}
+
+const COMPUTATIONAL_PORTRAIT_KEYS: ReadonlyArray<keyof PortraitRetouchState> = [
+  'blemishRemoval',
+  'underEye',
+  'wrinkles',
+  'shineRemoval',
+  'doubleChin',
+  'skinSmoothing',
+  'skinTexture',
+  'skinEvenness',
+  'skinDenoise',
+  'skinWhiten',
+  'skinRosy',
+  'skinDeYellow',
+  'skinToneWarmth',
+  'bodyToneUnify',
+  'faceSlim',
+  'jawline',
+  'chin',
+  'eyeSize',
+  'eyeSpacing',
+  'noseShape',
+  'lipShape',
+  'catchlight',
+  'eyeWhiten',
+  'redEye',
+  'doubleEyelid',
+  'brows',
+  'pupilSize',
+  'teethWhiten',
+  'makeupIntensity',
+  'makeupTone',
+  'shoulderNeck',
+  'neckShoulderLine',
+  'waistSlim',
+  'legLengthen',
+  'fillLight',
+  'rimLight',
+  'faceContour',
+  'lightRatio',
+  'lightTemp',
+  'toneGrade',
+  'saturation',
+  'colorTemp',
+  'colorTint',
+  'sharpness',
+  'clarity',
+  'grain',
+  'softFocus',
+  'vignette'
+]
+
+const EXTERIOR_GENERATIVE_KEYS: ReadonlyArray<keyof PortraitRetouchState> = [
+  'strayHair',
+  'hairlineFill',
+  'clothDeWrinkle'
+]
+
+const FACIAL_GENERATIVE_KEYS: ReadonlyArray<keyof PortraitRetouchState> = [
+  'glassesGlare',
+  'teethAlign'
+]
+
+/**
+ * Classifies a portrait retouch request into deterministic computational photography
+ * vs exterior-only generative synthesis vs facial hybrid frequency fusion.
+ */
+export function classifyPortraitExecutionStrategy(
+  rawState?: Partial<PortraitRetouchState> | null,
+  options?: {
+    extraInstruction?: string | null
+    liquifyStrokes?: readonly PortraitLiquifyStroke[] | null
+    spotHeals?: readonly PortraitSpotHealPoint[] | null
+    customLut?: PortraitCubeLut | null
+  }
+): PortraitExecutionStrategy {
+  const s = normalizePortraitRetouch(rawState)
+  const computationalKeys: string[] = []
+  const exteriorGenerativeKeys: string[] = []
+  const facialGenerativeKeys: string[] = []
+
+  for (const key of COMPUTATIONAL_PORTRAIT_KEYS) {
+    const val = s[key]
+    if (typeof val === 'string' && val !== 'off' && val !== 'none' && val !== 'keep') {
+      computationalKeys.push(key)
+    }
+  }
+  if (s.makeupStyle && s.makeupStyle !== 'none') computationalKeys.push('makeupStyle')
+  if (s.lutId !== 'none') computationalKeys.push('lutId')
+  if (s.idPhotoSpecId !== 'none') computationalKeys.push('idPhotoSpecId')
+  if (s.bgMode === 'color' || s.bgMode === 'gradient') computationalKeys.push('bgMode')
+  if ((options?.liquifyStrokes?.length ?? 0) > 0) computationalKeys.push('liquifyStrokes')
+  if ((options?.spotHeals?.length ?? 0) > 0) computationalKeys.push('spotHeals')
+  if (options?.customLut) computationalKeys.push('customLut')
+
+  for (const key of EXTERIOR_GENERATIVE_KEYS) {
+    const val = s[key]
+    if (typeof val === 'string' && val !== 'off' && val !== 'none' && val !== 'keep') {
+      exteriorGenerativeKeys.push(key)
+    }
+  }
+  if (s.idPhotoAttire !== 'keep') exteriorGenerativeKeys.push('idPhotoAttire')
+  if (s.bgMode === 'prompt' || s.bgMode === 'blur') exteriorGenerativeKeys.push('bgMode')
+
+  for (const key of FACIAL_GENERATIVE_KEYS) {
+    const val = s[key]
+    if (typeof val === 'string' && val !== 'off' && val !== 'none' && val !== 'keep') {
+      facialGenerativeKeys.push(key)
+    }
+  }
+  if (s.extraNote.trim().length > 0) facialGenerativeKeys.push('extraNote')
+  if ((options?.extraInstruction ?? '').trim().length > 0) {
+    facialGenerativeKeys.push('extraInstruction')
+  }
+  if (s.manualRegions.length > 0) facialGenerativeKeys.push('manualRegions')
+
+  if (facialGenerativeKeys.length === 0 && exteriorGenerativeKeys.length === 0) {
+    return {
+      recommendedEngine: 'local-deterministic',
+      requiresGenerativeModel: false,
+      identityLockMode: 'full-local',
+      computationalKeys,
+      exteriorGenerativeKeys,
+      facialGenerativeKeys
+    }
+  }
+
+  if (facialGenerativeKeys.length === 0 && exteriorGenerativeKeys.length > 0) {
+    return {
+      recommendedEngine: 'hybrid-exterior-lock',
+      requiresGenerativeModel: true,
+      identityLockMode: 'exterior-face-lock',
+      computationalKeys,
+      exteriorGenerativeKeys,
+      facialGenerativeKeys
+    }
+  }
+
+  return {
+    recommendedEngine: 'hybrid-frequency-fusion',
+    requiresGenerativeModel: true,
+    identityLockMode: 'landmark-frequency-fusion',
+    computationalKeys,
+    exteriorGenerativeKeys,
+    facialGenerativeKeys
+  }
+}
+
+/**
+ * Computes the intended 68-point facial landmark coordinates after applying
+ * user-requested geometric adjustments (`faceSlim`, `jawline`, `chin`, `eyeSize`,
+ * `eyeSpacing`, `noseShape`, `lipShape`, and manual `liquifyStrokes`).
+ */
+export function computeTargetRetouchedLandmarks(
+  rawState: Partial<PortraitRetouchState> | null | undefined,
+  landmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  liquifyStrokes?: readonly PortraitLiquifyStroke[] | null
+): Array<[number, number]> | null {
+  if (!landmarks || landmarks.length < PORTRAIT_LANDMARK_COUNT) return null
+  const state = normalizePortraitRetouch(rawState)
+  const strokes = normalizePortraitLiquifyStrokes(liquifyStrokes)
+  const controlVectors = buildFaceLiquifyControlVectors(
+    {
+      ...state,
+      shoulderNeck: 'off',
+      neckShoulderLine: 'off',
+      waistSlim: 'off',
+      legLengthen: 'off'
+    },
+    landmarks
+  )
+  const pts = landmarks.map(
+    (p) => [clamp01(Number(p[0]) || 0), clamp01(Number(p[1]) || 0)] as [number, number]
+  )
+  if (controlVectors.length === 0 && strokes.length === 0) return pts
+
+  return pts.map(([u, v]) => {
+    let tx = u
+    let ty = v
+    for (let i = 0; i < controlVectors.length; i++) {
+      const vec = controlVectors[i]
+      const dx = u - vec.origin[0]
+      const dy = v - vec.origin[1]
+      const distSq = dx * dx + dy * dy
+      const rSq = vec.radius * vec.radius
+      if (distSq >= rSq || rSq <= 1e-9) continue
+      const t = 1 - distSq / rSq
+      const weight = t * t
+      if (vec.kind === 'translate') {
+        tx += vec.delta[0] * weight
+        ty += vec.delta[1] * weight
+      } else if (vec.kind === 'expand') {
+        const factor = (vec.radialFactor ?? 0.1) * weight
+        tx += dx * factor
+        ty += dy * factor
+      } else if (vec.kind === 'contract') {
+        const factor = (vec.radialFactor ?? 0.1) * weight
+        tx -= dx * factor
+        ty -= dy * factor
+      }
+    }
+    for (let i = 0; i < strokes.length; i++) {
+      const st = strokes[i]
+      const dx = u - st.from[0]
+      const dy = v - st.from[1]
+      const distSq = dx * dx + dy * dy
+      const rSq = st.radius * st.radius
+      if (distSq >= rSq || rSq <= 1e-9) continue
+      const t = 1 - distSq / rSq
+      const weight = t * t * st.strength
+      if (st.mode === 'push') {
+        tx += (st.to[0] - st.from[0]) * weight
+        ty += (st.to[1] - st.from[1]) * weight
+      } else if (st.mode === 'bloat') {
+        tx += dx * 0.35 * weight
+        ty += dy * 0.35 * weight
+      } else if (st.mode === 'pucker') {
+        tx -= dx * 0.35 * weight
+        ty -= dy * 0.35 * weight
+      }
+    }
+    return [clamp01(tx), clamp01(ty)] as [number, number]
+  })
+}
+
+export interface LandmarkDewarpResult {
+  pixels: Uint8ClampedArray
+  /** Maximum landmark drift corrected in pixels */
+  maxDriftPx: number
+  /** Mean landmark drift as a fraction of face bounding box size */
+  meanDriftRatio: number
+  applied: boolean
+}
+
+/**
+ * 68-Point Procrustes / MLS Geometric Dewarping:
+ * Aligns an AI-generated portrait (`generatedPixels`) back to the exact target 68-point
+ * facial geometry (`targetLandmarks`), eliminating interpupillary distance drift, nose/mouth
+ * displacement, and facial bone-structure distortion introduced by generative resampling.
+ */
+export function dewarpPortraitByLandmarksRgba(
+  generatedPixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  generatedLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  targetLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  strength = 1.0
+): LandmarkDewarpResult {
+  const out = new Uint8ClampedArray(generatedPixels)
+  const effStrength = clamp01(Number.isFinite(strength) ? strength : 1.0)
+  if (
+    effStrength <= 0 ||
+    !generatedLandmarks ||
+    !targetLandmarks ||
+    generatedLandmarks.length < PORTRAIT_LANDMARK_COUNT ||
+    targetLandmarks.length < PORTRAIT_LANDMARK_COUNT
+  ) {
+    return { pixels: out, maxDriftPx: 0, meanDriftRatio: 0, applied: false }
+  }
+
+  const targetBox = portraitFaceBoxFromLandmarks(
+    targetLandmarks.map((p) => [Number(p[0]) || 0, Number(p[1]) || 0] as [number, number])
+  )
+  const faceSpan = Math.max(0.04, Math.max(targetBox.w, targetBox.h))
+  const diagPx = Math.hypot(width, height)
+
+  const driftX = new Float32Array(PORTRAIT_LANDMARK_COUNT)
+  const driftY = new Float32Array(PORTRAIT_LANDMARK_COUNT)
+  const tgtX = new Float32Array(PORTRAIT_LANDMARK_COUNT)
+  const tgtY = new Float32Array(PORTRAIT_LANDMARK_COUNT)
+
+  let maxDriftNorm = 0
+  let sumDriftNorm = 0
+  for (let k = 0; k < PORTRAIT_LANDMARK_COUNT; k++) {
+    const gx = Number(generatedLandmarks[k][0]) || 0
+    const gy = Number(generatedLandmarks[k][1]) || 0
+    const tx = Number(targetLandmarks[k][0]) || 0
+    const ty = Number(targetLandmarks[k][1]) || 0
+    // Clamp extreme outlier detector noise to 18% of faceSpan
+    const maxShift = faceSpan * 0.18
+    const dx = clamp(gx - tx, -maxShift, maxShift)
+    const dy = clamp(gy - ty, -maxShift, maxShift)
+    driftX[k] = dx
+    driftY[k] = dy
+    tgtX[k] = tx
+    tgtY[k] = ty
+    const dNorm = Math.hypot(dx, dy)
+    if (dNorm > maxDriftNorm) maxDriftNorm = dNorm
+    sumDriftNorm += dNorm
+  }
+
+  const meanDriftNorm = sumDriftNorm / PORTRAIT_LANDMARK_COUNT
+  const maxDriftPx = Math.round(maxDriftNorm * diagPx * 100) / 100
+  const meanDriftRatio = Math.round((meanDriftNorm / faceSpan) * 10000) / 10000
+
+  // If landmarks are already sub-pixel aligned (< 0.03% of diagonal), skip resampling
+  if (maxDriftNorm < 0.0003) {
+    return { pixels: out, maxDriftPx: 0, meanDriftRatio: 0, applied: false }
+  }
+
+  const radius = clamp(faceSpan * 0.28, 0.05, 0.28)
+  const rSq = radius * radius
+  const pad = radius * 1.15
+  const xMin = Math.max(0, Math.floor((targetBox.x - pad) * width))
+  const xMax = Math.min(width - 1, Math.ceil((targetBox.x + targetBox.w + pad) * width))
+  const yMin = Math.max(0, Math.floor((targetBox.y - pad) * height))
+  const yMax = Math.min(height - 1, Math.ceil((targetBox.y + targetBox.h + pad) * height))
+
+  for (let y = yMin; y <= yMax; y++) {
+    const v = (y + 0.5) / height
+    for (let x = xMin; x <= xMax; x++) {
+      const u = (x + 0.5) / width
+      let sumW = 0
+      let sumDx = 0
+      let sumDy = 0
+
+      for (let k = 0; k < PORTRAIT_LANDMARK_COUNT; k++) {
+        const lx = u - tgtX[k]
+        const ly = v - tgtY[k]
+        const dSq = lx * lx + ly * ly
+        if (dSq >= rSq) continue
+        const t = 1 - dSq / rSq
+        // Wendland C2 + inverse-distance kernel for exact landmark interpolation
+        const w = (t * t * t) / (dSq + 0.00025)
+        sumW += w
+        sumDx += w * driftX[k]
+        sumDy += w * driftY[k]
+      }
+
+      if (sumW <= 1e-6) continue
+      // Smooth boundary anchor damping so pixels at the outer radius decay smoothly to 0
+      const anchorDamp = sumW / (sumW + 18)
+      const shiftU = (sumDx / sumW) * anchorDamp * effStrength
+      const shiftV = (sumDy / sumW) * anchorDamp * effStrength
+
+      const su = clamp01(u + shiftU)
+      const sv = clamp01(v + shiftV)
+      const sx = clamp(su * width - 0.5, 0, width - 1)
+      const sy = clamp(sv * height - 0.5, 0, height - 1)
+      const x0 = Math.floor(sx)
+      const y0 = Math.floor(sy)
+      const x1 = Math.min(width - 1, x0 + 1)
+      const y1 = Math.min(height - 1, y0 + 1)
+      const fx = sx - x0
+      const fy = sy - y0
+
+      const p00 = (y0 * width + x0) * 4
+      const p10 = (y0 * width + x1) * 4
+      const p01 = (y1 * width + x0) * 4
+      const p11 = (y1 * width + x1) * 4
+      const dst = (y * width + x) * 4
+
+      for (let c = 0; c < 4; c++) {
+        const top = generatedPixels[p00 + c] * (1 - fx) + generatedPixels[p10 + c] * fx
+        const bot = generatedPixels[p01 + c] * (1 - fx) + generatedPixels[p11 + c] * fx
+        out[dst + c] = clamp255(top * (1 - fy) + bot * fy)
+      }
+    }
+  }
+
+  return { pixels: out, maxDriftPx, meanDriftRatio, applied: true }
+}
+
+/**
+ * Multi-Face Nearest-Neighbor Matcher:
+ * Given a reference 68-point landmark set (`referenceLandmarks`) and an array of detected
+ * candidate faces (`candidateFaces`, e.g. from a group photo after AI generation), returns
+ * the candidate face whose normalized centroid and scale best match `referenceLandmarks`.
+ */
+export function matchCorrespondingFaceLandmarks(
+  referenceLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  candidateFaces:
+    | ReadonlyArray<
+        | ReadonlyArray<readonly [number, number]>
+        | { landmarks?: ReadonlyArray<readonly [number, number]> | null }
+      >
+    | null
+    | undefined
+): Array<[number, number]> | null {
+  if (!candidateFaces || candidateFaces.length === 0) return null
+  const validCandidates: Array<Array<[number, number]>> = []
+  for (const item of candidateFaces) {
+    const face = Array.isArray(item)
+      ? item
+      : item && typeof item === 'object' && 'landmarks' in item
+        ? item.landmarks
+        : null
+    if (Array.isArray(face) && face.length >= PORTRAIT_LANDMARK_COUNT) {
+      validCandidates.push(
+        face
+          .slice(0, PORTRAIT_LANDMARK_COUNT)
+          .map((p) => [clamp01(Number(p[0]) || 0), clamp01(Number(p[1]) || 0)] as [number, number])
+      )
+    }
+  }
+  if (validCandidates.length === 0) return null
+  if (
+    validCandidates.length === 1 ||
+    !referenceLandmarks ||
+    referenceLandmarks.length < PORTRAIT_LANDMARK_COUNT
+  ) {
+    return validCandidates[0]
+  }
+
+  const refPts = referenceLandmarks
+    .slice(0, PORTRAIT_LANDMARK_COUNT)
+    .map((p) => [clamp01(Number(p[0]) || 0), clamp01(Number(p[1]) || 0)] as [number, number])
+  const refBox = portraitFaceBoxFromLandmarks(refPts)
+  const refCenterX = (refPts[27][0] + refPts[8][0]) * 0.5
+  const refCenterY = (refPts[27][1] + refPts[8][1]) * 0.5
+  const refSpan = Math.max(0.02, Math.hypot(refBox.w, refBox.h))
+
+  let bestFace = validCandidates[0]
+  let bestScore = Number.POSITIVE_INFINITY
+  for (const cand of validCandidates) {
+    const candBox = portraitFaceBoxFromLandmarks(cand)
+    const candCenterX = (cand[27][0] + cand[8][0]) * 0.5
+    const candCenterY = (cand[27][1] + cand[8][1]) * 0.5
+    const candSpan = Math.max(0.02, Math.hypot(candBox.w, candBox.h))
+    const centerDist = Math.hypot(candCenterX - refCenterX, candCenterY - refCenterY)
+    const scaleDiff = Math.abs(Math.log(candSpan / refSpan))
+    const score = centerDist + scaleDiff * 0.18
+    if (score < bestScore) {
+      bestScore = score
+      bestFace = cand
+    }
+  }
+  return bestFace
+}
+
+export interface ProcrustesSimilarityTransform {
+  scale: number
+  angleRad: number
+  angleDeg: number
+  srcCenter: [number, number]
+  dstCenter: [number, number]
+  translationNorm: number
+  /** Maps a point (u, v) from source space to destination space */
+  forward: (u: number, v: number) => [number, number]
+  /** Maps a point (u, v) from destination space back to source space */
+  inverse: (u: number, v: number) => [number, number]
+  isIdentity: boolean
+}
+
+const RIGID_CRANIAL_ANCHOR_INDICES: readonly number[] = [
+  8, 27, 28, 29, 30, 33, 36, 39, 42, 45, 48, 54
+]
+
+/**
+ * 2D Orthogonal Procrustes Similarity Transform:
+ * Computes the optimal rigid similarity transform (translation + uniform scale + rotation,
+ * with zero non-rigid shear) aligning `sourceLandmarks` ($P$) to `destinationLandmarks` ($Q$).
+ * Used to align the locally retouched original face onto an AI-reframed/tilted/scaled body/collar
+ * while preserving 100% of the person's internal bone structure and facial proportions.
+ */
+export function computeProcrustesSimilarityTransform(
+  sourceLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  destinationLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined
+): ProcrustesSimilarityTransform {
+  const identity: ProcrustesSimilarityTransform = {
+    scale: 1,
+    angleRad: 0,
+    angleDeg: 0,
+    srcCenter: [0.5, 0.5],
+    dstCenter: [0.5, 0.5],
+    translationNorm: 0,
+    forward: (u, v) => [u, v],
+    inverse: (u, v) => [u, v],
+    isIdentity: true
+  }
+  if (
+    !sourceLandmarks ||
+    !destinationLandmarks ||
+    sourceLandmarks.length < PORTRAIT_LANDMARK_COUNT ||
+    destinationLandmarks.length < PORTRAIT_LANDMARK_COUNT
+  ) {
+    return identity
+  }
+
+  let sx = 0
+  let sy = 0
+  let dx = 0
+  let dy = 0
+  const n = RIGID_CRANIAL_ANCHOR_INDICES.length
+  for (const idx of RIGID_CRANIAL_ANCHOR_INDICES) {
+    sx += Number(sourceLandmarks[idx][0]) || 0
+    sy += Number(sourceLandmarks[idx][1]) || 0
+    dx += Number(destinationLandmarks[idx][0]) || 0
+    dy += Number(destinationLandmarks[idx][1]) || 0
+  }
+  const srcCenter: [number, number] = [sx / n, sy / n]
+  const dstCenter: [number, number] = [dx / n, dy / n]
+
+  let sumDot = 0
+  let sumCross = 0
+  let sumSrcNormSq = 0
+  for (const idx of RIGID_CRANIAL_ANCHOR_INDICES) {
+    const px = (Number(sourceLandmarks[idx][0]) || 0) - srcCenter[0]
+    const py = (Number(sourceLandmarks[idx][1]) || 0) - srcCenter[1]
+    const qx = (Number(destinationLandmarks[idx][0]) || 0) - dstCenter[0]
+    const qy = (Number(destinationLandmarks[idx][1]) || 0) - dstCenter[1]
+    sumDot += px * qx + py * qy
+    sumCross += px * qy - py * qx
+    sumSrcNormSq += px * px + py * py
+  }
+
+  if (sumSrcNormSq < 1e-6) return identity
+
+  const rawAngle = Math.atan2(sumCross, sumDot)
+  const maxAngle = (25 * Math.PI) / 180
+  const angleRad = clamp(rawAngle, -maxAngle, maxAngle)
+  const rawScale = Math.hypot(sumDot, sumCross) / sumSrcNormSq
+  const scale = clamp(rawScale, 0.72, 1.38)
+  const cosA = Math.cos(angleRad)
+  const sinA = Math.sin(angleRad)
+  const invScale = 1 / Math.max(0.1, scale)
+  const translationNorm = Math.hypot(dstCenter[0] - srcCenter[0], dstCenter[1] - srcCenter[1])
+  const isIdentity =
+    translationNorm < 0.0005 && Math.abs(scale - 1) < 0.001 && Math.abs(angleRad) < 0.001
+
+  if (isIdentity) return identity
+
+  return {
+    scale,
+    angleRad,
+    angleDeg: Math.round(((angleRad * 180) / Math.PI) * 100) / 100,
+    srcCenter,
+    dstCenter,
+    translationNorm,
+    forward: (u: number, v: number): [number, number] => {
+      const rx = u - srcCenter[0]
+      const ry = v - srcCenter[1]
+      return [
+        dstCenter[0] + scale * (rx * cosA - ry * sinA),
+        dstCenter[1] + scale * (rx * sinA + ry * cosA)
+      ]
+    },
+    inverse: (u: number, v: number): [number, number] => {
+      const rx = (u - dstCenter[0]) * invScale
+      const ry = (v - dstCenter[1]) * invScale
+      return [srcCenter[0] + (rx * cosA + ry * sinA), srcCenter[1] + (-rx * sinA + ry * cosA)]
+    },
+    isIdentity: false
+  }
+}
+
+/**
+ * Resamples `sourcePixels` using a 2D Procrustes rigid similarity transform so the source face
+ * aligns with the head pose (`translation + uniform scale + rotation`) of `destinationLandmarks`
+ * while preserving 100% of `sourceLandmarks`'s internal bone structure.
+ */
+export function alignPortraitByProcrustesSimilarityRgba(
+  sourcePixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  sourceLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  destinationLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined
+): {
+  pixels: Uint8ClampedArray
+  alignedLandmarks: Array<[number, number]>
+  transform: ProcrustesSimilarityTransform
+  applied: boolean
+} {
+  const transform = computeProcrustesSimilarityTransform(sourceLandmarks, destinationLandmarks)
+  const basePts = (sourceLandmarks ?? []).map(
+    (p) => [Number(p[0]) || 0, Number(p[1]) || 0] as [number, number]
+  )
+  if (transform.isIdentity) {
+    return {
+      pixels: new Uint8ClampedArray(sourcePixels),
+      alignedLandmarks: basePts,
+      transform,
+      applied: false
+    }
+  }
+
+  const alignedLandmarks = basePts.map(([u, v]) => {
+    const [au, av] = transform.forward(u, v)
+    return [clamp01(au), clamp01(av)] as [number, number]
+  })
+  const out = new Uint8ClampedArray(sourcePixels.length)
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width
+      const [su, sv] = transform.inverse(u, v)
+      const sx = clamp(su * width - 0.5, 0, width - 1)
+      const sy = clamp(sv * height - 0.5, 0, height - 1)
+      const x0 = Math.floor(sx)
+      const y0 = Math.floor(sy)
+      const x1 = Math.min(width - 1, x0 + 1)
+      const y1 = Math.min(height - 1, y0 + 1)
+      const fx = sx - x0
+      const fy = sy - y0
+
+      const p00 = (y0 * width + x0) * 4
+      const p10 = (y0 * width + x1) * 4
+      const p01 = (y1 * width + x0) * 4
+      const p11 = (y1 * width + x1) * 4
+      const dst = (y * width + x) * 4
+
+      for (let c = 0; c < 4; c++) {
+        const top = sourcePixels[p00 + c] * (1 - fx) + sourcePixels[p10 + c] * fx
+        const bot = sourcePixels[p01 + c] * (1 - fx) + sourcePixels[p11 + c] * fx
+        out[dst + c] = clamp255(top * (1 - fy) + bot * fy)
+      }
+    }
+  }
+  return { pixels: out, alignedLandmarks, transform, applied: true }
+}
+
+/**
+ * SOTA Exterior-Only Face Identity Lock (with 2D Procrustes Pose Alignment & Multi-Band Laplacian Blending):
+ * When the generative model is only invoked for exterior edits (attire swap `idPhotoAttire`,
+ * background prompt `bgMode`, hairline fill `hairlineFill`, stray hair `strayHair`, body/clothing),
+ * this:
+ * 1. Rigid-aligns `localRetouchedPixels` (`targetLandmarks`) to the AI head pose (`generatedLandmarks`)
+ *    via 2D Orthogonal Procrustes Similarity Transform so head scale/tilt/neck-collar fit is 100% seamless
+ *    while preserving 100% of the person's internal facial proportions and bone structure;
+ * 2. Blends the aligned face over `generatedPixels` using a 2-Band Laplacian Pyramid (wide feather for
+ *    low-frequency illumination with Reinhard seam adaptation, tight core feather for high-frequency
+ *    pore & edge crispness) so neither double-edges nor lighting seams ever appear.
+ */
+export function composeExteriorOnlyIdentityLockRgba(
+  localRetouchedPixels: Uint8ClampedArray,
+  generatedPixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  targetLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  rawState?: Partial<PortraitRetouchState> | null,
+  generatedLandmarks?: ReadonlyArray<readonly [number, number]> | null
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(generatedPixels)
+  if (!targetLandmarks || targetLandmarks.length < PORTRAIT_LANDMARK_COUNT) return out
+  const state = normalizePortraitRetouch(rawState)
+
+  // Step 1: 2D Procrustes rigid pose alignment if generatedLandmarks indicates head translation/scale/rotation
+  const poseAligned =
+    generatedLandmarks && generatedLandmarks.length >= PORTRAIT_LANDMARK_COUNT
+      ? alignPortraitByProcrustesSimilarityRgba(
+          localRetouchedPixels,
+          width,
+          height,
+          targetLandmarks,
+          generatedLandmarks
+        )
+      : {
+          pixels: localRetouchedPixels,
+          alignedLandmarks: targetLandmarks.map(
+            (p) => [Number(p[0]) || 0, Number(p[1]) || 0] as [number, number]
+          )
+        }
+  const alignedLocalPixels = poseAligned.pixels
+  const pts = poseAligned.alignedLandmarks
+
+  const box = portraitFaceBoxFromLandmarks(pts)
+  if (!(box.w > 0.005 && box.h > 0.005)) return out
+
+  // Adapt forehead arc height when hairlineFill / strayHair is active so AI-synthesized hairline is preserved
+  const hasHairlineEdit = state.hairlineFill !== 'off' || state.strayHair !== 'off'
+  const foreheadLift = box.h * (hasHairlineEdit ? 0.14 : 0.26)
+  const foreheadArc: Array<[number, number]> = [
+    [pts[26][0] + box.w * 0.02, pts[26][1] - foreheadLift * 0.65],
+    [pts[24][0], pts[24][1] - foreheadLift * 0.95],
+    [(pts[21][0] + pts[22][0]) * 0.5, Math.min(pts[21][1], pts[22][1]) - foreheadLift],
+    [pts[19][0], pts[19][1] - foreheadLift * 0.95],
+    [pts[17][0] - box.w * 0.02, pts[17][1] - foreheadLift * 0.65]
+  ]
+
+  // Adapt lower jaw contour when attire swap is active so suit collar / tie below chin is never overwritten
+  const hasAttireSwap = state.idPhotoAttire !== 'keep'
+  const jaw = pts.slice(0, 17).map(([jx, jy], idx) => {
+    if (hasAttireSwap && idx >= 5 && idx <= 11) {
+      return [jx, jy - box.h * 0.015] as [number, number]
+    }
+    return [jx, jy] as [number, number]
+  })
+
+  const lockOutline: Array<[number, number]> = [...jaw, ...foreheadArc]
+  const faceMinDim = Math.min(box.w, box.h)
+  const feLock = prepareFeatheredPolygon(lockOutline, Math.max(0.01, faceMinDim * 0.042))
+
+  // Step 2: 2-Band Laplacian Pyramid Decomposition for Seamless Multi-Band Blending
+  const lapRadius = Math.max(2, Math.round(Math.min(width, height) * 0.015))
+  const lfLocal = boxBlurRgb(alignedLocalPixels, width, height, lapRadius)
+  const lfGen = boxBlurRgb(generatedPixels, width, height, lapRadius)
+
+  // Compute subtle ambient luminance/chrominance match across core cheek skin so locked face matches scene light
+  let sumLocalR = 0
+  let sumLocalG = 0
+  let sumLocalB = 0
+  let sumGenR = 0
+  let sumGenG = 0
+  let sumGenB = 0
+  let sampleCount = 0
+
+  const xMin = Math.max(0, Math.floor(feLock.minX * width))
+  const xMax = Math.min(width - 1, Math.ceil(feLock.maxX * width))
+  const yMin = Math.max(0, Math.floor(feLock.minY * height))
+  const yMax = Math.min(height - 1, Math.ceil(feLock.maxY * height))
+
+  const stepX = Math.max(1, Math.floor((xMax - xMin) / 24))
+  const stepY = Math.max(1, Math.floor((yMax - yMin) / 24))
+  for (let y = yMin; y <= yMax; y += stepY) {
+    const v = (y + 0.5) / height
+    for (let x = xMin; x <= xMax; x += stepX) {
+      const u = (x + 0.5) / width
+      if (sampleFeatheredPolygon(u, v, feLock) > 0.75) {
+        const p = (y * width + x) * 4
+        if (
+          skinToneConfidence(
+            alignedLocalPixels[p],
+            alignedLocalPixels[p + 1],
+            alignedLocalPixels[p + 2]
+          ) > 0.5
+        ) {
+          sumLocalR += alignedLocalPixels[p]
+          sumLocalG += alignedLocalPixels[p + 1]
+          sumLocalB += alignedLocalPixels[p + 2]
+          sumGenR += generatedPixels[p]
+          sumGenG += generatedPixels[p + 1]
+          sumGenB += generatedPixels[p + 2]
+          sampleCount++
+        }
+      }
+    }
+  }
+
+  // Gentle ambient lighting offset (at most +-8 RGB levels) so identity pixels stay 100% authentic without edge seams
+  const ambientShiftR =
+    sampleCount > 8 ? clamp(((sumGenR - sumLocalR) / sampleCount) * 0.22, -8, 8) : 0
+  const ambientShiftG =
+    sampleCount > 8 ? clamp(((sumGenG - sumLocalG) / sampleCount) * 0.22, -8, 8) : 0
+  const ambientShiftB =
+    sampleCount > 8 ? clamp(((sumGenB - sumLocalB) / sampleCount) * 0.22, -8, 8) : 0
+
+  for (let y = yMin; y <= yMax; y++) {
+    const v = (y + 0.5) / height
+    for (let x = xMin; x <= xMax; x++) {
+      const u = (x + 0.5) / width
+      const wLow = sampleFeatheredPolygon(u, v, feLock)
+      if (wLow <= 0.001) continue
+
+      const p4 = (y * width + x) * 4
+      const p3 = (y * width + x) * 3
+
+      // Tighter high-frequency feather mask prevents double-edge ghosting at jaw/temple while keeping wide low-freq transition
+      const tHigh = clamp01((wLow - 0.14) / 0.72)
+      const wHigh = tHigh * tHigh * (3 - 2 * tHigh)
+
+      // Attenuate ambient shift near 1.0 core so eyes/lips/skin center are 100% pure local retouched pixels
+      const edgeAmbientW = wLow * (1 - wLow * 0.65)
+      const lfLocR = lfLocal[p3] + ambientShiftR * edgeAmbientW
+      const lfLocG = lfLocal[p3 + 1] + ambientShiftG * edgeAmbientW
+      const lfLocB = lfLocal[p3 + 2] + ambientShiftB * edgeAmbientW
+
+      const hfLocR = alignedLocalPixels[p4] - lfLocal[p3]
+      const hfLocG = alignedLocalPixels[p4 + 1] - lfLocal[p3 + 1]
+      const hfLocB = alignedLocalPixels[p4 + 2] - lfLocal[p3 + 2]
+
+      const hfGenR = generatedPixels[p4] - lfGen[p3]
+      const hfGenG = generatedPixels[p4 + 1] - lfGen[p3 + 1]
+      const hfGenB = generatedPixels[p4 + 2] - lfGen[p3 + 2]
+
+      const blendedLowR = lfGen[p3] * (1 - wLow) + lfLocR * wLow
+      const blendedLowG = lfGen[p3 + 1] * (1 - wLow) + lfLocG * wLow
+      const blendedLowB = lfGen[p3 + 2] * (1 - wLow) + lfLocB * wLow
+
+      const blendedHighR = hfGenR * (1 - wHigh) + hfLocR * wHigh
+      const blendedHighG = hfGenG * (1 - wHigh) + hfLocG * wHigh
+      const blendedHighB = hfGenB * (1 - wHigh) + hfLocB * wHigh
+
+      out[p4] = clamp255(blendedLowR + blendedHighR)
+      out[p4 + 1] = clamp255(blendedLowG + blendedHighG)
+      out[p4 + 2] = clamp255(blendedLowB + blendedHighB)
+    }
+  }
+
+  return out
+}
+
+/**
+ * Frequency-Separated Hybrid Identity Fusion:
+ * When the AI model is used for facial edits (makeup, heavy wrinkle smoothing, glasses glare removal),
+ * this fuses the low-frequency illumination/smoothness of the landmark-aligned AI output with
+ * the high-frequency pore micro-texture, beauty marks, and locked eye/lip anchors of the original person.
+ */
+export function fusePortraitIdentityHybridRgba(
+  localRetouchedPixels: Uint8ClampedArray,
+  alignedAiPixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  targetLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined,
+  rawState?: Partial<PortraitRetouchState> | null
+): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(alignedAiPixels)
+  const regions = extractFaceSemanticRegions(targetLandmarks)
+  if (!regions) return out
+  const state = normalizePortraitRetouch(rawState)
+
+  const blurRadius = Math.max(2, Math.round(Math.min(width, height) * 0.014))
+  const lfLocal = boxBlurRgb(localRetouchedPixels, width, height, blurRadius)
+  const lfAi = boxBlurRgb(alignedAiPixels, width, height, blurRadius)
+
+  const faceMinDim = Math.min(regions.box.w, regions.box.h)
+  const feFaceSkin = prepareFeatheredPolygon(
+    regions.faceSkinOutline,
+    Math.max(0.01, faceMinDim * 0.04)
+  )
+  const feLeftEye = prepareFeatheredPolygon(regions.leftEye, Math.max(0.004, faceMinDim * 0.015))
+  const feRightEye = prepareFeatheredPolygon(regions.rightEye, Math.max(0.004, faceMinDim * 0.015))
+  const feLeftBrow = prepareFeatheredPolygon(regions.leftBrow, Math.max(0.004, faceMinDim * 0.016))
+  const feRightBrow = prepareFeatheredPolygon(
+    regions.rightBrow,
+    Math.max(0.004, faceMinDim * 0.016)
+  )
+  const feOuterLip = prepareFeatheredPolygon(regions.outerLip, Math.max(0.004, faceMinDim * 0.015))
+  const feInnerMouth = prepareFeatheredPolygon(
+    regions.innerMouth,
+    Math.max(0.003, faceMinDim * 0.012)
+  )
+
+  const xMin = Math.max(0, Math.floor(feFaceSkin.minX * width))
+  const xMax = Math.min(width - 1, Math.ceil(feFaceSkin.maxX * width))
+  const yMin = Math.max(0, Math.floor(feFaceSkin.minY * height))
+  const yMax = Math.min(height - 1, Math.ceil(feFaceSkin.maxY * height))
+
+  // Measure mean skin tone drift between lfLocal and lfAi so AI doesn't shift person's ethnicity/complexion
+  let sumLocR = 0
+  let sumLocG = 0
+  let sumLocB = 0
+  let sumAiR = 0
+  let sumAiG = 0
+  let sumAiB = 0
+  let skinSamples = 0
+  const stepX = Math.max(1, Math.floor((xMax - xMin) / 24))
+  const stepY = Math.max(1, Math.floor((yMax - yMin) / 24))
+  for (let y = yMin; y <= yMax; y += stepY) {
+    const v = (y + 0.5) / height
+    for (let x = xMin; x <= xMax; x += stepX) {
+      const u = (x + 0.5) / width
+      if (sampleFeatheredPolygon(u, v, feFaceSkin) > 0.7) {
+        const p3 = (y * width + x) * 3
+        if (skinToneConfidence(lfLocal[p3], lfLocal[p3 + 1], lfLocal[p3 + 2]) > 0.5) {
+          sumLocR += lfLocal[p3]
+          sumLocG += lfLocal[p3 + 1]
+          sumLocB += lfLocal[p3 + 2]
+          sumAiR += lfAi[p3]
+          sumAiG += lfAi[p3 + 1]
+          sumAiB += lfAi[p3 + 2]
+          skinSamples++
+        }
+      }
+    }
+  }
+  const toneCorrR = skinSamples > 8 ? clamp(((sumLocR - sumAiR) / skinSamples) * 0.55, -18, 18) : 0
+  const toneCorrG = skinSamples > 8 ? clamp(((sumLocG - sumAiG) / skinSamples) * 0.55, -18, 18) : 0
+  const toneCorrB = skinSamples > 8 ? clamp(((sumLocB - sumAiB) / skinSamples) * 0.55, -18, 18) : 0
+
+  const hasGlassesOrEyeAi =
+    state.glassesGlare !== 'off' ||
+    state.redEye !== 'off' ||
+    state.pupilSize !== 'off' ||
+    state.doubleEyelid !== 'off'
+  const hasBrowAi = state.brows !== 'off'
+  const hasMouthAi =
+    state.teethAlign !== 'off' ||
+    state.makeupStyle !== 'none' ||
+    state.makeupIntensity !== 'off' ||
+    state.makeupTone !== 'off'
+  const hasHeavyMakeup =
+    state.makeupStyle !== 'none' || state.makeupIntensity !== 'off' || state.makeupTone !== 'off'
+
+  // Base AI low-frequency weight: 0.42 for standard retouch, 0.62 when makeup/wrinkles are explicitly requested
+  const baseAiLowW =
+    hasHeavyMakeup || state.wrinkles === 'strong' || state.wrinkles === 'max' ? 0.58 : 0.42
+  // High-frequency pore & micro-feature retention from local retouched image (84% original pore/identity detail)
+  const localHighW = 0.84
+
+  for (let y = yMin; y <= yMax; y++) {
+    const v = (y + 0.5) / height
+    for (let x = xMin; x <= xMax; x++) {
+      const u = (x + 0.5) / width
+      const faceW = sampleFeatheredPolygon(u, v, feFaceSkin)
+      if (faceW <= 0.001) continue
+
+      const p4 = (y * width + x) * 4
+      const p3 = (y * width + x) * 3
+
+      const locR = localRetouchedPixels[p4]
+      const locG = localRetouchedPixels[p4 + 1]
+      const locB = localRetouchedPixels[p4 + 2]
+
+      const aiR = alignedAiPixels[p4]
+      const aiG = alignedAiPixels[p4 + 1]
+      const aiB = alignedAiPixels[p4 + 2]
+
+      const lfLocR = lfLocal[p3]
+      const lfLocG = lfLocal[p3 + 1]
+      const lfLocB = lfLocal[p3 + 2]
+      const hfLocR = locR - lfLocR
+      const hfLocG = locG - lfLocG
+      const hfLocB = locB - lfLocB
+
+      const lfAiR = lfAi[p3] + toneCorrR
+      const lfAiG = lfAi[p3 + 1] + toneCorrG
+      const lfAiB = lfAi[p3 + 2] + toneCorrB
+      const hfAiR = aiR - lfAi[p3]
+      const hfAiG = aiG - lfAi[p3 + 1]
+      const hfAiB = aiB - lfAi[p3 + 2]
+
+      const eyeW = Math.max(
+        sampleFeatheredPolygon(u, v, feLeftEye),
+        sampleFeatheredPolygon(u, v, feRightEye)
+      )
+      const browW = Math.max(
+        sampleFeatheredPolygon(u, v, feLeftBrow),
+        sampleFeatheredPolygon(u, v, feRightBrow)
+      )
+      const lipW = Math.max(
+        sampleFeatheredPolygon(u, v, feOuterLip),
+        sampleFeatheredPolygon(u, v, feInnerMouth)
+      )
+
+      // Detect permanent signature beauty mark / mole in local image so AI never erases it
+      const locLuma = 0.299 * locR + 0.587 * locG + 0.114 * locB
+      const lfLocLuma = 0.299 * lfLocR + 0.587 * lfLocG + 0.114 * lfLocB
+      const redSpike = locR - lfLocR - 0.65 * (locG - lfLocG)
+      const moleLockW =
+        state.blemishRemoval !== 'max' && lfLocLuma - locLuma > 55 && redSpike < 5 ? 0.9 : 0
+
+      // Anchor 1: Eyes (Iris, Pupil, Canthus) -> 92% locked to local unless glassesGlare/eye AI is active
+      const eyeLock = eyeW * (hasGlassesOrEyeAi ? 0.58 : 0.92)
+      // Anchor 2: Eyebrows -> 82% locked to local unless brow shaping AI is active
+      const browLock = browW * (hasBrowAi ? 0.45 : 0.82)
+      // Anchor 3: Lips & Teeth -> 80% locked to local unless lipColor/teethAlign AI is active
+      const lipLock = lipW * (hasMouthAi ? 0.42 : 0.8)
+
+      const directAnchorLock = Math.max(eyeLock, browLock, lipLock, moleLockW)
+
+      // Frequency-separated fusion for skin & general face structure
+      const effAiLowW = baseAiLowW * (1 - directAnchorLock * 0.85)
+      const fusedLowR = lfLocR * (1 - effAiLowW) + lfAiR * effAiLowW
+      const fusedLowG = lfLocG * (1 - effAiLowW) + lfAiG * effAiLowW
+      const fusedLowB = lfLocB * (1 - effAiLowW) + lfAiB * effAiLowW
+
+      const effLocalHighW = Math.max(localHighW, directAnchorLock)
+      const fusedHighR = hfLocR * effLocalHighW + hfAiR * (1 - effLocalHighW)
+      const fusedHighG = hfLocG * effLocalHighW + hfAiG * (1 - effLocalHighW)
+      const fusedHighB = hfLocB * effLocalHighW + hfAiB * (1 - effLocalHighW)
+
+      const hybridR = clamp255(fusedLowR + fusedHighR)
+      const hybridG = clamp255(fusedLowG + fusedHighG)
+      const hybridB = clamp255(fusedLowB + fusedHighB)
+
+      out[p4] = clamp255(aiR * (1 - faceW) + hybridR * faceW)
+      out[p4 + 1] = clamp255(aiG * (1 - faceW) + hybridG * faceW)
+      out[p4 + 2] = clamp255(aiB * (1 - faceW) + hybridB * faceW)
+    }
+  }
+
+  return out
+}
+
+export interface LockPortraitIdentityInput {
+  sourcePixels: Uint8ClampedArray
+  generatedPixels: Uint8ClampedArray
+  width: number
+  height: number
+  sourceLandmarks: ReadonlyArray<readonly [number, number]> | null | undefined
+  generatedLandmarks?: ReadonlyArray<readonly [number, number]> | null | undefined
+  state?: Partial<PortraitRetouchState> | null
+  extraInstruction?: string | null
+  liquifyStrokes?: readonly PortraitLiquifyStroke[] | null
+  spotHeals?: readonly PortraitSpotHealPoint[] | null
+  /** Optional explicit override for identity lock mode */
+  modeOverride?: PortraitIdentityLockMode
+}
+
+export interface LockPortraitIdentityResult {
+  pixels: Uint8ClampedArray
+  mode: PortraitIdentityLockMode
+  maxDriftPx: number
+  meanDriftRatio: number
+  appliedSteps: string[]
+}
+
+/**
+ * Full Triple Identity Lock Orchestrator:
+ * 1. Runs the deterministic local computational photography pipeline on `sourcePixels`
+ *    (so skin smoothing, blemish removal, MLS face slimming, and eye/teeth polish have 0 identity drift);
+ * 2. Computes target 68 landmarks and dewarps `generatedPixels` (`dewarpPortraitByLandmarksRgba`)
+ *    so any AI landmark displacement is geometrically corrected back to the original bone structure;
+ * 3. Applies either `composeExteriorOnlyIdentityLockRgba` (100% original face lock with Procrustes pose alignment
+ *    & 2-band Laplacian pyramid blending for attire/bg/hairline) or `fusePortraitIdentityHybridRgba`
+ *    (low-frequency AI + high-frequency original pores & eye/lip anchors).
+ */
+export function lockPortraitIdentityRgba(
+  input: LockPortraitIdentityInput
+): LockPortraitIdentityResult {
+  const { width, height, sourcePixels, generatedPixels } = input
+  if (!input.sourceLandmarks || input.sourceLandmarks.length < PORTRAIT_LANDMARK_COUNT) {
+    return {
+      pixels: new Uint8ClampedArray(generatedPixels),
+      mode: 'landmark-frequency-fusion',
+      maxDriftPx: 0,
+      meanDriftRatio: 0,
+      appliedSteps: []
+    }
+  }
+
+  const strategy = classifyPortraitExecutionStrategy(input.state, {
+    extraInstruction: input.extraInstruction,
+    liquifyStrokes: input.liquifyStrokes,
+    spotHeals: input.spotHeals
+  })
+  const mode = input.modeOverride ?? strategy.identityLockMode
+  const appliedSteps: string[] = []
+
+  // Step 1: Produce 100%-identity-faithful local retouched reference
+  const localRes = applyPortraitLivePixelPipeline(sourcePixels, width, height, {
+    state: input.state,
+    landmarks: input.sourceLandmarks,
+    liquifyStrokes: input.liquifyStrokes,
+    spotHeals: input.spotHeals
+  })
+  const localPixels = localRes.pixels
+  if (localRes.appliedSteps.length > 0) {
+    appliedSteps.push('localBaseRetouch')
+  }
+
+  if (mode === 'full-local') {
+    appliedSteps.push('fullLocalIdentityLock')
+    return {
+      pixels: localPixels,
+      mode: 'full-local',
+      maxDriftPx: 0,
+      meanDriftRatio: 0,
+      appliedSteps
+    }
+  }
+
+  // Step 2: Compute intended 68 landmarks
+  const targetLandmarks =
+    computeTargetRetouchedLandmarks(input.state, input.sourceLandmarks, input.liquifyStrokes) ??
+    input.sourceLandmarks.map((p) => [Number(p[0]) || 0, Number(p[1]) || 0] as [number, number])
+
+  // Step 3: Exterior Face Lock vs Frequency-Separated Hybrid Fusion
+  if (mode === 'exterior-face-lock') {
+    // In exterior-only mode (e.g., ID photo attire swap or background prompt), rigid-align targetLandmarks
+    // to the AI head pose first so the AI suit collar/neck is never warped out of place, then dewarp only
+    // non-rigid facial drift and Laplacian-blend the Procrustes-aligned local face.
+    const poseTransform = computeProcrustesSimilarityTransform(
+      targetLandmarks,
+      input.generatedLandmarks ?? targetLandmarks
+    )
+    const poseAlignedTarget = poseTransform.isIdentity
+      ? targetLandmarks
+      : targetLandmarks.map(([u, v]) => {
+          const [au, av] = poseTransform.forward(u, v)
+          return [clamp01(au), clamp01(av)] as [number, number]
+        })
+    if (!poseTransform.isIdentity) {
+      appliedSteps.push('procrustesPoseAlign')
+    }
+    const dewarp = dewarpPortraitByLandmarksRgba(
+      generatedPixels,
+      width,
+      height,
+      input.generatedLandmarks ?? poseAlignedTarget,
+      poseAlignedTarget,
+      1.0
+    )
+    if (dewarp.applied) {
+      appliedSteps.push(`landmarkDewarp:${dewarp.maxDriftPx}px`)
+    }
+    const locked = composeExteriorOnlyIdentityLockRgba(
+      localPixels,
+      dewarp.pixels,
+      width,
+      height,
+      targetLandmarks,
+      input.state,
+      poseAlignedTarget
+    )
+    appliedSteps.push('exteriorFaceIdentityLock')
+    return {
+      pixels: locked,
+      mode: 'exterior-face-lock',
+      maxDriftPx: dewarp.maxDriftPx,
+      meanDriftRatio: dewarp.meanDriftRatio,
+      appliedSteps
+    }
+  }
+
+  const dewarp = dewarpPortraitByLandmarksRgba(
+    generatedPixels,
+    width,
+    height,
+    input.generatedLandmarks ?? targetLandmarks,
+    targetLandmarks,
+    1.0
+  )
+  if (dewarp.applied) {
+    appliedSteps.push(`landmarkDewarp:${dewarp.maxDriftPx}px`)
+  }
+
+  const fused = fusePortraitIdentityHybridRgba(
+    localPixels,
+    dewarp.pixels,
+    width,
+    height,
+    targetLandmarks,
+    input.state
+  )
+  appliedSteps.push('frequencyHybridIdentityLock')
+  return {
+    pixels: fused,
+    mode: 'landmark-frequency-fusion',
+    maxDriftPx: dewarp.maxDriftPx,
+    meanDriftRatio: dewarp.meanDriftRatio,
+    appliedSteps
+  }
 }

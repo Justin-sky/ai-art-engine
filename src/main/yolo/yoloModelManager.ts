@@ -22,6 +22,7 @@ import { join } from 'path'
 import { IpcChannels } from '@shared/ipc'
 import type { YoloModelDownloadProgress, YoloModelOperationResult } from '@shared/yolo'
 import { FACE_MODEL_SUBDIR, YOLO_MODEL_SUBDIR } from '@shared/localModelLayout'
+import { findMattingCatalogModel, MATTING_SUBDIR } from '@shared/mattingCatalog'
 import { findSam2CatalogModel, SAM2_SUBDIR, sam2OnnxFileNames } from '@shared/sam2Catalog'
 import { YOLO_CATALOG_ALL } from '@shared/yoloCatalog'
 import { isAllowedYoloDownloadUrl } from '@shared/yoloDownload'
@@ -30,15 +31,18 @@ import { settingsService } from '../services/settingsService'
 import { extractSam2OnnxPair } from './sam2Unzip'
 import { yoloService } from './yoloService'
 
-/** 进行中的下载模型 id；null = 空闲 */
-let activeModelId: string | null = null
-let activeAbort: AbortController | null = null
-let lastProgressAt = 0
+/** 进行中的并发下载任务表：key = modelId，互不阻塞，仅阻止同一模型重复发起 */
+interface ActiveDownloadTask {
+  controller: AbortController
+  lastProgressAt: number
+}
+const activeDownloads = new Map<string, ActiveDownloadTask>()
 
 function broadcastProgress(progress: YoloModelDownloadProgress): void {
   const now = Date.now()
-  if (progress.phase === 'downloading' && now - lastProgressAt < 300) return
-  lastProgressAt = now
+  const task = activeDownloads.get(progress.modelId)
+  if (progress.phase === 'downloading' && task && now - task.lastProgressAt < 250) return
+  if (task) task.lastProgressAt = now
   broadcastToAllWindows(IpcChannels.YOLO_MODEL_DOWNLOAD_PROGRESS, progress)
 }
 
@@ -74,17 +78,19 @@ export async function downloadYoloModel(
   sourceUrl?: string
 ): Promise<YoloModelOperationResult> {
   const sam2 = findSam2CatalogModel(modelId)
-  const entry = sam2 ?? YOLO_CATALOG_ALL.find((m) => m.id === modelId)
+  const matting = findMattingCatalogModel(modelId)
+  const entry = sam2 ?? matting ?? YOLO_CATALOG_ALL.find((m) => m.id === modelId)
   if (!entry) return fail(`模型目录中不存在 ${modelId}。`) // cjk-ok 透传 UI
   const url = sourceUrl?.trim() || entry.url
   if (!isAllowedYoloDownloadUrl(url)) {
     return fail(`下载地址不被允许（只支持 https 且来源在白名单内）：${url}`) // cjk-ok
   }
-  if (activeModelId) {
-    return fail(`已有模型正在下载（${activeModelId}），请先完成或取消后再试。`) // cjk-ok
+  if (activeDownloads.has(modelId)) {
+    return fail(`模型 ${modelId} 正在下载中，请勿重复发起。`) // cjk-ok
   }
 
-  const dir = join(yoloService.modelDir(), storageSubdir(Boolean(sam2), entry.kind))
+  const subdir = storageSubdir(Boolean(sam2), Boolean(matting), entry.kind)
+  const dir = join(yoloService.modelDir(), subdir)
   const destPath = join(dir, entry.fileName)
   if (sam2 ? sam2PairReady(dir, modelId) : existsSync(destPath)) {
     const label = sam2 ? modelId : entry.fileName
@@ -93,8 +99,7 @@ export async function downloadYoloModel(
 
   const partPath = join(dir, `${entry.fileName}.part`)
   const controller = new AbortController()
-  activeModelId = modelId
-  activeAbort = controller
+  activeDownloads.set(modelId, { controller, lastProgressAt: 0 })
 
   try {
     if (!existsSync(dir)) await mkdir(dir, { recursive: true })
@@ -189,7 +194,7 @@ export async function downloadYoloModel(
     broadcastProgress({ modelId, phase: 'done' })
     const readyNote = sam2
       ? `encoder 与 decoder 已保存到 ${SAM2_SUBDIR} 文件夹。` // cjk-ok 透传 UI
-      : `已保存到 ${storageSubdir(false, entry.kind)} 文件夹，本地推理可直接使用。` // cjk-ok 透传 UI
+      : `已保存到 ${subdir} 文件夹，本地推理可直接使用。` // cjk-ok 透传 UI
     const label = sam2 ? modelId : entry.fileName
     return { ok: true, message: `模型 ${label} 下载完成，${readyNote}` } // cjk-ok
   } catch (err) {
@@ -202,14 +207,19 @@ export async function downloadYoloModel(
     return fail(message)
   } finally {
     await unlink(partPath).catch(() => undefined)
-    activeModelId = null
-    activeAbort = null
+    activeDownloads.delete(modelId)
   }
 }
 
-/** 中止进行中的模型下载（无下载时为空操作） */
-export async function cancelYoloModelDownload(): Promise<void> {
-  activeAbort?.abort()
+/** 中止进行中的模型下载（传入 modelId 仅取消指定模型；缺省取消全部进行中的下载） */
+export async function cancelYoloModelDownload(modelId?: string): Promise<void> {
+  if (modelId) {
+    activeDownloads.get(modelId)?.controller.abort()
+    return
+  }
+  for (const task of activeDownloads.values()) {
+    task.controller.abort()
+  }
 }
 
 /** 删除模型目录中的某模型文件（内置随包模型删除后不会自动复活） */
@@ -217,18 +227,25 @@ export async function deleteYoloModel(modelId: string): Promise<YoloModelOperati
   if (!/^[\w.-]+$/.test(modelId) || modelId === '.' || modelId === '..') {
     return fail(`非法的模型 id：${modelId}`) // cjk-ok
   }
-  if (activeModelId === modelId) {
+  if (activeDownloads.has(modelId)) {
     return fail('该模型正在下载中，无法删除。') // cjk-ok
   }
   const sam2 = findSam2CatalogModel(modelId)
-  const catalog = sam2 ?? YOLO_CATALOG_ALL.find((model) => model.id === modelId)
-  const dir = join(yoloService.modelDir(), storageSubdir(Boolean(sam2), catalog?.kind))
+  const matting = findMattingCatalogModel(modelId)
+  const catalog = sam2 ?? matting ?? YOLO_CATALOG_ALL.find((model) => model.id === modelId)
+  const dir = join(
+    yoloService.modelDir(),
+    storageSubdir(Boolean(sam2), Boolean(matting), catalog?.kind)
+  )
   const targets = sam2
     ? [sam2OnnxFileNames(modelId).encoder, sam2OnnxFileNames(modelId).decoder].map((name) =>
         join(dir, name)
       )
-    : [join(dir, `${modelId}.onnx`)]
-  const present = targets.filter((path) => existsSync(path))
+    : [
+        join(dir, `${modelId}.onnx`),
+        ...(!catalog ? [join(yoloService.modelDir(), MATTING_SUBDIR, `${modelId}.onnx`)] : [])
+      ]
+  const present = [...new Set(targets)].filter((path) => existsSync(path))
   if (present.length === 0) {
     const label = sam2 ? modelId : `${modelId}.onnx`
     return fail(`模型 ${label} 不存在于当前模型目录。`) // cjk-ok
@@ -241,7 +258,7 @@ export async function deleteYoloModel(modelId: string): Promise<YoloModelOperati
   const label = sam2 ? modelId : `${modelId}.onnx`
   const note = sam2
     ? `SAM 2.1 的 encoder 与 decoder 已从 ${SAM2_SUBDIR} 文件夹移除。` // cjk-ok 透传 UI
-    : '其它任务会自动改用剩余模型中体积最大者。' // cjk-ok 透传 UI
+    : '其它任务会自动改用剩余模型中优先级最高者。' // cjk-ok 透传 UI
   return { ok: true, message: `已删除模型 ${label}，${note}` } // cjk-ok
 }
 
@@ -250,8 +267,9 @@ function sam2PairReady(dir: string, modelId: string): boolean {
   return existsSync(join(dir, names.encoder)) && existsSync(join(dir, names.decoder))
 }
 
-function storageSubdir(sam2: boolean, kind?: string): string {
+function storageSubdir(sam2: boolean, matting: boolean, kind?: string): string {
   if (sam2) return SAM2_SUBDIR
+  if (matting) return MATTING_SUBDIR
   if (kind === 'face') return FACE_MODEL_SUBDIR
   return YOLO_MODEL_SUBDIR
 }

@@ -106,6 +106,8 @@ export interface YoloSegmentResult extends YoloDetectResult {
    * 原图像素 x → letterbox 坐标 x * scale + padX；mask 网格覆盖整个 size 画布。
    */
   letterbox?: YoloLetterboxGeometry
+  /** 本次分割所叠加的高精抠图模型 id（如 birefnet-lite / rmbg-1.4-q8） */
+  mattingModelId?: string
 }
 
 /** 姿态估计结果：skeletons[i] 为 COCO 17 关键点 */
@@ -138,6 +140,10 @@ export interface YoloInferenceInput {
    * 抠图需要软边做置信度阈值 + 边缘羽化时开启；缺省保持二值以省带宽。
    */
   softMask?: boolean
+  /**
+   * 仅分割任务：若已安装高精抠图模型（RMBG-1.4 / BiRefNet-Lite / MODNet），优先执行高精抠图。
+   */
+  useMatting?: boolean
 }
 
 /** 模型目录中的一个可用模型 */
@@ -163,6 +169,8 @@ export interface YoloStatus {
   models: YoloModelInfo[]
   /** 已下载的 SAM 2.1 ONNX（local-models/sam2 下的 encoder + decoder，不参与 YOLO 推理） */
   sam2Models?: YoloModelInfo[]
+  /** 已下载的高精抠图 ONNX（local-models/matting 下的 RMBG / BiRefNet / MODNet） */
+  mattingModels?: YoloModelInfo[]
   /** 未就绪原因（进程崩溃 / ort 缺失 / 无模型等） */
   error?: string
 }
@@ -346,6 +354,8 @@ export const YOLO_COCO_LABELS_ZH: string[] = [
 
 /** COCO 英文标签 → 中文展示名；未知标签原样返回 */
 export function cocoLabelZh(label: string): string {
+  if (label === 'matting-subject') return '高精度主体' // cjk-ok
+  if (label === 'subject') return '画面主体' // cjk-ok
   const index = YOLO_COCO_LABELS.indexOf(label)
   return index >= 0 && index < YOLO_COCO_LABELS_ZH.length ? YOLO_COCO_LABELS_ZH[index] : label
 }

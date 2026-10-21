@@ -19,6 +19,7 @@ import {
   FACE_MODEL_SUBDIR,
   LEGACY_LOCAL_MODELS_DIR_NAME,
   looseOnnxBucket,
+  MATTING_MODEL_SUBDIR,
   SAM2_MODEL_SUBDIR,
   YOLO_MODEL_SUBDIR
 } from '@shared/localModelLayout'
@@ -43,7 +44,9 @@ function absorbLegacy(legacy: string, modelRoot: string): void {
   moveOnnxDir(join(legacy, YOLO_MODEL_SUBDIR), join(modelRoot, YOLO_MODEL_SUBDIR))
   moveOnnxDir(join(legacy, FACE_MODEL_SUBDIR), join(modelRoot, FACE_MODEL_SUBDIR))
   moveOnnxDir(join(legacy, SAM2_MODEL_SUBDIR), join(modelRoot, SAM2_MODEL_SUBDIR), true)
+  moveOnnxDir(join(legacy, MATTING_MODEL_SUBDIR), join(modelRoot, MATTING_MODEL_SUBDIR))
   mergeManifest(join(legacy, BUNDLED_MANIFEST), join(modelRoot, BUNDLED_MANIFEST))
+  removeIfEmpty(join(legacy, MATTING_MODEL_SUBDIR))
   removeIfEmpty(join(legacy, SAM2_MODEL_SUBDIR))
   removeIfEmpty(join(legacy, YOLO_MODEL_SUBDIR))
   removeIfEmpty(join(legacy, FACE_MODEL_SUBDIR))

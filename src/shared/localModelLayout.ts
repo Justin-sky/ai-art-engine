@@ -17,6 +17,7 @@ export const LEGACY_LOCAL_MODELS_DIR_NAME = 'yolo-models'
 export const YOLO_MODEL_SUBDIR = 'yolo'
 export const FACE_MODEL_SUBDIR = 'face'
 export const SAM2_MODEL_SUBDIR = 'sam2'
+export const MATTING_MODEL_SUBDIR = 'matting'
 
 /** 根目录上散落的 .onnx 该进哪个子目录。非 onnx 返回 null。 */
 export function looseOnnxBucket(fileName: string): 'yolo' | 'face' | null {

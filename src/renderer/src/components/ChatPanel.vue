@@ -29,7 +29,11 @@ import type {
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
 import { detectChatSkillInstallOrSearchIntent } from '@shared/claudeSkill'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { useChatHistory, type ChatMsg } from '../composables/useChatHistory'
+import {
+  resolveProjectChatScope,
+  useChatHistory,
+  type ChatMsg
+} from '../composables/useChatHistory'
 import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
 import { getChatAssetFingerprint } from '../features/media/chatAssetFingerprint'
@@ -2042,9 +2046,10 @@ async function onRunSessionSearch(): Promise<void> {
       for (const h of remote.hits ?? []) {
         if (seen.has(h.sessionId)) continue
         const localMatch = sessions.value.find((s) => s.id === h.sessionId)
+        if (!localMatch) continue
         hits.push({
           ...h,
-          title: localMatch?.title || h.title || h.sessionId.slice(0, 8)
+          title: localMatch.title || h.title || h.sessionId.slice(0, 8)
         })
         seen.add(h.sessionId)
       }
@@ -2074,14 +2079,43 @@ let gitChangesBusy = false
 /** 工程不可预览时的原因只说明一次，避免每轮都刷提示 */
 let gitUnavailableNotified = false
 
-// 切换 / 关闭工程后旧基线失效（相对路径相同也可能已是另一个仓库），清空并允许重新提示
-watch(
-  () => project.rootPath,
-  () => {
-    gitBaseline = new Map()
-    gitUnavailableNotified = false
-  }
+const currentProjectChatScope = computed(() =>
+  resolveProjectChatScope(project.config?.id, project.rootPath)
 )
+
+// 切换 / 新建 / 关闭工程后：
+// 1. 先将旧工程的当前会话状态落盘到旧工程作用域；
+// 2. 切换会话作用域到新工程（新建工程因具有全新 config.id，自动初始化为空白新会话，绝不带入其它工程的 AI 会话）；
+// 3. 重置 Git 基线、引用资产与排队队列，并刷新工程级技能。
+watch(currentProjectChatScope, (nextScope, prevScope) => {
+  if (nextScope === prevScope) return
+  gitBaseline = new Map()
+  gitUnavailableNotified = false
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+  persistHistory()
+  if (running.value) {
+    void window.studio?.abortHarnessTask?.()
+    running.value = false
+  }
+  clearSendQueue()
+  referenced.value = []
+  resetEditor()
+  composing.value = false
+  sessionOpen.value = false
+  searchModalOpen.value = false
+  searchHits.value = []
+  todoBoardOpen.value = false
+  subagentBoardOpen.value = false
+  scheduleMenuOpen.value = false
+  loadHistory(nextScope)
+  loadActiveMessages()
+  void refreshSessionSkills()
+  void refreshInstalledWorkflows()
+  void refreshStatus()
+})
 
 /** 发送前静默记录基线（不插卡）；失败时退化为「下次采集视为首轮」 */
 async function resetGitBaseline(): Promise<void> {
@@ -3303,8 +3337,8 @@ watch(running, (isRunning) => {
 })
 
 onMounted(async () => {
-  // 恢复历史会话（上次会话或新建），再订阅事件流
-  loadHistory()
+  // 按当前工程作用域恢复历史会话（新建工程自动创建独立空白会话），再订阅事件流
+  loadHistory(currentProjectChatScope.value)
   loadActiveMessages()
   void refreshSessionSkills()
   void refreshInstalledWorkflows()

@@ -670,7 +670,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.YOLO_MODEL_DOWNLOAD, (modelId: string, sourceUrl?: string) =>
     downloadYoloModel(modelId, sourceUrl)
   )
-  handle(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL, () => cancelYoloModelDownload())
+  handle(IpcChannels.YOLO_MODEL_DOWNLOAD_CANCEL, (modelId?: string) =>
+    cancelYoloModelDownload(modelId)
+  )
   handle(IpcChannels.YOLO_MODEL_DELETE, (modelId: string) => deleteYoloModel(modelId))
   handle(IpcChannels.YOLO_MODEL_DIR_CHOOSE, () => chooseYoloModelDir())
   handle(IpcChannels.YOLO_MODEL_DIR_SET, (dir: string) => setYoloModelDir(dir))

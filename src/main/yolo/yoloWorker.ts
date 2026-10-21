@@ -20,6 +20,11 @@ import {
 } from '@shared/yolo'
 import { decodeImage } from './imageDecoder'
 import { disposeFaceSessions, inferFaces } from './faceInfer'
+import {
+  disposeMattingSession,
+  fuseYoloInstanceWithMattingMask,
+  inferMattingSubject
+} from './mattingInfer'
 import { rgbaToLetterboxTensor } from './preprocess'
 import { composeMask, parseSegOutput, parseYoloOutput, type Candidate } from './postprocess'
 import type {
@@ -118,6 +123,35 @@ async function runInfer(
   const started = Date.now()
 
   const decoded = await decodeImage(params.image)
+  const base = {
+    width: decoded.width,
+    height: decoded.height
+  }
+
+  let mattingRes: Awaited<ReturnType<typeof inferMattingSubject>> = null
+  if (params.kind === 'segment' && params.mattingModelPath) {
+    try {
+      mattingRes = await inferMattingSubject(
+        mod,
+        decoded,
+        params.mattingModelPath,
+        params.mattingModelId ?? basename(params.mattingModelPath, '.onnx')
+      )
+    } catch (err) {
+      console.warn('[yolo-worker] matting inference fallback to yolo-seg:', err)
+    }
+    if (mattingRes && params.modelPath === params.mattingModelPath) {
+      return {
+        ...base,
+        inferenceMs: Date.now() - started,
+        boxes: [mattingRes.box],
+        masks: [mattingRes.mask],
+        letterbox: mattingRes.letterbox,
+        mattingModelId: params.mattingModelId
+      }
+    }
+  }
+
   const lb = rgbaToLetterboxTensor(decoded.rgba, decoded.width, decoded.height, YOLO_INPUT_SIZE)
 
   const session = await getSession(mod, params.modelPath, params.kind)
@@ -127,14 +161,22 @@ async function runInfer(
   }
   const outputs = await session.run(feeds)
 
-  const base = {
-    width: decoded.width,
-    height: decoded.height
-  }
-
   if (params.kind === 'segment') {
     const detName = session.outputNames[0]
     const protoName = session.outputNames[1]
+    if (!protoName || !outputs[protoName]) {
+      if (mattingRes) {
+        return {
+          ...base,
+          inferenceMs: Date.now() - started,
+          boxes: [mattingRes.box],
+          masks: [mattingRes.mask],
+          letterbox: mattingRes.letterbox,
+          mattingModelId: params.mattingModelId
+        }
+      }
+      throw new Error(`YOLO: model "${params.modelId}" does not have segmentation proto outputs`)
+    }
     const detDims = outputs[detName].dims
     const proto = outputs[protoName].data as Float32Array
     // proto 形状可能是 [1,32,H,W] 或 [1,32,H*W]，按元素总数反推边长最通用
@@ -147,14 +189,36 @@ async function runInfer(
       conf,
       iou
     )
+    const yoloBoxes = parsed.candidates.map((c) => toBox(c, lb))
+    const yoloRawMasks = parsed.candidates.map((c) =>
+      composeMask(c.maskWeights!, parsed.maskProto!, maskHw, params.softMask === true)
+    )
+
+    if (mattingRes) {
+      const targetHw = mattingRes.mask.width
+      const fusedMasks = yoloRawMasks.map((ym) => ({
+        width: targetHw,
+        height: targetHw,
+        data: fuseYoloInstanceWithMattingMask(ym, maskHw, mattingRes.mask.data, targetHw)
+      }))
+      return {
+        ...base,
+        inferenceMs: Date.now() - started,
+        boxes: [mattingRes.box, ...yoloBoxes],
+        masks: [mattingRes.mask, ...fusedMasks],
+        letterbox: mattingRes.letterbox,
+        mattingModelId: params.mattingModelId
+      }
+    }
+
     const result: YoloSegmentResult = {
       ...base,
       inferenceMs: Date.now() - started,
-      boxes: parsed.candidates.map((c) => toBox(c, lb)),
-      masks: parsed.candidates.map((c) => ({
+      boxes: yoloBoxes,
+      masks: yoloRawMasks.map((data) => ({
         width: maskHw,
         height: maskHw,
-        data: composeMask(c.maskWeights!, parsed.maskProto!, maskHw, params.softMask === true)
+        data
       })),
       // mask 覆盖整张 letterbox 画布，上层放大回原图需要这份几何
       letterbox: {
@@ -301,4 +365,5 @@ process.on('exit', () => {
   sessionCache.clear()
   lastSession = null
   disposeFaceSessions()
+  disposeMattingSession()
 })

@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyAlphaToRgba,
+  applyCutoutBrushStrokes,
   buildCutoutAlpha,
+  buildSalientSubjectMask,
   defringeRgba,
   featherAlpha,
   letterboxGeometryFor,
+  punchInteriorBackgroundHoles,
+  refineCutoutAlphaGuided,
   resolveCutoutRegion
 } from '../src/shared/yoloCutout'
 
@@ -263,5 +267,151 @@ describe('defringeRgba', () => {
     const alpha = new Float32Array([1, 0])
     defringeRgba(rgba, alpha, 2, 1)
     expect(Array.from(rgba)).toEqual([200, 10, 20, 255, 1, 2, 3, 0])
+  })
+})
+
+describe('refineCutoutAlphaGuided', () => {
+  it('snaps a shifted coarse mask edge onto the true RGB object boundary', () => {
+    const w = 24
+    const h = 24
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    const coarseAlpha = new Float32Array(w * h)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x
+        // 真实图像边界在 x = 12（左半深红前景，右半纯白背景）
+        const isFg = x < 12
+        rgba[idx * 4] = isFg ? 30 : 250
+        rgba[idx * 4 + 1] = isFg ? 40 : 250
+        rgba[idx * 4 + 2] = isFg ? 50 : 250
+        rgba[idx * 4 + 3] = 255
+        // 粗掩码在 x ∈ [10, 14] 模糊过渡（把 x=12,13 的背景也误包进来）
+        if (x < 10) coarseAlpha[idx] = 1
+        else if (x < 15) coarseAlpha[idx] = 1 - (x - 9) / 6
+        else coarseAlpha[idx] = 0
+      }
+    }
+    const refined = refineCutoutAlphaGuided(rgba, coarseAlpha, w, h, {
+      radius: 3,
+      colorMattingStrength: 0.7
+    })
+    // 真实前景 x=10,11 被拉升接近 1，而真实背景 x=12,13 被显著压低
+    expect(refined[12 * w + 10]!).toBeGreaterThan(coarseAlpha[12 * w + 10]!)
+    expect(refined[12 * w + 12]!).toBeLessThan(coarseAlpha[12 * w + 12]!)
+    expect(refined[12 * w + 2]!).toBe(1)
+    expect(refined[12 * w + 22]!).toBe(0)
+  })
+
+  it('separates iso-luminant chromatic edges (same grayscale brightness, different RGB color) via 3x3 RGB covariance', () => {
+    const w = 24
+    const h = 24
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    const coarseAlpha = new Float32Array(w * h)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x
+        // 左半红 (200, 30, 30) 与右半绿 (30, 120, 30) 灰度亮度近乎相等 (~80)，单通道灰度滤波无法区分
+        const isFg = x < 12
+        rgba[idx * 4] = isFg ? 200 : 30
+        rgba[idx * 4 + 1] = isFg ? 30 : 120
+        rgba[idx * 4 + 2] = 30
+        rgba[idx * 4 + 3] = 255
+        if (x < 10) coarseAlpha[idx] = 1
+        else if (x < 15) coarseAlpha[idx] = 1 - (x - 9) / 6
+        else coarseAlpha[idx] = 0
+      }
+    }
+    const refined = refineCutoutAlphaGuided(rgba, coarseAlpha, w, h, {
+      radius: 3,
+      colorMattingStrength: 0.65
+    })
+    expect(refined[12 * w + 11]!).toBeGreaterThan(0.85)
+    expect(refined[12 * w + 12]!).toBeLessThan(0.15)
+  })
+})
+
+describe('punchInteriorBackgroundHoles', () => {
+  it('punches out enclosed background-colored holes while keeping solid foreground', () => {
+    const w = 32
+    const h = 32
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    const alpha = new Float32Array(w * h)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x
+        const inSubject = x >= 6 && x < 26 && y >= 6 && y < 26
+        const inHole = x >= 12 && x < 20 && y >= 12 && y < 20 // 8×8 = 64px 封闭背景内洞
+        const isBgColor = !inSubject || inHole
+        rgba[idx * 4] = isBgColor ? 245 : 30
+        rgba[idx * 4 + 1] = isBgColor ? 245 : 40
+        rgba[idx * 4 + 2] = isBgColor ? 245 : 180
+        rgba[idx * 4 + 3] = 255
+        // 初始粗掩码把整个 6..26 矩形都当成前景（未穿透内洞）
+        alpha[idx] = inSubject ? 1 : 0
+      }
+    }
+    const punched = punchInteriorBackgroundHoles(rgba, alpha, w, h)
+    // 内洞中心变为全透明
+    expect(punched[16 * w + 16]).toBe(0)
+    // 主体实心环仍然保持不透明
+    expect(punched[8 * w + 8]).toBe(1)
+  })
+})
+
+describe('applyCutoutBrushStrokes', () => {
+  it('restores foreground with keep brush and erases background with erase brush', () => {
+    const w = 40
+    const h = 40
+    const base = new Float32Array(w * h)
+    // 左半初始为前景
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < 20; x++) base[y * w + x] = 1
+    }
+    const edited = applyCutoutBrushStrokes(
+      base,
+      [
+        // 在右半 (0.75, 0.5) 涂一笔 keep
+        { mode: 'keep', radius: 0.1, points: [{ x: 0.75, y: 0.5 }] },
+        // 在左半 (0.25, 0.5) 涂一笔 erase
+        { mode: 'erase', radius: 0.1, points: [{ x: 0.25, y: 0.5 }] }
+      ],
+      { srcWidth: w, srcHeight: h }
+    )
+    expect(edited[20 * w + 30]).toBe(1)
+    expect(edited[20 * w + 10]).toBe(0)
+  })
+
+  it('expands resolveCutoutRegion to include keep brush strokes', () => {
+    const region = resolveCutoutRegion({
+      boxes: [{ label: 'person', confidence: 0.9, x: 10, y: 10, width: 20, height: 20 }],
+      srcWidth: 100,
+      srcHeight: 100,
+      brushStrokes: [{ mode: 'keep', radius: 0.05, points: [{ x: 0.8, y: 0.8 }] }]
+    })
+    expect(region.x + region.width).toBeGreaterThanOrEqual(85)
+    expect(region.y + region.height).toBeGreaterThanOrEqual(85)
+  })
+})
+
+describe('buildSalientSubjectMask', () => {
+  it('extracts a non-COCO subject from a uniform background', () => {
+    const w = 48
+    const h = 48
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4
+        const isProp = x >= 14 && x < 34 && y >= 10 && y < 38
+        rgba[idx] = isProp ? 220 : 20
+        rgba[idx + 1] = isProp ? 60 : 22
+        rgba[idx + 2] = isProp ? 40 : 25
+        rgba[idx + 3] = 255
+      }
+    }
+    const salient = buildSalientSubjectMask(rgba, w, h)
+    expect(salient).not.toBeNull()
+    expect(salient!.box.label).toBe('subject')
+    expect(salient!.box.width).toBeGreaterThanOrEqual(18)
+    expect(salient!.box.height).toBeGreaterThanOrEqual(24)
   })
 })

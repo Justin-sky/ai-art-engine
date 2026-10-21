@@ -41,6 +41,7 @@ import {
   type PortraitRetouchState
 } from '../portraitRetouch'
 import {
+  classifyPortraitExecutionStrategy,
   hasPortraitLiveAdjustments,
   parseCubeLut,
   type PortraitCubeLut,
@@ -124,31 +125,35 @@ async function applyPortraitScope(
     sourceUrl: string
     generatedDataUrl: string
     landmarks: ReadonlyArray<readonly [number, number]> | null
+    state?: PortraitRetouchState
+    extraInstruction?: string
     format?: PortraitExportFormat
   }
-): Promise<string> {
+): Promise<{ dataUrl: string; applied: boolean }> {
   const compose = ctx.composePortraitScopedRetouch
-  if (!input.enabled || !compose) return input.generatedDataUrl
+  if (!input.enabled || !compose) return { dataUrl: input.generatedDataUrl, applied: false }
   try {
     const result = await compose({
       sourceDataUrl: input.sourceUrl,
       generatedDataUrl: input.generatedDataUrl,
       mask: { face: input.plan.face, person: input.plan.person, regions: input.plan.regions },
       landmarks: input.landmarks,
+      state: input.state,
+      extraInstruction: input.extraInstruction,
       ...(input.format && input.format !== 'png' ? { format: input.format } : {}),
       signal: ctx.signal
     })
     for (const note of result.notes) ctx.log?.(`scoped retouch: ${note}`)
-    if (!result.applied) return input.generatedDataUrl
+    if (!result.applied) return { dataUrl: input.generatedDataUrl, applied: false }
     ctx.log?.(
       `scoped retouch applied (${describePortraitScope(input.plan)}, covers ${Math.round(
         result.coverRatio * 100
       )}% of frame)`
     )
-    return result.dataUrl
+    return { dataUrl: result.dataUrl, applied: true }
   } catch (err) {
     ctx.log?.(`scoped retouch skipped: ${err instanceof Error ? err.message : String(err)}`)
-    return input.generatedDataUrl
+    return { dataUrl: input.generatedDataUrl, applied: false }
   }
 }
 
@@ -357,12 +362,18 @@ export async function executePortraitNode(
     : []
   const customLut = resolveCustomLutParam(ctx.node.params.portraitCustomLut)
   const hasManualOrLut = liquifyStrokes.length > 0 || spotHeals.length > 0 || customLut !== null
+  const modelId = String(ctx.node.params.generateModel ?? '').trim()
   const forceLocalEngine =
-    String(ctx.node.params.generateModel ?? '').trim() === 'local-live-engine'
+    modelId === 'local-live-engine' ||
+    modelId === 'auto-precision' ||
+    ctx.node.params.portraitEngineMode === 'local'
+  const smartHybridEngine =
+    modelId === 'smart-hybrid' || ctx.node.params.portraitEngineMode === 'smart'
   const canFallbackToLocal =
     !ctx.generateImage &&
     Boolean(ctx.composePortraitLiveRetouch) &&
     (forceLocalEngine ||
+      smartHybridEngine ||
       hasPortraitLiveAdjustments({ state, liquifyStrokes, spotHeals, customLut }))
 
   if (!ctx.generateImage && !canFallbackToLocal) {
@@ -493,9 +504,23 @@ export async function executePortraitNode(
         : null
     })
 
+    const strategy = classifyPortraitExecutionStrategy(state, {
+      extraInstruction: extra,
+      liquifyStrokes,
+      spotHeals,
+      customLut
+    })
+    const hasAnyAdjustments =
+      strategy.computationalKeys.length > 0 ||
+      strategy.exteriorGenerativeKeys.length > 0 ||
+      strategy.facialGenerativeKeys.length > 0
+
     const runPureLocal =
       Boolean(ctx.composePortraitLiveRetouch) &&
-      (forceLocalEngine || !ctx.generateImage || (!prompt.main.trim() && hasManualOrLut))
+      (forceLocalEngine ||
+        (smartHybridEngine && !strategy.requiresGenerativeModel && hasAnyAdjustments) ||
+        !ctx.generateImage ||
+        (!prompt.main.trim() && hasManualOrLut))
 
     if (!prompt.main.trim() && !runPureLocal) {
       throw new Error('GRAPH_PROCESS_EMPTY_PROMPT')
@@ -597,16 +622,50 @@ export async function executePortraitNode(
 
       // 局部回贴先于规格裁切：先把「只改对应部位」的像素定下来，再按证件照规格裁
       const formatOpt = state.exportFormat !== 'png' ? { format: state.exportFormat } : {}
-      let scoped = runPureLocal
-        ? dataUrl
+      const scopeOutcome = runPureLocal
+        ? { dataUrl, applied: false }
         : await applyPortraitScope(ctx, {
             enabled: useScope,
             plan: scopePlan,
             sourceUrl: effectiveSourceUrl,
             generatedDataUrl: dataUrl,
             landmarks: face?.landmarks ?? null,
+            state,
+            extraInstruction: extra,
             ...formatOpt
           })
+      let scoped = scopeOutcome.dataUrl
+
+      // 三重身份锁（Triple Identity Lock）：当走大模型链路且局部椭圆回贴未生效（如证件照换正装、
+      // 自由描述换背景、全图调色等全局请求，或未走 composePortraitScopedRetouch）时，
+      // 只要检测到 68 点人脸关键点，自动执行「关键点 MLS 几何回正 + 外部换装原图面部锁死 / 高低频微特征融合」
+      if (
+        !runPureLocal &&
+        !scopeOutcome.applied &&
+        ctx.composePortraitIdentityLock &&
+        ctx.node.params.portraitIdentityLock !== false &&
+        face?.landmarks?.length
+      ) {
+        try {
+          const locked = await ctx.composePortraitIdentityLock({
+            sourceDataUrl: effectiveSourceUrl,
+            generatedDataUrl: scoped,
+            landmarks: face.landmarks,
+            state,
+            extraInstruction: extra,
+            ...formatOpt,
+            signal: ctx.signal
+          })
+          if (locked.applied && locked.dataUrl) {
+            scoped = locked.dataUrl
+            if (index === 0) {
+              ctx.log?.(`identity lock applied (${locked.mode}, max drift ${locked.maxDriftPx}px)`)
+            }
+          }
+        } catch (err) {
+          ctx.log?.(`identity lock skipped: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
 
       // 混合管线后置：若挂载了自定义 `.cube` 3D LUT 且走的是 AI 模型链路，在回贴后执行确定性三维色彩映射
       if (!runPureLocal && customLut && ctx.composePortraitLiveRetouch) {

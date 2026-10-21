@@ -112,10 +112,18 @@
     <ul v-else class="model-list">
       <li v-for="m in visibleInstalled" :key="m.id">
         <span class="model-id">{{ m.id }}</span>
-        <span v-if="installedTab !== 'sam2'" class="kind-chip">{{ kindLabel(m.kind) }}</span>
+        <span v-if="installedTab !== 'sam2' && installedTab !== 'matting'" class="kind-chip">{{
+          kindLabel(m.kind)
+        }}</span>
         <span class="meta">{{ m.sizeMb }} MB</span>
         <span
-          v-if="installedTab !== 'sam2' && isAutoPick(m)"
+          v-if="(installedTab === 'yolo' || installedTab === 'face') && isAutoPick(m)"
+          class="auto-chip"
+          :title="t('settings.yoloModels.autoPickTitle')"
+          >{{ t('settings.yoloModels.autoPick') }}</span
+        >
+        <span
+          v-else-if="installedTab === 'matting' && isMattingAutoPick(m)"
           class="auto-chip"
           :title="t('settings.yoloModels.autoPickTitle')"
           >{{ t('settings.yoloModels.autoPick') }}</span
@@ -148,19 +156,19 @@
       </button>
     </div>
 
-    <!-- 全局下载进度 -->
-    <div v-if="activeProgress" class="progress-card">
+    <!-- 全局下载进度（支持多模型并行下载） -->
+    <div v-for="item in activeProgressList" :key="item.modelId" class="progress-card">
       <div class="progress-head">
-        <code class="model-id">{{ activeProgress.modelId }}</code>
-        <span class="meta">{{ progressStageLabel }}</span>
-        <span class="meta progress-pct">{{ progressPercentLabel }}</span>
+        <code class="model-id">{{ item.modelId }}</code>
+        <span class="meta">{{ progressStageLabelOf(item) }}</span>
+        <span class="meta progress-pct">{{ progressPercentLabelOf(item) }}</span>
         <span class="spacer" />
-        <button type="button" class="ghost-btn" @click="cancelDownload">
+        <button type="button" class="ghost-btn" @click="cancelDownload(item.modelId)">
           {{ t('settings.yoloModels.cancelDownload') }}
         </button>
       </div>
-      <div v-if="activeProgress.phase === 'downloading'" class="track">
-        <div class="fill" :style="{ width: `${progressPercent}%` }" />
+      <div v-if="item.phase === 'downloading'" class="track">
+        <div class="fill" :style="{ width: `${progressPercentOf(item)}%` }" />
       </div>
     </div>
 
@@ -177,8 +185,8 @@
             <span v-if="isInstalled(model.id)" class="ok-chip">{{
               t('settings.yoloModels.installedTag')
             }}</span>
-            <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
-              activeProgress?.phase === 'verifying'
+            <span v-else-if="isDownloading(model.id)" class="ok-chip busy">{{
+              isVerifying(model.id)
                 ? t('settings.yoloModels.verifyingTag')
                 : t('settings.yoloModels.downloadingTag')
             }}</span>
@@ -186,7 +194,7 @@
               v-else
               type="button"
               class="download-btn"
-              :disabled="!!downloadingId || loading"
+              :disabled="loading"
               @click="startDownload(model)"
             >
               {{ t('settings.yoloModels.download') }}
@@ -218,8 +226,8 @@
           <span v-if="isInstalled(model.id)" class="ok-chip">{{
             t('settings.yoloModels.installedTag')
           }}</span>
-          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
-            activeProgress?.phase === 'verifying'
+          <span v-else-if="isDownloading(model.id)" class="ok-chip busy">{{
+            isVerifying(model.id)
               ? t('settings.yoloModels.verifyingTag')
               : t('settings.yoloModels.downloadingTag')
           }}</span>
@@ -227,12 +235,56 @@
             v-else-if="faceCatalogReady"
             type="button"
             class="download-btn"
-            :disabled="!!downloadingId || loading"
+            :disabled="loading"
             @click="startDownload(model)"
           >
             {{ t('settings.yoloModels.download') }}
           </button>
           <span v-else class="kind-chip">{{ t('settings.yoloModels.facePresetMissing') }}</span>
+        </li>
+      </ul>
+    </div>
+
+    <div v-show="downloadTab === 'matting'" class="tab-panel cat-group">
+      <p class="hint">
+        {{ t('settings.yoloModels.mattingHint') }}
+      </p>
+      <ul class="model-list catalog-list">
+        <li v-for="model in MATTING_CATALOG" :key="model.id">
+          <span class="model-id">{{ model.id }}</span>
+          <span class="meta size">≈ {{ model.sizeMb }} MB</span>
+          <span class="meta">{{
+            t(`settings.yoloModels.mattingDesc.${model.id.replace(/\./g, '_')}`)
+          }}</span>
+          <template v-if="isMattingInstalled(model.id)">
+            <span class="ok-chip">{{ t('settings.yoloModels.installedTag') }}</span>
+            <button
+              type="button"
+              class="danger-btn"
+              :disabled="loading"
+              @click="toggleDelete(model.id)"
+            >
+              {{
+                confirmingDelete === model.id
+                  ? t('settings.yoloModels.deleteConfirm')
+                  : t('settings.yoloModels.delete')
+              }}
+            </button>
+          </template>
+          <span v-else-if="isDownloading(model.id)" class="ok-chip busy">{{
+            isVerifying(model.id)
+              ? t('settings.yoloModels.verifyingTag')
+              : t('settings.yoloModels.downloadingTag')
+          }}</span>
+          <button
+            v-else
+            type="button"
+            class="download-btn"
+            :disabled="loading"
+            @click="startDownload(model)"
+          >
+            {{ t('settings.yoloModels.download') }}
+          </button>
         </li>
       </ul>
     </div>
@@ -260,8 +312,8 @@
               }}
             </button>
           </template>
-          <span v-else-if="downloadingId === model.id" class="ok-chip busy">{{
-            activeProgress?.phase === 'verifying'
+          <span v-else-if="isDownloading(model.id)" class="ok-chip busy">{{
+            isVerifying(model.id)
               ? t('settings.yoloModels.verifyingTag')
               : t('settings.yoloModels.downloadingTag')
           }}</span>
@@ -269,7 +321,7 @@
             v-else
             type="button"
             class="download-btn"
-            :disabled="!!downloadingId || loading"
+            :disabled="loading"
             @click="startDownload(model)"
           >
             {{ t('settings.yoloModels.download') }}
@@ -287,6 +339,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { YoloSettings } from '@shared/domain'
+import { MATTING_CATALOG, pickPreferredMattingModel } from '@shared/mattingCatalog'
 import { SAM2_CATALOG } from '@shared/sam2Catalog'
 import { YOLO_KIND_ORDER, yoloFaceCatalogReady } from '@shared/yoloCatalog'
 import {
@@ -314,8 +367,8 @@ const yolo = defineModel<YoloSettings>('yolo', { required: true })
 
 const { t } = useStudioI18n()
 
-type ModelTab = 'yolo' | 'face' | 'sam2'
-const modelTabs: readonly ModelTab[] = ['yolo', 'face', 'sam2']
+type ModelTab = 'yolo' | 'matting' | 'face' | 'sam2'
+const modelTabs: readonly ModelTab[] = ['yolo', 'matting', 'face', 'sam2']
 const installedTab = ref<ModelTab>('yolo')
 const downloadTab = ref<ModelTab>('yolo')
 
@@ -323,48 +376,54 @@ const yoloStatus = ref<YoloStatus | null>(null)
 const catalog = ref<YoloCatalogModel[]>([])
 const loading = ref(false)
 const dirInput = ref('')
-const progress = ref<YoloModelDownloadProgress | null>(null)
+const progressMap = ref<Record<string, YoloModelDownloadProgress>>({})
 const confirmingDelete = ref<string | null>(null)
 const feedback = ref('')
 const feedbackError = ref(false)
 let stopProgressListen: (() => void) | null = null
 let confirmTimer: ReturnType<typeof setTimeout> | null = null
-let progressClearTimer: ReturnType<typeof setTimeout> | null = null
+const progressClearTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 const statusReady = computed(() => !!yoloStatus.value?.ready)
 const hasCustomDir = computed(() => !!yolo.value.modelDir?.trim())
 const installedModels = computed<YoloModelInfo[]>(() => yoloStatus.value?.models ?? [])
 const installedSam2 = computed(() => yoloStatus.value?.sam2Models ?? [])
-const downloadingId = computed(() =>
-  progress.value && (progress.value.phase === 'downloading' || progress.value.phase === 'verifying')
-    ? progress.value.modelId
-    : ''
+const installedMatting = computed(() => yoloStatus.value?.mattingModels ?? [])
+const activeProgressList = computed(() =>
+  Object.values(progressMap.value).filter(
+    (p) => p.phase === 'downloading' || p.phase === 'verifying'
+  )
 )
-const activeProgress = computed(() =>
-  progress.value && (progress.value.phase === 'downloading' || progress.value.phase === 'verifying')
-    ? progress.value
-    : null
-)
-const progressPercent = computed(() => {
-  const p = activeProgress.value
-  if (!p) return 0
+
+function isDownloading(modelId: string): boolean {
+  const p = progressMap.value[modelId]
+  return Boolean(p && (p.phase === 'downloading' || p.phase === 'verifying'))
+}
+
+function isVerifying(modelId: string): boolean {
+  return progressMap.value[modelId]?.phase === 'verifying'
+}
+
+function progressPercentOf(p: YoloModelDownloadProgress): number {
   if (p.phase === 'verifying') return 100
   const byBytes =
     p.totalBytes && p.totalBytes > 0 ? Math.round(((p.loadedBytes ?? 0) / p.totalBytes) * 100) : 0
   return Math.max(0, Math.min(100, byBytes || p.percent || 0))
-})
-const progressPercentLabel = computed(() =>
-  activeProgress.value?.phase === 'verifying'
+}
+
+function progressPercentLabelOf(p: YoloModelDownloadProgress): string {
+  return p.phase === 'verifying'
     ? t('settings.yoloModels.verifyingTag')
-    : `${progressPercent.value}% · ${formatMb(activeProgress.value?.loadedBytes)} / ${
-        activeProgress.value?.totalBytes ? formatMb(activeProgress.value.totalBytes) : '…'
+    : `${progressPercentOf(p)}% · ${formatMb(p.loadedBytes)} / ${
+        p.totalBytes ? formatMb(p.totalBytes) : '…'
       }`
-)
-const progressStageLabel = computed(() =>
-  activeProgress.value?.phase === 'verifying'
+}
+
+function progressStageLabelOf(p: YoloModelDownloadProgress): string {
+  return p.phase === 'verifying'
     ? t('settings.yoloModels.verifyingTag')
     : t('settings.yoloModels.downloadingTag')
-)
+}
 
 function kindLabel(kind: YoloTaskKind): string {
   return t(`settings.yoloModels.kind.${kind}`)
@@ -384,18 +443,21 @@ const installedYolo = computed(() => installedModels.value.filter((model) => mod
 const installedFace = computed(() => installedModels.value.filter((model) => model.kind === 'face'))
 const visibleInstalled = computed(() => {
   if (installedTab.value === 'sam2') return installedSam2.value
+  if (installedTab.value === 'matting') return installedMatting.value
   if (installedTab.value === 'face') return installedFace.value
   return installedYolo.value
 })
 
 function installedCount(tab: ModelTab): number {
   if (tab === 'sam2') return installedSam2.value.length
+  if (tab === 'matting') return installedMatting.value.length
   if (tab === 'face') return installedFace.value.length
   return installedYolo.value.length
 }
 
 function tabCount(tab: ModelTab): number {
   if (tab === 'sam2') return SAM2_CATALOG.length
+  if (tab === 'matting') return MATTING_CATALOG.length
   if (tab === 'face') return catalogByKind('face').length
   return YOLO_KIND_ORDER.reduce((sum, kind) => sum + catalogByKind(kind).length, 0)
 }
@@ -406,6 +468,14 @@ function isInstalled(id: string): boolean {
 
 function isSam2Installed(id: string): boolean {
   return installedSam2.value.some((m) => m.id === id)
+}
+
+function isMattingInstalled(id: string): boolean {
+  return installedMatting.value.some((m) => m.id === id)
+}
+
+function isMattingAutoPick(m: YoloModelInfo): boolean {
+  return pickPreferredMattingModel(installedMatting.value)?.id === m.id
 }
 
 /** 该 kind 当前自动选用（目录中体积最大）的模型 id */
@@ -520,10 +590,23 @@ async function toggleDelete(id: string): Promise<void> {
 }
 
 async function startDownload(model: YoloCatalogModel): Promise<void> {
-  if (downloadingId.value || isInstalled(model.id) || isSam2Installed(model.id)) return
-  progress.value = { modelId: model.id, phase: 'downloading', percent: 0 }
+  if (
+    isDownloading(model.id) ||
+    isInstalled(model.id) ||
+    isSam2Installed(model.id) ||
+    isMattingInstalled(model.id)
+  )
+    return
+  const prevTimer = progressClearTimers.get(model.id)
+  if (prevTimer) {
+    clearTimeout(prevTimer)
+    progressClearTimers.delete(model.id)
+  }
+  progressMap.value = {
+    ...progressMap.value,
+    [model.id]: { modelId: model.id, phase: 'downloading', percent: 0 }
+  }
   feedback.value = ''
-  loading.value = true
   try {
     const result = await window.studio.downloadYoloModel(model.id)
     // 用户主动取消走中性提示（cancelled 由主进程结构化标记，不按文案判断）
@@ -532,35 +615,34 @@ async function startDownload(model: YoloCatalogModel): Promise<void> {
   } catch (err) {
     setFeedback(err instanceof Error ? err.message : String(err), true)
   } finally {
-    loading.value = false
-    if (!activeProgress.value) clearProgressSoon()
+    if (!isDownloading(model.id)) clearProgressSoon(model.id)
   }
 }
 
-async function cancelDownload(): Promise<void> {
-  await window.studio.cancelYoloModelDownload()
+async function cancelDownload(modelId?: string): Promise<void> {
+  await window.studio.cancelYoloModelDownload(modelId)
 }
 
 function onDownloadProgress(payload: YoloModelDownloadProgress): void {
-  if (payload.phase === 'done') {
-    progress.value = payload
-    clearProgressSoon()
-    return
+  progressMap.value = {
+    ...progressMap.value,
+    [payload.modelId]: payload
   }
-  if (payload.phase === 'error' || payload.phase === 'cancelled') {
-    progress.value = payload
-    clearProgressSoon()
-    return
+  if (payload.phase === 'done' || payload.phase === 'error' || payload.phase === 'cancelled') {
+    clearProgressSoon(payload.modelId)
   }
-  progress.value = payload
 }
 
-function clearProgressSoon(): void {
-  if (progressClearTimer) clearTimeout(progressClearTimer)
-  progressClearTimer = setTimeout(() => {
-    progress.value = null
-    progressClearTimer = null
+function clearProgressSoon(modelId: string): void {
+  const existing = progressClearTimers.get(modelId)
+  if (existing) clearTimeout(existing)
+  const timer = setTimeout(() => {
+    const next = { ...progressMap.value }
+    delete next[modelId]
+    progressMap.value = next
+    progressClearTimers.delete(modelId)
   }, 400)
+  progressClearTimers.set(modelId, timer)
 }
 
 watch(
@@ -580,7 +662,10 @@ onBeforeUnmount(() => {
   stopProgressListen?.()
   stopProgressListen = null
   if (confirmTimer) clearTimeout(confirmTimer)
-  if (progressClearTimer) clearTimeout(progressClearTimer)
+  for (const timer of progressClearTimers.values()) {
+    clearTimeout(timer)
+  }
+  progressClearTimers.clear()
 })
 </script>
 
