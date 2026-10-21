@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.3.0] — 2026-10-21
+
+8.3.0 功能版：**成片时间线（`output.timeline`）** 新增 **DOTween 双层补间与多关键帧序列（Sequence）动画引擎**、**8 款内置动态矢量贴纸** 与 **音乐相册自动成片管线（Ken Burns 推拉摇移运镜 + 平滑转场）**；**人像处理（`image.portrait`）** 升级 SOTA 四频段 à-trous 小波磨皮、程序化微毛孔合成、参数化天鹅绒美妆与 Procrustes 姿态对齐身份锁；**本地高精度抠图（`image.process` cutout）** 升级 ONNX Runtime **DirectML / CUDA / CoreML 硬件 GPU 加速**、**发丝级前景颜色解混（Color Unmixing）** 与 **结果区零延迟脏矩形实时橡皮擦 / 恢复画笔**；新增内置 **无头浏览器网页图文提取工具（`web_extract_article`）** 与设置界面多模型并发下载。
+
+- **新增 · 成片时间线 DOTween 补间与多关键帧序列引擎（`output.timeline`）及音乐相册自动成片**：主视频轨与画中画叠加轨支持 **双层正交动画系统**——第一层零门槛预设（10 种入场 `tweenIn`、7 种待机循环 `tweenLoop`、7 种出场 `tweenOut`、6 种主镜头 Ken Burns 推拉摇移 `cameraMotion` 与 12 种经典缓动曲线），第二层多关键帧序列（`keyframes[]`，支持任意时间点记录坐标/尺寸/旋转/透明度/分段缓动）；前后端 100% 数学同源（预览 60fps CSS 实时驱动，导出自动编译为 FFmpeg 逐帧数学表达式）。内置 8 款零外部依赖动态矢量贴纸（箭头、圆圈高亮、勾选、星标、角标框等）并补齐 10 类内置音效 SVG 图标；AI 对话输入多张照片制作「音乐相册 / 电子相册」时自动连入 `output.timeline` 并赋予 Ken Burns 运镜、平滑转场与配乐合成。
+- **新增 · 本地抠图 GPU 硬件加速、发丝颜色解混与结果区零延迟橡皮擦**：ONNX Runtime（YOLO / RMBG-1.4 / BiRefNet / ViTMatte / SAM2）全面支持 Windows **DirectML**、Linux **CUDA** 与 macOS **CoreML** GPU 硬件加速（不兼容算子自动无缝回退 CPU），设置界面支持多模型同时并发下载；本地抠图升级全图 $1024\times1024$ 推理、外围孤立噪点岛抑制、高对比度边缘发丝空隙剥离与前景锚点颜色解混（Color Unmixing）；结果预览区新增零延迟 **「橡皮擦 / + 恢复」画笔工具栏**，采用 `<canvas>` 局部脏矩形（Dirty-Rect）就地合成，单步擦除耗时 $<0.1\text{ms}$。
+- **新增 · SOTA 四频段小波人像精修引擎（`image.portrait`）**：升级 4 频段 à-trous 小波分解（独立保护微毛孔频段、仅平滑中频斑点瑕疵并保留低频光影骨相）、程序化高频皮肤微纹理合成、参数化天鹅绒美妆（腮红、修容、高光、眼影、眼线、柔焦唇妆）与 Procrustes 68 点姿态对齐五官身份锁。
+- **新增 · 无头浏览器网页图文提取工具（`web_extract_article`）与 `@` 资产预览持久化**：内置 `web_extract_article` MCP 工具，自动滚动触发懒加载图片、提取结构化正文并将文章配图下载至 `Cache/imports/` 直连科普视频时间线；修复 AI 对话中 `@` 引用图片在重新打开工程后因绝对路径失效无法显示的问题。
+- **说明（发版提示）**：8.3.0 涉及主进程、共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.2.0] — 2026-10-20
 
 8.2.0 功能版：新增 **剧本创作工作台（`asset.screenplay` Dive）**，支持多集分集管理、智能按集/场次拆分、场次大纲跳转、三栏剧本工作台与一键下游分镜扇出；**全部输出（`out-all`）到选择文本（`text.select`）** 支持多集剧本自动展开与按集点选；全软件节点卡片、属性面板、Dive 编辑器与工具弹窗统一升级 **Photoshop 级透明棋盘格背景（`.checkerboard-bg`）**。
