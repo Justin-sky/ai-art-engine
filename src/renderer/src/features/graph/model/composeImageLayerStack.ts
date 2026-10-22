@@ -504,3 +504,38 @@ export function layerUrlMapFromItems(
   }
   return map
 }
+
+/**
+ * 精准 UI 拆层的像素编解码（执行器 `ctx.uiRgbaCodec` 的落地）：
+ * shared 流水线只认 RGBA 缓冲区，解码 / PNG 编码 / 本地 OCR 在这里用 canvas 与 IPC 完成。
+ */
+export const uiRgbaCodec = {
+  async decodeImageRgba(
+    url: string
+  ): Promise<{ width: number; height: number; data: Uint8ClampedArray }> {
+    const img = await loadImage(url)
+    const width = Math.max(1, img.naturalWidth || img.width || 1)
+    const height = Math.max(1, img.naturalHeight || img.height || 1)
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+    ctx.drawImage(img, 0, 0, width, height)
+    return {
+      width,
+      height,
+      data: new Uint8ClampedArray(ctx.getImageData(0, 0, width, height).data)
+    }
+  },
+  async encodeRgbaPng(img: {
+    width: number
+    height: number
+    data: Uint8ClampedArray
+  }): Promise<string> {
+    return rgbaBufferToPngDataUrl(img.data, img.width, img.height)
+  },
+  recognizeImageText(dataUrl: string): Promise<LocalOcrTextBox[]> {
+    return runLocalOcrIfAvailable(dataUrl)
+  }
+}

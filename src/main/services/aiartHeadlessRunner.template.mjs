@@ -118,6 +118,462 @@ function clipToolArgs(raw) {
   return text.length > 4000 ? text.slice(0, 4000) + '…' : text
 }
 
+const GEMINI_CHAT_FALLBACK_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-flash-latest',
+  'gemini-3-flash-preview'
+]
+
+const GEMINI_SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator'
+const thoughtSignatureCache = new Map()
+const geminiModelUnavailableUntil = new Map()
+
+function isDeepSeekOfficialUrl(urlStr) {
+  return typeof urlStr === 'string' && /\bapi\.deepseek\.com\b/i.test(urlStr)
+}
+
+function isGoogleGeminiEndpoint(urlStr, modelId) {
+  if (typeof urlStr === 'string') {
+    if (
+      /\bgenerativelanguage\.googleapis\.com\b/i.test(urlStr) ||
+      /\/v1beta\/openai\b/i.test(urlStr)
+    ) {
+      return true
+    }
+  }
+  if (typeof modelId === 'string') {
+    const clean = modelId.replace(/^models\//i, '').trim()
+    if (/^gemini-/i.test(clean)) return true
+  }
+  return false
+}
+
+function normalizeGeminiChatModelId(rawModelId, isGoogleHost = false) {
+  const clean = String(rawModelId || '')
+    .trim()
+    .replace(/^models\//i, '')
+  if (!clean) return 'gemini-3-flash-preview'
+  if (/live/i.test(clean)) {
+    const lower = clean.toLowerCase()
+    if (lower === 'gemini-3.8-live' || lower === 'gemini-3.8-live-extended-thinking') {
+      return 'gemini-3.8-flash'
+    }
+    if (lower === 'gemini-3.1-flash-live-preview') {
+      return 'gemini-3.1-flash-lite-preview'
+    }
+    const verMatch = /^gemini-(\d+(?:\.\d+)?)-live(?:-.*)?$/i.exec(clean)
+    if (verMatch) {
+      return `gemini-${verMatch[1]}-flash`
+    }
+    return 'gemini-flash-latest'
+  }
+  if (isGoogleHost && !/^(?:gemini|gemma)-/i.test(clean)) {
+    const envModel = String(process.env.DSH_MODEL || '')
+      .trim()
+      .replace(/^models\//i, '')
+    if (/^(?:gemini|gemma)-/i.test(envModel) && !/live/i.test(envModel)) {
+      return envModel
+    }
+    return 'gemini-3.8-flash'
+  }
+  return clean
+}
+
+function unwrapJsonArrayErrorBody(rawText) {
+  if (typeof rawText !== 'string') return rawText
+  const trimmed = rawText.trim()
+  if (!trimmed.startsWith('[')) return rawText
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === 'object') {
+      const first = parsed[0]
+      if (first.error && typeof first.error === 'object') {
+        return JSON.stringify(first)
+      }
+    }
+  } catch {
+    /* keep original text */
+  }
+  return rawText
+}
+
+function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureCache) {
+  if (typeof rawBody !== 'string' || !rawBody.trim().startsWith('{')) {
+    return { body: rawBody, isGemini: false, parsed: null }
+  }
+  if (isDeepSeekOfficialUrl(urlStr)) {
+    return { body: rawBody, isGemini: false, parsed: null }
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(rawBody)
+  } catch {
+    return { body: rawBody, isGemini: false, parsed: null }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { body: rawBody, isGemini: false, parsed: null }
+  }
+
+  const isGemini = isGoogleGeminiEndpoint(urlStr, parsed.model)
+  const thinkingType = parsed.thinking?.type
+  delete parsed.thinking
+  for (const key of Object.keys(parsed)) {
+    if (key.startsWith('dsh_')) {
+      delete parsed[key]
+    }
+  }
+
+  if (isGemini) {
+    const isGoogleHost =
+      typeof urlStr === 'string' && /\bgenerativelanguage\.googleapis\.com\b/i.test(urlStr)
+    parsed.model = normalizeGeminiChatModelId(parsed.model, isGoogleHost)
+    const blockedUntil = geminiModelUnavailableUntil.get(parsed.model)
+    if (typeof blockedUntil === 'number' && blockedUntil > Date.now()) {
+      const replacement = GEMINI_CHAT_FALLBACK_MODELS.find((candidate) => {
+        const until = geminiModelUnavailableUntil.get(candidate)
+        return !(typeof until === 'number' && until > Date.now())
+      })
+      if (replacement) parsed.model = replacement
+    }
+    // Let Gemini use its native dynamic thinking budget instead of forcing high latency or failing on non-thinking models.
+    delete parsed.reasoning_effort
+    if (
+      parsed.max_tokens === 256000 ||
+      (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 65536)
+    ) {
+      delete parsed.max_tokens
+    }
+  } else {
+    if (thinkingType === 'disabled') {
+      delete parsed.reasoning_effort
+    } else if (parsed.reasoning_effort === 'max') {
+      parsed.reasoning_effort = 'high'
+    }
+    if (parsed.max_tokens === 256000) {
+      delete parsed.max_tokens
+    }
+  }
+
+  if (isGemini && Array.isArray(parsed.messages)) {
+    parsed.messages = parsed.messages.map((msg, idx) => {
+      if (!msg || typeof msg !== 'object') return msg
+      const copy = { ...msg }
+      if (copy.role === 'system' && idx > 0) {
+        copy.role = 'user'
+        if (typeof copy.content === 'string') {
+          copy.content = '[System Reminder]\n' + copy.content
+        }
+      }
+      if (copy.role === 'assistant') {
+        const hadReasoning =
+          typeof copy.reasoning_content === 'string' && copy.reasoning_content.trim()
+            ? copy.reasoning_content.trim()
+            : ''
+        delete copy.reasoning_content
+        if (Array.isArray(copy.tool_calls) && copy.tool_calls.length > 0) {
+          copy.tool_calls = copy.tool_calls.map((tc) => {
+            if (!tc || typeof tc !== 'object') return tc
+            const existingSig = tc.extra_content?.google?.thought_signature
+            const cachedSig =
+              typeof tc.id === 'string' && tc.id && sigCache ? sigCache.get(tc.id) : undefined
+            const sig = existingSig || cachedSig || GEMINI_SKIP_THOUGHT_SIGNATURE
+            return {
+              ...tc,
+              extra_content: {
+                ...(tc.extra_content && typeof tc.extra_content === 'object'
+                  ? tc.extra_content
+                  : {}),
+                google: {
+                  ...(tc.extra_content?.google && typeof tc.extra_content.google === 'object'
+                    ? tc.extra_content.google
+                    : {}),
+                  thought_signature: sig
+                }
+              }
+            }
+          })
+        } else if (typeof copy.content !== 'string' || copy.content === '') {
+          copy.content = hadReasoning || ' '
+        }
+      }
+      return copy
+    })
+  }
+
+  return {
+    body: JSON.stringify(parsed),
+    isGemini,
+    parsed
+  }
+}
+
+function transformGeminiSsePayload(payloadStr, state, sigCache = thoughtSignatureCache) {
+  if (typeof payloadStr !== 'string' || !payloadStr.startsWith('{')) return payloadStr
+  let chunk
+  try {
+    chunk = JSON.parse(payloadStr)
+  } catch {
+    return payloadStr
+  }
+  if (!chunk || typeof chunk !== 'object') return payloadStr
+
+  if (Array.isArray(chunk.choices)) {
+    for (const choice of chunk.choices) {
+      if (!choice || typeof choice !== 'object') continue
+      const toolCalls = choice.delta?.tool_calls
+      if (Array.isArray(toolCalls)) {
+        for (const call of toolCalls) {
+          if (!call || typeof call !== 'object') continue
+          const sig = call.extra_content?.google?.thought_signature
+          if (
+            typeof call.id === 'string' &&
+            call.id &&
+            typeof sig === 'string' &&
+            sig &&
+            sigCache
+          ) {
+            sigCache.set(call.id, sig)
+          }
+          if (typeof call.index !== 'number') {
+            if (typeof call.id === 'string' && call.id) {
+              if (state.toolIdToIndex.has(call.id)) {
+                call.index = state.toolIdToIndex.get(call.id)
+              } else {
+                const idx = state.nextToolCallIndex++
+                state.toolIdToIndex.set(call.id, idx)
+                call.index = idx
+              }
+            } else {
+              call.index = Math.max(0, state.nextToolCallIndex - 1)
+            }
+          }
+        }
+      }
+      if (typeof choice.finish_reason === 'string' && choice.finish_reason) {
+        const lowerReason = choice.finish_reason.toLowerCase()
+        if (lowerReason === 'stop') choice.finish_reason = 'stop'
+        else if (lowerReason === 'tool_calls' || lowerReason === 'function_call') {
+          choice.finish_reason = 'tool_calls'
+        } else if (lowerReason === 'length' || lowerReason === 'max_tokens') {
+          choice.finish_reason = 'length'
+        }
+        state.sawFinishReason = true
+      }
+    }
+  }
+
+  if (chunk.usage && typeof chunk.usage === 'object') {
+    const p = chunk.usage.prompt_tokens
+    const c = chunk.usage.completion_tokens
+    const t = chunk.usage.total_tokens
+    if (typeof p === 'number' && typeof c === 'number' && typeof t === 'number' && t > p + c) {
+      const thinkingTokens = t - (p + c)
+      chunk.usage.completion_tokens_details = {
+        ...(chunk.usage.completion_tokens_details &&
+        typeof chunk.usage.completion_tokens_details === 'object'
+          ? chunk.usage.completion_tokens_details
+          : {}),
+        reasoning_tokens: chunk.usage.completion_tokens_details?.reasoning_tokens ?? thinkingTokens
+      }
+      chunk.usage.completion_tokens = c + thinkingTokens
+    }
+  }
+
+  return JSON.stringify(chunk)
+}
+
+function wrapGeminiSseResponse(response, sigCache = thoughtSignatureCache) {
+  if (!response?.body || typeof TransformStream === 'undefined') return response
+  const state = {
+    nextToolCallIndex: 0,
+    toolIdToIndex: new Map(),
+    sawDone: false,
+    sawFinishReason: false
+  }
+  let lineBuf = ''
+
+  const processLine = (rawLine, controller) => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    if (line.startsWith('data:')) {
+      const payload = line.slice(5).trim()
+      if (payload === '[DONE]') {
+        state.sawDone = true
+        controller.enqueue('data: [DONE]\n')
+        return
+      }
+      if (payload.startsWith('{')) {
+        const transformed = transformGeminiSsePayload(payload, state, sigCache)
+        controller.enqueue('data: ' + transformed + '\n')
+        return
+      }
+    }
+    controller.enqueue(rawLine + '\n')
+  }
+
+  const sseTransform = new TransformStream({
+    transform(chunk, controller) {
+      lineBuf += chunk
+      const lines = lineBuf.split('\n')
+      lineBuf = lines.pop() ?? ''
+      for (const rawLine of lines) {
+        processLine(rawLine, controller)
+      }
+    },
+    flush(controller) {
+      if (lineBuf.trim().length > 0) {
+        processLine(lineBuf, controller)
+        controller.enqueue('\n')
+      }
+      if (!state.sawDone && state.sawFinishReason) {
+        controller.enqueue('\ndata: [DONE]\n\n')
+      }
+    }
+  })
+
+  const transformedBody = response.body
+    .pipeThrough(new TextDecoderStream())
+    .pipeThrough(sseTransform)
+    .pipeThrough(new TextEncoderStream())
+
+  return new Response(transformedBody, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers
+  })
+}
+
+function shouldFallbackGeminiModel(status, rawErrorText) {
+  if (status === 503 || status === 502 || status === 504 || status === 404 || status === 429) {
+    return true
+  }
+  if (status === 400 && typeof rawErrorText === 'string') {
+    return /not found|not supported|bidiGenerateContent|no longer available|unknown model|invalid model/i.test(
+      rawErrorText
+    )
+  }
+  return false
+}
+
+function installOpenAiCompatFetchBridge() {
+  const FETCH_MARK = Symbol.for('aiart.openAiCompatFetch.patched')
+  if (typeof globalThis.fetch !== 'function' || globalThis.fetch[FETCH_MARK]) return
+  const originalFetch = globalThis.fetch.bind(globalThis)
+
+  const patchedFetch = async function (input, init) {
+    let urlStr =
+      typeof input === 'string'
+        ? input
+        : input && typeof input.url === 'string'
+          ? input.url
+          : String(input)
+    const envBaseUrl = String(process.env.DEEPSEEK_BASE_URL || '')
+      .trim()
+      .replace(/\/+$/, '')
+    if (
+      envBaseUrl &&
+      !isDeepSeekOfficialUrl(envBaseUrl) &&
+      isDeepSeekOfficialUrl(urlStr) &&
+      /\/(?:chat\/completions|files)(?:\?.*)?$/i.test(urlStr)
+    ) {
+      const suffixMatch = /(\/(?:chat\/completions|files)(?:\?.*)?)$/i.exec(urlStr)
+      if (suffixMatch) {
+        urlStr = envBaseUrl + suffixMatch[1]
+        if (typeof input === 'string') {
+          input = urlStr
+        }
+      }
+    }
+    const method = String(
+      init?.method || (input && typeof input === 'object' && input.method) || 'GET'
+    ).toUpperCase()
+
+    // Non-DeepSeek endpoints do not implement DeepSeek's proprietary /files upload API;
+    // returning 404 immediately lets dsh-llm-deepseek fall back to inline base64 images with zero network delay.
+    if (method === 'POST' && !isDeepSeekOfficialUrl(urlStr) && /\/files(?:\?.*)?$/i.test(urlStr)) {
+      return new Response(
+        JSON.stringify({
+          error: { message: 'Files API not supported on this OpenAI-compatible endpoint' }
+        }),
+        {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        }
+      )
+    }
+
+    if (
+      method === 'POST' &&
+      typeof init?.body === 'string' &&
+      /\/chat\/completions(?:\?.*)?$/i.test(urlStr)
+    ) {
+      const { body, isGemini, parsed } = sanitizeOpenAiChatPayload(
+        init.body,
+        urlStr,
+        thoughtSignatureCache
+      )
+      let response = await originalFetch(input, { ...init, body })
+
+      if (isGemini && !response.ok && parsed && typeof parsed.model === 'string') {
+        const firstErrText = await response.text()
+        if (shouldFallbackGeminiModel(response.status, firstErrText)) {
+          geminiModelUnavailableUntil.set(parsed.model, Date.now() + 5 * 60_000)
+          const tried = new Set([parsed.model])
+          for (const candidateModel of GEMINI_CHAT_FALLBACK_MODELS) {
+            if (tried.has(candidateModel)) continue
+            tried.add(candidateModel)
+            const retryPayload = JSON.stringify({ ...parsed, model: candidateModel })
+            const retryResp = await originalFetch(input, { ...init, body: retryPayload })
+            if (retryResp.ok) {
+              return wrapGeminiSseResponse(retryResp, thoughtSignatureCache)
+            }
+            const retryErrText = await retryResp.text()
+            if (shouldFallbackGeminiModel(retryResp.status, retryErrText)) {
+              geminiModelUnavailableUntil.set(candidateModel, Date.now() + 5 * 60_000)
+            }
+            response = new Response(unwrapJsonArrayErrorBody(retryErrText), {
+              status: retryResp.status,
+              statusText: retryResp.statusText,
+              headers: retryResp.headers
+            })
+            if (!shouldFallbackGeminiModel(retryResp.status, retryErrText)) {
+              break
+            }
+          }
+          return response
+        }
+        return new Response(unwrapJsonArrayErrorBody(firstErrText), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        })
+      }
+
+      if (!response.ok) {
+        const errText = await response.text()
+        return new Response(unwrapJsonArrayErrorBody(errText), {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers
+        })
+      }
+
+      if (isGemini) {
+        return wrapGeminiSseResponse(response, thoughtSignatureCache)
+      }
+      return response
+    }
+
+    return originalFetch(input, init)
+  }
+
+  patchedFetch[FETCH_MARK] = true
+  globalThis.fetch = patchedFetch
+}
+
+installOpenAiCompatFetchBridge()
+
 const DSML_OPEN_RE = /<\s*[｜|]\s*DSML\s*[｜|]\s*(?:function_calls|calls|invoke)\b/i
 const DSML_PARTIAL_SUFFIX_RE = /<\s*(?:[｜|]\s*(?:D(?:S(?:M(?:L(?:\s*[｜|]\s*[a-z_]*)?)?)?)?)?)?$/i
 
@@ -2085,10 +2541,16 @@ export {
   apply,
   createDelegationTracker,
   inject,
+  installOpenAiCompatFetchBridge,
   name,
+  normalizeGeminiChatModelId,
   parseDsmlToolCalls,
   registerDelegationGuard,
   registerDsmlStreamTranspiler,
+  sanitizeOpenAiChatPayload,
   stripDsmlFromText,
-  wrapDsmlStream
+  transformGeminiSsePayload,
+  unwrapJsonArrayErrorBody,
+  wrapDsmlStream,
+  wrapGeminiSseResponse
 }

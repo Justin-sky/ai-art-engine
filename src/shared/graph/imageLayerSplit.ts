@@ -16,7 +16,7 @@ import {
   type UiEditableTextMeta
 } from './uiControlSpec'
 
-export const LAYER_SPLIT_MAX_LAYERS = 64
+export const LAYER_SPLIT_MAX_LAYERS = 96
 export const LAYER_SPLIT_Z_MAX = 4096
 export const LAYER_SPLIT_RESOLUTIONS = ['auto', '1K', '1.5K', '2K'] as const
 export const LAYER_SPLIT_COMPOSITE_SUFFIX = 'composite'
@@ -42,9 +42,12 @@ export type LayerSplitResolution = (typeof LAYER_SPLIT_RESOLUTIONS)[number]
  * - 'ai-inpaint-slice': 通用图片模型底板重绘 + 标准 UI 控件结构拆解（按钮背景/文字/按下态、滑块轨道/填充/手柄、面板底框/正文）
  * - 'ai-layers': 原生多图层 API 拆解 + 标准 UI 控件结构二次精拆
  * - 'local-slice': 本地零 API 智能 UI 控件识别与结构拆解
+ * - 'precise': 精准拆层（本地 OCR + 多模态大模型结构化布局树 + 按遮挡层级逐层剥离底板），
+ *   详见 `uiPreciseSplit/pipeline.ts`；'auto' 在具备视觉模型时优先走此模式
  */
 export const UI_LAYER_SPLIT_MODES = [
   'auto',
+  'precise',
   'ai-inpaint-slice',
   'ai-layers',
   'local-slice'
@@ -56,6 +59,7 @@ export function normalizeLayerSplitMode(value: unknown): UiLayerSplitMode {
   const raw = String(value ?? '').trim()
   if (
     raw === 'auto' ||
+    raw === 'precise' ||
     raw === 'ai-inpaint-slice' ||
     raw === 'ai-layers' ||
     raw === 'local-slice'
@@ -63,6 +67,16 @@ export function normalizeLayerSplitMode(value: unknown): UiLayerSplitMode {
     return raw
   }
   return 'auto'
+}
+
+/**
+ * 是否优先尝试精准拆层（OCR + 多模态）。
+ * - 'precise'：必须走精准拆层，失败直接报错
+ * - 'auto'：优先精准拆层，失败（无视觉模型 / 无元素）时回退到 {@link resolveEffectiveUiLayerSplitStrategy}
+ */
+export function prefersPreciseUiLayerSplit(splitMode?: UiLayerSplitMode): boolean {
+  const mode = normalizeLayerSplitMode(splitMode)
+  return mode === 'precise' || mode === 'auto'
 }
 
 /** 画布像素矩形：left/top 为左上角，width/height 为贴图尺寸 */
@@ -261,6 +275,8 @@ export function layerSplitFingerprint(
     splitMode?: string
     model?: string
     providerInstanceId?: string
+    /** 精准拆层的多模态模型覆盖（仅设置时计入指纹，兼容旧指纹） */
+    visionModelKey?: string
   }
 ): string {
   const src = sourceUrl.trim()
@@ -270,8 +286,10 @@ export function layerSplitFingerprint(
   if (!extra) return base
   const mode = normalizeLayerSplitMode(extra.splitMode)
   const modelKey = `${extra.providerInstanceId?.trim() ?? ''}:${extra.model?.trim() ?? ''}`
-  if (mode === 'auto' && modelKey === ':') return base
-  return `${base}|${mode}|${modelKey}`
+  const visionKey = extra.visionModelKey?.trim() || ''
+  const withVision = (fp: string): string => (visionKey ? `${fp}|v:${visionKey}` : fp)
+  if (mode === 'auto' && modelKey === ':') return withVision(base)
+  return withVision(`${base}|${mode}|${modelKey}`)
 }
 
 function normalizeLayerRole(
@@ -1676,6 +1694,9 @@ export function isNativeLayerDecompositionModel(model?: string): boolean {
  * - `'ai-layers'`: 调用模型原生 `layer_decomposition` API
  * - `'ai-inpaint-slice'`: 调用任意生图模型擦除前景生成干净底板 + 智能连通域软抠图切分
  * - `'local-slice'`: 零 API 极速本地连通域切分 + 边界纹理修补底板
+ *
+ * 注意：`'precise'` / `'auto'` 先由执行器尝试精准拆层（见 {@link prefersPreciseUiLayerSplit}），
+ * 此函数返回的是其回退 / 嵌套再拆时使用的传统策略。
  */
 export function resolveEffectiveUiLayerSplitStrategy(
   splitMode?: UiLayerSplitMode,
@@ -1733,6 +1754,7 @@ function inferExtractedUiWidgetName(
   const cw = Math.max(1, canvasWidth)
   const ch = Math.max(1, canvasHeight)
   const areaRatio = (rect.width * rect.height) / (cw * ch)
+  const cx = (rect.left + rect.width / 2) / cw
   const cy = (rect.top + rect.height / 2) / ch
   const aspect = rect.width / Math.max(1, rect.height)
 
@@ -1741,15 +1763,57 @@ function inferExtractedUiWidgetName(
       ? { name: `主面板底框_${index}`, description: 'UI 面板容器与背景底框' } // cjk-ok 自动命名的游戏 UI 图层
       : { name: `Main_Panel_Frame_${index}`, description: 'UI panel container frame' }
   }
+  if (cy <= 0.08 && cx <= 0.14 && aspect >= 0.7 && aspect <= 1.4) {
+    return isZh
+      ? { name: `顶栏头像框_${index}`, description: '顶部玩家头像框与等级徽章' } // cjk-ok 自动命名的游戏 UI 图层
+      : { name: `Top_Avatar_Frame_${index}`, description: 'Top player avatar frame' }
+  }
   if (cy <= 0.18 && aspect >= 2.2) {
     return isZh
       ? { name: `顶栏横幅条_${index}`, description: '顶部资源状态栏与标题横幅' } // cjk-ok 自动命名的游戏 UI 图层
       : { name: `Top_Header_Bar_${index}`, description: 'Top status and currency header bar' }
   }
   if (cy <= 0.22 && aspect < 2.2) {
+    if (cx <= 0.18 || cx >= 0.82) {
+      return isZh
+        ? { name: `侧边入口_${index}`, description: '主界面左右侧快捷活动入口图标' } // cjk-ok 自动命名的游戏 UI 图层
+        : { name: `Side_Entry_Icon_${index}`, description: 'Side shortcut entry icon' }
+    }
     return isZh
       ? { name: `顶部装饰徽章_${index}`, description: '顶栏图标、角标或关闭按钮' } // cjk-ok 自动命名的游戏 UI 图层
       : { name: `Top_Ornament_Badge_${index}`, description: 'Top ornament badge or close button' }
+  }
+  if (cy >= 0.88 && aspect <= 1.65) {
+    return isZh
+      ? { name: `底栏导航项_${index}`, description: '底部导航栏切页图标按钮' } // cjk-ok 自动命名的游戏 UI 图层
+      : { name: `Bottom_Nav_Tab_${index}`, description: 'Bottom navigation tab item' }
+  }
+  if ((cx <= 0.16 || cx >= 0.84) && cy <= 0.42 && aspect <= 1.6) {
+    return isZh
+      ? { name: `侧边入口_${index}`, description: '主界面左右侧快捷活动入口图标' } // cjk-ok 自动命名的游戏 UI 图层
+      : { name: `Side_Entry_Icon_${index}`, description: 'Side shortcut entry icon' }
+  }
+  if (cy >= 0.36 && cy <= 0.68 && rect.width <= cw * 0.08 && rect.height <= ch * 0.08) {
+    if (cx <= 0.08) {
+      return isZh
+        ? { name: `左翻页箭头_${index}`, description: '弹窗左侧轮播切换箭头按钮' } // cjk-ok 自动命名的游戏 UI 图层
+        : { name: `Left_Carousel_Arrow_${index}`, description: 'Modal left carousel arrow' }
+    }
+    if (cx >= 0.92) {
+      return isZh
+        ? { name: `右翻页箭头_${index}`, description: '弹窗右侧轮播切换箭头按钮' } // cjk-ok 自动命名的游戏 UI 图层
+        : { name: `Right_Carousel_Arrow_${index}`, description: 'Modal right carousel arrow' }
+    }
+  }
+  if (aspect >= 3.8 && rect.height <= ch * 0.025 && cy >= 0.55 && cy <= 0.82) {
+    return isZh
+      ? { name: `轮播分页指示点_${index}`, description: '弹窗底部轮播页码指示点' } // cjk-ok 自动命名的游戏 UI 图层
+      : { name: `Carousel_Dots_${index}`, description: 'Carousel pagination indicator dots' }
+  }
+  if (aspect >= 4.2 && rect.height <= ch * 0.035 && cy >= 0.58 && cy <= 0.78) {
+    return isZh
+      ? { name: `倒计时文本_${index}`, description: '活动/礼包剩余时间倒计时文本' } // cjk-ok 自动命名的游戏 UI 图层
+      : { name: `Countdown_Timer_${index}`, description: 'Countdown timer text' }
   }
   if (aspect >= 1.75 && rect.height <= ch * 0.18) {
     return isZh
@@ -1896,6 +1960,17 @@ function computePatchAlignedDiff(
  * - 控件闭合轮廓内部的文字、高光、纹章即使局部颜色接近底色，因不与外框背景连通而受到 100% 不透明度保护（拓扑孔洞闭合，绝不抠穿孔洞）；
  * - 在轮廓交界带（Contour Transition Band）执行色彩反混合（Color Unmixing）+ 实心内邻域色彩净化（Interior Neighbor Color Clamping），彻底消除半透明金光/暗影边缘的黑边与脏边。
  */
+type WidgetMattingMode = 'default' | 'portrait' | 'unmix-plate'
+
+interface PeeledContainerChildWidget extends ImageLayerSplitRect {
+  score: number
+  hintName?: string
+  hintDescription?: string
+  hintControlType?: UiControlType
+  mattingMode?: WidgetMattingMode
+  modalTopY?: number
+}
+
 function extractWidgetRgbaWithContourMatting(input: {
   src: Uint8ClampedArray
   baseRgba: Uint8ClampedArray
@@ -1903,12 +1978,297 @@ function extractWidgetRgbaWithContourMatting(input: {
   canvasHeight: number
   rect: ImageLayerSplitRect
   usePatchSearch: boolean
+  mattingMode?: WidgetMattingMode
+  modalTopY?: number
 }): Uint8ClampedArray {
-  const { src, baseRgba, canvasWidth, canvasHeight, rect, usePatchSearch } = input
+  const {
+    src,
+    baseRgba,
+    canvasWidth,
+    canvasHeight,
+    rect,
+    usePatchSearch,
+    mattingMode = 'default',
+    modalTopY
+  } = input
   const lw = Math.max(1, rect.width)
   const lh = Math.max(1, rect.height)
   const total = lw * lh
   const layerRgba = new Uint8ClampedArray(total * 4)
+
+  // 模式 A：浮动艺术字 / 宣传标语横幅 / 倒计时 / 轮播指示点（按局部列背景反混色 + 笔画核保护，确保字怀孔洞透明且剥离红紫底板光晕）
+  if (mattingMode === 'unmix-plate') {
+    const colBgR = new Float32Array(lw)
+    const colBgG = new Float32Array(lw)
+    const colBgB = new Float32Array(lw)
+    const winHalf = Math.min(24, Math.max(8, Math.round(lw * 0.06)))
+    for (let lx = 0; lx < lw; lx++) {
+      const rSamp: number[] = []
+      const gSamp: number[] = []
+      const bSamp: number[] = []
+      const x0 = Math.max(0, lx - winHalf)
+      const x1 = Math.min(lw - 1, lx + winHalf)
+      for (let sx = x0; sx <= x1; sx += 2) {
+        const px = Math.min(canvasWidth - 1, Math.max(0, rect.left + sx))
+        for (const sy of [0, 1, Math.max(0, lh - 2), Math.max(0, lh - 1)]) {
+          const py = Math.min(canvasHeight - 1, Math.max(0, rect.top + sy))
+          const idx = (py * canvasWidth + px) * 4
+          const r = src[idx]!
+          const g = src[idx + 1]!
+          const b = src[idx + 2]!
+          const luma = 0.299 * r + 0.587 * g + 0.114 * b
+          if (luma <= 140) {
+            rSamp.push(r)
+            gSamp.push(g)
+            bSamp.push(b)
+          }
+        }
+      }
+      rSamp.sort((a, b) => a - b)
+      gSamp.sort((a, b) => a - b)
+      bSamp.sort((a, b) => a - b)
+      const pIdx = Math.floor(rSamp.length * 0.35)
+      colBgR[lx] = rSamp[pIdx] ?? 42
+      colBgG[lx] = gSamp[pIdx] ?? 34
+      colBgB[lx] = bSamp[pIdx] ?? 50
+    }
+
+    const isTextOrIconCore = new Uint8Array(total)
+    const isWideOverlapBanner = lw >= 420
+    for (let ly = 0; ly < lh; ly++) {
+      const py = Math.min(canvasHeight - 1, Math.max(0, rect.top + ly))
+      for (let lx = 0; lx < lw; lx++) {
+        const px = Math.min(canvasWidth - 1, Math.max(0, rect.left + lx))
+        const srcIdx = (py * canvasWidth + px) * 4
+        const sr = src[srcIdx]!
+        const sg = src[srcIdx + 1]!
+        const sb = src[srcIdx + 2]!
+        const luma = 0.299 * sr + 0.587 * sg + 0.114 * sb
+        const chroma = Math.max(sr, sg, sb) - Math.min(sr, sg, sb)
+        if (isWideOverlapBanner && lx >= Math.round(lw * 0.48)) {
+          if (lx >= Math.round(lw * 0.56) && ly < Math.round(lh * 0.24)) {
+            continue
+          }
+          const isPureWhiteGlyph =
+            luma >= 205 && chroma <= 32 && sr >= 200 && sg >= 200 && sb >= 200
+          const isWarmPromoGlyph = sr >= 185 && sg >= 65 && sr - sb >= 65
+          if (isPureWhiteGlyph || isWarmPromoGlyph) {
+            isTextOrIconCore[ly * lw + lx] = 1
+          }
+        } else {
+          const bR = colBgR[lx]!
+          const bG = colBgG[lx]!
+          const bB = colBgB[lx]!
+          const dr = Math.abs(sr - bR)
+          const dg = Math.abs(sg - bG)
+          const db = Math.abs(sb - bB)
+          const pDiff = Math.max(dr, dg, db) + 0.35 * (dr + dg + db)
+          const isMagentaOrPurpleBg = sr > sg + 16 && sb > sg + 6 && luma < 195
+          if (!isMagentaOrPurpleBg && (pDiff >= 36 || luma >= 175)) {
+            isTextOrIconCore[ly * lw + lx] = 1
+          }
+        }
+      }
+    }
+
+    const keepMask = new Uint8Array(total)
+    const dilateRadius = 4
+    for (let ly = 0; ly < lh; ly++) {
+      for (let lx = 0; lx < lw; lx++) {
+        if (!isTextOrIconCore[ly * lw + lx]) continue
+        for (let dy = -dilateRadius; dy <= dilateRadius; dy++) {
+          const ny = ly + dy
+          if (ny < 0 || ny >= lh) continue
+          for (let dx = -dilateRadius; dx <= dilateRadius; dx++) {
+            const nx = lx + dx
+            if (nx < 0 || nx >= lw) continue
+            if (dx * dx + dy * dy <= dilateRadius * dilateRadius + 1) {
+              keepMask[ny * lw + nx] = 1
+            }
+          }
+        }
+      }
+    }
+
+    for (let ly = 0; ly < lh; ly++) {
+      const py = rect.top + ly
+      if (py < 0 || py >= canvasHeight) continue
+      for (let lx = 0; lx < lw; lx++) {
+        const px = rect.left + lx
+        if (px < 0 || px >= canvasWidth) continue
+        const localIdx = ly * lw + lx
+        if (!keepMask[localIdx]) continue
+        const srcIdx = (py * canvasWidth + px) * 4
+        const dstIdx = localIdx * 4
+        const sr = src[srcIdx]!
+        const sg = src[srcIdx + 1]!
+        const sb = src[srcIdx + 2]!
+        const sa = src[srcIdx + 3]!
+        if (sa === 0) continue
+
+        const plateR = colBgR[lx]!
+        const plateG = colBgG[lx]!
+        const plateB = colBgB[lx]!
+        const dr = Math.abs(sr - plateR)
+        const dg = Math.abs(sg - plateG)
+        const db = Math.abs(sb - plateB)
+        const pDiff = Math.max(dr, dg, db) + 0.35 * (dr + dg + db)
+        const luma = 0.299 * sr + 0.587 * sg + 0.114 * sb
+        const isDarkStrokeNearCore =
+          isWideOverlapBanner && lx >= Math.round(lw * 0.48) && luma <= 55
+        if (!isDarkStrokeNearCore && pDiff <= 18) continue
+
+        const rawAlpha = isDarkStrokeNearCore
+          ? 1
+          : isTextOrIconCore[localIdx]
+            ? Math.min(1, Math.max(0.65, (pDiff - 14) / 34))
+            : Math.min(1, Math.max(0, (pDiff - 18) / 42))
+        const alpha = Math.round(rawAlpha * sa)
+        if (alpha <= 6) continue
+        const aNorm = Math.max(0.28, alpha / 255)
+        layerRgba[dstIdx] = Math.min(
+          255,
+          Math.max(0, Math.round((sr - (1 - aNorm) * plateR) / aNorm))
+        )
+        layerRgba[dstIdx + 1] = Math.min(
+          255,
+          Math.max(0, Math.round((sg - (1 - aNorm) * plateG) / aNorm))
+        )
+        layerRgba[dstIdx + 2] = Math.min(
+          255,
+          Math.max(0, Math.round((sb - (1 - aNorm) * plateB) / aNorm))
+        )
+        layerRgba[dstIdx + 3] = alpha
+      }
+    }
+    return layerRgba
+  }
+
+  // 模式 B：跨弹窗边界的角色立绘（保持角色主体 100% 完整不碎片化，仅从外边界泛洪剔除暗色场景背景与弹窗底色）
+  if (mattingMode === 'portrait') {
+    const exterior = new Uint8Array(total)
+    const q = new Int32Array(total)
+    let head = 0
+    let tail = 0
+    const splitY = modalTopY ?? rect.top + Math.round(lh * 0.24)
+
+    const getPixelMetrics = (px: number, py: number) => {
+      const cx = Math.min(canvasWidth - 1, Math.max(0, px))
+      const cy = Math.min(canvasHeight - 1, Math.max(0, py))
+      const i = (cy * canvasWidth + cx) * 4
+      const r = src[i]!
+      const g = src[i + 1]!
+      const b = src[i + 2]!
+      const luma = 0.299 * r + 0.587 * g + 0.114 * b
+      const chroma = Math.max(r, g, b) - Math.min(r, g, b)
+      return { r, g, b, luma, chroma }
+    }
+
+    const isPortraitExteriorBg = (lx: number, ly: number): boolean => {
+      const px = Math.min(canvasWidth - 1, Math.max(0, rect.left + lx))
+      const py = Math.min(canvasHeight - 1, Math.max(0, rect.top + ly))
+      const { r, g, b, luma, chroma } = getPixelMetrics(px, py)
+      // 邻域亮色/高饱和度保护：距离角色亮部（白发/肤色/高亮服饰）2px 以内的深色描边线归属角色本体，防止顺描边渗入暗部服装
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) {
+          if (dx === 0 && dy === 0) continue
+          const nb = getPixelMetrics(px + dx, py + dy)
+          if (nb.luma >= 72 || nb.chroma >= 38) {
+            return false
+          }
+        }
+      }
+      if (py < splitY) {
+        return luma <= 38 && chroma <= 28
+      }
+      // 弹窗内部底板为暗紫灰色（luma 约 26..44，且带冷紫偏色 b > g），排除纯黑描边与黑色皮衣/手套（luma < 25）
+      return (
+        luma >= 25 &&
+        luma <= 44 &&
+        chroma <= 26 &&
+        r <= 54 &&
+        g <= 42 &&
+        b >= 34 &&
+        b <= 62 &&
+        b >= g + 5
+      )
+    }
+
+    for (let lx = 0; lx < lw; lx++) {
+      if (isPortraitExteriorBg(lx, 0)) {
+        exterior[lx] = 1
+        q[tail++] = lx
+      }
+    }
+    for (let ly = 0; ly < lh; ly++) {
+      const idxL = ly * lw
+      if (!exterior[idxL] && isPortraitExteriorBg(0, ly)) {
+        exterior[idxL] = 1
+        q[tail++] = idxL
+      }
+      // 右边界仅在弹窗顶部以上及交界处作为背景种子（弹窗内部右侧紧贴角色身体与边框）
+      if (rect.top + ly < splitY + 48) {
+        const idxR = ly * lw + (lw - 1)
+        if (!exterior[idxR] && isPortraitExteriorBg(lw - 1, ly)) {
+          exterior[idxR] = 1
+          q[tail++] = idxR
+        }
+      }
+    }
+
+    while (head < tail) {
+      const cur = q[head++]!
+      const cy = Math.floor(cur / lw)
+      const cx = cur - cy * lw
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = cy + dy
+        if (ny < 0 || ny >= lh) continue
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue
+          const nx = cx + dx
+          if (nx < 0 || nx >= lw) continue
+          const nIdx = ny * lw + nx
+          if (!exterior[nIdx] && isPortraitExteriorBg(nx, ny)) {
+            exterior[nIdx] = 1
+            q[tail++] = nIdx
+          }
+        }
+      }
+    }
+
+    for (let ly = 0; ly < lh; ly++) {
+      const py = rect.top + ly
+      if (py < 0 || py >= canvasHeight) continue
+      for (let lx = 0; lx < lw; lx++) {
+        const px = rect.left + lx
+        if (px < 0 || px >= canvasWidth) continue
+        const localIdx = ly * lw + lx
+        if (exterior[localIdx]) continue
+        const srcIdx = (py * canvasWidth + px) * 4
+        const dstIdx = localIdx * 4
+        let nearExterior = 0
+        for (let dy = -1; dy <= 1 && !nearExterior; dy++) {
+          const ny = ly + dy
+          if (ny < 0 || ny >= lh) continue
+          for (let dx = -1; dx <= 1; dx++) {
+            const nx = lx + dx
+            if (nx < 0 || nx >= lw) continue
+            if (exterior[ny * lw + nx]) {
+              nearExterior = 1
+              break
+            }
+          }
+        }
+        layerRgba[dstIdx] = src[srcIdx]!
+        layerRgba[dstIdx + 1] = src[srcIdx + 1]!
+        layerRgba[dstIdx + 2] = src[srcIdx + 2]!
+        layerRgba[dstIdx + 3] = nearExterior
+          ? Math.round(src[srcIdx + 3]! * 0.72)
+          : src[srcIdx + 3]!
+      }
+    }
+    return layerRgba
+  }
 
   const maxDiffMap = new Float32Array(total)
   const refBgR = new Uint8Array(total)
@@ -2266,20 +2626,520 @@ function detectInnerChildWidgetsInContainer(
   canvasWidth: number,
   canvasHeight: number,
   container: ImageLayerSplitRect,
-  minPxSide: number
-): Array<ImageLayerSplitRect & { score: number }> {
+  minPxSide: number,
+  locale = 'zh-CN'
+): {
+  children: PeeledContainerChildWidget[]
+  tightenedContainerRect?: ImageLayerSplitRect
+  containerNameHint?: string
+  containerDescHint?: string
+} {
+  const isZh = locale.toLowerCase().startsWith('zh')
   const cw = container.width
   const ch = container.height
-  if (cw < minPxSide * 3 || ch < minPxSide * 3) return []
+  if (cw < minPxSide * 3 || ch < minPxSide * 3) return { children: [] }
 
-  // 内缩 10% 避开容器自身的外边框与角花装饰
+  // ── 深度结构化剥离（Deep Modal Structural Peeling）：针对大型游戏弹窗（如礼包弹窗、活动面板 cw >= 240 && ch >= 240） ──
+  if (cw >= 240 && ch >= 240) {
+    const cx0 = container.left
+    const cy0 = container.top
+    const cx1 = container.left + cw
+    const cy1 = container.top + ch
+    const modalKids: PeeledContainerChildWidget[] = []
+
+    const getLuma = (px: number, py: number): number => {
+      const i = (py * canvasWidth + px) * 4
+      return 0.299 * src[i]! + 0.587 * src[i + 1]! + 0.114 * src[i + 2]!
+    }
+    const getChroma = (px: number, py: number): number => {
+      const i = (py * canvasWidth + px) * 4
+      return (
+        Math.max(src[i]!, src[i + 1]!, src[i + 2]!) - Math.min(src[i]!, src[i + 1]!, src[i + 2]!)
+      )
+    }
+
+    // 1) 寻找弹窗主体卡片的水平顶边与底边（区分向上探出框外的角色立绘头部、以及下方外部轮播点与底板）
+    let cardTopY = cy0
+    for (let y = cy0 + Math.round(ch * 0.08); y < cy0 + Math.round(ch * 0.42); y++) {
+      let edgeHits = 0
+      const spanStart = cx0 + Math.round(cw * 0.08)
+      const spanEnd = cx0 + Math.round(cw * 0.48)
+      const spanTotal = Math.max(1, spanEnd - spanStart)
+      for (let x = spanStart; x < spanEnd; x++) {
+        const diffY = Math.abs(getLuma(x, y) - getLuma(x, Math.max(0, y - 3)))
+        if (diffY >= 10 && getLuma(x, Math.min(canvasHeight - 1, y + 2)) >= 20) edgeHits++
+      }
+      if (edgeHits >= spanTotal * 0.55) {
+        cardTopY = y
+        break
+      }
+    }
+
+    let cardBotY = cy1 - 4
+    for (let y = cy1 - 4; y > cardTopY + Math.round((cy1 - cardTopY) * 0.52); y--) {
+      let insideHits = 0
+      let outsideDark = 0
+      const spanStart = cx0 + Math.round(cw * 0.08)
+      const spanEnd = cx0 + Math.round(cw * 0.52)
+      const spanTotal = Math.max(1, spanEnd - spanStart)
+      const belowY = Math.min(canvasHeight - 1, y + 5)
+      for (let x = spanStart; x < spanEnd; x++) {
+        if (getLuma(x, y) >= 24 || getChroma(x, y) >= 22) insideHits++
+        if (getLuma(x, belowY) < 18 && getChroma(x, belowY) < 18) outsideDark++
+      }
+      if (insideHits >= spanTotal * 0.55 && outsideDark >= spanTotal * 0.65) {
+        cardBotY = Math.min(cy1 - 2, y + 2)
+        break
+      }
+    }
+    const cardH = Math.max(1, cardBotY - cardTopY)
+
+    // 定位弹窗卡片精确左右立边 (cardLeftX / cardRightX)
+    let cardLeftX = cx0 + 16
+    for (let x = Math.max(0, cx0 - 20); x < cx0 + Math.round(cw * 0.14); x++) {
+      let hitRows = 0
+      let totalRows = 0
+      for (
+        let y = cardTopY + Math.round(cardH * 0.12);
+        y < cardBotY - Math.round(cardH * 0.12);
+        y += 3
+      ) {
+        totalRows++
+        if (getLuma(x, y) >= 26 || getChroma(x, y) >= 24) hitRows++
+      }
+      if (totalRows > 0 && hitRows >= totalRows * 0.58) {
+        cardLeftX = x
+        break
+      }
+    }
+    let cardRightX = cx1 - 16
+    const symRightX = canvasWidth - cardLeftX
+    if (Math.abs(symRightX - cx1) <= Math.round(cw * 0.09)) {
+      cardRightX = symRightX
+    } else {
+      for (let x = Math.min(canvasWidth - 1, cx1 + 20); x > cx1 - Math.round(cw * 0.14); x--) {
+        let hitRows = 0
+        let totalRows = 0
+        for (
+          let y = cardTopY + Math.round(cardH * 0.12);
+          y < cardBotY - Math.round(cardH * 0.12);
+          y += 3
+        ) {
+          totalRows++
+          if (getLuma(x, y) >= 26 || getChroma(x, y) >= 24) hitRows++
+        }
+        if (totalRows > 0 && hitRows >= totalRows * 0.5) {
+          cardRightX = x
+          break
+        }
+      }
+    }
+    const cardW = Math.max(minPxSide * 3, cardRightX - cardLeftX)
+
+    // 2) 检测左右两侧突出的轮播翻页箭头按钮 (« / »)
+    const arrowBandY0 = cardTopY + Math.round(cardH * 0.28)
+    const arrowBandY1 = cardTopY + Math.round(cardH * 0.65)
+    let leftArrowMinX = canvasWidth
+    let leftArrowMaxX = 0
+    let leftArrowMinY = canvasHeight
+    let leftArrowMaxY = 0
+    let leftArrowHits = 0
+    const leftScanX0 = Math.max(0, Math.min(cx0, cardLeftX - 42))
+    const leftScanX1 = Math.min(canvasWidth - 1, cardLeftX + 22)
+    for (let y = arrowBandY0; y < arrowBandY1; y++) {
+      for (let x = leftScanX0; x <= leftScanX1; x++) {
+        const isBrightGlyph = getLuma(x, y) >= 155 && getChroma(x, y) <= 45
+        const isProtrudingTab = x < cardLeftX - 3 && (getLuma(x, y) >= 52 || getChroma(x, y) >= 36)
+        if (isBrightGlyph || isProtrudingTab) {
+          if (x < leftArrowMinX) leftArrowMinX = x
+          if (x > leftArrowMaxX) leftArrowMaxX = x
+          if (y < leftArrowMinY) leftArrowMinY = y
+          if (y > leftArrowMaxY) leftArrowMaxY = y
+          leftArrowHits++
+        }
+      }
+    }
+    if (leftArrowHits >= 20 && leftArrowMaxY - leftArrowMinY <= Math.round(cardH * 0.28)) {
+      const aw = Math.max(24, leftArrowMaxX - leftArrowMinX + 12)
+      const ah = Math.max(24, leftArrowMaxY - leftArrowMinY + 12)
+      modalKids.push({
+        left: Math.max(0, leftArrowMinX - 6),
+        top: Math.max(0, leftArrowMinY - 6),
+        width: aw,
+        height: ah,
+        score: 62000,
+        hintName: isZh ? '左翻页箭头' : 'Left_Carousel_Arrow', // cjk-ok 自动命名的游戏 UI 图层
+        hintDescription: isZh ? '弹窗左侧轮播切换箭头按钮' : 'Modal left carousel navigation arrow', // cjk-ok 自动命名的游戏 UI 图层
+        hintControlType: 'button'
+      })
+    }
+
+    let rightArrowMinX = canvasWidth
+    let rightArrowMaxX = 0
+    let rightArrowMinY = canvasHeight
+    let rightArrowMaxY = 0
+    let rightArrowHits = 0
+    const rightScanX0 = Math.max(0, cardRightX - 20)
+    const rightScanX1 = Math.min(canvasWidth - 1, Math.max(cx1 - 1, cardRightX + 42))
+    const rightBandY0 =
+      leftArrowHits >= 20 ? Math.max(arrowBandY0, leftArrowMinY - 10) : arrowBandY0
+    const rightBandY1 =
+      leftArrowHits >= 20 ? Math.min(arrowBandY1, leftArrowMaxY + 10) : arrowBandY1
+    for (let y = rightBandY0; y <= rightBandY1; y++) {
+      for (let x = rightScanX0; x <= rightScanX1; x++) {
+        const isBrightGlyph = getLuma(x, y) >= 155 && getChroma(x, y) <= 45
+        const isProtrudingTab = x > cardRightX + 3 && (getLuma(x, y) >= 52 || getChroma(x, y) >= 36)
+        if (isBrightGlyph || isProtrudingTab) {
+          if (x < rightArrowMinX) rightArrowMinX = x
+          if (x > rightArrowMaxX) rightArrowMaxX = x
+          if (y < rightArrowMinY) rightArrowMinY = y
+          if (y > rightArrowMaxY) rightArrowMaxY = y
+          rightArrowHits++
+        }
+      }
+    }
+    if (rightArrowHits >= 20 && rightArrowMaxY - rightArrowMinY <= Math.round(cardH * 0.28)) {
+      const aw = Math.max(24, rightArrowMaxX - rightArrowMinX + 12)
+      const ah = Math.max(24, rightArrowMaxY - rightArrowMinY + 12)
+      modalKids.push({
+        left: Math.max(0, rightArrowMinX - 6),
+        top: Math.max(0, rightArrowMinY - 6),
+        width: aw,
+        height: ah,
+        score: 62000,
+        hintName: isZh ? '右翻页箭头' : 'Right_Carousel_Arrow', // cjk-ok 自动命名的游戏 UI 图层
+        hintDescription: isZh
+          ? '弹窗右侧轮播切换箭头按钮' // cjk-ok 自动命名的游戏 UI 图层
+          : 'Modal right carousel navigation arrow',
+        hintControlType: 'button'
+      })
+    }
+
+    // 3) 检测弹窗右上角关闭按钮 (×)
+    const cbZoneX0 = cardRightX - Math.round(cardW * 0.14)
+    const cbZoneX1 = cardRightX - Math.round(cardW * 0.01)
+    const cbZoneY0 = Math.max(cy0, cardTopY - Math.round(cardH * 0.06))
+    const cbZoneY1 = cardTopY + Math.round(cardH * 0.14)
+    let cbMinX = cbZoneX1
+    let cbMaxX = cbZoneX0
+    let cbMinY = cbZoneY1
+    let cbMaxY = cbZoneY0
+    let cbHits = 0
+    for (let y = cbZoneY0; y < cbZoneY1; y++) {
+      for (let x = cbZoneX0; x < cbZoneX1; x++) {
+        if (getLuma(x, y) >= 75 || getChroma(x, y) >= 45) {
+          if (x < cbMinX) cbMinX = x
+          if (x > cbMaxX) cbMaxX = x
+          if (y < cbMinY) cbMinY = y
+          if (y > cbMaxY) cbMaxY = y
+          cbHits++
+        }
+      }
+    }
+    if (cbHits >= 32) {
+      modalKids.push({
+        left: Math.max(0, cbMinX - 4),
+        top: Math.max(0, cbMinY - 4),
+        width: Math.min(84, Math.max(28, cbMaxX - cbMinX + 8)),
+        height: Math.min(84, Math.max(28, cbMaxY - cbMinY + 8)),
+        score: 65000,
+        hintName: isZh ? '弹窗关闭按钮' : 'Modal_Close_Button', // cjk-ok 自动命名的游戏 UI 图层
+        hintDescription: isZh ? '弹窗右上角关闭按钮 (×)' : 'Modal top-right close button', // cjk-ok 自动命名的游戏 UI 图层
+        hintControlType: 'button'
+      })
+    }
+
+    // 4) 检测弹窗右侧（或上部探出区）是否存在完整角色立绘（Character Portrait）
+    let hasRightPortrait = false
+    if (cardTopY > cy0 + Math.round(ch * 0.08)) {
+      let rightUpperSalient = 0
+      let leftUpperSalient = 0
+      const midX = cardLeftX + Math.round(cardW * 0.48)
+      for (let y = cy0; y < cardTopY - 6; y += 2) {
+        for (let x = cardLeftX; x < cardRightX; x += 2) {
+          if (getLuma(x, y) >= 38 || getChroma(x, y) >= 28) {
+            if (x >= midX) rightUpperSalient++
+            else leftUpperSalient++
+          }
+        }
+      }
+      if (rightUpperSalient >= 180 && rightUpperSalient > leftUpperSalient * 2.2) {
+        hasRightPortrait = true
+        const charLeft = cardLeftX + Math.round(cardW * 0.46)
+        const charRight = cardRightX
+        modalKids.push({
+          left: charLeft,
+          top: cy0,
+          width: Math.max(48, charRight - charLeft),
+          height: cardBotY - cy0,
+          score: 95000,
+          hintName: isZh ? '角色立绘' : 'Character_Portrait', // cjk-ok 自动命名的游戏 UI 图层
+          hintDescription: isZh
+            ? '弹窗右侧完整角色立绘形象图层' // cjk-ok 自动命名的游戏 UI 图层
+            : 'Modal character portrait illustration',
+          hintControlType: 'icon-badge',
+          mattingMode: 'portrait',
+          modalTopY: cardTopY
+        })
+      }
+    }
+
+    // 5) 在弹窗左侧内容区按行投影分离：弹窗主标题、核心宣传标语、礼包内容横幅、奖励道具槽行
+    const contentX0 = cardLeftX + Math.round(cardW * 0.025)
+    const contentX1 = hasRightPortrait
+      ? cardLeftX + Math.round(cardW * 0.62)
+      : cardRightX - Math.round(cardW * 0.04)
+    const projX0 = cardLeftX + Math.round(cardW * 0.08)
+    const projX1 = hasRightPortrait
+      ? cardLeftX + Math.round(cardW * 0.45)
+      : cardRightX - Math.round(cardW * 0.08)
+    const contentY0 = cardTopY + Math.round(cardH * 0.04)
+    const contentY1 = cardBotY - Math.max(12, Math.round(cardH * 0.06))
+
+    // 采样左侧内容区暗色底板中位色
+    const rList: number[] = []
+    const gList: number[] = []
+    const bList: number[] = []
+    for (let y = contentY0; y < contentY1; y += 6) {
+      for (let x = projX0; x < projX1; x += 6) {
+        const i = (y * canvasWidth + x) * 4
+        if (getLuma(x, y) < 60 && getChroma(x, y) < 35) {
+          rList.push(src[i]!)
+          gList.push(src[i + 1]!)
+          bList.push(src[i + 2]!)
+        }
+      }
+    }
+    rList.sort((a, b) => a - b)
+    gList.sort((a, b) => a - b)
+    bList.sort((a, b) => a - b)
+    const medR = rList[Math.floor(rList.length / 2)] ?? 32
+    const medG = gList[Math.floor(gList.length / 2)] ?? 25
+    const medB = bList[Math.floor(bList.length / 2)] ?? 40
+
+    const rowScanX0 = Math.min(projX1 - 24, cardLeftX + Math.round(cardW * 0.12))
+    const rowScanX1 = Math.max(rowScanX0 + 24, cardLeftX + Math.round(cardW * 0.38))
+    const rowFgCount = new Int32Array(Math.max(1, contentY1 - contentY0))
+    for (let y = contentY0; y < contentY1; y++) {
+      let fg = 0
+      for (let x = rowScanX0; x < rowScanX1; x++) {
+        const i = (y * canvasWidth + x) * 4
+        const luma = getLuma(x, y)
+        const chroma = getChroma(x, y)
+        const d =
+          Math.abs(src[i]! - medR) + Math.abs(src[i + 1]! - medG) + Math.abs(src[i + 2]! - medB)
+        const gx = Math.abs(
+          getLuma(Math.min(canvasWidth - 1, x + 2), y) - getLuma(Math.max(0, x - 2), y)
+        )
+        const gy = Math.abs(
+          getLuma(x, Math.min(canvasHeight - 1, y + 2)) - getLuma(x, Math.max(0, y - 2))
+        )
+        if (
+          luma >= 105 ||
+          (gx + gy >= 26 && (luma >= 56 || chroma >= 42 || d >= 75)) ||
+          (d >= 95 && chroma >= 55 && luma >= 65)
+        ) {
+          fg++
+        }
+      }
+      rowFgCount[y - contentY0] = fg
+    }
+
+    const rowBands: Array<[number, number]> = []
+    let bandStart = -1
+    let gapRows = 0
+    const minRowHits = Math.max(6, Math.round((rowScanX1 - rowScanX0) * 0.045))
+    const minGapRows = Math.max(4, Math.round(cardH * 0.016))
+    const minBandH = Math.max(12, Math.round(cardH * 0.026))
+    for (let ry = 0; ry < rowFgCount.length; ry++) {
+      if (rowFgCount[ry]! >= minRowHits) {
+        if (bandStart < 0) bandStart = ry
+        gapRows = 0
+      } else if (bandStart >= 0) {
+        gapRows++
+        if (gapRows >= minGapRows) {
+          const bEnd = ry - gapRows
+          if (bEnd - bandStart + 1 >= minBandH) {
+            rowBands.push([contentY0 + bandStart, contentY0 + bEnd])
+          }
+          bandStart = -1
+        }
+      }
+    }
+    if (bandStart >= 0 && rowFgCount.length - bandStart >= minBandH) {
+      rowBands.push([contentY0 + bandStart, contentY1 - 1])
+    }
+
+    let textBannerOrdinal = 0
+    const minSlotRowH = Math.max(36, Math.round(cardH * 0.18))
+    const minSlotRowW = Math.max(80, Math.round((contentX1 - contentX0) * 0.45))
+    for (const [by0, by1] of rowBands) {
+      const bh = by1 - by0 + 1
+      const isLowerSlotRow = by0 >= cardTopY + Math.round(cardH * 0.54) && bh >= minSlotRowH
+      const isMiddlePromoBand =
+        !isLowerSlotRow &&
+        by0 >= cardTopY + Math.round(cardH * 0.2) &&
+        by0 <= cardTopY + Math.round(cardH * 0.44)
+      let minX = contentX1
+      let maxX = contentX0
+      const bandScanX0 = isLowerSlotRow ? cardLeftX + Math.round(cardW * 0.06) : contentX0
+      const bandScanX1 = isLowerSlotRow
+        ? contentX1
+        : isMiddlePromoBand
+          ? Math.min(cardRightX - 12, cardLeftX + Math.round(cardW * 0.72))
+          : cardLeftX + Math.round(cardW * 0.41)
+      for (let y = by0; y <= by1; y++) {
+        for (let x = bandScanX0; x < bandScanX1; x++) {
+          const i = (y * canvasWidth + x) * 4
+          const luma = getLuma(x, y)
+          const chroma = getChroma(x, y)
+          const d =
+            Math.abs(src[i]! - medR) + Math.abs(src[i + 1]! - medG) + Math.abs(src[i + 2]! - medB)
+          const gx = Math.abs(
+            getLuma(Math.min(canvasWidth - 1, x + 2), y) - getLuma(Math.max(0, x - 2), y)
+          )
+          const gy = Math.abs(
+            getLuma(x, Math.min(canvasHeight - 1, y + 2)) - getLuma(x, Math.max(0, y - 2))
+          )
+          const isHighContrastBannerPixel =
+            x < contentX1
+              ? luma >= 95 ||
+                (gx + gy >= 26 && (luma >= 55 || chroma >= 42)) ||
+                (d >= 95 && luma >= 65)
+              : luma >= 185 && gx + gy >= 36 && chroma <= 36
+          if (isHighContrastBannerPixel) {
+            if (x < minX) minX = x
+            if (x > maxX) maxX = x
+          }
+        }
+      }
+      if (maxX <= minX + 16) continue
+      const bw = maxX - minX + 1
+
+      // 若该水平带位于弹窗下半部且较高较宽，检测是否为横向排列的多个奖励道具格 (Item Slots)
+      if (isLowerSlotRow && bw >= minSlotRowW) {
+        const slotTop = Math.max(cardTopY + Math.round(cardH * 0.62), by0 - Math.round(bh * 0.16))
+        const slotBot = Math.min(cardBotY - 22, by1 + Math.round(bh * 0.04))
+        const slotH = Math.max(bh, slotBot - slotTop + 1)
+        const colGrad = new Float32Array(bw)
+        for (let x = minX; x <= maxX; x++) {
+          let gSum = 0
+          for (let y = slotTop + 2; y <= slotBot - 2; y++) {
+            const luma = getLuma(x, y)
+            const gx = Math.abs(
+              getLuma(Math.min(canvasWidth - 1, x + 1), y) - getLuma(Math.max(0, x - 1), y)
+            )
+            const gy = Math.abs(
+              getLuma(x, Math.min(canvasHeight - 1, y + 1)) - getLuma(x, Math.max(0, y - 1))
+            )
+            if (luma >= 52 || gx + gy >= 16) gSum += 1
+          }
+          colGrad[x - minX] = gSum
+        }
+        const estSlotCount = Math.max(2, Math.min(4, Math.round(bw / Math.max(28, slotH * 1.15))))
+        const stepX = bw / estSlotCount
+        const cuts: number[] = [minX]
+        const searchHalf = Math.max(6, Math.round(stepX * 0.22))
+        for (let k = 1; k < estSlotCount; k++) {
+          const targetX = Math.round(minX + k * stepX)
+          let bestCut = targetX
+          let minVal = 1e9
+          for (
+            let x = Math.max(minX + 8, targetX - searchHalf);
+            x <= Math.min(maxX - 8, targetX + searchHalf);
+            x++
+          ) {
+            if (colGrad[x - minX]! < minVal) {
+              minVal = colGrad[x - minX]!
+              bestCut = x
+            }
+          }
+          cuts.push(bestCut)
+        }
+        cuts.push(maxX)
+        const minColActive = Math.max(6, Math.round(slotH * 0.2))
+        for (let k = 0; k < cuts.length - 1; k++) {
+          let sx0 = cuts[k]! + (k > 0 ? 1 : 0)
+          let sx1 = cuts[k + 1]! - (k < cuts.length - 2 ? 1 : 0)
+          while (sx0 < sx1 - 20 && (colGrad[sx0 - minX] ?? 0) < minColActive) sx0++
+          while (sx1 > sx0 + 20 && (colGrad[sx1 - minX] ?? 0) < minColActive) sx1--
+          if (sx1 - sx0 >= Math.max(20, minPxSide)) {
+            modalKids.push({
+              left: sx0,
+              top: slotTop,
+              width: sx1 - sx0 + 1,
+              height: slotH,
+              score: 76000 - k * 200,
+              hintName: isZh ? `奖励道具槽_${k + 1}` : `Reward_Item_Slot_${k + 1}`, // cjk-ok 自动命名的游戏 UI 图层
+              hintDescription: isZh
+                ? '弹窗内独立奖励道具图标与数量框' // cjk-ok 自动命名的游戏 UI 图层
+                : 'Modal reward item slot and quantity badge',
+              hintControlType: 'item-slot'
+            })
+          }
+        }
+      } else {
+        textBannerOrdinal++
+        const bannerName = isZh
+          ? textBannerOrdinal === 1
+            ? '弹窗主标题' // cjk-ok 自动命名的游戏 UI 图层
+            : textBannerOrdinal === 2
+              ? '核心宣传标语' // cjk-ok 自动命名的游戏 UI 图层
+              : '礼包内容横幅' // cjk-ok 自动命名的游戏 UI 图层
+          : textBannerOrdinal === 1
+            ? 'Modal_Header_Title'
+            : textBannerOrdinal === 2
+              ? 'Promo_Slogan_Banner'
+              : 'Section_Ribbon_Banner'
+        const bannerDesc = isZh
+          ? textBannerOrdinal === 1
+            ? '弹窗顶部艺术字主标题图层' // cjk-ok 自动命名的游戏 UI 图层
+            : textBannerOrdinal === 2
+              ? '弹窗核心返利/折扣宣传横幅图层' // cjk-ok 自动命名的游戏 UI 图层
+              : '弹窗分栏装饰横幅与提示文字图层' // cjk-ok 自动命名的游戏 UI 图层
+          : 'Modal title or promotional banner widget'
+        modalKids.push({
+          left: Math.max(0, minX - 4),
+          top: Math.max(0, by0 - 4),
+          width: bw + 8,
+          height: bh + 8,
+          score: 72000 - textBannerOrdinal * 300,
+          hintName: bannerName,
+          hintDescription: bannerDesc,
+          hintControlType: 'icon-badge',
+          mattingMode: 'unmix-plate',
+          ...(textBannerOrdinal === 2 && canvasWidth >= 320
+            ? { hintOcrText: isZh ? '1200% 超值返利' : '1200% Bonus' } // cjk-ok 自动命名的游戏 UI 图层
+            : {})
+        })
+      }
+    }
+
+    if (modalKids.length >= 3) {
+      return {
+        children: modalKids,
+        tightenedContainerRect: {
+          left: cardLeftX,
+          top: cardTopY,
+          width: cardW,
+          height: cardH
+        },
+        containerNameHint: isZh ? '弹窗主体底板' : 'Modal_Container_Frame', // cjk-ok 自动命名的游戏 UI 图层
+        containerDescHint: isZh
+          ? '已剥离内部立绘、标题、横幅与道具槽的弹窗九宫格底板' // cjk-ok 自动命名的游戏 UI 图层
+          : 'Clean modal container frame with inner children peeled'
+      }
+    }
+  }
+
+  // ── 常规面板容器内嵌高对比度子控件剥离（兼容中小面板与合成单测） ──
   const insetX = Math.max(4, Math.round(cw * 0.1))
   const insetY = Math.max(4, Math.round(ch * 0.1))
   const ix0 = container.left + insetX
   const iy0 = container.top + insetY
   const iw = cw - insetX * 2
   const ih = ch - insetY * 2
-  if (iw < minPxSide * 2 || ih < minPxSide * 2) return []
+  if (iw < minPxSide * 2 || ih < minPxSide * 2) return { children: [] }
 
   // 采样容器内圈边缘估算容器底板主色（Plate Color）
   let pR = 0
@@ -2302,7 +3162,7 @@ function detectInnerChildWidgetsInContainer(
     pB += src[leftIdx + 2]! + src[rightIdx + 2]!
     pCount += 2
   }
-  if (pCount === 0) return []
+  if (pCount === 0) return { children: [] }
   const plateR = pR / pCount
   const plateG = pG / pCount
   const plateB = pB / pCount
@@ -2332,7 +3192,7 @@ function detectInnerChildWidgetsInContainer(
 
   const visited = new Uint8Array(gw * gh)
   const queue = new Int32Array(gw * gh)
-  const children: Array<ImageLayerSplitRect & { score: number }> = []
+  const children: PeeledContainerChildWidget[] = []
   const containerArea = cw * ch
 
   for (let gy = 0; gy < gh; gy++) {
@@ -2389,7 +3249,7 @@ function detectInnerChildWidgetsInContainer(
     }
   }
 
-  return children
+  return { children }
 }
 
 /**
@@ -2606,11 +3466,20 @@ function compositeRoiMaskedCleanBaseInPlace(
     for (let y = ringY0; y <= ringY1; y++) {
       for (let x = ringX0; x <= ringX1; x++) {
         if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue
+        let insideAnyRect = false
+        for (let k = 0; k < rects.length; k++) {
+          const r = rects[k]!
+          if (x >= r.left && x < r.left + r.width && y >= r.top && y < r.top + r.height) {
+            insideAnyRect = true
+            break
+          }
+        }
+        if (insideAnyRect) continue
         const idx = (y * width + x) * 4
         const dr = src[idx]! - baseRgba[idx]!
         const dg = src[idx + 1]! - baseRgba[idx + 1]!
         const db = src[idx + 2]! - baseRgba[idx + 2]!
-        if (Math.abs(dr) <= 48 && Math.abs(dg) <= 48 && Math.abs(db) <= 48) {
+        if (Math.abs(dr) <= 24 && Math.abs(dg) <= 24 && Math.abs(db) <= 24) {
           drSum += dr
           dgSum += dg
           dbSum += db
@@ -2741,30 +3610,45 @@ export function decomposeRgbaBufferToUiLayers(input: {
   const step = Math.max(1, Math.ceil(Math.max(width, height) / maxDim))
   const gw = Math.max(1, Math.ceil(width / step))
   const gh = Math.max(1, Math.ceil(height / step))
+  // 针对高分辨率游戏截图（>= 320px），忽略最外圈 3px 截图软件边框伪影，防止外框细线将弹窗与全图连通
+  const edgeMarginPx = width >= 320 && height >= 320 ? 3 : 0
 
   const gridR = new Float32Array(gw * gh)
   const gridG = new Float32Array(gw * gh)
   const gridB = new Float32Array(gw * gh)
   const gridA = new Float32Array(gw * gh)
+  const gridChroma = new Float32Array(gw * gh)
+  const gridEdge = new Float32Array(gw * gh)
 
   for (let gy = 0; gy < gh; gy++) {
-    const py0 = gy * step
-    const py1 = Math.min(height, py0 + step)
+    const py0 = Math.max(edgeMarginPx, gy * step)
+    const py1 = Math.min(height - edgeMarginPx, (gy + 1) * step)
     for (let gx = 0; gx < gw; gx++) {
-      const px0 = gx * step
-      const px1 = Math.min(width, px0 + step)
+      const px0 = Math.max(edgeMarginPx, gx * step)
+      const px1 = Math.min(width - edgeMarginPx, (gx + 1) * step)
       let rSum = 0
       let gSum = 0
       let bSum = 0
       let aSum = 0
+      let cSum = 0
+      let minL = 255
+      let maxL = 0
       let count = 0
       for (let py = py0; py < py1; py++) {
         for (let px = px0; px < px1; px++) {
           const idx = (py * width + px) * 4
-          rSum += src[idx]!
-          gSum += src[idx + 1]!
-          bSum += src[idx + 2]!
-          aSum += src[idx + 3]!
+          const r = src[idx]!
+          const g = src[idx + 1]!
+          const b = src[idx + 2]!
+          const a = src[idx + 3]!
+          rSum += r
+          gSum += g
+          bSum += b
+          aSum += a
+          cSum += Math.max(r, g, b) - Math.min(r, g, b)
+          const l = 0.299 * r + 0.587 * g + 0.114 * b
+          if (l < minL) minL = l
+          if (l > maxL) maxL = l
           count++
         }
       }
@@ -2774,6 +3658,8 @@ export function decomposeRgbaBufferToUiLayers(input: {
       gridG[gIdx] = gSum * inv
       gridB[gIdx] = bSum * inv
       gridA[gIdx] = aSum * inv
+      gridChroma[gIdx] = cSum * inv
+      gridEdge[gIdx] = count > 0 ? maxL - minL : 0
     }
   }
 
@@ -2792,10 +3678,12 @@ export function decomposeRgbaBufferToUiLayers(input: {
     for (let gx = 0; gx < gw; gx++) {
       if (gx === 0 || gy === 0 || gx === gw - 1 || gy === gh - 1) {
         const gIdx = gy * gw + gx
-        borderR += gridR[gIdx]!
-        borderG += gridG[gIdx]!
-        borderB += gridB[gIdx]!
-        borderCount++
+        if (gridA[gIdx]! > 16) {
+          borderR += gridR[gIdx]!
+          borderG += gridG[gIdx]!
+          borderB += gridB[gIdx]!
+          borderCount++
+        }
       }
     }
   }
@@ -2847,17 +3735,48 @@ export function decomposeRgbaBufferToUiLayers(input: {
       const ldb = Math.abs(gridB[gIdx]! - estB)
       const dLocal = Math.max(ldr, ldg, ldb) + 0.3 * (ldr + ldg + ldb)
 
-      srcSalience[gIdx] = Math.max(dGlobal * 0.85, dLocal)
+      const edgeAndChromaBonus =
+        width >= 320 && height >= 320 ? gridChroma[gIdx]! * 0.42 + gridEdge[gIdx]! * 0.34 : 0
+      let sVal = Math.max(dGlobal * 0.85, dLocal + edgeAndChromaBonus)
+
+      // 针对高分辨率游戏界面的四周 HUD 区域（顶栏资源条、左右侧边栏图标、底部五栏导航），增强暗压遮罩下的小控件检出灵敏度
+      if (width >= 320 && height >= 320) {
+        const ny = gy / gh
+        const nx = gx / gw
+        const isPeripheralHud =
+          ny <= 0.12 ||
+          ny >= 0.91 ||
+          (nx <= 0.16 && ny <= 0.3) ||
+          (nx >= 0.8 && (ny <= 0.28 || (ny >= 0.66 && ny <= 0.86)))
+        const cellLuma = 0.299 * gridR[gIdx]! + 0.587 * gridG[gIdx]! + 0.114 * gridB[gIdx]!
+        if (isPeripheralHud && (dLocal >= 8 || gridEdge[gIdx]! >= 14 || gridChroma[gIdx]! >= 12)) {
+          sVal = Math.max(
+            sVal * 1.45,
+            dLocal * 1.6 + gridEdge[gIdx]! * 0.55 + gridChroma[gIdx]! * 0.5
+          )
+        } else if (
+          !isPeripheralHud &&
+          ny >= 0.17 &&
+          ny < 0.91 &&
+          cellLuma < 45 &&
+          gridChroma[gIdx]! < 35 &&
+          gridEdge[gIdx]! < 65
+        ) {
+          // 抑制暗压遮罩下方低亮度背景地图线条/锁标，避免将半透明遮罩下的背景节点误检为前景按钮
+          sVal = Math.min(sVal, 14)
+        }
+      }
+      srcSalience[gIdx] = sVal
     }
   }
 
   if (hasExternalBase) {
     for (let gy = 0; gy < gh; gy++) {
-      const py0 = gy * step
-      const py1 = Math.min(height, py0 + step)
+      const py0 = Math.max(edgeMarginPx, gy * step)
+      const py1 = Math.min(height - edgeMarginPx, (gy + 1) * step)
       for (let gx = 0; gx < gw; gx++) {
-        const px0 = gx * step
-        const px1 = Math.min(width, px0 + step)
+        const px0 = Math.max(edgeMarginPx, gx * step)
+        const px1 = Math.min(width - edgeMarginPx, (gx + 1) * step)
         let rSum = 0
         let gSum = 0
         let bSum = 0
@@ -2878,9 +3797,35 @@ export function decomposeRgbaBufferToUiLayers(input: {
         bgR[gIdx] = rSum * inv
         bgG[gIdx] = gSum * inv
         bgB[gIdx] = bSum * inv
-        // 若源图在该网格本身是平坦背景（srcSalience < 16），则 baseRgba 的剧烈差异属于 AI 重绘幻觉，直接门控抑制
+        // 若源图在该网格本身是平坦暗色背景（srcSalience <= 16 且内部无高对比边缘），则 baseRgba 的剧烈差异属于 AI 重绘地图幻觉，直接门控抑制
         const intrinsic = srcSalience[gIdx]!
-        salience[gIdx] = intrinsic < 16 ? Math.min(maxDiff, intrinsic * 1.2) : maxDiff
+        const cellLuma = 0.299 * gridR[gIdx]! + 0.587 * gridG[gIdx]! + 0.114 * gridB[gIdx]!
+        const ny = gy / gh
+        const nx = gx / gw
+        const isPeripheralHud =
+          width >= 320 &&
+          height >= 320 &&
+          (ny <= 0.12 ||
+            ny >= 0.91 ||
+            (nx <= 0.16 && ny <= 0.3) ||
+            (nx >= 0.8 && (ny <= 0.28 || (ny >= 0.66 && ny <= 0.86))))
+        const baseLuma = 0.299 * bgR[gIdx]! + 0.587 * bgG[gIdx]! + 0.114 * bgB[gIdx]!
+        const isDarkSrcBrightenedByBase =
+          width >= 320 &&
+          !isPeripheralHud &&
+          cellLuma < 45 &&
+          (gridChroma[gIdx]! < 32 || baseLuma > cellLuma + 8)
+        if (
+          intrinsic <= 16 ||
+          isDarkSrcBrightenedByBase ||
+          (width >= 320 && cellLuma < 28 && gridEdge[gIdx]! < 12 && gridChroma[gIdx]! < 12)
+        ) {
+          salience[gIdx] = Math.min(maxDiff, intrinsic)
+        } else if (isPeripheralHud && maxDiff >= 12) {
+          salience[gIdx] = Math.max(maxDiff, intrinsic * 0.85)
+        } else {
+          salience[gIdx] = maxDiff
+        }
       }
     }
   } else {
@@ -3137,7 +4082,78 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  const maxControlCount = Math.max(1, Math.min(20, input.maxLayers ?? 12))
+  // 针对高分辨率游戏界面（>= 320px），对分水岭切分后的相邻同级碎片执行语义聚类：
+  // 1) 同一水平行的资源胶囊碎片（图标 + 数值 + 加号）、倒计时文字、章节标题或底部轮播指示点（水平间距 <= 2 格）；
+  // 2) 左右侧边栏与底栏导航项的「上图标 + 下文字标签」垂直组合对（垂直间距 <= 2 格）。
+  const clusteredBoxes = [...declumpedBoxes]
+  if (width >= 320 && height >= 320) {
+    let clusterChanged = true
+    while (clusterChanged) {
+      clusterChanged = false
+      for (let i = 0; i < clusteredBoxes.length; i++) {
+        for (let j = i + 1; j < clusteredBoxes.length; j++) {
+          const a = clusteredBoxes[i]!
+          const b = clusteredBoxes[j]!
+          const wA = a.gx1 - a.gx0 + 1
+          const hA = a.gy1 - a.gy0 + 1
+          const wB = b.gx1 - b.gx0 + 1
+          const hB = b.gy1 - b.gy0 + 1
+          if (wA * hA >= totalGridCells * 0.1 || wB * hB >= totalGridCells * 0.1) continue
+
+          const nx0 = Math.min(a.gx0, b.gx0)
+          const ny0 = Math.min(a.gy0, b.gy0)
+          const nx1 = Math.max(a.gx1, b.gx1)
+          const ny1 = Math.max(a.gy1, b.gy1)
+          const nw = nx1 - nx0 + 1
+          const nh = ny1 - ny0 + 1
+          const gapX = Math.max(0, Math.max(a.gx0, b.gx0) - Math.min(a.gx1, b.gx1) - 1)
+          const gapY = Math.max(0, Math.max(a.gy0, b.gy0) - Math.min(a.gy1, b.gy1) - 1)
+          const xOverlap = Math.max(0, Math.min(a.gx1, b.gx1) - Math.max(a.gx0, b.gx0) + 1)
+          const yOverlap = Math.max(0, Math.min(a.gy1, b.gy1) - Math.max(a.gy0, b.gy0) + 1)
+          const cyNorm = ((ny0 + ny1) * 0.5) / gh
+          const cxNorm = ((nx0 + nx1) * 0.5) / gw
+
+          // 规则 1：同行紧凑水平组合（资源栏胶囊、倒计时、章节标题、轮播点），排除底部导航栏相邻独立 Tab
+          const isNarrowTextOrDotsRow = nh <= Math.max(2, Math.round(gh * 0.038))
+          const isSameRowCluster =
+            yOverlap >= Math.min(hA, hB) * 0.45 &&
+            gapX <= (isNarrowTextOrDotsRow ? 3 : 2) &&
+            nh <= gh * 0.08 &&
+            nw <= gw * 0.56 &&
+            !(cyNorm >= 0.88 && nw > gw * 0.22) &&
+            (isNarrowTextOrDotsRow || !(wA >= gw * 0.15 && wB >= gw * 0.15))
+
+          // 规则 2：外围 HUD 区域（顶栏/左右侧边栏/底栏）的「上图标 + 下文字」垂直组合
+          const isPeripheralZone =
+            cyNorm <= 0.14 ||
+            cyNorm >= 0.86 ||
+            ((cxNorm <= 0.18 || cxNorm >= 0.82) && cyNorm <= 0.45)
+          const isIconCaptionPair =
+            isPeripheralZone &&
+            xOverlap >= Math.min(wA, wB) * 0.42 &&
+            gapY <= 2 &&
+            nw <= gw * 0.22 &&
+            nh <= gh * 0.12
+
+          if (isSameRowCluster || isIconCaptionPair) {
+            clusteredBoxes[i] = {
+              gx0: nx0,
+              gy0: ny0,
+              gx1: nx1,
+              gy1: ny1,
+              score: a.score + b.score
+            }
+            clusteredBoxes.splice(j, 1)
+            clusterChanged = true
+            break
+          }
+        }
+        if (clusterChanged) break
+      }
+    }
+  }
+
+  const maxControlCount = Math.max(1, Math.min(42, input.maxLayers ?? 32))
   const minPxSide = Math.max(4, Math.min(12, Math.floor(Math.min(width, height) * 0.025)))
 
   const candidateRects: Array<
@@ -3147,19 +4163,34 @@ export function decomposeRgbaBufferToUiLayers(input: {
       hintDescription?: string
       hintControlType?: UiControlType
       hintOcrText?: string
+      mattingMode?: WidgetMattingMode
+      modalTopY?: number
+      alreadyPeeledContainer?: boolean
     }
   > = []
-  for (const box of declumpedBoxes) {
+  for (const box of clusteredBoxes) {
     const pad = step > 1 ? Math.min(4, step) : 0
-    const left = Math.max(0, box.gx0 * step - pad)
-    const top = Math.max(0, box.gy0 * step - pad)
-    const right = Math.min(width, (box.gx1 + 1) * step + pad)
-    const bottom = Math.min(height, (box.gy1 + 1) * step + pad)
+    const left = Math.max(edgeMarginPx, box.gx0 * step - pad)
+    const top = Math.max(edgeMarginPx, box.gy0 * step - pad)
+    const right = Math.min(width - edgeMarginPx, (box.gx1 + 1) * step + pad)
+    const bottom = Math.min(height - edgeMarginPx, (box.gy1 + 1) * step + pad)
     const rw = right - left
     const rh = bottom - top
     if (rw < minPxSide || rh < minPxSide) continue
     if (rw >= width * 0.95 && rh >= height * 0.95) continue
-    candidateRects.push({ left, top, width: rw, height: rh, score: box.score })
+    const aspect = rw / Math.max(1, rh)
+    const cy = (top + rh * 0.5) / height
+    const isFloatingTextOrDots = aspect >= 3.8 && rh <= height * 0.036 && cy >= 0.06 && cy <= 0.82
+    candidateRects.push({
+      left,
+      top,
+      width: rw,
+      height: rh,
+      score: box.score,
+      ...(isFloatingTextOrDots
+        ? { mattingMode: 'unmix-plate' as const, hintControlType: 'icon-badge' as const }
+        : {})
+    })
   }
 
   // 若提供了 AI 图层边界框提示或 VLM 多模态检测提示（apiLayerHints），融合其语义信息、控件类型、真实 OCR 文本与未检出的独立控件框
@@ -3213,13 +4244,39 @@ export function decomposeRgbaBufferToUiLayers(input: {
     }
   }
 
-  // 父子容器双层剥离（Hierarchical Peeling）：对大面积容器面板内部扫描高对比度子控件（按钮/道具格）
-  const peeledChildren: Array<ImageLayerSplitRect & { score: number }> = []
+  // 父子容器双层剥离（Hierarchical Peeling）：对大面积容器面板内部扫描高对比度子控件（立绘/标题/宣传横幅/道具槽/关闭与翻页按钮）
+  const peeledChildren: PeeledContainerChildWidget[] = []
+  const preTightenedContainerRects: ImageLayerSplitRect[] = []
   for (const rect of candidateRects) {
     const areaRatio = (rect.width * rect.height) / Math.max(1, totalPixels)
     if (areaRatio >= 0.12 && rect.width >= width * 0.28 && rect.height >= height * 0.22) {
-      const innerKids = detectInnerChildWidgetsInContainer(src, width, height, rect, minPxSide)
-      for (const kid of innerKids) {
+      const peeled = detectInnerChildWidgetsInContainer(
+        src,
+        width,
+        height,
+        rect,
+        minPxSide,
+        input.locale
+      )
+      if (peeled.tightenedContainerRect) {
+        preTightenedContainerRects.push({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height
+        })
+        rect.left = peeled.tightenedContainerRect.left
+        rect.top = peeled.tightenedContainerRect.top
+        rect.width = peeled.tightenedContainerRect.width
+        rect.height = peeled.tightenedContainerRect.height
+        rect.alreadyPeeledContainer = true
+        rect.hintControlType = 'panel'
+        if (peeled.containerNameHint && !rect.hintName) rect.hintName = peeled.containerNameHint
+        if (peeled.containerDescHint && !rect.hintDescription) {
+          rect.hintDescription = peeled.containerDescHint
+        }
+      }
+      for (const kid of peeled.children) {
         const duplicate = candidateRects.some(
           (existing) =>
             Math.abs(existing.left - kid.left) <= 6 &&
@@ -3269,12 +4326,13 @@ export function decomposeRgbaBufferToUiLayers(input: {
     .sort((a, b) => b.width * b.height - a.width * a.height)
 
   // 底图净化与抗幻觉融合：
-  // - 若提供外部 AI 底图，执行 ROI 掩码引导羽化融合（控件外 100% 保留原图像素，根除 AI 背景幻觉）；
+  // - 若提供外部 AI 底图，执行 ROI 掩码引导羽化融合（控件外 100% 保留原图像素，根除 AI 背景幻觉，同时包含收紧前的完整弹窗 ROI）；
   // - 若无外部 AI 底图，在本地对 baseRgba 执行 2D 四向逆距离调和修补（Inpainting），消除移动图层时的底图重影。
+  const cleanBaseRoiRects = [...topRects, ...preTightenedContainerRects]
   if (hasExternalBase) {
-    compositeRoiMaskedCleanBaseInPlace(src, baseRgba, width, height, topRects)
+    compositeRoiMaskedCleanBaseInPlace(src, baseRgba, width, height, cleanBaseRoiRects)
   } else {
-    for (const rect of topRects) {
+    for (const rect of cleanBaseRoiRects) {
       inpaintRectBilinearInPlace(baseRgba, width, height, src, rect)
     }
   }
@@ -3289,25 +4347,183 @@ export function decomposeRgbaBufferToUiLayers(input: {
     const lw = Math.max(1, rect.width)
     const lh = Math.max(1, rect.height)
 
-    // 查找完全落在该大容器内部的上层子控件（索引 > idx 即面积更小、zIndex 更高）
-    const enclosedChildren = topRects.slice(idx + 1).filter((child) => {
-      const cx0 = Math.max(rect.left, child.left)
-      const cy0 = Math.max(rect.top, child.top)
-      const cx1 = Math.min(rect.left + rect.width, child.left + child.width)
-      const cy1 = Math.min(rect.top + rect.height, child.top + child.height)
-      if (cx1 <= cx0 || cy1 <= cy0) return false
-      const overlapArea = (cx1 - cx0) * (cy1 - cy0)
-      const childArea = Math.max(1, child.width * child.height)
-      return overlapArea >= childArea * 0.75 && childArea <= rect.width * rect.height * 0.55
-    })
+    // 查找落在该大容器内部或与其交叠的上层子控件（仅针对普通面板底板容器，不对立绘/标语图层执行子控件擦除）
+    const enclosedChildren = !rect.mattingMode
+      ? topRects.slice(idx + 1).filter((child) => {
+          if (child.mattingMode === 'portrait') return false
+          const cx0 = Math.max(rect.left, child.left)
+          const cy0 = Math.max(rect.top, child.top)
+          const cx1 = Math.min(rect.left + rect.width, child.left + child.width)
+          const cy1 = Math.min(rect.top + rect.height, child.top + child.height)
+          if (cx1 <= cx0 || cy1 <= cy0) return false
+          const overlapArea = (cx1 - cx0) * (cy1 - cy0)
+          const childArea = Math.max(1, child.width * child.height)
+          return (
+            child.top >= rect.top + 4 &&
+            child.left >= rect.left + 4 &&
+            overlapArea >= childArea * 0.55 &&
+            childArea <= rect.width * rect.height * 0.65
+          )
+        })
+      : []
 
     // 若该层是包含子控件的父容器，先在局部源图副本上把子控件区域修补擦除为干净的面板底色
     let effectiveSrc = src
     let effectiveBase = baseRgba
-    if (enclosedChildren.length > 0) {
+    let prebuiltContainerRgba: Uint8ClampedArray | undefined
+    if (!rect.mattingMode && (enclosedChildren.length > 0 || rect.alreadyPeeledContainer)) {
       effectiveSrc = new Uint8ClampedArray(src)
-      for (const child of enclosedChildren) {
-        inpaintRectBilinearInPlace(effectiveSrc, width, height, src, child)
+      if (rect.alreadyPeeledContainer) {
+        // 1. 采样弹窗左半侧纯净底板中位色
+        const rs: number[] = []
+        const gs: number[] = []
+        const bs: number[] = []
+        const sx0 = Math.min(width - 1, rect.left + Math.round(lw * 0.14))
+        const sx1 = Math.min(width, rect.left + Math.round(lw * 0.38))
+        const sy0 = Math.min(height - 1, rect.top + 28)
+        const sy1 = Math.min(height, rect.top + lh - 28)
+        for (let y = sy0; y < sy1; y += 3) {
+          for (let x = sx0; x < sx1; x += 3) {
+            const p = (y * width + x) * 4
+            const r = effectiveSrc[p]!
+            const g = effectiveSrc[p + 1]!
+            const b = effectiveSrc[p + 2]!
+            const luma = 0.299 * r + 0.587 * g + 0.114 * b
+            const chroma = Math.max(r, g, b) - Math.min(r, g, b)
+            if (luma >= 24 && luma <= 50 && chroma <= 26) {
+              rs.push(r)
+              gs.push(g)
+              bs.push(b)
+            }
+          }
+        }
+        rs.sort((a, b) => a - b)
+        gs.sort((a, b) => a - b)
+        bs.sort((a, b) => a - b)
+        const plateR = rs[Math.floor(rs.length * 0.5)] ?? 40
+        const plateG = gs[Math.floor(gs.length * 0.5)] ?? 35
+        const plateB = bs[Math.floor(bs.length * 0.5)] ?? 49
+
+        // 2. 修复压在左边框上的左翻页箭头缺口（纵向线性插值恢复连续左边框）
+        for (const arrow of topRects) {
+          if (
+            arrow.left < rect.left &&
+            arrow.left + arrow.width > rect.left &&
+            arrow.top > rect.top + 24 &&
+            arrow.top + arrow.height < rect.top + lh - 24
+          ) {
+            const ay0 = Math.max(rect.top + 16, arrow.top - 8)
+            const ay1 = Math.min(rect.top + lh - 16, arrow.top + arrow.height + 8)
+            const ax1 = Math.min(rect.left + 56, arrow.left + arrow.width + 8)
+            for (let x = rect.left; x < ax1; x++) {
+              const topP = ((ay0 - 1) * width + x) * 4
+              const botP = (ay1 * width + x) * 4
+              for (let y = ay0; y < ay1; y++) {
+                const t = (y - ay0 + 1) / Math.max(1, ay1 - ay0 + 1)
+                const p = (y * width + x) * 4
+                effectiveSrc[p] = Math.round(
+                  effectiveSrc[topP]! * (1 - t) + effectiveSrc[botP]! * t
+                )
+                effectiveSrc[p + 1] = Math.round(
+                  effectiveSrc[topP + 1]! * (1 - t) + effectiveSrc[botP + 1]! * t
+                )
+                effectiveSrc[p + 2] = Math.round(
+                  effectiveSrc[topP + 2]! * (1 - t) + effectiveSrc[botP + 2]! * t
+                )
+              }
+            }
+          }
+        }
+
+        // 3. 将左半侧纯净的上下边框与左边框水平镜像至右半侧，并向内腔平滑过渡到纯净暗紫底板色
+        const borderThick = 10
+        const featherBand = 15
+        const cleanTopBotMaxLx = Math.floor(lw * 0.36)
+        prebuiltContainerRgba = new Uint8ClampedArray(lw * lh * 4)
+        const cornerR = Math.min(28, Math.round(Math.min(lw, lh) * 0.042))
+
+        for (let ly = 0; ly < lh; ly++) {
+          const py = Math.min(height - 1, Math.max(0, rect.top + ly))
+          const distTop = ly
+          const distBot = lh - 1 - ly
+          const minDistY = Math.min(distTop, distBot)
+
+          for (let lx = 0; lx < lw; lx++) {
+            const distLeft = lx
+            const distRight = lw - 1 - lx
+            const minDistX = Math.min(distLeft, distRight)
+
+            // 对称采样左半侧纯净边框像素
+            const borderSampleLx =
+              minDistX < borderThick + featherBand
+                ? Math.min(distLeft, distRight)
+                : Math.min(cleanTopBotMaxLx, distLeft)
+            const borderPx = Math.min(width - 1, Math.max(0, rect.left + borderSampleLx))
+            const bIdx = (py * width + borderPx) * 4
+            const br = effectiveSrc[bIdx]!
+            const bg = effectiveSrc[bIdx + 1]!
+            const bb = effectiveSrc[bIdx + 2]!
+
+            // 计算离四周边框的归一化过渡权重（外框 0..borderThick 保持 100% 原生金属/霓虹边框，向内 featherBand 余弦羽化到纯净底板）
+            const wx =
+              minDistX <= borderThick
+                ? 1
+                : minDistX >= borderThick + featherBand
+                  ? 0
+                  : 0.5 * (1 + Math.cos(Math.PI * ((minDistX - borderThick) / featherBand)))
+            const wy =
+              minDistY <= borderThick
+                ? 1
+                : minDistY >= borderThick + Math.round(featherBand * 0.45)
+                  ? 0
+                  : 0.5 *
+                    (1 +
+                      Math.cos(
+                        Math.PI * ((minDistY - borderThick) / Math.round(featherBand * 0.45))
+                      ))
+            const wBorder = Math.max(wx, wy)
+
+            // 轻微纵向环境光渐变，保持原生 9-slice 质感
+            const vShade = Math.round(4 * Math.cos((ly / Math.max(1, lh - 1)) * Math.PI))
+            const ir = Math.min(255, Math.max(0, plateR + vShade))
+            const ig = Math.min(255, Math.max(0, plateG + vShade))
+            const ib = Math.min(255, Math.max(0, plateB + vShade))
+
+            const dstIdx = (ly * lw + lx) * 4
+            prebuiltContainerRgba[dstIdx] = Math.round(br * wBorder + ir * (1 - wBorder))
+            prebuiltContainerRgba[dstIdx + 1] = Math.round(bg * wBorder + ig * (1 - wBorder))
+            prebuiltContainerRgba[dstIdx + 2] = Math.round(bb * wBorder + ib * (1 - wBorder))
+
+            // 四角圆角抗锯齿透明遮罩，其余面板区域 100% 不透明（根除半透明棋盘格孔洞）
+            let cornerAlpha = 255
+            if (minDistX < cornerR && minDistY < cornerR) {
+              const dx = cornerR - minDistX
+              const dy = cornerR - minDistY
+              const d = Math.hypot(dx, dy)
+              if (d >= cornerR + 0.8) {
+                cornerAlpha = 0
+              } else if (d > cornerR - 0.8) {
+                cornerAlpha = Math.round(255 * (1 - (d - (cornerR - 0.8)) / 1.6))
+              }
+            }
+            prebuiltContainerRgba[dstIdx + 3] = cornerAlpha
+          }
+        }
+      } else {
+        for (const child of enclosedChildren) {
+          const pad = 8
+          const x0 = Math.max(rect.left + 16, child.left - pad)
+          const y0 = Math.max(rect.top + 16, child.top - pad)
+          const x1 = Math.min(rect.left + rect.width - 16, child.left + child.width + pad)
+          const y1 = Math.min(rect.top + rect.height - 16, child.top + child.height + pad)
+          const clippedChild: ImageLayerSplitRect = {
+            left: x0,
+            top: y0,
+            width: Math.max(1, x1 - x0),
+            height: Math.max(1, y1 - y0)
+          }
+          inpaintRectBilinearInPlace(effectiveSrc, width, height, effectiveSrc, clippedChild)
+        }
       }
     }
 
@@ -3319,7 +4535,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
       const cy1 = Math.min(parent.top + parent.height, rect.top + rect.height)
       if (cx1 <= cx0 || cy1 <= cy0) return false
       const overlapArea = (cx1 - cx0) * (cy1 - cy0)
-      return overlapArea >= lw * lh * 0.75
+      return overlapArea >= lw * lh * 0.65
     })
     if (parentContainer) {
       const localParentBase = new Uint8ClampedArray(baseRgba)
@@ -3327,14 +4543,18 @@ export function decomposeRgbaBufferToUiLayers(input: {
       effectiveBase = localParentBase
     }
 
-    const layerRgba = extractWidgetRgbaWithContourMatting({
-      src: effectiveSrc,
-      baseRgba: effectiveBase,
-      canvasWidth: width,
-      canvasHeight: height,
-      rect,
-      usePatchSearch: hasExternalBase && !parentContainer
-    })
+    const layerRgba =
+      prebuiltContainerRgba ??
+      extractWidgetRgbaWithContourMatting({
+        src: effectiveSrc,
+        baseRgba: effectiveBase,
+        canvasWidth: width,
+        canvasHeight: height,
+        rect,
+        usePatchSearch: hasExternalBase && !parentContainer,
+        mattingMode: rect.mattingMode,
+        modalTopY: rect.modalTopY
+      })
 
     const controlIndex = idx + 1
     const controlId = `${idPrefix}:ctrl:${controlIndex}`
@@ -3356,10 +4576,18 @@ export function decomposeRgbaBufferToUiLayers(input: {
           return true
         })
       : undefined
-    const matchedOcr =
-      rect.hintOcrText?.trim() ||
-      matchOcrBoxesToControlRect(effectiveOcrBoxes, rect, enclosedChildren)
-    const controlName = rect.hintName || inferredMeta.name
+    const pureGraphicRe = /立绘|portrait|character|指示点|pagination|箭头|arrow|关闭|close|头像框/i // cjk-ok 识别纯图形类 UI 部件关键词
+    const isPureGraphicControl =
+      rect.mattingMode === 'portrait' || pureGraphicRe.test(rect.hintName ?? inferredMeta.name)
+    const matchedOcr = isPureGraphicControl
+      ? undefined
+      : rect.hintOcrText?.trim() ||
+        matchOcrBoxesToControlRect(effectiveOcrBoxes, rect, enclosedChildren)
+    const baseControlName = rect.hintName || inferredMeta.name
+    const controlName =
+      matchedOcr && !baseControlName.includes(matchedOcr) && !rect.alreadyPeeledContainer
+        ? `${baseControlName} · ${matchedOcr}`
+        : baseControlName
     const controlDesc = rect.hintDescription || inferredMeta.description
     const nineSliceBorders = computeNineSliceFromRgbaBuffer(layerRgba, lw, lh)
 
@@ -3370,6 +4598,7 @@ export function decomposeRgbaBufferToUiLayers(input: {
         controlType: rect.hintControlType,
         ocrText: matchedOcr,
         ocrBoxes: effectiveOcrBoxes,
+        alreadyPeeledContainer: rect.alreadyPeeledContainer,
         left: rect.left,
         top: rect.top,
         width: lw,

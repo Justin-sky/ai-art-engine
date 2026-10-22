@@ -1698,6 +1698,7 @@ function selectGroup(groupId: string): void {
 
 const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
   { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
+  { id: 'precise', label: t('graph.layerSplit.splitModePrecise') },
   { id: 'ai-inpaint-slice', label: t('graph.layerSplit.splitModeAiInpaintSlice') },
   { id: 'ai-layers', label: t('graph.layerSplit.splitModeAiLayers') },
   { id: 'local-slice', label: t('graph.layerSplit.splitModeLocalSlice') }

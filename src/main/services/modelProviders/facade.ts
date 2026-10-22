@@ -56,8 +56,10 @@ import type {
 import {
   allowsEmptyApiKey,
   findProviderById,
+  modalityConfig,
   normalizeVideoInputReference,
   pickTranscribeProvider,
+  pickVisionGroundingProvider,
   resolveDefaultVoice,
   supportsModel3dRig,
   supportsModel3dSegment
@@ -473,14 +475,28 @@ class ModelProviderFacade {
   }
 
   async generateText(input: GenerateTextInput): Promise<GenerateTextResult> {
-    const { provider, modelId } = resolveActiveProvider(
-      'text',
-      input.providerInstanceId,
-      input.model
-    )
-    const images = input.images?.length ? ensureApiImageUrls(input.images) : input.images
+    const { visionGrounding, ...rest } = input
+    const providers = visionGrounding ? settingsService.get().models.providers : []
+    const wantedModel = rest.model?.trim() || ''
+    // 视觉定位任务且未指定模型：优先路由到定位能力最强的已启用视觉模型；
+    // 只指定了模型 id（未指定实例）时，找真正勾选了该模型的实例，而不是第一个文本实例
+    const grounding =
+      !visionGrounding || rest.providerInstanceId?.trim()
+        ? null
+        : wantedModel
+          ? (() => {
+              const provider = providers.find(
+                (p) => p.enabled && modalityConfig(p, 'text').selectedModelIds.includes(wantedModel)
+              )
+              return provider ? { provider, modelId: wantedModel } : null
+            })()
+          : pickVisionGroundingProvider(providers)
+    const { provider, modelId } = grounding
+      ? grounding
+      : resolveActiveProvider('text', rest.providerInstanceId, rest.model)
+    const images = rest.images?.length ? ensureApiImageUrls(rest.images) : rest.images
     return getProviderAdapter(provider.providerKind).generateText(provider, modelId, {
-      ...input,
+      ...rest,
       images
     })
   }

@@ -69,7 +69,13 @@ export function clusterOcrLineWordsIntoBoxes(lines: ReadonlyArray<RawOcrLine>): 
       const w = sorted[i]!
       const curHeight = Math.max(8, curBottom - curTop)
       const gapX = w.left - curRight
-      const maxGap = Math.max(curHeight * 1.45, w.height * 1.45, 24)
+      const prevToken = curTexts[curTexts.length - 1] ?? ''
+      const endsWithPlusPill = /\+$/.test(prevToken)
+      const maxGap = endsWithPlusPill
+        ? 10
+        : curHeight >= 48
+          ? Math.max(curHeight * 1.65, w.height * 1.65, 28)
+          : Math.max(curHeight * 1.45, w.height * 1.45, 24)
       if (gapX <= maxGap) {
         curTexts.push(w.text.trim())
         curLeft = Math.min(curLeft, w.left)
@@ -116,9 +122,12 @@ async function runWindowsNativeOcr(imagePath: string): Promise<LocalOcrTextBox[]
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
+Add-Type -AssemblyName System.Drawing
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+$null = [Windows.Foundation.IAsyncOperation\`1, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation, ContentType = WindowsRuntime]
 $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
 
 $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
   $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1'
@@ -130,11 +139,6 @@ Function Await($WinRtTask, $ResultType) {
   $netTask.Result
 }
 
-$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:STUDIO_OCR_IMAGE_PATH)) ([Windows.Storage.StorageFile])
-$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-$decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-$bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-
 $lang = New-Object Windows.Globalization.Language('zh-Hans-CN')
 if (-not [Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($lang)) {
   $lang = New-Object Windows.Globalization.Language('zh-CN')
@@ -145,30 +149,70 @@ if ([Windows.Media.Ocr.OcrEngine]::IsLanguageSupported($lang)) {
   $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
 }
 if ($null -eq $engine) {
-  Write-Output '[]'
+  Write-Output '{"pass1":[],"pass2":[]}'
   exit 0
 }
 
-$result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-$lines = @()
-foreach ($line in $result.Lines) {
-  $words = @()
-  foreach ($w in $line.Words) {
-    $r = $w.BoundingRect
-    $words += [PSCustomObject]@{
-      text = $w.Text
-      left = [int][Math]::Round($r.X)
-      top = [int][Math]::Round($r.Y)
-      width = [int][Math]::Round($r.Width)
-      height = [int][Math]::Round($r.Height)
+Function Convert-OcrLines($ocrRes) {
+  $arr = @()
+  foreach ($line in $ocrRes.Lines) {
+    $words = @()
+    foreach ($w in $line.Words) {
+      $r = $w.BoundingRect
+      $words += [PSCustomObject]@{
+        text = $w.Text
+        left = [int][Math]::Round($r.X)
+        top = [int][Math]::Round($r.Y)
+        width = [int][Math]::Round($r.Width)
+        height = [int][Math]::Round($r.Height)
+      }
+    }
+    $arr += [PSCustomObject]@{
+      text = $line.Text
+      words = $words
     }
   }
-  $lines += [PSCustomObject]@{
-    text = $line.Text
-    words = $words
-  }
+  return $arr
 }
-ConvertTo-Json -InputObject @($lines) -Depth 5 -Compress
+
+Function Run-OcrOnFile($p) {
+  $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($p)) ([Windows.Storage.StorageFile])
+  $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+  $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $res = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+  $stream.Dispose()
+  return (Convert-OcrLines $res)
+}
+
+$srcPath = $env:STUDIO_OCR_IMAGE_PATH
+$pass1 = Run-OcrOnFile $srcPath
+$pass2 = @()
+$boostPath = $srcPath + '.boost.png'
+try {
+  $srcBmp = [System.Drawing.Bitmap]::FromFile($srcPath)
+  $dstBmp = New-Object System.Drawing.Bitmap($srcBmp.Width, $srcBmp.Height)
+  $g = [System.Drawing.Graphics]::FromImage($dstBmp)
+  $cm = New-Object System.Drawing.Imaging.ColorMatrix
+  $cm.Matrix00 = 3.8
+  $cm.Matrix11 = 3.8
+  $cm.Matrix22 = 3.8
+  $ia = New-Object System.Drawing.Imaging.ImageAttributes
+  $ia.SetColorMatrix($cm)
+  $rect = New-Object System.Drawing.Rectangle(0, 0, $srcBmp.Width, $srcBmp.Height)
+  $g.DrawImage($srcBmp, $rect, 0, 0, $srcBmp.Width, $srcBmp.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+  $g.Dispose()
+  $srcBmp.Dispose()
+  $dstBmp.Save($boostPath, [System.Drawing.Imaging.ImageFormat]::Png)
+  $dstBmp.Dispose()
+  $pass2 = Run-OcrOnFile $boostPath
+} catch {
+  $pass2 = @()
+} finally {
+  if (Test-Path $boostPath) { Remove-Item $boostPath -Force -ErrorAction SilentlyContinue }
+}
+
+ConvertTo-Json -InputObject ([PSCustomObject]@{ pass1 = @($pass1); pass2 = @($pass2) }) -Depth 6 -Compress
 `
 
   const { stdout } = await execFileAsync(
@@ -176,7 +220,7 @@ ConvertTo-Json -InputObject @($lines) -Depth 5 -Compress
     ['-NoProfile', '-NonInteractive', '-Command', psScript],
     {
       env: { ...process.env, STUDIO_OCR_IMAGE_PATH: imagePath },
-      timeout: 12000,
+      timeout: 15000,
       maxBuffer: 4 * 1024 * 1024,
       windowsHide: true
     }
@@ -184,14 +228,40 @@ ConvertTo-Json -InputObject @($lines) -Depth 5 -Compress
 
   const trimmed = stdout?.trim() || ''
   if (!trimmed) return []
-  const startIdx = trimmed.indexOf('[')
   const startObjIdx = trimmed.indexOf('{')
-  const jsonSlice =
-    startIdx >= 0 && (startObjIdx < 0 || startIdx < startObjIdx)
-      ? trimmed.slice(startIdx)
-      : startObjIdx >= 0
-        ? `[${trimmed.slice(startObjIdx)}]`
-        : '[]'
+  const startArrIdx = trimmed.indexOf('[')
+  if (startObjIdx >= 0 && (startArrIdx < 0 || startObjIdx < startArrIdx)) {
+    const parsedObj = JSON.parse(trimmed.slice(startObjIdx)) as {
+      pass1?: RawOcrLine[]
+      pass2?: RawOcrLine[]
+    }
+    const boxes1 = clusterOcrLineWordsIntoBoxes(
+      Array.isArray(parsedObj.pass1) ? parsedObj.pass1 : []
+    )
+    const boxes2 = clusterOcrLineWordsIntoBoxes(
+      Array.isArray(parsedObj.pass2) ? parsedObj.pass2 : []
+    )
+    const merged = [...boxes1]
+    for (const b2 of boxes2) {
+      if (b2.text.length === 1 && (b2.width >= 32 || b2.height >= 32)) continue
+      const overlaps = merged.some((b1) => {
+        const ix0 = Math.max(b1.left, b2.left)
+        const iy0 = Math.max(b1.top, b2.top)
+        const ix1 = Math.min(b1.left + b1.width, b2.left + b2.width)
+        const iy1 = Math.min(b1.top + b1.height, b2.top + b2.height)
+        if (ix1 <= ix0 || iy1 <= iy0) return false
+        const inter = (ix1 - ix0) * (iy1 - iy0)
+        const minArea = Math.min(b1.width * b1.height, b2.width * b2.height)
+        return inter >= Math.max(1, minArea) * 0.35
+      })
+      if (!overlaps) {
+        merged.push({ ...b2, confidence: 0.86 })
+      }
+    }
+    return merged
+  }
+
+  const jsonSlice = startArrIdx >= 0 ? trimmed.slice(startArrIdx) : '[]'
 
   const parsed = JSON.parse(jsonSlice) as unknown
   const rawLines: RawOcrLine[] = Array.isArray(parsed)

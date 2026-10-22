@@ -1,6 +1,5 @@
 import axios from 'axios'
 import {
-  GOOGLE_DEFAULT_BASE_URL,
   type CatalogModel,
   type GenerateImageInput,
   type GenerateImageResult,
@@ -15,14 +14,28 @@ import {
   type ModelProviderInstance
 } from '@shared/modelProvider'
 import {
+  isGoogleNativeImageModelId,
   isGoogleTextModelId,
+  isOfficialGoogleBaseUrl,
   listGoogleCatalogModels,
-  normalizeGoogleModelId
+  normalizeGoogleImageSize,
+  normalizeGoogleModelId,
+  normalizeGoogleVeoAspectRatio,
+  normalizeGoogleVeoResolution,
+  resolveGoogleChatModelId,
+  resolveGoogleNativeBaseUrl,
+  resolveGoogleOpenAiBaseUrl,
+  snapGoogleVeoDuration
 } from '@shared/modelProviders/google/modelCapabilities'
+import {
+  b64JsonToImageDataUrl,
+  sniffImageMimeFromBase64,
+  sniffImageMimeFromBytes
+} from '@shared/media/imageMimeSniff'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
-import { fail, defErrSimple } from '@shared/errors/appError'
+import { fail, defErr, defErrSimple } from '@shared/errors/appError'
 import {
   createProviderHttpClient,
   formatAuthError,
@@ -40,6 +53,30 @@ const E_NOT_SUPPORTED = defErrSimple(
   'Google (Gemini) does not support speech synthesis yet; text, image and video only'
 )
 
+const E_GOOGLE_FREE_TIER_IMAGE_QUOTA_ZERO = defErr<{ model: string }>(
+  'provider.google.free-tier-image-quota-zero',
+  ({ model }) =>
+    `Google AI Studio 免费层级（Free Tier）对 Gemini 生图模型（${model}）的免费配额为 0（limit: 0）。` +
+    `请前往 https://aistudio.google.com/apikey 为该项目绑定结算账户（升级至 Paid Tier 1），` +
+    `或在图片节点切换为其他已配置的生图提供商/模型。`,
+  ({ model }) =>
+    `Google AI Studio Free Tier has 0 quota (limit: 0) for Gemini image model "${model}". ` +
+    `Enable billing (Paid Tier 1) for your project at https://aistudio.google.com/apikey, ` +
+    `or switch the Image node to another configured image provider/model.`
+)
+
+const E_GOOGLE_FREE_TIER_VIDEO_QUOTA_ZERO = defErr<{ model: string }>(
+  'provider.google.free-tier-video-quota-zero',
+  ({ model }) =>
+    `Google AI Studio 免费层级（Free Tier）对 Veo 视频生成模型（${model}）无免费配额。` +
+    `请前往 https://aistudio.google.com/apikey 为该项目绑定结算账户（升级至 Paid Tier 1），` +
+    `或在视频节点切换为其他已配置的视频提供商/模型。`,
+  ({ model }) =>
+    `Google AI Studio Free Tier does not include free quota for Veo video model "${model}". ` +
+    `Enable billing (Paid Tier 1) for your project at https://aistudio.google.com/apikey, ` +
+    `or switch the Video node to another configured video provider/model.`
+)
+
 function notSupported(): Promise<never> {
   return Promise.reject(fail(E_NOT_SUPPORTED))
 }
@@ -50,7 +87,7 @@ function parseGeneratedImages(
 ): GenerateImageResult {
   const images = (data.data ?? [])
     .map((row) => {
-      if (row.b64_json) return `data:image/png;base64,${row.b64_json}`
+      if (row.b64_json) return b64JsonToImageDataUrl(row.b64_json)
       if (row.url) return row.url
       return ''
     })
@@ -59,21 +96,229 @@ function parseGeneratedImages(
   return { images, model: modelId }
 }
 
-/**
- * 规范化 Google Gemini OpenAI 兼容层 Base URL：
- * - 空值回退官方 `https://generativelanguage.googleapis.com/v1beta/openai`
- * - 若用户填了官方根域名或 `/v1beta`（漏写 `/openai`），自动补齐 `/v1beta/openai`
- */
-function resolveGoogleOpenAiBaseUrl(rawBaseUrl?: string): string {
-  const trimmed = (rawBaseUrl ?? '').trim().replace(/\/+$/, '')
-  if (!trimmed) return GOOGLE_DEFAULT_BASE_URL
-  if (/^https?:\/\/generativelanguage\.googleapis\.com$/i.test(trimmed)) {
-    return `${trimmed}/v1beta/openai`
+interface GeminiInlineDataPart {
+  inlineData: {
+    mimeType: string
+    data: string
   }
-  if (/^https?:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?$/i.test(trimmed)) {
-    return `${trimmed}/openai`
+}
+
+interface GenerateContentResponseShape {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string
+        inlineData?: { mimeType?: string; mime_type?: string; data?: string }
+        inline_data?: { mimeType?: string; mime_type?: string; data?: string }
+      }>
+    }
+  }>
+  data?: Array<{ b64_json?: string; url?: string }>
+}
+
+function createGoogleNativeHttpClient(provider: ModelProviderInstance, timeoutMs = 120_000) {
+  const key = provider.apiKey.trim()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
   }
-  return trimmed
+  if (key) {
+    headers['x-goog-api-key'] = key
+    // 官方 generativelanguage.googleapis.com 原生 /v1beta 端点只认 x-goog-api-key；
+    // 若同时携带 Authorization: Bearer AIza... 会被当成非法 OAuth2 token 并报 401。
+    // 非官方中转网关则可能依赖 Bearer，因此仅在自定义域名下附带 Authorization。
+    if (!isOfficialGoogleBaseUrl(provider.baseUrl)) {
+      headers.Authorization = `Bearer ${key}`
+    }
+  }
+  return axios.create({
+    baseURL: resolveGoogleNativeBaseUrl(provider.baseUrl, provider.nativeBaseUrl),
+    timeout: timeoutMs,
+    headers
+  })
+}
+
+async function referenceToInlineDataPart(ref: string): Promise<GeminiInlineDataPart | null> {
+  const trimmed = ref.trim()
+  if (!trimmed) return null
+  const dataUrlMatch = /^data:([^;,]+)?(?:;base64)?,(.*)$/s.exec(trimmed)
+  if (dataUrlMatch) {
+    const declaredMime = dataUrlMatch[1]?.trim() || 'image/png'
+    const rawPayload = (dataUrlMatch[2] ?? '').trim()
+    if (!rawPayload) return null
+    const b64 = trimmed.includes(';base64,')
+      ? rawPayload
+      : Buffer.from(decodeURIComponent(rawPayload), 'utf8').toString('base64')
+    const mimeType = sniffImageMimeFromBase64(b64) ?? declaredMime
+    return {
+      inlineData: {
+        mimeType,
+        data: b64
+      }
+    }
+  }
+  if (/^https?:\/\//i.test(trimmed)) {
+    const { data, headers } = await axios.get<ArrayBuffer>(trimmed, {
+      responseType: 'arraybuffer',
+      timeout: 60_000
+    })
+    const buf = Buffer.from(data)
+    const headerMime =
+      typeof headers?.['content-type'] === 'string'
+        ? headers['content-type'].split(';')[0]!.trim()
+        : ''
+    const mimeType = sniffImageMimeFromBytes(buf) ?? (headerMime || 'image/png')
+    return {
+      inlineData: {
+        mimeType,
+        data: buf.toString('base64')
+      }
+    }
+  }
+  return null
+}
+
+function buildGenerateContentImageBody(
+  prompt: string,
+  inlineParts: GeminiInlineDataPart[],
+  options: {
+    aspectRatio?: string
+    imageSize?: '1K' | '2K' | '4K'
+    includeImageConfig?: boolean
+  }
+): Record<string, unknown> {
+  const parts: Array<GeminiInlineDataPart | { text: string }> = [...inlineParts]
+  if (prompt.trim() || !parts.length) {
+    parts.push({ text: prompt })
+  }
+  const imageConfig: Record<string, string> = {}
+  if (options.includeImageConfig !== false) {
+    if (options.aspectRatio?.trim()) {
+      imageConfig.aspectRatio = options.aspectRatio.trim()
+    }
+    if (options.imageSize) {
+      imageConfig.imageSize = options.imageSize
+    }
+  }
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts
+      }
+    ],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      ...(Object.keys(imageConfig).length ? { imageConfig } : {})
+    }
+  }
+}
+
+function parseGenerateContentImages(
+  data: GenerateContentResponseShape,
+  modelId: string
+): GenerateImageResult {
+  const images: string[] = []
+  const textCandidates: string[] = []
+  for (const candidate of data.candidates ?? []) {
+    for (const part of candidate.content?.parts ?? []) {
+      const inline = part.inlineData ?? part.inline_data
+      if (inline?.data?.trim()) {
+        const mime = inline.mimeType || inline.mime_type || 'image/png'
+        images.push(b64JsonToImageDataUrl(inline.data, mime))
+      } else if (typeof part.text === 'string' && part.text.trim()) {
+        textCandidates.push(part.text.trim())
+      }
+    }
+  }
+  if (!images.length && textCandidates.length) {
+    const joined = textCandidates.join('\n')
+    const mdMatch = /!\[[^\]]*\]\((data:image\/[^)]+|https?:\/\/[^)\s]+)\)/i.exec(joined)
+    if (mdMatch?.[1]) {
+      images.push(mdMatch[1])
+    } else {
+      const dataUrlMatch = /(data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+)/.exec(joined)
+      if (dataUrlMatch?.[1]) images.push(dataUrlMatch[1])
+    }
+  }
+  if (!images.length && Array.isArray(data.data)) {
+    return parseGeneratedImages(data, modelId)
+  }
+  if (!images.length) throw fail(PROVIDER_ERRORS.noImageResult)
+  return { images, model: modelId }
+}
+
+function formatGoogleImageError(
+  raw: string,
+  provider: ModelProviderInstance,
+  modelId: string
+): string {
+  if (/generate_content_free_tier_requests/i.test(raw) && /limit:\s*0\b/i.test(raw)) {
+    return fail(E_GOOGLE_FREE_TIER_IMAGE_QUOTA_ZERO, { model: modelId }).message
+  }
+  return formatAuthError(raw, provider)
+}
+
+function formatGoogleVideoError(
+  raw: string,
+  provider: ModelProviderInstance,
+  modelId: string
+): string {
+  if (/exceeded your current quota,\s*please check your plan and billing details/i.test(raw)) {
+    return fail(E_GOOGLE_FREE_TIER_VIDEO_QUOTA_ZERO, { model: modelId }).message
+  }
+  return formatAuthError(raw, provider)
+}
+
+async function generateImageViaOpenAiEndpoint(
+  provider: ModelProviderInstance,
+  modelId: string,
+  prompt: string,
+  input: GenerateImageInput
+): Promise<GenerateImageResult> {
+  const official = isOfficialGoogleBaseUrl(provider.baseUrl)
+  const buildBody = (stripExtendedFields: boolean): Record<string, unknown> => {
+    const body: Record<string, unknown> = {
+      model: modelId,
+      prompt,
+      response_format: 'b64_json'
+    }
+    if (input.aspectRatio?.trim() && !stripExtendedFields) {
+      body.aspect_ratio = input.aspectRatio.trim()
+    }
+    if (input.n && input.n >= 1) {
+      body.n = Math.min(4, Math.floor(input.n))
+    }
+    // Google 官方 /v1beta/openai/images/generations 的 protobuf schema 不含 resolution 与 image 字段，
+    // 传入会立即报 `Invalid JSON payload received. Unknown name "resolution": Cannot find field.`
+    if (!official && !stripExtendedFields) {
+      if (input.resolution?.trim()) body.resolution = input.resolution.trim()
+      const refs = (input.inputReferences ?? []).map((ref) => ref.trim()).filter(Boolean)
+      if (refs.length === 1) {
+        body.image = refs[0]
+      } else if (refs.length > 1) {
+        body.image = refs
+      }
+    }
+    return body
+  }
+
+  const client = createProviderHttpClient(withGoogleOpenAiBase(provider), LONG_GENERATE_TIMEOUT_MS)
+  try {
+    const { data } = await client.post<{
+      data?: Array<{ b64_json?: string; url?: string }>
+    }>('/images/generations', buildBody(false))
+    return parseGeneratedImages(data, modelId)
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined
+    const raw = await readHttpError(err)
+    if (status === 400 && /Unknown name|Cannot find field/i.test(raw)) {
+      const { data } = await client.post<{
+        data?: Array<{ b64_json?: string; url?: string }>
+      }>('/images/generations', buildBody(true))
+      return parseGeneratedImages(data, modelId)
+    }
+    throw err
+  }
 }
 
 function withGoogleOpenAiBase(provider: ModelProviderInstance): ModelProviderInstance {
@@ -134,8 +379,37 @@ function extractVideoDownloadUrl(data: Record<string, unknown>): string | undefi
     url?: unknown
     result?: unknown
     generatedVideos?: unknown
+    response?: {
+      generateVideoResponse?: {
+        generatedSamples?: Array<{ video?: { uri?: string; url?: string } }>
+      }
+      generatedVideos?: Array<{
+        url?: string
+        uri?: string
+        video?: { uri?: string; url?: string }
+      }>
+      videos?: Array<{ url?: string; uri?: string }>
+    }
   }
   if (typeof raw.video_url === 'string' && raw.video_url.trim()) return raw.video_url.trim()
+  const opSamples = raw.response?.generateVideoResponse?.generatedSamples
+  if (Array.isArray(opSamples)) {
+    const sampleUrl = opSamples
+      .map((item) => item?.video?.uri || item?.video?.url)
+      .find((item) => typeof item === 'string' && item.trim())
+    if (typeof sampleUrl === 'string') return sampleUrl.trim()
+  }
+  const opVideos = raw.response?.generatedVideos ?? raw.response?.videos
+  if (Array.isArray(opVideos)) {
+    const vidUrl = opVideos
+      .map((item) => {
+        if (!item || typeof item !== 'object') return undefined
+        const row = item as { url?: string; uri?: string; video?: { uri?: string; url?: string } }
+        return row.url || row.uri || row.video?.uri || row.video?.url
+      })
+      .find((item) => typeof item === 'string' && item.trim())
+    if (typeof vidUrl === 'string') return vidUrl.trim()
+  }
   if (Array.isArray(raw.output)) {
     const url = raw.output
       .map((item) =>
@@ -159,9 +433,15 @@ function extractVideoDownloadUrl(data: Record<string, unknown>): string | undefi
   }
   if (Array.isArray(raw.generatedVideos)) {
     const url = raw.generatedVideos
-      .map((item) =>
-        item && typeof item === 'object' ? (item as { url?: unknown }).url : undefined
-      )
+      .map((item) => {
+        if (!item || typeof item !== 'object') return undefined
+        const row = item as {
+          url?: unknown
+          uri?: unknown
+          video?: { uri?: unknown; url?: unknown }
+        }
+        return row.url || row.uri || row.video?.uri || row.video?.url
+      })
       .find((item) => typeof item === 'string' && item.trim())
     if (typeof url === 'string') return url.trim()
   }
@@ -204,7 +484,7 @@ export const googleAdapter: ModelProviderAdapter = {
   ): Promise<GenerateTextResult> {
     return generateOpenAiCompatibleText(
       withGoogleOpenAiBase(provider),
-      normalizeGoogleModelId(modelId),
+      resolveGoogleChatModelId(modelId),
       input
     )
   },
@@ -214,33 +494,78 @@ export const googleAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateImageInput
   ): Promise<GenerateImageResult> {
-    const body: Record<string, unknown> = {
-      model: modelId,
-      // Gemini/Nano Banana 用「图n」对齐 image[]；应用内统一 @n，此处转换
-      prompt: rewriteAtMentionsForImagePrompt(input.prompt),
-      response_format: 'b64_json'
-    }
-    if (input.aspectRatio?.trim()) body.aspect_ratio = input.aspectRatio.trim()
-    if (input.resolution?.trim()) body.resolution = input.resolution.trim()
-    if (input.n && input.n >= 1) body.n = Math.min(4, Math.floor(input.n))
-    // Nano Banana 系列图生图 / 编辑：参考图走 JSON body 的 image 字段（单图字符串 / 多图数组）
+    const normalizedModelId = normalizeGoogleModelId(modelId)
+    // Gemini/Nano Banana 用「图n」对齐参考图顺序；应用内统一 @n，此处转换
+    const prompt = rewriteAtMentionsForImagePrompt(input.prompt)
     const refs = (input.inputReferences ?? []).map((ref) => ref.trim()).filter(Boolean)
-    if (refs.length === 1) {
-      body.image = refs[0]
-    } else if (refs.length > 1) {
-      body.image = refs
-    }
 
-    const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
     try {
-      const { data } = await client.post<{
-        data?: Array<{ b64_json?: string; url?: string }>
-      }>('/images/generations', body)
-      return parseGeneratedImages(data, modelId)
+      if (isGoogleNativeImageModelId(normalizedModelId)) {
+        const inlineParts: GeminiInlineDataPart[] = []
+        for (const ref of refs) {
+          const part = await referenceToInlineDataPart(ref)
+          if (part) inlineParts.push(part)
+        }
+
+        const aspectRatio = input.aspectRatio?.trim() || undefined
+        const imageSize = normalizeGoogleImageSize(input.resolution)
+        const nativeClient = createGoogleNativeHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
+        const endpoint = `/models/${normalizedModelId}:generateContent`
+
+        try {
+          const { data } = await nativeClient.post<GenerateContentResponseShape>(
+            endpoint,
+            buildGenerateContentImageBody(prompt, inlineParts, { aspectRatio, imageSize })
+          )
+          return parseGenerateContentImages(data, normalizedModelId)
+        } catch (nativeErr) {
+          const status = axios.isAxiosError(nativeErr) ? nativeErr.response?.status : undefined
+          const raw = await readHttpError(nativeErr)
+
+          // 部分模型或代理不支持 imageSize / imageConfig 时，降级去掉对应字段重试
+          if (
+            status === 400 &&
+            (imageSize || aspectRatio) &&
+            /imageSize|image_size|imageConfig|image_config|Unknown name|Cannot find field/i.test(
+              raw
+            )
+          ) {
+            try {
+              const { data } = await nativeClient.post<GenerateContentResponseShape>(
+                endpoint,
+                buildGenerateContentImageBody(prompt, inlineParts, {
+                  aspectRatio,
+                  imageSize: undefined
+                })
+              )
+              return parseGenerateContentImages(data, normalizedModelId)
+            } catch {
+              const { data } = await nativeClient.post<GenerateContentResponseShape>(
+                endpoint,
+                buildGenerateContentImageBody(prompt, inlineParts, {
+                  includeImageConfig: false
+                })
+              )
+              return parseGenerateContentImages(data, normalizedModelId)
+            }
+          }
+
+          // 第三方 OpenAI 兼容中转（未暴露原生 /models/:generateContent）回退 /images/generations
+          if (
+            !isOfficialGoogleBaseUrl(provider.baseUrl) &&
+            (status === 404 || status === 405 || status === 501)
+          ) {
+            return await generateImageViaOpenAiEndpoint(provider, normalizedModelId, prompt, input)
+          }
+          throw nativeErr
+        }
+      }
+
+      return await generateImageViaOpenAiEndpoint(provider, normalizedModelId, prompt, input)
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {
         action: 'imageGenerate',
-        detail: formatAuthError(await readHttpError(err), provider)
+        detail: formatGoogleImageError(await readHttpError(err), provider, normalizedModelId)
       })
     }
   },
@@ -250,35 +575,73 @@ export const googleAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateVideoInput
   ): Promise<GenerateVideoJob> {
-    const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
-    const body: Record<string, unknown> = {
-      model: modelId,
-      prompt: input.prompt
-    }
-    if (input.duration != null && Number.isFinite(input.duration)) {
-      // Veo 3.1：4–8 秒，默认 8 秒
-      body.duration = Math.min(8, Math.max(4, Math.round(input.duration)))
-    }
-    const resolution = (input.resolution ?? '').trim()
-    if (/^\d{3,4}p$/i.test(resolution)) body.resolution = resolution.toLowerCase()
-    if (input.aspectRatio?.trim()) body.aspect_ratio = input.aspectRatio.trim()
+    const normalizedModelId = normalizeGoogleModelId(modelId)
+    const openAiProvider = withGoogleOpenAiBase(provider)
+    const client = createProviderHttpClient(openAiProvider, LONG_GENERATE_TIMEOUT_MS)
+    const durationSeconds =
+      input.duration != null && Number.isFinite(input.duration)
+        ? snapGoogleVeoDuration(input.duration)
+        : undefined
+    const resolution = normalizeGoogleVeoResolution(input.resolution)
+    const aspectRatio = normalizeGoogleVeoAspectRatio(input.aspectRatio)
     const firstFrame = input.firstFrameImageUrl?.trim()
-    if (firstFrame) body.image = firstFrame
+
+    const buildBody = (useLegacyDurationKey: boolean): Record<string, unknown> => {
+      const body: Record<string, unknown> = {
+        model: normalizedModelId,
+        prompt: input.prompt
+      }
+      if (durationSeconds != null) {
+        // Google 官方 /v1beta/openai/videos 只认 duration_seconds（传 duration 会报 400 Request contains an invalid argument），
+        // 且仅允许 4 / 6 / 8 秒
+        if (useLegacyDurationKey) {
+          body.duration = durationSeconds
+        } else {
+          body.duration_seconds = durationSeconds
+        }
+      }
+      if (resolution) body.resolution = resolution
+      if (aspectRatio) body.aspect_ratio = aspectRatio
+      if (firstFrame) body.image = firstFrame
+      return body
+    }
 
     try {
-      const { data } = await client.post<{ id?: string }>('/videos', body)
-      const jobId = data.id
+      let data: { id?: string; name?: string }
+      try {
+        const resp = await client.post<{ id?: string; name?: string }>('/videos', buildBody(false))
+        data = resp.data
+      } catch (submitErr) {
+        const status = axios.isAxiosError(submitErr) ? submitErr.response?.status : undefined
+        const raw = await readHttpError(submitErr)
+        // 第三方中转网关若只认 duration 而不认 duration_seconds，自动用 duration 重试一次
+        if (
+          !isOfficialGoogleBaseUrl(provider.baseUrl) &&
+          status === 400 &&
+          durationSeconds != null &&
+          /duration_seconds|Unknown name|invalid argument/i.test(raw)
+        ) {
+          const retryResp = await client.post<{ id?: string; name?: string }>(
+            '/videos',
+            buildBody(true)
+          )
+          data = retryResp.data
+        } else {
+          throw submitErr
+        }
+      }
+      const jobId = data.id || data.name
       if (!jobId) throw fail(PROVIDER_ERRORS.noVideoTaskId)
       return {
         jobId,
-        pollingUrl: `${trimBaseUrl(provider.baseUrl)}/videos/${jobId}`,
+        pollingUrl: `${trimBaseUrl(openAiProvider.baseUrl)}/videos/${jobId}`,
         status: 'submitted',
-        model: modelId
+        model: normalizedModelId
       }
     } catch (err) {
       throw fail(PROVIDER_ERRORS.actionFailed, {
         action: 'videoSubmit',
-        detail: await readHttpError(err)
+        detail: formatGoogleVideoError(await readHttpError(err), provider, normalizedModelId)
       })
     }
   },
@@ -287,11 +650,13 @@ export const googleAdapter: ModelProviderAdapter = {
     provider: ModelProviderInstance,
     job: { jobId: string; pollingUrl: string }
   ): Promise<VideoPollResult> {
-    const client = createProviderHttpClient(provider)
+    const client = createProviderHttpClient(withGoogleOpenAiBase(provider))
     try {
       const path = job.pollingUrl.startsWith('http') ? job.pollingUrl : `/videos/${job.jobId}`
       const { data } = await client.get<Record<string, unknown>>(path)
-      const raw = String(data.status ?? 'in_progress').toLowerCase()
+      const fallbackStatus =
+        data.done === true ? (data.error ? 'failed' : 'completed') : 'in_progress'
+      const raw = String(data.status ?? fallbackStatus).toLowerCase()
 
       let status: VideoPollResult['status'] = 'pending'
       if (raw === 'completed' || raw === 'succeeded' || raw === 'success' || raw === 'done') {

@@ -37,6 +37,14 @@ export const SHARED_ERRORS = {
     '当前模型未返回图层。请使用 Seedream 5.0 Pro 并开启图层分离',
     'The current model returned no layers. Use Seedream 5.0 Pro with layer separation enabled'
   ),
+  /** 图层分离（精准拆层）：多模态版面解析失败（无可用视觉模型 / 未识别出元素） */
+  layerSplitPreciseFailed: defErr<{ detail: string }>(
+    'graphExec.layerSplit.preciseFailed',
+    ({ detail }) =>
+      `精准拆层失败：请在设置中启用支持图片输入的多模态文本模型（推荐 Gemini 2.5/3 Pro）${detail ? `（${detail}）` : ''}`,
+    ({ detail }) =>
+      `Precise layer split failed: enable a vision-capable text model in Settings (Gemini 2.5/3 Pro recommended)${detail ? ` (${detail})` : ''}`
+  ),
   /** 能力注入守卫：ctx 注入的画布能力缺失，不能继续执行 */
   capabilityGridCrop: defErrSimple(
     'graphExec.capability.gridCrop',

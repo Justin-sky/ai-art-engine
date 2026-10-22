@@ -55,7 +55,11 @@ import { composeVideoFrameSheet } from '../model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../model/composeAnim2dGif'
 import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
-import { composeImageLayerStack, decomposeImageUiLayers } from '../model/composeImageLayerStack'
+import {
+  composeImageLayerStack,
+  decomposeImageUiLayers,
+  uiRgbaCodec
+} from '../model/composeImageLayerStack'
 import { composeComicPageImage } from '../../comic/composeComicPageImage'
 import {
   composePortraitIdentityLock,
@@ -96,6 +100,8 @@ export interface GraphRunSessionOptions {
     model?: string
     providerInstanceId?: string
     images?: string[]
+    /** 需要视觉定位能力（UI 精准拆层）；未指定模型时优先路由到 Gemini 等 grounding 强的模型 */
+    visionGrounding?: boolean
   }) => Promise<{ text: string; model: string }>
   /** 决策判定：OpenRouter Decisions API（noul / choice / score） */
   generateDecisions?: (
@@ -700,6 +706,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       model?: string
       providerInstanceId?: string
       images?: string[]
+      visionGrounding?: boolean
     }) => {
       if (isRunStale(run)) {
         throw new DOMException('Aborted', 'AbortError')
@@ -1667,6 +1674,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageIconPackSheet,
         composeImageLayerStack,
         decomposeImageUiLayers,
+        uiRgbaCodec,
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,

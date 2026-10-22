@@ -415,6 +415,8 @@ export interface NodeExecuteContext {
     providerInstanceId?: string
     /** 视觉多模态：data URL / http(s) */
     images?: string[]
+    /** 视觉定位任务：未指定 model 时由主进程路由到定位能力最强的已启用视觉模型 */
+    visionGrounding?: boolean
   }) => Promise<{ text: string; model: string }>
   /**
    * 可选：调用设置中的决策模型（OpenRouter Decisions API）。
@@ -1103,6 +1105,17 @@ export interface NodeExecuteContext {
       editableText?: import('../uiControlSpec').UiEditableTextMeta
     }>
   }>
+  /**
+   * 精准 UI 拆层（OCR + 多模态 + 逐级剥层）的像素编解码与本地 OCR：
+   * 流水线本身在 shared 里只操作 RGBA 缓冲区，解码/编码依赖渲染层 canvas。
+   */
+  uiRgbaCodec?: {
+    /** 解码为 RGBA（仅接受 canvas 安全地址：data: / blob: / studio-media: / file:） */
+    decodeImageRgba: (url: string) => Promise<import('../uiPreciseSplit/types').RgbaImage>
+    encodeRgbaPng: (img: import('../uiPreciseSplit/types').RgbaImage) => Promise<string>
+    /** 本地离线 OCR（Windows.Media.Ocr / Vision / tesseract）；未注入时只靠 VLM 读字 */
+    recognizeImageText?: (dataUrl: string) => Promise<import('../uiControlSpec').LocalOcrTextBox[]>
+  }
   /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */
   composeComicPageImage?: (input: {
     page: import('../comicPage').ComicPage
@@ -1508,6 +1521,7 @@ export interface GraphRunOptions {
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']
   decomposeImageUiLayers?: NodeExecuteContext['decomposeImageUiLayers']
+  uiRgbaCodec?: NodeExecuteContext['uiRgbaCodec']
   composeComicPageImage?: NodeExecuteContext['composeComicPageImage']
   composePortraitIdPhoto?: NodeExecuteContext['composePortraitIdPhoto']
   detectPortraitFaces?: NodeExecuteContext['detectPortraitFaces']

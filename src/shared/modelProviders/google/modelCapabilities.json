@@ -5,7 +5,7 @@
       "https://ai.google.dev/gemini-api/docs/image-generation",
       "https://ai.google.dev/gemini-api/docs/video"
     ],
-    "note": "Google Gemini OpenAI-compatible layer (base https://generativelanguage.googleapis.com/v1beta/openai). Text catalog is fetched from GET /models and filtered to gemini-* chat models. Images (Nano Banana family) go through JSON /images/generations with aspect_ratio and response_format=b64_json; reference images are passed in the image field. Videos (Veo 3.1) are submitted asynchronously to /videos and polled via GET /videos/{id} (OpenAI-style video jobs)."
+    "note": "Google Gemini OpenAI-compatible layer (base https://generativelanguage.googleapis.com/v1beta/openai) + native v1beta REST endpoint. Text catalog is fetched from GET /models and filtered to gemini-* chat models. Images (Nano Banana / Gemini image family) use native POST /v1beta/models/{model}:generateContent with responseModalities=['TEXT','IMAGE'] and imageConfig={aspectRatio,imageSize}, falling back to /images/generations for Imagen or OpenAI-only relays. Videos (Veo 3.1) are submitted asynchronously to /videos and polled via GET /videos/{id}."
   },
   "models": [
     {
@@ -156,8 +156,8 @@
       "label": "Veo 3.1",
       "capabilities": {
         "supported_resolutions": ["720p", "1080p", "4K"],
-        "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "supported_durations": [4, 5, 6, 7, 8],
+        "supported_aspect_ratios": ["16:9", "9:16"],
+        "supported_durations": [4, 6, 8],
         "supported_frame_images": ["first_frame"]
       }
     },
@@ -166,8 +166,8 @@
       "label": "Veo 3.1 Lite",
       "capabilities": {
         "supported_resolutions": ["720p"],
-        "supported_aspect_ratios": ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
-        "supported_durations": [4, 5, 6, 7, 8],
+        "supported_aspect_ratios": ["16:9", "9:16"],
+        "supported_durations": [4, 6, 8],
         "supported_frame_images": ["first_frame"]
       }
     }

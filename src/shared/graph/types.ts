@@ -384,6 +384,12 @@ export interface GraphNodeParams {
   transcribeModel?: string
   transcribeProviderInstanceId?: string
   /**
+   * UI 精准拆层（image.layerSplit / splitMode = precise|auto）的**多模态版面解析**模型覆盖。
+   * 留空 = 自动挑选视觉定位最强的已启用文本模型（Gemini 优先，见 `pickVisionGroundingProvider`）。
+   */
+  visionModel?: string
+  visionProviderInstanceId?: string
+  /**
    * 加工节点备选模型链：首选模型调用失败（限流/不可用/超时）时依次自动切换。
    * 每项为 modelKey（providerInstanceId::model），按数组顺序尝试。
    */

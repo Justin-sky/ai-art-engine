@@ -71,6 +71,7 @@ import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 import ChatCopyIcon from './ChatCopyIcon.vue'
+import ChatWishShrine from './ChatWishShrine.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
@@ -186,6 +187,16 @@ const exportBusy = ref(false)
 
 /** Stage 2：画布异步事件触发器最新通知（工作流完成或节点报错时提示审片/诊断） */
 const latestCanvasEvent = ref<HarnessCanvasEventView | null>(null)
+
+/** 许愿式编程浮窗：本轮结束状态与最近一条用户指令文本 */
+const lastRoundOutcome = ref<'idle' | 'success' | 'error'>('idle')
+const latestUserPromptText = computed(() => {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    const m = messages.value[i]
+    if (m?.kind === 'user') return m.text
+  }
+  return ''
+})
 
 /** Stage 3：子代理并发实时监控看板状态 */
 const sessionSubagents = ref<HarnessSubagentView[]>([])
@@ -1934,6 +1945,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       break
     }
     case 'done':
+      lastRoundOutcome.value = 'success'
       if (!preparingTask) running.value = false
       // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
       expirePendingApprovals()
@@ -1945,13 +1957,24 @@ function onHarnessEvent(event: HarnessEvent): void {
       void refreshSessionSkills()
       void refreshInstalledWorkflows()
       break
-    case 'error':
+    case 'error': {
+      lastRoundOutcome.value = 'error'
       pushStatus(event.message, 'error')
       if (!preparingTask) running.value = false
       expirePendingApprovals()
+      const errMsg = (event.message ?? '').trim()
+      if (errMsg) {
+        const agentCard = findToolByKey('tool:dsh-agent')
+        if (agentCard && !agentCard.detail) {
+          agentCard.detail = errMsg
+          commitMessages([...messages.value])
+          scheduleHistoryPersist()
+        }
+      }
       // 失败前可能已经有产物落盘：同样扫一遍，别让「跑到一半报错」这一轮彻底没有卡
       void captureRoundOutputs()
       break
+    }
   }
 }
 
@@ -2945,6 +2968,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
   // 立即置为 running 与 preparingTask，封闭 refreshStatus / 技能预处理等异步间隙内二次发送绕过队列的竞态窗口
   const myAbortSeq = clientAbortSeq
   abortIgnoreUntil = 0
+  lastRoundOutcome.value = 'idle'
   running.value = true
   preparingTask = true
   let taskForHarness = text
@@ -3695,6 +3719,14 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="chat-messages-wrap">
+      <!-- 许愿式编程（Vibe Coding）二次元流星祈愿浮窗：发送指令后在会话面板上方浮动祈福 -->
+      <ChatWishShrine
+        :running="running"
+        :prompt-text="latestUserPromptText"
+        :activity-text="activity"
+        :outcome="lastRoundOutcome"
+        :is-en="isEnChat"
+      />
       <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
         <div v-if="!messages.length" class="chat-empty">
           <div class="chat-empty-hero">

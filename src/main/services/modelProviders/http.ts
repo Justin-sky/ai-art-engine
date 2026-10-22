@@ -130,17 +130,25 @@ function decodeErrorPayload(raw: unknown): ErrorPayload | null {
         : new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength)
     return parseErrorText(new TextDecoder('utf-8', { fatal: false }).decode(view))
   }
+  if (Array.isArray(raw)) {
+    const first = raw.find((item) => item && typeof item === 'object')
+    return first ? (first as ErrorPayload) : null
+  }
   if (typeof raw === 'object') return raw as ErrorPayload
   return null
 }
 
-/** 文本错误体：可能是 JSON（多数聚合器），也可能是纯文本（nginx/网关） */
+/** 文本错误体：可能是 JSON（多数聚合器或 Google 的 JSON 数组），也可能是纯文本（nginx/网关） */
 function parseErrorText(text: string): ErrorPayload | null {
   const trimmed = text.trim()
   if (!trimmed) return null
   if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
     try {
       const parsed = JSON.parse(trimmed) as unknown
+      if (Array.isArray(parsed)) {
+        const first = parsed.find((item) => item && typeof item === 'object')
+        if (first) return first as ErrorPayload
+      }
       if (parsed && typeof parsed === 'object') return parsed as ErrorPayload
     } catch {
       /* 不是合法 JSON：退回纯文本 */

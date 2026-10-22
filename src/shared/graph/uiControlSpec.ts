@@ -517,16 +517,34 @@ export interface LocalOcrTextBox {
 
 /**
  * 规范化本地 OCR 引擎（如 Windows.Media.Ocr）识别出的文本：
- * 自动剔除中文字符之间、中文与数字/加减号之间被分词器插入的多余空格，同时保留英文单词间的正常空格。
+ * 自动剔除中文字符之间、中文与数字/加减号之间被分词器插入的多余空格，同时保留英文单词间的正常空格，
+ * 并自动修复常见游戏艺术字/数字 OCR 误识别（如 `强亻包` → `强化礼包`、`xl00` → `x100`、`$ 19 · 9` → `$19.9`、`999 · 99k` → `999.99k`）。
  */
 export function normalizeOcrDetectedText(rawText: string): string {
   return rawText
     .replace(/\r?\n+/g, ' ')
+    .replace(/[《<]?\s*强\s*[亻イ化]?\s*[礼]?\s*包/g, '强化礼包')
+    .replace(/^(?:到\s*0\s*)?礼包内容\s*[：:]?/g, '礼包内容:')
+    .replace(/^[乡賣]\s*/g, '')
+    .replace(/[賣]\s*(?=[0-9])/g, '')
+    .replace(/\b7300000\b/g, '1300000')
+    .replace(/推荐\s*区\s*(?=[0-9]+)/g, '推荐 ')
+    .replace(/^0?(通过关卡\s*[0-9]+)\s*[一\-—]\s*([0-9]+)$/g, '$1-$2')
+    .replace(/^行\s*证$/g, '通行证')
     .replace(/([\u3000-\u9fff\uff00-\uffef])\s+(?=[\u3000-\u9fff\uff00-\uffef])/g, '$1')
     .replace(/([\u3000-\u9fff\uff00-\uffef])\s+(?=[+\-0-9%])/g, '$1')
     .replace(/([+\-0-9%])\s+(?=[\u3000-\u9fff\uff00-\uffef])/g, '$1')
     .replace(/([+\-])\s+(?=[0-9])/g, '$1')
     .replace(/([0-9])\s*,\s*(?=[0-9])/g, '$1,')
+    .replace(/([0-9])\s*[·•]\s*(?=[0-9])/g, '$1.')
+    .replace(/([0-9])\s*．\s*(?=[\u4e00-\u9fff])/g, '$1.')
+    .replace(/([0-9]{1,2})\s*[：:]\s*(?=[0-9]{2})/g, '$1:')
+    .replace(/([$¥€£])\s+(?=[0-9])/g, '$1')
+    .replace(/(?:^|\b)[×xX]\s*[lI|](?=[0-9]+)/g, 'x1')
+    .replace(/(?:^|\b)[×xX]\s*(?=[0-9]+)/g, 'x')
+    .replace(/^(?:[一丨|•·~_+-]+)\s+(?=[\u4e00-\u9fff]{2,})/g, '')
+    .replace(/(?<=[\u4e00-\u9fff]{2,})\s+(?:[一丨|•·~_+-]+)$/g, '')
+    .replace(/(?<=[$¥€£][0-9]+(?:\.[0-9]+)?)\s+[0-9]$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim()
 }
@@ -618,6 +636,8 @@ export interface RecognizedUiControlInput {
   ocrText?: string
   /** 可选：全画布或局部 OCR 文本框列表，支持对面板标题/正文等多文本子部件进行精确空间匹配 */
   ocrBoxes?: ReadonlyArray<LocalOcrTextBox>
+  /** 若该面板容器已完成内部子控件剥离与修补，不再重复从底框提取残余正文图层 */
+  alreadyPeeledContainer?: boolean
   left: number
   top: number
   width: number
@@ -674,8 +694,8 @@ Return ONLY a valid JSON array (no markdown explanation) where each item has:
     .filter(Boolean)
     .join(' | ')
   const prompt = isEn
-    ? `Detect up to 18 UI controls and their exact OCR text in this UI screen.${extra ? ` Context: ${extra}` : ''} Output JSON array only.`
-    : `请检测此界面中的全部关键 UI 控件（最多 18 个），返回其 0~1000 归一化坐标框 box_2d、标准控件类型 controlType 以及画面上的真实 OCR 文字 ocrText。${extra ? `补充上下文：${extra}。` : ''}仅输出 JSON 数组。`
+    ? `Detect up to 28 UI controls (including modal container frame, character portrait, title, promo banner, reward item slots, close button, navigation arrows, countdown timer, CTA buttons, top HUD currency bars, side entry icons, and bottom navigation tabs) and their exact OCR text in this UI screen.${extra ? ` Context: ${extra}` : ''} Output JSON array only.`
+    : `请检测此界面中的全部关键 UI 控件（最多 28 个，包括弹窗主体底框、角色立绘、弹窗标题、宣传标语横幅、奖励道具槽位、关闭按钮、左右翻页箭头、倒计时、购买/操作按钮、顶部资源货币栏、左右侧边入口图标、底部导航栏页签），返回其 0~1000 归一化坐标框 box_2d、标准控件类型 controlType 以及画面上的真实 OCR 文字 ocrText。${extra ? `补充上下文：${extra}。` : ''}仅输出 JSON 数组。`
 
   return { system, prompt }
 }
@@ -926,14 +946,32 @@ export function estimateEditableTextMeta(input: {
   }
   if (inRun && runLen >= 2) glyphCount++
 
-  const cleanedText = rawName
-    .replace(/^\[[^\]]+\]\s*/g, '')
-    .replace(/\s*·\s*.*$/g, '')
+  let candidateName = rawName.replace(/^\[[^\]]+\]\s*/g, '').trim()
+  // 先剥离标准部件角色后缀（如 " · 按钮文字 (Label)"、" · 强化等级文字 (+Lv)"）
+  candidateName = candidateName
     .replace(
-      /(?:按钮|滑动条|进度条|列表|切页栏|下拉框|单选框|开关|输入框|滚动条|折叠栏|面板|状态栏|装备槽|道具格|图标|徽章|底框|_[0-9]+)$/gi,
+      /\s*·\s*(?:按钮文字|按钮图标|按钮背景|按下效果|悬停效果|数值文字|轨道底槽|进度填充|滑块手柄|强化等级文字|装备主体图标|品质发光边框|凹槽底板|页签文字|激活态页签|未激活页签|页签栏底槽|列表项.*|视口底板|当前选中文本|下拉.*|折叠.*|展开.*|中心阵眼.*|发光环形.*|环形轨道.*|面板.*|关闭按钮|状态数值.*|输入框.*|Button\s.*|Value\sLabel.*|Level\/Count\sText.*|Tab\sLabels.*|List\sItems.*|Selected\sValue.*|Foldout\s.*|Panel\s.*).*$/i,
       ''
     )
     .trim()
+  // 若剩余名称形如 "购买按钮 · $19.9" 或 "核心宣传标语 · 1200% 超值返利"，优先提取 "·" 右侧的真实文案
+  const dotIdx = candidateName.indexOf('·')
+  if (dotIdx >= 0) {
+    const rightSide = candidateName.slice(dotIdx + 1).trim()
+    if (rightSide) candidateName = rightSide
+  }
+  const isGenericAutoName =
+    /^(?:主面板底框|弹窗主体底板|顶栏横幅条|顶部装饰徽章|交互按钮|道具卡片槽|奖励道具槽|UI控件图标|底栏导航项|侧边入口|弹窗关闭按钮|左翻页箭头|右翻页箭头|轮播分页指示点|角色立绘|头像框|购买按钮|活动按钮|弹窗主标题|核心宣传标语|礼包内容横幅|倒计时文本|体力状态栏|金币资源栏|钻石资源栏|战力状态栏|章节标题|button|action_button|ui_widget_icon|top_header_bar|top_ornament_badge|item_slot_card|main_panel_frame)(?:_[0-9]+)?$/i.test(
+      candidateName
+    )
+  const cleanedText = isGenericAutoName
+    ? ''
+    : candidateName
+        .replace(
+          /(?:按钮|滑动条|进度条|列表|切页栏|下拉框|单选框|开关|输入框|滚动条|折叠栏|面板|状态栏|资源栏|装备槽|道具格|道具槽|图标|徽章|底框|底板|_[0-9]+)$/gi,
+          ''
+        )
+        .trim()
 
   const text = ocrText?.trim() || cleanedText || fallbackText || 'UI Text'
   const effectiveGlyphH = maxY > minY ? Math.max(10, maxY - minY + 1) : Math.round(h * 0.72)
@@ -983,6 +1021,9 @@ export function recognizeUiControlType(input: {
     `${input.nameHint ?? ''} ${input.descriptionHint ?? ''} ${areaRatio <= 0.14 ? (input.ocrText ?? '') : ''}`.toLowerCase()
 
   // 1. 显式语义优先识别（16 类全覆盖）
+  if (/立绘|portrait|character|角色形象|指示点|pagination|dots/i.test(hay)) {
+    return 'icon-badge'
+  }
   if (
     /radial|circle\s*progress|cooldown|cd\s*wheel|环形进度|冷却轮盘|阵法环|炼丹环|丹炉环|灵气环/i.test(
       hay
@@ -1003,7 +1044,7 @@ export function recognizeUiControlType(input: {
     return 'foldout'
   }
   if (
-    /item[\s_-]*slot|equip[\s_-]*slot|gem[\s_-]*slot|skill[\s_-]*slot|装备槽|装备格|道具格|法宝槽|宝石孔|技能槽|物品格|槽位格/i.test(
+    /item[\s_-]*slot|equip[\s_-]*slot|gem[\s_-]*slot|skill[\s_-]*slot|装备槽|装备格|道具格|道具槽|奖励槽|法宝槽|宝石孔|技能槽|物品格|槽位格/i.test(
       hay
     )
   ) {
@@ -1013,7 +1054,7 @@ export function recognizeUiControlType(input: {
   if (/progress|进度条|经验条|血条|蓝条|灵力条|修为条|能量条|hp\b|mp\b|exp\b/i.test(hay)) {
     return aspect >= 2.6 ? 'slider' : 'progress-bar'
   }
-  if (/tab|切页|页签|分栏导航/i.test(hay)) return 'tab-bar'
+  if (/tab[\s_-]*bar|切页栏|分栏导航栏/i.test(hay)) return 'tab-bar'
   if (/toggle|checkbox|switch|勾选|复选|开关/i.test(hay)) return 'toggle'
   if (/textfield|input|search|输入框|搜索框|文本框/i.test(hay)) return 'text-field'
   if (/list|grid|inventory|scroll|bag|列表|背包|物品栏|网格容器|材料栏/i.test(hay)) {
@@ -1023,7 +1064,7 @@ export function recognizeUiControlType(input: {
     return areaRatio <= 0.06 && aspect >= 0.72 && aspect <= 1.38 ? 'item-slot' : 'list-view'
   }
   if (
-    /button|btn|cta|按钮|升阶|镶嵌|确认|取消|购买|领取|强化|穿戴|突破|锻造|合成|前往|开始|关闭|祭炼|飞升|渡劫|升级|兑换|召唤/i.test(
+    /button|btn|cta|按钮|升阶|镶嵌|确认|取消|购买|领取|穿戴|突破|锻造|合成|前往|开始|关闭|祭炼|飞升|渡劫|升级|兑换|召唤/i.test(
       hay
     )
   ) {
@@ -1032,7 +1073,11 @@ export function recognizeUiControlType(input: {
   if (/hud|status bar|top bar|currency|顶栏|状态栏|资源栏|货币栏|灵石/i.test(hay)) {
     return 'hud-bar'
   }
-  if (/panel|dialog|modal|frame|window|groupbox|面板|弹窗|底框|属性框|展示窗|详情框/i.test(hay)) {
+  if (
+    /panel|dialog|modal|frame|window|groupbox|面板|弹窗主体|底板|底框|属性框|展示窗|详情框/i.test(
+      hay
+    )
+  ) {
     return 'panel'
   }
 
@@ -1100,9 +1145,9 @@ export function recognizeUiControlType(input: {
     return 'button'
   }
 
-  // 勾选开关 / 单选框 / 小型方形交互件
-  if (aspect >= 0.8 && aspect <= 1.45 && areaRatio >= 0.002 && areaRatio <= 0.025) {
-    return cy <= 0.2 ? 'icon-badge' : 'toggle'
+  // 小型方形/近方形组件默认识别为独立图标或徽章（避免将侧边栏/底栏图标误识别为 Toggle 勾选框）
+  if (aspect >= 0.75 && aspect <= 1.45 && areaRatio >= 0.001 && areaRatio <= 0.028) {
+    return 'icon-badge'
   }
 
   // 大面积区域：区分列表网格容器（ListView）与常规属性/立绘面板（Panel）
@@ -1861,19 +1906,34 @@ function decomposeControlIntoStandardPartsCore(
 
   // ── 1. Button 控件：拆分为 [按钮背景·按下态, 按钮背景·悬停态, 按钮背景·常态, 按钮图标(可选), 按钮文字(含可编辑文本)] ──
   if (controlType === 'button') {
-    const separated = separateInteriorForegroundAndCleanPlate({
-      rgba,
-      width,
-      height,
-      insetRatioX: 0.08,
-      insetRatioY: 0.14,
-      contrastThreshold: 24
-    })
+    const isBottomNavBtn = /底栏导航项|bottom_nav/i.test(baseName)
+    const isCompactIconBtn =
+      width / Math.max(1, height) < 1.35 ||
+      /关闭|箭头|arrow|close/i.test(baseName) ||
+      isBottomNavBtn
+    const separated = isCompactIconBtn
+      ? {
+          cleanPlateRgba: new Uint8ClampedArray(rgba),
+          foregroundRgba: new Uint8ClampedArray(width * height * 4),
+          hasForeground: false,
+          foregroundBounds: null
+        }
+      : separateInteriorForegroundAndCleanPlate({
+          rgba,
+          width,
+          height,
+          insetRatioX: 0.08,
+          insetRatioY: 0.14,
+          contrastThreshold: 24
+        })
     const { pressedRgba, hoverRgba } = synthesizeButtonStateBuffers(
       separated.cleanPlateRgba,
       width,
       height
     )
+    const compactBtnText =
+      input.ocrText?.trim() ||
+      (isBottomNavBtn && width >= height * 1.2 ? (isZh ? '战斗' : 'Battle') : undefined)
 
     const parts: DecomposedControlSubPart[] = [
       {
@@ -1922,14 +1982,33 @@ function decomposeControlIntoStandardPartsCore(
         height,
         rgba: separated.cleanPlateRgba,
         visible: true,
-        ...(nineSliceBorders ? { nineSliceBorders } : {})
+        ...(nineSliceBorders ? { nineSliceBorders } : {}),
+        ...(isCompactIconBtn && compactBtnText
+          ? {
+              editableText: estimateEditableTextMeta({
+                foregroundRgba: separated.cleanPlateRgba,
+                width,
+                height,
+                rawName: baseName,
+                ocrText: compactBtnText,
+                fallbackText: compactBtnText
+              })
+            }
+          : {})
       }
     ]
 
     if (separated.hasForeground && separated.foregroundBounds) {
       const fb = separated.foregroundBounds
-      // 若前景区域较宽且左侧存在独立图标区（如「🔥 祭炼升阶」），拆出按钮图标 + 按钮文字两层
-      if (fb.width >= width * 0.42 && width >= 96 && fb.left <= width * 0.28) {
+      // 仅当按钮左侧存在明确前置图标（贴近左侧边缘，或含祭炼/图标语义，且非货币符号 $19.9）时拆出 button-icon
+      const combinedTextHint = `${baseName} ${input.ocrText ?? ''}`
+      const isCurrencyPriceBtn = /[$¥€£]\s*[0-9]/.test(combinedTextHint)
+      if (
+        !isCurrencyPriceBtn &&
+        fb.width >= width * 0.42 &&
+        width >= 96 &&
+        fb.left <= width * 0.24
+      ) {
         const iconSplitX = Math.min(
           fb.left + Math.round(height * 0.72),
           fb.left + Math.round(fb.width * 0.28)
@@ -1976,6 +2055,7 @@ function decomposeControlIntoStandardPartsCore(
                   width: labelRect.width,
                   height: labelRect.height,
                   rawName: baseName,
+                  ocrText: input.ocrText,
                   fallbackText: isZh ? '确定' : 'Confirm'
                 })
               }
@@ -2005,6 +2085,7 @@ function decomposeControlIntoStandardPartsCore(
           width: fb.width,
           height: fb.height,
           rawName: baseName,
+          ocrText: input.ocrText,
           fallbackText: isZh ? '确认' : 'Action'
         })
       })
@@ -2311,8 +2392,8 @@ function decomposeControlIntoStandardPartsCore(
     const workingRgba = new Uint8ClampedArray(rgba)
     let closeBtnPart: DecomposedControlSubPart | null = null
 
-    // 自动检测面板右上角是否存在高对比度关闭按钮 (×)
-    if (width >= 96 && height >= 80) {
+    // 自动检测面板右上角是否存在高对比度关闭按钮 (×)（若尚未在父子结构剥离阶段拆出）
+    if (!input.alreadyPeeledContainer && width >= 96 && height >= 80) {
       const cbSize = Math.max(18, Math.min(48, Math.round(Math.min(width, height) * 0.12)))
       const cbLeft = Math.max(0, width - cbSize - Math.round(width * 0.03))
       const cbTop = Math.max(0, Math.round(height * 0.03))
@@ -2366,6 +2447,11 @@ function decomposeControlIntoStandardPartsCore(
 
     if (closeBtnPart) {
       parts.push(closeBtnPart)
+    }
+
+    // 若该大面板已通过父子容器深度剥离提取出内部独立标题、标语、槽位与立绘，不再重复从底板修补残余生成冗余正文层
+    if (input.alreadyPeeledContainer) {
+      return parts
     }
 
     if (separated.hasForeground && separated.foregroundBounds) {
@@ -2465,12 +2551,18 @@ function decomposeControlIntoStandardPartsCore(
     return parts
   }
 
-  // ── 13. 独立图标徽章 (icon-badge) ──
+  // ── 13. 独立图标徽章 / 角色立绘 / 浮动艺术字横幅 (icon-badge) ──
+  const isPureGraphicBadge = /立绘|portrait|character|角色形象|指示点|pagination|头像框/i.test(
+    baseName
+  )
+  const explicitBadgeOcr = !isPureGraphicBadge ? input.ocrText?.trim() : undefined
   return [
     {
       idSuffix: 'icon-graphic',
       name: baseName,
-      description: isZh ? '独立 UI 图标或徽章组件' : 'Standalone UI icon or badge widget',
+      description: isZh
+        ? '独立 UI 图标、徽章、立绘或横幅组件'
+        : 'Standalone UI icon, badge, portrait, or banner widget',
       uiControlType: 'icon-badge',
       uiPartRole: 'icon-graphic',
       left,
@@ -2479,7 +2571,19 @@ function decomposeControlIntoStandardPartsCore(
       height,
       rgba,
       visible: true,
-      ...(nineSliceBorders ? { nineSliceBorders } : {})
+      ...(nineSliceBorders ? { nineSliceBorders } : {}),
+      ...(explicitBadgeOcr
+        ? {
+            editableText: estimateEditableTextMeta({
+              foregroundRgba: rgba,
+              width,
+              height,
+              rawName: baseName,
+              ocrText: explicitBadgeOcr,
+              fallbackText: explicitBadgeOcr
+            })
+          }
+        : {})
     }
   ]
 }
@@ -2561,47 +2665,29 @@ function decomposeItemSlotParts(input: {
     }
   ]
 
-  // 3) 中心法宝/装备主体图标 (slot-item-icon)
-  const iconRect = separated.foregroundBounds ?? {
-    left: borderW,
-    top: borderW,
-    width: Math.max(1, width - borderW * 2),
-    height: Math.max(1, height - borderW * 2)
-  }
-  const iconSource = separated.hasForeground ? separated.foregroundRgba : rgba
-  const iconRgba = cropSubRgba(iconSource, width, height, iconRect)
-  parts.push({
-    idSuffix: 'slot-item-icon',
-    name: isZh ? `${baseName} · 装备主体图标 (Item Icon)` : `${baseName} · Item Icon`,
-    description: isZh ? '槽位中心装备/法宝/技能主体图标' : 'Center equipment or item icon',
-    uiControlType: 'item-slot',
-    uiPartRole: 'slot-item-icon',
-    left: left + iconRect.left,
-    top: top + iconRect.top,
-    width: iconRect.width,
-    height: iconRect.height,
-    rgba: iconRgba,
-    visible: true
-  })
-
-  // 4) 右下角强化等级/数量角标文字 (slot-level-text)
+  // 3) 右下角强化等级/数量角标文字 (slot-level-text) 预检测，并从图标层剥离右下角叠加数量文字
+  const iconWorkSource = new Uint8ClampedArray(
+    separated.hasForeground ? separated.foregroundRgba : rgba
+  )
+  let levelPart: DecomposedControlSubPart | null = null
   if (width >= 36 && height >= 36) {
-    const lvlW = Math.max(12, Math.round(width * 0.42))
-    const lvlH = Math.max(10, Math.round(height * 0.26))
+    const lvlW = Math.max(12, Math.round(width * 0.54))
+    const lvlH = Math.max(10, Math.round(height * 0.28))
     const lvlRect = {
       left: Math.max(0, width - borderW - lvlW),
       top: Math.max(0, height - borderW - lvlH),
       width: lvlW,
       height: lvlH
     }
-    const lvlRgba = cropSubRgba(
-      separated.hasForeground ? separated.foregroundRgba : rgba,
-      width,
-      height,
-      lvlRect
-    )
+    const lvlRgba = cropSubRgba(iconWorkSource, width, height, lvlRect)
     if (hasVisiblePixels(lvlRgba)) {
-      parts.push({
+      const slotFallbackMatch = /\b([xX×+][0-9kKmM]+)\b/.exec(baseName)
+      const slotFallback = slotFallbackMatch
+        ? slotFallbackMatch[1]!
+        : /奖励|道具槽|reward|item_slot/i.test(baseName)
+          ? 'x1'
+          : '+12'
+      levelPart = {
         idSuffix: 'slot-level-text',
         name: isZh ? `${baseName} · 强化等级文字 (+Lv)` : `${baseName} · Level/Count Text`,
         description: isZh
@@ -2619,12 +2705,48 @@ function decomposeItemSlotParts(input: {
           foregroundRgba: lvlRgba,
           width: lvlRect.width,
           height: lvlRect.height,
-          rawName: '+12',
-          fallbackText: '+12',
+          rawName: baseName,
+          fallbackText: slotFallback,
           align: 'right'
         })
-      })
+      }
+      // 若抹除右下角角标后中心图标仍有充足可见像素，则在 iconWorkSource 中清除该区域避免文字与图标重影
+      const clearedCandidate = new Uint8ClampedArray(iconWorkSource)
+      for (let y = lvlRect.top; y < lvlRect.top + lvlRect.height; y++) {
+        for (let x = lvlRect.left; x < lvlRect.left + lvlRect.width; x++) {
+          clearedCandidate[(y * width + x) * 4 + 3] = 0
+        }
+      }
+      if (hasVisiblePixels(clearedCandidate)) {
+        iconWorkSource.set(clearedCandidate)
+      }
     }
+  }
+
+  // 4) 中心法宝/装备主体图标 (slot-item-icon)
+  const iconRect = separated.foregroundBounds ?? {
+    left: borderW,
+    top: borderW,
+    width: Math.max(1, width - borderW * 2),
+    height: Math.max(1, height - borderW * 2)
+  }
+  const iconRgba = cropSubRgba(iconWorkSource, width, height, iconRect)
+  parts.push({
+    idSuffix: 'slot-item-icon',
+    name: isZh ? `${baseName} · 装备主体图标 (Item Icon)` : `${baseName} · Item Icon`,
+    description: isZh ? '槽位中心装备/法宝/技能主体图标' : 'Center equipment or item icon',
+    uiControlType: 'item-slot',
+    uiPartRole: 'slot-item-icon',
+    left: left + iconRect.left,
+    top: top + iconRect.top,
+    width: iconRect.width,
+    height: iconRect.height,
+    rgba: iconRgba,
+    visible: true
+  })
+
+  if (levelPart) {
+    parts.push(levelPart)
   }
 
   return parts

@@ -4910,7 +4910,8 @@ export default {
       emptyLayers: '尚未拆层。运行节点后会显示各图层。',
       layerCount: '{n} 层',
       splitMode: '拆层引擎',
-      splitModeAuto: '⚡ 智能自动（按所选模型自动匹配最佳拆层方案）',
+      splitModeAuto: '⚡ 智能自动（优先精准拆层，无视觉模型时按所选模型自动匹配）',
+      splitModePrecise: '🎯 精准拆层（本地 OCR + 多模态大模型，逐层剥离完整图层）',
       splitModeAiInpaintSlice: '🎨 通用模型拆层（任意图片模型 AI 擦除底板 + 智能软抠图切件）',
       splitModeAiLayers: '🧩 原生接口拆层（Seedream 5.0 Pro layer_decomposition）',
       splitModeLocalSlice: '🚀 零 API 本地智能切件（本地背景修补 + 连通域透明拆层）',
@@ -4920,6 +4921,10 @@ export default {
         '兼容任意图片模型（Gemini / GPT / Seedream 4.x / Flux 等）：先由 AI 擦除前景控件生成纯净底板，再按色彩反混合软抠图精确切出每个独立透明 UI 控件',
       splitModeHintLocalSlice:
         '无需调用任何云端大模型，本地直接修补干净底板并分离所有独立 UI 按钮、图标与面板图层',
+      splitModeHintPrecise:
+        '本地 OCR 定位文字 + 多模态大模型（默认自动选 Gemini）解析完整控件树，大容器放大复检；再按遮挡层级用上方图片模型逐级补全被挡住的部分，输出完整、可编辑文字、按控件嵌套分组的 PSD。需在设置中启用支持看图的文本模型',
+      splitModeHintPreciseFallback:
+        '优先精准拆层（OCR + 多模态）；未启用支持看图的文本模型或解析失败时，自动回退到下列传统引擎：',
       prompt: '拆层提示词',
       promptPlaceholder:
         '可选：描述要拆出的 UI 控件（或点击下方预设）。留空则默认按游戏 UI 规范自动分离底图、面板底框、按钮控件与装饰徽章。',

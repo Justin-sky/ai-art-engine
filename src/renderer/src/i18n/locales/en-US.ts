@@ -5044,7 +5044,9 @@ export default {
       emptyLayers: 'No layers yet. Run the node to decompose the image.',
       layerCount: '{n} layers',
       splitMode: 'Split Engine',
-      splitModeAuto: '⚡ Smart Auto (matches best strategy for selected model)',
+      splitModeAuto:
+        '⚡ Smart Auto (precise split first; falls back by selected model without a vision model)',
+      splitModePrecise: '🎯 Precise Split (local OCR + multimodal LLM, level-by-level peeling)',
       splitModeAiInpaintSlice: '🎨 Universal AI Split (Any Model Clean Base + Soft-Matte Slice)',
       splitModeAiLayers: '🧩 Native Layer API (Seedream 5.0 Pro layer_decomposition)',
       splitModeLocalSlice: '🚀 0-API Local Smart Slice (Local BG Inpaint + Widget Cutout)',
@@ -5054,6 +5056,10 @@ export default {
         'Works with any image model (Gemini / GPT / Seedream 4.x / Flux): inpaints a clean widget-free base plate first, then extracts crisp transparent UI widgets via color-unmixing soft matting',
       splitModeHintLocalSlice:
         'Zero cloud API calls — locally reconstructs the clean base plate and slices out all standalone UI buttons, icons, and panel frames',
+      splitModeHintPrecise:
+        'Local OCR locates text, a multimodal LLM (Gemini auto-selected by default) parses the full control tree with zoom-in re-checks on large containers; the image model above then restores occluded parts level by level, producing complete layers, editable text and a control-nested PSD. Requires a vision-capable text model enabled in Settings',
+      splitModeHintPreciseFallback:
+        'Precise split (OCR + multimodal) first; without a vision-capable text model or if parsing fails, falls back to this legacy engine:',
       prompt: 'Decompose prompt',
       promptPlaceholder:
         'Optional: describe the UI widgets to isolate (or click a preset below). Leave empty to automatically decompose base plate, frames, buttons, and ornaments for Game UI.',

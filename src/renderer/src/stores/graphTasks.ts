@@ -76,7 +76,8 @@ import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import {
   composeImageLayerStack,
-  decomposeImageUiLayers
+  decomposeImageUiLayers,
+  uiRgbaCodec
 } from '../features/graph/model/composeImageLayerStack'
 import { composeComicPageImage } from '../features/comic/composeComicPageImage'
 import {
@@ -1665,6 +1666,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         composeImageIconPackSheet,
         composeImageLayerStack,
         decomposeImageUiLayers,
+        uiRgbaCodec,
         composeComicPageImage,
         composePortraitIdPhoto,
         composePortraitScopedRetouch,

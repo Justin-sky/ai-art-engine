@@ -88,6 +88,9 @@ async function resolveVideoCapabilitiesRaw(
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
     isArk = isVolcengineArkProvider(provider)
     isGoogle = isGoogleProvider(provider)
+    if (isGoogle) {
+      return resolveGoogleModelCapabilities(modelId, 'video')
+    }
     isKling = isKlingProvider(provider)
     isComfyUi = isComfyUiProvider(provider)
     isMiniMax = isMiniMaxProvider(provider)

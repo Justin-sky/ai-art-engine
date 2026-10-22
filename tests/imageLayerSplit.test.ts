@@ -1022,6 +1022,109 @@ describe('imageLayerSplit', () => {
     expect(afterDelete.layers.map((l) => l.id)).toEqual(['base', 'l1'])
     expect(afterDelete.selectedId).toBe('l1')
   })
+
+  it('peels complex game modal UI (character portrait, title, promo banner, 3 reward slots, arrows, close btn, HUD bars, and bottom nav tabs) while ignoring outer screenshot frame border artifacts', () => {
+    const width = 360
+    const height = 720
+    const cleanBase = new Uint8ClampedArray(width * height * 4)
+    const source = new Uint8ClampedArray(width * height * 4)
+
+    // Dark tactical map background (luma ~ 14)
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        cleanBase[i] = 14
+        cleanBase[i + 1] = 16
+        cleanBase[i + 2] = 22
+        cleanBase[i + 3] = 255
+      }
+    }
+    source.set(cleanBase)
+
+    const fillRect = (
+      x0: number,
+      y0: number,
+      w: number,
+      h: number,
+      r: number,
+      g: number,
+      b: number
+    ): void => {
+      for (let y = Math.max(0, y0); y < Math.min(height, y0 + h); y++) {
+        for (let x = Math.max(0, x0); x < Math.min(width, x0 + w); x++) {
+          const i = (y * width + x) * 4
+          source[i] = r
+          source[i + 1] = g
+          source[i + 2] = b
+          source[i + 3] = 255
+        }
+      }
+    }
+
+    // Add 2px outer screenshot frame border on right & bottom edges (must NOT bridge modal with screen edges)
+    fillRect(width - 2, 0, 2, height, 110, 112, 118)
+    fillRect(0, height - 2, width, 2, 110, 112, 118)
+
+    // Top HUD pills (dimmed)
+    fillRect(10, 10, 28, 28, 65, 58, 45)
+    fillRect(50, 14, 72, 18, 48, 52, 62)
+    fillRect(140, 14, 72, 18, 52, 48, 38)
+
+    // Central modal card body (x: 24..336, y: 224..450 => 312x226)
+    fillRect(24, 224, 312, 226, 32, 25, 42)
+    // Bright modal top border at y=224..227
+    fillRect(24, 224, 312, 4, 96, 82, 128)
+    // Protruding left & right carousel arrows (« »)
+    fillRect(6, 320, 16, 26, 210, 195, 165)
+    fillRect(338, 320, 16, 26, 210, 195, 165)
+    // Top-right close button (×)
+    fillRect(306, 232, 22, 22, 225, 95, 85)
+    // Right overlapping character portrait protruding above cardTopY (x: 190..324, y: 158..444)
+    fillRect(190, 158, 130, 286, 185, 135, 155)
+    // Left content bands inside modal:
+    // Band 1: Header title (强化礼包)
+    fillRect(46, 244, 110, 24, 245, 215, 110)
+    // Band 2: Promo banner (1200% 超值返利)
+    fillRect(44, 280, 132, 26, 235, 75, 60)
+    // Band 3: Section ribbon (礼包内容:)
+    fillRect(44, 316, 120, 20, 145, 95, 195)
+    // Band 4: 3 horizontal reward item slots inside left content column (x: 44..184, y: 348..396)
+    fillRect(44, 348, 42, 48, 220, 175, 65)
+    fillRect(92, 348, 42, 48, 165, 95, 230)
+    fillRect(140, 348, 44, 48, 85, 175, 240)
+
+    // Primary CTA purchase button below modal ($ 19.9)
+    fillRect(110, 510, 140, 44, 235, 185, 55)
+
+    // Bottom navigation tabs
+    fillRect(18, 660, 48, 44, 58, 64, 78)
+    fillRect(92, 660, 48, 44, 58, 64, 78)
+    fillRect(220, 660, 48, 44, 58, 64, 78)
+
+    const res = decomposeRgbaBufferToUiLayers({
+      width,
+      height,
+      sourceRgba: source,
+      cleanBaseRgba: cleanBase,
+      locale: 'zh-CN'
+    })
+
+    const controlNames = Array.from(new Set(res.layers.map((l) => l.uiControlName ?? l.name)))
+    expect(controlNames.some((n) => n.includes('弹窗主体底板'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('角色立绘'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('弹窗主标题'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('核心宣传标语'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('奖励道具槽_1'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('奖励道具槽_2'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('奖励道具槽_3'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('左翻页箭头'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('右翻页箭头'))).toBe(true)
+    expect(controlNames.some((n) => n.includes('弹窗关闭按钮'))).toBe(true)
+
+    // Clean Base at modal center (x=100, y=300) must remain dark background (not overwritten by un-split modal!)
+    const modalCenterBaseIdx = (300 * width + 100) * 4
+    expect(res.baseRgba[modalCenterBaseIdx]!).toBeLessThan(30)
+  })
 })
 
 describe('parseVolcengineArkImageLayers', () => {

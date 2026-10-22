@@ -562,6 +562,7 @@ async function executeOneNode(
     composeImageIconPackSheet: options.composeImageIconPackSheet,
     composeImageLayerStack: options.composeImageLayerStack,
     decomposeImageUiLayers: options.decomposeImageUiLayers,
+    uiRgbaCodec: options.uiRgbaCodec,
     composeComicPageImage: options.composeComicPageImage,
     composePortraitIdPhoto: options.composePortraitIdPhoto,
     detectPortraitFaces: options.detectPortraitFaces,

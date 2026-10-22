@@ -25,6 +25,7 @@ const EXEMPT_FILES = new Set([
   'src/main/services/modelProviders/catalog.ts',
   'src/shared/graph/agentPrompts.ts',
   'src/shared/graph/episodeAgentPrompts.ts',
+  'src/shared/graph/uiPreciseSplit/prompts.ts',
   'src/shared/graph/nodeCapabilities.ts',
   'src/shared/claudeSkill.ts',
   'src/main/services/claudeSkillRuntime.ts',

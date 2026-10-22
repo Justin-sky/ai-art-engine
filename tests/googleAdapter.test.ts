@@ -116,59 +116,164 @@ describe('googleAdapter', () => {
     expect(result.model).toBe('gemini-2.5-flash')
   })
 
-  it('generates images via JSON /images/generations with aspect_ratio and base64 output', async () => {
+  it('generates Gemini / Nano Banana images via native /models/{model}:generateContent with imageConfig', async () => {
     postMock.mockResolvedValueOnce({
-      data: { data: [{ b64_json: 'aGVsbG8=' }] }
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: 'image/png',
+                    data: 'aGVsbG8='
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
     })
-    const result = await googleAdapter.generateImage(provider(), 'gemini-2.5-flash-image', {
+    const result = await googleAdapter.generateImage(provider(), 'models/gemini-3.1-flash-image', {
       prompt: 'a cat',
       aspectRatio: '16:9',
       resolution: '2K',
-      n: 2
+      n: 1
     })
-    expect(postMock).toHaveBeenCalledWith('/images/generations', {
-      model: 'gemini-2.5-flash-image',
-      prompt: 'a cat',
-      response_format: 'b64_json',
-      aspect_ratio: '16:9',
-      resolution: '2K',
-      n: 2
+    expect(postMock).toHaveBeenCalledWith('/models/gemini-3.1-flash-image:generateContent', {
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: 'a cat' }]
+        }
+      ],
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE'],
+        imageConfig: {
+          aspectRatio: '16:9',
+          imageSize: '2K'
+        }
+      }
     })
     expect(result.images[0]).toBe('data:image/png;base64,aGVsbG8=')
-    expect(result.model).toBe('gemini-2.5-flash-image')
+    expect(result.model).toBe('gemini-3.1-flash-image')
   })
 
-  it('passes reference images in the image field for image editing', async () => {
+  it('passes reference images as inlineData parts in :generateContent', async () => {
     postMock.mockResolvedValueOnce({
-      data: { data: [{ url: 'https://example.com/out.png' }] }
+      data: {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inline_data: {
+                    mime_type: 'image/png',
+                    data: 'b3V0'
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
     })
     const result = await googleAdapter.generateImage(provider(), 'gemini-3-pro-image-preview', {
-      prompt: 'add a hat',
-      inputReferences: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
+      prompt: 'give @1 a hat like @2',
+      inputReferences: ['data:image/png;base64,cmVmMQ==', 'data:image/jpeg;base64,cmVmMg==']
     })
-    expect(postMock).toHaveBeenCalledWith('/images/generations', {
-      model: 'gemini-3-pro-image-preview',
-      prompt: 'add a hat',
-      response_format: 'b64_json',
-      image: ['data:image/png;base64,cmVmMQ==', 'data:image/png;base64,cmVmMg==']
+    expect(postMock).toHaveBeenCalledWith('/models/gemini-3-pro-image-preview:generateContent', {
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            { inlineData: { mimeType: 'image/png', data: 'cmVmMQ==' } },
+            { inlineData: { mimeType: 'image/jpeg', data: 'cmVmMg==' } },
+            { text: 'give 图1 a hat like 图2' }
+          ]
+        }
+      ],
+      generationConfig: {
+        responseModalities: ['TEXT', 'IMAGE']
+      }
     })
-    expect(result.images[0]).toBe('https://example.com/out.png')
+    expect(result.images[0]).toBe('data:image/png;base64,b3V0')
   })
 
-  it('submits video to /videos and builds polling URL from id', async () => {
-    postMock.mockResolvedValueOnce({ data: { id: 'video-123' } })
-    const job = await googleAdapter.submitVideo(provider(), 'veo-3.1-generate-preview', {
-      prompt: 'ocean waves',
-      duration: 10,
-      resolution: '1080p',
+  it('falls back to /images/generations on third-party relays and strips unknown resolution field if rejected', async () => {
+    postMock
+      .mockRejectedValueOnce({
+        isAxiosError: true,
+        response: { status: 404, data: { error: { message: 'Not Found' } } }
+      })
+      .mockRejectedValueOnce({
+        isAxiosError: true,
+        response: {
+          status: 400,
+          data: {
+            error: {
+              message:
+                'Invalid JSON payload received. Unknown name "resolution": Cannot find field.'
+            }
+          }
+        }
+      })
+      .mockResolvedValueOnce({
+        data: { data: [{ b64_json: 'aGVsbG8=' }] }
+      })
+
+    const relayProvider = provider({ baseUrl: 'https://relay.example.com/v1' })
+    const result = await googleAdapter.generateImage(relayProvider, 'gemini-2.5-flash-image', {
+      prompt: 'a cat',
       aspectRatio: '16:9',
+      resolution: '1K'
+    })
+    expect(postMock).toHaveBeenNthCalledWith(3, '/images/generations', {
+      model: 'gemini-2.5-flash-image',
+      prompt: 'a cat',
+      response_format: 'b64_json'
+    })
+    expect(result.images[0]).toBe('data:image/png;base64,aGVsbG8=')
+  })
+
+  it('explains Google AI Studio Free Tier 0-quota error clearly when limit: 0 is returned', async () => {
+    postMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 429,
+        data: {
+          error: {
+            message:
+              'You exceeded your current quota. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-3.1-flash-image'
+          }
+        }
+      }
+    })
+
+    await expect(
+      googleAdapter.generateImage(provider(), 'gemini-3.1-flash-image', {
+        prompt: 'a cat',
+        aspectRatio: '1:1',
+        resolution: '1K'
+      })
+    ).rejects.toThrow(/Free Tier|免费配额为 0|Paid Tier 1/)
+  })
+
+  it('submits video to /videos with duration_seconds (snapped to 4/6/8) and lowercase resolution', async () => {
+    postMock.mockResolvedValueOnce({ data: { id: 'video-123' } })
+    const job = await googleAdapter.submitVideo(provider(), 'models/veo-3.1-generate-preview', {
+      prompt: 'ocean waves',
+      duration: 5,
+      resolution: '4K',
+      aspectRatio: '1:1',
       firstFrameImageUrl: 'data:image/png;base64,Zmlyc3Q='
     })
     expect(postMock).toHaveBeenCalledWith('/videos', {
       model: 'veo-3.1-generate-preview',
       prompt: 'ocean waves',
-      duration: 8,
-      resolution: '1080p',
+      duration_seconds: 6,
+      resolution: '4k',
       aspect_ratio: '16:9',
       image: 'data:image/png;base64,Zmlyc3Q='
     })
@@ -176,6 +281,30 @@ describe('googleAdapter', () => {
     expect(job.pollingUrl).toBe(
       'https://generativelanguage.googleapis.com/v1beta/openai/videos/video-123'
     )
+  })
+
+  it('explains Google AI Studio Free Tier video quota error clearly', async () => {
+    postMock.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        status: 429,
+        data: {
+          error: {
+            message:
+              'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits.'
+          }
+        }
+      }
+    })
+
+    await expect(
+      googleAdapter.submitVideo(provider(), 'veo-3.1-generate-preview', {
+        prompt: 'ocean waves',
+        duration: 5,
+        resolution: '720p',
+        aspectRatio: '16:9'
+      })
+    ).rejects.toThrow(/Free Tier|无免费配额|Paid Tier 1/)
   })
 
   it('polls video until done and extracts video_url as download address', async () => {

@@ -176,6 +176,7 @@ const state = computed(() =>
 
 const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
   { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
+  { id: 'precise', label: t('graph.layerSplit.splitModePrecise') },
   { id: 'ai-inpaint-slice', label: t('graph.layerSplit.splitModeAiInpaintSlice') },
   { id: 'ai-layers', label: t('graph.layerSplit.splitModeAiLayers') },
   { id: 'local-slice', label: t('graph.layerSplit.splitModeLocalSlice') }
@@ -185,7 +186,7 @@ const effectiveStrategy = computed(() =>
   resolveEffectiveUiLayerSplitStrategy(state.value.splitMode, node.value?.params.generateModel)
 )
 
-const activeStrategyHint = computed(() => {
+const legacyStrategyHint = computed(() => {
   if (effectiveStrategy.value === 'local-slice') {
     return t('graph.layerSplit.splitModeHintLocalSlice')
   }
@@ -193,6 +194,15 @@ const activeStrategyHint = computed(() => {
     return t('graph.layerSplit.splitModeHintAiInpaint')
   }
   return t('graph.layerSplit.splitModeHintAutoLayers')
+})
+
+const activeStrategyHint = computed(() => {
+  const mode = normalizeLayerSplitMode(state.value.splitMode)
+  if (mode === 'precise') return t('graph.layerSplit.splitModeHintPrecise')
+  if (mode === 'auto') {
+    return `${t('graph.layerSplit.splitModeHintPrecise')}\n${t('graph.layerSplit.splitModeHintPreciseFallback')} ${legacyStrategyHint.value}`
+  }
+  return legacyStrategyHint.value
 })
 
 const PRESET_LABEL_KEYS: Record<UiLayerSplitPresetId, string> = {
@@ -430,6 +440,7 @@ function clearLayers(): void {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.35;
+  white-space: pre-line;
 }
 
 .prompt {

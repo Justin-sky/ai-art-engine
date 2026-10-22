@@ -1015,6 +1015,12 @@ export interface GenerateTextInput {
   /** 'auto' | 'none' | { type:'function', function:{name}; }
    *  未传但带了 tools 时默认 'auto'；不想让模型调 tool 时显式传 'none'。 */
   toolChoice?: GenerateTextToolChoice
+  /**
+   * 视觉定位任务（输出元素坐标框）：未指定 model 时，在所有已启用的文本模型里
+   * 优先挑视觉定位能力最强的（Gemini → Qwen-VL → 豆包视觉 → GPT/Claude），
+   * 而不是默认文本模型（常是不带视觉的纯文本模型）。仅用于选型，不下发给接口。
+   */
+  visionGrounding?: boolean
 }
 
 /** OpenAI 风格 tool schema 的最小子集（足够 agent loop 用） */
@@ -2072,6 +2078,44 @@ export function pickActiveProvider(
 
   if (!modelId) return null
   return { provider, modelId }
+}
+
+/**
+ * 视觉定位能力排序（分数越高越优先；0 = 不具备可靠的视觉输入）。
+ * Gemini 原生输出 box_2d（0-1000），元素框最准；Qwen-VL / 豆包视觉同样有定位训练。
+ */
+export function visionGroundingScore(modelId: string): number {
+  const m = modelId.trim().toLowerCase()
+  if (!m) return 0
+  if (/(image|imagen|tts|audio|embed|veo|lyria|banana)/.test(m)) return 0
+  if (/gemini-(3|2\.5)-pro/.test(m)) return 100
+  if (/gemini-3/.test(m)) return 96
+  if (/gemini-2\.5-flash/.test(m)) return 92
+  if (/gemini/.test(m)) return 85
+  if (/qwen3-vl|qwen3\.\d+-vl|qwen-vl-max/.test(m)) return 88
+  if (/qwen2\.5-vl|qwen-vl/.test(m)) return 80
+  if (/doubao.*(vision|seed-1\.[68])|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m)) return 78
+  if (/gpt-5|gpt-4\.1|gpt-4o|o3|o4-mini/.test(m)) return 70
+  if (/claude-(opus|sonnet)|claude-3\.[57]|claude-4/.test(m)) return 66
+  if (/glm-4\.\dv|glm-4v|internvl|minicpm-v|llava|pixtral|grok-.*vision|vision|-vl\b|-vl-/.test(m))
+    return 55
+  return 0
+}
+
+/** 在所有已启用、有密钥的提供商里挑视觉定位能力最强的文本模型；没有任何视觉模型时返回 null */
+export function pickVisionGroundingProvider(
+  providers: ModelProviderInstance[]
+): { provider: ModelProviderInstance; modelId: string; score: number } | null {
+  let best: { provider: ModelProviderInstance; modelId: string; score: number } | null = null
+  for (const provider of providers) {
+    if (!provider.enabled) continue
+    if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
+    for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
+      const score = visionGroundingScore(modelId)
+      if (score > 0 && (!best || score > best.score)) best = { provider, modelId, score }
+    }
+  }
+  return best
 }
 
 /**

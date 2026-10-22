@@ -49,13 +49,17 @@ import {
   layerSplitCompositeImageId,
   layerSplitFingerprint,
   mapDecompositionToLayers,
+  prefersPreciseUiLayerSplit,
   readImageLayerSplitFromNode,
   resolveEffectiveLayerSplitPrompt,
   resolveEffectiveUiLayerSplitStrategy,
   sortLayersForCompose,
+  type ImageLayerSplitGroup,
   type ImageLayerSplitLayer,
   type ImageLayerSplitState
 } from '../imageLayerSplit'
+import { PreciseSplitError } from '../uiPreciseSplit'
+import { canRunPreciseLayerSplit, runPreciseLayerSplitForNode } from './layerSplitPrecise'
 import {
   buildVlmUiControlDetectionPrompt,
   parseVlmUiControlDetectionResponse,
@@ -1279,10 +1283,16 @@ async function detectUiControlsViaVlmIfAvailable(
       userHint,
       sourceTitle
     })
+    const visionModel = ctx.node.params.visionModel?.trim() || undefined
+    const visionProviderInstanceId = ctx.node.params.visionProviderInstanceId?.trim() || undefined
     const res = await ctx.generateText({
       prompt,
       system,
-      images: [sourceUrl]
+      images: [sourceUrl],
+      // 未指定模型时路由到支持图片输入、视觉定位强的模型（默认文本模型往往不支持看图）
+      visionGrounding: true,
+      ...(visionModel ? { model: visionModel } : {}),
+      ...(visionProviderInstanceId ? { providerInstanceId: visionProviderInstanceId } : {})
     })
     if (!res?.text?.trim()) return []
     return parseVlmUiControlDetectionResponse(res.text, cw || 1024, ch || 1024)
@@ -1346,7 +1356,8 @@ function mergeUiControlHints(
 async function resolveCanvasSafeBaseDataUrl(
   ctx: NodeExecuteContext,
   rawUrl: string | undefined,
-  stamp: number
+  stamp: number,
+  suffix = 'cleanBase'
 ): Promise<string | undefined> {
   const trimmed = rawUrl?.trim() || ''
   if (!trimmed) return undefined
@@ -1355,8 +1366,8 @@ async function resolveCanvasSafeBaseDataUrl(
   try {
     const [materialized] = await materializeGeneratedBatch(
       ctx,
-      [{ id: `layerSplit:${ctx.node.id}:${stamp}:cleanBase`, dataUrl: trimmed }],
-      `layerSplit:${ctx.node.id}:${stamp}:cleanBase`
+      [{ id: `layerSplit:${ctx.node.id}:${stamp}:${suffix}`, dataUrl: trimmed }],
+      `layerSplit:${ctx.node.id}:${stamp}:${suffix}`
     )
     const rel = materialized?.relativePath?.trim()
     if (!rel) return undefined
@@ -1531,7 +1542,13 @@ export async function executeLayerSplitNode(
   const fingerprint = layerSplitFingerprint(sourceUrl, effectiveUserPrompt, prev.resolution, {
     splitMode: prev.splitMode,
     model,
-    providerInstanceId
+    providerInstanceId,
+    visionModelKey: [
+      ctx.node.params.visionProviderInstanceId?.trim(),
+      ctx.node.params.visionModel?.trim()
+    ]
+      .filter(Boolean)
+      .join(':')
   })
   const canReuse =
     prev.layers.length > 0 &&
@@ -1570,16 +1587,49 @@ export async function executeLayerSplitNode(
       canvasWidth: number
       canvasHeight: number
     } | null = null
+    /** 精准拆层自带元素树分组；为 null 时走游戏 UI 自动归类 */
+    let preciseGroups: ImageLayerSplitGroup[] | null = null
 
-    if (strategy === 'local-slice') {
+    if (prefersPreciseUiLayerSplit(prev.splitMode)) {
+      const explicit = prev.splitMode === 'precise'
+      if (canRunPreciseLayerSplit(ctx)) {
+        try {
+          const precise = await runPreciseLayerSplitForNode(ctx, {
+            sourceUrl,
+            sourceTitle,
+            userHint: effectiveUserPrompt,
+            model,
+            providerInstanceId,
+            resolution: prev.resolution,
+            stamp,
+            toCanvasSafeUrl: (url, suffix) => resolveCanvasSafeBaseDataUrl(ctx, url, stamp, suffix)
+          })
+          mapped = precise
+          preciseGroups = precise.groups
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
+          const detail =
+            err instanceof PreciseSplitError ? err.code : String((err as Error)?.message ?? err)
+          ctx.log?.(`[precise-split] failed: ${detail}`, explicit ? 'error' : 'warn')
+          console.warn('[graph] precise layer split failed', err)
+          if (explicit) throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
+        }
+      } else if (explicit) {
+        throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail: 'no vision capability' })
+      }
+    }
+
+    if (mapped) {
+      // 精准拆层已完成
+    } else if (strategy === 'local-slice') {
       if (ctx.decomposeImageUiLayers) {
         const vlmHints = await detectUiControlsViaVlmIfAvailable(
           ctx,
           sourceUrl,
           effectiveUserPrompt,
           sourceTitle,
-          prev.canvasWidth || 1024,
-          prev.canvasHeight || 1024
+          prev.canvasWidth,
+          prev.canvasHeight
         )
         const decomposed = await ctx.decomposeImageUiLayers({
           sourceDataUrl: sourceUrl,
@@ -1602,8 +1652,8 @@ export async function executeLayerSplitNode(
             sourceUrl,
             effectiveUserPrompt,
             sourceTitle,
-            prev.canvasWidth || 1024,
-            prev.canvasHeight || 1024
+            prev.canvasWidth,
+            prev.canvasHeight
           )
           const decomposed = await ctx.decomposeImageUiLayers({
             sourceDataUrl: sourceUrl,
@@ -1633,8 +1683,8 @@ export async function executeLayerSplitNode(
             sourceUrl,
             effectiveUserPrompt,
             sourceTitle,
-            prev.canvasWidth || 1024,
-            prev.canvasHeight || 1024
+            prev.canvasWidth,
+            prev.canvasHeight
           )
         ])
         if (ctx.signal?.aborted) {
@@ -1706,8 +1756,8 @@ export async function executeLayerSplitNode(
           sourceUrl,
           effectiveUserPrompt,
           sourceTitle,
-          prev.canvasWidth || 1024,
-          prev.canvasHeight || 1024
+          prev.canvasWidth,
+          prev.canvasHeight
         )
       ])
       if (ctx.signal?.aborted) {
@@ -1757,11 +1807,11 @@ export async function executeLayerSplitNode(
       canvasWidth: mapped.canvasWidth,
       canvasHeight: mapped.canvasHeight,
       layers: sortLayersForCompose(mapped.layers),
-      groups: [],
+      groups: preciseGroups ?? [],
       sourceFingerprint: fingerprint
     }
-    // 自动按游戏 UI 规范归类 PSD 文件夹（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）
-    state = autoGroupLayersForGameUi(rawState, ctx.locale)
+    // 精准拆层按元素树嵌套分组；其余引擎自动按游戏 UI 规范归类 PSD 文件夹（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）
+    state = preciseGroups ? rawState : autoGroupLayersForGameUi(rawState, ctx.locale)
   }
 
   const materializedLayers = await materializeGeneratedBatch(

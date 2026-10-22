@@ -45,10 +45,16 @@ import { parseClaudeSkillMarkdown, parseGitHubSkillSourceUrl } from '@shared/cla
 import { accessHeaders, isCancelAnswer, normalizeChatMode } from '@shared/mcpModeAccess'
 import {
   isCustomProvider,
+  MODEL_PROVIDER_KINDS,
   modalityConfig,
   resolveCustomApiStyle,
   type ModelProviderInstance
 } from '@shared/modelProvider'
+import {
+  GOOGLE_CHAT_FALLBACK_MODELS,
+  resolveGoogleChatModelId,
+  resolveGoogleOpenAiBaseUrl
+} from '@shared/modelProviders/google/modelCapabilities'
 import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelModalities'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
@@ -150,6 +156,8 @@ let workerModelId = ''
 let workerReady = false
 let workerPersistent = false
 let workerRunId = ''
+let lastPreferredProviderId = ''
+let lastPreferredModelId = ''
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 let lastSettingsWriteHash = ''
 let lastHarnessWriteHash = ''
@@ -263,12 +271,21 @@ function resolveTextProvider(providerId?: string): {
     (modalityConfig(p, 'text').selectedModelIds?.length ?? 0) > 0
   const pick = (p: ModelProviderInstance): ReturnType<typeof resolveTextProvider> => {
     const text = modalityConfig(p, 'text')
-    const modelId =
+    const rawModelId =
       (text.defaultModelId?.trim() && text.selectedModelIds.includes(text.defaultModelId)
         ? text.defaultModelId.trim()
         : undefined) ?? text.selectedModelIds[0]?.trim()
-    if (!modelId) return null
-    const baseUrl = p.baseUrl?.trim()
+    if (!rawModelId) return null
+    const rawBaseUrl =
+      p.baseUrl?.trim() ||
+      MODEL_PROVIDER_KINDS.find((k) => k.id === p.providerKind)?.defaultBaseUrl ||
+      ''
+    const isGoogle =
+      p.providerKind === 'google' || /generativelanguage\.googleapis\.com/i.test(rawBaseUrl)
+    const modelId = isGoogle ? resolveGoogleChatModelId(rawModelId) : rawModelId
+    const baseUrl = isGoogle
+      ? resolveGoogleOpenAiBaseUrl(rawBaseUrl)
+      : rawBaseUrl.replace(/\/+$/, '')
     return {
       apiKey: p.apiKey.trim(),
       modelId,
@@ -476,6 +493,59 @@ function getBlenderClientForHarness(): { endpoint: string } | null {
 function externalMcpEndpoint(port: number, id: string): string {
   return `http://127.0.0.1:${port}${EXTERNAL_MCP_PATH_PREFIX}${id}`
 }
+function buildDshCatalogModelEntries(llm: {
+  baseUrl?: string
+  modelId: string
+  modelName?: string
+  inputModalities: ReadonlyArray<'text' | 'image'>
+  provider?: ModelProviderInstance
+}): Array<{ id: string; name: string; inputModalities: ReadonlyArray<'text' | 'image'> }> {
+  const entries = new Map<
+    string,
+    { id: string; name: string; inputModalities: ReadonlyArray<'text' | 'image'> }
+  >()
+  const addEntry = (
+    id: string,
+    name: string | undefined,
+    modalities: ReadonlyArray<'text' | 'image'>
+  ): void => {
+    const cleanId = id.trim()
+    if (!cleanId || entries.has(cleanId)) return
+    entries.set(cleanId, {
+      id: cleanId,
+      name: name?.trim() || cleanId,
+      inputModalities: modalities.length > 0 ? modalities : (['text'] as const)
+    })
+  }
+
+  addEntry(llm.modelId, llm.modelName, llm.inputModalities)
+
+  if (llm.provider) {
+    const textCfg = modalityConfig(llm.provider, 'text')
+    const isGoogle =
+      llm.provider.providerKind === 'google' ||
+      /generativelanguage\.googleapis\.com/i.test(llm.baseUrl ?? '')
+    for (const rawSelected of textCfg.selectedModelIds ?? []) {
+      const trimmed = rawSelected?.trim()
+      if (!trimmed) continue
+      const mods = resolveDshChatInputModalitiesForProvider(llm.provider, trimmed)
+      const catName = textCfg.catalog?.[trimmed]?.name
+      addEntry(trimmed, catName, mods)
+      if (isGoogle) {
+        const normalized = resolveGoogleChatModelId(trimmed)
+        addEntry(normalized, catName || normalized, mods)
+      }
+    }
+    if (isGoogle) {
+      for (const fallbackId of GOOGLE_CHAT_FALLBACK_MODELS) {
+        addEntry(fallbackId, fallbackId, ['text', 'image'])
+      }
+    }
+  }
+
+  return [...entries.values()]
+}
+
 function writeDshConfig(
   endpoint: string,
   mode: ChatMode,
@@ -488,6 +558,7 @@ function writeDshConfig(
     modelId: string
     modelName?: string
     inputModalities: ReadonlyArray<'text' | 'image'>
+    provider?: ModelProviderInstance
   }
 ): void {
   const home = dshHome()
@@ -581,8 +652,7 @@ function writeDshConfig(
   // settings-file 异步 publish；首轮 LLM 若仍读到内置 DEFAULT_MODELS，会把附图投影成
   // 「image omitted because this model accepts text only」，模型就回「不支持图片输入」。
   if (llm?.modelId) {
-    const modelName = llm.modelName?.trim() || llm.modelId
-    const modalities = llm.inputModalities.length > 0 ? llm.inputModalities : (['text'] as const)
+    const catalogEntries = buildDshCatalogModelEntries(llm)
     patch.push(
       '- id: agent-default-model',
       '  config:',
@@ -592,10 +662,12 @@ function writeDshConfig(
       '  config:',
       ...(llm.baseUrl?.trim() ? [`    baseURL: ${yamlScalar(llm.baseUrl.trim())}`] : []),
       '    models:',
-      `      - id: ${yamlScalar(llm.modelId)}`,
-      `        name: ${yamlScalar(modelName)}`,
-      '        inputModalities:',
-      ...modalities.map((m) => `          - ${m}`)
+      ...catalogEntries.flatMap((entry) => [
+        `      - id: ${yamlScalar(entry.id)}`,
+        `        name: ${yamlScalar(entry.name)}`,
+        '        inputModalities:',
+        ...entry.inputModalities.map((m) => `          - ${m}`)
+      ])
     )
   }
 
@@ -627,13 +699,11 @@ function writeDshSettings(provider: {
   modelId: string
   inputModalities: ReadonlyArray<'text' | 'image'>
   modelName?: string
+  provider?: ModelProviderInstance
 }): void {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
-  const modelName = provider.modelName?.trim() || provider.modelId
-  const modalities = provider.inputModalities.length
-    ? provider.inputModalities
-    : (['text'] as const)
+  const catalogEntries = buildDshCatalogModelEntries(provider)
   const lines = [
     '# AIArtEngine 生成的 dsh 设置（模型选择/端点），请勿手改。',
     'agent-default-model:',
@@ -642,10 +712,12 @@ function writeDshSettings(provider: {
     'llm-deepseek:',
     ...(provider.baseUrl?.trim() ? [`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`] : []),
     '  models:',
-    `    - id: ${yamlScalar(provider.modelId)}`,
-    `      name: ${yamlScalar(modelName)}`,
-    '      inputModalities:',
-    ...modalities.map((m) => `        - ${m}`)
+    ...catalogEntries.flatMap((entry) => [
+      `    - id: ${yamlScalar(entry.id)}`,
+      `      name: ${yamlScalar(entry.name)}`,
+      '      inputModalities:',
+      ...entry.inputModalities.map((m) => `        - ${m}`)
+    ])
   ]
   const content = lines.join('\n') + '\n'
   const hash = createHash('sha1').update(content).digest('hex')
@@ -1479,7 +1551,7 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '8'
+const WORKER_PROTOCOL = '10'
 const RUNNER_TEMPLATE_FP = createHash('sha1')
   .update(AIART_RUNNER_TEMPLATE)
   .digest('hex')
@@ -1910,7 +1982,12 @@ function attachWorkerIo(opts: {
     for (const [id, entry] of harnessApprovalRequests) {
       if (entry.runId === runIdForRelease) harnessApprovalRequests.delete(id)
     }
-    emit({ type: 'tool', name: 'dsh-agent', state: 'done' })
+    emit({
+      type: 'tool',
+      name: 'dsh-agent',
+      state: 'done',
+      ...(!result.ok && result.error ? { detail: result.error } : {})
+    })
     if (result.ok) {
       if (result.finalText) emit({ type: 'final', text: result.finalText })
       emit({ type: 'done', runId: runIdForRelease })
@@ -2362,14 +2439,20 @@ export async function prewarmHarness(): Promise<{ ok: boolean; message?: string 
   }
   const mcp = getMcpServerInfo()
   if (!mcp?.running) return { ok: false, message: 'MCP 未运行' }
-  const provider = resolveTextProvider()
+  const provider =
+    resolveTextProvider(lastPreferredProviderId || undefined) ?? resolveTextProvider()
   if (!provider) return { ok: false, message: '未配置文本模型' }
   const dshEntry = resolveDshEntry()
   if (!dshEntry) return { ok: false, message: '无内置 dsh，跳过预热' }
   try {
     await ensurePersistentWorker({
       provider,
-      modelId: provider.modelId,
+      modelId:
+        lastPreferredProviderId &&
+        provider.provider.id === lastPreferredProviderId &&
+        lastPreferredModelId
+          ? lastPreferredModelId
+          : provider.modelId,
       warmOnly: true
     })
     scheduleIdleShutdown()
@@ -2437,8 +2520,13 @@ async function ensurePersistentWorkerUnlocked(opts: {
   }
 
   const mode = opts.mode ?? 'craft'
-  const modelId = opts.modelId
-  const textCatalog = modalityConfig(opts.provider.provider, 'text').catalog?.[modelId]
+  const isGoogle =
+    opts.provider.provider.providerKind === 'google' ||
+    /generativelanguage\.googleapis\.com/i.test(opts.provider.baseUrl ?? '')
+  const modelId = isGoogle ? resolveGoogleChatModelId(opts.modelId) : opts.modelId
+  const textCatalog =
+    modalityConfig(opts.provider.provider, 'text').catalog?.[opts.modelId] ??
+    modalityConfig(opts.provider.provider, 'text').catalog?.[modelId]
   const inputModalities =
     opts.inputModalities ??
     resolveDshChatInputModalitiesForProvider(opts.provider.provider, modelId)
@@ -2449,13 +2537,15 @@ async function ensurePersistentWorkerUnlocked(opts: {
     baseUrl: opts.provider.baseUrl,
     modelId,
     modelName,
-    inputModalities
+    inputModalities,
+    provider: opts.provider.provider
   })
   writeDshSettings({
     baseUrl: opts.provider.baseUrl,
     modelId,
     modelName,
-    inputModalities
+    inputModalities,
+    provider: opts.provider.provider
   })
   cleanupLegacyDshSkills()
 
@@ -3001,9 +3091,17 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     skillPreprocessed.activeSkill?.isolatedSessionId ?? (input.sessionId?.trim() || '')
 
   const runId = String(++runSeq)
-  const modelId =
+  const rawModelId =
     skillPreprocessed.activeSkill?.modelOverride?.trim() || input.model?.trim() || provider.modelId
-  const textCatalog = modalityConfig(provider.provider, 'text').catalog?.[modelId]
+  const isGoogle =
+    provider.provider.providerKind === 'google' ||
+    /generativelanguage\.googleapis\.com/i.test(provider.baseUrl ?? '')
+  const modelId = isGoogle ? resolveGoogleChatModelId(rawModelId) : rawModelId
+  lastPreferredProviderId = provider.provider.id
+  lastPreferredModelId = modelId
+  const textCatalog =
+    modalityConfig(provider.provider, 'text').catalog?.[rawModelId] ??
+    modalityConfig(provider.provider, 'text').catalog?.[modelId]
   const inputModalities = resolveDshChatInputModalitiesForProvider(provider.provider, modelId)
   const modelName = textCatalog?.name?.trim() || modelId
   const dshEntry = resolveDshEntry()
@@ -3019,7 +3117,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       baseUrl: provider.baseUrl,
       modelId,
       modelName,
-      inputModalities
+      inputModalities,
+      provider: provider.provider
     })
     registerHarnessRunAccess(runId, mode)
     setActiveHarnessRun(runId, mode)
@@ -3027,7 +3126,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       baseUrl: provider.baseUrl,
       modelId,
       modelName,
-      inputModalities
+      inputModalities,
+      provider: provider.provider
     })
     cleanupLegacyDshSkills()
     emitStatus(
@@ -3114,7 +3214,8 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
       baseUrl: provider.baseUrl,
       modelId,
       modelName,
-      inputModalities
+      inputModalities,
+      provider: provider.provider
     })
     sendWorkerCommand({
       op: 'set_model',
