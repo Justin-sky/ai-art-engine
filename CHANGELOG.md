@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.4.3] — 2026-10-23
+
+8.4.3 补丁版：**成片时间线（`output.timeline`）** 全面升级剪映（CapCut）级 **6 栏创意剪辑引擎（素材 / 特效 / 转场 / 滤镜 / 调节 / 模板）**，配备 **60fps GPU/SVG 实时预览与 FFmpeg 成片双端同源渲染管线**，修复单片段特效与转场预览联动、时间轴刻度尺播放头指针及 MCP 全量控制。
+
+- **新增 · 剪映级 6 栏创意剪辑引擎与双端同源特效/滤镜/转场/调节/模板库**：左侧面板升级为 **素材 / 特效（31 款，6 大分类） / 转场（39 款，5 大分类） / 滤镜（26 款电影级 LUT，5 大分类） / 调节（12 维专业色彩与质感精调） / 模板（12 款一键成片剪辑配方）** 六栏架构；全部 120+ 项创意资产均配备自定义高辨识度矢量 SVG 图标，预览端采用 60fps CSS + SVG GPU 滤镜链（`feColorMatrix` / `feConvolveMatrix` / RGB 通道分离 / 离散色调分离 / 像素马赛克）与舞台合成层实时渲染，导出端同步编译为 FFmpeg 滤镜链。
+- **修复 · 单片段特效/滤镜作用域严格隔离与转场时长/效果实时预览**：修复单击轨道片段时未同步推进安全播放头导致前一片段特效误作用于当前片段画面的问题，并为片段拖拽增加 `5px` 防抖死区与 `reorderClipsOnTrack` 转场负向重叠保护，防止单击片段抹除已有转场；转场预览升级为按真实转场时长 60fps 扫掠演示，支持连续时长滑块（`0.1s ~ 2.5s`）实时联动与工具栏播放自动助跑；修复时间轴刻度尺上方播放头五边形指针帽与贯穿竖线被遮挡的问题。
+- **新增 · MCP 时间线全量创意参数控制**：`timeline_edit` 新增 `batchUpdate`（按轨道或片段 ID 批量设置特效/滤镜/转场/12 维调节并自动重排涟漪重叠）与 `applyTemplate`（一键套用 12 款成片剪辑模板），`timeline_get` 完整返回全部创意参数目录。
+
 ## [8.4.2] — 2026-10-22
 
 8.4.2 补丁版：将 **UI 精准拆层技能（`ui-layer-split` / `wf-ui-layer-split`）** 由主工程迁移重构至独立技能市场仓库（`ai-art-engine-skills`），补齐 `image.layerSplit` 节点的 `visionModel` / `visionProviderInstanceId` 默认参数声明，并通过渲染层 Vendor 分包与 V8 堆上限扩容修复 macOS Release 打包阶段的 `JavaScript heap out of memory`（`exit code 134`）。
