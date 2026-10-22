@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.4.0] — 2026-10-22
+
+8.4.0 功能版：**游戏 UI 图层拆解（`image.layerSplit`）** 新增 **「精准拆层（Precise Split）」多模态逐层剥离与底板补全引擎**（本地 OCR + 多模态大模型版面树解析 + 按遮挡层级逐级剥离补全可编辑 PSD）；**人像处理（`image.portrait`）** 新增 **7 大主流单反与经典胶片相机直出色彩科学（Camera Color Science）**；**节点画布** 新增 **SLG 战术级顶层粒子特效引擎（Canvas VFX）**；**Google (Gemini / Nano Banana / Veo 3.1)** 全面打通 AI 会话面板、原生 `:generateContent` 生图与 Veo 3.1 视频生成协议；**AI 会话面板** 新增 **许愿式编程（Vibe Coding）流星祈愿浮窗**。
+
+- **新增 · 游戏 UI 精准拆层引擎（`image.layerSplit` Precise Split）与复杂弹窗多部件拆解**：结合本地离线 OCR 文字定位与多模态大模型版面树解析（大容器自动裁切放大二次复检），按前后遮挡层级由浅入深逐层剥离 UI 控件、调用生图模型补全被遮挡底板，并输出含完整底板、独立透明控件与原生可编辑文字层（`TySh`）的嵌套分组 PSD；同时增强本地切件对角色立绘、轮播箭头、关闭按钮、奖励槽与底部导航栏的精细分离。
+- **新增 · 人像处理（`image.portrait`）7 大相机色彩科学（Camera Color Science）**：支持 **佳能（Canon EOS 红润透亮）**、**富士（Fujifilm Classic Neg. 胶片）**、**索尼（Sony Alpha 中性清透）**、**尼康（Nikon Z 自然风光与肤色）**、**徕卡（Leica M 德味微反差）**、**哈苏（Hasselblad HNCS 自然色彩解决方案）** 与 **柯达（Kodak Portra 400 暖金胶片）** 七款主流单反及胶片直出色彩矩阵，采用 2D Hash 各向同性胶片颗粒算法消除拉丝条纹伪影，并与实时预览及 AI 精修提示词双端联动。
+- **新增 · Google (Gemini / Nano Banana / Veo 3.1) 全模态原生协议兼容**：AI 会话面板自动补齐 OpenAI 兼容层缺失的 `/v1beta/openai` 路径、剥离 `thinking` / `dsh_plugin_packages` 等非标扩展字段、补齐 `tool_calls` 索引与 `thought_signature` 签名并在 503 高峰期自动跨模型回退；Gemini / Nano Banana 生图模型自动走原生 `POST /v1beta/models/{model}:generateContent` 接口（支持 `aspectRatio`、`1K`/`2K`/`4K` 清晰度与参考图输入）；Veo 3.1 视频生成对齐官方 `duration_seconds`（4/6/8s）、小写 `resolution` 与 `aspect_ratio` 规范。
+- **新增 · SLG 战术级画布粒子特效引擎（Canvas VFX）与许愿式编程祈愿浮窗（`ChatWishShrine`）**：自由画布新增顶层 Additive 混合粒子特效画布（连接爆发火花、运行态能量流光束、完成态脉冲光环与主题自适应配色），并在设置中提供开关；AI 会话面板新增二次元流星祈愿浮窗，随任务执行阶段动态呈现祈福反馈。
+- **说明（发版提示）**：8.4.0 涉及主进程、共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.3.0] — 2026-10-21
 
 8.3.0 功能版：**成片时间线（`output.timeline`）** 新增 **DOTween 双层补间与多关键帧序列（Sequence）动画引擎**、**8 款内置动态矢量贴纸** 与 **音乐相册自动成片管线（Ken Burns 推拉摇移运镜 + 平滑转场）**；**人像处理（`image.portrait`）** 升级 SOTA 四频段 à-trous 小波磨皮、程序化微毛孔合成、参数化天鹅绒美妆与 Procrustes 姿态对齐身份锁；**本地高精度抠图（`image.process` cutout）** 升级 ONNX Runtime **DirectML / CUDA / CoreML 硬件 GPU 加速**、**发丝级前景颜色解混（Color Unmixing）** 与 **结果区零延迟脏矩形实时橡皮擦 / 恢复画笔**；新增内置 **无头浏览器网页图文提取工具（`web_extract_article`）** 与设置界面多模型并发下载。
