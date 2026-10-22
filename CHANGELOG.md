@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.4.2] — 2026-10-22
+
+8.4.2 补丁版：将 **UI 精准拆层技能（`ui-layer-split` / `wf-ui-layer-split`）** 由主工程迁移重构至独立技能市场仓库（`ai-art-engine-skills`），并补齐 `image.layerSplit` 节点的 `visionModel` / `visionProviderInstanceId` 默认参数声明，确保工作流物化与 `graph_edit` 完整保留多模态视觉模型配置。
+
+- **重构 · UI 精准拆层技能（`ui-layer-split`）迁移至技能市场仓库（`ai-art-engine-skills`）**：移除误置在主工程 `.agents/skills/ui-layer-split/` 的技能文件，统一按技能市场规范在 `ai-art-engine-skills/workflows/ui-layer-split/` 发布工作流与 `wf-ui-layer-split` 技能包（含 `workflow.json`、`SKILL.md`、`references/pipeline.md` 与卡片封面）。
+- **修复 · `image.layerSplit` 节点补齐 `visionModel` / `visionProviderInstanceId` 默认参数声明**：在 `builtins.ts` 的 `defaultParams` 中显式声明视觉定位模型覆盖参数，避免在工作流计划物化（`materializeGraphPlan`）或导出时被判定为未声明参数而丢弃。
+
 ## [8.4.1] — 2026-10-22
 
 8.4.1 补丁版：**游戏 UI 图层拆解（`image.layerSplit`）** 在 Dive 弹窗与右侧属性面板新增 **多模态视觉模型选择器** 及 429 配额耗尽自动跨模型/跨提供商无缝回退；修复 **SLG 战术画布特效（Canvas VFX）** 在新建节点后立即拖拽时 `✚ 部署 · xx` 飘字与四角冲击波未随节点实时移动的问题。
