@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.4.1] — 2026-10-22
+
+8.4.1 补丁版：**游戏 UI 图层拆解（`image.layerSplit`）** 在 Dive 弹窗与右侧属性面板新增 **多模态视觉模型选择器** 及 429 配额耗尽自动跨模型/跨提供商无缝回退；修复 **SLG 战术画布特效（Canvas VFX）** 在新建节点后立即拖拽时 `✚ 部署 · xx` 飘字与四角冲击波未随节点实时移动的问题。
+
+- **新增 · UI 精准拆层多模态视觉模型选择与 429 配额自动回退**：`LayerSplitEditorDialog`（Dive 工作台）与 `LayerSplitInspector`（属性面板）新增视觉分析模型下拉选择器，自动过滤并标记支持看图的文本模型；当所选或默认视觉模型触发 `429 RESOURCE_EXHAUSTED` / `503` 限流时，自动切换至同提供商或跨提供商的其他可用多模态模型继续完成版面树解析。
+- **修复 · 新建节点后立即拖拽时部署飘字与战术冲击波实时跟随**：`.vfx-tactical-toast`（`✚ 部署 · xx`）与 `CanvasVfxBurst`（四角战术准星及落地冲击波）由静态出生坐标改为实时绑定目标节点最新位置与尺寸，拖拽过程中全程丝滑同步。
+
 ## [8.4.0] — 2026-10-22
 
 8.4.0 功能版：**游戏 UI 图层拆解（`image.layerSplit`）** 新增 **「精准拆层（Precise Split）」多模态逐层剥离与底板补全引擎**（本地 OCR + 多模态大模型版面树解析 + 按遮挡层级逐级剥离补全可编辑 PSD）；**人像处理（`image.portrait`）** 新增 **7 大主流单反与经典胶片相机直出色彩科学（Camera Color Science）**；**节点画布** 新增 **SLG 战术级顶层粒子特效引擎（Canvas VFX）**；**Google (Gemini / Nano Banana / Veo 3.1)** 全面打通 AI 会话面板、原生 `:generateContent` 生图与 Veo 3.1 视频生成协议；**AI 会话面板** 新增 **许愿式编程（Vibe Coding）流星祈愿浮窗**。
