@@ -2134,7 +2134,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         sourceFingerprint: ''
       },
       generateModel: '',
-      generateProviderInstanceId: ''
+      generateProviderInstanceId: '',
+      visionModel: '',
+      visionProviderInstanceId: ''
     }),
     addable: true,
     deletable: true,
