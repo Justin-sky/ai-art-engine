@@ -54,6 +54,8 @@ export type CanvasBurstKind =
 export interface CanvasVfxBurst {
   id: string
   kind: CanvasBurstKind
+  /** 绑定的节点 id（若存在，拖动/缩放节点时冲击波与战术准星实时跟随节点位置） */
+  nodeId?: string
   /** 世界坐标 x（矩形左上角或点中心） */
   x: number
   /** 世界坐标 y（矩形左上角或点中心） */
@@ -498,6 +500,7 @@ export function emitGraphDiffVfx(
       state.canvasBursts.push({
         id: nextVfxId('burst-spawn'),
         kind: 'spawn-shockwave',
+        nodeId: node.id,
         x: node.position.x,
         y: node.position.y,
         w,
@@ -652,6 +655,7 @@ export function emitGraphDiffVfx(
       state.canvasBursts.push({
         id: nextVfxId('burst-buff'),
         kind: 'buff-burst',
+        nodeId: node.id,
         x: node.position.x,
         y: node.position.y,
         w,
@@ -743,6 +747,7 @@ export function emitNodeCookVfx(
     state.canvasBursts.push({
       id: nextVfxId('burst-cook-start'),
       kind: 'spawn-shockwave',
+      nodeId: node.id,
       x: node.position.x,
       y: node.position.y,
       w,
@@ -781,6 +786,7 @@ export function emitNodeCookVfx(
     state.canvasBursts.push({
       id: nextVfxId('burst-cook-done'),
       kind: 'cook-done-burst',
+      nodeId: node.id,
       x: node.position.x,
       y: node.position.y,
       w,
@@ -816,6 +822,7 @@ export function emitNodeCookVfx(
     state.canvasBursts.push({
       id: nextVfxId('burst-cook-err'),
       kind: 'cook-error-burst',
+      nodeId: node.id,
       x: node.position.x,
       y: node.position.y,
       w,
@@ -899,6 +906,16 @@ export function getActiveCanvasVfxSnapshot(
   ) {
     return null
   }
+  for (const burst of state.canvasBursts) {
+    if (!burst.nodeId) continue
+    const liveNode = graphEditorHosts.getNode(id, burst.nodeId)
+    if (!liveNode) continue
+    const flip = getNodeFlipWorldOffset(id, burst.nodeId, now)
+    burst.x = liveNode.position.x + (flip?.dx ?? 0)
+    burst.y = liveNode.position.y + (flip?.dy ?? 0)
+    burst.w = getNodeWidth(liveNode)
+    burst.h = getNodeHeight(liveNode)
+  }
   return {
     edgeSpawns: state.edgeSpawns,
     canvasBursts: state.canvasBursts,
@@ -948,6 +965,12 @@ export function getActiveDomVfxSnapshot(hostId: string | null | undefined): {
   const state = hostStates.get(id)
   if (!state) {
     return { nodeEffects: new Map(), ghostNodes: [], floatingToasts: [] }
+  }
+  for (const toast of state.floatingToasts) {
+    const liveNode = graphEditorHosts.getNode(id, toast.nodeId)
+    if (!liveNode) continue
+    toast.x = liveNode.position.x + getNodeWidth(liveNode) / 2
+    toast.y = liveNode.position.y
   }
   return {
     nodeEffects: state.nodeEffects,

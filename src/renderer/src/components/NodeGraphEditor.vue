@@ -536,12 +536,7 @@
             :key="toast.id"
             class="vfx-tactical-toast"
             :class="`tone-${toast.tone}`"
-            :style="{
-              left: `${toast.x}px`,
-              top: `${toast.y}px`,
-              '--vfx-delay': `${toast.delayMs}ms`,
-              '--vfx-duration': `${toast.durationMs}ms`
-            }"
+            :style="tacticalToastStyle(toast)"
           >
             {{ toast.text }}
           </div>
@@ -1119,7 +1114,8 @@ import {
   getNodeFlipWorldOffset,
   hasActiveCanvasVfx,
   subscribeHostVfxWakeup,
-  triggerPortDockBurst
+  triggerPortDockBurst,
+  type TacticalToastVfx
 } from '../graph/vfx/graphVfxEngine'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
@@ -2835,6 +2831,19 @@ function nodeVfxStyle(nodeId: string): Record<string, string> | undefined {
     out['--vfx-toast-duration'] = `${toast.durationMs}ms`
   }
   return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** 战术飘字（「+ 部署 · xx」等）实时读取目标节点最新坐标，保证新建节点后立即拖动时飘字同步跟随 */
+function tacticalToastStyle(toast: TacticalToastVfx): Record<string, string> {
+  const liveNode = graph.nodes.find((n) => n.id === toast.nodeId)
+  const x = liveNode ? liveNode.position.x + getNodeSize(liveNode).w / 2 : toast.x
+  const y = liveNode ? liveNode.position.y : toast.y
+  return {
+    left: `${x}px`,
+    top: `${y}px`,
+    '--vfx-delay': `${toast.delayMs}ms`,
+    '--vfx-duration': `${toast.durationMs}ms`
+  }
 }
 
 const cookingNodeIds = computed(() => {

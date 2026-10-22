@@ -570,4 +570,47 @@ describe('graphVfxEngine SLG 战术画布特效引擎', () => {
     expect(observedComposite).toBe('lighter')
     expect(lastTransformArgs).toEqual([2, 0, 0, 2, 1200, 1200])
   })
+
+  it('创建节点后立刻拖动节点时，部署飘字与落地冲击波实时跟随节点最新坐标', () => {
+    const before = createDefaultScopedGraph('canvasAsset', 'canvas')
+    const liveNode = {
+      id: 'n-drag',
+      typeId: 'script',
+      title: '脚本',
+      position: { x: 100, y: 120 },
+      params: {}
+    }
+    const after: GraphDocument = {
+      ...before,
+      nodes: [liveNode],
+      edges: []
+    }
+
+    const unregEditor = graphEditorHosts.register(hostId, {
+      getNode: (id: string) => after.nodes.find((n) => n.id === id) ?? null,
+      updateNode: () => {},
+      setNodeAsset: () => {},
+      flush: async () => {}
+    })
+
+    try {
+      emitGraphDiffVfx(hostId, before, after, { source: 'manual', nowMs: 1000 })
+
+      // 模拟用户创建节点后立即拖拽到新坐标 (360, 280)
+      liveNode.position.x = 360
+      liveNode.position.y = 280
+
+      const domSnap = getActiveDomVfxSnapshot(hostId)
+      expect(domSnap.floatingToasts).toHaveLength(1)
+      expect(domSnap.floatingToasts[0]?.y).toBe(280)
+      expect(domSnap.floatingToasts[0]?.x).toBeGreaterThan(360)
+
+      const canvasSnap = getActiveCanvasVfxSnapshot(hostId, 1100)
+      const shockwave = canvasSnap?.canvasBursts.find((b) => b.nodeId === 'n-drag')
+      expect(shockwave?.x).toBe(360)
+      expect(shockwave?.y).toBe(280)
+    } finally {
+      unregEditor()
+    }
+  })
 })
