@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PORTRAIT_CAMERA_STYLES,
   PORTRAIT_PRESETS,
+  applyCameraStyleRgb,
   applyCubeLutRgb,
   applyPortraitLivePixelPipeline,
   applyPortraitPreset,
+  buildCameraExifProfileMetadata,
   buildFaceLiquifyControlVectors,
   buildPortraitAiPrompt,
   buildPortraitPrompt,
+  cameraExifPresetForStyle,
   defaultPortraitRetouch,
   extractFaceSemanticRegions,
+  hasPortraitLiveAdjustments,
   parseCubeLut,
   pointInPolygon,
   polygonFeatherWeight,
@@ -293,5 +298,104 @@ describe('commercial portrait specialties & live computational engine', () => {
     expect(single!.pixels[0]).toBe(67)
     expect(single!.pixels[1]).toBe(142)
     expect(single!.pixels[2]).toBe(219)
+  })
+
+  it('supports mainstream camera styles (Canon, Nikon, Fujifilm, Leica, Sony, Kodak, Hasselblad, Ricoh) in prompt, live math & EXIF', () => {
+    expect(PORTRAIT_CAMERA_STYLES).toEqual([
+      'none',
+      'canon',
+      'nikon',
+      'fujiClassicNeg',
+      'fujiAstia',
+      'leica',
+      'leicaMonochrom',
+      'sony',
+      'kodakPortra',
+      'hasselblad',
+      'ricohGr'
+    ])
+
+    // 验证主流相机预设
+    const canonPreset = applyPortraitPreset('canonRosy')
+    expect(canonPreset.cameraStyle).toBe('canon')
+    expect(applyPortraitPreset('nikonTrue').cameraStyle).toBe('nikon')
+    expect(applyPortraitPreset('fujiFilm').cameraStyle).toBe('fujiClassicNeg')
+    expect(applyPortraitPreset('leicaMaster').cameraStyle).toBe('leica')
+    expect(applyPortraitPreset('sonyCinema').cameraStyle).toBe('sony')
+    expect(applyPortraitPreset('kodakGold').cameraStyle).toBe('kodakPortra')
+    expect(applyPortraitPreset('hasselbladStudio').cameraStyle).toBe('hasselblad')
+
+    // 验证云端提示词生成与黑白相机负面词
+    const leicaMonoPrompt = buildPortraitPrompt({
+      state: { ...defaultPortraitRetouch(), cameraStyle: 'leicaMonochrom' },
+      needs: { face: true, mask: true, pose: true },
+      idPhoto: null
+    })
+    expect(leicaMonoPrompt.main).toContain('Leica M11 Monochrom')
+    expect(leicaMonoPrompt.negative).toContain('残留彩色')
+
+    // 验证皮肤区域与非皮肤区域的相机色彩科学映射
+    const [canonR, canonG, canonB] = applyCameraStyleRgb(200, 160, 145, 'canon', 1.0)
+    // 佳能白里透红肤色：R 和 B 均获得提升，且 R 增幅显著大于 G
+    expect(canonR).toBeGreaterThan(208)
+    expect(canonB).toBeGreaterThan(150)
+    expect(canonR - canonG).toBeGreaterThan(40)
+
+    // 富士 Classic Neg 暗部带青绿色调分离（非皮肤区 G/B 提升、R 压低）
+    const [fujiR, fujiG, fujiB] = applyCameraStyleRgb(60, 60, 60, 'fujiClassicNeg', 0)
+    expect(fujiG).toBeGreaterThan(fujiR)
+    expect(fujiB).toBeGreaterThan(fujiR)
+
+    // 徕卡黑白银盐输出严格等值灰度
+    const [monoR, monoG, monoB] = applyCameraStyleRgb(190, 145, 130, 'leicaMonochrom', 0.9)
+    expect(monoR).toBe(monoG)
+    expect(monoG).toBe(monoB)
+
+    // 验证实时管线检测与执行
+    expect(
+      hasPortraitLiveAdjustments({
+        state: { ...defaultPortraitRetouch(), cameraStyle: 'sony' }
+      })
+    ).toBe(true)
+
+    const buf = new Uint8ClampedArray([200, 160, 145, 255])
+    const res = applyPortraitLivePixelPipeline(buf, 1, 1, {
+      state: { ...defaultPortraitRetouch(), cameraStyle: 'canon' }
+    })
+    expect(res.appliedSteps).toContain('cameraStyle')
+    expect(res.pixels[0]).toBeGreaterThan(205)
+
+    // 验证相机风格与 EXIF 真机元数据自动映射
+    expect(cameraExifPresetForStyle('canon')).toBe('canon-eos-r5')
+    expect(cameraExifPresetForStyle('nikon')).toBe('nikon-z9')
+    expect(cameraExifPresetForStyle('fujiClassicNeg')).toBe('fuji-gfx100')
+    expect(cameraExifPresetForStyle('leica')).toBe('leica-m11-noctilux')
+    expect(cameraExifPresetForStyle('sony')).toBe('sony-a7rv-gm')
+    expect(cameraExifPresetForStyle('kodakPortra')).toBe('kodak-portra400')
+    expect(cameraExifPresetForStyle('ricohGr')).toBe('ricoh-gr3x')
+    expect(cameraExifPresetForStyle('hasselblad')).toBe('hasselblad-x2d')
+    expect(buildCameraExifProfileMetadata('canon-eos-r5').make).toBe('Canon')
+    expect(buildCameraExifProfileMetadata('nikon-z9').model).toBe('NIKON Z 9')
+
+    // 回归验证：开启胶片颗粒（grain）与毛孔纹理（skinTexture）时，平铺色块绝不出现 45° 斜向条纹伪影
+    const w = 32
+    const h = 32
+    const flat = new Uint8ClampedArray(w * h * 4)
+    for (let i = 0; i < flat.length; i += 4) {
+      flat[i] = 190
+      flat[i + 1] = 165
+      flat[i + 2] = 140
+      flat[i + 3] = 255
+    }
+    const grained = applyPortraitLivePixelPipeline(flat, w, h, {
+      state: { ...defaultPortraitRetouch(), cameraStyle: 'kodakPortra', grain: 'standard' }
+    })
+    // 检查沿 45° 对角线 (x + y = const) 的像素不应全相等（旧 Math.sin 括号 bug 会导致 x+y 方向呈近似恒定条纹）
+    const diagValues = new Set<number>()
+    for (let k = 2; k < 20; k++) {
+      const idx = (k * w + (22 - k)) * 4
+      diagValues.add(grained.pixels[idx]!)
+    }
+    expect(diagValues.size).toBeGreaterThan(5)
   })
 })

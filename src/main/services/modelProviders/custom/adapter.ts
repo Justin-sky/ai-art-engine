@@ -115,10 +115,22 @@ async function listOpenAiCompatModels(
   provider: ModelProviderInstance
 ): Promise<{ rows: CatalogModel[]; catalogCount: number }> {
   requireBaseUrl(provider)
+  const isGeminiStyle = resolveCustomApiStyle(provider) === 'gemini'
   const client = createProviderHttpClient(provider)
   try {
-    const { data } = await client.get<{ data?: Array<{ id?: string }> }>('/models')
-    const ids = (data.data ?? []).map((m) => String(m.id ?? '').trim()).filter(Boolean)
+    const { data } = await client.get<{
+      data?: Array<{ id?: string; name?: string }>
+      models?: Array<{ id?: string; name?: string }>
+    }>('/models')
+    const rawList = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.models)
+        ? data.models
+        : []
+    const ids = rawList
+      .map((m) => String(m?.id ?? m?.name ?? '').trim())
+      .map((id) => (isGeminiStyle ? id.replace(/^models\//i, '') : id))
+      .filter(Boolean)
     const rows = ids
       .filter(isCustomTextModelId)
       .map((id) => ({ id, name: id, modality: 'text' as const }))

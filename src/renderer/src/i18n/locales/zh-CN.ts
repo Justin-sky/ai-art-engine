@@ -340,6 +340,10 @@ export default {
       enabled: '启用自动保存',
       interval: '自动保存间隔'
     },
+    canvasVfx: {
+      enabled: '启用节点画布战术特效',
+      hint: '开启后，AI 编排或手动创建节点、连线、强化参数与 Cook 熔炼时将展示科幻全息战术特效反馈。'
+    },
     stageControls: {
       title: '3D 视口操控灵敏度',
       hint: '导演台视口的手感。拖动即时生效，不用重开视口；默认值等于旧版写死的手感。',
@@ -4370,6 +4374,16 @@ export default {
       },
       options: {
         none: '无',
+        canon: '佳能 Canon EOS（白里透红）',
+        nikon: '尼康 Nikon Z（真实高动态）',
+        fujiClassicNeg: '富士 Fujifilm（Classic Neg 胶片）',
+        fujiAstia: '富士 Fujifilm（Astia 柔和人像）',
+        leica: '徕卡 Leica M（德味油润高反差）',
+        leicaMonochrom: '徕卡 Leica Monochrom（黑白银盐）',
+        sony: '索尼 Sony Alpha（S-Cinetone 电影感）',
+        kodakPortra: '柯达 Kodak Portra 400（黄金暖调负片）',
+        hasselblad: '哈苏 Hasselblad HNCS（中画幅自然色彩）',
+        ricohGr: '理光 Ricoh GR（正片高反差街拍）',
         nude: '裸妆',
         portrait: '写真妆',
         bride: '新娘妆',
@@ -4463,6 +4477,8 @@ export default {
         lightRatio: '主光与辅光的明暗比',
         lightTemp: '光线色温：暖 ↔ 冷',
         makeupTone: '妆面色调：冷 / 自然 / 暖 / 玫瑰粉',
+        cameraStyle:
+          '主流单反 / 微单 / 旁轴 / 中画幅与传奇胶片色彩科学（含独立肤色相保护 + 传感器影调曲线）',
         toneGrade: '整体影调：明亮通透 ↔ 低调电影感',
         saturation: '整体色彩饱和度',
         colorTint: '色调偏移：绿 ↔ 品红',
@@ -4492,7 +4508,14 @@ export default {
         legacyTone: '复古',
         stage: '舞台',
         ecommerce: '电商精修',
-        businessPortrait: '商业形象'
+        businessPortrait: '商业形象',
+        canonRosy: '佳能红润',
+        nikonTrue: '尼康通透',
+        fujiFilm: '富士胶片',
+        leicaMaster: '徕卡德味',
+        sonyCinema: '索尼电影',
+        kodakGold: '柯达负片',
+        hasselbladStudio: '哈苏中画幅'
       },
       fields: {
         blemishRemoval: '祛痘祛斑',
@@ -4540,6 +4563,7 @@ export default {
         faceContour: '面部立体',
         lightRatio: '光比',
         lightTemp: '光影色温',
+        cameraStyle: '相机风格',
         toneGrade: '影调',
         saturation: '饱和度',
         colorTemp: '色温',
@@ -7559,5 +7583,25 @@ export default {
     error: {
       notFound: '草稿不存在或已保存'
     }
+  },
+  graphVfx: {
+    presetNamed: '★ 预设 · {name}',
+    presetApplied: '★ 预设已应用',
+    locked: '🔒 战术锁定',
+    unlocked: '🔓 解除锁定',
+    instructionInjected: '⚡ 指令已注入',
+    aspectRatio: '📐 画幅 · {value}',
+    resolution: '🔍 规格 · {value}',
+    model: '⚙ 模型 · {value}',
+    styleSynced: '🎨 风格基因已同步',
+    reviewPass: '✦ 审核 PASS',
+    reviewFail: '⚠ 审核 FAIL',
+    paramBuff: '⚡ 参数强化',
+    deployed: '✚ 部署 · {label}',
+    squadronDeployed: '✚ 战术集群部署 ×{count}',
+    edgeSevered: '✂ 链路断开',
+    cookStart: '🔥 熔炉启动',
+    cookDone: '✦ 锻造完成',
+    cookError: '⚠ 熔炼异常'
   }
 } as const

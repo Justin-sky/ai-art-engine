@@ -75,6 +75,7 @@ class SettingsService {
       editor: {
         ...DEFAULT_SETTINGS.editor,
         ...(saved.editor ?? {}),
+        canvasVfxEnabled: saved.editor?.canvasVfxEnabled !== false,
         // 读盘也钳一次：手改过 settings.json 的脏值不该直接进渲染层
         stage: normalizeStageControls(saved.editor?.stage)
       },
@@ -113,6 +114,7 @@ class SettingsService {
           3600,
           Math.max(1, Math.round(settings.editor?.autoSaveIntervalSec || 30))
         ),
+        canvasVfxEnabled: settings.editor?.canvasVfxEnabled !== false,
         // 落盘前钳到合法区间：脏值（手改 settings.json / 旧版本缺字段）不该让视口拖不动
         stage: normalizeStageControls(settings.editor?.stage)
       },

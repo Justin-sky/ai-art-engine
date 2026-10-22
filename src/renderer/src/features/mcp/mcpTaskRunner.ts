@@ -26,6 +26,7 @@ import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { semanticTimelineSavePayload } from '../graph/model/semanticTimelineSave'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { clearLiveCanvasRunStates, openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
+import { emitGraphDiffVfx } from '../../graph/vfx/graphVfxEngine'
 
 const GRAPH_EDITOR_OPEN_WAIT_MS = 8_000
 const GRAPH_EDITOR_OPEN_POLL_MS = 50
@@ -1071,6 +1072,11 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
           synced.graph,
           didAutoLayout || addedNewNode ? { fitView: true } : undefined
         )
+        emitGraphDiffVfx(hostId, live, synced.graph, {
+          source: 'ai',
+          rawOps: graphOps,
+          fitView: didAutoLayout || addedNewNode
+        })
       }
       const selectId = liveResult.selectNodeIds?.at(-1) ?? liveResult.touchedNodeIds?.at(-1)
       if (selectId) graphEditorHosts.selectNode(hostId, selectId)

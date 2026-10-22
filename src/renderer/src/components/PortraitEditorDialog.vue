@@ -747,6 +747,27 @@
                 <span v-if="spec.kind === 'tier' && spec.hintKey" class="spec-hint">
                   {{ t(`graph.portrait.hints.${spec.hintKey}`) }}
                 </span>
+                <span v-else-if="spec.key === 'cameraStyle'" class="spec-hint">
+                  {{ t('graph.portrait.hints.cameraStyle') }}
+                </span>
+              </div>
+
+              <!-- 主流相机色彩科学快捷选择按钮组（同时保留标准 select 以兼容自动化测试与键盘可访问性） -->
+              <div
+                v-if="spec.kind === 'enum' && spec.key === 'cameraStyle'"
+                class="segmented"
+                style="margin-bottom: 6px"
+              >
+                <button
+                  v-for="option in spec.options"
+                  :key="option"
+                  type="button"
+                  class="seg-btn"
+                  :class="{ active: draft.cameraStyle === option }"
+                  @click="setCameraStyle(option)"
+                >
+                  {{ optionLabel(option) }}
+                </button>
               </div>
 
               <!-- 档位：分段按钮，无滑条 -->
@@ -1007,6 +1028,7 @@ import {
   PORTRAIT_TOOL_GROUPS,
   applyPortraitPreset,
   buildPortraitPrompt,
+  cameraExifPresetForStyle,
   classifyPortraitExecutionStrategy,
   defaultPortraitRetouch,
   exportPortraitPreset,
@@ -1649,7 +1671,8 @@ async function bakePurifyAndCameraExif(): Promise<void> {
       : (props.sourceUrl?.trim() ?? '')
   if (!src || aiRunning.value) return
   try {
-    const res = await purifyAiArtifactsAndEmbedCameraExifLocal(src, 'hasselblad-x2d')
+    const presetId = cameraExifPresetForStyle(draft.cameraStyle)
+    const res = await purifyAiArtifactsAndEmbedCameraExifLocal(src, presetId)
     if (!res?.dataUrl) return
     emit('ai', {
       tool: 'liveRetouch',
@@ -2316,6 +2339,12 @@ function setTier(spec: PortraitTierSpec, tier: string): void {
 
 function onEnumChange(key: string, event: Event): void {
   ;(draft as unknown as Record<string, string>)[key] = (event.target as HTMLSelectElement).value
+  draft.presetId = ''
+  pushHistory()
+}
+
+function setCameraStyle(option: string): void {
+  draft.cameraStyle = option as PortraitRetouchState['cameraStyle']
   draft.presetId = ''
   pushHistory()
 }

@@ -343,6 +343,10 @@ export default {
       enabled: 'Enable autosave',
       interval: 'Autosave interval'
     },
+    canvasVfx: {
+      enabled: 'Enable tactical canvas VFX',
+      hint: 'Shows sci-fi holographic tactical animations and floating buffs when AI or you create, connect, configure, or cook nodes on the canvas.'
+    },
     stageControls: {
       title: '3D viewport control sensitivity',
       hint: 'How the Director Stage viewport feels. Changes apply as you drag — no need to reopen the viewport; the defaults match the previously hard-coded feel.',
@@ -4495,6 +4499,16 @@ export default {
       },
       options: {
         none: 'None',
+        canon: 'Canon EOS (Rosy Peach Skin)',
+        nikon: 'Nikon Z (True High-Dynamic)',
+        fujiClassicNeg: 'Fujifilm (Classic Neg Film)',
+        fujiAstia: 'Fujifilm (Astia Soft Portrait)',
+        leica: 'Leica M (Summilux Micro-Contrast)',
+        leicaMonochrom: 'Leica Monochrom (Silver B&W)',
+        sony: 'Sony Alpha (S-Cinetone Cinema)',
+        kodakPortra: 'Kodak Portra 400 (Golden Negative)',
+        hasselblad: 'Hasselblad HNCS (16-Bit Natural)',
+        ricohGr: 'Ricoh GR (Positive Street)',
         nude: 'Nude',
         portrait: 'Studio portrait',
         bride: 'Bridal',
@@ -4591,6 +4605,8 @@ export default {
         lightRatio: 'Key-to-fill lighting ratio',
         lightTemp: 'Lighting colour temperature: warm ↔ cool',
         makeupTone: 'Makeup tone: cool / natural / warm / rosy',
+        cameraStyle:
+          'Mainstream DSLR, mirrorless, rangefinder, medium-format & film colour science (with skin-locus protection & sensor S-curve)',
         toneGrade: 'Overall tone grade: bright & airy ↔ low-key cinematic',
         saturation: 'Overall colour saturation',
         colorTint: 'Tint shift: green ↔ magenta',
@@ -4621,7 +4637,14 @@ export default {
         legacyTone: 'Retro',
         stage: 'Stage',
         ecommerce: 'E-commerce',
-        businessPortrait: 'Executive'
+        businessPortrait: 'Executive',
+        canonRosy: 'Canon Rosy',
+        nikonTrue: 'Nikon Clear',
+        fujiFilm: 'Fuji Film',
+        leicaMaster: 'Leica Look',
+        sonyCinema: 'Sony Cinema',
+        kodakGold: 'Kodak Portra',
+        hasselbladStudio: 'Hasselblad'
       },
       fields: {
         blemishRemoval: 'Blemish removal',
@@ -4669,6 +4692,7 @@ export default {
         faceContour: 'Face contour',
         lightRatio: 'Light ratio',
         lightTemp: 'Light temperature',
+        cameraStyle: 'Camera style',
         toneGrade: 'Tone grade',
         saturation: 'Saturation',
         colorTemp: 'Colour temperature',
@@ -7787,5 +7811,25 @@ export default {
     error: {
       notFound: 'Draft missing or already saved'
     }
+  },
+  graphVfx: {
+    presetNamed: '★ Preset · {name}',
+    presetApplied: '★ Preset Applied',
+    locked: '🔒 Tactical Lock',
+    unlocked: '🔓 Unlocked',
+    instructionInjected: '⚡ Prompt Injected',
+    aspectRatio: '📐 Ratio · {value}',
+    resolution: '🔍 Res · {value}',
+    model: '⚙ Model · {value}',
+    styleSynced: '🎨 Style DNA Synced',
+    reviewPass: '✦ Review PASS',
+    reviewFail: '⚠ Review FAIL',
+    paramBuff: '⚡ Params Buffed',
+    deployed: '✚ Deployed · {label}',
+    squadronDeployed: '✚ Squadron Deployed ×{count}',
+    edgeSevered: '✂ Link Severed',
+    cookStart: '🔥 Forge Ignited',
+    cookDone: '✦ Forge Complete',
+    cookError: '⚠ Forge Fault'
   }
 } as const

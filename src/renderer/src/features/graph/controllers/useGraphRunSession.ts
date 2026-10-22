@@ -75,6 +75,7 @@ import { removeImageSolidBackground } from '../model/removeImageSolidBackground'
 import { composeTimelineVideoForNode } from '../model/composeTimelineVideo'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
+import { emitNodeCookVfx } from '../../../graph/vfx/graphVfxEngine'
 
 export interface GraphRunSessionOptions {
   buildGraph: () => GraphDocument
@@ -640,10 +641,11 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
   function applyNodeUpdate(run: ActiveRun, nodeId: string, state: GraphNodeRunState): void {
     if (!isRunActive(run)) return
     run.logBridge.onNodeUpdate(nodeId, state)
+    const prev = runStates[nodeId]
+    const prevStatus = prev?.status
     if (state.status === 'skipped') {
       // 子集外 skipped 不抹掉其它节点；本趟 pending/running → skipped 需写回
-      const prev = runStates[nodeId]
-      if (prev?.status !== 'pending' && prev?.status !== 'running') return
+      if (prevStatus !== 'pending' && prevStatus !== 'running') return
       runStates[nodeId] = { status: 'skipped' }
       return
     }
@@ -652,6 +654,9 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
     runStates[nodeId] = {
       ...rest,
       error: state.error ? message(state.error) : undefined
+    }
+    if (prevStatus !== state.status) {
+      emitNodeCookVfx(options.hostId?.(), nodeId, prevStatus, state.status)
     }
   }
 

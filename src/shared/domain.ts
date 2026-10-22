@@ -632,6 +632,8 @@ export interface AppSettings {
   editor: {
     autoSaveEnabled: boolean
     autoSaveIntervalSec: number
+    /** 节点画布 SLG 全息战术特效开关；缺省为 true（默认开启） */
+    canvasVfxEnabled?: boolean
     /** 3D 视口（导演台）操控灵敏度；缺省与历史写死值一致，老设置升级后手感不变 */
     stage: StageControlPreferences
   }
@@ -2506,6 +2508,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   editor: {
     autoSaveEnabled: false,
     autoSaveIntervalSec: 30,
+    canvasVfxEnabled: true,
     stage: { ...STAGE_CONTROL_DEFAULTS }
   },
   models: createEmptyModelsSettings(),

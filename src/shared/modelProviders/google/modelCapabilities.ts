@@ -64,10 +64,19 @@ export function listGoogleCatalogModels(modality: ModelModality): CatalogModel[]
     }))
 }
 
-/** 远端 GET /models 文本模型过滤：保留 gemini-* 对话模型，排除图片 / 视频 / 音频生成模型 */
+/**
+ * 规范化 Google 模型 id：
+ * Google 官方 `GET /v1beta/openai/models` 与原生 `GET /v1beta/models` 返回的 id 均带 `models/` 前缀
+ * （如 `models/gemini-2.5-flash`），而 `/chat/completions` 与应用内目录统一使用裸模型名 `gemini-2.5-flash`。
+ */
+export function normalizeGoogleModelId(modelId: string): string {
+  return modelId.trim().replace(/^models\//i, '')
+}
+
+/** 远端 GET /models 文本模型过滤：保留 gemini-* 对话模型，排除图片 / 视频 / 音频 / 向量生成模型 */
 export function isGoogleTextModelId(modelId: string): boolean {
-  const id = modelId.trim()
+  const id = normalizeGoogleModelId(modelId)
   if (!/^gemini-/i.test(id)) return false
-  if (/(image|veo|video|audio|tts|embedding|imagen|speech)/i.test(id)) return false
+  if (/(image|veo|video|audio|tts|embedding|imagen|speech|aqa)/i.test(id)) return false
   return true
 }

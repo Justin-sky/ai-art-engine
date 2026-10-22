@@ -1,21 +1,23 @@
 import axios from 'axios'
-import type {
-  CatalogModel,
-  GenerateImageInput,
-  GenerateImageResult,
-  GenerateModel3dInput,
-  GenerateModel3dJob,
-  GenerateSpeechInput,
-  GenerateSpeechResult,
-  GenerateTextInput,
-  GenerateTextResult,
-  GenerateVideoInput,
-  GenerateVideoJob,
-  ModelProviderInstance
+import {
+  GOOGLE_DEFAULT_BASE_URL,
+  type CatalogModel,
+  type GenerateImageInput,
+  type GenerateImageResult,
+  type GenerateModel3dInput,
+  type GenerateModel3dJob,
+  type GenerateSpeechInput,
+  type GenerateSpeechResult,
+  type GenerateTextInput,
+  type GenerateTextResult,
+  type GenerateVideoInput,
+  type GenerateVideoJob,
+  type ModelProviderInstance
 } from '@shared/modelProvider'
 import {
   isGoogleTextModelId,
-  listGoogleCatalogModels
+  listGoogleCatalogModels,
+  normalizeGoogleModelId
 } from '@shared/modelProviders/google/modelCapabilities'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
@@ -57,15 +59,66 @@ function parseGeneratedImages(
   return { images, model: modelId }
 }
 
+/**
+ * 规范化 Google Gemini OpenAI 兼容层 Base URL：
+ * - 空值回退官方 `https://generativelanguage.googleapis.com/v1beta/openai`
+ * - 若用户填了官方根域名或 `/v1beta`（漏写 `/openai`），自动补齐 `/v1beta/openai`
+ */
+function resolveGoogleOpenAiBaseUrl(rawBaseUrl?: string): string {
+  const trimmed = (rawBaseUrl ?? '').trim().replace(/\/+$/, '')
+  if (!trimmed) return GOOGLE_DEFAULT_BASE_URL
+  if (/^https?:\/\/generativelanguage\.googleapis\.com$/i.test(trimmed)) {
+    return `${trimmed}/v1beta/openai`
+  }
+  if (/^https?:\/\/generativelanguage\.googleapis\.com\/v1(?:beta)?$/i.test(trimmed)) {
+    return `${trimmed}/openai`
+  }
+  return trimmed
+}
+
+function withGoogleOpenAiBase(provider: ModelProviderInstance): ModelProviderInstance {
+  return {
+    ...provider,
+    baseUrl: resolveGoogleOpenAiBaseUrl(provider.baseUrl)
+  }
+}
+
+interface GoogleModelListRow {
+  id?: string
+  name?: string
+  supportedGenerationMethods?: string[]
+}
+
 async function fetchTextCatalog(provider: ModelProviderInstance): Promise<CatalogModel[]> {
-  const client = createProviderHttpClient(provider)
+  const client = createProviderHttpClient(withGoogleOpenAiBase(provider))
   try {
-    const { data } = await client.get<{ data?: Array<{ id?: string }> }>('/models')
-    return (data.data ?? [])
-      .map((m) => String(m.id ?? '').trim())
-      .filter(Boolean)
-      .filter(isGoogleTextModelId)
-      .map((id) => ({ id, name: id, modality: 'text' as const }))
+    const { data } = await client.get<{
+      data?: GoogleModelListRow[]
+      models?: GoogleModelListRow[]
+    }>('/models')
+    const rawList = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.models)
+        ? data.models
+        : []
+    const seen = new Set<string>()
+    const result: CatalogModel[] = []
+    for (const m of rawList) {
+      if (
+        Array.isArray(m?.supportedGenerationMethods) &&
+        m.supportedGenerationMethods.length > 0 &&
+        !m.supportedGenerationMethods.includes('generateContent')
+      ) {
+        continue
+      }
+      const rawId = String(m?.id ?? m?.name ?? '').trim()
+      if (!rawId || !isGoogleTextModelId(rawId)) continue
+      const id = normalizeGoogleModelId(rawId)
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      result.push({ id, name: id, modality: 'text' as const })
+    }
+    return result
   } catch (err) {
     throw fail(PROVIDER_ERRORS.actionFailed, {
       action: 'listModels',
@@ -121,7 +174,7 @@ export const googleAdapter: ModelProviderAdapter = {
 
   async assertAuth(provider) {
     if (!provider.apiKey.trim()) throw fail(PROVIDER_ERRORS.missingApiKey)
-    const client = createProviderHttpClient(provider)
+    const client = createProviderHttpClient(withGoogleOpenAiBase(provider))
     try {
       await client.get('/models', { timeout: 20_000 })
     } catch (err) {
@@ -149,7 +202,11 @@ export const googleAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    return generateOpenAiCompatibleText(provider, modelId, input)
+    return generateOpenAiCompatibleText(
+      withGoogleOpenAiBase(provider),
+      normalizeGoogleModelId(modelId),
+      input
+    )
   },
 
   async generateImage(

@@ -8,7 +8,15 @@
  */
 
 export type CameraProfilePresetId =
-  'hasselblad-x2d' | 'sony-a7rv-gm' | 'leica-m11-noctilux' | 'arri-alexa35'
+  | 'hasselblad-x2d'
+  | 'canon-eos-r5'
+  | 'nikon-z9'
+  | 'fuji-gfx100'
+  | 'sony-a7rv-gm'
+  | 'leica-m11-noctilux'
+  | 'kodak-portra400'
+  | 'ricoh-gr3x'
+  | 'arri-alexa35'
 
 export interface CameraExifMetadata {
   presetId: CameraProfilePresetId
@@ -39,6 +47,42 @@ export const CAMERA_PROFILE_PRESETS: Readonly<
     colorSpace: 'Display P3',
     software: 'Phocus 3.8 / AI Art Engine Studio'
   },
+  'canon-eos-r5': {
+    presetId: 'canon-eos-r5',
+    make: 'Canon',
+    model: 'Canon EOS R5 Mark II',
+    lensModel: 'RF85mm F1.2 L USM DS',
+    focalLengthMm: 85,
+    fNumber: 1.2,
+    iso: 100,
+    exposureTime: '1/640',
+    colorSpace: 'Display P3',
+    software: 'Canon Digital Photo Professional 4 / AI Art Engine Studio'
+  },
+  'nikon-z9': {
+    presetId: 'nikon-z9',
+    make: 'NIKON CORPORATION',
+    model: 'NIKON Z 9',
+    lensModel: 'NIKKOR Z 58mm f/0.95 S Noct',
+    focalLengthMm: 58,
+    fNumber: 0.95,
+    iso: 64,
+    exposureTime: '1/800',
+    colorSpace: 'Adobe RGB (1998)',
+    software: 'Nikon NX Studio / AI Art Engine Studio'
+  },
+  'fuji-gfx100': {
+    presetId: 'fuji-gfx100',
+    make: 'FUJIFILM',
+    model: 'GFX100 II',
+    lensModel: 'GF110mmF2 R LM WR',
+    focalLengthMm: 110,
+    fNumber: 2.0,
+    iso: 80,
+    exposureTime: '1/400',
+    colorSpace: 'Display P3',
+    software: 'FUJIFILM X RAW STUDIO / AI Art Engine Studio'
+  },
   'sony-a7rv-gm': {
     presetId: 'sony-a7rv-gm',
     make: 'SONY',
@@ -63,6 +107,30 @@ export const CAMERA_PROFILE_PRESETS: Readonly<
     colorSpace: 'sRGB IEC61966-2.1',
     software: 'Leica Firmware 2.1 / AI Art Engine Studio'
   },
+  'kodak-portra400': {
+    presetId: 'kodak-portra400',
+    make: 'Kodak / Hasselblad',
+    model: '500C/M (Kodak Portra 400)',
+    lensModel: 'Carl Zeiss Planar 80mm f/2.8',
+    focalLengthMm: 80,
+    fNumber: 2.8,
+    iso: 400,
+    exposureTime: '1/250',
+    colorSpace: 'Display P3',
+    software: 'Noritsu HS-1800 / AI Art Engine Studio'
+  },
+  'ricoh-gr3x': {
+    presetId: 'ricoh-gr3x',
+    make: 'RICOH IMAGING COMPANY, LTD.',
+    model: 'RICOH GR IIIx',
+    lensModel: 'GR LENS 26.1mm F2.8',
+    focalLengthMm: 40,
+    fNumber: 2.8,
+    iso: 200,
+    exposureTime: '1/500',
+    colorSpace: 'sRGB IEC61966-2.1',
+    software: 'RICOH GR Firmware 1.4 / AI Art Engine Studio'
+  },
   'arri-alexa35': {
     presetId: 'arri-alexa35',
     make: 'ARRI',
@@ -74,6 +142,30 @@ export const CAMERA_PROFILE_PRESETS: Readonly<
     exposureTime: '1/48',
     colorSpace: 'ARRI Wide Gamut 4',
     software: 'DaVinci Resolve Studio / AI Art Engine Studio'
+  }
+}
+
+export function cameraExifPresetForStyle(cameraStyle?: string | null): CameraProfilePresetId {
+  switch (cameraStyle) {
+    case 'canon':
+      return 'canon-eos-r5'
+    case 'nikon':
+      return 'nikon-z9'
+    case 'fujiClassicNeg':
+    case 'fujiAstia':
+      return 'fuji-gfx100'
+    case 'leica':
+    case 'leicaMonochrom':
+      return 'leica-m11-noctilux'
+    case 'sony':
+      return 'sony-a7rv-gm'
+    case 'kodakPortra':
+      return 'kodak-portra400'
+    case 'ricohGr':
+      return 'ricoh-gr3x'
+    case 'hasselblad':
+    default:
+      return 'hasselblad-x2d'
   }
 }
 

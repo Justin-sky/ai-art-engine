@@ -47,16 +47,17 @@ describe('googleAdapter', () => {
     postMock.mockReset()
   })
 
-  it('fetches and filters Gemini text catalog from GET /models', async () => {
+  it('fetches and filters Gemini text catalog from GET /models (both bare and models/ prefixed IDs)', async () => {
     getMock.mockResolvedValueOnce({
       data: {
         data: [
-          { id: 'gemini-2.5-flash' },
-          { id: 'gemini-2.5-pro' },
+          { id: 'models/gemini-2.5-flash' },
+          { id: 'models/gemini-2.5-pro' },
           { id: 'gemini-3-pro-preview' },
-          { id: 'gemini-2.5-flash-image' },
-          { id: 'veo-3.1-generate-001' },
-          { id: 'gemini-embedding-001' },
+          { id: 'models/gemini-2.5-flash-image' },
+          { id: 'models/veo-3.1-generate-001' },
+          { id: 'models/gemini-embedding-001' },
+          { id: 'models/aqa' },
           { id: 'some-other-model' }
         ]
       }
@@ -68,6 +69,29 @@ describe('googleAdapter', () => {
       'gemini-3-pro-preview'
     ])
     expect(getMock).toHaveBeenCalledWith('/models')
+  })
+
+  it('supports native Gemini /v1beta/models payload ({ models: [{ name: "models/..." }] })', async () => {
+    getMock.mockResolvedValueOnce({
+      data: {
+        models: [
+          {
+            name: 'models/gemini-2.5-flash',
+            supportedGenerationMethods: ['generateContent', 'countTokens']
+          },
+          {
+            name: 'models/gemini-2.5-pro',
+            supportedGenerationMethods: ['generateContent']
+          },
+          {
+            name: 'models/gemini-embedding-001',
+            supportedGenerationMethods: ['embedContent']
+          }
+        ]
+      }
+    })
+    const models = await googleAdapter.fetchCatalog(provider(), 'text')
+    expect(models.map((m) => m.id).sort()).toEqual(['gemini-2.5-flash', 'gemini-2.5-pro'])
   })
 
   it('returns static image and video catalogs with capabilities', async () => {
@@ -84,8 +108,8 @@ describe('googleAdapter', () => {
     expect(await googleAdapter.fetchCatalog(provider(), 'audio')).toEqual([])
   })
 
-  it('delegates text generation to OpenAI compatible client', async () => {
-    const result = await googleAdapter.generateText(provider(), 'gemini-2.5-flash', {
+  it('delegates text generation to OpenAI compatible client and strips models/ prefix', async () => {
+    const result = await googleAdapter.generateText(provider(), 'models/gemini-2.5-flash', {
       prompt: 'hi'
     })
     expect(result.text).toBe('echo:hi')

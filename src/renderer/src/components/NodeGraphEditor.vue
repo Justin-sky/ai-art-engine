@@ -479,6 +479,8 @@
           :is="card.component"
           v-for="{ node, card } in renderedGraphCards"
           :key="node.id"
+          :class="nodeVfxClasses(node.id)"
+          :style="nodeVfxStyle(node.id)"
           :node="node"
           :selected="isNodeSelected(node.id)"
           :connecting="isLinkHighlightNode(node.id)"
@@ -510,7 +512,42 @@
           @resize-start="onNodeResizeStartWrapped"
           @run-toggle="onNodeRunToggle"
         />
+        <div
+          v-if="activeDomVfx.ghostNodes.length > 0 || activeDomVfx.floatingToasts.length > 0"
+          class="graph-tactical-vfx-layer"
+          aria-hidden="true"
+        >
+          <div
+            v-for="ghost in activeDomVfx.ghostNodes"
+            :key="ghost.id"
+            class="vfx-ghost-node"
+            :style="{
+              left: `${ghost.x}px`,
+              top: `${ghost.y}px`,
+              width: `${ghost.w}px`,
+              height: `${ghost.h}px`
+            }"
+          >
+            <span class="vfx-ghost-node-tag">DECONSTRUCT</span>
+            <span class="vfx-ghost-node-title">{{ ghost.title }}</span>
+          </div>
+          <div
+            v-for="toast in activeDomVfx.floatingToasts"
+            :key="toast.id"
+            class="vfx-tactical-toast"
+            :class="`tone-${toast.tone}`"
+            :style="{
+              left: `${toast.x}px`,
+              top: `${toast.y}px`,
+              '--vfx-delay': `${toast.delayMs}ms`,
+              '--vfx-duration': `${toast.durationMs}ms`
+            }"
+          >
+            {{ toast.text }}
+          </div>
+        </div>
       </div>
+      <canvas ref="vfxCanvasEl" class="vfx-canvas" aria-hidden="true" />
     </div>
 
     <Teleport to="body">
@@ -1061,6 +1098,7 @@ import {
 import {
   computeEdgeScreenGeometry,
   computeTempEdgeScreen,
+  drawCanvasVfxOverlay,
   drawGraphEdges,
   hitTestEdges,
   nearerEdgeEndpoint,
@@ -1072,6 +1110,17 @@ import {
 } from '../graph/edgeCanvas'
 import { applyGraphGridStyle } from '../graph/gridCanvas'
 import { useGraphNodeInteraction } from '../graph/useGraphNodeInteraction'
+import {
+  clearHostVfx,
+  consumeCameraFocusTarget,
+  emitGraphDiffVfx,
+  getActiveCanvasVfxSnapshot,
+  getActiveDomVfxSnapshot,
+  getNodeFlipWorldOffset,
+  hasActiveCanvasVfx,
+  subscribeHostVfxWakeup,
+  triggerPortDockBurst
+} from '../graph/vfx/graphVfxEngine'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
   clearAssetUrlCaches,
@@ -1710,11 +1759,29 @@ function applyCommandSnapshot(snapshot: GraphDocument): void {
   scheduleSave()
 }
 
-const { recordGraphChange } = useGraphCommands({
+const { recordGraphChange: baseRecordGraphChange } = useGraphCommands({
   scope: () => `document:${activeDocumentId()}`,
   buildSnapshot: buildGraphJson,
   applySnapshot: applyCommandSnapshot
 })
+
+function recordGraphChange(reason: string, before: GraphDocument): void {
+  baseRecordGraphChange(reason, before)
+  if (
+    !isDraggingNodes.value &&
+    !isResizingNode.value &&
+    reason !== 'move-node' &&
+    reason !== 'move-nodes' &&
+    reason !== 'resize-node' &&
+    reason !== 'edit-note' &&
+    reason !== 'edit-node-text'
+  ) {
+    emitGraphDiffVfx(graphHostId.value, before, graph, {
+      source: 'manual',
+      reason
+    })
+  }
+}
 
 const rootEl = ref<HTMLElement | null>(null)
 const viewportEl = ref<HTMLElement | null>(null)
@@ -2567,6 +2634,7 @@ const GRAPH_RENDER_GUARD_RATIO = 0.28
 const worldEl = ref<HTMLElement | null>(null)
 const worldBackEl = ref<HTMLElement | null>(null)
 const edgesCanvasEl = ref<HTMLCanvasElement | null>(null)
+const vfxCanvasEl = ref<HTMLCanvasElement | null>(null)
 
 function syncLiveViewportFromGraph(): void {
   liveViewport.x = graph.viewport.x
@@ -2729,6 +2797,7 @@ let edgeCanvasCssW = 0
 let edgeCanvasCssH = 0
 let edgeHoverActive = false
 let cachedEdgeColors: EdgeColors | null = null
+let cachedEdgeColorsTheme = ''
 /** Canvas 向四周扩出的 overscan（CSS px），使平移用 transform 位移时不易露白 */
 const EDGE_CANVAS_OVERSCAN = 600
 /** 缩放近似阈值：位图缩放比在此区间内用 transform 近似，超出则重绘归位（兼顾清晰度） */
@@ -2738,8 +2807,51 @@ const EDGE_ZOOM_REDRAW_MAX = 1.25
  *  zoom 初始设为 -1（不可能值），保证首帧必然走一次真正重绘。 */
 const edgeRenderViewport = { x: 0, y: 0, zoom: -1 }
 
+const activeDomVfx = computed(() => getActiveDomVfxSnapshot(graphHostId.value))
+
+function nodeVfxClasses(nodeId: string): Record<string, boolean> {
+  const entry = activeDomVfx.value.nodeEffects.get(nodeId)
+  const hasToast = activeDomVfx.value.floatingToasts.some((t) => t.nodeId === nodeId)
+  if (!entry && !hasToast) return {}
+  return {
+    'vfx-node-spawn': entry?.kind === 'spawn',
+    'vfx-node-buff': entry?.kind === 'buff',
+    'vfx-node-cook-done': entry?.kind === 'cook-done',
+    'vfx-node-cook-error': entry?.kind === 'cook-error',
+    'vfx-has-toast': hasToast
+  }
+}
+
+function nodeVfxStyle(nodeId: string): Record<string, string> | undefined {
+  const entry = activeDomVfx.value.nodeEffects.get(nodeId)
+  const toast = activeDomVfx.value.floatingToasts.find((t) => t.nodeId === nodeId)
+  if (!entry && !toast) return undefined
+  const out: Record<string, string> = {}
+  if (entry && entry.delayMs > 0) {
+    out['--vfx-delay'] = `${entry.delayMs}ms`
+  }
+  if (toast) {
+    out['--vfx-toast-delay'] = `${toast.delayMs}ms`
+    out['--vfx-toast-duration'] = `${toast.durationMs}ms`
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+const cookingNodeIds = computed(() => {
+  const set = new Set<string>()
+  if (!editorPreferences.canvasVfxEnabled.value) return set
+  for (const [id, st] of Object.entries(runStates)) {
+    if (st?.status === 'running') set.add(id)
+  }
+  return set
+})
+
 function resolveEdgeColors(): EdgeColors {
-  if (cachedEdgeColors) return cachedEdgeColors
+  const themeAttr =
+    typeof document !== 'undefined'
+      ? document.documentElement.getAttribute('data-theme') || 'dark'
+      : 'dark'
+  if (cachedEdgeColors && cachedEdgeColorsTheme === themeAttr) return cachedEdgeColors
   const root = rootEl.value
   const fallback: EdgeColors = {
     edge: '#5a8fd4',
@@ -2750,10 +2862,18 @@ function resolveEdgeColors(): EdgeColors {
   const style = getComputedStyle(root)
   const accent = style.getPropertyValue('--accent').trim()
   const warning = style.getPropertyValue('--warning').trim()
+  cachedEdgeColorsTheme = themeAttr
   cachedEdgeColors = {
     edge: '#5a8fd4',
     selected: accent || fallback.selected,
-    temp: warning || fallback.temp
+    temp: warning || fallback.temp,
+    vfxCyan: style.getPropertyValue('--vfx-cyan').trim() || undefined,
+    vfxCyanCore: style.getPropertyValue('--vfx-cyan-core').trim() || undefined,
+    vfxForgeA: style.getPropertyValue('--vfx-forge-a').trim() || undefined,
+    vfxForgeB: style.getPropertyValue('--vfx-forge-b').trim() || undefined,
+    vfxDone: style.getPropertyValue('--vfx-done').trim() || undefined,
+    vfxDoneGold: style.getPropertyValue('--vfx-done-gold').trim() || undefined,
+    vfxDestroy: style.getPropertyValue('--vfx-destroy').trim() || undefined
   }
   return cachedEdgeColors
 }
@@ -2770,31 +2890,51 @@ function resizeEdgeCanvas(): void {
   edgeCanvasCssH = cssH
   const pxW = Math.round(cssW * dpr)
   const pxH = Math.round(cssH * dpr)
-  if (canvas.width !== pxW || canvas.height !== pxH) {
-    canvas.width = pxW
-    canvas.height = pxH
+  for (const el of [canvas, vfxCanvasEl.value]) {
+    if (!el) continue
+    if (el.width !== pxW || el.height !== pxH) {
+      el.width = pxW
+      el.height = pxH
+    }
+    el.style.width = `${cssW}px`
+    el.style.height = `${cssH}px`
+    el.style.left = `${-EDGE_CANVAS_OVERSCAN}px`
+    el.style.top = `${-EDGE_CANVAS_OVERSCAN}px`
+    // 以左上角为变换基准，方便平移/缩放近似的坐标推导
+    el.style.transformOrigin = '0 0'
   }
-  canvas.style.width = `${cssW}px`
-  canvas.style.height = `${cssH}px`
-  canvas.style.left = `${-EDGE_CANVAS_OVERSCAN}px`
-  canvas.style.top = `${-EDGE_CANVAS_OVERSCAN}px`
-  // 以左上角为变换基准，方便平移/缩放近似的坐标推导
-  canvas.style.transformOrigin = '0 0'
 }
 
 /** 平移/缩放近似：整体位移+缩放 Canvas 位图，避免逐帧重绘 */
 function applyEdgeCanvasTransform(tx: number, ty: number, s: number): void {
-  const canvas = edgesCanvasEl.value
-  if (!canvas) return
-  canvas.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${s})`
+  const transform = `translate3d(${tx}px, ${ty}px, 0) scale(${s})`
+  if (edgesCanvasEl.value) edgesCanvasEl.value.style.transform = transform
+  if (vfxCanvasEl.value) vfxCanvasEl.value.style.transform = transform
+}
+
+function nodeWithFlipOffset(node: GraphNode, nowMs: number): GraphNode {
+  const offset = getNodeFlipWorldOffset(graphHostId.value, node.id, nowMs)
+  if (!offset) return node
+  return {
+    ...node,
+    position: {
+      x: node.position.x + offset.dx,
+      y: node.position.y + offset.dy
+    }
+  }
 }
 
 /** 收集当前应绘制的边（含少量离屏 overscan，与节点虚拟化一致） */
-function collectEdgeGeometry(): EdgeScreenGeometry[] {
+function collectEdgeGeometry(
+  nowMs = performance.now(),
+  hasFlipOffsets = false
+): EdgeScreenGeometry[] {
   const window = graphRenderWindow.value
   const vis = renderedNodeIds.value
   const nodeById = new Map<string, GraphNode>()
-  for (const node of graph.nodes) nodeById.set(node.id, node)
+  for (const node of graph.nodes) {
+    nodeById.set(node.id, hasFlipOffsets ? nodeWithFlipOffset(node, nowMs) : node)
+  }
   const geoms: EdgeScreenGeometry[] = []
   for (const edge of graph.edges) {
     if (window && vis.size > 0 && !vis.has(edge.source) && !vis.has(edge.target)) continue
@@ -2813,9 +2953,22 @@ function renderEdgesNow(): void {
   if (!canvas) return
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  if (edgeCanvasCssW === 0 || edgeCanvasCssH === 0) resizeEdgeCanvas()
+  const vfxCanvas = vfxCanvasEl.value
+  if (
+    edgeCanvasCssW === 0 ||
+    edgeCanvasCssH === 0 ||
+    (vfxCanvas &&
+      (vfxCanvas.width !== canvas.width ||
+        vfxCanvas.height !== canvas.height ||
+        !vfxCanvas.style.width))
+  ) {
+    resizeEdgeCanvas()
+  }
 
-  const geoms = collectEdgeGeometry()
+  const nowMs = performance.now()
+  const vfxSnap = !viewportGesturing ? getActiveCanvasVfxSnapshot(graphHostId.value, nowMs) : null
+  const hasFlipOffsets = (vfxSnap?.nodeFlipOffsets.size ?? 0) > 0
+  const geoms = collectEdgeGeometry(nowMs, hasFlipOffsets)
   lastEdgeGeometry = geoms
   const dpr = Math.max(1, window.devicePixelRatio || 1)
 
@@ -2829,6 +2982,22 @@ function renderEdgesNow(): void {
   const flowIds =
     !viewportGesturing && hasSelectionFlow.value ? selectedNodeIds.value : new Set<string>()
 
+  const activeCookingIds = !viewportGesturing ? cookingNodeIds.value : undefined
+  const cookingNodeRects: Array<{ x: number; y: number; w: number; h: number }> = []
+  if (activeCookingIds && activeCookingIds.size > 0) {
+    for (const node of graph.nodes) {
+      if (!activeCookingIds.has(node.id)) continue
+      const { w, h } = getNodeSize(node)
+      cookingNodeRects.push({
+        x: node.position.x,
+        y: node.position.y,
+        w,
+        h
+      })
+    }
+  }
+
+  const edgeColors = resolveEdgeColors()
   drawGraphEdges(ctx, geoms, tempScreens.length > 0 ? tempScreens : null, {
     dpr,
     width: edgeCanvasCssW,
@@ -2838,11 +3007,46 @@ function renderEdgesNow(): void {
     zoom: liveViewport.zoom,
     selectedEdgeIds: selectedEdgeIds.value,
     flowEdgeIds: flowIds,
-    flowTimeMs: performance.now(),
+    cookingNodeIds: activeCookingIds,
+    cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
+    edgeSpawns: vfxSnap?.edgeSpawns,
+    canvasBursts: vfxSnap?.canvasBursts,
+    skipOverlayVfx: !!vfxCanvasEl.value,
+    viewport: liveViewport,
+    onEdgeDock: (edgeGeom) => {
+      if (liveViewport.zoom <= 0) return
+      const worldX = (edgeGeom.ex - liveViewport.x) / liveViewport.zoom
+      const worldY = (edgeGeom.ey - liveViewport.y) / liveViewport.zoom
+      triggerPortDockBurst(graphHostId.value, worldX, worldY, nowMs)
+    },
+    flowTimeMs: nowMs,
     reduceEffects: viewportGesturing,
-    colors: resolveEdgeColors(),
+    colors: edgeColors,
     pathStyle: edgePathStyle.value
   })
+
+  if (vfxCanvas) {
+    const vfxCtx = vfxCanvas.getContext('2d')
+    if (vfxCtx) {
+      const latestBursts = !viewportGesturing
+        ? (getActiveCanvasVfxSnapshot(graphHostId.value, nowMs)?.canvasBursts ??
+          vfxSnap?.canvasBursts)
+        : undefined
+      drawCanvasVfxOverlay(vfxCtx, {
+        dpr,
+        width: edgeCanvasCssW,
+        height: edgeCanvasCssH,
+        offsetX: EDGE_CANVAS_OVERSCAN,
+        offsetY: EDGE_CANVAS_OVERSCAN,
+        viewport: liveViewport,
+        cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
+        canvasBursts: latestBursts,
+        nowMs,
+        reduceEffects: viewportGesturing,
+        colors: edgeColors
+      })
+    }
+  }
 
   // 记录基准视口并把平移 transform 归零：位图已按当前视口绘制
   edgeRenderViewport.x = liveViewport.x
@@ -2851,6 +3055,9 @@ function renderEdgesNow(): void {
   const identity = 'translate3d(0px, 0px, 0px) scale(1)'
   if (canvas.style.transform !== identity) {
     canvas.style.transform = identity
+  }
+  if (vfxCanvas && vfxCanvas.style.transform !== identity) {
+    vfxCanvas.style.transform = identity
   }
 }
 
@@ -2864,7 +3071,10 @@ function requestEdgeRender(): void {
 }
 
 function edgeFlowActive(): boolean {
-  return !viewportGesturing && hasSelectionFlow.value
+  if (viewportGesturing) return false
+  return (
+    hasSelectionFlow.value || cookingNodeIds.value.size > 0 || hasActiveCanvasVfx(graphHostId.value)
+  )
 }
 
 function edgeFlowTick(): void {
@@ -2888,6 +3098,104 @@ function syncEdgeFlowLoop(): void {
     renderEdgesNow()
   } else {
     requestEdgeRender()
+  }
+}
+
+watch(
+  () => cookingNodeIds.value.size,
+  () => {
+    syncEdgeFlowLoop()
+  }
+)
+
+let tacticalPanRaf = 0
+const playedFlipTokens = new Map<string, number>()
+
+/** AI 战区平滑平移聚焦：目标超出视口安全区时，平滑推进镜头 */
+function animateTacticalCameraToBounds(bounds: {
+  x: number
+  y: number
+  w: number
+  h: number
+}): void {
+  const host = viewportEl.value
+  if (!host || host.clientWidth <= 0 || host.clientHeight <= 0 || viewportGesturing) return
+  const zoom = liveViewport.zoom
+  const cx = bounds.x + bounds.w / 2
+  const cy = bounds.y + bounds.h / 2
+  const screenX = cx * zoom + liveViewport.x
+  const screenY = cy * zoom + liveViewport.y
+  const marginX = host.clientWidth * 0.18
+  const marginY = host.clientHeight * 0.18
+  // 若目标战区中心已在视口中央安全区内，无需多余晃动镜头
+  if (
+    screenX >= marginX &&
+    screenX <= host.clientWidth - marginX &&
+    screenY >= marginY &&
+    screenY <= host.clientHeight - marginY
+  ) {
+    return
+  }
+  const startX = liveViewport.x
+  const startY = liveViewport.y
+  const targetX = host.clientWidth / 2 - cx * zoom
+  const targetY = host.clientHeight / 2 - cy * zoom
+  const startedAt = performance.now()
+  const durationMs = 750
+
+  if (tacticalPanRaf) cancelAnimationFrame(tacticalPanRaf)
+  const step = (now: number): void => {
+    if (viewportGesturing) {
+      tacticalPanRaf = 0
+      return
+    }
+    const t = Math.min(1, Math.max(0, (now - startedAt) / durationMs))
+    const ease = 1 - Math.pow(1 - t, 3)
+    liveViewport.x = startX + (targetX - startX) * ease
+    liveViewport.y = startY + (targetY - startY) * ease
+    commitLiveViewportToGraph()
+    applyViewportTransform(true)
+    if (t < 1) {
+      tacticalPanRaf = requestAnimationFrame(step)
+    } else {
+      tacticalPanRaf = 0
+      refreshGraphRenderWindow()
+      requestPreviewVisibilityUpdate()
+      scheduleViewportSave()
+    }
+  }
+  tacticalPanRaf = requestAnimationFrame(step)
+}
+
+function onHostVfxWakeup(): void {
+  syncEdgeFlowLoop()
+  const camTarget = consumeCameraFocusTarget(graphHostId.value)
+  if (camTarget) {
+    animateTacticalCameraToBounds(camTarget.bounds)
+  }
+  const snap = getActiveCanvasVfxSnapshot(graphHostId.value)
+  if (snap && snap.nodeFlipOffsets.size > 0) {
+    void nextTick(() => {
+      const world = worldEl.value
+      if (!world) return
+      for (const [nodeId, flip] of snap.nodeFlipOffsets) {
+        if (playedFlipTokens.get(nodeId) === flip.startedAt) continue
+        playedFlipTokens.set(nodeId, flip.startedAt)
+        const el = world.querySelector<HTMLElement>(`[data-node-id="${CSS.escape(nodeId)}"]`)
+        if (el && typeof el.animate === 'function') {
+          el.animate(
+            [
+              { transform: `translate3d(${flip.dx}px, ${flip.dy}px, 0)` },
+              { transform: 'translate3d(0, 0, 0)' }
+            ],
+            {
+              duration: flip.durationMs,
+              easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+            }
+          )
+        }
+      }
+    })
   }
 }
 
@@ -9815,6 +10123,7 @@ let unregisterGraphHost: (() => void) | null = null
 let unregisterGraphRunHost: (() => void) | null = null
 let unregisterNodeTypes: (() => void) | null = null
 let unregisterNodeTools: (() => void) | null = null
+let unsubscribeHostVfx: (() => void) | null = null
 
 function registerNodeToolHost(): void {
   unregisterNodeTools?.()
@@ -10049,6 +10358,7 @@ onMounted(() => {
     stopWorkflow,
     toggleNodeRun: onNodeRunToggle
   })
+  unsubscribeHostVfx = subscribeHostVfxWakeup(graphHostId.value, onHostVfxWakeup)
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
   window.addEventListener('mousedown', onWindowMouseDown)
@@ -10120,6 +10430,10 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(edgeHoverRaf)
     edgeHoverRaf = 0
   }
+  if (tacticalPanRaf) {
+    cancelAnimationFrame(tacticalPanRaf)
+    tacticalPanRaf = 0
+  }
   if (viewportGestureIdleTimer) {
     clearTimeout(viewportGestureIdleTimer)
     viewportGestureIdleTimer = null
@@ -10134,6 +10448,9 @@ onBeforeUnmount(() => {
   if (workspace.selectedGraphHostId === graphHostId.value) {
     workspace.selectGraphNode(null, graphHostId.value)
   }
+  unsubscribeHostVfx?.()
+  unsubscribeHostVfx = null
+  clearHostVfx(graphHostId.value)
   unregisterNodeTools?.()
   unregisterNodeTools = null
   unregisterGraphHost?.()
@@ -11139,6 +11456,17 @@ defineExpose({
   top: 0;
   pointer-events: none;
   z-index: 3;
+  will-change: transform;
+}
+
+/* 顶层全息粒子与冲击波绘制层：位于节点世界层（z-index: 4）之上，
+   保证粒子、星芒、扫描波与准星在节点卡片表面自由绽放而不被暗色卡片底板遮挡。 */
+.vfx-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 12;
   will-change: transform;
 }
 

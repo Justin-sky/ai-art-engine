@@ -90,6 +90,13 @@
             <span>{{ t('common.second') }}</span>
           </div>
         </label>
+        <label class="check">
+          <input v-model="form.editor.canvasVfxEnabled" type="checkbox" />
+          {{ t('settings.canvasVfx.enabled') }}
+        </label>
+        <p class="hint">
+          {{ t('settings.canvasVfx.hint') }}
+        </p>
 
         <h2 class="about-heading">
           {{ t('settings.about.title') }}
@@ -162,7 +169,7 @@ import { normalizeSearchSettings } from '@shared/searchProvider'
 import type { AppUpdateEvent } from '@shared/update'
 import { setAppLocale } from '../i18n'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { applyAppTheme, applyEditorPreferences } from '../editor/preferences'
+import { applyAppTheme, applyEditorPreferences, setCanvasVfxEnabled } from '../editor/preferences'
 import { invalidateGenerateModelSettingsCache } from '../features/graph/model/generateModelOptions'
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
@@ -350,7 +357,11 @@ function cloneSettings(source: AppSettings): AppSettings {
     language: raw.language,
     theme: raw.theme,
     defaultProjectPath: raw.defaultProjectPath,
-    editor: { ...toRaw(raw.editor ?? DEFAULT_SETTINGS.editor) },
+    editor: {
+      ...DEFAULT_SETTINGS.editor,
+      ...toRaw(raw.editor ?? DEFAULT_SETTINGS.editor),
+      canvasVfxEnabled: raw.editor?.canvasVfxEnabled !== false
+    },
     models: normalizeModelsSettings(toRaw(raw.models ?? DEFAULT_SETTINGS.models)),
     search: normalizeSearchSettings(raw.search ?? DEFAULT_SETTINGS.search),
     objectStorage: normalizeObjectStorageSettings(
@@ -453,6 +464,12 @@ watch(
   () => form.theme,
   (theme) => {
     applyAppTheme(theme === 'light' ? 'light' : 'dark')
+  }
+)
+watch(
+  () => form.editor.canvasVfxEnabled,
+  (enabled) => {
+    setCanvasVfxEnabled(enabled !== false)
   }
 )
 

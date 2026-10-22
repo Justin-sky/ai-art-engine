@@ -8,6 +8,7 @@ import {
 
 const autoSaveEnabled = ref(false)
 const autoSaveIntervalSec = ref(30)
+const canvasVfxEnabled = ref(true)
 const appTheme = ref<'dark' | 'light'>('dark')
 
 /**
@@ -21,7 +22,16 @@ const stageControlPreferences = ref<StageControlPreferences>({ ...STAGE_CONTROL_
 
 export const editorPreferences = {
   autoSaveEnabled: readonly(autoSaveEnabled),
-  autoSaveIntervalSec: readonly(autoSaveIntervalSec)
+  autoSaveIntervalSec: readonly(autoSaveIntervalSec),
+  canvasVfxEnabled: readonly(canvasVfxEnabled)
+}
+
+export function setCanvasVfxEnabled(enabled: boolean): void {
+  const next = enabled !== false
+  canvasVfxEnabled.value = next
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.canvasVfx = next ? 'on' : 'off'
+  }
 }
 
 /** 3D 视口灵敏度（只读；见上方说明，别把 `.value` 缓存到模块级常量里） */
@@ -54,6 +64,7 @@ export function applyEditorPreferences(settings: AppSettings): void {
     3600,
     Math.max(1, Math.round(settings.editor?.autoSaveIntervalSec || 30))
   )
+  setCanvasVfxEnabled(settings.editor?.canvasVfxEnabled !== false)
   // 灵敏度按区间钳制：手改过 settings.json 的脏值不该让视口「拖不动」
   stageControlPreferences.value = normalizeStageControls(settings.editor?.stage)
   applyAppTheme(settings.theme === 'light' ? 'light' : 'dark')

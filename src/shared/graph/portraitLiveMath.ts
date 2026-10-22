@@ -9,6 +9,7 @@ import { PORTRAIT_LANDMARK_COUNT, portraitFaceBoxFromLandmarks } from './portrai
 import { idPhotoSpecById } from './idPhoto'
 import {
   normalizePortraitRetouch,
+  type PortraitCameraStyle,
   type PortraitIdPhotoBg,
   type PortraitIdPhotoSpecId,
   type PortraitLutId,
@@ -930,6 +931,142 @@ export function applyBuiltinLutRgb(
   }
 }
 
+// ── Mainstream Camera Color Science Engine ───────────────────────
+
+/**
+ * Skin-locus-aware camera color science emulation for mainstream DSLR, mirrorless,
+ * rangefinder, medium-format, and film systems (Canon, Nikon, Fujifilm, Leica, Sony, Kodak, Hasselblad, Ricoh).
+ *
+ * Separates skin-locus chrominance protection (`skinConf` in 0..1) from ambient shadow/highlight
+ * split-toning and sensor S-curve roll-off so portraits achieve each camera brand's signature look.
+ */
+export function applyCameraStyleRgb(
+  r: number,
+  g: number,
+  b: number,
+  cameraStyle: PortraitCameraStyle,
+  skinConf?: number
+): [number, number, number] {
+  if (!cameraStyle || cameraStyle === 'none') return [r, g, b]
+  const skin = clamp01(skinConf !== undefined ? skinConf : skinToneConfidence(r, g, b))
+  const luma = 0.299 * r + 0.587 * g + 0.114 * b
+  const shadow = Math.max(0, (135 - luma) / 135)
+  const hi = Math.max(0, (luma - 125) / 130)
+
+  switch (cameraStyle) {
+    case 'canon': {
+      // Canon EOS Portrait Color Science: rosy-peach skin locus shift,
+      // warm-magenta midtone lift, and smooth highlight roll-off
+      const hiRoll = luma > 200 ? (luma - 200) * 0.18 : 0
+      const nr = r * 1.032 + 3 + skin * 8.5 - hiRoll
+      const ng = g * 0.996 + 2 + skin * 1.8 - hiRoll * 0.9
+      const nb = b * 1.012 + 3 + skin * 5.0 - hiRoll * 0.85
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'nikon': {
+      // Nikon Z Neutral-Portrait: high dynamic range, crisp micro-contrast,
+      // clean yellow/green separation, and neutral-true skin tone reproduction
+      const cr = (r - 128) * 1.08 + 128
+      const cg = (g - 128) * 1.085 + 128
+      const cb = (b - 128) * 1.08 + 128
+      const nr = cr + 1 + skin * 2.2 - shadow * 1.5
+      const ng = cg + 2 + skin * 2.5 + (1 - skin) * 1.5
+      const nb = cb + 1.5 + skin * 3.8
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'fujiClassicNeg': {
+      // Fujifilm Classic Neg: cyan-green shadow split, warm amber-ochre highlights,
+      // steep filmic midtone contrast while protecting skin from green shadow cast
+      const cr = (r - 128) * 1.09 + 128
+      const cg = (g - 128) * 1.08 + 128
+      const cb = (b - 128) * 1.07 + 128
+      const nonSkin = 1 - skin * 0.72
+      const nr = cr - shadow * 5 * nonSkin + hi * 8 + skin * 4.5
+      const ng = cg + shadow * 7 * nonSkin + hi * 3 + 2
+      const nb = cb + shadow * 9 * nonSkin - hi * 6 + 2
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'fujiAstia': {
+      // Fujifilm Astia Soft Portrait: silky low-contrast skin transition,
+      // luminous peach-ivory skin, and airy cyan-blue skies/foliage
+      const nr = r * 0.95 + 9 + skin * 6.5
+      const ng = g * 0.96 + 9 + skin * 4.0 + (1 - skin) * 3.5
+      const nb = b * 0.97 + 10 + skin * 5.2 + (1 - skin) * 6.0
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'leica': {
+      // Leica M11 Summilux: dense micro-contrast S-curve, deep velvety blacks,
+      // rich cobalt blues & carmine reds, and warm brassy highlight roll-off
+      const sat = 1 + (1 - skin) * 0.14 - skin * 0.02
+      const sr = luma + (r - luma) * sat
+      const sg = luma + (g - luma) * sat
+      const sb = luma + (b - luma) * sat
+      const nr = (sr - 128) * 1.15 + 124 - shadow * 6 + hi * 9 + skin * 3.5
+      const ng = (sg - 128) * 1.14 + 123 - shadow * 6 + hi * 4 + skin * 1.5
+      const nb = (sb - 128) * 1.14 + 123 - shadow * 4 - hi * 5
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'leicaMonochrom': {
+      // Leica M11 Monochrom: panchromatic yellow-orange optical filter response
+      // (lifts skin luminance & smooths blemishes while deepening sky/foliage) + silver-halide S-curve
+      const panLuma = 0.36 * r + 0.55 * g + 0.09 * b + skin * 4
+      const sCurve = (panLuma - 128) * 1.16 + 126 - shadow * 4
+      const shoulder = sCurve > 215 ? 215 + (sCurve - 215) * 0.68 : sCurve
+      const c = clamp255(shoulder)
+      return [c, c, c]
+    }
+    case 'sony': {
+      // Sony Alpha S-Cinetone: cinema soft-knee highlight compression,
+      // clean neutral-cool shadows, and warm-golden skin phase protection
+      const knee = luma > 185 ? (luma - 185) * 0.22 : 0
+      const nonSkin = 1 - skin * 0.8
+      const nr = r * 1.01 + 2 - shadow * 4 * nonSkin + skin * 7.5 - knee
+      const ng = g * 1.005 + 2 + shadow * 2 * nonSkin + skin * 2.5 - knee * 0.95
+      const nb = b * 1.01 + 3 + shadow * 6 * nonSkin - skin * 2.5 - knee * 0.9
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'kodakPortra': {
+      // Kodak Portra 400 Color Negative: golden-amber warmth, lifted creamy shadows,
+      // halation-softened highlights, and warm pastel skin rendering
+      const liftedR = r * 0.93 + 12
+      const liftedG = g * 0.93 + 10
+      const liftedB = b * 0.91 + 9
+      const nr = liftedR * 1.055 + hi * 6 + skin * 5.0
+      const ng = liftedG * 1.018 + hi * 3 + skin * 2.2
+      const nb = liftedB * 0.935 - hi * 5 + shadow * 3
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'hasselblad': {
+      // Hasselblad HNCS (16-bit Natural Colour Solution): ultra-linear tonal transition,
+      // zero clipping at highlight/shadow extremes, and studio-pure skin chrominance
+      const softExtremes = shadow * 4 - (luma > 210 ? (luma - 210) * 0.16 : 0)
+      const sat = 1.05
+      const sr = luma + (r - luma) * sat
+      const sg = luma + (g - luma) * sat
+      const sb = luma + (b - luma) * sat
+      const nr = sr + softExtremes + skin * 4.5
+      const ng = sg + softExtremes + skin * 3.2
+      const nb = sb + softExtremes + skin * 3.8
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    case 'ricohGr': {
+      // Ricoh GR III Positive Film: crushed deep blacks, high-contrast street punch,
+      // cool-teal shadow cast with warm skin highlight contrast
+      const sat = 1.16 - skin * 0.08
+      const sr = luma + (r - luma) * sat
+      const sg = luma + (g - luma) * sat
+      const sb = luma + (b - luma) * sat
+      const nonSkin = 1 - skin * 0.7
+      const nr = (sr - 128) * 1.18 + 121 - shadow * 7 * nonSkin + skin * 5.5
+      const ng = (sg - 128) * 1.16 + 121 + shadow * 2 * nonSkin - shadow * 4 * skin
+      const nb = (sb - 128) * 1.16 + 122 + shadow * 8 * nonSkin - hi * 4
+      return [clamp255(nr), clamp255(ng), clamp255(nb)]
+    }
+    default:
+      return [r, g, b]
+  }
+}
+
 // ── Live Adjustment Detection ────────────────────────────────────
 
 export interface PortraitLiveInput {
@@ -987,6 +1124,7 @@ export function hasPortraitLiveAdjustments(input: PortraitLiveInput): boolean {
     'faceContour',
     'lightRatio',
     'lightTemp',
+    'cameraStyle',
     'toneGrade',
     'saturation',
     'colorTemp',
@@ -1093,6 +1231,19 @@ function skinToneConfidence(r: number, g: number, b: number): number {
 }
 
 /**
+ * True 32-bit integer avalanche spatial hash in [0, 1) without trigonometric `Math.sin`
+ * periodicity — eliminates all diagonal wave/stripe/moiré artifacts in grain and pore synthesis.
+ */
+function spatialHash01(x: number, y: number, seed = 0): number {
+  let h =
+    (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041)) |
+    0
+  h = Math.imul(h ^ (h >>> 13), 1274126177)
+  h = (h ^ (h >>> 16)) >>> 0
+  return (h & 0x00ffffff) / 0x01000000
+}
+
+/**
  * SOTA Procedural Anisotropic Skin Micro-Pore Synthesizer:
  * Generates anatomically oriented cellular micro-pore indentations along the 2.5D surface normal
  * (`nx`, `ny`, `nz`): finer isotropic pores on the T-zone/nose bridge, oblique ellipsoidal pores
@@ -1102,26 +1253,17 @@ function skinToneConfidence(r: number, g: number, b: number): number {
 export function synthesizeProceduralSkinPore(
   x: number,
   y: number,
-  nx: number,
-  ny: number,
+  _nx: number,
+  _ny: number,
   nz = 0.85
 ): number {
-  // Anatomical orientation & anisotropy from 2.5D facial normal
-  const radialLen = Math.hypot(nx, ny)
-  const cosA = radialLen > 1e-4 ? nx / radialLen : 1
-  const sinA = radialLen > 1e-4 ? ny / radialLen : 0
-  // Cheek pores stretch ~1.35x along the cheek slope; T-zone pores stay near-circular
-  const anisoStretch = 1 + Math.min(0.38, Math.abs(nx) * 0.42)
-  const rx = (x * cosA + y * sinA) * 0.72
-  const ry = (-x * sinA + y * cosA) * 0.72 * anisoStretch
-
-  // Deterministic cellular Worley/Gabor-like biphasic pore pit + micro-ridge
-  const h1 = Math.sin(rx * 12.9898 + ry * 78.233) * 43758.5453
-  const f1 = h1 - Math.floor(h1)
-  const h2 = Math.sin((rx + 0.618) * 39.346 + (ry - 0.414) * 11.135) * 24634.6345
-  const f2 = h2 - Math.floor(h2)
-  // Biphasic cellular micro-indentation: sharp pore pit (f1 < 0.22) balanced by subtle specular micro-ridge
-  const porePit = f1 < 0.24 ? -((0.24 - f1) / 0.24) * 1.45 : (f2 - 0.45) * 0.55
+  // Integer avalanche cellular hash (zero trigonometric stripes)
+  const ix = Math.round(x)
+  const iy = Math.round(y)
+  const f1 = spatialHash01(ix, iy, 101)
+  const f2 = spatialHash01(ix, iy, 202)
+  // Biphasic cellular micro-indentation: subtle pore pit balanced by micro-ridge
+  const porePit = f1 < 0.22 ? -((0.22 - f1) / 0.22) * 0.85 : (f2 - 0.45) * 0.35
   return porePit * (0.45 + 0.55 * nz)
 }
 
@@ -1413,6 +1555,7 @@ export function applyPortraitLivePixelPipeline(
     deYellowW > 0 ||
     bodyUnifyW > 0 ||
     state.skinToneWarmth !== 'off' ||
+    state.cameraStyle !== 'none' ||
     state.toneGrade !== 'off' ||
     state.saturation !== 'off' ||
     state.colorTemp !== 'off' ||
@@ -1421,6 +1564,9 @@ export function applyPortraitLivePixelPipeline(
     customLut
   ) {
     appliedSteps.push('colorAndTone')
+    if (state.cameraStyle !== 'none') {
+      appliedSteps.push('cameraStyle')
+    }
   }
   if (sharpW > 0 || clarityW > 0 || grainW > 0 || softFocusW > 0 || vignetteW > 0) {
     appliedSteps.push('textureFinish')
@@ -1932,7 +2078,10 @@ export function applyPortraitLivePixelPipeline(
         b -= tintShift * 0.5
       }
 
-      // 9) Built-in LUT & Custom .cube 3D LUT
+      // 9) Camera Color Science, Built-in LUT & Custom .cube 3D LUT
+      if (state.cameraStyle !== 'none') {
+        ;[r, g, b] = applyCameraStyleRgb(r, g, b, state.cameraStyle, skinConf)
+      }
       if (state.lutId !== 'none') {
         ;[r, g, b] = applyBuiltinLutRgb(r, g, b, state.lutId)
       }
@@ -1960,9 +2109,14 @@ export function applyPortraitLivePixelPipeline(
         b = b * (1 - glow) + Math.max(b, lfB) * glow
       }
       if (grainW > 0) {
-        // Deterministic spatial hash noise
-        const hash = Math.sin((x * 12.9898 + y * 78.233) * 43758.5453)
-        const noise = (hash - Math.floor(hash) - 0.5) * grainW * 28
+        // Bell-distributed 32-bit integer avalanche film grain (zero diagonal sine stripes),
+        // modulated by midtone luminance so highlights and deep shadows stay clean
+        const g1 = spatialHash01(x, y, 307)
+        const g2 = spatialHash01(x, y, 613)
+        const triNoise = (g1 + g2 - 1.0) * 0.5
+        const normLuma = clamp01((0.299 * r + 0.587 * g + 0.114 * b) / 255)
+        const midtoneEnv = 0.35 + 0.65 * (4 * normLuma * (1 - normLuma))
+        const noise = triNoise * grainW * 24 * midtoneEnv
         r += noise
         g += noise
         b += noise
@@ -2493,6 +2647,7 @@ const COMPUTATIONAL_PORTRAIT_KEYS: ReadonlyArray<keyof PortraitRetouchState> = [
   'faceContour',
   'lightRatio',
   'lightTemp',
+  'cameraStyle',
   'toneGrade',
   'saturation',
   'colorTemp',

@@ -1,6 +1,7 @@
 import type { GraphNode, GraphNodeParams, GraphNodeRunState } from '@shared/graph'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { graphRunHosts } from '../graph/model/graphRunHosts'
+import { emitNodeCookVfx } from '../../graph/vfx/graphVfxEngine'
 import { useWorkspaceStore } from '../../stores/workspace'
 
 /** MCP 旁路跑图：打开宿主资产编辑器（节点图 / 剧本图等按资产类型路由） */
@@ -29,27 +30,34 @@ function uiRunStateFromEngine(state: GraphNodeRunState): GraphNodeRunState {
 export function syncLiveCanvasRunState(
   hostId: string,
   nodeId: string,
-  state: GraphNodeRunState
+  state: GraphNodeRunState,
+  options?: { seed?: boolean }
 ): void {
   const host = graphRunHosts.get(hostId)
   if (!host || host.isRunning.value) return
+  const prev = host.runStates[nodeId]
+  const prevStatus = prev?.status
   if (state.status === 'skipped') {
-    const prev = host.runStates[nodeId]
-    if (prev?.status !== 'pending' && prev?.status !== 'running') return
+    if (prevStatus !== 'pending' && prevStatus !== 'running') return
     host.runStates[nodeId] = { status: 'skipped' }
     return
   }
   // pending/running 只刷状态角标，保留已有 outputs，避免中间态整对象替换拖慢缩放帧
   if (state.status === 'pending' || state.status === 'running') {
-    const prev = host.runStates[nodeId]
     host.runStates[nodeId] = {
       ...(prev?.outputs ? { outputs: prev.outputs } : {}),
       status: state.status,
       ...(state.error ? { error: state.error } : {})
     }
+    if (!options?.seed && prevStatus !== state.status) {
+      emitNodeCookVfx(hostId, nodeId, prevStatus, state.status)
+    }
     return
   }
   host.runStates[nodeId] = uiRunStateFromEngine(state)
+  if (!options?.seed && prevStatus !== state.status) {
+    emitNodeCookVfx(hostId, nodeId, prevStatus, state.status)
+  }
 }
 
 export function seedLiveCanvasRunStates(
@@ -57,7 +65,7 @@ export function seedLiveCanvasRunStates(
   states: Record<string, GraphNodeRunState | undefined>
 ): void {
   for (const [nodeId, state] of Object.entries(states)) {
-    if (state) syncLiveCanvasRunState(hostId, nodeId, state)
+    if (state) syncLiveCanvasRunState(hostId, nodeId, state, { seed: true })
   }
 }
 

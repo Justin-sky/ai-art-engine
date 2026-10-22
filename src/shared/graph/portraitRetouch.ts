@@ -211,6 +211,8 @@ export interface PortraitRetouchState {
   lightTemp: PortraitWarmthTier
 
   // ── 9 调色 ───────────────────────────────────────────────
+  /** 相机色彩科学风格（佳能 / 尼康 / 富士 / 徕卡 / 索尼 / 柯达 / 哈苏 / 理光） */
+  cameraStyle: PortraitCameraStyle
   /** 影调（曝光 / 对比 / 高光阴影） */
   toneGrade: PortraitToneGrade
   /** 饱和度（自然饱和度 / 饱和） */
@@ -301,6 +303,33 @@ export type PortraitToneGrade =
 export type PortraitSaturationTier =
   'off' | 'desaturateSoft' | 'desaturate' | 'boost' | 'boostVivid'
 export type PortraitTintTier = 'off' | 'green' | 'slightGreen' | 'slightMagenta' | 'magenta'
+export type PortraitCameraStyle =
+  | 'none'
+  | 'canon'
+  | 'nikon'
+  | 'fujiClassicNeg'
+  | 'fujiAstia'
+  | 'leica'
+  | 'leicaMonochrom'
+  | 'sony'
+  | 'kodakPortra'
+  | 'hasselblad'
+  | 'ricohGr'
+
+export const PORTRAIT_CAMERA_STYLES: readonly PortraitCameraStyle[] = [
+  'none',
+  'canon',
+  'nikon',
+  'fujiClassicNeg',
+  'fujiAstia',
+  'leica',
+  'leicaMonochrom',
+  'sony',
+  'kodakPortra',
+  'hasselblad',
+  'ricohGr'
+] as const
+
 export type PortraitLutId =
   | 'none'
   | 'clear'
@@ -1014,6 +1043,35 @@ export const PORTRAIT_PARAM_SPECS: readonly PortraitParamSpec[] = [
   biTier('lightTemp', 'light', 'lightTemp', WARMTH_OPTIONS, PORTRAIT_WARMTH_PHRASES),
 
   // ── 9 调色 ──
+  {
+    kind: 'enum',
+    key: 'cameraStyle',
+    group: 'color',
+    labelKey: 'cameraStyle',
+    default: 'none',
+    options: PORTRAIT_CAMERA_STYLES,
+    phrases: {
+      canon:
+        '采用佳能 Canon EOS 人像色彩科学（Canon Portrait Color Science，RF 85mm f/1.2L 光学质感），肤色白里透红、粉润通透，暖品红中间调柔和过渡，高光柔顺自然', // cjk-ok（提示词数据）
+      nikon:
+        '采用尼康 Nikon Z 高动态真实色彩科学（Nikon Neutral-Portrait Color Science，58mm f/0.95 Noct 光学解析力），色彩还原真实准确，暗部层次深邃丰富，微反差清晰通透，黄绿环境色干净纯粹', // cjk-ok（提示词数据）
+      fujiClassicNeg:
+        '采用富士 Fujifilm Classic Neg 经典负片胶片模拟色彩科学，暗部带冷青绿胶片偏色、高光呈温暖琥珀色调，色彩低饱和但反差立体富有胶片空气感，人物肤色清透自然', // cjk-ok（提示词数据）
+      fujiAstia:
+        '采用富士 Fujifilm Astia 柔和人像反转片色彩科学，肤色明暗过渡极其丝滑柔润，天空与青蓝色调清透柔和，整体画面明亮清新', // cjk-ok（提示词数据）
+      leica:
+        '采用徕卡 Leica M11 传奇德味色彩科学（Summilux-M 50mm f/1.4 ASPH 光学镜头味），高微反差与深邃丝绒黑位，高光油润立体，钴蓝与朱红浓郁厚重，自带自然光学柔暗角与强烈空间立体感', // cjk-ok（提示词数据）
+      leicaMonochrom:
+        '采用徕卡 Leica M11 Monochrom 全画幅黑白银盐相机质感，超高动态范围灰阶过渡，深邃黑位与细腻银盐胶片颗粒，面部光影雕塑感极强', // cjk-ok（提示词数据）
+      sony: '采用索尼 Sony Alpha S-Cinetone 电影感色彩科学（FE 85mm F1.4 GM II 镜头质感），暗部冷静克制，肤色独立暖调保护、红润自然，高光呈柔顺电影级滚降（Smooth Highlight Roll-off）', // cjk-ok（提示词数据）
+      kodakPortra:
+        '采用柯达 Kodak Portra 400 传奇人像彩色负片色彩科学，黄金琥珀暖阳光泽，暗部奶油感柔和抬升，高光温和晕染，带真实细腻彩色负片颗粒与复古胶片层次', // cjk-ok（提示词数据）
+      hasselblad:
+        '采用哈苏 Hasselblad X2D 100C 自然色彩解决方案（HNCS 16-bit 中画幅色彩科学，XCD 90mm f/2.5V 镜头质感），肤色色阶极其顺滑真实、零色彩断层，影棚级中画幅极致立体感与细节层次', // cjk-ok（提示词数据）
+      ricohGr:
+        '采用理光 Ricoh GR III 正片模式（Positive Film）高反差街拍色彩科学，黑位深邃扎实，暗部冷青色与暖调人物肤色形成鲜明纪实张力，色彩浓郁鲜明' // cjk-ok（提示词数据）
+    }
+  },
   customTier(
     'toneGrade',
     'color',
@@ -1989,6 +2047,90 @@ export const PORTRAIT_PRESETS: readonly PortraitPresetDef[] = [
       sharpness: 'standard',
       lutId: 'clear'
     }
+  },
+  {
+    id: 'canonRosy',
+    labelKey: 'canonRosy',
+    patch: {
+      cameraStyle: 'canon',
+      skinSmoothing: 'standard',
+      skinTexture: 'strong',
+      skinWhiten: 'light',
+      skinRosy: 'standard',
+      catchlight: 'standard',
+      fillLight: 'light'
+    }
+  },
+  {
+    id: 'nikonTrue',
+    labelKey: 'nikonTrue',
+    patch: {
+      cameraStyle: 'nikon',
+      skinSmoothing: 'light',
+      skinTexture: 'max',
+      clarity: 'standard',
+      sharpness: 'standard',
+      fillLight: 'light'
+    }
+  },
+  {
+    id: 'fujiFilm',
+    labelKey: 'fujiFilm',
+    patch: {
+      cameraStyle: 'fujiClassicNeg',
+      skinSmoothing: 'light',
+      skinTexture: 'strong',
+      toneGrade: 'filmFade',
+      grain: 'light'
+    }
+  },
+  {
+    id: 'leicaMaster',
+    labelKey: 'leicaMaster',
+    patch: {
+      cameraStyle: 'leica',
+      skinSmoothing: 'light',
+      skinTexture: 'max',
+      faceContour: 'standard',
+      clarity: 'standard',
+      vignette: 'light'
+    }
+  },
+  {
+    id: 'sonyCinema',
+    labelKey: 'sonyCinema',
+    patch: {
+      cameraStyle: 'sony',
+      skinSmoothing: 'standard',
+      skinTexture: 'strong',
+      faceContour: 'light',
+      rimLight: 'light',
+      lightRatio: 'soft'
+    }
+  },
+  {
+    id: 'kodakGold',
+    labelKey: 'kodakGold',
+    patch: {
+      cameraStyle: 'kodakPortra',
+      skinSmoothing: 'light',
+      skinTexture: 'strong',
+      colorTemp: 'warm',
+      grain: 'light',
+      softFocus: 'light'
+    }
+  },
+  {
+    id: 'hasselbladStudio',
+    labelKey: 'hasselbladStudio',
+    patch: {
+      cameraStyle: 'hasselblad',
+      skinSmoothing: 'standard',
+      skinTexture: 'max',
+      skinEvenness: 'standard',
+      faceContour: 'standard',
+      sharpness: 'standard'
+    }
   }
 ]
 
@@ -2212,7 +2354,9 @@ function groupNegativeClauses(
   if (state.idPhotoAttire !== 'keep') {
     put('idPhoto', ['衣领歪斜', '衣服不合身', '脖颈错位']) // cjk-ok（提示词数据：负面提示词）
   }
-  if (state.lutId === 'bw') put('color', ['残留彩色'])
+  if (state.lutId === 'bw' || state.cameraStyle === 'leicaMonochrom') {
+    put('color', ['残留彩色']) // cjk-ok（提示词数据：负面提示词）
+  }
   return out
 }
 
