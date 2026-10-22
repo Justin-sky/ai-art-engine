@@ -19,7 +19,8 @@ import {
   resolveAvailableVoices,
   supportsAudioModality,
   supportsMusicModality,
-  supportsSoundEffect
+  supportsSoundEffect,
+  visionGroundingScore
 } from '@shared/modelProvider'
 
 export interface GenerateModelOption {
@@ -510,5 +511,39 @@ export async function loadGenerateModelOptions(
       voiceLabels: {},
       voiceRequired: false
     }
+  }
+}
+
+/**
+ * 加载用于多模态版面识别 / 视觉定位（如 UI 图层分离）的模型选项：
+ * - 将具备视觉定位能力的模型（visionGroundingScore > 0）排在最前并加 `👁` 标识
+ * - 其余已启用文本模型跟在后面（供自定义网关或未收录名称的多模态模型手动指定）
+ * - 未显式指定或不在列表时，selectedKey 返回空串 `''`（代表「自动优选」）
+ */
+export async function loadVisionModelOptions(preferredKey?: string): Promise<{
+  options: GenerateModelOption[]
+  selectedKey: string
+}> {
+  const { options } = await loadGenerateModelOptions('text')
+  const scored = options.map((opt, idx) => ({
+    opt,
+    score: visionGroundingScore(opt.model),
+    idx
+  }))
+  scored.sort((a, b) => {
+    if (a.score > 0 && b.score === 0) return -1
+    if (a.score === 0 && b.score > 0) return 1
+    if (b.score !== a.score) return b.score - a.score
+    return a.idx - b.idx
+  })
+  const sortedOptions: GenerateModelOption[] = scored.map(({ opt, score }) => ({
+    ...opt,
+    label: score > 0 ? `👁 ${opt.label}` : opt.label
+  }))
+  const matched =
+    preferredKey && sortedOptions.some((o) => o.key === preferredKey) ? preferredKey : ''
+  return {
+    options: sortedOptions,
+    selectedKey: matched
   }
 }

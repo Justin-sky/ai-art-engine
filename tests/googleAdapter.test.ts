@@ -26,7 +26,11 @@ vi.mock('../src/main/services/modelProviders/openaiCompat', () => ({
   }))
 }))
 
-import { googleAdapter } from '../src/main/services/modelProviders/google/adapter'
+import {
+  googleAdapter,
+  resetGoogleTextModelCooldownsForTest
+} from '../src/main/services/modelProviders/google/adapter'
+import { generateOpenAiCompatibleText } from '../src/main/services/modelProviders/openaiCompat'
 
 function provider(overrides?: Partial<ModelProviderInstance>): ModelProviderInstance {
   return {
@@ -45,6 +49,14 @@ describe('googleAdapter', () => {
   beforeEach(() => {
     getMock.mockReset()
     postMock.mockReset()
+    resetGoogleTextModelCooldownsForTest()
+    vi.mocked(generateOpenAiCompatibleText).mockReset()
+    vi.mocked(generateOpenAiCompatibleText).mockImplementation(
+      async (_p, modelId: string, input: { prompt: string }) => ({
+        text: `echo:${input.prompt}`,
+        model: modelId
+      })
+    )
   })
 
   it('fetches and filters Gemini text catalog from GET /models (both bare and models/ prefixed IDs)', async () => {
@@ -114,6 +126,27 @@ describe('googleAdapter', () => {
     })
     expect(result.text).toBe('echo:hi')
     expect(result.model).toBe('gemini-2.5-flash')
+  })
+
+  it('automatically falls back to the next Gemini Flash model when primary model hits 429 quota limit', async () => {
+    vi.mocked(generateOpenAiCompatibleText).mockImplementation(
+      async (_p, modelId: string, input: { prompt: string }) => {
+        if (modelId === 'gemini-3.8-flash') {
+          throw new Error(
+            '文本生成失败: You exceeded your current quota, please check your plan and billing details. * Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash'
+          )
+        }
+        return {
+          text: `ok:${input.prompt}`,
+          model: modelId
+        }
+      }
+    )
+    const result = await googleAdapter.generateText(provider(), 'models/gemini-3.8-live', {
+      prompt: 'split ui'
+    })
+    expect(result.text).toBe('ok:split ui')
+    expect(result.model).toBe('gemini-3.6-flash')
   })
 
   it('generates Gemini / Nano Banana images via native /models/{model}:generateContent with imageConfig', async () => {

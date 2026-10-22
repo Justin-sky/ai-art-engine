@@ -457,7 +457,20 @@
               </option>
             </select>
           </label>
-          <label class="tool tool-model">
+          <label
+            v-if="draft.splitMode !== 'local-slice'"
+            class="tool tool-model"
+            :title="t('graph.layerSplit.visionModelHint')"
+          >
+            <span class="tool-label">{{ t('graph.layerSplit.visionModelLabel') }}</span>
+            <select v-model="visionSelectionKey" class="select" @change="onVisionModelChange">
+              <option value="">{{ t('graph.layerSplit.visionModelAuto') }}</option>
+              <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
+                {{ opt.label }}
+              </option>
+            </select>
+          </label>
+          <label v-if="draft.splitMode !== 'local-slice'" class="tool tool-model">
             <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
             <select v-model="selectionKey" class="select" @change="onModelChange">
               <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
@@ -468,7 +481,7 @@
               </option>
             </select>
           </label>
-          <label class="tool">
+          <label v-if="draft.splitMode !== 'local-slice'" class="tool">
             <span class="tool-label">{{ t('graph.layerSplit.resolution') }}</span>
             <select v-model="draft.resolution" class="select">
               <option v-for="r in resolutions" :key="r" :value="r">{{ r }}</option>
@@ -526,6 +539,7 @@ import {
 } from '../features/graph/model/composeImageLayerStack'
 import {
   loadGenerateModelOptions,
+  loadVisionModelOptions,
   preferredModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
@@ -536,6 +550,8 @@ import StudioFloatingWindow from './StudioFloatingWindow.vue'
 export type LayerSplitEditorSavePayload = ReturnType<typeof imageLayerSplitToNodePatch> & {
   generateModel: string
   generateProviderInstanceId: string
+  visionModel?: string
+  visionProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }
 
@@ -550,6 +566,8 @@ const props = withDefaults(
     layerUrls?: Record<string, string>
     generateModel?: string
     generateProviderInstanceId?: string
+    visionModel?: string
+    visionProviderInstanceId?: string
     splitting?: boolean
     splitError?: string
   }>(),
@@ -560,6 +578,8 @@ const props = withDefaults(
     layerUrls: () => ({}),
     generateModel: '',
     generateProviderInstanceId: '',
+    visionModel: '',
+    visionProviderInstanceId: '',
     splitting: false,
     splitError: ''
   }
@@ -627,6 +647,10 @@ const modelOptions = ref<GenerateModelOption[]>([])
 const selectionKey = ref('')
 const selectedModel = ref('')
 const selectedProviderInstanceId = ref('')
+const visionModelOptions = ref<GenerateModelOption[]>([])
+const visionSelectionKey = ref('')
+const selectedVisionModel = ref('')
+const selectedVisionProviderInstanceId = ref('')
 const handles: ResizeHandle[] = ['nw', 'ne', 'sw', 'se']
 const resolutions = LAYER_SPLIT_RESOLUTIONS
 let previewTimer: ReturnType<typeof setTimeout> | null = null
@@ -664,7 +688,9 @@ const dirty = computed(() => {
     JSON.stringify(a) !== JSON.stringify(b) ||
     extraImages.value.length > 0 ||
     selectedModel.value !== (props.generateModel ?? '') ||
-    selectedProviderInstanceId.value !== (props.generateProviderInstanceId ?? '')
+    selectedProviderInstanceId.value !== (props.generateProviderInstanceId ?? '') ||
+    selectedVisionModel.value !== (props.visionModel ?? '') ||
+    selectedVisionProviderInstanceId.value !== (props.visionProviderInstanceId ?? '')
   )
 })
 
@@ -1718,6 +1744,8 @@ function onSplitSelected(): void {
     splitMode: draft.splitMode,
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
+    visionModel: selectedVisionModel.value,
+    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
     imageLayerSplit: normalizeImageLayerSplit(draft)
   })
 }
@@ -1915,6 +1943,8 @@ function buildSavePayload(): LayerSplitEditorSavePayload {
     ...imageLayerSplitToNodePatch(normalizeImageLayerSplit(draft)),
     generateModel: selectedModel.value,
     generateProviderInstanceId: selectedProviderInstanceId.value,
+    visionModel: selectedVisionModel.value,
+    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
     ...(extraImages.value.length ? { extraGeneratedImages: [...extraImages.value] } : {})
   }
 }
@@ -1935,12 +1965,30 @@ function onModelChange(): void {
   selectedProviderInstanceId.value = opt?.providerInstanceId ?? ''
 }
 
+function onVisionModelChange(): void {
+  if (!visionSelectionKey.value) {
+    selectedVisionModel.value = ''
+    selectedVisionProviderInstanceId.value = ''
+    return
+  }
+  const opt = visionModelOptions.value.find((o) => o.key === visionSelectionKey.value)
+  selectedVisionModel.value = opt?.model ?? ''
+  selectedVisionProviderInstanceId.value = opt?.providerInstanceId ?? ''
+}
+
 async function refreshModels(): Promise<void> {
   const preferred = preferredModelKey(props.generateProviderInstanceId, props.generateModel)
-  const { options, selectedKey } = await loadGenerateModelOptions('image', preferred)
+  const preferredVision = preferredModelKey(props.visionProviderInstanceId, props.visionModel)
+  const [{ options, selectedKey }, visionRes] = await Promise.all([
+    loadGenerateModelOptions('image', preferred),
+    loadVisionModelOptions(preferredVision)
+  ])
   modelOptions.value = options
   selectionKey.value = selectedKey || options[0]?.key || ''
   onModelChange()
+  visionModelOptions.value = visionRes.options
+  visionSelectionKey.value = visionRes.selectedKey
+  onVisionModelChange()
 }
 
 watch(
@@ -1973,6 +2021,8 @@ watch(
     Object.assign(draft, normalizeImageLayerSplit(props.setup ?? DEFAULT_IMAGE_LAYER_SPLIT))
     selectedModel.value = props.generateModel ?? ''
     selectedProviderInstanceId.value = props.generateProviderInstanceId ?? ''
+    selectedVisionModel.value = props.visionModel ?? ''
+    selectedVisionProviderInstanceId.value = props.visionProviderInstanceId ?? ''
     void refreshModels()
     void nextTick(() => {
       fitDisplay()
@@ -2003,7 +2053,15 @@ watch(
 )
 
 watch(draft, () => emitPreview(), { deep: true })
-watch([selectedModel, selectedProviderInstanceId], () => emitPreview())
+watch(
+  [
+    selectedModel,
+    selectedProviderInstanceId,
+    selectedVisionModel,
+    selectedVisionProviderInstanceId
+  ],
+  () => emitPreview()
+)
 
 watch(
   () => [props.open, draft.canvasWidth, draft.canvasHeight] as const,

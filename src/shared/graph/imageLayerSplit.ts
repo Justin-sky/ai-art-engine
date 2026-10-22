@@ -153,6 +153,8 @@ export interface ImageLayerSplitNestedRequest {
   splitMode?: UiLayerSplitMode
   generateModel: string
   generateProviderInstanceId: string
+  visionModel?: string
+  visionProviderInstanceId?: string
   imageLayerSplit: ImageLayerSplitState
 }
 

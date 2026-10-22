@@ -2095,27 +2095,37 @@ export function visionGroundingScore(modelId: string): number {
   if (/qwen3-vl|qwen3\.\d+-vl|qwen-vl-max/.test(m)) return 88
   if (/qwen2\.5-vl|qwen-vl/.test(m)) return 80
   if (/doubao.*(vision|seed-1\.[68])|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m)) return 78
-  if (/gpt-5|gpt-4\.1|gpt-4o|o3|o4-mini/.test(m)) return 70
+  if (/gpt-5|gpt-4\.1|gpt-4o|gpt-chat-latest|chatgpt-4o|o3|o4-mini/.test(m)) return 70
   if (/claude-(opus|sonnet)|claude-3\.[57]|claude-4/.test(m)) return 66
   if (/glm-4\.\dv|glm-4v|internvl|minicpm-v|llava|pixtral|grok-.*vision|vision|-vl\b|-vl-/.test(m))
     return 55
   return 0
 }
 
-/** 在所有已启用、有密钥的提供商里挑视觉定位能力最强的文本模型；没有任何视觉模型时返回 null */
-export function pickVisionGroundingProvider(
+/**
+ * 列出所有已启用、有密钥的提供商下的视觉定位候选模型（按定位得分降序排列）。
+ * 供精准 UI 拆层在首选模型配额耗尽（429）或不可用时自动跨模型/跨提供商降级。
+ */
+export function listVisionGroundingCandidates(
   providers: ModelProviderInstance[]
-): { provider: ModelProviderInstance; modelId: string; score: number } | null {
-  let best: { provider: ModelProviderInstance; modelId: string; score: number } | null = null
+): Array<{ provider: ModelProviderInstance; modelId: string; score: number }> {
+  const candidates: Array<{ provider: ModelProviderInstance; modelId: string; score: number }> = []
   for (const provider of providers) {
     if (!provider.enabled) continue
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
     for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
       const score = visionGroundingScore(modelId)
-      if (score > 0 && (!best || score > best.score)) best = { provider, modelId, score }
+      if (score > 0) candidates.push({ provider, modelId, score })
     }
   }
-  return best
+  return candidates.sort((a, b) => b.score - a.score)
+}
+
+/** 在所有已启用、有密钥的提供商里挑视觉定位能力最强的文本模型；没有任何视觉模型时返回 null */
+export function pickVisionGroundingProvider(
+  providers: ModelProviderInstance[]
+): { provider: ModelProviderInstance; modelId: string; score: number } | null {
+  return listVisionGroundingCandidates(providers)[0] ?? null
 }
 
 /**

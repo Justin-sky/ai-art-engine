@@ -9224,6 +9224,8 @@ const layerSplit = reactive({
   layerUrls: {} as Record<string, string>,
   generateModel: '',
   generateProviderInstanceId: '',
+  visionModel: '',
+  visionProviderInstanceId: '',
   splitting: false,
   splitError: ''
 })
@@ -9255,6 +9257,8 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   layerSplit.layerUrls = {}
   layerSplit.generateModel = node.params.generateModel ?? ''
   layerSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
+  layerSplit.visionModel = node.params.visionModel ?? ''
+  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
   layerSplit.historyBefore = buildGraphJson()
@@ -9285,6 +9289,8 @@ function closeLayerSplit(): void {
   layerSplit.layerUrls = {}
   layerSplit.generateModel = ''
   layerSplit.generateProviderInstanceId = ''
+  layerSplit.visionModel = ''
+  layerSplit.visionProviderInstanceId = ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
 }
@@ -9314,6 +9320,8 @@ function previewLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
+  visionModel?: string
+  visionProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }): void {
   if (layerSplit.splitting) return
@@ -9325,8 +9333,13 @@ function previewLayerSplit(payload: {
     imageLayerSplit: payload.imageLayerSplit,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
+    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+    visionProviderInstanceId:
+      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? '',
     ...(generatedImages ? { generatedImages } : {})
   }
+  layerSplit.visionModel = node.params.visionModel ?? ''
+  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
   scheduleSave()
   graphEditorHosts.bumpRevision()
 }
@@ -9335,6 +9348,8 @@ function saveLayerSplit(payload: {
   imageLayerSplit: ImageLayerSplitState
   generateModel: string
   generateProviderInstanceId: string
+  visionModel?: string
+  visionProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }): void {
   const nodeId = layerSplit.nodeId
@@ -9347,11 +9362,16 @@ function saveLayerSplit(payload: {
     imageLayerSplit: payload.imageLayerSplit,
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId,
+    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+    visionProviderInstanceId:
+      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? '',
     ...(generatedImages ? { generatedImages } : {})
   }
   layerSplit.setup = payload.imageLayerSplit
   layerSplit.generateModel = payload.generateModel
   layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
+  layerSplit.visionModel = node.params.visionModel ?? ''
+  layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
   scheduleSave()
   graphEditorHosts.bumpRevision()
   recordGraphChange('layerSplit', before)
@@ -9412,7 +9432,10 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
     ...node.params,
     imageLayerSplit: state,
     generateModel: payload.generateModel,
-    generateProviderInstanceId: payload.generateProviderInstanceId
+    generateProviderInstanceId: payload.generateProviderInstanceId,
+    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+    visionProviderInstanceId:
+      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
   }
 
   const nodeTitle = resolveGraphNodeDisplayTitle(node, {
@@ -9656,11 +9679,16 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
       generatedImages: [...byId.values()],
       imageLayerSplit: nextState,
       generateModel: payload.generateModel,
-      generateProviderInstanceId: payload.generateProviderInstanceId
+      generateProviderInstanceId: payload.generateProviderInstanceId,
+      visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+      visionProviderInstanceId:
+        payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
     }
     layerSplit.setup = nextState
     layerSplit.generateModel = payload.generateModel
     layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
+    layerSplit.visionModel = node.params.visionModel ?? ''
+    layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
     layerSplit.layerUrls = await resolveGeneratedImageUrls(nodeId)
     scheduleSave()
     graphEditorHosts.bumpRevision()

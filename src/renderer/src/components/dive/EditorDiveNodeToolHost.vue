@@ -372,6 +372,8 @@
         :layer-urls="api.layerSplit.layerUrls"
         :generate-model="api.layerSplit.generateModel"
         :generate-provider-instance-id="api.layerSplit.generateProviderInstanceId"
+        :vision-model="api.layerSplit.visionModel"
+        :vision-provider-instance-id="api.layerSplit.visionProviderInstanceId"
         :splitting="api.layerSplit.splitting"
         :split-error="api.layerSplit.splitError"
         @close="onClose(api.closeLayerSplit)"

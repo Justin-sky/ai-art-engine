@@ -14,6 +14,7 @@ import {
   type ModelProviderInstance
 } from '@shared/modelProvider'
 import {
+  GOOGLE_CHAT_FALLBACK_MODELS,
   isGoogleNativeImageModelId,
   isGoogleTextModelId,
   isOfficialGoogleBaseUrl,
@@ -328,6 +329,118 @@ function withGoogleOpenAiBase(provider: ModelProviderInstance): ModelProviderIns
   }
 }
 
+/**
+ * 记录因单模型配额耗尽（429 Quota exceeded）或模型下线（404）暂时不可用的 Google 模型冷却截止时间戳。
+ * 同一轮精准拆层会连续发起多次 VLM 请求（全图版面 + 容器放大复检），缓存冷却态可避免每次请求都先撞一次 429。
+ */
+const googleTextModelCooldownUntil = new Map<string, number>()
+const GOOGLE_TEXT_MODEL_COOLDOWN_MS = 10 * 60_000
+
+export function resetGoogleTextModelCooldownsForTest(): void {
+  googleTextModelCooldownUntil.clear()
+}
+
+function googleModelCooldownKey(provider: ModelProviderInstance, modelId: string): string {
+  return `${provider.id || provider.baseUrl || 'google'}:${modelId}`
+}
+
+function shouldFallbackGoogleTextModel(err: unknown): {
+  fallback: boolean
+  cooldown: boolean
+} {
+  const message = err instanceof Error ? err.message : String(err ?? '')
+  if (!message) return { fallback: false, cooldown: false }
+  if (
+    /API key not valid|invalid api key|UNAUTHENTICATED|\b401\b|Request was aborted|AbortError/i.test(
+      message
+    )
+  ) {
+    return { fallback: false, cooldown: false }
+  }
+  const isQuotaOrNotFound =
+    /exceeded your current quota|quota exceeded|resource_exhausted|generate_content_free_tier_requests|not found|is not supported|\b404\b/i.test(
+      message
+    )
+  if (isQuotaOrNotFound) {
+    return { fallback: true, cooldown: true }
+  }
+  const isTransientOrModelError =
+    /rate.?limit|too many requests|\b429\b|high demand|overloaded|unavailable|\b503\b|\b502\b|\b504\b|\b500\b|gateway timeout|internal error|returned no text/i.test(
+      message
+    )
+  return { fallback: isTransientOrModelError, cooldown: false }
+}
+
+function buildGoogleTextCandidateModels(
+  provider: ModelProviderInstance,
+  modelId: string
+): string[] {
+  const primary = resolveGoogleChatModelId(modelId)
+  const rawCandidates: string[] = []
+  if (primary) rawCandidates.push(primary)
+  const selected = provider.modalities?.text?.selectedModelIds ?? []
+  for (const id of selected) {
+    const resolved = resolveGoogleChatModelId(id)
+    if (resolved) rawCandidates.push(resolved)
+  }
+  if (isOfficialGoogleBaseUrl(provider.baseUrl) || /^gemini-/i.test(primary)) {
+    for (const fallback of GOOGLE_CHAT_FALLBACK_MODELS) {
+      rawCandidates.push(fallback)
+    }
+  }
+  const unique: string[] = []
+  const seen = new Set<string>()
+  for (const candidate of rawCandidates) {
+    if (!candidate || seen.has(candidate)) continue
+    seen.add(candidate)
+    unique.push(candidate)
+  }
+  const now = Date.now()
+  const active: string[] = []
+  const cooled: string[] = []
+  for (const candidate of unique) {
+    const until = googleTextModelCooldownUntil.get(googleModelCooldownKey(provider, candidate)) ?? 0
+    if (until > now) {
+      cooled.push(candidate)
+    } else {
+      active.push(candidate)
+    }
+  }
+  return [...active, ...cooled]
+}
+
+async function generateGoogleTextWithFallback(
+  provider: ModelProviderInstance,
+  modelId: string,
+  input: GenerateTextInput
+): Promise<GenerateTextResult> {
+  const openAiProvider = withGoogleOpenAiBase(provider)
+  const candidates = buildGoogleTextCandidateModels(provider, modelId)
+  let lastError: unknown
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!
+    const hasMoreCandidates = i < candidates.length - 1
+    try {
+      return await generateOpenAiCompatibleText(openAiProvider, candidate, input, {
+        retries: hasMoreCandidates ? 0 : 1
+      })
+    } catch (err) {
+      lastError = err
+      const { fallback, cooldown } = shouldFallbackGoogleTextModel(err)
+      if (cooldown) {
+        googleTextModelCooldownUntil.set(
+          googleModelCooldownKey(provider, candidate),
+          Date.now() + GOOGLE_TEXT_MODEL_COOLDOWN_MS
+        )
+      }
+      if (!hasMoreCandidates || !fallback) {
+        throw err
+      }
+    }
+  }
+  throw lastError
+}
+
 interface GoogleModelListRow {
   id?: string
   name?: string
@@ -482,11 +595,7 @@ export const googleAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    return generateOpenAiCompatibleText(
-      withGoogleOpenAiBase(provider),
-      resolveGoogleChatModelId(modelId),
-      input
-    )
+    return generateGoogleTextWithFallback(provider, modelId, input)
   },
 
   async generateImage(

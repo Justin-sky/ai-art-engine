@@ -5060,6 +5060,10 @@ export default {
         'Local OCR locates text, a multimodal LLM (Gemini auto-selected by default) parses the full control tree with zoom-in re-checks on large containers; the image model above then restores occluded parts level by level, producing complete layers, editable text and a control-nested PSD. Requires a vision-capable text model enabled in Settings',
       splitModeHintPreciseFallback:
         'Precise split (OCR + multimodal) first; without a vision-capable text model or if parsing fails, falls back to this legacy engine:',
+      visionModelLabel: 'Multimodal LLM (Layout)',
+      visionModelAuto: '⚡ Auto (Best Vision Model + Auto-Fallback)',
+      visionModelHint:
+        'Multimodal text model for precise layout parsing & UI control detection; automatically falls back across available vision models on 429 quota limits',
       prompt: 'Decompose prompt',
       promptPlaceholder:
         'Optional: describe the UI widgets to isolate (or click a preset below). Leave empty to automatically decompose base plate, frames, buttons, and ornaments for Game UI.',

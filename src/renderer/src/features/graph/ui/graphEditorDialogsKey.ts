@@ -276,6 +276,8 @@ export type GraphEditorDialogsApi = {
     layerUrls: Record<string, string>
     generateModel: string
     generateProviderInstanceId: string
+    visionModel: string
+    visionProviderInstanceId: string
     splitting: boolean
     splitError: string
   }
@@ -401,4 +403,4 @@ export type GraphEditorDialogsApi = {
 }
 
 export const graphEditorDialogsKey: InjectionKey<GraphEditorDialogsApi> =
-  Symbol('graphEditorDialogs')
+  Symbol.for('graphEditorDialogs')

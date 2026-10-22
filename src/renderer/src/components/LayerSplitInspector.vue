@@ -27,6 +27,21 @@
       <span class="mode-hint">{{ activeStrategyHint }}</span>
     </label>
 
+    <label
+      v-if="effectiveStrategy !== 'local-slice'"
+      class="field-block"
+      :title="t('graph.layerSplit.visionModelHint')"
+    >
+      <span class="field-label">{{ t('graph.layerSplit.visionModelLabel') }}</span>
+      <select class="select" :value="visionSelectionKey" @change="onVisionModelChange">
+        <option value="">{{ t('graph.layerSplit.visionModelAuto') }}</option>
+        <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
+          {{ opt.label }}
+        </option>
+      </select>
+      <span class="mode-hint">{{ t('graph.layerSplit.visionModelHint') }}</span>
+    </label>
+
     <template v-if="effectiveStrategy !== 'local-slice'">
       <ImageGenerateModelField
         :open="Boolean(node)"
@@ -120,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   LAYER_SPLIT_RESOLUTIONS,
   UI_LAYER_SPLIT_PRESETS,
@@ -142,6 +157,11 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
+import {
+  loadVisionModelOptions,
+  preferredModelKey,
+  type GenerateModelOption
+} from '../features/graph/model/generateModelOptions'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { layerSplitToPsdUint8Array } from '../features/graph/model/layerSplitPsd'
 
@@ -151,6 +171,8 @@ const resolutions = LAYER_SPLIT_RESOLUTIONS
 const exporting = ref(false)
 const exportMessage = ref('')
 const exportFailed = ref(false)
+const visionModelOptions = ref<GenerateModelOption[]>([])
+const visionSelectionKey = ref('')
 let exportMsgTimer: ReturnType<typeof setTimeout> | null = null
 
 const node = computed(() => {
@@ -362,6 +384,55 @@ function onModelChange(payload: {
   graphEditorHosts.updateNode(hid, current.id, {
     generateModel: payload.generateModel,
     generateProviderInstanceId: payload.generateProviderInstanceId
+  })
+}
+
+async function refreshVisionModels(): Promise<void> {
+  const current = node.value
+  if (!current) {
+    visionModelOptions.value = []
+    visionSelectionKey.value = ''
+    return
+  }
+  const preferred = preferredModelKey(
+    current.params.visionProviderInstanceId,
+    current.params.visionModel
+  )
+  const { options, selectedKey } = await loadVisionModelOptions(preferred)
+  visionModelOptions.value = options
+  visionSelectionKey.value = selectedKey
+}
+
+watch(
+  () => [
+    node.value?.id ?? '',
+    node.value?.params.visionProviderInstanceId ?? '',
+    node.value?.params.visionModel ?? ''
+  ],
+  () => {
+    void refreshVisionModels()
+  },
+  { immediate: true }
+)
+
+function onVisionModelChange(event: Event): void {
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const key = (event.target as HTMLSelectElement).value
+  visionSelectionKey.value = key
+  if (!key) {
+    graphEditorHosts.updateNode(hid, current.id, {
+      visionModel: '',
+      visionProviderInstanceId: ''
+    })
+    return
+  }
+  const opt = visionModelOptions.value.find((o) => o.key === key)
+  if (!opt) return
+  graphEditorHosts.updateNode(hid, current.id, {
+    visionModel: opt.model,
+    visionProviderInstanceId: opt.providerInstanceId
   })
 }
 

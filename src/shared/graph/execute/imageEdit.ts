@@ -1610,11 +1610,17 @@ export async function executeLayerSplitNode(
           if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
           const detail =
             err instanceof PreciseSplitError ? err.code : String((err as Error)?.message ?? err)
-          ctx.log?.(`[precise-split] failed: ${detail}`, explicit ? 'error' : 'warn')
+          const canFallbackLegacy = Boolean(ctx.decomposeImageUiLayers || ctx.generateImage)
+          ctx.log?.(
+            `[precise-split] failed: ${detail}${canFallbackLegacy ? ' (falling back to universal split engine)' : ''}`,
+            explicit && !canFallbackLegacy ? 'error' : 'warn'
+          )
           console.warn('[graph] precise layer split failed', err)
-          if (explicit) throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
+          if (explicit && !canFallbackLegacy) {
+            throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
+          }
         }
-      } else if (explicit) {
+      } else if (explicit && !ctx.decomposeImageUiLayers && !ctx.generateImage) {
         throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail: 'no vision capability' })
       }
     }

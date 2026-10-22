@@ -56,6 +56,7 @@ import type {
 import {
   allowsEmptyApiKey,
   findProviderById,
+  listVisionGroundingCandidates,
   modalityConfig,
   normalizeVideoInputReference,
   pickTranscribeProvider,
@@ -491,14 +492,56 @@ class ModelProviderFacade {
               return provider ? { provider, modelId: wantedModel } : null
             })()
           : pickVisionGroundingProvider(providers)
-    const { provider, modelId } = grounding
+    const primary = grounding
       ? grounding
       : resolveActiveProvider('text', rest.providerInstanceId, rest.model)
     const images = rest.images?.length ? ensureApiImageUrls(rest.images) : rest.images
-    return getProviderAdapter(provider.providerKind).generateText(provider, modelId, {
-      ...rest,
-      images
-    })
+    const payload = { ...rest, images }
+
+    if (!visionGrounding) {
+      return getProviderAdapter(primary.provider.providerKind).generateText(
+        primary.provider,
+        primary.modelId,
+        payload
+      )
+    }
+
+    // 视觉定位任务：若首选模型/提供商因配额耗尽（429）、限流、下线（404）或网关异常失败，
+    // 自动按得分降序尝试其余已启用的多模态模型（如从 Google Gemini 回退到 OpenRouter 视觉模型）
+    const fallbackCandidates = listVisionGroundingCandidates(providers)
+    const attemptChain: Array<{ provider: ModelProviderInstance; modelId: string }> = [primary]
+    const seen = new Set<string>([`${primary.provider.id}::${primary.modelId}`])
+    for (const item of fallbackCandidates) {
+      const key = `${item.provider.id}::${item.modelId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      attemptChain.push({ provider: item.provider, modelId: item.modelId })
+    }
+
+    const exhaustedGoogleProviderIds = new Set<string>()
+    let lastError: unknown
+    for (let i = 0; i < attemptChain.length; i++) {
+      const target = attemptChain[i]!
+      if (exhaustedGoogleProviderIds.has(target.provider.id)) continue
+      try {
+        return await getProviderAdapter(target.provider.providerKind).generateText(
+          target.provider,
+          target.modelId,
+          payload
+        )
+      } catch (err) {
+        lastError = err
+        // Google 适配器内部已遍历全部可用 Gemini Flash 回退模型，若仍失败则跳过同一实例下的其余模型直接切下一家提供商
+        if (target.provider.providerKind === 'google') {
+          exhaustedGoogleProviderIds.add(target.provider.id)
+        }
+        const msg = err instanceof Error ? err.message : String(err ?? '')
+        if (/Request was aborted|AbortError/i.test(msg)) {
+          throw err
+        }
+      }
+    }
+    throw lastError
   }
 
   /**

@@ -210,12 +210,15 @@ export function resolveGoogleChatModelId(modelId: string): string {
 }
 
 /**
- * Google 官方端点在高峰期（503 high demand）或旧模型下线（404）时的自动回退候选序列。
+ * Google 官方端点在单模型配额耗尽（429 Quota exceeded）、高峰期（503 high demand）
+ * 或旧模型下线（404）时的自动回退候选序列（Google 免费层级按单模型独立计算每日配额）。
  */
 export const GOOGLE_CHAT_FALLBACK_MODELS: readonly string[] = [
   'gemini-3.8-flash',
   'gemini-3.6-flash',
   'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
   'gemini-flash-latest',
   'gemini-3-flash-preview'
 ]
