@@ -16,6 +16,7 @@ import {
 import { tmpdir } from 'os'
 import { join, basename, dirname, extname } from 'path'
 import {
+  buildClipVisualFfmpegFilter,
   buildMainClipCameraFfmpegFilter,
   buildOverlayClipFfmpegFilterSteps,
   clampClipFreezeTailSec,
@@ -132,17 +133,9 @@ export function buildAtempoChain(speed: number): string {
   return parts.join(',')
 }
 
-/** 片段级调色（亮度/对比度/饱和度）滤镜片段 */
+/** 片段级调色、滤镜与画面特效滤镜链 */
 function buildClipColorEqFilter(clip: TimelineExportClip): string {
-  const b = Number.isFinite(clip.brightness)
-    ? Math.min(0.5, Math.max(-0.5, Number(clip.brightness)))
-    : 0
-  const c = Number.isFinite(clip.contrast) ? Math.min(2, Math.max(0.5, Number(clip.contrast))) : 1
-  const s = Number.isFinite(clip.saturation) ? Math.min(3, Math.max(0, Number(clip.saturation))) : 1
-  if (Math.abs(b) <= 0.001 && Math.abs(c - 1) <= 0.001 && Math.abs(s - 1) <= 0.001) {
-    return ''
-  }
-  return `eq=brightness=${b.toFixed(3)}:contrast=${c.toFixed(3)}:saturation=${s.toFixed(3)}`
+  return buildClipVisualFfmpegFilter(clip) ?? ''
 }
 
 /** 片段级画面裁剪（归一化 0~1）滤镜片段 */
@@ -332,8 +325,13 @@ export function buildFilterGraph(
       fadeout: 'fadeblack',
       fadein: 'fadeblack',
       flash: 'fadewhite',
+      fadegrays: 'fadegrays',
+      hblur: 'hblur',
+      distance: 'distance',
       smoothleft: 'smoothleft',
       smoothright: 'smoothright',
+      smoothup: 'smoothup',
+      smoothdown: 'smoothdown',
       slideleft: 'slideleft',
       slideright: 'slideright',
       slideup: 'slideup',
@@ -342,13 +340,28 @@ export function buildFilterGraph(
       wiperight: 'wiperight',
       wipeup: 'wipeup',
       wipedown: 'wipedown',
+      wipetl: 'wipetl',
+      wipetr: 'wipetr',
+      wipebl: 'wipebl',
+      wipebr: 'wipebr',
       circleopen: 'circleopen',
       circleclose: 'circleclose',
+      rectcrop: 'rectcrop',
       radial: 'radial',
       zoomin: 'zoomin',
       pixelize: 'pixelize',
       horzopen: 'horzopen',
-      vertopen: 'vertopen'
+      horzclose: 'horzclose',
+      vertopen: 'vertopen',
+      vertclose: 'vertclose',
+      hlslice: 'hlslice',
+      hrslice: 'hrslice',
+      vuslice: 'vuslice',
+      vdslice: 'vdslice',
+      squeezeh: 'squeezeh',
+      squeezev: 'squeezev',
+      diagtl: 'diagtl',
+      diagbr: 'diagbr'
     }
     const xfadeTransitionName = (type: string | undefined): string | null =>
       xfadeMap[type ?? ''] ?? null

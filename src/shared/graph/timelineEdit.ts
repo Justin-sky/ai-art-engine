@@ -15,6 +15,7 @@
  *   但失败项必须原样回报给调用方，绝不能静默跳过。
  */
 import {
+  applyVideoTransitionBetweenClips,
   isTimelineEaseType,
   isTimelineMainCameraPreset,
   isTimelineTweenInPreset,
@@ -23,8 +24,15 @@ import {
   normalizeTimelineKeyframes,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
-  type ScriptTimelineTrackKind
+  type ScriptTimelineSettings,
+  type ScriptTimelineTrackKind,
+  type ScriptTimelineTransitionType
 } from './scriptTimeline'
+import {
+  applyTimelineCreativeTemplateToClips,
+  TIMELINE_CREATIVE_TEMPLATES,
+  type TimelineCreativeTemplateId
+} from './timelineCreativePack'
 import type { TimelineTimeRange } from './timelineCut'
 
 /** 允许新建的片段草稿：`id` / `startSec` 由本模块补齐 */
@@ -53,6 +61,18 @@ export type TimelineEditOperation =
       clips: TimelineClipDraft[]
     }
   | { op: 'update'; clipId: string; patch: TimelineClipPatch }
+  | {
+      /** 按轨道（或指定 clipIds）批量更新片段属性（滤镜/特效/调色/转场/运镜/音量等） */
+      op: 'batchUpdate'
+      track?: ScriptTimelineTrackKind
+      clipIds?: string[]
+      patch: TimelineClipPatch
+    }
+  | {
+      /** 一键套用剪映风格成片模板（自动为视频轨片段注入特效、滤镜、调色、运镜、转场及字幕预设） */
+      op: 'applyTemplate'
+      templateId: TimelineCreativeTemplateId | string
+    }
   | { op: 'remove'; clipIds: string[] }
 
 export type TimelineEditFailureCode =
@@ -64,6 +84,8 @@ export type TimelineEditFailureCode =
   | 'invalid-duration'
   /** patch 里没有任何可识别字段 */
   | 'empty-patch'
+  /** 模板 ID 不存在 */
+  | 'invalid-template'
 
 export interface TimelineEditFailure {
   op: TimelineEditOperation['op']
@@ -96,6 +118,13 @@ const TRANSITION_TYPES = [
   'fadeout',
   'fadein',
   'flash',
+  'fadegrays',
+  'hblur',
+  'distance',
+  'smoothleft',
+  'smoothright',
+  'smoothup',
+  'smoothdown',
   'slideleft',
   'slideright',
   'slideup',
@@ -104,8 +133,28 @@ const TRANSITION_TYPES = [
   'wiperight',
   'wipeup',
   'wipedown',
+  'wipetl',
+  'wipetr',
+  'wipebl',
+  'wipebr',
   'circleopen',
-  'circleclose'
+  'circleclose',
+  'rectcrop',
+  'radial',
+  'zoomin',
+  'pixelize',
+  'horzopen',
+  'horzclose',
+  'vertopen',
+  'vertclose',
+  'hlslice',
+  'hrslice',
+  'vuslice',
+  'vdslice',
+  'squeezeh',
+  'squeezev',
+  'diagtl',
+  'diagbr'
 ]
 
 /** 可改字段白名单：类型约束在外部入口不可信，运行时也要防脏数据 */
@@ -125,6 +174,19 @@ const EDITABLE_PATCH_KEYS = new Set([
   'brightness',
   'contrast',
   'saturation',
+  'vibrance',
+  'temperature',
+  'tint',
+  'highlights',
+  'shadows',
+  'sharpen',
+  'vignette',
+  'fade',
+  'grain',
+  'filterPreset',
+  'filterIntensity',
+  'visualEffect',
+  'effectIntensity',
   'textColor',
   'fontSize',
   'volume',
@@ -135,6 +197,10 @@ const EDITABLE_PATCH_KEYS = new Set([
   'overlayWidth',
   'overlayHeight',
   'overlayRotation',
+  'cropX',
+  'cropY',
+  'cropWidth',
+  'cropHeight',
   'opacity',
   'tweenIn',
   'tweenInDurationSec',
@@ -164,6 +230,17 @@ const NUMERIC_PATCH_RULES: Record<string, { min: number; max?: number; strictMin
   brightness: { min: -0.5, max: 0.5 },
   contrast: { min: 0.5, max: 2 },
   saturation: { min: 0, max: 3 },
+  vibrance: { min: -100, max: 100 },
+  temperature: { min: -100, max: 100 },
+  tint: { min: -100, max: 100 },
+  highlights: { min: -100, max: 100 },
+  shadows: { min: -100, max: 100 },
+  sharpen: { min: 0, max: 100 },
+  vignette: { min: 0, max: 100 },
+  fade: { min: 0, max: 100 },
+  grain: { min: 0, max: 100 },
+  filterIntensity: { min: 0, max: 100 },
+  effectIntensity: { min: 0, max: 100 },
   fontSize: { min: 12, max: 200 },
   volume: { min: 0, max: 1 },
   opacity: { min: 0, max: 1 },
@@ -176,6 +253,10 @@ const NUMERIC_PATCH_RULES: Record<string, { min: number; max?: number; strictMin
   overlayWidth: { min: 0.02, max: 2 },
   overlayHeight: { min: 0.02, max: 2 },
   overlayRotation: { min: -720, max: 720 },
+  cropX: { min: 0, max: 0.95 },
+  cropY: { min: 0, max: 0.95 },
+  cropWidth: { min: 0.05, max: 1 },
+  cropHeight: { min: 0.05, max: 1 },
   tweenInDurationSec: { min: 0.05, max: 10 },
   tweenOutDurationSec: { min: 0.05, max: 10 },
   tweenLoopSpeedHz: { min: 0.2, max: 6 },
@@ -334,12 +415,70 @@ export function applyTimelineEdits(
   const clips: ScriptTimelineClip[] = (document.clips ?? [])
     .filter((clip) => !!clip && typeof clip === 'object')
     .map((clip) => ({ ...clip }))
+  let nextSettings: ScriptTimelineSettings | undefined = document.settings
+    ? { ...document.settings }
+    : undefined
   const used = new Set(clips.filter(isUsableClip).map((clip) => clip.id))
   const failures: TimelineEditFailure[] = []
   let added = 0
   let updated = 0
   let removed = 0
   let draftIndex = 0
+
+  /**
+   * 当修改或新增主视频轨片段的 `transitionType` / `transitionInSec` 且未显式指定 `startSec` 时，
+   * 自动与前一视频轨片段建立/解除转场重叠（涟漪平移后续片段），保证预览与导出真正生效。
+   */
+  const syncVideoTransitionOverlap = (
+    rightClipId: string,
+    patch: Record<string, unknown>,
+    clear: string[]
+  ): void => {
+    if (patch.startSec !== undefined) return
+    const touchesTransition =
+      'transitionType' in patch ||
+      'transitionInSec' in patch ||
+      clear.includes('transitionType') ||
+      clear.includes('transitionInSec')
+    if (!touchesTransition) return
+    const vClips = clips
+      .filter((c) => isUsableClip(c) && c.track === 'video')
+      .slice()
+      .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+    const rightIdx = vClips.findIndex((c) => c.id === rightClipId)
+    if (rightIdx <= 0) return
+    const left = vClips[rightIdx - 1]!
+    const right = vClips[rightIdx]!
+    const clearTrans =
+      clear.includes('transitionType') ||
+      clear.includes('transitionInSec') ||
+      patch.transitionType === 'none'
+    const nextType: ScriptTimelineTransitionType = clearTrans
+      ? 'none'
+      : ((patch.transitionType as ScriptTimelineTransitionType | undefined) ??
+        (right.transitionType && right.transitionType !== 'none'
+          ? right.transitionType
+          : 'dissolve'))
+    const rawDur = clearTrans
+      ? 0
+      : typeof patch.transitionInSec === 'number'
+        ? patch.transitionInSec
+        : right.transitionInSec
+    const nextClips = applyVideoTransitionBetweenClips(clips, left.id, right.id, {
+      transitionType: nextType,
+      durationSec: rawDur
+    })
+    clips.splice(0, clips.length, ...nextClips)
+    const updatedRight = clips.find((c) => c.id === rightClipId)
+    if (updatedRight) {
+      if (clear.includes('transitionType')) {
+        delete (updatedRight as Record<string, unknown>).transitionType
+      }
+      if (clear.includes('transitionInSec')) {
+        delete (updatedRight as Record<string, unknown>).transitionInSec
+      }
+    }
+  }
 
   /** 逐枚校验并插入草稿；`add` 与 `replaceRange` 共用 */
   const insertDrafts = (
@@ -372,7 +511,7 @@ export function applyTimelineEdits(
         used
       )
       used.add(id)
-      clips.push({
+      const inserted: ScriptTimelineClip = {
         ...draft,
         id,
         track: draft.track,
@@ -380,7 +519,27 @@ export function applyTimelineEdits(
         durationSec: round4(durationSec),
         title: String(draft.title ?? draft.text ?? ''),
         sourceId: String(draft.sourceId ?? draft.assetId ?? draft.relativePath ?? '')
-      })
+      }
+      clips.push(inserted)
+      if (
+        opLabel === 'add' &&
+        explicitStart === null &&
+        gapSec === 0 &&
+        inserted.track === 'video' &&
+        ((inserted.transitionType && inserted.transitionType !== 'none') ||
+          (inserted.transitionInSec ?? 0) > 0)
+      ) {
+        syncVideoTransitionOverlap(
+          inserted.id,
+          {
+            ...(inserted.transitionType ? { transitionType: inserted.transitionType } : {}),
+            ...(inserted.transitionInSec !== undefined
+              ? { transitionInSec: inserted.transitionInSec }
+              : {})
+          },
+          []
+        )
+      }
       added += 1
     }
   }
@@ -446,7 +605,106 @@ export function applyTimelineEdits(
       }
       Object.assign(target, patch)
       for (const key of clear) delete (target as Record<string, unknown>)[key]
+      if (target.track === 'video') {
+        syncVideoTransitionOverlap(target.id, patch, clear)
+      }
       updated += 1
+      continue
+    }
+
+    if (operation.op === 'batchUpdate') {
+      if (operation.track !== undefined && !isTrackKind(operation.track)) {
+        failures.push({
+          op: 'batchUpdate',
+          code: 'invalid-track',
+          target: String(operation.track)
+        })
+        continue
+      }
+      const { patch, clear, failures: patchFailures } = sanitizeClipPatch(operation.patch)
+      const usable = Object.keys(patch).length > 0 || clear.length > 0
+      if (!usable) {
+        if (patchFailures.length) {
+          for (const code of patchFailures) {
+            failures.push({ op: 'batchUpdate', code, target: operation.track ?? '*' })
+          }
+        } else {
+          failures.push({
+            op: 'batchUpdate',
+            code: 'empty-patch',
+            target: operation.track ?? '*'
+          })
+        }
+        continue
+      }
+      for (const code of patchFailures) {
+        failures.push({ op: 'batchUpdate', code, target: operation.track ?? '*' })
+      }
+      const targetIds: string[] = []
+      if (Array.isArray(operation.clipIds) && operation.clipIds.length > 0) {
+        for (const rawId of operation.clipIds) {
+          const cid = String(rawId ?? '')
+          const found = clips.find((c) => c.id === cid)
+          if (!found) {
+            failures.push({ op: 'batchUpdate', code: 'clip-not-found', target: cid })
+            continue
+          }
+          if (operation.track && found.track !== operation.track) continue
+          targetIds.push(cid)
+        }
+      } else {
+        for (const clip of clips) {
+          if (!isUsableClip(clip)) continue
+          if (operation.track && clip.track !== operation.track) continue
+          targetIds.push(clip.id)
+        }
+      }
+      for (const cid of targetIds) {
+        const target = clips.find((c) => c.id === cid)
+        if (!target) continue
+        Object.assign(target, patch)
+        for (const key of clear) delete (target as Record<string, unknown>)[key]
+        updated += 1
+      }
+      // 若批量操作涉及主视频轨转场，按时间顺序建立相邻切点重叠
+      const vTargets = clips
+        .filter((c) => isUsableClip(c) && c.track === 'video' && targetIds.includes(c.id))
+        .slice()
+        .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
+      for (const vc of vTargets) {
+        syncVideoTransitionOverlap(vc.id, patch, clear)
+      }
+      continue
+    }
+
+    if (operation.op === 'applyTemplate') {
+      const preset = TIMELINE_CREATIVE_TEMPLATES.find((item) => item.id === operation.templateId)
+      if (!preset) {
+        failures.push({
+          op: 'applyTemplate',
+          code: 'invalid-template',
+          target: String(operation.templateId ?? '')
+        })
+        continue
+      }
+      const beforeCount = clips.length
+      const templated = applyTimelineCreativeTemplateToClips(
+        clips,
+        document.sources ?? [],
+        nextSettings ?? {},
+        preset.id,
+        (list, leftId, rightId, opts) =>
+          applyVideoTransitionBetweenClips(list, leftId, rightId, opts)
+      )
+      clips.splice(0, clips.length, ...templated.clips)
+      for (const c of clips) {
+        if (isUsableClip(c)) used.add(c.id)
+      }
+      nextSettings = templated.settings
+      if (clips.length > beforeCount) {
+        added += clips.length - beforeCount
+      }
+      updated += Math.max(1, templated.appliedVideoClipCount)
       continue
     }
 
@@ -464,5 +722,15 @@ export function applyTimelineEdits(
     }
   }
 
-  return { document: { ...document, clips }, added, updated, removed, failures }
+  return {
+    document: {
+      ...document,
+      clips,
+      ...(nextSettings ? { settings: nextSettings } : {})
+    },
+    added,
+    updated,
+    removed,
+    failures
+  }
 }

@@ -1521,7 +1521,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_edit',
     title: '编辑成片时间线',
     description:
-      '在剧本资产的时间线上增删改片段，四类指令按 operations 顺序执行：add（铺素材上轨；每枚给 track 与 durationSec，assetId 会自动补媒体路径与标题，缺 startSec 时自动排到该轨轨尾、多枚依次紧接）/ update（按片段 id 改字段：音量 / 淡入淡出 / 转场 / 时长 / 字幕文本 / 画中画位置；传 null 表示清除该字段）/ remove（按 id 删）/ subtitles（把 transcribe_audio 的分段铺成字幕，按配音片段的取段起点对齐；默认替换该配音区间上的旧字幕，mode=append 则只追加）。单条指令失败只记入 failures 并继续执行其余指令，返回里带 added / removed 的片段 id。默认 dry-run 只回报告，apply=true 才写回剧本资产（需该剧本的时间线编辑器已关闭）。片段 id 用 timeline_read 查；粗剪会切分片段并改名（clip-1 → clip-1~2），重排后再编辑请重新读一次。',
+      '在剧本资产的时间线上增删改片段或一键套用成片模板，支持六类指令按 operations 顺序执行：add（铺素材上轨；每枚给 track 与 durationSec，assetId 会自动补媒体路径与标题，缺 startSec 时自动排到该轨轨尾、多枚依次紧接；若带 transitionType 会自动与前一片段重叠建立转场）/ update（按片段 id 改字段：特效 visualEffect / 滤镜 filterPreset / 12 项色彩调节 / 40 种转场 transitionType / 运镜 cameraMotion / 补间动效 tweenIn·Out·Loop / 关键帧 keyframes / 画面裁剪 cropX·Y·Width·Height / 变速 speed / 音量 / 淡入淡出 / 字幕文本 / 画中画位置；主视频轨片段改 transitionType 或 transitionInSec 时会自动与前一片段建立重叠并涟漪平移后续片段；传 null 表示清除该字段）/ batchUpdate（按 track 或 clipIds 批量更新片段属性，如全轨统一加滤镜、特效、调色或转场）/ applyTemplate（一键套用 12 套剪映风格成片模板 templateId，自动注入特效/滤镜/调色/运镜/转场/字幕预设）/ remove（按 id 删）/ subtitles（把 transcribe_audio 的分段铺成字幕，按配音片段的取段起点对齐；默认替换该配音区间上的旧字幕，mode=append 则只追加）。还可传顶层 settings 修改导出画幅、帧率、字幕样式、混音闪避等全局设置。默认 apply=true 直接生效并实时同步打开的时间线编辑器。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1529,19 +1529,19 @@ const TOOL_DEFS: McpToolDef[] = [
         nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
         operations: {
           type: 'array',
-          description: '按顺序执行的编辑指令',
+          description: '按顺序执行的编辑指令（若仅修改顶层 settings 可传空数组）',
           items: {
             type: 'object',
             properties: {
               op: {
                 type: 'string',
-                enum: ['add', 'update', 'remove', 'subtitles'],
+                enum: ['add', 'update', 'batchUpdate', 'applyTemplate', 'remove', 'subtitles'],
                 description: '指令类型'
               },
               clips: {
                 type: 'array',
                 description:
-                  'add：要铺的片段。每项需含 track（video / overlay / voice / subtitle / music / sfx）与 durationSec，可用 assetId 或工程内相对路径 relativePath 指定媒体，startSec 缺省排到该轨轨尾；也支持 volume / fadeInSec / overlayX 等片段字段',
+                  'add：要铺的片段。每项需含 track（video / overlay / voice / subtitle / music / sfx）与 durationSec，可用 assetId 或工程内相对路径 relativePath 指定媒体，startSec 缺省排到该轨轨尾；也支持 visualEffect / filterPreset / transitionType / cameraMotion / volume 等全部片段字段',
                 items: { type: 'object' }
               },
               gapSec: {
@@ -1549,15 +1549,33 @@ const TOOL_DEFS: McpToolDef[] = [
                 description: 'add：片段之间（以及与轨内既有内容之间）留的空隙秒数，默认 0'
               },
               clipId: { type: 'string', description: 'update：要改的片段 id' },
+              track: {
+                type: 'string',
+                enum: ['video', 'overlay', 'voice', 'subtitle', 'music', 'sfx'],
+                description:
+                  'batchUpdate：要批量更新的目标轨道（省略且未传 clipIds 时对全部片段生效）'
+              },
+              templateId: {
+                type: 'string',
+                description:
+                  'applyTemplate：成片模板 ID（high-energy-beat / black-gold-cinema / cyber-neon-drama / fuji-vlog / hk-retro-memory / japanese-fresh-album / noir-documentary / vhs-retro-tape / anime-opening / peach-fashion-lookbook / dune-epic-trailer / vaporwave-party）'
+              },
               patch: {
                 type: 'object',
                 description:
-                  'update：要改的字段（text / title / startSec / durationSec / sourceOffsetSec / volume / opacity / fadeInSec / fadeOutSec / overlayX / overlayY / overlayWidth / overlayHeight / transitionInSec / transitionOutSec / transitionType；传 null 表示清除）'
+                  'update / batchUpdate：要改的字段（传 null 表示清除）。支持：' +
+                  '【特效】visualEffect（none / rgb-glitch / bad-tv / neon-edge / cyber-matrix / pixel-mosaic / camera-shake / earthquake / beat-pulse / soul-out / strobe-flash / pendulum-swing / zoom-burst / dreamy-bloom / gold-sparkle / sunset-leak / neon-halo / blur-focus / tilt-shift / vhs-retro / old-film / dv-cam / posterize-pop / negative-invert / cinema-letterbox / bw-spotlight / thermal-vision / night-vision / split-2h / split-3v / split-4grid）、effectIntensity（0~100）；' +
+                  '【滤镜】filterPreset（none / black-gold / teal-orange / cyberpunk / blade-runner / dune-sand / matrix-green / noir-bw / fuji-classic / kodak-portra / agfa-vista / polaroid-fade / hk-retro / vintage-sepia / cream-skin / peach-oolong / cold-porcelain / japanese-fresh / kamakura-sea / emerald-forest / sunset-glow / golden-autumn / nordic-cold / anime-vivid / morandi-gray / vaporwave）、filterIntensity（0~100）；' +
+                  '【转场】transitionType（none / dissolve / fade / fadeout / fadein / flash / fadegrays / hblur / distance / smoothleft / smoothright / smoothup / smoothdown / slideleft / slideright / slideup / slidedown / wipeleft / wiperight / wipeup / wipedown / wipetl / wipetr / wipebl / wipebr / circleopen / circleclose / rectcrop / radial / zoomin / pixelize / horzopen / horzclose / vertopen / vertclose / hlslice / hrslice / vuslice / vdslice / squeezeh / squeezev / diagtl / diagbr）、transitionInSec、transitionOutSec；' +
+                  '【12项色彩调节】brightness（-0.5~0.5）、contrast（0.5~2）、saturation（0~3）、vibrance（-100~100）、temperature（-100~100）、tint（-100~100）、highlights（-100~100）、shadows（-100~100）、sharpen（0~100）、vignette（0~100）、fade（0~100）、grain（0~100）；' +
+                  '【运镜与动效】cameraMotion（none / ken-burns-in / ken-burns-out / pan-left / pan-right / pan-up / pan-down / drift-up-right / handheld-subtle）、tweenIn、tweenInDurationSec、tweenInEase、tweenOut、tweenOutDurationSec、tweenOutEase、tweenLoop、tweenLoopSpeedHz、tweenLoopIntensity、keyframes；' +
+                  '【裁剪与几何】cropX（0~0.95）、cropY（0~0.95）、cropWidth（0.05~1）、cropHeight（0.05~1）、overlayX、overlayY、overlayWidth、overlayHeight、overlayRotation、opacity；' +
+                  '【时间与音频字幕】startSec、durationSec、sourceOffsetSec、speed（0.25~4）、freezeTailSec（0~30）、volume（0~1）、fadeInSec、fadeOutSec、text、title、textColor、fontSize、stickerId、stickerColor。'
               },
               clipIds: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'remove：要删的片段 id 列表'
+                description: 'remove / batchUpdate：目标片段 id 列表'
               },
               voiceClipId: {
                 type: 'string',
@@ -1586,6 +1604,11 @@ const TOOL_DEFS: McpToolDef[] = [
             required: ['op']
           }
         },
+        settings: {
+          type: 'object',
+          description:
+            '可选：合并更新成片时间线全局设置（exportWidth / exportHeight / exportFps / exportVideoBitrateKbps / scaleMode(contain|cover|blur) / subtitleFontSize / subtitleYOffset / subtitleColor / subtitleBorderColor / subtitleBorderWidth / subtitleBoxEnabled / subtitleBoxColor / subtitleBoxOpacity / subtitleMotion / mixMasterGain / mixBassGainDb / mixTrebleGainDb / mixCompression / mixAutoDucking / mixDuckingRatio / mixLoudnorm / watermarkEnabled / watermarkSrc / watermarkOpacity / watermarkScale / watermarkPosition）'
+        },
         apply: {
           type: 'boolean',
           description:
@@ -1599,11 +1622,23 @@ const TOOL_DEFS: McpToolDef[] = [
       const assetId = readString(args, 'assetId')
       const nodeId = optionalString(args, 'nodeId')
       const { asset, doc } = readTimelineDoc(assetId, nodeId)
-      const rows = readTimelineEditRows(args.operations)
+      const hasSettingsPatch = Boolean(
+        args.settings && typeof args.settings === 'object' && !Array.isArray(args.settings)
+      )
+      const rows = readTimelineEditRows(args.operations, hasSettingsPatch)
       // 同一批编辑共用一份 id 工厂：新增片段与字幕片段不会撞名
       const makeClipId = mcpClipIdFactory()
       const operations = buildTimelineEditOperations(rows, doc, makeClipId)
       const result = applyTimelineEdits(doc, operations, { makeClipId })
+      if (hasSettingsPatch) {
+        result.document = {
+          ...result.document,
+          settings: {
+            ...(result.document.settings ?? {}),
+            ...(args.settings as Record<string, unknown>)
+          }
+        }
+      }
       const beforeIds = new Set(doc.clips.map((clip) => clip.id))
       const afterIds = new Set(result.document.clips.map((clip) => clip.id))
       const summary = {
@@ -1621,7 +1656,7 @@ const TOOL_DEFS: McpToolDef[] = [
         durationSec: contentEndSecOfTimeline(result.document.clips),
         failures: result.failures.map(timelineEditFailureText)
       }
-      const changed = result.added + result.updated + result.removed > 0
+      const changed = result.added + result.updated + result.removed > 0 || hasSettingsPatch
       if (args.apply === false || !changed) {
         return { applied: false, ...summary }
       }
@@ -4398,9 +4433,11 @@ function buildTimelineExportInput(
   extra?: { defaultFileName?: string; targetPath?: string }
 ): TimelineExportInput {
   const settings = doc.settings ?? {}
+  const hidden = new Set(doc.hiddenTracks ?? [])
+  const visibleClips = doc.clips.filter((c) => !hidden.has(c.track))
   return {
-    clips: doc.clips.map(toExportClip),
-    durationSec: contentEndSecOfTimeline(doc.clips),
+    clips: visibleClips.map(toExportClip),
+    durationSec: contentEndSecOfTimeline(visibleClips),
     ...(extra?.defaultFileName ? { defaultFileName: extra.defaultFileName } : {}),
     ...(extra?.targetPath ? { targetPath: extra.targetPath } : {}),
     ...(settings.playbackRate ? { playbackRate: settings.playbackRate } : {}),
@@ -4410,10 +4447,45 @@ function buildTimelineExportInput(
     ...(settings.exportVideoBitrateKbps
       ? { videoBitrateKbps: settings.exportVideoBitrateKbps }
       : {}),
+    ...(settings.scaleMode ? { scaleMode: settings.scaleMode } : {}),
     ...(settings.subtitleFontSize ? { subtitleFontSize: settings.subtitleFontSize } : {}),
+    ...(settings.subtitleYOffset != null ? { subtitleYOffset: settings.subtitleYOffset } : {}),
     ...(settings.subtitleColor ? { subtitleColor: settings.subtitleColor } : {}),
+    ...(settings.subtitleBorderColor ? { subtitleBorderColor: settings.subtitleBorderColor } : {}),
+    ...(settings.subtitleBorderWidth != null
+      ? { subtitleBorderWidth: settings.subtitleBorderWidth }
+      : {}),
+    ...(settings.subtitleBoxEnabled != null
+      ? { subtitleBoxEnabled: settings.subtitleBoxEnabled }
+      : {}),
+    ...(settings.subtitleBoxColor ? { subtitleBoxColor: settings.subtitleBoxColor } : {}),
+    ...(settings.subtitleBoxOpacity != null
+      ? { subtitleBoxOpacity: settings.subtitleBoxOpacity }
+      : {}),
+    ...(settings.subtitleMotion != null
+      ? {
+          subtitleMotion:
+            settings.subtitleMotion === true || settings.subtitleMotion === 'fade' ? 'fade' : 'none'
+        }
+      : {}),
+    ...(settings.mixGains ? { mixGains: settings.mixGains } : {}),
+    ...(settings.mixMasterGain != null ? { mixMasterGain: settings.mixMasterGain } : {}),
+    ...(settings.mixBassGainDb != null ? { mixBassGainDb: settings.mixBassGainDb } : {}),
+    ...(settings.mixTrebleGainDb != null ? { mixTrebleGainDb: settings.mixTrebleGainDb } : {}),
+    ...(settings.mixCompression != null ? { mixCompression: settings.mixCompression } : {}),
+    ...(settings.mixAutoDucking != null ? { mixAutoDucking: settings.mixAutoDucking } : {}),
+    ...(settings.mixDuckingRatio != null ? { mixDuckingRatio: settings.mixDuckingRatio } : {}),
+    ...(settings.mixLoudnorm != null ? { mixLoudnorm: settings.mixLoudnorm } : {}),
     ...(settings.watermarkEnabled && settings.watermarkSrc
       ? { watermarkSrc: settings.watermarkSrc }
+      : {}),
+    ...(settings.watermarkOpacity != null ? { watermarkOpacity: settings.watermarkOpacity } : {}),
+    ...(settings.watermarkScale != null ? { watermarkScale: settings.watermarkScale } : {}),
+    ...(settings.watermarkPosition === 'br' ||
+    settings.watermarkPosition === 'bl' ||
+    settings.watermarkPosition === 'tr' ||
+    settings.watermarkPosition === 'tl'
+      ? { watermarkPosition: settings.watermarkPosition }
       : {}),
     ...(doc.mutedTracks?.length ? { mutedTracks: doc.mutedTracks } : {})
   }
@@ -4483,14 +4555,42 @@ function readTimelineDoc(
 
 /** 时间线片段 → 导出链路认识的片段（只挑导出用得到的字段） */
 function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
+  const rel =
+    clip.relativePath?.trim() ||
+    (clip.assetId
+      ? projectService
+          .listAssets()
+          .find((a) => a.id === clip.assetId)
+          ?.relativePath?.trim()
+      : undefined)
   return {
     track: clip.track,
     title: clip.title,
     startSec: clip.startSec,
     durationSec: clip.durationSec,
-    ...(clip.relativePath ? { relativePath: clip.relativePath } : {}),
+    ...(rel ? { relativePath: rel } : {}),
     ...(clip.text ? { text: clip.text } : {}),
+    ...(clip.textColor ? { textColor: clip.textColor } : {}),
+    ...(clip.fontSize != null ? { fontSize: clip.fontSize } : {}),
     ...(clip.sourceOffsetSec != null ? { sourceOffsetSec: clip.sourceOffsetSec } : {}),
+    ...(clip.speed != null ? { speed: clip.speed } : {}),
+    ...(clip.freezeTailSec != null ? { freezeTailSec: clip.freezeTailSec } : {}),
+    ...(clip.brightness != null ? { brightness: clip.brightness } : {}),
+    ...(clip.contrast != null ? { contrast: clip.contrast } : {}),
+    ...(clip.saturation != null ? { saturation: clip.saturation } : {}),
+    ...(clip.vibrance != null ? { vibrance: clip.vibrance } : {}),
+    ...(clip.temperature != null ? { temperature: clip.temperature } : {}),
+    ...(clip.tint != null ? { tint: clip.tint } : {}),
+    ...(clip.highlights != null ? { highlights: clip.highlights } : {}),
+    ...(clip.shadows != null ? { shadows: clip.shadows } : {}),
+    ...(clip.sharpen != null ? { sharpen: clip.sharpen } : {}),
+    ...(clip.vignette != null ? { vignette: clip.vignette } : {}),
+    ...(clip.fade != null ? { fade: clip.fade } : {}),
+    ...(clip.grain != null ? { grain: clip.grain } : {}),
+    ...(clip.filterPreset ? { filterPreset: clip.filterPreset } : {}),
+    ...(clip.filterIntensity != null ? { filterIntensity: clip.filterIntensity } : {}),
+    ...(clip.visualEffect ? { visualEffect: clip.visualEffect } : {}),
+    ...(clip.effectIntensity != null ? { effectIntensity: clip.effectIntensity } : {}),
     ...(clip.volume != null ? { volume: clip.volume } : {}),
     ...(clip.fadeInSec != null ? { fadeInSec: clip.fadeInSec } : {}),
     ...(clip.fadeOutSec != null ? { fadeOutSec: clip.fadeOutSec } : {}),
@@ -4499,6 +4599,10 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
     ...(clip.overlayWidth != null ? { overlayWidth: clip.overlayWidth } : {}),
     ...(clip.overlayHeight != null ? { overlayHeight: clip.overlayHeight } : {}),
     ...(clip.overlayRotation != null ? { overlayRotation: clip.overlayRotation } : {}),
+    ...(clip.cropX != null ? { cropX: clip.cropX } : {}),
+    ...(clip.cropY != null ? { cropY: clip.cropY } : {}),
+    ...(clip.cropWidth != null ? { cropWidth: clip.cropWidth } : {}),
+    ...(clip.cropHeight != null ? { cropHeight: clip.cropHeight } : {}),
     ...(clip.opacity != null ? { opacity: clip.opacity } : {}),
     ...(clip.tweenIn ? { tweenIn: clip.tweenIn } : {}),
     ...(clip.tweenInDurationSec != null ? { tweenInDurationSec: clip.tweenInDurationSec } : {}),
@@ -4512,6 +4616,7 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
     ...(clip.cameraMotion ? { cameraMotion: clip.cameraMotion } : {}),
     ...(clip.keyframes?.length ? { keyframes: clip.keyframes } : {}),
     ...(clip.stickerId ? { stickerId: clip.stickerId } : {}),
+    ...(clip.stickerColor ? { stickerColor: clip.stickerColor } : {}),
     ...(clip.transitionInSec != null ? { transitionInSec: clip.transitionInSec } : {}),
     ...(clip.transitionOutSec != null ? { transitionOutSec: clip.transitionOutSec } : {}),
     ...(clip.transitionType ? { transitionType: clip.transitionType } : {})
@@ -4553,7 +4658,14 @@ function readSpeechSegments(value: unknown): TranscribeAudioSegment[] {
 }
 
 /** 时间线编辑指令的类型名（`subtitles` 在主进程展开成区间替换 + 新增） */
-const TIMELINE_EDIT_OPS = ['add', 'update', 'remove', 'subtitles'] as const
+const TIMELINE_EDIT_OPS = [
+  'add',
+  'update',
+  'batchUpdate',
+  'applyTemplate',
+  'remove',
+  'subtitles'
+] as const
 
 /** 主进程口径的片段 id 工厂：前缀带时间戳，同一批编辑内不重名 */
 function mcpClipIdFactory(): (track: ScriptTimelineTrackKind, index: number) => string {
@@ -4567,10 +4679,11 @@ function mcpClipIdFactory(): (track: ScriptTimelineTrackKind, index: number) => 
  * 与「单条失败只记 failure」的分工：这里是**调用方把 API 用错了**（必须整体重发），
  * 而 id 找不到、时长非法属于**数据问题**，交给共享层记 failure 继续跑其余的指令。
  */
-function readTimelineEditRows(value: unknown): Record<string, unknown>[] {
+function readTimelineEditRows(value: unknown, allowEmpty = false): Record<string, unknown>[] {
   if (!Array.isArray(value) || !value.length) {
+    if (allowEmpty && Array.isArray(value)) return []
     throw new Error(
-      '缺少编辑指令「operations」：至少给一条 { op: "add" | "update" | "remove" | "subtitles" }'
+      `缺少编辑指令「operations」：至少给一条 { op: ${TIMELINE_EDIT_OPS.map((o) => `"${o}"`).join(' | ')} }`
     )
   }
   return value.map((item, index) => {
@@ -4645,6 +4758,29 @@ function buildTimelineEditOperations(
       operations.push({ op: 'update', clipId, patch: patch as TimelineClipPatch })
       return
     }
+    if (row.op === 'batchUpdate') {
+      const patch = row.patch
+      if (!patch || typeof patch !== 'object' || Array.isArray(patch)) {
+        throw new Error(`${label}（batchUpdate）缺少 patch 对象：把要批量改的字段放进去`)
+      }
+      const track = typeof row.track === 'string' && row.track.trim() ? row.track.trim() : undefined
+      const clipIds = readStringList(row, 'clipIds')
+      operations.push({
+        op: 'batchUpdate',
+        ...(track ? { track: track as ScriptTimelineTrackKind } : {}),
+        ...(clipIds.length ? { clipIds } : {}),
+        patch: patch as TimelineClipPatch
+      })
+      return
+    }
+    if (row.op === 'applyTemplate') {
+      const templateId = typeof row.templateId === 'string' ? row.templateId.trim() : ''
+      if (!templateId) {
+        throw new Error(`${label}（applyTemplate）缺少 templateId`)
+      }
+      operations.push({ op: 'applyTemplate', templateId })
+      return
+    }
     if (row.op === 'remove') {
       const clipIds = readStringList(row, 'clipIds')
       if (!clipIds.length) throw new Error(`${label}（remove）缺少 clipIds 数组`)
@@ -4698,6 +4834,8 @@ function timelineEditFailureText(failure: TimelineEditFailure): string {
       return `${failure.op} ${target}：时长必须大于 0 秒`
     case 'empty-patch':
       return `${failure.op} ${target}：patch 里没有可识别的字段（id / track 不能改，换轨请 remove + add）`
+    case 'invalid-template':
+      return `${failure.op} ${target}：未知的成片模板 ID`
     default:
       return `${failure.op} ${target}：${failure.code}`
   }

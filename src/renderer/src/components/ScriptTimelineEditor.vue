@@ -7,104 +7,192 @@
       }"
     >
       <aside class="panel sources-panel">
-        <div class="panel-head">
-          <span class="panel-title">{{ t('script.timeline.sources') }}</span>
-          <div class="panel-actions">
-            <button type="button" class="ghost-btn" :disabled="sourcesBusy" @click="reloadSources">
-              {{ sourcesBusy ? '…' : t('script.timeline.refreshSources') }}
-            </button>
-            <button
-              type="button"
-              class="ghost-btn"
-              :disabled="!sources.length"
-              @click="autoPlaceAll"
-            >
-              {{ t('script.timeline.autoPlace') }}
-            </button>
-            <button type="button" class="ghost-btn" :disabled="bgmBusy" @click="onGenerateBgm">
-              {{ bgmBusy ? '…' : t('script.timeline.generateBgm') }}
-            </button>
-            <button type="button" class="ghost-btn" :disabled="sfxBusy" @click="onGenerateSfx">
-              {{ sfxBusy ? '…' : t('script.timeline.generateSfx') }}
-            </button>
-            <button type="button" class="ghost-btn" @click="openSfxLibrary">
-              {{ t('script.timeline.sfxLibrary') }}
-            </button>
-            <button type="button" class="ghost-btn" :disabled="smartCutBusy" @click="onSmartCut">
-              {{ smartCutBusy ? '…' : t('script.timeline.smartCut') }}
-            </button>
-          </div>
-        </div>
-        <div
-          class="source-list"
-          :style="{ '--source-card-size': `${sourceGridSize}px` }"
-          @contextmenu.prevent="onImportedPanelContextMenu"
-        >
-          <section v-if="inputSources.length" class="source-group">
-            <div class="source-group-head">
-              <span>{{ t('script.timeline.sourceGroup.input') }}</span>
-              <span class="source-group-count">{{ inputSources.length }}</span>
+        <nav class="capcut-browser-nav" role="tablist">
+          <button
+            v-for="tab in TIMELINE_BROWSER_TABS"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            class="capcut-browser-tab"
+            :class="{ active: leftBrowserTab === tab.id }"
+            :aria-selected="leftBrowserTab === tab.id"
+            @click="
+              leftBrowserTab = tab.id
+              transitionPopover = null
+            "
+          >
+            <svg class="capcut-tab-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                :d="tab.iconPath"
+                stroke="currentColor"
+                stroke-width="1.45"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="capcut-tab-label">{{ isZhLocale ? tab.labelZh : tab.labelEn }}</span>
+          </button>
+        </nav>
+
+        <template v-if="leftBrowserTab === 'sources'">
+          <div class="panel-head">
+            <span class="panel-title">{{ t('script.timeline.sources') }}</span>
+            <div class="panel-actions">
+              <button
+                type="button"
+                class="ghost-btn"
+                :disabled="sourcesBusy"
+                @click="reloadSources"
+              >
+                {{ sourcesBusy ? '…' : t('script.timeline.refreshSources') }}
+              </button>
+              <button
+                type="button"
+                class="ghost-btn"
+                :disabled="!sources.length"
+                @click="autoPlaceAll"
+              >
+                {{ t('script.timeline.autoPlace') }}
+              </button>
+              <button type="button" class="ghost-btn" :disabled="bgmBusy" @click="onGenerateBgm">
+                {{ bgmBusy ? '…' : t('script.timeline.generateBgm') }}
+              </button>
+              <button type="button" class="ghost-btn" :disabled="sfxBusy" @click="onGenerateSfx">
+                {{ sfxBusy ? '…' : t('script.timeline.generateSfx') }}
+              </button>
+              <button type="button" class="ghost-btn" @click="openSfxLibrary">
+                {{ t('script.timeline.sfxLibrary') }}
+              </button>
+              <button type="button" class="ghost-btn" :disabled="smartCutBusy" @click="onSmartCut">
+                {{ smartCutBusy ? '…' : t('script.timeline.smartCut') }}
+              </button>
             </div>
-            <div
-              v-for="src in inputSources"
-              :key="`in-${src.id}`"
-              class="source-card origin-input"
-              draggable="true"
-              @dragstart="onSourceDragStart($event, src)"
-              @dblclick="onSourceActivate(src)"
-            >
-              <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
-                <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
-                <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
-                  voiceSourceIcon
-                }}</span>
-              </span>
-              <span class="source-meta">
-                <span class="source-name" :title="src.title">{{ src.title }}</span>
-                <span class="source-tags">
-                  <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                  <span v-if="src.durationSec" class="source-dur">{{
-                    formatTime(src.durationSec)
+          </div>
+          <div
+            class="source-list"
+            :style="{ '--source-card-size': `${sourceGridSize}px` }"
+            @contextmenu.prevent="onImportedPanelContextMenu"
+          >
+            <section v-if="inputSources.length" class="source-group">
+              <div class="source-group-head">
+                <span>{{ t('script.timeline.sourceGroup.input') }}</span>
+                <span class="source-group-count">{{ inputSources.length }}</span>
+              </div>
+              <div
+                v-for="src in inputSources"
+                :key="`in-${src.id}`"
+                class="source-card origin-input"
+                draggable="true"
+                @dragstart="onSourceDragStart($event, src)"
+                @dblclick="onSourceActivate(src)"
+              >
+                <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                  <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                  <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
+                    voiceSourceIcon
                   }}</span>
                 </span>
-              </span>
-            </div>
-          </section>
+                <span class="source-meta">
+                  <span class="source-name" :title="src.title">{{ src.title }}</span>
+                  <span class="source-tags">
+                    <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
+                    <span v-if="src.durationSec" class="source-dur">{{
+                      formatTime(src.durationSec)
+                    }}</span>
+                  </span>
+                </span>
+              </div>
+            </section>
 
-          <section
-            class="source-group imported-panel"
-            @contextmenu.prevent="onImportedPanelContextMenu"
-            @dragover.prevent="onImportedRootDragOver"
-            @drop.prevent="onImportedRootDrop"
-          >
-            <div class="source-group-head">
-              <span>{{ t('script.timeline.sourceGroup.imported') }}</span>
-              <span class="source-group-count">{{ importedSources.length }}</span>
-            </div>
-
-            <div
-              v-for="group in sourceGroups"
-              :key="group.id"
-              class="source-folder"
-              :class="{
-                collapsed: collapsedGroupIds.has(group.id),
-                'drag-over': dropGroupId === group.id
-              }"
-              @contextmenu.prevent.stop="onGroupContextMenu($event, group.id)"
-              @dragover.prevent.stop="onGroupDragOver($event, group.id)"
-              @dragleave="onGroupDragLeave($event, group.id)"
-              @drop.prevent.stop="onGroupDrop($event, group.id)"
+            <section
+              class="source-group imported-panel"
+              @contextmenu.prevent="onImportedPanelContextMenu"
+              @dragover.prevent="onImportedRootDragOver"
+              @drop.prevent="onImportedRootDrop"
             >
-              <button type="button" class="folder-head" @click="toggleGroupCollapsed(group.id)">
-                <span class="folder-chevron" aria-hidden="true">{{
-                  collapsedGroupIds.has(group.id) ? '▸' : '▾'
-                }}</span>
-                <span class="folder-title">{{ group.title }}</span>
-                <span class="source-group-count">{{ sourcesInGroup(group.id).length }}</span>
-              </button>
-              <div v-show="!collapsedGroupIds.has(group.id)" class="folder-body">
+              <div class="source-group-head">
+                <span>{{ t('script.timeline.sourceGroup.imported') }}</span>
+                <span class="source-group-count">{{ importedSources.length }}</span>
+              </div>
+
+              <div
+                v-for="group in sourceGroups"
+                :key="group.id"
+                class="source-folder"
+                :class="{
+                  collapsed: collapsedGroupIds.has(group.id),
+                  'drag-over': dropGroupId === group.id
+                }"
+                @contextmenu.prevent.stop="onGroupContextMenu($event, group.id)"
+                @dragover.prevent.stop="onGroupDragOver($event, group.id)"
+                @dragleave="onGroupDragLeave($event, group.id)"
+                @drop.prevent.stop="onGroupDrop($event, group.id)"
+              >
+                <button type="button" class="folder-head" @click="toggleGroupCollapsed(group.id)">
+                  <span class="folder-chevron" aria-hidden="true">{{
+                    collapsedGroupIds.has(group.id) ? '▸' : '▾'
+                  }}</span>
+                  <span class="folder-title">{{ group.title }}</span>
+                  <span class="source-group-count">{{ sourcesInGroup(group.id).length }}</span>
+                </button>
+                <div v-show="!collapsedGroupIds.has(group.id)" class="folder-body">
+                  <div
+                    v-for="src in sourcesInGroup(group.id)"
+                    :key="`im-${src.id}`"
+                    class="source-card origin-imported"
+                    draggable="true"
+                    @dragstart="onSourceDragStart($event, src)"
+                    @dblclick="onSourceActivate(src)"
+                  >
+                    <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
+                      <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
+                      <span
+                        v-else-if="sourceMediaKind(src) === 'voice'"
+                        class="source-thumb-glyph"
+                        >{{ voiceSourceIcon }}</span
+                      >
+                    </span>
+                    <span class="source-meta">
+                      <span class="source-name" :title="src.title">{{ src.title }}</span>
+                      <span class="source-tags">
+                        <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
+                        <span v-if="src.durationSec" class="source-dur">{{
+                          formatTime(src.durationSec)
+                        }}</span>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      class="source-remove"
+                      :title="t('script.timeline.removeSource')"
+                      @pointerdown.stop
+                      @click.stop="removeSource(src.id)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div v-if="!sourcesInGroup(group.id).length" class="folder-empty">
+                    {{ t('script.timeline.groupEmpty') }}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                class="ungrouped-zone"
+                :class="{ 'drag-over': dropGroupId === '' }"
+                @contextmenu.prevent="onImportedPanelContextMenu"
+                @dragover.prevent.stop="onGroupDragOver($event, '')"
+                @dragleave="onGroupDragLeave($event, '')"
+                @drop.prevent.stop="onGroupDrop($event, '')"
+              >
                 <div
-                  v-for="src in sourcesInGroup(group.id)"
+                  v-if="sourceGroups.length && ungroupedImportedSources.length"
+                  class="ungrouped-label"
+                >
+                  {{ t('script.timeline.ungrouped') }}
+                </div>
+                <div
+                  v-for="src in ungroupedImportedSources"
                   :key="`im-${src.id}`"
                   class="source-card origin-imported"
                   draggable="true"
@@ -120,6 +208,9 @@
                   <span class="source-meta">
                     <span class="source-name" :title="src.title">{{ src.title }}</span>
                     <span class="source-tags">
+                      <span class="source-tag imported">{{
+                        t('script.timeline.sourceGroup.importedTag')
+                      }}</span>
                       <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
                       <span v-if="src.durationSec" class="source-dur">{{
                         formatTime(src.durationSec)
@@ -136,111 +227,520 @@
                     ×
                   </button>
                 </div>
-                <div v-if="!sourcesInGroup(group.id).length" class="folder-empty">
-                  {{ t('script.timeline.groupEmpty') }}
+                <div
+                  v-if="!importedSources.length && !sourceGroups.length"
+                  class="panel-empty subtle"
+                >
+                  {{
+                    inputSources.length
+                      ? t('script.timeline.importedEmpty')
+                      : t('script.timeline.sourcesEmpty')
+                  }}
                 </div>
               </div>
-            </div>
+            </section>
 
-            <div
-              class="ungrouped-zone"
-              :class="{ 'drag-over': dropGroupId === '' }"
-              @contextmenu.prevent="onImportedPanelContextMenu"
-              @dragover.prevent.stop="onGroupDragOver($event, '')"
-              @dragleave="onGroupDragLeave($event, '')"
-              @drop.prevent.stop="onGroupDrop($event, '')"
-            >
-              <div
-                v-if="sourceGroups.length && ungroupedImportedSources.length"
-                class="ungrouped-label"
-              >
-                {{ t('script.timeline.ungrouped') }}
+            <section class="source-group sticker-library-section">
+              <div class="source-group-head">
+                <span>{{ t('script.timeline.stickerSection') }}</span>
+                <span class="source-group-count">{{ builtinStickers.length }}</span>
               </div>
               <div
-                v-for="src in ungroupedImportedSources"
-                :key="`im-${src.id}`"
-                class="source-card origin-imported"
+                v-for="preset in builtinStickers"
+                :key="preset.id"
+                class="source-card sticker-preset-card"
                 draggable="true"
-                @dragstart="onSourceDragStart($event, src)"
-                @dblclick="onSourceActivate(src)"
+                :title="t('script.timeline.stickerAddHint')"
+                @dragstart="onBuiltinStickerDragStart($event, preset)"
+                @click="addBuiltinStickerToOverlay(preset)"
               >
-                <span class="source-thumb" :class="sourceThumbClass(src)" aria-hidden="true">
-                  <img v-if="sourceThumbUrls[src.id]" :src="sourceThumbUrls[src.id]" alt="" />
-                  <span v-else-if="sourceMediaKind(src) === 'voice'" class="source-thumb-glyph">{{
-                    voiceSourceIcon
-                  }}</span>
+                <span class="source-thumb sticker-thumb" aria-hidden="true">
+                  <img :src="builtinStickerPreviewUrl(preset)" alt="" draggable="false" />
                 </span>
                 <span class="source-meta">
-                  <span class="source-name" :title="src.title">{{ src.title }}</span>
-                  <span class="source-tags">
-                    <span class="source-tag imported">{{
-                      t('script.timeline.sourceGroup.importedTag')
-                    }}</span>
-                    <span class="source-tag">{{ sourceMediaLabel(src) }}</span>
-                    <span v-if="src.durationSec" class="source-dur">{{
-                      formatTime(src.durationSec)
-                    }}</span>
+                  <span
+                    class="source-name"
+                    :title="t(`script.timeline.stickerPreset.${preset.id}`)"
+                  >
+                    {{ t(`script.timeline.stickerPreset.${preset.id}`) }}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  class="source-remove"
-                  :title="t('script.timeline.removeSource')"
-                  @pointerdown.stop
-                  @click.stop="removeSource(src.id)"
-                >
-                  ×
-                </button>
               </div>
-              <div
-                v-if="!importedSources.length && !sourceGroups.length"
-                class="panel-empty subtle"
-              >
-                {{
-                  inputSources.length
-                    ? t('script.timeline.importedEmpty')
-                    : t('script.timeline.sourcesEmpty')
-                }}
-              </div>
-            </div>
-          </section>
+            </section>
+          </div>
 
-          <section class="source-group sticker-library-section">
-            <div class="source-group-head">
-              <span>{{ t('script.timeline.stickerSection') }}</span>
-              <span class="source-group-count">{{ builtinStickers.length }}</span>
-            </div>
-            <div
-              v-for="preset in builtinStickers"
-              :key="preset.id"
-              class="source-card sticker-preset-card"
-              draggable="true"
-              :title="t('script.timeline.stickerAddHint')"
-              @dragstart="onBuiltinStickerDragStart($event, preset)"
-              @click="addBuiltinStickerToOverlay(preset)"
+          <div class="source-size-footer">
+            <span class="source-size-label">{{ t('script.timeline.sourceGridSize') }}</span>
+            <input
+              v-model.number="sourceGridSize"
+              class="source-size-range"
+              type="range"
+              min="48"
+              max="120"
+              step="4"
+            />
+          </div>
+        </template>
+
+        <!-- 特效 (Effects) -->
+        <div v-else-if="leftBrowserTab === 'effects'" class="creative-tab-pane">
+          <div class="creative-target-bar" :title="creativeUiText('scopePerClipHint')">
+            <span class="creative-target-label">{{ creativeUiText('targetCurrentClip') }}</span>
+            <span class="creative-target-name" :title="targetCreativeClip?.title || ''">
+              {{ targetCreativeClip ? targetCreativeClip.title : '—' }}
+            </span>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!hasVideoOrOverlayClips"
+              @click="applyCurrentEffectToAllVideoClips"
             >
-              <span class="source-thumb sticker-thumb" aria-hidden="true">
-                <img :src="builtinStickerPreviewUrl(preset)" alt="" draggable="false" />
+              {{ creativeUiText('applyToAllClips') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!hasVideoOrOverlayClips"
+              @click="clearAllVideoEffects"
+            >
+              {{ creativeUiText('clearAllEffects') }}
+            </button>
+          </div>
+          <div class="creative-cat-pills">
+            <button
+              v-for="cat in TIMELINE_VISUAL_EFFECT_CATEGORIES"
+              :key="cat.id"
+              type="button"
+              class="creative-cat-pill"
+              :class="{ active: activeVisualEffectCategory === cat.id }"
+              @click="activeVisualEffectCategory = cat.id"
+            >
+              <svg class="creative-pill-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  :d="cat.iconPath"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>{{ isZhLocale ? cat.labelZh : cat.labelEn }}</span>
+            </button>
+          </div>
+          <div class="creative-intensity-row">
+            <span>{{ creativeUiText('effectIntensityLabel') }}</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              :value="targetCreativeClip?.effectIntensity ?? 75"
+              @input="
+                onCreativeEffectIntensityInput(Number(($event.target as HTMLInputElement).value))
+              "
+            />
+            <span class="creative-intensity-val"
+              >{{ Math.round(targetCreativeClip?.effectIntensity ?? 75) }}%</span
+            >
+          </div>
+          <div class="creative-card-grid">
+            <button
+              v-for="fx in filteredVisualEffects"
+              :key="fx.id"
+              type="button"
+              class="creative-card"
+              :class="{
+                active: (targetCreativeClip?.visualEffect ?? 'none') === fx.id
+              }"
+              :title="isZhLocale ? fx.descZh : fx.descEn"
+              @click="onSelectVisualEffect(fx.id)"
+            >
+              <span
+                class="creative-card-swatch"
+                :class="`fx-swatch-${fx.id}`"
+                :style="{ background: fx.previewGradient }"
+              >
+                <svg
+                  class="creative-swatch-icon"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  aria-hidden="true"
+                  :style="{ color: fx.accent }"
+                >
+                  <path
+                    :d="fx.iconPath"
+                    stroke="currentColor"
+                    stroke-width="1.55"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="creative-card-badge" :style="{ borderColor: fx.accent }">{{
+                  fx.badge
+                }}</span>
               </span>
-              <span class="source-meta">
-                <span class="source-name" :title="t(`script.timeline.stickerPreset.${preset.id}`)">
-                  {{ t(`script.timeline.stickerPreset.${preset.id}`) }}
-                </span>
-              </span>
-            </div>
-          </section>
+              <span class="creative-card-title">{{ isZhLocale ? fx.labelZh : fx.labelEn }}</span>
+            </button>
+          </div>
         </div>
 
-        <div class="source-size-footer">
-          <span class="source-size-label">{{ t('script.timeline.sourceGridSize') }}</span>
-          <input
-            v-model.number="sourceGridSize"
-            class="source-size-range"
-            type="range"
-            min="48"
-            max="120"
-            step="4"
-          />
+        <!-- 转场 (Transitions) -->
+        <div v-else-if="leftBrowserTab === 'transitions'" class="creative-tab-pane">
+          <div class="creative-target-bar">
+            <span class="creative-target-label">{{ creativeUiText('targetCutPairLabel') }}</span>
+            <span
+              class="creative-target-name"
+              :title="
+                activeBrowserTransitionPair
+                  ? `${activeBrowserTransitionPair.left.title} → ${activeBrowserTransitionPair.right.title}`
+                  : creativeUiText('needTwoClipsForTransition')
+              "
+            >
+              {{
+                activeBrowserTransitionPair
+                  ? `${activeBrowserTransitionPair.left.title} → ${activeBrowserTransitionPair.right.title}`
+                  : creativeUiText('needTwoClipsForTransition')
+              }}
+            </span>
+            <button
+              v-if="activeBrowserTransitionPair"
+              type="button"
+              class="ghost-btn xs-btn"
+              @click="previewActiveBrowserTransition"
+            >
+              {{ creativeUiText('previewTransitionBtn') }}
+            </button>
+          </div>
+          <div class="creative-target-bar">
+            <span class="creative-target-label">{{
+              creativeUiText('transitionDurationLabel')
+            }}</span>
+            <div class="creative-duration-pills">
+              <button
+                v-for="sec in TRANSITION_DURATION_PRESETS"
+                :key="sec"
+                type="button"
+                class="ghost-btn xs-btn"
+                :class="{ active: Math.abs(browserTransitionDurationSec - sec) < 0.04 }"
+                @click="onChangeBrowserTransitionDuration(sec)"
+              >
+                {{ sec.toFixed(1) }}s
+              </button>
+            </div>
+          </div>
+          <div class="creative-intensity-row">
+            <span>{{ creativeUiText('transitionDurationLabel') }}</span>
+            <input
+              type="range"
+              min="0.1"
+              :max="activeBrowserTransitionPair?.maxDurationSec ?? 2.5"
+              step="0.05"
+              :value="browserTransitionDurationSec"
+              @input="
+                onInputBrowserTransitionDuration(Number(($event.target as HTMLInputElement).value))
+              "
+              @change="
+                onChangeBrowserTransitionDuration(Number(($event.target as HTMLInputElement).value))
+              "
+            />
+            <span class="creative-intensity-val"
+              >{{ browserTransitionDurationSec.toFixed(2) }}s</span
+            >
+          </div>
+          <div class="creative-action-bar">
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="clipsOn('video').length < 2"
+              @click="applyBrowserTransitionToAllCuts"
+            >
+              {{ creativeUiText('applyTransitionAll') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="clipsOn('video').length < 2"
+              @click="clearAllVideoTransitions"
+            >
+              {{ creativeUiText('clearAllTransitions') }}
+            </button>
+          </div>
+          <div class="creative-cat-pills">
+            <button
+              v-for="cat in TIMELINE_TRANSITION_CATEGORIES"
+              :key="cat.id"
+              type="button"
+              class="creative-cat-pill"
+              :class="{ active: browserTransitionCategory === cat.id }"
+              @click="browserTransitionCategory = cat.id"
+            >
+              <svg class="creative-pill-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  :d="cat.iconPath"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>{{ isZhLocale ? cat.labelZh : cat.labelEn }}</span>
+            </button>
+          </div>
+          <div class="creative-card-grid">
+            <button
+              v-for="tr in filteredBrowserTransitions"
+              :key="tr.id"
+              type="button"
+              class="creative-card transition-browser-card"
+              :class="{ active: activeBrowserTransitionType === tr.id }"
+              :title="isZhLocale ? tr.descZh : tr.descEn"
+              @click="onSelectBrowserTransition(tr.id, tr.defaultDurationSec)"
+            >
+              <span :class="['trans-preview-box', `effect-${tr.id}`]" :data-effect="tr.id">
+                <span class="trans-preview-a">A</span>
+                <span class="trans-preview-b">B</span>
+                <svg class="trans-card-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path
+                    :d="tr.iconPath"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+              <span class="creative-card-title">{{ isZhLocale ? tr.labelZh : tr.labelEn }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 滤镜 (Filters) -->
+        <div v-else-if="leftBrowserTab === 'filters'" class="creative-tab-pane">
+          <div class="creative-target-bar" :title="creativeUiText('scopePerClipHint')">
+            <span class="creative-target-label">{{ creativeUiText('targetCurrentClip') }}</span>
+            <span class="creative-target-name" :title="targetCreativeClip?.title || ''">
+              {{ targetCreativeClip ? targetCreativeClip.title : '—' }}
+            </span>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!hasVideoOrOverlayClips"
+              @click="applyCurrentFilterToAllVideoClips"
+            >
+              {{ creativeUiText('applyToAllClips') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!hasVideoOrOverlayClips"
+              @click="clearAllVideoFilters"
+            >
+              {{ creativeUiText('clearAllFilters') }}
+            </button>
+          </div>
+          <div class="creative-cat-pills">
+            <button
+              v-for="cat in TIMELINE_FILTER_CATEGORIES"
+              :key="cat.id"
+              type="button"
+              class="creative-cat-pill"
+              :class="{ active: activeFilterCategory === cat.id }"
+              @click="activeFilterCategory = cat.id"
+            >
+              <svg class="creative-pill-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  :d="cat.iconPath"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>{{ isZhLocale ? cat.labelZh : cat.labelEn }}</span>
+            </button>
+          </div>
+          <div class="creative-intensity-row">
+            <span>{{ creativeUiText('filterIntensityLabel') }}</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              :value="targetCreativeClip?.filterIntensity ?? 100"
+              @input="
+                onCreativeFilterIntensityInput(Number(($event.target as HTMLInputElement).value))
+              "
+            />
+            <span class="creative-intensity-val"
+              >{{ Math.round(targetCreativeClip?.filterIntensity ?? 100) }}%</span
+            >
+          </div>
+          <div class="creative-card-grid">
+            <button
+              v-for="lut in filteredFilterPresets"
+              :key="lut.id"
+              type="button"
+              class="creative-card"
+              :class="{
+                active: (targetCreativeClip?.filterPreset ?? 'none') === lut.id
+              }"
+              :title="isZhLocale ? lut.descZh : lut.descEn"
+              @click="onSelectFilterPreset(lut.id)"
+            >
+              <span class="creative-card-swatch" :style="{ background: lut.previewGradient }">
+                <svg
+                  class="creative-swatch-icon"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  aria-hidden="true"
+                  :style="{ color: lut.accent }"
+                >
+                  <path
+                    :d="lut.iconPath"
+                    stroke="currentColor"
+                    stroke-width="1.55"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <span class="creative-card-badge" :style="{ borderColor: lut.accent }">{{
+                  lut.badge
+                }}</span>
+              </span>
+              <span class="creative-card-title">{{ isZhLocale ? lut.labelZh : lut.labelEn }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 调节 (Adjustments) -->
+        <div v-else-if="leftBrowserTab === 'adjustments'" class="creative-tab-pane">
+          <div class="creative-target-bar">
+            <span class="creative-target-label">{{ creativeUiText('targetCurrentClip') }}</span>
+            <span class="creative-target-name" :title="targetCreativeClip?.title || ''">
+              {{ targetCreativeClip ? targetCreativeClip.title : '—' }}
+            </span>
+          </div>
+          <div class="creative-action-bar">
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!targetCreativeClip"
+              @click="resetClipColorGrade"
+            >
+              {{ creativeUiText('resetCurrentClip') }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn xs-btn"
+              :disabled="!hasVideoOrOverlayClips"
+              @click="applyAdjustmentsToAllVideoClips"
+            >
+              {{ creativeUiText('applyToAllClips') }}
+            </button>
+          </div>
+          <div class="creative-adjustment-list">
+            <div
+              v-for="ctrl in TIMELINE_ADJUSTMENT_CONTROLS"
+              :key="ctrl.key"
+              class="creative-adjustment-item"
+            >
+              <div class="creative-adjustment-head">
+                <span class="creative-adjustment-label">
+                  <svg class="creative-adj-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <path
+                      :d="ctrl.iconPath"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <span>{{ isZhLocale ? ctrl.labelZh : ctrl.labelEn }}</span>
+                </span>
+                <span class="creative-adjustment-val">{{
+                  ctrl.formatDisplay(getClipAdjustmentValue(targetCreativeClip, ctrl.key))
+                }}</span>
+              </div>
+              <input
+                type="range"
+                class="creative-adjustment-slider"
+                :min="ctrl.min"
+                :max="ctrl.max"
+                :step="ctrl.step"
+                :value="getClipAdjustmentValue(targetCreativeClip, ctrl.key)"
+                @input="
+                  onCreativeAdjustmentInput(
+                    ctrl.key,
+                    Number(($event.target as HTMLInputElement).value)
+                  )
+                "
+                @dblclick="onCreativeAdjustmentInput(ctrl.key, ctrl.defaultValue)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 模板 (Templates) -->
+        <div v-else-if="leftBrowserTab === 'templates'" class="creative-tab-pane">
+          <div class="creative-template-hint">
+            {{ creativeUiText('templateEmptyAutoFillHint') }}
+          </div>
+          <div class="creative-template-list">
+            <div
+              v-for="tpl in TIMELINE_CREATIVE_TEMPLATES"
+              :key="tpl.id"
+              class="creative-template-card"
+            >
+              <div class="creative-template-banner" :style="{ background: tpl.previewGradient }">
+                <span
+                  class="creative-template-icon-wrap"
+                  :style="{ borderColor: tpl.accent, color: tpl.accent }"
+                >
+                  <svg
+                    class="creative-template-icon"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      :d="tpl.iconPath"
+                      stroke="currentColor"
+                      stroke-width="1.55"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="creative-card-badge" :style="{ borderColor: tpl.accent }">{{
+                  tpl.badge
+                }}</span>
+                <span class="creative-template-title">{{
+                  isZhLocale ? tpl.labelZh : tpl.labelEn
+                }}</span>
+              </div>
+              <div class="creative-template-body">
+                <p class="creative-template-desc">
+                  {{ isZhLocale ? tpl.descZh : tpl.descEn }}
+                </p>
+                <div class="creative-template-tags">
+                  <span
+                    v-for="tag in isZhLocale ? tpl.tagsZh : tpl.tagsEn"
+                    :key="tag"
+                    class="creative-template-tag"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="export-btn creative-template-apply-btn"
+                  @click="onApplyCreativeTemplate(tpl.id)"
+                >
+                  {{ creativeUiText('applyTemplateBtn') }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div
@@ -274,6 +774,83 @@
 
       <section class="panel preview-panel">
         <div ref="previewStageEl" class="preview-stage">
+          <svg class="stage-fx-svg-defs" width="0" height="0" aria-hidden="true">
+            <defs>
+              <filter
+                id="timeline-stage-fx-filter"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+                color-interpolation-filters="sRGB"
+              >
+                <feColorMatrix
+                  in="SourceGraphic"
+                  type="matrix"
+                  :values="activeSvgFilterMeta.colorMatrixValues"
+                  result="stepColor"
+                />
+                <feComponentTransfer
+                  v-if="activeSvgFilterMeta.posterizeTable"
+                  in="stepColor"
+                  result="stepPoster"
+                >
+                  <feFuncR type="discrete" :tableValues="activeSvgFilterMeta.posterizeTable" />
+                  <feFuncG type="discrete" :tableValues="activeSvgFilterMeta.posterizeTable" />
+                  <feFuncB type="discrete" :tableValues="activeSvgFilterMeta.posterizeTable" />
+                </feComponentTransfer>
+                <feMorphology
+                  v-if="activeSvgFilterMeta.mosaicRadius > 0"
+                  :in="svgFilterPreMosaicInput"
+                  operator="dilate"
+                  :radius="activeSvgFilterMeta.mosaicRadius"
+                  result="stepMosaic"
+                />
+                <feConvolveMatrix
+                  v-if="activeSvgFilterMeta.sharpenAmount > 0.02"
+                  :in="svgFilterPreSharpenInput"
+                  order="3 3"
+                  :kernelMatrix="activeSvgFilterMeta.sharpenKernel"
+                  preserveAlpha="true"
+                  result="stepSharpen"
+                />
+                <template v-if="activeSvgFilterMeta.rgbShiftPx > 0.2">
+                  <feColorMatrix
+                    :in="svgFilterPreRgbInput"
+                    type="matrix"
+                    values="1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0"
+                    result="rChan"
+                  />
+                  <feOffset
+                    in="rChan"
+                    :dx="activeSvgFilterMeta.rgbShiftPx"
+                    :dy="activeSvgFilterMeta.rgbShiftVerticalPx"
+                    result="rShift"
+                  />
+                  <feColorMatrix
+                    :in="svgFilterPreRgbInput"
+                    type="matrix"
+                    values="0 0 0 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 1 0"
+                    result="gChan"
+                  />
+                  <feColorMatrix
+                    :in="svgFilterPreRgbInput"
+                    type="matrix"
+                    values="0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 1 0"
+                    result="bChan"
+                  />
+                  <feOffset
+                    in="bChan"
+                    :dx="-activeSvgFilterMeta.rgbShiftPx"
+                    :dy="-activeSvgFilterMeta.rgbShiftVerticalPx"
+                    result="bShift"
+                  />
+                  <feBlend in="rShift" in2="gChan" mode="screen" result="rgBlend" />
+                  <feBlend in="rgBlend" in2="bShift" mode="screen" result="finalRgb" />
+                </template>
+              </filter>
+            </defs>
+          </svg>
           <img
             v-if="previewSrc && isImageOrGifUrl(previewSrc)"
             class="preview-video"
@@ -307,16 +884,31 @@
               :style="exportSafeAreaStyle"
             />
             <div class="overlay-layer">
+              <img
+                v-if="
+                  activeMainTransitionClip &&
+                  (isImageOrGifClip(activeMainTransitionClip) ||
+                    isImageOrGifUrl(transitionOverlayMediaUrl))
+                "
+                v-show="Boolean(transitionOverlayMediaUrl)"
+                class="transition-overlay-video"
+                :src="transitionOverlayMediaUrl"
+                :style="mainTransitionVideoStyle"
+                alt=""
+                draggable="false"
+              />
               <video
-                v-if="activeMainTransitionClip"
+                v-else-if="activeMainTransitionClip"
                 :ref="
                   (el) =>
                     bindTransitionVideo(el as HTMLVideoElement | null, activeMainTransitionClipId)
                 "
                 class="transition-overlay-video"
+                :src="transitionOverlayMediaUrl || undefined"
                 :style="mainTransitionVideoStyle"
                 playsinline
-                preload="metadata"
+                muted
+                preload="auto"
               />
               <template v-for="clip in previewOverlayClips" :key="clip.id">
                 <img
@@ -426,6 +1018,123 @@
                   data-corner="r"
                   @pointerdown.stop="onCropPointerDown($event, selectedCroppableClip)"
                 />
+              </div>
+              <div v-if="activeVisualOverlayMeta.hasOverlay" class="stage-visual-overlay-stack">
+                <div
+                  v-if="
+                    activeVisualOverlayMeta.splitMode !== 'none' &&
+                    previewSrc &&
+                    isImageOrGifUrl(previewSrc)
+                  "
+                  class="stage-visual-split-clones"
+                  :class="activeVisualOverlayMeta.splitMode"
+                  :style="{ filter: activeSplitCloneFilter }"
+                >
+                  <img
+                    v-for="tileIdx in activeVisualOverlayMeta.splitMode === 'split-4grid'
+                      ? 4
+                      : activeVisualOverlayMeta.splitMode === 'split-3v'
+                        ? 3
+                        : 2"
+                    :key="`split-tile-${tileIdx}`"
+                    :src="previewSrc"
+                    class="stage-split-tile-img"
+                    alt=""
+                    draggable="false"
+                  />
+                </div>
+                <img
+                  v-if="
+                    activeVisualOverlayMeta.soulOutOpacity > 0.02 &&
+                    previewSrc &&
+                    isImageOrGifUrl(previewSrc)
+                  "
+                  :src="previewSrc"
+                  class="stage-visual-soul-ghost"
+                  :style="{
+                    opacity: `${activeVisualOverlayMeta.soulOutOpacity}`,
+                    transform: `scale(${activeVisualOverlayMeta.soulOutScale})`,
+                    filter: activeSplitCloneFilter
+                  }"
+                  alt=""
+                  draggable="false"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.bloomOpacity > 0.02"
+                  class="stage-visual-bloom"
+                  :style="{ opacity: `${activeVisualOverlayMeta.bloomOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.lightLeakOpacity > 0.02"
+                  class="stage-visual-lightleak"
+                  :style="{ opacity: `${activeVisualOverlayMeta.lightLeakOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.neonHaloOpacity > 0.02"
+                  class="stage-visual-neonhalo"
+                  :style="{ opacity: `${activeVisualOverlayMeta.neonHaloOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.strobeFlashOpacity > 0.02"
+                  class="stage-visual-strobe"
+                  :style="{ opacity: `${activeVisualOverlayMeta.strobeFlashOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.tiltShiftBlurPx > 0.2"
+                  class="stage-visual-tiltshift"
+                  :style="{ '--tilt-blur': `${activeVisualOverlayMeta.tiltShiftBlurPx}px` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.sparkleOpacity > 0.02"
+                  class="stage-visual-sparkle"
+                  :style="{ opacity: `${activeVisualOverlayMeta.sparkleOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.glitchSliceOpacity > 0.02"
+                  class="stage-visual-glitch-slices"
+                  :style="{ opacity: `${activeVisualOverlayMeta.glitchSliceOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.scanlinesOpacity > 0.02"
+                  class="stage-visual-scanlines"
+                  :style="{ opacity: `${activeVisualOverlayMeta.scanlinesOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.grainOpacity > 0.02"
+                  class="stage-visual-grain"
+                  :style="{ opacity: `${activeVisualOverlayMeta.grainOpacity}` }"
+                />
+                <div
+                  v-if="activeVisualOverlayMeta.vignetteOpacity > 0.02"
+                  class="stage-visual-vignette"
+                  :style="{ opacity: `${activeVisualOverlayMeta.vignetteOpacity}` }"
+                />
+                <div v-if="activeVisualOverlayMeta.dvCamOverlay" class="stage-visual-dvcam">
+                  <span class="dv-corner tl" />
+                  <span class="dv-corner tr" />
+                  <span class="dv-corner bl" />
+                  <span class="dv-corner br" />
+                  <span class="dv-rec-badge">● REC</span>
+                </div>
+                <div
+                  v-if="activeVisualOverlayMeta.splitMode !== 'none'"
+                  class="stage-visual-split-frame"
+                  :class="activeVisualOverlayMeta.splitMode"
+                />
+                <template v-if="activeVisualOverlayMeta.letterboxRatio > 0.01">
+                  <div
+                    class="stage-visual-letterbox top"
+                    :style="{
+                      height: `${(activeVisualOverlayMeta.letterboxRatio * 100).toFixed(2)}%`
+                    }"
+                  />
+                  <div
+                    class="stage-visual-letterbox bottom"
+                    :style="{
+                      height: `${(activeVisualOverlayMeta.letterboxRatio * 100).toFixed(2)}%`
+                    }"
+                  />
+                </template>
               </div>
               <div
                 v-if="activeSubtitleText"
@@ -654,8 +1363,17 @@
                   >
                     <span class="trans-preview-a">A</span>
                     <span class="trans-preview-b">B</span>
+                    <svg class="trans-card-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                      <path
+                        :d="getTransitionIconPath(item.type)"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
                   </span>
-                  <span class="trans-card-label">{{ t(item.labelKey) }}</span>
+                  <span class="trans-card-label">{{ transitionItemDisplayLabel(item) }}</span>
                 </button>
               </div>
               <template v-if="selectedTransitionPair.transitionType !== 'none'">
@@ -671,7 +1389,7 @@
                     step="0.05"
                     :value="selectedTransitionPair.durationSec"
                     @input="
-                      onSelectPairTransitionDuration(
+                      onInputPairTransitionDuration(
                         selectedTransitionPair,
                         Number(($event.target as HTMLInputElement).value)
                       )
@@ -2006,6 +2724,13 @@
                   ✦
                 </span>
                 <span
+                  v-if="clipCreativeBadgeText(clip)"
+                  class="clip-creative-badge"
+                  :title="clipCreativeBadgeText(clip)"
+                >
+                  {{ clipCreativeBadgeText(clip) }}
+                </span>
+                <span
                   v-for="(kf, kfIdx) in clip.keyframes ?? []"
                   :key="`kf-mark-${kfIdx}-${kf.offsetSec}`"
                   class="clip-keyframe-diamond"
@@ -2684,8 +3409,17 @@
           <span :class="['trans-preview-box', `effect-${effect.type}`]" :data-effect="effect.type">
             <span class="trans-preview-a">A</span>
             <span class="trans-preview-b">B</span>
+            <svg class="trans-card-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                :d="getTransitionIconPath(effect.type)"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
           </span>
-          <span class="trans-card-label">{{ t(effect.labelKey) }}</span>
+          <span class="trans-card-label">{{ transitionItemDisplayLabel(effect) }}</span>
         </button>
       </div>
       <div
@@ -2747,11 +3481,17 @@ import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain
 import type { VideoBeatTags } from '@shared/videoBeats'
 import {
   applySmartCutPlan,
+  applyTimelineCreativeTemplateToClips,
   applyVideoTransitionBetweenClips,
   applyVideoTransitionToAllCuts,
   beatCutWindowForDuration,
   buildCapCutDraftContent,
   buildCapCutDraftMetaInfo,
+  buildClipVisualCssFilter,
+  buildClipVisualCssTransform,
+  buildClipVisualFfmpegFilter,
+  buildClipVisualOverlayMeta,
+  buildClipVisualSvgFilterMeta,
   buildFcpxmlDocument,
   buildSmartCutPrompt,
   clampClipFreezeTailSec,
@@ -2766,7 +3506,10 @@ import {
   exportPlatformById,
   exportPlatformSafeRect,
   exportPlatformSubtitleOffset,
+  getTimelineFilterPresetMeta,
+  getTimelineVisualEffectMeta,
   hasOverlayClipTween,
+  isDynamicVisualEffect,
   isExportDurationOverLimit,
   isSubtitleWithinSafeArea,
   normalizeClipCropRect,
@@ -2781,12 +3524,22 @@ import {
   SMART_CUT_DEFAULT_TRANSITION_SEC,
   SMART_CUT_TRANSITIONS,
   splitTimelineClipAtTime,
+  TIMELINE_ADJUSTMENT_CONTROLS,
+  TIMELINE_BROWSER_TABS,
   TIMELINE_BUILTIN_STICKERS,
   TIMELINE_CAMERA_MOTION_PRESETS,
+  TIMELINE_CREATIVE_TEMPLATES,
+  TIMELINE_CREATIVE_UI_TEXT,
   TIMELINE_EASE_TYPES,
+  TIMELINE_FILTER_CATEGORIES,
+  TIMELINE_FILTER_PRESETS,
+  TIMELINE_TRANSITION_CATALOG,
+  TIMELINE_TRANSITION_CATEGORIES,
   TIMELINE_TWEEN_IN_PRESETS,
   TIMELINE_TWEEN_LOOP_PRESETS,
   TIMELINE_TWEEN_OUT_PRESETS,
+  TIMELINE_VISUAL_EFFECT_CATEGORIES,
+  TIMELINE_VISUAL_EFFECTS,
   trimTimelineClipToTime,
   upsertTimelineClipKeyframe,
   withScriptTimeline,
@@ -2799,15 +3552,23 @@ import {
   type ScriptTimelineTrackKind,
   type ScriptTimelineTransitionType,
   type SmartCutEdit,
+  type TimelineAdjustmentKey,
+  type TimelineBrowserTabId,
   type TimelineBuiltinStickerPreset,
   type TimelineCameraMotionPreset,
   type TimelineClipKeyframe,
+  type TimelineCreativeTemplateId,
   type TimelineEaseType,
   type TimelineExportClip,
+  type TimelineFilterCategory,
+  type TimelineFilterPresetId,
   type TimelineMixGains,
+  type TimelineTransitionCategory,
   type TimelineTweenInPreset,
   type TimelineTweenLoopPreset,
-  type TimelineTweenOutPreset
+  type TimelineTweenOutPreset,
+  type TimelineVisualEffectCategory,
+  type TimelineVisualEffectId
 } from '@shared/graph'
 import { planRippleCut } from '@shared/graph/timelineCut'
 import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
@@ -2962,7 +3723,7 @@ const splitterDrag = ref<{
   startY: number
   startHeight: number
 } | null>(null)
-const leftPaneWidth = ref(220)
+const leftPaneWidth = ref(284)
 const rightPaneWidth = ref(220)
 const panelSplitter = ref<{
   side: 'left' | 'right'
@@ -3093,6 +3854,8 @@ const dragOverTrack = ref<ScriptTimelineTrackKind | null>(null)
 const clipDrag = ref<{
   clipId: string
   pointerId: number
+  startClientX: number
+  startClientY: number
   grabOffsetSec: number
   lastStartSec: number
   moved: boolean
@@ -3181,7 +3944,7 @@ const TRANSITION_CATEGORIES: ReadonlyArray<{ id: TransitionCategoryId; labelKey:
   { id: 'cinematic', labelKey: 'script.timeline.transitionCatCinematic' }
 ]
 
-const TRANSITION_CATALOG: ReadonlyArray<TransitionCatalogItem> = [
+const BASE_TRANSITION_CATALOG: ReadonlyArray<TransitionCatalogItem> = [
   {
     type: 'none',
     category: 'basic',
@@ -3309,6 +4072,39 @@ const TRANSITION_CATALOG: ReadonlyArray<TransitionCatalogItem> = [
     shortKey: 'script.timeline.transitionVertOpen'
   }
 ]
+
+const TRANSITION_CATALOG: ReadonlyArray<TransitionCatalogItem> = [
+  ...BASE_TRANSITION_CATALOG,
+  ...TIMELINE_TRANSITION_CATALOG.filter(
+    (entry) => !BASE_TRANSITION_CATALOG.some((base) => base.type === entry.id)
+  ).map((entry) => ({
+    type: entry.id,
+    category: (entry.category === 'basic'
+      ? 'basic'
+      : entry.category === 'slide'
+        ? 'slide'
+        : entry.category === 'wipe'
+          ? 'wipe'
+          : 'cinematic') as Exclude<TransitionCategoryId, 'all'>,
+    labelKey: '',
+    shortKey: ''
+  }))
+]
+
+function getTransitionIconPath(type: string | undefined): string {
+  if (!type || type === 'none') {
+    return 'M10 3a7 7 0 1 0 0 14a7 7 0 0 0 0-14ZM5.2 5.2l9.6 9.6'
+  }
+  const found = TIMELINE_TRANSITION_CATALOG.find((item) => item.id === type)
+  return found?.iconPath ?? 'M3.5 4.5L9.5 10L3.5 15.5V4.5ZM16.5 4.5L10.5 10L16.5 15.5V4.5Z'
+}
+
+function transitionItemDisplayLabel(item: TransitionCatalogItem): string {
+  if (item.labelKey) return t(item.labelKey)
+  const creativeTr = TIMELINE_TRANSITION_CATALOG.find((entry) => entry.id === item.type)
+  if (creativeTr) return isZhLocale.value ? creativeTr.labelZh : creativeTr.labelEn
+  return item.type
+}
 
 const TRANSITION_DURATION_PRESETS = [0.3, 0.5, 0.8, 1.0, 1.5]
 const CROP_ASPECT_PRESETS: ReadonlyArray<{
@@ -3469,13 +4265,168 @@ const activeMainTransitionClip = computed(() => activeMainTransition.value?.to ?
 
 const activeMainTransitionClipId = computed(() => activeMainTransition.value?.to.id ?? '')
 
-/** 当前转场窗口是否已有就绪的 ffmpeg 微渲染片段（与导出一致的画面） */
-const activeTransitionPreviewEntry = computed(() => {
-  void transitionPreviewTick.value
-  const transition = activeMainTransition.value
-  if (!transition) return null
-  return transitionPreviewCache.get(transitionPreviewKeyFor(transition)) ?? null
+/** 当前预览画布主画面实际已加载的片段 ID（确保单击不同片段时特效/滤镜严格与所显画面一一对应） */
+const previewLoadedClipId = ref<string | null>(null)
+
+/** 预解析并缓存各素材/片段的媒体 URL，保证转场叠加层与片段切换零帧延迟 */
+const clipResolvedUrls = ref<Record<string, string>>({})
+
+/** 转场进入片段为静态图/GIF 时的预览地址（同步优先读缓存，异步兜底） */
+const transitionOverlayImageUrl = ref('')
+
+const transitionOverlayMediaUrl = computed(() => {
+  const clip = activeMainTransitionClip.value
+  if (!clip) return ''
+  const cachedByClip = clipResolvedUrls.value[clip.id]
+  if (cachedByClip) return cachedByClip
+  const rel = sourceRelativePath(clip)
+  if (rel && clipResolvedUrls.value[`rel:${rel}`]) {
+    return clipResolvedUrls.value[`rel:${rel}`]!
+  }
+  return transitionOverlayImageUrl.value
 })
+
+watch(
+  activeMainTransitionClip,
+  async (clip) => {
+    if (!clip) {
+      transitionOverlayImageUrl.value = ''
+      return
+    }
+    const url = await resolveSrc(clip)
+    if (url && !clipResolvedUrls.value[clip.id]) {
+      clipResolvedUrls.value = { ...clipResolvedUrls.value, [clip.id]: url }
+    }
+    if (activeMainTransitionClip.value?.id === clip.id) {
+      transitionOverlayImageUrl.value = url
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  clips,
+  (list) => {
+    for (const clip of list) {
+      if (clip.track !== 'video' && clip.track !== 'overlay') continue
+      if (clipResolvedUrls.value[clip.id]) continue
+      void resolveSrc(clip).then((url) => {
+        if (url && !clipResolvedUrls.value[clip.id]) {
+          clipResolvedUrls.value = { ...clipResolvedUrls.value, [clip.id]: url }
+        }
+      })
+    }
+  },
+  { immediate: true }
+)
+
+/**
+ * 计算某个视频片段用于“单片段预览/调特效”的安全时间点：
+ * 若该片段有入场转场（与前一片段尾部重叠），避开转场重叠区，定位于转场结束后的纯净片段区内，
+ * 避免单击片段 2 调特效时播放头落入 [A→B] 转场窗口而把底层画面误判为片段 1。
+ */
+function clipSafePreviewTimeSec(clip: ScriptTimelineClip): number {
+  if (clip.track !== 'video') return clip.startSec
+  const transIn =
+    clip.transitionType && clip.transitionType !== 'none' && (clip.transitionInSec ?? 0) > 0
+      ? Math.min(clip.durationSec * 0.6, clip.transitionInSec ?? 0)
+      : 0
+  if (transIn <= 0.01) return clip.startSec
+  return Math.min(
+    clip.startSec + Math.max(0.05, clip.durationSec - 0.05),
+    Number((clip.startSec + transIn + 0.02).toFixed(3))
+  )
+}
+
+/**
+ * 当前预览舞台底层（主画面）实际展示的主视频轨片段：
+ * - 转场窗口内固定为转场前片（transition.from），保证底层是 A、叠加层是 B；
+ * - 暂停且非转场态下，若用户刚显式加载了某个视频片段（previewLoadedClipId），严格使用该片段的特效/滤镜；
+ * - 播放或拖动播放头时，严格取播放头所在视频片段（每段特效仅在该片段时间区间内生效，绝不污染整条轨道）。
+ */
+const previewDisplayedVideoClip = computed<ScriptTimelineClip | null>(() => {
+  if (activeMainTransition.value) return activeMainTransition.value.from
+  if (!playing.value && !playheadDrag.value && previewLoadedClipId.value) {
+    const loaded = clips.value.find(
+      (c) => c.id === previewLoadedClipId.value && c.track === 'video'
+    )
+    if (loaded) return loaded
+  }
+  const sel = clips.value.find((c) => c.id === activeClipId.value)
+  if (
+    sel &&
+    sel.track === 'video' &&
+    playheadSec.value >= sel.startSec &&
+    playheadSec.value < sel.startSec + sel.durationSec
+  ) {
+    return sel
+  }
+  const atHead = clipAtPlayhead()
+  if (atHead && atHead.track === 'video') return atHead
+  if (sel && sel.track === 'video') return sel
+  return visibleClipsOn('video')[0] ?? null
+})
+
+/** 动态特效 60fps 实时预览时钟（当播放器处于暂停态但当前片段挂载了动态特效或运镜时自动驱动） */
+const effectPreviewClockSec = ref(0)
+let effectPreviewRafId = 0
+let effectPreviewStartMs = 0
+
+const needsLiveEffectClock = computed(() => {
+  if (playing.value) return false
+  const vClip = previewDisplayedVideoClip.value
+  const oClip = selectedOverlayClip.value
+  if (vClip && isDynamicVisualEffect(vClip.visualEffect)) return true
+  if (vClip && vClip.cameraMotion && vClip.cameraMotion !== 'none') return true
+  if (oClip && isDynamicVisualEffect(oClip.visualEffect)) return true
+  if (oClip && hasOverlayClipTween(oClip)) return true
+  return false
+})
+
+function stopEffectPreviewClock(): void {
+  if (effectPreviewRafId) {
+    cancelAnimationFrame(effectPreviewRafId)
+    effectPreviewRafId = 0
+  }
+}
+
+function startEffectPreviewClock(): void {
+  if (effectPreviewRafId) return
+  effectPreviewStartMs = performance.now()
+  const tick = (now: number) => {
+    if (!needsLiveEffectClock.value) {
+      effectPreviewRafId = 0
+      return
+    }
+    effectPreviewClockSec.value = (now - effectPreviewStartMs) / 1000
+    effectPreviewRafId = requestAnimationFrame(tick)
+  }
+  effectPreviewRafId = requestAnimationFrame(tick)
+}
+
+watch(
+  needsLiveEffectClock,
+  (needed) => {
+    if (needed) startEffectPreviewClock()
+    else stopEffectPreviewClock()
+  },
+  { immediate: true }
+)
+
+function effectiveClipLocalTimeSec(clip: ScriptTimelineClip | null | undefined): number {
+  if (!clip) return 0
+  const baseLocal = Math.max(0, playheadSec.value - clip.startSec)
+  if (playing.value || playheadDrag.value) return baseLocal
+  if (
+    isDynamicVisualEffect(clip.visualEffect) ||
+    (clip.track === 'video' && clip.cameraMotion && clip.cameraMotion !== 'none') ||
+    (clip.track === 'overlay' && hasOverlayClipTween(clip))
+  ) {
+    const dur = Math.max(0.6, clip.durationSec || 3)
+    return (baseLocal + effectPreviewClockSec.value) % dur
+  }
+  return baseLocal
+}
 
 function smoothstep01(tVal: number): number {
   const x = clamp01(tVal)
@@ -3513,15 +4464,6 @@ const mainTransitionVideoStyle = computed(() => {
   }
   const colorFilter = buildCssColorFilter(transition.to)
   if (colorFilter) style.filter = colorFilter
-  // ffmpeg 微渲染就绪：整个窗口已由渲染片段覆盖（含 pad 画幅与裁剪），不再需要 CSS 模拟；
-  // object-fit 用 fill 抹平偶数化宽高带来的亚像素缝隙，比例误差 <0.1% 无感
-  if (activeTransitionPreviewEntry.value) {
-    style.transform = 'none'
-    style.clipPath = 'none'
-    style.objectFit = 'fill'
-    style.filter = 'none'
-    return style
-  }
   if (type === 'dissolve') {
     style.opacity = `${progress}`
   } else if (type === 'fade' || type === 'fadeout' || type === 'fadein') {
@@ -3530,6 +4472,12 @@ const mainTransitionVideoStyle = computed(() => {
     style.opacity = `${phaseIn}`
     const br = (0.25 + 0.75 * phaseIn).toFixed(3)
     style.filter = colorFilter ? `${colorFilter} brightness(${br})` : `brightness(${br})`
+  } else if (type === 'fadegrays') {
+    style.opacity = `${progress}`
+    const sat = Math.abs(rawProgress - 0.5) * 2
+    style.filter = colorFilter
+      ? `${colorFilter} saturate(${sat.toFixed(3)})`
+      : `saturate(${sat.toFixed(3)})`
   } else if (type === 'flash') {
     // Dip to white: 中点白闪爆光过场
     const phaseIn = rawProgress < 0.45 ? 0 : smoothstep01((rawProgress - 0.45) / 0.55)
@@ -3538,12 +4486,22 @@ const mainTransitionVideoStyle = computed(() => {
     style.filter = colorFilter
       ? `${colorFilter} brightness(${flashBoost.toFixed(3)})`
       : `brightness(${flashBoost.toFixed(3)})`
+  } else if (type === 'hblur' || type === 'distance') {
+    style.opacity = `${progress}`
+    const blurPx = ((1 - Math.abs(rawProgress - 0.5) * 2) * 8).toFixed(2)
+    style.filter = colorFilter ? `${colorFilter} blur(${blurPx}px)` : `blur(${blurPx}px)`
   } else if (type === 'smoothleft') {
     style.opacity = `${clamp01(rawProgress * 1.25)}`
     style.transform = `translateX(${(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
   } else if (type === 'smoothright') {
     style.opacity = `${clamp01(rawProgress * 1.25)}`
     style.transform = `translateX(${-(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+  } else if (type === 'smoothup') {
+    style.opacity = `${clamp01(rawProgress * 1.25)}`
+    style.transform = `translateY(${(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+  } else if (type === 'smoothdown') {
+    style.opacity = `${clamp01(rawProgress * 1.25)}`
+    style.transform = `translateY(${-(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
   } else if (type === 'slideleft') {
     style.transform = `translateX(${(1 - progress) * 100}%)`
   } else if (type === 'slideright') {
@@ -3552,6 +4510,22 @@ const mainTransitionVideoStyle = computed(() => {
     style.transform = `translateY(${(1 - progress) * 100}%)`
   } else if (type === 'slidedown') {
     style.transform = `translateY(${-(1 - progress) * 100}%)`
+  } else if (type === 'hrslice') {
+    style.opacity = `${clamp01(rawProgress * 1.35)}`
+    style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`
+    style.transform = `translateX(${(1 - progress) * 18}%) scaleX(${(1.08 - 0.08 * progress).toFixed(3)})`
+  } else if (type === 'hlslice') {
+    style.opacity = `${clamp01(rawProgress * 1.35)}`
+    style.clipPath = `inset(0 0 0 ${(1 - progress) * 100}%)`
+    style.transform = `translateX(${-(1 - progress) * 18}%) scaleX(${(1.08 - 0.08 * progress).toFixed(3)})`
+  } else if (type === 'vdslice') {
+    style.opacity = `${clamp01(rawProgress * 1.35)}`
+    style.clipPath = `inset(${(1 - progress) * 100}% 0 0 0)`
+    style.transform = `translateY(${(1 - progress) * 18}%) scaleY(${(1.08 - 0.08 * progress).toFixed(3)})`
+  } else if (type === 'vuslice') {
+    style.opacity = `${clamp01(rawProgress * 1.35)}`
+    style.clipPath = `inset(0 0 ${(1 - progress) * 100}% 0)`
+    style.transform = `translateY(${-(1 - progress) * 18}%) scaleY(${(1.08 - 0.08 * progress).toFixed(3)})`
   } else if (type === 'wipeleft') {
     style.clipPath = `inset(0 ${(1 - progress) * 100}% 0 0)`
   } else if (type === 'wiperight') {
@@ -3560,6 +4534,20 @@ const mainTransitionVideoStyle = computed(() => {
     style.clipPath = `inset(${(1 - progress) * 100}% 0 0 0)`
   } else if (type === 'wipedown') {
     style.clipPath = `inset(0 0 ${(1 - progress) * 100}% 0)`
+  } else if (type === 'wipetl') {
+    style.clipPath = `inset(0 ${(1 - progress) * 100}% ${(1 - progress) * 100}% 0)`
+  } else if (type === 'wipetr') {
+    style.clipPath = `inset(0 0 ${(1 - progress) * 100}% ${(1 - progress) * 100}%)`
+  } else if (type === 'wipebl') {
+    style.clipPath = `inset(${(1 - progress) * 100}% ${(1 - progress) * 100}% 0 0)`
+  } else if (type === 'wipebr') {
+    style.clipPath = `inset(${(1 - progress) * 100}% 0 0 ${(1 - progress) * 100}%)`
+  } else if (type === 'diagtl') {
+    const p = (progress * 200).toFixed(2)
+    style.clipPath = `polygon(0 0, ${p}% 0, 0 ${p}%)`
+  } else if (type === 'diagbr') {
+    const p = ((1 - progress) * 200).toFixed(2)
+    style.clipPath = `polygon(100% 100%, ${100 - progress * 200}% 100%, 100% ${p}%)`
   } else if (type === 'circleopen' || type === 'radial') {
     style.clipPath = `circle(${progress * 75}% at 50% 50%)`
   } else if (type === 'circleclose') {
@@ -3567,9 +4555,24 @@ const mainTransitionVideoStyle = computed(() => {
   } else if (type === 'horzopen') {
     const side = ((1 - progress) * 50).toFixed(2)
     style.clipPath = `inset(0 ${side}% 0 ${side}%)`
+  } else if (type === 'horzclose') {
+    const side = (progress * 50).toFixed(2)
+    style.clipPath = `inset(0 ${50 - Number(side)}% 0 ${50 - Number(side)}%)`
   } else if (type === 'vertopen') {
     const side = ((1 - progress) * 50).toFixed(2)
     style.clipPath = `inset(${side}% 0 ${side}% 0)`
+  } else if (type === 'vertclose') {
+    const side = (progress * 50).toFixed(2)
+    style.clipPath = `inset(${50 - Number(side)}% 0 ${50 - Number(side)}% 0)`
+  } else if (type === 'rectcrop') {
+    const side = ((1 - progress) * 48).toFixed(2)
+    style.clipPath = `inset(${side}% ${side}% ${side}% ${side}%)`
+  } else if (type === 'squeezeh') {
+    style.opacity = `${progress}`
+    style.transform = `scaleX(${Math.max(0.05, progress).toFixed(3)})`
+  } else if (type === 'squeezev') {
+    style.opacity = `${progress}`
+    style.transform = `scaleY(${Math.max(0.05, progress).toFixed(3)})`
   } else if (type === 'zoomin') {
     style.opacity = `${progress}`
     style.transform = `scale(${(0.72 + 0.28 * progress).toFixed(3)})`
@@ -3585,14 +4588,51 @@ const mainTransitionVideoStyle = computed(() => {
   return style
 })
 
-function buildCssColorFilter(clip: ScriptTimelineClip | null | undefined): string {
+function buildCssColorFilter(
+  clip: ScriptTimelineClip | null | undefined,
+  includeSvgFilter = false
+): string {
   if (!clip) return ''
-  const b = Number.isFinite(clip.brightness) ? clip.brightness! : 0
-  const c = Number.isFinite(clip.contrast) ? clip.contrast! : 1
-  const s = Number.isFinite(clip.saturation) ? clip.saturation! : 1
-  if (Math.abs(b) < 0.001 && Math.abs(c - 1) < 0.001 && Math.abs(s - 1) < 0.001) return ''
-  return `brightness(${(1 + b).toFixed(3)}) contrast(${c.toFixed(3)}) saturate(${s.toFixed(3)})`
+  const localSec = effectiveClipLocalTimeSec(clip)
+  const cssFilter = buildClipVisualCssFilter(clip, localSec) ?? ''
+  if (!includeSvgFilter) return cssFilter
+  const svgMeta = buildClipVisualSvgFilterMeta(clip, localSec)
+  if (!svgMeta.enabled) return cssFilter
+  return cssFilter
+    ? `${cssFilter} url(#timeline-stage-fx-filter)`
+    : 'url(#timeline-stage-fx-filter)'
 }
+
+const activeSvgFilterMeta = computed(() => {
+  const activeClip = previewDisplayedVideoClip.value
+  return buildClipVisualSvgFilterMeta(activeClip, effectiveClipLocalTimeSec(activeClip))
+})
+
+const svgFilterPreMosaicInput = computed(() =>
+  activeSvgFilterMeta.value.posterizeTable ? 'stepPoster' : 'stepColor'
+)
+
+const svgFilterPreSharpenInput = computed(() => {
+  if (activeSvgFilterMeta.value.mosaicRadius > 0) return 'stepMosaic'
+  if (activeSvgFilterMeta.value.posterizeTable) return 'stepPoster'
+  return 'stepColor'
+})
+
+const svgFilterPreRgbInput = computed(() => {
+  if (activeSvgFilterMeta.value.sharpenAmount > 0.02) return 'stepSharpen'
+  if (activeSvgFilterMeta.value.mosaicRadius > 0) return 'stepMosaic'
+  if (activeSvgFilterMeta.value.posterizeTable) return 'stepPoster'
+  return 'stepColor'
+})
+
+const activeSplitCloneFilter = computed(() =>
+  buildCssColorFilter(previewDisplayedVideoClip.value, false)
+)
+
+const activeVisualOverlayMeta = computed(() => {
+  const activeClip = previewDisplayedVideoClip.value ?? selectedOverlayClip.value
+  return buildClipVisualOverlayMeta(activeClip, effectiveClipLocalTimeSec(activeClip))
+})
 
 /**
  * 转场期间把主视频（A）钳制到导出框画布内，与转场叠加层（B）共享同一几何，
@@ -3603,14 +4643,14 @@ function buildCssColorFilter(clip: ScriptTimelineClip | null | undefined): strin
  */
 const previewVideoTransitionStyle = computed<Record<string, string> | null>(() => {
   const rect = previewFrameRect.value
-  const activeClip = clips.value.find((c) => c.id === activeClipId.value)
-  let filter = buildCssColorFilter(activeClip)
+  const activeClip = previewDisplayedVideoClip.value
+  let filter = buildCssColorFilter(activeClip, true)
   const cropClip =
     !cropMode.value && activeClip?.track === 'video' ? buildCssCropClipPath(activeClip) : ''
   let outgoingTransform = ''
 
   const transition = activeMainTransition.value
-  if (transition && !activeTransitionPreviewEntry.value) {
+  if (transition) {
     const duration = Math.max(0.05, transition.to.transitionInSec ?? 0.5)
     const rawProgress = clamp01((playheadSec.value - transition.to.startSec) / duration)
     const progress = smoothstep01(rawProgress)
@@ -3633,25 +4673,42 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
       outgoingTransform = `translateX(${-progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
     } else if (type === 'smoothright') {
       outgoingTransform = `translateX(${progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+    } else if (type === 'smoothup') {
+      outgoingTransform = `translateY(${-progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+    } else if (type === 'smoothdown') {
+      outgoingTransform = `translateY(${progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
     } else if (type === 'zoomin') {
       outgoingTransform = `scale(${(1 + 0.24 * progress).toFixed(3)})`
+    } else if (type === 'squeezeh') {
+      outgoingTransform = `scaleX(${Math.max(0.05, 1 - progress).toFixed(3)})`
+    } else if (type === 'squeezev') {
+      outgoingTransform = `scaleY(${Math.max(0.05, 1 - progress).toFixed(3)})`
     }
   }
 
+  const clipLocalSec = effectiveClipLocalTimeSec(activeClip)
   if (
     !outgoingTransform &&
     activeClip?.track === 'video' &&
     activeClip.cameraMotion &&
     activeClip.cameraMotion !== 'none'
   ) {
-    const cam = evaluateMainClipCameraTransform(activeClip, playheadSec.value - activeClip.startSec)
+    const cam = evaluateMainClipCameraTransform(activeClip, clipLocalSec)
     outgoingTransform = `translate(${cam.translateXPercent.toFixed(2)}%, ${cam.translateYPercent.toFixed(2)}%) scale(${cam.scale.toFixed(3)})`
+  }
+
+  if (activeClip) {
+    const fxTransform = buildClipVisualCssTransform(activeClip, clipLocalSec)
+    if (fxTransform) {
+      outgoingTransform = outgoingTransform ? `${outgoingTransform} ${fxTransform}` : fxTransform
+    }
   }
 
   const extras: Record<string, string> = {
     ...(filter ? { filter } : {}),
     ...(cropClip ? { clipPath: cropClip } : {}),
-    ...(outgoingTransform ? { transform: outgoingTransform } : {})
+    ...(outgoingTransform ? { transform: outgoingTransform } : {}),
+    ...(activeClip?.visualEffect === 'pixel-mosaic' ? { imageRendering: 'pixelated' } : {})
   }
 
   if (!(rect.width > 1) || !(rect.height > 1)) {
@@ -4088,7 +5145,10 @@ function onCropPointerUp(e: PointerEvent): void {
 /** ── 专业视频转场选择器与状态 ── */
 function transitionShortLabel(type: string | undefined): string {
   const item = TRANSITION_CATALOG.find((entry) => entry.type === (type || 'none'))
-  return item ? t(item.shortKey) : t('script.timeline.transitionDissolve')
+  if (item && item.shortKey) return t(item.shortKey)
+  const creativeTr = TIMELINE_TRANSITION_CATALOG.find((entry) => entry.id === type)
+  if (creativeTr) return isZhLocale.value ? creativeTr.labelZh : creativeTr.labelEn
+  return t('script.timeline.transitionDissolve')
 }
 
 const filteredTransitionCatalog = computed(() =>
@@ -4133,13 +5193,110 @@ const transitionPopoverStyle = computed<Record<string, string>>(() => {
   return style
 })
 
+let transitionSweepRafId = 0
+let transitionDurationDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelTransitionSweep(): void {
+  if (transitionSweepRafId) {
+    cancelAnimationFrame(transitionSweepRafId)
+    transitionSweepRafId = 0
+  }
+  if (transitionDurationDebounceTimer) {
+    clearTimeout(transitionDurationDebounceTimer)
+    transitionDurationDebounceTimer = null
+  }
+}
+
+/**
+ * 选中或调整转场后，自动将底层画面切到左片段（A）、叠加层切到右片段（B），
+ * 并按真实转场时长（dur 秒）以 60fps 扫掠播放头完整演示一次转场过程，
+ * 演示期间主视频与转场叠加视频同步解码推进，所见即所得。
+ */
+async function previewTransitionBetweenClips(leftId: string, rightId: string): Promise<void> {
+  cancelTransitionSweep()
+  if (playing.value) stopPlayback()
+  const left = clips.value.find((c) => c.id === leftId)
+  const right = clips.value.find((c) => c.id === rightId)
+  if (!left || !right) return
+
+  const dur = Math.max(0, right.transitionInSec ?? 0)
+  if (!right.transitionType || right.transitionType === 'none' || dur <= 0.02) {
+    playheadSec.value = clipSafePreviewTimeSec(right)
+    void showClipPreview(right)
+    return
+  }
+
+  void ensureTransitionPreview({ from: left, to: right })
+  const [leftUrl, rightUrl] = await Promise.all([resolveSrc(left), resolveSrc(right)])
+  if (leftUrl) {
+    previewLoadedClipId.value = left.id
+    if (previewSrc.value !== leftUrl) {
+      previewSrc.value = leftUrl
+    }
+  }
+  if (rightUrl) {
+    transitionOverlayImageUrl.value = rightUrl
+    if (!clipResolvedUrls.value[right.id]) {
+      clipResolvedUrls.value = { ...clipResolvedUrls.value, [right.id]: rightUrl }
+    }
+  }
+
+  const startSec = right.startSec
+  const endSec = Math.max(
+    startSec + 0.05,
+    Math.min(left.startSec + left.durationSec, right.startSec + dur)
+  )
+  // 严格按真实转场时长（毫秒）扫掠，让用户直观感受 0.3s / 0.8s / 1.5s 的真实快慢差异
+  const sweepDurationMs = Math.max(120, Math.round((endSec - startSec) * 1000))
+  playheadSec.value = startSec
+  await nextTick()
+
+  const mainEl = previewEl.value
+  if (mainEl && !isImageOrGifClip(left) && !isImageOrGifUrl(leftUrl)) {
+    try {
+      applyPlaybackRate()
+      const leftLocal = Math.max(0, startSec - left.startSec)
+      mainEl.currentTime = mediaTimeForClip(left, leftLocal)
+      void mainEl.play().catch(() => undefined)
+    } catch {
+      /* ignore */
+    }
+  }
+  await syncOverlayVideosToPlayhead(true)
+  const startedAt = performance.now()
+
+  const tick = (now: number) => {
+    const tNorm = Math.min(1, (now - startedAt) / sweepDurationMs)
+    if (tNorm < 1) {
+      playheadSec.value = Number((startSec + (endSec - startSec) * tNorm).toFixed(3))
+      transitionSweepRafId = requestAnimationFrame(tick)
+    } else {
+      // 扫掠演示完毕：停在转场窗口内偏后位置（75%），保持转场手柄与切点检查器上下文不丢失，同时定格展示合成效果
+      const settleSec = Number((startSec + (endSec - startSec) * 0.75).toFixed(3))
+      playheadSec.value = settleSec
+      transitionSweepRafId = 0
+      if (mainEl && !mainEl.paused) {
+        try {
+          mainEl.pause()
+        } catch {
+          /* ignore */
+        }
+      }
+      void syncOverlayVideosToPlayhead(false)
+    }
+  }
+  transitionSweepRafId = requestAnimationFrame(tick)
+}
+
 function onSelectPairTransitionType(
   pair: VideoTransitionHandle,
   type: ScriptTimelineTransitionType
 ): void {
   if (lockedTracks.value.has('video')) return
   const currentSec =
-    pair.right.transitionInSec && pair.right.transitionInSec > 0 ? pair.right.transitionInSec : 0.6
+    pair.right.transitionInSec && pair.right.transitionInSec > 0
+      ? pair.right.transitionInSec
+      : browserTransitionDurationSec.value || 0.6
   const updated = applyVideoTransitionBetweenClips(clips.value, pair.left.id, pair.right.id, {
     transitionType: type,
     durationSec: type === 'none' ? 0 : currentSec
@@ -4147,11 +5304,38 @@ function onSelectPairTransitionType(
   commitClips(updated)
   activeClipId.value = pair.right.id
   selectedClipIds.value = new Set([pair.right.id])
+  void previewTransitionBetweenClips(pair.left.id, pair.right.id)
+  scheduleSave()
+}
+
+function onInputPairTransitionDuration(pair: VideoTransitionHandle, durationSec: number): void {
+  if (lockedTracks.value.has('video')) return
+  cancelTransitionSweep()
+  browserTransitionDurationSec.value = durationSec
+  const type =
+    pair.right.transitionType && pair.right.transitionType !== 'none'
+      ? pair.right.transitionType
+      : 'dissolve'
+  clips.value = applyVideoTransitionBetweenClips(clips.value, pair.left.id, pair.right.id, {
+    transitionType: type,
+    durationSec
+  })
+  const updatedRight = clips.value.find((c) => c.id === pair.right.id)
+  if (updatedRight) {
+    const dur = Math.max(0.05, updatedRight.transitionInSec ?? durationSec)
+    playheadSec.value = Number((updatedRight.startSec + dur * 0.5).toFixed(3))
+    void syncOverlayVideosToPlayhead(false)
+  }
+  transitionDurationDebounceTimer = setTimeout(() => {
+    transitionDurationDebounceTimer = null
+    void previewTransitionBetweenClips(pair.left.id, pair.right.id)
+  }, 180)
   scheduleSave()
 }
 
 function onSelectPairTransitionDuration(pair: VideoTransitionHandle, durationSec: number): void {
   if (lockedTracks.value.has('video')) return
+  browserTransitionDurationSec.value = durationSec
   const type =
     pair.right.transitionType && pair.right.transitionType !== 'none'
       ? pair.right.transitionType
@@ -4161,6 +5345,7 @@ function onSelectPairTransitionDuration(pair: VideoTransitionHandle, durationSec
     durationSec
   })
   commitClips(updated)
+  void previewTransitionBetweenClips(pair.left.id, pair.right.id)
   scheduleSave()
 }
 
@@ -4170,6 +5355,7 @@ function applyCurrentTransitionToAllCuts(pair: VideoTransitionHandle): void {
   const durationSec = pair.right.transitionInSec ?? 0.6
   const updated = applyVideoTransitionToAllCuts(clips.value, type, durationSec)
   commitClips(updated)
+  void previewTransitionBetweenClips(pair.left.id, pair.right.id)
   scheduleSave()
 }
 
@@ -4992,12 +6178,36 @@ function reorderClipsOnTrack(
   let cursor = prefix.length
     ? prefix[prefix.length - 1]!.startSec + prefix[prefix.length - 1]!.durationSec
     : 0
-  const nextStart = Math.max(clampedStart, cursor)
-  updatedTrack.push({ ...dragged, startSec: nextStart })
+  const draggedOverlap =
+    kind === 'video' &&
+    prefix.length > 0 &&
+    dragged.transitionType &&
+    dragged.transitionType !== 'none' &&
+    (dragged.transitionInSec ?? 0) > 0
+      ? Math.min(
+          Math.max(0, Math.min(prefix[prefix.length - 1]!.durationSec, durationSec) - 0.1),
+          dragged.transitionInSec ?? 0
+        )
+      : 0
+  const minDraggedStart = Math.max(0, cursor - draggedOverlap)
+  const nextStart = Math.max(clampedStart, minDraggedStart)
+  updatedTrack.push({ ...dragged, startSec: Math.round(nextStart * 100) / 100 })
   cursor = nextStart + Math.max(MIN_CLIP_SEC, durationSec)
 
   for (const other of suffix) {
-    const start = cursor
+    const prevClip = updatedTrack[updatedTrack.length - 1]
+    const otherOverlap =
+      kind === 'video' &&
+      prevClip &&
+      other.transitionType &&
+      other.transitionType !== 'none' &&
+      (other.transitionInSec ?? 0) > 0
+        ? Math.min(
+            Math.max(0, Math.min(prevClip.durationSec, other.durationSec) - 0.1),
+            other.transitionInSec ?? 0
+          )
+        : 0
+    const start = Math.max(0, Math.round((cursor - otherOverlap) * 100) / 100)
     updatedTrack.push({ ...other, startSec: start })
     cursor = start + Math.max(MIN_CLIP_SEC, other.durationSec)
   }
@@ -5649,9 +6859,12 @@ function overlayRect(clip: ScriptTimelineClip): {
 }
 
 function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
-  const localSec = playheadSec.value - clip.startSec
+  const localSec = effectiveClipLocalTimeSec(clip)
   const tf = evaluateOverlayClipTransform(clip, localSec)
-  const filter = buildCssColorFilter(clip)
+  const filter = buildCssColorFilter(clip, false)
+  const fxTransform = buildClipVisualCssTransform(clip, localSec)
+  const rotTransform = Math.abs(tf.rotation) > 0.01 ? `rotate(${tf.rotation.toFixed(2)}deg)` : ''
+  const combinedTransform = [rotTransform, fxTransform].filter(Boolean).join(' ')
   const cropClip = !(cropMode.value && selectedCroppableClip.value?.id === clip.id)
     ? buildCssCropClipPath(clip)
     : ''
@@ -5661,8 +6874,8 @@ function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
     width: `${(tf.width * 100).toFixed(3)}%`,
     height: `${(tf.height * 100).toFixed(3)}%`,
     opacity: `${clamp01(tf.opacity).toFixed(3)}`,
-    ...(Math.abs(tf.rotation) > 0.01
-      ? { transform: `rotate(${tf.rotation.toFixed(2)}deg)`, transformOrigin: 'center center' }
+    ...(combinedTransform
+      ? { transform: combinedTransform, transformOrigin: 'center center' }
       : {}),
     ...(filter ? { filter } : {}),
     ...(cropClip ? { clipPath: cropClip } : {})
@@ -5670,7 +6883,7 @@ function overlayVideoStyle(clip: ScriptTimelineClip): Record<string, string> {
 }
 
 function overlaySelectionStyle(clip: ScriptTimelineClip): Record<string, string> {
-  const localSec = playheadSec.value - clip.startSec
+  const localSec = effectiveClipLocalTimeSec(clip)
   const tf = evaluateOverlayClipTransform(clip, localSec)
   return {
     left: `${(tf.left * 100).toFixed(3)}%`,
@@ -6081,6 +7294,7 @@ function onTimelineWheel(e: WheelEvent): void {
 }
 
 async function resolveSrc(source: {
+  id?: string
   relativePath?: string
   assetId?: string
   stickerId?: string
@@ -6088,15 +7302,34 @@ async function resolveSrc(source: {
   stickerColor?: string
 }): Promise<string> {
   if (typeof source.stickerId === 'string' && source.stickerId.trim()) {
-    return renderTimelineBuiltinStickerDataUrl(source.stickerId, {
+    const dataUrl = renderTimelineBuiltinStickerDataUrl(source.stickerId, {
       text: source.text,
       color: source.stickerColor
     })
+    if (source.id && dataUrl && clipResolvedUrls.value[source.id] !== dataUrl) {
+      clipResolvedUrls.value = { ...clipResolvedUrls.value, [source.id]: dataUrl }
+    }
+    return dataUrl
   }
   const rel = sourceRelativePath(source)
   if (!rel) return ''
+  const cachedRel = clipResolvedUrls.value[`rel:${rel}`]
+  if (cachedRel) {
+    if (source.id && !clipResolvedUrls.value[source.id]) {
+      clipResolvedUrls.value = { ...clipResolvedUrls.value, [source.id]: cachedRel }
+    }
+    return cachedRel
+  }
   try {
-    return (await window.studio.getAssetFileUrl(rel)) || ''
+    const url = (await window.studio.getAssetFileUrl(rel)) || ''
+    if (url) {
+      clipResolvedUrls.value = {
+        ...clipResolvedUrls.value,
+        [`rel:${rel}`]: url,
+        ...(source.id ? { [source.id]: url } : {})
+      }
+    }
+    return url
   } catch {
     return ''
   }
@@ -7275,16 +8508,443 @@ function onClipColorChange(field: 'brightness' | 'contrast' | 'saturation', valu
 }
 
 function resetClipColorGrade(): void {
-  const clip = selectedClip.value
+  const clip = targetCreativeClip.value ?? selectedClip.value
   if (!clip) return
   commitClips(
     clips.value.map((c) =>
       c.id === clip.id
-        ? { ...c, brightness: undefined, contrast: undefined, saturation: undefined }
+        ? {
+            ...c,
+            brightness: undefined,
+            contrast: undefined,
+            saturation: undefined,
+            vibrance: undefined,
+            temperature: undefined,
+            tint: undefined,
+            highlights: undefined,
+            shadows: undefined,
+            sharpen: undefined,
+            vignette: undefined,
+            fade: undefined,
+            grain: undefined,
+            filterPreset: undefined,
+            filterIntensity: undefined
+          }
         : c
     )
   )
   scheduleSave()
+}
+
+/** ── 剪映式左上角六合一面板（素材 / 特效 / 转场 / 滤镜 / 调节 / 模板） ── */
+const leftBrowserTab = ref<TimelineBrowserTabId>('sources')
+const activeVisualEffectCategory = ref<TimelineVisualEffectCategory>('all')
+const activeFilterCategory = ref<TimelineFilterCategory>('all')
+const browserTransitionCategory = ref<TimelineTransitionCategory>('all')
+const browserTransitionDurationSec = ref(0.5)
+
+const isZhLocale = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('zh')
+)
+
+function creativeUiText(key: keyof typeof TIMELINE_CREATIVE_UI_TEXT): string {
+  const entry = TIMELINE_CREATIVE_UI_TEXT[key]
+  return isZhLocale.value ? entry.zh : entry.en
+}
+
+const hasVideoOrOverlayClips = computed(() =>
+  clips.value.some((c) => c.track === 'video' || c.track === 'overlay')
+)
+
+const targetCreativeClip = computed<ScriptTimelineClip | null>(() => {
+  const sel = selectedCroppableClip.value
+  if (sel) return sel
+  const atHead = clipAtPlayhead()
+  if (atHead && (atHead.track === 'video' || atHead.track === 'overlay')) return atHead
+  return visibleClipsOn('video')[0] ?? visibleClipsOn('overlay')[0] ?? null
+})
+
+function ensureTargetCreativeClipSelected(): ScriptTimelineClip | null {
+  const clip = targetCreativeClip.value
+  if (!clip) return null
+  cancelTransitionSweep()
+  if (!selectedClipIds.value.has(clip.id) || activeClipId.value !== clip.id) {
+    activeClipId.value = clip.id
+    selectedClipIds.value = new Set([clip.id])
+  }
+  if (clip.track === 'video') {
+    const safeStart = clipSafePreviewTimeSec(clip)
+    const outOfClipRange =
+      playheadSec.value < safeStart || playheadSec.value >= clip.startSec + clip.durationSec
+    if (outOfClipRange || activeMainTransition.value) {
+      playheadSec.value = safeStart
+    }
+    void showClipPreview(clip)
+  } else if (clip.track === 'overlay') {
+    if (
+      playheadSec.value < clip.startSec ||
+      playheadSec.value >= clip.startSec + clip.durationSec
+    ) {
+      playheadSec.value = clip.startSec
+      void syncPreviewToPlayhead()
+    }
+  }
+  return clip
+}
+
+const filteredVisualEffects = computed(() => {
+  if (activeVisualEffectCategory.value === 'all') return TIMELINE_VISUAL_EFFECTS
+  return TIMELINE_VISUAL_EFFECTS.filter(
+    (fx) => fx.id === 'none' || fx.category === activeVisualEffectCategory.value
+  )
+})
+
+const filteredFilterPresets = computed(() => {
+  if (activeFilterCategory.value === 'all') return TIMELINE_FILTER_PRESETS
+  return TIMELINE_FILTER_PRESETS.filter(
+    (lut) => lut.id === 'none' || lut.category === activeFilterCategory.value
+  )
+})
+
+const filteredBrowserTransitions = computed(() => {
+  if (browserTransitionCategory.value === 'all') return TIMELINE_TRANSITION_CATALOG
+  return TIMELINE_TRANSITION_CATALOG.filter((tr) => tr.category === browserTransitionCategory.value)
+})
+
+const activeBrowserTransitionPair = computed<VideoTransitionHandle | null>(() => {
+  if (selectedTransitionPair.value) return selectedTransitionPair.value
+  return videoTransitionHandles.value[0] ?? null
+})
+
+const activeBrowserTransitionType = computed<ScriptTimelineTransitionType>(() => {
+  return activeBrowserTransitionPair.value?.transitionType ?? 'none'
+})
+
+watch(
+  activeBrowserTransitionPair,
+  (pair) => {
+    if (pair && pair.durationSec > 0.04) {
+      browserTransitionDurationSec.value = Number(pair.durationSec.toFixed(2))
+    }
+  },
+  { immediate: true }
+)
+
+function previewActiveBrowserTransition(): void {
+  const pair = activeBrowserTransitionPair.value
+  if (!pair) return
+  if (pair.transitionType === 'none' || pair.durationSec <= 0.02) {
+    onSelectBrowserTransition('dissolve', browserTransitionDurationSec.value || 0.6)
+    return
+  }
+  void previewTransitionBetweenClips(pair.left.id, pair.right.id)
+}
+
+function clearAllVideoEffects(): void {
+  if (lockedTracks.value.has('video')) return
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'video' || c.track === 'overlay'
+        ? {
+            ...c,
+            visualEffect: undefined,
+            effectIntensity: undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function clearAllVideoFilters(): void {
+  if (lockedTracks.value.has('video')) return
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'video' || c.track === 'overlay'
+        ? {
+            ...c,
+            filterPreset: undefined,
+            filterIntensity: undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onSelectVisualEffect(effectId: TimelineVisualEffectId): void {
+  const clip = ensureTargetCreativeClipSelected()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            visualEffect: effectId === 'none' ? undefined : effectId,
+            effectIntensity: c.effectIntensity ?? 75
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onCreativeEffectIntensityInput(intensity: number): void {
+  const clip = ensureTargetCreativeClipSelected()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const clamped = Math.min(100, Math.max(0, Math.round(intensity)))
+  clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, effectIntensity: clamped } : c))
+  scheduleSave()
+}
+
+function applyCurrentEffectToAllVideoClips(): void {
+  const clip = targetCreativeClip.value
+  if (!clip || lockedTracks.value.has('video')) return
+  const effectId = clip.visualEffect
+  const intensity = clip.effectIntensity ?? 75
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'video'
+        ? {
+            ...c,
+            visualEffect: effectId && effectId !== 'none' ? effectId : undefined,
+            effectIntensity: effectId && effectId !== 'none' ? intensity : undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onSelectFilterPreset(filterId: TimelineFilterPresetId): void {
+  const clip = ensureTargetCreativeClipSelected()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? {
+            ...c,
+            filterPreset: filterId === 'none' ? undefined : filterId,
+            filterIntensity: c.filterIntensity ?? 100
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onCreativeFilterIntensityInput(intensity: number): void {
+  const clip = ensureTargetCreativeClipSelected()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const clamped = Math.min(100, Math.max(0, Math.round(intensity)))
+  clips.value = clips.value.map((c) => (c.id === clip.id ? { ...c, filterIntensity: clamped } : c))
+  scheduleSave()
+}
+
+function applyCurrentFilterToAllVideoClips(): void {
+  const clip = targetCreativeClip.value
+  if (!clip || lockedTracks.value.has('video')) return
+  const filterId = clip.filterPreset
+  const intensity = clip.filterIntensity ?? 100
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'video'
+        ? {
+            ...c,
+            filterPreset: filterId && filterId !== 'none' ? filterId : undefined,
+            filterIntensity: filterId && filterId !== 'none' ? intensity : undefined
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function getClipAdjustmentValue(
+  clip: ScriptTimelineClip | null | undefined,
+  key: TimelineAdjustmentKey
+): number {
+  const ctrl = TIMELINE_ADJUSTMENT_CONTROLS.find((item) => item.key === key)
+  const fallback = ctrl?.defaultValue ?? 0
+  if (!clip) return fallback
+  const val = clip[key]
+  return typeof val === 'number' && Number.isFinite(val) ? val : fallback
+}
+
+function onCreativeAdjustmentInput(key: TimelineAdjustmentKey, rawValue: number): void {
+  const clip = ensureTargetCreativeClipSelected()
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const ctrl = TIMELINE_ADJUSTMENT_CONTROLS.find((item) => item.key === key)
+  if (!ctrl) return
+  const clamped = Math.min(ctrl.max, Math.max(ctrl.min, Number(rawValue)))
+  const isDefault = Math.abs(clamped - ctrl.defaultValue) < 0.002
+  clips.value = clips.value.map((c) =>
+    c.id === clip.id ? { ...c, [key]: isDefault ? undefined : clamped } : c
+  )
+  scheduleSave()
+}
+
+function applyAdjustmentsToAllVideoClips(): void {
+  const clip = targetCreativeClip.value
+  if (!clip || lockedTracks.value.has('video')) return
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'video'
+        ? {
+            ...c,
+            brightness: clip.brightness,
+            contrast: clip.contrast,
+            saturation: clip.saturation,
+            vibrance: clip.vibrance,
+            temperature: clip.temperature,
+            tint: clip.tint,
+            highlights: clip.highlights,
+            shadows: clip.shadows,
+            sharpen: clip.sharpen,
+            vignette: clip.vignette,
+            fade: clip.fade,
+            grain: clip.grain,
+            filterPreset: clip.filterPreset,
+            filterIntensity: clip.filterIntensity
+          }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+function onSelectBrowserTransition(
+  transitionType: Exclude<ScriptTimelineTransitionType, 'none'>,
+  defaultDurationSec: number
+): void {
+  if (lockedTracks.value.has('video')) return
+  const pair = activeBrowserTransitionPair.value
+  if (!pair) return
+  const dur =
+    browserTransitionDurationSec.value > 0.04
+      ? browserTransitionDurationSec.value
+      : pair.durationSec > 0.04
+        ? pair.durationSec
+        : defaultDurationSec || 0.6
+  browserTransitionDurationSec.value = dur
+  const updated = applyVideoTransitionBetweenClips(clips.value, pair.left.id, pair.right.id, {
+    transitionType,
+    durationSec: dur
+  })
+  commitClips(updated)
+  activeClipId.value = pair.right.id
+  selectedClipIds.value = new Set([pair.right.id])
+  void previewTransitionBetweenClips(pair.left.id, pair.right.id)
+  scheduleSave()
+}
+
+function onInputBrowserTransitionDuration(sec: number): void {
+  browserTransitionDurationSec.value = sec
+  const pair = activeBrowserTransitionPair.value
+  if (!pair) return
+  onInputPairTransitionDuration(pair, sec)
+}
+
+function onChangeBrowserTransitionDuration(sec: number): void {
+  browserTransitionDurationSec.value = sec
+  const pair = activeBrowserTransitionPair.value
+  if (!pair) return
+  const curType =
+    activeBrowserTransitionType.value !== 'none' ? activeBrowserTransitionType.value : 'dissolve'
+  onSelectBrowserTransition(curType, sec)
+}
+
+function applyBrowserTransitionToAllCuts(): void {
+  if (lockedTracks.value.has('video')) return
+  const curType =
+    activeBrowserTransitionType.value !== 'none' ? activeBrowserTransitionType.value : 'dissolve'
+  const dur = browserTransitionDurationSec.value > 0.04 ? browserTransitionDurationSec.value : 0.6
+  const updated = applyVideoTransitionToAllCuts(clips.value, curType, dur)
+  commitClips(updated)
+  const pair = activeBrowserTransitionPair.value
+  const vClips = clipsOn('video')
+  const leftId = pair?.left.id ?? vClips[0]?.id
+  const rightId = pair?.right.id ?? vClips[1]?.id
+  if (leftId && rightId) {
+    activeClipId.value = rightId
+    selectedClipIds.value = new Set([rightId])
+    void previewTransitionBetweenClips(leftId, rightId)
+  }
+  scheduleSave()
+}
+
+function clearAllVideoTransitions(): void {
+  if (lockedTracks.value.has('video')) return
+  const updated = applyVideoTransitionToAllCuts(clips.value, 'none', 0)
+  commitClips(updated)
+  scheduleSave()
+}
+
+function onApplyCreativeTemplate(templateId: TimelineCreativeTemplateId): void {
+  if (lockedTracks.value.has('video')) return
+  const result = applyTimelineCreativeTemplateToClips(
+    clips.value,
+    sources.value,
+    {
+      subtitleColor: subtitleColor.value,
+      subtitleBorderColor: subtitleBorderColor.value,
+      subtitleBorderWidth: subtitleBorderWidth.value,
+      subtitleBoxEnabled: subtitleBoxEnabled.value,
+      subtitleBoxColor: subtitleBoxColor.value,
+      subtitleBoxOpacity: subtitleBoxOpacity.value,
+      subtitleMotion: subtitleMotion.value
+    },
+    templateId,
+    (list, leftId, rightId, opts) => applyVideoTransitionBetweenClips(list, leftId, rightId, opts)
+  )
+  if (result.appliedVideoClipCount === 0) {
+    void promptAlert({
+      title: t('script.dialog.timeline'),
+      message: creativeUiText('noVideoClipsWarning')
+    })
+    return
+  }
+  commitClips(result.clips)
+  if (result.settings.subtitleColor) subtitleColor.value = result.settings.subtitleColor
+  if (result.settings.subtitleBorderColor) {
+    subtitleBorderColor.value = result.settings.subtitleBorderColor
+  }
+  if (typeof result.settings.subtitleBorderWidth === 'number') {
+    subtitleBorderWidth.value = result.settings.subtitleBorderWidth
+  }
+  if (typeof result.settings.subtitleBoxEnabled === 'boolean') {
+    subtitleBoxEnabled.value = result.settings.subtitleBoxEnabled
+  }
+  if (result.settings.subtitleBoxColor) {
+    subtitleBoxColor.value = result.settings.subtitleBoxColor
+  }
+  if (typeof result.settings.subtitleBoxOpacity === 'number') {
+    subtitleBoxOpacity.value = result.settings.subtitleBoxOpacity
+  }
+  if (result.settings.subtitleMotion === 'fade' || result.settings.subtitleMotion === 'none') {
+    subtitleMotion.value = result.settings.subtitleMotion
+  }
+  const firstVideo = result.clips.find((c) => c.track === 'video')
+  if (firstVideo) {
+    activeClipId.value = firstVideo.id
+    selectedClipIds.value = new Set([firstVideo.id])
+    void showClipPreview(firstVideo)
+  }
+  scheduleSave()
+}
+
+function clipCreativeBadgeText(clip: ScriptTimelineClip): string {
+  if (clip.track !== 'video' && clip.track !== 'overlay') return ''
+  const badges: string[] = []
+  if (clip.visualEffect && clip.visualEffect !== 'none') {
+    badges.push(getTimelineVisualEffectMeta(clip.visualEffect).badge)
+  }
+  if (clip.filterPreset && clip.filterPreset !== 'none') {
+    badges.push(getTimelineFilterPresetMeta(clip.filterPreset).badge)
+  }
+  return badges.join('·')
 }
 
 function onClipSubtitleStyleChange(patch: { fontSize?: number; textColor?: string }): void {
@@ -7679,24 +9339,45 @@ function splitSelectedClipAtPlayhead(): void {
 }
 
 function selectClip(clip: ScriptTimelineClip): void {
+  cancelTransitionSweep()
   activeClipId.value = clip.id
   setSingleClipSelection(clip.id)
-  if (clip.track === 'video') void showClipPreview(clip)
+  if (clip.track === 'video') {
+    const safeStart = clipSafePreviewTimeSec(clip)
+    const clipEnd = clip.startSec + clip.durationSec
+    if (
+      playheadSec.value < safeStart ||
+      playheadSec.value >= clipEnd ||
+      activeMainTransition.value
+    ) {
+      playheadSec.value = safeStart
+    }
+    void showClipPreview(clip)
+  } else if (clip.track === 'overlay') {
+    const clipEnd = clip.startSec + clip.durationSec
+    if (playheadSec.value < clip.startSec || playheadSec.value >= clipEnd) {
+      playheadSec.value = clip.startSec
+      void syncPreviewToPlayhead()
+    }
+  }
 }
 
 function seekToClip(clip: ScriptTimelineClip): void {
-  playheadSec.value = clip.startSec
+  cancelTransitionSweep()
+  playheadSec.value = clipSafePreviewTimeSec(clip)
   if (clip.track === 'video') void showClipPreview(clip)
 }
 
 async function showClipPreview(clip: ScriptTimelineClip): Promise<void> {
+  previewLoadedClipId.value = clip.id
   previewSrc.value = await resolveSrc(clip)
   await Promise.resolve()
   const el = previewEl.value
   if (!el) return
   applyPlaybackRate()
+  const localSec = Math.max(0, Math.min(clip.durationSec - 0.02, playheadSec.value - clip.startSec))
   try {
-    el.currentTime = mediaTimeForClip(clip, 0)
+    el.currentTime = mediaTimeForClip(clip, localSec)
   } catch {
     /* ignore */
   }
@@ -7789,6 +9470,8 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   clipDrag.value = {
     clipId: clip.id,
     pointerId: e.pointerId,
+    startClientX: e.clientX,
+    startClientY: e.clientY,
     grabOffsetSec: timeAtPointer - clip.startSec,
     lastStartSec: clip.startSec,
     moved: false,
@@ -7809,6 +9492,13 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
 function onClipPointerMove(e: PointerEvent): void {
   const session = clipDrag.value
   if (!session || e.pointerId !== session.pointerId) return
+  // 5px 防抖死区：纯单击片段绝不触发重排（避免误抹除转场负重叠）
+  if (
+    !session.moved &&
+    Math.hypot(e.clientX - session.startClientX, e.clientY - session.startClientY) < 5
+  ) {
+    return
+  }
   const clip = clips.value.find((c) => c.id === session.clipId)
   if (!clip) return
   const hoverKind = trackKindAtClientY(e.clientY) ?? clip.track
@@ -7913,8 +9603,15 @@ function onTransitionHandlePointerDown(
   handle: { left: ScriptTimelineClip; right: ScriptTimelineClip }
 ): void {
   if (e.button !== 0 || lockedTracks.value.has('video')) return
-  selectClip(handle.right)
+  activeClipId.value = handle.right.id
+  setSingleClipSelection(handle.right.id)
   const current = handle.right.transitionInSec ?? 0
+  if (current > 0.02) {
+    void previewTransitionBetweenClips(handle.left.id, handle.right.id)
+  } else {
+    playheadSec.value = handle.right.startSec
+    void showClipPreview(handle.left)
+  }
   unbindTransitionDragListeners()
   transitionDrag.value = {
     leftId: handle.left.id,
@@ -7954,6 +9651,12 @@ function onTransitionPointerMove(e: PointerEvent): void {
     transitionType,
     durationSec: duration
   })
+  const updatedRight = clips.value.find((c) => c.id === right.id)
+  if (updatedRight && duration > 0.04) {
+    browserTransitionDurationSec.value = duration
+    playheadSec.value = Number((updatedRight.startSec + duration * 0.5).toFixed(3))
+    void syncOverlayVideosToPlayhead(false)
+  }
 }
 
 function onTransitionPointerUp(e: PointerEvent): void {
@@ -7963,6 +9666,7 @@ function onTransitionPointerUp(e: PointerEvent): void {
   unbindTransitionDragListeners()
   if (session.moved) {
     pushHistorySnapshot(session.beforeClips)
+    void previewTransitionBetweenClips(session.leftId, session.rightId)
     scheduleSave()
     return
   }
@@ -8427,6 +10131,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
 
 function onPlayheadPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return
+  cancelTransitionSweep()
   playheadDrag.value = { pointerId: e.pointerId }
   window.addEventListener('pointermove', onPlayheadPointerMove)
   window.addEventListener('pointerup', onPlayheadPointerUp)
@@ -8441,7 +10146,11 @@ function onPlayheadPointerMove(e: PointerEvent): void {
   const rect = lane?.getBoundingClientRect()
   if (!rect) return
   playheadSec.value = Math.min(totalDuration.value, Math.max(0, xToTime(e.clientX - rect.left)))
-  void syncOverlayVideosToPlayhead(playing.value)
+  if (!playing.value) {
+    void syncPreviewToPlayhead()
+  } else {
+    void syncOverlayVideosToPlayhead(playing.value)
+  }
 }
 
 function onPlayheadPointerUp(e: PointerEvent): void {
@@ -8474,6 +10183,7 @@ function onTimelineBlankPointerDown(e: PointerEvent): void {
 
 function onRulerPointerDown(e: PointerEvent): void {
   if (e.button !== 0) return
+  cancelTransitionSweep()
   const el = e.currentTarget as HTMLElement
   const rect = el.getBoundingClientRect()
   playheadSec.value = xToTime(e.clientX - rect.left)
@@ -8844,13 +10554,18 @@ async function syncAudioToPlayhead(playingNow: boolean): Promise<void> {
 }
 
 async function syncPreviewToPlayhead(): Promise<void> {
-  const clip = clipAtPlayhead()
+  const transition = activeMainTransition.value
+  const clip = transition ? transition.from : clipAtPlayhead()
   if (!clip) {
+    previewLoadedClipId.value = null
     previewSrc.value = ''
     await syncOverlayVideosToPlayhead(playing.value)
     return
   }
-  activeClipId.value = clip.id
+  previewLoadedClipId.value = clip.id
+  if (!transition) {
+    activeClipId.value = clip.id
+  }
   const url = await resolveSrc(clip)
   if (previewSrc.value !== url) previewSrc.value = url
   await Promise.resolve()
@@ -8911,28 +10626,26 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
   if (transition) {
     const el = transitionVideoEls.get(transition.to.id)
     if (el) {
-      // 微渲染就绪时用与导出一致的 ffmpeg 画面；未就绪退化为 CSS 模拟（保留预览能力）
-      const entry = activeTransitionPreviewEntry.value
-      void ensureTransitionPreview(transition)
       const local = playheadSec.value - transition.to.startSec
       const prevUrl = el.dataset.transitionSrc
-      const targetUrl = entry ? entry.url : prevUrl || (await resolveSrc(transition.to)) || ''
-      const media = entry
-        ? Math.min(Math.max(0, local), Math.max(0, entry.durationSec - 0.001))
-        : mediaTimeForClip(transition.to, Math.max(0, local))
-      const inRange = entry
-        ? local >= -0.05 && local < entry.durationSec + 0.05
-        : local >= -0.05 && local < transition.to.durationSec
-      el.playbackRate = playbackRate.value
+      const targetUrl =
+        clipResolvedUrls.value[transition.to.id] ||
+        prevUrl ||
+        (await resolveSrc(transition.to)) ||
+        ''
+      const media = mediaTimeForClip(transition.to, Math.max(0, local))
+      const inRange = local >= -0.05 && local < transition.to.durationSec
+      el.playbackRate = Math.min(
+        16,
+        Math.max(0.1, playbackRate.value * clampClipSpeed(transition.to.speed))
+      )
       if (!inRange) {
         if (!el.paused) el.pause()
       } else {
         const changedSrc = el.dataset.transitionSrc !== targetUrl
-        if (changedSrc) {
+        if (changedSrc && targetUrl) {
           el.dataset.transitionSrc = targetUrl
           el.src = targetUrl
-        }
-        if (changedSrc && targetUrl) {
           // 新源首次加载后把帧校准到当前窗口位置（暂停在窗口中间时不能只显示首帧）
           el.dataset.pendingSeek = String(media)
           el.addEventListener(
@@ -8942,7 +10655,7 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
               el.dataset.pendingSeek = ''
               if (!Number.isFinite(pending)) return
               try {
-                if (Math.abs(el.currentTime - pending) > 0.2) {
+                if (Math.abs(el.currentTime - pending) > 0.15) {
                   el.currentTime = Math.max(0, Math.min(pending, Math.max(0, el.duration - 0.001)))
                 }
               } catch {
@@ -8953,7 +10666,7 @@ async function syncOverlayVideosToPlayhead(playingNow: boolean): Promise<void> {
           )
         }
         try {
-          if (Math.abs(el.currentTime - media) > 0.25) {
+          if (Math.abs(el.currentTime - media) > 0.2) {
             el.currentTime = media
           }
         } catch {
@@ -8989,6 +10702,7 @@ function transitionPreviewKeyFor(transition: {
     from.cropY ?? 0,
     from.cropWidth ?? 1,
     from.cropHeight ?? 1,
+    buildClipVisualFfmpegFilter(from) ?? '',
     to.id,
     resolveClipRelativePath(to) ?? '',
     to.sourceOffsetSec ?? 0,
@@ -8998,6 +10712,7 @@ function transitionPreviewKeyFor(transition: {
     to.cropY ?? 0,
     to.cropWidth ?? 1,
     to.cropHeight ?? 1,
+    buildClipVisualFfmpegFilter(to) ?? '',
     to.transitionType ?? 'none',
     to.transitionInSec ?? 0,
     exportWidth.value,
@@ -9027,6 +10742,22 @@ function toTransitionPreviewClip(clip: ScriptTimelineClip): TimelineExportClip {
     startSec: clip.startSec,
     durationSec: clip.durationSec,
     ...(offset > 0 ? { sourceOffsetSec: offset } : {}),
+    brightness: clip.brightness,
+    contrast: clip.contrast,
+    saturation: clip.saturation,
+    vibrance: clip.vibrance,
+    temperature: clip.temperature,
+    tint: clip.tint,
+    highlights: clip.highlights,
+    shadows: clip.shadows,
+    sharpen: clip.sharpen,
+    vignette: clip.vignette,
+    fade: clip.fade,
+    grain: clip.grain,
+    filterPreset: clip.filterPreset,
+    filterIntensity: clip.filterIntensity,
+    visualEffect: clip.visualEffect,
+    effectIntensity: clip.effectIntensity,
     cropX: clip.cropX,
     cropY: clip.cropY,
     cropWidth: clip.cropWidth,
@@ -9132,11 +10863,20 @@ function stopPlayback(): void {
 
 /** 时间线工具栏：整轨联播（视频序列 + 声音轨） */
 async function toggleTimelinePlay(): Promise<void> {
+  cancelTransitionSweep()
   if (playing.value && playMode.value === 'timeline') {
     stopPlayback()
     return
   }
   stopPlayback()
+  // 若当前播放头正停在某个转场窗口内部（如刚预览完转场定格在 75% 处），
+  // 点击“播放”时自动回退到转场前 0.6s 助跑，让用户能完整看到 A → 转场 → B 的连贯播放效果
+  const activeTr = activeMainTransition.value
+  if (activeTr) {
+    playheadSec.value = Math.max(activeTr.from.startSec, activeTr.to.startSec - 0.6)
+  } else if (playheadSec.value >= totalDuration.value - 0.08) {
+    playheadSec.value = 0
+  }
   // 在手势同步上下文中解锁音频上下文，之后的 await 会丢失手势
   unlockPreviewAudio()
   playMode.value = 'timeline'
@@ -9657,6 +11397,19 @@ async function exportTimeline(): Promise<void> {
         brightness: c.brightness,
         contrast: c.contrast,
         saturation: c.saturation,
+        vibrance: c.vibrance,
+        temperature: c.temperature,
+        tint: c.tint,
+        highlights: c.highlights,
+        shadows: c.shadows,
+        sharpen: c.sharpen,
+        vignette: c.vignette,
+        fade: c.fade,
+        grain: c.grain,
+        filterPreset: c.filterPreset,
+        filterIntensity: c.filterIntensity,
+        visualEffect: c.visualEffect,
+        effectIntensity: c.effectIntensity,
         textColor: c.textColor,
         fontSize: c.fontSize,
         volume: c.volume,
@@ -10409,6 +12162,8 @@ onBeforeUnmount(() => {
   unregisterDiveHistory?.()
   unregisterDiveHistory = null
   unregisterOpenTimelineEditor(props.scriptAssetId)
+  stopEffectPreviewClock()
+  cancelTransitionSweep()
   stopPlayback()
   disposeAudioPool()
   disposeOverlayVideos()
@@ -12441,7 +14196,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .ghost-btn.active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
   border-color: var(--accent);
   color: var(--accent);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -12621,7 +14376,7 @@ defineExpose({ flushSave: persist, reloadSources })
   gap: 8px;
   padding: 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel-2) 65%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 65%, transparent);
   border: 1px solid var(--border);
 }
 
@@ -12640,10 +14395,10 @@ defineExpose({ flushSave: persist, reloadSources })
 .transition-pair-banner {
   padding: 4px 6px;
   border-radius: 5px;
-  background: var(--panel-2);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -12695,7 +14450,7 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 6px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--bg-elevated);
   color: var(--text);
   font-size: 11px;
   cursor: pointer;
@@ -12707,7 +14462,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .crop-preset-btn.active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -12726,9 +14481,9 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 6px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--panel);
+  background: var(--bg-elevated);
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .crop-num-input {
@@ -12745,7 +14500,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .crop-num-unit {
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 /* ── Redesigned NLE Transition Junction Pill & Overlap Zone ── */
@@ -12876,12 +14631,12 @@ defineExpose({ flushSave: persist, reloadSources })
 .transition-popover {
   position: absolute;
   z-index: 60;
-  width: 320px;
+  width: 332px;
   padding: 10px;
   border-radius: 10px;
-  background: var(--panel);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.52);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -12893,21 +14648,38 @@ defineExpose({ flushSave: persist, reloadSources })
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-width: 0;
 }
 
 .transition-popover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
 }
 
+.transition-popover-pair {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .transition-popover-close {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   font-size: 14px;
   cursor: pointer;
   padding: 0 4px;
+  flex-shrink: 0;
 }
 
 .transition-popover-close:hover {
@@ -12931,7 +14703,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .transition-duration-label {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .preset-pill {
@@ -12957,8 +14729,8 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 7px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--muted);
+  background: var(--bg-card);
+  color: var(--text-muted);
   font-size: 10px;
   cursor: pointer;
   transition: all 0.12s ease;
@@ -12970,7 +14742,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .transition-cat-tab.active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -12980,7 +14752,7 @@ defineExpose({ flushSave: persist, reloadSources })
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  max-height: 196px;
+  max-height: 204px;
   overflow-y: auto;
   padding-right: 2px;
 }
@@ -12992,12 +14764,12 @@ defineExpose({ flushSave: persist, reloadSources })
 .transition-effect-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 4px;
   padding: 5px 4px;
   border-radius: 7px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
+  background: var(--bg-card);
   color: var(--text);
   cursor: pointer;
   transition: all 0.12s ease;
@@ -13010,7 +14782,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .transition-effect-card.active {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 20%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-card));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
@@ -13027,8 +14799,12 @@ defineExpose({ flushSave: persist, reloadSources })
 /* Animated mini preview inside each transition card */
 .trans-preview-box {
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  height: 30px;
+  height: 32px;
+  box-sizing: border-box;
   border-radius: 4px;
   overflow: hidden;
   background: #141923;
@@ -13040,21 +14816,26 @@ defineExpose({ flushSave: persist, reloadSources })
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 9px;
+  padding: 2px 4px;
+  font-size: 8px;
+  line-height: 1;
   font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  pointer-events: none;
 }
 
 .trans-preview-a {
+  align-items: flex-start;
+  justify-content: flex-start;
   background: linear-gradient(135deg, #2b4c7e 0%, #1d3557 100%);
-  color: rgba(255, 255, 255, 0.78);
+  color: #cbd5e1;
 }
 
 .trans-preview-b {
+  align-items: flex-end;
+  justify-content: flex-end;
   background: linear-gradient(135deg, #6b4c9a 0%, #3b82f6 100%);
-  color: #fff;
+  color: #f8fafc;
   opacity: 0;
   transition: all 0.45s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -13068,68 +14849,100 @@ defineExpose({ flushSave: persist, reloadSources })
   opacity: 1;
 }
 
-.transition-effect-card:hover .trans-preview-b,
-.transition-effect-card.active .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active .trans-preview-b {
   opacity: 1;
 }
 
 .trans-preview-box.effect-slideleft .trans-preview-b,
-.trans-preview-box.effect-smoothleft .trans-preview-b {
+.trans-preview-box.effect-smoothleft .trans-preview-b,
+.trans-preview-box.effect-hrslice .trans-preview-b {
   transform: translateX(100%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-slideleft .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-slideleft .trans-preview-b,
-.transition-effect-card:hover .trans-preview-box.effect-smoothleft .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-smoothleft .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-slideleft, .effect-smoothleft, .effect-hrslice)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-slideleft, .effect-smoothleft, .effect-hrslice)
+  .trans-preview-b {
   transform: translateX(0);
 }
 
 .trans-preview-box.effect-slideright .trans-preview-b,
-.trans-preview-box.effect-smoothright .trans-preview-b {
+.trans-preview-box.effect-smoothright .trans-preview-b,
+.trans-preview-box.effect-hlslice .trans-preview-b {
   transform: translateX(-100%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-slideright .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-slideright .trans-preview-b,
-.transition-effect-card:hover .trans-preview-box.effect-smoothright .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-smoothright .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-slideright, .effect-smoothright, .effect-hlslice)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-slideright, .effect-smoothright, .effect-hlslice)
+  .trans-preview-b {
   transform: translateX(0);
 }
 
-.trans-preview-box.effect-slideup .trans-preview-b {
+.trans-preview-box.effect-slideup .trans-preview-b,
+.trans-preview-box.effect-smoothup .trans-preview-b,
+.trans-preview-box.effect-vdslice .trans-preview-b {
   transform: translateY(100%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-slideup .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-slideup .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-slideup, .effect-smoothup, .effect-vdslice)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-slideup, .effect-smoothup, .effect-vdslice)
+  .trans-preview-b {
   transform: translateY(0);
 }
 
-.trans-preview-box.effect-slidedown .trans-preview-b {
+.trans-preview-box.effect-slidedown .trans-preview-b,
+.trans-preview-box.effect-smoothdown .trans-preview-b,
+.trans-preview-box.effect-vuslice .trans-preview-b {
   transform: translateY(-100%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-slidedown .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-slidedown .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-slidedown, .effect-smoothdown, .effect-vuslice)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-slidedown, .effect-smoothdown, .effect-vuslice)
+  .trans-preview-b {
   transform: translateY(0);
 }
 
-.trans-preview-box.effect-wipeleft .trans-preview-b {
+.trans-preview-box.effect-wipeleft .trans-preview-b,
+.trans-preview-box.effect-wipetl .trans-preview-b,
+.trans-preview-box.effect-wipebl .trans-preview-b,
+.trans-preview-box.effect-diagtl .trans-preview-b {
   clip-path: inset(0 0 0 100%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-wipeleft .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-wipeleft .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-wipeleft, .effect-wipetl, .effect-wipebl, .effect-diagtl)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-wipeleft, .effect-wipetl, .effect-wipebl, .effect-diagtl)
+  .trans-preview-b {
   clip-path: inset(0 0 0 0);
 }
 
-.trans-preview-box.effect-wiperight .trans-preview-b {
+.trans-preview-box.effect-wiperight .trans-preview-b,
+.trans-preview-box.effect-wipetr .trans-preview-b,
+.trans-preview-box.effect-wipebr .trans-preview-b,
+.trans-preview-box.effect-diagbr .trans-preview-b {
   clip-path: inset(0 100% 0 0);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-wiperight .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-wiperight .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-wiperight, .effect-wipetr, .effect-wipebr, .effect-diagbr)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-wiperight, .effect-wipetr, .effect-wipebr, .effect-diagbr)
+  .trans-preview-b {
   clip-path: inset(0 0 0 0);
 }
 
@@ -13137,8 +14950,12 @@ defineExpose({ flushSave: persist, reloadSources })
   clip-path: inset(100% 0 0 0);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-wipeup .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-wipeup .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box.effect-wipeup
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box.effect-wipeup
+  .trans-preview-b {
   clip-path: inset(0 0 0 0);
 }
 
@@ -13146,28 +14963,55 @@ defineExpose({ flushSave: persist, reloadSources })
   clip-path: inset(0 0 100% 0);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-wipedown .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-wipedown .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box.effect-wipedown
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box.effect-wipedown
+  .trans-preview-b {
   clip-path: inset(0 0 0 0);
 }
 
 .trans-preview-box.effect-circleopen .trans-preview-b,
-.trans-preview-box.effect-radial .trans-preview-b {
+.trans-preview-box.effect-radial .trans-preview-b,
+.trans-preview-box.effect-rectcrop .trans-preview-b,
+.trans-preview-box.effect-horzopen .trans-preview-b,
+.trans-preview-box.effect-vertopen .trans-preview-b {
   clip-path: circle(0% at 50% 50%);
   opacity: 1;
 }
-.transition-effect-card:hover .trans-preview-box.effect-circleopen .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-circleopen .trans-preview-b,
-.transition-effect-card:hover .trans-preview-box.effect-radial .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-radial .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(
+    .effect-circleopen,
+    .effect-radial,
+    .effect-rectcrop,
+    .effect-horzopen,
+    .effect-vertopen
+  )
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(
+    .effect-circleopen,
+    .effect-radial,
+    .effect-rectcrop,
+    .effect-horzopen,
+    .effect-vertopen
+  )
+  .trans-preview-b {
   clip-path: circle(75% at 50% 50%);
 }
 
-.trans-preview-box.effect-zoomin .trans-preview-b {
+.trans-preview-box.effect-zoomin .trans-preview-b,
+.trans-preview-box.effect-squeezeh .trans-preview-b,
+.trans-preview-box.effect-squeezev .trans-preview-b {
   transform: scale(1.35);
 }
-.transition-effect-card:hover .trans-preview-box.effect-zoomin .trans-preview-b,
-.transition-effect-card.active .trans-preview-box.effect-zoomin .trans-preview-b {
+:is(.transition-effect-card, .transition-browser-card):hover
+  .trans-preview-box:is(.effect-zoomin, .effect-squeezeh, .effect-squeezev)
+  .trans-preview-b,
+:is(.transition-effect-card, .transition-browser-card).active
+  .trans-preview-box:is(.effect-zoomin, .effect-squeezeh, .effect-squeezev)
+  .trans-preview-b {
   transform: scale(1);
 }
 
@@ -13201,8 +15045,8 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 4px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
-  color: var(--muted);
+  background: var(--bg-card);
+  color: var(--text-muted);
   font-size: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   cursor: pointer;
@@ -13214,7 +15058,7 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .transition-preset-pill.active {
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-card));
   border-color: var(--accent);
   color: var(--accent);
   font-weight: 600;
@@ -13234,14 +15078,14 @@ defineExpose({ flushSave: persist, reloadSources })
   border-left: 2px solid var(--success);
   pointer-events: auto;
   cursor: ew-resize;
-  z-index: 2;
+  z-index: 12;
   touch-action: none;
 }
 
 .playhead-cap {
   position: absolute;
   top: 0;
-  left: -6px;
+  left: -7px;
   width: 0;
   height: 0;
   border-style: solid;
@@ -13275,7 +15119,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .builtin-stickers-hint {
   margin: 4px 4px 6px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 
 .builtin-stickers-grid {
@@ -13292,7 +15136,7 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 5px 6px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
+  background: var(--bg-card);
   color: var(--text);
   cursor: grab;
   text-align: left;
@@ -13303,7 +15147,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .builtin-sticker-card:hover {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
 }
 
 .builtin-sticker-thumb {
@@ -13348,7 +15192,7 @@ defineExpose({ flushSave: persist, reloadSources })
   gap: 4px;
   padding: 6px 8px;
   border-radius: 6px;
-  background: color-mix(in srgb, var(--panel-2) 75%, transparent);
+  background: color-mix(in srgb, var(--bg-card) 75%, transparent);
   border: 1px solid var(--border);
 }
 
@@ -13365,7 +15209,7 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 6px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
+  background: var(--bg-card);
   color: var(--text);
   font-size: 11px;
 }
@@ -13383,7 +15227,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .keyframe-empty-hint {
   margin: 2px 0 0;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--text-muted);
   line-height: 1.4;
 }
 
@@ -13401,13 +15245,13 @@ defineExpose({ flushSave: persist, reloadSources })
   padding: 3px 5px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--panel-2);
+  background: var(--bg-card);
   font-size: 10px;
 }
 
 .keyframe-row.active {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, var(--panel-2));
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg-card));
 }
 
 .keyframe-jump-btn,
@@ -13424,7 +15268,7 @@ defineExpose({ flushSave: persist, reloadSources })
 
 .keyframe-summary {
   flex: 1 1 auto;
-  color: var(--muted);
+  color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: nowrap;
   overflow: hidden;
@@ -13445,7 +15289,7 @@ defineExpose({ flushSave: persist, reloadSources })
 .keyframe-del-btn {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
@@ -13502,5 +15346,764 @@ defineExpose({ flushSave: persist, reloadSources })
 .clip-keyframe-diamond:hover {
   color: #fff;
   transform: translateX(-50%) scale(1.25);
+}
+
+/* ── 剪映式左上角六合一导航与创意面板（素材 / 特效 / 转场 / 滤镜 / 调节 / 模板） ── */
+.capcut-browser-nav {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 2px;
+  padding: 6px 6px 4px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.capcut-browser-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.14s ease,
+    background-color 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.capcut-browser-tab:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.capcut-browser-tab.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.capcut-tab-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.capcut-tab-label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.creative-tab-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow-y: auto;
+}
+
+.creative-target-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.creative-target-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.creative-target-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.creative-action-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.xs-btn {
+  padding: 3px 7px;
+  font-size: 10px;
+  border-radius: 5px;
+}
+
+.xs-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.creative-duration-pills {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.creative-cat-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.creative-cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.creative-pill-icon {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+.creative-cat-pill:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 24%, var(--border));
+}
+
+.creative-cat-pill.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+}
+
+.creative-intensity-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.creative-intensity-row input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.creative-intensity-val {
+  min-width: 32px;
+  text-align: right;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+}
+
+.creative-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.creative-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color 0.14s ease,
+    transform 0.12s ease,
+    background-color 0.14s ease;
+}
+
+.creative-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  transform: translateY(-1px);
+}
+
+.creative-card.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-card));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.creative-card-swatch {
+  position: relative;
+  height: 46px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+}
+
+.creative-swatch-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.72));
+}
+
+.creative-card-badge {
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(9, 13, 22, 0.76);
+  color: #f8fafc;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.trans-card-icon {
+  position: relative;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  color: #f8fafc;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.85));
+  pointer-events: none;
+}
+
+.creative-card-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transition-browser-card .trans-preview-box {
+  width: 100%;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.transition-browser-card .trans-preview-a {
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.transition-browser-card .trans-preview-b {
+  justify-content: flex-end;
+  align-items: flex-end;
+  padding: 3px 5px;
+  font-size: 8px;
+}
+
+.transition-browser-card:hover .trans-preview-b,
+.transition-browser-card.active .trans-preview-b {
+  opacity: 1;
+}
+
+/* 调节 (Adjustments) 滑块列表 */
+.creative-adjustment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.creative-adjustment-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+.creative-adjustment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.creative-adjustment-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.creative-adj-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.creative-adjustment-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.creative-adjustment-slider {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* 模板 (Templates) 列表 */
+.creative-template-hint {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.creative-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-bottom: 10px;
+}
+
+.creative-template-card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  overflow: hidden;
+  transition: border-color 0.14s ease;
+}
+
+.creative-template-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.creative-template-banner {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 10px;
+}
+
+.creative-template-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: rgba(9, 13, 22, 0.78);
+  flex-shrink: 0;
+}
+
+.creative-template-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.creative-template-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f8fafc;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+
+.creative-template-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 10px 10px;
+}
+
+.creative-template-desc {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.creative-template-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.creative-template-tag {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-panel));
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.creative-template-apply-btn {
+  width: 100%;
+  justify-content: center;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+/* 预览舞台实时视觉特效叠加层 */
+.stage-visual-overlay-stack {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  overflow: hidden;
+}
+
+.stage-visual-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 42%,
+    rgba(0, 0, 0, 0.55) 78%,
+    rgba(0, 0, 0, 0.92) 100%
+  );
+}
+
+.stage-visual-bloom {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(253, 224, 247, 0.45) 0%,
+    rgba(251, 113, 133, 0.16) 52%,
+    transparent 85%
+  );
+  mix-blend-mode: screen;
+}
+
+.stage-visual-lightleak {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(251, 146, 60, 0.62) 0%, transparent 48%),
+    radial-gradient(circle at 14% 84%, rgba(244, 63, 94, 0.45) 0%, transparent 46%);
+  mix-blend-mode: screen;
+}
+
+.stage-visual-neonhalo {
+  position: absolute;
+  inset: 0;
+  box-shadow:
+    inset 0 0 28px rgba(34, 211, 238, 0.55),
+    inset 0 0 56px rgba(217, 70, 239, 0.38);
+}
+
+.stage-visual-dvcam {
+  position: absolute;
+  inset: 10px;
+  pointer-events: none;
+}
+
+.stage-visual-dvcam .dv-corner {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-color: #f8fafc;
+  border-style: solid;
+  opacity: 0.78;
+}
+
+.stage-visual-dvcam .dv-corner.tl {
+  top: 0;
+  left: 0;
+  border-width: 2px 0 0 2px;
+}
+
+.stage-visual-dvcam .dv-corner.tr {
+  top: 0;
+  right: 0;
+  border-width: 2px 2px 0 0;
+}
+
+.stage-visual-dvcam .dv-corner.bl {
+  bottom: 0;
+  left: 0;
+  border-width: 0 0 2px 2px;
+}
+
+.stage-visual-dvcam .dv-corner.br {
+  bottom: 0;
+  right: 0;
+  border-width: 0 2px 2px 0;
+}
+
+.stage-visual-dvcam .dv-rec-badge {
+  position: absolute;
+  top: 5px;
+  left: 8px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #ef4444;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.stage-visual-split-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.stage-visual-split-frame.split-2h {
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 1px),
+    rgba(15, 23, 42, 0.92) calc(50% - 1px),
+    #38bdf8 50%,
+    rgba(15, 23, 42, 0.92) calc(50% + 1px),
+    transparent calc(50% + 1px)
+  );
+}
+
+.stage-visual-split-frame.split-3v {
+  background: linear-gradient(
+    to right,
+    transparent calc(33.33% - 1px),
+    #a855f7 33.33%,
+    transparent calc(33.33% + 1px),
+    transparent calc(66.66% - 1px),
+    #a855f7 66.66%,
+    transparent calc(66.66% + 1px)
+  );
+}
+
+.stage-visual-split-frame.split-4grid {
+  background:
+    linear-gradient(
+      to bottom,
+      transparent calc(50% - 1px),
+      #f472b6 50%,
+      transparent calc(50% + 1px)
+    ),
+    linear-gradient(to right, transparent calc(50% - 1px), #f472b6 50%, transparent calc(50% + 1px));
+}
+
+.stage-visual-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 2px,
+    rgba(0, 0, 0, 0.36) 3px,
+    rgba(0, 0, 0, 0.36) 4px
+  );
+}
+
+.stage-visual-grain {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.35) 1px, transparent 0);
+  background-size: 3px 3px;
+  mix-blend-mode: overlay;
+}
+
+.stage-visual-letterbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #000000;
+}
+
+.stage-visual-letterbox.top {
+  top: 0;
+}
+
+.stage-visual-letterbox.bottom {
+  bottom: 0;
+}
+
+.stage-fx-svg-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.stage-visual-split-clones {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.stage-visual-split-clones.split-2h {
+  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr;
+}
+
+.stage-visual-split-clones.split-3v {
+  grid-template-rows: 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.stage-visual-split-clones.split-4grid {
+  grid-template-rows: 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
+}
+
+.stage-split-tile-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.stage-visual-soul-ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+.stage-visual-strobe {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    #f8fafc 0%,
+    color-mix(in srgb, #e0f2fe 85%, transparent) 60%,
+    color-mix(in srgb, #38bdf8 45%, transparent) 100%
+  );
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.stage-visual-tiltshift {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 22%,
+    transparent 38%,
+    transparent 62%,
+    #000 78%,
+    #000 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 22%,
+    transparent 38%,
+    transparent 62%,
+    #000 78%,
+    #000 100%
+  );
+  background: color-mix(in srgb, #0f172a 18%, transparent);
+}
+
+.stage-visual-sparkle {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background-image:
+    radial-gradient(circle at 18% 24%, #fef08a 0px, #f59e0b 2px, transparent 9px),
+    radial-gradient(circle at 76% 19%, #fef9c3 0px, #fbbf24 2.5px, transparent 11px),
+    radial-gradient(circle at 42% 68%, #fef08a 0px, #f59e0b 2px, transparent 10px),
+    radial-gradient(circle at 84% 72%, #fef9c3 0px, #fbbf24 3px, transparent 12px),
+    radial-gradient(circle at 28% 82%, #fef08a 0px, #f59e0b 1.8px, transparent 8px),
+    radial-gradient(circle at 63% 38%, #fef9c3 0px, #fde047 2.2px, transparent 10px);
+}
+
+.stage-visual-glitch-slices {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    transparent 18%,
+    color-mix(in srgb, #22d3ee 42%, transparent) 18.5%,
+    color-mix(in srgb, #f43f5e 38%, transparent) 21%,
+    transparent 21.5%,
+    transparent 56%,
+    color-mix(in srgb, #f43f5e 45%, transparent) 56.5%,
+    color-mix(in srgb, #22d3ee 40%, transparent) 58.5%,
+    transparent 59%,
+    transparent 81%,
+    color-mix(in srgb, #a855f7 36%, transparent) 81.5%,
+    transparent 83.5%
+  );
+}
+
+.clip-creative-badge {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 3px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #ec4899 26%, transparent);
+  color: #f472b6;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  flex-shrink: 0;
 }
 </style>

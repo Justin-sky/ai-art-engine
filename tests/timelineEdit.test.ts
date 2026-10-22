@@ -210,14 +210,27 @@ describe('timelineEdit: 修改片段', () => {
     expect(result.failures).toEqual([{ op: 'update', code: 'clip-not-found', target: 'ghost' }])
   })
 
-  it('非法转场类型被忽略（不写进片段）', () => {
-    const result = applyTimelineEdits(
+  it('非法转场类型被忽略（不写进片段），合法扩展转场（如 zoomin / pixelize）正常生效', () => {
+    const invalidResult = applyTimelineEdits(
       doc([clip('video', 'a', 0, 4)]),
-      [{ op: 'update', clipId: 'a', patch: { transitionType: 'zoomin' as never } }],
+      [{ op: 'update', clipId: 'a', patch: { transitionType: 'unknown-transition' as never } }],
       ids
     )
-    expect(result.updated).toBe(0)
-    expect(result.document.clips[0].transitionType).toBeUndefined()
+    expect(invalidResult.updated).toBe(0)
+    expect(invalidResult.document.clips[0].transitionType).toBeUndefined()
+
+    const validResult = applyTimelineEdits(
+      doc([clip('video', 'a', 0, 4), clip('video', 'b', 4, 4)]),
+      [{ op: 'update', clipId: 'b', patch: { transitionType: 'zoomin', transitionInSec: 0.6 } }],
+      ids
+    )
+    expect(validResult.updated).toBe(1)
+    expect(validResult.document.clips[1]).toMatchObject({
+      transitionType: 'zoomin',
+      transitionInSec: 0.6,
+      startSec: 3.4
+    })
+    expect(validResult.document.clips[0].transitionOutSec).toBe(0.6)
   })
 })
 

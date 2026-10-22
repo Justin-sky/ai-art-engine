@@ -7,8 +7,8 @@
 <h1>AI Art Engine</h1>
 
 <p>
-  <b>The Agent-Native AI Game Art & Film Production Engine</b><br />
-  <sub>Conversational Full-Workspace Control · Production-Ready PSD / Spine / Engine Code / NLE Drafts · Typed DAG Graph · 100% Local-First</sub>
+  <b>Make a wish. Get production-ready art assets.</b><br />
+  <sub>The wish-driven AI art engine — say what you want, and an agent builds the workflow, drives the models, and delivers editable project files</sub>
 </p>
 
 <p>
@@ -16,7 +16,6 @@
   <a href="https://github.com/Justin-sky/ai-art-engine/releases"><img src="https://img.shields.io/github/downloads/Justin-sky/ai-art-engine/total?style=flat-square&labelColor=0d1117&color=8b5cf6" alt="downloads" /></a>
   <a href="https://github.com/Justin-sky/ai-art-engine/stargazers"><img src="https://img.shields.io/github/stars/Justin-sky/ai-art-engine?style=flat-square&labelColor=0d1117&color=f5b301" alt="stars" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-22d3ee?style=flat-square&labelColor=0d1117" alt="license" /></a>
-  <img src="https://img.shields.io/badge/MCP-Native%20%2B%20Blender-10b981?style=flat-square&labelColor=0d1117" alt="MCP Native" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-64748b?style=flat-square&labelColor=0d1117" alt="platform" />
 </p>
 
@@ -34,82 +33,98 @@
 
 ---
 
-## 💡 Why AI Art Engine?
+## 🌠 Wish-Driven Generation: Describe the Outcome, Not the Steps
 
-Most AI creative tools are stuck at two extremes: **either a chat-only prompt box** (producing flat, uneditable images) **or an intimidating spaghetti node graph** (hundreds of cryptic parameters).
+Making game art used to mean: pick a model → tune parameters → wire nodes → cut out → split layers → fix text → export → redo…
 
-**AI Art Engine unites conversational full-workspace control with industrial-grade deliverable export**: direct every canvas, sub-editor, 3D rig, and timeline in plain language, and export files that artists and developers can immediately ship—**layered `.psd` with editable text, Spine 2D rigs, Unity/Godot UI code, and CapCut/Jianying multi-track drafts**.
+In AI Art Engine, you do just one thing — **make a wish**:
 
----
+> 🙏 _"Give me a xianxia-style inventory UI, split into a PSD with editable text, and export Unity code too."_
 
-## ✨ 4 Core Highlights
+And here is how the wish comes true:
 
-### 1. 📦 Beyond Flat Images: Ship Production-Ready Engineering Files
+```
+Your wish ─▶ Agent understands intent ─▶ Builds a workflow on the canvas ─▶ Drives models & local vision ─▶ Delivers an editable project
+```
 
-| Domain                        | Typical AI Tool Output    | **What AI Art Engine Ships**                                                                                                                                                                                                                                                                                                      |
-| :---------------------------- | :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **🎮 Game UI Pipeline**       | Flat, uneditable PNG      | Recognizes **16 standard HTML5 / Unity UI Toolkit controls**, splits **button labels (built-in offline/online OCR → native Photoshop `TySh` editable text layers)**, **inpainted 9-slice plates**, and **hover/pressed states** into a **2-level nested `.psd`** + **Unity (`.uxml/.uss`/UGUI) · Godot 4 (`.tscn`) · HTML5** code |
-| **🦴 2D Rigging & Animation** | Static art or warpy video | Auto part segmentation, hierarchical bone rigging, IK solvers, and keyframe baking → standard **Spine packages (`skeleton.json` + `.atlas` + transparent part atlases)**                                                                                                                                                          |
-| **🎬 AI Film & Drama**        | Disconnected video clips  | Script breakdown → AI Director review → `#variant` character consistency → batch shooting → **MP4** + **CapCut / JianyingPro editable NLE drafts**                                                                                                                                                                                |
-| **🎥 3D Previz & Playables**  | No spatial control        | **56-bone 3D Director Stage + 3D Gaussian Splatting + Blender MCP live modeling (`.glb`)** + zero-asset playable **HTML5 games (`single.html`)** verified by headless smoke tests                                                                                                                                                 |
+When the wish is granted, you get **not a picture, but a project that drops straight into your pipeline**:
 
-### 2. 🗣️ Chat-Native Studio & Bi-Directional MCP
-
-- **Conversational Everything**: Wiring nodes, tweaking deep Inspector parameters, posing 56 humanoid bones on the 3D Stage, or ripple-cutting silent pauses on the timeline—**every manual UI action can be triggered by a single sentence in the `◈ AI Chat`**.
-- **MCP Server + Blender Bridge**: Automatically hosts a local `127.0.0.1` MCP server on launch so **Claude Code, Codex, and Cursor** can drive your project directly, plus a zero-dependency **Blender MCP bridge (`/mcp/blender`)** for live `bpy` modeling and viewport inspection.
-
-### 3. 🧩 Typed Multimodal Node Graph × 10+ Deep-Dive Workbenches
-
-- **Macro Graph, Micro Precision**: Chain Text, Image, Video, Speech, Music, SFX, 3D, and Spatial Worlds on a typed DAG canvas; double-click any specialized node to **Dive** into a full-screen workbench (**Film Workbench, UI Control Layer Split, 10-in-1 Image Studio, Portrait Retouch, 3D Camera & Relighting, Comic Layout, 3D Director Stage**).
-- **PNG-as-Workflow**: Exported PNGs embed lightweight graph metadata (`aiae:graph`)—drag any output PNG back onto the canvas to restore the entire node pipeline.
-
-### 4. 🔒 100% Local-First & BYOK (Zero Lock-in)
-
-- **Built-in Offline OCR & Local ONNX Vision**: Ships with cross-platform **native offline OCR (Windows WinRT / macOS Vision / Tesseract)** and local **ONNX Runtime vision (YOLO Detect/Segment/Pose, 468-point Face Landmarks, SAM 2.1)**—zero cloud keys required for UI layer splitting, matting, or facial retouch gating.
-- **30+ Cloud & Local Providers**: Bring your own key for OpenRouter, OpenAI, Gemini, DeepSeek, Kling, Volcengine, Meshy, Tripo, World Labs, or local **ComfyUI / Ollama / vLLM**. Projects are plain folders of readable JSON and media files on your disk.
+| Your wish                                                 | What you get                                                |
+| :-------------------------------------------------------- | :---------------------------------------------------------- |
+| _"Split this UI screenshot into a pro-grade layered PSD"_ | Control-level layers, editable text `.psd` + engine UI code |
+| _"Bring this character illustration to life"_             | A rigged, animated Spine project                            |
+| _"Shoot this script as a one-minute short drama"_         | Final MP4 + an editable CapCut / Jianying draft             |
 
 ---
 
-## 💬 Speak to Create: Natural Language in Action
+## ✨ Why Wishes Come True Here
 
-| Active View             | What You Say to the AI…                                                                                                    | What the Engine Executes Automatically                                                                                                                              |
-| :---------------------- | :------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **UI Layer Split**      | _"Split this RPG inventory screen into standard UI controls as an editable PSD and export Unity UI Toolkit code."_         | Recognizes 16 control types → runs offline/online OCR → inpaints text-free 9-slice plates → exports a nested `.psd` with `TySh` editable text layers + `.uxml/.uss` |
-| **3D Director Stage**   | _"Set the key light to warm orange, raise the hero's left upper arm by 45°, look at the camera, and snap a previz frame."_ | Updates 3D light color/intensity, rotates `leftUpperArm`, applies gaze preset, and captures the viewport into the storyboard                                        |
-| **Film Workbench**      | _"Change Shot 2's sound to thunder, switch Lin's outfit to a black techwear coat, and reshoot only that shot."_            | Patches Shot 2 and `#variant` lookdev, re-running only the modified shot via fingerprint caching                                                                    |
-| **Portrait & Lighting** | _"Apply Rembrandt lighting at 45° yaw, strong skin smoothing, and subtle catchlights."_                                    | Syncs the 3D light sphere, gates facial zones via local ONNX landmarks, and updates derived prompts                                                                 |
-| **NLE Timeline**        | _"Cut all silent pauses from the voiceover, lay down subtitles, and export a CapCut draft."_                               | Runs audio transcription → ripple-cuts silence → builds subtitle track → exports MP4 or CapCut/Jianying draft                                                       |
+**🧭 A wish is never a black box.**
+Every wish becomes a **visible, editable** node workflow on the canvas. Don't like a step? Tweak one node or add one more sentence — only the changed parts re-run. Granted wishes are embedded into output PNGs; drop one back on the canvas to reproduce it.
 
----
+**📦 Wishes land as projects, not dead images.**
+Our bar: a professional artist or engineer can pick it up and keep working. Layered, text-editable, state-aware, engine-ready — not a flat image you can only regenerate.
 
-## 🚀 Get Started in 3 Minutes
+**🔓 Wish upon any model.**
+Switch freely among 30+ cloud models and local ComfyUI / Ollama. Bring your own key, local-first; a project is just a plain folder on your disk. Built-in offline OCR and local vision models grant many wishes even offline.
 
-1. **Download**: Grab the installer from [**GitHub Releases**](https://github.com/Justin-sky/ai-art-engine/releases) (Windows `.exe`, macOS `.dmg` `arm64`/`x64`, Linux `.AppImage`).
-2. **Try Zero-Key Live Demo**: Create a project, open the **◈ AI Chat**, and click **⚡ Zero-Key Instant Demo** to run structural UI control decomposition and editable PSD export immediately—no API key required.
-3. **Connect Models**: Open **Settings → Models** to add your API keys or local ComfyUI / Ollama endpoints.
-
-👉 Read the [**5-Minute Quickstart**](https://justin-sky.github.io/ai-art-engine/quickstart.en.html) and [**User Manual**](https://justin-sky.github.io/ai-art-engine/manual.en.html).
+**🧩 The wishing well keeps growing.**
+Skills from the [Marketplace](./docs/MARKETPLACE.md) teach the agent new kinds of wishes; via MCP, Claude Code / Codex / Cursor can make wishes on your behalf.
 
 ---
 
-## 🔌 Connect External Agents (Claude Code / Codex / Blender)
+## 🙏 The Wish Maiden
+
+<img src="docs/assets/wish-maiden.png" alt="Wish Maiden" width="200" align="right" />
+
+Every time you make a wish, the Wish Maiden above the chat folds her hands and prays for you:
+
+> _"No errors! Never red!"_ · _"First try · all green"_ · _"Spend less · save tokens"_
+
+Luck points float up from her head like game damage numbers — poke her and you might land a **critical hit**. When the wish is granted, she'll be even happier than you: _"✌️ Wish Granted! All Green!"_
+
+Of course, what really grants the wish isn't luck — it's the agent and the workflow behind it. 😉
+
+<br clear="right" />
+
+---
+
+## 🚀 Make Your First Wish in 3 Minutes
+
+1. **Install**: Grab an installer from [Releases](https://github.com/Justin-sky/ai-art-engine/releases) (Windows `.exe` · macOS `.dmg` · Linux `.AppImage`). Works out of the box.
+2. **Zero-key trial**: Create a project, open **◈ AI Chat**, and click **⚡ Zero-Key Instant Demo** — watch a UI image turn into an editable PSD, no API key needed.
+3. **Connect models**: Add any API key under **Settings → Models** (or connect local ComfyUI / Ollama), then tell the AI your wish.
+
+👉 More in the [5-Minute Quickstart](https://justin-sky.github.io/ai-art-engine/quickstart.en.html) · [User Manual](https://justin-sky.github.io/ai-art-engine/manual.en.html)
+
+<details>
+<summary><b>🔌 Let Claude Code / Codex / Cursor make wishes for you (MCP)</b></summary>
+
+<br />
+
+The app starts an MCP server on `127.0.0.1` (port and token under **Settings → MCP**):
 
 ```bash
-# Option A: stdio bridge
+# stdio bridge
 claude mcp add aiartengine -- node <install-or-repo-dir>/scripts/mcp-bridge.mjs
 
-# Option B: Direct HTTP (token under Settings → MCP)
+# or direct HTTP
 claude mcp add --transport http aiartengine http://127.0.0.1:43110/mcp \
   --header "Authorization: Bearer <token>"
 
-# Optional: Built-in Blender MCP modeling bridge
+# optional: built-in Blender MCP modeling endpoint
 claude mcp add --transport http blender http://127.0.0.1:43110/mcp/blender \
   --header "Authorization: Bearer <token>"
 ```
 
----
+See the [MCP Reference](./docs/MCP.md).
 
-## 🛠️ Build from Source
+</details>
+
+<details>
+<summary><b>🛠️ Build from Source</b></summary>
+
+<br />
 
 Requires **Node.js 22+**.
 
@@ -117,12 +132,14 @@ Requires **Node.js 22+**.
 git clone https://github.com/Justin-sky/ai-art-engine.git
 cd ai-art-engine
 npm install
-npm run dev     # Start dev mode with hot reload
-npm test        # Run unit test suite
-npm run build   # Build production packages
+npm run dev     # dev mode with hot reload
+npm test        # unit tests
+npm run build   # build installers
 ```
 
-- **Technical Docs**: [Architecture (`ARCHITECTURE.md`)](./docs/ARCHITECTURE.md) · [MCP Reference (`MCP.md`)](./docs/MCP.md) · [Local Vision & Offline OCR (`ARCH_YOLO_LOCAL.md`)](./docs/ARCH_YOLO_LOCAL.md) · [Graph Plugins (`GRAPH_PLUGINS.md`)](./docs/GRAPH_PLUGINS.md) · [Marketplace Spec (`MARKETPLACE.md`)](./docs/MARKETPLACE.md)
+Docs: [Architecture](./docs/ARCHITECTURE.md) · [Local Vision & Offline OCR](./docs/ARCH_YOLO_LOCAL.md) · [Graph Plugins](./docs/GRAPH_PLUGINS.md) · [Marketplace Spec](./docs/MARKETPLACE.md)
+
+</details>
 
 ---
 

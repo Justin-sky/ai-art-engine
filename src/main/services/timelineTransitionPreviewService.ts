@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import {
+  buildClipVisualFfmpegFilter,
   normalizeClipCropRect,
   type TimelineExportClip,
   type TimelineTransitionPreviewInput,
@@ -25,15 +26,34 @@ import {
 import { projectService } from './projectService'
 import { findFfmpegBin } from './videoFrameService'
 
-// ── 与导出保持一致的 xfade 类型映射（值即 ffmpeg xfade transition 名） ──
+const STILL_IMAGE_EXT_RE = /\.(png|jpe?g|webp|bmp|avif)$/i
+const ANIMATED_GIF_EXT_RE = /\.gif$/i
+
+function appendMediaInputArgs(args: string[], mediaPath: string, minDurSec: number): void {
+  const safeDur = Math.max(2, Math.ceil(minDurSec + 1))
+  if (STILL_IMAGE_EXT_RE.test(mediaPath)) {
+    args.push('-loop', '1', '-t', String(safeDur), '-i', mediaPath)
+  } else if (ANIMATED_GIF_EXT_RE.test(mediaPath)) {
+    args.push('-ignore_loop', '0', '-t', String(safeDur), '-i', mediaPath)
+  } else {
+    args.push('-i', mediaPath)
+  }
+}
+
+// ── 与导出保持一致的 xfade 类型映射（值即 ffmpeg xfade transition 名，覆盖全部 40 款转场） ──
 const XFADE_MAP: Record<string, string> = {
   dissolve: 'dissolve',
   fade: 'fadeblack',
   fadeout: 'fadeblack',
   fadein: 'fadeblack',
   flash: 'fadewhite',
+  fadegrays: 'fadegrays',
+  hblur: 'hblur',
+  distance: 'distance',
   smoothleft: 'smoothleft',
   smoothright: 'smoothright',
+  smoothup: 'smoothup',
+  smoothdown: 'smoothdown',
   slideleft: 'slideleft',
   slideright: 'slideright',
   slideup: 'slideup',
@@ -42,13 +62,28 @@ const XFADE_MAP: Record<string, string> = {
   wiperight: 'wiperight',
   wipeup: 'wipeup',
   wipedown: 'wipedown',
+  wipetl: 'wipetl',
+  wipetr: 'wipetr',
+  wipebl: 'wipebl',
+  wipebr: 'wipebr',
   circleopen: 'circleopen',
   circleclose: 'circleclose',
+  rectcrop: 'rectcrop',
   radial: 'radial',
   zoomin: 'zoomin',
   pixelize: 'pixelize',
   horzopen: 'horzopen',
-  vertopen: 'vertopen'
+  horzclose: 'horzclose',
+  vertopen: 'vertopen',
+  vertclose: 'vertclose',
+  hlslice: 'hlslice',
+  hrslice: 'hrslice',
+  vuslice: 'vuslice',
+  vdslice: 'vdslice',
+  squeezeh: 'squeezeh',
+  squeezev: 'squeezev',
+  diagtl: 'diagtl',
+  diagbr: 'diagbr'
 }
 
 function buildClipCropFilter(clip: TimelineExportClip): string {
@@ -218,17 +253,23 @@ export async function renderTimelineTransitionPreview(
     const fps = Math.min(60, Math.max(1, Math.round(input.fps ?? 30)))
     const leftCrop = buildClipCropFilter(left)
     const rightCrop = buildClipCropFilter(right)
+    const leftVisual = buildClipVisualFfmpegFilter(left)
+    const rightVisual = buildClipVisualFfmpegFilter(right)
+    const leftVisualOpt = leftVisual ? `,${leftVisual}` : ''
+    const rightVisualOpt = rightVisual ? `,${rightVisual}` : ''
     const key = JSON.stringify([
       resolveMediaPath(left),
       sourceOffsetSec(left),
       left.startSec,
       left.durationSec,
       leftCrop,
+      leftVisualOpt,
       resolveMediaPath(right),
       sourceOffsetSec(right),
       right.startSec,
       right.durationSec,
       rightCrop,
+      rightVisualOpt,
       right.transitionType,
       right.transitionInSec,
       width,
@@ -261,14 +302,20 @@ export async function renderTimelineTransitionPreview(
       const aStart = sourceOffsetSec(left) + tailStart
       const bStart = sourceOffsetSec(right)
 
-      const branch = (port: string, srcStart: number, segDur: number, cropOpt: string): string =>
+      const branch = (
+        port: string,
+        srcStart: number,
+        segDur: number,
+        cropOpt: string,
+        visualOpt: string
+      ): string =>
         `[${port}]trim=${srcStart.toFixed(3)}:${(srcStart + segDur).toFixed(3)},` +
         `setpts=PTS-STARTPTS${cropOpt},scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${fps},format=yuv420p`
+        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,setsar=1${visualOpt},fps=${fps},format=yuv420p`
       const outDur = Math.max(aSegDur, bSegDur)
       const filter =
-        `${branch('0:v', aStart, aSegDur, leftCrop)}[a];` +
-        `${branch('1:v', bStart, bSegDur, rightCrop)}[b];` +
+        `${branch('0:v', aStart, aSegDur, leftCrop, leftVisualOpt)}[a];` +
+        `${branch('1:v', bStart, bSegDur, rightCrop, rightVisualOpt)}[b];` +
         `[a][b]xfade=transition=${xfadeName}:duration=${d.toFixed(3)}:offset=0,format=yuv420p[vout]`
 
       initPreviewDir()
@@ -276,15 +323,10 @@ export async function renderTimelineTransitionPreview(
         previewDir(),
         `tp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`
       )
-      const args: string[] = [
-        '-y',
-        '-hide_banner',
-        '-loglevel',
-        'error',
-        '-i',
-        leftPath,
-        '-i',
-        rightPath,
+      const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
+      appendMediaInputArgs(args, leftPath, aStart + aSegDur)
+      appendMediaInputArgs(args, rightPath, bStart + bSegDur)
+      args.push(
         '-filter_complex',
         filter,
         '-map',
@@ -307,7 +349,7 @@ export async function renderTimelineTransitionPreview(
         '-t',
         outDur.toFixed(3),
         outPath
-      ]
+      )
       try {
         await runFfmpeg(bin, args)
       } catch (err) {

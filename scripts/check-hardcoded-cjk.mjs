@@ -92,6 +92,7 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/uiControlSpec.ts',
   'src/shared/graph/uiEngineExport.ts',
   'src/shared/graph/variantContactSheet.ts',
+  'src/shared/graph/timelineCreativePack.ts',
   'src/renderer/src/features/graph/model/recipePosterExport.ts',
   'src/renderer/src/features/media/chatPreviewKind.ts'
 ])

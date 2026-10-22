@@ -9,8 +9,10 @@ import {
   type TimelineTweenLoopPreset,
   type TimelineTweenOutPreset
 } from './timelineTween'
+import type { TimelineFilterPresetId, TimelineVisualEffectId } from './timelineCreativePack'
 
 export * from './timelineTween'
+export * from './timelineCreativePack'
 
 export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music' | 'sfx'
 
@@ -101,8 +103,13 @@ export type ScriptTimelineTransitionType =
   | 'fadeout'
   | 'fadein'
   | 'flash'
+  | 'fadegrays'
+  | 'hblur'
+  | 'distance'
   | 'smoothleft'
   | 'smoothright'
+  | 'smoothup'
+  | 'smoothdown'
   | 'slideleft'
   | 'slideright'
   | 'slideup'
@@ -111,13 +118,28 @@ export type ScriptTimelineTransitionType =
   | 'wiperight'
   | 'wipeup'
   | 'wipedown'
+  | 'wipetl'
+  | 'wipetr'
+  | 'wipebl'
+  | 'wipebr'
   | 'circleopen'
   | 'circleclose'
+  | 'rectcrop'
   | 'radial'
   | 'zoomin'
   | 'pixelize'
   | 'horzopen'
+  | 'horzclose'
   | 'vertopen'
+  | 'vertclose'
+  | 'hlslice'
+  | 'hrslice'
+  | 'vuslice'
+  | 'vdslice'
+  | 'squeezeh'
+  | 'squeezev'
+  | 'diagtl'
+  | 'diagbr'
 
 export type ScriptTimelineClip = {
   id: string
@@ -147,6 +169,32 @@ export type ScriptTimelineClip = {
   contrast?: number
   /** 片段级饱和度微调（0~3，缺省 1） */
   saturation?: number
+  /** 自然饱和度微调（-100~100，缺省 0） */
+  vibrance?: number
+  /** 色温微调（-100~100，缺省 0） */
+  temperature?: number
+  /** 色调微调（-100~100，缺省 0） */
+  tint?: number
+  /** 高光微调（-100~100，缺省 0） */
+  highlights?: number
+  /** 阴影微调（-100~100，缺省 0） */
+  shadows?: number
+  /** 锐化强度（0~100，缺省 0） */
+  sharpen?: number
+  /** 暗角强度（0~100，缺省 0） */
+  vignette?: number
+  /** 褪色灰雾（0~100，缺省 0） */
+  fade?: number
+  /** 胶片颗粒（0~100，缺省 0） */
+  grain?: number
+  /** 滤镜预设 ID */
+  filterPreset?: TimelineFilterPresetId
+  /** 滤镜强度（0~100，缺省 100） */
+  filterIntensity?: number
+  /** 画面特效 ID */
+  visualEffect?: TimelineVisualEffectId
+  /** 特效强度（0~100，缺省 75） */
+  effectIntensity?: number
   /** 画面裁剪左边界（相对源画面宽度，0~1，缺省 0） */
   cropX?: number
   /** 画面裁剪上边界（相对源画面高度，0~1，缺省 0） */
@@ -315,6 +363,19 @@ export type TimelineExportClip = {
   brightness?: number
   contrast?: number
   saturation?: number
+  vibrance?: number
+  temperature?: number
+  tint?: number
+  highlights?: number
+  shadows?: number
+  sharpen?: number
+  vignette?: number
+  fade?: number
+  grain?: number
+  filterPreset?: TimelineFilterPresetId
+  filterIntensity?: number
+  visualEffect?: TimelineVisualEffectId
+  effectIntensity?: number
   cropX?: number
   cropY?: number
   cropWidth?: number
