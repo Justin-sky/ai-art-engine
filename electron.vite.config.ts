@@ -194,6 +194,27 @@ export default defineConfig({
     optimizeDeps: {
       include: ['quickjs-emscripten-core', '@jitl/quickjs-singlefile-browser-release-asyncify']
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('/three/') || id.includes('\\three\\')) return 'vendor-three'
+            if (id.includes('/fabric/') || id.includes('\\fabric\\')) return 'vendor-fabric'
+            if (id.includes('/ag-psd/') || id.includes('\\ag-psd\\')) return 'vendor-psd'
+            if (id.includes('/gpt-tokenizer/') || id.includes('\\gpt-tokenizer\\'))
+              return 'vendor-tokenizer'
+            if (
+              id.includes('/dockview-vue/') ||
+              id.includes('/dockview-core/') ||
+              id.includes('\\dockview-')
+            )
+              return 'vendor-dockview'
+            return undefined
+          }
+        }
+      }
+    },
     plugins: [vue(), threeModuleRawPlugin()]
   }
 })

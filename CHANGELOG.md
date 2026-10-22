@@ -4,10 +4,11 @@
 
 ## [8.4.2] — 2026-10-22
 
-8.4.2 补丁版：将 **UI 精准拆层技能（`ui-layer-split` / `wf-ui-layer-split`）** 由主工程迁移重构至独立技能市场仓库（`ai-art-engine-skills`），并补齐 `image.layerSplit` 节点的 `visionModel` / `visionProviderInstanceId` 默认参数声明，确保工作流物化与 `graph_edit` 完整保留多模态视觉模型配置。
+8.4.2 补丁版：将 **UI 精准拆层技能（`ui-layer-split` / `wf-ui-layer-split`）** 由主工程迁移重构至独立技能市场仓库（`ai-art-engine-skills`），补齐 `image.layerSplit` 节点的 `visionModel` / `visionProviderInstanceId` 默认参数声明，并通过渲染层 Vendor 分包与 V8 堆上限扩容修复 macOS Release 打包阶段的 `JavaScript heap out of memory`（`exit code 134`）。
 
 - **重构 · UI 精准拆层技能（`ui-layer-split`）迁移至技能市场仓库（`ai-art-engine-skills`）**：移除误置在主工程 `.agents/skills/ui-layer-split/` 的技能文件，统一按技能市场规范在 `ai-art-engine-skills/workflows/ui-layer-split/` 发布工作流与 `wf-ui-layer-split` 技能包（含 `workflow.json`、`SKILL.md`、`references/pipeline.md` 与卡片封面）。
 - **修复 · `image.layerSplit` 节点补齐 `visionModel` / `visionProviderInstanceId` 默认参数声明**：在 `builtins.ts` 的 `defaultParams` 中显式声明视觉定位模型覆盖参数，避免在工作流计划物化（`materializeGraphPlan`）或导出时被判定为未声明参数而丢弃。
+- **构建 · 修复 macOS CI 打包 `electron-vite build` V8 堆内存溢出（`exit code 134`）**：在 `electron.vite.config.ts` 中将 `three`、`gpt-tokenizer`、`dockview`、`ag-psd`、`fabric` 拆分为独立 vendor chunk（主入口包体积由 13.1MB 降至 7.6MB），并在 `package.json` 构建脚本及 GitHub Actions 工作流中显式配置 `--max-old-space-size=6144`。
 
 ## [8.4.1] — 2026-10-22
 

@@ -17,7 +17,7 @@
     "dev": "node scripts/dev-launcher.mjs",
     "dev:raw": "electron-vite dev",
     "fix:integrity": "node scripts/fix-workspace-integrity.mjs",
-    "build": "electron-vite build",
+    "build": "node --max-old-space-size=6144 ./node_modules/electron-vite/bin/electron-vite.js build",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "vue-tsc --noEmit -p tsconfig.web.json --composite false",
