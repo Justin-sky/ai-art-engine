@@ -794,7 +794,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     const curSel = editor.selection.current.value
     const activeTargets = resolveActiveWorkspaceTargets()
 
-    const effectiveAssetId =
+    let effectiveAssetId =
       payload.assetId &&
       payload.assetId.trim() &&
       payload.assetId.trim() !== 'current' &&
@@ -1091,6 +1091,12 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
         warnings: totalWarnings
       })
       return
+    }
+
+    if (!effectiveAssetId && window.studio?.createAsset) {
+      const created = await window.studio.createAsset({ type: 'canvas' })
+      await project.refreshAssets()
+      effectiveAssetId = created.id
     }
 
     const asset = project.assets.find((item) => item.id === effectiveAssetId)

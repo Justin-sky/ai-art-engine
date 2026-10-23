@@ -157,17 +157,7 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
     lastOpenBeat ||
     lastOpenScreenplay ||
     lastLiveAssetId ||
-    (workspaceStore.selectedAssetId &&
-    project.assets.some(
-      (a) =>
-        a.id === workspaceStore.selectedAssetId &&
-        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
-    )
-      ? workspaceStore.selectedAssetId
-      : null) ||
     lastOpenAsset ||
-    project.assets.find((a) => a.type === 'canvas')?.id ||
-    project.assets[0]?.id ||
     ''
 
   const defaultHostId =

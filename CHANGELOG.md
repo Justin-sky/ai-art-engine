@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.2] — 2026-10-23
+
+8.5.2 补丁版：**图片生成节点（`asset.image` / `ui.gen` / `frame.animGen`）** 升级为 **原生模型透明背景直出**（默认开启透明背景：支持透明通道的模型直接生成原生 RGBA 透明图，不支持的模型按常规生成不透明图，生图后不再做二次去背景/YOLO 抠图处理）；**独立抠图工具** 升级 **引导滤波边缘细化、发丝间隙剥离与去半透明背景光晕**；**AI 会话面板** 在左侧未打开画布时执行任务改为 **自动新建并打开全新自由画布**。
+
+- **优化 · 图片生成节点原生透明通道直出与去后处理（`generateMedia` + `facade` + `openaiCompat` + `openrouter`）**：透明背景（`generateTransparentBg`）保持默认开启；当所选模型支持原生透明通道（如 `gpt-image-1` / `gpt-image-2` / `chatgpt-image` / `recraft` 等）时，自动注入原生透明通道提示词并向 API 传递 `background: "transparent"` 直接生成干净透明 PNG；当所选模型不支持透明通道时，不做特殊背景提示词注入、直接生成常规不透明图像；全面移除生图节点出图后的自动纯色泛洪键控与 YOLO 二次抠图后处理，彻底避免原生透明图或人物边缘出现半透明白雾光晕。
+- **优化 · 独立去背景与 YOLO 实例抠图边缘净色精修（`iconPackKeying` + `yoloCutout`）**：针对独立抠图工具（`image.process` / `image.align`），升级自适应外围阴影泛洪、局部引导滤波（Guided Filter）边缘对齐、发丝间隙背景剥离、内部封闭背景孔洞穿透以及前景色解混（Unpremultiply + 邻域前景净色替换），消除人物发丝与轮廓边缘的半透明残底。
+- **优化 · 左侧未打开画布时 AI 任务自动新建自由画布（`surfaceRegistry` + `buildActiveWorkspaceContext` + `mcpTaskRunner`）**：当左侧工作区未打开任何画布时，在 AI 会话中输入生成或节点编排任务不再回退打开历史旧画布，而是自动创建并打开一个全新的自由画布执行任务。
+
 ## [8.5.1] — 2026-10-23
 
 8.5.1 补丁版：**AI 会话面板（`ChatPanel`）** 新增 **MCP 全操作实时对话流内嵌展示**（新建节点、删除节点、连线、更新节点、3D 导演台操作、时间线编辑、资产操作与节点执行均按实际时序在对话流中直接呈现）；**3D 分镜白模预演（`director.stage`）** 全面升级 **纵深场面调度、带时间戳的多阶段角色走位轨迹与过肩（OTS）/ 主观（POV）/ 侧面镜头视口精准构图**。

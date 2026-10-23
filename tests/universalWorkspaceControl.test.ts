@@ -395,4 +395,33 @@ describe('Universal Workspace Control Architecture (4-Pillar Introspection, Smar
       disposeHost()
     }
   })
+
+  it('does not reuse old historical canvas when no canvas editor is open in the left window', () => {
+    const project = useProjectStore()
+    const workspace = useWorkspaceStore()
+    const editor = useEditorKernel()
+
+    project.assets = [
+      {
+        id: 'old-canvas-1',
+        name: '历史旧画布',
+        type: 'canvas',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        genParams: {
+          graphJson: { version: 1, nodes: [], edges: [], groups: [] }
+        }
+      } as any
+    ]
+    workspace.openCanvasEditorIds = []
+    workspace.activeDiveRootKey = null
+    editor.selection.clear()
+
+    const targets = resolveActiveWorkspaceTargets()
+    expect(targets.defaultAssetId).toBe('')
+
+    const ctx = buildActiveWorkspaceContext() ?? ''
+    expect(ctx).toContain('Left Window Active Editor: None')
+    expect(ctx).not.toContain('old-canvas-1')
+  })
 })

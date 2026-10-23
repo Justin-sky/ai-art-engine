@@ -307,14 +307,6 @@ export function buildActiveWorkspaceContext(): string | undefined {
     lastOpenBeat ||
     lastOpenScreenplay ||
     lastLiveAssetId ||
-    (workspaceStore.selectedAssetId &&
-    project.assets.some(
-      (a) =>
-        a.id === workspaceStore.selectedAssetId &&
-        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
-    )
-      ? workspaceStore.selectedAssetId
-      : null) ||
     lastOpenAsset
 
   const rootAsset = activeAssetId ? project.assets.find((a) => a.id === activeAssetId) : undefined
@@ -456,11 +448,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
 
   // 4. Active Right-Hand Inspector Panel Context
   const curSelection = editor.selection.current.value
-  const fallbackEditAssetId =
-    activeAssetId ||
-    liveDirectorScene?.directorAssetId ||
-    project.assets.find((a) => a.type === 'canvas')?.id ||
-    ''
+  const fallbackEditAssetId = activeAssetId || liveDirectorScene?.directorAssetId || ''
   if (curSelection.kind.startsWith('stage.') && liveDirectorScene) {
     lines.push(
       `[Active Inspector Panel State]: kind="${curSelection.kind}", id="${curSelection.id ?? ''}" — use \`graph_edit({ assetId: "${liveDirectorScene.directorAssetId}", ops: [{ op: "inspector_update", ... }] })\` or specific stage ops (\`object_update\`, \`camera_update\`, \`environment_update\`) to edit any Inspector field.`
@@ -559,16 +547,23 @@ export function buildActiveWorkspaceContext(): string | undefined {
         lines.push(`Edges on active canvas (${liveDoc.edges.length}): ${edgeSummary}`)
       }
     }
+  } else {
+    lines.push(
+      'Left Window Active Editor: None (no canvas is currently open in the left window).',
+      '  [Canvas Node Generation & Execution Protocol]: Because NO canvas is currently open in the left window, DO NOT reuse any existing project canvas assetId. Call `graph_edit({ ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })` WITHOUT passing `assetId` — the studio will automatically create and open a brand-new free canvas in the left window and return its new `assetId` for `task_run`.'
+    )
   }
 
-  // 6. Other Graph Assets in Project
-  const otherCanvases = project.assets
-    .filter(
-      (a) =>
-        a.id !== activeAssetId &&
-        (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
-    )
-    .slice(0, 10)
+  // 6. Other Graph Assets in Project (only listed when a canvas is already open, so the AI creates a new canvas when none is open)
+  const otherCanvases = activeAssetId
+    ? project.assets
+        .filter(
+          (a) =>
+            a.id !== activeAssetId &&
+            (a.type === 'canvas' || (readAssetGraph(a)?.nodes?.length ?? 0) > 0)
+        )
+        .slice(0, 10)
+    : []
   if (otherCanvases.length) {
     lines.push(
       `Other graph assets in project: ${otherCanvases

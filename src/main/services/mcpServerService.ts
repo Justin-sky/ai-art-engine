@@ -2520,7 +2520,8 @@ const TOOL_DEFS: McpToolDef[] = [
       const openEditor = args.openEditor !== undefined ? args.openEditor === true : hasGraphNodeOp
       const asset = normalizedRawAssetId
         ? projectService.listAssets().find((item) => item.id === normalizedRawAssetId)
-        : resolveOrEnsureCanvasAsset('', { autoCreateCanvas: hasGraphNodeOp })
+        : undefined
+      // 未显式指定 assetId 时传空串给渲染层：若左侧已打开画布则作用于当前画布，若未打开任何画布则由渲染层自动新建并打开新自由画布
       const assetId = normalizedRawAssetId || asset?.id || ''
       if (normalizedRawAssetId && hasGraphNodeOp) {
         const genParams = asset?.genParams as Record<string, unknown> | undefined
@@ -2551,7 +2552,11 @@ const TOOL_DEFS: McpToolDef[] = [
           const report = pendingMcpGraphEditResults.get(requestId)
           if (!report) continue
           if (report.ok) {
-            const resolvedAssetId = report.assetId || assetId
+            const resolvedAssetId =
+              report.assetId ||
+              assetId ||
+              resolveOrEnsureCanvasAsset('', { autoCreateCanvas: false })?.id ||
+              ''
             const touchedNodeIds = report.nodeIds ?? []
             if (resolvedAssetId) {
               lastMcpGraphEditTarget = {
