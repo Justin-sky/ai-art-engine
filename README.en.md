@@ -65,7 +65,7 @@ Every granted wish can be exported as a **Recipe Card (`.png`)** carrying lossle
 <table>
   <tr>
     <th align="center">🪄 Workflow Recipe (Click for Original PNG)</th>
-    <th align="center">🎬 Generated Output (Double-click for Fullscreen)</th>
+    <th align="center">🎬 Generated Output (Click for HD Video with Audio)</th>
   </tr>
   <tr>
     <td align="center" valign="middle">
@@ -76,11 +76,11 @@ Every granted wish can be exported as a **Recipe Card (`.png`)** carrying lossle
       <sub><b>Recipe 1 · 3D Previz & Short Drama</b> (11 Nodes)<br />🔍 <a href="website/assets/recipe/recipe1.png" target="_blank">View / download original PNG</a></sub>
     </td>
     <td align="center" valign="middle">
-      <video src="website/assets/recipe/recipe1.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
-        <a href="website/assets/recipe/recipe1.mp4">Play Recipe 1 MP4</a>
-      </video>
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe1.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe1.gif" alt="Recipe 1 Output Preview" width="260" />
+      </a>
       <br />
-      <sub>📺 Double-click video for fullscreen · <a href="website/assets/recipe/recipe1.mp4" target="_blank">Open MP4</a></sub>
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe1.mp4" target="_blank">Play HD MP4 with audio</a></sub>
     </td>
   </tr>
   <tr>
@@ -92,11 +92,11 @@ Every granted wish can be exported as a **Recipe Card (`.png`)** carrying lossle
       <sub><b>Recipe 2 · Narrated Children's Storybook</b> (20 Nodes)<br />🔍 <a href="website/assets/recipe/recipe2.png" target="_blank">View / download original PNG</a></sub>
     </td>
     <td align="center" valign="middle">
-      <video src="website/assets/recipe/recipe2.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
-        <a href="website/assets/recipe/recipe2.mp4">Play Recipe 2 MP4</a>
-      </video>
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe2.gif" alt="Recipe 2 Output Preview" width="260" />
+      </a>
       <br />
-      <sub>📺 Double-click video for fullscreen · <a href="website/assets/recipe/recipe2.mp4" target="_blank">Open MP4</a></sub>
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">Play HD MP4 with audio</a></sub>
     </td>
   </tr>
 </table>

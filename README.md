@@ -65,7 +65,7 @@
 <table>
   <tr>
     <th align="center">🪄 许愿配方（点击缩略图看原图）</th>
-    <th align="center">🎬 生成效果（双击视频全屏）</th>
+    <th align="center">🎬 生成效果（点击观看有声原视频）</th>
   </tr>
   <tr>
     <td align="center" valign="middle">
@@ -76,11 +76,11 @@
       <sub><b>配方 1 · 3D 预演与短剧管线</b>（11 节点）<br />🔍 <a href="website/assets/recipe/recipe1.png" target="_blank">点击查看 / 下载原图</a></sub>
     </td>
     <td align="center" valign="middle">
-      <video src="website/assets/recipe/recipe1.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
-        <a href="website/assets/recipe/recipe1.mp4">点击播放配方 1 生成效果 MP4</a>
-      </video>
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe1.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe1.gif" alt="配方 1 生成效果预览" width="260" />
+      </a>
       <br />
-      <sub>📺 双击画面全屏播放 · <a href="website/assets/recipe/recipe1.mp4" target="_blank">打开原视频</a></sub>
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe1.mp4" target="_blank">点击播放有声高清 MP4 原视频</a></sub>
     </td>
   </tr>
   <tr>
@@ -92,11 +92,11 @@
       <sub><b>配方 2 · 儿童有声绘本短片</b>（20 节点）<br />🔍 <a href="website/assets/recipe/recipe2.png" target="_blank">点击查看 / 下载原图</a></sub>
     </td>
     <td align="center" valign="middle">
-      <video src="website/assets/recipe/recipe2.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
-        <a href="website/assets/recipe/recipe2.mp4">点击播放配方 2 生成效果 MP4</a>
-      </video>
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe2.gif" alt="配方 2 生成效果预览" width="260" />
+      </a>
       <br />
-      <sub>📺 双击画面全屏播放 · <a href="website/assets/recipe/recipe2.mp4" target="_blank">打开原视频</a></sub>
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">点击播放有声高清 MP4 原视频</a></sub>
     </td>
   </tr>
 </table>
