@@ -2,6 +2,13 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.1] — 2026-10-23
+
+8.5.1 补丁版：**AI 会话面板（`ChatPanel`）** 新增 **MCP 全操作实时对话流内嵌展示**（新建节点、删除节点、连线、更新节点、3D 导演台操作、时间线编辑、资产操作与节点执行均按实际时序在对话流中直接呈现）；**3D 分镜白模预演（`director.stage`）** 全面升级 **纵深场面调度、带时间戳的多阶段角色走位轨迹与过肩（OTS）/ 主观（POV）/ 侧面镜头视口精准构图**。
+
+- **新增 · AI 对话流实时内嵌展示全部 MCP 操作（`mcpToolOperationSummary` + `ChatPanel`）**：当 AI 调用 `graph_edit`、`director_stage_edit`、`timeline_edit`、`task_run`、`asset_create`、`asset_delete`、`asset_rename`、`asset_move`、`folder_create` 等 MCP 工具时，自动提取带节点/资产标题的可读操作明细（如 `+ 新建节点 n1「1. 剧本」（text.plain）`、`→ 连线 n1「1. 剧本」 → n2「2. 分镜拆解」`、`− 删除节点 n3「旧草稿」（含连线）`、`✎ 更新节点`、`▶ 运行节点`），按调用时序直接在对话流中内嵌渲染操作卡片并默认展开任务清单。
+- **优化 · 3D 分镜白模预演纵深走位与过肩（OTS）/ 主观（POV）/ 侧面镜头构图**：升级 `directorWhiteModelBuilder` 与 `directorStoryboardPreviz`，支持从分镜描述解析带起止秒数的多段角色位移关键帧轨迹、基于房间纵深（$Z \in [-2.2, 2.2]$）进行立体场面调度，并精准识别过肩镜头（OTS，前景虚化肩背框景 + 后景主体对焦）、主观视角（POV）与正侧面（Profile）机位构图。
+
 ## [8.5.0] — 2026-10-23
 
 8.5.0 功能版：**3D 导演台（`director.stage`）** 内置角色全面升级 **24 款程序化骨骼动画片段** 与 **38 款生活化全身/手势/视线姿态预设**，支持 **3D 分镜白模预演按镜渲染运镜视频并作为 `@2` 参考视频传入短剧视频生成**、**后台无头（Offscreen）3D 白模预演自动渲染**、**分镜拆解 Dive 窗口实时流式同步** 及 **MCP 实时切换/多段序列编排**；**自由画布** 新增 **清新二次元元素动态天气系统（10 种自然天象随机流转 + Web Audio 自然音效与空灵 BGM + 节点实时物理摆动与元素辉光反馈）** 及 **7 款《原神》场景色温渐变背景**。
