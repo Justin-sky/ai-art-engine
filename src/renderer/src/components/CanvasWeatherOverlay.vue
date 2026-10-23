@@ -548,6 +548,7 @@ const activeBolts: RenderedBolt[] = []
 const seenLightningIds = new Set<number>()
 
 let rafId: number | null = null
+let isMounted = false
 let resizeObserver: ResizeObserver | null = null
 let viewportW = 1280
 let viewportH = 720
@@ -954,126 +955,127 @@ function spawnRipple(x: number, y: number, color = 'rgba(125, 211, 252, 0.85)'):
 }
 
 function renderFrame(now: number): void {
-  const dt = Math.min(0.05, Math.max(0.001, (now - lastFrameTime) * 0.001))
-  lastFrameTime = now
+  try {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrameTime) * 0.001))
+    lastFrameTime = now
 
-  const weather = currentWeather.value
-  const nodes = props.visibleNodes
+    const weather = currentWeather.value
+    const nodes = props.visibleNodes
 
-  // Step per-node physics every frame when weather is active or nodes are settling
-  if (weather !== 'idle' || Object.keys(canvasWeatherState.nodeTransforms.value).length > 0) {
-    stepNodeWeatherPhysics(nodes, dt, viewportW, viewportH, Boolean(props.suppressNodePhysics))
-  }
+    // Step per-node physics every frame when weather is active or nodes are settling
+    if (weather !== 'idle' || Object.keys(canvasWeatherState.nodeTransforms.value).length > 0) {
+      stepNodeWeatherPhysics(nodes, dt, viewportW, viewportH, Boolean(props.suppressNodePhysics))
+    }
 
-  const cvs = canvasEl.value
-  if (!cvs) {
-    rafId = requestAnimationFrame(renderFrame)
-    return
-  }
-  const ctx = cvs.getContext('2d')
-  if (!ctx) {
-    rafId = requestAnimationFrame(renderFrame)
-    return
-  }
+    const cvs = canvasEl.value
+    if (!cvs) {
+      return
+    }
+    const ctx = cvs.getContext('2d')
+    if (!ctx) {
+      return
+    }
 
-  ctx.clearRect(0, 0, viewportW, viewportH)
+    ctx.clearRect(0, 0, viewportW, viewportH)
 
-  if (
-    weather === 'idle' &&
-    activeBolts.length === 0 &&
-    splashes.length === 0 &&
-    ripples.length === 0
-  ) {
-    rafId = requestAnimationFrame(renderFrame)
-    return
-  }
+    if (
+      weather === 'idle' &&
+      activeBolts.length === 0 &&
+      splashes.length === 0 &&
+      ripples.length === 0
+    ) {
+      return
+    }
 
-  // Ingest newly triggered lightning events from the engine
-  for (const ev of canvasWeatherState.lightningEvents.value) {
-    if (!seenLightningIds.has(ev.id)) {
-      seenLightningIds.add(ev.id)
-      activeBolts.push(
-        buildLightningGeometry(ev.id, ev.targetScreenX, ev.targetScreenY, ev.createdAt)
-      )
+    // Ingest newly triggered lightning events from the engine
+    for (const ev of canvasWeatherState.lightningEvents.value) {
+      if (!seenLightningIds.has(ev.id)) {
+        seenLightningIds.add(ev.id)
+        activeBolts.push(
+          buildLightningGeometry(ev.id, ev.targetScreenX, ev.targetScreenY, ev.createdAt)
+        )
+      }
+    }
+
+    // Periodic automatic lightning strikes during thunderstorm & typhoon
+    if ((weather === 'thunderstorm' || weather === 'typhoon') && now > nextAutoLightningAt) {
+      const interval =
+        weather === 'thunderstorm' ? 1900 + Math.random() * 2300 : 2800 + Math.random() * 3000
+      nextAutoLightningAt = now + interval
+      triggerWeatherLightningStrike({
+        visibleNodes: nodes,
+        intensity: weather === 'typhoon' ? 0.9 : 1.05
+      })
+    }
+
+    // 1. Fresh Genshin-style Luminous Sky Backdrop Tint
+    drawAtmosphereTint(ctx, weather, now)
+
+    // 2. Typhoon Anemo Elemental Vortex
+    if (weather === 'typhoon') {
+      drawTyphoonVortex(ctx, now)
+    }
+
+    // 3. Ley Line & Irminsul Aurora Curtains + Crystalflies
+    if (weather === 'aurora') {
+      drawAuroraSpectacle(ctx, dt, now, nodes)
+    }
+
+    // 4. Wish Starfall (Genshin Gacha Shooting Stars)
+    if (weather === 'meteor') {
+      drawMeteorShower(ctx, dt, now, nodes)
+    }
+
+    // 5. Anemo Breeze Ribbons, Dandelion Seeds & Sakura Petals
+    if (weather === 'wind' || weather === 'thunderstorm' || weather === 'typhoon') {
+      drawWindAndLeaves(ctx, weather, dt, now, nodes)
+    }
+
+    // 6. Dragonspine Cryo Snowflakes & Cel-Shaded Snow Puffs
+    if (weather === 'blizzard') {
+      drawBlizzardSnow(ctx, dt, now, nodes)
+    }
+
+    // 7. Cryo Diamond Prism Hailstorm
+    if (weather === 'hail') {
+      drawHailstorm(ctx, dt, nodes)
+    }
+
+    // 8. Sumeru Golden Mirage Sand Ribbons & Diamond Dust
+    if (weather === 'sandstorm') {
+      drawSandstorm(ctx, dt, now, nodes)
+    }
+
+    // 9. Chenyu Vale Celadon Cloud Sea & Adeptal Motes
+    if (weather === 'fog') {
+      drawDenseFog(ctx, dt, now)
+    }
+
+    // 10. Fontaine Hydro Rain, Concentric Ripples & Splashes
+    if (
+      weather === 'rain' ||
+      weather === 'thunderstorm' ||
+      weather === 'typhoon' ||
+      splashes.length > 0 ||
+      ripples.length > 0
+    ) {
+      drawRainAndSplashes(ctx, weather, dt, nodes)
+    }
+
+    // 11. Inazuma Electro Lightning Bolts & Sigil Rings
+    if (activeBolts.length > 0) {
+      drawLightningBolts(ctx, now)
+    }
+
+    // 12. Teyvat Clear Sunny Sky (Bokeh Lens Flares, Sunbeams, Double Rainbow, Dandelions)
+    if (weather === 'sunny') {
+      drawSunnySpectacle(ctx, dt, now)
+    }
+  } finally {
+    if (isMounted) {
+      rafId = requestAnimationFrame(renderFrame)
     }
   }
-
-  // Periodic automatic lightning strikes during thunderstorm & typhoon
-  if ((weather === 'thunderstorm' || weather === 'typhoon') && now > nextAutoLightningAt) {
-    const interval =
-      weather === 'thunderstorm' ? 1900 + Math.random() * 2300 : 2800 + Math.random() * 3000
-    nextAutoLightningAt = now + interval
-    triggerWeatherLightningStrike({
-      visibleNodes: nodes,
-      intensity: weather === 'typhoon' ? 0.9 : 1.05
-    })
-  }
-
-  // 1. Fresh Genshin-style Luminous Sky Backdrop Tint
-  drawAtmosphereTint(ctx, weather, now)
-
-  // 2. Typhoon Anemo Elemental Vortex
-  if (weather === 'typhoon') {
-    drawTyphoonVortex(ctx, now)
-  }
-
-  // 3. Ley Line & Irminsul Aurora Curtains + Crystalflies
-  if (weather === 'aurora') {
-    drawAuroraSpectacle(ctx, dt, now, nodes)
-  }
-
-  // 4. Wish Starfall (Genshin Gacha Shooting Stars)
-  if (weather === 'meteor') {
-    drawMeteorShower(ctx, dt, now, nodes)
-  }
-
-  // 5. Anemo Breeze Ribbons, Dandelion Seeds & Sakura Petals
-  if (weather === 'wind' || weather === 'thunderstorm' || weather === 'typhoon') {
-    drawWindAndLeaves(ctx, weather, dt, now, nodes)
-  }
-
-  // 6. Dragonspine Cryo Snowflakes & Cel-Shaded Snow Puffs
-  if (weather === 'blizzard') {
-    drawBlizzardSnow(ctx, dt, now, nodes)
-  }
-
-  // 7. Cryo Diamond Prism Hailstorm
-  if (weather === 'hail') {
-    drawHailstorm(ctx, dt, nodes)
-  }
-
-  // 8. Sumeru Golden Mirage Sand Ribbons & Diamond Dust
-  if (weather === 'sandstorm') {
-    drawSandstorm(ctx, dt, now, nodes)
-  }
-
-  // 9. Chenyu Vale Celadon Cloud Sea & Adeptal Motes
-  if (weather === 'fog') {
-    drawDenseFog(ctx, dt, now)
-  }
-
-  // 10. Fontaine Hydro Rain, Concentric Ripples & Splashes
-  if (
-    weather === 'rain' ||
-    weather === 'thunderstorm' ||
-    weather === 'typhoon' ||
-    splashes.length > 0 ||
-    ripples.length > 0
-  ) {
-    drawRainAndSplashes(ctx, weather, dt, nodes)
-  }
-
-  // 11. Inazuma Electro Lightning Bolts & Sigil Rings
-  if (activeBolts.length > 0) {
-    drawLightningBolts(ctx, now)
-  }
-
-  // 12. Teyvat Clear Sunny Sky (Bokeh Lens Flares, Sunbeams, Double Rainbow, Dandelions)
-  if (weather === 'sunny') {
-    drawSunnySpectacle(ctx, dt, now)
-  }
-
-  rafId = requestAnimationFrame(renderFrame)
 }
 
 function drawAtmosphereTint(
@@ -2001,13 +2003,15 @@ function drawLightningBolts(ctx: CanvasRenderingContext2D, now: number): void {
 
   for (let i = activeBolts.length - 1; i >= 0; i--) {
     const bolt = activeBolts[i]!
-    const age = now - bolt.createdAt
+    // Clamp age >= 0: bolt.createdAt uses performance.now() while `now` is the rAF vsync timestamp,
+    // which can precede bolt.createdAt when a bolt is spawned mid-frame during heavy canvas work.
+    const age = Math.max(0, now - bolt.createdAt)
     if (age >= bolt.durationMs) {
       activeBolts.splice(i, 1)
       continue
     }
 
-    const lifeRatio = 1 - age / bolt.durationMs
+    const lifeRatio = Math.min(1, Math.max(0, 1 - age / bolt.durationMs))
     const flicker = age < 140 ? (Math.floor(age / 25) % 2 === 0 ? 1 : 0.5) : lifeRatio
 
     // Pastel lilac-white anime flash
@@ -2031,11 +2035,11 @@ function drawLightningBolts(ctx: CanvasRenderingContext2D, now: number): void {
     }
 
     // Electro sigil ring + 4-point star burst at target impact point
-    const ringProgress = age / bolt.durationMs
-    const ringRadius = 16 + ringProgress * 140
+    const ringProgress = Math.min(1, Math.max(0, age / bolt.durationMs))
+    const ringRadius = Math.max(0.5, 16 + ringProgress * 140)
     ctx.shadowBlur = 0
     ctx.strokeStyle = `rgba(216, 180, 254, ${(1 - ringProgress) * 0.85})`
-    ctx.lineWidth = 2.4 * (1 - ringProgress)
+    ctx.lineWidth = Math.max(0.1, 2.4 * (1 - ringProgress))
     ctx.beginPath()
     ctx.arc(bolt.targetX, bolt.targetY, ringRadius, 0, Math.PI * 2)
     ctx.stroke()
@@ -2168,6 +2172,7 @@ watch(
 )
 
 onMounted(() => {
+  isMounted = true
   updateCanvasSize()
   if (rootEl.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
@@ -2182,6 +2187,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  isMounted = false
   window.removeEventListener('pointerdown', onGlobalPointerDown, true)
   window.removeEventListener('keydown', onGlobalKeyDown)
   if (rafId !== null) {

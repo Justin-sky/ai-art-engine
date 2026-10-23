@@ -7,24 +7,60 @@
  * 定格 / 导出帧消费；内置预设 `STAGE2D_ACTION_PRESETS` 不落节点（仍随编辑器选择）。
  */
 import { normalizeStage2dAction, type Stage2dAction } from '../gameAssets/stage2dAction'
+import { resolveStage2dActionPreset } from '../gameAssets/stage2dActionPresets'
 
 export type { Stage2dAction }
 
-/** 从节点 params 读取自定义动作；缺失 / 无关键帧返回 null */
-export function readStage2dActionFromNode(
-  params?: { stage2dAction?: Stage2dAction | null } | null
-): Stage2dAction | null {
-  const action = normalizeStage2dAction(params?.stage2dAction)
-  return action.keyframes.length ? action : null
+function resolveActionOrPresetInput(raw: unknown): Stage2dAction | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const preset = resolveStage2dActionPreset(raw)
+    if (!preset) return null
+    const { id: _id, ...action } = preset
+    return normalizeStage2dAction(action)
+  }
+  if (typeof raw === 'object') {
+    const rec = raw as Record<string, unknown>
+    // 若显式传入了 keyframes 数组，则按自定义关键帧动作归一化（空数组保持返回 null）
+    if (Array.isArray(rec.keyframes)) {
+      const action = normalizeStage2dAction(rec as Partial<Stage2dAction>)
+      return action.keyframes.length ? action : null
+    }
+    // 未传 keyframes 数组时，允许通过 { preset / presetId / id / name / type } 简写指向内置动作预设
+    const candidate = rec.preset ?? rec.presetId ?? rec.id ?? rec.action ?? rec.type ?? rec.name
+    if (typeof candidate === 'string') {
+      const preset = resolveStage2dActionPreset(candidate)
+      if (preset) {
+        const { id: _id, ...baseAction } = preset
+        return normalizeStage2dAction({
+          ...baseAction,
+          ...(typeof rec.name === 'string' && rec.name.trim() ? { name: rec.name.trim() } : {}),
+          ...(typeof rec.loop === 'boolean' ? { loop: rec.loop } : {}),
+          ...(Number.isFinite(Number(rec.duration)) && Number(rec.duration) > 0
+            ? { duration: Number(rec.duration) }
+            : {})
+        })
+      }
+    }
+  }
+  return null
 }
 
-/** 自定义动作写回节点 params 的补丁（空动作写 null = 清除不持久化） */
-export function stage2dActionToNodePatch(action: Stage2dAction | null | undefined): {
+/** 从节点 params 读取自定义动作（支持关键帧对象或预设名简写）；缺失 / 无关键帧返回 null */
+export function readStage2dActionFromNode(
+  params?: { stage2dAction?: Stage2dAction | string | Record<string, unknown> | null } | null
+): Stage2dAction | null {
+  return resolveActionOrPresetInput(params?.stage2dAction)
+}
+
+/** 自定义动作写回节点 params 的补丁（支持预设名自动展开；空动作写 null = 清除不持久化） */
+export function stage2dActionToNodePatch(
+  action: Stage2dAction | string | Record<string, unknown> | null | undefined
+): {
   stage2dAction: Stage2dAction | null
 } {
-  const normalized = action ? normalizeStage2dAction(action) : null
   return {
-    stage2dAction: normalized && normalized.keyframes.length ? normalized : null
+    stage2dAction: resolveActionOrPresetInput(action)
   }
 }
 

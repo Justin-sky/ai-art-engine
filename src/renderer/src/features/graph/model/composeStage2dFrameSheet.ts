@@ -5,6 +5,7 @@
  */
 
 const TARGET_FRAME_MAX = 512
+const MAX_SHEET_DIMENSION = 3072
 const SHEET_COLUMNS = 8
 
 function loadSheetFrame(src: string): Promise<HTMLImageElement> {
@@ -38,11 +39,16 @@ export async function composeStage2dFrameSheet(input: {
   const images = await Promise.all(urls.map(loadSheetFrame))
   const sourceWidth = images[0].naturalWidth || 1
   const sourceHeight = images[0].naturalHeight || 1
-  const scale = Math.min(1, TARGET_FRAME_MAX / sourceWidth)
-  const frameWidth = Math.max(1, Math.round(sourceWidth * scale))
-  const frameHeight = Math.max(1, Math.round(sourceHeight * scale))
   const columns = Math.min(SHEET_COLUMNS, images.length)
   const rows = Math.ceil(images.length / columns)
+  const scale = Math.min(
+    1,
+    TARGET_FRAME_MAX / Math.max(sourceWidth, sourceHeight),
+    MAX_SHEET_DIMENSION / Math.max(1, columns * sourceWidth),
+    MAX_SHEET_DIMENSION / Math.max(1, rows * sourceHeight)
+  )
+  const frameWidth = Math.max(1, Math.round(sourceWidth * scale))
+  const frameHeight = Math.max(1, Math.round(sourceHeight * scale))
   const canvas = document.createElement('canvas')
   canvas.width = columns * frameWidth
   canvas.height = rows * frameHeight

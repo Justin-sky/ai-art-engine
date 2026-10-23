@@ -1975,7 +1975,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     icon: '▦',
     defaultTitle: '2D stage',
     description:
-      '2D 舞台叠绘与骨骼/视差动画：上游精灵自动成层，支持混合模式、色调/不透明度、视差深度（parallaxX/Y）、父子骨骼层级与 Pivot 锚点，按 z 序合成单帧舞台图（out 舞台图）。节点带自定义动作（stage2dAction，支持呼吸待机、行走步态、跳跃挤压、攻击前冲、受击抖动、悬浮摇摆、视差横移等程序化预设与关键帧动画）时，把 stage2dAnimFps 设为 6~24（0 = 关闭），运行后按该帧率逐帧采样动作，额外产出「动作帧序列」（out-frames：逐帧透明 PNG 图库）与「帧序列 sheet」（out-sheet：一张拼版 PNG，含 rows / columns 记录）；帧与 sheet 全部落盘为工程图片资产，也可通过 stage2d_spine_export 导出 Spine 骨架包。未设动作或帧率为 0 时只出单帧。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
+      '2D 舞台叠绘与骨骼/视差动画：上游精灵自动成层，支持混合模式、色调/不透明度、视差深度（parallaxX/Y）、父子骨骼层级与 Pivot 锚点，按 z 序合成单帧舞台图（out 舞台图）。节点带自定义动作（stage2dAction，可直接传内置动作预设名如 "idle" 待机呼吸、"wave" 挥手、"cheer" 欢呼、"sway" 节奏摇摆、"breathe" 深呼吸、"stretch" 伸展、"shakeArms" 振臂/攻击、"headShake" 摇头/受击、"headTilt" 歪头、"march" 原地踏步/行走、"run" 奔跑、"jump" 跳跃、"jumpJacks" 开合跳、"sideKick" 侧踢、"hipGroove" 扭胯、"dance" 舞蹈、"laugh" 大笑、"sad" 低落，或传 { name, duration, loop, keyframes } 自定义关键帧对象）时，把 stage2dAnimFps 设为 6~24（0 = 关闭），运行后按该帧率逐帧采样动作（未配 stage2dRig 时自动初始化标准人形骨骼），额外产出「动作帧序列」（out-frames：逐帧透明 PNG 图库）与「帧序列 sheet」（out-sheet：一张拼版 PNG，含 rows / columns 记录）；帧与 sheet 全部落盘为工程图片资产，也可通过 stage2d_spine_export 导出 Spine 骨架包。未设动作或帧率为 0 时只出单帧。', // cjk-ok（MCP / Agent 集成文本：随 graph_node_types 返回给外部 Agent，非 UI 文案）
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [

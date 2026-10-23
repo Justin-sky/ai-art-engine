@@ -25,6 +25,7 @@ import { defaultPortraitRetouch, PORTRAIT_PARAM_SPECS, PORTRAIT_PRESETS } from '
 import { DEFAULT_PORTRAIT_TEXTURE, PORTRAIT_TEXTURE_FIELDS } from './portraitTexture'
 import { getNodeType, listNodeTypes, resolveNodeType, type NodeTypeDefinition } from './registry'
 import { createDefaultStage2dScene } from './stage2d'
+import { STAGE2D_ACTION_PRESETS } from '../gameAssets/stage2dActionPresets'
 import type {
   GraphInspectorKind,
   GraphNode,
@@ -494,7 +495,12 @@ function buildKnownSubDocPrototype(key: string): {
       }
     case 'stage2dScene':
       return {
-        sample: createDefaultStage2dScene()
+        sample: createDefaultStage2dScene(),
+        presets: STAGE2D_ACTION_PRESETS.map((p) => ({
+          id: p.id,
+          label: `${p.id} (${p.duration ?? 0}s)`,
+          category: 'stage2dAction'
+        }))
       }
     case 'comicPage':
       return {

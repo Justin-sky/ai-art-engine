@@ -305,7 +305,7 @@ export function notifyWeatherTaskPulse(opts?: {
 }): void {
   if (!editorPreferences.weatherSystemEnabled.value) return
   if (activeTaskSources.size === 0 && manualOverride.value === 'auto') {
-    notifyWeatherTaskStart('ai-chat')
+    return
   }
   // 30% chance on tool call to also shift to a fresh random weather front when in 'auto' mode
   if (manualOverride.value === 'auto' && activeTaskSources.size > 0 && Math.random() < 0.3) {

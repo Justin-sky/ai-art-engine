@@ -25,6 +25,7 @@ import {
   type Stage2dSceneState
 } from '../stage2d'
 import { readStage2dPoseFromNode, readStage2dRigFromNode, type Stage2dRig } from '../stage2dRig'
+import { createHumanoidStage2dRig } from '../../gameAssets/stage2dHumanoid'
 import {
   STAGE2D_FRAMES_OUT_PORT_ID,
   STAGE2D_SHEET_OUT_PORT_ID,
@@ -170,7 +171,18 @@ async function composeStage2dActionFrames(
   const fps = readStage2dAnimFpsFromNode(ctx.node.params)
   if (fps <= 0) return { params: {} }
   const action = readStage2dActionFromNode(ctx.node.params)
-  if (!action || !input.rig.joints.length) return { params: {} }
+  if (!action) return { params: {} }
+
+  const cw = input.scene.canvasWidth || 1024
+  const ch = input.scene.canvasHeight || 1024
+  const effectiveRig =
+    input.rig.joints.length > 0
+      ? input.rig
+      : createHumanoidStage2dRig({
+          x: Math.round(cw * 0.5),
+          groundY: Math.round(ch * 0.94),
+          height: Math.round(ch * 0.85)
+        })
 
   const composeCanvas = ctx.composeStage2dCanvas
   const composeSheet = ctx.composeStage2dFrameSheet
@@ -187,10 +199,13 @@ async function composeStage2dActionFrames(
   const frames: Array<{ dataUrl: string; relativePath: string }> = []
   for (const [index, time] of times.entries()) {
     await ensureAlive(ctx)
+    if (index > 0 && index % 4 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
     const sampled = sampleStage2dActionFrame(action, time)
     const composed = await composeCanvas({
       state: input.scene,
-      rig: input.rig,
+      rig: effectiveRig,
       pose: sampled.pose,
       rootOffset: sampled.rootOffset
     })

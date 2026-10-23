@@ -47,4 +47,20 @@ describe('stage2dAction 自定义动作参数读写', () => {
     expect(stage2dActionToNodePatch(undefined).stage2dAction).toBeNull()
     expect(stage2dActionToNodePatch(null).stage2dAction).toBeNull()
   })
+
+  it('支持预设名字符串或简写对象直接展开为内置关键帧动作', () => {
+    const fromId = readStage2dActionFromNode({ stage2dAction: 'idle' })
+    expect(fromId).not.toBeNull()
+    expect(fromId!.name).toBe('idle')
+    expect(fromId!.keyframes.length).toBeGreaterThan(0)
+
+    const fromZhAlias = readStage2dActionFromNode({ stage2dAction: '呼吸待机' })
+    expect(fromZhAlias).not.toBeNull()
+    expect(fromZhAlias!.name).toBe('idle')
+
+    const fromPresetObj = stage2dActionToNodePatch({ preset: 'wave', duration: 3 }).stage2dAction
+    expect(fromPresetObj).not.toBeNull()
+    expect(fromPresetObj!.name).toBe('wave')
+    expect(fromPresetObj!.duration).toBe(3)
+  })
 })

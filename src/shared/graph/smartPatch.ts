@@ -56,6 +56,8 @@ import {
 import { normalizePortraitTexture, portraitTextureToNodePatch } from './portraitTexture'
 import { resolveNodeType } from './registry'
 import { normalizeStage2dScene, stage2dSceneToNodePatch } from './stage2d'
+import { stage2dActionToNodePatch } from './stage2dAction'
+import { resolveStage2dActionPreset } from '../gameAssets/stage2dActionPresets'
 import type { GraphNode, GraphNodeParams } from './types'
 
 /** 常见中文/口语键名到标准属性名的语义别名映射 */
@@ -765,6 +767,18 @@ export function applySmartNodePreset(
     }
   }
 
+  // 10. 2D 舞台骨骼动作预设
+  if ('stage2dScene' in baseParams || def?.typeId === 'stage.2d') {
+    const hit = resolveStage2dActionPreset(presetQuery)
+    if (hit) {
+      const { id: _id, ...action } = hit
+      return {
+        matchedPresetId: hit.id,
+        paramsPatch: stage2dActionToNodePatch(action)
+      }
+    }
+  }
+
   return null
 }
 
@@ -849,6 +863,9 @@ function finalizeSubDocumentPatches(
   if (touchedTopKeys.has('stage2dScene') && working.stage2dScene !== undefined) {
     const norm = normalizeStage2dScene(working.stage2dScene as any)
     Object.assign(working, stage2dSceneToNodePatch(norm))
+  }
+  if (touchedTopKeys.has('stage2dAction') && working.stage2dAction !== undefined) {
+    Object.assign(working, stage2dActionToNodePatch(working.stage2dAction as any))
   }
 }
 

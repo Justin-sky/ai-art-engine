@@ -246,4 +246,28 @@ describe('stage.2d 动作帧序列节点产物（执行器）', () => {
     expect(savedMedia).toHaveLength(1)
     expect(sheetInputs).toHaveLength(0)
   })
+
+  it('仅设预设名 stage2dAction="idle" 且未手动配 stage2dRig 时自动补齐人形骨骼并产出帧序列与 sheet', async () => {
+    const { sprite, stage } = buildGraph({
+      stage2dRig: undefined,
+      stage2dAction: 'idle',
+      stage2dAnimFps: 5
+    })
+    const { savedMedia, sheetInputs, stub } = buildRunOptions()
+
+    const result = await runStage(stage, sprite, stub)
+    expect(result.ok, result.error).toBe(true)
+
+    const outputs = result.states[stage.id]!.outputs!
+    const frames = outputs[STAGE2D_FRAMES_OUT_PORT_ID] as {
+      kind: string
+      items: Array<{ relativePath?: string }>
+    }
+    expect(frames.kind).toBe('images')
+    // idle 默认 2.4s × 5fps = 12 帧
+    expect(frames.items).toHaveLength(12)
+    expect(outputs[STAGE2D_SHEET_OUT_PORT_ID]).toBeDefined()
+    expect(savedMedia).toHaveLength(12 + 2)
+    expect(sheetInputs).toHaveLength(1)
+  })
 })

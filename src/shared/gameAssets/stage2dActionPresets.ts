@@ -347,3 +347,148 @@ export function stage2dActionPresetById(id: string | null | undefined): Stage2dA
   if (!id) return null
   return STAGE2D_ACTION_PRESETS.find((item) => item.id === id) ?? null
 }
+
+/** 常用英文 / 中文动作别名映射表（归一到内置预设 id） */
+const STAGE2D_ACTION_PRESET_ALIASES: Record<string, string> = {
+  idle: 'idle',
+  stand: 'idle',
+  standing: 'idle',
+  default: 'idle',
+  待机: 'idle', // cjk-ok
+  呼吸待机: 'idle', // cjk-ok
+  待机呼吸: 'idle', // cjk-ok
+  站立: 'idle', // cjk-ok
+  默认: 'idle', // cjk-ok
+  breathe: 'breathe',
+  breathing: 'breathe',
+  breath: 'breathe',
+  深呼吸: 'breathe', // cjk-ok
+  呼吸: 'breathe', // cjk-ok
+  wave: 'wave',
+  waving: 'wave',
+  greet: 'wave',
+  greeting: 'wave',
+  hello: 'wave',
+  挥手: 'wave', // cjk-ok
+  打招呼: 'wave', // cjk-ok
+  招手: 'wave', // cjk-ok
+  cheer: 'cheer',
+  cheering: 'cheer',
+  celebrate: 'cheer',
+  victory: 'cheer',
+  欢呼: 'cheer', // cjk-ok
+  庆祝: 'cheer', // cjk-ok
+  胜利: 'cheer', // cjk-ok
+  sway: 'sway',
+  float: 'sway',
+  floating: 'sway',
+  hover: 'sway',
+  hovering: 'sway',
+  parallax: 'sway',
+  摇摆: 'sway', // cjk-ok
+  节奏摇摆: 'sway', // cjk-ok
+  悬浮摇摆: 'sway', // cjk-ok
+  悬浮: 'sway', // cjk-ok
+  视差横移: 'sway', // cjk-ok
+  stretch: 'stretch',
+  stretching: 'stretch',
+  伸展: 'stretch', // cjk-ok
+  伸懒腰: 'stretch', // cjk-ok
+  shakearms: 'shakeArms',
+  attack: 'shakeArms',
+  strike: 'shakeArms',
+  slash: 'shakeArms',
+  cast: 'shakeArms',
+  振臂: 'shakeArms', // cjk-ok
+  攻击: 'shakeArms', // cjk-ok
+  攻击前冲: 'shakeArms', // cjk-ok
+  出击: 'shakeArms', // cjk-ok
+  施法: 'shakeArms', // cjk-ok
+  headshake: 'headShake',
+  hit: 'headShake',
+  hurt: 'headShake',
+  damage: 'headShake',
+  shake: 'headShake',
+  摇头: 'headShake', // cjk-ok
+  受击: 'headShake', // cjk-ok
+  受击抖动: 'headShake', // cjk-ok
+  挨打: 'headShake', // cjk-ok
+  headtilt: 'headTilt',
+  tilt: 'headTilt',
+  curious: 'headTilt',
+  歪头: 'headTilt', // cjk-ok
+  好奇: 'headTilt', // cjk-ok
+  march: 'march',
+  walk: 'march',
+  walking: 'march',
+  step: 'march',
+  踏步: 'march', // cjk-ok
+  原地踏步: 'march', // cjk-ok
+  行走: 'march', // cjk-ok
+  行走步态: 'march', // cjk-ok
+  步态: 'march', // cjk-ok
+  走路: 'march', // cjk-ok
+  run: 'run',
+  running: 'run',
+  sprint: 'run',
+  dash: 'run',
+  跑步: 'run', // cjk-ok
+  原地跑: 'run', // cjk-ok
+  奔跑: 'run', // cjk-ok
+  冲刺: 'run', // cjk-ok
+  jump: 'jump',
+  jumping: 'jump',
+  hop: 'jump',
+  bounce: 'jump',
+  跳跃: 'jump', // cjk-ok
+  原地蹦跳: 'jump', // cjk-ok
+  蹦跳: 'jump', // cjk-ok
+  跳跃挤压: 'jump', // cjk-ok
+  jumpjacks: 'jumpJacks',
+  jumpingjacks: 'jumpJacks',
+  开合跳: 'jumpJacks', // cjk-ok
+  sidekick: 'sideKick',
+  kick: 'sideKick',
+  kicking: 'sideKick',
+  侧踢: 'sideKick', // cjk-ok
+  踢腿: 'sideKick', // cjk-ok
+  hipgroove: 'hipGroove',
+  groove: 'hipGroove',
+  扭胯: 'hipGroove', // cjk-ok
+  扭胯律动: 'hipGroove', // cjk-ok
+  律动: 'hipGroove', // cjk-ok
+  dance: 'dance',
+  dancing: 'dance',
+  跳舞: 'dance', // cjk-ok
+  即兴舞: 'dance', // cjk-ok
+  舞蹈: 'dance', // cjk-ok
+  laugh: 'laugh',
+  laughing: 'laugh',
+  happy: 'laugh',
+  大笑: 'laugh', // cjk-ok
+  欢笑: 'laugh', // cjk-ok
+  sad: 'sad',
+  cry: 'sad',
+  depressed: 'sad',
+  低落: 'sad', // cjk-ok
+  难过: 'sad', // cjk-ok
+  伤心: 'sad' // cjk-ok
+}
+
+/**
+ * 按预设 id 或中英文常用别名解析内置骨骼动作预设（忽略大小写与连字符/下划线）。
+ */
+export function resolveStage2dActionPreset(
+  idOrAlias: string | null | undefined
+): Stage2dActionPreset | null {
+  if (typeof idOrAlias !== 'string') return null
+  const trimmed = idOrAlias.trim()
+  if (!trimmed) return null
+  const direct = stage2dActionPresetById(trimmed)
+  if (direct) return direct
+  const cleaned = trimmed.toLowerCase().replace(/[\s_-]+/g, '')
+  const byCaseInsensitive = STAGE2D_ACTION_PRESETS.find((item) => item.id.toLowerCase() === cleaned)
+  if (byCaseInsensitive) return byCaseInsensitive
+  const mappedId = STAGE2D_ACTION_PRESET_ALIASES[cleaned] ?? STAGE2D_ACTION_PRESET_ALIASES[trimmed]
+  return mappedId ? stage2dActionPresetById(mappedId) : null
+}

@@ -2848,14 +2848,14 @@ const weatherVisibleNodes = computed<WeatherNodeRect[]>(() => {
 })
 
 watch(
-  isGraphOrTaskRunning,
-  (running, wasRunning) => {
-    const sourceKey = `graph:${graphHostId.value}`
-    if (running) {
-      notifyWeatherTaskStart(sourceKey)
-    } else if (wasRunning) {
+  [isGraphOrTaskRunning, graphHostId],
+  ([running, hostId], _prev, onCleanup) => {
+    if (!running) return
+    const sourceKey = `graph:${hostId}`
+    notifyWeatherTaskStart(sourceKey)
+    onCleanup(() => {
       notifyWeatherTaskComplete(sourceKey)
-    }
+    })
   },
   { immediate: true }
 )
