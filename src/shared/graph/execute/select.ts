@@ -3,7 +3,10 @@ import {
   resolveMotionPromptText,
   resolveMotionVideoItems
 } from '../motionShots'
-import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
+import {
+  splitScreenplayByExplicitEpisodeMarkers,
+  splitScreenplayIntoEpisodes
+} from '../screenplayFormat'
 import type {
   GraphImageItem,
   GraphTextItem,
@@ -153,19 +156,32 @@ export async function executeSelectTextNode(
   let items = flattenTextsValues(collectIncomingValues(ctx.inputs)).filter(
     (item) => item.text?.trim() || item.relativePath?.trim()
   )
-  // 若仅收到 1 条剧本且正文中含 >= 2 个显式「第X集 / EPISODE X」标记，支持先落盘读取再按集展开选取
+  const requestedSelector = ctx.node.params.selectedTextId?.trim() ?? ''
+  const symbolicEpisodeSelector = /^ep:\d+$/i.test(requestedSelector)
+    ? requestedSelector
+    : undefined
+  // 若仅收到 1 条剧本且正文中含 >= 2 个显式「第X集 / EPISODE X」标记（或下游显式按 ep:N 选集且含多场戏），支持先落盘读取再按集展开选取
   if (items.length === 1) {
     const singleHydrated = (await hydrateTextItems(items, ctx.readRunText))[0]
     const rawBody = singleHydrated?.text?.trim() ?? ''
-    const explicitEpisodes = rawBody
+    let episodes = rawBody
       ? splitScreenplayByExplicitEpisodeMarkers(rawBody, {
           includeSharedBios: true,
           locale: ctx.locale
         })
       : []
-    if (explicitEpisodes.length >= 2) {
+    if (episodes.length < 2 && rawBody && /(?:^|:)ep:\d+$/i.test(requestedSelector)) {
+      const autoEpisodes = splitScreenplayIntoEpisodes(rawBody, {
+        mode: 'auto',
+        scenesPerEpisode: 2,
+        includeSharedBios: true,
+        locale: ctx.locale
+      })
+      if (autoEpisodes.length >= 2) episodes = autoEpisodes
+    }
+    if (episodes.length >= 2) {
       const baseId = items[0]!.id?.trim() || 'ep'
-      items = explicitEpisodes.map((ep): GraphTextItem => ({
+      items = episodes.map((ep): GraphTextItem => ({
         id: `${baseId}:ep:${ep.index}`,
         title: ep.title,
         text: ep.text,
@@ -175,10 +191,10 @@ export async function executeSelectTextNode(
       items = [singleHydrated]
     }
   }
-  const picked = pickTextItem(items, ctx.node.params.selectedTextId)
-  const selectedTextId = picked
-    ? textItemKey(picked, Math.max(0, items.indexOf(picked)))
-    : undefined
+  const picked = pickTextItem(items, requestedSelector)
+  const selectedTextId =
+    symbolicEpisodeSelector ??
+    (picked ? textItemKey(picked, Math.max(0, items.indexOf(picked))) : undefined)
   const hydrated = picked ? (await hydrateTextItems([picked], ctx.readRunText))[0] : undefined
   const text = hydrated?.text?.trim() ?? ''
   const previewRelativePath = hydrated?.relativePath?.trim() || undefined

@@ -47,33 +47,28 @@ describe('generateBlazeFaceAnchors', () => {
     expect(BLAZEFACE_ANCHOR_COUNT).toBe(896)
   })
 
-  it('first cell carries two anchors at the same center with different sizes', () => {
+  it('first cell carries two fixed-size anchors at the same center', () => {
     const cellX = 0.5 / 16
     const cellY = 0.5 / 16
     expect(anchors[0].xCenter).toBeCloseTo(cellX, 12)
-    expect(anchors[0].yCenter).toBeCloseTo(cellY, 12)
+    expect(anchors[0].yCenter).toBeCloseTo(cellX, 12)
     expect(anchors[1].xCenter).toBeCloseTo(cellX, 12)
     expect(anchors[1].yCenter).toBeCloseTo(cellY, 12)
 
-    // ⚠️ 顺序是「插值锚在前、固定锚在后」：MediaPipe SsdAnchorsCalculator 的实际产出顺序。
-    // 顺序反了不会报错，只会让解码把每个回归行配上另一套边长 —— 6 张人脸照里只剩 1 张能命中。
-    const scaleNext = 0.1484375 + ((0.75 - 0.1484375) * 1) / 3
-    expect(anchors[0].w).toBeCloseTo(Math.sqrt(0.1484375 * scaleNext), 12)
-    expect(anchors[0].h).toBeCloseTo(Math.sqrt(0.1484375 * scaleNext), 12)
-    // 固定锚：归一化宽高恒为 1（不是 scale）。填 scale 等于把 scale 乘两遍，框缩到 1/4。
+    // fixed_anchor_size = true 时，MediaPipe SsdAnchorsCalculator 对所有锚点（含插值锚）一律设 w = h = 1.0
+    expect(anchors[0].w).toBe(1)
+    expect(anchors[0].h).toBe(1)
     expect(anchors[1].w).toBe(1)
     expect(anchors[1].h).toBe(1)
-    expect(anchors[0].w).toBeLessThan(anchors[1].w)
   })
 
   it('last anchor size is the fixed anchor of the last layer (w = h = 1)', () => {
     const last = anchors[anchors.length - 1]
     expect(last.w).toBe(1)
     expect(last.h).toBe(1)
-    // 倒数第二个是最后一层的插值锚 sqrt(maxScale * 1.0)
     const prev = anchors[anchors.length - 2]
-    expect(prev.w).toBeCloseTo(Math.sqrt(0.75 * 1.0), 12)
-    expect(prev.h).toBeCloseTo(Math.sqrt(0.75 * 1.0), 12)
+    expect(prev.w).toBe(1)
+    expect(prev.h).toBe(1)
   })
 
   it('all anchors are normalized and square', () => {
@@ -87,38 +82,26 @@ describe('generateBlazeFaceAnchors', () => {
     }
   })
 
-  it('lays out 16x16 + 8x8 + 8x8 + 8x8 cells with two anchors per cell', () => {
-    // 锚点按层连续排列：layer0 stride8 是 16x16，其余三层 stride16 是 8x8
-    const layers = [16, 8, 8, 8]
-    const cellCounts = layers.map((grid) => grid * grid)
-    expect(cellCounts.reduce((sum, n) => sum + n, 0)).toBe(448)
-    expect(cellCounts.reduce((sum, n) => sum + n * 2, 0)).toBe(BLAZEFACE_ANCHOR_COUNT)
+  it('groups same-stride layers into 16x16x2 (stride 8) + 8x8x6 (stride 16) cells', () => {
+    // stride=8 层是 16x16（每格 2 锚点 = 512），其余三层同为 stride=16 合并为 8x8（每格 6 锚点 = 384）
+    const stride8Chunk = anchors.slice(0, 16 * 16 * 2)
+    const stride16Chunk = anchors.slice(16 * 16 * 2)
+    expect(stride8Chunk).toHaveLength(512)
+    expect(stride16Chunk).toHaveLength(384)
 
-    let cursor = 0
-    for (let layer = 0; layer < layers.length; layer++) {
-      const grid = layers[layer]
-      const chunk = anchors.slice(cursor, cursor + grid * grid * 2)
-      expect(chunk).toHaveLength(grid * grid * 2)
-      cursor += chunk.length
+    const centers8 = new Set(stride8Chunk.map((a) => `${a.xCenter},${a.yCenter}`))
+    expect(centers8.size).toBe(16 * 16)
 
-      // 每层固定 scale = calculateScale(min, max, layer, 4)，插值尺寸 = sqrt(scale*scaleNext)
-      const scale = 0.1484375 + ((0.75 - 0.1484375) * layer) / 3
-      const scaleNext =
-        layer === layers.length - 1 ? 1.0 : 0.1484375 + ((0.75 - 0.1484375) * (layer + 1)) / 3
-      // 每格的第一个锚点是插值尺寸、第二个是固定锚 w=1；同一层内各只有一个
-      const fixedSizes = new Set(chunk.filter((_, i) => i % 2 === 0).map((a) => a.w))
-      const interpSizes = new Set(chunk.filter((_, i) => i % 2 === 1).map((a) => a.w))
-      expect(fixedSizes.size).toBe(1)
-      expect(interpSizes.size).toBe(1)
-      expect(chunk[0].w).toBeCloseTo(Math.sqrt(scale * scaleNext), 12)
-      expect(chunk[1].w).toBe(1)
-      // 一层内中心是 grid x grid 的规整网格
-      const centers = new Set(chunk.map((a) => `${a.xCenter},${a.yCenter}`))
-      expect(centers.size).toBe(grid * grid)
+    const centers16 = new Set(stride16Chunk.map((a) => `${a.xCenter},${a.yCenter}`))
+    expect(centers16.size).toBe(8 * 8)
+
+    // stride=16 每个网格单元连续排列 6 个同中心锚点（与 regressor_16 [1,8,8,96] -> [1,384,16] 对齐）
+    for (let cell = 0; cell < 64; cell++) {
+      const cellAnchors = stride16Chunk.slice(cell * 6, (cell + 1) * 6)
+      const uniqueInCell = new Set(cellAnchors.map((a) => `${a.xCenter},${a.yCenter}`))
+      expect(uniqueInCell.size).toBe(1)
     }
-    expect(cursor).toBe(anchors.length)
 
-    // 三层 stride16 的中心完全重合 → 全局唯一中心数 = 256 + 64
     const allCenters = new Set(anchors.map((a) => `${a.xCenter},${a.yCenter}`))
     expect(allCenters.size).toBe(16 * 16 + 8 * 8)
   })
@@ -389,10 +372,17 @@ describe('landmarksTo68 and boxFromLandmarks68', () => {
       expect(index).toBeGreaterThanOrEqual(0)
       expect(index).toBeLessThan(468)
     }
-    // 脸轮廓 0..16 共 17 个点（前 17 项）
+    // 脸轮廓 0..16 共 17 个点（前 17 项），且下巴尖 152 在索引 8、左右太阳穴 127/356 对称收尾
     const contour = FACEMESH_TO_68.slice(0, 17)
     expect(contour).toHaveLength(17)
     expect(new Set(contour).size).toBe(17)
+    expect(FACEMESH_TO_68[0]).toBe(127)
+    expect(FACEMESH_TO_68[8]).toBe(152)
+    expect(FACEMESH_TO_68[16]).toBe(356)
+    // 鼻尖 30 = 4，左右鼻翼 31/35 = 129/358（不得全部退化在鼻梁中线上）
+    expect(FACEMESH_TO_68[30]).toBe(4)
+    expect(FACEMESH_TO_68[31]).toBe(129)
+    expect(FACEMESH_TO_68[35]).toBe(358)
     expect(new Set(FACEMESH_TO_68).size).toBe(68)
   })
 

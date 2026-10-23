@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const assetsDir = path.join(root, 'assets')
-const bannerDir = path.join(assetsDir, 'banner')
+const imgsDir = path.join(assetsDir, 'imgs')
 
 function replaceFile(from, to) {
   fs.copyFileSync(from, to)
@@ -20,15 +20,16 @@ function cleanTemps(dir) {
 }
 
 cleanTemps(assetsDir)
-cleanTemps(bannerDir)
+cleanTemps(imgsDir)
 
 // Logos stay in assets/
 for (const file of fs.readdirSync(assetsDir).filter((f) => f.endsWith('.png') && f.startsWith('logo'))) {
   const input = path.join(assetsDir, file)
-  const before = fs.statSync(input).size
-  const meta = await sharp(input).metadata()
-  const tmp = path.join(assetsDir, `${file}.tmp`)
-  await sharp(input)
+  const buf = fs.readFileSync(input)
+  const before = buf.length
+  const meta = await sharp(buf).metadata()
+  const tmp = path.join(assetsDir, `.${file}.tmp`)
+  await sharp(buf)
     .rotate()
     .resize({
       width: file === 'logo-mark.png' ? 256 : 720,
@@ -45,35 +46,43 @@ for (const file of fs.readdirSync(assetsDir).filter((f) => f.endsWith('.png') &&
   )
 }
 
-// Screenshots live in assets/banner/
-if (!fs.existsSync(bannerDir)) {
-  console.log('No assets/banner directory; skip screenshot optimize.')
+// Feature screenshots live in assets/imgs/ (always output as .webp)
+if (!fs.existsSync(imgsDir)) {
+  console.log('No assets/imgs directory; skip screenshot optimize.')
   process.exit(0)
 }
 
 const screenshots = fs
-  .readdirSync(bannerDir)
+  .readdirSync(imgsDir)
   .filter((f) => /\.(png|jpe?g|webp)$/i.test(f) && !f.startsWith('.'))
 
 for (const file of screenshots) {
-  const input = path.join(bannerDir, file)
-  const before = fs.statSync(input).size
-  const meta = await sharp(input).metadata()
-  const webpPath = path.join(bannerDir, file.replace(/\.(png|jpe?g|webp)$/i, '.webp'))
-  const tmp = `${webpPath}.tmp`
+  const input = path.join(imgsDir, file)
+  const buf = fs.readFileSync(input)
+  const before = buf.length
+  const meta = await sharp(buf).metadata()
+  const baseName = file.replace(/\.(png|jpe?g|webp)$/i, '')
+  const output = path.join(imgsDir, `${baseName}.webp`)
+  const tmp = path.join(imgsDir, `.${baseName}.webp.tmp`)
 
-  await sharp(input)
+  await sharp(buf)
     .rotate()
     .resize({ width: 1600, withoutEnlargement: true })
-    .webp({ quality: 78, effort: 6 })
+    .webp({ quality: 80, effort: 6, smartSubsample: true })
     .toFile(tmp)
 
-  const webpSize = fs.statSync(tmp).size
-  replaceFile(tmp, webpPath)
-  if (!/\.webp$/i.test(file) && path.resolve(input) !== path.resolve(webpPath)) {
+  const after = fs.statSync(tmp).size
+  if (input.toLowerCase() !== output.toLowerCase()) {
+    replaceFile(tmp, output)
     fs.unlinkSync(input)
+  } else if (after < before) {
+    replaceFile(tmp, output)
+  } else {
+    fs.unlinkSync(tmp)
   }
+  const finalSize = fs.statSync(output).size
+  const outMeta = await sharp(output).metadata()
   console.log(
-    `${file.padEnd(28)} ${(before / 1024).toFixed(1)}KB -> WebP ${(webpSize / 1024).toFixed(1)}KB (${meta.width}x${meta.height})`
+    `${path.basename(output).padEnd(28)} ${(before / 1024).toFixed(1)}KB -> ${(finalSize / 1024).toFixed(1)}KB (${meta.width}x${meta.height} -> ${outMeta.width}x${outMeta.height})`
   )
 }

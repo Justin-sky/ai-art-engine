@@ -106,7 +106,12 @@ describe('directorCinematography (P0 / P1 / P2)', () => {
     expect(rembrandt.lights.length).toBeGreaterThanOrEqual(2)
     expect(rembrandt.lights.every((obj) => obj.kind === 'light')).toBe(true)
 
-    expect(DIRECTOR_EXPRESSIVE_POSE_PRESETS.length).toBeGreaterThanOrEqual(6)
+    expect(DIRECTOR_EXPRESSIVE_POSE_PRESETS.length).toBeGreaterThanOrEqual(35)
+    const bodyPresets = DIRECTOR_EXPRESSIVE_POSE_PRESETS.filter((p) => p.category === 'body')
+    expect(bodyPresets.length).toBeGreaterThanOrEqual(24)
+    expect(bodyPresets.some((p) => p.id === 'body.sit')).toBe(true)
+    expect(bodyPresets.some((p) => p.id === 'body.jump')).toBe(true)
+    expect(bodyPresets.some((p) => p.id === 'body.run')).toBe(true)
     const fist = DIRECTOR_EXPRESSIVE_POSE_PRESETS.find((p) => p.id === 'hand.fist')
     expect(fist).toBeDefined()
     expect(Object.keys(fist!.bones).length).toBeGreaterThan(4)
@@ -210,7 +215,32 @@ describe('directorCinematography (P0 / P1 / P2)', () => {
   it('creates procedural posable 3D mannequin with bones and embedded animation clips without torso/head clipping', () => {
     const built = createBuiltinMannequin('humanoid', '#5b9cf5')
     expect(built.bones.length).toBeGreaterThanOrEqual(15)
-    expect(built.clips.map((a) => a.name)).toEqual(['Idle', 'Walk', 'Run', 'Wave', 'Action'])
+    expect(built.clips.map((a) => a.name)).toEqual([
+      'Idle',
+      'Walk',
+      'Run',
+      'Sprint',
+      'Jump',
+      'Sit',
+      'SitFloor',
+      'Crouch',
+      'Kneel',
+      'LieDown',
+      'Wave',
+      'Bow',
+      'Clap',
+      'Cheer',
+      'Dance',
+      'Talk',
+      'Think',
+      'PhoneLook',
+      'Stretch',
+      'LookAround',
+      'Drink',
+      'PushUp',
+      'Fall',
+      'Action'
+    ])
 
     const boneByName = new Map(built.bones.map((b) => [b.name, b]))
     const leftForeArm = boneByName.get('LeftForeArm')!
@@ -224,8 +254,18 @@ describe('directorCinematography (P0 / P1 / P2)', () => {
       return bone.getWorldPosition(pos).clone()
     }
 
-    // Verify all 5 built-in animation clips keep elbows and hands outside torso/head
+    const bindPos = new Map(built.bones.map((b) => [b.name, b.position.clone()]))
+    const resetToBind = (): void => {
+      for (const bone of built.bones) {
+        const bp = bindPos.get(bone.name)
+        if (bp) bone.position.copy(bp)
+        bone.rotation.set(0, 0, 0)
+      }
+    }
+
+    // Verify all 24 built-in animation clips keep elbows and hands outside torso/head
     for (const clip of built.clips) {
+      resetToBind()
       const mixer = new THREE.AnimationMixer(built.root)
       const action = mixer.clipAction(clip)
       action.play()

@@ -96,7 +96,7 @@
         @scroll="onRulerScroll"
         @pointerdown="onRulerPointerDown"
       >
-        <div class="ruler" :style="{ width: `${rulerWidth}px` }">
+        <div class="ruler" :style="{ width: `${rulerScrollWidth}px` }">
           <span
             v-for="mark in rulerMarks"
             :key="`${mark.major ? 'M' : 'm'}-${mark.t}`"
@@ -375,11 +375,41 @@
             class="sub-row skeleton-row"
           >
             <span class="skel-label">{{ t('director.stage.anim.skeleton') }}</span>
-            <span class="skel-count">{{
-              t('director.stage.anim.skeletonClipCount', { n: skeletonSegments(track).length })
-            }}</span>
+            <select
+              v-if="objectAvailableSkeletonClips(track).length"
+              class="kf-easing-select skel-add-select"
+              :title="t('director.stage.anim.addBuiltinClip')"
+              value=""
+              @click.stop
+              @change="onAddEmbeddedClip(track, $event)"
+            >
+              <option value="" disabled>+ {{ t('director.stage.anim.addBuiltinClip') }}</option>
+              <option
+                v-for="clipName in objectAvailableSkeletonClips(track)"
+                :key="clipName"
+                :value="clipName"
+              >
+                {{ clipDisplayName(clipName) }}
+              </option>
+            </select>
             <template v-if="selectedSkeletonSegment(track)">
-              <span class="skel-clip-name" :title="selectedSkeletonSegment(track)?.clip">{{
+              <select
+                v-if="trackAvailableSkeletonClips(track).length > 1"
+                class="kf-easing-select skel-clip-select"
+                :value="selectedSkeletonSegment(track)?.clip"
+                :title="selectedSkeletonSegment(track)?.clip"
+                @click.stop
+                @change="onSelectedSegmentClipChange(track, $event)"
+              >
+                <option
+                  v-for="clipName in trackAvailableSkeletonClips(track)"
+                  :key="clipName"
+                  :value="clipName"
+                >
+                  {{ clipDisplayName(clipName) }}
+                </option>
+              </select>
+              <span v-else class="skel-clip-name" :title="selectedSkeletonSegment(track)?.clip">{{
                 skeletonSegLabel(selectedSkeletonSegment(track)!)
               }}</span>
               <label class="skel-speed" :title="t('director.stage.anim.skeletonSpeed')">
@@ -587,7 +617,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   directorTrackCameraCutSegments,
   directorTrackSkeletonClips,
@@ -744,9 +774,15 @@ const addCandidates = computed(() => {
 })
 
 const TIME_ORIGIN_PAD = 10
+const TIME_END_PAD = 280
+const RULER_SCROLL_SLACK = 64
 
-/** 轨迹/刻度内容宽度：终点刻度线刚好落在右边缘 */
-const rulerWidth = computed(() => TIME_ORIGIN_PAD + Math.max(1, duration.value * pxPerSecond.value))
+/** 轨迹内容宽度：预留右侧工具栏安全区，避免终点刻度被右侧悬浮控件遮挡 */
+const rulerWidth = computed(
+  () => TIME_ORIGIN_PAD + Math.max(1, duration.value * pxPerSecond.value) + TIME_END_PAD
+)
+/** 标尺滚动容器无垂直滚动条，额外增加尾部余量防止在时间轴最右端被浏览器提前钳制 scrollLeft */
+const rulerScrollWidth = computed(() => rulerWidth.value + RULER_SCROLL_SLACK)
 
 const rulerMarks = computed(() => {
   const marks: { t: number; x: number; label?: string; major: boolean }[] = []
@@ -819,10 +855,26 @@ function selectedSkeletonSegment(track: DirectorAnimTrack): DirectorSkeletonClip
   return skeletonSegments(track).find((item) => item.id === id) ?? null
 }
 
-function skeletonSegLabel(seg: DirectorSkeletonClipSegment): string {
-  const raw = skeletonClipLabel(seg.clip, 0)
+function clipDisplayName(clipName: string): string {
+  const raw = skeletonClipLabel(clipName, 0)
   const key = `director.stage.anim.builtinClips.${raw}`
   return te(key) ? t(key) : raw
+}
+
+function objectAvailableSkeletonClips(track: DirectorAnimTrack): string[] {
+  void scene.skeletonClipsRevision.value
+  if (track.targetKind !== 'object') return []
+  return scene.listObjectSkeletonClips(track.targetId).map((opt) => opt.name)
+}
+
+function trackAvailableSkeletonClips(track: DirectorAnimTrack): string[] {
+  void scene.skeletonClipsRevision.value
+  if (track.targetKind !== 'object') return []
+  return scene.listTrackSkeletonClips(track.id).map((opt) => opt.name)
+}
+
+function skeletonSegLabel(seg: DirectorSkeletonClipSegment): string {
+  return clipDisplayName(seg.clip)
 }
 
 function skeletonSegTitle(seg: DirectorSkeletonClipSegment): string {
@@ -1143,6 +1195,22 @@ async function onTimelineSkelDrop(track: DirectorAnimTrack, event: DragEvent): P
   await scene.applyAnimationAssetToAnimTrack(track.id, asset.id, dropTimeFromEvent(event))
 }
 
+function onAddEmbeddedClip(track: DirectorAnimTrack, event: Event): void {
+  const select = event.target as HTMLSelectElement
+  const clipName = select.value
+  select.value = ''
+  if (!clipName || track.targetKind !== 'object') return
+  scene.addEmbeddedSkeletonClipToTrack(track.id, clipName)
+}
+
+function onSelectedSegmentClipChange(track: DirectorAnimTrack, event: Event): void {
+  const seg = selectedSkeletonSegment(track)
+  if (!seg) return
+  const clip = (event.target as HTMLSelectElement).value
+  if (!clip) return
+  scene.updateSkeletonClipSegment(track.id, seg.id, { clip })
+}
+
 function onSelectedSegmentSpeedInput(track: DirectorAnimTrack, event: Event): void {
   const seg = selectedSkeletonSegment(track)
   if (!seg) return
@@ -1327,19 +1395,29 @@ async function onExportVideo(): Promise<void> {
   }
 }
 
-function onTimelineScroll(): void {
-  if (syncingScroll || !timelineEl.value || !rulerWrapEl.value) return
+function syncRulerScrollFromTimeline(): void {
+  if (!timelineEl.value || !rulerWrapEl.value) return
   syncingScroll = true
   rulerWrapEl.value.scrollLeft = timelineEl.value.scrollLeft
   syncingScroll = false
+}
+
+function onTimelineScroll(): void {
+  if (syncingScroll || !timelineEl.value || !rulerWrapEl.value) return
+  syncRulerScrollFromTimeline()
 }
 
 function onRulerScroll(): void {
   if (syncingScroll || !timelineEl.value || !rulerWrapEl.value) return
   syncingScroll = true
   timelineEl.value.scrollLeft = rulerWrapEl.value.scrollLeft
+  rulerWrapEl.value.scrollLeft = timelineEl.value.scrollLeft
   syncingScroll = false
 }
+
+watch([pxPerSecond, duration], () => {
+  void nextTick(syncRulerScrollFromTimeline)
+})
 
 let clipDrag: { trackId: string; startX: number; originStart: number; originEnd: number } | null =
   null
@@ -1707,12 +1785,14 @@ onBeforeUnmount(() => {
 }
 
 .toolbar-side {
+  flex: 0 0 340px;
   width: 340px;
-  flex-shrink: 0;
+  min-width: 340px;
+  max-width: 340px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  gap: 6px;
+  padding: 0 8px;
   box-sizing: border-box;
   border-right: 1px solid var(--wash-06);
   overflow: visible;
@@ -1760,6 +1840,7 @@ onBeforeUnmount(() => {
 }
 
 .time-input {
+  box-sizing: border-box;
   width: 52px;
   height: 26px;
   padding: 0 4px;
@@ -1784,11 +1865,12 @@ onBeforeUnmount(() => {
 
 .add-btn,
 .draw-btn {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 4px;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 6px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: transparent;
@@ -2077,8 +2159,11 @@ onBeforeUnmount(() => {
 }
 
 .track-list {
+  flex: 0 0 340px;
   width: 340px;
-  flex-shrink: 0;
+  min-width: 340px;
+  max-width: 340px;
+  box-sizing: border-box;
   overflow: auto;
   border-right: 1px solid var(--wash-06);
 }
@@ -2189,6 +2274,18 @@ onBeforeUnmount(() => {
   color: var(--text-muted);
   font-size: 11px;
   flex-shrink: 0;
+}
+
+.skel-add-select {
+  max-width: 78px;
+  border-color: rgba(126, 200, 160, 0.45);
+  color: #9ed9b5;
+}
+
+.skel-clip-select {
+  flex: 1;
+  min-width: 56px;
+  max-width: 110px;
 }
 
 .skel-asset {
@@ -2306,6 +2403,7 @@ onBeforeUnmount(() => {
     transparent 1px,
     transparent var(--px-per-sec, 80px)
   );
+  background-position: 10px 0;
   box-shadow: inset -1px 0 0 var(--wash-14);
 }
 
@@ -2606,7 +2704,7 @@ onBeforeUnmount(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  margin-left: 0;
+  margin-left: -0.5px;
   background: #fff;
   box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.25);
   pointer-events: none;

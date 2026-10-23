@@ -69,10 +69,15 @@ describe('人像处理面板视口变换', () => {
     expect(imgRule![1]).toContain('touch-action: none')
   })
 
-  it('画布容器同时带了平移 / 旋转 / 缩放三个变换', () => {
+  it('画布容器同时带了平移 / 旋转 / 缩放三个变换，且按原图宽高比锁定尺寸以防面部网格跨留白拉伸', () => {
     expect(source).toMatch(
       /translate\(\$\{panOffset\.x\}px[^`]*rotate\(\$\{rotationDeg\.value\}deg\)[^`]*scale\(\$\{zoom\.value\}\)/
     )
+    expect(source).toContain('function syncStageBoxSize()')
+    expect(source).toContain('@load="onStageImageLoad"')
+    expect(source).toContain('width: `${stageBox.width}px`')
+    expect(source).toContain('height: `${stageBox.height}px`')
+    expect(source).toContain('isCanonical68LandmarksValid')
   })
 
   it('旋转有按钮与快捷键两种入口，缩放有滚轮与按钮', () => {

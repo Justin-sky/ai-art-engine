@@ -47,7 +47,60 @@ export interface PortraitFacesPayload {
   at: string
 }
 
-export const PORTRAIT_FACES_VERSION = 2
+export const PORTRAIT_FACES_VERSION = 4
+
+/**
+ * 校验 canonical-68 关键点的基本拓扑完整性（剔除旧版错位索引映射遗留的脏缓存）：
+ * 1. 点数必须满 68；
+ * 2. 鼻底左右鼻翼向量（31 → 35）在双眼外眼角连线（36 → 45）方向上必须有显著正投影
+ *    （旧版把 31..35 全绑在鼻梁中线纵向点上，鼻底向量与眼距正交甚至反向）；
+ * 3. 右侧太阳穴轮廓终点（16）必须在眉心至下巴（8）纵向轴的上半段（旧版下巴占了 11，16 停在右下颌）。
+ */
+export function isCanonical68LandmarksValid(
+  landmarks?: ReadonlyArray<readonly [number, number]> | null
+): boolean {
+  if (!Array.isArray(landmarks) || landmarks.length < PORTRAIT_LANDMARK_COUNT) return false
+  const leftEye = landmarks[36]
+  const rightEye = landmarks[45]
+  const leftNostril = landmarks[31]
+  const rightNostril = landmarks[35]
+  const chin = landmarks[8]
+  const rightTemple = landmarks[16]
+  const leftBrow = landmarks[19]
+  const rightBrow = landmarks[24]
+  if (
+    !leftEye ||
+    !rightEye ||
+    !leftNostril ||
+    !rightNostril ||
+    !chin ||
+    !rightTemple ||
+    !leftBrow ||
+    !rightBrow
+  ) {
+    return false
+  }
+  const ex = rightEye[0] - leftEye[0]
+  const ey = rightEye[1] - leftEye[1]
+  const eyeLenSq = ex * ex + ey * ey
+  if (!(eyeLenSq > 1e-6)) return false
+
+  const nx = rightNostril[0] - leftNostril[0]
+  const ny = rightNostril[1] - leftNostril[1]
+  const nostrilDotEye = nx * ex + ny * ey
+  if (nostrilDotEye < eyeLenSq * 0.1) return false
+
+  const browX = (leftBrow[0] + rightBrow[0]) / 2
+  const browY = (leftBrow[1] + rightBrow[1]) / 2
+  const vx = chin[0] - browX
+  const vy = chin[1] - browY
+  const vLenSq = vx * vx + vy * vy
+  if (!(vLenSq > 1e-6)) return false
+  const templeProj = (rightTemple[0] - browX) * vx + (rightTemple[1] - browY) * vy
+  if (templeProj > vLenSq * 0.65) return false
+
+  return true
+}
 
 /** canonical-68 中与 5 点对应的索引（`portraitFaceMetrics` 用眼角组算度量） */
 export const PORTRAIT_ANCHOR_INDICES = {

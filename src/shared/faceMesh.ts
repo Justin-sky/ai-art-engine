@@ -84,7 +84,14 @@ function calculateScale(
 
 /**
  * 生成 BlazeFace short-range 的 896 个锚点。
- * 逐层：同一 stride 的层共享 scale，先按 aspectRatios 生成，再补一个几何平均尺寸的插值锚。
+ *
+ * 与 MediaPipe `SsdAnchorsCalculator::GenerateAnchors` 完全同口径：
+ * 1. **同 stride 层合并**：`strides = [8, 16, 16, 16]` 中第 0 层是 `16×16`（每格 2 锚点 = 512），
+ *    第 1/2/3 层同为 `stride = 16`，合并成同一张 `8×8` 特征图（每格 3×2 = 6 锚点 = 384），
+ *    与 `face_detection_short_range.tflite` 的 `regressor_16 [1, 8, 8, 96] -> [1, 384, 16]` 内存布局逐项对应；
+ * 2. **`fixedAnchorSize` 统一归 1**：当 `fixedAnchorSize = true` 时，固定锚与插值锚在输出 `Anchor`
+ *    时的 `w / h` 均固定为 `1.0`（BlazeFace 回归量纲恒为 `raw / 128`）。若把插值锚写成 `sqrt(scale*scaleNext)`，
+ *    偶数号锚点解码出的框会缩到约 1/4 大小且无法被加权 NMS 合并，在真实人脸框内产生多个伪小框。
  */
 export function generateBlazeFaceAnchors(): FaceAnchor[] {
   const {
@@ -102,42 +109,45 @@ export function generateBlazeFaceAnchors(): FaceAnchor[] {
   } = ANCHOR_CONFIG
 
   const anchors: FaceAnchor[] = []
-  for (let layer = 0; layer < numLayers; layer++) {
-    const stride = strides[layer]
+  let layerId = 0
+  while (layerId < numLayers) {
+    const stride = strides[layerId]
+    const anchorScales: Array<{ w: number; h: number }> = []
+    let lastSameStrideLayer = layerId
+    while (lastSameStrideLayer < strides.length && strides[lastSameStrideLayer] === stride) {
+      const scale = calculateScale(minScale, maxScale, lastSameStrideLayer, numLayers)
+      const scaleNext =
+        lastSameStrideLayer === numLayers - 1
+          ? 1.0
+          : calculateScale(minScale, maxScale, lastSameStrideLayer + 1, numLayers)
+      if (interpolatedScaleAspectRatio > 0) {
+        const interpScale = Math.sqrt(scale * scaleNext)
+        anchorScales.push({
+          w: fixedAnchorSize ? 1 : interpScale * Math.sqrt(interpolatedScaleAspectRatio),
+          h: fixedAnchorSize ? 1 : interpScale / Math.sqrt(interpolatedScaleAspectRatio)
+        })
+      }
+      for (const aspectRatio of aspectRatios) {
+        anchorScales.push({
+          w: fixedAnchorSize ? 1 : scale * Math.sqrt(aspectRatio),
+          h: fixedAnchorSize ? 1 : scale / Math.sqrt(aspectRatio)
+        })
+      }
+      lastSameStrideLayer++
+    }
+
     const gridW = Math.ceil(inputWidth / stride)
     const gridH = Math.ceil(inputHeight / stride)
-    const scale = calculateScale(minScale, maxScale, layer, numLayers)
-    // 最后一层的下一档按 1.0 处理（官方实现里 scaleNext=1.0 收尾）
-    const scaleNext =
-      layer === numLayers - 1 ? 1.0 : calculateScale(minScale, maxScale, layer + 1, numLayers)
-
     for (let row = 0; row < gridH; row++) {
       for (let col = 0; col < gridW; col++) {
         const xCenter = (col + anchorOffsetX) / gridW
         const yCenter = (row + anchorOffsetY) / gridH
-        /**
-         * ⚠️ 每格两个锚点的**顺序**必须是「插值锚在前、固定锚在后」。
-         *
-         * MediaPipe 的 SsdAnchorsCalculator 在 `fixed_anchor_size` + `interpolated_scale_aspect_ratio`
-         * 下的实际产出顺序是 [interpolated, fixed]；顺序反了不会报任何错，只会让解码把
-         * 每个回归行配上另一套锚点边长，检测框整体缩到约 1/4～1/5
-         * （实测 6 张人脸照里只有 1 张还能勉强命中，正确顺序是 5/6），
-         * 上层表现为「几乎检测不到人脸」，五官 / 妆容静默失效。
-         *
-         * 另一处同类陷阱：`fixedAnchorSize` 的固定锚归一化宽高是 **1.0**（不是 scale），
-         * 因为解码已经做了 `raw / scale * anchor.w`；填 scale 等于把 scale 乘两遍。
-         */
-        if (interpolatedScaleAspectRatio > 0) {
-          const size = Math.sqrt(scale * scaleNext)
-          anchors.push({ xCenter, yCenter, w: size, h: size })
-        }
-        for (const aspectRatio of aspectRatios) {
-          const w = fixedAnchorSize ? 1 : scale * Math.sqrt(aspectRatio)
-          const h = fixedAnchorSize ? 1 : scale / Math.sqrt(aspectRatio)
+        for (const { w, h } of anchorScales) {
           anchors.push({ xCenter, yCenter, w, h })
         }
       }
     }
+    layerId = lastSameStrideLayer
   }
   return anchors
 }
@@ -380,15 +390,19 @@ export function mapPointFromCrop(point: FaceKeypoint, crop: FaceCrop): FaceKeypo
 // ── 468 → 68 映射（iBUG/300W，与 src/shared/graph/portraitFace.ts 同序） ──
 
 /**
- * MediaPipe FaceMesh 468 点 → canonical-68 的索引表（照抄官方映射约定）。
- * 顺序即 68 点顺序：0–16 脸轮廓、17–21 左眉、22–26 右眉、27–30 鼻梁、31–35 鼻底、
- * 36–41 左眼、42–47 右眼、48–59 外唇、60–67 内唇。
+ * MediaPipe FaceMesh 468 点 → canonical-68 的索引表（严格左右镜像对称）。
+ * 顺序即 68 点顺序：
+ * - 0–16 脸轮廓（0..7 左太阳穴→左腮，8 下巴尖 152，9..16 右腮→右太阳穴 356）
+ * - 17–21 左眉、22–26 右眉
+ * - 27–30 鼻梁（168 鼻根 → 4 鼻尖）、31–35 鼻底（129 左鼻翼 → 2 鼻小柱 → 358 右鼻翼）
+ * - 36–41 左眼、42–47 右眼
+ * - 48–59 外唇、60–67 内唇
  */
 export const FACEMESH_TO_68: readonly number[] = [
-  127, 234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 70, 63, 105,
-  66, 107, 336, 296, 334, 293, 300, 168, 6, 197, 195, 5, 4, 1, 19, 94, 33, 160, 158, 133, 153, 144,
-  362, 385, 387, 263, 373, 380, 61, 39, 37, 0, 267, 269, 291, 405, 314, 17, 84, 181, 78, 82, 13,
-  312, 308, 317, 14, 87
+  127, 234, 93, 132, 58, 172, 136, 149, 152, 378, 365, 397, 288, 361, 323, 454, 356, 70, 63, 105,
+  66, 107, 336, 296, 334, 293, 300, 168, 6, 197, 4, 129, 98, 2, 327, 358, 33, 160, 158, 133, 153,
+  144, 362, 385, 387, 263, 373, 380, 61, 39, 37, 0, 267, 269, 291, 405, 314, 17, 84, 181, 78, 82,
+  13, 312, 308, 317, 14, 87
 ]
 
 /** 按 `FACEMESH_TO_68` 取点，输出顺序即 canonical-68 */

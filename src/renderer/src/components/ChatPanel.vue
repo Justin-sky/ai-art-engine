@@ -73,6 +73,11 @@ import ChatAssetPicker from './ChatAssetPicker.vue'
 import ChatCopyIcon from './ChatCopyIcon.vue'
 import ChatWishShrine from './ChatWishShrine.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
+import {
+  notifyWeatherTaskComplete,
+  notifyWeatherTaskPulse,
+  notifyWeatherTaskStart
+} from '../graph/vfx/canvasWeatherEngine'
 
 const CHAT_MODEL_KEY = 'studio.chat.model'
 const CHAT_MODE_KEY = 'studio.chat.mode'
@@ -1827,6 +1832,11 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'tool': {
       if (event.state === 'start' && inAbortCooldown) return
       if (event.state === 'start' && !running.value) running.value = true
+      if (event.state === 'start') {
+        notifyWeatherTaskPulse({
+          preferLightning: /graph_|canvas_|node_|cook|gen|split|render/i.test(event.name)
+        })
+      }
       // dsh-agent 等 harness 工具卡：同一会话内按 key 去重（优先 callId 实例，无则按名字回退），
       // 状态变更时原地更新，不要保留一张"执行中"的同时再新增一张"完成"
       // 子代理的 callId 只在它自己的会话内唯一，挂上父卡片 id 才能与主代理的卡片区分
@@ -1947,6 +1957,7 @@ function onHarnessEvent(event: HarnessEvent): void {
     case 'done':
       lastRoundOutcome.value = 'success'
       if (!preparingTask) running.value = false
+      notifyWeatherTaskComplete('ai-chat')
       // 本轮结束：未决定的审批请求已随主进程丢弃，卡片标记失效（未放行）
       expirePendingApprovals()
       // 运行结束：采集本轮 git 变更（有改动才追加预览卡）
@@ -1961,6 +1972,7 @@ function onHarnessEvent(event: HarnessEvent): void {
       lastRoundOutcome.value = 'error'
       pushStatus(event.message, 'error')
       if (!preparingTask) running.value = false
+      notifyWeatherTaskComplete('ai-chat')
       expirePendingApprovals()
       const errMsg = (event.message ?? '').trim()
       if (errMsg) {
@@ -2970,6 +2982,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
   abortIgnoreUntil = 0
   lastRoundOutcome.value = 'idle'
   running.value = true
+  notifyWeatherTaskStart('ai-chat')
   preparingTask = true
   let taskForHarness = text
   try {
@@ -3417,7 +3430,12 @@ async function onHandleCanvasEvent(action: 'diagnose' | 'review'): Promise<void>
  * 只有用户点了「立即发送」才会在运行中中断当前轮去插队。
  */
 watch(running, (isRunning) => {
-  if (!isRunning) void drainQueue()
+  if (isRunning) {
+    notifyWeatherTaskStart('ai-chat')
+  } else {
+    notifyWeatherTaskComplete('ai-chat')
+    void drainQueue()
+  }
 })
 
 onMounted(async () => {

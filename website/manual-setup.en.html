@@ -31,13 +31,13 @@
     <meta property="og:title" content="Projects & settings · Manual — AIArtEngine" />
     <meta property="og:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Projects & settings · Manual — AIArtEngine" />
     <meta name="twitter:description" content="Create and open projects, then configure general preferences, model providers, object storage, extensions, the MCP tool service and web search. Walk through this part first when you set up the app." />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
@@ -182,6 +182,16 @@
           </ul>
 
           <h3>4.2 Models</h3>
+          <figure class="shot">
+            <img
+              src="assets/imgs/model-provides.webp"
+              alt="Settings · Model Providers: unified setup for OpenRouter, Tripo, Lux3D, DeepSeek, Custom, ElevenLabs, Google Gemini and more"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Settings → Model Providers (30+ text / image / video / audio / 3D / spatial-world providers and custom gateways)</figcaption>
+          </figure>
           <ol>
             <li>
               Click <strong>Add model provider</strong>. Options include:
@@ -589,11 +599,42 @@
             server.
           </div>
 
+          <h4 id="local-vision">Local vision (offline ONNX inference &amp; GPU acceleration)</h4>
+          <p>
+            Switch to the <strong>Local Vision</strong> tab in Settings to download and manage built-in offline vision models (powered by ONNX Runtime with DirectML / CoreML GPU hardware acceleration, zero cloud cost):
+          </p>
+          <ul>
+            <li><strong>Detect / Pose / Segmentation (YOLO)</strong>: powers smart reframe, humanoid keypoint estimation, 2D auto part cutting, and visual QC.</li>
+            <li><strong>High-precision matting (BiRefNet / RMBG)</strong>: one-click local background removal and subject cutout in the Image Editor.</li>
+            <li><strong>Face (468-pt FaceMesh)</strong>: fine-grained facial landmark detection and region masking.</li>
+            <li><strong>SAM 2.1 (interactive segmentation)</strong>: point/box-prompted high-precision mask segmentation in the canvas and Layer Split Workbench.</li>
+          </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/local-models.webp"
+              alt="Settings · Local Vision: DirectML GPU acceleration status and one-click model management for YOLO, Matting, FaceMesh and SAM 2.1"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Settings → Local Vision (DirectML GPU acceleration, one-click offline ONNX model management)</figcaption>
+          </figure>
+
           <h3>4.3 Object storage</h3>
           <p>
             Used to upload local files such as reference videos into publicly reachable URLs (signed links are
             used for private buckets).
           </p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/storage.webp"
+              alt="Settings · Object Storage: Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS and Amazon S3–compatible storage"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Settings → Object Storage (Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS &amp; Amazon S3–compatible)</figcaption>
+          </figure>
           <ul>
             <li>
               <strong>Add object storage</strong> → pick one:

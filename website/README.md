@@ -71,16 +71,18 @@ npm run site
 |------|------|
 | `assets/logo-mark.png` | 品牌图标（页面使用图标 + 文字组合） |
 | `assets/show.mp4` | 首页演示视频（首页 hero 视频）（CRF20 + AAC 96k 压缩，9.79MB → 3.3MB） |
-| `assets/banner/node-graph.webp` | 节点图 |
-| `assets/banner/storyboard.webp` | 分镜编辑 |
-| `assets/banner/director-stage.webp` | 3D 导演台 |
-| `assets/banner/multi-angle-editor.webp` | 多角度编辑器 |
-| `assets/banner/lighting-editor.webp` | 打光效果编辑器 |
-| `assets/banner/mood-editor.webp` | 情绪调节编辑器 |
-| `assets/banner/image-editor.webp` | 图片修改器 |
-| `assets/demo/demo.png` | 示例：节点连接（参考图 → 设定图 → 视频） |
 | `assets/demo/video-output.mp4` | 示例：输出视频 |
-| `assets/demo/video-poster.jpg` | 示例：视频封面帧 |
+| `assets/imgs/film-workbench.webp` | 短剧影视工作台（四阶段闭环、结构化分镜卡片、`@1`–`@4` 设定图引用与分段动态提示词） |
+| `assets/imgs/script-camera.webp` | 3D 分镜白模预演与剧本运镜（角色/道具白模站位、Cinemachine 分镜机位切换轨与逐镜运镜轨） |
+| `assets/imgs/ui-layers.webp` | 节点图工作流与 UI 图层拆解（同时用作社交分享 `og:image` 与视频封面帧） |
+| `assets/imgs/video-timeline.webp` | 多轨视频与分镜时间线 |
+| `assets/imgs/2d-director.webp` | 2D 分镜导演台（镜头构图与机位推演） |
+| `assets/imgs/3d-director.webp` | 3D 导演台（三维机位、布光与骨骼摆拍） |
+| `assets/imgs/comic-books.webp` | 条漫与多格漫分镜排版 |
+| `assets/imgs/image-editor.webp` | 内置画布与图像精修编辑器 |
+| `assets/imgs/model-provides.webp` | 多厂商云端模型与 API 网关配置 |
+| `assets/imgs/local-models.webp` | 本机离线视觉模型管理（抠图 / 分割 / 修复 / 超分） |
+| `assets/imgs/storage.webp` | 对象存储（OSS / S3 / R2 / COS）配置 |
 
 社区入口在首页 `#community` 区块与根 README 页脚以文字列出（交流 QQ 群
 `346340389` · `647306826`），不用二维码图片。

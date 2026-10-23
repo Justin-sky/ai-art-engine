@@ -31,13 +31,13 @@
     <meta property="og:title" content="Short-Drama Guide · AIArtEngine" />
     <meta property="og:description" content="AIArtEngine Short-Drama Guide: generate a host asset from the Film pipeline or Film single-shot polish template in One-Click Workflow, then complete Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot inside the unified Film Workbench (film.workbench)." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/film-workbench.webp" />
+    <meta property="og:image:width" content="1440" />
+    <meta property="og:image:height" content="900" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Short-Drama Guide · AIArtEngine" />
     <meta name="twitter:description" content="AIArtEngine Short-Drama Guide: generate a host asset from the Film pipeline or Film single-shot polish template in One-Click Workflow, then complete Storyboard Breakdown, Director Review, Character & Scene Design and Batch Shoot inside the unified Film Workbench (film.workbench)." />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/film-workbench.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
@@ -213,13 +213,23 @@
           <p>
             After pasting your script into the “Script” node, <strong>double-click the “Film Workbench” node</strong> (or click “Open Film Workbench” in the Inspector) to enter the full-screen Dive workbench. Use the four stage tabs at the top to switch views; click <strong>“⚡ Run Full Pipeline”</strong> at the top-right to execute all four stages end-to-end, or click the current-stage run button to step through and review stage by stage:
           </p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="Film Workbench: Storyboard Breakdown cards, @1-@4 character/location/prop reference pills, time-sliced motion prompts and 3D Director Previs"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>Film Workbench (<code>film.workbench</code>): structured shot cards in ① Storyboard Breakdown with <code>@1</code>–<code>@4</code> character/location/prop bindings and time-sliced motion prompts (<code>0-1s</code> / <code>1-4s</code>…).</figcaption>
+          </figure>
           <ol>
             <li>
               <strong>① Storyboard Breakdown (<code>breakdown</code>)</strong>:
               <ul>
                 <li>In the left sidebar, set the <strong>aspect ratio</strong> (<code>9:16</code> for vertical short dramas, <code>16:9</code> for horizontal films), <strong>target shot count</strong> (<code>0</code> = let the story determine the shot count automatically instead of forcing 9 or 36 cells), <strong>per-shot duration preset</strong> (<code>Auto / 4s / 8s / 10s / 15s</code>, aligned with mainstream video model duration tiers) and <strong>visual style</strong>.</li>
                 <li>Running this stage produces scenes, shot cards (shot size, camera angle, camera move, duration in seconds, action/acting, dialogue, keyframe <code>imagePrompt</code>, motion <code>videoPrompt</code>) and the extracted <strong>character / location / prop entity table</strong>.</li>
-                <li>Edit any shot field directly on its card, add or remove shots, or click the <strong>Lock</strong> icon on a shot card so future re-breakdowns or director reviews never overwrite it.</li>
+                <li>Edit any shot field directly on its card, add or remove shots, or click the <strong>Lock</strong> icon on a shot card so future re-breakdowns or director reviews never overwrite it; click <strong>“3D Director Previs”</strong> at the top-right or <strong>“3D Previs”</strong> on any shot card to rehearse character blocking, props and Cinemachine camera trajectories in 3D.</li>
               </ul>
             </li>
             <li>
@@ -245,6 +255,16 @@
               </ul>
             </li>
           </ol>
+          <figure class="shot">
+            <img
+              src="assets/imgs/script-camera.webp"
+              alt="3D Storyboard Previs & Script Camera: color-coded character/prop blockout, Cinemachine Brain shot switcher track and camera trajectory editing"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>3D Storyboard Previs: jump from the Film Workbench into a 3D blockout stage to rehearse character blocking, Cinemachine Brain shot cuts and per-shot camera trajectories.</figcaption>
+          </figure>
           <div class="tip">
             <strong>Credit-saving tip (preview keyframes before rendering video):</strong> on a long script's first run, set the output mode in “④ Batch Shoot” to <strong>“Keyframes only”</strong> to verify framing and character likeness across all shots; reshoot any individual card you want to tweak, then switch output mode back to <strong>“Keyframes + Video”</strong> and run again — existing keyframes hit the fingerprint cache 100% without redrawing, and only the videos are generated.
           </div>
@@ -266,6 +286,26 @@
               <strong>Assemble the full episode</strong>: connect the Film Workbench's <code>out-videos</code> port to a “Video concat” (<code>video.concat</code>) node to splice all clips in one click, or drag the clips, dubbing and BGM onto the multi-track <strong>Final timeline</strong> to edit and export.
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/image-editor.webp"
+              alt="10-in-1 Image Processing Workbench: local cutout, edge refine, heal brush and AI redraw/expand on a shot keyframe"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Single-shot polish: insert the 10-in-1 Image Processing Workbench between Keyframe and Shot clip for local inpainting, cutout or outpainting.</figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="Multi-track Final Timeline: Media, Effects, Transitions, Filters, Adjust and Templates tabs with CapCut draft export"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Full-episode assembly: arrange shot clips, dubbing, subtitles and SFX on the Final Timeline, then export an MP4 or CapCut NLE draft.</figcaption>
+          </figure>
         </section>
 
         <section id="faq">

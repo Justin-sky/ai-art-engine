@@ -9,6 +9,9 @@ import {
 const autoSaveEnabled = ref(false)
 const autoSaveIntervalSec = ref(30)
 const canvasVfxEnabled = ref(true)
+const weatherSystemEnabled = ref(true)
+const weatherSfxEnabled = ref(true)
+const weatherBgmEnabled = ref(true)
 const appTheme = ref<'dark' | 'light'>('dark')
 
 /**
@@ -23,7 +26,10 @@ const stageControlPreferences = ref<StageControlPreferences>({ ...STAGE_CONTROL_
 export const editorPreferences = {
   autoSaveEnabled: readonly(autoSaveEnabled),
   autoSaveIntervalSec: readonly(autoSaveIntervalSec),
-  canvasVfxEnabled: readonly(canvasVfxEnabled)
+  canvasVfxEnabled: readonly(canvasVfxEnabled),
+  weatherSystemEnabled: readonly(weatherSystemEnabled),
+  weatherSfxEnabled: readonly(weatherSfxEnabled),
+  weatherBgmEnabled: readonly(weatherBgmEnabled)
 }
 
 export function setCanvasVfxEnabled(enabled: boolean): void {
@@ -32,6 +38,22 @@ export function setCanvasVfxEnabled(enabled: boolean): void {
   if (typeof document !== 'undefined') {
     document.documentElement.dataset.canvasVfx = next ? 'on' : 'off'
   }
+}
+
+export function setWeatherSystemEnabled(enabled: boolean): void {
+  const next = enabled !== false
+  weatherSystemEnabled.value = next
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.weatherSystem = next ? 'on' : 'off'
+  }
+}
+
+export function setWeatherSfxEnabled(enabled: boolean): void {
+  weatherSfxEnabled.value = enabled !== false
+}
+
+export function setWeatherBgmEnabled(enabled: boolean): void {
+  weatherBgmEnabled.value = enabled !== false
 }
 
 /** 3D 视口灵敏度（只读；见上方说明，别把 `.value` 缓存到模块级常量里） */
@@ -65,6 +87,9 @@ export function applyEditorPreferences(settings: AppSettings): void {
     Math.max(1, Math.round(settings.editor?.autoSaveIntervalSec || 30))
   )
   setCanvasVfxEnabled(settings.editor?.canvasVfxEnabled !== false)
+  setWeatherSystemEnabled(settings.editor?.weatherSystemEnabled !== false)
+  setWeatherSfxEnabled(settings.editor?.weatherSfxEnabled !== false)
+  setWeatherBgmEnabled(settings.editor?.weatherBgmEnabled !== false)
   // 灵敏度按区间钳制：手改过 settings.json 的脏值不该让视口「拖不动」
   stageControlPreferences.value = normalizeStageControls(settings.editor?.stage)
   applyAppTheme(settings.theme === 'light' ? 'light' : 'dark')

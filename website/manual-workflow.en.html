@@ -31,13 +31,13 @@
     <meta property="og:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
     <meta property="og:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="One-Click Workflow & node graph · Manual — AIArtEngine" />
     <meta name="twitter:description" content="Generate reusable host assets from templates or plain language with One-Click Workflow and run short-drama / film pipelines through the 4-stage Film Workbench; then add and wire nodes, run the task queue and look up every node type and typical workflow in the node graph." />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
@@ -232,6 +232,16 @@
             <strong>“Film Workbench” (<code>film.workbench</code>)</strong> node inside the graph to enter the full-screen Dive workbench and run the entire script-to-video loop in one place. See the
             <a href="guide-short-video.en.html">Short-Drama Guide</a> for the full walkthrough.
           </p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="Film Workbench Dive interface: Storyboard Breakdown, Director Review, Character & Scene Design, Batch Shoot and 3D Director Previs"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>Film Workbench (<code>film.workbench</code>): 4-stage loop, structured shot cards, <code>@1</code>–<code>@4</code> cast/location/prop bindings &amp; 3D Director Previs.</figcaption>
+          </figure>
           <ul>
             <li>
               <strong>Four stage tabs &amp; one-click full pipeline</strong>: switch across <strong>① Storyboard Breakdown / ② Director Review / ③ Character &amp; Scene Design / ④ Batch Shoot</strong> at the top; click “⚡ Run Full Pipeline” at the top-right to execute all four stages end-to-end, or run the current stage individually.
@@ -567,6 +577,16 @@
               ad variants on the same theme in one run.
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/comic-books.webp"
+              alt="Comic Page Dive Workbench: panel templates, diagonal blade cuts, speed/focus lines, speech balloons and SFX typesetting"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>Comic Page Layout Dive Workbench (diagonal panel cuts, focus lines, screentones, speech balloons &amp; SFX typesetting)</figcaption>
+          </figure>
 
           <h4>QC &amp; rework (retired)</h4>
           <div class="tip">
@@ -604,6 +624,16 @@
                   <strong>HD upscale</strong> (<code>upscale</code> — AI super-resolution and detail enhancement, with 2K / 4K tier selection and before/after preview in both Inspector and Dive).
                 </li>
               </ul>
+              <figure class="shot">
+                <img
+                  src="assets/imgs/image-editor.webp"
+                  alt="10-in-1 Image Processing Workbench: crop, transform, smart compose, grid split, local cutout, edge refine, heal brush and AI matte/erase/redraw/expand/upscale"
+                  width="1600"
+                  height="860"
+                  loading="lazy"
+                />
+                <figcaption>10-in-1 Image Processing Workbench (local cutout, edge refine, heal brush &amp; AI redraw/expand/upscale)</figcaption>
+              </figure>
             </li>
             <li>
               <strong>Icon pack</strong> (<code>image.iconPack</code>): batch-generate game item, skill and UI icon sets with rarity frame templates, background cleanup and sprite-sheet packing.
@@ -668,6 +698,16 @@
               <strong>① Game UI Control Split (<code>ui</code>)</strong>: recognizes 16 standard HTML5 / Unity UI Toolkit control classes (<code>button</code>, <code>toggle</code>, <code>slider</code>, <code>progress-bar</code>, <code>input-field</code>, <code>scroll-view</code>, <code>panel</code>, <code>modal-dialog</code>, <code>tab-bar</code>, <code>list-item</code>, <code>slot-grid</code>, <code>icon-badge</code>, <code>avatar-frame</code>, <code>tooltip-bubble</code>, <code>hud-bar</code>, <code>text-label</code>), runs <strong>cross-platform local offline OCR</strong> (Windows WinRT <code>Windows.Media.Ocr</code> / macOS <code>Vision.framework</code> / Linux <code>tesseract</code>) and cloud VLM OCR to extract text, core glyph fill (<code>color</code>) and outline (<code>strokeColor</code> / <code>strokeWidth</code>), inpaints clean 9-slice plates (<code>nineSlice</code>) and synthesizes <code>:hover</code> / <code>:active</code> states; exports a <strong>2-level nested <code>.psd</code> with native Photoshop <code>TySh</code> editable text layers</strong> plus <strong>Unity UI Toolkit (<code>.uxml/.uss</code>) · Unity UGUI (<code>.cs</code>) · Godot 4 (<code>.tscn</code>) · HTML5</strong> code;
               <strong>② 2D Rig Part Split (<code>rig2d</code>)</strong>: semantic body-part cutting + occluded edge dilation inpainting + auto bone hierarchy for 2D Stage &amp; Spine export;
               <strong>③ Scene Depth Split (<code>scene</code>)</strong> and <strong>④ Auto Layer Split (<code>auto</code>)</strong> (Seedream 5.0 Pro cloud decomposition or local instance segmentation + LaMa background inpainting).
+              <figure class="shot">
+                <img
+                  src="assets/imgs/ui-layers.webp"
+                  alt="Layer Split Workbench: 3D exploded view, 2-level hierarchy tree, widget extraction and PSD/Unity/Godot/HTML5 export"
+                  width="1600"
+                  height="860"
+                  loading="lazy"
+                />
+                <figcaption>Layer Split Workbench (3D exploded view, 2-level nested hierarchy tree, native TySh PSD &amp; engine UI code export)</figcaption>
+              </figure>
             </li>
             <li>
               <strong>PNG-as-Workflow (<code>aiae:graph</code> steganography)</strong>: exported PNGs automatically embed the full node graph topology and seeds inside a PNG iTXt chunk; drag any exported PNG back onto the canvas to restore the entire pipeline.

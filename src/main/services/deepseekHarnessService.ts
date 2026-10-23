@@ -1155,7 +1155,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'Rule 4 (Timeline Editor): When the user is dived into `script.timeline` (Video Compose / Timeline Editor), use `timeline_read({ assetId })` and `timeline_edit({ assetId, operations })` or `timeline_rough_cut` — open timeline editors automatically reload live.',
     'Rule 5 (Active Canvas & Minimal Viable Graph): Always inspect via `graph_read` if needed and build/edit nodes directly on the currently open canvas (`assetId` from `[Workspace Canvas & Node Context]`) using `graph_edit` (`node_upsert` + `edge_connect`) and execute via `task_run({ assetId, nodeIds })`. Only call `asset_create({ type: "canvas", openEditor: true })` if no canvas is open. NEVER create a `subgraph` package asset unless the user explicitly asks to encapsulate a reusable subgraph component, and NEVER call `skill_search` for built-in studio node capabilities. Build ONLY the minimal exact nodes requested by the user (e.g. if the user asks for 1 UI interface, create 1 `asset.image` node — never invent multiple unrequested screens or `note.text` instruction nodes).',
     'When a request matches any specialized studio node capability or multi-step production pipeline below, call `graph_node_types({ typeId, includeParams: true })` if you need exact ports/params, then wire the nodes on the active canvas with `graph_edit` and run `task_run`:',
-    'Film / Short Drama / Storyboard / Cast & Shoot pipeline uses text.plain -> film.workbench (and optional film.shot for single-shot polish) for script breakdown, director review, character/location design sheets, Series Bible (in-cast/out-cast), and batch keyframe or shot video generation.',
+    'Film / Short Drama / Storyboard / Cast & Shoot pipeline: for the full multi-episode short-drama pipeline (创建剧本 → 剧本分集 → 分集短剧工作台 → 成片时间线), wire `text.plain` (story outline) -> `asset.screenplay` (create multi-episode script with `【人物小传】` and `第1集：...` / `第2集：...` headers, outputting split episodes on `out-all`) -> multiple `text.select` nodes (`selectedTextId: "ep:1"`, `"ep:2"`, etc., extracting each episode script) -> per-episode `film.workbench` nodes (with Episode 1 `out-cast` wired into Episode 2 `in-cast` for Series Bible character/location reuse, plus optional `film.shot` for single-shot polish) + `asset.music` (BGM) -> `output.timeline` (`in-videos` + `in-music` for final MP4 composition).',
     'Image Editing 10-in-1 Workbench uses image.process (set params.imageProcessTool to cutout, matte, erase, redraw, expand, upscale, gridSplit, compose, crop, or transform) for background removal, AI matting, inpainting, outpainting, upscaling, grid slicing, and compositing; asset.image and ui.gen enable transparent background by default (params.generateTransparentBg=true, auto-appending a clean solid-background constraint and keying out the background after generation unless params.generateTransparentBg=false or a non-transparent background is explicitly requested).',
     'Portrait / Multi-Angle / Lighting / Character Consistency nodes use image.portrait (retouch & ID photos), image.multiAngle (turnaround sheets & 3D camera angles), image.lighting (3D studio relighting), and image.Consistent (emotion pad & locked identity).',
     'Ad Multi-Variant Matrix uses image.adVariants (params.adVariantMatrix) to batch-generate e-commerce or UA ad variants across audience, scene, tone, and copy dimensions.',
@@ -1719,7 +1719,11 @@ function attachWorkerIo(opts: {
     if (!turnActive) return
     const payload = line.slice(ASK_USER_BEGIN.length).trim()
     try {
-      const parsed = JSON.parse(payload)
+      const raw = JSON.parse(payload)
+      const parsed =
+        raw && typeof raw === 'object' && raw.payload && typeof raw.payload === 'object'
+          ? raw.payload
+          : raw
       if (typeof parsed.requestId !== 'string' || typeof parsed.question !== 'string') return
       harnessAskUserRequests.set(parsed.requestId, {
         runId: currentRunId,
@@ -2216,12 +2220,20 @@ function attachWorkerIo(opts: {
         )
         break
       }
-      case 'ask_user':
-        emitAskUserFromLine(`${ASK_USER_BEGIN} ${JSON.stringify(msg)}`)
+      case 'ask_user': {
+        const askPayload = JSON.stringify(
+          msg.payload && typeof msg.payload === 'object' ? msg.payload : msg
+        )
+        emitAskUserFromLine(`${ASK_USER_BEGIN} ${askPayload}`)
         break
-      case 'approval':
-        emitApprovalFromLine(`${APPROVAL_BEGIN} ${JSON.stringify(msg)}`)
+      }
+      case 'approval': {
+        const approvalPayload = JSON.stringify(
+          msg.payload && typeof msg.payload === 'object' ? msg.payload : msg
+        )
+        emitApprovalFromLine(`${APPROVAL_BEGIN} ${approvalPayload}`)
         break
+      }
       case 'context': {
         const ctxPayload = JSON.stringify(
           msg.usage && typeof msg.usage === 'object' ? msg.usage : msg

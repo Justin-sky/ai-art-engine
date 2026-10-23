@@ -31,13 +31,13 @@
     <meta property="og:title" content="AIArtEngine — The Agent-Native Multimodal AI Production Engine" />
     <meta property="og:description" content="Don't just generate flat images—ship editable PSDs (with native TySh text layers), Unity/Godot UI code, Spine 2D packages, CapCut multi-track drafts, and playable HTML5 games. Built-in AI chat & MCP server, 30+ providers, Zero-Key instant demo. Open source · GPL-3.0." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/index.en.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AIArtEngine — The Agent-Native Multimodal AI Production Engine" />
     <meta name="twitter:description" content="Don't just generate flat images—ship editable PSDs (native TySh text layers), Unity/Godot UI code, Spine 2D packages, CapCut NLE drafts, and playable HTML5 games. Open source · GPL-3.0." />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <meta name="theme-color" content="#05070d" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/index.en.html" />
@@ -177,7 +177,7 @@
           <video
             data-hero-video
             src="assets/show.mp4?v=20261009i"
-            poster="assets/banner/node-graph.webp"
+            poster="assets/imgs/ui-layers.webp"
             width="854"
             height="480"
             autoplay
@@ -409,25 +409,25 @@
       <section class="section" id="demo" aria-labelledby="demo-title">
         <div class="wrap">
           <div class="section-head">
-            <p class="section-label reveal">Demo</p>
-            <h2 class="section-title reveal" id="demo-title">From node wiring to a finished cut</h2>
-            <p class="section-lede reveal" style="--d: 0.06s">One chain: reference image → character sheet → select image → video generation.</p>
+            <p class="section-label reveal">Demo &amp; Workbenches</p>
+            <h2 class="section-title reveal" id="demo-title">In-app workbench gallery: from node graphs to production deliverables</h2>
+            <p class="section-lede reveal" style="--d: 0.06s">Explore UI layer splitting, 3D/2D rig stages, CapCut-grade multi-track timelines, comic layout, 10-in-1 image editing and local ONNX vision (click any screenshot to zoom).</p>
           </div>
           <div class="demo-stage reveal reveal-stage" style="--d: 0.1s">
             <figure class="demo-graph">
               <img
-                src="assets/demo/demo.png"
-                alt="Node graph example: reference image to character sheet, then select image to video"
-                width="864"
-                height="496"
+                src="assets/imgs/ui-layers.webp"
+                alt="Game UI Layer Split Workbench: 3D exploded view, 2-level hierarchy tree, and PSD/Unity/Godot/HTML5 export"
+                width="1600"
+                height="860"
                 loading="lazy"
               />
-              <figcaption>Node wiring</figcaption>
+              <figcaption>UI layer split &amp; 3D exploded view</figcaption>
             </figure>
             <figure class="demo-video">
               <video
                 src="assets/demo/video-output.mp4"
-                poster="assets/demo/video-poster.jpg"
+                poster="assets/imgs/video-timeline.webp"
                 autoplay
                 muted
                 loop
@@ -438,6 +438,52 @@
                 Your browser does not support video playback.
               </video>
               <figcaption>Video output</figcaption>
+            </figure>
+          </div>
+          <div class="shot-grid reveal" style="--d: 0.14s">
+            <figure class="shot">
+              <img src="assets/imgs/film-workbench.webp" alt="Film Workbench: 4-stage closed loop (Breakdown, Director Review, Cast/Scene Design, Batch Shoot) with @1-@4 reference bindings" width="1440" height="900" loading="lazy" />
+              <figcaption>Film Workbench · 4-stage loop, structured shot cards, <code>@1</code>–<code>@4</code> reference pills &amp; time-sliced motion prompts</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/script-camera.webp" alt="3D Storyboard Previs & Script Camera: character/prop blockout, Cinemachine Brain shot switcher track and camera motion paths" width="1440" height="900" loading="lazy" />
+              <figcaption>3D Storyboard Previs · Character/prop blockout, Cinemachine shot switcher track &amp; per-shot camera trajectories</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/ui-layers.webp" alt="Layer Split Workbench: 3D exploded view, 2-level group tree, widget extraction and PSD/HTML5/Unity/Godot export" width="1600" height="860" loading="lazy" />
+              <figcaption>UI Layer Split Workbench · 3D exploded view, 2-level hierarchy tree &amp; PSD / engine code export</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/video-timeline.webp" alt="Multi-track timeline: Media, Effects, Transitions, Filters, Adjust and Templates tabs with CapCut draft export" width="1600" height="860" loading="lazy" />
+              <figcaption>CapCut-Grade 6-Tab Timeline · Multi-track video/PiP/voice/subtitle/SFX editing &amp; NLE draft export</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/3d-director.webp" alt="3D Director Stage: Cinemachine multi-camera switcher track, 56-bone humanoid posing and focal/DOF controls" width="1600" height="860" loading="lazy" />
+              <figcaption>3D Director Stage · Cinemachine multi-camera switcher track, humanoid rig posing &amp; lens controls</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/2d-director.webp" alt="2D Stage Director: auto part cutting from a single sprite, humanoid bone rigging, IK drag and action timeline" width="1600" height="860" loading="lazy" />
+              <figcaption>2D Stage Director · Auto part cutting, humanoid bone rigging, IK drag &amp; Spine 2D export</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/comic-books.webp" alt="Comic Page Workbench: panel templates, diagonal blade cuts, speed/focus lines, speech balloons and SFX" width="1600" height="860" loading="lazy" />
+              <figcaption>Comic Page Workbench · Diagonal panel cuts, focus lines, screentones, balloons &amp; SFX typesetting</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/image-editor.webp" alt="10-in-1 Image Editor: crop, transform, smart reframe, grid slice, local cutout, edge refine, heal brush and AI inpaint" width="1600" height="860" loading="lazy" />
+              <figcaption>10-in-1 Image Editor · Smart reframe, grid slice, local cutout &amp; AI erase / inpaint / outpaint</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/model-provides.webp" alt="Settings · Model Providers: OpenRouter, Tripo, Lux3D, DeepSeek, ElevenLabs, Google Gemini and 30+ providers" width="1600" height="860" loading="lazy" />
+              <figcaption>Model Providers · Unified management for 30+ text, image, video, audio &amp; 3D model providers</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/local-models.webp" alt="Settings · Local Vision: DirectML GPU acceleration, YOLO detect/pose/seg, high-precision matting, FaceMesh and SAM 2.1" width="1600" height="860" loading="lazy" />
+              <figcaption>Local ONNX Vision · DirectML GPU acceleration with built-in YOLO, matting, FaceMesh &amp; SAM 2.1</figcaption>
+            </figure>
+            <figure class="shot">
+              <img src="assets/imgs/storage.webp" alt="Settings · Object Storage: Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS and S3-compatible storage" width="1600" height="860" loading="lazy" />
+              <figcaption>Multi-Cloud Object Storage · Volcengine TOS, Alibaba Cloud OSS, Tencent Cloud COS &amp; S3-compatible</figcaption>
             </figure>
           </div>
         </div>

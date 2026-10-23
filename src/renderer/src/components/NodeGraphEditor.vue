@@ -543,6 +543,10 @@
         </div>
       </div>
       <canvas ref="vfxCanvasEl" class="vfx-canvas" aria-hidden="true" />
+      <CanvasWeatherOverlay
+        :visible-nodes="weatherVisibleNodes"
+        :suppress-node-physics="isDraggingNodes || viewportGesturing || isResizingNode"
+      />
     </div>
 
     <Teleport to="body">
@@ -1067,6 +1071,9 @@ import {
   parseFilmRenderCache,
   summarizeReferenceListForLog,
   GraphPortType,
+  PORTRAIT_FACES_VERSION,
+  isCanonical68LandmarksValid,
+  portraitSourceHash,
   collectBlockedNodeIds,
   extractGraphFromPngBytes
 } from '@shared/graph'
@@ -1117,6 +1124,13 @@ import {
   triggerPortDockBurst,
   type TacticalToastVfx
 } from '../graph/vfx/graphVfxEngine'
+import {
+  canvasWeatherState,
+  notifyWeatherTaskComplete,
+  notifyWeatherTaskStart,
+  type WeatherNodeRect
+} from '../graph/vfx/canvasWeatherEngine'
+import CanvasWeatherOverlay from './CanvasWeatherOverlay.vue'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
   clearAssetUrlCaches,
@@ -2805,23 +2819,76 @@ const edgeRenderViewport = { x: 0, y: 0, zoom: -1 }
 
 const activeDomVfx = computed(() => getActiveDomVfxSnapshot(graphHostId.value))
 
+const weatherVisibleNodes = computed<WeatherNodeRect[]>(() => {
+  if (!editorPreferences.weatherSystemEnabled.value) return []
+  const zoom = Math.max(0.05, graph.viewport.zoom)
+  const vx = graph.viewport.x
+  const vy = graph.viewport.y
+  return renderedGraphCards.value.map(({ node }) => {
+    const { w, h } = getNodeSize(node)
+    return {
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      width: w,
+      height: h,
+      screenX: node.position.x * zoom + vx,
+      screenY: node.position.y * zoom + vy,
+      screenWidth: w * zoom,
+      screenHeight: h * zoom,
+      isActive: runStates[node.id]?.status === 'running' || selectedNodeIds.value.has(node.id)
+    }
+  })
+})
+
+watch(
+  isGraphOrTaskRunning,
+  (running) => {
+    const sourceKey = `graph:${graphHostId.value}`
+    if (running) {
+      notifyWeatherTaskStart(sourceKey)
+    } else {
+      notifyWeatherTaskComplete(sourceKey)
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => canvasWeatherState.physicsTickVersion.value,
+  () => {
+    if (!viewportGesturing && Object.keys(canvasWeatherState.nodeTransforms.value).length > 0) {
+      requestEdgeRender()
+    }
+  }
+)
+
 function nodeVfxClasses(nodeId: string): Record<string, boolean> {
   const entry = activeDomVfx.value.nodeEffects.get(nodeId)
   const hasToast = activeDomVfx.value.floatingToasts.some((t) => t.nodeId === nodeId)
-  if (!entry && !hasToast) return {}
+  const weatherTf = canvasWeatherState.nodeTransforms.value[nodeId]
+  if (!entry && !hasToast && !weatherTf) return {}
   return {
     'vfx-node-spawn': entry?.kind === 'spawn',
     'vfx-node-buff': entry?.kind === 'buff',
     'vfx-node-cook-done': entry?.kind === 'cook-done',
     'vfx-node-cook-error': entry?.kind === 'cook-error',
-    'vfx-has-toast': hasToast
+    'vfx-has-toast': hasToast,
+    'vfx-weather-active': !!weatherTf,
+    'vfx-weather-struck': (weatherTf?.electricCharge ?? 0) > 0.15,
+    'vfx-weather-wet': (weatherTf?.wetness ?? 0) > 0.2,
+    'vfx-weather-sunlit': (weatherTf?.sunlitGlow ?? 0) > 0.2,
+    'vfx-weather-frost': (weatherTf?.frostLevel ?? 0) > 0.2,
+    'vfx-weather-dust': (weatherTf?.dustLevel ?? 0) > 0.2,
+    'vfx-weather-aurora': (weatherTf?.auroraGlow ?? 0) > 0.2
   }
 }
 
 function nodeVfxStyle(nodeId: string): Record<string, string> | undefined {
   const entry = activeDomVfx.value.nodeEffects.get(nodeId)
   const toast = activeDomVfx.value.floatingToasts.find((t) => t.nodeId === nodeId)
-  if (!entry && !toast) return undefined
+  const weatherTf = canvasWeatherState.nodeTransforms.value[nodeId]
+  if (!entry && !toast && !weatherTf) return undefined
   const out: Record<string, string> = {}
   if (entry && entry.delayMs > 0) {
     out['--vfx-delay'] = `${entry.delayMs}ms`
@@ -2829,6 +2896,17 @@ function nodeVfxStyle(nodeId: string): Record<string, string> | undefined {
   if (toast) {
     out['--vfx-toast-delay'] = `${toast.delayMs}ms`
     out['--vfx-toast-duration'] = `${toast.durationMs}ms`
+  }
+  if (weatherTf) {
+    out['--weather-dx'] = `${weatherTf.dx.toFixed(2)}px`
+    out['--weather-dy'] = `${weatherTf.dy.toFixed(2)}px`
+    out['--weather-rot'] = `${weatherTf.rotDeg.toFixed(2)}deg`
+    out['--weather-electric'] = weatherTf.electricCharge.toFixed(3)
+    out['--weather-wet'] = weatherTf.wetness.toFixed(3)
+    out['--weather-sunlit'] = weatherTf.sunlitGlow.toFixed(3)
+    out['--weather-frost'] = weatherTf.frostLevel.toFixed(3)
+    out['--weather-dust'] = weatherTf.dustLevel.toFixed(3)
+    out['--weather-aurora'] = weatherTf.auroraGlow.toFixed(3)
   }
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -2923,12 +3001,15 @@ function applyEdgeCanvasTransform(tx: number, ty: number, s: number): void {
 
 function nodeWithFlipOffset(node: GraphNode, nowMs: number): GraphNode {
   const offset = getNodeFlipWorldOffset(graphHostId.value, node.id, nowMs)
-  if (!offset) return node
+  const weatherTf = canvasWeatherState.nodeTransforms.value[node.id]
+  const dx = (offset?.dx ?? 0) + (weatherTf?.dx ?? 0)
+  const dy = (offset?.dy ?? 0) + (weatherTf?.dy ?? 0)
+  if (dx === 0 && dy === 0) return node
   return {
     ...node,
     position: {
-      x: node.position.x + offset.dx,
-      y: node.position.y + offset.dy
+      x: node.position.x + dx,
+      y: node.position.y + dy
     }
   }
 }
@@ -2976,7 +3057,9 @@ function renderEdgesNow(): void {
 
   const nowMs = performance.now()
   const vfxSnap = !viewportGesturing ? getActiveCanvasVfxSnapshot(graphHostId.value, nowMs) : null
-  const hasFlipOffsets = (vfxSnap?.nodeFlipOffsets.size ?? 0) > 0
+  const hasWeatherOffsets =
+    !viewportGesturing && Object.keys(canvasWeatherState.nodeTransforms.value).length > 0
+  const hasFlipOffsets = (vfxSnap?.nodeFlipOffsets.size ?? 0) > 0 || hasWeatherOffsets
   const geoms = collectEdgeGeometry(nowMs, hasFlipOffsets)
   lastEdgeGeometry = geoms
   const dpr = Math.max(1, window.devicePixelRatio || 1)
@@ -7263,10 +7346,13 @@ const portrait = reactive({
   historyBefore: null as GraphDocument | null
 })
 
-/** 从节点参数里取「当前选中的那张脸」（多人的话按 picked） */
+/** 从节点参数里取「当前选中的那张脸」（多人的话按 picked；版本或拓扑不符的旧缓存直接作废） */
 function readPortraitFace(node: GraphNode): PortraitFaceAnalysis | null {
-  const faces = node.params.portraitFaces?.faces
-  if (!Array.isArray(faces) || !faces.length) return null
+  if (node.params.portraitFaces?.v !== PORTRAIT_FACES_VERSION) return null
+  const raw = node.params.portraitFaces?.faces
+  if (!Array.isArray(raw) || !raw.length) return null
+  const faces = raw.filter((f) => isCanonical68LandmarksValid(f?.landmarks))
+  if (!faces.length) return null
   const picked = node.params.portraitFaces?.picked
   const index = typeof picked === 'number' ? Math.min(faces.length - 1, Math.max(0, picked)) : 0
   return (faces[index] ?? faces[0]) as PortraitFaceAnalysis
@@ -7371,9 +7457,13 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   portrait.nodeId = nodeId
   portrait.setup = readPortraitRetouchFromNode(node.params)
   portrait.regions = normalizePortraitManualRegions(portrait.setup.manualRegions)
-  const rawFaces = Array.isArray(node.params.portraitFaces?.faces)
-    ? (node.params.portraitFaces!.faces as PortraitFaceAnalysis[])
-    : []
+  const validCachedFaces = node.params.portraitFaces?.v === PORTRAIT_FACES_VERSION
+  const rawFaces =
+    validCachedFaces && Array.isArray(node.params.portraitFaces?.faces)
+      ? (node.params.portraitFaces!.faces as PortraitFaceAnalysis[]).filter((f) =>
+          isCanonical68LandmarksValid(f?.landmarks)
+        )
+      : []
   const rawPicked =
     typeof node.params.portraitFaces?.picked === 'number'
       ? Math.max(0, Math.min(Math.max(0, rawFaces.length - 1), node.params.portraitFaces.picked))
@@ -7419,6 +7509,11 @@ async function onPortraitOpen(nodeId: string): Promise<void> {
   try {
     const url = await resolvePortraitBaseUrl(nodeId)
     if (isCurrent()) {
+      const cachedHash = node.params.portraitFaces?.sourceHash
+      if (url && cachedHash && cachedHash !== portraitSourceHash(url)) {
+        portrait.faces = []
+        portrait.face = null
+      }
       portrait.sourceUrl = url
       portrait.sourceLoading = false
     }
@@ -7549,11 +7644,16 @@ function applyPortraitParams(payload: PortraitEditorPayload): void {
       ? { ...readPortraitRetouchFromNode(node.params), manualRegions: payload.manualRegions }
       : null
   const patch = retouch ? portraitRetouchToNodePatch(retouch) : {}
-  const existingFaces = node.params.portraitFaces
-  const nextFacesList = payload.faces ?? existingFaces?.faces ?? []
+  const existingFaces =
+    node.params.portraitFaces?.v === PORTRAIT_FACES_VERSION ? node.params.portraitFaces : undefined
+  const nextFacesList = (payload.faces ?? existingFaces?.faces ?? []).filter((f) =>
+    isCanonical68LandmarksValid(f?.landmarks)
+  )
   const nextPicked =
     payload.pickedFaceIndex !== undefined ? payload.pickedFaceIndex : (existingFaces?.picked ?? 0)
-  const shouldPatchFaces = payload.faces !== undefined || payload.pickedFaceIndex !== undefined
+  const shouldPatchFaces =
+    nextFacesList.length > 0 &&
+    (payload.faces !== undefined || payload.pickedFaceIndex !== undefined)
   node.params = {
     ...node.params,
     ...patch,
@@ -7565,12 +7665,21 @@ function applyPortraitParams(payload: PortraitEditorPayload): void {
     ...(shouldPatchFaces
       ? {
           portraitFaces: {
-            at: existingFaces?.at ?? new Date().toISOString(),
+            v: PORTRAIT_FACES_VERSION,
+            sourceHash: portrait.sourceUrl
+              ? portraitSourceHash(portrait.sourceUrl)
+              : (existingFaces?.sourceHash ?? ''),
+            at:
+              payload.faces !== undefined
+                ? new Date().toISOString()
+                : (existingFaces?.at ?? new Date().toISOString()),
             faces: nextFacesList,
             picked: nextPicked
           }
         }
-      : {}),
+      : !existingFaces
+        ? { portraitFaces: undefined }
+        : {}),
     ...(payload.generateModel !== undefined ? { generateModel: payload.generateModel } : {}),
     ...(payload.generateProviderInstanceId !== undefined
       ? { generateProviderInstanceId: payload.generateProviderInstanceId }
@@ -11505,6 +11614,52 @@ defineExpose({
   pointer-events: none;
   z-index: 12;
   will-change: transform;
+}
+
+/* 动态天气系统：节点物理反馈（风摆、雷击电弧充能、雨滴润泽、晴空金辉） */
+.graph-world :deep(.vfx-weather-active) {
+  transform: translate3d(var(--weather-dx, 0px), var(--weather-dy, 0px), 0)
+    rotate(var(--weather-rot, 0deg));
+  transform-origin: 50% 15%;
+  will-change: transform;
+}
+
+.graph-world :deep(.vfx-weather-struck) {
+  box-shadow:
+    0 0 calc(30px * var(--weather-electric, 0.6)) rgba(125, 211, 252, 0.88),
+    0 0 calc(12px * var(--weather-electric, 0.6)) rgba(224, 242, 254, 0.95) inset !important;
+  border-color: rgba(186, 230, 253, 0.95) !important;
+}
+
+.graph-world :deep(.vfx-weather-wet) {
+  box-shadow:
+    0 8px 22px rgba(2, 6, 23, 0.45),
+    0 1.5px 0 rgba(186, 230, 253, calc(0.55 * var(--weather-wet, 0))) inset;
+}
+
+.graph-world :deep(.vfx-weather-sunlit) {
+  box-shadow:
+    0 8px 28px rgba(251, 191, 36, calc(0.28 * var(--weather-sunlit, 0))),
+    0 0 0 1px rgba(253, 224, 71, calc(0.45 * var(--weather-sunlit, 0))) inset;
+}
+
+.graph-world :deep(.vfx-weather-frost) {
+  box-shadow:
+    0 6px 24px rgba(186, 230, 253, calc(0.26 * var(--weather-frost, 0))),
+    0 2.5px 0 rgba(240, 249, 255, calc(0.82 * var(--weather-frost, 0))) inset;
+}
+
+.graph-world :deep(.vfx-weather-dust) {
+  box-shadow:
+    0 8px 24px rgba(217, 119, 6, calc(0.24 * var(--weather-dust, 0))),
+    0 0 0 1px rgba(245, 158, 11, calc(0.42 * var(--weather-dust, 0))) inset;
+}
+
+.graph-world :deep(.vfx-weather-aurora) {
+  box-shadow:
+    0 8px 28px rgba(52, 211, 153, calc(0.24 * var(--weather-aurora, 0))),
+    0 0 18px rgba(192, 132, 252, calc(0.22 * var(--weather-aurora, 0))),
+    0 0 0 1px rgba(110, 231, 183, calc(0.45 * var(--weather-aurora, 0))) inset;
 }
 
 .graph-group {

@@ -31,13 +31,13 @@
     <meta property="og:title" content="短剧制作教程 · AIArtEngine" />
     <meta property="og:description" content="AIArtEngine 短剧制作教程：用一键工作流的「影视全流程」或「影视精修·单镜头」模板自动生成节点图，在合一的「影视工作台」（film.workbench）内一站式完成分镜拆解、导演审核自动修订、角色场景设定与批量拍摄。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/film-workbench.webp" />
+    <meta property="og:image:width" content="1440" />
+    <meta property="og:image:height" content="900" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="短剧制作教程 · AIArtEngine" />
     <meta name="twitter:description" content="AIArtEngine 短剧制作教程：用一键工作流的「影视全流程」或「影视精修·单镜头」模板自动生成节点图，在合一的「影视工作台」（film.workbench）内一站式完成分镜拆解、导演审核自动修订、角色场景设定与批量拍摄。" />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/film-workbench.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/guide-short-video.html" />
@@ -206,13 +206,23 @@
           <p>
             把剧本填入「剧本」节点后，<strong>双击「影视工作台」节点</strong>（或点击右侧 Inspector 的「打开影视工作台」）进入全屏 Dive 工作台。顶部提供四个阶段页签，右上角既可点击 <strong>「⚡ 一键全流程」</strong> 一次跑完四阶段，也可点击当前阶段运行按钮逐阶段推进与审校：
           </p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="短剧影视工作台：分镜拆解卡片、角色/地点/道具 @1-@4 参考图标签、分段动态提示词与 3D 导演台白模预演"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>短剧影视工作台（<code>film.workbench</code>）：在 ① 分镜拆解中生成结构化镜头卡片、角色/地点/道具 <code>@1</code>–<code>@4</code> 引用与按秒分段（<code>0-1s</code> / <code>1-4s</code>…）的动态提示词。</figcaption>
+          </figure>
           <ol>
             <li>
               <strong>① 分镜拆解（<code>breakdown</code>）</strong>：
               <ul>
                 <li>在左侧栏设置<strong>画幅比例</strong>（竖屏短剧常用 <code>9:16</code>，横屏影视常用 <code>16:9</code>）、<strong>目标镜头数</strong>（<code>0</code> 表示按剧情自动决定镜头数，不再强行凑 9 格 / 36 格）、<strong>单镜时长预设</strong>（支持 <code>自动 / 4s / 8s / 10s / 15s</code>，直接对齐主流视频模型时长档位）与<strong>视觉风格</strong>。</li>
                 <li>运行后自动产出场次、镜头卡片列表（含景别、机位角度、运镜、时长秒数、动作表演、台词、画面提示词 <code>imagePrompt</code>、动态提示词 <code>videoPrompt</code>）以及出场<strong>角色 / 场景 / 道具实体表</strong>。</li>
-                <li>可在工作台内直接编辑任意镜头的字段、增删镜头，或点击镜头卡片上的<strong>「锁定」</strong>按钮（锁定后的镜头在重新拆解或导演审核时绝不会被 AI 覆盖）。</li>
+                <li>可在工作台内直接编辑任意镜头的字段、增删镜头，或点击镜头卡片上的<strong>「锁定」</strong>按钮（锁定后的镜头在重新拆解或导演审核时绝不会被 AI 覆盖）；点击右上角<strong>「3D 导演台白模预演」</strong>或单镜卡片上的<strong>「3D预演」</strong>，即可在三维空间内预演角色站位、道具布局与 Cinemachine 运镜轨迹。</li>
               </ul>
             </li>
             <li>
@@ -238,6 +248,16 @@
               </ul>
             </li>
           </ol>
+          <figure class="shot">
+            <img
+              src="assets/imgs/script-camera.webp"
+              alt="3D 分镜白模预演与剧本运镜：彩色人形白模与办公桌道具站位、Cinemachine Brain 分镜机位切换轨与运镜轨迹编辑"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>3D 分镜白模预演：从影视工作台一键进入三维白模舞台，在 Cinemachine Brain 分镜机位切换轨与运镜轨上直观排练角色站位与镜头轨迹。</figcaption>
+          </figure>
           <div class="tip">
             <strong>省额度技巧（先看画面再出视频）：</strong>第一次跑长剧本时，可先把「④ 批量拍摄」的产出模式设为<strong>「仅关键帧」</strong>，快速确认全部镜头构图与角色造型；对个别不满意的镜头单卡重拍后，再把产出模式切回<strong>「关键帧 + 视频」</strong>运行——此时已有的关键帧会 100% 命中指纹缓存不重画，只增量生成各镜视频。
           </div>
@@ -259,6 +279,26 @@
               <strong>合成整集成片</strong>：将 <code>影视工作台</code> 的 <code>out-videos</code> 端口接入「视频拼接」（<code>video.concat</code>）节点一键合成完整短剧视频，或打开<strong>成片时间线</strong>拖入各镜视频、配音与配乐多轨剪辑导出。
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/image-editor.webp"
+              alt="10 合 1 图像精修工作台：对单镜关键帧做本地抠图、边缘精修、修补画笔与 AI 重绘扩图"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>单镜精修：在「关键帧」与「镜头视频」之间接入 10 合 1 图像处理工作台做局部重绘、抠图或扩图。</figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="成片多轨时间线：创意素材、特效、转场、滤镜、调节、模板与剪映草稿导出"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>合成整集成片：在成片时间线中编排各镜视频、配音、字幕与音效，一键导出 MP4 成片或剪映草稿。</figcaption>
+          </figure>
         </section>
 
         <section id="faq">

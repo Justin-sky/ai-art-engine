@@ -11,6 +11,7 @@ import {
   normalizeDirectorShadingMode,
   normalizeStageLightParams,
   readDirectorSceneWorld,
+  type DirectorAnimTrack,
   type DirectorAspectRatio,
   type DirectorCameraState,
   type DirectorCinemachineAimMode,
@@ -20,6 +21,7 @@ import {
   type DirectorCinemachineFollowSpace,
   type DirectorCinemachineNoisePreset,
   type DirectorShadingMode,
+  type DirectorSkeletonClipSegment,
   type DirectorStageState,
   type DirectorViewMode,
   type StageLightType,
@@ -253,12 +255,136 @@ function patchScaleVec(base: StageVec3, raw: unknown, uniformRaw?: unknown): Sta
 }
 
 const EXPRESSIVE_POSE_ALIASES: Array<[string, string[]]> = [
+  [
+    'body.standRelaxed',
+    [
+      'body.standrelaxed',
+      'stand.relaxed',
+      'standrelaxed',
+      'standing',
+      '自然站立',
+      '放松站立',
+      '站立',
+      '站姿'
+    ]
+  ],
+  [
+    'body.standConfident',
+    [
+      'body.standconfident',
+      'stand.confident',
+      'standconfident',
+      'confident',
+      '自信挺立',
+      '挺胸站立',
+      '挺立'
+    ]
+  ],
+  [
+    'body.handsOnHips',
+    ['body.handsonhips', 'stand.handsonhips', 'handsonhips', 'akimbo', '双手叉腰', '叉腰']
+  ],
+  [
+    'body.armsCrossed',
+    ['body.armscrossed', 'stand.armscrossed', 'armscrossed', '双手抱胸', '抱胸', '抱臂']
+  ],
+  ['body.leanWall', ['body.leanwall', 'leanwall', 'lean', '斜靠', '靠墙', '倚靠']],
+  ['body.walk', ['body.walk', 'action.walk', 'walk', 'walking', '行走', '迈步', '走路', '漫步']],
+  ['body.run', ['body.run', 'action.run', 'run', 'running', '奔跑', '跑步', '快跑']],
+  ['body.sprint', ['body.sprint', 'sprint', '冲刺', '狂奔', '疾跑']],
+  [
+    'body.jump',
+    ['body.jump', 'action.jump', 'jump', 'jumping', 'leap', '跳跃', '跳起', '腾空跳', '起跳', '跳']
+  ],
+  [
+    'body.sitChair',
+    [
+      'body.sitchair',
+      'sit.chair',
+      'sitchair',
+      'sit',
+      'sitting',
+      'seated',
+      '端坐',
+      '坐姿',
+      '坐下',
+      '坐椅子',
+      '坐'
+    ]
+  ],
+  [
+    'body.sitCrossLegs',
+    ['body.sitcrosslegs', 'sitcrosslegs', 'crosslegs', '翘二郎腿', '二郎腿', '交叠坐']
+  ],
+  [
+    'body.sitSlumped',
+    ['body.sitslumped', 'sitslumped', 'slump', 'slumped', '瘫坐', '伏案', '慵懒瘫坐', '低头坐']
+  ],
+  [
+    'body.sitFloor',
+    ['body.sitfloor', 'sit.floor', 'sitfloor', 'crosslegged', '盘腿坐', '席地而坐', '盘坐', '打坐']
+  ],
+  [
+    'body.crouch',
+    ['body.crouch', 'action.crouch', 'crouch', 'squat', '蹲下', '下蹲', '蹲姿', '蹲']
+  ],
+  [
+    'body.kneel',
+    ['body.kneel', 'kneel', 'kneeling', '单膝跪地', '单跪', '半跪', '跪下', '下跪', '跪']
+  ],
+  [
+    'body.lieDown',
+    ['body.liedown', 'liedown', 'lying', 'sleep', '平躺', '躺下', '卧倒', '睡觉', '躺']
+  ],
+  ['body.bow', ['body.bow', 'bow', 'bowing', '鞠躬', '行礼', '敬礼', '致谢']],
+  ['body.wave', ['body.wave', 'gesture.wave', 'wave', 'waving', '挥手', '招手', '打招呼']],
+  [
+    'body.cheer',
+    ['body.cheer', 'cheer', 'cheering', 'celebrate', '欢呼', '庆祝', '高举双手', '振臂']
+  ],
+  ['body.dance', ['body.dance', 'dance', 'dancing', '跳舞', '舞蹈', '起舞', '律动']],
+  ['body.stretch', ['body.stretch', 'stretch', 'stretching', '伸懒腰', '拉伸', '舒展']],
+  [
+    'body.think',
+    [
+      'body.think',
+      'gesture.think',
+      'think',
+      'thinking',
+      'ponder',
+      '思考',
+      '托腮',
+      '沉思',
+      '托腮思考'
+    ]
+  ],
+  ['body.phone', ['body.phone', 'phone', 'texting', 'phonelook', '看手机', '刷手机', '低头看手机']],
+  [
+    'body.drink',
+    ['body.drink', 'drink', 'drinking', 'toast', '举杯', '喝水', '饮水', '喝酒', '干杯']
+  ],
+  [
+    'body.combatGuard',
+    [
+      'body.combatguard',
+      'action.combat',
+      'combatguard',
+      'fighting',
+      '格斗',
+      '格斗架势',
+      '出拳',
+      '迎战'
+    ]
+  ],
+  ['body.kick', ['body.kick', 'kick', 'sidekick', '侧踢', '踢腿', '飞踢']],
   ['hand.relaxed', ['hand.relaxed', 'relaxed', '自然垂手', '放松手势', '自然手势']],
   ['hand.fist', ['hand.fist', 'fist', '握拳', '双拳紧握']],
   ['hand.open', ['hand.open', 'open', '张手', '张开手掌', '摊手']],
   ['hand.pointRight', ['hand.pointright', 'pointright', 'point', '右手指引', '指向前方', '手指']],
+  ['hand.wave', ['hand.wave', '挥手致意', '右手挥手']],
+  ['hand.clap', ['hand.clap', 'clap', 'applaud', '鼓掌', '拍手', '双手合十']],
   ['gaze.lookUp', ['gaze.lookup', 'lookup', '仰视', '抬头', '向上看', '仰望']],
-  ['gaze.lookDown', ['gaze.lookdown', 'lookdown', '俯视', '低头', '向下看', '沉思']],
+  ['gaze.lookDown', ['gaze.lookdown', 'lookdown', '俯视', '低头', '向下看']],
   [
     'gaze.tiltCuriosity',
     ['gaze.tiltcuriosity', 'tiltcuriosity', 'curiosity', '歪头', '好奇', '歪头好奇']
@@ -267,8 +393,272 @@ const EXPRESSIVE_POSE_ALIASES: Array<[string, string[]]> = [
   [
     'gaze.combatReady',
     ['gaze.combatready', 'combatready', 'combat', '战斗戒备', '战斗姿态', '备战']
+  ],
+  ['gaze.lookAround', ['gaze.lookaround', 'lookaround', '侧首', '张望', '环顾', '转头看']]
+]
+
+export const BUILTIN_ANIMATION_CLIP_NAMES = [
+  'Idle',
+  'Walk',
+  'Run',
+  'Sprint',
+  'Jump',
+  'Sit',
+  'SitFloor',
+  'Crouch',
+  'Kneel',
+  'LieDown',
+  'Wave',
+  'Bow',
+  'Clap',
+  'Cheer',
+  'Dance',
+  'Talk',
+  'Think',
+  'PhoneLook',
+  'Stretch',
+  'LookAround',
+  'Drink',
+  'PushUp',
+  'Fall',
+  'Action'
+] as const
+
+const BUILTIN_CLIP_ALIASES: Array<[string, string[]]> = [
+  ['Idle', ['idle', 'stand', 'breathe', '待机', '站立', '呼吸', '静止']],
+  ['Walk', ['walk', 'walking', 'stroll', '行走', '走路', '迈步', '漫步', '散步', '走']],
+  ['Run', ['run', 'running', 'jog', '奔跑', '跑步', '快跑', '小跑', '跑']],
+  ['Sprint', ['sprint', 'dash', 'chase', '冲刺', '狂奔', '疾跑', '追逐']],
+  ['Jump', ['jump', 'jumping', 'leap', 'hop', '跳跃', '跳起', '起跳', '蹦跳', '跳']],
+  ['Sit', ['sit', 'sitting', 'sitchair', '坐下', '端坐', '坐姿', '坐椅子', '坐']],
+  ['SitFloor', ['sitfloor', 'crosslegged', 'meditate', '盘腿坐', '席地而坐', '盘坐', '打坐']],
+  ['Crouch', ['crouch', 'squat', 'sneak', '蹲下', '下蹲', '蹲伏', '潜行', '蹲']],
+  ['Kneel', ['kneel', 'kneeling', '单膝跪', '下跪', '半跪', '跪下', '跪']],
+  ['LieDown', ['liedown', 'lie', 'sleep', 'rest', '平躺', '躺下', '卧倒', '睡觉', '躺']],
+  ['Wave', ['wave', 'waving', 'greet', 'hello', '挥手', '招手', '打招呼', '致意']],
+  ['Bow', ['bow', 'bowing', 'salute', '鞠躬', '敬礼', '行礼', '致谢']],
+  ['Clap', ['clap', 'clapping', 'applaud', '鼓掌', '拍手', '叫好']],
+  ['Cheer', ['cheer', 'cheering', 'celebrate', 'victory', '欢呼', '庆祝', '振臂', '雀跃']],
+  ['Dance', ['dance', 'dancing', 'groove', '跳舞', '舞蹈', '起舞', '律动']],
+  ['Talk', ['talk', 'talking', 'speak', 'chat', 'explain', '交谈', '说话', '对话', '讲述', '比划']],
+  ['Think', ['think', 'thinking', 'ponder', '思考', '沉思', '思索', '托腮']],
+  ['PhoneLook', ['phonelook', 'phone', 'texting', '看手机', '刷手机', '玩手机', '低头看手机']],
+  ['Stretch', ['stretch', 'stretching', 'yawn', '伸懒腰', '拉伸', '舒展', '活动筋骨']],
+  ['LookAround', ['lookaround', 'search', 'scan', '左顾右盼', '张望', '环顾', '四处看']],
+  [
+    'Drink',
+    ['drink', 'drinking', 'sip', 'toast', '喝水', '举杯', '饮水', '喝酒', '喝咖啡', '干杯']
+  ],
+  ['PushUp', ['pushup', 'push-up', 'workout', '俯卧撑', '锻炼', '健身']],
+  ['Fall', ['fall', 'falling', 'trip', 'collapse', '跌倒', '摔倒', '倒地', '晕倒']],
+  [
+    'Action',
+    ['action', 'combat', 'fight', 'attack', 'punch', '格斗', '战斗', '出拳', '攻击', '武术']
   ]
 ]
+
+export function resolveBuiltinAnimationClipName(input: string): string {
+  const trimmed = input.trim()
+  if (!trimmed) return 'Idle'
+  const lower = trimmed.toLowerCase()
+  for (const name of BUILTIN_ANIMATION_CLIP_NAMES) {
+    if (name === trimmed || name.toLowerCase() === lower) {
+      return name
+    }
+  }
+  for (const [clipName, aliases] of BUILTIN_CLIP_ALIASES) {
+    if (aliases.some((alias) => alias === lower)) {
+      return clipName
+    }
+  }
+  for (const [clipName, aliases] of BUILTIN_CLIP_ALIASES) {
+    if (aliases.some((alias) => lower.includes(alias) || alias.includes(lower))) {
+      return clipName
+    }
+  }
+  return trimmed
+}
+
+function applyExpressivePosePresetOffline(obj: StageObjectState, presetId: string): boolean {
+  const preset = DIRECTOR_EXPRESSIVE_POSE_PRESETS.find((p) => p.id === presetId)
+  if (!preset) return false
+  const nextPose: Record<string, StageVec3> = { ...(obj.bonePose ?? {}) }
+  if (preset.category === 'body') {
+    const bodyResetKeys = [
+      'Hips',
+      'Hips.position',
+      'Spine',
+      'Chest',
+      'Neck',
+      'Head',
+      'LeftShoulder',
+      'LeftUpperArm',
+      'LeftForeArm',
+      'LeftHand',
+      'RightShoulder',
+      'RightUpperArm',
+      'RightForeArm',
+      'RightHand',
+      'LeftUpLeg',
+      'LeftLeg',
+      'LeftFoot',
+      'RightUpLeg',
+      'RightLeg',
+      'RightFoot'
+    ]
+    for (const k of bodyResetKeys) {
+      delete nextPose[k]
+    }
+  } else if (preset.category === 'hand') {
+    for (const k of [
+      'LeftUpperArm',
+      'LeftForeArm',
+      'LeftHand',
+      'RightUpperArm',
+      'RightForeArm',
+      'RightHand'
+    ]) {
+      delete nextPose[k]
+    }
+  } else if (preset.category === 'gaze') {
+    for (const k of ['Spine', 'Chest', 'Neck', 'Head']) {
+      delete nextPose[k]
+    }
+  }
+  for (const [boneName, vec] of Object.entries(preset.bones)) {
+    if (boneName.endsWith('.position')) {
+      nextPose[boneName] = { x: vec.x, y: vec.y, z: vec.z }
+    } else {
+      nextPose[boneName] = {
+        x: vec.x * DEG_TO_RAD,
+        y: vec.y * DEG_TO_RAD,
+        z: vec.z * DEG_TO_RAD
+      }
+    }
+  }
+  obj.bonePose = nextPose
+  return true
+}
+
+function ensureCharacterAnimationTrack(
+  stage: DirectorStageState,
+  obj: StageObjectState
+): DirectorAnimTrack {
+  if (!stage.animation) {
+    stage.animation = {
+      duration: 5,
+      loop: true,
+      tracks: []
+    }
+  }
+  let track = stage.animation.tracks.find(
+    (t) => t.targetKind === 'object' && t.targetId === obj.id && !t.cameraCut
+  )
+  if (!track) {
+    const newTrack: DirectorAnimTrack = {
+      id: `track:${obj.id}:${crypto.randomUUID().slice(0, 8)}`,
+      name: `${obj.name} 动画`,
+      targetKind: 'object',
+      targetId: obj.id,
+      start: 0,
+      end: Math.max(1, stage.animation.duration ?? 5),
+      path: null,
+      keyframes: [],
+      skeletonClips: []
+    }
+    stage.animation.tracks = [...stage.animation.tracks, newTrack]
+    track = newTrack
+  }
+  if (!track.skeletonClips) {
+    track.skeletonClips = []
+  }
+  return track
+}
+
+function applyCharacterSkeletonClipsToStage(
+  stage: DirectorStageState,
+  obj: StageObjectState,
+  rawOp: Record<string, unknown>
+): string[] {
+  const actionsApplied: string[] = []
+  const rawClip =
+    str(rawOp.clip) || str(rawOp.animationClip) || str(rawOp.actionClip) || str(rawOp.skeletonClip)
+  const rawSegments = Array.isArray(rawOp.skeletonClips)
+    ? rawOp.skeletonClips
+    : Array.isArray(rawOp.actionSequence)
+      ? rawOp.actionSequence
+      : null
+
+  if (!rawClip && !rawSegments) return actionsApplied
+
+  const track = ensureCharacterAnimationTrack(stage, obj)
+  const duration = Math.max(1, stage.animation?.duration ?? 5)
+
+  if (rawSegments && rawSegments.length > 0) {
+    const builtSegments: DirectorSkeletonClipSegment[] = []
+    let cursor = 0
+    for (let i = 0; i < rawSegments.length; i++) {
+      const item = rawSegments[i]
+      if (!item || typeof item !== 'object') continue
+      const rec = item as Record<string, unknown>
+      const segClipRaw =
+        str(rec.clip) || str(rec.animationClip) || str(rec.action) || str(rec.name) || 'Idle'
+      const resolvedClip = resolveBuiltinAnimationClipName(segClipRaw)
+      const start = Math.max(0, num(rec.start) ?? cursor)
+      const dur = num(rec.duration) ?? 2
+      const end = Math.max(start + 0.2, num(rec.end) ?? start + dur)
+      cursor = end
+      builtSegments.push({
+        id: str(rec.id) || `sk:${obj.id}:${i + 1}:${crypto.randomUUID().slice(0, 6)}`,
+        clip: resolvedClip,
+        start: round2(start),
+        end: round2(end),
+        speed: Math.max(0.1, Math.min(4, num(rec.speed) ?? 1)),
+        loop: bool(rec.loop) ?? true,
+        crossFadeSec: Math.max(0, Math.min(2, num(rec.crossFadeSec) ?? 0.25))
+      })
+    }
+    if (builtSegments.length > 0) {
+      track.skeletonClips = builtSegments
+      const maxEnd = Math.max(...builtSegments.map((s) => s.end))
+      if (stage.animation && maxEnd > stage.animation.duration) {
+        stage.animation.duration = round2(maxEnd)
+      }
+      actionsApplied.push(
+        `skeleton_sequence:${obj.name}[${builtSegments.map((s) => `${s.clip}(${s.start}-${s.end}s)`).join('->')}]`
+      )
+    }
+  } else if (rawClip) {
+    const resolvedClip = resolveBuiltinAnimationClipName(rawClip)
+    const hasExplicitRange = num(rawOp.start) !== undefined || num(rawOp.end) !== undefined
+    const appendMode = rawOp.appendClip === true || rawOp.addClip === true
+    const start = Math.max(0, num(rawOp.start) ?? 0)
+    const end = Math.max(start + 0.2, num(rawOp.end) ?? duration)
+    const seg: DirectorSkeletonClipSegment = {
+      id: `sk:${obj.id}:${crypto.randomUUID().slice(0, 8)}`,
+      clip: resolvedClip,
+      start: round2(start),
+      end: round2(end),
+      speed: Math.max(0.1, Math.min(4, num(rawOp.speed) ?? 1)),
+      loop: bool(rawOp.loop) ?? true,
+      crossFadeSec: Math.max(0, Math.min(2, num(rawOp.crossFadeSec) ?? 0.25))
+    }
+    if (appendMode || hasExplicitRange) {
+      const existing = (track.skeletonClips ?? []).filter(
+        (s) => !(Math.abs(s.start - seg.start) < 0.05 && Math.abs(s.end - seg.end) < 0.05)
+      )
+      track.skeletonClips = [...existing, seg].sort((a, b) => a.start - b.start)
+    } else {
+      track.skeletonClips = [seg]
+    }
+    if (stage.animation && seg.end > stage.animation.duration) {
+      stage.animation.duration = round2(seg.end)
+    }
+    actionsApplied.push(`skeleton_clip:${obj.name}->${resolvedClip}(${seg.start}-${seg.end}s)`)
+  }
+
+  return actionsApplied
+}
 
 function resolveExpressivePosePresetId(input: string): string {
   const trimmed = input.trim()
@@ -570,10 +960,13 @@ export function serializeDirectorStageSnapshot(
             cameraCut: t.cameraCut === true,
             keyframeCount: t.keyframes?.length ?? 0,
             skeletonClipCount: t.skeletonClips?.length ?? 0,
+            ...(t.skeletonClips?.length ? { skeletonClips: t.skeletonClips } : {}),
             cutSegmentCount: t.cameraSegments?.length ?? 0
           }))
         }
       : null,
+    availablePosePresets: DIRECTOR_EXPRESSIVE_POSE_PRESETS.map((p) => p.id),
+    availableAnimationClips: [...BUILTIN_ANIMATION_CLIP_NAMES],
     shotsCount: stage.cameraShots?.length ?? 0,
     cinematographyPrompt: buildDirectorCinematographyPrompt(stage).prompt
   }
@@ -793,6 +1186,11 @@ export async function executeDirectorStageEdit(
       opKind === 'set_visible' ||
       opKind === 'transform_object' ||
       opKind === 'pose_update' ||
+      opKind === 'set_action' ||
+      opKind === 'switch_action' ||
+      opKind === 'play_clip' ||
+      opKind === 'set_clip' ||
+      opKind === 'sequence_actions' ||
       opKind === 'light_update' ||
       opKind === 'material_update' ||
       opKind === 'reparent_object'
@@ -1078,6 +1476,46 @@ export async function executeDirectorStageEdit(
           if (savePoseName) {
             await liveScene.saveObjectPoseAsAsset(obj.id, savePoseName, null)
           }
+        } else {
+          if (rawOp.resetPose === true) {
+            obj.bonePose = {}
+          }
+          const rawPosePreset = str(rawOp.posePreset) || str(rawOp.expressivePosePreset)
+          if (rawPosePreset) {
+            const presetId = resolveExpressivePosePresetId(rawPosePreset)
+            applyExpressivePosePresetOffline(obj, presetId)
+          }
+          if (rawOp.bonePose && typeof rawOp.bonePose === 'object') {
+            const nextPose: Record<string, StageVec3> = { ...(obj.bonePose ?? {}) }
+            for (const [boneName, euler] of Object.entries(
+              rawOp.bonePose as Record<string, Record<string, unknown>>
+            )) {
+              if (!euler || typeof euler !== 'object') continue
+              const prev = nextPose[boneName] ?? { x: 0, y: 0, z: 0 }
+              if (boneName.endsWith('.position')) {
+                nextPose[boneName] = {
+                  x: num(euler.x) ?? prev.x,
+                  y: num(euler.y) ?? prev.y,
+                  z: num(euler.z) ?? prev.z
+                }
+              } else {
+                nextPose[boneName] = {
+                  x: num(euler.x) !== undefined ? num(euler.x)! * DEG_TO_RAD : prev.x,
+                  y: num(euler.y) !== undefined ? num(euler.y)! * DEG_TO_RAD : prev.y,
+                  z: num(euler.z) !== undefined ? num(euler.z)! * DEG_TO_RAD : prev.z
+                }
+              }
+            }
+            obj.bonePose = nextPose
+          }
+        }
+
+        const clipActions = applyCharacterSkeletonClipsToStage(stage, obj, rawOp)
+        if (clipActions.length > 0) {
+          applied.push(...clipActions)
+          if (liveScene && (rawOp.play === true || opKind === 'play_clip')) {
+            liveScene.playAnimation()
+          }
         }
 
         if (rawOp.select === true) {
@@ -1248,6 +1686,10 @@ export async function executeDirectorStageEdit(
                 resolveExpressivePosePresetId(rawPosePreset)
               )
             }
+            const clipActions = applyCharacterSkeletonClipsToStage(stage, createdObj, rawOp)
+            if (clipActions.length > 0) {
+              applied.push(...clipActions)
+            }
           }
           applied.push(`object_add:${createdId}`)
         }
@@ -1281,7 +1723,15 @@ export async function executeDirectorStageEdit(
             z: 1
           }
         }
+        const rawPosePreset = str(rawOp.posePreset) || str(rawOp.expressivePosePreset)
+        if (rawPosePreset) {
+          applyExpressivePosePresetOffline(baseObj, resolveExpressivePosePresetId(rawPosePreset))
+        }
         stage.objects = [...stage.objects, baseObj]
+        const clipActions = applyCharacterSkeletonClipsToStage(stage, baseObj, rawOp)
+        if (clipActions.length > 0) {
+          applied.push(...clipActions)
+        }
         applied.push(`object_add:${baseObj.name}(${createdId})`)
       }
       continue
@@ -2129,21 +2579,66 @@ export async function executeDirectorStageEdit(
     }
 
     if (opKind === 'anim_control') {
-      if (!liveScene) {
-        warnings.push('anim_control requires the 3D Director Stage to be open in the left window')
-        continue
+      const action = str(rawOp.action)
+      if (!stage.animation) {
+        stage.animation = {
+          duration: 5,
+          loop: true,
+          tracks: []
+        }
       }
-      if (num(rawOp.duration) !== undefined) liveScene.setAnimDuration(num(rawOp.duration)!)
-      if (bool(rawOp.loop) !== undefined) liveScene.setAnimLoop(bool(rawOp.loop)!)
-      if (num(rawOp.playbackRate) !== undefined) {
+      if (num(rawOp.duration) !== undefined) {
+        const nextDur = Math.max(0.5, num(rawOp.duration)!)
+        if (liveScene) liveScene.setAnimDuration(nextDur)
+        else stage.animation.duration = nextDur
+      }
+      if (bool(rawOp.loop) !== undefined) {
+        if (liveScene) liveScene.setAnimLoop(bool(rawOp.loop)!)
+        else stage.animation.loop = bool(rawOp.loop)!
+      }
+      if (liveScene && num(rawOp.playbackRate) !== undefined) {
         liveScene.setAnimPlaybackRate(num(rawOp.playbackRate)!)
       }
-      const action = str(rawOp.action)
-      if (action === 'play') liveScene.playAnimation()
-      else if (action === 'pause') liveScene.pauseAnimation()
-      else if (action === 'stop') liveScene.stopAnimation()
-      else if (action === 'seek' && num(rawOp.time) !== undefined) {
-        liveScene.seekAnimation(num(rawOp.time)!)
+
+      if (
+        action === 'set_skeleton_clip' ||
+        action === 'add_skeleton_clip' ||
+        action === 'clear_skeleton_clips' ||
+        str(rawOp.clip) ||
+        str(rawOp.animationClip) ||
+        Array.isArray(rawOp.skeletonClips)
+      ) {
+        const matchedChars = matchStageObjects(
+          stage.objects,
+          { ...rawOp, kind: str(rawOp.kind) || 'character' },
+          fallbackObjId
+        )
+        const targets = matchedChars.length
+          ? matchedChars
+          : stage.objects.filter((o) => o.kind === 'character' || o.kind === 'model')
+        for (const charObj of targets) {
+          if (action === 'clear_skeleton_clips') {
+            const track = ensureCharacterAnimationTrack(stage, charObj)
+            track.skeletonClips = []
+            applied.push(`clear_skeleton_clips:${charObj.name}`)
+          } else {
+            const clipOps = applyCharacterSkeletonClipsToStage(stage, charObj, {
+              ...rawOp,
+              appendClip: action === 'add_skeleton_clip' || rawOp.appendClip === true
+            })
+            applied.push(...clipOps)
+          }
+        }
+      }
+
+      if (action === 'play') {
+        if (liveScene) liveScene.playAnimation()
+      } else if (action === 'pause') {
+        if (liveScene) liveScene.pauseAnimation()
+      } else if (action === 'stop') {
+        if (liveScene) liveScene.stopAnimation()
+      } else if (action === 'seek' && num(rawOp.time) !== undefined) {
+        if (liveScene) liveScene.seekAnimation(num(rawOp.time)!)
       } else if (action === 'add_track') {
         const targetKind = str(rawOp.targetKind) === 'camera' ? 'camera' : 'object'
         const targetId =
@@ -2152,17 +2647,28 @@ export async function executeDirectorStageEdit(
             ? fallbackCamId
             : (resolveSubjectObjectId(stage.objects, rawOp.targetName ?? rawOp.name) ??
               fallbackObjId))
-        if (targetId) liveScene.addAnimTrack(targetKind, targetId)
+        if (targetId) {
+          if (liveScene) {
+            liveScene.addAnimTrack(targetKind, targetId)
+          } else if (targetKind === 'object') {
+            const obj = stage.objects.find((o) => o.id === targetId)
+            if (obj) ensureCharacterAnimationTrack(stage, obj)
+          }
+        }
       } else if (action === 'remove_track' && str(rawOp.trackId)) {
-        liveScene.removeAnimTrack(str(rawOp.trackId))
-      } else if (action === 'add_keyframe') {
+        if (liveScene) {
+          liveScene.removeAnimTrack(str(rawOp.trackId))
+        } else {
+          stage.animation.tracks = stage.animation.tracks.filter((t) => t.id !== str(rawOp.trackId))
+        }
+      } else if (action === 'add_keyframe' && liveScene) {
         const trackId = str(rawOp.trackId) || liveScene.animSelectedTrackId.value || ''
         if (trackId) liveScene.addAnimKeyframe(trackId, num(rawOp.time))
-      } else if (action === 'remove_keyframe') {
+      } else if (action === 'remove_keyframe' && liveScene) {
         const trackId = str(rawOp.trackId) || liveScene.animSelectedTrackId.value || ''
         const kfId = str(rawOp.keyframeId) || liveScene.animSelectedKeyframeId.value || ''
         if (trackId && kfId) liveScene.removeAnimKeyframe(trackId, kfId)
-      } else if (action === 'add_cut_segment') {
+      } else if (action === 'add_cut_segment' && liveScene) {
         const cutTrackId = str(rawOp.trackId) || liveScene.addCameraCutTrack()
         const camId = str(rawOp.cameraId) || fallbackCamId || ''
         if (cutTrackId && camId) {
@@ -2174,6 +2680,10 @@ export async function executeDirectorStageEdit(
           )
         }
       } else if (action === 'export_video') {
+        if (!liveScene) {
+          warnings.push('export_video requires the 3D Director Stage to be open in the left window')
+          continue
+        }
         await liveScene.exportAnimationVideo()
       }
       applied.push(`anim_control:${action || 'update'}`)

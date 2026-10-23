@@ -422,10 +422,47 @@
     })
   }
 
+  function enhanceLightbox() {
+    var imgs = document.querySelectorAll('figure.shot img, .demo-graph img')
+    if (!imgs.length) return
+    var lightbox = document.querySelector('.lightbox')
+    if (!lightbox) {
+      lightbox = el(
+        'div',
+        { class: 'lightbox', hidden: '', role: 'dialog', 'aria-modal': 'true', 'aria-label': isEn ? 'Image preview' : '截图放大预览' },
+        '<img alt="" /><div class="lightbox-cap"></div>'
+      )
+      document.body.appendChild(lightbox)
+      lightbox.addEventListener('click', function () {
+        lightbox.hidden = true
+      })
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !lightbox.hidden) lightbox.hidden = true
+      })
+    }
+    var lightboxImg = lightbox.querySelector('img')
+    var lightboxCap = lightbox.querySelector('.lightbox-cap')
+    Array.prototype.forEach.call(imgs, function (img) {
+      if (img.dataset.lbBound) return
+      img.dataset.lbBound = '1'
+      img.style.cursor = 'zoom-in'
+      img.addEventListener('click', function () {
+        if (!lightboxImg || !lightboxCap) return
+        lightboxImg.src = img.currentSrc || img.src
+        lightboxImg.alt = img.alt
+        var fig = img.closest('figure')
+        var cap = fig && fig.querySelector('figcaption')
+        lightboxCap.textContent = (cap && cap.textContent && cap.textContent.trim()) || img.alt
+        lightbox.hidden = false
+      })
+    })
+  }
+
   function init() {
     enhanceCopyBlocks()
     enhanceDocPage()
     enhanceHeroVideo()
+    enhanceLightbox()
     hardenExternalLinks()
   }
 

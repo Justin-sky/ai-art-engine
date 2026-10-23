@@ -537,5 +537,23 @@ describe('剧本生成节点（asset.screenplay）与纯文本节点（text.plai
       expect(selectOut.out.text).toContain('这是第二集')
       expect(selectOut.out.text).not.toContain('这是第一集')
     }
+
+    // 3. 符号化分集选择器 selectedTextId = "ep:1" / "ep:2" 能直接命中 asset.screenplay out-all 产出的 gen-text:<stamp>:1 / :2，且保持 selectedTextId 不变
+    const ep2Node = createNodeFromType('text.select', { x: 200, y: 120 }, { id: 'sel-sym-ep2' })
+    ep2Node.params.selectedTextId = 'ep:2'
+    const ep2Out = await executeSelectTextNode({
+      node: ep2Node,
+      document: { nodes: [ep2Node], edges: [] },
+      inputs: {
+        in: [outAll!]
+      },
+      readRunText: async (relPath: string) => savedFiles[relPath] ?? ''
+    } as unknown as NodeExecuteContext)
+    expect(ep2Node.params.selectedTextId).toBe('ep:2')
+    expect(ep2Out.out?.kind).toBe('text')
+    if (ep2Out.out?.kind === 'text') {
+      expect(ep2Out.out.text).toContain('这是第二集')
+      expect(ep2Out.out.text).not.toContain('这是第一集')
+    }
   })
 })

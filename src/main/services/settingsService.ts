@@ -76,6 +76,9 @@ class SettingsService {
         ...DEFAULT_SETTINGS.editor,
         ...(saved.editor ?? {}),
         canvasVfxEnabled: saved.editor?.canvasVfxEnabled !== false,
+        weatherSystemEnabled: saved.editor?.weatherSystemEnabled !== false,
+        weatherSfxEnabled: saved.editor?.weatherSfxEnabled !== false,
+        weatherBgmEnabled: saved.editor?.weatherBgmEnabled !== false,
         // 读盘也钳一次：手改过 settings.json 的脏值不该直接进渲染层
         stage: normalizeStageControls(saved.editor?.stage)
       },
@@ -115,6 +118,9 @@ class SettingsService {
           Math.max(1, Math.round(settings.editor?.autoSaveIntervalSec || 30))
         ),
         canvasVfxEnabled: settings.editor?.canvasVfxEnabled !== false,
+        weatherSystemEnabled: settings.editor?.weatherSystemEnabled !== false,
+        weatherSfxEnabled: settings.editor?.weatherSfxEnabled !== false,
+        weatherBgmEnabled: settings.editor?.weatherBgmEnabled !== false,
         // 落盘前钳到合法区间：脏值（手改 settings.json / 旧版本缺字段）不该让视口拖不动
         stage: normalizeStageControls(settings.editor?.stage)
       },

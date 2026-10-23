@@ -178,6 +178,17 @@ export function applyDefaultGenerateModels(
         params.filmVideoProviderInstanceId = defaults.videoProviderInstanceId
       }
       if (aspectRatio) params.filmAspectRatio = aspectRatio
+    } else if (
+      node.typeId === 'asset.screenplay' ||
+      node.typeId === 'asset.gameSystem' ||
+      node.typeId === 'prompt.optimize'
+    ) {
+      if (defaults.textModel && !params.generateModel) {
+        params.generateModel = defaults.textModel
+      }
+      if (defaults.textProviderInstanceId && !params.generateProviderInstanceId) {
+        params.generateProviderInstanceId = defaults.textProviderInstanceId
+      }
     } else {
       return node
     }

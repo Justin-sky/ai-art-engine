@@ -98,6 +98,30 @@
           {{ t('settings.canvasVfx.hint') }}
         </p>
 
+        <label class="check">
+          <input v-model="form.editor.weatherSystemEnabled" type="checkbox" />
+          {{ t('settings.weatherSystem.enabled') }}
+        </label>
+        <p class="hint">
+          {{ t('settings.weatherSystem.hint') }}
+        </p>
+        <label class="check">
+          <input
+            v-model="form.editor.weatherSfxEnabled"
+            type="checkbox"
+            :disabled="!form.editor.weatherSystemEnabled"
+          />
+          {{ t('settings.weatherSystem.sfxEnabled') }}
+        </label>
+        <label class="check">
+          <input
+            v-model="form.editor.weatherBgmEnabled"
+            type="checkbox"
+            :disabled="!form.editor.weatherSystemEnabled"
+          />
+          {{ t('settings.weatherSystem.bgmEnabled') }}
+        </label>
+
         <h2 class="about-heading">
           {{ t('settings.about.title') }}
         </h2>
@@ -169,7 +193,14 @@ import { normalizeSearchSettings } from '@shared/searchProvider'
 import type { AppUpdateEvent } from '@shared/update'
 import { setAppLocale } from '../i18n'
 import { useStudioI18n } from '../composables/useStudioI18n'
-import { applyAppTheme, applyEditorPreferences, setCanvasVfxEnabled } from '../editor/preferences'
+import {
+  applyAppTheme,
+  applyEditorPreferences,
+  setCanvasVfxEnabled,
+  setWeatherBgmEnabled,
+  setWeatherSfxEnabled,
+  setWeatherSystemEnabled
+} from '../editor/preferences'
 import { invalidateGenerateModelSettingsCache } from '../features/graph/model/generateModelOptions'
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
@@ -360,7 +391,10 @@ function cloneSettings(source: AppSettings): AppSettings {
     editor: {
       ...DEFAULT_SETTINGS.editor,
       ...toRaw(raw.editor ?? DEFAULT_SETTINGS.editor),
-      canvasVfxEnabled: raw.editor?.canvasVfxEnabled !== false
+      canvasVfxEnabled: raw.editor?.canvasVfxEnabled !== false,
+      weatherSystemEnabled: raw.editor?.weatherSystemEnabled !== false,
+      weatherSfxEnabled: raw.editor?.weatherSfxEnabled !== false,
+      weatherBgmEnabled: raw.editor?.weatherBgmEnabled !== false
     },
     models: normalizeModelsSettings(toRaw(raw.models ?? DEFAULT_SETTINGS.models)),
     search: normalizeSearchSettings(raw.search ?? DEFAULT_SETTINGS.search),
@@ -470,6 +504,24 @@ watch(
   () => form.editor.canvasVfxEnabled,
   (enabled) => {
     setCanvasVfxEnabled(enabled !== false)
+  }
+)
+watch(
+  () => form.editor.weatherSystemEnabled,
+  (enabled) => {
+    setWeatherSystemEnabled(enabled !== false)
+  }
+)
+watch(
+  () => form.editor.weatherSfxEnabled,
+  (enabled) => {
+    setWeatherSfxEnabled(enabled !== false)
+  }
+)
+watch(
+  () => form.editor.weatherBgmEnabled,
+  (enabled) => {
+    setWeatherBgmEnabled(enabled !== false)
   }
 )
 

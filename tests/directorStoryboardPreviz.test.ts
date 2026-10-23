@@ -8,10 +8,13 @@ import {
   type FilmStoryboard
 } from '../src/shared/graph/film/storyboard'
 import {
+  canReuseCompiledStoryboardStage,
   compileStoryboardToDirectorStage,
   compileStoryboardToDirectorStageWithLlm,
-  extractStoryboardShotIdFromDirectorId
+  extractStoryboardShotIdFromDirectorId,
+  markCompiledStoryboardStage
 } from '../src/renderer/src/features/director/directorStoryboardPreviz'
+import { clearStoryboardLayoutPlanCache } from '../src/renderer/src/features/director/directorWhiteModelBuilder'
 
 function createSampleStoryboard(): FilmStoryboard {
   return {
@@ -396,5 +399,199 @@ describe('directorStoryboardPreviz', () => {
     const parts = result.stage.objects.filter((o) => o.parentId === tableRoot?.id)
     expect(parts).toHaveLength(2)
     expect(parts.map((p) => p.primitive)).toEqual(['box', 'cylinder'])
+  })
+
+  it('caches LLM 3D layout plan and reuses compiled stage when storyboard has not changed', async () => {
+    clearStoryboardLayoutPlanCache()
+    const baseStage = createDefaultDirectorStage()
+    const storyboard = createSampleStoryboard()
+    let llmCallCount = 0
+
+    const mockGenerateText = async () => {
+      llmCallCount += 1
+      return {
+        text: JSON.stringify({
+          actors: [
+            {
+              name: '林夏',
+              posture: 'standing',
+              position: { x: -1.1, y: 0, z: 0.1 },
+              rotationYDeg: 80
+            },
+            {
+              name: '陈默',
+              posture: 'sitting',
+              position: { x: 1.1, y: 0, z: 0.1 },
+              rotationYDeg: -80
+            }
+          ],
+          objects: [
+            {
+              name: '全息审讯桌',
+              category: 'surface',
+              position: { x: 0, y: 0, z: 0.2 },
+              rotationYDeg: 0,
+              surfaceHeight: 0.74,
+              parts: [
+                {
+                  label: '桌面',
+                  primitive: 'box',
+                  offset: { x: 0, y: 0.72, z: 0 },
+                  size: { x: 1.5, y: 0.05, z: 0.75 },
+                  color: '#475569'
+                },
+                {
+                  label: '底座',
+                  primitive: 'cylinder',
+                  offset: { x: 0, y: 0.35, z: 0 },
+                  size: { x: 0.4, y: 0.7, z: 0.4 },
+                  color: '#334155'
+                }
+              ]
+            }
+          ]
+        })
+      }
+    }
+
+    const first = await compileStoryboardToDirectorStageWithLlm(baseStage, storyboard, {
+      shotId: 'S01-01',
+      generateText: mockGenerateText
+    })
+    expect(llmCallCount).toBe(1)
+    expect(first.usedLlm).toBe(true)
+
+    first.stage.ownerProcessingNodeId = 'node_motion_1'
+    markCompiledStoryboardStage(first.stage, storyboard, { shotId: 'S01-01' })
+
+    // Re-entering with the exact same storyboard & scope should reuse the stage directly
+    expect(canReuseCompiledStoryboardStage(first.stage, storyboard, { shotId: 'S01-01' })).toBe(
+      true
+    )
+    // Switching to full storyboard scope should not reuse the single-shot stage
+    expect(canReuseCompiledStoryboardStage(first.stage, storyboard, {})).toBe(false)
+
+    // Re-compiling the same shot should hit the LLM layout plan cache without calling generateText again
+    const second = await compileStoryboardToDirectorStageWithLlm(baseStage, storyboard, {
+      shotId: 'S01-01',
+      generateText: mockGenerateText
+    })
+    expect(llmCallCount).toBe(1)
+    expect(second.usedLlm).toBe(true)
+  })
+
+  it('automatically switches skeletal animation clips across shots for everyday actions (PhoneLook, Drink, Jump, Dance, Talk)', () => {
+    const baseStage = createDefaultDirectorStage()
+    const sb: FilmStoryboard = {
+      schema: FILM_STORYBOARD_SCHEMA,
+      title: '日常动作序列',
+      logline: '测试多镜头动作自动切换',
+      aspectRatio: '16:9',
+      style: '写实',
+      entities: [{ id: 'E1', name: '林小满', kind: 'character', description: '主角' }],
+      scenes: [
+        {
+          id: 'S01',
+          order: 1,
+          heading: 'INT. 房间 - 日',
+          location: '房间',
+          time: '日',
+          summary: '日常动作'
+        }
+      ],
+      shots: [
+        {
+          id: 'S01-01',
+          order: 1,
+          sceneId: 'S01',
+          title: '看手机',
+          durationSec: 2,
+          shotSize: '中景',
+          angle: '平视',
+          cameraMove: '固定',
+          location: '房间',
+          characters: ['林小满'],
+          props: [],
+          action: '林小满低头看手机消息',
+          dialogue: [],
+          sound: '',
+          transition: '硬切',
+          imagePrompt: '',
+          videoPrompt: '',
+          status: 'draft'
+        },
+        {
+          id: 'S01-02',
+          order: 2,
+          sceneId: 'S01',
+          title: '喝咖啡',
+          durationSec: 2,
+          shotSize: '近景',
+          angle: '平视',
+          cameraMove: '固定',
+          location: '房间',
+          characters: ['林小满'],
+          props: [],
+          action: '林小满端起杯子喝水',
+          dialogue: [],
+          sound: '',
+          transition: '硬切',
+          imagePrompt: '',
+          videoPrompt: '',
+          status: 'draft'
+        },
+        {
+          id: 'S01-03',
+          order: 3,
+          sceneId: 'S01',
+          title: '兴奋跳起',
+          durationSec: 2,
+          shotSize: '全景',
+          angle: '低角度',
+          cameraMove: '固定',
+          location: '房间',
+          characters: ['林小满'],
+          props: [],
+          action: '林小满开心得原地跳跃起来',
+          dialogue: [],
+          sound: '',
+          transition: '硬切',
+          imagePrompt: '',
+          videoPrompt: '',
+          status: 'draft'
+        },
+        {
+          id: 'S01-04',
+          order: 4,
+          sceneId: 'S01',
+          title: '欢快跳舞',
+          durationSec: 3,
+          shotSize: '全景',
+          angle: '平视',
+          cameraMove: '环绕',
+          location: '房间',
+          characters: ['林小满'],
+          props: [],
+          action: '林小满在房间里欢快地跳舞',
+          dialogue: [],
+          sound: '',
+          transition: '硬切',
+          imagePrompt: '',
+          videoPrompt: '',
+          status: 'draft'
+        }
+      ]
+    }
+
+    const compiled = compileStoryboardToDirectorStage(baseStage, sb)
+    const actor = compiled.stage.objects.find((o) => o.kind === 'character')
+    expect(actor).toBeDefined()
+    const actorTrack = compiled.stage.animation?.tracks.find((t) => t.targetId === actor?.id)
+    expect(actorTrack?.skeletonClips?.map((c) => c.clip)).toEqual([
+      'PhoneLook',
+      'Drink',
+      'Jump',
+      'Dance'
+    ])
   })
 })

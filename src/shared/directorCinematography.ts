@@ -636,18 +636,513 @@ export function buildLightingPresetObjects(
   return { lights, ...(fogPatch ? { fogPatch } : {}) }
 }
 
-/** 手势 / 头部视线与情绪体态快速预设（局部骨骼欧拉角弧度，merge 模式叠加，不覆盖全身其它关节） */
+/** 全身日常动作 / 手势细节 / 头部视线与情绪体态快速预设（body 为全身替换，hand/gaze 为局部叠加） */
 export interface DirectorExpressivePosePreset {
   id: string
-  category: 'hand' | 'gaze'
+  category: 'body' | 'hand' | 'gaze'
   labelKey: string
+  clipName?: string
   bones: Record<string, StageVec3>
 }
 
 const DEG = Math.PI / 180
 
 export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePreset[] = [
-  // 手势预设
+  // ==================== 全身日常与戏剧动作预设 (category: 'body') ====================
+  {
+    id: 'body.idle',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyIdle',
+    clipName: 'Idle',
+    bones: {
+      Spine: { x: 2 * DEG, y: 0, z: 0 },
+      Chest: { x: 1 * DEG, y: -2 * DEG, z: 0 },
+      Head: { x: -2 * DEG, y: 3 * DEG, z: 0 },
+      LeftUpperArm: { x: 3 * DEG, y: 0, z: -8 * DEG },
+      RightUpperArm: { x: 3 * DEG, y: 0, z: 8 * DEG },
+      LeftForeArm: { x: -10 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -10 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -2 * DEG, y: 0, z: -2 * DEG },
+      RightUpLeg: { x: 2 * DEG, y: 0, z: 2 * DEG },
+      LeftLeg: { x: 4 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 4 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.walk',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyWalk',
+    clipName: 'Walk',
+    bones: {
+      Spine: { x: 4 * DEG, y: -5 * DEG, z: 0 },
+      Chest: { x: 2 * DEG, y: -4 * DEG, z: 0 },
+      Head: { x: -3 * DEG, y: 6 * DEG, z: 0 },
+      LeftUpperArm: { x: 22 * DEG, y: 0, z: -9 * DEG },
+      RightUpperArm: { x: -24 * DEG, y: 0, z: 9 * DEG },
+      LeftForeArm: { x: -20 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -28 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -26 * DEG, y: 0, z: 0 },
+      LeftLeg: { x: 12 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: 22 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 24 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.run',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyRun',
+    clipName: 'Run',
+    bones: {
+      'Hips.position': { x: 0, y: -0.04, z: 0 },
+      Spine: { x: 14 * DEG, y: -8 * DEG, z: 0 },
+      Chest: { x: 8 * DEG, y: -6 * DEG, z: 0 },
+      Head: { x: -14 * DEG, y: 10 * DEG, z: 0 },
+      LeftUpperArm: { x: 38 * DEG, y: 0, z: -12 * DEG },
+      RightUpperArm: { x: -42 * DEG, y: 0, z: 12 * DEG },
+      LeftForeArm: { x: -55 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -65 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -48 * DEG, y: 0, z: 0 },
+      LeftLeg: { x: 22 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: 38 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 58 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.sprint',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodySprint',
+    clipName: 'Sprint',
+    bones: {
+      'Hips.position': { x: 0, y: -0.07, z: 0 },
+      Spine: { x: 22 * DEG, y: -10 * DEG, z: 0 },
+      Chest: { x: 12 * DEG, y: -8 * DEG, z: 0 },
+      Head: { x: -22 * DEG, y: 12 * DEG, z: 0 },
+      LeftUpperArm: { x: 50 * DEG, y: 0, z: -14 * DEG },
+      RightUpperArm: { x: -54 * DEG, y: 0, z: 14 * DEG },
+      LeftForeArm: { x: -68 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -76 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -62 * DEG, y: 0, z: 0 },
+      LeftLeg: { x: 28 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: 48 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 75 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.jump',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyJump',
+    clipName: 'Jump',
+    bones: {
+      'Hips.position': { x: 0, y: 0.44, z: 0 },
+      Spine: { x: -8 * DEG, y: 0, z: 0 },
+      Chest: { x: -6 * DEG, y: 0, z: 0 },
+      Head: { x: -12 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -45 * DEG, y: 0, z: -78 * DEG },
+      RightUpperArm: { x: -45 * DEG, y: 0, z: 78 * DEG },
+      LeftForeArm: { x: -24 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -24 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -42 * DEG, y: 0, z: -6 * DEG },
+      RightUpLeg: { x: -22 * DEG, y: 0, z: 6 * DEG },
+      LeftLeg: { x: 58 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 42 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.sit',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodySit',
+    clipName: 'Sit',
+    bones: {
+      'Hips.position': { x: 0, y: -0.42, z: -0.08 },
+      Spine: { x: 3 * DEG, y: 0, z: 0 },
+      Chest: { x: 2 * DEG, y: 0, z: 0 },
+      Head: { x: 0, y: 0, z: 0 },
+      LeftUpperArm: { x: -14 * DEG, y: 0, z: -10 * DEG },
+      RightUpperArm: { x: -14 * DEG, y: 0, z: 10 * DEG },
+      LeftForeArm: { x: -42 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -42 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -85 * DEG, y: 4 * DEG, z: -4 * DEG },
+      RightUpLeg: { x: -85 * DEG, y: -4 * DEG, z: 4 * DEG },
+      LeftLeg: { x: 85 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 85 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.sitFloor',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodySitFloor',
+    clipName: 'SitFloor',
+    bones: {
+      'Hips.position': { x: 0, y: -0.75, z: 0 },
+      Spine: { x: 4 * DEG, y: 0, z: 0 },
+      Chest: { x: 2 * DEG, y: 0, z: 0 },
+      Head: { x: 3 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -12 * DEG, y: 0, z: -14 * DEG },
+      RightUpperArm: { x: -12 * DEG, y: 0, z: 14 * DEG },
+      LeftForeArm: { x: -34 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -34 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -78 * DEG, y: -32 * DEG, z: -38 * DEG },
+      RightUpLeg: { x: -78 * DEG, y: 32 * DEG, z: 38 * DEG },
+      LeftLeg: { x: 102 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 102 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.crouch',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyCrouch',
+    clipName: 'Crouch',
+    bones: {
+      'Hips.position': { x: 0, y: -0.46, z: 0 },
+      Spine: { x: 22 * DEG, y: 0, z: 0 },
+      Chest: { x: 10 * DEG, y: 0, z: 0 },
+      Head: { x: -22 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -28 * DEG, y: 0, z: -14 * DEG },
+      RightUpperArm: { x: -28 * DEG, y: 0, z: 14 * DEG },
+      LeftForeArm: { x: -42 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -42 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -78 * DEG, y: 0, z: -8 * DEG },
+      RightUpLeg: { x: -78 * DEG, y: 0, z: 8 * DEG },
+      LeftLeg: { x: 106 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 106 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.kneel',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyKneel',
+    clipName: 'Kneel',
+    bones: {
+      'Hips.position': { x: 0, y: -0.4, z: 0 },
+      Spine: { x: 8 * DEG, y: 0, z: 0 },
+      Chest: { x: 4 * DEG, y: 0, z: 0 },
+      Head: { x: 6 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -26 * DEG, y: 0, z: -12 * DEG },
+      RightUpperArm: { x: 10 * DEG, y: 0, z: 12 * DEG },
+      LeftForeArm: { x: -38 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -22 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -82 * DEG, y: 0, z: -4 * DEG },
+      LeftLeg: { x: 84 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: 10 * DEG, y: 0, z: 3 * DEG },
+      RightLeg: { x: 94 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.lieDown',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyLieDown',
+    clipName: 'LieDown',
+    bones: {
+      'Hips.position': { x: 0, y: -0.8, z: 0 },
+      Hips: { x: -87 * DEG, y: 0, z: 0 },
+      Spine: { x: 3 * DEG, y: 0, z: 0 },
+      Head: { x: 8 * DEG, y: 4 * DEG, z: 0 },
+      LeftUpperArm: { x: 4 * DEG, y: 0, z: -15 * DEG },
+      RightUpperArm: { x: 4 * DEG, y: 0, z: 15 * DEG },
+      LeftForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: 2 * DEG, y: 0, z: -5 * DEG },
+      RightUpLeg: { x: 2 * DEG, y: 0, z: 5 * DEG }
+    }
+  },
+  {
+    id: 'body.lean',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyLean',
+    clipName: 'Idle',
+    bones: {
+      'Hips.position': { x: 0.04, y: -0.03, z: -0.06 },
+      Hips: { x: -8 * DEG, y: 0, z: -4 * DEG },
+      Spine: { x: 4 * DEG, y: 0, z: 6 * DEG },
+      Head: { x: 4 * DEG, y: -8 * DEG, z: 0 },
+      LeftUpperArm: { x: 8 * DEG, y: 0, z: -14 * DEG },
+      RightUpperArm: { x: -18 * DEG, y: 0, z: 14 * DEG },
+      LeftForeArm: { x: -24 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -45 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: 8 * DEG, y: 0, z: -2 * DEG },
+      LeftLeg: { x: 4 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: -18 * DEG, y: 0, z: 6 * DEG },
+      RightLeg: { x: 36 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.bow',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyBow',
+    clipName: 'Bow',
+    bones: {
+      Spine: { x: 32 * DEG, y: 0, z: 0 },
+      Chest: { x: 16 * DEG, y: 0, z: 0 },
+      Head: { x: 12 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -10 * DEG, y: 0, z: -10 * DEG },
+      RightUpperArm: { x: -10 * DEG, y: 0, z: 10 * DEG },
+      LeftForeArm: { x: -18 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -18 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.wave',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyWave',
+    clipName: 'Wave',
+    bones: {
+      Spine: { x: 0, y: -4 * DEG, z: -3 * DEG },
+      Head: { x: -4 * DEG, y: -6 * DEG, z: 4 * DEG },
+      LeftUpperArm: { x: 4 * DEG, y: 0, z: -10 * DEG },
+      LeftForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: 8 * DEG, y: 0, z: 118 * DEG },
+      RightForeArm: { x: -12 * DEG, y: 0, z: 45 * DEG }
+    }
+  },
+  {
+    id: 'body.cheer',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyCheer',
+    clipName: 'Cheer',
+    bones: {
+      Spine: { x: -6 * DEG, y: 0, z: 0 },
+      Chest: { x: -6 * DEG, y: 0, z: 0 },
+      Head: { x: -12 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -12 * DEG, y: 0, z: -128 * DEG },
+      RightUpperArm: { x: -12 * DEG, y: 0, z: 128 * DEG },
+      LeftForeArm: { x: -18 * DEG, y: 0, z: -12 * DEG },
+      RightForeArm: { x: -18 * DEG, y: 0, z: 12 * DEG },
+      LeftUpLeg: { x: 0, y: 0, z: -6 * DEG },
+      RightUpLeg: { x: 0, y: 0, z: 6 * DEG }
+    }
+  },
+  {
+    id: 'body.clap',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyClap',
+    clipName: 'Clap',
+    bones: {
+      Spine: { x: 3 * DEG, y: 0, z: 0 },
+      Head: { x: -4 * DEG, y: 0, z: 3 * DEG },
+      LeftUpperArm: { x: -38 * DEG, y: 0, z: -12 * DEG },
+      RightUpperArm: { x: -38 * DEG, y: 0, z: 12 * DEG },
+      LeftForeArm: { x: -66 * DEG, y: 0, z: 18 * DEG },
+      RightForeArm: { x: -66 * DEG, y: 0, z: -18 * DEG }
+    }
+  },
+  {
+    id: 'body.dance',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyDance',
+    clipName: 'Dance',
+    bones: {
+      'Hips.position': { x: -0.04, y: -0.03, z: 0 },
+      Spine: { x: 4 * DEG, y: -10 * DEG, z: 5 * DEG },
+      Head: { x: -4 * DEG, y: 8 * DEG, z: -5 * DEG },
+      LeftUpperArm: { x: -32 * DEG, y: 0, z: -96 * DEG },
+      RightUpperArm: { x: -32 * DEG, y: 0, z: 22 * DEG },
+      LeftForeArm: { x: -42 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -55 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -18 * DEG, y: 0, z: -8 * DEG },
+      LeftLeg: { x: 28 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: -6 * DEG, y: 0, z: 5 * DEG },
+      RightLeg: { x: 10 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.stretch',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyStretch',
+    clipName: 'Stretch',
+    bones: {
+      Spine: { x: -12 * DEG, y: 0, z: 0 },
+      Chest: { x: -10 * DEG, y: 0, z: 0 },
+      Head: { x: -14 * DEG, y: 4 * DEG, z: 0 },
+      LeftUpperArm: { x: -16 * DEG, y: 0, z: -130 * DEG },
+      RightUpperArm: { x: -16 * DEG, y: 0, z: 130 * DEG },
+      LeftForeArm: { x: -22 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -22 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.think',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyThink',
+    clipName: 'Think',
+    bones: {
+      Spine: { x: 4 * DEG, y: 3 * DEG, z: 0 },
+      Head: { x: 10 * DEG, y: -5 * DEG, z: 5 * DEG },
+      LeftUpperArm: { x: -20 * DEG, y: 0, z: -12 * DEG },
+      LeftForeArm: { x: -45 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: -48 * DEG, y: 0, z: 14 * DEG },
+      RightForeArm: { x: -82 * DEG, y: 0, z: -14 * DEG }
+    }
+  },
+  {
+    id: 'body.talk',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyTalk',
+    clipName: 'Talk',
+    bones: {
+      Spine: { x: 3 * DEG, y: -4 * DEG, z: 0 },
+      Head: { x: -3 * DEG, y: 6 * DEG, z: 2 * DEG },
+      LeftUpperArm: { x: -24 * DEG, y: 0, z: -16 * DEG },
+      RightUpperArm: { x: -32 * DEG, y: 0, z: 20 * DEG },
+      LeftForeArm: { x: -52 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -64 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.phone',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyPhone',
+    clipName: 'PhoneLook',
+    bones: {
+      Spine: { x: 6 * DEG, y: 0, z: 0 },
+      Neck: { x: 12 * DEG, y: 0, z: 0 },
+      Head: { x: 20 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: 4 * DEG, y: 0, z: -10 * DEG },
+      LeftForeArm: { x: -14 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: -38 * DEG, y: 0, z: 12 * DEG },
+      RightForeArm: { x: -70 * DEG, y: 0, z: -12 * DEG }
+    }
+  },
+  {
+    id: 'body.drink',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyDrink',
+    clipName: 'Drink',
+    bones: {
+      Spine: { x: -4 * DEG, y: 0, z: 0 },
+      Head: { x: -16 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: 4 * DEG, y: 0, z: -10 * DEG },
+      LeftForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: -58 * DEG, y: 0, z: 15 * DEG },
+      RightForeArm: { x: -84 * DEG, y: 0, z: -12 * DEG }
+    }
+  },
+  {
+    id: 'body.lookAround',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyLookAround',
+    clipName: 'LookAround',
+    bones: {
+      Spine: { x: 3 * DEG, y: 14 * DEG, z: 0 },
+      Head: { x: -4 * DEG, y: 26 * DEG, z: 0 },
+      LeftUpperArm: { x: -12 * DEG, y: 0, z: -14 * DEG },
+      LeftForeArm: { x: -24 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: -44 * DEG, y: 0, z: 18 * DEG },
+      RightForeArm: { x: -72 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.crossArms',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyCrossArms',
+    clipName: 'Idle',
+    bones: {
+      Spine: { x: -3 * DEG, y: 0, z: 0 },
+      Chest: { x: -4 * DEG, y: 0, z: 0 },
+      Head: { x: -3 * DEG, y: 5 * DEG, z: 0 },
+      LeftUpperArm: { x: -28 * DEG, y: 0, z: -12 * DEG },
+      RightUpperArm: { x: -28 * DEG, y: 0, z: 12 * DEG },
+      LeftForeArm: { x: -55 * DEG, y: 0, z: 32 * DEG },
+      RightForeArm: { x: -55 * DEG, y: 0, z: -32 * DEG },
+      LeftUpLeg: { x: 0, y: 0, z: -4 * DEG },
+      RightUpLeg: { x: 0, y: 0, z: 4 * DEG }
+    }
+  },
+  {
+    id: 'body.handsOnHips',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyHandsOnHips',
+    clipName: 'Idle',
+    bones: {
+      Spine: { x: -4 * DEG, y: 0, z: 0 },
+      Chest: { x: -6 * DEG, y: 0, z: 0 },
+      Head: { x: -5 * DEG, y: 6 * DEG, z: 0 },
+      LeftUpperArm: { x: 10 * DEG, y: 0, z: -28 * DEG },
+      RightUpperArm: { x: 10 * DEG, y: 0, z: 28 * DEG },
+      LeftForeArm: { x: -42 * DEG, y: 0, z: 24 * DEG },
+      RightForeArm: { x: -42 * DEG, y: 0, z: -24 * DEG },
+      LeftUpLeg: { x: 0, y: 0, z: -5 * DEG },
+      RightUpLeg: { x: 0, y: 0, z: 5 * DEG }
+    }
+  },
+  {
+    id: 'body.pushUp',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyPushUp',
+    clipName: 'PushUp',
+    bones: {
+      'Hips.position': { x: 0, y: -0.58, z: 0 },
+      Hips: { x: 76 * DEG, y: 0, z: 0 },
+      Head: { x: -48 * DEG, y: 0, z: 0 },
+      LeftUpperArm: { x: -72 * DEG, y: 0, z: -16 * DEG },
+      RightUpperArm: { x: -72 * DEG, y: 0, z: 16 * DEG },
+      LeftForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -12 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: 3 * DEG, y: 0, z: -4 * DEG },
+      RightUpLeg: { x: 3 * DEG, y: 0, z: 4 * DEG }
+    }
+  },
+  {
+    id: 'body.fall',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyFall',
+    clipName: 'Fall',
+    bones: {
+      'Hips.position': { x: 0, y: -0.76, z: -0.25 },
+      Hips: { x: -85 * DEG, y: 0, z: 0 },
+      Spine: { x: 6 * DEG, y: 0, z: 0 },
+      Head: { x: 12 * DEG, y: 6 * DEG, z: 0 },
+      LeftUpperArm: { x: -14 * DEG, y: 0, z: -38 * DEG },
+      RightUpperArm: { x: -14 * DEG, y: 0, z: 38 * DEG },
+      LeftForeArm: { x: -20 * DEG, y: 0, z: 0 },
+      RightForeArm: { x: -20 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -14 * DEG, y: 0, z: -8 * DEG },
+      RightUpLeg: { x: -10 * DEG, y: 0, z: 8 * DEG },
+      LeftLeg: { x: 20 * DEG, y: 0, z: 0 },
+      RightLeg: { x: 16 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.combat',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyCombat',
+    clipName: 'Action',
+    bones: {
+      'Hips.position': { x: 0, y: -0.06, z: 0 },
+      Hips: { x: 8 * DEG, y: -14 * DEG, z: 0 },
+      Spine: { x: 12 * DEG, y: 6 * DEG, z: 0 },
+      Chest: { x: 8 * DEG, y: 8 * DEG, z: 0 },
+      Head: { x: -12 * DEG, y: 12 * DEG, z: 0 },
+      LeftUpperArm: { x: -45 * DEG, y: 8 * DEG, z: -20 * DEG },
+      LeftForeArm: { x: -65 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: -35 * DEG, y: -8 * DEG, z: 20 * DEG },
+      RightForeArm: { x: -72 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: -24 * DEG, y: 8 * DEG, z: -5 * DEG },
+      LeftLeg: { x: 36 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: 18 * DEG, y: -8 * DEG, z: 5 * DEG },
+      RightLeg: { x: 24 * DEG, y: 0, z: 0 }
+    }
+  },
+  {
+    id: 'body.kick',
+    category: 'body',
+    labelKey: 'director.stage.expressivePose.bodyKick',
+    clipName: 'Action',
+    bones: {
+      Spine: { x: -8 * DEG, y: -10 * DEG, z: 0 },
+      Chest: { x: -4 * DEG, y: -6 * DEG, z: 0 },
+      Head: { x: 6 * DEG, y: 14 * DEG, z: 0 },
+      LeftUpperArm: { x: -38 * DEG, y: 0, z: -22 * DEG },
+      LeftForeArm: { x: -62 * DEG, y: 0, z: 0 },
+      RightUpperArm: { x: 24 * DEG, y: 0, z: 24 * DEG },
+      RightForeArm: { x: -48 * DEG, y: 0, z: 0 },
+      LeftUpLeg: { x: 6 * DEG, y: 0, z: -4 * DEG },
+      LeftLeg: { x: 10 * DEG, y: 0, z: 0 },
+      RightUpLeg: { x: -88 * DEG, y: 0, z: 8 * DEG },
+      RightLeg: { x: 12 * DEG, y: 0, z: 0 }
+    }
+  },
+
+  // ==================== 手势预设 (category: 'hand') ====================
   {
     id: 'hand.relaxed',
     category: 'hand',
@@ -699,7 +1194,32 @@ export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePr
       RightThumb: { x: 40 * DEG, y: -30 * DEG, z: 0 }
     }
   },
-  // 头部视线与情绪姿态
+  {
+    id: 'hand.peace',
+    category: 'hand',
+    labelKey: 'director.stage.expressivePose.handPeace',
+    bones: {
+      RightUpperArm: { x: -45 * DEG, y: 0, z: 16 * DEG },
+      RightForeArm: { x: -65 * DEG, y: 0, z: 0 },
+      RightHand: { x: -10 * DEG, y: 0, z: 8 * DEG },
+      RightIndex: { x: -6 * DEG, y: 0, z: 8 * DEG },
+      RightThumb: { x: 35 * DEG, y: -25 * DEG, z: 0 }
+    }
+  },
+  {
+    id: 'hand.thumbsUp',
+    category: 'hand',
+    labelKey: 'director.stage.expressivePose.handThumbsUp',
+    bones: {
+      RightUpperArm: { x: -38 * DEG, y: 0, z: 14 * DEG },
+      RightForeArm: { x: -55 * DEG, y: 0, z: 0 },
+      RightHand: { x: 10 * DEG, y: 0, z: 0 },
+      RightIndex: { x: 78 * DEG, y: 0, z: 0 },
+      RightThumb: { x: -35 * DEG, y: 20 * DEG, z: 0 }
+    }
+  },
+
+  // ==================== 头部视线与情绪姿态 (category: 'gaze') ====================
   {
     id: 'gaze.lookUp',
     category: 'gaze',
@@ -727,6 +1247,27 @@ export const DIRECTOR_EXPRESSIVE_POSE_PRESETS: readonly DirectorExpressivePosePr
     bones: {
       Neck: { x: 0, y: 12 * DEG, z: 8 * DEG },
       Head: { x: 4 * DEG, y: 15 * DEG, z: 16 * DEG }
+    }
+  },
+  {
+    id: 'gaze.shy',
+    category: 'gaze',
+    labelKey: 'director.stage.expressivePose.gazeShy',
+    bones: {
+      Spine: { x: 6 * DEG, y: 0, z: 0 },
+      Neck: { x: 12 * DEG, y: -10 * DEG, z: -6 * DEG },
+      Head: { x: 18 * DEG, y: -14 * DEG, z: -10 * DEG }
+    }
+  },
+  {
+    id: 'gaze.sad',
+    category: 'gaze',
+    labelKey: 'director.stage.expressivePose.gazeSad',
+    bones: {
+      Spine: { x: 14 * DEG, y: 0, z: 0 },
+      Chest: { x: 12 * DEG, y: 0, z: 0 },
+      Neck: { x: 18 * DEG, y: 0, z: 0 },
+      Head: { x: 22 * DEG, y: 0, z: 0 }
     }
   },
   {

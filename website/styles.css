@@ -1260,6 +1260,13 @@ code {
   background: var(--grad);
 }
 
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+  margin-top: 20px;
+}
+
 /* ---------- 工作流步骤 ---------- */
 .steps {
   position: relative;

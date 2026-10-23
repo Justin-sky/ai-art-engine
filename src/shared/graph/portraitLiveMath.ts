@@ -224,13 +224,17 @@ export function extractFaceSemanticRegions(
   const innerMouth = pts.slice(60, 68)
 
   // Construct lifted forehead points above eyebrows (from right temple 16 -> left temple 0)
-  const foreheadLift = box.h * 0.28
+  // Follow the anatomical chin -> mid-brow axis so tilted faces do not skew the forehead arc
+  const browMidX = (pts[19][0] + pts[24][0]) * 0.5
+  const browMidY = (pts[19][1] + pts[24][1]) * 0.5
+  const upX = (browMidX - pts[8][0]) * 0.36
+  const upY = (browMidY - pts[8][1]) * 0.36
   const foreheadArc: Array<[number, number]> = [
-    [pts[26][0] + box.w * 0.03, pts[26][1] - foreheadLift * 0.65],
-    [pts[24][0], pts[24][1] - foreheadLift * 0.95],
-    [(pts[21][0] + pts[22][0]) * 0.5, Math.min(pts[21][1], pts[22][1]) - foreheadLift],
-    [pts[19][0], pts[19][1] - foreheadLift * 0.95],
-    [pts[17][0] - box.w * 0.03, pts[17][1] - foreheadLift * 0.65]
+    [pts[26][0] + box.w * 0.02 + upX * 0.65, pts[26][1] + upY * 0.65],
+    [pts[24][0] + upX * 0.95, pts[24][1] + upY * 0.95],
+    [(pts[21][0] + pts[22][0]) * 0.5 + upX, Math.min(pts[21][1], pts[22][1]) + upY],
+    [pts[19][0] + upX * 0.95, pts[19][1] + upY * 0.95],
+    [pts[17][0] - box.w * 0.02 + upX * 0.65, pts[17][1] + upY * 0.65]
   ]
   const faceSkinOutline: Array<[number, number]> = [...jaw, ...foreheadArc]
 

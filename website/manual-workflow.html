@@ -32,13 +32,13 @@
     <meta property="og:title" content="一键工作流与节点图 · 使用手册 — AIArtEngine" />
     <meta property="og:description" content="用一键工作流从模板或自然语言生成可复用的宿主资产，用影视工作台跑通短剧四阶段闭环；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="一键工作流与节点图 · 使用手册 — AIArtEngine" />
     <meta name="twitter:description" content="用一键工作流从模板或自然语言生成可复用的宿主资产，用影视工作台跑通短剧四阶段闭环；在节点图中添加与连线节点、执行任务队列，并查阅全部节点类型与典型工作流。" />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/ui-layers.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-workflow.html" />
@@ -212,6 +212,16 @@
             <strong>「影视工作台」（<code>film.workbench</code>）</strong>节点进入全屏 Dive 工作台，在一个界面内完成从剧本到镜头视频的四阶段闭环。
             完整操作步骤见 <a href="guide-short-video.html">短剧制作教程</a>。
           </p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="短剧影视工作台 Dive 界面：分镜拆解、导演审核、角色场景设定、批量拍摄与 3D 导演台白模预演"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption>短剧影视工作台（<code>film.workbench</code>）：四阶段闭环、结构化分镜卡片、<code>@1</code>–<code>@4</code> 角色场景道具引用与 3D 导演台白模预演。</figcaption>
+          </figure>
           <ul>
             <li>
               <strong>四阶段页签与一键全流程</strong>：顶部切换 <strong>① 分镜拆解 / ② 导演审核 / ③ 角色场景设定 / ④ 批量拍摄</strong>；右上角可点「⚡ 一键全流程」一次串联跑完四阶段，也可点击当前阶段运行按钮逐步审校。
@@ -478,6 +488,16 @@
               一次产出同主题多版本广告图。
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/comic-books.webp"
+              alt="漫画页排版工作台：分镜模板、斜切分镜刀口线、速度线/集中线、对白气泡与拟声词排版"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>漫画页排版 Dive 工作台（斜切分镜刀口线、集中线/网点纸、对白气泡与拟声词排版）</figcaption>
+          </figure>
 
           <h4>质检与返工（已下线）</h4>
           <div class="tip">
@@ -513,6 +533,16 @@
                   <strong>高清放大</strong>（<code>upscale</code>，AI 超分辨率放大与细节增强，Inspector 与 Dive 弹窗均支持切换 2K / 4K 档位与对比预览）。
                 </li>
               </ul>
+              <figure class="shot">
+                <img
+                  src="assets/imgs/image-editor.webp"
+                  alt="10 合 1 图像处理工作台：裁剪、图片变换、智能构图、宫格切分、本地抠图、边缘精修、修补画笔与 AI 抠图/擦除/重绘/扩图/高清放大"
+                  width="1600"
+                  height="860"
+                  loading="lazy"
+                />
+                <figcaption>10 合 1 图像处理工作台（本地抠图、边缘精修、修补画笔与 AI 重绘/扩图/高清放大）</figcaption>
+              </figure>
             </li>
             <li>
               <strong>图标包</strong>（<code>image.iconPack</code>）：面向游戏道具、技能与 UI 图标批量生产，支持稀有度边框模板、统一背景剔除与一键打包图集。
@@ -555,6 +585,16 @@
               <strong>① UI 控件拆分（<code>ui</code>）</strong>：自动识别 16 类标准 HTML5 / Unity UI Toolkit 控件（<code>button</code>、<code>toggle</code>、<code>slider</code>、<code>progress-bar</code>、<code>input-field</code>、<code>scroll-view</code>、<code>panel</code>、<code>modal-dialog</code>、<code>tab-bar</code>、<code>list-item</code>、<code>slot-grid</code>、<code>icon-badge</code>、<code>avatar-frame</code>、<code>tooltip-bubble</code>、<code>hud-bar</code>、<code>text-label</code>），支持<strong>跨平台本地离线 OCR</strong>（Windows 原生 WinRT <code>Windows.Media.Ocr</code> / macOS <code>Vision.framework</code> / Linux <code>tesseract</code>）与云端 VLM OCR 精准提取按钮/面板文字、字芯主色（<code>color</code>）与描边色/粗细（<code>strokeColor</code> / <code>strokeWidth</code>），自动抹除字迹补全九宫格拉伸底板（<code>nineSlice</code>）并合成 <code>:hover</code> / <code>:active</code> 交互态；一键导出<strong>保留二级嵌套分组与原生 Photoshop <code>TySh</code> 可编辑文本图层的 <code>.psd</code></strong>，以及 <strong>Unity UI Toolkit（<code>.uxml/.uss</code>）· Unity UGUI（<code>.cs</code>）· Godot 4（<code>.tscn</code>）· HTML5</strong> 界面代码；
               <strong>② 2D 立绘拆件（<code>rig2d</code>）</strong>：语义部件拆解 + 遮挡扩边补全 + 自动父子骨骼层级，直连 2D 舞台绑定与 Spine 导出；
               <strong>③ 场景前后景分层（<code>scene</code>）</strong> 与 <strong>④ 自动拆层（<code>auto</code>）</strong>（支持 Seedream 5.0 Pro 云端分层或本地实例分割 + LaMa 背景补全）。
+              <figure class="shot">
+                <img
+                  src="assets/imgs/ui-layers.webp"
+                  alt="图层分离工作台：3D 爆炸视图、二级分组树、控件拆解与 PSD/Unity/Godot/HTML5 导出"
+                  width="1600"
+                  height="860"
+                  loading="lazy"
+                />
+                <figcaption>图层分离工作台（3D 爆炸视图、二级嵌套分组树、原生 TySh 文本层 PSD 与引擎 UI 代码导出）</figcaption>
+              </figure>
             </li>
             <li>
               <strong>PNG 即工作流（<code>aiae:graph</code> 隐写分享）</strong>：节点图导出的 PNG 产物会自动在 iTXt 块嵌入完整工作流拓扑与随机种子；把任意导出的 PNG 拖回画布，即可一键完整还原整条生成管线。

@@ -1357,7 +1357,11 @@ import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { persistAssetRecord, useAssetRecord } from '../../composables/useAssetRecord'
-import { compileStoryboardToDirectorStageWithLlm } from '../../features/director/directorStoryboardPreviz'
+import {
+  canReuseCompiledStoryboardStage,
+  compileStoryboardToDirectorStageWithLlm,
+  markCompiledStoryboardStage
+} from '../../features/director/directorStoryboardPreviz'
 import {
   patchGenParamsWithNodeStage,
   resolveDirectorStageForNode
@@ -2156,22 +2160,35 @@ async function openInDirectorPreviz(options?: {
       currentDoc,
       motionNodeId
     )
-    const compiled = await compileStoryboardToDirectorStageWithLlm(currentStage, sb, {
+    const previzOptions = {
       sceneId: options?.sceneId ?? null,
       shotId: options?.shotId ?? null,
       locale: String(locale.value),
       model: params.value.filmTextModel || undefined,
       providerInstanceId: params.value.filmTextProviderInstanceId || undefined
-    })
-    compiled.stage.ownerProcessingNodeId = motionNodeId
+    }
+    const stageWithOwner = {
+      ...currentStage,
+      ownerProcessingNodeId: motionNodeId
+    }
 
-    const nextGenParams = patchGenParamsWithNodeStage(
-      hostAsset.value?.genParams,
-      motionNodeId,
-      compiled.stage
-    )
-    await persistAssetRecord(directorAssetId, { genParams: nextGenParams })
-    await graphEditorHosts.flush(props.hostId)
+    if (!canReuseCompiledStoryboardStage(stageWithOwner, sb, previzOptions)) {
+      const compiled = await compileStoryboardToDirectorStageWithLlm(
+        stageWithOwner,
+        sb,
+        previzOptions
+      )
+      compiled.stage.ownerProcessingNodeId = motionNodeId
+      markCompiledStoryboardStage(compiled.stage, sb, previzOptions)
+
+      const nextGenParams = patchGenParamsWithNodeStage(
+        hostAsset.value?.genParams,
+        motionNodeId,
+        compiled.stage
+      )
+      await persistAssetRecord(directorAssetId, { genParams: nextGenParams })
+      await graphEditorHosts.flush(props.hostId)
+    }
 
     await diveCtx?.diveView(
       {

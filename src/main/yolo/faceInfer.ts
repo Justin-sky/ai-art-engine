@@ -124,15 +124,28 @@ function sampleBilinear(
   }
 }
 
-/**
- * 检测器输入：整图等比缩放到 128×128（余下补 0），归一化 (v-127.5)/127.5。
- * 与 MediaPipe `ImageToTensorCalculator{keep_aspect_ratio:true, range:[-1,1]}` 同口径。
- */
-function detectorInput(image: Decoded): Float32Array {
+function letterboxGeometry(image: Decoded): {
+  size: number
+  drawW: number
+  drawH: number
+  padX: number
+  padY: number
+} {
   const size = YOLO_FACE_DETECT_INPUT
   const scale = Math.min(size / image.width, size / image.height)
   const drawW = Math.max(1, Math.round(image.width * scale))
   const drawH = Math.max(1, Math.round(image.height * scale))
+  const padX = Math.floor((size - drawW) / 2)
+  const padY = Math.floor((size - drawH) / 2)
+  return { size, drawW, drawH, padX, padY }
+}
+
+/**
+ * 检测器输入：整图等比缩放到 128×128（居中 letterbox，余下补 0），归一化 (v-127.5)/127.5。
+ * 与 MediaPipe `ImageToTensorCalculator{keep_aspect_ratio:true, range:[-1,1]}` 及下方 `unletterbox` 严格同口径。
+ */
+function detectorInput(image: Decoded): Float32Array {
+  const { size, drawW, drawH, padX, padY } = letterboxGeometry(image)
   const out = new Float32Array(size * size * 3)
   const pixel = new Float32Array(3)
   for (let y = 0; y < drawH; y++) {
@@ -144,7 +157,7 @@ function detectorInput(image: Decoded): Float32Array {
         pixel,
         0
       )
-      const o = (y * size + x) * 3
+      const o = ((y + padY) * size + (x + padX)) * 3
       for (let c = 0; c < 3; c++) out[o + c] = (pixel[c]! - 127.5) / 127.5
     }
   }
@@ -153,12 +166,7 @@ function detectorInput(image: Decoded): Float32Array {
 
 /** 检测框/关键点从 letterbox 归一化坐标 → 原图归一化坐标 */
 function unletterbox(detection: FaceDetection, image: Decoded): FaceDetection {
-  const size = YOLO_FACE_DETECT_INPUT
-  const scale = Math.min(size / image.width, size / image.height)
-  const drawW = image.width * scale
-  const drawH = image.height * scale
-  const padX = (size - drawW) / 2
-  const padY = (size - drawH) / 2
+  const { size, drawW, drawH, padX, padY } = letterboxGeometry(image)
   const toImage = (point: FaceKeypoint): FaceKeypoint => ({
     x: (point.x * size - padX) / drawW,
     y: (point.y * size - padY) / drawH
@@ -341,8 +349,9 @@ export async function inferFaces(
   const landmark = await getSession(mod, params.landmarkPath)
   assertFaceModelContract(landmark, 'landmark', params.landmarkPath)
   const faces: YoloFace[] = []
+  const aspect = image.width > 0 && image.height > 0 ? image.width / image.height : 1
   for (const detection of detections) {
-    const crop = computeFaceCrop(detection)
+    const crop = computeFaceCrop(detection, { aspect })
     const tensor = imageTensor(
       mod,
       landmark,

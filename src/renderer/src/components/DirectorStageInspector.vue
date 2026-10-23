@@ -1187,6 +1187,23 @@
               {{ t('director.stage.lightAimHint') }}
             </p>
           </template>
+          <template v-if="showPoseTab">
+            <div class="section-label">
+              {{ t('director.stage.bodyPoseTitle') }}
+            </div>
+            <div class="pose-preset-list">
+              <button
+                v-for="preset in bodyPosePresets"
+                :key="preset.id"
+                type="button"
+                class="pose-asset-chip"
+                :disabled="obj.locked || !poseBoneNames.length"
+                @click="onApplyExpressivePose(preset.id)"
+              >
+                <span class="pose-asset-name">{{ t(preset.labelKey) }}</span>
+              </button>
+            </div>
+          </template>
           <template v-if="objectMaterialRows.length">
             <div class="section-label">
               {{ t('director.stage.textures') }}
@@ -1317,11 +1334,27 @@
           </div>
 
           <div class="section-label">
+            {{ t('director.stage.bodyPoseTitle') }}
+          </div>
+          <div class="pose-preset-list">
+            <button
+              v-for="preset in bodyPosePresets"
+              :key="preset.id"
+              type="button"
+              class="pose-asset-chip"
+              :disabled="obj.locked || !poseBoneNames.length"
+              @click="onApplyExpressivePose(preset.id)"
+            >
+              <span class="pose-asset-name">{{ t(preset.labelKey) }}</span>
+            </button>
+          </div>
+
+          <div class="section-label">
             {{ t('director.stage.expressivePoseTitle') }}
           </div>
           <div class="pose-preset-list">
             <button
-              v-for="preset in expressivePosePresets"
+              v-for="preset in handAndGazePosePresets"
               :key="preset.id"
               type="button"
               class="pose-asset-chip"
@@ -2071,7 +2104,8 @@ const lightCastShadow = ref(true)
 const objUniformScale = ref(1)
 const isEditingObject = ref(false)
 const objectInspectorTab = ref<'props' | 'pose'>('props')
-const expressivePosePresets = DIRECTOR_EXPRESSIVE_POSE_PRESETS
+const bodyPosePresets = DIRECTOR_EXPRESSIVE_POSE_PRESETS.filter((p) => p.category === 'body')
+const handAndGazePosePresets = DIRECTOR_EXPRESSIVE_POSE_PRESETS.filter((p) => p.category !== 'body')
 
 function defaultObjectColor(o: { kind: string; color?: string; modelAssetId?: string }): string {
   if (o.color) return o.color

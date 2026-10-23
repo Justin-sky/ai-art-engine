@@ -437,14 +437,26 @@ function quatTrackFromEulerKeyframes(
   return new THREE.QuaternionKeyframeTrack(`${boneName}.quaternion`, times, values)
 }
 
+function vecTrackFromKeyframes(
+  boneName: string,
+  times: number[],
+  positions: Array<[number, number, number]>
+): THREE.VectorKeyframeTrack {
+  const values: number[] = []
+  for (const [px, py, pz] of positions) {
+    values.push(px, py, pz)
+  }
+  return new THREE.VectorKeyframeTrack(`${boneName}.position`, times, values)
+}
+
 /**
- * 生成内置程序化骨骼动画片段（Idle / Walk / Run / Wave / Action），无需外部资产即可直接挂上时间轴播放。
+ * 生成内置程序化骨骼动画片段（涵盖日常与戏剧常用 24 种动作），无需外部资产即可直接挂上时间轴播放。
  * 注意：手臂/腿部沿 -Y 轴下垂，右手定则下绕 +Z 旋转会将 -Y 摆向 +X：
  * - 左臂（位于 -X 侧）外展（远离躯干）需要 rz < 0；
  * - 右臂（位于 +X 侧）外展（远离躯干）需要 rz > 0。
  */
 export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
-  // 1. Idle (2.4s loop)
+  // 1. Idle (待机呼吸 2.4s)
   const idleTimes = [0, 1.2, 2.4]
   const idleClip = new THREE.AnimationClip('Idle', 2.4, [
     quatTrackFromEulerKeyframes('Spine', idleTimes, [
@@ -484,9 +496,16 @@ export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
     ])
   ])
 
-  // 2. Walk (1.2s loop)
+  // 2. Walk (日常行走 1.2s)
   const walkTimes = [0, 0.3, 0.6, 0.9, 1.2]
   const walkClip = new THREE.AnimationClip('Walk', 1.2, [
+    vecTrackFromKeyframes('Hips', walkTimes, [
+      [0, 0.92, 0],
+      [0, 0.96, 0],
+      [0, 0.92, 0],
+      [0, 0.96, 0],
+      [0, 0.92, 0]
+    ]),
     quatTrackFromEulerKeyframes('LeftUpLeg', walkTimes, [
       [-0.45, 0, 0],
       [0, 0, 0],
@@ -552,9 +571,16 @@ export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
     ])
   ])
 
-  // 3. Run (0.8s loop)
+  // 3. Run (慢跑/奔跑 0.8s)
   const runTimes = [0, 0.2, 0.4, 0.6, 0.8]
   const runClip = new THREE.AnimationClip('Run', 0.8, [
+    vecTrackFromKeyframes('Hips', runTimes, [
+      [0, 0.89, 0],
+      [0, 0.99, 0],
+      [0, 0.89, 0],
+      [0, 0.99, 0],
+      [0, 0.89, 0]
+    ]),
     quatTrackFromEulerKeyframes('Spine', runTimes, [
       [0.18, -0.08, 0],
       [0.2, 0, 0],
@@ -620,7 +646,473 @@ export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
     ])
   ])
 
-  // 4. Wave (1.6s loop)
+  // 4. Sprint (全速冲刺 0.6s)
+  const sprintTimes = [0, 0.15, 0.3, 0.45, 0.6]
+  const sprintClip = new THREE.AnimationClip('Sprint', 0.6, [
+    vecTrackFromKeyframes('Hips', sprintTimes, [
+      [0, 0.86, 0],
+      [0, 1.02, 0],
+      [0, 0.86, 0],
+      [0, 1.02, 0],
+      [0, 0.86, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', sprintTimes, [
+      [0.32, -0.12, 0],
+      [0.35, 0, 0],
+      [0.32, 0.12, 0],
+      [0.35, 0, 0],
+      [0.32, -0.12, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Chest', sprintTimes, [
+      [0.12, -0.06, 0],
+      [0.14, 0, 0],
+      [0.12, 0.06, 0],
+      [0.14, 0, 0],
+      [0.12, -0.06, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', sprintTimes, [
+      [-0.22, 0, 0],
+      [-0.25, 0, 0],
+      [-0.22, 0, 0],
+      [-0.25, 0, 0],
+      [-0.22, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', sprintTimes, [
+      [-1.05, 0, 0],
+      [0.15, 0, 0],
+      [0.85, 0, 0],
+      [-0.2, 0, 0],
+      [-1.05, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', sprintTimes, [
+      [0.35, 0, 0],
+      [1.35, 0, 0],
+      [0.25, 0, 0],
+      [0.15, 0, 0],
+      [0.35, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', sprintTimes, [
+      [0.85, 0, 0],
+      [-0.2, 0, 0],
+      [-1.05, 0, 0],
+      [0.15, 0, 0],
+      [0.85, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', sprintTimes, [
+      [0.25, 0, 0],
+      [0.15, 0, 0],
+      [0.35, 0, 0],
+      [1.35, 0, 0],
+      [0.25, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', sprintTimes, [
+      [0.85, 0, -0.18],
+      [0, 0, -0.18],
+      [-0.88, 0, -0.18],
+      [0, 0, -0.18],
+      [0.85, 0, -0.18]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', sprintTimes, [
+      [-0.88, 0, 0.18],
+      [0, 0, 0.18],
+      [0.85, 0, 0.18],
+      [0, 0, 0.18],
+      [-0.88, 0, 0.18]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', sprintTimes, [
+      [-1.1, 0, 0],
+      [-1.2, 0, 0],
+      [-1.3, 0, 0],
+      [-1.2, 0, 0],
+      [-1.1, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', sprintTimes, [
+      [-1.3, 0, 0],
+      [-1.2, 0, 0],
+      [-1.1, 0, 0],
+      [-1.2, 0, 0],
+      [-1.3, 0, 0]
+    ])
+  ])
+
+  // 5. Jump (蓄力跳跃与缓冲落地 1.4s)
+  const jumpTimes = [0, 0.35, 0.7, 1.05, 1.4]
+  const jumpClip = new THREE.AnimationClip('Jump', 1.4, [
+    vecTrackFromKeyframes('Hips', jumpTimes, [
+      [0, 0.94, 0],
+      [0, 0.68, 0],
+      [0, 1.42, 0],
+      [0, 0.72, 0],
+      [0, 0.94, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', jumpTimes, [
+      [0.04, 0, 0],
+      [0.32, 0, 0],
+      [-0.12, 0, 0],
+      [0.26, 0, 0],
+      [0.04, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', jumpTimes, [
+      [0, 0, 0],
+      [-0.18, 0, 0],
+      [-0.15, 0, 0],
+      [-0.12, 0, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', jumpTimes, [
+      [0, 0, 0],
+      [-0.82, 0, -0.06],
+      [-0.48, 0, -0.08],
+      [-0.75, 0, -0.06],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', jumpTimes, [
+      [0, 0, 0],
+      [-0.82, 0, 0.06],
+      [-0.48, 0, 0.08],
+      [-0.75, 0, 0.06],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', jumpTimes, [
+      [0.06, 0, 0],
+      [1.25, 0, 0],
+      [0.65, 0, 0],
+      [1.15, 0, 0],
+      [0.06, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', jumpTimes, [
+      [0.06, 0, 0],
+      [1.25, 0, 0],
+      [0.65, 0, 0],
+      [1.15, 0, 0],
+      [0.06, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', jumpTimes, [
+      [0.05, 0, -0.14],
+      [0.55, 0, -0.22],
+      [-0.85, 0, -1.35],
+      [-0.25, 0, -0.35],
+      [0.05, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', jumpTimes, [
+      [0.05, 0, 0.14],
+      [0.55, 0, 0.22],
+      [-0.85, 0, 1.35],
+      [-0.25, 0, 0.35],
+      [0.05, 0, 0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', jumpTimes, [
+      [-0.15, 0, 0],
+      [-0.45, 0, 0],
+      [-0.35, 0, 0],
+      [-0.55, 0, 0],
+      [-0.15, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', jumpTimes, [
+      [-0.15, 0, 0],
+      [-0.45, 0, 0],
+      [-0.35, 0, 0],
+      [-0.55, 0, 0],
+      [-0.15, 0, 0]
+    ])
+  ])
+
+  // 6. Sit (日常端坐椅上呼吸 2.4s)
+  const sitTimes = [0, 1.2, 2.4]
+  const sitClip = new THREE.AnimationClip('Sit', 2.4, [
+    vecTrackFromKeyframes('Hips', sitTimes, [
+      [0, 0.52, -0.08],
+      [0, 0.53, -0.08],
+      [0, 0.52, -0.08]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', sitTimes, [
+      [0.04, 0, 0],
+      [0.07, 0.02, 0],
+      [0.04, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', sitTimes, [
+      [0.02, 0, 0],
+      [-0.03, 0.05, 0],
+      [0.02, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', sitTimes, [
+      [-1.48, 0.06, -0.06],
+      [-1.48, 0.06, -0.06],
+      [-1.48, 0.06, -0.06]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', sitTimes, [
+      [-1.48, -0.06, 0.06],
+      [-1.48, -0.06, 0.06],
+      [-1.48, -0.06, 0.06]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', sitTimes, [
+      [1.48, 0, 0],
+      [1.45, 0, 0],
+      [1.48, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', sitTimes, [
+      [1.48, 0, 0],
+      [1.45, 0, 0],
+      [1.48, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', sitTimes, [
+      [-0.22, 0, -0.14],
+      [-0.25, 0, -0.16],
+      [-0.22, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', sitTimes, [
+      [-0.22, 0, 0.14],
+      [-0.25, 0, 0.16],
+      [-0.22, 0, 0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', sitTimes, [
+      [-0.65, 0, 0],
+      [-0.68, 0, 0],
+      [-0.65, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', sitTimes, [
+      [-0.65, 0, 0],
+      [-0.68, 0, 0],
+      [-0.65, 0, 0]
+    ])
+  ])
+
+  // 7. SitFloor (席地盘坐/冥想 2.6s)
+  const sitFloorTimes = [0, 1.3, 2.6]
+  const sitFloorClip = new THREE.AnimationClip('SitFloor', 2.6, [
+    vecTrackFromKeyframes('Hips', sitFloorTimes, [
+      [0, 0.18, 0],
+      [0, 0.19, 0],
+      [0, 0.18, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', sitFloorTimes, [
+      [0.06, 0, 0],
+      [0.03, 0, 0],
+      [0.06, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', sitFloorTimes, [
+      [0.05, 0, 0],
+      [0.01, 0, 0],
+      [0.05, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', sitFloorTimes, [
+      [-1.35, -0.55, -0.65],
+      [-1.35, -0.55, -0.65],
+      [-1.35, -0.55, -0.65]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', sitFloorTimes, [
+      [-1.35, 0.55, 0.65],
+      [-1.35, 0.55, 0.65],
+      [-1.35, 0.55, 0.65]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', sitFloorTimes, [
+      [1.75, 0, 0],
+      [1.75, 0, 0],
+      [1.75, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', sitFloorTimes, [
+      [1.75, 0, 0],
+      [1.75, 0, 0],
+      [1.75, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', sitFloorTimes, [
+      [-0.18, 0, -0.22],
+      [-0.2, 0, -0.24],
+      [-0.18, 0, -0.22]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', sitFloorTimes, [
+      [-0.18, 0, 0.22],
+      [-0.2, 0, 0.24],
+      [-0.18, 0, 0.22]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', sitFloorTimes, [
+      [-0.55, 0, 0],
+      [-0.58, 0, 0],
+      [-0.55, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', sitFloorTimes, [
+      [-0.55, 0, 0],
+      [-0.58, 0, 0],
+      [-0.55, 0, 0]
+    ])
+  ])
+
+  // 8. Crouch (潜行下蹲 2.0s)
+  const crouchTimes = [0, 1.0, 2.0]
+  const crouchClip = new THREE.AnimationClip('Crouch', 2.0, [
+    vecTrackFromKeyframes('Hips', crouchTimes, [
+      [0, 0.48, 0],
+      [0, 0.44, 0],
+      [0, 0.48, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', crouchTimes, [
+      [0.36, 0, 0],
+      [0.42, 0, 0],
+      [0.36, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', crouchTimes, [
+      [-0.28, -0.1, 0],
+      [-0.32, 0.1, 0],
+      [-0.28, -0.1, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', crouchTimes, [
+      [-1.32, 0, -0.12],
+      [-1.38, 0, -0.12],
+      [-1.32, 0, -0.12]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', crouchTimes, [
+      [-1.32, 0, 0.12],
+      [-1.38, 0, 0.12],
+      [-1.32, 0, 0.12]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', crouchTimes, [
+      [1.82, 0, 0],
+      [1.9, 0, 0],
+      [1.82, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', crouchTimes, [
+      [1.82, 0, 0],
+      [1.9, 0, 0],
+      [1.82, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', crouchTimes, [
+      [-0.45, 0, -0.22],
+      [-0.52, 0, -0.24],
+      [-0.45, 0, -0.22]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', crouchTimes, [
+      [-0.45, 0, 0.22],
+      [-0.52, 0, 0.24],
+      [-0.45, 0, 0.22]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', crouchTimes, [
+      [-0.65, 0, 0],
+      [-0.72, 0, 0],
+      [-0.65, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', crouchTimes, [
+      [-0.65, 0, 0],
+      [-0.72, 0, 0],
+      [-0.65, 0, 0]
+    ])
+  ])
+
+  // 9. Kneel (单膝跪地 2.2s)
+  const kneelTimes = [0, 1.1, 2.2]
+  const kneelClip = new THREE.AnimationClip('Kneel', 2.2, [
+    vecTrackFromKeyframes('Hips', kneelTimes, [
+      [0, 0.54, 0],
+      [0, 0.52, 0],
+      [0, 0.54, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', kneelTimes, [
+      [0.14, 0, 0],
+      [0.18, 0, 0],
+      [0.14, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', kneelTimes, [
+      [0.12, 0, 0],
+      [0.06, 0, 0],
+      [0.12, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', kneelTimes, [
+      [-1.42, 0, -0.06],
+      [-1.45, 0, -0.06],
+      [-1.42, 0, -0.06]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', kneelTimes, [
+      [1.45, 0, 0],
+      [1.48, 0, 0],
+      [1.45, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', kneelTimes, [
+      [0.18, 0, 0.04],
+      [0.2, 0, 0.04],
+      [0.18, 0, 0.04]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', kneelTimes, [
+      [1.62, 0, 0],
+      [1.65, 0, 0],
+      [1.62, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', kneelTimes, [
+      [-0.45, 0, -0.18],
+      [-0.48, 0, -0.2],
+      [-0.45, 0, -0.18]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', kneelTimes, [
+      [0.15, 0, 0.2],
+      [0.18, 0, 0.22],
+      [0.15, 0, 0.2]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', kneelTimes, [
+      [-0.65, 0, 0],
+      [-0.68, 0, 0],
+      [-0.65, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', kneelTimes, [
+      [-0.35, 0, 0],
+      [-0.38, 0, 0],
+      [-0.35, 0, 0]
+    ])
+  ])
+
+  // 10. LieDown (仰卧平躺呼吸 2.8s)
+  const lieTimes = [0, 1.4, 2.8]
+  const lieDownClip = new THREE.AnimationClip('LieDown', 2.8, [
+    vecTrackFromKeyframes('Hips', lieTimes, [
+      [0, 0.14, 0],
+      [0, 0.15, 0],
+      [0, 0.14, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Hips', lieTimes, [
+      [-1.52, 0, 0],
+      [-1.52, 0, 0],
+      [-1.52, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', lieTimes, [
+      [0.04, 0, 0],
+      [0.08, 0, 0],
+      [0.04, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', lieTimes, [
+      [0.12, 0.06, 0],
+      [0.14, -0.04, 0],
+      [0.12, 0.06, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', lieTimes, [
+      [0.04, 0, -0.08],
+      [0.04, 0, -0.08],
+      [0.04, 0, -0.08]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', lieTimes, [
+      [0.04, 0, 0.08],
+      [0.04, 0, 0.08],
+      [0.04, 0, 0.08]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', lieTimes, [
+      [0.05, 0, -0.24],
+      [0.06, 0, -0.26],
+      [0.05, 0, -0.24]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', lieTimes, [
+      [0.05, 0, 0.24],
+      [0.06, 0, 0.26],
+      [0.05, 0, 0.24]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', lieTimes, [
+      [-0.18, 0, 0],
+      [-0.22, 0, 0],
+      [-0.18, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', lieTimes, [
+      [-0.18, 0, 0],
+      [-0.22, 0, 0],
+      [-0.18, 0, 0]
+    ])
+  ])
+
+  // 11. Wave (挥手致意 1.6s)
   const waveTimes = [0, 0.4, 0.8, 1.2, 1.6]
   const waveClip = new THREE.AnimationClip('Wave', 1.6, [
     quatTrackFromEulerKeyframes('LeftUpperArm', waveTimes, [
@@ -660,7 +1152,635 @@ export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
     ])
   ])
 
-  // 5. Action / Combat Ready (1.8s loop)
+  // 12. Bow (鞠躬行礼 2.0s)
+  const bowTimes = [0, 0.7, 1.3, 2.0]
+  const bowClip = new THREE.AnimationClip('Bow', 2.0, [
+    quatTrackFromEulerKeyframes('Spine', bowTimes, [
+      [0.02, 0, 0],
+      [0.52, 0, 0],
+      [0.52, 0, 0],
+      [0.02, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Chest', bowTimes, [
+      [0, 0, 0],
+      [0.24, 0, 0],
+      [0.24, 0, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', bowTimes, [
+      [0, 0, 0],
+      [0.18, 0, 0],
+      [0.18, 0, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', bowTimes, [
+      [0.04, 0, -0.14],
+      [-0.15, 0, -0.16],
+      [-0.15, 0, -0.16],
+      [0.04, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', bowTimes, [
+      [0.04, 0, 0.14],
+      [-0.15, 0, 0.16],
+      [-0.15, 0, 0.16],
+      [0.04, 0, 0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', bowTimes, [
+      [-0.15, 0, 0],
+      [-0.28, 0, 0],
+      [-0.28, 0, 0],
+      [-0.15, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', bowTimes, [
+      [-0.15, 0, 0],
+      [-0.28, 0, 0],
+      [-0.28, 0, 0],
+      [-0.15, 0, 0]
+    ])
+  ])
+
+  // 13. Clap (鼓掌喝彩 1.2s)
+  const clapTimes = [0, 0.3, 0.6, 0.9, 1.2]
+  const clapClip = new THREE.AnimationClip('Clap', 1.2, [
+    quatTrackFromEulerKeyframes('Spine', clapTimes, [
+      [0.03, 0, 0],
+      [0.06, 0, 0],
+      [0.03, 0, 0],
+      [0.06, 0, 0],
+      [0.03, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', clapTimes, [
+      [-0.04, 0, 0.03],
+      [-0.08, 0, -0.03],
+      [-0.04, 0, 0.03],
+      [-0.08, 0, -0.03],
+      [-0.04, 0, 0.03]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', clapTimes, [
+      [-0.65, 0, -0.22],
+      [-0.65, 0, -0.14],
+      [-0.65, 0, -0.22],
+      [-0.65, 0, -0.14],
+      [-0.65, 0, -0.22]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', clapTimes, [
+      [-0.65, 0, 0.22],
+      [-0.65, 0, 0.14],
+      [-0.65, 0, 0.22],
+      [-0.65, 0, 0.14],
+      [-0.65, 0, 0.22]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', clapTimes, [
+      [-1.15, 0, 0.15],
+      [-1.15, 0, 0.42],
+      [-1.15, 0, 0.15],
+      [-1.15, 0, 0.42],
+      [-1.15, 0, 0.15]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', clapTimes, [
+      [-1.15, 0, -0.15],
+      [-1.15, 0, -0.42],
+      [-1.15, 0, -0.15],
+      [-1.15, 0, -0.42],
+      [-1.15, 0, -0.15]
+    ])
+  ])
+
+  // 14. Cheer (双臂高举欢呼 1.4s)
+  const cheerTimes = [0, 0.35, 0.7, 1.05, 1.4]
+  const cheerClip = new THREE.AnimationClip('Cheer', 1.4, [
+    vecTrackFromKeyframes('Hips', cheerTimes, [
+      [0, 0.94, 0],
+      [0, 1.04, 0],
+      [0, 0.92, 0],
+      [0, 1.04, 0],
+      [0, 0.94, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', cheerTimes, [
+      [-0.08, 0, 0],
+      [-0.14, 0, 0],
+      [-0.08, 0, 0],
+      [-0.14, 0, 0],
+      [-0.08, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', cheerTimes, [
+      [-0.15, 0, 0.04],
+      [-0.22, 0, -0.04],
+      [-0.15, 0, 0.04],
+      [-0.22, 0, -0.04],
+      [-0.15, 0, 0.04]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', cheerTimes, [
+      [-0.2, 0, -2.15],
+      [-0.2, 0, -2.35],
+      [-0.2, 0, -2.15],
+      [-0.2, 0, -2.35],
+      [-0.2, 0, -2.15]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', cheerTimes, [
+      [-0.2, 0, 2.15],
+      [-0.2, 0, 2.35],
+      [-0.2, 0, 2.15],
+      [-0.2, 0, 2.35],
+      [-0.2, 0, 2.15]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', cheerTimes, [
+      [-0.25, 0, -0.2],
+      [-0.45, 0, -0.35],
+      [-0.25, 0, -0.2],
+      [-0.45, 0, -0.35],
+      [-0.25, 0, -0.2]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', cheerTimes, [
+      [-0.25, 0, 0.2],
+      [-0.45, 0, 0.35],
+      [-0.25, 0, 0.2],
+      [-0.45, 0, 0.35],
+      [-0.25, 0, 0.2]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', cheerTimes, [
+      [0, 0, -0.08],
+      [-0.18, 0, -0.1],
+      [0, 0, -0.08],
+      [-0.18, 0, -0.1],
+      [0, 0, -0.08]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', cheerTimes, [
+      [0, 0, 0.08],
+      [-0.18, 0, 0.1],
+      [0, 0, 0.08],
+      [-0.18, 0, 0.1],
+      [0, 0, 0.08]
+    ])
+  ])
+
+  // 15. Dance (律动舞蹈 1.6s)
+  const danceTimes = [0, 0.4, 0.8, 1.2, 1.6]
+  const danceClip = new THREE.AnimationClip('Dance', 1.6, [
+    vecTrackFromKeyframes('Hips', danceTimes, [
+      [-0.06, 0.91, 0],
+      [0, 0.96, 0],
+      [0.06, 0.91, 0],
+      [0, 0.96, 0],
+      [-0.06, 0.91, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', danceTimes, [
+      [0.06, -0.18, 0.08],
+      [0.04, 0, 0],
+      [0.06, 0.18, -0.08],
+      [0.04, 0, 0],
+      [0.06, -0.18, 0.08]
+    ]),
+    quatTrackFromEulerKeyframes('Head', danceTimes, [
+      [-0.05, 0.12, -0.08],
+      [0.04, 0, 0],
+      [-0.05, -0.12, 0.08],
+      [0.04, 0, 0],
+      [-0.05, 0.12, -0.08]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', danceTimes, [
+      [-0.55, 0, -1.65],
+      [-0.45, 0, -0.45],
+      [-0.55, 0, -0.35],
+      [-0.45, 0, -0.95],
+      [-0.55, 0, -1.65]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', danceTimes, [
+      [-0.55, 0, 0.35],
+      [-0.45, 0, 0.95],
+      [-0.55, 0, 1.65],
+      [-0.45, 0, 0.45],
+      [-0.55, 0, 0.35]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', danceTimes, [
+      [-0.65, 0, 0],
+      [-0.95, 0, 0],
+      [-0.85, 0, 0],
+      [-0.75, 0, 0],
+      [-0.65, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', danceTimes, [
+      [-0.85, 0, 0],
+      [-0.75, 0, 0],
+      [-0.65, 0, 0],
+      [-0.95, 0, 0],
+      [-0.85, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', danceTimes, [
+      [-0.25, 0, -0.12],
+      [0, 0, -0.06],
+      [-0.1, 0, -0.06],
+      [0, 0, -0.06],
+      [-0.25, 0, -0.12]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', danceTimes, [
+      [-0.1, 0, 0.06],
+      [0, 0, 0.06],
+      [-0.25, 0, 0.12],
+      [0, 0, 0.06],
+      [-0.1, 0, 0.06]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', danceTimes, [
+      [0.45, 0, 0],
+      [0.12, 0, 0],
+      [0.2, 0, 0],
+      [0.12, 0, 0],
+      [0.45, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', danceTimes, [
+      [0.2, 0, 0],
+      [0.12, 0, 0],
+      [0.45, 0, 0],
+      [0.12, 0, 0],
+      [0.2, 0, 0]
+    ])
+  ])
+
+  // 16. Talk (自然交谈手势 2.0s)
+  const talkTimes = [0, 0.5, 1.0, 1.5, 2.0]
+  const talkClip = new THREE.AnimationClip('Talk', 2.0, [
+    quatTrackFromEulerKeyframes('Spine', talkTimes, [
+      [0.03, -0.05, 0],
+      [0.05, 0.04, 0],
+      [0.04, -0.03, 0],
+      [0.05, 0.05, 0],
+      [0.03, -0.05, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', talkTimes, [
+      [-0.04, 0.08, 0.03],
+      [0.05, -0.06, -0.02],
+      [-0.06, 0.04, 0.04],
+      [0.04, -0.08, 0],
+      [-0.04, 0.08, 0.03]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', talkTimes, [
+      [-0.35, 0, -0.22],
+      [-0.48, 0, -0.32],
+      [-0.38, 0, -0.24],
+      [-0.52, 0, -0.28],
+      [-0.35, 0, -0.22]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', talkTimes, [
+      [-0.48, 0, 0.28],
+      [-0.35, 0, 0.2],
+      [-0.55, 0, 0.34],
+      [-0.4, 0, 0.22],
+      [-0.48, 0, 0.28]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', talkTimes, [
+      [-0.85, 0, 0],
+      [-1.05, 0, 0],
+      [-0.78, 0, 0],
+      [-0.98, 0, 0],
+      [-0.85, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', talkTimes, [
+      [-1.02, 0, 0],
+      [-0.82, 0, 0],
+      [-1.12, 0, 0],
+      [-0.88, 0, 0],
+      [-1.02, 0, 0]
+    ])
+  ])
+
+  // 17. Think (托腮沉思 2.4s)
+  const thinkTimes = [0, 1.2, 2.4]
+  const thinkClip = new THREE.AnimationClip('Think', 2.4, [
+    quatTrackFromEulerKeyframes('Spine', thinkTimes, [
+      [0.06, 0.05, 0],
+      [0.08, 0.03, 0],
+      [0.06, 0.05, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', thinkTimes, [
+      [0.14, -0.08, 0.08],
+      [0.18, -0.04, 0.1],
+      [0.14, -0.08, 0.08]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', thinkTimes, [
+      [-0.35, 0, -0.18],
+      [-0.38, 0, -0.2],
+      [-0.35, 0, -0.18]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', thinkTimes, [
+      [-0.75, 0, 0],
+      [-0.78, 0, 0],
+      [-0.75, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', thinkTimes, [
+      [-0.82, 0, 0.22],
+      [-0.86, 0, 0.22],
+      [-0.82, 0, 0.22]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', thinkTimes, [
+      [-1.42, 0, -0.25],
+      [-1.46, 0, -0.25],
+      [-1.42, 0, -0.25]
+    ])
+  ])
+
+  // 18. PhoneLook (低头看手机/阅读 2.4s)
+  const phoneTimes = [0, 1.2, 2.4]
+  const phoneLookClip = new THREE.AnimationClip('PhoneLook', 2.4, [
+    quatTrackFromEulerKeyframes('Spine', phoneTimes, [
+      [0.08, 0, 0],
+      [0.1, 0, 0],
+      [0.08, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Neck', phoneTimes, [
+      [0.18, 0, 0],
+      [0.2, 0, 0],
+      [0.18, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', phoneTimes, [
+      [0.32, 0, 0],
+      [0.35, 0.03, 0],
+      [0.32, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', phoneTimes, [
+      [0.04, 0, -0.14],
+      [0.06, 0, -0.16],
+      [0.04, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', phoneTimes, [
+      [-0.2, 0, 0],
+      [-0.22, 0, 0],
+      [-0.2, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', phoneTimes, [
+      [-0.65, 0, 0.18],
+      [-0.68, 0, 0.18],
+      [-0.65, 0, 0.18]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', phoneTimes, [
+      [-1.18, 0, -0.22],
+      [-1.22, 0, -0.22],
+      [-1.18, 0, -0.22]
+    ])
+  ])
+
+  // 19. Stretch (伸懒腰舒展 2.6s)
+  const stretchTimes = [0, 1.1, 1.7, 2.6]
+  const stretchClip = new THREE.AnimationClip('Stretch', 2.6, [
+    quatTrackFromEulerKeyframes('Spine', stretchTimes, [
+      [0.02, 0, 0],
+      [-0.18, 0, 0],
+      [-0.22, 0, 0],
+      [0.02, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Chest', stretchTimes, [
+      [0, 0, 0],
+      [-0.14, 0, 0],
+      [-0.16, 0, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', stretchTimes, [
+      [0, 0, 0],
+      [-0.22, 0, 0],
+      [-0.25, 0.06, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', stretchTimes, [
+      [0.04, 0, -0.14],
+      [-0.25, 0, -2.15],
+      [-0.3, 0, -2.28],
+      [0.04, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', stretchTimes, [
+      [0.04, 0, 0.14],
+      [-0.25, 0, 2.15],
+      [-0.3, 0, 2.28],
+      [0.04, 0, 0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', stretchTimes, [
+      [-0.15, 0, 0],
+      [-0.35, 0, 0],
+      [-0.2, 0, 0],
+      [-0.15, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', stretchTimes, [
+      [-0.15, 0, 0],
+      [-0.35, 0, 0],
+      [-0.2, 0, 0],
+      [-0.15, 0, 0]
+    ])
+  ])
+
+  // 20. LookAround (左右张望寻找 2.6s)
+  const lookTimes = [0, 0.65, 1.3, 1.95, 2.6]
+  const lookAroundClip = new THREE.AnimationClip('LookAround', 2.6, [
+    quatTrackFromEulerKeyframes('Spine', lookTimes, [
+      [0.04, 0, 0],
+      [0.05, 0.25, 0],
+      [0.04, 0, 0],
+      [0.05, -0.25, 0],
+      [0.04, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', lookTimes, [
+      [0, 0, 0],
+      [-0.06, 0.45, 0],
+      [0, 0, 0],
+      [-0.06, -0.45, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', lookTimes, [
+      [-0.15, 0, -0.18],
+      [-0.22, 0, -0.24],
+      [-0.15, 0, -0.18],
+      [-0.22, 0, -0.24],
+      [-0.15, 0, -0.18]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', lookTimes, [
+      [-0.15, 0, 0.18],
+      [-0.75, 0, 0.32],
+      [-0.15, 0, 0.18],
+      [-0.22, 0, 0.24],
+      [-0.15, 0, 0.18]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', lookTimes, [
+      [-0.3, 0, 0],
+      [-0.45, 0, 0],
+      [-0.3, 0, 0],
+      [-0.45, 0, 0],
+      [-0.3, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', lookTimes, [
+      [-0.3, 0, 0],
+      [-1.25, 0, 0],
+      [-0.3, 0, 0],
+      [-0.45, 0, 0],
+      [-0.3, 0, 0]
+    ])
+  ])
+
+  // 21. Drink (举杯畅饮 2.2s)
+  const drinkTimes = [0, 0.7, 1.5, 2.2]
+  const drinkClip = new THREE.AnimationClip('Drink', 2.2, [
+    quatTrackFromEulerKeyframes('Spine', drinkTimes, [
+      [0.02, 0, 0],
+      [-0.06, 0, 0],
+      [-0.08, 0, 0],
+      [0.02, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', drinkTimes, [
+      [0, 0, 0],
+      [-0.24, 0, 0],
+      [-0.28, 0, 0],
+      [0, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', drinkTimes, [
+      [0.04, 0, -0.14],
+      [0.06, 0, -0.16],
+      [0.06, 0, -0.16],
+      [0.04, 0, -0.14]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', drinkTimes, [
+      [-0.18, 0, 0],
+      [-0.22, 0, 0],
+      [-0.22, 0, 0],
+      [-0.18, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', drinkTimes, [
+      [-0.35, 0, 0.18],
+      [-0.95, 0, 0.25],
+      [-1.02, 0, 0.25],
+      [-0.35, 0, 0.18]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', drinkTimes, [
+      [-0.75, 0, 0],
+      [-1.42, 0, -0.2],
+      [-1.45, 0, -0.2],
+      [-0.75, 0, 0]
+    ])
+  ])
+
+  // 22. PushUp (俯卧撑锻炼 1.6s)
+  const pushUpTimes = [0, 0.8, 1.6]
+  const pushUpClip = new THREE.AnimationClip('PushUp', 1.6, [
+    vecTrackFromKeyframes('Hips', pushUpTimes, [
+      [0, 0.38, 0],
+      [0, 0.22, 0],
+      [0, 0.38, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Hips', pushUpTimes, [
+      [1.32, 0, 0],
+      [1.42, 0, 0],
+      [1.32, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', pushUpTimes, [
+      [-0.85, 0, 0],
+      [-0.92, 0, 0],
+      [-0.85, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', pushUpTimes, [
+      [-1.25, 0, -0.25],
+      [-0.65, 0, -0.55],
+      [-1.25, 0, -0.25]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', pushUpTimes, [
+      [-1.25, 0, 0.25],
+      [-0.65, 0, 0.55],
+      [-1.25, 0, 0.25]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', pushUpTimes, [
+      [-0.15, 0, 0],
+      [-1.05, 0, 0],
+      [-0.15, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', pushUpTimes, [
+      [-0.15, 0, 0],
+      [-1.05, 0, 0],
+      [-0.15, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', pushUpTimes, [
+      [0.05, 0, -0.06],
+      [0.05, 0, -0.06],
+      [0.05, 0, -0.06]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', pushUpTimes, [
+      [0.05, 0, 0.06],
+      [0.05, 0, 0.06],
+      [0.05, 0, 0.06]
+    ])
+  ])
+
+  // 23. Fall (受击失衡跌倒 1.8s)
+  const fallTimes = [0, 0.45, 0.95, 1.8]
+  const fallClip = new THREE.AnimationClip('Fall', 1.8, [
+    vecTrackFromKeyframes('Hips', fallTimes, [
+      [0, 0.94, 0],
+      [0, 0.68, -0.15],
+      [0, 0.18, -0.35],
+      [0, 0.16, -0.38]
+    ]),
+    quatTrackFromEulerKeyframes('Hips', fallTimes, [
+      [0, 0, 0],
+      [-0.55, 0, 0],
+      [-1.48, 0, 0],
+      [-1.52, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Spine', fallTimes, [
+      [0.04, 0, 0],
+      [-0.25, 0, 0],
+      [0.12, 0, 0],
+      [0.06, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('Head', fallTimes, [
+      [0, 0, 0],
+      [-0.35, 0, 0],
+      [0.22, 0, 0],
+      [0.15, 0.1, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpperArm', fallTimes, [
+      [0.05, 0, -0.15],
+      [-0.75, 0, -0.85],
+      [-0.25, 0, -0.65],
+      [0.05, 0, -0.45]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpperArm', fallTimes, [
+      [0.05, 0, 0.15],
+      [-0.75, 0, 0.85],
+      [-0.25, 0, 0.65],
+      [0.05, 0, 0.45]
+    ]),
+    quatTrackFromEulerKeyframes('LeftForeArm', fallTimes, [
+      [-0.18, 0, 0],
+      [-0.55, 0, 0],
+      [-0.35, 0, 0],
+      [-0.2, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightForeArm', fallTimes, [
+      [-0.18, 0, 0],
+      [-0.55, 0, 0],
+      [-0.35, 0, 0],
+      [-0.2, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('LeftUpLeg', fallTimes, [
+      [0, 0, 0],
+      [-0.65, 0, -0.12],
+      [-0.25, 0, -0.15],
+      [0.05, 0, -0.12]
+    ]),
+    quatTrackFromEulerKeyframes('RightUpLeg', fallTimes, [
+      [0, 0, 0],
+      [-0.45, 0, 0.12],
+      [-0.2, 0, 0.15],
+      [0.05, 0, 0.12]
+    ]),
+    quatTrackFromEulerKeyframes('LeftLeg', fallTimes, [
+      [0.05, 0, 0],
+      [0.85, 0, 0],
+      [0.35, 0, 0],
+      [0.1, 0, 0]
+    ]),
+    quatTrackFromEulerKeyframes('RightLeg', fallTimes, [
+      [0.05, 0, 0],
+      [0.65, 0, 0],
+      [0.3, 0, 0],
+      [0.1, 0, 0]
+    ])
+  ])
+
+  // 24. Action / Combat Ready (战斗格斗戒备 1.8s)
   const actionTimes = [0, 0.9, 1.8]
   const actionClip = new THREE.AnimationClip('Action', 1.8, [
     quatTrackFromEulerKeyframes('Spine', actionTimes, [
@@ -710,7 +1830,32 @@ export function buildBuiltinMannequinClips(): THREE.AnimationClip[] {
     ])
   ])
 
-  return [idleClip, walkClip, runClip, waveClip, actionClip]
+  return [
+    idleClip,
+    walkClip,
+    runClip,
+    sprintClip,
+    jumpClip,
+    sitClip,
+    sitFloorClip,
+    crouchClip,
+    kneelClip,
+    lieDownClip,
+    waveClip,
+    bowClip,
+    clapClip,
+    cheerClip,
+    danceClip,
+    talkClip,
+    thinkClip,
+    phoneLookClip,
+    stretchClip,
+    lookAroundClip,
+    drinkClip,
+    pushUpClip,
+    fallClip,
+    actionClip
+  ]
 }
 
 /**

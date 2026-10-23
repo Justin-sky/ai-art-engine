@@ -218,23 +218,54 @@ function resolveShotLensSpec(shotSizeRaw: string): ShotLensSpec {
   }
 }
 
-function inferActorClipForShot(shot: FilmShot, actorName: string, isPrimary: boolean): string {
+function inferActorClipForShot(
+  shot: FilmShot,
+  actorName: string,
+  isPrimary: boolean,
+  actorPosture?: string
+): string {
   const key = filmNameKey(actorName)
   const dialogueLines = Array.isArray(shot.dialogue) ? shot.dialogue : []
   const speaks = dialogueLines.some((d) => filmNameKey(canonicalCharacterName(d.speaker)) === key)
   const text = `${shot.action ?? ''} ${shot.videoPrompt ?? ''}`.toLowerCase()
-  if (/奔跑|狂奔|追逐|冲刺|逃跑|run|sprint|chase|dash/.test(text)) return 'Run'
-  if (/行走|走近|走向|迈步|漫步|踱步|walk|step|approach|stroll/.test(text)) return 'Walk'
-  if (
-    /挥手|招手|抬手|指着|递给|交谈|争执|诉说|wave|gesture|point|talk|argue/.test(text) ||
-    speaks
-  ) {
-    return 'Wave'
+  const isSeatedActor = actorPosture === 'sitting' || actorPosture === 'slumped_sitting'
+
+  if (/百米冲刺|全速冲刺|sprint|dash/.test(text)) return 'Sprint'
+  if (/奔跑|狂奔|追逐|冲刺|逃跑|逃离|run|chase/.test(text)) return 'Run'
+  if (/跳跃|腾空|起跳|跃起|跳起|jump|leap|hop/.test(text)) return 'Jump'
+  if (/跌倒|摔倒|倒地|受击倒|fall|collapse|knock/.test(text)) return 'Fall'
+  if (/俯卧撑|push[-\s]?up/.test(text)) return 'PushUp'
+  if (/跳舞|舞蹈|律动|蹦迪|dance|dancing|groove/.test(text)) return 'Dance'
+  if (/欢呼|庆祝|高举双臂|欢庆|cheer|celebrat|victory/.test(text)) return 'Cheer'
+  if (/鼓掌|拍手|喝彩|clap|applaud/.test(text)) return 'Clap'
+  if (/鞠躬|行礼|致敬|bow/.test(text)) return 'Bow'
+  if (/伸懒腰|舒展|哈欠|stretch|yawn/.test(text)) return 'Stretch'
+  if (/端起咖啡|喝咖啡|喝水|举杯|干杯|畅饮|drink|toast|sip/.test(text)) return 'Drink'
+  if (/看手机|刷手机|看了一眼手机|盯着手机|低头看|阅读|看书|phone|read/.test(text)) {
+    return 'PhoneLook'
   }
-  if (/攻击|战斗|挥剑|格挡|跳跃|爆发|跌倒|转身|fight|attack|strike|jump|action|turn/.test(text)) {
+  if (/思考|沉思|托腮|发呆|凝思|think|ponder/.test(text)) return 'Think'
+  if (/四处张望|左右张望|远眺|寻找|环顾|look\s*around|scout|search/.test(text)) {
+    return 'LookAround'
+  }
+  if (/行走|走近|走向|迈步|漫步|踱步|起身走|walk|step|approach|stroll/.test(text)) return 'Walk'
+  if (/盘腿|盘坐|打坐|冥想|席地而坐|meditat|cross-leg/.test(text)) return 'SitFloor'
+  if (/下蹲|蹲下|潜行|埋伏|crouch|squat|sneak/.test(text)) return 'Crouch'
+  if (/单跪|跪下|半跪|kneel/.test(text)) return 'Kneel'
+  if (/平躺|躺下|仰卧|睡眠|熟睡|lie\s*down|lying|sleep/.test(text)) return 'LieDown'
+  if (/攻击|战斗|挥剑|格挡|格斗|出拳|搏斗|爆发|fight|attack|strike|combat|action/.test(text)) {
     return 'Action'
   }
-  return isPrimary && dialogueLines.length > 0 ? 'Wave' : 'Idle'
+  if (/挥手|招手|抬手|指着|递给|wave|gesture|point/.test(text)) {
+    return 'Wave'
+  }
+  if (/交谈|争执|诉说|汇报|质问|解释|talk|argue|discuss|explain/.test(text) || speaks) {
+    return 'Talk'
+  }
+  if (!isSeatedActor && /坐在|坐下|端坐|瘫坐|落座|sit|seated/.test(text)) {
+    return 'Sit'
+  }
+  return isPrimary && dialogueLines.length > 0 ? 'Talk' : 'Idle'
 }
 
 function inferPosePresetForActor(index: number, total: number): string {
@@ -415,6 +446,7 @@ export function compileStoryboardToDirectorStage(
   const usedObjectIds = new Set<string>()
   const actors: StageObjectState[] = []
   const actorByKey = new Map<string, StageObjectState>()
+  const actorPostureById = new Map<string, string>()
 
   const totalActors = layoutPlan.actors.length
   for (let i = 0; i < totalActors; i++) {
@@ -472,6 +504,9 @@ export function compileStoryboardToDirectorStage(
     usedObjectIds.add(actorObj.id)
     actors.push(actorObj)
     actorByKey.set(key, actorObj)
+    if (spec.posture) {
+      actorPostureById.set(actorObj.id, spec.posture)
+    }
   }
 
   // 4. 将组合素模（含支撑桌椅、桌面显示器/文件堆、背景格子间等）展开为 StageObjectState 树
@@ -746,7 +781,12 @@ export function compileStoryboardToDirectorStage(
 
     // 为每位演员添加本镜区间内的骨骼动作片段
     for (const actor of actors) {
-      const clipName = inferActorClipForShot(shot, actor.name, actor.id === primaryActor.id)
+      const clipName = inferActorClipForShot(
+        shot,
+        actor.name,
+        actor.id === primaryActor.id,
+        actorPostureById.get(actor.id)
+      )
       const list = actorClipMap.get(actor.id) ?? []
       const prevSeg = list[list.length - 1]
       if (prevSeg && prevSeg.clip === clipName && Math.abs(prevSeg.end - startSec) < 0.05) {
@@ -843,6 +883,125 @@ export function compileStoryboardToDirectorStage(
   }
 }
 
+const compiledStageSigByOwner = new Map<string, string>()
+
+export function computeStoryboardPrevizSignature(
+  storyboard: FilmStoryboard,
+  options: CompileStoryboardPrevizOptions = {}
+): string {
+  const isZh = options.locale ? options.locale.toLowerCase().startsWith('zh') : true
+  const { targetShots, characterNames, propNames, locationNames } = collectScopedStoryboardEntities(
+    storyboard,
+    options,
+    isZh
+  )
+  return JSON.stringify({
+    aspectRatio: storyboard.aspectRatio ?? '16:9',
+    style: storyboard.style ?? '',
+    sceneId: options.sceneId ?? null,
+    shotId: options.shotId ?? null,
+    characters: characterNames,
+    props: propNames,
+    locations: locationNames,
+    shots: targetShots.map((s) => ({
+      id: s.id,
+      order: s.order ?? 0,
+      sceneId: s.sceneId ?? '',
+      durationSec: Math.max(1, Math.min(30, Number(s.durationSec) || 4)),
+      shotSize: s.shotSize ?? '',
+      angle: s.angle ?? '',
+      cameraMove: s.cameraMove ?? '',
+      location: s.location ?? '',
+      characters: s.characters ?? [],
+      props: s.props ?? [],
+      action: s.action ?? '',
+      transition: s.transition ?? '',
+      dialogue: (s.dialogue ?? []).map((d) => `${d.speaker ?? ''}:${d.line ?? ''}`)
+    }))
+  })
+}
+
+export function markCompiledStoryboardStage(
+  stage: DirectorStageState,
+  storyboard: FilmStoryboard,
+  options: CompileStoryboardPrevizOptions = {}
+): void {
+  const ownerKey = stage.ownerProcessingNodeId?.trim() || '__default__'
+  compiledStageSigByOwner.set(ownerKey, computeStoryboardPrevizSignature(storyboard, options))
+}
+
+/**
+ * 判断当前 3D 导演台舞台是否已经包含与目标分镜范围完全一致的预演结果。
+ * 若命中缓存，可直接进入导演台而无需重新调用 LLM 或覆盖用户在导演台内的手动微调。
+ */
+export function canReuseCompiledStoryboardStage(
+  currentStage: DirectorStageState,
+  storyboard: FilmStoryboard,
+  options: CompileStoryboardPrevizOptions = {}
+): boolean {
+  const isZh = options.locale ? options.locale.toLowerCase().startsWith('zh') : true
+  const { targetShots, characterNames, propNames } = collectScopedStoryboardEntities(
+    storyboard,
+    options,
+    isZh
+  )
+  if (targetShots.length === 0 || currentStage.objects.length === 0) return false
+
+  const ownerKey = currentStage.ownerProcessingNodeId?.trim() || '__default__'
+  const currentSig = computeStoryboardPrevizSignature(storyboard, options)
+  const recordedSig = compiledStageSigByOwner.get(ownerKey)
+  if (recordedSig && recordedSig !== currentSig) {
+    return false
+  }
+
+  const sbCams = (currentStage.cameras ?? []).filter((c) =>
+    c.id.startsWith(STORYBOARD_CAMERA_ID_PREFIX)
+  )
+  if (sbCams.length !== targetShots.length) return false
+
+  const cutTrack = currentStage.animation?.tracks.find((tr) => tr.cameraCut)
+  const cutSegments = cutTrack?.cameraSegments ?? []
+
+  for (let idx = 0; idx < targetShots.length; idx++) {
+    const shot = targetShots[idx]
+    const cam = sbCams[idx]
+    const expectedCamId = `${STORYBOARD_CAMERA_ID_PREFIX}${shot.id}`
+    if (!cam || cam.id !== expectedCamId) return false
+    const expectedLabel =
+      [shot.id, shot.shotSize, shot.angle, shot.cameraMove]
+        .map((s) => s?.trim())
+        .filter(Boolean)
+        .join(' · ') || (isZh ? `镜头 ${idx + 1}` : `Shot ${idx + 1}`)
+    if (cam.name !== expectedLabel) return false
+
+    const expectedDur = Math.max(1, Math.min(30, Number(shot.durationSec) || 4))
+    const seg = cutSegments.find((s) => s.id === `${STORYBOARD_CUT_ID_PREFIX}${shot.id}`)
+    if (!seg || Math.abs(seg.end - seg.start - expectedDur) > 0.05) return false
+  }
+
+  for (const charName of characterNames) {
+    const key = filmNameKey(charName)
+    const hasActor = currentStage.objects.some(
+      (o) =>
+        (o.kind === 'character' || o.kind === 'model') &&
+        (filmNameKey(o.name) === key || o.id === `${STORYBOARD_ACTOR_ID_PREFIX}${key}`)
+    )
+    if (!hasActor) return false
+  }
+
+  for (const propName of propNames) {
+    const key = filmNameKey(propName)
+    if (!key) continue
+    const hasProp = currentStage.objects.some(
+      (o) => o.id === `${STORYBOARD_PROP_ID_PREFIX}${key}` || filmNameKey(o.name) === key
+    )
+    if (!hasProp) return false
+  }
+
+  compiledStageSigByOwner.set(ownerKey, currentSig)
+  return true
+}
+
 /**
  * 异步版本：优先调用大语言模型（LLM）根据分镜画面描述自动规划角色姿态、空间站位以及定制缺失道具的多部件组合素模，
  * 若 LLM 不可用则自动降级为内置高还原度空间求解器。
@@ -876,8 +1035,10 @@ export async function compileStoryboardToDirectorStageWithLlm(
       providerInstanceId: options.providerInstanceId
     }))
 
-  return compileStoryboardToDirectorStage(currentStage, storyboard, {
+  const compiled = compileStoryboardToDirectorStage(currentStage, storyboard, {
     ...options,
     layoutPlan
   })
+  markCompiledStoryboardStage(compiled.stage, storyboard, options)
+  return compiled
 }

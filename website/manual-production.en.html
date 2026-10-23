@@ -31,13 +31,13 @@
     <meta property="og:title" content="Script, timeline & director stage · Manual — AIArtEngine" />
     <meta property="og:description" content="Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage." />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/3d-director.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Script, timeline & director stage · Manual — AIArtEngine" />
     <meta name="twitter:description" content="Script and shot assets; arranging, subtitling and exporting on the final timeline; canvas and world elements; and blocking, animation recording and Gaussian splats on the 3D director stage." />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/3d-director.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
@@ -153,15 +153,28 @@
           </p>
 
           <h3>9.2 Film Workbench &amp; single-shot node</h3>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="Film Workbench: 4-stage tabs, shot breakdown cards (shot size, angle, camera move, duration, action, keyframe & time-sliced motion prompts), @1-@4 cast/location/prop reference tags and 3D Previs entry"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>Film Workbench (<code>film.workbench</code>)</strong>: 4-stage loop, structured shot cards, <code>@1</code>–<code>@4</code> character/location/prop reference pills, time-sliced motion prompts (<code>0-1s</code> / <code>1-4s</code>…) and per-shot locking.</figcaption>
+          </figure>
           <ul>
             <li>
               <strong>Film Workbench</strong> (<code>film.workbench</code>) replaces the legacy separate shot-breakdown, shot-table, shot-generation and world-element nodes, consolidating the entire film production chain into one node and a full-screen Dive workbench:
               <ul>
-                <li><strong>① Storyboard Breakdown</strong> (<code>breakdown</code>): splits a script into per-shot framing, camera angle, movement, duration (seconds), acting, dialogue and cast/scene lists.</li>
+                <li><strong>① Storyboard Breakdown</strong> (<code>breakdown</code>): splits a script into per-shot framing, camera angle, movement, duration (seconds, supporting <code>4s / 8s / 10s / 15s</code> long shots with time-sliced action &amp; camera prompts), acting, dialogue and cast/scene/prop lists; click <strong>“3D Director Previs”</strong> at the top-right or <strong>“3D Previs”</strong> on any shot card to rehearse blocking in 3D.</li>
                 <li><strong>② Director Review</strong> (<code>review</code>): AI director evaluates narrative continuity, 180° axis and pacing shot by shot, returning scores and one-click revision suggestions.</li>
                 <li><strong>③ Character &amp; Scene Design</strong> (<code>cast</code>): gathers characters, scenes and key props across the script to batch-generate turnaround and environment anchor sheets.</li>
-                <li><strong>④ Batch Shoot</strong> (<code>render</code>): automatically maps each shot's appearing character and scene design sheets as <code>@1</code>, <code>@2</code> reference images to batch-generate keyframes (with optional Vision QC auto-reshoots) and motion videos; video duration supports <strong>“Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> in seconds, clamped to 2–15 s with a 5 s fallback) as well as fixed duration tiers.</li>
+                <li><strong>④ Batch Shoot</strong> (<code>render</code>): automatically maps each shot's appearing character, scene and prop design sheets as <code>@1</code>, <code>@2</code>… reference images to batch-generate keyframes (with optional Vision QC auto-reshoots) and motion videos; video duration supports <strong>“Auto (follow per-shot breakdown duration)”</strong> (reads each shot's <code>duration</code> in seconds, clamped to 2–15 s with a 5 s fallback) as well as fixed duration tiers.</li>
               </ul>
+            </li>
+            <li>
+              <strong>3D Storyboard Previs &amp; Script Camera Tracks</strong>: click <strong>“3D Director Previs”</strong> (or per-shot <strong>“3D Previs”</strong>) in the Film Workbench to populate a 3D blockout stage with the script's characters, furniture and props, complete with a <strong>Cinemachine Brain multi-shot camera switcher track</strong> and per-shot <strong>camera motion tracks</strong> (spline path drawing, smooth ease-in/out and FOV keyframes).
             </li>
             <li>
               <strong>Shot</strong> (<code>film.shot</code>): connected <strong>downstream</strong> of the Film Workbench (wire the workbench's <code>out</code> and <code>out-cast</code> to the Shot node's <code>in</code> and <code>in-cast</code>). Select a shot by 1-based index or <code>shotId</code> (e.g. <code>1</code> or <code>S01-02</code>) to output its keyframe prompt (<code>out</code>), appearing cast/scene reference sheets (<code>out-refs</code>) and motion prompt (<code>out-motion</code>) into a dedicated Image Generation → Inpaint / Erase → Video Generation chain.
@@ -170,6 +183,16 @@
               Paired with the built-in <strong>“Film Full Pipeline”</strong> (<code>short-drama</code>) and <strong>“Film Polish · Single Shot”</strong> (<code>short-drama9</code>) workflow presets, you can combine full-episode batch shooting with surgical single-shot polish (see the <a href="guide-short-video.en.html">Short-Drama Guide</a>).
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/script-camera.webp"
+              alt="3D Storyboard Previs & Script Camera: color-coded character/prop blockout, Cinemachine Brain shot switcher track and per-shot camera trajectory tracks"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>3D Storyboard Previs &amp; Script Camera</strong>: launch from the Film Workbench to rehearse character blocking, Cinemachine Brain shot cuts and per-shot camera trajectories in 3D.</figcaption>
+          </figure>
 
           <h3>9.3 Storyboard thinking and prompt presets</h3>
           <p>
@@ -209,6 +232,16 @@
 
         <section id="timeline">
           <h2>10. Final timeline</h2>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="Final timeline: 6-tab creative panel (Media, Effects, Transitions, Filters, Adjust, Templates) and multi-track video/PiP/voice/subtitle/music/SFX editing"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption><strong>Final timeline</strong>: CapCut-grade 6-tab creative panel (Media / Effects / Transitions / Filters / Adjust / Templates), multi-track editing &amp; CapCut draft export.</figcaption>
+          </figure>
           <p>
             The final timeline assembles shot / video node outputs and imported media into a timeline you can
             preview and export; it's usually opened on a <strong>script asset</strong>.
@@ -355,20 +388,30 @@
               Double-click a <strong>2D Stage</strong> (<code>stage.2d</code>) node to open the 2D rigging &amp; animation workbench: feed in body-part layers from an upstream “Layer Split (<code>rig2d</code> mode)”, bind parent-child bones and IK constraints, animate keyframes or apply procedural idle/walk/attack presets, and one-click export a standard <strong>Spine 2D package (<code>skeleton.json</code> + <code>.atlas</code> + part textures)</strong> for Unity, Godot or Cocos.
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/2d-director.webp"
+              alt="2D Stage Director: auto part cutting from a single sprite, humanoid bone rigging, IK drag and action recording"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption><strong>2D Stage Director</strong>: auto part cutting from a single sprite, humanoid bone rigging, IK drag &amp; Spine 2D export.</figcaption>
+          </figure>
         </section>
 
         <section id="director">
           <h2>12. Director stage</h2>
           <figure class="shot">
             <img
-              src="assets/banner/director-stage.webp"
-              alt="3D director stage: characters, cameras and blocking shots"
-              width="1440"
-              height="900"
+              src="assets/imgs/3d-director.webp"
+              alt="3D Director Stage: Cinemachine multi-camera switcher track, character action track, camera parameters and blocking shots"
+              width="1600"
+              height="860"
               loading="lazy"
             />
             <figcaption>
-              <strong>3D director stage</strong>: blocking shots, motion recording and camera views.
+              <strong>3D director stage</strong>: Cinemachine multi-camera switcher track, humanoid rig motion, focal/DOF lens controls and blocking shots.
             </figcaption>
           </figure>
           <p>

@@ -2374,6 +2374,11 @@ const TOOL_DEFS: McpToolDef[] = [
                   'asset_update',
                   'semantic_timeline_edit',
                   'object_update',
+                  'pose_update',
+                  'set_action',
+                  'switch_action',
+                  'play_clip',
+                  'sequence_actions',
                   'hide_object',
                   'show_object',
                   'lock_object',
@@ -2601,7 +2606,7 @@ const TOOL_DEFS: McpToolDef[] = [
     title: '实时修改 3D 导演台 / 分镜白模预演舞台',
     description:
       '对左侧当前打开（或指定资产+节点）的 3D 导演台 / 3D 分镜白模预演（director.stage）执行实时编辑，3D 画面、层级列表、检查器与持久化数据同步生效！支持通过对象的 `name`（如 `"林小满"`）或 `objectId`（如 `"sb-actor:林小满"`）精准定位，省略目标时默认作用于当前检查器选中的对象或活动机位。操作类型 `op` 包括：\n' +
-      '- `object_update`（或 `hide_object` / `show_object` / `lock_object` / `unlock_object`）：按 `name` 或 `objectId` 修改对象的显隐（`visible: false/true`）、锁定（`locked`）、名称标签显隐（`nameVisible`）、改名（`newName`）、父级挂载（`parentId` / `parentName`）、颜色（`color: "#rrggbb"` 或 `"红色"`/`"蓝色"` 等颜色名）、材质贴图（`textures`）、位置（`position: {x,y,z}` 或相对位移 `positionDelta: {x,y,z}`）、旋转角度（`rotationDeg: {x,y,z}` 或相对旋转 `rotationDeltaDeg: {x,y,z}`）、缩放（`scale: {x,y,z}` 或 `uniformScale`）、全身情绪姿态预设（`posePreset` 如 `"gaze.heroic"` / `"stand.relaxed"` / `"sit.chair"` / `"action.run"`，或 `resetPose: true`）、FK/IK 模式（`poseEditMode: "fk"|"ik"`）、骨骼局部角度（`bonePose`）、IK 末端坐标（`ikEffectors`）、灯光参数（`light: {type, intensity, distance, angle, penumbra, decay, shadowMapSize}`）；\n' +
+      '- `object_update`（或 `pose_update` / `set_action` / `switch_action` / `play_clip` / `sequence_actions` / `hide_object` / `show_object` / `lock_object` / `unlock_object`）：按 `name` 或 `objectId` 修改对象的显隐（`visible: false/true`）、锁定（`locked`）、名称标签显隐（`nameVisible`）、改名（`newName`）、父级挂载（`parentId` / `parentName`）、颜色（`color: "#rrggbb"` 或 `"红色"`/`"蓝色"` 等颜色名）、材质贴图（`textures`）、位置（`position: {x,y,z}` 或相对位移 `positionDelta: {x,y,z}`）、旋转角度（`rotationDeg: {x,y,z}` 或相对旋转 `rotationDeltaDeg: {x,y,z}`）、缩放（`scale: {x,y,z}` 或 `uniformScale`）、全身生活姿态预设（`posePreset` 支持 38 种全身/手势/视线预设或中文名，如 `"body.sitChair"`/`"端坐"`、`"body.sitCrossLegs"`/`"翘二郎腿"`、`"body.sitSlumped"`/`"瘫坐"`、`"body.sitFloor"`/`"盘腿坐"`、`"body.jump"`/`"跳跃"`、`"body.run"`/`"奔跑"`、`"body.sprint"`/`"冲刺"`、`"body.walk"`/`"行走"`、`"body.crouch"`/`"蹲下"`、`"body.kneel"`/`"单膝跪地"`、`"body.lieDown"`/`"平躺"`、`"body.leanWall"`/`"斜靠"`、`"body.bow"`/`"鞠躬"`、`"body.wave"`/`"挥手"`、`"body.cheer"`/`"欢呼"`、`"body.dance"`/`"跳舞"`、`"body.stretch"`/`"伸懒腰"`、`"body.think"`/`"思考"`、`"body.phone"`/`"看手机"`、`"body.drink"`/`"举杯"`、`"body.combatGuard"`/`"格斗"`、`"body.kick"`/`"侧踢"`、`"hand.clap"`/`"鼓掌"`，或 `resetPose: true`）、骨骼动画片段切换与编排（`clip` / `animationClip` 支持 24 种内置动作片段或中文名：`Idle`/`Walk`/`Run`/`Sprint`/`Jump`/`Sit`/`SitFloor`/`Crouch`/`Kneel`/`LieDown`/`Wave`/`Bow`/`Clap`/`Cheer`/`Dance`/`Talk`/`Think`/`PhoneLook`/`Stretch`/`LookAround`/`Drink`/`PushUp`/`Fall`/`Action`，或传 `skeletonClips: [{clip, start, end, speed, crossFadeSec}]` 编排多段连续动作序列）、FK/IK 模式（`poseEditMode: "fk"|"ik"`）、骨骼局部角度（`bonePose`）、IK 末端坐标（`ikEffectors`）、灯光参数（`light: {type, intensity, distance, angle, penumbra, decay, shadowMapSize}`）；\n' +
       '- `object_add` / `object_delete` / `object_duplicate` / `object_copy` / `object_paste` / `object_select`：新建、删除、复制粘贴或选中聚焦 3D 对象；\n' +
       '- `camera_update` / `camera_add` / `camera_delete`：修改机位位置 `position`、目标 `target`、旋转 `rotationDeg`、视角 `fov`、焦距 `focalLengthMm`、光圈 `aperture`、对焦距离 `focusDistance`、希区柯克变焦锁 `dollyZoomLock`、手持晃动 `handheldShake`、智能跟拍 `cinemachine`（`bodyMode`, `followTargetName`, `aimMode`, `lookAtTargetName`, `aimTargetPart`, `screenCompositionPreset`, `noisePreset`, `triggerImpulse` 等）、机位预设 `presetId`、重置 `resetViewer`、显隐 `visible` 或激活 `setActive: true`；\n' +
       '- `lighting_preset` / `environment_update`：切换布光预设、天空色 `skyColor`、全景图 `panoramaAssetId`/`panoramaName`/`panoramaVisible`/`panoramaYaw`/`panoramaRadius`、场景整体缩放平移旋转 `sceneWorld`、地面 `ground`、环境雾与暗影捕手 `environment`；\n' +
@@ -2628,6 +2633,11 @@ const TOOL_DEFS: McpToolDef[] = [
                 type: 'string',
                 enum: [
                   'object_update',
+                  'pose_update',
+                  'set_action',
+                  'switch_action',
+                  'play_clip',
+                  'sequence_actions',
                   'hide_object',
                   'show_object',
                   'lock_object',
@@ -2735,7 +2745,37 @@ const TOOL_DEFS: McpToolDef[] = [
               },
               light: { type: 'object' },
               textures: { type: 'object' },
-              posePreset: { type: 'string', description: '姿态预设 ID 或名称' },
+              posePreset: {
+                type: 'string',
+                description:
+                  '姿态预设 ID 或中文名（如 body.sitChair / 端坐 / body.jump / 跳跃 / body.run / 奔跑 / body.crouch / 蹲下 / body.kneel / 单膝跪地 / body.lieDown / 平躺 / body.dance / 跳舞 / body.phone / 看手机 / body.drink / 举杯 等 38 种预设）'
+              },
+              clip: {
+                type: 'string',
+                description:
+                  '骨骼动画片段名或中文名（Idle / Walk / Run / Sprint / Jump / Sit / SitFloor / Crouch / Kneel / LieDown / Wave / Bow / Clap / Cheer / Dance / Talk / Think / PhoneLook / Stretch / LookAround / Drink / PushUp / Fall / Action）'
+              },
+              animationClip: {
+                type: 'string',
+                description: '同 clip，切换角色当前骨骼动画片段'
+              },
+              skeletonClips: {
+                type: 'array',
+                description:
+                  '为角色编排多段连续骨骼动作时间轴序列 [{ clip, start, end, speed?, loop?, crossFadeSec? }]',
+                items: {
+                  type: 'object',
+                  properties: {
+                    clip: { type: 'string' },
+                    start: { type: 'number' },
+                    end: { type: 'number' },
+                    duration: { type: 'number' },
+                    speed: { type: 'number' },
+                    loop: { type: 'boolean' },
+                    crossFadeSec: { type: 'number' }
+                  }
+                }
+              },
               poseEditMode: { type: 'string', enum: ['fk', 'ik'] },
               selectedPoseBone: { type: ['string', 'null'] },
               selectedIkChainId: { type: ['string', 'null'] },
@@ -2826,9 +2866,16 @@ const TOOL_DEFS: McpToolDef[] = [
                   'add_keyframe',
                   'remove_keyframe',
                   'add_cut_segment',
+                  'set_skeleton_clip',
+                  'add_skeleton_clip',
+                  'clear_skeleton_clips',
                   'export_video'
                 ]
               },
+              start: { type: 'number', description: '片段起始时间（秒）' },
+              end: { type: 'number', description: '片段结束时间（秒）' },
+              speed: { type: 'number', description: '骨骼动画片段倍速（默认 1）' },
+              crossFadeSec: { type: 'number', description: '动作切换平滑过渡秒数（默认 0.25）' },
               time: { type: 'number' },
               duration: { type: 'number' },
               loop: { type: 'boolean' },

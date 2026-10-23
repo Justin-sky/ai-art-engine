@@ -1271,8 +1271,26 @@ export function generateAiDirectorBlocking(
   const actorCount = detectActorCount(text)
   const mannequinPreset = detectMannequinPreset(text)
   const lightingPreset = detectLightingPreset(text)
+  const isSprint = /冲刺|狂奔|全速跑|sprint|dash/.test(lower)
   const isRun = /奔跑|跑|追逐|run|chase|sprint/.test(lower)
   const isWalk = /行走|漫步|走|walk|stroll/.test(lower)
+  const isJump = /跳|跃|腾空|jump|leap|hop/.test(lower)
+  const isSitFloor = /盘腿|盘坐|打坐|冥想|席地|meditat|cross-leg/.test(lower)
+  const isSit = !isSitFloor && /坐|端坐|落座|sit|seated/.test(lower)
+  const isCrouch = /蹲|潜行|埋伏|crouch|squat|sneak/.test(lower)
+  const isKneel = /跪|单膝|kneel/.test(lower)
+  const isLieDown = /躺|卧|平躺|睡眠|睡|lie|lying|sleep/.test(lower)
+  const isBow = /鞠躬|行礼|致敬|bow/.test(lower)
+  const isCheer = /欢呼|庆祝|高呼|胜利|cheer|celebrat|victory/.test(lower)
+  const isClap = /鼓掌|拍手|喝彩|clap|applaud/.test(lower)
+  const isDance = /跳舞|舞蹈|律动|蹦迪|dance|dancing|groove/.test(lower)
+  const isThink = /思考|沉思|托腮|发呆|think|ponder/.test(lower)
+  const isPhone = /手机|阅读|看书|低头看|phone|read/.test(lower)
+  const isStretch = /伸懒腰|舒展|哈欠|stretch|yawn/.test(lower)
+  const isDrink = /喝|饮|举杯|干杯|drink|toast/.test(lower)
+  const isLookAround = /张望|四处看|远眺|寻找|look\s*around|scout|search/.test(lower)
+  const isPushUp = /俯卧撑|健身|锻炼|push[-\s]?up|workout/.test(lower)
+  const isFall = /跌倒|摔倒|倒地|受击|fall|collapse|knock/.test(lower)
   const isCombat = /战斗|对决|攻击|英雄|格斗|combat|fight|hero|action/.test(lower)
   const isStandoff = /对峙|正反打|越肩|交谈|对话|standoff|ots|reverse|dialogue|talk/.test(lower)
   const isOrbit = /环绕|旋转运镜|orbit|turntable|360/.test(lower)
@@ -1290,7 +1308,7 @@ export function generateAiDirectorBlocking(
         position: { x: -1.15, y: baseY, z: 0 },
         rotation: { x: 0, y: Math.PI / 2, z: 0 },
         poseId: 'hand.pointRight',
-        clipName: 'Idle',
+        clipName: 'Talk',
         secondClipName: 'Wave'
       },
       {
@@ -1307,7 +1325,99 @@ export function generateAiDirectorBlocking(
       const offsetIndex = i - (actorCount - 1) / 2
       const x = Number((offsetIndex * spacing).toFixed(2))
       const z = actorCount >= 3 && i === 0 ? 0.45 : actorCount >= 3 ? -0.35 : 0
-      const poseId = isCombat ? 'gaze.combatReady' : i % 2 === 1 ? 'hand.relaxed' : 'gaze.heroic'
+      const poseId = isJump
+        ? 'body.jump'
+        : isSitFloor
+          ? 'body.sitFloor'
+          : isSit
+            ? 'body.sit'
+            : isCrouch
+              ? 'body.crouch'
+              : isKneel
+                ? 'body.kneel'
+                : isLieDown
+                  ? 'body.lieDown'
+                  : isBow
+                    ? 'body.bow'
+                    : isCheer
+                      ? 'body.cheer'
+                      : isClap
+                        ? 'body.clap'
+                        : isDance
+                          ? 'body.dance'
+                          : isThink
+                            ? 'body.think'
+                            : isPhone
+                              ? 'body.phone'
+                              : isStretch
+                                ? 'body.stretch'
+                                : isDrink
+                                  ? 'body.drink'
+                                  : isLookAround
+                                    ? 'body.lookAround'
+                                    : isPushUp
+                                      ? 'body.pushUp'
+                                      : isFall
+                                        ? 'body.fall'
+                                        : isCombat
+                                          ? 'gaze.combatReady'
+                                          : i % 2 === 1
+                                            ? 'hand.relaxed'
+                                            : 'gaze.heroic'
+      const primaryClip = isSprint
+        ? 'Sprint'
+        : isRun
+          ? 'Run'
+          : isWalk
+            ? 'Walk'
+            : isJump
+              ? 'Jump'
+              : isSitFloor
+                ? 'SitFloor'
+                : isSit
+                  ? 'Sit'
+                  : isCrouch
+                    ? 'Crouch'
+                    : isKneel
+                      ? 'Kneel'
+                      : isLieDown
+                        ? 'LieDown'
+                        : isBow
+                          ? 'Bow'
+                          : isCheer
+                            ? 'Cheer'
+                            : isClap
+                              ? 'Clap'
+                              : isDance
+                                ? 'Dance'
+                                : isThink
+                                  ? 'Think'
+                                  : isPhone
+                                    ? 'PhoneLook'
+                                    : isStretch
+                                      ? 'Stretch'
+                                      : isDrink
+                                        ? 'Drink'
+                                        : isLookAround
+                                          ? 'LookAround'
+                                          : isPushUp
+                                            ? 'PushUp'
+                                            : isFall
+                                              ? 'Fall'
+                                              : isCombat
+                                                ? 'Action'
+                                                : 'Idle'
+      const secondaryClip = isRun
+        ? 'Action'
+        : isJump
+          ? 'Cheer'
+          : isSit || isSitFloor || isLieDown
+            ? primaryClip
+            : isDance
+              ? 'Cheer'
+              : isCombat
+                ? 'Wave'
+                : 'Wave'
       placements.push({
         position: { x, y: baseY, z },
         endPosition: isRun
@@ -1317,8 +1427,8 @@ export function generateAiDirectorBlocking(
             : { x, y: baseY, z },
         rotation: { x: 0, y: 0, z: 0 },
         poseId,
-        clipName: isRun ? 'Run' : isWalk ? 'Walk' : isCombat ? 'Action' : 'Idle',
-        secondClipName: isRun ? 'Action' : isCombat ? 'Wave' : 'Wave'
+        clipName: primaryClip,
+        secondClipName: secondaryClip
       })
     }
   }

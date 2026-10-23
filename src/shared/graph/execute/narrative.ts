@@ -292,11 +292,32 @@ export async function executeTimelineOutputNode(
     if (!title) return null
     const m =
       title.match(
-        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image)\s*#?(\d+)/i
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image|Episode|Ep\.?)\s*#?(\d+)/i
+      ) ??
+      title.match(
+        /\u7b2c\s*(\d+)\s*(?:\u96c6|\u573a|\u5e55|\u955c|\u7ae0|\u8282|\u6b65|\u8bdd|\u56de)/i
       ) ??
       title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
       title.match(/(\d+)/)
     return m ? Number(m[1]) : null
+  }
+
+  const isMultiVisualSourceEdge = (edge: { sourcePort?: string }, node: GraphNode): boolean =>
+    node.typeId === 'film.workbench' ||
+    node.typeId === 'film.render' ||
+    edge.sourcePort === 'out-videos' ||
+    edge.sourcePort === 'out-images' ||
+    edge.sourcePort === 'out-sheets' ||
+    edge.sourcePort === 'out-shots' ||
+    edge.sourcePort === 'out-all'
+
+  const nodeContainsFilmMedia = (node: GraphNode, relativePath?: string): boolean => {
+    const rel = relativePath?.trim()
+    if (!rel) return false
+    return (
+      (typeof node.params?.filmRenders === 'string' && node.params.filmRenders.includes(rel)) ||
+      (typeof node.params?.filmStoryboard === 'string' && node.params.filmStoryboard.includes(rel))
+    )
   }
 
   const doc = ctx.document
@@ -338,9 +359,12 @@ export async function executeTimelineOutputNode(
                 (g.relativePath && g.relativePath === img.relativePath) ||
                 (g.id && g.id !== 'ref:0' && g.id === img.id)
             ) ||
-              (img.relativePath && n.params?.previewRelativePath === img.relativePath))
+              (img.relativePath && n.params?.previewRelativePath === img.relativePath) ||
+              nodeContainsFilmMedia(n, img.relativePath))
         ) ?? imageSourceEdges[idx]
-      if (matched) usedImgEdgeIndices.add(matched.edgeIdx)
+      if (matched && !isMultiVisualSourceEdge(matched.edge, matched.node)) {
+        usedImgEdgeIndices.add(matched.edgeIdx)
+      }
       const matchedNode = matched?.node
       if (!matchedNode) {
         orderedVisuals.push({
@@ -350,7 +374,7 @@ export async function executeTimelineOutputNode(
           relativePath: img.relativePath,
           createdAt: img.createdAt,
           title: img.title,
-          _order: 1000 + idx
+          _order: 100000 + idx
         })
         return img
       }
@@ -374,7 +398,10 @@ export async function executeTimelineOutputNode(
         relativePath: upgraded.relativePath,
         createdAt: upgraded.createdAt,
         title: upgraded.title,
-        _order: shotNum !== null ? shotNum * 100 + matched.edgeIdx : 1000 + matched.edgeIdx
+        _order:
+          shotNum !== null
+            ? shotNum * 1000 + matched.edgeIdx * 100 + idx
+            : 100000 + matched.edgeIdx * 100 + idx
       })
       return upgraded
     })
@@ -390,11 +417,15 @@ export async function executeTimelineOutputNode(
                 (g.relativePath && g.relativePath === v.relativePath) ||
                 (g.id && g.id !== 'ref:0' && g.id === v.id)
             ) ||
-              (v.relativePath && n.params?.previewRelativePath === v.relativePath))
+              (v.relativePath && n.params?.previewRelativePath === v.relativePath) ||
+              nodeContainsFilmMedia(n, v.relativePath))
         ) ?? videoSourceEdges[idx]
-      if (matched) usedVidEdgeIndices.add(matched.edgeIdx)
+      if (matched && !isMultiVisualSourceEdge(matched.edge, matched.node)) {
+        usedVidEdgeIndices.add(matched.edgeIdx)
+      }
       const title = matched?.node.title?.trim()
       const shotNum = extractShotNum(title)
+      const edgeOrder = matched?.edgeIdx ?? idx
       orderedVisuals.push({
         id: v.id,
         kind: 'video',
@@ -403,9 +434,7 @@ export async function executeTimelineOutputNode(
         createdAt: v.createdAt,
         ...(title ? { title } : {}),
         _order:
-          shotNum !== null
-            ? shotNum * 100 + (matched?.edgeIdx ?? idx)
-            : 1000 + (matched?.edgeIdx ?? idx)
+          shotNum !== null ? shotNum * 1000 + edgeOrder * 100 + idx : 100000 + edgeOrder * 100 + idx
       })
     })
     orderedVisuals.sort((a, b) => a._order - b._order)

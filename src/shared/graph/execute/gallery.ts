@@ -241,11 +241,43 @@ export function pickTextItem(
   selectedTextId?: string | null
 ): GraphTextItem | undefined {
   if (!items.length) return undefined
-  if (selectedTextId) {
-    const byKey = items.find((item, index) => textItemKey(item, index) === selectedTextId)
+  const rawSel = selectedTextId?.trim()
+  if (rawSel) {
+    const byKey = items.find((item, index) => textItemKey(item, index) === rawSel)
     if (byKey) return byKey
-    const byRawId = items.find((item) => item.id === selectedTextId)
+    const byRawId = items.find((item) => item.id === rawSel)
     if (byRawId) return byRawId
+
+    // 支持 0-based 索引选择器（index:0 / text:1）
+    const indexMatch = /^(?:index|text):(\d+)$/i.exec(rawSel)
+    if (indexMatch) {
+      const index = Number(indexMatch[1])
+      if (Number.isFinite(index) && items[index]) return items[index]
+    }
+
+    // 支持分集选择器（ep:1 / <baseId>:ep:2 / gen-text:<stamp>:2）：
+    // 优先从最新一轮生成的分集里匹配相同集号，确保上游剧本重跑后各集选择器仍精确命中对应集数
+    const epMatch = /(?:^|:)ep:(\d+)$/i.exec(rawSel) ?? /^gen-text:[^:]+:(\d+)$/i.exec(rawSel)
+    if (epMatch) {
+      const epNum = Number(epMatch[1])
+      if (Number.isFinite(epNum) && epNum >= 1) {
+        const suffixRe = new RegExp(`(?::ep:|:)${epNum}$`, 'i')
+        const titleRe = new RegExp(
+          `^(?:第\\s*0*${epNum}\\s*[集话回幕]|(?:EPISODE|EP\\.?)\\s*0*${epNum}\\b)`, // cjk-ok
+          'i'
+        )
+        for (let i = items.length - 1; i >= 0; i--) {
+          const item = items[i]!
+          if (
+            (item.id && suffixRe.test(item.id.trim())) ||
+            (item.title && titleRe.test(item.title.trim()))
+          ) {
+            return item
+          }
+        }
+        if (items[epNum - 1]) return items[epNum - 1]
+      }
+    }
   }
   return items[0]
 }

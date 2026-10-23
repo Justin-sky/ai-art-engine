@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PORTRAIT_LANDMARK_COUNT,
   canonicalFaceTemplate,
+  isCanonical68LandmarksValid,
   portraitFaceBoxFromLandmarks,
   portraitFaceMetrics
 } from '../src/shared/graph/portraitFace'
@@ -60,5 +61,21 @@ describe('portraitFace 模板与几何度量', () => {
     expect(box.y + box.h).toBeGreaterThan(metrics.chin[1])
     expect(box.w).toBeGreaterThan(0)
     expect(box.h).toBeGreaterThan(0)
+  })
+
+  it('拓扑校验能识别标准 68 点并剔除旧版错位索引遗留的脏关键点', () => {
+    expect(isCanonical68LandmarksValid(LANDMARKS)).toBe(true)
+    expect(isCanonical68LandmarksValid([])).toBe(false)
+
+    // 模拟旧版 31..35 全落鼻梁纵向中线（鼻底向量与眼距正交）
+    const brokenNose = LANDMARKS.map((p) => [...p] as [number, number])
+    brokenNose[31] = [0.5, 0.66]
+    brokenNose[35] = [0.5, 0.72]
+    expect(isCanonical68LandmarksValid(brokenNose)).toBe(false)
+
+    // 模拟旧版 16 停在右下颌（靠近下巴 8）
+    const brokenJaw = LANDMARKS.map((p) => [...p] as [number, number])
+    brokenJaw[16] = [0.58, 0.9]
+    expect(isCanonical68LandmarksValid(brokenJaw)).toBe(false)
   })
 })

@@ -57,6 +57,7 @@
               :src="stageImageUrl"
               alt=""
               draggable="false"
+              @load="onStageImageLoad"
               @pointerdown="onImagePointerDown"
               @pointermove="onImagePointerMove"
               @pointerup="onImagePointerUp"
@@ -1023,6 +1024,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
+  PORTRAIT_LANDMARK_COUNT,
   PORTRAIT_MANUAL_REGION_KINDS,
   PORTRAIT_PRESETS,
   PORTRAIT_TOOL_GROUPS,
@@ -1036,10 +1038,13 @@ import {
   hasPortraitLiveAdjustments,
   idPhotoSpecById,
   importPortraitPreset,
+  isCanonical68LandmarksValid,
   normalizePortraitManualRegions,
   normalizePortraitRetouch,
   parseCubeLut,
   parsePortraitBatchClipboard,
+  portraitFaceArea,
+  portraitFaceBoxFromLandmarks,
   portraitHighRiskTierCount,
   portraitSpecIsDefault,
   portraitSpecsForGroup,
@@ -1239,17 +1244,17 @@ const liquifyDrag = reactive({ active: false, startX: 0, startY: 0, x: 0, y: 0 }
 const lutFileEl = ref<HTMLInputElement | null>(null)
 const lutMessage = ref('')
 
+const validPropFaces = computed<PortraitFaceAnalysis[]>(() => {
+  const fromList = (props.faces ?? []).filter((f) => isCanonical68LandmarksValid(f?.landmarks))
+  if (fromList.length) return fromList
+  if (props.face && isCanonical68LandmarksValid(props.face.landmarks)) return [props.face]
+  return []
+})
 const facesList = computed<PortraitFaceAnalysis[]>(() =>
-  detectedFaces.value.length
-    ? detectedFaces.value
-    : props.faces?.length
-      ? props.faces
-      : props.face
-        ? [props.face]
-        : []
+  detectedFaces.value.length ? detectedFaces.value : validPropFaces.value
 )
 const activeFace = computed<PortraitFaceAnalysis | null>(
-  () => facesList.value[activeFaceIdx.value] ?? props.face ?? facesList.value[0] ?? null
+  () => facesList.value[activeFaceIdx.value] ?? facesList.value[0] ?? null
 )
 const activeFaceRegions = computed(() =>
   activeFace.value?.landmarks?.length
@@ -1319,28 +1324,49 @@ function scheduleLivePreviewRender(): void {
   }, 16)
 }
 
+let faceDetectSeq = 0
+
 async function ensureFacesDetected(): Promise<void> {
   const src = props.sourceUrl?.trim() ?? ''
   if (!src) return
-  if (props.faces?.length || detectedFaces.value.length) return
+  if (validPropFaces.value.length || detectedFaces.value.length) return
+  const seq = ++faceDetectSeq
   try {
     const rawImage = await dataUrlToRawInput(src, 1280)
+    if (seq !== faceDetectSeq || (props.sourceUrl?.trim() ?? '') !== src) return
     const res = await yoloFace({ image: rawImage })
+    if (seq !== faceDetectSeq || (props.sourceUrl?.trim() ?? '') !== src) return
     if (res.faces?.length) {
       const w = Math.max(1, res.width)
       const h = Math.max(1, res.height)
-      detectedFaces.value = res.faces.map((f) => ({
-        schema: 'canonical68' as const,
-        modelId: 'face-landmark',
-        box: {
-          x: f.box.x / w,
-          y: f.box.y / h,
-          w: f.box.width / w,
-          h: f.box.height / h
-        },
-        score: f.score,
-        landmarks: (f.landmarks68 ?? []).map((pt) => [pt.x / w, pt.y / h] as [number, number])
-      }))
+      detectedFaces.value = res.faces
+        .map((f) => {
+          const landmarks = (f.landmarks68 ?? []).map(
+            (pt) =>
+              [Math.min(1, Math.max(0, pt.x / w)), Math.min(1, Math.max(0, pt.y / h))] as [
+                number,
+                number
+              ]
+          )
+          const box =
+            landmarks.length >= PORTRAIT_LANDMARK_COUNT
+              ? portraitFaceBoxFromLandmarks(landmarks)
+              : {
+                  x: f.box.x / w,
+                  y: f.box.y / h,
+                  w: f.box.width / w,
+                  h: f.box.height / h
+                }
+          return {
+            schema: 'canonical68' as const,
+            modelId: 'face-landmark',
+            box,
+            score: f.score,
+            landmarks
+          }
+        })
+        .filter((f) => isCanonical68LandmarksValid(f.landmarks))
+        .sort((a, b) => portraitFaceArea(b) - portraitFaceArea(a))
       activeFaceIdx.value = 0
       emitUpdate()
       scheduleLivePreviewRender()
@@ -2079,9 +2105,62 @@ function selectGroup(groupId: string): void {
 }
 
 // ── 视口变换 ───────────────────────────────────────────────────
+const stageBox = reactive({ width: 0, height: 0 })
+let wrapObserver: ResizeObserver | null = null
+
+/**
+ * 计算并锁定 `.canvas-stack` 的精确贴合尺寸（与原图宽高比严格 1:1）。
+ *
+ * 为什么不能只靠 flex + `object-fit: contain`：
+ * 当竖图（如 3:4）放进横向舞台时，flex 子项 `.canvas-stack` 的高度是 `auto`（仅受 `max-height: 100%` 限制），
+ * Chromium 在算 `.stage-img` 的宽度时不会将父级的 `max-height` 通过宽高比反推回宽度，
+ * 结果 `.stage-img` 的 DOM 盒子保持宽幅，图片靠 `object-fit: contain` 缩在中间、两侧留下棋盘格留白，
+ * 而绝对定位铺满 `.canvas-stack` 的 `.mesh-layer` / `.region-layer` 会横跨整块留白导致人脸网格严重拉宽偏移。
+ */
+function syncStageBoxSize(): void {
+  const wrap = wrapEl.value
+  const img = imageEl.value
+  if (!wrap || !img) return
+  const natW = img.naturalWidth
+  const natH = img.naturalHeight
+  if (natW <= 0 || natH <= 0) return
+  const style = typeof window !== 'undefined' ? window.getComputedStyle(wrap) : null
+  const padX = style
+    ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+    : 20
+  const padY = style
+    ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0)
+    : 20
+  const availW = Math.max(0, wrap.clientWidth - padX)
+  const availH = Math.max(0, wrap.clientHeight - padY)
+  if (availW <= 0 || availH <= 0) return
+  const scale = Math.min(availW / natW, availH / natH)
+  stageBox.width = Math.max(1, Math.round(natW * scale))
+  stageBox.height = Math.max(1, Math.round(natH * scale))
+}
+
+function onStageImageLoad(): void {
+  syncStageBoxSize()
+}
+
+function attachWrapResizeObserver(el: HTMLElement | null): void {
+  wrapObserver?.disconnect()
+  wrapObserver = null
+  if (el && typeof ResizeObserver !== 'undefined') {
+    wrapObserver = new ResizeObserver(() => {
+      syncStageBoxSize()
+    })
+    wrapObserver.observe(el)
+    syncStageBoxSize()
+  }
+}
+
 const zoomPercent = computed(() => Math.round(zoom.value * 100))
 const rotationLabel = computed(() => `${Math.round(rotationDeg.value)}°`)
 const canvasStackStyle = computed(() => ({
+  ...(stageBox.width > 0 && stageBox.height > 0
+    ? { width: `${stageBox.width}px`, height: `${stageBox.height}px` }
+    : {}),
   transform: `translate(${panOffset.x}px, ${panOffset.y}px) rotate(${rotationDeg.value}deg) scale(${zoom.value})`
 }))
 
@@ -2794,6 +2873,14 @@ watch(
   { immediate: true }
 )
 
+watch(
+  wrapEl,
+  (el) => {
+    attachWrapResizeObserver(el)
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
   window.addEventListener('keydown', onKeyDown)
   window.addEventListener('keyup', onKeyUp)
@@ -2802,6 +2889,7 @@ onMounted(() => {
   void loadYoloKinds()
   // 与 CSS 的 @container 阈值保持一致：容器窄到堆叠档时滑块必须消失
   attachRootResizeObserver(rootEl.value)
+  attachWrapResizeObserver(wrapEl.value)
   unregisterHistory = diveEditorHistory.register({
     canUndo: () => historyIndex.value > 0,
     canRedo: () => historyIndex.value < history.value.length - 1,
@@ -2817,6 +2905,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointerup', onWindowPointerUp)
   sizeObserver?.disconnect()
   sizeObserver = null
+  wrapObserver?.disconnect()
+  wrapObserver = null
   if (updateTimer) clearTimeout(updateTimer)
   if (liveRenderTimer) clearTimeout(liveRenderTimer)
   unregisterHistory?.()
@@ -2835,7 +2925,10 @@ watch(
   () => props.sourceUrl,
   (src) => {
     detectedFaces.value = []
+    stageBox.width = 0
+    stageBox.height = 0
     if (src) {
+      void nextTick(() => syncStageBoxSize())
       void ensureFacesDetected()
       scheduleLivePreviewRender()
     } else {
@@ -2843,6 +2936,15 @@ watch(
     }
   },
   { immediate: true }
+)
+
+watch(
+  () => [props.open, props.sourceUrl, validPropFaces.value.length] as const,
+  ([open, src, propFaceCount]) => {
+    if (open && src && propFaceCount === 0 && detectedFaces.value.length === 0) {
+      void ensureFacesDetected()
+    }
+  }
 )
 
 watch(
@@ -3139,8 +3241,8 @@ watch(
   display: block;
   max-width: 100%;
   max-height: 100%;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   background: var(--image-checker-bg);
   user-select: none;

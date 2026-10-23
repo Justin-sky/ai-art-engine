@@ -634,6 +634,12 @@ export interface AppSettings {
     autoSaveIntervalSec: number
     /** 节点画布 SLG 全息战术特效开关；缺省为 true（默认开启） */
     canvasVfxEnabled?: boolean
+    /** 节点画布动态天气系统与节点物理反馈开关；缺省为 true（默认开启） */
+    weatherSystemEnabled?: boolean
+    /** 天气系统自然音效（风/雨/雷电/台风/晴空风铃）开关；缺省为 true（默认开启） */
+    weatherSfxEnabled?: boolean
+    /** 天气系统执行期背景音乐（BGM）开关；缺省为 true（默认开启） */
+    weatherBgmEnabled?: boolean
     /** 3D 视口（导演台）操控灵敏度；缺省与历史写死值一致，老设置升级后手感不变 */
     stage: StageControlPreferences
   }
@@ -2509,6 +2515,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoSaveEnabled: false,
     autoSaveIntervalSec: 30,
     canvasVfxEnabled: true,
+    weatherSystemEnabled: true,
+    weatherSfxEnabled: true,
+    weatherBgmEnabled: true,
     stage: { ...STAGE_CONTROL_DEFAULTS }
   },
   models: createEmptyModelsSettings(),

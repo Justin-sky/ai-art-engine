@@ -70,6 +70,7 @@ class YoloService {
   private crashed = false
   private spawning: Promise<void> | null = null
   private bundledSynced = false
+  private workerMtimeMs = 0
 
   /** 模型目录：优先用户自定义，缺省 userData/local-models */
   modelDir(): string {
@@ -266,10 +267,28 @@ class YoloService {
     return join(__dirname, 'yoloWorker.js')
   }
 
+  private currentWorkerMtimeMs(): number {
+    try {
+      return statSync(this.workerPath()).mtimeMs
+    } catch {
+      return 0
+    }
+  }
+
   private async ensureStarted(): Promise<void> {
-    if (this.child && !this.crashed) return
+    const mtime = this.currentWorkerMtimeMs()
+    if (this.child && !this.crashed && (!mtime || mtime === this.workerMtimeMs)) return
+    if (this.child) {
+      const oldChild = this.child
+      this.child = null
+      try {
+        oldChild.kill()
+      } catch {
+        /* ignore */
+      }
+    }
     if (this.spawning) return this.spawning
-    this.spawning = this.spawn()
+    this.spawning = this.spawn(mtime)
     try {
       await this.spawning
     } finally {
@@ -277,8 +296,9 @@ class YoloService {
     }
   }
 
-  private spawn(): Promise<void> {
+  private spawn(mtime = this.currentWorkerMtimeMs()): Promise<void> {
     this.crashed = false
+    this.workerMtimeMs = mtime
     const child = utilityProcess.fork(this.workerPath(), [], {
       serviceName: 'yolo-inference',
       stdio: 'pipe'

@@ -32,13 +32,13 @@
     <meta property="og:title" content="工程与设置 · 使用手册 — AIArtEngine" />
     <meta property="og:description" content="新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="工程与设置 · 使用手册 — AIArtEngine" />
     <meta name="twitter:description" content="新建与打开工程，并在设置中完成通用偏好、模型提供商、对象存储、扩展、MCP 工具服务与联网搜索的配置。第一次使用时，建议先把这一部分走一遍。" />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/model-provides.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-setup.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-setup.html" />
@@ -180,6 +180,16 @@
           </ul>
 
           <h3>4.2 模型</h3>
+          <figure class="shot">
+            <img
+              src="assets/imgs/model-provides.webp"
+              alt="设置 · 模型提供商：统一配置 OpenRouter、Tripo、Lux3D、DeepSeek、自定义、ElevenLabs、Google Gemini 等提供商"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>设置 → 模型提供商（支持 30+ 文本 / 图像 / 视频 / 音频 / 3D / 空间世界提供商与自定义网关）</figcaption>
+          </figure>
           <ol>
             <li>
               点击「添加模型提供商」，可选：
@@ -543,8 +553,39 @@
             <code>%APPDATA%\AIArtEngine\aiartengine-settings.json</code>），不会上传到应用官方服务器。
           </div>
 
+          <h4 id="local-vision">本地视觉（离线 ONNX 推理与 GPU 加速）</h4>
+          <p>
+            在设置页切换至「<strong>本地视觉</strong>」标签页，可一键下载与管理内置的离线视觉推理模型（基于 ONNX Runtime，支持 DirectML / CoreML GPU 硬件加速，无需联网或云端算力费）：
+          </p>
+          <ul>
+            <li><strong>检测 / 姿态 / 分割（YOLO）</strong>：用于智能构图、人物骨骼关键点提取、2D 自动拆件与画面质检。</li>
+            <li><strong>高精抠图（BiRefNet / RMBG）</strong>：用于图像处理工作台的本地一键去背景与主体提取。</li>
+            <li><strong>人脸（468 点 FaceMesh）</strong>：用于精细五官定位与局部保护。</li>
+            <li><strong>SAM 2.1（点选分割）</strong>：用于画布与图层分离中的点选/框选高精度掩码分割。</li>
+          </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/local-models.webp"
+              alt="设置 · 本地视觉：DirectML GPU 加速状态，以及检测、姿态、分割、高精抠图、人脸、SAM 2.1 本地模型管理"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>设置 → 本地视觉（DirectML 硬件加速，一键下载与管理本地离线视觉模型）</figcaption>
+          </figure>
+
           <h3>4.3 对象存储</h3>
           <p>用于将本地参考视频等上传为可公网访问的 URL（私有桶时使用签名链接）。</p>
+          <figure class="shot">
+            <img
+              src="assets/imgs/storage.webp"
+              alt="设置 · 对象存储：支持火山引擎 TOS、阿里云 OSS、腾讯云 COS 与兼容 Amazon S3"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption>设置 → 对象存储（火山引擎 TOS、阿里云 OSS、腾讯云 COS 与兼容 Amazon S3）</figcaption>
+          </figure>
           <ul>
             <li>
               「添加对象存储」→ 选择其一：

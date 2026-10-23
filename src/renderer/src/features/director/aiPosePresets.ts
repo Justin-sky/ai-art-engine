@@ -127,6 +127,126 @@ export const AI_POSE_INSTRUCTION_PRESETS: readonly AiPoseInstructionPreset[] = [
       '端坐姿势（无椅子也可表现坐姿感）：髋膝约90°屈曲，躯干直立；双手放在大腿上；双脚平放地面感，肩放松，头正直前视。',
       'Seated pose (chair optional): hips and knees ~90° flexed, upright torso; hands on thighs; feet feel planted, shoulders relaxed, head level looking forward.'
     )
+  },
+  {
+    id: 'sitFloor',
+    labelKey: 'director.stage.poseAiPreset.sitFloor',
+    instruction: text(
+      '席地盘坐/冥想：骨盆贴近地面，双大腿外展屈髋，小腿内收交叉；脊柱自然挺直，双手轻放于膝上，神态平静放松。',
+      'Cross-legged floor sit: pelvis low to the ground, thighs abducted and flexed, lower legs folded inward; spine naturally upright, hands resting on knees, calm posture.'
+    )
+  },
+  {
+    id: 'lieDown',
+    labelKey: 'director.stage.poseAiPreset.lieDown',
+    instruction: text(
+      '仰卧平躺休息：身体水平仰躺于地面，脊柱舒展；双腿自然伸直微开，双臂放松置于体侧，头部略微侧转。',
+      'Supine lying down: body lying flat on the back, spine relaxed; legs extended naturally with slight spread, arms resting softly by the sides, head gently turned.'
+    )
+  },
+  {
+    id: 'lean',
+    labelKey: 'director.stage.poseAiPreset.lean',
+    instruction: text(
+      '休闲斜靠墙面：重心落于左支撑腿，右腿微屈交叉或轻点地面；背肩略向后倚靠，双臂自然环抱或插兜感，姿态潇洒松弛。',
+      'Casual wall lean: weight on left standing leg, right leg bent casually; upper back slightly leaning back, arms relaxed or casually folded, effortless stance.'
+    )
+  },
+  {
+    id: 'cheer',
+    labelKey: 'director.stage.poseAiPreset.cheer',
+    instruction: text(
+      '双臂高举欢呼：双臂向斜上方高举呈V字，肘微屈；胸腔打开、脊柱轻度后仰伸展，抬头面向前上方，充满喜悦与胜利感。',
+      'Cheering celebration: both arms raised high in a V shape, elbows soft; chest open with mild spinal extension, head tilted up joyfully.'
+    )
+  },
+  {
+    id: 'clap',
+    labelKey: 'director.stage.poseAiPreset.clap',
+    instruction: text(
+      '胸前鼓掌喝彩：上身微前倾，双上臂前抬、双肘屈曲使双手在胸前合拢拍掌；头部微点，神态专注热情。',
+      'Clapping applause: slight forward torso lean, upper arms slightly forward with elbows bent bringing hands together in front of chest.'
+    )
+  },
+  {
+    id: 'dance',
+    labelKey: 'director.stage.poseAiPreset.dance',
+    instruction: text(
+      '律动舞蹈姿态：骨盆与胸廓反向律动侧倾，左臂高举律动、右臂在胸前摆动；双膝微屈富有弹性，头部随节奏轻侧。',
+      'Rhythmic dance groove: contrapposto hip and ribcage tilt, left arm raised in groove, right arm swinging across chest; bouncy knees, head tilted with rhythm.'
+    )
+  },
+  {
+    id: 'stretch',
+    labelKey: 'director.stage.poseAiPreset.stretch',
+    instruction: text(
+      '伸懒腰舒展：双臂高举向后上方伸展，胸部挺起、脊柱轻度后弓；头部微仰，全身肌肉舒展放松。',
+      'Morning stretch: both arms reaching high and slightly back, chest lifted with gentle back arch; head tilted back in a full-body stretch.'
+    )
+  },
+  {
+    id: 'talk',
+    labelKey: 'director.stage.poseAiPreset.talk',
+    instruction: text(
+      '自然交谈手势：自然站立，双肘屈曲抬至胸腹前，右手微抬做讲解手势，左手辅助配合；身体微倾，目光注视对方。',
+      'Conversational gesture: natural stance, elbows bent at chest level with right hand gesturing expressively and left hand supporting; attentive gaze.'
+    )
+  },
+  {
+    id: 'phone',
+    labelKey: 'director.stage.poseAiPreset.phone',
+    instruction: text(
+      '低头看手机/阅读：颈部与头部前倾低垂；右上臂微抬、右肘深屈将右手举至胸前偏上方持握手机；左臂自然放松下垂。',
+      'Looking at phone: neck and head bowed down; right elbow bent holding phone in front of upper chest; left arm relaxed at side.'
+    )
+  },
+  {
+    id: 'drink',
+    labelKey: 'director.stage.poseAiPreset.drink',
+    instruction: text(
+      '举杯畅饮：右手抬至嘴边作举杯饮水状，右肘屈曲外展；头部微仰配合饮水动作，左臂自然垂放。',
+      'Drinking toast: right hand raised to mouth holding a cup, right elbow bent; head slightly tilted back, left arm relaxed.'
+    )
+  },
+  {
+    id: 'crossArms',
+    labelKey: 'director.stage.poseAiPreset.crossArms',
+    instruction: text(
+      '抱胸自信站姿：双脚与肩同宽稳立，双臂在胸前交叉环抱，胸膛微挺，头部平视略带审视或自信神态。',
+      'Arms crossed stance: feet shoulder-width apart, both arms folded across chest, chest slightly lifted, confident gaze.'
+    )
+  },
+  {
+    id: 'lookAround',
+    labelKey: 'director.stage.poseAiPreset.lookAround',
+    instruction: text(
+      '遮阳远眺张望：躯干与头部明显转向一侧远方，右手抬至额前作遮阳瞭望状，左手自然微屈维持平衡。',
+      'Looking around / scouting: torso and head turned toward the distance, right hand raised to brow shielding eyes, left arm balanced.'
+    )
+  },
+  {
+    id: 'pushUp',
+    labelKey: 'director.stage.poseAiPreset.pushUp',
+    instruction: text(
+      '俯卧撑支撑锻炼：身体俯卧呈平板斜撑，双手撑地承重，脊柱与双腿保持笔直，抬头目视前方地面。',
+      'Push-up plank exercise: prone plank body angle supported on hands and toes, straight spine and legs, head looking slightly ahead.'
+    )
+  },
+  {
+    id: 'fall',
+    labelKey: 'director.stage.poseAiPreset.fall',
+    instruction: text(
+      '受击失衡跌倒：重心完全后移下沉接近地面，躯干后仰倒地，双臂本能向两侧张开维持平衡，双腿微屈抬起。',
+      'Falling backward impact: center of mass dropped low and back, torsofalling supine, arms flung wide instinctively, knees slightly bent.'
+    )
+  },
+  {
+    id: 'kick',
+    labelKey: 'director.stage.poseAiPreset.kick',
+    instruction: text(
+      '高抬腿侧踢/正踢：左腿稳固支撑地面，右腿高高踢起伸直；上身微后倾平衡重心，双臂屈肘护于胸前两侧。',
+      'High kick action: left leg planted firmly, right leg kicked high forward; torso leans slightly back for balance, arms in guard.'
+    )
   }
 ]
 

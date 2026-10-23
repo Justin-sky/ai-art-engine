@@ -1391,9 +1391,8 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
   const toolsRegistry = ctx.get('tools')
   if (!toolsRegistry?.register) return
 
-  const answerAskUserQuestion = async (request) => {
-    const first = request?.questions?.[0]
-    if (!first) return { answers: [] }
+  const askSingleQuestion = async (q, signal) => {
+    const qId = typeof q?.id === 'string' && q.id ? q.id : 'q1'
     try {
       const runId = getRunId() || 'run'
       const requestId = 'harness:' + runId + ':' + randomUUID()
@@ -1403,35 +1402,80 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
       )
       const askPayload = {
         requestId,
-        questionId: first.id,
-        question: first.question,
-        ...(first.header ? { hint: first.header } : {}),
-        options: (first.options ?? []).map((option) => option.label),
+        questionId: qId,
+        question: typeof q?.question === 'string' ? q.question : '',
+        ...(q?.header ? { hint: q.header } : {}),
+        options: (q?.options ?? [])
+          .map((option) => (typeof option === 'string' ? option : option?.label))
+          .filter(Boolean),
         answerFile
       }
-      sendIpc({ type: 'ask_user', payload: askPayload }, () => {
-        io.stdout.write(ASK_USER_BEGIN + JSON.stringify(askPayload) + '\n')
+      sendIpc({ type: 'ask_user', ...askPayload, payload: askPayload }, () => {
+        io.stdout.write('\n' + ASK_USER_BEGIN + JSON.stringify(askPayload) + '\n')
       })
       const deadline = Date.now() + 5 * 60 * 1000
       while (Date.now() < deadline) {
-        if (request?.signal?.aborted) return { answers: [{ id: first.id, selected: [] }] }
+        if (signal?.aborted) return { id: qId, selected: [] }
         try {
           const raw = readFileSync(answerFile, 'utf8')
-          return JSON.parse(raw)
+          const parsed = JSON.parse(raw)
+          const firstAns = parsed?.answers?.[0]
+          if (firstAns && Array.isArray(firstAns.selected)) {
+            return {
+              id: qId,
+              selected: firstAns.selected.map(String),
+              ...(typeof firstAns.custom === 'string' ? { custom: firstAns.custom } : {})
+            }
+          }
+          return { id: qId, selected: [] }
         } catch {
           /* waiting */
         }
         await new Promise((resolve) => setTimeout(resolve, 250))
       }
-      return { answers: [{ id: first.id, selected: [] }] }
+      return { id: qId, selected: [] }
     } catch (error) {
       io.stderr.write(
         '[aiart-runner] ask-user answerer error: ' +
           (error instanceof Error ? error.message : String(error)) +
           '\n'
       )
-      return { answers: [{ id: first.id, selected: [] }] }
+      return { id: qId, selected: [] }
     }
+  }
+
+  const answerAskUserQuestion = async (request) => {
+    const questions = Array.isArray(request?.questions) ? request.questions : []
+    if (!questions.length) return { answers: [] }
+    const answers = []
+    for (const q of questions) {
+      if (request?.signal?.aborted) {
+        answers.push({ id: typeof q?.id === 'string' && q.id ? q.id : 'q1', selected: [] })
+        continue
+      }
+      const ans = await askSingleQuestion(q, request?.signal)
+      answers.push(ans)
+    }
+    return { answers }
+  }
+
+  if (typeof ctx.on === 'function') {
+    ctx.on('user-questions/request', (request) =>
+      answerAskUserQuestion(request).catch((error) => {
+        io.stderr.write(
+          '[aiart-runner] root ask-user answerer failed: ' +
+            (error instanceof Error ? error.message : String(error)) +
+            '\n'
+        )
+        const questions = Array.isArray(request?.questions) ? request.questions : []
+        return {
+          answers: questions.map((q, i) => ({
+            id: typeof q?.id === 'string' && q.id ? q.id : 'q' + (i + 1),
+            selected: []
+          }))
+        }
+      })
+    )
   }
 
   toolsRegistry.register(
@@ -1517,18 +1561,45 @@ function registerAskUserTool(ctx, io, getMode, getRunId) {
         if (getMode() === 'ask') {
           throw new Error('Ask mode does not allow ask_user_question; answer in text only.')
         }
-        if (!userQuestions) throw new Error('userQuestions service is unavailable')
-        const response = await userQuestions.ask({
-          questions: args.questions.map((question) => ({
-            id: question.id,
-            question: question.question,
-            ...(question.header !== undefined ? { header: question.header } : {}),
-            ...(question.options !== undefined ? { options: question.options } : {}),
-            ...(question.multi_select !== undefined ? { multiSelect: question.multi_select } : {})
-          })),
-          ...(exec.agent !== undefined ? { agent: exec.agent } : {}),
-          signal: exec.signal
-        })
+        if (delegationDepthOf(exec.agent) > 0) {
+          throw new Error(
+            'Subagents cannot call ask_user_question directly; return the unresolved question to the root agent.'
+          )
+        }
+        const normalizedQuestions = (Array.isArray(args?.questions) ? args.questions : []).map(
+          (question, idx) => ({
+            id: typeof question?.id === 'string' && question.id ? question.id : 'q' + (idx + 1),
+            question: typeof question?.question === 'string' ? question.question : '',
+            ...(question?.header !== undefined ? { header: question.header } : {}),
+            ...(question?.options !== undefined ? { options: question.options } : {}),
+            ...(question?.multi_select !== undefined ? { multiSelect: question.multi_select } : {})
+          })
+        )
+        let response
+        if (userQuestions) {
+          try {
+            response = await userQuestions.ask({
+              questions: normalizedQuestions,
+              ...(exec.agent !== undefined ? { agent: exec.agent } : {}),
+              signal: exec.signal
+            })
+          } catch (err) {
+            const code = err && typeof err === 'object' ? err.code : ''
+            if (code === 'NO_PROVIDER' || code === 'CALLER_NOT_LIVE') {
+              response = await answerAskUserQuestion({
+                questions: normalizedQuestions,
+                signal: exec.signal
+              })
+            } else {
+              throw err
+            }
+          }
+        } else {
+          response = await answerAskUserQuestion({
+            questions: normalizedQuestions,
+            signal: exec.signal
+          })
+        }
         return {
           answers: response.answers.map((answer) => ({
             id: answer.id,

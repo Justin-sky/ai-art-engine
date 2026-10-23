@@ -3247,6 +3247,14 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
     }
     const animatedIds = new Set<string>()
+    const animatedBonesByObject = new Map<string, Set<string>>()
+    const collectClipDrivenBones = (clip: THREE.AnimationClip, target: Set<string>): void => {
+      for (const tr of clip.tracks) {
+        if (tr.name === 'Hips.position') target.add('Hips.position')
+        const dot = tr.name.indexOf('.')
+        if (dot > 0) target.add(tr.name.slice(0, dot))
+      }
+    }
     for (const [objectId, runtime] of skeletonRuntimes) {
       const track = trackByObject.get(objectId)
       const blend = track ? findActiveSkeletonSegmentsWithBlend(track, time) : null
@@ -3268,6 +3276,20 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         runtime.mixer.update(0)
         continue
       }
+      const snapshot = bindPoseSnapshots.get(objectId)
+      const root = objectMeshes.get(objectId)
+      if (snapshot && root) {
+        const byName = skinningBonesByName(root)
+        for (const [bName, rec] of snapshot) {
+          const bone = byName.get(bName)
+          if (!bone) continue
+          bone.position.copy(rec.position)
+          bone.quaternion.copy(rec.quaternion)
+          bone.scale.copy(rec.scale)
+        }
+      }
+      const driven = new Set<string>()
+      collectClipDrivenBones(clip, driven)
       runtime.mixer.stopAllAction()
       const action = runtime.mixer.clipAction(clip)
       action.enabled = true
@@ -3285,6 +3307,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           const secTime = Math.min(blend.previous.end - 0.001, Math.max(blend.previous.start, time))
           const secSeek = skeletonSegmentLocalTime(secTime, blend.previous, secClip.duration)
           if (secSeek.active) {
+            collectClipDrivenBones(secClip, driven)
             const secAction = runtime.mixer.clipAction(secClip)
             secAction.enabled = true
             secAction.paused = true
@@ -3297,9 +3320,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
       runtime.mixer.update(0)
       animatedIds.add(objectId)
+      animatedBonesByObject.set(objectId, driven)
     }
     // ???????????? SET?bind ?? ? ??????????????????
-    applyAllBonePoses(animatedIds)
+    applyAllBonePoses(animatedIds, animatedBonesByObject)
   }
 
   function clearBonePoseOffsetCache(objectId?: string): void {
@@ -3330,7 +3354,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     if (!poses) return
     const map = new Map<string, THREE.Quaternion>()
     for (const [name, rot] of Object.entries(poses)) {
-      if (!rot) continue
+      if (!rot || name === 'Hips.position') continue
       if (rot.x === 0 && rot.y === 0 && rot.z === 0) continue
       map.set(name, offsetFromEulerXYZ(rot.x, rot.y, rot.z))
     }
@@ -3372,7 +3396,11 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
 
   /**
    * ???????????? SET ??bind ??????/???????? SET bind?offset??   * ??????/ ?? / ?? / ?????gizmo ????????????   */
-  function applyBonePoseForObject(objectId: string, onTopOfAnimation = false): void {
+  function applyBonePoseForObject(
+    objectId: string,
+    onTopOfAnimation = false,
+    drivenBones?: Set<string>
+  ): void {
     const obj = stage.value.objects.find((item) => item.id === objectId)
     const poses = obj?.bonePose
     const root = objectMeshes.get(objectId)
@@ -3384,10 +3412,17 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const snapshot = bindPoseSnapshots.get(objectId)
     if (!onTopOfAnimation && snapshot) {
       const byName = skinningBonesByName(root)
+      const hipsPosOffset = poses?.['Hips.position']
       for (const [name, rec] of snapshot) {
         const bone = byName.get(name)
         if (!bone) continue
         bone.position.copy(rec.position)
+        if (name === 'Hips' && hipsPosOffset) {
+          const heightScale = rec.position.y > 0.1 ? rec.position.y / 0.94 : 1
+          bone.position.x += (hipsPosOffset.x || 0) * heightScale
+          bone.position.y = Math.max(0.05, bone.position.y + (hipsPosOffset.y || 0) * heightScale)
+          bone.position.z += (hipsPosOffset.z || 0) * heightScale
+        }
         bone.scale.copy(rec.scale)
         const offset = offsetForBone(objectId, name)
         if (offset) applyBoneOffset(rec.quaternion, offset, bone.quaternion)
@@ -3396,10 +3431,25 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       return
     }
 
-    // ??????????multiply ????????????
     if (!poses) return
     const byName = skinningBonesByName(root)
+    const hipsPosOffset = poses['Hips.position']
+    if (hipsPosOffset && !drivenBones?.has('Hips.position') && snapshot) {
+      const hipsBone = byName.get('Hips')
+      const hipsRec = snapshot.get('Hips')
+      if (hipsBone && hipsRec) {
+        const heightScale = hipsRec.position.y > 0.1 ? hipsRec.position.y / 0.94 : 1
+        hipsBone.position.x = hipsRec.position.x + (hipsPosOffset.x || 0) * heightScale
+        hipsBone.position.y = Math.max(
+          0.05,
+          hipsRec.position.y + (hipsPosOffset.y || 0) * heightScale
+        )
+        hipsBone.position.z = hipsRec.position.z + (hipsPosOffset.z || 0) * heightScale
+      }
+    }
     for (const name of Object.keys(poses)) {
+      if (name === 'Hips.position') continue
+      if (drivenBones?.has(name)) continue
       const bone = byName.get(name)
       if (!bone) continue
       const offset = offsetForBone(objectId, name)
@@ -3408,14 +3458,19 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
   }
 
   /** animatedIds???? mixer ?????????? multiply ???????? SET */
-  function applyAllBonePoses(animatedIds?: Set<string>): void {
+  function applyAllBonePoses(
+    animatedIds?: Set<string>,
+    animatedBonesByObject?: Map<string, Set<string>>
+  ): void {
     if (poseBoneDragging) return
     for (const obj of stage.value.objects) {
       const mesh = objectMeshes.get(obj.id)
       if (!mesh) continue
       const hasPose = !!obj.bonePose && Object.keys(obj.bonePose).length > 0
       if (animatedIds?.has(obj.id)) {
-        if (hasPose) applyBonePoseForObject(obj.id, true)
+        if (hasPose) {
+          applyBonePoseForObject(obj.id, true, animatedBonesByObject?.get(obj.id))
+        }
         continue
       }
       const hasSnapshot = bindPoseSnapshots.has(obj.id)
@@ -4132,7 +4187,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     return true
   }
 
-  /** P2.3: 应用内置表情/眼神/手势姿势预设（支持与现有全身姿势叠加 merge） */
+  /** P2.3: 应用内置全身动作/表情/眼神/手势姿势预设（body 为整图替换，hand/gaze 为局部叠加 merge） */
   function applyExpressivePosePreset(
     objectId: string,
     presetId: string
@@ -4145,9 +4200,10 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     const keys = Object.keys(preset.bones)
     let matched = 0
     for (const k of keys) {
-      if (targetBones.has(k)) matched += 1
+      if (k === 'Hips.position' || targetBones.has(k)) matched += 1
     }
-    applyObjectBonePoseMap(objectId, preset.bones, 'merge')
+    const mode = preset.category === 'body' ? 'replace' : 'merge'
+    applyObjectBonePoseMap(objectId, preset.bones, mode)
     return { matched: matched || keys.length, total: keys.length }
   }
 
@@ -4422,6 +4478,51 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     animSelectedTrackId.value = trackId
     animSelectedSkeletonClipId.value = firstAddedId
     return true
+  }
+
+  /**
+   * 将角色模型自带/内置的骨骼动画片段（如 Idle / Walk / Run / Jump / Sit 等）追加到轨道骨骼通道。
+   */
+  function addEmbeddedSkeletonClipToTrack(
+    trackId: string,
+    clipName?: string,
+    atTime?: number
+  ): string | null {
+    const anim = ensureAnimation()
+    const track = anim.tracks.find((t) => t.id === trackId)
+    if (!track || track.targetKind !== 'object') return null
+    const runtime = skeletonRuntimes.get(track.targetId)
+    if (!runtime || !runtime.embeddedClips.length) return null
+    const chosen =
+      (clipName && runtime.embeddedClips.find((c) => c.name === clipName)) ||
+      runtime.embeddedClips[0]
+    if (!chosen) return null
+
+    const existing = directorTrackSkeletonClips(track)
+    const cursor =
+      typeof atTime === 'number' && Number.isFinite(atTime)
+        ? Math.max(0, atTime)
+        : existing.length
+          ? Math.max(...existing.map((item) => item.end))
+          : animTime.value
+    const duration = Math.max(0.8, chosen.duration || 1.6)
+    const placed = placeSkeletonSegmentRange(existing, cursor, duration, anim.duration)
+    if (!placed) return null
+
+    const segment: DirectorSkeletonClipSegment = {
+      id: `skel:${crypto.randomUUID()}`,
+      clip: chosen.name,
+      start: placed.start,
+      end: placed.end,
+      speed: 1,
+      loop: true,
+      crossFadeSec: 0.25
+    }
+    const next = [...existing, segment]
+    patchTrackSkeletonClips(trackId, next)
+    animSelectedTrackId.value = trackId
+    animSelectedSkeletonClipId.value = segment.id
+    return segment.id
   }
 
   function clearAnimTrackSkeletonAsset(trackId: string): void {
@@ -11130,6 +11231,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     setAnimTrackOrientToPath,
     setAnimTrackPathForwardAxis,
     applyAnimationAssetToAnimTrack,
+    addEmbeddedSkeletonClipToTrack,
     clearAnimTrackSkeletonAsset,
     selectSkeletonClipSegment,
     setSkeletonClipSegmentRange,

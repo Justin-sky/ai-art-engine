@@ -11,7 +11,23 @@ const DEG = Math.PI / 180
 const VALID_PRIMITIVES: ReadonlySet<string> = new Set(STAGE_PRIMITIVE_VALUES)
 
 export type StoryboardActorPosture =
-  'standing' | 'sitting' | 'slumped_sitting' | 'walking' | 'running' | 'fighting' | 'kneeling'
+  | 'standing'
+  | 'sitting'
+  | 'slumped_sitting'
+  | 'walking'
+  | 'running'
+  | 'fighting'
+  | 'kneeling'
+  | 'crouching'
+  | 'lying_down'
+  | 'jumping'
+  | 'bowing'
+  | 'cheering'
+  | 'dancing'
+  | 'thinking'
+  | 'phone'
+  | 'drinking'
+  | 'falling'
 
 export interface StoryboardWhiteModelPartSpec {
   label: string
@@ -133,6 +149,159 @@ export function resolveActorPosturePose(
         RightUpLeg: { x: -20 * DEG, y: 0, z: 0 },
         LeftLeg: { x: 115 * DEG, y: 0, z: 0 },
         RightLeg: { x: 115 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'crouching') {
+    return {
+      yOffset: -0.4,
+      bonePose: {
+        Spine: { x: 24 * DEG, y: 0, z: 0 },
+        Chest: { x: 16 * DEG, y: 0, z: 0 },
+        Head: { x: -22 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: -28 * DEG, y: 0, z: -12 * DEG },
+        RightUpperArm: { x: -28 * DEG, y: 0, z: 12 * DEG },
+        LeftForeArm: { x: -58 * DEG, y: 0, z: 0 },
+        RightForeArm: { x: -58 * DEG, y: 0, z: 0 },
+        LeftUpLeg: { x: -98 * DEG, y: 12 * DEG, z: -6 * DEG },
+        RightUpLeg: { x: -98 * DEG, y: -12 * DEG, z: 6 * DEG },
+        LeftLeg: { x: 112 * DEG, y: 0, z: 0 },
+        RightLeg: { x: 112 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'lying_down') {
+    return {
+      yOffset: -0.82,
+      bonePose: {
+        Hips: { x: -88 * DEG, y: 0, z: 0 },
+        Spine: { x: 4 * DEG, y: 0, z: 0 },
+        Head: { x: 10 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: 6 * DEG, y: 0, z: -16 * DEG },
+        RightUpperArm: { x: 6 * DEG, y: 0, z: 16 * DEG },
+        LeftForeArm: { x: -14 * DEG, y: 0, z: 0 },
+        RightForeArm: { x: -14 * DEG, y: 0, z: 0 },
+        LeftLeg: { x: 6 * DEG, y: 0, z: 0 },
+        RightLeg: { x: 6 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'jumping') {
+    return {
+      yOffset: 0.25,
+      bonePose: {
+        Spine: { x: -8 * DEG, y: 0, z: 0 },
+        Chest: { x: -10 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: -135 * DEG, y: 0, z: -24 * DEG },
+        RightUpperArm: { x: -135 * DEG, y: 0, z: 24 * DEG },
+        LeftForeArm: { x: -25 * DEG, y: 0, z: 0 },
+        RightForeArm: { x: -25 * DEG, y: 0, z: 0 },
+        LeftUpLeg: { x: -42 * DEG, y: 8 * DEG, z: -6 * DEG },
+        RightUpLeg: { x: -25 * DEG, y: -8 * DEG, z: 6 * DEG },
+        LeftLeg: { x: 68 * DEG, y: 0, z: 0 },
+        RightLeg: { x: 48 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'bowing') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Spine: { x: 35 * DEG, y: 0, z: 0 },
+        Chest: { x: 25 * DEG, y: 0, z: 0 },
+        Neck: { x: 12 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: 8 * DEG, y: 0, z: -6 * DEG },
+        RightUpperArm: { x: 8 * DEG, y: 0, z: 6 * DEG }
+      }
+    }
+  }
+
+  if (posture === 'cheering') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Spine: { x: -8 * DEG, y: 0, z: 0 },
+        Chest: { x: -10 * DEG, y: 0, z: 0 },
+        Head: { x: -10 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: -145 * DEG, y: 0, z: -26 * DEG },
+        RightUpperArm: { x: -145 * DEG, y: 0, z: 26 * DEG },
+        LeftForeArm: { x: -22 * DEG, y: 0, z: 0 },
+        RightForeArm: { x: -22 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'dancing') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Hips: { x: 0, y: 14 * DEG, z: -8 * DEG },
+        Spine: { x: -6 * DEG, y: -12 * DEG, z: 8 * DEG },
+        LeftUpperArm: { x: -115 * DEG, y: 12 * DEG, z: -32 * DEG },
+        LeftForeArm: { x: -38 * DEG, y: 0, z: 0 },
+        RightUpperArm: { x: -32 * DEG, y: -16 * DEG, z: 28 * DEG },
+        RightForeArm: { x: -68 * DEG, y: 0, z: 0 },
+        LeftUpLeg: { x: -26 * DEG, y: 12 * DEG, z: -8 * DEG },
+        LeftLeg: { x: 42 * DEG, y: 0, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'thinking') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Spine: { x: 6 * DEG, y: -5 * DEG, z: 0 },
+        Head: { x: 14 * DEG, y: -8 * DEG, z: 4 * DEG },
+        RightUpperArm: { x: -52 * DEG, y: -18 * DEG, z: 14 * DEG },
+        RightForeArm: { x: -108 * DEG, y: -12 * DEG, z: 0 },
+        LeftUpperArm: { x: -20 * DEG, y: 24 * DEG, z: -12 * DEG },
+        LeftForeArm: { x: -75 * DEG, y: 20 * DEG, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'phone') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Spine: { x: 8 * DEG, y: 0, z: 0 },
+        Neck: { x: 18 * DEG, y: 0, z: 0 },
+        Head: { x: 14 * DEG, y: -4 * DEG, z: 0 },
+        RightUpperArm: { x: -42 * DEG, y: -16 * DEG, z: 12 * DEG },
+        RightForeArm: { x: -86 * DEG, y: -14 * DEG, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'drinking') {
+    return {
+      yOffset: 0,
+      bonePose: {
+        Head: { x: -10 * DEG, y: 0, z: 0 },
+        RightUpperArm: { x: -68 * DEG, y: -16 * DEG, z: 14 * DEG },
+        RightForeArm: { x: -98 * DEG, y: -12 * DEG, z: 0 }
+      }
+    }
+  }
+
+  if (posture === 'falling') {
+    return {
+      yOffset: -0.35,
+      bonePose: {
+        Hips: { x: -38 * DEG, y: 12 * DEG, z: -14 * DEG },
+        Spine: { x: -18 * DEG, y: -10 * DEG, z: 8 * DEG },
+        Head: { x: 20 * DEG, y: 0, z: 0 },
+        LeftUpperArm: { x: -75 * DEG, y: 20 * DEG, z: -42 * DEG },
+        RightUpperArm: { x: -62 * DEG, y: -20 * DEG, z: 48 * DEG },
+        LeftUpLeg: { x: -36 * DEG, y: 12 * DEG, z: -10 * DEG },
+        RightUpLeg: { x: 16 * DEG, y: -10 * DEG, z: 8 * DEG },
+        LeftLeg: { x: 48 * DEG, y: 0, z: 0 },
+        RightLeg: { x: 32 * DEG, y: 0, z: 0 }
       }
     }
   }
@@ -802,11 +971,21 @@ function detectActorPostureFromShots(
     .join(' ')
     .toLowerCase()
   if (/瘫坐|趴在桌|伏案|瘫在|slump|hunch/.test(text)) return 'slumped_sitting'
-  if (/坐在|坐着|端坐|工位上|办公桌前|审讯椅|sit|seated/.test(text)) return 'sitting'
-  if (/跪|半跪|kneel/.test(text)) return 'kneeling'
+  if (/坐在|坐着|端坐|盘腿|盘坐|工位上|办公桌前|审讯椅|sit|seated/.test(text)) return 'sitting'
+  if (/平躺|躺下|躺在|卧倒|昏迷|lie down|lying|sleeping/.test(text)) return 'lying_down'
+  if (/跪|半跪|单膝跪|kneel/.test(text)) return 'kneeling'
+  if (/蹲下|下蹲|潜伏|隐蔽|crouch|squat/.test(text)) return 'crouching'
+  if (/跌倒|摔倒|倒地|击倒|中弹|fall|trip|stumble|collapse/.test(text)) return 'falling'
+  if (/跳跃|跳起|起跳|跃过|腾空|jump|leap|hop/.test(text)) return 'jumping'
   if (/奔跑|狂奔|追逐|冲刺|逃离|run|sprint|chase/.test(text)) return 'running'
   if (/行走|走近|迈步|漫步|穿行|walk|step/.test(text)) return 'walking'
-  if (/格斗|战斗|攻击|挥拳|拔剑|fight|combat|attack/.test(text)) return 'fighting'
+  if (/格斗|战斗|攻击|挥拳|拔剑|侧踢|fight|combat|attack/.test(text)) return 'fighting'
+  if (/跳舞|舞蹈|起舞|律动|dance|dancing/.test(text)) return 'dancing'
+  if (/欢呼|庆祝|高呼|振臂|cheer|celebrate/.test(text)) return 'cheering'
+  if (/鞠躬|敬礼|行礼|致谢|作揖|bow|salute/.test(text)) return 'bowing'
+  if (/看手机|刷手机|低头看|查看手机|phone|texting/.test(text)) return 'phone'
+  if (/喝水|喝酒|干杯|举杯|饮用|品茶|咖啡|drink|sip|toast/.test(text)) return 'drinking'
+  if (/思考|沉思|思索|托腮|犹豫|think|ponder/.test(text)) return 'thinking'
   void actorName
   return 'standing'
 }
@@ -1107,7 +1286,7 @@ Allowed \`primitive\` values:
     {
       "name": "Character Name",
       "mannequinPreset": "humanoid",
-      "posture": "standing | sitting | slumped_sitting | walking | running | fighting | kneeling",
+      "posture": "standing | sitting | slumped_sitting | walking | running | fighting | kneeling | crouching | lying_down | jumping | bowing | cheering | dancing | thinking | phone | drinking | falling",
       "position": { "x": 0, "y": 0, "z": -0.18 },
       "rotationYDeg": 0
     }
@@ -1159,8 +1338,83 @@ function sanitizeHexColor(raw: unknown, fallback = '#94a3b8'): string {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed) ? trimmed : fallback
 }
 
+const LAYOUT_PLAN_CACHE_STORAGE_KEY = 'director.storyboardLayoutPlanCache.v1'
+const LAYOUT_PLAN_CACHE_MAX_ENTRIES = 32
+const layoutPlanMemoryCache = new Map<string, StoryboardSceneLayoutPlan>()
+const layoutPlanInFlight = new Map<string, Promise<StoryboardSceneLayoutPlan>>()
+
+function computeStoryboardLayoutCacheKey(options: {
+  targetShots: readonly FilmShot[]
+  characterNames: readonly string[]
+  propNames: readonly string[]
+  locationNames: readonly string[]
+  isZh: boolean
+}): string {
+  const payload = {
+    lang: options.isZh ? 'zh' : 'en',
+    characters: options.characterNames,
+    locations: options.locationNames,
+    props: options.propNames,
+    shots: options.targetShots.slice(0, 8).map((s) => ({
+      id: s.id,
+      location: s.location ?? '',
+      characters: s.characters ?? [],
+      props: s.props ?? [],
+      action: s.action ?? ''
+    }))
+  }
+  return JSON.stringify(payload)
+}
+
+function readPersistedLayoutPlan(cacheKey: string): StoryboardSceneLayoutPlan | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return null
+    const raw = window.localStorage.getItem(LAYOUT_PLAN_CACHE_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Record<string, StoryboardSceneLayoutPlan>
+    const hit = parsed?.[cacheKey]
+    if (hit && Array.isArray(hit.actors) && Array.isArray(hit.objects)) {
+      return hit
+    }
+  } catch {
+    /* ignore storage errors */
+  }
+  return null
+}
+
+function writePersistedLayoutPlan(cacheKey: string, plan: StoryboardSceneLayoutPlan): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return
+    const raw = window.localStorage.getItem(LAYOUT_PLAN_CACHE_STORAGE_KEY)
+    const store: Record<string, StoryboardSceneLayoutPlan> = raw ? JSON.parse(raw) : {}
+    delete store[cacheKey]
+    store[cacheKey] = plan
+    const keys = Object.keys(store)
+    while (keys.length > LAYOUT_PLAN_CACHE_MAX_ENTRIES) {
+      const oldest = keys.shift()
+      if (oldest) delete store[oldest]
+    }
+    window.localStorage.setItem(LAYOUT_PLAN_CACHE_STORAGE_KEY, JSON.stringify(store))
+  } catch {
+    /* ignore storage quota errors */
+  }
+}
+
+export function clearStoryboardLayoutPlanCache(): void {
+  layoutPlanMemoryCache.clear()
+  layoutPlanInFlight.clear()
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(LAYOUT_PLAN_CACHE_STORAGE_KEY)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * 调用大语言模型（LLM）规划 3D 分镜白模与空间陈设；
+ * 内置内存 + localStorage 双层缓存与并发去重，相同分镜场景二次打开直接 0ms 命中缓存；
  * 若未配置文本模型或请求异常，自动无缝回退到内置启发式空间求解器。
  */
 export async function planStoryboard3dLayoutWithLlm(options: {
@@ -1178,6 +1432,7 @@ export async function planStoryboard3dLayoutWithLlm(options: {
   }) => Promise<{ text: string }>
   model?: string
   providerInstanceId?: string
+  disableCache?: boolean
 }): Promise<StoryboardSceneLayoutPlan> {
   const isZh = options.locale ? options.locale.toLowerCase().startsWith('zh') : true
   const fallbackPlan = buildHeuristicStoryboardLayout(
@@ -1195,6 +1450,26 @@ export async function planStoryboard3dLayoutWithLlm(options: {
       ? (input) => window.studio.generateText(input)
       : undefined)
   if (!genText) return fallbackPlan
+
+  const cacheKey = computeStoryboardLayoutCacheKey({
+    targetShots: options.targetShots,
+    characterNames: options.characterNames,
+    propNames: options.propNames,
+    locationNames: options.locationNames,
+    isZh
+  })
+
+  if (!options.disableCache) {
+    const memHit = layoutPlanMemoryCache.get(cacheKey)
+    if (memHit) return memHit
+    const persistedHit = readPersistedLayoutPlan(cacheKey)
+    if (persistedHit) {
+      layoutPlanMemoryCache.set(cacheKey, persistedHit)
+      return persistedHit
+    }
+    const inflight = layoutPlanInFlight.get(cacheKey)
+    if (inflight) return inflight
+  }
 
   const shotSummaries = options.targetShots.slice(0, 8).map((s) => ({
     id: s.id,
@@ -1220,200 +1495,237 @@ export async function planStoryboard3dLayoutWithLlm(options: {
     2
   )
 
-  try {
-    const llmPromise = genText({
-      system: LLM_STAGE_LAYOUT_SYSTEM_PROMPT,
-      prompt: `Design the 3D white-model stage layout for the following storyboard shots:\n${userPrompt}`,
-      ...(options.model ? { model: options.model } : {}),
-      ...(options.providerInstanceId ? { providerInstanceId: options.providerInstanceId } : {})
-    })
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 18000))
-    const response = await Promise.race([llmPromise, timeoutPromise])
-    if (!response || typeof response.text !== 'string') return fallbackPlan
+  const runTask = (async (): Promise<StoryboardSceneLayoutPlan> => {
+    try {
+      const llmPromise = genText({
+        system: LLM_STAGE_LAYOUT_SYSTEM_PROMPT,
+        prompt: `Design the 3D white-model stage layout for the following storyboard shots:\n${userPrompt}`,
+        ...(options.model ? { model: options.model } : {}),
+        ...(options.providerInstanceId ? { providerInstanceId: options.providerInstanceId } : {})
+      })
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 18000))
+      const response = await Promise.race([llmPromise, timeoutPromise])
+      if (!response || typeof response.text !== 'string') return fallbackPlan
 
-    const parsed = extractJsonObject(response.text)
-    if (!parsed) return fallbackPlan
+      const parsed = extractJsonObject(response.text)
+      if (!parsed) return fallbackPlan
 
-    // 合并并校验角色站位与姿态
-    const rawActors = Array.isArray(parsed.actors) ? parsed.actors : []
-    const mergedActors: StoryboardActorPlacementSpec[] = fallbackPlan.actors.map((fbActor, idx) => {
-      const key = filmNameKey(fbActor.name)
-      const matched = rawActors.find(
-        (item): item is Record<string, unknown> =>
-          !!item &&
-          typeof item === 'object' &&
-          typeof (item as Record<string, unknown>).name === 'string' &&
-          filmNameKey(String((item as Record<string, unknown>).name)) === key
+      // 合并并校验角色站位与姿态
+      const rawActors = Array.isArray(parsed.actors) ? parsed.actors : []
+      const mergedActors: StoryboardActorPlacementSpec[] = fallbackPlan.actors.map(
+        (fbActor, idx) => {
+          const key = filmNameKey(fbActor.name)
+          const matched = rawActors.find(
+            (item): item is Record<string, unknown> =>
+              !!item &&
+              typeof item === 'object' &&
+              typeof (item as Record<string, unknown>).name === 'string' &&
+              filmNameKey(String((item as Record<string, unknown>).name)) === key
+          )
+          if (!matched) return fbActor
+
+          const rawPosture = String(
+            matched.posture ?? fbActor.posture
+          ).trim() as StoryboardActorPosture
+          const validPostures: ReadonlySet<string> = new Set([
+            'standing',
+            'sitting',
+            'slumped_sitting',
+            'walking',
+            'running',
+            'fighting',
+            'kneeling',
+            'crouching',
+            'lying_down',
+            'jumping',
+            'bowing',
+            'cheering',
+            'dancing',
+            'thinking',
+            'phone',
+            'drinking',
+            'falling'
+          ])
+          const posture = validPostures.has(rawPosture) ? rawPosture : fbActor.posture
+          const { yOffset, bonePose } = resolveActorPosturePose(
+            posture,
+            idx,
+            fallbackPlan.actors.length
+          )
+          const rawPos = (matched.position ?? {}) as Record<string, unknown>
+          const rotYDeg = clampNum(
+            matched.rotationYDeg ?? matched.rotationY,
+            (fbActor.rotationY * 180) / Math.PI,
+            -360,
+            360
+          )
+
+          return {
+            name: fbActor.name,
+            // 防止 LLM 误将人类角色设为 quadruped
+            mannequinPreset: fbActor.mannequinPreset,
+            posture,
+            position: {
+              x: clampNum(rawPos.x, fbActor.position.x, -8, 8),
+              y: yOffset,
+              z: clampNum(rawPos.z, fbActor.position.z, -8, 8)
+            },
+            rotationY: rotYDeg * DEG,
+            bonePose
+          }
+        }
       )
-      if (!matched) return fbActor
 
-      const rawPosture = String(matched.posture ?? fbActor.posture).trim() as StoryboardActorPosture
-      const validPostures: ReadonlySet<string> = new Set([
-        'standing',
-        'sitting',
-        'slumped_sitting',
-        'walking',
-        'running',
-        'fighting',
-        'kneeling'
-      ])
-      const posture = validPostures.has(rawPosture) ? rawPosture : fbActor.posture
-      const { yOffset, bonePose } = resolveActorPosturePose(
-        posture,
-        idx,
-        fallbackPlan.actors.length
-      )
-      const rawPos = (matched.position ?? {}) as Record<string, unknown>
-      const rotYDeg = clampNum(
-        matched.rotationYDeg ?? matched.rotationY,
-        (fbActor.rotationY * 180) / Math.PI,
-        -360,
-        360
-      )
-
-      return {
-        name: fbActor.name,
-        // 防止 LLM 误将人类角色设为 quadruped
-        mannequinPreset: fbActor.mannequinPreset,
-        posture,
-        position: {
-          x: clampNum(rawPos.x, fbActor.position.x, -8, 8),
-          y: yOffset,
-          z: clampNum(rawPos.z, fbActor.position.z, -8, 8)
-        },
-        rotationY: rotYDeg * DEG,
-        bonePose
+      // 解析并增强 LLM 输出的 3D 组合素模
+      const rawObjects = Array.isArray(parsed.objects) ? parsed.objects : []
+      if (rawObjects.length === 0) {
+        const plan: StoryboardSceneLayoutPlan = {
+          ...fallbackPlan,
+          actors: mergedActors,
+          usedLlm: true
+        }
+        if (!options.disableCache) {
+          layoutPlanMemoryCache.set(cacheKey, plan)
+          writePersistedLayoutPlan(cacheKey, plan)
+        }
+        return plan
       }
-    })
 
-    // 解析并增强 LLM 输出的 3D 组合素模
-    const rawObjects = Array.isArray(parsed.objects) ? parsed.objects : []
-    if (rawObjects.length === 0) {
-      return { ...fallbackPlan, actors: mergedActors, usedLlm: true }
-    }
+      const parsedObjects: StoryboardWhiteModelObjectSpec[] = []
+      const seenObjKeys = new Set<string>()
+      let detectedSurfaceY =
+        fallbackPlan.objects.find((o) => o.category === 'surface')?.surfaceHeight ?? 0
 
-    const parsedObjects: StoryboardWhiteModelObjectSpec[] = []
-    const seenObjKeys = new Set<string>()
-    let detectedSurfaceY =
-      fallbackPlan.objects.find((o) => o.category === 'surface')?.surfaceHeight ?? 0
+      for (let i = 0; i < rawObjects.length; i++) {
+        const item = rawObjects[i]
+        if (!item || typeof item !== 'object') continue
+        const rec = item as Record<string, unknown>
+        const name = String(rec.name ?? '').trim()
+        if (!name) continue
+        const key = filmNameKey(name)
+        if (!key || seenObjKeys.has(key)) continue
+        seenObjKeys.add(key)
 
-    for (let i = 0; i < rawObjects.length; i++) {
-      const item = rawObjects[i]
-      if (!item || typeof item !== 'object') continue
-      const rec = item as Record<string, unknown>
-      const name = String(rec.name ?? '').trim()
-      if (!name) continue
-      const key = filmNameKey(name)
-      if (!key || seenObjKeys.has(key)) continue
-      seenObjKeys.add(key)
+        const arch = inferCompoundWhiteModelArchetype(name)
+        const rawCat = String(rec.category ?? arch.category).trim() as StoryboardObjectCategory
+        const category: StoryboardObjectCategory =
+          rawCat === 'surface' ||
+          rawCat === 'seat' ||
+          rawCat === 'tabletop' ||
+          rawCat === 'floor' ||
+          rawCat === 'architecture'
+            ? rawCat
+            : arch.category
 
-      const arch = inferCompoundWhiteModelArchetype(name)
-      const rawCat = String(rec.category ?? arch.category).trim() as StoryboardObjectCategory
-      const category: StoryboardObjectCategory =
-        rawCat === 'surface' ||
-        rawCat === 'seat' ||
-        rawCat === 'tabletop' ||
-        rawCat === 'floor' ||
-        rawCat === 'architecture'
-          ? rawCat
-          : arch.category
+        const rawPos = (rec.position ?? {}) as Record<string, unknown>
+        const rotYDeg = clampNum(rec.rotationYDeg ?? rec.rotationY, 0, -360, 360)
 
-      const rawPos = (rec.position ?? {}) as Record<string, unknown>
-      const rotYDeg = clampNum(rec.rotationYDeg ?? rec.rotationY, 0, -360, 360)
+        // 解析 LLM 给出的自定义几何部件（兼容 size/scale 与 label/name）
+        const rawParts = Array.isArray(rec.parts) ? rec.parts : []
+        const llmParts: StoryboardWhiteModelPartSpec[] = []
+        for (let pIdx = 0; pIdx < Math.min(8, rawParts.length); pIdx++) {
+          const pr = rawParts[pIdx]
+          if (!pr || typeof pr !== 'object') continue
+          const pRec = pr as Record<string, unknown>
+          const primRaw = String(pRec.primitive ?? 'box').trim()
+          const primitive: StagePrimitive = VALID_PRIMITIVES.has(primRaw)
+            ? (primRaw as StagePrimitive)
+            : 'box'
+          const off = (pRec.offset ?? {}) as Record<string, unknown>
+          const sz = (pRec.size ?? pRec.scale ?? {}) as Record<string, unknown>
+          const rot = (pRec.rotationDeg ?? pRec.rotation ?? {}) as Record<string, unknown>
+          const sx = clampNum(sz.x, 0.3, 0.01, 8)
+          const sy = clampNum(sz.y, 0.3, 0.01, 6)
+          const szVal = clampNum(sz.z, 0.3, 0.01, 8)
+          const partLabel =
+            String(pRec.label ?? pRec.name ?? `部件 ${pIdx + 1}`).trim() || `部件 ${pIdx + 1}`
+          llmParts.push({
+            label: partLabel,
+            primitive,
+            offset: {
+              x: clampNum(off.x, 0, -4, 4),
+              y: clampNum(off.y, sy / 2, -2, 5),
+              z: clampNum(off.z, 0, -4, 4)
+            },
+            rotation: {
+              x: clampNum(rot.x, 0, -180, 180) * DEG,
+              y: clampNum(rot.y, 0, -180, 180) * DEG,
+              z: clampNum(rot.z, 0, -180, 180) * DEG
+            },
+            size: { x: sx, y: sy, z: szVal },
+            color: sanitizeHexColor(pRec.color, '#94a3b8')
+          })
+        }
 
-      // 解析 LLM 给出的自定义几何部件（兼容 size/scale 与 label/name）
-      const rawParts = Array.isArray(rec.parts) ? rec.parts : []
-      const llmParts: StoryboardWhiteModelPartSpec[] = []
-      for (let pIdx = 0; pIdx < Math.min(8, rawParts.length); pIdx++) {
-        const pr = rawParts[pIdx]
-        if (!pr || typeof pr !== 'object') continue
-        const pRec = pr as Record<string, unknown>
-        const primRaw = String(pRec.primitive ?? 'box').trim()
-        const primitive: StagePrimitive = VALID_PRIMITIVES.has(primRaw)
-          ? (primRaw as StagePrimitive)
-          : 'box'
-        const off = (pRec.offset ?? {}) as Record<string, unknown>
-        const sz = (pRec.size ?? pRec.scale ?? {}) as Record<string, unknown>
-        const rot = (pRec.rotationDeg ?? pRec.rotation ?? {}) as Record<string, unknown>
-        const sx = clampNum(sz.x, 0.3, 0.01, 8)
-        const sy = clampNum(sz.y, 0.3, 0.01, 6)
-        const szVal = clampNum(sz.z, 0.3, 0.01, 8)
-        const partLabel =
-          String(pRec.label ?? pRec.name ?? `部件 ${pIdx + 1}`).trim() || `部件 ${pIdx + 1}`
-        llmParts.push({
-          label: partLabel,
-          primitive,
-          offset: {
-            x: clampNum(off.x, 0, -4, 4),
-            y: clampNum(off.y, sy / 2, -2, 5),
-            z: clampNum(off.z, 0, -4, 4)
+        // 若 LLM 规划了 >= 2 个组合部件，直接使用 LLM 设计；若只给了 1 个粗糙盒子且内置原型有多部件，则采用内置精细多部件
+        const finalParts =
+          llmParts.length >= 2
+            ? llmParts
+            : arch.parts.length > 1
+              ? arch.parts
+              : llmParts.length > 0
+                ? llmParts
+                : arch.parts
+
+        const surfaceHeight =
+          category === 'surface'
+            ? clampNum(rec.surfaceHeight, arch.surfaceHeight ?? 0.74, 0.3, 1.5)
+            : undefined
+        if (surfaceHeight && surfaceHeight > detectedSurfaceY) {
+          detectedSurfaceY = surfaceHeight
+        }
+
+        let posY = clampNum(rawPos.y, 0, 0, 3)
+        if (category === 'tabletop' && posY < 0.35) {
+          posY = detectedSurfaceY > 0 ? detectedSurfaceY : 0.74
+        } else if (category !== 'tabletop' && posY > 0.25) {
+          posY = 0
+        }
+
+        parsedObjects.push({
+          id: category === 'architecture' ? `sb-prop:loc-${key}` : `sb-prop:${key}`,
+          name,
+          category,
+          position: {
+            x: clampNum(rawPos.x, 0, -6, 6),
+            y: posY,
+            z: clampNum(rawPos.z, 0, -6, 6)
           },
-          rotation: {
-            x: clampNum(rot.x, 0, -180, 180) * DEG,
-            y: clampNum(rot.y, 0, -180, 180) * DEG,
-            z: clampNum(rot.z, 0, -180, 180) * DEG
-          },
-          size: { x: sx, y: sy, z: szVal },
-          color: sanitizeHexColor(pRec.color, '#94a3b8')
+          rotationY: rotYDeg * DEG,
+          ...(surfaceHeight ? { surfaceHeight } : {}),
+          parts: finalParts
         })
       }
 
-      // 若 LLM 规划了 >= 2 个组合部件，直接使用 LLM 设计；若只给了 1 个粗糙盒子且内置原型有多部件，则采用内置精细多部件
-      const finalParts =
-        llmParts.length >= 2
-          ? llmParts
-          : arch.parts.length > 1
-            ? arch.parts
-            : llmParts.length > 0
-              ? llmParts
-              : arch.parts
-
-      const surfaceHeight =
-        category === 'surface'
-          ? clampNum(rec.surfaceHeight, arch.surfaceHeight ?? 0.74, 0.3, 1.5)
-          : undefined
-      if (surfaceHeight && surfaceHeight > detectedSurfaceY) {
-        detectedSurfaceY = surfaceHeight
+      // 补充 fallbackPlan 中必须存在但被 LLM 遗漏的道具或支撑桌椅
+      for (const fbObj of fallbackPlan.objects) {
+        const k = filmNameKey(fbObj.name)
+        if (!seenObjKeys.has(k)) {
+          seenObjKeys.add(k)
+          parsedObjects.push(fbObj)
+        }
       }
 
-      let posY = clampNum(rawPos.y, 0, 0, 3)
-      if (category === 'tabletop' && posY < 0.35) {
-        posY = detectedSurfaceY > 0 ? detectedSurfaceY : 0.74
-      } else if (category !== 'tabletop' && posY > 0.25) {
-        posY = 0
+      const finalPlan: StoryboardSceneLayoutPlan = {
+        actors: mergedActors,
+        objects: parsedObjects,
+        usedLlm: true
       }
-
-      parsedObjects.push({
-        id: category === 'architecture' ? `sb-prop:loc-${key}` : `sb-prop:${key}`,
-        name,
-        category,
-        position: {
-          x: clampNum(rawPos.x, 0, -6, 6),
-          y: posY,
-          z: clampNum(rawPos.z, 0, -6, 6)
-        },
-        rotationY: rotYDeg * DEG,
-        ...(surfaceHeight ? { surfaceHeight } : {}),
-        parts: finalParts
-      })
-    }
-
-    // 补充 fallbackPlan 中必须存在但被 LLM 遗漏的道具或支撑桌椅
-    for (const fbObj of fallbackPlan.objects) {
-      const k = filmNameKey(fbObj.name)
-      if (!seenObjKeys.has(k)) {
-        seenObjKeys.add(k)
-        parsedObjects.push(fbObj)
+      if (!options.disableCache) {
+        layoutPlanMemoryCache.set(cacheKey, finalPlan)
+        writePersistedLayoutPlan(cacheKey, finalPlan)
       }
+      return finalPlan
+    } catch (err) {
+      console.warn('[director-previz] LLM layout planning failed, using heuristic layout:', err)
+      return fallbackPlan
+    } finally {
+      layoutPlanInFlight.delete(cacheKey)
     }
+  })()
 
-    return {
-      actors: mergedActors,
-      objects: parsedObjects,
-      usedLlm: true
-    }
-  } catch (err) {
-    console.warn('[director-previz] LLM layout planning failed, using heuristic layout:', err)
-    return fallbackPlan
+  if (!options.disableCache) {
+    layoutPlanInFlight.set(cacheKey, runTask)
   }
+  return runTask
 }

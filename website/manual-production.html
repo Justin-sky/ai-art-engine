@@ -32,13 +32,13 @@
     <meta property="og:title" content="剧本、成片与导演台 · 使用手册 — AIArtEngine" />
     <meta property="og:description" content="剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。" />
     <meta property="og:url" content="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
-    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/3d-director.webp" />
+    <meta property="og:image:width" content="1600" />
+    <meta property="og:image:height" content="860" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="剧本、成片与导演台 · 使用手册 — AIArtEngine" />
     <meta name="twitter:description" content="剧本与场资产，成片时间线的上轨编排、字幕与导出，画布与世界元素，以及 3D 导演台的站位、动画录制与高斯泼溅。" />
-    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/og-image.jpg" />
+    <meta name="twitter:image" content="https://justin-sky.github.io/ai-art-engine/assets/imgs/3d-director.webp" />
     <link rel="alternate" hreflang="zh-CN" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
     <link rel="alternate" hreflang="en" href="https://justin-sky.github.io/ai-art-engine/manual-production.en.html" />
     <link rel="alternate" hreflang="x-default" href="https://justin-sky.github.io/ai-art-engine/manual-production.html" />
@@ -153,15 +153,28 @@
           </p>
 
           <h3>9.2 影视工作台与单镜节点</h3>
+          <figure class="shot">
+            <img
+              src="assets/imgs/film-workbench.webp"
+              alt="短剧影视工作台：四阶段页签、分镜卡片（景别/机位/运镜/时长/动作/关键帧与分段动态提示词）、角色地点道具 @1/@2 参考图标签与 3D 导演台白模预演入口"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>短剧影视工作台（<code>film.workbench</code>）</strong>：四阶段闭环、结构化分镜卡片、角色/场景/道具 <code>@1</code>–<code>@4</code> 引用绑定、按时间段（<code>0-1s</code> / <code>1-4s</code>…）拆写的动态运镜提示词与单镜锁定。</figcaption>
+          </figure>
           <ul>
             <li>
               <strong>影视工作台</strong>（<code>film.workbench</code>）取代了旧版分散的场拆解 / 场表格 / 场生成 / 世界元素提取节点，将影视制作全链路整合进同一个节点与全屏 Dive 工作台：
               <ul>
-                <li><strong>① 分镜拆解</strong>（<code>breakdown</code>）：从剧本自动拆出每镜的景别、机位角度、运镜、单镜时长（秒）、人物表演、台词及出场角色/场景清单。</li>
+                <li><strong>① 分镜拆解</strong>（<code>breakdown</code>）：从剧本自动拆出每镜的景别、机位角度、运镜、单镜时长（秒，支持 <code>4s / 8s / 10s / 15s</code> 长分镜按时间段分段编写动作与运镜）、人物表演、台词及出场角色/场景/道具清单；支持点击右上角<strong>「3D 导演台白模预演」</strong>或单镜卡片上的<strong>「3D预演」</strong>进入三维空间白模排练。</li>
                 <li><strong>② 导演审核</strong>（<code>review</code>）：AI 导演逐镜评估叙事连贯性、轴线关系与节奏张力，给出评分与修订建议，支持一键应用到分镜表。</li>
                 <li><strong>③ 角色场景设定</strong>（<code>cast</code>）：汇总全片角色、场景与关键道具，批量生成定妆图与环境锚点图，锁住跨镜头视觉一致性。</li>
-                <li><strong>④ 批量拍摄</strong>（<code>render</code>）：按分镜表自动把本镜出场角色/场景设定图映射为 <code>@1</code>、<code>@2</code> 参考图，批量生成关键帧（开启视觉质检时低分自动重拍）与动态视频；视频时长支持<strong>「自动（跟随分镜拆解单镜时长）」</strong>（按每镜 <code>duration</code> 自动约束在 2~15 秒，缺省 5 秒）或固定秒数档位。</li>
+                <li><strong>④ 批量拍摄</strong>（<code>render</code>）：按分镜表自动把本镜出场角色/场景/道具设定图映射为 <code>@1</code>、<code>@2</code>… 参考图，批量生成关键帧（开启视觉质检时低分自动重拍）与动态视频；视频时长支持<strong>「自动（跟随分镜拆解单镜时长）」</strong>（按每镜 <code>duration</code> 自动约束在 2~15 秒，缺省 5 秒）或固定秒数档位。</li>
               </ul>
+            </li>
+            <li>
+              <strong>3D 分镜白模预演与剧本运镜轨</strong>：在影视工作台点击<strong>「3D 导演台白模预演」</strong>（或单镜 <strong>「3D预演」</strong>）即可将当前剧本的角色、场景与道具自动摆入 3D 舞台，配合底部 <strong>Cinemachine Brain 分镜机位切换轨</strong>与各镜<strong>运镜轨</strong>（支持绘制运镜轨迹、平滑渐入渐出与视角/焦距关键帧）直观排练走位与镜头调度。
             </li>
             <li>
               <strong>镜头</strong>（<code>film.shot</code>）：接在「影视工作台」<strong>下游</strong>（将工作台的 <code>out</code> 与 <code>out-cast</code> 连入「镜头」节点的 <code>in</code> 与 <code>in-cast</code>），按镜号或 <code>shotId</code>（如 <code>1</code> 或 <code>S01-02</code>）取出指定单镜的关键帧提示词（<code>out</code>）、出场角色/场景参考图（<code>out-refs</code>）与运镜提示词（<code>out-motion</code>），再接独立「生成图片 → 图像局部编辑 / 擦除 → 生成视频」链路做精细打磨。
@@ -170,6 +183,16 @@
               配合一键工作流的<strong>「影视全流程」</strong>（<code>short-drama</code>）与<strong>「影视精修·单镜头」</strong>（<code>short-drama9</code>）两套预设，可兼顾整集批量出片与重点镜头单拆精修（详见 <a href="guide-short-video.html">短剧制作教程</a>）。
             </li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/script-camera.webp"
+              alt="3D 分镜白模预演与剧本运镜：角色/道具彩色白模站位、Cinemachine Brain 分镜机位切换轨与逐镜运镜轨迹编辑"
+              width="1440"
+              height="900"
+              loading="lazy"
+            />
+            <figcaption><strong>3D 分镜白模预演与剧本运镜</strong>：从影视工作台一键进入三维白模舞台，通过 Cinemachine Brain 分镜机位切换轨与逐镜运镜轨预演角色站位和镜头运动。</figcaption>
+          </figure>
 
           <h3>9.3 分镜思维与指令预设</h3>
           <p>
@@ -197,6 +220,16 @@
 
         <section id="timeline">
           <h2>10. 成片时间线</h2>
+          <figure class="shot">
+            <img
+              src="assets/imgs/video-timeline.webp"
+              alt="成片时间线：创意素材、特效、转场、滤镜、调节、模板 6 栏面板与视频/画中画/配音/字幕/音乐/音效多轨时间线"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption><strong>成片时间线</strong>：剪映级 6 栏创意面板（素材 / 特效 / 转场 / 滤镜 / 调节 / 模板）、多轨编排与导出成片 / 剪映草稿。</figcaption>
+          </figure>
           <p>
             成片时间线用于把场 / 视频节点输出与导入素材拼成一条可预览、可导出的时间轴，通常挂在<strong>剧本资产</strong>上打开。
           </p>
@@ -301,19 +334,29 @@
           <ul>
             <li>双击 <strong>2D 舞台</strong>（<code>stage.2d</code>）进入 2D 骨骼绑定与动作工作台：可接收上游「图层拆分（<code>rig2d</code> 立绘拆件模式）」自动切好并扩边补全的部件图层，绑定父子骨骼与 IK 约束，打关键帧或套用呼吸/待机/行走/攻击预设，除渲染透明序列帧与视频外，支持一键导出标准 <strong>Spine 2D 工程包（<code>skeleton.json</code> + <code>.atlas</code> + 部件贴图）</strong>直通 Unity / Godot / Cocos。</li>
           </ul>
+          <figure class="shot">
+            <img
+              src="assets/imgs/2d-director.webp"
+              alt="2D 舞台导演台：从整图自动拆件、人形骨骼绑定、IK 牵引与动作录制"
+              width="1600"
+              height="860"
+              loading="lazy"
+            />
+            <figcaption><strong>2D 舞台导演台</strong>：从整图自动拆件、人形骨骼绑定、IK 牵引与 Spine 2D 导出。</figcaption>
+          </figure>
         </section>
 
         <section id="director">
           <h2>12. 导演台</h2>
           <figure class="shot">
             <img
-              src="assets/banner/director-stage.webp"
-              alt="3D 导演台舞台界面：角色、机位与站位截图"
-              width="1440"
-              height="900"
+              src="assets/imgs/3d-director.webp"
+              alt="3D 导演台舞台界面：Cinemachine 多机位切镜轨、角色动作轨、相机参数与站位截图"
+              width="1600"
+              height="860"
               loading="lazy"
             />
-            <figcaption><strong>3D 导演台</strong>：站位截图、动作录制与机位视角。</figcaption>
+            <figcaption><strong>3D 导演台</strong>：Cinemachine 多机位切镜轨、人形骨骼动作、相机焦距/景深控制与站位截图。</figcaption>
           </figure>
           <p>
             导演台用于 3D 场景摆姿、机位、动画预览与录制。节点链路一般为「导演台编辑 →（可选）选取 /
