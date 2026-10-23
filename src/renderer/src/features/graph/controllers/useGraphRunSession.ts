@@ -77,6 +77,7 @@ import { buildGamePlayProjectForNode } from '../model/runGamePlayBuild'
 import { normalizeImageAspectRatio } from '../model/normalizeImageAspectRatio'
 import { removeImageSolidBackground } from '../model/removeImageSolidBackground'
 import { composeTimelineVideoForNode } from '../model/composeTimelineVideo'
+import { renderOffscreenDirectorPreviz } from '../../director/renderOffscreenDirectorPreviz'
 import { enrichStyleImagesWithLibraryPrompts } from '../../stylePresets/defaultLibrary'
 import { resolveStyleImageUrls } from '../../stylePresets/resolveStyleImageUrls'
 import { emitNodeCookVfx } from '../../../graph/vfx/graphVfxEngine'
@@ -1699,6 +1700,13 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
           composeTimelineVideoForNode({
             ...input,
             hostAssetId: options.resolveHostAssetId?.()
+          }),
+        renderDirectorStagePreviz: (input) =>
+          renderOffscreenDirectorPreviz({
+            ...input,
+            shots: input.shots as import('@shared/graph/film/storyboard').FilmShot[] | undefined,
+            hostAssetId: input.hostAssetId ?? options.resolveHostAssetId?.(),
+            hostAssetName: input.hostAssetName ?? options.resolveHostAssetName?.()
           }),
         onNodePatch: (nodeId, patch) => {
           if (isRunStale(run)) return

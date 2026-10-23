@@ -73,22 +73,7 @@ export interface CompiledStoryboardPrevizResult {
   usedLlm?: boolean
 }
 
-/**
- * 从导演台机位 id (`cam:sb:<shotId>`) 或切镜片段 id (`cut:sb:<shotId>`) 提取分镜镜头 ID。
- */
-export function extractStoryboardShotIdFromDirectorId(
-  id: string | null | undefined
-): string | null {
-  const raw = (id ?? '').trim()
-  if (!raw) return null
-  if (raw.startsWith(STORYBOARD_CAMERA_ID_PREFIX)) {
-    return raw.slice(STORYBOARD_CAMERA_ID_PREFIX.length).trim() || null
-  }
-  if (raw.startsWith(STORYBOARD_CUT_ID_PREFIX)) {
-    return raw.slice(STORYBOARD_CUT_ID_PREFIX.length).trim() || null
-  }
-  return null
-}
+export { extractStoryboardShotIdFromDirectorId } from '@shared/domain'
 
 function clonePoseBones(presetId: string): Record<string, StageVec3> {
   const found = DIRECTOR_EXPRESSIVE_POSE_PRESETS.find((p) => p.id === presetId)

@@ -96,6 +96,7 @@ import { buildGamePlayProjectForNode } from '../features/graph/model/runGamePlay
 import { normalizeImageAspectRatio } from '../features/graph/model/normalizeImageAspectRatio'
 import { removeImageSolidBackground } from '../features/graph/model/removeImageSolidBackground'
 import { composeTimelineVideoForNode } from '../features/graph/model/composeTimelineVideo'
+import { renderOffscreenDirectorPreviz } from '../features/director/renderOffscreenDirectorPreviz'
 import { prepareGraphDocumentForPersist } from '../features/graph/persistGraphRunOutputs'
 import { saveGraphRunMediaForNode } from '../features/graph/saveGraphRunMediaForNode'
 import { saveGraphRunTextForNode } from '../features/graph/saveGraphRunTextForNode'
@@ -169,6 +170,8 @@ interface GraphTaskInternal extends GraphTask {
   logMeta?: GraphRunLogMeta
   /** MCP 旁路跑图：同步节点 running/done 到已打开画布 */
   liveCanvasSync?: boolean
+  /** 本次任务实际执行或 patch 过的节点 id，写回底图时避免用 skipped 旧快照覆盖已完成上游 */
+  touchedNodeIds?: Set<string>
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -584,6 +587,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       }
 
       const isSubset = !!task.targetNodeIds?.length
+      const mergeIds = task.touchedNodeIds?.size ? task.touchedNodeIds : task.order
       const graph = isSubset
         ? mergeSubsetGraphIntoBase(
             cloneGraphDocument(
@@ -592,7 +596,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
                 prepared
             ),
             prepared,
-            task.order,
+            mergeIds,
             materializedStates
           )
         : prepared
@@ -916,6 +920,18 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       if (task.abort.signal.aborted) {
         throw new DOMException('Aborted', 'AbortError')
       }
+      if (!task.touchedNodeIds) task.touchedNodeIds = new Set<string>()
+      // 同步等待期间先完成任务落盘/写回画布的最新节点参数，防止后续节点读到入队时的旧快照
+      const latestBeforeRun =
+        graphEditorHosts.getDocument(task.target.hostId) ?? readPersistedGraphForTarget(task.target)
+      if (latestBeforeRun?.nodes?.length) {
+        const latestById = new Map(latestBeforeRun.nodes.map((n) => [n.id, n]))
+        task.graph.nodes = task.graph.nodes.map((node) => {
+          if (task.touchedNodeIds?.has(node.id)) return node
+          const fresh = latestById.get(node.id)
+          return fresh ? (toPlain(fresh) as GraphNode) : node
+        })
+      }
       if (task.skipCompletedNodes === true) {
         task.priorNodeStates = collectMergedDonePriors(task)
       }
@@ -929,798 +945,899 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           seedLiveCanvasRunStates(task.target.hostId, task.priorNodeStates)
         }
       }
-      const result = await runGraph(task.graph, {
-        signal: task.abort.signal,
-        stepDelayMs: 100,
-        // Agent 后台任务走容错模式：节点失败不整链中断，长链跑得完
-        continueOnError: true,
-        skipCompletedNodes: task.skipCompletedNodes === true,
-        priorNodeStates: task.priorNodeStates,
-        cookAssetIdStack: task.cookAssetIdStack,
-        targetNodeIds: resolveTaskTargets(task.graph, task.targetNodeIds).map((n) => n.id),
-        onNodeUpdate: (nodeId, state) => {
-          if (task.abort.signal.aborted) return
-          logBridge.onNodeUpdate(nodeId, state)
-          if (state.status === 'skipped') {
-            // 子集外 skipped 不覆盖；本趟 pending/running 收尾为 skipped 需写回
-            const prev = task.runStates[nodeId]
-            if (prev?.status !== 'pending' && prev?.status !== 'running') return
+      let checkpointTimer: ReturnType<typeof setTimeout> | null = null
+      const clearCheckpointTimer = (): void => {
+        if (checkpointTimer) {
+          clearTimeout(checkpointTimer)
+          checkpointTimer = null
+        }
+      }
+      const scheduleCheckpointPersist = (): void => {
+        if (checkpointTimer || task.discardWriteBack || task.abort.signal.aborted) return
+        checkpointTimer = setTimeout(() => {
+          checkpointTimer = null
+          if (!isActiveStatus(task.status) || task.discardWriteBack || task.abort.signal.aborted) {
+            return
           }
-          task.runStates[nodeId] = { ...state }
-          applyRunStateToNodes(task.nodes, task.runStates)
-          if (task.liveCanvasSync) {
-            syncLiveCanvasRunState(task.target.hostId, nodeId, state)
-            syncLiveCanvasEpisodeReviewFromNode(task.target.hostId, task.graph.nodes, nodeId)
-          }
-          bump()
-        },
-        onLog: (_nodeId, message, level) => {
-          if (task.abort.signal.aborted) return
-          logBridge.appendMessage(message, level)
-        },
-        onNodePatch: (nodeId, patch) => {
-          if (task.abort.signal.aborted) return
-          const node = task.graph.nodes.find((n) => n.id === nodeId)
-          if (!node) return
-          if (patch.params) {
-            node.params = { ...node.params, ...patch.params } as GraphNodeParams
-            if (task.liveCanvasSync) {
-              syncLiveCanvasNodeParams(task.target.hostId, nodeId, patch.params)
+          void runWriteBackExclusive(writeBackExclusiveKey(task.target), async () => {
+            if (
+              !isActiveStatus(task.status) ||
+              task.discardWriteBack ||
+              task.abort.signal.aborted ||
+              task.sessionEpoch !== useProjectStore().sessionEpoch
+            ) {
+              return
             }
-          }
-          if (patch.title !== undefined) node.title = patch.title
-        },
-        saveRunMedia: (input) =>
-          saveGraphRunMediaForNode({
-            ...input,
-            hostAssetId: taskHostAssetId(task.target)
-          }),
-        saveRunText: (input) =>
-          saveGraphRunTextForNode({
-            ...input,
-            hostAssetId: taskHostAssetId(task.target)
-          }),
-        readRunText: readGraphRunText,
-        readEpisodeAgentState,
-        writeEpisodeAgentState,
-        generateText: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            prompt: input.prompt,
-            system: input.system,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            imageCount: input.images?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.images)
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitText')))
-          try {
-            const value = await window.studio.generateText(input)
-            logBridge.recordApiCall({
-              kind: 'generateText',
-              request,
-              response: { text: value.text, model: value.model },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateText',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateDecisions: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            questions: input.questions.map((q) => ({ key: q.key, type: q.type })),
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            evidenceCount: input.evidence?.length || undefined
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitDecisions')))
-          try {
-            const value = await window.studio.generateDecisions(input)
-            logBridge.recordApiCall({
-              kind: 'generateDecisions',
-              request,
-              response: { text: value.summary, model: value.model },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateDecisions',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateImage: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            aspectRatio: input.aspectRatio,
-            resolution: input.resolution,
-            quality: input.quality,
-            n: input.n,
-            seed: input.seed ?? null,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferences: input.inputReferenceMeta,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
-            layerDecomposition: input.layerDecomposition || undefined
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitImage')))
-          try {
-            const value = await window.studio.generateImage(input)
-            logBridge.recordApiCall({
-              kind: 'generateImage',
-              request,
-              response: {
-                model: value.model,
-                imageCount: value.images?.length ?? 0,
-                referenceNotes: value.referenceNotes
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateImage',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateVideo: async (input) => {
-          const startedAt = Date.now()
-          const request: {
-            prompt: string
-            model?: string
-            providerInstanceId?: string
-            aspectRatio?: string
-            resolution?: string
-            duration?: number
-            generateAudio?: boolean
-            seed?: number | null
-            inputReferenceCount?: number
-            inputReferenceUrls?: Array<{ kind?: string; url: string }>
-            firstFrameImageUrl?: string
-            lastFrameImageUrl?: string
-            uploads?: Array<{
-              sourceLabel: string
-              objectKey: string
-              bytes: number
-              urlPreview: string
-            }>
-          } = {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            aspectRatio: input.aspectRatio,
-            resolution: input.resolution,
-            duration: input.duration,
-            generateAudio: input.generateAudio,
-            seed: input.seed ?? null,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
-            firstFrameImageUrl: input.firstFrameImageUrl?.trim()
-              ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
-              : undefined,
-            lastFrameImageUrl: input.lastFrameImageUrl?.trim()
-              ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
-              : undefined
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitVideo')))
-          const progressNodeId =
-            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
-          const stopProgress = subscribeVideoJobProgress({
-            nodeId: progressNodeId,
-            onMessage: (message) => logBridge.appendMessage(message),
-            format: (job) =>
-              formatVideoJobProgressMessage(job, (key, params) =>
-                String(i18n.global.t(key, params ?? {}))
-              )
+            const doneStates = mergeDoneRunStates(task.priorNodeStates, task.runStates)
+            const { document: prepared, materializedStates } = await prepareGraphDocumentForPersist(
+              task.graph,
+              doneStates
+            )
+            const baseDoc =
+              graphEditorHosts.getDocument(task.target.hostId) ??
+              readPersistedGraphForTarget(task.target) ??
+              prepared
+            const mergeIds = task.touchedNodeIds?.size ? task.touchedNodeIds : task.order
+            const checkpointGraph = mergeSubsetGraphIntoBase(
+              cloneGraphDocument(baseDoc),
+              prepared,
+              mergeIds,
+              materializedStates
+            )
+            if (task.target.kind === 'asset') {
+              const assetId = task.target.assetId
+              const project = useProjectStore()
+              const drafts = useDraftStore()
+              const draft = drafts.getDraft(assetId)
+              const asset = project.assets.find((a) => a.id === assetId)
+              if (!draft && !asset) return
+              const prevParams = draft?.genParams ?? asset?.genParams ?? {}
+              await persistAssetRecord(assetId, {
+                genParams: { ...prevParams, graphJson: toPlain(checkpointGraph) }
+              })
+            } else if (task.target.kind === 'world-element') {
+              const { worldAssetId, elementKind, nodeId } = task.target
+              const prevParams = readWorldGenParams(worldAssetId)
+              await persistAssetRecord(worldAssetId, {
+                genParams: withWorldElementGraphForNode(
+                  prevParams,
+                  nodeId ?? LEGACY_WORLD_GEN_NODE_ID,
+                  elementKind,
+                  toPlain(checkpointGraph) as GraphDocument
+                )
+              })
+            }
           })
-          try {
-            const project = useProjectStore()
-            const outputDir = resolveMediaOutputDir({
-              mediaOutputDir: input.outputDir,
-              cacheOutputDir: project.config?.cacheOutputDir,
-              kind: 'video'
-            })
-            const value = await window.studio.generateVideo({ ...input, outputDir })
-            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
-              await project.scheduleRefreshLibrary()
+        }, 1000)
+      }
+      let result: Awaited<ReturnType<typeof runGraph>>
+      try {
+        result = await runGraph(task.graph, {
+          signal: task.abort.signal,
+          stepDelayMs: 100,
+          // Agent 后台任务走容错模式：节点失败不整链中断，长链跑得完
+          continueOnError: true,
+          skipCompletedNodes: task.skipCompletedNodes === true,
+          priorNodeStates: task.priorNodeStates,
+          cookAssetIdStack: task.cookAssetIdStack,
+          targetNodeIds: resolveTaskTargets(task.graph, task.targetNodeIds).map((n) => n.id),
+          onNodeUpdate: (nodeId, state) => {
+            if (task.abort.signal.aborted) return
+            logBridge.onNodeUpdate(nodeId, state)
+            if (state.status === 'skipped') {
+              // 子集外 skipped 不覆盖；本趟 pending/running 收尾为 skipped 需写回
+              const prev = task.runStates[nodeId]
+              if (prev?.status !== 'pending' && prev?.status !== 'running') return
+            } else if (
+              state.status === 'running' ||
+              state.status === 'done' ||
+              state.status === 'error'
+            ) {
+              task.touchedNodeIds?.add(nodeId)
             }
-            if (value.uploads?.length) {
-              request.uploads = value.uploads.map((item) => ({
-                sourceLabel: item.sourceLabel,
-                objectKey: item.objectKey,
-                bytes: item.bytes,
-                urlPreview: item.url.slice(0, 120)
-              }))
-              for (const item of value.uploads) {
-                for (const log of item.logs) {
-                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
-                }
+            task.runStates[nodeId] = { ...state }
+            applyRunStateToNodes(task.nodes, task.runStates)
+            if (task.liveCanvasSync !== false) {
+              syncLiveCanvasRunState(task.target.hostId, nodeId, state)
+              syncLiveCanvasEpisodeReviewFromNode(task.target.hostId, task.graph.nodes, nodeId)
+            }
+            if (state.status === 'done') {
+              scheduleCheckpointPersist()
+            }
+            bump()
+          },
+          onLog: (_nodeId, message, level) => {
+            if (task.abort.signal.aborted) return
+            logBridge.appendMessage(message, level)
+          },
+          onNodePatch: (nodeId, patch) => {
+            if (task.abort.signal.aborted) return
+            const node = task.graph.nodes.find((n) => n.id === nodeId)
+            if (!node) return
+            task.touchedNodeIds?.add(nodeId)
+            if (patch.params) {
+              node.params = { ...node.params, ...patch.params } as GraphNodeParams
+              if (task.liveCanvasSync !== false) {
+                syncLiveCanvasNodeParams(task.target.hostId, nodeId, patch.params)
+              }
+              if (
+                patch.params.filmStoryboard !== undefined ||
+                patch.params.filmCast !== undefined ||
+                patch.params.filmRenders !== undefined ||
+                patch.params.filmReviewReport !== undefined ||
+                patch.params.comicPage !== undefined ||
+                patch.params.generatedImages !== undefined ||
+                patch.params.generatedVideos !== undefined ||
+                patch.params.generatedTexts !== undefined
+              ) {
+                scheduleCheckpointPersist()
               }
             }
-            logBridge.recordApiCall({
-              kind: 'generateVideo',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateVideo',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          } finally {
-            stopProgress()
-          }
-        },
-        generateSpeech: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            input: input.input,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            voice: input.voice,
-            name: input.name,
-            imageCount: input.images?.length,
-            inputReferenceUrls: summarizeReferenceListForLog(input.images)
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpeech')))
-          try {
-            const project = useProjectStore()
-            const outputDir = resolveMediaOutputDir({
-              mediaOutputDir: input.outputDir,
-              cacheOutputDir: project.config?.cacheOutputDir,
-              kind: 'voice'
-            })
-            const value = await window.studio.generateSpeech({ ...input, outputDir })
-            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
-              await project.refreshAssets()
+            if (patch.title !== undefined) node.title = patch.title
+            bump()
+          },
+          saveRunMedia: (input) =>
+            saveGraphRunMediaForNode({
+              ...input,
+              hostAssetId: taskHostAssetId(task.target)
+            }),
+          saveRunText: (input) =>
+            saveGraphRunTextForNode({
+              ...input,
+              hostAssetId: taskHostAssetId(task.target)
+            }),
+          readRunText: readGraphRunText,
+          readEpisodeAgentState,
+          writeEpisodeAgentState,
+          generateText: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              prompt: input.prompt,
+              system: input.system,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              imageCount: input.images?.length || undefined,
+              inputReferenceUrls: summarizeReferenceListForLog(input.images)
             }
-            logBridge.recordApiCall({
-              kind: 'generateSpeech',
-              request,
-              response: {
-                model: value.model,
-                voice: value.voice,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateSpeech',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateSoundEffect: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            loop: input.loop,
-            durationSeconds: input.durationSeconds
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSoundEffect')))
-          try {
-            const project = useProjectStore()
-            const outputDir = resolveMediaOutputDir({
-              mediaOutputDir: input.outputDir,
-              cacheOutputDir: project.config?.cacheOutputDir,
-              kind: 'sfx'
-            })
-            const value = await window.studio.generateSoundEffect({ ...input, outputDir })
-            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
-              await project.refreshAssets()
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitText')))
+            try {
+              const value = await window.studio.generateText(input)
+              logBridge.recordApiCall({
+                kind: 'generateText',
+                request,
+                response: { text: value.text, model: value.model },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateText',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
             }
-            logBridge.recordApiCall({
-              kind: 'generateSoundEffect',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath,
-                ...(value.resolvedPrompt ? { resolvedPrompt: value.resolvedPrompt } : {})
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateSoundEffect',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateMusic: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            prompt: input.prompt,
-            lyricsLength: input.lyrics?.length,
-            instrumental: input.instrumental,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitMusic')))
-          try {
-            const project = useProjectStore()
-            const outputDir = resolveMediaOutputDir({
-              mediaOutputDir: input.outputDir,
-              cacheOutputDir: project.config?.cacheOutputDir,
-              kind: 'music'
-            })
-            const value = await window.studio.generateMusic({ ...input, outputDir })
-            if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
-              await project.refreshAssets()
+          },
+          generateDecisions: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              questions: input.questions.map((q) => ({ key: q.key, type: q.type })),
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              evidenceCount: input.evidence?.length || undefined
             }
-            logBridge.recordApiCall({
-              kind: 'generateMusic',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitDecisions')))
+            try {
+              const value = await window.studio.generateDecisions(input)
+              logBridge.recordApiCall({
+                kind: 'generateDecisions',
+                request,
+                response: { text: value.summary, model: value.model },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateDecisions',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          generateImage: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              prompt: input.prompt,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              aspectRatio: input.aspectRatio,
+              resolution: input.resolution,
+              quality: input.quality,
+              n: input.n,
+              seed: input.seed ?? null,
+              inputReferenceCount: input.inputReferences?.length || undefined,
+              inputReferences: input.inputReferenceMeta,
+              inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+              layerDecomposition: input.layerDecomposition || undefined
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitImage')))
+            try {
+              const value = await window.studio.generateImage(input)
+              logBridge.recordApiCall({
+                kind: 'generateImage',
+                request,
+                response: {
+                  model: value.model,
+                  imageCount: value.images?.length ?? 0,
+                  referenceNotes: value.referenceNotes
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateImage',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          generateVideo: async (input) => {
+            const startedAt = Date.now()
+            const request: {
+              prompt: string
+              model?: string
+              providerInstanceId?: string
+              aspectRatio?: string
+              resolution?: string
+              duration?: number
+              generateAudio?: boolean
+              seed?: number | null
+              inputReferenceCount?: number
+              inputReferenceUrls?: Array<{ kind?: string; url: string }>
+              firstFrameImageUrl?: string
+              lastFrameImageUrl?: string
+              uploads?: Array<{
+                sourceLabel: string
+                objectKey: string
+                bytes: number
+                urlPreview: string
+              }>
+            } = {
+              prompt: input.prompt,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              aspectRatio: input.aspectRatio,
+              resolution: input.resolution,
+              duration: input.duration,
+              generateAudio: input.generateAudio,
+              seed: input.seed ?? null,
+              inputReferenceCount: input.inputReferences?.length || undefined,
+              inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+              firstFrameImageUrl: input.firstFrameImageUrl?.trim()
+                ? summarizeMediaUrlForLog(input.firstFrameImageUrl)
+                : undefined,
+              lastFrameImageUrl: input.lastFrameImageUrl?.trim()
+                ? summarizeMediaUrlForLog(input.lastFrameImageUrl)
+                : undefined
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitVideo')))
+            const progressNodeId =
+              input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+            const stopProgress = subscribeVideoJobProgress({
+              nodeId: progressNodeId,
+              onMessage: (message) => logBridge.appendMessage(message),
+              format: (job) =>
+                formatVideoJobProgressMessage(job, (key, params) =>
+                  String(i18n.global.t(key, params ?? {}))
+                )
             })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateMusic',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        generateModel3d: async (input) => {
-          const startedAt = Date.now()
-          const request: {
-            prompt: string
-            model?: string
-            providerInstanceId?: string
-            style?: string
-            inputReferenceCount?: number
-            inputReferenceUrls?: Array<{ kind?: string; url: string }>
-            uploads?: Array<{
-              sourceLabel: string
-              objectKey: string
-              bytes: number
-              urlPreview: string
-            }>
-          } = {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            style: input.style,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitModel3d')))
-          const progressNodeId =
-            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
-          const stopProgress = subscribeVideoJobProgress({
-            nodeId: progressNodeId,
-            onMessage: (message) => logBridge.appendMessage(message),
-            format: (job) =>
-              formatVideoJobProgressMessage(job, (key, params) =>
-                String(i18n.global.t(key, params ?? {}))
-              )
-          })
-          try {
-            const value = await window.studio.generateModel3d(input)
-            if (value.uploads?.length) {
-              request.uploads = value.uploads.map((item) => ({
-                sourceLabel: item.sourceLabel,
-                objectKey: item.objectKey,
-                bytes: item.bytes,
-                urlPreview: item.url.slice(0, 120)
-              }))
-              for (const item of value.uploads) {
-                for (const log of item.logs) {
-                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+            try {
+              const project = useProjectStore()
+              const outputDir = resolveMediaOutputDir({
+                mediaOutputDir: input.outputDir,
+                cacheOutputDir: project.config?.cacheOutputDir,
+                kind: 'video'
+              })
+              const value = await window.studio.generateVideo({ ...input, outputDir })
+              if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+                await project.scheduleRefreshLibrary()
+              }
+              if (value.uploads?.length) {
+                request.uploads = value.uploads.map((item) => ({
+                  sourceLabel: item.sourceLabel,
+                  objectKey: item.objectKey,
+                  bytes: item.bytes,
+                  urlPreview: item.url.slice(0, 120)
+                }))
+                for (const item of value.uploads) {
+                  for (const log of item.logs) {
+                    logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+                  }
                 }
               }
+              logBridge.recordApiCall({
+                kind: 'generateVideo',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateVideo',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            } finally {
+              stopProgress()
             }
-            logBridge.recordApiCall({
-              kind: 'generateModel3d',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
+          },
+          generateSpeech: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              input: input.input,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              voice: input.voice,
+              name: input.name,
+              imageCount: input.images?.length,
+              inputReferenceUrls: summarizeReferenceListForLog(input.images)
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpeech')))
+            try {
+              const project = useProjectStore()
+              const outputDir = resolveMediaOutputDir({
+                mediaOutputDir: input.outputDir,
+                cacheOutputDir: project.config?.cacheOutputDir,
+                kind: 'voice'
+              })
+              const value = await window.studio.generateSpeech({ ...input, outputDir })
+              if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+                await project.refreshAssets()
+              }
+              logBridge.recordApiCall({
+                kind: 'generateSpeech',
+                request,
+                response: {
+                  model: value.model,
+                  voice: value.voice,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateSpeech',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          generateSoundEffect: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              prompt: input.prompt,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              loop: input.loop,
+              durationSeconds: input.durationSeconds
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSoundEffect')))
+            try {
+              const project = useProjectStore()
+              const outputDir = resolveMediaOutputDir({
+                mediaOutputDir: input.outputDir,
+                cacheOutputDir: project.config?.cacheOutputDir,
+                kind: 'sfx'
+              })
+              const value = await window.studio.generateSoundEffect({ ...input, outputDir })
+              if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+                await project.refreshAssets()
+              }
+              logBridge.recordApiCall({
+                kind: 'generateSoundEffect',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath,
+                  ...(value.resolvedPrompt ? { resolvedPrompt: value.resolvedPrompt } : {})
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateSoundEffect',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          generateMusic: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              prompt: input.prompt,
+              lyricsLength: input.lyrics?.length,
+              instrumental: input.instrumental,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitMusic')))
+            try {
+              const project = useProjectStore()
+              const outputDir = resolveMediaOutputDir({
+                mediaOutputDir: input.outputDir,
+                cacheOutputDir: project.config?.cacheOutputDir,
+                kind: 'music'
+              })
+              const value = await window.studio.generateMusic({ ...input, outputDir })
+              if (outputDir === 'Assets' || outputDir.startsWith('Assets/')) {
+                await project.refreshAssets()
+              }
+              logBridge.recordApiCall({
+                kind: 'generateMusic',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateMusic',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          generateModel3d: async (input) => {
+            const startedAt = Date.now()
+            const request: {
+              prompt: string
+              model?: string
+              providerInstanceId?: string
+              style?: string
+              inputReferenceCount?: number
+              inputReferenceUrls?: Array<{ kind?: string; url: string }>
+              uploads?: Array<{
+                sourceLabel: string
+                objectKey: string
+                bytes: number
+                urlPreview: string
+              }>
+            } = {
+              prompt: input.prompt,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              style: input.style,
+              inputReferenceCount: input.inputReferences?.length || undefined,
+              inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitModel3d')))
+            const progressNodeId =
+              input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+            const stopProgress = subscribeVideoJobProgress({
+              nodeId: progressNodeId,
+              onMessage: (message) => logBridge.appendMessage(message),
+              format: (job) =>
+                formatVideoJobProgressMessage(job, (key, params) =>
+                  String(i18n.global.t(key, params ?? {}))
+                )
             })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateModel3d',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          } finally {
-            stopProgress()
-          }
-        },
-        generateSpatialWorld: async (input) => {
-          const startedAt = Date.now()
-          const request: {
-            prompt: string
-            model?: string
-            providerInstanceId?: string
-            seed?: number
-            inputReferenceCount?: number
-            inputReferenceUrls?: Array<{ kind?: string; url: string }>
-            uploads?: Array<{
-              sourceLabel: string
-              objectKey: string
-              bytes: number
-              urlPreview: string
-            }>
-          } = {
-            prompt: input.prompt,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            seed: input.seed,
-            inputReferenceCount: input.inputReferences?.length || undefined,
-            inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorld')))
-          const progressNodeId =
-            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
-          const stopProgress = subscribeVideoJobProgress({
-            nodeId: progressNodeId,
-            onMessage: (message) => logBridge.appendMessage(message),
-            format: (job) =>
-              formatVideoJobProgressMessage(job, (key, params) =>
-                String(i18n.global.t(key, params ?? {}))
-              )
-          })
-          try {
-            const value = await window.studio.generateSpatialWorld(input)
-            if (value.uploads?.length) {
-              request.uploads = value.uploads.map((item) => ({
-                sourceLabel: item.sourceLabel,
-                objectKey: item.objectKey,
-                bytes: item.bytes,
-                urlPreview: item.url.slice(0, 120)
-              }))
-              for (const item of value.uploads) {
-                for (const log of item.logs) {
-                  logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+            try {
+              const value = await window.studio.generateModel3d(input)
+              if (value.uploads?.length) {
+                request.uploads = value.uploads.map((item) => ({
+                  sourceLabel: item.sourceLabel,
+                  objectKey: item.objectKey,
+                  bytes: item.bytes,
+                  urlPreview: item.url.slice(0, 120)
+                }))
+                for (const item of value.uploads) {
+                  for (const log of item.logs) {
+                    logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+                  }
                 }
               }
+              logBridge.recordApiCall({
+                kind: 'generateModel3d',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateModel3d',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            } finally {
+              stopProgress()
             }
-            // 参考媒体的托管上传 / 回退说明（不依赖对象存储那条路也在这里留痕）
-            for (const note of value.referenceNotes ?? []) {
-              logBridge.appendMessage(note, 'info')
+          },
+          generateSpatialWorld: async (input) => {
+            const startedAt = Date.now()
+            const request: {
+              prompt: string
+              model?: string
+              providerInstanceId?: string
+              seed?: number
+              inputReferenceCount?: number
+              inputReferenceUrls?: Array<{ kind?: string; url: string }>
+              uploads?: Array<{
+                sourceLabel: string
+                objectKey: string
+                bytes: number
+                urlPreview: string
+              }>
+            } = {
+              prompt: input.prompt,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              seed: input.seed,
+              inputReferenceCount: input.inputReferences?.length || undefined,
+              inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences)
             }
-            logBridge.recordApiCall({
-              kind: 'generateSpatialWorld',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorld')))
+            const progressNodeId =
+              input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+            const stopProgress = subscribeVideoJobProgress({
+              nodeId: progressNodeId,
+              onMessage: (message) => logBridge.appendMessage(message),
+              format: (job) =>
+                formatVideoJobProgressMessage(job, (key, params) =>
+                  String(i18n.global.t(key, params ?? {}))
+                )
             })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'generateSpatialWorld',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
+            try {
+              const value = await window.studio.generateSpatialWorld(input)
+              if (value.uploads?.length) {
+                request.uploads = value.uploads.map((item) => ({
+                  sourceLabel: item.sourceLabel,
+                  objectKey: item.objectKey,
+                  bytes: item.bytes,
+                  urlPreview: item.url.slice(0, 120)
+                }))
+                for (const item of value.uploads) {
+                  for (const log of item.logs) {
+                    logBridge.appendMessage(`[ObjectStorage] ${log.message}`, log.level)
+                  }
+                }
+              }
+              // 参考媒体的托管上传 / 回退说明（不依赖对象存储那条路也在这里留痕）
+              for (const note of value.referenceNotes ?? []) {
+                logBridge.appendMessage(note, 'info')
+              }
+              logBridge.recordApiCall({
+                kind: 'generateSpatialWorld',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'generateSpatialWorld',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            } finally {
+              stopProgress()
+            }
+          },
+          exportWorld: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              spatialWorldId: input.spatialWorldId,
+              assetType: input.assetType,
+              format: input.format,
+              meshVariant: input.meshVariant,
+              resolution: input.resolution,
+              providerInstanceId: input.providerInstanceId,
+              model: input.model
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorldExport')))
+            const progressNodeId =
+              input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
+            const stopProgress = subscribeVideoJobProgress({
+              nodeId: progressNodeId,
+              onMessage: (message) => logBridge.appendMessage(message),
+              format: (job) =>
+                formatVideoJobProgressMessage(job, (key, params) =>
+                  String(i18n.global.t(key, params ?? {}))
+                )
             })
-            throw err
-          } finally {
-            stopProgress()
-          }
-        },
-        exportWorld: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            spatialWorldId: input.spatialWorldId,
-            assetType: input.assetType,
-            format: input.format,
-            meshVariant: input.meshVariant,
-            resolution: input.resolution,
-            providerInstanceId: input.providerInstanceId,
-            model: input.model
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSpatialWorldExport')))
-          const progressNodeId =
-            input.graphBinding?.nodeId?.trim() || logBridge.currentRunningNodeId() || undefined
-          const stopProgress = subscribeVideoJobProgress({
-            nodeId: progressNodeId,
-            onMessage: (message) => logBridge.appendMessage(message),
-            format: (job) =>
-              formatVideoJobProgressMessage(job, (key, params) =>
-                String(i18n.global.t(key, params ?? {}))
-              )
-          })
-          try {
-            const value = await window.studio.exportWorld(input)
-            logBridge.recordApiCall({
-              kind: 'exportWorld',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'exportWorld',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          } finally {
-            stopProgress()
-          }
-        },
-        rigModel3d: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            modelRelativePath: input.modelRelativePath,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            rigType: input.rigType,
-            spec: input.spec,
-            outFormat: input.outFormat
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitRig')))
-          try {
-            const value = await window.studio.rigModel3d(input)
-            logBridge.recordApiCall({
-              kind: 'rigModel3d',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'rigModel3d',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        segmentModel3d: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            modelRelativePath: input.modelRelativePath,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId,
-            mode: input.mode,
-            granularity: input.granularity,
-            smartGranularity: input.smartGranularity
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSegment')))
-          try {
-            const value = await window.studio.segmentModel3d(input)
-            logBridge.recordApiCall({
-              kind: 'segmentModel3d',
-              request,
-              response: {
-                model: value.model,
-                assetId: value.assetId,
-                relativePath: value.relativePath,
-                text: value.parts.join(', ')
-              },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'segmentModel3d',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        postProcessModel3d: async (input) => {
-          const startedAt = Date.now()
-          const request = {
-            op: input.op,
-            providerTaskId: input.providerTaskId,
-            modelRelativePath: input.modelRelativePath,
-            model: input.model,
-            providerInstanceId: input.providerInstanceId
-          }
-          logBridge.appendMessage(String(i18n.global.t('graph.logs.submitPostProcess')))
-          try {
-            const value = await window.studio.postProcessModel3d(input)
-            logBridge.recordApiCall({
-              kind: 'postProcessModel3d',
-              request,
-              response:
-                value.op === 'rigCheck'
-                  ? { ok: value.riggable, text: value.rigType }
-                  : {
-                      model: value.model,
-                      assetId: value.assetId,
-                      relativePath: value.relativePath
-                    },
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            return value
-          } catch (err) {
-            logBridge.recordApiCall({
-              kind: 'postProcessModel3d',
-              request,
-              error: err instanceof Error ? err.message : String(err),
-              durationMs: Math.max(0, Date.now() - startedAt)
-            })
-            throw err
-          }
-        },
-        resolveLiveAssetGraph: (assetId) =>
-          graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
-        resolveAssetGenParams: (assetId) => {
-          const live = graphEditorHosts.getLiveAssetDocument(assetId)
-          const project = useProjectStore()
-          const base = isDraftAssetId(assetId)
-            ? (useDraftStore().getDraft(assetId)?.genParams as Record<string, unknown> | undefined)
-            : (project.assets.find((asset) => asset.id === assetId)?.genParams as
-                Record<string, unknown> | undefined)
-          if (live) {
-            return { ...(base ?? {}), graphJson: live }
-          }
-          return base
-        },
-        resolveAssetName: (assetId) => {
-          const project = useProjectStore()
-          return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
-        },
-        resolveHostAssetName: () => {
-          const hostAssetId = taskHostAssetId(task.target)
-          const project = useProjectStore()
-          return (
-            project.assets.find((asset) => asset.id === hostAssetId)?.name?.trim() ||
-            useDraftStore().getDraft(hostAssetId)?.name?.trim() ||
-            undefined
-          )
-        },
-        resolveHostAssetId: () => taskHostAssetId(task.target),
-        resolveAssetText,
-        resolveImageUrls: resolveGraphImageUrls,
-        resolveVideoFirstFrameImageUrls,
-        resolveStyleImageUrls,
-        resolveProjectStyleImages: () =>
-          normalizeProjectStyleImages(useProjectStore().config?.styleImages),
-        resolveProjectGenerateSeed: () => useProjectStore().config?.generateSeed,
-        enrichStyleImages: (images) =>
-          enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),
-        resolveImageGenerateCapabilities: resolveImageGenerateCapabilitiesForRun,
-        resolveVideoGenerateCapabilities: resolveVideoGenerateCapabilitiesForRun,
-        resolveAssetImageUrl,
-        resolveAssetMediaUrl: resolveAssetMediaDataUrl,
-        resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
-        ...semanticGraphCapabilities,
-        composeImageExpandCanvas,
-        composeImageRedrawCanvas,
-        composeImageCropCanvas,
-        composeImageTransformCanvas,
-        composeImageCutoutCanvas,
-        composeImageAlignCanvas,
-        composeImageComposeCanvas,
-        composeStage2dCanvas,
-        composeStage2dFrameSheet,
-        composeImageGridCell,
-        composeGifFrames: composeAnim2dGif,
-        renderSvgFrames,
-        composeImageIconPackSheet,
-        composeImageLayerStack,
-        decomposeImageUiLayers,
-        uiRgbaCodec,
-        composeComicPageImage,
-        composePortraitIdPhoto,
-        composePortraitScopedRetouch,
-        composePortraitIdentityLock,
-        detectPortraitFaces,
-        inspectImageSize,
-        fitPortraitToSourceSize,
-        flattenPortraitBackground,
-        composePortraitLiveRetouch,
-        inspectModelSkeleton,
-        runBlenderDshJob,
-        buildGamePlayProject: buildGamePlayProjectForNode,
-        runBlenderMcpTool: (input) =>
-          window.studio.runBlenderMcpTool({
-            name: input.name,
-            args: input.args ?? {},
-            timeoutMs: input.timeoutMs
-          }),
-        normalizeImageAspectRatio,
-        removeImageSolidBackground,
-        composeTimelineVideo: (input) =>
-          composeTimelineVideoForNode({
-            ...input,
-            hostAssetId: taskHostAssetId(task.target)
-          }),
-        resolveBeatCatalogJson: () => {
-          if (task.target.kind !== 'asset') return null
-          const beatId = task.target.assetId
-          const rows = loadBeatCatalog(beatId)
-          if (!rows.length) return null
-          return JSON.stringify(rows)
-        },
-        importBeatCatalogJson: async (jsonText) => {
-          if (task.target.kind !== 'asset') return
-          await applyBeatCatalog(task.target.assetId, jsonText)
-        },
-        resolveWorldElementOutputs: (node) => {
-          if (task.target.kind !== 'asset') return []
-          const spatialWorldId = task.target.assetId
-          if (isDraftAssetId(spatialWorldId)) {
-            const draft = useDraftStore().getDraft(spatialWorldId)
-            if (!isWorldPipelineAssetType(draft?.type)) return []
-          } else {
+            try {
+              const value = await window.studio.exportWorld(input)
+              logBridge.recordApiCall({
+                kind: 'exportWorld',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'exportWorld',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            } finally {
+              stopProgress()
+            }
+          },
+          rigModel3d: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              modelRelativePath: input.modelRelativePath,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              rigType: input.rigType,
+              spec: input.spec,
+              outFormat: input.outFormat
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitRig')))
+            try {
+              const value = await window.studio.rigModel3d(input)
+              logBridge.recordApiCall({
+                kind: 'rigModel3d',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'rigModel3d',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          segmentModel3d: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              modelRelativePath: input.modelRelativePath,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId,
+              mode: input.mode,
+              granularity: input.granularity,
+              smartGranularity: input.smartGranularity
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitSegment')))
+            try {
+              const value = await window.studio.segmentModel3d(input)
+              logBridge.recordApiCall({
+                kind: 'segmentModel3d',
+                request,
+                response: {
+                  model: value.model,
+                  assetId: value.assetId,
+                  relativePath: value.relativePath,
+                  text: value.parts.join(', ')
+                },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'segmentModel3d',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          postProcessModel3d: async (input) => {
+            const startedAt = Date.now()
+            const request = {
+              op: input.op,
+              providerTaskId: input.providerTaskId,
+              modelRelativePath: input.modelRelativePath,
+              model: input.model,
+              providerInstanceId: input.providerInstanceId
+            }
+            logBridge.appendMessage(String(i18n.global.t('graph.logs.submitPostProcess')))
+            try {
+              const value = await window.studio.postProcessModel3d(input)
+              logBridge.recordApiCall({
+                kind: 'postProcessModel3d',
+                request,
+                response:
+                  value.op === 'rigCheck'
+                    ? { ok: value.riggable, text: value.rigType }
+                    : {
+                        model: value.model,
+                        assetId: value.assetId,
+                        relativePath: value.relativePath
+                      },
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              return value
+            } catch (err) {
+              logBridge.recordApiCall({
+                kind: 'postProcessModel3d',
+                request,
+                error: err instanceof Error ? err.message : String(err),
+                durationMs: Math.max(0, Date.now() - startedAt)
+              })
+              throw err
+            }
+          },
+          resolveLiveAssetGraph: (assetId) =>
+            graphEditorHosts.getLiveAssetDocument(assetId) ?? undefined,
+          resolveAssetGenParams: (assetId) => {
+            const live = graphEditorHosts.getLiveAssetDocument(assetId)
             const project = useProjectStore()
-            const asset = project.assets.find((a) => a.id === spatialWorldId)
-            if (!isWorldPipelineAssetType(asset?.type)) return []
-          }
-          return previewWorldElementOutputsFromSubgraphs({
-            worldAssetId: spatialWorldId,
-            nodeId: node?.id
-          })
-        },
-        runHostInnerGraph
-      })
+            const base = isDraftAssetId(assetId)
+              ? (useDraftStore().getDraft(assetId)?.genParams as
+                  Record<string, unknown> | undefined)
+              : (project.assets.find((asset) => asset.id === assetId)?.genParams as
+                  Record<string, unknown> | undefined)
+            if (live) {
+              return { ...(base ?? {}), graphJson: live }
+            }
+            return base
+          },
+          resolveAssetName: (assetId) => {
+            const project = useProjectStore()
+            return project.assets.find((asset) => asset.id === assetId)?.name?.trim() || undefined
+          },
+          resolveHostAssetName: () => {
+            const hostAssetId = taskHostAssetId(task.target)
+            const project = useProjectStore()
+            return (
+              project.assets.find((asset) => asset.id === hostAssetId)?.name?.trim() ||
+              useDraftStore().getDraft(hostAssetId)?.name?.trim() ||
+              undefined
+            )
+          },
+          resolveHostAssetId: () => taskHostAssetId(task.target),
+          resolveAssetText,
+          resolveImageUrls: resolveGraphImageUrls,
+          resolveVideoFirstFrameImageUrls,
+          resolveStyleImageUrls,
+          resolveProjectStyleImages: () =>
+            normalizeProjectStyleImages(useProjectStore().config?.styleImages),
+          resolveProjectGenerateSeed: () => useProjectStore().config?.generateSeed,
+          enrichStyleImages: (images) =>
+            enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),
+          resolveImageGenerateCapabilities: resolveImageGenerateCapabilitiesForRun,
+          resolveVideoGenerateCapabilities: resolveVideoGenerateCapabilitiesForRun,
+          resolveAssetImageUrl,
+          resolveAssetMediaUrl: resolveAssetMediaDataUrl,
+          resolveProjectMediaUrl: (relativePath: string) => resolveAssetFileUrl(relativePath),
+          ...semanticGraphCapabilities,
+          composeImageExpandCanvas,
+          composeImageRedrawCanvas,
+          composeImageCropCanvas,
+          composeImageTransformCanvas,
+          composeImageCutoutCanvas,
+          composeImageAlignCanvas,
+          composeImageComposeCanvas,
+          composeStage2dCanvas,
+          composeStage2dFrameSheet,
+          composeImageGridCell,
+          composeGifFrames: composeAnim2dGif,
+          renderSvgFrames,
+          composeImageIconPackSheet,
+          composeImageLayerStack,
+          decomposeImageUiLayers,
+          uiRgbaCodec,
+          composeComicPageImage,
+          composePortraitIdPhoto,
+          composePortraitScopedRetouch,
+          composePortraitIdentityLock,
+          detectPortraitFaces,
+          inspectImageSize,
+          fitPortraitToSourceSize,
+          flattenPortraitBackground,
+          composePortraitLiveRetouch,
+          inspectModelSkeleton,
+          runBlenderDshJob,
+          buildGamePlayProject: buildGamePlayProjectForNode,
+          runBlenderMcpTool: (input) =>
+            window.studio.runBlenderMcpTool({
+              name: input.name,
+              args: input.args ?? {},
+              timeoutMs: input.timeoutMs
+            }),
+          normalizeImageAspectRatio,
+          removeImageSolidBackground,
+          composeTimelineVideo: (input) =>
+            composeTimelineVideoForNode({
+              ...input,
+              hostAssetId: taskHostAssetId(task.target)
+            }),
+          renderDirectorStagePreviz: (input) =>
+            renderOffscreenDirectorPreviz({
+              ...input,
+              shots: input.shots as import('@shared/graph/film/storyboard').FilmShot[] | undefined,
+              hostAssetId: input.hostAssetId ?? taskHostAssetId(task.target),
+              hostAssetName: input.hostAssetName ?? task.title
+            }),
+          resolveBeatCatalogJson: () => {
+            if (task.target.kind !== 'asset') return null
+            const beatId = task.target.assetId
+            const rows = loadBeatCatalog(beatId)
+            if (!rows.length) return null
+            return JSON.stringify(rows)
+          },
+          importBeatCatalogJson: async (jsonText) => {
+            if (task.target.kind !== 'asset') return
+            await applyBeatCatalog(task.target.assetId, jsonText)
+          },
+          resolveWorldElementOutputs: (node) => {
+            if (task.target.kind !== 'asset') return []
+            const spatialWorldId = task.target.assetId
+            if (isDraftAssetId(spatialWorldId)) {
+              const draft = useDraftStore().getDraft(spatialWorldId)
+              if (!isWorldPipelineAssetType(draft?.type)) return []
+            } else {
+              const project = useProjectStore()
+              const asset = project.assets.find((a) => a.id === spatialWorldId)
+              if (!isWorldPipelineAssetType(asset?.type)) return []
+            }
+            return previewWorldElementOutputsFromSubgraphs({
+              worldAssetId: spatialWorldId,
+              nodeId: node?.id
+            })
+          },
+          runHostInnerGraph
+        })
+      } finally {
+        clearCheckpointTimer()
+      }
 
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
         task.status = 'stopped'
@@ -1729,7 +1846,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (st?.status === 'pending' || st?.status === 'running') {
             const cancelledState: GraphNodeRunState = { status: 'error', error: 'GRAPH_CANCELLED' }
             task.runStates[id] = cancelledState
-            if (task.liveCanvasSync) {
+            if (task.liveCanvasSync !== false) {
               syncLiveCanvasRunState(task.target.hostId, id, cancelledState)
             }
           }
@@ -1749,7 +1866,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           if (prev?.status !== 'pending' && prev?.status !== 'running') continue
         }
         task.runStates[id] = { ...state }
-        if (task.liveCanvasSync) {
+        if (task.liveCanvasSync !== false) {
           syncLiveCanvasRunState(task.target.hostId, id, state)
         }
       }
@@ -1759,7 +1876,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       applyEpisodeReviewMarks(task.graph.nodes, (nodeId, params) => {
         const node = task.graph.nodes.find((n) => n.id === nodeId)
         if (node) node.params = { ...node.params, ...params } as GraphNodeParams
-        if (task.liveCanvasSync) {
+        if (task.liveCanvasSync !== false) {
           syncLiveCanvasNodeParams(task.target.hostId, nodeId, params)
         }
       })
@@ -1792,7 +1909,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
             error: task.message || 'GRAPH_CANCELLED'
           }
           task.runStates[id] = fallbackState
-          if (task.liveCanvasSync) {
+          if (task.liveCanvasSync !== false) {
             syncLiveCanvasRunState(task.target.hostId, id, fallbackState)
           }
         }

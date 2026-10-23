@@ -889,7 +889,8 @@
                 v-if="
                   shotBindingItems(selectedShot).length ||
                   prevSameSceneShot(selectedShot) ||
-                  shotRawPrevizKeyframe(selectedShot)
+                  shotRawPrevizKeyframe(selectedShot) ||
+                  shotRawPrevizVideo(selectedShot)
                 "
                 class="shot-binding-panel"
               >
@@ -979,6 +980,23 @@
                         })
                       }}
                     </span>
+                  </div>
+                  <div
+                    v-if="shotRawPrevizVideo(selectedShot)"
+                    class="binding-chip previz ready"
+                    :title="t('graph.inspector.film.previzVideoRefHint')"
+                    @click.stop="
+                      previewVideoMedia(
+                        shotPrevizVideoUrl(selectedShot),
+                        `${selectedShot.id} 3D Previz Video`
+                      )
+                    "
+                  >
+                    <span class="badge">🎬</span>
+                    <strong class="binding-name">
+                      {{ t('graph.inspector.film.previzVideoRefLabel') }}
+                    </strong>
+                    <span class="ref-badge ready">@2</span>
                   </div>
                 </div>
               </div>
@@ -1149,7 +1167,8 @@
                   v-if="
                     shotBindingItems(shot).length ||
                     (params.filmRenderContinuity !== false && prevSameSceneShot(shot)) ||
-                    shotRawPrevizKeyframe(shot)
+                    shotRawPrevizKeyframe(shot) ||
+                    shotRawPrevizVideo(shot)
                   "
                   class="shot-binding-panel compact"
                 >
@@ -1249,6 +1268,20 @@
                         ×
                       </button>
                     </div>
+                    <div
+                      v-if="shotRawPrevizVideo(shot)"
+                      class="binding-chip previz ready"
+                      :title="t('graph.inspector.film.previzVideoRefHint')"
+                      @click.stop="
+                        previewVideoMedia(shotPrevizVideoUrl(shot), `${shot.id} 3D Previz Video`)
+                      "
+                    >
+                      <span class="badge">🎬</span>
+                      <strong class="binding-name">
+                        {{ t('graph.inspector.film.previzVideoRefLabel') }}
+                      </strong>
+                      <span class="ref-badge ready">@2</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1333,6 +1366,9 @@ import {
   parseFilmStoryboard,
   readFilmVideoParamsFromNode,
   readImageGenerateParamsFromNode,
+  resolveFilmDirectorStage,
+  resolveFilmShotPrevizCinematography,
+  resolveFilmShotPrevizMediaFromStage,
   resolveNodeType,
   selectFilmShot,
   stringifyFilmCast,
@@ -1417,7 +1453,10 @@ const node = computed((): GraphNode | null => {
 })
 
 const isWorkbenchNode = computed(() => node.value?.typeId === 'film.workbench')
-const params = computed((): GraphNodeParams => node.value?.params ?? {})
+const params = computed((): GraphNodeParams => {
+  void graphEditorHosts.revision.value
+  return node.value?.params ?? {}
+})
 
 const activeTabLabel = computed(() => {
   if (isWorkbenchNode.value) return t(`graph.inspector.film.stageTabs.${kind.value}`)
@@ -2007,7 +2046,10 @@ const matchedShotCastRefs = computed(() => {
 })
 
 // ─── 批量拍摄监控 ───
-const renderCache = computed(() => parseFilmRenderCache(params.value.filmRenders))
+const renderCache = computed(() => {
+  void graphEditorHosts.revision.value
+  return parseFilmRenderCache(params.value.filmRenders)
+})
 const graphRenderCache = computed(() => {
   if (Object.keys(renderCache.value).length) return renderCache.value
   for (const item of pipelineNodes.value) {
@@ -2082,11 +2124,24 @@ function prevShotKeyframeRefIndex(shot: FilmShot | null | undefined): number {
 
 function shotRawPrevizKeyframe(shot: FilmShot | null | undefined): string {
   if (!shot) return ''
-  return (shot.media?.previzKeyframe ?? '').trim()
+  const direct = (shot.media?.previzKeyframe ?? '').trim()
+  if (direct) return direct
+  return resolveFilmShotPrevizMediaFromStage(directorStage.value, shot.id).previzKeyframe ?? ''
+}
+
+function shotRawPrevizVideo(shot: FilmShot | null | undefined): string {
+  if (!shot) return ''
+  const direct = (shot.media?.previzVideo ?? '').trim()
+  if (direct) return direct
+  return resolveFilmShotPrevizMediaFromStage(directorStage.value, shot.id).previzVideo ?? ''
 }
 
 function shotPrevizThumbUrl(shot: FilmShot | null | undefined): string {
   return mediaThumbUrl(shotRawPrevizKeyframe(shot))
+}
+
+function shotPrevizVideoUrl(shot: FilmShot | null | undefined): string {
+  return mediaThumbUrl(shotRawPrevizVideo(shot))
 }
 
 function shotPrevizRefIndex(shot: FilmShot | null | undefined, includeContinuity = true): number {
@@ -2099,9 +2154,12 @@ function shotPrevizRefIndex(shot: FilmShot | null | undefined, includeContinuity
 function clearShotPreviz(shotId: string): void {
   writeStoryboard((shots) =>
     shots.map((shot) => {
-      if (shot.id !== shotId || !shot.media?.previzKeyframe) return shot
+      if (shot.id !== shotId || (!shot.media?.previzKeyframe && !shot.media?.previzVideo)) {
+        return shot
+      }
       const nextMedia = { ...shot.media }
       delete nextMedia.previzKeyframe
+      delete nextMedia.previzVideo
       return {
         ...shot,
         media: Object.keys(nextMedia).length > 0 ? nextMedia : undefined
@@ -2203,6 +2261,30 @@ async function openInDirectorPreviz(options?: {
   }
 }
 
+const directorStage = computed(() => {
+  void graphEditorHosts.revision.value
+  return resolveFilmDirectorStage({
+    node: node.value,
+    document: graphEditorHosts.getDocument(props.hostId),
+    genParams: hostAsset.value?.genParams as Record<string, unknown> | undefined,
+    storyboard: effectiveStoryboard.value
+  })
+})
+
+function shotPrevizSpecs(shot: FilmShot | null | undefined): {
+  previzImageSpec?: string
+  previzVideoSpec?: string
+} {
+  if (!shot) return {}
+  const spec = resolveFilmShotPrevizCinematography(directorStage.value, shot.id)
+  if (!spec) return {}
+  const en = String(locale.value).toLowerCase().startsWith('en')
+  return {
+    previzImageSpec: en ? spec.imageSpecEn : spec.imageSpecZh,
+    previzVideoSpec: en ? spec.videoSpecEn : spec.videoSpecZh
+  }
+}
+
 const composedSelectedImagePrompt = computed(() => {
   const doc = effectiveStoryboard.value
   const shot = selectedShot.value
@@ -2210,12 +2292,13 @@ const composedSelectedImagePrompt = computed(() => {
   const prevShot = findPrevSameSceneShot(doc, shot)
   const prevRefIdx = prevShotKeyframeRefIndex(shot)
   const previzRefIdx = shotPrevizRefIndex(shot, true)
+  const { previzImageSpec } = shotPrevizSpecs(shot)
   return composeFilmShotImagePrompt(
     doc,
     shot,
     matchedShotCastRefs.value,
     String(locale.value),
-    prevShot || previzRefIdx > 0
+    prevShot || previzRefIdx > 0 || previzImageSpec
       ? {
           ...(prevShot
             ? {
@@ -2223,7 +2306,8 @@ const composedSelectedImagePrompt = computed(() => {
                 prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
               }
             : {}),
-          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {})
+          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {}),
+          ...(previzImageSpec ? { previzImageSpec } : {})
         }
       : undefined
   )
@@ -2234,7 +2318,19 @@ const composedSelectedVideoPrompt = computed(() => {
   const shot = selectedShot.value
   if (!shot) return ''
   const prevShot = findPrevSameSceneShot(doc, shot)
-  return composeFilmShotVideoPrompt(shot, String(locale.value), prevShot ? { prevShot } : undefined)
+  const { previzVideoSpec } = shotPrevizSpecs(shot)
+  const hasPrevizVideoRef = Boolean(shotRawPrevizVideo(shot))
+  return composeFilmShotVideoPrompt(
+    shot,
+    String(locale.value),
+    prevShot || previzVideoSpec || hasPrevizVideoRef
+      ? {
+          ...(prevShot ? { prevShot } : {}),
+          ...(previzVideoSpec ? { previzVideoSpec } : {}),
+          ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {})
+        }
+      : undefined
+  )
 })
 
 function runSingleRenderShot(shotId: string): void {
@@ -2279,12 +2375,13 @@ function composeRenderFinalImagePrompt(shot: FilmShot): string {
   const prevShot = continuityOn ? findPrevSameSceneShot(doc, shot) : null
   const prevRefIdx = continuityOn ? prevShotKeyframeRefIndex(shot) : 0
   const previzRefIdx = shotPrevizRefIndex(shot, continuityOn)
+  const { previzImageSpec } = shotPrevizSpecs(shot)
   const composed = composeFilmShotImagePrompt(
     doc,
     shot,
     refs,
     String(locale.value),
-    prevShot || previzRefIdx > 0
+    prevShot || previzRefIdx > 0 || previzImageSpec
       ? {
           ...(prevShot
             ? {
@@ -2292,7 +2389,8 @@ function composeRenderFinalImagePrompt(shot: FilmShot): string {
                 prevKeyframeRefIndex: prevRefIdx > 0 ? prevRefIdx : undefined
               }
             : {}),
-          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {})
+          ...(previzRefIdx > 0 ? { previzRefIndex: previzRefIdx } : {}),
+          ...(previzImageSpec ? { previzImageSpec } : {})
         }
       : undefined
   )
@@ -2304,7 +2402,19 @@ function composeRenderFinalVideoPrompt(shot: FilmShot): string {
   const doc = effectiveStoryboard.value
   const continuityOn = params.value.filmRenderContinuity !== false
   const prevShot = continuityOn ? findPrevSameSceneShot(doc, shot) : null
-  return composeFilmShotVideoPrompt(shot, String(locale.value), prevShot ? { prevShot } : undefined)
+  const { previzVideoSpec } = shotPrevizSpecs(shot)
+  const hasPrevizVideoRef = Boolean(shotRawPrevizVideo(shot))
+  return composeFilmShotVideoPrompt(
+    shot,
+    String(locale.value),
+    prevShot || previzVideoSpec || hasPrevizVideoRef
+      ? {
+          ...(prevShot ? { prevShot } : {}),
+          ...(previzVideoSpec ? { previzVideoSpec } : {}),
+          ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {})
+        }
+      : undefined
+  )
 }
 
 // ─── 卡片可视化绑定与缩略图解析 ───
@@ -2322,11 +2432,19 @@ const allMediaRelativePaths = computed((): string[] => {
     push(shot.media?.keyframe)
     push(shot.media?.video)
     push(shot.media?.previzKeyframe)
+    push(shot.media?.previzVideo)
   }
   for (const shot of effectiveStoryboard.value?.shots ?? []) {
     push(shot.media?.keyframe)
     push(shot.media?.video)
     push(shot.media?.previzKeyframe)
+    push(shot.media?.previzVideo)
+  }
+  for (const snap of directorStage.value?.stage.cameraShots ?? []) {
+    push(snap.relativePath)
+  }
+  for (const vid of directorStage.value?.stage.cameraVideos ?? []) {
+    push(vid.relativePath)
   }
   for (const entry of Object.values(renderCache.value)) {
     push(entry?.keyframe)
@@ -2372,6 +2490,11 @@ function mediaThumbUrl(raw: string | undefined): string {
 function previewMedia(url: string, title?: string): void {
   if (!url) return
   void openFullImagePreview({ dataUrl: url, title, mediaKind: 'image' })
+}
+
+function previewVideoMedia(url: string, title?: string): void {
+  if (!url) return
+  void openFullImagePreview({ dataUrl: url, title, mediaKind: 'video' })
 }
 
 function entityThumbUrl(entityKind: FilmEntityKind, name: string): string {

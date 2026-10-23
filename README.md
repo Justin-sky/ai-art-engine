@@ -57,6 +57,53 @@
 
 ---
 
+## 🧪 许愿配方：一张 PNG 复刻整条管线（Workflow-in-PNG）
+
+每次许愿跑通的工作流，都可以导出为一张内嵌完整节点图基因（`tEXt(aiae:graph)` 无损元数据）的**配方卡（`.png`）**。把原图直接拖回软件画布，即可一键还原全套节点拓扑、3D 导演台预演与提示词参数：
+
+<div align="center">
+<table>
+  <tr>
+    <th align="center">🪄 许愿配方（点击缩略图看原图）</th>
+    <th align="center">🎬 生成效果（双击视频全屏）</th>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe1.png" target="_blank">
+        <img src="website/assets/recipe/recipe1.png" alt="配方 1：3集短剧许愿配方卡 (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>配方 1 · 3D 预演与短剧管线</b>（11 节点）<br />🔍 <a href="website/assets/recipe/recipe1.png" target="_blank">点击查看 / 下载原图</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <video src="website/assets/recipe/recipe1.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
+        <a href="website/assets/recipe/recipe1.mp4">点击播放配方 1 生成效果 MP4</a>
+      </video>
+      <br />
+      <sub>📺 双击画面全屏播放 · <a href="website/assets/recipe/recipe1.mp4" target="_blank">打开原视频</a></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe2.png" target="_blank">
+        <img src="website/assets/recipe/recipe2.png" alt="配方 2：有声绘本许愿配方卡 (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>配方 2 · 儿童有声绘本短片</b>（20 节点）<br />🔍 <a href="website/assets/recipe/recipe2.png" target="_blank">点击查看 / 下载原图</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <video src="website/assets/recipe/recipe2.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
+        <a href="website/assets/recipe/recipe2.mp4">点击播放配方 2 生成效果 MP4</a>
+      </video>
+      <br />
+      <sub>📺 双击画面全屏播放 · <a href="website/assets/recipe/recipe2.mp4" target="_blank">打开原视频</a></sub>
+    </td>
+  </tr>
+</table>
+</div>
+
+---
+
 ## ✨ 为什么这里的愿望会「灵验」
 
 **🧭 愿望不是黑箱。**

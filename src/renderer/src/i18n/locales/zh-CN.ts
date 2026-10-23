@@ -6479,7 +6479,9 @@ export default {
         previzDirectorNodeTitle: '3D 分镜白模预演',
         previzRefLabel: '3D白模预演',
         previzRefHint:
-          '来自 3D 导演台抓拍回写的白模机位构图参考图，生图与生视频时将严格遵循其机位透视与人物站位'
+          '来自 3D 导演台抓拍回写的白模机位构图参考图，生图与生视频时将严格遵循其机位透视与人物站位',
+        previzVideoRefLabel: '3D 运镜视频',
+        previzVideoRefHint: "3D 白模运镜视频（生成视频时作为 {'@'}2 运镜参考视频传入）"
       },
       episode: {
         anchorHint: '从上游 9宫格分镜表选择要提取的宫格（1~9）；运行后输出该格提示词。',

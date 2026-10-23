@@ -7869,20 +7869,54 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     void previewRevision.value
     const doc = graphEditorHosts.getDocument(graphHostId.value)
     const rawGraphJson = asset.value?.genParams?.graphJson as
-      { nodes?: NonNullable<typeof doc>['nodes'] } | undefined
+      | { nodes?: NonNullable<typeof doc>['nodes']; edges?: NonNullable<typeof doc>['edges'] }
+      | undefined
     const nodes = doc?.nodes ?? (Array.isArray(rawGraphJson?.nodes) ? rawGraphJson.nodes : [])
+    const edges = doc?.edges ?? (Array.isArray(rawGraphJson?.edges) ? rawGraphJson.edges : [])
+    const candidates: Array<{ nodeId: string; nodeTitle: string; storyboard: FilmStoryboard }> = []
     for (const node of nodes) {
       if (!node?.typeId?.startsWith('film.')) continue
       const sb = parseFilmStoryboard(node.params?.filmStoryboard)
       if (sb && sb.shots.length > 0) {
-        return {
+        candidates.push({
           nodeId: node.id ?? '',
           nodeTitle: node.title || t('director.stage.aiDirector.storyboardDefaultTitle'),
           storyboard: sb
-        }
+        })
       }
     }
-    return null
+    if (!candidates.length) return null
+    const procId = options.processingNodeId?.trim()
+    if (procId) {
+      const linked = candidates.find((c) =>
+        edges.some(
+          (e) =>
+            (e.source === c.nodeId && e.target === procId) ||
+            (e.target === c.nodeId && e.source === procId)
+        )
+      )
+      if (linked) return linked
+    }
+    const stageCamShotIds = new Set(
+      (stage.value.cameras ?? [])
+        .map((cam) => extractStoryboardShotIdFromDirectorId(cam.id)?.toLowerCase() ?? '')
+        .filter(Boolean)
+    )
+    if (stageCamShotIds.size > 0) {
+      let best: (typeof candidates)[0] | null = null
+      let bestHits = 0
+      for (const c of candidates) {
+        const hits = c.storyboard.shots.filter((s) =>
+          stageCamShotIds.has(s.id.trim().toLowerCase())
+        ).length
+        if (hits > bestHits) {
+          bestHits = hits
+          best = c
+        }
+      }
+      if (best && bestHits > 0) return best
+    }
+    return candidates[0] ?? null
   })
 
   async function applyStoryboardPreviz(optionsOverride?: {
@@ -7907,6 +7941,106 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
         duration: compiled.totalDurationSec.toFixed(1)
       })
     }
+  }
+
+  async function recordSegmentPrevizVideoDataUrl(params: {
+    cameraId: string
+    startSec: number
+    endSec: number
+    width: number
+    height: number
+    fps?: number
+  }): Promise<string | null> {
+    if (!renderer || !scene) return null
+    const mimeType = pickExportMimeType()
+    if (!mimeType) return null
+    const { cameraId, startSec, endSec, width, height, fps = 12 } = params
+    const segDur = Math.max(0.4, endSec - startSec)
+    const frameCount = Math.min(36, Math.max(8, Math.round(segDur * fps)))
+
+    const exportCanvas = document.createElement('canvas')
+    exportCanvas.width = width
+    exportCanvas.height = height
+    const exportCtx = exportCanvas.getContext('2d')
+    if (!exportCtx) return null
+    exportCtx.fillStyle = '#000000'
+    exportCtx.fillRect(0, 0, width, height)
+
+    const stagingCanvas = document.createElement('canvas')
+    stagingCanvas.width = width
+    stagingCanvas.height = height
+
+    const recordStream = exportCanvas.captureStream(fps)
+    const recordTrack = recordStream.getVideoTracks()[0] as MediaStreamTrack & {
+      requestFrame?: () => void
+    }
+    const chunks: BlobPart[] = []
+    const recorder = new MediaRecorder(recordStream, {
+      mimeType,
+      videoBitsPerSecond: 3_500_000
+    })
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunks.push(event.data)
+    }
+    const stopPromise = new Promise<void>((resolve, reject) => {
+      recorder.onstop = () => resolve()
+      recorder.onerror = () => reject(new Error('Segment video recording failed'))
+    })
+
+    try {
+      cinemachineMemories.clear()
+      recorder.start(80)
+      for (let i = 0; i <= frameCount; i++) {
+        const alpha = frameCount > 0 ? i / frameCount : 0
+        const t = startSec + alpha * segDur
+        animTime.value = t
+        applyAnimationAtTime(t, false)
+        const effectiveViewer = resolveEffectiveCameraViewer(cameraId)
+        const shotCam = buildShotCamera(width / Math.max(1, height), effectiveViewer)
+        if (
+          !renderCameraToCanvas2D(
+            shotCam,
+            width,
+            height,
+            stagingCanvas,
+            false,
+            'rgb',
+            effectiveViewer
+          )
+        ) {
+          break
+        }
+        exportCtx.drawImage(stagingCanvas, 0, 0)
+        recordTrack?.requestFrame?.()
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 16)
+        })
+      }
+      if (recorder.state === 'recording') {
+        try {
+          recorder.requestData()
+        } catch {
+          /* ignore */
+        }
+      }
+      if (recorder.state !== 'inactive') recorder.stop()
+      await stopPromise
+    } catch {
+      if (recorder.state !== 'inactive') {
+        try {
+          recorder.stop()
+        } catch {
+          /* ignore */
+        }
+      }
+      return null
+    } finally {
+      recordStream.getTracks().forEach((track) => track.stop())
+    }
+
+    const blob = new Blob(chunks, { type: 'video/webm' })
+    if (!blob.size) return null
+    return blobToDataUrl(blob)
   }
 
   async function captureStoryboardPrevizAndWriteBack(): Promise<{
@@ -7939,6 +8073,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
     }
 
     const shotKeyframes = new Map<string, string>()
+    const shotVideos = new Map<string, string>()
     const node = directorProcessingNode()
     const fallbackNode =
       node ??
@@ -7951,6 +8086,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       } as unknown as NonNullable<ReturnType<typeof directorProcessingNode>>)
     const hostAsset = asset.value
     const { saveGraphRunMediaForNode } = await import('../graph/saveGraphRunMediaForNode')
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
 
     for (let i = 0; i < captured.length; i++) {
       const cap = captured[i]
@@ -7963,7 +8099,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
           hostAssetName: hostAsset?.name,
           nodeTitle: `previz-${shotId}`,
           index: i + 1,
-          stamp: new Date().toISOString().replace(/[:.]/g, '-')
+          stamp
         })
         mediaRef = await saveGraphRunMediaForNode({
           dataUrl: cap.dataUrl,
@@ -7978,15 +8114,120 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       shotKeyframes.set(shotId, mediaRef)
     }
 
-    if (shotKeyframes.size > 0) {
+    // 同步逐镜录制 3D 白模动作/运镜预演视频（previzVideo），供短剧工作台直接作为参考视频（video_url）喂给视频大模型
+    const anim = ensureAnimation()
+    const cutTrack = anim.tracks.find((tr) => tr.cameraCut && (tr.cameraSegments?.length ?? 0) > 0)
+    const sortedSegments = cutTrack?.cameraSegments
+      ? [...cutTrack.cameraSegments].sort((a, b) => a.start - b.start)
+      : []
+    const el = options.viewportEl.value
+    const ratio = directorAspectRatioValue(
+      aspectRatio.value,
+      el?.clientWidth ?? 16,
+      el?.clientHeight ?? 9
+    )
+    const recWidth = 640
+    const recHeight = Math.max(1, Math.round(recWidth / Math.max(0.01, ratio)))
+    const prevTime = animTime.value
+    const prevPlaying = animPlaying.value
+    const prevActiveCamId = stage.value.activeCameraId
+    pauseAnimation()
+    const recordedStageVideos: DirectorCameraVideo[] = []
+    const recordedCameraIds = new Set<string>()
+    try {
+      const camMap = new Map(listCameras().map((c) => [c.id, c]))
+      const segItems =
+        sortedSegments.length > 0
+          ? sortedSegments.map((seg, idx) => ({
+              cameraId: seg.cameraId,
+              start: seg.start,
+              end: seg.end,
+              shotId:
+                extractStoryboardShotIdFromDirectorId(seg.cameraId) ??
+                src.storyboard.shots[idx]?.id ??
+                null
+            }))
+          : captured.map((cap, idx) => {
+              const shotObj = src.storyboard.shots[idx]
+              const dur = Math.max(1, shotObj?.durationSec ?? 4)
+              return {
+                cameraId: cap.cameraId ?? activeCameraState().id,
+                start: 0,
+                end: dur,
+                shotId: extractStoryboardShotIdFromDirectorId(cap.cameraId) ?? shotObj?.id ?? null
+              }
+            })
+
+      for (let i = 0; i < segItems.length; i++) {
+        const item = segItems[i]
+        if (!item.shotId || !item.cameraId) continue
+        const videoDataUrl = await recordSegmentPrevizVideoDataUrl({
+          cameraId: item.cameraId,
+          startSec: item.start,
+          endSec: item.end,
+          width: recWidth,
+          height: recHeight
+        })
+        if (!videoDataUrl) continue
+        let videoRef = videoDataUrl
+        try {
+          const key = buildGeneratedMediaFileKey({
+            hostAssetName: hostAsset?.name,
+            nodeTitle: `previz-video-${item.shotId}`,
+            index: i + 1,
+            stamp
+          })
+          videoRef = await saveGraphRunMediaForNode({
+            dataUrl: videoDataUrl,
+            key,
+            node: fallbackNode,
+            hostAssetId: options.directorAssetId,
+            kind: 'video'
+          })
+        } catch {
+          videoRef = videoDataUrl
+        }
+        shotVideos.set(item.shotId, videoRef)
+        const camState = camMap.get(item.cameraId)
+        recordedCameraIds.add(item.cameraId)
+        recordedStageVideos.push({
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          relativePath: videoRef,
+          pass: 'rgb',
+          cameraId: item.cameraId,
+          cameraName: camState?.name ?? item.shotId,
+          label: `#${i + 1} ${camState?.name ?? item.shotId} (${item.start.toFixed(1)}s-${item.end.toFixed(1)}s)`
+        })
+      }
+    } finally {
+      stage.value.activeCameraId = prevActiveCamId
+      animTime.value = prevTime
+      applyAnimationAtTime(prevTime, false)
+      if (prevPlaying) playAnimation()
+      else requestRender()
+    }
+
+    if (recordedStageVideos.length > 0) {
+      const kept = (stage.value.cameraVideos ?? []).filter(
+        (v) => !v.cameraId || !recordedCameraIds.has(v.cameraId)
+      )
+      stage.value.cameraVideos = [...kept, ...recordedStageVideos].slice(-48)
+      syncCameraNodeFromStage()
+      schedulePersist()
+    }
+
+    if (shotKeyframes.size > 0 || shotVideos.size > 0) {
       const updatedShots = src.storyboard.shots.map((s) => {
         const previzKeyframe = shotKeyframes.get(s.id)
-        if (!previzKeyframe) return s
+        const previzVideo = shotVideos.get(s.id)
+        if (!previzKeyframe && !previzVideo) return s
         return {
           ...s,
           media: {
             ...s.media,
-            previzKeyframe
+            ...(previzKeyframe ? { previzKeyframe } : {}),
+            ...(previzVideo ? { previzVideo } : {})
           }
         }
       })
@@ -8000,7 +8241,7 @@ export function useDirectorStageScene(options: UseDirectorStageSceneOptions) {
       }
     }
 
-    const writeCount = shotKeyframes.size || captured.length
+    const writeCount = Math.max(shotKeyframes.size, shotVideos.size) || captured.length
     return {
       count: writeCount,
       summary: t('director.stage.aiDirector.storyboardWritebackDone', {

@@ -109,7 +109,19 @@ const LIVE_CANVAS_PARAM_KEYS = new Set([
   'generateFrameMode',
   'imageLayerSplit',
   'layerSplitPsdRelativePath',
-  'notes'
+  'notes',
+  'filmStoryboard',
+  'filmSourceHash',
+  'filmReviewReport',
+  'filmReviewVerdict',
+  'filmCast',
+  'filmRenders',
+  'filmStageData',
+  'filmWorkbenchStage',
+  'filmWorkbenchRunMode',
+  'filmCastOnlyId',
+  'filmRenderOnlyShotId',
+  'comicPage'
 ])
 
 function slimLiveCanvasParams(params: Partial<GraphNodeParams>): Partial<GraphNodeParams> | null {

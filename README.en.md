@@ -57,6 +57,53 @@ When the wish is granted, you get **not a picture, but a project that drops stra
 
 ---
 
+## 🧪 Wish Recipe: Full Pipeline in a Single PNG (Workflow-in-PNG)
+
+Every granted wish can be exported as a **Recipe Card (`.png`)** carrying lossless `tEXt(aiae:graph)` metadata. Drag the original PNG back onto the canvas to restore the entire node topology, 3D Director Stage previz, and prompt parameters in one step:
+
+<div align="center">
+<table>
+  <tr>
+    <th align="center">🪄 Workflow Recipe (Click for Original PNG)</th>
+    <th align="center">🎬 Generated Output (Double-click for Fullscreen)</th>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe1.png" target="_blank">
+        <img src="website/assets/recipe/recipe1.png" alt="Recipe 1: Short Drama Workflow Recipe (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>Recipe 1 · 3D Previz & Short Drama</b> (11 Nodes)<br />🔍 <a href="website/assets/recipe/recipe1.png" target="_blank">View / download original PNG</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <video src="website/assets/recipe/recipe1.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
+        <a href="website/assets/recipe/recipe1.mp4">Play Recipe 1 MP4</a>
+      </video>
+      <br />
+      <sub>📺 Double-click video for fullscreen · <a href="website/assets/recipe/recipe1.mp4" target="_blank">Open MP4</a></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe2.png" target="_blank">
+        <img src="website/assets/recipe/recipe2.png" alt="Recipe 2: Illustrated Storybook Workflow Recipe (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>Recipe 2 · Narrated Children's Storybook</b> (20 Nodes)<br />🔍 <a href="website/assets/recipe/recipe2.png" target="_blank">View / download original PNG</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <video src="website/assets/recipe/recipe2.mp4" controls playsinline preload="metadata" width="260" style="max-width: 260px; border-radius: 8px;">
+        <a href="website/assets/recipe/recipe2.mp4">Play Recipe 2 MP4</a>
+      </video>
+      <br />
+      <sub>📺 Double-click video for fullscreen · <a href="website/assets/recipe/recipe2.mp4" target="_blank">Open MP4</a></sub>
+    </td>
+  </tr>
+</table>
+</div>
+
+---
+
 ## ✨ Why Wishes Come True Here
 
 **🧭 A wish is never a black box.**

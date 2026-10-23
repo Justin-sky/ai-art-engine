@@ -279,10 +279,12 @@ class GraphEditorHostRegistry {
   }
 
   private livePatchRevisionTimer: ReturnType<typeof setTimeout> | null = null
+  private livePatchPendingTrailing = false
 
   /**
-   * 后台/MCP 实时补丁：优先走 patchNodeParamsLive；节流 bumpRevision，
-   * 避免高频同步把 Inspector / Dive 拖成每帧全量刷新、滚轮缩放卡顿。
+   * 后台/MCP 实时补丁：优先走 patchNodeParamsLive；
+   * 首次触发立即 bumpRevision（保证分镜拆解/审核/拍摄结果立刻反映到 Dive 视图），
+   * 窗口期内连续补丁走尾部节流合并，避免高频同步把滚轮缩放拖卡。
    */
   patchNodeParamsLive(
     hostId: string | null | undefined,
@@ -297,10 +299,18 @@ class GraphEditorHostRegistry {
     } else {
       host.updateNode(nodeId, params)
     }
-    if (this.livePatchRevisionTimer) return
+    if (this.livePatchRevisionTimer) {
+      this.livePatchPendingTrailing = true
+      return
+    }
+    this.bumpRevision()
+    this.livePatchPendingTrailing = false
     this.livePatchRevisionTimer = setTimeout(() => {
       this.livePatchRevisionTimer = null
-      this.bumpRevision()
+      if (this.livePatchPendingTrailing) {
+        this.livePatchPendingTrailing = false
+        this.bumpRevision()
+      }
     }, 120)
   }
 

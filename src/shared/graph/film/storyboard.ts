@@ -10,6 +10,15 @@
  * 所有解析都是**宽容读、严格写**：模型输出的中文键、代码围栏、缺字段都能读，
  * 写回一律规范英文键 + 稳定 id，便于 agent 直接读写（graph_edit 改 params.filmStoryboard 即可）。
  */
+import {
+  extractStoryboardShotIdFromDirectorId,
+  readDirectorStage,
+  resolveShotCinematographyFromDirectorStage,
+  type DirectorShotPrevizCinematography,
+  type DirectorStageState
+} from '../../domain'
+import { isDirectorProcessingNode } from '../nodeRole'
+import type { GraphDocument, GraphNode } from '../types'
 import { stripJsonCodeFence } from '../jsonFence'
 
 export const FILM_STORYBOARD_SCHEMA = 'aiart.film-storyboard@1'
@@ -843,6 +852,170 @@ export interface FilmShotContinuity {
   prevKeyframeRefIndex?: number
   /** 若当前镜头包含 3D 导演台白模预演图作为构图/机位/走位参考图传入，其 1-based 参考图编号（如 @4） */
   previzRefIndex?: number
+  /** 3D 导演台白模预演解析出的本镜机位、焦段、光影与空间站位参数（用于关键帧生图） */
+  previzImageSpec?: string
+  /** 3D 导演台白模预演解析出的本镜相机运镜轨迹、Cinemachine 跟随与推拉移摇参数（用于图生视频） */
+  previzVideoSpec?: string
+  /** 是否将本镜 3D 分镜白模预演视频作为多模态参考视频（@2）与首帧参考图（@1）一并传入视频生成 */
+  hasPrevizVideoRef?: boolean
+}
+
+export interface ResolvedFilmDirectorStage {
+  stage: DirectorStageState
+  explicitlyLinked: boolean
+  stageNodeId?: string
+}
+
+/**
+ * 为影视工作台 / 批量拍摄节点解析关联的 3D 导演台白模预演舞台（DirectorStageState）。
+ * 优先级：
+ * 1. 图上通过连线直接关联到当前节点的导演台节点（`asset.motion` / `process.motion`）对应的 `stagesByNodeId[id]`；
+ * 2. 宿主资产 `genParams.stagesByNodeId` 中包含当前分镜镜头机位（`cam:sb:<shotId>` / `sb_cam_<shotId>`）匹配数最多的舞台；
+ * 3. 宿主资产 `genParams.stage`（若包含匹配的分镜机位）。
+ */
+export function resolveFilmDirectorStage(options: {
+  node?: Pick<GraphNode, 'id' | 'params'> | null
+  document?: Pick<GraphDocument, 'nodes' | 'edges'> | null
+  genParams?: Record<string, unknown> | null
+  storyboard?: Pick<FilmStoryboard, 'shots'> | null
+}): ResolvedFilmDirectorStage | null {
+  const { node, document, genParams, storyboard } = options
+  if (!genParams || typeof genParams !== 'object') return null
+
+  const stagesMapRaw = genParams.stagesByNodeId
+  const stagesMap =
+    stagesMapRaw && typeof stagesMapRaw === 'object' && !Array.isArray(stagesMapRaw)
+      ? (stagesMapRaw as Record<string, unknown>)
+      : null
+
+  const shotIds = new Set(
+    (storyboard?.shots ?? []).map((s) => s.id.trim().toLowerCase()).filter(Boolean)
+  )
+  const countMatchedShots = (stage: DirectorStageState): number => {
+    if (!shotIds.size) return 0
+    let hits = 0
+    for (const cam of stage.cameras ?? []) {
+      const sid = extractStoryboardShotIdFromDirectorId(cam.id)?.toLowerCase() ?? ''
+      if (sid && shotIds.has(sid)) {
+        hits += 1
+        continue
+      }
+      const cname = (cam.name ?? '').trim().toLowerCase()
+      for (const expected of shotIds) {
+        if (
+          cname === expected ||
+          cname.startsWith(`${expected} ·`) ||
+          cname.startsWith(`${expected} `)
+        ) {
+          hits += 1
+          break
+        }
+      }
+    }
+    return hits
+  }
+
+  // 1. 显式连线关联的导演台节点
+  if (node?.id && document && stagesMap) {
+    const edges = document.edges ?? []
+    const nodes = document.nodes ?? []
+    const linkedDirectorNodes = nodes.filter(
+      (n) =>
+        isDirectorProcessingNode(n) &&
+        edges.some(
+          (e) =>
+            (e.source === node.id && e.target === n.id) ||
+            (e.target === node.id && e.source === n.id)
+        )
+    )
+    for (const dn of linkedDirectorNodes) {
+      const raw = stagesMap[dn.id]
+      if (raw && typeof raw === 'object') {
+        const stage = readDirectorStage({ stage: raw })
+        if ((stage.cameras?.length ?? 0) > 0) {
+          return { stage, explicitlyLinked: true, stageNodeId: dn.id }
+        }
+      }
+    }
+  }
+
+  // 2. stagesByNodeId 中按分镜机位匹配度优选
+  let bestStage: DirectorStageState | null = null
+  let bestNodeId: string | undefined
+  let bestHits = 0
+  if (stagesMap) {
+    for (const [k, raw] of Object.entries(stagesMap)) {
+      if (!raw || typeof raw !== 'object') continue
+      const stage = readDirectorStage({ stage: raw })
+      const hits = countMatchedShots(stage)
+      if (hits > bestHits) {
+        bestHits = hits
+        bestStage = stage
+        bestNodeId = k
+      }
+    }
+  }
+  if (bestStage && bestHits > 0) {
+    return { stage: bestStage, explicitlyLinked: false, stageNodeId: bestNodeId }
+  }
+
+  // 3. 兜底检查顶层 genParams.stage
+  if (genParams.stage && typeof genParams.stage === 'object') {
+    const stage = readDirectorStage({ stage: genParams.stage })
+    if (countMatchedShots(stage) > 0) {
+      return { stage, explicitlyLinked: false }
+    }
+  }
+
+  return null
+}
+
+export function resolveFilmShotPrevizCinematography(
+  resolvedStage: ResolvedFilmDirectorStage | null | undefined,
+  shotId: string | null | undefined
+): DirectorShotPrevizCinematography | null {
+  if (!resolvedStage || !shotId) return null
+  return resolveShotCinematographyFromDirectorStage(resolvedStage.stage, shotId, {
+    allowActiveCameraFallback: resolvedStage.explicitlyLinked
+  })
+}
+
+/**
+ * 从已关联的 3D 导演台舞台（cameraShots / cameraVideos）中按 shotId 提取已抓拍/录制的预演图与预演视频。
+ */
+export function resolveFilmShotPrevizMediaFromStage(
+  resolvedStage: ResolvedFilmDirectorStage | null | undefined,
+  shotId: string | null | undefined
+): { previzKeyframe?: string; previzVideo?: string } {
+  if (!resolvedStage || !shotId) return {}
+  const lower = shotId.trim().toLowerCase()
+  if (!lower) return {}
+  const stage = resolvedStage.stage
+
+  let previzKeyframe: string | undefined
+  for (const s of stage.cameraShots ?? []) {
+    const sid = extractStoryboardShotIdFromDirectorId(s.cameraId)?.toLowerCase()
+    const nameMatch = (s.cameraName ?? '').trim().toLowerCase().startsWith(lower)
+    if (sid === lower || nameMatch) {
+      const ref = s.relativePath?.trim() || s.dataUrl?.trim()
+      if (ref) previzKeyframe = ref
+    }
+  }
+
+  let previzVideo: string | undefined
+  for (const v of stage.cameraVideos ?? []) {
+    const sid = extractStoryboardShotIdFromDirectorId(v.cameraId)?.toLowerCase()
+    const nameMatch = (v.cameraName ?? '').trim().toLowerCase().startsWith(lower)
+    if (sid === lower || nameMatch) {
+      const ref = v.relativePath?.trim() || v.dataUrl?.trim()
+      if (ref) previzVideo = ref
+    }
+  }
+
+  return {
+    ...(previzKeyframe ? { previzKeyframe } : {}),
+    ...(previzVideo ? { previzVideo } : {})
+  }
 }
 
 /**
@@ -978,12 +1151,15 @@ export function composeFilmShotImagePrompt(
     }
   }
   const previzIdx = continuity?.previzRefIndex
+  const previzImgSpec = continuity?.previzImageSpec?.trim()
   if (previzIdx && previzIdx > 0) {
     lines.push(
       en
-        ? `3D Previz & Blocking Reference: reference @${previzIdx} is the 3D Director Stage white-box mannequin previz for this shot — strictly follow its camera angle, focal-length perspective, left/right 180-degree character blocking, spatial depth and body pose, while rendering realistic faces, outfits and environment details according to the design sheets (do NOT render white-box mannequins).`
-        : `3D 导演台预演构图参考：参考图@${previzIdx} 为本镜 3D 白模预演画面，请严格遵循其机位角度、透视景别、人物左右站位（180° 轴线）、空间景深层次与身体姿态动作，同时将白模人偶替换为对应角色设定图的真实五官、服装与场景细节（切勿把白模原样画进成片）。`
+        ? `3D Previz & Blocking Reference: reference @${previzIdx} is the 3D Director Stage white-box mannequin previz for this shot — strictly follow its camera angle, focal-length perspective, left/right 180-degree character blocking, spatial depth and body pose, while rendering realistic faces, outfits and environment details according to the design sheets (do NOT render white-box mannequins).${previzImgSpec ? ` ${previzImgSpec}` : ''}`
+        : `3D 导演台预演构图参考：参考图@${previzIdx} 为本镜 3D 白模预演画面，请严格遵循其机位角度、透视景别、人物左右站位（180° 轴线）、空间景深层次与身体姿态动作，同时将白模人偶替换为对应角色设定图的真实五官、服装与场景细节（切勿把白模原样画进成片）。${previzImgSpec ? ` ${previzImgSpec}` : ''}`
     )
+  } else if (previzImgSpec) {
+    lines.push(previzImgSpec)
   }
   lines.push(
     en
@@ -993,7 +1169,7 @@ export function composeFilmShotImagePrompt(
   return lines.join('\n')
 }
 
-/** 图生视频提示词：运镜 + 时长 + 动作时间轴 + 同场动作承接 + 对白（逐字）+ 声音 */
+/** 图生视频提示词：运镜 + 3D 白模预演相机轨迹 + 时长 + 动作时间轴 + 同场动作承接 + 对白（逐字）+ 声音 */
 export function composeFilmShotVideoPrompt(
   shot: FilmShot,
   locale?: string,
@@ -1005,6 +1181,17 @@ export function composeFilmShotVideoPrompt(
   else if (shot.action) lines.push(shot.action)
   if (shot.cameraMove)
     lines.push(en ? `Camera move: ${shot.cameraMove}` : `运镜：${shot.cameraMove}`)
+  const previzVidSpec = continuity?.previzVideoSpec?.trim()
+  if (previzVidSpec) {
+    lines.push(previzVidSpec)
+  }
+  if (continuity?.hasPrevizVideoRef) {
+    lines.push(
+      en
+        ? "Reference media binding: use @1 as the sole visual baseline for the starting frame, character appearance/outfits, and realistic scene lighting; strictly follow the camera movement trajectory, pacing, and character blocking from @2 (the 3D white-box previz video), while completely ignoring @2's untextured white-box mannequin/grid appearance and preserving @1's photorealistic quality."
+        : '参考素材绑定：以 @1 为首帧画面、角色五官服装与真实场景光影的唯一视觉基准；严格参考 @2（3D 分镜白模预演视频）的摄像机运镜轨迹、推拉摇移节奏与人物走位调度（严禁将 @2 中的白模几何人偶、网格地面或无贴图灰模渲染进成片，成片必须完全保持 @1 的真实写实画质）。'
+    )
+  }
   const prev = continuity?.prevShot
   if (prev) {
     const prevDesc = (prev.action || prev.videoPrompt || prev.title || '').trim().slice(0, 80)

@@ -1348,7 +1348,10 @@ export function buildDirectorCinematographyPrompt(
     cameras[0] ?? { id: 'cam', name: 'Camera 1', viewer: defaultViewer }
   const viewer = activeCam.viewer ?? defaultViewer
   const fovDeg = Math.round(viewer.fov ?? DEFAULT_DIRECTOR_CAMERA_FOV)
-  const focalLengthMm = fovDegToFocalLengthMm(fovDeg)
+  const focalLengthMm =
+    viewer.focalLengthMm && viewer.focalLengthMm > 0
+      ? Math.round(viewer.focalLengthMm)
+      : fovDegToFocalLengthMm(fovDeg)
 
   // 1. 计算相机到目标的距离与可见画面高度，判断景别（Shot Size）
   const dx = viewer.target.x - viewer.position.x
@@ -1469,6 +1472,7 @@ export function buildDirectorCinematographyPrompt(
   const cutTrack = anim?.tracks.find((t) => t.cameraCut && (t.cameraSegments?.length ?? 0) > 1)
   let cameraMotionZh = '固定稳定机位构图'
   let cameraMotionEn = 'locked-off static camera framing'
+  let hasKeyframeMotion = false
 
   if (camTrack && (camTrack.keyframes?.length ?? 0) >= 2) {
     const first = camTrack.keyframes[0]!
@@ -1492,22 +1496,28 @@ export function buildDirectorCinematographyPrompt(
     if (camTrack.path?.kind === 'circle') {
       cameraMotionZh = '360度环绕运镜'
       cameraMotionEn = 'smooth orbital arc camera movement around the subject'
-    } else if (d0 - d1 > 0.8) {
+      hasKeyframeMotion = true
+    } else if (d0 - d1 > 0.35) {
       cameraMotionZh = '缓慢推进运镜'
       cameraMotionEn = 'smooth dolly-in push camera movement toward the subject'
-    } else if (d1 - d0 > 0.8) {
+      hasKeyframeMotion = true
+    } else if (d1 - d0 > 0.35) {
       cameraMotionZh = '缓慢拉远运镜'
       cameraMotionEn = 'smooth dolly-out pull-back camera movement'
-    } else if (Math.abs(dyTrack) > 0.8 && Math.abs(dyTrack) > lateral * 0.6) {
+      hasKeyframeMotion = true
+    } else if (Math.abs(dyTrack) > 0.35 && Math.abs(dyTrack) > lateral * 0.6) {
       cameraMotionZh = dyTrack > 0 ? '摇臂升起运镜' : '摇臂下降运镜'
       cameraMotionEn = dyTrack > 0 ? 'crane-up camera movement' : 'crane-down camera movement'
-    } else if (lateral > 0.5) {
+      hasKeyframeMotion = true
+    } else if (lateral > 0.25) {
       cameraMotionZh = '横移跟拍运镜'
       cameraMotionEn = 'lateral tracking camera movement'
+      hasKeyframeMotion = true
     }
     if (first.fov != null && last.fov != null && Math.abs(last.fov - first.fov) >= 8) {
       cameraMotionZh += '，配合希区柯克变焦'
       cameraMotionEn += ' with Hitchcock dolly-zoom perspective shift'
+      hasKeyframeMotion = true
     }
   } else if (cutTrack) {
     const segs = cutTrack.cameraSegments ?? []
@@ -1528,11 +1538,21 @@ export function buildDirectorCinematographyPrompt(
       cameraMotionZh = `Cinemachine 360度环绕跟拍运镜（半径 ${(cm.orbitRadius ?? 4).toFixed(1)}m）`
       cameraMotionEn = `Cinemachine 360-degree orbital tracking shot (radius ${(cm.orbitRadius ?? 4).toFixed(1)}m)`
     } else if (cm.bodyMode === 'transposer') {
-      cameraMotionZh = 'Cinemachine 阻尼平滑跟随运镜（Transposer Follow）'
-      cameraMotionEn = 'Cinemachine damped follow tracking camera (Transposer)'
+      if (hasKeyframeMotion) {
+        cameraMotionZh += '，配合 Cinemachine 阻尼平滑跟随（Transposer Follow）'
+        cameraMotionEn += ', with Cinemachine damped follow tracking (Transposer)'
+      } else {
+        cameraMotionZh = 'Cinemachine 阻尼平滑跟随运镜（Transposer Follow）'
+        cameraMotionEn = 'Cinemachine damped follow tracking camera (Transposer)'
+      }
     } else if (cm.bodyMode === 'groupFraming') {
-      cameraMotionZh = 'Cinemachine 群像自动同框推拉调度（Target Group Framing）'
-      cameraMotionEn = 'Cinemachine dynamic multi-subject group framing camera'
+      if (hasKeyframeMotion) {
+        cameraMotionZh += '，配合 Cinemachine 群像自动同框调度（Target Group Framing）'
+        cameraMotionEn += ', with Cinemachine dynamic multi-subject group framing'
+      } else {
+        cameraMotionZh = 'Cinemachine 群像自动同框推拉调度（Target Group Framing）'
+        cameraMotionEn = 'Cinemachine dynamic multi-subject group framing camera'
+      }
     }
     if (cm.aimMode === 'composer') {
       const sx = cm.screenOffset?.x ?? 0
@@ -1711,6 +1731,167 @@ export function buildDirectorCinematographyPrompt(
     subjectsZh,
     subjectsEn,
     prompt
+  }
+}
+
+export interface DirectorShotPrevizCinematography extends DirectorCinematographyAnalysis {
+  cameraId: string
+  cameraName: string
+  /** 用于关键帧生图的 3D 白模预演机位与空间站位提示词（中文） */
+  imageSpecZh: string
+  /** 用于关键帧生图的 3D 白模预演机位与空间站位提示词（英文） */
+  imageSpecEn: string
+  /** 用于图生视频的 3D 白模预演相机运镜与轨迹提示词（中文） */
+  videoSpecZh: string
+  /** 用于图生视频的 3D 白模预演相机运镜与轨迹提示词（英文） */
+  videoSpecEn: string
+}
+
+/**
+ * 从导演台机位 id (`cam:sb:<shotId>` / `sb_cam_<shotId>` / `cam_<shotId>`)
+ * 或切镜片段 id (`cut:sb:<shotId>` / `cut_<shotId>`) 提取分镜镜头 ID。
+ */
+export function extractStoryboardShotIdFromDirectorId(
+  id: string | null | undefined
+): string | null {
+  const raw = (id ?? '').trim()
+  if (!raw) return null
+  const m = raw.match(
+    /^(?:cam:sb:|cut:sb:|sb[_:-]cam[_:-]|sb[_:-]cut[_:-]|cam[_-]|cut[_-]|shot[_:-])(.+)$/i
+  )
+  return m?.[1]?.trim() || null
+}
+
+/**
+ * 从 3D 导演台白模预演舞台（DirectorStageState）中按分镜镜头 ID（如 `S01` -> `cam:sb:S01` 或 `sb_cam_S01`）
+ * 提取该镜头的专属 3D 机位光学参数、空间站位以及 3D 运镜轨迹与 Cinemachine 跟随描述。
+ */
+export function resolveShotCinematographyFromDirectorStage(
+  stage: DirectorStageState | null | undefined,
+  shotId: string | null | undefined,
+  options?: { allowActiveCameraFallback?: boolean }
+): DirectorShotPrevizCinematography | null {
+  const cameras = stage?.cameras ?? []
+  const rawShotId = (shotId ?? '').trim()
+  if (!cameras.length || !rawShotId) return null
+
+  const lowerShotId = rawShotId.toLowerCase()
+  let cam =
+    cameras.find(
+      (c) => (extractStoryboardShotIdFromDirectorId(c.id) ?? '').toLowerCase() === lowerShotId
+    ) ??
+    cameras.find((c) => {
+      const n = (c.name ?? '').trim().toLowerCase()
+      return (
+        n === lowerShotId || n.startsWith(`${lowerShotId} ·`) || n.startsWith(`${lowerShotId} `)
+      )
+    }) ??
+    null
+
+  if (!cam && options?.allowActiveCameraFallback) {
+    const hasStoryboardCams = cameras.some(
+      (c) => extractStoryboardShotIdFromDirectorId(c.id) !== null
+    )
+    if (!hasStoryboardCams) {
+      cam = cameras.find((c) => c.id === stage?.activeCameraId) ?? cameras[0] ?? null
+    }
+  }
+  if (!cam) return null
+
+  const singleShotStage: DirectorStageState = {
+    ...stage!,
+    activeCameraId: cam.id,
+    animation: stage?.animation
+      ? {
+          ...stage.animation,
+          tracks: stage.animation.tracks.filter((t) => !t.cameraCut)
+        }
+      : undefined
+  }
+  const analysis = buildDirectorCinematographyPrompt(singleShotStage)
+  const viewer = cam.viewer
+  const camTrack = stage?.animation?.tracks.find(
+    (t) => !t.cameraCut && t.targetKind === 'camera' && t.targetId === cam.id
+  )
+
+  const trajPartsZh: string[] = []
+  const trajPartsEn: string[] = []
+  if (camTrack && (camTrack.keyframes?.length ?? 0) >= 2 && viewer) {
+    const first = camTrack.keyframes[0]!
+    const last = camTrack.keyframes[camTrack.keyframes.length - 1]!
+    const d0 = Math.hypot(
+      first.position.x - viewer.target.x,
+      first.position.y - viewer.target.y,
+      first.position.z - viewer.target.z
+    )
+    const d1 = Math.hypot(
+      last.position.x - viewer.target.x,
+      last.position.y - viewer.target.y,
+      last.position.z - viewer.target.z
+    )
+    const dx = last.position.x - first.position.x
+    const dy = last.position.y - first.position.y
+    const rot0 = first.rotation ?? directorViewerRotationFromLook(first.position, viewer.target)
+    const rot1 = last.rotation ?? directorViewerRotationFromLook(last.position, viewer.target)
+    const dPitchDeg = Math.round(((rot1.x - rot0.x) * 180) / Math.PI)
+    const dYawDeg = Math.round(((rot1.y - rot0.y) * 180) / Math.PI)
+
+    if (d0 - d1 > 0.25) {
+      trajPartsZh.push(`机位距离由 ${d0.toFixed(1)}m 推近至 ${d1.toFixed(1)}m`)
+      trajPartsEn.push(`camera dollies in from ${d0.toFixed(1)}m to ${d1.toFixed(1)}m`)
+    } else if (d1 - d0 > 0.25) {
+      trajPartsZh.push(`机位距离由 ${d0.toFixed(1)}m 拉远至 ${d1.toFixed(1)}m`)
+      trajPartsEn.push(`camera pulls back from ${d0.toFixed(1)}m to ${d1.toFixed(1)}m`)
+    }
+    if (Math.abs(dx) > 0.2) {
+      trajPartsZh.push(`${dx > 0 ? '向右横移' : '向左横移'} ${Math.abs(dx).toFixed(1)}m`)
+      trajPartsEn.push(`tracks ${dx > 0 ? 'right' : 'left'} ${Math.abs(dx).toFixed(1)}m`)
+    }
+    if (Math.abs(dy) > 0.2) {
+      trajPartsZh.push(`${dy > 0 ? '摇臂上升' : '摇臂下降'} ${Math.abs(dy).toFixed(1)}m`)
+      trajPartsEn.push(`cranes ${dy > 0 ? 'up' : 'down'} ${Math.abs(dy).toFixed(1)}m`)
+    }
+    if (Math.abs(dPitchDeg) >= 3) {
+      trajPartsZh.push(`${dPitchDeg > 0 ? '镜头上仰' : '镜头下摇'} ${Math.abs(dPitchDeg)}°`)
+      trajPartsEn.push(`tilts ${dPitchDeg > 0 ? 'up' : 'down'} ${Math.abs(dPitchDeg)}°`)
+    }
+    if (Math.abs(dYawDeg) >= 3) {
+      trajPartsZh.push(`${dYawDeg > 0 ? '镜头左摇' : '镜头右摇'} ${Math.abs(dYawDeg)}°`)
+      trajPartsEn.push(`pans ${dYawDeg > 0 ? 'left' : 'right'} ${Math.abs(dYawDeg)}°`)
+    }
+  }
+
+  const cm = viewer?.cinemachine
+  const findObjName = (id: string | null | undefined): string => {
+    if (!id) return ''
+    return (stage?.objects ?? []).find((o) => o.id === id)?.name?.trim() || ''
+  }
+  const lookAtName = findObjName(cm?.lookAtTargetId)
+  const groupNames = (cm?.groupTargetIds ?? []).map(findObjName).filter(Boolean)
+  if (lookAtName) {
+    trajPartsZh.push(`注视焦点锁定「${lookAtName}」`)
+    trajPartsEn.push(`focus locked on "${lookAtName}"`)
+  } else if (groupNames.length > 0) {
+    trajPartsZh.push(`群像同框锁定「${groupNames.join('、')}」`)
+    trajPartsEn.push(`group framing on "${groupNames.join(', ')}"`)
+  }
+
+  const trajSuffixZh = trajPartsZh.length ? `（3D 轨迹：${trajPartsZh.join('，')}）` : ''
+  const trajSuffixEn = trajPartsEn.length ? ` (3D trajectory: ${trajPartsEn.join(', ')})` : ''
+
+  const imageSpecZh = `3D 白模预演机位与站位参考：${analysis.shotSizeZh}，${analysis.cameraAngleZh}，${analysis.dofZh}；3D 空间站位：${analysis.subjectsZh}；光影氛围：${analysis.lightingMoodZh}。`
+  const imageSpecEn = `3D Previz Camera & Blocking Spec: ${analysis.shotSizeEn}, ${analysis.cameraAngleEn}, ${analysis.dofEn}; 3D subject blocking: ${analysis.subjectsEn}; lighting: ${analysis.lightingMoodEn}.`
+  const videoSpecZh = `3D 白模预演相机运镜参考：${analysis.cameraAngleZh}，${analysis.focalLengthMm}mm 镜头，${analysis.cameraMotionZh}${trajSuffixZh}；人物空间方位：${analysis.subjectsZh}。请严格遵循 3D 预演的相机运动方向、推拉移摇轨迹、透视景深变化与主体画面构图关系。`
+  const videoSpecEn = `3D Previz Camera Motion Reference: ${analysis.cameraAngleEn}, ${analysis.focalLengthMm}mm lens, ${analysis.cameraMotionEn}${trajSuffixEn}; spatial blocking: ${analysis.subjectsEn}. Strictly follow the 3D previz camera movement direction, dolly/track trajectory, perspective shift and subject framing.`
+
+  return {
+    ...analysis,
+    cameraId: cam.id,
+    cameraName: cam.name,
+    imageSpecZh,
+    imageSpecEn,
+    videoSpecZh,
+    videoSpecEn
   }
 }
 

@@ -43,7 +43,8 @@ export type {
   DirectorHandheldShake,
   DirectorKeyframeEasing,
   DirectorLightingPresetDef,
-  DirectorLightingPresetId
+  DirectorLightingPresetId,
+  DirectorShotPrevizCinematography
 } from './directorCinematography'
 export {
   DIRECTOR_CAPTURE_PASSES,
@@ -64,6 +65,7 @@ export {
   directorViewerHasActiveCinemachine,
   evaluateHandheldCameraShake,
   evaluateKeyframeEasing,
+  extractStoryboardShotIdFromDirectorId,
   findDirectorExpressivePosePreset,
   findDirectorLightingPreset,
   focalLengthMmToFov,
@@ -76,6 +78,7 @@ export {
   normalizeDirectorCompositionGuide,
   normalizeDirectorHandheldShake,
   normalizeDirectorKeyframeEasing,
+  resolveShotCinematographyFromDirectorStage,
   solveCinemachineBrainCutAtTime,
   solveCinemachineVirtualCamera,
   solveDollyZoomPosition,
@@ -1391,6 +1394,8 @@ export interface DirectorCameraShot {
   cameraId?: string
   /** 来源机位名称 */
   cameraName?: string
+  /** 抓拍标签（如分镜片段 #1 S01 0.0s-4.0s） */
+  label?: string
   /** 首尾帧角色标记（用于首尾帧视频工作流） */
   frameRole?: 'first' | 'last'
 }
@@ -1405,6 +1410,12 @@ export interface DirectorCameraVideo {
   dataUrl?: string
   /** 录制通道 */
   pass?: DirectorCapturePass
+  /** 来源机位 id（如 sb_cam_S01，用于与分镜镜头对齐） */
+  cameraId?: string
+  /** 来源机位名称 */
+  cameraName?: string
+  /** 录制片段标签 */
+  label?: string
 }
 
 /** 导演台机位（可多台） */
@@ -2270,6 +2281,7 @@ function normalizeCameraShot(raw: unknown): DirectorCameraShot | null {
     typeof o.cameraId === 'string' && o.cameraId.trim() ? o.cameraId.trim() : undefined
   const cameraName =
     typeof o.cameraName === 'string' && o.cameraName.trim() ? o.cameraName.trim() : undefined
+  const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : undefined
   const frameRole = o.frameRole === 'first' || o.frameRole === 'last' ? o.frameRole : undefined
   return {
     id: o.id.trim(),
@@ -2279,6 +2291,7 @@ function normalizeCameraShot(raw: unknown): DirectorCameraShot | null {
     ...(pass && pass !== 'rgb' ? { pass } : {}),
     ...(cameraId ? { cameraId } : {}),
     ...(cameraName ? { cameraName } : {}),
+    ...(label ? { label } : {}),
     ...(frameRole ? { frameRole } : {})
   }
 }
@@ -2292,12 +2305,20 @@ function normalizeCameraVideo(raw: unknown): DirectorCameraVideo | null {
     typeof o.relativePath === 'string' && o.relativePath.trim() ? o.relativePath.trim() : undefined
   if (!dataUrl && !relativePath) return null
   const pass = typeof o.pass === 'string' ? normalizeDirectorCapturePass(o.pass) : undefined
+  const cameraId =
+    typeof o.cameraId === 'string' && o.cameraId.trim() ? o.cameraId.trim() : undefined
+  const cameraName =
+    typeof o.cameraName === 'string' && o.cameraName.trim() ? o.cameraName.trim() : undefined
+  const label = typeof o.label === 'string' && o.label.trim() ? o.label.trim() : undefined
   return {
     id: o.id.trim(),
     createdAt: typeof o.createdAt === 'string' ? o.createdAt : new Date().toISOString(),
     ...(dataUrl ? { dataUrl } : {}),
     ...(relativePath ? { relativePath } : {}),
-    ...(pass && pass !== 'rgb' ? { pass } : {})
+    ...(pass && pass !== 'rgb' ? { pass } : {}),
+    ...(cameraId ? { cameraId } : {}),
+    ...(cameraName ? { cameraName } : {}),
+    ...(label ? { label } : {})
   }
 }
 

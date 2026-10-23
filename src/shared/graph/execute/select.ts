@@ -1,3 +1,4 @@
+import { readDirectorStage } from '../../domain'
 import {
   resolveMotionImageItems,
   resolveMotionPromptText,
@@ -32,40 +33,113 @@ import { collectIncomingValues } from './incoming'
 import { commitGeneratedImages } from './materialize'
 import { hydrateTextItems } from './helpers'
 
-export function executeCamera3dNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const shots = ctx.node.params.cameraShots ?? []
-  const items: GraphImageItem[] = shots
-    .filter(
-      (shot) =>
-        (typeof shot.dataUrl === 'string' && shot.dataUrl.length > 0) ||
-        (typeof shot.relativePath === 'string' && shot.relativePath.length > 0)
-    )
-    .map((shot) => ({
-      id: shot.id,
-      dataUrl: shot.dataUrl || '',
-      createdAt: shot.createdAt,
-      ...(shot.relativePath ? { relativePath: shot.relativePath } : {})
-    }))
-  // 无站位截图时回退单张预览图
+export async function executeCamera3dNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const hostAssetId = ctx.resolveHostAssetId?.()?.trim()
+  const hostGenParams = hostAssetId ? ctx.resolveAssetGenParams?.(hostAssetId) : undefined
+  let items: GraphImageItem[] = resolveMotionImageItems(hostGenParams, ctx.node.params, ctx.node.id)
   if (!items.length && ctx.node.params.previewDataUrl) {
     items.push({ dataUrl: ctx.node.params.previewDataUrl })
   } else if (!items.length && ctx.node.params.previewRelativePath) {
     items.push({ dataUrl: '', relativePath: ctx.node.params.previewRelativePath })
   }
-  const videos = ctx.node.params.cameraVideos ?? []
-  const videoItems: GraphVideoItem[] = videos
-    .filter(
-      (video) =>
-        (typeof video.dataUrl === 'string' && video.dataUrl.length > 0) ||
-        (typeof video.relativePath === 'string' && video.relativePath.length > 0)
-    )
-    .map((video) => ({
-      id: video.id,
-      dataUrl: video.dataUrl || '',
-      createdAt: video.createdAt,
-      ...(video.relativePath ? { relativePath: video.relativePath } : {})
-    }))
-  const promptText = resolveMotionPromptText(undefined, ctx.node.params, ctx.node.id)
+  let videoItems: GraphVideoItem[] = resolveMotionVideoItems(
+    hostGenParams,
+    ctx.node.params,
+    ctx.node.id
+  )
+
+  const stagesMap =
+    hostGenParams?.stagesByNodeId &&
+    typeof hostGenParams.stagesByNodeId === 'object' &&
+    !Array.isArray(hostGenParams.stagesByNodeId)
+      ? (hostGenParams.stagesByNodeId as Record<string, unknown>)
+      : null
+  const stageRaw = stagesMap?.[ctx.node.id] ?? hostGenParams?.stage
+  if (
+    ctx.renderDirectorStagePreviz &&
+    stageRaw &&
+    typeof stageRaw === 'object' &&
+    (items.length === 0 || videoItems.length === 0)
+  ) {
+    const stage = readDirectorStage({ stage: stageRaw })
+    if ((stage.cameras?.length ?? 0) > 0) {
+      const rendered = await ctx.renderDirectorStagePreviz({
+        stage,
+        node: ctx.node,
+        hostAssetId,
+        hostAssetName: ctx.resolveHostAssetName?.(),
+        includeKeyframe: items.length === 0,
+        includeVideo: videoItems.length === 0
+      })
+      const now = new Date().toISOString()
+      if (!items.length && rendered.some((r) => r.keyframePath || r.keyframeDataUrl)) {
+        const cameraShots = rendered
+          .filter((r) => r.keyframePath || r.keyframeDataUrl)
+          .map((r, idx) => ({
+            id: `previz-shot:${r.shotId}:${idx}`,
+            dataUrl: r.keyframeDataUrl || '',
+            createdAt: now,
+            cameraId: r.cameraId,
+            cameraName: r.cameraName,
+            label: r.label,
+            ...(r.keyframePath && !r.keyframePath.startsWith('data:')
+              ? { relativePath: r.keyframePath }
+              : {})
+          }))
+        items = cameraShots.map((s) => ({
+          id: s.id,
+          dataUrl: s.dataUrl,
+          createdAt: s.createdAt,
+          ...(s.relativePath ? { relativePath: s.relativePath } : {})
+        }))
+        ctx.patchNode?.({
+          params: {
+            cameraShots,
+            ...(cameraShots[0]?.dataUrl ? { previewDataUrl: cameraShots[0].dataUrl } : {}),
+            ...(cameraShots[0]?.relativePath
+              ? { previewRelativePath: cameraShots[0].relativePath }
+              : {})
+          }
+        })
+      }
+      if (!videoItems.length && rendered.some((r) => r.videoPath || r.videoDataUrl)) {
+        const cameraVideos: Array<{
+          id: string
+          createdAt: string
+          cameraId: string
+          cameraName: string
+          label: string
+          dataUrl?: string
+          relativePath?: string
+        }> = rendered
+          .filter((r) => r.videoPath || r.videoDataUrl)
+          .map((r, idx) => ({
+            id: `previz-video:${r.shotId}:${idx}`,
+            createdAt: now,
+            cameraId: r.cameraId,
+            cameraName: r.cameraName,
+            label: r.label,
+            ...(r.videoPath && !r.videoPath.startsWith('data:')
+              ? { relativePath: r.videoPath }
+              : { dataUrl: r.videoDataUrl || r.videoPath || '' })
+          }))
+        videoItems = cameraVideos.map((v) => ({
+          id: v.id,
+          dataUrl: v.dataUrl || '',
+          createdAt: v.createdAt,
+          ...(v.relativePath ? { relativePath: v.relativePath } : {})
+        }))
+        ctx.patchNode?.({ params: { cameraVideos } })
+      }
+    }
+  }
+
+  const promptText = resolveMotionPromptText(hostGenParams, ctx.node.params, ctx.node.id)
+  if (promptText && !ctx.node.params.directorPrompt) {
+    ctx.patchNode?.({ params: { directorPrompt: promptText } })
+  }
   return {
     'out-shots': { kind: 'images', items },
     'out-actions': { kind: 'videos', items: videoItems },

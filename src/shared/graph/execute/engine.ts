@@ -579,6 +579,7 @@ async function executeOneNode(
     normalizeImageAspectRatio: options.normalizeImageAspectRatio,
     removeImageSolidBackground: options.removeImageSolidBackground,
     composeTimelineVideo: options.composeTimelineVideo,
+    renderDirectorStagePreviz: options.renderDirectorStagePreviz,
     resolveBeatCatalogJson: options.resolveBeatCatalogJson,
     importBeatCatalogJson: options.importBeatCatalogJson,
     runHostInnerGraph: options.runHostInnerGraph,

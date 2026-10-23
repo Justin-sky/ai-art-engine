@@ -6649,7 +6649,10 @@ export default {
         previzDirectorNodeTitle: '3D Storyboard Previz',
         previzRefLabel: '3D Previz',
         previzRefHint:
-          '3D white-box camera & blocking reference captured from the 3D Director Stage; keyframe and video generation will follow its framing and blocking'
+          '3D white-box camera & blocking reference captured from the 3D Director Stage; keyframe and video generation will follow its framing and blocking',
+        previzVideoRefLabel: '3D Motion Video',
+        previzVideoRefHint:
+          "3D white-box camera motion video rendered from the 3D Director Stage; passed as {'@'}2 reference video during video generation"
       },
       episode: {
         anchorHint:

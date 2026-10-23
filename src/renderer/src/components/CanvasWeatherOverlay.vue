@@ -2360,7 +2360,7 @@ onBeforeUnmount(() => {
   height: 13px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 6px rgba(248, 250, 252, 0.35);
   flex-shrink: 0;
 }
 

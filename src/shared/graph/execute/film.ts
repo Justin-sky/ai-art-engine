@@ -29,6 +29,7 @@ import {
   supportedDurationsFromError,
   type VideoGenerateParamCapabilities
 } from '../videoGenerateParams'
+import type { VideoGeneratePortLimits } from '../portInputLimits'
 import {
   applyFilmReview,
   buildFilmContinuityChains,
@@ -54,6 +55,9 @@ import {
   parseFilmShotRange,
   parseFilmStoryboard,
   replaceFilmShots,
+  resolveFilmDirectorStage,
+  resolveFilmShotPrevizCinematography,
+  resolveFilmShotPrevizMediaFromStage,
   selectFilmShot,
   stringifyFilmCast,
   stringifyFilmStoryboard,
@@ -525,6 +529,12 @@ export async function executeFilmReviewNode(
       (shot) => shot.review?.verdict === 'fail' && !isFilmShotLocked(shot)
     )
     history.push({ round, verdict: review.verdict, score: review.score, failed: failing.length })
+    patch(ctx, {
+      filmStoryboard: stringifyFilmStoryboard(doc),
+      filmReviewReport: reviewReportMarkdown(ctx, doc, history),
+      filmReviewVerdict: doc.review?.verdict ?? '',
+      text: filmStoryboardSummary(doc, ctx.locale)
+    })
     if (review.verdict === 'PASS' || round > maxRounds) break
     if (!failing.length && !review.notes.length) break
 
@@ -557,6 +567,10 @@ export async function executeFilmReviewNode(
       { zh: '可解析的修订镜头 JSON', en: 'parseable revised shots JSON' }
     )
     doc = replaceFilmShots(doc, revised)
+    patch(ctx, {
+      filmStoryboard: stringifyFilmStoryboard(doc),
+      text: filmStoryboardSummary(doc, ctx.locale)
+    })
   }
 
   const report = reviewReportMarkdown(ctx, doc, history)
@@ -638,6 +652,10 @@ export async function executeFilmCastNode(
   }
   const kinds = parseFilmCastKinds(node.params.filmCastKinds)
   const cast = storyboard ? deriveFilmCast(storyboard, previous, kinds) : previous!
+  const persistCast = (): void => {
+    patch(ctx, { filmCast: stringifyFilmCast(cast), text: filmCastSummary(cast, ctx.locale) })
+  }
+  persistCast()
   if (!storyboard && !onlyId && previous?.entries.length) {
     return {
       out: filmCastValue(previous),
@@ -698,6 +716,7 @@ export async function executeFilmCastNode(
         else entry.imageUrl = userRef.dataUrl
       }
       entry.promptHash = 'user'
+      persistCast()
       return
     }
     const baseEntry = findBaseCastEntry(entry)
@@ -756,6 +775,7 @@ export async function executeFilmCastNode(
     }
     entry.promptHash = hash
     generated += 1
+    persistCast()
   }
 
   // 第一阶段并发生成主实体，第二阶段并发生成依赖主实体设定图的 #造型 变体实体
@@ -959,13 +979,17 @@ export async function executeFilmRenderNode(
   const generateText = ctx.generateText
 
   let videoCaps: VideoGenerateParamCapabilities | null = null
+  let videoPortLimits: VideoGeneratePortLimits | null = null
   if (mode === 'video' && ctx.resolveVideoGenerateCapabilities) {
     try {
       const bundle = await ctx.resolveVideoGenerateCapabilities({
         model: node.params.filmVideoModel || undefined,
         providerInstanceId: node.params.filmVideoProviderInstanceId || undefined
       })
-      if (bundle) videoCaps = bundle.params
+      if (bundle) {
+        videoCaps = bundle.params
+        videoPortLimits = bundle.portLimits
+      }
     } catch {
       /* 能力查询失败时沿用镜头参数，遇时长 400 自动按返回档位重试 */
     }
@@ -986,6 +1010,91 @@ export async function executeFilmRenderNode(
     patch(ctx, { filmRenders: JSON.stringify(ordered) })
   }
 
+  const hostAssetId = ctx.resolveHostAssetId?.()?.trim()
+  const hostGenParams = hostAssetId ? ctx.resolveAssetGenParams?.(hostAssetId) : undefined
+  const directorStage = resolveFilmDirectorStage({
+    node,
+    document: ctx.document,
+    genParams: hostGenParams,
+    storyboard: input
+  })
+
+  // 从 3D 分镜白模预演舞台同步已有的抓拍图/录制视频；若尚未录制则离屏自动渲染每镜 3D 白模预演关键帧与运镜视频
+  if (directorStage) {
+    let storyboardMediaPatched = false
+    const missingPrevizShotIds: string[] = []
+    for (const idx of indexes) {
+      const s = shots[idx]
+      if (!s) continue
+      const fromStage = resolveFilmShotPrevizMediaFromStage(directorStage, s.id)
+      const nextKeyframe = s.media?.previzKeyframe?.trim() || fromStage.previzKeyframe
+      const nextVideo = s.media?.previzVideo?.trim() || fromStage.previzVideo
+      if (
+        (nextKeyframe && nextKeyframe !== s.media?.previzKeyframe) ||
+        (nextVideo && nextVideo !== s.media?.previzVideo)
+      ) {
+        s.media = {
+          ...s.media,
+          ...(nextKeyframe ? { previzKeyframe: nextKeyframe } : {}),
+          ...(nextVideo ? { previzVideo: nextVideo } : {})
+        }
+        storyboardMediaPatched = true
+      }
+      const needsKf = !s.media?.previzKeyframe?.trim()
+      const needsVid = mode === 'video' && !s.media?.previzVideo?.trim()
+      if (needsKf || needsVid) {
+        missingPrevizShotIds.push(s.id)
+      }
+    }
+
+    if (missingPrevizShotIds.length > 0 && ctx.renderDirectorStagePreviz) {
+      try {
+        ctx.log?.(
+          pickLogBi(
+            ctx,
+            `正在从 3D 分镜白模预演离屏渲染 ${missingPrevizShotIds.length} 镜运镜视频与构图参考图…`,
+            `Rendering 3D white-box previz videos & keyframes for ${missingPrevizShotIds.length} shot(s)…`
+          )
+        )
+        const renderedPreviz = await ctx.renderDirectorStagePreviz({
+          stage: directorStage.stage,
+          shots,
+          onlyShotIds: missingPrevizShotIds,
+          node,
+          hostAssetId,
+          hostAssetName: ctx.resolveHostAssetName?.(),
+          includeKeyframe: true,
+          includeVideo: mode === 'video'
+        })
+        const byShotId = new Map(
+          renderedPreviz.map((item) => [item.shotId.trim().toLowerCase(), item])
+        )
+        for (const idx of indexes) {
+          const s = shots[idx]
+          if (!s) continue
+          const hit = byShotId.get(s.id.trim().toLowerCase())
+          if (!hit) continue
+          const kf = hit.keyframePath || hit.keyframeDataUrl
+          const vid = hit.videoPath || hit.videoDataUrl
+          if (kf || vid) {
+            s.media = {
+              ...s.media,
+              ...(kf && !s.media?.previzKeyframe ? { previzKeyframe: kf } : {}),
+              ...(vid && !s.media?.previzVideo ? { previzVideo: vid } : {})
+            }
+            storyboardMediaPatched = true
+          }
+        }
+      } catch (previzErr) {
+        console.warn('[film] offscreen 3D previz render failed:', previzErr)
+      }
+    }
+
+    if (storyboardMediaPatched) {
+      patch(ctx, { filmStoryboard: stringifyFilmStoryboard(replaceFilmShots(input, shots)) })
+    }
+  }
+
   const stepByIndex = new Map(indexes.map((idx, step) => [idx, step]))
   const chains = buildFilmContinuityChains(input, indexes, continuityOn)
   const chainLimiter = createConcurrencyLimiter(concurrency)
@@ -1002,11 +1111,35 @@ export async function executeFilmRenderNode(
     const keyframe = entry.keyframe
     if (mode !== 'video' || !generateVideo || !keyframe) return
     try {
-      const videoPrompt = composeFilmShotVideoPrompt(
+      const shotPreviz = resolveFilmShotPrevizCinematography(directorStage, shot.id)
+      const previzVideoSpec = shotPreviz
+        ? isEn(ctx)
+          ? shotPreviz.videoSpecEn
+          : shotPreviz.videoSpecZh
+        : undefined
+      const previzVideoRaw = shot.media?.previzVideo?.trim() || ''
+      const modelAllowsVideoRef =
+        videoPortLimits == null ||
+        videoPortLimits.maxVideos == null ||
+        videoPortLimits.maxVideos > 0
+      const wantPrevizVideoRef = Boolean(previzVideoRaw) && modelAllowsVideoRef
+      const videoPromptFallback = composeFilmShotVideoPrompt(
         shot,
         ctx.locale,
-        prevShot ? { prevShot } : undefined
+        prevShot || previzVideoSpec
+          ? {
+              ...(prevShot ? { prevShot } : {}),
+              ...(previzVideoSpec ? { previzVideoSpec } : {})
+            }
+          : undefined
       )
+      const videoPrompt = wantPrevizVideoRef
+        ? composeFilmShotVideoPrompt(shot, ctx.locale, {
+            ...(prevShot ? { prevShot } : {}),
+            ...(previzVideoSpec ? { previzVideoSpec } : {}),
+            hasPrevizVideoRef: true
+          })
+        : videoPromptFallback
       const fallbackShotSec =
         typeof node.params.filmShotDurationSec === 'number' &&
         Number.isFinite(node.params.filmShotDurationSec) &&
@@ -1029,12 +1162,23 @@ export async function executeFilmRenderNode(
       const videoSeed =
         node.params.filmVideoSeedUseGlobal === false ? node.params.filmVideoSeed : undefined
       const videoHash = filmHash(
-        `${keyframe}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${targetVideoDuration}|${rawVideoResolution ?? ''}|${rawVideoAspect ?? ''}|${rawVideoAudio ?? ''}|${videoSeed ?? ''}`
+        `${keyframe}|${previzVideoRaw}|${videoPrompt}|${node.params.filmVideoModel ?? ''}|${targetVideoDuration}|${rawVideoResolution ?? ''}|${rawVideoAspect ?? ''}|${rawVideoAudio ?? ''}|${videoSeed ?? ''}`
       )
       if (!forceVideo && entry.video && entry.videoHash === videoHash) return
       checkAbort(ctx)
-      ctx.log?.(pickLogBi(ctx, `${progress} 生成视频`, `${progress} video`))
       const [firstFrame] = await resolveRefUrls(ctx, [mediaRefItem(keyframe)])
+      const useMultimodalVideoRef = Boolean(wantPrevizVideoRef && firstFrame)
+      ctx.log?.(
+        pickLogBi(
+          ctx,
+          useMultimodalVideoRef
+            ? `${progress} 生成视频（参考首帧 @1 + 3D 白模预演视频 @2）`
+            : `${progress} 生成视频`,
+          useMultimodalVideoRef
+            ? `${progress} video (keyframe @1 + 3D previz video @2)`
+            : `${progress} video`
+        )
+      )
       const clamped =
         videoCaps != null && hasAnyVideoGenerateCapability(videoCaps)
           ? clampVideoGenerateParams(
@@ -1063,16 +1207,24 @@ export async function executeFilmRenderNode(
           : undefined
       const fallbackRefs =
         firstFrame && !useFirstFrame ? [{ kind: 'image_url' as const, url: firstFrame }] : undefined
-      const baseVideoInput = {
-        prompt: videoPrompt,
+      const normalizedPrevizVideoUrl =
+        previzVideoRaw.startsWith('data:') || /^https?:\/\//i.test(previzVideoRaw)
+          ? previzVideoRaw
+          : previzVideoRaw.replace(/\\/g, '/')
+      const multimodalRefs =
+        useMultimodalVideoRef && firstFrame
+          ? [
+              { kind: 'image_url' as const, url: firstFrame },
+              { kind: 'video_url' as const, url: normalizedPrevizVideoUrl }
+            ]
+          : undefined
+      const commonVideoFields = {
         model: node.params.filmVideoModel || undefined,
         providerInstanceId: node.params.filmVideoProviderInstanceId || undefined,
         aspectRatio: requestAspect,
         resolution: requestResolution,
         ...(typeof requestAudio === 'boolean' ? { generateAudio: requestAudio } : {}),
         ...(videoSeed != null ? { seed: videoSeed } : {}),
-        ...(useFirstFrame ? { firstFrameImageUrl: useFirstFrame } : {}),
-        ...(fallbackRefs ? { inputReferences: fallbackRefs } : {}),
         outputDir: node.params.mediaOutputDir?.trim() || undefined,
         name: `${ctx.resolveHostAssetName?.() || input.title || 'film'}_${shot.id}`,
         graphBinding: {
@@ -1081,32 +1233,66 @@ export async function executeFilmRenderNode(
           shotId: shot.id
         }
       }
+      const fallbackFrameVideoInput = {
+        ...commonVideoFields,
+        prompt: videoPromptFallback,
+        ...(useFirstFrame ? { firstFrameImageUrl: useFirstFrame } : {}),
+        ...(fallbackRefs ? { inputReferences: fallbackRefs } : {})
+      }
+      const primaryVideoInput = multimodalRefs
+        ? {
+            ...commonVideoFields,
+            prompt: videoPrompt,
+            inputReferences: multimodalRefs
+          }
+        : fallbackFrameVideoInput
+
+      const invokeWithDurationRetry = async (
+        payload: Omit<Parameters<typeof generateVideo>[0], 'duration'>
+      ): Promise<Awaited<ReturnType<typeof generateVideo>>> => {
+        try {
+          return await generateVideo({
+            ...payload,
+            duration: requestDuration
+          })
+        } catch (videoErr) {
+          if ((videoErr as Error)?.name === 'AbortError') throw videoErr
+          const errMsg = videoErr instanceof Error ? videoErr.message : String(videoErr)
+          const supported = supportedDurationsFromError(errMsg)
+          const retryDuration = supported.length
+            ? pickFilmVideoDuration(targetVideoDuration, supported)
+            : undefined
+          if (retryDuration == null || retryDuration === requestDuration) throw videoErr
+          ctx.log?.(
+            pickLogBi(
+              ctx,
+              `${progress} 模型不支持 ${requestDuration}s，改用 ${retryDuration}s 重试一次`,
+              `${progress} ${requestDuration}s rejected by model, retrying with ${retryDuration}s`
+            ),
+            'warn'
+          )
+          return await generateVideo({
+            ...payload,
+            duration: retryDuration
+          })
+        }
+      }
+
       let video: Awaited<ReturnType<typeof generateVideo>>
       try {
-        video = await generateVideo({
-          ...baseVideoInput,
-          duration: requestDuration
-        })
-      } catch (videoErr) {
-        if ((videoErr as Error)?.name === 'AbortError') throw videoErr
-        const errMsg = videoErr instanceof Error ? videoErr.message : String(videoErr)
-        const supported = supportedDurationsFromError(errMsg)
-        const retryDuration = supported.length
-          ? pickFilmVideoDuration(targetVideoDuration, supported)
-          : undefined
-        if (retryDuration == null || retryDuration === requestDuration) throw videoErr
+        video = await invokeWithDurationRetry(primaryVideoInput)
+      } catch (primaryErr) {
+        if ((primaryErr as Error)?.name === 'AbortError' || !multimodalRefs) throw primaryErr
+        const reason = primaryErr instanceof Error ? primaryErr.message : String(primaryErr)
         ctx.log?.(
           pickLogBi(
             ctx,
-            `${progress} 模型不支持 ${requestDuration}s，改用 ${retryDuration}s 重试一次`,
-            `${progress} ${requestDuration}s rejected by model, retrying with ${retryDuration}s`
+            `${progress} 3D 预演参考视频多模态直传未生效（${reason}），自动回退为「首帧图 + 3D 运镜轨迹指令」继续生成`,
+            `${progress} 3D previz reference video multimodal call failed (${reason}), falling back to first-frame + 3D trajectory prompt`
           ),
           'warn'
         )
-        video = await generateVideo({
-          ...baseVideoInput,
-          duration: retryDuration
-        })
+        video = await invokeWithDurationRetry(fallbackFrameVideoInput)
       }
       checkAbort(ctx)
       entry.video = video.relativePath
@@ -1143,16 +1329,23 @@ export async function executeFilmRenderNode(
           const previzKeyframe = shot.media?.previzKeyframe?.trim() || ''
           const prevKeyframeRefIndex = prevKeyframe ? refs.length + 1 : undefined
           const previzRefIndex = previzKeyframe ? refs.length + (prevKeyframe ? 2 : 1) : undefined
+          const shotPreviz = resolveFilmShotPrevizCinematography(directorStage, shot.id)
+          const previzImageSpec = shotPreviz
+            ? isEn(ctx)
+              ? shotPreviz.imageSpecEn
+              : shotPreviz.imageSpecZh
+            : undefined
           const extra = node.params.generateInstruction?.trim()
           const composed = composeFilmShotImagePrompt(
             input,
             shot,
             refs,
             ctx.locale,
-            prevShot || previzRefIndex
+            prevShot || previzRefIndex || previzImageSpec
               ? {
                   ...(prevShot ? { prevShot, prevKeyframeRefIndex } : {}),
-                  ...(previzRefIndex ? { previzRefIndex } : {})
+                  ...(previzRefIndex ? { previzRefIndex } : {}),
+                  ...(previzImageSpec ? { previzImageSpec } : {})
                 }
               : undefined
           )

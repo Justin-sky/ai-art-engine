@@ -1,4 +1,10 @@
-import type { AssetType, DirectorViewerState, ProjectStyleImage, StageVec3 } from '../../domain'
+import type {
+  AssetType,
+  DirectorStageState,
+  DirectorViewerState,
+  ProjectStyleImage,
+  StageVec3
+} from '../../domain'
 import type { InstructionMentionSource } from '../instructionMentions'
 import type { WorldElementGenResult } from '../worldElementParse'
 import type { ImageGenerateParamCapabilities } from '../imageGenerateParams'
@@ -1349,6 +1355,30 @@ export interface NodeExecuteContext {
    * 与 cookHostInnerGraph 同默认：onlyTarget 时 false，其余 true。
    */
   cookBatchSubgraphs?: boolean
+  /**
+   * 离屏渲染 3D 分镜白模预演的关键帧图（previzKeyframe）与逐镜运镜/调度视频（previzVideo）。
+   */
+  renderDirectorStagePreviz?: (input: {
+    stage: DirectorStageState
+    shots?: Array<{ id: string; durationSec: number }>
+    onlyShotIds?: string[]
+    node?: GraphNode
+    hostAssetId?: string
+    hostAssetName?: string
+    includeVideo?: boolean
+    includeKeyframe?: boolean
+  }) => Promise<
+    Array<{
+      shotId: string
+      cameraId: string
+      cameraName: string
+      label: string
+      keyframeDataUrl?: string
+      keyframePath?: string
+      videoDataUrl?: string
+      videoPath?: string
+    }>
+  >
 }
 
 /** 宿主内图已准备好的执行包（输入槽已注入） */
@@ -1538,6 +1568,7 @@ export interface GraphRunOptions {
   normalizeImageAspectRatio?: NodeExecuteContext['normalizeImageAspectRatio']
   removeImageSolidBackground?: NodeExecuteContext['removeImageSolidBackground']
   composeTimelineVideo?: NodeExecuteContext['composeTimelineVideo']
+  renderDirectorStagePreviz?: NodeExecuteContext['renderDirectorStagePreviz']
   /** 世界元素四类图片组口：params 为空时从 element 子图 soft 收集（选取/快照用） */
   resolveWorldElementOutputs?: (node: GraphNode) => WorldElementGenResult[]
   resolveBeatCatalogJson?: NodeExecuteContext['resolveBeatCatalogJson']

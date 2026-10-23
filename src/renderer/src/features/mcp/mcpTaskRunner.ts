@@ -662,7 +662,7 @@ function normalizeNodeUpdateAliases(
     mergedParams.comicPage = rawComic
   }
 
-  // Film storyboard / cast aliases（保留对象形态交给 mergeSmartNodeParams 增量合并）
+  // Film storyboard / cast / model / stage aliases（保留对象形态交给 mergeSmartNodeParams 增量合并）
   if (mergedParams.storyboard !== undefined && mergedParams.filmStoryboard === undefined) {
     mergedParams.filmStoryboard = mergedParams.storyboard
     delete mergedParams.storyboard
@@ -670,6 +670,58 @@ function normalizeNodeUpdateAliases(
   if (mergedParams.cast !== undefined && mergedParams.filmCast === undefined) {
     mergedParams.filmCast = mergedParams.cast
     delete mergedParams.cast
+  }
+  if (mergedParams.textModel !== undefined && mergedParams.filmTextModel === undefined) {
+    mergedParams.filmTextModel = mergedParams.textModel
+    delete mergedParams.textModel
+  }
+  if (
+    mergedParams.textProviderInstanceId !== undefined &&
+    mergedParams.filmTextProviderInstanceId === undefined
+  ) {
+    mergedParams.filmTextProviderInstanceId = mergedParams.textProviderInstanceId
+    delete mergedParams.textProviderInstanceId
+  }
+  if (mergedParams.imageModel !== undefined && mergedParams.generateModel === undefined) {
+    mergedParams.generateModel = mergedParams.imageModel
+    delete mergedParams.imageModel
+  }
+  if (
+    mergedParams.imageProviderInstanceId !== undefined &&
+    mergedParams.generateProviderInstanceId === undefined
+  ) {
+    mergedParams.generateProviderInstanceId = mergedParams.imageProviderInstanceId
+    delete mergedParams.imageProviderInstanceId
+  }
+  if (mergedParams.videoModel !== undefined && mergedParams.filmVideoModel === undefined) {
+    mergedParams.filmVideoModel = mergedParams.videoModel
+    delete mergedParams.videoModel
+  }
+  if (
+    mergedParams.videoProviderInstanceId !== undefined &&
+    mergedParams.filmVideoProviderInstanceId === undefined
+  ) {
+    mergedParams.filmVideoProviderInstanceId = mergedParams.videoProviderInstanceId
+    delete mergedParams.videoProviderInstanceId
+  }
+  if (mergedParams.qcModel !== undefined && mergedParams.filmQcModel === undefined) {
+    mergedParams.filmQcModel = mergedParams.qcModel
+    delete mergedParams.qcModel
+  }
+  if (
+    mergedParams.qcProviderInstanceId !== undefined &&
+    mergedParams.filmQcProviderInstanceId === undefined
+  ) {
+    mergedParams.filmQcProviderInstanceId = mergedParams.qcProviderInstanceId
+    delete mergedParams.qcProviderInstanceId
+  }
+  if (mergedParams.runMode !== undefined && mergedParams.filmWorkbenchRunMode === undefined) {
+    mergedParams.filmWorkbenchRunMode = mergedParams.runMode
+    delete mergedParams.runMode
+  }
+  if (mergedParams.renderMode !== undefined && mergedParams.filmRenderMode === undefined) {
+    mergedParams.filmRenderMode = mergedParams.renderMode
+    delete mergedParams.renderMode
   }
 
   // 2D animation doc object -> string

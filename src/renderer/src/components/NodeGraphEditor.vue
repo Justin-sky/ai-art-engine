@@ -11545,8 +11545,8 @@ defineExpose({
 }
 
 .graph-viewport.has-genshin-vista {
-  --graph-grid-minor: rgba(255, 255, 255, 0.13);
-  --graph-grid-major: rgba(255, 255, 255, 0.26);
+  --graph-grid-minor: rgba(248, 250, 252, 0.13);
+  --graph-grid-major: rgba(248, 250, 252, 0.26);
 }
 
 .grid-layer {
