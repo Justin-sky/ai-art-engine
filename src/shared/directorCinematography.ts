@@ -1627,7 +1627,7 @@ export function buildDirectorCinematographyPrompt(
     cameraMotionEn += ', organic handheld camera breathing motion'
   }
 
-  // 6. 分析画面主体与空间站位（Subject Blocking in Camera Space）
+  // 6. 分析画面主体与空间站位（Subject Blocking & Dynamic Trajectory in Camera Space）
   const subjects = visibleObjects.filter(
     (o) =>
       o.kind === 'character' || o.kind === 'model' || o.kind === 'prop' || o.kind === 'primitive'
@@ -1638,23 +1638,70 @@ export function buildDirectorCinematographyPrompt(
   const rightX = -forward.z / rightLen
   const rightZ = forward.x / rightLen
 
+  const projectPosInCameraSpace = (pos: StageVec3) => {
+    const relX = pos.x - viewer.position.x
+    const relY = pos.y - viewer.position.y
+    const relZ = pos.z - viewer.position.z
+    const depth = relX * forward.x + relY * forward.y + relZ * forward.z
+    const horiz = relX * rightX + relZ * rightZ
+    const horizHalfSpan = Math.max(0.35, depth * Math.tan((fovDeg * Math.PI) / 360) * 0.62)
+    const normX = horiz / horizHalfSpan
+    const posZh = normX < -0.25 ? '画面左侧' : normX > 0.25 ? '画面右侧' : '画面中央'
+    const posEn = normX < -0.25 ? 'frame left' : normX > 0.25 ? 'frame right' : 'center frame'
+    const layerZh = depth < dist * 0.75 ? '前景' : depth > dist * 1.28 ? '远景' : '中景'
+    const layerEn =
+      depth < dist * 0.75 ? 'foreground' : depth > dist * 1.28 ? 'background' : 'midground'
+    const isOffFrame = Math.abs(normX) > 0.68
+    return { depth, horiz, normX, posZh, posEn, layerZh, layerEn, isOffFrame }
+  }
+
   const subjectDescsZh: string[] = []
   const subjectDescsEn: string[] = []
   for (const sub of subjects.slice(0, 6)) {
-    const relX = sub.position.x - viewer.position.x
-    const relY = sub.position.y - viewer.position.y
-    const relZ = sub.position.z - viewer.position.z
-    const depth = relX * forward.x + relY * forward.y + relZ * forward.z
-    if (depth <= 0.05) continue
-    const horiz = relX * rightX + relZ * rightZ
-    const normX = horiz / Math.max(0.5, depth * Math.tan((fovDeg * Math.PI) / 360))
-    const posZh = normX < -0.25 ? '画面左侧' : normX > 0.25 ? '画面右侧' : '画面中央'
-    const posEn = normX < -0.25 ? 'frame left' : normX > 0.25 ? 'frame right' : 'center frame'
-    const layerZh = depth < dist * 0.7 ? '前景' : depth > dist * 1.35 ? '远景' : '中景'
-    const layerEn =
-      depth < dist * 0.7 ? 'foreground' : depth > dist * 1.35 ? 'background' : 'midground'
-    subjectDescsZh.push(`${sub.name}（位于${layerZh}${posZh}）`)
-    subjectDescsEn.push(`${sub.name} (${layerEn}, ${posEn})`)
+    const baseProj = projectPosInCameraSpace(sub.position)
+    const subTrack = anim?.tracks.find(
+      (t) => !t.cameraCut && t.targetKind === 'object' && t.targetId === sub.id
+    )
+    if (subTrack && (subTrack.keyframes?.length ?? 0) >= 2) {
+      const kfs = subTrack.keyframes!
+      const p0 = kfs[0]!.position
+      const p1 = kfs[kfs.length - 1]!.position
+      const moveDist = Math.hypot(p1.x - p0.x, p1.y - p0.y, p1.z - p0.z)
+      if (moveDist > 0.2) {
+        const proj0 = projectPosInCameraSpace(p0)
+        const proj1 = projectPosInCameraSpace(p1)
+        if (proj0.isOffFrame && !proj1.isOffFrame && proj1.depth > 0.05) {
+          const sideZh = proj0.normX < 0 ? '画面左侧' : '画面右侧'
+          const sideEn = proj0.normX < 0 ? 'frame left' : 'frame right'
+          subjectDescsZh.push(`${sub.name}（由${sideZh}入画移至${proj1.layerZh}${proj1.posZh}）`)
+          subjectDescsEn.push(
+            `${sub.name} (enters from ${sideEn} to ${proj1.layerEn} ${proj1.posEn})`
+          )
+          continue
+        }
+        if (Math.abs(proj0.depth - proj1.depth) > 0.22 && proj1.depth > 0.05) {
+          subjectDescsZh.push(`${sub.name}（位于${proj0.layerZh}${proj0.posZh}并向镜头逼近）`)
+          subjectDescsEn.push(`${sub.name} (${proj0.layerEn}, ${proj0.posEn}, stepping closer)`)
+          continue
+        }
+        if (
+          (proj0.posZh !== proj1.posZh || proj0.layerZh !== proj1.layerZh) &&
+          proj0.depth > 0.05 &&
+          proj1.depth > 0.05
+        ) {
+          subjectDescsZh.push(
+            `${sub.name}（由${proj0.layerZh}${proj0.posZh}移至${proj1.layerZh}${proj1.posZh}）`
+          )
+          subjectDescsEn.push(
+            `${sub.name} (moves from ${proj0.layerEn} ${proj0.posEn} to ${proj1.layerEn} ${proj1.posEn})`
+          )
+          continue
+        }
+      }
+    }
+    if (baseProj.depth <= 0.05) continue
+    subjectDescsZh.push(`${sub.name}（位于${baseProj.layerZh}${baseProj.posZh}）`)
+    subjectDescsEn.push(`${sub.name} (${baseProj.layerEn}, ${baseProj.posEn})`)
   }
 
   const subjectsZh = subjectDescsZh.length ? subjectDescsZh.join('、') : '舞台中心主体'
@@ -1826,21 +1873,35 @@ export function resolveShotCinematographyFromDirectorStage(
   }
   if (!cam) return null
 
+  const camTrack = stage?.animation?.tracks.find(
+    (t) => !t.cameraCut && t.targetKind === 'camera' && t.targetId === cam.id
+  )
+  const cutSeg = stage?.animation?.tracks
+    .find((t) => t.cameraCut)
+    ?.cameraSegments?.find((s) => s.cameraId === cam.id)
+  const shotStartSec = cutSeg?.start ?? camTrack?.start ?? 0
+  const shotEndSec = cutSeg?.end ?? camTrack?.end ?? stage?.animation?.duration ?? 4
+
   const singleShotStage: DirectorStageState = {
     ...stage!,
     activeCameraId: cam.id,
     animation: stage?.animation
       ? {
           ...stage.animation,
-          tracks: stage.animation.tracks.filter((t) => !t.cameraCut)
+          tracks: stage.animation.tracks
+            .filter((t) => !t.cameraCut)
+            .map((t) => {
+              if (t.targetKind !== 'object' || (t.keyframes?.length ?? 0) < 2) return t
+              const scopedKfs = (t.keyframes ?? []).filter(
+                (kf) => kf.time >= shotStartSec - 0.05 && kf.time <= shotEndSec + 0.05
+              )
+              return scopedKfs.length >= 2 ? { ...t, keyframes: scopedKfs } : t
+            })
         }
       : undefined
   }
   const analysis = buildDirectorCinematographyPrompt(singleShotStage)
   const viewer = cam.viewer
-  const camTrack = stage?.animation?.tracks.find(
-    (t) => !t.cameraCut && t.targetKind === 'camera' && t.targetId === cam.id
-  )
 
   const trajPartsZh: string[] = []
   const trajPartsEn: string[] = []
@@ -1857,10 +1918,16 @@ export function resolveShotCinematographyFromDirectorStage(
       last.position.y - viewer.target.y,
       last.position.z - viewer.target.z
     )
-    const dx = last.position.x - first.position.x
     const dy = last.position.y - first.position.y
     const rot0 = first.rotation ?? directorViewerRotationFromLook(first.position, viewer.target)
     const rot1 = last.rotation ?? directorViewerRotationFromLook(last.position, viewer.target)
+    const fwd0 = directorViewerForwardFromRotation(rot0)
+    const fwdHorizLen = Math.hypot(fwd0.x, fwd0.z) || 1
+    const camRightX = -fwd0.z / fwdHorizLen
+    const camRightZ = fwd0.x / fwdHorizLen
+    const lateralRight =
+      (last.position.x - first.position.x) * camRightX +
+      (last.position.z - first.position.z) * camRightZ
     const dPitchDeg = Math.round(((rot1.x - rot0.x) * 180) / Math.PI)
     const dYawDeg = Math.round(((rot1.y - rot0.y) * 180) / Math.PI)
 
@@ -1871,19 +1938,23 @@ export function resolveShotCinematographyFromDirectorStage(
       trajPartsZh.push(`机位距离由 ${d0.toFixed(1)}m 拉远至 ${d1.toFixed(1)}m`)
       trajPartsEn.push(`camera pulls back from ${d0.toFixed(1)}m to ${d1.toFixed(1)}m`)
     }
-    if (Math.abs(dx) > 0.2) {
-      trajPartsZh.push(`${dx > 0 ? '向右横移' : '向左横移'} ${Math.abs(dx).toFixed(1)}m`)
-      trajPartsEn.push(`tracks ${dx > 0 ? 'right' : 'left'} ${Math.abs(dx).toFixed(1)}m`)
+    if (Math.abs(lateralRight) > 0.2) {
+      trajPartsZh.push(
+        `${lateralRight > 0 ? '向右横移' : '向左横移'} ${Math.abs(lateralRight).toFixed(1)}m`
+      )
+      trajPartsEn.push(
+        `tracks ${lateralRight > 0 ? 'right' : 'left'} ${Math.abs(lateralRight).toFixed(1)}m`
+      )
     }
     if (Math.abs(dy) > 0.2) {
       trajPartsZh.push(`${dy > 0 ? '摇臂上升' : '摇臂下降'} ${Math.abs(dy).toFixed(1)}m`)
       trajPartsEn.push(`cranes ${dy > 0 ? 'up' : 'down'} ${Math.abs(dy).toFixed(1)}m`)
     }
-    if (Math.abs(dPitchDeg) >= 3) {
+    if (Math.abs(dPitchDeg) >= 6) {
       trajPartsZh.push(`${dPitchDeg > 0 ? '镜头上仰' : '镜头下摇'} ${Math.abs(dPitchDeg)}°`)
       trajPartsEn.push(`tilts ${dPitchDeg > 0 ? 'up' : 'down'} ${Math.abs(dPitchDeg)}°`)
     }
-    if (Math.abs(dYawDeg) >= 3) {
+    if (Math.abs(dYawDeg) >= 5) {
       trajPartsZh.push(`${dYawDeg > 0 ? '镜头左摇' : '镜头右摇'} ${Math.abs(dYawDeg)}°`)
       trajPartsEn.push(`pans ${dYawDeg > 0 ? 'left' : 'right'} ${Math.abs(dYawDeg)}°`)
     }

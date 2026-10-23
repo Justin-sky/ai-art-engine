@@ -990,11 +990,194 @@ function detectActorPostureFromShots(
   return 'standing'
 }
 
+export interface StoryboardActorSpatialHint {
+  entersFrom?: 'left' | 'right'
+  startsOffFrame?: boolean
+  approachesCamera?: boolean
+  holdsGround?: boolean
+  rightOfActorKey?: string
+  leftOfActorKey?: string
+  companionActorKey?: string
+}
+
+export interface StoryboardSpatialRoleAnalysis {
+  /** 过肩镜头前景肩部锚点角色名（如「过肩（周敏肩前拍苏念）」中的「周敏」） */
+  otsShoulderActorName: string | null
+  /** 过肩镜头或主视角被拍焦点角色名（如「过肩（周敏肩前拍苏念）」中的「苏念」） */
+  otsTargetActorName: string | null
+  /** 是否属于多角色对峙/压迫三角/过肩博弈纵深场景 */
+  isDepthStandoff: boolean
+  /** 角色相对方位提示（如某角色从左侧入画、某角色在另一角色右侧） */
+  actorHints: Map<string, StoryboardActorSpatialHint>
+}
+
+export function parseStoryboardSpatialRoles(
+  targetShots: readonly FilmShot[],
+  characterNames: readonly string[]
+): StoryboardSpatialRoleAnalysis {
+  const actorEntries = characterNames
+    .map((name) => ({ name: name.trim(), key: filmNameKey(name) }))
+    .filter((e) => Boolean(e.name && e.key))
+
+  const matchActor = (fragment: string | undefined): { name: string; key: string } | null => {
+    const raw = (fragment ?? '').trim()
+    if (!raw) return null
+    const fragKey = filmNameKey(raw)
+    return (
+      actorEntries.find((a) => a.key === fragKey) ??
+      actorEntries.find((a) => raw.includes(a.name) || a.name.includes(raw)) ??
+      null
+    )
+  }
+
+  let otsShoulderActorName: string | null = null
+  let otsTargetActorName: string | null = null
+
+  for (const shot of targetShots) {
+    const searchPool = [
+      shot.angle ?? '',
+      shot.title ?? '',
+      shot.action ?? '',
+      shot.imagePrompt ?? '',
+      shot.videoPrompt ?? ''
+    ].join(' ')
+    const otsMatch = searchPool.match(
+      /(?:过肩|越肩)\s*[（(]?\s*([^）)\s，,。；;：:]+?)\s*(?:肩前|左肩|右肩|肩后|背后|身后|越肩)?\s*(?:拍|看向|望向|对准)\s*([^）)\s，,。；;：:]+)\s*[）)]?/
+    )
+    if (otsMatch) {
+      const shoulder = matchActor(otsMatch[1])
+      const target = matchActor(otsMatch[2])
+      if (shoulder && target && shoulder.key !== target.key) {
+        otsShoulderActorName = shoulder.name
+        otsTargetActorName = target.name
+        break
+      }
+    }
+  }
+
+  const actorHints = new Map<string, StoryboardActorSpatialHint>()
+  for (const entry of actorEntries) {
+    actorHints.set(entry.key, {})
+  }
+
+  const fullText = targetShots
+    .map((s) => `${s.angle ?? ''} ${s.action ?? ''} ${s.imagePrompt ?? ''} ${s.videoPrompt ?? ''}`)
+    .join('；')
+
+  const clauses = fullText
+    .split(/[；;。\n，,]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+
+  let currentSubject: { name: string; key: string } | null = null
+  for (const clause of clauses) {
+    if (/^(?:机位|镜头|运镜|背景|画面|暖金色|冷色调|三人|两人|众人)/.test(clause)) {
+      currentSubject = null
+    } else {
+      // 检查子句开头或主语位置是否出现角色名
+      let bestHit: { name: string; key: string; idx: number } | null = null
+      for (const entry of actorEntries) {
+        const idx = clause.indexOf(entry.name)
+        if (idx >= 0 && (bestHit === null || idx < bestHit.idx)) {
+          bestHit = { ...entry, idx }
+        }
+      }
+      if (bestHit && bestHit.idx <= 4) {
+        currentSubject = { name: bestHit.name, key: bestHit.key }
+      }
+    }
+
+    if (!currentSubject) continue
+    const hint = actorHints.get(currentSubject.key) ?? {}
+
+    if (/未入画|画面外|场外|画外|off[-\s]*screen|out\s*of\s*frame/i.test(clause)) {
+      hint.startsOffFrame = true
+    }
+    if (/从(?:画面)?左侧入画|从左(?:侧|边)?(?:入画|走入|进入)|enter.*from\s*left/i.test(clause)) {
+      hint.entersFrom = 'left'
+      hint.startsOffFrame = true
+    } else if (
+      /从(?:画面)?右侧入画|从右(?:侧|边)?(?:入画|走入|进入)|enter.*from\s*right/i.test(clause)
+    ) {
+      hint.entersFrom = 'right'
+      hint.startsOffFrame = true
+    }
+    if (/迎着镜头逼近|向镜头逼近|逼近镜头|上前一步|往前一步|逼近|步步紧逼/i.test(clause)) {
+      hint.approachesCamera = true
+    }
+    if (/仍不后退|不退让|站在原地|未动|纹丝不动/i.test(clause)) {
+      hint.holdsGround = true
+    }
+
+    // 识别「A在B右侧」「挽住右侧B」「搂紧B」等双人相对方位
+    const rightRel = clause.match(/在\s*([^，,。；;\s]+?)\s*(?:的)?右侧/)
+    if (rightRel) {
+      const other = matchActor(rightRel[1])
+      if (other && other.key !== currentSubject.key) {
+        hint.rightOfActorKey = other.key
+        hint.companionActorKey = other.key
+        const otherHint = actorHints.get(other.key) ?? {}
+        otherHint.leftOfActorKey = currentSubject.key
+        otherHint.companionActorKey = currentSubject.key
+        actorHints.set(other.key, otherHint)
+      }
+    }
+    const leftRel = clause.match(/在\s*([^，,。；;\s]+?)\s*(?:的)?左侧/)
+    if (leftRel) {
+      const other = matchActor(leftRel[1])
+      if (other && other.key !== currentSubject.key) {
+        hint.leftOfActorKey = other.key
+        hint.companionActorKey = other.key
+        const otherHint = actorHints.get(other.key) ?? {}
+        otherHint.rightOfActorKey = currentSubject.key
+        otherHint.companionActorKey = currentSubject.key
+        actorHints.set(other.key, otherHint)
+      }
+    }
+    const holdRightRel = clause.match(/(?:挽住|靠近|走向|站在)\s*右侧\s*([^，,。；;\s]+)/)
+    if (holdRightRel) {
+      const other = matchActor(holdRightRel[1])
+      if (other && other.key !== currentSubject.key) {
+        hint.leftOfActorKey = other.key
+        hint.companionActorKey = other.key
+        const otherHint = actorHints.get(other.key) ?? {}
+        otherHint.rightOfActorKey = currentSubject.key
+        otherHint.companionActorKey = currentSubject.key
+        actorHints.set(other.key, otherHint)
+      }
+    }
+    const embraceRel = clause.match(/(?:搂紧|揽住|挽住|拥抱|靠拢)\s*([^，,。；;\s]+)/)
+    if (embraceRel && !holdRightRel) {
+      const other = matchActor(embraceRel[1])
+      if (other && other.key !== currentSubject.key) {
+        hint.companionActorKey = other.key
+        const otherHint = actorHints.get(other.key) ?? {}
+        if (!otherHint.companionActorKey) otherHint.companionActorKey = currentSubject.key
+        actorHints.set(other.key, otherHint)
+      }
+    }
+
+    actorHints.set(currentSubject.key, hint)
+  }
+
+  const isDepthStandoff =
+    Boolean(otsShoulderActorName && otsTargetActorName) ||
+    /压迫三角|三角对峙|对峙|逼问|逼近|围住|包围/.test(fullText)
+
+  return {
+    otsShoulderActorName,
+    otsTargetActorName,
+    isDepthStandoff,
+    actorHints
+  }
+}
+
 /**
  * 启发式空间布局求解器（0 延迟确定性生成 + LLM 兜底）：
  * - 自动识别工位/桌面场景，补全支撑家具（办公桌 + 工位椅）；
  * - 将桌面道具（显示器、文件堆、咖啡杯、手机等）放置在桌面高度 `y = 0.74m` 上并合理排布；
- * - 将场景建筑结构（如成排办公室格子间）沿纵深排布在背景与通道两侧。
+ * - 将场景建筑结构（如成排办公室格子间）沿纵深排布在背景与通道两侧；
+ * - 自动识别过肩（OTS）/ 多角色对峙 / 压迫三角场景，按前景、中景焦点、远景纵深分层站位。
  */
 export function buildHeuristicStoryboardLayout(
   storyboard: FilmStoryboard,
@@ -1016,14 +1199,52 @@ export function buildHeuristicStoryboardLayout(
       combinedText
     )
 
+  const spatialRoles = parseStoryboardSpatialRoles(targetShots, characterNames)
+  const totalActors = characterNames.length
+  const useDepthStandoffLayout =
+    !hasDeskContext &&
+    spatialRoles.isDepthStandoff &&
+    (totalActors >= 3 ||
+      (totalActors === 2 &&
+        targetShots.length === 1 &&
+        Boolean(spatialRoles.otsShoulderActorName && spatialRoles.otsTargetActorName)))
+
+  let standoffTargetKey: string | null = null
+  let standoffShoulderKey: string | null = null
+  let standoffRestKeys: string[] = []
+
+  if (useDepthStandoffLayout) {
+    const allKeys = characterNames.map((n) => filmNameKey(n))
+    standoffTargetKey =
+      (spatialRoles.otsTargetActorName ? filmNameKey(spatialRoles.otsTargetActorName) : null) ??
+      allKeys.find((k) => spatialRoles.actorHints.get(k)?.holdsGround) ??
+      allKeys[0] ??
+      null
+    standoffShoulderKey =
+      (spatialRoles.otsShoulderActorName ? filmNameKey(spatialRoles.otsShoulderActorName) : null) ??
+      allKeys.find(
+        (k) => k !== standoffTargetKey && spatialRoles.actorHints.get(k)?.approachesCamera
+      ) ??
+      allKeys.find((k) => k !== standoffTargetKey) ??
+      null
+    standoffRestKeys = allKeys.filter((k) => k !== standoffTargetKey && k !== standoffShoulderKey)
+    standoffRestKeys.sort((a, b) => {
+      const ha = spatialRoles.actorHints.get(a)
+      const hb = spatialRoles.actorHints.get(b)
+      if (ha?.leftOfActorKey === b || hb?.rightOfActorKey === a) return -1
+      if (ha?.rightOfActorKey === b || hb?.leftOfActorKey === a) return 1
+      return 0
+    })
+  }
+
   // 1. 角色排布与姿态
   const actors: StoryboardActorPlacementSpec[] = []
-  const totalActors = characterNames.length
   for (let i = 0; i < totalActors; i++) {
     const name = characterNames[i]
+    const actorKey = filmNameKey(name)
     const entityDesc =
       (storyboard.entities ?? []).find(
-        (e) => e.kind === 'character' && filmNameKey(e.name) === filmNameKey(name)
+        (e) => e.kind === 'character' && filmNameKey(e.name) === actorKey
       )?.description ?? ''
     const mannequinPreset = detectActorMannequinPreset(name, entityDesc)
     const posture = i === 0 ? detectActorPostureFromShots(name, targetShots) : 'standing'
@@ -1038,6 +1259,25 @@ export function buildHeuristicStoryboardLayout(
       } else {
         pos = { x: 0, y: yOffset, z: 0 }
         rotationY = 0
+      }
+    } else if (useDepthStandoffLayout) {
+      if (actorKey === standoffTargetKey) {
+        // 中景视觉中心主角色（如「苏念」）：位于中景中央，面朝左前方的前景逼问者
+        pos = { x: -0.02, y: yOffset, z: -0.15 }
+        rotationY = -0.28
+      } else if (actorKey === standoffShoulderKey) {
+        // 前景过肩/施压角色（如「周敏」）：位于前景左侧视锥内，侧背镜头面朝中景主角色
+        pos = { x: -0.28, y: yOffset, z: 0.68 }
+        rotationY = Number((Math.PI * 0.82).toFixed(2))
+      } else {
+        // 远景右侧配角组（如「林薇」「陆景明」）：位于远景右侧纵深层（兼顾 9:16 竖屏与 16:9 横屏视锥），与前景、中景构成三角压迫关系
+        const restIdx = Math.max(0, standoffRestKeys.indexOf(actorKey))
+        pos = {
+          x: Number((0.36 + restIdx * 0.25).toFixed(2)),
+          y: yOffset,
+          z: Number((-1.0 - restIdx * 0.15).toFixed(2))
+        }
+        rotationY = -0.38
       }
     } else if (totalActors === 2) {
       if (hasDeskContext && (posture === 'sitting' || posture === 'slumped_sitting')) {
@@ -1273,6 +1513,12 @@ Given a storyboard's shots, characters, locations, and props, generate a physica
   - Tabletop props (e.g. "电脑显示器", "文件堆", "咖啡杯", "手机", "辞职信", "台灯") MUST be placed ON TOP OF the desk: their object \`position.y\` MUST equal the desk top height (\`0.74\`), and their \`(x, z)\` must be within the desk surface (\`x\` in \`[-0.55, 0.55]\`, \`z\` around \`0.28..0.46\`), NEVER on the floor (y=0) or overlapping each other!
   - A computer monitor ("电脑显示器") on the desk in front of a character at z = -0.18 should be at (x: 0, y: 0.74, z: 0.30) with \`rotationYDeg: 180\` so the screen faces the character.
   - Architectural/location set pieces (e.g. "办公室格子间") should frame the left/right sides (|x| >= 1.6) and background depth (z <= -0.8) so they NEVER block the front camera corridor (x in [-1.2, 1.2], z > 0.6).
+- MULTI-CHARACTER BLOCKING & OTS DEPTH LAYER RULE:
+  - NEVER line up 3 or more characters in a flat horizontal chorus row at the same Z!
+  - In Over-The-Shoulder (OTS, e.g. "过肩（A肩前拍B）") or confrontation / triangle standoff ("对峙", "逼近", "压迫三角") shots:
+    - Place the primary focal target character B in the midground center: (x: 0, y: 0, z: -0.25, rotationYDeg: -18).
+    - Place the foreground OTS shoulder / confronting character A in the foreground left: (x: -0.68, y: 0, z: 0.62, rotationYDeg: 140) facing character B.
+    - Place secondary / background characters in the background right depth layer: e.g. (x: 0.52, y: 0, z: -0.95) and (x: 0.94, y: 0, z: -1.03, rotationYDeg: -26) facing character B.
 
 ### Allowed Primitives for \`parts\`
 Each object in \`objects\` is a compound white-model composed of 1 to 6 \`parts\`.
@@ -1338,7 +1584,7 @@ function sanitizeHexColor(raw: unknown, fallback = '#94a3b8'): string {
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(trimmed) ? trimmed : fallback
 }
 
-const LAYOUT_PLAN_CACHE_STORAGE_KEY = 'director.storyboardLayoutPlanCache.v1'
+const LAYOUT_PLAN_CACHE_STORAGE_KEY = 'director.storyboardLayoutPlanCache.v4'
 const LAYOUT_PLAN_CACHE_MAX_ENTRIES = 32
 const layoutPlanMemoryCache = new Map<string, StoryboardSceneLayoutPlan>()
 const layoutPlanInFlight = new Map<string, Promise<StoryboardSceneLayoutPlan>>()
@@ -1575,6 +1821,22 @@ export async function planStoryboard3dLayoutWithLlm(options: {
           }
         }
       )
+
+      if (fallbackPlan.actors.length >= 3) {
+        const fbZs = fallbackPlan.actors.map((a) => a.position.z)
+        const llmZs = mergedActors.map((a) => a.position.z)
+        const fbDepthSpan = Math.max(...fbZs) - Math.min(...fbZs)
+        const llmDepthSpan = Math.max(...llmZs) - Math.min(...llmZs)
+        if (fbDepthSpan >= 1.1 && llmDepthSpan < 0.55) {
+          for (let i = 0; i < mergedActors.length; i++) {
+            mergedActors[i] = {
+              ...mergedActors[i],
+              position: { ...fallbackPlan.actors[i].position },
+              rotationY: fallbackPlan.actors[i].rotationY
+            }
+          }
+        }
+      }
 
       // 解析并增强 LLM 输出的 3D 组合素模
       const rawObjects = Array.isArray(parsed.objects) ? parsed.objects : []

@@ -9,6 +9,7 @@ import {
 } from '../src/renderer/src/editor/preferences'
 import {
   ACTIVE_WEATHER_POOL,
+  SUNNY_COMPLETE_DURATION_MS,
   applyHailstoneNodeImpact,
   applyMeteorNodeImpact,
   applyRaindropNodeImpact,
@@ -61,9 +62,16 @@ describe('canvasWeatherEngine', () => {
     vi.advanceTimersByTime(10000)
   })
 
-  it('randomly cycles through the 10 weather spectacles without immediate repeats and clears to sunny on completion', () => {
+  it('does not trigger sunny weather on initial canvas open when no task was active', () => {
+    expect(canvasWeatherState.currentWeather.value).toBe('idle')
+    notifyWeatherTaskComplete('graph:main')
+    expect(canvasWeatherState.currentWeather.value).toBe('idle')
+  })
+
+  it('randomly cycles through the 10 weather spectacles without immediate repeats and clears to sunny for 2s on completion', () => {
     expect(canvasWeatherState.currentWeather.value).toBe('idle')
     expect(ACTIVE_WEATHER_POOL.length).toBe(10)
+    expect(SUNNY_COMPLETE_DURATION_MS).toBe(2000)
 
     notifyWeatherTaskStart('ai-chat')
     const first = canvasWeatherState.currentWeather.value
@@ -88,7 +96,10 @@ describe('canvasWeatherEngine', () => {
     notifyWeatherTaskComplete('ai-chat')
     expect(canvasWeatherState.currentWeather.value).toBe('sunny')
 
-    vi.advanceTimersByTime(8100)
+    vi.advanceTimersByTime(1900)
+    expect(canvasWeatherState.currentWeather.value).toBe('sunny')
+
+    vi.advanceTimersByTime(200)
     expect(canvasWeatherState.currentWeather.value).toBe('idle')
   })
 

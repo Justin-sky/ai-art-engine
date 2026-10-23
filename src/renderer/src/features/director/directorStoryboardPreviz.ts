@@ -23,6 +23,7 @@ import {
 import {
   buildHeuristicStoryboardLayout,
   buildStageObjectsFromWhiteModelSpec,
+  parseStoryboardSpatialRoles,
   planStoryboard3dLayoutWithLlm,
   type StoryboardSceneLayoutPlan
 } from './directorWhiteModelBuilder'
@@ -258,6 +259,118 @@ function inferPosePresetForActor(index: number, total: number): string {
   if (index === 0) return 'hand.pointRight'
   if (index === 1) return 'gaze.heroic'
   return 'gaze.combatReady'
+}
+
+interface ShotTimeCodedSegment {
+  relStart: number
+  relEnd: number
+  text: string
+}
+
+/**
+ * 解析分镜描述中的显式时间段（如 `0-1s：...；1-3s：...；3-5s：...`）。
+ */
+function parseShotTimeCodedSegments(shot: FilmShot, durSec: number): ShotTimeCodedSegment[] {
+  const combined = [shot.action ?? '', shot.videoPrompt ?? ''].filter(Boolean).join('；')
+  if (!combined) return []
+  const headerRegex = /(\d+(?:\.\d+)?)\s*[-~至到]\s*(\d+(?:\.\d+)?)\s*(?:s|sec|秒)\s*[：:，,]?/gi
+  const matches: Array<{ index: number; headerEnd: number; t0: number; t1: number }> = []
+  let m: RegExpExecArray | null
+  while ((m = headerRegex.exec(combined)) !== null) {
+    const t0 = Math.max(0, Math.min(durSec, Number(m[1]) || 0))
+    const t1 = Math.max(t0 + 0.2, Math.min(durSec, Number(m[2]) || durSec))
+    matches.push({
+      index: m.index,
+      headerEnd: m.index + m[0].length,
+      t0,
+      t1
+    })
+  }
+  if (matches.length === 0) return []
+  const out: ShotTimeCodedSegment[] = []
+  for (let i = 0; i < matches.length; i++) {
+    const cur = matches[i]
+    const nextStart = i + 1 < matches.length ? matches[i + 1].index : combined.length
+    const text = combined
+      .slice(cur.headerEnd, nextStart)
+      .replace(/^[：:，,\s]+|[；;。\s]+$/g, '')
+      .trim()
+    if (text) {
+      out.push({ relStart: cur.t0, relEnd: cur.t1, text })
+    }
+  }
+  return out
+}
+
+/**
+ * 将单个时间段内的描述子句按主语归属给各个角色（支持省略主语的子句继承前一句主语）。
+ */
+function mapSegmentClausesByActor(
+  segText: string,
+  actors: readonly StageObjectState[]
+): Map<string, string[]> {
+  const byActorId = new Map<string, string[]>()
+  const clauses = segText
+    .split(/[，,；;。]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+
+  let activeActor: StageObjectState | null = null
+  for (const clause of clauses) {
+    if (/^(?:机位|镜头|运镜|背景|画面|暖金色|冷色调|三人|两人|众人)/.test(clause)) {
+      activeActor = null
+      continue
+    }
+    let bestHit: { actor: StageObjectState; idx: number } | null = null
+    for (const actor of actors) {
+      const idx = clause.indexOf(actor.name)
+      if (idx >= 0 && (bestHit === null || idx < bestHit.idx)) {
+        bestHit = { actor, idx }
+      }
+    }
+    if (bestHit && bestHit.idx <= 4) {
+      activeActor = bestHit.actor
+    }
+    if (activeActor) {
+      const list = byActorId.get(activeActor.id) ?? []
+      list.push(clause)
+      byActorId.set(activeActor.id, list)
+    }
+  }
+  return byActorId
+}
+
+function pushActorKeyframeDedup(
+  list: DirectorAnimKeyframe[],
+  actorId: string,
+  time: number,
+  position: StageVec3,
+  rotation: StageVec3
+): void {
+  const tFixed = Number(time.toFixed(2))
+  const posFixed: StageVec3 = {
+    x: Number(position.x.toFixed(2)),
+    y: Number(position.y.toFixed(2)),
+    z: Number(position.z.toFixed(2))
+  }
+  const rotFixed: StageVec3 = {
+    x: Number(rotation.x.toFixed(2)),
+    y: Number(rotation.y.toFixed(2)),
+    z: Number(rotation.z.toFixed(2))
+  }
+  const prev = list[list.length - 1]
+  if (prev && Math.abs(prev.time - tFixed) < 0.04) {
+    prev.position = posFixed
+    prev.rotation = rotFixed
+    return
+  }
+  list.push({
+    id: `kf:sb:actor:${actorId}:${list.length}`,
+    time: tFixed,
+    position: posFixed,
+    rotation: rotFixed,
+    easing: 'easeInOut'
+  })
 }
 
 /**
@@ -512,8 +625,10 @@ export function compileStoryboardToDirectorStage(
   const cameraMoveTracks: DirectorAnimTrack[] = []
   const cutSegments: DirectorCameraCutSegment[] = []
   const actorClipMap = new Map<string, DirectorSkeletonClipSegment[]>()
+  const actorKeyframesMap = new Map<string, DirectorAnimKeyframe[]>()
   for (const actor of actors) {
     actorClipMap.set(actor.id, [])
+    actorKeyframesMap.set(actor.id, [])
   }
 
   let cursorSec = 0
@@ -524,6 +639,15 @@ export function compileStoryboardToDirectorStage(
     const endSec = Number((cursorSec + dur).toFixed(2))
     cursorSec = endSec
 
+    // 解析本镜空间角色关系（如「过肩（周敏肩前拍苏念）」、离画入画、逼近、右侧伴随等）
+    const shotRoles = parseStoryboardSpatialRoles([shot], characterNames)
+    const otsTargetActor = shotRoles.otsTargetActorName
+      ? actorByKey.get(filmNameKey(shotRoles.otsTargetActorName))
+      : undefined
+    const otsShoulderActor = shotRoles.otsShoulderActorName
+      ? actorByKey.get(filmNameKey(shotRoles.otsShoulderActorName))
+      : undefined
+
     // 解析本镜主焦点角色与对戏副角色
     const shotActors = (shot.characters ?? [])
       .map((name) => actorByKey.get(filmNameKey(canonicalCharacterName(name))))
@@ -533,8 +657,10 @@ export function compileStoryboardToDirectorStage(
       ? canonicalCharacterName(dialogueLines[0].speaker)
       : ''
     const speakerActor = speakerName ? actorByKey.get(filmNameKey(speakerName)) : undefined
-    const primaryActor = speakerActor ?? shotActors[0] ?? actors[idx % actors.length] ?? actors[0]
+    const primaryActor =
+      otsTargetActor ?? speakerActor ?? shotActors[0] ?? actors[idx % actors.length] ?? actors[0]
     const secondaryActor =
+      otsShoulderActor ??
       shotActors.find((a) => a.id !== primaryActor.id) ??
       actors.find((a) => a.id !== primaryActor.id) ??
       primaryActor
@@ -574,15 +700,31 @@ export function compileStoryboardToDirectorStage(
     let screenOffsetX = 0
     let screenOffsetY = lens.aimTargetPart === 'head' ? 0.04 : 0.02
 
+    const isDepthStaggeredOts =
+      /过肩|越肩|正反打|ots|over[-\s]*the[-\s]*shoulder/.test(angleRaw) &&
+      actors.length >= 2 &&
+      secondaryActor.position.z - primaryActor.position.z >= 0.35
+
     if (/过肩|越肩|正反打|ots|over[-\s]*the[-\s]*shoulder/.test(angleRaw) && actors.length >= 2) {
-      // 过肩机位：架在副角色肩膀外后方，拍主角色面部的三分之一构图位
-      const behindSign = secondaryActor.position.x <= primaryActor.position.x ? -1 : 1
-      camPos = {
-        x: Number((secondaryActor.position.x + behindSign * 0.42).toFixed(2)),
-        y: Number((baseY + 1.68).toFixed(2)),
-        z: 0.72
+      // 过肩机位：若前景肩部角色与中景焦点角色已有前后纵深差，架在前景角色内侧肩后；否则按左右轴线越肩架设
+      if (isDepthStaggeredOts) {
+        const innerShift = secondaryActor.position.x <= primaryActor.position.x ? 0.16 : -0.16
+        camPos = {
+          x: Number((secondaryActor.position.x + innerShift).toFixed(2)),
+          y: Number((baseY + 1.56).toFixed(2)),
+          z: Number((secondaryActor.position.z + 0.97).toFixed(2))
+        }
+        screenOffsetX = secondaryActor.position.x <= primaryActor.position.x ? -0.06 : 0.06
+        screenOffsetY = -0.02
+      } else {
+        const behindSign = secondaryActor.position.x <= primaryActor.position.x ? -1 : 1
+        camPos = {
+          x: Number((secondaryActor.position.x + behindSign * 0.42).toFixed(2)),
+          y: Number((baseY + 1.68).toFixed(2)),
+          z: 0.72
+        }
+        screenOffsetX = behindSign < 0 ? 0.16 : -0.16
       }
-      screenOffsetX = behindSign < 0 ? 0.16 : -0.16
     } else if (/主观|第一人称|pov|point\s*of\s*view/.test(angleRaw) && actors.length >= 2) {
       // 主观视角：从副角色眼睛位置看向主角色
       const dirSign = secondaryActor.position.x <= primaryActor.position.x ? 1 : -1
@@ -620,6 +762,12 @@ export function compileStoryboardToDirectorStage(
       .filter(Boolean)
     const camName = camLabelParts.join(' · ') || (isZh ? `镜头 ${idx + 1}` : `Shot ${idx + 1}`)
 
+    // 多人纵深过肩或 ≥3 人同场时采用宽视场角（62° 垂直 FOV），确保前景肩背、中景焦点与后景多人即使在 9:16 竖屏安全框内也完整同框；同时保留 focalLengthMm 用于影视焦段语义描述
+    const effectiveFov =
+      isDepthStaggeredOts || (actors.length >= 3 && lens.focalLengthMm <= 50)
+        ? Math.max(62, focalLengthMmToFovDeg(lens.focalLengthMm))
+        : focalLengthMmToFovDeg(lens.focalLengthMm)
+
     const cameraState: DirectorCameraState = {
       id: camId,
       name: camName,
@@ -629,7 +777,7 @@ export function compileStoryboardToDirectorStage(
         position: { ...camPos },
         target: { ...focusCenter },
         rotation: directorViewerRotationFromLook(camPos, focusCenter),
-        fov: focalLengthMmToFovDeg(lens.focalLengthMm),
+        fov: effectiveFov,
         focalLengthMm: lens.focalLengthMm,
         aperture: lens.aperture,
         focusDistance: Number(
@@ -689,8 +837,8 @@ export function compileStoryboardToDirectorStage(
     if (hasMove) {
       const endPos = { ...camPos }
       let endFov = cameraState.viewer.fov
-      if (/推|推进|靠近|dolly\s*in|push\s*in|zoom\s*in/.test(moveRaw)) {
-        const pushFactor = 0.68
+      if (/推|推进|靠近|收紧|dolly\s*in|push\s*in|zoom\s*in/.test(moveRaw)) {
+        const pushFactor = 0.67
         endPos.x = Number((focusCenter.x + (camPos.x - focusCenter.x) * pushFactor).toFixed(2))
         endPos.z = Number((focusCenter.z + (camPos.z - focusCenter.z) * pushFactor).toFixed(2))
       } else if (/拉|拉远|后退|dolly\s*out|pull\s*back|pull\s*out|zoom\s*out/.test(moveRaw)) {
@@ -764,52 +912,257 @@ export function compileStoryboardToDirectorStage(
       ...(isSmoothBlend ? { blendInSec: Math.min(0.8, dur * 0.3), blendCurve: 'easeInOut' } : {})
     })
 
-    // 为每位演员添加本镜区间内的骨骼动作片段
-    for (const actor of actors) {
-      const clipName = inferActorClipForShot(
-        shot,
-        actor.name,
-        actor.id === primaryActor.id,
-        actorPostureById.get(actor.id)
-      )
-      const list = actorClipMap.get(actor.id) ?? []
+    // 解析分镜内时间码调度（如 0-1s / 1-3s / 3-5s / 5-7s / 7-8s）并生成演员走位关键帧与骨骼动作轨
+    const timeSegs = parseShotTimeCodedSegments(shot, dur)
+    const appendActorClip = (
+      actorId: string,
+      clipName: string,
+      segStart: number,
+      segEnd: number
+    ): void => {
+      const sFixed = Number(segStart.toFixed(2))
+      const eFixed = Number(segEnd.toFixed(2))
+      if (eFixed - sFixed < 0.05) return
+      const list = actorClipMap.get(actorId) ?? []
       const prevSeg = list[list.length - 1]
-      if (prevSeg && prevSeg.clip === clipName && Math.abs(prevSeg.end - startSec) < 0.05) {
-        prevSeg.end = endSec
+      if (prevSeg && prevSeg.clip === clipName && Math.abs(prevSeg.end - sFixed) < 0.06) {
+        prevSeg.end = eFixed
       } else {
         list.push({
-          id: `sk:sb:${actor.id}:${shot.id}`,
+          id: `sk:sb:${actorId}:${shot.id}:${list.length}`,
           clip: clipName,
-          start: startSec,
-          end: endSec,
+          start: sFixed,
+          end: eFixed,
           speed: 1,
           loop: true,
           crossFadeSec: 0.25
         })
       }
-      actorClipMap.set(actor.id, list)
+      actorClipMap.set(actorId, list)
+    }
+
+    const curActorPosMap = new Map<string, StageVec3>()
+    const curActorRotMap = new Map<string, StageVec3>()
+    for (const actor of actors) {
+      const aKey = filmNameKey(actor.name)
+      const hint = shotRoles.actorHints.get(aKey)
+      const homePos = { ...actor.position }
+      const homeRot = { ...actor.rotation }
+      let initPos = { ...homePos }
+      let initRot = { ...homeRot }
+
+      if (hint?.entersFrom === 'left' || (hint?.startsOffFrame && hint?.entersFrom !== 'right')) {
+        initPos = {
+          x: -0.72,
+          y: homePos.y,
+          z: Number((homePos.z + 0.1).toFixed(2))
+        }
+        initRot = { x: 0, y: Number((Math.PI * 0.42).toFixed(2)), z: 0 }
+      } else if (hint?.entersFrom === 'right') {
+        initPos = {
+          x: 0.72,
+          y: homePos.y,
+          z: Number((homePos.z + 0.1).toFixed(2))
+        }
+        initRot = { x: 0, y: Number((-Math.PI * 0.42).toFixed(2)), z: 0 }
+      }
+
+      curActorPosMap.set(actor.id, initPos)
+      curActorRotMap.set(actor.id, initRot)
+      const kfList = actorKeyframesMap.get(actor.id) ?? []
+      pushActorKeyframeDedup(kfList, actor.id, startSec, initPos, initRot)
+      actorKeyframesMap.set(actor.id, kfList)
+    }
+
+    if (timeSegs.length >= 2) {
+      for (const seg of timeSegs) {
+        const absStart = Number((startSec + seg.relStart).toFixed(2))
+        const absEnd = Number((startSec + seg.relEnd).toFixed(2))
+        const clausesByActor = mapSegmentClausesByActor(seg.text, actors)
+        const isTriangleBeat = /压迫三角|形成.*三角|合围/.test(seg.text)
+
+        for (const actor of actors) {
+          const aKey = filmNameKey(actor.name)
+          const hint = shotRoles.actorHints.get(aKey)
+          const kfList = actorKeyframesMap.get(actor.id) ?? []
+          const curPos = curActorPosMap.get(actor.id) ?? { ...actor.position }
+          const curRot = curActorRotMap.get(actor.id) ?? { ...actor.rotation }
+          const actorClauses = (clausesByActor.get(actor.id) ?? []).join('，')
+
+          const isOffFrameHold = /未入画|画面外|场外|画外|待入画/.test(actorClauses)
+          const isEntering =
+            !isOffFrameHold &&
+            /从(?:画面)?(?:左|右)侧入画|从(?:左|右)(?:边|侧)?(?:走入|进入|入画)|走入画面/.test(
+              actorClauses
+            )
+          const isApproaching = /迎着镜头逼近|向镜头逼近|上前一步|往前一步|逼近|走近|踏前/.test(
+            actorClauses
+          )
+          const isEmbracing = /搂紧|揽住|拥抱|靠拢/.test(actorClauses)
+          const isSpeaking = /回应|逼问|台词|劝话|嘲讽|质问|说|道/.test(actorClauses)
+
+          if (isEntering) {
+            pushActorKeyframeDedup(kfList, actor.id, absStart, curPos, curRot)
+            const nextPos = { ...actor.position }
+            const nextRot = { ...actor.rotation }
+            curActorPosMap.set(actor.id, nextPos)
+            curActorRotMap.set(actor.id, nextRot)
+            pushActorKeyframeDedup(kfList, actor.id, absEnd, nextPos, nextRot)
+            if (isSpeaking && absEnd - absStart >= 1.2) {
+              const midSec = Number((absStart + (absEnd - absStart) * 0.6).toFixed(2))
+              appendActorClip(actor.id, 'Walk', absStart, midSec)
+              appendActorClip(actor.id, 'Talk', midSec, absEnd)
+            } else {
+              appendActorClip(actor.id, 'Walk', absStart, absEnd)
+            }
+          } else if (isApproaching) {
+            pushActorKeyframeDedup(kfList, actor.id, absStart, curPos, curRot)
+            const dx = (primaryActor.position.x - curPos.x) * 0.25
+            const dz = (primaryActor.position.z - curPos.z) * 0.28
+            const nextPos: StageVec3 = {
+              x: Number((curPos.x + dx).toFixed(2)),
+              y: curPos.y,
+              z: Number((curPos.z + dz).toFixed(2))
+            }
+            curActorPosMap.set(actor.id, nextPos)
+            pushActorKeyframeDedup(kfList, actor.id, absEnd, nextPos, curRot)
+            appendActorClip(actor.id, 'Walk', absStart, absEnd)
+          } else if (isEmbracing) {
+            pushActorKeyframeDedup(kfList, actor.id, absStart, curPos, curRot)
+            const compActor = hint?.companionActorKey
+              ? actorByKey.get(hint.companionActorKey)
+              : undefined
+            const compPos = compActor
+              ? (curActorPosMap.get(compActor.id) ?? compActor.position)
+              : null
+            const nextPos: StageVec3 = compPos
+              ? {
+                  x: Number((compPos.x + (curPos.x >= compPos.x ? 0.22 : -0.22)).toFixed(2)),
+                  y: curPos.y,
+                  z: Number((compPos.z - 0.03).toFixed(2))
+                }
+              : {
+                  x: Number((curPos.x - 0.16).toFixed(2)),
+                  y: curPos.y,
+                  z: Number((curPos.z + 0.05).toFixed(2))
+                }
+            curActorPosMap.set(actor.id, nextPos)
+            pushActorKeyframeDedup(kfList, actor.id, absEnd, nextPos, curRot)
+            appendActorClip(actor.id, isSpeaking ? 'Talk' : 'Wave', absStart, absEnd)
+          } else if (isTriangleBeat && actor.id !== primaryActor.id) {
+            pushActorKeyframeDedup(kfList, actor.id, absStart, curPos, curRot)
+            const nextPos: StageVec3 = {
+              x: Number((curPos.x + (primaryActor.position.x - curPos.x) * 0.08).toFixed(2)),
+              y: curPos.y,
+              z: Number((curPos.z + (primaryActor.position.z - curPos.z) * 0.08).toFixed(2))
+            }
+            curActorPosMap.set(actor.id, nextPos)
+            pushActorKeyframeDedup(kfList, actor.id, absEnd, nextPos, curRot)
+            appendActorClip(actor.id, isSpeaking ? 'Talk' : 'Idle', absStart, absEnd)
+          } else {
+            appendActorClip(actor.id, isSpeaking ? 'Talk' : 'Idle', absStart, absEnd)
+          }
+          actorKeyframesMap.set(actor.id, kfList)
+        }
+      }
+      // 确保每位演员在本镜末尾有收尾关键帧
+      for (const actor of actors) {
+        const kfList = actorKeyframesMap.get(actor.id) ?? []
+        const curPos = curActorPosMap.get(actor.id) ?? { ...actor.position }
+        const curRot = curActorRotMap.get(actor.id) ?? { ...actor.rotation }
+        if (kfList.length >= 2) {
+          pushActorKeyframeDedup(kfList, actor.id, endSec, curPos, curRot)
+        }
+      }
+    } else {
+      // 无显式时间码分段时：为每位演员推断本镜骨骼片段，并为位移型动作生成起止关键帧
+      for (const actor of actors) {
+        const clipName = inferActorClipForShot(
+          shot,
+          actor.name,
+          actor.id === primaryActor.id,
+          actorPostureById.get(actor.id)
+        )
+        appendActorClip(actor.id, clipName, startSec, endSec)
+
+        const aKey = filmNameKey(actor.name)
+        const hint = shotRoles.actorHints.get(aKey)
+        const kfList = actorKeyframesMap.get(actor.id) ?? []
+        const curPos = curActorPosMap.get(actor.id) ?? { ...actor.position }
+        const curRot = curActorRotMap.get(actor.id) ?? { ...actor.rotation }
+
+        if (hint?.entersFrom || hint?.startsOffFrame) {
+          pushActorKeyframeDedup(
+            kfList,
+            actor.id,
+            endSec,
+            { ...actor.position },
+            { ...actor.rotation }
+          )
+        } else if (hint?.approachesCamera && actor.id !== primaryActor.id) {
+          const nextPos: StageVec3 = {
+            x: Number((curPos.x + (primaryActor.position.x - curPos.x) * 0.26).toFixed(2)),
+            y: curPos.y,
+            z: Number((curPos.z + (primaryActor.position.z - curPos.z) * 0.26).toFixed(2))
+          }
+          pushActorKeyframeDedup(kfList, actor.id, endSec, nextPos, curRot)
+        } else if (clipName === 'Run' || clipName === 'Sprint' || clipName === 'Walk') {
+          const distStep = clipName === 'Walk' ? 0.55 : 1.15
+          const nextPos: StageVec3 = {
+            x: Number((curPos.x + Math.sin(curRot.y) * distStep).toFixed(2)),
+            y: curPos.y,
+            z: Number((curPos.z + Math.cos(curRot.y) * distStep).toFixed(2))
+          }
+          pushActorKeyframeDedup(kfList, actor.id, endSec, nextPos, curRot)
+        }
+        actorKeyframesMap.set(actor.id, kfList)
+      }
     }
   }
 
   const totalDurationSec = Math.max(2, Number(cursorSec.toFixed(2)))
-  const actorTracks: DirectorAnimTrack[] = actors.map((actor) => ({
-    id: `track:sb:actor:${actor.id}`,
-    name: isZh ? `${actor.name} 表演轨` : `${actor.name} Performance`,
-    targetKind: 'object',
-    targetId: actor.id,
-    start: 0,
-    end: totalDurationSec,
-    path: null,
-    keyframes: [
-      {
-        id: `kf:sb:actor:${actor.id}:0`,
-        time: 0,
-        position: { ...actor.position },
-        rotation: { ...actor.rotation }
+  const actorTracks: DirectorAnimTrack[] = actors.map((actor) => {
+    const rawKfs = actorKeyframesMap.get(actor.id) ?? []
+    const keyframes: DirectorAnimKeyframe[] =
+      rawKfs.length > 0
+        ? rawKfs
+        : [
+            {
+              id: `kf:sb:actor:${actor.id}:0`,
+              time: 0,
+              position: { ...actor.position },
+              rotation: { ...actor.rotation }
+            }
+          ]
+    const distinctPoints: StageVec3[] = []
+    for (const kf of keyframes) {
+      const prev = distinctPoints[distinctPoints.length - 1]
+      if (
+        !prev ||
+        Math.hypot(kf.position.x - prev.x, kf.position.y - prev.y, kf.position.z - prev.z) > 0.04
+      ) {
+        distinctPoints.push({ ...kf.position })
       }
-    ],
-    skeletonClips: actorClipMap.get(actor.id) ?? []
-  }))
+    }
+    const hasSpatialMove = distinctPoints.length >= 2
+    return {
+      id: `track:sb:actor:${actor.id}`,
+      name: isZh ? `${actor.name} 表演轨` : `${actor.name} Performance`,
+      targetKind: 'object',
+      targetId: actor.id,
+      start: 0,
+      end: totalDurationSec,
+      path: hasSpatialMove
+        ? {
+            kind: distinctPoints.length > 2 ? 'pen' : 'line',
+            points: distinctPoints,
+            closed: false
+          }
+        : null,
+      keyframes,
+      skeletonClips: actorClipMap.get(actor.id) ?? []
+    }
+  })
 
   const cutTrack: DirectorAnimTrack = {
     id: 'track:sb:cuts',
@@ -962,6 +1315,17 @@ export function canReuseCompiledStoryboardStage(
     const expectedDur = Math.max(1, Math.min(30, Number(shot.durationSec) || 4))
     const seg = cutSegments.find((s) => s.id === `${STORYBOARD_CUT_ID_PREFIX}${shot.id}`)
     if (!seg || Math.abs(seg.end - seg.start - expectedDur) > 0.05) return false
+
+    if (characterNames.length >= 3 && (cam.viewer.fov ?? 45) < 55) {
+      return false
+    }
+
+    if (parseShotTimeCodedSegments(shot, expectedDur).length >= 2) {
+      const hasAnimatedActorTrack = (currentStage.animation?.tracks ?? []).some(
+        (tr) => tr.targetKind === 'object' && (tr.keyframes?.length ?? 0) >= 2
+      )
+      if (!hasAnimatedActorTrack) return false
+    }
   }
 
   for (const charName of characterNames) {

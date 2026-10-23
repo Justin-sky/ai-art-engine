@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultDirectorStage } from '../src/shared/domain'
+import { resolveShotCinematographyFromDirectorStage } from '../src/shared/directorCinematography'
 import {
   FILM_STORYBOARD_SCHEMA,
   composeFilmShotImagePrompt,
@@ -593,5 +594,114 @@ describe('directorStoryboardPreviz', () => {
       'Jump',
       'Dance'
     ])
+  })
+
+  it('compiles depth-layered OTS standoff blocking, multi-keyframe character movement tracks, and accurate camera-local dolly trajectory', () => {
+    const baseStage = createDefaultDirectorStage()
+    const sb: FilmStoryboard = {
+      schema: FILM_STORYBOARD_SCHEMA,
+      title: '订婚宴逼问',
+      logline: '周敏逼讨彩礼，林薇入画挽住陆景明，三人对苏念形成压迫三角',
+      aspectRatio: '16:9',
+      style: '写实电影感',
+      entities: [
+        { id: 'C1', name: '周敏', kind: 'character', description: '强势贵妇' },
+        { id: 'C2', name: '苏念', kind: 'character', description: '女主，冷静隐忍' },
+        { id: 'C3', name: '林薇', kind: 'character', description: '绿茶女配' },
+        { id: 'C4', name: '陆景明', kind: 'character', description: '傲慢未婚夫' }
+      ],
+      scenes: [
+        {
+          id: 'S01',
+          order: 1,
+          heading: 'INT. 宴会厅 - 夜',
+          location: '宴会厅',
+          time: '夜',
+          summary: '周敏逼问苏念'
+        }
+      ],
+      shots: [
+        {
+          id: 'S01-02',
+          order: 2,
+          sceneId: 'S01',
+          title: '周敏肩前拍苏念过肩推镜',
+          durationSec: 8,
+          shotSize: 'MS',
+          angle: '过肩（周敏肩前拍苏念）',
+          cameraMove: '推（缓慢收紧至两人脸部）',
+          location: '宴会厅',
+          characters: ['周敏', '苏念', '林薇', '陆景明'],
+          props: [],
+          action:
+            '0-1s：苏念平静回应，周敏迎着镜头逼近，机位缓慢推近，林薇位置未入画，陆景明在林薇右侧；1-3s：周敏说出逼讨彩礼台词，脸上露出威胁神色，苏念仍不后退；3-5s：林薇从画面左侧入画，挽住右侧陆景明，用细软声音劝话；5-7s：陆景明搂紧林薇，嘲讽完毕，视线关系保持一致；7-8s：机位推至两人脸部，暖金色背景虚化，三人形成压迫三角。',
+          dialogue: [
+            { speaker: '苏念', line: '伯母，话别说死。' },
+            {
+              speaker: '周敏',
+              line: '彩礼呢？陆家的东西，你一样都别想带走。现在交出来，别逼我让保安动手。'
+            },
+            { speaker: '林薇', line: '景明，别这样对苏小姐，她一个女孩子，多难堪呀。' },
+            { speaker: '陆景明', line: '难堪？她这种人，最懂怎么装可怜。' }
+          ],
+          sound: '周敏趾尖点地声，林薇鞋跟声',
+          transition: '硬切',
+          imagePrompt: '',
+          videoPrompt: '',
+          status: 'draft'
+        }
+      ]
+    }
+
+    const res = compileStoryboardToDirectorStage(baseStage, sb, { shotId: 'S01-02' })
+    const chars = res.stage.objects.filter((o) => o.kind === 'character')
+    const byName = new Map(chars.map((c) => [c.name, c]))
+    const zhouMin = byName.get('周敏')!
+    const suNian = byName.get('苏念')!
+    const linWei = byName.get('林薇')!
+    const luJingMing = byName.get('陆景明')!
+
+    // 1. 纵深分层站位（非一字排开）：周敏在前景左侧，苏念在中景中央，林薇与陆景明在远景右侧且陆景明在林薇右侧
+    expect(zhouMin.position.z).toBeGreaterThan(0.3)
+    expect(zhouMin.position.x).toBeLessThan(-0.2)
+    expect(Math.abs(suNian.position.x)).toBeLessThan(0.2)
+    expect(suNian.position.z).toBeLessThan(0)
+    expect(linWei.position.z).toBeLessThan(-0.7)
+    expect(luJingMing.position.z).toBeLessThan(-0.7)
+    expect(luJingMing.position.x).toBeGreaterThan(linWei.position.x)
+
+    // 2. 演员表演轨具有多关键帧位移与轨迹线（周敏 0-1s 逼近、林薇 0-3s 左侧待入画 -> 3-5s 从左侧入画、陆景明 5-7s 搂紧林薇）
+    const zhouTrack = res.stage.animation?.tracks.find((t) => t.targetId === zhouMin.id)!
+    const linTrack = res.stage.animation?.tracks.find((t) => t.targetId === linWei.id)!
+    const luTrack = res.stage.animation?.tracks.find((t) => t.targetId === luJingMing.id)!
+    expect(zhouTrack.keyframes.length).toBeGreaterThanOrEqual(3)
+    expect(zhouTrack.path).not.toBeNull()
+    expect(linTrack.keyframes.length).toBeGreaterThanOrEqual(3)
+    expect(linTrack.path).not.toBeNull()
+    // 林薇在 0s 和 3s 处于左侧边缘（x < -0.65），5s 入画到达陆景明左侧（x >= 0.25）
+    expect(linTrack.keyframes[0].position.x).toBeLessThan(-0.65)
+    const kfAt3s = linTrack.keyframes.find((k) => Math.abs(k.time - 3) < 0.1)!
+    const kfAt5s = linTrack.keyframes.find((k) => Math.abs(k.time - 5) < 0.1)!
+    expect(kfAt3s.position.x).toBeLessThan(-0.65)
+    expect(kfAt5s.position.x).toBeGreaterThanOrEqual(0.25)
+    expect(luTrack.keyframes.length).toBeGreaterThanOrEqual(3)
+
+    // 2b. 相机视口可见性校验（即使在 9:16 竖屏安全框下，4 位角色也均在镜头视锥体内，不会只看到苏念一人）
+    const shotCam = res.stage.cameras?.[0]!
+    expect(shotCam.viewer.fov).toBeGreaterThanOrEqual(60)
+    expect(shotCam.viewer.focalLengthMm).toBe(50)
+
+    // 3. 反推生成的 3D 运镜提示词准确反映过肩机位、无伪横移、且包含角色逼近与入画空间方位
+    const cine = resolveShotCinematographyFromDirectorStage(res.stage, 'S01-02')!
+    expect(cine).not.toBeNull()
+    expect(cine.cameraAngleZh).toContain('过肩（周敏肩前拍苏念）')
+    expect(cine.videoSpecZh).toContain('机位距离由 1.8m 推近至 1.2m')
+    expect(cine.videoSpecZh).toContain('注视焦点锁定「苏念」')
+    expect(cine.videoSpecZh).not.toContain('向右横移')
+    expect(cine.videoSpecZh).not.toContain('向左横移')
+    expect(cine.subjectsZh).toContain('周敏（位于前景画面左侧并向镜头逼近）')
+    expect(cine.subjectsZh).toContain('苏念（位于中景画面中央）')
+    expect(cine.subjectsZh).toContain('林薇（由画面左侧入画移至远景画面右侧）')
+    expect(cine.subjectsZh).toContain('陆景明（位于远景画面右侧）')
   })
 })
