@@ -5,6 +5,7 @@ import {
   appendImageTransparentBgPrompt,
   createNodeFromType,
   executeImageGenerateNode,
+  IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH,
   IMAGE_TRANSPARENT_BG_PROMPT_EN,
   IMAGE_TRANSPARENT_BG_PROMPT_ZH,
   imageGenerateParamsToNodePatch,
@@ -118,10 +119,58 @@ describe('applyBorderFloodColorKey', () => {
     const sampled = samplePerimeterBackgroundColor(rgba, w, h)
     expect(sampled).toEqual({ r: 240, g: 242, b: 245 })
   })
+
+  it('floods smooth ambient background shadows to zero alpha without leaking across silver-gray hair outlines', () => {
+    // 16x9 画布：
+    // x = 0..5：从纯白 (255,255,255) 平滑渐暗至 (200,200,200) 的凹陷环境阴影（每像素步差 ~9，总色距 55 > distance=40）
+    // x = 6：浅银灰发丝描边 (198,198,204)（与背景有明显阶跃）
+    // x = 7..10：角色内部纯白发丝 (248,248,252)
+    // x = 11..15：右侧纯白背景 (255,255,255)，在 x=11 处为深色描边 (40,40,50)
+    const w = 16
+    const h = 9
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4
+        const inSubjectY = y >= 2 && y <= 6
+        if (!inSubjectY || x >= 12) {
+          rgba[i] = 255
+          rgba[i + 1] = 255
+          rgba[i + 2] = 255
+          rgba[i + 3] = 255
+        } else if (x <= 5) {
+          // 凹陷处平滑环境阴影：从 255 渐变到 205
+          const v = 255 - x * 9
+          rgba[i] = v
+          rgba[i + 1] = v
+          rgba[i + 2] = v
+          rgba[i + 3] = 255
+        } else if (x === 6 || x === 11 || y === 2 || y === 6) {
+          // 银灰发丝闭合外描边（相对相邻背景存在明显阶跃）
+          rgba[i] = 175
+          rgba[i + 1] = 178
+          rgba[i + 2] = 188
+          rgba[i + 3] = 255
+        } else {
+          // 内部纯白发丝 (x = 7..10, y = 3..5)
+          rgba[i] = 248
+          rgba[i + 1] = 248
+          rgba[i + 2] = 252
+          rgba[i + 3] = 255
+        }
+      }
+    }
+
+    applyBorderFloodColorKey(rgba, w, h, { distance: 40, feather: 34, soft: true })
+    // 凹陷处平滑阴影 x=5 (v=210, dist=45 > 40) 必须被彻底泛洪置为 alpha=0，不残留半透明白雾
+    expect(rgba[(4 * w + 5) * 4 + 3]).toBe(0)
+    // 角色内部的纯白发丝 x=8 绝不被穿透，保持完全不透明 255
+    expect(rgba[(4 * w + 8) * 4 + 3]).toBe(255)
+  })
 })
 
 describe('executeImageGenerateNode with generateTransparentBg', () => {
-  function makeNode(generateTransparentBg: boolean): GraphNode {
+  function makeNode(generateTransparentBg?: boolean, generateModel?: string): GraphNode {
     return {
       id: 'img-1',
       category: 'asset',
@@ -131,153 +180,88 @@ describe('executeImageGenerateNode with generateTransparentBg', () => {
       position: { x: 0, y: 0 },
       params: {
         generateInstruction: '一瓶红色治疗药水',
-        generateTransparentBg
+        ...(generateTransparentBg !== undefined ? { generateTransparentBg } : {}),
+        ...(generateModel ? { generateModel } : {})
       }
     }
   }
 
-  it('appends solid-bg prompt and applies removeImageSolidBackground when generateTransparentBg is true', async () => {
+  it('enables transparentBackground by default without post-generation background removal, generating transparent images on supported models and normal opaque images on unsupported models', async () => {
     const generateImage = vi.fn(async () => ({
-      images: ['data:image/png;base64,RAW_SOLID'],
-      model: 'test-model'
+      images: ['data:image/png;base64,MODEL_OUTPUT'],
+      model: 'gpt-image-1'
     }))
-    const removeImageSolidBackground = vi.fn(async () => ({
-      dataUrl: 'data:image/png;base64,KEYED_RGBA',
-      width: 512,
-      height: 512,
-      keyedRatio: 0.45
-    }))
+    const removeImageSolidBackground = vi.fn()
     const composeImageCutoutCanvas = vi.fn()
 
-    const ctx: NodeExecuteContext = {
-      node: makeNode(true),
+    // 1. Default (omitted generateTransparentBg) + Native transparent model (e.g. gpt-image-1) -> native transparent prompt + transparentBackground: true, no post-processing
+    const outNative = await executeImageGenerateNode({
+      node: makeNode(undefined, 'gpt-image-1'),
       inputs: {},
       locale: 'zh-CN',
       generateImage,
       removeImageSolidBackground,
       composeImageCutoutCanvas
-    }
-
-    const out = await executeImageGenerateNode(ctx)
-    expect(generateImage).toHaveBeenCalledOnce()
-    expect(generateImage.mock.calls[0]![0].prompt).toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
-    expect(removeImageSolidBackground).toHaveBeenCalledWith({
-      dataUrl: 'data:image/png;base64,RAW_SOLID'
     })
+    expect(generateImage).toHaveBeenCalledTimes(1)
+    expect(generateImage.mock.calls[0]![0].prompt).toContain(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH)
+    expect(generateImage.mock.calls[0]![0].transparentBackground).toBe(true)
+    expect(removeImageSolidBackground).not.toHaveBeenCalled()
+    expect(composeImageCutoutCanvas).not.toHaveBeenCalled()
+    expect(outNative.out).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,MODEL_OUTPUT'
+    })
+
+    // 2. Non-transparent model (e.g. seedream-3.0) with transparentBg enabled -> no special prompt or post-processing, generates opaque image directly
+    const outOpaqueModel = await executeImageGenerateNode({
+      node: makeNode(true, 'seedream-3.0'),
+      inputs: {},
+      locale: 'zh-CN',
+      generateImage,
+      removeImageSolidBackground,
+      composeImageCutoutCanvas
+    })
+    expect(generateImage).toHaveBeenCalledTimes(2)
+    expect(generateImage.mock.calls[1]![0].prompt).not.toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
+    expect(generateImage.mock.calls[1]![0].prompt).not.toContain(
+      IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH
+    )
+    expect(generateImage.mock.calls[1]![0].transparentBackground).toBe(true)
+    expect(removeImageSolidBackground).not.toHaveBeenCalled()
+    expect(composeImageCutoutCanvas).not.toHaveBeenCalled()
+    expect(outOpaqueModel.out).toMatchObject({
+      kind: 'image',
+      dataUrl: 'data:image/png;base64,MODEL_OUTPUT'
+    })
+  })
+
+  it('does not request transparent background when generateTransparentBg is false or prompt explicitly asks for opaque background', async () => {
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,RAW_OPAQUE'],
+      model: 'gpt-image-1'
+    }))
+    const removeImageSolidBackground = vi.fn()
+    const composeImageCutoutCanvas = vi.fn()
+
+    const out = await executeImageGenerateNode({
+      node: makeNode(false, 'gpt-image-1'),
+      inputs: {},
+      locale: 'zh-CN',
+      generateImage,
+      removeImageSolidBackground,
+      composeImageCutoutCanvas
+    })
+    expect(generateImage).toHaveBeenCalledOnce()
+    expect(generateImage.mock.calls[0]![0].prompt).not.toContain(
+      IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH
+    )
+    expect(generateImage.mock.calls[0]![0].transparentBackground).toBeUndefined()
+    expect(removeImageSolidBackground).not.toHaveBeenCalled()
     expect(composeImageCutoutCanvas).not.toHaveBeenCalled()
     expect(out.out).toMatchObject({
       kind: 'image',
-      dataUrl: 'data:image/png;base64,KEYED_RGBA'
-    })
-  })
-
-  it('falls back to composeImageCutoutCanvas when solid background keying ratio is too low', async () => {
-    const generateImage = vi.fn(async () => ({
-      images: ['data:image/png;base64,RAW_COMPLEX'],
-      model: 'test-model'
-    }))
-    const removeImageSolidBackground = vi.fn(async () => ({
-      dataUrl: 'data:image/png;base64,RAW_COMPLEX',
-      width: 512,
-      height: 512,
-      keyedRatio: 0.005
-    }))
-    const composeImageCutoutCanvas = vi.fn(async () => ({
-      dataUrl: 'data:image/png;base64,YOLO_CUTOUT_RGBA',
-      width: 512,
-      height: 512
-    }))
-
-    const ctx: NodeExecuteContext = {
-      node: makeNode(true),
-      inputs: {},
-      locale: 'zh-CN',
-      generateImage,
-      removeImageSolidBackground,
-      composeImageCutoutCanvas
-    }
-
-    const out = await executeImageGenerateNode(ctx)
-    expect(removeImageSolidBackground).toHaveBeenCalledOnce()
-    expect(composeImageCutoutCanvas).toHaveBeenCalledWith({
-      sourceDataUrl: 'data:image/png;base64,RAW_COMPLEX',
-      state: {
-        confThreshold: 0.25,
-        threshold: 0.5,
-        feather: 2,
-        cropToSubject: false,
-        personOnly: false,
-        selected: null
-      }
-    })
-    expect(out.out).toMatchObject({
-      kind: 'image',
-      dataUrl: 'data:image/png;base64,YOLO_CUTOUT_RGBA'
-    })
-  })
-
-  it('defaults to transparent background when generateTransparentBg is omitted, and bypasses keying when prompt explicitly asks for opaque background', async () => {
-    const generateImage = vi.fn(async () => ({
-      images: ['data:image/png;base64,RAW_IMG'],
-      model: 'test-model'
-    }))
-    const removeImageSolidBackground = vi.fn(async () => ({
-      dataUrl: 'data:image/png;base64,KEYED_RGBA',
-      width: 512,
-      height: 512,
-      keyedRatio: 0.4
-    }))
-
-    // 1. Omitted generateTransparentBg -> defaults to transparent background
-    const defaultNode: GraphNode = {
-      id: 'img-default',
-      category: 'asset',
-      typeId: 'asset.image',
-      assetType: 'image',
-      title: 'Image',
-      position: { x: 0, y: 0 },
-      params: {
-        generateInstruction: '游戏技能图标：冰霜新星'
-      }
-    }
-    const out1 = await executeImageGenerateNode({
-      node: defaultNode,
-      inputs: {},
-      locale: 'zh-CN',
-      generateImage,
-      removeImageSolidBackground
-    })
-    expect(generateImage.mock.calls[0]![0].prompt).toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
-    expect(removeImageSolidBackground).toHaveBeenCalledTimes(1)
-    expect(out1.out).toMatchObject({
-      kind: 'image',
-      dataUrl: 'data:image/png;base64,KEYED_RGBA'
-    })
-
-    // 2. Prompt explicitly requests non-transparent background -> bypasses transparent prompt & keying
-    const opaqueNode: GraphNode = {
-      id: 'img-opaque',
-      category: 'asset',
-      typeId: 'asset.image',
-      assetType: 'image',
-      title: 'Image',
-      position: { x: 0, y: 0 },
-      params: {
-        generateInstruction: '江南雨巷全景，要求非透明背景，保留完整环境背景'
-      }
-    }
-    const out2 = await executeImageGenerateNode({
-      node: opaqueNode,
-      inputs: {},
-      locale: 'zh-CN',
-      generateImage,
-      removeImageSolidBackground
-    })
-    expect(generateImage.mock.calls[1]![0].prompt).not.toContain(IMAGE_TRANSPARENT_BG_PROMPT_ZH)
-    expect(removeImageSolidBackground).toHaveBeenCalledTimes(1)
-    expect(out2.out).toMatchObject({
-      kind: 'image',
-      dataUrl: 'data:image/png;base64,RAW_IMG'
+      dataUrl: 'data:image/png;base64,RAW_OPAQUE'
     })
   })
 })

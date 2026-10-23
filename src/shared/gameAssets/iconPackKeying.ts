@@ -196,6 +196,49 @@ export interface BorderFloodKeyResult {
   keyedPixels: number
   /** 被键控像素占整图比例 0..1 */
   keyedRatio: number
+  /** 原图是否自带原生透明背景（由支持透明出图的模型直接生成，无需二次抠底或 YOLO 处理） */
+  nativeTransparent?: boolean
+}
+
+/**
+ * 检测图像是否已经自带原生透明背景（如 gpt-image-1 / recraft 等模型直接产出的 RGBA 透明 PNG）：
+ * - 画布四周边框像素中已有 >= 5% 的透明/半透明像素（alpha < 245），或
+ * - 全图采样中已有 >= 1% 的透明/半透明像素（alpha < 245）。
+ */
+export function hasNativeTransparentPixels(
+  data: Uint8ClampedArray | Uint8Array,
+  width: number,
+  height: number
+): boolean {
+  const w = Math.max(0, Math.floor(width))
+  const h = Math.max(0, Math.floor(height))
+  const total = w * h
+  if (total <= 0 || data.length < total * 4) return false
+
+  let borderCount = 0
+  let borderTransparent = 0
+  for (let x = 0; x < w; x++) {
+    borderCount += 2
+    if (data[x * 4 + 3]! < 245) borderTransparent++
+    if (data[((h - 1) * w + x) * 4 + 3]! < 245) borderTransparent++
+  }
+  for (let y = 1; y < h - 1; y++) {
+    borderCount += 2
+    if (data[y * w * 4 + 3]! < 245) borderTransparent++
+    if (data[(y * w + w - 1) * 4 + 3]! < 245) borderTransparent++
+  }
+  if (borderCount > 0 && borderTransparent / borderCount >= 0.05) {
+    return true
+  }
+
+  const step = Math.max(1, Math.floor(total / 4096))
+  let sampled = 0
+  let transparent = 0
+  for (let i = 0; i < total; i += step) {
+    sampled++
+    if (data[i * 4 + 3]! < 245) transparent++
+  }
+  return sampled > 0 && transparent / sampled >= 0.01
 }
 
 /**
@@ -228,59 +271,180 @@ export function applyBorderFloodColorKey(
   }
   const opts = normalizeIconKeyOptions(options)
   const edge = opts.distance + opts.feather
-  // 泛洪扩张上界略收紧，避免顺着浅色半透明抗锯齿缝隙钻进主体内部，外圈羽化像素仍在出队时一并软化
-  const expandLimit = opts.distance + opts.feather * 0.65
+  // 平滑背景阴影/渐晕可继续泛洪的色距上界（仅当相邻像素步进色差极小时才顺延，且泛洪区一律置为全透明 alpha=0）
+  const expandLimit = opts.distance + opts.feather * 0.75
 
-  const visited = new Uint8Array(total)
+  const flooded = new Uint8Array(total)
   const queue = new Int32Array(total)
   let head = 0
   let tail = 0
   let keyedPixels = 0
 
-  const tryVisit = (idx: number): void => {
-    if (idx < 0 || idx >= total || visited[idx]) return
-    visited[idx] = 1
+  const tryVisit = (idx: number, parentIdx: number): void => {
+    if (idx < 0 || idx >= total || flooded[idx]) return
     const p = idx * 4
     const a = rgba[p + 3]!
     if (a === 0) {
+      flooded[idx] = 1
       queue[tail++] = idx
       return
     }
-    const dist = normalizedColorDistance(rgba[p]!, rgba[p + 1]!, rgba[p + 2]!, bg)
-    if (dist >= edge) return
-    if (dist < opts.distance) {
+    const r = rgba[p]!
+    const g = rgba[p + 1]!
+    const b = rgba[p + 2]!
+    const dist = normalizedColorDistance(r, g, b, bg)
+    if (dist >= expandLimit) return
+
+    let stepDist = 0
+    if (parentIdx >= 0) {
+      const pp = parentIdx * 4
+      stepDist = normalizedColorDistance(r, g, b, {
+        r: rgba[pp]!,
+        g: rgba[pp + 1]!,
+        b: rgba[pp + 2]!
+      })
+    }
+
+    // 1. 核心纯色背景（若贴近阈值上限则校验步进连续性，防止跨过浅银灰描边钻入白发内部）
+    // 2. 凹陷处平滑环境阴影/柔光渐晕（像素间步进色差 <= 10）：直接归入透明背景（alpha=0），杜绝半透明白雾光晕
+    const isCoreBg =
+      dist < opts.distance && (parentIdx < 0 || dist < opts.distance * 0.72 || stepDist <= 22)
+    const isSmoothGradientBg =
+      opts.soft && opts.feather > 0 && dist < expandLimit && parentIdx >= 0 && stepDist <= 10
+
+    if (isCoreBg || isSmoothGradientBg) {
+      flooded[idx] = 1
       rgba[p + 3] = 0
       keyedPixels++
-      queue[tail++] = idx
-      return
-    }
-    if (opts.soft && opts.feather > 0) {
-      const keep = (dist - opts.distance) / opts.feather
-      rgba[p + 3] = clampByte(a * keep)
-      keyedPixels++
-    }
-    if (dist < expandLimit) {
       queue[tail++] = idx
     }
   }
 
   for (let x = 0; x < w; x++) {
-    tryVisit(x)
-    tryVisit((h - 1) * w + x)
+    tryVisit(x, -1)
+    tryVisit((h - 1) * w + x, -1)
   }
   for (let y = 1; y < h - 1; y++) {
-    tryVisit(y * w)
-    tryVisit(y * w + w - 1)
+    tryVisit(y * w, -1)
+    tryVisit(y * w + w - 1, -1)
   }
 
   while (head < tail) {
     const idx = queue[head++]!
     const x = idx % w
     const y = (idx - x) / w
-    if (x > 0) tryVisit(idx - 1)
-    if (x + 1 < w) tryVisit(idx + 1)
-    if (y > 0) tryVisit(idx - w)
-    if (y + 1 < h) tryVisit(idx + w)
+    if (x > 0) tryVisit(idx - 1, idx)
+    if (x + 1 < w) tryVisit(idx + 1, idx)
+    if (y > 0) tryVisit(idx - w, idx)
+    if (y + 1 < h) tryVisit(idx + w, idx)
+  }
+
+  // 仅对紧邻已泛洪背景的 1px 主体轮廓外缘执行光学共线抗锯齿与色距软化，不向内部或外部扩散半透明雾带
+  if (opts.soft && opts.feather > 0 && keyedPixels > 0) {
+    const dirX = [-1, 1, 0, 0, -1, 1, -1, 1]
+    const dirY = [0, 0, -1, 1, -1, -1, 1, 1]
+    for (let y = 0; y < h; y++) {
+      const row = y * w
+      for (let x = 0; x < w; x++) {
+        const idx = row + x
+        if (flooded[idx]) continue
+        const p = idx * 4
+        const a = rgba[p + 3]!
+        if (a === 0) continue
+
+        let bgNeighborIdx = -1
+        let minBgNeighborDist = Infinity
+        const cr = rgba[p]!
+        const cg = rgba[p + 1]!
+        const cb = rgba[p + 2]!
+
+        for (let k = 0; k < 8; k++) {
+          const nx = x + dirX[k]!
+          const ny = y + dirY[k]!
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+          const ni = ny * w + nx
+          if (!flooded[ni]) continue
+          const np = ni * 4
+          const nd = normalizedColorDistance(cr, cg, cb, {
+            r: rgba[np]!,
+            g: rgba[np + 1]!,
+            b: rgba[np + 2]!
+          })
+          if (nd < minBgNeighborDist) {
+            minBgNeighborDist = nd
+            bgNeighborIdx = ni
+          }
+        }
+        if (bgNeighborIdx < 0) continue
+
+        const bp = bgNeighborIdx * 4
+        const localBg: IconKeyColor = {
+          r: rgba[bp]!,
+          g: rgba[bp + 1]!,
+          b: rgba[bp + 2]!
+        }
+        const dBg = Math.min(
+          normalizedColorDistance(cr, cg, cb, bg),
+          normalizedColorDistance(cr, cg, cb, localBg)
+        )
+
+        let keep = 1
+        if (dBg < edge) {
+          keep =
+            dBg <= opts.distance
+              ? (dBg / Math.max(1, opts.distance)) * 0.35
+              : 0.35 + ((dBg - opts.distance) / Math.max(1, opts.feather)) * 0.65
+        }
+
+        // 光学抗锯齿投影：当轮廓外缘 1px 像素恰好落在局部背景 B 与内侧 1~2px 实心轮廓 F 的色彩连线上时，
+        // 按真实光学混合比 t = ||C - B|| / ||F - B|| 赋予精确半透明 alpha，消除深色线稿外侧的灰白锯齿晶格
+        let bestFgIdx = -1
+        let maxFgBgDist = 0
+        for (let k = 0; k < 8; k++) {
+          for (let step = 1; step <= 2; step++) {
+            const nx = x + dirX[k]! * step
+            const ny = y + dirY[k]! * step
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) break
+            const ni = ny * w + nx
+            if (flooded[ni]) continue
+            const np = ni * 4
+            const fbDist = normalizedColorDistance(rgba[np]!, rgba[np + 1]!, rgba[np + 2]!, localBg)
+            if (fbDist > maxFgBgDist) {
+              maxFgBgDist = fbDist
+              bestFgIdx = ni
+            }
+          }
+        }
+
+        if (bestFgIdx >= 0 && maxFgBgDist >= 35 && dBg < maxFgBgDist * 0.92) {
+          const fp = bestFgIdx * 4
+          const dfR = rgba[fp]! - localBg.r
+          const dfG = rgba[fp + 1]! - localBg.g
+          const dfB = rgba[fp + 2]! - localBg.b
+          const dfLenSq = dfR * dfR + dfG * dfG + dfB * dfB
+          if (dfLenSq >= 900) {
+            const uR = cr - localBg.r
+            const uG = cg - localBg.g
+            const uB = cb - localBg.b
+            const t = (uR * dfR + uG * dfG + uB * dfB) / dfLenSq
+            if (t > 0.02 && t < 0.92) {
+              const errR = uR - t * dfR
+              const errG = uG - t * dfG
+              const errB = uB - t * dfB
+              const perpErr = Math.sqrt((errR * errR + errG * errG + errB * errB) / 3)
+              if (perpErr < 18 && t < keep) {
+                keep = t
+              }
+            }
+          }
+        }
+
+        if (keep < 0.995) {
+          rgba[p + 3] = clampByte(a * Math.max(0, Math.min(1, keep)))
+          keyedPixels++
+        }
+      }
+    }
   }
 
   return {

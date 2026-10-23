@@ -373,6 +373,52 @@ describe('refineCutoutAlphaGuided', () => {
     // 夹在发丝之间的白底间隙 (y=12, x=14) 被显著剥离透明
     expect(refined[12 * w + 14]!).toBeLessThan(0.2)
   })
+
+  it('preserves opaque white hair inside a dark outline on a white background without resurrecting an exterior white halo', () => {
+    const w = 28
+    const h = 20
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    const alpha = new Float32Array(w * h)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = y * w + x
+        // x < 10: 外部纯白背景 (252,252,255), alpha = 0
+        // x = 10..11: 2px 二次元深色线稿描边 (48,45,55), alpha = 1
+        // x >= 12: 角色内部银白头发 (245,246,252), alpha = 1
+        if (x < 10) {
+          rgba[idx * 4] = 252
+          rgba[idx * 4 + 1] = 252
+          rgba[idx * 4 + 2] = 255
+          rgba[idx * 4 + 3] = 255
+          alpha[idx] = 0
+        } else if (x <= 11) {
+          rgba[idx * 4] = 48
+          rgba[idx * 4 + 1] = 45
+          rgba[idx * 4 + 2] = 55
+          rgba[idx * 4 + 3] = 255
+          alpha[idx] = 1
+        } else {
+          rgba[idx * 4] = 245
+          rgba[idx * 4 + 1] = 246
+          rgba[idx * 4 + 2] = 252
+          rgba[idx * 4 + 3] = 255
+          alpha[idx] = 1
+        }
+      }
+    }
+    const refined = refineCutoutAlphaGuided(rgba, alpha, w, h, {
+      radius: 4,
+      colorMattingStrength: 0.5
+    })
+    // 描边外侧 1~3px 的纯白背景像素 (x=7,8,9) 绝不被引导滤波反向拉升成半透明白雾光晕
+    expect(refined[10 * w + 7]).toBe(0)
+    expect(refined[10 * w + 8]).toBe(0)
+    expect(refined[10 * w + 9]).toBe(0)
+    // 描边内侧的银白头发 (x=12,13,15) 绝不被跨过深色描边压低成半透明
+    expect(refined[10 * w + 12]).toBe(1)
+    expect(refined[10 * w + 13]).toBe(1)
+    expect(refined[10 * w + 15]).toBe(1)
+  })
 })
 
 describe('punchInteriorBackgroundHoles', () => {

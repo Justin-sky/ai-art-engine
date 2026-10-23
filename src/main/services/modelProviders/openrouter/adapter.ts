@@ -25,6 +25,7 @@ import {
   toOpenRouterInputReferenceBody
 } from '@shared/modelProvider'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import { supportsNativeTransparentImageModel } from '@shared/graph/userPromptSchemes'
 import { isOpenRouterMusicModel } from '@shared/modelProviders/openrouter/audioModality'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
@@ -245,6 +246,9 @@ export const openRouterAdapter: ModelProviderAdapter = {
     if (input.quality?.trim()) body.quality = input.quality.trim()
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
     if (input.seed != null) body.seed = input.seed
+    if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
+      body.background = 'transparent'
+    }
     if (input.inputReferences?.length) {
       body.input_references = input.inputReferences.map((url) => ({
         type: 'image_url',

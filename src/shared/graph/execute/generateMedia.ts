@@ -20,9 +20,9 @@ import {
   buildImagePrompt,
   buildVideoPrompt,
   buildVoicePrompt,
-  isExplicitOpaqueBgPrompt
+  isExplicitOpaqueBgPrompt,
+  supportsNativeTransparentImageModel
 } from '../userPromptSchemes'
-import { normalizeImageCutout } from '../imageCutout'
 import {
   resolveImageGenerateParamsForApi,
   imageGenerateParamsToNodePatch,
@@ -1100,8 +1100,10 @@ export async function executeImageGenerateNode(
   })
   const useTransparentBg =
     node.params.generateTransparentBg !== false && !isExplicitOpaqueBgPrompt(userPrompt)
-  if (useTransparentBg) {
-    userPrompt = appendImageTransparentBgPrompt(userPrompt, ctx.locale)
+  if (useTransparentBg && supportsNativeTransparentImageModel(node.params.generateModel)) {
+    userPrompt = appendImageTransparentBgPrompt(userPrompt, ctx.locale, {
+      nativeTransparentModel: true
+    })
   }
   // 剧集流水线产物节点（如 9宫格拼图 / 4宫格拼图）：重跑时附加导演上次 FAIL 原因
   if (node.params.episodeStep && ctx.readEpisodeAgentState) {
@@ -1204,6 +1206,7 @@ export async function executeImageGenerateNode(
     quality: genParams.quality,
     n: genParams.count,
     seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
+    ...(useTransparentBg ? { transparentBackground: true } : {}),
     inputReferences: inputReferences.length ? inputReferences : undefined,
     inputReferenceMeta: inputReferenceMeta.length ? inputReferenceMeta : undefined
   })
@@ -1242,38 +1245,6 @@ export async function executeImageGenerateNode(
         if (normalized) item.dataUrl = normalized
       } catch {
         /* 裁正失败时保留原图 */
-      }
-    }
-  }
-
-  // 透明背景模式：默认开启（除非显式设置 generateTransparentBg=false 或提示词明确要求非透明背景），优先做四边连通纯色背景键控 + 去光晕，纯色底不明显时回退本地 YOLO 实例抠图
-  if (useTransparentBg) {
-    for (const item of batch) {
-      if (!item.dataUrl?.startsWith('data:image/')) continue
-      let keyed = false
-      if (ctx.removeImageSolidBackground) {
-        try {
-          const solidRes = await ctx.removeImageSolidBackground({ dataUrl: item.dataUrl })
-          if (solidRes.keyedRatio >= 0.02 && solidRes.dataUrl) {
-            item.dataUrl = solidRes.dataUrl
-            keyed = true
-          }
-        } catch {
-          /* 纯色泛洪键控失败时尝试回退 YOLO 抠图 */
-        }
-      }
-      if (!keyed && ctx.composeImageCutoutCanvas) {
-        try {
-          const cutoutRes = await ctx.composeImageCutoutCanvas({
-            sourceDataUrl: item.dataUrl,
-            state: normalizeImageCutout({ personOnly: false, cropToSubject: false })
-          })
-          if (cutoutRes.dataUrl) {
-            item.dataUrl = cutoutRes.dataUrl
-          }
-        } catch {
-          /* 抠图失败时保留原图，避免中断整批生成 */
-        }
       }
     }
   }

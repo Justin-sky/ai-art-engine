@@ -31,6 +31,7 @@ import {
 import { PROVIDER_ERRORS } from './catalog'
 import { fail, defErr, defErrSimple, formatBi } from '@shared/errors/appError'
 import { rewriteAtMentionsForImagePrompt } from '@shared/modelProviders/imagePromptMentions'
+import { supportsNativeTransparentImageModel } from '@shared/graph/userPromptSchemes'
 import { annotateProviderTarget } from '@shared/modelProviders/providerFailureDiagnostics'
 
 // ── 本文件个性化错误条目 ──
@@ -673,6 +674,9 @@ export async function generateOpenAiCompatibleImage(
       if (quality) form.append('quality', quality)
       if (size) form.append('size', size)
       if (input.n && input.n >= 1) form.append('n', String(Math.floor(input.n)))
+      if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
+        form.append('background', 'transparent')
+      }
 
       const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
       const { data } = await client.post<{
@@ -702,6 +706,9 @@ export async function generateOpenAiCompatibleImage(
     if (size) body.size = size
     if (quality) body.quality = quality
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
+    if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
+      body.background = 'transparent'
+    }
 
     const { data } = await client.post<{
       data?: Array<{ b64_json?: string; url?: string }>

@@ -66,6 +66,10 @@ import {
   supportsModel3dSegment
 } from '@shared/modelProvider'
 import { describeDecisionVerdicts, resolveDecisionVerdicts } from '@shared/decisionQuestion'
+import {
+  appendImageTransparentBgPrompt,
+  supportsNativeTransparentImageModel
+} from '@shared/graph/userPromptSchemes'
 import { pickSpatialWorldJobs } from '@shared/videoJob'
 import { buildDecisionsRequest } from './decisions'
 import { meshOpSupported } from '@shared/meshOps'
@@ -582,11 +586,16 @@ class ModelProviderFacade {
     const { urls: inputReferences, notes: shrinkNotes } = ensureApiImageUrlsWithNotes(
       input.inputReferences
     )
+    const prompt =
+      input.transparentBackground && supportsNativeTransparentImageModel(modelId)
+        ? appendImageTransparentBgPrompt(input.prompt, undefined, { nativeTransparentModel: true })
+        : input.prompt
     const result = await getProviderAdapter(provider.providerKind).generateImage(
       provider,
       modelId,
       {
         ...input,
+        prompt,
         inputReferences
       }
     )

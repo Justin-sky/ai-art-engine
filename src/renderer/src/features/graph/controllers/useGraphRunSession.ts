@@ -801,6 +801,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
       seed?: number
       inputReferences?: string[]
       inputReferenceMeta?: GraphImageReferenceMeta[]
+      transparentBackground?: boolean
       layerDecomposition?: boolean
     }) => {
       if (isRunStale(run)) {
@@ -819,6 +820,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         inputReferenceCount: input.inputReferences?.length || undefined,
         inputReferences: input.inputReferenceMeta,
         inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+        transparentBackground: input.transparentBackground || undefined,
         layerDecomposition: input.layerDecomposition || undefined
       }
       run.logBridge.appendMessage(options.t('graph.logs.submitImage'))

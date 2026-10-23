@@ -1161,6 +1161,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               inputReferenceCount: input.inputReferences?.length || undefined,
               inputReferences: input.inputReferenceMeta,
               inputReferenceUrls: summarizeReferenceListForLog(input.inputReferences),
+              transparentBackground: input.transparentBackground || undefined,
               layerDecomposition: input.layerDecomposition || undefined
             }
             logBridge.appendMessage(String(i18n.global.t('graph.logs.submitImage')))

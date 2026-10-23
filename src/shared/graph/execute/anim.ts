@@ -213,6 +213,7 @@ export async function executeFrameAnimGenNode(
     quality: genParams.quality,
     n: genParams.count,
     seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
+    ...(genParams.transparentBg ? { transparentBackground: true } : {}),
     inputReferences: finalInputUrls,
     inputReferenceMeta: finalInputUrls.map((_, idx) => {
       const item = sourceItems[idx]
@@ -237,20 +238,6 @@ export async function executeFrameAnimGenNode(
   }
   if (!batch.length) {
     throw fail(SHARED_ERRORS.noModelImage)
-  }
-
-  if (genParams.transparentBg && ctx.removeImageSolidBackground) {
-    for (const item of batch) {
-      if (!item.dataUrl?.startsWith('data:image/')) continue
-      try {
-        const solidRes = await ctx.removeImageSolidBackground({ dataUrl: item.dataUrl })
-        if (solidRes.keyedRatio >= 0.02 && solidRes.dataUrl) {
-          item.dataUrl = solidRes.dataUrl
-        }
-      } catch {
-        /* 保持原图 */
-      }
-    }
   }
 
   const stampKey = `animGen:${node.id}:${stamp}`

@@ -1084,6 +1084,8 @@ export interface GenerateImageInput {
   outputDir?: string
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
   inputReferenceMeta?: GraphImageReferenceMeta[]
+  /** 透明背景：勾选后若模型原生支持透明通道则请求生成透明图，不支持则按常规生成不透明图（生图后不做去背景后处理） */
+  transparentBackground?: boolean
   /** Seedream 5.0 Pro：图层分离（layer_decomposition） */
   layerDecomposition?: boolean
 }

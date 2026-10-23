@@ -82,6 +82,43 @@ export const IMAGE_TRANSPARENT_BG_PROMPT_EN =
 export const IMAGE_TRANSPARENT_BG_PROMPT_ZH =
   '主体独立居中，纯色均匀平涂背景，四周留出干净边缘，无背景杂物、无地面投影、无环境渐变、严禁绘制灰白棋盘格纹理。' // cjk-ok
 
+export const IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN =
+  'Isolated subject centered on a true transparent background (RGBA alpha channel) with clean edges, no background clutter, no cast shadows, no ambient gradients, and strictly no drawn checkerboard pattern.'
+
+export const IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH =
+  '主体独立居中，原生透明背景（RGBA 透明通道），四周留出干净边缘，无背景杂物、无地面投影、无环境渐变、严禁绘制灰白棋盘格纹理。' // cjk-ok
+
+const NATIVE_TRANSPARENT_IMAGE_MODEL_RE =
+  /gpt-image|chatgpt-image|recraft[-_]?v?[34]|layer[-_]?diffuse|transparent/i
+
+/**
+ * 判断生图模型是否原生支持直接生成带透明通道（RGBA）的透明图：
+ * - 命中原生透明生图模型族（如 `gpt-image-1` / `gpt-image-2` / `chatgpt-image` / `recraft-v3` 等）；
+ * - 或模型能力表中显式声明 `transparent_background: true` / `supported_parameters.background.values` 含 `'transparent'`。
+ * 原生透明生图模型由模型直接输出透明 PNG，严禁在出图后再用本地 YOLO 实例分割做二次抠图处理。
+ */
+export function supportsNativeTransparentImageModel(
+  modelId?: string | null,
+  capabilities?: unknown
+): boolean {
+  const id = (modelId ?? '').trim()
+  if (id && NATIVE_TRANSPARENT_IMAGE_MODEL_RE.test(id)) {
+    return true
+  }
+  if (capabilities && typeof capabilities === 'object') {
+    const rec = capabilities as Record<string, unknown>
+    if (rec.transparent_background === true || rec.transparentBackground === true) {
+      return true
+    }
+    const params = rec.supported_parameters as Record<string, unknown> | undefined
+    const bgParam = params?.background as { values?: unknown } | undefined
+    if (Array.isArray(bgParam?.values) && bgParam.values.includes('transparent')) {
+      return true
+    }
+  }
+  return false
+}
+
 const EXPLICIT_OPAQUE_BG_RE =
   /非透明背景|不透明背景|不要透明背景|不抠除背景|带完整背景|保留原背景|保留背景|实景背景|场景背景|环境背景|360\s*全景|全景氛围|\b(?:non-transparent\s+background|opaque\s+background|no\s+transparent\s+background|keep\s+(?:the\s+)?background|with\s+(?:a\s+)?full\s+background|detailed\s+(?:scene|environment)\s+background|360\s*panorama|equirectangular)\b/i // cjk-ok
 
@@ -95,22 +132,40 @@ export function isExplicitOpaqueBgPrompt(prompt: string): boolean {
   return EXPLICIT_OPAQUE_BG_RE.test(trimmed)
 }
 
-export function appendImageTransparentBgPrompt(prompt: string, locale?: string): string {
-  const suffix = pickByLocale(
-    locale,
-    IMAGE_TRANSPARENT_BG_PROMPT_EN,
-    IMAGE_TRANSPARENT_BG_PROMPT_ZH
-  )
+export function appendImageTransparentBgPrompt(
+  prompt: string,
+  locale?: string,
+  options?: { nativeTransparentModel?: boolean }
+): string {
+  const suffix = options?.nativeTransparentModel
+    ? pickByLocale(
+        locale,
+        IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN,
+        IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH
+      )
+    : pickByLocale(locale, IMAGE_TRANSPARENT_BG_PROMPT_EN, IMAGE_TRANSPARENT_BG_PROMPT_ZH)
   const base = prompt.trim()
   if (!base) return suffix
   if (isExplicitOpaqueBgPrompt(base)) return base
   if (
     base.includes(IMAGE_TRANSPARENT_BG_PROMPT_ZH) ||
-    base.includes(IMAGE_TRANSPARENT_BG_PROMPT_EN)
+    base.includes(IMAGE_TRANSPARENT_BG_PROMPT_EN) ||
+    base.includes(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH) ||
+    base.includes(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN)
   ) {
-    return base
+    return options?.nativeTransparentModel ? rewriteTransparentBgPromptForNativeModel(base) : base
   }
   return `${base}\n\n${suffix}`
+}
+
+/**
+ * 当节点未显式指定模型、执行期由 facade 解析到原生支持透明图的模型（如默认模型为 gpt-image-1）时，
+ * 将此前附加的「纯色均匀平涂背景」提示词自动替换为「原生透明背景（RGBA 透明通道）」。
+ */
+export function rewriteTransparentBgPromptForNativeModel(prompt: string): string {
+  return prompt
+    .replace(IMAGE_TRANSPARENT_BG_PROMPT_ZH, IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH)
+    .replace(IMAGE_TRANSPARENT_BG_PROMPT_EN, IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN)
 }
 
 // ——— 视频 ———

@@ -529,10 +529,69 @@ export function refineCutoutAlphaGuided(
   const fineAb = useMultiScale ? boxBlurSinglePass(ab, width, height, 1) : meanAb
   const fineBCoef = useMultiScale ? boxBlurSinglePass(b, width, height, 1) : meanBCoef
 
+  // 预计算带高对比轮廓屏障的外部背景连通距离图：
+  // - 从外部纯背景（alpha < 0.12）向内传播局部背景色 (bgR, bgG, bgB)；
+  // - 遇到高对比不透明前景（如二次元深色线稿描边：alpha >= 0.55 且与背景色差 >= 36）立即阻断，
+  //   防止引导滤波在「白发/白羽/银枪 + 深色细描边 + 白底」窗口内出现同色线性回归歧义：
+  //   1) 绝不把深色描边外侧已透明的白底像素（alpha < 0.5 且颜色贴近局部背景）重新拉升成半透明白雾光晕；
+  //   2) 绝不跨过深色闭合描边把内部的白发、白甲、眼白、浅肤色压低成半透明。
+  const maxBgDist = Math.max(12, Math.min(28, r * 6))
+  const bgDist = new Int16Array(total).fill(32767)
+  const extBgR = new Float32Array(total)
+  const extBgG = new Float32Array(total)
+  const extBgB = new Float32Array(total)
+  {
+    const queue = new Int32Array(total)
+    let head = 0
+    let tail = 0
+    for (let i = 0; i < total; i++) {
+      if (alpha[i]! < 0.12) {
+        bgDist[i] = 0
+        const off = i * 4
+        extBgR[i] = rgba[off]!
+        extBgG[i] = rgba[off + 1]!
+        extBgB[i] = rgba[off + 2]!
+        queue[tail++] = i
+      }
+    }
+    const dirX = [-1, 1, 0, 0, -1, 1, -1, 1]
+    const dirY = [0, 0, -1, 1, -1, -1, 1, 1]
+    while (head < tail) {
+      const cur = queue[head++]!
+      const d = bgDist[cur]!
+      if (d >= maxBgDist) continue
+      const cx = cur % width
+      const cy = (cur - cx) / width
+      const bR = extBgR[cur]!
+      const bG = extBgG[cur]!
+      const bB = extBgB[cur]!
+      for (let k = 0; k < 8; k++) {
+        const nx = cx + dirX[k]!
+        const ny = cy + dirY[k]!
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+        const ni = ny * width + nx
+        if (bgDist[ni]! <= d + 1) continue
+        const noff = ni * 4
+        const dr = rgba[noff]! - bR
+        const dg = rgba[noff + 1]! - bG
+        const db = rgba[noff + 2]! - bB
+        const cDist = Math.sqrt((dr * dr + dg * dg + db * db) / 3)
+        // 高对比不透明轮廓（如深色描边/异色主体边缘）作为屏障阻断背景传播
+        if (alpha[ni]! >= 0.55 && cDist >= 36) continue
+        bgDist[ni] = d + 1
+        extBgR[ni] = bR
+        extBgG[ni] = bG
+        extBgB[ni] = bB
+        queue[tail++] = ni
+      }
+    }
+  }
+
   const out = new Float32Array(total)
   const chokeBias = choke * 0.025
   for (let i = 0; i < total; i++) {
     const mp = meanInitial[i]!
+    const origA = alpha[i]!
     // 核心实心前景与远离主体的纯背景保持纯净，不引入任何灰雾
     if (mp <= 0.005 && prior[i]! <= 0.01) {
       out[i] = 0
@@ -540,6 +599,11 @@ export function refineCutoutAlphaGuided(
     }
     if (mp >= 0.995 && prior[i]! >= 0.99 && choke >= 0) {
       out[i] = 1
+      continue
+    }
+    // 被高对比轮廓屏障包围的内部实心前景（如深色线稿内的白发、白羽、银刃、浅肤色）保持不透明
+    if (bgDist[i] === 32767 && origA >= 0.88 && choke >= 0) {
+      out[i] = origA
       continue
     }
     let q = prior[i]!
@@ -565,14 +629,28 @@ export function refineCutoutAlphaGuided(
     }
     const shifted = q + chokeBias
     // 将 [0.03, 0.97] 映射到 [0, 1] 以消除极低/极高处的残余底灰
-    out[i] = smoothstep(0.03, 0.97, shifted)
+    let mapped = smoothstep(0.03, 0.97, shifted)
+
+    // 防止引导滤波将轮廓外侧与背景同色的像素（origA < 0.5 且颜色贴近局部背景）反向拉升成白雾光晕
+    if (bgDist[i]! < 32767 && origA < 0.5 && choke <= 0) {
+      const off = i * 4
+      const dr = rgba[off]! - extBgR[i]!
+      const dg = rgba[off + 1]! - extBgG[i]!
+      const db = rgba[off + 2]! - extBgB[i]!
+      const cDist = Math.sqrt((dr * dr + dg * dg + db * db) / 3)
+      if (cDist < 26) {
+        const maxAllowed = origA * smoothstep(4, 26, cDist)
+        if (mapped > maxAllowed) mapped = maxAllowed
+      }
+    }
+    out[i] = mapped
   }
 
   // Step 4: 边界连通背景剥离与发丝间隙色彩线抠图（Boundary-Connected Hair Interstice Matting）
   // 解决痛点：高精显著性模型（BiRefNet / RMBG）在稀疏碎发外圈常输出包络式高 alpha，
   // 且当窗口内同时存在「亮肤色 + 深色细发 + 亮白背景」三色时，局部仿射引导滤波无法线性分离同亮度的背景与肤色。
-  // 做法：从外部纯背景（alpha < 0.12）向内传播最近背景色 B_ext，若局部窗口存在高对比前景锚点 F_anchor（如深色发丝），
-  // 则将边界与发丝间隙像素投影到色彩线 B_ext -> F_anchor，精准剥离夹在发丝之间的背景色，同时通过正交色差残差保护暖色皮肤与同色衣物。
+  // 做法：仅对与外部背景无屏障连通、且两侧被高对比发丝夹持的间隙像素投影到色彩线 B_ext -> F_anchor，
+  // 精准剥离夹在发丝之间的背景色，同时严禁跨过闭合描边剥离角色内部的白发与浅色护甲。
   if (radius > 0 && colorStrength > 0) {
     peelBoundaryHairInterstices(rgba, out, width, height, r)
   }
@@ -617,16 +695,26 @@ function peelBoundaryHairInterstices(
     if (d >= maxDist) continue
     const cx = cur % width
     const cy = (cur - cx) / width
+    const bR = bgR[cur]!
+    const bG = bgG[cur]!
+    const bB = bgB[cur]!
     for (let k = 0; k < 8; k++) {
       const nx = cx + dirX[k]!
       const ny = cy + dirY[k]!
       if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
       const ni = ny * width + nx
       if (dist[ni]! <= d + 1) continue
+      const noff = ni * 4
+      const dr = rgba[noff]! - bR
+      const dg = rgba[noff + 1]! - bG
+      const db = rgba[noff + 2]! - bB
+      const cDist = Math.sqrt((dr * dr + dg * dg + db * db) / 3)
+      // 遇到高对比不透明轮廓线立即阻断，禁止穿透深色描边进入白发/白甲内部
+      if (alpha[ni]! >= 0.55 && cDist >= 36) continue
       dist[ni] = d + 1
-      bgR[ni] = bgR[cur]!
-      bgG[ni] = bgG[cur]!
-      bgB[ni] = bgB[cur]!
+      bgR[ni] = bR
+      bgG[ni] = bG
+      bgB[ni] = bB
       queue[tail++] = ni
     }
   }
@@ -656,6 +744,10 @@ function peelBoundaryHairInterstices(
       let fgTotal = 0
       let fgHighContrast = 0
       let maxContrast = 0
+      let hasLeftHc = false
+      let hasRightHc = false
+      let hasTopHc = false
+      let hasBottomHc = false
 
       const y0 = Math.max(0, y - winR)
       const y1 = Math.min(height - 1, y + winR)
@@ -675,6 +767,10 @@ function peelBoundaryHairInterstices(
           const cDist = Math.sqrt((wr * wr + wg * wg + wb * wb) / 3)
           if (cDist >= 38) {
             fgHighContrast++
+            if (wx < x) hasLeftHc = true
+            if (wx > x) hasRightHc = true
+            if (wy < y) hasTopHc = true
+            if (wy > y) hasBottomHc = true
             const w = cDist * wa
             contrastSumR += rgba[woff]! * w
             contrastSumG += rgba[woff + 1]! * w
@@ -685,8 +781,14 @@ function peelBoundaryHairInterstices(
         }
       }
 
-      // 仅当局部窗口内存在足够比例的高对比前景（如深色发丝/轮廓，排除白衣贴白底的低对比边界）时才执行剥离
-      if (contrastW > 0 && maxContrast >= 42 && fgHighContrast >= Math.max(2, fgTotal * 0.25)) {
+      // 仅当像素属于发丝夹缝（两侧对向存在高对比前景，或处于 1px 极外缘 d === 1）时才执行剥离
+      const isFlankedInterstice = (hasLeftHc && hasRightHc) || (hasTopHc && hasBottomHc) || d === 1
+      if (
+        isFlankedInterstice &&
+        contrastW > 0 &&
+        maxContrast >= 42 &&
+        fgHighContrast >= Math.max(2, fgTotal * 0.25)
+      ) {
         const fR = contrastSumR / contrastW
         const fG = contrastSumG / contrastW
         const fB = contrastSumB / contrastW
@@ -774,7 +876,8 @@ export function punchInteriorBackgroundHoles(
   bgB /= bgCount
 
   const distThresh = clamp(options.colorDistance ?? 26, 6, 80)
-  const softThresh = distThresh + 14
+  const expandThresh = distThresh + 20
+  const softThresh = distThresh + 22
   const minArea = Math.max(8, Math.floor(options.minHoleArea ?? 20))
   const maxArea = Math.max(minArea + 1, Math.floor(total * (options.maxHoleAreaRatio ?? 0.25)))
 
@@ -783,6 +886,15 @@ export function punchInteriorBackgroundHoles(
     const dr = rgba[off]! - bgR
     const dg = rgba[off + 1]! - bgG
     const db = rgba[off + 2]! - bgB
+    return Math.sqrt((dr * dr + dg * dg + db * db) / 3)
+  }
+
+  const stepColorDist = (idxA: number, idxB: number): number => {
+    const offA = idxA * 4
+    const offB = idxB * 4
+    const dr = rgba[offA]! - rgba[offB]!
+    const dg = rgba[offA + 1]! - rgba[offB + 1]!
+    const db = rgba[offA + 2]! - rgba[offB + 2]!
     return Math.sqrt((dr * dr + dg * dg + db * db) / 3)
   }
 
@@ -815,11 +927,12 @@ export function punchInteriorBackgroundHoles(
     }
   }
 
-  // 3. 在内部不透明区域搜索背景色连通域
+  // 3. 在内部不透明区域搜索背景色连通域（支持沿平滑环境暗角扩张至轮廓壁，同时保护白发/白甲内部高光）
   const component: number[] = []
   for (let start = 0; start < total; start++) {
     if (visited[start]) continue
-    if (colorDist(start) >= distThresh) {
+    const startDist = colorDist(start)
+    if (startDist >= distThresh) {
       visited[start] = 1
       continue
     }
@@ -830,11 +943,15 @@ export function punchInteriorBackgroundHoles(
     queue[tail++] = start
     let borderDiffSum = 0
     let borderCount = 0
+    let sharpBorderCount = 0
+    let minCoreDist = startDist
     let touchesCanvasEdge = false
 
     while (head < tail) {
       const idx = queue[head++]!
       component.push(idx)
+      const curDist = colorDist(idx)
+      if (curDist < minCoreDist) minCoreDist = curDist
       const x = idx % width
       const y = (idx - x) / width
       if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
@@ -849,25 +966,36 @@ export function punchInteriorBackgroundHoles(
       for (const n of neighbors) {
         if (n < 0) continue
         const nd = colorDist(n)
-        if (!visited[n] && nd < distThresh && out[n]! >= 0.15) {
+        const sd = stepColorDist(idx, n)
+        const canExpand =
+          !visited[n] && out[n]! >= 0.15 && (nd < distThresh || (nd < expandThresh && sd <= 10))
+        if (canExpand) {
           visited[n] = 1
           queue[tail++] = n
-        } else if (nd >= distThresh && out[n]! >= 0.5) {
+        } else if (!visited[n] && out[n]! >= 0.5 && nd >= distThresh) {
           borderDiffSum += nd
           borderCount++
+          if (nd >= distThresh + 14 || sd > 12) {
+            sharpBorderCount++
+          }
         }
       }
     }
 
     if (touchesCanvasEdge) continue
     if (component.length < minArea || component.length > maxArea) continue
+    // 内洞中心必须存在与外部背景高度一致的基准像素，排除带色偏的浅色发丝高光块
+    if (minCoreDist >= Math.min(distThresh, 20)) continue
     const avgBorderContrast = borderCount > 0 ? borderDiffSum / borderCount : 0
-    // 外围前景环与背景色必须存在显著色差（确认为被异色主体合围的背景孔洞，而非同色衣服内部）
-    if (avgBorderContrast < distThresh + 10) continue
+    // 外围前景环与背景色必须存在显著色差，且绝大部分边界为锐利轮廓壁（排除白发/白衣内部渐变过渡高光）
+    if (avgBorderContrast < distThresh + 12) continue
+    if (borderCount > 0 && sharpBorderCount < borderCount * 0.7) continue
 
     for (const idx of component) {
       out[idx] = 0
-      // 对内洞紧邻的 1px 边缘按色距做抗锯齿软化
+    }
+    // 对内洞紧邻的 1px 轮廓边缘按色距做抗锯齿软化
+    for (const idx of component) {
       const x = idx % width
       const y = (idx - x) / width
       const neighbors = [
@@ -879,8 +1007,12 @@ export function punchInteriorBackgroundHoles(
       for (const n of neighbors) {
         if (n >= 0 && out[n]! > 0) {
           const nd = colorDist(n)
-          if (nd >= distThresh && nd < softThresh) {
-            const keep = (nd - distThresh) / (softThresh - distThresh)
+          if (nd < softThresh) {
+            const keep = clamp(
+              (nd - distThresh * 0.5) / Math.max(1, softThresh - distThresh * 0.5),
+              0,
+              1
+            )
             if (keep < out[n]!) out[n] = keep
           }
         }
@@ -1471,31 +1603,57 @@ export function defringeRgba(
         }
       }
 
-      const inv = 1 / Math.max(a, 0.08)
       const off = i * 4
-      let r = (rgba[off]! - (1 - a) * estBr) * inv
-      let g = (rgba[off + 1]! - (1 - a) * estBg) * inv
-      let b = (rgba[off + 2]! - (1 - a) * estBb) * inv
-      if (hcW > 0 && a < 0.65) {
+      const obsR = rgba[off]!
+      const obsG = rgba[off + 1]!
+      const obsB = rgba[off + 2]!
+
+      // 当半透明边缘像素的 alpha 被高估（a > 光学真实混合比 ||C - B|| / ||F - B||）时，
+      // 直接按 a 反混合会残留 (1 - α_opt / a)·B 的白底色。以 min(a, α_opt) 执行反混合可彻底剥离残留白边。
+      let effA = a
+      const hasRefF = hcW > 0 || fWeight > 0
+      const refFR = hcW > 0 ? hcR / hcW : fWeight > 0 ? fr / fWeight : obsR
+      const refFG = hcW > 0 ? hcG / hcW : fWeight > 0 ? fg / fWeight : obsG
+      const refFB = hcW > 0 ? hcB / hcW : fWeight > 0 ? fb / fWeight : obsB
+      if (hasRefF) {
+        const dfR = refFR - estBr
+        const dfG = refFG - estBg
+        const dfB = refFB - estBb
+        const fbDist = Math.sqrt((dfR * dfR + dfG * dfG + dfB * dfB) / 3)
+        if (fbDist >= 32) {
+          const dcR = obsR - estBr
+          const dcG = obsG - estBg
+          const dcB = obsB - estBb
+          const cbDist = Math.sqrt((dcR * dcR + dcG * dcG + dcB * dcB) / 3)
+          const optA = clamp(cbDist / fbDist, 0.08, 1)
+          if (optA < effA) effA = optA
+        }
+      }
+
+      const inv = 1 / Math.max(effA, 0.08)
+      let r = (obsR - (1 - effA) * estBr) * inv
+      let g = (obsG - (1 - effA) * estBg) * inv
+      let b = (obsB - (1 - effA) * estBb) * inv
+      if (hcW > 0 && effA < 0.72) {
         const refR = hcR / hcW
         const refG = hcG / hcW
         const refB = hcB / hcW
-        const reg = clamp((0.65 - a) / 0.65, 0, 0.72)
+        const reg = clamp((0.72 - effA) / 0.72, 0, 0.75)
         r = r * (1 - reg) + refR * reg
         g = g * (1 - reg) + refG * reg
         b = b * (1 - reg) + refB * reg
-      } else if (fWeight > 0 && a < 0.35) {
+      } else if (fWeight > 0 && effA < 0.45) {
         const refR = fr / fWeight
         const refG = fg / fWeight
         const refB = fb / fWeight
-        const reg = clamp((0.35 - a) / 0.35, 0, 0.65)
+        const reg = clamp((0.45 - effA) / 0.45, 0, 0.68)
         r = r * (1 - reg) + refR * reg
         g = g * (1 - reg) + refG * reg
         b = b * (1 - reg) + refB * reg
       }
-      rgba[off] = clampInt(Math.round(rgba[off]! + (r - rgba[off]!) * strength), 0, 255)
-      rgba[off + 1] = clampInt(Math.round(rgba[off + 1]! + (g - rgba[off + 1]!) * strength), 0, 255)
-      rgba[off + 2] = clampInt(Math.round(rgba[off + 2]! + (b - rgba[off + 2]!) * strength), 0, 255)
+      rgba[off] = clampInt(Math.round(obsR + (r - obsR) * strength), 0, 255)
+      rgba[off + 1] = clampInt(Math.round(obsG + (g - obsG) * strength), 0, 255)
+      rgba[off + 2] = clampInt(Math.round(obsB + (b - obsB) * strength), 0, 255)
     }
   }
 }

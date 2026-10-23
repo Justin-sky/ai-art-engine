@@ -48,8 +48,8 @@ export async function removeImageSolidBackground(input: {
   }
   alpha = punchInteriorBackgroundHoles(imageData.data, alpha, sw, sh)
   alpha = refineCutoutAlphaGuided(imageData.data, alpha, sw, sh, {
-    radius: 2,
-    colorMattingStrength: 0.45
+    radius: 1,
+    colorMattingStrength: 0.35
   })
   applyAlphaToRgba(imageData.data, alpha)
 

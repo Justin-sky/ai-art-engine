@@ -444,6 +444,7 @@ export interface NodeExecuteContext {
     inputReferences?: string[]
     /** 与 inputReferences 一一对应的参考图元信息（仅用于执行日志） */
     inputReferenceMeta?: GraphImageReferenceMeta[]
+    transparentBackground?: boolean
     layerDecomposition?: boolean
   }) => Promise<{
     images: string[]
