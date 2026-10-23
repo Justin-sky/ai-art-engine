@@ -625,6 +625,36 @@ export function normalizeStageControls(
   return out
 }
 
+export type CanvasScenePaletteId =
+  | 'auto'
+  | 'fontaine'
+  | 'celestia'
+  | 'mondstadt'
+  | 'natlan'
+  | 'liyue'
+  | 'starry_night'
+  | 'twilight_dusk'
+  | 'classic'
+
+export const CANVAS_SCENE_PALETTE_VALUES: readonly CanvasScenePaletteId[] = [
+  'auto',
+  'fontaine',
+  'celestia',
+  'mondstadt',
+  'natlan',
+  'liyue',
+  'starry_night',
+  'twilight_dusk',
+  'classic'
+] as const
+
+export function normalizeCanvasScenePalette(raw: unknown): CanvasScenePaletteId {
+  if (typeof raw === 'string' && (CANVAS_SCENE_PALETTE_VALUES as readonly string[]).includes(raw)) {
+    return raw as CanvasScenePaletteId
+  }
+  return 'classic'
+}
+
 export interface AppSettings {
   language: 'zh-CN' | 'en-US'
   theme: 'dark' | 'light'
@@ -640,6 +670,8 @@ export interface AppSettings {
     weatherSfxEnabled?: boolean
     /** 天气系统执行期背景音乐（BGM）开关；缺省为 true（默认开启） */
     weatherBgmEnabled?: boolean
+    /** 节点画布背景色调风格（原神五景 / 自动随天气流转 / 经典纯色）；缺省为 'auto' */
+    canvasPalette?: CanvasScenePaletteId
     /** 3D 视口（导演台）操控灵敏度；缺省与历史写死值一致，老设置升级后手感不变 */
     stage: StageControlPreferences
   }
@@ -2518,6 +2550,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     weatherSystemEnabled: true,
     weatherSfxEnabled: true,
     weatherBgmEnabled: true,
+    canvasPalette: 'classic',
     stage: { ...STAGE_CONTROL_DEFAULTS }
   },
   models: createEmptyModelsSettings(),

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { CANVAS_SCENE_PALETTE_VALUES, normalizeCanvasScenePalette } from '../src/shared/domain'
 import {
+  editorPreferences,
+  setCanvasPalette,
   setWeatherBgmEnabled,
   setWeatherSfxEnabled,
   setWeatherSystemEnabled
@@ -135,5 +138,24 @@ describe('canvasWeatherEngine', () => {
 
     setWeatherSystemEnabled(false)
     expect(canvasWeatherState.currentWeather.value).toBe('idle')
+  })
+
+  it('supports switching and normalizing all 7 Genshin scene palettes (fontaine, celestia, mondstadt, natlan, liyue, starry_night, twilight_dusk) plus auto and classic', () => {
+    expect(CANVAS_SCENE_PALETTE_VALUES).toEqual([
+      'auto',
+      'fontaine',
+      'celestia',
+      'mondstadt',
+      'natlan',
+      'liyue',
+      'starry_night',
+      'twilight_dusk',
+      'classic'
+    ])
+    for (const id of CANVAS_SCENE_PALETTE_VALUES) {
+      setCanvasPalette(id)
+      expect(editorPreferences.canvasPalette.value).toBe(id)
+    }
+    expect(normalizeCanvasScenePalette('invalid-value')).toBe('classic')
   })
 })

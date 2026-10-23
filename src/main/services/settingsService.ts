@@ -3,6 +3,7 @@ import Store from 'electron-store'
 import {
   DEFAULT_SETTINGS,
   normalizeBlenderMcpSettings,
+  normalizeCanvasScenePalette,
   normalizeStageControls,
   type AppSettings
 } from '@shared/domain'
@@ -79,6 +80,7 @@ class SettingsService {
         weatherSystemEnabled: saved.editor?.weatherSystemEnabled !== false,
         weatherSfxEnabled: saved.editor?.weatherSfxEnabled !== false,
         weatherBgmEnabled: saved.editor?.weatherBgmEnabled !== false,
+        canvasPalette: normalizeCanvasScenePalette(saved.editor?.canvasPalette),
         // 读盘也钳一次：手改过 settings.json 的脏值不该直接进渲染层
         stage: normalizeStageControls(saved.editor?.stage)
       },
@@ -121,6 +123,7 @@ class SettingsService {
         weatherSystemEnabled: settings.editor?.weatherSystemEnabled !== false,
         weatherSfxEnabled: settings.editor?.weatherSfxEnabled !== false,
         weatherBgmEnabled: settings.editor?.weatherBgmEnabled !== false,
+        canvasPalette: normalizeCanvasScenePalette(settings.editor?.canvasPalette),
         // 落盘前钳到合法区间：脏值（手改 settings.json / 旧版本缺字段）不该让视口拖不动
         stage: normalizeStageControls(settings.editor?.stage)
       },

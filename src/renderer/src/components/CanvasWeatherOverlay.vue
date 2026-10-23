@@ -9,6 +9,7 @@
 
     <!-- Compact interactive Genshin-inspired Anime Weather HUD Pill -->
     <div
+      ref="hudEl"
       class="canvas-weather-hud"
       :class="{ 'is-expanded': hudExpanded, 'is-active': currentWeather !== 'idle' }"
       @pointerdown.stop
@@ -36,9 +37,40 @@
         >
           ✦
         </button>
+
+        <button
+          type="button"
+          class="canvas-weather-hud__dice canvas-weather-hud__palette-cycle"
+          :title="`${t('settings.weatherSystem.paletteLabel')}: ${currentPaletteLabel}`"
+          @click="cyclePalette"
+        >
+          <span
+            class="canvas-weather-hud__swatch"
+            :style="{ background: currentPaletteGradient }"
+          />
+        </button>
       </div>
 
       <div v-if="hudExpanded" class="canvas-weather-hud__panel">
+        <div class="canvas-weather-hud__palettes">
+          <div class="canvas-weather-hud__section-title">
+            {{ t('settings.weatherSystem.paletteLabel') }}
+          </div>
+          <div class="canvas-weather-hud__palette-grid">
+            <button
+              v-for="pal in paletteOptions"
+              :key="pal.value"
+              type="button"
+              class="canvas-weather-hud__palette-btn"
+              :class="{ 'is-selected': canvasPalette === pal.value }"
+              @click="selectPalette(pal.value)"
+            >
+              <span class="canvas-weather-hud__swatch" :style="{ background: pal.gradient }" />
+              <span>{{ pal.label }}</span>
+            </button>
+          </div>
+        </div>
+
         <div class="canvas-weather-hud__modes">
           <button
             v-for="item in modeOptions"
@@ -102,9 +134,11 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { CanvasScenePaletteId } from '@shared/domain'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   editorPreferences,
+  setCanvasPalette,
   setWeatherBgmEnabled,
   setWeatherSfxEnabled
 } from '../editor/preferences'
@@ -131,13 +165,117 @@ const { t } = useStudioI18n()
 
 const rootEl = ref<HTMLDivElement | null>(null)
 const canvasEl = ref<HTMLCanvasElement | null>(null)
+const hudEl = ref<HTMLDivElement | null>(null)
 const hudExpanded = ref(false)
+
+function onGlobalPointerDown(e: PointerEvent): void {
+  if (!hudExpanded.value) return
+  const el = hudEl.value
+  if (el && e.target instanceof Node && el.contains(e.target)) return
+  hudExpanded.value = false
+}
+
+function onGlobalKeyDown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && hudExpanded.value) {
+    hudExpanded.value = false
+  }
+}
 
 const weatherSystemEnabled = editorPreferences.weatherSystemEnabled
 const weatherSfxEnabled = editorPreferences.weatherSfxEnabled
 const weatherBgmEnabled = editorPreferences.weatherBgmEnabled
+const canvasPalette = editorPreferences.canvasPalette
 const currentWeather = canvasWeatherState.currentWeather
 const manualOverride = canvasWeatherState.manualOverride
+
+const paletteOptions = computed<
+  Array<{ value: CanvasScenePaletteId; label: string; gradient: string }>
+>(() => [
+  {
+    value: 'classic',
+    label: t('settings.weatherSystem.paletteClassic'),
+    gradient: 'linear-gradient(135deg, #1e2228 0%, #363b44 100%)'
+  },
+  {
+    value: 'auto',
+    label: t('settings.weatherSystem.paletteAuto'),
+    gradient: 'linear-gradient(135deg, #4da4f5 0%, #f2cce0 50%, #7fdc2c 100%)'
+  },
+  {
+    value: 'fontaine',
+    label: t('settings.weatherSystem.paletteFontaine'),
+    gradient: 'linear-gradient(135deg, #69aaf5 0%, #b8e2f8 50%, #48dcd0 100%)'
+  },
+  {
+    value: 'celestia',
+    label: t('settings.weatherSystem.paletteCelestia'),
+    gradient: 'linear-gradient(135deg, #6d97ee 0%, #f2cce0 52%, #fce4b4 100%)'
+  },
+  {
+    value: 'mondstadt',
+    label: t('settings.weatherSystem.paletteMondstadt'),
+    gradient: 'linear-gradient(135deg, #196ec8 0%, #35bac9 52%, #7fdc2c 100%)'
+  },
+  {
+    value: 'natlan',
+    label: t('settings.weatherSystem.paletteNatlan'),
+    gradient: 'linear-gradient(135deg, #7680a6 0%, #d87a58 52%, #82a952 100%)'
+  },
+  {
+    value: 'liyue',
+    label: t('settings.weatherSystem.paletteLiyue'),
+    gradient: 'linear-gradient(135deg, #b87c84 0%, #fbb874 52%, #ffe69a 100%)'
+  },
+  {
+    value: 'starry_night',
+    label: t('settings.weatherSystem.paletteStarryNight'),
+    gradient: 'linear-gradient(135deg, #070c24 0%, #1d56a8 52%, #48d0ff 100%)'
+  },
+  {
+    value: 'twilight_dusk',
+    label: t('settings.weatherSystem.paletteTwilightDusk'),
+    gradient: 'linear-gradient(135deg, #232b4a 0%, #824b6c 48%, #f27268 100%)'
+  }
+])
+
+const currentPaletteOption = computed(
+  () =>
+    paletteOptions.value.find((p) => p.value === canvasPalette.value) ?? paletteOptions.value[0]!
+)
+const currentPaletteLabel = computed(() => currentPaletteOption.value.label)
+const currentPaletteGradient = computed(() => currentPaletteOption.value.gradient)
+
+async function persistCanvasPaletteChoice(next: CanvasScenePaletteId): Promise<void> {
+  setCanvasPalette(next)
+  try {
+    if (
+      typeof window.studio?.getSettings === 'function' &&
+      typeof window.studio?.setSettings === 'function'
+    ) {
+      const current = await window.studio.getSettings()
+      await window.studio.setSettings({
+        ...current,
+        editor: {
+          ...current.editor,
+          canvasPalette: next
+        }
+      })
+    }
+  } catch {
+    // ignore persistence errors in preview
+  }
+}
+
+function selectPalette(next: CanvasScenePaletteId): void {
+  void persistCanvasPaletteChoice(next)
+}
+
+function cyclePalette(): void {
+  const list = paletteOptions.value.map((p) => p.value)
+  const idx = list.indexOf(canvasPalette.value)
+  const next = list[(idx + 1) % list.length] ?? 'auto'
+  void persistCanvasPaletteChoice(next)
+}
 
 const weatherIcon = computed(() => {
   switch (currentWeather.value) {
@@ -2037,11 +2175,15 @@ onMounted(() => {
     })
     resizeObserver.observe(rootEl.value)
   }
+  window.addEventListener('pointerdown', onGlobalPointerDown, true)
+  window.addEventListener('keydown', onGlobalKeyDown)
   lastFrameTime = performance.now()
   rafId = requestAnimationFrame(renderFrame)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', onGlobalPointerDown, true)
+  window.removeEventListener('keydown', onGlobalKeyDown)
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
     rafId = null
@@ -2162,7 +2304,64 @@ onBeforeUnmount(() => {
   box-shadow:
     0 12px 28px rgba(15, 23, 42, 0.32),
     0 0 0 1px rgba(254, 249, 195, 0.14) inset;
-  min-width: 262px;
+  min-width: 276px;
+}
+
+.canvas-weather-hud__palettes {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.16);
+}
+
+.canvas-weather-hud__section-title {
+  font-size: 10.5px;
+  color: #cbd5e1;
+  letter-spacing: 0.03em;
+  opacity: 0.9;
+}
+
+.canvas-weather-hud__palette-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.canvas-weather-hud__palette-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  background: rgba(51, 65, 85, 0.42);
+  color: #e2e8f0;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.canvas-weather-hud__palette-btn:hover {
+  background: rgba(71, 85, 105, 0.65);
+  border-color: rgba(186, 230, 253, 0.45);
+  color: #ffffff;
+}
+
+.canvas-weather-hud__palette-btn.is-selected {
+  border-color: rgba(254, 240, 138, 0.85);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.34), rgba(244, 114, 182, 0.28));
+  color: #fffbeb;
+  box-shadow: 0 0 12px rgba(253, 224, 71, 0.24);
+}
+
+.canvas-weather-hud__swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.35);
+  flex-shrink: 0;
 }
 
 .canvas-weather-hud__modes {

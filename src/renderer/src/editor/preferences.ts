@@ -1,7 +1,8 @@
 import { readonly, ref } from 'vue'
-import type { AppSettings } from '@shared/domain'
+import type { AppSettings, CanvasScenePaletteId } from '@shared/domain'
 import {
   STAGE_CONTROL_DEFAULTS,
+  normalizeCanvasScenePalette,
   normalizeStageControls,
   type StageControlPreferences
 } from '@shared/domain'
@@ -12,6 +13,7 @@ const canvasVfxEnabled = ref(true)
 const weatherSystemEnabled = ref(true)
 const weatherSfxEnabled = ref(true)
 const weatherBgmEnabled = ref(true)
+const canvasPalette = ref<CanvasScenePaletteId>('classic')
 const appTheme = ref<'dark' | 'light'>('dark')
 
 /**
@@ -29,7 +31,8 @@ export const editorPreferences = {
   canvasVfxEnabled: readonly(canvasVfxEnabled),
   weatherSystemEnabled: readonly(weatherSystemEnabled),
   weatherSfxEnabled: readonly(weatherSfxEnabled),
-  weatherBgmEnabled: readonly(weatherBgmEnabled)
+  weatherBgmEnabled: readonly(weatherBgmEnabled),
+  canvasPalette: readonly(canvasPalette)
 }
 
 export function setCanvasVfxEnabled(enabled: boolean): void {
@@ -54,6 +57,14 @@ export function setWeatherSfxEnabled(enabled: boolean): void {
 
 export function setWeatherBgmEnabled(enabled: boolean): void {
   weatherBgmEnabled.value = enabled !== false
+}
+
+export function setCanvasPalette(palette: CanvasScenePaletteId): void {
+  const next = normalizeCanvasScenePalette(palette)
+  canvasPalette.value = next
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.canvasPalette = next
+  }
 }
 
 /** 3D 视口灵敏度（只读；见上方说明，别把 `.value` 缓存到模块级常量里） */
@@ -90,6 +101,7 @@ export function applyEditorPreferences(settings: AppSettings): void {
   setWeatherSystemEnabled(settings.editor?.weatherSystemEnabled !== false)
   setWeatherSfxEnabled(settings.editor?.weatherSfxEnabled !== false)
   setWeatherBgmEnabled(settings.editor?.weatherBgmEnabled !== false)
+  setCanvasPalette(normalizeCanvasScenePalette(settings.editor?.canvasPalette))
   // 灵敏度按区间钳制：手改过 settings.json 的脏值不该让视口「拖不动」
   stageControlPreferences.value = normalizeStageControls(settings.editor?.stage)
   applyAppTheme(settings.theme === 'light' ? 'light' : 'dark')

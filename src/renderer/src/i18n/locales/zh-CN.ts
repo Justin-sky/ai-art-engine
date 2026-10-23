@@ -366,7 +366,17 @@ export default {
       sfxToggle: '天气音效',
       bgmToggle: '背景音乐',
       triggerStrike: '召唤雷击',
-      randomNext: '随机换天'
+      randomNext: '随机换天',
+      paletteLabel: '画布场景色调（原神风格）',
+      paletteAuto: '随天气流转',
+      paletteFontaine: '枫丹·苍蓝水瀑',
+      paletteCelestia: '空灵·星穹暮粉',
+      paletteMondstadt: '蒙德·晴空碧野',
+      paletteNatlan: '纳塔·暖岩晴岚',
+      paletteLiyue: '璃月·流金晚照',
+      paletteStarryNight: '星夜·璀璨银河',
+      paletteTwilightDusk: '暮夜·绯霞星幕',
+      paletteClassic: '经典极简底色'
     },
     stageControls: {
       title: '3D 视口操控灵敏度',

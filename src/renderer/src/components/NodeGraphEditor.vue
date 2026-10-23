@@ -416,7 +416,8 @@
         'drop-over': dropOver,
         selecting: !!selectionBox,
         'grid-off': !gridVisible,
-        'dragging-nodes': isDraggingNodes
+        'dragging-nodes': isDraggingNodes,
+        'has-genshin-vista': editorPreferences.canvasPalette.value !== 'classic'
       }"
       @contextmenu.prevent="onContextMenu"
       @pointerdown="onViewportPointerDown"
@@ -424,6 +425,7 @@
       @pointerleave="onViewportPointerLeave"
       @scroll="onViewportScroll"
     >
+      <CanvasGenshinVista />
       <div class="grid-layer" :class="{ hidden: !gridVisible }" aria-hidden="true">
         <div ref="gridMinorEl" class="grid-pattern grid-pattern-minor" />
         <div ref="gridMajorEl" class="grid-pattern grid-pattern-major" />
@@ -1130,6 +1132,7 @@ import {
   notifyWeatherTaskStart,
   type WeatherNodeRect
 } from '../graph/vfx/canvasWeatherEngine'
+import CanvasGenshinVista from './CanvasGenshinVista.vue'
 import CanvasWeatherOverlay from './CanvasWeatherOverlay.vue'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
@@ -11539,6 +11542,11 @@ defineExpose({
 
 .graph-viewport.grid-off {
   background: var(--graph-viewport-bg);
+}
+
+.graph-viewport.has-genshin-vista {
+  --graph-grid-minor: rgba(255, 255, 255, 0.13);
+  --graph-grid-major: rgba(255, 255, 255, 0.26);
 }
 
 .grid-layer {

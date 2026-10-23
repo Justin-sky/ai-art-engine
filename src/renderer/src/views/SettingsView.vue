@@ -122,6 +122,25 @@
           {{ t('settings.weatherSystem.bgmEnabled') }}
         </label>
 
+        <label>
+          <span>{{ t('settings.weatherSystem.paletteLabel') }}</span>
+          <select v-model="form.editor.canvasPalette">
+            <option value="classic">{{ t('settings.weatherSystem.paletteClassic') }}</option>
+            <option value="auto">{{ t('settings.weatherSystem.paletteAuto') }}</option>
+            <option value="fontaine">{{ t('settings.weatherSystem.paletteFontaine') }}</option>
+            <option value="celestia">{{ t('settings.weatherSystem.paletteCelestia') }}</option>
+            <option value="mondstadt">{{ t('settings.weatherSystem.paletteMondstadt') }}</option>
+            <option value="natlan">{{ t('settings.weatherSystem.paletteNatlan') }}</option>
+            <option value="liyue">{{ t('settings.weatherSystem.paletteLiyue') }}</option>
+            <option value="starry_night">
+              {{ t('settings.weatherSystem.paletteStarryNight') }}
+            </option>
+            <option value="twilight_dusk">
+              {{ t('settings.weatherSystem.paletteTwilightDusk') }}
+            </option>
+          </select>
+        </label>
+
         <h2 class="about-heading">
           {{ t('settings.about.title') }}
         </h2>
@@ -186,7 +205,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, toRaw, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { DEFAULT_SETTINGS, type AppSettings } from '@shared/domain'
+import { DEFAULT_SETTINGS, normalizeCanvasScenePalette, type AppSettings } from '@shared/domain'
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
@@ -196,6 +215,7 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   applyAppTheme,
   applyEditorPreferences,
+  setCanvasPalette,
   setCanvasVfxEnabled,
   setWeatherBgmEnabled,
   setWeatherSfxEnabled,
@@ -394,7 +414,8 @@ function cloneSettings(source: AppSettings): AppSettings {
       canvasVfxEnabled: raw.editor?.canvasVfxEnabled !== false,
       weatherSystemEnabled: raw.editor?.weatherSystemEnabled !== false,
       weatherSfxEnabled: raw.editor?.weatherSfxEnabled !== false,
-      weatherBgmEnabled: raw.editor?.weatherBgmEnabled !== false
+      weatherBgmEnabled: raw.editor?.weatherBgmEnabled !== false,
+      canvasPalette: normalizeCanvasScenePalette(raw.editor?.canvasPalette)
     },
     models: normalizeModelsSettings(toRaw(raw.models ?? DEFAULT_SETTINGS.models)),
     search: normalizeSearchSettings(raw.search ?? DEFAULT_SETTINGS.search),
@@ -522,6 +543,12 @@ watch(
   () => form.editor.weatherBgmEnabled,
   (enabled) => {
     setWeatherBgmEnabled(enabled !== false)
+  }
+)
+watch(
+  () => form.editor.canvasPalette,
+  (palette) => {
+    setCanvasPalette(normalizeCanvasScenePalette(palette))
   }
 )
 

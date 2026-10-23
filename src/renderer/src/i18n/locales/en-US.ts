@@ -370,7 +370,17 @@ export default {
       sfxToggle: 'Weather SFX',
       bgmToggle: 'Ambient BGM',
       triggerStrike: 'Lightning Strike',
-      randomNext: 'Shuffle Weather'
+      randomNext: 'Shuffle Weather',
+      paletteLabel: 'Canvas Scene Palette (Genshin Style)',
+      paletteAuto: 'Auto by Weather',
+      paletteFontaine: 'Fontaine · Azure Cascade',
+      paletteCelestia: 'Celestia · Dreamy Dusk',
+      paletteMondstadt: 'Mondstadt · Emerald Breeze',
+      paletteNatlan: 'Natlan · Terracotta Canyon',
+      paletteLiyue: 'Liyue · Golden Sunset',
+      paletteStarryNight: 'Starry Night · Astral Galaxy',
+      paletteTwilightDusk: 'Twilight · Crimson Dusk',
+      paletteClassic: 'Classic Minimal'
     },
     stageControls: {
       title: '3D viewport control sensitivity',
