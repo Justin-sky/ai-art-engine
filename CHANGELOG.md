@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.3] — 2026-10-23
+
+8.5.3 补丁版：**2D 舞台（`stage.2d`）** 新增 **AI 识骨对齐（Alpha 轮廓形态学分析 + 本地 YOLOv8-Pose 融合 + 二次元/Q 版异常点过滤）与一键自动拆件挂点**，支持 MCP 直接传入动作预设名（如 `idle` / `walk` / `run`）自动装配骨骼、拆件并烘焙序列帧与精灵图集；**画布动态天气系统** 修复长时间运行后 `requestAnimationFrame` 循环因异常帧死锁导致的界面卡死问题。
+
+- **新增 · 2D 舞台 AI 识骨对齐与二次元 Alpha 轮廓形态学融合（`stage2dHumanoid` + `composeStage2dAutoCut` + `Stage2dNodeToolDialog`）**：在「骨骼」页新增 **「🤖 AI 识骨对齐」** 与 **「⚡ AI 识骨并拆件」**；先对透明立绘执行 Alpha 轮廓形态学扫描（自动定位 2~8 头身颈部收窄点、头部质心、肩宽、外侧独立手臂连通段与下半身双腿/双脚分叉），再调用本地 `YOLOv8-Pose` 识别 COCO17 关键点，自动过滤飞出透明区或违背人体解剖学拓扑的二次元误检点，按置信度与轮廓先验融合并吸附回角色非透明像素内部，同时自动翻转正面立绘的解剖学左右与屏幕左右（`*L` / `*R`）配对。
+- **新增 · `stage.2d` 节点支持动作预设名直传与无骨骼自动识骨拆件烘焙（`stage2dActionPresets` + `stageLocal` + `smartPatch`）**：`normalizeStage2dAction` 支持直接传入预设 ID、中英文名或自然语言别名（如 `"idle"`、`"walk"`、`"attack"`、`"待机呼吸"`）自动展开为完整关键帧时间轴；当 `stage.2d` 节点配置了动作与导出帧率（`stage2dAnimFps > 0`）但未手动装配骨骼时，运行节点自动触发 AI 识骨对齐与部件拆切挂点，烘焙逐帧透明 PNG 与精灵图集（Sprite Sheet）。
+- **修复 · 画布动态天气渲染循环防卡死保护（`CanvasWeatherOverlay` + `canvasWeatherEngine` + `NodeGraphEditor`）**：为 `CanvasWeatherOverlay` 的 `requestAnimationFrame` 循环增加 `try / finally` 异常隔离、Canvas 2D `arc()` 半径正数钳制与光晕数量上限，并在任务完成后平滑淡出停止后台空转，彻底解决多轮 AI/MCP 任务执行后主线程卡死的问题。
+
 ## [8.5.2] — 2026-10-23
 
 8.5.2 补丁版：**图片生成节点（`asset.image` / `ui.gen` / `frame.animGen`）** 升级为 **原生模型透明背景直出**（默认开启透明背景：支持透明通道的模型直接生成原生 RGBA 透明图，不支持的模型按常规生成不透明图，生图后不再做二次去背景/YOLO 抠图处理）；**独立抠图工具** 升级 **引导滤波边缘细化、发丝间隙剥离与去半透明背景光晕**；**AI 会话面板** 在左侧未打开画布时执行任务改为 **自动新建并打开全新自由画布**。
