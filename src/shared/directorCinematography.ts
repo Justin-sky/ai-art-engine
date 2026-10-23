@@ -1385,7 +1385,7 @@ export function buildDirectorCinematographyPrompt(
     shotSizeEn = 'extreme wide establishing shot (EWS)'
   }
 
-  // 2. 判断相机俯仰角与荷兰角（Camera Angle）
+  // 2. 判断相机俯仰角、过肩/主观视角与荷兰角（Camera Angle）
   const rotation = viewer.rotation ?? directorViewerRotationFromLook(viewer.position, viewer.target)
   const pitchDeg = (rotation.x * 180) / Math.PI
   const rollDeg = (rotation.z * 180) / Math.PI
@@ -1405,6 +1405,29 @@ export function buildDirectorCinematographyPrompt(
     cameraAngleZh = '低机位仰拍英雄视角'
     cameraAngleEn = 'low-angle heroic shot looking up'
   }
+
+  const camNameRaw = (activeCam.name ?? '').trim()
+  const otsDetailMatch = camNameRaw.match(/(?:过肩|越肩)\s*[（(]([^）)]+)[）)]/)
+  const isOtsCam = /过肩|越肩|正反打|\bots\b|over[-\s]*the[-\s]*shoulder/i.test(camNameRaw)
+  const isPovCam = /主观|第一人称|\bpov\b|point\s*of\s*view/i.test(camNameRaw)
+  const isProfileCam = /侧拍|侧面|正侧|\bprofile\b/i.test(camNameRaw)
+
+  if (isOtsCam) {
+    const otsLabelZh = otsDetailMatch ? `过肩（${otsDetailMatch[1].trim()}）` : '过肩'
+    cameraAngleZh =
+      cameraAngleZh === '平视机位' ? `平视${otsLabelZh}机位` : `${cameraAngleZh}·${otsLabelZh}机位`
+    cameraAngleEn += otsDetailMatch
+      ? `, over-the-shoulder (OTS: ${otsDetailMatch[1].trim()})`
+      : ', over-the-shoulder (OTS)'
+  } else if (isPovCam) {
+    cameraAngleZh =
+      cameraAngleZh === '平视机位' ? '平视主观视角机位（POV）' : `${cameraAngleZh}·主观视角（POV）`
+    cameraAngleEn += ', first-person POV'
+  } else if (isProfileCam) {
+    cameraAngleZh = cameraAngleZh === '平视机位' ? '平视侧拍机位' : `${cameraAngleZh}·侧拍构图`
+    cameraAngleEn += ', side profile angle'
+  }
+
   if (Math.abs(rollDeg) >= 5) {
     const tiltDir = rollDeg > 0 ? '右倾' : '左倾'
     cameraAngleZh += `（荷兰角${tiltDir} ${Math.abs(Math.round(rollDeg))}°）`
@@ -1488,9 +1511,14 @@ export function buildDirectorCinematographyPrompt(
       last.position.z - viewer.target.z
     )
     const dyTrack = last.position.y - first.position.y
-    const lateral = Math.hypot(
-      last.position.x - first.position.x,
-      last.position.z - first.position.z
+    const rot0 = first.rotation ?? directorViewerRotationFromLook(first.position, viewer.target)
+    const fwd0 = directorViewerForwardFromRotation(rot0)
+    const fwdHorizLen = Math.hypot(fwd0.x, fwd0.z) || 1
+    const camRightX = -fwd0.z / fwdHorizLen
+    const camRightZ = fwd0.x / fwdHorizLen
+    const lateral = Math.abs(
+      (last.position.x - first.position.x) * camRightX +
+        (last.position.z - first.position.z) * camRightZ
     )
 
     if (camTrack.path?.kind === 'circle') {

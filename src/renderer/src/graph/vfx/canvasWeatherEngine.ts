@@ -264,12 +264,17 @@ export function notifyWeatherTaskStart(sourceId = 'ai-chat'): void {
   }
 }
 
+/** Duration (ms) of the 'sunny' celebration weather after a task completes before returning to 'idle'. */
+export const SUNNY_COMPLETE_DURATION_MS = 2000
+
 /**
  * Notify the weather system that an AI chat task or graph execution has completed.
- * Transitions the weather to 'sunny' (clear sky + golden rays + rainbow) before returning to 'idle'.
+ * Transitions the weather to 'sunny' (clear sky + golden rays + rainbow) for 2s before returning to 'idle'.
+ * Ignores completion calls for sources that were not actively running (e.g. initial watcher evaluation on canvas mount).
  */
 export function notifyWeatherTaskComplete(sourceId = 'ai-chat'): void {
-  activeTaskSources.delete(sourceId)
+  const wasActive = activeTaskSources.delete(sourceId)
+  if (!wasActive) return
   if (activeTaskSources.size > 0) return
 
   clearTimers()
@@ -288,7 +293,7 @@ export function notifyWeatherTaskComplete(sourceId = 'ai-chat'): void {
     if (activeTaskSources.size === 0 && manualOverride.value === 'auto') {
       applyEffectiveWeather('idle')
     }
-  }, 8000)
+  }, SUNNY_COMPLETE_DURATION_MS)
 }
 
 /**
@@ -620,8 +625,8 @@ export function stepNodeWeatherPhysics(
       }
     }
 
-    // Smooth surface coating transitions
-    const rate = suppressDisplacement ? 1.4 : 0.55
+    // Smooth surface coating transitions (decay rapidly once weather returns to idle)
+    const rate = weather === 'idle' ? 3.5 : suppressDisplacement ? 1.4 : 0.55
     phys.wetness += (wetnessTarget - phys.wetness) * Math.min(1, dt * rate)
     phys.sunlitGlow += (sunlitTarget - phys.sunlitGlow) * Math.min(1, dt * (rate + 0.25))
     phys.frostLevel += (frostTarget - phys.frostLevel) * Math.min(1, dt * rate)

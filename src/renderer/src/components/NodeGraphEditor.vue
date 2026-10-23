@@ -417,7 +417,10 @@
         selecting: !!selectionBox,
         'grid-off': !gridVisible,
         'dragging-nodes': isDraggingNodes,
-        'has-genshin-vista': editorPreferences.canvasPalette.value !== 'classic'
+        'has-genshin-vista':
+          editorPreferences.canvasPalette.value !== 'classic' &&
+          (editorPreferences.canvasPalette.value !== 'auto' ||
+            canvasWeatherState.currentWeather.value !== 'idle')
       }"
       @contextmenu.prevent="onContextMenu"
       @pointerdown="onViewportPointerDown"
@@ -2846,11 +2849,11 @@ const weatherVisibleNodes = computed<WeatherNodeRect[]>(() => {
 
 watch(
   isGraphOrTaskRunning,
-  (running) => {
+  (running, wasRunning) => {
     const sourceKey = `graph:${graphHostId.value}`
     if (running) {
       notifyWeatherTaskStart(sourceKey)
-    } else {
+    } else if (wasRunning) {
       notifyWeatherTaskComplete(sourceKey)
     }
   },

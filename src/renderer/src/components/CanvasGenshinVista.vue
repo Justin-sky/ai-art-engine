@@ -47,6 +47,7 @@ const resolvedPalette = computed<Exclude<CanvasScenePaletteId, 'auto'>>(() => {
   const pref = palettePref.value
   if (pref === 'classic') return 'classic'
   if (pref && pref !== 'auto') return pref
+  if (currentWeather.value === 'idle') return 'classic'
   return mapWeatherToGenshinPalette(currentWeather.value)
 })
 </script>
