@@ -555,6 +555,7 @@ async function executeOneNode(
     composeImageComposeCanvas: options.composeImageComposeCanvas,
     composeStage2dCanvas: options.composeStage2dCanvas,
     composeStage2dFrameSheet: options.composeStage2dFrameSheet,
+    autoRigStage2dScene: options.autoRigStage2dScene,
     composeImageGridCell: options.composeImageGridCell,
     composeVideoFrameSheet: options.composeVideoFrameSheet,
     composeGifFrames: options.composeGifFrames,

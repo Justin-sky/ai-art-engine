@@ -175,14 +175,40 @@ async function composeStage2dActionFrames(
 
   const cw = input.scene.canvasWidth || 1024
   const ch = input.scene.canvasHeight || 1024
-  const effectiveRig =
-    input.rig.joints.length > 0
-      ? input.rig
-      : createHumanoidStage2dRig({
+  let effectiveScene = input.scene
+  let effectiveRig = input.rig
+  let autoAlignedRigToPersist: Stage2dRig | null = null
+
+  if (!effectiveRig.joints.length) {
+    if (ctx.autoRigStage2dScene) {
+      try {
+        const autoRigged = await ctx.autoRigStage2dScene({
+          state: input.scene,
+          autoCut: true
+        })
+        effectiveScene = autoRigged.state
+        effectiveRig = autoRigged.rig
+        // 持久化到节点 params 的骨骼只保留 16 个已对齐关节（不含临时内存 base64 拆件层的挂点），
+        // 打开 2D 舞台工作台时即可直接看到 AI 对齐到角色身上的骨骼点
+        autoAlignedRigToPersist = {
+          ...autoRigged.rig,
+          attachments: []
+        }
+      } catch {
+        effectiveRig = createHumanoidStage2dRig({
           x: Math.round(cw * 0.5),
           groundY: Math.round(ch * 0.94),
           height: Math.round(ch * 0.85)
         })
+      }
+    } else {
+      effectiveRig = createHumanoidStage2dRig({
+        x: Math.round(cw * 0.5),
+        groundY: Math.round(ch * 0.94),
+        height: Math.round(ch * 0.85)
+      })
+    }
+  }
 
   const composeCanvas = ctx.composeStage2dCanvas
   const composeSheet = ctx.composeStage2dFrameSheet
@@ -204,7 +230,7 @@ async function composeStage2dActionFrames(
     }
     const sampled = sampleStage2dActionFrame(action, time)
     const composed = await composeCanvas({
-      state: input.scene,
+      state: effectiveScene,
       rig: effectiveRig,
       pose: sampled.pose,
       rootOffset: sampled.rootOffset
@@ -229,6 +255,7 @@ async function composeStage2dActionFrames(
   if (!frames.length) return { params: {} }
 
   const params: Record<string, unknown> = {
+    ...(autoAlignedRigToPersist ? { stage2dRig: autoAlignedRigToPersist } : {}),
     stage2dAnimFps: fps,
     stage2dAnimFramePaths: frames.map((frame) => frame.relativePath),
     stage2dAnimFrameCount: frames.length

@@ -35,7 +35,8 @@ import {
 describe('anim2d state', () => {
   it('normalizes rows/cols into clamped defaults', () => {
     expect(normalizeAnim2dState({ rows: 2, cols: 6 })).toEqual({ rows: 2, cols: 6 })
-    expect(normalizeAnim2dState({ rows: 0, cols: 99 })).toEqual({ rows: 1, cols: 6 })
+    expect(normalizeAnim2dState({ rows: 1, cols: 8 })).toEqual({ rows: 1, cols: 8 })
+    expect(normalizeAnim2dState({ rows: 0, cols: 99 })).toEqual({ rows: 1, cols: 99 })
     expect(normalizeAnim2dState({})).toEqual({ rows: 1, cols: 4 })
     expect(readAnim2dFromNode({ animRows: 3, animCols: 2 })).toEqual({ rows: 3, cols: 2 })
   })

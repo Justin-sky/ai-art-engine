@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  analyzeStage2dSpriteSilhouette,
   computeStage2dRigTransforms,
   createHumanoidStage2dRig,
+  fitHumanoidStage2dRigToSkeleton,
   classifyStage2dJoint,
   keypointsFromSkeleton,
   solveStage2dPoseFromSkeleton,
@@ -207,5 +209,121 @@ describe('solveStage2dPoseFromSkeleton', () => {
     })
     const torso = result.segments.find((s) => s.key === 'torso')
     expect(torso).toBeUndefined()
+  })
+})
+
+describe('fitHumanoidStage2dRigToSkeleton', () => {
+  it('正面立绘 COCO17 关键点（left_shoulder 在画面右侧）自动翻转配对并对齐 16 个关节世界坐标', () => {
+    const skel = skeleton({
+      nose: kp(512, 160),
+      left_shoulder: kp(560, 260),
+      right_shoulder: kp(464, 260),
+      left_elbow: kp(600, 360),
+      right_elbow: kp(424, 360),
+      left_wrist: kp(620, 450),
+      right_wrist: kp(404, 450),
+      left_hip: kp(544, 480),
+      right_hip: kp(480, 480),
+      left_knee: kp(550, 650),
+      right_knee: kp(474, 650),
+      left_ankle: kp(556, 820),
+      right_ankle: kp(468, 820)
+    })
+    const fitted = fitHumanoidStage2dRigToSkeleton({
+      skeleton: skel,
+      bounds: { x: 380, y: 110, width: 264, height: 740 }
+    })
+    expect(fitted.matchedKeypoints).toBe(13)
+    expect(fitted.usedKeypoints).toBe(true)
+    expect(fitted.rig.joints).toHaveLength(16)
+
+    const world = new Map(
+      computeStage2dRigTransforms(fitted.rig).map((item) => [item.jointId, item])
+    )
+    // 屏幕左侧 *L 对应画面左半边（COCO right_*），屏幕右侧 *R 对应画面右半边（COCO left_*）
+    expect(world.get('shoulderL')!.x).toBeCloseTo(464, 1)
+    expect(world.get('shoulderR')!.x).toBeCloseTo(560, 1)
+    expect(world.get('wristL')!.x).toBeCloseTo(404, 1)
+    expect(world.get('wristR')!.x).toBeCloseTo(620, 1)
+    expect(world.get('ankleL')!.y).toBeCloseTo(820, 1)
+    expect(world.get('ankleR')!.y).toBeCloseTo(820, 1)
+    expect(world.get('pelvis')!.x).toBeCloseTo(512, 1)
+  })
+
+  it('无关键点时退化为按透明包围盒生成完整 16 关节人形骨骼', () => {
+    const fitted = fitHumanoidStage2dRigToSkeleton({
+      skeleton: null,
+      bounds: { x: 300, y: 100, width: 400, height: 800 }
+    })
+    expect(fitted.matchedKeypoints).toBe(0)
+    expect(fitted.rig.joints).toHaveLength(16)
+    const world = new Map(
+      computeStage2dRigTransforms(fitted.rig).map((item) => [item.jointId, item])
+    )
+    expect(world.get('pelvis')!.x).toBeCloseTo(500, 1)
+    expect(world.get('ankleL')!.x).toBeLessThan(500)
+    expect(world.get('ankleR')!.x).toBeGreaterThan(500)
+  })
+
+  it('二次元/Q版 Alpha 轮廓形态学分析 + YOLO 异常飞点过滤（透明区飞点与倒置髋部自动剔除）', () => {
+    const w = 100
+    const h = 200
+    const alpha = new Uint8Array(w * h)
+    const fillRect = (x0: number, x1: number, y0: number, y1: number): void => {
+      for (let y = y0; y <= y1; y += 1) {
+        for (let x = x0; x <= x1; x += 1) {
+          if (x >= 0 && x < w && y >= 0 && y < h) alpha[y * w + x] = 255
+        }
+      }
+    }
+    // 构造约 3 头身二次元/Q版透明立绘掩码：
+    // 大头 (y: 4..60, x: 25..75) -> 颈部收窄 (y: 61..68, x: 43..57)
+    // -> 躯干 (y: 69..124, x: 34..66) + 左右独立手臂 (x: 16..28, x: 72..84, y: 72..130)
+    // -> 左右独立双腿 (x: 35..46, x: 54..65, y: 125..195)
+    fillRect(25, 75, 4, 60)
+    fillRect(43, 57, 61, 68)
+    fillRect(34, 66, 69, 124)
+    fillRect(16, 28, 72, 130)
+    fillRect(72, 84, 72, 130)
+    fillRect(35, 46, 125, 195)
+    fillRect(54, 65, 125, 195)
+
+    const bounds = { x: 200, y: 100, width: 200, height: 400 }
+    const sil = analyzeStage2dSpriteSilhouette({ data: alpha, width: w, height: h }, bounds)
+    expect(sil).not.toBeNull()
+    expect(sil!.hasLegSplit).toBe(true)
+    // 颈部收窄应识别在 y ≈ 64/200 = 0.32 附近（Q版大头比例）
+    expect(sil!.neckV).toBeGreaterThan(0.26)
+    expect(sil!.neckV).toBeLessThan(0.38)
+
+    // 传入带二次元典型误检的 YOLO 关键点：
+    // - right_wrist 飞到画面最左侧透明空白区 (x=202, y=200)
+    // - left_hip / right_hip 被误检到比肩膀还高的位置 (y=180 < shoulder.y=245)
+    const noisySkel = skeleton({
+      nose: kp(300, 170, 0.8),
+      left_shoulder: kp(330, 245, 0.75),
+      right_shoulder: kp(270, 245, 0.75),
+      right_wrist: kp(202, 200, 0.85), // 透明空白区飞点
+      left_hip: kp(320, 180, 0.8), // 解剖学倒置异常点（高于肩部）
+      right_hip: kp(280, 180, 0.8)
+    })
+
+    const fitted = fitHumanoidStage2dRigToSkeleton({
+      skeleton: noisySkel,
+      bounds,
+      silhouette: { data: alpha, width: w, height: h }
+    })
+    expect(fitted.usedSilhouette).toBe(true)
+    const world = new Map(
+      computeStage2dRigTransforms(fitted.rig).map((item) => [item.jointId, item])
+    )
+    // 倒置的髋部被剔除，pelvis 保持在轮廓形态学骨盆位置（低于肩部）
+    expect(world.get('pelvis')!.y).toBeGreaterThan(world.get('shoulderL')!.y + 60)
+    // 飞出透明区的 wristL 被过滤，回退到左侧手臂非透明连通段中心 (x ≈ 200 + 0.22 * 200 = 244)
+    expect(world.get('wristL')!.x).toBeGreaterThan(230)
+    expect(world.get('wristL')!.x).toBeLessThan(260)
+    // 左右脚踝精准落在左右腿连通段内部
+    expect(world.get('ankleL')!.x).toBeCloseTo(200 + 0.41 * 200, -1)
+    expect(world.get('ankleR')!.x).toBeCloseTo(200 + 0.6 * 200, -1)
   })
 })

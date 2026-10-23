@@ -79,7 +79,13 @@ export async function composeImageGridCell(input: {
   /** 帧间防抖稳像：ground=脚底基线对齐 / center=主体质心居中 */
   stabilize?: 'off' | 'ground' | 'center'
 }): Promise<{ dataUrl: string; width: number; height: number; cellKey: string }> {
-  const state = normalizeImageGridSplit(input.state)
+  const fallbackState = normalizeImageGridSplit(input.state)
+  const rawRows = Math.floor(Number(input.state?.rows))
+  const rawCols = Math.floor(Number(input.state?.cols))
+  const state = {
+    rows: Number.isFinite(rawRows) && rawRows >= 1 ? rawRows : fallbackState.rows,
+    cols: Number.isFinite(rawCols) && rawCols >= 1 ? rawCols : fallbackState.cols
+  }
   const parsed = parseCellKey(input.cellKey)
   if (!parsed) throw new Error('GRID_SPLIT_BAD_CELL')
   const img = await loadImage(input.sourceDataUrl)

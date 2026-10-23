@@ -974,6 +974,20 @@ export interface NodeExecuteContext {
     rows: number
     columns: number
   } | null>
+  /**
+   * 2D 舞台 AI 关节点识别与自动建骨/拆件：未配置 stage2dRig 时自动调用本地 YOLO Pose
+   * 识别角色关节点，对齐 16 个人形关节，并可选按骨骼自动切分部件挂点。
+   */
+  autoRigStage2dScene?: (input: {
+    state: import('../stage2d').Stage2dSceneState
+    autoCut?: boolean
+  }) => Promise<{
+    state: import('../stage2d').Stage2dSceneState
+    rig: import('../stage2dRig').Stage2dRig
+    matchedKeypoints: number
+    usedKeypoints: boolean
+    partCount: number
+  }>
   /** 宫格：裁出单个宫格 PNG。 */
   composeImageGridCell?: (input: {
     sourceDataUrl: string
@@ -1545,6 +1559,7 @@ export interface GraphRunOptions {
   composeImageComposeCanvas?: NodeExecuteContext['composeImageComposeCanvas']
   composeStage2dCanvas?: NodeExecuteContext['composeStage2dCanvas']
   composeStage2dFrameSheet?: NodeExecuteContext['composeStage2dFrameSheet']
+  autoRigStage2dScene?: NodeExecuteContext['autoRigStage2dScene']
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeVideoFrameSheet?: NodeExecuteContext['composeVideoFrameSheet']
   composeGifFrames?: NodeExecuteContext['composeGifFrames']

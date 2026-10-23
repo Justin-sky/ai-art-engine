@@ -431,12 +431,38 @@
               <button
                 type="button"
                 class="primary"
+                :disabled="autoCutBusy"
+                :title="t('stage2d.rigAiFitTip')"
+                @click="aiFitRigToSprite(false)"
+              >
+                {{ t('stage2d.rigAiFit') }}
+              </button>
+              <button
+                type="button"
+                class="primary"
+                :disabled="autoCutBusy"
+                :title="t('stage2d.rigAiFitCutTip')"
+                @click="aiFitRigToSprite(true)"
+              >
+                {{ t('stage2d.rigAiFitCut') }}
+              </button>
+              <button
+                type="button"
+                class="icon"
+                :disabled="autoCutBusy"
                 :title="t('stage2d.rigTemplateTip')"
                 @click="useHumanoidTemplate"
               >
                 {{ t('stage2d.rigTemplate') }}
               </button>
             </div>
+            <p
+              v-if="autoCutMsg"
+              class="hint"
+              :class="{ warn: autoCutMsgKind === 'warn', error: autoCutMsgKind === 'error' }"
+            >
+              {{ autoCutMsg }}
+            </p>
             <template v-if="rig.joints.length">
               <div class="section-label">
                 {{ t('stage2d.rigToolLabel') }}
@@ -1052,6 +1078,7 @@ import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2d
 import { composeStage2dSpineExport } from '../features/graph/model/composeStage2dSpineExport'
 import {
   autoCutStage2dLayer,
+  autoDetectAndFitStage2dRig,
   type Stage2dAutoCutResult
 } from '../features/graph/model/composeStage2dAutoCut'
 import { resolveAssetPreviewUrl } from '../features/media/assetUrlCache'
@@ -1830,19 +1857,90 @@ function pickWholeFrameLayer(): Stage2dLayer | null {
     null
   )
 }
-function openAutoCutDialog(): void {
+async function aiFitRigToSprite(autoCut = false): Promise<void> {
   if (autoCutBusy.value) return
-  setAutoCutMsg('', 'ok')
-  if (!rig.value.joints.length) {
-    setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
+  const frameLayer =
+    pickWholeFrameLayer() ??
+    (selected.value && selected.value.visible && !selected.value.frame ? selected.value : null) ??
+    scene.value.layers.find((layer) => layer.visible && !layer.frame) ??
+    null
+  if (!frameLayer) {
+    setAutoCutMsg(t('stage2d.autoCutNeedLayer'), 'warn')
     return
   }
+  stopActionPlayback()
+  autoCutBusy.value = true
+  setAutoCutMsg(t('stage2d.rigAiFitBusy'), 'ok')
+  try {
+    pose.value = {}
+    rootOffset.value = { x: 0, y: 0 }
+    const result = await autoDetectAndFitStage2dRig({
+      state: scene.value,
+      frameLayerId: frameLayer.id,
+      resolveLayerUrl,
+      autoCut
+    })
+    if (!result) {
+      setAutoCutMsg(t('stage2d.autoCutFail'), 'warn')
+      return
+    }
+    scene.value = result.state
+    rig.value = result.rig
+    selectedJointId.value =
+      result.rig.joints.find((joint) => joint.id === 'pelvis')?.id ?? result.rig.joints[0]?.id ?? ''
+    if (autoCut && result.partCount > 0) {
+      const firstPart = result.state.layers.find(
+        (layer) => layer.id !== frameLayer.id && layer.visible
+      )
+      if (firstPart) selectedId.value = firstPart.id
+      setAutoCutMsg(t('stage2d.autoCutDone', { count: String(result.partCount) }), 'ok')
+    } else if (result.matchedKeypoints > 0) {
+      setAutoCutMsg(t('stage2d.rigAiFitDone', { count: String(result.matchedKeypoints) }), 'ok')
+    } else {
+      setAutoCutMsg(t('stage2d.rigAiFitBoundsDone'), 'ok')
+    }
+    void render()
+  } catch (err) {
+    console.error('[stage2d ai fit rig] failed:', err)
+    setAutoCutMsg(err instanceof Error ? err.message : String(err), 'error')
+  } finally {
+    autoCutBusy.value = false
+  }
+}
+
+async function openAutoCutDialog(): Promise<void> {
+  if (autoCutBusy.value) return
+  setAutoCutMsg('', 'ok')
   const frameLayer = pickWholeFrameLayer()
   if (!frameLayer) {
     setAutoCutMsg(t('stage2d.autoCutNeedLayer'), 'warn')
     return
   }
   stopActionPlayback()
+  if (!rig.value.joints.length) {
+    autoCutBusy.value = true
+    setAutoCutMsg(t('stage2d.rigAiFitBusy'), 'ok')
+    try {
+      const fitted = await autoDetectAndFitStage2dRig({
+        state: scene.value,
+        frameLayerId: frameLayer.id,
+        resolveLayerUrl,
+        autoCut: false
+      })
+      if (!fitted || !fitted.rig.joints.length) {
+        setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
+        return
+      }
+      rig.value = fitted.rig
+      selectedJointId.value =
+        fitted.rig.joints.find((joint) => joint.id === 'pelvis')?.id ??
+        fitted.rig.joints[0]?.id ??
+        ''
+      setAutoCutMsg('', 'ok')
+    } finally {
+      autoCutBusy.value = false
+    }
+  }
   pose.value = normalizeStage2dPose(rig.value, null)
   rootOffset.value = { x: 0, y: 0 }
   autoCutTargetLayerId.value = frameLayer.id
@@ -1867,7 +1965,7 @@ async function autoCutWholeLayer(): Promise<void> {
   if (autoCutBusy.value) return
   setAutoCutMsg('', 'ok')
   if (!rig.value.joints.length) {
-    setAutoCutMsg(t('stage2d.autoCutNeedRig'), 'warn')
+    await aiFitRigToSprite(true)
     return
   }
   const frameLayer = pickWholeFrameLayer()
@@ -2904,7 +3002,15 @@ onBeforeUnmount(() => {
 
 .rig-toolbar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+.rig-toolbar .primary {
+  flex: 1;
+  font-size: 12px;
+  padding: 5px 8px;
+  white-space: nowrap;
 }
 
 .rig-tools {

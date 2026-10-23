@@ -50,6 +50,7 @@ import { composeImageAlignCanvas } from '../model/composeImageAlignCanvas'
 import { composeImageComposeCanvas } from '../model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../model/composeStage2dFrameSheet'
+import { autoDetectAndFitStage2dRig } from '../model/composeStage2dAutoCut'
 import { composeImageGridCell } from '../model/composeImageGridCell'
 import { composeVideoFrameSheet } from '../model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../model/composeAnim2dGif'
@@ -1670,6 +1671,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageComposeCanvas,
         composeStage2dCanvas,
         composeStage2dFrameSheet,
+        autoRigStage2dScene: autoDetectAndFitStage2dRig,
         composeImageGridCell,
         composeVideoFrameSheet,
         composeGifFrames: composeAnim2dGif,

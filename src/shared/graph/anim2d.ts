@@ -13,7 +13,7 @@ import {
 } from './hostInterface'
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
 
-export const ANIM2D_MAX_DIM = 6
+export const ANIM2D_MAX_DIM = Number.MAX_SAFE_INTEGER
 export const ANIM2D_MIN_DIM = 1
 
 export interface Anim2dState {
@@ -34,6 +34,7 @@ export interface Anim2dGridPreset {
 export const ANIM2D_GRID_PRESETS: readonly Anim2dGridPreset[] = [
   { id: '1x4', rows: 1, cols: 4, frames: 4, aspectRatio: '16:9' },
   { id: '1x6', rows: 1, cols: 6, frames: 6, aspectRatio: '16:9' },
+  { id: '1x8', rows: 1, cols: 8, frames: 8, aspectRatio: '16:9' },
   { id: '2x2', rows: 2, cols: 2, frames: 4, aspectRatio: '1:1' },
   { id: '2x3', rows: 2, cols: 3, frames: 6, aspectRatio: '4:3' },
   { id: '2x4', rows: 2, cols: 4, frames: 8, aspectRatio: '16:9' },
@@ -220,7 +221,7 @@ export function computeVideoFrameTimestamps(
   range?: Partial<AnimVideoRange> | null
 ): number[] {
   const dur = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0
-  const n = Math.max(1, Math.min(64, Math.floor(count) || 1))
+  const n = Math.max(1, Math.floor(count) || 1)
   if (dur <= 0) return [0]
   const { startRatio, endRatio } = normalizeAnimVideoRange(range?.startRatio, range?.endRatio)
   const safeMax = Math.max(0, dur - 0.04)
@@ -375,7 +376,7 @@ export function buildAnimKeyColorPrompt(keyColor: AnimKeyColor, locale?: string)
 function clampDim(n: unknown): number {
   const v = Math.floor(Number(n))
   if (!Number.isFinite(v)) return 4
-  return Math.min(ANIM2D_MAX_DIM, Math.max(ANIM2D_MIN_DIM, v))
+  return Math.max(ANIM2D_MIN_DIM, v)
 }
 
 export function normalizeAnim2dState(raw?: Partial<Anim2dState> | null): Anim2dState {

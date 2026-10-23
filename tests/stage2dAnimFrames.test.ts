@@ -270,4 +270,41 @@ describe('stage.2d 动作帧序列节点产物（执行器）', () => {
     expect(savedMedia).toHaveLength(12 + 2)
     expect(sheetInputs).toHaveLength(1)
   })
+
+  it('提供 autoRigStage2dScene 时：无骨骼节点自动调用 AI 识骨与拆件烘焙动作帧，并回写 16 关节骨骼', async () => {
+    const { sprite, stage } = buildGraph({
+      stage2dRig: undefined,
+      stage2dAction: 'idle',
+      stage2dAnimFps: 4
+    })
+    const { savedMedia, stub } = buildRunOptions()
+    const customRig = createHumanoidStage2dRig({ x: 320, groundY: 480, height: 360 })
+    let autoRigCalled = 0
+
+    const result = await runStage(stage, sprite, {
+      ...stub,
+      autoRigStage2dScene: async ({ state }) => {
+        autoRigCalled += 1
+        return {
+          state,
+          rig: {
+            ...customRig,
+            attachments: [{ layerId: 'part-head', jointId: 'head', offsetX: 0, offsetY: 0 }]
+          },
+          matchedKeypoints: 13,
+          partCount: 10
+        }
+      }
+    })
+    expect(result.ok, result.error).toBe(true)
+    expect(autoRigCalled).toBe(1)
+    expect(savedMedia.length).toBeGreaterThan(2)
+    // 写回节点参数的 stage2dRig 保留对齐后的 16 个关节，但不把临时拆件挂点塞回原图层
+    const savedRig = stage.params.stage2dRig as {
+      joints: Array<{ id: string }>
+      attachments: unknown[]
+    }
+    expect(savedRig.joints).toHaveLength(16)
+    expect(savedRig.attachments).toEqual([])
+  })
 })

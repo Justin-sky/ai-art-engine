@@ -70,6 +70,7 @@ import { composeImageAlignCanvas } from '../features/graph/model/composeImageAli
 import { composeImageComposeCanvas } from '../features/graph/model/composeImageComposeCanvas'
 import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanvas'
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
+import { autoDetectAndFitStage2dRig } from '../features/graph/model/composeStage2dAutoCut'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
 import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
@@ -1768,6 +1769,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           composeImageComposeCanvas,
           composeStage2dCanvas,
           composeStage2dFrameSheet,
+          autoRigStage2dScene: autoDetectAndFitStage2dRig,
           composeImageGridCell,
           composeGifFrames: composeAnim2dGif,
           renderSvgFrames,

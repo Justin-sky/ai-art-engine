@@ -96,23 +96,29 @@
         <label class="field">
           <span>{{ t('graph.anim2d.rows') }}</span>
           <input
+            v-model="rowsDraft"
             type="number"
             min="1"
-            :max="String(ANIM2D_MAX_DIM)"
             step="1"
-            :value="state.rows"
-            @change="onRowsChange"
+            @focus="rowsFocused = true"
+            @input="onRowsInput"
+            @change="commitRows"
+            @blur="onRowsBlur"
+            @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
           />
         </label>
         <label class="field">
           <span>{{ t('graph.anim2d.cols') }}</span>
           <input
+            v-model="colsDraft"
             type="number"
             min="1"
-            :max="String(ANIM2D_MAX_DIM)"
             step="1"
-            :value="state.cols"
-            @change="onColsChange"
+            @focus="colsFocused = true"
+            @input="onColsInput"
+            @change="commitCols"
+            @blur="onColsBlur"
+            @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
           />
         </label>
         <label class="field field-grow">
@@ -379,7 +385,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   ANIM2D_GRID_PRESETS,
-  ANIM2D_MAX_DIM,
   anim2dCellKeys,
   animGifFpsToNodePatch,
   normalizeAnimVideoRange,
@@ -490,7 +495,7 @@ watch(
 )
 
 function clampDim(n: number): number {
-  return Math.min(ANIM2D_MAX_DIM, Math.max(1, Math.floor(n) || 1))
+  return Math.max(1, Math.floor(n) || 1)
 }
 
 function patchParams(patch: Record<string, unknown>): void {
@@ -536,20 +541,81 @@ async function extractVideoToAnim2dNow(): Promise<void> {
   }
 }
 
+const rowsDraft = ref(String(state.value.rows))
+const colsDraft = ref(String(state.value.cols))
+const rowsFocused = ref(false)
+const colsFocused = ref(false)
+
+watch(
+  () => state.value.rows,
+  (r) => {
+    if (!rowsFocused.value) {
+      rowsDraft.value = String(r)
+    }
+  },
+  { immediate: true }
+)
+
+watch(
+  () => state.value.cols,
+  (c) => {
+    if (!colsFocused.value) {
+      colsDraft.value = String(c)
+    }
+  },
+  { immediate: true }
+)
+
 function applyGridPreset(rows: number, cols: number): void {
-  patchParams({ animRows: clampDim(rows), animCols: clampDim(cols), animDisabledCells: [] })
+  const nextRows = clampDim(rows)
+  const nextCols = clampDim(cols)
+  rowsDraft.value = String(nextRows)
+  colsDraft.value = String(nextCols)
+  patchParams({ animRows: nextRows, animCols: nextCols, animDisabledCells: [] })
 }
 
-function onRowsChange(e: Event): void {
-  const n = Number((e.target as HTMLInputElement).value)
-  if (!Number.isFinite(n)) return
+function onRowsInput(e: Event): void {
+  const raw = (e.target as HTMLInputElement).value
+  rowsDraft.value = raw
+  const trimmed = raw.trim()
+  if (!trimmed) return
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n < 1) return
   patchParams({ animRows: clampDim(n) })
 }
 
-function onColsChange(e: Event): void {
-  const n = Number((e.target as HTMLInputElement).value)
-  if (!Number.isFinite(n)) return
+function commitRows(): void {
+  const n = Number(rowsDraft.value.trim())
+  const next = Number.isFinite(n) && n >= 1 ? clampDim(n) : state.value.rows
+  patchParams({ animRows: next })
+  rowsDraft.value = String(next)
+}
+
+function onRowsBlur(): void {
+  rowsFocused.value = false
+  commitRows()
+}
+
+function onColsInput(e: Event): void {
+  const raw = (e.target as HTMLInputElement).value
+  colsDraft.value = raw
+  const trimmed = raw.trim()
+  if (!trimmed) return
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n < 1) return
   patchParams({ animCols: clampDim(n) })
+}
+
+function commitCols(): void {
+  const n = Number(colsDraft.value.trim())
+  const next = Number.isFinite(n) && n >= 1 ? clampDim(n) : state.value.cols
+  patchParams({ animCols: next })
+  colsDraft.value = String(next)
+}
+
+function onColsBlur(): void {
+  colsFocused.value = false
+  commitCols()
 }
 
 function onKeyColorChange(e: Event): void {

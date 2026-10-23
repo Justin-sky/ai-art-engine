@@ -2099,6 +2099,16 @@ export default {
     rigTemplate: '🧍 Humanoid rig',
     rigTemplateTip:
       'Rebuild a standard humanoid rig to fit the canvas (replaces joints & attachments; naming follows the pose-solve convention)',
+    rigAiFit: '🤖 AI Auto-Fit Rig',
+    rigAiFitTip:
+      'Fuse Alpha silhouette morphology with local YOLOv8-Pose keypoints (with anime/chibi outlier filtering) to align the humanoid rig',
+    rigAiFitCut: '⚡ AI Fit & Auto-Cut',
+    rigAiFitCutTip:
+      'Align the humanoid rig via silhouette morphology + AI keypoints, then slice the sprite into parts and attach them to joints',
+    rigAiFitBusy: 'Analyzing sprite silhouette & keypoints…',
+    rigAiFitDone: 'Aligned rig by fusing silhouette morphology with {count} valid AI keypoints',
+    rigAiFitBoundsDone:
+      'Aligned rig via Alpha silhouette morphology (neck pinch / shoulder span / leg split)',
     rigToolLabel: 'Handle tools',
     rigToolMove: 'Move',
     rigToolRotate: 'Rotate',

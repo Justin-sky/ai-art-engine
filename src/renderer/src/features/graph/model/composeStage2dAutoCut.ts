@@ -3,6 +3,7 @@ import {
   computeStage2dRigTransforms,
   computeStage2dSlotJointCapMask,
   extractAlphaBounds,
+  fitHumanoidStage2dRigToSkeleton,
   normalizeStage2dRig,
   normalizeStage2dScene,
   partitionStage2dAutoPart,
@@ -13,6 +14,9 @@ import {
   type Stage2dRig,
   type Stage2dSceneState
 } from '@shared/gameAssets'
+import type { YoloSkeletonPoint } from '@shared/yolo'
+import { bestPoseModel } from '../../director/poseQuality'
+import { getYoloStatus, yoloPose } from '../../yolo/api'
 import { loadImageElement } from '../../yolo/cutout'
 
 /**
@@ -37,16 +41,16 @@ import { loadImageElement } from '../../yolo/cutout'
 const HUMAN_SLOTS: Array<
   Pick<Stage2dAutoPartSlot, 'id' | 'name' | 'jointId'> & { pointIds: string[] }
 > = [
-  { id: 'head', name: '头', jointId: 'neck', pointIds: ['neck', 'head'] },
-  { id: 'torso', name: '躯干', jointId: 'pelvis', pointIds: ['pelvis', 'chest', 'neck'] },
-  { id: 'upperarmL', name: '上臂L', jointId: 'shoulderL', pointIds: ['shoulderL', 'elbowL'] },
-  { id: 'forearmL', name: '前臂L', jointId: 'elbowL', pointIds: ['elbowL', 'wristL'] },
-  { id: 'upperarmR', name: '上臂R', jointId: 'shoulderR', pointIds: ['shoulderR', 'elbowR'] },
-  { id: 'forearmR', name: '前臂R', jointId: 'elbowR', pointIds: ['elbowR', 'wristR'] },
-  { id: 'thighL', name: '大腿L', jointId: 'hipL', pointIds: ['hipL', 'kneeL'] },
-  { id: 'shinL', name: '小腿L', jointId: 'kneeL', pointIds: ['kneeL', 'ankleL'] },
-  { id: 'thighR', name: '大腿R', jointId: 'hipR', pointIds: ['hipR', 'kneeR'] },
-  { id: 'shinR', name: '小腿R', jointId: 'kneeR', pointIds: ['kneeR', 'ankleR'] }
+  { id: 'head', name: '头', jointId: 'neck', pointIds: ['neck', 'head'] }, // cjk-ok
+  { id: 'torso', name: '躯干', jointId: 'pelvis', pointIds: ['pelvis', 'chest', 'neck'] }, // cjk-ok
+  { id: 'upperarmL', name: '上臂L', jointId: 'shoulderL', pointIds: ['shoulderL', 'elbowL'] }, // cjk-ok
+  { id: 'forearmL', name: '前臂L', jointId: 'elbowL', pointIds: ['elbowL', 'wristL'] }, // cjk-ok
+  { id: 'upperarmR', name: '上臂R', jointId: 'shoulderR', pointIds: ['shoulderR', 'elbowR'] }, // cjk-ok
+  { id: 'forearmR', name: '前臂R', jointId: 'elbowR', pointIds: ['elbowR', 'wristR'] }, // cjk-ok
+  { id: 'thighL', name: '大腿L', jointId: 'hipL', pointIds: ['hipL', 'kneeL'] }, // cjk-ok
+  { id: 'shinL', name: '小腿L', jointId: 'kneeL', pointIds: ['kneeL', 'ankleL'] }, // cjk-ok
+  { id: 'thighR', name: '大腿R', jointId: 'hipR', pointIds: ['hipR', 'kneeR'] }, // cjk-ok
+  { id: 'shinR', name: '小腿R', jointId: 'kneeR', pointIds: ['kneeR', 'ankleR'] } // cjk-ok
 ]
 
 export interface Stage2dAutoCutResult {
@@ -406,4 +410,238 @@ export async function autoCutStage2dLayer(input: {
   const session = await prepareStage2dAutoCutSession(input)
   if (!session) return null
   return commitStage2dAutoCutSession(session, session.assignment)
+}
+
+export interface Stage2dAutoRigResult {
+  state: Stage2dSceneState
+  rig: Stage2dRig
+  /** YOLO Pose 实际识别到的关键点数量（0 表示使用轮廓自适应模板回退） */
+  matchedKeypoints: number
+  /** 是否命中核心躯干关键点 */
+  usedKeypoints: boolean
+  /** 若开启了 autoCut，切出的部件数（0 表示仅对齐骨骼未拆件） */
+  partCount: number
+}
+
+function pickBestYoloSkeleton(
+  skeletons: readonly YoloSkeletonPoint[][]
+): YoloSkeletonPoint[] | null {
+  if (!skeletons.length) return null
+  let best: YoloSkeletonPoint[] | null = null
+  let bestScore = -1
+  for (const skel of skeletons) {
+    let sum = 0
+    let count = 0
+    for (const pt of skel) {
+      if (pt && Number.isFinite(pt.confidence)) {
+        sum += pt.confidence
+        count += 1
+      }
+    }
+    const score = count ? sum / count : 0
+    if (score > bestScore) {
+      bestScore = score
+      best = skel
+    }
+  }
+  return best
+}
+
+/**
+ * AI 自动识别立绘关节点并对齐骨骼（可选一键拆件挂点）：
+ * 1) 将目标整图层按其在 2D 舞台上的真实落位绘制到中性浅灰底推理画布（保证深浅发色/服饰均有清晰边缘对比度）；
+ * 2) 调用本地 YOLOv8-Pose 检测 COCO17 关键点，并换算回舞台画布坐标；
+ * 3) 调用 fitHumanoidStage2dRigToSkeleton 将 16 个人形骨骼关节对齐到立绘关键点与轮廓外接框；
+ * 4) 当 autoCut=true 时，自动沿对齐后的骨骼切分部件（含关节圆弧重叠防裂帽）并绑定到骨骼挂点。
+ */
+export async function autoDetectAndFitStage2dRig(input: {
+  state: Stage2dSceneState
+  targetLayerId?: string
+  frameLayerId?: string
+  resolveLayerUrl?: (sourceUrl: string) => Promise<string>
+  autoCut?: boolean
+}): Promise<Stage2dAutoRigResult> {
+  const scene = normalizeStage2dScene(input.state)
+  const resolveUrl = input.resolveLayerUrl ?? (async (url: string) => url)
+  const layerId = input.targetLayerId ?? input.frameLayerId
+  const targetIndex = layerId
+    ? scene.layers.findIndex((l) => l.id === layerId)
+    : scene.layers.findIndex((l) => l.visible && !l.frame && !!l.sourceUrl.trim())
+  const chosenIndex = targetIndex >= 0 ? targetIndex : scene.layers.length > 0 ? 0 : -1
+
+  if (chosenIndex < 0 || !scene.layers[chosenIndex]?.sourceUrl.trim()) {
+    const fallback = fitHumanoidStage2dRigToSkeleton({
+      canvasWidth: scene.canvasWidth,
+      canvasHeight: scene.canvasHeight
+    })
+    return {
+      state: scene,
+      rig: fallback.rig,
+      matchedKeypoints: 0,
+      usedKeypoints: false,
+      partCount: 0
+    }
+  }
+
+  const probes = await Promise.all(
+    scene.layers.map(async (layer) => {
+      if (!layer.sourceUrl.trim()) return null
+      try {
+        const url = await resolveUrl(layer.sourceUrl)
+        return url ? await loadImageElement(url) : null
+      } catch {
+        return null
+      }
+    })
+  )
+
+  const sourceInfos = scene.layers.map((_, index) => {
+    const img = probes[index]
+    const sw = img?.naturalWidth || 0
+    const sh = img?.naturalHeight || 0
+    if (!img || !sw || !sh) return { srcWidth: 0, srcHeight: 0, bounds: null }
+    const probe = document.createElement('canvas')
+    probe.width = sw
+    probe.height = sh
+    const probeCtx = probe.getContext('2d')
+    if (!probeCtx) return { srcWidth: sw, srcHeight: sh, bounds: null }
+    probeCtx.drawImage(img, 0, 0)
+    const rgba = probeCtx.getImageData(0, 0, sw, sh)
+    const bounds = extractAlphaBounds(rgba.data, sw, sh, { alphaMin: 8 })
+    return { srcWidth: sw, srcHeight: sh, bounds: bounds ?? null }
+  })
+
+  const placements = computeStage2dLayerPlacements(scene, sourceInfos)
+  const targetPlacement = placements[chosenIndex]
+  const targetImg = probes[chosenIndex]
+  const plan = targetPlacement?.plan
+
+  if (!plan || !targetImg) {
+    const fallback = fitHumanoidStage2dRigToSkeleton({
+      canvasWidth: scene.canvasWidth,
+      canvasHeight: scene.canvasHeight
+    })
+    return {
+      state: scene,
+      rig: fallback.rig,
+      matchedKeypoints: 0,
+      usedKeypoints: false,
+      partCount: 0
+    }
+  }
+
+  let stageSkeleton: YoloSkeletonPoint[] | null = null
+  try {
+    if (typeof window !== 'undefined' && Boolean((window as { studio?: unknown }).studio)) {
+      const status = await getYoloStatus()
+      const poseModels = (status.models ?? []).filter((m) => m.kind === 'pose')
+      const modelId = bestPoseModel(poseModels)?.id ?? poseModels[0]?.id ?? ''
+      if (modelId) {
+        const inferScale = Math.min(1, 960 / Math.max(scene.canvasWidth, scene.canvasHeight))
+        const inferW = Math.max(1, Math.round(scene.canvasWidth * inferScale))
+        const inferH = Math.max(1, Math.round(scene.canvasHeight * inferScale))
+        const inferCanvas = document.createElement('canvas')
+        inferCanvas.width = inferW
+        inferCanvas.height = inferH
+        const inferCtx = inferCanvas.getContext('2d')
+        if (inferCtx) {
+          inferCtx.fillStyle = '#e5e7eb'
+          inferCtx.fillRect(0, 0, inferW, inferH)
+          inferCtx.save()
+          inferCtx.scale(inferScale, inferScale)
+          if (targetPlacement.layer.flipX) {
+            inferCtx.translate(plan.dstX + plan.dstW / 2, plan.dstY + plan.dstH / 2)
+            inferCtx.scale(-1, 1)
+            inferCtx.drawImage(
+              targetImg,
+              plan.bounds.x,
+              plan.bounds.y,
+              plan.bounds.width,
+              plan.bounds.height,
+              -plan.dstW / 2,
+              -plan.dstH / 2,
+              plan.dstW,
+              plan.dstH
+            )
+          } else {
+            inferCtx.drawImage(
+              targetImg,
+              plan.bounds.x,
+              plan.bounds.y,
+              plan.bounds.width,
+              plan.bounds.height,
+              plan.dstX,
+              plan.dstY,
+              plan.dstW,
+              plan.dstH
+            )
+          }
+          inferCtx.restore()
+          const { data } = inferCtx.getImageData(0, 0, inferW, inferH)
+          const poseRes = await yoloPose({
+            image: { kind: 'raw', width: inferW, height: inferH, rgba: new Uint8Array(data) },
+            modelId,
+            confThreshold: 0.2
+          })
+          const picked = pickBestYoloSkeleton(poseRes.skeletons ?? [])
+          if (picked) {
+            stageSkeleton = picked.map((pt) => ({
+              x: pt.x / inferScale,
+              y: pt.y / inferScale,
+              confidence: pt.confidence
+            }))
+          }
+        }
+      }
+    }
+  } catch {
+    // 本地 YOLO 不可用或推理异常时静默回退到角色 alpha 外接框自适应建骨
+  }
+
+  const targetContent = extractContentRgba(targetImg)
+  const fitted = fitHumanoidStage2dRigToSkeleton({
+    skeleton: stageSkeleton,
+    bounds: { x: plan.dstX, y: plan.dstY, width: plan.dstW, height: plan.dstH },
+    silhouette: targetContent
+      ? {
+          data: targetContent.rgba,
+          width: targetContent.contentWidth,
+          height: targetContent.contentHeight,
+          flipX: Boolean(targetPlacement.layer.flipX)
+        }
+      : null,
+    canvasWidth: scene.canvasWidth,
+    canvasHeight: scene.canvasHeight,
+    groundY: plan.groundY
+  })
+
+  if (input.autoCut) {
+    try {
+      const cut = await autoCutStage2dLayer({
+        state: scene,
+        rig: fitted.rig,
+        frameLayerId: targetPlacement.layer.id,
+        resolveLayerUrl: resolveUrl
+      })
+      if (cut && cut.partCount > 0) {
+        return {
+          state: cut.state,
+          rig: cut.rig,
+          matchedKeypoints: fitted.matchedKeypoints,
+          usedKeypoints: fitted.usedKeypoints,
+          partCount: cut.partCount
+        }
+      }
+    } catch {
+      // 自动拆件异常时仍保留已对齐的骨骼
+    }
+  }
+
+  return {
+    state: scene,
+    rig: fitted.rig,
+    matchedKeypoints: fitted.matchedKeypoints,
+    usedKeypoints: fitted.usedKeypoints,
+    partCount: 0
+  }
 }
