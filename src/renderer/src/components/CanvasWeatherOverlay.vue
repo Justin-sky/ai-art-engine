@@ -7,7 +7,7 @@
   >
     <canvas ref="canvasEl" class="canvas-weather-overlay__canvas" />
 
-    <!-- Compact interactive Weather HUD Pill -->
+    <!-- Compact interactive Genshin-inspired Anime Weather HUD Pill -->
     <div
       class="canvas-weather-hud"
       :class="{ 'is-expanded': hudExpanded, 'is-active': currentWeather !== 'idle' }"
@@ -34,7 +34,7 @@
           :title="t('settings.weatherSystem.randomNext')"
           @click="onShuffleNow"
         >
-          🎲
+          ✦
         </button>
       </div>
 
@@ -83,7 +83,7 @@
             class="canvas-weather-hud__action-btn is-shuffle"
             @click="onShuffleNow"
           >
-            <span>🎲</span>
+            <span>✦</span>
             <span>{{ t('settings.weatherSystem.randomNext') }}</span>
           </button>
           <button
@@ -142,25 +142,25 @@ const manualOverride = canvasWeatherState.manualOverride
 const weatherIcon = computed(() => {
   switch (currentWeather.value) {
     case 'wind':
-      return '🌬️'
+      return '🍃'
     case 'rain':
-      return '🌧️'
+      return '💧'
     case 'thunderstorm':
-      return '⛈️'
+      return '⚡'
     case 'typhoon':
       return '🌀'
     case 'blizzard':
       return '❄️'
     case 'hail':
-      return '🧊'
+      return '💎'
     case 'sandstorm':
-      return '🏜️'
+      return '✨'
     case 'meteor':
-      return '☄️'
+      return '🌠'
     case 'aurora':
-      return '🌌'
+      return '🦋'
     case 'fog':
-      return '🌫️'
+      return '☁️'
     case 'sunny':
       return '🌤️'
     case 'idle':
@@ -203,17 +203,17 @@ const currentWeatherLabel = computed(() => {
 
 const modeOptions = computed<Array<{ value: 'auto' | WeatherKind; icon: string; label: string }>>(
   () => [
-    { value: 'auto', icon: '🎲', label: t('settings.weatherSystem.modeAuto') },
-    { value: 'wind', icon: '🌬️', label: t('settings.weatherSystem.modeWind') },
-    { value: 'rain', icon: '🌧️', label: t('settings.weatherSystem.modeRain') },
-    { value: 'thunderstorm', icon: '⛈️', label: t('settings.weatherSystem.modeThunderstorm') },
+    { value: 'auto', icon: '✦', label: t('settings.weatherSystem.modeAuto') },
+    { value: 'wind', icon: '🍃', label: t('settings.weatherSystem.modeWind') },
+    { value: 'rain', icon: '💧', label: t('settings.weatherSystem.modeRain') },
+    { value: 'thunderstorm', icon: '⚡', label: t('settings.weatherSystem.modeThunderstorm') },
     { value: 'typhoon', icon: '🌀', label: t('settings.weatherSystem.modeTyphoon') },
     { value: 'blizzard', icon: '❄️', label: t('settings.weatherSystem.modeBlizzard') },
-    { value: 'hail', icon: '🧊', label: t('settings.weatherSystem.modeHail') },
-    { value: 'sandstorm', icon: '🏜️', label: t('settings.weatherSystem.modeSandstorm') },
-    { value: 'meteor', icon: '☄️', label: t('settings.weatherSystem.modeMeteor') },
-    { value: 'aurora', icon: '🌌', label: t('settings.weatherSystem.modeAurora') },
-    { value: 'fog', icon: '🌫️', label: t('settings.weatherSystem.modeFog') },
+    { value: 'hail', icon: '💎', label: t('settings.weatherSystem.modeHail') },
+    { value: 'sandstorm', icon: '✨', label: t('settings.weatherSystem.modeSandstorm') },
+    { value: 'meteor', icon: '🌠', label: t('settings.weatherSystem.modeMeteor') },
+    { value: 'aurora', icon: '🦋', label: t('settings.weatherSystem.modeAurora') },
+    { value: 'fog', icon: '☁️', label: t('settings.weatherSystem.modeFog') },
     { value: 'sunny', icon: '🌤️', label: t('settings.weatherSystem.modeSunny') },
     { value: 'idle', icon: '⏸️', label: t('settings.weatherSystem.modeIdle') }
   ]
@@ -245,7 +245,7 @@ function fireManualStrike(): void {
   })
 }
 
-// --- Particle & Phenomenon State ---
+// --- Genshin / Cel-Shaded Anime Particle & Phenomenon State ---
 
 interface RainDrop {
   x: number
@@ -254,6 +254,7 @@ interface RainDrop {
   speed: number
   windSlope: number
   alpha: number
+  tint: 'aqua' | 'sky' | 'white'
 }
 
 interface SplashParticle {
@@ -266,6 +267,18 @@ interface SplashParticle {
   life: number
   maxLife: number
   color?: string
+  star?: boolean
+}
+
+interface WaterRipple {
+  x: number
+  y: number
+  rx: number
+  ry: number
+  maxRx: number
+  life: number
+  maxLife: number
+  color: string
 }
 
 interface WindStreak {
@@ -278,9 +291,10 @@ interface WindStreak {
   phase: number
   alpha: number
   width: number
+  hasLoop: boolean
 }
 
-interface LeafParticle {
+interface FloraParticle {
   x: number
   y: number
   vx: number
@@ -288,8 +302,9 @@ interface LeafParticle {
   rot: number
   vrot: number
   size: number
-  hue: number
+  kind: 'petal' | 'dandelion' | 'anemoLeaf'
   alpha: number
+  phase: number
 }
 
 interface SnowflakeParticle {
@@ -325,6 +340,7 @@ interface SandGrain {
   size: number
   alpha: number
   hue: number
+  sparkle: boolean
 }
 
 interface MeteorStreak {
@@ -334,7 +350,7 @@ interface MeteorStreak {
   vy: number
   len: number
   size: number
-  hue: number
+  rarity: 'gold' | 'pink' | 'sky'
   life: number
   maxLife: number
 }
@@ -345,6 +361,7 @@ interface StarPoint {
   radius: number
   phase: number
   speed: number
+  fourPoint: boolean
 }
 
 interface FogBank {
@@ -365,6 +382,7 @@ interface SunMote {
   radius: number
   alpha: number
   phase: number
+  isCrystalfly: boolean
 }
 
 interface RenderedBolt {
@@ -378,8 +396,9 @@ interface RenderedBolt {
 
 const raindrops: RainDrop[] = []
 const splashes: SplashParticle[] = []
+const ripples: WaterRipple[] = []
 const windStreaks: WindStreak[] = []
-const leaves: LeafParticle[] = []
+const floraParticles: FloraParticle[] = []
 const snowflakes: SnowflakeParticle[] = []
 const hailstones: HailStone[] = []
 const sandGrains: SandGrain[] = []
@@ -398,102 +417,264 @@ let lastFrameTime = performance.now()
 let nextAutoLightningAt = 0
 let nextMeteorSpawnAt = 0
 
+// --- Stylized Anime Primitives (4-Point Star Flare, Sakura Petal, Dandelion Seed, Crystalfly) ---
+
+function drawFourPointStar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  outerR: number,
+  innerR: number,
+  rot: number,
+  fillStyle: string
+): void {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rot)
+  ctx.fillStyle = fillStyle
+  ctx.beginPath()
+  for (let i = 0; i < 4; i++) {
+    const angle = (i * Math.PI) / 2
+    const nextAngle = angle + Math.PI / 4
+    if (i === 0) {
+      ctx.moveTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR)
+    } else {
+      ctx.lineTo(Math.cos(angle) * outerR, Math.sin(angle) * outerR)
+    }
+    ctx.lineTo(Math.cos(nextAngle) * innerR, Math.sin(nextAngle) * innerR)
+  }
+  ctx.closePath()
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawSakuraPetal(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  rot: number,
+  fillColor: string,
+  highlightColor: string
+): void {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rot)
+  ctx.beginPath()
+  ctx.moveTo(0, size)
+  ctx.bezierCurveTo(-size * 0.95, size * 0.35, -size * 0.85, -size * 0.75, -size * 0.22, -size)
+  ctx.lineTo(0, -size * 0.62)
+  ctx.lineTo(size * 0.22, -size)
+  ctx.bezierCurveTo(size * 0.85, -size * 0.75, size * 0.95, size * 0.35, 0, size)
+  ctx.closePath()
+  ctx.fillStyle = fillColor
+  ctx.fill()
+  ctx.strokeStyle = highlightColor
+  ctx.lineWidth = 0.75
+  ctx.stroke()
+  ctx.restore()
+}
+
+function drawDandelionSeed(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  rot: number,
+  alpha: number
+): void {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(rot)
+  // Soft Anemo glow halo
+  const halo = ctx.createRadialGradient(0, -size * 0.3, 0, 0, -size * 0.3, size * 1.9)
+  halo.addColorStop(0, `rgba(240, 253, 250, ${alpha * 0.75})`)
+  halo.addColorStop(0.5, `rgba(94, 234, 212, ${alpha * 0.32})`)
+  halo.addColorStop(1, 'rgba(94, 234, 212, 0)')
+  ctx.fillStyle = halo
+  ctx.beginPath()
+  ctx.arc(0, -size * 0.3, size * 1.9, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Delicate stem & radiating fluff filaments
+  ctx.strokeStyle = `rgba(255, 255, 255, ${alpha * 0.9})`
+  ctx.lineWidth = 0.9
+  ctx.beginPath()
+  ctx.moveTo(0, size * 0.9)
+  ctx.lineTo(0, -size * 0.2)
+  ctx.stroke()
+
+  const rays = 7
+  for (let i = 0; i < rays; i++) {
+    const a = -Math.PI * 0.85 + (i / (rays - 1)) * Math.PI * 0.7
+    ctx.beginPath()
+    ctx.moveTo(0, -size * 0.2)
+    ctx.lineTo(Math.cos(a) * size * 1.15, -size * 0.2 + Math.sin(a) * size * 1.15)
+    ctx.stroke()
+  }
+
+  // Luminous seed core
+  ctx.fillStyle = `rgba(167, 243, 208, ${alpha})`
+  ctx.beginPath()
+  ctx.arc(0, size * 0.9, size * 0.22, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+function drawCrystalfly(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  now: number,
+  phase: number,
+  wingColor: string,
+  coreColor: string
+): void {
+  const flap = 0.35 + 0.65 * Math.abs(Math.sin(now * 0.009 + phase))
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(Math.sin(now * 0.002 + phase) * 0.28)
+
+  ctx.fillStyle = wingColor
+  // Upper wings
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(-size * 2.1 * flap, -size * 1.5)
+  ctx.lineTo(-size * 0.8 * flap, -size * 0.2)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(size * 2.1 * flap, -size * 1.5)
+  ctx.lineTo(size * 0.8 * flap, -size * 0.2)
+  ctx.closePath()
+  ctx.fill()
+
+  // Lower wings
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(-size * 1.5 * flap, size * 1.3)
+  ctx.lineTo(-size * 0.4 * flap, size * 0.3)
+  ctx.closePath()
+  ctx.fill()
+
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(size * 1.5 * flap, size * 1.3)
+  ctx.lineTo(size * 0.4 * flap, size * 0.3)
+  ctx.closePath()
+  ctx.fill()
+
+  // Glowing diamond core
+  drawFourPointStar(ctx, 0, 0, size * 1.2, size * 0.35, 0, coreColor)
+  ctx.restore()
+}
+
 function initParticles(w: number, h: number): void {
+  const tints: RainDrop['tint'][] = ['aqua', 'sky', 'white']
   raindrops.length = 0
-  for (let i = 0; i < 190; i++) {
+  for (let i = 0; i < 165; i++) {
     raindrops.push({
       x: Math.random() * (w + 300) - 150,
       y: Math.random() * h,
-      len: 16 + Math.random() * 22,
-      speed: 780 + Math.random() * 520,
-      windSlope: 0.24 + Math.random() * 0.12,
-      alpha: 0.25 + Math.random() * 0.45
+      len: 20 + Math.random() * 26,
+      speed: 720 + Math.random() * 480,
+      windSlope: 0.18 + Math.random() * 0.1,
+      alpha: 0.32 + Math.random() * 0.48,
+      tint: tints[i % 3]!
     })
   }
 
   windStreaks.length = 0
-  for (let i = 0; i < 38; i++) {
+  for (let i = 0; i < 32; i++) {
     windStreaks.push({
       x: Math.random() * w,
       y: Math.random() * h,
-      len: 110 + Math.random() * 190,
-      speed: 420 + Math.random() * 440,
-      amp: 6 + Math.random() * 16,
-      freq: 0.012 + Math.random() * 0.018,
+      len: 130 + Math.random() * 210,
+      speed: 380 + Math.random() * 400,
+      amp: 8 + Math.random() * 18,
+      freq: 0.011 + Math.random() * 0.015,
       phase: Math.random() * Math.PI * 2,
-      alpha: 0.14 + Math.random() * 0.28,
-      width: 1 + Math.random() * 1.8
+      alpha: 0.22 + Math.random() * 0.36,
+      width: 1.2 + Math.random() * 1.8,
+      hasLoop: i % 3 === 0
     })
   }
 
-  leaves.length = 0
-  for (let i = 0; i < 28; i++) {
-    leaves.push({
+  const kinds: FloraParticle['kind'][] = ['dandelion', 'petal', 'anemoLeaf']
+  floraParticles.length = 0
+  for (let i = 0; i < 36; i++) {
+    floraParticles.push({
       x: Math.random() * w,
       y: Math.random() * h,
-      vx: 220 + Math.random() * 240,
-      vy: -30 + Math.random() * 90,
+      vx: 180 + Math.random() * 210,
+      vy: -25 + Math.random() * 75,
       rot: Math.random() * Math.PI * 2,
-      vrot: (Math.random() - 0.5) * 8,
-      size: 4 + Math.random() * 5,
-      hue: 155 + Math.random() * 45,
-      alpha: 0.45 + Math.random() * 0.4
+      vrot: (Math.random() - 0.5) * 4.5,
+      size: 4.5 + Math.random() * 4.5,
+      kind: kinds[i % 3]!,
+      alpha: 0.65 + Math.random() * 0.32,
+      phase: Math.random() * Math.PI * 2
     })
   }
 
   snowflakes.length = 0
-  for (let i = 0; i < 145; i++) {
-    const radius = 1.4 + Math.random() * 4.2
+  for (let i = 0; i < 135; i++) {
+    const radius = 1.6 + Math.random() * 4.8
     snowflakes.push({
       x: Math.random() * w,
       y: Math.random() * h,
       radius,
-      speedY: 75 + radius * 28 + Math.random() * 45,
-      speedX: 95 + Math.random() * 110,
-      swayAmp: 18 + Math.random() * 28,
-      swayFreq: 1.5 + Math.random() * 2.2,
+      speedY: 62 + radius * 22 + Math.random() * 38,
+      speedX: 68 + Math.random() * 88,
+      swayAmp: 22 + Math.random() * 30,
+      swayFreq: 1.3 + Math.random() * 1.9,
       phase: Math.random() * Math.PI * 2,
-      alpha: 0.45 + Math.random() * 0.5,
-      crystalline: radius > 4.2
+      alpha: 0.55 + Math.random() * 0.42,
+      crystalline: radius > 3.6
     })
   }
 
   hailstones.length = 0
-  for (let i = 0; i < 85; i++) {
+  for (let i = 0; i < 75; i++) {
     hailstones.push({
       x: Math.random() * (w + 200) - 100,
       y: Math.random() * h,
-      vx: 140 + Math.random() * 90,
-      vy: 680 + Math.random() * 420,
-      size: 3.2 + Math.random() * 3.8,
+      vx: 120 + Math.random() * 80,
+      vy: 640 + Math.random() * 380,
+      size: 4.0 + Math.random() * 4.2,
       rot: Math.random() * Math.PI * 2,
-      vrot: (Math.random() - 0.5) * 14,
+      vrot: (Math.random() - 0.5) * 10,
       bounced: false,
-      alpha: 0.65 + Math.random() * 0.3
+      alpha: 0.75 + Math.random() * 0.25
     })
   }
 
   sandGrains.length = 0
-  for (let i = 0; i < 210; i++) {
+  for (let i = 0; i < 175; i++) {
     sandGrains.push({
       x: Math.random() * w,
       y: Math.random() * h,
-      speedX: 520 + Math.random() * 560,
-      speedY: (Math.random() - 0.45) * 90,
-      size: 1.2 + Math.random() * 2.8,
-      alpha: 0.25 + Math.random() * 0.45,
-      hue: 28 + Math.random() * 20
+      speedX: 460 + Math.random() * 480,
+      speedY: (Math.random() - 0.48) * 75,
+      size: 1.4 + Math.random() * 2.6,
+      alpha: 0.35 + Math.random() * 0.5,
+      hue: 38 + Math.random() * 16,
+      sparkle: i % 5 === 0
     })
   }
 
   stars.length = 0
-  for (let i = 0; i < 95; i++) {
+  for (let i = 0; i < 90; i++) {
     stars.push({
       x: Math.random() * w,
-      y: Math.random() * h * 0.85,
-      radius: 0.8 + Math.random() * 1.8,
+      y: Math.random() * h * 0.88,
+      radius: 1.0 + Math.random() * 2.2,
       phase: Math.random() * Math.PI * 2,
-      speed: 1.8 + Math.random() * 3.2
+      speed: 1.6 + Math.random() * 2.8,
+      fourPoint: i % 3 === 0
     })
   }
 
@@ -501,25 +682,26 @@ function initParticles(w: number, h: number): void {
   for (let i = 0; i < 14; i++) {
     fogBanks.push({
       x: Math.random() * w,
-      y: (i / 14) * h + (Math.random() - 0.5) * 80,
+      y: (i / 14) * h + (Math.random() - 0.5) * 70,
       rx: 260 + Math.random() * 320,
-      ry: 70 + Math.random() * 95,
-      speedX: (i % 2 === 0 ? 1 : -1) * (18 + Math.random() * 28),
-      alpha: 0.08 + Math.random() * 0.1,
+      ry: 68 + Math.random() * 90,
+      speedX: (i % 2 === 0 ? 1 : -1) * (16 + Math.random() * 24),
+      alpha: 0.1 + Math.random() * 0.11,
       phase: Math.random() * Math.PI * 2
     })
   }
 
   sunMotes.length = 0
-  for (let i = 0; i < 55; i++) {
+  for (let i = 0; i < 56; i++) {
     sunMotes.push({
       x: Math.random() * w,
       y: Math.random() * h,
-      vx: 12 + Math.random() * 18,
-      vy: -18 - Math.random() * 26,
-      radius: 1.5 + Math.random() * 3.2,
-      alpha: 0.25 + Math.random() * 0.55,
-      phase: Math.random() * Math.PI * 2
+      vx: 14 + Math.random() * 20,
+      vy: -20 - Math.random() * 28,
+      radius: 1.8 + Math.random() * 3.4,
+      alpha: 0.38 + Math.random() * 0.55,
+      phase: Math.random() * Math.PI * 2,
+      isCrystalfly: i < 7
     })
   }
 }
@@ -530,29 +712,29 @@ function buildLightningGeometry(
   targetY: number,
   createdAt: number
 ): RenderedBolt {
-  const startX = Math.max(40, Math.min(viewportW - 40, targetX + (Math.random() - 0.5) * 260))
+  const startX = Math.max(40, Math.min(viewportW - 40, targetX + (Math.random() - 0.5) * 240))
   const startY = -10
   const segments: RenderedBolt['segments'] = []
 
-  const steps = 14
+  const steps = 13
   let prevX = startX
   let prevY = startY
 
   for (let i = 1; i <= steps; i++) {
     const t = i / steps
-    const jitter = i === steps ? 0 : (Math.random() - 0.5) * 68 * (1 - t * 0.45)
+    const jitter = i === steps ? 0 : (Math.random() - 0.5) * 72 * (1 - t * 0.4)
     const nextX = startX + (targetX - startX) * t + jitter
     const nextY = startY + (targetY - startY) * t
     segments.push({ x1: prevX, y1: prevY, x2: nextX, y2: nextY, main: true })
 
-    if (i > 2 && i < steps - 1 && Math.random() < 0.42) {
+    if (i > 2 && i < steps - 1 && Math.random() < 0.46) {
       let bx = nextX
       let by = nextY
-      const bSteps = 3 + Math.floor(Math.random() * 4)
+      const bSteps = 3 + Math.floor(Math.random() * 3)
       const dir = Math.random() < 0.5 ? -1 : 1
       for (let b = 0; b < bSteps; b++) {
-        const nbx = bx + dir * (18 + Math.random() * 32)
-        const nby = by + 22 + Math.random() * 30
+        const nbx = bx + dir * (20 + Math.random() * 34)
+        const nby = by + 22 + Math.random() * 28
         segments.push({ x1: bx, y1: by, x2: nbx, y2: nby, main: false })
         bx = nbx
         by = nby
@@ -569,7 +751,7 @@ function buildLightningGeometry(
     targetX,
     targetY,
     createdAt,
-    durationMs: 460
+    durationMs: 520
   }
 }
 
@@ -592,23 +774,45 @@ function updateCanvasSize(): void {
   }
 }
 
-function spawnSplash(x: number, y: number, count = 4, color?: string, speedScale = 1): void {
+function spawnSplash(
+  x: number,
+  y: number,
+  count = 4,
+  color?: string,
+  speedScale = 1,
+  star = false
+): void {
   if (splashes.length > 220) return
   for (let i = 0; i < count; i++) {
-    const angle = -Math.PI * (0.15 + Math.random() * 0.7)
-    const speed = (45 + Math.random() * 115) * speedScale
+    const angle = -Math.PI * (0.12 + Math.random() * 0.76)
+    const speed = (50 + Math.random() * 120) * speedScale
     splashes.push({
       x,
       y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      radius: 1.2 + Math.random() * 1.8,
-      alpha: 0.8,
+      radius: 1.5 + Math.random() * 2.2,
+      alpha: 0.92,
       life: 0,
-      maxLife: 0.24 + Math.random() * 0.2,
-      color
+      maxLife: 0.28 + Math.random() * 0.24,
+      color,
+      star: star || i % 2 === 0
     })
   }
+}
+
+function spawnRipple(x: number, y: number, color = 'rgba(125, 211, 252, 0.85)'): void {
+  if (ripples.length > 45) return
+  ripples.push({
+    x,
+    y,
+    rx: 2,
+    ry: 0.8,
+    maxRx: 18 + Math.random() * 16,
+    life: 0,
+    maxLife: 0.48 + Math.random() * 0.22,
+    color
+  })
 }
 
 function renderFrame(now: number): void {
@@ -636,7 +840,12 @@ function renderFrame(now: number): void {
 
   ctx.clearRect(0, 0, viewportW, viewportH)
 
-  if (weather === 'idle' && activeBolts.length === 0 && splashes.length === 0) {
+  if (
+    weather === 'idle' &&
+    activeBolts.length === 0 &&
+    splashes.length === 0 &&
+    ripples.length === 0
+  ) {
     rafId = requestAnimationFrame(renderFrame)
     return
   }
@@ -662,65 +871,66 @@ function renderFrame(now: number): void {
     })
   }
 
-  // 1. Atmospheric Sky Backdrop Tint
+  // 1. Fresh Genshin-style Luminous Sky Backdrop Tint
   drawAtmosphereTint(ctx, weather, now)
 
-  // 2. Typhoon Vortex Spiral Eye
+  // 2. Typhoon Anemo Elemental Vortex
   if (weather === 'typhoon') {
     drawTyphoonVortex(ctx, now)
   }
 
-  // 3. Aurora Borealis Curtains
+  // 3. Ley Line & Irminsul Aurora Curtains + Crystalflies
   if (weather === 'aurora') {
     drawAuroraSpectacle(ctx, dt, now, nodes)
   }
 
-  // 4. Meteor Shower & Starry Sky
+  // 4. Wish Starfall (Genshin Gacha Shooting Stars)
   if (weather === 'meteor') {
     drawMeteorShower(ctx, dt, now, nodes)
   }
 
-  // 5. Wind Streaks & Leaves (Wind, Thunderstorm, Typhoon)
+  // 5. Anemo Breeze Ribbons, Dandelion Seeds & Sakura Petals
   if (weather === 'wind' || weather === 'thunderstorm' || weather === 'typhoon') {
     drawWindAndLeaves(ctx, weather, dt, now, nodes)
   }
 
-  // 6. Blizzard Snowflakes & Node Snow Caps
+  // 6. Dragonspine Cryo Snowflakes & Cel-Shaded Snow Puffs
   if (weather === 'blizzard') {
     drawBlizzardSnow(ctx, dt, now, nodes)
   }
 
-  // 7. Hailstorm Ice Bombardment
+  // 7. Cryo Diamond Prism Hailstorm
   if (weather === 'hail') {
     drawHailstorm(ctx, dt, nodes)
   }
 
-  // 8. Sandstorm Desert Gale
+  // 8. Sumeru Golden Mirage Sand Ribbons & Diamond Dust
   if (weather === 'sandstorm') {
     drawSandstorm(ctx, dt, now, nodes)
   }
 
-  // 9. Dense Valley Fog & Mist
+  // 9. Chenyu Vale Celadon Cloud Sea & Adeptal Motes
   if (weather === 'fog') {
     drawDenseFog(ctx, dt, now)
   }
 
-  // 10. Raindrops & Node Top-Edge Collision Splashes
+  // 10. Fontaine Hydro Rain, Concentric Ripples & Splashes
   if (
     weather === 'rain' ||
     weather === 'thunderstorm' ||
     weather === 'typhoon' ||
-    splashes.length > 0
+    splashes.length > 0 ||
+    ripples.length > 0
   ) {
     drawRainAndSplashes(ctx, weather, dt, nodes)
   }
 
-  // 11. Branching Lightning Bolts & Impact Shockwaves
+  // 11. Inazuma Electro Lightning Bolts & Sigil Rings
   if (activeBolts.length > 0) {
     drawLightningBolts(ctx, now)
   }
 
-  // 12. Sunny Clear Sky (God Rays, Rainbow Arc, Golden Motes)
+  // 12. Teyvat Clear Sunny Sky (Bokeh Lens Flares, Sunbeams, Double Rainbow, Dandelions)
   if (weather === 'sunny') {
     drawSunnySpectacle(ctx, dt, now)
   }
@@ -737,46 +947,60 @@ function drawAtmosphereTint(
   ctx.save()
   const grad = ctx.createLinearGradient(0, 0, 0, viewportH)
   if (weather === 'wind') {
-    grad.addColorStop(0, 'rgba(56, 189, 248, 0.08)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.04)')
+    // Mondstadt Anemo mint-sky breeze
+    grad.addColorStop(0, 'rgba(94, 234, 212, 0.13)')
+    grad.addColorStop(0.55, 'rgba(186, 230, 253, 0.07)')
+    grad.addColorStop(1, 'rgba(167, 243, 208, 0.05)')
   } else if (weather === 'rain') {
-    grad.addColorStop(0, 'rgba(30, 58, 138, 0.14)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.10)')
+    // Fontaine Hydro crystal azure
+    grad.addColorStop(0, 'rgba(56, 189, 248, 0.15)')
+    grad.addColorStop(0.55, 'rgba(125, 211, 252, 0.09)')
+    grad.addColorStop(1, 'rgba(224, 242, 254, 0.06)')
   } else if (weather === 'thunderstorm') {
-    grad.addColorStop(0, 'rgba(49, 46, 129, 0.18)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.14)')
+    // Inazuma Electro violet-sakura sky
+    grad.addColorStop(0, 'rgba(168, 85, 247, 0.16)')
+    grad.addColorStop(0.55, 'rgba(216, 180, 254, 0.09)')
+    grad.addColorStop(1, 'rgba(244, 114, 182, 0.06)')
   } else if (weather === 'typhoon') {
-    grad.addColorStop(0, 'rgba(13, 148, 136, 0.16)')
-    grad.addColorStop(0.5, 'rgba(30, 41, 59, 0.16)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.18)')
+    // Anemo storm domain teal-cyan
+    grad.addColorStop(0, 'rgba(45, 212, 191, 0.17)')
+    grad.addColorStop(0.5, 'rgba(56, 189, 248, 0.11)')
+    grad.addColorStop(1, 'rgba(153, 246, 228, 0.08)')
   } else if (weather === 'blizzard') {
-    grad.addColorStop(0, 'rgba(186, 230, 253, 0.16)')
-    grad.addColorStop(0.5, 'rgba(56, 189, 248, 0.09)')
-    grad.addColorStop(1, 'rgba(224, 242, 254, 0.12)')
+    // Dragonspine luminous ice-blue & pearl white
+    grad.addColorStop(0, 'rgba(186, 230, 253, 0.19)')
+    grad.addColorStop(0.5, 'rgba(224, 242, 254, 0.11)')
+    grad.addColorStop(1, 'rgba(240, 249, 255, 0.14)')
   } else if (weather === 'hail') {
-    grad.addColorStop(0, 'rgba(51, 65, 85, 0.20)')
-    grad.addColorStop(1, 'rgba(14, 116, 144, 0.12)')
+    // Cryo crystal cyan-lavender
+    grad.addColorStop(0, 'rgba(125, 211, 252, 0.17)')
+    grad.addColorStop(0.55, 'rgba(196, 181, 253, 0.09)')
+    grad.addColorStop(1, 'rgba(224, 242, 254, 0.10)')
   } else if (weather === 'sandstorm') {
-    grad.addColorStop(0, 'rgba(217, 119, 6, 0.18)')
-    grad.addColorStop(0.55, 'rgba(180, 83, 9, 0.14)')
-    grad.addColorStop(1, 'rgba(120, 53, 15, 0.16)')
+    // Sumeru sunlit champagne gold
+    grad.addColorStop(0, 'rgba(253, 224, 71, 0.16)')
+    grad.addColorStop(0.55, 'rgba(251, 191, 36, 0.11)')
+    grad.addColorStop(1, 'rgba(254, 243, 199, 0.08)')
   } else if (weather === 'meteor') {
-    grad.addColorStop(0, 'rgba(30, 27, 75, 0.24)')
-    grad.addColorStop(0.6, 'rgba(49, 46, 129, 0.14)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.08)')
+    // Genshin Wish starry twilight indigo-rose
+    grad.addColorStop(0, 'rgba(99, 102, 241, 0.18)')
+    grad.addColorStop(0.55, 'rgba(192, 132, 252, 0.11)')
+    grad.addColorStop(1, 'rgba(244, 114, 182, 0.06)')
   } else if (weather === 'aurora') {
-    grad.addColorStop(0, 'rgba(6, 95, 70, 0.18)')
-    grad.addColorStop(0.5, 'rgba(88, 28, 135, 0.12)')
-    grad.addColorStop(1, 'rgba(15, 23, 42, 0.08)')
+    // Irminsul / Ley Line pastel mint & sakura
+    grad.addColorStop(0, 'rgba(110, 231, 183, 0.16)')
+    grad.addColorStop(0.5, 'rgba(196, 181, 253, 0.11)')
+    grad.addColorStop(1, 'rgba(249, 168, 212, 0.07)')
   } else if (weather === 'fog') {
-    grad.addColorStop(0, 'rgba(148, 163, 184, 0.16)')
-    grad.addColorStop(0.6, 'rgba(100, 116, 139, 0.14)')
-    grad.addColorStop(1, 'rgba(71, 85, 105, 0.18)')
+    // Chenyu Vale celadon jade morning mist
+    grad.addColorStop(0, 'rgba(204, 251, 241, 0.17)')
+    grad.addColorStop(0.6, 'rgba(224, 242, 254, 0.12)')
+    grad.addColorStop(1, 'rgba(209, 250, 229, 0.14)')
   } else if (weather === 'sunny') {
-    const pulse = 0.85 + Math.sin(now * 0.002) * 0.15
-    grad.addColorStop(0, `rgba(251, 191, 36, ${0.15 * pulse})`)
-    grad.addColorStop(0.45, `rgba(56, 189, 248, ${0.07 * pulse})`)
-    grad.addColorStop(1, 'rgba(253, 224, 71, 0.03)')
+    const pulse = 0.88 + Math.sin(now * 0.002) * 0.12
+    grad.addColorStop(0, `rgba(254, 240, 138, ${0.18 * pulse})`)
+    grad.addColorStop(0.45, `rgba(125, 211, 252, ${0.1 * pulse})`)
+    grad.addColorStop(1, 'rgba(254, 249, 195, 0.05)')
   }
   ctx.fillStyle = grad
   ctx.fillRect(0, 0, viewportW, viewportH)
@@ -786,38 +1010,54 @@ function drawAtmosphereTint(
 function drawTyphoonVortex(ctx: CanvasRenderingContext2D, now: number): void {
   const cx = vortexEyeNorm.x * viewportW
   const cy = vortexEyeNorm.y * viewportH
-  const maxR = Math.hypot(viewportW, viewportH) * 0.62
+  const maxR = Math.hypot(viewportW, viewportH) * 0.58
 
   ctx.save()
   ctx.translate(cx, cy)
 
-  const eyeGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, maxR)
-  eyeGrad.addColorStop(0, 'rgba(45, 212, 191, 0.02)')
-  eyeGrad.addColorStop(0.12, 'rgba(56, 189, 248, 0.14)')
-  eyeGrad.addColorStop(0.38, 'rgba(99, 102, 241, 0.09)')
-  eyeGrad.addColorStop(1, 'rgba(15, 23, 42, 0)')
+  // Luminous Anemo turquoise-emerald core aura
+  const eyeGrad = ctx.createRadialGradient(0, 0, 12, 0, 0, maxR)
+  eyeGrad.addColorStop(0, 'rgba(240, 253, 250, 0.24)')
+  eyeGrad.addColorStop(0.14, 'rgba(94, 234, 212, 0.18)')
+  eyeGrad.addColorStop(0.38, 'rgba(125, 211, 252, 0.10)')
+  eyeGrad.addColorStop(1, 'rgba(167, 243, 208, 0)')
   ctx.fillStyle = eyeGrad
   ctx.beginPath()
   ctx.arc(0, 0, maxR, 0, Math.PI * 2)
   ctx.fill()
 
-  const baseAngle = -now * 0.0024
+  // Cel-shaded spiral Anemo wind blades
+  const baseAngle = -now * 0.0028
   ctx.lineCap = 'round'
-  for (let arm = 0; arm < 5; arm++) {
-    const armOffset = (arm * Math.PI * 2) / 5
+  for (let arm = 0; arm < 6; arm++) {
+    const armOffset = (arm * Math.PI * 2) / 6
     ctx.beginPath()
     for (let s = 0; s <= 55; s++) {
       const ratio = s / 55
-      const r = 34 + ratio * maxR * 0.85
-      const theta = baseAngle + armOffset + ratio * 4.2
+      const r = 24 + ratio * maxR * 0.84
+      const theta = baseAngle + armOffset + ratio * 3.8
       const px = Math.cos(theta) * r
-      const py = Math.sin(theta) * r * 0.82
+      const py = Math.sin(theta) * r * 0.84
       if (s === 0) ctx.moveTo(px, py)
       else ctx.lineTo(px, py)
     }
-    ctx.strokeStyle = arm % 2 === 0 ? 'rgba(125, 211, 252, 0.16)' : 'rgba(167, 243, 208, 0.13)'
-    ctx.lineWidth = 2.2
+    ctx.strokeStyle = arm % 2 === 0 ? 'rgba(240, 253, 250, 0.34)' : 'rgba(94, 234, 212, 0.26)'
+    ctx.lineWidth = arm % 2 === 0 ? 2.6 : 1.6
     ctx.stroke()
+
+    // Orbiting 4-point Anemo star sparkles along the wind arms
+    const starRatio = ((now * 0.00045 + arm * 0.17) % 0.85) + 0.08
+    const sr = 24 + starRatio * maxR * 0.84
+    const stheta = baseAngle + armOffset + starRatio * 3.8
+    drawFourPointStar(
+      ctx,
+      Math.cos(stheta) * sr,
+      Math.sin(stheta) * sr * 0.84,
+      6.5,
+      1.8,
+      now * 0.002,
+      'rgba(240, 253, 250, 0.85)'
+    )
   }
 
   ctx.restore()
@@ -831,42 +1071,46 @@ function drawBlizzardSnow(
 ): void {
   ctx.save()
 
-  // Frosty vignette along screen borders
+  // Soft pastel Cryo vignette along screen borders
   const frostGrad = ctx.createRadialGradient(
     viewportW * 0.5,
     viewportH * 0.5,
-    Math.min(viewportW, viewportH) * 0.32,
+    Math.min(viewportW, viewportH) * 0.34,
     viewportW * 0.5,
     viewportH * 0.5,
     Math.max(viewportW, viewportH) * 0.72
   )
-  frostGrad.addColorStop(0, 'rgba(224, 242, 254, 0)')
-  frostGrad.addColorStop(1, 'rgba(186, 230, 253, 0.22)')
+  frostGrad.addColorStop(0, 'rgba(240, 249, 255, 0)')
+  frostGrad.addColorStop(1, 'rgba(186, 230, 253, 0.26)')
   ctx.fillStyle = frostGrad
   ctx.fillRect(0, 0, viewportW, viewportH)
 
-  // Draw snowdrifts accumulated on top of visible nodes
-  ctx.fillStyle = 'rgba(240, 249, 255, 0.72)'
+  // Cel-shaded fluffy snow caps + tiny Cryo star sparkles on top of visible nodes
   for (const node of nodes) {
     if (node.screenWidth < 30) continue
-    ctx.beginPath()
-    const left = node.screenX + 6
-    const right = node.screenX + node.screenWidth - 6
+    const left = node.screenX + 8
+    const right = node.screenX + node.screenWidth - 8
     const top = node.screenY
+
+    ctx.beginPath()
     ctx.moveTo(left, top + 2)
     const segments = 6
     for (let i = 1; i <= segments; i++) {
       const ratio = i / segments
       const px = left + (right - left) * ratio
-      const mound = Math.sin(ratio * Math.PI) * 5.5
+      const mound = Math.sin(ratio * Math.PI) * 6.5
       ctx.lineTo(px, top - mound)
     }
     ctx.lineTo(right, top + 2)
     ctx.closePath()
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.86)'
     ctx.fill()
+    ctx.strokeStyle = 'rgba(186, 230, 253, 0.92)'
+    ctx.lineWidth = 1.2
+    ctx.stroke()
   }
 
-  // Swirling snowflakes
+  // Swirling Cryo snowflakes & 4-point ice dust
   for (const flake of snowflakes) {
     flake.x +=
       (flake.speedX + Math.sin(now * 0.001 * flake.swayFreq + flake.phase) * flake.swayAmp) * dt
@@ -880,25 +1124,39 @@ function drawBlizzardSnow(
     if (flake.x < -20) flake.x = viewportW + 15
 
     if (flake.crystalline) {
-      // 6-pointed ice crystal starflake
+      // Genshin Cryo 6-pointed geometric ice crystal with dendritic branches
       ctx.save()
       ctx.translate(flake.x, flake.y)
-      ctx.rotate(now * 0.0008 + flake.phase)
-      ctx.strokeStyle = `rgba(240, 249, 255, ${flake.alpha})`
-      ctx.lineWidth = 1.2
-      for (let k = 0; k < 3; k++) {
+      ctx.rotate(now * 0.0007 + flake.phase)
+      ctx.strokeStyle = `rgba(255, 255, 255, ${flake.alpha})`
+      ctx.lineWidth = 1.25
+      const r = flake.radius * 1.35
+      for (let k = 0; k < 6; k++) {
         ctx.rotate(Math.PI / 3)
         ctx.beginPath()
-        ctx.moveTo(-flake.radius, 0)
-        ctx.lineTo(flake.radius, 0)
+        ctx.moveTo(0, 0)
+        ctx.lineTo(r, 0)
+        ctx.moveTo(r * 0.58, 0)
+        ctx.lineTo(r * 0.82, -r * 0.26)
+        ctx.moveTo(r * 0.58, 0)
+        ctx.lineTo(r * 0.82, r * 0.26)
         ctx.stroke()
       }
+      ctx.fillStyle = `rgba(186, 230, 253, ${flake.alpha})`
+      ctx.beginPath()
+      ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2)
+      ctx.fill()
       ctx.restore()
     } else {
-      ctx.fillStyle = `rgba(240, 249, 255, ${flake.alpha})`
-      ctx.beginPath()
-      ctx.arc(flake.x, flake.y, flake.radius, 0, Math.PI * 2)
-      ctx.fill()
+      drawFourPointStar(
+        ctx,
+        flake.x,
+        flake.y,
+        flake.radius * 1.5,
+        flake.radius * 0.45,
+        flake.phase,
+        `rgba(240, 249, 255, ${flake.alpha})`
+      )
     }
   }
 
@@ -914,10 +1172,10 @@ function drawHailstorm(ctx: CanvasRenderingContext2D, dt: number, nodes: Weather
     stone.y += stone.vy * dt
     stone.rot += stone.vrot * dt
     if (stone.bounced) {
-      stone.vy += 980 * dt
+      stone.vy += 940 * dt
     }
 
-    // Collide with node roofs -> bounce high & shatter into icy shards!
+    // Collide with node roofs -> bounce & burst into 4-point Cryo star sparkles!
     if (!stone.bounced) {
       for (const node of nodes) {
         const topY = node.screenY
@@ -928,10 +1186,10 @@ function drawHailstorm(ctx: CanvasRenderingContext2D, dt: number, nodes: Weather
           stone.x <= node.screenX + node.screenWidth - 4
         ) {
           stone.y = topY - 2
-          stone.vy = -(220 + Math.random() * 180)
-          stone.vx = (Math.random() - 0.5) * 260
+          stone.vy = -(230 + Math.random() * 170)
+          stone.vx = (Math.random() - 0.5) * 250
           stone.bounced = true
-          spawnSplash(stone.x, topY, 5, 'rgba(186, 230, 253, 0.9)', 1.35)
+          spawnSplash(stone.x, topY, 5, 'rgba(224, 242, 254, 0.96)', 1.35, true)
           if (Math.random() < 0.45) {
             const hitRatio = (stone.x - node.screenX) / Math.max(1, node.screenWidth)
             applyHailstoneNodeImpact(node.id, hitRatio)
@@ -944,26 +1202,36 @@ function drawHailstorm(ctx: CanvasRenderingContext2D, dt: number, nodes: Weather
     if (stone.y > viewportH + 30 || stone.x > viewportW + 160 || stone.x < -160) {
       stone.y = -20 - Math.random() * 120
       stone.x = Math.random() * (viewportW + 240) - 120
-      stone.vx = 140 + Math.random() * 90
-      stone.vy = 680 + Math.random() * 420
+      stone.vx = 120 + Math.random() * 80
+      stone.vy = 640 + Math.random() * 380
       stone.bounced = false
     }
 
-    // Draw faceted diamond hailstone
+    // Cel-shaded two-tone Cryo diamond prism
     ctx.save()
     ctx.translate(stone.x, stone.y)
     ctx.rotate(stone.rot)
-    ctx.fillStyle = `rgba(224, 242, 254, ${stone.alpha})`
-    ctx.strokeStyle = 'rgba(125, 211, 252, 0.85)'
-    ctx.lineWidth = 1
+    const s = stone.size
     ctx.beginPath()
-    ctx.moveTo(0, -stone.size)
-    ctx.lineTo(stone.size * 0.85, 0)
-    ctx.lineTo(0, stone.size)
-    ctx.lineTo(-stone.size * 0.85, 0)
+    ctx.moveTo(0, -s * 1.25)
+    ctx.lineTo(s * 0.82, 0)
+    ctx.lineTo(0, s * 1.25)
+    ctx.lineTo(-s * 0.82, 0)
     ctx.closePath()
+    ctx.fillStyle = `rgba(240, 249, 255, ${stone.alpha})`
     ctx.fill()
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.9)'
+    ctx.lineWidth = 1.1
     ctx.stroke()
+
+    // Inner bright facet highlight
+    ctx.beginPath()
+    ctx.moveTo(0, -s * 1.25)
+    ctx.lineTo(s * 0.82, 0)
+    ctx.lineTo(0, 0)
+    ctx.closePath()
+    ctx.fillStyle = 'rgba(186, 230, 253, 0.65)'
+    ctx.fill()
     ctx.restore()
   }
 
@@ -978,23 +1246,29 @@ function drawSandstorm(
 ): void {
   ctx.save()
 
-  // Rolling desert dust waves
-  for (let b = 0; b < 4; b++) {
-    const waveY = viewportH * (0.2 + b * 0.22) + Math.sin(now * 0.0015 + b) * 35
-    const dustGrad = ctx.createLinearGradient(0, waveY - 120, 0, waveY + 120)
-    dustGrad.addColorStop(0, 'rgba(245, 158, 11, 0)')
-    dustGrad.addColorStop(0.5, 'rgba(217, 119, 6, 0.08)')
-    dustGrad.addColorStop(1, 'rgba(180, 83, 9, 0)')
-    ctx.fillStyle = dustGrad
-    ctx.fillRect(0, waveY - 120, viewportW, 240)
+  // Sumeru sunlit champagne-gold silk wind ribbons
+  ctx.lineCap = 'round'
+  for (let b = 0; b < 5; b++) {
+    const baseY = viewportH * (0.16 + b * 0.18)
+    ctx.beginPath()
+    for (let x = 0; x <= viewportW; x += 28) {
+      const y =
+        baseY +
+        Math.sin(x * 0.006 - now * 0.0035 + b * 1.3) * 28 +
+        Math.cos(x * 0.012 - now * 0.002 + b) * 14
+      if (x === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.strokeStyle = b % 2 === 0 ? 'rgba(254, 240, 138, 0.22)' : 'rgba(251, 191, 36, 0.16)'
+    ctx.lineWidth = 18
+    ctx.stroke()
   }
 
-  // Fast horizontal sand grains & dune streaks
+  // Sparkling golden sand grains & 4-point desert star motes
   for (const grain of sandGrains) {
     grain.x += grain.speedX * dt
-    grain.y += (grain.speedY + Math.sin(now * 0.004 + grain.x * 0.01) * 35) * dt
+    grain.y += (grain.speedY + Math.sin(now * 0.004 + grain.x * 0.01) * 32) * dt
 
-    // Deflect over node roofs
     for (const node of nodes) {
       if (
         grain.x >= node.screenX &&
@@ -1014,12 +1288,24 @@ function drawSandstorm(
     if (grain.y < -20) grain.y = viewportH + 15
     if (grain.y > viewportH + 20) grain.y = -15
 
-    ctx.strokeStyle = `hsla(${grain.hue}, 88%, 68%, ${grain.alpha})`
-    ctx.lineWidth = grain.size
-    ctx.beginPath()
-    ctx.moveTo(grain.x, grain.y)
-    ctx.lineTo(grain.x - grain.size * 7, grain.y - grain.speedY * 0.015)
-    ctx.stroke()
+    if (grain.sparkle) {
+      drawFourPointStar(
+        ctx,
+        grain.x,
+        grain.y,
+        grain.size * 2.4,
+        grain.size * 0.65,
+        now * 0.003 + grain.hue,
+        `rgba(254, 249, 195, ${grain.alpha})`
+      )
+    } else {
+      ctx.strokeStyle = `hsla(${grain.hue}, 96%, 78%, ${grain.alpha})`
+      ctx.lineWidth = grain.size
+      ctx.beginPath()
+      ctx.moveTo(grain.x, grain.y)
+      ctx.lineTo(grain.x - grain.size * 6, grain.y - grain.speedY * 0.012)
+      ctx.stroke()
+    }
   }
 
   ctx.restore()
@@ -1033,36 +1319,50 @@ function drawMeteorShower(
 ): void {
   ctx.save()
 
-  // 1. Twinkling starry night backdrop
+  // 1. Twinkling anime starry sky with 4-point star flares
   for (const star of stars) {
-    const twinkle = 0.35 + 0.65 * Math.abs(Math.sin(now * 0.001 * star.speed + star.phase))
-    ctx.fillStyle = `rgba(224, 231, 255, ${twinkle * 0.8})`
-    ctx.beginPath()
-    ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
-    ctx.fill()
+    const twinkle = 0.38 + 0.62 * Math.abs(Math.sin(now * 0.0012 * star.speed + star.phase))
+    if (star.fourPoint) {
+      drawFourPointStar(
+        ctx,
+        star.x,
+        star.y,
+        star.radius * 2.6 * twinkle,
+        star.radius * 0.65 * twinkle,
+        0,
+        `rgba(254, 249, 195, ${twinkle * 0.92})`
+      )
+    } else {
+      ctx.fillStyle = `rgba(224, 242, 254, ${twinkle * 0.85})`
+      ctx.beginPath()
+      ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
-  // 2. Spawn shooting stars periodically
-  if (now > nextMeteorSpawnAt && meteors.length < 7) {
-    nextMeteorSpawnAt = now + 420 + Math.random() * 680
+  // 2. Spawn Genshin "Wish" shooting stars (Gold 5★, Pink-Violet Intertwined, Sky-Blue Acquaint)
+  if (now > nextMeteorSpawnAt && meteors.length < 8) {
+    nextMeteorSpawnAt = now + 380 + Math.random() * 580
     const startX = Math.random() * viewportW * 0.85
     const startY = -30
-    const angle = Math.PI * (0.18 + Math.random() * 0.14)
-    const speed = 780 + Math.random() * 480
+    const angle = Math.PI * (0.18 + Math.random() * 0.12)
+    const speed = 740 + Math.random() * 440
+    const roll = Math.random()
+    const rarity: MeteorStreak['rarity'] = roll < 0.38 ? 'gold' : roll < 0.72 ? 'pink' : 'sky'
     meteors.push({
       x: startX,
       y: startY,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      len: 110 + Math.random() * 130,
-      size: 2.2 + Math.random() * 2.0,
-      hue: Math.random() < 0.5 ? 45 : 265,
+      len: 145 + Math.random() * 145,
+      size: 2.5 + Math.random() * 1.8,
+      rarity,
       life: 0,
-      maxLife: 1.1 + Math.random() * 0.6
+      maxLife: 1.15 + Math.random() * 0.55
     })
   }
 
-  // 3. Update & render shooting stars
+  // 3. Update & render Wish shooting stars with 4-point star heads & sparkling tails
   ctx.lineCap = 'round'
   for (let i = meteors.length - 1; i >= 0; i--) {
     const m = meteors[i]!
@@ -1070,7 +1370,6 @@ function drawMeteorShower(
     m.x += m.vx * dt
     m.y += m.vy * dt
 
-    // Check if meteor hits or grazes a visible node card
     for (const node of nodes) {
       if (
         m.x >= node.screenX &&
@@ -1078,7 +1377,13 @@ function drawMeteorShower(
         m.y >= node.screenY &&
         m.y <= node.screenY + Math.min(48, node.screenHeight * 0.4)
       ) {
-        spawnSplash(m.x, m.y, 10, 'rgba(253, 224, 71, 0.95)', 1.7)
+        const burstColor =
+          m.rarity === 'gold'
+            ? 'rgba(254, 240, 138, 0.98)'
+            : m.rarity === 'pink'
+              ? 'rgba(244, 114, 182, 0.96)'
+              : 'rgba(125, 211, 252, 0.96)'
+        spawnSplash(m.x, m.y, 10, burstColor, 1.65, true)
         const mag = Math.max(1, Math.hypot(m.vx, m.vy))
         applyMeteorNodeImpact(node.id, m.vx / mag, m.vy / mag)
         m.life = m.maxLife
@@ -1086,7 +1391,7 @@ function drawMeteorShower(
       }
     }
 
-    if (m.life >= m.maxLife || m.x > viewportW + 200 || m.y > viewportH + 200) {
+    if (m.life >= m.maxLife || m.x > viewportW + 220 || m.y > viewportH + 220) {
       meteors.splice(i, 1)
       continue
     }
@@ -1097,22 +1402,38 @@ function drawMeteorShower(
     const tailY = m.y - (m.vy / mag) * m.len
 
     const tailGrad = ctx.createLinearGradient(tailX, tailY, m.x, m.y)
-    tailGrad.addColorStop(0, `hsla(${m.hue}, 95%, 75%, 0)`)
-    tailGrad.addColorStop(0.7, `hsla(${m.hue}, 95%, 75%, ${0.55 * fade})`)
-    tailGrad.addColorStop(1, `rgba(255, 255, 255, ${0.98 * fade})`)
+    if (m.rarity === 'gold') {
+      tailGrad.addColorStop(0, 'rgba(251, 191, 36, 0)')
+      tailGrad.addColorStop(0.45, `rgba(244, 114, 182, ${0.42 * fade})`)
+      tailGrad.addColorStop(0.8, `rgba(253, 224, 71, ${0.85 * fade})`)
+      tailGrad.addColorStop(1, `rgba(255, 255, 255, ${0.98 * fade})`)
+    } else if (m.rarity === 'pink') {
+      tailGrad.addColorStop(0, 'rgba(168, 85, 247, 0)')
+      tailGrad.addColorStop(0.5, `rgba(192, 132, 252, ${0.52 * fade})`)
+      tailGrad.addColorStop(0.82, `rgba(244, 114, 182, ${0.85 * fade})`)
+      tailGrad.addColorStop(1, `rgba(255, 255, 255, ${0.98 * fade})`)
+    } else {
+      tailGrad.addColorStop(0, 'rgba(56, 189, 248, 0)')
+      tailGrad.addColorStop(0.55, `rgba(94, 234, 212, ${0.52 * fade})`)
+      tailGrad.addColorStop(0.85, `rgba(125, 211, 252, ${0.85 * fade})`)
+      tailGrad.addColorStop(1, `rgba(255, 255, 255, ${0.98 * fade})`)
+    }
 
     ctx.strokeStyle = tailGrad
-    ctx.lineWidth = m.size
+    ctx.lineWidth = m.size * 1.45
     ctx.beginPath()
     ctx.moveTo(tailX, tailY)
     ctx.lineTo(m.x, m.y)
     ctx.stroke()
 
-    // Glowing meteor head
-    ctx.fillStyle = `rgba(254, 249, 195, ${0.95 * fade})`
-    ctx.beginPath()
-    ctx.arc(m.x, m.y, m.size * 1.4, 0, Math.PI * 2)
-    ctx.fill()
+    // Signature Genshin Wish 4-point star flare head
+    const headColor =
+      m.rarity === 'gold'
+        ? `rgba(254, 249, 195, ${fade})`
+        : m.rarity === 'pink'
+          ? `rgba(252, 231, 243, ${fade})`
+          : `rgba(224, 242, 254, ${fade})`
+    drawFourPointStar(ctx, m.x, m.y, m.size * 4.4, m.size * 1.15, now * 0.004, headColor)
   }
 
   ctx.restore()
@@ -1126,35 +1447,35 @@ function drawAuroraSpectacle(
 ): void {
   ctx.save()
 
-  // Undulating Aurora Borealis curtains across the upper/mid viewport
+  // Pastel Genshin Ley Line / Irminsul silk ribbons (Mint, Sky-Cyan, Sakura-Pink, Lavender)
   const ribbons = [
     {
       yBase: viewportH * 0.22,
-      height: 190,
-      colorA: 'rgba(52, 211, 153, 0.22)',
-      colorB: 'rgba(56, 189, 248, 0.08)',
-      speed: 0.0012,
+      height: 195,
+      colorA: 'rgba(110, 231, 183, 0.24)',
+      colorB: 'rgba(125, 211, 252, 0.12)',
+      speed: 0.0013,
       phase: 0
     },
     {
       yBase: viewportH * 0.34,
       height: 210,
-      colorA: 'rgba(192, 132, 252, 0.18)',
-      colorB: 'rgba(52, 211, 153, 0.06)',
+      colorA: 'rgba(249, 168, 212, 0.20)',
+      colorB: 'rgba(196, 181, 253, 0.10)',
       speed: -0.0015,
       phase: 2.1
     },
     {
       yBase: viewportH * 0.16,
-      height: 160,
-      colorA: 'rgba(56, 189, 248, 0.20)',
-      colorB: 'rgba(167, 139, 250, 0.05)',
+      height: 165,
+      colorA: 'rgba(125, 211, 252, 0.22)',
+      colorB: 'rgba(167, 243, 208, 0.09)',
       speed: 0.0018,
       phase: 4.2
     }
   ]
 
-  const cols = 42
+  const cols = 44
   const colW = viewportW / cols
 
   for (const rib of ribbons) {
@@ -1167,37 +1488,56 @@ function drawAuroraSpectacle(
       const botY = topY + rib.height
 
       const curtainGrad = ctx.createLinearGradient(x, topY, x, botY)
-      curtainGrad.addColorStop(0, 'rgba(16, 185, 129, 0)')
+      curtainGrad.addColorStop(0, 'rgba(255, 255, 255, 0)')
       curtainGrad.addColorStop(0.35, rib.colorA)
       curtainGrad.addColorStop(0.75, rib.colorB)
-      curtainGrad.addColorStop(1, 'rgba(15, 23, 42, 0)')
+      curtainGrad.addColorStop(1, 'rgba(255, 255, 255, 0)')
 
       ctx.fillStyle = curtainGrad
       ctx.fillRect(x, topY, colW + 1.5, rib.height)
     }
   }
 
-  // Rising geomagnetic plasma motes
+  // Rising Crystalflies & 4-point elemental motes
   for (const mote of sunMotes) {
-    mote.x += Math.sin(now * 0.002 + mote.phase) * 22 * dt
-    mote.y += mote.vy * 1.15 * dt
-    if (mote.y < -20) {
-      mote.y = viewportH + 15
+    mote.x += Math.sin(now * 0.002 + mote.phase) * 24 * dt
+    mote.y += mote.vy * 1.1 * dt
+    if (mote.y < -25) {
+      mote.y = viewportH + 20
       mote.x = Math.random() * viewportW
     }
-    const pulse = 0.5 + 0.5 * Math.sin(now * 0.005 + mote.phase)
-    ctx.fillStyle =
-      mote.phase > Math.PI
-        ? `rgba(52, 211, 153, ${mote.alpha * pulse})`
-        : `rgba(192, 132, 252, ${mote.alpha * pulse})`
-    ctx.beginPath()
-    ctx.arc(mote.x, mote.y, mote.radius * 1.1, 0, Math.PI * 2)
-    ctx.fill()
+    const pulse = 0.55 + 0.45 * Math.sin(now * 0.005 + mote.phase)
+    if (mote.isCrystalfly) {
+      drawCrystalfly(
+        ctx,
+        mote.x,
+        mote.y,
+        mote.radius * 2.1,
+        now,
+        mote.phase,
+        `rgba(167, 243, 208, ${0.78 * pulse})`,
+        `rgba(240, 253, 250, ${0.95 * pulse})`
+      )
+    } else {
+      const color =
+        mote.phase > Math.PI
+          ? `rgba(167, 243, 208, ${mote.alpha * pulse})`
+          : `rgba(249, 168, 212, ${mote.alpha * pulse})`
+      drawFourPointStar(
+        ctx,
+        mote.x,
+        mote.y,
+        mote.radius * 2.2,
+        mote.radius * 0.6,
+        now * 0.002 + mote.phase,
+        color
+      )
+    }
   }
 
-  // Subtle geomagnetic resonance Halo around visible nodes
+  // Soft pastel Ley Line resonance border around visible nodes
   if (nodes.length > 0) {
-    ctx.strokeStyle = 'rgba(52, 211, 153, 0.18)'
+    ctx.strokeStyle = 'rgba(167, 243, 208, 0.28)'
     ctx.lineWidth = 1.5
     for (const node of nodes) {
       ctx.strokeRect(
@@ -1215,6 +1555,7 @@ function drawAuroraSpectacle(
 function drawDenseFog(ctx: CanvasRenderingContext2D, dt: number, now: number): void {
   ctx.save()
 
+  // Chenyu Vale celadon-jade & pearlescent cloud sea
   for (const bank of fogBanks) {
     bank.x += bank.speedX * dt
     if (bank.speedX > 0 && bank.x - bank.rx > viewportW + 100) {
@@ -1223,16 +1564,38 @@ function drawDenseFog(ctx: CanvasRenderingContext2D, dt: number, now: number): v
       bank.x = viewportW + bank.rx + 60
     }
 
-    const breathe = 0.85 + 0.15 * Math.sin(now * 0.0012 + bank.phase)
-    const grad = ctx.createRadialGradient(bank.x, bank.y, 10, bank.x, bank.y, bank.rx)
-    grad.addColorStop(0, `rgba(226, 232, 240, ${bank.alpha * breathe})`)
-    grad.addColorStop(0.55, `rgba(148, 163, 184, ${bank.alpha * 0.65 * breathe})`)
-    grad.addColorStop(1, 'rgba(148, 163, 184, 0)')
+    const breathe = 0.88 + 0.12 * Math.sin(now * 0.0012 + bank.phase)
+    const grad = ctx.createRadialGradient(bank.x, bank.y, 12, bank.x, bank.y, bank.rx)
+    grad.addColorStop(0, `rgba(240, 253, 250, ${bank.alpha * 1.35 * breathe})`)
+    grad.addColorStop(0.55, `rgba(204, 251, 241, ${bank.alpha * 0.85 * breathe})`)
+    grad.addColorStop(1, 'rgba(204, 251, 241, 0)')
 
     ctx.fillStyle = grad
     ctx.beginPath()
     ctx.ellipse(bank.x, bank.y, bank.rx, bank.ry * breathe, 0, 0, Math.PI * 2)
     ctx.fill()
+  }
+
+  // Floating golden-jade adeptal spirit motes (仙谷金绿灵光)
+  for (let i = 0; i < 24; i++) {
+    const mote = sunMotes[i]
+    if (!mote) continue
+    mote.x += Math.sin(now * 0.0014 + mote.phase) * 16 * dt
+    mote.y += mote.vy * 0.65 * dt
+    if (mote.y < -20) {
+      mote.y = viewportH + 15
+      mote.x = Math.random() * viewportW
+    }
+    const glow = 0.5 + 0.5 * Math.sin(now * 0.0035 + mote.phase)
+    drawFourPointStar(
+      ctx,
+      mote.x,
+      mote.y,
+      mote.radius * 2.1,
+      mote.radius * 0.55,
+      0,
+      i % 2 === 0 ? `rgba(254, 240, 138, ${0.72 * glow})` : `rgba(167, 243, 208, ${0.78 * glow})`
+    )
   }
 
   ctx.restore()
@@ -1245,88 +1608,127 @@ function drawWindAndLeaves(
   now: number,
   nodes: WeatherNodeRect[]
 ): void {
-  const speedMul = weather === 'typhoon' ? 1.85 : weather === 'thunderstorm' ? 1.35 : 1.0
+  const speedMul = weather === 'typhoon' ? 1.75 : weather === 'thunderstorm' ? 1.3 : 1.0
   const eyeX = vortexEyeNorm.x * viewportW
   const eyeY = vortexEyeNorm.y * viewportH
 
   ctx.save()
   ctx.lineCap = 'round'
 
+  // Cel-shaded Genshin Anemo wind ribbons with curling loops
   for (const streak of windStreaks) {
     streak.x += streak.speed * speedMul * dt
-    streak.y += Math.sin(now * 0.002 + streak.phase) * 28 * dt
+    streak.y += Math.sin(now * 0.002 + streak.phase) * 26 * dt
     if (streak.x - streak.len > viewportW + 80) {
       streak.x = -streak.len - Math.random() * 120
       streak.y = Math.random() * viewportH
     }
 
     ctx.beginPath()
-    const segs = 8
+    const segs = 12
     for (let i = 0; i <= segs; i++) {
       const ratio = i / segs
       const sx = streak.x - (1 - ratio) * streak.len
-      const sy = streak.y + Math.sin(sx * streak.freq + now * 0.006 + streak.phase) * streak.amp
+      const loopOffset =
+        streak.hasLoop && ratio > 0.55 && ratio < 0.85
+          ? Math.sin(((ratio - 0.55) / 0.3) * Math.PI * 2) * 10
+          : 0
+      const sy =
+        streak.y + Math.sin(sx * streak.freq + now * 0.006 + streak.phase) * streak.amp + loopOffset
       if (i === 0) ctx.moveTo(sx, sy)
       else ctx.lineTo(sx, sy)
     }
 
     const grad = ctx.createLinearGradient(streak.x - streak.len, streak.y, streak.x, streak.y)
-    grad.addColorStop(0, 'rgba(186, 230, 253, 0)')
-    grad.addColorStop(0.5, `rgba(186, 230, 253, ${streak.alpha})`)
-    grad.addColorStop(1, 'rgba(224, 242, 254, 0)')
+    if (weather === 'thunderstorm') {
+      grad.addColorStop(0, 'rgba(233, 213, 255, 0)')
+      grad.addColorStop(0.5, `rgba(244, 114, 182, ${streak.alpha * 0.85})`)
+      grad.addColorStop(1, 'rgba(233, 213, 255, 0)')
+    } else {
+      grad.addColorStop(0, 'rgba(153, 246, 228, 0)')
+      grad.addColorStop(0.5, `rgba(240, 253, 250, ${streak.alpha})`)
+      grad.addColorStop(0.85, `rgba(94, 234, 212, ${streak.alpha * 0.85})`)
+      grad.addColorStop(1, 'rgba(153, 246, 228, 0)')
+    }
     ctx.strokeStyle = grad
     ctx.lineWidth = streak.width
     ctx.stroke()
   }
 
-  for (const leaf of leaves) {
+  // Floating Mondstadt Dandelion Seeds, Inazuma Sakura Petals & Anemo Leaves
+  for (const item of floraParticles) {
     if (weather === 'typhoon') {
-      const rx = leaf.x - eyeX
-      const ry = leaf.y - eyeY
+      const rx = item.x - eyeX
+      const ry = item.y - eyeY
       const dist = Math.max(35, Math.hypot(rx, ry))
       const tx = -ry / dist
       const ty = rx / dist
-      leaf.vx = tx * 460 - (rx / dist) * 75
-      leaf.vy = ty * 460 - (ry / dist) * 75
+      item.vx = tx * 430 - (rx / dist) * 65
+      item.vy = ty * 430 - (ry / dist) * 65
     } else {
-      leaf.vx = (280 + Math.sin(now * 0.003 + leaf.size) * 90) * speedMul
-      leaf.vy = Math.cos(now * 0.004 + leaf.hue) * 55
+      item.vx = (240 + Math.sin(now * 0.003 + item.size) * 80) * speedMul
+      item.vy = Math.cos(now * 0.0035 + item.phase) * 48
     }
 
-    leaf.x += leaf.vx * dt
-    leaf.y += leaf.vy * dt
-    leaf.rot += leaf.vrot * dt
+    item.x += item.vx * dt
+    item.y += item.vy * dt
+    item.rot += item.vrot * dt
 
     for (const node of nodes) {
       if (
-        leaf.x >= node.screenX &&
-        leaf.x <= node.screenX + node.screenWidth &&
-        leaf.y >= node.screenY &&
-        leaf.y <= node.screenY + node.screenHeight
+        item.x >= node.screenX &&
+        item.x <= node.screenX + node.screenWidth &&
+        item.y >= node.screenY &&
+        item.y <= node.screenY + node.screenHeight
       ) {
-        leaf.y = node.screenY - 4
-        leaf.vy = -Math.abs(leaf.vy) - 45
+        item.y = node.screenY - 4
+        item.vy = -Math.abs(item.vy) - 42
         break
       }
     }
 
-    if (leaf.x > viewportW + 40) {
-      leaf.x = -30
-      leaf.y = Math.random() * viewportH
-    } else if (leaf.x < -40) {
-      leaf.x = viewportW + 30
+    if (item.x > viewportW + 40) {
+      item.x = -30
+      item.y = Math.random() * viewportH
+    } else if (item.x < -40) {
+      item.x = viewportW + 30
     }
-    if (leaf.y > viewportH + 40) leaf.y = -20
-    if (leaf.y < -40) leaf.y = viewportH + 20
+    if (item.y > viewportH + 40) item.y = -20
+    if (item.y < -40) item.y = viewportH + 20
 
-    ctx.save()
-    ctx.translate(leaf.x, leaf.y)
-    ctx.rotate(leaf.rot)
-    ctx.fillStyle = `hsla(${leaf.hue}, 85%, 72%, ${leaf.alpha})`
-    ctx.beginPath()
-    ctx.ellipse(0, 0, leaf.size * 1.4, leaf.size * 0.65, 0, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.restore()
+    if (weather === 'thunderstorm' || item.kind === 'petal') {
+      // Sacred Sakura / Windwheel Blossom Petal
+      drawSakuraPetal(
+        ctx,
+        item.x,
+        item.y,
+        item.size,
+        item.rot,
+        `rgba(251, 207, 232, ${item.alpha})`,
+        `rgba(244, 114, 182, ${item.alpha * 0.85})`
+      )
+    } else if (item.kind === 'dandelion') {
+      // Glowing Mondstadt Dandelion Seed
+      drawDandelionSeed(
+        ctx,
+        item.x,
+        item.y,
+        item.size * 0.95,
+        Math.sin(now * 0.003 + item.phase) * 0.35,
+        item.alpha
+      )
+    } else {
+      // Fresh mint-emerald Anemo leaf
+      drawSakuraPetal(
+        ctx,
+        item.x,
+        item.y,
+        item.size * 0.9,
+        item.rot,
+        `rgba(167, 243, 208, ${item.alpha})`,
+        `rgba(52, 211, 153, ${item.alpha * 0.9})`
+      )
+    }
   }
 
   ctx.restore()
@@ -1339,14 +1741,13 @@ function drawRainAndSplashes(
   nodes: WeatherNodeRect[]
 ): void {
   const isRaining = weather === 'rain' || weather === 'thunderstorm' || weather === 'typhoon'
-  const slopeMul = weather === 'typhoon' ? 1.85 : weather === 'thunderstorm' ? 1.3 : 0.85
-  const speedMul = weather === 'typhoon' ? 1.35 : 1.0
+  const slopeMul = weather === 'typhoon' ? 1.65 : weather === 'thunderstorm' ? 1.15 : 0.72
+  const speedMul = weather === 'typhoon' ? 1.3 : 1.0
 
   ctx.save()
   ctx.lineCap = 'round'
 
   if (isRaining) {
-    ctx.lineWidth = 1.35
     for (const drop of raindrops) {
       const prevY = drop.y
       const vx = drop.speed * drop.windSlope * slopeMul
@@ -1363,7 +1764,8 @@ function drawRainAndSplashes(
           drop.x >= node.screenX + 4 &&
           drop.x <= node.screenX + node.screenWidth - 4
         ) {
-          spawnSplash(drop.x, topY, 3)
+          spawnSplash(drop.x, topY, 3, 'rgba(224, 242, 254, 0.95)')
+          spawnRipple(drop.x, topY, 'rgba(125, 211, 252, 0.9)')
           if (Math.random() < 0.22) {
             const hitRatio = (drop.x - node.screenX) / Math.max(1, node.screenWidth)
             applyRaindropNodeImpact(node.id, hitRatio)
@@ -1377,21 +1779,58 @@ function drawRainAndSplashes(
 
       if (!hitNode) {
         if (drop.y > viewportH + 30 || drop.x > viewportW + 180) {
+          if (Math.random() < 0.16) {
+            spawnRipple(
+              Math.max(20, Math.min(viewportW - 20, drop.x)),
+              viewportH - 12 - Math.random() * 48,
+              'rgba(186, 230, 253, 0.75)'
+            )
+          }
           drop.y = -20 - Math.random() * 80
           drop.x = Math.random() * (viewportW + 350) - 250
         } else {
           const dx = drop.len * drop.windSlope * slopeMul
           const dy = drop.len
-          ctx.strokeStyle = `rgba(186, 230, 253, ${drop.alpha})`
+          const dropGrad = ctx.createLinearGradient(drop.x - dx, drop.y - dy, drop.x, drop.y)
+          const headColor =
+            drop.tint === 'aqua'
+              ? `rgba(165, 243, 252, ${drop.alpha})`
+              : drop.tint === 'sky'
+                ? `rgba(186, 230, 253, ${drop.alpha})`
+                : `rgba(255, 255, 255, ${drop.alpha})`
+          dropGrad.addColorStop(0, 'rgba(186, 230, 253, 0)')
+          dropGrad.addColorStop(1, headColor)
+          ctx.strokeStyle = dropGrad
+          ctx.lineWidth = 1.5
           ctx.beginPath()
-          ctx.moveTo(drop.x, drop.y)
-          ctx.lineTo(drop.x - dx, drop.y - dy)
+          ctx.moveTo(drop.x - dx, drop.y - dy)
+          ctx.lineTo(drop.x, drop.y)
           ctx.stroke()
         }
       }
     }
   }
 
+  // Concentric Anime Water Ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rp = ripples[i]!
+    rp.life += dt
+    if (rp.life >= rp.maxLife) {
+      ripples.splice(i, 1)
+      continue
+    }
+    const progress = rp.life / rp.maxLife
+    const rx = 3 + progress * rp.maxRx
+    const ry = rx * 0.32
+    const fade = 1 - progress
+    ctx.strokeStyle = rp.color.replace(/[\d.]+\)$/, `${(0.82 * fade).toFixed(3)})`)
+    ctx.lineWidth = 1.25 * fade
+    ctx.beginPath()
+    ctx.ellipse(rp.x, rp.y, rx, ry, 0, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+
+  // Hydro Droplet & Star Splashes
   for (let i = splashes.length - 1; i >= 0; i--) {
     const sp = splashes[i]!
     sp.life += dt
@@ -1399,14 +1838,19 @@ function drawRainAndSplashes(
       splashes.splice(i, 1)
       continue
     }
-    sp.vy += 420 * dt
+    sp.vy += 380 * dt
     sp.x += sp.vx * dt
     sp.y += sp.vy * dt
     const fade = 1 - sp.life / sp.maxLife
-    ctx.fillStyle = sp.color ?? `rgba(224, 242, 254, ${sp.alpha * fade})`
-    ctx.beginPath()
-    ctx.arc(sp.x, sp.y, sp.radius * fade, 0, Math.PI * 2)
-    ctx.fill()
+    const fill = sp.color ?? `rgba(224, 242, 254, ${sp.alpha * fade})`
+    if (sp.star) {
+      drawFourPointStar(ctx, sp.x, sp.y, sp.radius * 2.4 * fade, sp.radius * 0.65 * fade, 0, fill)
+    } else {
+      ctx.fillStyle = fill
+      ctx.beginPath()
+      ctx.arc(sp.x, sp.y, sp.radius * fade, 0, Math.PI * 2)
+      ctx.fill()
+    }
   }
 
   ctx.restore()
@@ -1426,34 +1870,47 @@ function drawLightningBolts(ctx: CanvasRenderingContext2D, now: number): void {
     }
 
     const lifeRatio = 1 - age / bolt.durationMs
-    const flicker = age < 130 ? (Math.floor(age / 25) % 2 === 0 ? 1 : 0.45) : lifeRatio
+    const flicker = age < 140 ? (Math.floor(age / 25) % 2 === 0 ? 1 : 0.5) : lifeRatio
 
-    if (age < 120) {
-      ctx.fillStyle = `rgba(224, 242, 254, ${(1 - age / 120) * 0.22})`
+    // Pastel lilac-white anime flash
+    if (age < 110) {
+      ctx.fillStyle = `rgba(243, 232, 255, ${(1 - age / 110) * 0.2})`
       ctx.fillRect(0, 0, viewportW, viewportH)
     }
 
-    ctx.shadowColor = 'rgba(125, 211, 252, 0.95)'
-    ctx.shadowBlur = 18
+    // Inazuma Electro violet-magenta outer glow + bright white-lilac core
+    ctx.shadowColor = 'rgba(192, 132, 252, 0.95)'
+    ctx.shadowBlur = 20
     for (const seg of bolt.segments) {
       ctx.beginPath()
       ctx.moveTo(seg.x1, seg.y1)
       ctx.lineTo(seg.x2, seg.y2)
       ctx.strokeStyle = seg.main
-        ? `rgba(224, 242, 254, ${0.95 * flicker})`
-        : `rgba(165, 243, 252, ${0.65 * flicker})`
-      ctx.lineWidth = seg.main ? 3.2 * lifeRatio + 1 : 1.4 * lifeRatio
+        ? `rgba(250, 245, 255, ${0.98 * flicker})`
+        : `rgba(232, 121, 249, ${0.78 * flicker})`
+      ctx.lineWidth = seg.main ? 3.4 * lifeRatio + 1.1 : 1.6 * lifeRatio
       ctx.stroke()
     }
 
+    // Electro sigil ring + 4-point star burst at target impact point
     const ringProgress = age / bolt.durationMs
-    const ringRadius = 14 + ringProgress * 135
+    const ringRadius = 16 + ringProgress * 140
     ctx.shadowBlur = 0
-    ctx.strokeStyle = `rgba(125, 211, 252, ${(1 - ringProgress) * 0.75})`
+    ctx.strokeStyle = `rgba(216, 180, 254, ${(1 - ringProgress) * 0.85})`
     ctx.lineWidth = 2.4 * (1 - ringProgress)
     ctx.beginPath()
     ctx.arc(bolt.targetX, bolt.targetY, ringRadius, 0, Math.PI * 2)
     ctx.stroke()
+
+    drawFourPointStar(
+      ctx,
+      bolt.targetX,
+      bolt.targetY,
+      26 * (1 - ringProgress),
+      6 * (1 - ringProgress),
+      ringProgress * Math.PI,
+      `rgba(250, 245, 255, ${(1 - ringProgress) * 0.95})`
+    )
   }
 
   ctx.restore()
@@ -1463,53 +1920,78 @@ function drawSunnySpectacle(ctx: CanvasRenderingContext2D, dt: number, now: numb
   ctx.save()
 
   const sunX = viewportW * 0.84
-  const sunY = viewportH * 0.12
+  const sunY = viewportH * 0.11
 
-  const sunGlow = ctx.createRadialGradient(sunX, sunY, 8, sunX, sunY, viewportW * 0.55)
-  sunGlow.addColorStop(0, 'rgba(254, 240, 138, 0.42)')
-  sunGlow.addColorStop(0.25, 'rgba(253, 224, 71, 0.18)')
-  sunGlow.addColorStop(0.6, 'rgba(251, 191, 36, 0.06)')
-  sunGlow.addColorStop(1, 'rgba(251, 191, 36, 0)')
+  // Luminous golden-azure anime sun halo
+  const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, viewportW * 0.58)
+  sunGlow.addColorStop(0, 'rgba(255, 251, 235, 0.52)')
+  sunGlow.addColorStop(0.22, 'rgba(254, 240, 138, 0.24)')
+  sunGlow.addColorStop(0.55, 'rgba(186, 230, 253, 0.09)')
+  sunGlow.addColorStop(1, 'rgba(254, 240, 138, 0)')
   ctx.fillStyle = sunGlow
   ctx.fillRect(0, 0, viewportW, viewportH)
 
+  // Cel-shaded diagonal sunbeams
   for (let r = 0; r < 7; r++) {
-    const angle = Math.PI * 0.58 + r * 0.11 + Math.sin(now * 0.0008 + r) * 0.03
-    const spread = 0.038
-    const beamLen = Math.hypot(viewportW, viewportH) * 0.9
+    const angle = Math.PI * 0.58 + r * 0.105 + Math.sin(now * 0.0008 + r) * 0.028
+    const spread = 0.036
+    const beamLen = Math.hypot(viewportW, viewportH) * 0.92
     ctx.beginPath()
     ctx.moveTo(sunX, sunY)
     ctx.lineTo(sunX + Math.cos(angle - spread) * beamLen, sunY + Math.sin(angle - spread) * beamLen)
     ctx.lineTo(sunX + Math.cos(angle + spread) * beamLen, sunY + Math.sin(angle + spread) * beamLen)
     ctx.closePath()
-    const beamGrad = ctx.createRadialGradient(sunX, sunY, 20, sunX, sunY, beamLen * 0.75)
-    beamGrad.addColorStop(0, 'rgba(254, 249, 195, 0.14)')
-    beamGrad.addColorStop(1, 'rgba(254, 249, 195, 0)')
+    const beamGrad = ctx.createRadialGradient(sunX, sunY, 20, sunX, sunY, beamLen * 0.78)
+    beamGrad.addColorStop(0, 'rgba(255, 251, 235, 0.18)')
+    beamGrad.addColorStop(1, 'rgba(255, 251, 235, 0)')
     ctx.fillStyle = beamGrad
     ctx.fill()
   }
 
+  // Anime camera lens-flare bokeh circles along the sun diagonal
+  const bokehSteps = [
+    { dist: 0.18, r: 22, color: 'rgba(254, 240, 138, 0.18)' },
+    { dist: 0.31, r: 38, color: 'rgba(167, 243, 208, 0.14)' },
+    { dist: 0.46, r: 16, color: 'rgba(249, 168, 212, 0.16)' },
+    { dist: 0.62, r: 48, color: 'rgba(125, 211, 252, 0.12)' },
+    { dist: 0.76, r: 28, color: 'rgba(254, 249, 195, 0.16)' }
+  ]
+  for (const bk of bokehSteps) {
+    const bx = sunX - viewportW * bk.dist * 0.72
+    const by = sunY + viewportH * bk.dist * 0.68
+    ctx.fillStyle = bk.color
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)'
+    ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.arc(bx, by, bk.r, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+
+  // Pastel anime rainbow arc
   const rbCx = viewportW * 0.46
   const rbCy = viewportH * 0.92
   const rbRadius = Math.min(viewportW, viewportH) * 0.78
   const rainbowColors = [
-    'rgba(248, 113, 113, 0.09)',
-    'rgba(251, 191, 36, 0.09)',
-    'rgba(74, 222, 128, 0.09)',
-    'rgba(56, 189, 248, 0.09)',
-    'rgba(167, 139, 250, 0.09)'
+    'rgba(251, 113, 133, 0.12)',
+    'rgba(251, 191, 36, 0.12)',
+    'rgba(110, 231, 183, 0.12)',
+    'rgba(125, 211, 252, 0.12)',
+    'rgba(196, 181, 253, 0.12)'
   ]
   ctx.lineCap = 'round'
   rainbowColors.forEach((color, idx) => {
     ctx.beginPath()
-    ctx.arc(rbCx, rbCy, rbRadius - idx * 8, Math.PI * 1.12, Math.PI * 1.88)
+    ctx.arc(rbCx, rbCy, rbRadius - idx * 8.5, Math.PI * 1.12, Math.PI * 1.88)
     ctx.strokeStyle = color
-    ctx.lineWidth = 7
+    ctx.lineWidth = 7.5
     ctx.stroke()
   })
 
-  for (const mote of sunMotes) {
-    mote.x += (mote.vx + Math.sin(now * 0.0015 + mote.phase) * 10) * dt
+  // Floating golden 4-point sparkles & dandelion seeds
+  for (let i = 0; i < sunMotes.length; i++) {
+    const mote = sunMotes[i]!
+    mote.x += (mote.vx + Math.sin(now * 0.0015 + mote.phase) * 12) * dt
     mote.y += mote.vy * dt
     if (mote.y < -20) {
       mote.y = viewportH + 15
@@ -1518,10 +2000,21 @@ function drawSunnySpectacle(ctx: CanvasRenderingContext2D, dt: number, now: numb
     if (mote.x > viewportW + 20) mote.x = -15
 
     const twinkle = 0.55 + Math.sin(now * 0.004 + mote.phase) * 0.45
-    ctx.fillStyle = `rgba(254, 240, 138, ${mote.alpha * twinkle})`
-    ctx.beginPath()
-    ctx.arc(mote.x, mote.y, mote.radius, 0, Math.PI * 2)
-    ctx.fill()
+    if (i % 5 === 0) {
+      drawDandelionSeed(ctx, mote.x, mote.y, mote.radius * 1.7, 0.2, mote.alpha * twinkle)
+    } else {
+      drawFourPointStar(
+        ctx,
+        mote.x,
+        mote.y,
+        mote.radius * 2.2,
+        mote.radius * 0.6,
+        now * 0.002 + mote.phase,
+        i % 2 === 0
+          ? `rgba(254, 249, 195, ${mote.alpha * twinkle})`
+          : `rgba(167, 243, 208, ${mote.alpha * twinkle})`
+      )
+    }
   }
 
   ctx.restore()
@@ -1589,21 +2082,22 @@ onBeforeUnmount(() => {
 .canvas-weather-hud__bar {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .canvas-weather-hud__pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 11px;
+  padding: 5px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(10px);
-  color: #e2e8f0;
+  border: 1px solid rgba(226, 232, 240, 0.38);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.58));
+  backdrop-filter: blur(12px);
+  color: #f8fafc;
   font-size: 12px;
   font-weight: 500;
+  letter-spacing: 0.02em;
   cursor: pointer;
   transition:
     border-color 0.2s ease,
@@ -1613,14 +2107,16 @@ onBeforeUnmount(() => {
 }
 
 .canvas-weather-hud.is-active .canvas-weather-hud__pill {
-  border-color: rgba(56, 189, 248, 0.55);
-  box-shadow: 0 0 16px rgba(56, 189, 248, 0.22);
+  border-color: rgba(153, 246, 228, 0.72);
+  box-shadow:
+    0 0 18px rgba(94, 234, 212, 0.28),
+    0 0 0 1px rgba(254, 249, 195, 0.22) inset;
 }
 
 .canvas-weather-hud__pill:hover,
 .canvas-weather-hud__dice:hover {
-  background: rgba(30, 41, 59, 0.88);
-  border-color: rgba(125, 211, 252, 0.65);
+  background: linear-gradient(135deg, rgba(51, 65, 85, 0.78), rgba(30, 41, 59, 0.72));
+  border-color: rgba(254, 240, 138, 0.75);
 }
 
 .canvas-weather-hud__dice {
@@ -1631,9 +2127,10 @@ onBeforeUnmount(() => {
   height: 28px;
   padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(15, 23, 42, 0.72);
-  backdrop-filter: blur(10px);
+  border: 1px solid rgba(226, 232, 240, 0.36);
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.68), rgba(15, 23, 42, 0.58));
+  backdrop-filter: blur(12px);
+  color: #fef08a;
   font-size: 13px;
   cursor: pointer;
   transition: all 0.18s ease;
@@ -1658,12 +2155,14 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  background: rgba(15, 23, 42, 0.88);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.45);
-  min-width: 256px;
+  border-radius: 14px;
+  border: 1px solid rgba(226, 232, 240, 0.34);
+  background: linear-gradient(160deg, rgba(30, 41, 59, 0.84), rgba(15, 23, 42, 0.78));
+  backdrop-filter: blur(16px);
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.32),
+    0 0 0 1px rgba(254, 249, 195, 0.14) inset;
+  min-width: 262px;
 }
 
 .canvas-weather-hud__modes {
@@ -1677,24 +2176,26 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 6px;
   padding: 5px 8px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(30, 41, 59, 0.55);
-  color: #cbd5e1;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.16);
+  background: rgba(51, 65, 85, 0.42);
+  color: #e2e8f0;
   font-size: 11.5px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .canvas-weather-hud__mode-btn:hover {
-  background: rgba(51, 65, 85, 0.78);
-  color: #f8fafc;
+  background: rgba(71, 85, 105, 0.65);
+  border-color: rgba(186, 230, 253, 0.45);
+  color: #ffffff;
 }
 
 .canvas-weather-hud__mode-btn.is-selected {
-  border-color: rgba(56, 189, 248, 0.75);
-  background: rgba(14, 116, 144, 0.38);
-  color: #f0f9ff;
+  border-color: rgba(153, 246, 228, 0.82);
+  background: linear-gradient(135deg, rgba(20, 184, 166, 0.36), rgba(56, 189, 248, 0.32));
+  color: #f0fdfa;
+  box-shadow: 0 0 12px rgba(94, 234, 212, 0.24);
 }
 
 .canvas-weather-hud__actions {
@@ -1702,7 +2203,7 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
   padding-top: 6px;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  border-top: 1px solid rgba(226, 232, 240, 0.16);
 }
 
 .canvas-weather-hud__action-btn {
@@ -1711,38 +2212,38 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 4px;
   padding: 4px 8px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(30, 41, 59, 0.5);
-  color: #94a3b8;
+  border-radius: 8px;
+  border: 1px solid rgba(226, 232, 240, 0.2);
+  background: rgba(51, 65, 85, 0.4);
+  color: #cbd5e1;
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .canvas-weather-hud__action-btn.is-on {
-  border-color: rgba(52, 211, 153, 0.55);
-  background: rgba(6, 95, 70, 0.32);
-  color: #d1fae5;
+  border-color: rgba(110, 231, 183, 0.68);
+  background: rgba(16, 185, 129, 0.28);
+  color: #ecfdf5;
 }
 
 .canvas-weather-hud__action-btn.is-shuffle {
-  border-color: rgba(167, 139, 250, 0.48);
-  background: rgba(76, 29, 149, 0.32);
-  color: #ede9fe;
+  border-color: rgba(244, 114, 182, 0.58);
+  background: rgba(192, 132, 252, 0.26);
+  color: #fdf2f8;
 }
 
 .canvas-weather-hud__action-btn.is-shuffle:hover {
-  background: rgba(109, 40, 217, 0.45);
+  background: rgba(217, 70, 239, 0.38);
 }
 
 .canvas-weather-hud__action-btn.is-strike {
-  border-color: rgba(250, 204, 21, 0.48);
-  background: rgba(113, 63, 18, 0.32);
-  color: #fef08a;
+  border-color: rgba(253, 224, 71, 0.65);
+  background: rgba(234, 179, 8, 0.26);
+  color: #fef9c3;
 }
 
 .canvas-weather-hud__action-btn.is-strike:hover {
-  background: rgba(161, 98, 7, 0.48);
+  background: rgba(234, 179, 8, 0.4);
 }
 </style>

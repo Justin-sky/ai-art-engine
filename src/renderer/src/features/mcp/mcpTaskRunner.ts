@@ -34,6 +34,8 @@ const GRAPH_EDITOR_OPEN_POLL_MS = 50
 /** 记录最近一次通过 graph_edit 触达的画布资产与节点 id，供紧随其后的 task_run 精准执行 */
 let lastEditedAssetId = ''
 const lastEditedNodeIdsByAsset = new Map<string, string[]>()
+const handledMcpTaskIds = new Set<string>()
+const handledGraphEditRequestIds = new Set<string>()
 
 function collectDownstreamAndTargetIds(
   graph: GraphDocument,
@@ -118,6 +120,13 @@ async function collectFinishedTaskMediaPaths(
 }
 
 async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
+  if (payload.mcpTaskId && handledMcpTaskIds.has(payload.mcpTaskId)) {
+    return
+  }
+  if (payload.mcpTaskId) {
+    handledMcpTaskIds.add(payload.mcpTaskId)
+  }
+
   const project = useProjectStore()
   const taskStore = useGraphTaskStore()
   const activeTargets = resolveActiveWorkspaceTargets()
@@ -153,13 +162,30 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
   const seedNodeIds = explicitNodeIds.length
     ? explicitNodeIds
     : (lastEditedNodeIdsByAsset.get(effectiveAssetId) ?? [])
-  const { targetNodeIds, invalidatedNodeIds } = collectDownstreamAndTargetIds(
+  const { targetNodeIds: downstreamTargetIds, invalidatedNodeIds } = collectDownstreamAndTargetIds(
     graphJson,
     seedNodeIds
   )
+  const validExplicitNodeIds = explicitNodeIds.filter((id) =>
+    graphJson.nodes.some((n) => n.id === id && !n.locked)
+  )
+  // 若调用方显式指定了 nodeIds（如单跑部分配音/单张分镜），只以显式节点为目标，
+  // 避免顺着连线把下游尚无需执行的成片节点与其余分支整图一并拉起。
+  const targetNodeIds = validExplicitNodeIds.length ? validExplicitNodeIds : downstreamTargetIds
   if (!explicitNodeIds.length && seedNodeIds.length) {
     lastEditedNodeIdsByAsset.delete(effectiveAssetId)
   }
+
+  const invalidatedSet = new Set(invalidatedNodeIds)
+  const priorRunStates = graphJson.runStates ?? {}
+  const priorPathSet = new Set<string>(
+    collectRunMediaPaths(
+      graphJson,
+      Object.fromEntries(
+        Object.entries(priorRunStates).filter(([nodeId]) => !invalidatedSet.has(nodeId))
+      )
+    )
+  )
 
   const result = taskStore.enqueueWorkflow({
     title: `${asset.name} · MCP`,
@@ -179,6 +205,45 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
 
   report(payload.mcpTaskId, 'accepted', { taskId: result.id })
 
+  const executedNodeIds = new Set<string>(
+    validExplicitNodeIds.length
+      ? validExplicitNodeIds
+      : invalidatedNodeIds.length
+        ? invalidatedNodeIds
+        : graphJson.nodes.map((n) => n.id)
+  )
+  const streamedPaths: string[] = []
+
+  const collectAndStreamProgress = (): void => {
+    const snapshot = taskStore.getTaskRunSnapshot(result.id)
+    if (!snapshot) return
+    const preferredIds = executedNodeIds.size ? [...executedNodeIds] : undefined
+    const candidateStates = Object.fromEntries(
+      Object.entries(snapshot.runStates).filter(
+        ([nodeId, state]) => state?.status === 'done' && executedNodeIds.has(nodeId)
+      )
+    )
+    const currentPaths = collectRunMediaPaths(snapshot.graph, candidateStates, {
+      ...(preferredIds?.length ? { preferredNodeIds: preferredIds } : {})
+    })
+    let added = false
+    for (const path of currentPaths) {
+      if (priorPathSet.has(path) && !invalidatedSet.size && validExplicitNodeIds.length > 0) {
+        continue
+      }
+      if (!streamedPaths.includes(path)) {
+        streamedPaths.push(path)
+        added = true
+      }
+    }
+    if (added && streamedPaths.length > 0) {
+      report(payload.mcpTaskId, 'accepted', {
+        taskId: result.id,
+        relativePaths: [...streamedPaths]
+      })
+    }
+  }
+
   // 轮询任务状态直到终态（任务完成后会从 tasks 移入 completed，两处都要查）
   const timer = window.setInterval(() => {
     const activeTask = taskStore.tasks.find((item) => item.id === result.id)
@@ -186,9 +251,19 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     const task = activeTask ?? completedTask
     if (!task) {
       window.clearInterval(timer)
-      report(payload.mcpTaskId, 'finished', { taskId: result.id, status: 'stopped' })
+      report(payload.mcpTaskId, 'finished', {
+        taskId: result.id,
+        status: 'stopped',
+        ...(streamedPaths.length ? { relativePaths: [...streamedPaths] } : {})
+      })
       return
     }
+    for (const node of task.nodes) {
+      if (node.status === 'pending' || node.status === 'running') {
+        executedNodeIds.add(node.nodeId)
+      }
+    }
+    collectAndStreamProgress()
     if (
       completedTask ||
       task.status === 'done' ||
@@ -203,11 +278,17 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
       window.clearInterval(timer)
       void (async () => {
         // 产物相对路径要等写回落盘后才齐全，收集完再回报终态
-        const relativePaths = await collectFinishedTaskMediaPaths(
+        const preferredIds = executedNodeIds.size
+          ? [...executedNodeIds]
+          : targetNodeIds.length
+            ? targetNodeIds
+            : seedNodeIds
+        const finishedPaths = await collectFinishedTaskMediaPaths(
           taskStore,
           result.id,
-          targetNodeIds.length ? targetNodeIds : seedNodeIds
+          preferredIds
         )
+        const relativePaths = Array.from(new Set([...streamedPaths, ...finishedPaths]))
         report(payload.mcpTaskId, 'finished', {
           taskId: result.id,
           status,
@@ -636,6 +717,12 @@ function normalizeNodeUpdateAliases(
 
 /** 图编辑操作批：读取落盘图 → 应用 ops → 持久化 + 同步界面（同时兼容 3D 导演台与检查器操作） */
 async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
+  if (payload.requestId && handledGraphEditRequestIds.has(payload.requestId)) {
+    return
+  }
+  if (payload.requestId) {
+    handledGraphEditRequestIds.add(payload.requestId)
+  }
   const reply = (
     ok: boolean,
     extra: {
@@ -1306,27 +1393,47 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
 
 let registered = false
 
+type WindowWithMcpTaskRunnerCleanup = Window & {
+  __aiaeMcpTaskRunnerCleanup?: () => void
+}
+
 export function registerMcpTaskRunner(): void {
   if (registered) return
   registered = true
+  const win = window as WindowWithMcpTaskRunnerCleanup
+  win.__aiaeMcpTaskRunnerCleanup?.()
+  const cleanups: Array<() => void> = []
   if (typeof window.studio?.onMcpWorkflowFocus === 'function') {
-    window.studio.onMcpWorkflowFocus((payload) => {
+    const off = window.studio.onMcpWorkflowFocus((payload) => {
       const assetId = payload.assetId?.trim()
       if (assetId) openMcpWorkflowAssetEditor(assetId)
     })
+    if (typeof off === 'function') cleanups.push(off)
   }
   if (typeof window.studio?.onMcpTaskRun !== 'function') return
-  window.studio.onMcpTaskRun((payload) => {
+  const offTaskRun = window.studio.onMcpTaskRun((payload) => {
     void handleTaskRun(payload)
   })
+  if (typeof offTaskRun === 'function') cleanups.push(offTaskRun)
   if (typeof window.studio?.onMcpGraphEdit === 'function') {
-    window.studio.onMcpGraphEdit((payload) => {
+    const offGraphEdit = window.studio.onMcpGraphEdit((payload) => {
       void handleGraphEdit(payload)
     })
+    if (typeof offGraphEdit === 'function') cleanups.push(offGraphEdit)
   }
   if (typeof window.studio?.onMcpGraphIconRefine === 'function') {
-    window.studio.onMcpGraphIconRefine((payload) => {
+    const offIconRefine = window.studio.onMcpGraphIconRefine((payload) => {
       void handleGraphIconRefine(payload)
     })
+    if (typeof offIconRefine === 'function') cleanups.push(offIconRefine)
+  }
+  win.__aiaeMcpTaskRunnerCleanup = () => {
+    for (const off of cleanups) {
+      try {
+        off()
+      } catch {
+        /* ignore cleanup error */
+      }
+    }
   }
 }

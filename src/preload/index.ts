@@ -327,6 +327,7 @@ const api: StudioApi = {
     const listener = (_event: unknown, payload: McpTaskRunPayload): void => {
       callback(payload)
     }
+    ipcRenderer.removeAllListeners(IpcChannels.MCP_TASK_RUN)
     ipcRenderer.on(IpcChannels.MCP_TASK_RUN, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_TASK_RUN, listener)
   },
@@ -334,6 +335,7 @@ const api: StudioApi = {
     const listener = (_event: unknown, payload: McpWorkflowFocusPayload): void => {
       callback(payload)
     }
+    ipcRenderer.removeAllListeners(IpcChannels.MCP_WORKFLOW_FOCUS)
     ipcRenderer.on(IpcChannels.MCP_WORKFLOW_FOCUS, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_WORKFLOW_FOCUS, listener)
   },
@@ -343,6 +345,7 @@ const api: StudioApi = {
     const listener = (_event: unknown, payload: McpGraphEditPayload): void => {
       callback(payload)
     }
+    ipcRenderer.removeAllListeners(IpcChannels.MCP_GRAPH_EDIT)
     ipcRenderer.on(IpcChannels.MCP_GRAPH_EDIT, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_GRAPH_EDIT, listener)
   },
@@ -352,6 +355,7 @@ const api: StudioApi = {
     const listener = (_event: unknown, payload: McpGraphIconRefinePayload): void => {
       callback(payload)
     }
+    ipcRenderer.removeAllListeners(IpcChannels.MCP_GRAPH_ICON_REFINE)
     ipcRenderer.on(IpcChannels.MCP_GRAPH_ICON_REFINE, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_GRAPH_ICON_REFINE, listener)
   },
@@ -361,6 +365,7 @@ const api: StudioApi = {
     const listener = (_event: unknown, payload: McpRenderJobPayload): void => {
       callback(payload)
     }
+    ipcRenderer.removeAllListeners(IpcChannels.MCP_RENDER_JOB)
     ipcRenderer.on(IpcChannels.MCP_RENDER_JOB, listener)
     return () => ipcRenderer.removeListener(IpcChannels.MCP_RENDER_JOB, listener)
   },

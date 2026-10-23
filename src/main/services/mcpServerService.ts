@@ -5766,10 +5766,43 @@ export async function startMcpServer(preferredPort?: number): Promise<void> {
 
   ipcMain.handle(IpcChannels.MCP_TASK_REPORT, (_event, payload: McpTaskReportPayload) => {
     if (payload && typeof payload.mcpTaskId === 'string') {
-      pendingMcpTaskReports.set(payload.mcpTaskId, payload)
-      // 终态（成功或失败）保留一段可查询时间后自动回收，避免 Map 无限增长
-      if (payload.phase !== 'accepted') {
-        settleMcpTaskActivity(payload)
+      const existing = pendingMcpTaskReports.get(payload.mcpTaskId)
+      // 防重入保护：若该 mcpTaskId 已被受理（accepted + taskId）或已进入终态（finished），
+      // 忽略来自重复监听器无匹配 taskId 的冲突失败回报（如「该图已有进行中的同目标任务」），
+      // 避免把正在运行的真实任务覆盖成 failed 并提前关闭 McpActivity。
+      if (
+        existing &&
+        (existing.phase === 'finished' ||
+          (existing.phase === 'accepted' &&
+            payload.phase === 'failed' &&
+            (!payload.taskId || payload.taskId !== existing.taskId)))
+      ) {
+        return true
+      }
+      const mergedPaths = Array.from(
+        new Set(
+          [...(existing?.relativePaths ?? []), ...(payload.relativePaths ?? [])].filter(
+            (path): path is string => typeof path === 'string' && !!path.trim()
+          )
+        )
+      )
+      const nextPayload: McpTaskReportPayload = {
+        ...existing,
+        ...payload,
+        ...(mergedPaths.length ? { relativePaths: mergedPaths } : {})
+      }
+      pendingMcpTaskReports.set(payload.mcpTaskId, nextPayload)
+      if (payload.phase === 'accepted') {
+        const activityId = pendingMcpTaskActivities.get(payload.mcpTaskId)
+        if (activityId && mergedPaths.length) {
+          mcpActivityService.update(activityId, {
+            relativePath: mergedPaths[0],
+            relativePaths: mergedPaths
+          })
+        }
+      } else {
+        // 终态（成功或失败）保留一段可查询时间后自动回收，避免 Map 无限增长
+        settleMcpTaskActivity(nextPayload)
         scheduleTaskReportCleanup(payload.mcpTaskId)
       }
     }
@@ -5779,6 +5812,9 @@ export async function startMcpServer(preferredPort?: number): Promise<void> {
     IpcChannels.MCP_GRAPH_EDIT_RESULT,
     (_event, payload: McpGraphEditResultPayload) => {
       if (payload && typeof payload.requestId === 'string') {
+        if (pendingMcpGraphEditResults.has(payload.requestId)) {
+          return true
+        }
         pendingMcpGraphEditResults.set(payload.requestId, payload)
         scheduleGraphEditResultCleanup(payload.requestId)
       }

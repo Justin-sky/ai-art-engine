@@ -45,6 +45,39 @@ class McpActivityService {
     return activity.id
   }
 
+  /** 运行中增量更新阶段性产物或说明（如画布工作流逐节点落盘后实时流式推送预览卡） */
+  update(
+    activityId: string,
+    input: {
+      detail?: string
+      assetId?: string
+      relativePath?: string
+      relativePaths?: string[]
+      relatedPaths?: string[]
+    }
+  ): void {
+    const index = this.activities.findIndex((a) => a.id === activityId)
+    if (index < 0) return
+    const prev = this.activities[index]
+    if (prev.status !== 'running') return
+    const relativePaths = input.relativePaths?.filter((path) => !!path?.trim())
+    const relatedPaths = input.relatedPaths?.filter((path) => !!path?.trim())
+    const nextRelativePaths = relativePaths?.length ? [...relativePaths] : prev.relativePaths
+    const nextRelativePath = input.relativePath ?? nextRelativePaths?.[0] ?? prev.relativePath
+    const next: McpActivity = {
+      ...prev,
+      detail: input.detail ?? prev.detail,
+      assetId: input.assetId ?? prev.assetId,
+      relativePath: nextRelativePath,
+      relativePaths: nextRelativePaths,
+      relatedPaths: relatedPaths?.length ? [...relatedPaths] : prev.relatedPaths
+    }
+    const copy = [...this.activities]
+    copy[index] = next
+    this.activities = copy
+    this.emit(next)
+  }
+
   /** 结束一次活动（成功 / 失败） */
   end(
     activityId: string,
@@ -64,20 +97,22 @@ class McpActivityService {
     const index = this.activities.findIndex((a) => a.id === activityId)
     if (index < 0) return
     const prev = this.activities[index]
-    if (prev.status !== 'running') return
+    if (prev.status !== 'running' && !(prev.status === 'error' && input.ok)) return
     const finishedAt = Date.now()
     const relativePaths = input.relativePaths?.filter((path) => !!path?.trim())
     const relatedPaths = input.relatedPaths?.filter((path) => !!path?.trim())
+    const nextRelativePaths = relativePaths?.length ? [...relativePaths] : prev.relativePaths
+    const nextRelativePath = input.relativePath ?? nextRelativePaths?.[0] ?? prev.relativePath
     const next: McpActivity = {
       ...prev,
       status: input.ok ? 'done' : 'error',
       finishedAt,
       detail: input.detail ?? prev.detail,
-      assetId: input.assetId,
-      relativePath: input.relativePath,
-      relativePaths: relativePaths?.length ? [...relativePaths] : undefined,
-      relatedPaths: relatedPaths?.length ? [...relatedPaths] : undefined,
-      error: input.error,
+      assetId: input.assetId ?? prev.assetId,
+      relativePath: nextRelativePath,
+      relativePaths: nextRelativePaths?.length ? [...nextRelativePaths] : undefined,
+      relatedPaths: relatedPaths?.length ? [...relatedPaths] : prev.relatedPaths,
+      error: input.ok ? undefined : input.error,
       apiCall: input.apiCall
         ? {
             ...input.apiCall,

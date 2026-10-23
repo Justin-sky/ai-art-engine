@@ -391,4 +391,78 @@ describe('collectRunMediaPaths', () => {
       'Assets/Film/shot-3.mp4'
     ])
   })
+
+  it('有声绘本 / 时间线合成（output.timeline）：同时收集上游逐页生成图与最终合成视频，并过滤配音中间轨', () => {
+    const pages = Array.from({ length: 6 }, (_, i) =>
+      createNodeFromType('asset.image', { x: 0, y: i * 120 }, { id: `page-${i + 1}` })
+    )
+    const page7Wide = createNodeFromType('image.process', { x: 240, y: 0 }, { id: 'page-7-wide' })
+    const voices = Array.from({ length: 7 }, (_, i) =>
+      createNodeFromType('asset.voice', { x: 240, y: (i + 1) * 100 }, { id: `voice-${i + 1}` })
+    )
+    const bgm = createNodeFromType('asset.voice', { x: 240, y: 900 }, { id: 'bgm-1' })
+    const timelineOut = createNodeFromType(
+      'output.timeline',
+      { x: 560, y: 200 },
+      { id: 'timeline-out' }
+    )
+    const graph = makeGraph([...pages, page7Wide, ...voices, bgm, timelineOut])
+
+    const stateMap: Record<string, Record<string, GraphValue>> = {}
+    for (let i = 1; i <= 6; i++) {
+      stateMap[`page-${i}`] = {
+        out: { kind: 'image', dataUrl: '', relativePath: `Cache/Images/page-${i}.png` }
+      }
+    }
+    stateMap['page-7-wide'] = {
+      out: { kind: 'image', dataUrl: '', relativePath: 'Cache/Images/page-7-wide.png' }
+    }
+    for (let i = 1; i <= 7; i++) {
+      stateMap[`voice-${i}`] = {
+        out: { kind: 'voice', dataUrl: '', relativePath: `Cache/Voices/voice-${i}.mp3` }
+      }
+    }
+    stateMap['bgm-1'] = {
+      out: { kind: 'voice', dataUrl: '', relativePath: 'Cache/Voices/bgm-1.mp3' }
+    }
+    stateMap['timeline-out'] = {
+      out: {
+        kind: 'output',
+        outputKind: 'video',
+        params: {},
+        notes: [],
+        videos: [
+          {
+            dataUrl: '',
+            relativePath: 'Cache/TimelineCompose/timeline-timeline-out-final.mp4'
+          }
+        ]
+      }
+    }
+
+    const expected = [
+      'Cache/Images/page-1.png',
+      'Cache/Images/page-2.png',
+      'Cache/Images/page-3.png',
+      'Cache/Images/page-4.png',
+      'Cache/Images/page-5.png',
+      'Cache/Images/page-6.png',
+      'Cache/Images/page-7-wide.png',
+      'Cache/TimelineCompose/timeline-timeline-out-final.mp4'
+    ]
+
+    expect(collectRunMediaPaths(graph, statesOf(stateMap))).toEqual(expected)
+    expect(
+      collectRunMediaPaths(graph, statesOf(stateMap), {
+        preferredNodeIds: ['timeline-out']
+      })
+    ).toEqual(expected)
+
+    // 单跑配音节点时仍正常返回音频产物
+    expect(
+      collectRunMediaPaths(graph, statesOf(stateMap), {
+        preferredNodeIds: ['voice-1', 'bgm-1']
+      })
+    ).toEqual(['Cache/Voices/voice-1.mp3', 'Cache/Voices/bgm-1.mp3'])
+  })
 })

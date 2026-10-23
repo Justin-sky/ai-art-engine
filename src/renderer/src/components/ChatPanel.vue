@@ -2368,12 +2368,12 @@ function onMcpActivity(activity: McpActivity): void {
     activity.status === 'done' ? 'done' : activity.status === 'error' ? 'error' : 'start'
   const key = `mcp:${activity.id}`
   const prev = findToolByKey(key)
-  const mediaPaths = state === 'done' ? activityMediaPaths(activity) : []
+  const mediaPaths = state === 'done' || state === 'start' ? activityMediaPaths(activity) : []
   if (prev) {
     // 已有卡时无条件更新状态，即使任务已结束也可能收到延迟的 done/error 回调
     prev.state = state
     prev.detail = activity.error
-    // 完成且产出了资产：把落盘相对路径记到卡上（新数据由对话末尾的独立预览卡展示）
+    // 完成或运行中阶段产出了资产：把落盘相对路径记到卡上（新数据由对话末尾的独立预览卡展示）
     if (mediaPaths.length) prev.relativePath = mediaPaths[0]
   } else if (running.value) {
     // 只有任务仍在运行时才新增 MCP 活动卡，避免结束时再产生孤立的工具卡
@@ -2404,14 +2404,15 @@ function onMcpActivity(activity: McpActivity): void {
   }
   // 生成完成且产出了资产：在对话末尾追加独立预览卡（图片/视频/音频/3D），
   // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡；
-  // 一次运行产出多件（如工作流同时出 GIF 与成片）时逐条出卡
+  // 一次运行产出多件（如绘本逐页生图 + 最终合成视频）时按稳定路径 key 逐条出卡
   if (mediaPaths.length && (prev || running.value)) {
     // 与主产物同批的**附件**（世界随包返回的泼溅 / 全景）折叠进第一张卡，
     // 它们不是独立作品，逐条出卡会把「一次生成」拆成三张几乎相同的卡
     const attachments = (activity.relatedPaths ?? []).filter((path) => !!path?.trim())
     mediaPaths.forEach((path, index) => {
+      const pathKey = normalizeOutputPathKey(path) || String(index)
       void pushAsset(
-        index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${index}`,
+        index === 0 ? `asset:${activity.id}` : `asset:${activity.id}:${pathKey}`,
         path,
         index === 0 ? attachments : []
       )
@@ -2567,7 +2568,9 @@ function assetFileName(relativePath: string): string {
 function hasAssetCard(toolKey: string): boolean {
   const assetKey = toolKey.startsWith('mcp:') ? `asset:${toolKey.slice('mcp:'.length)}` : ''
   if (!assetKey) return false
-  return messages.value.some((m) => m.kind === 'asset' && m.key === assetKey)
+  return messages.value.some(
+    (m) => m.kind === 'asset' && (m.key === assetKey || m.key.startsWith(`${assetKey}:`))
+  )
 }
 
 /** 生成产物默认落 Cache/ 不进资产库：资产卡提供「保存到资产库」入口（弹窗选目录/文件名） */
@@ -3173,6 +3176,7 @@ async function abortCurrentRun(): Promise<void> {
   } finally {
     preparingTask = false
     running.value = false
+    void captureRoundOutputs()
   }
 }
 

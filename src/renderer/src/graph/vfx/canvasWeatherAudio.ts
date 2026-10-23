@@ -791,23 +791,27 @@ class CanvasWeatherAudioEngine {
     if (!chordList) return
     const chord = chordList[step % chordList.length]
 
-    // 1. Warm ambient pad swell on every 2nd step
+    // 1. Warm ethereal anime pad swell on every 2nd step (pure sine/triangle harmonics)
     if (step % 2 === 0) {
       chord.slice(0, 3).forEach((freq, idx) => {
         const osc = ctx.createOscillator()
         osc.type =
-          this.currentWeather === 'typhoon' || this.currentWeather === 'sandstorm'
-            ? 'sawtooth'
-            : this.currentWeather === 'aurora' || this.currentWeather === 'meteor'
-              ? 'sine'
-              : 'triangle'
+          this.currentWeather === 'aurora' ||
+          this.currentWeather === 'meteor' ||
+          this.currentWeather === 'sunny'
+            ? 'sine'
+            : 'triangle'
         osc.frequency.setValueAtTime(freq, now)
-        osc.detune.setValueAtTime((idx - 1) * 6, now)
+        osc.detune.setValueAtTime((idx - 1) * 4, now)
 
         const filter = ctx.createBiquadFilter()
         filter.type = 'lowpass'
         filter.frequency.setValueAtTime(
-          this.currentWeather === 'sunny' || this.currentWeather === 'aurora' ? 1400 : 720,
+          this.currentWeather === 'sunny' ||
+            this.currentWeather === 'aurora' ||
+            this.currentWeather === 'meteor'
+            ? 1650
+            : 1100,
           now
         )
 

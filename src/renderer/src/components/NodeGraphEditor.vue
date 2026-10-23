@@ -11616,7 +11616,7 @@ defineExpose({
   will-change: transform;
 }
 
-/* 动态天气系统：节点物理反馈（风摆、雷击电弧充能、雨滴润泽、晴空金辉） */
+/* 动态天气系统（清新二次元元素反馈）：风摆、鸣雷紫电充能、纯水润泽、晴空金辉、冰华霜晶、流金沙辉、地脉极光 */
 .graph-world :deep(.vfx-weather-active) {
   transform: translate3d(var(--weather-dx, 0px), var(--weather-dy, 0px), 0)
     rotate(var(--weather-rot, 0deg));
@@ -11626,40 +11626,40 @@ defineExpose({
 
 .graph-world :deep(.vfx-weather-struck) {
   box-shadow:
-    0 0 calc(30px * var(--weather-electric, 0.6)) rgba(125, 211, 252, 0.88),
-    0 0 calc(12px * var(--weather-electric, 0.6)) rgba(224, 242, 254, 0.95) inset !important;
-  border-color: rgba(186, 230, 253, 0.95) !important;
+    0 0 calc(32px * var(--weather-electric, 0.6)) rgba(192, 132, 252, 0.9),
+    0 0 calc(14px * var(--weather-electric, 0.6)) rgba(250, 245, 255, 0.95) inset !important;
+  border-color: rgba(233, 213, 255, 0.96) !important;
 }
 
 .graph-world :deep(.vfx-weather-wet) {
   box-shadow:
-    0 8px 22px rgba(2, 6, 23, 0.45),
-    0 1.5px 0 rgba(186, 230, 253, calc(0.55 * var(--weather-wet, 0))) inset;
+    0 6px 24px rgba(56, 189, 248, calc(0.24 * var(--weather-wet, 0))),
+    0 2px 0 rgba(186, 230, 253, calc(0.75 * var(--weather-wet, 0))) inset;
 }
 
 .graph-world :deep(.vfx-weather-sunlit) {
   box-shadow:
-    0 8px 28px rgba(251, 191, 36, calc(0.28 * var(--weather-sunlit, 0))),
-    0 0 0 1px rgba(253, 224, 71, calc(0.45 * var(--weather-sunlit, 0))) inset;
+    0 8px 28px rgba(253, 224, 71, calc(0.32 * var(--weather-sunlit, 0))),
+    0 0 0 1.5px rgba(254, 249, 195, calc(0.65 * var(--weather-sunlit, 0))) inset;
 }
 
 .graph-world :deep(.vfx-weather-frost) {
   box-shadow:
-    0 6px 24px rgba(186, 230, 253, calc(0.26 * var(--weather-frost, 0))),
-    0 2.5px 0 rgba(240, 249, 255, calc(0.82 * var(--weather-frost, 0))) inset;
+    0 6px 26px rgba(125, 211, 252, calc(0.32 * var(--weather-frost, 0))),
+    0 2.5px 0 rgba(255, 255, 255, calc(0.9 * var(--weather-frost, 0))) inset;
 }
 
 .graph-world :deep(.vfx-weather-dust) {
   box-shadow:
-    0 8px 24px rgba(217, 119, 6, calc(0.24 * var(--weather-dust, 0))),
-    0 0 0 1px rgba(245, 158, 11, calc(0.42 * var(--weather-dust, 0))) inset;
+    0 8px 26px rgba(251, 191, 36, calc(0.28 * var(--weather-dust, 0))),
+    0 0 0 1px rgba(254, 240, 138, calc(0.58 * var(--weather-dust, 0))) inset;
 }
 
 .graph-world :deep(.vfx-weather-aurora) {
   box-shadow:
-    0 8px 28px rgba(52, 211, 153, calc(0.24 * var(--weather-aurora, 0))),
-    0 0 18px rgba(192, 132, 252, calc(0.22 * var(--weather-aurora, 0))),
-    0 0 0 1px rgba(110, 231, 183, calc(0.45 * var(--weather-aurora, 0))) inset;
+    0 8px 28px rgba(110, 231, 183, calc(0.28 * var(--weather-aurora, 0))),
+    0 0 20px rgba(244, 114, 182, calc(0.24 * var(--weather-aurora, 0))),
+    0 0 0 1px rgba(167, 243, 208, calc(0.58 * var(--weather-aurora, 0))) inset;
 }
 
 .graph-group {
