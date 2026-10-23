@@ -16,10 +16,7 @@
             class="capcut-browser-tab"
             :class="{ active: leftBrowserTab === tab.id }"
             :aria-selected="leftBrowserTab === tab.id"
-            @click="
-              leftBrowserTab = tab.id
-              transitionPopover = null
-            "
+            @click="selectLeftBrowserTab(tab.id)"
           >
             <svg class="capcut-tab-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <path
@@ -8542,6 +8539,11 @@ const activeVisualEffectCategory = ref<TimelineVisualEffectCategory>('all')
 const activeFilterCategory = ref<TimelineFilterCategory>('all')
 const browserTransitionCategory = ref<TimelineTransitionCategory>('all')
 const browserTransitionDurationSec = ref(0.5)
+
+function selectLeftBrowserTab(tabId: TimelineBrowserTabId): void {
+  leftBrowserTab.value = tabId
+  transitionPopover.value = null
+}
 
 const isZhLocale = computed(() =>
   String(locale.value || '')
