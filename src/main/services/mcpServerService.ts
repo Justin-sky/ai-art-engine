@@ -5030,6 +5030,18 @@ export function setCanvasTaskSettledHook(
   canvasTaskSettledHook = hook
 }
 
+export interface McpToolSettledEvent {
+  tool: string
+  args: Record<string, unknown>
+  result?: unknown
+}
+
+let mcpToolSettledHook: ((event: McpToolSettledEvent) => void) | null = null
+
+export function setMcpToolSettledHook(hook: ((event: McpToolSettledEvent) => void) | null): void {
+  mcpToolSettledHook = hook
+}
+
 /**
  * task_run 终态收尾：把渲染层回报的本轮产物写进旁路活动
  * （relativePath 供单产物消费方，relativePaths 供对话流出多张预览卡）。
@@ -5336,6 +5348,13 @@ async function handleToolCall(
     const durationMs = Date.now() - startedAt
     const bytes = JSON.stringify(result).length
     appendMcpAudit({ tool: name, ok: true, durationMs, args })
+    if (mcpToolSettledHook) {
+      try {
+        mcpToolSettledHook({ tool: name, args, result })
+      } catch {
+        /* ignore hook error */
+      }
+    }
     console.log(`[mcp] tool ${name} ok ${durationMs}ms ${bytes}B`)
     return { ok: true, result }
   } catch (err) {

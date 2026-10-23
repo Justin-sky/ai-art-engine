@@ -83,6 +83,7 @@ const EXEMPT_FILES = new Set([
   // 双语预设 / 编译器 / 导出模板与镜头光学字典（域数据，同 adVariantMatrix / instructionPresets）
   'src/shared/chatNextActions.ts',
   'src/shared/chatShowcaseStarters.ts',
+  'src/shared/mcpToolOperationSummary.ts',
   'src/shared/graph/canvasMacroCompiler.ts',
   'src/shared/graph/compositionSaliencyAuditor.ts',
   'src/shared/graph/opticalLensLab.ts',

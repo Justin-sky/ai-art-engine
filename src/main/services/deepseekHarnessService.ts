@@ -90,8 +90,10 @@ import {
   registerHarnessRunAccess,
   releaseHarnessRunAccess,
   setActiveHarnessRun,
-  setCanvasTaskSettledHook
+  setCanvasTaskSettledHook,
+  setMcpToolSettledHook
 } from './mcpServerService'
+import { stripMcpToolPrefix, summarizeMcpToolOperation } from '@shared/mcpToolOperationSummary'
 import { projectService } from './projectService'
 import { settingsService } from './settingsService'
 import {
@@ -1686,6 +1688,7 @@ function attachWorkerIo(opts: {
     let args: string | undefined
     let id: string | undefined
     let parentId: string | undefined
+    let steps: string[] | undefined
     try {
       const parsed = JSON.parse(payload)
       if (typeof parsed.name === 'string' && parsed.name) name = parsed.name
@@ -1693,8 +1696,37 @@ function attachWorkerIo(opts: {
       if (typeof parsed.args === 'string' && parsed.args) args = parsed.args
       if (typeof parsed.callId === 'string' && parsed.callId) id = parsed.callId
       if (typeof parsed.parentId === 'string' && parsed.parentId) parentId = parsed.parentId
+      if (Array.isArray(parsed.steps)) {
+        const clean = parsed.steps
+          .filter(
+            (item: unknown): item is string => typeof item === 'string' && Boolean(item.trim())
+          )
+          .map((item: string) => item.trim())
+        if (clean.length > 0) steps = clean
+      }
     } catch {
       /* ignore */
+    }
+    const bareName = stripMcpToolPrefix(name)
+    if (state === 'start' && args) {
+      const argSummary = summarizeMcpToolOperation(name, args)
+      if (!steps?.length && argSummary.steps.length > 0) {
+        steps = argSummary.steps
+      }
+      if (argSummary.detail) {
+        detail = argSummary.detail
+      }
+    } else if (state === 'done') {
+      const settled = latestMcpToolExecution.get(bareName)
+      if (settled && Date.now() - settled.at < 60_000) {
+        if (!steps?.length && settled.steps.length > 0) {
+          steps = settled.steps
+        }
+        if (!detail && settled.detail) {
+          detail = settled.detail
+        }
+        latestMcpToolExecution.delete(bareName)
+      }
     }
     if (activeSkillTurn) {
       runSkillLifecycleHooks(activeSkillTurn, state === 'start' ? 'PreToolUse' : 'PostToolUse', {
@@ -1710,6 +1742,7 @@ function attachWorkerIo(opts: {
       name,
       state,
       ...(detail ? { detail } : {}),
+      ...(steps?.length ? { steps } : {}),
       ...(args ? { args } : {})
     })
     sawOutput = true
@@ -4086,6 +4119,19 @@ export function listStudioDomainSubagents(): ReadonlyArray<{
     mode
   }))
 }
+
+const latestMcpToolExecution = new Map<string, { detail: string; steps: string[]; at: number }>()
+
+setMcpToolSettledHook((ev) => {
+  const summary = summarizeMcpToolOperation(ev.tool, ev.args, ev.result)
+  if (summary.steps.length > 0 || summary.detail) {
+    latestMcpToolExecution.set(ev.tool, {
+      detail: summary.detail,
+      steps: summary.steps,
+      at: Date.now()
+    })
+  }
+})
 
 setCanvasTaskSettledHook((report) => {
   const ok = report.phase === 'finished' && report.status === 'done'

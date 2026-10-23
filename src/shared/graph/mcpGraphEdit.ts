@@ -658,7 +658,8 @@ function applyOp(
           mergeNodeParams(existing, combinedParams, warnings)
         }
         touchedNodeIds.push(existing.id)
-        return `更新节点 ${existing.id}`
+        const existingTitle = existing.title?.trim() ? `「${existing.title.trim()}」` : ''
+        return `更新节点 ${existing.id}${existingTitle}`
       }
       const node = createNodeFromType(
         canonicalTypeId as GraphNodeTypeId,
@@ -680,7 +681,8 @@ function applyOp(
         mergeNodeParams(node, combinedParams, warnings)
       }
       touchedNodeIds.push(node.id)
-      return `新建节点 ${node.id}（${canonicalTypeId}）`
+      const newTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
+      return `新建节点 ${node.id}${newTitle}（${canonicalTypeId}）`
     }
     case 'node_update':
     case 'update_node': {
@@ -697,7 +699,8 @@ function applyOp(
         mergeNodeParams(node, combinedParams, warnings)
       }
       touchedNodeIds.push(node.id)
-      return `更新节点 ${node.id}`
+      const updatedTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
+      return `更新节点 ${node.id}${updatedTitle}`
     }
     case 'apply_preset': {
       const node = findNode(graph, op.nodeId)
@@ -712,7 +715,8 @@ function applyOp(
       }
       mergeNodeParams(node, presetRes.paramsPatch as Record<string, unknown>, warnings)
       touchedNodeIds.push(node.id)
-      return `应用预设 ${presetRes.matchedPresetId} → 节点 ${node.id}`
+      const presetNodeTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
+      return `应用预设 ${presetRes.matchedPresetId} → 节点 ${node.id}${presetNodeTitle}`
     }
     case 'node_delete':
     case 'delete_node': {
@@ -725,11 +729,12 @@ function applyOp(
         warnings.push(`节点「${op.nodeId}」为输出 / 边界节点，禁止删除`)
         return null
       }
+      const deletedTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
       graph.nodes = graph.nodes.filter((item) => item.id !== op.nodeId)
       graph.edges = graph.edges.filter(
         (edge) => edge.source !== op.nodeId && edge.target !== op.nodeId
       )
-      return `删除节点 ${op.nodeId}（含连线）`
+      return `删除节点 ${op.nodeId}${deletedTitle}（含连线）`
     }
     case 'edge_connect':
     case 'edge_add':
@@ -749,6 +754,8 @@ function applyOp(
         warnings.push(`连线不兼容（${fromId} → ${toId}），已跳过`)
         return null
       }
+      const fromLabel = source.title?.trim() ? `${fromId}「${source.title.trim()}」` : fromId
+      const toLabel = target.title?.trim() ? `${toId}「${target.title.trim()}」` : toId
       const duplicate = graph.edges.some(
         (edge) =>
           edge.source === source.id &&
@@ -756,7 +763,7 @@ function applyOp(
           edge.sourcePort === ports.sourcePort &&
           edge.targetPort === ports.targetPort
       )
-      if (duplicate) return `连线已存在（${fromId} → ${toId}）`
+      if (duplicate) return `连线已存在（${fromLabel} → ${toLabel}）`
       const edge: GraphEdge = {
         id: `edge-mcp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
         source: source.id,
@@ -766,18 +773,22 @@ function applyOp(
       }
       graph.edges.push(edge)
       touchedNodeIds.push(target.id)
-      return `连线 ${fromId} → ${toId}`
+      return `连线 ${fromLabel} → ${toLabel}`
     }
     case 'edge_delete':
     case 'delete_edge': {
       const fromId = op.fromNodeId ?? op.from ?? op.source ?? ''
       const toId = op.toNodeId ?? op.to ?? op.target ?? ''
+      const source = findNode(graph, fromId)
+      const target = findNode(graph, toId)
+      const fromLabel = source?.title?.trim() ? `${fromId}「${source.title.trim()}」` : fromId
+      const toLabel = target?.title?.trim() ? `${toId}「${target.title.trim()}」` : toId
       const before = graph.edges.length
       graph.edges = graph.edges.filter((edge) => !(edge.source === fromId && edge.target === toId))
       const removed = before - graph.edges.length
       if (!removed) warnings.push(`连线不存在（${fromId} → ${toId}），已跳过`)
       else touchedNodeIds.push(toId)
-      return `删除连线 ${fromId} → ${toId}`
+      return `删除连线 ${fromLabel} → ${toLabel}`
     }
     case 'node_select':
     case 'select_node': {
@@ -809,7 +820,7 @@ function applyOp(
           if (idSet.has(n.id)) n.groupId = groupId
         }
       }
-      return `新建分组 ${groupId}`
+      return `新建分组 ${groupId}${title ? `「${title}」` : ''}`
     }
     case 'group_update':
     case 'update_group': {
@@ -842,17 +853,19 @@ function applyOp(
           if (remSet.has(n.id) && n.groupId === op.groupId) delete n.groupId
         }
       }
-      return `更新分组 ${op.groupId}`
+      return `更新分组 ${op.groupId}${group.title ? `「${group.title}」` : ''}`
     }
     case 'group_delete':
     case 'delete_group': {
+      const existingGroup = graph.groups?.find((g) => g.id === op.groupId)
+      const groupTitle = existingGroup?.title?.trim() ? `「${existingGroup.title.trim()}」` : ''
       if (graph.groups) {
         graph.groups = graph.groups.filter((g) => g.id !== op.groupId)
       }
       for (const n of graph.nodes) {
         if (n.groupId === op.groupId) delete n.groupId
       }
-      return `删除分组 ${op.groupId}`
+      return `删除分组 ${op.groupId}${groupTitle}`
     }
     case 'auto_layout': {
       if (graph.nodes.length > 1) {

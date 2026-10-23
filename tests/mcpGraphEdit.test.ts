@@ -619,4 +619,56 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
     ])
     expect(capturedVisuals.map((v: any) => v.title)).toEqual(['照片 1', '照片 2', '照片 3'])
   })
+
+  it('produces readable operation summaries for node creation, connection, update, and deletion in chat stream', async () => {
+    const {
+      classifyMcpStepKind,
+      extractMcpToolStepsFromArgs,
+      extractMcpToolStepsFromResult,
+      formatMcpToolDisplayName,
+      summarizeMcpToolOperation
+    } = await import('../src/shared/mcpToolOperationSummary')
+
+    const { graph } = buildSampleGraph()
+    const result = applyGraphEditOps(graph, [
+      { op: 'node_upsert', nodeId: 'n1', typeId: 'text.plain', title: '1. 剧本' },
+      { op: 'node_upsert', nodeId: 'n2', typeId: 'asset.image', title: '2. 分镜图' },
+      { op: 'edge_connect', fromNodeId: 'n1', toNodeId: 'n2' },
+      { op: 'node_update', nodeId: 'n1', title: '1. 剧本定稿' },
+      { op: 'edge_delete', fromNodeId: 'n1', toNodeId: 'n2' },
+      { op: 'node_delete', nodeId: 'n2' }
+    ])
+
+    expect(result.applied).toContain('新建节点 n1「1. 剧本」（text.plain）')
+    expect(result.applied).toContain('新建节点 n2「2. 分镜图」（asset.image）')
+    expect(result.applied).toContain('连线 n1「1. 剧本」 → n2「2. 分镜图」')
+    expect(result.applied).toContain('更新节点 n1「1. 剧本定稿」')
+    expect(result.applied).toContain('删除连线 n1「1. 剧本定稿」 → n2「2. 分镜图」')
+    expect(result.applied).toContain('删除节点 n2「2. 分镜图」（含连线）')
+
+    expect(formatMcpToolDisplayName('mcp__studio__graph_edit')).toBe('画布节点与连线编辑')
+    const argSteps = extractMcpToolStepsFromArgs('mcp__studio__graph_edit', {
+      ops: [
+        { op: 'node_upsert', nodeId: 'n1', typeId: 'text.plain', title: '1. 剧本' },
+        { op: 'edge_connect', fromNodeId: 'n1', toNodeId: 'n2' },
+        { op: 'node_delete', nodeId: 'n2' }
+      ]
+    })
+    expect(argSteps).toEqual([
+      '新建节点 n1「1. 剧本」（text.plain）',
+      '连线 n1 → n2',
+      '删除节点 n2（含连线）'
+    ])
+
+    const resSteps = extractMcpToolStepsFromResult('mcp__studio__graph_edit', result)
+    expect(resSteps).toEqual(result.applied)
+
+    const summary = summarizeMcpToolOperation('mcp__studio__graph_edit', {}, result)
+    expect(summary.title).toBe('画布节点与连线编辑')
+    expect(summary.steps).toEqual(result.applied)
+    expect(classifyMcpStepKind('新建节点 n1「1. 剧本」（text.plain）')).toBe('add')
+    expect(classifyMcpStepKind('删除节点 n2「2. 分镜拆解」（含连线）')).toBe('delete')
+    expect(classifyMcpStepKind('连线 n1「1. 剧本」 → n2「2. 分镜拆解」')).toBe('connect')
+    expect(classifyMcpStepKind('更新节点 n1「1. 剧本定稿」')).toBe('update')
+  })
 })

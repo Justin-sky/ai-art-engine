@@ -38,6 +38,8 @@ export type ChatMsg =
       name: string
       state: 'start' | 'done' | 'error'
       detail?: string
+      /** 工具调用拆解出的可读操作步骤列表（如「新建节点 n1『1. 剧本』」「连线 n1 → n2」「删除节点 n3」），在对话流中直接展示 */
+      steps?: string[]
       /** 工具调用原始参数（JSON 字符串，仅 start 事件携带）：任务清单据此展示详细参数 */
       args?: string
       /** 工具调用实例 ID（dsh callId）：同一工具多次调用可区分；旧数据可能缺失 */

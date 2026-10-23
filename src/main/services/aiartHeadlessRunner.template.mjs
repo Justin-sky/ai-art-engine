@@ -118,6 +118,32 @@ function clipToolArgs(raw) {
   return text.length > 4000 ? text.slice(0, 4000) + '…' : text
 }
 
+function extractToolResultSteps(eventData) {
+  try {
+    const content = eventData?.message?.content
+    if (!Array.isArray(content)) return undefined
+    for (const block of content) {
+      if (!block || block.type !== 'text' || typeof block.text !== 'string') continue
+      const text = block.text.trim()
+      if (!text.startsWith('{')) continue
+      const parsed = JSON.parse(text)
+      const obj =
+        parsed && typeof parsed.result === 'object' && parsed.result !== null
+          ? parsed.result
+          : parsed
+      if (obj && Array.isArray(obj.applied) && obj.applied.length > 0) {
+        const steps = obj.applied
+          .filter((item) => typeof item === 'string' && item.trim() !== '')
+          .map((item) => item.trim())
+        if (steps.length > 0) return steps
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
 const GEMINI_CHAT_FALLBACK_MODELS = [
   'gemini-3.8-flash',
   'gemini-3.6-flash',
@@ -1948,10 +1974,12 @@ async function runOneTurn(ctx, io, opts) {
             owner.updatedAt = Date.now()
           }
           const parentId = pending ? pending.parentId : owner.anchorId
+          const resultSteps = extractToolResultSteps(event.data)
           const toolEndPayload = {
             name: pending?.name || 'tool',
             callId,
-            ...(parentId ? { parentId } : {})
+            ...(parentId ? { parentId } : {}),
+            ...(resultSteps ? { steps: resultSteps, detail: resultSteps.join(' · ') } : {})
           }
           sendIpc({ type: 'tool', state: 'done', payload: toolEndPayload }, () => {
             io.stdout.write('\n' + TOOL_END + JSON.stringify(toolEndPayload) + '\n')

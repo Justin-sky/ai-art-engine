@@ -58,6 +58,13 @@ import {
   buildZeroKeyLiveDemoGraph,
   type ChatShowcaseStarter
 } from '@shared/chatShowcaseStarters'
+import {
+  classifyMcpStepKind,
+  extractMcpToolStepsFromArgs,
+  formatMcpToolDisplayName,
+  stripMcpToolPrefix,
+  type McpStepKind
+} from '@shared/mcpToolOperationSummary'
 import { resolveChatNextActions, type ChatNextActionPill } from '@shared/chatNextActions'
 import { buildCanvasStarterGraph } from '@shared/graph'
 import { isModelFilePath } from '@shared/import'
@@ -1406,6 +1413,42 @@ function toolArgs(tm: ChatMsg & { kind: 'tool' }): ToolArgEntry[] {
   }
 }
 
+function toolDisplayName(tm: ChatMsg & { kind: 'tool' }): string {
+  return formatMcpToolDisplayName(tm.name, isEnChat.value)
+}
+
+function toolShortCode(tm: ChatMsg & { kind: 'tool' }): string {
+  const bare = stripMcpToolPrefix(tm.name)
+  const display = formatMcpToolDisplayName(tm.name, isEnChat.value)
+  return bare !== display ? bare : ''
+}
+
+function toolSteps(tm: ChatMsg & { kind: 'tool' }): string[] {
+  if (Array.isArray(tm.steps) && tm.steps.length > 0) return tm.steps
+  return extractMcpToolStepsFromArgs(tm.name, tm.args)
+}
+
+function stepKind(step: string): McpStepKind {
+  return classifyMcpStepKind(step)
+}
+
+function stepIcon(step: string): string {
+  const kind = classifyMcpStepKind(step)
+  if (kind === 'add') return '+'
+  if (kind === 'delete') return '−'
+  if (kind === 'connect') return '→'
+  if (kind === 'run') return '▶'
+  if (kind === 'select') return '◎'
+  if (kind === 'update') return '✎'
+  return '•'
+}
+
+function isInlineStreamTool(tm: ChatMsg & { kind: 'tool' }): boolean {
+  if (tm.name === 'dsh-agent' && tm.state !== 'error') return false
+  if (tm.parentId) return false
+  return true
+}
+
 function onCompositionEnd(): void {
   composing.value = false
   // 组合结束后再判断 `/` / `@` 触发
@@ -1848,9 +1891,13 @@ function onHarnessEvent(event: HarnessEvent): void {
         prev.state = event.state
         // 摘要在 done 事件里可能缺省，仅在携带时覆盖，避免清掉 start 已记的详情
         if (event.detail !== undefined) prev.detail = event.detail
+        if (event.steps?.length) prev.steps = event.steps
         // 详细参数只在 start 事件下发，保留不覆盖
         if (event.args !== undefined) prev.args = event.args
       } else {
+        const fallbackSteps = event.steps?.length
+          ? event.steps
+          : extractMcpToolStepsFromArgs(event.name, event.args)
         messages.value.push({
           kind: 'tool',
           key,
@@ -1859,6 +1906,7 @@ function onHarnessEvent(event: HarnessEvent): void {
           ...(event.parentId ? { parentId: event.parentId } : {}),
           state: event.state,
           ...(event.detail !== undefined ? { detail: event.detail } : {}),
+          ...(fallbackSteps.length ? { steps: fallbackSteps } : {}),
           ...(event.args !== undefined ? { args: event.args } : {})
         })
       }
@@ -3903,8 +3951,8 @@ onBeforeUnmount(() => {
                 <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
               </div>
             </div>
-            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），默认折叠，点标题展开看每一步 -->
-            <details v-if="taskToolsAt(i).length" class="task-list-card">
+            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），默认展开以直接呈现 MCP 操作 -->
+            <details v-if="taskToolsAt(i).length" class="task-list-card" open>
               <summary class="task-list-title">
                 {{ t('studio.chat.taskList') }}
                 <span class="task-list-summary">{{ taskToolsSummary(i) }}</span>
@@ -3918,7 +3966,10 @@ onBeforeUnmount(() => {
                   :title="tm.detail"
                 >
                   <span class="task-dot" />
-                  <span class="task-name">{{ tm.name }}</span>
+                  <span class="task-name">{{ toolDisplayName(tm) }}</span>
+                  <span v-if="toolShortCode(tm)" class="task-code-badge">{{
+                    toolShortCode(tm)
+                  }}</span>
                   <span class="task-state">
                     {{
                       tm.state === 'start'
@@ -3928,6 +3979,17 @@ onBeforeUnmount(() => {
                           : t('studio.chat.toolFailed')
                     }}
                   </span>
+                  <ul v-if="toolSteps(tm).length" class="task-step-list">
+                    <li
+                      v-for="(step, sIdx) in toolSteps(tm)"
+                      :key="sIdx"
+                      class="task-step-item"
+                      :class="`step-${stepKind(step)}`"
+                    >
+                      <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
+                      <span class="tool-step-text">{{ step }}</span>
+                    </li>
+                  </ul>
                   <!-- 详细参数/摘要：执行中自动展开，命令完成后折叠为一行摘要，可手动点开展开 -->
                   <details
                     v-if="toolArgs(tm).length || tm.detail"
@@ -4273,6 +4335,44 @@ onBeforeUnmount(() => {
               {{ t('studio.chat.approvalExpired') }}
             </div>
             <div class="prompt-hint">{{ t('studio.chat.approvalOnceHint') }}</div>
+          </div>
+          <!-- MCP 与工具操作流卡片：按实际调用时序在对话流中直接展示创建节点、删除节点、连线等操作 -->
+          <div
+            v-else-if="msg.kind === 'tool' && isInlineStreamTool(msg)"
+            class="msg-row tool-stream-row"
+          >
+            <div class="tool-stream-card" :class="msg.state">
+              <div class="tool-stream-head">
+                <span class="task-dot" />
+                <span class="tool-stream-title">{{ toolDisplayName(msg) }}</span>
+                <span v-if="toolShortCode(msg)" class="task-code-badge">{{
+                  toolShortCode(msg)
+                }}</span>
+                <span class="tool-stream-state">
+                  {{
+                    msg.state === 'start'
+                      ? t('studio.chat.toolRunning')
+                      : msg.state === 'done'
+                        ? t('studio.chat.toolDone')
+                        : t('studio.chat.toolFailed')
+                  }}
+                </span>
+              </div>
+              <ul v-if="toolSteps(msg).length" class="tool-stream-steps">
+                <li
+                  v-for="(step, sIdx) in toolSteps(msg)"
+                  :key="sIdx"
+                  class="tool-stream-step"
+                  :class="`step-${stepKind(step)}`"
+                >
+                  <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
+                  <span class="tool-step-text">{{ step }}</span>
+                </li>
+              </ul>
+              <div v-else-if="msg.detail" class="tool-stream-detail">
+                {{ msg.detail }}
+              </div>
+            </div>
           </div>
         </template>
         <div v-if="running" class="msg-status running">
@@ -5474,6 +5574,136 @@ onBeforeUnmount(() => {
 /* 任务清单内的资产预览更紧凑 */
 .task-list .chat-asset-preview .chat-asset-media {
   max-height: 180px;
+}
+
+.task-code-badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.task-step-list,
+.tool-stream-steps {
+  flex: 1 1 100%;
+  list-style: none;
+  margin: 4px 0 2px 16px;
+  padding: 4px 8px;
+  border-left: 2px solid var(--border);
+  background: var(--bg-panel);
+  border-radius: 0 6px 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tool-stream-steps {
+  margin: 6px 0 0;
+}
+
+.task-step-item,
+.tool-stream-step {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.tool-step-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-muted);
+}
+
+.step-add .tool-step-icon {
+  color: var(--success);
+}
+
+.step-delete .tool-step-icon {
+  color: var(--danger);
+}
+
+.step-connect .tool-step-icon,
+.step-run .tool-step-icon,
+.step-update .tool-step-icon {
+  color: var(--accent);
+}
+
+.tool-step-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.msg-row.tool-stream-row {
+  justify-content: flex-start;
+}
+
+.tool-stream-card {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  font-size: 12px;
+}
+
+.tool-stream-card.start .task-dot {
+  background: var(--accent);
+  animation: task-pulse 1.2s ease-in-out infinite;
+}
+
+.tool-stream-card.done .task-dot {
+  background: var(--success);
+}
+
+.tool-stream-card.error .task-dot {
+  background: var(--danger);
+}
+
+.tool-stream-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-stream-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-stream-state {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.tool-stream-detail {
+  margin-top: 4px;
+  padding-left: 14px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  word-break: break-word;
 }
 
 .chat-messages-wrap {
