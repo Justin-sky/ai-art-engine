@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.4] — 2026-10-24
+
+8.5.4 补丁版：新增 **中外传世名画一镜入画与角色开口说话全自动管线 v1.4.0（`ancient-scroll-revive`）**，支持 **央视《国家宝藏》国风卷轴与卢浮宫西洋古典双美学包装**、**首帧 1:1 写实还原 → 镜头拉近画中人物特写 + 口型同步原声对白生成**、**错峰旁白与多轨智能闪避（Audio Ducking）** 及 **FFmpeg 导出实时进度条**。
+
+- **新增 · 中外传世名画一镜入画与角色说话全流程管线（`ancient-scroll-revive` v1.4.0 + `composeTimelineVideo` + `timelineExportService`）**：支持任意 $N$ 幕（默认 3 幕，可按用户指定扩展至 4~6+ 幕）古画与西洋名画复活编排——每幕依次执行 **原画水平移镜寻景与焦点锁定（`scrollPanZoomIn`）** → **快门闪光原地冲印 1:1 写实还原照片（`actN-real`）** → **以写实照片为首帧（`in-first-frame`）生成全景复苏并平滑拉近至画中人物近景特写（`actN-video`）** → **幕尾回落全景写实图并 1:1 融回原画滑向下一焦点（`smoothleft` / `smoothright`）**；配套国风宋锦朱印（`scroll-seal-frame`）与西洋巴洛克鎏金画框（`museum-gilded-frame`）双模动态取景贴纸。
+- **优化 · 画内人物开口说话原声保护、错峰旁白智能闪避与转场无黑边对齐（`generateMedia` + `mcpGraphEdit` + `ScriptTimelineEditor`）**：视频生成节点在提示词或上游文本含人物说话/市井人声意图时自动开启 `generateAudio: true` 并剥离静音负面指令，由视频模型直出口型同步的人物交谈原声；时间线自动将解说旁白排布在每幕前段并开启多轨智能闪避，中后段 100% 释放画中人物对白原声；修复 `smoothleft` / `smoothright` 移镜转场与 `3:2` 写实图叠加层黑边问题，以及上游节点重跑刷新时视频轨末尾重复追加片段的问题。
+- **新增 · 时间线导出 FFmpeg 实时进度条与许愿配方 3（`ScriptTimelineEditor` + `timelineExportService` + `README`）**：基于 FFmpeg `-progress pipe:1` 实时解析编码进度并在时间线工具栏展示百分比进度条；文档新增 **配方 3 · 清明上河图一镜入画（24 节点）** Workflow-in-PNG 配方卡与有声成片预览。
+
 ## [8.5.3] — 2026-10-23
 
 8.5.3 补丁版：**2D 舞台（`stage.2d`）** 新增 **AI 识骨对齐（Alpha 轮廓形态学分析 + 本地 YOLOv8-Pose 融合 + 二次元/Q 版异常点过滤）与一键自动拆件挂点**，支持 MCP 直接传入动作预设名（如 `idle` / `walk` / `run`）自动装配骨骼、拆件并烘焙序列帧与精灵图集；**画布动态天气系统** 修复长时间运行后 `requestAnimationFrame` 循环因异常帧死锁导致的界面卡死问题。
