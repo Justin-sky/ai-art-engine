@@ -1341,7 +1341,15 @@ export interface NodeExecuteContext {
     videos: GraphVideoItem[]
     images?: GraphImageItem[]
     visuals?: GraphTimelineVisualItem[]
-    voices: Array<GraphVoiceItem & { text?: string; title?: string }>
+    voices: Array<
+      GraphVoiceItem & {
+        text?: string
+        title?: string
+        trackKind?: 'voice' | 'sfx'
+        lane?: number
+      }
+    >
+    sfx?: Array<GraphVoiceItem & { title?: string; lane?: number }>
     music?: GraphVoiceItem[]
     subtitles?: string[]
     signal?: AbortSignal

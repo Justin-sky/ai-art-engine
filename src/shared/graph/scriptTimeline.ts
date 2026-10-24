@@ -81,6 +81,14 @@ export type ScriptTimelineScaleMode = 'contain' | 'cover' | 'blur'
 export const CLIP_SPEED_MIN = 0.25
 export const CLIP_SPEED_MAX = 4
 export const CLIP_FREEZE_TAIL_MAX_SEC = 30
+export const TRACK_LANE_MAX = 8
+
+/** 同类型轨道的子轨道索引归一化（0~7，缺省 0） */
+export function normalizeClipLane(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return 0
+  return Math.min(TRACK_LANE_MAX - 1, Math.max(0, Math.floor(n)))
+}
 
 /** 片段变速倍率 clamp 到 [0.25, 4]，缺省 1 */
 export function clampClipSpeed(value: unknown): number {
@@ -144,6 +152,8 @@ export type ScriptTimelineTransitionType =
 export type ScriptTimelineClip = {
   id: string
   track: ScriptTimelineTrackKind
+  /** 同类型轨道下的并行子轨索引（0=第1轨，1=第2轨……；支持同类型多轨自由时间重叠） */
+  lane?: number
   sourceId: string
   title: string
   relativePath?: string
@@ -298,6 +308,8 @@ export type ScriptTimelineSettings = {
   previewFrameRatio?: string
   /** 时间线轨道高度（像素） */
   trackHeight?: number
+  /** 各轨道类型展开的并行子轨道数量（1~8，缺省按片段实际最大 lane+1 自动展开） */
+  trackLaneCounts?: Partial<Record<ScriptTimelineTrackKind, number>>
   /** 混音器：轨道级增益（0~2，1=原始音量；缺省按 1） */
   mixGains?: TimelineMixGains
   /** 混音器：主输出增益（0~2，1=原始音量） */
@@ -348,6 +360,8 @@ export type ScriptTimelineDocument = {
 /** 导出成片时传给主进程的片段 */
 export type TimelineExportClip = {
   track: ScriptTimelineTrackKind
+  /** 同类型轨道下的并行子轨索引（0=第1轨，1=第2轨……） */
+  lane?: number
   /** 工程相对路径；主进程解析为绝对路径 */
   relativePath?: string
   /** 可选绝对路径（调试/外部文件） */
@@ -404,6 +418,8 @@ export type TimelineExportClip = {
   keyframes?: TimelineClipKeyframe[]
   stickerId?: TimelineBuiltinStickerId | string
   stickerColor?: string
+  /** 渲染进程预光栅化的 PNG dataURL（规避无 librsvg 的 FFmpeg 无法解码 .svg） */
+  stickerPngDataUrl?: string
   transitionInSec?: number
   transitionOutSec?: number
   transitionType?: ScriptTimelineTransitionType
@@ -525,6 +541,723 @@ export function contentEndSecOfTimeline(clips: ScriptTimelineClip[]): number {
   return max
 }
 
+/**
+ * 清洗并提取每一幕的真实场景名：
+ * 剥离「古画取景」「写实复活」「右段/中段/左段」等节点结构/方位临时字样；
+ * 若剥离后无真实场景名（例如旧节点名「第3幕·古画取景（左段）」或「【 第3幕·左段 】」），返回 undefined。
+ */
+export function cleanActSceneTitle(raw: string | undefined, actIndex?: number): string | undefined {
+  if (!raw?.trim()) return undefined
+  const trimmed = raw.trim()
+  const actMatch =
+    trimmed.match(/第\s*(\d+)\s*[幕场集镜章节话回]/i) ?? // cjk-ok
+    trimmed.match(/(?:Act|Scene|Shot|分镜|镜头|片段)\s*#?(\d+)/i) // cjk-ok
+  const actNum = actMatch ? Number(actMatch[1]) : actIndex !== undefined ? actIndex + 1 : null
+
+  const core = trimmed
+    .replace(/^[【[\s]+|[】\]\s]+$/g, '')
+    .replace(/第\s*\d+\s*[幕场集镜章节话回]/gi, '') // cjk-ok
+    .replace(/(?:Act|Scene|Shot|分镜|镜头|片段)\s*#?\d+/gi, '') // cjk-ok
+    .replace(
+      /(?:古画一镜入画|古画取景|入画取景|写实复活|北宋实景还原|实景还原|多模态识图命名|多模态识图选区|多模态识图|市井环境音|选区镜头|选区|取景|切片)/g, // cjk-ok
+      ''
+    )
+    .replace(/(?:古画)?[右中左上前下后]段/g, '') // cjk-ok
+    .replace(/[（(]\s*[·•:：\-—]?\s*[）)]/g, '')
+    .replace(/^[（(]\s*|\s*[）)]$/g, '')
+    .replace(/^[·•:：\-—\s（()）]+|[·•:：\-—\s（()）]+$/g, '')
+    .trim()
+
+  if (
+    !core ||
+    core.length < 2 ||
+    /^(?:[右中左上前下后]段|古画|取景|复活|实景|还原|\d+)$/i.test(core) // cjk-ok
+  ) {
+    return undefined
+  }
+  return actNum !== null ? `第${actNum}幕 · ${core}` : core // cjk-ok
+}
+
+/**
+ * 从识图文本或节点提示词中提取干净、优美的古风叙事字幕分句（过滤模型提示词工程术语与格式引导语）。
+ */
+export function extractActNarrationSegments(rawText: string | undefined): string[] {
+  if (!rawText?.trim()) return []
+  let body = rawText
+    .trim()
+    .replace(/^【[^】]{1,32}】\s*/, '')
+    .replace(
+      /^(?:请仔细识别|严格按以下格式|第一行必须为|多模态识图选区|Default reference window).*$/gim, // cjk-ok
+      ''
+    )
+
+  // 若包含多行「第二行/第三行」结构，优先提取描述鲜活运动的第三行或去除行号前缀
+  const lines = body
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  const thirdLine = lines.find((l) => /^第三行\s*[:：]/.test(l)) // cjk-ok
+  if (thirdLine) {
+    body = thirdLine
+  } else {
+    body = lines.filter((l) => !/^第[一1]行\s*[:：]/.test(l)).join('，') // cjk-ok
+  }
+
+  const prefixLabelRe =
+    /^(?:第[一二三四1234]行|场景名|画面描述|动态描述|镜头描述|解说词|旁白|字幕)\s*[:：]\s*/gm // cjk-ok
+  const dollyLeadRe =
+    /^[^：:\n]{0,38}(?:一镜到底|向前推进|严格依据参考图|转化为\s*8K)[^：:\n]*[：:]\s*/gm // cjk-ok
+  const reviveLeadRe =
+    /^(?:结合识图描述[，,、]?\s*)?(?:画面中的[^，,。]{0,14}完全活过来[，,、]?\s*|画中(?:数十名)?人物全部鲜活运动起来[，,、]?\s*|整条古街人物全部活起来[，,、]?\s*)/gm // cjk-ok
+  const parenMetaRe =
+    /[（(][^）)]*(?:1:1|写实|还原|构图|选区|Dolly|Push-In|Immersive|Cinematic|Smooth|[右中左]段|例如|x∈)[^）)]*[）)]/gi // cjk-ok
+  const techClauseRe =
+    /(?:1:1|8K|35mm|ARRI|水印|参考图|第一行|第二行|第三行|四字古风|彻底去除|水墨线条|绢本泛黄|电影级景深|物理运动|历史大片质感|视线交互|全员自然动态|纯画面|无文字)/i // cjk-ok
+
+  body = body
+    .replace(prefixLabelRe, '')
+    .replace(dollyLeadRe, '')
+    .replace(reviveLeadRe, '')
+    .replace(parenMetaRe, '')
+    .trim()
+
+  const rawClauses = body
+    .split(/[。！？!?\n；;，,]+/)
+    .map((c) => c.replace(/^[\s、·•:：\-—]+|[\s、·•:：\-—]+$/g, '').trim())
+    .filter((c) => {
+      if (!c || c.length < 3) return false
+      if (!/[\u4e00-\u9fa5]/.test(c)) return false
+      if (techClauseRe.test(c)) {
+        return false
+      }
+      return true
+    })
+
+  const segments: string[] = []
+  let acc = ''
+  for (const clause of rawClauses) {
+    if (!acc) {
+      acc = clause
+    } else if (acc.length + 1 + clause.length <= 22) {
+      acc = `${acc}，${clause}`
+    } else {
+      segments.push(acc)
+      acc = clause
+      if (segments.length >= 3) {
+        acc = ''
+        break
+      }
+    }
+  }
+  if (acc && segments.length < 3) {
+    segments.push(acc)
+  }
+  return segments
+}
+
+export function isWesternMasterpieceHint(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const westernRe =
+    /油画|壁画|亚麻布|蛋彩|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|后印象派|古典主义|卢浮宫|雅典学院|柏拉图|亚里士多德|夜巡|修拉|大碗岛|雷诺阿|煎饼磨坊|莫奈|梵高|达芬奇|拉斐尔|勃鲁盖尔|维米尔|卡拉瓦乔|塞纳河|巴黎|骑士|修道院|大教堂|圣母|天使|古典拱廊|western|oil painting|fresco|renaissance|baroque|impressionis|louvre|rembrandt|raphael|monet|van gogh/i // cjk-ok
+  return westernRe.test(text)
+}
+
+function inferActSceneTitleFromDescription(
+  text: string,
+  actIndex: number,
+  culture: 'chinese' | 'western' = 'chinese'
+): string {
+  const prefix = `第${actIndex + 1}幕` // cjk-ok
+  if (culture === 'western' || isWesternMasterpieceHint(text)) {
+    if (/雅典|哲人|柏拉图|亚里士多德|学派|拱廊/.test(text)) return `${prefix} · 雅典哲思` // cjk-ok
+    if (/夜巡|火枪|伦勃朗|卫队|骑士|列阵/.test(text)) return `${prefix} · 光影夜巡` // cjk-ok
+    if (/舞会|磨坊|雷诺阿|塞纳河|大碗岛|阳伞|巴黎|咖啡/.test(text)) return `${prefix} · 塞纳午后` // cjk-ok
+    if (/婚礼|农夫|勃鲁盖尔|宴席|酒馆/.test(text)) return `${prefix} · 佛兰德斯欢宴` // cjk-ok
+    const westDefaults = ['古典群像', '透视焦点', '光影余韵'] // cjk-ok
+    return `${prefix} · ${westDefaults[actIndex] ?? '名画入画'}` // cjk-ok
+  }
+  if (/虹桥|争渡|漕船|撑篙|拉纤|叠梁/.test(text)) return `${prefix} · 虹桥争渡` // cjk-ok
+  if (/孙羊正店|彩楼|欢门|酒旗|茶肆|酒肆|古街|坊市|宵禁/.test(text)) return `${prefix} · 孙羊正店` // cjk-ok
+  if (/柳岸|石桥|驮队|毛驴|城郊|汴郊/.test(text)) return `${prefix} · 汴郊柳岸` // cjk-ok
+  if (/庭院|回廊|轩窗|雅集/.test(text)) return `${prefix} · 翠柳庭院` // cjk-ok
+  if (/江山|青绿|峰峦|远帆/.test(text)) return `${prefix} · 千里江山` // cjk-ok
+  const defaults = ['汴郊柳岸', '虹桥争渡', '孙羊正店'] // cjk-ok
+  return `${prefix} · ${defaults[actIndex] ?? '古画入画'}` // cjk-ok
+}
+
+export interface ActCharacterDialogueLine {
+  speaker: string
+  text: string
+  voice: string
+  lane: number
+}
+
+const DEFAULT_WESTERN_COMMENTARY_BY_ACT: Array<{
+  sceneTitle: string
+  segments: string[]
+  dialogues: ActCharacterDialogueLine[]
+}> = [
+  {
+    sceneTitle: '第1幕 · 古典群像', // cjk-ok
+    segments: [
+      '西方古典名画以严谨的几何构图与油彩肌理，铺陈前景人物群像', // cjk-ok
+      '随着镜头推入画布深处，油彩笔触悄然消融，历史人物随之苏醒' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '前景学者', // cjk-ok
+        text: '诸位请看这卷手稿中的几何推演，宇宙万物的和谐比例皆藏于这光影与线条之中！', // cjk-ok
+        voice: 'onyx',
+        lane: 0
+      },
+      {
+        speaker: '青年门徒', // cjk-ok
+        text: '先生所言极是！容我将这组精妙的透视法则记录下来，与学园同仁共勉！', // cjk-ok
+        voice: 'echo',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第2幕 · 透视焦点', // cjk-ok
+    segments: [
+      '全画视觉中心汇聚于线性透视灭点，穹顶天光与戏剧性明暗交织', // cjk-ok
+      '核心主角色在黄金分割点上昂首论道，定格欧洲艺术史的不朽瞬间' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '画中主哲人', // cjk-ok
+        text: '仰望苍穹，真理存在于永恒的理念世界；唯有超越感官表象，方能触及智慧本源！', // cjk-ok
+        voice: 'onyx',
+        lane: 0
+      },
+      {
+        speaker: '同行思想家', // cjk-ok
+        text: '但我们的双足立于坚实的大地，观察自然万物与人间秩序，同样是通往真理的必经之路！', // cjk-ok
+        voice: 'fable',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第3幕 · 光影余韵', // cjk-ok
+    segments: [
+      '镜头移向画卷侧翼与纵深远景，伦勃朗式的柔和侧光勾勒出人物神韵', // cjk-ok
+      '衣褶丝绒质感与古典建筑空间交相辉映，尽显西方人文主义精神光辉' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '远景画师', // cjk-ok
+        text: '趁着这束穿过拱廊的金色午后阳光，把此刻诸位的雄辩与风采永远留在画布之上吧！', // cjk-ok
+        voice: 'echo',
+        lane: 0
+      },
+      {
+        speaker: '旁立贵族', // cjk-ok
+        text: '如此盛景，纵使历经数百年岁月流转，后世观者亦能听见我们今日的谈笑回响！', // cjk-ok
+        voice: 'onyx',
+        lane: 1
+      }
+    ]
+  }
+]
+
+const DEFAULT_HISTORICAL_COMMENTARY_BY_ACT: Array<{
+  sceneTitle: string
+  segments: string[]
+  dialogues: ActCharacterDialogueLine[]
+}> = [
+  {
+    sceneTitle: '第1幕 · 汴郊柳岸', // cjk-ok
+    segments: [
+      '画卷右首起笔北宋汴京城郊，张择端以工笔勾勒早春柳岸', // cjk-ok
+      '驮队行旅踏着晨雾过桥入城，拉开大宋都城拂晓复苏的序幕' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '赶驴脚夫', // cjk-ok
+        text: '得儿——驾！弟兄们加把劲，趁着城门刚开，咱们赶早把这批木炭送到东京城里去！', // cjk-ok
+        voice: 'onyx',
+        lane: 0
+      },
+      {
+        speaker: '同行旅人', // cjk-ok
+        text: '老哥莫急！你看这汴河柳林春风拂面，走这一趟可真是舒坦！', // cjk-ok
+        voice: 'echo',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第2幕 · 虹桥争渡', // cjk-ok
+    segments: [
+      '全卷高潮聚焦汴河虹桥，无柱叠梁木拱桥横跨湍急水面', // cjk-ok
+      '满载江南钱粮的漕船紧急降桅穿桥，船夫合力撑篙拉纤', // cjk-ok
+      '桥上商贩行人凭栏呼应，堪称宋代界画与漕运文明的巅峰' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '船头舵工', // cjk-ok
+        text: '快落桅杆！桥洞水急，前头撑篙的弟兄死死顶住水头，千万别撞上虹桥木拱！', // cjk-ok
+        voice: 'onyx',
+        lane: 0
+      },
+      {
+        speaker: '桥上百姓', // cjk-ok
+        text: '船上的伙计当心呐！我们已经把缆绳抛下来了，快接住绳头往岸边拉！', // cjk-ok
+        voice: 'fable',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第3幕 · 孙羊正店', // cjk-ok
+    segments: [
+      '北宋彻底打破唐代坊市宵禁，汴京街市与正店酒楼昼夜繁华', // cjk-ok
+      '孙羊正店三层彩楼欢门迎风招展，茶坊雅座内文人清谈品茗', // cjk-ok
+      '车马商旅穿行青石长街，定格《东京梦华录》里的盛世烟火' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '酒楼小二', // cjk-ok
+        text: '客官里面请嘞！刚开坛的孙羊正店上等美酒，二楼雅座正好凭栏赏景！', // cjk-ok
+        voice: 'echo',
+        lane: 0
+      },
+      {
+        speaker: '雅座文人', // cjk-ok
+        text: '掌柜的好酒！来，兄台，咱们满饮此杯，今夜灯火不绝，真乃大宋盛世良宵！', // cjk-ok
+        voice: 'onyx',
+        lane: 1
+      }
+    ]
+  }
+]
+
+function extractActDialogueLines(
+  rawText: string | undefined,
+  actIndex: number,
+  fallbackPromptTexts?: Array<string | undefined>,
+  culture: 'chinese' | 'western' = 'chinese'
+): ActCharacterDialogueLine[] {
+  const presetList =
+    culture === 'western' ? DEFAULT_WESTERN_COMMENTARY_BY_ACT : DEFAULT_HISTORICAL_COMMENTARY_BY_ACT
+  const preset = presetList[actIndex]
+  const fallbackDialogues = preset
+    ? preset.dialogues.map((d) => ({ ...d }))
+    : [
+        {
+          speaker: '画中人甲', // cjk-ok
+          text: '兄台请看，这汴京春色如画，车马盈门，真乃太平盛景！', // cjk-ok
+          voice: 'onyx',
+          lane: 0
+        },
+        {
+          speaker: '画中人乙', // cjk-ok
+          text: '正是！趁着今日天朗气清，咱们且往前面酒肆小酌几杯！', // cjk-ok
+          voice: 'echo',
+          lane: 1
+        }
+      ]
+  const candidateTexts = [rawText, ...(fallbackPromptTexts ?? [])].filter(
+    (s): s is string => typeof s === 'string' && s.trim().length > 0
+  )
+  if (!candidateTexts.length) return fallbackDialogues
+
+  const parsed: ActCharacterDialogueLine[] = []
+  const voices = ['onyx', 'echo', 'fable', 'alloy']
+  for (const src of candidateTexts) {
+    const lines = src
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+    for (const line of lines) {
+      const m = line.match(
+        /^(?:[-*•]?\s*)(?:角色[AB12甲乙]|人物[AB12甲乙]|对白[12]?|台词[12]?|([^：:“"【[\]]{2,8}))\s*[:：]\s*[“"「]?([^”"」\n]{4,80})[”"」]?$/ // cjk-ok
+      )
+      if (m) {
+        const speaker = (m[1] ?? '').trim() || (parsed.length === 0 ? '画中主角色' : '画中次角色') // cjk-ok
+        const text = (m[2] ?? '').trim()
+        if (
+          text &&
+          !/^(?:第一行|第二行|第三行|场景名|画面描述|历史解说|严禁|请识别)/.test(speaker) && // cjk-ok
+          !/1:1|8K|ARRI|水印/.test(text) // cjk-ok
+        ) {
+          const lane = parsed.length % 2
+          parsed.push({
+            speaker,
+            text,
+            voice: voices[parsed.length % voices.length]!,
+            lane
+          })
+        }
+      }
+    }
+    if (parsed.length >= 2) break
+
+    // 兼容视频生成提示词中的行内人物开口对白（如：茶博士笑着招呼道：“客官里面请……”；行商拱手笑道：“……”）
+    const inlineQuoteRegex =
+      /([^，。；：—\s“"「【】()\n]{2,14}?)(?:笑着|高声|俯身|拱手|举杯|挥臂|快步|上前|抚须|立于船头)*(?:招呼道|高喊道|应和道|赞叹道|招呼|高喊|应和|笑道|赞叹|说道|喊道|道|说|喊)[:：]?[“"「]([^”"」\n]{4,80})[”"」]/g // cjk-ok
+    for (const im of src.matchAll(inlineQuoteRegex)) {
+      const rawSpeaker = (im[1] ?? '')
+        .replace(/^(?:画面中|镜头中|只见|其中|由)/, '') // cjk-ok
+        .trim()
+      const text = (im[2] ?? '').trim()
+      if (rawSpeaker && text && !parsed.some((p) => p.text === text)) {
+        const lane = parsed.length % 2
+        parsed.push({
+          speaker: rawSpeaker,
+          text,
+          voice: voices[parsed.length % voices.length]!,
+          lane
+        })
+      }
+      if (parsed.length >= 2) break
+    }
+    if (parsed.length >= 2) break
+  }
+  return parsed.length >= 1 ? parsed.slice(0, 2) : fallbackDialogues
+}
+
+function isHistoricalCommentaryText(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const historyRe =
+    /画卷|起笔|工笔|界画|张择端|漕运|坊市|宵禁|东京梦华|叠梁|北宋都城|江南钱粮|传世|朝代|画师|笔墨|文博|历史|油画|壁画|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|古典主义|卢浮宫|艺术史|画布/ // cjk-ok
+  return historyRe.test(text)
+}
+
+export function parseActSceneSubtitlePlan(input: {
+  actIndex: number
+  rawText?: string
+  titleCandidates?: Array<string | undefined>
+  fallbackPromptTexts?: Array<string | undefined>
+  cultureHint?: 'chinese' | 'western'
+}): {
+  sceneTitle: string
+  narrationText: string
+  narrationSegments: string[]
+  dialogueLines: ActCharacterDialogueLine[]
+  culture: 'chinese' | 'western'
+} {
+  const { actIndex, rawText, titleCandidates = [], fallbackPromptTexts = [], cultureHint } = input
+  const allHintText = [rawText, ...titleCandidates, ...fallbackPromptTexts]
+    .filter(Boolean)
+    .join(' ')
+  const culture: 'chinese' | 'western' =
+    cultureHint ?? (isWesternMasterpieceHint(allHintText) ? 'western' : 'chinese')
+
+  const bracketMatch = rawText?.match(/【([^】]{2,28})】/)
+  let sceneTitle = cleanActSceneTitle(bracketMatch?.[1], actIndex)
+  if (!sceneTitle) {
+    for (const cand of titleCandidates) {
+      const cleaned = cleanActSceneTitle(cand, actIndex)
+      if (cleaned) {
+        sceneTitle = cleaned
+        break
+      }
+    }
+  }
+  if (!sceneTitle) {
+    for (const fb of fallbackPromptTexts) {
+      const m = fb?.match(/【([^】]{2,28})】/)
+      const cleaned = cleanActSceneTitle(m?.[1], actIndex)
+      if (cleaned) {
+        sceneTitle = cleaned
+        break
+      }
+    }
+  }
+
+  let narrationSegments = isHistoricalCommentaryText(rawText)
+    ? extractActNarrationSegments(rawText)
+    : []
+  if (!narrationSegments.length) {
+    for (const fb of fallbackPromptTexts) {
+      if (!isHistoricalCommentaryText(fb)) continue
+      const segs = extractActNarrationSegments(fb)
+      if (segs.length) {
+        narrationSegments = segs
+        break
+      }
+    }
+  }
+
+  const combinedHint = [rawText, ...fallbackPromptTexts, ...narrationSegments]
+    .filter(Boolean)
+    .join(' ')
+  if (!sceneTitle) {
+    sceneTitle = inferActSceneTitleFromDescription(combinedHint, actIndex, culture)
+  }
+
+  if (!narrationSegments.length) {
+    const presetList =
+      culture === 'western'
+        ? DEFAULT_WESTERN_COMMENTARY_BY_ACT
+        : DEFAULT_HISTORICAL_COMMENTARY_BY_ACT
+    const preset = presetList[actIndex]
+    if (preset) {
+      narrationSegments = [...preset.segments]
+    } else {
+      const extracted = extractActNarrationSegments(rawText)
+      narrationSegments = extracted.length
+        ? extracted
+        : culture === 'western'
+          ? [
+              '传世西洋名画以精妙透视与光影肌理，定格欧洲人文史的辉煌瞬间', // cjk-ok
+              '随着镜头推入画布深处，油彩笔触渐次消融，画中人物尽数复苏' // cjk-ok
+            ]
+          : [
+              '传世古画以细腻界画工笔，定格千年前的山水楼阁与市井百态', // cjk-ok
+              '随着镜头推入画卷深处，历史长河中的人物与烟火尽数复苏' // cjk-ok
+            ]
+    }
+  }
+
+  const dialogueLines = extractActDialogueLines(rawText, actIndex, fallbackPromptTexts, culture)
+  const narrationText = `${narrationSegments.join('，')}。`
+  return { sceneTitle, narrationText, narrationSegments, dialogueLines, culture }
+}
+
+export function upgradeTemporaryAutoSubtitlesInTimeline(
+  clips: ScriptTimelineClip[],
+  genParams?: Record<string, unknown> | null
+): ScriptTimelineClip[] {
+  const hasVoiceActClip = new Set<number>()
+  for (const c of clips) {
+    if (
+      c.track === 'voice' &&
+      c.id.startsWith('clip:auto:a:') &&
+      !/环境音|sfx/i.test(`${c.title ?? ''} ${c.relativePath ?? ''}`) // cjk-ok
+    ) {
+      const m = c.id.match(/^clip:auto:a:(\d+)(?:_\d+)?:/)
+      if (m) hasVoiceActClip.add(Number(m[1]))
+    }
+  }
+  const dedupedClips = clips.filter((c) => {
+    const m = c.id.match(/^clip:auto:narr:(\d+):/)
+    return m ? !hasVoiceActClip.has(Number(m[1])) : true
+  })
+
+  const isAncientScrollHybrid = dedupedClips.some((c) => c.id.startsWith('clip:auto:pre:'))
+  const autoSubClips = dedupedClips.filter(
+    (c) => c.track === 'subtitle' && c.id.startsWith('clip:auto:sub:')
+  )
+  const tempSubRe =
+    /[右中左上前下后]段|古画取景|写实复活|店小二热情迎客|微风吹拂垂柳枝条|蒸笼白气升腾|湍急河水拍打船头/ // cjk-ok
+  const hasTempAutoSub = autoSubClips.some((c) =>
+    tempSubRe.test(`${c.text ?? ''} ${c.title ?? ''}`)
+  )
+  const hasOnlyBannerWithoutNarration =
+    isAncientScrollHybrid &&
+    autoSubClips.length > 0 &&
+    !autoSubClips.some((c) => /^clip:auto:sub:\d+_[123]:/.test(c.id))
+  const hasTempAutoLabel = dedupedClips.some(
+    (c) =>
+      (c.id.startsWith('clip:auto:pre:') || c.id.startsWith('clip:auto:vf:')) &&
+      (/[右中左上前下后]段|古画取景/.test(`${c.text ?? ''} ${c.title ?? ''}`) || // cjk-ok
+        c.stickerId === 'viewfinder-frame' ||
+        c.visualEffect === 'strobe-flash')
+  )
+  if (!hasTempAutoSub && !hasOnlyBannerWithoutNarration && !hasTempAutoLabel) return dedupedClips
+
+  // 从宿主图 graphJson 中提取每幕的识图文本与提示词
+  const graphNodes: Array<{
+    id?: string
+    typeId?: string
+    title?: string
+    params?: Record<string, unknown>
+  }> =
+    genParams?.graphJson &&
+    typeof genParams.graphJson === 'object' &&
+    Array.isArray((genParams.graphJson as { nodes?: unknown[] }).nodes)
+      ? ((genParams.graphJson as { nodes: Array<Record<string, unknown>> }).nodes as Array<{
+          id?: string
+          typeId?: string
+          title?: string
+          params?: Record<string, unknown>
+        }>)
+      : []
+
+  const extractNodeActIdx = (title?: string, id?: string): number | null => {
+    const s = `${title ?? ''} ${id ?? ''}`
+    const m = s.match(/第\s*(\d+)\s*幕/i) ?? s.match(/act\s*(\d+)/i) // cjk-ok
+    return m ? Math.max(0, Number(m[1]) - 1) : null
+  }
+
+  const getActPlan = (actIndex: number) => {
+    const matchingNodes = graphNodes.filter((n) => extractNodeActIdx(n.title, n.id) === actIndex)
+    const voiceNode = matchingNodes.find((n) => n.typeId === 'asset.voice')
+    const recognizeNode = matchingNodes.find((n) => n.typeId === 'image.toPrompt')
+    const cropNode = matchingNodes.find((n) => n.typeId === 'image.process')
+    const videoNode = matchingNodes.find((n) => n.typeId === 'asset.video')
+    const realNode = matchingNodes.find((n) => n.typeId === 'asset.image')
+
+    const rawText =
+      (typeof voiceNode?.params?.generateInstruction === 'string' &&
+        voiceNode.params.generateInstruction.trim()) ||
+      (typeof recognizeNode?.params?.text === 'string' && recognizeNode.params.text.trim()) ||
+      (typeof cropNode?.params?.text === 'string' && cropNode.params.text.trim()) ||
+      undefined
+    const fallbackPromptTexts = [
+      typeof videoNode?.params?.generateInstruction === 'string'
+        ? videoNode.params.generateInstruction
+        : undefined,
+      typeof realNode?.params?.generateInstruction === 'string'
+        ? realNode.params.generateInstruction
+        : undefined
+    ]
+    const cultureHint =
+      cropNode?.params?.paintingCulture === 'western'
+        ? ('western' as const)
+        : cropNode?.params?.paintingCulture === 'chinese'
+          ? ('chinese' as const)
+          : undefined
+    return parseActSceneSubtitlePlan({
+      actIndex,
+      rawText,
+      titleCandidates: [cropNode?.title, videoNode?.title, realNode?.title],
+      fallbackPromptTexts,
+      cultureHint
+    })
+  }
+
+  const rebuiltActs = new Set<number>()
+  const nextClips: ScriptTimelineClip[] = []
+  for (const clip of dedupedClips) {
+    const vfMatch = clip.id.match(/^clip:auto:(?:pre|vf):(\d+):/)
+    if (vfMatch) {
+      const actIdx = Number(vfMatch[1])
+      const plan = getActPlan(actIdx)
+      const isWestern = plan.culture === 'western'
+      const isPreVideo = clip.id.startsWith('clip:auto:pre:')
+      nextClips.push({
+        ...clip,
+        title: plan.sceneTitle,
+        ...(isPreVideo
+          ? {
+              cameraMotion: 'scrollPanZoomIn' as const,
+              filterPreset:
+                clip.filterPreset ??
+                (isWestern ? ('kodak-portra' as const) : ('golden-autumn' as const)),
+              visualEffect:
+                clip.visualEffect === 'strobe-flash'
+                  ? ('gold-sparkle' as const)
+                  : (clip.visualEffect ?? ('gold-sparkle' as const)),
+              effectIntensity: clip.effectIntensity ?? 0.45,
+              ...(actIdx > 0
+                ? {
+                    transitionType:
+                      clip.transitionType ??
+                      (isWestern ? ('smoothright' as const) : ('smoothleft' as const)),
+                    transitionInSec: Math.max(1.2, clip.transitionInSec ?? 0)
+                  }
+                : {})
+            }
+          : {
+              sourceId: `sticker:${isWestern ? 'museum-gilded-frame' : 'scroll-seal-frame'}:${actIdx}`,
+              stickerId: isWestern
+                ? ('museum-gilded-frame' as const)
+                : ('scroll-seal-frame' as const),
+              stickerColor: isWestern ? '#EAB308' : '#D97706'
+            }),
+        ...(clip.text !== undefined ? { text: plan.sceneTitle } : {})
+      })
+      continue
+    }
+
+    const subAnyMatch = clip.id.match(/^clip:auto:sub:(\d+)_(\d+):(.+)$/)
+    if (
+      subAnyMatch &&
+      clip.track === 'subtitle' &&
+      (hasTempAutoSub || hasOnlyBannerWithoutNarration)
+    ) {
+      const actIdx = Number(subAnyMatch[1])
+      if (rebuiltActs.has(actIdx)) {
+        continue
+      }
+      rebuiltActs.add(actIdx)
+      const stamp = subAnyMatch[3]!
+      const plan = getActPlan(actIdx)
+      const preClip = clips.find((c) => c.id.startsWith(`clip:auto:pre:${actIdx}:`))
+      const mainVidClip = clips.find((c) => c.id.startsWith(`clip:auto:v:${actIdx}:`))
+      const actStartSec = preClip ? preClip.startSec : Math.max(0, clip.startSec - 0.2)
+      const actEndSec = mainVidClip
+        ? mainVidClip.startSec + mainVidClip.durationSec
+        : actStartSec + 10
+
+      const bannerText = `【 ${plan.sceneTitle} 】`
+      nextClips.push({
+        ...clip,
+        id: `clip:auto:sub:${actIdx}_0:${stamp}`,
+        lane: 0,
+        title: bannerText,
+        text: bannerText,
+        textColor: clip.textColor || '#FEF08A',
+        fontSize: clip.fontSize || 40,
+        startSec: Math.round((actStartSec + 0.15) * 100) / 100,
+        durationSec: 1.9
+      })
+
+      const totalAvailDur = Math.max(2.6, actEndSec - actStartSec - 2.25)
+      const hasDialogues = plan.dialogueLines.length > 0
+      const narrTotalDur = hasDialogues ? Math.max(1.8, totalAvailDur * 0.44) : totalAvailDur
+      const bodyStart = Math.round((actStartSec + 2.1) * 100) / 100
+      const totalChars = Math.max(
+        1,
+        plan.narrationSegments.reduce((acc, s) => acc + s.length, 0)
+      )
+      let subCursor = bodyStart
+      plan.narrationSegments.forEach((segText, segIdx) => {
+        const isLast = segIdx === plan.narrationSegments.length - 1
+        const rawDur = isLast
+          ? bodyStart + narrTotalDur - subCursor
+          : (narrTotalDur * segText.length) / totalChars
+        const segDur = Math.max(0.75, Math.round(rawDur * 100) / 100)
+        nextClips.push({
+          id: `clip:auto:sub:${actIdx}_${segIdx + 1}:${stamp}`,
+          track: 'subtitle',
+          lane: 0,
+          sourceId: `sub:act:${actIdx}:${segIdx + 1}`,
+          title: segText,
+          text: segText,
+          startSec: Math.round(subCursor * 100) / 100,
+          durationSec: segDur
+        })
+        subCursor += segDur
+      })
+
+      if (hasDialogues) {
+        let dlgCursor = Math.round((subCursor + 0.1) * 100) / 100
+        const dlgTotalDur = Math.max(1.4, actEndSec - 0.15 - dlgCursor)
+        const dlgStep = dlgTotalDur / plan.dialogueLines.length
+        plan.dialogueLines.forEach((dlg, dlgIdx) => {
+          const isLastDlg = dlgIdx === plan.dialogueLines.length - 1
+          const rawDlgDur = isLastDlg ? actEndSec - 0.15 - dlgCursor : dlgStep - 0.06
+          const dlgDur = Math.max(0.75, Math.round(rawDlgDur * 100) / 100)
+          const dlgLineText = `${dlg.speaker}：「${dlg.text}」`
+          nextClips.push({
+            id: `clip:auto:sub:${actIdx}_dlg_${dlgIdx}:${stamp}`,
+            track: 'subtitle',
+            lane: 0,
+            sourceId: `sub:act:${actIdx}:dlg:${dlgIdx}`,
+            title: dlgLineText,
+            text: dlgLineText,
+            textColor: '#FDE68A',
+            startSec: Math.round(dlgCursor * 100) / 100,
+            durationSec: dlgDur
+          })
+          dlgCursor += dlgDur + 0.06
+        })
+      }
+      continue
+    }
+
+    nextClips.push(clip)
+  }
+
+  return nextClips
+}
+
 export function readScriptTimelineFromGenParams(
   genParams?: Record<string, unknown> | null,
   nodeId?: string
@@ -532,8 +1265,9 @@ export function readScriptTimelineFromGenParams(
   const raw = genParams?.[timelineParamKeyForNode(nodeId)]
   if (!raw || typeof raw !== 'object') return { clips: [] }
   const doc = raw as ScriptTimelineDocument
+  const rawClips = Array.isArray(doc.clips) ? doc.clips.filter(isClip) : []
   return {
-    clips: Array.isArray(doc.clips) ? doc.clips.filter(isClip) : [],
+    clips: upgradeTemporaryAutoSubtitlesInTimeline(rawClips, genParams),
     sources: Array.isArray(doc.sources)
       ? doc.sources
           .map((item) => normalizeScriptTimelineSource(item))
@@ -665,6 +1399,17 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   }
   if (typeof row.trackHeight === 'number' && Number.isFinite(row.trackHeight)) {
     next.trackHeight = Math.min(96, Math.max(36, Math.round(row.trackHeight)))
+  }
+  if (row.trackLaneCounts && typeof row.trackLaneCounts === 'object') {
+    const laneCounts: Partial<Record<ScriptTimelineTrackKind, number>> = {}
+    for (const key of Object.keys(row.trackLaneCounts) as ScriptTimelineTrackKind[]) {
+      if (!isTrackKind(key)) continue
+      const v = (row.trackLaneCounts as Record<string, unknown>)[key]
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        laneCounts[key] = Math.min(TRACK_LANE_MAX, Math.max(1, Math.round(v)))
+      }
+    }
+    if (Object.keys(laneCounts).length) next.trackLaneCounts = laneCounts
   }
   if (row.mixGains && typeof row.mixGains === 'object') {
     const mixGains: TimelineMixGains = {}
@@ -832,10 +1577,15 @@ export function splitTimelineClipAtTime(
  */
 export function closeTimelineTrackGaps(
   clips: ScriptTimelineClip[],
-  track: ScriptTimelineTrackKind = 'video'
+  track: ScriptTimelineTrackKind = 'video',
+  lane?: number
 ): { clips: ScriptTimelineClip[]; closedCount: number; savedSec: number } {
   const targetClips = clips
-    .filter((c) => c.track === track)
+    .filter(
+      (c) =>
+        c.track === track &&
+        (lane === undefined || normalizeClipLane(c.lane) === normalizeClipLane(lane))
+    )
     .slice()
     .sort((a, b) => a.startSec - b.startSec || a.id.localeCompare(b.id))
   if (targetClips.length === 0) {

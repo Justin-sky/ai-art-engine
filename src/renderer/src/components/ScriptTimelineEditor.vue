@@ -1134,6 +1134,14 @@
                 </template>
               </div>
               <div
+                v-for="extraSub in activeExtraSubtitleClips"
+                :key="`extra-sub-${extraSub.id}`"
+                class="subtitle-overlay extra-lane-subtitle"
+                :style="buildSubtitleOverlayStyleForClip(extraSub)"
+              >
+                {{ (extraSub.text || extraSub.title).trim() }}
+              </div>
+              <div
                 v-if="activeSubtitleText"
                 class="subtitle-overlay"
                 :class="{ 'is-selected': isActiveSubtitleSelected }"
@@ -1211,7 +1219,7 @@
         </div>
         <div v-if="selectedClip" class="inspector-body">
           <div class="inspector-track">
-            {{ trackLabel(selectedClip.track) }}
+            {{ trackLabel(selectedClip.track, selectedClip.lane) }}
           </div>
           <label class="inspector-field">
             <span>{{ t('script.timeline.startSec') }}</span>
@@ -2454,17 +2462,25 @@
           <button
             type="button"
             class="export-btn"
+            :class="{ 'is-exporting': exporting }"
             :disabled="exporting || !clips.length"
             :title="t('script.timeline.exportHint')"
             @click="openExportDialog"
           >
-            {{
-              exporting
-                ? t('script.timeline.exporting', {
-                    progress: Math.round(exportProgress * 100)
-                  })
-                : t('script.timeline.export')
-            }}
+            <span
+              v-if="exporting"
+              class="export-btn-fill"
+              :style="{ width: `${Math.max(4, Math.round(exportProgress * 100))}%` }"
+            />
+            <span class="export-btn-label">
+              {{
+                exporting
+                  ? t('script.timeline.exporting', {
+                      progress: Math.round(exportProgress * 100)
+                    })
+                  : t('script.timeline.export')
+              }}
+            </span>
           </button>
           <button
             type="button"
@@ -2563,26 +2579,45 @@
 
           <div
             v-for="track in tracks"
-            :key="track.kind"
+            :key="track.rowKey"
             class="track-row droppable"
             :data-track-kind="track.kind"
+            :data-track-lane="track.lane"
             :style="{
               height: collapsedTracks.has(track.kind) ? '24px' : `${trackHeight}px`
             }"
             :class="{
-              'drag-over': dragOverTrack === track.kind,
+              'drag-over': dragOverTrack === track.rowKey,
               'hidden-track': hiddenTracks.has(track.kind),
               'muted-track': mutedTracks.has(track.kind),
               'locked-track': lockedTracks.has(track.kind),
               'collapsed-track': collapsedTracks.has(track.kind)
             }"
-            @dragenter.prevent="onTrackDragOver($event, track.kind)"
-            @dragover.prevent="onTrackDragOver($event, track.kind)"
-            @dragleave="onTrackDragLeave($event, track.kind)"
-            @drop.prevent="onTrackDrop($event, track.kind)"
+            @dragenter.prevent="onTrackDragOver($event, track.kind, track.lane)"
+            @dragover.prevent="onTrackDragOver($event, track.kind, track.lane)"
+            @dragleave="onTrackDragLeave($event, track.kind, track.lane)"
+            @drop.prevent="onTrackDrop($event, track.kind, track.lane)"
           >
             <div class="track-label">
-              <span>{{ track.label }}</span>
+              <span :title="track.label">{{ track.label }}</span>
+              <button
+                v-if="track.canAddLane"
+                type="button"
+                class="track-state-btn track-lane-btn"
+                :title="`${track.label} +`"
+                @click.stop="addTrackLane(track.kind)"
+              >
+                +
+              </button>
+              <button
+                v-if="track.canRemoveLane"
+                type="button"
+                class="track-state-btn track-lane-btn"
+                :title="`${track.label} -`"
+                @click.stop="removeTrackLane(track.kind, track.lane)"
+              >
+                −
+              </button>
               <button
                 v-if="trackHasAudio(track.kind)"
                 type="button"
@@ -2638,43 +2673,56 @@
               </button>
             </div>
             <div v-show="!collapsedTracks.has(track.kind)" class="track-lane">
-              <template v-if="track.kind === 'video' && !clipsOn(track.kind).length">
+              <template v-if="track.kind === 'video' && !clipsOn(track.kind, track.lane).length">
                 <div class="lane-empty">
                   <span class="play-glyph sm" aria-hidden="true" />
                   <span>{{ t('script.timeline.videoEmpty') }}</span>
                 </div>
               </template>
-              <template v-else-if="track.kind === 'overlay' && !clipsOn(track.kind).length">
+              <template
+                v-else-if="track.kind === 'overlay' && !clipsOn(track.kind, track.lane).length"
+              >
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.overlayEmpty') }}</span>
                 </div>
               </template>
-              <template v-else-if="track.kind === 'voice' && !clipsOn(track.kind).length">
+              <template
+                v-else-if="track.kind === 'voice' && !clipsOn(track.kind, track.lane).length"
+              >
                 <div class="lane-muted">
                   <span class="speaker" aria-hidden="true" />
                   <span>{{ t('script.timeline.voiceEmpty') }}</span>
                 </div>
               </template>
-              <template v-else-if="track.kind === 'subtitle' && !clipsOn(track.kind).length">
+              <template
+                v-else-if="track.kind === 'subtitle' && !clipsOn(track.kind, track.lane).length"
+              >
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.subtitleEmpty') }}</span>
                 </div>
-                <button type="button" class="create-hint" @click="addBlankSubtitle">
+                <button
+                  v-if="track.lane === 0"
+                  type="button"
+                  class="create-hint"
+                  @click="addBlankSubtitle"
+                >
                   {{ t('script.timeline.addSubtitle') }}
                 </button>
               </template>
-              <template v-else-if="track.kind === 'music' && !clipsOn(track.kind).length">
+              <template
+                v-else-if="track.kind === 'music' && !clipsOn(track.kind, track.lane).length"
+              >
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.musicEmpty') }}</span>
                 </div>
               </template>
-              <template v-else-if="track.kind === 'sfx' && !clipsOn(track.kind).length">
+              <template v-else-if="track.kind === 'sfx' && !clipsOn(track.kind, track.lane).length">
                 <div class="lane-muted">
                   <span>{{ t('script.timeline.sfxEmpty') }}</span>
                 </div>
               </template>
               <button
-                v-for="clip in visibleClipsOn(track.kind)"
+                v-for="clip in visibleClipsOn(track.kind, track.lane)"
                 :key="clip.id"
                 type="button"
                 class="clip"
@@ -3046,6 +3094,36 @@
           hidden
           @change="onWatermarkImagePicked"
         />
+      </div>
+    </div>
+
+    <div
+      v-if="exporting"
+      class="export-settings-mask export-progress-mask"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="export-settings-panel export-progress-panel">
+        <div class="export-progress-header">
+          <span class="export-settings-title">{{ t('script.timeline.export') }}</span>
+          <span class="export-progress-pct">{{ Math.round(exportProgress * 100) }}%</span>
+        </div>
+        <div class="export-progress-track">
+          <div
+            class="export-progress-fill"
+            :style="{ width: `${Math.max(3, Math.round(exportProgress * 100))}%` }"
+          />
+        </div>
+        <div class="export-progress-meta">
+          <span>
+            {{
+              t('script.timeline.exporting', {
+                progress: Math.round(exportProgress * 100)
+              })
+            }}
+          </span>
+          <span>{{ exportWidth }} × {{ exportHeight }} · {{ exportFps }} fps</span>
+        </div>
       </div>
     </div>
 
@@ -3510,11 +3588,14 @@ import {
   isExportDurationOverLimit,
   isSubtitleWithinSafeArea,
   normalizeClipCropRect,
+  normalizeClipLane,
   normalizePlaybackRate,
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
   normalizeTimelineKeyframes,
+  parseActSceneSubtitlePlan,
   parseSmartCutPlan,
+  rasterizeTimelineStickerSvgToPngDataUrl,
   readScriptTimelineFromGenParams,
   removeTimelineClipKeyframeAt,
   renderTimelineBuiltinStickerDataUrl,
@@ -3537,7 +3618,9 @@ import {
   TIMELINE_TWEEN_OUT_PRESETS,
   TIMELINE_VISUAL_EFFECT_CATEGORIES,
   TIMELINE_VISUAL_EFFECTS,
+  TRACK_LANE_MAX,
   trimTimelineClipToTime,
+  upgradeTemporaryAutoSubtitlesInTimeline,
   upsertTimelineClipKeyframe,
   withScriptTimeline,
   type ScriptTimelineClip,
@@ -3845,8 +3928,10 @@ const mixLoudnorm = ref(false)
 const mixerOpen = ref(false)
 const subtitleEditor = ref<{ clipId: string | null; draft: string } | null>(null)
 const subtitleInputEl = ref<HTMLInputElement | null>(null)
-/** 当前可放置高亮的轨道 */
-const dragOverTrack = ref<ScriptTimelineTrackKind | null>(null)
+/** 当前可放置高亮的轨道行（`${kind}:${lane}`） */
+const dragOverTrack = ref<string | null>(null)
+/** 各轨道显式开启的子轨道数（overlay / voice / subtitle / music / sfx 支持 1~8 条并行子轨） */
+const trackLaneCounts = ref<Partial<Record<ScriptTimelineTrackKind, number>>>({})
 /** 轨道片段指针拖拽（自由挪动时间 / 换轨 / 同轨多选联动） */
 const clipDrag = ref<{
   clipId: string
@@ -3863,6 +3948,7 @@ const clipDrag = ref<{
 const clipDragPreview = ref<{
   clipId: string
   track: ScriptTimelineTrackKind
+  lane: number
   startSec: number
   pointerX: number
   pointerY: number
@@ -4151,17 +4237,98 @@ const transitionPreviewTick = ref(0)
 
 const hostId = computed(() => `asset:${props.scriptAssetId}`)
 
-const tracks = computed(() => [
-  { kind: 'video' as const, label: t('script.timeline.track.video') },
-  { kind: 'overlay' as const, label: t('script.timeline.track.overlay') },
-  { kind: 'voice' as const, label: t('script.timeline.track.voice') },
-  { kind: 'subtitle' as const, label: t('script.timeline.track.subtitle') },
-  { kind: 'music' as const, label: t('script.timeline.track.music') },
-  { kind: 'sfx' as const, label: t('script.timeline.track.sfx') }
-])
+const BASE_TRACK_KINDS: readonly ScriptTimelineTrackKind[] = [
+  'video',
+  'overlay',
+  'voice',
+  'subtitle',
+  'music',
+  'sfx'
+]
 
-/** 混音器里可调增益的轨道（subtitle 无音频） */
-const audioMixerTracks = computed(() => tracks.value.filter((track) => track.kind !== 'subtitle'))
+interface TimelineTrackRow {
+  rowKey: string
+  kind: ScriptTimelineTrackKind
+  lane: number
+  laneCount: number
+  label: string
+  canAddLane: boolean
+  canRemoveLane: boolean
+}
+
+function laneCountForTrack(kind: ScriptTimelineTrackKind): number {
+  if (kind === 'video') return 1
+  let maxLane = Math.max(1, Math.min(TRACK_LANE_MAX, trackLaneCounts.value[kind] ?? 1))
+  for (const clip of clips.value) {
+    if (clip.track === kind) {
+      maxLane = Math.max(maxLane, normalizeClipLane(clip.lane) + 1)
+    }
+  }
+  return Math.min(TRACK_LANE_MAX, maxLane)
+}
+
+function addTrackLane(kind: ScriptTimelineTrackKind): void {
+  if (kind === 'video') return
+  const current = laneCountForTrack(kind)
+  if (current >= TRACK_LANE_MAX) return
+  trackLaneCounts.value = {
+    ...trackLaneCounts.value,
+    [kind]: current + 1
+  }
+  scheduleSave()
+}
+
+function removeTrackLane(kind: ScriptTimelineTrackKind, lane: number): void {
+  if (kind === 'video' || lane <= 0) return
+  const current = laneCountForTrack(kind)
+  const hasClipsOnLane = clips.value.some(
+    (c) => c.track === kind && normalizeClipLane(c.lane) === lane
+  )
+  if (hasClipsOnLane) {
+    commitClips(
+      clips.value.map((c) => {
+        if (c.track !== kind) return c
+        const cLane = normalizeClipLane(c.lane)
+        if (cLane === lane) return { ...c, lane: lane - 1 > 0 ? lane - 1 : undefined }
+        if (cLane > lane) return { ...c, lane: cLane - 1 }
+        return c
+      })
+    )
+  }
+  trackLaneCounts.value = {
+    ...trackLaneCounts.value,
+    [kind]: Math.max(1, current - 1)
+  }
+  scheduleSave()
+}
+
+const tracks = computed<TimelineTrackRow[]>(() => {
+  const rows: TimelineTrackRow[] = []
+  for (const kind of BASE_TRACK_KINDS) {
+    const baseLabel = t(`script.timeline.track.${kind}`)
+    const count = laneCountForTrack(kind)
+    for (let lane = 0; lane < count; lane++) {
+      rows.push({
+        rowKey: `${kind}:${lane}`,
+        kind,
+        lane,
+        laneCount: count,
+        label: count > 1 ? `${baseLabel} ${lane + 1}` : baseLabel,
+        canAddLane: kind !== 'video' && lane === count - 1 && count < TRACK_LANE_MAX,
+        canRemoveLane: kind !== 'video' && count > 1 && lane === count - 1
+      })
+    }
+  }
+  return rows
+})
+
+/** 混音器里可调增益的轨道（subtitle 无音频，每种轨道类型展示一条总推子） */
+const audioMixerTracks = computed(() =>
+  BASE_TRACK_KINDS.filter((kind) => kind !== 'subtitle').map((kind) => ({
+    kind,
+    label: t(`script.timeline.track.${kind}`)
+  }))
+)
 
 const timelineInnerHeight = computed(
   () =>
@@ -4176,10 +4343,11 @@ const timelineInnerHeight = computed(
 /** 时间线面板最小展开高度（允许向下拖拽收窄，轨道区内部自动出现纵向滚动条可下拉到底） */
 const timelineMinHeight = computed(() => 116)
 
-function trackTopOffset(kind: ScriptTimelineTrackKind): number {
+function trackTopOffset(kind: ScriptTimelineTrackKind, lane = 0): number {
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
   let top = 28
   for (const track of tracks.value) {
-    if (track.kind === kind) return top
+    if (track.kind === kind && track.lane === normLane) return top
     top += collapsedTracks.value.has(track.kind) ? 24 : trackHeight.value
   }
   return top
@@ -4237,7 +4405,13 @@ const selectedOverlayClip = computed(() => {
   return clip?.track === 'overlay' ? clip : null
 })
 
-const previewOverlayClips = computed(() => visibleClipsOn('overlay'))
+const previewOverlayClips = computed(() =>
+  visibleClipsOn('overlay')
+    .slice()
+    .sort(
+      (a, b) => normalizeClipLane(a.lane) - normalizeClipLane(b.lane) || a.startSec - b.startSec
+    )
+)
 
 const activeMainTransition = computed(() => {
   const list = visibleClipsOn('video')
@@ -4818,7 +4992,7 @@ const clipDragPreviewStyle = computed(() => {
   return {
     display: 'flex',
     left: `${TRACK_LABEL_W + timeToX(preview.startSec)}px`,
-    top: `${trackTopOffset(preview.track) + 8}px`,
+    top: `${trackTopOffset(preview.track, preview.lane) + 8}px`,
     width: `${Math.max(36, timeToX(clip.durationSec))}px`,
     height: `${Math.max(20, trackHeight.value - 16)}px`
   }
@@ -4874,7 +5048,7 @@ function onClipPointerHover(e: PointerEvent, clip: ScriptTimelineClip): void {
     if (razorHover.value) razorHover.value = null
     return
   }
-  const lane = laneRectForTrack(clip.track)
+  const lane = laneRectForTrack(clip.track, normalizeClipLane(clip.lane))
   if (!lane) return
   const rawSec = xToTime(e.clientX - lane.left)
   if (
@@ -5679,17 +5853,22 @@ const laneWidth = computed(() =>
 
 const needsHScroll = computed(() => laneWidth.value > viewportLanePx.value + 1)
 
-const activeSubtitleClip = computed(() => {
-  for (const clip of visibleClipsOn('subtitle')) {
-    if (
-      playheadSec.value >= clip.startSec &&
-      playheadSec.value < clip.startSec + clip.durationSec
-    ) {
-      return clip
-    }
-  }
-  return null
-})
+const activeSubtitleClips = computed(() =>
+  visibleClipsOn('subtitle')
+    .filter(
+      (clip) =>
+        playheadSec.value >= clip.startSec &&
+        playheadSec.value < clip.startSec + clip.durationSec &&
+        (clip.text || clip.title).trim().length > 0
+    )
+    .sort(
+      (a, b) => normalizeClipLane(a.lane) - normalizeClipLane(b.lane) || a.startSec - b.startSec
+    )
+)
+
+const activeSubtitleClip = computed(() => activeSubtitleClips.value[0] ?? null)
+
+const activeExtraSubtitleClips = computed(() => activeSubtitleClips.value.slice(1))
 
 const activeSubtitleText = computed(() => {
   const clip = activeSubtitleClip.value
@@ -5720,15 +5899,16 @@ const isActiveSubtitleSelected = computed(() => {
   return activeClipId.value === clip.id || selectedClipIds.value.has(clip.id)
 })
 
-const activeSubtitleOverlayStyle = computed<Record<string, string>>(() => {
-  const clip = activeSubtitleClip.value
+function buildSubtitleOverlayStyleForClip(
+  clip: ScriptTimelineClip | null | undefined
+): Record<string, string> {
   const scale = subtitlePreviewScale.value
   const size = clip?.fontSize ?? subtitleFontSize.value
   const scaledFontPx = Math.max(11, Math.round(size * scale * 10) / 10)
-  const scaledBottomPx = Math.max(
-    4,
-    Math.round(Math.max(0, subtitleYOffset.value) * scale * 10) / 10
-  )
+  const lane = normalizeClipLane(clip?.lane)
+  const laneOffsetPx = lane * Math.round(scaledFontPx * 1.35 * 1.65)
+  const scaledBottomPx =
+    Math.max(4, Math.round(Math.max(0, subtitleYOffset.value) * scale * 10) / 10) + laneOffsetPx
   const color = clip?.textColor || subtitleColor.value
   const style: Record<string, string> = {
     fontSize: `${scaledFontPx}px`,
@@ -5768,7 +5948,11 @@ const activeSubtitleOverlayStyle = computed<Record<string, string>>(() => {
     style.opacity = `${clamp01(alpha).toFixed(2)}`
   }
   return style
-})
+}
+
+const activeSubtitleOverlayStyle = computed<Record<string, string>>(() =>
+  buildSubtitleOverlayStyleForClip(activeSubtitleClip.value)
+)
 
 const rulerMarks = computed(() => {
   const marks: Array<{ t: number; x: number; label: string; isEnd?: boolean }> = []
@@ -5814,19 +5998,29 @@ function formatTime(sec: number): string {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
-function clipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
+function clipsOn(kind: ScriptTimelineTrackKind, lane?: number): ScriptTimelineClip[] {
   return clips.value
-    .filter((c) => c.track === kind)
+    .filter(
+      (c) =>
+        c.track === kind &&
+        (lane === undefined || normalizeClipLane(c.lane) === normalizeClipLane(lane))
+    )
     .slice()
     .sort((a, b) => a.startSec - b.startSec)
 }
 
-function trackLabel(kind: ScriptTimelineTrackKind): string {
-  return t(`script.timeline.track.${kind}`)
+function trackLabel(kind: ScriptTimelineTrackKind, lane?: number): string {
+  const base = t(`script.timeline.track.${kind}`)
+  const normLane = normalizeClipLane(lane)
+  const count = laneCountForTrack(kind)
+  if (kind !== 'video' && (count > 1 || normLane > 0)) {
+    return `${base} ${normLane + 1}`
+  }
+  return base
 }
 
-function visibleClipsOn(kind: ScriptTimelineTrackKind): ScriptTimelineClip[] {
-  return hiddenTracks.value.has(kind) ? [] : clipsOn(kind)
+function visibleClipsOn(kind: ScriptTimelineTrackKind, lane?: number): ScriptTimelineClip[] {
+  return hiddenTracks.value.has(kind) ? [] : clipsOn(kind, lane)
 }
 
 function toggleTrackHidden(kind: ScriptTimelineTrackKind): void {
@@ -5956,14 +6150,17 @@ function findOverlapInArray(
   kind: ScriptTimelineTrackKind,
   startSec: number,
   durationSec: number,
-  excludeClipId?: string
+  excludeClipId?: string,
+  lane = 0
 ): ScriptTimelineClip | null {
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
   const endSec = startSec + durationSec
   return (
     list.find(
       (clip) =>
         clip.id !== excludeClipId &&
         clip.track === kind &&
+        normalizeClipLane(clip.lane) === normLane &&
         startSec < clip.startSec + clip.durationSec - 0.001 &&
         endSec > clip.startSec + 0.001
     ) ?? null
@@ -5975,12 +6172,13 @@ function fitStartInArray(
   kind: ScriptTimelineTrackKind,
   desiredStart: number,
   durationSec: number,
-  excludeClipId?: string
+  excludeClipId?: string,
+  lane = 0
 ): number {
   const maxStart = Math.max(0, totalDuration.value - Math.max(MIN_CLIP_SEC, durationSec))
   let resolved = Math.min(maxStart, Math.max(0, desiredStart))
   for (let guard = 0; guard <= list.length; guard++) {
-    const overlap = findOverlapInArray(list, kind, resolved, durationSec, excludeClipId)
+    const overlap = findOverlapInArray(list, kind, resolved, durationSec, excludeClipId, lane)
     if (!overlap) return resolved
     resolved = Math.min(maxStart, overlap.startSec + overlap.durationSec)
   }
@@ -5996,7 +6194,15 @@ function pasteClips(): void {
   const pasted: ScriptTimelineClip[] = []
   for (const clip of sorted) {
     const desiredStart = baseStart + Math.max(0, clip.startSec - minStart)
-    const startSec = fitStartInArray(working, clip.track, desiredStart, clip.durationSec)
+    const clipLane = normalizeClipLane(clip.lane)
+    const startSec = fitStartInArray(
+      working,
+      clip.track,
+      desiredStart,
+      clip.durationSec,
+      undefined,
+      clipLane
+    )
     const next: ScriptTimelineClip = {
       ...clip,
       id: newClipId(),
@@ -6076,12 +6282,13 @@ function rippleDeleteSelectedClips(): void {
   scheduleSave()
 }
 
-/** 一键磁吸闭合轨道空隙：若当前选中了某片段则只收紧其所在轨，否则收紧主视频轨 */
+/** 一键磁吸闭合轨道空隙：若当前选中了某片段则只收紧其所在轨与子轨，否则收紧主视频轨 */
 function closeTrackGaps(): void {
   const active = selectedClip.value
   const targetTrack = active ? active.track : 'video'
+  const targetLane = active ? normalizeClipLane(active.lane) : 0
   if (lockedTracks.value.has(targetTrack)) return
-  const next = closeTimelineTrackGaps(clips.value, targetTrack)
+  const next = closeTimelineTrackGaps(clips.value, targetTrack, targetLane)
   commitClips(next.clips)
   scheduleSave()
 }
@@ -6113,14 +6320,17 @@ function findOverlap(
   kind: ScriptTimelineTrackKind,
   startSec: number,
   durationSec: number,
-  excludeClipId?: string
+  excludeClipId?: string,
+  lane = 0
 ): ScriptTimelineClip | null {
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
   const endSec = startSec + durationSec
   return (
     clips.value.find(
       (clip) =>
         clip.id !== excludeClipId &&
         clip.track === kind &&
+        normalizeClipLane(clip.lane) === normLane &&
         startSec < clip.startSec + clip.durationSec - 0.001 &&
         endSec > clip.startSec + 0.001
     ) ?? null
@@ -6132,13 +6342,14 @@ function fitClipStart(
   desiredStart: number,
   durationSec: number,
   excludeClipId?: string,
-  moveDir = 1
+  moveDir = 1,
+  lane = 0
 ): number {
   const snapped = snapTime(Math.max(0, desiredStart), excludeClipId)
   const maxStart = Math.max(0, totalDuration.value - Math.max(MIN_CLIP_SEC, durationSec))
   let resolved = Math.min(maxStart, snapped)
   for (let guard = 0; guard <= clips.value.length; guard++) {
-    const overlap = findOverlap(kind, resolved, durationSec, excludeClipId)
+    const overlap = findOverlap(kind, resolved, durationSec, excludeClipId, lane)
     if (!overlap) return resolved
     resolved =
       moveDir >= 0
@@ -6152,13 +6363,18 @@ function reorderClipsOnTrack(
   kind: ScriptTimelineTrackKind,
   draggedId: string,
   desiredStart: number,
-  durationSec: number
+  durationSec: number,
+  lane = 0
 ): ScriptTimelineClip[] {
   const dragged = clips.value.find((clip) => clip.id === draggedId)
   if (!dragged) return clips.value
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
 
   const others = clips.value
-    .filter((clip) => clip.track === kind && clip.id !== draggedId)
+    .filter(
+      (clip) =>
+        clip.track === kind && normalizeClipLane(clip.lane) === normLane && clip.id !== draggedId
+    )
     .slice()
     .sort((a, b) => a.startSec - b.startSec)
 
@@ -6188,7 +6404,11 @@ function reorderClipsOnTrack(
       : 0
   const minDraggedStart = Math.max(0, cursor - draggedOverlap)
   const nextStart = Math.max(clampedStart, minDraggedStart)
-  updatedTrack.push({ ...dragged, startSec: Math.round(nextStart * 100) / 100 })
+  updatedTrack.push({
+    ...dragged,
+    ...(normLane > 0 ? { lane: normLane } : { lane: undefined }),
+    startSec: Math.round(nextStart * 100) / 100
+  })
   cursor = nextStart + Math.max(MIN_CLIP_SEC, durationSec)
 
   for (const other of suffix) {
@@ -6210,7 +6430,11 @@ function reorderClipsOnTrack(
   }
 
   const byId = new Map(updatedTrack.map((clip) => [clip.id, clip]))
-  return clips.value.map((clip) => (clip.track === kind ? (byId.get(clip.id) ?? clip) : clip))
+  return clips.value.map((clip) =>
+    clip.track === kind && normalizeClipLane(clip.lane) === normLane
+      ? (byId.get(clip.id) ?? clip)
+      : clip
+  )
 }
 
 function clipStyle(clip: ScriptTimelineClip): Record<string, string> {
@@ -6986,6 +7210,7 @@ function loadPersisted(): void {
       ? settings.watermarkPosition
       : 'br'
   trackHeight.value = settings?.trackHeight ?? 52
+  trackLaneCounts.value = { ...(settings?.trackLaneCounts ?? {}) }
   mixGains.value = settings?.mixGains ?? {}
   mixMasterGain.value = clampTrackGain(settings?.mixMasterGain ?? 1)
   mixBassGainDb.value = clampMixEqGainDb(settings?.mixBassGainDb ?? 0)
@@ -7044,6 +7269,13 @@ async function persist(): Promise<void> {
       watermarkScale: watermarkScale.value,
       watermarkPosition: watermarkPosition.value,
       trackHeight: trackHeight.value,
+      ...(Object.keys(trackLaneCounts.value).length
+        ? {
+            trackLaneCounts: toPlain(trackLaneCounts.value) as Partial<
+              Record<ScriptTimelineTrackKind, number>
+            >
+          }
+        : {}),
       mixGains: mixGains.value,
       mixMasterGain: mixMasterGain.value,
       mixBassGainDb: mixBassGainDb.value,
@@ -7185,7 +7417,11 @@ function syncMainVideoAudioGain(clip: ScriptTimelineClip | null | undefined, loc
   const vol = Number.isFinite(clip.volume) ? Math.min(2, Math.max(0, clip.volume!)) : 1
   const trackGain = clampTrackGain(mixGains.value[track])
   const fade = fadeFactorAt(clip, local)
-  el.volume = clamp01(vol * trackGain * fade * clampTrackGain(mixMasterGain.value))
+  const duckFactor =
+    track === 'video' && mixAutoDucking.value && isVoiceTrackActiveAt(playheadSec.value)
+      ? Math.min(0.85, Math.max(0.38, clampMixDuckingRatio(mixDuckingRatio.value) * 1.68))
+      : 1
+  el.volume = clamp01(vol * trackGain * fade * duckFactor * clampTrackGain(mixMasterGain.value))
 }
 
 function applyPreviewMuted(track: ScriptTimelineTrackKind = 'video'): void {
@@ -7713,8 +7949,8 @@ function newClipId(): string {
   return `clip:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`
 }
 
-function nextStartOnTrack(kind: ScriptTimelineTrackKind): number {
-  const list = clipsOn(kind)
+function nextStartOnTrack(kind: ScriptTimelineTrackKind, lane = 0): number {
+  const list = clipsOn(kind, kind === 'video' ? 0 : normalizeClipLane(lane))
   if (!list.length) return 0
   const last = list[list.length - 1]!
   return last.startSec + last.durationSec
@@ -7723,8 +7959,10 @@ function nextStartOnTrack(kind: ScriptTimelineTrackKind): number {
 async function addSourceToTrack(
   source: ScriptTimelineSource,
   track: ScriptTimelineTrackKind,
-  startSec?: number
+  startSec?: number,
+  lane = 0
 ): Promise<void> {
+  const normLane = track === 'video' ? 0 : normalizeClipLane(lane)
   const url = track === 'subtitle' ? '' : await resolveSrc(source)
   let durationSec = source.durationSec && source.durationSec > 0 ? source.durationSec : 0
   if (track === 'subtitle') {
@@ -7736,6 +7974,7 @@ async function addSourceToTrack(
   const clip: ScriptTimelineClip = {
     id: newClipId(),
     track,
+    ...(normLane > 0 ? { lane: normLane } : {}),
     sourceId: source.id,
     title: source.title,
     relativePath: source.relativePath,
@@ -7743,7 +7982,9 @@ async function addSourceToTrack(
     ...(source.nodeId?.trim() ? { nodeId: source.nodeId.trim() } : {}),
     ...(source.nodeTitle?.trim() ? { nodeTitle: source.nodeTitle.trim() } : {}),
     startSec:
-      startSec == null ? nextStartOnTrack(track) : fitClipStart(track, startSec, durationSec),
+      startSec == null
+        ? nextStartOnTrack(track, normLane)
+        : fitClipStart(track, startSec, durationSec, undefined, 1, normLane),
     durationSec,
     ...(track === 'subtitle' ? { text: source.title } : {}),
     ...(track === 'overlay'
@@ -9395,7 +9636,9 @@ function onSourceDragStart(e: DragEvent, source: ScriptTimelineSource): void {
   }
 }
 
-function trackKindAtClientY(clientY: number): ScriptTimelineTrackKind | null {
+function trackRowAtClientY(
+  clientY: number
+): { kind: ScriptTimelineTrackKind; lane: number } | null {
   const board = timelineBoardEl.value
   if (!board) return null
   const rows = board.querySelectorAll<HTMLElement>('.track-row[data-track-kind]')
@@ -9412,17 +9655,22 @@ function trackKindAtClientY(clientY: number): ScriptTimelineTrackKind | null {
       kind === 'music' ||
       kind === 'sfx'
     ) {
-      return kind
+      const lane = kind === 'video' ? 0 : normalizeClipLane(Number(row.dataset.trackLane ?? 0))
+      return { kind, lane }
     }
   }
   return null
 }
 
-function laneRectForTrack(kind: ScriptTimelineTrackKind): DOMRect | null {
-  const lane = timelineBoardEl.value?.querySelector(
-    `.track-row[data-track-kind="${kind}"] .track-lane`
-  ) as HTMLElement | null
-  return lane?.getBoundingClientRect() ?? null
+function laneRectForTrack(kind: ScriptTimelineTrackKind, lane = 0): DOMRect | null {
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
+  const laneEl = (timelineBoardEl.value?.querySelector(
+    `.track-row[data-track-kind="${kind}"][data-track-lane="${normLane}"] .track-lane`
+  ) ??
+    timelineBoardEl.value?.querySelector(
+      `.track-row[data-track-kind="${kind}"] .track-lane`
+    )) as HTMLElement | null
+  return laneEl?.getBoundingClientRect() ?? null
 }
 
 function bindClipDragListeners(): void {
@@ -9443,7 +9691,8 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   if (target?.closest('.clip-remove')) return
   if (lockedTracks.value.has(clip.track)) return
   transitionPopover.value = null
-  const rect = laneRectForTrack(clip.track)
+  const clipLane = normalizeClipLane(clip.lane)
+  const rect = laneRectForTrack(clip.track, clipLane)
   const timeAtPointer = rect ? xToTime(e.clientX - rect.left) : clip.startSec
   if (razorMode.value) {
     if (splitClipAtTime(clip, timeAtPointer)) {
@@ -9483,6 +9732,7 @@ function onClipPointerDown(e: PointerEvent, clip: ScriptTimelineClip): void {
   clipDragPreview.value = {
     clipId: clip.id,
     track: clip.track,
+    lane: clipLane,
     startSec: clip.startSec,
     pointerX: e.clientX,
     pointerY: e.clientY
@@ -9503,23 +9753,32 @@ function onClipPointerMove(e: PointerEvent): void {
   }
   const clip = clips.value.find((c) => c.id === session.clipId)
   if (!clip) return
-  const hoverKind = trackKindAtClientY(e.clientY) ?? clip.track
+  const hoverRow = trackRowAtClientY(e.clientY)
+  const hoverKind = hoverRow?.kind ?? clip.track
   if (hoverKind === 'overlay' && clip.track !== 'video' && clip.track !== 'overlay') return
   if (clip.track === 'overlay' && hoverKind !== 'overlay' && hoverKind !== 'video') return
   const kind = hoverKind
-  const rect = laneRectForTrack(kind)
+  const clipLane = normalizeClipLane(clip.lane)
+  const lane = kind === 'video' ? 0 : (hoverRow?.lane ?? clipLane)
+  const rect = laneRectForTrack(kind, lane)
   if (!rect) return
   const desiredStart = Math.max(0, xToTime(e.clientX - rect.left) - session.grabOffsetSec)
   clipDragPreview.value = {
     clipId: clip.id,
     track: kind,
+    lane,
     startSec: desiredStart,
     pointerX: e.clientX,
     pointerY: e.clientY
   }
 
   // 多选编组同轨平移：保持各选中片段相对时间间隔整体平移
-  if (session.groupInitialStarts && session.groupInitialStarts.size > 1 && kind === clip.track) {
+  if (
+    session.groupInitialStarts &&
+    session.groupInitialStarts.size > 1 &&
+    kind === clip.track &&
+    lane === clipLane
+  ) {
     const anchorInitial = session.groupInitialStarts.get(clip.id) ?? clip.startSec
     let minInitial = anchorInitial
     for (const s of session.groupInitialStarts.values()) {
@@ -9540,8 +9799,8 @@ function onClipPointerMove(e: PointerEvent): void {
   }
 
   const moveDir = desiredStart >= session.lastStartSec ? 1 : -1
-  if (kind === clip.track) {
-    const next = reorderClipsOnTrack(kind, clip.id, desiredStart, clip.durationSec)
+  if (kind === clip.track && lane === clipLane) {
+    const next = reorderClipsOnTrack(kind, clip.id, desiredStart, clip.durationSec, lane)
     const moved = next.find((c) => c.id === clip.id)
     if (!moved || Math.abs(moved.startSec - clip.startSec) < 0.001) return
     session.moved = true
@@ -9550,8 +9809,10 @@ function onClipPointerMove(e: PointerEvent): void {
     return
   }
 
-  const startSec = fitClipStart(kind, desiredStart, clip.durationSec, clip.id, moveDir)
-  if (Math.abs(startSec - clip.startSec) < 0.001) return
+  const startSec = fitClipStart(kind, desiredStart, clip.durationSec, clip.id, moveDir, lane)
+  if (kind === clip.track && lane === clipLane && Math.abs(startSec - clip.startSec) < 0.001) {
+    return
+  }
   session.moved = true
   session.lastStartSec = startSec
   clips.value = clips.value.map((c) =>
@@ -9559,6 +9820,7 @@ function onClipPointerMove(e: PointerEvent): void {
       ? {
           ...c,
           track: kind,
+          lane: kind !== 'video' && lane > 0 ? lane : undefined,
           startSec,
           ...(kind === 'subtitle' && !c.text ? { text: c.text || c.title } : {}),
           ...(kind === 'overlay' && c.track !== 'overlay'
@@ -9726,7 +9988,8 @@ function onClipResizeMove(e: PointerEvent): void {
   if (!session || e.pointerId !== session.pointerId) return
   const clip = clips.value.find((c) => c.id === session.clipId)
   if (!clip) return
-  const rect = laneRectForTrack(clip.track)
+  const clipLane = normalizeClipLane(clip.lane)
+  const rect = laneRectForTrack(clip.track, clipLane)
   if (!rect) return
   const time = snapTime(xToTime(e.clientX - rect.left), clip.id)
 
@@ -9737,6 +10000,7 @@ function onClipResizeMove(e: PointerEvent): void {
       (c) =>
         c.id !== clip.id &&
         c.track === clip.track &&
+        normalizeClipLane(c.lane) === clipLane &&
         c.startSec > clip.startSec + 0.001 &&
         nextEnd > c.startSec + 0.001
     )
@@ -9752,7 +10016,7 @@ function onClipResizeMove(e: PointerEvent): void {
   const endSec = clip.startSec + clip.durationSec
   let startSec = Math.max(0, Math.min(time, endSec - MIN_CLIP_SEC))
   const durationSec = endSec - startSec
-  startSec = fitClipStart(clip.track, startSec, durationSec, clip.id, -1)
+  startSec = fitClipStart(clip.track, startSec, durationSec, clip.id, -1, clipLane)
   const nextDuration = endSec - startSec
   if (
     Math.abs(startSec - clip.startSec) < 0.001 &&
@@ -9849,8 +10113,9 @@ function canAcceptExternalFilesOnTrack(kind: ScriptTimelineTrackKind): boolean {
   )
 }
 
-function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
+function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind, lane = 0): void {
   if (!e.dataTransfer) return
+  const rowKey = `${kind}:${kind === 'video' ? 0 : normalizeClipLane(lane)}`
   if (collapsedTracks.value.has(kind)) {
     e.dataTransfer.dropEffect = 'none'
     dragOverTrack.value = null
@@ -9874,7 +10139,7 @@ function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
     // 素材上轨为 copy；若仍有 move 会话则配合 effectAllowed，避免 copy/move 不匹配导致无法放下
     const allowed = e.dataTransfer.effectAllowed
     e.dataTransfer.dropEffect = allowed === 'move' || allowed === 'linkMove' ? 'move' : 'copy'
-    dragOverTrack.value = kind
+    dragOverTrack.value = rowKey
     return
   }
 
@@ -9887,13 +10152,13 @@ function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
     }
     // dragover 阶段 Chromium 常读不到自定义 MIME；未解析到资产时仍放行，drop 时再校验
     e.dataTransfer.dropEffect = 'copy'
-    dragOverTrack.value = kind
+    dragOverTrack.value = rowKey
     return
   }
 
   if (hasExternalFiles(e) && canAcceptExternalFilesOnTrack(kind)) {
     e.dataTransfer.dropEffect = 'copy'
-    dragOverTrack.value = kind
+    dragOverTrack.value = rowKey
     return
   }
 
@@ -9901,11 +10166,12 @@ function onTrackDragOver(e: DragEvent, kind: ScriptTimelineTrackKind): void {
   dragOverTrack.value = null
 }
 
-function onTrackDragLeave(e: DragEvent, kind: ScriptTimelineTrackKind): void {
+function onTrackDragLeave(e: DragEvent, kind: ScriptTimelineTrackKind, lane = 0): void {
+  const rowKey = `${kind}:${kind === 'video' ? 0 : normalizeClipLane(lane)}`
   const related = e.relatedTarget as Node | null
   const row = e.currentTarget as HTMLElement | null
   if (related && row?.contains(related)) return
-  if (dragOverTrack.value === kind) dragOverTrack.value = null
+  if (dragOverTrack.value === rowKey) dragOverTrack.value = null
 }
 
 function assetToSource(asset: AssetInfo): ScriptTimelineSource | null {
@@ -9920,10 +10186,10 @@ function assetToSource(asset: AssetInfo): ScriptTimelineSource | null {
   }
 }
 
-function dropStartFromEvent(e: DragEvent, kind: ScriptTimelineTrackKind): number {
-  const lane = (e.currentTarget as HTMLElement).querySelector('.track-lane') as HTMLElement | null
-  const rect = lane?.getBoundingClientRect()
-  return rect ? Math.max(0, xToTime(e.clientX - rect.left)) : nextStartOnTrack(kind)
+function dropStartFromEvent(e: DragEvent, kind: ScriptTimelineTrackKind, lane = 0): number {
+  const laneEl = (e.currentTarget as HTMLElement).querySelector('.track-lane') as HTMLElement | null
+  const rect = laneEl?.getBoundingClientRect()
+  return rect ? Math.max(0, xToTime(e.clientX - rect.left)) : nextStartOnTrack(kind, lane)
 }
 
 function resolveDroppedAssets(e: DragEvent): AssetInfo[] {
@@ -9972,13 +10238,16 @@ function filterImportableMediaPaths(paths: string[]): string[] {
 async function appendAssetsToTrack(
   assets: AssetInfo[],
   requestedKind: ScriptTimelineTrackKind,
-  dropStart: number
+  dropStart: number,
+  requestedLane = 0
 ): Promise<number> {
-  const cursors = new Map<ScriptTimelineTrackKind, number>()
+  const cursors = new Map<string, number>()
   let placed = 0
   for (const asset of assets) {
     const track = resolveTargetTrack(asset, requestedKind)
     if (!track) continue
+    const lane = track === requestedKind && track !== 'video' ? normalizeClipLane(requestedLane) : 0
+    const cursorKey = `${track}:${lane}`
     const source = assetToSource(asset)
     if (!source) continue
     const mediaKind: ScriptTimelineSourceMediaKind = asset.type === 'voice' ? 'voice' : 'video'
@@ -9991,16 +10260,16 @@ async function appendAssetsToTrack(
       origin: 'imported' as const,
       mediaKind
     }
-    const start = cursors.has(track)
-      ? cursors.get(track)!
+    const start = cursors.has(cursorKey)
+      ? cursors.get(cursorKey)!
       : track === requestedKind
         ? dropStart
-        : nextStartOnTrack(track)
-    await addSourceToTrack(listed, track, start)
+        : nextStartOnTrack(track, lane)
+    await addSourceToTrack(listed, track, start, lane)
     placed += 1
     const last = clips.value[clips.value.length - 1]
     if (last) {
-      cursors.set(track, last.startSec + last.durationSec)
+      cursors.set(cursorKey, last.startSec + last.durationSec)
       upsertImportedSource(listed, mediaKind, last.durationSec)
     }
   }
@@ -10010,7 +10279,8 @@ async function appendAssetsToTrack(
 async function importDroppedFilesOntoTrack(
   paths: string[],
   kind: ScriptTimelineTrackKind,
-  dropStart: number
+  dropStart: number,
+  lane = 0
 ): Promise<void> {
   const accepted = filterImportableMediaPaths(paths)
   if (!accepted.length) {
@@ -10032,7 +10302,7 @@ async function importDroppedFilesOntoTrack(
       })
       return
     }
-    const placed = await appendAssetsToTrack(result.imported, kind, dropStart)
+    const placed = await appendAssetsToTrack(result.imported, kind, dropStart, lane)
     if (!placed) {
       await promptAlert({
         title: t('script.dialog.timeline'),
@@ -10049,9 +10319,10 @@ async function importDroppedFilesOntoTrack(
   }
 }
 
-async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise<void> {
+async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind, lane = 0): Promise<void> {
   dragOverTrack.value = null
-  const dropStart = dropStartFromEvent(e, kind)
+  const normLane = kind === 'video' ? 0 : normalizeClipLane(lane)
+  const dropStart = dropStartFromEvent(e, kind, normLane)
 
   const raw = e.dataTransfer?.getData(DRAFT_MIME)
   if (raw) {
@@ -10083,6 +10354,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
         const next: ScriptTimelineClip = {
           ...prev,
           track: kind,
+          lane: normLane > 0 ? normLane : undefined,
           startSec: dropStart,
           ...(kind === 'subtitle' && !prev.text ? { text: prev.text || prev.title } : {})
         }
@@ -10101,14 +10373,15 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
         durationSec: payload.durationSec
       },
       kind,
-      dropStart
+      dropStart,
+      normLane
     )
     return
   }
 
   const assets = resolveDroppedAssets(e)
   if (assets.length) {
-    const placed = await appendAssetsToTrack(assets, kind, dropStart)
+    const placed = await appendAssetsToTrack(assets, kind, dropStart, normLane)
     workspace.setDraggingAsset(null)
     if (!placed) {
       await promptAlert({
@@ -10127,7 +10400,7 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind): Promise
 
   const paths = getDroppedFilePaths(e)
   if (paths.length) {
-    await importDroppedFilesOntoTrack(paths, kind, dropStart)
+    await importDroppedFilesOntoTrack(paths, kind, dropStart, normLane)
   }
 }
 
@@ -10419,9 +10692,14 @@ function isVoiceTrackActiveAt(timeSec: number): boolean {
 
 /** 同步片段音量：clip.volume × 轨道增益 × 淡入淡出 × 自动闪避（与导出对齐；走 Web Audio 时元素自身音量恒 1） */
 function syncClipPreviewGain(clip: ScriptTimelineClip, el: HTMLAudioElement, local: number): void {
+  const baseDuckRatio = clampMixDuckingRatio(mixDuckingRatio.value)
   const duckFactor =
-    clip.track === 'music' && mixAutoDucking.value && isVoiceTrackActiveAt(playheadSec.value)
-      ? clampMixDuckingRatio(mixDuckingRatio.value)
+    mixAutoDucking.value && isVoiceTrackActiveAt(playheadSec.value)
+      ? clip.track === 'music'
+        ? baseDuckRatio
+        : clip.track === 'sfx' || clip.track === 'video'
+          ? Math.min(0.85, Math.max(0.38, baseDuckRatio * 1.68))
+          : 1
       : 1
   // 轨道静音优先级最高：直接压到 0，忽略片段音量与混音器增益
   const target = mutedTracks.value.has(clip.track)
@@ -10784,13 +11062,15 @@ async function ensureTransitionPreview(transition: {
     promise = (async (): Promise<boolean> => {
       try {
         const dims = transitionPreviewDims()
-        const result = await window.studio.renderTimelineTransitionPreview({
-          left: toTransitionPreviewClip(transition.from),
-          right: toTransitionPreviewClip(transition.to),
-          width: dims.width,
-          height: dims.height,
-          fps: exportFps.value
-        })
+        const result = await window.studio.renderTimelineTransitionPreview(
+          toPlain({
+            left: toTransitionPreviewClip(transition.from),
+            right: toTransitionPreviewClip(transition.to),
+            width: dims.width,
+            height: dims.height,
+            fps: exportFps.value
+          })
+        )
         if (result.ok) {
           transitionPreviewCache.set(key, {
             key,
@@ -11376,108 +11656,200 @@ function confirmExportDialog(): void {
 async function exportTimeline(): Promise<void> {
   if (exporting.value || !clips.value.length) return
   stopPlayback()
-  await persist()
+  clips.value = upgradeTemporaryAutoSubtitlesInTimeline(clips.value, readGenParams())
 
   exporting.value = true
-  exportProgress.value = 0
+  exportProgress.value = 0.01
   const unsub = window.studio.onTimelineExportProgress(({ progress }) => {
-    exportProgress.value = progress
+    exportProgress.value = Math.max(exportProgress.value, progress)
   })
   try {
-    const exportClips: TimelineExportClip[] = clips.value
-      .filter((c) => !hiddenTracks.value.has(c.track))
-      .map((c) => ({
-        track: c.track,
-        relativePath: resolveClipRelativePath(c),
-        text: c.text,
-        title: c.title,
-        startSec: c.startSec,
-        durationSec: c.durationSec,
-        ...(sourceOffsetOf(c) > 0 ? { sourceOffsetSec: sourceOffsetOf(c) } : {}),
-        speed: c.speed,
-        freezeTailSec: c.freezeTailSec,
-        brightness: c.brightness,
-        contrast: c.contrast,
-        saturation: c.saturation,
-        vibrance: c.vibrance,
-        temperature: c.temperature,
-        tint: c.tint,
-        highlights: c.highlights,
-        shadows: c.shadows,
-        sharpen: c.sharpen,
-        vignette: c.vignette,
-        fade: c.fade,
-        grain: c.grain,
-        filterPreset: c.filterPreset,
-        filterIntensity: c.filterIntensity,
-        visualEffect: c.visualEffect,
-        effectIntensity: c.effectIntensity,
-        textColor: c.textColor,
-        fontSize: c.fontSize,
-        volume: c.volume,
-        fadeInSec: c.fadeInSec,
-        fadeOutSec: c.fadeOutSec,
-        overlayX: c.overlayX,
-        overlayY: c.overlayY,
-        overlayWidth: c.overlayWidth,
-        overlayHeight: c.overlayHeight,
-        overlayRotation: c.overlayRotation,
-        cropX: c.cropX,
-        cropY: c.cropY,
-        cropWidth: c.cropWidth,
-        cropHeight: c.cropHeight,
-        opacity: c.opacity,
-        tweenIn: c.tweenIn,
-        tweenInDurationSec: c.tweenInDurationSec,
-        tweenInEase: c.tweenInEase,
-        tweenOut: c.tweenOut,
-        tweenOutDurationSec: c.tweenOutDurationSec,
-        tweenOutEase: c.tweenOutEase,
-        tweenLoop: c.tweenLoop,
-        tweenLoopSpeedHz: c.tweenLoopSpeedHz,
-        tweenLoopIntensity: c.tweenLoopIntensity,
-        keyframes: c.keyframes,
-        cameraMotion: c.cameraMotion,
-        stickerId: c.stickerId,
-        stickerColor: c.stickerColor,
-        transitionInSec: c.transitionInSec,
-        transitionOutSec: c.transitionOutSec,
-        transitionType: c.transitionType
-      }))
+    const preClips = clips.value.filter((c) => /^clip:auto:pre:\d+:/.test(c.id))
+    const hasAutoNarration = clips.value.some(
+      (c) =>
+        c.id.startsWith('clip:auto:narr:') ||
+        c.id.startsWith('clip:auto:dlg:') ||
+        (c.track === 'voice' &&
+          c.id.startsWith('clip:auto:a:') &&
+          !/环境音|sfx/i.test(`${c.title ?? ''} ${c.relativePath ?? ''}`)) // cjk-ok
+    )
+    if (
+      preClips.length > 0 &&
+      !hasAutoNarration &&
+      typeof window.studio?.generateSpeech === 'function'
+    ) {
+      const nextClips = clips.value.map((c) => {
+        if (
+          c.track === 'voice' &&
+          c.id.startsWith('clip:auto:a:') &&
+          /环境音|sfx/i.test(`${c.title ?? ''} ${c.relativePath ?? ''}`) // cjk-ok
+        ) {
+          return { ...c, track: 'sfx' as const, lane: 1, volume: 0.48 }
+        }
+        return c
+      })
+      let addedNarration = false
+      for (const preClip of preClips) {
+        const m = preClip.id.match(/^clip:auto:pre:(\d+):(.+)$/)
+        if (!m) continue
+        const actIdx = Number(m[1])
+        const stamp = m[2]!
+        const plan = parseActSceneSubtitlePlan({ actIndex: actIdx })
+        const mainVid = nextClips.find((c) => c.id.startsWith(`clip:auto:v:${actIdx}:`))
+        const actEndSec = mainVid ? mainVid.startSec + mainVid.durationSec : preClip.startSec + 10
+        const narrStart = Math.round((preClip.startSec + 0.15) * 100) / 100
+        const narrDur = Math.min(
+          4.2,
+          Math.max(2.8, Math.round((actEndSec - narrStart - 4.0) * 100) / 100)
+        )
+        // 若原 voice 轨上存在同幕环境音片段，迁移到 sfx 轨避免与画面解说旁白冲突
+        for (let ci = 0; ci < nextClips.length; ci++) {
+          const item = nextClips[ci]!
+          if (item.track === 'voice' && item.id.startsWith(`clip:auto:a:${actIdx}:`)) {
+            nextClips[ci] = { ...item, track: 'sfx', lane: 1, volume: 0.48 }
+          }
+        }
+        try {
+          const ttsRes = await window.studio.generateSpeech({
+            input: plan.narrationText,
+            voice: 'onyx',
+            name: `narration_act${actIdx + 1}`
+          })
+          if (ttsRes?.relativePath?.trim()) {
+            nextClips.push({
+              id: `clip:auto:narr:${actIdx}:${stamp}`,
+              track: 'voice',
+              sourceId: ttsRes.assetId?.trim() || ttsRes.relativePath.trim(),
+              title: `${plan.sceneTitle} · 画面解说旁白`, // cjk-ok
+              text: plan.narrationText,
+              relativePath: ttsRes.relativePath.trim(),
+              ...(ttsRes.assetId?.trim() ? { assetId: ttsRes.assetId.trim() } : {}),
+              startSec: narrStart,
+              durationSec: narrDur,
+              volume: 1
+            })
+            addedNarration = true
+          }
+        } catch {
+          // 未配置 TTS 模型时跳过旁白配音合成，保留解说字幕继续导出
+        }
+      }
+      if (addedNarration) {
+        clips.value = nextClips
+        mixAutoDucking.value = true
+      }
+    }
+    await persist()
+    exportProgress.value = Math.max(exportProgress.value, 0.02)
+    const exportClips: TimelineExportClip[] = await Promise.all(
+      clips.value
+        .filter((c) => !hiddenTracks.value.has(c.track))
+        .map(async (c): Promise<TimelineExportClip> => {
+          const stickerPngDataUrl = c.stickerId
+            ? ((await rasterizeTimelineStickerSvgToPngDataUrl(c.stickerId, {
+                text: c.text || c.title,
+                color: c.stickerColor
+              })) ?? undefined)
+            : undefined
+          return {
+            track: c.track,
+            ...(c.lane && c.lane > 0 ? { lane: c.lane } : {}),
+            relativePath: resolveClipRelativePath(c),
+            text: c.text,
+            title: c.title,
+            startSec: c.startSec,
+            durationSec: c.durationSec,
+            ...(sourceOffsetOf(c) > 0 ? { sourceOffsetSec: sourceOffsetOf(c) } : {}),
+            speed: c.speed,
+            freezeTailSec: c.freezeTailSec,
+            brightness: c.brightness,
+            contrast: c.contrast,
+            saturation: c.saturation,
+            vibrance: c.vibrance,
+            temperature: c.temperature,
+            tint: c.tint,
+            highlights: c.highlights,
+            shadows: c.shadows,
+            sharpen: c.sharpen,
+            vignette: c.vignette,
+            fade: c.fade,
+            grain: c.grain,
+            filterPreset: c.filterPreset,
+            filterIntensity: c.filterIntensity,
+            visualEffect: c.visualEffect,
+            effectIntensity: c.effectIntensity,
+            textColor: c.textColor,
+            fontSize: c.fontSize,
+            volume: c.volume,
+            fadeInSec: c.fadeInSec,
+            fadeOutSec: c.fadeOutSec,
+            overlayX: c.overlayX,
+            overlayY: c.overlayY,
+            overlayWidth: c.overlayWidth,
+            overlayHeight: c.overlayHeight,
+            overlayRotation: c.overlayRotation,
+            cropX: c.cropX,
+            cropY: c.cropY,
+            cropWidth: c.cropWidth,
+            cropHeight: c.cropHeight,
+            opacity: c.opacity,
+            tweenIn: c.tweenIn,
+            tweenInDurationSec: c.tweenInDurationSec,
+            tweenInEase: c.tweenInEase,
+            tweenOut: c.tweenOut,
+            tweenOutDurationSec: c.tweenOutDurationSec,
+            tweenOutEase: c.tweenOutEase,
+            tweenLoop: c.tweenLoop,
+            tweenLoopSpeedHz: c.tweenLoopSpeedHz,
+            tweenLoopIntensity: c.tweenLoopIntensity,
+            keyframes: c.keyframes?.length ? toPlain(c.keyframes) : undefined,
+            cameraMotion: c.cameraMotion,
+            stickerId: c.stickerId,
+            stickerColor: c.stickerColor,
+            stickerPngDataUrl,
+            transitionInSec: c.transitionInSec,
+            transitionOutSec: c.transitionOutSec,
+            transitionType: c.transitionType
+          }
+        })
+    )
     const defaultFileName = `cut-${Date.now()}.mp4`
-    let result = await window.studio.exportScriptTimeline({
-      clips: exportClips,
-      durationSec: totalDuration.value,
-      playbackRate: playbackRate.value,
-      width: exportWidth.value,
-      height: exportHeight.value,
-      fps: exportFps.value,
-      videoBitrateKbps: exportVideoBitrateKbps.value,
-      scaleMode: scaleMode.value,
-      subtitleFontSize: subtitleFontSize.value,
-      subtitleYOffset: subtitleYOffset.value,
-      subtitleColor: subtitleColor.value,
-      subtitleBorderColor: subtitleBorderColor.value,
-      subtitleBorderWidth: subtitleBorderWidth.value,
-      subtitleBoxEnabled: subtitleBoxEnabled.value,
-      subtitleBoxColor: subtitleBoxColor.value,
-      subtitleBoxOpacity: subtitleBoxOpacity.value,
-      subtitleMotion: subtitleMotion.value,
-      mixGains: toRaw(mixGains.value),
-      mixMasterGain: mixMasterGain.value,
-      mixBassGainDb: mixBassGainDb.value,
-      mixTrebleGainDb: mixTrebleGainDb.value,
-      mixCompression: mixCompression.value,
-      mixAutoDucking: mixAutoDucking.value,
-      mixDuckingRatio: mixDuckingRatio.value,
-      mixLoudnorm: mixLoudnorm.value,
-      mutedTracks: [...mutedTracks.value],
-      watermarkSrc: watermarkEnabled.value && watermarkSrc.value ? watermarkSrc.value : undefined,
-      watermarkOpacity: watermarkOpacity.value,
-      watermarkScale: watermarkScale.value,
-      watermarkPosition: watermarkPosition.value,
-      defaultFileName
-    })
+    exportProgress.value = Math.max(exportProgress.value, 0.03)
+    let result = await window.studio.exportScriptTimeline(
+      toPlain({
+        clips: exportClips,
+        durationSec: totalDuration.value,
+        playbackRate: playbackRate.value,
+        width: exportWidth.value,
+        height: exportHeight.value,
+        fps: exportFps.value,
+        videoBitrateKbps: exportVideoBitrateKbps.value,
+        scaleMode: scaleMode.value,
+        subtitleFontSize: subtitleFontSize.value,
+        subtitleYOffset: subtitleYOffset.value,
+        subtitleColor: subtitleColor.value,
+        subtitleBorderColor: subtitleBorderColor.value,
+        subtitleBorderWidth: subtitleBorderWidth.value,
+        subtitleBoxEnabled: subtitleBoxEnabled.value,
+        subtitleBoxColor: subtitleBoxColor.value,
+        subtitleBoxOpacity: subtitleBoxOpacity.value,
+        subtitleMotion: subtitleMotion.value,
+        mixGains: toRaw(mixGains.value),
+        mixMasterGain: mixMasterGain.value,
+        mixBassGainDb: mixBassGainDb.value,
+        mixTrebleGainDb: mixTrebleGainDb.value,
+        mixCompression: mixCompression.value,
+        mixAutoDucking: mixAutoDucking.value,
+        mixDuckingRatio: mixDuckingRatio.value,
+        mixLoudnorm: mixLoudnorm.value,
+        mutedTracks: [...mutedTracks.value],
+        watermarkSrc: watermarkEnabled.value && watermarkSrc.value ? watermarkSrc.value : undefined,
+        watermarkOpacity: watermarkOpacity.value,
+        watermarkScale: watermarkScale.value,
+        watermarkPosition: watermarkPosition.value,
+        defaultFileName
+      })
+    )
 
     const needFallback =
       !result.ok && !result.canceled && /ffmpeg|ENOENT|not found|无法启动/i.test(result.error) // cjk-ok 跨语言错误兜底匹配（须含中英特征词）
@@ -13182,6 +13554,8 @@ defineExpose({ flushSave: persist, reloadSources })
 }
 
 .export-btn {
+  position: relative;
+  overflow: hidden;
   margin-left: 4px;
   height: 26px;
   padding: 0 10px;
@@ -13193,6 +13567,25 @@ defineExpose({ flushSave: persist, reloadSources })
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.export-btn.is-exporting:disabled {
+  opacity: 0.92;
+}
+
+.export-btn-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--on-accent) 24%, transparent);
+  transition: width 0.22s ease-out;
+  pointer-events: none;
+}
+
+.export-btn-label {
+  position: relative;
+  z-index: 1;
 }
 
 .export-btn:disabled {
@@ -13220,6 +13613,69 @@ defineExpose({ flushSave: persist, reloadSources })
   border-radius: 10px;
   background: var(--bg-elevated);
   box-shadow: 0 12px 32px var(--shadow);
+}
+
+.export-progress-mask {
+  z-index: 25;
+  backdrop-filter: blur(2px);
+}
+
+.export-progress-panel {
+  width: min(340px, calc(100% - 32px));
+  gap: 12px;
+}
+
+.export-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.export-progress-pct {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+.export-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(128, 128, 128, 0.18);
+  overflow: hidden;
+}
+
+.export-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    rgba(250, 204, 21, 0.92) 50%,
+    var(--accent) 100%
+  );
+  background-size: 200% 100%;
+  animation: export-progress-shimmer 1.6s linear infinite;
+  transition: width 0.25s ease-out;
+}
+
+@keyframes export-progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.export-progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .export-settings-title {
@@ -13841,6 +14297,16 @@ defineExpose({ flushSave: persist, reloadSources })
 .track-state-btn:hover {
   background: var(--bg-hover);
   color: var(--text);
+}
+
+.track-lane-btn {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.extra-lane-subtitle {
+  pointer-events: none;
 }
 
 .track-collapse-btn {

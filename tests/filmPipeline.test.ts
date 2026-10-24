@@ -884,4 +884,80 @@ describe('film workbench dive & soft resolve wiring', () => {
       'S02-02'
     ])
   })
+
+  it('controls 3D white-box previz video reference (@2) via filmRenderPrevizVideoRef toggle and MCP smartPatch', async () => {
+    const { mergeSmartNodeParams } = await import('../src/shared/graph/smartPatch')
+    const docWithPreviz = parseFilmStoryboard({
+      title: '白模视频开关测试',
+      style: '写实',
+      scenes: [{ id: 'scene-1', heading: '走廊', location: '走廊' }],
+      shots: [
+        {
+          id: 'S01-01',
+          sceneId: 'scene-1',
+          location: '走廊',
+          characters: [],
+          action: '向前推进',
+          imagePrompt: '走廊镜头',
+          videoPrompt: '平稳推进镜头',
+          media: {
+            previzKeyframe: 'Previz/S01-01-kf.png',
+            previzVideo: 'Previz/S01-01-vid.webm'
+          }
+        }
+      ]
+    })!
+
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,S0Y='],
+      model: 'img'
+    }))
+    const generateVideo = vi.fn(async () => ({
+      videos: ['data:video/mp4;base64,VklE'],
+      model: 'vid'
+    }))
+    const saveRunMedia = vi.fn(
+      async ({ key, ext }: { key: string; ext?: string }) => `Film/${key}.${ext || 'png'}`
+    )
+    const resolveImageUrls = vi.fn(
+      async (items: Array<{ dataUrl?: string; relativePath?: string }>) =>
+        items.map((item) => item.dataUrl || `file://${item.relativePath}`)
+    )
+
+    // 1) 默认开启（filmRenderPrevizVideoRef = true）：传入 @2 video_url 参考
+    const nodeDefault = createNodeFromType(
+      'film.render',
+      { x: 0, y: 0 },
+      { params: { filmRenderMode: 'video' } }
+    )
+    expect(nodeDefault.params.filmRenderPrevizVideoRef).toBe(true)
+    await executeFilmRenderNode(
+      ctxFor(
+        nodeDefault,
+        { in: [filmStoryboardValue(docWithPreviz)] },
+        { generateImage, generateVideo, saveRunMedia, resolveImageUrls }
+      )
+    )
+    expect(generateVideo).toHaveBeenCalledTimes(1)
+    expect(generateVideo.mock.calls[0][0].inputReferences).toEqual([
+      { kind: 'image_url', url: expect.stringMatching(/^file:\/\/Film\//) },
+      { kind: 'video_url', url: 'Previz/S01-01-vid.webm' }
+    ])
+
+    // 2) 通过 MCP smartPatch（如对话指令「关闭参考3D白模视频」）设为 false：仅用首帧图，不传 @2 video_url
+    generateVideo.mockClear()
+    nodeDefault.params = mergeSmartNodeParams(nodeDefault, { 参考3D白模视频: false })
+    expect(nodeDefault.params.filmRenderPrevizVideoRef).toBe(false)
+
+    await executeFilmRenderNode(
+      ctxFor(
+        nodeDefault,
+        { in: [filmStoryboardValue(docWithPreviz)] },
+        { generateImage, generateVideo, saveRunMedia, resolveImageUrls }
+      )
+    )
+    expect(generateVideo).toHaveBeenCalledTimes(1)
+    expect(generateVideo.mock.calls[0][0].inputReferences).toBeUndefined()
+    expect(generateVideo.mock.calls[0][0].firstFrameImageUrl).toMatch(/^file:\/\/Film\//)
+  })
 })

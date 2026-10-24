@@ -38,7 +38,7 @@ import {
   hasMatteMask,
   readImageMatteFromNode
 } from '../imageMatte'
-import { readImageCropFromNode } from '../imageCrop'
+import { normalizeImageCrop, readImageCropFromNode, type ImageCropState } from '../imageCrop'
 import { readImageGridSplitFromNode, resolveGridSplitTargets } from '../imageGridSplit'
 import {
   autoGroupLayersForGameUi,
@@ -932,7 +932,204 @@ export async function executeMatteNode(
 }
 
 /**
- * 裁剪：本地按归一化框裁出图片（不调模型）。
+ * 从 Base64 Data URL 头部快速探测图像真实宽高（支持 PNG IHDR、JPEG SOF0~SOF3、WebP VP8/VP8L/VP8X），
+ * 用于超宽幅古画手卷（如 4:1 ~ 12:1）的物理宽高比感知裁剪。
+ */
+export function probeImageDimensionsFromDataUrl(
+  dataUrl: string | undefined
+): { width: number; height: number } | null {
+  if (!dataUrl || typeof dataUrl !== 'string') return null
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx < 0 || !dataUrl.slice(0, commaIdx).includes('base64')) return null
+  const b64Head = dataUrl.slice(commaIdx + 1, commaIdx + 1 + 8192).replace(/\s+/g, '')
+  if (b64Head.length < 32) return null
+  let bytes: Uint8Array
+  try {
+    if (typeof Buffer !== 'undefined') {
+      bytes = new Uint8Array(Buffer.from(b64Head, 'base64'))
+    } else if (typeof atob === 'function') {
+      const bin = atob(b64Head)
+      bytes = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    } else {
+      return null
+    }
+  } catch {
+    return null
+  }
+  if (bytes.length < 24) return null
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A + IHDR (width @ 16..19, height @ 20..23)
+  if (
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[12] === 0x49 &&
+    bytes[13] === 0x48 &&
+    bytes[14] === 0x44 &&
+    bytes[15] === 0x52
+  ) {
+    const width = ((bytes[16]! << 24) >>> 0) + (bytes[17]! << 16) + (bytes[18]! << 8) + bytes[19]!
+    const height = ((bytes[20]! << 24) >>> 0) + (bytes[21]! << 16) + (bytes[22]! << 8) + bytes[23]!
+    return width > 0 && height > 0 ? { width, height } : null
+  }
+
+  // JPEG: FF D8 ... SOF0/SOF1/SOF2 (FF C0..C3)
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let offset = 2
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) {
+        offset++
+        continue
+      }
+      const marker = bytes[offset + 1]!
+      if (marker === 0xff) {
+        offset++
+        continue
+      }
+      if (marker >= 0xc0 && marker <= 0xc3) {
+        const height = (bytes[offset + 5]! << 8) | bytes[offset + 6]!
+        const width = (bytes[offset + 7]! << 8) | bytes[offset + 8]!
+        return width > 0 && height > 0 ? { width, height } : null
+      }
+      const segLen = (bytes[offset + 2]! << 8) | bytes[offset + 3]!
+      if (segLen < 2) break
+      offset += 2 + segLen
+    }
+  }
+
+  // WebP: RIFF....WEBP
+  if (
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50 &&
+    bytes.length >= 30
+  ) {
+    const chunk = String.fromCharCode(bytes[12]!, bytes[13]!, bytes[14]!, bytes[15]!)
+    if (chunk === 'VP8X') {
+      const width = 1 + (bytes[24]! | (bytes[25]! << 8) | (bytes[26]! << 16))
+      const height = 1 + (bytes[27]! | (bytes[28]! << 8) | (bytes[29]! << 16))
+      return width > 0 && height > 0 ? { width, height } : null
+    }
+    if (chunk === 'VP8L' && bytes[20] === 0x2f) {
+      const b0 = bytes[21]!
+      const b1 = bytes[22]!
+      const b2 = bytes[23]!
+      const b3 = bytes[24]!
+      const width = 1 + (b0 | ((b1 & 0x3f) << 8))
+      const height = 1 + ((b1 >> 6) | (b2 << 2) | ((b3 & 0x0f) << 10))
+      return width > 0 && height > 0 ? { width, height } : null
+    }
+  }
+
+  return null
+}
+
+async function detectSmartCropRegionViaVlmIfAvailable(
+  ctx: NodeExecuteContext,
+  sourceUrl: string,
+  baseCrop: ImageCropState
+): Promise<{
+  crop: ImageCropState
+  sceneName?: string
+  sceneSummary?: string
+  culture?: 'chinese' | 'western'
+}> {
+  const nodeTitle = ctx.node.title?.trim() ?? ''
+  const rawInstruction = ctx.node.params.generateInstruction?.trim() ?? ''
+  const isScrollFramingNode = /古画取景|入画取景|选区镜头|名画取景/.test(nodeTitle) // cjk-ok
+  const instruction =
+    rawInstruction ||
+    (isScrollFramingNode
+      ? `识别画作选区（${nodeTitle}），自动判别中式古画或西洋名画构图，根据画面实际人物分布、建筑/空间透视与叙事重心，灵活调整最佳 16:9 中景/中近景取景框（兼顾人物神态动作完整度与周围环境氛围，不死板固定大小），提炼典雅场景名与画面解说` // cjk-ok
+      : '')
+  if (!instruction || !ctx.generateText || !sourceUrl) {
+    return { crop: baseCrop }
+  }
+  try {
+    const actMatch = nodeTitle.match(/(?:第\s*)?(\d+)\s*幕|(?:分镜|镜头|Shot|Act)\s*#?(\d+)/i) // cjk-ok
+    const actNum = actMatch ? Number(actMatch[1] ?? actMatch[2]) : null
+    const actPrefix = actNum !== null ? `第${actNum}幕` : '' // cjk-ok
+    const dims = probeImageDimensionsFromDataUrl(sourceUrl)
+    const srcAspect = dims && dims.width > 0 && dims.height > 0 ? dims.width / dims.height : null
+    const aspectHint =
+      dims && srcAspect
+        ? ` Source scroll physical dimensions: ${dims.width}x${dims.height} (aspect ratio ${srcAspect.toFixed(2)}:1).`
+        : ''
+    const system =
+      'You are an expert film director and global art historian (covering both Chinese handscroll paintings and Western oil/fresco masterpieces). First identify the painting tradition ("culture": "chinese" for Chinese/Eastern ink & color paintings, or "western" for Western oil paintings, frescoes, Renaissance/Baroque/Impressionist works). For Chinese handscrolls, follow right-to-left narrative flow; for Western single-canvas masterpieces, follow focal-perspective narrative flow (Act 1: foreground/left wing ensemble -> Act 2: central focal protagonists -> Act 3: right wing/background depth). Flexibly select the most natural 16:9 medium or medium-close-up camera framing region (adjust cropW between 0.18 and 0.48 and cropH between 0.50 and 0.88 so figures and key props are framed harmoniously without cutting off heads or actions). Name the scene with a poetic 4-to-6 character Chinese title. Output ONLY valid JSON: {"culture": "chinese", "sceneName": "场景名", "cropX": 0.0, "cropY": 0.12, "cropW": 0.28, "cropH": 0.72, "sceneSummary": "画面主体人物交谈动作与艺术史场景解说简述"} where cropX, cropY, cropW, cropH are normalized [0, 1] coordinates.' // cjk-ok
+    const prompt = `${instruction}${aspectHint}\nDefault reference window: cropX=${baseCrop.cropX.toFixed(2)}, cropY=${baseCrop.cropY.toFixed(2)}, cropW=${baseCrop.cropW.toFixed(2)}, cropH=${baseCrop.cropH.toFixed(2)}. Return JSON only.`
+    const visionModel =
+      ctx.node.params.visionModel?.trim() || ctx.node.params.generateModel?.trim() || undefined
+    const visionProviderInstanceId =
+      ctx.node.params.visionProviderInstanceId?.trim() ||
+      ctx.node.params.generateProviderInstanceId?.trim() ||
+      undefined
+    const res = await ctx.generateText({
+      prompt,
+      system,
+      images: [sourceUrl],
+      visionGrounding: true,
+      ...(visionModel ? { model: visionModel } : {}),
+      ...(visionProviderInstanceId ? { providerInstanceId: visionProviderInstanceId } : {})
+    })
+    const raw = res?.text?.trim() ?? ''
+    if (!raw) return { crop: baseCrop }
+    const jsonMatch = raw.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return { crop: baseCrop }
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+    let rawX = Number.isFinite(Number(parsed.cropX)) ? Number(parsed.cropX) : baseCrop.cropX
+    const rawY = Number.isFinite(Number(parsed.cropY)) ? Number(parsed.cropY) : baseCrop.cropY
+    let rawW = Number.isFinite(Number(parsed.cropW)) ? Number(parsed.cropW) : baseCrop.cropW
+    const rawH = Number.isFinite(Number(parsed.cropH)) ? Number(parsed.cropH) : baseCrop.cropH
+
+    // 超宽幅手卷（物理宽高比 > 2.2:1）下，按 16:9 物理取景窗约束归一化宽度，防止裁出过度扁长的宽条而引发人物挤压变形
+    if (srcAspect !== null && srcAspect > 2.2) {
+      const clampedH = Math.min(1, Math.max(0.2, rawH))
+      const idealW = (clampedH * (16 / 9)) / srcAspect
+      const minW = Math.max(0.06, idealW * 0.72)
+      const maxW = Math.min(0.45, idealW * 1.35)
+      if (rawW < minW || rawW > maxW) {
+        const centerX = rawX + rawW / 2
+        rawW = Math.min(maxW, Math.max(minW, rawW))
+        rawX = Math.min(1 - rawW, Math.max(0, centerX - rawW / 2))
+      }
+    }
+
+    const nextCrop = normalizeImageCrop({
+      ...baseCrop,
+      cropX: rawX,
+      cropY: rawY,
+      cropW: rawW,
+      cropH: rawH
+    })
+    const rawScene = typeof parsed.sceneName === 'string' ? parsed.sceneName.trim() : ''
+    let sceneName: string | undefined
+    if (rawScene) {
+      const cleaned = rawScene.replace(/^【|】$/g, '').trim()
+      sceneName = actPrefix && !cleaned.includes(actPrefix) ? `${actPrefix} · ${cleaned}` : cleaned
+    }
+    const sceneSummary =
+      typeof parsed.sceneSummary === 'string' && parsed.sceneSummary.trim()
+        ? parsed.sceneSummary.trim()
+        : undefined
+    const rawCulture = typeof parsed.culture === 'string' ? parsed.culture.trim().toLowerCase() : ''
+    const culture: 'chinese' | 'western' | undefined =
+      rawCulture === 'western' ? 'western' : rawCulture === 'chinese' ? 'chinese' : undefined
+    return { crop: nextCrop, sceneName, sceneSummary, ...(culture ? { culture } : {}) }
+  } catch {
+    return { crop: baseCrop }
+  }
+}
+
+/**
+ * 裁剪：本地按归一化框裁出图片；若配置了 generateInstruction 且存在多模态视觉模型，则先识图定位最佳选区并提炼场景名。
  */
 export async function executeCropNode(
   ctx: NodeExecuteContext
@@ -942,7 +1139,7 @@ export async function executeCropNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
 
-  const crop = readImageCropFromNode(ctx.node.params)
+  const baseCrop = readImageCropFromNode(ctx.node.params)
 
   let sourceUrls: string[] = []
   if (ctx.resolveImageUrls) {
@@ -973,15 +1170,42 @@ export async function executeCropNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
+  const vlmDetected = await detectSmartCropRegionViaVlmIfAvailable(ctx, sourceUrls[0]!, baseCrop)
+  const crop = vlmDetected.crop
+  const recognizedTitle = vlmDetected.sceneName || ctx.node.title?.trim() || undefined
+  if (vlmDetected.sceneName) {
+    ctx.node.title = vlmDetected.sceneName
+  }
+
+  const recognizedText =
+    vlmDetected.sceneName && vlmDetected.sceneSummary
+      ? `【${vlmDetected.sceneName}】${vlmDetected.sceneSummary}`
+      : vlmDetected.sceneSummary || (vlmDetected.sceneName ? `【${vlmDetected.sceneName}】` : '')
+
   if (!ctx.composeImageCropCanvas) {
     // 无合成注入时透传，便于离线
     const picked = sourceItems[0]!
-    ctx.node.params = { ...ctx.node.params, imageCrop: crop }
-    ctx.patchNode?.({ params: { imageCrop: crop } })
+    const extraParams: Record<string, unknown> = {
+      imageCrop: crop,
+      ...(recognizedText ? { text: recognizedText } : {}),
+      ...(vlmDetected.culture ? { paintingCulture: vlmDetected.culture } : {})
+    }
+    ctx.node.params = { ...ctx.node.params, ...extraParams }
+    ctx.patchNode?.({
+      ...(vlmDetected.sceneName ? { title: vlmDetected.sceneName } : {}),
+      params: extraParams
+    })
     return commitGeneratedImages(
       ctx,
-      [{ ...picked, id: picked.id?.trim() || 'passthrough:0' }],
-      picked.relativePath?.trim()
+      [
+        {
+          ...picked,
+          id: picked.id?.trim() || 'passthrough:0',
+          ...(recognizedTitle ? { title: recognizedTitle } : {})
+        }
+      ],
+      picked.relativePath?.trim(),
+      extraParams
     )
   }
 
@@ -1001,6 +1225,7 @@ export async function executeCropNode(
   const stamp = Date.now()
   const item: GraphImageItem = {
     id: `crop:${ctx.node.id}:${stamp}`,
+    ...(recognizedTitle ? { title: recognizedTitle } : {}),
     dataUrl: composed.dataUrl,
     createdAt
   }
@@ -1017,9 +1242,20 @@ export async function executeCropNode(
     materializedBatch,
     `crop:${ctx.node.id}:${stamp}:keep`
   )
-  return commitGeneratedImages(ctx, generatedImages, materializedBatch[0]?.relativePath?.trim(), {
-    imageCrop: crop
-  })
+  const extraParams: Record<string, unknown> = {
+    imageCrop: crop,
+    ...(recognizedText ? { text: recognizedText } : {}),
+    ...(vlmDetected.culture ? { paintingCulture: vlmDetected.culture } : {})
+  }
+  if (vlmDetected.sceneName) {
+    ctx.patchNode?.({ title: vlmDetected.sceneName })
+  }
+  return commitGeneratedImages(
+    ctx,
+    generatedImages,
+    materializedBatch[0]?.relativePath?.trim(),
+    extraParams
+  )
 }
 
 /**

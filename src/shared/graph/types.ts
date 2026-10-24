@@ -1321,6 +1321,8 @@ export interface GraphNodeParams {
   filmRenderOnlyShotId?: string
   /** 批量拍摄：同场相邻镜头衔接（默认开启：注入上一镜动作/光影上下文并将上一镜关键帧作为参考图） */
   filmRenderContinuity?: boolean
+  /** 批量拍摄：生成视频时是否参考 3D 白模运镜视频（@2，默认开启；关闭后生视频仅用 @1 写实首帧图） */
+  filmRenderPrevizVideoRef?: boolean
   /** 批量拍摄：关键帧视觉质检（不合格自动重拍） */
   filmRenderQc?: boolean
   /** 批量拍摄：单镜最大重拍次数 */

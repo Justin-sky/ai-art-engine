@@ -160,7 +160,18 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   adVariants: 'adVariantMatrix',
   html: 'gamePlayHtml',
   svg: 'svgText',
-  code: 'scriptCode'
+  code: 'scriptCode',
+  previzVideoRef: 'filmRenderPrevizVideoRef',
+  previz_video_ref: 'filmRenderPrevizVideoRef',
+  usePrevizVideo: 'filmRenderPrevizVideoRef',
+  use_previz_video: 'filmRenderPrevizVideoRef',
+  usePrevizVideoRef: 'filmRenderPrevizVideoRef',
+  参考白模视频: 'filmRenderPrevizVideoRef',
+  白模视频参考: 'filmRenderPrevizVideoRef',
+  参考3d白模视频: 'filmRenderPrevizVideoRef',
+  参考3D白模视频: 'filmRenderPrevizVideoRef',
+  '3d白模视频参考': 'filmRenderPrevizVideoRef',
+  '3D白模视频参考': 'filmRenderPrevizVideoRef'
 }
 
 /** 常见中文/口语枚举值到标准枚举值的映射 */

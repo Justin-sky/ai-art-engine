@@ -15,6 +15,7 @@ import {
 } from 'fs'
 import { tmpdir } from 'os'
 import { join, basename, dirname, extname } from 'path'
+import { PNG } from 'pngjs'
 import {
   buildClipVisualFfmpegFilter,
   buildMainClipCameraFfmpegFilter,
@@ -22,7 +23,7 @@ import {
   clampClipFreezeTailSec,
   clampClipSpeed,
   normalizeClipCropRect,
-  renderTimelineBuiltinStickerSvg,
+  normalizeClipLane,
   type ScriptTimelineScaleMode,
   type ScriptTimelineTrackKind,
   type TimelineExportClip,
@@ -223,41 +224,348 @@ async function probeAudioPathsForTimeline(
   return audioPaths
 }
 
+function parseHexRgb(
+  hex: string | undefined,
+  fallback: [number, number, number]
+): [number, number, number] {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(String(hex ?? '').trim())
+  if (!m) return fallback
+  const n = parseInt(m[1]!, 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+function blendPixel(
+  png: PNG,
+  x: number,
+  y: number,
+  r: number,
+  g: number,
+  b: number,
+  alpha: number
+): void {
+  if (x < 0 || y < 0 || x >= png.width || y >= png.height || alpha <= 0) return
+  const a = Math.min(1, Math.max(0, alpha))
+  const idx = (png.width * y + x) << 2
+  const dstA = png.data[idx + 3]! / 255
+  const outA = a + dstA * (1 - a)
+  if (outA <= 1e-4) return
+  png.data[idx] = Math.round((r * a + png.data[idx]! * dstA * (1 - a)) / outA)
+  png.data[idx + 1] = Math.round((g * a + png.data[idx + 1]! * dstA * (1 - a)) / outA)
+  png.data[idx + 2] = Math.round((b * a + png.data[idx + 2]! * dstA * (1 - a)) / outA)
+  png.data[idx + 3] = Math.round(outA * 255)
+}
+
+function drawThickLine(
+  png: PNG,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  radius: number,
+  rgb: [number, number, number],
+  alpha = 1
+): void {
+  const minX = Math.max(0, Math.floor(Math.min(x0, x1) - radius - 1))
+  const maxX = Math.min(png.width - 1, Math.ceil(Math.max(x0, x1) + radius + 1))
+  const minY = Math.max(0, Math.floor(Math.min(y0, y1) - radius - 1))
+  const maxY = Math.min(png.height - 1, Math.ceil(Math.max(y0, y1) + radius + 1))
+  const vx = x1 - x0
+  const vy = y1 - y0
+  const lenSq = vx * vx + vy * vy
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const t = lenSq > 1e-4 ? Math.max(0, Math.min(1, ((x - x0) * vx + (y - y0) * vy) / lenSq)) : 0
+      const px = x0 + t * vx
+      const py = y0 + t * vy
+      const dist = Math.hypot(x - px, y - py)
+      if (dist <= radius + 1) {
+        const cov = Math.max(0, Math.min(1, radius + 0.5 - dist))
+        blendPixel(png, x, y, rgb[0], rgb[1], rgb[2], alpha * cov)
+      }
+    }
+  }
+}
+
+function drawCircleRing(
+  png: PNG,
+  cx: number,
+  cy: number,
+  r: number,
+  thickness: number,
+  rgb: [number, number, number],
+  alpha = 1,
+  filled = false
+): void {
+  const halfT = thickness / 2
+  const outer = r + halfT + 1
+  const minX = Math.max(0, Math.floor(cx - outer))
+  const maxX = Math.min(png.width - 1, Math.ceil(cx + outer))
+  const minY = Math.max(0, Math.floor(cy - outer))
+  const maxY = Math.min(png.height - 1, Math.ceil(cy + outer))
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const d = Math.hypot(x - cx, y - cy)
+      if (filled) {
+        if (d <= r + 0.5) {
+          const cov = Math.max(0, Math.min(1, r + 0.5 - d))
+          blendPixel(png, x, y, rgb[0], rgb[1], rgb[2], alpha * cov)
+        }
+      } else {
+        const ringDist = Math.abs(d - r)
+        if (ringDist <= halfT + 0.8) {
+          const cov = Math.max(0, Math.min(1, halfT + 0.5 - ringDist))
+          blendPixel(png, x, y, rgb[0], rgb[1], rgb[2], alpha * cov)
+        }
+      }
+    }
+  }
+}
+
+/**
+ * 主进程纯 JS 矢量贴纸光栅化器（使用 pngjs 生成 32-bit RGBA PNG）：
+ * 规避 Windows/macOS 标准 FFmpeg 缺少 librsvg 解码器导致 `.svg` 输入报 `no decoder found for: svg`。
+ */
+export function renderBuiltinStickerPngBuffer(stickerId: string, customColor?: string): Buffer {
+  if (stickerId === 'viewfinder-frame') {
+    const png = new PNG({ width: 640, height: 360 })
+    const gold = parseHexRgb(customColor, [245, 158, 11])
+    const dark: [number, number, number] = [15, 23, 42]
+    const red: [number, number, number] = [239, 68, 68]
+    const corners: Array<[number, number, number, number]> = [
+      [24, 24, 1, 1],
+      [616, 24, -1, 1],
+      [616, 336, -1, -1],
+      [24, 336, 1, -1]
+    ]
+    for (const [cx, cy, dx, dy] of corners) {
+      drawThickLine(png, cx, cy, cx + dx * 68, cy, 5.5, dark, 0.72)
+      drawThickLine(png, cx, cy, cx, cy + dy * 68, 5.5, dark, 0.72)
+      drawThickLine(png, cx, cy, cx + dx * 68, cy, 3, gold, 0.96)
+      drawThickLine(png, cx, cy, cx, cy + dy * 68, 3, gold, 0.96)
+    }
+    drawCircleRing(png, 320, 180, 30, 2.5, gold, 0.88, false)
+    drawThickLine(png, 320, 136, 320, 156, 2, gold, 0.9)
+    drawThickLine(png, 320, 204, 320, 224, 2, gold, 0.9)
+    drawThickLine(png, 276, 180, 296, 180, 2, gold, 0.9)
+    drawThickLine(png, 344, 180, 364, 180, 2, gold, 0.9)
+    drawCircleRing(png, 320, 180, 3.5, 1, red, 0.95, true)
+    drawCircleRing(png, 52, 48, 5, 1, red, 0.95, true)
+    return PNG.sync.write(png)
+  }
+
+  if (stickerId === 'scroll-seal-frame') {
+    const png = new PNG({ width: 640, height: 360 })
+    const gold = parseHexRgb(customColor, [217, 119, 6])
+    const dark: [number, number, number] = [28, 25, 23]
+    const cinnabar: [number, number, number] = [185, 28, 28]
+    const ivory: [number, number, number] = [254, 243, 199]
+    const corners: Array<[number, number, number, number]> = [
+      [22, 22, 1, 1],
+      [618, 22, -1, 1],
+      [618, 338, -1, -1],
+      [22, 338, 1, -1]
+    ]
+    // 外层洒金双线回纹折角
+    for (const [cx, cy, dx, dy] of corners) {
+      drawThickLine(png, cx, cy, cx + dx * 72, cy, 4.5, dark, 0.65)
+      drawThickLine(png, cx, cy, cx, cy + dy * 72, 4.5, dark, 0.65)
+      drawThickLine(png, cx, cy, cx + dx * 72, cy, 2.4, gold, 0.96)
+      drawThickLine(png, cx, cy, cx, cy + dy * 72, 2.4, gold, 0.96)
+      // 内层回纹折角
+      const ix = cx + dx * 10
+      const iy = cy + dy * 10
+      drawThickLine(png, ix, iy + dy * 26, ix + dx * 26, iy + dy * 26, 1.4, gold, 0.82)
+      drawThickLine(png, ix + dx * 26, iy, ix + dx * 26, iy + dy * 26, 1.4, gold, 0.82)
+    }
+    // 内层细金线框
+    drawThickLine(png, 32, 32, 608, 32, 0.9, gold, 0.45)
+    drawThickLine(png, 608, 32, 608, 328, 0.9, gold, 0.45)
+    drawThickLine(png, 608, 328, 32, 328, 0.9, gold, 0.45)
+    drawThickLine(png, 32, 328, 32, 32, 0.9, gold, 0.45)
+    // 左上角朱砂闲章（42..72 x 42..88）
+    for (let y = 42; y <= 88; y++) {
+      for (let x = 42; x <= 72; x++) {
+        blendPixel(png, x, y, cinnabar[0], cinnabar[1], cinnabar[2], 0.92)
+      }
+    }
+    drawThickLine(png, 42, 42, 72, 42, 1.2, ivory, 0.9)
+    drawThickLine(png, 72, 42, 72, 88, 1.2, ivory, 0.9)
+    drawThickLine(png, 72, 88, 42, 88, 1.2, ivory, 0.9)
+    drawThickLine(png, 42, 88, 42, 42, 1.2, ivory, 0.9)
+    // 印章内篆书笔意纹饰
+    drawThickLine(png, 49, 53, 65, 53, 1.1, ivory, 0.86)
+    drawThickLine(png, 57, 48, 57, 62, 1.1, ivory, 0.86)
+    drawThickLine(png, 49, 70, 65, 70, 1.1, ivory, 0.86)
+    drawThickLine(png, 52, 70, 52, 81, 1.1, ivory, 0.86)
+    drawThickLine(png, 62, 70, 62, 81, 1.1, ivory, 0.86)
+    drawThickLine(png, 49, 81, 65, 81, 1.1, ivory, 0.86)
+    // 中心古典菱形星芒对焦游标
+    drawThickLine(png, 320, 158, 327, 180, 1.2, gold, 0.72)
+    drawThickLine(png, 327, 180, 320, 202, 1.2, gold, 0.72)
+    drawThickLine(png, 320, 202, 313, 180, 1.2, gold, 0.72)
+    drawThickLine(png, 313, 180, 320, 158, 1.2, gold, 0.72)
+    drawThickLine(png, 288, 180, 306, 180, 1.2, gold, 0.62)
+    drawThickLine(png, 334, 180, 352, 180, 1.2, gold, 0.62)
+    return PNG.sync.write(png)
+  }
+
+  if (stickerId === 'museum-gilded-frame') {
+    const png = new PNG({ width: 640, height: 360 })
+    const gold = parseHexRgb(customColor, [234, 179, 8])
+    const dark: [number, number, number] = [24, 24, 27]
+    const burgundy: [number, number, number] = [69, 10, 10]
+    const paleGold: [number, number, number] = [254, 240, 138]
+    const corners: Array<[number, number, number, number]> = [
+      [20, 20, 1, 1],
+      [620, 20, -1, 1],
+      [620, 340, -1, -1],
+      [20, 340, 1, -1]
+    ]
+    for (const [cx, cy, dx, dy] of corners) {
+      drawThickLine(png, cx, cy, cx + dx * 78, cy, 5, dark, 0.7)
+      drawThickLine(png, cx, cy, cx, cy + dy * 78, 5, dark, 0.7)
+      drawThickLine(png, cx, cy, cx + dx * 78, cy, 2.6, gold, 0.96)
+      drawThickLine(png, cx, cy, cx, cy + dy * 78, 2.6, gold, 0.96)
+      drawCircleRing(png, cx + dx * 10, cy + dy * 10, 6.5, 2, gold, 0.92, false)
+    }
+    drawThickLine(png, 30, 30, 610, 30, 1.1, gold, 0.52)
+    drawThickLine(png, 610, 30, 610, 330, 1.1, gold, 0.52)
+    drawThickLine(png, 610, 330, 30, 330, 1.1, gold, 0.52)
+    drawThickLine(png, 30, 330, 30, 30, 1.1, gold, 0.52)
+    // 左上角卢浮宫式紫红鎏金馆藏铭牌（42..168 x 40..64）
+    for (let y = 40; y <= 64; y++) {
+      for (let x = 42; x <= 168; x++) {
+        blendPixel(png, x, y, burgundy[0], burgundy[1], burgundy[2], 0.88)
+      }
+    }
+    drawThickLine(png, 42, 40, 168, 40, 1.2, gold, 0.92)
+    drawThickLine(png, 168, 40, 168, 64, 1.2, gold, 0.92)
+    drawThickLine(png, 168, 64, 42, 64, 1.2, gold, 0.92)
+    drawThickLine(png, 42, 64, 42, 40, 1.2, gold, 0.92)
+    drawThickLine(png, 56, 52, 154, 52, 1.2, paleGold, 0.8)
+    // 中心古典黄金分割圆环对焦游标
+    drawCircleRing(png, 320, 180, 22, 1.6, gold, 0.72, false)
+    drawCircleRing(png, 320, 180, 2.5, 1, gold, 0.9, true)
+    drawThickLine(png, 286, 180, 296, 180, 1.2, gold, 0.65)
+    drawThickLine(png, 344, 180, 354, 180, 1.2, gold, 0.65)
+    return PNG.sync.write(png)
+  }
+
+  const png = new PNG({ width: 256, height: 256 })
+  const white: [number, number, number] = [255, 255, 255]
+  switch (stickerId) {
+    case 'focus-circle': {
+      const col = parseHexRgb(customColor, [255, 46, 76])
+      drawCircleRing(png, 128, 128, 96, 9, col, 0.95, false)
+      drawCircleRing(png, 128, 128, 86, 4, [255, 159, 28], 0.85, false)
+      break
+    }
+    case 'arrow-pointer': {
+      const col = parseHexRgb(customColor, [255, 230, 0])
+      drawThickLine(png, 42, 42, 194, 194, 18, [17, 19, 24], 0.85)
+      drawThickLine(png, 194, 194, 194, 98, 18, [17, 19, 24], 0.85)
+      drawThickLine(png, 194, 194, 98, 194, 18, [17, 19, 24], 0.85)
+      drawThickLine(png, 42, 42, 194, 194, 12, col, 0.98)
+      drawThickLine(png, 194, 194, 194, 98, 12, col, 0.98)
+      drawThickLine(png, 194, 194, 98, 194, 12, col, 0.98)
+      break
+    }
+    case 'check-correct': {
+      const col = parseHexRgb(customColor, [16, 185, 129])
+      drawCircleRing(png, 128, 128, 102, 1, col, 0.96, true)
+      drawCircleRing(png, 128, 128, 102, 10, white, 0.98, false)
+      drawThickLine(png, 78, 131, 113, 166, 14, white, 0.98)
+      drawThickLine(png, 113, 166, 182, 93, 14, white, 0.98)
+      break
+    }
+    case 'cross-warn': {
+      const col = parseHexRgb(customColor, [239, 68, 68])
+      drawCircleRing(png, 128, 128, 102, 1, col, 0.96, true)
+      drawCircleRing(png, 128, 128, 102, 10, white, 0.98, false)
+      drawThickLine(png, 88, 88, 168, 168, 14, white, 0.98)
+      drawThickLine(png, 168, 88, 88, 168, 14, white, 0.98)
+      break
+    }
+    case 'step-badge': {
+      const col = parseHexRgb(customColor, [99, 102, 241])
+      drawCircleRing(png, 128, 128, 100, 1, col, 0.96, true)
+      drawCircleRing(png, 128, 128, 100, 11, [250, 204, 21], 0.98, false)
+      drawThickLine(png, 128, 82, 128, 174, 14, white, 0.98)
+      break
+    }
+    case 'badge-important':
+    case 'callout-bubble': {
+      const col = parseHexRgb(
+        customColor,
+        stickerId === 'badge-important' ? [255, 46, 76] : [56, 189, 248]
+      )
+      drawThickLine(png, 52, 128, 204, 128, 42, col, 0.94)
+      drawThickLine(png, 56, 128, 200, 128, 34, white, 0.22)
+      break
+    }
+    case 'sparkle-star':
+    default: {
+      const col = parseHexRgb(customColor, [250, 204, 21])
+      drawThickLine(png, 128, 24, 128, 232, 14, col, 0.96)
+      drawThickLine(png, 24, 128, 232, 128, 14, col, 0.96)
+      drawThickLine(png, 68, 68, 188, 188, 8, white, 0.9)
+      drawThickLine(png, 188, 68, 68, 188, 8, white, 0.9)
+      drawCircleRing(png, 128, 128, 24, 1, white, 0.95, true)
+      break
+    }
+  }
+  return PNG.sync.write(png)
+}
+
+function writeStickerPngFile(clip: TimelineExportClip): string | null {
+  try {
+    const rootDir = projectService.isOpen()
+      ? join(projectService.getRoot(), 'Cache', 'stickers')
+      : join(tmpdir(), 'aiart-stickers')
+    mkdirSync(rootDir, { recursive: true })
+    const rawId = (clip.stickerId && String(clip.stickerId).trim()) || 'viewfinder-frame'
+    const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const colorTag = (clip.stickerColor ?? '').replace(/[^a-zA-Z0-9]/g, '')
+    const textTag = Buffer.from(String(clip.text ?? clip.title ?? ''), 'utf-8')
+      .toString('hex')
+      .slice(0, 16)
+    const pngPath = join(rootDir, `${safeId}-${colorTag || 'def'}-${textTag || '0'}.png`)
+    const dataUrl = clip.stickerPngDataUrl?.trim() ?? ''
+    const prefix = 'data:image/png;base64,'
+    if (dataUrl.startsWith(prefix) && dataUrl.length > prefix.length + 16) {
+      writeFileSync(pngPath, Buffer.from(dataUrl.slice(prefix.length), 'base64'))
+      return pngPath
+    }
+    writeFileSync(pngPath, renderBuiltinStickerPngBuffer(rawId, clip.stickerColor))
+    return pngPath
+  } catch {
+    return null
+  }
+}
+
 function resolveClipPath(clip: TimelineExportClip): string | null {
-  if (clip.absPath && existsSync(clip.absPath)) return clip.absPath
+  if (clip.absPath && existsSync(clip.absPath)) {
+    if (/\.svg$/i.test(clip.absPath.trim())) {
+      return writeStickerPngFile(clip)
+    }
+    return clip.absPath
+  }
   const rel = clip.relativePath?.trim()
   if (rel && projectService.isOpen()) {
     try {
       const abs = join(projectService.getRoot(), rel)
-      if (existsSync(abs)) return abs
+      if (existsSync(abs)) {
+        if (/\.svg$/i.test(abs.trim())) {
+          return writeStickerPngFile(clip)
+        }
+        return abs
+      }
     } catch {
       /* fall through */
     }
   }
   if (clip.stickerId && typeof clip.stickerId === 'string' && clip.stickerId.trim()) {
-    try {
-      const rootDir = projectService.isOpen()
-        ? join(projectService.getRoot(), 'Cache', 'stickers')
-        : join(tmpdir(), 'aiart-stickers')
-      mkdirSync(rootDir, { recursive: true })
-      const safeId = clip.stickerId.trim().replace(/[^a-zA-Z0-9_-]/g, '_')
-      const colorTag = (clip.stickerColor ?? '').replace(/[^a-zA-Z0-9]/g, '')
-      const textTag = Buffer.from(String(clip.text ?? clip.title ?? ''), 'utf-8')
-        .toString('hex')
-        .slice(0, 16)
-      const svgPath = join(rootDir, `${safeId}-${colorTag || 'def'}-${textTag || '0'}.svg`)
-      writeFileSync(
-        svgPath,
-        renderTimelineBuiltinStickerSvg(clip.stickerId.trim(), {
-          text: clip.text || clip.title,
-          color: clip.stickerColor
-        }),
-        'utf-8'
-      )
-      return svgPath
-    } catch {
-      return null
-    }
+    return writeStickerPngFile(clip)
   }
   return null
 }
@@ -605,7 +913,10 @@ export function buildFilterGraph(
     }
   }
 
-  for (const clip of overlays) {
+  const orderedOverlays = [...overlays].sort(
+    (a, b) => normalizeClipLane(a.lane) - normalizeClipLane(b.lane) || a.startSec - b.startSec
+  )
+  for (const clip of orderedOverlays) {
     const dur = Math.max(0.05, clip.durationSec)
     const speed = clampClipSpeed(clip.speed)
     const freezeTail = Math.min(Math.max(0, dur - 0.05), clampClipFreezeTailSec(clip.freezeTailSec))
@@ -690,10 +1001,11 @@ export function buildFilterGraph(
     if (!lines.length) continue
     const start = Math.max(0, sub.startSec)
     const end = start + Math.max(0.05, sub.durationSec)
-    // 多行自下而上叠 + 可选淡入上滚 / 淡出动效
+    // 多行自下而上叠（多子轨 lane > 0 时自动向上偏移，避免同时间段双语/角色+注释字幕重叠）
+    const laneOffsetPx = normalizeClipLane(sub.lane) * Math.round(lineHeight * 1.65)
     for (let li = 0; li < lines.length; li++) {
       const text = escapeDrawtext(lines[li]!)
-      const fromBottom = subtitleYOffset + (lines.length - 1 - li) * lineHeight
+      const fromBottom = subtitleYOffset + laneOffsetPx + (lines.length - 1 - li) * lineHeight
       const next = `sub${i}l${li}`
       if (motionEnabled) {
         const motion = buildSubtitleDrawtextMotion({
@@ -761,6 +1073,7 @@ export function buildFilterGraph(
     mix?.mixDuckingRatio != null && Number.isFinite(mix.mixDuckingRatio)
       ? Math.min(0.8, Math.max(0.05, mix.mixDuckingRatio))
       : 0.25
+  const stemDuckRatio = Math.min(0.85, Math.max(0.38, duckRatio * 1.68))
   const duckEnableExpr =
     voiceIntervals.length > 0
       ? voiceIntervals.map(([s, e]) => `between(t\\,${s.toFixed(2)}\\,${e.toFixed(2)})`).join('+')
@@ -805,7 +1118,9 @@ export function buildFilterGraph(
       `adelay=${startMs}|${startMs}`,
       clip.track === 'music' && duckEnableExpr
         ? `volume=${duckRatio.toFixed(3)}:enable='${duckEnableExpr}'`
-        : ''
+        : (clip.track === 'video' || clip.track === 'sfx') && duckEnableExpr
+          ? `volume=${stemDuckRatio.toFixed(3)}:enable='${duckEnableExpr}'`
+          : ''
     ]
       .filter(Boolean)
       .join(',')
@@ -1040,9 +1355,12 @@ async function encodeTimeline(
   outPath: string,
   onProgress?: (ratio: number) => void
 ): Promise<void> {
+  onProgress?.(0.04)
   const audioPaths = await probeAudioPathsForTimeline(bin, input.clips)
+  onProgress?.(0.08)
   const pipeline = prepareTimelinePipeline(input, { audioPaths })
   pipeline.args.push(
+    '-stats',
     '-filter_complex',
     pipeline.filter,
     '-map',
@@ -1066,8 +1384,10 @@ async function encodeTimeline(
     outPath
   )
 
+  const totalSec = Math.max(0.1, pipeline.duration / pipeline.rate)
   await runFfmpeg(bin, pipeline.args, (sec) => {
-    onProgress?.(Math.min(0.99, sec / Math.max(0.1, pipeline.duration / pipeline.rate)))
+    const rawRatio = Math.min(1, Math.max(0, sec / totalSec))
+    onProgress?.(Math.min(0.98, 0.08 + rawRatio * 0.9))
   })
 }
 

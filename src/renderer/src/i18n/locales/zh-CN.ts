@@ -2626,7 +2626,8 @@ export default {
         panLeft: '平稳左摇 (Pan Left)',
         panRight: '平稳右摇 (Pan Right)',
         panUp: '平稳上摇 (Pan Up)',
-        panDown: '平稳下摇 (Pan Down)'
+        panDown: '平稳下摇 (Pan Down)',
+        scrollPanZoomIn: '横移长卷并推入中近景 (Scroll Pan & Push-In)'
       },
       stickerSection: '内置动态矢量贴纸',
       stickerAddHint:
@@ -2643,7 +2644,10 @@ export default {
         'cross-warn': '错误警示',
         'step-badge': '步骤序号',
         'callout-bubble': '气泡标注',
-        'sparkle-star': '高亮星芒'
+        'sparkle-star': '高亮星芒',
+        'viewfinder-frame': '取景对焦框',
+        'scroll-seal-frame': '东方文博朱印框',
+        'museum-gilded-frame': '西洋鎏金馆藏框'
       }
     },
     pane: {
@@ -6399,6 +6403,7 @@ export default {
         continuity: '同场相邻镜头衔接（承接上一镜关键帧与光影动作）',
         continuityFrom: '承接 {id}',
         continuityHint: '同场上一镜（{id}）关键帧将作为参考图注入，继承环境光影与空间轴线',
+        previzVideoRefToggle: "生成分镜视频时参考 3D 白模运镜视频（{'@'}2）",
         qc: '关键帧视觉质检（不合格自动重拍）',
         maxRetries: '最多重拍次数',
         renderCacheHint:

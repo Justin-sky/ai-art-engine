@@ -80,7 +80,8 @@ import {
   resolveStyleReferenceUrls
 } from './mediaInputs'
 import { resolveMentionSources } from './context'
-import { resolveGalleryOutputsFromNodeParams } from './helpers'
+import { hydrateTextItems, resolveGalleryOutputsFromNodeParams } from './helpers'
+import { cleanActSceneTitle, parseActSceneSubtitlePlan } from '../scriptTimeline'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
@@ -283,9 +284,8 @@ export async function executeTimelineOutputNode(
   let images = flattenImagesValues(imageValues)
   const rawVoices = flattenVoicesValues(voiceValues)
   const music = flattenVoicesValues(musicValues)
-  const subtitles = flattenTextsValues(textValues)
-    .map((t) => t.text?.trim() ?? '')
-    .filter(Boolean)
+  const hydratedTextItems = await hydrateTextItems(flattenTextsValues(textValues), ctx.readRunText)
+  const subtitles = hydratedTextItems.map((t) => t.text?.trim() ?? '').filter(Boolean)
 
   // 利用图拓扑元信息：
   // 1) 若上游为 svg.anim / anim.2d 且已产出 GIF，自动将单帧 PNG 升级为动图 GIF；
@@ -325,12 +325,31 @@ export async function executeTimelineOutputNode(
   }
 
   const doc = ctx.document
-  const voices: Array<GraphVoiceItem & { text?: string; title?: string; _order?: number }> = []
+  const voices: Array<
+    GraphVoiceItem & {
+      text?: string
+      title?: string
+      trackKind?: 'voice' | 'sfx'
+      lane?: number
+      _order?: number
+    }
+  > = []
   const orderedVisuals: Array<GraphTimelineVisualItem & { _order: number }> = []
 
   if (doc) {
     const incomingEdges = doc.edges.filter((e) => e.target === ctx.node.id)
     const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+
+    if (!subtitles.length) {
+      const textSourceNodes = incomingEdges
+        .filter((e) => e.targetPort === 'in-text')
+        .map((e) => nodeById.get(e.source))
+        .filter((n): n is GraphNode => Boolean(n))
+      for (const tn of textSourceNodes) {
+        const fallbackTxt = tn.params?.text?.trim()
+        if (fallbackTxt) subtitles.push(fallbackTxt)
+      }
+    }
 
     const imageSourceEdges = incomingEdges
       .map((e, edgeIdx) => ({ edge: e, node: nodeById.get(e.source), edgeIdx }))
@@ -388,8 +407,8 @@ export async function executeTimelineOutputNode(
         (typeof matchedNode.params?.animGifRelativePath === 'string' &&
           matchedNode.params.animGifRelativePath.trim()) ||
         ''
-      const title = matchedNode.title?.trim() || img.title
-      const shotNum = extractShotNum(title)
+      const title = img.title?.trim() || matchedNode.title?.trim()
+      const shotNum = extractShotNum(title) ?? extractShotNum(matchedNode.title)
       const upgraded: GraphImageItem = {
         ...img,
         ...(gifRel ? { relativePath: gifRel } : {}),
@@ -466,20 +485,24 @@ export async function executeTimelineOutputNode(
         music.push(v)
         return
       }
-      const spokenText = (
-        matchedNode?.params?.notes?.trim() ||
-        matchedNode?.params?.generateInstruction?.trim() ||
-        matchedNode?.params?.text?.trim() ||
-        ''
-      )
-        .replace(/@\d+/g, '')
-        .trim()
+      const isSfxNode = matchedNode?.typeId === 'asset.sfx'
+      const spokenText = isSfxNode
+        ? ''
+        : (
+            matchedNode?.params?.notes?.trim() ||
+            matchedNode?.params?.generateInstruction?.trim() ||
+            matchedNode?.params?.text?.trim() ||
+            ''
+          )
+            .replace(/@\d+/g, '')
+            .trim()
       const title = matchedNode?.title?.trim()
       const shotNum = extractShotNum(title)
       voices.push({
         ...v,
         ...(spokenText ? { text: spokenText } : {}),
         ...(title ? { title } : {}),
+        trackKind: isSfxNode ? 'sfx' : 'voice',
         _order:
           shotNum !== null
             ? shotNum * 100 + (matched?.edgeIdx ?? idx)
@@ -487,6 +510,122 @@ export async function executeTimelineOutputNode(
       })
     })
     voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
+
+    // 古画一镜入画等混合入画模式（同时含取景切片图与写实复活视频）：
+    // 若未接入或未水合出 subtitles，从图内识图节点/切片节点提取，或对尚未命名的古画切片即时调用多模态识图提炼场景名与专业历史文博解说词；
+    // 若尚未配置独立历史解说配音轨且支持 generateSpeech，自动合成文博解说旁白。
+    if (images.length > 0 && videos.length > 0) {
+      const sortedImgVis = orderedVisuals.filter((v) => v.kind === 'image')
+      for (let actIdx = 0; actIdx < sortedImgVis.length; actIdx++) {
+        const imgVis = sortedImgVis[actIdx]!
+        const actNum = extractShotNum(imgVis.title) ?? actIdx + 1
+        const actMatchingNodes = doc.nodes.filter((n) => {
+          const nNum = extractShotNum(n.title) ?? extractShotNum(n.id)
+          return nNum === actNum
+        })
+        const voiceNode = actMatchingNodes.find((n) => n.typeId === 'asset.voice')
+        const recognizeNode = actMatchingNodes.find((n) => n.typeId === 'image.toPrompt')
+        const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
+        const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
+        const realNode = actMatchingNodes.find((n) => n.typeId === 'asset.image')
+
+        let rawText =
+          subtitles[actIdx]?.trim() ||
+          (typeof voiceNode?.params?.generateInstruction === 'string' &&
+            voiceNode.params.generateInstruction.trim()) ||
+          (typeof recognizeNode?.params?.text === 'string' && recognizeNode.params.text.trim()) ||
+          (typeof cropNode?.params?.text === 'string' && cropNode.params.text.trim()) ||
+          ''
+
+        const existingCleanTitle = cleanActSceneTitle(imgVis.title || cropNode?.title, actIdx)
+        if (!rawText && !existingCleanTitle && ctx.generateText) {
+          try {
+            let imgUrl = imgVis.dataUrl?.trim() ?? ''
+            if (!imgUrl && ctx.resolveImageUrls) {
+              imgUrl =
+                (
+                  await ctx.resolveImageUrls([
+                    {
+                      dataUrl: imgVis.dataUrl || '',
+                      relativePath: imgVis.relativePath
+                    }
+                  ])
+                ).find(Boolean) ?? ''
+            }
+            if (imgUrl) {
+              const vlmRes = await ctx.generateText({
+                system:
+                  'You are a Chief Curator of Chinese Classical Painting at the Palace Museum and a CCTV historical documentary writer. Inspect the painting slice and output ONLY valid JSON: {"sceneName": "四字古风场景名", "subtitle": "四十至六十字专业历史文博解说词，深入剖析画作朝代笔墨技法（如宋代界画/工笔设色）、建筑舟车形制与当时社会人文历史典故"}', // cjk-ok
+                prompt: `Analyze Act ${actNum} of this classical Chinese painting and write an authoritative museum-grade historical documentary commentary in Chinese. Return JSON only.`,
+                images: [imgUrl],
+                visionGrounding: true
+              })
+              const jsonMatch = vlmRes?.text?.match(/\{[\s\S]*\}/)
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
+                const sName =
+                  typeof parsed.sceneName === 'string'
+                    ? parsed.sceneName.replace(/^[【[\s]+|[】\]\s]+$/g, '').trim()
+                    : ''
+                const sSub = typeof parsed.subtitle === 'string' ? parsed.subtitle.trim() : ''
+                if (sName) {
+                  const fullSceneTitle = sName.includes(`第${actNum}幕`) // cjk-ok
+                    ? sName
+                    : `第${actNum}幕 · ${sName}` // cjk-ok
+                  imgVis.title = fullSceneTitle
+                  rawText = sSub ? `【${fullSceneTitle}】${sSub}` : `【${fullSceneTitle}】`
+                  if (cropNode) {
+                    cropNode.title = fullSceneTitle
+                    cropNode.params = { ...cropNode.params, text: rawText }
+                  }
+                }
+              }
+            }
+          } catch {
+            // VLM 识图失败时静默回退到专业历史文博解说词库
+          }
+        }
+
+        const plan = parseActSceneSubtitlePlan({
+          actIndex: actIdx,
+          rawText: rawText || undefined,
+          titleCandidates: [imgVis.title, cropNode?.title, videoNode?.title, realNode?.title],
+          fallbackPromptTexts: [
+            videoNode?.params?.generateInstruction,
+            realNode?.params?.generateInstruction
+          ]
+        })
+        imgVis.title = plan.sceneTitle
+        subtitles[actIdx] = `【${plan.sceneTitle}】${plan.narrationText}`
+
+        const existingActVoices = voices.filter(
+          (vo) => vo.trackKind !== 'sfx' && (extractShotNum(vo.title) ?? -1) === actNum
+        )
+        if (existingActVoices.length === 0 && ctx.generateSpeech) {
+          try {
+            const ttsRes = await ctx.generateSpeech({
+              input: plan.narrationText,
+              voice: 'onyx',
+              name: `act${actNum}_narration`
+            })
+            if (ttsRes?.relativePath?.trim()) {
+              voices.push({
+                id: ttsRes.assetId?.trim() || ttsRes.relativePath.trim(),
+                relativePath: ttsRes.relativePath.trim(),
+                title: `${plan.sceneTitle} · 画面解说旁白`, // cjk-ok
+                text: plan.narrationText,
+                trackKind: 'voice',
+                lane: 0,
+                _order: actNum * 100
+              })
+            }
+          } catch {
+            // 未配置语音合成模型时静默跳过，保留解说字幕与环境音
+          }
+        }
+      }
+      voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
+    }
   } else {
     voices.push(...rawVoices)
     videos.forEach((v, idx) => {

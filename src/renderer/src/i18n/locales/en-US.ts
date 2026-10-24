@@ -2707,7 +2707,8 @@ export default {
         panLeft: 'Smooth Pan Left',
         panRight: 'Smooth Pan Right',
         panUp: 'Smooth Pan Up',
-        panDown: 'Smooth Pan Down'
+        panDown: 'Smooth Pan Down',
+        scrollPanZoomIn: 'Scroll Horizontal Pan & Deep Push-In (Medium Close-Up)'
       },
       stickerSection: 'Built-in Animated Stickers',
       stickerAddHint:
@@ -2724,7 +2725,10 @@ export default {
         'cross-warn': 'Warning Cross',
         'step-badge': 'Step Badge',
         'callout-bubble': 'Callout Bubble',
-        'sparkle-star': 'Sparkle Star'
+        'sparkle-star': 'Sparkle Star',
+        'viewfinder-frame': 'Viewfinder Frame',
+        'scroll-seal-frame': 'Classical Scroll & Cinnabar Seal Frame',
+        'museum-gilded-frame': 'Western Museum Gilded Frame'
       }
     },
     pane: {
@@ -6567,6 +6571,7 @@ export default {
         continuityFrom: 'Follows {id}',
         continuityHint:
           'Previous same-scene shot ({id}) keyframe is injected as a reference for lighting and spatial axis continuity',
+        previzVideoRefToggle: "Reference 3D white-box previz video ({'@'}2) when generating video",
         qc: 'Keyframe vision QC (auto retake on failure)',
         maxRetries: 'Max retakes',
         renderCacheHint:

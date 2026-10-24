@@ -487,13 +487,15 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
         id: 'v-1',
         relativePath: 'Assets/Outputs/voice-1/v1.mp3',
         title: '旁白 01',
-        text: '光合作用是植物利用阳光将二氧化碳和水转化为能量的过程。'
+        text: '光合作用是植物利用阳光将二氧化碳和水转化为能量的过程。',
+        trackKind: 'voice'
       },
       {
         id: 'v-2',
         relativePath: 'Assets/Outputs/voice-2/v2.mp3',
         title: '旁白 02',
-        text: '叶绿体就像植物细胞内的微型太阳能发电站。'
+        text: '叶绿体就像植物细胞内的微型太阳能发电站。',
+        trackKind: 'voice'
       }
     ])
     expect(capturedInput!.music).toEqual([

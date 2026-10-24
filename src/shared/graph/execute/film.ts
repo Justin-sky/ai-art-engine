@@ -956,6 +956,7 @@ export async function executeFilmRenderNode(
   const mode = node.params.filmRenderMode === 'video' ? 'video' : 'keyframe'
   const forceAll = node.params.filmForce === true
   const continuityOn = node.params.filmRenderContinuity !== false
+  const previzVideoRefOn = node.params.filmRenderPrevizVideoRef !== false
   const qcOn = node.params.filmRenderQc === true && !!ctx.generateText
   const maxRetries = Math.min(
     3,
@@ -1041,7 +1042,7 @@ export async function executeFilmRenderNode(
         storyboardMediaPatched = true
       }
       const needsKf = !s.media?.previzKeyframe?.trim()
-      const needsVid = mode === 'video' && !s.media?.previzVideo?.trim()
+      const needsVid = mode === 'video' && previzVideoRefOn && !s.media?.previzVideo?.trim()
       if (needsKf || needsVid) {
         missingPrevizShotIds.push(s.id)
       }
@@ -1052,8 +1053,12 @@ export async function executeFilmRenderNode(
         ctx.log?.(
           pickLogBi(
             ctx,
-            `正在从 3D 分镜白模预演离屏渲染 ${missingPrevizShotIds.length} 镜运镜视频与构图参考图…`,
-            `Rendering 3D white-box previz videos & keyframes for ${missingPrevizShotIds.length} shot(s)…`
+            previzVideoRefOn && mode === 'video'
+              ? `正在从 3D 分镜白模预演离屏渲染 ${missingPrevizShotIds.length} 镜运镜视频与构图参考图…`
+              : `正在从 3D 分镜白模预演离屏渲染 ${missingPrevizShotIds.length} 镜构图参考图…`,
+            previzVideoRefOn && mode === 'video'
+              ? `Rendering 3D white-box previz videos & keyframes for ${missingPrevizShotIds.length} shot(s)…`
+              : `Rendering 3D white-box previz keyframes for ${missingPrevizShotIds.length} shot(s)…`
           )
         )
         const renderedPreviz = await ctx.renderDirectorStagePreviz({
@@ -1064,7 +1069,7 @@ export async function executeFilmRenderNode(
           hostAssetId,
           hostAssetName: ctx.resolveHostAssetName?.(),
           includeKeyframe: true,
-          includeVideo: mode === 'video'
+          includeVideo: mode === 'video' && previzVideoRefOn
         })
         const byShotId = new Map(
           renderedPreviz.map((item) => [item.shotId.trim().toLowerCase(), item])
@@ -1117,12 +1122,12 @@ export async function executeFilmRenderNode(
           ? shotPreviz.videoSpecEn
           : shotPreviz.videoSpecZh
         : undefined
-      const previzVideoRaw = shot.media?.previzVideo?.trim() || ''
+      const previzVideoRaw = previzVideoRefOn ? shot.media?.previzVideo?.trim() || '' : ''
       const modelAllowsVideoRef =
         videoPortLimits == null ||
         videoPortLimits.maxVideos == null ||
         videoPortLimits.maxVideos > 0
-      const wantPrevizVideoRef = Boolean(previzVideoRaw) && modelAllowsVideoRef
+      const wantPrevizVideoRef = previzVideoRefOn && Boolean(previzVideoRaw) && modelAllowsVideoRef
       const videoPromptFallback = composeFilmShotVideoPrompt(
         shot,
         ctx.locale,

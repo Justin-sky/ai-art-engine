@@ -7,13 +7,16 @@ import {
   clampMixDuckingRatio,
   clampMixEqGainDb,
   clampTrackGain,
+  cleanActSceneTitle,
   closeTimelineTrackGaps,
   contentEndSecOfTimeline,
   normalizeClipCropRect,
   normalizeScriptTimelineSource,
+  parseActSceneSubtitlePlan,
   readScriptTimelineFromGenParams,
   splitTimelineClipAtTime,
   trimTimelineClipToTime,
+  upgradeTemporaryAutoSubtitlesInTimeline,
   withScriptTimeline,
   type ScriptTimelineClip
 } from '../src/shared/graph/scriptTimeline'
@@ -30,7 +33,11 @@ import {
   upsertTimelineClipKeyframe
 } from '../src/shared/graph/timelineTween'
 import { applyTimelineEdits } from '../src/shared/graph/timelineEdit'
-import { buildAtempoChain, buildFilterGraph } from '../src/main/services/timelineExportService'
+import {
+  buildAtempoChain,
+  buildFilterGraph,
+  renderBuiltinStickerPngBuffer
+} from '../src/main/services/timelineExportService'
 import { executeTimelineOutputNode } from '../src/shared/graph/execute/narrative'
 import { GraphPortType } from '../src/shared/graph/types'
 
@@ -381,8 +388,9 @@ describe('Stage 1 & Stage 2 · buildAtempoChain & buildFilterGraph', () => {
     expect(graph.filter).toContain('[1:a]atrim=2.5:4.500')
     // 主视频原声纳入混音（[0:a]atrim=1.2:...）
     expect(graph.filter).toContain('[0:a]atrim=1.2:')
-    // BGM 自动闪避音量表达式 + EBU R128 响度标准化
+    // BGM 自动闪避音量表达式 (0.250) + 视频原声同步智能闪避 (0.420) + EBU R128 响度标准化
     expect(graph.filter).toContain("volume=0.250:enable='between(t\\,0.42\\,2.62)'")
+    expect(graph.filter).toContain("volume=0.420:enable='between(t\\,0.42\\,2.62)'")
     expect(graph.filter).toContain('loudnorm=I=-16:TP=-1.5:LRA=11')
     // 字幕片段独立字号/字色 + 底框
     expect(graph.filter).toContain(
@@ -809,5 +817,318 @@ describe('Stage 4 · 裁剪工具（Trim In/Out + Frame Crop）与专业片段�
     expect(graph.filter).toContain('color=black@0.0')
     expect(graph.filter).toContain('rotate=')
     expect(graph.filter).toContain("overlay=x='")
+  })
+
+  it('古画一镜入画：viewfinder-frame 取景框贴纸与混合入画槽位（2.8s 拍照推进 + 0.6s circleopen 破壁转场）', () => {
+    const vfPreset = TIMELINE_BUILTIN_STICKERS.find((s) => s.id === 'viewfinder-frame')
+    expect(vfPreset).toBeDefined()
+    const vfSvg = renderTimelineBuiltinStickerSvg('viewfinder-frame', {
+      text: '第3幕·左段',
+      color: '#F59E0B'
+    })
+    expect(vfSvg).toContain('AF · 50mm')
+    expect(vfSvg).not.toContain('第3幕·左段')
+
+    const sealPreset = TIMELINE_BUILTIN_STICKERS.find((s) => s.id === 'scroll-seal-frame')
+    expect(sealPreset).toBeDefined()
+    const sealSvg = renderTimelineBuiltinStickerSvg('scroll-seal-frame', {
+      color: '#D97706'
+    })
+    expect(sealSvg).toContain('#B91C1C')
+    expect(sealSvg).toContain('御')
+
+    const museumPreset = TIMELINE_BUILTIN_STICKERS.find((s) => s.id === 'museum-gilded-frame')
+    expect(museumPreset).toBeDefined()
+    const museumSvg = renderTimelineBuiltinStickerSvg('museum-gilded-frame', {
+      color: '#EAB308'
+    })
+    expect(museumSvg).toContain('GALLERY · ARCHIVE')
+
+    const westernPlan = parseActSceneSubtitlePlan({
+      actIndex: 1,
+      rawText:
+        '【雅典哲思】\n文艺复兴湿壁画《雅典学院》以严谨的线性焦点透视构图，将古希腊哲学家汇聚于宏伟古典拱廊之下。柏拉图手指苍穹阐述理念论，亚里士多德手掌向下强调经验世界。',
+      fallbackPromptTexts: [
+        '画中哲人缓步上前开口说道：“真理存在于永恒的理念世界！”；身旁学者微笑回应道：“但观察自然万物同样是智慧之源！”'
+      ]
+    })
+    expect(westernPlan.culture).toBe('western')
+    expect(westernPlan.sceneTitle).toBe('第2幕 · 雅典哲思')
+    expect(westernPlan.dialogueLines[0]?.speaker).toContain('哲人')
+
+    expect(cleanActSceneTitle('第3幕·古画取景（左段）', 2)).toBeUndefined()
+    expect(cleanActSceneTitle('【 第3幕·左段 】', 2)).toBeUndefined()
+    expect(cleanActSceneTitle('第3幕·古画取景（左段·繁华酒楼）', 2)).toBe('第3幕 · 繁华酒楼')
+
+    const plan = parseActSceneSubtitlePlan({
+      actIndex: 2,
+      titleCandidates: ['第3幕·古画取景（左段）'],
+      fallbackPromptTexts: [
+        '一镜到底向前推进步入繁华汴京街市与孙羊正店彩楼下方（Immersive Dolly In Through Ancient Song Street）：整条古街人物全部活起来，店小二热情迎客、二楼雅座文人举杯谈笑、车马轿子缓缓驶过青石板路、蒸笼白气升腾、酒旗与灯笼随微风轻晃，真实鲜活的大宋人间烟火，无文字无水印'
+      ]
+    })
+    expect(plan.sceneTitle).toBe('第3幕 · 孙羊正店')
+    expect(plan.narrationSegments.length).toBeGreaterThanOrEqual(2)
+    expect(plan.narrationText).toContain('北宋彻底打破唐代坊市宵禁')
+    expect(plan.narrationSegments.join(' ')).not.toContain('店小二热情迎客')
+
+    const customVlmPlan = parseActSceneSubtitlePlan({
+      actIndex: 1,
+      rawText:
+        '【虹桥争渡】\n此段为全卷高潮汴河虹桥，中国古代桥梁史罕见的无柱叠梁木拱结构。巨型漕船逆水过桥而未降桅杆，两岸百人呼救，定格北宋漕运咽喉的惊险瞬间。',
+      fallbackPromptTexts: [
+        '画面中船工、纤夫与桥头行人开始自然活动并高声呼喊交流——领头船工立于船头挥臂高喊：“收长篙！压住船头，稳住舵！”；桥上挑担商贩俯身应和道：“船家当心水急，往桥洞正中走！”'
+      ]
+    })
+    expect(customVlmPlan.sceneTitle).toBe('第2幕 · 虹桥争渡')
+    expect(customVlmPlan.narrationText).toContain('无柱叠梁木拱结构')
+    expect(customVlmPlan.dialogueLines[0]).toMatchObject({
+      speaker: '领头船工',
+      text: '收长篙！压住船头，稳住舵！'
+    })
+    expect(customVlmPlan.dialogueLines[1]).toMatchObject({
+      speaker: '桥上挑担商贩',
+      text: '船家当心水急，往桥洞正中走！'
+    })
+
+    const upgradedClips = upgradeTemporaryAutoSubtitlesInTimeline([
+      {
+        id: 'clip:auto:pre:2:abc',
+        track: 'video',
+        sourceId: 'pre:2',
+        title: '第3幕·左段',
+        startSec: 20,
+        durationSec: 2.8
+      },
+      {
+        id: 'clip:auto:v:2:abc',
+        track: 'video',
+        sourceId: 'shot:2',
+        title: '第3幕·写实复活',
+        startSec: 22.2,
+        durationSec: 7.8
+      },
+      {
+        id: 'clip:auto:sub:2_0:abc',
+        track: 'subtitle',
+        sourceId: 'sub:act:2',
+        title: '【 第3幕·左段 】',
+        text: '【 第3幕·左段 】',
+        startSec: 20.2,
+        durationSec: 3.2
+      }
+    ])
+    const subClips = upgradedClips.filter((c) => c.track === 'subtitle')
+    expect(subClips.length).toBeGreaterThanOrEqual(4)
+    expect(subClips[0]?.text).toBe('【 第3幕 · 孙羊正店 】')
+    expect(subClips.some((c) => c.text?.includes('北宋彻底打破唐代坊市宵禁'))).toBe(true)
+    expect(subClips.some((c) => c.id.includes('_dlg_') && c.text?.includes('：「'))).toBe(true)
+    expect(subClips.some((c) => c.text?.includes('左段'))).toBe(false)
+
+    // scrollPanZoomIn：0~56% 从容水平移镜 -> 56~68% 朱印/鎏金框对焦定格 -> 68~100% 推入 1.38x 中近景并与写实视频首帧平滑对位
+    const panClip = { durationSec: 4.2, cameraMotion: 'scrollPanZoomIn' as const }
+    const panStart = evaluateMainClipCameraTransform(panClip, 0)
+    const panLock = evaluateMainClipCameraTransform(panClip, 4.2 * 0.62)
+    const pushEnd = evaluateMainClipCameraTransform(panClip, 4.2)
+    expect(Math.abs(panStart.translateXPercent)).toBeGreaterThan(8)
+    expect(Math.abs(panLock.translateXPercent)).toBeLessThan(0.01)
+    expect(pushEnd.scale).toBeCloseTo(1.38, 2)
+
+    // 多轨道（lane 0 / lane 1）持久化、磁吸消除间隙与多轨字幕纵向错位渲染
+    const multiLaneDoc = readScriptTimelineFromGenParams(
+      withScriptTimeline(
+        {},
+        {
+          clips: [
+            {
+              id: 'v-l0',
+              track: 'voice',
+              lane: 0,
+              sourceId: 's-v0',
+              title: '赶驴脚夫',
+              startSec: 1,
+              durationSec: 2
+            },
+            {
+              id: 'v-l1',
+              track: 'voice',
+              lane: 1,
+              sourceId: 's-v1',
+              title: '同行旅人',
+              startSec: 1.5,
+              durationSec: 2
+            }
+          ],
+          settings: {
+            trackLaneCounts: { voice: 2, sfx: 2, subtitle: 2 }
+          }
+        }
+      )
+    )
+    expect(multiLaneDoc.clips[0]?.lane).toBe(0)
+    expect(multiLaneDoc.clips[1]?.lane).toBe(1)
+    expect(multiLaneDoc.settings?.trackLaneCounts?.voice).toBe(2)
+    const lane1Closed = closeTimelineTrackGaps(multiLaneDoc.clips, 'voice', 1)
+    expect(lane1Closed.clips.find((c) => c.id === 'v-l0')?.startSec).toBe(1)
+    expect(lane1Closed.clips.find((c) => c.id === 'v-l1')?.startSec).toBe(0)
+
+    const graph = buildFilterGraph(
+      [
+        {
+          track: 'video',
+          title: '第1幕·古画取景',
+          path: 'act1_crop.png',
+          startSec: 0,
+          durationSec: 2.8,
+          cameraMotion: 'scrollPanZoomIn',
+          visualEffect: 'strobe-flash',
+          effectIntensity: 0.75,
+          inputIndex: 0
+        },
+        {
+          track: 'video',
+          title: '第1幕·写实复活',
+          path: 'act1_video.mp4',
+          startSec: 2.2,
+          durationSec: 7.8,
+          transitionType: 'zoomin',
+          transitionInSec: 0.6,
+          inputIndex: 1
+        }
+      ],
+      [
+        {
+          track: 'overlay',
+          title: '第1幕·古画取景',
+          path: 'vf.png',
+          stickerId: 'viewfinder-frame',
+          startSec: 0.15,
+          durationSec: 1.75,
+          overlayX: 0.06,
+          overlayY: 0.08,
+          overlayWidth: 0.88,
+          overlayHeight: 0.84,
+          tweenIn: 'zoomIn',
+          tweenLoop: 'pulse',
+          tweenOut: 'fadeOut',
+          inputIndex: 2
+        }
+      ],
+      [],
+      [
+        {
+          track: 'subtitle',
+          lane: 0,
+          title: '对白',
+          text: '赶驴脚夫：“得儿——驾！”',
+          startSec: 2.65,
+          durationSec: 3
+        },
+        {
+          track: 'subtitle',
+          lane: 1,
+          title: '考据',
+          text: '画卷右首起笔北宋汴京城郊',
+          startSec: 2.65,
+          durationSec: 3
+        }
+      ],
+      3,
+      10,
+      1,
+      1280,
+      720,
+      30,
+      36,
+      80,
+      '#ffffff'
+    )
+    expect(graph.filter).toContain('xfade=transition=zoomin:duration=0.600')
+    expect(graph.filter).toContain('eval=frame,crop=1280:720')
+
+    for (const preset of TIMELINE_BUILTIN_STICKERS) {
+      const pngBuf = renderBuiltinStickerPngBuffer(preset.id, preset.defaultColor)
+      expect(pngBuf.length).toBeGreaterThan(64)
+      expect(pngBuf.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))).toBe(
+        true
+      )
+    }
+  })
+
+  it('成片导出 IPC 序列化安全：带关键帧的响应式片段经 toPlain 脱壳后可通过 structuredClone，且自动去重重复旁白轨', async () => {
+    const { ref } = await import('vue')
+    const { toPlain } = await import('../src/renderer/src/utils/toPlain')
+
+    const reactiveClips = ref<ScriptTimelineClip[]>([
+      {
+        id: 'clip:auto:pre:0:abc',
+        track: 'video',
+        sourceId: 'src-pre-0',
+        title: '第1幕 · 汴京市肆',
+        startSec: 0,
+        durationSec: 4.2,
+        cameraMotion: 'scrollPanZoomIn'
+      },
+      {
+        id: 'clip:auto:vf:0:abc',
+        track: 'overlay',
+        sourceId: 'sticker:scroll-seal-frame:0',
+        stickerId: 'scroll-seal-frame',
+        title: '第1幕 · 汴京市肆',
+        startSec: 0.2,
+        durationSec: 3.4,
+        keyframes: [
+          {
+            offsetSec: 0,
+            x: 0.18,
+            y: 0.1,
+            width: 0.72,
+            height: 0.68,
+            opacity: 0.9,
+            ease: 'inOutSine'
+          },
+          {
+            offsetSec: 1.9,
+            x: 0.06,
+            y: 0.08,
+            width: 0.88,
+            height: 0.84,
+            opacity: 1,
+            ease: 'outCubic'
+          }
+        ]
+      },
+      {
+        id: 'clip:auto:a:0_0:abc',
+        track: 'voice',
+        sourceId: 'voice-0',
+        title: '第1幕 · 汴京市肆 · 画面解说旁白',
+        relativePath: 'Cache/Voices/act1_narration.mp3',
+        startSec: 0.25,
+        durationSec: 11.5
+      },
+      {
+        id: 'clip:auto:narr:0:abc',
+        track: 'voice',
+        sourceId: 'voice-dup-0',
+        title: '第1幕 · 汴郊柳岸 · 画面解说旁白',
+        relativePath: 'Cache/Voices/narration_act1.mp3',
+        startSec: 0.15,
+        durationSec: 4.2
+      }
+    ])
+
+    // 原始 Vue Proxy 直接传给 structuredClone 会抛出 DataCloneError（与 Electron IPC 一致）
+    expect(() => structuredClone({ clips: reactiveClips.value })).toThrow()
+
+    // 经过 toPlain 脱壳后可安全通过 structuredClone
+    const plainPayload = toPlain({ clips: reactiveClips.value })
+    expect(() => structuredClone(plainPayload)).not.toThrow()
+    expect(plainPayload.clips[1]?.keyframes).toHaveLength(2)
+
+    // upgradeTemporaryAutoSubtitlesInTimeline 自动清理与 clip:auto:a:0_0 重复的 clip:auto:narr:0
+    const cleaned = upgradeTemporaryAutoSubtitlesInTimeline(reactiveClips.value)
+    expect(cleaned.some((c) => c.id.startsWith('clip:auto:narr:0:'))).toBe(false)
+    expect(cleaned.some((c) => c.id === 'clip:auto:a:0_0:abc')).toBe(true)
   })
 })

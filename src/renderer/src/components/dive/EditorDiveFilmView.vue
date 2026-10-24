@@ -322,6 +322,14 @@
           <label class="check">
             <input
               type="checkbox"
+              :checked="params.filmRenderPrevizVideoRef !== false"
+              @change="patchBool('filmRenderPrevizVideoRef', $event)"
+            />
+            {{ t('graph.inspector.film.previzVideoRefToggle') }}
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
               :checked="params.filmRenderQc === true"
               @change="patchBool('filmRenderQc', $event)"
             />
@@ -983,7 +991,8 @@
                   </div>
                   <div
                     v-if="shotRawPrevizVideo(selectedShot)"
-                    class="binding-chip previz ready"
+                    class="binding-chip previz"
+                    :class="{ ready: params.filmRenderPrevizVideoRef !== false }"
                     :title="t('graph.inspector.film.previzVideoRefHint')"
                     @click.stop="
                       previewVideoMedia(
@@ -996,7 +1005,9 @@
                     <strong class="binding-name">
                       {{ t('graph.inspector.film.previzVideoRefLabel') }}
                     </strong>
-                    <span class="ref-badge ready">@2</span>
+                    <span v-if="params.filmRenderPrevizVideoRef !== false" class="ref-badge ready"
+                      >@2</span
+                    >
                   </div>
                 </div>
               </div>
@@ -1270,7 +1281,8 @@
                     </div>
                     <div
                       v-if="shotRawPrevizVideo(shot)"
-                      class="binding-chip previz ready"
+                      class="binding-chip previz"
+                      :class="{ ready: params.filmRenderPrevizVideoRef !== false }"
                       :title="t('graph.inspector.film.previzVideoRefHint')"
                       @click.stop="
                         previewVideoMedia(shotPrevizVideoUrl(shot), `${shot.id} 3D Previz Video`)
@@ -1280,7 +1292,9 @@
                       <strong class="binding-name">
                         {{ t('graph.inspector.film.previzVideoRefLabel') }}
                       </strong>
-                      <span class="ref-badge ready">@2</span>
+                      <span v-if="params.filmRenderPrevizVideoRef !== false" class="ref-badge ready"
+                        >@2</span
+                      >
                     </div>
                   </div>
                 </div>
@@ -2319,7 +2333,8 @@ const composedSelectedVideoPrompt = computed(() => {
   if (!shot) return ''
   const prevShot = findPrevSameSceneShot(doc, shot)
   const { previzVideoSpec } = shotPrevizSpecs(shot)
-  const hasPrevizVideoRef = Boolean(shotRawPrevizVideo(shot))
+  const hasPrevizVideoRef =
+    params.value.filmRenderPrevizVideoRef !== false && Boolean(shotRawPrevizVideo(shot))
   return composeFilmShotVideoPrompt(
     shot,
     String(locale.value),
@@ -2403,7 +2418,8 @@ function composeRenderFinalVideoPrompt(shot: FilmShot): string {
   const continuityOn = params.value.filmRenderContinuity !== false
   const prevShot = continuityOn ? findPrevSameSceneShot(doc, shot) : null
   const { previzVideoSpec } = shotPrevizSpecs(shot)
-  const hasPrevizVideoRef = Boolean(shotRawPrevizVideo(shot))
+  const hasPrevizVideoRef =
+    params.value.filmRenderPrevizVideoRef !== false && Boolean(shotRawPrevizVideo(shot))
   return composeFilmShotVideoPrompt(
     shot,
     String(locale.value),

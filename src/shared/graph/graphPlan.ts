@@ -95,6 +95,8 @@ export const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'gridCellIndex',
   'motionCellIndex',
   'episodeScopeKey',
+  'imageCrop',
+  'imageProcessTool',
   'imageGridSplit',
   'imageLayerSplit',
   /**
@@ -181,7 +183,8 @@ export function applyDefaultGenerateModels(
     } else if (
       node.typeId === 'asset.screenplay' ||
       node.typeId === 'asset.gameSystem' ||
-      node.typeId === 'prompt.optimize'
+      node.typeId === 'prompt.optimize' ||
+      node.typeId === 'image.toPrompt'
     ) {
       if (defaults.textModel && !params.generateModel) {
         params.generateModel = defaults.textModel

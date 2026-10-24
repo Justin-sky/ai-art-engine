@@ -87,10 +87,14 @@ export function runFfmpeg(
 
     child.stderr?.on('data', (chunk: Buffer) => {
       const text = chunk.toString()
-      stderr += text
-      const m = text.match(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/)
-      if (m && onTime) {
-        onTime(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]))
+      const cleaned = text.replace(/(?:^|[\r\n])\s*(?:frame|size)=\s*\d+[^\r\n]*/g, '')
+      if (cleaned) stderr += cleaned
+      if (onTime) {
+        const matches = [...text.matchAll(/time=(\d+):(\d+):(\d+(?:\.\d+)?)/g)]
+        const last = matches[matches.length - 1]
+        if (last) {
+          onTime(Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]))
+        }
       }
     })
     child.on('error', (err) => {

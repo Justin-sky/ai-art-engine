@@ -96,7 +96,14 @@ export const TIMELINE_TWEEN_LOOP_PRESETS: readonly TimelineTweenLoopPreset[] = [
 ] as const
 
 export type TimelineMainCameraPreset =
-  'none' | 'kenBurnsIn' | 'kenBurnsOut' | 'panLeft' | 'panRight' | 'panUp' | 'panDown'
+  | 'none'
+  | 'kenBurnsIn'
+  | 'kenBurnsOut'
+  | 'panLeft'
+  | 'panRight'
+  | 'panUp'
+  | 'panDown'
+  | 'scrollPanZoomIn'
 
 export type TimelineCameraMotionPreset = TimelineMainCameraPreset
 
@@ -107,7 +114,8 @@ export const TIMELINE_MAIN_CAMERA_PRESETS: readonly TimelineMainCameraPreset[] =
   'panLeft',
   'panRight',
   'panUp',
-  'panDown'
+  'panDown',
+  'scrollPanZoomIn'
 ] as const
 
 export const TIMELINE_CAMERA_MOTION_PRESETS = TIMELINE_MAIN_CAMERA_PRESETS
@@ -723,7 +731,8 @@ export function evaluateMainClipCameraTransform(
     return { scale: 1, translateXPercent: 0, translateYPercent: 0 }
   }
   const dur = Math.max(0.05, Number(clip.durationSec) || 0.05)
-  const u = evaluateTimelineEase('inOutSine', clamp(localTimeSec / dur, 0, 1))
+  const rawProgress = clamp(localTimeSec / dur, 0, 1)
+  const u = evaluateTimelineEase('inOutSine', rawProgress)
 
   switch (preset) {
     case 'kenBurnsIn':
@@ -738,6 +747,26 @@ export function evaluateMainClipCameraTransform(
       return { scale: 1.12, translateXPercent: 0, translateYPercent: round4(5 - 10 * u) }
     case 'panDown':
       return { scale: 1.12, translateXPercent: 0, translateYPercent: round4(-5 + 10 * u) }
+    case 'scrollPanZoomIn': {
+      // 三阶段古画运镜（加长平移寻景版）：0~56% 画卷从容水平横移寻景(Pan) → 56~68% 朱印/鎏金框取景定格(Lock) → 68~100% 纵深推进至中近景(1.18x -> 1.38x)并与写实视频首帧平滑对位
+      if (rawProgress <= 0.56) {
+        const uPan = evaluateTimelineEase('inOutSine', rawProgress / 0.56)
+        return {
+          scale: 1.18,
+          translateXPercent: round4(-13.5 * (1 - uPan)),
+          translateYPercent: round4(1.4 * (1 - uPan))
+        }
+      }
+      if (rawProgress <= 0.68) {
+        return { scale: 1.18, translateXPercent: 0, translateYPercent: 0 }
+      }
+      const uPush = evaluateTimelineEase('inOutCubic', (rawProgress - 0.68) / 0.32)
+      return {
+        scale: round4(1.18 + 0.2 * uPush),
+        translateXPercent: 0,
+        translateYPercent: 0
+      }
+    }
     default:
       return { scale: 1, translateXPercent: 0, translateYPercent: 0 }
   }
@@ -1044,6 +1073,14 @@ export function buildMainClipCameraFfmpegFilter(
       const zExpr = cameraMotion === 'kenBurnsIn' ? `(1+0.14*${u})` : `(1.14-0.14*${u})`
       return `scale=w='trunc(${width}*${zExpr}/2)*2':h='trunc(${height}*${zExpr}/2)*2':eval=frame,crop=${width}:${height}:x='(iw-${width})/2':y='(ih-${height})/2'`
     }
+    case 'scrollPanZoomIn': {
+      // 0~56% 从容水平移镜(Pan: x 从 0.95*(iw-w) 平滑移至 0.5*(iw-w)) → 56~68% 朱印/鎏金框锁定定格 → 68~100% 纵深推进至 1.38x 中近景
+      const uPan = buildFfmpegEaseExpr('inOutSine', `(${u}/0.56)`)
+      const uPush = buildFfmpegEaseExpr('inOutCubic', `((${u}-0.68)/0.32)`)
+      const zExpr = `if(gt(${u}\\,0.68)\\,(1.18+0.20*${uPush})\\,1.18)`
+      const xRatioExpr = `if(lt(${u}\\,0.56)\\,(0.95-0.45*${uPan})\\,0.5)`
+      return `scale=w='trunc(${width}*${zExpr}/2)*2':h='trunc(${height}*${zExpr}/2)*2':eval=frame,crop=${width}:${height}:x='(iw-${width})*${xRatioExpr}':y='(ih-${height})/2'`
+    }
     default:
       return ''
   }
@@ -1060,6 +1097,9 @@ export type TimelineBuiltinStickerId =
   | 'step-badge'
   | 'callout-bubble'
   | 'sparkle-star'
+  | 'viewfinder-frame'
+  | 'scroll-seal-frame'
+  | 'museum-gilded-frame'
 
 export interface TimelineBuiltinStickerSpec {
   id: TimelineBuiltinStickerId
@@ -1176,6 +1216,45 @@ export const TIMELINE_BUILTIN_STICKERS: readonly TimelineBuiltinStickerSpec[] = 
     defaultTweenIn: 'zoomIn',
     defaultTweenLoop: 'spin',
     defaultTweenOut: 'fadeOut'
+  },
+  {
+    id: 'viewfinder-frame',
+    labelKey: 'script.timeline.stickerPreset.viewfinder-frame',
+    icon: '📷',
+    defaultTitle: '古画取景对焦框', // cjk-ok
+    defaultColor: '#F59E0B',
+    defaultText: 'SNAP · 入画取景', // cjk-ok
+    defaultWidth: 0.88,
+    defaultHeight: 0.84,
+    defaultTweenIn: 'zoomIn',
+    defaultTweenLoop: 'pulse',
+    defaultTweenOut: 'fadeOut'
+  },
+  {
+    id: 'scroll-seal-frame',
+    labelKey: 'script.timeline.stickerPreset.scroll-seal-frame',
+    icon: '🏮',
+    defaultTitle: '东方文博朱印框', // cjk-ok
+    defaultColor: '#D97706',
+    defaultText: '御览 · 入画', // cjk-ok
+    defaultWidth: 0.88,
+    defaultHeight: 0.84,
+    defaultTweenIn: 'zoomIn',
+    defaultTweenLoop: 'pulse',
+    defaultTweenOut: 'fadeOut'
+  },
+  {
+    id: 'museum-gilded-frame',
+    labelKey: 'script.timeline.stickerPreset.museum-gilded-frame',
+    icon: '🏛️',
+    defaultTitle: '西洋鎏金馆藏框', // cjk-ok
+    defaultColor: '#EAB308',
+    defaultText: 'GALLERY · ARCHIVE',
+    defaultWidth: 0.88,
+    defaultHeight: 0.84,
+    defaultTweenIn: 'zoomIn',
+    defaultTweenLoop: 'pulse',
+    defaultTweenOut: 'fadeOut'
   }
 ] as const
 
@@ -1272,6 +1351,53 @@ export function renderTimelineBuiltinStickerSvg(
   <text x="256" y="160" text-anchor="middle" fill="#F8FAFC" font-family="system-ui, -apple-system, Microsoft YaHei, sans-serif" font-size="46" font-weight="800">${bubbleText}</text>
 </svg>`
     }
+    case 'viewfinder-frame': {
+      const stroke = customColor || '#F59E0B'
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  <path d="M36 132V36H132M828 36H924V132M924 408V504H828M132 504H36V408" stroke="#0F172A" stroke-opacity="0.72" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M36 132V36H132M828 36H924V132M924 408V504H828M132 504H36V408" stroke="${stroke}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="480" cy="270" r="46" stroke="${stroke}" stroke-opacity="0.88" stroke-width="4" stroke-dasharray="18 10"/>
+  <path d="M480 206V234M480 306V334M416 270H444M516 270H544" stroke="${stroke}" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="480" cy="270" r="5" fill="#EF4444"/>
+  <rect x="64" y="58" width="168" height="36" rx="18" fill="#0F172A" fill-opacity="0.75" stroke="${stroke}" stroke-width="2"/>
+  <circle cx="88" cy="76" r="6" fill="#EF4444"/>
+  <text x="156" y="82" text-anchor="middle" fill="#F8FAFC" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="800">AF · 50mm</text>
+</svg>`
+    }
+    case 'scroll-seal-frame': {
+      const stroke = customColor || '#D97706'
+      const sealTop = '御' // cjk-ok
+      const sealBottom = '览' // cjk-ok
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  <path d="M32 140V32H140M820 32H928V140M928 400V508H820M140 508H32V400" stroke="#1C1917" stroke-opacity="0.65" stroke-width="14" stroke-linecap="square"/>
+  <path d="M32 140V32H140M820 32H928V140M928 400V508H820M140 508H32V400" stroke="${stroke}" stroke-width="6" stroke-linecap="square"/>
+  <rect x="46" y="46" width="868" height="448" stroke="${stroke}" stroke-opacity="0.48" stroke-width="2"/>
+  <path d="M46 86H86V46M874 46V86H914M914 454H874V494M86 494V454H46" stroke="${stroke}" stroke-opacity="0.82" stroke-width="3"/>
+  <rect x="64" y="62" width="46" height="68" rx="4" fill="#B91C1C" fill-opacity="0.92" stroke="#FEF3C7" stroke-width="2"/>
+  <rect x="69" y="67" width="36" height="58" rx="2" stroke="#FEF3C7" stroke-opacity="0.78" stroke-width="1.2"/>
+  <text x="87" y="92" text-anchor="middle" fill="#FEF3C7" font-family="STKaiti, KaiTi, serif" font-size="20" font-weight="700">${sealTop}</text>
+  <text x="87" y="116" text-anchor="middle" fill="#FEF3C7" font-family="STKaiti, KaiTi, serif" font-size="20" font-weight="700">${sealBottom}</text>
+  <path d="M480 236L490 270L480 304L470 270Z" stroke="${stroke}" stroke-opacity="0.72" stroke-width="2"/>
+  <path d="M432 270H462M498 270H528M480 214V232M480 308V326" stroke="${stroke}" stroke-opacity="0.62" stroke-width="2" stroke-linecap="round"/>
+</svg>`
+    }
+    case 'museum-gilded-frame': {
+      const stroke = customColor || '#EAB308'
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  <path d="M28 148V28H148M812 28H932V148M932 392V512H812M148 512H28V392" stroke="#18181B" stroke-opacity="0.72" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M28 148V28H148M812 28H932V148M932 392V512H812M148 512H28V392" stroke="${stroke}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="44" y="44" width="872" height="452" rx="6" stroke="${stroke}" stroke-opacity="0.54" stroke-width="2.5"/>
+  <circle cx="44" cy="44" r="10" fill="#451A03" stroke="${stroke}" stroke-width="3"/>
+  <circle cx="916" cy="44" r="10" fill="#451A03" stroke="${stroke}" stroke-width="3"/>
+  <circle cx="916" cy="496" r="10" fill="#451A03" stroke="${stroke}" stroke-width="3"/>
+  <circle cx="44" cy="496" r="10" fill="#451A03" stroke="${stroke}" stroke-width="3"/>
+  <rect x="62" y="58" width="212" height="34" rx="4" fill="#450A0A" fill-opacity="0.88" stroke="${stroke}" stroke-width="2"/>
+  <text x="168" y="80" text-anchor="middle" fill="#FEF08A" font-family="Georgia, Times New Roman, serif" font-size="15" font-weight="700" letter-spacing="1.5">GALLERY · ARCHIVE</text>
+  <circle cx="480" cy="270" r="34" stroke="${stroke}" stroke-opacity="0.72" stroke-width="2"/>
+  <circle cx="480" cy="270" r="4" fill="${stroke}"/>
+  <path d="M428 270H442M518 270H532M480 218V232M480 308V322" stroke="${stroke}" stroke-opacity="0.65" stroke-width="2" stroke-linecap="round"/>
+</svg>`
+    }
     case 'sparkle-star':
     default: {
       const fill = customColor || '#FACC15'
@@ -1290,4 +1416,52 @@ export function renderTimelineBuiltinStickerDataUrl(
 ): string {
   const svg = renderTimelineBuiltinStickerSvg(stickerId, optionsOrLabel)
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+}
+
+/**
+ * 在浏览器/渲染进程将内置 SVG 贴纸光栅化为透明背景 PNG dataURL，
+ * 供主进程直接落盘为 .png 交给 FFmpeg（规避 Windows/macOS 标准 FFmpeg 缺少 librsvg 解码器导致导出报错）。
+ */
+export async function rasterizeTimelineStickerSvgToPngDataUrl(
+  stickerId: TimelineBuiltinStickerId | string,
+  optionsOrLabel?: string | TimelineBuiltinStickerRenderOptions
+): Promise<string | undefined> {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    return undefined
+  }
+  const svg = renderTimelineBuiltinStickerSvg(stickerId, optionsOrLabel)
+  const wMatch = svg.match(/\bwidth="(\d+)"/)
+  const hMatch = svg.match(/\bheight="(\d+)"/)
+  const width = wMatch ? Math.max(64, Number(wMatch[1])) : 512
+  const height = hMatch ? Math.max(64, Number(hMatch[1])) : 512
+  const svgDataUrl = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
+
+  return new Promise<string | undefined>((resolve) => {
+    const img = new Image()
+    const timer = setTimeout(() => resolve(undefined), 1500)
+    img.onload = () => {
+      clearTimeout(timer)
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(undefined)
+          return
+        }
+        ctx.clearRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        const pngUrl = canvas.toDataURL('image/png')
+        resolve(pngUrl.startsWith('data:image/png;base64,') ? pngUrl : undefined)
+      } catch {
+        resolve(undefined)
+      }
+    }
+    img.onerror = () => {
+      clearTimeout(timer)
+      resolve(undefined)
+    }
+    img.src = svgDataUrl
+  })
 }

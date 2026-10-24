@@ -194,43 +194,6 @@
       @confirm="onSaveDraftConfirm"
       @cancel="closeSaveDialog"
     />
-    <AiCreateWorkflowDialog
-      :open="aiWorkflowDialogOpen"
-      :generating="aiWorkflowGenerating"
-      :committing="aiWorkflowCommitting"
-      :error="aiWorkflowError"
-      :prompt="aiWorkflowDraftPrompt"
-      :text-model-key="aiWorkflowTextModelKey"
-      :image-model-key="aiWorkflowImageModelKey"
-      :video-model-key="aiWorkflowVideoModelKey"
-      :aspect-ratio="aiWorkflowGenerateAspectRatio"
-      :text-model-options="aiWorkflowTextModelOptions"
-      :image-model-options="aiWorkflowImageModelOptions"
-      :video-model-options="aiWorkflowVideoModelOptions"
-      :preset-ids="aiWorkflowPresetIds"
-      :selected-preset-id="aiWorkflowSelectedPresetId"
-      :preview="aiWorkflowPreview"
-      :preview-warnings="aiWorkflowPreviewWarnings"
-      @update:prompt="aiWorkflowDraftPrompt = $event"
-      @update:text-model-key="setAiWorkflowTextModelKey"
-      @update:image-model-key="setAiWorkflowImageModelKey"
-      @update:video-model-key="setAiWorkflowVideoModelKey"
-      @update:aspect-ratio="setAiWorkflowGenerateAspectRatio($event)"
-      @select-preset="applyAiWorkflowPreset"
-      @plan-ai="void planAiWorkflowPreview('ai')"
-      @commit="requestAiWorkflowCommit()"
-      @close="closeAiWorkflowDialog()"
-    />
-    <SaveAssetDialog
-      :open="aiWorkflowSaveDialogOpen"
-      :default-name="aiWorkflowSaveDefaultName"
-      :default-folder-id="aiWorkflowSaveDefaultFolderId"
-      :title="t('aiWorkflow.saveTitle')"
-      :subtitle="t('aiWorkflow.saveSubtitle')"
-      :z-index="2750"
-      @confirm="void confirmAiWorkflowCommit($event)"
-      @cancel="closeAiWorkflowSaveDialog()"
-    />
   </div>
 </template>
 
@@ -267,12 +230,9 @@ import { useGraphRunLogsStore } from '../stores/graphRunLogs'
 import { useMcpActivitiesStore } from '../stores/mcpActivities'
 import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
-import AiCreateWorkflowDialog from '../components/AiCreateWorkflowDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
 import WorkspaceToolbar from '../components/WorkspaceToolbar.vue'
-import { useAiCreateWorkflow } from '../composables/useAiCreateWorkflow'
-import { aiWorkflowOpenRequest } from '../features/aiWorkflow/openRequest'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   createEditorWindowComponents,
@@ -388,38 +348,6 @@ function onToolbarRedo(): void {
   }
   void executeEditorCommand('editor.redo', editor)
 }
-const {
-  dialogOpen: aiWorkflowDialogOpen,
-  generating: aiWorkflowGenerating,
-  committing: aiWorkflowCommitting,
-  error: aiWorkflowError,
-  draftPrompt: aiWorkflowDraftPrompt,
-  selectedPresetId: aiWorkflowSelectedPresetId,
-  textModelOptions: aiWorkflowTextModelOptions,
-  imageModelOptions: aiWorkflowImageModelOptions,
-  videoModelOptions: aiWorkflowVideoModelOptions,
-  textModelKey: aiWorkflowTextModelKey,
-  imageModelKey: aiWorkflowImageModelKey,
-  videoModelKey: aiWorkflowVideoModelKey,
-  generateAspectRatio: aiWorkflowGenerateAspectRatio,
-  preview: aiWorkflowPreview,
-  previewWarnings: aiWorkflowPreviewWarnings,
-  presetIds: aiWorkflowPresetIds,
-  applyPreset: applyAiWorkflowPreset,
-  setTextModelKey: setAiWorkflowTextModelKey,
-  setImageModelKey: setAiWorkflowImageModelKey,
-  setVideoModelKey: setAiWorkflowVideoModelKey,
-  setGenerateAspectRatio: setAiWorkflowGenerateAspectRatio,
-  openDialog: openAiWorkflowDialog,
-  closeDialog: closeAiWorkflowDialog,
-  planPreview: planAiWorkflowPreview,
-  requestCommit: requestAiWorkflowCommit,
-  closeSaveDialog: closeAiWorkflowSaveDialog,
-  confirmCommit: confirmAiWorkflowCommit,
-  saveDialogOpen: aiWorkflowSaveDialogOpen,
-  saveDefaultName: aiWorkflowSaveDefaultName,
-  saveDefaultFolderId: aiWorkflowSaveDefaultFolderId
-} = useAiCreateWorkflow()
 const tasksBtnEl = ref<HTMLButtonElement | null>(null)
 const { commitDraft, activeDraftId, defaultSaveName } = useDraftSave()
 const dockApi = shallowRef<DockviewApi | null>(null)
@@ -1038,15 +966,6 @@ function onReady(event: DockviewReadyEvent): void {
 watch(locale, () => {
   const api = dockApi.value
   if (api) applyCorePanelTitles(api)
-})
-
-/**
- * 「一键工作流」的入口现在在工作区的「新建」列表里（见 `WorkspaceMain.vue`），
- * 但它要打开的对话框与全部状态都在这里 —— 因此由那边发一个请求信号，这里打开。
- * 对话框保持单实例、单份状态。
- */
-watch(aiWorkflowOpenRequest, () => {
-  openAiWorkflowDialog()
 })
 
 function resetLayout(): void {
