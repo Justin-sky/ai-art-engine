@@ -823,7 +823,13 @@ export function buildFilterGraph(
         scaleMode === 'cover'
           ? `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
           : `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
-      const camExpr = buildMainClipCameraFfmpegFilter(clip.cameraMotion, width, height, winDurSec)
+      const camExpr = buildMainClipCameraFfmpegFilter(
+        clip.cameraMotion,
+        width,
+        height,
+        clipDur,
+        winStartSec
+      )
       const scaleExpr = camExpr ? `${baseScaleExpr},${camExpr}` : baseScaleExpr
 
       filterParts.push(

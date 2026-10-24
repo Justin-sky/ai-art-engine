@@ -353,6 +353,33 @@ function resolveEdgePorts(
   fromPort?: string,
   toPort?: string
 ): { sourcePort: string; targetPort: string } | null {
+  if (target.typeId === 'asset.video' || target.assetType === 'video') {
+    const wantsFirstFrameByPrompt = /\u9996\u5e27|first[\s_-]*frame/i.test(
+      String(target.params?.generateInstruction ?? '')
+    )
+    if (toPort === 'in-last-frame') {
+      target.params = { ...target.params, generateFrameMode: 'first_last' }
+    } else if (toPort === 'in-first-frame' && target.params?.generateFrameMode !== 'first_last') {
+      target.params = { ...target.params, generateFrameMode: 'first' }
+    } else if (
+      toPort === 'in-image' &&
+      (target.params?.generateFrameMode === 'first' ||
+        target.params?.generateFrameMode === 'first_last' ||
+        wantsFirstFrameByPrompt)
+    ) {
+      toPort = 'in-first-frame'
+      if (target.params?.generateFrameMode !== 'first_last') {
+        target.params = { ...target.params, generateFrameMode: 'first' }
+      }
+    } else if (
+      !toPort &&
+      wantsFirstFrameByPrompt &&
+      (source.typeId === 'asset.image' || source.assetType === 'image') &&
+      (!target.params?.generateFrameMode || target.params.generateFrameMode === 'none')
+    ) {
+      target.params = { ...target.params, generateFrameMode: 'first' }
+    }
+  }
   if (fromPort || toPort) {
     const sourcePort = fromPort || 'out'
     const targetPort = toPort || 'in'

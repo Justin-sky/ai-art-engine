@@ -831,6 +831,69 @@ const DEFAULT_HISTORICAL_COMMENTARY_BY_ACT: Array<{
         lane: 1
       }
     ]
+  },
+  {
+    sceneTitle: '第4幕 · 临水廊亭', // cjk-ok
+    segments: [
+      '汴河水畔轩窗敞亮，临水廊亭内宾主凭栏小憩', // cjk-ok
+      '侍女捧果盘缓步侍立，微风拂过水面带来阵阵茶香' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '端果盘侍女', // cjk-ok
+        text: '公子请用茶果，这刚用井水冰镇过的时鲜果子，最是消暑解乏！', // cjk-ok
+        voice: 'alloy',
+        lane: 0
+      },
+      {
+        speaker: '廊亭公子', // cjk-ok
+        text: '有劳了！坐看汴河千帆竞渡、岸上人声鼎沸，确是汴京独一份的闲适！', // cjk-ok
+        voice: 'onyx',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第5幕 · 瓮城城门', // cjk-ok
+    segments: [
+      '高耸的瓮城城楼巍然矗立，驼队商旅络绎不绝穿门而过', // cjk-ok
+      '守城卒吏查验过所引子，汇聚大宋东西南北的百货商贸' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '西域胡商', // cjk-ok
+        text: '官爷请过目，咱们这支驼队满载西域香料与良驹，特地赶来东京城交易！', // cjk-ok
+        voice: 'fable',
+        lane: 0
+      },
+      {
+        speaker: '城门官吏', // cjk-ok
+        text: '引帖核验无误，放行入城！进城后顺着御街直走便是榷货务与正店街市！', // cjk-ok
+        voice: 'onyx',
+        lane: 1
+      }
+    ]
+  },
+  {
+    sceneTitle: '第6幕 · 十字街市', // cjk-ok
+    segments: [
+      '城门内十字长街百肆杂陈，算命卜卦与香饮摊子鳞次栉比', // cjk-ok
+      '行人摩肩接踵驻足问询，勾勒出北宋市民生活的鲜活肌理' // cjk-ok
+    ],
+    dialogues: [
+      {
+        speaker: '算命先生', // cjk-ok
+        text: '这位郎君留步！老夫观你印堂紫气盈门，此番入京赶考必定金榜题名！', // cjk-ok
+        voice: 'echo',
+        lane: 0
+      },
+      {
+        speaker: '赶考书生', // cjk-ok
+        text: '借先生吉言！若真能蟾宫折桂，定来先生摊前奉上厚礼道谢！', // cjk-ok
+        voice: 'onyx',
+        lane: 1
+      }
+    ]
   }
 ]
 
@@ -921,8 +984,9 @@ function extractActDialogueLines(
 
 function isHistoricalCommentaryText(text: string | undefined): boolean {
   if (!text?.trim()) return false
+  if (/以\s*@?\d|以首帧|唯一构图依据|dolly\s*in|generateFrameMode/i.test(text)) return false // cjk-ok
   const historyRe =
-    /画卷|起笔|工笔|界画|张择端|漕运|坊市|宵禁|东京梦华|叠梁|北宋都城|江南钱粮|传世|朝代|画师|笔墨|文博|历史|油画|壁画|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|古典主义|卢浮宫|艺术史|画布/ // cjk-ok
+    /画卷|起笔|工笔|界画|张择端|漕运|坊市|宵禁|东京梦华|叠梁|北宋|汴京|汴河|柳岸|虹桥|茶肆|酒旗|长街|绢上|八百年|江南钱粮|传世|朝代|画师|笔墨|文博|历史|油画|壁画|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|古典主义|卢浮宫|艺术史|画布/ // cjk-ok
   return historyRe.test(text)
 }
 
@@ -1033,10 +1097,77 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
       if (m) hasVoiceActClip.add(Number(m[1]))
     }
   }
-  const dedupedClips = clips.filter((c) => {
-    const m = c.id.match(/^clip:auto:narr:(\d+):/)
-    return m ? !hasVoiceActClip.has(Number(m[1])) : true
-  })
+  const extractClipActIdx = (clip: ScriptTimelineClip): number | null => {
+    const idMatch = clip.id.match(/^clip:auto:(?:v|a|pre|real|outro|vf):(\d+)(?:_\d+)?:/)
+    if (idMatch) return Number(idMatch[1])
+    const s = `${clip.title ?? ''} ${clip.nodeTitle ?? ''} ${clip.nodeId ?? ''}`
+    const m =
+      s.match(/(?:第\s*(\d+)\s*幕|分镜\s*#?(\d+)|act\s*#?(\d+)|shot\s*#?(\d+))/i) ?? // cjk-ok
+      s.match(/^#?(\d+)[\s._:\uff1a-]/)
+    const numStr = m ? (m[1] ?? m[2] ?? m[3] ?? m[4]) : undefined
+    return numStr ? Math.max(0, Number(numStr) - 1) : null
+  }
+
+  // 若上游节点重跑后在轨道末尾追加了重复的 clip:auto:v:<ts>:<rand> 或 clip:auto:a:<ts>:<rand>，
+  // 将其最新媒体路径原地合并回对应幕的主片段并移除末尾重复片段
+  const indexedAutoVideoByAct = new Map<number, ScriptTimelineClip>()
+  const indexedAutoVoiceByAct = new Map<number, ScriptTimelineClip>()
+  for (const c of clips) {
+    const vMatch = c.id.match(/^clip:auto:v:(\d+):/)
+    if (vMatch && c.track === 'video') {
+      indexedAutoVideoByAct.set(Number(vMatch[1]), c)
+    }
+    const aMatch = c.id.match(/^clip:auto:a:(\d+)(?:_0)?:/)
+    if (aMatch && c.track === 'voice') {
+      indexedAutoVoiceByAct.set(Number(aMatch[1]), c)
+    }
+  }
+
+  const redundantTailClipIds = new Set<string>()
+  const clipReplacements = new Map<string, Partial<ScriptTimelineClip>>()
+  if (indexedAutoVideoByAct.size > 0 || indexedAutoVoiceByAct.size > 0) {
+    for (const c of clips) {
+      const isTailAutoVideo = c.track === 'video' && /^clip:auto:v:(?!\d+:)[^:]+:/.test(c.id)
+      const isTailAutoVoice =
+        c.track === 'voice' && /^clip:auto:a:(?!\d+(?:_\d+)?:)[^:]+:/.test(c.id)
+      if (!isTailAutoVideo && !isTailAutoVoice) continue
+      const actIdx = extractClipActIdx(c)
+      const targetMap = isTailAutoVideo ? indexedAutoVideoByAct : indexedAutoVoiceByAct
+      let target = actIdx !== null ? targetMap.get(actIdx) : undefined
+      if (!target) {
+        for (const candidate of targetMap.values()) {
+          if (
+            (c.nodeId && candidate.nodeId && c.nodeId === candidate.nodeId) ||
+            (c.title && candidate.title && c.title.trim() === candidate.title.trim())
+          ) {
+            target = candidate
+            break
+          }
+        }
+      }
+      if (target) {
+        clipReplacements.set(target.id, {
+          sourceId: c.sourceId || target.sourceId,
+          relativePath: c.relativePath || target.relativePath,
+          ...(c.assetId ? { assetId: c.assetId } : {}),
+          ...(c.nodeId ? { nodeId: c.nodeId } : {}),
+          ...(c.nodeTitle ? { nodeTitle: c.nodeTitle } : {})
+        })
+        redundantTailClipIds.add(c.id)
+      }
+    }
+  }
+
+  const dedupedClips = clips
+    .filter((c) => {
+      if (redundantTailClipIds.has(c.id)) return false
+      const m = c.id.match(/^clip:auto:narr:(\d+):/)
+      return m ? !hasVoiceActClip.has(Number(m[1])) : true
+    })
+    .map((c) => {
+      const patch = clipReplacements.get(c.id)
+      return patch ? { ...c, ...patch } : c
+    })
 
   const isAncientScrollHybrid = dedupedClips.some((c) => c.id.startsWith('clip:auto:pre:'))
   const autoSubClips = dedupedClips.filter(
@@ -1149,7 +1280,7 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
                     transitionType:
                       clip.transitionType ??
                       (isWestern ? ('smoothright' as const) : ('smoothleft' as const)),
-                    transitionInSec: Math.max(1.2, clip.transitionInSec ?? 0)
+                    transitionInSec: Math.max(0.85, clip.transitionInSec ?? 0)
                   }
                 : {})
             }
@@ -1179,13 +1310,14 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
       const stamp = subAnyMatch[3]!
       const plan = getActPlan(actIdx)
       const preClip = clips.find((c) => c.id.startsWith(`clip:auto:pre:${actIdx}:`))
+      const realClip = clips.find((c) => c.id.startsWith(`clip:auto:real:${actIdx}:`))
       const mainVidClip = clips.find((c) => c.id.startsWith(`clip:auto:v:${actIdx}:`))
       const actStartSec = preClip ? preClip.startSec : Math.max(0, clip.startSec - 0.2)
       const actEndSec = mainVidClip
         ? mainVidClip.startSec + mainVidClip.durationSec
         : actStartSec + 10
 
-      const bannerText = `【 ${plan.sceneTitle} 】`
+      const bannerText = `【 ${plan.sceneTitle} 】` // cjk-ok
       nextClips.push({
         ...clip,
         id: `clip:auto:sub:${actIdx}_0:${stamp}`,
@@ -1198,10 +1330,12 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
         durationSec: 1.9
       })
 
-      const totalAvailDur = Math.max(2.6, actEndSec - actStartSec - 2.25)
+      const bodyStart = realClip
+        ? Math.round((realClip.startSec + 0.05) * 100) / 100
+        : Math.round((actStartSec + 2.1) * 100) / 100
+      const totalAvailDur = Math.max(2.6, actEndSec - bodyStart - 0.15)
       const hasDialogues = plan.dialogueLines.length > 0
       const narrTotalDur = hasDialogues ? Math.max(1.8, totalAvailDur * 0.44) : totalAvailDur
-      const bodyStart = Math.round((actStartSec + 2.1) * 100) / 100
       const totalChars = Math.max(
         1,
         plan.narrationSegments.reduce((acc, s) => acc + s.length, 0)

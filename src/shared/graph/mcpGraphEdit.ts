@@ -3,6 +3,7 @@ import { createNodeFromType } from './create'
 import { autoLayoutNodes } from './layout'
 import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes, listNodeTypes } from './registry'
+import { parseActSceneSubtitlePlan } from './scriptTimeline'
 import type { GraphAddScope } from './scopes'
 import { applySmartNodePreset, mergeSmartNodeParams } from './smartPatch'
 import type {
@@ -172,9 +173,29 @@ function resolveEdgePorts(
   toPort?: string
 ): { sourcePort: string; targetPort: string } | null {
   if (target.typeId === 'asset.video' || target.assetType === 'video') {
+    const wantsFirstFrameByPrompt = /\u9996\u5e27|first[\s_-]*frame/i.test(
+      String(target.params?.generateInstruction ?? '')
+    )
     if (toPort === 'in-last-frame') {
       target.params = { ...target.params, generateFrameMode: 'first_last' }
     } else if (toPort === 'in-first-frame' && target.params?.generateFrameMode !== 'first_last') {
+      target.params = { ...target.params, generateFrameMode: 'first' }
+    } else if (
+      toPort === 'in-image' &&
+      (target.params?.generateFrameMode === 'first' ||
+        target.params?.generateFrameMode === 'first_last' ||
+        wantsFirstFrameByPrompt)
+    ) {
+      toPort = 'in-first-frame'
+      if (target.params?.generateFrameMode !== 'first_last') {
+        target.params = { ...target.params, generateFrameMode: 'first' }
+      }
+    } else if (
+      !toPort &&
+      wantsFirstFrameByPrompt &&
+      (source.typeId === 'asset.image' || source.assetType === 'image') &&
+      (!target.params?.generateFrameMode || target.params.generateFrameMode === 'none')
+    ) {
       target.params = { ...target.params, generateFrameMode: 'first' }
     } else if (
       toPort === 'in-image' &&
@@ -238,6 +259,47 @@ function resolveEdgePorts(
  *   否则会把「本地风格图 + 关掉全局风格」的合法组合误判成无风格；
  * - 本次传入不可用时保留节点原值（有的话），不静默销毁既有参考图配置。
  */
+function normalizeActVideoNodeParams(node: GraphNode): void {
+  if (node.typeId !== 'asset.video' && node.assetType !== 'video') return
+  const actMatch =
+    node.id.match(/^act(\d+)[-_](?:video|shot)$/i) ??
+    (node.title ?? '').match(/第\s*(\d+)\s*幕.*(?:入画|复活|视频|镜头)/i) // cjk-ok
+  if (!actMatch) return
+  const actIdx = Math.max(0, Number(actMatch[1]) - 1)
+  const p = (node.params ?? {}) as Record<string, unknown>
+  p.generateAudio = true
+  const rawInst = typeof p.generateInstruction === 'string' ? p.generateInstruction.trim() : ''
+  if (rawInst) {
+    let cleaned = rawInst
+      .replace(
+        /[，,；;。]?\s*(?:全片|全程)?无人物对白(?:[、，,]?无旁白)?(?:[、，,]?无任何人声)?/g, // cjk-ok
+        ''
+      )
+      .replace(
+        /推近幅度不超过\s*\d+%/g, // cjk-ok
+        '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
+      )
+      .trim()
+    if (!/[“"「][^”"」]{4,}[”"」]/.test(cleaned)) {
+      const plan = parseActSceneSubtitlePlan({
+        actIndex: actIdx,
+        titleCandidates: [node.title],
+        fallbackPromptTexts: [cleaned]
+      })
+      const d0 = plan.dialogueLines[0]
+      const d1 = plan.dialogueLines[1]
+      if (d0) {
+        const dlgClause = `随后镜头从全景平滑拉近推入画中对应焦点人物的近景特写，${d0.speaker}开口说道：“${d0.text}”${d1 ? `，${d1.speaker}应和道：“${d1.text}”` : ''}，口型与神态生动自然，保留真实同期人声对白与市井环境音响。` // cjk-ok
+        cleaned = `${cleaned.replace(/[。.]$/, '')}；${dlgClause}`
+      }
+    }
+    p.generateInstruction = cleaned
+    if (typeof p.notes === 'string') {
+      p.notes = cleaned
+    }
+  }
+}
+
 function mergeNodeParams(
   node: GraphNode,
   incoming: Record<string, unknown> | undefined,
@@ -248,6 +310,7 @@ function mergeNodeParams(
   const merged = mergeSmartNodeParams(node, incoming) as Record<string, unknown>
   if (!REFERENCE_PARAM_KEYS.some((key) => key in incoming)) {
     node.params = merged as GraphNodeParams
+    normalizeActVideoNodeParams(node)
     return
   }
   const sanitized = sanitizeReferenceParams(
@@ -262,6 +325,7 @@ function mergeNodeParams(
     warnings.push(`节点「${node.id}」${key} 本次改动无法生效，已保留原值`)
   }
   node.params = sanitized as GraphNodeParams
+  normalizeActVideoNodeParams(node)
 }
 
 function applyNodeGeometryAndLock(

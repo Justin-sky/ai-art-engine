@@ -423,8 +423,8 @@ export async function executeTimelineOutputNode(
         title: upgraded.title,
         _order:
           shotNum !== null
-            ? shotNum * 1000 + matched.edgeIdx * 100 + idx
-            : 100000 + matched.edgeIdx * 100 + idx
+            ? shotNum * 100000 + matched.edgeIdx * 10 + idx
+            : 10000000 + matched.edgeIdx * 10 + idx
       })
       return upgraded
     })
@@ -457,7 +457,9 @@ export async function executeTimelineOutputNode(
         createdAt: v.createdAt,
         ...(title ? { title } : {}),
         _order:
-          shotNum !== null ? shotNum * 1000 + edgeOrder * 100 + idx : 100000 + edgeOrder * 100 + idx
+          shotNum !== null
+            ? shotNum * 100000 + 10000 + edgeOrder * 10 + idx
+            : 10000000 + 10000 + edgeOrder * 10 + idx
       })
     })
     orderedVisuals.sort((a, b) => a._order - b._order)

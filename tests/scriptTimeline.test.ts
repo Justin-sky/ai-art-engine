@@ -925,14 +925,16 @@ describe('Stage 4 · 裁剪工具（Trim In/Out + Frame Crop）与专业片段�
     expect(subClips.some((c) => c.id.includes('_dlg_') && c.text?.includes('：「'))).toBe(true)
     expect(subClips.some((c) => c.text?.includes('左段'))).toBe(false)
 
-    // scrollPanZoomIn：0~56% 从容水平移镜 -> 56~68% 朱印/鎏金框对焦定格 -> 68~100% 推入 1.38x 中近景并与写实视频首帧平滑对位
-    const panClip = { durationSec: 4.2, cameraMotion: 'scrollPanZoomIn' as const }
+    // scrollPanZoomIn：0~68% 从容水平移镜并收束至 1.00x 焦点 -> 68~100% 焦点 1.00x 定格锁定，与写实还原照片及视频首帧 1:1 对位
+    const panClip = { durationSec: 3.6, cameraMotion: 'scrollPanZoomIn' as const }
     const panStart = evaluateMainClipCameraTransform(panClip, 0)
-    const panLock = evaluateMainClipCameraTransform(panClip, 4.2 * 0.62)
-    const pushEnd = evaluateMainClipCameraTransform(panClip, 4.2)
+    const panLock = evaluateMainClipCameraTransform(panClip, 3.6 * 0.72)
+    const pushEnd = evaluateMainClipCameraTransform(panClip, 3.6)
     expect(Math.abs(panStart.translateXPercent)).toBeGreaterThan(8)
+    expect(panStart.scale).toBeCloseTo(1.22, 2)
     expect(Math.abs(panLock.translateXPercent)).toBeLessThan(0.01)
-    expect(pushEnd.scale).toBeCloseTo(1.38, 2)
+    expect(panLock.scale).toBeCloseTo(1.0, 2)
+    expect(pushEnd.scale).toBeCloseTo(1.0, 2)
 
     // 多轨道（lane 0 / lane 1）持久化、磁吸消除间隙与多轨字幕纵向错位渲染
     const multiLaneDoc = readScriptTimelineFromGenParams(

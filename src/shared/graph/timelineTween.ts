@@ -748,21 +748,17 @@ export function evaluateMainClipCameraTransform(
     case 'panDown':
       return { scale: 1.12, translateXPercent: 0, translateYPercent: round4(-5 + 10 * u) }
     case 'scrollPanZoomIn': {
-      // 三阶段古画运镜（加长平移寻景版）：0~56% 画卷从容水平横移寻景(Pan) → 56~68% 朱印/鎏金框取景定格(Lock) → 68~100% 纵深推进至中近景(1.18x -> 1.38x)并与写实视频首帧平滑对位
-      if (rawProgress <= 0.56) {
-        const uPan = evaluateTimelineEase('inOutSine', rawProgress / 0.56)
+      // 古画/名画移镜寻景 + 焦点定格拍照：0~68% 镜头在原画上从容水平移动并收束对准焦点(1.22x -> 1.00x) → 68~100% 焦点 1.00x 定格锁定，触发快门闪光拍下 1:1 写实还原照片并作为首帧生成视频
+      if (rawProgress <= 0.68) {
+        const uPan = evaluateTimelineEase('inOutSine', rawProgress / 0.68)
         return {
-          scale: 1.18,
-          translateXPercent: round4(-13.5 * (1 - uPan)),
-          translateYPercent: round4(1.4 * (1 - uPan))
+          scale: round4(1.22 - 0.22 * uPan),
+          translateXPercent: round4(-10.5 * (1 - uPan)),
+          translateYPercent: round4(1.2 * (1 - uPan))
         }
       }
-      if (rawProgress <= 0.68) {
-        return { scale: 1.18, translateXPercent: 0, translateYPercent: 0 }
-      }
-      const uPush = evaluateTimelineEase('inOutCubic', (rawProgress - 0.68) / 0.32)
       return {
-        scale: round4(1.18 + 0.2 * uPush),
+        scale: 1,
         translateXPercent: 0,
         translateYPercent: 0
       }
@@ -1048,16 +1044,19 @@ export function buildMainClipCameraFfmpegFilter(
   cameraMotion: TimelineMainCameraPreset | undefined,
   width: number,
   height: number,
-  durationSec: number
+  durationSec: number,
+  windowOffsetSec = 0
 ): string {
   if (!cameraMotion || cameraMotion === 'none') return ''
   const dur = Math.max(0.1, durationSec)
+  const offset = Math.max(0, Number.isFinite(windowOffsetSec) ? windowOffsetSec : 0)
   // 放大至 1.16 倍画幅后通过动态 crop(x, y) 实现平滑无抖动推拉摇移
   const sw = Math.round((width * 1.16) / 2) * 2
   const sh = Math.round((height * 1.16) / 2) * 2
   const dxMax = Math.max(2, sw - width)
   const dyMax = Math.max(2, sh - height)
-  const u = `clip(t/${dur.toFixed(3)}\\,0\\,1)`
+  const tExpr = offset > 0.0005 ? `(t+${offset.toFixed(3)})` : 't'
+  const u = `clip(${tExpr}/${dur.toFixed(3)}\\,0\\,1)`
 
   switch (cameraMotion) {
     case 'panLeft':
@@ -1074,11 +1073,10 @@ export function buildMainClipCameraFfmpegFilter(
       return `scale=w='trunc(${width}*${zExpr}/2)*2':h='trunc(${height}*${zExpr}/2)*2':eval=frame,crop=${width}:${height}:x='(iw-${width})/2':y='(ih-${height})/2'`
     }
     case 'scrollPanZoomIn': {
-      // 0~56% 从容水平移镜(Pan: x 从 0.95*(iw-w) 平滑移至 0.5*(iw-w)) → 56~68% 朱印/鎏金框锁定定格 → 68~100% 纵深推进至 1.38x 中近景
-      const uPan = buildFfmpegEaseExpr('inOutSine', `(${u}/0.56)`)
-      const uPush = buildFfmpegEaseExpr('inOutCubic', `((${u}-0.68)/0.32)`)
-      const zExpr = `if(gt(${u}\\,0.68)\\,(1.18+0.20*${uPush})\\,1.18)`
-      const xRatioExpr = `if(lt(${u}\\,0.56)\\,(0.95-0.45*${uPan})\\,0.5)`
+      // 0~68% 在原画上水平移镜寻景并收束至焦点画幅(1.22x -> 1.00x, x 从 0.95*(iw-w) 移至 0.5*(iw-w)) → 68~100% 1.00x 焦点定格锁定，与写实还原照片及视频首帧 1:1 对位
+      const uPan = buildFfmpegEaseExpr('inOutSine', `(${u}/0.68)`)
+      const zExpr = `if(lt(${u}\\,0.68)\\,(1.22-0.22*${uPan})\\,1.0)`
+      const xRatioExpr = `if(lt(${u}\\,0.68)\\,(0.95-0.45*${uPan})\\,0.5)`
       return `scale=w='trunc(${width}*${zExpr}/2)*2':h='trunc(${height}*${zExpr}/2)*2':eval=frame,crop=${width}:${height}:x='(iw-${width})*${xRatioExpr}':y='(ih-${height})/2'`
     }
     default:

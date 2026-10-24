@@ -294,9 +294,10 @@ export async function composeTimelineVideoForNode(input: {
 
     // 构建分镜配对槽位：
     // 1. 若画面与旁白标题均带分镜/幕序号（如 分镜1..分镜5 或 第1幕..第3幕），按序号精确配对；
-    // 2. 若同一幕同时包含「古画取景切片图（image）」与「写实复活视频（video）」，自动合并为混合入画槽位（preImgIdx + visIdx）。
+    // 2. 若同一幕同时包含「古画取景切片图（image）」、（可选）「写实还原照片（image）」与「写实复活视频（video）」，自动合并为混合入画槽位（preImgIdx + realImgIdx + visIdx）。
     const shotSlots: Array<{
       preImgIdx?: number
+      realImgIdx?: number
       visIdx?: number
       voiceIdx?: number
       extraVoiceIndices?: number[]
@@ -314,10 +315,26 @@ export async function composeTimelineVideoForNode(input: {
         const vShot = extractShotNum(currVis.title)
         const currIsPhoto = currVis.kind === 'image' || isStaticPhotoPath(currVis.rel)
         const nextVis = vi + 1 < resolvedVisuals.length ? resolvedVisuals[vi + 1] : undefined
+        const thirdVis = vi + 2 < resolvedVisuals.length ? resolvedVisuals[vi + 2] : undefined
+        const nextIsPhoto =
+          nextVis !== undefined && (nextVis.kind === 'image' || isStaticPhotoPath(nextVis.rel))
         const nextIsVideo =
           nextVis !== undefined && nextVis.kind !== 'image' && !isStaticPhotoPath(nextVis.rel)
+        const thirdIsVideo =
+          thirdVis !== undefined && thirdVis.kind !== 'image' && !isStaticPhotoPath(thirdVis.rel)
+        const isHybridActTriplet =
+          vShot !== null &&
+          currIsPhoto &&
+          nextIsPhoto &&
+          thirdIsVideo &&
+          extractShotNum(nextVis!.title) === vShot &&
+          extractShotNum(thirdVis!.title) === vShot
         const isHybridActPair =
-          vShot !== null && currIsPhoto && nextIsVideo && extractShotNum(nextVis!.title) === vShot
+          !isHybridActTriplet &&
+          vShot !== null &&
+          currIsPhoto &&
+          nextIsVideo &&
+          extractShotNum(nextVis!.title) === vShot
 
         let matchedVoiceIdx: number | undefined
         const extraVoiceIndices: number[] = []
@@ -337,7 +354,16 @@ export async function composeTimelineVideoForNode(input: {
           usedVoices.add(slotCounter)
         }
 
-        if (isHybridActPair) {
+        if (isHybridActTriplet) {
+          shotSlots.push({
+            preImgIdx: vi,
+            realImgIdx: vi + 1,
+            visIdx: vi + 2,
+            voiceIdx: matchedVoiceIdx,
+            ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
+          })
+          vi += 2
+        } else if (isHybridActPair) {
           shotSlots.push({
             preImgIdx: vi,
             visIdx: vi + 1,
@@ -372,6 +398,13 @@ export async function composeTimelineVideoForNode(input: {
       }
     }
 
+    const hasHybridScrollActs = shotSlots.some(
+      (s) => s.preImgIdx !== undefined && s.visIdx !== undefined
+    )
+    if (hasHybridScrollActs && !doc.settings?.scaleMode) {
+      doc.settings = { ...(doc.settings ?? {}), scaleMode: 'cover' }
+    }
+
     let cursor = 0
     for (let i = 0; i < shotSlots.length; i++) {
       const slot = shotSlots[i]!
@@ -382,20 +415,7 @@ export async function composeTimelineVideoForNode(input: {
       const nativeVisDur = slot.visIdx !== undefined ? visualDurations[slot.visIdx]! : null
 
       if (preImg && vis) {
-        // ── 混合入画槽位（古画/世界名画一镜入画：4.2s 从容平移寻景与对位推进前奏 + 0.7s 墨韵/油彩消融叠化 + 写实复活视频） ──
-        const preRollDur = 4.2
-        const portalOverlap = 0.7
-        const preLeadSec = Math.round((preRollDur - portalOverlap) * 100) / 100 // 3.5s
-        const targetActDur = Math.max(
-          preRollDur + 1.2,
-          Math.round(Math.max(voiceDur ?? 0, preLeadSec + (nativeVisDur ?? 7.8)) * 100) / 100
-        )
-        const mainVidDur = Math.max(1.2, Math.round((targetActDur - preLeadSec) * 100) / 100)
-        const shotDur = Math.round((preLeadSec + mainVidDur) * 100) / 100
-        const freezeTailSec =
-          nativeVisDur !== null && mainVidDur > nativeVisDur + 0.08
-            ? Math.round((mainVidDur - nativeVisDur) * 100) / 100
-            : undefined
+        // ── 混合入画槽位（古画/世界名画多段复活剪辑：3.6s 原画移动镜头寻景与焦点定格 + 0.45s 焦点拍照闪光呈现 1:1 写实还原照片(1.6s) + 0.35s 无缝叠化进入首帧生成视频 + 幕尾融回原画移向下一焦点） ──
         const rawSub = input.subtitles?.[i]?.trim() || voice?.text?.trim() || ''
         const rawGenParams = readGenParams()
         const graphNodes: Array<{
@@ -421,7 +441,57 @@ export async function composeTimelineVideoForNode(input: {
         const recognizeNode = actMatchingNodes.find((n) => n.typeId === 'image.toPrompt')
         const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
         const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
-        const realNode = actMatchingNodes.find((n) => n.typeId === 'asset.image')
+        const realNode = actMatchingNodes.find(
+          (n) => n.typeId === 'asset.image' && n.id !== 'scroll-src'
+        )
+        const resolveNodeImageRelPath = (node?: {
+          id?: string
+          params?: Record<string, unknown>
+        }): string | undefined => {
+          if (!node?.params) return undefined
+          const p = node.params
+          const direct =
+            (typeof p.previewRelativePath === 'string' && p.previewRelativePath.trim()) ||
+            (typeof p.sourceRelativePath === 'string' && p.sourceRelativePath.trim()) ||
+            ''
+          if (direct) return direct.replace(/^@+/, '').trim()
+          if (Array.isArray(p.generatedImages) && p.generatedImages.length > 0) {
+            const selId = typeof p.selectedImageId === 'string' ? p.selectedImageId : ''
+            const chosen =
+              (selId
+                ? (p.generatedImages as Array<{ id?: string; relativePath?: string }>).find(
+                    (g) => g?.id === selId && g?.relativePath
+                  )
+                : undefined) ??
+              (p.generatedImages as Array<{ relativePath?: string }>).find((g) => g?.relativePath)
+            if (chosen?.relativePath) return chosen.relativePath.trim().replace(/^@+/, '').trim()
+          }
+          return undefined
+        }
+        const slotRealVis =
+          slot.realImgIdx !== undefined ? resolvedVisuals[slot.realImgIdx] : undefined
+        const candidateRealRel = slotRealVis?.rel || resolveNodeImageRelPath(realNode)
+        const realImgRel =
+          candidateRealRel && candidateRealRel !== preImg.rel ? candidateRealRel : undefined
+
+        const preRollDur = 3.6
+        const shutterFlashSec = 0.45
+        const realPhotoHoldSec = 1.6
+        const photoToVideoOverlap = 0.35
+        const prePhotoLeadSec = Math.round((preRollDur - shutterFlashSec) * 100) / 100 // 3.15s
+        const preLeadSec = realImgRel
+          ? Math.round((prePhotoLeadSec + realPhotoHoldSec - photoToVideoOverlap) * 100) / 100 // 4.4s
+          : Math.round((preRollDur - 0.6) * 100) / 100 // 3.0s
+        const targetActDur = Math.max(
+          preLeadSec + 1.2,
+          Math.round(Math.max(voiceDur ?? 0, preLeadSec + (nativeVisDur ?? 7.8)) * 100) / 100
+        )
+        const mainVidDur = Math.max(1.2, Math.round((targetActDur - preLeadSec) * 100) / 100)
+        const shotDur = Math.round((preLeadSec + mainVidDur) * 100) / 100
+        const freezeTailSec =
+          nativeVisDur !== null && mainVidDur > nativeVisDur + 0.08
+            ? Math.round((mainVidDur - nativeVisDur) * 100) / 100
+            : undefined
         const cultureHint =
           cropNode?.params?.paintingCulture === 'western'
             ? ('western' as const)
@@ -466,13 +536,25 @@ export async function composeTimelineVideoForNode(input: {
           rawCrop?.cropY != null && Number.isFinite(rawCrop.cropY)
             ? Math.min(0.22, Math.max(0.08, rawCrop.cropY * 0.65 + 0.06))
             : 0.14
-        const interActOverlap = 1.2
+        const interActOverlap = 0.75
+        const realReturnFadeSec = 0.4
+        const realReturnHoldSec = 1.25
+        const outroDissolveSec = 0.65
+        const outroHoldSec = 1.65
         const hasNextActPreRoll =
           i < shotSlots.length - 1 && shotSlots[i + 1]?.preImgIdx !== undefined
+        const outroTailNetSec = hasNextActPreRoll
+          ? Math.round(
+              ((realImgRel ? realReturnHoldSec - realReturnFadeSec : 0) +
+                outroHoldSec -
+                outroDissolveSec) *
+                100
+            ) / 100
+          : 0
         const actIntroLeadOffset = i > 0 ? 0.55 : 0.2
 
-        // 1) 0.0s ~ 4.2s：名画从容水平移镜寻景(Pan: 0~2.35s) → 锁定取景定格(2.35~2.86s) → 纵深推进至中近景(2.86~4.2s)
-        //    国画幕间采用 1.2s smoothleft 手卷自右向左从容横移；西洋名画幕间采用 1.2s smoothright 顺应西画透视动线
+        // 1) 0.0s ~ 3.6s：原画水平移镜寻景(0~68%: 1.22x -> 1.00x) → 焦点定格锁定(68~100%: 1.00x)
+        //    幕间先在上一幕末尾 1:1 融回本幕古画原位(outro)，再通过 smoothleft/smoothright 横移镜头滑向下一焦点
         clips.push({
           id: `clip:auto:pre:${i}:${stamp}`,
           track: 'video',
@@ -480,6 +562,8 @@ export async function composeTimelineVideoForNode(input: {
           sourceId: preImg.rel || preImg.id || `pre:${i}`,
           title: snapTitle,
           relativePath: preImg.rel,
+          ...(preImg.id ? { assetId: preImg.id } : {}),
+          ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
           startSec: cursor,
           durationSec: preRollDur,
           cameraMotion: 'scrollPanZoomIn',
@@ -494,8 +578,8 @@ export async function composeTimelineVideoForNode(input: {
             : {})
         })
 
-        // 2) 文博取景框动态矢量贴纸（随加长后的水平移镜从容滑入 → 锁定对焦 → 推进放大淡出）
-        const vfDur = Math.round((preLeadSec - actIntroLeadOffset + 0.1) * 100) / 100
+        // 2) 文博取景框动态矢量贴纸（随水平移镜滑入 → 焦点位置锁定对焦 → 快门闪光拍照瞬间扩框定格）
+        const vfDur = Math.round((prePhotoLeadSec - actIntroLeadOffset + 0.15) * 100) / 100
         clips.push({
           id: `clip:auto:vf:${i}:${stamp}`,
           track: 'overlay',
@@ -522,7 +606,7 @@ export async function composeTimelineVideoForNode(input: {
               ease: 'inOutSine'
             },
             {
-              offsetSec: Number((vfDur * 0.56).toFixed(2)),
+              offsetSec: Number((vfDur * 0.58).toFixed(2)),
               x: 0.06,
               y: 0.08,
               width: 0.88,
@@ -531,7 +615,7 @@ export async function composeTimelineVideoForNode(input: {
               ease: 'outCubic'
             },
             {
-              offsetSec: Number((vfDur * 0.72).toFixed(2)),
+              offsetSec: Number((vfDur * 0.84).toFixed(2)),
               x: 0.06,
               y: 0.08,
               width: 0.88,
@@ -553,14 +637,34 @@ export async function composeTimelineVideoForNode(input: {
           tweenInDurationSec: 0.4,
           tweenLoop: 'pulse',
           tweenOut: 'fadeOut',
-          tweenOutDurationSec: 0.4
+          tweenOutDurationSec: 0.35
         })
 
-        // 3) 字幕轨（lane 0）：移镜寻景期展示场景名铭牌 → 入画初期展示艺术史解说字幕 → 中后段展示画内人物开口对白字幕
+        // 2.5) 3.15s ~ 4.75s：焦点位置触发快门曝光闪光(flash -> fadewhite 0.45s)，原地冲印呈现 1:1 写实还原照片(actN-real, 1.00x 定格)
+        if (realImgRel) {
+          clips.push({
+            id: `clip:auto:real:${i}:${stamp}`,
+            track: 'video',
+            lane: 0,
+            sourceId: realImgRel || realNode?.id || `real:${i}`,
+            title: `${snapTitle} · \u5199\u5b9e\u8fd8\u539f`, // cjk-ok
+            relativePath: realImgRel,
+            ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
+            ...(realNode?.id ? { nodeId: realNode.id } : {}),
+            startSec: Math.round((cursor + prePhotoLeadSec) * 100) / 100,
+            durationSec: realPhotoHoldSec,
+            cameraMotion: 'none',
+            transitionType: 'flash',
+            transitionInSec: shutterFlashSec,
+            transitionOutSec: photoToVideoOverlap
+          })
+        }
+
+        // 3) 字幕轨（lane 0）：移镜寻景期展示场景名铭牌 → 写实还原照片显影起展示解说字幕 → 视频中后段展示画内人物开口对白字幕
         if (!hasManualSubtitleClips) {
-          const bannerText = `【 ${snapTitle} 】`
+          const bannerText = `【 ${snapTitle} 】` // cjk-ok
           const bannerStart = Math.round((cursor + actIntroLeadOffset) * 100) / 100
-          const bannerDur = Math.round((preLeadSec - actIntroLeadOffset - 0.15) * 100) / 100
+          const bannerDur = Math.round((prePhotoLeadSec - actIntroLeadOffset - 0.1) * 100) / 100
           clips.push({
             id: `clip:auto:sub:${i}_0:${stamp}`,
             track: 'subtitle',
@@ -574,7 +678,7 @@ export async function composeTimelineVideoForNode(input: {
             durationSec: Math.max(1.8, bannerDur)
           })
 
-          const bodyStart = Math.round((cursor + preLeadSec - 0.05) * 100) / 100
+          const bodyStart = Math.round((cursor + prePhotoLeadSec + 0.05) * 100) / 100
           const actSubEnd = cursor + shotDur - (hasNextActPreRoll ? interActOverlap + 0.1 : 0.15)
           const totalAvailDur = Math.max(2.6, actSubEnd - bodyStart)
           const hasDialogues = plan.dialogueLines.length > 0
@@ -614,7 +718,7 @@ export async function composeTimelineVideoForNode(input: {
               const isLastDlg = dlgIdx === plan.dialogueLines.length - 1
               const rawDlgDur = isLastDlg ? actSubEnd - dlgCursor : dlgStep - 0.06
               const dlgDur = Math.max(0.75, Math.round(rawDlgDur * 100) / 100)
-              const dlgLineText = `${dlg.speaker}：「${dlg.text}」`
+              const dlgLineText = `${dlg.speaker}：「${dlg.text}」` // cjk-ok
               clips.push({
                 id: `clip:auto:sub:${i}_dlg_${dlgIdx}:${stamp}`,
                 track: 'subtitle',
@@ -631,7 +735,13 @@ export async function composeTimelineVideoForNode(input: {
           }
         }
 
-        // 4) 2.2s ~ 10.2s：与前奏尾部重叠 0.6s，触发墨韵消融对位转场(dissolve) + 持续推镜(kenBurnsIn)进入写实视频（100% 保留视频模型直出的人物说话原声，旁白说话期间由混音器自动闪避至 42%）
+        // 4) 4.4s ~ 幕尾：以 1:1 写实还原照片为首帧生成的视频原地苏醒并平滑拉近至画中人物近景特写（cameraMotion: 'none'，0.35s dissolve 从写实照片平滑起动）
+        const mainVidStartSec = Math.round((cursor + preLeadSec) * 100) / 100
+        const vidOutTransitionSec = hasNextActPreRoll
+          ? realImgRel
+            ? realReturnFadeSec
+            : outroDissolveSec
+          : undefined
         clips.push({
           id: `clip:auto:v:${i}:${stamp}`,
           track: 'video',
@@ -639,15 +749,60 @@ export async function composeTimelineVideoForNode(input: {
           sourceId: vis.rel || vis.id || `shot:${i}`,
           title: vis.title?.trim() || `Shot ${i + 1}`,
           relativePath: vis.rel,
-          startSec: Math.round((cursor + preLeadSec) * 100) / 100,
+          ...(vis.id ? { assetId: vis.id } : {}),
+          ...(videoNode?.id ? { nodeId: videoNode.id } : {}),
+          startSec: mainVidStartSec,
           durationSec: mainVidDur,
           volume: 1,
-          cameraMotion: 'kenBurnsIn',
-          transitionType: 'dissolve',
-          transitionInSec: portalOverlap,
-          ...(hasNextActPreRoll ? { transitionOutSec: interActOverlap } : {}),
+          cameraMotion: 'none',
+          transitionType: realImgRel ? 'dissolve' : 'flash',
+          transitionInSec: realImgRel ? photoToVideoOverlap : shutterFlashSec,
+          ...(vidOutTransitionSec ? { transitionOutSec: vidOutTransitionSec } : {}),
           ...(freezeTailSec ? { freezeTailSec } : {})
         })
+
+        // 4.5) 幕尾从人物特写退回 1:1 全景写实照片 -> 再 1:1 融回本幕古画原图 -> 横移滑向下一焦点（与 B 站参考片完全一致）
+        if (hasNextActPreRoll) {
+          const videoEndSec = Math.round((mainVidStartSec + mainVidDur) * 100) / 100
+          let outroBaseEndSec = videoEndSec
+          if (realImgRel) {
+            const realOutStartSec = Math.round((videoEndSec - realReturnFadeSec) * 100) / 100
+            clips.push({
+              id: `clip:auto:real_out:${i}:${stamp}`,
+              track: 'video',
+              lane: 0,
+              sourceId: realImgRel || realNode?.id || `real:${i}`,
+              title: `${snapTitle} · \u5168\u666f\u56de\u843d`, // cjk-ok
+              relativePath: realImgRel,
+              ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
+              ...(realNode?.id ? { nodeId: realNode.id } : {}),
+              startSec: realOutStartSec,
+              durationSec: realReturnHoldSec,
+              cameraMotion: 'none',
+              transitionType: 'dissolve',
+              transitionInSec: realReturnFadeSec,
+              transitionOutSec: outroDissolveSec
+            })
+            outroBaseEndSec = Math.round((realOutStartSec + realReturnHoldSec) * 100) / 100
+          }
+          clips.push({
+            id: `clip:auto:outro:${i}:${stamp}`,
+            track: 'video',
+            lane: 0,
+            sourceId: preImg.rel || preImg.id || `pre:${i}`,
+            title: `${snapTitle} · \u56de\u5377`, // cjk-ok
+            relativePath: preImg.rel,
+            ...(preImg.id ? { assetId: preImg.id } : {}),
+            ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
+            startSec: Math.round((outroBaseEndSec - outroDissolveSec) * 100) / 100,
+            durationSec: outroHoldSec,
+            cameraMotion: 'none',
+            filterPreset: isWestern ? 'kodak-portra' : 'golden-autumn',
+            transitionType: 'dissolve',
+            transitionInSec: outroDissolveSec,
+            transitionOutSec: interActOverlap
+          })
+        }
 
         // 5) 画面解说旁白轨（voice 轨：从移镜寻景期起切入解说，在入画初期讲完，把视频中后段完整留给画内人物开口交谈原声）
         const actVoiceIndices = [
@@ -721,7 +876,9 @@ export async function composeTimelineVideoForNode(input: {
           })
         }
         cursor =
-          Math.round((cursor + shotDur - (hasNextActPreRoll ? interActOverlap : 0)) * 100) / 100
+          Math.round(
+            (cursor + shotDur + outroTailNetSec - (hasNextActPreRoll ? interActOverlap : 0)) * 100
+          ) / 100
         continue
       }
 

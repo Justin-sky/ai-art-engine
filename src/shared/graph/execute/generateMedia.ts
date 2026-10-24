@@ -7,6 +7,7 @@ import type { GraphImageReferenceMeta } from '../../modelProvider'
 import { expandInstructionMentions } from '../instructionMentions'
 import { resolveCharacterReferenceUrls } from '../characterConsistency'
 import { episodeFailReasonForStep, parseEpisodeAgentState } from '../episodeAgentState'
+import { parseActSceneSubtitlePlan } from '../scriptTimeline'
 import { resolveImageSystemPrompt, resolveVideoSystemPrompt } from '../systemPromptSchemes'
 import { buildLipSyncPrompt, resolveLipSyncSystemPrompt } from '../lipSync'
 import {
@@ -453,7 +454,46 @@ export async function executeVideoGenerateNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  const actVideoMatch =
+    node.id.match(/^act(\d+)[-_](?:video|shot)$/i) ??
+    (node.title ?? '').match(/第\s*(\d+)\s*幕.*(?:入画|复活|视频|镜头)/i) // cjk-ok
+  let instruction = expandInstructionMentions(instructionRaw, mentionSources)
+  let patchedActInstruction: string | undefined
+  if (actVideoMatch) {
+    const actIdx = Math.max(0, Number(actVideoMatch[1]) - 1)
+    let cleaned = instruction
+      .replace(
+        /[，,；;。]?\s*(?:全片|全程)?无人物对白(?:[、，,]?无旁白)?(?:[、，,]?无任何人声)?/g, // cjk-ok
+        ''
+      )
+      .replace(
+        /推近幅度不超过\s*\d+%/g, // cjk-ok
+        '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
+      )
+      .trim()
+    const hasDialogueQuote = /[“"「][^”"」]{4,}[”"」]/.test(`${cleaned}\n${incomingText}`)
+    if (!hasDialogueQuote) {
+      const plan = parseActSceneSubtitlePlan({
+        actIndex: actIdx,
+        rawText: incomingText,
+        titleCandidates: [node.title],
+        fallbackPromptTexts: [cleaned]
+      })
+      const d0 = plan.dialogueLines[0]
+      const d1 = plan.dialogueLines[1]
+      if (d0) {
+        const dlgClause = `随后镜头从全景平滑拉近推入画中对应焦点人物的近景特写，${d0.speaker}开口说道：“${d0.text}”${d1 ? `，${d1.speaker}应和道：“${d1.text}”` : ''}，口型与神态生动自然，保留真实同期人声对白与市井环境音响。` // cjk-ok
+        cleaned = cleaned ? `${cleaned.replace(/[。.]$/, '')}；${dlgClause}` : dlgClause
+      }
+    }
+    if (cleaned !== instruction) {
+      instruction = cleaned
+      patchedActInstruction = cleaned
+    }
+    if (node.params.generateAudio !== true) {
+      node.params = { ...node.params, generateAudio: true }
+    }
+  }
   let userPrompt = buildVideoPrompt(instruction, ctx.locale)
   if (incomingText) {
     userPrompt = userPrompt.trim() ? `${userPrompt.trim()}\n\n${incomingText}` : incomingText
@@ -473,8 +513,21 @@ export async function executeVideoGenerateNode(
     ...styleUrls.map((url) => ({ kind: 'image_url' as const, url })),
     ...portReferences
   ]
-  const firstFrameImageUrl = await resolveVideoFramePortImageUrl(ctx, VIDEO_FIRST_FRAME_PORT_ID)
+  let firstFrameImageUrl = await resolveVideoFramePortImageUrl(ctx, VIDEO_FIRST_FRAME_PORT_ID)
   const lastFrameImageUrl = await resolveVideoFramePortImageUrl(ctx, VIDEO_LAST_FRAME_PORT_ID)
+  const firstPortImageRef = portReferences.find((ref) => ref.kind === 'image_url')
+  const promptWantsFirstFrame =
+    /\u9996\u5e27|first[\s_-]*frame/i.test(instructionRaw) ||
+    /\u9996\u5e27|first[\s_-]*frame/i.test(userPrompt)
+  if (
+    !firstFrameImageUrl &&
+    firstPortImageRef?.url &&
+    (node.params.generateFrameMode === 'first' ||
+      node.params.generateFrameMode === 'first_last' ||
+      promptWantsFirstFrame)
+  ) {
+    firstFrameImageUrl = firstPortImageRef.url
+  }
 
   if (
     !inputReferences.length &&
@@ -504,6 +557,9 @@ export async function executeVideoGenerateNode(
   }
 
   const genParams = resolveVideoGenerateParamsForApi(node.params, capsParams)
+  if (actVideoMatch && capsParams?.supportsGenerateAudio !== false) {
+    genParams.generateAudio = true
+  }
   if (!node.params.generateFrameMode || node.params.generateFrameMode === 'none') {
     if (firstFrameImageUrl && lastFrameImageUrl) {
       genParams.frameMode = 'first_last'
@@ -511,7 +567,12 @@ export async function executeVideoGenerateNode(
       genParams.frameMode = 'first'
     }
   }
-  const paramsPatch = videoGenerateParamsToNodePatch(genParams)
+  const paramsPatch = {
+    ...videoGenerateParamsToNodePatch(genParams),
+    ...(patchedActInstruction
+      ? { generateInstruction: patchedActInstruction, notes: patchedActInstruction }
+      : {})
+  }
   node.params = { ...node.params, ...paramsPatch }
   ctx.patchNode?.({ params: paramsPatch })
 

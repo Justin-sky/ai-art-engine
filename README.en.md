@@ -99,6 +99,22 @@ Every granted wish can be exported as a **Recipe Card (`.png`)** carrying lossle
       <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">Play HD MP4 with audio</a></sub>
     </td>
   </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe3.png" target="_blank">
+        <img src="website/assets/recipe/recipe3.png" alt="Recipe 3: Ancient Scroll Revival Workflow Recipe (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>Recipe 3 · Ancient Scroll Revival (Qingming Scroll)</b> (24 Nodes)<br />🔍 <a href="website/assets/recipe/recipe3.png" target="_blank">View / download original PNG</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe3.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe3.gif" alt="Recipe 3 Output Preview" width="260" />
+      </a>
+      <br />
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe3.mp4" target="_blank">Play HD MP4 with audio</a></sub>
+    </td>
+  </tr>
 </table>
 </div>
 

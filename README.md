@@ -99,6 +99,22 @@
       <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe2.mp4" target="_blank">点击播放有声高清 MP4 原视频</a></sub>
     </td>
   </tr>
+  <tr>
+    <td align="center" valign="middle">
+      <a href="website/assets/recipe/recipe3.png" target="_blank">
+        <img src="website/assets/recipe/recipe3.png" alt="配方 3：清明上河图一镜入画许愿配方卡 (Workflow-in-PNG)" width="260" />
+      </a>
+      <br />
+      <sub><b>配方 3 · 清明上河图一镜入画</b>（24 节点）<br />🔍 <a href="website/assets/recipe/recipe3.png" target="_blank">点击查看 / 下载原图</a></sub>
+    </td>
+    <td align="center" valign="middle">
+      <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe3.mp4" target="_blank">
+        <img src="website/assets/recipe/recipe3.gif" alt="配方 3 生成效果预览" width="260" />
+      </a>
+      <br />
+      <sub>🔊 <a href="https://justin-sky.github.io/ai-art-engine/assets/recipe/recipe3.mp4" target="_blank">点击播放有声高清 MP4 原视频</a></sub>
+    </td>
+  </tr>
 </table>
 </div>
 

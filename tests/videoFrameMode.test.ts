@@ -323,4 +323,42 @@ describe('executeVideoGenerateNode frame mapping', () => {
     // 首帧模式同样不可混参考图
     expect(arg.inputReferences).toBeUndefined()
   })
+
+  it('promotes in-image reference to firstFrameImageUrl when generateFrameMode is first or prompt specifies first frame', async () => {
+    const generateVideo = vi.fn(async () => ({
+      assetId: 'out-vid',
+      relativePath: 'videos/x.mp4',
+      model: 'm'
+    }))
+    const ctx: NodeExecuteContext = {
+      node: {
+        id: 'act1-video',
+        typeId: 'asset.video',
+        category: 'asset',
+        assetType: 'video',
+        position: { x: 0, y: 0 },
+        params: {
+          generateInstruction: '以 @1 这张写实还原图为首帧，让北宋街市活起来',
+          generateFrameMode: 'none',
+          generateModel: 'm',
+          generateProviderInstanceId: 'p1'
+        }
+      },
+      inputs: {
+        'in-image': [{ kind: 'image', dataUrl: 'data:image/png;base64,restored' }]
+      },
+      incomingByIndex: [
+        { index: 1, value: { kind: 'image', dataUrl: 'data:image/png;base64,restored' } }
+      ],
+      generateVideo,
+      resolveImageUrls: async (items) =>
+        items.map((item) => ('dataUrl' in item ? (item.dataUrl ?? '') : '')).filter(Boolean)
+    }
+
+    await executeVideoGenerateNode(ctx)
+    expect(generateVideo).toHaveBeenCalledTimes(1)
+    const arg = generateVideo.mock.calls[0]![0]
+    expect(arg.firstFrameImageUrl).toBe('data:image/png;base64,restored')
+    expect(arg.inputReferences).toBeUndefined()
+  })
 })

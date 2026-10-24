@@ -4631,8 +4631,17 @@ const mainTransitionVideoStyle = computed(() => {
   const type = transition.to.transitionType ?? 'dissolve'
   const style: Record<string, string> = {
     display: 'block',
-    opacity: '1'
+    opacity: '1',
+    objectFit: scaleMode.value === 'cover' ? 'cover' : 'contain',
+    background: scaleMode.value === 'cover' ? 'transparent' : '#000'
   }
+  const toLocalSec = Math.max(0, playheadSec.value - transition.to.startSec)
+  const hasToCam =
+    transition.to.track === 'video' &&
+    Boolean(transition.to.cameraMotion && transition.to.cameraMotion !== 'none')
+  const toCam = hasToCam
+    ? evaluateMainClipCameraTransform(transition.to, toLocalSec)
+    : { scale: 1, translateXPercent: 0, translateYPercent: 0 }
   const colorFilter = buildCssColorFilter(transition.to)
   if (colorFilter) style.filter = colorFilter
   if (type === 'dissolve') {
@@ -4662,17 +4671,29 @@ const mainTransitionVideoStyle = computed(() => {
     const blurPx = ((1 - Math.abs(rawProgress - 0.5) * 2) * 8).toFixed(2)
     style.filter = colorFilter ? `${colorFilter} blur(${blurPx}px)` : `blur(${blurPx}px)`
   } else if (type === 'smoothleft') {
-    style.opacity = `${clamp01(rawProgress * 1.25)}`
-    style.transform = `translateX(${(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+    style.opacity = `${progress}`
+    const tx = (toCam.translateXPercent + (1 - progress) * 6).toFixed(2)
+    const ty = toCam.translateYPercent.toFixed(2)
+    const sc = (toCam.scale * (1 + 0.12 * (1 - progress))).toFixed(3)
+    style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`
   } else if (type === 'smoothright') {
-    style.opacity = `${clamp01(rawProgress * 1.25)}`
-    style.transform = `translateX(${-(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+    style.opacity = `${progress}`
+    const tx = (toCam.translateXPercent - (1 - progress) * 6).toFixed(2)
+    const ty = toCam.translateYPercent.toFixed(2)
+    const sc = (toCam.scale * (1 + 0.12 * (1 - progress))).toFixed(3)
+    style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`
   } else if (type === 'smoothup') {
-    style.opacity = `${clamp01(rawProgress * 1.25)}`
-    style.transform = `translateY(${(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+    style.opacity = `${progress}`
+    const tx = toCam.translateXPercent.toFixed(2)
+    const ty = (toCam.translateYPercent + (1 - progress) * 6).toFixed(2)
+    const sc = (toCam.scale * (1 + 0.12 * (1 - progress))).toFixed(3)
+    style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`
   } else if (type === 'smoothdown') {
-    style.opacity = `${clamp01(rawProgress * 1.25)}`
-    style.transform = `translateY(${-(1 - progress) * 42}%) scale(${(1.04 - 0.04 * progress).toFixed(3)})`
+    style.opacity = `${progress}`
+    const tx = toCam.translateXPercent.toFixed(2)
+    const ty = (toCam.translateYPercent - (1 - progress) * 6).toFixed(2)
+    const sc = (toCam.scale * (1 + 0.12 * (1 - progress))).toFixed(3)
+    style.transform = `translate(${tx}%, ${ty}%) scale(${sc})`
   } else if (type === 'slideleft') {
     style.transform = `translateX(${(1 - progress) * 100}%)`
   } else if (type === 'slideright') {
@@ -4752,6 +4773,13 @@ const mainTransitionVideoStyle = computed(() => {
     const blurPx = ((1 - Math.abs(rawProgress - 0.5) * 2) * 6).toFixed(2)
     style.filter = colorFilter ? `${colorFilter} blur(${blurPx}px)` : `blur(${blurPx}px)`
   }
+  if (!style.transform && hasToCam) {
+    style.transform = `translate(${toCam.translateXPercent.toFixed(2)}%, ${toCam.translateYPercent.toFixed(2)}%) scale(${toCam.scale.toFixed(3)})`
+  }
+  const toFxTransform = buildClipVisualCssTransform(transition.to, toLocalSec)
+  if (toFxTransform) {
+    style.transform = style.transform ? `${style.transform} ${toFxTransform}` : toFxTransform
+  }
   if (!style.clipPath) {
     const cropClip = buildCssCropClipPath(transition.to)
     if (cropClip) style.clipPath = cropClip
@@ -4820,6 +4848,15 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     !cropMode.value && activeClip?.track === 'video' ? buildCssCropClipPath(activeClip) : ''
   let outgoingTransform = ''
 
+  const clipLocalSec = effectiveClipLocalTimeSec(activeClip)
+  const hasFromCam =
+    activeClip?.track === 'video' &&
+    Boolean(activeClip.cameraMotion && activeClip.cameraMotion !== 'none')
+  const fromCam =
+    hasFromCam && activeClip
+      ? evaluateMainClipCameraTransform(activeClip, clipLocalSec)
+      : { scale: 1, translateXPercent: 0, translateYPercent: 0 }
+
   const transition = activeMainTransition.value
   if (transition) {
     const duration = Math.max(0.05, transition.to.transitionInSec ?? 0.5)
@@ -4841,15 +4878,27 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     } else if (type === 'slidedown') {
       outgoingTransform = `translateY(${progress * 100}%)`
     } else if (type === 'smoothleft') {
-      outgoingTransform = `translateX(${-progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+      const tx = (fromCam.translateXPercent - progress * 4).toFixed(2)
+      const ty = fromCam.translateYPercent.toFixed(2)
+      const sc = (fromCam.scale * (1 + 0.08 * progress)).toFixed(3)
+      outgoingTransform = `translate(${tx}%, ${ty}%) scale(${sc})`
     } else if (type === 'smoothright') {
-      outgoingTransform = `translateX(${progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+      const tx = (fromCam.translateXPercent + progress * 4).toFixed(2)
+      const ty = fromCam.translateYPercent.toFixed(2)
+      const sc = (fromCam.scale * (1 + 0.08 * progress)).toFixed(3)
+      outgoingTransform = `translate(${tx}%, ${ty}%) scale(${sc})`
     } else if (type === 'smoothup') {
-      outgoingTransform = `translateY(${-progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+      const tx = fromCam.translateXPercent.toFixed(2)
+      const ty = (fromCam.translateYPercent - progress * 4).toFixed(2)
+      const sc = (fromCam.scale * (1 + 0.08 * progress)).toFixed(3)
+      outgoingTransform = `translate(${tx}%, ${ty}%) scale(${sc})`
     } else if (type === 'smoothdown') {
-      outgoingTransform = `translateY(${progress * 36}%) scale(${(1 - 0.04 * progress).toFixed(3)})`
+      const tx = fromCam.translateXPercent.toFixed(2)
+      const ty = (fromCam.translateYPercent + progress * 4).toFixed(2)
+      const sc = (fromCam.scale * (1 + 0.08 * progress)).toFixed(3)
+      outgoingTransform = `translate(${tx}%, ${ty}%) scale(${sc})`
     } else if (type === 'zoomin') {
-      outgoingTransform = `scale(${(1 + 0.24 * progress).toFixed(3)})`
+      outgoingTransform = `scale(${(fromCam.scale * (1 + 0.24 * progress)).toFixed(3)})`
     } else if (type === 'squeezeh') {
       outgoingTransform = `scaleX(${Math.max(0.05, 1 - progress).toFixed(3)})`
     } else if (type === 'squeezev') {
@@ -4857,15 +4906,8 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     }
   }
 
-  const clipLocalSec = effectiveClipLocalTimeSec(activeClip)
-  if (
-    !outgoingTransform &&
-    activeClip?.track === 'video' &&
-    activeClip.cameraMotion &&
-    activeClip.cameraMotion !== 'none'
-  ) {
-    const cam = evaluateMainClipCameraTransform(activeClip, clipLocalSec)
-    outgoingTransform = `translate(${cam.translateXPercent.toFixed(2)}%, ${cam.translateYPercent.toFixed(2)}%) scale(${cam.scale.toFixed(3)})`
+  if (!outgoingTransform && hasFromCam) {
+    outgoingTransform = `translate(${fromCam.translateXPercent.toFixed(2)}%, ${fromCam.translateYPercent.toFixed(2)}%) scale(${fromCam.scale.toFixed(3)})`
   }
 
   if (activeClip) {
@@ -7916,8 +7958,19 @@ async function reloadSources(): Promise<void> {
       .filter(Boolean)
     sources.value = [...inputNext, ...preservedImported]
 
+    const extractActIdxFromMeta = (s: string): number | null => {
+      const m =
+        s.match(/(?:第\s*(\d+)\s*幕|分镜\s*#?(\d+)|act\s*#?(\d+)|shot\s*#?(\d+))/i) ?? // cjk-ok
+        s.match(/^#?(\d+)[\s._:\uff1a-]/)
+      const numStr = m ? (m[1] ?? m[2] ?? m[3] ?? m[4]) : undefined
+      return numStr ? Math.max(0, Number(numStr) - 1) : null
+    }
+
+    let nextClips = upgradeTemporaryAutoSubtitlesInTimeline(clips.value, readGenParams())
+    let patchedInPlace = nextClips.length !== clips.value.length
+
     const existingClipKeys = new Set(
-      clips.value.map((c) =>
+      nextClips.map((c) =>
         sourceIdentityKey({
           id: c.sourceId,
           assetId: c.assetId,
@@ -7925,11 +7978,69 @@ async function reloadSources(): Promise<void> {
         })
       )
     )
+
+    for (const src of inputNext) {
+      const key = sourceIdentityKey(src)
+      if (existingClipKeys.has(key)) continue
+      const isVoice = sourceMediaKind(src) === 'voice'
+      const srcMeta = `${src.title ?? ''} ${src.nodeTitle ?? ''} ${src.nodeId ?? ''}`
+      const actIdx = extractActIdxFromMeta(srcMeta)
+      const isVideoFile = /\.(?:mp4|webm|mov|m4v|mkv)$/i.test(src.relativePath ?? '')
+      const isRealPhoto = /实景还原|写实还原|-real\b/i.test(srcMeta) // cjk-ok
+      const isCropPhoto = /古画取景|-crop\b/i.test(srcMeta) // cjk-ok
+      const isSfxSource = /环境音|sfx/i.test(srcMeta) // cjk-ok
+
+      let matchedExisting = false
+      nextClips = nextClips.map((c) => {
+        const sameNode = Boolean(src.nodeId && c.nodeId && src.nodeId === c.nodeId)
+        const sameTitle =
+          Boolean(src.title?.trim() && c.title?.trim() && src.title.trim() === c.title.trim()) &&
+          ((isVoice && (c.track === 'voice' || c.track === 'sfx' || c.track === 'music')) ||
+            (!isVoice && c.track === 'video'))
+        const sameActSlot =
+          actIdx !== null &&
+          ((!isVoice && isVideoFile && c.id.startsWith(`clip:auto:v:${actIdx}:`)) ||
+            (!isVoice &&
+              isRealPhoto &&
+              (c.id.startsWith(`clip:auto:real:${actIdx}:`) ||
+                c.id.startsWith(`clip:auto:real_out:${actIdx}:`))) ||
+            (!isVoice &&
+              isCropPhoto &&
+              (c.id.startsWith(`clip:auto:pre:${actIdx}:`) ||
+                c.id.startsWith(`clip:auto:outro:${actIdx}:`))) ||
+            (isVoice &&
+              !isSfxSource &&
+              c.track === 'voice' &&
+              (c.id.startsWith(`clip:auto:a:${actIdx}_0:`) ||
+                c.id.startsWith(`clip:auto:a:${actIdx}:`))))
+        if (!sameNode && !sameTitle && !sameActSlot) return c
+        matchedExisting = true
+        patchedInPlace = true
+        return {
+          ...c,
+          sourceId: src.id,
+          relativePath: src.relativePath,
+          ...(src.assetId ? { assetId: src.assetId } : {}),
+          ...(src.nodeId?.trim() ? { nodeId: src.nodeId.trim() } : {}),
+          ...(src.nodeTitle?.trim() ? { nodeTitle: src.nodeTitle.trim() } : {})
+        }
+      })
+      if (matchedExisting) {
+        existingClipKeys.add(key)
+      }
+    }
+
+    if (patchedInPlace) {
+      commitClips(nextClips)
+    }
+
+    const hasStructuredActTimeline = clips.value.some((c) => /^clip:auto:(?:pre|v):\d+:/.test(c.id))
     const hasVideoClips = clips.value.some((c) => c.track === 'video')
     const hasVoiceClips = clips.value.some((c) => c.track === 'voice')
     const toAutoPlace = inputNext.filter((src) => {
       const key = sourceIdentityKey(src)
       if (existingClipKeys.has(key)) return false
+      if (hasStructuredActTimeline) return false
       const isVoice = sourceMediaKind(src) === 'voice'
       if (isVoice && !hasVoiceClips) return true
       if (!isVoice && !hasVideoClips) return true
