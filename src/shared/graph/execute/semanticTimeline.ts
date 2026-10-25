@@ -1135,7 +1135,12 @@ function writeRebuildReport(
   ctx.patchNode?.({
     params: {
       rebuildLastReport: JSON.stringify(report, null, 2),
-      ...(outputRelativePath ? { rebuildLastOutput: outputRelativePath } : {})
+      ...(outputRelativePath
+        ? {
+            rebuildLastOutput: outputRelativePath,
+            previewRelativePath: outputRelativePath
+          }
+        : {})
     }
   })
 }

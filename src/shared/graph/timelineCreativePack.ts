@@ -55,6 +55,8 @@ export type TimelineVisualEffectId =
   | 'neon-edge'
   | 'cyber-matrix'
   | 'pixel-mosaic'
+  | 'rainbow-rave'
+  | 'deep-fry'
   | 'camera-shake'
   | 'earthquake'
   | 'beat-pulse'
@@ -62,6 +64,8 @@ export type TimelineVisualEffectId =
   | 'strobe-flash'
   | 'pendulum-swing'
   | 'zoom-burst'
+  | 'guichu-pingpong'
+  | 'beat-flip'
   | 'dreamy-bloom'
   | 'gold-sparkle'
   | 'sunset-leak'
@@ -80,6 +84,7 @@ export type TimelineVisualEffectId =
   | 'split-2h'
   | 'split-3v'
   | 'split-4grid'
+  | 'split-9grid'
 
 export type TimelineCreativeTemplateId =
   | 'high-energy-beat'
@@ -94,6 +99,7 @@ export type TimelineCreativeTemplateId =
   | 'peach-fashion-lookbook'
   | 'dune-epic-trailer'
   | 'vaporwave-party'
+  | 'guichu-madness'
 
 export interface TimelineClipCreativeProps {
   /** 亮度 (-0.5..0.5, 缺省 0) */
@@ -622,12 +628,73 @@ export const TIMELINE_VISUAL_EFFECTS: readonly TimelineVisualEffectMeta[] = [
     category: 'split',
     labelZh: '四宫格分屏',
     labelEn: 'Quad Grid',
-    descZh: '2×2 四宫格十字分割线与现代节奏感',
-    descEn: '2x2 quad grid split-screen overlay',
+    descZh: '2×2 四宫格对称克隆分身与高燃卡点分割',
+    descEn: '2x2 quad grid cloned split-screen matrix',
     badge: '4-GRID',
     accent: '#c084fc',
     previewGradient: 'linear-gradient(135deg, #4c1d95 0%, #7c3aed 48%, #c084fc 100%)',
     iconPath: 'M3 4h14v12H3V4Zm7 0v12M3 10h14'
+  },
+  {
+    id: 'split-9grid',
+    category: 'split',
+    labelZh: '九宫格分身',
+    labelEn: '9-Grid Clones',
+    descZh: '3×3 九宫格鬼畜全明星同步分身矩阵与炫彩分割',
+    descEn: '3x3 9-grid Guichu clone matrix with neon borders',
+    badge: '9-GRID',
+    accent: '#e879f9',
+    previewGradient: 'linear-gradient(135deg, #701a75 0%, #d946ef 50%, #22d3ee 100%)',
+    iconPath: 'M3 4h14v12H3V4Zm4.6 0v12m4.8-12v12M3 8h14M3 12h14'
+  },
+  {
+    id: 'guichu-pingpong',
+    category: 'dynamic',
+    labelZh: '鬼畜抽搐',
+    labelEn: 'Ping-Pong Twitch',
+    descZh: '镜头内高频正倒放往复抽搐与色差震荡，鬼畜经典魔性动作循环',
+    descEn: 'High-speed forward-reverse boomerang twitch for Guichu remixes',
+    badge: 'TWITCH',
+    accent: '#f43f5e',
+    previewGradient: 'linear-gradient(135deg, #881337 0%, #f43f5e 50%, #facc15 100%)',
+    iconPath: 'M4 8h9l-2.5-2.5M16 12H7l2.5 2.5'
+  },
+  {
+    id: 'beat-flip',
+    category: 'dynamic',
+    labelZh: '节拍镜像',
+    labelEn: 'Beat Flip',
+    descZh: '随节拍高频左右镜像翻转与色差闪烁，魔性鬼畜点头摇摆',
+    descEn: 'Rhythmic beat-synced horizontal mirror flip with RGB pop',
+    badge: 'FLIP',
+    accent: '#ec4899',
+    previewGradient: 'linear-gradient(90deg, #ec4899 0%, #1e1b4b 50%, #06b6d4 100%)',
+    iconPath: 'M10 3v14M7 7 3.5 10 7 13m6-6 3.5 3-3.5 3'
+  },
+  {
+    id: 'rainbow-rave',
+    category: 'cyber',
+    labelZh: '彩虹蹦迪',
+    labelEn: 'Rainbow Rave',
+    descZh: '全光谱高速360°色相旋转与高饱和霓虹蹦迪跑马灯',
+    descEn: 'High-speed 360-degree psychedelic rainbow hue rave cycling',
+    badge: 'RAVE',
+    accent: '#a855f7',
+    previewGradient:
+      'linear-gradient(135deg, #ef4444 0%, #eab308 28%, #22c55e 55%, #3b82f6 78%, #d946ef 100%)',
+    iconPath: 'M3 14a7 7 0 0 1 14 0M5.5 14a4.5 4.5 0 0 1 9 0M8 14a2 2 0 0 1 4 0'
+  },
+  {
+    id: 'deep-fry',
+    category: 'cyber',
+    labelZh: '红温核爆',
+    labelEn: 'Deep Fry',
+    descZh: '梗图式极限高反差红温过载、超高饱和与锐化爆破',
+    descEn: 'Meme-style extreme thermal overdrive, hyper-contrast and sharp pop',
+    badge: 'FRY',
+    accent: '#ef4444',
+    previewGradient: 'radial-gradient(circle at 50% 50%, #fef08a 0%, #ef4444 52%, #450a0a 100%)',
+    iconPath: 'M10 2.5c2.5 3 4.5 5.2 4.5 8.2a4.5 4.5 0 1 1-9 0c0-3 2-5.2 4.5-8.2Z'
   }
 ] as const
 
@@ -2807,6 +2874,48 @@ export const TIMELINE_CREATIVE_TEMPLATES: readonly TimelineCreativeTemplateMeta[
         subtitleMotion: 'fade'
       }
     }
+  },
+  {
+    id: 'guichu-madness',
+    labelZh: '网络鬼畜电音',
+    labelEn: 'Guichu Electro Madness',
+    descZh:
+      'B站魔性鬼畜全明星：正倒放高频抽搐、四/九宫格分身、彩虹色差红温核爆与人力VOCALOID电音音阶',
+    descEn:
+      'Bilibili Guichu remix: ping-pong twitch, 4/9-grid clones, rainbow rave, deep-fry & Auto-Tune vocal pitch ladder',
+    badge: 'GUICHU',
+    accent: '#f43f5e',
+    previewGradient: 'linear-gradient(135deg, #f43f5e 0%, #facc15 35%, #22d3ee 70%, #a855f7 100%)',
+    iconPath: 'M11 2.2 4.5 10.8h5l-1 7L15.5 9.2h-5l0.5-7ZM3 5h3M14 15h3',
+    tagsZh: ['鬼畜抽搐', '九宫格分身', '魔性电音', '彩虹核爆'],
+    tagsEn: ['Ping-Pong Twitch', '9-Grid Clones', 'Auto-Tune Vocal', 'Rainbow Rave'],
+    recipe: {
+      transitionType: 'flash',
+      transitionDurationSec: 0,
+      alternatingTransitions: ['flash', 'zoomin', 'pixelize', 'smoothleft'],
+      filterPreset: 'cyberpunk',
+      filterIntensity: 95,
+      visualEffect: 'guichu-pingpong',
+      effectIntensity: 92,
+      cameraMotions: ['kenBurnsIn', 'kenBurnsOut', 'panRight', 'panLeft'],
+      tweenIn: 'popIn',
+      tweenOut: 'fadeOut',
+      adjustments: {
+        contrast: 1.26,
+        saturation: 1.42,
+        vibrance: 32,
+        sharpen: 42
+      },
+      subtitleStyle: {
+        subtitleColor: '#facc15',
+        subtitleBorderColor: '#000000',
+        subtitleBorderWidth: 5,
+        subtitleBoxEnabled: true,
+        subtitleBoxColor: '#e11d48',
+        subtitleBoxOpacity: 0.82,
+        subtitleMotion: 'fade'
+      }
+    }
   }
 ] as const
 
@@ -3155,6 +3264,48 @@ export function buildClipVisualCssFilter(
     }
     case 'negative-invert': {
       invertRatio = Math.min(1, Math.max(0, effectScale))
+      contrast *= 1 + 0.25 * effectScale
+      saturation *= 1 + 0.3 * effectScale
+      break
+    }
+    case 'guichu-pingpong':
+    case 'beat-flip': {
+      const shiftPx = Number((4.8 * effectScale * Math.sin(phase * 29)).toFixed(2))
+      extraShadows.push(
+        `drop-shadow(${shiftPx}px 0 0 rgba(255, 0, 85, ${(0.72 * effectScale).toFixed(2)}))`,
+        `drop-shadow(${-shiftPx}px 0 0 rgba(0, 240, 255, ${(0.72 * effectScale).toFixed(2)}))`
+      )
+      contrast *= 1 + 0.26 * effectScale
+      saturation *= 1 + 0.34 * effectScale
+      break
+    }
+    case 'rainbow-rave': {
+      hueRotateDeg += (45 + t * 420 * effectScale) % 360
+      saturation *= 1 + 1.05 * effectScale
+      contrast *= 1 + 0.32 * effectScale
+      brightness += 0.06 * Math.abs(Math.sin(phase * 18)) * effectScale
+      extraShadows.push(
+        `drop-shadow(0 0 ${Math.round(14 * effectScale)}px rgba(236, 72, 153, ${(0.75 * effectScale).toFixed(2)}))`
+      )
+      break
+    }
+    case 'deep-fry': {
+      contrast *= 1 + 0.95 * effectScale
+      saturation *= 1 + 1.35 * effectScale
+      brightness += 0.06 * effectScale
+      sepia = Math.min(1, sepia + 0.32 * effectScale)
+      hueRotateDeg -= 14 * effectScale
+      extraShadows.push(
+        `drop-shadow(0 0 ${Math.round(10 * effectScale)}px rgba(239, 68, 68, ${(0.8 * effectScale).toFixed(2)}))`
+      )
+      break
+    }
+    case 'split-2h':
+    case 'split-3v':
+    case 'split-4grid':
+    case 'split-9grid': {
+      contrast *= 1 + 0.18 * effectScale
+      saturation *= 1 + 0.24 * effectScale
       break
     }
     default:
@@ -3183,6 +3334,8 @@ const DYNAMIC_VISUAL_EFFECT_IDS = new Set<TimelineVisualEffectId>([
   'rgb-glitch',
   'bad-tv',
   'neon-edge',
+  'rainbow-rave',
+  'deep-fry',
   'camera-shake',
   'earthquake',
   'beat-pulse',
@@ -3190,6 +3343,8 @@ const DYNAMIC_VISUAL_EFFECT_IDS = new Set<TimelineVisualEffectId>([
   'strobe-flash',
   'pendulum-swing',
   'zoom-burst',
+  'guichu-pingpong',
+  'beat-flip',
   'gold-sparkle',
   'blur-focus',
   'vhs-retro',
@@ -3262,6 +3417,28 @@ export function buildClipVisualCssTransform(
           ? Math.cos(phase * 67) * 1.25 * effectScale
           : 0.42 * effectScale * (wave >= 0 ? 1 : -1)
       return `translateX(${glitchBurst.toFixed(2)}%) scale(1.018)`
+    }
+    case 'beat-flip': {
+      const flipSign = Math.sin(phase * Math.PI * 6) >= 0 ? 1 : -1
+      const scale = 1 + 0.06 * Math.abs(Math.sin(phase * Math.PI * 6)) * effectScale
+      return `scale(${(flipSign * scale).toFixed(3)}, ${scale.toFixed(3)})`
+    }
+    case 'guichu-pingpong': {
+      const flipSign = Math.sin(phase * Math.PI * 8) >= 0 ? 1 : -1
+      const dx = Math.sin(phase * 47) * 1.6 * effectScale
+      const rot = Math.cos(phase * 39) * 2.8 * effectScale
+      const scale = 1.06 + 0.08 * Math.abs(Math.cos(phase * Math.PI * 8)) * effectScale
+      return `translateX(${dx.toFixed(2)}%) rotate(${rot.toFixed(2)}deg) scale(${(flipSign * scale).toFixed(3)}, ${scale.toFixed(3)})`
+    }
+    case 'deep-fry': {
+      const dx = Math.sin(phase * 67) * 1.8 * effectScale
+      const dy = Math.cos(phase * 73) * 1.8 * effectScale
+      const scale = 1 + 0.14 * effectScale
+      return `translate(${dx.toFixed(2)}%, ${dy.toFixed(2)}%) scale(${scale.toFixed(3)})`
+    }
+    case 'rainbow-rave': {
+      const scale = 1 + 0.08 * Math.abs(Math.sin(phase * Math.PI * 4.5)) * effectScale
+      return `scale(${scale.toFixed(3)})`
     }
     default:
       return undefined
@@ -3517,7 +3694,7 @@ export interface ClipVisualOverlayMeta {
   lightLeakOpacity: number
   neonHaloOpacity: number
   dvCamOverlay: boolean
-  splitMode: 'none' | 'split-2h' | 'split-3v' | 'split-4grid'
+  splitMode: 'none' | 'split-2h' | 'split-3v' | 'split-4grid' | 'split-9grid'
   /** 灵魂出窍残影克隆层透明度 (0..0.65) */
   soulOutOpacity: number
   /** 灵魂出窍残影克隆层缩放倍率 (1.06..1.38) */
@@ -3615,7 +3792,10 @@ export function buildClipVisualOverlayMeta(
       : 0
   const dvCamOverlay = effectMeta.id === 'dv-cam' && effectScale > 0.1
   const splitMode: ClipVisualOverlayMeta['splitMode'] =
-    effectMeta.id === 'split-2h' || effectMeta.id === 'split-3v' || effectMeta.id === 'split-4grid'
+    effectMeta.id === 'split-2h' ||
+    effectMeta.id === 'split-3v' ||
+    effectMeta.id === 'split-4grid' ||
+    effectMeta.id === 'split-9grid'
       ? effectMeta.id
       : 'none'
 
@@ -3762,6 +3942,25 @@ export function buildClipVisualFfmpegFilter(
   } else if (effectMeta.id === 'neon-edge' || effectMeta.id === 'neon-halo') {
     eqSaturation *= 1 + 0.35 * effectScale
     eqContrast *= 1 + 0.16 * effectScale
+  } else if (effectMeta.id === 'deep-fry') {
+    eqBrightness += 0.05 * effectScale
+    eqContrast *= 1 + 0.85 * effectScale
+    eqSaturation *= 1 + 1.25 * effectScale
+  } else if (
+    effectMeta.id === 'guichu-pingpong' ||
+    effectMeta.id === 'beat-flip' ||
+    effectMeta.id === 'rainbow-rave'
+  ) {
+    eqContrast *= 1 + 0.24 * effectScale
+    eqSaturation *= 1 + 0.38 * effectScale
+  } else if (
+    effectMeta.id === 'split-2h' ||
+    effectMeta.id === 'split-3v' ||
+    effectMeta.id === 'split-4grid' ||
+    effectMeta.id === 'split-9grid'
+  ) {
+    eqContrast *= 1 + 0.16 * effectScale
+    eqSaturation *= 1 + 0.22 * effectScale
   }
 
   eqBrightness = clampRange(eqBrightness, -0.5, 0.5, 0)
@@ -3770,7 +3969,20 @@ export function buildClipVisualFfmpegFilter(
 
   const chain: string[] = []
 
-  if (
+  if (effectMeta.id === 'strobe-flash' && effectScale > 0.1) {
+    const amp = (0.28 * effectScale).toFixed(3)
+    chain.push(
+      `eq=brightness='${amp}*sin(2*PI*t*7)':contrast=${eqContrast.toFixed(3)}:saturation=${eqSaturation.toFixed(3)}:eval=frame`
+    )
+  } else if (
+    (effectMeta.id === 'beat-pulse' || effectMeta.id === 'zoom-burst') &&
+    effectScale > 0.1
+  ) {
+    const amp = (0.16 * effectScale).toFixed(3)
+    chain.push(
+      `eq=brightness='${amp}*sin(2*PI*t*4.5)':contrast=${eqContrast.toFixed(3)}:saturation=${eqSaturation.toFixed(3)}:eval=frame`
+    )
+  } else if (
     Math.abs(eqBrightness) > 0.005 ||
     Math.abs(eqContrast - 1) > 0.01 ||
     Math.abs(eqSaturation - 1) > 0.01 ||
@@ -3785,11 +3997,13 @@ export function buildClipVisualFfmpegFilter(
   const totalTemp =
     userTemp +
     filterMeta.recipe.temperature * filterScale +
-    (effectMeta.id === 'sunset-leak' ? 28 * effectScale : 0)
+    (effectMeta.id === 'sunset-leak' ? 28 * effectScale : 0) +
+    (effectMeta.id === 'deep-fry' ? 58 * effectScale : 0)
   const totalTint =
     userTint +
     filterMeta.recipe.tint * filterScale +
-    (effectMeta.id === 'cyber-matrix' || effectMeta.id === 'night-vision' ? -36 * effectScale : 0)
+    (effectMeta.id === 'cyber-matrix' || effectMeta.id === 'night-vision' ? -36 * effectScale : 0) +
+    (effectMeta.id === 'deep-fry' ? 24 * effectScale : 0)
   const fb = filterMeta.recipe.colorBalance
 
   const rs = clampRange(
@@ -3860,13 +4074,18 @@ export function buildClipVisualFfmpegFilter(
     )
   }
 
-  // 色相偏移
-  const hueDeg =
-    filterMeta.recipe.hueRotateDeg * filterScale +
-    (effectMeta.id === 'thermal-vision' ? 160 * effectScale : 0) +
-    (effectMeta.id === 'neon-edge' ? 24 * effectScale : 0)
-  if (Math.abs(hueDeg) > 0.5) {
-    chain.push(`hue=h=${hueDeg.toFixed(1)}`)
+  // 色相偏移与彩虹蹦迪动态色相旋转
+  if (effectMeta.id === 'rainbow-rave' && effectScale > 0.1) {
+    const raveSat = (1 + 1.25 * effectScale).toFixed(2)
+    chain.push(`hue=H='2*PI*t*3.2':s=${raveSat}`)
+  } else {
+    const hueDeg =
+      filterMeta.recipe.hueRotateDeg * filterScale +
+      (effectMeta.id === 'thermal-vision' ? 160 * effectScale : 0) +
+      (effectMeta.id === 'neon-edge' ? 24 * effectScale : 0)
+    if (Math.abs(hueDeg) > 0.5) {
+      chain.push(`hue=h=${hueDeg.toFixed(1)}`)
+    }
   }
 
   // 复古泛黄 (old-film / vintage-sepia)
@@ -3893,11 +4112,13 @@ export function buildClipVisualFfmpegFilter(
   // 锐化 (unsharp)
   const effectiveSharpen = Math.max(
     userSharpen,
-    effectMeta.id === 'camera-shake' || effectMeta.id === 'earthquake' ? 18 * effectScale : 0,
+    effectMeta.id === 'deep-fry' ? 92 * effectScale : 0,
+    effectMeta.id === 'camera-shake' || effectMeta.id === 'earthquake' ? 28 * effectScale : 0,
+    effectMeta.id === 'guichu-pingpong' || effectMeta.id === 'beat-flip' ? 24 * effectScale : 0,
     effectMeta.id === 'dv-cam' || effectMeta.id === 'pendulum-swing' ? 15 * effectScale : 0
   )
   if (effectiveSharpen >= 2) {
-    const lumaAmount = clampRange((effectiveSharpen / 100) * 1.6, 0.05, 2.0, 0.5)
+    const lumaAmount = clampRange((effectiveSharpen / 100) * 1.85, 0.05, 2.0, 0.5)
     chain.push(`unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=${lumaAmount.toFixed(2)}`)
   }
 
@@ -3916,10 +4137,23 @@ export function buildClipVisualFfmpegFilter(
     effectMeta.id === 'rgb-glitch' ||
     effectMeta.id === 'vhs-retro' ||
     effectMeta.id === 'bad-tv' ||
-    effectMeta.id === 'soul-out'
+    effectMeta.id === 'soul-out' ||
+    effectMeta.id === 'guichu-pingpong' ||
+    effectMeta.id === 'beat-flip' ||
+    effectMeta.id === 'deep-fry' ||
+    effectMeta.id === 'earthquake'
   ) {
-    const shift = Math.max(2, Math.round((effectMeta.id === 'rgb-glitch' ? 8 : 5) * effectScale))
-    chain.push(`rgbashift=rh=${shift}:bh=${-shift}:rv=1:bv=-1`)
+    const baseShift =
+      effectMeta.id === 'rgb-glitch' || effectMeta.id === 'earthquake'
+        ? 14
+        : effectMeta.id === 'guichu-pingpong' ||
+            effectMeta.id === 'beat-flip' ||
+            effectMeta.id === 'deep-fry'
+          ? 10
+          : 7
+    const shift = Math.max(3, Math.round(baseShift * effectScale))
+    const vShift = Math.max(1, Math.round(shift * 0.35))
+    chain.push(`rgbashift=rh=${shift}:bh=${-shift}:rv=${vShift}:bv=${-vShift}`)
   }
   if (
     (effectMeta.id === 'negative-invert' || effectMeta.id === 'thermal-vision') &&
@@ -3935,23 +4169,19 @@ export function buildClipVisualFfmpegFilter(
       `drawbox=x=0:y=ih*${bottomY}:w=iw:h=ih*${barRatio}:color=black:t=fill`
     )
   }
-  if (effectMeta.id === 'split-2h') {
-    chain.push('drawbox=x=iw*0.498:y=0:w=iw*0.004:h=ih:color=white:t=fill')
-  } else if (effectMeta.id === 'split-3v') {
-    chain.push(
-      'drawbox=x=iw*0.331:y=0:w=iw*0.004:h=ih:color=white:t=fill',
-      'drawbox=x=iw*0.665:y=0:w=iw*0.004:h=ih:color=white:t=fill'
-    )
-  } else if (effectMeta.id === 'split-4grid') {
-    chain.push(
-      'drawbox=x=iw*0.498:y=0:w=iw*0.004:h=ih:color=white:t=fill',
-      'drawbox=x=0:y=ih*0.498:w=iw:h=ih*0.004:color=white:t=fill'
-    )
+  if (
+    effectMeta.id === 'split-2h' ||
+    effectMeta.id === 'split-3v' ||
+    effectMeta.id === 'split-4grid' ||
+    effectMeta.id === 'split-9grid'
+  ) {
+    chain.push('unsharp=luma_msize_x=5:luma_msize_y=5:luma_amount=0.65')
   }
 
   // 颗粒噪点 (noise)
   const effectiveGrain = Math.max(
     userGrain,
+    effectMeta.id === 'deep-fry' ? 42 * effectScale : 0,
     effectMeta.id === 'old-film' || effectMeta.id === 'night-vision' ? 35 * effectScale : 0,
     effectMeta.id === 'vhs-retro' || effectMeta.id === 'bad-tv' ? 28 * effectScale : 0
   )
@@ -3975,6 +4205,34 @@ export function buildClipVisualFfmpegFilter(
 
   return chain.length > 0 ? chain.join(',') : null
 }
+
+const GUICHU_TEMPLATE_EFFECT_ROTATION: readonly TimelineVisualEffectId[] = [
+  'guichu-pingpong',
+  'beat-flip',
+  'split-4grid',
+  'rainbow-rave',
+  'deep-fry',
+  'split-9grid',
+  'soul-out',
+  'rgb-glitch',
+  'strobe-flash',
+  'negative-invert',
+  'earthquake',
+  'split-2h'
+]
+
+const GUICHU_TEMPLATE_PITCH_LADDER: readonly number[] = [0, 0, 2, 4, 0, 5, 7, 0, -2, 3, 5]
+
+const GUICHU_TEMPLATE_VOICE_EFFECTS = [
+  'autotune-chorus',
+  'autotune-chorus',
+  'echo',
+  'autotune-chorus',
+  'robot',
+  'echo',
+  'chipmunk',
+  'autotune-chorus'
+] as const
 
 /**
  * 一键套用剪映式成片模板：
@@ -4002,6 +4260,7 @@ export function applyTimelineCreativeTemplateToClips(
   const tpl =
     TIMELINE_CREATIVE_TEMPLATES.find((item) => item.id === templateId) ??
     TIMELINE_CREATIVE_TEMPLATES[0]
+  const isGuichuMadness = tpl.id === 'guichu-madness'
   let workingClips = clips.map((c) => ({ ...c }))
 
   const existingVideoClips = workingClips.filter((c) => c.track === 'video')
@@ -4044,19 +4303,43 @@ export function applyTimelineCreativeTemplateToClips(
   const videoIndexById = new Map<string, number>()
   sortedVideoIds.forEach((id, idx) => videoIndexById.set(id, idx))
 
+  let voiceIdxCounter = 0
   const { recipe } = tpl
   workingClips = workingClips.map((clip) => {
+    if (isGuichuMadness && clip.track === 'voice') {
+      const vIdx = voiceIdxCounter++
+      return {
+        ...clip,
+        pitchSemitones:
+          clip.pitchSemitones ??
+          GUICHU_TEMPLATE_PITCH_LADDER[vIdx % GUICHU_TEMPLATE_PITCH_LADDER.length],
+        voiceEffect:
+          clip.voiceEffect && clip.voiceEffect !== 'none'
+            ? clip.voiceEffect
+            : GUICHU_TEMPLATE_VOICE_EFFECTS[vIdx % GUICHU_TEMPLATE_VOICE_EFFECTS.length]
+      }
+    }
+    if (isGuichuMadness && clip.track === 'subtitle') {
+      return {
+        ...clip,
+        subtitleKaraokeMode: clip.subtitleKaraokeMode ?? 'karaoke-pop',
+        fontSize: Math.max(clip.fontSize ?? 52, 52)
+      }
+    }
     if (clip.track !== 'video' && clip.track !== 'overlay') return clip
     const idx = videoIndexById.get(clip.id) ?? 0
     const cameraMotion =
       clip.track === 'video' && recipe.cameraMotions.length > 0
         ? recipe.cameraMotions[idx % recipe.cameraMotions.length]
         : clip.cameraMotion
+    const visualEffect = isGuichuMadness
+      ? GUICHU_TEMPLATE_EFFECT_ROTATION[idx % GUICHU_TEMPLATE_EFFECT_ROTATION.length]!
+      : recipe.visualEffect
     return {
       ...clip,
       filterPreset: recipe.filterPreset,
       filterIntensity: recipe.filterIntensity,
-      visualEffect: recipe.visualEffect,
+      visualEffect,
       effectIntensity: recipe.effectIntensity,
       brightness: recipe.adjustments.brightness ?? 0,
       contrast: recipe.adjustments.contrast ?? 1,
@@ -4071,6 +4354,17 @@ export function applyTimelineCreativeTemplateToClips(
       fade: recipe.adjustments.fade ?? 0,
       grain: recipe.adjustments.grain ?? 0,
       ...(clip.track === 'video' && cameraMotion ? { cameraMotion } : {}),
+      ...(isGuichuMadness && clip.track === 'video'
+        ? {
+            pitchSemitones:
+              clip.pitchSemitones ??
+              GUICHU_TEMPLATE_PITCH_LADDER[idx % GUICHU_TEMPLATE_PITCH_LADDER.length],
+            voiceEffect:
+              clip.voiceEffect && clip.voiceEffect !== 'none'
+                ? clip.voiceEffect
+                : GUICHU_TEMPLATE_VOICE_EFFECTS[idx % GUICHU_TEMPLATE_VOICE_EFFECTS.length]
+          }
+        : {}),
       ...(clip.track === 'overlay'
         ? {
             tweenIn: recipe.tweenIn,
@@ -4080,7 +4374,7 @@ export function applyTimelineCreativeTemplateToClips(
     }
   })
 
-  if (sortedVideoIds.length >= 2) {
+  if (sortedVideoIds.length >= 2 && recipe.transitionDurationSec > 0) {
     const altList =
       recipe.alternatingTransitions && recipe.alternatingTransitions.length > 0
         ? recipe.alternatingTransitions
@@ -4096,7 +4390,8 @@ export function applyTimelineCreativeTemplateToClips(
 
   const nextSettings: ScriptTimelineSettings = {
     ...settings,
-    ...recipe.subtitleStyle
+    ...recipe.subtitleStyle,
+    ...(isGuichuMadness ? { subtitleKaraokeMode: 'karaoke-pop' } : {})
   }
 
   return {

@@ -33,11 +33,12 @@ function readScriptGraph(scriptAssetId: string, hostId?: string): GraphDocument 
     graphEditorHosts.getLiveAssetDocument(scriptAssetId)
   if (live) return live
   if (isDraftAssetId(scriptAssetId)) {
-    const raw = useDraftStore().getDraft(scriptAssetId)?.genParams?.graphJson
-    return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
+    const rawDraft = useDraftStore().getDraft(scriptAssetId)?.genParams?.graphJson
+    if (rawDraft && typeof rawDraft === 'object') return rawDraft as GraphDocument
   }
   const asset = useProjectStore().assets.find((a) => a.id === scriptAssetId)
-  const raw = asset?.genParams?.graphJson
+  const raw =
+    asset?.genParams?.graphJson ?? useDraftStore().getDraft(scriptAssetId)?.genParams?.graphJson
   return raw && typeof raw === 'object' ? (raw as GraphDocument) : null
 }
 
@@ -188,6 +189,93 @@ function extractFilmNodeVideos(node: GraphNode): GraphVideoItem[] {
   return out
 }
 
+function extractSemanticNodeVideos(node: GraphNode): GraphVideoItem[] {
+  const params = node.params ?? {}
+  const out: GraphVideoItem[] = []
+  const seen = new Set<string>()
+  const push = (relativePath?: string, id?: string): void => {
+    const rel = relativePath?.trim()
+    const rawId = id?.trim()
+    if (!rel && !rawId) return
+    if (rel && isTimelineComposedItem({ id: rawId, relativePath: rel })) return
+    const key = rel || rawId || ''
+    if (!key || seen.has(key)) return
+    seen.add(key)
+    out.push({
+      ...(rawId ? { id: rawId } : {}),
+      ...(rel ? { relativePath: rel } : {})
+    })
+  }
+
+  const rebuildReportRaw =
+    typeof params.rebuildLastReport === 'string' ? params.rebuildLastReport.trim() : ''
+  if (rebuildReportRaw) {
+    try {
+      const report = JSON.parse(rebuildReportRaw) as {
+        rebuild?: { outputRelativePath?: string }
+        variants?: Array<{ id?: string; outputRelativePath?: string }>
+      }
+      if (report?.rebuild?.outputRelativePath) {
+        push(report.rebuild.outputRelativePath, `rebuild:${node.id}`)
+      }
+      if (Array.isArray(report?.variants)) {
+        for (const variant of report.variants) {
+          if (variant?.outputRelativePath) {
+            push(variant.outputRelativePath, variant.id ? `variant:${variant.id}` : undefined)
+          }
+        }
+      }
+    } catch {
+      // ignore malformed report json
+    }
+  }
+
+  if (out.length) return out
+
+  const sourceRel =
+    typeof params.sourceRelativePath === 'string' ? params.sourceRelativePath.trim() : ''
+  if (sourceRel) push(sourceRel)
+
+  const planRaw = typeof params.planJson === 'string' ? params.planJson.trim() : ''
+  if (planRaw) {
+    try {
+      const plan = JSON.parse(planRaw) as { sourceRelativePath?: string }
+      if (plan?.sourceRelativePath) push(plan.sourceRelativePath)
+    } catch {
+      // ignore
+    }
+  }
+
+  const timelineRaw = typeof params.timelineJson === 'string' ? params.timelineJson.trim() : ''
+  if (timelineRaw) {
+    try {
+      const tl = JSON.parse(timelineRaw) as {
+        source?: { assetId?: string; relativePath?: string }
+      }
+      if (tl?.source?.relativePath) push(tl.source.relativePath)
+      const srcAssetId = tl?.source?.assetId?.trim() || ''
+      if (srcAssetId.startsWith('path:')) {
+        push(srcAssetId.slice(5))
+      } else if (srcAssetId) {
+        push(undefined, srcAssetId)
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  const sourceAssetId = typeof params.sourceAssetId === 'string' ? params.sourceAssetId.trim() : ''
+  if (sourceAssetId) {
+    if (sourceAssetId.startsWith('path:')) {
+      push(sourceAssetId.slice(5))
+    } else {
+      push(undefined, sourceAssetId)
+    }
+  }
+
+  return out
+}
+
 function resolveNodeVideos(
   doc: GraphDocument,
   hostId: string,
@@ -218,7 +306,12 @@ function resolveNodeVideos(
   const outputs = readNodeRunOutputs(doc, hostId, node.id)
   if (outputs) {
     const rawOut = wantMultiple
-      ? (outputs[sourcePort] ?? outputs['out-videos'] ?? outputs['out-all'] ?? outputs.out)
+      ? (outputs[sourcePort] ??
+        outputs['out-videos'] ??
+        outputs['out-all'] ??
+        outputs['out-video'] ??
+        outputs['out-gif'] ??
+        outputs.out)
       : (outputs[sourcePort] ??
         outputs['out-video'] ??
         outputs['out-gif'] ??
@@ -344,9 +437,17 @@ function resolveNodeVideos(
       : []
   }
 
-  const previewRel = node.params?.previewRelativePath?.trim()
+  const previewRel =
+    node.params?.previewRelativePath?.trim() || node.params?.rebuildLastOutput?.trim()
   if (previewRel && !isTimelineComposedItem({ relativePath: previewRel })) {
+    const semanticVariants = extractSemanticNodeVideos(node)
+    if (wantMultiple && semanticVariants.length > 1) return semanticVariants
     return [{ relativePath: previewRel }]
+  }
+
+  const semanticItems = extractSemanticNodeVideos(node)
+  if (semanticItems.length) {
+    return wantMultiple ? semanticItems : [semanticItems[0]!]
   }
 
   const refAssetId = node.assetId?.trim()
@@ -379,6 +480,37 @@ function resolveNodeVideos(
     if (node.assetType === 'video' || node.typeId === 'asset.video') {
       return [{ id: refAssetId }]
     }
+  }
+
+  // 当加工/重制/编译/分析节点尚未产出本地视频时，沿上游视频/语义边回溯查找源视频
+  const upstream: GraphVideoItem[] = []
+  for (const edge of doc.edges) {
+    if (edge.target !== node.id) continue
+    const tp = edge.targetPort?.trim() || 'in'
+    if (
+      tp === 'in-voice' ||
+      tp === 'in-voices' ||
+      tp === 'in-music' ||
+      tp === 'in-text' ||
+      tp === 'in-prompt'
+    ) {
+      continue
+    }
+    const upNode = doc.nodes.find((n) => n.id === edge.source)
+    if (!upNode || isVoiceEdge(upNode, tp)) continue
+    upstream.push(
+      ...resolveNodeVideos(
+        doc,
+        hostId,
+        upNode,
+        edge.sourcePort?.trim() || 'out',
+        tp === 'in-videos' || tp === 'in-images' ? tp : 'in',
+        visited
+      )
+    )
+  }
+  if (upstream.length) {
+    return wantMultiple ? upstream : [upstream[0]!]
   }
 
   return []
@@ -704,14 +836,18 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
       node.assetType === 'video' ||
       node.typeId === 'film.workbench' ||
       node.typeId === 'film.render' ||
+      node.typeId === 'semantic.rebuild' ||
+      node.typeId === 'semantic.compile' ||
+      node.typeId === 'semantic.analyze' ||
+      Boolean(node.params?.rebuildLastOutput?.trim()) ||
+      Boolean(node.params?.sourceRelativePath?.trim()) ||
       Array.isArray(node.params?.generatedVideos)
     if (!isVideoCandidate) continue
 
     const title = node.title?.trim()
     const params = node.params ?? {}
-    const runOut =
-      readNodeRunOutputs(doc, hostId, node.id)?.['out-videos'] ??
-      readNodeRunOutputs(doc, hostId, node.id)?.out
+    const runOutputs = readNodeRunOutputs(doc, hostId, node.id)
+    const runOut = runOutputs?.['out-videos'] ?? runOutputs?.['out-video'] ?? runOutputs?.out
     if (runOut) {
       const videos = flattenVideosValues([runOut])
       for (const item of videos) push(item.relativePath, item.id, title, node.id, node.title)
@@ -722,8 +858,14 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     for (const item of Array.isArray(params.generatedVideos) ? params.generatedVideos : []) {
       push(item?.relativePath, item?.id, title, node.id, node.title)
     }
-    const rel = params.previewRelativePath?.trim()
+    const rel =
+      params.previewRelativePath?.trim() ||
+      params.rebuildLastOutput?.trim() ||
+      params.sourceRelativePath?.trim()
     if (rel) push(rel, undefined, title, node.id, node.title)
+    for (const item of extractSemanticNodeVideos(node)) {
+      push(item.relativePath, item.id, title, node.id, node.title)
+    }
     if (node.assetId?.trim() && (node.assetType === 'video' || node.typeId === 'asset.video')) {
       push(undefined, node.assetId.trim(), title, node.id, node.title)
     }
@@ -799,14 +941,13 @@ export async function collectScriptTimelineSources(input: {
   if (!doc) return []
 
   const fromTarget = collectFromTargetOutputNode(doc, hostId, input.timelineNodeId)
-  if (fromTarget.videos.length || fromTarget.voices.length) {
-    return asInputSources([...fromTarget.videos, ...fromTarget.voices])
-  }
-
-  const videoFallback = collectFromVideoNodes(doc, hostId)
-  const voiceFallback = collectFromVoiceNodes(doc, hostId)
-  if (videoFallback.length || voiceFallback.length) {
-    return asInputSources([...videoFallback, ...voiceFallback])
+  const videos = fromTarget.videos.length ? fromTarget.videos : collectFromVideoNodes(doc, hostId)
+  const voices =
+    fromTarget.voices.length || fromTarget.hasVideoEdges
+      ? fromTarget.voices
+      : collectFromVoiceNodes(doc, hostId)
+  if (videos.length || voices.length) {
+    return asInputSources([...videos, ...voices])
   }
   return []
 }

@@ -237,12 +237,42 @@ export async function composeTimelineVideoForNode(input: {
       c.nodeId &&
       !c.sourceOffsetSec &&
       !c.speed &&
+      !c.pitchSemitones &&
+      (!c.voiceEffect || c.voiceEffect === 'none') &&
+      (!c.visualEffect || c.visualEffect === 'none') &&
       (!c.transitionType || c.transitionType === 'none')
     ) {
       return true
     }
     return false
   }
+
+  const hostAssetRecord = hostAssetId
+    ? isDraftAssetId(hostAssetId)
+      ? drafts.getDraft(hostAssetId)
+      : project.assets.find((a) => a.id === hostAssetId)
+    : undefined
+  const initialGenParams = readGenParams()
+  const initialGraphNodes =
+    initialGenParams.graphJson &&
+    typeof initialGenParams.graphJson === 'object' &&
+    Array.isArray((initialGenParams.graphJson as { nodes?: unknown[] }).nodes)
+      ? ((initialGenParams.graphJson as { nodes: Array<Record<string, unknown>> }).nodes ?? [])
+      : []
+  const guichuContextCorpus = [
+    typeof (hostAssetRecord as { name?: string } | undefined)?.name === 'string'
+      ? (hostAssetRecord as { name?: string }).name
+      : '',
+    ...initialGraphNodes.map(
+      (n) =>
+        `${String(n.id ?? '')} ${String(n.title ?? '')} ${String((n.params as Record<string, unknown> | undefined)?.prompt ?? '')} ${String((n.params as Record<string, unknown> | undefined)?.generateInstruction ?? '')}`
+    ),
+    ...resolvedVisuals.map((v) => v.title ?? ''),
+    ...resolvedVoices.map((v) => `${v.title ?? ''} ${v.text ?? ''}`),
+    ...(input.subtitles ?? [])
+  ].join(' ')
+  const guichuRe = /鬼畜|guichu|ytpmv|电音卡点|洗脑循环|鬼畜全明星|魔性卡点|人力vocaloid|电音洗脑/i // cjk-ok
+  const isGuichuRemixMode = guichuRe.test(guichuContextCorpus)
 
   // 仅当轨道上不存在用户手动精编的非 auto 片段时，用最新上游产物重建自动时间线
   const hasManualVideoClips = clips.some((c) => c.track === 'video' && !isAutoOrInputClip(c))
@@ -884,6 +914,9 @@ export async function composeTimelineVideoForNode(input: {
 
       // Audio-First：有对应配音时镜头时长严格对齐配音；否则采用视频原生时长或默认 4 秒
       const shotDur = Math.max(0.5, Math.round((voiceDur ?? nativeVisDur ?? 4) * 100) / 100)
+      const guichuStoryFilters = ['cyberpunk', 'vaporwave', 'teal-orange', 'anime-vivid'] as const
+      const guichuStoryEffects = ['rgb-glitch', 'beat-flip', 'camera-shake', 'neon-edge'] as const
+      const guichuStoryPitches = [0, 2, 4, 7] as const
 
       if (vis) {
         const isStillOrGif = vis.kind === 'image' || isImageOrGifPath(vis.rel)
@@ -902,18 +935,33 @@ export async function composeTimelineVideoForNode(input: {
           startSec: cursor,
           durationSec: shotDur,
           ...(freezeTailSec ? { freezeTailSec } : {}),
-          ...(isStaticPhoto
+          ...(isGuichuRemixMode
             ? {
-                cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length]
+                filterPreset: guichuStoryFilters[i % guichuStoryFilters.length],
+                filterIntensity: 92,
+                visualEffect: guichuStoryEffects[i % guichuStoryEffects.length],
+                effectIntensity: 86,
+                contrast: 1.24,
+                saturation: 1.38,
+                sharpen: 36,
+                cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length],
+                pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
+                voiceEffect: 'autotune-chorus' as const
               }
-            : {}),
-          ...(isStaticPhoto && hasMultiShots
-            ? {
-                transitionType: AUTO_PHOTO_TRANSITIONS[i % AUTO_PHOTO_TRANSITIONS.length],
-                ...(i > 0 ? { transitionInSec: 0.4 } : {}),
-                ...(i < shotSlots.length - 1 ? { transitionOutSec: 0.4 } : {})
-              }
-            : {})
+            : {
+                ...(isStaticPhoto
+                  ? {
+                      cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length]
+                    }
+                  : {}),
+                ...(isStaticPhoto && hasMultiShots
+                  ? {
+                      transitionType: AUTO_PHOTO_TRANSITIONS[i % AUTO_PHOTO_TRANSITIONS.length],
+                      ...(i > 0 ? { transitionInSec: 0.4 } : {}),
+                      ...(i < shotSlots.length - 1 ? { transitionOutSec: 0.4 } : {})
+                    }
+                  : {})
+              })
         })
       } else if (canAutoBuildVideo && resolvedVisuals.length > 0) {
         // 配音段数多于画面段数时，自动延长最后一个画面片段覆盖当前配音，避免黑场
@@ -932,6 +980,7 @@ export async function composeTimelineVideoForNode(input: {
         }
       }
 
+      let hookPhrase = ''
       if (voice) {
         const vDur = voiceDur ?? shotDur
         clips.push({
@@ -942,17 +991,26 @@ export async function composeTimelineVideoForNode(input: {
           relativePath: voice.rel,
           ...(voice.id ? { assetId: voice.id } : {}),
           startSec: cursor,
-          durationSec: vDur
+          durationSec: vDur,
+          ...(isGuichuRemixMode
+            ? {
+                pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
+                voiceEffect: 'autotune-chorus' as const,
+                volume: 1
+              }
+            : {})
         })
 
         // 自动铺设与该段旁白严格同步的分句字幕
         if (!hasManualSubtitleClips && voice.text) {
           const segs = splitNarrationIntoSubtitleSegments(voice.text)
+          hookPhrase = segs[segs.length - 1] ?? voice.text.trim()
           const totalChars = Math.max(
             1,
             segs.reduce((acc, s) => acc + s.length, 0)
           )
           let subCursor = cursor
+          const guichuSubColors = ['#facc15', '#22d3ee', '#f472b6', '#4ade80'] as const
           segs.forEach((segText, segIdx) => {
             const isLast = segIdx === segs.length - 1
             const rawSegDur = isLast
@@ -966,13 +1024,21 @@ export async function composeTimelineVideoForNode(input: {
               title: segText,
               text: segText,
               startSec: Math.round(subCursor * 100) / 100,
-              durationSec: segDur
+              durationSec: segDur,
+              ...(isGuichuRemixMode
+                ? {
+                    fontSize: 54,
+                    textColor: guichuSubColors[(i + segIdx) % guichuSubColors.length],
+                    subtitleKaraokeMode: 'karaoke-pop' as const
+                  }
+                : {})
             })
             subCursor += segDur
           })
         }
       } else if (!hasManualSubtitleClips && input.subtitles?.[i]?.trim()) {
         const subText = input.subtitles[i]!.trim()
+        hookPhrase = subText
         clips.push({
           id: `clip:auto:sub:${i}_0:${stamp}`,
           track: 'subtitle',
@@ -980,11 +1046,213 @@ export async function composeTimelineVideoForNode(input: {
           title: subText,
           text: subText,
           startSec: cursor,
-          durationSec: shotDur
+          durationSec: shotDur,
+          ...(isGuichuRemixMode
+            ? {
+                fontSize: 54,
+                textColor: '#facc15',
+                subtitleKaraokeMode: 'karaoke-pop' as const
+              }
+            : {})
         })
       }
 
       cursor = Math.round((cursor + shotDur) * 100) / 100
+
+      // ── 网络鬼畜模式：在每幕叙事铺垫后自动注入高密度「鬼畜电音洗脑副歌卡点暴走段 (Guichu Electro Hook Drop)」──
+      if (isGuichuRemixMode && resolvedVisuals.length > 0) {
+        const primaryVis = vis ?? resolvedVisuals[i % resolvedVisuals.length]!
+        const altVis = resolvedVisuals[(i + 1) % resolvedVisuals.length] ?? primaryVis
+        const primaryVisDur =
+          (slot.visIdx !== undefined ? visualDurations[slot.visIdx] : visualDurations[0]) ?? 4
+        const hookSteps = [0.2, 0.2, 0.2, 0.2, 0.32, 0.32, 0.4, 0.48] as const
+        const hookEffects = [
+          'guichu-pingpong',
+          'beat-flip',
+          'split-2h',
+          'split-4grid',
+          'rainbow-rave',
+          'deep-fry',
+          'split-9grid',
+          'soul-out'
+        ] as const
+        const hookPitches = [0, 3, 5, 7, 10, 12, -5, 12] as const
+        const hookVoices = [
+          'autotune-chorus',
+          'autotune-chorus',
+          'chipmunk',
+          'robot',
+          'autotune-chorus',
+          'demon',
+          'megaphone',
+          'autotune-chorus'
+        ] as const
+        const hookColors = [
+          '#facc15',
+          '#ff2e4c',
+          '#22d3ee',
+          '#a855f7',
+          '#4ade80',
+          '#fb923c',
+          '#f472b6',
+          '#fef08a'
+        ] as const
+        const rawHookWord =
+          (hookPhrase || vis?.title || '高能鬼畜') // cjk-ok
+            .replace(/^[，、。！？!?；;\s]+|[，、。！？!?；;\s]+$/g, '')
+            .slice(-7) || '高能鬼畜' // cjk-ok
+        const dropStartSec = cursor
+        const totalDropDur = Number(hookSteps.reduce((a, b) => a + b, 0).toFixed(2))
+
+        // 全屏程序化视觉特效贴纸叠加层（扫描线 / 万花筒放射 / 速度线 / 强光爆闪）
+        const overlayStickerCycle = [
+          'glitch_scanlines',
+          'kaleidoscope_burst',
+          'speed_lines',
+          'neon_border'
+        ] as const
+        clips.push({
+          id: `clip:auto:ov_fx:${i}_0:${stamp}`,
+          track: 'overlay',
+          lane: 1,
+          sourceId: `sticker:${overlayStickerCycle[i % overlayStickerCycle.length]}:${i}`,
+          stickerId: overlayStickerCycle[i % overlayStickerCycle.length],
+          stickerColor: hookColors[i % hookColors.length],
+          title: '鬼畜视觉冲击层', // cjk-ok
+          startSec: dropStartSec,
+          durationSec: Number((totalDropDur * 0.65).toFixed(2)),
+          overlayX: 0,
+          overlayY: 0,
+          overlayWidth: 1,
+          overlayHeight: 1,
+          opacity: 0.72,
+          tweenLoop: 'pulse'
+        })
+        clips.push({
+          id: `clip:auto:ov_fx:${i}_1:${stamp}`,
+          track: 'overlay',
+          lane: 1,
+          sourceId: `sticker:impact_flash:${i}`,
+          stickerId: 'impact_flash',
+          stickerColor: '#facc15',
+          title: '副歌高潮核爆闪光', // cjk-ok
+          startSec: Number((dropStartSec + totalDropDur * 0.65).toFixed(2)),
+          durationSec: Number((totalDropDur * 0.35).toFixed(2)),
+          overlayX: 0,
+          overlayY: 0,
+          overlayWidth: 1,
+          overlayHeight: 1,
+          opacity: 0.82,
+          tweenIn: 'popIn',
+          tweenOut: 'fadeOut'
+        })
+
+        for (let k = 0; k < hookSteps.length; k++) {
+          const stepDur = hookSteps[k]!
+          const targetVis = k % 2 === 0 ? primaryVis : altVis
+          const srcOffset = Number(
+            Math.min(Math.max(0, primaryVisDur - 0.5), 0.25 + (k % 3) * 0.35).toFixed(2)
+          )
+          const stepSpeed = k < 4 ? 1.6 : 1.35
+          clips.push({
+            id: `clip:auto:gv:${i}_${k}:${stamp}`,
+            track: 'video',
+            sourceId: targetVis.rel || targetVis.id || `guichu:${i}:${k}`,
+            title: `${rawHookWord} · 鬼畜#${k + 1}`, // cjk-ok
+            relativePath: targetVis.rel,
+            startSec: cursor,
+            durationSec: stepDur,
+            sourceOffsetSec: srcOffset,
+            speed: stepSpeed,
+            filterPreset: guichuStoryFilters[(i + k) % guichuStoryFilters.length],
+            filterIntensity: 96,
+            visualEffect: hookEffects[k]!,
+            effectIntensity: 96,
+            contrast: 1.34,
+            saturation: 1.52,
+            sharpen: 48,
+            pitchSemitones: hookPitches[k]!,
+            voiceEffect: hookVoices[k]!,
+            volume: voice ? 0.35 : 1
+          })
+
+          if (voice) {
+            const vTotal = voiceDur ?? shotDur
+            const vTailOffset = Number(
+              Math.max(0, vTotal - Math.min(vTotal * 0.45, 1.1)).toFixed(2)
+            )
+            clips.push({
+              id: `clip:auto:ga:${i}_${k}:${stamp}`,
+              track: 'voice',
+              sourceId: voice.id || voice.rel,
+              title: `${rawHookWord} · 电音${hookPitches[k]! >= 0 ? '+' : ''}${hookPitches[k]!}st`, // cjk-ok
+              relativePath: voice.rel,
+              ...(voice.id ? { assetId: voice.id } : {}),
+              startSec: cursor,
+              durationSec: stepDur,
+              sourceOffsetSec: vTailOffset,
+              speed: stepSpeed,
+              pitchSemitones: hookPitches[k]!,
+              voiceEffect: hookVoices[k]!,
+              volume: 1
+            })
+          }
+
+          if (!hasManualSubtitleClips && (k < 2 || k === 2 || k === 4 || k === 6 || k === 7)) {
+            const subDur = k === 0 || k === 2 ? Number((stepDur * 2).toFixed(2)) : stepDur
+            if (k !== 1 && k !== 3) {
+              const bang = k >= 6 ? '💥⚡' : '⚡'
+              const hookLabel = `${rawHookWord}！${bang}`
+              clips.push({
+                id: `clip:auto:gsub:${i}_${k}:${stamp}`,
+                track: 'subtitle',
+                sourceId: `gsub:${i}:${k}`,
+                title: hookLabel,
+                text: hookLabel,
+                startSec: cursor,
+                durationSec: subDur,
+                fontSize: k >= 6 ? 68 : 60,
+                textColor: hookColors[k % hookColors.length],
+                subtitleKaraokeMode: 'word-solo'
+              })
+            }
+          }
+
+          if (k === 0 || k === 4 || k === 6 || k === 7) {
+            const sfxPreset =
+              k === 0 ? 'boom' : k === 4 ? 'pop' : k === 6 ? 'whoosh' : ('ding' as const)
+            clips.push({
+              id: `clip:auto:gsfx:${i}_${k}:${stamp}`,
+              track: 'sfx',
+              lane: 0,
+              sourceId: `sfx:${sfxPreset}:${i}:${k}`,
+              sfxPresetId: sfxPreset,
+              title: `卡点重音 · ${sfxPreset}`, // cjk-ok
+              startSec: cursor,
+              durationSec: Math.min(0.45, stepDur + 0.12),
+              volume: 0.85
+            })
+          }
+
+          cursor = Math.round((cursor + stepDur) * 100) / 100
+        }
+      }
+    }
+    if (isGuichuRemixMode) {
+      doc.settings = {
+        ...(doc.settings ?? {}),
+        scaleMode: doc.settings?.scaleMode ?? 'cover',
+        subtitleFontSize: doc.settings?.subtitleFontSize ?? 54,
+        subtitleColor: doc.settings?.subtitleColor ?? '#facc15',
+        subtitleBorderColor: doc.settings?.subtitleBorderColor ?? '#000000',
+        subtitleBorderWidth: doc.settings?.subtitleBorderWidth ?? 5,
+        subtitleBoxEnabled: doc.settings?.subtitleBoxEnabled ?? true,
+        subtitleBoxColor: doc.settings?.subtitleBoxColor ?? '#e11d48',
+        subtitleBoxOpacity: doc.settings?.subtitleBoxOpacity ?? 0.82,
+        subtitleKaraokeMode: doc.settings?.subtitleKaraokeMode ?? 'karaoke-pop',
+        mixCompression: true,
+        mixAutoDucking: true
+      }
     }
     dirtyDoc = true
   }
@@ -1046,13 +1314,26 @@ export async function composeTimelineVideoForNode(input: {
           : undefined
         return {
           track: c.track,
+          lane: c.lane,
           relativePath: resolveMediaRelPath(c, project.assets),
+          sfxPresetId: c.sfxPresetId,
           text: c.text,
+          rawCueText: c.rawCueText,
+          words: c.words,
+          anchorCueTag: c.anchorCueTag,
+          anchorOffsetSec: c.anchorOffsetSec,
+          anchorMatchDuration: c.anchorMatchDuration,
+          subtitleKaraokeMode: c.subtitleKaraokeMode,
+          subtitleHighlightColor: c.subtitleHighlightColor,
+          subtitleHighlightBgColor: c.subtitleHighlightBgColor,
+          widgetConfig: c.widgetConfig,
           title: c.title,
           startSec: c.startSec,
           durationSec: c.durationSec,
           sourceOffsetSec: c.sourceOffsetSec,
           speed: c.speed,
+          pitchSemitones: c.pitchSemitones,
+          voiceEffect: c.voiceEffect,
           freezeTailSec: c.freezeTailSec,
           brightness: c.brightness,
           contrast: c.contrast,
@@ -1080,6 +1361,10 @@ export async function composeTimelineVideoForNode(input: {
           overlayWidth: c.overlayWidth,
           overlayHeight: c.overlayHeight,
           overlayRotation: c.overlayRotation,
+          cropX: c.cropX,
+          cropY: c.cropY,
+          cropWidth: c.cropWidth,
+          cropHeight: c.cropHeight,
           opacity: c.opacity,
           tweenIn: c.tweenIn,
           tweenInDurationSec: c.tweenInDurationSec,
@@ -1103,7 +1388,7 @@ export async function composeTimelineVideoForNode(input: {
   )
 
   const hasExportableMedia = exportClips.some(
-    (c) => c.track !== 'subtitle' && (!!c.relativePath?.trim() || !!c.stickerId)
+    (c) => c.track !== 'subtitle' && (!!c.relativePath?.trim() || !!c.stickerId || !!c.sfxPresetId)
   )
   if (!hasExportableMedia) return null
 
@@ -1133,6 +1418,9 @@ export async function composeTimelineVideoForNode(input: {
       subtitleBoxColor: settings.subtitleBoxColor,
       subtitleBoxOpacity: settings.subtitleBoxOpacity,
       subtitleMotion: settings.subtitleMotion,
+      subtitleKaraokeMode: settings.subtitleKaraokeMode,
+      subtitleHighlightColor: settings.subtitleHighlightColor,
+      subtitleHighlightBgColor: settings.subtitleHighlightBgColor,
       mixGains: settings.mixGains,
       mixMasterGain: settings.mixMasterGain,
       mixBassGainDb: settings.mixBassGainDb,

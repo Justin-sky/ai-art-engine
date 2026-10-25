@@ -440,7 +440,9 @@ export async function executeTimelineOutputNode(
                 (g.relativePath && g.relativePath === v.relativePath) ||
                 (g.id && g.id !== 'ref:0' && g.id === v.id)
             ) ||
-              (v.relativePath && n.params?.previewRelativePath === v.relativePath) ||
+              (v.relativePath &&
+                (n.params?.previewRelativePath === v.relativePath ||
+                  n.params?.rebuildLastOutput === v.relativePath)) ||
               nodeContainsFilmMedia(n, v.relativePath))
         ) ?? videoSourceEdges[idx]
       if (matched && !isMultiVisualSourceEdge(matched.edge, matched.node)) {

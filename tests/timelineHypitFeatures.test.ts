@@ -37,6 +37,7 @@ import {
 } from '../src/shared/graph/scriptTimeline'
 import { buildSubtitleClipsFromTranscription } from '../src/shared/graph/timelineSubtitle'
 import { applyTimelineEdits } from '../src/shared/graph/timelineEdit'
+import { synthesizeVocalShifterSinging } from '../src/main/services/vocalSingingService'
 import {
   applyVariantToPromptPlan,
   buildScriptTimelineBatchVariants,
@@ -915,38 +916,55 @@ describe('Next-Level Enhancements (1~6): Multi-Line Karaoke SVG, Spring-Settle W
     expect(hud!.subtitleCenterY).toBeGreaterThan(hud!.y + hud!.h)
   })
 
-  it('10. supports duration-preserving semitone pitch shifting (pitchSemitones) and vocal effects (voiceEffect)', () => {
-    // 1) Pure semitone shift (+7 semitones = perfect fifth, 2^(7/12) ≈ 1.498307)
+  it('10. supports duration-preserving semitone pitch shifting (pitchSemitones), clean formant-compensated Guichu vocals, and spatial Guichu FFmpeg filters', () => {
+    // 1) Pure semitone shift (+7 semitones = perfect fifth, 2^(7/12) ≈ 1.498307) + formant-compensating EQ + FET compressor
     const fifthUp = buildClipPitchAndVoiceFilter(1, 7, 'none')
     expect(fifthUp).toContain('aresample=44100,asetrate=66075,aresample=44100')
     expect(fifthUp).toContain('atempo=0.667')
+    expect(fifthUp).toContain('highpass=f=185,lowpass=f=7200,afftdn=nr=12:nf=-28')
+    expect(fifthUp).toContain('equalizer=f=420:t=q:w=1.1:g=5')
+    expect(fifthUp).toContain('acompressor=threshold=0.14:ratio=4:attack=4:release=55:makeup=1.35')
 
-    // 2) VoiceEffect preset defaults (chipmunk -> +5 semitones, demon -> -5 semitones)
+    // 2) VoiceEffect preset defaults (chipmunk -> +4 semitones, demon -> -4 semitones)
     const chipmunk = buildClipPitchAndVoiceFilter(1, 0, 'chipmunk')
-    expect(chipmunk).toContain('asetrate=58866')
+    expect(chipmunk).toContain('asetrate=55563')
+    expect(chipmunk).toContain('aecho=0.72:0.75:20|119:0.24|0.18')
     const demon = buildClipPitchAndVoiceFilter(1, 0, 'demon')
-    expect(demon).toContain('asetrate=33038')
-    expect(demon).toContain('equalizer=f=110:t=q:w=1.0:g=5')
+    expect(demon).toContain('asetrate=35002')
+    expect(demon).toContain('equalizer=f=125:t=q:w=0.9:g=6')
 
-    // 3) Combined speed + pitchSemitones + autotune-chorus in buildFilterGraph
+    // 3) Combined speed + pitchSemitones + autotune-chorus + spatial Guichu visual effects in buildFilterGraph
     const graph = buildFilterGraph(
       [
         {
           track: 'video',
-          title: '鬼畜高潮镜头',
-          path: '/tmp/guichu.mp4',
+          title: '鬼畜高潮镜头1',
+          path: '/tmp/guichu1.mp4',
           inputIndex: 1,
           startSec: 0,
           durationSec: 0.96,
-          speed: 1.25
+          speed: 1.25,
+          visualEffect: 'guichu-pingpong',
+          effectIntensity: 95
+        },
+        {
+          track: 'video',
+          title: '鬼畜九宫格镜头2',
+          path: '/tmp/guichu2.mp4',
+          inputIndex: 1,
+          startSec: 0.96,
+          durationSec: 0.96,
+          speed: 1.0,
+          visualEffect: 'split-9grid',
+          effectIntensity: 95
         }
       ],
       [],
       [
         {
           track: 'video',
-          title: '鬼畜高潮镜头',
-          path: '/tmp/guichu.mp4',
+          title: '鬼畜高潮镜头1',
+          path: '/tmp/guichu1.mp4',
           inputIndex: 1,
           startSec: 0,
           durationSec: 0.96,
@@ -967,7 +985,46 @@ describe('Next-Level Enhancements (1~6): Multi-Line Karaoke SVG, Spring-Settle W
       '#FACC15'
     )
     expect(graph.filter).toContain('asetrate=55563')
-    expect(graph.filter).toContain('aecho=0.8:0.88:12|24:0.42|0.32')
+    expect(graph.filter).toContain('aecho=0.78:0.80:20:0.18')
+    expect(graph.filter).toContain(
+      'acompressor=threshold=0.12:ratio=4.5:attack=4:release=50:makeup=1.42'
+    )
+    expect(graph.filter).toContain('extrastereo=m=1.35')
+    // Spatial Guichu visual filters: reverse+hflip concat for guichu-pingpong & 9-input xstack for split-9grid
+    expect(graph.filter).toContain('reverse,hflip')
+    expect(graph.filter).toContain('xstack=inputs=9')
+
+    // 3b) Stretched singing vowel (speed < 0.85) automatically adds singing vibrato and smooth stereo chorus
+    const singingGraph = buildFilterGraph(
+      [],
+      [],
+      [
+        {
+          track: 'video',
+          title: '拉长拖腔歌唱镜头',
+          path: '/tmp/sing.mp4',
+          inputIndex: 1,
+          startSec: 0,
+          durationSec: 0.96,
+          speed: 0.52,
+          pitchSemitones: 4,
+          voiceEffect: 'echo'
+        }
+      ],
+      [],
+      0,
+      2,
+      1,
+      1280,
+      720,
+      30,
+      44,
+      60,
+      '#FACC15'
+    )
+    expect(singingGraph.filter).toContain('asetrate=55563')
+    expect(singingGraph.filter).toContain('vibrato=f=5.6:d=0.18')
+    expect(singingGraph.filter).toContain('aecho=0.78:0.80:22:0.20')
 
     // 4) timelineEdit patch supports pitchSemitones & voiceEffect
     const doc: ScriptTimelineDocument = {
@@ -992,5 +1049,27 @@ describe('Next-Level Enhancements (1~6): Multi-Line Karaoke SVG, Spring-Settle W
     const patchedClip = edited.document.clips[0]!
     expect(patchedClip.pitchSemitones).toBe(12) // clamped to [-12, 12]
     expect(patchedClip.voiceEffect).toBe('autotune-chorus')
+
+    // 5) TD-PSOLA VocalShifter singing synthesizer stretches spoken contour into stereo singing notes
+    const sr = 44100
+    const srcSpeech = new Float32Array(Math.floor(sr * 0.4))
+    for (let i = 0; i < srcSpeech.length; i++) {
+      const t = i / sr
+      // Simulated Mandarin falling 4th-tone vowel (210Hz -> 140Hz)
+      const f = 210 - 175 * t
+      srcSpeech[i] = Math.sin(2 * Math.PI * f * t) * 0.5
+    }
+    const sung = synthesizeVocalShifterSinging(srcSpeech, sr, [
+      { srcStartRatio: 0, srcEndRatio: 0.5, targetDurationSec: 0.4, semitoneOffset: 2 },
+      {
+        srcStartRatio: 0.5,
+        srcEndRatio: 1.0,
+        targetDurationSec: 0.6,
+        semitoneOffset: 7,
+        sustainVowel: true
+      }
+    ])
+    expect(sung.left.length).toBe(sr * 1.0)
+    expect(sung.right.length).toBe(sr * 1.0)
   })
 })

@@ -34,13 +34,13 @@ describe('timelineCreativePack (CapCut 6-tab creative engine)', () => {
       'templates'
     ])
     expect(TIMELINE_VISUAL_EFFECT_CATEGORIES.length).toBe(7)
-    expect(TIMELINE_VISUAL_EFFECTS.length).toBe(31)
+    expect(TIMELINE_VISUAL_EFFECTS.length).toBe(36)
     expect(TIMELINE_TRANSITION_CATEGORIES.length).toBe(6)
     expect(TIMELINE_TRANSITION_CATALOG.length).toBe(40)
     expect(TIMELINE_FILTER_CATEGORIES.length).toBe(6)
     expect(TIMELINE_FILTER_PRESETS.length).toBe(26)
     expect(TIMELINE_ADJUSTMENT_CONTROLS.length).toBe(12)
-    expect(TIMELINE_CREATIVE_TEMPLATES.length).toBe(12)
+    expect(TIMELINE_CREATIVE_TEMPLATES.length).toBe(13)
 
     const allWithIconPath = [
       ...TIMELINE_BROWSER_TABS,
@@ -126,6 +126,25 @@ describe('timelineCreativePack (CapCut 6-tab creative engine)', () => {
     })
     expect(splitMeta.splitMode).toBe('split-4grid')
     expect(splitMeta.hasOverlay).toBe(true)
+
+    const split9Meta = buildClipVisualOverlayMeta({
+      visualEffect: 'split-9grid',
+      effectIntensity: 90
+    })
+    expect(split9Meta.splitMode).toBe('split-9grid')
+    expect(split9Meta.hasOverlay).toBe(true)
+
+    const pingpongTransform = buildClipVisualCssTransform(
+      { visualEffect: 'guichu-pingpong', effectIntensity: 95 },
+      0.12
+    )
+    expect(pingpongTransform).toContain('scale(')
+    expect(
+      buildClipVisualCssFilter({ visualEffect: 'rainbow-rave', effectIntensity: 95 }, 0.2)
+    ).toContain('hue-rotate(')
+    expect(
+      buildClipVisualCssFilter({ visualEffect: 'deep-fry', effectIntensity: 95 }, 0.2)
+    ).toContain('contrast(')
   })
 
   it('compiles safe FFmpeg filter chains for all filter presets and visual effects without inner parameter commas', () => {

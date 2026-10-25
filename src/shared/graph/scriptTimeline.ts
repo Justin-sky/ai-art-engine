@@ -1500,7 +1500,14 @@ export function readScriptTimelineFromGenParams(
     )
   if (!hasClips(raw) && genParams) {
     if (nodeId?.trim()) {
-      if (hasClips(genParams[SCRIPT_TIMELINE_PARAM_KEY])) {
+      const trimmedNodeId = nodeId.trim()
+      const hasOtherScopedTimeline = Object.entries(genParams).some(
+        ([k, v]) =>
+          k.startsWith(`${SCRIPT_TIMELINE_PARAM_KEY}:`) &&
+          k !== timelineParamKeyForNode(trimmedNodeId) &&
+          hasClips(v)
+      )
+      if (!hasOtherScopedTimeline && hasClips(genParams[SCRIPT_TIMELINE_PARAM_KEY])) {
         raw = genParams[SCRIPT_TIMELINE_PARAM_KEY]
       }
     } else {

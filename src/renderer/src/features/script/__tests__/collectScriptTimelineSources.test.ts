@@ -305,4 +305,128 @@ describe('collectScriptTimelineSources', () => {
       { id: 'vid-2', relativePath: 'Assets/Videos/b.mp4' }
     ])
   })
+
+  it('resolves upstream source video through unrun semantic.rebuild and processing asset.video chains', async () => {
+    const project = useProjectStore()
+    const doc: GraphDocument = {
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        {
+          id: 'src-video',
+          typeId: 'asset.video',
+          category: 'asset',
+          assetType: 'video',
+          title: 'Source Video',
+          position: { x: 0, y: 0 },
+          params: {
+            previewRelativePath: 'Cache/imports/source_clip.mp4'
+          }
+        },
+        {
+          id: 'sem-analyze',
+          typeId: 'semantic.analyze',
+          category: 'note',
+          title: 'Analyze',
+          position: { x: 100, y: 0 },
+          params: {}
+        },
+        {
+          id: 'sem-compile',
+          typeId: 'semantic.compile',
+          category: 'note',
+          title: 'Compile',
+          position: { x: 200, y: 0 },
+          params: {}
+        },
+        {
+          id: 'sem-rebuild',
+          typeId: 'semantic.rebuild',
+          category: 'note',
+          title: 'Rebuild',
+          position: { x: 300, y: 0 },
+          params: {}
+        },
+        {
+          id: 'timeline-sem',
+          typeId: 'output.timeline',
+          category: 'output',
+          title: 'Timeline',
+          position: { x: 450, y: 0 },
+          params: {}
+        }
+      ],
+      edges: [
+        {
+          id: 'e1',
+          source: 'src-video',
+          sourcePort: 'out',
+          target: 'sem-analyze',
+          targetPort: 'in-video'
+        },
+        {
+          id: 'e2',
+          source: 'sem-analyze',
+          sourcePort: 'out',
+          target: 'sem-compile',
+          targetPort: 'in'
+        },
+        {
+          id: 'e3',
+          source: 'sem-compile',
+          sourcePort: 'out',
+          target: 'sem-rebuild',
+          targetPort: 'in'
+        },
+        {
+          id: 'e4',
+          source: 'sem-rebuild',
+          sourcePort: 'out-video',
+          target: 'timeline-sem',
+          targetPort: 'in-videos'
+        }
+      ]
+    }
+
+    project.assets = [
+      {
+        id: 'canvas-sem',
+        name: 'Canvas Semantic',
+        type: 'canvas',
+        createdAt: 1,
+        updatedAt: 1,
+        genParams: { graphJson: doc }
+      } as never
+    ]
+
+    // 1) Before semantic.rebuild runs, it walks upstream to src-video
+    const beforeRun = await collectScriptTimelineSources({
+      scriptAssetId: 'canvas-sem',
+      timelineNodeId: 'timeline-sem'
+    })
+    expect(beforeRun).toHaveLength(1)
+    expect(beforeRun[0]).toMatchObject({
+      relativePath: 'Cache/imports/source_clip.mp4',
+      mediaKind: 'video',
+      origin: 'input',
+      nodeId: 'sem-rebuild'
+    })
+
+    // 2) After semantic.rebuild runs and produces rebuildLastOutput + variants, it resolves those
+    doc.nodes.find((n) => n.id === 'sem-rebuild')!.params = {
+      rebuildLastOutput: 'Semantic/tl-1/rebuild.mp4',
+      previewRelativePath: 'Semantic/tl-1/rebuild.mp4',
+      rebuildLastReport: JSON.stringify({
+        rebuild: { outputRelativePath: 'Semantic/tl-1/rebuild.mp4' },
+        variants: [{ id: 'v1', outputRelativePath: 'Semantic/tl-1/rebuild-v1.mp4' }]
+      })
+    }
+    const afterRun = await collectScriptTimelineSources({
+      scriptAssetId: 'canvas-sem',
+      timelineNodeId: 'timeline-sem'
+    })
+    expect(afterRun.map((s) => s.relativePath)).toEqual([
+      'Semantic/tl-1/rebuild.mp4',
+      'Semantic/tl-1/rebuild-v1.mp4'
+    ])
+  })
 })

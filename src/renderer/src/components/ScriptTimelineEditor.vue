@@ -1053,11 +1053,13 @@
                   :style="{ filter: activeSplitCloneFilter }"
                 >
                   <img
-                    v-for="tileIdx in activeVisualOverlayMeta.splitMode === 'split-4grid'
-                      ? 4
-                      : activeVisualOverlayMeta.splitMode === 'split-3v'
-                        ? 3
-                        : 2"
+                    v-for="tileIdx in activeVisualOverlayMeta.splitMode === 'split-9grid'
+                      ? 9
+                      : activeVisualOverlayMeta.splitMode === 'split-4grid'
+                        ? 4
+                        : activeVisualOverlayMeta.splitMode === 'split-3v'
+                          ? 3
+                          : 2"
                     :key="`split-tile-${tileIdx}`"
                     :src="previewSrc"
                     class="stage-split-tile-img"
@@ -2714,9 +2716,179 @@
                 "
               />
             </label>
+            <template
+              v-if="
+                selectedClip.track === 'video' ||
+                selectedClip.track === 'voice' ||
+                selectedClip.track === 'sfx'
+              "
+            >
+              <div class="inspector-section-title inspector-section-row">
+                <span>{{ '🎤 鬼畜调音与人声歌唱 (VocalShifter)' /* cjk-ok */ }}</span>
+                <button
+                  v-if="
+                    (selectedClip.voiceEffect && selectedClip.voiceEffect !== 'none') ||
+                    Math.abs(selectedClip.pitchSemitones ?? 0) >= 0.05
+                  "
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  @click="resetSelectedClipGuichuAudio"
+                >
+                  {{ '重置调音' /* cjk-ok */ }}
+                </button>
+              </div>
+              <label class="inspector-field">
+                <span>{{ '歌唱/变声引擎 (voiceEffect)' /* cjk-ok */ }}</span>
+                <select
+                  :value="selectedClip.voiceEffect ?? 'none'"
+                  @change="
+                    onClipVoiceEffectChange(
+                      ($event.target as HTMLSelectElement).value as TimelineVoiceEffectId
+                    )
+                  "
+                >
+                  <option value="none">{{ '关闭（保持原声）' /* cjk-ok */ }}</option>
+                  <option value="autotune-chorus">
+                    {{ '🎤 鬼畜拉长唱歌 (TD-PSOLA 电音歌唱 + 合唱)' /* cjk-ok */ }}
+                  </option>
+                  <option value="echo">
+                    {{ '🌊 鬼畜颤音尾音 (拉长慢放 + 灵魂回声)' /* cjk-ok */ }}
+                  </option>
+                  <option value="robot">
+                    {{ '🤖 机械电音合成 (相位声码器唱歌)' /* cjk-ok */ }}
+                  </option>
+                  <option value="chipmunk">
+                    {{ '🐿️ 高能花栗鼠 (高频共振峰移位)' /* cjk-ok */ }}
+                  </option>
+                  <option value="demon">
+                    {{ '👹 深渊魔王低音 (低频共振峰压暗)' /* cjk-ok */ }}
+                  </option>
+                  <option value="megaphone">
+                    {{ '📢 复古大喇叭 (中频过载失真)' /* cjk-ok */ }}
+                  </option>
+                </select>
+              </label>
+              <label class="inspector-field">
+                <span>
+                  {{
+                    `半音音高变调 (${formatPitchSemitoneLabel(selectedClip.pitchSemitones ?? 0)})` /* cjk-ok */
+                  }}
+                </span>
+                <input
+                  type="range"
+                  min="-12"
+                  max="12"
+                  step="1"
+                  :value="selectedClip.pitchSemitones ?? 0"
+                  @input="
+                    onClipPitchSemitonesChange(Number(($event.target as HTMLInputElement).value))
+                  "
+                  @dblclick="onClipPitchSemitonesChange(0)"
+                />
+              </label>
+              <div class="transition-preset-pills">
+                <button
+                  v-for="note in GUICHU_PITCH_NOTE_PRESETS"
+                  :key="note.semitones"
+                  type="button"
+                  class="transition-preset-pill"
+                  :class="{
+                    active: Math.round(selectedClip.pitchSemitones ?? 0) === note.semitones
+                  }"
+                  :title="note.hint"
+                  @click="onSelectGuichuNotePreset(note.semitones)"
+                >
+                  {{ note.label }}
+                </button>
+              </div>
+              <div class="cue-action-row">
+                <button
+                  type="button"
+                  class="ghost-btn keyframe-add-btn"
+                  :title="'为时间线上所有视频/配音片段自动编排大调洗脑旋律音阶并开启 TD-PSOLA 原声拉长唱歌' /* cjk-ok */"
+                  @click="applyGuichuMelodySingingToAllClips"
+                >
+                  {{ '🎵 全片旋律唱歌' /* cjk-ok */ }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  :title="'为连续片段自动施加 0 → +2 → +4 → +7 → +12 半音鬼畜阶梯爬音蓄力' /* cjk-ok */"
+                  @click="applyGuichuPitchLadderToAllClips"
+                >
+                  {{ '📈 阶梯爬音' /* cjk-ok */ }}
+                </button>
+              </div>
+              <div class="cue-action-row">
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  :title="'为主视频轨片段循环挂载鬼畜反复横跳、卡点镜像翻转、四宫格分身、灵魂出窍与 RGB 撕裂特效' /* cjk-ok */"
+                  @click="applyGuichuVisualRotationToAllClips"
+                >
+                  {{ '⚡ 鬼畜抽帧轮播' /* cjk-ok */ }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  :title="'将当前片段的歌唱引擎与半音音高同步应用到同轨道全部片段' /* cjk-ok */"
+                  @click="applyCurrentClipGuichuAudioToTrack"
+                >
+                  {{ '套用到同轨全部' /* cjk-ok */ }}
+                </button>
+              </div>
+            </template>
           </template>
         </div>
         <div v-else class="inspector-body">
+          <div class="inspector-section-title">
+            {{ '🔥 鬼畜魔性卡点工作台 (Guichu / YTPMV)' /* cjk-ok */ }}
+          </div>
+          <div class="inspector-hint">
+            {{
+              '支持原声台词 TD-PSOLA 拉长变调唱歌、阶梯爬音、抽帧频闪横跳与 BGM 自动踩点（也可在左侧「模板 / 特效」面板或选中单个片段后精调）。' /* cjk-ok */
+            }}
+          </div>
+          <div class="cue-action-row">
+            <button
+              type="button"
+              class="ghost-btn keyframe-add-btn"
+              :disabled="!clips.length"
+              :title="'一键为全片视频/人声片段挂载 TD-PSOLA 电音拉长歌唱引擎与洗脑旋律音阶' /* cjk-ok */"
+              @click="applyGuichuMelodySingingToAllClips"
+            >
+              {{ '🎤 全片拉长唱歌' /* cjk-ok */ }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn crop-toggle-inline"
+              :disabled="!clips.length && !sources.length"
+              :title="'一键套用「鬼畜魔性卡点」模板（画面反复横跳/四宫格/灵魂出窍 + 人声电音歌唱 + 弹跳字幕）' /* cjk-ok */"
+              @click="onApplyCreativeTemplate('guichu-madness')"
+            >
+              {{ '🔥 鬼畜全套包装' /* cjk-ok */ }}
+            </button>
+          </div>
+          <div class="cue-action-row">
+            <button
+              type="button"
+              class="ghost-btn crop-toggle-inline"
+              :disabled="!clips.length"
+              :title="'为全片片段施加 0 → +2 → +4 → +7 → +12 半音阶梯爬音' /* cjk-ok */"
+              @click="applyGuichuPitchLadderToAllClips"
+            >
+              {{ '📈 全片阶梯爬音' /* cjk-ok */ }}
+            </button>
+            <button
+              type="button"
+              class="ghost-btn crop-toggle-inline"
+              :disabled="!clips.length"
+              :title="'清除全片所有片段的半音变调与变声歌唱效果，恢复原始人声' /* cjk-ok */"
+              @click="clearAllGuichuAudioEffects"
+            >
+              {{ '🧹 清除鬼畜调音' /* cjk-ok */ }}
+            </button>
+          </div>
           <div class="inspector-section-title">
             {{ t('script.timeline.exportSettings') }}
           </div>
@@ -3027,6 +3199,15 @@
             @click="snapVideoCutsToMusicBeatsNow"
           >
             🥁 踩点BGM
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!clips.length"
+            :title="'鬼畜人声拉长唱歌 (VocalShifter)：一键为全片视频/配音片段赋予洗脑旋律音阶并开启 TD-PSOLA 电音拉长歌唱' /* cjk-ok */"
+            @click="applyGuichuMelodySingingToAllClips"
+          >
+            {{ '🎤 鬼畜歌唱' /* cjk-ok */ }}
           </button>
           <button
             type="button"
@@ -4170,6 +4351,7 @@ import {
   buildTimelineWidgetSvgDataUrl,
   buildVlmSpeakerTrackingPrompts,
   clampClipFreezeTailSec,
+  clampClipPitchSemitones,
   clampClipSpeed,
   clampMixDuckingRatio,
   clampMixEqGainDb,
@@ -4276,6 +4458,7 @@ import {
   type TimelineTweenOutPreset,
   type TimelineVisualEffectCategory,
   type TimelineVisualEffectId,
+  type TimelineVoiceEffectId,
   type TimelineWidgetConfig,
   type TimelineWidgetItem,
   type TimelineWidgetKind,
@@ -8859,6 +9042,43 @@ async function reloadSources(): Promise<void> {
         })!
       )
       .filter(Boolean)
+    const importedKeys = new Set(preservedImported.map((s) => sourceIdentityKey(s)))
+    // 若宿主无图或图未检出视频输入源，但时间线轨道上已有媒体片段，则自动从轨道片段回填输入源，避免「输入端口 0」
+    if (!inputNext.some((s) => sourceMediaKind(s) !== 'voice') && clips.value.length > 0) {
+      for (const clip of clips.value) {
+        if (
+          clip.track !== 'video' &&
+          clip.track !== 'voice' &&
+          clip.track !== 'music' &&
+          clip.track !== 'sfx'
+        ) {
+          continue
+        }
+        const rel = clip.relativePath?.trim()
+        if (!rel) continue
+        const mediaKind = clip.track === 'video' ? 'video' : 'voice'
+        const candidate = normalizeScriptTimelineSource({
+          id: clip.sourceId?.trim() || rel,
+          title:
+            clip.nodeTitle?.trim() ||
+            clip.title?.trim() ||
+            rel.replace(/\\/g, '/').split('/').pop() ||
+            rel,
+          relativePath: rel,
+          assetId: clip.assetId,
+          durationSec: clip.durationSec,
+          origin: 'input',
+          mediaKind,
+          ...(clip.nodeId?.trim() ? { nodeId: clip.nodeId.trim() } : {}),
+          ...(clip.nodeTitle?.trim() ? { nodeTitle: clip.nodeTitle.trim() } : {})
+        })
+        if (!candidate) continue
+        const key = sourceIdentityKey(candidate)
+        if (inputKeys.has(key) || importedKeys.has(key)) continue
+        inputKeys.add(key)
+        inputNext.push(candidate)
+      }
+    }
     sources.value = [...inputNext, ...preservedImported]
 
     const extractActIdxFromMeta = (s: string): number | null => {
@@ -10411,7 +10631,7 @@ function onApplyCreativeTemplate(templateId: TimelineCreativeTemplateId): void {
 }
 
 function clipCreativeBadgeText(clip: ScriptTimelineClip): string {
-  if (clip.track !== 'video' && clip.track !== 'overlay') return ''
+  if (clip.track !== 'video' && clip.track !== 'overlay' && clip.track !== 'voice') return ''
   const badges: string[] = []
   if (clip.visualEffect && clip.visualEffect !== 'none') {
     badges.push(getTimelineVisualEffectMeta(clip.visualEffect).badge)
@@ -10419,7 +10639,219 @@ function clipCreativeBadgeText(clip: ScriptTimelineClip): string {
   if (clip.filterPreset && clip.filterPreset !== 'none') {
     badges.push(getTimelineFilterPresetMeta(clip.filterPreset).badge)
   }
+  if (typeof clip.pitchSemitones === 'number' && Math.abs(clip.pitchSemitones) >= 0.1) {
+    badges.push(`${clip.pitchSemitones > 0 ? '+' : ''}${clip.pitchSemitones}st`)
+  }
+  if (clip.voiceEffect && clip.voiceEffect !== 'none') {
+    badges.push(
+      clip.voiceEffect === 'autotune-chorus' ? 'AUTO-TUNE' : clip.voiceEffect.toUpperCase()
+    )
+  }
   return badges.join('·')
+}
+
+const GUICHU_PITCH_NOTE_PRESETS = [
+  { semitones: -12, label: 'C3 (-12)', hint: '低八度 C3（重低音沉降）' }, // cjk-ok
+  { semitones: -5, label: 'G3 (-5)', hint: '低音属音 Sol (-5 半音)' }, // cjk-ok
+  { semitones: -3, label: 'A3 (-3)', hint: '小调主音 La (-3 半音)' }, // cjk-ok
+  { semitones: 0, label: 'C4 (0)', hint: '原调 Do (0 半音)' }, // cjk-ok
+  { semitones: 2, label: 'D4 (+2)', hint: '大调二音 Re (+2 半音)' }, // cjk-ok
+  { semitones: 4, label: 'E4 (+4)', hint: '大调三音 Mi (+4 半音)' }, // cjk-ok
+  { semitones: 5, label: 'F4 (+5)', hint: '大调四音 Fa (+5 半音)' }, // cjk-ok
+  { semitones: 7, label: 'G4 (+7)', hint: '纯五度高燃属音 Sol (+7 半音)' }, // cjk-ok
+  { semitones: 9, label: 'A4 (+9)', hint: '大调六音 La (+9 半音)' }, // cjk-ok
+  { semitones: 12, label: 'C5 (+12)', hint: '高八度暴击 C5 (+12 半音)' } // cjk-ok
+] as const
+
+const GUICHU_MELODY_SEMITONE_SEQUENCE = [0, 2, 4, 5, 7, 9, 7, 5, 4, 2, 0, 5, 7, 12] as const
+const GUICHU_LADDER_SEMITONE_SEQUENCE = [0, 2, 4, 7, 12] as const
+const GUICHU_VISUAL_ROTATION_PRESETS: readonly TimelineVisualEffectId[] = [
+  'guichu-pingpong',
+  'beat-flip',
+  'split-4grid',
+  'rainbow-rave',
+  'soul-out',
+  'rgb-glitch',
+  'strobe-flash',
+  'split-9grid',
+  'deep-fry',
+  'earthquake'
+]
+
+function formatPitchSemitoneLabel(semitones: number): string {
+  const st = clampClipPitchSemitones(semitones)
+  const sign = st > 0 ? '+' : ''
+  const matched = GUICHU_PITCH_NOTE_PRESETS.find((n) => n.semitones === Math.round(st))
+  return matched ? `${sign}${st} st · ${matched.label.split(' ')[0]}` : `${sign}${st} st`
+}
+
+function onClipVoiceEffectChange(voiceEffect: TimelineVoiceEffectId): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) => {
+      if (c.id !== clip.id) return c
+      return {
+        ...c,
+        voiceEffect: voiceEffect === 'none' ? undefined : voiceEffect
+      }
+    })
+  )
+  scheduleSave()
+}
+
+function onClipPitchSemitonesChange(value: number): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const nextPitch = clampClipPitchSemitones(value)
+  commitClips(
+    clips.value.map((c) => {
+      if (c.id !== clip.id) return c
+      return {
+        ...c,
+        pitchSemitones: Math.abs(nextPitch) < 0.05 ? undefined : nextPitch,
+        // 调高/调低半音时若尚未开启变声引擎，默认自动挂载鬼畜电音歌唱 (TD-PSOLA)
+        ...(Math.abs(nextPitch) >= 0.5 && (!c.voiceEffect || c.voiceEffect === 'none')
+          ? { voiceEffect: 'autotune-chorus' as const }
+          : {})
+      }
+    })
+  )
+  scheduleSave()
+}
+
+function onSelectGuichuNotePreset(semitones: number): void {
+  onClipPitchSemitonesChange(semitones)
+}
+
+function resetSelectedClipGuichuAudio(): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  commitClips(
+    clips.value.map((c) => {
+      if (c.id !== clip.id) return c
+      const next = { ...c }
+      delete next.pitchSemitones
+      delete next.voiceEffect
+      return next
+    })
+  )
+  scheduleSave()
+}
+
+function applyCurrentClipGuichuAudioToTrack(): void {
+  const clip = selectedClip.value
+  if (!clip || lockedTracks.value.has(clip.track)) return
+  const targetTrack = clip.track
+  const pitch = clip.pitchSemitones
+  const fx = clip.voiceEffect
+  commitClips(
+    clips.value.map((c) => {
+      if (c.track !== targetTrack) return c
+      return {
+        ...c,
+        pitchSemitones: pitch,
+        voiceEffect: fx
+      }
+    })
+  )
+  scheduleSave()
+}
+
+function applyGuichuMelodySingingToAllClips(): void {
+  if (!clips.value.length) return
+  let videoIdx = 0
+  let voiceIdx = 0
+  commitClips(
+    clips.value.map((c) => {
+      if (c.track === 'video' && !lockedTracks.value.has('video')) {
+        const st =
+          GUICHU_MELODY_SEMITONE_SEQUENCE[videoIdx % GUICHU_MELODY_SEMITONE_SEQUENCE.length]!
+        videoIdx += 1
+        return {
+          ...c,
+          pitchSemitones: st,
+          voiceEffect: 'autotune-chorus'
+        }
+      }
+      if (c.track === 'voice' && !lockedTracks.value.has('voice')) {
+        const st =
+          GUICHU_MELODY_SEMITONE_SEQUENCE[voiceIdx % GUICHU_MELODY_SEMITONE_SEQUENCE.length]!
+        voiceIdx += 1
+        return {
+          ...c,
+          pitchSemitones: st,
+          voiceEffect: 'autotune-chorus'
+        }
+      }
+      return c
+    })
+  )
+  scheduleSave()
+}
+
+function applyGuichuPitchLadderToAllClips(): void {
+  if (!clips.value.length) return
+  let videoIdx = 0
+  let voiceIdx = 0
+  commitClips(
+    clips.value.map((c) => {
+      if (c.track === 'video' && !lockedTracks.value.has('video')) {
+        const st =
+          GUICHU_LADDER_SEMITONE_SEQUENCE[videoIdx % GUICHU_LADDER_SEMITONE_SEQUENCE.length]!
+        videoIdx += 1
+        return {
+          ...c,
+          pitchSemitones: st,
+          voiceEffect: c.voiceEffect && c.voiceEffect !== 'none' ? c.voiceEffect : 'autotune-chorus'
+        }
+      }
+      if (c.track === 'voice' && !lockedTracks.value.has('voice')) {
+        const st =
+          GUICHU_LADDER_SEMITONE_SEQUENCE[voiceIdx % GUICHU_LADDER_SEMITONE_SEQUENCE.length]!
+        voiceIdx += 1
+        return {
+          ...c,
+          pitchSemitones: st,
+          voiceEffect: c.voiceEffect && c.voiceEffect !== 'none' ? c.voiceEffect : 'autotune-chorus'
+        }
+      }
+      return c
+    })
+  )
+  scheduleSave()
+}
+
+function applyGuichuVisualRotationToAllClips(): void {
+  if (!clips.value.length || lockedTracks.value.has('video')) return
+  let idx = 0
+  commitClips(
+    clips.value.map((c) => {
+      if (c.track !== 'video') return c
+      const fx = GUICHU_VISUAL_ROTATION_PRESETS[idx % GUICHU_VISUAL_ROTATION_PRESETS.length]!
+      idx += 1
+      return {
+        ...c,
+        visualEffect: fx,
+        effectIntensity: c.effectIntensity ?? 85
+      }
+    })
+  )
+  scheduleSave()
+}
+
+function clearAllGuichuAudioEffects(): void {
+  if (!clips.value.length) return
+  commitClips(
+    clips.value.map((c) => {
+      if (lockedTracks.value.has(c.track)) return c
+      const next = { ...c }
+      delete next.pitchSemitones
+      delete next.voiceEffect
+      return next
+    })
+  )
+  scheduleSave()
 }
 
 function onClipSubtitleStyleChange(patch: { fontSize?: number; textColor?: string }): void {
@@ -13788,6 +14220,8 @@ async function exportTimeline(): Promise<void> {
             durationSec: c.durationSec,
             ...(sourceOffsetOf(c) > 0 ? { sourceOffsetSec: sourceOffsetOf(c) } : {}),
             speed: c.speed,
+            pitchSemitones: c.pitchSemitones,
+            voiceEffect: c.voiceEffect,
             freezeTailSec: c.freezeTailSec,
             brightness: c.brightness,
             contrast: c.contrast,
@@ -18462,6 +18896,28 @@ defineExpose({ flushSave: persist, reloadSources })
     linear-gradient(to right, transparent calc(50% - 1px), #f472b6 50%, transparent calc(50% + 1px));
 }
 
+.stage-visual-split-frame.split-9grid {
+  background:
+    linear-gradient(
+      to bottom,
+      transparent calc(33.33% - 1px),
+      #e879f9 33.33%,
+      transparent calc(33.33% + 1px),
+      transparent calc(66.66% - 1px),
+      #22d3ee 66.66%,
+      transparent calc(66.66% + 1px)
+    ),
+    linear-gradient(
+      to right,
+      transparent calc(33.33% - 1px),
+      #e879f9 33.33%,
+      transparent calc(33.33% + 1px),
+      transparent calc(66.66% - 1px),
+      #22d3ee 66.66%,
+      transparent calc(66.66% + 1px)
+    );
+}
+
 .stage-visual-scanlines {
   position: absolute;
   inset: 0;
@@ -18526,6 +18982,11 @@ defineExpose({ flushSave: persist, reloadSources })
 .stage-visual-split-clones.split-4grid {
   grid-template-rows: 1fr 1fr;
   grid-template-columns: 1fr 1fr;
+}
+
+.stage-visual-split-clones.split-9grid {
+  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
 }
 
 .stage-split-tile-img {

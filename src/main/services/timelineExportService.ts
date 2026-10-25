@@ -52,6 +52,7 @@ import { projectService } from './projectService'
 import { buildPreviewFramePlan } from '@shared/graph/timelinePreview'
 import { findFfmpegBin } from './videoFrameService'
 import { runFfmpeg } from './ffmpegRunner'
+import { renderGuichuSingingClipWav } from './vocalSingingService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
   buildSubtitleDrawtextMotion,
@@ -167,8 +168,10 @@ export function buildClipPitchAndVoiceFilter(
   let semitones = clampClipPitchSemitones(pitchSemitones)
   const effect = isTimelineVoiceEffectId(voiceEffect) ? voiceEffect : 'none'
   if (Math.abs(semitones) < 0.05) {
-    if (effect === 'chipmunk') semitones = 5
-    else if (effect === 'demon') semitones = -5
+    if (effect === 'chipmunk') semitones = 4
+    else if (effect === 'demon') semitones = -4
+    else if (effect === 'autotune-chorus' || effect === 'echo' || effect === 'robot') semitones = 3
+    else if (effect === 'megaphone') semitones = 2
   }
 
   const parts: string[] = []
@@ -184,18 +187,102 @@ export function buildClipPitchAndVoiceFilter(
     if (tempoChain) parts.push(tempoChain)
   }
 
+  // 《敢杀我的马》（BV1yt4y1Q7SS）同款干声提纯与共振峰补偿（Formant Compensation）：
+  // 1) 切除原片 <185Hz 浑浊低频轰鸣与 >7200Hz 底噪，衰减 320Hz 盒音，防止原片自带 BGM 与鬼畜伴奏打架；
+  // 2) 当 asetrate 移调时，反向补偿声道共振峰（升调时补 420Hz 胸腔厚度并压 950Hz 鼻音尖刺，告别劣质花栗鼠感）；
+  // 3) 提升 2600Hz 咬字穿透力，配合快速瞬态压缩（acompressor）让每个字像打击乐一样清脆贴耳。
+  const hasVocalFxOrPitch = effect !== 'none' || Math.abs(semitones) >= 0.05
+  if (hasVocalFxOrPitch) {
+    parts.push(
+      'highpass=f=185',
+      'lowpass=f=7200',
+      'afftdn=nr=12:nf=-28',
+      'equalizer=f=320:t=q:w=1.3:g=-4'
+    )
+    if (semitones >= 1.5 && effect !== 'chipmunk') {
+      const warmthGain = Math.min(5, Math.round(semitones * 0.7))
+      const nasalCut = -Math.min(5, Math.round(semitones * 0.65))
+      parts.push(
+        `equalizer=f=420:t=q:w=1.1:g=${warmthGain}`,
+        `equalizer=f=950:t=q:w=1.3:g=${nasalCut}`
+      )
+    } else if (semitones <= -1.5 && effect !== 'demon') {
+      parts.push('equalizer=f=450:t=q:w=1.2:g=-3', 'equalizer=f=1800:t=q:w=1.1:g=3')
+    }
+    // 当原声被慢放拉长（speed < 0.85）作为歌唱拖腔时，自动注入自然歌唱颤音（Vibrato），让拉长的元音变成悠扬唱腔
+    if (safeSpeed < 0.85) {
+      parts.push('vibrato=f=5.6:d=0.18')
+    }
+  }
+
+  // 计算当前半音对应的合成器共鸣周期（以 A3=220Hz 为基准音阶）
+  const noteFreqHz = 220 * Math.pow(2, semitones / 12)
+  const combDelay1Ms = Math.max(1.5, Math.min(12, 1000 / noteFreqHz))
+  const combDelay2Ms = Math.min(24, combDelay1Ms * 2)
+  const d1 = combDelay1Ms.toFixed(2)
+  const d2 = combDelay2Ms.toFixed(2)
+
   if (effect === 'chipmunk') {
-    parts.push('equalizer=f=3200:t=q:w=1.2:g=3')
+    parts.push(
+      'aecho=0.72:0.75:20|119:0.24|0.18',
+      'equalizer=f=2800:t=q:w=1.2:g=4',
+      'acompressor=threshold=0.14:ratio=4:attack=4:release=55:makeup=1.35',
+      'extrastereo=m=1.3',
+      'volume=1.25'
+    )
   } else if (effect === 'demon') {
-    parts.push('equalizer=f=110:t=q:w=1.0:g=5')
+    parts.push(
+      'aecho=0.72:0.75:24|238:0.26|0.18',
+      'equalizer=f=125:t=q:w=0.9:g=6',
+      'equalizer=f=2400:t=q:w=1.2:g=4',
+      'acompressor=threshold=0.14:ratio=4:attack=4:release=55:makeup=1.4',
+      'volume=1.3'
+    )
   } else if (effect === 'robot') {
-    parts.push('aecho=0.8:0.88:6:0.7', 'flanger=delay=2:depth=4:speed=5')
+    // 清澈人力 VOCALOID 电音合成器（带音高谐振周期与立体声加宽，无破音失真）
+    parts.push(
+      `aecho=0.70:0.72:${d1}|${d2}|22:0.30|0.18|0.14`,
+      'flanger=delay=1.4:depth=2.0:regen=28:width=72:speed=2.2',
+      'equalizer=f=2700:t=q:w=1.1:g=4.5',
+      'acompressor=threshold=0.12:ratio=4.5:attack=4:release=50:makeup=1.45',
+      'extrastereo=m=1.35',
+      'volume=1.28'
+    )
   } else if (effect === 'autotune-chorus') {
-    parts.push('aecho=0.8:0.88:12|24:0.42|0.32')
+    // 《敢杀我的马》同款清澈主唱双声道加厚(20ms Haas)，干脆利落不拖泥带水、不掩盖下一句台词
+    parts.push(
+      'aecho=0.78:0.80:20:0.18',
+      'equalizer=f=2600:t=q:w=1.1:g=4.5',
+      'acompressor=threshold=0.12:ratio=4.5:attack=4:release=50:makeup=1.42',
+      'extrastereo=m=1.35',
+      'volume=1.26'
+    )
   } else if (effect === 'echo') {
-    parts.push('aecho=0.8:0.85:110|220:0.45|0.25')
+    // 当原声慢放拉长变唱歌（safeSpeed < 0.85）时，使用平滑双声道合唱共鸣（避免 238ms/476ms 延迟与拉长元音自身叠音打架）；
+    // 常规语速下使用 126BPM 半拍(238ms) + 一拍(476ms) 尾音卡点伴唱回声
+    parts.push(
+      safeSpeed < 0.85 ? 'aecho=0.78:0.80:22:0.20' : 'aecho=0.70:0.74:238|476:0.36|0.22',
+      'equalizer=f=2600:t=q:w=1.1:g=4',
+      'acompressor=threshold=0.12:ratio=4:attack=4:release=55:makeup=1.4',
+      'extrastereo=m=1.45',
+      'volume=1.28'
+    )
   } else if (effect === 'megaphone') {
-    parts.push('highpass=f=380', 'lowpass=f=3400', 'volume=1.35')
+    parts.push(
+      'highpass=f=320',
+      'lowpass=f=4200',
+      'equalizer=f=1800:t=q:w=1.0:g=6',
+      'aecho=0.72:0.75:18|119:0.24|0.16',
+      'acompressor=threshold=0.12:ratio=5:attack=4:release=50:makeup=1.45',
+      'volume=1.32'
+    )
+  } else if (Math.abs(semitones) >= 0.5) {
+    parts.push(
+      'equalizer=f=2600:t=q:w=1.1:g=4',
+      'acompressor=threshold=0.14:ratio=4:attack=4:release=55:makeup=1.35',
+      'extrastereo=m=1.25',
+      'volume=1.22'
+    )
   }
 
   return parts.join(',')
@@ -396,6 +483,157 @@ function drawCircleRing(
  * 规避 Windows/macOS 标准 FFmpeg 缺少 librsvg 解码器导致 `.svg` 输入报 `no decoder found for: svg`。
  */
 export function renderBuiltinStickerPngBuffer(stickerId: string, customColor?: string): Buffer {
+  const normId = stickerId
+    .replace(/^vfx:\/\//i, '')
+    .replace(/^vfx-/i, '')
+    .trim()
+
+  if (
+    normId === 'comic-boom' ||
+    normId === 'neon-slash-combo' ||
+    normId === 'electric-lightning' ||
+    normId === 'fire-burst' ||
+    normId === 'laser-beam' ||
+    normId === 'shockwave-ring' ||
+    normId === 'speed-lines'
+  ) {
+    const png = new PNG({ width: 640, height: 360 })
+    const cx = 320
+    const cy = 180
+    if (normId === 'comic-boom') {
+      // 漫威式冲击星芒 + 双层爆裂光环
+      const rays = 16
+      for (let i = 0; i < rays; i++) {
+        const ang = (i * Math.PI * 2) / rays
+        const rIn = i % 2 === 0 ? 48 : 68
+        const rOut = i % 2 === 0 ? 270 : 195
+        const col: [number, number, number] = i % 2 === 0 ? [250, 204, 21] : [244, 63, 94]
+        drawThickLine(
+          png,
+          cx + Math.cos(ang) * rIn,
+          cy + Math.sin(ang) * rIn,
+          cx + Math.cos(ang) * rOut,
+          cy + Math.sin(ang) * rOut,
+          i % 2 === 0 ? 11 : 7,
+          col,
+          0.92
+        )
+      }
+      drawCircleRing(png, cx, cy, 118, 12, [244, 63, 94], 0.94, false)
+      drawCircleRing(png, cx, cy, 82, 10, [250, 204, 21], 0.96, false)
+      drawCircleRing(png, cx, cy, 38, 1, [255, 255, 255], 0.88, true)
+      return PNG.sync.write(png)
+    }
+
+    if (normId === 'neon-slash-combo') {
+      // 霓虹双色交叉连斩刀光
+      const slashes: Array<[number, number, number, number, [number, number, number]]> = [
+        [36, 316, 604, 44, [34, 211, 238]],
+        [52, 48, 588, 312, [232, 121, 249]],
+        [18, 195, 622, 145, [250, 204, 21]]
+      ]
+      for (const [x0, y0, x1, y1, col] of slashes) {
+        drawThickLine(png, x0, y0, x1, y1, 16, col, 0.42)
+        drawThickLine(png, x0, y0, x1, y1, 8, col, 0.92)
+        drawThickLine(png, x0, y0, x1, y1, 3.2, [255, 255, 255], 0.98)
+      }
+      drawCircleRing(png, cx, cy, 56, 5, [34, 211, 238], 0.85, false)
+      return PNG.sync.write(png)
+    }
+
+    if (normId === 'electric-lightning') {
+      // 高压雷霆折线电弧
+      const bolts: Array<Array<[number, number]>> = [
+        [
+          [40, 30],
+          [160, 110],
+          [130, 155],
+          [290, 210],
+          [260, 260],
+          [430, 330]
+        ],
+        [
+          [600, 28],
+          [470, 105],
+          [505, 150],
+          [340, 220],
+          [380, 265],
+          [210, 335]
+        ],
+        [
+          [80, 180],
+          [220, 150],
+          [320, 195],
+          [440, 160],
+          [570, 190]
+        ]
+      ]
+      for (let b = 0; b < bolts.length; b++) {
+        const pts = bolts[b]!
+        const outerCol: [number, number, number] = b % 2 === 0 ? [56, 189, 248] : [192, 132, 252]
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [x0, y0] = pts[i]!
+          const [x1, y1] = pts[i + 1]!
+          drawThickLine(png, x0, y0, x1, y1, 12, outerCol, 0.48)
+          drawThickLine(png, x0, y0, x1, y1, 5.5, outerCol, 0.95)
+          drawThickLine(png, x0, y0, x1, y1, 2.2, [255, 255, 255], 0.98)
+        }
+      }
+      return PNG.sync.write(png)
+    }
+
+    if (normId === 'fire-burst') {
+      // 烈焰爆燃双环与放射火舌
+      drawCircleRing(png, cx, cy, 136, 18, [239, 68, 68], 0.78, false)
+      drawCircleRing(png, cx, cy, 98, 14, [249, 115, 22], 0.9, false)
+      drawCircleRing(png, cx, cy, 62, 10, [250, 204, 21], 0.96, false)
+      for (let i = 0; i < 20; i++) {
+        const ang = (i * Math.PI * 2) / 20
+        drawThickLine(
+          png,
+          cx + Math.cos(ang) * 58,
+          cy + Math.sin(ang) * 58,
+          cx + Math.cos(ang) * (i % 2 === 0 ? 220 : 165),
+          cy + Math.sin(ang) * (i % 2 === 0 ? 220 : 165),
+          i % 2 === 0 ? 9 : 5,
+          i % 2 === 0 ? [249, 115, 22] : [250, 204, 21],
+          0.88
+        )
+      }
+      return PNG.sync.write(png)
+    }
+
+    if (normId === 'laser-beam') {
+      // 高能等离子贯穿激光炮
+      drawThickLine(png, 10, cy, 630, cy, 34, [236, 72, 153], 0.38)
+      drawThickLine(png, 10, cy, 630, cy, 18, [34, 211, 238], 0.88)
+      drawThickLine(png, 10, cy, 630, cy, 7, [255, 255, 255], 0.98)
+      drawCircleRing(png, 110, cy, 52, 8, [236, 72, 153], 0.92, false)
+      drawCircleRing(png, 110, cy, 26, 1, [255, 255, 255], 0.96, true)
+      return PNG.sync.write(png)
+    }
+
+    // shockwave-ring / speed-lines：高能冲击波环 + 动漫集中速度线
+    drawCircleRing(png, cx, cy, 152, 10, [34, 211, 238], 0.88, false)
+    drawCircleRing(png, cx, cy, 112, 6, [232, 121, 249], 0.85, false)
+    for (let i = 0; i < 28; i++) {
+      const ang = (i * Math.PI * 2) / 28
+      const rIn = i % 2 === 0 ? 118 : 142
+      const rOut = 340
+      drawThickLine(
+        png,
+        cx + Math.cos(ang) * rIn,
+        cy + Math.sin(ang) * rIn,
+        cx + Math.cos(ang) * rOut,
+        cy + Math.sin(ang) * rOut,
+        i % 2 === 0 ? 4.5 : 2.5,
+        i % 3 === 0 ? [250, 204, 21] : [255, 255, 255],
+        0.86
+      )
+    }
+    return PNG.sync.write(png)
+  }
+
   if (stickerId === 'viewfinder-frame') {
     const png = new PNG({ width: 640, height: 360 })
     const gold = parseHexRgb(customColor, [245, 158, 11])
@@ -930,6 +1168,15 @@ export function expandSubtitleKaraokeSnapshotsToOverlays(
 }
 
 function resolveClipPath(clip: TimelineExportClip): string | null {
+  const vfxCandidate =
+    (clip.relativePath && /^vfx:\/\//i.test(clip.relativePath.trim())
+      ? clip.relativePath.trim()
+      : null) ||
+    (clip.absPath && /^vfx:\/\//i.test(clip.absPath.trim()) ? clip.absPath.trim() : null)
+  if (vfxCandidate) {
+    const vfxStickerId = vfxCandidate.replace(/^vfx:\/\//i, '').trim() || 'comic-boom'
+    return writeStickerPngFile({ ...clip, stickerId: vfxStickerId })
+  }
   if (clip.absPath && existsSync(clip.absPath)) {
     if (/\.svg$/i.test(clip.absPath.trim())) {
       return writeStickerPngFile(clip)
@@ -1192,6 +1439,126 @@ export function buildFilterGraph(
       const colorEq = buildClipColorEqFilter(clip)
       const eqOpt = colorEq ? `,${colorEq}` : ''
 
+      const appendSpatialGuichuFx = (baseLabel: string, finalLabel: string): void => {
+        const fx = clip.visualEffect ?? 'none'
+        const intensity = Math.max(0.2, Math.min(1, (clip.effectIntensity ?? 80) / 100))
+        if (fx === 'guichu-pingpong') {
+          filterParts.push(
+            `[${baseLabel}]split=2[${finalLabel}_fw][${finalLabel}_rv];` +
+              `[${finalLabel}_rv]reverse,hflip[${finalLabel}_rev];` +
+              `[${finalLabel}_fw][${finalLabel}_rev]concat=n=2:v=1:a=0,setpts=0.5*(PTS-STARTPTS),fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'beat-flip') {
+          filterParts.push(
+            `[${baseLabel}]split=2[${finalLabel}_n][${finalLabel}_f0];` +
+              `[${finalLabel}_f0]hflip,hue=h=28:s=1.25[${finalLabel}_flp];` +
+              `[${finalLabel}_n][${finalLabel}_flp]overlay=x='if(gt(sin(2*PI*t*6),0),0,W*2)':y=0,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'split-2h') {
+          const w2 = Math.max(2, Math.floor(width / 2))
+          filterParts.push(
+            `[${baseLabel}]crop=iw*0.56:ih:iw*0.22:0,scale=${w2}:${height},setsar=1,split=2[${finalLabel}_l][${finalLabel}_r0];` +
+              `[${finalLabel}_r0]hflip[${finalLabel}_r];` +
+              `[${finalLabel}_l][${finalLabel}_r]hstack=inputs=2,scale=${width}:${height},drawbox=x=iw*0.497:y=0:w=iw*0.006:h=ih:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'split-3v') {
+          const w3 = Math.max(2, Math.floor(width / 3))
+          filterParts.push(
+            `[${baseLabel}]crop=iw*0.46:ih:iw*0.27:0,scale=${w3}:${height},setsar=1,split=3[${finalLabel}_c1][${finalLabel}_c20][${finalLabel}_c30];` +
+              `[${finalLabel}_c20]hflip,hue=h=35[${finalLabel}_c2];` +
+              `[${finalLabel}_c30]hue=h=-35[${finalLabel}_c3];` +
+              `[${finalLabel}_c1][${finalLabel}_c2][${finalLabel}_c3]hstack=inputs=3,scale=${width}:${height},` +
+              `drawbox=x=iw*0.331:y=0:w=iw*0.005:h=ih:color=#f43f5e:t=fill,` +
+              `drawbox=x=iw*0.664:y=0:w=iw*0.005:h=ih:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'split-4grid') {
+          const w2 = Math.max(2, Math.floor(width / 2))
+          const h2 = Math.max(2, Math.floor(height / 2))
+          filterParts.push(
+            `[${baseLabel}]scale=${w2}:${h2},setsar=1,split=4[${finalLabel}_q1][${finalLabel}_q20][${finalLabel}_q30][${finalLabel}_q40];` +
+              `[${finalLabel}_q20]hflip,hue=h=36[${finalLabel}_q2];` +
+              `[${finalLabel}_q30]hflip,hue=h=-36[${finalLabel}_q3];` +
+              `[${finalLabel}_q40]rgbashift=rh=6:bh=-6[${finalLabel}_q4];` +
+              `[${finalLabel}_q1][${finalLabel}_q2][${finalLabel}_q3][${finalLabel}_q4]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0,scale=${width}:${height},` +
+              `drawbox=x=iw*0.497:y=0:w=iw*0.006:h=ih:color=#facc15:t=fill,` +
+              `drawbox=x=0:y=ih*0.497:w=iw:h=ih*0.006:color=#facc15:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'split-9grid') {
+          const w3 = Math.max(2, Math.floor(width / 3))
+          const h3 = Math.max(2, Math.floor(height / 3))
+          filterParts.push(
+            `[${baseLabel}]scale=${w3}:${h3},setsar=1,split=9[${finalLabel}_g1][${finalLabel}_g20][${finalLabel}_g3][${finalLabel}_g40][${finalLabel}_g50][${finalLabel}_g60][${finalLabel}_g7][${finalLabel}_g80][${finalLabel}_g9];` +
+              `[${finalLabel}_g20]hflip,hue=h=40[${finalLabel}_g2];` +
+              `[${finalLabel}_g40]hflip,hue=h=-40[${finalLabel}_g4];` +
+              `[${finalLabel}_g50]rgbashift=rh=6:bh=-6[${finalLabel}_g5];` +
+              `[${finalLabel}_g60]hflip,hue=h=80[${finalLabel}_g6];` +
+              `[${finalLabel}_g80]hflip,hue=h=-80[${finalLabel}_g8];` +
+              `[${finalLabel}_g1][${finalLabel}_g2][${finalLabel}_g3][${finalLabel}_g4][${finalLabel}_g5][${finalLabel}_g6][${finalLabel}_g7][${finalLabel}_g8][${finalLabel}_g9]` +
+              `xstack=inputs=9:layout=0_0|w0_0|w0+w1_0|0_h0|w0_h0|w0+w1_h0|0_h0+h3|w0_h0+h3|w0+w1_h0+h3,scale=${width}:${height},` +
+              `drawbox=x=iw*0.331:y=0:w=iw*0.005:h=ih:color=#e879f9:t=fill,` +
+              `drawbox=x=iw*0.664:y=0:w=iw*0.005:h=ih:color=#22d3ee:t=fill,` +
+              `drawbox=x=0:y=ih*0.331:w=iw:h=ih*0.005:color=#e879f9:t=fill,` +
+              `drawbox=x=0:y=ih*0.664:w=iw:h=ih*0.005:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'soul-out') {
+          const gw = Math.max(width + 4, Math.round(width * (1 + 0.28 * intensity)))
+          const gh = Math.max(height + 4, Math.round(height * (1 + 0.28 * intensity)))
+          const alpha = (0.48 * intensity).toFixed(2)
+          filterParts.push(
+            `[${baseLabel}]split=2[${finalLabel}_b][${finalLabel}_g0];` +
+              `[${finalLabel}_g0]scale=${gw}:${gh},crop=${width}:${height},rgbashift=rh=12:bh=-12,format=rgba,colorchannelmixer=aa=${alpha}[${finalLabel}_g];` +
+              `[${finalLabel}_b][${finalLabel}_g]overlay=0:0:format=auto,setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'earthquake' || fx === 'camera-shake' || fx === 'deep-fry') {
+          const overscan = fx === 'earthquake' || fx === 'deep-fry' ? 0.14 : 0.09
+          const sw = Math.max(width + 4, Math.round(width * (1 + overscan * intensity)))
+          const sh = Math.max(height + 4, Math.round(height * (1 + overscan * intensity)))
+          const freqX = fx === 'camera-shake' ? 13 : 19
+          const freqY = fx === 'camera-shake' ? 17 : 25
+          filterParts.push(
+            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.46)*sin(2*PI*t*${freqX})':y='(ih-oh)/2+((ih-oh)*0.46)*cos(2*PI*t*${freqY})',setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+        if (fx === 'rgb-glitch' || fx === 'bad-tv') {
+          const sw = Math.max(width + 4, Math.round(width * (1 + 0.07 * intensity)))
+          const sh = Math.max(height + 4, Math.round(height * (1 + 0.04 * intensity)))
+          filterParts.push(
+            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.48)*sin(2*PI*t*25)':y='(ih-oh)/2+((ih-oh)*0.35)*cos(2*PI*t*17)',setsar=1,format=yuv420p[${finalLabel}]`
+          )
+          return
+        }
+      }
+
+      const needsSpatialFx =
+        clip.visualEffect === 'guichu-pingpong' ||
+        clip.visualEffect === 'beat-flip' ||
+        clip.visualEffect === 'split-2h' ||
+        clip.visualEffect === 'split-3v' ||
+        clip.visualEffect === 'split-4grid' ||
+        clip.visualEffect === 'split-9grid' ||
+        clip.visualEffect === 'soul-out' ||
+        clip.visualEffect === 'earthquake' ||
+        clip.visualEffect === 'camera-shake' ||
+        clip.visualEffect === 'deep-fry' ||
+        clip.visualEffect === 'rgb-glitch' ||
+        clip.visualEffect === 'bad-tv'
+      const stageOutLabel = needsSpatialFx ? `${label}raw` : label
+
       if (scaleMode === 'blur') {
         const preLabel = `${label}pre`
         const bgLabel = `${label}bg`
@@ -1208,9 +1575,10 @@ export function buildFilterGraph(
           `[${fgLabel}]scale=${width}:${height}:force_original_aspect_ratio=decrease[${fgFitLabel}]`
         )
         filterParts.push(
-          `[${bgBlurLabel}][${fgFitLabel}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps},format=yuv420p[${label}]`
+          `[${bgBlurLabel}][${fgFitLabel}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p[${stageOutLabel}]`
         )
         void preLabel
+        if (needsSpatialFx) appendSpatialGuichuFx(stageOutLabel, label)
         return
       }
 
@@ -1228,8 +1596,9 @@ export function buildFilterGraph(
       const scaleExpr = camExpr ? `${baseScaleExpr},${camExpr}` : baseScaleExpr
 
       filterParts.push(
-        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},format=yuv420p[${label}]`
+        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p[${stageOutLabel}]`
       )
+      if (needsSpatialFx) appendSpatialGuichuFx(stageOutLabel, label)
     }
 
     /** 从规划窗口中裁一段 */
@@ -1612,11 +1981,10 @@ export function buildFilterGraph(
     const speed = clampClipSpeed(clip.speed)
     const srcStart = clipSourceOffsetSec(clip)
     const srcDur = Number((playDur * speed).toFixed(3))
-    const pitchAndVoiceChain = buildClipPitchAndVoiceFilter(
-      speed,
-      clip.pitchSemitones,
-      clip.voiceEffect
-    )
+    const isPreSynthesizedSinging = /psola-sing-[0-9a-f]+\.wav$/i.test(clip.path)
+    const pitchAndVoiceChain = isPreSynthesizedSinging
+      ? 'equalizer=f=2600:t=q:w=1.1:g=3.5,aecho=0.78:0.80:20:0.18,acompressor=threshold=0.12:ratio=4:attack=4:release=50:makeup=1.32,volume=1.28'
+      : buildClipPitchAndVoiceFilter(speed, clip.pitchSemitones, clip.voiceEffect)
 
     const clipVolume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
     const trackGain = Number.isFinite(mix?.mixGains?.[clip.track])
@@ -1850,7 +2218,99 @@ export function prepareTimelinePipeline(
     return (c.volume ?? defaultOverlayVol) > 0
   })
 
-  const audios = [...mainVideoAudios, ...validAudioOnly, ...overlayAudios]
+  const rawAudios = [...mainVideoAudios, ...validAudioOnly, ...overlayAudios]
+  const AUTO_SINGING_LEAD_PITCHES = [2, 3, -2, 4, 2, 3, 5, 2] as const
+  let singingClipIdx = 0
+  const audios: Array<TimelineExportClip & { path: string; inputIndex: number }> = []
+  for (const c of rawAudios) {
+    const isVocalTrack = c.track === 'video' || c.track === 'voice'
+    const fx = isTimelineVoiceEffectId(c.voiceEffect) ? c.voiceEffect : 'none'
+    if (!isVocalTrack || fx === 'none') {
+      audios.push(c)
+      continue
+    }
+    const origSpeed = clampClipSpeed(c.speed)
+    const dur = Math.max(0.05, c.durationSec)
+    const freezeTail =
+      c.track === 'video'
+        ? Math.min(Math.max(0, dur - 0.05), clampClipFreezeTailSec(c.freezeTailSec))
+        : 0
+    const playDur = Math.max(0.05, dur - freezeTail)
+    const rawPitch = clampClipPitchSemitones(c.pitchSemitones)
+    const leadPitch =
+      Math.abs(rawPitch) >= 0.05
+        ? rawPitch
+        : AUTO_SINGING_LEAD_PITCHES[singingClipIdx % AUTO_SINGING_LEAD_PITCHES.length]!
+    singingClipIdx++
+
+    let ffBin = 'ffmpeg'
+    try {
+      ffBin = findFfmpegBin() ?? 'ffmpeg'
+    } catch {
+      ffBin = 'ffmpeg'
+    }
+    const psolaWav =
+      fx === 'autotune-chorus' || fx === 'echo' || fx === 'robot' || fx === 'chipmunk'
+        ? renderGuichuSingingClipWav({ ...c, pitchSemitones: leadPitch }, singingClipIdx - 1, ffBin)
+        : null
+    if (psolaWav) {
+      args.push('-i', psolaWav)
+      audios.push({
+        ...c,
+        path: psolaWav,
+        inputIndex: inputIndex++,
+        sourceOffsetSec: 0,
+        speed: 1,
+        pitchSemitones: 0,
+        fadeInSec: Math.max(c.fadeInSec ?? 0, 0.02),
+        fadeOutSec: Math.max(c.fadeOutSec ?? 0, 0.03)
+      })
+      continue
+    }
+
+    // 当整句台词片段（playDur >= 1.15s 且未手动慢放 speed >= 0.85）挂载了鬼畜歌唱音效时（无本地源文件回退分支），
+    // 自动拆解为「前半句节奏起唱（52% 时长，音高 leadPitch）+ 后半句核心词 2.0x 慢放拉长颤音歌唱（48% 时长，音高转音 tailPitch）」，
+    // 确保即便 AI 或用户只放了一个整句镜头、甚至忘了填 pitchSemitones，导出成片依然具备《敢杀我的马》同款原声拉长变唱歌效果！
+    if (
+      origSpeed >= 0.85 &&
+      playDur >= 1.15 &&
+      (fx === 'autotune-chorus' || fx === 'echo' || fx === 'robot')
+    ) {
+      const dur1 = Number((playDur * 0.52).toFixed(3))
+      const dur2 = Number((dur - dur1).toFixed(3))
+      const srcStart = clipSourceOffsetSec(c)
+      const srcWindow = playDur * origSpeed
+      const tailSrcStart = Number((srcStart + srcWindow * 0.44).toFixed(3))
+      const tailPitch = Math.max(-3, Math.min(5, leadPitch + (leadPitch >= 4 ? -2 : 2)))
+      args.push('-i', c.path)
+      const tailInputIndex = inputIndex++
+      audios.push({
+        ...c,
+        durationSec: dur1,
+        sourceOffsetSec: srcStart,
+        speed: clampClipSpeed(origSpeed * 0.92),
+        pitchSemitones: leadPitch,
+        fadeOutSec: 0.04,
+        freezeTailSec: 0
+      })
+      audios.push({
+        ...c,
+        inputIndex: tailInputIndex,
+        startSec: Number((c.startSec + dur1).toFixed(3)),
+        durationSec: dur2,
+        sourceOffsetSec: tailSrcStart,
+        speed: clampClipSpeed(origSpeed * 0.5),
+        pitchSemitones: tailPitch,
+        voiceEffect: 'echo',
+        fadeInSec: 0.04
+      })
+    } else {
+      audios.push({
+        ...c,
+        pitchSemitones: leadPitch
+      })
+    }
+  }
   const { filter, mapVideo, mapAudio } = buildFilterGraph(
     mainVideos,
     overlays,
