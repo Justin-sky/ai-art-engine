@@ -2,6 +2,14 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.5] — 2026-10-25
+
+8.5.5 补丁版：新增 **鬼畜调音与人声歌唱合成管线（TD-PSOLA 时域共振峰保持移调 + 旋律音符序列编排 + 空间电音特效 + `web_fetch_video` 名场面素材一键抓取）**，升级 **「视频拆解与重制」节点命名体系与实时视觉追踪 HUD 叠加层**，并完善 **时间线成片导出在 AI 对话流中的实时视频预览卡展示**。
+
+- **新增 · 鬼畜调音、TD-PSOLA 人声歌唱合成与名场面抓取（`vocalSingingService` + `timelineExportService` + `webVideoFetchService` + `ScriptTimelineEditor`）**：支持片段级半音移调（`pitchSemitones`）、鬼畜变声特效（`voiceEffect`）、TD-PSOLA 共振峰保持歌唱合成（`singingNotes` / 滑音 / 颤音）与鬼畜空间电音滤镜；新增 MCP 工具 `web_fetch_video` 一键检索并截取原片素材落入 `Cache/imports/`；`workflow_use_installed` 新增 `seed` / `merge` / `blueprint` 三种装载模式。
+- **升级 · 视频拆解与重制节点命名及实时视觉追踪 HUD（`nodeCapabilities` + `ScriptTimelineEditor` + `SemanticTimelineInspector`）**：原语义时间线节点升级为影视剪辑行业标准命名（分组「视频拆解与重制」，三节点依次为「视频拆解」→「重制规划」→「视频重制」）；时间线预览视口新增实时视觉追踪（`visual-tracking-hud`）动态锚点与 HUD 叠加绘制，支持追踪框一键显隐与底部浮动栏自适应避让。
+- **修复 · 时间线导出成片在 AI 对话流中的实时预览与中间缓存过滤（`mcpServerService` + `outputScan` + `ChatPanel` + `timelineExportService`）**：`timeline_export` 接入 `runGenActivity` 实时活动流并回传工程内相对路径，导出完成即在 AI 对话流生成视频预览卡；产物扫盘排除 `Cache/stickers`、`Cache/vocals`、`Cache/subtitles`、`Cache/widgets` 等内部合成临时缓存，避免中间贴纸/切片掩盖最终成片；修复 Windows 下超长 FFmpeg 滤镜图命令行溢出与 WebAudio `data:audio/wav` 波形解码受 CSP `connect-src` 拦截的问题。
+
 ## [8.5.4] — 2026-10-24
 
 8.5.4 补丁版：新增 **中外传世名画一镜入画与角色开口说话全自动管线 v1.4.0（`ancient-scroll-revive`）**，支持 **央视《国家宝藏》国风卷轴与卢浮宫西洋古典双美学包装**、**首帧 1:1 写实还原 → 镜头拉近画中人物特写 + 口型同步原声对白生成**、**错峰旁白与多轨智能闪避（Audio Ducking）** 及 **FFmpeg 导出实时进度条**。
