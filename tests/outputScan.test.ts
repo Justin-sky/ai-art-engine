@@ -475,6 +475,17 @@ describe('产物扫盘：第三方技能 HTML 交互产物与根目录归集', (
     expect(isScannedOutputPath('Output/index.template.html')).toBe(false)
   })
 
+  it('排除时间线渲染中间缓存（stickers / vocals / subtitles / widgets / procedural sfx），保留成片与用户音效', () => {
+    expect(isScannedOutputPath('Cache/stickers/fire-burst-def-564658c2b7e694b6.png')).toBe(false)
+    expect(isScannedOutputPath('Cache/vocals/psola-sing-9196696c2b02485f.wav')).toBe(false)
+    expect(isScannedOutputPath('Cache/vocals/src-clean-d32658974aa28c40.wav')).toBe(false)
+    expect(isScannedOutputPath('Cache/subtitles/sk-0-31352e35337d.png')).toBe(false)
+    expect(isScannedOutputPath('Cache/widgets/wg-tier-board-0-123456.png')).toBe(false)
+    expect(isScannedOutputPath('Cache/sfx/procedural-boom.wav')).toBe(false)
+    expect(isScannedOutputPath('Cache/Sfx/余承东_100BPM_20261025-222622047.mp3')).toBe(true)
+    expect(isScannedOutputPath('Output/余承东-遥遥领先-鬼畜慢速版-100BPM.mp4')).toBe(true)
+  })
+
   it('同批次同时产出 .svg 与 .html 时，优先取交互式 .html 作为主预览代表', () => {
     const at = 1_700_000_000_000
     const files: ProjectOutputFile[] = [

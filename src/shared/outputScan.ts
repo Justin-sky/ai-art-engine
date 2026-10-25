@@ -140,8 +140,20 @@ export function isPreviewableOutputFileName(fileName: string): boolean {
 }
 
 /**
+ * `Cache/` 下由渲染/合成管线写入的中间缓存子目录（贴纸光栅化、TD-PSOLA 切片、逐词字幕帧、动态组件切片等）：
+ * 这些是合成成片过程中的内部临时文件，不是面向用户的独立交付产物，扫盘时一律排除。
+ */
+const EXCLUDED_CACHE_SUBDIRS = new Set([
+  'gameplayjobs',
+  'stickers',
+  'vocals',
+  'subtitles',
+  'widgets'
+])
+
+/**
  * 是否属于可出卡的产物路径：位于 `Output/` 或 `Cache/` 下（至少「目录 / 文件」两段）、
- * 不含隐藏路径段、非 `Cache/GamePlayJobs/` 脚手架目录、扩展名可预览，且不是元数据文件。
+ * 不含隐藏路径段、非内部缓存子目录、扩展名可预览，且不是元数据文件。
  */
 export function isScannedOutputPath(relativePath: string): boolean {
   const posix = normalizeOutputPathKey(relativePath)
@@ -150,9 +162,13 @@ export function isScannedOutputPath(relativePath: string): boolean {
   if (segments.length < 2) return false
   const top = segments[0]!.toLowerCase()
   if (!SCANNED_OUTPUT_DIRS.some((dir) => dir.toLowerCase() === top)) return false
-  if (top === 'cache' && segments[1]?.toLowerCase() === 'gameplayjobs') return false
+  const second = segments[1]?.toLowerCase() ?? ''
+  if (top === 'cache' && EXCLUDED_CACHE_SUBDIRS.has(second)) return false
   if (segments.some((segment) => segment.startsWith('.'))) return false
   const base = segments[segments.length - 1]!
+  if (top === 'cache' && second === 'sfx' && base.toLowerCase().startsWith('procedural-')) {
+    return false
+  }
   return isPreviewableOutputFileName(base)
 }
 

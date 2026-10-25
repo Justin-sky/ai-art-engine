@@ -2551,6 +2551,7 @@ function pushAsset(key: string, relativePath: string, relatedPaths: string[] = [
       prev.relativePath = relativePath
       if (relatedPaths.length) prev.relatedPaths = relatedPaths
       else delete prev.relatedPaths
+      scheduleHistoryPersist()
       return
     }
     let isDuplicate = false
@@ -2568,6 +2569,7 @@ function pushAsset(key: string, relativePath: string, relatedPaths: string[] = [
       ...(relatedPaths.length ? { relatedPaths } : {})
     })
     scrollToBottom()
+    scheduleHistoryPersist()
   }
   const next = pushAssetQueue.then(run, run)
   pushAssetQueue = next

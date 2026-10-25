@@ -10,7 +10,7 @@ import {
   writeFileSync,
   rmSync
 } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import {
@@ -1616,17 +1616,51 @@ const TOOL_DEFS: McpToolDef[] = [
       })
       const durationSec = input.durationSec
       if (durationSec <= 0) throw new Error('时间线内容时长为 0，无从导出')
-      const result = await exportScriptTimeline(input)
-      if (!result.ok) {
-        if (result.canceled) {
-          throw new Error('导出已取消：无界面 / Agent 链路必须显式传绝对路径 targetPath')
-        }
-        throw new Error(result.error)
-      }
+      const exported = await runGenActivity(
+        'generate_video',
+        asset.name || 'Timeline Export',
+        'ffmpeg',
+        async () => {
+          const result = await exportScriptTimeline(input)
+          if (!result.ok) {
+            if (result.canceled) {
+              throw new Error('导出已取消：无界面 / Agent 链路必须显式传绝对路径 targetPath')
+            }
+            throw new Error(result.error)
+          }
+          let relativePath: string | undefined
+          if (result.filePath && projectService.isOpen()) {
+            const rel = relative(resolve(projectService.getRoot()), resolve(result.filePath))
+              .replace(/\\/g, '/')
+              .trim()
+            if (rel && !rel.startsWith('..') && !isAbsolute(rel)) {
+              relativePath = rel
+            }
+          }
+          if (!relativePath && result.assetId) {
+            const created = projectService.listAssets().find((item) => item.id === result.assetId)
+            if (created?.relativePath) {
+              relativePath = created.relativePath.replace(/\\/g, '/')
+            }
+          }
+          return {
+            filePath: result.filePath,
+            assetId: result.assetId ?? undefined,
+            relativePath
+          }
+        },
+        (res) => ({
+          ...(res.assetId ? { assetId: res.assetId } : {}),
+          ...(res.relativePath
+            ? { relativePath: res.relativePath, relativePaths: [res.relativePath] }
+            : {})
+        })
+      )
       return {
         ok: true,
-        filePath: result.filePath,
-        assetId: result.assetId ?? null,
+        filePath: exported.filePath,
+        ...(exported.relativePath ? { relativePath: exported.relativePath } : {}),
+        assetId: exported.assetId ?? null,
         durationSec,
         clipCount: input.clips.length
       }
