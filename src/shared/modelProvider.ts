@@ -2096,9 +2096,16 @@ export function visionGroundingScore(modelId: string): number {
   if (/gemini/.test(m)) return 85
   if (/qwen3-vl|qwen3\.\d+-vl|qwen-vl-max/.test(m)) return 88
   if (/qwen2\.5-vl|qwen-vl/.test(m)) return 80
-  if (/doubao.*(vision|seed-1\.[68])|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m)) return 78
+  if (/doubao.*(vision|seed-1\.[68]|seed-2)|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m))
+    return 78
   if (/gpt-5|gpt-4\.1|gpt-4o|gpt-chat-latest|chatgpt-4o|o3|o4-mini/.test(m)) return 70
   if (/claude-(opus|sonnet)|claude-3\.[57]|claude-4/.test(m)) return 66
+  if (
+    /deepseek-(?:v[4-9]|flash)|mimo-v2\.[6-9]|kimi-k2\.[5-9]|qwen3\.[5-9]|glm-4\.[5-9]|glm-5|grok-[3-9]|llama-4/.test(
+      m
+    )
+  )
+    return 64
   if (/glm-4\.\dv|glm-4v|internvl|minicpm-v|llava|pixtral|grok-.*vision|vision|-vl\b|-vl-/.test(m))
     return 55
   return 0
@@ -2115,9 +2122,15 @@ export function listVisionGroundingCandidates(
   for (const provider of providers) {
     if (!provider.enabled) continue
     if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
+    const isOpenRouter =
+      provider.providerKind === 'openrouter' || /openrouter\.ai/i.test(provider.baseUrl || '')
     for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
-      const score = visionGroundingScore(modelId)
-      if (score > 0) candidates.push({ provider, modelId, score })
+      const rawScore = visionGroundingScore(modelId)
+      if (rawScore <= 0) continue
+      // OpenRouter 下 openai/* 路由常受隐私策略/区域 ToS 限制，自动将非 OpenAI 视觉模型排在其前面
+      const score =
+        isOpenRouter && /^openai\//i.test(modelId.trim()) ? Math.max(1, rawScore - 15) : rawScore
+      candidates.push({ provider, modelId, score })
     }
   }
   return candidates.sort((a, b) => b.score - a.score)

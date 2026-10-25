@@ -264,6 +264,31 @@
                 </span>
               </div>
             </section>
+
+            <section class="source-group sticker-library-section widget-library-section">
+              <div class="source-group-head">
+                <span>{{ isZhLocale ? '可编程动态组件 (Widgets)' : 'Motion Widgets' }}</span>
+                <span class="source-group-count">{{ builtinWidgets.length }}</span>
+              </div>
+              <div
+                v-for="wPreset in builtinWidgets"
+                :key="wPreset.id"
+                class="source-card sticker-preset-card widget-preset-card"
+                draggable="true"
+                :title="isZhLocale ? wPreset.descZh : wPreset.descEn"
+                @dragstart="onBuiltinWidgetDragStart($event, wPreset)"
+                @click="addBuiltinWidgetToOverlay(wPreset)"
+              >
+                <span class="source-thumb sticker-thumb widget-thumb" aria-hidden="true">
+                  <img :src="builtinWidgetPreviewUrl(wPreset)" alt="" draggable="false" />
+                </span>
+                <span class="source-meta">
+                  <span class="source-name" :title="isZhLocale ? wPreset.labelZh : wPreset.labelEn">
+                    {{ isZhLocale ? wPreset.labelZh : wPreset.labelEn }}
+                  </span>
+                </span>
+              </div>
+            </section>
           </div>
 
           <div class="source-size-footer">
@@ -1134,12 +1159,84 @@
                 </template>
               </div>
               <div
+                v-if="showTrackingHud && activeTrackingHudBox"
+                class="stage-tracking-hud-layer"
+                aria-hidden="true"
+              >
+                <svg
+                  class="stage-tracking-tether-svg"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                >
+                  <line
+                    :x1="(activeTrackingHudBox.x + activeTrackingHudBox.w * 0.5) * 100"
+                    :y1="(activeTrackingHudBox.y + activeTrackingHudBox.h) * 100"
+                    :x2="activeTrackingHudBox.subtitleCenterX * 100"
+                    :y2="activeTrackingHudBox.subtitleCenterY * 100"
+                    class="stage-tracking-tether-line"
+                  />
+                  <circle
+                    :cx="activeTrackingHudBox.subtitleCenterX * 100"
+                    :cy="activeTrackingHudBox.subtitleCenterY * 100"
+                    r="1.2"
+                    class="stage-tracking-anchor-dot"
+                  />
+                </svg>
+                <div
+                  class="stage-tracking-subject-box"
+                  :style="{
+                    left: `${(activeTrackingHudBox.x * 100).toFixed(2)}%`,
+                    top: `${(activeTrackingHudBox.y * 100).toFixed(2)}%`,
+                    width: `${(activeTrackingHudBox.w * 100).toFixed(2)}%`,
+                    height: `${(activeTrackingHudBox.h * 100).toFixed(2)}%`
+                  }"
+                >
+                  <span class="stage-tracking-badge">
+                    <span>🎯 {{ activeTrackingHudBox.label }}</span>
+                    <button
+                      type="button"
+                      class="stage-tracking-badge-close"
+                      title="隐藏追踪辅助框（保留字幕动态跟随）"
+                      @click.stop="showTrackingHud = false"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </div>
+              </div>
+              <button
+                v-if="activeTrackingHudBox || hasTrackedSubtitles"
+                type="button"
+                class="stage-tracking-hud-toggle"
+                :class="{ active: showTrackingHud }"
+                title="显示/隐藏预览画面上的主体追踪框（仅编辑器预览辅助，不烧录进成片）"
+                @click.stop="showTrackingHud = !showTrackingHud"
+              >
+                🎯 {{ showTrackingHud ? '追踪框: 开' : '追踪框: 关' }}
+              </button>
+              <div
                 v-for="extraSub in activeExtraSubtitleClips"
                 :key="`extra-sub-${extraSub.id}`"
                 class="subtitle-overlay extra-lane-subtitle"
                 :style="buildSubtitleOverlayStyleForClip(extraSub)"
               >
-                {{ (extraSub.text || extraSub.title).trim() }}
+                <template v-if="effectiveSubtitleKaraokeMode(extraSub) !== 'none'">
+                  <span
+                    v-for="(tok, tIdx) in subtitleClipKaraokeTokens(extraSub)"
+                    :key="`ex-tok-${tIdx}`"
+                    class="sub-word-token"
+                    :class="[
+                      `mode-${effectiveSubtitleKaraokeMode(extraSub)}`,
+                      { 'is-active': tok.active, 'is-passed': tok.passed }
+                    ]"
+                    :style="subtitleWordTokenStyle(extraSub, tok)"
+                  >
+                    {{ tok.word }}
+                  </span>
+                </template>
+                <template v-else>
+                  {{ (extraSub.text || extraSub.title).trim() }}
+                </template>
               </div>
               <div
                 v-if="activeSubtitleText"
@@ -1150,7 +1247,28 @@
                 @pointerdown.stop="onSubtitleMoveDown"
                 @wheel.prevent="onSubtitleWheel"
               >
-                {{ activeSubtitleText }}
+                <template
+                  v-if="
+                    activeSubtitleClip &&
+                    effectiveSubtitleKaraokeMode(activeSubtitleClip) !== 'none'
+                  "
+                >
+                  <span
+                    v-for="(tok, tIdx) in subtitleClipKaraokeTokens(activeSubtitleClip)"
+                    :key="`main-tok-${tIdx}`"
+                    class="sub-word-token"
+                    :class="[
+                      `mode-${effectiveSubtitleKaraokeMode(activeSubtitleClip)}`,
+                      { 'is-active': tok.active, 'is-passed': tok.passed }
+                    ]"
+                    :style="subtitleWordTokenStyle(activeSubtitleClip, tok)"
+                  >
+                    {{ tok.word }}
+                  </span>
+                </template>
+                <template v-else>
+                  {{ activeSubtitleText }}
+                </template>
                 <span
                   class="subtitle-handle corner-tl"
                   :title="t('script.timeline.subtitleScaleHint')"
@@ -1463,15 +1581,41 @@
           <template v-if="selectedClip.track === 'video' || selectedClip.track === 'overlay'">
             <div class="inspector-section-title inspector-section-row">
               <span>{{ t('script.timeline.cropSection') }}</span>
-              <button
-                type="button"
-                class="ghost-btn crop-toggle-inline"
-                :class="{ active: cropMode }"
-                @click="toggleCropMode"
-              >
-                ⬒ {{ t('script.timeline.cropTool') }}
-              </button>
+              <div class="cue-action-row">
+                <button
+                  v-if="selectedClip.track === 'video'"
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  :disabled="yoloTrackingBusy"
+                  title="调用多模态大模型识别画面主角/说话人，自动计算 9:16 竖屏主体居中裁剪框"
+                  @click="smartReframeVideoClipNow(selectedClip)"
+                >
+                  {{ yoloTrackingBusy ? '识别中…' : '📱 9:16 主体居中' }}
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  :class="{ active: cropMode }"
+                  @click="toggleCropMode"
+                >
+                  ⬒ {{ t('script.timeline.cropTool') }}
+                </button>
+              </div>
             </div>
+            <label v-if="selectedClip.track === 'video'" class="inspector-field">
+              <span>主体追踪引擎</span>
+              <select
+                v-model="subtitleTrackingModelKey"
+                @focus="refreshVisionTrackingModels"
+                @change="scheduleSave"
+              >
+                <option value="">⚡ 本地 YOLO 视觉模型（默认）</option>
+                <option value="vlm:auto">👁 自动优选多模态大模型（VLM）</option>
+                <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
             <div class="crop-preset-pills">
               <button
                 v-for="preset in CROP_ASPECT_PRESETS"
@@ -1609,11 +1753,59 @@
             <label class="inspector-field">
               <span>{{ t('script.timeline.subtitlePlaceholder') }}</span>
               <textarea
-                rows="2"
-                :value="selectedClip.text || selectedClip.title"
+                rows="3"
+                placeholder="支持 @{tag}关键词@{/tag} 词级锚点与 || 强制分句"
+                :value="selectedClip.rawCueText || selectedClip.text || selectedClip.title"
                 @change="onSubtitleTextChange(($event.target as HTMLTextAreaElement).value)"
               />
+              <span class="inspector-hint">
+                提示：用 <code>@{boom}重磅@{/boom}</code> 标记关键词，画中画/音效/动态组件填
+                <code>@boom</code> 即可毫秒级自动对齐。
+              </span>
             </label>
+            <div v-if="clipCueTags(selectedClip).length" class="cue-tag-pills">
+              <span class="cue-pill-label">@词级锚点:</span>
+              <span v-for="tag in clipCueTags(selectedClip)" :key="tag" class="cue-tag-pill">
+                @{{ tag }}
+              </span>
+            </div>
+            <div class="cue-action-row">
+              <button
+                type="button"
+                class="ghost-btn keyframe-add-btn"
+                :disabled="viralPackagingBusy"
+                title="AI 自动识别字幕重点词并注入 @cueTag、开启卡拉OK胶囊高亮、配齐合成音效与重音切分推镜"
+                @click="runAiViralPackagingNow"
+              >
+                {{ viralPackagingBusy ? '正在 AI 爆款包装…' : '✨ AI 一键爆款包装' }}
+              </button>
+              <button
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                title="自动提取音乐轨鼓点/节拍瞬态，将视频切点与画中画吸附到 BGM 节拍"
+                @click="snapVideoCutsToMusicBeatsNow"
+              >
+                🥁 视频切点踩点 BGM
+              </button>
+            </div>
+            <div class="cue-action-row">
+              <button
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                title="为所有 @词级锚点 与动态图表条目自动生成零成本内置合成卡点音效（啵/嗖/叮/重击）"
+                @click="autoPopulateCueSfxNow"
+              >
+                🔊 自动配齐卡点音效
+              </button>
+              <button
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                title="对包含 @词级锚点 的主视频轨镜头自动切分暴击时间窗并施加顿挫放大运镜 (ImpactPush)"
+                @click="applyCuePunchZoomNow"
+              >
+                💥 关键词顿挫推镜
+              </button>
+            </div>
             <label class="inspector-field">
               <span>{{ t('script.timeline.clipSubtitleFontSize') }}</span>
               <input
@@ -1643,7 +1835,101 @@
               />
             </label>
             <div class="inspector-section-title">
+              🎯 主体追踪动态字幕（本地 YOLO / 多模态大模型）
+            </div>
+            <label class="inspector-field">
+              <span>主体追踪模型</span>
+              <select
+                v-model="subtitleTrackingModelKey"
+                @focus="refreshVisionTrackingModels"
+                @change="scheduleSave"
+              >
+                <option value="">⚡ 本地 YOLO 视觉模型（默认）</option>
+                <option value="vlm:auto">👁 自动优选多模态大模型（VLM）</option>
+                <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
+                  {{ opt.label }}
+                </option>
+              </select>
+            </label>
+            <div class="cue-action-row">
+              <button
+                type="button"
+                class="ghost-btn keyframe-add-btn"
+                :disabled="yoloTrackingBusy"
+                @click="trackSpeakerFaceForSubtitle(selectedClip)"
+              >
+                {{ yoloTrackingBusy ? '正在执行主体追踪…' : '🎯 智能追踪当前字幕' }}
+              </button>
+              <button
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                :disabled="yoloTrackingBusy"
+                title="并发对时间线上所有字幕片段执行多模态主体追踪（若当前为竖屏画幅则同步智能居中人物构图）"
+                @click="trackSpeakerFaceForAllSubtitles"
+              >
+                ✨ 追踪全片
+              </button>
+              <button
+                v-if="selectedClip.keyframes?.length"
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                @click="clearSubtitleTrackingKeyframes(selectedClip)"
+              >
+                清除当前 ({{ selectedClip.keyframes.length }})
+              </button>
+              <button
+                v-if="hasTrackedSubtitles"
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                title="隐藏预览追踪框或一键清除全片所有字幕的追踪关键帧"
+                @click="clearAllSubtitleTrackingKeyframes"
+              >
+                清除全片追踪
+              </button>
+              <button
+                v-if="hasTrackedSubtitles"
+                type="button"
+                class="ghost-btn crop-toggle-inline"
+                @click="showTrackingHud = !showTrackingHud"
+              >
+                {{ showTrackingHud ? '隐藏追踪框' : '显示追踪框' }}
+              </button>
+            </div>
+            <div v-if="subtitleTrackingStatus" class="inspector-hint">
+              {{ subtitleTrackingStatus }}
+            </div>
+            <div class="inspector-section-title">
               {{ t('script.timeline.subtitleStyle') }}
+            </div>
+            <label class="inspector-field">
+              <span>逐词卡拉 OK 动效 (Hypit Caption)</span>
+              <select v-model="subtitleKaraokeMode" @change="scheduleSave">
+                <option value="none">关闭（整句静态字幕）</option>
+                <option value="karaoke-pill">胶囊框逐词高亮 (Hypit Pill)</option>
+                <option value="karaoke-pop">逐词弹跳放大 (Word Pop)</option>
+                <option value="karaoke-glow">逐词霓虹发光 (Neon Glow)</option>
+                <option value="word-solo">单字暴击闪现 (Word Solo)</option>
+              </select>
+            </label>
+            <div v-if="subtitleKaraokeMode !== 'none'" class="inspector-grid">
+              <label class="inspector-field">
+                <span>当前词高亮字色</span>
+                <input
+                  v-model="subtitleHighlightColor"
+                  type="color"
+                  class="color-input"
+                  @change="scheduleSave"
+                />
+              </label>
+              <label class="inspector-field">
+                <span>胶囊框背景色</span>
+                <input
+                  v-model="subtitleHighlightBgColor"
+                  type="color"
+                  class="color-input"
+                  @change="scheduleSave"
+                />
+              </label>
             </div>
             <label class="inspector-field">
               <span>{{ t('script.timeline.subtitleFontSize') }}</span>
@@ -1895,6 +2181,188 @@
               </div>
             </template>
 
+            <template v-if="selectedClip.widgetConfig">
+              <div class="inspector-section-title inspector-section-row">
+                <span>📊 可编程动态图表组件 (Motion Widget)</span>
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  @click="addWidgetItem(selectedClip)"
+                >
+                  + 条目
+                </button>
+              </div>
+              <div class="inspector-grid">
+                <label class="inspector-field">
+                  <span>组件类型</span>
+                  <select
+                    :value="selectedClip.widgetConfig.kind"
+                    @change="
+                      updateSelectedWidgetConfig({
+                        kind: ($event.target as HTMLSelectElement).value as TimelineWidgetKind
+                      })
+                    "
+                  >
+                    <option value="tier-board">梯度排行榜 (TierBoard)</option>
+                    <option value="ranking-list">揭晓排行榜 (RankingList)</option>
+                    <option value="vs-scoreboard">红蓝 PK 榜 (VSScoreboard)</option>
+                    <option value="step-reveal">步骤拆解卡 (StepReveal)</option>
+                    <option value="stat-callout">数据暴击卡 (StatCallout)</option>
+                  </select>
+                </label>
+                <label class="inspector-field">
+                  <span>视觉主题</span>
+                  <select
+                    :value="selectedClip.widgetConfig.theme ?? 'cyber-dark'"
+                    @change="
+                      updateSelectedWidgetConfig({
+                        theme: ($event.target as HTMLSelectElement).value as any
+                      })
+                    "
+                  >
+                    <option value="cyber-dark">赛博暗黑</option>
+                    <option value="neon-pop">霓虹波普</option>
+                    <option value="glass-light">极简磨砂</option>
+                    <option value="gold-luxury">黑金奢华</option>
+                  </select>
+                </label>
+              </div>
+              <div class="inspector-grid">
+                <label class="inspector-field">
+                  <span>主标题</span>
+                  <input
+                    type="text"
+                    :value="selectedClip.widgetConfig.title ?? ''"
+                    @change="
+                      updateSelectedWidgetConfig({
+                        title: ($event.target as HTMLInputElement).value
+                      })
+                    "
+                  />
+                </label>
+                <label class="inspector-field">
+                  <span>副标题 / 单位</span>
+                  <input
+                    type="text"
+                    :value="selectedClip.widgetConfig.subtitle ?? ''"
+                    @change="
+                      updateSelectedWidgetConfig({
+                        subtitle: ($event.target as HTMLInputElement).value
+                      })
+                    "
+                  />
+                </label>
+              </div>
+              <div class="widget-items-editor">
+                <div
+                  v-for="(item, wIdx) in selectedClip.widgetConfig.items"
+                  :key="item.id || wIdx"
+                  class="widget-item-row"
+                >
+                  <div class="widget-item-top">
+                    <input
+                      type="text"
+                      class="widget-item-label-input"
+                      placeholder="条目文本"
+                      :value="item.label"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          label: ($event.target as HTMLInputElement).value
+                        })
+                      "
+                    />
+                    <select
+                      v-if="selectedClip.widgetConfig.kind === 'tier-board'"
+                      class="widget-item-mini-select"
+                      :value="item.tier ?? 'S'"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          tier: ($event.target as HTMLSelectElement).value as any
+                        })
+                      "
+                    >
+                      <option value="S">S级</option>
+                      <option value="A">A级</option>
+                      <option value="B">B级</option>
+                      <option value="C">C级</option>
+                      <option value="D">D级</option>
+                    </select>
+                    <select
+                      v-else-if="selectedClip.widgetConfig.kind === 'vs-scoreboard'"
+                      class="widget-item-mini-select"
+                      :value="item.side ?? 'left'"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          side: ($event.target as HTMLSelectElement).value as any
+                        })
+                      "
+                    >
+                      <option value="left">红方</option>
+                      <option value="right">蓝方</option>
+                    </select>
+                    <button
+                      type="button"
+                      class="keyframe-del-btn"
+                      title="删除条目"
+                      @click="removeWidgetItem(selectedClip, wIdx)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div class="widget-item-bottom">
+                    <input
+                      type="text"
+                      placeholder="图标/Emoji"
+                      title="条目左侧图标或 Emoji（如 🏆 / 🔥）"
+                      :value="item.iconEmoji ?? ''"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          iconEmoji: ($event.target as HTMLInputElement).value.trim() || undefined
+                        })
+                      "
+                    />
+                    <input
+                      type="text"
+                      placeholder="角标/数值"
+                      :value="item.badge || item.sublabel || ''"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          badge: ($event.target as HTMLInputElement).value,
+                          sublabel: ($event.target as HTMLInputElement).value
+                        })
+                      "
+                    />
+                    <input
+                      type="number"
+                      step="0.2"
+                      min="0"
+                      placeholder="触发秒"
+                      title="片段内弹出秒数 (triggerSec)"
+                      :value="item.triggerSec ?? 0"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          triggerSec: Number(($event.target as HTMLInputElement).value)
+                        })
+                      "
+                    />
+                    <input
+                      type="text"
+                      placeholder="@词锚点"
+                      title="绑定字幕 @{tag} 词级锚点"
+                      :value="item.cueTag ?? ''"
+                      @change="
+                        patchWidgetItem(selectedClip, wIdx, {
+                          cueTag: ($event.target as HTMLInputElement).value
+                            .replace(/^@+/, '')
+                            .trim()
+                        })
+                      "
+                    />
+                  </div>
+                </div>
+              </div>
+            </template>
+
             <div class="inspector-section-title inspector-section-row">
               <span>{{ t('script.timeline.tweenSection') }}</span>
               <button
@@ -2130,6 +2598,75 @@
             </div>
             <div v-else class="inspector-hint">
               {{ t('script.timeline.keyframeEmptyHint') }}
+            </div>
+          </template>
+          <template v-if="selectedClip.track === 'overlay' || selectedClip.track === 'sfx'">
+            <div class="inspector-section-title inspector-section-row">
+              <span>⚡ @台词词级锚点绑定 (Cue Sync)</span>
+              <div class="cue-action-row">
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  title="按字幕 @{tag} 词级时间戳自动对齐所有绑定片段"
+                  @click="syncAllCueAnchorsNow"
+                >
+                  同步锚点
+                </button>
+                <button
+                  type="button"
+                  class="ghost-btn crop-toggle-inline"
+                  title="为所有 @词级锚点 与动态图表条目自动生成内置卡点音效"
+                  @click="autoPopulateCueSfxNow"
+                >
+                  🔊 配齐音效
+                </button>
+              </div>
+            </div>
+            <div class="inspector-grid">
+              <label class="inspector-field">
+                <span>绑定 @标签名</span>
+                <input
+                  type="text"
+                  placeholder="如 boom"
+                  :value="selectedClip.anchorCueTag ?? ''"
+                  @change="
+                    onClipAnchorCueChange({
+                      anchorCueTag: ($event.target as HTMLInputElement).value
+                        .replace(/^@+/, '')
+                        .trim()
+                    })
+                  "
+                />
+              </label>
+              <label class="inspector-field">
+                <span>触发偏移 (秒)</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="-5"
+                  max="5"
+                  :value="selectedClip.anchorOffsetSec ?? 0"
+                  @change="
+                    onClipAnchorCueChange({
+                      anchorOffsetSec: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+            </div>
+            <div v-if="availableCueWindows.length" class="cue-tag-pills">
+              <span class="cue-pill-label">点击绑定:</span>
+              <button
+                v-for="cue in availableCueWindows"
+                :key="`${cue.tag}-${cue.startSec}`"
+                type="button"
+                class="cue-tag-pill clickable"
+                :class="{ active: selectedClip.anchorCueTag === cue.tag }"
+                :title="`「${cue.text}」 ${cue.startSec.toFixed(2)}s ~ ${cue.endSec.toFixed(2)}s`"
+                @click="onClipAnchorCueChange({ anchorCueTag: cue.tag })"
+              >
+                @{{ cue.tag }} ({{ cue.startSec.toFixed(1) }}s)
+              </button>
             </div>
           </template>
           <template
@@ -2431,6 +2968,65 @@
             @click="closeTrackGaps"
           >
             ⇄ {{ t('script.timeline.closeGaps') }}
+          </button>
+          <select
+            v-model="subtitleTrackingModelKey"
+            class="toolbar-vision-model-select"
+            title="选择主体追踪引擎：默认使用本地 YOLO 视觉模型（零 Token 极速），也可切换为多模态大模型"
+            @focus="refreshVisionTrackingModels"
+            @change="scheduleSave"
+          >
+            <option value="">⚡ 本地 YOLO 模型（默认）</option>
+            <option value="vlm:auto">👁 自动优选多模态模型</option>
+            <option v-for="opt in visionModelOptions" :key="opt.key" :value="opt.key">
+              {{ opt.label }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="yoloTrackingBusy || !clips.length"
+            title="多模态视觉追踪：自动识别画面说话人/角色主体，驱动全片字幕动态避障跟随（竖屏下同步居中人物构图）"
+            @click="trackSpeakerFaceForAllSubtitles"
+          >
+            {{ yoloTrackingBusy ? '追踪中…' : '👁 视觉追踪' }}
+          </button>
+          <button
+            v-if="hasTrackedSubtitles"
+            type="button"
+            class="ghost-btn"
+            :class="{ active: showTrackingHud }"
+            title="点击切换预览监视器上的青色追踪辅助框显示/隐藏"
+            @click="showTrackingHud = !showTrackingHud"
+          >
+            🎯 {{ showTrackingHud ? '隐藏追踪框' : '显示追踪框' }}
+          </button>
+          <button
+            v-if="hasTrackedSubtitles"
+            type="button"
+            class="ghost-btn"
+            title="清除全片所有字幕的视觉追踪关键帧并恢复默认底部居中"
+            @click="clearAllSubtitleTrackingKeyframes"
+          >
+            × 清除追踪
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="viralPackagingBusy || !clips.length"
+            title="AI 一键爆款包装：自动识别字幕重点词并注入 @cueTag、开启卡拉OK胶囊高亮、配齐合成音效与重音切分推镜"
+            @click="runAiViralPackagingNow"
+          >
+            {{ viralPackagingBusy ? '包装中…' : '✨ 爆款包装' }}
+          </button>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="!clips.length"
+            title="视频切点踩点 BGM：自动提取背景音乐/配音鼓点节拍，将视频切点与画中画吸附到节拍点"
+            @click="snapVideoCutsToMusicBeatsNow"
+          >
+            🥁 踩点BGM
           </button>
           <button
             type="button"
@@ -3555,6 +4151,7 @@ import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, toRaw, wat
 import { ASSET_TYPE_ICONS, isDraftAssetId, type AssetInfo } from '@shared/domain'
 import type { VideoBeatTags } from '@shared/videoBeats'
 import {
+  alignSubtitleWordsAndCues,
   applySmartCutPlan,
   applyTimelineCreativeTemplateToClips,
   applyVideoTransitionBetweenClips,
@@ -3567,34 +4164,57 @@ import {
   buildClipVisualFfmpegFilter,
   buildClipVisualOverlayMeta,
   buildClipVisualSvgFilterMeta,
+  buildFaceTrackingKeyframesFromDetections,
   buildFcpxmlDocument,
   buildSmartCutPrompt,
+  buildTimelineWidgetSvgDataUrl,
+  buildVlmSpeakerTrackingPrompts,
   clampClipFreezeTailSec,
   clampClipSpeed,
   clampMixDuckingRatio,
   clampMixEqGainDb,
   clampTrackGain,
   closeTimelineTrackGaps,
+  applyCuePunchZoomToVideoClips,
+  autoAnnotateSubtitleCueTags,
+  buildAutoCueSfxClips,
+  buildKaraokeSubtitleSvgDataUrl,
+  buildViralPackagingPrompts,
+  computeSmartReframeCropFromDetections,
+  computeSubtitleKaraokeTimeSlices,
+  computeTimelineWidgetTimeSlices,
+  detectAudioBeatTimestampsFromPeaks,
   evaluateMainClipCameraTransform,
   evaluateOverlayClipTransform,
+  evaluateSubtitleClipPosition,
+  evaluateTrackedSubjectBoxAtTime,
   EXPORT_PLATFORMS,
   exportPlatformById,
   exportPlatformSafeRect,
   exportPlatformSubtitleOffset,
+  extractTimelineCueWindows,
+  getSubtitleClipWordTimings,
   getTimelineFilterPresetMeta,
   getTimelineVisualEffectMeta,
   hasOverlayClipTween,
   isDynamicVisualEffect,
   isExportDurationOverLimit,
   isSubtitleWithinSafeArea,
+  mergeInlineCuesWithAsrWords,
   normalizeClipCropRect,
+  parseViralPackagingResponse,
+  snapClipsToAudioBeats,
   normalizeClipLane,
   normalizePlaybackRate,
   normalizeScriptTimelineSource,
   normalizeScriptTimelineSourceGroup,
   normalizeTimelineKeyframes,
+  normalizeTimelineWidgetConfig,
   parseActSceneSubtitlePlan,
+  parseInlineCueText,
   parseSmartCutPlan,
+  parseVlmSpeakerTrackingResponse,
+  type SpeakerFaceFrameDetection,
   rasterizeTimelineStickerSvgToPngDataUrl,
   readScriptTimelineFromGenParams,
   removeTimelineClipKeyframeAt,
@@ -3602,6 +4222,10 @@ import {
   SMART_CUT_DEFAULT_TRANSITION_SEC,
   SMART_CUT_TRANSITIONS,
   splitTimelineClipAtTime,
+  SUBTITLE_KARAOKE_MODES,
+  syncTimelineCueAnchors,
+  synthesizeTimelineSfxWavBytes,
+  synthesizeTimelineSfxWavDataUrl,
   TIMELINE_ADJUSTMENT_CONTROLS,
   TIMELINE_BROWSER_TABS,
   TIMELINE_BUILTIN_STICKERS,
@@ -3618,11 +4242,13 @@ import {
   TIMELINE_TWEEN_OUT_PRESETS,
   TIMELINE_VISUAL_EFFECT_CATEGORIES,
   TIMELINE_VISUAL_EFFECTS,
+  TIMELINE_WIDGET_PRESETS,
   TRACK_LANE_MAX,
   trimTimelineClipToTime,
   upgradeTemporaryAutoSubtitlesInTimeline,
   upsertTimelineClipKeyframe,
   withScriptTimeline,
+  extractSpeakerDetectionFromYoloFrame,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
   type ScriptTimelineScaleMode,
@@ -3632,6 +4258,7 @@ import {
   type ScriptTimelineTrackKind,
   type ScriptTimelineTransitionType,
   type SmartCutEdit,
+  type SubtitleKaraokeMode,
   type TimelineAdjustmentKey,
   type TimelineBrowserTabId,
   type TimelineBuiltinStickerPreset,
@@ -3648,7 +4275,11 @@ import {
   type TimelineTweenLoopPreset,
   type TimelineTweenOutPreset,
   type TimelineVisualEffectCategory,
-  type TimelineVisualEffectId
+  type TimelineVisualEffectId,
+  type TimelineWidgetConfig,
+  type TimelineWidgetItem,
+  type TimelineWidgetKind,
+  type TimelineWidgetPreset
 } from '@shared/graph'
 import { planRippleCut } from '@shared/graph/timelineCut'
 import { buildSubtitleClipsFromTranscription } from '@shared/graph/timelineSubtitle'
@@ -3672,6 +4303,7 @@ import {
   buildSoundEffectOptions,
   loadAllProviders,
   loadGenerateModelOptions,
+  loadVisionModelOptions,
   parseModelKey,
   preferredModelKey,
   type GenerateModelOption
@@ -3912,6 +4544,18 @@ const subtitleBoxEnabled = ref(false)
 const subtitleBoxColor = ref('#000000')
 const subtitleBoxOpacity = ref(0.55)
 const subtitleMotion = ref<'none' | 'fade'>('none')
+const subtitleKaraokeMode = ref<SubtitleKaraokeMode>('none')
+const subtitleHighlightColor = ref('#facc15')
+const subtitleHighlightBgColor = ref('#ff3b5c')
+const subtitleTrackingModelKey = ref('')
+const visionModelOptions = ref<GenerateModelOption[]>([])
+const showTrackingHud = ref(true)
+const clipTrackingDetectionsMap = ref<
+  Record<string, { detections: SpeakerFaceFrameDetection[]; engineLabel: string }>
+>({})
+const subtitleTrackingStatus = ref('')
+const yoloTrackingBusy = ref(false)
+const viralPackagingBusy = ref(false)
 const previewFrameRatioKey = ref('export')
 const exporting = ref(false)
 const exportDialogOpen = ref(false)
@@ -5941,6 +6585,95 @@ const isActiveSubtitleSelected = computed(() => {
   return activeClipId.value === clip.id || selectedClipIds.value.has(clip.id)
 })
 
+function effectiveSubtitleKaraokeMode(
+  clip: ScriptTimelineClip | null | undefined
+): SubtitleKaraokeMode {
+  if (!clip) return 'none'
+  if (clip.subtitleKaraokeMode && clip.subtitleKaraokeMode !== 'none') {
+    return clip.subtitleKaraokeMode
+  }
+  return subtitleKaraokeMode.value
+}
+
+interface SubtitleKaraokeRenderToken {
+  word: string
+  active: boolean
+  passed: boolean
+  cueTag?: string
+}
+
+function subtitleClipKaraokeTokens(
+  clip: ScriptTimelineClip | null | undefined
+): SubtitleKaraokeRenderToken[] {
+  if (!clip) return []
+  const mode = effectiveSubtitleKaraokeMode(clip)
+  const words = getSubtitleClipWordTimings(clip)
+  if (!words.length) return []
+  const localSec = Math.max(0, playheadSec.value - clip.startSec)
+  if (mode === 'word-solo') {
+    const activeWord =
+      words.find((w) => localSec >= w.startSec && localSec < w.endSec + 0.04) ??
+      words[
+        Math.min(
+          words.length - 1,
+          Math.floor((localSec / Math.max(0.1, clip.durationSec)) * words.length)
+        )
+      ]
+    return activeWord
+      ? [{ word: activeWord.text, active: true, passed: false, cueTag: activeWord.cueTags?.[0] }]
+      : []
+  }
+  return words.map((w) => ({
+    word: w.text,
+    active: localSec >= w.startSec && localSec < w.endSec + 0.02,
+    passed: localSec >= w.endSec + 0.02,
+    cueTag: w.cueTags?.[0]
+  }))
+}
+
+function subtitleWordTokenStyle(
+  clip: ScriptTimelineClip | null | undefined,
+  tok: SubtitleKaraokeRenderToken
+): Record<string, string> {
+  const hlColor = clip?.subtitleHighlightColor || subtitleHighlightColor.value || '#facc15'
+  const hlBg = clip?.subtitleHighlightBgColor || subtitleHighlightBgColor.value || '#ff3b5c'
+  if (!tok.active) {
+    if (tok.cueTag) {
+      return {
+        color: hlColor,
+        fontWeight: '900',
+        borderBottom: `3px solid ${hlColor}`,
+        paddingBottom: '1px'
+      }
+    }
+    return {}
+  }
+  const mode = effectiveSubtitleKaraokeMode(clip)
+  if (mode === 'karaoke-pill') {
+    return {
+      color: '#ffffff',
+      backgroundColor: hlBg,
+      borderRadius: '6px',
+      padding: '1px 6px',
+      transform: tok.cueTag ? 'scale(1.18)' : 'scale(1.08)',
+      boxShadow: `0 2px 10px ${hexToRgba(hlBg, 0.55)}`
+    }
+  }
+  if (mode === 'karaoke-pop' || mode === 'word-solo') {
+    return {
+      color: hlColor,
+      transform: mode === 'word-solo' ? 'scale(1.22)' : 'scale(1.16)'
+    }
+  }
+  if (mode === 'karaoke-glow') {
+    return {
+      color: hlColor,
+      textShadow: `0 0 12px ${hlBg}, 0 0 24px ${hlColor}`
+    }
+  }
+  return { color: hlColor }
+}
+
 function buildSubtitleOverlayStyleForClip(
   clip: ScriptTimelineClip | null | undefined
 ): Record<string, string> {
@@ -5957,6 +6690,15 @@ function buildSubtitleOverlayStyleForClip(
     bottom: `${scaledBottomPx}px`,
     color,
     paintOrder: 'stroke fill'
+  }
+  if (clip) {
+    const trackedPos = evaluateSubtitleClipPosition(clip, playheadSec.value)
+    if (trackedPos.hasCustomPosition) {
+      style.left = `${(trackedPos.centerX * 100).toFixed(2)}%`
+      style.top = `${(trackedPos.centerY * 100).toFixed(2)}%`
+      style.bottom = 'auto'
+      style.transform = 'translate(-50%, -50%)'
+    }
   }
   const bw = Math.max(0, subtitleBorderWidth.value)
   if (bw > 0) {
@@ -5995,6 +6737,24 @@ function buildSubtitleOverlayStyleForClip(
 const activeSubtitleOverlayStyle = computed<Record<string, string>>(() =>
   buildSubtitleOverlayStyleForClip(activeSubtitleClip.value)
 )
+
+const hasTrackedSubtitles = computed(() =>
+  clips.value.some((c) => c.track === 'subtitle' && Boolean(c.keyframes?.length))
+)
+
+const activeTrackingHudBox = computed(() => {
+  const sub =
+    activeSubtitleClip.value ??
+    (selectedClip.value?.track === 'subtitle' ? selectedClip.value : null)
+  if (!sub) return null
+  const meta = clipTrackingDetectionsMap.value[sub.id]
+  return evaluateTrackedSubjectBoxAtTime(
+    sub,
+    playheadSec.value,
+    meta?.detections,
+    meta?.engineLabel
+  )
+})
 
 const rulerMarks = computed(() => {
   const marks: Array<{ t: number; x: number; label: string; isEnd?: boolean }> = []
@@ -6335,8 +7095,28 @@ function closeTrackGaps(): void {
   scheduleSave()
 }
 
+function collectMusicTrackBeatsSync(): number[] {
+  const beats: number[] = []
+  const musicOrVoiceClips = clips.value.filter(
+    (c) =>
+      c.track === 'music' || (c.track === 'voice' && !clips.value.some((m) => m.track === 'music'))
+  )
+  for (const clip of musicOrVoiceClips) {
+    const peaksData = audioPeaksCache.get(clipMediaIdentity(clip))
+    if (!peaksData) continue
+    const detected = detectAudioBeatTimestampsFromPeaks(peaksData.peaks, peaksData.duration, {
+      clipStartSec: clip.startSec,
+      sourceOffsetSec: clip.sourceOffsetSec ?? 0,
+      clipDurationSec: clip.durationSec,
+      speed: clampClipSpeed(clip.speed)
+    })
+    beats.push(...detected)
+  }
+  return beats
+}
+
 function snapCandidates(excludeClipId?: string): number[] {
-  const points = [0, totalDuration.value, playheadSec.value]
+  const points = [0, totalDuration.value, playheadSec.value, ...collectMusicTrackBeatsSync()]
   for (const clip of clips.value) {
     if (clip.id === excludeClipId) continue
     points.push(clip.startSec, clip.startSec + clip.durationSec)
@@ -6506,6 +7286,9 @@ function transitionHandleStyle(handle: {
 
 /** 媒体身份：同一份文件（相对路径）复用解码结果，与片段长度/宽度无关 */
 function clipMediaIdentity(clip: ScriptTimelineClip): string {
+  if (typeof clip.sfxPresetId === 'string' && clip.sfxPresetId.trim()) {
+    return `sfx-preset:${clip.sfxPresetId.trim()}`
+  }
   const rel =
     clip.relativePath?.trim().replace(/\\/g, '/') ||
     (clip.assetId
@@ -6678,9 +7461,15 @@ function isImageOrGifUrl(url?: string | null): boolean {
 const overlayImageUrls = ref<Record<string, string>>({})
 
 function isImageOrGifClip(
-  clip?: { relativePath?: string; assetId?: string; stickerId?: string } | null
+  clip?: {
+    relativePath?: string
+    assetId?: string
+    stickerId?: string
+    widgetConfig?: TimelineWidgetConfig
+  } | null
 ): boolean {
   if (!clip) return false
+  if (clip.widgetConfig) return true
   if (typeof clip.stickerId === 'string' && clip.stickerId.trim()) return true
   const rel = sourceRelativePath(clip)
   if (isImageOrGifUrl(rel)) return true
@@ -6692,7 +7481,44 @@ function isImageOrGifClip(
   return false
 }
 
+const timelineCueMap = computed(() => {
+  const map = new Map<string, number>()
+  for (const w of extractTimelineCueWindows(clips.value)) {
+    if (!map.has(w.tag)) map.set(w.tag, w.startSec)
+  }
+  return map
+})
+
+const availableCueWindows = computed(() => extractTimelineCueWindows(clips.value))
+
+function clipCueTags(clip: ScriptTimelineClip | null | undefined): string[] {
+  if (!clip) return []
+  const raw = clip.rawCueText || clip.text || clip.title || ''
+  const parsed = parseInlineCueText(raw)
+  return [...new Set(parsed.cues.map((c) => c.tag))]
+}
+
 function overlayImageSrc(clip: ScriptTimelineClip): string {
+  if (clip.widgetConfig) {
+    const localSec = Math.max(0, playheadSec.value - clip.startSec)
+    const syncedCfg = clip.widgetConfig.items.some((it) => it.cueTag)
+      ? {
+          ...clip.widgetConfig,
+          items: clip.widgetConfig.items.map((it) => {
+            if (!it.cueTag) return it
+            const cueGlobalSec = timelineCueMap.value.get(
+              it.cueTag.trim().toLowerCase().replace(/^@+/, '')
+            )
+            if (cueGlobalSec === undefined) return it
+            return {
+              ...it,
+              triggerSec: Math.max(0, Math.round((cueGlobalSec - clip.startSec) * 1000) / 1000)
+            }
+          })
+        }
+      : clip.widgetConfig
+    return buildTimelineWidgetSvgDataUrl(syncedCfg, localSec)
+  }
   if (clip.stickerId?.trim()) {
     return renderTimelineBuiltinStickerDataUrl(clip.stickerId, {
       text: clip.text,
@@ -6855,22 +7681,57 @@ function closeDecodeAudioCtx(): void {
   decodeAudioCtx = null
 }
 
+function decodeDataUrlToArrayBuffer(dataUrl: string): ArrayBuffer | null {
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx < 0) return null
+  const meta = dataUrl.slice(0, commaIdx)
+  const payload = dataUrl.slice(commaIdx + 1)
+  try {
+    if (/;base64/i.test(meta)) {
+      const binary = atob(payload)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      return bytes.buffer
+    }
+    const decoded = decodeURIComponent(payload)
+    return new TextEncoder().encode(decoded).buffer
+  } catch {
+    return null
+  }
+}
+
 /** 解码音频并算出峰值 / RMS 包络（按文件维度缓存，与片段宽度无关） */
 async function generateAudioPeaks(clip: ScriptTimelineClip): Promise<AudioPeaks | null> {
-  const url = await resolveSrc(clip)
-  if (!url) return null
   const audioContext = getDecodeAudioCtx()
   if (!audioContext) {
     console.warn('[timeline] AudioContext unavailable, skip waveform')
     return null
   }
   try {
-    const response = await fetch(url)
-    if (!response.ok) {
-      console.warn(`[timeline] waveform fetch failed: ${response.status}`)
-      return null
+    let arrayBuffer: ArrayBuffer | null = null
+    if (typeof clip.sfxPresetId === 'string' && clip.sfxPresetId.trim()) {
+      const wavBytes = synthesizeTimelineSfxWavBytes(clip.sfxPresetId.trim() as any)
+      arrayBuffer = wavBytes.buffer.slice(
+        wavBytes.byteOffset,
+        wavBytes.byteOffset + wavBytes.byteLength
+      ) as ArrayBuffer
+    } else {
+      const url = await resolveSrc(clip)
+      if (!url) return null
+      if (url.startsWith('data:')) {
+        arrayBuffer = decodeDataUrlToArrayBuffer(url)
+      } else {
+        const response = await fetch(url)
+        if (!response.ok) {
+          console.warn(`[timeline] waveform fetch failed: ${response.status}`)
+          return null
+        }
+        arrayBuffer = await response.arrayBuffer()
+      }
     }
-    const arrayBuffer = await response.arrayBuffer()
+    if (!arrayBuffer) return null
     const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
     const channels: Float32Array[] = []
     for (let c = 0; c < audioBuffer.numberOfChannels; c += 1) {
@@ -7239,6 +8100,14 @@ function loadPersisted(): void {
   subtitleBoxOpacity.value = settings?.subtitleBoxOpacity ?? 0.55
   subtitleMotion.value =
     settings?.subtitleMotion === 'fade' || settings?.subtitleMotion === true ? 'fade' : 'none'
+  subtitleKaraokeMode.value =
+    settings?.subtitleKaraokeMode &&
+    (SUBTITLE_KARAOKE_MODES as readonly string[]).includes(settings.subtitleKaraokeMode)
+      ? settings.subtitleKaraokeMode
+      : 'none'
+  subtitleHighlightColor.value = settings?.subtitleHighlightColor ?? '#facc15'
+  subtitleHighlightBgColor.value = settings?.subtitleHighlightBgColor ?? '#ff3b5c'
+  subtitleTrackingModelKey.value = settings?.subtitleTrackingModelKey ?? ''
   previewFrameRatioKey.value = settings?.previewFrameRatio ?? 'export'
   exportPlatformId.value = settings?.exportPlatformId ?? 'custom'
   watermarkEnabled.value = settings?.watermarkEnabled === true
@@ -7303,6 +8172,12 @@ async function persist(): Promise<void> {
       subtitleBoxColor: subtitleBoxColor.value,
       subtitleBoxOpacity: subtitleBoxOpacity.value,
       subtitleMotion: subtitleMotion.value,
+      subtitleKaraokeMode: subtitleKaraokeMode.value,
+      subtitleHighlightColor: subtitleHighlightColor.value,
+      subtitleHighlightBgColor: subtitleHighlightBgColor.value,
+      ...(subtitleTrackingModelKey.value
+        ? { subtitleTrackingModelKey: subtitleTrackingModelKey.value }
+        : {}),
       previewFrameRatio: previewFrameRatioKey.value,
       exportPlatformId: exportPlatformId.value,
       watermarkEnabled: watermarkEnabled.value,
@@ -7568,14 +8443,42 @@ function onTimelineWheel(e: WheelEvent): void {
   })
 }
 
+const proceduralSfxBlobUrlCache = new Map<string, string>()
+
+function resolveProceduralSfxBlobUrl(presetId: string): string {
+  const key = presetId.trim()
+  const cached = proceduralSfxBlobUrlCache.get(key)
+  if (cached) return cached
+  try {
+    const wavBytes = synthesizeTimelineSfxWavBytes(key as any)
+    const slice = wavBytes.buffer.slice(
+      wavBytes.byteOffset,
+      wavBytes.byteOffset + wavBytes.byteLength
+    ) as ArrayBuffer
+    const blobUrl = URL.createObjectURL(new Blob([slice], { type: 'audio/wav' }))
+    proceduralSfxBlobUrlCache.set(key, blobUrl)
+    return blobUrl
+  } catch {
+    return synthesizeTimelineSfxWavDataUrl(key as any)
+  }
+}
+
 async function resolveSrc(source: {
   id?: string
   relativePath?: string
   assetId?: string
   stickerId?: string
+  sfxPresetId?: string
   text?: string
   stickerColor?: string
 }): Promise<string> {
+  if (typeof source.sfxPresetId === 'string' && source.sfxPresetId.trim()) {
+    const blobUrl = resolveProceduralSfxBlobUrl(source.sfxPresetId.trim())
+    if (source.id && blobUrl && clipResolvedUrls.value[source.id] !== blobUrl) {
+      clipResolvedUrls.value = { ...clipResolvedUrls.value, [source.id]: blobUrl }
+    }
+    return blobUrl
+  }
   if (typeof source.stickerId === 'string' && source.stickerId.trim()) {
     const dataUrl = renderTimelineBuiltinStickerDataUrl(source.stickerId, {
       text: source.text,
@@ -8476,12 +9379,230 @@ function clipHasTweenBadge(clip: ScriptTimelineClip): boolean {
 }
 
 const builtinStickers = TIMELINE_BUILTIN_STICKERS
+const builtinWidgets = TIMELINE_WIDGET_PRESETS
 
 function builtinStickerPreviewUrl(sticker: TimelineBuiltinStickerPreset): string {
   return renderTimelineBuiltinStickerDataUrl(sticker.id, {
     text: sticker.defaultText,
     color: sticker.defaultColor
   })
+}
+
+function builtinWidgetPreviewUrl(preset: TimelineWidgetPreset): string {
+  return buildTimelineWidgetSvgDataUrl(preset.defaultConfig(), 999)
+}
+
+async function addBuiltinWidgetToOverlay(
+  preset: TimelineWidgetPreset,
+  startSec?: number
+): Promise<void> {
+  if (lockedTracks.value.has('overlay')) return
+  const durationSec = 4.5
+  const targetStart =
+    startSec != null
+      ? fitClipStart('overlay', startSec, durationSec)
+      : fitClipStart('overlay', Math.max(0, playheadSec.value), durationSec)
+  const widgetConfig = normalizeTimelineWidgetConfig(preset.defaultConfig())
+  if (!widgetConfig) return
+  const clip: ScriptTimelineClip = {
+    id: newClipId(),
+    track: 'overlay',
+    sourceId: `widget:${preset.id}:${Date.now().toString(36)}`,
+    title: isZhLocale.value ? preset.labelZh : preset.labelEn,
+    widgetConfig,
+    startSec: targetStart,
+    durationSec,
+    overlayX: Math.max(0, Math.min(1 - preset.defaultWidth, (1 - preset.defaultWidth) / 2)),
+    overlayY: Math.max(0, Math.min(1 - preset.defaultHeight, 0.14)),
+    overlayWidth: preset.defaultWidth,
+    overlayHeight: preset.defaultHeight,
+    overlayRotation: 0,
+    opacity: 1,
+    volume: 0,
+    tweenIn: 'popIn',
+    tweenInDurationSec: 0.35,
+    tweenInEase: 'outBack',
+    tweenOut: 'fadeOut',
+    tweenOutDurationSec: 0.25,
+    tweenOutEase: 'inCubic'
+  }
+  const synced = syncTimelineCueAnchors([...clips.value, clip])
+  commitClips(synced.clips)
+  activeClipId.value = clip.id
+  setSingleClipSelection(clip.id)
+  playheadSec.value = clip.startSec
+  scheduleSave()
+  void syncPreviewToPlayhead()
+}
+
+function onBuiltinWidgetDragStart(e: DragEvent, preset: TimelineWidgetPreset): void {
+  if (!e.dataTransfer) return
+  e.dataTransfer.setData(
+    DRAFT_MIME,
+    JSON.stringify({
+      id: `widget:${preset.id}`,
+      title: isZhLocale.value ? preset.labelZh : preset.labelEn,
+      widgetPresetId: preset.id,
+      durationSec: 4.5
+    })
+  )
+  e.dataTransfer.effectAllowed = 'copy'
+}
+
+function updateSelectedWidgetConfig(patch: Partial<TimelineWidgetConfig>): void {
+  const clip = selectedClip.value
+  if (!clip || clip.track !== 'overlay' || !clip.widgetConfig) return
+  const nextCfg = normalizeTimelineWidgetConfig({
+    ...clip.widgetConfig,
+    ...patch
+  })
+  if (!nextCfg) return
+  const updated = clips.value.map((c) =>
+    c.id === clip.id ? { ...c, widgetConfig: nextCfg, title: nextCfg.title || c.title } : c
+  )
+  commitClips(syncTimelineCueAnchors(updated).clips)
+  scheduleSave()
+}
+
+function addWidgetItem(clip: ScriptTimelineClip): void {
+  if (!clip.widgetConfig) return
+  const items = [...clip.widgetConfig.items]
+  const nextIdx = items.length + 1
+  const lastTrigger = items.length ? (items[items.length - 1]!.triggerSec ?? 0) : 0
+  items.push({
+    id: `item-${Date.now().toString(36)}-${nextIdx}`,
+    label: `新条目 #${nextIdx}`,
+    tier: clip.widgetConfig.kind === 'tier-board' ? 'A' : undefined,
+    side:
+      clip.widgetConfig.kind === 'vs-scoreboard'
+        ? nextIdx % 2 === 1
+          ? 'left'
+          : 'right'
+        : undefined,
+    badge: clip.widgetConfig.kind === 'ranking-list' ? `TOP ${nextIdx}` : undefined,
+    triggerSec: Math.min(
+      Math.max(0, clip.durationSec - 0.3),
+      Math.round((lastTrigger + 0.6) * 10) / 10
+    )
+  })
+  updateSelectedWidgetConfig({ items })
+}
+
+function removeWidgetItem(clip: ScriptTimelineClip, index: number): void {
+  if (!clip.widgetConfig) return
+  const items = clip.widgetConfig.items.filter((_, idx) => idx !== index)
+  if (!items.length) return
+  updateSelectedWidgetConfig({ items })
+}
+
+function patchWidgetItem(
+  clip: ScriptTimelineClip,
+  index: number,
+  patch: Partial<TimelineWidgetItem>
+): void {
+  if (!clip.widgetConfig) return
+  const items = clip.widgetConfig.items.map((it, idx) => (idx === index ? { ...it, ...patch } : it))
+  updateSelectedWidgetConfig({ items })
+}
+
+async function rasterizeSvgDataUrlToPngDataUrl(
+  svgDataUrl: string,
+  width = 720,
+  height = 460
+): Promise<string | null> {
+  if (typeof document === 'undefined' || !svgDataUrl) return null
+  return new Promise((resolve) => {
+    const img = new Image()
+    const timer = window.setTimeout(() => resolve(null), 3500)
+    img.onload = () => {
+      window.clearTimeout(timer)
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(null)
+          return
+        }
+        ctx.clearRect(0, 0, width, height)
+        ctx.drawImage(img, 0, 0, width, height)
+        resolve(canvas.toDataURL('image/png'))
+      } catch {
+        resolve(null)
+      }
+    }
+    img.onerror = () => {
+      window.clearTimeout(timer)
+      resolve(null)
+    }
+    img.src = svgDataUrl
+  })
+}
+
+async function rasterizeWidgetSlicesForExport(
+  clip: ScriptTimelineClip
+): Promise<
+  Array<{ startOffsetSec: number; endOffsetSec: number; pngDataUrl: string }> | undefined
+> {
+  if (!clip.widgetConfig) return undefined
+  const slices = computeTimelineWidgetTimeSlices(clip.widgetConfig, clip.durationSec)
+  const w = Math.max(320, Math.round((clip.overlayWidth ?? 0.72) * (exportWidth.value || 1080)))
+  const h = Math.max(200, Math.round((clip.overlayHeight ?? 0.42) * (exportHeight.value || 1080)))
+  const snapshots: Array<{ startOffsetSec: number; endOffsetSec: number; pngDataUrl: string }> = []
+  for (const slice of slices) {
+    const svgUrl = buildTimelineWidgetSvgDataUrl(
+      clip.widgetConfig,
+      (slice.startOffsetSec + slice.endOffsetSec) / 2
+    )
+    const pngDataUrl = await rasterizeSvgDataUrlToPngDataUrl(svgUrl, w, h)
+    if (pngDataUrl) {
+      snapshots.push({
+        startOffsetSec: slice.startOffsetSec,
+        endOffsetSec: slice.endOffsetSec,
+        pngDataUrl
+      })
+    }
+  }
+  return snapshots.length ? snapshots : undefined
+}
+
+async function rasterizeSubtitleKaraokeSlicesForExport(
+  clip: ScriptTimelineClip
+): Promise<
+  Array<{ startOffsetSec: number; endOffsetSec: number; pngDataUrl: string }> | undefined
+> {
+  if (clip.track !== 'subtitle') return undefined
+  const mode = effectiveSubtitleKaraokeMode(clip)
+  if (!mode || mode === 'none') return undefined
+  const slices = computeSubtitleKaraokeTimeSlices(clip)
+  if (!slices.length) return undefined
+  const snapshots: Array<{ startOffsetSec: number; endOffsetSec: number; pngDataUrl: string }> = []
+  for (const slice of slices) {
+    const svgUrl = buildKaraokeSubtitleSvgDataUrl({
+      clip,
+      localTimeSec: slice.sampleLocalSec,
+      karaokeMode: mode,
+      fontSize: clip.fontSize ?? subtitleFontSize.value,
+      textColor: clip.textColor || subtitleColor.value,
+      highlightColor: clip.subtitleHighlightColor || subtitleHighlightColor.value,
+      highlightBgColor: clip.subtitleHighlightBgColor || subtitleHighlightBgColor.value,
+      borderColor: subtitleBorderColor.value,
+      borderWidth: subtitleBorderWidth.value,
+      boxEnabled: subtitleBoxEnabled.value,
+      boxColor: subtitleBoxColor.value,
+      boxOpacity: subtitleBoxOpacity.value
+    })
+    const pngDataUrl = await rasterizeSvgDataUrlToPngDataUrl(svgUrl, 960, 220)
+    if (pngDataUrl) {
+      snapshots.push({
+        startOffsetSec: slice.startOffsetSec,
+        endOffsetSec: slice.endOffsetSec,
+        pngDataUrl
+      })
+    }
+  }
+  return snapshots.length ? snapshots : undefined
 }
 
 async function addBuiltinStickerToOverlay(
@@ -9432,11 +10553,781 @@ async function reshootClipFromCard(clip: ScriptTimelineClip): Promise<void> {
 function onSubtitleTextChange(value: string): void {
   const clip = selectedClip.value
   if (!clip || clip.track !== 'subtitle') return
-  const text = value.trim()
+  const raw = value.trim()
+  const aligned = alignSubtitleWordsAndCues({
+    text: raw,
+    durationSec: clip.durationSec,
+    existingWords: clip.words
+  })
+  const cleanText = aligned.cleanText || raw
+  const updated = clips.value.map((c) =>
+    c.id === clip.id
+      ? {
+          ...c,
+          rawCueText: raw,
+          text: cleanText,
+          title: cleanText || c.title,
+          words: aligned.words
+        }
+      : c
+  )
+  commitClips(syncTimelineCueAnchors(updated).clips)
+  scheduleSave()
+}
+
+function onClipAnchorCueChange(patch: {
+  anchorCueTag?: string
+  anchorOffsetSec?: number
+  anchorMatchDuration?: boolean
+}): void {
+  const clip = selectedClip.value
+  if (!clip) return
+  const updated = clips.value.map((c) => {
+    if (c.id !== clip.id) return c
+    return {
+      ...c,
+      ...(patch.anchorCueTag !== undefined
+        ? { anchorCueTag: patch.anchorCueTag || undefined }
+        : {}),
+      ...(patch.anchorOffsetSec !== undefined ? { anchorOffsetSec: patch.anchorOffsetSec } : {}),
+      ...(patch.anchorMatchDuration !== undefined
+        ? { anchorMatchDuration: patch.anchorMatchDuration }
+        : {})
+    }
+  })
+  commitClips(syncTimelineCueAnchors(updated).clips)
+  scheduleSave()
+}
+
+function syncAllCueAnchorsNow(): void {
+  const res = syncTimelineCueAnchors(clips.value)
+  commitClips(res.clips)
+  scheduleSave()
+  void promptAlert({
+    title: '⚡ 词级语义锚点同步',
+    message: res.cueWindows.length
+      ? `已提取 ${res.cueWindows.length} 个 @词级锚点（${res.cueWindows.map((c) => `@${c.tag}`).join('、')}），并对齐 ${res.syncedClipCount + res.syncedWidgetItemCount} 个关联图层/音效/动态组件。`
+      : '当前字幕中尚未标记 @{tag}关键词@{/tag}。请在字幕文本中用 @{boom}关键词@{/boom} 标记后再同步。'
+  })
+}
+
+function autoPopulateCueSfxNow(): void {
+  const synced = syncTimelineCueAnchors(clips.value)
+  const res = buildAutoCueSfxClips(
+    synced.clips,
+    (idx) => `sfx:cue:${Date.now().toString(36)}:${idx}`
+  )
+  commitClips(res.clips)
+  scheduleSave()
+  void refreshClipVisuals()
+  void promptAlert({
+    title: '🔊 自动配齐卡点音效',
+    message:
+      res.addedCount > 0
+        ? `已根据字幕 @词级锚点 与动态图表条目自动生成并对齐 ${res.addedCount} 个零成本合成卡点音效（啵/嗖/叮/重击）！`
+        : '所有 @词级锚点 与动态图表条目均已配备音效（或当前尚未设置 @词级锚点 / 动态图表）。'
+  })
+}
+
+function applyCuePunchZoomNow(): void {
+  const synced = syncTimelineCueAnchors(clips.value)
+  const res = applyCuePunchZoomToVideoClips(synced.clips, 1.14, {
+    splitAtCueWindow: true,
+    createClipId: () => newClipId()
+  })
+  commitClips(res.clips)
+  scheduleSave()
+  void refreshClipVisuals()
+  void promptAlert({
+    title: '💥 关键词主镜头顿挫推镜',
+    message:
+      res.updatedVideoClipCount > 0
+        ? `已对 ${res.updatedVideoClipCount} 个 @关键词锚点 暴击窗口施加「重音急推 (ImpactPush)」${res.splitSubClipCount > 0 ? `（自动无损切分 ${res.splitSubClipCount} 个推镜子片段并在词尾回弹正常景别）` : ''}！`
+        : '未找到覆盖 @词级锚点 的可推镜视频片段（请先在字幕中用 @{boom}关键词@{/boom} 标记重点词，或点击「✨ AI 一键爆款包装」）。'
+  })
+}
+
+async function runAiViralPackagingNow(): Promise<void> {
+  if (viralPackagingBusy.value) return
+  const subClips = clips.value.filter(
+    (c) => c.track === 'subtitle' && (c.rawCueText || c.text || c.title || '').trim().length > 0
+  )
+  if (!subClips.length) {
+    void promptAlert({
+      title: '✨ AI 一键爆款包装',
+      message:
+        '当前时间线上尚未添加字幕片段。请先使用「配音转字幕」或手动添加字幕后再执行一键包装。'
+    })
+    return
+  }
+
+  viralPackagingBusy.value = true
+  try {
+    let llmAnnotatedMap: Map<string, string> | undefined
+    const modelKey = subtitleTrackingModelKey.value.trim()
+    const parsedModel = modelKey && modelKey !== 'vlm:auto' ? parseModelKey(modelKey) : null
+    if (modelKey && typeof window.studio?.generateText === 'function') {
+      try {
+        const plainList = subClips.map((c) => ({
+          id: c.id,
+          text: String(c.rawCueText || c.text || c.title || '').trim()
+        }))
+        const { system, prompt } = buildViralPackagingPrompts(plainList)
+        const res = await window.studio.generateText({
+          system,
+          prompt,
+          ...(parsedModel
+            ? {
+                providerInstanceId: parsedModel.providerInstanceId,
+                model: parsedModel.model
+              }
+            : {})
+        })
+        if (res?.text) {
+          const parsedMap = parseViralPackagingResponse(res.text, plainList)
+          if (parsedMap.size > 0) {
+            llmAnnotatedMap = parsedMap
+          }
+        }
+      } catch {
+        // LLM 不可用时无缝回退到本地爆款词典规则
+      }
+    }
+
+    // 1. 自动注入 @cueTag 并生成逐词时间戳 + 开启胶囊高亮
+    const annotated = autoAnnotateSubtitleCueTags(clips.value, llmAnnotatedMap)
+    if (subtitleKaraokeMode.value === 'none') {
+      subtitleKaraokeMode.value = 'karaoke-pill'
+    }
+
+    // 2. 同步所有 @cueTag 词级锚点并自动配齐合成音效（pop / whoosh / ding / boom）
+    const sfxRes = buildAutoCueSfxClips(
+      annotated.clips,
+      (idx) => `sfx:viral:${Date.now().toString(36)}:${idx}`
+    )
+
+    // 3. 按关键词暴击时间窗切分主视频轨并施加 ImpactPush 顿挫推镜
+    const punchRes = applyCuePunchZoomToVideoClips(sfxRes.clips, 1.14, {
+      splitAtCueWindow: true,
+      createClipId: () => newClipId()
+    })
+
+    commitClips(punchRes.clips)
+    scheduleSave()
+    void refreshClipVisuals()
+    void promptAlert({
+      title: '✨ AI 一键爆款包装完成',
+      message: [
+        `• 已智能标注 ${annotated.annotatedSubtitleCount} 条字幕（共注入 ${annotated.injectedTagCount} 个 @重点词暴击标签）并开启 Hypit 胶囊高亮；`,
+        `• 已自动配齐 ${sfxRes.addedCount} 个零成本卡点合成音效；`,
+        `• 已对 ${punchRes.updatedVideoClipCount} 个暴击词时间窗施加主镜头顿挫推镜（自动切分 ${punchRes.splitSubClipCount} 个子镜头）！`
+      ].join('\n')
+    })
+  } finally {
+    viralPackagingBusy.value = false
+  }
+}
+
+async function snapVideoCutsToMusicBeatsNow(): Promise<void> {
+  const musicOrVoiceClips = clips.value.filter(
+    (c) =>
+      c.track === 'music' || (c.track === 'voice' && !clips.value.some((m) => m.track === 'music'))
+  )
+  if (!musicOrVoiceClips.length) {
+    void promptAlert({
+      title: '🥁 视频切点踩点 BGM',
+      message:
+        '当前时间线上尚未放置背景音乐（music）或配音（voice）片段，请先添加音乐后再执行自动踩点。'
+    })
+    return
+  }
+
+  // 确保所有音乐/配音片段已完成音频峰值包络解码
+  await runConcurrent(musicOrVoiceClips, 2, async (clip) => {
+    await ensureClipWaveform(clip)
+  })
+
+  const beats = collectMusicTrackBeatsSync()
+  if (!beats.length) {
+    void promptAlert({
+      title: '🥁 视频切点踩点 BGM',
+      message: '未能从当前音乐片段中检测到明显的鼓点/节拍瞬态峰值。'
+    })
+    return
+  }
+
+  const snapped = snapClipsToAudioBeats(clips.value, beats, 0.24)
+  commitClips(snapped.clips)
+  scheduleSave()
+  void promptAlert({
+    title: '🥁 视频切点踩点 BGM',
+    message:
+      snapped.snappedClipCount > 0
+        ? `已从背景音乐提取 ${beats.length} 个鼓点/瞬态节拍，并将 ${snapped.snappedClipCount} 个视频/画中画切点精准吸附对齐到 BGM 节拍！`
+        : `已提取 ${beats.length} 个 BGM 节拍点（已启用拖拽磁吸），当前视频切点均已在节拍点或距离节拍超出 0.24s 阈值。`
+  })
+}
+
+function clearSubtitleTrackingKeyframes(clip: ScriptTimelineClip): void {
+  const nextMap = { ...clipTrackingDetectionsMap.value }
+  delete nextMap[clip.id]
+  clipTrackingDetectionsMap.value = nextMap
   commitClips(
-    clips.value.map((c) => (c.id === clip.id ? { ...c, text, title: text || c.title } : c))
+    clips.value.map((c) =>
+      c.id === clip.id
+        ? { ...c, keyframes: undefined, overlayX: undefined, overlayY: undefined }
+        : c
+    )
   )
   scheduleSave()
+}
+
+function clearAllSubtitleTrackingKeyframes(): void {
+  clipTrackingDetectionsMap.value = {}
+  showTrackingHud.value = false
+  subtitleTrackingStatus.value = ''
+  commitClips(
+    clips.value.map((c) =>
+      c.track === 'subtitle'
+        ? { ...c, keyframes: undefined, overlayX: undefined, overlayY: undefined }
+        : c
+    )
+  )
+  scheduleSave()
+}
+
+async function sampleVideoFrameDataUrlAt(
+  videoUrl: string,
+  timeSec: number
+): Promise<string | null> {
+  if (!videoUrl) return null
+  if (videoUrl.startsWith('data:image/')) return videoUrl
+  if (isImageOrGifUrl(videoUrl)) {
+    return new Promise((resolve) => {
+      const img = new Image()
+      if (/^https?:\/\//i.test(videoUrl)) {
+        img.crossOrigin = 'anonymous'
+      }
+      const timer = window.setTimeout(() => resolve(null), 3000)
+      img.onload = () => {
+        window.clearTimeout(timer)
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = 512
+          canvas.height = Math.max(
+            288,
+            Math.round((512 * (img.naturalHeight || 9)) / Math.max(1, img.naturalWidth || 16))
+          )
+          const ctx = canvas.getContext('2d')
+          if (!ctx) {
+            resolve(null)
+            return
+          }
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', 0.8))
+        } catch {
+          resolve(null)
+        }
+      }
+      img.onerror = () => {
+        window.clearTimeout(timer)
+        resolve(null)
+      }
+      img.src = videoUrl
+    })
+  }
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.preload = 'auto'
+    video.muted = true
+    video.playsInline = true
+    if (/^https?:\/\//i.test(videoUrl)) {
+      video.crossOrigin = 'anonymous'
+    }
+    const timer = window.setTimeout(() => {
+      video.removeAttribute('src')
+      resolve(null)
+    }, 3500)
+    const cleanup = (dataUrl: string | null) => {
+      window.clearTimeout(timer)
+      video.onloadeddata = null
+      video.onseeked = null
+      video.onerror = null
+      video.removeAttribute('src')
+      video.load()
+      resolve(dataUrl)
+    }
+    video.onerror = () => cleanup(null)
+    video.onloadedmetadata = () => {
+      const target = Math.max(0, Math.min(Math.max(0, (video.duration || 5) - 0.05), timeSec))
+      video.currentTime = target
+    }
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = 320
+        canvas.height = 180
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          cleanup(null)
+          return
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        cleanup(canvas.toDataURL('image/jpeg', 0.75))
+      } catch {
+        cleanup(null)
+      }
+    }
+    video.src = videoUrl
+  })
+}
+
+async function refreshVisionTrackingModels(): Promise<void> {
+  try {
+    const prevKey = subtitleTrackingModelKey.value
+    const { options, selectedKey } = await loadVisionModelOptions(prevKey)
+    visionModelOptions.value = options
+    if (prevKey === 'vlm:auto') {
+      subtitleTrackingModelKey.value = 'vlm:auto'
+    } else {
+      subtitleTrackingModelKey.value = selectedKey
+    }
+  } catch {
+    visionModelOptions.value = []
+  }
+}
+
+async function sampleSubtitleClipFrames(
+  clip: ScriptTimelineClip
+): Promise<Array<{ offsetSec: number; dataUrl: string }>> {
+  const midGlobalSec = clip.startSec + clip.durationSec / 2
+  const videoClip =
+    visibleClipsOn('video').find(
+      (v) => midGlobalSec >= v.startSec && midGlobalSec <= v.startSec + v.durationSec
+    ) ?? visibleClipsOn('video')[0]
+  if (!videoClip) return []
+
+  const sampleCount = Math.max(3, Math.min(5, Math.ceil(clip.durationSec / 0.7)))
+  const offsets: number[] = []
+  const sourceTimestamps: number[] = []
+  for (let i = 0; i < sampleCount; i++) {
+    const ratio = sampleCount === 1 ? 0 : i / (sampleCount - 1)
+    const offsetSec = Math.round(ratio * clip.durationSec * 1000) / 1000
+    offsets.push(offsetSec)
+    sourceTimestamps.push(
+      Math.max(
+        0,
+        (videoClip.sourceOffsetSec ?? 0) +
+          Math.max(0, clip.startSec + offsetSec - videoClip.startSec)
+      )
+    )
+  }
+
+  // 优先走主进程 FFmpeg 精确取帧（支持本地工程视频文件，速度快且不受浏览器解码态限制）
+  const relPath = sourceRelativePath(videoClip)
+  if (relPath && typeof window.studio?.grabVideoFramesAtTimestamps === 'function') {
+    try {
+      const grabbed = await window.studio.grabVideoFramesAtTimestamps(relPath, sourceTimestamps, {
+        width: 512
+      })
+      if (Array.isArray(grabbed) && grabbed.length > 0) {
+        const mapped: Array<{ offsetSec: number; dataUrl: string }> = []
+        for (let i = 0; i < offsets.length; i++) {
+          const frame = grabbed[Math.min(i, grabbed.length - 1)]
+          if (frame?.dataUrl) {
+            mapped.push({ offsetSec: offsets[i]!, dataUrl: frame.dataUrl })
+          }
+        }
+        if (mapped.length > 0) return mapped
+      }
+    } catch {
+      // 回退到浏览器 video 抽帧
+    }
+  }
+
+  const videoUrl = await resolveSrc(videoClip)
+  if (!videoUrl) return []
+  const out: Array<{ offsetSec: number; dataUrl: string }> = []
+  for (let i = 0; i < offsets.length; i++) {
+    const dataUrl = await sampleVideoFrameDataUrlAt(videoUrl, sourceTimestamps[i]!)
+    if (dataUrl) {
+      out.push({ offsetSec: offsets[i]!, dataUrl })
+    }
+  }
+  return out
+}
+
+async function runLocalYoloTrackingOnFrames(
+  frames: ReadonlyArray<{ offsetSec: number; dataUrl: string }>,
+  clipDurationSec: number
+): Promise<{
+  keyframes: TimelineClipKeyframe[]
+  detections: SpeakerFaceFrameDetection[]
+  engineLabel: string
+} | null> {
+  if (!frames.length) return null
+  const canYoloFace = typeof window.studio?.yoloFace === 'function'
+  const canYoloDetect = typeof window.studio?.yoloDetect === 'function'
+  if (!canYoloFace && !canYoloDetect) return null
+
+  const yoloDetections: SpeakerFaceFrameDetection[] = []
+  for (const frame of frames) {
+    let faceRes: Awaited<ReturnType<NonNullable<typeof window.studio>['yoloFace']>> | null = null
+    let detectRes: Awaited<ReturnType<NonNullable<typeof window.studio>['yoloDetect']>> | null =
+      null
+    if (canYoloFace) {
+      try {
+        faceRes = await window.studio.yoloFace({
+          image: { kind: 'dataUrl', dataUrl: frame.dataUrl }
+        })
+      } catch {
+        faceRes = null
+      }
+    }
+    if ((!faceRes || !faceRes.faces?.length) && canYoloDetect) {
+      try {
+        detectRes = await window.studio.yoloDetect({
+          image: { kind: 'dataUrl', dataUrl: frame.dataUrl },
+          confThreshold: 0.22
+        })
+      } catch {
+        detectRes = null
+      }
+    }
+    const det = extractSpeakerDetectionFromYoloFrame(frame.offsetSec, faceRes, detectRes)
+    if (det) {
+      yoloDetections.push(det)
+    }
+  }
+
+  if (!yoloDetections.length) return null
+  const keyframes = buildFaceTrackingKeyframesFromDetections(yoloDetections, clipDurationSec)
+  if (!keyframes.length) return null
+  const subjectNote = yoloDetections.find((d) => d.subject)?.subject
+  return {
+    keyframes,
+    detections: yoloDetections,
+    engineLabel: subjectNote ? `本地 YOLO（${subjectNote}）` : '本地 YOLO 视觉模型'
+  }
+}
+
+async function computeSpeakerTrackingKeyframesForClip(clip: ScriptTimelineClip): Promise<{
+  keyframes: TimelineClipKeyframe[]
+  detections: SpeakerFaceFrameDetection[]
+  engineLabel: string
+}> {
+  const frames = await sampleSubtitleClipFrames(clip)
+  const sampleCount = Math.max(3, Math.min(5, Math.ceil(clip.durationSec / 0.7)))
+  const fallbackOffsets = Array.from(
+    { length: sampleCount },
+    (_, i) =>
+      Math.round((sampleCount === 1 ? 0 : i / (sampleCount - 1)) * clip.durationSec * 1000) / 1000
+  )
+  const offsets = frames.length ? frames.map((f) => f.offsetSec) : fallbackOffsets
+
+  const modelKey = subtitleTrackingModelKey.value.trim()
+  const parsedModel = modelKey && modelKey !== 'vlm:auto' ? parseModelKey(modelKey) : null
+  const preferVlm = modelKey === 'vlm:auto' || Boolean(parsedModel)
+
+  // 1. 默认走本地 YOLO 视觉模型（yoloFace + yolo11 检测，零 Token 消耗、毫秒级离线完成）
+  if (!preferVlm && frames.length > 0) {
+    const localYoloResult = await runLocalYoloTrackingOnFrames(frames, clip.durationSec)
+    if (localYoloResult) {
+      return localYoloResult
+    }
+  }
+
+  // 2. 用户显式选择了多模态大模型（或本地 YOLO 未检出主体时）：调用多模态 VLM 识别说话人/动漫角色/萌宠主体与最佳避障中心
+  if (frames.length > 0 && preferVlm && typeof window.studio?.generateText === 'function') {
+    const { system, prompt } = buildVlmSpeakerTrackingPrompts(
+      offsets,
+      clip.text || clip.title || ''
+    )
+    const imageUrls = frames.map((f) => f.dataUrl)
+
+    const tryGenerate = async (ignoreExplicitModel: boolean) => {
+      return window.studio.generateText({
+        system,
+        prompt,
+        images: imageUrls,
+        visionGrounding: true,
+        ...(parsedModel && !ignoreExplicitModel
+          ? {
+              providerInstanceId: parsedModel.providerInstanceId,
+              model: parsedModel.model
+            }
+          : {})
+      })
+    }
+
+    try {
+      let res = await tryGenerate(false)
+      let vlmDetections = parseVlmSpeakerTrackingResponse(res?.text ?? '', offsets)
+      if (!vlmDetections.length && parsedModel) {
+        res = await tryGenerate(true)
+        vlmDetections = parseVlmSpeakerTrackingResponse(res?.text ?? '', offsets)
+      }
+      if (vlmDetections.length > 0) {
+        const keyframes = buildFaceTrackingKeyframesFromDetections(vlmDetections, clip.durationSec)
+        if (keyframes.length > 0) {
+          const subjectNote = vlmDetections.find((d) => d.subject)?.subject
+          const modelName = res?.model || parsedModel?.model || '多模态大模型'
+          return {
+            keyframes,
+            detections: vlmDetections,
+            engineLabel: subjectNote ? `${modelName}（${subjectNote}）` : modelName
+          }
+        }
+      }
+    } catch {
+      if (parsedModel) {
+        try {
+          const res = await tryGenerate(true)
+          const vlmDetections = parseVlmSpeakerTrackingResponse(res?.text ?? '', offsets)
+          if (vlmDetections.length > 0) {
+            const keyframes = buildFaceTrackingKeyframesFromDetections(
+              vlmDetections,
+              clip.durationSec
+            )
+            if (keyframes.length > 0) {
+              const subjectNote = vlmDetections.find((d) => d.subject)?.subject
+              const modelName = res?.model || '多模态大模型'
+              return {
+                keyframes,
+                detections: vlmDetections,
+                engineLabel: subjectNote ? `${modelName}（${subjectNote}）` : modelName
+              }
+            }
+          }
+        } catch {
+          // ignore and fall through to local YOLO fallback
+        }
+      }
+    }
+
+    // 云端多模态大模型不可用时，自动无缝回退到本地 YOLO 视觉模型
+    const yoloFallback = await runLocalYoloTrackingOnFrames(frames, clip.durationSec)
+    if (yoloFallback) {
+      return yoloFallback
+    }
+  }
+
+  // 无可用视频帧或未配置模型时的平滑律动跟随兜底轨迹
+  const fallbackDetections: SpeakerFaceFrameDetection[] = offsets.map((offsetSec, idx) => {
+    const ratio = offsets.length <= 1 ? 0 : idx / (offsets.length - 1)
+    const wave = Math.sin(ratio * Math.PI * 2) * 0.045
+    return {
+      offsetSec,
+      box: {
+        x: 0.35 + wave,
+        y: 0.22 + Math.cos(ratio * Math.PI) * 0.02,
+        w: 0.3,
+        h: 0.42
+      }
+    }
+  })
+  return {
+    keyframes: buildFaceTrackingKeyframesFromDetections(fallbackDetections, clip.durationSec),
+    detections: fallbackDetections,
+    engineLabel: '智能平滑轨迹'
+  }
+}
+
+async function trackSpeakerFaceForSubtitle(clip: ScriptTimelineClip): Promise<void> {
+  if (yoloTrackingBusy.value || clip.track !== 'subtitle') return
+  yoloTrackingBusy.value = true
+  subtitleTrackingStatus.value = ''
+  try {
+    const { keyframes, detections, engineLabel } =
+      await computeSpeakerTrackingKeyframesForClip(clip)
+    clipTrackingDetectionsMap.value = {
+      ...clipTrackingDetectionsMap.value,
+      [clip.id]: { detections, engineLabel }
+    }
+    showTrackingHud.value = true
+
+    const isPortraitExport = exportWidth.value < exportHeight.value
+    const midGlobalSec = clip.startSec + clip.durationSec / 2
+    const targetAspect =
+      exportWidth.value > 0 && exportHeight.value > 0
+        ? exportWidth.value / exportHeight.value
+        : 9 / 16
+    const reframeCrop =
+      isPortraitExport && detections.length > 0
+        ? computeSmartReframeCropFromDetections(detections, 16 / 9, targetAspect)
+        : null
+
+    commitClips(
+      clips.value.map((c) => {
+        if (c.id === clip.id) return { ...c, keyframes }
+        if (
+          reframeCrop &&
+          c.track === 'video' &&
+          midGlobalSec >= c.startSec &&
+          midGlobalSec <= c.startSec + c.durationSec &&
+          c.cropWidth == null
+        ) {
+          return {
+            ...c,
+            cropX: reframeCrop.cropX,
+            cropY: reframeCrop.cropY,
+            cropWidth: reframeCrop.cropWidth,
+            cropHeight: reframeCrop.cropHeight
+          }
+        }
+        return c
+      })
+    )
+    activeClipId.value = clip.id
+    setSingleClipSelection(clip.id)
+    if (
+      playheadSec.value < clip.startSec ||
+      playheadSec.value >= clip.startSec + clip.durationSec
+    ) {
+      playheadSec.value = clip.startSec + Math.min(0.25, clip.durationSec * 0.3)
+      void syncPreviewToPlayhead()
+    }
+    subtitleTrackingStatus.value = `✓ 已由 ${engineLabel} 生成 ${keyframes.length} 个动态跟随关键帧${reframeCrop ? '（已同步竖屏主体居中构图）' : ''}`
+    scheduleSave()
+  } finally {
+    yoloTrackingBusy.value = false
+  }
+}
+
+async function smartReframeVideoClipNow(videoClip: ScriptTimelineClip): Promise<void> {
+  if (yoloTrackingBusy.value || videoClip.track !== 'video') return
+  yoloTrackingBusy.value = true
+  try {
+    const probeClip: ScriptTimelineClip = {
+      ...videoClip,
+      track: 'subtitle',
+      text: videoClip.title || '画面主体'
+    }
+    const { detections, engineLabel } = await computeSpeakerTrackingKeyframesForClip(probeClip)
+    const reframe = computeSmartReframeCropFromDetections(detections, 16 / 9, 9 / 16)
+    commitClips(
+      clips.value.map((c) =>
+        c.id === videoClip.id
+          ? {
+              ...c,
+              cropX: reframe.cropX,
+              cropY: reframe.cropY,
+              cropWidth: reframe.cropWidth,
+              cropHeight: reframe.cropHeight
+            }
+          : c
+      )
+    )
+    scheduleSave()
+    void promptAlert({
+      title: '📱 9:16 主体智能居中完成',
+      message: `已由 ${engineLabel} 识别画面主体并自动设置 9:16 竖屏人物居中裁剪窗（X=${Math.round(reframe.cropX * 100)}%, W=${Math.round(reframe.cropWidth * 100)}%）。`
+    })
+  } finally {
+    yoloTrackingBusy.value = false
+  }
+}
+
+async function trackSpeakerFaceForAllSubtitles(): Promise<void> {
+  if (yoloTrackingBusy.value) return
+  const subClips = visibleClipsOn('subtitle')
+  if (!subClips.length) {
+    const firstVideo =
+      selectedClip.value?.track === 'video' ? selectedClip.value : visibleClipsOn('video')[0]
+    if (firstVideo) {
+      await smartReframeVideoClipNow(firstVideo)
+      return
+    }
+    void promptAlert({
+      title: '👁 多模态视觉追踪',
+      message: '请先在时间线上添加字幕或视频片段后再执行视觉追踪。'
+    })
+    return
+  }
+  yoloTrackingBusy.value = true
+  subtitleTrackingStatus.value = ''
+  try {
+    const keyframeByClipId = new Map<string, TimelineClipKeyframe[]>()
+    const detectionsByVideoClipId = new Map<string, SpeakerFaceFrameDetection[]>()
+    const nextTrackingMap: Record<
+      string,
+      { detections: SpeakerFaceFrameDetection[]; engineLabel: string }
+    > = { ...clipTrackingDetectionsMap.value }
+    let lastEngine = ''
+    let completed = 0
+
+    // 3 路受限并发调用多模态视觉大模型，大幅缩短全片追踪等待耗时
+    await runConcurrent(subClips, 3, async (sub) => {
+      const { keyframes, detections, engineLabel } =
+        await computeSpeakerTrackingKeyframesForClip(sub)
+      keyframeByClipId.set(sub.id, keyframes)
+      nextTrackingMap[sub.id] = { detections, engineLabel }
+      lastEngine = engineLabel
+      completed += 1
+      subtitleTrackingStatus.value = `正在并发追踪字幕 (${completed}/${subClips.length})…`
+
+      const midGlobalSec = sub.startSec + sub.durationSec / 2
+      const videoClip = visibleClipsOn('video').find(
+        (v) => midGlobalSec >= v.startSec && midGlobalSec <= v.startSec + v.durationSec
+      )
+      if (videoClip && detections.length > 0) {
+        const list = detectionsByVideoClipId.get(videoClip.id) ?? []
+        list.push(...detections)
+        detectionsByVideoClipId.set(videoClip.id, list)
+      }
+    })
+
+    clipTrackingDetectionsMap.value = nextTrackingMap
+    showTrackingHud.value = true
+
+    const isPortraitExport = exportWidth.value < exportHeight.value
+    const targetAspect =
+      exportWidth.value > 0 && exportHeight.value > 0
+        ? exportWidth.value / exportHeight.value
+        : 9 / 16
+
+    commitClips(
+      clips.value.map((c) => {
+        if (keyframeByClipId.has(c.id)) {
+          return { ...c, keyframes: keyframeByClipId.get(c.id) }
+        }
+        if (
+          isPortraitExport &&
+          c.track === 'video' &&
+          c.cropWidth == null &&
+          detectionsByVideoClipId.has(c.id)
+        ) {
+          const dets = detectionsByVideoClipId.get(c.id)!
+          const reframe = computeSmartReframeCropFromDetections(dets, 16 / 9, targetAspect)
+          return {
+            ...c,
+            cropX: reframe.cropX,
+            cropY: reframe.cropY,
+            cropWidth: reframe.cropWidth,
+            cropHeight: reframe.cropHeight
+          }
+        }
+        return c
+      })
+    )
+
+    // 自动选中并跳转到一条已追踪的字幕片段，让用户在监视器中立即看到「🎯主体追踪框 + 避障引导线 + 字幕跟随关键帧」
+    const currentSubAtPlayhead = subClips.find(
+      (s) => playheadSec.value >= s.startSec && playheadSec.value < s.startSec + s.durationSec
+    )
+    const targetSub = currentSubAtPlayhead ?? subClips[0]!
+    activeClipId.value = targetSub.id
+    setSingleClipSelection(targetSub.id)
+    if (!currentSubAtPlayhead) {
+      playheadSec.value = targetSub.startSec + Math.min(0.25, targetSub.durationSec * 0.3)
+      void syncPreviewToPlayhead()
+    }
+
+    subtitleTrackingStatus.value = `✓ 已由 ${lastEngine || '视觉模型'} 并发完成全片 ${subClips.length} 条字幕追踪${isPortraitExport && detectionsByVideoClipId.size > 0 ? '（并完成竖屏人物居中重构图）' : ''}`
+    scheduleSave()
+  } finally {
+    yoloTrackingBusy.value = false
+  }
 }
 
 async function autoPlaceAll(): Promise<void> {
@@ -10443,10 +12334,18 @@ async function onTrackDrop(e: DragEvent, kind: ScriptTimelineTrackKind, lane = 0
       text?: string
       stickerId?: string
       stickerColor?: string
+      widgetPresetId?: string
     }
     try {
       payload = JSON.parse(raw)
     } catch {
+      return
+    }
+    if (payload.widgetPresetId) {
+      const wPreset = TIMELINE_WIDGET_PRESETS.find((w) => w.id === payload.widgetPresetId)
+      if (wPreset) {
+        await addBuiltinWidgetToOverlay(wPreset, dropStart)
+      }
       return
     }
     if (payload.stickerId) {
@@ -11862,11 +13761,28 @@ async function exportTimeline(): Promise<void> {
                 color: c.stickerColor
               })) ?? undefined)
             : undefined
+          const widgetStateSnapshots = c.widgetConfig
+            ? await rasterizeWidgetSlicesForExport(c)
+            : undefined
+          const subtitleStateSnapshots =
+            c.track === 'subtitle' ? await rasterizeSubtitleKaraokeSlicesForExport(c) : undefined
           return {
             track: c.track,
             ...(c.lane && c.lane > 0 ? { lane: c.lane } : {}),
             relativePath: resolveClipRelativePath(c),
+            sfxPresetId: c.sfxPresetId,
             text: c.text,
+            rawCueText: c.rawCueText,
+            words: c.words?.length ? toPlain(c.words) : undefined,
+            anchorCueTag: c.anchorCueTag,
+            anchorOffsetSec: c.anchorOffsetSec,
+            anchorMatchDuration: c.anchorMatchDuration,
+            subtitleKaraokeMode: c.subtitleKaraokeMode,
+            subtitleHighlightColor: c.subtitleHighlightColor,
+            subtitleHighlightBgColor: c.subtitleHighlightBgColor,
+            subtitleStateSnapshots,
+            widgetConfig: c.widgetConfig ? toPlain(c.widgetConfig) : undefined,
+            widgetStateSnapshots,
             title: c.title,
             startSec: c.startSec,
             durationSec: c.durationSec,
@@ -11945,6 +13861,9 @@ async function exportTimeline(): Promise<void> {
         subtitleBoxColor: subtitleBoxColor.value,
         subtitleBoxOpacity: subtitleBoxOpacity.value,
         subtitleMotion: subtitleMotion.value,
+        subtitleKaraokeMode: subtitleKaraokeMode.value,
+        subtitleHighlightColor: subtitleHighlightColor.value,
+        subtitleHighlightBgColor: subtitleHighlightBgColor.value,
         mixGains: toRaw(mixGains.value),
         mixMasterGain: mixMasterGain.value,
         mixBassGainDb: mixBassGainDb.value,
@@ -12122,7 +14041,7 @@ async function transcribeVoiceToSubtitles(): Promise<void> {
       const rel = sourceRelativePath(voice)
       let result: import('@shared/modelProvider').TranscribeAudioResult
       try {
-        result = await window.studio.transcribeAudio({ relativePath: rel })
+        result = await window.studio.transcribeAudio({ relativePath: rel, wordTimestamps: true })
       } catch (err) {
         errors.push(err instanceof Error ? err.message : String(err))
         continue
@@ -12133,19 +14052,49 @@ async function transcribeVoiceToSubtitles(): Promise<void> {
           ? [{ startSec: 0, endSec: voice.durationSec, text: result.text.trim() }]
           : []
       const subs = buildSubtitleClipsFromTranscription(voice, segments, () => newClipId())
-      added.push(...subs)
-      // 与本次配音区间重叠的旧字幕视为待替换（避免重复点按钮字幕堆积）
+      // 与本次配音区间重叠的旧字幕视为待替换；若旧字幕中已有 @{tag} 词级锚点标记，将其强制对齐融合到新转写的真实 ASR 词级时间戳上
       const voiceStart = voice.startSec
       const voiceEnd = voiceStart + voice.durationSec
+      const overlappingOldSubs: ScriptTimelineClip[] = []
       for (const old of visibleClipsOn('subtitle')) {
         const oldStart = old.startSec
         const oldEnd = oldStart + old.durationSec
-        if (oldStart < voiceEnd && oldEnd > voiceStart) replacedIds.add(old.id)
+        if (oldStart < voiceEnd && oldEnd > voiceStart) {
+          replacedIds.add(old.id)
+          overlappingOldSubs.push(old)
+        }
       }
+      for (const sub of subs) {
+        const subMid = sub.startSec + sub.durationSec * 0.5
+        const matchedOld =
+          overlappingOldSubs.find(
+            (old) =>
+              Boolean(old.rawCueText && /@\{|@\[/.test(old.rawCueText)) &&
+              subMid >= old.startSec - 0.5 &&
+              subMid <= old.startSec + old.durationSec + 0.5
+          ) ??
+          overlappingOldSubs.find((old) =>
+            Boolean(old.rawCueText && /@\{|@\[/.test(old.rawCueText))
+          )
+        if (matchedOld?.rawCueText && sub.words?.length) {
+          const merged = mergeInlineCuesWithAsrWords({
+            rawCueText: matchedOld.rawCueText,
+            asrWords: sub.words,
+            durationSec: sub.durationSec
+          })
+          sub.rawCueText = matchedOld.rawCueText
+          sub.words = merged.words
+        }
+      }
+      added.push(...subs)
     }
 
     if (added.length) {
-      commitClips([...clips.value.filter((c) => !replacedIds.has(c.id)), ...added])
+      const synced = syncTimelineCueAnchors([
+        ...clips.value.filter((c) => !replacedIds.has(c.id)),
+        ...added
+      ])
+      commitClips(synced.clips)
       activeClipId.value = added[0]!.id
       scheduleSave()
       await promptAlert({
@@ -12542,6 +14491,7 @@ onMounted(async () => {
     redo
   })
   loadPersisted()
+  void refreshVisionTrackingModels()
   await reloadSources()
   const first = visibleClipsOn('video')[0]
   if (first) void showClipPreview(first)
@@ -12569,6 +14519,7 @@ watch([() => props.scriptAssetId, () => props.timelineNodeId], async ([next], [p
   clipWaveformUrls.value = {}
   audioPeaksCache.clear()
   loadPersisted()
+  void refreshVisionTrackingModels()
   await reloadSources()
   const first = clipAtPlayhead() ?? visibleClipsOn('video')[0]
   if (first) void showClipPreview(first)
@@ -16684,5 +18635,227 @@ defineExpose({ flushSave: persist, reloadSources })
   font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   flex-shrink: 0;
+}
+
+.sub-word-token {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 2px;
+  transition:
+    transform 0.08s cubic-bezier(0.34, 1.56, 0.64, 1),
+    background-color 0.08s ease,
+    color 0.08s ease;
+}
+
+.sub-word-token.is-passed {
+  opacity: 0.92;
+}
+
+.cue-tag-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0;
+}
+
+.cue-pill-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.cue-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.14);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.cue-tag-pill.clickable {
+  cursor: pointer;
+}
+
+.cue-tag-pill.clickable:hover,
+.cue-tag-pill.active {
+  background: rgba(56, 189, 248, 0.28);
+  border-color: #38bdf8;
+}
+
+.cue-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.widget-items-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.widget-item-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.widget-item-top,
+.widget-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.widget-item-label-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.widget-item-mini-select {
+  width: 62px;
+  font-size: 11px;
+  padding: 3px 4px;
+}
+
+.widget-item-bottom input {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  padding: 3px 5px;
+}
+
+.toolbar-vision-model-select {
+  max-width: 156px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.stage-tracking-hud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.stage-tracking-tether-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.stage-tracking-tether-line {
+  stroke: rgba(56, 189, 248, 0.85);
+  stroke-width: 0.45;
+  stroke-dasharray: 1.4 1.1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.65));
+}
+
+.stage-tracking-anchor-dot {
+  fill: #38bdf8;
+  stroke: #ffffff;
+  stroke-width: 0.35;
+}
+
+.stage-tracking-subject-box {
+  position: absolute;
+  border: 1.5px dashed rgba(56, 189, 248, 0.92);
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.45),
+    inset 0 0 14px rgba(56, 189, 248, 0.14);
+  transition:
+    left 80ms linear,
+    top 80ms linear,
+    width 80ms linear,
+    height 80ms linear;
+}
+
+.stage-tracking-badge {
+  position: absolute;
+  left: -1px;
+  top: -22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(56, 189, 248, 0.65);
+  color: #e0f2fe;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.stage-tracking-badge-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(148, 163, 184, 0.25);
+  color: #e0f2fe;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.stage-tracking-badge-close:hover {
+  background: rgba(239, 68, 68, 0.8);
+  color: #ffffff;
+}
+
+.stage-tracking-hud-toggle {
+  position: absolute;
+  top: 26px;
+  left: 6px;
+  z-index: 9;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.8);
+  font-size: 10px;
+  cursor: pointer;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+  transition: all 0.15s ease;
+}
+
+.stage-tracking-hud-toggle.active,
+.stage-tracking-hud-toggle:hover {
+  border-color: rgba(56, 189, 248, 0.75);
+  color: #38bdf8;
+  background: rgba(15, 23, 42, 0.88);
 }
 </style>

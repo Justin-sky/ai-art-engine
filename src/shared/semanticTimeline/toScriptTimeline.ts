@@ -3,6 +3,11 @@
  * 镜头直映射视频轨；话语 → 字幕；导演命令可写进 clip 元数据（title/note）。
  */
 import type { ScriptTimelineClip, ScriptTimelineDocument } from '../graph/scriptTimeline'
+import {
+  alignSubtitleWordsAndCues,
+  hasInlineCueMarkup,
+  syncTimelineCueAnchors
+} from '../graph/timelineWordCue'
 import type { ProductionCommand } from './compiler'
 import type { SemanticTimeline, ShotEvidence, UtteranceEvidence } from './types'
 
@@ -38,12 +43,26 @@ export function semanticToScriptTimeline(input: ToScriptTimelineInput): ScriptTi
 
   for (const utt of utterances) {
     const dur = Math.max(0.05, utt.range.end - utt.range.start)
+    const relWords = utt.words?.map((w) => ({
+      text: w.text,
+      startSec: Math.max(0, w.start - utt.range.start),
+      endSec: Math.max(0.01, Math.min(dur, w.end - utt.range.start)),
+      ...(typeof w.confidence === 'number' ? { confidence: w.confidence } : {})
+    }))
+    const aligned = alignSubtitleWordsAndCues({
+      text: utt.text,
+      durationSec: dur,
+      existingWords: relWords
+    })
+    const displayText = aligned.cleanText || utt.text
     clips.push({
       id: `clip.${utt.id}`,
       track: 'subtitle',
       sourceId,
-      title: utt.text.slice(0, 40),
-      text: utt.text,
+      title: displayText.slice(0, 40),
+      text: displayText,
+      ...(hasInlineCueMarkup(utt.text) ? { rawCueText: utt.text } : {}),
+      ...(aligned.words.length ? { words: aligned.words } : {}),
       startSec: utt.range.start,
       durationSec: dur
     })
@@ -69,8 +88,10 @@ export function semanticToScriptTimeline(input: ToScriptTimelineInput): ScriptTi
     })
   }
 
+  const synced = syncTimelineCueAnchors(clips)
+
   return {
-    clips,
+    clips: synced.clips,
     sources: [
       {
         id: sourceId,

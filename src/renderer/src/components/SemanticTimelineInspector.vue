@@ -278,11 +278,65 @@
         />
       </label>
 
+      <!-- 1-to-N 批量变体矩阵（Hypit Batch Variants） -->
+      <details class="advanced batch-variants-box">
+        <summary>
+          🔀 批量变体矩阵 (1-to-N Variants)
+          <span v-if="parsedBatchVariants.length" class="variant-badge">
+            {{ parsedBatchVariants.length }} 组变体
+          </span>
+        </summary>
+        <p class="field-hint">
+          一份语义脚本一键并发生成多组人设 / 音色 / 黄金前3秒钩子 /
+          视觉分镜变体（未改动的镜头自动复用缓存）。
+        </p>
+        <div class="variant-preset-bar">
+          <button
+            v-for="tpl in batchVariantTemplates"
+            :key="tpl.id"
+            type="button"
+            class="variant-preset-btn"
+            @click="applyBatchVariantTemplate(tpl.id)"
+          >
+            + {{ tpl.titleZh }}
+          </button>
+          <button
+            v-if="rebuildVariantsJson.trim()"
+            type="button"
+            class="variant-preset-btn danger"
+            @click="clearBatchVariants"
+          >
+            清空变体
+          </button>
+        </div>
+        <ExpandableTextarea
+          :key="`variants-${node.id}`"
+          v-model="rebuildVariantsJson"
+          title="批量变体矩阵 JSON (SemanticBatchVariantSpec[])"
+          :rows="5"
+          placeholder='[{"id":"v1","label":"幽默老哥版","instructionOverride":"夸张脱口秀语气","dubVoice":"male-humorous"}]'
+          @change="persistRebuild"
+        />
+      </details>
+
       <p class="field-hint">{{ t('graph.inspector.semantic.rebuildPromptPointer') }}</p>
 
       <!-- 成片预览 + 重建清单（节点没有文本输出口；清单来自 rebuildLastReport） -->
       <div class="rebuild-result">
         <span class="field-label">{{ t('graph.inspector.semantic.rebuildPreview') }}</span>
+        <div v-if="rebuildReport?.variants?.length" class="variant-output-tabs">
+          <button
+            v-for="v in rebuildReport.variants"
+            :key="v.id"
+            type="button"
+            class="variant-tab-btn"
+            :class="{ active: activePreviewRel === v.outputRelativePath }"
+            :disabled="!v.outputRelativePath"
+            @click="selectedVariantRel = v.outputRelativePath || ''"
+          >
+            {{ v.label || v.id }}
+          </button>
+        </div>
         <MediaPreviewPlayer v-if="rebuildPreviewUrl" kind="video" :src="rebuildPreviewUrl" />
         <span v-else class="field-hint">{{
           t('graph.inspector.semantic.rebuildPreviewEmpty')
@@ -303,6 +357,10 @@
           <div>
             <dt>{{ t('graph.inspector.semantic.rebuildReportDubs') }}</dt>
             <dd>{{ rebuildReport.dubs }}</dd>
+          </div>
+          <div v-if="rebuildReport.variants.length">
+            <dt>裂变变体数</dt>
+            <dd>{{ rebuildReport.variants.length }}</dd>
           </div>
         </dl>
         <details v-if="rebuildReportText" class="advanced">
@@ -362,8 +420,10 @@ import {
 } from '../features/graph/model/generateModelOptions'
 import type { ModelProviderInstance } from '@shared/modelProvider'
 import {
+  BUILTIN_BATCH_VARIANT_TEMPLATES,
   collectRulePacks,
   listVocabularies,
+  parseBatchVariantSpecs,
   type SemanticPack,
   type SemanticTimeline
 } from '@shared/semanticTimeline'
@@ -503,6 +563,22 @@ const dubModelKey = ref('')
 const imageModelOptions = ref<GenerateModelOption[]>([])
 const replaceImageModelKey = ref('')
 const dubVoice = ref('')
+const rebuildVariantsJson = ref('')
+const selectedVariantRel = ref('')
+const batchVariantTemplates = BUILTIN_BATCH_VARIANT_TEMPLATES
+const parsedBatchVariants = computed(() => parseBatchVariantSpecs(rebuildVariantsJson.value))
+
+function applyBatchVariantTemplate(templateId: string): void {
+  const tpl = BUILTIN_BATCH_VARIANT_TEMPLATES.find((t) => t.id === templateId)
+  if (!tpl) return
+  rebuildVariantsJson.value = JSON.stringify(tpl.specs, null, 2)
+  persistRebuild()
+}
+
+function clearBatchVariants(): void {
+  rebuildVariantsJson.value = ''
+  persistRebuild()
+}
 
 function loadConfig(current: NonNullable<typeof node.value>): void {
   loadedNodeId.value = current.id
@@ -593,6 +669,8 @@ function syncRebuildFromNode(): void {
     p?.replaceImageModel
   )
   dubVoice.value = String(p?.dubVoice ?? '')
+  rebuildVariantsJson.value = String(p?.rebuildVariantsJson ?? '')
+  selectedVariantRel.value = ''
 }
 
 /**
@@ -616,7 +694,8 @@ function persistRebuild(): void {
     dubProviderInstanceId: dub?.providerInstanceId ?? '',
     dubVoice: dubVoice.value.trim(),
     replaceImageModel: replaceImage?.model ?? '',
-    replaceImageProviderInstanceId: replaceImage?.providerInstanceId ?? ''
+    replaceImageProviderInstanceId: replaceImage?.providerInstanceId ?? '',
+    rebuildVariantsJson: rebuildVariantsJson.value.trim()
   })
 }
 
@@ -660,15 +739,17 @@ const rebuildOutputRel = computed(() => {
   return String(node.value.params?.rebuildLastOutput ?? '').trim()
 })
 
+const activePreviewRel = computed(() => selectedVariantRel.value || rebuildOutputRel.value)
+
 const rebuildPreviewUrl = ref('')
 watch(
-  rebuildOutputRel,
+  activePreviewRel,
   async (rel) => {
     rebuildPreviewUrl.value = ''
     if (!rel) return
     try {
       const url = (await window.studio.getAssetFileUrl(rel)) ?? ''
-      if (rel === rebuildOutputRel.value) rebuildPreviewUrl.value = url
+      if (rel === activePreviewRel.value) rebuildPreviewUrl.value = url
     } catch {
       rebuildPreviewUrl.value = ''
     }
@@ -680,7 +761,7 @@ const rebuildReportText = computed(() =>
   isRebuild.value ? String(node.value?.params?.rebuildLastReport ?? '').trim() : ''
 )
 
-/** 清单摘要：生成几镜 / 直通几镜 / 删几镜 / 配音几句 */
+/** 清单摘要：生成几镜 / 直通几镜 / 删几镜 / 配音几句 / 变体列表 */
 const rebuildReport = computed(() => {
   const text = rebuildReportText.value
   if (!text) return null
@@ -690,13 +771,20 @@ const rebuildReport = computed(() => {
       passthrough?: unknown[]
       removed?: unknown[]
       dubs?: unknown[]
+      variants?: Array<{
+        id: string
+        label: string
+        outputRelativePath: string | null
+        assetId: string | null
+      }>
     }
     const n = (v: unknown[] | undefined): number => (Array.isArray(v) ? v.length : 0)
     return {
       generate: n(r.generate),
       passthrough: n(r.passthrough),
       removed: n(r.removed),
-      dubs: n(r.dubs)
+      dubs: n(r.dubs),
+      variants: Array.isArray(r.variants) ? r.variants : []
     }
   } catch {
     return null
@@ -999,5 +1087,52 @@ input[type='checkbox'] {
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.variant-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.variant-preset-bar,
+.variant-output-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.variant-preset-btn,
+.variant-tab-btn {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.variant-preset-btn:hover,
+.variant-tab-btn:hover:not(:disabled) {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.variant-preset-btn.danger {
+  color: #f87171;
+}
+
+.variant-tab-btn.active {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
 }
 </style>

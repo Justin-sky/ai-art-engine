@@ -4102,7 +4102,7 @@ export default {
         comic: 'Comic',
         qc: 'QC & rework',
         ad: 'Ads',
-        videoSemantic: 'Video semantic'
+        videoSemantic: 'Video Breakdown & Remake'
       }
     },
     episodeAgent: {
@@ -5855,8 +5855,8 @@ export default {
         model: 'Model',
         spatialWorld: 'Spatial world',
         project: 'Project',
-        semanticTimeline: 'Semantic timeline',
-        videoPrompts: 'Video prompts',
+        semanticTimeline: 'Breakdown timeline',
+        videoPrompts: 'Remake prompt plan',
         storyboard: 'Storyboard',
         filmCast: 'Cast library'
       }
@@ -6049,9 +6049,9 @@ export default {
         reshoot: 'Segment reshoot'
       },
       semantic: {
-        analyze: 'Semantic analyze',
-        rebuild: 'Semantic rebuild',
-        compile: 'Semantic compile'
+        analyze: 'Video breakdown',
+        rebuild: 'Video remake',
+        compile: 'Remake plan'
       },
       script: {
         run: 'Script'
@@ -6203,7 +6203,7 @@ export default {
       noEntities: 'No entities',
       noTimelineHint: 'This node has no timeline yet',
       noTimelineHintSub:
-        'Connect a Semantic analyze node to its Timeline input and run it once — the shots, events and production tracks then show up here.',
+        'Connect a Video breakdown node to its Timeline input and run it once — the shots, events and production tracks then show up here.',
       timelineFileMissing: 'Timeline file not found',
       noResultHint: 'This node has no result yet',
       noResultHintSub:
@@ -6277,7 +6277,7 @@ export default {
       status_removed: 'Removed',
       status_passthrough: 'Passthrough',
       impactHint:
-        'Edits save right away. When you rerun Semantic compile and Semantic rebuild, only shots marked "Will regenerate" go to the model.',
+        'Edits save right away. When you rerun Remake plan and Video remake, only shots marked "Will regenerate" go to the model.',
       eventLabel: 'Label',
       eventType: 'Type',
       eventDescription: 'Description',
@@ -6320,7 +6320,7 @@ export default {
       replaceCandidates: 'Images you can reference (click to insert):',
       replaceInsert: 'Insert {token}',
       replaceNoCandidates:
-        'No images to reference yet: connect images to the Semantic analyze node’s Reference images port (and run the upstream node if it generates them).',
+        'No images to reference yet: connect images to the Video breakdown node’s Reference images port (and run the upstream node if it generates them).',
       replaceClear: 'Clear replacement',
       targetTitle: 'Target (click the one to replace in each shot)',
       targetPicked: 'Target set',
@@ -7029,9 +7029,9 @@ export default {
       },
       semantic: {
         analyzeHint:
-          'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Semantic Timeline JSON is emitted. Double-click to inspect the result.',
+          'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Breakdown Timeline JSON is emitted. Double-click to inspect the result.',
         compileHint:
-          'Compile the Semantic Timeline into a **per-shot video prompt plan**: compares against the analysis baseline to mark which shots pass through, which are regenerated and which lines are re-dubbed. Double-click the node to open the instruction panel: pick a text model, toggle "Write prompts with a model", choose rule packs and write compile requirements.',
+          'Turn the Breakdown Timeline into a **per-shot remake prompt plan**: compares against the breakdown baseline to mark which shots pass through, which are regenerated and which lines are re-dubbed. Double-click the node to open the instruction panel: pick a text model, toggle "Write prompts with a model", choose rule packs and write plan requirements.',
         vocabulary: 'Beat vocabulary',
         vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
         transcribe: 'Transcribe speech (utterances)',
@@ -7071,14 +7071,14 @@ export default {
           'When on, a text model first describes the picture (shot description / events / intents); the final prompt is still rule-assembled. Falls back to pure rules on failure.',
         promptsByRules: 'Rule-assembled',
         rulePacksAll: 'All rule packs',
-        compileHasInstruction: 'Has compile requirements',
-        compilePanelSummary: 'Compile settings',
+        compileHasInstruction: 'Has plan requirements',
+        compilePanelSummary: 'Plan settings',
         compileInPanelHint:
           'Double-click the node to change them in the instruction panel (text model / write with a model / rule packs / requirements)',
         compileEditPointer:
-          'To change shot content, lines, entities or a single shot prompt: double-click the upstream Semantic analyze node, edit in the Edit panel below the timeline, then rerun this node.',
+          'To change shot content, lines, entities or a single shot prompt: double-click the upstream Video breakdown node, edit in the Edit panel below the timeline, then rerun this node.',
         compileInstructionPlaceholder:
-          'Compile requirements (optional): appended to every shot prompt, e.g. "keep the original framing and look, realistic"',
+          'Plan requirements (optional): appended to every shot prompt, e.g. "keep the original framing and look, realistic"',
         rebuildMode: 'Generation granularity',
         rebuildModeShots: 'Per shot (one clip each, then concatenated)',
         rebuildModeFull: 'Single full pass (one long prompt)',
@@ -7087,7 +7087,7 @@ export default {
         rebuildModel: 'Video model',
         rebuildModelHint: 'Default: the video model configured in settings',
         rebuildHint:
-          'Rebuilds the video from the upstream Semantic compile plan: unchanged shots pass through from the original, changed shots are regenerated with a video model, edited lines are re-dubbed, then everything is concatenated locally with ffmpeg. No edits = the original video. Double-click the node to open the instruction panel and pick a video model.',
+          'Rebuilds the video from the upstream Remake plan: unchanged shots pass through from the original, changed shots are regenerated with a video model, edited lines are re-dubbed, then everything is concatenated locally with ffmpeg. No edits = the original video. Double-click the node to open the instruction panel and pick a video model.',
         rebuildInstructionPlaceholder:
           'Optional instruction for the whole video: appended to every regenerated shot prompt, e.g. "keep a realistic look, natural light"',
         rebuildModelInPanelHint:
@@ -7111,7 +7111,7 @@ export default {
         rebuildReportPassthrough: 'Passthrough',
         rebuildReportRemoved: 'Removed shots',
         rebuildReportDubs: 'Re-dubbed lines',
-        rebuildReportJson: 'Rebuild report (JSON)',
+        rebuildReportJson: 'Remake report (JSON)',
         rebuildExecuteHint:
           'Turn off to emit the plan only (no model calls at all), then enable after checking the list',
         rebuildMaxShots: 'Max shots',
@@ -7124,7 +7124,7 @@ export default {
         rebuildResolution: 'Resolution',
         rebuildAspectRatio: 'Aspect ratio',
         rebuildPromptPointer:
-          'Shot content, lines and single-shot prompts are edited in the Edit panel of the upstream Semantic analyze timeline (double-click the analyze node).',
+          'Shot content, lines and single-shot prompts are edited in the Edit panel of the upstream Video breakdown timeline (double-click the breakdown node).',
         timelineJson: 'Timeline JSON (no upstream)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:

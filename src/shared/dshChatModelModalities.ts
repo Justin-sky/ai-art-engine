@@ -2,9 +2,10 @@ import { modalityConfig, type ModelProviderInstance, type ModelProviderKind } fr
 
 export type DshChatInputModality = 'text' | 'image'
 
-/** dsh llm-deepseek 内置目录里声明了看图的官方模型 */
+/** dsh llm-deepseek 内置目录里声明了看图的官方模型（DeepSeek V4 及以上均支持多模态） */
 const DEEPSEEK_OFFICIAL_VISION_MODEL_IDS = new Set([
   'deepseek-flash',
+  'deepseek-v4-pro',
   'deepseek-v4-flash-vision-exp'
 ])
 
@@ -14,12 +15,17 @@ const DEEPSEEK_OFFICIAL_VISION_MODEL_IDS = new Set([
  * `deepseek/deepseek-v4-flash`（非 4.1）。
  */
 const KNOWN_VISION_MODEL_ID_RES: readonly RegExp[] = [
-  /(?:^|\/)deepseek-v4\.1-flash(?:$|:)/i,
+  /(?:^|\/)deepseek-v4\.1(?:-|$)/i,
+  /(?:^|\/)deepseek-v4-pro(?:$|:)/i,
+  /(?:^|\/)deepseek-v[5-9](?:-|$)/i,
   /(?:^|\/)deepseek-flash-latest(?:$|:)/i,
   /(?:^|\/)deepseek-v4-flash-vision(?:-exp)?(?:$|:)/i,
   /(?:^|\/)deepseek-flash(?:$|:)/i,
-  /(?:^|\/)mimo-v2\.6(?:-|$)/i,
-  /(?:^|\/)gpt-4o/i,
+  /(?:^|\/)mimo-v2\.[6-9](?:-|$)/i,
+  /(?:^|\/)kimi-k2\.[5-9](?:-|$)/i,
+  /(?:^|\/)qwen(?:3|2\.5)-vl/i,
+  /(?:^|\/)glm-(?:4\.[5-9]|5)/i,
+  /(?:^|\/)gpt-(?:4o|4\.1|5)/i,
   /(?:^|\/)claude-(?:3|4|opus|sonnet|haiku)/i,
   /(?:^|\/)gemini-/i
 ]

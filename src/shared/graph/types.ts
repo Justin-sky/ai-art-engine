@@ -416,6 +416,8 @@ export interface GraphNodeParams {
    * auto（默认，自动识别 2:1 equirect）/ always 强制 / never 当普通图片。
    */
   spatialWorldPanoMode?: 'auto' | 'always' | 'never'
+  /** 语义时间线重建：1-to-N 批量变体矩阵 JSON（SemanticBatchVariantSpec[]） */
+  rebuildVariantsJson?: string
   /**
    * 空间世界生成：关闭上游 recaption（用指令原文，不再由上游补写画面描述）。
    * 缺省 false：上游会自行 recaption，同一份输入两次结果可能不同。

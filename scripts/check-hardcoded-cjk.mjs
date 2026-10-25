@@ -94,6 +94,10 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/uiEngineExport.ts',
   'src/shared/graph/variantContactSheet.ts',
   'src/shared/graph/timelineCreativePack.ts',
+  'src/shared/graph/timelineProceduralSfx.ts',
+  'src/shared/graph/timelineWidgets.ts',
+  'src/shared/graph/timelineWordCue.ts',
+  'src/shared/semanticTimeline/batchVariants.ts',
   'src/renderer/src/features/graph/model/recipePosterExport.ts',
   'src/renderer/src/features/media/chatPreviewKind.ts'
 ])

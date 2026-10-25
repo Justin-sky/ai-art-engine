@@ -18,10 +18,14 @@ import {
   applyVideoTransitionBetweenClips,
   isTimelineEaseType,
   isTimelineMainCameraPreset,
+  isTimelineSubtitleKaraokeMode,
   isTimelineTweenInPreset,
   isTimelineTweenLoopPreset,
   isTimelineTweenOutPreset,
   normalizeTimelineKeyframes,
+  normalizeTimelineWidgetConfig,
+  syncTimelineCueAnchors,
+  hasInlineCueMarkup,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
   type ScriptTimelineSettings,
@@ -72,6 +76,10 @@ export type TimelineEditOperation =
       /** 一键套用剪映风格成片模板（自动为视频轨片段注入特效、滤镜、调色、运镜、转场及字幕预设） */
       op: 'applyTemplate'
       templateId: TimelineCreativeTemplateId | string
+    }
+  | {
+      /** 扫描字幕中的 @{tag} 内联语义锚点，自动将绑定了 anchorCueTag / cueTag 的画中画、动态组件与音效吸附对齐到对应单词发声时刻 */
+      op: 'syncCues'
     }
   | { op: 'remove'; clipIds: string[] }
 
@@ -215,6 +223,15 @@ const EDITABLE_PATCH_KEYS = new Set([
   'keyframes',
   'stickerId',
   'stickerColor',
+  'rawCueText',
+  'words',
+  'anchorCueTag',
+  'anchorOffsetSec',
+  'anchorMatchDuration',
+  'subtitleKaraokeMode',
+  'subtitleHighlightColor',
+  'subtitleHighlightBgColor',
+  'widgetConfig',
   'transitionInSec',
   'transitionOutSec',
   'transitionType'
@@ -260,7 +277,8 @@ const NUMERIC_PATCH_RULES: Record<string, { min: number; max?: number; strictMin
   tweenInDurationSec: { min: 0.05, max: 10 },
   tweenOutDurationSec: { min: 0.05, max: 10 },
   tweenLoopSpeedHz: { min: 0.2, max: 6 },
-  tweenLoopIntensity: { min: 0.1, max: 3 }
+  tweenLoopIntensity: { min: 0.1, max: 3 },
+  anchorOffsetSec: { min: -30, max: 30 }
 }
 
 function round4(value: number): number {
@@ -386,6 +404,23 @@ function sanitizeClipPatch(patch: TimelineClipPatch | undefined | null): {
     }
     if (key === 'keyframes') {
       if (Array.isArray(raw)) out[key] = normalizeTimelineKeyframes(raw)
+      continue
+    }
+    if (key === 'subtitleKaraokeMode') {
+      if (isTimelineSubtitleKaraokeMode(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'anchorMatchDuration') {
+      if (typeof raw === 'boolean') out[key] = raw
+      continue
+    }
+    if (key === 'widgetConfig') {
+      const cfg = normalizeTimelineWidgetConfig(raw)
+      if (cfg) out[key] = cfg
+      continue
+    }
+    if (key === 'words') {
+      if (Array.isArray(raw)) out[key] = raw
       continue
     }
     if (typeof raw === 'string') out[key] = raw
@@ -708,6 +743,13 @@ export function applyTimelineEdits(
       continue
     }
 
+    if (operation.op === 'syncCues') {
+      const synced = syncTimelineCueAnchors(clips)
+      clips.splice(0, clips.length, ...synced.clips)
+      updated += Math.max(1, synced.syncedClipCount + synced.syncedWidgetItemCount)
+      continue
+    }
+
     if (operation.op === 'remove') {
       for (const clipId of operation.clipIds ?? []) {
         const index = clips.findIndex((clip) => clip.id === clipId)
@@ -720,6 +762,19 @@ export function applyTimelineEdits(
         removed += 1
       }
     }
+  }
+
+  // 当时间线包含带内联锚点的字幕或绑定了 anchorCueTag / widgetConfig.cueTag 的片段时，自动同步一次
+  const shouldAutoSyncCues = clips.some(
+    (c) =>
+      (c.track === 'subtitle' &&
+        (hasInlineCueMarkup(c.rawCueText) || hasInlineCueMarkup(c.text))) ||
+      Boolean(c.anchorCueTag?.trim()) ||
+      Boolean(c.widgetConfig?.items?.some((it) => Boolean(it.cueTag?.trim())))
+  )
+  if (shouldAutoSyncCues) {
+    const synced = syncTimelineCueAnchors(clips)
+    clips.splice(0, clips.length, ...synced.clips)
   }
 
   return {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildOpenRouterTosFallbackModels,
   explainProviderTosDenial,
   extractChatCompletionText
 } from '../src/main/services/modelProviders/openaiCompat'
+import type { ModelProviderInstance } from '../src/shared/modelProvider'
 
 describe('extractChatCompletionText', () => {
   it('reads plain string content', () => {
@@ -77,5 +79,32 @@ describe('explainProviderTosDenial', () => {
     expect(
       explainProviderTosDenial('rate limit exceeded', 'https://openrouter.ai/api/v1')
     ).toBeNull()
+  })
+
+  it('builds non-OpenAI fallback models when OpenRouter rejects openai/* due to ToS / data policy', () => {
+    const provider = {
+      id: 'or-1',
+      providerKind: 'openrouter',
+      label: 'OpenRouter',
+      apiKey: 'sk-or-test',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      enabled: true,
+      modalities: {
+        text: {
+          selectedModelIds: [
+            'openai/gpt-4o',
+            'openai/o3-mini',
+            'deepseek/deepseek-v4',
+            'google/gemini-2.5-flash'
+          ],
+          defaultModelId: 'openai/gpt-4o'
+        }
+      }
+    } as unknown as ModelProviderInstance
+
+    const fallbacks = buildOpenRouterTosFallbackModels(provider, 'openai/gpt-4o', true)
+    expect(fallbacks.every((m) => !m.startsWith('openai/'))).toBe(true)
+    expect(fallbacks[0]).toBe('deepseek/deepseek-v4')
+    expect(fallbacks).toContain('google/gemini-2.5-flash')
   })
 })

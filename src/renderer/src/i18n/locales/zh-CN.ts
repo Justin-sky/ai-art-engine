@@ -3991,7 +3991,7 @@ export default {
         comic: '漫画',
         qc: '质检返工',
         ad: '广告',
-        videoSemantic: '视频语义'
+        videoSemantic: '视频拆解与重制'
       }
     },
     episodeAgent: {
@@ -5704,8 +5704,8 @@ export default {
         model: '模型',
         spatialWorld: '空间世界',
         project: '工程',
-        semanticTimeline: '语义时间线',
-        videoPrompts: '视频生成提示词',
+        semanticTimeline: '拆解时间线',
+        videoPrompts: '重制提示词方案',
         storyboard: '分镜文档',
         filmCast: '设定库'
       }
@@ -5894,9 +5894,9 @@ export default {
         reshoot: '片段重拍'
       },
       semantic: {
-        analyze: '语义分析',
-        rebuild: '语义重建',
-        compile: '语义编译'
+        analyze: '视频拆解',
+        rebuild: '视频重制',
+        compile: '重制规划'
       },
       script: {
         run: '脚本'
@@ -6045,7 +6045,7 @@ export default {
       noEntities: '暂无实体',
       noTimelineHint: '这个节点还没有时间线',
       noTimelineHintSub:
-        '把「语义分析」节点接到它的 Timeline 输入口并运行一次，拿到时间线后这里就能看到镜头、事件与制作轨道。',
+        '把「视频拆解」节点接到它的 Timeline 输入口并运行一次，拿到时间线后这里就能看到镜头、事件与制作轨道。',
       timelineFileMissing: '时间线文件不存在',
       noResultHint: '这个节点还没有运行结果',
       noResultHintSub: '先执行它（节点上的「执行当前节点」），再双击查看结果。',
@@ -6118,7 +6118,7 @@ export default {
       status_removed: '已删除',
       status_passthrough: '直通原片',
       impactHint:
-        '修改立即保存；重跑「语义编译」和「语义重建」时，只有标为「将重新生成」的镜头会交给模型。',
+        '修改立即保存；重跑「重制规划」和「视频重制」时，只有标为「将重新生成」的镜头会交给模型。',
       eventLabel: '标签',
       eventType: '类型',
       eventDescription: '描述',
@@ -6160,7 +6160,7 @@ export default {
       replaceCandidates: '可引用的图片（点一下插入）：',
       replaceInsert: '插入 {token}',
       replaceNoCandidates:
-        '还没有可引用的图片：给语义分析节点的「参考图」端口接上图片（上游是生成节点的话先运行它）。',
+        '还没有可引用的图片：给视频拆解节点的「参考图」端口接上图片（上游是生成节点的话先运行它）。',
       replaceClear: '清除替换',
       targetTitle: '替换目标（每镜点一下要换的那个）',
       targetPicked: '已选目标',
@@ -6834,9 +6834,9 @@ export default {
       },
       semantic: {
         analyzeHint:
-          '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出语义时间线 JSON。双击查看分析结果。',
+          '连接上游视频（或填源资产 id）后运行：切镜、抽关键帧、转写、人声分离、实体检测，结果写入工程 Semantic/ 目录并输出拆解时间线 JSON。双击查看拆解结果。',
         compileHint:
-          '把语义时间线编译成**逐镜视频生成提示词计划**：与分析基线比对，标出哪些镜头直通原片、哪些重新生成、哪些台词重新配音。双击节点打开指令面板，选文本模型、开「用模型写提示词」、选规则包、写编译要求。',
+          '把拆解时间线转化为**逐镜视频重制提示词方案**：与拆解基线比对，标出哪些镜头直通原片、哪些重新生成、哪些台词重新配音。双击节点打开指令面板，选文本模型、开「用模型写提示词」、选规则包、写规划要求。',
         vocabulary: '节拍词表',
         vocabularyHint: '决定节拍划分与标签；市场包可扩展更多词表',
         transcribe: '转写语音（话语证据）',
@@ -6875,14 +6875,14 @@ export default {
           '打开后先用文本模型把画面说清楚（镜头描述/事件/意图），再规则拼装成提示词；失败会自动退回纯规则',
         promptsByRules: '规则拼装',
         rulePacksAll: '全部规则包',
-        compileHasInstruction: '有编译要求',
-        compilePanelSummary: '编译设置',
+        compileHasInstruction: '有规划要求',
+        compilePanelSummary: '规划设置',
         compileInPanelHint:
-          '双击节点打开指令面板修改（文本模型 / 用模型写提示词 / 规则包 / 编译要求）',
+          '双击节点打开指令面板修改（文本模型 / 用模型写提示词 / 规则包 / 规划要求）',
         compileEditPointer:
-          '要改镜头内容、台词、实体或单镜提示词：双击上游「语义分析」节点，在时间线下方的「修改」面板里改，然后重跑本节点。',
+          '要改镜头内容、台词、实体或单镜提示词：双击上游「视频拆解」节点，在时间线下方的「修改」面板里改，然后重跑本节点。',
         compileInstructionPlaceholder:
-          '编译要求（可选）：追加到每一镜提示词末尾，如「保持原片构图与人物外观，写实质感」',
+          '规划要求（可选）：追加到每一镜提示词末尾，如「保持原片构图与人物外观，写实质感」',
         rebuildMode: '生成粒度',
         rebuildModeShots: '逐镜头（每镜一段，拼接成片）',
         rebuildModeFull: '整片一次（一条长提示词）',
@@ -6890,7 +6890,7 @@ export default {
         rebuildModel: '视频生成模型',
         rebuildModelHint: '默认跟随设置里的视频模型',
         rebuildHint:
-          '按上游「语义编译」的计划还原成片：没改过的镜头直通原片段，改过的镜头用视频模型重新生成，改过的台词重新配音，再用本地 ffmpeg 拼接。零修改即还原原片。双击节点打开指令面板选视频模型。',
+          '按上游「重制规划」的方案还原成片：没改过的镜头直通原片段，改过的镜头用视频模型重新生成，改过的台词重新配音，再用本地 ffmpeg 拼接。零修改即还原原片。双击节点打开指令面板选视频模型。',
         rebuildInstructionPlaceholder:
           '整片补充指令（可选）：追加到每个重新生成镜头的提示词末尾，如「保持写实风格、自然光」',
         rebuildModelInPanelHint: '双击节点打开指令面板选择视频模型与画面参数（分辨率 / 画幅）',
@@ -6912,7 +6912,7 @@ export default {
         rebuildReportPassthrough: '直通原片',
         rebuildReportRemoved: '删除镜头',
         rebuildReportDubs: '重新配音',
-        rebuildReportJson: '重建清单（JSON）',
+        rebuildReportJson: '重制清单（JSON）',
         rebuildExecuteHint: '关掉后只出计划（一次模型都不调），确认清单后再打开',
         rebuildMaxShots: '每镜上限',
         rebuildMaxShotsHint: '逐镜头模式最多生成几段（默认 12），防止误点烧掉几十次生成',
@@ -6923,7 +6923,7 @@ export default {
         rebuildResolution: '分辨率',
         rebuildAspectRatio: '画幅',
         rebuildPromptPointer:
-          '镜头内容、台词与单镜提示词在上游「语义分析」节点的时间线「修改」面板里改（双击分析节点）。',
+          '镜头内容、台词与单镜提示词在上游「视频拆解」节点的时间线「修改」面板里改（双击拆解节点）。',
         timelineJson: '时间线 JSON（无上游时）',
         timelineJsonPlaceholder: '粘贴 Semantic Timeline JSON',
         timelineJsonHint: '仅在未接上游文本口时作为输入；有上游时运行会覆盖读取上游',

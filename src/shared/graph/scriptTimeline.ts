@@ -10,9 +10,18 @@ import {
   type TimelineTweenOutPreset
 } from './timelineTween'
 import type { TimelineFilterPresetId, TimelineVisualEffectId } from './timelineCreativePack'
+import {
+  isTimelineSubtitleKaraokeMode,
+  type TimelineProceduralSfxId,
+  type TimelineSubtitleKaraokeMode,
+  type TimelineWordTiming
+} from './timelineWordCue'
+import type { TimelineWidgetConfig, TimelineWidgetStateSnapshot } from './timelineWidgets'
 
 export * from './timelineTween'
 export * from './timelineCreativePack'
+export * from './timelineWordCue'
+export * from './timelineWidgets'
 
 export type ScriptTimelineTrackKind = 'video' | 'overlay' | 'voice' | 'subtitle' | 'music' | 'sfx'
 
@@ -261,6 +270,30 @@ export type ScriptTimelineClip = {
   stickerId?: TimelineBuiltinStickerId | string
   /** 内置参数化贴纸主色覆盖（#RRGGBB） */
   stickerColor?: string
+  /** 字幕原始带内联语义标记的文本（如 `@{trophy}奖杯@{/trophy}`；展示文本 `text` 为清洗后文本） */
+  rawCueText?: string
+  /** 字幕词级时间戳序列（相对于本字幕片段起点 `0..durationSec`） */
+  words?: TimelineWordTiming[]
+  /** 绑定的台词内联语义锚点标签（如 `"trophy"`）：同步时自动吸附到该词的发声时刻 */
+  anchorCueTag?: string
+  /** 相对锚点起点的微调偏移秒数（默认 0） */
+  anchorOffsetSec?: number
+  /** 是否让片段时长自动匹配锚点词区间时长 */
+  anchorMatchDuration?: boolean
+  /** 字幕片段独立逐词卡拉 OK 动效模式覆盖 */
+  subtitleKaraokeMode?: TimelineSubtitleKaraokeMode
+  /** 字幕片段逐词高亮字色覆盖（#RRGGBB） */
+  subtitleHighlightColor?: string
+  /** 字幕片段逐词胶囊底框颜色覆盖（#RRGGBB） */
+  subtitleHighlightBgColor?: string
+  /** 画中画轨可编程动态信息图组件配置（TierBoard 梯度榜 / 排行榜 / PK 计分板 / 步骤揭示卡 / 数据弹窗） */
+  widgetConfig?: TimelineWidgetConfig
+  /** 渲染端预光栅化的动态组件各时间片 PNG 快照 */
+  widgetStateSnapshots?: TimelineWidgetStateSnapshot[]
+  /** 渲染端预光栅化的逐词圆角胶囊/发光字幕各词态 PNG 快照 */
+  subtitleStateSnapshots?: TimelineWidgetStateSnapshot[]
+  /** 内置零成本程序化合成卡点音效预设 ID（'pop' | 'whoosh' | 'ding' | 'boom'） */
+  sfxPresetId?: TimelineProceduralSfxId
   /** 入场淡入转场时长（秒，视频轨） */
   transitionInSec?: number
   /** 出场淡出转场时长（秒，视频轨） */
@@ -304,6 +337,14 @@ export type ScriptTimelineSettings = {
   subtitleBoxOpacity?: number
   /** 字幕入场动效（默认 'none'；支持 'fade' / true） */
   subtitleMotion?: boolean | 'none' | 'fade'
+  /** 爆款逐词卡拉 OK 字幕模式（'none' | 'karaoke-pill' | 'karaoke-pop' | 'karaoke-glow' | 'word-solo'） */
+  subtitleKaraokeMode?: TimelineSubtitleKaraokeMode
+  /** 逐词卡拉 OK 激活词高亮字色（#RRGGBB，默认 #ffffff） */
+  subtitleHighlightColor?: string
+  /** 逐词卡拉 OK 激活词胶囊底框颜色（#RRGGBB，默认 #ff2e4c） */
+  subtitleHighlightBgColor?: string
+  /** 多模态主体/人脸追踪动态字幕选用的模型 Key（空串 = 自动优选视觉大模型；'__local_yolo__' = 本地 YOLO） */
+  subtitleTrackingModelKey?: string
   /** 预览框比例：video/export/16:9/9:16/1:1/4:3/3:4 */
   previewFrameRatio?: string
   /** 时间线轨道高度（像素） */
@@ -420,6 +461,18 @@ export type TimelineExportClip = {
   stickerColor?: string
   /** 渲染进程预光栅化的 PNG dataURL（规避无 librsvg 的 FFmpeg 无法解码 .svg） */
   stickerPngDataUrl?: string
+  rawCueText?: string
+  words?: TimelineWordTiming[]
+  anchorCueTag?: string
+  anchorOffsetSec?: number
+  anchorMatchDuration?: boolean
+  subtitleKaraokeMode?: TimelineSubtitleKaraokeMode
+  subtitleHighlightColor?: string
+  subtitleHighlightBgColor?: string
+  widgetConfig?: TimelineWidgetConfig
+  widgetStateSnapshots?: TimelineWidgetStateSnapshot[]
+  subtitleStateSnapshots?: TimelineWidgetStateSnapshot[]
+  sfxPresetId?: TimelineProceduralSfxId
   transitionInSec?: number
   transitionOutSec?: number
   transitionType?: ScriptTimelineTransitionType
@@ -443,6 +496,9 @@ export type TimelineExportInput = {
   subtitleBoxColor?: string
   subtitleBoxOpacity?: number
   subtitleMotion?: boolean | 'none' | 'fade'
+  subtitleKaraokeMode?: TimelineSubtitleKaraokeMode
+  subtitleHighlightColor?: string
+  subtitleHighlightBgColor?: string
   /** 混音器：轨道级增益（0~2） */
   mixGains?: TimelineMixGains
   /** 混音器：主输出增益（0~2） */
@@ -1525,6 +1581,24 @@ function sanitizeSettings(raw: unknown): ScriptTimelineSettings | undefined {
   ) {
     next.subtitleMotion = row.subtitleMotion
   }
+  if (isTimelineSubtitleKaraokeMode(row.subtitleKaraokeMode)) {
+    next.subtitleKaraokeMode = row.subtitleKaraokeMode
+  }
+  if (
+    typeof row.subtitleHighlightColor === 'string' &&
+    /^#[0-9a-fA-F]{6}$/.test(row.subtitleHighlightColor.trim())
+  ) {
+    next.subtitleHighlightColor = row.subtitleHighlightColor.trim()
+  }
+  if (
+    typeof row.subtitleHighlightBgColor === 'string' &&
+    /^#[0-9a-fA-F]{6}$/.test(row.subtitleHighlightBgColor.trim())
+  ) {
+    next.subtitleHighlightBgColor = row.subtitleHighlightBgColor.trim()
+  }
+  if (typeof row.subtitleTrackingModelKey === 'string' && row.subtitleTrackingModelKey.trim()) {
+    next.subtitleTrackingModelKey = row.subtitleTrackingModelKey.trim()
+  }
   if (
     typeof row.previewFrameRatio === 'string' &&
     ['video', 'export', '16:9', '9:16', '1:1', '4:3', '3:4'].includes(row.previewFrameRatio.trim())
@@ -2056,7 +2130,13 @@ export function computeVoiceDuckingEnvelope(
 }
 
 export type SubtitleStylePresetId =
-  'cinemaGold' | 'shortDramaPop' | 'minimalWhite' | 'neonCyber' | 'docBox'
+  | 'cinemaGold'
+  | 'shortDramaPop'
+  | 'minimalWhite'
+  | 'neonCyber'
+  | 'docBox'
+  | 'tiktokPill'
+  | 'viralWordPop'
 
 export interface SubtitleStylePresetDef {
   id: SubtitleStylePresetId
@@ -2072,10 +2152,49 @@ export interface SubtitleStylePresetDef {
     | 'subtitleBoxColor'
     | 'subtitleBoxOpacity'
     | 'subtitleMotion'
+    | 'subtitleKaraokeMode'
+    | 'subtitleHighlightColor'
+    | 'subtitleHighlightBgColor'
   >
 }
 
 export const SUBTITLE_STYLE_PRESETS: readonly SubtitleStylePresetDef[] = [
+  {
+    id: 'tiktokPill',
+    labelKey: 'timeline.subtitlePreset.tiktokPill',
+    settings: {
+      subtitleFontSize: 48,
+      subtitleYOffset: 120,
+      subtitleColor: '#ffffff',
+      subtitleBorderColor: '#0f172a',
+      subtitleBorderWidth: 4,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#000000',
+      subtitleBoxOpacity: 0.5,
+      subtitleMotion: 'fade',
+      subtitleKaraokeMode: 'karaoke-pill',
+      subtitleHighlightColor: '#ffffff',
+      subtitleHighlightBgColor: '#ff2e4c'
+    }
+  },
+  {
+    id: 'viralWordPop',
+    labelKey: 'timeline.subtitlePreset.viralWordPop',
+    settings: {
+      subtitleFontSize: 52,
+      subtitleYOffset: 136,
+      subtitleColor: '#ffffff',
+      subtitleBorderColor: '#000000',
+      subtitleBorderWidth: 5,
+      subtitleBoxEnabled: false,
+      subtitleBoxColor: '#000000',
+      subtitleBoxOpacity: 0.5,
+      subtitleMotion: 'fade',
+      subtitleKaraokeMode: 'karaoke-pop',
+      subtitleHighlightColor: '#facc15',
+      subtitleHighlightBgColor: '#ef4444'
+    }
+  },
   {
     id: 'cinemaGold',
     labelKey: 'timeline.subtitlePreset.cinemaGold',

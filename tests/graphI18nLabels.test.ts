@@ -31,10 +31,10 @@ describe('graph processing menu labels', () => {
     expect(t('graph.inspector.generate.presets.titleImage')).toBe('图片生成模板')
     expect(t('graph.types.image.select')).toBe('选取图片')
     expect(t('graph.types.video.select')).toBe('选取视频')
-    expect(t('graph.types.semantic.analyze')).toBe('语义分析')
-    // 「视频语义」组内统一用「语义」前缀（typeId 仍是 semantic.compile / semantic.rebuild）
-    expect(t('graph.types.semantic.compile')).toBe('语义编译')
-    expect(t('graph.types.semantic.rebuild')).toBe('语义重建')
+    expect(t('graph.types.semantic.analyze')).toBe('视频拆解')
+    // 「视频拆解与重制」组内统一影视后期直白命名（typeId 仍是 semantic.*）
+    expect(t('graph.types.semantic.compile')).toBe('重制规划')
+    expect(t('graph.types.semantic.rebuild')).toBe('视频重制')
     expect(t('graph.types.voice.select')).toBe('选取声音')
     expect(t('graph.types.image.toPrompt')).toBe('图片反推提示词')
     expect(t('graph.types.prompt.optimize')).toBe('提示词优化')

@@ -76,9 +76,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'semantic.analyze',
     category: 'note',
-    label: 'Semantic analyze',
+    label: 'Video breakdown',
     icon: '🧭',
-    defaultTitle: 'Semantic analyze',
+    defaultTitle: 'Video breakdown',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -137,9 +137,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'semantic.compile',
     category: 'note',
-    label: 'Semantic compile',
+    label: 'Remake plan',
     icon: '🎬',
-    defaultTitle: 'Semantic compile',
+    defaultTitle: 'Remake plan',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     // 出口是**提示词计划**（结构化口）：接错类型在连线时就被拒，不必等运行期解析
@@ -169,9 +169,9 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'semantic.rebuild',
     category: 'note',
-    label: 'Semantic rebuild',
+    label: 'Video remake',
     icon: '🎞️',
-    defaultTitle: 'Semantic rebuild',
+    defaultTitle: 'Video remake',
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     /**
@@ -200,6 +200,8 @@ export const SEMANTIC_TIMELINE_NODE_TYPES: NodeTypeDefinition[] = [
       // 实体局部替换：首帧重绘用的图片模型（空 = 设置里的默认图片模型）
       replaceImageModel: '',
       replaceImageProviderInstanceId: '',
+      /** 1-to-N 批量变体矩阵配置（JSON 数组：SemanticBatchVariantSpec[]） */
+      rebuildVariantsJson: '',
       semanticExecute: true
     }),
     addable: true,

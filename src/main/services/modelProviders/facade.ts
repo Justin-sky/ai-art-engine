@@ -63,7 +63,8 @@ import {
   pickVisionGroundingProvider,
   resolveDefaultVoice,
   supportsModel3dRig,
-  supportsModel3dSegment
+  supportsModel3dSegment,
+  visionGroundingScore
 } from '@shared/modelProvider'
 import { describeDecisionVerdicts, resolveDecisionVerdicts } from '@shared/decisionQuestion'
 import {
@@ -481,12 +482,13 @@ class ModelProviderFacade {
 
   async generateText(input: GenerateTextInput): Promise<GenerateTextResult> {
     const { visionGrounding, ...rest } = input
-    const providers = visionGrounding ? settingsService.get().models.providers : []
+    const providers = settingsService.get()?.models?.providers ?? []
+    const isVisionTask = Boolean(visionGrounding || rest.images?.length)
     const wantedModel = rest.model?.trim() || ''
-    // 视觉定位任务且未指定模型：优先路由到定位能力最强的已启用视觉模型；
+    // 视觉定位/多模态任务且未指定实例：优先路由到定位能力最强的已启用视觉模型；
     // 只指定了模型 id（未指定实例）时，找真正勾选了该模型的实例，而不是第一个文本实例
     const grounding =
-      !visionGrounding || rest.providerInstanceId?.trim()
+      !isVisionTask || rest.providerInstanceId?.trim()
         ? null
         : wantedModel
           ? (() => {
@@ -502,27 +504,37 @@ class ModelProviderFacade {
     const images = rest.images?.length ? ensureApiImageUrls(rest.images) : rest.images
     const payload = { ...rest, images }
 
-    if (!visionGrounding) {
-      return getProviderAdapter(primary.provider.providerKind).generateText(
-        primary.provider,
-        primary.modelId,
-        payload
-      )
-    }
-
-    // 视觉定位任务：若首选模型/提供商因配额耗尽（429）、限流、下线（404）或网关异常失败，
-    // 自动按得分降序尝试其余已启用的多模态模型（如从 Google Gemini 回退到 OpenRouter 视觉模型）
-    const fallbackCandidates = listVisionGroundingCandidates(providers)
+    // 构建跨模型/跨提供商候选链：
+    // - 视觉定位/多模态任务：按 visionGroundingScore 降序遍历所有已启用视觉模型；
+    // - 常规文本任务：当首选模型因 OpenRouter ToS/隐私策略拒绝、配额耗尽或网关异常失败时，
+    //   自动回退到其余已启用的非 OpenAI / 国内文本模型（DeepSeek / 方舟 / 通义 / Gemini 等）
     const attemptChain: Array<{ provider: ModelProviderInstance; modelId: string }> = [primary]
     const seen = new Set<string>([`${primary.provider.id}::${primary.modelId}`])
-    for (const item of fallbackCandidates) {
-      const key = `${item.provider.id}::${item.modelId}`
-      if (seen.has(key)) continue
+    const pushCandidate = (provider: ModelProviderInstance, modelId: string): void => {
+      const cleanModel = modelId.trim()
+      if (!cleanModel) return
+      const key = `${provider.id}::${cleanModel}`
+      if (seen.has(key)) return
       seen.add(key)
-      attemptChain.push({ provider: item.provider, modelId: item.modelId })
+      attemptChain.push({ provider, modelId: cleanModel })
+    }
+
+    if (isVisionTask) {
+      for (const item of listVisionGroundingCandidates(providers)) {
+        pushCandidate(item.provider, item.modelId)
+      }
+    }
+    for (const provider of providers) {
+      if (!provider.enabled) continue
+      if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
+      for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
+        if (isVisionTask && visionGroundingScore(modelId) <= 0) continue
+        pushCandidate(provider, modelId)
+      }
     }
 
     const exhaustedGoogleProviderIds = new Set<string>()
+    let firstError: unknown
     let lastError: unknown
     for (let i = 0; i < attemptChain.length; i++) {
       const target = attemptChain[i]!
@@ -534,18 +546,29 @@ class ModelProviderFacade {
           payload
         )
       } catch (err) {
+        if (firstError === undefined) firstError = err
         lastError = err
         // Google 适配器内部已遍历全部可用 Gemini Flash 回退模型，若仍失败则跳过同一实例下的其余模型直接切下一家提供商
         if (target.provider.providerKind === 'google') {
           exhaustedGoogleProviderIds.add(target.provider.id)
         }
         const msg = err instanceof Error ? err.message : String(err ?? '')
-        if (/Request was aborted|AbortError/i.test(msg)) {
+        if (/Request was aborted|AbortError|请求被中断/i.test(msg)) {
+          throw err
+        }
+        // 非视觉任务仅在遇到上游 ToS/隐私策略拒绝、403/404/429/5xx 等路由故障时才跨实例降级
+        if (
+          !visionGrounding &&
+          i === 0 &&
+          !/Terms of Service|数据策略|隐私设置|拒绝了该请求|429|403|404|500|502|503|504|quota|rate limit|网关超时|内部错误/i.test(
+            msg
+          )
+        ) {
           throw err
         }
       }
     }
-    throw lastError
+    throw firstError ?? lastError
   }
 
   /**

@@ -6,6 +6,11 @@
  */
 import type { TranscribeAudioSegment } from '../modelProvider'
 import type { ScriptTimelineClip, ScriptTimelineTrackKind } from './scriptTimeline'
+import {
+  alignSubtitleWordsAndCues,
+  hasInlineCueMarkup,
+  parseInlineCueText
+} from './timelineWordCue'
 
 export type SubtitleClipIdFactory = (index: number) => string
 
@@ -56,15 +61,77 @@ export function buildSubtitleClipsFromTranscription(
     const duration = trimmedEnd - trimmedStart
     if (duration < MIN_DURATION) continue
 
-    clips.push({
-      id: makeId(index++),
-      track: 'subtitle' as ScriptTimelineTrackKind,
-      sourceId: `subtitle:transcribe:${Math.floor(start * 1000)}`,
-      title: text,
-      text,
-      startSec: trimmedStart,
-      durationSec: duration
-    })
+    const parsed = parseInlineCueText(text)
+    const chunks = parsed.phraseChunks.length > 1 ? parsed.phraseChunks : [text]
+    const totalCleanLen = Math.max(
+      1,
+      chunks.reduce((sum, ch) => sum + parseInlineCueText(ch).cleanText.length, 0)
+    )
+
+    // 将外部转写返回的源文件绝对词级时间戳转为当前片段内的相对秒数
+    const segRelWords = seg.words
+      ?.map((w) => {
+        const ws = Math.max(0, w.startSec - sourceOffset - relStart)
+        const we = Math.max(ws + 0.01, Math.min(duration, w.endSec - sourceOffset - relStart))
+        return {
+          text: w.text,
+          startSec: ws,
+          endSec: we,
+          ...(typeof w.confidence === 'number' ? { confidence: w.confidence } : {})
+        }
+      })
+      .filter((w) => w.text.trim().length > 0 && w.startSec < duration)
+
+    if (chunks.length === 1) {
+      const hasMarkup = hasInlineCueMarkup(text)
+      const aligned = alignSubtitleWordsAndCues({
+        text,
+        durationSec: duration,
+        existingWords: segRelWords
+      })
+      const display = aligned.cleanText || text
+      clips.push({
+        id: makeId(index++),
+        track: 'subtitle' as ScriptTimelineTrackKind,
+        sourceId: `subtitle:transcribe:${Math.floor(trimmedStart * 1000)}`,
+        title: display,
+        text: display,
+        ...(hasMarkup ? { rawCueText: text } : {}),
+        ...(aligned.words.length ? { words: aligned.words } : {}),
+        startSec: trimmedStart,
+        durationSec: duration
+      })
+    } else {
+      // 含 `||` 短句切分符：按各短句字数占比切分时间窗，并保留各自内部 @{tag} 语义锚点
+      let cursor = trimmedStart
+      for (let ci = 0; ci < chunks.length; ci++) {
+        const chunkRaw = chunks[ci]!
+        const chunkParsed = parseInlineCueText(chunkRaw)
+        if (!chunkParsed.cleanText) continue
+        const ratio = chunkParsed.cleanText.length / totalCleanLen
+        const chunkDur =
+          ci === chunks.length - 1
+            ? Math.max(MIN_DURATION, trimmedEnd - cursor)
+            : Math.max(MIN_DURATION, Math.round(duration * ratio * 1000) / 1000)
+        const aligned = alignSubtitleWordsAndCues({
+          text: chunkRaw,
+          durationSec: chunkDur
+        })
+        const display = aligned.cleanText || chunkRaw
+        clips.push({
+          id: makeId(index++),
+          track: 'subtitle' as ScriptTimelineTrackKind,
+          sourceId: `subtitle:transcribe:${Math.floor(cursor * 1000)}`,
+          title: display,
+          text: display,
+          ...(hasInlineCueMarkup(chunkRaw) ? { rawCueText: chunkRaw } : {}),
+          ...(aligned.words.length ? { words: aligned.words } : {}),
+          startSec: Math.round(cursor * 1000) / 1000,
+          durationSec: Math.round(chunkDur * 1000) / 1000
+        })
+        cursor += chunkDur
+      }
+    }
   }
   return clips
 }

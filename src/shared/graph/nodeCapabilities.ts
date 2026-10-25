@@ -295,10 +295,10 @@ export const WORLD_SPATIAL_USAGE_EN =
   'Usage: spatial world modeling and free-camera rendering use a 4-node pipeline: (1) `world.graph` (`in`:text scene description + `in-image`:image concept ref → `out`:worldGraph spatial entity graph, `out-scene-prompt`:text, `out-cam-json`:text camera presets); (2) `world.panoramic` (`in`:text + `in-world`:worldGraph → `out-pano`:image 360° equirectangular panorama + `out-depth`:image depth map); (3) `world.extract` (`in-pano`:image + `in-depth`:image + `in-world`:worldGraph or `in-images`:image → `out-splat`:model3d 3DGS `.splat`/`.ply`, `out-mesh`:model3d `.glb`, `out-Collider`:model3d collision mesh); (4) `world.splatView` (`in-splat`:model3d or `in-mesh`:model3d + `in-cam`:text camera path → `out`:image view render, `out-frames`:images sequence, `out-video`:video camera walkthrough with 100% spatial consistency).'
 
 export const SEMANTIC_TIMELINE_USAGE_ZH =
-  '用法：视频语义级解构、要素替换（如电商换品/短剧换人换景）与镜头重建由 3 个节点组成：① `semantic.analyze`（视频语义解析：`in`:video 原片 + 可选 `in-text`:text 台词/提示 → `out-timeline`:semanticTimeline 结构化语义时间轴、`out-text`:text JSON 摘要；params：`semanticGranularity: "coarse"|"medium"|"fine"`，内部自动完成切镜、关键帧抽样、镜头语言描述、带证据链的事件抽取与导演意图反推）；② `semantic.compile`（语义编辑编译：`in-timeline`:semanticTimeline + `in-images`:image 新主体/新商品参考图（可多连，指令中可用 `@图片1`、`@角色A` 引用）+ `in-text`:text 自然语言改片指令 → `out-plan`:editPlan 镜头级重建计划、`out-timeline`、`out-prompt`、`out-refs`:images；params：`semanticOperation: "replace_entity"|"restyle"|"repace"|"highlight"|"custom"`、`semanticTargetId`、`semanticRulePackIds`）；③ `semantic.rebuild`（语义视频重建：`in-video`:video 原片 + `in-timeline` + `in-plan`:editPlan + `in-images`:image + 可选 `in-voice`:voiceId 配音音色 → `out`:video 重建成片、`out-shots`:videos 分镜视频组、`out-keyframes`:images 重建关键帧；未改动镜头自动无损复用原片切片，仅重拍受影响镜头并可自动合成新配音 `semanticAutoTts: true`）。'
+  '用法：视频拉片拆解、要素替换（如电商换品/短剧换人换景）与视频重制由 3 个节点组成：① `semantic.analyze`（视频拆解：`in`:video 原片 + 可选 `in-text`:text 台词/提示 → `out-timeline`:semanticTimeline 结构化拆解时间线、`out-text`:text JSON 摘要；params：`semanticGranularity: "coarse"|"medium"|"fine"`，内部自动完成切镜、关键帧抽样、镜头语言描述、带证据链的事件抽取与导演意图反推）；② `semantic.compile`（重制规划：`in-timeline`:semanticTimeline + `in-images`:image 新主体/新商品参考图（可多连，指令中可用 `@图片1`、`@角色A` 引用）+ `in-text`:text 自然语言改片指令 → `out-plan`:editPlan 镜头级重制提示词方案、`out-timeline`、`out-prompt`、`out-refs`:images；params：`semanticOperation: "replace_entity"|"restyle"|"repace"|"highlight"|"custom"`、`semanticTargetId`、`semanticRulePackIds`）；③ `semantic.rebuild`（视频重制：`in-video`:video 原片 + `in-timeline` + `in-plan`:editPlan + `in-images`:image + 可选 `in-voice`:voiceId 配音音色 → `out`:video 重制成片、`out-shots`:videos 分镜视频组、`out-keyframes`:images 重制关键帧；未改动镜头自动无损复用原片切片，仅重拍受影响镜头并可自动合成新配音 `semanticAutoTts: true`）。'
 
 export const SEMANTIC_TIMELINE_USAGE_EN =
-  'Usage: semantic video deconstruction, entity replacement (e.g. e-commerce product swap or character/scene replacement), and shot-level video rebuild use a 3-node pipeline: (1) `semantic.analyze` (`in`:video source + optional `in-text`:text → `out-timeline`:semanticTimeline structured timeline, `out-text`:text JSON; params `semanticGranularity: "coarse"|"medium"|"fine"`, automatically running shot detection, shot description, evidence-backed event extraction, and director intent inference); (2) `semantic.compile` (`in-timeline`:semanticTimeline + `in-images`:image multi-connect replacement assets referenced via `@Image1`/`@Entity` + `in-text`:text edit instruction → `out-plan`:editPlan, `out-timeline`, `out-prompt`, `out-refs`:images; params `semanticOperation: "replace_entity"|"restyle"|"repace"|"highlight"|"custom"`, `semanticTargetId`, `semanticRulePackIds`); (3) `semantic.rebuild` (`in-video`:video + `in-timeline` + `in-plan`:editPlan + `in-images`:image + optional `in-voice`:voiceId → `out`:video rebuilt full video, `out-shots`:videos per-shot clips, `out-keyframes`:images; untouched shots reuse original video slices while modified shots are regenerated with optional TTS dubbing `semanticAutoTts: true`).'
+  'Usage: video breakdown, entity replacement (e.g. e-commerce product swap or character/scene replacement), and shot-level video remake use a 3-node pipeline: (1) `semantic.analyze` (Video breakdown: `in`:video source + optional `in-text`:text → `out-timeline`:semanticTimeline structured breakdown timeline, `out-text`:text JSON; params `semanticGranularity: "coarse"|"medium"|"fine"`, automatically running shot detection, shot description, evidence-backed event extraction, and director intent inference); (2) `semantic.compile` (Remake plan: `in-timeline`:semanticTimeline + `in-images`:image multi-connect replacement assets referenced via `@Image1`/`@Entity` + `in-text`:text edit instruction → `out-plan`:editPlan, `out-timeline`, `out-prompt`, `out-refs`:images; params `semanticOperation: "replace_entity"|"restyle"|"repace"|"highlight"|"custom"`, `semanticTargetId`, `semanticRulePackIds`); (3) `semantic.rebuild` (Video remake: `in-video`:video + `in-timeline` + `in-plan`:editPlan + `in-images`:image + optional `in-voice`:voiceId → `out`:video remade full video, `out-shots`:videos per-shot clips, `out-keyframes`:images; untouched shots reuse original video slices while modified shots are regenerated with optional TTS dubbing `semanticAutoTts: true`).'
 
 function fromEpisodePack(
   id: string,
@@ -787,24 +787,24 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
   {
     id: 'semantic.analyze',
     kind: 'node',
-    titleZh: '视频语义解析',
-    titleEn: 'Semantic analyze',
+    titleZh: '视频拆解',
+    titleEn: 'Video breakdown',
     usageZh: SEMANTIC_TIMELINE_USAGE_ZH,
     usageEn: SEMANTIC_TIMELINE_USAGE_EN
   },
   {
     id: 'semantic.compile',
     kind: 'node',
-    titleZh: '语义编辑编译',
-    titleEn: 'Semantic compile',
+    titleZh: '重制规划',
+    titleEn: 'Remake plan',
     usageZh: SEMANTIC_TIMELINE_USAGE_ZH,
     usageEn: SEMANTIC_TIMELINE_USAGE_EN
   },
   {
     id: 'semantic.rebuild',
     kind: 'node',
-    titleZh: '语义视频重建',
-    titleEn: 'Semantic rebuild',
+    titleZh: '视频重制',
+    titleEn: 'Video remake',
     usageZh: SEMANTIC_TIMELINE_USAGE_ZH,
     usageEn: SEMANTIC_TIMELINE_USAGE_EN
   }

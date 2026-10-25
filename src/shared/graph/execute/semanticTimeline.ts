@@ -23,13 +23,16 @@ import {
 } from '../../semanticTimeline'
 import {
   applyPromptOverrides,
+  applyVariantToPromptPlan,
   buildPromptPlan,
   combinePlanFullPrompt,
+  parseBatchVariantSpecs,
   parsePromptPlan,
   planRebuildClips,
   summarizePromptPlan,
   VIDEO_PROMPT_PLAN_SCHEMA,
   type RebuildMode,
+  type SemanticBatchVariantRunItem,
   type VideoPromptPlan
 } from '../../semanticTimeline'
 import {
@@ -530,8 +533,8 @@ export async function executeSemanticAnalyzeNode(
   if (ctx.analyzeSemanticVideo && (assetId || relativePath)) {
     say(
       ctx,
-      '语义分析：切镜 / 关键帧 / 转写 / 人声 / 实体…', // cjk-ok
-      'Semantic analyze: shots / keyframes / transcript / stems / entities…'
+      '视频拆解：切镜 / 关键帧 / 转写 / 人声 / 实体…', // cjk-ok
+      'Video breakdown: shots / keyframes / transcript / stems / entities…'
     )
     const res = await ctx.analyzeSemanticVideo({
       sourceAssetId: assetId,
@@ -885,14 +888,14 @@ export async function executeSemanticCompileNode(
   const summary = summarizePromptPlan(plan)
   say(
     ctx,
-    `语义编译：${summary.shots} 镜提示词（${summary.withFirstFrame} 镜带首帧${modelAuthored ? ' · 模型参与' : ''}）`, // cjk-ok
-    `Semantic compile: ${summary.shots} shot prompts (${summary.withFirstFrame} with first frame${modelAuthored ? ' · model-authored' : ''})`
+    `重制规划：${summary.shots} 镜提示词（${summary.withFirstFrame} 镜带首帧${modelAuthored ? ' · 模型参与' : ''}）`, // cjk-ok
+    `Remake plan: ${summary.shots} shot prompts (${summary.withFirstFrame} with first frame${modelAuthored ? ' · model-authored' : ''})`
   )
   if (summary.shots === 0) {
     say(
       ctx,
-      '没有镜头证据，提示词计划为空 —— 先运行上游「语义分析」', // cjk-ok
-      'No shot evidence: the prompt plan is empty — run the upstream analyze node first',
+      '没有镜头证据，提示词计划为空 —— 先运行上游「视频拆解」', // cjk-ok
+      'No shot evidence: the prompt plan is empty — run the upstream Video breakdown node first',
       'warn'
     )
   }
@@ -1152,8 +1155,8 @@ export async function executeSemanticRebuildNode(
   if (!plan) {
     say(
       ctx,
-      '没有收到提示词计划 —— 上游请接「语义编译」', // cjk-ok
-      'No prompt plan on the input — connect the Semantic compile node upstream',
+      '没有收到提示词计划 —— 上游请接「重制规划」', // cjk-ok
+      'No prompt plan on the input — connect the Remake plan node upstream',
       'warn'
     )
     return {}
@@ -1165,8 +1168,8 @@ export async function executeSemanticRebuildNode(
   if (plan.shots.length === 0 && !plan.fullPrompt?.trim()) {
     say(
       ctx,
-      '上游提示词计划是空的（编译时没有镜头证据）—— 先运行上游「语义编译」；时间线没有镜头时先在分析节点里重新分析', // cjk-ok
-      'The upstream prompt plan is empty (compile saw no shots) — run the upstream Semantic compile node first',
+      '上游提示词计划是空的（编译时没有镜头证据）—— 先运行上游「重制规划」；时间线没有镜头时先在拆解节点里重新拆解', // cjk-ok
+      'The upstream prompt plan is empty (plan saw no shots) — run the upstream Remake plan node first',
       'warn'
     )
   }
@@ -1191,8 +1194,8 @@ export async function executeSemanticRebuildNode(
   const modelLabel = String(p.generateModel || '').trim()
   say(
     ctx,
-    `语义重建：${mode === 'full' ? '整片一次' : `生成 ${planned.clips.length} 镜 · 直通原片 ${planned.passthrough} 镜 · 配音 ${dubs.length} 句`} · 模型 ${modelLabel || '默认'}`, // cjk-ok
-    `Semantic rebuild: ${mode === 'full' ? 'single full pass' : `${planned.clips.length} generated · ${planned.passthrough} passthrough · ${dubs.length} re-dubbed`}`
+    `视频重制：${mode === 'full' ? '整片一次' : `生成 ${planned.clips.length} 镜 · 直通原片 ${planned.passthrough} 镜 · 配音 ${dubs.length} 句`} · 模型 ${modelLabel || '默认'}`, // cjk-ok
+    `Video remake: ${mode === 'full' ? 'single full pass' : `${planned.clips.length} generated · ${planned.passthrough} passthrough · ${dubs.length} re-dubbed`}`
   )
   for (const note of notes) say(ctx, note, note, 'warn')
   const loggedNotes = notes.length
@@ -1542,6 +1545,155 @@ export async function executeSemanticRebuildNode(
     `重建完成：${rebuilt.outputRelativePath}（${rebuilt.clipCount} 段生成${rebuilt.passthroughCount ? ` · ${rebuilt.passthroughCount} 段原片` : ''}${rebuilt.dubCount ? ` · 配音 ${rebuilt.dubCount} 句` : ''}${rebuilt.keptAudio ? ' · 保留原音轨' : ''}${rebuilt.burnedSubtitles ? ` · 字幕 ${rebuilt.burnedSubtitles} 条` : ''}）`, // cjk-ok
     `Rebuilt ${rebuilt.outputRelativePath} (${rebuilt.clipCount} generated, ${rebuilt.passthroughCount ?? 0} passthrough${rebuilt.keptAudio ? ' + original audio' : ''})`
   )
+
+  // ── 1-to-N 批量变体矩阵执行（若配置了 rebuildVariantsJson） ─────────────────────
+  const variantSpecs = parseBatchVariantSpecs(p.rebuildVariantsJson)
+  const variantResults: SemanticBatchVariantRunItem[] = []
+  if (variantSpecs.length > 0) {
+    say(
+      ctx,
+      `开始执行批量变体矩阵：共 ${variantSpecs.length} 组变体`, // cjk-ok
+      `Running batch variant matrix: ${variantSpecs.length} variant(s)`
+    )
+    for (const [vIdx, vSpec] of variantSpecs.entries()) {
+      if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      const vPlan = applyVariantToPromptPlan(plan, vSpec)
+      const vPlanned = planRebuildClips(vPlan, { mode, maxShots, regenerateAll })
+      const vDubs = dubEnabled ? vPlanned.dubs : []
+      const vGenerated = new Map<string, string>()
+
+      for (const clip of vPlanned.clips) {
+        if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+        // 若该镜提示词与主版本完全一致且已生成过，直接复用主版本片段，避免重复烧钱
+        const baseClip = planned.clips.find((bc) => bc.key === clip.key)
+        if (
+          baseClip &&
+          baseClip.prompt === clip.prompt &&
+          !vSpec.entityReferenceOverrides &&
+          generated.has(clip.key)
+        ) {
+          vGenerated.set(clip.key, generated.get(clip.key)!)
+          continue
+        }
+        const vPrompt = withInstruction(clip.prompt, instruction, vPlan.lang)
+        const vDuration = fixedDuration || pickGenerateDuration(clip.durationSec, caps?.durations)
+        try {
+          const res = await generateClipVideo(
+            ctx,
+            {
+              prompt: vPrompt,
+              model,
+              providerInstanceId,
+              ...(clamped.resolution ? { resolution: clamped.resolution } : {}),
+              ...(clamped.aspectRatio ? { aspectRatio: clamped.aspectRatio } : {}),
+              ...(typeof clamped.seed === 'number' ? { seed: clamped.seed } : {}),
+              generateAudio: false,
+              name: `rebuild-${vSpec.id}-${clip.key}`,
+              graphBinding: { nodeId: ctx.node.id }
+            },
+            vDuration
+          )
+          vGenerated.set(clip.key, res.relativePath)
+        } catch (e) {
+          say(
+            ctx,
+            `变体 ${vSpec.id} 镜头 ${clip.key} 生成失败：${errorText(e)}`, // cjk-ok
+            `Variant ${vSpec.id} clip ${clip.key} failed: ${errorText(e)}`,
+            'warn'
+          )
+        }
+      }
+
+      const vSegments: import('../../semanticTimeline').SemanticRebuildSegment[] = []
+      for (const seg of vPlanned.segments) {
+        if (seg.kind === 'generate') {
+          const rel = vGenerated.get(seg.key) ?? generated.get(seg.key)
+          if (rel) {
+            vSegments.push({ ...seg, relativePath: rel })
+            continue
+          }
+          if (seg.sourceStartSec != null && seg.sourceEndSec != null) {
+            vSegments.push({ ...seg, kind: 'source' })
+          }
+          continue
+        }
+        vSegments.push(seg)
+      }
+      if (vSegments.length === 0) continue
+
+      const vDubbed: import('../../semanticTimeline').SemanticRebuildDub[] = []
+      if (vDubs.length > 0 && ctx.generateSpeech) {
+        const clone = p.rebuildDubClone !== false
+        for (const line of vDubs) {
+          if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+          const voice = line.voice || vSpec.dubVoice || String(p.dubVoice || '').trim() || undefined
+          try {
+            const res = await ctx.generateSpeech({
+              input: line.text,
+              model: String(p.dubModel || '').trim() || undefined,
+              providerInstanceId: String(p.dubProviderInstanceId || '').trim() || undefined,
+              ...(voice ? { voice } : {}),
+              ...(!voice && clone && line.referenceAudio
+                ? { referenceAudio: line.referenceAudio }
+                : {}),
+              name: `dub-${vSpec.id}-${line.id}`
+            })
+            if (res.relativePath) {
+              vDubbed.push({
+                id: line.id,
+                relativePath: res.relativePath,
+                sourceStartSec: line.sourceStartSec,
+                sourceEndSec: line.sourceEndSec
+              })
+            }
+          } catch {
+            /* 保留原声 */
+          }
+        }
+      }
+
+      const vRebuilt = await ctx.rebuildSemanticVideo({
+        timelineId: `${plan.timelineId}-${vSpec.id}`,
+        clips: vSegments
+          .filter((s) => s.kind === 'generate' && s.relativePath)
+          .map((s) => ({ key: s.key, relativePath: s.relativePath! })),
+        segments: vSegments,
+        ...(vDubbed.length ? { dubs: vDubbed } : {}),
+        ...(vPlan.subtitles?.length
+          ? {
+              subtitles: vPlan.subtitles.map((s) => ({
+                sourceStartSec: s.sourceStartSec,
+                sourceEndSec: s.sourceEndSec,
+                text: s.text
+              }))
+            }
+          : {}),
+        keepAudio: p.rebuildKeepAudio !== false,
+        sourceRelativePath: vPlan.sourceRelativePath,
+        burnSubtitles: p.rebuildBurnSubtitles !== false,
+        ...(vPlan.settings.width ? { width: vPlan.settings.width } : {}),
+        ...(vPlan.settings.height ? { height: vPlan.settings.height } : {}),
+        ...(vPlan.settings.fps ? { fps: vPlan.settings.fps } : {})
+      })
+
+      if (vRebuilt.ok && vRebuilt.outputRelativePath) {
+        variantResults.push({
+          id: vSpec.id,
+          title: vSpec.title || vSpec.id,
+          outputRelativePath: vRebuilt.outputRelativePath,
+          generatedShots: vGenerated.size,
+          passthroughShots: vRebuilt.passthroughCount ?? 0,
+          dubbedLines: vDubbed.length
+        })
+        say(
+          ctx,
+          `变体 [${vIdx + 1}/${variantSpecs.length}] ${vSpec.title || vSpec.id} 完成：${vRebuilt.outputRelativePath}`, // cjk-ok
+          `Variant [${vIdx + 1}/${variantSpecs.length}] ${vSpec.title || vSpec.id} done: ${vRebuilt.outputRelativePath}`
+        )
+      }
+    }
+  }
+
   writeRebuildReport(
     ctx,
     {
@@ -1551,7 +1703,8 @@ export async function executeSemanticRebuildNode(
       failures,
       replacements: replaceReport,
       dubbed: dubbed.map((d) => d.id),
-      rebuild: rebuilt
+      rebuild: rebuilt,
+      ...(variantResults.length ? { variants: variantResults } : {})
     },
     rebuilt.outputRelativePath
   )

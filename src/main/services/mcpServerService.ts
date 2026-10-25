@@ -1028,7 +1028,8 @@ const TOOL_DEFS: McpToolDef[] = [
         relativePath,
         language: optionalString(args, 'language'),
         prompt: optionalString(args, 'prompt'),
-        model: optionalString(args, 'model')
+        model: optionalString(args, 'model'),
+        wordTimestamps: args.wordTimestamps !== false
       })
       return {
         relativePath,
@@ -1238,7 +1239,7 @@ const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'semantic_analyze_video',
-    title: '语义分析视频',
+    title: '视频拆解',
     description:
       '对视频资产跑 Semantic Timeline 切镜分析（媒体事实 + 场景切镜 + 关键帧），写入工程 Semantic/<id>/。返回 timelineId 与镜头列表。完整事件/转写需后续步骤。',
     inputSchema: {
@@ -1535,8 +1536,17 @@ const TOOL_DEFS: McpToolDef[] = [
             properties: {
               op: {
                 type: 'string',
-                enum: ['add', 'update', 'batchUpdate', 'applyTemplate', 'remove', 'subtitles'],
-                description: '指令类型'
+                enum: [
+                  'add',
+                  'update',
+                  'batchUpdate',
+                  'applyTemplate',
+                  'remove',
+                  'subtitles',
+                  'syncCues'
+                ],
+                description:
+                  '指令类型（syncCues：按字幕中的 @{tag}keyword@{/tag} 词级锚点自动对齐所有带 anchorCueTag 的画中画/音效/动态组件）'
               },
               clips: {
                 type: 'array',
@@ -1570,7 +1580,8 @@ const TOOL_DEFS: McpToolDef[] = [
                   '【12项色彩调节】brightness（-0.5~0.5）、contrast（0.5~2）、saturation（0~3）、vibrance（-100~100）、temperature（-100~100）、tint（-100~100）、highlights（-100~100）、shadows（-100~100）、sharpen（0~100）、vignette（0~100）、fade（0~100）、grain（0~100）；' +
                   '【运镜与动效】cameraMotion（none / ken-burns-in / ken-burns-out / pan-left / pan-right / pan-up / pan-down / drift-up-right / handheld-subtle）、tweenIn、tweenInDurationSec、tweenInEase、tweenOut、tweenOutDurationSec、tweenOutEase、tweenLoop、tweenLoopSpeedHz、tweenLoopIntensity、keyframes；' +
                   '【裁剪与几何】cropX（0~0.95）、cropY（0~0.95）、cropWidth（0.05~1）、cropHeight（0.05~1）、overlayX、overlayY、overlayWidth、overlayHeight、overlayRotation、opacity；' +
-                  '【时间与音频字幕】startSec、durationSec、sourceOffsetSec、speed（0.25~4）、freezeTailSec（0~30）、volume（0~1）、fadeInSec、fadeOutSec、text、title、textColor、fontSize、stickerId、stickerColor。'
+                  '【时间与音频字幕】startSec、durationSec、sourceOffsetSec、speed（0.25~4）、freezeTailSec（0~30）、volume（0~1）、fadeInSec、fadeOutSec、text、rawCueText（支持 @{tag}关键词@{/tag} 与 || 分句）、words、title、textColor、fontSize、stickerId、stickerColor、subtitleKaraokeMode（none / karaoke-pill / karaoke-pop / karaoke-glow / word-solo）、subtitleHighlightColor、subtitleHighlightBgColor；' +
+                  '【语义词锚点与可编程动态组件】anchorCueTag（绑定字幕 @{tag} 锚点实现零手调对口型触发）、anchorOffsetSec、anchorMatchDuration、widgetConfig（动态图表组件：kind=tier-board|ranking-list|vs-scoreboard|step-reveal|stat-callout，含 title/subtitle/theme/items）。'
               },
               clipIds: {
                 type: 'array',
@@ -4691,7 +4702,7 @@ function roughCutWarningText(warning: TimelineRoughCutWarning): string {
   }
 }
 
-/** 读取转写分段（含文本）；缺字段直接报错，避免拿半个计划去剪时间线 / 生成字幕 */
+/** 读取转写分段（含文本与可选词级时间戳）；缺字段直接报错，避免拿半个计划去剪时间线 / 生成字幕 */
 function readSpeechSegments(value: unknown): TranscribeAudioSegment[] {
   if (!Array.isArray(value) || !value.length) {
     throw new Error(
@@ -4705,7 +4716,26 @@ function readSpeechSegments(value: unknown): TranscribeAudioSegment[] {
     if (!Number.isFinite(startSec) || !Number.isFinite(endSec)) {
       throw new Error(`第 ${index + 1} 个 segment 缺少合法的 startSec / endSec（秒）`)
     }
-    return { startSec, endSec, text: typeof row.text === 'string' ? row.text : '' }
+    const words = Array.isArray(row.words)
+      ? row.words
+          .map((w) => {
+            const wr = (w ?? {}) as Record<string, unknown>
+            const ws = Number(wr.startSec)
+            const we = Number(wr.endSec)
+            const wt =
+              typeof wr.text === 'string' ? wr.text : typeof wr.word === 'string' ? wr.word : ''
+            return Number.isFinite(ws) && Number.isFinite(we) && wt
+              ? { text: wt, startSec: ws, endSec: we }
+              : null
+          })
+          .filter((w): w is { text: string; startSec: number; endSec: number } => Boolean(w))
+      : undefined
+    return {
+      startSec,
+      endSec,
+      text: typeof row.text === 'string' ? row.text : '',
+      ...(words?.length ? { words } : {})
+    }
   })
 }
 
@@ -4716,7 +4746,8 @@ const TIMELINE_EDIT_OPS = [
   'batchUpdate',
   'applyTemplate',
   'remove',
-  'subtitles'
+  'subtitles',
+  'syncCues'
 ] as const
 
 /** 主进程口径的片段 id 工厂：前缀带时间戳，同一批编辑内不重名 */
@@ -4837,6 +4868,10 @@ function buildTimelineEditOperations(
       const clipIds = readStringList(row, 'clipIds')
       if (!clipIds.length) throw new Error(`${label}（remove）缺少 clipIds 数组`)
       operations.push({ op: 'remove', clipIds })
+      return
+    }
+    if (row.op === 'syncCues') {
+      operations.push({ op: 'syncCues' })
       return
     }
     // subtitles：转写分段 → 字幕片段；replace 模式顺手替换与该配音区间重叠的旧字幕

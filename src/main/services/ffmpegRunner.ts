@@ -6,7 +6,68 @@
  * 就是同一件事在两处各写一遍，然后慢慢漂移。
  */
 import { spawn } from 'child_process'
+import { copyFileSync, existsSync, linkSync, mkdtempSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { extname, join } from 'path'
 import { defErr, fail } from '@shared/errors/appError'
+
+/**
+ * Windows `CreateProcessW` 命令行硬上限为 32,767 字符；预留安全余量，超过该阈值时将长路径输入短链化。
+ */
+export const WINDOWS_CMD_SAFE_LIMIT = 24_000
+
+/**
+ * 将 FFmpeg 参数中的 `-filter_complex <graph>` 落盘转为 `-filter_complex_script <file>`，
+ * 并在命令行总长仍接近 Windows 32KB 限制时将本地 `-i <path>` 输入映射为临时短文件名，
+ * 彻底杜绝 `spawn ENAMETOOLONG`。
+ */
+export function materializeFfmpegFilterComplexArgs(args: string[], tempDir: string): string[] {
+  const out: string[] = []
+  let scriptIndex = 0
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i]
+    if (arg === '-filter_complex' && i + 1 < args.length) {
+      const filterGraph = String(args[i + 1] ?? '')
+      const scriptPath = join(tempDir, `fc_${scriptIndex++}.txt`)
+      writeFileSync(scriptPath, filterGraph, 'utf-8')
+      out.push('-filter_complex_script', scriptPath)
+      i += 1
+      continue
+    }
+    out.push(arg)
+  }
+
+  const estimateCmdLength = (list: string[]): number =>
+    list.reduce((sum, item) => sum + item.length + 3, 0)
+
+  if (estimateCmdLength(out) > WINDOWS_CMD_SAFE_LIMIT) {
+    const aliasMap = new Map<string, string>()
+    let aliasIdx = 0
+    for (let i = 0; i < out.length - 1; i += 1) {
+      if (out[i] !== '-i') continue
+      const origPath = out[i + 1]
+      if (!origPath || origPath.includes('=') || !existsSync(origPath)) continue
+      let shortPath = aliasMap.get(origPath)
+      if (!shortPath) {
+        const ext = extname(origPath).slice(0, 10) || '.bin'
+        shortPath = join(tempDir, `in_${aliasIdx++}${ext}`)
+        try {
+          linkSync(origPath, shortPath)
+        } catch {
+          try {
+            copyFileSync(origPath, shortPath)
+          } catch {
+            shortPath = origPath
+          }
+        }
+        aliasMap.set(origPath, shortPath)
+      }
+      out[i + 1] = shortPath
+    }
+  }
+
+  return out
+}
 
 /**
  * 起不来（ENOENT / 无执行权限等）。
@@ -58,7 +119,14 @@ export function runFfmpeg(
   options?: RunFfmpegOptions
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, args, { windowsHide: true })
+    const needsScriptTemp =
+      args.includes('-filter_complex') ||
+      args.reduce((sum, item) => sum + item.length + 3, 0) > WINDOWS_CMD_SAFE_LIMIT
+    const scriptTempDir = needsScriptTemp ? mkdtempSync(join(tmpdir(), 'aiart-ffscript-')) : null
+    const effectiveArgs = scriptTempDir
+      ? materializeFfmpegFilterComplexArgs(args, scriptTempDir)
+      : args
+
     let stderr = ''
     let settled = false
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -67,7 +135,29 @@ export function runFfmpeg(
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
+      if (scriptTempDir) {
+        try {
+          rmSync(scriptTempDir, { recursive: true, force: true })
+        } catch {
+          /* ignore */
+        }
+      }
       fn()
+    }
+
+    let child: ReturnType<typeof spawn>
+    try {
+      child = spawn(bin, effectiveArgs, { windowsHide: true })
+    } catch (err) {
+      const e = err instanceof Error ? err : new Error(String(err))
+      finish(() =>
+        reject(
+          Object.assign(fail(E_FFMPEG_LAUNCH_FAILED, { detail: e.message }), {
+            cause: e
+          })
+        )
+      )
+      return
     }
 
     const timeoutMs = options?.timeoutMs

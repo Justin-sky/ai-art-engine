@@ -20,16 +20,27 @@ import {
   buildClipVisualFfmpegFilter,
   buildMainClipCameraFfmpegFilter,
   buildOverlayClipFfmpegFilterSteps,
+  buildSubtitleKeyframeFfmpegXYExpr,
   clampClipFreezeTailSec,
   clampClipSpeed,
+  computeTimelineWidgetTimeSlices,
+  evaluateSubtitleClipPosition,
+  getSubtitleClipWordTimings,
   normalizeClipCropRect,
   normalizeClipLane,
+  syncTimelineCueAnchors,
+  synthesizeTimelineSfxWavBytes,
+  TIER_LEVEL_COLORS,
+  TIER_LEVELS,
   type ScriptTimelineScaleMode,
   type ScriptTimelineTrackKind,
   type TimelineExportClip,
   type TimelineExportInput,
   type TimelineExportResult,
-  type TimelineMixGains
+  type TimelineMixGains,
+  type TimelineProceduralSfxId,
+  type TimelineSubtitleKaraokeMode,
+  type TimelineWidgetConfig
 } from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
 import { fail, defErrSimple } from '@shared/errors/appError'
@@ -165,6 +176,9 @@ function isImageOrGifPath(filePath: string): boolean {
 
 export function probeHasAudioStream(bin: string, filePath: string): Promise<boolean> {
   if (isImageOrGifPath(filePath)) return Promise.resolve(false)
+  if (/procedural-(pop|whoosh|ding|boom)\.wav$/i.test(filePath.trim())) {
+    return Promise.resolve(true)
+  }
   let cacheKey = filePath
   try {
     const st = statSync(filePath)
@@ -517,6 +531,209 @@ export function renderBuiltinStickerPngBuffer(stickerId: string, customColor?: s
   return PNG.sync.write(png)
 }
 
+function drawFilledRect(
+  png: PNG,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  rgb: [number, number, number],
+  alpha = 1
+): void {
+  const minX = Math.max(0, Math.floor(x0))
+  const maxX = Math.min(png.width - 1, Math.ceil(x0 + w))
+  const minY = Math.max(0, Math.floor(y0))
+  const maxY = Math.min(png.height - 1, Math.ceil(y0 + h))
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      blendPixel(png, x, y, rgb[0], rgb[1], rgb[2], alpha)
+    }
+  }
+}
+
+/**
+ * 主进程纯 JS 动态信息图组件（TierBoard 梯度榜 / 排行榜 / PK 计分板 / 步骤揭示卡 / 数据弹窗）光栅化器：
+ * 当无界面 / 单测 / MCP 直接调用导出且未提供渲染端预光栅化的 `widgetStateSnapshots` 时，
+ * 用 pngjs 绘制高对比度 32-bit RGBA PNG 图层（文字由后续 drawtext 或内置色块呈现）。
+ */
+export function renderTimelineWidgetPngBuffer(
+  config: TimelineWidgetConfig,
+  localTimeSec = 9999
+): Buffer {
+  const png = new PNG({ width: 640, height: 280 })
+  const bgDark: [number, number, number] = [12, 18, 30]
+  const rowBg: [number, number, number] = [24, 34, 52]
+  const cardBg: [number, number, number] = [38, 52, 78]
+  const accent = parseHexRgb(config.accentColor, [245, 158, 11])
+  const white: [number, number, number] = [248, 250, 252]
+
+  // 外框底板与描边
+  drawFilledRect(png, 4, 4, 632, 272, bgDark, 0.88)
+  drawThickLine(png, 4, 4, 636, 4, 2, accent, 0.95)
+  drawThickLine(png, 636, 4, 636, 276, 2, accent, 0.95)
+  drawThickLine(png, 636, 276, 4, 276, 2, accent, 0.95)
+  drawThickLine(png, 4, 276, 4, 4, 2, accent, 0.95)
+
+  const activeItems = config.items.filter((it) => (it.triggerSec ?? 0) <= localTimeSec + 0.01)
+
+  if (config.kind === 'tier-board') {
+    const headerH = 24
+    const rowH = Math.floor((272 - headerH - 8) / TIER_LEVELS.length)
+    TIER_LEVELS.forEach((lvl, idx) => {
+      const y = headerH + idx * rowH
+      const tierRgb = parseHexRgb(TIER_LEVEL_COLORS[lvl], [239, 68, 68])
+      drawFilledRect(png, 12, y + 2, 54, rowH - 4, tierRgb, 0.96)
+      drawFilledRect(png, 70, y + 2, 556, rowH - 4, rowBg, 0.82)
+      const rowItems = activeItems.filter((it) => (it.tier ?? 'S') === lvl)
+      rowItems.forEach((it, itemIdx) => {
+        const ix = 76 + itemIdx * 134
+        if (ix + 126 > 624) return
+        const badgeRgb = parseHexRgb(it.color, tierRgb)
+        drawFilledRect(png, ix, y + 6, 126, rowH - 12, cardBg, 0.95)
+        drawCircleRing(png, ix + 14, y + Math.round(rowH / 2), 6, 1, badgeRgb, 0.98, true)
+        drawThickLine(
+          png,
+          ix + 28,
+          y + Math.round(rowH / 2),
+          ix + 112,
+          y + Math.round(rowH / 2),
+          3,
+          white,
+          0.9
+        )
+      })
+    })
+    return PNG.sync.write(png)
+  }
+
+  if (config.kind === 'vs-scoreboard') {
+    drawFilledRect(png, 16, 16, 280, 48, [2, 132, 199], 0.95)
+    drawCircleRing(png, 320, 40, 22, 1, accent, 0.98, true)
+    drawFilledRect(png, 344, 16, 280, 48, [225, 29, 72], 0.95)
+    const leftItems = activeItems.filter((it) => it.side !== 'right')
+    const rightItems = activeItems.filter((it) => it.side === 'right')
+    leftItems.slice(0, 4).forEach((it, idx) => {
+      const y = 76 + idx * 46
+      const col = parseHexRgb(it.color, [56, 189, 248])
+      drawFilledRect(png, 16, y, 280, 38, cardBg, 0.92)
+      drawThickLine(png, 16, y, 16, y + 38, 3, col, 0.96)
+    })
+    rightItems.slice(0, 4).forEach((it, idx) => {
+      const y = 76 + idx * 46
+      const col = parseHexRgb(it.color, [239, 68, 68])
+      drawFilledRect(png, 344, y, 280, 38, cardBg, 0.92)
+      drawThickLine(png, 344, y, 344, y + 38, 3, col, 0.96)
+    })
+    return PNG.sync.write(png)
+  }
+
+  // ranking-list / step-reveal / stat-callout
+  const slots = config.items.slice(0, 5)
+  const rowH = Math.floor(236 / Math.max(1, slots.length))
+  slots.forEach((it, idx) => {
+    const y = 32 + idx * rowH
+    const active = (it.triggerSec ?? 0) <= localTimeSec + 0.01
+    const col = parseHexRgb(it.color, accent)
+    drawFilledRect(png, 16, y + 4, 608, rowH - 8, active ? cardBg : rowBg, active ? 0.95 : 0.45)
+    drawFilledRect(png, 22, y + 8, 42, rowH - 16, active ? col : [71, 85, 105], 0.95)
+  })
+  return PNG.sync.write(png)
+}
+
+function writeWidgetSlicePngFile(
+  clip: TimelineExportClip,
+  sliceIndex: number,
+  sampleLocalSec: number,
+  snapshotDataUrl?: string
+): string | null {
+  try {
+    const rootDir = projectService.isOpen()
+      ? join(projectService.getRoot(), 'Cache', 'widgets')
+      : join(tmpdir(), 'aiart-widgets')
+    mkdirSync(rootDir, { recursive: true })
+    const kind = clip.widgetConfig?.kind ?? 'tier-board'
+    const hashSeed = JSON.stringify({
+      t: clip.title,
+      cfg: clip.widgetConfig,
+      s: sliceIndex,
+      sec: sampleLocalSec
+    })
+    const hashTag = Buffer.from(hashSeed, 'utf-8').toString('hex').slice(-12)
+    const pngPath = join(rootDir, `wg-${kind}-${sliceIndex}-${hashTag}.png`)
+    const prefix = 'data:image/png;base64,'
+    if (
+      snapshotDataUrl &&
+      snapshotDataUrl.startsWith(prefix) &&
+      snapshotDataUrl.length > prefix.length + 16
+    ) {
+      writeFileSync(pngPath, Buffer.from(snapshotDataUrl.slice(prefix.length), 'base64'))
+      return pngPath
+    }
+    if (clip.widgetConfig) {
+      writeFileSync(pngPath, renderTimelineWidgetPngBuffer(clip.widgetConfig, sampleLocalSec))
+      return pngPath
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 将带有 `widgetConfig` 的动态组件画中画片段按状态跳变时间窗展开为多段独立 PNG 画中画片段。
+ */
+export function expandOverlayClipsForWidgets(clips: TimelineExportClip[]): TimelineExportClip[] {
+  const out: TimelineExportClip[] = []
+  for (const clip of clips) {
+    if (!clip.widgetConfig) {
+      out.push(clip)
+      continue
+    }
+    const snapshots = clip.widgetStateSnapshots
+    if (Array.isArray(snapshots) && snapshots.length > 0) {
+      snapshots.forEach((snap, idx) => {
+        const dur = Math.max(0.05, snap.endOffsetSec - snap.startOffsetSec)
+        const absPath = writeWidgetSlicePngFile(
+          clip,
+          idx,
+          snap.startOffsetSec + dur * 0.5,
+          snap.pngDataUrl
+        )
+        if (!absPath) return
+        out.push({
+          ...clip,
+          absPath,
+          startSec: Number((clip.startSec + snap.startOffsetSec).toFixed(3)),
+          durationSec: Number(dur.toFixed(3)),
+          tweenIn: idx === 0 ? clip.tweenIn : 'none',
+          tweenOut: idx === snapshots.length - 1 ? clip.tweenOut : 'none',
+          widgetConfig: undefined,
+          widgetStateSnapshots: undefined
+        })
+      })
+      continue
+    }
+
+    const slices = computeTimelineWidgetTimeSlices(clip.widgetConfig, clip.durationSec)
+    slices.forEach((slice, idx) => {
+      const dur = Math.max(0.05, slice.endOffsetSec - slice.startOffsetSec)
+      const absPath = writeWidgetSlicePngFile(clip, idx, slice.sampleLocalSec)
+      if (!absPath) return
+      out.push({
+        ...clip,
+        absPath,
+        startSec: Number((clip.startSec + slice.startOffsetSec).toFixed(3)),
+        durationSec: Number(dur.toFixed(3)),
+        tweenIn: idx === 0 ? clip.tweenIn : 'none',
+        tweenOut: idx === slices.length - 1 ? clip.tweenOut : 'none',
+        widgetConfig: undefined,
+        widgetStateSnapshots: undefined
+      })
+    })
+  }
+  return out
+}
+
 function writeStickerPngFile(clip: TimelineExportClip): string | null {
   try {
     const rootDir = projectService.isOpen()
@@ -543,6 +760,119 @@ function writeStickerPngFile(clip: TimelineExportClip): string | null {
   }
 }
 
+function writeProceduralSfxWavFile(sfxPresetId: TimelineProceduralSfxId): string | null {
+  try {
+    const rootDir = projectService.isOpen()
+      ? join(projectService.getRoot(), 'Cache', 'sfx')
+      : join(tmpdir(), 'aiart-sfx')
+    mkdirSync(rootDir, { recursive: true })
+    const safeId = (String(sfxPresetId).replace(/[^a-zA-Z0-9_-]/g, '_') ||
+      'pop') as TimelineProceduralSfxId
+    const wavPath = join(rootDir, `procedural-${safeId}.wav`)
+    if (!existsSync(wavPath)) {
+      writeFileSync(wavPath, Buffer.from(synthesizeTimelineSfxWavBytes(safeId)))
+    }
+    return wavPath
+  } catch {
+    return null
+  }
+}
+
+function writeSubtitleSnapshotPngFile(
+  clip: TimelineExportClip,
+  sliceIndex: number,
+  pngDataUrl: string
+): string | null {
+  try {
+    const prefix = 'data:image/png;base64,'
+    if (!pngDataUrl.startsWith(prefix) || pngDataUrl.length <= prefix.length + 16) return null
+    const rootDir = projectService.isOpen()
+      ? join(projectService.getRoot(), 'Cache', 'subtitles')
+      : join(tmpdir(), 'aiart-subtitles')
+    mkdirSync(rootDir, { recursive: true })
+    const hashSeed = JSON.stringify({
+      t: clip.text || clip.title,
+      s: sliceIndex,
+      start: clip.startSec
+    })
+    const hashTag = Buffer.from(hashSeed, 'utf-8').toString('hex').slice(-12)
+    const pngPath = join(rootDir, `sk-${sliceIndex}-${hashTag}.png`)
+    writeFileSync(pngPath, Buffer.from(pngDataUrl.slice(prefix.length), 'base64'))
+    return pngPath
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 逐词卡拉 OK 胶囊字幕展开为独立 `-loop 1 -i <png>` 画中画输入的上限；
+ * 超出上限的字幕自动回退给 `buildFilterGraph` 原生 `drawtext` 卡拉 OK 引擎（写入 `-filter_complex_script`），
+ * 防止长视频产生成百上千个 `-i` 输入导致 FFmpeg 内存暴涨或 Windows 命令行超长。
+ */
+export const MAX_SUBTITLE_KARAOKE_OVERLAY_SNAPSHOTS = 32
+
+/**
+ * 将渲染端预光栅化的逐词卡拉 OK 胶囊字幕帧（`subtitleStateSnapshots`）展开为透明画中画 PNG 片段，
+ * 确保导出 MP4 的内联圆角胶囊、词级弹跳放大、发光描边与 Web 60fps 预览像素级一致。
+ */
+export function expandSubtitleKaraokeSnapshotsToOverlays(
+  subs: TimelineExportClip[],
+  subtitleYOffset: number,
+  height: number
+): { remainingSubs: TimelineExportClip[]; subtitleOverlayClips: TimelineExportClip[] } {
+  const remainingSubs: TimelineExportClip[] = []
+  const subtitleOverlayClips: TimelineExportClip[] = []
+  const defaultCenterY = Math.min(
+    0.94,
+    Math.max(0.06, Number((1 - (subtitleYOffset + 56) / Math.max(240, height)).toFixed(4)))
+  )
+  for (const sub of subs) {
+    const snapshots = sub.subtitleStateSnapshots
+    if (
+      !Array.isArray(snapshots) ||
+      snapshots.length === 0 ||
+      subtitleOverlayClips.length + snapshots.length > MAX_SUBTITLE_KARAOKE_OVERLAY_SNAPSHOTS
+    ) {
+      remainingSubs.push(sub)
+      continue
+    }
+    let wroteAny = false
+    snapshots.forEach((snap, idx) => {
+      const dur = Math.max(0.04, snap.endOffsetSec - snap.startOffsetSec)
+      const absPath = writeSubtitleSnapshotPngFile(sub, idx, snap.pngDataUrl)
+      if (!absPath) return
+      wroteAny = true
+      const sampleGlobalSec = sub.startSec + snap.startOffsetSec + dur * 0.5
+      const pos = evaluateSubtitleClipPosition(sub, sampleGlobalSec)
+      const laneOffsetNorm = normalizeClipLane(sub.lane) * 0.08
+      const overlayW = 0.86
+      const overlayH = 0.2
+      const centerX = pos.hasCustomPosition ? pos.centerX : 0.5
+      const centerY = pos.hasCustomPosition
+        ? pos.centerY - laneOffsetNorm
+        : defaultCenterY - laneOffsetNorm
+      subtitleOverlayClips.push({
+        track: 'overlay',
+        title: `${sub.title}#kw${idx}`,
+        absPath,
+        startSec: Number((sub.startSec + snap.startOffsetSec).toFixed(3)),
+        durationSec: Number(dur.toFixed(3)),
+        lane: 90 + normalizeClipLane(sub.lane),
+        overlayX: Number(Math.max(0, Math.min(1 - overlayW, centerX - overlayW * 0.5)).toFixed(4)),
+        overlayY: Number(Math.max(0, Math.min(1 - overlayH, centerY - overlayH * 0.5)).toFixed(4)),
+        overlayWidth: overlayW,
+        overlayHeight: overlayH,
+        tweenIn: 'none',
+        tweenOut: 'none'
+      })
+    })
+    if (!wroteAny) {
+      remainingSubs.push(sub)
+    }
+  }
+  return { remainingSubs, subtitleOverlayClips }
+}
+
 function resolveClipPath(clip: TimelineExportClip): string | null {
   if (clip.absPath && existsSync(clip.absPath)) {
     if (/\.svg$/i.test(clip.absPath.trim())) {
@@ -563,6 +893,12 @@ function resolveClipPath(clip: TimelineExportClip): string | null {
     } catch {
       /* fall through */
     }
+  }
+  if (clip.sfxPresetId && typeof clip.sfxPresetId === 'string' && clip.sfxPresetId.trim()) {
+    return writeProceduralSfxWavFile(clip.sfxPresetId.trim() as TimelineProceduralSfxId)
+  }
+  if (clip.widgetConfig) {
+    return writeWidgetSlicePngFile(clip, 0, clip.durationSec * 0.5, clip.stickerPngDataUrl)
   }
   if (clip.stickerId && typeof clip.stickerId === 'string' && clip.stickerId.trim()) {
     return writeStickerPngFile(clip)
@@ -610,6 +946,9 @@ export function buildFilterGraph(
     subtitleBoxColor?: string
     subtitleBoxOpacity?: number
     subtitleMotion?: boolean | 'none' | 'fade'
+    subtitleKaraokeMode?: TimelineSubtitleKaraokeMode
+    subtitleHighlightColor?: string
+    subtitleHighlightBgColor?: string
   }
 ): { filter: string; mapVideo: string; mapAudio: string } {
   const filterParts: string[] = []
@@ -988,6 +1327,18 @@ export function buildFilterGraph(
     : ''
   const motionEnabled =
     visualOptions?.subtitleMotion !== false && visualOptions?.subtitleMotion !== 'none'
+  const globalKaraokeMode: TimelineSubtitleKaraokeMode =
+    visualOptions?.subtitleKaraokeMode ?? 'none'
+  const globalHighlightColor =
+    visualOptions?.subtitleHighlightColor &&
+    /^#[0-9a-fA-F]{6}$/.test(visualOptions.subtitleHighlightColor.trim())
+      ? visualOptions.subtitleHighlightColor.trim()
+      : '#facc15'
+  const globalHighlightBg =
+    visualOptions?.subtitleHighlightBgColor &&
+    /^#[0-9a-fA-F]{6}$/.test(visualOptions.subtitleHighlightBgColor.trim())
+      ? visualOptions.subtitleHighlightBgColor.trim()
+      : '#ff2e4c'
 
   for (const [i, sub] of subs.entries()) {
     const raw = (sub.text || sub.title).trim()
@@ -1000,20 +1351,65 @@ export function buildFilterGraph(
       sub.textColor && /^#[0-9a-fA-F]{6}$/.test(sub.textColor.trim())
         ? sub.textColor.trim()
         : subtitleColor
+    const karaokeMode: TimelineSubtitleKaraokeMode = sub.subtitleKaraokeMode ?? globalKaraokeMode
+    const highlightColor =
+      sub.subtitleHighlightColor && /^#[0-9a-fA-F]{6}$/.test(sub.subtitleHighlightColor.trim())
+        ? sub.subtitleHighlightColor.trim()
+        : karaokeMode === 'karaoke-pill' &&
+            !visualOptions?.subtitleHighlightColor &&
+            !sub.subtitleHighlightColor
+          ? '#ffffff'
+          : globalHighlightColor
+    const highlightBg =
+      sub.subtitleHighlightBgColor && /^#[0-9a-fA-F]{6}$/.test(sub.subtitleHighlightBgColor.trim())
+        ? sub.subtitleHighlightBgColor.trim()
+        : globalHighlightBg
+
     const maxChars = subtitleMaxCharsForWidth(width, clipFontSize)
     const lineHeight = Math.max(clipFontSize + 4, Math.round(clipFontSize * 1.28))
     const risePx = Math.max(12, Math.round(clipFontSize * 0.55))
-    const lines = wrapSubtitleLines(raw, maxChars)
-    if (!lines.length) continue
     const start = Math.max(0, sub.startSec)
     const end = start + Math.max(0.05, sub.durationSec)
-    // 多行自下而上叠（多子轨 lane > 0 时自动向上偏移，避免同时间段双语/角色+注释字幕重叠）
     const laneOffsetPx = normalizeClipLane(sub.lane) * Math.round(lineHeight * 1.65)
+
+    // word-solo 模式：逐词独立居中大字跳动显示（不叠底句）
+    if (karaokeMode === 'word-solo') {
+      const words = getSubtitleClipWordTimings(sub)
+      if (words.length > 0) {
+        const soloSize = Math.min(220, Math.round(clipFontSize * 1.26))
+        const soloBoxOpt = `:box=1:boxcolor=${highlightBg}@0.92:boxborderw=10`
+        const customXY = buildSubtitleKeyframeFfmpegXYExpr(sub, 0)
+        const xExpr = customXY ? customXY.xExpr : 'x=(w-text_w)/2'
+        const yExpr = customXY ? customXY.yExpr : `y=h-${subtitleYOffset + laneOffsetPx}-text_h`
+        for (const [wi, w] of words.entries()) {
+          const wText = escapeDrawtext(w.text)
+          if (!wText) continue
+          const ws = Math.max(start, start + w.startSec)
+          const we = Math.min(end, Math.max(ws + 0.03, start + w.endSec))
+          const next = `sub${i}w${wi}`
+          filterParts.push(
+            `[${lastVideo}]drawtext=text='${wText}'${fontOpt}:fontsize=${soloSize}:fontcolor=${highlightColor}:borderw=${borderW}:bordercolor=${borderColor}${soloBoxOpt}:${xExpr}:${yExpr}:enable='between(t\\,${ws.toFixed(3)}\\,${we.toFixed(3)})'[${next}]`
+          )
+          lastVideo = next
+        }
+        continue
+      }
+    }
+
+    const lines = wrapSubtitleLines(raw, maxChars)
+    if (!lines.length) continue
+    // 多行自下而上叠（多子轨 lane > 0 时自动向上偏移，避免同时间段双语/角色+注释字幕重叠）
     for (let li = 0; li < lines.length; li++) {
       const text = escapeDrawtext(lines[li]!)
       const fromBottom = subtitleYOffset + laneOffsetPx + (lines.length - 1 - li) * lineHeight
+      const lineOffsetFromCenterPx = (li - (lines.length - 1) / 2) * lineHeight
+      const customXY = buildSubtitleKeyframeFfmpegXYExpr(sub, Math.round(lineOffsetFromCenterPx))
       const next = `sub${i}l${li}`
-      if (motionEnabled) {
+      if (customXY) {
+        filterParts.push(
+          `[${lastVideo}]drawtext=text='${text}'${fontOpt}:fontsize=${clipFontSize}:fontcolor=${clipColor}:borderw=${borderW}:bordercolor=${borderColor}${boxOpt}:${customXY.xExpr}:${customXY.yExpr}:enable='between(t\\,${start.toFixed(3)}\\,${end.toFixed(3)})'[${next}]`
+        )
+      } else if (motionEnabled) {
         const motion = buildSubtitleDrawtextMotion({
           startSec: start,
           endSec: end,
@@ -1029,6 +1425,69 @@ export function buildFilterGraph(
         )
       }
       lastVideo = next
+    }
+
+    // karaoke-pill / karaoke-pop / karaoke-glow 模式：在对应字幕行内的发声词水平位置原位叠加高亮胶囊徽章
+    if (
+      karaokeMode === 'karaoke-pill' ||
+      karaokeMode === 'karaoke-pop' ||
+      karaokeMode === 'karaoke-glow'
+    ) {
+      const words = getSubtitleClipWordTimings(sub)
+      const badgeSize =
+        karaokeMode === 'karaoke-pop'
+          ? Math.min(200, Math.round(clipFontSize * 1.16))
+          : Math.min(200, Math.round(clipFontSize * 1.06))
+      const badgeBox =
+        karaokeMode === 'karaoke-pill'
+          ? `:box=1:boxcolor=${highlightBg}@0.95:boxborderw=8`
+          : karaokeMode === 'karaoke-glow'
+            ? `:box=1:boxcolor=${highlightColor}@0.28:boxborderw=7`
+            : `:box=1:boxcolor=black@0.45:boxborderw=6`
+
+      const visualWidthUnits = (str: string): number => {
+        let u = 0
+        for (const ch of str) {
+          u += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 1.0 : 0.56
+        }
+        return u
+      }
+      const lineTotalUnits = lines.map((ln) => Math.max(0.5, visualWidthUnits(ln)))
+      let curLineIdx = 0
+      let cursorInLineUnits = 0
+
+      for (const [wi, w] of words.entries()) {
+        const wText = escapeDrawtext(w.text)
+        const wUnits = Math.max(0.5, visualWidthUnits(w.text))
+        while (
+          curLineIdx < lines.length - 1 &&
+          cursorInLineUnits + wUnits * 0.5 > lineTotalUnits[curLineIdx]! + 0.25
+        ) {
+          curLineIdx++
+          cursorInLineUnits = 0
+        }
+        const totalU = lineTotalUnits[curLineIdx] ?? wUnits
+        const wordCenterU = cursorInLineUnits + wUnits * 0.5
+        cursorInLineUnits += wUnits
+        if (!wText) continue
+
+        const inlineOffsetPx = Math.round((wordCenterU - totalU * 0.5) * clipFontSize * 0.96)
+        const offsetSign =
+          inlineOffsetPx > 0 ? `+${inlineOffsetPx}` : inlineOffsetPx < 0 ? `${inlineOffsetPx}` : ''
+        const lineFromBottom =
+          subtitleYOffset + laneOffsetPx + (lines.length - 1 - curLineIdx) * lineHeight
+        const lineOffsetFromCenterPx = (curLineIdx - (lines.length - 1) / 2) * lineHeight
+        const customXY = buildSubtitleKeyframeFfmpegXYExpr(sub, Math.round(lineOffsetFromCenterPx))
+        const xExpr = customXY ? `${customXY.xExpr}${offsetSign}` : `x=(w-text_w)/2${offsetSign}`
+        const yExpr = customXY ? customXY.yExpr : `y=h-${lineFromBottom}-text_h`
+        const ws = Math.max(start, start + w.startSec)
+        const we = Math.min(end, Math.max(ws + 0.03, start + w.endSec))
+        const next = `sub${i}kw${wi}`
+        filterParts.push(
+          `[${lastVideo}]drawtext=text='${wText}'${fontOpt}:fontsize=${badgeSize}:fontcolor=${highlightColor}:borderw=${borderW}:bordercolor=${borderColor}${badgeBox}:${xExpr}:${yExpr}:enable='between(t\\,${ws.toFixed(3)}\\,${we.toFixed(3)})'[${next}]`
+        )
+        lastVideo = next
+      }
     }
   }
 
@@ -1219,13 +1678,26 @@ export function prepareTimelinePipeline(
       ? input.subtitleColor.trim()
       : 'white'
 
-  const mainVideoClips = input.clips.filter((c) => c.track === 'video')
-  const overlayClips = input.clips.filter((c) => c.track === 'overlay')
-  const voiceMusicClips = input.clips.filter(
-    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'sfx'
-  )
-  const subs = input.clips.filter(
+  // 同步字幕内联 @{tag} 语义锚点到绑定了 anchorCueTag / widgetConfig.cueTag 的图层与音效
+  const syncedInputClips = syncTimelineCueAnchors(
+    input.clips.map((c, idx) => ({ ...c, id: `exp-${idx}` }))
+  ).clips
+
+  const rawSubs = syncedInputClips.filter(
     (c) => c.track === 'subtitle' && (c.text?.trim() || c.title.trim())
+  )
+  const { remainingSubs: subs, subtitleOverlayClips } = expandSubtitleKaraokeSnapshotsToOverlays(
+    rawSubs,
+    subtitleYOffset,
+    height
+  )
+  const mainVideoClips = syncedInputClips.filter((c) => c.track === 'video')
+  const overlayClips = [
+    ...expandOverlayClipsForWidgets(syncedInputClips.filter((c) => c.track === 'overlay')),
+    ...subtitleOverlayClips
+  ]
+  const voiceMusicClips = syncedInputClips.filter(
+    (c) => c.track === 'voice' || c.track === 'music' || c.track === 'sfx'
   )
 
   const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error']
@@ -1348,7 +1820,10 @@ export function prepareTimelinePipeline(
       subtitleBoxEnabled: input.subtitleBoxEnabled,
       subtitleBoxColor: input.subtitleBoxColor,
       subtitleBoxOpacity: input.subtitleBoxOpacity,
-      subtitleMotion: input.subtitleMotion
+      subtitleMotion: input.subtitleMotion,
+      subtitleKaraokeMode: input.subtitleKaraokeMode,
+      subtitleHighlightColor: input.subtitleHighlightColor,
+      subtitleHighlightBgColor: input.subtitleHighlightBgColor
     }
   )
 

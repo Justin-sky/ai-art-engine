@@ -294,7 +294,8 @@ function extractRequestId(message: string): string | null {
 export function explainProviderTosDenial(raw: string, baseUrl?: string): string | null {
   if (
     !/prohibited due to a violation of provider terms of service/i.test(raw) &&
-    !(/terms of service/i.test(raw) && /forbidden|403/i.test(raw))
+    !(/terms of service/i.test(raw) && /forbidden|403/i.test(raw)) &&
+    !/no endpoints found matching your data policy|data policy/i.test(raw)
   ) {
     return null
   }
@@ -302,6 +303,45 @@ export function explainProviderTosDenial(raw: string, baseUrl?: string): string 
     return fail(E_TOS_OPENROUTER_DENIED).message
   }
   return fail(E_TOS_UPSTREAM_DENIED).message
+}
+
+/**
+ * 当 OpenRouter 因上游供应商 ToS / 隐私数据策略拒绝（常见于 `openai/*` 路由受限）时，
+ * 自动挑选同一实例下已勾选的非受限供应商模型或 OpenRouter 通用高可用回退模型。
+ */
+export function buildOpenRouterTosFallbackModels(
+  provider: ModelProviderInstance,
+  failedModelId: string,
+  hasImages: boolean
+): string[] {
+  const trimmedFailed = failedModelId.trim()
+  const blockedVendorPrefix = trimmedFailed.includes('/')
+    ? `${trimmedFailed.split('/')[0]!.toLowerCase()}/`
+    : 'openai/'
+  const selected = provider.modalities?.text?.selectedModelIds ?? []
+  const candidates: string[] = []
+  const pushUnique = (id: string): void => {
+    const clean = id.trim()
+    if (!clean || clean === trimmedFailed) return
+    if (clean.toLowerCase().startsWith(blockedVendorPrefix)) return
+    if (!candidates.includes(clean)) candidates.push(clean)
+  }
+
+  for (const id of selected) {
+    pushUnique(id)
+  }
+  const builtins = hasImages
+    ? ['google/gemini-2.5-flash', 'qwen/qwen-2.5-vl-72b-instruct', 'openrouter/auto']
+    : [
+        'deepseek/deepseek-chat',
+        'google/gemini-2.5-flash',
+        'qwen/qwen-2.5-72b-instruct',
+        'openrouter/auto'
+      ]
+  for (const id of builtins) {
+    pushUnique(id)
+  }
+  return candidates
 }
 
 async function formatTextGenerateFailure(
@@ -432,6 +472,51 @@ export async function generateOpenAiCompatibleText(
 
       if (attempt >= retries || !isRetryableTextError(err)) break
       await sleep(800 * (attempt + 1))
+    }
+  }
+
+  // OpenRouter 上若因上游供应商（如 openai/*）ToS / 隐私数据策略拒绝，自动切换到非受限路由模型兜底
+  const isOpenRouter =
+    provider.providerKind === 'openrouter' || /openrouter\.ai/i.test(provider.baseUrl || '')
+  if (isOpenRouter && lastError) {
+    const rawErrText = await readHttpError(lastError)
+    if (explainProviderTosDenial(rawErrText, provider.baseUrl)) {
+      const fallbackModels = buildOpenRouterTosFallbackModels(
+        provider,
+        modelId,
+        Boolean(input.images?.length)
+      )
+      for (const fallbackModel of fallbackModels) {
+        const fbBody: Record<string, unknown> = {
+          model: fallbackModel,
+          messages,
+          provider: { allow_fallbacks: true }
+        }
+        if (input.tools && input.tools.length) {
+          fbBody.tools = input.tools.map((t) => ({ ...t }))
+          fbBody.tool_choice = input.toolChoice ?? 'auto'
+        } else if (input.toolChoice) {
+          fbBody.tool_choice = input.toolChoice
+        }
+        try {
+          const { data } = await client.post<ChatCompletionResponse>('/chat/completions', fbBody, {
+            headers: authHeaders(provider.apiKey)
+          })
+          const text = extractChatCompletionText(data)
+          const toolCalls = extractChatCompletionToolCalls(data)
+          const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+          if (text || toolCalls.length) {
+            return {
+              text,
+              model: data.model ?? fallbackModel,
+              toolCalls: toolCalls.length ? toolCalls : undefined,
+              finishReason
+            }
+          }
+        } catch {
+          // 继续尝试下一个非受限候选模型
+        }
+      }
     }
   }
 
