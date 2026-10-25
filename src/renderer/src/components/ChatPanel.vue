@@ -2380,13 +2380,14 @@ async function captureRoundOutputs(): Promise<void> {
     const { cards, hidden: folded } = groupRoundOutputs(picked)
     if (!cards.length) return
     const stamp = Date.now()
-    cards.forEach((card, index) => {
-      void pushAsset(
+    for (let index = 0; index < cards.length; index++) {
+      const card = cards[index]!
+      await pushAsset(
         `asset:scan:${stamp}:${index}`,
         card.primary.relativePath,
         card.related.map((file) => file.relativePath)
       )
-    })
+    }
     const hidden = overflow + folded
     if (hidden > 0) pushStatus(t('studio.chat.roundOutputsMore', { count: hidden }), 'warn')
   } catch {
@@ -2534,39 +2535,43 @@ async function playGame(
   }
 }
 
+let pushAssetQueue: Promise<void> = Promise.resolve()
+
 /** 生成完成的独立资产预览卡：同 key 去重，追加到对话末尾（原地更新路径以幂等处理延迟回调）。
  *  同时按文件内容指纹兜底——MCP `generate_*` 已一律落 Cache、不入资产库，但 agent 仍
  *  能通过 `asset_import` / 手工拷到 Assets/ 等方式把同一份媒体再次带进聊天流；
- *  指纹命中已有卡时新卡不再出，避免同一张图在对话里出现两次。 */
-async function pushAsset(
-  key: string,
-  relativePath: string,
-  relatedPaths: string[] = []
-): Promise<void> {
-  const prev = messages.value.find(
-    (m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key === key
-  )
-  if (prev) {
-    prev.relativePath = relativePath
-    if (relatedPaths.length) prev.relatedPaths = relatedPaths
-    else delete prev.relatedPaths
-    return
+ *  指纹命中已有卡时新卡不再出，避免同一张图在对话里出现两次。
+ *  通过队列串行化执行，防止多张卡并发 await 指纹计算时双方都尚未写入 messages 而漏掉去重。 */
+function pushAsset(key: string, relativePath: string, relatedPaths: string[] = []): Promise<void> {
+  const run = async (): Promise<void> => {
+    const prev = messages.value.find(
+      (m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key === key
+    )
+    if (prev) {
+      prev.relativePath = relativePath
+      if (relatedPaths.length) prev.relatedPaths = relatedPaths
+      else delete prev.relatedPaths
+      return
+    }
+    let isDuplicate = false
+    try {
+      isDuplicate = await isDuplicateChatAsset(relativePath, key)
+    } catch (err) {
+      // 去重 IO 失败一律放行，避免吞掉合法资产卡
+      console.warn('[ChatPanel] pushAsset dedup check failed', err)
+    }
+    if (isDuplicate) return
+    messages.value.push({
+      kind: 'asset',
+      key,
+      relativePath,
+      ...(relatedPaths.length ? { relatedPaths } : {})
+    })
+    scrollToBottom()
   }
-  let isDuplicate = false
-  try {
-    isDuplicate = await isDuplicateChatAsset(relativePath, key)
-  } catch (err) {
-    // 去重 IO 失败一律放行，避免吞掉合法资产卡
-    console.warn('[ChatPanel] pushAsset dedup check failed', err)
-  }
-  if (isDuplicate) return
-  messages.value.push({
-    kind: 'asset',
-    key,
-    relativePath,
-    ...(relatedPaths.length ? { relatedPaths } : {})
-  })
-  scrollToBottom()
+  const next = pushAssetQueue.then(run, run)
+  pushAssetQueue = next
+  return next
 }
 
 /** 内容指纹去重：同份文件若已在聊天流里被别的资产卡展示过则返回 true。
@@ -2575,13 +2580,16 @@ async function pushAsset(
 async function isDuplicateChatAsset(relativePath: string, excludeKey: string): Promise<boolean> {
   const targetKey = normalizeOutputPathKey(relativePath)
   if (!targetKey) return false
-  const targetFp = await getChatAssetFingerprint(relativePath)
-  if (!targetFp) return false
   const recent = messages.value
     .filter((m): m is ChatMsg & { kind: 'asset' } => m.kind === 'asset' && m.key !== excludeKey)
     .slice(-20)
   for (const m of recent) {
-    if (normalizeOutputPathKey(m.relativePath) === targetKey) continue
+    if (normalizeOutputPathKey(m.relativePath) === targetKey) return true
+    if ((m.relatedPaths ?? []).some((p) => normalizeOutputPathKey(p) === targetKey)) return true
+  }
+  const targetFp = await getChatAssetFingerprint(relativePath)
+  if (!targetFp) return false
+  for (const m of recent) {
     const existFp = await getChatAssetFingerprint(m.relativePath)
     if (existFp && existFp === targetFp) return true
   }

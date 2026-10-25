@@ -673,4 +673,20 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
     expect(classifyMcpStepKind('连线 n1「1. 剧本」 → n2「2. 分镜拆解」')).toBe('connect')
     expect(classifyMcpStepKind('更新节点 n1「1. 剧本定稿」')).toBe('update')
   })
+
+  it('auto-connects orphan media nodes to output.timeline when LLM omits edge_connect', () => {
+    const emptyGraph = { version: 1 as const, nodes: [], edges: [] }
+    const res = applyGraphEditOps(emptyGraph, [
+      { op: 'node_upsert', nodeId: 'src-video', typeId: 'asset.video', title: '原片素材' },
+      { op: 'node_upsert', nodeId: 'bgm', typeId: 'asset.music', title: '126BPM 电音鼓组' },
+      { op: 'node_upsert', nodeId: 'sfx-boom', typeId: 'asset.sfx', title: '卡点重击音效' },
+      { op: 'node_upsert', nodeId: 'timeline-out', typeId: 'output.timeline', title: '鬼畜时间线' }
+    ])
+    const toTimeline = res.graph.edges.filter((e) => e.target === 'timeline-out')
+    expect(toTimeline.map((e) => `${e.source}:${e.sourcePort}->${e.targetPort}`)).toEqual([
+      'src-video:out->in',
+      'bgm:out->in-music',
+      'sfx-boom:out->in-voice'
+    ])
+  })
 })

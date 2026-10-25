@@ -44,6 +44,7 @@ import {
   parseBatchVariantSpecs
 } from '../src/shared/semanticTimeline/batchVariants'
 import {
+  buildClipPitchAndVoiceFilter,
   buildFilterGraph,
   expandOverlayClipsForWidgets,
   expandSubtitleKaraokeSnapshotsToOverlays,
@@ -912,5 +913,84 @@ describe('Next-Level Enhancements (1~6): Multi-Line Karaoke SVG, Spring-Settle W
     expect(hud!.w).toBeCloseTo(0.2, 2)
     expect(hud!.label).toContain('本地 YOLO')
     expect(hud!.subtitleCenterY).toBeGreaterThan(hud!.y + hud!.h)
+  })
+
+  it('10. supports duration-preserving semitone pitch shifting (pitchSemitones) and vocal effects (voiceEffect)', () => {
+    // 1) Pure semitone shift (+7 semitones = perfect fifth, 2^(7/12) ≈ 1.498307)
+    const fifthUp = buildClipPitchAndVoiceFilter(1, 7, 'none')
+    expect(fifthUp).toContain('aresample=44100,asetrate=66075,aresample=44100')
+    expect(fifthUp).toContain('atempo=0.667')
+
+    // 2) VoiceEffect preset defaults (chipmunk -> +5 semitones, demon -> -5 semitones)
+    const chipmunk = buildClipPitchAndVoiceFilter(1, 0, 'chipmunk')
+    expect(chipmunk).toContain('asetrate=58866')
+    const demon = buildClipPitchAndVoiceFilter(1, 0, 'demon')
+    expect(demon).toContain('asetrate=33038')
+    expect(demon).toContain('equalizer=f=110:t=q:w=1.0:g=5')
+
+    // 3) Combined speed + pitchSemitones + autotune-chorus in buildFilterGraph
+    const graph = buildFilterGraph(
+      [
+        {
+          track: 'video',
+          title: '鬼畜高潮镜头',
+          path: '/tmp/guichu.mp4',
+          inputIndex: 1,
+          startSec: 0,
+          durationSec: 0.96,
+          speed: 1.25
+        }
+      ],
+      [],
+      [
+        {
+          track: 'video',
+          title: '鬼畜高潮镜头',
+          path: '/tmp/guichu.mp4',
+          inputIndex: 1,
+          startSec: 0,
+          durationSec: 0.96,
+          speed: 1.25,
+          pitchSemitones: 4,
+          voiceEffect: 'autotune-chorus'
+        }
+      ],
+      [],
+      0,
+      2,
+      1,
+      1280,
+      720,
+      30,
+      44,
+      60,
+      '#FACC15'
+    )
+    expect(graph.filter).toContain('asetrate=55563')
+    expect(graph.filter).toContain('aecho=0.8:0.88:12|24:0.42|0.32')
+
+    // 4) timelineEdit patch supports pitchSemitones & voiceEffect
+    const doc: ScriptTimelineDocument = {
+      clips: [
+        {
+          id: 'v-1',
+          track: 'video',
+          sourceId: 'src-video',
+          title: '测试镜头',
+          startSec: 0,
+          durationSec: 0.96
+        }
+      ]
+    }
+    const edited = applyTimelineEdits(doc, [
+      {
+        op: 'update',
+        clipId: 'v-1',
+        patch: { pitchSemitones: 15, voiceEffect: 'autotune-chorus' }
+      }
+    ])
+    const patchedClip = edited.document.clips[0]!
+    expect(patchedClip.pitchSemitones).toBe(12) // clamped to [-12, 12]
+    expect(patchedClip.voiceEffect).toBe('autotune-chorus')
   })
 })

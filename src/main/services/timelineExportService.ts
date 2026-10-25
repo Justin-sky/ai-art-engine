@@ -14,7 +14,7 @@ import {
   writeFileSync
 } from 'fs'
 import { tmpdir } from 'os'
-import { join, basename, dirname, extname } from 'path'
+import { join, basename, dirname, extname, resolve, relative, isAbsolute } from 'path'
 import { PNG } from 'pngjs'
 import {
   buildClipVisualFfmpegFilter,
@@ -22,10 +22,12 @@ import {
   buildOverlayClipFfmpegFilterSteps,
   buildSubtitleKeyframeFfmpegXYExpr,
   clampClipFreezeTailSec,
+  clampClipPitchSemitones,
   clampClipSpeed,
   computeTimelineWidgetTimeSlices,
   evaluateSubtitleClipPosition,
   getSubtitleClipWordTimings,
+  isTimelineVoiceEffectId,
   normalizeClipCropRect,
   normalizeClipLane,
   syncTimelineCueAnchors,
@@ -40,6 +42,7 @@ import {
   type TimelineMixGains,
   type TimelineProceduralSfxId,
   type TimelineSubtitleKaraokeMode,
+  type TimelineVoiceEffectId,
   type TimelineWidgetConfig
 } from '@shared/graph'
 import { IpcChannels } from '@shared/ipc'
@@ -127,8 +130,13 @@ function clipSourceOffsetSec(clip: { sourceOffsetSec?: number }): number {
 }
 
 /** 将变速倍率拆分为合法的 FFmpeg atempo 滤镜链（单级仅支持 0.5~2.0） */
-export function buildAtempoChain(speed: number): string {
-  let rem = clampClipSpeed(speed)
+export function buildAtempoChain(speed: number, allowWideRange = false): string {
+  const raw = Number(speed)
+  let rem = allowWideRange
+    ? Number.isFinite(raw) && raw > 0
+      ? Math.min(16, Math.max(0.0625, raw))
+      : 1
+    : clampClipSpeed(speed)
   if (Math.abs(rem - 1) <= 0.005) return ''
   const parts: string[] = []
   while (rem > 2.0 + 1e-4) {
@@ -142,6 +150,54 @@ export function buildAtempoChain(speed: number): string {
   if (Math.abs(rem - 1) > 0.005 || parts.length === 0) {
     parts.push(`atempo=${Math.min(2, Math.max(0.5, rem)).toFixed(3)}`)
   }
+  return parts.join(',')
+}
+
+/**
+ * 构建片段级半音变调（Pitch Shift）与鬼畜变声特效（Voice Effect）滤镜链：
+ * - 利用 `aresample=44100,asetrate=44100*2^(s/12),aresample=44100` 实现零外部依赖的精确半音移调；
+ * - 通过 `atempo = speed / 2^(s/12)` 精确抵消 `asetrate` 引起的时长变化，确保变调后片段时长严格保持 `playDur`，不破坏节拍网格！
+ */
+export function buildClipPitchAndVoiceFilter(
+  speed: number,
+  pitchSemitones?: number,
+  voiceEffect?: TimelineVoiceEffectId
+): string {
+  const safeSpeed = clampClipSpeed(speed)
+  let semitones = clampClipPitchSemitones(pitchSemitones)
+  const effect = isTimelineVoiceEffectId(voiceEffect) ? voiceEffect : 'none'
+  if (Math.abs(semitones) < 0.05) {
+    if (effect === 'chipmunk') semitones = 5
+    else if (effect === 'demon') semitones = -5
+  }
+
+  const parts: string[] = []
+  if (Math.abs(semitones) >= 0.05) {
+    const pitchRatio = Math.pow(2, semitones / 12)
+    const targetRate = Math.max(8000, Math.min(192000, Math.round(44100 * pitchRatio)))
+    const compensatedTempo = safeSpeed / pitchRatio
+    parts.push('aresample=44100', `asetrate=${targetRate}`, 'aresample=44100')
+    const tempoChain = buildAtempoChain(compensatedTempo, true)
+    if (tempoChain) parts.push(tempoChain)
+  } else {
+    const tempoChain = buildAtempoChain(safeSpeed)
+    if (tempoChain) parts.push(tempoChain)
+  }
+
+  if (effect === 'chipmunk') {
+    parts.push('equalizer=f=3200:t=q:w=1.2:g=3')
+  } else if (effect === 'demon') {
+    parts.push('equalizer=f=110:t=q:w=1.0:g=5')
+  } else if (effect === 'robot') {
+    parts.push('aecho=0.8:0.88:6:0.7', 'flanger=delay=2:depth=4:speed=5')
+  } else if (effect === 'autotune-chorus') {
+    parts.push('aecho=0.8:0.88:12|24:0.42|0.32')
+  } else if (effect === 'echo') {
+    parts.push('aecho=0.8:0.85:110|220:0.45|0.25')
+  } else if (effect === 'megaphone') {
+    parts.push('highpass=f=380', 'lowpass=f=3400', 'volume=1.35')
+  }
+
   return parts.join(',')
 }
 
@@ -1556,7 +1612,11 @@ export function buildFilterGraph(
     const speed = clampClipSpeed(clip.speed)
     const srcStart = clipSourceOffsetSec(clip)
     const srcDur = Number((playDur * speed).toFixed(3))
-    const atempoChain = buildAtempoChain(speed)
+    const pitchAndVoiceChain = buildClipPitchAndVoiceFilter(
+      speed,
+      clip.pitchSemitones,
+      clip.voiceEffect
+    )
 
     const clipVolume = Number.isFinite(clip.volume) ? Math.min(1, Math.max(0, clip.volume!)) : 1
     const trackGain = Number.isFinite(mix?.mixGains?.[clip.track])
@@ -1574,7 +1634,7 @@ export function buildFilterGraph(
     const chain = [
       `atrim=${srcStart > 0 ? `${srcStart}:${(srcStart + srcDur).toFixed(3)}` : `0:${srcDur}`}`,
       'asetpts=PTS-STARTPTS',
-      atempoChain,
+      pitchAndVoiceChain,
       Math.abs(volume - 1) > 0.001 ? `volume=${volume.toFixed(3)}` : '',
       fadeIn > 0 ? `afade=t=in:st=0:d=${fadeIn.toFixed(3)}` : '',
       fadeOut > 0
@@ -1738,7 +1798,19 @@ export function prepareTimelinePipeline(
   for (const clip of voiceMusicClips) {
     const path = resolveClipPath(clip)
     if (!path) continue
-    args.push('-i', path)
+    if (clip.loop === true || clip.track === 'music') {
+      const clipInputDur = Math.max(
+        1,
+        Math.ceil(
+          clipSourceOffsetSec(clip) +
+            Math.max(0.05, clip.durationSec) * clampClipSpeed(clip.speed ?? 1) +
+            1
+        )
+      )
+      args.push('-stream_loop', '-1', '-t', String(clipInputDur), '-i', path)
+    } else {
+      args.push('-i', path)
+    }
     audioOnlyInputs.push({ ...clip, path, inputIndex: inputIndex++ })
   }
 
@@ -1769,10 +1841,14 @@ export function prepareTimelinePipeline(
   const mainVideoAudios = mainVideos.filter(
     (c) => !input.mutedTracks?.includes('video') && (c.volume ?? 1) > 0 && hasAudioForPath(c.path)
   )
-  const overlayAudios = overlays.filter(
-    (c) => !input.mutedTracks?.includes('overlay') && (c.volume ?? 1) > 0 && hasAudioForPath(c.path)
-  )
   const validAudioOnly = audioOnlyInputs.filter((c) => hasAudioForPath(c.path))
+  const hasPrimarySpeechOrVideoAudio =
+    mainVideoAudios.length > 0 || validAudioOnly.some((c) => c.track === 'voice')
+  const overlayAudios = overlays.filter((c) => {
+    if (input.mutedTracks?.includes('overlay') || !hasAudioForPath(c.path)) return false
+    const defaultOverlayVol = hasPrimarySpeechOrVideoAudio ? 0 : 1
+    return (c.volume ?? defaultOverlayVol) > 0
+  })
 
   const audios = [...mainVideoAudios, ...validAudioOnly, ...overlayAudios]
   const { filter, mapVideo, mapAudio } = buildFilterGraph(
@@ -2067,13 +2143,25 @@ export async function exportScriptTimeline(
 
     let assetId: string | undefined
     try {
-      const asset = projectService.attachExternalGeneratedFile({
-        type: 'video',
-        sourceFilePath: outPath,
-        name: basename(outPath, extname(outPath)) || 'Timeline Export'
-      })
-      assetId = asset.id
-      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      const rootAbs = resolve(projectService.getRoot())
+      const outAbs = resolve(outPath)
+      const relFromRoot = relative(rootAbs, outAbs).replace(/\\/g, '/')
+      const isInsideProject =
+        Boolean(relFromRoot) && !relFromRoot.startsWith('..') && !isAbsolute(relFromRoot)
+      // 若导出目标已在工程 Output/ 或 Cache/ 目录下，不再额外调用 attachExternalGeneratedFile
+      // 往 Cache/Videos/ 复制第二份相同 MP4（否则一轮对话结束扫盘会在 Output/ 和 Cache/Videos/ 扫出两个相同视频卡）
+      if (!isInsideProject || relFromRoot === 'Assets' || relFromRoot.startsWith('Assets/')) {
+        const asset = projectService.attachExternalGeneratedFile({
+          type: 'video',
+          sourceFilePath: outPath,
+          name: basename(outPath, extname(outPath)) || 'Timeline Export',
+          ...(relFromRoot === 'Assets' || relFromRoot.startsWith('Assets/')
+            ? { outputDir: dirname(relFromRoot) === '.' ? 'Assets' : dirname(relFromRoot) }
+            : {})
+        })
+        assetId = asset.id
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      }
     } catch {
       /* 另存为成功即可 */
     }

@@ -41,11 +41,14 @@ import {
 } from '@shared/mcpProtocol'
 import {
   MCP_GRAPH_EDIT_SCOPE,
+  applyGraphEditOps,
   getNodeCapability,
   getNodeType,
   introspectNodeType,
   listAddableNodeTypes,
   type GraphDocument,
+  type GraphPlan,
+  type McpGraphEditOp,
   contentEndSecOfTimeline,
   readScriptTimelineFromGenParams,
   type GraphRunLogApiCall,
@@ -159,11 +162,13 @@ import {
 } from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
 import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
+import { fetchWebVideoClipsToImports } from './webVideoFetchService'
 import { broadcastToAllWindows } from '../broadcast'
 import {
   fetchSkillCatalog,
   installSkillFromMarket,
   listInstalledWorkflowDetails,
+  readInstalledWorkflowPlan,
   uninstallSkillFromMarket
 } from './skillMarketService'
 import {
@@ -920,6 +925,97 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'web_fetch_video',
+    title: '按电影名或链接检索下载名场面视频素材',
+    description:
+      '根据电影名 / 小品名 / 角色名 / 台词梗关键词（`query`，如 `"让子弹飞 什么叫惊喜 原片"`、`"赵本山 改革春风吹满地 原片"`、`"三国演义 诸葛亮骂王朗 原片"`）自动去 B 站检索最匹配的高能原片名场面片段，或直接解析 B 站视频链接 / BV 号 / MP4 直链（`url`），将高清 MP4 视频流自动下载（并按 `startSec` / `maxDurationSec` 无损裁剪）落盘到当前工程 `Cache/imports/` 目录下。返回 `videos` 列表（每项含 `relativePath`、`title`、`bvid`、`durationSec`、`sourceUrl`）及搜索候选列表 `candidates`。下载得到的 `relativePath` 可直接传给 `transcribe_audio`（提取词级时间戳台词）、`detect_video_keyframes` / `grab_video_frames`（抓取夸张表情关键帧）、`analyze_video_beats` 以及 `timeline_edit`（按 `sourceOffsetSec` 切片拼装鬼畜魔性卡点成片时间线 `output.timeline`）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description:
+            '电影名、电视剧名、春晚小品名、角色名或名场面搜索关键词（如 "让子弹飞 敢杀我的马 原片"、"亮剑 李云龙 名场面"；与 url 二选一）'
+        },
+        url: {
+          type: 'string',
+          description:
+            'B 站视频链接（https://www.bilibili.com/video/BV...）、裸 BV 号（如 BV1yt4y1Q7SS）或直链 MP4 URL（与 query 二选一）'
+        },
+        page: {
+          type: 'number',
+          description: 'B 站多 P 合集视频的分 P 序号（从 1 开始，可选）'
+        },
+        count: {
+          type: 'number',
+          description: '单次搜索下载的名场面视频片段数量（默认 1，上限 4）'
+        },
+        startSec: {
+          type: 'number',
+          description: '从原视频第几秒开始截取（默认 0）'
+        },
+        maxDurationSec: {
+          type: 'number',
+          description: '单条视频最大保留时长（秒，默认 240，上限 600；超出时自动无损裁剪）'
+        },
+        preferOriginalMaterial: {
+          type: 'boolean',
+          description:
+            '按电影/小品名搜索时是否优先筛选无水印原片/名场面素材并过滤解说视频（默认 true）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const query = optionalString(args, 'query')
+      const url = optionalString(args, 'url')
+      if (!query && !url) {
+        throw new Error('请至少提供 query（电影/名场面搜索词）或 url（B 站链接 / BV 号 / MP4 URL）')
+      }
+      const page = optionalNumber(args, 'page')
+      const count = optionalNumber(args, 'count')
+      const startSec = optionalNumber(args, 'startSec')
+      const maxDurationSec = optionalNumber(args, 'maxDurationSec')
+      const preferOriginalMaterial =
+        typeof args.preferOriginalMaterial === 'boolean' ? args.preferOriginalMaterial : undefined
+      const label = query || url || '视频素材'
+
+      const fetched = await runGenActivity(
+        'asset_import',
+        `检索并下载影视名场面素材：${label.slice(0, 48)}`,
+        undefined,
+        async () =>
+          fetchWebVideoClipsToImports({
+            ...(query ? { query } : {}),
+            ...(url ? { url } : {}),
+            ...(page !== undefined ? { page } : {}),
+            ...(count !== undefined ? { count } : {}),
+            ...(startSec !== undefined ? { startSec } : {}),
+            ...(maxDurationSec !== undefined ? { maxDurationSec } : {}),
+            ...(preferOriginalMaterial !== undefined ? { preferOriginalMaterial } : {})
+          }),
+        (res) => {
+          const relativePaths = res.videos
+            .map((v) => v.relativePath)
+            .filter((p): p is string => !!p?.trim())
+          return {
+            relativePath: relativePaths[0],
+            relativePaths
+          }
+        },
+        undefined,
+        undefined,
+        label
+      )
+
+      return {
+        ...(fetched.query ? { query: fetched.query } : {}),
+        videos: fetched.videos,
+        candidates: fetched.candidates
+      }
+    }
+  },
+  {
     name: 'asset_rename',
     title: '重命名资产',
     description: '修改资产名称，应用界面同步刷新。',
@@ -1349,14 +1445,18 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_read',
     title: '读取成片时间线',
     description:
-      '读剧本资产里的成片时间线：返回片段列表（轨道 / 起止秒 / 源内取段起点 / 字幕文本 / 音量 / 淡入淡出 / 转场 / 画中画位置）、时间线设置（导出画布、帧率、码率、字幕样式、混音增益、水印）与总时长。所有时间坐标都是秒。可用 track 只看某条轨（video / overlay / voice / subtitle / music / sfx），用 limit 限制返回片段数。',
+      '读画布资产（canvas 上的 output.timeline 节点）或剧本资产里的成片时间线：返回片段列表（轨道 / 起止秒 / 源内取段起点 / 字幕文本 / 音量 / 淡入淡出 / 转场 / 画中画位置）、时间线设置（导出画布、帧率、码率、字幕样式、混音增益、水印）与总时长。所有时间坐标都是秒。可用 track 只看某条轨（video / overlay / voice / subtitle / music / sfx），用 limit 限制返回片段数。当画布上已有 output.timeline 节点时，直接传画布 assetId（或 "current"）即可，严禁额外新建独立的 screenplay 资产。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '剧本资产 id（用 asset_list 查询）' },
+        assetId: {
+          type: 'string',
+          description:
+            '画布资产 id（传 "current" 自动取当前画布）或剧本资产 id；画布上有 output.timeline 节点时直接传画布 id'
+        },
         nodeId: {
           type: 'string',
-          description: '时间线节点 id（同一资产挂多条时间线时用；缺省读默认时间线）'
+          description: '时间线节点 id（省略时自动定位画布上的 output.timeline 节点或默认时间线）'
         },
         track: {
           type: 'string',
@@ -1369,9 +1469,10 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const nodeId = optionalString(args, 'nodeId')
-      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rawAssetId = optionalString(args, 'assetId')
+      const rawNodeId = optionalString(args, 'nodeId')
+      const { asset, nodeId, doc } = readTimelineDoc(rawAssetId, rawNodeId)
+      const assetId = asset.id
       const track = optionalString(args, 'track')?.trim()
       const filtered = track ? doc.clips.filter((clip) => String(clip.track) === track) : doc.clips
       const limit = Math.min(1000, Math.max(1, Math.round(Number(args.limit) || 200)))
@@ -1400,11 +1501,14 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_rough_cut',
     title: '智能粗剪（按转写挤掉静默）',
     description:
-      '按配音转写把成片时间线里的静默挤掉：每句语音前后各留呼吸边距，净静默超过阈值的段落连同其它轨一起剪掉并整体前移（ripple），字幕 / 音乐 / 特效轨同步跟随；被切开的片段会按取段起点正确重算，转场与淡入淡出只保留在片段真正的首尾。只动配音轨覆盖的时间段，配音轨之外（空镜、纯音乐）一律不碰；某条配音片段一句语音都没匹配上时整段保留——宁可漏剪，不可误剪。默认 dry-run 只回计划摘要（beforeSec / afterSec / removedSec / cuts），apply=true 才写回剧本资产（需该剧本的时间线编辑器已关闭）。segments 请先用 transcribe_audio 转写配音资产后原样传入（源文件时间戳，会按片段 sourceOffsetSec 自动平移）。',
+      '按配音转写把成片时间线里的静默挤掉：每句语音前后各留呼吸边距，净静默超过阈值的段落连同其它轨一起剪掉并整体前移（ripple），字幕 / 音乐 / 特效轨同步跟随；被切开的片段会按取段起点正确重算，转场与淡入淡出只保留在片段真正的首尾。只动配音轨覆盖的时间段，配音轨之外（空镜、纯音乐）一律不碰；某条配音片段一句语音都没匹配上时整段保留——宁可漏剪，不可误剪。默认 dry-run 只回计划摘要（beforeSec / afterSec / removedSec / cuts），apply=true 才写回画布或剧本资产。segments 请先用 transcribe_audio 转写配音资产后原样传入（源文件时间戳，会按片段 sourceOffsetSec 自动平移）。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '剧本资产 id' },
+        assetId: {
+          type: 'string',
+          description: '画布资产 id（支持 "current"）或剧本资产 id'
+        },
         segments: {
           type: 'array',
           description: '配音转写分段（transcribe_audio 的 segments 原样传入）',
@@ -1418,7 +1522,10 @@ const TOOL_DEFS: McpToolDef[] = [
             required: ['startSec', 'endSec']
           }
         },
-        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        nodeId: {
+          type: 'string',
+          description: '时间线节点 id（省略时自动定位画布上的 output.timeline 节点）'
+        },
         paddingSec: { type: 'number', description: '每句语音前后保留的呼吸边距（秒，默认 0.2）' },
         minSilenceSec: { type: 'number', description: '净静默达到该时长才剪（秒，默认 0.8）' },
         apply: {
@@ -1430,11 +1537,12 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const nodeId = optionalString(args, 'nodeId')
-      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rawAssetId = optionalString(args, 'assetId')
+      const rawNodeId = optionalString(args, 'nodeId')
+      const { asset, nodeId, doc } = readTimelineDoc(rawAssetId, rawNodeId)
+      const assetId = asset.id
       if (!doc.clips.length) {
-        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段（先在界面里把素材铺上轨）`)
+        throw new Error(`资产「${asset.name}」的时间线还没有任何片段（先铺素材上轨）`)
       }
       const segments = readSpeechSegments(args.segments)
       const paddingSec = Number(args.paddingSec)
@@ -1474,12 +1582,18 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_export',
     title: '导出成片（ffmpeg）',
     description:
-      '把剧本资产的时间线合成 MP4：视频轨拼接 + 转场 + 画中画叠加 + 配音 / 音乐混音（含音量与淡入淡出）+ 字幕烧录 + 水印。需要系统可用 ffmpeg（设置页可一键安装）。无界面链路必须给绝对路径 targetPath（缺扩展名自动补 .mp4、自动建父目录）；界面上走「另存为」对话框。产物会登记为工程内的视频资产。耗时随总时长与分辨率增长，长片可能数分钟。',
+      '把画布资产（output.timeline 节点）或剧本资产的时间线合成 MP4：视频轨拼接 + 转场 + 画中画叠加 + 配音 / 音乐混音（含音量与淡入淡出）+ 字幕烧录 + 水印。需要系统可用 ffmpeg（设置页可一键安装）。无界面链路必须给绝对路径 targetPath（缺扩展名自动补 .mp4、自动建父目录）；界面上走「另存为」对话框。产物会登记为工程内的视频资产。耗时随总时长与分辨率增长，长片可能数分钟。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '剧本资产 id' },
-        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        assetId: {
+          type: 'string',
+          description: '画布资产 id（支持 "current"）或剧本资产 id'
+        },
+        nodeId: {
+          type: 'string',
+          description: '时间线节点 id（省略时自动定位画布上的 output.timeline 节点）'
+        },
         targetPath: {
           type: 'string',
           description: '输出文件绝对路径（无界面链路必填，如 D:/out/final.mp4）'
@@ -1489,11 +1603,11 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const nodeId = optionalString(args, 'nodeId')
-      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rawAssetId = optionalString(args, 'assetId')
+      const rawNodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(rawAssetId, rawNodeId)
       if (!doc.clips.length) {
-        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段，无从导出`)
+        throw new Error(`资产「${asset.name}」的时间线还没有任何片段，无从导出`)
       }
       const targetPath = optionalString(args, 'targetPath')?.trim()
       const input = buildTimelineExportInput(doc, {
@@ -1522,12 +1636,19 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_edit',
     title: '编辑成片时间线',
     description:
-      '在剧本资产的时间线上增删改片段或一键套用成片模板，支持六类指令按 operations 顺序执行：add（铺素材上轨；每枚给 track 与 durationSec，assetId 会自动补媒体路径与标题，缺 startSec 时自动排到该轨轨尾、多枚依次紧接；若带 transitionType 会自动与前一片段重叠建立转场）/ update（按片段 id 改字段：特效 visualEffect / 滤镜 filterPreset / 12 项色彩调节 / 40 种转场 transitionType / 运镜 cameraMotion / 补间动效 tweenIn·Out·Loop / 关键帧 keyframes / 画面裁剪 cropX·Y·Width·Height / 变速 speed / 音量 / 淡入淡出 / 字幕文本 / 画中画位置；主视频轨片段改 transitionType 或 transitionInSec 时会自动与前一片段建立重叠并涟漪平移后续片段；传 null 表示清除该字段）/ batchUpdate（按 track 或 clipIds 批量更新片段属性，如全轨统一加滤镜、特效、调色或转场）/ applyTemplate（一键套用 12 套剪映风格成片模板 templateId，自动注入特效/滤镜/调色/运镜/转场/字幕预设）/ remove（按 id 删）/ subtitles（把 transcribe_audio 的分段铺成字幕，按配音片段的取段起点对齐；默认替换该配音区间上的旧字幕，mode=append 则只追加）。还可传顶层 settings 修改导出画幅、帧率、字幕样式、混音闪避等全局设置。默认 apply=true 直接生效并实时同步打开的时间线编辑器。',
+      '在当前画布资产（canvas 上的 output.timeline 节点）或剧本资产的时间线上增删改片段或一键套用成片模板（画布上已有 output.timeline 节点时，直接传画布 assetId 或 "current"，严禁为此额外调用 asset_create 新建独立的 screenplay 资产！），支持七类指令按 operations 顺序执行：add（铺素材上轨；每枚给 track 与 durationSec，assetId 会自动补媒体路径与标题，缺 startSec 时自动排到该轨轨尾、多枚依次紧接；若带 transitionType 会自动与前一片段重叠建立转场）/ update（按片段 id 改字段：特效 visualEffect / 滤镜 filterPreset / 12 项色彩调节 / 40 种转场 transitionType / 运镜 cameraMotion / 补间动效 tweenIn·Out·Loop / 关键帧 keyframes / 画面裁剪 cropX·Y·Width·Height / 变速 speed / 音量 / 淡入淡出 / 字幕文本 / 画中画位置；主视频轨片段改 transitionType 或 transitionInSec 时会自动与前一片段建立重叠并涟漪平移后续片段；传 null 表示清除该字段）/ batchUpdate（按 track 或 clipIds 批量更新片段属性，如全轨统一加滤镜、特效、调色或转场）/ applyTemplate（一键套用 12 套剪映风格成片模板 templateId，自动注入特效/滤镜/调色/运镜/转场/字幕预设；注意：鬼畜等精确拍点网格剪辑切勿调用 applyTemplate，否则模板转场重叠会破坏拍点网格）/ remove（按 id 删）/ subtitles（把 transcribe_audio 的分段铺成字幕，按配音片段的取段起点对齐；默认替换该配音区间上的旧字幕，mode=append 则只追加）/ syncCues（按字幕中的 @{tag} 锚点对齐音效与画中画）。还可传顶层 settings 修改导出画幅、帧率、字幕样式、混音闪避等全局设置。默认 apply=true 直接生效并实时同步打开的时间线编辑器与画布连线。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '剧本资产 id' },
-        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        assetId: {
+          type: 'string',
+          description:
+            '画布资产 id（传 "current" 自动取当前画布）或剧本资产 id；画布上有 output.timeline 节点时直接传画布 id，切勿额外新建 screenplay 资产'
+        },
+        nodeId: {
+          type: 'string',
+          description: '时间线节点 id（省略时自动定位画布上的 output.timeline 节点或默认时间线）'
+        },
         operations: {
           type: 'array',
           description: '按顺序执行的编辑指令（若仅修改顶层 settings 可传空数组）',
@@ -1580,7 +1701,7 @@ const TOOL_DEFS: McpToolDef[] = [
                   '【12项色彩调节】brightness（-0.5~0.5）、contrast（0.5~2）、saturation（0~3）、vibrance（-100~100）、temperature（-100~100）、tint（-100~100）、highlights（-100~100）、shadows（-100~100）、sharpen（0~100）、vignette（0~100）、fade（0~100）、grain（0~100）；' +
                   '【运镜与动效】cameraMotion（none / ken-burns-in / ken-burns-out / pan-left / pan-right / pan-up / pan-down / drift-up-right / handheld-subtle）、tweenIn、tweenInDurationSec、tweenInEase、tweenOut、tweenOutDurationSec、tweenOutEase、tweenLoop、tweenLoopSpeedHz、tweenLoopIntensity、keyframes；' +
                   '【裁剪与几何】cropX（0~0.95）、cropY（0~0.95）、cropWidth（0.05~1）、cropHeight（0.05~1）、overlayX、overlayY、overlayWidth、overlayHeight、overlayRotation、opacity；' +
-                  '【时间与音频字幕】startSec、durationSec、sourceOffsetSec、speed（0.25~4）、freezeTailSec（0~30）、volume（0~1）、fadeInSec、fadeOutSec、text、rawCueText（支持 @{tag}关键词@{/tag} 与 || 分句）、words、title、textColor、fontSize、stickerId、stickerColor、subtitleKaraokeMode（none / karaoke-pill / karaoke-pop / karaoke-glow / word-solo）、subtitleHighlightColor、subtitleHighlightBgColor；' +
+                  '【时间与音频字幕】startSec、durationSec、sourceOffsetSec、speed（0.25~4）、pitchSemitones（-12~+12 半音移调且保持片段时长不变，用于鬼畜阶梯爬音与人力VOCALOID旋律调音，如 [0, 2, 4, 7, 12]）、voiceEffect（人声变声特效：none / chipmunk 花栗鼠高频 / demon 恶魔深渊低沉 / robot 机械电音颤音 / echo 洗脑鬼畜回声 / megaphone 大喇叭失真 / autotune-chorus 鬼畜电音合唱）、freezeTailSec（0~30）、volume（0~1）、loop、lane、sfxPresetId、fadeInSec、fadeOutSec、text、rawCueText（支持 @{tag}关键词@{/tag} 与 || 分句）、words、title、textColor、fontSize、stickerId、stickerColor、subtitleKaraokeMode（none / karaoke-pill / karaoke-pop / karaoke-glow / word-solo）、subtitleHighlightColor、subtitleHighlightBgColor；' +
                   '【语义词锚点与可编程动态组件】anchorCueTag（绑定字幕 @{tag} 锚点实现零手调对口型触发）、anchorOffsetSec、anchorMatchDuration、widgetConfig（动态图表组件：kind=tier-board|ranking-list|vs-scoreboard|step-reveal|stat-callout，含 title/subtitle/theme/items）。'
               },
               clipIds: {
@@ -1630,9 +1751,10 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const nodeId = optionalString(args, 'nodeId')
-      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rawAssetId = optionalString(args, 'assetId')
+      const rawNodeId = optionalString(args, 'nodeId')
+      const { asset, nodeId, doc } = readTimelineDoc(rawAssetId, rawNodeId)
+      const assetId = asset.id
       const hasSettingsPatch = Boolean(
         args.settings && typeof args.settings === 'object' && !Array.isArray(args.settings)
       )
@@ -1655,6 +1777,7 @@ const TOOL_DEFS: McpToolDef[] = [
       const summary = {
         assetId,
         assetName: asset.name,
+        nodeId: nodeId ?? null,
         beforeClipCount: doc.clips.length,
         afterClipCount: result.document.clips.length,
         added: result.added,
@@ -1683,12 +1806,18 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'timeline_preview',
     title: '看成片画面（抽帧）',
     description:
-      '把剧本资产的时间线渲染成几张静帧直接回给你看——与 timeline_export 走同一条 ffmpeg 滤镜图，转场 / 画中画 / 烧录字幕 / 水印都会出现在画面里，所以「预览看到的就是成片」。默认按成片时长均匀抽 3 帧（取每格中心，避开开头淡入与结尾淡出）；也可以用 atSec 定点检查某一刻（比如刚加的转场落在 12.5 秒）。每张图带自己的时间点，图随本次响应回给客户端：多模态客户端能直接看到画面，纯文本客户端只会看到时间点列表。需要系统可用 ffmpeg；时间点越靠后解码越久，抽几帧比导出一次便宜得多，但仍不是瞬时。',
+      '把画布资产（output.timeline 节点）或剧本资产的时间线渲染成几张静帧直接回给你看——与 timeline_export 走同一条 ffmpeg 滤镜图，转场 / 画中画 / 烧录字幕 / 水印都会出现在画面里，所以「预览看到的就是成片」。默认按成片时长均匀抽 3 帧（取每格中心，避开开头淡入与结尾淡出）；也可以用 atSec 定点检查某一刻（比如刚加的转场落在 12.5 秒）。每张图带自己的时间点，图随本次响应回给客户端：多模态客户端能直接看到画面，纯文本客户端只会看到时间点列表。需要系统可用 ffmpeg；时间点越靠后解码越久，抽几帧比导出一次便宜得多，但仍不是瞬时。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '剧本资产 id' },
-        nodeId: { type: 'string', description: '时间线节点 id（缺省默认时间线）' },
+        assetId: {
+          type: 'string',
+          description: '画布资产 id（支持 "current"）或剧本资产 id'
+        },
+        nodeId: {
+          type: 'string',
+          description: '时间线节点 id（省略时自动定位画布上的 output.timeline 节点）'
+        },
         count: {
           type: 'number',
           description: `均匀抽帧数（1~${MAX_PREVIEW_FRAMES}，默认 ${DEFAULT_PREVIEW_FRAMES}）；给了 atSec 时忽略`
@@ -1704,11 +1833,12 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const nodeId = optionalString(args, 'nodeId')
-      const { asset, doc } = readTimelineDoc(assetId, nodeId)
+      const rawAssetId = optionalString(args, 'assetId')
+      const rawNodeId = optionalString(args, 'nodeId')
+      const { asset, doc } = readTimelineDoc(rawAssetId, rawNodeId)
+      const assetId = asset.id
       if (!doc.clips.length) {
-        throw new Error(`剧本资产「${asset.name}」的时间线还没有任何片段，没有可预览的画面`)
+        throw new Error(`资产「${asset.name}」的时间线还没有任何片段，没有可预览的画面`)
       }
       const input = buildTimelineExportInput(doc)
       const plan = planPreviewTimestamps({
@@ -4193,6 +4323,234 @@ const TOOL_DEFS: McpToolDef[] = [
         uninstalled: rawName
       }
     }
+  },
+  {
+    name: 'workflow_use_installed',
+    title: '加载/组合技能工作流种子拓扑',
+    description:
+      '加载已安装技能（或官方市场技能）的画布工作流种子拓扑与技能指南，支持三种高自由度组合模式（`mode`）：\n' +
+      '- `seed`（默认）：将该技能的核心种子节点与完整连线（`edges`）一键落入当前画布并自动布局；注意：种子拓扑只是最小起点，落图后你应当根据任务创意自由调用 `graph_edit` 增删改节点（如叠加 `svg.gen -> svg.anim` 动态贴纸/HUD、`image.process` 抠图大头、`asset.voice` 毒舌旁白等）或用 `timeline_edit` 精编时间线！\n' +
+      '- `merge`（多技能跨界混搭）：将该技能的节点与连线**增量拼装**到当前画布上，保留画布既有节点！若画布上已存在 `output.timeline`（`timeline-out`），新技能产出的媒体节点会自动汇聚连入同一个 `timeline-out`；若普通节点 ID 冲突会自动加前缀，支持在同一画布上组合多个技能！\n' +
+      '- `blueprint`（只读蓝图）：不改动画布，仅返回该技能的 `plan`（节点与连线清单）与 `SKILL.md` 指南，供你用 `graph_edit` 按需挑拣、重组任意节点。\n' +
+      '若目标技能是纯算子/方法论技能（不含静态 `workflow.json`），本工具同样会成功返回其 `SKILL.md` 指南，供你直接在画布上自由搭图。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: {
+          type: 'string',
+          description:
+            '技能或工作流 ID（支持如 "guichu-remix"、"wf-guichu-remix"、"/wf-guichu-remix"、"ancient-scroll-revive"）'
+        },
+        assetId: {
+          type: 'string',
+          description:
+            '可选：目标画布资产 ID（省略或传 "current" 时自动作用于当前打开的画布；若无画布则自动新建自由画布）'
+        },
+        mode: {
+          type: 'string',
+          enum: ['seed', 'merge', 'blueprint'],
+          description:
+            '可选：seed（默认，落下种子拓扑与完整连线）/ merge（保留画布现有节点，将本技能节点增量并入同一画布并共享 output.timeline）/ blueprint（只读返回拓扑蓝图与指南，不改画布）'
+        },
+        nodeIdPrefix: {
+          type: 'string',
+          description: '可选：mode="merge" 时为新增节点 ID 添加的自定义前缀（如 "remix-"）'
+        }
+      },
+      required: ['id']
+    },
+    handler: async (args) => {
+      const rawId = readString(args, 'id').trim().replace(/^\/+/, '')
+      const cleanId = rawId.replace(/^wf-/, '')
+      const modeRaw = optionalString(args, 'mode')
+      const mode: 'seed' | 'merge' | 'blueprint' =
+        modeRaw === 'merge' || modeRaw === 'blueprint' ? modeRaw : 'seed'
+      const customPrefix = optionalString(args, 'nodeIdPrefix')?.trim() ?? ''
+
+      const workspaceRoot = projectService.isOpen() ? projectService.getRoot() : undefined
+      const allSkills = discoverInstalledClaudeSkills({
+        ...(workspaceRoot ? { workspaceRoot } : {})
+      })
+      const matchedSkill = allSkills.find(
+        (s) => s.name === rawId || s.name === `wf-${cleanId}` || s.name === cleanId
+      )
+
+      let planRes = readInstalledWorkflowPlan(cleanId)
+      if (!planRes.ok) {
+        try {
+          await installSkillFromMarket({ id: cleanId })
+          planRes = readInstalledWorkflowPlan(cleanId)
+        } catch {
+          // ignore
+        }
+      }
+
+      const plan =
+        planRes.ok && planRes.bundle && planRes.bundle.plan
+          ? (planRes.bundle.plan as GraphPlan)
+          : undefined
+      if (
+        !planRes.ok ||
+        !planRes.bundle ||
+        !plan ||
+        !Array.isArray(plan.nodes) ||
+        plan.nodes.length === 0
+      ) {
+        if (matchedSkill) {
+          return {
+            ok: true,
+            id: cleanId,
+            skillName: matchedSkill.name,
+            mode: 'operator_skill',
+            hasWorkflow: false,
+            instructions: matchedSkill.body,
+            hint: '该技能为无固定拓扑的算子/方法论技能，请直接根据 instructions 在当前画布上用 graph_edit / timeline_edit 自由创建和组合节点。'
+          }
+        }
+        throw new Error(
+          `未找到已安装的技能或工作流「${rawId}」（可通过 skill_list 查看已装技能，或用 skill_search / skill_install 安装）`
+        )
+      }
+
+      const bundle = planRes.bundle
+      if (mode === 'blueprint') {
+        return {
+          ok: true,
+          id: bundle.id,
+          title: bundle.title,
+          summary: bundle.summary,
+          version: bundle.version,
+          mode: 'blueprint',
+          plan,
+          ...(matchedSkill
+            ? { skillName: matchedSkill.name, instructions: matchedSkill.body }
+            : {}),
+          hint: '已返回种子拓扑蓝图（未修改画布）。你可根据创意用 graph_edit（node_upsert + edge_connect）自由挑拣、增删或混搭任意节点。'
+        }
+      }
+
+      assertProjectOpen()
+      const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
+      const targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, { autoCreateCanvas: true })
+      if (!targetCanvas) {
+        throw new Error('无法定位或创建目标画布资产')
+      }
+      const existingGraph = ((targetCanvas.genParams as Record<string, unknown> | undefined)
+        ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
+      const existingNodeIds = new Set((existingGraph.nodes ?? []).map((n) => n.id))
+      const existingTimelineNode = (existingGraph.nodes ?? []).find(
+        (n) => n.typeId === 'output.timeline'
+      )
+
+      const keyMap = new Map<string, string>()
+      for (const spec of plan.nodes) {
+        if (mode === 'merge') {
+          if (spec.typeId === 'output.timeline' && existingTimelineNode) {
+            keyMap.set(spec.key, existingTimelineNode.id)
+            continue
+          }
+          const prefix = customPrefix || (existingNodeIds.has(spec.key) ? `${cleanId}-` : '')
+          keyMap.set(spec.key, `${prefix}${spec.key}`)
+        } else {
+          keyMap.set(spec.key, spec.key)
+        }
+      }
+
+      const ops: McpGraphEditOp[] = []
+      for (const spec of plan.nodes) {
+        const mappedId = keyMap.get(spec.key) ?? spec.key
+        ops.push({
+          op: 'node_upsert',
+          nodeId: mappedId,
+          typeId: spec.typeId,
+          ...(spec.title ? { title: spec.title } : {}),
+          ...(spec.params ? { params: spec.params } : {})
+        })
+      }
+      for (const edge of plan.edges) {
+        const fromNodeId = keyMap.get(edge.from) ?? edge.from
+        const toNodeId = keyMap.get(edge.to) ?? edge.to
+        ops.push({
+          op: 'edge_connect',
+          fromNodeId,
+          toNodeId,
+          ...(edge.fromPort ? { fromPort: edge.fromPort } : {}),
+          ...(edge.toPort ? { toPort: edge.toPort } : {})
+        })
+      }
+      ops.push({ op: 'auto_layout' })
+
+      const requestId = randomUUID()
+      pendingMcpGraphEditResults.delete(requestId)
+      broadcastToAllWindows(IpcChannels.MCP_GRAPH_EDIT, {
+        requestId,
+        assetId: targetCanvas.id,
+        ops,
+        openEditor: true,
+        autoLayout: true
+      })
+
+      let resolvedAssetId = targetCanvas.id
+      let touchedNodeIds = [...keyMap.values()]
+      let applied: string[] = []
+      let warnings: string[] = []
+      let handledByRenderer = false
+
+      try {
+        for (let i = 0; i < 30; i++) {
+          await sleep(250)
+          const report = pendingMcpGraphEditResults.get(requestId)
+          if (!report) continue
+          if (report.ok) {
+            resolvedAssetId = report.assetId || targetCanvas.id
+            touchedNodeIds = report.nodeIds?.length ? report.nodeIds : touchedNodeIds
+            applied = report.applied ?? []
+            warnings = report.warnings ?? []
+            handledByRenderer = true
+          }
+          break
+        }
+      } finally {
+        pendingMcpGraphEditResults.delete(requestId)
+      }
+
+      if (!handledByRenderer) {
+        const latestAsset = findAssetOrThrow(targetCanvas.id)
+        const latestGraph = ((latestAsset.genParams as Record<string, unknown> | undefined)
+          ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
+        const editRes = applyGraphEditOps(latestGraph, ops, { autoLayout: true })
+        const updatedAsset = projectService.updateAsset({
+          ...latestAsset,
+          genParams: {
+            ...(latestAsset.genParams ?? {}),
+            graphJson: editRes.graph
+          }
+        })
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updatedAsset)
+        applied = editRes.applied
+        warnings = editRes.warnings
+        if (editRes.touchedNodeIds?.length) touchedNodeIds = editRes.touchedNodeIds
+      }
+
+      lastMcpGraphEditTarget = {
+        assetId: resolvedAssetId,
+        nodeIds: touchedNodeIds
+      }
+
+      return {
+        ok: true,
+        id: bundle.id,
+        title: bundle.title,
+        mode,
+        assetId: resolvedAssetId,
+        nodeIds: touchedNodeIds,
+        nodeKeyMap: Object.fromEntries(keyMap.entries()),
+        edgeCount: plan.edges.length,
+        applied,
+        warnings,
+        hint: '种子拓扑与连线已就绪！这只是起点骨架：你现在可以随时用 graph_edit（node_upsert / edge_connect / node_delete）自由增删扩展节点（例如跨技能加入 svg.gen->svg.anim 动态图形、image.process 抠图、asset.voice 配音等），或用 timeline_edit（含 pitchSemitones 半音爬音、voiceEffect 变声、1/4与1/8拍切片）精编成片。'
+      }
+    }
   }
 ]
 
@@ -4531,6 +4889,13 @@ function buildTimelineExportInput(
             settings.subtitleMotion === true || settings.subtitleMotion === 'fade' ? 'fade' : 'none'
         }
       : {}),
+    ...(settings.subtitleKaraokeMode ? { subtitleKaraokeMode: settings.subtitleKaraokeMode } : {}),
+    ...(settings.subtitleHighlightColor
+      ? { subtitleHighlightColor: settings.subtitleHighlightColor }
+      : {}),
+    ...(settings.subtitleHighlightBgColor
+      ? { subtitleHighlightBgColor: settings.subtitleHighlightBgColor }
+      : {}),
     ...(settings.mixGains ? { mixGains: settings.mixGains } : {}),
     ...(settings.mixMasterGain != null ? { mixMasterGain: settings.mixMasterGain } : {}),
     ...(settings.mixBassGainDb != null ? { mixBassGainDb: settings.mixBassGainDb } : {}),
@@ -4607,13 +4972,33 @@ function splitToolImages(result: unknown): { result: unknown; images: McpToolIma
   return { result: rest, images }
 }
 
-/** 读剧本资产的时间线文档；资产不存在直接抛错 */
+/** 读画布或剧本资产的时间线文档；自动识别画布上的 output.timeline 节点 id */
 function readTimelineDoc(
-  assetId: string,
-  nodeId?: string
-): { asset: AssetInfo; doc: ScriptTimelineDocument } {
-  const asset = findAssetOrThrow(assetId)
-  return { asset, doc: readScriptTimelineFromGenParams(asset.genParams, nodeId) }
+  rawAssetId?: string,
+  rawNodeId?: string
+): { asset: AssetInfo; nodeId?: string; doc: ScriptTimelineDocument } {
+  const trimmed = rawAssetId?.trim() ?? ''
+  const asset =
+    !trimmed || trimmed === 'current'
+      ? resolveOrEnsureCanvasAsset(trimmed || undefined, { autoCreateCanvas: false })
+      : findAssetOrThrow(trimmed)
+  if (!asset) {
+    throw new Error('未找到目标画布或剧本资产（请传入合法的 assetId）')
+  }
+  let nodeId = rawNodeId?.trim() || undefined
+  if (!nodeId) {
+    const graphNodes = (
+      (asset.genParams as Record<string, unknown> | undefined)?.graphJson as
+        { nodes?: Array<{ id?: string; typeId?: string }> } | undefined
+    )?.nodes
+    const tlNode = Array.isArray(graphNodes)
+      ? graphNodes.find((n) => n?.typeId === 'output.timeline' && typeof n.id === 'string')
+      : undefined
+    if (tlNode?.id) {
+      nodeId = tlNode.id
+    }
+  }
+  return { asset, nodeId, doc: readScriptTimelineFromGenParams(asset.genParams, nodeId) }
 }
 
 /** 时间线片段 → 导出链路认识的片段（只挑导出用得到的字段） */
@@ -4628,6 +5013,7 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
       : undefined)
   return {
     track: clip.track,
+    ...(clip.lane != null ? { lane: clip.lane } : {}),
     title: clip.title,
     startSec: clip.startSec,
     durationSec: clip.durationSec,
@@ -4637,6 +5023,8 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
     ...(clip.fontSize != null ? { fontSize: clip.fontSize } : {}),
     ...(clip.sourceOffsetSec != null ? { sourceOffsetSec: clip.sourceOffsetSec } : {}),
     ...(clip.speed != null ? { speed: clip.speed } : {}),
+    ...(clip.pitchSemitones != null ? { pitchSemitones: clip.pitchSemitones } : {}),
+    ...(clip.voiceEffect ? { voiceEffect: clip.voiceEffect } : {}),
     ...(clip.freezeTailSec != null ? { freezeTailSec: clip.freezeTailSec } : {}),
     ...(clip.brightness != null ? { brightness: clip.brightness } : {}),
     ...(clip.contrast != null ? { contrast: clip.contrast } : {}),
@@ -4655,6 +5043,7 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
     ...(clip.visualEffect ? { visualEffect: clip.visualEffect } : {}),
     ...(clip.effectIntensity != null ? { effectIntensity: clip.effectIntensity } : {}),
     ...(clip.volume != null ? { volume: clip.volume } : {}),
+    ...(clip.loop != null ? { loop: clip.loop } : {}),
     ...(clip.fadeInSec != null ? { fadeInSec: clip.fadeInSec } : {}),
     ...(clip.fadeOutSec != null ? { fadeOutSec: clip.fadeOutSec } : {}),
     ...(clip.overlayX != null ? { overlayX: clip.overlayX } : {}),
@@ -4680,6 +5069,18 @@ function toExportClip(clip: ScriptTimelineClip): TimelineExportClip {
     ...(clip.keyframes?.length ? { keyframes: clip.keyframes } : {}),
     ...(clip.stickerId ? { stickerId: clip.stickerId } : {}),
     ...(clip.stickerColor ? { stickerColor: clip.stickerColor } : {}),
+    ...(clip.rawCueText ? { rawCueText: clip.rawCueText } : {}),
+    ...(clip.words?.length ? { words: clip.words } : {}),
+    ...(clip.anchorCueTag ? { anchorCueTag: clip.anchorCueTag } : {}),
+    ...(clip.anchorOffsetSec != null ? { anchorOffsetSec: clip.anchorOffsetSec } : {}),
+    ...(clip.anchorMatchDuration != null ? { anchorMatchDuration: clip.anchorMatchDuration } : {}),
+    ...(clip.subtitleKaraokeMode ? { subtitleKaraokeMode: clip.subtitleKaraokeMode } : {}),
+    ...(clip.subtitleHighlightColor ? { subtitleHighlightColor: clip.subtitleHighlightColor } : {}),
+    ...(clip.subtitleHighlightBgColor
+      ? { subtitleHighlightBgColor: clip.subtitleHighlightBgColor }
+      : {}),
+    ...(clip.widgetConfig ? { widgetConfig: clip.widgetConfig } : {}),
+    ...(clip.sfxPresetId ? { sfxPresetId: clip.sfxPresetId } : {}),
     ...(clip.transitionInSec != null ? { transitionInSec: clip.transitionInSec } : {}),
     ...(clip.transitionOutSec != null ? { transitionOutSec: clip.transitionOutSec } : {}),
     ...(clip.transitionType ? { transitionType: clip.transitionType } : {})
@@ -4797,6 +5198,10 @@ function resolveTimelineDraft(value: unknown, label: string): TimelineClipDraft 
   const durationSec = Number(row.durationSec)
   if (!Number.isFinite(durationSec) || durationSec <= 0) {
     throw new Error(`${label} 缺少合法的 durationSec（秒，需大于 0）`)
+  }
+  if (track === 'overlay' && row.volume === undefined) {
+    // 画中画（B-Roll / 伴舞小窗）未显式指定音量时默认静音，避免原片底噪或未对齐对白盖过主轨
+    row.volume = 0
   }
   const assetId = typeof row.assetId === 'string' ? row.assetId.trim() : ''
   if (assetId) {

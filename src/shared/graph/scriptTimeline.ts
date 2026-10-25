@@ -89,8 +89,37 @@ export type ScriptTimelineScaleMode = 'contain' | 'cover' | 'blur'
 
 export const CLIP_SPEED_MIN = 0.25
 export const CLIP_SPEED_MAX = 4
+export const CLIP_PITCH_MIN_SEMITONES = -12
+export const CLIP_PITCH_MAX_SEMITONES = 12
 export const CLIP_FREEZE_TAIL_MAX_SEC = 30
 export const TRACK_LANE_MAX = 8
+
+export type TimelineVoiceEffectId =
+  'none' | 'chipmunk' | 'demon' | 'robot' | 'echo' | 'megaphone' | 'autotune-chorus'
+
+const TIMELINE_VOICE_EFFECT_IDS = new Set<string>([
+  'none',
+  'chipmunk',
+  'demon',
+  'robot',
+  'echo',
+  'megaphone',
+  'autotune-chorus'
+])
+
+export function isTimelineVoiceEffectId(value: unknown): value is TimelineVoiceEffectId {
+  return typeof value === 'string' && TIMELINE_VOICE_EFFECT_IDS.has(value)
+}
+
+/** 片段半音变调偏移 clamp 到 [-12, +12]，缺省 0 */
+export function clampClipPitchSemitones(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n)) return 0
+  return Math.min(
+    CLIP_PITCH_MAX_SEMITONES,
+    Math.max(CLIP_PITCH_MIN_SEMITONES, Math.round(n * 100) / 100)
+  )
+}
 
 /** 同类型轨道的子轨道索引归一化（0~7，缺省 0） */
 export function normalizeClipLane(value: unknown): number {
@@ -180,6 +209,10 @@ export type ScriptTimelineClip = {
   sourceOffsetSec?: number
   /** 片段播放变速倍率（0.25~4，缺省 1） */
   speed?: number
+  /** 片段音频半音变调（-12~+12 半音，0=原调；正值升调如 +2/+4/+7/+12 鬼畜阶梯爬音与旋律调音，负值降调；保持片段时长不变） */
+  pitchSemitones?: number
+  /** 片段人声/音效变声预设（chipmunk 花栗鼠高音 / demon 魔王低音 / robot 机械电音 / echo 灵魂回声 / megaphone 大喇叭失真 / autotune-chorus 电音合唱） */
+  voiceEffect?: TimelineVoiceEffectId
   /** 视频片段末尾定格延长时长（秒，0~30，缺省 0） */
   freezeTailSec?: number
   /** 片段级亮度微调（-0.5~0.5，缺省 0） */
@@ -228,6 +261,8 @@ export type ScriptTimelineClip = {
   fontSize?: number
   /** 声音/音乐/视频轨片段音量（0~1） */
   volume?: number
+  /** 音频/音乐片段是否循环铺满片段时长（当 durationSec 大于源文件时长时生效） */
+  loop?: boolean
   /** 淡入时长（秒） */
   fadeInSec?: number
   /** 淡出时长（秒） */
@@ -414,6 +449,8 @@ export type TimelineExportClip = {
   /** 源文件内的取段起点（秒），缺省 0；打点选段片段在导出按此偏移后截取 */
   sourceOffsetSec?: number
   speed?: number
+  pitchSemitones?: number
+  voiceEffect?: TimelineVoiceEffectId
   freezeTailSec?: number
   brightness?: number
   contrast?: number
@@ -438,6 +475,7 @@ export type TimelineExportClip = {
   textColor?: string
   fontSize?: number
   volume?: number
+  loop?: boolean
   fadeInSec?: number
   fadeOutSec?: number
   overlayX?: number
@@ -1452,7 +1490,38 @@ export function readScriptTimelineFromGenParams(
   genParams?: Record<string, unknown> | null,
   nodeId?: string
 ): ScriptTimelineDocument {
-  const raw = genParams?.[timelineParamKeyForNode(nodeId)]
+  let raw = genParams?.[timelineParamKeyForNode(nodeId)]
+  const hasClips = (val: unknown): boolean =>
+    Boolean(
+      val &&
+      typeof val === 'object' &&
+      Array.isArray((val as { clips?: unknown }).clips) &&
+      ((val as { clips: unknown[] }).clips?.length ?? 0) > 0
+    )
+  if (!hasClips(raw) && genParams) {
+    if (nodeId?.trim()) {
+      if (hasClips(genParams[SCRIPT_TIMELINE_PARAM_KEY])) {
+        raw = genParams[SCRIPT_TIMELINE_PARAM_KEY]
+      }
+    } else {
+      const graphNodes = (
+        genParams.graphJson as { nodes?: Array<{ id?: string; typeId?: string }> }
+      )?.nodes
+      const tlNode = Array.isArray(graphNodes)
+        ? graphNodes.find((n) => n?.typeId === 'output.timeline' && typeof n.id === 'string')
+        : undefined
+      if (tlNode?.id && hasClips(genParams[timelineParamKeyForNode(tlNode.id)])) {
+        raw = genParams[timelineParamKeyForNode(tlNode.id)]
+      } else {
+        for (const [k, v] of Object.entries(genParams)) {
+          if (k.startsWith(`${SCRIPT_TIMELINE_PARAM_KEY}:`) && hasClips(v)) {
+            raw = v
+            break
+          }
+        }
+      }
+    }
+  }
   if (!raw || typeof raw !== 'object') return { clips: [] }
   const doc = raw as ScriptTimelineDocument
   const rawClips = Array.isArray(doc.clips) ? doc.clips.filter(isClip) : []

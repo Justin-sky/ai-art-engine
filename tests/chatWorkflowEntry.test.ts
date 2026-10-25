@@ -485,13 +485,14 @@ describe('当前会话标题显示在面板最上方', () => {
   })
 })
 
-describe('Agent 工具：一键工作流已从 MCP 下线，统一由 graph_edit 在当前画布搭图', () => {
-  it('不再向 Agent 暴露 workflow_* 工具，避免绕开当前画布另建 subgraph 包', () => {
+describe('Agent 工具：旧版 subgraph 工作流工具已下线，workflow_use_installed 统一走当前画布 graph_edit 种子/合并/蓝图模式', () => {
+  it('不暴露旧版 workflow_plan/commit，workflow_use_installed 直接在当前画布落入种子拓扑或合并', () => {
     expect(MCP).not.toContain("name: 'workflow_list_presets'")
     expect(MCP).not.toContain("name: 'workflow_plan'")
     expect(MCP).not.toContain("name: 'workflow_commit'")
     expect(MCP).not.toContain("name: 'workflow_list_installed'")
-    expect(MCP).not.toContain("name: 'workflow_use_installed'")
+    expect(MCP).toContain("name: 'workflow_use_installed'")
+    expect(MCP).toContain("enum: ['seed', 'merge', 'blueprint']")
     expect(MCP).toContain("name: 'graph_edit'")
   })
 })

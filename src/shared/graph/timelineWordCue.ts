@@ -523,11 +523,29 @@ export function syncTimelineCueAnchors<T extends CueSyncableClip>(
   })
 
   const cueWindows = extractTimelineCueWindows(normalizedClips)
-  const cueByTag = new Map<string, TimelineSemanticCueWindow>()
+  const cuesByTag = new Map<string, TimelineSemanticCueWindow[]>()
   for (const win of cueWindows) {
-    if (!cueByTag.has(win.tag)) {
-      cueByTag.set(win.tag, win)
+    const list = cuesByTag.get(win.tag) ?? []
+    list.push(win)
+    cuesByTag.set(win.tag, list)
+  }
+  const findNearestCue = (
+    tag: string,
+    targetSec: number
+  ): TimelineSemanticCueWindow | undefined => {
+    const list = cuesByTag.get(tag)
+    if (!list || list.length === 0) return undefined
+    let best = list[0]!
+    let bestDist = Math.abs(best.startSec - targetSec)
+    for (let i = 1; i < list.length; i++) {
+      const candidate = list[i]!
+      const dist = Math.abs(candidate.startSec - targetSec)
+      if (dist < bestDist) {
+        best = candidate
+        bestDist = dist
+      }
     }
+    return best
   }
 
   let syncedClipCount = 0
@@ -537,9 +555,9 @@ export function syncTimelineCueAnchors<T extends CueSyncableClip>(
     let next = clip
     const tag = clip.anchorCueTag?.trim()
     if (tag && clip.track !== 'subtitle') {
-      const cue = cueByTag.get(tag)
+      const offset = Number.isFinite(clip.anchorOffsetSec) ? Number(clip.anchorOffsetSec) : 0
+      const cue = findNearestCue(tag, clip.startSec - offset)
       if (cue) {
-        const offset = Number.isFinite(clip.anchorOffsetSec) ? Number(clip.anchorOffsetSec) : 0
         const targetStart = Math.max(0, round3(cue.startSec + offset))
         const targetDur =
           clip.anchorMatchDuration === true
@@ -564,7 +582,7 @@ export function syncTimelineCueAnchors<T extends CueSyncableClip>(
       const nextItems = next.widgetConfig.items.map((item) => {
         const itemTag = item.cueTag?.trim()
         if (!itemTag) return item
-        const cue = cueByTag.get(itemTag)
+        const cue = findNearestCue(itemTag, next.startSec + (item.triggerSec ?? 0))
         if (!cue) return item
         const relTrigger = Math.max(0, round3(cue.startSec - next.startSec))
         if (Math.abs((item.triggerSec ?? 0) - relTrigger) > 0.001) {

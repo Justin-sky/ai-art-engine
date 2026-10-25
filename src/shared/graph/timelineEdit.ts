@@ -22,6 +22,7 @@ import {
   isTimelineTweenInPreset,
   isTimelineTweenLoopPreset,
   isTimelineTweenOutPreset,
+  isTimelineVoiceEffectId,
   normalizeTimelineKeyframes,
   normalizeTimelineWidgetConfig,
   syncTimelineCueAnchors,
@@ -167,6 +168,7 @@ const TRANSITION_TYPES = [
 
 /** 可改字段白名单：类型约束在外部入口不可信，运行时也要防脏数据 */
 const EDITABLE_PATCH_KEYS = new Set([
+  'lane',
   'title',
   'text',
   'sourceId',
@@ -178,6 +180,8 @@ const EDITABLE_PATCH_KEYS = new Set([
   'durationSec',
   'sourceOffsetSec',
   'speed',
+  'pitchSemitones',
+  'voiceEffect',
   'freezeTailSec',
   'brightness',
   'contrast',
@@ -198,6 +202,7 @@ const EDITABLE_PATCH_KEYS = new Set([
   'textColor',
   'fontSize',
   'volume',
+  'loop',
   'fadeInSec',
   'fadeOutSec',
   'overlayX',
@@ -223,6 +228,7 @@ const EDITABLE_PATCH_KEYS = new Set([
   'keyframes',
   'stickerId',
   'stickerColor',
+  'sfxPresetId',
   'rawCueText',
   'words',
   'anchorCueTag',
@@ -239,10 +245,12 @@ const EDITABLE_PATCH_KEYS = new Set([
 
 /** 数值字段的取值区间；`strictMin` 表示「必须大于 min」（只有时长用） */
 const NUMERIC_PATCH_RULES: Record<string, { min: number; max?: number; strictMin?: boolean }> = {
+  lane: { min: 0, max: 7 },
   startSec: { min: 0 },
   durationSec: { min: 0, strictMin: true },
   sourceOffsetSec: { min: 0 },
   speed: { min: 0.25, max: 4 },
+  pitchSemitones: { min: -12, max: 12 },
   freezeTailSec: { min: 0, max: 30 },
   brightness: { min: -0.5, max: 0.5 },
   contrast: { min: 0.5, max: 2 },
@@ -410,7 +418,11 @@ function sanitizeClipPatch(patch: TimelineClipPatch | undefined | null): {
       if (isTimelineSubtitleKaraokeMode(raw)) out[key] = raw
       continue
     }
-    if (key === 'anchorMatchDuration') {
+    if (key === 'voiceEffect') {
+      if (isTimelineVoiceEffectId(raw)) out[key] = raw
+      continue
+    }
+    if (key === 'anchorMatchDuration' || key === 'loop') {
       if (typeof raw === 'boolean') out[key] = raw
       continue
     }

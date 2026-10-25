@@ -85,6 +85,7 @@ const TOOL_TITLE_ZH: Record<string, string> = {
   ask_user: '向用户提问确认',
   ask_user_question: '向用户提问确认',
   web_extract_article: '提取网页正文',
+  web_fetch_video: '检索下载影视名场面素材',
   web_search: '联网搜索',
   web_fetch: '读取网页',
   read: '读取文件',
@@ -466,6 +467,10 @@ export function extractMcpToolStepsFromArgs(rawName: string, rawArgs: unknown): 
     case 'skill_uninstall': {
       const name = str(args, 'name')
       return [`卸载技能 ${name}`.trim()]
+    }
+    case 'web_fetch_video': {
+      const q = str(args, 'query') || str(args, 'url')
+      return [`检索并下载名场面视频${q ? `「${q}」` : ''}`]
     }
     default:
       return []

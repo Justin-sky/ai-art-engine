@@ -1129,6 +1129,7 @@ function buildPersona(mode: ChatMode, projectMemory?: string | null): string[] {
     'To rasterize or visually check an SVG or HTML artifact, call the render_svg tool instead:',
     'it renders the file with the app own engine and returns the picture to you, with no browser involved.',
     'To render and extract any external web page or technical article URL (including SPA/JS pages, WeChat Official Accounts, Zhihu, Juejin, CSDN, Medium, or docs) together with its embedded figures/diagrams, call the studio MCP tool `web_extract_article({ url })`: it runs a real local headless Chromium browser inside the privileged host process, scrolls to trigger lazy-loaded `data-src` images, extracts structured Markdown, and automatically downloads the article images into `Cache/imports/` for direct use on canvas nodes.',
+    'To search and download movie / TV / comedy sketch iconic scene video clips by movie name or Bilibili URL / BV ID (e.g. for Guichu / YTPMV beat remixing with `wf-guichu-remix`), call the studio MCP tool `web_fetch_video({ query, url, count, maxDurationSec })`: it searches Bilibili for clean iconic scene clips, downloads the MP4 stream into `Cache/imports/...`, and returns `relativePath` ready for `transcribe_audio`, `detect_video_keyframes`, `grab_video_frames`, and `timeline_edit`.',
     'To bake assets into the project, use the studio path: wire `svg.gen` into `svg.anim` on the active canvas via `graph_edit` and run `task_run`, then read the baked PNG frames and the GIF reported by the task result.',
     'If a check genuinely needs a real browser, stop and tell the user to run it outside the app.',
     '=== Generated media must not land in the project root ===',
@@ -2947,6 +2948,7 @@ async function preprocessOnlineSkillInstallIntent(input: {
         (u) =>
           !validGhUrls.includes(u) &&
           !/^https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(u) &&
+          !/^https?:\/\/(?:[\w.-]+\.)?(?:bilibili\.com\/video\/|b23\.tv\/)/i.test(u) &&
           !/\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|wav|glb|gltf|zip)(?:$|[?#])/i.test(u)
       )
     )

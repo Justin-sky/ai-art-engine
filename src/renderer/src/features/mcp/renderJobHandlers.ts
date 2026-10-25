@@ -43,6 +43,7 @@ import { composeStage2dSpineExport } from '../graph/model/composeStage2dSpineExp
 import { renderSvgFrames } from '../graph/model/renderSvgFrames'
 import { resolveAssetPreviewUrl } from '../media/assetUrlCache'
 import { executeDirectorStageEdit, executeDirectorStageRead } from '../director/mcpDirectorStageOps'
+import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { notifyOpenTimelineEditorUpdated } from './openTimelineEditors'
 
@@ -352,6 +353,96 @@ async function handleAssetQc(args: Record<string, unknown>): Promise<unknown> {
  * 时间线编辑器打开时拒绝：编辑器内存态与它的自动保存会把远端写入覆盖掉
  * （与 graph_edit / stage2d_spine_export 同一保护口径）。
  */
+/**
+ * 若画布中存在尚未连线的媒体节点（asset.video / asset.image / asset.voice / asset.music / asset.sfx）
+ * 以及成片时间线节点（output.timeline），自动补齐连线并同步时间线文档到该时间线节点。
+ */
+async function syncCanvasTimelineAndAutoWire(
+  canvasAsset: AssetInfo,
+  document: ScriptTimelineDocument,
+  preferredNodeId?: string
+): Promise<void> {
+  const hostId = `asset:${canvasAsset.id}`
+  const liveGraph = graphEditorHosts.getLiveAssetDocument(canvasAsset.id)
+  const storedGraph = (canvasAsset.genParams as Record<string, unknown> | undefined)?.graphJson as
+    GraphDocument | undefined
+  const baseGraph = liveGraph ?? storedGraph
+  let effectiveNodeId = preferredNodeId?.trim() || undefined
+  let nextGraph: GraphDocument | undefined = baseGraph
+
+  if (baseGraph && Array.isArray(baseGraph.nodes)) {
+    const tlNode =
+      (effectiveNodeId
+        ? baseGraph.nodes.find((n) => n.id === effectiveNodeId && n.typeId === 'output.timeline')
+        : undefined) ?? baseGraph.nodes.find((n) => n.typeId === 'output.timeline')
+    if (tlNode) {
+      effectiveNodeId = tlNode.id
+      const existingEdges = Array.isArray(baseGraph.edges) ? [...baseGraph.edges] : []
+      let edgesChanged = false
+      for (const node of baseGraph.nodes) {
+        if (node.id === tlNode.id) continue
+        const hasOutgoing = existingEdges.some((e) => e.source === node.id)
+        if (hasOutgoing) continue
+        if (node.typeId === 'asset.video' || node.typeId === 'asset.image') {
+          const targetPort = node.typeId === 'asset.video' ? 'in' : 'in-image'
+          existingEdges.push({
+            id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
+            source: node.id,
+            sourcePort: 'out',
+            target: tlNode.id,
+            targetPort
+          })
+          edgesChanged = true
+        } else if (
+          node.typeId === 'asset.voice' ||
+          node.typeId === 'asset.dialogue' ||
+          node.typeId === 'asset.music' ||
+          node.typeId === 'asset.sfx'
+        ) {
+          const targetPort = node.typeId === 'asset.music' ? 'in-music' : 'in-voice'
+          existingEdges.push({
+            id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
+            source: node.id,
+            sourcePort: 'out',
+            target: tlNode.id,
+            targetPort
+          })
+          edgesChanged = true
+        }
+      }
+      if (edgesChanged) {
+        nextGraph = {
+          ...baseGraph,
+          edges: existingEdges
+        }
+        if (liveGraph) {
+          graphEditorHosts.applyExternalGraph(hostId, nextGraph)
+          await graphEditorHosts.flush(hostId)
+        }
+      }
+    }
+  }
+
+  const project = useProjectStore()
+  const latestAsset = project.assets.find((item) => item.id === canvasAsset.id) ?? canvasAsset
+  let nextGenParams = withScriptTimeline(
+    latestAsset.genParams as Record<string, unknown> | undefined,
+    document,
+    effectiveNodeId
+  )
+  if (effectiveNodeId) {
+    nextGenParams = withScriptTimeline(nextGenParams, document, undefined)
+  }
+  if (nextGraph) {
+    nextGenParams = {
+      ...nextGenParams,
+      graphJson: nextGraph
+    }
+  }
+  await persistAssetRecord(canvasAsset.id, { genParams: nextGenParams })
+  notifyOpenTimelineEditorUpdated(canvasAsset.id)
+}
+
 async function handleTimelineDocumentApply(args: Record<string, unknown>): Promise<unknown> {
   const project = useProjectStore()
   const assetId = readString(args.assetId).trim()
@@ -363,14 +454,38 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
   const asset = project.assets.find((item) => item.id === assetId)
   if (!asset) throw new Error(`资产不存在：${assetId}`)
   const nodeId = readString(args.nodeId).trim()
-  const genParams = withScriptTimeline(
-    asset.genParams as Record<string, unknown> | undefined,
-    document,
-    nodeId || undefined
+
+  const hasGraph = Boolean(
+    (asset.genParams as Record<string, unknown> | undefined)?.graphJson ||
+    graphEditorHosts.getLiveAssetDocument(asset.id)
   )
-  await persistAssetRecord(assetId, { genParams })
+  if (asset.type === 'canvas' || hasGraph) {
+    await syncCanvasTimelineAndAutoWire(asset, document, nodeId || undefined)
+  } else {
+    const genParams = withScriptTimeline(
+      asset.genParams as Record<string, unknown> | undefined,
+      document,
+      nodeId || undefined
+    )
+    await persistAssetRecord(assetId, { genParams })
+    notifyOpenTimelineEditorUpdated(assetId)
+
+    // 兜底保护：若 Agent 误建了独立 screenplay 资产并在其上调用 timeline_edit，
+    // 自动将时间线与节点连线同步到当前打开的含有 output.timeline 节点的画布资产上
+    for (const entry of graphEditorHosts.listLiveEntries()) {
+      if (!entry.hostId.startsWith('asset:')) continue
+      const openCanvasId = entry.hostId.slice('asset:'.length).split(':')[0]
+      if (!openCanvasId || openCanvasId === assetId) continue
+      const openCanvasAsset = project.assets.find(
+        (item) => item.id === openCanvasId && item.type === 'canvas'
+      )
+      if (openCanvasAsset && entry.document.nodes.some((n) => n.typeId === 'output.timeline')) {
+        await syncCanvasTimelineAndAutoWire(openCanvasAsset, document)
+      }
+    }
+  }
+
   await project.scheduleRefreshLibrary()
-  notifyOpenTimelineEditorUpdated(assetId)
   return {
     assetId,
     clipCount: document.clips.length,

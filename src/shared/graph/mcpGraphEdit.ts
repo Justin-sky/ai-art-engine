@@ -1020,6 +1020,41 @@ export function applyGraphEditOps(
   const uniqueTouchedIds = [
     ...new Set(touchedNodeIds.filter((id) => next.nodes.some((n) => n.id === id)))
   ]
+  // 兜底防断连：若画布上存在唯一 output.timeline 节点且尚无任何入边，自动将同画布无出边的上游媒体节点连入对应端口
+  const timelineNodes = next.nodes.filter((n) => n.typeId === 'output.timeline')
+  if (
+    timelineNodes.length === 1 &&
+    next.nodes.length <= 24 &&
+    uniqueTouchedIds.includes(timelineNodes[0]!.id) &&
+    !next.edges.some((e) => e.target === timelineNodes[0]!.id)
+  ) {
+    const sink = timelineNodes[0]!
+    const autoConnectTypes = new Set([
+      'asset.video',
+      'asset.image',
+      'asset.music',
+      'asset.sfx',
+      'asset.voice',
+      'asset.dialogue',
+      'svg.anim',
+      'anim.2d',
+      'film.workbench',
+      'film.shot'
+    ])
+    for (const node of next.nodes) {
+      if (node.id === sink.id || !autoConnectTypes.has(node.typeId ?? '')) continue
+      if (next.edges.some((e) => e.source === node.id)) continue
+      const ports = resolveEdgePorts(node, sink)
+      if (!ports) continue
+      next.edges.push({
+        id: `edge-mcp-auto-${node.id}-${sink.id}`,
+        source: node.id,
+        target: sink.id,
+        sourcePort: ports.sourcePort,
+        targetPort: ports.targetPort
+      })
+    }
+  }
   if (uniqueTouchedIds.length > 0) {
     invalidateTouchedRunStates(next, uniqueTouchedIds)
   }
