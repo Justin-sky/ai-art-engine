@@ -2,6 +2,7 @@
   <div v-if="node" class="dive-view game-workbench-dive">
     <header class="workbench-header">
       <div class="header-left">
+        <span class="type-pill">{{ typeLabel }}</span>
         <span class="spec-badge">{{ nodeBadge }}</span>
         <input
           v-model="localTitle"
@@ -10,19 +11,6 @@
           :placeholder="typeLabel"
           @change="persistTitle"
         />
-      </div>
-
-      <div v-if="siblingGameNodes.length > 1" class="node-switcher">
-        <button
-          v-for="item in siblingGameNodes"
-          :key="item.id"
-          type="button"
-          class="switch-pill"
-          :class="{ active: item.id === activeNodeId }"
-          @click="activeNodeId = item.id"
-        >
-          {{ item.label }}
-        </button>
       </div>
 
       <div class="header-right">
@@ -487,19 +475,6 @@ const node = computed((): GraphNode | null => {
   return current && isGameProductionNode(current) ? current : null
 })
 
-const siblingGameNodes = computed(() => {
-  void graphEditorHosts.revision.value
-  if (!hostId.value) return []
-  const doc = graphEditorHosts.getDocument(hostId.value)
-  if (!doc) return []
-  return doc.nodes
-    .filter((n) => isGameProductionNode(n))
-    .map((n) => ({
-      id: n.id,
-      label: n.title?.trim() || (n.typeId ? graphTypeLabel(n.typeId) : n.id)
-    }))
-})
-
 const { runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node, hostId)
 
 const typeLabel = computed(() => (node.value?.typeId ? graphTypeLabel(node.value.typeId) : ''))
@@ -757,14 +732,16 @@ function recompilePlayableNow(): void {
   min-width: 200px;
 }
 
-.node-switcher {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
+.type-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  color: var(--text);
 }
 
-.switch-pill,
 .tab-pill {
   padding: 5px 11px;
   border-radius: 999px;
@@ -775,7 +752,6 @@ function recompilePlayableNow(): void {
   cursor: pointer;
 }
 
-.switch-pill.active,
 .tab-pill.active {
   background: color-mix(in srgb, var(--accent) 18%, var(--panel));
   border-color: color-mix(in srgb, var(--accent) 45%, transparent);
