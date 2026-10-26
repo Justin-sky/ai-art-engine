@@ -14,12 +14,18 @@ import {
   buildSfxVariantFfmpegArgs,
   buildSpritePhysicsManifest,
   classifyGameBundleItem,
+  compileGameArtBiblePromptClause,
+  compilePlayableGameSandboxHtml,
   deriveCombatBoxesFromAlpha,
+  deriveDeterministicUnityGuid,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
+  extractGuidFromUnityMeta,
   extractSpriteCollisionHull,
   generateEngineImporterScript,
   generateProceduralLevelMap,
+  generateUnityMetaFile,
+  planIncrementalBundleSync,
   planSfxVariantMatrix,
   validateSkillTreeDag
 } from '../src/shared/gameAssets'
@@ -575,5 +581,103 @@ describe('Phase 5: Procedural Tiled (.tmj) Level Maps, Shaders/Particles, Gamepl
     expect(bm.fntText).toContain('info face="crit_font"')
     expect(bm.fntText).toContain('chars count=16')
     expect(bm.fntText).toContain('char id=48') // '0'
+  })
+})
+
+describe('Phase 6: Product-Grade Art Bible Lock, Unity .meta GUID Preservation & Playable Sandbox Compiler', () => {
+  it('compileGameArtBiblePromptClause locks camera projection, art direction, and master palette hex', () => {
+    const clause = compileGameArtBiblePromptClause({
+      cameraProjection: 'top_down_34',
+      artDirection: 'cel_anime',
+      masterPaletteHex: ['#09101D', '38bdf8', '#fbbf24']
+    })
+    expect(clause).toContain('[Camera Lock:')
+    expect(clause).toContain('3/4 top-down RPG')
+    expect(clause).toContain('[Art Style Lock:')
+    expect(clause).toContain('cel-shaded anime')
+    expect(clause).toContain('[Master Color Palette: #09101d, #38bdf8, #fbbf24]')
+  })
+
+  it('generateUnityMetaFile & planIncrementalBundleSync preserve existing Unity .meta GUIDs and diff unchanged files', () => {
+    const manifest = buildGameBundleManifest({
+      bundleName: 'unity-game',
+      targetEngine: 'unity',
+      items: [
+        { id: '1', name: 'hero', sourcePath: 'Assets/Sprites/hero.png', type: 'image' },
+        { id: '2', name: 'stone_normal', sourcePath: 'Assets/PBR/stone_normal.png', type: 'image' },
+        { id: '3', name: 'hit_sfx', sourcePath: 'Assets/Audio/hit.wav', type: 'audio' }
+      ]
+    })
+
+    const spriteEntry = manifest.assets[0]!
+    const normalEntry = manifest.assets[1]!
+    const sfxEntry = manifest.assets[2]!
+
+    const generated = generateUnityMetaFile(spriteEntry, {
+      spriteBorders: { left: 8, bottom: 8, right: 8, top: 8 }
+    })
+    expect(generated.guid).toMatch(/^[0-9a-f]{32}$/)
+    expect(generated.metaText).toContain(`guid: ${generated.guid}`)
+    expect(generated.metaText).toContain('textureType: 8')
+    expect(generated.metaText).toContain('spriteBorder: {x: 8, y: 8, z: 8, w: 8}')
+
+    // Preserving an existing Unity .meta GUID on disk so Prefabs never lose reference
+    const existingUnityGuid = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+    const existingMetaOnDisk = `fileFormatVersion: 2\nguid: ${existingUnityGuid}\nTextureImporter:\n`
+    const reExported = generateUnityMetaFile(spriteEntry, {
+      existingMetaText: existingMetaOnDisk
+    })
+    expect(extractGuidFromUnityMeta(existingMetaOnDisk)).toBe(existingUnityGuid)
+    expect(reExported.guid).toBe(existingUnityGuid)
+    expect(reExported.metaText).toContain(`guid: ${existingUnityGuid}`)
+
+    // Normal map gets textureType: 1 and sRGBTexture: 0
+    const normalMeta = generateUnityMetaFile(normalEntry)
+    expect(normalMeta.metaText).toContain('textureType: 1')
+    expect(normalMeta.metaText).toContain('sRGBTexture: 0')
+
+    // SFX gets DecompressOnLoad (loadType: 0)
+    const sfxMeta = generateUnityMetaFile(sfxEntry)
+    expect(sfxMeta.metaText).toContain('AudioImporter:')
+    expect(sfxMeta.metaText).toContain('loadType: 0')
+
+    // Incremental sync diff
+    const prevFp = {
+      [spriteEntry.bundleRelativePath]: '1024:1000',
+      [normalEntry.bundleRelativePath]: '2048:2000'
+    }
+    const currFp = {
+      [spriteEntry.bundleRelativePath]: '1024:1000', // unchanged
+      [normalEntry.bundleRelativePath]: '2048:9999', // modified
+      [sfxEntry.bundleRelativePath]: '512:3000' // added
+    }
+    const diff = planIncrementalBundleSync(manifest, currFp, prevFp)
+    expect(diff.unchanged).toHaveLength(1)
+    expect(diff.modified).toHaveLength(1)
+    expect(diff.added).toHaveLength(1)
+    expect(deriveDeterministicUnityGuid('stable_key')).toBe(
+      deriveDeterministicUnityGuid('stable_key')
+    )
+  })
+
+  it('compilePlayableGameSandboxHtml produces a self-contained playable HTML5 micro-game for survivor and platformer modes', () => {
+    const survivor = compilePlayableGameSandboxHtml({
+      title: 'Vampire Blade Demo',
+      mode: 'survivor',
+      levelSeed: 77
+    })
+    expect(survivor.levelAlgorithm).toBe('arena_waves')
+    expect(survivor.html).toContain('<!DOCTYPE html>')
+    expect(survivor.html).toContain('Vampire Blade Demo')
+    expect(survivor.html).toContain('Survivor Mode')
+    expect(survivor.html).toContain('Platformer Mode')
+
+    const platformer = compilePlayableGameSandboxHtml({
+      title: 'Knight Jump Demo',
+      mode: 'platformer',
+      levelSeed: 88
+    })
+    expect(platformer.levelAlgorithm).toBe('platformer_course')
+    expect(platformer.html).toContain('Knight Jump Demo')
   })
 })

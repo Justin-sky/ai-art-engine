@@ -35,6 +35,31 @@
       <input v-model="localCacheDir" :placeholder="defaultCacheDir" @change="onCacheDirChange" />
       <span class="field-hint">{{ t('project.globals.cacheOutputDirHint') }}</span>
     </label>
+
+    <div class="bible-card">
+      <div class="bible-title">Game Art Bible Lock</div>
+      <label class="cache-field">
+        Camera Projection
+        <select v-model="bibleCamera" @change="onBibleChange">
+          <option value="free">Free / Unconstrained</option>
+          <option value="side_scroller">2D Side-Scroller (Orthographic)</option>
+          <option value="top_down_34">Top-Down 3/4 RPG (45° Tilt)</option>
+          <option value="isometric">2:1 Isometric Strategy</option>
+          <option value="first_person">First-Person / Dungeon Crawler</option>
+        </select>
+      </label>
+      <label class="cache-field">
+        Art Direction Lock
+        <select v-model="bibleArt" @change="onBibleChange">
+          <option value="free">Free / Unconstrained</option>
+          <option value="pixel_16bit">16-Bit Pixel Art</option>
+          <option value="cel_anime">Cel-Shaded Anime</option>
+          <option value="hand_drawn_ink">Hand-Drawn Ink &amp; Paint</option>
+          <option value="stylized_pbr">Stylized 3D PBR</option>
+          <option value="dark_gothic">Dark Gothic Grimdark</option>
+        </select>
+      </label>
+    </div>
   </div>
   <div v-else class="inspector empty">
     {{ t('project.globals.empty') }}
@@ -51,6 +76,11 @@ import {
   type ProjectConfig,
   type ProjectStyleImage
 } from '@shared/domain'
+import {
+  compileGameArtBiblePromptClause,
+  type GameArtDirectionPreset,
+  type GameCameraProjectionLock
+} from '@shared/gameAssets'
 import { MAX_GENERATE_SEED, clampSeed } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import { useProjectStore } from '../stores/project'
@@ -69,6 +99,8 @@ const config = computed(() => project.config ?? props.config)
 const localImages = ref<ProjectStyleImage[]>([])
 const localCacheDir = ref('')
 const localSeed = ref('')
+const bibleCamera = ref<GameCameraProjectionLock>('free')
+const bibleArt = ref<GameArtDirectionPreset>('free')
 const defaultCacheDir = DEFAULT_CACHE_OUTPUT_DIR
 
 watch(
@@ -125,9 +157,41 @@ async function onCacheDirChange(): Promise<void> {
   if (normalized === current) return
   await project.updateConfig({ cacheOutputDir: normalized })
 }
+
+async function onBibleChange(): Promise<void> {
+  const baseText = styleImagesToPresetText(localImages.value)
+  const clause = compileGameArtBiblePromptClause({
+    cameraProjection: bibleCamera.value,
+    artDirection: bibleArt.value
+  })
+  const combined = [baseText, clause].filter(Boolean).join('\n')
+  await project.updateConfig({ stylePreset: combined })
+}
 </script>
 
 <style scoped>
+.bible-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated, var(--bg));
+}
+.bible-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cache-field select {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated, var(--bg));
+  color: var(--text);
+  font-size: 12px;
+}
 .inspector {
   display: flex;
   flex-direction: column;

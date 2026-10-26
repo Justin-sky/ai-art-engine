@@ -22,8 +22,11 @@ import {
   buildGameShaderParticleBundle,
   buildSeamlessLoopBgmFfmpegArgs,
   buildSfxVariantFfmpegArgs,
+  compilePlayableGameSandboxHtml,
   generateEngineImporterScript,
   generateProceduralLevelMap,
+  generateUnityMetaFile,
+  planIncrementalBundleSync,
   planSfxVariantMatrix,
   type GameBundleInputItem,
   type GameBundleTargetEngine,
@@ -31,7 +34,8 @@ import {
   type GameParticlePresetId,
   type GameplaySystemsInput,
   type GameShaderPresetId,
-  type LevelGeneratorAlgorithm
+  type LevelGeneratorAlgorithm,
+  type PlayableSandboxMode
 } from '@shared/gameAssets'
 import {
   BLENDER_MCP_PATH,
@@ -5082,14 +5086,54 @@ const TOOL_DEFS: McpToolDef[] = [
       const outAbsDir = join(root, outRelDir)
       mkdirSync(outAbsDir, { recursive: true })
 
+      const fpFileAbs = join(outAbsDir, '.sync-fingerprints.json')
+      let prevFingerprints: Record<string, string> = {}
+      if (existsSync(fpFileAbs)) {
+        try {
+          prevFingerprints = JSON.parse(readFileSync(fpFileAbs, 'utf8')) as Record<string, string>
+        } catch {
+          prevFingerprints = {}
+        }
+      }
+
+      const currFingerprints: Record<string, string> = {}
+      for (const mapped of manifest.assets) {
+        const srcAbs = join(root, mapped.sourcePath)
+        const st = statSync(srcAbs)
+        currFingerprints[mapped.bundleRelativePath] = `${st.size}:${Math.floor(st.mtimeMs)}`
+      }
+
+      const syncDiff = planIncrementalBundleSync(manifest, currFingerprints, prevFingerprints)
+      const incrementalOnly = Boolean(args.incrementalSync)
+
       let copiedFiles = 0
+      let unityMetaCount = 0
+      let preservedUnityGuidsCount = 0
+
       for (const mapped of manifest.assets) {
         const srcAbs = join(root, mapped.sourcePath)
         const destAbs = join(outAbsDir, mapped.bundleRelativePath)
         mkdirSync(dirname(destAbs), { recursive: true })
-        copyFileSync(srcAbs, destAbs)
-        copiedFiles++
+
+        const isUnchanged = syncDiff.unchanged.some(
+          (u) => u.bundleRelativePath === mapped.bundleRelativePath
+        )
+        if (!incrementalOnly || !isUnchanged || !existsSync(destAbs)) {
+          copyFileSync(srcAbs, destAbs)
+          copiedFiles++
+        }
+
+        if (targetEngine === 'unity') {
+          const metaAbs = `${destAbs}.meta`
+          const existingMetaText = existsSync(metaAbs) ? readFileSync(metaAbs, 'utf8') : null
+          if (existingMetaText) preservedUnityGuidsCount++
+          const { metaText } = generateUnityMetaFile(mapped, { existingMetaText })
+          writeFileSync(metaAbs, metaText, 'utf8')
+          unityMetaCount++
+        }
       }
+
+      writeFileSync(fpFileAbs, JSON.stringify(syncDiff.nextFingerprints, null, 2), 'utf8')
 
       const manifestRelPath = `${outRelDir}/game-asset-manifest.json`
       const manifestAbsPath = join(outAbsDir, 'game-asset-manifest.json')
@@ -5111,6 +5155,13 @@ const TOOL_DEFS: McpToolDef[] = [
           relativePath: importerRelPath,
           language: importerScript.language,
           description: importerScript.description
+        },
+        syncSummary: {
+          added: syncDiff.added.length,
+          modified: syncDiff.modified.length,
+          unchanged: syncDiff.unchanged.length,
+          unityMetaCount,
+          preservedUnityGuidsCount
         },
         totalAssets: manifest.totalAssets,
         copiedFiles,
@@ -5477,6 +5528,52 @@ const TOOL_DEFS: McpToolDef[] = [
         bitmapFont: bmFontResult,
         mermaidDiagram: bundle.mermaidDiagram,
         writtenFiles
+      }
+    }
+  },
+  {
+    name: 'game_playable_preview_compile',
+    title: '编译应用内即点即玩HTML5微缩游戏沙盒',
+    description:
+      '将当前工程的角色精灵、怪物精灵、瓦片与程序化关卡编译为零依赖、单文件可运行的 HTML5 可玩微缩游戏（支持 survivor 肉鸽割草模式与 platformer 横版平台跳跃模式实时切换，内建 WASD 移动、自动/点击射击、受击闪白与暴击伤害跳字），落盘到 Assets/GamePlayable/。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: '可玩沙盒标题' },
+        mode: {
+          type: 'string',
+          enum: ['survivor', 'platformer'],
+          description: '初始试玩模式：survivor（肉鸽割草）或 platformer（横版平台跳跃）'
+        },
+        levelSeed: { type: 'number', description: '关卡种子（默认 42）' }
+      }
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const title = (optionalString(args, 'title') || 'Indie Game Playable Sandbox').trim()
+      const modeRaw = optionalString(args, 'mode') ?? 'survivor'
+      const mode: PlayableSandboxMode = modeRaw === 'platformer' ? 'platformer' : 'survivor'
+
+      const compiled = compilePlayableGameSandboxHtml({
+        title,
+        mode,
+        levelSeed: typeof args.levelSeed === 'number' ? args.levelSeed : 42
+      })
+
+      const outRelDir = 'Assets/GamePlayable'
+      mkdirSync(join(root, outRelDir), { recursive: true })
+      const safeSlug =
+        title.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_').toLowerCase() || 'sandbox'
+      const htmlRelPath = `${outRelDir}/${safeSlug}_playable.html`
+      writeFileSync(join(root, htmlRelPath), compiled.html, 'utf8')
+
+      return {
+        ok: true,
+        title: compiled.title,
+        mode: compiled.mode,
+        levelAlgorithm: compiled.levelAlgorithm,
+        htmlRelativePath: htmlRelPath
       }
     }
   }

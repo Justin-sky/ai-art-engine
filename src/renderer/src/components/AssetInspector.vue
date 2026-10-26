@@ -79,6 +79,50 @@
       </p>
     </section>
 
+    <section v-if="cutoutSourcePath" class="cutout-section game-toolbox-section">
+      <div class="section-label">Game Asset Toolbox</div>
+      <div class="game-toolbox-btns">
+        <button
+          type="button"
+          class="cutout-btn"
+          :disabled="!cutoutUrl || gameToolBusy"
+          @click="runGameImageInspect"
+        >
+          Analyze Tile / 9-Slice / Hull
+        </button>
+        <button
+          type="button"
+          class="cutout-btn secondary"
+          :disabled="!cutoutUrl || gameToolBusy"
+          @click="exportSeamlessTileFromInspector"
+        >
+          Make Seamless
+        </button>
+        <button
+          type="button"
+          class="cutout-btn secondary"
+          :disabled="!cutoutUrl || gameToolBusy"
+          @click="exportNormalMapFromInspector"
+        >
+          Derive Normal
+        </button>
+      </div>
+      <div v-if="gameInspectReport" class="game-inspect-card">
+        <div>
+          Seamless Score: <b>{{ gameInspectReport.seamlessScore }}%</b>
+        </div>
+        <div>
+          9-Slice (L/R/T/B): <b>{{ gameInspectReport.nineSlice }}</b>
+        </div>
+        <div>
+          Collision Hull: <b>{{ gameInspectReport.hullVertices }} pts</b>
+        </div>
+        <div v-if="gameInspectReport.savedNote" class="saved-note">
+          {{ gameInspectReport.savedNote }}
+        </div>
+      </div>
+    </section>
+
     <template v-if="asset && isDirectorDeck(asset.type)">
       <label>
         {{ t('asset.inspector.linkedPanorama') }}
@@ -351,6 +395,13 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import {
+  analyzeSeamlessTile,
+  applySeamlessTileBlend,
+  derivePbrMapsFromRgba,
+  detectNineSliceBorders,
+  extractSpriteCollisionHull
+} from '@shared/gameAssets'
 import {
   assetDisplayIcon,
   isAnimationModelAsset,
@@ -815,6 +866,130 @@ function openComposer(): void {
   })
 }
 
+const gameToolBusy = ref(false)
+const gameInspectReport = ref<{
+  seamlessScore: number
+  nineSlice: string
+  hullVertices: number
+  savedNote?: string
+} | null>(null)
+
+async function decodeCurrentImagePixels(): Promise<{
+  rgba: Uint8ClampedArray
+  width: number
+  height: number
+} | null> {
+  if (!cutoutUrl.value) return null
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('Failed to decode image'))
+    img.src = cutoutUrl.value
+  })
+  const width = img.naturalWidth || img.width
+  const height = img.naturalHeight || img.height
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.drawImage(img, 0, 0)
+  return {
+    rgba: new Uint8ClampedArray(ctx.getImageData(0, 0, width, height).data),
+    width,
+    height
+  }
+}
+
+async function rgbaToDataUrl(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number
+): Promise<string> {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')!
+  const imgData = ctx.createImageData(width, height)
+  imgData.data.set(rgba)
+  ctx.putImageData(imgData, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
+async function runGameImageInspect(): Promise<void> {
+  gameToolBusy.value = true
+  try {
+    const decoded = await decodeCurrentImagePixels()
+    if (!decoded) return
+    const { rgba, width, height } = decoded
+    const seamless = analyzeSeamlessTile(rgba, width, height)
+    const nine = detectNineSliceBorders(rgba, width, height)
+    const hull = extractSpriteCollisionHull(rgba, width, height, { maxVertices: 8 })
+    gameInspectReport.value = {
+      seamlessScore: Math.round(seamless.score),
+      nineSlice: `${nine.borders.left}/${nine.borders.right}/${nine.borders.top}/${nine.borders.bottom}`,
+      hullVertices: hull.verticesPx.length
+    }
+  } finally {
+    gameToolBusy.value = false
+  }
+}
+
+async function exportSeamlessTileFromInspector(): Promise<void> {
+  const a = asset.value
+  if (!a) return
+  gameToolBusy.value = true
+  try {
+    const decoded = await decodeCurrentImagePixels()
+    if (!decoded) return
+    const blended = applySeamlessTileBlend(decoded.rgba, decoded.width, decoded.height, {
+      blendRatio: 0.18
+    })
+    const dataUrl = await rgbaToDataUrl(blended, decoded.width, decoded.height)
+    const savedPath = await window.studio.saveGraphRunMedia({
+      dataUrl,
+      key: `${a.name}_seamless`,
+      outputDir: 'Assets/GameTiles'
+    })
+    await project.scheduleRefreshLibrary()
+    await runGameImageInspect()
+    if (gameInspectReport.value) {
+      gameInspectReport.value.seamlessScore = 100
+      gameInspectReport.value.savedNote = `Saved: ${savedPath}`
+    }
+  } finally {
+    gameToolBusy.value = false
+  }
+}
+
+async function exportNormalMapFromInspector(): Promise<void> {
+  const a = asset.value
+  if (!a) return
+  gameToolBusy.value = true
+  try {
+    const decoded = await decodeCurrentImagePixels()
+    if (!decoded) return
+    const pbr = derivePbrMapsFromRgba(decoded.rgba, decoded.width, decoded.height, {
+      normalFormat: 'opengl',
+      normalStrength: 2.5
+    })
+    const dataUrl = await rgbaToDataUrl(pbr.normal, decoded.width, decoded.height)
+    const savedPath = await window.studio.saveGraphRunMedia({
+      dataUrl,
+      key: `${a.name}_normal`,
+      outputDir: 'Assets/GamePbr'
+    })
+    await project.scheduleRefreshLibrary()
+    await runGameImageInspect()
+    if (gameInspectReport.value) {
+      gameInspectReport.value.savedNote = `Saved: ${savedPath}`
+    }
+  } finally {
+    gameToolBusy.value = false
+  }
+}
+
 function readGenString(gen: Record<string, unknown> | undefined, key: string): string {
   const v = gen?.[key]
   return typeof v === 'string' ? v : ''
@@ -1164,6 +1339,37 @@ async function persist(): Promise<void> {
 .cutout-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.cutout-btn.secondary {
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+  color: var(--text);
+}
+
+.game-toolbox-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.game-inspect-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--border) 25%, transparent);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.game-inspect-card b {
+  color: var(--text);
+}
+
+.saved-note {
+  color: #22c55e;
+  word-break: break-all;
 }
 
 .vision-tags {

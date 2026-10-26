@@ -19,20 +19,55 @@
       <p v-else-if="mediaError || !resolvedUrl" class="empty">
         {{ mediaError ? mediaErrorText : emptyText }}
       </p>
-      <img
-        v-else-if="mediaKind === 'image'"
-        :src="resolvedUrl"
-        alt=""
-        class="image"
+      <div
+        v-else-if="mediaKind === 'image' && tile3x3Mode"
+        class="tile-grid-3x3"
         :class="{ grabbing: panning }"
         :style="imageStyle"
-        draggable="false"
         @pointerdown="onPanStart"
         @pointermove="onPanMove"
         @pointerup="onPanEnd"
         @pointercancel="onPanEnd"
         @click.stop
-      />
+      >
+        <img
+          v-for="idx in 9"
+          :key="idx"
+          :src="resolvedUrl"
+          alt=""
+          class="tile-cell-img"
+          draggable="false"
+        />
+      </div>
+      <div
+        v-else-if="mediaKind === 'image'"
+        class="image-stage"
+        :style="imageStyle"
+        @pointerdown="onPanStart"
+        @pointermove="onPanMove"
+        @pointerup="onPanEnd"
+        @pointercancel="onPanEnd"
+        @click.stop
+      >
+        <img
+          :src="resolvedUrl"
+          alt=""
+          class="image"
+          :class="{ grabbing: panning }"
+          draggable="false"
+        />
+        <div v-if="nineSliceOverlay" class="overlay-9slice" aria-hidden="true">
+          <span class="guide-h top" />
+          <span class="guide-h bottom" />
+          <span class="guide-v left" />
+          <span class="guide-v right" />
+        </div>
+        <div v-if="collisionOverlay" class="overlay-collision" aria-hidden="true">
+          <span class="box-hurt" title="Hurtbox" />
+          <span class="box-hit" title="Hitbox" />
+          <span class="pivot-cross" title="Bottom-Center Pivot" />
+        </div>
+      </div>
       <video
         v-else-if="mediaKind === 'video'"
         :src="resolvedUrl"
@@ -87,6 +122,33 @@
       >
         {{ rotationLabel }}
       </button>
+      <button
+        type="button"
+        class="bar-btn"
+        :class="{ active: tile3x3Mode }"
+        title="3x3 Seamless Tile Preview"
+        @click="tile3x3Mode = !tile3x3Mode"
+      >
+        3×3
+      </button>
+      <button
+        type="button"
+        class="bar-btn"
+        :class="{ active: nineSliceOverlay }"
+        title="UI 9-Slice Guides Overlay"
+        @click="nineSliceOverlay = !nineSliceOverlay"
+      >
+        9-Slice
+      </button>
+      <button
+        type="button"
+        class="bar-btn"
+        :class="{ active: collisionOverlay }"
+        title="2D Combat Hurtbox / Hitbox / Pivot Overlay"
+        @click="collisionOverlay = !collisionOverlay"
+      >
+        Box
+      </button>
       <span class="bar-hint">{{ t('graph.preview.imageHint') }}</span>
     </div>
   </div>
@@ -114,6 +176,9 @@ const offsetX = ref(0)
 const offsetY = ref(0)
 /** 视角旋转（度）。只对图片有意义，且与缩放 / 平移叠加 */
 const rotationDeg = ref(0)
+const tile3x3Mode = ref(false)
+const nineSliceOverlay = ref(false)
+const collisionOverlay = ref(false)
 const panning = ref(false)
 let didPan = false
 let panPointerId: number | null = null
@@ -339,6 +404,97 @@ function onBackdropClick(): void {
 
 .bar-btn:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.35);
+}
+
+.bar-btn.active {
+  background: rgba(56, 189, 248, 0.35);
+  border-color: rgba(56, 189, 248, 0.8);
+}
+
+.image-stage {
+  position: relative;
+  display: inline-flex;
+  transform-origin: center center;
+}
+
+.tile-grid-3x3 {
+  display: grid;
+  grid-template-columns: repeat(3, 160px);
+  grid-template-rows: repeat(3, 160px);
+  gap: 0;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  transform-origin: center center;
+  cursor: grab;
+}
+
+.tile-cell-img {
+  width: 160px;
+  height: 160px;
+  object-fit: fill;
+  display: block;
+}
+
+.overlay-9slice,
+.overlay-collision {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.overlay-9slice .guide-h {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px dashed #22c55e;
+}
+.overlay-9slice .guide-h.top {
+  top: 22%;
+}
+.overlay-9slice .guide-h.bottom {
+  bottom: 22%;
+}
+.overlay-9slice .guide-v {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1.5px dashed #22c55e;
+}
+.overlay-9slice .guide-v.left {
+  left: 22%;
+}
+.overlay-9slice .guide-v.right {
+  right: 22%;
+}
+
+.overlay-collision .box-hurt {
+  position: absolute;
+  left: 24%;
+  right: 26%;
+  top: 16%;
+  bottom: 8%;
+  border: 1.5px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.overlay-collision .box-hit {
+  position: absolute;
+  left: 55%;
+  right: 8%;
+  top: 28%;
+  bottom: 30%;
+  border: 1.5px solid #f43f5e;
+  background: rgba(244, 63, 94, 0.14);
+}
+
+.overlay-collision .pivot-cross {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, 50%);
+  border: 2px solid #facc15;
+  border-radius: 50%;
 }
 
 .bar-btn:disabled {
