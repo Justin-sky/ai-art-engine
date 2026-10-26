@@ -8022,6 +8022,29 @@ export default {
     }
   },
   gameNodes: {
+    workbench: {
+      title: 'Game Production Workbench',
+      openBtn: '🖥️ Fullscreen Workbench',
+      openHint: 'Double-click to open Game Production Workbench',
+      doneBtn: '✓ Done',
+      paramsSidebar: 'Node Parameters & Controls',
+      pbrPreviewTitle: '3×3 Seamless Tile Grid & PBR 4-Channel Maps',
+      seamlessGridTab: '🧱 3×3 Seamless Tile Grid',
+      pbrChannelsTab: '🗺️ PBR 4-Channel Gallery',
+      showSeamGrid: 'Show Tile Seam Grid',
+      pbrEmptyHint:
+        'Click the "▶ Run" button in the top bar or connect an upstream image to generate seamless tiles and 4-channel PBR maps (Normal / Roughness / ORM / Height).',
+      audioPreviewTitle: 'Game Audio WAV DSP Preview & Variant Matrix',
+      audioEmptyHint:
+        'Click "▶ Run" in the top bar or connect upstream audio to synthesize seamless loop BGM or 4× anti-fatigue SFX variants.',
+      sfxMatrixTitle: '4× Anti-Fatigue SFX Variant Matrix Plan',
+      levelPreviewTitle: '2D Level Topology Live Preview & Tiled (.tmj) Data',
+      levelMapTab: '🗺️ 2D Level Topology Pixel Map',
+      levelTmjTab: '📄 Tiled (.tmj) JSON Source',
+      playablePreviewTitle: '60fps HTML5 Playable Game Sandbox Live Playtest',
+      recompileBtn: '🔄 Recompile & Reload Sandbox',
+      toggleHtmlSource: '📄 Toggle HTML Source'
+    },
     pbrTile: {
       sectionTitle: 'Seamless Tile & PBR 4-Channel Params',
       hint: 'Connect an upstream image or run standalone: executes toroidal seamless blending, Sobel Normal/Roughness/ORM/Height map derivation, UI 9-Slice border detection, and 2D convex hull extraction.',

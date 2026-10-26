@@ -246,7 +246,8 @@
               isCutoutNode(node) ||
               isComposeNode(node) ||
               isFramePullNode(node) ||
-              isComicPageNode(node)) &&
+              isComicPageNode(node) ||
+              isGameProductionNode(node)) &&
             selectImagePreview
           "
           :src="selectImagePreview"
@@ -683,6 +684,7 @@ import {
   isCutoutNode,
   isComposeNode,
   isComicPageNode,
+  isGameProductionNode,
   isFilmNodeTypeId,
   parseFilmCast,
   parseFilmRenderCache,
@@ -1624,7 +1626,8 @@ watch(
         isCutoutNode(props.node) ||
         isComposeNode(props.node) ||
         isFramePullNode(props.node) ||
-        isComicPageNode(props.node),
+        isComicPageNode(props.node) ||
+        isGameProductionNode(props.node),
       previewInViewport.value,
       previewPriority.value
     ] as const,
@@ -1788,6 +1791,7 @@ const cardTextGridItems = computed((): string[] => {
 const hideCardPreview = computed(
   () =>
     isSemanticTimelineToolNode(props.node) ||
+    isGameProductionNode(props.node) ||
     props.node.typeId === 'asset.gamePlay' ||
     props.node.assetType === 'gamePlay'
 )
@@ -1840,6 +1844,7 @@ const previewHint = computed(() => {
   if (isCutoutNode(props.node)) return t('graph.cutout.hint')
   if (isComposeNode(props.node)) return t('graph.compose.hint')
   if (isComicPageNode(props.node)) return t('graph.inspector.comicPage.cardHint')
+  if (isGameProductionNode(props.node)) return t('gameNodes.workbench.openHint')
   if (isFilmNode.value) return t('graph.inspector.film.openWorkbenchHint')
   if (instructionKind.value) return t('graph.generateNode.instructionHint')
   if (isMissingLinkedAsset.value) return t('graph.assetMissing.hint')
@@ -1862,6 +1867,9 @@ const previewOpenHint = computed(() => {
   }
   if (props.node.typeId === 'comic.page') {
     return t('graph.inspector.comicPage.cardHint')
+  }
+  if (isGameProductionNode(props.node)) {
+    return t('gameNodes.workbench.openHint')
   }
   if (isFilmNode.value) {
     return t('graph.inspector.film.openWorkbenchHint')
@@ -1893,8 +1901,14 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     if (kind === 'voice') return 'voice'
     if (kind === 'text') return 'none'
   }
-  // 帧动画 / 影视设定与拍摄：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
-  if (isFrameAnimGenNode.value || isCardAnimNode.value || isFilmMediaPreviewNode.value) {
+  // 帧动画 / 影视设定与拍摄 / 游戏瓦片与关卡图：note 分类无 assetType，但仍输出图片，需按 image 走预览与尺寸自适应
+  if (
+    isFrameAnimGenNode.value ||
+    isCardAnimNode.value ||
+    isFilmMediaPreviewNode.value ||
+    props.node.typeId === 'game.pbrTile' ||
+    props.node.typeId === 'game.levelMap'
+  ) {
     return 'image'
   }
   if (isSelectVideoNode(props.node)) return 'video'
@@ -2779,6 +2793,29 @@ function onPreviewDblClick(): void {
       const hostId = props.hostId?.trim()
       if (!hostId) return
       await diveView({ viewId: 'film.workbench', hostId, nodeId: props.node.id }, title)
+      return
+    }
+
+    // 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒）：
+    // 双击进入全屏游戏生产工坊工作台（PBR贴图与无缝拼接预览、音频DSP变体试听、2D关卡地图编辑、HTML5可玩沙盒试玩），勿落入记事本
+    if (isGameProductionNode(props.node)) {
+      const hostId = props.hostId?.trim()
+      if (hostId) {
+        const ok = await diveView(
+          { viewId: 'game.workbench', hostId, nodeId: props.node.id },
+          title
+        )
+        if (ok) return
+      }
+      if (props.node.typeId === 'game.playable') {
+        const { openGamePlaySandboxDialog } =
+          await import('../features/media/gamePlaySandboxDialog')
+        openGamePlaySandboxDialog({
+          hostId: hostId || undefined,
+          nodeId: props.node.id,
+          title
+        })
+      }
       return
     }
 

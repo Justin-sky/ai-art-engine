@@ -156,7 +156,8 @@ async function resolveFromParams(params: GraphNodeParams | undefined | null): Pr
   // 优先落盘路径，避免节点 params 里残留巨大 HTML 字符串
   let htmlBody = path ? await hydrateFromPath(path) : ''
   if (!htmlBody) {
-    htmlBody = params?.gamePlayHtml?.trim() || params?.text?.trim() || ''
+    htmlBody =
+      params?.gamePlayHtml?.trim() || params?.gamePlayableHtml?.trim() || params?.text?.trim() || ''
   }
   if (!htmlBody && Array.isArray(params?.generatedTexts) && params.generatedTexts.length) {
     const selectedId = params.selectedTextId?.trim()

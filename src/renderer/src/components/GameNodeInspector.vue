@@ -2,7 +2,12 @@
   <div v-if="node" class="node-inspector">
     <div class="head">
       <h2>{{ displayTitle }}</h2>
-      <span class="spec-badge">{{ nodeBadge }}</span>
+      <div class="head-actions">
+        <span class="spec-badge">{{ nodeBadge }}</span>
+        <button type="button" class="workbench-btn" @click="openWorkbench">
+          {{ t('gameNodes.workbench.openBtn') }}
+        </button>
+      </div>
     </div>
     <p class="hint">
       {{ nodeHint }}
@@ -281,12 +286,14 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import { useNodeDisplayTitle } from '../composables/useNodeDisplayTitle'
 import { useGraphNodeRun } from '../composables/useGraphNodeRun'
 import { useEditorKernel } from '../editor/kernel'
+import { useWorkspaceStore } from '../stores/workspace'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
 const GAME_NODE_TYPES = new Set(['game.pbrTile', 'game.audioDsp', 'game.levelMap', 'game.playable'])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
+const workspace = useWorkspaceStore()
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -364,6 +371,21 @@ function randomizeLevelSeed(): void {
   patchParams({ gameLevelSeed: Math.floor(100 + Math.random() * 99000) })
 }
 
+function openWorkbench(): void {
+  const current = node.value
+  const rootKey = workspace.activeDiveRootKey?.trim()
+  if (!rootKey || !hostId.value || !current) return
+  workspace.diveIntoView(
+    rootKey,
+    {
+      viewId: 'game.workbench',
+      hostId: hostId.value,
+      nodeId: current.id
+    },
+    displayTitle.value
+  )
+}
+
 const playableModalOpen = ref(false)
 const activePlayableHtml = ref('')
 
@@ -423,6 +445,23 @@ function closePlayableModal(): void {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workbench-btn {
+  padding: 4px 9px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .head h2 {

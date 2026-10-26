@@ -294,3 +294,15 @@ export function isComposeNode(node: NodeRoleTarget): boolean {
 export function isComicPageNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'comic.page'
 }
+
+const GAME_PRODUCTION_NODE_TYPE_IDS = new Set([
+  'game.pbrTile',
+  'game.audioDsp',
+  'game.levelMap',
+  'game.playable'
+])
+
+/** 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒） */
+export function isGameProductionNode(node: Pick<GraphNode, 'typeId'> | null | undefined): boolean {
+  return typeof node?.typeId === 'string' && GAME_PRODUCTION_NODE_TYPE_IDS.has(node.typeId)
+}

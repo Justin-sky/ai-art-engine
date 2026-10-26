@@ -164,6 +164,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return String(i18n.global.t('graph.inspector.film.workbenchTitle'))
       case 'screenplay.workbench':
         return String(i18n.global.t('graph.scriptNode.workbench.title'))
+      case 'game.workbench':
+        return String(i18n.global.t('gameNodes.workbench.title'))
       case 'gamePlay.sandbox':
         return String(i18n.global.t('studio.dive.gamePlay.title'))
       default:

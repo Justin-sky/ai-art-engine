@@ -7788,6 +7788,29 @@ export default {
     }
   },
   gameNodes: {
+    workbench: {
+      title: '游戏生产工坊',
+      openBtn: '🖥️ 全屏工作台',
+      openHint: '双击打开全屏游戏生产工坊',
+      doneBtn: '✓ 完成返回',
+      paramsSidebar: '节点参数与控制',
+      pbrPreviewTitle: '3×3 四方连续拼接预览 & PBR 四通道贴图库',
+      seamlessGridTab: '🧱 3×3 无缝拼接平铺测试',
+      pbrChannelsTab: '🗺️ PBR 四通道贴图画廊',
+      showSeamGrid: '显示瓦片接缝辅助线',
+      pbrEmptyHint:
+        '点击右上角「▶ 运行」按钮或连入上游图片，即可生成四方连续无缝瓦片与 Sobel 法线/粗糙度/ORM/高度四通道 PBR 贴图。',
+      audioPreviewTitle: '游戏音频 WAV DSP 试听与变体矩阵',
+      audioEmptyHint:
+        '点击右上角「▶ 运行」按钮或连入上游音频，即可生成等功率无缝循环 BGM 或 4× 防听觉疲劳音效变体。',
+      sfxMatrixTitle: '4× 防听觉疲劳音效变体矩阵规划',
+      levelPreviewTitle: '2D 关卡拓扑实时预览 & Tiled (.tmj) 数据',
+      levelMapTab: '🗺️ 2D 关卡拓扑像素地图',
+      levelTmjTab: '📄 Tiled (.tmj) JSON 源码',
+      playablePreviewTitle: '60fps HTML5 可交互游戏沙盒实时试玩',
+      recompileBtn: '🔄 重新编译并刷新试玩',
+      toggleHtmlSource: '📄 切换 HTML 源码'
+    },
     pbrTile: {
       sectionTitle: '无缝瓦片与 PBR 四通道材质参数',
       hint: '连接上游原图或独立运行：自动执行环形四方连续无缝化、Sobel 法线/粗糙度/ORM/高度图派生、UI 九宫格切边与 2D 凸包碰撞体提取。',

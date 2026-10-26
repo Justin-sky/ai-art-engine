@@ -45,7 +45,13 @@ import {
   executeGamePbrTileNode,
   executeGamePlayableNode
 } from '../src/shared/graph/execute/gameNodes'
-import { getNodeTypeOrThrow } from '../src/shared/graph'
+import {
+  createNodeFromType,
+  getNodeTypeOrThrow,
+  isGameProductionNode,
+  isNodeTextCapable,
+  resolveNodeTextContent
+} from '../src/shared/graph'
 
 describe('Phase 1: 2D Seamless Tilemap & UI 9-Slice Operators', () => {
   it('applySeamlessTileBlend eliminates horizontal and vertical border seams while keeping center intact', () => {
@@ -875,5 +881,44 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(playableNode.params.gamePlayableHtml).toContain('<!DOCTYPE html>')
     expect(playableNode.params.gamePlayableHtml).toContain('Node Graph Dungeon Demo')
     expect(playableOutputs.out?.kind).toBe('text')
+  })
+
+  it('excludes all 4 game.* nodes from isNodeTextCapable/resolveNodeTextContent and routes double-click to game.workbench instead of Notepad', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+
+    for (const typeId of [
+      'game.pbrTile',
+      'game.audioDsp',
+      'game.levelMap',
+      'game.playable'
+    ] as const) {
+      const node = createNodeFromType(typeId, { x: 0, y: 0 })
+      node.params.text = '{"hello":"world"}'
+      node.params.resultText = 'some result'
+      expect(isGameProductionNode(node)).toBe(true)
+      expect(isNodeTextCapable(node)).toBe(false)
+      expect(
+        resolveNodeTextContent(node, {
+          status: 'done',
+          outputs: { out: { kind: 'text', text: '<!DOCTYPE html><html></html>' } }
+        })
+      ).toBeNull()
+    }
+
+    const cardCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/GraphNodeCard.vue'),
+      'utf8'
+    )
+    expect(cardCode).toContain('isGameProductionNode(props.node)')
+    expect(cardCode).toContain("viewId: 'game.workbench'")
+
+    const hostCode = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/EditorDiveChildHost.vue'),
+      'utf8'
+    )
+    expect(hostCode).toContain(
+      "'game.workbench': defineAsyncComponent(() => import('./dive/EditorDiveGameNodeView.vue'))"
+    )
   })
 })

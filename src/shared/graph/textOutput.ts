@@ -1,6 +1,6 @@
 import type { GraphNode } from './types'
 import type { GraphNodeRunState, GraphValue } from './execute/types'
-import { isProcessingAssetNode } from './nodeRole'
+import { isGameProductionNode, isProcessingAssetNode } from './nodeRole'
 
 /** 记事本可写回的节点参数字段 */
 export type GraphNodeTextField = 'text' | 'resultText'
@@ -60,6 +60,8 @@ function isTextToolNode(node: GraphNode): boolean {
  */
 export function isNodeTextCapable(node: GraphNode): boolean {
   if (node.typeId === 'stage.2d' || node.typeId === 'svg.anim') return false
+  // 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒）：双击进游戏全屏工作台，勿弹记事本
+  if (isGameProductionNode(node)) return false
   // 可玩 HTML：cook 后 params 可能残留整页 HTML，绝不能当记事本/卡片正文预览
   if (node.typeId === 'asset.gamePlay' || node.assetType === 'gamePlay') return false
   // Semantic Timeline 工具：category=note 但产出 JSON 管线，双击应进语义视图 / 结果预览，不是记事本
@@ -102,6 +104,7 @@ export function resolveNodeTextContent(
   node: GraphNode,
   runState?: GraphNodeRunState | null
 ): GraphNodeTextContent | null {
+  if (isGameProductionNode(node)) return null
   if (!isNodeTextCapable(node) && !textFromGraphValue(runState?.outputs?.out).trim()) {
     return null
   }
