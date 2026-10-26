@@ -933,36 +933,43 @@ function recompilePlayableNow(): void {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
-  padding: 16px;
-  gap: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 20px;
+  gap: 16px;
 }
 
 .stage-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   flex-shrink: 0;
 }
 
 .stage-title {
   font-size: 14px;
   font-weight: 600;
+  line-height: 1.4;
 }
 
 .tab-pills {
   display: flex;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .stage-content {
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding: 4px 0;
 }
 
 .tile-grid-3x3 {
@@ -1008,7 +1015,16 @@ function recompilePlayableNow(): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
+  min-width: 0;
+}
+
+.channel-card-head b,
+.sfx-card-head b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .channel-img {
@@ -1023,6 +1039,7 @@ function recompilePlayableNow(): void {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex-shrink: 0;
 }
 
 .sfx-matrix-panel {
@@ -1116,5 +1133,6 @@ function recompilePlayableNow(): void {
 
 .output-preview-wrap {
   width: 100%;
+  flex-shrink: 0;
 }
 </style>
