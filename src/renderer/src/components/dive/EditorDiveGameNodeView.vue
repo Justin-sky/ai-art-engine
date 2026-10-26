@@ -206,6 +206,51 @@
             </label>
           </template>
 
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.audioDsp.highPassHz') }}</span>
+              <b>{{ Number(node.params.gameAudioHighPassHz ?? 20) }} Hz</b>
+            </div>
+            <input
+              type="range"
+              min="20"
+              max="1000"
+              step="10"
+              :value="node.params.gameAudioHighPassHz ?? 20"
+              @change="onNumberParam('gameAudioHighPassHz', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.audioDsp.lowPassHz') }}</span>
+              <b>{{ Number(node.params.gameAudioLowPassHz ?? 20000) }} Hz</b>
+            </div>
+            <input
+              type="range"
+              min="1200"
+              max="20000"
+              step="200"
+              :value="node.params.gameAudioLowPassHz ?? 20000"
+              @change="onNumberParam('gameAudioLowPassHz', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.audioDsp.releaseTighten') }}</span>
+              <b>{{ Math.round(Number(node.params.gameAudioReleaseTighten ?? 0) * 100) }}%</b>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="0.85"
+              step="0.05"
+              :value="node.params.gameAudioReleaseTighten ?? 0"
+              @change="onNumberParam('gameAudioReleaseTighten', $event)"
+            />
+          </label>
+
           <label class="check-row">
             <input
               type="checkbox"
@@ -344,6 +389,14 @@
               <button
                 type="button"
                 class="tab-pill"
+                :class="{ active: pbrTab === 'lighting' }"
+                @click="pbrTab = 'lighting'"
+              >
+                {{ t('gameNodes.workbench.pbrLightingTab') }}
+              </button>
+              <button
+                type="button"
+                class="tab-pill"
                 :class="{ active: pbrTab === 'grid' }"
                 @click="pbrTab = 'grid'"
               >
@@ -360,9 +413,46 @@
             </div>
           </div>
 
-          <div v-if="pbrPrimaryImageUrl" class="stage-content">
+          <div class="stage-content">
+            <div v-if="pbrTab === 'lighting'" class="pbr-lighting-stage">
+              <div class="pbr-light-controls">
+                <span class="hint">{{ t('gameNodes.workbench.pbrMoveMouseHint') }}</span>
+                <div class="light-sliders">
+                  <label class="inline-slider">
+                    <span>{{ t('gameNodes.workbench.pbrLightHeight') }}</span>
+                    <input
+                      v-model.number="pbrLightZ"
+                      type="range"
+                      min="0.2"
+                      max="2.0"
+                      step="0.05"
+                      @input="renderPbrLightingCanvas"
+                    />
+                  </label>
+                  <label class="inline-slider">
+                    <span>{{ t('gameNodes.workbench.pbrLightIntensity') }}</span>
+                    <input
+                      v-model.number="pbrLightIntensity"
+                      type="range"
+                      min="0.6"
+                      max="2.8"
+                      step="0.1"
+                      @input="renderPbrLightingCanvas"
+                    />
+                  </label>
+                </div>
+              </div>
+              <canvas
+                ref="pbrLightCanvasRef"
+                width="288"
+                height="288"
+                class="pbr-light-canvas"
+                @pointermove="onPbrLightPointerMove"
+              />
+            </div>
+
             <div
-              v-if="pbrTab === 'grid'"
+              v-else-if="pbrTab === 'grid' && pbrPrimaryImageUrl"
               class="tile-grid-3x3"
               :class="{ 'show-seams': showSeamGrid }"
             >
@@ -376,7 +466,10 @@
               />
             </div>
 
-            <div v-else class="pbr-channels-grid">
+            <div
+              v-else-if="pbrTab === 'channels' && pbrChannelCards.length"
+              class="pbr-channels-grid"
+            >
               <div v-for="(item, index) in pbrChannelCards" :key="item.key" class="channel-card">
                 <div class="channel-card-head">
                   <span>#{{ index + 1 }}</span>
@@ -385,9 +478,10 @@
                 <img :src="item.url" alt="" class="channel-img" draggable="false" />
               </div>
             </div>
-          </div>
-          <div v-else class="empty-stage">
-            <p>{{ t('gameNodes.workbench.pbrEmptyHint') }}</p>
+
+            <div v-else class="empty-stage">
+              <p>{{ t('gameNodes.workbench.pbrEmptyHint') }}</p>
+            </div>
           </div>
 
           <div v-if="hostId" class="output-preview-wrap">
@@ -422,7 +516,16 @@
           <div class="audio-stage-body">
             <!-- Dual Waveform & Silence Trim / Loop Crossfade Visualizer -->
             <div class="waveform-compare-card">
-              <div class="section-title">{{ t('gameNodes.audioDsp.waveformTitle') }}</div>
+              <div class="waveform-lane-head">
+                <span class="section-title">{{ t('gameNodes.audioDsp.waveformTitle') }}</span>
+                <span class="spec-badge">
+                  {{
+                    upstreamDecodedAudio
+                      ? `${t('gameNodes.audioDsp.sourceUpstreamBadge')}${upstreamDecodedAudio.sourceLabel}`
+                      : `${t('gameNodes.audioDsp.sourceSynthBadge')}${node.params.gameAudioSynthPreset ?? 'sword_slash'}`
+                  }}
+                </span>
+              </div>
 
               <div class="waveform-lane">
                 <div class="waveform-lane-head">
@@ -431,7 +534,9 @@
                     <span>{{ rawWaveformAnalysis.durationSec }}s</span>
                     <span>Peak: {{ rawWaveformAnalysis.peakDb }} dB</span>
                     <span v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'sfx_variants'">
-                      Trim: -{{ rawWaveformAnalysis.trimmedLeadMs }}ms / -{{ rawWaveformAnalysis.trimmedTailMs }}ms
+                      Trim: -{{ rawWaveformAnalysis.trimmedLeadMs }}ms / -{{
+                        rawWaveformAnalysis.trimmedTailMs
+                      }}ms
                     </span>
                   </div>
                 </div>
@@ -521,11 +626,7 @@
                 <div v-for="v in sfxVariantsPlan" :key="v.variantId" class="sfx-card">
                   <div class="sfx-card-head">
                     <b>Variant #{{ v.index + 1 }} ({{ v.variantId }})</b>
-                    <button
-                      type="button"
-                      class="mini-play-btn"
-                      @click="playSingleVariant(v.index)"
-                    >
+                    <button type="button" class="mini-play-btn" @click="playSingleVariant(v.index)">
                       {{ t('gameNodes.audioDsp.playVariantBtn') }}
                     </button>
                   </div>
@@ -565,7 +666,11 @@
                     Unity (.json)
                   </button>
                   <button type="button" class="secondary-btn" @click="copyAudioEngineConfig">
-                    {{ audioConfigCopied ? t('gameNodes.audioDsp.copiedHint') : t('gameNodes.audioDsp.copyConfigBtn') }}
+                    {{
+                      audioConfigCopied
+                        ? t('gameNodes.audioDsp.copiedHint')
+                        : t('gameNodes.audioDsp.copyConfigBtn')
+                    }}
                   </button>
                 </div>
               </div>
@@ -604,11 +709,33 @@
 
           <div class="stage-content">
             <div v-if="levelTab === 'map'" class="level-map-stage">
+              <div class="brush-toolbar">
+                <span class="section-title">{{ t('gameNodes.levelMap.brushTitle') }}</span>
+                <div class="brush-pills">
+                  <button
+                    v-for="b in levelBrushOptions"
+                    :key="b.id"
+                    type="button"
+                    class="tab-pill"
+                    :class="{ active: activeLevelBrush === b.id }"
+                    @click="activeLevelBrush = b.id"
+                  >
+                    {{ b.label }}
+                  </button>
+                  <button type="button" class="secondary-btn" @click="clearLevelCustomEdits">
+                    {{ t('gameNodes.levelMap.clearBrushEdits') }}
+                  </button>
+                </div>
+              </div>
               <img
                 :src="liveLevelPreviewDataUrl"
                 alt="Level Map Preview"
-                class="level-preview-img"
+                class="level-preview-img interactive-map"
                 draggable="false"
+                @pointerdown="onLevelMapPointerDown"
+                @pointermove="onLevelMapPointerMove"
+                @pointerup="levelPainting = false"
+                @pointerleave="levelPainting = false"
               />
               <div class="level-stats-bar">
                 <span>{{ liveLevelData.width }} × {{ liveLevelData.height }}</span>
@@ -625,7 +752,9 @@
         <template v-else-if="node.typeId === 'game.playable'">
           <div class="stage-toolbar">
             <span class="stage-title">{{ t('gameNodes.workbench.playablePreviewTitle') }}</span>
-            <span class="hint">{{ t('gameNodes.playable.modalHint') }}</span>
+            <span class="spec-badge">
+              {{ t('gameNodes.playable.upstreamStatus') }}{{ playableUpstreamSummary }}
+            </span>
           </div>
 
           <div class="playable-stage-body">
@@ -649,12 +778,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   analyzeAudioWaveformAndTrim,
+  applyAudioShaperPcm,
+  applyCustomEditsToLevelMap,
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
+  applySeamlessTileBlend,
   compilePlayableGameSandboxHtml,
+  createProceduralStoneTileRgba,
+  decodeWavBytesToPcm,
+  derivePbrMapsFromRgba,
   exportGodotAudioStreamRandomizerTres,
   exportUnityAudioRandomContainerJson,
   generateProceduralLevelMap,
@@ -666,7 +801,11 @@ import {
   trimSilencePcm,
   type GameAudioEnvironmentFx,
   type GameAudioSynthPreset,
-  type LevelGeneratorAlgorithm
+  type LevelCellType,
+  type LevelEntitySpawn,
+  type LevelGeneratorAlgorithm,
+  type LevelMapCustomEditsPayload,
+  type ProceduralLevelMapResult
 } from '@shared/gameAssets'
 import { isGameProductionNode, type GraphNode, type GraphNodeParams } from '@shared/graph'
 import GraphNodeRunControl from '../GraphNodeRunControl.vue'
@@ -778,17 +917,29 @@ function onStringParam(key: keyof GraphNodeParams, event: Event): void {
 }
 
 function randomizeLevelSeed(): void {
-  patchParams({ gameLevelSeed: Math.floor(100 + Math.random() * 99000) })
+  patchParams({
+    gameLevelSeed: Math.floor(100 + Math.random() * 99000),
+    previewDataUrl: undefined,
+    text: undefined
+  })
 }
 
 function onClose(): void {
   editorDive?.popTo(-1)
 }
 
-// --- 1. game.pbrTile stage state ---
-const pbrTab = ref<'grid' | 'channels'>('grid')
+// --- 1. game.pbrTile stage state & 2.5D Point-Light PBR Shader ---
+const pbrTab = ref<'lighting' | 'grid' | 'channels'>('lighting')
 const showSeamGrid = ref(true)
+const pbrLightZ = ref(0.85)
+const pbrLightIntensity = ref(1.45)
+const pbrLightPos = ref({ x: 144, y: 144 })
+const pbrLightCanvasRef = ref<HTMLCanvasElement | null>(null)
 const pbrChannelCards = ref<Array<{ key: string; title: string; url: string }>>([])
+const pbrSourceTileRgba = ref<Uint8ClampedArray | null>(null)
+
+const PBR_TILE_DIM = 96
+const PBR_CANVAS_DIM = PBR_TILE_DIM * 3
 
 watch(
   () =>
@@ -801,6 +952,7 @@ watch(
     const current = node.value
     if (!current || current.typeId !== 'game.pbrTile') {
       pbrChannelCards.value = []
+      pbrSourceTileRgba.value = null
       return
     }
     const items = current.params.generatedImages ?? []
@@ -830,13 +982,193 @@ watch(
       })
     }
     pbrChannelCards.value = resolved
+    await loadPbrSourceTileRgba(resolved[0]?.url || '')
+    renderPbrLightingCanvas()
   },
   { immediate: true }
 )
 
+async function loadPbrSourceTileRgba(url: string): Promise<void> {
+  if (!url || typeof document === 'undefined' || typeof Image === 'undefined') {
+    pbrSourceTileRgba.value = null
+    return
+  }
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.crossOrigin = 'anonymous'
+      el.onload = () => resolve(el)
+      el.onerror = (err) => reject(err)
+      el.src = url
+    })
+    const offscreen = document.createElement('canvas')
+    offscreen.width = PBR_TILE_DIM
+    offscreen.height = PBR_TILE_DIM
+    const ctx = offscreen.getContext('2d')
+    if (!ctx) {
+      pbrSourceTileRgba.value = null
+      return
+    }
+    ctx.drawImage(img, 0, 0, PBR_TILE_DIM, PBR_TILE_DIM)
+    pbrSourceTileRgba.value = ctx.getImageData(0, 0, PBR_TILE_DIM, PBR_TILE_DIM).data
+  } catch {
+    pbrSourceTileRgba.value = null
+  }
+}
+
 const pbrPrimaryImageUrl = computed(() => pbrChannelCards.value[0]?.url || '')
 
-// --- 2. game.audioDsp stage state ---
+const pbrLiveTileData = computed(() => {
+  const base =
+    pbrSourceTileRgba.value && pbrSourceTileRgba.value.length === PBR_TILE_DIM * PBR_TILE_DIM * 4
+      ? pbrSourceTileRgba.value
+      : createProceduralStoneTileRgba(PBR_TILE_DIM, PBR_TILE_DIM).data
+  const seamlessEnabled = node.value?.params.gameTileSeamless !== false
+  const blendRatio = Math.max(
+    0.05,
+    Math.min(0.45, Number(node.value?.params.gameTileBlendRatio ?? 0.22))
+  )
+  const albedo = seamlessEnabled
+    ? applySeamlessTileBlend(base, PBR_TILE_DIM, PBR_TILE_DIM, { blendRatio })
+    : base
+  const normalStrength = Math.max(
+    0.2,
+    Math.min(12, Number(node.value?.params.gamePbrNormalStrength ?? 2.8))
+  )
+  const invertRoughness = Boolean(node.value?.params.gamePbrInvertRoughness)
+  const maps = derivePbrMapsFromRgba(albedo, PBR_TILE_DIM, PBR_TILE_DIM, {
+    normalStrength,
+    normalFormat: 'opengl',
+    wrapTiling: seamlessEnabled,
+    invertRoughness,
+    aoStrength: 0.85
+  })
+  return { albedo, maps }
+})
+
+function onPbrLightPointerMove(event: PointerEvent): void {
+  const canvas = pbrLightCanvasRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  const x = Math.max(
+    0,
+    Math.min(PBR_CANVAS_DIM - 1, ((event.clientX - rect.left) / rect.width) * PBR_CANVAS_DIM)
+  )
+  const y = Math.max(
+    0,
+    Math.min(PBR_CANVAS_DIM - 1, ((event.clientY - rect.top) / rect.height) * PBR_CANVAS_DIM)
+  )
+  pbrLightPos.value = { x, y }
+  renderPbrLightingCanvas()
+}
+
+function renderPbrLightingCanvas(): void {
+  const canvas = pbrLightCanvasRef.value
+  if (!canvas || typeof canvas.getContext !== 'function') return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const { albedo, maps } = pbrLiveTileData.value
+  const { normal, roughness, ao } = maps
+  const imgData = ctx.createImageData(PBR_CANVAS_DIM, PBR_CANVAS_DIM)
+  const out = imgData.data
+  const lx = pbrLightPos.value.x
+  const ly = pbrLightPos.value.y
+  const lz = pbrLightZ.value * 160
+  const intensity = pbrLightIntensity.value
+
+  for (let py = 0; py < PBR_CANVAS_DIM; py++) {
+    const ty = py % PBR_TILE_DIM
+    for (let px = 0; px < PBR_CANVAS_DIM; px++) {
+      const tx = px % PBR_TILE_DIM
+      const tIdx = (ty * PBR_TILE_DIM + tx) * 4
+      const cIdx = (py * PBR_CANVAS_DIM + px) * 4
+
+      const ar = albedo[tIdx] ?? 128
+      const ag = albedo[tIdx + 1] ?? 128
+      const ab = albedo[tIdx + 2] ?? 128
+
+      const nx = ((normal[tIdx] ?? 128) / 255) * 2 - 1
+      const ny = ((normal[tIdx + 1] ?? 128) / 255) * 2 - 1
+      const nz = Math.max(0.05, ((normal[tIdx + 2] ?? 255) / 255) * 2 - 1)
+
+      const dx = lx - px
+      const dy = -(ly - py)
+      const dz = lz
+      const dist = Math.hypot(dx, dy, dz) || 1
+      const lxN = dx / dist
+      const lyN = dy / dist
+      const lzN = dz / dist
+
+      const atten = intensity / (1 + (dist / 210) * (dist / 210) * 0.78)
+      const ndotl = Math.max(0, nx * lxN + ny * lyN + nz * lzN)
+
+      const hLen = Math.hypot(lxN, lyN, lzN + 1) || 1
+      const hx = lxN / hLen
+      const hy = lyN / hLen
+      const hz = (lzN + 1) / hLen
+      const ndoth = Math.max(0, nx * hx + ny * hy + nz * hz)
+
+      const rough = (roughness[tIdx] ?? 140) / 255
+      const shininess = Math.max(4, (1 - rough) * 64)
+      const spec = Math.pow(ndoth, shininess) * (1 - rough * 0.65) * 0.58
+      const aoVal = 0.35 + 0.65 * ((ao[tIdx] ?? 220) / 255)
+      const lit = 0.2 * aoVal + ndotl * atten * aoVal
+
+      out[cIdx] = Math.min(255, Math.max(0, Math.round(ar * lit + 255 * spec * atten)))
+      out[cIdx + 1] = Math.min(255, Math.max(0, Math.round(ag * lit + 245 * spec * atten)))
+      out[cIdx + 2] = Math.min(255, Math.max(0, Math.round(ab * lit + 225 * spec * atten)))
+      out[cIdx + 3] = 255
+    }
+  }
+  ctx.putImageData(imgData, 0, 0)
+
+  if (showSeamGrid.value) {
+    ctx.save()
+    ctx.strokeStyle = 'rgba(130, 180, 255, 0.38)'
+    ctx.setLineDash([4, 4])
+    ctx.lineWidth = 1
+    for (const step of [PBR_TILE_DIM, PBR_TILE_DIM * 2]) {
+      ctx.beginPath()
+      ctx.moveTo(step, 0)
+      ctx.lineTo(step, PBR_CANVAS_DIM)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(0, step)
+      ctx.lineTo(PBR_CANVAS_DIM, step)
+      ctx.stroke()
+    }
+    ctx.restore()
+  }
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(lx, ly, 7, 0, Math.PI * 2)
+  ctx.strokeStyle = 'rgba(255, 240, 180, 0.92)'
+  ctx.lineWidth = 2
+  ctx.stroke()
+  ctx.restore()
+}
+
+watch(
+  () => [
+    node.value?.typeId,
+    pbrTab.value,
+    pbrLiveTileData.value,
+    showSeamGrid.value,
+    pbrLightZ.value,
+    pbrLightIntensity.value
+  ],
+  async () => {
+    if (node.value?.typeId === 'game.pbrTile' && pbrTab.value === 'lighting') {
+      await nextTick()
+      renderPbrLightingCanvas()
+    }
+  },
+  { immediate: true }
+)
+
+// --- 2. game.audioDsp stage state, Upstream Audio Decoding & Audio Shaper ---
 const audioVariantCount = computed(() =>
   Math.max(2, Math.min(8, Math.round(Number(node.value?.params.gameAudioVariantCount ?? 4))))
 )
@@ -853,6 +1185,117 @@ const audioEnvFx = computed<GameAudioEnvironmentFx>(
   () => (node.value?.params.gameAudioEnvFx ?? 'none') as GameAudioEnvironmentFx
 )
 const audioNormalize = computed(() => node.value?.params.gameAudioNormalize !== false)
+const audioHighPassHz = computed(() =>
+  Math.max(0, Math.min(1200, Number(node.value?.params.gameAudioHighPassHz ?? 0)))
+)
+const audioLowPassHz = computed(() =>
+  Math.max(800, Math.min(20000, Number(node.value?.params.gameAudioLowPassHz ?? 20000)))
+)
+const audioReleaseTighten = computed(() =>
+  Math.max(0, Math.min(0.95, Number(node.value?.params.gameAudioReleaseTighten ?? 0)))
+)
+
+const upstreamDecodedAudio = ref<{
+  channels: Float32Array[]
+  sampleRate: number
+  sourceLabel: string
+} | null>(null)
+
+function decodeBase64DataUrlToBytes(dataUrl: string): Uint8Array | null {
+  const commaIdx = dataUrl.indexOf(',')
+  if (commaIdx < 0) return null
+  const b64 = dataUrl.slice(commaIdx + 1).trim()
+  if (!b64) return null
+  try {
+    if (typeof atob === 'function') {
+      const bin = atob(b64)
+      const out = new Uint8Array(bin.length)
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+      return out
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+watch(
+  () =>
+    [node.value?.id, node.value?.typeId, hostId.value, graphEditorHosts.revision.value] as const,
+  async () => {
+    const current = node.value
+    if (!current || current.typeId !== 'game.audioDsp' || !hostId.value) {
+      upstreamDecodedAudio.value = null
+      return
+    }
+    const edges = graphEditorHosts.listIncomingEdges(hostId.value, current.id)
+    for (const edge of edges) {
+      const srcNode = graphEditorHosts.getNode(hostId.value, edge.sourceNodeId)
+      if (!srcNode) continue
+      const voices = srcNode.params.generatedVoices ?? []
+      for (const rawVoice of voices) {
+        const voice = rawVoice as { dataUrl?: string; relativePath?: string; title?: string }
+        let url = voice.dataUrl?.trim() || ''
+        if (!url && voice.relativePath?.trim()) {
+          try {
+            url = (await resolveAssetPreviewUrl(voice.relativePath.trim())) || ''
+          } catch {
+            url = ''
+          }
+        }
+        if (!url) continue
+        if (url.startsWith('data:audio/')) {
+          const bytes = decodeBase64DataUrlToBytes(url)
+          if (bytes) {
+            const decoded = decodeWavBytesToPcm(bytes)
+            if (decoded && decoded.channels[0]?.length) {
+              upstreamDecodedAudio.value = {
+                channels: decoded.channels,
+                sampleRate: decoded.sampleRate,
+                sourceLabel: srcNode.title || voice.title || 'Upstream WAV'
+              }
+              return
+            }
+          }
+        }
+        try {
+          const resp = await fetch(url)
+          const buf = await resp.arrayBuffer()
+          const wav = decodeWavBytesToPcm(new Uint8Array(buf))
+          if (wav && wav.channels[0]?.length) {
+            upstreamDecodedAudio.value = {
+              channels: wav.channels,
+              sampleRate: wav.sampleRate,
+              sourceLabel: srcNode.title || voice.title || 'Upstream WAV'
+            }
+            return
+          }
+          const Ctx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+          if (Ctx) {
+            const tmpCtx = new Ctx()
+            try {
+              const audioBuf = await tmpCtx.decodeAudioData(buf.slice(0))
+              upstreamDecodedAudio.value = {
+                channels: [new Float32Array(audioBuf.getChannelData(0))],
+                sampleRate: audioBuf.sampleRate,
+                sourceLabel: srcNode.title || voice.title || 'Upstream Audio'
+              }
+              return
+            } finally {
+              void tmpCtx.close().catch(() => {})
+            }
+          }
+        } catch {
+          // ignore and try next
+        }
+      }
+    }
+    upstreamDecodedAudio.value = null
+  },
+  { immediate: true }
+)
 
 const sfxVariantsPlan = computed(() =>
   planSfxVariantMatrix({
@@ -863,6 +1306,9 @@ const sfxVariantsPlan = computed(() =>
 )
 
 const liveRawAudioBuffer = computed(() => {
+  if (upstreamDecodedAudio.value && upstreamDecodedAudio.value.channels[0]?.length) {
+    return upstreamDecodedAudio.value
+  }
   const mode = node.value?.params.gameAudioDspMode ?? 'loop_bgm'
   const preset = (node.value?.params.gameAudioSynthPreset ??
     (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')) as GameAudioSynthPreset
@@ -879,10 +1325,15 @@ const liveProcessedPrimaryChannel = computed(() => {
   } else {
     stage = trimSilencePcm(raw, sr, { thresholdDb: audioTrimThresholdDb.value })
   }
+  const shaped = applyAudioShaperPcm(stage, sr, {
+    highPassHz: audioHighPassHz.value,
+    lowPassHz: audioLowPassHz.value,
+    releaseTighten: mode === 'sfx_variants' ? audioReleaseTighten.value : 0
+  })
   const withFx =
     audioEnvFx.value !== 'none'
-      ? applyGameAudioEnvironmentFxPcm(stage, sr, audioEnvFx.value)
-      : stage
+      ? applyGameAudioEnvironmentFxPcm(shaped, sr, audioEnvFx.value)
+      : shaped
   return audioNormalize.value ? normalizePeakPcm(withFx, -1.0) : withFx
 })
 
@@ -957,10 +1408,15 @@ function buildVariantSamples(variantIndex: number): { samples: Float32Array; sam
   const raw = liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0)
   const sr = liveRawAudioBuffer.value.sampleRate
   const trimmed = trimSilencePcm(raw, sr, { thresholdDb: audioTrimThresholdDb.value })
+  const shaped = applyAudioShaperPcm(trimmed, sr, {
+    highPassHz: audioHighPassHz.value,
+    lowPassHz: audioLowPassHz.value,
+    releaseTighten: audioReleaseTighten.value
+  })
   const spec = sfxVariantsPlan.value[variantIndex] ?? sfxVariantsPlan.value[0]
   const shifted = spec
-    ? resamplePitchShiftPcm(trimmed, spec.semitoneOffset, spec.trebleGainDb)
-    : trimmed
+    ? resamplePitchShiftPcm(shaped, spec.semitoneOffset, spec.trebleGainDb)
+    : shaped
   const withFx =
     audioEnvFx.value !== 'none'
       ? applyGameAudioEnvironmentFxPcm(shifted, sr, audioEnvFx.value)
@@ -1045,59 +1501,258 @@ function copyAudioEngineConfig(): void {
   }
 }
 
-// --- 3. game.levelMap stage state ---
+// --- 3. game.levelMap stage state & Interactive Paint Brush ---
 const levelTab = ref<'map' | 'tmj'>('map')
+type LevelBrushToolId = LevelCellType | LevelEntitySpawn['type']
+const activeLevelBrush = ref<LevelBrushToolId>('floor')
+const levelPainting = ref(false)
+
+const levelBrushOptions = computed<Array<{ id: LevelBrushToolId; icon: string; label: string }>>(
+  () => [
+    { id: 'floor', icon: '⬜', label: t('gameNodes.levelMap.brushFloor') },
+    { id: 'wall', icon: '🧱', label: t('gameNodes.levelMap.brushWall') },
+    { id: 'hazard', icon: '🔥', label: t('gameNodes.levelMap.brushHazard') },
+    { id: 'platform', icon: '🪜', label: t('gameNodes.levelMap.brushPlatform') },
+    { id: 'player_spawn', icon: '🟢', label: t('gameNodes.levelMap.brushSpawn') },
+    { id: 'boss_spawn', icon: '💀', label: t('gameNodes.levelMap.brushBoss') },
+    { id: 'enemy_spawn', icon: '👾', label: t('gameNodes.levelMap.brushEnemy') },
+    { id: 'treasure_chest', icon: '💎', label: t('gameNodes.levelMap.brushChest') },
+    { id: 'exit_portal', icon: '🚪', label: t('gameNodes.levelMap.brushExit') }
+  ]
+)
 
 const liveLevelData = computed(() => {
   const alg = (node.value?.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
   const width = Math.max(12, Math.min(64, Number(node.value?.params.gameLevelWidth ?? 32)))
   const height = Math.max(10, Math.min(48, Number(node.value?.params.gameLevelHeight ?? 20)))
   const seed = Number(node.value?.params.gameLevelSeed ?? 1337)
-  return generateProceduralLevelMap({
+  const base = generateProceduralLevelMap({
     algorithm: alg,
     width,
     height,
     seed
   })
+  return applyCustomEditsToLevelMap(base, node.value?.params.gameLevelCustomEdits)
 })
 
 const liveLevelPreviewDataUrl = computed(() => {
-  if (node.value?.params.previewDataUrl?.trim()) {
+  if (!node.value?.params.gameLevelCustomEdits && node.value?.params.previewDataUrl?.trim()) {
     return node.value.params.previewDataUrl.trim()
   }
   return renderProceduralLevelToPng(liveLevelData.value, 14).dataUrl
 })
 
 const liveLevelTmjJson = computed(() => {
-  const stored = node.value?.params.text?.trim()
-  if (stored && stored.startsWith('{')) return stored
+  if (!node.value?.params.gameLevelCustomEdits) {
+    const stored = node.value?.params.text?.trim()
+    if (stored && stored.startsWith('{')) return stored
+  }
   return JSON.stringify(liveLevelData.value.tiledMap, null, 2)
 })
 
-// --- 4. game.playable stage state ---
+function paintLevelAtPointer(event: PointerEvent, allowEntityPlacement: boolean): void {
+  const target = event.currentTarget as HTMLElement | null
+  if (!target || !node.value) return
+  const rect = target.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  const width = liveLevelData.value.width
+  const height = liveLevelData.value.height
+  const gx = Math.max(
+    0,
+    Math.min(width - 1, Math.floor(((event.clientX - rect.left) / rect.width) * width))
+  )
+  const gy = Math.max(
+    0,
+    Math.min(height - 1, Math.floor(((event.clientY - rect.top) / rect.height) * height))
+  )
+
+  let payload: LevelMapCustomEditsPayload = { cells: {}, entities: [] }
+  const raw = node.value.params.gameLevelCustomEdits?.trim()
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as LevelMapCustomEditsPayload
+      payload = {
+        cells: parsed.cells ? { ...parsed.cells } : {},
+        entities: Array.isArray(parsed.entities) ? [...parsed.entities] : []
+      }
+    } catch {
+      payload = { cells: {}, entities: [] }
+    }
+  }
+
+  const tool = activeLevelBrush.value
+  if (
+    tool === 'floor' ||
+    tool === 'wall' ||
+    tool === 'hazard' ||
+    tool === 'platform' ||
+    tool === 'void'
+  ) {
+    if (!payload.cells) payload.cells = {}
+    payload.cells[`${gx},${gy}`] = tool
+  } else if (allowEntityPlacement) {
+    if (!payload.cells) payload.cells = {}
+    payload.cells[`${gx},${gy}`] = 'floor'
+    const existingEntities = payload.entities ?? []
+    const filtered = existingEntities.filter(
+      (ent) =>
+        !(ent.x === gx && ent.y === gy) &&
+        !(
+          (tool === 'player_spawn' || tool === 'boss_spawn' || tool === 'exit_portal') &&
+          ent.type === tool
+        )
+    )
+    filtered.push({
+      type: tool,
+      x: gx,
+      y: gy
+    })
+    payload.entities = filtered
+  } else {
+    return
+  }
+
+  patchParams({
+    gameLevelCustomEdits: JSON.stringify(payload),
+    previewDataUrl: undefined,
+    text: undefined
+  })
+}
+
+function onLevelMapPointerDown(event: PointerEvent): void {
+  levelPainting.value = true
+  paintLevelAtPointer(event, true)
+}
+
+function onLevelMapPointerMove(event: PointerEvent): void {
+  if (!levelPainting.value) return
+  paintLevelAtPointer(event, false)
+}
+
+function clearLevelCustomEdits(): void {
+  patchParams({
+    gameLevelCustomEdits: undefined,
+    previewDataUrl: undefined,
+    text: undefined
+  })
+}
+
+// --- 4. game.playable stage state & Upstream Asset Hot-Binding ---
 const showHtmlSource = ref(false)
 const playableReloadSeq = ref(0)
 
-function buildPlayableHtmlFromNode(current: GraphNode | null): string {
+const playableUpstreamAssets = ref<{
+  playerSpriteDataUrl?: string
+  enemySpriteDataUrl?: string
+  tileSpriteDataUrl?: string
+  levelMap?: ProceduralLevelMapResult
+  audioCount: number
+  spriteCount: number
+  hasUpstreamLevel: boolean
+}>({
+  audioCount: 0,
+  spriteCount: 0,
+  hasUpstreamLevel: false
+})
+
+watch(
+  () =>
+    [node.value?.id, node.value?.typeId, hostId.value, graphEditorHosts.revision.value] as const,
+  async () => {
+    const current = node.value
+    if (!current || current.typeId !== 'game.playable' || !hostId.value) {
+      playableUpstreamAssets.value = { audioCount: 0, spriteCount: 0, hasUpstreamLevel: false }
+      return
+    }
+    const edges = graphEditorHosts.listIncomingEdges(hostId.value, current.id)
+    const spriteUrls: string[] = []
+    let upstreamLevel: ProceduralLevelMapResult | undefined
+    let audioCount = 0
+
+    for (const edge of edges) {
+      const srcNode = graphEditorHosts.getNode(hostId.value, edge.sourceNodeId)
+      if (!srcNode) continue
+
+      if (srcNode.typeId === 'game.levelMap') {
+        const alg = (srcNode.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
+        const w = Math.max(12, Math.min(64, Number(srcNode.params.gameLevelWidth ?? 32)))
+        const h = Math.max(10, Math.min(48, Number(srcNode.params.gameLevelHeight ?? 20)))
+        const s = Number(srcNode.params.gameLevelSeed ?? 1337)
+        const base = generateProceduralLevelMap({ algorithm: alg, width: w, height: h, seed: s })
+        upstreamLevel = applyCustomEditsToLevelMap(base, srcNode.params.gameLevelCustomEdits)
+      }
+
+      if ((srcNode.params.generatedVoices?.length ?? 0) > 0) {
+        audioCount += srcNode.params.generatedVoices?.length ?? 0
+      }
+
+      if (srcNode.typeId !== 'game.levelMap') {
+        const imgs = srcNode.params.generatedImages ?? []
+        for (const item of imgs) {
+          let url = item.dataUrl?.trim() || ''
+          if (!url && item.relativePath?.trim()) {
+            try {
+              url = (await resolveAssetPreviewUrl(item.relativePath.trim())) || ''
+            } catch {
+              url = ''
+            }
+          }
+          if (url) {
+            spriteUrls.push(url)
+            break
+          }
+        }
+        if (spriteUrls.length === 0 && srcNode.params.previewDataUrl?.trim()) {
+          spriteUrls.push(srcNode.params.previewDataUrl.trim())
+        }
+      }
+    }
+
+    playableUpstreamAssets.value = {
+      playerSpriteDataUrl: spriteUrls[0],
+      enemySpriteDataUrl: spriteUrls[1],
+      tileSpriteDataUrl: spriteUrls[2],
+      levelMap: upstreamLevel,
+      audioCount,
+      spriteCount: spriteUrls.length,
+      hasUpstreamLevel: Boolean(upstreamLevel)
+    }
+  },
+  { immediate: true }
+)
+
+const playableUpstreamSummary = computed(() => {
+  const info = playableUpstreamAssets.value
+  return `Sprites: ${info.spriteCount} · Level: ${info.hasUpstreamLevel ? 'Connected' : 'PCG'} · Audio: ${info.audioCount}`
+})
+
+function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = false): string {
   if (!current) return ''
+  const info = playableUpstreamAssets.value
+  const hasUpstream = info.spriteCount > 0 || info.hasUpstreamLevel
   const stored = current.params.gamePlayableHtml?.trim()
-  if (stored && stored.includes('<html')) return stored
+  if (!ignoreStored && !hasUpstream && stored && stored.includes('<html')) return stored
   const alg = (current.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
   const seed = Number(current.params.gameLevelSeed ?? 42)
   const genreRaw = current.params.gamePlayableGenre ?? 'roguelike_action'
   const cameraRaw = current.params.gamePlayableCameraMode ?? 'topdown_34'
   const mode = genreRaw === 'platformer' || cameraRaw === 'side_view' ? 'platformer' : 'survivor'
-  const levelMap = generateProceduralLevelMap({
-    algorithm: mode === 'platformer' ? 'platformer_course' : alg,
-    width: 28,
-    height: 18,
-    seed
-  })
+  const levelMap =
+    info.levelMap ??
+    generateProceduralLevelMap({
+      algorithm: mode === 'platformer' ? 'platformer_course' : alg,
+      width: 28,
+      height: 18,
+      seed
+    })
   return compilePlayableGameSandboxHtml({
     title: current.params.gamePlayableTitle || 'Indie Game Prototype',
     mode,
     levelSeed: seed,
-    levelMap
+    levelMap,
+    playerSpriteDataUrl: info.playerSpriteDataUrl,
+    enemySpriteDataUrl: info.enemySpriteDataUrl,
+    tileSpriteDataUrl: info.tileSpriteDataUrl
   }).html
 }
 
@@ -1106,24 +1761,8 @@ const livePlayableHtml = computed(() => buildPlayableHtmlFromNode(node.value))
 function recompilePlayableNow(): void {
   const current = node.value
   if (!current) return
-  const alg = (current.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
-  const seed = Number(current.params.gameLevelSeed ?? 42)
-  const genreRaw = current.params.gamePlayableGenre ?? 'roguelike_action'
-  const cameraRaw = current.params.gamePlayableCameraMode ?? 'topdown_34'
-  const mode = genreRaw === 'platformer' || cameraRaw === 'side_view' ? 'platformer' : 'survivor'
-  const levelMap = generateProceduralLevelMap({
-    algorithm: mode === 'platformer' ? 'platformer_course' : alg,
-    width: 28,
-    height: 18,
-    seed
-  })
-  const compiled = compilePlayableGameSandboxHtml({
-    title: current.params.gamePlayableTitle || 'Indie Game Prototype',
-    mode,
-    levelSeed: seed,
-    levelMap
-  })
-  patchParams({ gamePlayableHtml: compiled.html })
+  const html = buildPlayableHtmlFromNode(current, true)
+  patchParams({ gamePlayableHtml: html })
   playableReloadSeq.value += 1
 }
 </script>
@@ -1390,6 +2029,102 @@ function recompilePlayableNow(): void {
   border-radius: 8px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.pbr-lighting-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.pbr-light-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.inline-slider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.pbr-light-canvas {
+  width: 480px;
+  height: 480px;
+  max-width: 100%;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, transparent);
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+
+.pbr-light-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.source-pill {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  color: var(--text-muted);
+}
+
+.source-pill.upstream {
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--text);
+}
+
+.brush-palette {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.brush-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.brush-btn.active {
+  background: color-mix(in srgb, var(--accent) 20%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  font-weight: 600;
+}
+
+.level-paint-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.level-preview-img.paintable {
+  cursor: crosshair;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .tile-grid-3x3.show-seams .tile-cell {

@@ -1405,12 +1405,7 @@ export interface GraphNodeParams {
   gameAudioPitchSpread?: number
   /** 游戏节点（game.audioDsp）：游戏环境声学 DSP 滤镜 */
   gameAudioEnvFx?:
-    | 'none'
-    | 'underwater'
-    | 'radio_comms'
-    | 'cave_reverb'
-    | 'retro_8bit'
-    | 'heavy_impact'
+    'none' | 'underwater' | 'radio_comms' | 'cave_reverb' | 'retro_8bit' | 'heavy_impact'
   /** 游戏节点（game.audioDsp）：无上游时的内置程序化合成器种子预设 */
   gameAudioSynthPreset?:
     | 'sword_slash'
@@ -1423,6 +1418,12 @@ export interface GraphNodeParams {
     | 'chiptune_bgm'
   /** 游戏节点（game.audioDsp）：是否启用 -1 dBFS 峰值响度归一化 */
   gameAudioNormalize?: boolean
+  /** 游戏节点（game.audioDsp）：高通滤波截止频率（Hz，20..1200） */
+  gameAudioHighPassHz?: number
+  /** 游戏节点（game.audioDsp）：低通滤波截止频率（Hz，800..20000） */
+  gameAudioLowPassHz?: number
+  /** 游戏节点（game.audioDsp）：尾音衰减收紧系数（0..0.85） */
+  gameAudioReleaseTighten?: number
   /** 游戏节点（game.audioDsp）：最近一次音频 DSP 处理摘要 */
   gameAudioReport?: string
   /** 游戏节点（game.levelMap）：程序化关卡生成算法 */
@@ -1433,6 +1434,8 @@ export interface GraphNodeParams {
   gameLevelHeight?: number
   /** 游戏节点（game.levelMap）：确定性随机种子 */
   gameLevelSeed?: number
+  /** 游戏节点（game.levelMap）：手动交互画笔编辑覆写 JSON */
+  gameLevelCustomEdits?: string
   /** 游戏节点（game.levelMap）：最近一次关卡统计摘要 */
   gameLevelReport?: string
   /** 游戏节点（game.playable）：可玩原型标题 */

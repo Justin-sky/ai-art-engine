@@ -24,12 +24,7 @@ export type GameAudioSynthPreset =
   | 'chiptune_bgm'
 
 export type GameAudioEnvironmentFx =
-  | 'none'
-  | 'underwater'
-  | 'radio_comms'
-  | 'cave_reverb'
-  | 'retro_8bit'
-  | 'heavy_impact'
+  'none' | 'underwater' | 'radio_comms' | 'cave_reverb' | 'retro_8bit' | 'heavy_impact'
 
 export interface TrimSilenceOptions {
   /** Threshold in dBFS below which samples are considered silence (default -42 dB) */
@@ -38,6 +33,15 @@ export interface TrimSilenceOptions {
   padStartMs?: number
   /** Safety padding in milliseconds kept after release tail (default 15 ms) */
   padEndMs?: number
+}
+
+export interface AudioShaperOptions {
+  /** High-pass cutoff frequency in Hz to remove muddy low-end rumble (20..1200, default 20) */
+  highPassHz?: number
+  /** Low-pass cutoff frequency in Hz to tame harsh digital fizz (800..20000, default 20000) */
+  lowPassHz?: number
+  /** Tail release tightening factor (0..0.85, default 0) to make AI SFX tails snappy */
+  releaseTighten?: number
 }
 
 export interface WaveformBucket {
@@ -304,6 +308,63 @@ export function applyGameAudioEnvironmentFxPcm(
   }
 
   return samples.slice()
+}
+
+/**
+ * Applies professional parametric High-Pass / Low-Pass filtering and exponential Release-Tail tightening
+ * so muddy or long-tailed AI sound effects become crisp, snappy game-ready SFX.
+ */
+export function applyAudioShaperPcm(
+  samples: Float32Array,
+  sampleRate: number,
+  options: AudioShaperOptions = {}
+): Float32Array {
+  if (samples.length === 0) return new Float32Array(0)
+  const sr = Math.max(8000, sampleRate)
+  const hpHz = Math.max(20, Math.min(1200, Number(options.highPassHz ?? 20)))
+  const lpHz = Math.max(800, Math.min(20000, Number(options.lowPassHz ?? 20000)))
+  const tighten = Math.max(0, Math.min(0.85, Number(options.releaseTighten ?? 0)))
+
+  if (hpHz <= 22 && lpHz >= 19500 && tighten <= 0.01) {
+    return samples.slice()
+  }
+
+  const n = samples.length
+  const out = new Float32Array(n)
+  const dt = 1 / sr
+  const rcHp = 1 / (2 * Math.PI * hpHz)
+  const alphaHp = rcHp / (rcHp + dt)
+  const rcLp = 1 / (2 * Math.PI * lpHz)
+  const alphaLp = dt / (rcLp + dt)
+
+  let prevIn = 0
+  let hp = 0
+  let lp = 0
+  const useHp = hpHz > 22
+  const useLp = lpHz < 19500
+  const expPower = 1 + tighten * 3.5
+
+  for (let i = 0; i < n; i++) {
+    let x = samples[i]!
+    if (useHp) {
+      hp = alphaHp * (hp + x - prevIn)
+      prevIn = x
+      x = hp
+    }
+    if (useLp) {
+      lp += alphaLp * (x - lp)
+      x = lp
+    }
+    if (tighten > 0.01) {
+      const progress = i / Math.max(1, n - 1)
+      // Keep attack punch (first 15%) intact, then apply exponential decay shaping on tail
+      const env =
+        progress <= 0.15 ? 1.0 : Math.pow(Math.max(0, 1 - (progress - 0.15) / 0.85), expPower - 1)
+      x *= env
+    }
+    out[i] = Math.max(-0.995, Math.min(0.995, x))
+  }
+  return out
 }
 
 /**

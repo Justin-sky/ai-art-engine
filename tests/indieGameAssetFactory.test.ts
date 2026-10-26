@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   analyzeAudioWaveformAndTrim,
   analyzeSeamlessTile,
+  applyAudioShaperPcm,
+  applyCustomEditsToLevelMap,
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
@@ -998,5 +1000,57 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(customAudioNode.params.gameAudioReport).toContain('6x SFX Variants')
     expect(customAudioNode.params.gameAudioReport).toContain('FX: cave_reverb')
     expect(out['out-all']?.kind).toBe('voices')
+  })
+
+  it('supports parametric Audio Shaper (HPF, LPF, Release Tighten) and PCG + Manual Level Map Brush overrides', async () => {
+    const base = synthesizeGameSeedPcm('sword_slash', 22050).channels[0]!
+    const shaped = applyAudioShaperPcm(base, 22050, {
+      highPassHz: 320,
+      lowPassHz: 4500,
+      releaseTighten: 0.65
+    })
+    expect(shaped.length).toBe(base.length)
+    // Tail energy should be significantly attenuated by releaseTighten
+    let rawTailEnergy = 0
+    let shapedTailEnergy = 0
+    for (let i = Math.floor(base.length * 0.7); i < base.length; i++) {
+      rawTailEnergy += (base[i] ?? 0) * (base[i] ?? 0)
+      shapedTailEnergy += (shaped[i] ?? 0) * (shaped[i] ?? 0)
+    }
+    expect(shapedTailEnergy).toBeLessThan(rawTailEnergy)
+
+    const pcg = generateProceduralLevelMap({
+      algorithm: 'bsp_dungeon',
+      width: 24,
+      height: 16,
+      seed: 777
+    })
+    const edited = applyCustomEditsToLevelMap(
+      pcg,
+      JSON.stringify({
+        cells: { '3,4': 'hazard', '5,6': 'floor' },
+        entities: [{ type: 'boss_spawn', x: 5, y: 6 }]
+      })
+    )
+    expect(edited.grid[4]?.[3]).toBe('hazard')
+    expect(edited.grid[6]?.[5]).toBe('floor')
+    expect(edited.entities.find((e) => e.type === 'boss_spawn')).toMatchObject({
+      gridX: 5,
+      gridY: 6
+    })
+    // Tiled map Ground layer GID at (3, 4) should be 18 (hazard)
+    const groundLayer = edited.tiledMap.layers.find((l) => l.name === 'Ground')
+    expect(groundLayer?.data?.[4 * 24 + 3]).toBe(18)
+
+    const levelNode = createNodeFromType('game.levelMap', { x: 0, y: 0 })
+    levelNode.params.gameLevelWidth = 24
+    levelNode.params.gameLevelHeight = 16
+    levelNode.params.gameLevelSeed = 777
+    levelNode.params.gameLevelCustomEdits = JSON.stringify({
+      cells: { '3,4': 'hazard' },
+      entities: [{ type: 'boss_spawn', x: 5, y: 6 }]
+    })
+    await executeGameLevelMapNode({ node: levelNode, inputs: {} })
+    expect(levelNode.params.text).toContain('"custom_boss_spawn_5_6_0"')
   })
 })

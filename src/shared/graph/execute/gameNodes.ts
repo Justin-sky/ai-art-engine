@@ -8,6 +8,8 @@
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import {
   analyzeSeamlessTile,
+  applyAudioShaperPcm,
+  applyCustomEditsToLevelMap,
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
@@ -357,8 +359,7 @@ async function resolveIncomingAudioPcm(
   }
 
   const preset: GameAudioSynthPreset =
-    ctx.node.params.gameAudioSynthPreset ??
-    (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')
+    ctx.node.params.gameAudioSynthPreset ?? (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')
   const synth = synthesizeGameSeedPcm(
     mode === 'loop_bgm' && !ctx.node.params.gameAudioSynthPreset ? 'chiptune_bgm' : preset,
     22050
@@ -398,6 +399,15 @@ export async function executeGameAudioDspNode(
   )
   const envFx: GameAudioEnvironmentFx = ctx.node.params.gameAudioEnvFx ?? 'none'
   const normalize = ctx.node.params.gameAudioNormalize !== false
+  const highPassHz = Math.max(20, Math.min(1200, Number(ctx.node.params.gameAudioHighPassHz ?? 20)))
+  const lowPassHz = Math.max(
+    800,
+    Math.min(20000, Number(ctx.node.params.gameAudioLowPassHz ?? 20000))
+  )
+  const releaseTighten = Math.max(
+    0,
+    Math.min(0.85, Number(ctx.node.params.gameAudioReleaseTighten ?? 0))
+  )
 
   const { channels, sampleRate, sourceName } = await resolveIncomingAudioPcm(ctx, mode)
   const baseStem = sourceName.replace(/\.[^.]+$/, '') || 'game_audio'
@@ -407,8 +417,13 @@ export async function executeGameAudioDspNode(
   let report = ''
 
   const postProcessChannel = (ch: Float32Array): Float32Array => {
+    const shaped = applyAudioShaperPcm(ch, sampleRate, {
+      highPassHz,
+      lowPassHz,
+      releaseTighten
+    })
     const withFx =
-      envFx !== 'none' ? applyGameAudioEnvironmentFxPcm(ch, sampleRate, envFx) : ch
+      envFx !== 'none' ? applyGameAudioEnvironmentFxPcm(shaped, sampleRate, envFx) : shaped
     return normalize ? normalizePeakPcm(withFx, -1.0) : withFx
   }
 
@@ -519,12 +534,13 @@ export async function executeGameLevelMapNode(
   )
   const seed = Math.floor(Number(ctx.node.params.gameLevelSeed ?? 1337))
 
-  const level = generateProceduralLevelMap({
+  const baseLevel = generateProceduralLevelMap({
     algorithm,
     width,
     height,
     seed
   })
+  const level = applyCustomEditsToLevelMap(baseLevel, ctx.node.params.gameLevelCustomEdits)
   const tmjJson = level.tiledTmjText
   const rendered = renderProceduralLevelToPng(level, 12)
   const previewDataUrl = await encodeRgbaWithCtx(

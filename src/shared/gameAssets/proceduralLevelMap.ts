@@ -872,3 +872,109 @@ export function generateProceduralLevelMap(
     tiledTmjText: JSON.stringify(tiledMap, null, 2)
   }
 }
+
+export interface LevelMapCustomEditsPayload {
+  /** Keyed by `${x},${y}` -> LevelCellType */
+  cells?: Record<string, LevelCellType>
+  /** Custom placed or overridden entities */
+  entities?: Array<{ x: number; y: number; type: LevelEntityType }>
+}
+
+/**
+ * Applies interactive user brush edits (cell painting + entity placement) on top of a procedural level map,
+ * recomputing Wang-16 bitmasks, ASCII preview, and Tiled `.tmj` JSON.
+ */
+export function applyCustomEditsToLevelMap(
+  base: ProceduralLevelMapResult,
+  editsJson?: string | null
+): ProceduralLevelMapResult {
+  const raw = editsJson?.trim()
+  if (!raw) return base
+  let parsed: LevelMapCustomEditsPayload
+  try {
+    parsed = JSON.parse(raw) as LevelMapCustomEditsPayload
+  } catch {
+    return base
+  }
+  const hasCellEdits = parsed.cells && Object.keys(parsed.cells).length > 0
+  const hasEntityEdits = Array.isArray(parsed.entities) && parsed.entities.length > 0
+  if (!hasCellEdits && !hasEntityEdits) return base
+
+  const grid: LevelCellType[][] = base.grid.map((row) => row.slice())
+  if (parsed.cells) {
+    for (const [key, cellType] of Object.entries(parsed.cells)) {
+      const [xs, ys] = key.split(',')
+      const x = Number(xs)
+      const y = Number(ys)
+      if (
+        Number.isInteger(x) &&
+        Number.isInteger(y) &&
+        y >= 0 &&
+        y < base.height &&
+        x >= 0 &&
+        x < base.width &&
+        (cellType === 'floor' ||
+          cellType === 'wall' ||
+          cellType === 'hazard' ||
+          cellType === 'platform' ||
+          cellType === 'void')
+      ) {
+        grid[y]![x] = cellType
+      }
+    }
+  }
+
+  let entities: LevelEntitySpawn[] = base.entities.map((e) => ({ ...e }))
+  if (Array.isArray(parsed.entities)) {
+    for (let i = 0; i < parsed.entities.length; i++) {
+      const item = parsed.entities[i]!
+      const gx = Math.max(0, Math.min(base.width - 1, Math.floor(Number(item.x))))
+      const gy = Math.max(0, Math.min(base.height - 1, Math.floor(Number(item.y))))
+      // Ensure the tile under a placed entity is walkable floor if it was wall
+      if (grid[gy]?.[gx] === 'wall') {
+        grid[gy]![gx] = 'floor'
+      }
+      // If placing unique entities like player_spawn or exit_portal, replace existing one
+      if (
+        item.type === 'player_spawn' ||
+        item.type === 'exit_portal' ||
+        item.type === 'boss_spawn'
+      ) {
+        entities = entities.filter((e) => e.type !== item.type)
+      }
+      // Remove any existing entity at the exact same grid coordinate
+      entities = entities.filter((e) => !(e.gridX === gx && e.gridY === gy))
+      entities.push({
+        id: `custom_${item.type}_${gx}_${gy}_${i}`,
+        type: item.type,
+        gridX: gx,
+        gridY: gy,
+        pixelX: gx * base.tileWidth + Math.floor(base.tileWidth / 2),
+        pixelY: gy * base.tileHeight + Math.floor(base.tileHeight / 2)
+      })
+    }
+  }
+
+  const wang16BitmaskGrid = computeWang16BitmaskGrid(grid)
+  const asciiPreview = renderAsciiPreview(grid, entities)
+  const tiledMap = buildTiledMapJson(
+    base.width,
+    base.height,
+    base.tileWidth,
+    base.tileHeight,
+    grid,
+    wang16BitmaskGrid,
+    entities,
+    'tileset.png'
+  )
+
+  return {
+    ...base,
+    grid,
+    entities,
+    wang16BitmaskGrid,
+    asciiPreview,
+    tiledMap,
+    tiledTmjText: JSON.stringify(tiledMap, null, 2)
+  }
+}
