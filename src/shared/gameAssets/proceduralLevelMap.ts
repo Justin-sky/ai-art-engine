@@ -978,3 +978,168 @@ export function applyCustomEditsToLevelMap(
     tiledTmjText: JSON.stringify(tiledMap, null, 2)
   }
 }
+
+export interface LevelConnectivityReport {
+  reachable: boolean
+  criticalPath: Array<{ x: number; y: number }>
+  pathLength: number
+  walkableCells: number
+  walkableRatio: number
+  deadEndCount: number
+  enemyCount: number
+  chestCount: number
+  pacingRating: 'balanced' | 'sparse' | 'dense' | 'unsolvable'
+}
+
+/**
+ * Evaluates a 2D level map using A* shortest-path search from `player_spawn` to `exit_portal`/`boss_spawn`,
+ * computing solvability, critical path coordinates, dead-end treasure alcoves, and combat pacing density.
+ */
+export function analyzeLevelConnectivityAndPacing(
+  level: ProceduralLevelMapResult
+): LevelConnectivityReport {
+  const { width, height, grid, entities, algorithm } = level
+  const isPlatformer = algorithm === 'platformer_course'
+
+  const isPassable = (x: number, y: number): boolean => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return false
+    const cell = grid[y]?.[x] ?? 'wall'
+    if (isPlatformer) {
+      // In side-view platformer, void (air) and platform are passable; hazard at bottom row is lethal
+      return cell !== 'wall' && cell !== 'hazard'
+    }
+    return cell === 'floor' || cell === 'platform'
+  }
+
+  let walkableCells = 0
+  let deadEndCount = 0
+  const dirs: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ]
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!isPassable(x, y)) continue
+      walkableCells++
+      let openNeighbors = 0
+      for (const [dx, dy] of dirs) {
+        if (isPassable(x + dx, y + dy)) openNeighbors++
+      }
+      if (openNeighbors === 1) deadEndCount++
+    }
+  }
+
+  const totalCells = Math.max(1, width * height)
+  const walkableRatio = Number((walkableCells / totalCells).toFixed(3))
+
+  const startEnt = entities.find((e) => e.type === 'player_spawn')
+  const goalEnt =
+    entities.find((e) => e.type === 'exit_portal') ?? entities.find((e) => e.type === 'boss_spawn')
+
+  const startX = startEnt?.gridX ?? level.rooms[0]?.centerX ?? 2
+  const startY = startEnt?.gridY ?? level.rooms[0]?.centerY ?? Math.floor(height / 2)
+  const goalX =
+    goalEnt?.gridX ?? level.rooms[level.rooms.length - 1]?.centerX ?? Math.max(1, width - 3)
+  const goalY =
+    goalEnt?.gridY ?? level.rooms[level.rooms.length - 1]?.centerY ?? Math.floor(height / 2)
+
+  // A* shortest path search
+  const keyOf = (x: number, y: number): number => y * width + x
+  const startKey = keyOf(startX, startY)
+  const goalKey = keyOf(goalX, goalY)
+
+  const gScore = new Map<number, number>([[startKey, 0]])
+  const fScore = new Map<number, number>([
+    [startKey, Math.abs(goalX - startX) + Math.abs(goalY - startY)]
+  ])
+  const cameFrom = new Map<number, number>()
+  const openSet = new Set<number>([startKey])
+  const closedSet = new Set<number>()
+
+  let found = false
+  while (openSet.size > 0) {
+    let current = -1
+    let bestF = Infinity
+    for (const k of openSet) {
+      const f = fScore.get(k) ?? Infinity
+      if (f < bestF) {
+        bestF = f
+        current = k
+      }
+    }
+    if (current < 0) break
+    if (current === goalKey) {
+      found = true
+      break
+    }
+    openSet.delete(current)
+    closedSet.add(current)
+
+    const cx = current % width
+    const cy = Math.floor(current / width)
+    const curG = gScore.get(current) ?? 0
+
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx
+      const ny = cy + dy
+      if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue
+      const nKey = keyOf(nx, ny)
+      if (closedSet.has(nKey)) continue
+      const passable = isPassable(nx, ny) || nKey === goalKey
+      if (!passable) continue
+
+      // Prefer solid floor/platform or near-ground cells in platformer
+      let stepCost = 1
+      if (isPlatformer) {
+        const below = ny + 1 < height ? (grid[ny + 1]?.[nx] ?? 'void') : 'wall'
+        if (below === 'void') stepCost = 1.4
+      }
+      const tentativeG = curG + stepCost
+      if (tentativeG < (gScore.get(nKey) ?? Infinity)) {
+        cameFrom.set(nKey, current)
+        gScore.set(nKey, tentativeG)
+        fScore.set(nKey, tentativeG + Math.abs(goalX - nx) + Math.abs(goalY - ny))
+        openSet.add(nKey)
+      }
+    }
+  }
+
+  const criticalPath: Array<{ x: number; y: number }> = []
+  if (found) {
+    let curr: number | undefined = goalKey
+    while (curr !== undefined) {
+      criticalPath.push({ x: curr % width, y: Math.floor(curr / width) })
+      curr = cameFrom.get(curr)
+    }
+    criticalPath.reverse()
+  }
+
+  const enemyCount = entities.filter(
+    (e) => e.type === 'enemy_spawn' || e.type === 'boss_spawn'
+  ).length
+  const chestCount = entities.filter((e) => e.type === 'treasure_chest' || e.type === 'coin').length
+
+  let pacingRating: LevelConnectivityReport['pacingRating'] = 'balanced'
+  if (!found) {
+    pacingRating = 'unsolvable'
+  } else if (walkableRatio < 0.16 || enemyCount <= 1) {
+    pacingRating = 'sparse'
+  } else if (walkableRatio > 0.72 || enemyCount > Math.max(12, walkableCells * 0.08)) {
+    pacingRating = 'dense'
+  }
+
+  return {
+    reachable: found,
+    criticalPath,
+    pathLength: criticalPath.length,
+    walkableCells,
+    walkableRatio,
+    deadEndCount,
+    enemyCount,
+    chestCount,
+    pacingRating
+  }
+}

@@ -1387,10 +1387,23 @@ export interface GraphNodeParams {
   gameTileSeamless?: boolean
   /** 游戏节点（game.pbrTile）：无缝融合过渡带宽比例（0.05..0.45） */
   gameTileBlendRatio?: number
+  /** 游戏节点（game.pbrTile）：内置材质表面预设（无上游贴图时提供程序化基底并配置 PBR 参数） */
+  gamePbrMaterialPreset?:
+    'stone_dungeon' | 'brushed_metal' | 'wet_mud' | 'stylized_wood' | 'gold_ornament'
   /** 游戏节点（game.pbrTile）：Sobel 法线贴图凹凸强度（0.5..8） */
   gamePbrNormalStrength?: number
+  /** 游戏节点（game.pbrTile）：法线绿通道朝向规范（opengl +Y / directx -Y） */
+  gamePbrNormalFormat?: 'opengl' | 'directx'
+  /** 游戏节点（game.pbrTile）：粗糙度对比度（0.2..3.0） */
+  gamePbrRoughnessContrast?: number
+  /** 游戏节点（game.pbrTile）：AO 环境光腔体遮蔽强度（0..2.0） */
+  gamePbrAoStrength?: number
+  /** 游戏节点（game.pbrTile）：金属度缩放系数（0..2.0） */
+  gamePbrMetallicScale?: number
   /** 游戏节点（game.pbrTile）：是否反转粗糙度贴图（光滑度 ↔ 粗糙度） */
   gamePbrInvertRoughness?: boolean
+  /** 游戏节点（game.pbrTile）：2D 物理碰撞凸包最大顶点数预算（4..16，默认 8） */
+  gamePbrMaxHullVertices?: number
   /** 游戏节点（game.pbrTile）：最近一次输出的 9-Slice + 碰撞凸包 + PBR 摘要 JSON */
   gamePbrReport?: string
   /** 游戏节点（game.audioDsp）：DSP 模式（loop_bgm 无缝循环 / sfx_variants 4× 变体） */
@@ -1444,6 +1457,18 @@ export interface GraphNodeParams {
   gamePlayableGenre?: 'roguelike_action' | 'platformer' | 'dungeon_crawler'
   /** 游戏节点（game.playable）：镜头视角规范 */
   gamePlayableCameraMode?: 'topdown_90' | 'topdown_34' | 'isometric_45' | 'side_view'
+  /** 游戏节点（game.playable）：主角移速倍率（0.4..2.5，默认 1.0） */
+  gamePlayableMoveSpeed?: number
+  /** 游戏节点（game.playable）：跳跃/冲刺力度倍率（0.4..2.5，默认 1.0） */
+  gamePlayableJumpDash?: number
+  /** 游戏节点（game.playable）：怪物移速与刷怪频率倍率（0.4..2.5，默认 1.0） */
+  gamePlayableEnemyAggro?: number
+  /** 游戏节点（game.playable）：暴击与受击震屏强度倍率（0..2.0，默认 1.0） */
+  gamePlayableScreenShake?: number
+  /** 游戏节点（game.playable）：全局时间缩放 / 子弹时间（0.25..1.5，默认 1.0） */
+  gamePlayableTimeScale?: number
+  /** 游戏节点（game.playable）：是否开启碰撞框、攻击扇区与实时 FPS 遥测叠层 */
+  gamePlayableShowHitboxes?: boolean
   /** 游戏节点（game.playable）：最近一次编译的 60fps 独立可玩 HTML5 源码 */
   gamePlayableHtml?: string
   /** 游戏节点（game.playable）：最近一次编译报告 */

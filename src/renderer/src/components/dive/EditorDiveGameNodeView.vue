@@ -36,6 +36,20 @@
         <div v-if="node.typeId === 'game.pbrTile'" class="param-card">
           <div class="section-title">{{ t('gameNodes.pbrTile.sectionTitle') }}</div>
 
+          <label class="field">
+            <span>{{ t('gameNodes.pbrTile.materialPreset') }}</span>
+            <select
+              :value="node.params.gamePbrMaterialPreset ?? 'stone_dungeon'"
+              @change="onPbrMaterialPresetChange($event)"
+            >
+              <option value="stone_dungeon">{{ t('gameNodes.pbrTile.matStone') }}</option>
+              <option value="brushed_metal">{{ t('gameNodes.pbrTile.matMetal') }}</option>
+              <option value="wet_mud">{{ t('gameNodes.pbrTile.matMud') }}</option>
+              <option value="stylized_wood">{{ t('gameNodes.pbrTile.matWood') }}</option>
+              <option value="gold_ornament">{{ t('gameNodes.pbrTile.matGold') }}</option>
+            </select>
+          </label>
+
           <label class="check-row">
             <input
               type="checkbox"
@@ -60,6 +74,17 @@
             />
           </label>
 
+          <label class="field">
+            <span>{{ t('gameNodes.pbrTile.normalFormat') }}</span>
+            <select
+              :value="node.params.gamePbrNormalFormat ?? 'opengl'"
+              @change="onStringParam('gamePbrNormalFormat', $event)"
+            >
+              <option value="opengl">{{ t('gameNodes.pbrTile.normalOpenGL') }}</option>
+              <option value="directx">{{ t('gameNodes.pbrTile.normalDirectX') }}</option>
+            </select>
+          </label>
+
           <label class="slider-field">
             <div class="slider-head">
               <span>{{ t('gameNodes.pbrTile.normalStrength') }}</span>
@@ -72,6 +97,66 @@
               step="0.1"
               :value="node.params.gamePbrNormalStrength ?? 2.8"
               @change="onNumberParam('gamePbrNormalStrength', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.pbrTile.roughnessContrast') }}</span>
+              <b>{{ Number(node.params.gamePbrRoughnessContrast ?? 1.2).toFixed(2) }}</b>
+            </div>
+            <input
+              type="range"
+              min="0.2"
+              max="3.0"
+              step="0.05"
+              :value="node.params.gamePbrRoughnessContrast ?? 1.2"
+              @change="onNumberParam('gamePbrRoughnessContrast', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.pbrTile.aoStrength') }}</span>
+              <b>{{ Number(node.params.gamePbrAoStrength ?? 0.85).toFixed(2) }}</b>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2.0"
+              step="0.05"
+              :value="node.params.gamePbrAoStrength ?? 0.85"
+              @change="onNumberParam('gamePbrAoStrength', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.pbrTile.metallicScale') }}</span>
+              <b>{{ Number(node.params.gamePbrMetallicScale ?? 0.25).toFixed(2) }}</b>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2.0"
+              step="0.05"
+              :value="node.params.gamePbrMetallicScale ?? 0.25"
+              @change="onNumberParam('gamePbrMetallicScale', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.pbrTile.maxHullVertices') }}</span>
+              <b>{{ Number(node.params.gamePbrMaxHullVertices ?? 8) }}</b>
+            </div>
+            <input
+              type="range"
+              min="4"
+              max="16"
+              step="1"
+              :value="node.params.gamePbrMaxHullVertices ?? 8"
+              @change="onNumberParam('gamePbrMaxHullVertices', $event)"
             />
           </label>
 
@@ -322,6 +407,16 @@
             </button>
           </div>
 
+          <label class="check-row">
+            <input v-model="showCriticalPath" type="checkbox" />
+            <span>{{ t('gameNodes.levelMap.showCriticalPath') }}</span>
+          </label>
+
+          <label class="check-row">
+            <input v-model="showWangBitmask" type="checkbox" />
+            <span>{{ t('gameNodes.levelMap.showWangBitmask') }}</span>
+          </label>
+
           <div v-if="node.params.gameLevelReport" class="report-chip">
             {{ node.params.gameLevelReport }}
           </div>
@@ -365,6 +460,92 @@
             </select>
           </label>
 
+          <div class="section-title">{{ t('gameNodes.playable.tuningTitle') }}</div>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.playable.moveSpeedScale') }}</span>
+              <b>{{ Number(node.params.gamePlayableMoveSpeed ?? 1.0).toFixed(2) }}×</b>
+            </div>
+            <input
+              type="range"
+              min="0.4"
+              max="2.5"
+              step="0.1"
+              :value="node.params.gamePlayableMoveSpeed ?? 1.0"
+              @input="onPlayableTuneNumber('gamePlayableMoveSpeed', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.playable.jumpDashScale') }}</span>
+              <b>{{ Number(node.params.gamePlayableJumpDash ?? 1.0).toFixed(2) }}×</b>
+            </div>
+            <input
+              type="range"
+              min="0.4"
+              max="2.5"
+              step="0.1"
+              :value="node.params.gamePlayableJumpDash ?? 1.0"
+              @input="onPlayableTuneNumber('gamePlayableJumpDash', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.playable.enemyAggroScale') }}</span>
+              <b>{{ Number(node.params.gamePlayableEnemyAggro ?? 1.0).toFixed(2) }}×</b>
+            </div>
+            <input
+              type="range"
+              min="0.4"
+              max="2.5"
+              step="0.1"
+              :value="node.params.gamePlayableEnemyAggro ?? 1.0"
+              @input="onPlayableTuneNumber('gamePlayableEnemyAggro', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.playable.screenShakeScale') }}</span>
+              <b>{{ Math.round(Number(node.params.gamePlayableScreenShake ?? 1.0) * 100) }}%</b>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2.0"
+              step="0.1"
+              :value="node.params.gamePlayableScreenShake ?? 1.0"
+              @input="onPlayableTuneNumber('gamePlayableScreenShake', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.playable.timeScale') }}</span>
+              <b>{{ Number(node.params.gamePlayableTimeScale ?? 1.0).toFixed(2) }}×</b>
+            </div>
+            <input
+              type="range"
+              min="0.25"
+              max="1.5"
+              step="0.05"
+              :value="node.params.gamePlayableTimeScale ?? 1.0"
+              @input="onPlayableTuneNumber('gamePlayableTimeScale', $event)"
+            />
+          </label>
+
+          <label class="check-row">
+            <input
+              type="checkbox"
+              :checked="Boolean(node.params.gamePlayableShowHitboxes)"
+              @change="onPlayableTuneBool('gamePlayableShowHitboxes', $event)"
+            />
+            <span>{{ t('gameNodes.playable.showDebugHitboxes') }}</span>
+          </label>
+
           <button type="button" class="action-btn" @click="recompilePlayableNow">
             {{ t('gameNodes.workbench.recompileBtn') }}
           </button>
@@ -397,6 +578,14 @@
               <button
                 type="button"
                 class="tab-pill"
+                :class="{ active: pbrTab === 'physics' }"
+                @click="pbrTab = 'physics'"
+              >
+                {{ t('gameNodes.workbench.pbrPhysicsTab') }}
+              </button>
+              <button
+                type="button"
+                class="tab-pill"
                 :class="{ active: pbrTab === 'grid' }"
                 @click="pbrTab = 'grid'"
               >
@@ -419,6 +608,17 @@
                 <span class="hint">{{ t('gameNodes.workbench.pbrMoveMouseHint') }}</span>
                 <div class="light-sliders">
                   <label class="inline-slider">
+                    <span>{{ t('gameNodes.workbench.pbrLightEnv') }}</span>
+                    <select v-model="pbrLightEnv" @change="renderPbrLightingCanvas">
+                      <option value="torch_warm">{{ t('gameNodes.workbench.pbrEnvTorch') }}</option>
+                      <option value="studio_neutral">
+                        {{ t('gameNodes.workbench.pbrEnvStudio') }}
+                      </option>
+                      <option value="moon_cold">{{ t('gameNodes.workbench.pbrEnvMoon') }}</option>
+                      <option value="cyber_neon">{{ t('gameNodes.workbench.pbrEnvCyber') }}</option>
+                    </select>
+                  </label>
+                  <label class="inline-slider">
                     <span>{{ t('gameNodes.workbench.pbrLightHeight') }}</span>
                     <input
                       v-model.number="pbrLightZ"
@@ -440,6 +640,14 @@
                       @input="renderPbrLightingCanvas"
                     />
                   </label>
+                  <button
+                    type="button"
+                    class="tab-pill"
+                    :class="{ active: pbrAutoOrbit }"
+                    @click="togglePbrAutoOrbit"
+                  >
+                    {{ t('gameNodes.workbench.pbrAutoOrbit') }}
+                  </button>
                 </div>
               </div>
               <canvas
@@ -451,15 +659,117 @@
               />
             </div>
 
+            <div v-else-if="pbrTab === 'physics'" class="pbr-lighting-stage">
+              <div class="pbr-light-controls">
+                <span class="hint">{{ t('gameNodes.workbench.pbrPhysicsHullLegend') }}</span>
+                <button type="button" class="secondary-btn" @click="copyPbrPhysicsManifest">
+                  {{
+                    pbrManifestCopied
+                      ? t('gameNodes.audioDsp.copiedHint')
+                      : t('gameNodes.workbench.copyManifestBtn')
+                  }}
+                </button>
+              </div>
+              <div class="physics-hull-stage">
+                <img
+                  :src="pbrLiveAlbedoDataUrl"
+                  alt=""
+                  class="physics-base-img"
+                  draggable="false"
+                />
+                <svg
+                  class="physics-overlay-svg"
+                  :viewBox="`0 0 ${PBR_TILE_DIM} ${PBR_TILE_DIM}`"
+                  preserveAspectRatio="none"
+                >
+                  <!-- 9-Slice Guides -->
+                  <line
+                    :x1="pbrLiveNineSlice.borders.left"
+                    y1="0"
+                    :x2="pbrLiveNineSlice.borders.left"
+                    :y2="PBR_TILE_DIM"
+                    class="slice-guide-line"
+                  />
+                  <line
+                    :x1="PBR_TILE_DIM - pbrLiveNineSlice.borders.right"
+                    y1="0"
+                    :x2="PBR_TILE_DIM - pbrLiveNineSlice.borders.right"
+                    :y2="PBR_TILE_DIM"
+                    class="slice-guide-line"
+                  />
+                  <line
+                    x1="0"
+                    :y1="pbrLiveNineSlice.borders.top"
+                    :x2="PBR_TILE_DIM"
+                    :y2="pbrLiveNineSlice.borders.top"
+                    class="slice-guide-line"
+                  />
+                  <line
+                    x1="0"
+                    :y1="PBR_TILE_DIM - pbrLiveNineSlice.borders.bottom"
+                    :x2="PBR_TILE_DIM"
+                    :y2="PBR_TILE_DIM - pbrLiveNineSlice.borders.bottom"
+                    class="slice-guide-line"
+                  />
+
+                  <!-- Hurtbox & Hitbox -->
+                  <rect
+                    :x="pbrLivePhysics.combatBoxes.hurtbox.x"
+                    :y="pbrLivePhysics.combatBoxes.hurtbox.y"
+                    :width="pbrLivePhysics.combatBoxes.hurtbox.width"
+                    :height="pbrLivePhysics.combatBoxes.hurtbox.height"
+                    class="box-hurtbox"
+                  />
+                  <rect
+                    :x="pbrLivePhysics.combatBoxes.hitbox.x"
+                    :y="pbrLivePhysics.combatBoxes.hitbox.y"
+                    :width="pbrLivePhysics.combatBoxes.hitbox.width"
+                    :height="pbrLivePhysics.combatBoxes.hitbox.height"
+                    class="box-hitbox"
+                  />
+
+                  <!-- Convex Collision Hull Polygon -->
+                  <polygon :points="pbrHullPolygonPoints" class="hull-polygon" />
+                  <circle
+                    v-for="(pt, idx) in pbrLivePhysics.hull.verticesPx"
+                    :key="`hull-pt-${idx}`"
+                    :cx="pt.x"
+                    :cy="pt.y"
+                    r="1.8"
+                    class="hull-vertex"
+                  />
+
+                  <!-- Pivot Crosshair -->
+                  <circle
+                    :cx="pbrLivePhysics.hull.pivot.x"
+                    :cy="pbrLivePhysics.hull.pivot.y"
+                    r="2.6"
+                    class="pivot-dot"
+                  />
+                </svg>
+              </div>
+              <div class="level-stats-bar">
+                <span>Hull Vertices: {{ pbrLivePhysics.hull.verticesPx.length }}</span>
+                <span>
+                  9-Slice (L/R/T/B): {{ pbrLiveNineSlice.borders.left }}/{{
+                    pbrLiveNineSlice.borders.right
+                  }}/{{ pbrLiveNineSlice.borders.top }}/{{ pbrLiveNineSlice.borders.bottom }}px
+                </span>
+                <span>
+                  Pivot: ({{ pbrLivePhysics.hull.pivot.x }}, {{ pbrLivePhysics.hull.pivot.y }})
+                </span>
+              </div>
+            </div>
+
             <div
-              v-else-if="pbrTab === 'grid' && pbrPrimaryImageUrl"
+              v-else-if="pbrTab === 'grid'"
               class="tile-grid-3x3"
               :class="{ 'show-seams': showSeamGrid }"
             >
               <img
                 v-for="idx in 9"
                 :key="idx"
-                :src="pbrPrimaryImageUrl"
+                :src="pbrPrimaryImageUrl || pbrLiveAlbedoDataUrl"
                 alt=""
                 class="tile-cell"
                 draggable="false"
@@ -619,6 +929,93 @@
               </div>
             </div>
 
+            <!-- 8-Band Octave Spectrum Analyzer & LUFS Loudness Meter + 3D Spatial Audition Deck -->
+            <div class="audio-pro-grid">
+              <div class="waveform-compare-card">
+                <div class="waveform-lane-head">
+                  <span class="section-title">{{ t('gameNodes.audioDsp.spectrumTitle') }}</span>
+                  <div class="waveform-metrics">
+                    <span
+                      >LUFS: <b>{{ processedSpectrumAnalysis.lufsIntegrated }}</b></span
+                    >
+                    <span>
+                      {{ t('gameNodes.audioDsp.crestFactorLabel') }}:
+                      <b>{{ processedSpectrumAnalysis.crestFactorDb }} dB</b>
+                    </span>
+                  </div>
+                </div>
+                <div class="spectrum-bars-row">
+                  <div
+                    v-for="(band, idx) in processedSpectrumAnalysis.bands"
+                    :key="band.label"
+                    class="spectrum-col"
+                  >
+                    <div class="spectrum-bar-pair">
+                      <div
+                        class="spec-bar raw"
+                        :style="{
+                          height: `${Math.round((rawSpectrumAnalysis.bands[idx]?.level ?? 0.05) * 100)}%`
+                        }"
+                        :title="`Raw ${band.label}Hz: ${rawSpectrumAnalysis.bands[idx]?.db ?? -72} dB`"
+                      />
+                      <div
+                        class="spec-bar processed"
+                        :style="{ height: `${Math.round(band.level * 100)}%` }"
+                        :title="`Processed ${band.label}Hz: ${band.db} dB`"
+                      />
+                    </div>
+                    <span class="spec-freq-label">{{ band.label }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="waveform-compare-card">
+                <div class="waveform-lane-head">
+                  <span class="section-title">{{ t('gameNodes.audioDsp.spatialTitle') }}</span>
+                  <span class="spec-badge">
+                    {{ audioSpatialDistance }}m · Pan
+                    {{ audioSpatialPan >= 0 ? `+${audioSpatialPan}` : audioSpatialPan }} · Occ
+                    {{ Math.round(audioSpatialOcclusion * 100) }}%
+                  </span>
+                </div>
+                <div class="spatial-sliders">
+                  <label class="inline-slider">
+                    <span>{{ t('gameNodes.audioDsp.spatialDistance') }}</span>
+                    <input
+                      v-model.number="audioSpatialDistance"
+                      type="range"
+                      min="1"
+                      max="50"
+                      step="1"
+                    />
+                    <b>{{ audioSpatialDistance }}m</b>
+                  </label>
+                  <label class="inline-slider">
+                    <span>{{ t('gameNodes.audioDsp.spatialPan') }}</span>
+                    <input
+                      v-model.number="audioSpatialPan"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.1"
+                    />
+                    <b>{{ audioSpatialPan.toFixed(1) }}</b>
+                  </label>
+                  <label class="inline-slider">
+                    <span>{{ t('gameNodes.audioDsp.spatialOcclusion') }}</span>
+                    <input
+                      v-model.number="audioSpatialOcclusion"
+                      type="range"
+                      min="0"
+                      max="0.95"
+                      step="0.05"
+                    />
+                    <b>{{ Math.round(audioSpatialOcclusion * 100) }}%</b>
+                  </label>
+                </div>
+              </div>
+            </div>
+
             <!-- SFX Variant Matrix Cards with Live Single-Variant Audition -->
             <div class="sfx-matrix-panel">
               <div class="section-title">{{ t('gameNodes.workbench.sfxMatrixTitle') }}</div>
@@ -688,6 +1085,18 @@
           <div class="stage-toolbar">
             <span class="stage-title">{{ t('gameNodes.workbench.levelPreviewTitle') }}</span>
             <div class="tab-pills">
+              <span
+                class="spec-badge"
+                :class="{ 'badge-danger': !liveLevelConnectivity.reachable }"
+              >
+                {{
+                  liveLevelConnectivity.reachable
+                    ? t('gameNodes.levelMap.pathReachableBadge', {
+                        steps: liveLevelConnectivity.pathLength
+                      })
+                    : t('gameNodes.levelMap.pathBlockedBadge')
+                }}
+              </span>
               <button
                 type="button"
                 class="tab-pill"
@@ -727,20 +1136,64 @@
                   </button>
                 </div>
               </div>
-              <img
-                :src="liveLevelPreviewDataUrl"
-                alt="Level Map Preview"
-                class="level-preview-img interactive-map"
-                draggable="false"
-                @pointerdown="onLevelMapPointerDown"
-                @pointermove="onLevelMapPointerMove"
-                @pointerup="levelPainting = false"
-                @pointerleave="levelPainting = false"
-              />
+              <div class="level-canvas-container">
+                <img
+                  :src="liveLevelPreviewDataUrl"
+                  alt="Level Map Preview"
+                  class="level-preview-img interactive-map"
+                  draggable="false"
+                  @pointerdown="onLevelMapPointerDown"
+                  @pointermove="onLevelMapPointerMove"
+                  @pointerup="levelPainting = false"
+                  @pointerleave="levelPainting = false"
+                />
+                <svg
+                  v-if="showCriticalPath || showWangBitmask"
+                  class="level-overlay-svg"
+                  :viewBox="`0 0 ${liveLevelData.width} ${liveLevelData.height}`"
+                  preserveAspectRatio="none"
+                >
+                  <polyline
+                    v-if="showCriticalPath && liveLevelConnectivity.criticalPath.length > 1"
+                    :points="levelCriticalPathPoints"
+                    class="astar-path-line"
+                  />
+                  <template v-if="showWangBitmask">
+                    <template
+                      v-for="(row, ry) in liveLevelData.wang16BitmaskGrid"
+                      :key="`wrow-${ry}`"
+                    >
+                      <text
+                        v-for="(mask, rx) in row"
+                        :key="`wcell-${rx}-${ry}`"
+                        :x="rx + 0.5"
+                        :y="ry + 0.68"
+                        class="wang-mask-text"
+                      >
+                        {{ mask > 0 ? mask : '' }}
+                      </text>
+                    </template>
+                  </template>
+                </svg>
+              </div>
               <div class="level-stats-bar">
                 <span>{{ liveLevelData.width }} × {{ liveLevelData.height }}</span>
                 <span>Rooms: {{ liveLevelData.rooms.length }}</span>
                 <span>Entities: {{ liveLevelData.entities.length }}</span>
+                <span>
+                  {{
+                    t('gameNodes.levelMap.walkableStat', {
+                      pct: Math.round(liveLevelConnectivity.walkableRatio * 100)
+                    })
+                  }}
+                </span>
+                <span>
+                  {{
+                    t('gameNodes.levelMap.deadEndsStat', {
+                      count: liveLevelConnectivity.deadEndCount
+                    })
+                  }}
+                </span>
                 <span>Seed: {{ liveLevelData.seed }}</span>
               </div>
             </div>
@@ -760,6 +1213,7 @@
           <div class="playable-stage-body">
             <iframe
               v-show="!showHtmlSource"
+              ref="playableIframeRef"
               :key="playableReloadSeq"
               class="playable-sandbox-iframe"
               :srcdoc="livePlayableHtml"
@@ -781,15 +1235,22 @@
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import {
   analyzeAudioWaveformAndTrim,
+  analyzeLevelConnectivityAndPacing,
+  analyzeOctaveSpectrumPcm,
   applyAudioShaperPcm,
   applyCustomEditsToLevelMap,
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
+  applySpatialAuditionPcm,
+  buildNineSliceManifest,
+  buildSpritePhysicsManifest,
   compilePlayableGameSandboxHtml,
-  createProceduralStoneTileRgba,
+  createProceduralMaterialTileRgba,
   decodeWavBytesToPcm,
   derivePbrMapsFromRgba,
+  detectNineSliceBorders,
+  encodeRgbaToPngDataUrl,
   exportGodotAudioStreamRandomizerTres,
   exportUnityAudioRandomContainerJson,
   generateProceduralLevelMap,
@@ -805,6 +1266,7 @@ import {
   type LevelEntitySpawn,
   type LevelGeneratorAlgorithm,
   type LevelMapCustomEditsPayload,
+  type PbrMaterialPreset,
   type ProceduralLevelMapResult
 } from '@shared/gameAssets'
 import { isGameProductionNode, type GraphNode, type GraphNodeParams } from '@shared/graph'
@@ -928,18 +1390,104 @@ function onClose(): void {
   editorDive?.popTo(-1)
 }
 
-// --- 1. game.pbrTile stage state & 2.5D Point-Light PBR Shader ---
-const pbrTab = ref<'lighting' | 'grid' | 'channels'>('lighting')
+// --- 1. game.pbrTile stage state, 2.5D Point-Light PBR Shader & Physics/9-Slice Inspector ---
+const pbrTab = ref<'lighting' | 'physics' | 'grid' | 'channels'>('lighting')
 const showSeamGrid = ref(true)
 const pbrLightZ = ref(0.85)
 const pbrLightIntensity = ref(1.45)
+const pbrLightEnv = ref<'torch_warm' | 'studio_neutral' | 'moon_cold' | 'cyber_neon'>('torch_warm')
+const pbrAutoOrbit = ref(false)
 const pbrLightPos = ref({ x: 144, y: 144 })
 const pbrLightCanvasRef = ref<HTMLCanvasElement | null>(null)
 const pbrChannelCards = ref<Array<{ key: string; title: string; url: string }>>([])
 const pbrSourceTileRgba = ref<Uint8ClampedArray | null>(null)
+const pbrManifestCopied = ref(false)
+let pbrOrbitRafId = 0
 
 const PBR_TILE_DIM = 96
 const PBR_CANVAS_DIM = PBR_TILE_DIM * 3
+
+function onPbrMaterialPresetChange(event: Event): void {
+  const preset = (event.target as HTMLSelectElement).value as PbrMaterialPreset
+  const defaults: Record<PbrMaterialPreset, Partial<GraphNodeParams>> = {
+    stone_dungeon: {
+      gamePbrMaterialPreset: 'stone_dungeon',
+      gameTileSeamless: true,
+      gamePbrNormalStrength: 3.0,
+      gamePbrRoughnessContrast: 1.25,
+      gamePbrAoStrength: 0.9,
+      gamePbrMetallicScale: 0.15,
+      gamePbrInvertRoughness: false
+    },
+    brushed_metal: {
+      gamePbrMaterialPreset: 'brushed_metal',
+      gameTileSeamless: true,
+      gamePbrNormalStrength: 2.2,
+      gamePbrRoughnessContrast: 1.65,
+      gamePbrAoStrength: 0.7,
+      gamePbrMetallicScale: 1.15,
+      gamePbrInvertRoughness: true
+    },
+    wet_mud: {
+      gamePbrMaterialPreset: 'wet_mud',
+      gameTileSeamless: true,
+      gamePbrNormalStrength: 3.6,
+      gamePbrRoughnessContrast: 1.8,
+      gamePbrAoStrength: 1.1,
+      gamePbrMetallicScale: 0.35,
+      gamePbrInvertRoughness: true
+    },
+    stylized_wood: {
+      gamePbrMaterialPreset: 'stylized_wood',
+      gameTileSeamless: true,
+      gamePbrNormalStrength: 2.5,
+      gamePbrRoughnessContrast: 1.15,
+      gamePbrAoStrength: 0.8,
+      gamePbrMetallicScale: 0.1,
+      gamePbrInvertRoughness: false
+    },
+    gold_ornament: {
+      gamePbrMaterialPreset: 'gold_ornament',
+      gameTileSeamless: false,
+      gamePbrNormalStrength: 3.4,
+      gamePbrRoughnessContrast: 1.5,
+      gamePbrAoStrength: 0.95,
+      gamePbrMetallicScale: 1.35,
+      gamePbrInvertRoughness: true
+    }
+  }
+  patchParams(defaults[preset] ?? { gamePbrMaterialPreset: preset })
+}
+
+function stopPbrOrbit(): void {
+  pbrAutoOrbit.value = false
+  if (pbrOrbitRafId && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(pbrOrbitRafId)
+    pbrOrbitRafId = 0
+  }
+}
+
+function togglePbrAutoOrbit(): void {
+  if (pbrAutoOrbit.value) {
+    stopPbrOrbit()
+    return
+  }
+  pbrAutoOrbit.value = true
+  const stepOrbit = (now: number): void => {
+    if (!pbrAutoOrbit.value) return
+    const angle = (now * 0.0018) % (Math.PI * 2)
+    const radius = PBR_CANVAS_DIM * 0.32
+    pbrLightPos.value = {
+      x: PBR_CANVAS_DIM * 0.5 + Math.cos(angle) * radius,
+      y: PBR_CANVAS_DIM * 0.5 + Math.sin(angle) * radius
+    }
+    renderPbrLightingCanvas()
+    pbrOrbitRafId = requestAnimationFrame(stepOrbit)
+  }
+  if (typeof requestAnimationFrame === 'function') {
+    pbrOrbitRafId = requestAnimationFrame(stepOrbit)
+  }
+}
 
 watch(
   () =>
@@ -1019,10 +1567,11 @@ async function loadPbrSourceTileRgba(url: string): Promise<void> {
 const pbrPrimaryImageUrl = computed(() => pbrChannelCards.value[0]?.url || '')
 
 const pbrLiveTileData = computed(() => {
+  const preset = (node.value?.params.gamePbrMaterialPreset ?? 'stone_dungeon') as PbrMaterialPreset
   const base =
     pbrSourceTileRgba.value && pbrSourceTileRgba.value.length === PBR_TILE_DIM * PBR_TILE_DIM * 4
       ? pbrSourceTileRgba.value
-      : createProceduralStoneTileRgba(PBR_TILE_DIM, PBR_TILE_DIM).data
+      : createProceduralMaterialTileRgba(preset, PBR_TILE_DIM, PBR_TILE_DIM).data
   const seamlessEnabled = node.value?.params.gameTileSeamless !== false
   const blendRatio = Math.max(
     0.05,
@@ -1035,18 +1584,79 @@ const pbrLiveTileData = computed(() => {
     0.2,
     Math.min(12, Number(node.value?.params.gamePbrNormalStrength ?? 2.8))
   )
+  const normalFormat = node.value?.params.gamePbrNormalFormat === 'directx' ? 'directx' : 'opengl'
+  const roughnessContrast = Math.max(
+    0.2,
+    Math.min(3, Number(node.value?.params.gamePbrRoughnessContrast ?? 1.2))
+  )
+  const aoStrength = Math.max(0, Math.min(2, Number(node.value?.params.gamePbrAoStrength ?? 0.85)))
+  const metallicScale = Math.max(
+    0,
+    Math.min(2, Number(node.value?.params.gamePbrMetallicScale ?? 0.25))
+  )
   const invertRoughness = Boolean(node.value?.params.gamePbrInvertRoughness)
   const maps = derivePbrMapsFromRgba(albedo, PBR_TILE_DIM, PBR_TILE_DIM, {
     normalStrength,
-    normalFormat: 'opengl',
+    normalFormat,
     wrapTiling: seamlessEnabled,
-    invertRoughness,
-    aoStrength: 0.85
+    roughnessContrast,
+    aoStrength,
+    metallicScale,
+    invertRoughness
   })
   return { albedo, maps }
 })
 
+const pbrLiveAlbedoDataUrl = computed(() =>
+  encodeRgbaToPngDataUrl(pbrLiveTileData.value.albedo, PBR_TILE_DIM, PBR_TILE_DIM)
+)
+
+const pbrLiveNineSlice = computed(() =>
+  detectNineSliceBorders(pbrLiveTileData.value.albedo, PBR_TILE_DIM, PBR_TILE_DIM)
+)
+
+const pbrLivePhysics = computed(() => {
+  const maxVertices = Math.max(
+    4,
+    Math.min(16, Math.round(Number(node.value?.params.gamePbrMaxHullVertices ?? 8)))
+  )
+  return buildSpritePhysicsManifest(
+    node.value?.title || 'sprite',
+    pbrLiveTileData.value.albedo,
+    PBR_TILE_DIM,
+    PBR_TILE_DIM,
+    { maxVertices }
+  )
+})
+
+const pbrHullPolygonPoints = computed(() =>
+  pbrLivePhysics.value.hull.verticesPx.map((pt) => `${pt.x},${pt.y}`).join(' ')
+)
+
+function copyPbrPhysicsManifest(): void {
+  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+    const nineManifest = buildNineSliceManifest(
+      node.value?.title || 'sprite',
+      pbrLiveNineSlice.value
+    )
+    const combined = JSON.stringify(
+      {
+        nineSlice: nineManifest,
+        physics: pbrLivePhysics.value
+      },
+      null,
+      2
+    )
+    void navigator.clipboard.writeText(combined)
+    pbrManifestCopied.value = true
+    setTimeout(() => {
+      pbrManifestCopied.value = false
+    }, 1800)
+  }
+}
+
 function onPbrLightPointerMove(event: PointerEvent): void {
+  if (pbrAutoOrbit.value) stopPbrOrbit()
   const canvas = pbrLightCanvasRef.value
   if (!canvas) return
   const rect = canvas.getBoundingClientRect()
@@ -1069,13 +1679,24 @@ function renderPbrLightingCanvas(): void {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const { albedo, maps } = pbrLiveTileData.value
-  const { normal, roughness, ao } = maps
+  const { normal, roughness, ao, metallic } = maps
   const imgData = ctx.createImageData(PBR_CANVAS_DIM, PBR_CANVAS_DIM)
   const out = imgData.data
   const lx = pbrLightPos.value.x
   const ly = pbrLightPos.value.y
   const lz = pbrLightZ.value * 160
   const intensity = pbrLightIntensity.value
+
+  const envColors: Record<
+    typeof pbrLightEnv.value,
+    { r: number; g: number; b: number; ambR: number; ambG: number; ambB: number }
+  > = {
+    torch_warm: { r: 1.08, g: 0.92, b: 0.76, ambR: 0.22, ambG: 0.19, ambB: 0.24 },
+    studio_neutral: { r: 1.0, g: 1.0, b: 1.0, ambR: 0.24, ambG: 0.24, ambB: 0.25 },
+    moon_cold: { r: 0.78, g: 0.92, b: 1.15, ambR: 0.16, ambG: 0.22, ambB: 0.32 },
+    cyber_neon: { r: 1.15, g: 0.72, b: 1.18, ambR: 0.18, ambG: 0.28, ambB: 0.34 }
+  }
+  const env = envColors[pbrLightEnv.value]
 
   for (let py = 0; py < PBR_CANVAS_DIM; py++) {
     const ty = py % PBR_TILE_DIM
@@ -1110,14 +1731,24 @@ function renderPbrLightingCanvas(): void {
       const ndoth = Math.max(0, nx * hx + ny * hy + nz * hz)
 
       const rough = (roughness[tIdx] ?? 140) / 255
-      const shininess = Math.max(4, (1 - rough) * 64)
-      const spec = Math.pow(ndoth, shininess) * (1 - rough * 0.65) * 0.58
+      const metal = (metallic[tIdx] ?? 32) / 255
+      const shininess = Math.max(4, (1 - rough) * 68)
+      const spec = Math.pow(ndoth, shininess) * (1 - rough * 0.6) * (0.52 + metal * 0.65)
       const aoVal = 0.35 + 0.65 * ((ao[tIdx] ?? 220) / 255)
-      const lit = 0.2 * aoVal + ndotl * atten * aoVal
 
-      out[cIdx] = Math.min(255, Math.max(0, Math.round(ar * lit + 255 * spec * atten)))
-      out[cIdx + 1] = Math.min(255, Math.max(0, Math.round(ag * lit + 245 * spec * atten)))
-      out[cIdx + 2] = Math.min(255, Math.max(0, Math.round(ab * lit + 225 * spec * atten)))
+      const diffR = (env.ambR + ndotl * atten * env.r) * aoVal
+      const diffG = (env.ambG + ndotl * atten * env.g) * aoVal
+      const diffB = (env.ambB + ndotl * atten * env.b) * aoVal
+
+      out[cIdx] = Math.min(255, Math.max(0, Math.round(ar * diffR + 255 * spec * atten * env.r)))
+      out[cIdx + 1] = Math.min(
+        255,
+        Math.max(0, Math.round(ag * diffG + 245 * spec * atten * env.g))
+      )
+      out[cIdx + 2] = Math.min(
+        255,
+        Math.max(0, Math.round(ab * diffB + 235 * spec * atten * env.b))
+      )
       out[cIdx + 3] = 255
     }
   }
@@ -1157,7 +1788,8 @@ watch(
     pbrLiveTileData.value,
     showSeamGrid.value,
     pbrLightZ.value,
-    pbrLightIntensity.value
+    pbrLightIntensity.value,
+    pbrLightEnv.value
   ],
   async () => {
     if (node.value?.typeId === 'game.pbrTile' && pbrTab.value === 'lighting') {
@@ -1168,7 +1800,7 @@ watch(
   { immediate: true }
 )
 
-// --- 2. game.audioDsp stage state, Upstream Audio Decoding & Audio Shaper ---
+// --- 2. game.audioDsp stage state, Spectrum/LUFS Analyzer & 3D Spatial Audition ---
 const audioVariantCount = computed(() =>
   Math.max(2, Math.min(8, Math.round(Number(node.value?.params.gameAudioVariantCount ?? 4))))
 )
@@ -1194,6 +1826,10 @@ const audioLowPassHz = computed(() =>
 const audioReleaseTighten = computed(() =>
   Math.max(0, Math.min(0.95, Number(node.value?.params.gameAudioReleaseTighten ?? 0)))
 )
+
+const audioSpatialDistance = ref(1)
+const audioSpatialPan = ref(0)
+const audioSpatialOcclusion = ref(0)
 
 const upstreamDecodedAudio = ref<{
   channels: Float32Array[]
@@ -1355,6 +1991,17 @@ const processedWaveformAnalysis = computed(() =>
   )
 )
 
+const rawSpectrumAnalysis = computed(() =>
+  analyzeOctaveSpectrumPcm(
+    liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0),
+    liveRawAudioBuffer.value.sampleRate
+  )
+)
+
+const processedSpectrumAnalysis = computed(() =>
+  analyzeOctaveSpectrumPcm(liveProcessedPrimaryChannel.value, liveRawAudioBuffer.value.sampleRate)
+)
+
 const loopCrossfadeWidthPx = computed(() => {
   const dur = Math.max(0.2, processedWaveformAnalysis.value.durationSec)
   const ratio = Math.min(0.45, audioCrossfadeSec.value / dur)
@@ -1375,6 +2022,7 @@ function stopWebAudioPlayback(): void {
 
 onBeforeUnmount(() => {
   stopWebAudioPlayback()
+  stopPbrOrbit()
 })
 
 function ensureAudioContext(): AudioContext | null {
@@ -1395,12 +2043,23 @@ function playPcmSamples(
   options?: { loop?: boolean; offsetSec?: number }
 ): void {
   if (samples.length === 0) return
-  const buf = ctx.createBuffer(1, samples.length, sampleRate)
-  buf.copyToChannel(new Float32Array(samples), 0)
+  const spatialized = applySpatialAuditionPcm(samples, sampleRate, {
+    distanceMeters: audioSpatialDistance.value,
+    occlusion: audioSpatialOcclusion.value
+  })
+  const buf = ctx.createBuffer(1, spatialized.length, sampleRate)
+  buf.copyToChannel(new Float32Array(spatialized), 0)
   const src = ctx.createBufferSource()
   src.buffer = buf
   src.loop = Boolean(options?.loop)
-  src.connect(ctx.destination)
+  if (typeof ctx.createStereoPanner === 'function' && Math.abs(audioSpatialPan.value) > 0.01) {
+    const panner = ctx.createStereoPanner()
+    panner.pan.value = Math.max(-1, Math.min(1, audioSpatialPan.value))
+    src.connect(panner)
+    panner.connect(ctx.destination)
+  } else {
+    src.connect(ctx.destination)
+  }
   src.start(0, Math.max(0, options?.offsetSec ?? 0))
 }
 
@@ -1501,11 +2160,13 @@ function copyAudioEngineConfig(): void {
   }
 }
 
-// --- 3. game.levelMap stage state & Interactive Paint Brush ---
+// --- 3. game.levelMap stage state, Interactive Paint Brush & A* Pathfinding Verifier ---
 const levelTab = ref<'map' | 'tmj'>('map')
 type LevelBrushToolId = LevelCellType | LevelEntitySpawn['type']
 const activeLevelBrush = ref<LevelBrushToolId>('floor')
 const levelPainting = ref(false)
+const showCriticalPath = ref(true)
+const showWangBitmask = ref(false)
 
 const levelBrushOptions = computed<Array<{ id: LevelBrushToolId; icon: string; label: string }>>(
   () => [
@@ -1534,6 +2195,12 @@ const liveLevelData = computed(() => {
   })
   return applyCustomEditsToLevelMap(base, node.value?.params.gameLevelCustomEdits)
 })
+
+const liveLevelConnectivity = computed(() => analyzeLevelConnectivityAndPacing(liveLevelData.value))
+
+const levelCriticalPathPoints = computed(() =>
+  liveLevelConnectivity.value.criticalPath.map((pt) => `${pt.x + 0.5},${pt.y + 0.5}`).join(' ')
+)
 
 const liveLevelPreviewDataUrl = computed(() => {
   if (!node.value?.params.gameLevelCustomEdits && node.value?.params.previewDataUrl?.trim()) {
@@ -1637,9 +2304,52 @@ function clearLevelCustomEdits(): void {
   })
 }
 
-// --- 4. game.playable stage state & Upstream Asset Hot-Binding ---
+// --- 4. game.playable stage state, Upstream Asset Hot-Binding & Zero-Reload Live Tuning ---
 const showHtmlSource = ref(false)
 const playableReloadSeq = ref(0)
+const playableIframeRef = ref<HTMLIFrameElement | null>(null)
+
+function broadcastPlayableTuning(overrides?: Record<string, unknown>): void {
+  const current = node.value
+  const win = playableIframeRef.value?.contentWindow
+  if (!current || !win) return
+  win.postMessage(
+    {
+      type: 'aiart:playable-tune',
+      payload: {
+        moveSpeedScale: Number(current.params.gamePlayableMoveSpeed ?? 1.0),
+        jumpDashScale: Number(current.params.gamePlayableJumpDash ?? 1.0),
+        enemyAggroScale: Number(current.params.gamePlayableEnemyAggro ?? 1.0),
+        screenShakeScale: Number(current.params.gamePlayableScreenShake ?? 1.0),
+        timeScale: Number(current.params.gamePlayableTimeScale ?? 1.0),
+        showDebugHitboxes: Boolean(current.params.gamePlayableShowHitboxes),
+        ...(overrides ?? {})
+      }
+    },
+    '*'
+  )
+}
+
+function onPlayableTuneNumber(key: keyof GraphNodeParams, event: Event): void {
+  const raw = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(raw)) return
+  patchParams({ [key]: raw } as Partial<GraphNodeParams>)
+  const propMap: Partial<Record<keyof GraphNodeParams, string>> = {
+    gamePlayableMoveSpeed: 'moveSpeedScale',
+    gamePlayableJumpDash: 'jumpDashScale',
+    gamePlayableEnemyAggro: 'enemyAggroScale',
+    gamePlayableScreenShake: 'screenShakeScale',
+    gamePlayableTimeScale: 'timeScale'
+  }
+  const mappedKey = propMap[key]
+  broadcastPlayableTuning(mappedKey ? { [mappedKey]: raw } : undefined)
+}
+
+function onPlayableTuneBool(key: keyof GraphNodeParams, event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked
+  patchParams({ [key]: checked } as Partial<GraphNodeParams>)
+  broadcastPlayableTuning({ showDebugHitboxes: checked })
+}
 
 const playableUpstreamAssets = ref<{
   playerSpriteDataUrl?: string
@@ -1752,7 +2462,13 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
     levelMap,
     playerSpriteDataUrl: info.playerSpriteDataUrl,
     enemySpriteDataUrl: info.enemySpriteDataUrl,
-    tileSpriteDataUrl: info.tileSpriteDataUrl
+    tileSpriteDataUrl: info.tileSpriteDataUrl,
+    moveSpeedScale: Number(current.params.gamePlayableMoveSpeed ?? 1.0),
+    jumpDashScale: Number(current.params.gamePlayableJumpDash ?? 1.0),
+    enemyAggroScale: Number(current.params.gamePlayableEnemyAggro ?? 1.0),
+    screenShakeScale: Number(current.params.gamePlayableScreenShake ?? 1.0),
+    timeScale: Number(current.params.gamePlayableTimeScale ?? 1.0),
+    showDebugHitboxes: Boolean(current.params.gamePlayableShowHitboxes)
   }).html
 }
 
@@ -2373,5 +3089,187 @@ function recompilePlayableNow(): void {
 .output-preview-wrap {
   width: 100%;
   flex-shrink: 0;
+}
+
+.physics-hull-stage {
+  position: relative;
+  width: 440px;
+  height: 440px;
+  max-width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+}
+
+.physics-base-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.physics-overlay-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.slice-guide-line {
+  stroke: color-mix(in srgb, var(--text) 72%, transparent);
+  stroke-width: 0.7;
+  stroke-dasharray: 2.2 2.2;
+}
+
+.box-hurtbox {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  stroke: var(--accent);
+  stroke-width: 0.9;
+}
+
+.box-hitbox {
+  fill: color-mix(in srgb, var(--danger, var(--accent)) 18%, transparent);
+  stroke: var(--danger, var(--accent));
+  stroke-width: 0.9;
+  stroke-dasharray: 2 1.5;
+}
+
+.hull-polygon {
+  fill: color-mix(in srgb, var(--accent) 22%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.2;
+}
+
+.hull-vertex {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 0.9;
+}
+
+.pivot-dot {
+  fill: var(--danger, var(--accent));
+  stroke: var(--bg);
+  stroke-width: 0.8;
+}
+
+.physics-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  font-size: 12px;
+}
+
+.audio-pro-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 12px;
+}
+
+.spectrum-bars-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+  height: 112px;
+  align-items: flex-end;
+  padding: 10px 8px 4px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+.spectrum-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  gap: 5px;
+}
+
+.spectrum-bar-pair {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  flex: 1;
+}
+
+.spec-bar {
+  width: 9px;
+  border-radius: 3px 3px 0 0;
+  transition: height 0.16s ease;
+}
+
+.spec-bar.raw {
+  background: color-mix(in srgb, var(--text-muted) 65%, transparent);
+}
+
+.spec-bar.processed {
+  background: var(--accent);
+}
+
+.spec-freq-label {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.spatial-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.level-canvas-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.level-overlay-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.astar-path-line {
+  stroke: var(--accent);
+  stroke-width: 0.32;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 0.55 0.35;
+}
+
+.wang-mask-text {
+  font-size: 0.34px;
+  font-weight: 700;
+  fill: var(--text);
+}
+
+.badge-danger {
+  background: color-mix(in srgb, var(--danger, var(--accent)) 18%, transparent);
+  color: var(--danger, var(--accent));
+  border-color: color-mix(in srgb, var(--danger, var(--accent)) 42%, transparent);
+}
+
+.brush-toolbar,
+.brush-pills,
+.light-sliders {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 </style>

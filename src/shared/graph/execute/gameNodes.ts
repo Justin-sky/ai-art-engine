@@ -7,6 +7,7 @@
  */
 import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../domain'
 import {
+  analyzeLevelConnectivityAndPacing,
   analyzeSeamlessTile,
   applyAudioShaperPcm,
   applyCustomEditsToLevelMap,
@@ -16,7 +17,7 @@ import {
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
   compilePlayableGameSandboxHtml,
-  createProceduralStoneTileRgba,
+  createProceduralMaterialTileRgba,
   decodeWavBytesToPcm,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
@@ -34,6 +35,7 @@ import {
   type LevelCellType,
   type LevelEntitySpawn,
   type LevelGeneratorAlgorithm,
+  type PbrMaterialPreset,
   type PlayableSandboxMode,
   type ProceduralLevelMapResult
 } from '../../gameAssets'
@@ -120,6 +122,8 @@ export async function executeGamePbrTileNode(
   let height = 64
   let rawRgba: Uint8ClampedArray
 
+  const materialPreset: PbrMaterialPreset = ctx.node.params.gamePbrMaterialPreset ?? 'stone_dungeon'
+
   if (sourceUrl && ctx.uiRgbaCodec?.decodeImageRgba) {
     try {
       const decoded = await ctx.uiRgbaCodec.decodeImageRgba(sourceUrl)
@@ -127,13 +131,13 @@ export async function executeGamePbrTileNode(
       height = Math.max(4, decoded.height)
       rawRgba = new Uint8ClampedArray(decoded.data)
     } catch {
-      const fallback = createProceduralStoneTileRgba(64, 64)
+      const fallback = createProceduralMaterialTileRgba(materialPreset, 64, 64)
       width = fallback.width
       height = fallback.height
       rawRgba = fallback.data
     }
   } else {
-    const fallback = createProceduralStoneTileRgba(64, 64)
+    const fallback = createProceduralMaterialTileRgba(materialPreset, 64, 64)
     width = fallback.width
     height = fallback.height
     rawRgba = fallback.data
@@ -148,7 +152,21 @@ export async function executeGamePbrTileNode(
     0.5,
     Math.min(8, Number(ctx.node.params.gamePbrNormalStrength ?? 2.8))
   )
+  const normalFormat = ctx.node.params.gamePbrNormalFormat === 'directx' ? 'directx' : 'opengl'
+  const roughnessContrast = Math.max(
+    0.2,
+    Math.min(3, Number(ctx.node.params.gamePbrRoughnessContrast ?? 1.2))
+  )
+  const aoStrength = Math.max(0, Math.min(2, Number(ctx.node.params.gamePbrAoStrength ?? 0.75)))
+  const metallicScale = Math.max(
+    0,
+    Math.min(2, Number(ctx.node.params.gamePbrMetallicScale ?? 0.25))
+  )
   const invertRoughness = Boolean(ctx.node.params.gamePbrInvertRoughness)
+  const maxHullVertices = Math.max(
+    4,
+    Math.min(16, Math.round(Number(ctx.node.params.gamePbrMaxHullVertices ?? 8)))
+  )
 
   const seamBefore = analyzeSeamlessTile(rawRgba, width, height)
   const baseRgba = tileSeamless
@@ -158,8 +176,11 @@ export async function executeGamePbrTileNode(
 
   const pbrMaps = derivePbrMapsFromRgba(baseRgba, width, height, {
     normalStrength,
-    invertRoughness,
-    aoStrength: 0.75
+    normalFormat,
+    roughnessContrast,
+    aoStrength,
+    metallicScale,
+    invertRoughness
   })
 
   const nineSlice = detectNineSliceBorders(baseRgba, width, height)
@@ -168,7 +189,8 @@ export async function executeGamePbrTileNode(
     ctx.node.title || 'sprite',
     baseRgba,
     width,
-    height
+    height,
+    { maxVertices: maxHullVertices }
   )
 
   const stamp = Date.now()
@@ -584,7 +606,8 @@ export async function executeGameLevelMapNode(
     }
   }
 
-  const report = `${algorithm} | ${width}x${height} (Seed ${seed}) | Rooms: ${level.rooms.length} | Entities: ${level.entities.length}`
+  const connectivity = analyzeLevelConnectivityAndPacing(level)
+  const report = `${algorithm} | ${width}x${height} (Seed ${seed}) | Rooms: ${level.rooms.length} | Entities: ${level.entities.length} | Path: ${connectivity.reachable ? `${connectivity.pathLength} steps` : 'Blocked'}`
   const outputs = commitGeneratedImages(
     ctx,
     generatedImages,
@@ -778,7 +801,13 @@ export async function executeGamePlayableNode(
     playerSpriteDataUrl,
     enemySpriteDataUrl,
     tileSpriteDataUrl,
-    levelMap
+    levelMap,
+    moveSpeedScale: Number(ctx.node.params.gamePlayableMoveSpeed ?? 1.0),
+    jumpDashScale: Number(ctx.node.params.gamePlayableJumpDash ?? 1.0),
+    enemyAggroScale: Number(ctx.node.params.gamePlayableEnemyAggro ?? 1.0),
+    screenShakeScale: Number(ctx.node.params.gamePlayableScreenShake ?? 1.0),
+    timeScale: Number(ctx.node.params.gamePlayableTimeScale ?? 1.0),
+    showDebugHitboxes: Boolean(ctx.node.params.gamePlayableShowHitboxes)
   })
   const html = compiled.html
 

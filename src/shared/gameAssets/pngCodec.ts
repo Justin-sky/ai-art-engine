@@ -140,6 +140,102 @@ export function encodeRgbaToPngDataUrl(
   return `data:image/png;base64,${bytesToBase64(png)}`
 }
 
+export type PbrMaterialPreset =
+  'stone_dungeon' | 'brushed_metal' | 'wet_mud' | 'stylized_wood' | 'gold_ornament'
+
+/**
+ * 生成一张程序化材质贴图（支持 5 类典型游戏材质预设：地牢石砖、拉丝金属装甲、潮湿泥沼、风格化木板、流光金框）。
+ */
+export function createProceduralMaterialTileRgba(
+  preset: PbrMaterialPreset = 'stone_dungeon',
+  width = 64,
+  height = 64
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const w = Math.max(8, Math.floor(width))
+  const h = Math.max(8, Math.floor(height))
+  const data = new Uint8ClampedArray(w * h * 4)
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4
+      const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0
+      const grain = (hash % 19) - 9
+
+      if (preset === 'brushed_metal') {
+        const streak = ((((y * 2654435761) ^ ((x >> 3) * 19349663)) >>> 0) % 24) - 12
+        const rivetX = x % 32 === 4 || x % 32 === 27
+        const rivetY = y % 32 === 4 || y % 32 === 27
+        const isRivet = rivetX && rivetY
+        const seam = x % 32 === 0 || y % 32 === 0
+        const base = seam ? 52 : isRivet ? 195 : 138 + streak + (grain >> 1)
+        data[idx] = Math.max(0, Math.min(255, base - 6))
+        data[idx + 1] = Math.max(0, Math.min(255, base))
+        data[idx + 2] = Math.max(0, Math.min(255, base + 14))
+        data[idx + 3] = 255
+      } else if (preset === 'wet_mud') {
+        const wave = Math.sin((x / w) * Math.PI * 4) * Math.cos((y / h) * Math.PI * 4)
+        const puddle = wave > 0.35
+        const r = puddle ? 72 + (grain >> 1) : 64 + grain
+        const g = puddle ? 62 + (grain >> 1) : 48 + grain
+        const b = puddle ? 58 + (grain >> 1) : 36 + grain
+        data[idx] = Math.max(0, Math.min(255, r))
+        data[idx + 1] = Math.max(0, Math.min(255, g))
+        data[idx + 2] = Math.max(0, Math.min(255, b))
+        data[idx + 3] = 255
+      } else if (preset === 'stylized_wood') {
+        const plankRow = Math.floor(y / 16)
+        const plankSeamY = y % 16 === 0
+        const plankSeamX = (x + plankRow * 24) % 48 === 0
+        const ring = Math.round(Math.sin(x * 0.25 + plankRow * 1.7 + Math.sin(y * 0.4) * 1.2) * 12)
+        const r = plankSeamY || plankSeamX ? 46 : 136 + ring + (grain >> 1)
+        const g = plankSeamY || plankSeamX ? 30 : 92 + ring + (grain >> 1)
+        const b = plankSeamY || plankSeamX ? 20 : 54 + (ring >> 1)
+        data[idx] = Math.max(0, Math.min(255, r))
+        data[idx + 1] = Math.max(0, Math.min(255, g))
+        data[idx + 2] = Math.max(0, Math.min(255, b))
+        data[idx + 3] = 255
+      } else if (preset === 'gold_ornament') {
+        const bx = Math.min(x, w - 1 - x)
+        const by = Math.min(y, h - 1 - y)
+        const borderDist = Math.min(bx, by)
+        const isFrame = borderDist >= 2 && borderDist <= 9
+        const isOuterVoid = borderDist < 2
+        if (isOuterVoid) {
+          data[idx] = 0
+          data[idx + 1] = 0
+          data[idx + 2] = 0
+          data[idx + 3] = 0
+        } else if (isFrame) {
+          const bevel = borderDist === 5 || borderDist === 6 ? 35 : -10
+          data[idx] = Math.max(0, Math.min(255, 218 + bevel + (grain >> 1)))
+          data[idx + 1] = Math.max(0, Math.min(255, 172 + bevel + (grain >> 1)))
+          data[idx + 2] = Math.max(0, Math.min(255, 68 + (bevel >> 1)))
+          data[idx + 3] = 255
+        } else {
+          data[idx] = Math.max(0, Math.min(255, 42 + (grain >> 2)))
+          data[idx + 1] = Math.max(0, Math.min(255, 48 + (grain >> 2)))
+          data[idx + 2] = Math.max(0, Math.min(255, 68 + (grain >> 2)))
+          data[idx + 3] = 255
+        }
+      } else {
+        const brickRow = Math.floor(y / 16)
+        const offsetX = brickRow % 2 === 0 ? 0 : 16
+        const isMortarY = y % 16 === 0 || y % 16 === 15
+        const isMortarX = (x + offsetX) % 32 === 0 || (x + offsetX) % 32 === 31
+        const isMortar = isMortarX || isMortarY
+        const baseR = isMortar ? 32 : 86 + grain
+        const baseG = isMortar ? 36 : 94 + grain
+        const baseB = isMortar ? 48 : 114 + grain
+        data[idx] = Math.max(0, Math.min(255, baseR))
+        data[idx + 1] = Math.max(0, Math.min(255, baseG))
+        data[idx + 2] = Math.max(0, Math.min(255, baseB))
+        data[idx + 3] = 255
+      }
+    }
+  }
+  return { width: w, height: h, data }
+}
+
 /**
  * 生成一张程序化地牢石砖测试贴图（当节点未接入外部贴图或处于离线测试环境时兜底）。
  */
@@ -147,29 +243,7 @@ export function createProceduralStoneTileRgba(
   width = 64,
   height = 64
 ): { width: number; height: number; data: Uint8ClampedArray } {
-  const w = Math.max(8, Math.floor(width))
-  const h = Math.max(8, Math.floor(height))
-  const data = new Uint8ClampedArray(w * h * 4)
-  for (let y = 0; y < h; y++) {
-    const brickRow = Math.floor(y / 16)
-    const offsetX = brickRow % 2 === 0 ? 0 : 16
-    const isMortarY = y % 16 === 0 || y % 16 === 15
-    for (let x = 0; x < w; x++) {
-      const isMortarX = (x + offsetX) % 32 === 0 || (x + offsetX) % 32 === 31
-      const isMortar = isMortarX || isMortarY
-      const hash = ((x * 73856093) ^ (y * 19349663)) >>> 0
-      const grain = (hash % 19) - 9
-      const baseR = isMortar ? 32 : 86 + grain
-      const baseG = isMortar ? 36 : 94 + grain
-      const baseB = isMortar ? 48 : 114 + grain
-      const idx = (y * w + x) * 4
-      data[idx] = Math.max(0, Math.min(255, baseR))
-      data[idx + 1] = Math.max(0, Math.min(255, baseG))
-      data[idx + 2] = Math.max(0, Math.min(255, baseB))
-      data[idx + 3] = 255
-    }
-  }
-  return { width: w, height: h, data }
+  return createProceduralMaterialTileRgba('stone_dungeon', width, height)
 }
 
 /**

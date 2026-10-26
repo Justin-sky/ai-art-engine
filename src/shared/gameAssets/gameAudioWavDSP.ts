@@ -815,3 +815,160 @@ export function synthesizeGameSeedPcm(
   }
   return { channels: [mono], sampleRate: sr }
 }
+
+export interface OctaveSpectrumBand {
+  label: string
+  hz: number
+  /** Normalized 0..1 bar height for UI visualization */
+  level: number
+  /** Band energy in dBFS */
+  db: number
+}
+
+export interface AudioSpectrumAndLoudnessResult {
+  bands: OctaveSpectrumBand[]
+  peakDb: number
+  rmsDb: number
+  /** K-weighted integrated loudness approximation (LUFS) */
+  lufsIntegrated: number
+  /** Dynamic punch indicator: Peak dB - RMS dB */
+  crestFactorDb: number
+}
+
+const OCTAVE_CENTERS: ReadonlyArray<{ label: string; hz: number }> = [
+  { label: '63', hz: 63 },
+  { label: '125', hz: 125 },
+  { label: '250', hz: 250 },
+  { label: '500', hz: 500 },
+  { label: '1k', hz: 1000 },
+  { label: '2k', hz: 2000 },
+  { label: '4k', hz: 4000 },
+  { label: '8k', hz: 8000 }
+]
+
+/**
+ * Computes an 8-band octave spectrum (Goertzel DFT probes across active signal frames)
+ * plus Integrated Loudness (LUFS), RMS dB, Peak dB, and Dynamic Crest Factor.
+ */
+export function analyzeOctaveSpectrumPcm(
+  samples: Float32Array,
+  sampleRate: number
+): AudioSpectrumAndLoudnessResult {
+  const n = samples.length
+  const sr = Math.max(8000, sampleRate)
+  if (n === 0) {
+    return {
+      bands: OCTAVE_CENTERS.map((b) => ({ ...b, level: 0, db: -96 })),
+      peakDb: -96,
+      rmsDb: -96,
+      lufsIntegrated: -70,
+      crestFactorDb: 0
+    }
+  }
+
+  let peak = 0
+  let sumSq = 0
+  for (let i = 0; i < n; i++) {
+    const v = samples[i] ?? 0
+    const abs = Math.abs(v)
+    if (abs > peak) peak = abs
+    sumSq += v * v
+  }
+  const rms = Math.sqrt(sumSq / n)
+  const peakDb = peak > 1e-5 ? Number((20 * Math.log10(peak)).toFixed(1)) : -96
+  const rmsDb = rms > 1e-5 ? Number((20 * Math.log10(rms)).toFixed(1)) : -96
+  const crestFactorDb =
+    peak > 1e-5 && rms > 1e-5 ? Number(Math.max(0, peakDb - rmsDb).toFixed(1)) : 0
+
+  // Sample up to 2048 active frames around peak/center for fast deterministic Goertzel band energy
+  const winLen = Math.min(n, 2048)
+  const startOffset = Math.max(0, Math.min(n - winLen, Math.floor(n * 0.05)))
+
+  const bands: OctaveSpectrumBand[] = OCTAVE_CENTERS.map(({ label, hz }) => {
+    if (hz >= sr * 0.48) {
+      return { label, hz, level: 0.05, db: -72 }
+    }
+    // Probe 3 sub-frequencies around the octave center (-15%, 0%, +15%)
+    const probes = [hz * 0.86, hz, hz * 1.14]
+    let totalMag = 0
+    for (const f of probes) {
+      const omega = (2 * Math.PI * f) / sr
+      const coeff = 2 * Math.cos(omega)
+      let s1 = 0
+      let s2 = 0
+      for (let i = 0; i < winLen; i++) {
+        const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / Math.max(1, winLen - 1))
+        const x = (samples[startOffset + i] ?? 0) * w
+        const s0 = x + coeff * s1 - s2
+        s2 = s1
+        s1 = s0
+      }
+      const power = s1 * s1 + s2 * s2 - coeff * s1 * s2
+      totalMag += Math.sqrt(Math.max(0, power)) / winLen
+    }
+    const avgMag = (totalMag / probes.length) * 4.2
+    const db =
+      avgMag > 1e-5 ? Number(Math.max(-72, Math.min(0, 20 * Math.log10(avgMag))).toFixed(1)) : -72
+    const level = Number(Math.max(0.04, Math.min(1, (db + 60) / 60)).toFixed(3))
+    return { label, hz, level, db }
+  })
+
+  // K-weighting approximation: high-shelf boost on 2k/4k/8k bands relative to RMS
+  const highEnergy = ((bands[5]?.level ?? 0) + (bands[6]?.level ?? 0) + (bands[7]?.level ?? 0)) / 3
+  const lufsIntegrated =
+    rms > 1e-5
+      ? Number(Math.max(-70, Math.min(0, rmsDb - 0.691 + highEnergy * 1.8)).toFixed(1))
+      : -70
+
+  return {
+    bands,
+    peakDb,
+    rmsDb,
+    lufsIntegrated,
+    crestFactorDb
+  }
+}
+
+/**
+ * Applies FMOD/Wwise-style 3D spatial distance attenuation, air absorption, and wall occlusion low-pass filter.
+ */
+export function applySpatialAuditionPcm(
+  samples: Float32Array,
+  sampleRate: number,
+  options: {
+    /** Listener distance in meters (1..50, default 1) */
+    distanceMeters?: number
+    /** Wall occlusion factor (0..1, default 0) */
+    occlusion?: number
+  }
+): Float32Array {
+  const n = samples.length
+  if (n === 0) return new Float32Array(0)
+  const sr = Math.max(8000, sampleRate)
+  const dist = Math.max(1, Math.min(50, Number(options.distanceMeters ?? 1)))
+  const occ = Math.max(0, Math.min(1, Number(options.occlusion ?? 0)))
+  if (dist <= 1.05 && occ <= 0.01) {
+    return new Float32Array(samples)
+  }
+
+  // Inverse-distance rolloff + air absorption + occlusion cutoff
+  const distGain = 1 / (1 + 0.075 * (dist - 1))
+  const occGain = 1 - occ * 0.45
+  const totalGain = distGain * occGain
+
+  const airCutoff = 19000 * Math.exp(-(dist - 1) * 0.032)
+  const occCutoff = airCutoff * Math.pow(0.09, occ)
+  const cutoffHz = Math.max(240, Math.min(sr * 0.45, occCutoff))
+
+  const dt = 1 / sr
+  const rc = 1 / (2 * Math.PI * cutoffHz)
+  const alpha = dt / (rc + dt)
+
+  const out = new Float32Array(n)
+  let lp = 0
+  for (let i = 0; i < n; i++) {
+    lp = lp + alpha * ((samples[i] ?? 0) - lp)
+    out[i] = lp * totalGain
+  }
+  return out
+}

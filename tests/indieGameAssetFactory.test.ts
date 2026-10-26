@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeAudioWaveformAndTrim,
+  analyzeLevelConnectivityAndPacing,
+  analyzeOctaveSpectrumPcm,
   analyzeSeamlessTile,
   applyAudioShaperPcm,
   applyCustomEditsToLevelMap,
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
+  applySpatialAuditionPcm,
   BLOB_47_BITMASKS,
   buildAutoTileAtlasManifest,
   buildBitmapFontManifest,
@@ -21,6 +24,7 @@ import {
   classifyGameBundleItem,
   compileGameArtBiblePromptClause,
   compilePlayableGameSandboxHtml,
+  createProceduralMaterialTileRgba,
   createProceduralStoneTileRgba,
   decodeWavBytesToPcm,
   deriveCombatBoxesFromAlpha,
@@ -1052,5 +1056,113 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     })
     await executeGameLevelMapNode({ node: levelNode, inputs: {} })
     expect(levelNode.params.text).toContain('"custom_boss_spawn_5_6_0"')
+  })
+
+  it('benchmarks pro commercial software features across all 4 game nodes (Substance PBR presets, FMOD 8-band spectrum/LUFS/3D spatial, LDtk A* pathfinder, Unity Play-Mode hot-tuner)', async () => {
+    // 1. Substance 3D Sampler + TexturePacker: 5 Procedural Material Presets + DirectX/OpenGL + Hull vertices
+    const presets = [
+      'stone_dungeon',
+      'brushed_metal',
+      'wet_mud',
+      'stylized_wood',
+      'gold_ornament'
+    ] as const
+    for (const preset of presets) {
+      const tile = createProceduralMaterialTileRgba(preset, 32, 32)
+      expect(tile.data.length).toBe(32 * 32 * 4)
+    }
+
+    const pbrNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    pbrNode.params.gamePbrMaterialPreset = 'gold_ornament'
+    pbrNode.params.gamePbrNormalFormat = 'directx'
+    pbrNode.params.gamePbrRoughnessContrast = 1.6
+    pbrNode.params.gamePbrAoStrength = 1.4
+    pbrNode.params.gamePbrMetallicScale = 0.85
+    pbrNode.params.gamePbrMaxHullVertices = 10
+    const pbrOut = await executeGamePbrTileNode({ node: pbrNode, inputs: {} })
+    expect(pbrOut.out?.kind).toBe('image')
+    expect(pbrNode.params.gamePbrReport).toContain('Hull ')
+    expect(pbrOut['out-meta']?.kind).toBe('text')
+    const pbrManifest = JSON.parse(
+      pbrOut['out-meta']?.kind === 'text' ? pbrOut['out-meta'].text : '{}'
+    )
+    expect(pbrManifest.physics.hull.verticesPx.length).toBeLessThanOrEqual(10)
+
+    // 2. FMOD Studio / Wwise: 8-Band Octave Spectrum + LUFS + 3D Spatial Distance/Occlusion
+    const pcm = synthesizeGameSeedPcm('explosion', 22050).channels[0]!
+    const spectrum = analyzeOctaveSpectrumPcm(pcm, 22050)
+    expect(spectrum.bands).toHaveLength(8)
+    expect(spectrum.bands.map((b) => b.label)).toEqual([
+      '63',
+      '125',
+      '250',
+      '500',
+      '1k',
+      '2k',
+      '4k',
+      '8k'
+    ])
+    expect(spectrum.lufsIntegrated).toBeGreaterThan(-45)
+    expect(spectrum.crestFactorDb).toBeGreaterThan(0)
+
+    const spatialNear = applySpatialAuditionPcm(pcm, 22050, {
+      distanceMeters: 1,
+      occlusion: 0
+    })
+    const spatialFarOccluded = applySpatialAuditionPcm(pcm, 22050, {
+      distanceMeters: 25,
+      occlusion: 0.85
+    })
+    const nearSpec = analyzeOctaveSpectrumPcm(spatialNear, 22050)
+    const farSpec = analyzeOctaveSpectrumPcm(spatialFarOccluded, 22050)
+    expect(farSpec.rmsDb).toBeLessThan(nearSpec.rmsDb - 10)
+
+    // 3. LDtk / Edgar PRO: Real-Time A* Shortest-Path Connectivity & Pacing Analyzer
+    const baseLevel = generateProceduralLevelMap({
+      algorithm: 'bsp_dungeon',
+      width: 24,
+      height: 16,
+      seed: 42
+    })
+    const connReport = analyzeLevelConnectivityAndPacing(baseLevel)
+    expect(connReport.reachable).toBe(true)
+    expect(connReport.pathLength).toBeGreaterThan(2)
+    expect(connReport.criticalPath.length).toBe(connReport.pathLength)
+
+    // Block all neighbor cells around player_spawn with walls -> A* should detect unreachable!
+    const sp = connReport.criticalPath[0]!
+    const blockedLevel = applyCustomEditsToLevelMap(
+      baseLevel,
+      JSON.stringify({
+        cells: {
+          [`${sp.x + 1},${sp.y}`]: 'wall',
+          [`${sp.x - 1},${sp.y}`]: 'wall',
+          [`${sp.x},${sp.y + 1}`]: 'wall',
+          [`${sp.x},${sp.y - 1}`]: 'wall'
+        },
+        entities: []
+      })
+    )
+    const blockedReport = analyzeLevelConnectivityAndPacing(blockedLevel)
+    expect(blockedReport.reachable).toBe(false)
+    expect(blockedReport.pacingRating).toBe('unsolvable')
+
+    // 4. Unity / Godot Play-Mode Live Inspector: Zero-reload postMessage bridge & debug hitbox telemetry
+    const playablePkg = compilePlayableGameSandboxHtml({
+      title: 'Pro Hot-Tune Sandbox',
+      genre: 'roguelike_action',
+      cameraMode: 'topdown_34',
+      moveSpeedScale: 1.4,
+      jumpDashScale: 1.3,
+      enemyAggroScale: 1.5,
+      screenShakeScale: 1.8,
+      timeScale: 0.5,
+      showDebugHitboxes: true
+    })
+    expect(playablePkg.html).toContain("ev.data.type === 'aiart:playable-tune'")
+    expect(playablePkg.html).toContain('if (tuning.showDebugHitboxes)')
+    expect(playablePkg.html).toContain('"showDebugHitboxes":true')
+    expect(playablePkg.html).toContain('"moveSpeedScale":1.4')
+    expect(playablePkg.html).toContain('"timeScale":0.5')
   })
 })
