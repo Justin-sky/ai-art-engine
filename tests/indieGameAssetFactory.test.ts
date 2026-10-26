@@ -4,8 +4,11 @@ import {
   applySeamlessTileBlend,
   BLOB_47_BITMASKS,
   buildAutoTileAtlasManifest,
+  buildBitmapFontManifest,
   buildGameBundleManifest,
   buildGameDataTableBundle,
+  buildGameplaySystemsBundle,
+  buildGameShaderParticleBundle,
   buildNineSliceManifest,
   buildSeamlessLoopBgmFfmpegArgs,
   buildSfxVariantFfmpegArgs,
@@ -16,7 +19,9 @@ import {
   detectNineSliceBorders,
   extractSpriteCollisionHull,
   generateEngineImporterScript,
-  planSfxVariantMatrix
+  generateProceduralLevelMap,
+  planSfxVariantMatrix,
+  validateSkillTreeDag
 } from '../src/shared/gameAssets'
 
 describe('Phase 1: 2D Seamless Tilemap & UI 9-Slice Operators', () => {
@@ -430,5 +435,145 @@ describe('Phase 4: 2D Sprite Physics Hull, Game Data Tables & Engine Importer Sc
     expect(webScript.language).toBe('javascript')
     expect(webScript.content).toContain('export function pickRandomSfxVariant')
     expect(webScript.content).toContain('export async function fetchGameBundleManifest')
+  })
+})
+
+describe('Phase 5: Procedural Tiled (.tmj) Level Maps, Shaders/Particles, Gameplay DAG Systems & BMFont', () => {
+  it('generateProceduralLevelMap supports bsp_dungeon, cellular_cave, platformer_course, and arena_waves with Tiled .tmj output', () => {
+    const bsp = generateProceduralLevelMap({
+      levelName: 'crypt_01',
+      algorithm: 'bsp_dungeon',
+      width: 36,
+      height: 24,
+      seed: 101
+    })
+    expect(bsp.rooms.length).toBeGreaterThanOrEqual(2)
+    expect(bsp.entities.some((e) => e.type === 'player_spawn')).toBe(true)
+    expect(bsp.entities.some((e) => e.type === 'boss_spawn')).toBe(true)
+    expect(bsp.tiledMap.layers).toHaveLength(3)
+    expect(bsp.tiledMap.layers[0]?.name).toBe('Ground')
+    expect(bsp.tiledMap.layers[2]?.type).toBe('objectgroup')
+    expect(bsp.asciiPreview).toContain('P')
+    expect(bsp.asciiPreview).toContain('B')
+
+    const cave = generateProceduralLevelMap({
+      levelName: 'cavern_01',
+      algorithm: 'cellular_cave',
+      width: 32,
+      height: 22,
+      seed: 7
+    })
+    expect(cave.rooms).toHaveLength(3)
+    expect(cave.entities.some((e) => e.type === 'treasure_chest')).toBe(true)
+
+    const plat = generateProceduralLevelMap({
+      levelName: 'world_1_1',
+      algorithm: 'platformer_course',
+      width: 40,
+      height: 20,
+      seed: 19
+    })
+    expect(plat.entities.some((e) => e.type === 'exit_portal')).toBe(true)
+
+    const arena = generateProceduralLevelMap({
+      levelName: 'survivor_stage',
+      algorithm: 'arena_waves',
+      width: 30,
+      height: 20,
+      seed: 1
+    })
+    expect(arena.rooms[0]?.role).toBe('arena')
+    expect(arena.entities.filter((e) => e.type === 'enemy_spawn').length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('buildGameShaderParticleBundle generates Godot .gdshader, Unity .shader, WebGL GLSL, and GPU particle presets', () => {
+    const bundle = buildGameShaderParticleBundle()
+    expect(bundle.shaders).toHaveLength(8)
+    expect(bundle.particles).toHaveLength(8)
+
+    const hitFlash = bundle.shaders.find((s) => s.presetId === 'hit_flash')!
+    expect(hitFlash.godotGdShader).toContain('shader_type canvas_item;')
+    expect(hitFlash.unityShaderLab).toContain('Shader "AIArtEngine/2D/HitFlash"')
+    expect(hitFlash.webglGlslFrag).toContain('gl_FragColor')
+
+    const coinBurst = bundle.particles.find((p) => p.presetId === 'coin_burst')!
+    expect(coinBurst.oneShot).toBe(true)
+    expect(coinBurst.godotTresSnippet).toContain('ParticleProcessMaterial')
+    expect(coinBurst.phaserEmitterConfig).toHaveProperty('lifespan', 900)
+  })
+
+  it('buildGameplaySystemsBundle & buildBitmapFontManifest validate DAG skill trees, AI FSMs, and AngelCode .fnt', () => {
+    const sys = buildGameplaySystemsBundle({
+      systemName: 'arpg_core',
+      skillTree: [
+        { id: 'slash_1', name: '基础斩击', tier: 1, prerequisiteIds: [] },
+        { id: 'whirlwind_2', name: '旋风斩', tier: 2, prerequisiteIds: ['slash_1'] },
+        { id: 'bladestorm_3', name: '剑刃风暴', tier: 3, prerequisiteIds: ['whirlwind_2'] }
+      ],
+      craftingRecipes: [
+        {
+          id: 'craft_fire_sword',
+          name: '烈焰魔剑',
+          station: 'anvil',
+          ingredients: [
+            { itemId: 'iron_ingot', count: 5 },
+            { itemId: 'fire_core', count: 1 }
+          ],
+          resultItemId: 'weapon_fire_sword',
+          resultCount: 1
+        }
+      ],
+      aiBehaviors: [{ id: 'boss_dk', enemyName: 'DeathKnight' }]
+    })
+
+    expect(sys.skillTreeValidation.valid).toBe(true)
+    expect(sys.skillTreeValidation.topologicalOrder).toEqual([
+      'slash_1',
+      'whirlwind_2',
+      'bladestorm_3'
+    ])
+    expect(sys.mermaidDiagram).toContain('slash_1 --> whirlwind_2')
+    expect(sys.mermaidDiagram).toContain('boss_dk_idle')
+
+    // Cycle detection test
+    const cyclic = validateSkillTreeDag([
+      {
+        id: 'a',
+        name: 'A',
+        tier: 1,
+        maxRank: 1,
+        costPoints: 1,
+        prerequisiteIds: ['b'],
+        statModifiers: {},
+        description: ''
+      },
+      {
+        id: 'b',
+        name: 'B',
+        tier: 2,
+        maxRank: 1,
+        costPoints: 1,
+        prerequisiteIds: ['a'],
+        statModifiers: {},
+        description: ''
+      }
+    ])
+    expect(cyclic.valid).toBe(false)
+    expect(cyclic.cycleNodeIds).toEqual(['a', 'b'])
+
+    // BMFont test
+    const bm = buildBitmapFontManifest({
+      fontName: 'crit_font',
+      atlasWidth: 1024,
+      atlasHeight: 1024,
+      rows: 4,
+      cols: 4,
+      charset: '0123456789+-!%CM'
+    })
+    expect(bm.glyphs).toHaveLength(16)
+    expect(bm.cellWidth).toBe(256)
+    expect(bm.fntText).toContain('info face="crit_font"')
+    expect(bm.fntText).toContain('chars count=16')
+    expect(bm.fntText).toContain('char id=48') // '0'
   })
 })

@@ -15,15 +15,23 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import {
+  buildBitmapFontManifest,
   buildGameBundleManifest,
   buildGameDataTableBundle,
+  buildGameplaySystemsBundle,
+  buildGameShaderParticleBundle,
   buildSeamlessLoopBgmFfmpegArgs,
   buildSfxVariantFfmpegArgs,
   generateEngineImporterScript,
+  generateProceduralLevelMap,
   planSfxVariantMatrix,
   type GameBundleInputItem,
   type GameBundleTargetEngine,
-  type GameDataTableInput
+  type GameDataTableInput,
+  type GameParticlePresetId,
+  type GameplaySystemsInput,
+  type GameShaderPresetId,
+  type LevelGeneratorAlgorithm
 } from '@shared/gameAssets'
 import {
   BLENDER_MCP_PATH,
@@ -5225,6 +5233,250 @@ const TOOL_DEFS: McpToolDef[] = [
           dialogues: bundle.dialogues.length,
           localizationKeys: bundle.localization.length
         }
+      }
+    }
+  },
+  {
+    name: 'game_level_map_generate',
+    title: '程序化2D游戏关卡地图生成与Tiled(.tmj)导出',
+    description:
+      '生成全品类可玩 2D 游戏关卡地图：支持 BSP 二叉空间分割地牢（bsp_dungeon）、元胞自动机有机洞穴（cellular_cave）、横版平台跳跃关卡（platformer_course）与肉鸽割草竞技场（arena_waves）。自动计算 Wang-16 自动瓦片掩码并放置出生点、Boss、宝箱、商店与陷阱实体，导出标准 Tiled (.tmj) 地图文件与可视化 ASCII 预览到 Assets/GameLevels/。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        levelName: { type: 'string', description: '关卡名称（默认 stage_01）' },
+        algorithm: {
+          type: 'string',
+          enum: ['bsp_dungeon', 'cellular_cave', 'platformer_course', 'arena_waves'],
+          description: '关卡拓扑生成算法（默认 bsp_dungeon）'
+        },
+        width: { type: 'number', description: '关卡网格列数（16~128，默认 40）' },
+        height: { type: 'number', description: '关卡网格行数（12~128，默认 26）' },
+        tileWidth: { type: 'number', description: '单格瓦片像素宽（默认 32）' },
+        tileHeight: { type: 'number', description: '单格瓦片像素高（默认 32）' },
+        seed: { type: 'number', description: '确定性随机种子（默认 42）' },
+        tilesetImage: { type: 'string', description: '关联的瓦片集贴图文件名（默认 tileset.png）' }
+      }
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const rawName =
+        (optionalString(args, 'levelName') || 'stage_01')
+          .trim()
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'stage_01'
+      const algoRaw = optionalString(args, 'algorithm') ?? 'bsp_dungeon'
+      const algorithm: LevelGeneratorAlgorithm =
+        algoRaw === 'cellular_cave' || algoRaw === 'platformer_course' || algoRaw === 'arena_waves'
+          ? algoRaw
+          : 'bsp_dungeon'
+
+      const level = generateProceduralLevelMap({
+        levelName: rawName,
+        algorithm,
+        width: typeof args.width === 'number' ? args.width : undefined,
+        height: typeof args.height === 'number' ? args.height : undefined,
+        tileWidth: typeof args.tileWidth === 'number' ? args.tileWidth : undefined,
+        tileHeight: typeof args.tileHeight === 'number' ? args.tileHeight : undefined,
+        seed: typeof args.seed === 'number' ? args.seed : undefined,
+        tilesetImage: optionalString(args, 'tilesetImage')
+      })
+
+      const outRelDir = `Assets/GameLevels/${rawName}`
+      mkdirSync(join(root, outRelDir), { recursive: true })
+
+      const tmjRelPath = `${outRelDir}/${rawName}.tmj`
+      const jsonRelPath = `${outRelDir}/${rawName}_level.json`
+      const asciiRelPath = `${outRelDir}/${rawName}_preview.txt`
+
+      writeFileSync(join(root, tmjRelPath), level.tiledTmjText, 'utf8')
+      writeFileSync(join(root, jsonRelPath), JSON.stringify(level, null, 2), 'utf8')
+      writeFileSync(join(root, asciiRelPath), level.asciiPreview + '\n', 'utf8')
+
+      return {
+        ok: true,
+        levelName: rawName,
+        algorithm: level.algorithm,
+        dimensions: {
+          width: level.width,
+          height: level.height,
+          tileWidth: level.tileWidth,
+          tileHeight: level.tileHeight
+        },
+        roomCount: level.rooms.length,
+        entityCount: level.entities.length,
+        asciiPreview: level.asciiPreview,
+        writtenFiles: [tmjRelPath, jsonRelPath, asciiRelPath]
+      }
+    }
+  },
+  {
+    name: 'game_shader_particle_generate',
+    title: '跨引擎核心游戏Shader与GPU粒子发射器预设导出',
+    description:
+      '生成独立游戏 8 大核心实时 Shader（hit_flash 受击闪白、dissolve_burn 余烬溶解、pixel_outline 交互外描边、water_2d 水面波纹、crt_retro 复古扫描线、hologram_glitch 全息故障、wind_foliage 植被摇曳、rarity_sheen 传奇扫光，同时输出 Godot 4 .gdshader / Unity .shader / WebGL .glsl）与 8 大运行时 GPU 粒子发射器预设（fire_sparks, rain_storm, snow_fall, heal_aura, coin_burst, blood_hit, magic_trail, level_up_burst），落盘到 Assets/GameShaders/。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        packName: { type: 'string', description: '特效预设包名称（默认 core_vfx_pack）' },
+        shaderPresets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要生成的 Shader 预设 ID 数组（缺省导出全部 8 款）'
+        },
+        particlePresets: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要生成的 GPU 粒子预设 ID 数组（缺省导出全部 8 款）'
+        }
+      }
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const packName =
+        (optionalString(args, 'packName') || 'core_vfx_pack')
+          .trim()
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'core_vfx_pack'
+
+      const bundle = buildGameShaderParticleBundle({
+        shaderPresets: Array.isArray(args.shaderPresets)
+          ? (args.shaderPresets.map(String) as GameShaderPresetId[])
+          : undefined,
+        particlePresets: Array.isArray(args.particlePresets)
+          ? (args.particlePresets.map(String) as GameParticlePresetId[])
+          : undefined
+      })
+
+      const outRelDir = `Assets/GameShaders/${packName}`
+      mkdirSync(join(root, outRelDir), { recursive: true })
+
+      const writtenFiles: string[] = []
+      for (const s of bundle.shaders) {
+        const gdRel = `${outRelDir}/${s.presetId}.gdshader`
+        const unityRel = `${outRelDir}/${s.presetId}.shader`
+        const glslRel = `${outRelDir}/${s.presetId}.frag.glsl`
+        writeFileSync(join(root, gdRel), s.godotGdShader, 'utf8')
+        writeFileSync(join(root, unityRel), s.unityShaderLab, 'utf8')
+        writeFileSync(join(root, glslRel), s.webglGlslFrag, 'utf8')
+        writtenFiles.push(gdRel, unityRel, glslRel)
+      }
+
+      const particlesRel = `${outRelDir}/particle_presets.json`
+      writeFileSync(join(root, particlesRel), JSON.stringify(bundle.particles, null, 2), 'utf8')
+      writtenFiles.push(particlesRel)
+
+      return {
+        ok: true,
+        packName,
+        outputRelativeDir: outRelDir,
+        shaderCount: bundle.shaders.length,
+        particleCount: bundle.particles.length,
+        writtenFiles
+      }
+    }
+  },
+  {
+    name: 'game_systems_graph_generate',
+    title: '游戏系统图谱(技能树/合成表/任务链/AI状态机)与BMFont跳字字体生成',
+    description:
+      '构建有向无环图（DAG）与状态机类的深层游戏系统配置：支持天赋技能树（skillTree，带无环拓扑校验）、物品合成配方（craftingRecipes）、任务与成就链（quests）、敌人/Boss AI 有限状态机（aiBehaviors，自动输出 Mermaid 状态流转图），以及可选的艺术暴击跳字位图字体（bitmapFont，输出标准 AngelCode BMFont .fnt 文件），落盘到 Assets/GameData/。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        systemName: { type: 'string', description: '系统配置包名称（默认 core_gameplay_systems）' },
+        skillTree: { type: 'array', items: { type: 'object' }, description: '技能树节点数组' },
+        craftingRecipes: {
+          type: 'array',
+          items: { type: 'object' },
+          description: '合成建造配方数组'
+        },
+        quests: { type: 'array', items: { type: 'object' }, description: '任务与成就节点数组' },
+        aiBehaviors: {
+          type: 'array',
+          items: { type: 'object' },
+          description: '敌人与 Boss AI 状态机数组'
+        },
+        bitmapFont: {
+          type: 'object',
+          description:
+            '可选：生成艺术暴击跳字位图字体 (.fnt) 的配置项（fontName, textureFileName, atlasWidth, atlasHeight, rows, cols, charset）'
+        }
+      }
+    },
+    handler: (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const rawName =
+        (optionalString(args, 'systemName') || 'core_gameplay_systems')
+          .trim()
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'core_gameplay_systems'
+
+      const bundle = buildGameplaySystemsBundle({
+        systemName: rawName,
+        skillTree: Array.isArray(args.skillTree)
+          ? (args.skillTree as GameplaySystemsInput['skillTree'])
+          : undefined,
+        craftingRecipes: Array.isArray(args.craftingRecipes)
+          ? (args.craftingRecipes as GameplaySystemsInput['craftingRecipes'])
+          : undefined,
+        quests: Array.isArray(args.quests)
+          ? (args.quests as GameplaySystemsInput['quests'])
+          : undefined,
+        aiBehaviors: Array.isArray(args.aiBehaviors)
+          ? (args.aiBehaviors as GameplaySystemsInput['aiBehaviors'])
+          : undefined
+      })
+
+      const outRelDir = `Assets/GameData/${rawName}`
+      mkdirSync(join(root, outRelDir), { recursive: true })
+
+      const writtenFiles: string[] = []
+      const jsonRel = `${outRelDir}/${rawName}_systems.json`
+      const mmdRel = `${outRelDir}/${rawName}_graph.mmd`
+      writeFileSync(join(root, jsonRel), bundle.jsonText, 'utf8')
+      writeFileSync(join(root, mmdRel), bundle.mermaidDiagram + '\n', 'utf8')
+      writtenFiles.push(jsonRel, mmdRel)
+
+      let bmFontResult: { fontName: string; glyphCount: number; fntRelPath: string } | null = null
+      if (args.bitmapFont && typeof args.bitmapFont === 'object') {
+        const bf = args.bitmapFont as Record<string, unknown>
+        const manifest = buildBitmapFontManifest({
+          fontName: typeof bf.fontName === 'string' ? bf.fontName : `${rawName}_damage_font`,
+          textureFileName: typeof bf.textureFileName === 'string' ? bf.textureFileName : undefined,
+          atlasWidth: typeof bf.atlasWidth === 'number' ? bf.atlasWidth : undefined,
+          atlasHeight: typeof bf.atlasHeight === 'number' ? bf.atlasHeight : undefined,
+          rows: typeof bf.rows === 'number' ? bf.rows : undefined,
+          cols: typeof bf.cols === 'number' ? bf.cols : undefined,
+          charset: typeof bf.charset === 'string' ? bf.charset : undefined,
+          trackingRatio: typeof bf.trackingRatio === 'number' ? bf.trackingRatio : undefined
+        })
+        const fntRel = `${outRelDir}/${manifest.fontName}.fnt`
+        const fntJsonRel = `${outRelDir}/${manifest.fontName}_bmfont.json`
+        writeFileSync(join(root, fntRel), manifest.fntText, 'utf8')
+        writeFileSync(join(root, fntJsonRel), manifest.jsonText, 'utf8')
+        writtenFiles.push(fntRel, fntJsonRel)
+        bmFontResult = {
+          fontName: manifest.fontName,
+          glyphCount: manifest.glyphs.length,
+          fntRelPath: fntRel
+        }
+      }
+
+      return {
+        ok: true,
+        systemName: rawName,
+        outputRelativeDir: outRelDir,
+        skillTreeValid: bundle.skillTreeValidation.valid,
+        counts: {
+          skillTreeNodes: bundle.skillTree.length,
+          craftingRecipes: bundle.craftingRecipes.length,
+          quests: bundle.quests.length,
+          aiBehaviors: bundle.aiBehaviors.length
+        },
+        bitmapFont: bmFontResult,
+        mermaidDiagram: bundle.mermaidDiagram,
+        writtenFiles
       }
     }
   }
