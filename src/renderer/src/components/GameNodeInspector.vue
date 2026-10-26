@@ -92,6 +92,38 @@
         </select>
       </label>
 
+      <label class="field">
+        <span>{{ t('gameNodes.audioDsp.synthPreset') }}</span>
+        <select
+          :value="node.params.gameAudioSynthPreset ?? 'sword_slash'"
+          @change="onStringParam('gameAudioSynthPreset', $event)"
+        >
+          <option value="sword_slash">{{ t('gameNodes.audioDsp.synthSword') }}</option>
+          <option value="explosion">{{ t('gameNodes.audioDsp.synthExplosion') }}</option>
+          <option value="laser_shoot">{{ t('gameNodes.audioDsp.synthLaser') }}</option>
+          <option value="coin_pickup">{{ t('gameNodes.audioDsp.synthCoin') }}</option>
+          <option value="jump_boost">{{ t('gameNodes.audioDsp.synthJump') }}</option>
+          <option value="hit_hurt">{{ t('gameNodes.audioDsp.synthHit') }}</option>
+          <option value="powerup_chord">{{ t('gameNodes.audioDsp.synthPowerup') }}</option>
+          <option value="chiptune_bgm">{{ t('gameNodes.audioDsp.synthChiptune') }}</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>{{ t('gameNodes.audioDsp.envFx') }}</span>
+        <select
+          :value="node.params.gameAudioEnvFx ?? 'none'"
+          @change="onStringParam('gameAudioEnvFx', $event)"
+        >
+          <option value="none">{{ t('gameNodes.audioDsp.fxNone') }}</option>
+          <option value="underwater">{{ t('gameNodes.audioDsp.fxUnderwater') }}</option>
+          <option value="radio_comms">{{ t('gameNodes.audioDsp.fxRadio') }}</option>
+          <option value="cave_reverb">{{ t('gameNodes.audioDsp.fxCave') }}</option>
+          <option value="retro_8bit">{{ t('gameNodes.audioDsp.fxRetro8bit') }}</option>
+          <option value="heavy_impact">{{ t('gameNodes.audioDsp.fxHeavyImpact') }}</option>
+        </select>
+      </label>
+
       <label
         v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'"
         class="slider-field"
@@ -110,19 +142,60 @@
         />
       </label>
 
-      <label v-else class="slider-field">
-        <div class="slider-head">
-          <span>{{ t('gameNodes.audioDsp.trimThresholdDb') }}</span>
-          <b>{{ Number(node.params.gameAudioTrimThresholdDb ?? -42) }} dB</b>
-        </div>
+      <template v-else>
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.audioDsp.trimThresholdDb') }}</span>
+            <b>{{ Number(node.params.gameAudioTrimThresholdDb ?? -42) }} dB</b>
+          </div>
+          <input
+            type="range"
+            min="-65"
+            max="-20"
+            step="1"
+            :value="node.params.gameAudioTrimThresholdDb ?? -42"
+            @change="onNumberParam('gameAudioTrimThresholdDb', $event)"
+          />
+        </label>
+
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.audioDsp.variantCount') }}</span>
+            <b>{{ Number(node.params.gameAudioVariantCount ?? 4) }}×</b>
+          </div>
+          <input
+            type="range"
+            min="2"
+            max="8"
+            step="1"
+            :value="node.params.gameAudioVariantCount ?? 4"
+            @change="onNumberParam('gameAudioVariantCount', $event)"
+          />
+        </label>
+
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.audioDsp.pitchSpreadSt') }}</span>
+            <b>±{{ Number(node.params.gameAudioPitchSpread ?? 2.0).toFixed(1) }} st</b>
+          </div>
+          <input
+            type="range"
+            min="0.4"
+            max="5.0"
+            step="0.2"
+            :value="node.params.gameAudioPitchSpread ?? 2.0"
+            @change="onNumberParam('gameAudioPitchSpread', $event)"
+          />
+        </label>
+      </template>
+
+      <label class="check-row">
         <input
-          type="range"
-          min="-65"
-          max="-20"
-          step="1"
-          :value="node.params.gameAudioTrimThresholdDb ?? -42"
-          @change="onNumberParam('gameAudioTrimThresholdDb', $event)"
+          type="checkbox"
+          :checked="node.params.gameAudioNormalize !== false"
+          @change="onBoolParam('gameAudioNormalize', $event)"
         />
+        <span>{{ t('gameNodes.audioDsp.normalizeToggle') }}</span>
       </label>
 
       <div v-if="node.params.gameAudioReport" class="report-chip">

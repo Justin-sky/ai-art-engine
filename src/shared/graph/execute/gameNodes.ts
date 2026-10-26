@@ -9,6 +9,7 @@ import { buildGeneratedMediaFileKey, formatGeneratedMediaStamp } from '../../dom
 import {
   analyzeSeamlessTile,
   applyEqualPowerLoopCrossfadePcm,
+  applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
@@ -20,11 +21,14 @@ import {
   encodePcmToWavDataUrl,
   encodeRgbaToPngDataUrl,
   generateProceduralLevelMap,
+  normalizePeakPcm,
   planSfxVariantMatrix,
   renderProceduralLevelToPng,
   resamplePitchShiftPcm,
   synthesizeGameSeedPcm,
   trimSilencePcm,
+  type GameAudioEnvironmentFx,
+  type GameAudioSynthPreset,
   type LevelCellType,
   type LevelEntitySpawn,
   type LevelGeneratorAlgorithm,
@@ -352,17 +356,24 @@ async function resolveIncomingAudioPcm(
     }
   }
 
-  const synth = synthesizeGameSeedPcm(mode, 22050)
+  const preset: GameAudioSynthPreset =
+    ctx.node.params.gameAudioSynthPreset ??
+    (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')
+  const synth = synthesizeGameSeedPcm(
+    mode === 'loop_bgm' && !ctx.node.params.gameAudioSynthPreset ? 'chiptune_bgm' : preset,
+    22050
+  )
   return {
     ...synth,
-    sourceName: mode === 'loop_bgm' ? 'bgm_synth' : 'sfx_synth'
+    sourceName: mode === 'loop_bgm' ? 'bgm_synth' : `${preset}_synth`
   }
 }
 
 /**
  * `game.audioDsp`：游戏音频工坊节点。
  * - `loop_bgm`：对输入音频执行等功率正余弦首尾交叉淡化（Equal-Power Loop Crossfade），消除循环接缝爆音；
- * - `sfx_variants`：首尾静音自动修剪（0ms 瞬态触发）+ 4× Hermite 三次插值变调变速防听觉疲劳派生。
+ * - `sfx_variants`：首尾静音自动修剪（0ms 瞬态触发）+ N× Hermite 三次插值变调变速防听觉疲劳派生；
+ * - 支持 6 类游戏声学环境滤镜（`underwater` / `radio_comms` / `cave_reverb` / `retro_8bit` / `heavy_impact`）与 -1dBFS 峰值归一化。
  */
 export async function executeGameAudioDspNode(
   ctx: NodeExecuteContext
@@ -377,6 +388,16 @@ export async function executeGameAudioDspNode(
     -70,
     Math.min(-18, Number(ctx.node.params.gameAudioTrimThresholdDb ?? -42))
   )
+  const variantCount = Math.max(
+    1,
+    Math.min(8, Math.round(Number(ctx.node.params.gameAudioVariantCount ?? 4)))
+  )
+  const pitchSpread = Math.max(
+    0.2,
+    Math.min(6, Number(ctx.node.params.gameAudioPitchSpread ?? 2.2))
+  )
+  const envFx: GameAudioEnvironmentFx = ctx.node.params.gameAudioEnvFx ?? 'none'
+  const normalize = ctx.node.params.gameAudioNormalize !== false
 
   const { channels, sampleRate, sourceName } = await resolveIncomingAudioPcm(ctx, mode)
   const baseStem = sourceName.replace(/\.[^.]+$/, '') || 'game_audio'
@@ -385,9 +406,15 @@ export async function executeGameAudioDspNode(
   const batch: GraphVoiceItem[] = []
   let report = ''
 
+  const postProcessChannel = (ch: Float32Array): Float32Array => {
+    const withFx =
+      envFx !== 'none' ? applyGameAudioEnvironmentFxPcm(ch, sampleRate, envFx) : ch
+    return normalize ? normalizePeakPcm(withFx, -1.0) : withFx
+  }
+
   if (mode === 'loop_bgm') {
     const loopedChannels = channels.map((ch) =>
-      applyEqualPowerLoopCrossfadePcm(ch, sampleRate, crossfadeSec)
+      postProcessChannel(applyEqualPowerLoopCrossfadePcm(ch, sampleRate, crossfadeSec))
     )
     const wavDataUrl = encodePcmToWavDataUrl(loopedChannels, sampleRate)
     let relativePath = `Cache/Voices/${baseStem}_loop_${stamp}.wav`
@@ -410,19 +437,19 @@ export async function executeGameAudioDspNode(
       relativePath
     })
     const outDurationSec = ((loopedChannels[0]?.length ?? 0) / sampleRate).toFixed(2)
-    report = `Loop BGM | ${outDurationSec}s @ ${sampleRate}Hz | Crossfade ${crossfadeSec}s -> ${relativePath}`
+    report = `Loop BGM | ${outDurationSec}s @ ${sampleRate}Hz | Crossfade ${crossfadeSec}s | FX: ${envFx} -> ${relativePath}`
   } else {
     const trimmedChannels = channels.map((ch) =>
       trimSilencePcm(ch, sampleRate, { thresholdDb: trimThresholdDb })
     )
     const variants = planSfxVariantMatrix({
-      count: 4,
-      pitchSpreadSemitones: 2.2,
+      count: variantCount,
+      pitchSpreadSemitones: pitchSpread,
       tempoSpread: 0.08
     })
     for (const v of variants) {
       const shiftedChannels = trimmedChannels.map((ch) =>
-        resamplePitchShiftPcm(ch, v.semitoneOffset, v.trebleGainDb)
+        postProcessChannel(resamplePitchShiftPcm(ch, v.semitoneOffset, v.trebleGainDb))
       )
       const wavDataUrl = encodePcmToWavDataUrl(shiftedChannels, sampleRate)
       const outStem = `${baseStem}_${v.variantId}`
@@ -446,7 +473,7 @@ export async function executeGameAudioDspNode(
         relativePath
       })
     }
-    report = `4x SFX Variants | Trim ${trimThresholdDb}dB | Pitch +/-2.2st @ ${sampleRate}Hz`
+    report = `${variantCount}x SFX Variants | Trim ${trimThresholdDb}dB | Pitch +/-${pitchSpread}st | FX: ${envFx} @ ${sampleRate}Hz`
   }
 
   const generatedVoices = mergeGeneratedVoices(ctx, batch, `audio-dsp:${stamp}:keep`)
@@ -458,6 +485,10 @@ export async function executeGameAudioDspNode(
     gameAudioDspMode: mode,
     gameAudioCrossfadeSec: crossfadeSec,
     gameAudioTrimThresholdDb: trimThresholdDb,
+    gameAudioVariantCount: variantCount,
+    gameAudioPitchSpread: pitchSpread,
+    gameAudioEnvFx: envFx,
+    gameAudioNormalize: normalize,
     gameAudioReport: report,
     ...(previewRelativePath ? { previewRelativePath } : {})
   }

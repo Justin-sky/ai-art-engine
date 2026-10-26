@@ -3166,7 +3166,12 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultParams: () => ({
       gameAudioDspMode: 'loop_bgm',
       gameAudioCrossfadeSec: 1.5,
-      gameAudioTrimThresholdDb: -42
+      gameAudioTrimThresholdDb: -42,
+      gameAudioVariantCount: 4,
+      gameAudioPitchSpread: 2.0,
+      gameAudioEnvFx: 'none',
+      gameAudioSynthPreset: 'sword_slash',
+      gameAudioNormalize: true
     }),
     addable: true,
     deletable: true,

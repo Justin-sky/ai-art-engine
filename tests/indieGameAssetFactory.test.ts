@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  analyzeAudioWaveformAndTrim,
   analyzeSeamlessTile,
   applyEqualPowerLoopCrossfadePcm,
+  applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
   BLOB_47_BITMASKS,
   buildAutoTileAtlasManifest,
@@ -26,11 +28,14 @@ import {
   encodePcmToWavBytes,
   encodePcmToWavDataUrl,
   encodeRgbaToPngDataUrl,
+  exportGodotAudioStreamRandomizerTres,
+  exportUnityAudioRandomContainerJson,
   extractGuidFromUnityMeta,
   extractSpriteCollisionHull,
   generateEngineImporterScript,
   generateProceduralLevelMap,
   generateUnityMetaFile,
+  normalizePeakPcm,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
   renderProceduralLevelToPng,
@@ -920,5 +925,78 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(hostCode).toContain(
       "'game.workbench': defineAsyncComponent(() => import('./dive/EditorDiveGameNodeView.vue'))"
     )
+  })
+
+  it('supports 8 procedural synth presets, 6 acoustic environment FX, peak normalization, waveform/trim analysis, and Godot/Unity randomizer export', async () => {
+    const presets = [
+      'sword_slash',
+      'explosion',
+      'laser_shoot',
+      'coin_pickup',
+      'jump_boost',
+      'hit_hurt',
+      'powerup_chord',
+      'chiptune_bgm'
+    ] as const
+    for (const preset of presets) {
+      const res = synthesizeGameSeedPcm(preset, 22050)
+      expect(res.channels.length).toBeGreaterThanOrEqual(1)
+      expect(res.channels[0]!.length).toBeGreaterThan(1000)
+    }
+
+    const base = synthesizeGameSeedPcm('explosion', 22050).channels[0]!
+    for (const fx of [
+      'none',
+      'underwater',
+      'radio_comms',
+      'cave_reverb',
+      'retro_8bit',
+      'heavy_impact'
+    ] as const) {
+      const fxOut = applyGameAudioEnvironmentFxPcm(base, 22050, fx)
+      expect(fxOut.length).toBe(base.length)
+    }
+
+    const norm = normalizePeakPcm(base, -1.0)
+    let peak = 0
+    for (let i = 0; i < norm.length; i++) {
+      const abs = Math.abs(norm[i]!)
+      if (abs > peak) peak = abs
+    }
+    expect(peak).toBeCloseTo(Math.pow(10, -1 / 20), 2)
+
+    const wf = analyzeAudioWaveformAndTrim(base, 22050, 64, -42)
+    expect(wf.buckets).toHaveLength(64)
+    expect(wf.trimmedLeadMs).toBeGreaterThanOrEqual(15)
+    expect(wf.peakDb).toBeGreaterThan(-20)
+
+    const tres = exportGodotAudioStreamRandomizerTres({
+      resourceName: 'ExplosionPool',
+      variantPaths: ['Assets/GameAudio/exp_v01.wav', 'Assets/GameAudio/exp_v02.wav'],
+      pitchSpreadSemitones: 2.4
+    })
+    expect(tres).toContain('[gd_resource type="AudioStreamRandomizer"')
+    expect(tres).toContain('streams_count = 2')
+
+    const unityJson = exportUnityAudioRandomContainerJson({
+      containerName: 'ExplosionPool',
+      variantPaths: ['Assets/GameAudio/exp_v01.wav', 'Assets/GameAudio/exp_v02.wav'],
+      pitchSpreadSemitones: 2.4
+    })
+    expect(unityJson).toContain('"Unity.Audio.AudioRandomContainer"')
+    expect(unityJson).toContain('"pitchRangeCents": [\n    -240,\n    240\n  ]')
+
+    const customAudioNode = createNodeFromType('game.audioDsp', { x: 0, y: 0 })
+    customAudioNode.params.gameAudioDspMode = 'sfx_variants'
+    customAudioNode.params.gameAudioSynthPreset = 'explosion'
+    customAudioNode.params.gameAudioEnvFx = 'cave_reverb'
+    customAudioNode.params.gameAudioVariantCount = 6
+    customAudioNode.params.gameAudioPitchSpread = 3.0
+    customAudioNode.params.gameAudioNormalize = true
+    const out = await executeGameAudioDspNode({ node: customAudioNode, inputs: {} })
+    expect(customAudioNode.params.generatedVoices).toHaveLength(6)
+    expect(customAudioNode.params.gameAudioReport).toContain('6x SFX Variants')
+    expect(customAudioNode.params.gameAudioReport).toContain('FX: cave_reverb')
+    expect(out['out-all']?.kind).toBe('voices')
   })
 })

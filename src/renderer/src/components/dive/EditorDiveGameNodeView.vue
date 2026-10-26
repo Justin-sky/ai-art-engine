@@ -109,6 +109,38 @@
             </select>
           </label>
 
+          <label class="field">
+            <span>{{ t('gameNodes.audioDsp.synthPreset') }}</span>
+            <select
+              :value="node.params.gameAudioSynthPreset ?? 'sword_slash'"
+              @change="onStringParam('gameAudioSynthPreset', $event)"
+            >
+              <option value="sword_slash">{{ t('gameNodes.audioDsp.synthSword') }}</option>
+              <option value="explosion">{{ t('gameNodes.audioDsp.synthExplosion') }}</option>
+              <option value="laser_shoot">{{ t('gameNodes.audioDsp.synthLaser') }}</option>
+              <option value="coin_pickup">{{ t('gameNodes.audioDsp.synthCoin') }}</option>
+              <option value="jump_boost">{{ t('gameNodes.audioDsp.synthJump') }}</option>
+              <option value="hit_hurt">{{ t('gameNodes.audioDsp.synthHit') }}</option>
+              <option value="powerup_chord">{{ t('gameNodes.audioDsp.synthPowerup') }}</option>
+              <option value="chiptune_bgm">{{ t('gameNodes.audioDsp.synthChiptune') }}</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>{{ t('gameNodes.audioDsp.envFx') }}</span>
+            <select
+              :value="node.params.gameAudioEnvFx ?? 'none'"
+              @change="onStringParam('gameAudioEnvFx', $event)"
+            >
+              <option value="none">{{ t('gameNodes.audioDsp.fxNone') }}</option>
+              <option value="underwater">{{ t('gameNodes.audioDsp.fxUnderwater') }}</option>
+              <option value="radio_comms">{{ t('gameNodes.audioDsp.fxRadio') }}</option>
+              <option value="cave_reverb">{{ t('gameNodes.audioDsp.fxCave') }}</option>
+              <option value="retro_8bit">{{ t('gameNodes.audioDsp.fxRetro8bit') }}</option>
+              <option value="heavy_impact">{{ t('gameNodes.audioDsp.fxHeavyImpact') }}</option>
+            </select>
+          </label>
+
           <label
             v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'"
             class="slider-field"
@@ -127,19 +159,60 @@
             />
           </label>
 
-          <label v-else class="slider-field">
-            <div class="slider-head">
-              <span>{{ t('gameNodes.audioDsp.trimThresholdDb') }}</span>
-              <b>{{ Number(node.params.gameAudioTrimThresholdDb ?? -42) }} dB</b>
-            </div>
+          <template v-else>
+            <label class="slider-field">
+              <div class="slider-head">
+                <span>{{ t('gameNodes.audioDsp.trimThresholdDb') }}</span>
+                <b>{{ Number(node.params.gameAudioTrimThresholdDb ?? -42) }} dB</b>
+              </div>
+              <input
+                type="range"
+                min="-65"
+                max="-20"
+                step="1"
+                :value="node.params.gameAudioTrimThresholdDb ?? -42"
+                @change="onNumberParam('gameAudioTrimThresholdDb', $event)"
+              />
+            </label>
+
+            <label class="slider-field">
+              <div class="slider-head">
+                <span>{{ t('gameNodes.audioDsp.variantCount') }}</span>
+                <b>{{ Number(node.params.gameAudioVariantCount ?? 4) }}×</b>
+              </div>
+              <input
+                type="range"
+                min="2"
+                max="8"
+                step="1"
+                :value="node.params.gameAudioVariantCount ?? 4"
+                @change="onNumberParam('gameAudioVariantCount', $event)"
+              />
+            </label>
+
+            <label class="slider-field">
+              <div class="slider-head">
+                <span>{{ t('gameNodes.audioDsp.pitchSpreadSt') }}</span>
+                <b>±{{ Number(node.params.gameAudioPitchSpread ?? 2.0).toFixed(1) }} st</b>
+              </div>
+              <input
+                type="range"
+                min="0.4"
+                max="5.0"
+                step="0.2"
+                :value="node.params.gameAudioPitchSpread ?? 2.0"
+                @change="onNumberParam('gameAudioPitchSpread', $event)"
+              />
+            </label>
+          </template>
+
+          <label class="check-row">
             <input
-              type="range"
-              min="-65"
-              max="-20"
-              step="1"
-              :value="node.params.gameAudioTrimThresholdDb ?? -42"
-              @change="onNumberParam('gameAudioTrimThresholdDb', $event)"
+              type="checkbox"
+              :checked="node.params.gameAudioNormalize !== false"
+              @change="onBoolParam('gameAudioNormalize', $event)"
             />
+            <span>{{ t('gameNodes.audioDsp.normalizeToggle') }}</span>
           </label>
 
           <div v-if="node.params.gameAudioReport" class="report-chip">
@@ -326,16 +399,135 @@
         <template v-else-if="node.typeId === 'game.audioDsp'">
           <div class="stage-toolbar">
             <span class="stage-title">{{ t('gameNodes.workbench.audioPreviewTitle') }}</span>
+            <div class="audition-controls">
+              <template v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'sfx_variants'">
+                <button type="button" class="secondary-btn" @click="triggerRapidFire('raw')">
+                  {{ t('gameNodes.audioDsp.rapidFireRawBtn') }}
+                </button>
+                <button type="button" class="action-btn" @click="triggerRapidFire('pool')">
+                  {{ t('gameNodes.audioDsp.rapidFirePoolBtn') }}
+                </button>
+              </template>
+              <template v-else>
+                <button type="button" class="action-btn" @click="auditionLoopSeam">
+                  {{ t('gameNodes.audioDsp.loopSeamBtn') }}
+                </button>
+              </template>
+              <button type="button" class="secondary-btn" @click="stopWebAudioPlayback">
+                {{ t('gameNodes.audioDsp.stopAudioBtn') }}
+              </button>
+            </div>
           </div>
 
           <div class="audio-stage-body">
+            <!-- Dual Waveform & Silence Trim / Loop Crossfade Visualizer -->
+            <div class="waveform-compare-card">
+              <div class="section-title">{{ t('gameNodes.audioDsp.waveformTitle') }}</div>
+
+              <div class="waveform-lane">
+                <div class="waveform-lane-head">
+                  <span>{{ t('gameNodes.audioDsp.sourceWaveformLabel') }}</span>
+                  <div class="waveform-metrics">
+                    <span>{{ rawWaveformAnalysis.durationSec }}s</span>
+                    <span>Peak: {{ rawWaveformAnalysis.peakDb }} dB</span>
+                    <span v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'sfx_variants'">
+                      Trim: -{{ rawWaveformAnalysis.trimmedLeadMs }}ms / -{{ rawWaveformAnalysis.trimmedTailMs }}ms
+                    </span>
+                  </div>
+                </div>
+                <svg class="waveform-svg" viewBox="0 0 600 84" preserveAspectRatio="none">
+                  <line x1="0" y1="42" x2="600" y2="42" class="wf-center-line" />
+                  <template v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'sfx_variants'">
+                    <rect
+                      x="0"
+                      y="0"
+                      :width="Math.max(0, rawWaveformAnalysis.trimStartRatio * 600)"
+                      height="84"
+                      class="wf-trim-zone"
+                    />
+                    <rect
+                      :x="Math.min(600, rawWaveformAnalysis.trimEndRatio * 600)"
+                      y="0"
+                      :width="Math.max(0, (1 - rawWaveformAnalysis.trimEndRatio) * 600)"
+                      height="84"
+                      class="wf-trim-zone"
+                    />
+                    <line
+                      :x1="rawWaveformAnalysis.trimStartRatio * 600"
+                      y1="0"
+                      :x2="rawWaveformAnalysis.trimStartRatio * 600"
+                      y2="84"
+                      class="wf-cut-line"
+                    />
+                    <line
+                      :x1="rawWaveformAnalysis.trimEndRatio * 600"
+                      y1="0"
+                      :x2="rawWaveformAnalysis.trimEndRatio * 600"
+                      y2="84"
+                      class="wf-cut-line"
+                    />
+                  </template>
+                  <rect
+                    v-for="(b, idx) in rawWaveformAnalysis.buckets"
+                    :key="`raw-${idx}`"
+                    :x="idx * 5 + 1"
+                    :y="42 - Math.max(1, Math.abs(b.max) * 38)"
+                    width="3"
+                    :height="Math.max(2, (Math.abs(b.max) + Math.abs(b.min)) * 38)"
+                    rx="1"
+                    class="wf-bar raw"
+                  />
+                </svg>
+              </div>
+
+              <div class="waveform-lane">
+                <div class="waveform-lane-head">
+                  <span>{{ t('gameNodes.audioDsp.processedWaveformLabel') }}</span>
+                  <div class="waveform-metrics">
+                    <span>{{ processedWaveformAnalysis.durationSec }}s</span>
+                    <span>Peak: {{ processedWaveformAnalysis.peakDb }} dB</span>
+                    <span>RMS: {{ processedWaveformAnalysis.rmsDb }} dB</span>
+                    <span>FX: {{ node.params.gameAudioEnvFx ?? 'none' }}</span>
+                  </div>
+                </div>
+                <svg class="waveform-svg" viewBox="0 0 600 84" preserveAspectRatio="none">
+                  <line x1="0" y1="42" x2="600" y2="42" class="wf-center-line" />
+                  <rect
+                    v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'"
+                    :x="Math.max(0, 600 - loopCrossfadeWidthPx)"
+                    y="0"
+                    :width="loopCrossfadeWidthPx"
+                    height="84"
+                    class="wf-loop-zone"
+                  />
+                  <rect
+                    v-for="(b, idx) in processedWaveformAnalysis.buckets"
+                    :key="`proc-${idx}`"
+                    :x="idx * 5 + 1"
+                    :y="42 - Math.max(1, Math.abs(b.max) * 38)"
+                    width="3"
+                    :height="Math.max(2, (Math.abs(b.max) + Math.abs(b.min)) * 38)"
+                    rx="1"
+                    class="wf-bar processed"
+                  />
+                </svg>
+              </div>
+            </div>
+
+            <!-- SFX Variant Matrix Cards with Live Single-Variant Audition -->
             <div class="sfx-matrix-panel">
               <div class="section-title">{{ t('gameNodes.workbench.sfxMatrixTitle') }}</div>
               <div class="sfx-variant-cards">
                 <div v-for="v in sfxVariantsPlan" :key="v.variantId" class="sfx-card">
                   <div class="sfx-card-head">
-                    <b>Variant #{{ v.index + 1 }}</b>
-                    <span class="spec-badge">{{ v.variantId }}</span>
+                    <b>Variant #{{ v.index + 1 }} ({{ v.variantId }})</b>
+                    <button
+                      type="button"
+                      class="mini-play-btn"
+                      @click="playSingleVariant(v.index)"
+                    >
+                      {{ t('gameNodes.audioDsp.playVariantBtn') }}
+                    </button>
                   </div>
                   <div class="sfx-metrics">
                     <span>
@@ -351,11 +543,37 @@
               </div>
             </div>
 
+            <!-- Engine Audio Randomizer Container Exporter -->
+            <div class="engine-export-panel">
+              <div class="engine-export-head">
+                <span class="section-title">{{ t('gameNodes.audioDsp.engineExportTitle') }}</span>
+                <div class="tab-pills">
+                  <button
+                    type="button"
+                    class="tab-pill"
+                    :class="{ active: audioEngineTab === 'godot' }"
+                    @click="audioEngineTab = 'godot'"
+                  >
+                    Godot 4 (.tres)
+                  </button>
+                  <button
+                    type="button"
+                    class="tab-pill"
+                    :class="{ active: audioEngineTab === 'unity' }"
+                    @click="audioEngineTab = 'unity'"
+                  >
+                    Unity (.json)
+                  </button>
+                  <button type="button" class="secondary-btn" @click="copyAudioEngineConfig">
+                    {{ audioConfigCopied ? t('gameNodes.audioDsp.copiedHint') : t('gameNodes.audioDsp.copyConfigBtn') }}
+                  </button>
+                </div>
+              </div>
+              <pre class="code-viewer compact">{{ activeAudioEngineExportCode }}</pre>
+            </div>
+
             <div v-if="hostId" class="output-preview-wrap">
               <GraphNodeOutputPreview :node="node" :host-id="hostId" />
-            </div>
-            <div v-else class="empty-stage">
-              <p>{{ t('gameNodes.workbench.audioEmptyHint') }}</p>
             </div>
           </div>
         </template>
@@ -431,12 +649,23 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import {
+  analyzeAudioWaveformAndTrim,
+  applyEqualPowerLoopCrossfadePcm,
+  applyGameAudioEnvironmentFxPcm,
   compilePlayableGameSandboxHtml,
+  exportGodotAudioStreamRandomizerTres,
+  exportUnityAudioRandomContainerJson,
   generateProceduralLevelMap,
+  normalizePeakPcm,
   planSfxVariantMatrix,
   renderProceduralLevelToPng,
+  resamplePitchShiftPcm,
+  synthesizeGameSeedPcm,
+  trimSilencePcm,
+  type GameAudioEnvironmentFx,
+  type GameAudioSynthPreset,
   type LevelGeneratorAlgorithm
 } from '@shared/gameAssets'
 import { isGameProductionNode, type GraphNode, type GraphNodeParams } from '@shared/graph'
@@ -501,7 +730,7 @@ const nodeBadge = computed(() => {
     case 'game.audioDsp':
       return (node.value.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'
         ? 'Loop BGM'
-        : '4× SFX'
+        : `${node.value.params.gameAudioVariantCount ?? 4}× SFX`
     case 'game.levelMap':
       return `${node.value.params.gameLevelWidth ?? 32}×${node.value.params.gameLevelHeight ?? 20}`
     case 'game.playable':
@@ -608,7 +837,213 @@ watch(
 const pbrPrimaryImageUrl = computed(() => pbrChannelCards.value[0]?.url || '')
 
 // --- 2. game.audioDsp stage state ---
-const sfxVariantsPlan = computed(() => planSfxVariantMatrix({ count: 4 }))
+const audioVariantCount = computed(() =>
+  Math.max(2, Math.min(8, Math.round(Number(node.value?.params.gameAudioVariantCount ?? 4))))
+)
+const audioPitchSpread = computed(() =>
+  Math.max(0.4, Math.min(5.0, Number(node.value?.params.gameAudioPitchSpread ?? 2.0)))
+)
+const audioTrimThresholdDb = computed(() =>
+  Math.max(-65, Math.min(-20, Number(node.value?.params.gameAudioTrimThresholdDb ?? -42)))
+)
+const audioCrossfadeSec = computed(() =>
+  Math.max(0.2, Math.min(5.0, Number(node.value?.params.gameAudioCrossfadeSec ?? 1.5)))
+)
+const audioEnvFx = computed<GameAudioEnvironmentFx>(
+  () => (node.value?.params.gameAudioEnvFx ?? 'none') as GameAudioEnvironmentFx
+)
+const audioNormalize = computed(() => node.value?.params.gameAudioNormalize !== false)
+
+const sfxVariantsPlan = computed(() =>
+  planSfxVariantMatrix({
+    count: audioVariantCount.value,
+    pitchSpreadSemitones: audioPitchSpread.value,
+    tempoSpread: 0.08
+  })
+)
+
+const liveRawAudioBuffer = computed(() => {
+  const mode = node.value?.params.gameAudioDspMode ?? 'loop_bgm'
+  const preset = (node.value?.params.gameAudioSynthPreset ??
+    (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')) as GameAudioSynthPreset
+  return synthesizeGameSeedPcm(preset, 22050)
+})
+
+const liveProcessedPrimaryChannel = computed(() => {
+  const raw = liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0)
+  const sr = liveRawAudioBuffer.value.sampleRate
+  const mode = node.value?.params.gameAudioDspMode ?? 'loop_bgm'
+  let stage: Float32Array
+  if (mode === 'loop_bgm') {
+    stage = applyEqualPowerLoopCrossfadePcm(raw, sr, audioCrossfadeSec.value)
+  } else {
+    stage = trimSilencePcm(raw, sr, { thresholdDb: audioTrimThresholdDb.value })
+  }
+  const withFx =
+    audioEnvFx.value !== 'none'
+      ? applyGameAudioEnvironmentFxPcm(stage, sr, audioEnvFx.value)
+      : stage
+  return audioNormalize.value ? normalizePeakPcm(withFx, -1.0) : withFx
+})
+
+const rawWaveformAnalysis = computed(() =>
+  analyzeAudioWaveformAndTrim(
+    liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0),
+    liveRawAudioBuffer.value.sampleRate,
+    120,
+    audioTrimThresholdDb.value
+  )
+)
+
+const processedWaveformAnalysis = computed(() =>
+  analyzeAudioWaveformAndTrim(
+    liveProcessedPrimaryChannel.value,
+    liveRawAudioBuffer.value.sampleRate,
+    120,
+    audioTrimThresholdDb.value
+  )
+)
+
+const loopCrossfadeWidthPx = computed(() => {
+  const dur = Math.max(0.2, processedWaveformAnalysis.value.durationSec)
+  const ratio = Math.min(0.45, audioCrossfadeSec.value / dur)
+  return Math.round(ratio * 600)
+})
+
+let activeAudioCtx: AudioContext | null = null
+let rapidFireTimers: Array<ReturnType<typeof setTimeout>> = []
+
+function stopWebAudioPlayback(): void {
+  for (const tId of rapidFireTimers) clearTimeout(tId)
+  rapidFireTimers = []
+  if (activeAudioCtx) {
+    void activeAudioCtx.close().catch(() => {})
+    activeAudioCtx = null
+  }
+}
+
+onBeforeUnmount(() => {
+  stopWebAudioPlayback()
+})
+
+function ensureAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null
+  const Ctx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!Ctx) return null
+  stopWebAudioPlayback()
+  activeAudioCtx = new Ctx()
+  return activeAudioCtx
+}
+
+function playPcmSamples(
+  ctx: AudioContext,
+  samples: Float32Array,
+  sampleRate: number,
+  options?: { loop?: boolean; offsetSec?: number }
+): void {
+  if (samples.length === 0) return
+  const buf = ctx.createBuffer(1, samples.length, sampleRate)
+  buf.copyToChannel(new Float32Array(samples), 0)
+  const src = ctx.createBufferSource()
+  src.buffer = buf
+  src.loop = Boolean(options?.loop)
+  src.connect(ctx.destination)
+  src.start(0, Math.max(0, options?.offsetSec ?? 0))
+}
+
+function buildVariantSamples(variantIndex: number): { samples: Float32Array; sampleRate: number } {
+  const raw = liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0)
+  const sr = liveRawAudioBuffer.value.sampleRate
+  const trimmed = trimSilencePcm(raw, sr, { thresholdDb: audioTrimThresholdDb.value })
+  const spec = sfxVariantsPlan.value[variantIndex] ?? sfxVariantsPlan.value[0]
+  const shifted = spec
+    ? resamplePitchShiftPcm(trimmed, spec.semitoneOffset, spec.trebleGainDb)
+    : trimmed
+  const withFx =
+    audioEnvFx.value !== 'none'
+      ? applyGameAudioEnvironmentFxPcm(shifted, sr, audioEnvFx.value)
+      : shifted
+  const finalSamples = audioNormalize.value ? normalizePeakPcm(withFx, -1.0) : withFx
+  return { samples: finalSamples, sampleRate: sr }
+}
+
+function playSingleVariant(variantIndex: number): void {
+  const ctx = ensureAudioContext()
+  if (!ctx) return
+  const { samples, sampleRate } = buildVariantSamples(variantIndex)
+  playPcmSamples(ctx, samples, sampleRate)
+}
+
+function triggerRapidFire(kind: 'raw' | 'pool'): void {
+  const ctx = ensureAudioContext()
+  if (!ctx) return
+  const raw = liveRawAudioBuffer.value.channels[0] ?? new Float32Array(0)
+  const sr = liveRawAudioBuffer.value.sampleRate
+  const trimmedRaw = trimSilencePcm(raw, sr, { thresholdDb: audioTrimThresholdDb.value })
+  const count = sfxVariantsPlan.value.length
+  let lastIdx = -1
+  for (let burst = 0; burst < 6; burst++) {
+    const timer = setTimeout(() => {
+      if (!activeAudioCtx || activeAudioCtx !== ctx) return
+      if (kind === 'raw') {
+        playPcmSamples(ctx, trimmedRaw, sr)
+      } else {
+        let pick = Math.floor(Math.random() * count)
+        if (count > 1 && pick === lastIdx) pick = (pick + 1) % count
+        lastIdx = pick
+        const { samples, sampleRate } = buildVariantSamples(pick)
+        playPcmSamples(ctx, samples, sampleRate)
+      }
+    }, burst * 135)
+    rapidFireTimers.push(timer)
+  }
+}
+
+function auditionLoopSeam(): void {
+  const ctx = ensureAudioContext()
+  if (!ctx) return
+  const samples = liveProcessedPrimaryChannel.value
+  const sr = liveRawAudioBuffer.value.sampleRate
+  const dur = samples.length / sr
+  const offsetSec = Math.max(0, dur - 2.0)
+  playPcmSamples(ctx, samples, sr, { loop: true, offsetSec })
+}
+
+const audioEngineTab = ref<'godot' | 'unity'>('godot')
+const audioConfigCopied = ref(false)
+
+const activeAudioEngineExportCode = computed(() => {
+  const voices = node.value?.params.generatedVoices ?? []
+  const paths =
+    voices.length > 0
+      ? voices.map((v) => v.relativePath || 'Assets/GameAudio/sfx.wav')
+      : sfxVariantsPlan.value.map((v) => `Assets/GameAudio/sfx_${v.variantId}.wav`)
+  const name = (node.value?.title?.trim() || 'SFX_RandomPool').replace(/\s+/g, '_')
+  if (audioEngineTab.value === 'godot') {
+    return exportGodotAudioStreamRandomizerTres({
+      resourceName: name,
+      variantPaths: paths,
+      pitchSpreadSemitones: audioPitchSpread.value
+    })
+  }
+  return exportUnityAudioRandomContainerJson({
+    containerName: name,
+    variantPaths: paths,
+    pitchSpreadSemitones: audioPitchSpread.value
+  })
+})
+
+function copyAudioEngineConfig(): void {
+  if (typeof navigator !== 'undefined' && navigator.clipboard) {
+    void navigator.clipboard.writeText(activeAudioEngineExportCode.value)
+    audioConfigCopied.value = true
+    setTimeout(() => {
+      audioConfigCopied.value = false
+    }, 1800)
+  }
+}
 
 // --- 3. game.levelMap stage state ---
 const levelTab = ref<'map' | 'tmj'>('map')
@@ -1016,6 +1451,99 @@ function recompilePlayableNow(): void {
   flex-direction: column;
   gap: 16px;
   flex-shrink: 0;
+}
+
+.audition-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.waveform-compare-card,
+.engine-export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.waveform-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.waveform-lane-head,
+.engine-export-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.waveform-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.waveform-svg {
+  width: 100%;
+  height: 84px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+}
+
+.wf-center-line {
+  stroke: color-mix(in srgb, var(--border) 80%, transparent);
+  stroke-width: 1;
+}
+
+.wf-trim-zone {
+  fill: color-mix(in srgb, var(--danger, var(--accent)) 18%, transparent);
+}
+
+.wf-loop-zone {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.wf-cut-line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.wf-bar.raw {
+  fill: color-mix(in srgb, var(--text-muted) 75%, transparent);
+}
+
+.wf-bar.processed {
+  fill: var(--accent);
+}
+
+.mini-play-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--panel));
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.code-viewer.compact {
+  min-height: 160px;
+  max-height: 220px;
 }
 
 .sfx-matrix-panel {

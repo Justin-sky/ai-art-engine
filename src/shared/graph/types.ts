@@ -1399,6 +1399,30 @@ export interface GraphNodeParams {
   gameAudioCrossfadeSec?: number
   /** 游戏节点（game.audioDsp）：音效首尾静音修剪门限（dBFS） */
   gameAudioTrimThresholdDb?: number
+  /** 游戏节点（game.audioDsp）：SFX 防疲劳变体数量（2..8，默认 4） */
+  gameAudioVariantCount?: number
+  /** 游戏节点（game.audioDsp）：SFX 音高离散幅度（半音，默认 2.0） */
+  gameAudioPitchSpread?: number
+  /** 游戏节点（game.audioDsp）：游戏环境声学 DSP 滤镜 */
+  gameAudioEnvFx?:
+    | 'none'
+    | 'underwater'
+    | 'radio_comms'
+    | 'cave_reverb'
+    | 'retro_8bit'
+    | 'heavy_impact'
+  /** 游戏节点（game.audioDsp）：无上游时的内置程序化合成器种子预设 */
+  gameAudioSynthPreset?:
+    | 'sword_slash'
+    | 'explosion'
+    | 'laser_shoot'
+    | 'coin_pickup'
+    | 'jump_boost'
+    | 'hit_hurt'
+    | 'powerup_chord'
+    | 'chiptune_bgm'
+  /** 游戏节点（game.audioDsp）：是否启用 -1 dBFS 峰值响度归一化 */
+  gameAudioNormalize?: boolean
   /** 游戏节点（game.audioDsp）：最近一次音频 DSP 处理摘要 */
   gameAudioReport?: string
   /** 游戏节点（game.levelMap）：程序化关卡生成算法 */
