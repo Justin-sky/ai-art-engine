@@ -6,7 +6,7 @@ import {
   ensureBoundaryProxyNodes,
   inferHostInterfaceFromGraph
 } from '@shared/graph'
-import { normalizeProjectStyleImages } from '@shared/domain'
+import { isDraftAssetId, normalizeProjectStyleImages, type AssetInfo } from '@shared/domain'
 import type { McpGraphEditPayload, McpGraphIconRefinePayload, McpTaskRunPayload } from '@shared/ipc'
 import {
   applySemanticEdit,
@@ -16,6 +16,7 @@ import {
 } from '@shared/semanticTimeline'
 import { resolveActiveWorkspaceTargets } from '../../editor/control/surfaceRegistry'
 import { useEditorKernel } from '../../editor/kernel'
+import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useGraphTaskStore } from '../../stores/graphTasks'
 import { useProjectStore } from '../../stores/project'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -36,6 +37,15 @@ let lastEditedAssetId = ''
 const lastEditedNodeIdsByAsset = new Map<string, string[]>()
 const handledMcpTaskIds = new Set<string>()
 const handledGraphEditRequestIds = new Set<string>()
+
+function findProjectOrDraftAsset(assetId: string): AssetInfo | undefined {
+  if (!assetId) return undefined
+  if (isDraftAssetId(assetId)) {
+    const draft = useDraftStore().getDraft(assetId)
+    return draft ? draftToAssetInfo(draft) : undefined
+  }
+  return useProjectStore().assets.find((item) => item.id === assetId)
+}
 
 function collectDownstreamAndTargetIds(
   graph: GraphDocument,
@@ -127,16 +137,15 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     handledMcpTaskIds.add(payload.mcpTaskId)
   }
 
-  const project = useProjectStore()
   const taskStore = useGraphTaskStore()
   const activeTargets = resolveActiveWorkspaceTargets()
   const rawAssetId = payload.assetId?.trim() ?? ''
   const effectiveAssetId =
     rawAssetId && rawAssetId !== 'current' && rawAssetId !== 'active'
       ? rawAssetId
-      : lastEditedAssetId || activeTargets.defaultAssetId
+      : activeTargets.defaultAssetId || lastEditedAssetId
 
-  const asset = project.assets.find((item) => item.id === effectiveAssetId)
+  const asset = findProjectOrDraftAsset(effectiveAssetId)
   if (asset) {
     openMcpWorkflowAssetEditor(payload.assetId || effectiveAssetId)
     if (!isGraphEditorOpen(effectiveAssetId)) {
@@ -1052,7 +1061,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
           (curSel.kind === 'asset' && typeof curSel.id === 'string' ? curSel.id : '') ||
           workspace.selectedAssetId ||
           effectiveAssetId
-        const targetAsset = project.assets.find((item) => item.id === targetAssetId)
+        const targetAsset = findProjectOrDraftAsset(targetAssetId)
         if (!targetAsset) {
           totalWarnings.push(`资产不存在：${targetAssetId}`)
           continue
@@ -1107,7 +1116,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       effectiveAssetId = created.id
     }
 
-    const asset = project.assets.find((item) => item.id === effectiveAssetId)
+    const asset = findProjectOrDraftAsset(effectiveAssetId)
     payload.assetId = effectiveAssetId
 
     // 默认自动打开画布编辑器（除非显式传 openEditor: false），保证画布节点变化全程实时可见
@@ -1235,7 +1244,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       if (selectId) graphEditorHosts.selectNode(hostId, selectId)
       await graphEditorHosts.flush(hostId)
       if (syncedHostInterface && asset) {
-        const latest = project.assets.find((item) => item.id === effectiveAssetId) ?? asset
+        const latest = findProjectOrDraftAsset(effectiveAssetId) ?? asset
         await persistAssetRecord(effectiveAssetId, {
           genParams: {
             ...((latest.genParams as Record<string, unknown> | undefined) ?? {}),
@@ -1373,7 +1382,7 @@ async function handleGraphIconRefine(payload: McpGraphIconRefinePayload): Promis
   }
   try {
     const project = useProjectStore()
-    const asset = project.assets.find((item) => item.id === payload.assetId)
+    const asset = findProjectOrDraftAsset(payload.assetId)
     const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
       GraphDocument | undefined
     if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {

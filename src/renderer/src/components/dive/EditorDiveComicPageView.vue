@@ -2,6 +2,23 @@
   <div class="dive-view comic-page-dive">
     <!-- 顶部专业工作台工具栏 -->
     <header class="toolbar">
+      <template v-if="graphComicPageNodes.length > 1">
+        <div class="toolbar-group page-switcher-group">
+          <button
+            v-for="item in graphComicPageNodes"
+            :key="item.id"
+            type="button"
+            class="tb-btn tb-btn--page"
+            :class="{ 'tb-btn--active': item.id === activeNodeId }"
+            :title="item.title"
+            @click="switchActiveComicPageNode(item.id)"
+          >
+            {{ item.shortLabel }}
+          </button>
+        </div>
+        <span class="tb-divider" />
+      </template>
+
       <div class="toolbar-group">
         <button
           type="button"
@@ -69,6 +86,20 @@
         </span>
         <button
           type="button"
+          class="tb-btn"
+          :class="{ 'tb-btn--active': animaticPlaying }"
+          :disabled="page.panels.length === 0"
+          :title="uiLabels.animaticTitle"
+          @click="toggleAnimaticPreview"
+        >
+          {{
+            animaticPlaying
+              ? pickComicBi('⏹ 停止预演', '⏹ Stop Preview')
+              : pickComicBi('▶️ 分镜预演', '▶️ Animatic')
+          }}
+        </button>
+        <button
+          type="button"
           class="tb-btn tb-btn--accent-soft"
           :disabled="page.panels.length === 0 || generatingMotionComic"
           :title="uiLabels.motionComicTitle"
@@ -88,6 +119,29 @@
           @click="canvasRef?.exportPng()"
         >
           🖼 {{ t('graph.inspector.comicPage.exportPng') }}
+        </button>
+        <button
+          type="button"
+          class="tb-btn"
+          :disabled="page.panels.length === 0 || exportingPanelCards"
+          :title="uiLabels.exportCardsTitle"
+          @click="onExportPanelCardsPack"
+        >
+          🗂
+          {{ exportingPanelCards ? pickComicBi('切图中…', 'Slicing…') : uiLabels.exportCardsBtn }}
+        </button>
+        <button
+          v-if="allGraphComicPages.length > 1"
+          type="button"
+          class="tb-btn"
+          :disabled="exportingStitchedStrip"
+          :title="uiLabels.exportStripTitle"
+          @click="onExportStitchedStrip"
+        >
+          📜
+          {{
+            exportingStitchedStrip ? pickComicBi('拼接中…', 'Stitching…') : uiLabels.exportStripBtn
+          }}
         </button>
         <button type="button" class="tb-btn done" @click="onClose">
           ✓ {{ t('graph.inspector.comicPage.done') }}
@@ -231,12 +285,74 @@
         @delete-bubble="onDeleteBubbleById"
         @duplicate-bubble="onDuplicateBubble"
         @swap-panels="onSwapPanels"
+        @move-panel="onMovePanel"
+        @transfer-bubble="onTransferBubble"
       />
 
       <!-- 右侧：上下文精细属性面板 + 分镜图层树 -->
       <aside class="side">
         <!-- 1. 页面全局属性 -->
         <template v-if="showGlobal">
+          <div class="section-card">
+            <h3>✨ {{ pickComicBi('AI 智能剧情排页与整页生图', 'AI Storyboard & Batch Gen') }}</h3>
+            <label>
+              {{ pickComicBi('本页剧情梗概 / 分镜脚本', 'Page Story Synopsis / Script') }}
+              <textarea
+                v-model="aiPageStoryPrompt"
+                rows="2"
+                :placeholder="uiLabels.aiStorySynopsisPlaceholder"
+              />
+            </label>
+            <div class="row">
+              <button
+                type="button"
+                class="mini-btn mini-btn--active"
+                :disabled="generatingAiStoryboard || !aiPageStoryPrompt.trim()"
+                @click="onGenerateAiPageStoryboard"
+              >
+                ✨
+                {{
+                  generatingAiStoryboard
+                    ? pickComicBi('AI 排页中…', 'Planning…')
+                    : pickComicBi('AI 排页 + 写台词', 'AI Layout & Script')
+                }}
+              </button>
+              <button
+                type="button"
+                class="mini-btn"
+                :disabled="generatingAllPanelImages || page.panels.length === 0"
+                :title="uiLabels.batchGenPanelsTitle"
+                @click="onGenerateAllPanelsImages"
+              >
+                🎨
+                {{
+                  generatingAllPanelImages
+                    ? pickComicBi('批量生图中…', 'Generating…')
+                    : pickComicBi('一键生图填满全页', 'Batch Gen All Panels')
+                }}
+              </button>
+            </div>
+            <label>
+              {{
+                translatingComicPage
+                  ? uiLabels.translatingComicLabel
+                  : uiLabels.translateComicHeader
+              }}
+              <div class="chip-row">
+                <button
+                  v-for="loc in comicLocaleTargets"
+                  :key="loc.id"
+                  type="button"
+                  class="chip-btn"
+                  :disabled="translatingComicPage || page.panels.length === 0"
+                  @click="onTranslateComicPage(loc.id)"
+                >
+                  {{ loc.label }}
+                </button>
+              </div>
+            </label>
+          </div>
+
           <div class="section-card">
             <h3>📄 {{ t('graph.inspector.comicPage.globalSection') }}</h3>
             <label>
@@ -407,6 +523,27 @@
                 />
               </label>
             </div>
+            <label>
+              {{ pickComicBi('一键全页漫种风格转换', 'One-Click Page Genre Presets') }}
+              <div class="chip-row">
+                <button type="button" class="chip-btn" @click="applyPageGenrePreset('manga-bw')">
+                  🇯🇵 {{ pickComicBi('日漫黑白竖排', 'Manga B&W Vertical') }}
+                </button>
+                <button type="button" class="chip-btn" @click="applyPageGenrePreset('halftone')">
+                  📰 {{ pickComicBi('复古网点漫', 'Halftone Screentone') }}
+                </button>
+                <button type="button" class="chip-btn" @click="applyPageGenrePreset('webtoon')">
+                  📱 {{ pickComicBi('韩系竖屏条漫', 'Webtoon Long Strip') }}
+                </button>
+                <button
+                  type="button"
+                  class="chip-btn"
+                  @click="applyPageGenrePreset('color-action')"
+                >
+                  🎬 {{ pickComicBi('全彩高燃国漫', 'Full-Color Action') }}
+                </button>
+              </div>
+            </label>
             <div class="row">
               <button
                 type="button"
@@ -568,6 +705,31 @@
                   {{ pickComicBi('重置', 'Reset') }}
                 </button>
               </div>
+            </div>
+
+            <!-- 工作台内原地 AI 生图 / 重绘当前分镜格 -->
+            <div class="row">
+              <input
+                v-model="panelAiPrompt"
+                :placeholder="selectedPanel.title || uiLabels.panelAiPromptPlaceholder"
+                @keydown.enter.prevent="onGeneratePanelImageInPlace"
+              />
+              <button
+                type="button"
+                class="mini-btn mini-btn--active"
+                :disabled="generatingPanelImage"
+                :title="uiLabels.panelAiGenTitle"
+                @click="onGeneratePanelImageInPlace"
+              >
+                🎨
+                {{
+                  generatingPanelImage
+                    ? pickComicBi('生成中…', 'Generating…')
+                    : selectedPanel.imageUrl
+                      ? pickComicBi('AI 重绘此格', 'AI Redraw')
+                      : pickComicBi('AI 生图填格', 'AI Generate')
+                }}
+              </button>
             </div>
 
             <label>
@@ -946,6 +1108,26 @@
                 />
               </label>
             </div>
+            <div v-if="selectedPanel.foregroundImageUrl" class="row">
+              <button
+                type="button"
+                class="mini-btn"
+                :class="{ 'mini-btn--active': selectedPanel.popOutFrame !== false }"
+                :title="uiLabels.popOutFrameTitle"
+                @click="
+                  patchSelectedPanel({
+                    popOutFrame: selectedPanel.popOutFrame === false ? true : false
+                  })
+                "
+              >
+                🦸
+                {{
+                  selectedPanel.popOutFrame !== false
+                    ? pickComicBi('已开启：人物破框出格立体渲染', 'Pop-Out Frame Breaking: ON')
+                    : pickComicBi('开启人物破框出格立体渲染', 'Enable Pop-Out Frame Breaking')
+                }}
+              </button>
+            </div>
           </div>
         </template>
 
@@ -1242,14 +1424,19 @@ import {
   comicOccupiedCellKeys,
   comicPanelPolygon,
   comicPanelRects,
+  contentEndSecOfTimeline,
   createComicPage,
   duplicateComicBubble,
+  estimateComicBubbleDurationSec,
+  extractComicDialogueLines,
   fillComicPageFromImageUrls,
   findEmptyComicCell,
   moveComicPanel,
   normalizeComicPage,
   parseComicPage,
   readComicPageFromGenParams,
+  readingOrderBubbles,
+  readingOrderPanels,
   removeComicBubble,
   removeComicPanel,
   serializeComicPage,
@@ -1262,6 +1449,7 @@ import {
   type ComicBubbleShape,
   type ComicBubbleTail,
   type ComicBubbleWritingMode,
+  type ComicCornerOffsets,
   type ComicLayoutTemplate,
   type ComicPage,
   type ComicPanel,
@@ -1269,9 +1457,17 @@ import {
   type ComicPanelEffectType,
   type ComicPanelFilter,
   type ComicPanelSlantPreset,
-  type ComicSpeechBubble
+  type ComicSpeechBubble,
+  type ScriptTimelineClip,
+  type ScriptTimelineDocument,
+  type ScriptTimelineSettings,
+  type ScriptTimelineSource
 } from '@shared/graph'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
+import {
+  composeComicPanelCardsPack,
+  composeStitchedComicStripImage
+} from '../../features/comic/composeComicPageImage'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { removeImageSolidBackground } from '../../features/graph/model/removeImageSolidBackground'
@@ -1289,6 +1485,7 @@ const props = defineProps<{
   nodeId: string
 }>()
 
+const activeNodeId = ref(props.nodeId)
 const { t, locale } = useStudioI18n()
 const project = useProjectStore()
 const drafts = useDraftStore()
@@ -1297,6 +1494,15 @@ const hostAssetId = computed(() => parseGraphHostContext(props.hostId).id?.trim(
 const generatingMotionComic = ref(false)
 const generatingPanelVideo = ref(false)
 const extractingPanelForeground = ref(false)
+const exportingStitchedStrip = ref(false)
+const exportingPanelCards = ref(false)
+const generatingPanelImage = ref(false)
+const generatingAiStoryboard = ref(false)
+const generatingAllPanelImages = ref(false)
+const translatingComicPage = ref(false)
+const animaticPlaying = ref(false)
+const panelAiPrompt = ref('')
+const aiPageStoryPrompt = ref('')
 const canvasRef = ref<{
   exportPng: () => Promise<void>
   renderPngDataUrl: () => Promise<string>
@@ -1305,7 +1511,8 @@ const canvasRef = ref<{
     panelDataUrls: Record<string, string>
     bubbleDataUrls: Record<string, string>
   }>
-  fitToViewport: () => void
+  fitToViewport: (animated?: boolean) => void
+  focusPanelInViewport?: (panelId: string) => void
   setZoom100: () => void
 } | null>(null)
 
@@ -1333,6 +1540,54 @@ const uiLabels = computed(() => ({
   motionComicTitle: pickComicBi(
     '将当前漫画分格、气泡台词与拟声词一键编译为多轨动态漫时间线（自动推拉摇移运镜 + 卡拉 OK 字幕 + 贴纸音效）', // cjk-ok
     'Compile comic panels, speech bubbles & SFX into a multi-track Motion Comic timeline'
+  ),
+  animaticTitle: pickComicBi(
+    '在画布内按阅读顺序逐格推镜预演分镜节奏与气泡台词（已生成配音时同步朗读）', // cjk-ok
+    'Preview panels and dialogue bubbles in reading order with smooth camera pan & zoom'
+  ),
+  exportCardsTitle: pickComicBi(
+    '按阅读顺序将当前页每个分镜格（含对白气泡与镜头特效）独立导出为高清多图轮播卡片包', // cjk-ok
+    'Export each panel (with speech bubbles & FX) as standalone high-res social carousel cards'
+  ),
+  exportCardsBtn: pickComicBi(
+    `导出分格切图 (${page.value.panels.length}张)`, // cjk-ok
+    `Export Cards (${page.value.panels.length})`
+  ),
+  exportStripTitle: pickComicBi(
+    '将当前画布全部漫画页按顺序纵向拼接导出为一张整话长条漫 PNG', // cjk-ok
+    'Stitch all comic pages in this graph into a single Webtoon long-strip PNG'
+  ),
+  exportStripBtn: pickComicBi(
+    `导出整话长图 (${allGraphComicPages.value.length}页)`, // cjk-ok
+    `Export Long Strip (${allGraphComicPages.value.length}p)`
+  ),
+  aiStorySynopsisPlaceholder: pickComicBi(
+    '输入剧情（如：雨夜天台，黑衣剑客拔刀迎战机械巨龙，两人激烈交锋），一键生成分镜、台词与拟声词…', // cjk-ok
+    'Describe the scene to auto-generate layout, shot prompts, dialogue bubbles & SFX…'
+  ),
+  batchGenPanelsTitle: pickComicBi(
+    '按各分镜格构图描述与宽高比并发生成全页画面（自动继承角色定妆参考图）', // cjk-ok
+    'Batch generate images for all panels on this page with character consistency'
+  ),
+  translatingComicLabel: pickComicBi(
+    '🌐 正在 AI 译制台词与自适应排版…', // cjk-ok
+    '🌐 Translating dialogue & layout…'
+  ),
+  translateComicHeader: pickComicBi(
+    '🌐 一键漫画出海多语种译制（自动切换日漫竖排 / 欧美横排）', // cjk-ok
+    '🌐 One-Click AI Comic Localization (Auto Vertical/Horizontal)'
+  ),
+  panelAiPromptPlaceholder: pickComicBi(
+    '输入画面描述，一键生图/重绘此格…', // cjk-ok
+    'Describe shot to generate/redraw…'
+  ),
+  panelAiGenTitle: pickComicBi(
+    '按当前分格宽高比与角色参考图直接生成或重绘此格画面', // cjk-ok
+    'Generate or redraw this panel matching its aspect ratio and character reference'
+  ),
+  popOutFrameTitle: pickComicBi(
+    '将前景抠图人物叠加绘制在分镜框线之上，形成王道日漫/国漫“破框出格”立体冲击感', // cjk-ok
+    'Render foreground character above panel border for 3D pop-out frame-breaking effect'
   )
 }))
 
@@ -1382,6 +1637,14 @@ const pageSizePresets = computed(() => [
   { label: pickComicBi('标准页 (1080×1440)', 'Standard 3:4'), width: 1080, height: 1440 },
   { label: pickComicBi('条漫长图 (1080×3200)', 'Webtoon'), width: 1080, height: 3200 },
   { label: pickComicBi('宽银幕 (1440×1080)', 'Landscape 4:3'), width: 1440, height: 1080 }
+])
+
+type ComicLocaleTargetId = 'ja' | 'en' | 'ko' | 'zh'
+const comicLocaleTargets = computed<Array<{ id: ComicLocaleTargetId; label: string }>>(() => [
+  { id: 'ja', label: pickComicBi('🇯🇵 日漫竖排 (日本語)', '🇯🇵 Japanese (Vert)') },
+  { id: 'en', label: pickComicBi('🇺🇸 美漫横排 (English)', '🇺🇸 English') },
+  { id: 'ko', label: pickComicBi('🇰🇷 韩漫条漫 (한국어)', '🇰🇷 Korean') },
+  { id: 'zh', label: pickComicBi('🇨🇳 国漫中文 (简体)', '🇨🇳 Chinese') }
 ])
 
 const slantPresets = computed<Array<{ id: ComicPanelSlantPreset; label: string }>>(() => [
@@ -1587,7 +1850,7 @@ function redo(): void {
   }
 }
 
-const node = computed(() => graphEditorHosts.getNode(props.hostId, props.nodeId))
+const node = computed(() => graphEditorHosts.getNode(props.hostId, activeNodeId.value))
 const exportName = computed(() => (node.value?.title || t('graph.types.comic.page')).trim())
 
 const selectedPanel = computed(
@@ -1611,8 +1874,8 @@ const panelBgHex = computed(() => cssHexOrFallback(selectedPanel.value?.backgrou
 const incomingImages = computed(() => {
   void graphEditorHosts.revision.value
   const edges = [
-    ...graphEditorHosts.listIncomingEdges(props.hostId, props.nodeId, 'in-image'),
-    ...graphEditorHosts.listIncomingEdges(props.hostId, props.nodeId, 'in')
+    ...graphEditorHosts.listIncomingEdges(props.hostId, activeNodeId.value, 'in-image'),
+    ...graphEditorHosts.listIncomingEdges(props.hostId, activeNodeId.value, 'in')
   ]
   const seen = new Set<string>()
   const items: Array<{ label: string; url: string }> = []
@@ -1635,6 +1898,142 @@ const incomingImages = computed(() => {
   return items
 })
 
+const graphComicPageNodes = computed<Array<{ id: string; shortLabel: string; title: string }>>(
+  () => {
+    void graphEditorHosts.revision.value
+    const doc = graphEditorHosts.getDocument(props.hostId)
+    if (!doc) return []
+    const comicNodes = doc.nodes
+      .filter((n) => n.typeId === 'comic.page')
+      .slice()
+      .sort((a, b) => {
+        const dy = (a.position?.y ?? 0) - (b.position?.y ?? 0)
+        if (Math.abs(dy) > 40) return dy
+        const dx = (a.position?.x ?? 0) - (b.position?.x ?? 0)
+        if (Math.abs(dx) > 40) return dx
+        return a.id.localeCompare(b.id)
+      })
+    return comicNodes.map((n, idx) => {
+      const p = n.id === activeNodeId.value ? page.value : readComicPageFromGenParams(n.params)
+      const title = p?.title?.trim() || n.title?.trim() || `Page ${idx + 1}`
+      return {
+        id: n.id,
+        shortLabel: `P${idx + 1}`,
+        title
+      }
+    })
+  }
+)
+
+function switchActiveComicPageNode(targetNodeId: string): void {
+  if (!targetNodeId || targetNodeId === activeNodeId.value) return
+  persist()
+  activeNodeId.value = targetNodeId
+  selectedPanelId.value = null
+  selectedBubbleId.value = null
+  historyPast.value = []
+  historyFuture.value = []
+  load()
+  void nextTick(() => canvasRef.value?.fitToViewport())
+}
+
+const allGraphComicPages = computed<ComicPage[]>(() => {
+  void graphEditorHosts.revision.value
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  if (!doc) return page.value.panels.length ? [page.value] : []
+  const comicNodes = doc.nodes
+    .filter((n) => n.typeId === 'comic.page')
+    .slice()
+    .sort((a, b) => {
+      const dy = (a.position?.y ?? 0) - (b.position?.y ?? 0)
+      if (Math.abs(dy) > 40) return dy
+      const dx = (a.position?.x ?? 0) - (b.position?.x ?? 0)
+      if (Math.abs(dx) > 40) return dx
+      return a.id.localeCompare(b.id)
+    })
+  const pages: ComicPage[] = []
+  for (const n of comicNodes) {
+    const p =
+      n.id === activeNodeId.value
+        ? page.value
+        : (readComicPageFromGenParams(n.params) ?? createComicPage())
+    if (p.panels.length > 0) pages.push(p)
+  }
+  return pages
+})
+
+async function onExportStitchedStrip(): Promise<void> {
+  if (exportingStitchedStrip.value || allGraphComicPages.value.length === 0) return
+  exportingStitchedStrip.value = true
+  try {
+    persist()
+    const result = await composeStitchedComicStripImage({
+      pages: allGraphComicPages.value,
+      resolveImage: resolvePanelImageDataUrl
+    })
+    const match = result.dataUrl.match(/^data:[^;,]+(;base64)?,([\s\S]*)$/i)
+    if (!match) return
+    const isBase64 = Boolean(match[1])
+    const binary = isBase64 ? atob(match[2]!) : decodeURIComponent(match[2]!)
+    const data = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i)
+    const rawTitle = page.value.title?.trim() || node.value?.title?.trim() || 'comic-strip'
+    const safeName =
+      rawTitle
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\.+$/, '')
+        .trim() || 'comic-strip'
+    await window.studio.saveBinaryFilesToDirectory({
+      files: [{ fileName: `${safeName}-long-strip-${result.pageCount}p.png`, data }]
+    })
+  } finally {
+    exportingStitchedStrip.value = false
+  }
+}
+
+async function onExportPanelCardsPack(): Promise<void> {
+  if (exportingPanelCards.value || page.value.panels.length === 0) return
+  exportingPanelCards.value = true
+  try {
+    persist()
+    const cards = await composeComicPanelCardsPack({
+      page: page.value,
+      resolveImage: resolvePanelImageDataUrl
+    })
+    if (!cards.length) return
+    const rawPageTitle = page.value.title?.trim() || node.value?.title?.trim() || 'comic'
+    const safePrefix =
+      rawPageTitle
+        .replace(/[\\/:*?"<>|]+/g, '-')
+        .replace(/\.+$/, '')
+        .trim() || 'comic'
+    const files: Array<{ fileName: string; data: Uint8Array }> = []
+    for (const card of cards) {
+      const match = card.dataUrl.match(/^data:[^;,]+(;base64)?,([\s\S]*)$/i)
+      if (!match) continue
+      const isBase64 = Boolean(match[1])
+      const binary = isBase64 ? atob(match[2]!) : decodeURIComponent(match[2]!)
+      const data = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i)
+      const numStr = String(card.index).padStart(2, '0')
+      const safeCardTitle =
+        card.title
+          .replace(/[\\/:*?"<>|]+/g, '-')
+          .replace(/\.+$/, '')
+          .trim() || `panel-${numStr}`
+      files.push({
+        fileName: `${safePrefix}-${numStr}-${safeCardTitle}.png`,
+        data
+      })
+    }
+    if (files.length > 0) {
+      await window.studio.saveBinaryFilesToDirectory({ files })
+    }
+  } finally {
+    exportingPanelCards.value = false
+  }
+}
+
 function load(): void {
   const current = node.value
   page.value = readComicPageFromGenParams(current?.params) ?? createComicPage()
@@ -1642,7 +2041,22 @@ function load(): void {
 }
 
 watch(
-  () => [props.hostId, props.nodeId, graphEditorHosts.revision.value] as const,
+  () => props.nodeId,
+  (nextId) => {
+    if (nextId && nextId !== activeNodeId.value) {
+      persist()
+      activeNodeId.value = nextId
+      selectedPanelId.value = null
+      selectedBubbleId.value = null
+      historyPast.value = []
+      historyFuture.value = []
+      load()
+    }
+  }
+)
+
+watch(
+  () => [props.hostId, activeNodeId.value, graphEditorHosts.revision.value] as const,
   () => {
     if (dirty.value) return
     load()
@@ -1684,7 +2098,7 @@ function persist(): void {
   if (!dirty.value) return
   const parsed = parseComicPage(serializeComicPage(page.value))
   if (!parsed) return
-  graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+  graphEditorHosts.updateNode(props.hostId, activeNodeId.value, {
     comicPage: serializeComicPage(parsed)
   })
   dirty.value = false
@@ -1710,6 +2124,613 @@ function onApplyTemplate(templateId: string): void {
 function applyPageSizePreset(width: number, height: number): void {
   commit(withComicPageLayout(page.value, { width, height }))
   void nextTick(() => canvasRef.value?.fitToViewport())
+}
+
+function applyPageGenrePreset(genre: 'manga-bw' | 'halftone' | 'webtoon' | 'color-action'): void {
+  const cur = normalizeComicPage(page.value)
+  if (genre === 'manga-bw') {
+    const nextPanels = cur.panels.map((p) => ({
+      ...p,
+      imageFilter: 'manga-bw' as const,
+      bubbles: p.bubbles.map((b) =>
+        b.shape === 'narration'
+          ? b
+          : {
+              ...b,
+              writingMode: 'vertical-rl' as const,
+              shape: b.shape === 'rounded' || !b.shape ? ('oval' as const) : b.shape
+            }
+      )
+    }))
+    commit(
+      normalizeComicPage({
+        ...cur,
+        readingDirection: 'rtl',
+        backgroundColor: '#ffffff',
+        borderColor: '#111111',
+        borderWidth: 3,
+        borderRadius: 0,
+        padding: cur.padding || 36,
+        panels: nextPanels
+      })
+    )
+  } else if (genre === 'halftone') {
+    const nextPanels = cur.panels.map((p) => ({
+      ...p,
+      imageFilter: 'halftone' as const
+    }))
+    commit(
+      normalizeComicPage({
+        ...cur,
+        backgroundColor: '#faf8f5',
+        borderColor: '#1a1a1a',
+        borderWidth: 2.5,
+        panels: nextPanels
+      })
+    )
+  } else if (genre === 'webtoon') {
+    const ordered = readingOrderPanels(cur)
+    const totalRows = Math.max(4, ordered.length * 2)
+    const nextPanels = ordered.map((p, idx) => ({
+      ...p,
+      row: idx * 2,
+      col: 0,
+      rowSpan: 2,
+      colSpan: 1,
+      cornerOffsets: undefined,
+      imageFilter: undefined,
+      bubbles: p.bubbles.map((b) => ({ ...b, writingMode: 'horizontal-tb' as const }))
+    }))
+    commit(
+      normalizeComicPage({
+        ...cur,
+        width: 1080,
+        height: Math.max(2200, ordered.length * 640),
+        columns: 1,
+        rows: totalRows,
+        gutter: 36,
+        padding: 40,
+        readingDirection: 'ltr',
+        backgroundColor: '#ffffff',
+        borderWidth: 2,
+        borderColor: '#111111',
+        panels: nextPanels
+      })
+    )
+    void nextTick(() => canvasRef.value?.fitToViewport())
+  } else if (genre === 'color-action') {
+    const nextPanels = cur.panels.map((p) => ({
+      ...p,
+      imageFilter: undefined,
+      bubbles: p.bubbles.map((b) => ({ ...b, writingMode: 'horizontal-tb' as const }))
+    }))
+    commit(
+      normalizeComicPage({
+        ...cur,
+        readingDirection: 'ltr',
+        backgroundColor: '#0f172a',
+        borderColor: '#111111',
+        borderWidth: 3,
+        panels: nextPanels
+      })
+    )
+  }
+}
+
+async function onGenerateAiPageStoryboard(): Promise<void> {
+  const synopsis = aiPageStoryPrompt.value.trim()
+  if (!synopsis || generatingAiStoryboard.value) return
+  generatingAiStoryboard.value = true
+  try {
+    const templateIds = COMIC_LAYOUT_TEMPLATES.map(
+      (tpl) => `${tpl.id} (${tpl.page.panels.length} panels: ${tpl.name.zh})`
+    ).join(', ')
+    const systemPrompt = [
+      'You are a master comic / manga storyboard director and scriptwriter.',
+      'Given a scene synopsis, choose the best layout template and output ONLY valid JSON (no markdown fences) with this exact structure:',
+      '{"templateId":"manga-standard-5","title":"Optional short header","panels":[{"title":"Detailed visual shot prompt for image generation (character appearance, pose, camera angle, background, lighting, NO text/bubbles)","caption":"Optional narration caption","effectType":"none|focus-lines|speed-lines|vignette|halftone-frame","cameraMotion":"auto|kenBurnsIn|kenBurnsOut|panRight|panLeft","bubbles":[{"speaker":"Character Name","text":"Short punchy comic dialogue or SFX","shape":"oval|rounded|shout|thought|narration|sfx"}]}]}',
+      `Available templateIds: ${templateIds}. Match the number of panels in your JSON to the chosen template's panel count.`
+    ].join('\n')
+    const res = await window.studio.generateText({
+      prompt: synopsis,
+      system: systemPrompt
+    })
+    const raw = (res?.text ?? '')
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+    if (!raw) return
+    const firstBrace = raw.indexOf('{')
+    const lastBrace = raw.lastIndexOf('}')
+    const jsonSlice =
+      firstBrace >= 0 && lastBrace > firstBrace ? raw.slice(firstBrace, lastBrace + 1) : raw
+    const parsed = JSON.parse(jsonSlice) as {
+      templateId?: string
+      title?: string
+      panels?: Array<{
+        title?: string
+        caption?: string
+        effectType?: ComicPanelEffectType
+        cameraMotion?: ComicPanelCameraMotion
+        bubbles?: Array<{
+          speaker?: string
+          text?: string
+          shape?: ComicBubbleShape
+        }>
+      }>
+    }
+    const chosenTplId =
+      parsed.templateId && COMIC_LAYOUT_TEMPLATES.some((t) => t.id === parsed.templateId)
+        ? parsed.templateId
+        : (COMIC_LAYOUT_TEMPLATES[0]?.id ?? 'manga-standard-5')
+    let next = applyComicLayoutTemplate(page.value, chosenTplId)
+    if (parsed.title?.trim()) {
+      next = withComicPageLayout(next, { title: parsed.title.trim() })
+    }
+    const isRtl = next.readingDirection === 'rtl'
+    const ordered = readingOrderPanels(next)
+    const aiPanels = Array.isArray(parsed.panels) ? parsed.panels : []
+    const patchedById = new Map<string, ComicPanel>()
+    ordered.forEach((p, idx) => {
+      const spec = aiPanels[idx]
+      if (!spec) return
+      const bubbles: ComicSpeechBubble[] = []
+      const rawBubbles = Array.isArray(spec.bubbles) ? spec.bubbles : []
+      let dlgIdx = 0
+      rawBubbles.forEach((b, bIdx) => {
+        const text = b.text?.trim()
+        if (!text) return
+        const shape: ComicBubbleShape = b.shape ?? 'oval'
+        const isSfx = shape === 'sfx'
+        const x = isSfx ? 0.72 : dlgIdx === 0 ? (isRtl ? 0.74 : 0.26) : isRtl ? 0.28 : 0.72
+        const y = isSfx ? 0.74 : dlgIdx === 0 ? 0.22 : 0.36
+        if (!isSfx) dlgIdx++
+        bubbles.push({
+          id: `${p.id}-b-${bIdx + 1}`,
+          text,
+          ...(b.speaker?.trim() ? { speaker: b.speaker.trim() } : {}),
+          x,
+          y,
+          tail: x >= 0.5 ? 'bl' : 'br',
+          shape,
+          writingMode: isRtl && shape !== 'narration' ? 'vertical-rl' : 'horizontal-tb',
+          ...(isSfx
+            ? {
+                textColor: '#e11d48',
+                backgroundColor: '#ffffff',
+                borderColor: '#111111',
+                fontWeight: 'black' as const,
+                rotation: -10,
+                scale: 1.25
+              }
+            : {})
+        })
+      })
+      patchedById.set(p.id, {
+        ...p,
+        ...(spec.title?.trim() ? { title: spec.title.trim() } : {}),
+        ...(spec.caption?.trim() ? { caption: spec.caption.trim() } : {}),
+        ...(spec.effectType && spec.effectType !== 'none' ? { effectType: spec.effectType } : {}),
+        ...(spec.cameraMotion && spec.cameraMotion !== 'auto'
+          ? { cameraMotion: spec.cameraMotion }
+          : {}),
+        bubbles: bubbles.length > 0 ? bubbles : p.bubbles
+      })
+    })
+    next = normalizeComicPage({
+      ...next,
+      panels: next.panels.map((p) => patchedById.get(p.id) ?? p)
+    })
+    commit(next)
+    selectedPanelId.value = null
+    selectedBubbleId.value = null
+    void nextTick(() => canvasRef.value?.fitToViewport())
+  } catch {
+    // ignore storyboard generation failure when LLM is unconfigured or returns invalid JSON
+  } finally {
+    generatingAiStoryboard.value = false
+  }
+}
+
+async function onGenerateAllPanelsImages(): Promise<void> {
+  const currentNode = node.value
+  if (!currentNode || generatingAllPanelImages.value || page.value.panels.length === 0) return
+  generatingAllPanelImages.value = true
+  try {
+    const ordered = readingOrderPanels(page.value)
+    const emptyTargets = ordered.filter((p) => !p.imageUrl?.trim())
+    const targets = emptyTargets.length > 0 ? emptyTargets : ordered
+    const rects = comicPanelRects(page.value)
+
+    // 收集画布上游角色定妆图或当前页已有首图作为一致性参考
+    let sharedRefDataUrl = ''
+    const firstIncoming = incomingImages.value[0]?.url
+    const existingPanelUrl = page.value.panels.find((p) => p.imageUrl?.trim())?.imageUrl
+    const refCandidate = firstIncoming || existingPanelUrl || ''
+    if (refCandidate) {
+      sharedRefDataUrl = await resolvePanelImageDataUrl(refCandidate)
+    }
+
+    const concurrency = 2
+    for (let i = 0; i < targets.length; i += concurrency) {
+      const batch = targets.slice(i, i + concurrency)
+      await Promise.all(
+        batch.map(async (panel, bIdx) => {
+          const shotDesc =
+            panel.title?.trim() ||
+            panel.caption?.trim() ||
+            panel.bubbles
+              .map((b) => b.text)
+              .join(' ')
+              .trim() ||
+            aiPageStoryPrompt.value.trim() ||
+            `Comic storyboard shot #${i + bIdx + 1}`
+          const rect = rects.get(panel.id)
+          const ratio = rect && rect.height > 0 ? rect.width / rect.height : 1
+          const aspectRatio =
+            ratio > 1.45 ? '16:9' : ratio > 1.15 ? '4:3' : ratio < 0.78 ? '2:3' : '1:1'
+          const fullPrompt = `${shotDesc}，严格保持漫画画风与角色形象一致；整张图只画这一幅独立分镜画面，禁止绘制漫画分格线、禁止任何台词气泡与文字` // cjk-ok
+          try {
+            const genRes = await window.studio.generateImage({
+              prompt: fullPrompt,
+              aspectRatio,
+              ...(sharedRefDataUrl ? { inputReferences: [sharedRefDataUrl] } : {})
+            })
+            const imgDataUrl = genRes?.images?.[0]?.trim() || ''
+            if (!imgDataUrl) return
+            if (!sharedRefDataUrl) sharedRefDataUrl = imgDataUrl
+            let savedRel = imgDataUrl
+            if (project.isOpen) {
+              const persisted = await saveGraphRunMediaForNode({
+                dataUrl: imgDataUrl,
+                key: `comicPanelBatch:${activeNodeId.value}:${panel.id}:${Date.now().toString(36)}`,
+                node: currentNode,
+                hostAssetId: hostAssetId.value || null,
+                kind: 'image'
+              })
+              if (persisted?.trim()) savedRel = persisted.trim()
+            }
+            const latestPanel = page.value.panels.find((p) => p.id === panel.id)
+            if (latestPanel) {
+              commit(upsertComicPanel(page.value, { ...latestPanel, imageUrl: savedRel }))
+            }
+          } catch {
+            // ignore individual panel failure
+          }
+        })
+      )
+    }
+  } finally {
+    generatingAllPanelImages.value = false
+  }
+}
+
+async function onTranslateComicPage(targetLang: ComicLocaleTargetId): Promise<void> {
+  if (translatingComicPage.value || page.value.panels.length === 0) return
+  if (typeof window === 'undefined' || typeof window.studio?.generateText !== 'function') return
+
+  const items: Array<{
+    key: string
+    kind: 'pageTitle' | 'caption' | 'bubble' | 'sfx'
+    speaker?: string
+    text: string
+  }> = []
+  if (page.value.title?.trim()) {
+    items.push({ key: 'page:title', kind: 'pageTitle', text: page.value.title.trim() })
+  }
+  for (const panel of page.value.panels) {
+    if (panel.caption?.trim()) {
+      items.push({
+        key: `panel:${panel.id}:caption`,
+        kind: 'caption',
+        text: panel.caption.trim()
+      })
+    }
+    for (const b of panel.bubbles) {
+      if (!b.text?.trim()) continue
+      items.push({
+        key: `bubble:${panel.id}:${b.id}`,
+        kind: b.shape === 'sfx' ? 'sfx' : 'bubble',
+        ...(b.speaker?.trim() ? { speaker: b.speaker.trim() } : {}),
+        text: b.text.trim()
+      })
+    }
+  }
+  if (items.length === 0) return
+
+  translatingComicPage.value = true
+  try {
+    const langSpec: Record<ComicLocaleTargetId, string> = {
+      ja: 'Natural Japanese manga dialogue & katakana/hiragana onomatopoeia (日本語・漫画台詞と擬音語)', // cjk-ok
+      en: 'Punchy American comic book English dialogue & classic comic SFX (e.g., BOOM!, SLASH!, WHOOSH!)',
+      ko: 'Natural Korean webtoon dialogue & Korean SFX (한국어 웹툰 대사 및 효과음)',
+      zh: '地道国漫简体中文台词与中文拟声词（如：轰！、斩！、嗖——）' // cjk-ok
+    }
+    const sys = [
+      'You are a professional manga/comic localization translator and letterer.',
+      `Translate the provided comic page text items into: ${langSpec[targetLang]}.`,
+      'Keep translations concise so they fit neatly inside comic speech bubbles.',
+      'Return ONLY valid JSON without markdown fences in this exact schema:',
+      '{"translations":[{"key":"string","speaker":"translated speaker if present","text":"translated text"}]}'
+    ].join('\n')
+
+    const res = await window.studio.generateText({
+      prompt: JSON.stringify({ targetLanguage: targetLang, items }),
+      system: sys
+    })
+    const rawText = (res?.text ?? '').trim()
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+    const parsed = jsonMatch
+      ? (JSON.parse(jsonMatch[0]) as {
+          translations?: Array<{ key?: string; speaker?: string; text?: string }>
+        })
+      : null
+    const map = new Map<string, { speaker?: string; text: string }>()
+    for (const tItem of parsed?.translations ?? []) {
+      const k = tItem.key?.trim()
+      const txt = tItem.text?.trim()
+      if (k && txt) {
+        map.set(k, {
+          ...(tItem.speaker?.trim() ? { speaker: tItem.speaker.trim() } : {}),
+          text: txt
+        })
+      }
+    }
+    if (map.size === 0) return
+
+    const isJa = targetLang === 'ja'
+    const targetWritingMode: ComicBubbleWritingMode = isJa ? 'vertical-rl' : 'horizontal-tb'
+    const nextTitle = map.get('page:title')?.text ?? page.value.title
+
+    const nextPanels: ComicPanel[] = page.value.panels.map((panel) => {
+      const capHit = map.get(`panel:${panel.id}:caption`)
+      const nextBubbles: ComicSpeechBubble[] = panel.bubbles.map((b) => {
+        const bHit = map.get(`bubble:${panel.id}:${b.id}`)
+        const isSfx = b.shape === 'sfx'
+        return {
+          ...b,
+          ...(bHit?.text ? { text: bHit.text } : {}),
+          ...(bHit?.speaker ? { speaker: bHit.speaker } : {}),
+          ...(isSfx ? {} : { writingMode: targetWritingMode })
+        }
+      })
+      return {
+        ...panel,
+        ...(capHit?.text ? { caption: capHit.text } : {}),
+        bubbles: nextBubbles
+      }
+    })
+
+    commit(
+      normalizeComicPage({
+        ...page.value,
+        ...(nextTitle ? { title: nextTitle } : {}),
+        readingDirection: isJa ? 'rtl' : 'ltr',
+        panels: nextPanels
+      })
+    )
+  } catch {
+    // ignore translation parse failure
+  } finally {
+    translatingComicPage.value = false
+  }
+}
+
+let animaticSessionId = 0
+let activeAnimaticAudio: HTMLAudioElement | null = null
+
+function stopAnimaticPreview(restoreViewport = true): void {
+  animaticSessionId += 1
+  animaticPlaying.value = false
+  if (activeAnimaticAudio) {
+    try {
+      activeAnimaticAudio.pause()
+      activeAnimaticAudio.src = ''
+    } catch {
+      /* ignore */
+    }
+    activeAnimaticAudio = null
+  }
+  if (restoreViewport) {
+    canvasRef.value?.fitToViewport(true)
+  }
+}
+
+async function resolveAudioPreviewDataUrl(relativePath: string): Promise<string> {
+  if (!relativePath) return ''
+  if (relativePath.startsWith('data:') || /^https?:\/\//i.test(relativePath)) return relativePath
+  try {
+    const dataUrl = await window.studio?.getAssetMediaDataUrl?.(relativePath)
+    if (dataUrl) return dataUrl
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+async function probeAudioDurationSec(relativePath: string): Promise<number | undefined> {
+  if (typeof window === 'undefined' || typeof Audio === 'undefined' || !relativePath) {
+    return undefined
+  }
+  const src = await resolveAudioPreviewDataUrl(relativePath)
+  if (!src) return undefined
+  return new Promise<number | undefined>((resolve) => {
+    const audio = new Audio()
+    let settled = false
+    const finish = (val?: number): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      audio.onloadedmetadata = null
+      audio.onerror = null
+      resolve(val)
+    }
+    const timer = setTimeout(() => finish(undefined), 1500)
+    audio.onloadedmetadata = () => {
+      const dur = audio.duration
+      if (Number.isFinite(dur) && dur > 0.15 && dur < 120) {
+        finish(Math.round(dur * 1000) / 1000)
+      } else {
+        finish(undefined)
+      }
+    }
+    audio.onerror = () => finish(undefined)
+    audio.src = src
+  })
+}
+
+async function playAudioAndWait(
+  relativePath: string,
+  fallbackSec: number,
+  session: number
+): Promise<void> {
+  const src = await resolveAudioPreviewDataUrl(relativePath)
+  if (!src || session !== animaticSessionId) {
+    await new Promise((r) => setTimeout(r, Math.round(fallbackSec * 1000)))
+    return
+  }
+  await new Promise<void>((resolve) => {
+    const audio = new Audio(src)
+    activeAnimaticAudio = audio
+    let done = false
+    const finish = (): void => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      if (activeAnimaticAudio === audio) activeAnimaticAudio = null
+      resolve()
+    }
+    const timer = setTimeout(finish, Math.max(1200, Math.round((fallbackSec + 2.5) * 1000)))
+    audio.onended = finish
+    audio.onerror = finish
+    audio.play().catch(finish)
+  })
+}
+
+async function toggleAnimaticPreview(): Promise<void> {
+  if (animaticPlaying.value) {
+    stopAnimaticPreview(true)
+    return
+  }
+  const ordered = readingOrderPanels(page.value)
+  if (ordered.length === 0) return
+
+  const session = ++animaticSessionId
+  animaticPlaying.value = true
+
+  // 收集时间线节点中可能已缓存的该页角色配音
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  const cachedVoiceByBubble = new Map<string, string>()
+  if (doc) {
+    for (const n of doc.nodes) {
+      if (n.typeId === 'output.timeline' || n.typeId === 'voice.tts') {
+        for (const v of n.params?.generatedVoices ?? []) {
+          const prefix = `comic-tts-${activeNodeId.value}-`
+          if (v.id?.startsWith(prefix) && v.relativePath?.trim()) {
+            cachedVoiceByBubble.set(v.id.slice(prefix.length), v.relativePath.trim())
+          }
+        }
+      }
+    }
+  }
+
+  try {
+    for (const panel of ordered) {
+      if (session !== animaticSessionId) return
+      selectedPanelId.value = panel.id
+      selectedBubbleId.value = null
+      canvasRef.value?.focusPanelInViewport?.(panel.id)
+
+      const bubbles = readingOrderBubbles(panel.bubbles, page.value.readingDirection).filter(
+        (b) => (b.shape ?? 'rounded') !== 'sfx' && b.text.trim()
+      )
+
+      if (bubbles.length === 0) {
+        const waitSec =
+          panel.durationSec ?? (panel.caption ? estimateComicBubbleDurationSec(panel.caption) : 1.8)
+        await new Promise((r) => setTimeout(r, Math.round(waitSec * 1000)))
+      } else {
+        await new Promise((r) => setTimeout(r, 260))
+        for (const b of bubbles) {
+          if (session !== animaticSessionId) return
+          selectedBubbleId.value = b.id
+          const estSec = estimateComicBubbleDurationSec(b.text)
+          const voiceRel = cachedVoiceByBubble.get(b.id)
+          if (voiceRel) {
+            await playAudioAndWait(voiceRel, estSec, session)
+          } else {
+            await new Promise((r) => setTimeout(r, Math.round(estSec * 1000)))
+          }
+        }
+      }
+    }
+  } finally {
+    if (session === animaticSessionId) {
+      stopAnimaticPreview(true)
+    }
+  }
+}
+
+async function onGeneratePanelImageInPlace(): Promise<void> {
+  const panel = selectedPanel.value
+  const currentNode = node.value
+  if (!panel || !currentNode || generatingPanelImage.value) return
+  const rawPrompt =
+    panelAiPrompt.value.trim() ||
+    panel.title?.trim() ||
+    panel.caption?.trim() ||
+    panel.bubbles
+      .map((b) => b.text)
+      .join(' ')
+      .trim()
+  if (!rawPrompt) return
+  generatingPanelImage.value = true
+  try {
+    const rect = comicPanelRects(page.value).get(panel.id)
+    const ratio = rect && rect.height > 0 ? rect.width / rect.height : 1
+    const aspectRatio = ratio > 1.45 ? '16:9' : ratio > 1.15 ? '4:3' : ratio < 0.78 ? '2:3' : '1:1'
+
+    // 自动收集画布上游参考图（如 charAnchor 角色定妆图或同页首张分镜图）保持画风与人物一致
+    const refs: string[] = []
+    if (panel.imageUrl) {
+      const existingData = await resolvePanelImageDataUrl(panel.imageUrl)
+      if (existingData) refs.push(existingData)
+    }
+    if (refs.length === 0) {
+      const firstIncoming = incomingImages.value[0]?.url
+      const fallbackUrl = firstIncoming || page.value.panels.find((p) => p.imageUrl)?.imageUrl || ''
+      if (fallbackUrl) {
+        const refData = await resolvePanelImageDataUrl(fallbackUrl)
+        if (refData) refs.push(refData)
+      }
+    }
+
+    const fullPrompt = `${rawPrompt}，严格保持漫画画风与角色形象一致；整张图只画这一幅独立分镜画面，禁止绘制漫画分格线、禁止任何台词气泡与文字` // cjk-ok
+    const genRes = await window.studio.generateImage({
+      prompt: fullPrompt,
+      aspectRatio,
+      ...(refs.length > 0 ? { inputReferences: refs } : {})
+    })
+    const imgDataUrl = genRes?.images?.[0]?.trim() || ''
+    if (!imgDataUrl) return
+    let savedRel = imgDataUrl
+    if (project.isOpen) {
+      const persisted = await saveGraphRunMediaForNode({
+        dataUrl: imgDataUrl,
+        key: `comicPanelGen:${activeNodeId.value}:${panel.id}:${Date.now().toString(36)}`,
+        node: currentNode,
+        hostAssetId: hostAssetId.value || null,
+        kind: 'image'
+      })
+      if (persisted?.trim()) savedRel = persisted.trim()
+    }
+    patchSelectedPanel({ imageUrl: savedRel })
+    panelAiPrompt.value = ''
+  } catch {
+    // ignore generation failure when model is unconfigured
+  } finally {
+    generatingPanelImage.value = false
+  }
 }
 
 function autoFillFromIncoming(fillEmptyOnly: boolean): void {
@@ -1832,7 +2853,7 @@ async function onExtractPanelForeground(): Promise<void> {
     const fgRel =
       (await saveGraphRunMediaForNode({
         dataUrl: transparentDataUrl,
-        key: `comicFg:${props.nodeId}:${panel.id}`,
+        key: `comicFg:${activeNodeId.value}:${panel.id}`,
         node: currentNode,
         hostAssetId: hostAssetId.value || null,
         kind: 'image'
@@ -1880,7 +2901,7 @@ async function onGenerateMotionComic(): Promise<void> {
           if (!bubbleDataUrl) continue
           const savedBubbleRel = await saveGraphRunMediaForNode({
             dataUrl: bubbleDataUrl,
-            key: `comicBubble:${props.nodeId}:${bubbleId}`,
+            key: `comicBubble:${activeNodeId.value}:${bubbleId}`,
             node: currentNode,
             hostAssetId: hostAssetId.value || null,
             kind: 'image'
@@ -1888,7 +2909,7 @@ async function onGenerateMotionComic(): Promise<void> {
           if (savedBubbleRel) {
             bubbleImageRelativePaths[bubbleId] = savedBubbleRel
             savedBubbleItems.push({
-              id: `comic-bubble:${props.nodeId}:${bubbleId}`,
+              id: `comic-bubble:${activeNodeId.value}:${bubbleId}`,
               title: `${page.value.title?.trim() || currentNode.title || 'Comic Page'} · ${bubbleId}`,
               dataUrl: bubbleDataUrl,
               relativePath: savedBubbleRel,
@@ -1908,7 +2929,7 @@ async function onGenerateMotionComic(): Promise<void> {
           if (!panelDataUrl) continue
           const savedPanelRel = await saveGraphRunMediaForNode({
             dataUrl: panelDataUrl,
-            key: `comicPanel:${props.nodeId}:${panelId}`,
+            key: `comicPanel:${activeNodeId.value}:${panelId}`,
             node: currentNode,
             hostAssetId: hostAssetId.value || null,
             kind: 'image'
@@ -1916,7 +2937,7 @@ async function onGenerateMotionComic(): Promise<void> {
           if (savedPanelRel) {
             panelImageRelativePaths[panelId] = savedPanelRel
             savedPanelItems.push({
-              id: `comic-panel:${props.nodeId}:${panelId}`,
+              id: `comic-panel:${activeNodeId.value}:${panelId}`,
               title: `${page.value.title?.trim() || currentNode.title || 'Comic Page'} · ${panelId}`,
               dataUrl: panelDataUrl,
               relativePath: savedPanelRel,
@@ -1926,15 +2947,15 @@ async function onGenerateMotionComic(): Promise<void> {
         }
         const savedRel = await saveGraphRunMediaForNode({
           dataUrl: pngDataUrl,
-          key: `comicPage:${props.nodeId}`,
+          key: `comicPage:${activeNodeId.value}`,
           node: currentNode,
           hostAssetId: hostAssetId.value || null,
           kind: 'image'
         })
         if (savedRel) {
           pageRel = savedRel
-          const imgId = `comic-page:${props.nodeId}`
-          graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+          const imgId = `comic-page:${activeNodeId.value}`
+          graphEditorHosts.updateNode(props.hostId, activeNodeId.value, {
             comicPage: serializeComicPage(page.value),
             previewRelativePath: savedRel,
             generatedImages: [
@@ -1957,28 +2978,34 @@ async function onGenerateMotionComic(): Promise<void> {
     }
 
     const doc = graphEditorHosts.getDocument(props.hostId)
+    const allComicNodeIds = doc
+      ? doc.nodes.filter((n) => n.typeId === 'comic.page').map((n) => n.id)
+      : [activeNodeId.value]
     let timelineNodeId = ''
     if (doc) {
       const connectedTl = doc.nodes.find(
         (n) =>
           n.typeId === 'output.timeline' &&
-          doc.edges.some((e) => e.source === props.nodeId && e.target === n.id)
+          doc.edges.some((e) => e.source === activeNodeId.value && e.target === n.id)
       )
       const anyTl = connectedTl ?? doc.nodes.find((n) => n.typeId === 'output.timeline')
       if (anyTl) {
         timelineNodeId = anyTl.id
-        if (!connectedTl) {
+        const missingSourceIds = allComicNodeIds.filter(
+          (cid) => !doc.edges.some((e) => e.source === cid && e.target === timelineNodeId)
+        )
+        if (missingSourceIds.length > 0) {
           graphEditorHosts.applyExternalGraph(props.hostId, {
             ...doc,
             edges: [
               ...doc.edges,
-              {
-                id: `edge-comic-${Date.now().toString(36)}`,
-                source: props.nodeId,
+              ...missingSourceIds.map((cid, idx) => ({
+                id: `edge-comic-${Date.now().toString(36)}-${idx}`,
+                source: cid,
                 target: timelineNodeId,
                 sourcePort: 'out',
                 targetPort: 'in-image'
-              }
+              }))
             ]
           })
         }
@@ -1988,7 +3015,7 @@ async function onGenerateMotionComic(): Promise<void> {
       const addedId = graphEditorHosts.addNode(props.hostId, {
         typeId: 'output.timeline',
         title: pickComicBi('动态漫时间线', 'Motion Comic Timeline'),
-        linkFrom: [{ nodeId: props.nodeId, portId: 'out' }]
+        linkFrom: allComicNodeIds.map((cid) => ({ nodeId: cid, portId: 'out' }))
       })
       timelineNodeId = addedId ?? 'output-timeline'
     }
@@ -1996,9 +3023,22 @@ async function onGenerateMotionComic(): Promise<void> {
     await graphEditorHosts.flush(props.hostId)
 
     const latestDoc = graphEditorHosts.getDocument(props.hostId) ?? doc
+    const sortedComicNodes = latestDoc
+      ? latestDoc.nodes
+          .filter((n) => n.typeId === 'comic.page')
+          .sort((a, b) => {
+            const dy = (a.position?.y ?? 0) - (b.position?.y ?? 0)
+            if (Math.abs(dy) > 40) return dy
+            const dx = (a.position?.x ?? 0) - (b.position?.x ?? 0)
+            if (Math.abs(dx) > 10) return dx
+            return a.id.localeCompare(b.id)
+          })
+      : []
+
     const discoveredVoices: Array<{
       id: string
       relativePath: string
+      durationSec?: number
       text?: string
       title?: string
     }> = []
@@ -2035,18 +3075,304 @@ async function onGenerateMotionComic(): Promise<void> {
       }
     }
 
-    const motionDoc = buildComicMotionTimeline({
-      page: page.value,
-      pageImageRelativePath: pageRel || undefined,
-      panelImageRelativePaths:
-        Object.keys(panelImageRelativePaths).length > 0 ? panelImageRelativePaths : undefined,
-      bubbleImageRelativePaths:
-        Object.keys(bubbleImageRelativePaths).length > 0 ? bubbleImageRelativePaths : undefined,
-      nodeId: props.nodeId,
-      nodeTitle: currentNode?.title,
-      ...(discoveredVoices.length > 0 ? { voices: discoveredVoices } : {}),
-      ...(discoveredMusic ? { music: [discoveredMusic] } : {})
-    })
+    // 若图中尚无独立配音节点，自动为所有分镜页中的气泡台词批量合成 AI 角色语音（并复用已有缓存）
+    if (
+      discoveredVoices.length === 0 &&
+      typeof window !== 'undefined' &&
+      typeof window.studio?.generateSpeech === 'function'
+    ) {
+      const targetNodes =
+        sortedComicNodes.length > 0 ? sortedComicNodes : currentNode ? [currentNode] : []
+      const allDialogues: Array<{
+        nodeId: string
+        panelIndex: number
+        bubbleId: string
+        speaker?: string
+        text: string
+        shape: string
+      }> = []
+      for (const cn of targetNodes) {
+        const cnPage =
+          cn.id === activeNodeId.value
+            ? page.value
+            : (parseComicPage(cn.params?.comicPage) ?? createComicPage())
+        for (const d of extractComicDialogueLines(cnPage)) {
+          if (d.text.trim()) {
+            allDialogues.push({
+              nodeId: cn.id,
+              panelIndex: d.panelIndex,
+              bubbleId: d.bubbleId,
+              speaker: d.speaker,
+              text: d.text.trim(),
+              shape: d.shape
+            })
+          }
+        }
+      }
+
+      if (allDialogues.length > 0) {
+        const tlNode = latestDoc?.nodes.find((n) => n.id === timelineNodeId)
+        const cachedVoices = new Map<string, { relativePath: string }>()
+        for (const item of tlNode?.params?.generatedVoices ?? []) {
+          if (item.id && item.relativePath?.trim()) {
+            cachedVoices.set(item.id, {
+              relativePath: item.relativePath.trim()
+            })
+          }
+        }
+
+        const voicePalette = ['onyx', 'nova', 'alloy', 'shimmer', 'echo', 'fable']
+        const speakerVoiceMap = new Map<string, string>()
+        const pickSpeakerVoice = (speaker?: string, shape?: string): string => {
+          const key = (speaker ?? '').trim()
+          if (!key) {
+            if (shape === 'narration' || shape === 'thought') return 'echo'
+            return 'alloy'
+          }
+          const existing = speakerVoiceMap.get(key)
+          if (existing) return existing
+          const assigned = voicePalette[speakerVoiceMap.size % voicePalette.length]!
+          speakerVoiceMap.set(key, assigned)
+          return assigned
+        }
+
+        const synthesizedItems: Array<{
+          id: string
+          title: string
+          relativePath: string
+          createdAt: string
+        }> = []
+        const createdAt = new Date().toISOString()
+        const concurrency = 3
+        for (let i = 0; i < allDialogues.length; i += concurrency) {
+          const chunk = allDialogues.slice(i, i + concurrency)
+          const results = await Promise.all(
+            chunk.map(async (line) => {
+              const voiceId = `comic-tts-${line.nodeId}-${line.bubbleId}`
+              const title = line.speaker ? `${line.speaker}: ${line.text}` : line.text
+              const cached = cachedVoices.get(voiceId)
+              if (cached) {
+                return {
+                  id: voiceId,
+                  relativePath: cached.relativePath,
+                  text: line.text,
+                  title
+                }
+              }
+              try {
+                const voice = pickSpeakerVoice(line.speaker, line.shape)
+                const res = await window.studio.generateSpeech({
+                  input: line.text,
+                  voice,
+                  name: `comic-tts-${line.nodeId}-p${line.panelIndex + 1}`
+                })
+                const rel = res?.relativePath?.trim()
+                if (!rel) return null
+                return {
+                  id: voiceId,
+                  relativePath: rel,
+                  text: line.text,
+                  title
+                }
+              } catch {
+                return null
+              }
+            })
+          )
+          for (const item of results) {
+            if (!item) continue
+            discoveredVoices.push(item)
+            synthesizedItems.push({
+              id: item.id,
+              title: item.title || item.id,
+              relativePath: item.relativePath,
+              createdAt
+            })
+          }
+        }
+
+        if (synthesizedItems.length > 0 && timelineNodeId) {
+          graphEditorHosts.updateNode(props.hostId, timelineNodeId, {
+            generatedVoices: synthesizedItems,
+            selectedVoiceId: synthesizedItems[0]!.id
+          })
+        }
+      }
+    }
+
+    // 并发探测所有角色配音的真实音频秒数（durationSec），确保运镜时长、气泡弹跳与卡拉 OK 字幕毫秒级对齐
+    if (discoveredVoices.length > 0) {
+      await Promise.all(
+        discoveredVoices.map(async (v) => {
+          if (v.durationSec && v.durationSec > 0.15) return
+          const probed = await probeAudioDurationSec(v.relativePath)
+          if (probed && probed > 0.15) {
+            v.durationSec = probed
+          }
+        })
+      )
+    }
+
+    // 编译单页或多页全集动态漫时间线（支持跨页 0.32s 翻页转场与全片 BGM 铺底）
+    const targetComicNodes =
+      sortedComicNodes.length > 0 ? sortedComicNodes : currentNode ? [currentNode] : []
+    let motionDoc: ScriptTimelineDocument
+    if (targetComicNodes.length <= 1) {
+      motionDoc = buildComicMotionTimeline({
+        page: page.value,
+        pageImageRelativePath: pageRel || undefined,
+        panelImageRelativePaths:
+          Object.keys(panelImageRelativePaths).length > 0 ? panelImageRelativePaths : undefined,
+        bubbleImageRelativePaths:
+          Object.keys(bubbleImageRelativePaths).length > 0 ? bubbleImageRelativePaths : undefined,
+        nodeId: activeNodeId.value,
+        nodeTitle: currentNode?.title,
+        ...(discoveredVoices.length > 0 ? { voices: discoveredVoices } : {}),
+        ...(discoveredMusic ? { music: [discoveredMusic] } : {})
+      })
+    } else {
+      const mergedSources: ScriptTimelineSource[] = []
+      const seenSourceIds = new Set<string>()
+      const mergedClips: ScriptTimelineClip[] = []
+      let mergedSettings: ScriptTimelineSettings = {
+        durationSec: 6,
+        exportWidth: 1280,
+        exportHeight: 720,
+        exportFps: 24
+      }
+      let pageCursor = 0
+      let voiceOffset = 0
+      const crossPageTransSec = 0.32
+
+      for (let pageIdx = 0; pageIdx < targetComicNodes.length; pageIdx++) {
+        const cn = targetComicNodes[pageIdx]!
+        const isCurrent = cn.id === activeNodeId.value
+        const cnPage = isCurrent
+          ? page.value
+          : (parseComicPage(cn.params?.comicPage) ?? createComicPage())
+        if (cnPage.panels.length === 0) continue
+
+        let cnPageRel = ''
+        const cnPanelPaths: Record<string, string> = {}
+        const cnBubblePaths: Record<string, string> = {}
+        if (isCurrent) {
+          cnPageRel = pageRel
+          Object.assign(cnPanelPaths, panelImageRelativePaths)
+          Object.assign(cnBubblePaths, bubbleImageRelativePaths)
+        } else {
+          const genList = cn.params?.generatedImages ?? []
+          const panelPrefix = `comic-panel:${cn.id}:`
+          const bubblePrefix = `comic-bubble:${cn.id}:`
+          const pageItemId = `comic-page:${cn.id}`
+          for (const item of genList) {
+            const rel = item.relativePath?.trim()
+            const itemId = item.id ?? ''
+            if (!rel || !itemId) continue
+            if (itemId.startsWith(panelPrefix)) {
+              const pid = itemId.slice(panelPrefix.length)
+              if (pid) cnPanelPaths[pid] = rel
+            } else if (itemId.startsWith(bubblePrefix)) {
+              const bid = itemId.slice(bubblePrefix.length)
+              if (bid) cnBubblePaths[bid] = rel
+            } else if (itemId === pageItemId && !cnPageRel) {
+              cnPageRel = rel
+            }
+          }
+          if (!cnPageRel) {
+            cnPageRel =
+              cn.params?.previewRelativePath?.trim() ||
+              genList
+                .find(
+                  (i) =>
+                    !(i.id ?? '').startsWith(panelPrefix) && !(i.id ?? '').startsWith(bubblePrefix)
+                )
+                ?.relativePath?.trim() ||
+              ''
+          }
+        }
+
+        const dlgCount = extractComicDialogueLines(cnPage).length
+        const pageVoiceCount = dlgCount > 0 ? dlgCount : cnPage.panels.length
+        const pageVoices = discoveredVoices.slice(voiceOffset, voiceOffset + pageVoiceCount)
+        voiceOffset += pageVoices.length
+
+        const built = buildComicMotionTimeline({
+          page: cnPage,
+          pageImageRelativePath: cnPageRel || undefined,
+          panelImageRelativePaths: Object.keys(cnPanelPaths).length > 0 ? cnPanelPaths : undefined,
+          bubbleImageRelativePaths:
+            Object.keys(cnBubblePaths).length > 0 ? cnBubblePaths : undefined,
+          nodeId: cn.id,
+          nodeTitle: cn.title,
+          ...(pageVoices.length > 0 ? { voices: pageVoices } : {}),
+          ...(pageIdx === 0 && discoveredMusic ? { music: [discoveredMusic] } : {})
+        })
+
+        if (pageIdx === 0 && built.settings) {
+          mergedSettings = { ...built.settings }
+        }
+        for (const src of built.sources ?? []) {
+          if (!seenSourceIds.has(src.id)) {
+            seenSourceIds.add(src.id)
+            mergedSources.push(src)
+          }
+        }
+
+        if (pageIdx > 0 && mergedClips.length > 0) {
+          for (let ci = mergedClips.length - 1; ci >= 0; ci--) {
+            if (mergedClips[ci]!.track === 'video') {
+              mergedClips[ci] = {
+                ...mergedClips[ci]!,
+                durationSec:
+                  Math.round((mergedClips[ci]!.durationSec + crossPageTransSec) * 1000) / 1000
+              }
+              break
+            }
+          }
+        }
+
+        let firstVideoClipSeen = false
+        for (const clip of built.clips) {
+          const isFirstVideoOfNextPage =
+            pageIdx > 0 && clip.track === 'video' && !firstVideoClipSeen
+          if (clip.track === 'video') firstVideoClipSeen = true
+          mergedClips.push({
+            ...clip,
+            id: `${clip.id}:p${pageIdx}`,
+            startSec: Math.round((clip.startSec + pageCursor) * 1000) / 1000,
+            ...(isFirstVideoOfNextPage
+              ? {
+                  transitionType: 'smoothleft' as const,
+                  transitionInSec: crossPageTransSec
+                }
+              : {})
+          })
+        }
+
+        const pageDur = contentEndSecOfTimeline(built.clips)
+        pageCursor = Math.round((pageCursor + pageDur) * 1000) / 1000
+      }
+
+      // 将首轨 BGM 延展至覆盖多页完整总时长
+      const finalDur = Math.max(3, pageCursor)
+      mergedSettings.durationSec = finalDur
+      if (discoveredMusic && pageCursor > 0) {
+        for (let ci = 0; ci < mergedClips.length; ci++) {
+          if (mergedClips[ci]!.track === 'music') {
+            mergedClips[ci] = {
+              ...mergedClips[ci]!,
+              durationSec: Math.max(mergedClips[ci]!.durationSec, finalDur)
+            }
+          }
+        }
+      }
+
+      motionDoc = {
+        clips: mergedClips,
+        sources: mergedSources,
+        settings: mergedSettings
+      }
+    }
 
     const aid = hostAssetId.value
     if (aid) {
@@ -2283,12 +3609,138 @@ function onSwapPanels(panelIdA: string, panelIdB: string): void {
   commit(swapComicPanelContents(page.value, panelIdA, panelIdB))
 }
 
+function onMovePanel(panelId: string, row: number, col: number): void {
+  selectedPanelId.value = panelId
+  selectedBubbleId.value = null
+  commit(moveComicPanel(page.value, panelId, row, col))
+}
+
+function onTransferBubble(
+  fromPanelId: string,
+  bubbleId: string,
+  toPanelId: string,
+  pos: { x: number; y: number }
+): void {
+  const fromPanel = page.value.panels.find((p) => p.id === fromPanelId)
+  const bubble = fromPanel?.bubbles.find((b) => b.id === bubbleId)
+  if (!bubble) return
+  const withoutOld = removeComicBubble(page.value, fromPanelId, bubbleId)
+  const pointingUp = pos.y > 0.58
+  const onLeft = pos.x >= 0.5
+  const autoTail: ComicBubbleTail = pointingUp ? (onLeft ? 'tl' : 'tr') : onLeft ? 'bl' : 'br'
+  const withNew = addComicBubble(withoutOld, toPanelId, {
+    ...bubble,
+    x: pos.x,
+    y: pos.y,
+    tail: autoTail,
+    tailTipX: undefined,
+    tailTipY: undefined
+  })
+  const targetPanel = withNew.panels.find((p) => p.id === toPanelId)
+  const added = targetPanel?.bubbles[targetPanel.bubbles.length - 1]
+  commit(withNew)
+  selectedPanelId.value = toPanelId
+  selectedBubbleId.value = added?.id ?? null
+}
+
 function deleteCurrentSelection(): void {
   if (selectedBubbleId.value) {
     removeSelectedBubble()
   } else if (selectedPanelId.value) {
     removeSelectedPanel()
   }
+}
+
+/**
+ * 相邻分镜平行斜切刀口耦合：无论是点击斜切预设还是手动拖拽四角斜切控制柄，
+ * 自动同步共享上/下/左/右边界的相邻分格顶点像素偏移，确保格间形成等宽平行斜缝而非三角楔形缺口。
+ */
+function couplePanelCornerOffsets(
+  basePage: ComicPage,
+  panelId: string,
+  offsets: ComicCornerOffsets | undefined
+): ComicPage {
+  const panel = basePage.panels.find((p) => p.id === panelId)
+  if (!panel) return basePage
+  const o: ComicCornerOffsets = offsets ?? [0, 0, 0, 0, 0, 0, 0, 0]
+  const rects = comicPanelRects(basePage)
+  const rect = rects.get(panel.id)
+  if (!rect) {
+    return upsertComicPanel(basePage, { ...panel, cornerOffsets: offsets })
+  }
+
+  const nextPanels = basePage.panels.map((other) => {
+    if (other.id === panel.id) {
+      return { ...other, cornerOffsets: offsets }
+    }
+    const otherRect = rects.get(other.id)
+    if (!otherRect) return other
+
+    const curO: ComicCornerOffsets = other.cornerOffsets
+      ? ([...other.cornerOffsets] as ComicCornerOffsets)
+      : [0, 0, 0, 0, 0, 0, 0, 0]
+    let touched = false
+
+    const overlapCols =
+      Math.min(panel.col + panel.colSpan, other.col + other.colSpan) -
+      Math.max(panel.col, other.col)
+    const overlapRows =
+      Math.min(panel.row + panel.rowSpan, other.row + other.rowSpan) -
+      Math.max(panel.row, other.row)
+
+    // 1. other 紧邻当前分格下方（共享底边 ↔ 顶边）
+    if (other.row === panel.row + panel.rowSpan && overlapCols > 0) {
+      const dyLeftPx = o[7] * rect.height
+      const dyRightPx = o[5] * rect.height
+      const tLeft = (otherRect.x - rect.x) / Math.max(1, rect.width)
+      const tRight = (otherRect.x + otherRect.width - rect.x) / Math.max(1, rect.width)
+      curO[1] = (dyLeftPx + (dyRightPx - dyLeftPx) * tLeft) / Math.max(1, otherRect.height)
+      curO[3] = (dyLeftPx + (dyRightPx - dyLeftPx) * tRight) / Math.max(1, otherRect.height)
+      touched = true
+    }
+
+    // 2. other 紧邻当前分格上方（共享顶边 ↔ 底边）
+    if (other.row + other.rowSpan === panel.row && overlapCols > 0) {
+      const dyLeftPx = o[1] * rect.height
+      const dyRightPx = o[3] * rect.height
+      const tLeft = (otherRect.x - rect.x) / Math.max(1, rect.width)
+      const tRight = (otherRect.x + otherRect.width - rect.x) / Math.max(1, rect.width)
+      curO[7] = (dyLeftPx + (dyRightPx - dyLeftPx) * tLeft) / Math.max(1, otherRect.height)
+      curO[5] = (dyLeftPx + (dyRightPx - dyLeftPx) * tRight) / Math.max(1, otherRect.height)
+      touched = true
+    }
+
+    // 3. other 紧邻当前分格右侧（共享右边 ↔ 左边）
+    if (other.col === panel.col + panel.colSpan && overlapRows > 0) {
+      const dxTopPx = o[2] * rect.width
+      const dxBottomPx = o[4] * rect.width
+      const tTop = (otherRect.y - rect.y) / Math.max(1, rect.height)
+      const tBottom = (otherRect.y + otherRect.height - rect.y) / Math.max(1, rect.height)
+      curO[0] = (dxTopPx + (dxBottomPx - dxTopPx) * tTop) / Math.max(1, otherRect.width)
+      curO[6] = (dxTopPx + (dxBottomPx - dxTopPx) * tBottom) / Math.max(1, otherRect.width)
+      touched = true
+    }
+
+    // 4. other 紧邻当前分格左侧（共享左边 ↔ 右边）
+    if (other.col + other.colSpan === panel.col && overlapRows > 0) {
+      const dxTopPx = o[0] * rect.width
+      const dxBottomPx = o[6] * rect.width
+      const tTop = (otherRect.y - rect.y) / Math.max(1, rect.height)
+      const tBottom = (otherRect.y + otherRect.height - rect.y) / Math.max(1, rect.height)
+      curO[2] = (dxTopPx + (dxBottomPx - dxTopPx) * tTop) / Math.max(1, otherRect.width)
+      curO[4] = (dxTopPx + (dxBottomPx - dxTopPx) * tBottom) / Math.max(1, otherRect.width)
+      touched = true
+    }
+
+    if (!touched) return other
+    const hasAnyOffset = curO.some((v) => Math.abs(v) >= 0.001)
+    return {
+      ...other,
+      cornerOffsets: hasAnyOffset ? curO : undefined
+    }
+  })
+
+  return normalizeComicPage({ ...basePage, panels: nextPanels })
 }
 
 function patchSelectedPanel(patch: Partial<ComicPanel>, options?: { persist?: boolean }): void {
@@ -2300,6 +3752,12 @@ function patchSelectedPanel(patch: Partial<ComicPanel>, options?: { persist?: bo
 function onCanvasUpdatePanel(panelId: string, patch: Partial<ComicPanel>, persistNow = true): void {
   const panel = page.value.panels.find((p) => p.id === panelId)
   if (!panel) return
+  if ('cornerOffsets' in patch) {
+    commit(couplePanelCornerOffsets(page.value, panelId, patch.cornerOffsets), {
+      persist: persistNow
+    })
+    return
+  }
   commit(upsertComicPanel(page.value, { ...panel, ...patch }), { persist: persistNow })
 }
 
@@ -2313,8 +3771,10 @@ function onCanvasUpdateBubble(
 }
 
 function applySlantPreset(preset: ComicPanelSlantPreset): void {
+  const panel = selectedPanel.value
+  if (!panel) return
   const offsets = slantPresetToCornerOffsets(preset)
-  patchSelectedPanel({ cornerOffsets: offsets })
+  commit(couplePanelCornerOffsets(page.value, panel.id, offsets))
 }
 
 function onPanelGridPos(key: 'row' | 'col', event: Event): void {
@@ -2342,7 +3802,19 @@ function patchSelectedBubble(patch: Partial<ComicSpeechBubble>, persistNow = tru
 function onMoveBubble(panelId: string, bubbleId: string, pos: { x: number; y: number }): void {
   selectedPanelId.value = panelId
   selectedBubbleId.value = bubbleId
-  commit(updateComicBubble(page.value, panelId, bubbleId, pos), { persist: false })
+  const panel = page.value.panels.find((p) => p.id === panelId)
+  const bubble = panel?.bubbles.find((b) => b.id === bubbleId)
+  const patch: Partial<ComicSpeechBubble> = { x: pos.x, y: pos.y }
+  // 当未手动锁定尾巴尖端时，根据气泡在分格内的象限自动翻转尾巴朝向，使其始终朝向分格中心角色区
+  if (bubble && bubble.tailTipX === undefined && bubble.tailTipY === undefined) {
+    const curTail = bubble.tail ?? 'bl'
+    const curUp = curTail === 'tl' || curTail === 'tr'
+    const curLeft = curTail === 'tl' || curTail === 'bl'
+    const nextUp = pos.y > 0.62 ? true : pos.y < 0.48 ? false : curUp
+    const nextLeft = pos.x > 0.56 ? true : pos.x < 0.44 ? false : curLeft
+    patch.tail = nextUp ? (nextLeft ? 'tl' : 'tr') : nextLeft ? 'bl' : 'br'
+  }
+  commit(updateComicBubble(page.value, panelId, bubbleId, patch), { persist: false })
 }
 
 function onResizePanel(panelId: string, span: { colSpan: number; rowSpan: number }): void {
@@ -2420,6 +3892,70 @@ function onGlobalKeyDown(e: KeyboardEvent): void {
       e.preventDefault()
       deleteCurrentSelection()
     }
+    return
+  }
+  if (e.key === 'PageUp' || e.key === 'PageDown') {
+    const pages = graphComicPageNodes.value
+    if (pages.length > 1) {
+      e.preventDefault()
+      const curIdx = pages.findIndex((item) => item.id === activeNodeId.value)
+      const delta = e.key === 'PageDown' ? 1 : -1
+      const nextIdx = ((curIdx >= 0 ? curIdx : 0) + delta + pages.length) % pages.length
+      const nextNode = pages[nextIdx]
+      if (nextNode) {
+        switchActiveComicPageNode(nextNode.id)
+      }
+    }
+    return
+  }
+  if (e.key === 'Tab') {
+    const ordered = readingOrderPanels(page.value)
+    if (ordered.length > 0) {
+      e.preventDefault()
+      const curIdx = ordered.findIndex((p) => p.id === selectedPanelId.value)
+      const delta = e.shiftKey ? -1 : 1
+      const nextIdx =
+        curIdx < 0
+          ? e.shiftKey
+            ? ordered.length - 1
+            : 0
+          : (curIdx + delta + ordered.length) % ordered.length
+      const targetPanel = ordered[nextIdx]
+      if (targetPanel) {
+        selectedPanelId.value = targetPanel.id
+        selectedBubbleId.value = null
+      }
+    }
+    return
+  }
+  if (
+    e.key === 'ArrowUp' ||
+    e.key === 'ArrowDown' ||
+    e.key === 'ArrowLeft' ||
+    e.key === 'ArrowRight'
+  ) {
+    if (selectedPanelId.value && selectedBubble.value) {
+      e.preventDefault()
+      const step = e.shiftKey ? 0.04 : 0.01
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      const nextX = Number(Math.max(0.04, Math.min(0.96, selectedBubble.value.x + dx)).toFixed(3))
+      const nextY = Number(Math.max(0.04, Math.min(0.96, selectedBubble.value.y + dy)).toFixed(3))
+      patchSelectedBubble({ x: nextX, y: nextY })
+      return
+    }
+    if (selectedPanel.value) {
+      e.preventDefault()
+      const step = e.shiftKey ? 0.06 : 0.02
+      const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0
+      const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0
+      const curPanX = selectedPanel.value.imagePanX ?? 0
+      const curPanY = selectedPanel.value.imagePanY ?? 0
+      const nextPanX = Number(Math.max(-1, Math.min(1, curPanX + dx)).toFixed(2))
+      const nextPanY = Number(Math.max(-1, Math.min(1, curPanY + dy)).toFixed(2))
+      patchSelectedPanel({ imagePanX: nextPanX, imagePanY: nextPanY })
+      return
+    }
   }
 }
 
@@ -2436,6 +3972,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopAnimaticPreview(false)
   window.removeEventListener('keydown', onGlobalKeyDown)
   releaseDiveHistory?.()
   releaseDiveHistory = null
@@ -2496,6 +4033,14 @@ onBeforeUnmount(() => {
 .tb-btn--icon {
   padding: 5px 8px;
   font-weight: 700;
+}
+.page-switcher-group {
+  gap: 4px;
+}
+.tb-btn--page {
+  padding: 4px 8px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 .tb-btn--active {
   color: var(--accent);

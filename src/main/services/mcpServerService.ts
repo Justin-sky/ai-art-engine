@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -10,16 +11,27 @@ import {
   writeFileSync,
   rmSync
 } from 'node:fs'
-import { isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
+import {
+  buildGameBundleManifest,
+  buildGameDataTableBundle,
+  buildSeamlessLoopBgmFfmpegArgs,
+  buildSfxVariantFfmpegArgs,
+  generateEngineImporterScript,
+  planSfxVariantMatrix,
+  type GameBundleInputItem,
+  type GameBundleTargetEngine,
+  type GameDataTableInput
+} from '@shared/gameAssets'
 import {
   BLENDER_MCP_PATH,
   blenderToolAccessOf,
   blenderToolDescriptors,
   blenderToolSpec
 } from '@shared/blenderMcp'
-import type { AssetInfo } from '@shared/domain'
+import { isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   denialReasonForTool,
   isToolVisible,
@@ -51,6 +63,7 @@ import {
   type McpGraphEditOp,
   contentEndSecOfTimeline,
   readScriptTimelineFromGenParams,
+  withScriptTimeline,
   type GraphRunLogApiCall,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
@@ -204,6 +217,8 @@ import {
 } from '@shared/gamePlayJob'
 import { defaultAssetName } from '@shared/domain'
 import { exportScriptTimeline, renderTimelineFrames } from './timelineExportService'
+import { findFfmpegBin } from './videoFrameService'
+import { runFfmpeg } from './ffmpegRunner'
 import {
   isScreenRecording,
   patchScreenRecordingHud,
@@ -1570,10 +1585,21 @@ const TOOL_DEFS: McpToolDef[] = [
       if (args.apply !== true || !plan.cuts.length) {
         return { applied: false, ...summary }
       }
+      const nextDoc = { ...doc, clips: plan.clips }
+      if (isDraftAssetId(assetId)) {
+        const snapshot = getOrEnsureDraftCanvasSnapshot(assetId, {
+          name: asset.name,
+          type: asset.type
+        })
+        uiDraftCanvasCache.set(assetId, {
+          ...snapshot,
+          genParams: withScriptTimeline(snapshot.genParams, nextDoc, nodeId)
+        })
+      }
       await runRenderJob('timeline-document-apply', {
         assetId,
         ...(nodeId ? { nodeId } : {}),
-        document: { ...doc, clips: plan.clips }
+        document: nextDoc
       })
       return { applied: true, ...summary }
     }
@@ -1827,6 +1853,16 @@ const TOOL_DEFS: McpToolDef[] = [
       const changed = result.added + result.updated + result.removed > 0 || hasSettingsPatch
       if (args.apply === false || !changed) {
         return { applied: false, ...summary }
+      }
+      if (isDraftAssetId(assetId)) {
+        const snapshot = getOrEnsureDraftCanvasSnapshot(assetId, {
+          name: asset.name,
+          type: asset.type
+        })
+        uiDraftCanvasCache.set(assetId, {
+          ...snapshot,
+          genParams: withScriptTimeline(snapshot.genParams, result.document, nodeId)
+        })
       }
       await runRenderJob('timeline-document-apply', {
         assetId,
@@ -2447,9 +2483,25 @@ const TOOL_DEFS: McpToolDef[] = [
     },
     handler: (args) => {
       assertProjectOpen()
-      const asset = resolveOrEnsureCanvasAsset(optionalString(args, 'assetId'), {
+      const rawAssetId = optionalString(args, 'assetId')
+      const trimmed = rawAssetId?.trim() ?? ''
+      const asset = resolveOrEnsureCanvasAsset(rawAssetId, {
         autoCreateCanvas: false
       })
+      if (
+        !asset &&
+        uiActiveCanvasAssetId === null &&
+        (!trimmed || trimmed === 'current' || trimmed === 'active')
+      ) {
+        return {
+          assetId: null,
+          assetName: '(当前左侧未打开画布)',
+          nodeCount: 0,
+          edgeCount: 0,
+          nodes: [],
+          edges: []
+        }
+      }
       const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
         GraphDocument | undefined
       if (!asset || !graphJson || !Array.isArray(graphJson.nodes)) {
@@ -2694,11 +2746,19 @@ const TOOL_DEFS: McpToolDef[] = [
       })
       const openEditor = args.openEditor !== undefined ? args.openEditor === true : hasGraphNodeOp
       const asset = normalizedRawAssetId
-        ? projectService.listAssets().find((item) => item.id === normalizedRawAssetId)
+        ? isDraftAssetId(normalizedRawAssetId)
+          ? getOrEnsureDraftCanvasSnapshot(normalizedRawAssetId)
+          : projectService.listAssets().find((item) => item.id === normalizedRawAssetId)
         : undefined
-      // 未显式指定 assetId 时传空串给渲染层：若左侧已打开画布则作用于当前画布，若未打开任何画布则由渲染层自动新建并打开新自由画布
-      const assetId = normalizedRawAssetId || asset?.id || ''
-      if (normalizedRawAssetId && hasGraphNodeOp) {
+      // 未显式指定 assetId 时：若左侧已打开画布（含 draft 草稿）则锁定当前画布；若本轮已新建过画布则继续复用；若左侧未打开任何画布则传空串由渲染层自动新建并打开新自由画布
+      const fallbackActiveAssetId =
+        typeof uiActiveCanvasAssetId === 'string' && uiActiveCanvasAssetId
+          ? uiActiveCanvasAssetId
+          : uiActiveCanvasAssetId === null && lastMcpGraphEditTarget?.assetId
+            ? lastMcpGraphEditTarget.assetId
+            : ''
+      const assetId = normalizedRawAssetId || asset?.id || fallbackActiveAssetId
+      if (normalizedRawAssetId && hasGraphNodeOp && !isDraftAssetId(normalizedRawAssetId)) {
         const genParams = asset?.genParams as Record<string, unknown> | undefined
         const graphJson = genParams?.graphJson as GraphDocument | undefined
         const hasElementGraphs = Boolean(
@@ -2734,6 +2794,22 @@ const TOOL_DEFS: McpToolDef[] = [
               ''
             const touchedNodeIds = report.nodeIds ?? []
             if (resolvedAssetId) {
+              if (isDraftAssetId(resolvedAssetId)) {
+                const draftAsset = getOrEnsureDraftCanvasSnapshot(resolvedAssetId)
+                const prevGraph = ((draftAsset.genParams as Record<string, unknown> | undefined)
+                  ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
+                const editRes = applyGraphEditOps(prevGraph, rawOps as McpGraphEditOp[], {
+                  ...(autoLayout !== undefined ? { autoLayout } : {})
+                })
+                uiDraftCanvasCache.set(resolvedAssetId, {
+                  ...draftAsset,
+                  genParams: {
+                    ...(draftAsset.genParams ?? {}),
+                    graphJson: editRes.graph
+                  }
+                })
+              }
+              uiActiveCanvasAssetId = resolvedAssetId
               lastMcpGraphEditTarget = {
                 assetId: resolvedAssetId,
                 nodeIds: touchedNodeIds
@@ -4465,7 +4541,10 @@ const TOOL_DEFS: McpToolDef[] = [
 
       assertProjectOpen()
       const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
-      const targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, { autoCreateCanvas: true })
+      const targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, {
+        autoCreateCanvas: true,
+        preferUiActiveCanvas: true
+      })
       if (!targetCanvas) {
         throw new Error('无法定位或创建目标画布资产')
       }
@@ -4501,19 +4580,37 @@ const TOOL_DEFS: McpToolDef[] = [
         const curName = (targetCanvas.name ?? '').trim()
         if (
           bundle.title?.trim() &&
-          (!curName || /^(新画布|未命名|New\s*Canvas|Untitled)/i.test(curName))
+          (!curName || /^(新画布|新建画布|未命名|New\s*Canvas|Untitled)/i.test(curName))
         ) {
-          const prevGen = (targetCanvas.genParams ?? {}) as Record<string, unknown>
-          const cleanGen: Record<string, unknown> = {}
-          for (const [k, v] of Object.entries(prevGen)) {
-            if (!k.startsWith('scriptTimeline')) cleanGen[k] = v
+          if (isDraftAssetId(targetCanvas.id)) {
+            ops.push({
+              op: 'asset_update',
+              targetAssetId: targetCanvas.id,
+              name: bundle.title.trim()
+            } as unknown as McpGraphEditOp)
+            const prevGen = (targetCanvas.genParams ?? {}) as Record<string, unknown>
+            const cleanGen: Record<string, unknown> = {}
+            for (const [k, v] of Object.entries(prevGen)) {
+              if (!k.startsWith('scriptTimeline')) cleanGen[k] = v
+            }
+            uiDraftCanvasCache.set(targetCanvas.id, {
+              ...targetCanvas,
+              name: bundle.title.trim(),
+              genParams: cleanGen
+            })
+          } else {
+            const prevGen = (targetCanvas.genParams ?? {}) as Record<string, unknown>
+            const cleanGen: Record<string, unknown> = {}
+            for (const [k, v] of Object.entries(prevGen)) {
+              if (!k.startsWith('scriptTimeline')) cleanGen[k] = v
+            }
+            const renamed = projectService.updateAsset({
+              ...targetCanvas,
+              name: bundle.title.trim(),
+              genParams: cleanGen
+            })
+            broadcastToAllWindows(IpcChannels.ASSET_UPDATED, renamed)
           }
-          const renamed = projectService.updateAsset({
-            ...targetCanvas,
-            name: bundle.title.trim(),
-            genParams: cleanGen
-          })
-          broadcastToAllWindows(IpcChannels.ASSET_UPDATED, renamed)
         }
       }
       for (const spec of plan.nodes) {
@@ -4573,7 +4670,27 @@ const TOOL_DEFS: McpToolDef[] = [
         pendingMcpGraphEditResults.delete(requestId)
       }
 
-      if (!handledByRenderer) {
+      if (isDraftAssetId(resolvedAssetId)) {
+        const latestDraft = getOrEnsureDraftCanvasSnapshot(resolvedAssetId, {
+          name: uiDraftCanvasCache.get(resolvedAssetId)?.name ?? targetCanvas.name,
+          type: targetCanvas.type
+        })
+        const latestGraph = ((latestDraft.genParams as Record<string, unknown> | undefined)
+          ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
+        const editRes = applyGraphEditOps(latestGraph, ops, { autoLayout: true })
+        uiDraftCanvasCache.set(resolvedAssetId, {
+          ...latestDraft,
+          genParams: {
+            ...(latestDraft.genParams ?? {}),
+            graphJson: editRes.graph
+          }
+        })
+        if (!handledByRenderer) {
+          applied = editRes.applied
+          warnings = editRes.warnings
+          if (editRes.touchedNodeIds?.length) touchedNodeIds = editRes.touchedNodeIds
+        }
+      } else if (!handledByRenderer) {
         const latestAsset = findAssetOrThrow(targetCanvas.id)
         const latestGraph = ((latestAsset.genParams as Record<string, unknown> | undefined)
           ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
@@ -4591,6 +4708,7 @@ const TOOL_DEFS: McpToolDef[] = [
         if (editRes.touchedNodeIds?.length) touchedNodeIds = editRes.touchedNodeIds
       }
 
+      uiActiveCanvasAssetId = resolvedAssetId
       lastMcpGraphEditTarget = {
         assetId: resolvedAssetId,
         nodeIds: touchedNodeIds
@@ -4608,6 +4726,505 @@ const TOOL_DEFS: McpToolDef[] = [
         applied,
         warnings,
         hint: '种子拓扑与连线已就绪！这只是起点骨架：你现在可以随时用 graph_edit（node_upsert / edge_connect / node_delete）自由增删扩展节点（例如跨技能加入 svg.gen->svg.anim 动态图形、image.process 抠图、asset.voice 配音等），或用 timeline_edit（含 pitchSemitones 半音爬音、voiceEffect 变声、1/4与1/8拍切片）精编成片。'
+      }
+    }
+  },
+  {
+    name: 'game_tile_pbr_process',
+    title: '游戏瓦片无缝拼接与PBR贴图派生 / Tile Seamless & PBR & 9-Slice',
+    description:
+      '对 2D/3D 游戏贴图或 UI 资产执行本地工程化处理：1) makeSeamless=true 将地表/背景纹理处理为 100% 零接缝平铺贴图（C1 平滑正弦对偶混合）；2) derivePbr=true 由单张颜色图派生 Normal（法线，支持 OpenGL/DirectX）、Roughness（粗糙度）、Height（高度）、AO（环境光遮蔽）、Metallic（金属度）与 glTF 标准 ORM 打包贴图；3) detectNineSlice=true 自动检测 UI 面板/按钮的 9-Slice 九宫格拉伸边距并输出 Godot/Unity/CSS 配置；4) autoTileLayout 生成 grid3x3 / wang16 / blob47 Auto-Tile 掩码图集清单。产物自动落入工程 Assets/GameAssets/ 并登记入库。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '源图片资产 ID（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内源图片相对路径（与 assetId 二选一）' },
+        makeSeamless: { type: 'boolean', description: '是否执行无缝平铺边缘融合（默认 false）' },
+        blendRatio: {
+          type: 'number',
+          description: '无缝边缘融合带比例（0.02~0.45，默认 0.18）'
+        },
+        wrapX: { type: 'boolean', description: '水平方向是否无缝闭合（默认 true）' },
+        wrapY: { type: 'boolean', description: '垂直方向是否无缝闭合（默认 true）' },
+        derivePbr: {
+          type: 'boolean',
+          description: '是否派生 PBR 材质贴图（Normal / Roughness / AO / ORM 等，默认 false）'
+        },
+        pbrMaps: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['normal', 'roughness', 'height', 'ao', 'metallic', 'orm']
+          },
+          description: '需保存的 PBR 贴图通道列表（默认 ["normal","roughness","ao","orm"]）'
+        },
+        normalFormat: {
+          type: 'string',
+          enum: ['opengl', 'directx'],
+          description: '法线绿通道方向：opengl (+Y, Unity/Godot/Blender) 或 directx (-Y, Unreal)'
+        },
+        normalStrength: { type: 'number', description: '法线凹凸强度（0.2~12，默认 2.5）' },
+        roughnessContrast: { type: 'number', description: '粗糙度对比度（0.2~3，默认 1.2）' },
+        aoStrength: { type: 'number', description: 'AO 环境光遮蔽强度（0~2，默认 0.85）' },
+        metallicScale: { type: 'number', description: '金属度基准缩放（0~2，默认 0.25）' },
+        detectNineSlice: {
+          type: 'boolean',
+          description: '是否自动检测 UI 九宫格拉伸切线并生成 <name>_9slice.json（默认 false）'
+        },
+        colorTolerance: {
+          type: 'number',
+          description: '九宫格中心平铺区色差容忍度（2~80，默认 14）'
+        },
+        autoTileLayout: {
+          type: 'string',
+          enum: ['grid3x3', 'wang16', 'blob47'],
+          description: '若指定则生成对应規格的 Auto-Tile 掩码图集清单 <name>_autotile.json'
+        },
+        tileWidth: { type: 'number', description: 'Auto-Tile 单格像素宽度（默认 64）' },
+        tileHeight: { type: 'number', description: 'Auto-Tile 单格像素高度（默认 64）' },
+        extractPhysicsHull: {
+          type: 'boolean',
+          description:
+            '是否自动从 Alpha 通道提取 2D 碰撞多边形（CollisionPolygon2D / PolygonCollider2D）及攻防判定框（Hurtbox / Hitbox / GroundSensor），输出 <name>_physics.json（默认 false）'
+        },
+        maxHullVertices: {
+          type: 'number',
+          description: '碰撞多边形最大顶点数（4~24，默认 8）'
+        },
+        physicsPivot: {
+          type: 'string',
+          enum: ['bottom_center', 'center', 'top_left'],
+          description: '碰撞多边形原点锚定方式（默认 "bottom_center" 脚底中心）'
+        },
+        outputDir: {
+          type: 'string',
+          description: '输出目录（必须以 Assets/ 开头，缺省为 Assets/GameAssets/<资产名>）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const assetId = optionalString(args, 'assetId')?.trim()
+      const relativePath = optionalString(args, 'relativePath')?.trim()
+      if (!assetId && !relativePath) {
+        throw new Error('请提供 assetId 或 relativePath')
+      }
+      if (assetId && !isDraftAssetId(assetId)) {
+        findAssetOrThrow(assetId)
+      }
+      const res = (await runRenderJob('game-tile-pbr-process', args)) as Record<string, unknown>
+      const savedPaths = Array.isArray(res?.savedPaths) ? (res.savedPaths as string[]) : []
+      const mcpImages = readVisualCheckImagesForRelativePaths(savedPaths, 3)
+      return {
+        ...res,
+        ...(mcpImages.length ? { mcpImages } : {})
+      }
+    }
+  },
+  {
+    name: 'game_audio_variants',
+    title: '游戏音效变体矩阵与BGM无缝循环 / Game SFX Variants & Seamless BGM',
+    description:
+      '使用本地 FFmpeg 对游戏音频资产执行工程化后处理：mode="sfx_variants" 自动裁切首尾静音（确保游戏内 0ms 瞬发响应），并按半音音高、速度与高频明暗度批量生成 N 组防听觉疲劳的随机变体音效（如脚步、挥砍、受击、射击、UI点击）；mode="bgm_loop" 采用相位连续交叉淡化（acrossfade）将单条 BGM 音乐处理为首尾严丝合缝的无限循环音轨。产物自动导入资产库。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: '源音频资产 ID（与 relativePath 二选一）' },
+        relativePath: { type: 'string', description: '工程内源音频相对路径（与 assetId 二选一）' },
+        mode: {
+          type: 'string',
+          enum: ['sfx_variants', 'bgm_loop'],
+          description:
+            '处理模式：sfx_variants（生成防疲劳音效变体组）或 bgm_loop（生成无缝循环BGM）'
+        },
+        count: {
+          type: 'number',
+          description: 'sfx_variants 模式下生成的变体数量（1~12，默认 4）'
+        },
+        pitchSpreadSemitones: {
+          type: 'number',
+          description: 'sfx_variants 最大半音偏移幅度（0.2~6，默认 1.8）'
+        },
+        tempoSpread: {
+          type: 'number',
+          description: 'sfx_variants 速度微调幅度（0~0.2，默认 0.06）'
+        },
+        timbreSpreadDb: {
+          type: 'number',
+          description: 'sfx_variants 高频明暗度微调幅度 dB（0~4，默认 1.6）'
+        },
+        trimSilence: {
+          type: 'boolean',
+          description: 'sfx_variants 是否自动裁切首尾静音实现 0ms 瞬发响应（默认 true）'
+        },
+        crossfadeSec: {
+          type: 'number',
+          description: 'bgm_loop 模式下首尾交叉淡化时长（秒，0.5~10，默认 2.5）'
+        },
+        folderId: {
+          type: 'string',
+          description: '可选：导入资产库的目标文件夹 ID'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { relativePath, assetId } = resolveProjectRelativePath(args, '音频')
+      const root = projectService.getRoot()
+      const inputAbs = join(root, relativePath)
+      if (!existsSync(inputAbs)) {
+        throw new Error(`源音频文件不存在：${relativePath}`)
+      }
+      const folderId = optionalString(args, 'folderId') ?? null
+      assertFolderExists(folderId)
+
+      const mode = optionalString(args, 'mode') === 'bgm_loop' ? 'bgm_loop' : 'sfx_variants'
+      const ffmpegBin = findFfmpegBin()
+      const ext = extname(inputAbs).toLowerCase() || '.mp3'
+      const rawStem =
+        basename(inputAbs, ext)
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'audio'
+
+      const cacheRelDir = `Cache/GameAudio/${rawStem}_${Date.now().toString(36)}`
+      const cacheAbsDir = join(root, cacheRelDir)
+      mkdirSync(cacheAbsDir, { recursive: true })
+
+      if (mode === 'bgm_loop') {
+        const crossfadeSec = optionalNumber(args, 'crossfadeSec') ?? 2.5
+        const outFileName = `${rawStem}_loop${ext}`
+        const outRelPath = `${cacheRelDir}/${outFileName}`
+        const outAbsPath = join(root, outRelPath)
+        const ffArgs = buildSeamlessLoopBgmFfmpegArgs(inputAbs, outAbsPath, { crossfadeSec })
+        await runFfmpeg(ffmpegBin, ffArgs, undefined, { timeoutMs: 120_000 })
+        const savedAsset = projectService.saveProjectAsset({
+          relativePath: outRelPath,
+          name: `${rawStem}_loop`,
+          folderId
+        })
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, savedAsset)
+        return {
+          mode: 'bgm_loop',
+          sourceAssetId: assetId,
+          sourceRelativePath: relativePath,
+          crossfadeSec,
+          asset: {
+            id: savedAsset.id,
+            name: savedAsset.name,
+            relativePath: savedAsset.relativePath
+          }
+        }
+      }
+
+      const specs = planSfxVariantMatrix({
+        count: optionalNumber(args, 'count') ?? 4,
+        pitchSpreadSemitones: optionalNumber(args, 'pitchSpreadSemitones') ?? 1.8,
+        tempoSpread: optionalNumber(args, 'tempoSpread') ?? 0.06,
+        timbreSpreadDb: optionalNumber(args, 'timbreSpreadDb') ?? 1.6
+      })
+      const trimSilence = args.trimSilence !== false
+      const createdAssets: Array<{
+        id: string
+        name: string
+        relativePath: string
+        variantId: string
+        semitoneOffset: number
+        pitchRatio: number
+        tempoRatio: number
+        trebleGainDb: number
+      }> = []
+
+      for (const spec of specs) {
+        const outFileName = `${rawStem}_${spec.variantId}${ext}`
+        const outRelPath = `${cacheRelDir}/${outFileName}`
+        const outAbsPath = join(root, outRelPath)
+        const ffArgs = buildSfxVariantFfmpegArgs(inputAbs, outAbsPath, spec, { trimSilence })
+        await runFfmpeg(ffmpegBin, ffArgs, undefined, { timeoutMs: 60_000 })
+        const savedAsset = projectService.saveProjectAsset({
+          relativePath: outRelPath,
+          name: `${rawStem}_${spec.variantId}`,
+          folderId
+        })
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, savedAsset)
+        createdAssets.push({
+          id: savedAsset.id,
+          name: savedAsset.name,
+          relativePath: savedAsset.relativePath,
+          variantId: spec.variantId,
+          semitoneOffset: spec.semitoneOffset,
+          pitchRatio: spec.pitchRatio,
+          tempoRatio: spec.tempoRatio,
+          trebleGainDb: spec.trebleGainDb
+        })
+      }
+
+      return {
+        mode: 'sfx_variants',
+        sourceAssetId: assetId,
+        sourceRelativePath: relativePath,
+        trimSilence,
+        count: createdAssets.length,
+        variants: createdAssets
+      }
+    }
+  },
+  {
+    name: 'game_bundle_export',
+    title: '独立游戏全品类工程包导出 / Game Engine Bundle Export',
+    description:
+      '将当前工程中的游戏资产（2D 精灵、序列帧/VFX 特效、无缝瓦片、UI 九宫格、PBR 贴图、3D GLB/FBX 模型、Spine 骨骼包、BGM 循环音乐、SFX 音效变体、角色语音）按目标游戏引擎（godot / unity / cocos / web / generic）规范整理导出到工程 Output/GameBundles/<bundleName>/（或指定相对目录），并生成包含完整分类映射与引擎导入指南的 game-asset-manifest.json。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        bundleName: {
+          type: 'string',
+          description: '导出工程包名称（默认 "indie-game-bundle"）'
+        },
+        targetEngine: {
+          type: 'string',
+          enum: ['godot', 'unity', 'cocos', 'web', 'generic'],
+          description: '目标游戏引擎目录规范（默认 "godot"）'
+        },
+        assetIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '要打包的资产 ID 列表；不传则自动收集当前工程中所有可用媒体/3D模型/音频资产'
+        },
+        extraRelativePaths: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            '额外附带打包的工程内相对文件路径（如 Spine .skel/.atlas、_9slice.json、_autotile.json）'
+        },
+        outputRelativeDir: {
+          type: 'string',
+          description: '导出目标相对目录（默认 "Output/GameBundles/<bundleName>"）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const bundleName =
+        (optionalString(args, 'bundleName') || 'indie-game-bundle')
+          .trim()
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'indie-game-bundle'
+      const rawEngine = optionalString(args, 'targetEngine')?.toLowerCase() ?? 'godot'
+      const targetEngine: GameBundleTargetEngine =
+        rawEngine === 'godot' ||
+        rawEngine === 'unity' ||
+        rawEngine === 'cocos' ||
+        rawEngine === 'web'
+          ? rawEngine
+          : 'generic'
+
+      const requestedIds = readStringList(args, 'assetIds')
+      const extraRelPaths = readStringList(args, 'extraRelativePaths')
+      const allAssets = projectService.listAssets()
+
+      const selectedAssets = requestedIds.length
+        ? requestedIds.map((id) => findAssetOrThrow(id))
+        : allAssets.filter(
+            (a) =>
+              Boolean(a.relativePath?.trim()) &&
+              (a.type === 'image' ||
+                a.type === 'voice' ||
+                a.type === 'model' ||
+                a.type === 'model3d' ||
+                a.type === 'video')
+          )
+
+      const items: GameBundleInputItem[] = []
+      for (const asset of selectedAssets) {
+        const rel = normalizeProjectRelativePath(asset.relativePath ?? '')
+        if (!rel) continue
+        const abs = join(root, rel)
+        if (!existsSync(abs)) continue
+        items.push({
+          id: asset.id,
+          name: asset.name,
+          sourcePath: rel,
+          type: asset.type
+        })
+      }
+
+      for (const rawExtra of extraRelPaths) {
+        const rel = normalizeProjectRelativePath(rawExtra)
+        if (!rel) continue
+        const abs = join(root, rel)
+        if (!existsSync(abs)) continue
+        const name = basename(rel, extname(rel))
+        items.push({
+          id: `file:${rel}`,
+          name,
+          sourcePath: rel
+        })
+      }
+
+      const manifest = buildGameBundleManifest({
+        bundleName,
+        targetEngine,
+        items
+      })
+
+      const rawOutDir = optionalString(args, 'outputRelativeDir')?.trim()
+      const outRelDir =
+        (rawOutDir ? normalizeProjectRelativePath(rawOutDir) : null) ||
+        `Output/GameBundles/${bundleName}`
+      const outAbsDir = join(root, outRelDir)
+      mkdirSync(outAbsDir, { recursive: true })
+
+      let copiedFiles = 0
+      for (const mapped of manifest.assets) {
+        const srcAbs = join(root, mapped.sourcePath)
+        const destAbs = join(outAbsDir, mapped.bundleRelativePath)
+        mkdirSync(dirname(destAbs), { recursive: true })
+        copyFileSync(srcAbs, destAbs)
+        copiedFiles++
+      }
+
+      const manifestRelPath = `${outRelDir}/game-asset-manifest.json`
+      const manifestAbsPath = join(outAbsDir, 'game-asset-manifest.json')
+      writeFileSync(manifestAbsPath, JSON.stringify(manifest, null, 2), 'utf8')
+
+      const importerScript = generateEngineImporterScript(manifest)
+      const importerRelPath = `${outRelDir}/${importerScript.relativePath}`
+      const importerAbsPath = join(outAbsDir, importerScript.relativePath)
+      mkdirSync(dirname(importerAbsPath), { recursive: true })
+      writeFileSync(importerAbsPath, importerScript.content, 'utf8')
+
+      return {
+        ok: true,
+        bundleName,
+        targetEngine,
+        outputRelativeDir: outRelDir,
+        manifestRelativePath: manifestRelPath,
+        importerScript: {
+          relativePath: importerRelPath,
+          language: importerScript.language,
+          description: importerScript.description
+        },
+        totalAssets: manifest.totalAssets,
+        copiedFiles,
+        countsByCategory: manifest.countsByCategory,
+        engineConventions: manifest.engineConventions,
+        assets: manifest.assets
+      }
+    }
+  },
+  {
+    name: 'game_data_table_generate',
+    title: '全品类游戏数值配表与多语言本地化生成 / Game Data Tables & Localization CSV',
+    description:
+      '生成全品类独立游戏结构化数值表、分支剧情对白树与多语言翻译表（RFC-4180 标准 CSV + JSON）：支持角色属性表（characters）、技能与特效绑定表（skills）、道具掉落表（items）、DBG 卡牌表（cards）、肉鸽怪物波次表（waves）与 AVG 分支对白树（dialogues），自动提取全部文本生成 Godot 4 / Unity 可直读的多语言翻译表 localization.csv（key,zh-CN,en-US,ja-JP），落盘至 Assets/GameData/<tableName>/。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tableName: {
+          type: 'string',
+          description: '配表集合名称（默认 "game_database"）'
+        },
+        genre: {
+          type: 'string',
+          description: '所属游戏品类（如 "rpg", "roguelike", "card_dbg", "avg", "slg"）'
+        },
+        characters: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            '角色/怪物属性行数组：[{ id, name, nameEn, nameJa, role, hp, mp, atk, def, spd, critRate, spriteAsset, voiceAsset, description }]'
+        },
+        skills: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            '技能行数组：[{ id, name, nameEn, element, manaCost, cooldownSec, damageMultiplier, vfxAsset, sfxAsset, description }]'
+        },
+        items: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            '道具/遗物行数组：[{ id, name, nameEn, category, rarity, price, stackLimit, iconAsset, effect }]'
+        },
+        cards: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            '卡牌构筑行数组：[{ id, name, nameEn, cost, cardType, rarity, damage, block, illustAsset, frameAsset, description }]'
+        },
+        waves: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            '肉鸽/塔防刷怪波次数组：[{ waveIndex, durationSec, spawnIntervalSec, enemyId, count, eliteOrBossId }]'
+        },
+        dialogues: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            'AVG/RPG 分支对白节点数组：[{ id, speaker, portraitAsset, expression, voiceAsset, text, textEn, textJa, nextId, choices: [{ label, targetId, condition, setFlag }] }]'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const root = projectService.getRoot()
+      const rawName =
+        (optionalString(args, 'tableName') || 'game_database')
+          .trim()
+          .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'game_database'
+
+      const bundle = buildGameDataTableBundle({
+        tableName: rawName,
+        genre: optionalString(args, 'genre') ?? 'all-genre',
+        characters: Array.isArray(args.characters)
+          ? (args.characters as GameDataTableInput['characters'])
+          : undefined,
+        skills: Array.isArray(args.skills)
+          ? (args.skills as GameDataTableInput['skills'])
+          : undefined,
+        items: Array.isArray(args.items) ? (args.items as GameDataTableInput['items']) : undefined,
+        cards: Array.isArray(args.cards) ? (args.cards as GameDataTableInput['cards']) : undefined,
+        waves: Array.isArray(args.waves) ? (args.waves as GameDataTableInput['waves']) : undefined,
+        dialogues: Array.isArray(args.dialogues)
+          ? (args.dialogues as GameDataTableInput['dialogues'])
+          : undefined
+      })
+
+      const outRelDir = `Assets/GameData/${rawName}`
+      const outAbsDir = join(root, outRelDir)
+      mkdirSync(outAbsDir, { recursive: true })
+
+      const writtenFiles: string[] = []
+      const jsonRelPath = `${outRelDir}/${rawName}.json`
+      writeFileSync(join(root, jsonRelPath), bundle.jsonText, 'utf8')
+      writtenFiles.push(jsonRelPath)
+
+      const locRelPath = `${outRelDir}/localization.csv`
+      writeFileSync(join(root, locRelPath), bundle.localizationCsv, 'utf8')
+      writtenFiles.push(locRelPath)
+
+      for (const [csvName, csvContent] of Object.entries(bundle.tableCsvs)) {
+        const csvRel = `${outRelDir}/${csvName}`
+        writeFileSync(join(root, csvRel), csvContent, 'utf8')
+        writtenFiles.push(csvRel)
+      }
+
+      return {
+        ok: true,
+        tableName: rawName,
+        genre: bundle.genre,
+        outputRelativeDir: outRelDir,
+        writtenFiles,
+        counts: {
+          characters: bundle.characters.length,
+          skills: bundle.skills.length,
+          items: bundle.items.length,
+          cards: bundle.cards.length,
+          waves: bundle.waves.length,
+          dialogues: bundle.dialogues.length,
+          localizationKeys: bundle.localization.length
+        }
       }
     }
   }
@@ -4791,19 +5408,124 @@ function readNumberList(args: Record<string, unknown>, key: string): number[] {
 let lastMcpGraphEditTarget: { assetId: string; nodeIds: string[] } | null = null
 
 /**
- * 解析或按需创建当前工程的宿主画布资产：
- * - 若显式传入 assetId（且非 current / active），按 id 查找；
- * - 若缺省，优先复用最近一次 graph_edit 触达的画布资产，其次选工程内已有的自由画布（canvas）或任意含 graphJson 的宿主资产；
- * - 若工程内尚无任何画布资产且 autoCreateCanvas=true，自动新建并广播一个自由画布资产，确保无需预建即可直接在画布上建节点并实时执行。
+ * 渲染层当前打开在左侧窗口的画布资产 ID：
+ * - `string`：左侧当前打开的画布资产 ID（包含已落盘资产或 `draft:<uuid>` 内存草稿画布）
+ * - `null`：左侧当前明确未打开任何画布（`Left Window Active Editor: None`）
+ * - `undefined`：尚未收到前端画布上下文同步（如纯外部 MCP 客户端直连或单测）
  */
-function resolveOrEnsureCanvasAsset(
+let uiActiveCanvasAssetId: string | null | undefined = undefined
+
+/** 渲染层内存草稿画布（`draft:<uuid>`）的轻量镜像缓存，供主进程 MCP 工具在不强制落盘的情况下读写当前打开的草稿画布 */
+const uiDraftCanvasCache = new Map<string, AssetInfo>()
+
+function getOrEnsureDraftCanvasSnapshot(
+  draftId: string,
+  meta?: { name?: string; type?: AssetInfo['type']; nodes?: GraphDocument['nodes'] }
+): AssetInfo {
+  const existing = uiDraftCanvasCache.get(draftId)
+  const prevGen = (existing?.genParams ?? {}) as Record<string, unknown>
+  const prevGraph: GraphDocument = (prevGen.graphJson as GraphDocument | undefined) ?? {
+    nodes: [],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 }
+  }
+  const nextGraph: GraphDocument = meta?.nodes
+    ? {
+        ...prevGraph,
+        nodes: meta.nodes,
+        edges: Array.isArray(prevGraph.edges) ? prevGraph.edges : [],
+        viewport: prevGraph.viewport ?? { x: 0, y: 0, zoom: 1 }
+      }
+    : prevGraph
+  const now = new Date().toISOString()
+  const snapshot: AssetInfo = {
+    id: draftId,
+    name: meta?.name?.trim() || existing?.name || '新建画布',
+    type: meta?.type ?? existing?.type ?? 'canvas',
+    relativePath: existing?.relativePath ?? '',
+    version: existing?.version ?? 1,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    genParams: {
+      ...prevGen,
+      graphJson: nextGraph
+    }
+  }
+  uiDraftCanvasCache.set(draftId, snapshot)
+  return snapshot
+}
+
+/**
+ * 从渲染层每轮对话上报的 `canvasContext`（`buildActiveWorkspaceContext`）同步左侧当前打开的画布状态：
+ * - 若左侧打开了画布（无论已保存资产还是 `draft:<uuid>` 新建草稿），锁定为当前活动画布；
+ * - 若左侧未打开任何画布（`Left Window Active Editor: None`），标记为 `null` 并清空陈旧的 `lastMcpGraphEditTarget`，
+ *   确保此时触发技能或建图工具会直接新建并打开一张新画布，绝不静默篡改后台已关闭的旧画布。
+ */
+export function syncActiveCanvasFromWorkspaceContext(canvasContext?: string): void {
+  const text = canvasContext?.trim() ?? ''
+  if (!text) {
+    uiActiveCanvasAssetId = undefined
+    return
+  }
+  const activeMatch =
+    /Active canvas asset:\s*"([^"]*)"\s*\(assetId:\s*"([^"]+)"(?:,\s*type:\s*([a-zA-Z0-9_-]+))?\)/i.exec(
+      text
+    )
+  if (activeMatch) {
+    const name = activeMatch[1]?.trim() || '新建画布'
+    const id = activeMatch[2]?.trim() || ''
+    const rawType = activeMatch[3]?.trim() as AssetInfo['type'] | undefined
+    if (id) {
+      uiActiveCanvasAssetId = id
+      if (isDraftAssetId(id)) {
+        const parsedNodes: GraphDocument['nodes'] = []
+        const nodeRegex = /^\s*\*\s+([^\s[\]]+)\s+\[([^\]]+)\]\s+"([^"]*)"/gm
+        let m: RegExpExecArray | null
+        while ((m = nodeRegex.exec(text)) !== null) {
+          const nodeId = m[1]?.trim()
+          const typeId = m[2]?.trim()
+          const title = m[3]?.trim()
+          if (nodeId && typeId) {
+            const def = getNodeType(typeId)
+            parsedNodes.push({
+              id: nodeId,
+              typeId,
+              category: def?.category ?? 'asset',
+              title: title || def?.label || typeId,
+              position: { x: 0, y: 0 },
+              params: def?.defaultParams ? def.defaultParams() : {}
+            })
+          }
+        }
+        getOrEnsureDraftCanvasSnapshot(id, {
+          name,
+          type: rawType || 'canvas',
+          nodes: parsedNodes
+        })
+      }
+      if (lastMcpGraphEditTarget?.assetId !== id) {
+        lastMcpGraphEditTarget = { assetId: id, nodeIds: [] }
+      }
+      return
+    }
+  }
+  if (/Left Window Active Editor:\s*None/i.test(text)) {
+    uiActiveCanvasAssetId = null
+    lastMcpGraphEditTarget = null
+  }
+}
+
+/**
+ * 解析或按需创建当前工程的宿主画布资产：
+ * - 若左侧窗口已打开画布（`uiActiveCanvasAssetId` 为非空字符串），技能注入与缺省画布操作严格优先定位当前打开的画布（含 `draft:<uuid>` 草稿画布）；
+ * - 若左侧窗口明确未打开任何画布（`uiActiveCanvasAssetId === null`），触发技能或建图时直接自动新建并打开新自由画布，绝不覆盖后台已关闭的旧画布；
+ * - 若未同步 UI 状态（外部 MCP 直连或单测），保留按显式 `assetId` / `lastMcpGraphEditTarget` / 工程现有画布回退。
+ */
+export function resolveOrEnsureCanvasAsset(
   rawAssetId: string | undefined,
-  options?: { autoCreateCanvas?: boolean }
+  options?: { autoCreateCanvas?: boolean; preferUiActiveCanvas?: boolean }
 ): AssetInfo | undefined {
   const trimmed = rawAssetId?.trim() ?? ''
-  if (trimmed && trimmed !== 'current' && trimmed !== 'active') {
-    return findAssetOrThrow(trimmed)
-  }
   const assets = projectService.listAssets()
   const hasGraphDoc = (item: AssetInfo | undefined): item is AssetInfo => {
     if (!item) return false
@@ -4811,10 +5533,67 @@ function resolveOrEnsureCanvasAsset(
       GraphDocument | undefined
     return Boolean(graphJson && Array.isArray(graphJson.nodes))
   }
+  const resolveById = (id: string): AssetInfo | undefined => {
+    if (isDraftAssetId(id)) {
+      return getOrEnsureDraftCanvasSnapshot(id)
+    }
+    return assets.find((item) => item.id === id)
+  }
+
+  // 技能工作流注入（preferUiActiveCanvas=true）：严格遵循左侧当前打开的画面，未打开画布则新建，避免被模型从资产列表里挑出的旧画布 ID 带偏
+  if (options?.preferUiActiveCanvas) {
+    if (typeof uiActiveCanvasAssetId === 'string' && uiActiveCanvasAssetId) {
+      const active = resolveById(uiActiveCanvasAssetId)
+      if (hasGraphDoc(active)) return active
+    }
+    if (uiActiveCanvasAssetId === null) {
+      if (lastMcpGraphEditTarget?.assetId) {
+        const recent = resolveById(lastMcpGraphEditTarget.assetId)
+        if (hasGraphDoc(recent)) return recent
+      }
+      if (options?.autoCreateCanvas) {
+        const created = projectService.createAsset({ type: 'canvas' })
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+        uiActiveCanvasAssetId = created.id
+        lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
+        return created
+      }
+      return undefined
+    }
+  }
+
+  if (trimmed && trimmed !== 'current' && trimmed !== 'active') {
+    if (isDraftAssetId(trimmed)) {
+      return getOrEnsureDraftCanvasSnapshot(trimmed)
+    }
+    return findAssetOrThrow(trimmed)
+  }
+
+  // 1. 优先取左侧当前打开的活动画布（含 draft 内存画布）
+  if (typeof uiActiveCanvasAssetId === 'string' && uiActiveCanvasAssetId) {
+    const active = resolveById(uiActiveCanvasAssetId)
+    if (hasGraphDoc(active)) return active
+  }
+
+  // 2. 其次复用当前回合已编辑/创建的画布
   if (lastMcpGraphEditTarget?.assetId) {
-    const recent = assets.find((item) => item.id === lastMcpGraphEditTarget?.assetId)
+    const recent = resolveById(lastMcpGraphEditTarget.assetId)
     if (hasGraphDoc(recent)) return recent
   }
+
+  // 3. 若左侧明确没有打开任何画布（uiActiveCanvasAssetId === null），绝不回退去改后台关闭的旧画布
+  if (uiActiveCanvasAssetId === null) {
+    if (options?.autoCreateCanvas) {
+      const created = projectService.createAsset({ type: 'canvas' })
+      broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+      uiActiveCanvasAssetId = created.id
+      lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
+      return created
+    }
+    return undefined
+  }
+
+  // 4. 无 UI 上下文时（如外部 MCP 直连或无头测试）：回退到工程内的画布资产
   const canvasAssets = assets
     .filter((item) => item.type === 'canvas' && hasGraphDoc(item))
     .sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
@@ -4828,6 +5607,8 @@ function resolveOrEnsureCanvasAsset(
   if (options?.autoCreateCanvas) {
     const created = projectService.createAsset({ type: 'canvas' })
     broadcastToAllWindows(IpcChannels.ASSET_UPDATED, created)
+    uiActiveCanvasAssetId = created.id
+    lastMcpGraphEditTarget = { assetId: created.id, nodeIds: [] }
     return created
   }
   return undefined
@@ -5038,9 +5819,11 @@ function readTimelineDoc(
 ): { asset: AssetInfo; nodeId?: string; doc: ScriptTimelineDocument } {
   const trimmed = rawAssetId?.trim() ?? ''
   const asset =
-    !trimmed || trimmed === 'current'
+    !trimmed || trimmed === 'current' || trimmed === 'active'
       ? resolveOrEnsureCanvasAsset(trimmed || undefined, { autoCreateCanvas: false })
-      : findAssetOrThrow(trimmed)
+      : isDraftAssetId(trimmed)
+        ? getOrEnsureDraftCanvasSnapshot(trimmed)
+        : findAssetOrThrow(trimmed)
   if (!asset) {
     throw new Error('未找到目标画布或剧本资产（请传入合法的 assetId）')
   }

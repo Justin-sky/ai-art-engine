@@ -1,4 +1,4 @@
-import type { AssetInfo } from '@shared/domain'
+import { isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   contentEndSecOfTimeline,
   parseComicPage,
@@ -11,6 +11,7 @@ import {
 } from '@shared/graph'
 import { formatNodeEditableSchemaSummary } from '../../editor/control/surfaceRegistry'
 import { useEditorKernel } from '../../editor/kernel'
+import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { resolveDirectorStageScene } from '../director/activeDirectorStageScene'
@@ -26,6 +27,18 @@ function readAssetGraph(asset: AssetInfo | undefined): GraphDocument | null {
   const graphJson = (asset?.genParams as Record<string, unknown> | undefined)?.graphJson as
     GraphDocument | undefined
   return graphJson && Array.isArray(graphJson.nodes) ? graphJson : null
+}
+
+function findAssetOrDraft(
+  assetId: string | undefined | null,
+  assets: AssetInfo[]
+): AssetInfo | undefined {
+  if (!assetId) return undefined
+  if (isDraftAssetId(assetId)) {
+    const draft = useDraftStore().getDraft(assetId)
+    return draft ? draftToAssetInfo(draft) : undefined
+  }
+  return assets.find((a) => a.id === assetId)
 }
 
 function sanitizeValueForContext(value: unknown, key = '', depth = 0): unknown {
@@ -300,8 +313,8 @@ export function buildActiveWorkspaceContext(): string | undefined {
 
   const activeAssetId =
     diveRootAssetId ||
-    hostFromSelection ||
     lastOpenCanvas ||
+    hostFromSelection ||
     lastOpenDirector ||
     lastOpenWorld ||
     lastOpenBeat ||
@@ -309,7 +322,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
     lastLiveAssetId ||
     lastOpenAsset
 
-  const rootAsset = activeAssetId ? project.assets.find((a) => a.id === activeAssetId) : undefined
+  const rootAsset = findAssetOrDraft(activeAssetId, project.assets)
 
   // 1. Left Window Breadcrumb & Active View Header
   if (diveStack.length > 0) {
@@ -317,12 +330,12 @@ export function buildActiveWorkspaceContext(): string | undefined {
     const crumbs = [rootLabel, ...diveStack.map((f) => describeDiveFrame(f))].join(' > ')
     lines.push(`Left Window Dive Breadcrumb: ${crumbs}`)
   } else if (lastOpenDirector && activeAssetId === lastOpenDirector) {
-    const dirAsset = project.assets.find((a) => a.id === lastOpenDirector)
+    const dirAsset = findAssetOrDraft(lastOpenDirector, project.assets)
     lines.push(
       `Left Window Active Editor: Director Editor (directorAssetId="${lastOpenDirector}", name="${dirAsset?.name ?? ''}")`
     )
   } else if (lastOpenWorld && activeAssetId === lastOpenWorld) {
-    const wAsset = project.assets.find((a) => a.id === lastOpenWorld)
+    const wAsset = findAssetOrDraft(lastOpenWorld, project.assets)
     lines.push(
       `Left Window Active Editor: World Element Editor (worldAssetId="${lastOpenWorld}", name="${wAsset?.name ?? ''}")`
     )
@@ -486,12 +499,12 @@ export function buildActiveWorkspaceContext(): string | undefined {
   // 5. Root / Active Canvas Graph & Selected Node
   const contextCanvasId = activeAssetId || fallbackEditAssetId
   if (contextCanvasId) {
-    const asset = project.assets.find((a) => a.id === contextCanvasId)
+    const asset = findAssetOrDraft(contextCanvasId, project.assets)
     const liveDoc = graphEditorHosts.getLiveAssetDocument(contextCanvasId) ?? readAssetGraph(asset)
     if (asset || liveDoc) {
       lines.push(
         `Active canvas asset: "${asset?.name ?? contextCanvasId}" (assetId: "${contextCanvasId}", type: ${asset?.type ?? 'canvas'})`,
-        `  [Canvas Node Generation & Execution Protocol]: To generate or process any image/video/audio/3D/world, call \`graph_edit({ assetId: "${contextCanvasId}", ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })\` followed by \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["..."] })\`. When the user says "根据下面文章生成科普视频" / "把这篇文档做成视频" (or gives any knowledge/popular-science document to turn into a video), automatically wire each section's \`asset.voice\` (narration) + visual node (\`svg.gen -> svg.anim\` 16:9 animated diagram, \`asset.image\`, or \`asset.video\`) + \`asset.music\` into \`output.timeline\` and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["<timelineNodeId>"] })\`. When the user provides multiple photos and asks for a Music Photo Album / Slideshow (e.g. "给定几张照片帮我生成音乐相册" / "电子相册"), automatically wire locked \`asset.image\` photo nodes (\`locked: true, params: { sourceRelativePath }\`) + \`asset.music\` BGM node into \`output.timeline\` (\`nodeId: "timeline-out"\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\` to synthesize the MP4 with Ken Burns camera motion and transitions. When the user asks for "一镜入画" / "古画复活" / "古画活起来" (e.g. with \`@Assets/qm-jpg.jpeg\`), NEVER generate a single long-take \`asset.video\` from the full painting; ALWAYS build the multi-act pipeline (\`N = 1..K\`, default 3 acts or any \`K\` acts requested by the user: \`scroll-src\` -> \`actN-crop\` [image.process crop 16:9] -> \`actN-recognize\` [image.toPrompt] -> \`actN-real\` [asset.image 1:1 photorealistic restoration] -> \`actN-video\` [asset.video with \`generateFrameMode: "first", generateAudio: true\`, \`actN-real\` wired to \`in-first-frame\`, starting from the 1:1 wide restored photo for 1.5s and then smoothly zooming/pushing the camera into a close-up of the talking characters in the scene with lip-synced dialogue audio] + \`actN-voice\` + \`actN-sfx\` + \`bgm\` -> \`output.timeline\` \`timeline-out\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\`.` // cjk-ok
+        `  [Canvas Node Generation & Execution Protocol]: Always target this currently open canvas (assetId: "${contextCanvasId}" or "current") when calling \`workflow_use_installed\`, \`graph_edit\`, or \`task_run\` — DO NOT switch to any other project canvas! To generate or process any image/video/audio/3D/world, call \`graph_edit({ assetId: "${contextCanvasId}", ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })\` followed by \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["..."] })\`. When the user says "根据下面文章生成科普视频" / "把这篇文档做成视频" (or gives any knowledge/popular-science document to turn into a video), automatically wire each section's \`asset.voice\` (narration) + visual node (\`svg.gen -> svg.anim\` 16:9 animated diagram, \`asset.image\`, or \`asset.video\`) + \`asset.music\` into \`output.timeline\` and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["<timelineNodeId>"] })\`. When the user provides multiple photos and asks for a Music Photo Album / Slideshow (e.g. "给定几张照片帮我生成音乐相册" / "电子相册"), automatically wire locked \`asset.image\` photo nodes (\`locked: true, params: { sourceRelativePath }\`) + \`asset.music\` BGM node into \`output.timeline\` (\`nodeId: "timeline-out"\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\` to synthesize the MP4 with Ken Burns camera motion and transitions. When the user asks for "一镜入画" / "古画复活" / "古画活起来" (e.g. with \`@Assets/qm-jpg.jpeg\`), NEVER generate a single long-take \`asset.video\` from the full painting; ALWAYS build the multi-act pipeline (\`N = 1..K\`, default 3 acts or any \`K\` acts requested by the user: \`scroll-src\` -> \`actN-crop\` [image.process crop 16:9] -> \`actN-recognize\` [image.toPrompt] -> \`actN-real\` [asset.image 1:1 photorealistic restoration] -> \`actN-video\` [asset.video with \`generateFrameMode: "first", generateAudio: true\`, \`actN-real\` wired to \`in-first-frame\`, starting from the 1:1 wide restored photo for 1.5s and then smoothly zooming/pushing the camera into a close-up of the talking characters in the scene with lip-synced dialogue audio] + \`actN-voice\` + \`actN-sfx\` + \`bgm\` -> \`output.timeline\` \`timeline-out\`) and run \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["timeline-out"] })\`.` // cjk-ok
       )
       const selectedNodeId = workspaceStore.selectedGraphNodeId
       const selectedHostId = workspaceStore.selectedGraphHostId ?? `asset:${contextCanvasId}`
@@ -550,7 +563,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
   } else {
     lines.push(
       'Left Window Active Editor: None (no canvas is currently open in the left window).',
-      '  [Canvas Node Generation & Execution Protocol]: Because NO canvas is currently open in the left window, DO NOT reuse any existing project canvas assetId. Call `graph_edit({ ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })` WITHOUT passing `assetId` — the studio will automatically create and open a brand-new free canvas in the left window and return its new `assetId` for `task_run`.'
+      '  [Canvas Node Generation & Execution Protocol]: Because NO canvas is currently open in the left window, DO NOT reuse any existing project canvas assetId. Call `workflow_use_installed({ id: "...", mode: "seed" })` or `graph_edit({ ops: [{ op: "node_upsert", nodeId: "...", typeId: "asset.image|asset.video|asset.voice|asset.dialogue|asset.sfx|asset.music|svg.gen|svg.anim|output.timeline|asset.model3d|asset.spatialWorld", title: "...", params: { prompt: "...", ... } }] })` WITHOUT passing `assetId` — the studio will automatically create and open a brand-new free canvas in the left window and return its new `assetId` for `task_run`.'
     )
   }
 

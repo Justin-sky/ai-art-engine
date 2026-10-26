@@ -814,4 +814,133 @@ describe('Left window perception and 3D Director Stage MCP live editing', () => 
     expect(resolved.mime).toBe('image/jpeg')
     expect(imageExtFromMime(resolved.mime)).toBe('jpg')
   })
+
+  it('targets the currently open canvas (including draft:<uuid>) and creates a new canvas when no canvas is open in the left window', async () => {
+    const { useDraftStore } = await import('../src/renderer/src/stores/drafts')
+    const { resolveActiveWorkspaceTargets } =
+      await import('../src/renderer/src/editor/control/surfaceRegistry')
+    const { projectService } = await import('../src/main/services/projectService')
+    const { resolveOrEnsureCanvasAsset, syncActiveCanvasFromWorkspaceContext } =
+      await import('../src/main/services/mcpServerService')
+
+    const project = useProjectStore()
+    const workspace = useWorkspaceStore()
+    const drafts = useDraftStore()
+
+    const oldOpenCanvas = {
+      id: 'canvas-open-older',
+      name: '当前打开画布',
+      type: 'canvas' as const,
+      relativePath: 'Assets/canvas-open-older.canvas.asset.json',
+      version: 1,
+      createdAt: '2026-10-20T00:00:00.000Z',
+      updatedAt: '2026-10-20T00:00:00.000Z',
+      genParams: {
+        graphJson: {
+          nodes: [],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 }
+        }
+      }
+    }
+    const closedNewerCanvas = {
+      id: 'canvas-closed-newer',
+      name: '后台较新画布',
+      type: 'canvas' as const,
+      relativePath: 'Assets/canvas-closed-newer.canvas.asset.json',
+      version: 1,
+      createdAt: '2026-10-25T00:00:00.000Z',
+      updatedAt: '2026-10-26T12:00:00.000Z',
+      genParams: {
+        graphJson: {
+          nodes: [],
+          edges: [],
+          viewport: { x: 0, y: 0, zoom: 1 }
+        }
+      }
+    }
+    project.assets = [oldOpenCanvas, closedNewerCanvas]
+
+    const createdCanvases: (typeof oldOpenCanvas)[] = []
+    const listAssetsSpy = vi
+      .spyOn(projectService, 'listAssets')
+      .mockImplementation(() => [...project.assets, ...createdCanvases])
+    const createAssetSpy = vi.spyOn(projectService, 'createAsset').mockImplementation(() => {
+      const created = {
+        id: `canvas-auto-created-${createdCanvases.length + 1}`,
+        name: '新建画布',
+        type: 'canvas' as const,
+        relativePath: `Assets/canvas-auto-created-${createdCanvases.length + 1}.canvas.asset.json`,
+        version: 1,
+        createdAt: '2026-10-26T16:00:00.000Z',
+        updatedAt: '2026-10-26T16:00:00.000Z',
+        genParams: {
+          graphJson: {
+            nodes: [],
+            edges: [],
+            viewport: { x: 0, y: 0, zoom: 1 }
+          }
+        }
+      }
+      createdCanvases.push(created)
+      return created
+    })
+
+    try {
+      // Case 1: Left window has `canvas-open-older` open -> skill / tool must target `canvas-open-older`, NOT `canvas-closed-newer`
+      workspace.openCanvasEditor(oldOpenCanvas.id)
+      const ctxOpenSaved = buildActiveWorkspaceContext()
+      expect(ctxOpenSaved).toContain(
+        `Active canvas asset: "${oldOpenCanvas.name}" (assetId: "${oldOpenCanvas.id}", type: canvas)`
+      )
+      syncActiveCanvasFromWorkspaceContext(ctxOpenSaved)
+      expect(
+        resolveOrEnsureCanvasAsset('', { autoCreateCanvas: true, preferUiActiveCanvas: true })?.id
+      ).toBe(oldOpenCanvas.id)
+      expect(
+        resolveOrEnsureCanvasAsset(closedNewerCanvas.id, {
+          autoCreateCanvas: true,
+          preferUiActiveCanvas: true
+        })?.id
+      ).toBe(oldOpenCanvas.id)
+
+      // Case 2: Left window has an unsaved `draft:<uuid>` canvas open -> skill / tool must target that draft canvas
+      const draftRecord = drafts.createDraft('canvas')
+      workspace.openCanvasEditor(draftRecord.id)
+      const targetsDraft = resolveActiveWorkspaceTargets()
+      expect(targetsDraft.defaultAssetId).toBe(draftRecord.id)
+      const ctxOpenDraft = buildActiveWorkspaceContext()
+      expect(ctxOpenDraft).toContain(`(assetId: "${draftRecord.id}", type: canvas)`)
+      syncActiveCanvasFromWorkspaceContext(ctxOpenDraft)
+      const resolvedDraft = resolveOrEnsureCanvasAsset('', {
+        autoCreateCanvas: true,
+        preferUiActiveCanvas: true
+      })
+      expect(resolvedDraft?.id).toBe(draftRecord.id)
+
+      // Case 3: Left window has NO canvas open -> skill / tool must create a new canvas instead of overwriting closed canvases
+      workspace.resetSession()
+      const ctxNone = buildActiveWorkspaceContext()
+      expect(ctxNone).toContain('Left Window Active Editor: None')
+      syncActiveCanvasFromWorkspaceContext(ctxNone)
+
+      // Read-only lookup when no canvas is open returns undefined instead of a closed canvas
+      expect(resolveOrEnsureCanvasAsset('current', { autoCreateCanvas: false })).toBeUndefined()
+
+      // Skill / workflow injection creates a brand-new canvas and reuses it within the same turn
+      const autoCreated = resolveOrEnsureCanvasAsset(closedNewerCanvas.id, {
+        autoCreateCanvas: true,
+        preferUiActiveCanvas: true
+      })
+      expect(autoCreated?.id).toBe('canvas-auto-created-1')
+      expect(createAssetSpy).toHaveBeenCalledTimes(1)
+      expect(resolveOrEnsureCanvasAsset('current', { autoCreateCanvas: false })?.id).toBe(
+        'canvas-auto-created-1'
+      )
+    } finally {
+      syncActiveCanvasFromWorkspaceContext(undefined)
+      listAssetsSpy.mockRestore()
+      createAssetSpy.mockRestore()
+    }
+  })
 })

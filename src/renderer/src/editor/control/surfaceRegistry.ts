@@ -1,4 +1,4 @@
-import type { AssetInfo } from '@shared/domain'
+import { isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   introspectNodeInstance,
   type GraphDocument,
@@ -13,6 +13,7 @@ import {
   type EditorDiveFrame
 } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
+import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 import { useWorkspaceStore } from '../../stores/workspace'
 import { useEditorKernel } from '../kernel'
@@ -51,6 +52,15 @@ function readAssetGraph(asset: AssetInfo | undefined): GraphDocument | null {
   return graphJson && Array.isArray(graphJson.nodes) ? graphJson : null
 }
 
+function findAssetOrDraft(assetId: string, assets: AssetInfo[]): AssetInfo | undefined {
+  if (!assetId) return undefined
+  if (isDraftAssetId(assetId)) {
+    const draft = useDraftStore().getDraft(assetId)
+    return draft ? draftToAssetInfo(draft) : undefined
+  }
+  return assets.find((a) => a.id === assetId)
+}
+
 function findNodeInHostOrAsset(
   hostId: string,
   nodeId: string,
@@ -60,7 +70,7 @@ function findNodeInHostOrAsset(
   if (fromLive) return fromLive
   const assetId = resolveHostAssetIdFromHostId(hostId)
   if (!assetId) return null
-  const asset = assets.find((a) => a.id === assetId)
+  const asset = findAssetOrDraft(assetId, assets)
   const doc = graphEditorHosts.getLiveAssetDocument(assetId) ?? readAssetGraph(asset)
   return doc?.nodes.find((n) => n.id === nodeId) ?? null
 }
@@ -149,9 +159,9 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
   const defaultAssetId =
     diveOverrideAssetId ||
     parsedDiveRoot.assetId ||
+    lastOpenCanvas ||
     hostFromSelection ||
     liveDirectorScene?.directorAssetId ||
-    lastOpenCanvas ||
     lastOpenDirector ||
     lastOpenWorld ||
     lastOpenBeat ||
@@ -160,9 +170,14 @@ export function resolveActiveWorkspaceTargets(): ActiveWorkspaceTargetResolution
     lastOpenAsset ||
     ''
 
+  const selectedHostMatchesDefaultAsset =
+    workspaceStore.selectedGraphHostId &&
+    (!defaultAssetId ||
+      resolveHostAssetIdFromHostId(workspaceStore.selectedGraphHostId) === defaultAssetId)
+
   const defaultHostId =
     diveOverrideHostId ||
-    workspaceStore.selectedGraphHostId ||
+    (selectedHostMatchesDefaultAsset ? workspaceStore.selectedGraphHostId : '') ||
     (defaultAssetId ? `asset:${defaultAssetId}` : '')
 
   // 解析当前选中的节点

@@ -98,7 +98,8 @@
         :class="{
           'comic-page--empty': !editable && norm.panels.length === 0,
           'comic-page--editable': editable,
-          'comic-page--transparent': !norm.backgroundColor?.trim()
+          'comic-page--transparent': !norm.backgroundColor?.trim(),
+          'comic-page--animatic': smoothCameraTransition && !drag
         }"
         :style="pageStageStyle"
         @pointerdown="onPagePointerDown"
@@ -591,6 +592,13 @@ const emit = defineEmits<{
   'delete-bubble': [panelId: string, bubbleId: string]
   'duplicate-bubble': [panelId: string, bubbleId: string]
   'swap-panels': [panelIdA: string, panelIdB: string]
+  'move-panel': [panelId: string, row: number, col: number]
+  'transfer-bubble': [
+    fromPanelId: string,
+    bubbleId: string,
+    toPanelId: string,
+    pos: { x: number; y: number }
+  ]
 }>()
 
 const { t, locale } = useStudioI18n()
@@ -649,6 +657,7 @@ const viewPanY = ref(0)
 const showGridGuides = ref(true)
 const slantEditMode = ref(false)
 const isSpacePressed = ref(false)
+const smoothCameraTransition = ref(false)
 
 /** 格内画面取景模式（双击分镜格进入） */
 const framingPanelId = ref<string | null>(null)
@@ -768,6 +777,7 @@ async function ensureImagesLoaded(): Promise<void> {
   const urls = new Set<string>()
   for (const panel of norm.value.panels) {
     if (panel.imageUrl) urls.add(panel.imageUrl)
+    if (panel.foregroundImageUrl) urls.add(panel.foregroundImageUrl)
   }
   let changed = false
   await Promise.all(
@@ -828,12 +838,13 @@ watch(
   }
 )
 
-function fitToViewport(): void {
+function fitToViewport(animated?: boolean | Event): void {
   if (!props.editable) return
   const vp = viewportEl.value
   if (!vp) return
   const box = vp.getBoundingClientRect()
   if (box.width <= 40 || box.height <= 40) return
+  smoothCameraTransition.value = animated === true
   const padX = 64
   const padY = 108
   const scaleX = (box.width - padX) / Math.max(1, norm.value.width)
@@ -843,13 +854,34 @@ function fitToViewport(): void {
   viewPanY.value = 18
 }
 
+function focusPanelInViewport(panelId: string): void {
+  if (!props.editable) return
+  const vp = viewportEl.value
+  const rect = rects.value.get(panelId)
+  if (!vp || !rect) return
+  const box = vp.getBoundingClientRect()
+  if (box.width <= 40 || box.height <= 40) return
+  smoothCameraTransition.value = true
+  const scaleX = (box.width * 0.74) / Math.max(1, rect.width)
+  const scaleY = (box.height * 0.7) / Math.max(1, rect.height)
+  const targetScale =
+    Math.round(Math.min(2.1, Math.max(0.35, Math.min(scaleX, scaleY))) * 100) / 100
+  const cx = rect.x + rect.width / 2
+  const cy = rect.y + rect.height / 2
+  viewScale.value = targetScale
+  viewPanX.value = Math.round((norm.value.width / 2 - cx) * targetScale)
+  viewPanY.value = Math.round((norm.value.height / 2 - cy) * targetScale)
+}
+
 function setZoom100(): void {
+  smoothCameraTransition.value = false
   viewScale.value = 1
   viewPanX.value = 0
   viewPanY.value = 0
 }
 
 function stepZoom(delta: number): void {
+  smoothCameraTransition.value = false
   viewScale.value = Math.round(Math.min(3, Math.max(0.18, viewScale.value + delta)) * 100) / 100
 }
 
@@ -978,7 +1010,13 @@ type CanvasDrag =
       panX0: number
       panY0: number
     }
-  | { kind: 'bubble'; panelId: string; bubbleId: string }
+  | {
+      kind: 'bubble'
+      panelId: string
+      bubbleId: string
+      lastX: number
+      lastY: number
+    }
   | { kind: 'bubble-tail'; panelId: string; bubbleId: string }
   | {
       kind: 'bubble-rotate'
@@ -986,6 +1024,13 @@ type CanvasDrag =
       bubbleId: string
       anchorX: number
       anchorY: number
+    }
+  | {
+      kind: 'panel-reorder'
+      panelId: string
+      startX: number
+      startY: number
+      active: boolean
     }
   | {
       kind: 'panel-resize'
@@ -1062,7 +1107,13 @@ function onPagePointerDown(e: PointerEvent): void {
     selectedCell.value = null
     framingPanelId.value = null
     emit('select', { kind: 'bubble', panelId: bubbleHit.panelId, bubbleId: bubbleHit.bubbleId })
-    drag.value = { kind: 'bubble', panelId: bubbleHit.panelId, bubbleId: bubbleHit.bubbleId }
+    drag.value = {
+      kind: 'bubble',
+      panelId: bubbleHit.panelId,
+      bubbleId: bubbleHit.bubbleId,
+      lastX: pt.x,
+      lastY: pt.y
+    }
     pageEl.value?.setPointerCapture(e.pointerId)
     e.preventDefault()
     return
@@ -1089,7 +1140,17 @@ function onPagePointerDown(e: PointerEvent): void {
         pageEl.value?.setPointerCapture(e.pointerId)
         e.preventDefault()
       }
+      return
     }
+    // 普通模式按住分镜格拖拽（超过 6px 阈值后激活）：支持直接拖到另一格互换内容，或拖到空格平移落位
+    drag.value = {
+      kind: 'panel-reorder',
+      panelId: panel.id,
+      startX: pt.x,
+      startY: pt.y,
+      active: false
+    }
+    pageEl.value?.setPointerCapture(e.pointerId)
     return
   }
 
@@ -1226,8 +1287,34 @@ function onPagePointerMove(e: PointerEvent): void {
   if (!pt) return
 
   if (st.kind === 'bubble') {
+    st.lastX = pt.x
+    st.lastY = pt.y
+    const targetPanel = findComicPanelAtPagePoint(norm.value, pt.x, pt.y)
+    dragOverKey.value =
+      targetPanel && targetPanel.id !== st.panelId ? `panel:${targetPanel.id}` : null
     const pos = pagePointToBubbleNorm(norm.value, st.panelId, pt.x, pt.y)
     if (pos) emit('move-bubble', st.panelId, st.bubbleId, pos)
+    return
+  }
+
+  if (st.kind === 'panel-reorder') {
+    if (!st.active && Math.hypot(pt.x - st.startX, pt.y - st.startY) >= 6) {
+      st.active = true
+    }
+    if (st.active) {
+      const hitPanel = findComicPanelAtPagePoint(norm.value, pt.x, pt.y)
+      if (hitPanel && hitPanel.id !== st.panelId) {
+        dragOverKey.value = `panel:${hitPanel.id}`
+      } else if (!hitPanel) {
+        const cell = findComicCellAtPagePoint(norm.value, pt.x, pt.y)
+        dragOverKey.value =
+          cell && !occupied.value.has(`${cell.row},${cell.col}`)
+            ? `cell:${cell.row},${cell.col}`
+            : null
+      } else {
+        dragOverKey.value = null
+      }
+    }
     return
   }
 
@@ -1339,10 +1426,45 @@ function onPagePointerMove(e: PointerEvent): void {
 }
 
 function onPagePointerUp(): void {
-  const wasDragging = !!drag.value && drag.value.kind !== 'viewport-pan'
+  const st = drag.value
+  const targetKey = dragOverKey.value
+  dragOverKey.value = null
   drag.value = null
   panelResize.value = null
-  if (wasDragging) emit('edit-end')
+
+  if (!st || st.kind === 'viewport-pan') return
+
+  if (st.kind === 'panel-reorder') {
+    if (!st.active) return
+    if (targetKey?.startsWith('panel:')) {
+      const targetPanelId = targetKey.slice('panel:'.length)
+      if (targetPanelId && targetPanelId !== st.panelId) {
+        emit('swap-panels', st.panelId, targetPanelId)
+      }
+    } else if (targetKey?.startsWith('cell:')) {
+      const [rStr, cStr] = targetKey.slice('cell:'.length).split(',')
+      const r = Number(rStr)
+      const c = Number(cStr)
+      if (Number.isFinite(r) && Number.isFinite(c)) {
+        emit('move-panel', st.panelId, r, c)
+      }
+    }
+    return
+  }
+
+  if (st.kind === 'bubble' && targetKey?.startsWith('panel:')) {
+    const toPanelId = targetKey.slice('panel:'.length)
+    if (toPanelId && toPanelId !== st.panelId) {
+      const pos = pagePointToBubbleNorm(norm.value, toPanelId, st.lastX, st.lastY) ?? {
+        x: 0.5,
+        y: 0.28
+      }
+      emit('transfer-bubble', st.panelId, st.bubbleId, toPanelId, pos)
+      return
+    }
+  }
+
+  emit('edit-end')
 }
 
 function onPanelResizeDown(e: PointerEvent, panel: ComicPanel, axis: 'x' | 'y' | 'xy'): void {
@@ -1658,11 +1780,15 @@ defineExpose({
   renderPngDataUrl,
   renderMotionComicBundle,
   fitToViewport,
+  focusPanelInViewport,
   setZoom100
 })
 </script>
 
 <style scoped>
+.comic-page--animatic {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
 .comic-page-wrap {
   display: flex;
   flex-direction: column;

@@ -855,7 +855,8 @@ export const MCP_RENDER_JOB_KINDS = [
   'svg-raster',
   'timeline-document-apply',
   'director-stage-read',
-  'director-stage-edit'
+  'director-stage-edit',
+  'game-tile-pbr-process'
 ] as const
 
 /** 渲染层能力作业类型 */

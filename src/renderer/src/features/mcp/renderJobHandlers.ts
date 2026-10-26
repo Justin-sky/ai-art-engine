@@ -28,16 +28,32 @@ import {
 } from '@shared/graph/svgAnim'
 import {
   analyzeAssetQc,
+  analyzeSeamlessTile,
   applyAssetQcFringeFix,
+  applySeamlessTileBlend,
+  buildAutoTileAtlasManifest,
+  buildNineSliceManifest,
+  buildSpritePhysicsManifest,
   checkAssetQcNaming,
+  derivePbrMapsFromRgba,
+  detectNineSliceBorders,
   suggestAssetQcName,
   summarizeAssetQc,
   type AssetQcIssue,
-  type AssetQcMetrics
+  type AssetQcMetrics,
+  type AutoTileLayoutKind,
+  type NormalMapFormat,
+  type PhysicsPivotMode
 } from '@shared/gameAssets'
-import { isUnderAssetLibraryDir, normalizeProjectRelativeDir, type AssetInfo } from '@shared/domain'
+import {
+  isDraftAssetId,
+  isUnderAssetLibraryDir,
+  normalizeProjectRelativeDir,
+  type AssetInfo
+} from '@shared/domain'
 import type { McpRenderJobKind, McpRenderJobPayload } from '@shared/ipc'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
+import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
 import { composeStage2dSpineExport } from '../graph/model/composeStage2dSpineExport'
 import { renderSvgFrames } from '../graph/model/renderSvgFrames'
@@ -49,6 +65,15 @@ import { notifyOpenTimelineEditorUpdated } from './openTimelineEditors'
 
 function readString(value: unknown): string {
   return typeof value === 'string' ? value : ''
+}
+
+function findProjectOrDraftAsset(assetId: string): AssetInfo | undefined {
+  if (!assetId) return undefined
+  if (isDraftAssetId(assetId)) {
+    const draft = useDraftStore().getDraft(assetId)
+    return draft ? draftToAssetInfo(draft) : undefined
+  }
+  return useProjectStore().assets.find((item) => item.id === assetId)
 }
 
 /** 把工程相对路径解析成可绘制 URL（与 2D 舞台编辑器 render 同一口径） */
@@ -428,8 +453,7 @@ async function syncCanvasTimelineAndAutoWire(
     }
   }
 
-  const project = useProjectStore()
-  const latestAsset = project.assets.find((item) => item.id === canvasAsset.id) ?? canvasAsset
+  const latestAsset = findProjectOrDraftAsset(canvasAsset.id) ?? canvasAsset
   let nextGenParams = withScriptTimeline(
     latestAsset.genParams as Record<string, unknown> | undefined,
     document,
@@ -456,7 +480,7 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
   if (!document || !Array.isArray(document.clips)) {
     throw new Error('缺少时间线文档 document（需含 clips 数组）')
   }
-  const asset = project.assets.find((item) => item.id === assetId)
+  const asset = findProjectOrDraftAsset(assetId)
   if (!asset) throw new Error(`资产不存在：${assetId}`)
   const nodeId = readString(args.nodeId).trim()
 
@@ -481,10 +505,12 @@ async function handleTimelineDocumentApply(args: Record<string, unknown>): Promi
       if (!entry.hostId.startsWith('asset:')) continue
       const openCanvasId = entry.hostId.slice('asset:'.length).split(':')[0]
       if (!openCanvasId || openCanvasId === assetId) continue
-      const openCanvasAsset = project.assets.find(
-        (item) => item.id === openCanvasId && item.type === 'canvas'
-      )
-      if (openCanvasAsset && entry.document.nodes.some((n) => n.typeId === 'output.timeline')) {
+      const openCanvasAsset = findProjectOrDraftAsset(openCanvasId)
+      if (
+        openCanvasAsset &&
+        openCanvasAsset.type === 'canvas' &&
+        entry.document.nodes.some((n) => n.typeId === 'output.timeline')
+      ) {
         await syncCanvasTimelineAndAutoWire(openCanvasAsset, document)
       }
     }
@@ -562,6 +588,208 @@ async function handleSvgRaster(args: Record<string, unknown>): Promise<unknown> 
   }
 }
 
+function rgbaToPngDataUrl(rgba: Uint8ClampedArray, width: number, height: number): string {
+  const copy = new Uint8ClampedArray(rgba.length)
+  copy.set(rgba)
+  const imgData = new ImageData(copy, width, height)
+  return imageDataToPngDataUrl(imgData)
+}
+
+/**
+ * 2D 瓦片无缝拼接 + 3D/2.5D PBR 贴图派生 + UI 九宫格切线检测 + Auto-Tile 清单生成。
+ */
+async function handleGameTilePbrProcess(args: Record<string, unknown>): Promise<unknown> {
+  const project = useProjectStore()
+  const assetId = readString(args.assetId).trim()
+  const rawRelPath = readString(args.relativePath).trim()
+  const asset = assetId ? findProjectOrDraftAsset(assetId) : undefined
+  const relativePath = (asset?.relativePath || rawRelPath).trim()
+  if (!relativePath) {
+    throw new Error('请提供有效的图片 assetId 或工程内 relativePath')
+  }
+
+  const baseName =
+    (
+      asset?.name ||
+      relativePath
+        .split(/[\\/]/)
+        .pop()
+        ?.replace(/\.[^.]+$/, '') ||
+      'tile_asset'
+    )
+      .trim()
+      .replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]+/g, '_') || 'tile_asset'
+
+  const outputDir = resolveLibraryOutDir(
+    readString(args.outputDir),
+    `Assets/GameAssets/${baseName}`
+  )
+
+  const url = await resolveLayerUrl(relativePath)
+  if (!url) throw new Error(`无法加载图片资源：${relativePath}`)
+  const image = await loadAssetImageData(url)
+  const { width, height } = image
+
+  const makeSeamless = args.makeSeamless === true
+  const derivePbr = args.derivePbr === true
+  const detectNineSlice = args.detectNineSlice === true
+  const autoTileLayoutRaw = readString(args.autoTileLayout).trim()
+
+  const beforeSeamless = analyzeSeamlessTile(image.data, width, height)
+  let workingRgba: Uint8ClampedArray = new Uint8ClampedArray(image.data)
+  let afterSeamless = beforeSeamless
+  let seamlessPath: string | undefined
+
+  const savedPaths: string[] = []
+
+  if (makeSeamless) {
+    const blendRatio = typeof args.blendRatio === 'number' ? args.blendRatio : 0.18
+    const wrapX = args.wrapX !== false
+    const wrapY = args.wrapY !== false
+    workingRgba = applySeamlessTileBlend(workingRgba, width, height, {
+      blendRatio,
+      wrapX,
+      wrapY
+    })
+    afterSeamless = analyzeSeamlessTile(workingRgba, width, height)
+    seamlessPath = await window.studio.saveGraphRunMedia({
+      dataUrl: rgbaToPngDataUrl(workingRgba, width, height),
+      key: `${baseName}_seamless`,
+      outputDir
+    })
+    savedPaths.push(seamlessPath)
+  }
+
+  const pbrPaths: Record<string, string> = {}
+  if (derivePbr) {
+    const normalFormat: NormalMapFormat =
+      readString(args.normalFormat).trim().toLowerCase() === 'directx' ? 'directx' : 'opengl'
+    const normalStrength = typeof args.normalStrength === 'number' ? args.normalStrength : 2.5
+    const roughnessContrast =
+      typeof args.roughnessContrast === 'number' ? args.roughnessContrast : 1.2
+    const aoStrength = typeof args.aoStrength === 'number' ? args.aoStrength : 0.85
+    const metallicScale = typeof args.metallicScale === 'number' ? args.metallicScale : 0.25
+
+    const maps = derivePbrMapsFromRgba(workingRgba, width, height, {
+      normalStrength,
+      normalFormat,
+      wrapTiling: makeSeamless || beforeSeamless.isSeamless,
+      roughnessContrast,
+      aoStrength,
+      metallicScale
+    })
+
+    const requestedMapsRaw = Array.isArray(args.pbrMaps)
+      ? args.pbrMaps.map((m) => readString(m).trim().toLowerCase()).filter(Boolean)
+      : ['normal', 'roughness', 'ao', 'orm']
+    const wanted = new Set(requestedMapsRaw)
+
+    const mapBuffers: Array<[string, Uint8ClampedArray]> = [
+      ['normal', maps.normal],
+      ['roughness', maps.roughness],
+      ['height', maps.heightMap],
+      ['ao', maps.ao],
+      ['metallic', maps.metallic],
+      ['orm', maps.orm]
+    ]
+
+    for (const [mapKey, buf] of mapBuffers) {
+      if (!wanted.has(mapKey)) continue
+      const saved = await window.studio.saveGraphRunMedia({
+        dataUrl: rgbaToPngDataUrl(buf, width, height),
+        key: `${baseName}_${mapKey}`,
+        outputDir
+      })
+      pbrPaths[mapKey] = saved
+      savedPaths.push(saved)
+    }
+  }
+
+  let nineSliceManifest: unknown = undefined
+  let nineSliceManifestPath: string | undefined
+  if (detectNineSlice) {
+    const detection = detectNineSliceBorders(workingRgba, width, height, {
+      colorTolerance: typeof args.colorTolerance === 'number' ? args.colorTolerance : 14
+    })
+    const manifest = buildNineSliceManifest(baseName, detection)
+    nineSliceManifest = manifest
+    nineSliceManifestPath = `${outputDir}/${baseName}_9slice.json`
+    await window.studio.writeProjectFile({
+      relativePath: nineSliceManifestPath,
+      content: JSON.stringify(manifest, null, 2)
+    })
+  }
+
+  let autoTileManifest: unknown = undefined
+  let autoTileManifestPath: string | undefined
+  if (
+    autoTileLayoutRaw === 'grid3x3' ||
+    autoTileLayoutRaw === 'wang16' ||
+    autoTileLayoutRaw === 'blob47'
+  ) {
+    const layout = autoTileLayoutRaw as AutoTileLayoutKind
+    const tileWidth =
+      typeof args.tileWidth === 'number' ? args.tileWidth : Math.floor(width / 4) || 64
+    const tileHeight =
+      typeof args.tileHeight === 'number' ? args.tileHeight : Math.floor(height / 4) || 64
+    const manifest = buildAutoTileAtlasManifest({
+      terrainName: baseName,
+      layout,
+      tileWidth,
+      tileHeight
+    })
+    autoTileManifest = manifest
+    autoTileManifestPath = `${outputDir}/${baseName}_autotile.json`
+    await window.studio.writeProjectFile({
+      relativePath: autoTileManifestPath,
+      content: JSON.stringify(manifest, null, 2)
+    })
+  }
+
+  let physicsManifest: unknown = undefined
+  let physicsManifestPath: string | undefined
+  if (args.extractPhysicsHull === true) {
+    const rawPivot = readString(args.physicsPivot).trim()
+    const pivotMode: PhysicsPivotMode =
+      rawPivot === 'center' || rawPivot === 'top_left' ? rawPivot : 'bottom_center'
+    const maxVertices = typeof args.maxHullVertices === 'number' ? args.maxHullVertices : 8
+    const pManifest = buildSpritePhysicsManifest(baseName, workingRgba, width, height, {
+      pivotMode,
+      maxVertices
+    })
+    physicsManifest = pManifest
+    physicsManifestPath = `${outputDir}/${baseName}_physics.json`
+    await window.studio.writeProjectFile({
+      relativePath: physicsManifestPath,
+      content: JSON.stringify(pManifest, null, 2)
+    })
+  }
+
+  if (savedPaths.length > 0) {
+    await project.scheduleRefreshLibrary()
+  }
+
+  return {
+    sourcePath: relativePath,
+    width,
+    height,
+    outputDir,
+    seamlessAnalysis: {
+      before: beforeSeamless,
+      after: afterSeamless
+    },
+    seamlessPath,
+    pbrPaths,
+    nineSliceManifestPath,
+    nineSliceManifest,
+    autoTileManifestPath,
+    autoTileManifest,
+    physicsManifestPath,
+    physicsManifest,
+    savedPaths
+  }
+}
+
 /**
  * 作业清单：`Record<McpRenderJobKind, …>` 让「主进程声明的 kind」与「渲染层实现」
  * 在类型层强绑定——新增能力漏写实现会直接编译失败，不会拖到运行时才发现。
@@ -575,7 +803,8 @@ const RENDER_JOB_HANDLERS: Record<
   'svg-raster': handleSvgRaster,
   'timeline-document-apply': handleTimelineDocumentApply,
   'director-stage-read': executeDirectorStageRead,
-  'director-stage-edit': executeDirectorStageEdit
+  'director-stage-edit': executeDirectorStageEdit,
+  'game-tile-pbr-process': handleGameTilePbrProcess
 }
 
 async function handleRenderJob(payload: McpRenderJobPayload): Promise<void> {

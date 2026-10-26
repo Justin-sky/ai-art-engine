@@ -135,6 +135,8 @@ export interface ComicPanel {
   videoUrl?: string
   /** 动态漫：2.5D 视差前景透明立绘图片路径（与背景底图产生差速推拉摇移景深视差） */
   foregroundImageUrl?: string
+  /** 静态漫画与卡片：是否将前景透明人物立绘叠加绘制在分镜框线之上，形成“破框出格”立体效果（缺省开启） */
+  popOutFrame?: boolean
   /** 动态漫：2.5D 前后景视差深度强度（0.1 ~ 1，缺省 0.5） */
   parallaxDepth?: number
   /** 动态漫：分镜格运镜方式（缺省按分格比例与阅读方向智能推算） */
@@ -383,6 +385,7 @@ function normalizePanel(
   const videoUrl = typeof panel.videoUrl === 'string' ? panel.videoUrl.trim() : ''
   const foregroundImageUrl =
     typeof panel.foregroundImageUrl === 'string' ? panel.foregroundImageUrl.trim() : ''
+  const popOutFrame = typeof panel.popOutFrame === 'boolean' ? panel.popOutFrame : undefined
   const parallaxDepth =
     panel.parallaxDepth !== undefined && panel.parallaxDepth !== null && panel.parallaxDepth !== ''
       ? round3(clampFloat(panel.parallaxDepth, 0.1, 1, 0.5))
@@ -404,6 +407,7 @@ function normalizePanel(
     ...(imageUrl ? { imageUrl } : {}),
     ...(videoUrl ? { videoUrl } : {}),
     ...(foregroundImageUrl ? { foregroundImageUrl } : {}),
+    ...(popOutFrame !== undefined ? { popOutFrame } : {}),
     ...(parallaxDepth !== undefined ? { parallaxDepth } : {}),
     ...(title ? { title } : {}),
     ...(panelBg ? { backgroundColor: panelBg } : {}),
@@ -1590,6 +1594,7 @@ export function applyComicLayoutTemplate(page: ComicPage, templateId: string): C
       ...(donor?.imageFilter ? { imageFilter: donor.imageFilter } : {}),
       ...(donor?.videoUrl ? { videoUrl: donor.videoUrl } : {}),
       ...(donor?.foregroundImageUrl ? { foregroundImageUrl: donor.foregroundImageUrl } : {}),
+      ...(donor?.popOutFrame !== undefined ? { popOutFrame: donor.popOutFrame } : {}),
       ...(donor?.parallaxDepth !== undefined ? { parallaxDepth: donor.parallaxDepth } : {}),
       ...(donor?.cameraMotion ? { cameraMotion: donor.cameraMotion } : {}),
       ...(donor?.durationSec !== undefined ? { durationSec: donor.durationSec } : {}),

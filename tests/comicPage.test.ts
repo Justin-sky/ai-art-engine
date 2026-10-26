@@ -420,5 +420,15 @@ describe('layout hit-testing and fill from images', () => {
     expect(swapped.panels.find((p) => p.id === 'left')?.imageUrl).toBe('b.png')
     expect(swapped.panels.find((p) => p.id === 'right')?.imageUrl).toBe('a.png')
     expect(swapped.panels.find((p) => p.id === 'right')?.imageZoom).toBe(1.4)
+
+    const withFg = upsertComicPanel(swapped, {
+      ...swapped.panels[0]!,
+      foregroundImageUrl: 'fg.png',
+      popOutFrame: false,
+      parallaxDepth: 0.75
+    })
+    expect(withFg.panels[0]?.foregroundImageUrl).toBe('fg.png')
+    expect(withFg.panels[0]?.popOutFrame).toBe(false)
+    expect(withFg.panels[0]?.parallaxDepth).toBe(0.75)
   })
 })

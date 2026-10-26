@@ -1023,6 +1023,7 @@ async function writeSkillTemplate(): Promise<void> {
 function canUninstallSkillCard(card: MarketplaceCard): boolean {
   return (
     card.sourceKey === 'marketplace.source.skill.github' ||
+    card.sourceKey === 'marketplace.source.skill.bundle' ||
     card.sourceKey === 'marketplace.source.skill.custom' ||
     card.sourceKey === 'marketplace.source.skill.template'
   )

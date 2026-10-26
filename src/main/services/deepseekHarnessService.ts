@@ -70,6 +70,7 @@ import {
 import {
   inspectGitHubSkillSource,
   installGitHubSkills,
+  listInstalledGitHubSkillRecords,
   searchOnlineSkills
 } from './githubSkillInstaller'
 import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
@@ -91,7 +92,8 @@ import {
   releaseHarnessRunAccess,
   setActiveHarnessRun,
   setCanvasTaskSettledHook,
-  setMcpToolSettledHook
+  setMcpToolSettledHook,
+  syncActiveCanvasFromWorkspaceContext
 } from './mcpServerService'
 import { stripMcpToolPrefix, summarizeMcpToolOperation } from '@shared/mcpToolOperationSummary'
 import { projectService } from './projectService'
@@ -748,6 +750,9 @@ export function getDshSkillsInfo(): DshSkillsInfo {
     personalSkillsDir: skillsDir,
     workspaceRoot: resolveWorkspace()
   })
+  const githubRecordsByName = new Map(
+    listInstalledGitHubSkillRecords(skillsDir).map((rec) => [rec.name, rec])
+  )
   const files: DshSkillsFile[] = discovered.map((item) => {
     let githubRepo: string | undefined
     let githubRef: string | undefined
@@ -765,6 +770,13 @@ export function getDshSkillsInfo(): DshSkillsInfo {
         }
       } catch {
         // ignore
+      }
+      if (!githubRepo && item.scope === 'personal') {
+        const rec = githubRecordsByName.get(item.name)
+        if (rec?.owner && rec?.repo) {
+          githubRepo = `${rec.owner}/${rec.repo}`
+          if (rec.ref) githubRef = rec.ref
+        }
       }
     }
     return {
@@ -3129,6 +3141,9 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   }
   if (abortSeq !== myAbortSeq || !turnActive) {
     return { started: false, message: '已中止' }
+  }
+  if (!isNativeSlashCommand) {
+    syncActiveCanvasFromWorkspaceContext(input.canvasContext)
   }
   const canvasContext = isNativeSlashCommand ? '' : resolveProjectCanvasContext(input.canvasContext)
   const rawTask = canvasContext

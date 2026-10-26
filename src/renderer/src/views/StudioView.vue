@@ -367,6 +367,7 @@ const layouts = ref<StudioLayoutsState>(loadLayoutsState('Default'))
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let layoutDisposable: { dispose: () => void } | null = null
+let activePanelDisposable: { dispose: () => void } | null = null
 let removeDisposable: { dispose: () => void } | null = null
 let moveDisposable: { dispose: () => void } | null = null
 let dropDisposable: { dispose: () => void } | null = null
@@ -866,6 +867,7 @@ function onReady(event: DockviewReadyEvent): void {
   dockApi.value = api
   registerSidePanelDockApi(api)
   layoutDisposable?.dispose()
+  activePanelDisposable?.dispose()
   removeDisposable?.dispose()
   moveDisposable?.dispose()
   dropDisposable?.dispose()
@@ -938,6 +940,46 @@ function onReady(event: DockviewReadyEvent): void {
   moveDisposable = api.onDidMovePanel((event) => {
     handleSidePanelMoved(api, event.panel.id)
   })
+  activePanelDisposable = api.onDidActivePanelChange(() => {
+    const panel = api.activePanel
+    if (!panel) return
+    const parsed = parseEditorPanelId(panel.id)
+    if (!parsed) return
+    workspace.setActiveDiveRootKey(panel.id)
+    const bumpIfPresent = (list: string[], id: string): void => {
+      const idx = list.indexOf(id)
+      if (idx >= 0 && idx < list.length - 1) {
+        list.splice(idx, 1)
+        list.push(id)
+      }
+    }
+    switch (parsed.kind) {
+      case 'canvas':
+        bumpIfPresent(workspace.openCanvasEditorIds, parsed.assetId)
+        break
+      case 'asset':
+        bumpIfPresent(workspace.openAssetEditorIds, parsed.assetId)
+        break
+      case 'screenplay':
+        bumpIfPresent(workspace.openScreenplayEditorIds, parsed.assetId)
+        break
+      case 'world':
+        bumpIfPresent(workspace.openWorldEditorIds, parsed.assetId)
+        break
+      case 'beat':
+        bumpIfPresent(workspace.openBeatEditorIds, parsed.assetId)
+        break
+      case 'director':
+        bumpIfPresent(workspace.openDirectorEditorIds, parsed.assetId)
+        break
+    }
+    if (
+      workspace.selectedGraphHostId &&
+      !workspace.selectedGraphHostId.startsWith(`asset:${parsed.assetId}`)
+    ) {
+      workspace.selectGraphNode(null)
+    }
+  })
   removeDisposable = api.onDidRemovePanel((panel) => {
     if (panel.id.startsWith('asset-editor-')) {
       cleanupDraftEditor(panel.id, 'asset-editor-', workspace.consumeAssetEditor)
@@ -948,8 +990,25 @@ function onReady(event: DockviewReadyEvent): void {
     if (panel.id.startsWith('canvas-editor-')) {
       cleanupDraftEditor(panel.id, 'canvas-editor-', workspace.consumeCanvasEditor)
     }
+    if (panel.id.startsWith('world-editor-')) {
+      cleanupDraftEditor(panel.id, 'world-editor-', workspace.consumeWorldEditor)
+    }
+    if (panel.id.startsWith('beat-editor-')) {
+      cleanupDraftEditor(panel.id, 'beat-editor-', workspace.consumeBeatEditor)
+    }
     if (panel.id.startsWith('director-editor-')) {
       cleanupDraftEditor(panel.id, 'director-editor-', workspace.consumeDirectorEditor)
+    }
+    if (parseEditorPanelId(panel.id)) {
+      const remainingActiveEditor =
+        (api.activePanel && parseEditorPanelId(api.activePanel.id) ? api.activePanel : null) ??
+        api.panels.find((p) => p.id !== panel.id && parseEditorPanelId(p.id) && p.api.isActive) ??
+        api.panels.filter((p) => p.id !== panel.id && parseEditorPanelId(p.id)).at(-1) ??
+        null
+      workspace.setActiveDiveRootKey(remainingActiveEditor ? remainingActiveEditor.id : null)
+      if (!remainingActiveEditor) {
+        workspace.selectGraphNode(null)
+      }
     }
     if (panel.id === CHAT_PANEL_ID) {
       chatPanelVisible.value = false
@@ -1125,6 +1184,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointercancel', cleanupStrayDockDropOverlays, true)
   if (saveTimer) clearTimeout(saveTimer)
   layoutDisposable?.dispose()
+  activePanelDisposable?.dispose()
   removeDisposable?.dispose()
   moveDisposable?.dispose()
   dropDisposable?.dispose()
@@ -1132,6 +1192,7 @@ onBeforeUnmount(() => {
   willShowOverlayDisposable?.dispose()
   willDragPanelDisposable?.dispose()
   layoutDisposable = null
+  activePanelDisposable = null
   removeDisposable = null
   moveDisposable = null
   dropDisposable = null

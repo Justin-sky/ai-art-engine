@@ -13,11 +13,13 @@ import {
   comicPanelPolygon,
   comicPanelRects,
   normalizeComicPage,
+  readingOrderPanels,
   zOrderedPanels,
   type ComicBubbleShape,
   type ComicPage,
   type ComicPanel,
-  type ComicPanelRect
+  type ComicPanelRect,
+  type ComicSpeechBubble
 } from '@shared/graph'
 
 export interface ComicPageComposeOptions {
@@ -30,6 +32,10 @@ export interface ComicPageComposeOptions {
   borderColor?: string
   bubbleFill?: string
   textColor?: string
+  /** 是否在气泡顶部绘制说话人角色名标签（默认 false，靠气泡尾巴区分说话人，保持出版漫纯正版面） */
+  showSpeakerLabel?: boolean
+  /** 是否跳过前景人物立绘破框叠加（用于切取 2.5D 动态漫纯净背景底图） */
+  skipForegroundPopOut?: boolean
 }
 
 export interface ComicPageComposeResult {
@@ -169,13 +175,17 @@ function drawPanelImage(
   const dw = sw * scale
   const dh = sh * scale
 
-  // panX / panY (-1 ~ 1)：在可移动余量基础上支持自由偏移
+  // panX / panY (-1 ~ 1)：在可移动余量基础上支持自由偏移；
+  // 当纵向发生 cover 裁切且未手动设置 imagePanY 时，默认向上三分之一人像黄金位微偏（+16% 余量），防止切掉角色额头与眼睛
   const panX = panel.imagePanX ?? 0
+  const hasExplicitPanY = panel.imagePanY !== undefined && Math.abs(panel.imagePanY) > 1e-4
   const panY = panel.imagePanY ?? 0
   const slackX = Math.max(rect.width * 0.35, Math.abs(dw - rect.width) * 0.65)
   const slackY = Math.max(rect.height * 0.35, Math.abs(dh - rect.height) * 0.65)
+  const portraitBiasY =
+    !hasExplicitPanY && fit === 'cover' && dh > rect.height * 1.05 ? (dh - rect.height) * 0.16 : 0
   const cx = rect.x + rect.width / 2 + panX * slackX
-  const cy = rect.y + rect.height / 2 + panY * slackY
+  const cy = rect.y + rect.height / 2 + portraitBiasY + panY * slackY
 
   ctx.save()
   // 应用漫画滤镜
@@ -310,22 +320,130 @@ function drawPanelEffect(
     ctx.fillStyle = grad
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
   } else if (type === 'halftone-frame') {
-    drawHalftoneOverlay(ctx, rect, intensity * 0.35)
+    // 中心镂空渐变气氛网点边框：中心人物区域透亮无遮挡，越往四周边缘网点越密集粗大
+    const cx = rect.x + (panel.effectFocusX ?? 0.5) * rect.width
+    const cy = rect.y + (panel.effectFocusY ?? 0.5) * rect.height
+    const rx = Math.max(1, rect.width * 0.5)
+    const ry = Math.max(1, rect.height * 0.5)
+    const innerClear = Math.max(0.24, 0.52 - intensity * 0.2)
+    const step = Math.max(6, Math.round(Math.min(rect.width, rect.height) * 0.018))
+    const maxDotR = step * (0.34 + intensity * 0.22)
+    ctx.fillStyle = color === '#ffffff' ? 'rgba(255,255,255,0.78)' : 'rgba(15,15,20,0.72)'
+    for (let y = rect.y; y < rect.y + rect.height; y += step) {
+      const rowIdx = Math.round((y - rect.y) / step)
+      const offsetX = rowIdx % 2 === 1 ? step * 0.5 : 0
+      for (let x = rect.x + offsetX; x < rect.x + rect.width; x += step) {
+        const distNorm = Math.hypot((x - cx) / rx, (y - cy) / ry)
+        if (distNorm <= innerClear) continue
+        const t = Math.min(1, (distNorm - innerClear) / Math.max(0.15, 1.18 - innerClear))
+        const r = maxDotR * (t * t)
+        if (r < 0.45) continue
+        ctx.beginPath()
+        ctx.arc(x, y, r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
   }
   ctx.restore()
 }
 
-/** 按字符折行（横排） */
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+/** 中日文漫画排版避头点（禁止出现在行首/列首的标点）与避尾点（禁止出现在行尾/列尾的前置括号引号） */
+const CJK_NO_LINE_START = new Set([
+  '！',
+  '？',
+  '。',
+  '，',
+  '、',
+  '；',
+  '：',
+  '”',
+  '’',
+  '）',
+  '」',
+  '』',
+  '】',
+  '》',
+  '〉',
+  '…',
+  '—',
+  '～',
+  '·',
+  '!',
+  '?',
+  '.',
+  ',',
+  ':',
+  ';',
+  ')',
+  ']',
+  '}'
+])
+const CJK_NO_LINE_END = new Set(['“', '‘', '（', '「', '『', '【', '《', '〈', '(', '[', '{'])
+
+function applyKinsokuToTokens(chars: string[]): string[] {
+  const tokens: string[] = []
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i]!
+    const next = chars[i + 1]
+    // 成对破折号 ——、省略号 ……、双感叹/问号 ！！ ？！ 合并为不可拆分的排版原子
+    if (
+      (ch === '—' && next === '—') ||
+      (ch === '…' && next === '…') ||
+      ((ch === '！' || ch === '？' || ch === '!' || ch === '?') &&
+        (next === '！' || next === '？' || next === '!' || next === '?'))
+    ) {
+      tokens.push(ch + next)
+      i++
+      continue
+    }
+    tokens.push(ch)
+  }
+  // 将避尾点与其后一个 token 绑定，将避头点与其前一个 token 绑定（当行长允许时）
+  const merged: string[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const tk = tokens[i]!
+    const firstCh = tk[0]!
+    if (
+      CJK_NO_LINE_START.has(firstCh) &&
+      merged.length > 0 &&
+      merged[merged.length - 1]!.length <= 3
+    ) {
+      merged[merged.length - 1] += tk
+    } else if (CJK_NO_LINE_END.has(tk[tk.length - 1]!) && i + 1 < tokens.length) {
+      tokens[i + 1] = tk + tokens[i + 1]!
+    } else {
+      merged.push(tk)
+    }
+  }
+  return merged
+}
+
+/** 按字符折行（横排，内置中日文避头尾法则 + 椭圆气泡菱形均衡折行） */
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  balance = false
+): string[] {
   const lines: string[] = []
   for (const paragraph of text.split('\n')) {
+    const rawChars = Array.from(paragraph)
+    if (!rawChars.length) continue
+    const totalW = ctx.measureText(paragraph).width
+    // 若开启椭圆气泡均衡折行且需要拆成多行，把单行目标宽度收敛为均分宽度，消除“首行塞满、末行孤字”
+    const estLines = Math.max(1, Math.ceil(totalW / Math.max(1, maxWidth)))
+    const targetMaxW =
+      balance && estLines >= 2
+        ? Math.min(maxWidth, Math.max(maxWidth * 0.58, (totalW / estLines) * 1.14))
+        : maxWidth
+    const tokens = applyKinsokuToTokens(rawChars)
     let line = ''
-    for (const ch of Array.from(paragraph)) {
-      if (line && ctx.measureText(line + ch).width > maxWidth) {
+    for (const tk of tokens) {
+      if (line && ctx.measureText(line + tk).width > targetMaxW) {
         lines.push(line)
-        line = ch
+        line = tk
       } else {
-        line += ch
+        line += tk
       }
     }
     if (line) lines.push(line)
@@ -333,15 +451,33 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines
 }
 
-/** 竖排分列（从右向左逐列排布，每列最大字数 maxCharsPerCol） */
+/** 竖排分列（从右向左逐列排布，内置避头尾与列长均衡） */
 function wrapVerticalColumns(text: string, maxCharsPerCol: number): string[][] {
   const cols: string[][] = []
-  const limit = Math.max(2, maxCharsPerCol)
+  const baseLimit = Math.max(2, maxCharsPerCol)
   for (const paragraph of text.split('\n')) {
     const chars = Array.from(paragraph)
     if (!chars.length) continue
-    for (let i = 0; i < chars.length; i += limit) {
-      cols.push(chars.slice(i, i + limit))
+    const numCols = Math.max(1, Math.ceil(chars.length / baseLimit))
+    const balancedLimit =
+      numCols >= 2 ? Math.min(baseLimit, Math.max(3, Math.ceil(chars.length / numCols))) : baseLimit
+    let idx = 0
+    while (idx < chars.length) {
+      let end = Math.min(chars.length, idx + balancedLimit)
+      // 避头点：若下一列首字是禁则标点且只剩 1~2 个标点，直接吸入当前列末尾
+      while (
+        end < chars.length &&
+        CJK_NO_LINE_START.has(chars[end]!) &&
+        end - idx < baseLimit + 2
+      ) {
+        end++
+      }
+      // 避尾点：若当前列末字是前置括号/引号，提前一字换列
+      if (end < chars.length && end - idx > 1 && CJK_NO_LINE_END.has(chars[end - 1]!)) {
+        end--
+      }
+      cols.push(chars.slice(idx, end))
+      idx = end
     }
   }
   return cols.length ? cols : [['']]
@@ -357,7 +493,7 @@ function truncateToFit(ctx: CanvasRenderingContext2D, text: string, maxWidth: nu
   return `${out}…`
 }
 
-/** 绘制气泡主体与指向角色嘴部的尾巴（先描边底层再填充顶层，彻底消除尾巴与气泡接缝黑线！） */
+/** 绘制气泡主体、连体双气泡桥接颈与指向角色嘴部的尾巴（先描边底层再填充顶层，彻底消除接缝黑线！） */
 function drawBubbleBodyAndTail(
   ctx: CanvasRenderingContext2D,
   shape: ComicBubbleShape,
@@ -369,30 +505,73 @@ function drawBubbleBodyAndTail(
   tailTip: { x: number; y: number } | null,
   fill: string,
   stroke: string,
-  strokeWidth: number
+  strokeWidth: number,
+  bubbleId = 'b',
+  bridgeFrom: {
+    x: number
+    y: number
+    w: number
+    h: number
+    shape: ComicBubbleShape
+    cornerRadius: number
+  } | null = null
 ): void {
   const cx = x + w / 2
   const cy = y + h / 2
 
-  const traceMainShape = (): void => {
-    if (shape === 'oval') {
+  const traceBasicShape = (
+    bx: number,
+    by: number,
+    bw: number,
+    bh: number,
+    bShape: ComicBubbleShape,
+    bCornerRadius: number
+  ): void => {
+    const bcx = bx + bw / 2
+    const bcy = by + bh / 2
+    if (bShape === 'oval') {
       ctx.beginPath()
-      ctx.ellipse(cx, cy, w / 2, h / 2, 0, 0, Math.PI * 2)
+      ctx.ellipse(bcx, bcy, bw / 2, bh / 2, 0, 0, Math.PI * 2)
       ctx.closePath()
+    } else if (bShape === 'narration') {
+      pathRoundRect(ctx, bx, by, bw, bh, 0)
+    } else {
+      pathRoundRect(ctx, bx, by, bw, bh, bCornerRadius)
+    }
+  }
+
+  const traceMainShape = (): void => {
+    if (shape === 'oval' || shape === 'narration' || shape === 'rounded') {
+      traceBasicShape(x, y, w, h, shape, cornerRadius)
     } else if (shape === 'shout') {
-      // 爆炸呐喊框：放射锯齿尖刺椭圆
-      const spikes = 20
+      // 爆炸呐喊框：确定性手绘长短错落芒刺 + 内凹张力弧线（告别呆板齿轮锯齿）
+      const spikes = 22
       const rx = w / 2
       const ry = h / 2
+      const rand = createSeededRandom(`shout:${bubbleId}`)
+      const outerPts: Array<{ x: number; y: number; a: number }> = []
+      for (let i = 0; i < spikes; i++) {
+        const baseA = (i / spikes) * Math.PI * 2
+        const jitterA = baseA + ((rand() - 0.5) * (Math.PI * 2)) / (spikes * 3.2)
+        const isMajorSpike = i % 3 === 0
+        const lenMult = isMajorSpike ? 1.22 + rand() * 0.08 : 1.1 + rand() * 0.1
+        outerPts.push({
+          a: jitterA,
+          x: cx + Math.cos(jitterA) * rx * lenMult,
+          y: cy + Math.sin(jitterA) * ry * lenMult
+        })
+      }
       ctx.beginPath()
-      for (let i = 0; i < spikes * 2; i++) {
-        const angle = (i / (spikes * 2)) * Math.PI * 2
-        const isOuter = i % 2 === 0
-        const mult = isOuter ? 1.18 : 0.92
-        const px = cx + Math.cos(angle) * rx * mult
-        const py = cy + Math.sin(angle) * ry * mult
-        if (i === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
+      for (let i = 0; i < spikes; i++) {
+        const p1 = outerPts[i]!
+        const p2 = outerPts[(i + 1) % spikes]!
+        let midA = (p1.a + p2.a) / 2
+        if (p2.a < p1.a) midA += Math.PI
+        const valleyMult = 0.85 + rand() * 0.06
+        const vx = cx + Math.cos(midA) * rx * valleyMult
+        const vy = cy + Math.sin(midA) * ry * valleyMult
+        if (i === 0) ctx.moveTo(p1.x, p1.y)
+        ctx.quadraticCurveTo(vx, vy, p2.x, p2.y)
       }
       ctx.closePath()
     } else if (shape === 'thought') {
@@ -415,11 +594,51 @@ function drawBubbleBodyAndTail(
         ctx.quadraticCurveTo(xCtrl, yCtrl, x2, y2)
       }
       ctx.closePath()
-    } else if (shape === 'narration') {
-      pathRoundRect(ctx, x, y, w, h, 0)
     } else {
       pathRoundRect(ctx, x, y, w, h, cornerRadius)
     }
+  }
+
+  const traceBridge = (): boolean => {
+    if (!bridgeFrom) return false
+    const c1x = bridgeFrom.x + bridgeFrom.w / 2
+    const c1y = bridgeFrom.y + bridgeFrom.h / 2
+    const dx = cx - c1x
+    const dy = cy - c1y
+    const dist = Math.hypot(dx, dy)
+    if (dist < 6) return false
+    const ux = dx / dist
+    const uy = dy / dist
+    const nx = -uy
+    const ny = ux
+    const r1 =
+      1 / Math.hypot(ux / Math.max(8, bridgeFrom.w / 2), uy / Math.max(8, bridgeFrom.h / 2))
+    const r2 = 1 / Math.hypot(ux / Math.max(8, w / 2), uy / Math.max(8, h / 2))
+    const a1x = c1x + ux * r1 * 0.68
+    const a1y = c1y + uy * r1 * 0.68
+    const a2x = cx - ux * r2 * 0.68
+    const a2y = cy - uy * r2 * 0.68
+    const rootHalfW = Math.max(6.5, Math.min(bridgeFrom.w, bridgeFrom.h, w, h) * 0.13)
+    const waistHalfW = rootHalfW * 0.56
+    const midX = (a1x + a2x) * 0.5
+    const midY = (a1y + a2y) * 0.5
+    ctx.beginPath()
+    ctx.moveTo(a1x + nx * rootHalfW, a1y + ny * rootHalfW)
+    ctx.quadraticCurveTo(
+      midX + nx * waistHalfW,
+      midY + ny * waistHalfW,
+      a2x + nx * rootHalfW,
+      a2y + ny * rootHalfW
+    )
+    ctx.lineTo(a2x - nx * rootHalfW, a2y - ny * rootHalfW)
+    ctx.quadraticCurveTo(
+      midX - nx * waistHalfW,
+      midY - ny * waistHalfW,
+      a1x - nx * rootHalfW,
+      a1y - ny * rootHalfW
+    )
+    ctx.closePath()
+    return true
   }
 
   const traceTail = (): void => {
@@ -430,14 +649,26 @@ function drawBubbleBodyAndTail(
     if (dist < 4) return
     const nx = -dy / dist
     const ny = dx / dist
-    const baseHalfW = Math.max(6, Math.min(w, h) * 0.14)
+    const baseHalfW = Math.max(6, Math.min(w, h) * 0.13)
     // 尾巴根部插在气泡中心偏外侧，保证完全被气泡主体遮住接缝
     const rootX = cx + (dx / dist) * Math.min(w, h) * 0.22
     const rootY = cy + (dy / dist) * Math.min(w, h) * 0.22
+    const pLeftX = rootX + nx * baseHalfW
+    const pLeftY = rootY + ny * baseHalfW
+    const pRightX = rootX - nx * baseHalfW
+    const pRightY = rootY - ny * baseHalfW
+    // 手绘二次贝塞尔微曲弧形尾巴：带轻微内收腰线与顺向弯折，更具漫画家手绘灵动感
+    const bendSign = dx >= 0 ? 1 : -1
+    const midX = (rootX + tailTip.x) * 0.52 + nx * baseHalfW * 0.22 * bendSign
+    const midY = (rootY + tailTip.y) * 0.52 + ny * baseHalfW * 0.22 * bendSign
+    const ctrlLeftX = midX + nx * baseHalfW * 0.28
+    const ctrlLeftY = midY + ny * baseHalfW * 0.28
+    const ctrlRightX = midX - nx * baseHalfW * 0.28
+    const ctrlRightY = midY - ny * baseHalfW * 0.28
     ctx.beginPath()
-    ctx.moveTo(rootX + nx * baseHalfW, rootY + ny * baseHalfW)
-    ctx.lineTo(tailTip.x, tailTip.y)
-    ctx.lineTo(rootX - nx * baseHalfW, rootY - ny * baseHalfW)
+    ctx.moveTo(pLeftX, pLeftY)
+    ctx.quadraticCurveTo(ctrlLeftX, ctrlLeftY, tailTip.x, tailTip.y)
+    ctx.quadraticCurveTo(ctrlRightX, ctrlRightY, pRightX, pRightY)
     ctx.closePath()
   }
 
@@ -445,18 +676,37 @@ function drawBubbleBodyAndTail(
   ctx.lineJoin = 'round'
   ctx.lineCap = 'round'
 
-  // 第 1 步：先画尾巴与气泡主体的外描边（两遍 stroke 后再统一 fill，接口处无缝融合！）
+  // 第 1 步：先画连体桥、尾巴与气泡主体的外描边（两遍 stroke 后再统一 fill，接口处无缝融合，并附带微立体纸张衬影防亮底融边）
   if (strokeWidth > 0) {
+    ctx.save()
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.16)'
+    ctx.shadowBlur = 6
+    ctx.shadowOffsetX = 1
+    ctx.shadowOffsetY = 2.5
     ctx.strokeStyle = stroke
     ctx.lineWidth = strokeWidth * 2
+    if (traceBridge()) ctx.stroke()
     traceTail()
     ctx.stroke()
     traceMainShape()
     ctx.stroke()
+    ctx.restore()
   }
 
-  // 第 2 步：填充尾巴与主体内部，遮盖内部重合描边线
+  // 第 2 步：填充前序连体气泡内部、连体桥、尾巴与当前气泡内部，100% 遮盖内部重合描边线
   ctx.fillStyle = fill
+  if (bridgeFrom) {
+    traceBasicShape(
+      bridgeFrom.x,
+      bridgeFrom.y,
+      bridgeFrom.w,
+      bridgeFrom.h,
+      bridgeFrom.shape,
+      bridgeFrom.cornerRadius
+    )
+    ctx.fill()
+    if (traceBridge()) ctx.fill()
+  }
   traceTail()
   ctx.fill()
   traceMainShape()
@@ -629,12 +879,118 @@ export function renderComicPageToCanvas(
       ctx.stroke()
       ctx.restore()
     }
+
+    // 人物「破框出格」立体渲染（Pop-Out Frame Breaking）：
+    // 若分镜含有前景抠图立绘（foregroundImageUrl）且未关闭 popOutFrame，在分镜框线之上叠加绘制微放大前景立绘与白边衬底 Halo
+    if (!options?.skipForegroundPopOut && panel.foregroundImageUrl && panel.popOutFrame !== false) {
+      const fgImg = images.get(panel.foregroundImageUrl) ?? null
+      if (fgImg && fgImg.naturalWidth > 0) {
+        ctx.save()
+        const bleedTop = rect.height * 0.16
+        const bleedSide = rect.width * 0.1
+        const bleedBottom = rect.height * 0.06
+        const clipX = Math.max(0, rect.x - bleedSide)
+        const clipY = Math.max(0, rect.y - bleedTop)
+        const clipW = Math.min(width - clipX, rect.width + bleedSide * 2)
+        const clipH = Math.min(height - clipY, rect.height + bleedTop + bleedBottom)
+        ctx.beginPath()
+        ctx.rect(clipX, clipY, clipW, clipH)
+        ctx.clip()
+
+        const depth = Math.max(0.1, Math.min(1, panel.parallaxDepth ?? 0.5))
+        const popBoost = 1 + depth * 0.09
+        const popPanel: ComicPanel = {
+          ...panel,
+          imageZoom: Math.min(4, (panel.imageZoom ?? 1) * popBoost),
+          imagePanY: Math.max(-1, Math.min(1, (panel.imagePanY ?? 0) - 0.04))
+        }
+        ctx.shadowColor =
+          background !== 'transparent' ? background : page.backgroundColor?.trim() || '#ffffff'
+        ctx.shadowBlur = Math.max(3, pBorderWidth * 1.8)
+        drawPanelImage(ctx, fgImg, rect, popPanel)
+        ctx.restore()
+      }
+    }
   }
 
-  // 第二阶段：绘制所有台词气泡与 SFX 拟声词（浮在分镜格之上，支持跨格破框显示）
+  // 第二阶段：绘制所有台词气泡与 SFX 拟声词（浮在分镜格之上，支持跨格破框显示、边缘防裁切夹取与同格防重叠）
+  const VERTICAL_ROTATE_CHARS = new Set([
+    '—',
+    '–',
+    '-',
+    '―',
+    '…',
+    '‥',
+    '～',
+    '~',
+    '（',
+    '）',
+    '(',
+    ')',
+    '「',
+    '」',
+    '『',
+    '』',
+    '【',
+    '】',
+    '《',
+    '》',
+    '〈',
+    '〉',
+    '[',
+    ']',
+    '{',
+    '}',
+    '：',
+    '；'
+  ])
+  const VERTICAL_CORNER_CHARS = new Set(['。', '、', '，', '．'])
+
   for (const panel of orderedPanels) {
     const rect = rects.get(panel.id)
     if (!rect) continue
+    const placedPanelBoxes: Array<{ x: number; y: number; w: number; h: number }> = []
+
+    interface PreparedBubble {
+      bubble: ComicSpeechBubble
+      shape: ComicBubbleShape
+      isVertical: boolean
+      weight: string
+      bFontPx: number
+      bSpeakerPx: number
+      bLineHeight: number
+      bPadX: number
+      bPadY: number
+      fill: string
+      stroke: string
+      textColor: string
+      strokeW: number
+      bodyW: number
+      bodyH: number
+      lines: string[]
+      verticalCols: string[][]
+      speakerText: string
+      speakerH: number
+      x: number
+      y: number
+      centerX: number
+      centerY: number
+      tipX: number
+      tipY: number
+      hasCustomTip: boolean
+      hasTail: boolean
+      cornerRadius: number
+      bridgeFrom: {
+        x: number
+        y: number
+        w: number
+        h: number
+        shape: ComicBubbleShape
+        cornerRadius: number
+      } | null
+    }
+
+    const preparedBubbles: PreparedBubble[] = []
 
     for (const bubble of panel.bubbles) {
       const anchor = comicBubblePagePoint(page, panel.id, bubble.id)
@@ -653,14 +1009,14 @@ export function renderComicPageToCanvas(
             ? '700'
             : '500'
 
-      const bFontPx = fontPx * s * (shape === 'sfx' ? 1.45 : 1)
+      const bFontPx = fontPx * s * (shape === 'sfx' ? 1.52 : 1)
       const bSpeakerPx = speakerPx * s
       const bLineHeight = lineHeight * s * (shape === 'sfx' ? 1.25 : 1)
       const bPadX =
         padX * s * (shape === 'oval' || shape === 'shout' || shape === 'thought' ? 1.25 : 1)
       const bPadY =
         padY * s * (shape === 'oval' || shape === 'shout' || shape === 'thought' ? 1.2 : 1)
-      const bMaxWidth = maxBubbleWidth * s
+      const bMaxWidth = Math.min(maxBubbleWidth * s, Math.max(96, rect.width * 0.88))
       const bInner = Math.max(24, bMaxWidth - bPadX * 2)
 
       const fill = bubble.backgroundColor?.trim() || defaultBubbleFill
@@ -685,7 +1041,8 @@ export function renderComicPageToCanvas(
       let speakerText = ''
       let speakerH = 0
 
-      const speaker = bubble.speaker?.trim() || ''
+      // 正式出版漫画靠气泡尾巴指向角色嘴部区分说话人，默认不在气泡内印蓝紫色角色名标签
+      const speaker = options?.showSpeakerLabel ? bubble.speaker?.trim() || '' : ''
       if (isVertical) {
         const maxCharsPerCol = Math.max(3, Math.min(12, Math.floor((rect.height * 0.42) / bFontPx)))
         verticalCols = wrapVerticalColumns(bubble.text, maxCharsPerCol)
@@ -696,7 +1053,8 @@ export function renderComicPageToCanvas(
         bodyW = Math.max(bFontPx * 2.2, verticalCols.length * colAdvance + speakerColW + bPadX * 2)
         bodyH = Math.max(bFontPx * 2.4, maxColLen * (bFontPx * 1.18) + bPadY * 2)
       } else {
-        lines = wrapText(ctx, bubble.text, bInner)
+        const shouldBalance = shape === 'oval' || shape === 'shout' || shape === 'thought'
+        lines = wrapText(ctx, bubble.text, bInner, shouldBalance)
         ctx.font = `600 ${bSpeakerPx}px sans-serif`
         speakerText = speaker ? truncateToFit(ctx, speaker, bInner) : ''
         ctx.font = `${weight} ${bFontPx}px sans-serif`
@@ -706,15 +1064,61 @@ export function renderComicPageToCanvas(
         speakerH = speakerText ? bSpeakerPx + 4 : 0
         bodyH = bPadY * 2 + speakerH + lines.length * bLineHeight
       }
+      ctx.restore()
 
-      const x = anchor.x - bodyW / 2
-      const y = anchor.y - bodyH / 2
+      // 边缘防裁切自适应夹取：允许适度破出分格框线（10%），但绝不超出页面安全边界
+      const pageMargin = Math.max(8, Math.min(18, Math.round((page.padding ?? 12) * 0.4)))
+      const minPanelX = Math.max(pageMargin, rect.x - bodyW * 0.1)
+      const maxPanelX = Math.min(
+        Math.max(pageMargin, width - bodyW - pageMargin),
+        rect.x + rect.width - bodyW * 0.9
+      )
+      const minPanelY = Math.max(pageMargin, rect.y - bodyH * 0.08)
+      const maxPanelY = Math.min(
+        Math.max(pageMargin, height - bodyH - pageMargin),
+        rect.y + rect.height - bodyH * 0.92
+      )
+
+      let x = anchor.x - bodyW / 2
+      let y = anchor.y - bodyH / 2
+      if (maxPanelX >= minPanelX) {
+        x = Math.min(maxPanelX, Math.max(minPanelX, x))
+      } else {
+        x = Math.min(Math.max(pageMargin, width - bodyW - pageMargin), Math.max(pageMargin, x))
+      }
+      if (maxPanelY >= minPanelY) {
+        y = Math.min(maxPanelY, Math.max(minPanelY, y))
+      } else {
+        y = Math.min(Math.max(pageMargin, height - bodyH - pageMargin), Math.max(pageMargin, y))
+      }
+
+      // 同格多气泡防重叠：若与当前分格已放置的气泡发生明显重叠，自动向下或向上错开
+      if (shape !== 'sfx' && placedPanelBoxes.length > 0) {
+        for (const prev of placedPanelBoxes) {
+          const overlapX = Math.min(x + bodyW, prev.x + prev.w) - Math.max(x, prev.x)
+          const overlapY = Math.min(y + bodyH, prev.y + prev.h) - Math.max(y, prev.y)
+          if (overlapX > Math.min(bodyW, prev.w) * 0.25 && overlapY > 4) {
+            const pushedDown = prev.y + prev.h + 8
+            const pushedUp = prev.y - bodyH - 8
+            if (pushedDown + bodyH <= rect.y + rect.height - 4) {
+              y = pushedDown
+            } else if (pushedUp >= rect.y + 4) {
+              y = pushedUp
+            }
+          }
+        }
+      }
+      if (shape !== 'sfx') {
+        placedPanelBoxes.push({ x, y, w: bodyW, h: bodyH })
+      }
+      const centerX = x + bodyW / 2
+      const centerY = y + bodyH / 2
 
       // 计算气泡尾巴尖端坐标
       const rawTip = comicBubbleTailTipPagePoint(page, panel.id, bubble.id)
       const hasCustomTip = bubble.tailTipX !== undefined && bubble.tailTipY !== undefined
-      let tipX = rawTip?.x ?? anchor.x
-      let tipY = rawTip?.y ?? anchor.y + bodyH / 2 + 12
+      let tipX = rawTip?.x ?? centerX
+      let tipY = rawTip?.y ?? centerY + bodyH / 2 + 12
       if (!hasCustomTip) {
         const tailSize = Math.max(8, Math.round(bFontPx * 0.55))
         const onLeft = bubble.tail === 'tl' || bubble.tail === 'bl'
@@ -726,11 +1130,55 @@ export function renderComicPageToCanvas(
       }
 
       const hasTail = shape !== 'narration' && shape !== 'sfx'
+      const cornerRadius = Math.round(bFontPx * 0.45)
+
+      // 连体双气泡检测：若同格前序气泡与当前气泡均为无旋转的 oval/rounded、同底色/描边、同说话人且间距紧凑，自动生成无痕连体桥接颈
+      let bridgeFrom: PreparedBubble['bridgeFrom'] = null
+      const prevPb = preparedBubbles[preparedBubbles.length - 1]
+      if (
+        prevPb &&
+        (shape === 'oval' || shape === 'rounded') &&
+        (prevPb.shape === 'oval' || prevPb.shape === 'rounded') &&
+        !(bubble.rotation ?? 0) &&
+        !(prevPb.bubble.rotation ?? 0) &&
+        prevPb.fill === fill &&
+        prevPb.stroke === stroke &&
+        (prevPb.bubble.speaker?.trim() || '') === (bubble.speaker?.trim() || '')
+      ) {
+        const dx = centerX - prevPb.centerX
+        const dy = centerY - prevPb.centerY
+        const dist = Math.hypot(dx, dy)
+        if (dist > 10) {
+          const ux = dx / dist
+          const uy = dy / dist
+          const rPrev =
+            1 / Math.hypot(ux / Math.max(8, prevPb.bodyW / 2), uy / Math.max(8, prevPb.bodyH / 2))
+          const rCurr = 1 / Math.hypot(ux / Math.max(8, bodyW / 2), uy / Math.max(8, bodyH / 2))
+          const edgeGap = dist - (rPrev + rCurr)
+          if (edgeGap <= Math.min(prevPb.bodyH, bodyH) * 0.45) {
+            bridgeFrom = {
+              x: prevPb.x,
+              y: prevPb.y,
+              w: prevPb.bodyW,
+              h: prevPb.bodyH,
+              shape: prevPb.shape,
+              cornerRadius: prevPb.cornerRadius
+            }
+            // 连体双气泡的首个气泡若未手动拖拽指定尾巴尖端，则收起默认尾巴，仅由第二个气泡伸出尾巴指向角色
+            if (!prevPb.hasCustomTip) {
+              prevPb.hasTail = false
+              const prevBound = bubbleBounds.get(prevPb.bubble.id)
+              if (prevBound) prevBound.hasTail = false
+            }
+          }
+        }
+      }
+
       bubbleBounds.set(bubble.id, {
         panelId: panel.id,
         bubbleId: bubble.id,
-        anchorX: anchor.x,
-        anchorY: anchor.y,
+        anchorX: centerX,
+        anchorY: centerY,
         x,
         y,
         width: bodyW,
@@ -740,29 +1188,156 @@ export function renderComicPageToCanvas(
         hasTail
       })
 
-      if (bubble.rotation) {
-        ctx.translate(anchor.x, anchor.y)
-        ctx.rotate((bubble.rotation * Math.PI) / 180)
-        ctx.translate(-anchor.x, -anchor.y)
+      preparedBubbles.push({
+        bubble,
+        shape,
+        isVertical,
+        weight,
+        bFontPx,
+        bSpeakerPx,
+        bLineHeight,
+        bPadX,
+        bPadY,
+        fill,
+        stroke,
+        textColor,
+        strokeW,
+        bodyW,
+        bodyH,
+        lines,
+        verticalCols,
+        speakerText,
+        speakerH,
+        x,
+        y,
+        centerX,
+        centerY,
+        tipX,
+        tipY,
+        hasCustomTip,
+        hasTail,
+        cornerRadius,
+        bridgeFrom
+      })
+    }
+
+    // Pass 1：统一绘制同格所有非 SFX 气泡的外框、连体桥接颈与尾巴（确保连体桥接重填内部时绝不遮盖任何气泡文字）
+    for (const pb of preparedBubbles) {
+      if (pb.shape === 'sfx') continue
+      ctx.save()
+      if (pb.bubble.rotation) {
+        ctx.translate(pb.centerX, pb.centerY)
+        ctx.rotate((pb.bubble.rotation * Math.PI) / 180)
+        ctx.translate(-pb.centerX, -pb.centerY)
+      }
+      drawBubbleBodyAndTail(
+        ctx,
+        pb.shape,
+        pb.x,
+        pb.y,
+        pb.bodyW,
+        pb.bodyH,
+        pb.cornerRadius,
+        pb.hasTail ? { x: pb.tipX, y: pb.tipY } : null,
+        pb.fill,
+        pb.stroke,
+        pb.strokeW,
+        pb.bubble.id,
+        pb.bridgeFrom
+      )
+      ctx.restore()
+    }
+
+    // Pass 2：统一绘制所有气泡对白文本与 SFX 拟声词特效字
+    for (const pb of preparedBubbles) {
+      const {
+        bubble,
+        shape,
+        isVertical,
+        weight,
+        bFontPx,
+        bSpeakerPx,
+        bLineHeight,
+        bPadX,
+        bPadY,
+        fill,
+        stroke,
+        textColor,
+        strokeW,
+        bodyW,
+        lines,
+        verticalCols,
+        speakerText,
+        speakerH,
+        x,
+        y,
+        centerX,
+        centerY
+      } = pb
+
+      ctx.save()
+      if (bubble.rotation || shape === 'sfx') {
+        ctx.translate(centerX, centerY)
+        if (bubble.rotation) {
+          ctx.rotate((bubble.rotation * Math.PI) / 180)
+        }
+        // 为 SFX 拟声词施加动感斜切矩阵（手绘漫画冲击感）
+        if (shape === 'sfx') {
+          ctx.transform(1, -0.05, -0.14, 1, 0, 0)
+        }
+        ctx.translate(-centerX, -centerY)
       }
 
-      if (shape !== 'sfx') {
-        drawBubbleBodyAndTail(
-          ctx,
-          shape,
-          x,
-          y,
-          bodyW,
-          bodyH,
-          Math.round(bFontPx * 0.45),
-          hasTail ? { x: tipX, y: tipY } : null,
-          fill,
-          stroke,
-          strokeW
-        )
+      // 构建 SFX 拟声词高燃渐变字芯（若采用默认红/橙色系则生成金黄→赤红渐变）
+      const createSfxFillStyle = (topY: number, bottomY: number): string | CanvasGradient => {
+        if (shape !== 'sfx') return textColor
+        const lower = textColor.toLowerCase()
+        const isDefaultCrimson =
+          !bubble.textColor?.trim() ||
+          lower === '#e11d48' ||
+          lower === '#ef4444' ||
+          lower === '#dc2626'
+        const grad = ctx.createLinearGradient(0, topY, 0, Math.max(topY + 8, bottomY))
+        if (isDefaultCrimson) {
+          grad.addColorStop(0, '#fef08a')
+          grad.addColorStop(0.45, '#f97316')
+          grad.addColorStop(1, '#e11d48')
+        } else {
+          grad.addColorStop(0, '#ffffff')
+          grad.addColorStop(0.3, textColor)
+          grad.addColorStop(1, textColor)
+        }
+        return grad
       }
 
-      // 绘制文字（支持横排、竖排及 SFX 粗描边特效字）
+      const drawSfxOrNormalGlyph = (
+        glyph: string,
+        gx: number,
+        gy: number,
+        fillStyle: string | CanvasGradient
+      ): void => {
+        if (shape === 'sfx') {
+          ctx.save()
+          ctx.lineJoin = 'round'
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.36)'
+          ctx.shadowBlur = 6
+          ctx.shadowOffsetX = 2
+          ctx.shadowOffsetY = 3
+          ctx.strokeStyle = fill || '#ffffff'
+          ctx.lineWidth = Math.max(5.5, strokeW * 3.8)
+          ctx.strokeText(glyph, gx, gy)
+          ctx.restore()
+
+          ctx.lineJoin = 'round'
+          ctx.strokeStyle = stroke || '#111111'
+          ctx.lineWidth = Math.max(2.6, strokeW * 1.75)
+          ctx.strokeText(glyph, gx, gy)
+        }
+        ctx.fillStyle = fillStyle
+        ctx.fillText(glyph, gx, gy)
+      }
+
+      // 绘制文字（支持横排、竖排标点旋转及 SFX 三层描边渐变特效字）
       if (isVertical) {
         const colAdvance = bFontPx * 1.32
         const charStep = bFontPx * 1.18
@@ -784,17 +1359,20 @@ export function renderComicPageToCanvas(
         for (const col of verticalCols) {
           let cyChar = y + bPadY
           for (const ch of col) {
-            if (shape === 'sfx') {
-              ctx.lineJoin = 'round'
-              ctx.strokeStyle = fill || '#ffffff'
-              ctx.lineWidth = Math.max(4, strokeW * 3.2)
-              ctx.strokeText(ch, cxCol, cyChar)
-              ctx.strokeStyle = stroke || '#111111'
-              ctx.lineWidth = Math.max(2, strokeW * 1.4)
-              ctx.strokeText(ch, cxCol, cyChar)
+            const fillStyle = createSfxFillStyle(cyChar, cyChar + bFontPx)
+            if (VERTICAL_ROTATE_CHARS.has(ch)) {
+              ctx.save()
+              ctx.translate(cxCol, cyChar + bFontPx * 0.52)
+              ctx.rotate(Math.PI / 2)
+              ctx.textAlign = 'center'
+              ctx.textBaseline = 'middle'
+              drawSfxOrNormalGlyph(ch, 0, 0, fillStyle)
+              ctx.restore()
+            } else if (VERTICAL_CORNER_CHARS.has(ch)) {
+              drawSfxOrNormalGlyph(ch, cxCol + bFontPx * 0.28, cyChar - bFontPx * 0.22, fillStyle)
+            } else {
+              drawSfxOrNormalGlyph(ch, cxCol, cyChar, fillStyle)
             }
-            ctx.fillStyle = textColor
-            ctx.fillText(ch, cxCol, cyChar)
             cyChar += charStep
           }
           cxCol -= colAdvance
@@ -804,7 +1382,7 @@ export function renderComicPageToCanvas(
           shape === 'oval' || shape === 'shout' || shape === 'thought' ? 'center' : 'left'
         ctx.textBaseline = 'top'
         const tx =
-          shape === 'oval' || shape === 'shout' || shape === 'thought' ? anchor.x : x + bPadX
+          shape === 'oval' || shape === 'shout' || shape === 'thought' ? centerX : x + bPadX
         let cy = y + bPadY
         if (speakerText) {
           ctx.font = `700 ${bSpeakerPx}px sans-serif`
@@ -814,17 +1392,8 @@ export function renderComicPageToCanvas(
         }
         ctx.font = `${weight} ${bFontPx}px sans-serif`
         for (const line of lines) {
-          if (shape === 'sfx') {
-            ctx.lineJoin = 'round'
-            ctx.strokeStyle = fill || '#ffffff'
-            ctx.lineWidth = Math.max(4, strokeW * 3.2)
-            ctx.strokeText(line, tx, cy)
-            ctx.strokeStyle = stroke || '#111111'
-            ctx.lineWidth = Math.max(2, strokeW * 1.4)
-            ctx.strokeText(line, tx, cy)
-          }
-          ctx.fillStyle = textColor
-          ctx.fillText(line, tx, cy)
+          const fillStyle = createSfxFillStyle(cy, cy + bFontPx)
+          drawSfxOrNormalGlyph(line, tx, cy, fillStyle)
           cy += bLineHeight
         }
       }
@@ -832,21 +1401,49 @@ export function renderComicPageToCanvas(
     }
   }
 
-  // 页面左上角标题徽章
+  // 页面顶部天头杂志式页眉刊头（Running Head）：严格收在顶部留白带内，绝不压首格顶边框
   if (page.title?.trim()) {
     ctx.save()
-    const titleFont = Math.max(12, Math.round(fontPx * 0.95))
-    ctx.font = `700 ${titleFont}px sans-serif`
-    const tw = ctx.measureText(page.title.trim()).width
-    const tx = Math.max(10, page.padding ? page.padding : 10)
-    const ty = Math.max(8, page.padding ? Math.max(6, page.padding - titleFont - 10) : 8)
-    pathRoundRect(ctx, tx, ty, tw + 16, titleFont + 8, 4)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.88)'
-    ctx.fill()
-    ctx.fillStyle = '#111111'
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(page.title.trim(), tx + 8, ty + (titleFont + 8) / 2)
+    const titleText = page.title.trim()
+    const pad = page.padding ?? 0
+    const bgHex = background.startsWith('#') ? background.slice(1) : ''
+    let isDarkBg = false
+    if (bgHex.length === 6) {
+      const r = parseInt(bgHex.slice(0, 2), 16)
+      const g = parseInt(bgHex.slice(2, 4), 16)
+      const b = parseInt(bgHex.slice(4, 6), 16)
+      if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
+        isDarkBg = 0.299 * r + 0.587 * g + 0.114 * b < 128
+      }
+    }
+    if (pad >= 18) {
+      const titleFont = Math.max(10, Math.min(Math.round(fontPx * 0.8), Math.floor(pad * 0.55)))
+      const cy = Math.max(titleFont * 0.6, Math.round(pad * 0.5))
+      const tx = pad
+      ctx.fillStyle = '#e11d48'
+      ctx.fillRect(tx, Math.round(cy - titleFont * 0.46), 3.5, Math.round(titleFont * 0.92))
+      ctx.font = `700 ${titleFont}px sans-serif`
+      ctx.fillStyle = isDarkBg ? 'rgba(241, 245, 249, 0.92)' : 'rgba(30, 41, 59, 0.88)'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(titleText, tx + 9, cy)
+    } else {
+      const titleFont = Math.max(11, Math.round(fontPx * 0.82))
+      ctx.font = `700 ${titleFont}px sans-serif`
+      const tw = ctx.measureText(titleText).width
+      const tx = 10
+      const ty = 8
+      const pillH = titleFont + 8
+      pathRoundRect(ctx, tx, ty, tw + 20, pillH, 4)
+      ctx.fillStyle = isDarkBg ? 'rgba(15, 23, 42, 0.88)' : 'rgba(255, 255, 255, 0.9)'
+      ctx.fill()
+      ctx.fillStyle = '#e11d48'
+      ctx.fillRect(tx + 6, Math.round(ty + 4), 3, pillH - 8)
+      ctx.fillStyle = isDarkBg ? '#f8fafc' : '#0f172a'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(titleText, tx + 13, ty + pillH / 2)
+    }
     ctx.restore()
   }
 
@@ -863,16 +1460,21 @@ export async function composeComicPageImage(
   canvas.width = width
   canvas.height = height
 
-  // 预加载图片（并发，失败则画占位）
+  // 预加载图片（含分镜底图与前景破框透明立绘，并发，失败则画占位）
   const images = new Map<string, HTMLImageElement | null>()
   if (input.resolveImage) {
+    const urls = new Set<string>()
+    for (const panel of page.panels) {
+      if (panel.imageUrl) urls.add(panel.imageUrl)
+      if (panel.foregroundImageUrl) urls.add(panel.foregroundImageUrl)
+    }
     await Promise.all(
-      page.panels.map(async (panel) => {
-        if (!panel.imageUrl || images.has(panel.imageUrl)) return
-        images.set(panel.imageUrl, null)
+      [...urls].map(async (url) => {
+        if (images.has(url)) return
+        images.set(url, null)
         try {
-          const src = await input.resolveImage!(panel.imageUrl)
-          if (src) images.set(panel.imageUrl, await loadComicHtmlImage(src))
+          const src = await input.resolveImage!(url)
+          if (src) images.set(url, await loadComicHtmlImage(src))
         } catch {
           /* 加载失败保持 null → 占位 */
         }
@@ -914,6 +1516,7 @@ export async function composeComicPageImage(
             caption: undefined,
             borderWidth: 0,
             cornerOffsets: undefined,
+            foregroundImageUrl: undefined,
             imageFit: 'cover',
             bubbles: []
           }
@@ -924,7 +1527,8 @@ export async function composeComicPageImage(
         panelFill: input.panelFill ?? '#0f172a',
         borderColor: input.borderColor,
         bubbleFill: input.bubbleFill,
-        textColor: input.textColor
+        textColor: input.textColor,
+        skipForegroundPopOut: true
       })
       const pUrl = pCanvas.toDataURL('image/png')
       if (pUrl) panelDataUrls[panel.id] = pUrl
@@ -1014,4 +1618,188 @@ export async function composeComicPageImage(
     panelDataUrls,
     bubbleDataUrls
   }
+}
+
+export interface ComicStitchedStripComposeOptions {
+  pages: ComicPage[]
+  resolveImage?: (imageUrl: string) => Promise<string>
+  /** 页间留白像素（默认 0 无缝衔接） */
+  pageGapPx?: number
+  /** 统一输出宽度（默认取第一页宽度，通常 1080） */
+  targetWidth?: number
+  /** 拼接画布底色（默认跟随第一页底色或 #ffffff） */
+  backgroundColor?: string
+}
+
+/**
+ * 将多张漫画页（例如 page1、page2、page3）按阅读顺序纵向拼接为一张完整的「整话长条漫 PNG（Webtoon Strip）」，
+ * 供小红书 / 微信公众号 / 条漫平台一图流发布。
+ */
+export async function composeStitchedComicStripImage(
+  input: ComicStitchedStripComposeOptions
+): Promise<{ dataUrl: string; width: number; height: number; pageCount: number }> {
+  const validPages = input.pages
+    .map((p) => normalizeComicPage(p))
+    .filter((p) => p.panels.length > 0)
+  if (!validPages.length) {
+    throw new Error('GRAPH_COMIC_PAGE_EMPTY')
+  }
+
+  const renderedPages: Array<{ img: HTMLImageElement; width: number; height: number }> = []
+  for (const page of validPages) {
+    const composed = await composeComicPageImage({
+      page,
+      resolveImage: input.resolveImage
+    })
+    if (!composed.dataUrl) continue
+    const img = await loadComicHtmlImage(composed.dataUrl)
+    renderedPages.push({ img, width: composed.width, height: composed.height })
+  }
+  if (!renderedPages.length) {
+    throw new Error('COMIC_PAGE_COMPOSE_FAILED')
+  }
+
+  const outWidth = Math.max(240, Math.round(input.targetWidth || renderedPages[0]!.width || 1080))
+  const gapPx = Math.max(0, Math.round(input.pageGapPx ?? 0))
+  const scaledHeights = renderedPages.map((item) =>
+    Math.max(1, Math.round((item.height * outWidth) / Math.max(1, item.width)))
+  )
+  const totalHeight =
+    scaledHeights.reduce((acc, h) => acc + h, 0) + gapPx * Math.max(0, renderedPages.length - 1)
+
+  const stripCanvas = document.createElement('canvas')
+  stripCanvas.width = outWidth
+  stripCanvas.height = totalHeight
+  const ctx = stripCanvas.getContext('2d')
+  if (!ctx) throw new Error('COMIC_PAGE_CANVAS_UNAVAILABLE')
+
+  const bg = input.backgroundColor?.trim() || validPages[0]?.backgroundColor?.trim() || '#ffffff'
+  if (bg !== 'transparent') {
+    ctx.fillStyle = bg
+    ctx.fillRect(0, 0, outWidth, totalHeight)
+  }
+
+  let curY = 0
+  for (let i = 0; i < renderedPages.length; i++) {
+    const item = renderedPages[i]!
+    const drawH = scaledHeights[i]!
+    ctx.drawImage(item.img, 0, curY, outWidth, drawH)
+    curY += drawH + gapPx
+  }
+
+  return {
+    dataUrl: stripCanvas.toDataURL('image/png'),
+    width: outWidth,
+    height: totalHeight,
+    pageCount: renderedPages.length
+  }
+}
+
+export interface ComicPanelCardItem {
+  panelId: string
+  index: number
+  title: string
+  dataUrl: string
+  width: number
+  height: number
+}
+
+/**
+ * 将当前漫画页所有分镜格按阅读顺序（LTR/RTL）分别独立渲染为带对白气泡、镜头特效、旁白条与精致画框的高清分格图文卡片包，
+ * 供小红书 / 微博 / B站动态 / Instagram 多图轮播一键发布。
+ */
+export async function composeComicPanelCardsPack(
+  input: ComicPageComposeOptions
+): Promise<ComicPanelCardItem[]> {
+  const page = normalizeComicPage(input.page)
+  const ordered = readingOrderPanels(page)
+  if (!ordered.length) return []
+
+  const images = new Map<string, HTMLImageElement | null>()
+  if (input.resolveImage) {
+    const urls = new Set<string>()
+    for (const panel of ordered) {
+      if (panel.imageUrl) urls.add(panel.imageUrl)
+      if (panel.foregroundImageUrl) urls.add(panel.foregroundImageUrl)
+    }
+    await Promise.all(
+      [...urls].map(async (url) => {
+        if (images.has(url)) return
+        images.set(url, null)
+        try {
+          const src = await input.resolveImage!(url)
+          if (src) images.set(url, await loadComicHtmlImage(src))
+        } catch {
+          /* ignore */
+        }
+      })
+    )
+  }
+
+  const rects = comicPanelRects(page)
+  const out: ComicPanelCardItem[] = []
+  const cardCanvas = document.createElement('canvas')
+
+  for (let i = 0; i < ordered.length; i++) {
+    const panel = ordered[i]!
+    const rect = rects.get(panel.id)
+    const ratio = rect && rect.height > 0 ? rect.width / rect.height : 1
+    // 按分镜原宽高比输出高清独立卡片（短边至少 960px，长边封顶 1440px）
+    let cardW = 1080
+    let cardH = 1080
+    if (ratio >= 1) {
+      cardW = Math.min(1440, Math.max(1080, Math.round(960 * ratio)))
+      cardH = Math.max(720, Math.round(cardW / ratio))
+    } else {
+      cardH = Math.min(1440, Math.max(1080, Math.round(960 / ratio)))
+      cardW = Math.max(720, Math.round(cardH * ratio))
+    }
+
+    const cardPage: ComicPage = {
+      ...page,
+      title: undefined,
+      width: cardW,
+      height: cardH,
+      columns: 1,
+      rows: 1,
+      gutter: 0,
+      padding: 16,
+      borderWidth: page.borderWidth ?? 3,
+      borderRadius: page.borderRadius ?? 6,
+      panels: [
+        {
+          ...panel,
+          row: 0,
+          col: 0,
+          rowSpan: 1,
+          colSpan: 1,
+          zIndex: 0,
+          cornerOffsets: undefined
+        }
+      ]
+    }
+
+    cardCanvas.width = cardW
+    cardCanvas.height = cardH
+    renderComicPageToCanvas(cardCanvas, cardPage, images, {
+      background: input.background ?? page.backgroundColor ?? '#ffffff',
+      panelFill: input.panelFill,
+      borderColor: input.borderColor,
+      bubbleFill: input.bubbleFill,
+      textColor: input.textColor
+    })
+    const dataUrl = cardCanvas.toDataURL('image/png')
+    if (dataUrl) {
+      out.push({
+        panelId: panel.id,
+        index: i + 1,
+        title: panel.title?.trim() || `panel-${i + 1}`,
+        dataUrl,
+        width: cardW,
+        height: cardH
+      })
+    }
+  }
+
+  return out
 }

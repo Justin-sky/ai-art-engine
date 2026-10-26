@@ -21,3 +21,24 @@ export * from './stage2dActionPresets'
 export * from './stage2dActionAsset'
 export * from './stage2dSpineExport'
 export * from './stage2dAutoPart'
+export * from './tilemapSeamless'
+export * from './uiNineSlice'
+export * from './pbrMapDerive'
+export * from './gameAudioProcess'
+export * from './gameBundleManifest'
+export {
+  buildSpritePhysicsManifest,
+  computeConvexHull,
+  deriveCombatBoxesFromAlpha,
+  extractSpriteCollisionHull,
+  simplifyPolygonToMaxVertices,
+  type CombatBoxesOptions,
+  type PhysicsPivotMode,
+  type Point2D,
+  type SpriteCollisionHullOptions,
+  type SpriteCollisionHullResult,
+  type SpriteCombatBoxes as SpritePhysicsCombatBoxes,
+  type SpritePhysicsManifest
+} from './spritePhysicsHull'
+export * from './gameDataTables'
+export * from './engineImporterScripts'
