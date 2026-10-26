@@ -807,6 +807,16 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
     titleEn: 'Video remake',
     usageZh: SEMANTIC_TIMELINE_USAGE_ZH,
     usageEn: SEMANTIC_TIMELINE_USAGE_EN
+  },
+  {
+    id: 'comic.page',
+    kind: 'node',
+    titleZh: '漫画排版与动态漫',
+    titleEn: 'Comic Page & Motion Comic',
+    usageZh:
+      '对应画布节点 `comic.page`（漫画页排版与动态漫桥接，双击进入全屏漫画工作台）：端口 `in-image`:image(多连) → `out`:image。通过 `params.comicPage`（JSON 字符串）配置画布宽高、阅读顺序 `readingDirection`（`"ltr"` 国漫/美漫左到右，`"rtl"` 日漫右到左）、分镜格 `panels`（含斜切刀口 `cornerOffsets`、漫画滤镜 `imageFilter`、速度线/集中线特效 `effectType`、单格动态漫运镜 `cameraMotion`、单格停留时长 `durationSec`、动静混排视频源 `videoUrl`）以及台词气泡与拟声词 `bubbles`（`shape: "rounded"|"oval"|"shout"|"thought"|"narration"|"sfx"`）。将 `comic.page` 的 `out` 连入 `output.timeline` 的 `in-image`（或在工作台顶部点击「🎬 生成动态漫」），即可自动按阅读顺序把整页漫画编译为多轨动态漫视频（含整页开场镜头、逐格局部裁切推拉摇移运镜、逐气泡卡拉 OK 字幕、咆哮/拟声词弹跳贴纸与程序化音效）。',
+    usageEn:
+      'Maps to canvas node `comic.page` (Comic Page Layout & Motion Comic Bridge; double-click for the full-screen comic workbench): ports `in-image`:image(multi) → `out`:image. Configure via `params.comicPage` (JSON string) with `readingDirection` (`"ltr"` or `"rtl"`), `panels` (including diagonal `cornerOffsets`, `imageFilter`, `effectType`, Motion Comic `cameraMotion`, `durationSec`, and hybrid `videoUrl`), and `bubbles` (`shape: "rounded"|"oval"|"shout"|"thought"|"narration"|"sfx"`). Connect `comic.page` (`out`) → `output.timeline` (`in-image`) or click "🎬 Motion Comic" in the comic workbench to automatically compile the comic page into a multi-track Motion Comic timeline with panel-by-panel crop & camera motion, bubble karaoke subtitles, elastic comic stickers, and procedural SFX.'
   }
 ]
 

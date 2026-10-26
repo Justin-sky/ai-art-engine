@@ -1,9 +1,13 @@
 import {
+  buildComicMotionTimeline,
   contentEndSecOfTimeline,
+  extractComicDialogueLines,
   parseActSceneSubtitlePlan,
   rasterizeTimelineStickerSvgToPngDataUrl,
+  readComicPageFromGenParams,
   readScriptTimelineFromGenParams,
   withScriptTimeline,
+  type ComicPage,
   type GraphImageItem,
   type GraphTimelineVisualItem,
   type GraphVideoItem,
@@ -147,6 +151,14 @@ export async function composeTimelineVideoForNode(input: {
   sfx?: Array<GraphVoiceItem & { title?: string; lane?: number }>
   music?: GraphVoiceItem[]
   subtitles?: string[]
+  comicPages?: Array<{
+    nodeId: string
+    nodeTitle?: string
+    comicPage: string
+    pageImageRelativePath?: string
+    panelImageRelativePaths?: Record<string, string>
+    bubbleImageRelativePaths?: Record<string, string>
+  }>
   signal?: AbortSignal
 }): Promise<{ relativePath?: string; assetId?: string } | null> {
   if (input.signal?.aborted) return null
@@ -284,7 +296,96 @@ export async function composeTimelineVideoForNode(input: {
     (c) => c.track === 'music' && !c.id.startsWith('clip:auto:')
   )
 
-  const canAutoBuildVideo = !hasManualVideoClips && resolvedVisuals.length > 0
+  const comicPageEntries: Array<{
+    nodeId: string
+    nodeTitle?: string
+    page: ComicPage
+    pageImageRelativePath?: string
+    panelImageRelativePaths?: Record<string, string>
+    bubbleImageRelativePaths?: Record<string, string>
+  }> = []
+  if (input.comicPages?.length) {
+    for (const cp of input.comicPages) {
+      const parsed = readComicPageFromGenParams({ comicPage: cp.comicPage })
+      if (parsed && parsed.panels.length > 0) {
+        comicPageEntries.push({
+          nodeId: cp.nodeId,
+          nodeTitle: cp.nodeTitle,
+          page: parsed,
+          pageImageRelativePath: cp.pageImageRelativePath,
+          panelImageRelativePaths: cp.panelImageRelativePaths,
+          bubbleImageRelativePaths: cp.bubbleImageRelativePaths
+        })
+      }
+    }
+  } else if (initialGraphNodes.length > 0) {
+    const initialGraphEdges =
+      initialGenParams.graphJson &&
+      typeof initialGenParams.graphJson === 'object' &&
+      Array.isArray((initialGenParams.graphJson as { edges?: unknown[] }).edges)
+        ? ((initialGenParams.graphJson as { edges: Array<Record<string, unknown>> }).edges ?? [])
+        : []
+    const upstreamComicNodeIds = new Set(
+      initialGraphEdges
+        .filter((e) => e.target === input.nodeId)
+        .map((e) => String(e.source ?? ''))
+        .filter(Boolean)
+    )
+    const candidateComicNodes = initialGraphNodes.filter(
+      (n) =>
+        n.typeId === 'comic.page' &&
+        (upstreamComicNodeIds.size === 0 || upstreamComicNodeIds.has(String(n.id ?? '')))
+    )
+    for (const cn of candidateComicNodes) {
+      const params = (cn.params as Record<string, unknown> | undefined) ?? {}
+      const parsed = readComicPageFromGenParams(params)
+      if (!parsed || parsed.panels.length === 0) continue
+      const nodeId = String(cn.id ?? '')
+      const previewRel =
+        typeof params.previewRelativePath === 'string'
+          ? params.previewRelativePath.trim()
+          : undefined
+      const matchedVis = resolvedVisuals.find(
+        (v) => v.id === `comic-page:${nodeId}` || (previewRel && v.rel === previewRel)
+      )
+      if (!upstreamComicNodeIds.has(nodeId) && !matchedVis) continue
+      const panelPrefix = `comic-panel:${nodeId}:`
+      const bubblePrefix = `comic-bubble:${nodeId}:`
+      const panelImageRelativePaths: Record<string, string> = {}
+      const bubbleImageRelativePaths: Record<string, string> = {}
+      const rawGenImages = Array.isArray(params.generatedImages)
+        ? (params.generatedImages as Array<Record<string, unknown>>)
+        : []
+      for (const g of rawGenImages) {
+        const gid = typeof g.id === 'string' ? g.id : ''
+        const grel = typeof g.relativePath === 'string' ? g.relativePath.trim() : ''
+        if (!grel) continue
+        if (gid.startsWith(panelPrefix)) {
+          const panelId = gid.slice(panelPrefix.length)
+          if (panelId) panelImageRelativePaths[panelId] = grel
+        } else if (gid.startsWith(bubblePrefix)) {
+          const bubbleId = gid.slice(bubblePrefix.length)
+          if (bubbleId) bubbleImageRelativePaths[bubbleId] = grel
+        }
+      }
+      comicPageEntries.push({
+        nodeId,
+        nodeTitle: typeof cn.title === 'string' ? cn.title.trim() : undefined,
+        page: parsed,
+        pageImageRelativePath:
+          matchedVis?.rel ||
+          previewRel ||
+          (candidateComicNodes.length === 1 && resolvedVisuals[0]?.kind === 'image'
+            ? resolvedVisuals[0]?.rel
+            : undefined),
+        ...(Object.keys(panelImageRelativePaths).length > 0 ? { panelImageRelativePaths } : {}),
+        ...(Object.keys(bubbleImageRelativePaths).length > 0 ? { bubbleImageRelativePaths } : {})
+      })
+    }
+  }
+
+  const canAutoBuildVideo =
+    !hasManualVideoClips && (resolvedVisuals.length > 0 || comicPageEntries.length > 0)
   const canAutoBuildVoice = !hasManualVoiceClips && resolvedVoices.length > 0
 
   if (canAutoBuildVideo || canAutoBuildVoice) {
@@ -293,8 +394,13 @@ export async function composeTimelineVideoForNode(input: {
       if (
         canAutoBuildVideo &&
         c.track === 'overlay' &&
-        (c.id.startsWith('clip:auto:v:') || c.id.startsWith('clip:auto:vf:'))
+        (c.id.startsWith('clip:auto:v:') ||
+          c.id.startsWith('clip:auto:vf:') ||
+          c.id.startsWith('clip:auto:comic:'))
       ) {
+        return false
+      }
+      if (canAutoBuildVideo && c.track === 'sfx' && c.id.startsWith('clip:auto:comic:')) {
         return false
       }
       if (!isAutoOrInputClip(c)) return true
@@ -322,939 +428,1009 @@ export async function composeTimelineVideoForNode(input: {
 
     const stamp = Date.now().toString(36)
 
-    // 构建分镜配对槽位：
-    // 1. 若画面与旁白标题均带分镜/幕序号（如 分镜1..分镜5 或 第1幕..第3幕），按序号精确配对；
-    // 2. 若同一幕同时包含「古画取景切片图（image）」、（可选）「写实还原照片（image）」与「写实复活视频（video）」，自动合并为混合入画槽位（preImgIdx + realImgIdx + visIdx）。
-    const shotSlots: Array<{
-      preImgIdx?: number
-      realImgIdx?: number
-      visIdx?: number
-      voiceIdx?: number
-      extraVoiceIndices?: number[]
-    }> = []
-    const hasVisShotNums =
-      canAutoBuildVideo && resolvedVisuals.some((v) => extractShotNum(v.title) !== null)
-    const hasVoiceShotNums =
-      canAutoBuildVoice && resolvedVoices.some((v) => extractShotNum(v.title) !== null)
+    if (canAutoBuildVideo && comicPageEntries.length > 0) {
+      let pageCursor = 0
+      let voiceOffset = 0
+      comicPageEntries.forEach((entry, pageIdx) => {
+        const dlgCount = extractComicDialogueLines(entry.page).length
+        const pageVoiceCount =
+          comicPageEntries.length === 1
+            ? resolvedVoices.length
+            : dlgCount > 0
+              ? dlgCount
+              : entry.page.panels.length
+        const pageVoices = resolvedVoices
+          .slice(voiceOffset, voiceOffset + pageVoiceCount)
+          .map((v, vIdx) => ({
+            id: v.id,
+            relativePath: v.rel,
+            durationSec: voiceDurations[voiceOffset + vIdx] ?? undefined,
+            text: v.text,
+            title: v.title
+          }))
+        voiceOffset += pageVoices.length
 
-    if (hasVisShotNums) {
-      const usedVoices = new Set<number>()
-      let slotCounter = 0
-      for (let vi = 0; vi < resolvedVisuals.length; vi++) {
-        const currVis = resolvedVisuals[vi]!
-        const vShot = extractShotNum(currVis.title)
-        const currIsPhoto = currVis.kind === 'image' || isStaticPhotoPath(currVis.rel)
-        const nextVis = vi + 1 < resolvedVisuals.length ? resolvedVisuals[vi + 1] : undefined
-        const thirdVis = vi + 2 < resolvedVisuals.length ? resolvedVisuals[vi + 2] : undefined
-        const nextIsPhoto =
-          nextVis !== undefined && (nextVis.kind === 'image' || isStaticPhotoPath(nextVis.rel))
-        const nextIsVideo =
-          nextVis !== undefined && nextVis.kind !== 'image' && !isStaticPhotoPath(nextVis.rel)
-        const thirdIsVideo =
-          thirdVis !== undefined && thirdVis.kind !== 'image' && !isStaticPhotoPath(thirdVis.rel)
-        const isHybridActTriplet =
-          vShot !== null &&
-          currIsPhoto &&
-          nextIsPhoto &&
-          thirdIsVideo &&
-          extractShotNum(nextVis!.title) === vShot &&
-          extractShotNum(thirdVis!.title) === vShot
-        const isHybridActPair =
-          !isHybridActTriplet &&
-          vShot !== null &&
-          currIsPhoto &&
-          nextIsVideo &&
-          extractShotNum(nextVis!.title) === vShot
-
-        let matchedVoiceIdx: number | undefined
-        const extraVoiceIndices: number[] = []
-        if (hasVoiceShotNums && vShot !== null) {
-          resolvedVoices.forEach((vo, idx) => {
-            if (!usedVoices.has(idx) && extractShotNum(vo.title) === vShot) {
-              usedVoices.add(idx)
-              if (matchedVoiceIdx === undefined) {
-                matchedVoiceIdx = idx
-              } else {
-                extraVoiceIndices.push(idx)
-              }
-            }
-          })
-        } else if (canAutoBuildVoice && slotCounter < resolvedVoices.length) {
-          matchedVoiceIdx = slotCounter
-          usedVoices.add(slotCounter)
-        }
-
-        if (isHybridActTriplet) {
-          shotSlots.push({
-            preImgIdx: vi,
-            realImgIdx: vi + 1,
-            visIdx: vi + 2,
-            voiceIdx: matchedVoiceIdx,
-            ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
-          })
-          vi += 2
-        } else if (isHybridActPair) {
-          shotSlots.push({
-            preImgIdx: vi,
-            visIdx: vi + 1,
-            voiceIdx: matchedVoiceIdx,
-            ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
-          })
-          vi++
-        } else {
-          shotSlots.push({
-            visIdx: vi,
-            voiceIdx: matchedVoiceIdx,
-            ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
-          })
-        }
-        slotCounter++
-      }
-      for (let ai = 0; ai < resolvedVoices.length; ai++) {
-        if (!usedVoices.has(ai)) {
-          shotSlots.push({ voiceIdx: ai })
-        }
-      }
-    } else {
-      const shotCount = Math.max(
-        canAutoBuildVideo ? resolvedVisuals.length : 0,
-        canAutoBuildVoice ? resolvedVoices.length : 0
-      )
-      for (let i = 0; i < shotCount; i++) {
-        shotSlots.push({
-          visIdx: canAutoBuildVideo && i < resolvedVisuals.length ? i : undefined,
-          voiceIdx: canAutoBuildVoice && i < resolvedVoices.length ? i : undefined
+        const built = buildComicMotionTimeline({
+          page: entry.page,
+          pageImageRelativePath: entry.pageImageRelativePath,
+          panelImageRelativePaths: entry.panelImageRelativePaths,
+          bubbleImageRelativePaths: entry.bubbleImageRelativePaths,
+          nodeId: entry.nodeId,
+          nodeTitle: entry.nodeTitle,
+          voices: pageVoices
         })
-      }
-    }
 
-    const hasHybridScrollActs = shotSlots.some(
-      (s) => s.preImgIdx !== undefined && s.visIdx !== undefined
-    )
-    if (hasHybridScrollActs && !doc.settings?.scaleMode) {
-      doc.settings = { ...(doc.settings ?? {}), scaleMode: 'cover' }
-    }
-
-    let cursor = 0
-    for (let i = 0; i < shotSlots.length; i++) {
-      const slot = shotSlots[i]!
-      const preImg = slot.preImgIdx !== undefined ? resolvedVisuals[slot.preImgIdx] : undefined
-      const vis = slot.visIdx !== undefined ? resolvedVisuals[slot.visIdx] : undefined
-      const voice = slot.voiceIdx !== undefined ? resolvedVoices[slot.voiceIdx] : undefined
-      const voiceDur = slot.voiceIdx !== undefined ? voiceDurations[slot.voiceIdx]! : null
-      const nativeVisDur = slot.visIdx !== undefined ? visualDurations[slot.visIdx]! : null
-
-      if (preImg && vis) {
-        // ── 混合入画槽位（古画/世界名画多段复活剪辑：3.6s 原画移动镜头寻景与焦点定格 + 0.45s 焦点拍照闪光呈现 1:1 写实还原照片(1.6s) + 0.35s 无缝叠化进入首帧生成视频 + 幕尾融回原画移向下一焦点） ──
-        const rawSub = input.subtitles?.[i]?.trim() || voice?.text?.trim() || ''
-        const rawGenParams = readGenParams()
-        const graphNodes: Array<{
-          id?: string
-          typeId?: string
-          title?: string
-          params?: Record<string, unknown>
-        }> =
-          rawGenParams.graphJson &&
-          typeof rawGenParams.graphJson === 'object' &&
-          Array.isArray((rawGenParams.graphJson as { nodes?: unknown[] }).nodes)
-            ? ((rawGenParams.graphJson as { nodes: Array<Record<string, unknown>> })
-                .nodes as Array<{
-                id?: string
-                typeId?: string
-                title?: string
-                params?: Record<string, unknown>
-              }>)
-            : []
-        const actMatchingNodes = graphNodes.filter(
-          (n) => extractShotNum(`${n.title ?? ''} ${n.id ?? ''}`) === i + 1
-        )
-        const recognizeNode = actMatchingNodes.find((n) => n.typeId === 'image.toPrompt')
-        const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
-        const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
-        const realNode = actMatchingNodes.find(
-          (n) => n.typeId === 'asset.image' && n.id !== 'scroll-src'
-        )
-        const resolveNodeImageRelPath = (node?: {
-          id?: string
-          params?: Record<string, unknown>
-        }): string | undefined => {
-          if (!node?.params) return undefined
-          const p = node.params
-          const direct =
-            (typeof p.previewRelativePath === 'string' && p.previewRelativePath.trim()) ||
-            (typeof p.sourceRelativePath === 'string' && p.sourceRelativePath.trim()) ||
-            ''
-          if (direct) return direct.replace(/^@+/, '').trim()
-          if (Array.isArray(p.generatedImages) && p.generatedImages.length > 0) {
-            const selId = typeof p.selectedImageId === 'string' ? p.selectedImageId : ''
-            const chosen =
-              (selId
-                ? (p.generatedImages as Array<{ id?: string; relativePath?: string }>).find(
-                    (g) => g?.id === selId && g?.relativePath
-                  )
-                : undefined) ??
-              (p.generatedImages as Array<{ relativePath?: string }>).find((g) => g?.relativePath)
-            if (chosen?.relativePath) return chosen.relativePath.trim().replace(/^@+/, '').trim()
+        if (built.sources?.length) {
+          const existingSourceIds = new Set((doc.sources ?? []).map((s) => s.id))
+          const mergedSources = [...(doc.sources ?? [])]
+          for (const src of built.sources) {
+            if (!existingSourceIds.has(src.id)) {
+              existingSourceIds.add(src.id)
+              mergedSources.push(src)
+            }
           }
-          return undefined
+          doc.sources = mergedSources
         }
-        const slotRealVis =
-          slot.realImgIdx !== undefined ? resolvedVisuals[slot.realImgIdx] : undefined
-        const candidateRealRel = slotRealVis?.rel || resolveNodeImageRelPath(realNode)
-        const realImgRel =
-          candidateRealRel && candidateRealRel !== preImg.rel ? candidateRealRel : undefined
 
-        const preRollDur = 3.6
-        const shutterFlashSec = 0.45
-        const realPhotoHoldSec = 1.6
-        const photoToVideoOverlap = 0.35
-        const prePhotoLeadSec = Math.round((preRollDur - shutterFlashSec) * 100) / 100 // 3.15s
-        const preLeadSec = realImgRel
-          ? Math.round((prePhotoLeadSec + realPhotoHoldSec - photoToVideoOverlap) * 100) / 100 // 4.4s
-          : Math.round((preRollDur - 0.6) * 100) / 100 // 3.0s
-        const targetActDur = Math.max(
-          preLeadSec + 1.2,
-          Math.round(Math.max(voiceDur ?? 0, preLeadSec + (nativeVisDur ?? 7.8)) * 100) / 100
-        )
-        const mainVidDur = Math.max(1.2, Math.round((targetActDur - preLeadSec) * 100) / 100)
-        const shotDur = Math.round((preLeadSec + mainVidDur) * 100) / 100
-        const freezeTailSec =
-          nativeVisDur !== null && mainVidDur > nativeVisDur + 0.08
-            ? Math.round((mainVidDur - nativeVisDur) * 100) / 100
-            : undefined
-        const cultureHint =
-          cropNode?.params?.paintingCulture === 'western'
-            ? ('western' as const)
-            : cropNode?.params?.paintingCulture === 'chinese'
-              ? ('chinese' as const)
-              : undefined
-        const plan = parseActSceneSubtitlePlan({
-          actIndex: i,
-          rawText:
-            rawSub ||
-            (typeof recognizeNode?.params?.text === 'string'
-              ? recognizeNode.params.text
-              : undefined) ||
-            (typeof cropNode?.params?.text === 'string' ? cropNode.params.text : undefined),
-          titleCandidates: [preImg.title, vis.title, cropNode?.title],
-          fallbackPromptTexts: [
-            typeof videoNode?.params?.generateInstruction === 'string'
-              ? videoNode.params.generateInstruction
-              : undefined,
-            typeof realNode?.params?.generateInstruction === 'string'
-              ? realNode.params.generateInstruction
-              : undefined
-          ],
-          cultureHint
-        })
-        const snapTitle = plan.sceneTitle
-        const isWestern = plan.culture === 'western'
-        const rawCrop =
-          cropNode?.params?.imageCrop && typeof cropNode.params.imageCrop === 'object'
-            ? (cropNode.params.imageCrop as {
-                cropX?: number
-                cropY?: number
-                cropW?: number
-                cropH?: number
-              })
-            : undefined
-        const vfStartX =
-          rawCrop?.cropX != null && Number.isFinite(rawCrop.cropX)
-            ? Math.min(0.26, Math.max(0.14, 0.16 + (1 - rawCrop.cropX) * 0.08))
-            : 0.2
-        const vfStartY =
-          rawCrop?.cropY != null && Number.isFinite(rawCrop.cropY)
-            ? Math.min(0.22, Math.max(0.08, rawCrop.cropY * 0.65 + 0.06))
-            : 0.14
-        const interActOverlap = 0.75
-        const realReturnFadeSec = 0.4
-        const realReturnHoldSec = 1.25
-        const outroDissolveSec = 0.65
-        const outroHoldSec = 1.65
-        const hasNextActPreRoll =
-          i < shotSlots.length - 1 && shotSlots[i + 1]?.preImgIdx !== undefined
-        const outroTailNetSec = hasNextActPreRoll
-          ? Math.round(
-              ((realImgRel ? realReturnHoldSec - realReturnFadeSec : 0) +
-                outroHoldSec -
-                outroDissolveSec) *
-                100
-            ) / 100
-          : 0
-        const actIntroLeadOffset = i > 0 ? 0.55 : 0.2
-
-        // 1) 0.0s ~ 3.6s：原画水平移镜寻景(0~68%: 1.22x -> 1.00x) → 焦点定格锁定(68~100%: 1.00x)
-        //    幕间先在上一幕末尾 1:1 融回本幕古画原位(outro)，再通过 smoothleft/smoothright 横移镜头滑向下一焦点
-        clips.push({
-          id: `clip:auto:pre:${i}:${stamp}`,
-          track: 'video',
-          lane: 0,
-          sourceId: preImg.rel || preImg.id || `pre:${i}`,
-          title: snapTitle,
-          relativePath: preImg.rel,
-          ...(preImg.id ? { assetId: preImg.id } : {}),
-          ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
-          startSec: cursor,
-          durationSec: preRollDur,
-          cameraMotion: 'scrollPanZoomIn',
-          filterPreset: isWestern ? 'kodak-portra' : 'golden-autumn',
-          visualEffect: 'gold-sparkle',
-          effectIntensity: 0.45,
-          ...(i > 0
-            ? {
-                transitionType: isWestern ? ('smoothright' as const) : ('smoothleft' as const),
-                transitionInSec: interActOverlap
-              }
-            : {})
-        })
-
-        // 2) 文博取景框动态矢量贴纸（随水平移镜滑入 → 焦点位置锁定对焦 → 快门闪光拍照瞬间扩框定格）
-        const vfDur = Math.round((prePhotoLeadSec - actIntroLeadOffset + 0.15) * 100) / 100
-        clips.push({
-          id: `clip:auto:vf:${i}:${stamp}`,
-          track: 'overlay',
-          lane: 0,
-          sourceId: `sticker:${isWestern ? 'museum-gilded-frame' : 'scroll-seal-frame'}:${i}`,
-          stickerId: isWestern ? 'museum-gilded-frame' : 'scroll-seal-frame',
-          stickerColor: isWestern ? '#EAB308' : '#D97706',
-          title: snapTitle,
-          text: snapTitle,
-          startSec: Math.round((cursor + actIntroLeadOffset) * 100) / 100,
-          durationSec: vfDur,
-          overlayX: 0.06,
-          overlayY: 0.08,
-          overlayWidth: 0.88,
-          overlayHeight: 0.84,
-          keyframes: [
-            {
-              offsetSec: 0,
-              x: Number(vfStartX.toFixed(3)),
-              y: Number(vfStartY.toFixed(3)),
-              width: 0.72,
-              height: 0.68,
-              opacity: 0.9,
-              ease: 'inOutSine'
-            },
-            {
-              offsetSec: Number((vfDur * 0.58).toFixed(2)),
-              x: 0.06,
-              y: 0.08,
-              width: 0.88,
-              height: 0.84,
-              opacity: 1,
-              ease: 'outCubic'
-            },
-            {
-              offsetSec: Number((vfDur * 0.84).toFixed(2)),
-              x: 0.06,
-              y: 0.08,
-              width: 0.88,
-              height: 0.84,
-              opacity: 1,
-              ease: 'inCubic'
-            },
-            {
-              offsetSec: vfDur,
-              x: 0.01,
-              y: 0.02,
-              width: 0.98,
-              height: 0.96,
-              opacity: 0.15,
-              ease: 'outCubic'
-            }
-          ],
-          tweenIn: 'zoomIn',
-          tweenInDurationSec: 0.4,
-          tweenLoop: 'pulse',
-          tweenOut: 'fadeOut',
-          tweenOutDurationSec: 0.35
-        })
-
-        // 2.5) 3.15s ~ 4.75s：焦点位置触发快门曝光闪光(flash -> fadewhite 0.45s)，原地冲印呈现 1:1 写实还原照片(actN-real, 1.00x 定格)
-        if (realImgRel) {
+        for (const c of built.clips) {
+          if (hasManualSubtitleClips && c.track === 'subtitle') continue
+          if (hasManualVoiceClips && c.track === 'voice') continue
           clips.push({
-            id: `clip:auto:real:${i}:${stamp}`,
+            ...c,
+            id: `${c.id}:p${pageIdx}:${stamp}`,
+            startSec: Math.round((c.startSec + pageCursor) * 1000) / 1000
+          })
+        }
+        pageCursor = Math.round((pageCursor + contentEndSecOfTimeline(built.clips)) * 1000) / 1000
+        if (pageIdx === 0 && built.settings) {
+          doc.settings = {
+            ...built.settings,
+            ...(doc.settings ?? {}),
+            scaleMode: doc.settings?.scaleMode ?? built.settings.scaleMode,
+            exportWidth: doc.settings?.exportWidth ?? built.settings.exportWidth,
+            exportHeight: doc.settings?.exportHeight ?? built.settings.exportHeight,
+            subtitleKaraokeMode:
+              doc.settings?.subtitleKaraokeMode ?? built.settings.subtitleKaraokeMode
+          }
+        }
+      })
+      dirtyDoc = true
+    } else {
+      // 构建分镜配对槽位：
+      // 1. 若画面与旁白标题均带分镜/幕序号（如 分镜1..分镜5 或 第1幕..第3幕），按序号精确配对；
+      // 2. 若同一幕同时包含「古画取景切片图（image）」、（可选）「写实还原照片（image）」与「写实复活视频（video）」，自动合并为混合入画槽位（preImgIdx + realImgIdx + visIdx）。
+      const shotSlots: Array<{
+        preImgIdx?: number
+        realImgIdx?: number
+        visIdx?: number
+        voiceIdx?: number
+        extraVoiceIndices?: number[]
+      }> = []
+      const hasVisShotNums =
+        canAutoBuildVideo && resolvedVisuals.some((v) => extractShotNum(v.title) !== null)
+      const hasVoiceShotNums =
+        canAutoBuildVoice && resolvedVoices.some((v) => extractShotNum(v.title) !== null)
+
+      if (hasVisShotNums) {
+        const usedVoices = new Set<number>()
+        let slotCounter = 0
+        for (let vi = 0; vi < resolvedVisuals.length; vi++) {
+          const currVis = resolvedVisuals[vi]!
+          const vShot = extractShotNum(currVis.title)
+          const currIsPhoto = currVis.kind === 'image' || isStaticPhotoPath(currVis.rel)
+          const nextVis = vi + 1 < resolvedVisuals.length ? resolvedVisuals[vi + 1] : undefined
+          const thirdVis = vi + 2 < resolvedVisuals.length ? resolvedVisuals[vi + 2] : undefined
+          const nextIsPhoto =
+            nextVis !== undefined && (nextVis.kind === 'image' || isStaticPhotoPath(nextVis.rel))
+          const nextIsVideo =
+            nextVis !== undefined && nextVis.kind !== 'image' && !isStaticPhotoPath(nextVis.rel)
+          const thirdIsVideo =
+            thirdVis !== undefined && thirdVis.kind !== 'image' && !isStaticPhotoPath(thirdVis.rel)
+          const isHybridActTriplet =
+            vShot !== null &&
+            currIsPhoto &&
+            nextIsPhoto &&
+            thirdIsVideo &&
+            extractShotNum(nextVis!.title) === vShot &&
+            extractShotNum(thirdVis!.title) === vShot
+          const isHybridActPair =
+            !isHybridActTriplet &&
+            vShot !== null &&
+            currIsPhoto &&
+            nextIsVideo &&
+            extractShotNum(nextVis!.title) === vShot
+
+          let matchedVoiceIdx: number | undefined
+          const extraVoiceIndices: number[] = []
+          if (hasVoiceShotNums && vShot !== null) {
+            resolvedVoices.forEach((vo, idx) => {
+              if (!usedVoices.has(idx) && extractShotNum(vo.title) === vShot) {
+                usedVoices.add(idx)
+                if (matchedVoiceIdx === undefined) {
+                  matchedVoiceIdx = idx
+                } else {
+                  extraVoiceIndices.push(idx)
+                }
+              }
+            })
+          } else if (canAutoBuildVoice && slotCounter < resolvedVoices.length) {
+            matchedVoiceIdx = slotCounter
+            usedVoices.add(slotCounter)
+          }
+
+          if (isHybridActTriplet) {
+            shotSlots.push({
+              preImgIdx: vi,
+              realImgIdx: vi + 1,
+              visIdx: vi + 2,
+              voiceIdx: matchedVoiceIdx,
+              ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
+            })
+            vi += 2
+          } else if (isHybridActPair) {
+            shotSlots.push({
+              preImgIdx: vi,
+              visIdx: vi + 1,
+              voiceIdx: matchedVoiceIdx,
+              ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
+            })
+            vi++
+          } else {
+            shotSlots.push({
+              visIdx: vi,
+              voiceIdx: matchedVoiceIdx,
+              ...(extraVoiceIndices.length ? { extraVoiceIndices } : {})
+            })
+          }
+          slotCounter++
+        }
+        for (let ai = 0; ai < resolvedVoices.length; ai++) {
+          if (!usedVoices.has(ai)) {
+            shotSlots.push({ voiceIdx: ai })
+          }
+        }
+      } else {
+        const shotCount = Math.max(
+          canAutoBuildVideo ? resolvedVisuals.length : 0,
+          canAutoBuildVoice ? resolvedVoices.length : 0
+        )
+        for (let i = 0; i < shotCount; i++) {
+          shotSlots.push({
+            visIdx: canAutoBuildVideo && i < resolvedVisuals.length ? i : undefined,
+            voiceIdx: canAutoBuildVoice && i < resolvedVoices.length ? i : undefined
+          })
+        }
+      }
+
+      const hasHybridScrollActs = shotSlots.some(
+        (s) => s.preImgIdx !== undefined && s.visIdx !== undefined
+      )
+      if (hasHybridScrollActs && !doc.settings?.scaleMode) {
+        doc.settings = { ...(doc.settings ?? {}), scaleMode: 'cover' }
+      }
+
+      let cursor = 0
+      for (let i = 0; i < shotSlots.length; i++) {
+        const slot = shotSlots[i]!
+        const preImg = slot.preImgIdx !== undefined ? resolvedVisuals[slot.preImgIdx] : undefined
+        const vis = slot.visIdx !== undefined ? resolvedVisuals[slot.visIdx] : undefined
+        const voice = slot.voiceIdx !== undefined ? resolvedVoices[slot.voiceIdx] : undefined
+        const voiceDur = slot.voiceIdx !== undefined ? voiceDurations[slot.voiceIdx]! : null
+        const nativeVisDur = slot.visIdx !== undefined ? visualDurations[slot.visIdx]! : null
+
+        if (preImg && vis) {
+          // ── 混合入画槽位（古画/世界名画多段复活剪辑：3.6s 原画移动镜头寻景与焦点定格 + 0.45s 焦点拍照闪光呈现 1:1 写实还原照片(1.6s) + 0.35s 无缝叠化进入首帧生成视频 + 幕尾融回原画移向下一焦点） ──
+          const rawSub = input.subtitles?.[i]?.trim() || voice?.text?.trim() || ''
+          const rawGenParams = readGenParams()
+          const graphNodes: Array<{
+            id?: string
+            typeId?: string
+            title?: string
+            params?: Record<string, unknown>
+          }> =
+            rawGenParams.graphJson &&
+            typeof rawGenParams.graphJson === 'object' &&
+            Array.isArray((rawGenParams.graphJson as { nodes?: unknown[] }).nodes)
+              ? ((rawGenParams.graphJson as { nodes: Array<Record<string, unknown>> })
+                  .nodes as Array<{
+                  id?: string
+                  typeId?: string
+                  title?: string
+                  params?: Record<string, unknown>
+                }>)
+              : []
+          const actMatchingNodes = graphNodes.filter(
+            (n) => extractShotNum(`${n.title ?? ''} ${n.id ?? ''}`) === i + 1
+          )
+          const recognizeNode = actMatchingNodes.find((n) => n.typeId === 'image.toPrompt')
+          const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
+          const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
+          const realNode = actMatchingNodes.find(
+            (n) => n.typeId === 'asset.image' && n.id !== 'scroll-src'
+          )
+          const resolveNodeImageRelPath = (node?: {
+            id?: string
+            params?: Record<string, unknown>
+          }): string | undefined => {
+            if (!node?.params) return undefined
+            const p = node.params
+            const direct =
+              (typeof p.previewRelativePath === 'string' && p.previewRelativePath.trim()) ||
+              (typeof p.sourceRelativePath === 'string' && p.sourceRelativePath.trim()) ||
+              ''
+            if (direct) return direct.replace(/^@+/, '').trim()
+            if (Array.isArray(p.generatedImages) && p.generatedImages.length > 0) {
+              const selId = typeof p.selectedImageId === 'string' ? p.selectedImageId : ''
+              const chosen =
+                (selId
+                  ? (p.generatedImages as Array<{ id?: string; relativePath?: string }>).find(
+                      (g) => g?.id === selId && g?.relativePath
+                    )
+                  : undefined) ??
+                (p.generatedImages as Array<{ relativePath?: string }>).find((g) => g?.relativePath)
+              if (chosen?.relativePath) return chosen.relativePath.trim().replace(/^@+/, '').trim()
+            }
+            return undefined
+          }
+          const slotRealVis =
+            slot.realImgIdx !== undefined ? resolvedVisuals[slot.realImgIdx] : undefined
+          const candidateRealRel = slotRealVis?.rel || resolveNodeImageRelPath(realNode)
+          const realImgRel =
+            candidateRealRel && candidateRealRel !== preImg.rel ? candidateRealRel : undefined
+
+          const preRollDur = 3.6
+          const shutterFlashSec = 0.45
+          const realPhotoHoldSec = 1.6
+          const photoToVideoOverlap = 0.35
+          const prePhotoLeadSec = Math.round((preRollDur - shutterFlashSec) * 100) / 100 // 3.15s
+          const preLeadSec = realImgRel
+            ? Math.round((prePhotoLeadSec + realPhotoHoldSec - photoToVideoOverlap) * 100) / 100 // 4.4s
+            : Math.round((preRollDur - 0.6) * 100) / 100 // 3.0s
+          const targetActDur = Math.max(
+            preLeadSec + 1.2,
+            Math.round(Math.max(voiceDur ?? 0, preLeadSec + (nativeVisDur ?? 7.8)) * 100) / 100
+          )
+          const mainVidDur = Math.max(1.2, Math.round((targetActDur - preLeadSec) * 100) / 100)
+          const shotDur = Math.round((preLeadSec + mainVidDur) * 100) / 100
+          const freezeTailSec =
+            nativeVisDur !== null && mainVidDur > nativeVisDur + 0.08
+              ? Math.round((mainVidDur - nativeVisDur) * 100) / 100
+              : undefined
+          const cultureHint =
+            cropNode?.params?.paintingCulture === 'western'
+              ? ('western' as const)
+              : cropNode?.params?.paintingCulture === 'chinese'
+                ? ('chinese' as const)
+                : undefined
+          const plan = parseActSceneSubtitlePlan({
+            actIndex: i,
+            rawText:
+              rawSub ||
+              (typeof recognizeNode?.params?.text === 'string'
+                ? recognizeNode.params.text
+                : undefined) ||
+              (typeof cropNode?.params?.text === 'string' ? cropNode.params.text : undefined),
+            titleCandidates: [preImg.title, vis.title, cropNode?.title],
+            fallbackPromptTexts: [
+              typeof videoNode?.params?.generateInstruction === 'string'
+                ? videoNode.params.generateInstruction
+                : undefined,
+              typeof realNode?.params?.generateInstruction === 'string'
+                ? realNode.params.generateInstruction
+                : undefined
+            ],
+            cultureHint
+          })
+          const snapTitle = plan.sceneTitle
+          const isWestern = plan.culture === 'western'
+          const rawCrop =
+            cropNode?.params?.imageCrop && typeof cropNode.params.imageCrop === 'object'
+              ? (cropNode.params.imageCrop as {
+                  cropX?: number
+                  cropY?: number
+                  cropW?: number
+                  cropH?: number
+                })
+              : undefined
+          const vfStartX =
+            rawCrop?.cropX != null && Number.isFinite(rawCrop.cropX)
+              ? Math.min(0.26, Math.max(0.14, 0.16 + (1 - rawCrop.cropX) * 0.08))
+              : 0.2
+          const vfStartY =
+            rawCrop?.cropY != null && Number.isFinite(rawCrop.cropY)
+              ? Math.min(0.22, Math.max(0.08, rawCrop.cropY * 0.65 + 0.06))
+              : 0.14
+          const interActOverlap = 0.75
+          const realReturnFadeSec = 0.4
+          const realReturnHoldSec = 1.25
+          const outroDissolveSec = 0.65
+          const outroHoldSec = 1.65
+          const hasNextActPreRoll =
+            i < shotSlots.length - 1 && shotSlots[i + 1]?.preImgIdx !== undefined
+          const outroTailNetSec = hasNextActPreRoll
+            ? Math.round(
+                ((realImgRel ? realReturnHoldSec - realReturnFadeSec : 0) +
+                  outroHoldSec -
+                  outroDissolveSec) *
+                  100
+              ) / 100
+            : 0
+          const actIntroLeadOffset = i > 0 ? 0.55 : 0.2
+
+          // 1) 0.0s ~ 3.6s：原画水平移镜寻景(0~68%: 1.22x -> 1.00x) → 焦点定格锁定(68~100%: 1.00x)
+          //    幕间先在上一幕末尾 1:1 融回本幕古画原位(outro)，再通过 smoothleft/smoothright 横移镜头滑向下一焦点
+          clips.push({
+            id: `clip:auto:pre:${i}:${stamp}`,
             track: 'video',
             lane: 0,
-            sourceId: realImgRel || realNode?.id || `real:${i}`,
-            title: `${snapTitle} · \u5199\u5b9e\u8fd8\u539f`, // cjk-ok
-            relativePath: realImgRel,
-            ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
-            ...(realNode?.id ? { nodeId: realNode.id } : {}),
-            startSec: Math.round((cursor + prePhotoLeadSec) * 100) / 100,
-            durationSec: realPhotoHoldSec,
-            cameraMotion: 'none',
-            transitionType: 'flash',
-            transitionInSec: shutterFlashSec,
-            transitionOutSec: photoToVideoOverlap
+            sourceId: preImg.rel || preImg.id || `pre:${i}`,
+            title: snapTitle,
+            relativePath: preImg.rel,
+            ...(preImg.id ? { assetId: preImg.id } : {}),
+            ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
+            startSec: cursor,
+            durationSec: preRollDur,
+            cameraMotion: 'scrollPanZoomIn',
+            filterPreset: isWestern ? 'kodak-portra' : 'golden-autumn',
+            visualEffect: 'gold-sparkle',
+            effectIntensity: 0.45,
+            ...(i > 0
+              ? {
+                  transitionType: isWestern ? ('smoothright' as const) : ('smoothleft' as const),
+                  transitionInSec: interActOverlap
+                }
+              : {})
           })
+
+          // 2) 文博取景框动态矢量贴纸（随水平移镜滑入 → 焦点位置锁定对焦 → 快门闪光拍照瞬间扩框定格）
+          const vfDur = Math.round((prePhotoLeadSec - actIntroLeadOffset + 0.15) * 100) / 100
+          clips.push({
+            id: `clip:auto:vf:${i}:${stamp}`,
+            track: 'overlay',
+            lane: 0,
+            sourceId: `sticker:${isWestern ? 'museum-gilded-frame' : 'scroll-seal-frame'}:${i}`,
+            stickerId: isWestern ? 'museum-gilded-frame' : 'scroll-seal-frame',
+            stickerColor: isWestern ? '#EAB308' : '#D97706',
+            title: snapTitle,
+            text: snapTitle,
+            startSec: Math.round((cursor + actIntroLeadOffset) * 100) / 100,
+            durationSec: vfDur,
+            overlayX: 0.06,
+            overlayY: 0.08,
+            overlayWidth: 0.88,
+            overlayHeight: 0.84,
+            keyframes: [
+              {
+                offsetSec: 0,
+                x: Number(vfStartX.toFixed(3)),
+                y: Number(vfStartY.toFixed(3)),
+                width: 0.72,
+                height: 0.68,
+                opacity: 0.9,
+                ease: 'inOutSine'
+              },
+              {
+                offsetSec: Number((vfDur * 0.58).toFixed(2)),
+                x: 0.06,
+                y: 0.08,
+                width: 0.88,
+                height: 0.84,
+                opacity: 1,
+                ease: 'outCubic'
+              },
+              {
+                offsetSec: Number((vfDur * 0.84).toFixed(2)),
+                x: 0.06,
+                y: 0.08,
+                width: 0.88,
+                height: 0.84,
+                opacity: 1,
+                ease: 'inCubic'
+              },
+              {
+                offsetSec: vfDur,
+                x: 0.01,
+                y: 0.02,
+                width: 0.98,
+                height: 0.96,
+                opacity: 0.15,
+                ease: 'outCubic'
+              }
+            ],
+            tweenIn: 'zoomIn',
+            tweenInDurationSec: 0.4,
+            tweenLoop: 'pulse',
+            tweenOut: 'fadeOut',
+            tweenOutDurationSec: 0.35
+          })
+
+          // 2.5) 3.15s ~ 4.75s：焦点位置触发快门曝光闪光(flash -> fadewhite 0.45s)，原地冲印呈现 1:1 写实还原照片(actN-real, 1.00x 定格)
+          if (realImgRel) {
+            clips.push({
+              id: `clip:auto:real:${i}:${stamp}`,
+              track: 'video',
+              lane: 0,
+              sourceId: realImgRel || realNode?.id || `real:${i}`,
+              title: `${snapTitle} · \u5199\u5b9e\u8fd8\u539f`, // cjk-ok
+              relativePath: realImgRel,
+              ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
+              ...(realNode?.id ? { nodeId: realNode.id } : {}),
+              startSec: Math.round((cursor + prePhotoLeadSec) * 100) / 100,
+              durationSec: realPhotoHoldSec,
+              cameraMotion: 'none',
+              transitionType: 'flash',
+              transitionInSec: shutterFlashSec,
+              transitionOutSec: photoToVideoOverlap
+            })
+          }
+
+          // 3) 字幕轨（lane 0）：移镜寻景期展示场景名铭牌 → 写实还原照片显影起展示解说字幕 → 视频中后段展示画内人物开口对白字幕
+          if (!hasManualSubtitleClips) {
+            const bannerText = `【 ${snapTitle} 】` // cjk-ok
+            const bannerStart = Math.round((cursor + actIntroLeadOffset) * 100) / 100
+            const bannerDur = Math.round((prePhotoLeadSec - actIntroLeadOffset - 0.1) * 100) / 100
+            clips.push({
+              id: `clip:auto:sub:${i}_0:${stamp}`,
+              track: 'subtitle',
+              lane: 0,
+              sourceId: `sub:act:${i}:0`,
+              title: bannerText,
+              text: bannerText,
+              textColor: '#FEF08A',
+              fontSize: 40,
+              startSec: bannerStart,
+              durationSec: Math.max(1.8, bannerDur)
+            })
+
+            const bodyStart = Math.round((cursor + prePhotoLeadSec + 0.05) * 100) / 100
+            const actSubEnd = cursor + shotDur - (hasNextActPreRoll ? interActOverlap + 0.1 : 0.15)
+            const totalAvailDur = Math.max(2.6, actSubEnd - bodyStart)
+            const hasDialogues = plan.dialogueLines.length > 0
+            const narrTotalDur = hasDialogues ? Math.max(1.8, totalAvailDur * 0.44) : totalAvailDur
+            let subCursor = bodyStart
+
+            if (plan.narrationSegments.length > 0) {
+              const totalChars = Math.max(
+                1,
+                plan.narrationSegments.reduce((acc, s) => acc + s.length, 0)
+              )
+              plan.narrationSegments.forEach((segText, segIdx) => {
+                const isLast = segIdx === plan.narrationSegments.length - 1
+                const rawSegDur = isLast
+                  ? bodyStart + narrTotalDur - subCursor
+                  : (narrTotalDur * segText.length) / totalChars
+                const segDur = Math.max(0.75, Math.round(rawSegDur * 100) / 100)
+                clips.push({
+                  id: `clip:auto:sub:${i}_${segIdx + 1}:${stamp}`,
+                  track: 'subtitle',
+                  lane: 0,
+                  sourceId: `sub:act:${i}:${segIdx + 1}`,
+                  title: segText,
+                  text: segText,
+                  startSec: Math.round(subCursor * 100) / 100,
+                  durationSec: segDur
+                })
+                subCursor += segDur
+              })
+            }
+
+            if (hasDialogues) {
+              let dlgCursor = Math.round((subCursor + 0.1) * 100) / 100
+              const dlgTotalDur = Math.max(1.4, actSubEnd - dlgCursor)
+              const dlgStep = dlgTotalDur / plan.dialogueLines.length
+              plan.dialogueLines.forEach((dlg, dlgIdx) => {
+                const isLastDlg = dlgIdx === plan.dialogueLines.length - 1
+                const rawDlgDur = isLastDlg ? actSubEnd - dlgCursor : dlgStep - 0.06
+                const dlgDur = Math.max(0.75, Math.round(rawDlgDur * 100) / 100)
+                const dlgLineText = `${dlg.speaker}：「${dlg.text}」` // cjk-ok
+                clips.push({
+                  id: `clip:auto:sub:${i}_dlg_${dlgIdx}:${stamp}`,
+                  track: 'subtitle',
+                  lane: 0,
+                  sourceId: `sub:act:${i}:dlg:${dlgIdx}`,
+                  title: dlgLineText,
+                  text: dlgLineText,
+                  textColor: '#FDE68A',
+                  startSec: Math.round(dlgCursor * 100) / 100,
+                  durationSec: dlgDur
+                })
+                dlgCursor += dlgDur + 0.06
+              })
+            }
+          }
+
+          // 4) 4.4s ~ 幕尾：以 1:1 写实还原照片为首帧生成的视频原地苏醒并平滑拉近至画中人物近景特写（cameraMotion: 'none'，0.35s dissolve 从写实照片平滑起动）
+          const mainVidStartSec = Math.round((cursor + preLeadSec) * 100) / 100
+          const vidOutTransitionSec = hasNextActPreRoll
+            ? realImgRel
+              ? realReturnFadeSec
+              : outroDissolveSec
+            : undefined
+          clips.push({
+            id: `clip:auto:v:${i}:${stamp}`,
+            track: 'video',
+            lane: 0,
+            sourceId: vis.rel || vis.id || `shot:${i}`,
+            title: vis.title?.trim() || `Shot ${i + 1}`,
+            relativePath: vis.rel,
+            ...(vis.id ? { assetId: vis.id } : {}),
+            ...(videoNode?.id ? { nodeId: videoNode.id } : {}),
+            startSec: mainVidStartSec,
+            durationSec: mainVidDur,
+            volume: 1,
+            cameraMotion: 'none',
+            transitionType: realImgRel ? 'dissolve' : 'flash',
+            transitionInSec: realImgRel ? photoToVideoOverlap : shutterFlashSec,
+            ...(vidOutTransitionSec ? { transitionOutSec: vidOutTransitionSec } : {}),
+            ...(freezeTailSec ? { freezeTailSec } : {})
+          })
+
+          // 4.5) 幕尾从人物特写退回 1:1 全景写实照片 -> 再 1:1 融回本幕古画原图 -> 横移滑向下一焦点（与 B 站参考片完全一致）
+          if (hasNextActPreRoll) {
+            const videoEndSec = Math.round((mainVidStartSec + mainVidDur) * 100) / 100
+            let outroBaseEndSec = videoEndSec
+            if (realImgRel) {
+              const realOutStartSec = Math.round((videoEndSec - realReturnFadeSec) * 100) / 100
+              clips.push({
+                id: `clip:auto:real_out:${i}:${stamp}`,
+                track: 'video',
+                lane: 0,
+                sourceId: realImgRel || realNode?.id || `real:${i}`,
+                title: `${snapTitle} · \u5168\u666f\u56de\u843d`, // cjk-ok
+                relativePath: realImgRel,
+                ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
+                ...(realNode?.id ? { nodeId: realNode.id } : {}),
+                startSec: realOutStartSec,
+                durationSec: realReturnHoldSec,
+                cameraMotion: 'none',
+                transitionType: 'dissolve',
+                transitionInSec: realReturnFadeSec,
+                transitionOutSec: outroDissolveSec
+              })
+              outroBaseEndSec = Math.round((realOutStartSec + realReturnHoldSec) * 100) / 100
+            }
+            clips.push({
+              id: `clip:auto:outro:${i}:${stamp}`,
+              track: 'video',
+              lane: 0,
+              sourceId: preImg.rel || preImg.id || `pre:${i}`,
+              title: `${snapTitle} · \u56de\u5377`, // cjk-ok
+              relativePath: preImg.rel,
+              ...(preImg.id ? { assetId: preImg.id } : {}),
+              ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
+              startSec: Math.round((outroBaseEndSec - outroDissolveSec) * 100) / 100,
+              durationSec: outroHoldSec,
+              cameraMotion: 'none',
+              filterPreset: isWestern ? 'kodak-portra' : 'golden-autumn',
+              transitionType: 'dissolve',
+              transitionInSec: outroDissolveSec,
+              transitionOutSec: interActOverlap
+            })
+          }
+
+          // 5) 画面解说旁白轨（voice 轨：从移镜寻景期起切入解说，在入画初期讲完，把视频中后段完整留给画内人物开口交谈原声）
+          const actVoiceIndices = [
+            ...(slot.voiceIdx !== undefined ? [slot.voiceIdx] : []),
+            ...(slot.extraVoiceIndices ?? [])
+          ]
+          let voiceOffsetInAct = Math.round((cursor + actIntroLeadOffset + 0.05) * 100) / 100
+          actVoiceIndices.forEach((vIdx, laneIdx) => {
+            const vo = resolvedVoices[vIdx]
+            if (!vo) return
+            const rawVDur =
+              voiceDurations[vIdx] ??
+              Math.min(4.2, Math.max(2.6, (shotDur * 0.44) / Math.max(1, actVoiceIndices.length)))
+            const vDur = Math.min(
+              Math.max(1.2, rawVDur),
+              Math.max(1.5, cursor + shotDur - voiceOffsetInAct - 2.2)
+            )
+            const assignedLane = vo.lane ?? laneIdx
+            clips.push({
+              id: `clip:auto:a:${i}_${laneIdx}:${stamp}`,
+              track: 'voice',
+              lane: assignedLane,
+              sourceId: vo.id || vo.rel,
+              title: vo.title?.trim() || `${snapTitle} · 画面解说旁白`, // cjk-ok
+              relativePath: vo.rel,
+              ...(vo.id ? { assetId: vo.id } : {}),
+              startSec: Math.round(voiceOffsetInAct * 100) / 100,
+              durationSec: Math.round(vDur * 100) / 100,
+              volume: 1
+            })
+            voiceOffsetInAct = Math.min(
+              cursor + shotDur - 2.0,
+              Math.max(voiceOffsetInAct + 1.4, voiceOffsetInAct + vDur)
+            )
+          })
+
+          // 6) 多轨环境与动作音效（音效 1：移镜快门与入画转场音；音效 2：中近景画内环境与动作底噪）
+          const actSfxList = resolvedSfx.filter((s) => extractShotNum(s.title) === i + 1)
+          const primarySfx = actSfxList[0] ?? resolvedSfx[i]
+          const secondarySfx = actSfxList[1] ?? primarySfx
+          if (primarySfx) {
+            clips.push({
+              id: `clip:auto:sfx:${i}_0:${stamp}`,
+              track: 'sfx',
+              lane: 0,
+              sourceId: primarySfx.id || primarySfx.rel,
+              title: `${snapTitle} · 移镜快门`, // cjk-ok
+              relativePath: primarySfx.rel,
+              ...(primarySfx.id ? { assetId: primarySfx.id } : {}),
+              startSec: cursor,
+              durationSec: preRollDur,
+              volume: 0.68,
+              fadeOutSec: 0.4
+            })
+          }
+          if (secondarySfx) {
+            clips.push({
+              id: `clip:auto:sfx:${i}_1:${stamp}`,
+              track: 'sfx',
+              lane: 1,
+              sourceId: secondarySfx.id || secondarySfx.rel,
+              title: secondarySfx.title?.trim() || `${snapTitle} · 市井人声环境`, // cjk-ok
+              relativePath: secondarySfx.rel,
+              ...(secondarySfx.id ? { assetId: secondarySfx.id } : {}),
+              startSec: Math.round((cursor + preLeadSec - 0.2) * 100) / 100,
+              durationSec: Math.round((mainVidDur + 0.2) * 100) / 100,
+              sourceOffsetSec: secondarySfx === primarySfx ? 1.5 : 0,
+              volume: actVoiceIndices.length > 0 ? 0.56 : 0.82,
+              fadeInSec: 0.35,
+              fadeOutSec: 0.35
+            })
+          }
+          cursor =
+            Math.round(
+              (cursor + shotDur + outroTailNetSec - (hasNextActPreRoll ? interActOverlap : 0)) * 100
+            ) / 100
+          continue
         }
 
-        // 3) 字幕轨（lane 0）：移镜寻景期展示场景名铭牌 → 写实还原照片显影起展示解说字幕 → 视频中后段展示画内人物开口对白字幕
-        if (!hasManualSubtitleClips) {
-          const bannerText = `【 ${snapTitle} 】` // cjk-ok
-          const bannerStart = Math.round((cursor + actIntroLeadOffset) * 100) / 100
-          const bannerDur = Math.round((prePhotoLeadSec - actIntroLeadOffset - 0.1) * 100) / 100
+        // Audio-First：有对应配音时镜头时长严格对齐配音；否则采用视频原生时长或默认 4 秒
+        const shotDur = Math.max(0.5, Math.round((voiceDur ?? nativeVisDur ?? 4) * 100) / 100)
+        const guichuStoryFilters = ['cyberpunk', 'vaporwave', 'teal-orange', 'anime-vivid'] as const
+        const guichuStoryEffects = ['rgb-glitch', 'beat-flip', 'camera-shake', 'neon-edge'] as const
+        const guichuStoryPitches = [0, 2, 4, 7] as const
+
+        if (vis) {
+          const isStillOrGif = vis.kind === 'image' || isImageOrGifPath(vis.rel)
+          const isStaticPhoto = isStaticPhotoPath(vis.rel)
+          const freezeTailSec =
+            !isStillOrGif && nativeVisDur !== null && shotDur > nativeVisDur + 0.08
+              ? Math.round((shotDur - nativeVisDur) * 100) / 100
+              : undefined
+          const hasMultiShots = shotSlots.length > 1
           clips.push({
-            id: `clip:auto:sub:${i}_0:${stamp}`,
-            track: 'subtitle',
-            lane: 0,
-            sourceId: `sub:act:${i}:0`,
-            title: bannerText,
-            text: bannerText,
-            textColor: '#FEF08A',
-            fontSize: 40,
-            startSec: bannerStart,
-            durationSec: Math.max(1.8, bannerDur)
+            id: `clip:auto:v:${i}:${stamp}`,
+            track: 'video',
+            sourceId: vis.rel || vis.id || `shot:${i}`,
+            title: vis.title?.trim() || `Shot ${i + 1}`,
+            relativePath: vis.rel,
+            startSec: cursor,
+            durationSec: shotDur,
+            ...(freezeTailSec ? { freezeTailSec } : {}),
+            ...(isGuichuRemixMode
+              ? {
+                  filterPreset: guichuStoryFilters[i % guichuStoryFilters.length],
+                  filterIntensity: 92,
+                  visualEffect: guichuStoryEffects[i % guichuStoryEffects.length],
+                  effectIntensity: 86,
+                  contrast: 1.24,
+                  saturation: 1.38,
+                  sharpen: 36,
+                  cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length],
+                  pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
+                  voiceEffect: 'autotune-chorus' as const
+                }
+              : {
+                  ...(isStaticPhoto
+                    ? {
+                        cameraMotion:
+                          AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length]
+                      }
+                    : {}),
+                  ...(isStaticPhoto && hasMultiShots
+                    ? {
+                        transitionType: AUTO_PHOTO_TRANSITIONS[i % AUTO_PHOTO_TRANSITIONS.length],
+                        ...(i > 0 ? { transitionInSec: 0.4 } : {}),
+                        ...(i < shotSlots.length - 1 ? { transitionOutSec: 0.4 } : {})
+                      }
+                    : {})
+                })
+          })
+        } else if (canAutoBuildVideo && resolvedVisuals.length > 0) {
+          // 配音段数多于画面段数时，自动延长最后一个画面片段覆盖当前配音，避免黑场
+          const lastVideoClip = [...clips].reverse().find((c) => c.track === 'video')
+          if (lastVideoClip) {
+            const newDur = Math.round((cursor + shotDur - lastVideoClip.startSec) * 100) / 100
+            const lastVisIdx = resolvedVisuals.length - 1
+            const lastNativeDur = visualDurations[lastVisIdx] ?? null
+            const lastIsStillOrGif =
+              resolvedVisuals[lastVisIdx]!.kind === 'image' ||
+              isImageOrGifPath(resolvedVisuals[lastVisIdx]!.rel)
+            lastVideoClip.durationSec = newDur
+            if (!lastIsStillOrGif && lastNativeDur !== null && newDur > lastNativeDur + 0.08) {
+              lastVideoClip.freezeTailSec = Math.round((newDur - lastNativeDur) * 100) / 100
+            }
+          }
+        }
+
+        let hookPhrase = ''
+        if (voice) {
+          const vDur = voiceDur ?? shotDur
+          clips.push({
+            id: `clip:auto:a:${i}:${stamp}`,
+            track: 'voice',
+            sourceId: voice.id || voice.rel,
+            title: voice.title?.trim() || `Voice ${i + 1}`,
+            relativePath: voice.rel,
+            ...(voice.id ? { assetId: voice.id } : {}),
+            startSec: cursor,
+            durationSec: vDur,
+            ...(isGuichuRemixMode
+              ? {
+                  pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
+                  voiceEffect: 'autotune-chorus' as const,
+                  volume: 1
+                }
+              : {})
           })
 
-          const bodyStart = Math.round((cursor + prePhotoLeadSec + 0.05) * 100) / 100
-          const actSubEnd = cursor + shotDur - (hasNextActPreRoll ? interActOverlap + 0.1 : 0.15)
-          const totalAvailDur = Math.max(2.6, actSubEnd - bodyStart)
-          const hasDialogues = plan.dialogueLines.length > 0
-          const narrTotalDur = hasDialogues ? Math.max(1.8, totalAvailDur * 0.44) : totalAvailDur
-          let subCursor = bodyStart
-
-          if (plan.narrationSegments.length > 0) {
+          // 自动铺设与该段旁白严格同步的分句字幕
+          if (!hasManualSubtitleClips && voice.text) {
+            const segs = splitNarrationIntoSubtitleSegments(voice.text)
+            hookPhrase = segs[segs.length - 1] ?? voice.text.trim()
             const totalChars = Math.max(
               1,
-              plan.narrationSegments.reduce((acc, s) => acc + s.length, 0)
+              segs.reduce((acc, s) => acc + s.length, 0)
             )
-            plan.narrationSegments.forEach((segText, segIdx) => {
-              const isLast = segIdx === plan.narrationSegments.length - 1
+            let subCursor = cursor
+            const guichuSubColors = ['#facc15', '#22d3ee', '#f472b6', '#4ade80'] as const
+            segs.forEach((segText, segIdx) => {
+              const isLast = segIdx === segs.length - 1
               const rawSegDur = isLast
-                ? bodyStart + narrTotalDur - subCursor
-                : (narrTotalDur * segText.length) / totalChars
-              const segDur = Math.max(0.75, Math.round(rawSegDur * 100) / 100)
+                ? cursor + vDur - subCursor
+                : (vDur * segText.length) / totalChars
+              const segDur = Math.max(0.4, Math.round(rawSegDur * 100) / 100)
               clips.push({
-                id: `clip:auto:sub:${i}_${segIdx + 1}:${stamp}`,
+                id: `clip:auto:sub:${i}_${segIdx}:${stamp}`,
                 track: 'subtitle',
-                lane: 0,
-                sourceId: `sub:act:${i}:${segIdx + 1}`,
+                sourceId: `sub:${i}:${segIdx}`,
                 title: segText,
                 text: segText,
                 startSec: Math.round(subCursor * 100) / 100,
-                durationSec: segDur
+                durationSec: segDur,
+                ...(isGuichuRemixMode
+                  ? {
+                      fontSize: 54,
+                      textColor: guichuSubColors[(i + segIdx) % guichuSubColors.length],
+                      subtitleKaraokeMode: 'karaoke-pop' as const
+                    }
+                  : {})
               })
               subCursor += segDur
             })
           }
-
-          if (hasDialogues) {
-            let dlgCursor = Math.round((subCursor + 0.1) * 100) / 100
-            const dlgTotalDur = Math.max(1.4, actSubEnd - dlgCursor)
-            const dlgStep = dlgTotalDur / plan.dialogueLines.length
-            plan.dialogueLines.forEach((dlg, dlgIdx) => {
-              const isLastDlg = dlgIdx === plan.dialogueLines.length - 1
-              const rawDlgDur = isLastDlg ? actSubEnd - dlgCursor : dlgStep - 0.06
-              const dlgDur = Math.max(0.75, Math.round(rawDlgDur * 100) / 100)
-              const dlgLineText = `${dlg.speaker}：「${dlg.text}」` // cjk-ok
-              clips.push({
-                id: `clip:auto:sub:${i}_dlg_${dlgIdx}:${stamp}`,
-                track: 'subtitle',
-                lane: 0,
-                sourceId: `sub:act:${i}:dlg:${dlgIdx}`,
-                title: dlgLineText,
-                text: dlgLineText,
-                textColor: '#FDE68A',
-                startSec: Math.round(dlgCursor * 100) / 100,
-                durationSec: dlgDur
-              })
-              dlgCursor += dlgDur + 0.06
-            })
-          }
-        }
-
-        // 4) 4.4s ~ 幕尾：以 1:1 写实还原照片为首帧生成的视频原地苏醒并平滑拉近至画中人物近景特写（cameraMotion: 'none'，0.35s dissolve 从写实照片平滑起动）
-        const mainVidStartSec = Math.round((cursor + preLeadSec) * 100) / 100
-        const vidOutTransitionSec = hasNextActPreRoll
-          ? realImgRel
-            ? realReturnFadeSec
-            : outroDissolveSec
-          : undefined
-        clips.push({
-          id: `clip:auto:v:${i}:${stamp}`,
-          track: 'video',
-          lane: 0,
-          sourceId: vis.rel || vis.id || `shot:${i}`,
-          title: vis.title?.trim() || `Shot ${i + 1}`,
-          relativePath: vis.rel,
-          ...(vis.id ? { assetId: vis.id } : {}),
-          ...(videoNode?.id ? { nodeId: videoNode.id } : {}),
-          startSec: mainVidStartSec,
-          durationSec: mainVidDur,
-          volume: 1,
-          cameraMotion: 'none',
-          transitionType: realImgRel ? 'dissolve' : 'flash',
-          transitionInSec: realImgRel ? photoToVideoOverlap : shutterFlashSec,
-          ...(vidOutTransitionSec ? { transitionOutSec: vidOutTransitionSec } : {}),
-          ...(freezeTailSec ? { freezeTailSec } : {})
-        })
-
-        // 4.5) 幕尾从人物特写退回 1:1 全景写实照片 -> 再 1:1 融回本幕古画原图 -> 横移滑向下一焦点（与 B 站参考片完全一致）
-        if (hasNextActPreRoll) {
-          const videoEndSec = Math.round((mainVidStartSec + mainVidDur) * 100) / 100
-          let outroBaseEndSec = videoEndSec
-          if (realImgRel) {
-            const realOutStartSec = Math.round((videoEndSec - realReturnFadeSec) * 100) / 100
-            clips.push({
-              id: `clip:auto:real_out:${i}:${stamp}`,
-              track: 'video',
-              lane: 0,
-              sourceId: realImgRel || realNode?.id || `real:${i}`,
-              title: `${snapTitle} · \u5168\u666f\u56de\u843d`, // cjk-ok
-              relativePath: realImgRel,
-              ...(slotRealVis?.id ? { assetId: slotRealVis.id } : {}),
-              ...(realNode?.id ? { nodeId: realNode.id } : {}),
-              startSec: realOutStartSec,
-              durationSec: realReturnHoldSec,
-              cameraMotion: 'none',
-              transitionType: 'dissolve',
-              transitionInSec: realReturnFadeSec,
-              transitionOutSec: outroDissolveSec
-            })
-            outroBaseEndSec = Math.round((realOutStartSec + realReturnHoldSec) * 100) / 100
-          }
+        } else if (!hasManualSubtitleClips && input.subtitles?.[i]?.trim()) {
+          const subText = input.subtitles[i]!.trim()
+          hookPhrase = subText
           clips.push({
-            id: `clip:auto:outro:${i}:${stamp}`,
-            track: 'video',
-            lane: 0,
-            sourceId: preImg.rel || preImg.id || `pre:${i}`,
-            title: `${snapTitle} · \u56de\u5377`, // cjk-ok
-            relativePath: preImg.rel,
-            ...(preImg.id ? { assetId: preImg.id } : {}),
-            ...(cropNode?.id ? { nodeId: cropNode.id } : {}),
-            startSec: Math.round((outroBaseEndSec - outroDissolveSec) * 100) / 100,
-            durationSec: outroHoldSec,
-            cameraMotion: 'none',
-            filterPreset: isWestern ? 'kodak-portra' : 'golden-autumn',
-            transitionType: 'dissolve',
-            transitionInSec: outroDissolveSec,
-            transitionOutSec: interActOverlap
-          })
-        }
-
-        // 5) 画面解说旁白轨（voice 轨：从移镜寻景期起切入解说，在入画初期讲完，把视频中后段完整留给画内人物开口交谈原声）
-        const actVoiceIndices = [
-          ...(slot.voiceIdx !== undefined ? [slot.voiceIdx] : []),
-          ...(slot.extraVoiceIndices ?? [])
-        ]
-        let voiceOffsetInAct = Math.round((cursor + actIntroLeadOffset + 0.05) * 100) / 100
-        actVoiceIndices.forEach((vIdx, laneIdx) => {
-          const vo = resolvedVoices[vIdx]
-          if (!vo) return
-          const rawVDur =
-            voiceDurations[vIdx] ??
-            Math.min(4.2, Math.max(2.6, (shotDur * 0.44) / Math.max(1, actVoiceIndices.length)))
-          const vDur = Math.min(
-            Math.max(1.2, rawVDur),
-            Math.max(1.5, cursor + shotDur - voiceOffsetInAct - 2.2)
-          )
-          const assignedLane = vo.lane ?? laneIdx
-          clips.push({
-            id: `clip:auto:a:${i}_${laneIdx}:${stamp}`,
-            track: 'voice',
-            lane: assignedLane,
-            sourceId: vo.id || vo.rel,
-            title: vo.title?.trim() || `${snapTitle} · 画面解说旁白`, // cjk-ok
-            relativePath: vo.rel,
-            ...(vo.id ? { assetId: vo.id } : {}),
-            startSec: Math.round(voiceOffsetInAct * 100) / 100,
-            durationSec: Math.round(vDur * 100) / 100,
-            volume: 1
-          })
-          voiceOffsetInAct = Math.min(
-            cursor + shotDur - 2.0,
-            Math.max(voiceOffsetInAct + 1.4, voiceOffsetInAct + vDur)
-          )
-        })
-
-        // 6) 多轨环境与动作音效（音效 1：移镜快门与入画转场音；音效 2：中近景画内环境与动作底噪）
-        const actSfxList = resolvedSfx.filter((s) => extractShotNum(s.title) === i + 1)
-        const primarySfx = actSfxList[0] ?? resolvedSfx[i]
-        const secondarySfx = actSfxList[1] ?? primarySfx
-        if (primarySfx) {
-          clips.push({
-            id: `clip:auto:sfx:${i}_0:${stamp}`,
-            track: 'sfx',
-            lane: 0,
-            sourceId: primarySfx.id || primarySfx.rel,
-            title: `${snapTitle} · 移镜快门`, // cjk-ok
-            relativePath: primarySfx.rel,
-            ...(primarySfx.id ? { assetId: primarySfx.id } : {}),
+            id: `clip:auto:sub:${i}_0:${stamp}`,
+            track: 'subtitle',
+            sourceId: `sub:${i}:0`,
+            title: subText,
+            text: subText,
             startSec: cursor,
-            durationSec: preRollDur,
-            volume: 0.68,
-            fadeOutSec: 0.4
+            durationSec: shotDur,
+            ...(isGuichuRemixMode
+              ? {
+                  fontSize: 54,
+                  textColor: '#facc15',
+                  subtitleKaraokeMode: 'karaoke-pop' as const
+                }
+              : {})
           })
         }
-        if (secondarySfx) {
+
+        cursor = Math.round((cursor + shotDur) * 100) / 100
+
+        // ── 网络鬼畜模式：在每幕叙事铺垫后自动注入高密度「鬼畜电音洗脑副歌卡点暴走段 (Guichu Electro Hook Drop)」──
+        if (isGuichuRemixMode && resolvedVisuals.length > 0) {
+          const primaryVis = vis ?? resolvedVisuals[i % resolvedVisuals.length]!
+          const altVis = resolvedVisuals[(i + 1) % resolvedVisuals.length] ?? primaryVis
+          const primaryVisDur =
+            (slot.visIdx !== undefined ? visualDurations[slot.visIdx] : visualDurations[0]) ?? 4
+          const hookSteps = [0.2, 0.2, 0.2, 0.2, 0.32, 0.32, 0.4, 0.48] as const
+          const hookEffects = [
+            'guichu-pingpong',
+            'beat-flip',
+            'split-2h',
+            'split-4grid',
+            'rainbow-rave',
+            'deep-fry',
+            'split-9grid',
+            'soul-out'
+          ] as const
+          const hookPitches = [0, 3, 5, 7, 10, 12, -5, 12] as const
+          const hookVoices = [
+            'autotune-chorus',
+            'autotune-chorus',
+            'chipmunk',
+            'robot',
+            'autotune-chorus',
+            'demon',
+            'megaphone',
+            'autotune-chorus'
+          ] as const
+          const hookColors = [
+            '#facc15',
+            '#ff2e4c',
+            '#22d3ee',
+            '#a855f7',
+            '#4ade80',
+            '#fb923c',
+            '#f472b6',
+            '#fef08a'
+          ] as const
+          const rawHookWord =
+            (hookPhrase || vis?.title || '高能鬼畜') // cjk-ok
+              .replace(/^[，、。！？!?；;\s]+|[，、。！？!?；;\s]+$/g, '')
+              .slice(-7) || '高能鬼畜' // cjk-ok
+          const dropStartSec = cursor
+          const totalDropDur = Number(hookSteps.reduce((a, b) => a + b, 0).toFixed(2))
+
+          // 全屏程序化视觉特效贴纸叠加层（扫描线 / 万花筒放射 / 速度线 / 强光爆闪）
+          const overlayStickerCycle = [
+            'glitch_scanlines',
+            'kaleidoscope_burst',
+            'speed_lines',
+            'neon_border'
+          ] as const
           clips.push({
-            id: `clip:auto:sfx:${i}_1:${stamp}`,
-            track: 'sfx',
+            id: `clip:auto:ov_fx:${i}_0:${stamp}`,
+            track: 'overlay',
             lane: 1,
-            sourceId: secondarySfx.id || secondarySfx.rel,
-            title: secondarySfx.title?.trim() || `${snapTitle} · 市井人声环境`, // cjk-ok
-            relativePath: secondarySfx.rel,
-            ...(secondarySfx.id ? { assetId: secondarySfx.id } : {}),
-            startSec: Math.round((cursor + preLeadSec - 0.2) * 100) / 100,
-            durationSec: Math.round((mainVidDur + 0.2) * 100) / 100,
-            sourceOffsetSec: secondarySfx === primarySfx ? 1.5 : 0,
-            volume: actVoiceIndices.length > 0 ? 0.56 : 0.82,
-            fadeInSec: 0.35,
-            fadeOutSec: 0.35
+            sourceId: `sticker:${overlayStickerCycle[i % overlayStickerCycle.length]}:${i}`,
+            stickerId: overlayStickerCycle[i % overlayStickerCycle.length],
+            stickerColor: hookColors[i % hookColors.length],
+            title: '鬼畜视觉冲击层', // cjk-ok
+            startSec: dropStartSec,
+            durationSec: Number((totalDropDur * 0.65).toFixed(2)),
+            overlayX: 0,
+            overlayY: 0,
+            overlayWidth: 1,
+            overlayHeight: 1,
+            opacity: 0.72,
+            tweenLoop: 'pulse'
           })
-        }
-        cursor =
-          Math.round(
-            (cursor + shotDur + outroTailNetSec - (hasNextActPreRoll ? interActOverlap : 0)) * 100
-          ) / 100
-        continue
-      }
-
-      // Audio-First：有对应配音时镜头时长严格对齐配音；否则采用视频原生时长或默认 4 秒
-      const shotDur = Math.max(0.5, Math.round((voiceDur ?? nativeVisDur ?? 4) * 100) / 100)
-      const guichuStoryFilters = ['cyberpunk', 'vaporwave', 'teal-orange', 'anime-vivid'] as const
-      const guichuStoryEffects = ['rgb-glitch', 'beat-flip', 'camera-shake', 'neon-edge'] as const
-      const guichuStoryPitches = [0, 2, 4, 7] as const
-
-      if (vis) {
-        const isStillOrGif = vis.kind === 'image' || isImageOrGifPath(vis.rel)
-        const isStaticPhoto = isStaticPhotoPath(vis.rel)
-        const freezeTailSec =
-          !isStillOrGif && nativeVisDur !== null && shotDur > nativeVisDur + 0.08
-            ? Math.round((shotDur - nativeVisDur) * 100) / 100
-            : undefined
-        const hasMultiShots = shotSlots.length > 1
-        clips.push({
-          id: `clip:auto:v:${i}:${stamp}`,
-          track: 'video',
-          sourceId: vis.rel || vis.id || `shot:${i}`,
-          title: vis.title?.trim() || `Shot ${i + 1}`,
-          relativePath: vis.rel,
-          startSec: cursor,
-          durationSec: shotDur,
-          ...(freezeTailSec ? { freezeTailSec } : {}),
-          ...(isGuichuRemixMode
-            ? {
-                filterPreset: guichuStoryFilters[i % guichuStoryFilters.length],
-                filterIntensity: 92,
-                visualEffect: guichuStoryEffects[i % guichuStoryEffects.length],
-                effectIntensity: 86,
-                contrast: 1.24,
-                saturation: 1.38,
-                sharpen: 36,
-                cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length],
-                pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
-                voiceEffect: 'autotune-chorus' as const
-              }
-            : {
-                ...(isStaticPhoto
-                  ? {
-                      cameraMotion: AUTO_PHOTO_CAMERA_MOTIONS[i % AUTO_PHOTO_CAMERA_MOTIONS.length]
-                    }
-                  : {}),
-                ...(isStaticPhoto && hasMultiShots
-                  ? {
-                      transitionType: AUTO_PHOTO_TRANSITIONS[i % AUTO_PHOTO_TRANSITIONS.length],
-                      ...(i > 0 ? { transitionInSec: 0.4 } : {}),
-                      ...(i < shotSlots.length - 1 ? { transitionOutSec: 0.4 } : {})
-                    }
-                  : {})
-              })
-        })
-      } else if (canAutoBuildVideo && resolvedVisuals.length > 0) {
-        // 配音段数多于画面段数时，自动延长最后一个画面片段覆盖当前配音，避免黑场
-        const lastVideoClip = [...clips].reverse().find((c) => c.track === 'video')
-        if (lastVideoClip) {
-          const newDur = Math.round((cursor + shotDur - lastVideoClip.startSec) * 100) / 100
-          const lastVisIdx = resolvedVisuals.length - 1
-          const lastNativeDur = visualDurations[lastVisIdx] ?? null
-          const lastIsStillOrGif =
-            resolvedVisuals[lastVisIdx]!.kind === 'image' ||
-            isImageOrGifPath(resolvedVisuals[lastVisIdx]!.rel)
-          lastVideoClip.durationSec = newDur
-          if (!lastIsStillOrGif && lastNativeDur !== null && newDur > lastNativeDur + 0.08) {
-            lastVideoClip.freezeTailSec = Math.round((newDur - lastNativeDur) * 100) / 100
-          }
-        }
-      }
-
-      let hookPhrase = ''
-      if (voice) {
-        const vDur = voiceDur ?? shotDur
-        clips.push({
-          id: `clip:auto:a:${i}:${stamp}`,
-          track: 'voice',
-          sourceId: voice.id || voice.rel,
-          title: voice.title?.trim() || `Voice ${i + 1}`,
-          relativePath: voice.rel,
-          ...(voice.id ? { assetId: voice.id } : {}),
-          startSec: cursor,
-          durationSec: vDur,
-          ...(isGuichuRemixMode
-            ? {
-                pitchSemitones: guichuStoryPitches[i % guichuStoryPitches.length],
-                voiceEffect: 'autotune-chorus' as const,
-                volume: 1
-              }
-            : {})
-        })
-
-        // 自动铺设与该段旁白严格同步的分句字幕
-        if (!hasManualSubtitleClips && voice.text) {
-          const segs = splitNarrationIntoSubtitleSegments(voice.text)
-          hookPhrase = segs[segs.length - 1] ?? voice.text.trim()
-          const totalChars = Math.max(
-            1,
-            segs.reduce((acc, s) => acc + s.length, 0)
-          )
-          let subCursor = cursor
-          const guichuSubColors = ['#facc15', '#22d3ee', '#f472b6', '#4ade80'] as const
-          segs.forEach((segText, segIdx) => {
-            const isLast = segIdx === segs.length - 1
-            const rawSegDur = isLast
-              ? cursor + vDur - subCursor
-              : (vDur * segText.length) / totalChars
-            const segDur = Math.max(0.4, Math.round(rawSegDur * 100) / 100)
-            clips.push({
-              id: `clip:auto:sub:${i}_${segIdx}:${stamp}`,
-              track: 'subtitle',
-              sourceId: `sub:${i}:${segIdx}`,
-              title: segText,
-              text: segText,
-              startSec: Math.round(subCursor * 100) / 100,
-              durationSec: segDur,
-              ...(isGuichuRemixMode
-                ? {
-                    fontSize: 54,
-                    textColor: guichuSubColors[(i + segIdx) % guichuSubColors.length],
-                    subtitleKaraokeMode: 'karaoke-pop' as const
-                  }
-                : {})
-            })
-            subCursor += segDur
-          })
-        }
-      } else if (!hasManualSubtitleClips && input.subtitles?.[i]?.trim()) {
-        const subText = input.subtitles[i]!.trim()
-        hookPhrase = subText
-        clips.push({
-          id: `clip:auto:sub:${i}_0:${stamp}`,
-          track: 'subtitle',
-          sourceId: `sub:${i}:0`,
-          title: subText,
-          text: subText,
-          startSec: cursor,
-          durationSec: shotDur,
-          ...(isGuichuRemixMode
-            ? {
-                fontSize: 54,
-                textColor: '#facc15',
-                subtitleKaraokeMode: 'karaoke-pop' as const
-              }
-            : {})
-        })
-      }
-
-      cursor = Math.round((cursor + shotDur) * 100) / 100
-
-      // ── 网络鬼畜模式：在每幕叙事铺垫后自动注入高密度「鬼畜电音洗脑副歌卡点暴走段 (Guichu Electro Hook Drop)」──
-      if (isGuichuRemixMode && resolvedVisuals.length > 0) {
-        const primaryVis = vis ?? resolvedVisuals[i % resolvedVisuals.length]!
-        const altVis = resolvedVisuals[(i + 1) % resolvedVisuals.length] ?? primaryVis
-        const primaryVisDur =
-          (slot.visIdx !== undefined ? visualDurations[slot.visIdx] : visualDurations[0]) ?? 4
-        const hookSteps = [0.2, 0.2, 0.2, 0.2, 0.32, 0.32, 0.4, 0.48] as const
-        const hookEffects = [
-          'guichu-pingpong',
-          'beat-flip',
-          'split-2h',
-          'split-4grid',
-          'rainbow-rave',
-          'deep-fry',
-          'split-9grid',
-          'soul-out'
-        ] as const
-        const hookPitches = [0, 3, 5, 7, 10, 12, -5, 12] as const
-        const hookVoices = [
-          'autotune-chorus',
-          'autotune-chorus',
-          'chipmunk',
-          'robot',
-          'autotune-chorus',
-          'demon',
-          'megaphone',
-          'autotune-chorus'
-        ] as const
-        const hookColors = [
-          '#facc15',
-          '#ff2e4c',
-          '#22d3ee',
-          '#a855f7',
-          '#4ade80',
-          '#fb923c',
-          '#f472b6',
-          '#fef08a'
-        ] as const
-        const rawHookWord =
-          (hookPhrase || vis?.title || '高能鬼畜') // cjk-ok
-            .replace(/^[，、。！？!?；;\s]+|[，、。！？!?；;\s]+$/g, '')
-            .slice(-7) || '高能鬼畜' // cjk-ok
-        const dropStartSec = cursor
-        const totalDropDur = Number(hookSteps.reduce((a, b) => a + b, 0).toFixed(2))
-
-        // 全屏程序化视觉特效贴纸叠加层（扫描线 / 万花筒放射 / 速度线 / 强光爆闪）
-        const overlayStickerCycle = [
-          'glitch_scanlines',
-          'kaleidoscope_burst',
-          'speed_lines',
-          'neon_border'
-        ] as const
-        clips.push({
-          id: `clip:auto:ov_fx:${i}_0:${stamp}`,
-          track: 'overlay',
-          lane: 1,
-          sourceId: `sticker:${overlayStickerCycle[i % overlayStickerCycle.length]}:${i}`,
-          stickerId: overlayStickerCycle[i % overlayStickerCycle.length],
-          stickerColor: hookColors[i % hookColors.length],
-          title: '鬼畜视觉冲击层', // cjk-ok
-          startSec: dropStartSec,
-          durationSec: Number((totalDropDur * 0.65).toFixed(2)),
-          overlayX: 0,
-          overlayY: 0,
-          overlayWidth: 1,
-          overlayHeight: 1,
-          opacity: 0.72,
-          tweenLoop: 'pulse'
-        })
-        clips.push({
-          id: `clip:auto:ov_fx:${i}_1:${stamp}`,
-          track: 'overlay',
-          lane: 1,
-          sourceId: `sticker:impact_flash:${i}`,
-          stickerId: 'impact_flash',
-          stickerColor: '#facc15',
-          title: '副歌高潮核爆闪光', // cjk-ok
-          startSec: Number((dropStartSec + totalDropDur * 0.65).toFixed(2)),
-          durationSec: Number((totalDropDur * 0.35).toFixed(2)),
-          overlayX: 0,
-          overlayY: 0,
-          overlayWidth: 1,
-          overlayHeight: 1,
-          opacity: 0.82,
-          tweenIn: 'popIn',
-          tweenOut: 'fadeOut'
-        })
-
-        for (let k = 0; k < hookSteps.length; k++) {
-          const stepDur = hookSteps[k]!
-          const targetVis = k % 2 === 0 ? primaryVis : altVis
-          const srcOffset = Number(
-            Math.min(Math.max(0, primaryVisDur - 0.5), 0.25 + (k % 3) * 0.35).toFixed(2)
-          )
-          const stepSpeed = k < 4 ? 1.6 : 1.35
           clips.push({
-            id: `clip:auto:gv:${i}_${k}:${stamp}`,
-            track: 'video',
-            sourceId: targetVis.rel || targetVis.id || `guichu:${i}:${k}`,
-            title: `${rawHookWord} · 鬼畜#${k + 1}`, // cjk-ok
-            relativePath: targetVis.rel,
-            startSec: cursor,
-            durationSec: stepDur,
-            sourceOffsetSec: srcOffset,
-            speed: stepSpeed,
-            filterPreset: guichuStoryFilters[(i + k) % guichuStoryFilters.length],
-            filterIntensity: 96,
-            visualEffect: hookEffects[k]!,
-            effectIntensity: 96,
-            contrast: 1.34,
-            saturation: 1.52,
-            sharpen: 48,
-            pitchSemitones: hookPitches[k]!,
-            voiceEffect: hookVoices[k]!,
-            volume: voice ? 0.35 : 1
+            id: `clip:auto:ov_fx:${i}_1:${stamp}`,
+            track: 'overlay',
+            lane: 1,
+            sourceId: `sticker:impact_flash:${i}`,
+            stickerId: 'impact_flash',
+            stickerColor: '#facc15',
+            title: '副歌高潮核爆闪光', // cjk-ok
+            startSec: Number((dropStartSec + totalDropDur * 0.65).toFixed(2)),
+            durationSec: Number((totalDropDur * 0.35).toFixed(2)),
+            overlayX: 0,
+            overlayY: 0,
+            overlayWidth: 1,
+            overlayHeight: 1,
+            opacity: 0.82,
+            tweenIn: 'popIn',
+            tweenOut: 'fadeOut'
           })
 
-          if (voice) {
-            const vTotal = voiceDur ?? shotDur
-            const vTailOffset = Number(
-              Math.max(0, vTotal - Math.min(vTotal * 0.45, 1.1)).toFixed(2)
+          for (let k = 0; k < hookSteps.length; k++) {
+            const stepDur = hookSteps[k]!
+            const targetVis = k % 2 === 0 ? primaryVis : altVis
+            const srcOffset = Number(
+              Math.min(Math.max(0, primaryVisDur - 0.5), 0.25 + (k % 3) * 0.35).toFixed(2)
             )
+            const stepSpeed = k < 4 ? 1.6 : 1.35
             clips.push({
-              id: `clip:auto:ga:${i}_${k}:${stamp}`,
-              track: 'voice',
-              sourceId: voice.id || voice.rel,
-              title: `${rawHookWord} · 电音${hookPitches[k]! >= 0 ? '+' : ''}${hookPitches[k]!}st`, // cjk-ok
-              relativePath: voice.rel,
-              ...(voice.id ? { assetId: voice.id } : {}),
+              id: `clip:auto:gv:${i}_${k}:${stamp}`,
+              track: 'video',
+              sourceId: targetVis.rel || targetVis.id || `guichu:${i}:${k}`,
+              title: `${rawHookWord} · 鬼畜#${k + 1}`, // cjk-ok
+              relativePath: targetVis.rel,
               startSec: cursor,
               durationSec: stepDur,
-              sourceOffsetSec: vTailOffset,
+              sourceOffsetSec: srcOffset,
               speed: stepSpeed,
+              filterPreset: guichuStoryFilters[(i + k) % guichuStoryFilters.length],
+              filterIntensity: 96,
+              visualEffect: hookEffects[k]!,
+              effectIntensity: 96,
+              contrast: 1.34,
+              saturation: 1.52,
+              sharpen: 48,
               pitchSemitones: hookPitches[k]!,
               voiceEffect: hookVoices[k]!,
-              volume: 1
+              volume: voice ? 0.35 : 1
             })
-          }
 
-          if (!hasManualSubtitleClips && (k < 2 || k === 2 || k === 4 || k === 6 || k === 7)) {
-            const subDur = k === 0 || k === 2 ? Number((stepDur * 2).toFixed(2)) : stepDur
-            if (k !== 1 && k !== 3) {
-              const bang = k >= 6 ? '💥⚡' : '⚡'
-              const hookLabel = `${rawHookWord}！${bang}`
+            if (voice) {
+              const vTotal = voiceDur ?? shotDur
+              const vTailOffset = Number(
+                Math.max(0, vTotal - Math.min(vTotal * 0.45, 1.1)).toFixed(2)
+              )
               clips.push({
-                id: `clip:auto:gsub:${i}_${k}:${stamp}`,
-                track: 'subtitle',
-                sourceId: `gsub:${i}:${k}`,
-                title: hookLabel,
-                text: hookLabel,
+                id: `clip:auto:ga:${i}_${k}:${stamp}`,
+                track: 'voice',
+                sourceId: voice.id || voice.rel,
+                title: `${rawHookWord} · 电音${hookPitches[k]! >= 0 ? '+' : ''}${hookPitches[k]!}st`, // cjk-ok
+                relativePath: voice.rel,
+                ...(voice.id ? { assetId: voice.id } : {}),
                 startSec: cursor,
-                durationSec: subDur,
-                fontSize: k >= 6 ? 68 : 60,
-                textColor: hookColors[k % hookColors.length],
-                subtitleKaraokeMode: 'word-solo'
+                durationSec: stepDur,
+                sourceOffsetSec: vTailOffset,
+                speed: stepSpeed,
+                pitchSemitones: hookPitches[k]!,
+                voiceEffect: hookVoices[k]!,
+                volume: 1
               })
             }
-          }
 
-          if (k === 0 || k === 4 || k === 6 || k === 7) {
-            const sfxPreset =
-              k === 0 ? 'boom' : k === 4 ? 'pop' : k === 6 ? 'whoosh' : ('ding' as const)
-            clips.push({
-              id: `clip:auto:gsfx:${i}_${k}:${stamp}`,
-              track: 'sfx',
-              lane: 0,
-              sourceId: `sfx:${sfxPreset}:${i}:${k}`,
-              sfxPresetId: sfxPreset,
-              title: `卡点重音 · ${sfxPreset}`, // cjk-ok
-              startSec: cursor,
-              durationSec: Math.min(0.45, stepDur + 0.12),
-              volume: 0.85
-            })
-          }
+            if (!hasManualSubtitleClips && (k < 2 || k === 2 || k === 4 || k === 6 || k === 7)) {
+              const subDur = k === 0 || k === 2 ? Number((stepDur * 2).toFixed(2)) : stepDur
+              if (k !== 1 && k !== 3) {
+                const bang = k >= 6 ? '💥⚡' : '⚡'
+                const hookLabel = `${rawHookWord}！${bang}`
+                clips.push({
+                  id: `clip:auto:gsub:${i}_${k}:${stamp}`,
+                  track: 'subtitle',
+                  sourceId: `gsub:${i}:${k}`,
+                  title: hookLabel,
+                  text: hookLabel,
+                  startSec: cursor,
+                  durationSec: subDur,
+                  fontSize: k >= 6 ? 68 : 60,
+                  textColor: hookColors[k % hookColors.length],
+                  subtitleKaraokeMode: 'word-solo'
+                })
+              }
+            }
 
-          cursor = Math.round((cursor + stepDur) * 100) / 100
+            if (k === 0 || k === 4 || k === 6 || k === 7) {
+              const sfxPreset =
+                k === 0 ? 'boom' : k === 4 ? 'pop' : k === 6 ? 'whoosh' : ('ding' as const)
+              clips.push({
+                id: `clip:auto:gsfx:${i}_${k}:${stamp}`,
+                track: 'sfx',
+                lane: 0,
+                sourceId: `sfx:${sfxPreset}:${i}:${k}`,
+                sfxPresetId: sfxPreset,
+                title: `卡点重音 · ${sfxPreset}`, // cjk-ok
+                startSec: cursor,
+                durationSec: Math.min(0.45, stepDur + 0.12),
+                volume: 0.85
+              })
+            }
+
+            cursor = Math.round((cursor + stepDur) * 100) / 100
+          }
         }
       }
-    }
-    if (isGuichuRemixMode) {
-      doc.settings = {
-        ...(doc.settings ?? {}),
-        scaleMode: doc.settings?.scaleMode ?? 'cover',
-        subtitleFontSize: doc.settings?.subtitleFontSize ?? 54,
-        subtitleColor: doc.settings?.subtitleColor ?? '#facc15',
-        subtitleBorderColor: doc.settings?.subtitleBorderColor ?? '#000000',
-        subtitleBorderWidth: doc.settings?.subtitleBorderWidth ?? 5,
-        subtitleBoxEnabled: doc.settings?.subtitleBoxEnabled ?? true,
-        subtitleBoxColor: doc.settings?.subtitleBoxColor ?? '#e11d48',
-        subtitleBoxOpacity: doc.settings?.subtitleBoxOpacity ?? 0.82,
-        subtitleKaraokeMode: doc.settings?.subtitleKaraokeMode ?? 'karaoke-pop',
-        mixCompression: true,
-        mixAutoDucking: true
+      if (isGuichuRemixMode) {
+        doc.settings = {
+          ...(doc.settings ?? {}),
+          scaleMode: doc.settings?.scaleMode ?? 'cover',
+          subtitleFontSize: doc.settings?.subtitleFontSize ?? 54,
+          subtitleColor: doc.settings?.subtitleColor ?? '#facc15',
+          subtitleBorderColor: doc.settings?.subtitleBorderColor ?? '#000000',
+          subtitleBorderWidth: doc.settings?.subtitleBorderWidth ?? 5,
+          subtitleBoxEnabled: doc.settings?.subtitleBoxEnabled ?? true,
+          subtitleBoxColor: doc.settings?.subtitleBoxColor ?? '#e11d48',
+          subtitleBoxOpacity: doc.settings?.subtitleBoxOpacity ?? 0.82,
+          subtitleKaraokeMode: doc.settings?.subtitleKaraokeMode ?? 'karaoke-pop',
+          mixCompression: true,
+          mixAutoDucking: true
+        }
       }
+      dirtyDoc = true
     }
-    dirtyDoc = true
   }
 
   // 自动铺入背景音乐轨（in-music）

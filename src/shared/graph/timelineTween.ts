@@ -1098,6 +1098,14 @@ export type TimelineBuiltinStickerId =
   | 'viewfinder-frame'
   | 'scroll-seal-frame'
   | 'museum-gilded-frame'
+  | 'comic-boom'
+  | 'neon-slash-combo'
+  | 'electric-lightning'
+  | 'shockwave-ring'
+  | 'manga-focus-lines'
+  | 'manga-speed-lines'
+  | 'comic-speech-bubble'
+  | 'comic-shout-bubble'
 
 export interface TimelineBuiltinStickerSpec {
   id: TimelineBuiltinStickerId
@@ -1397,12 +1405,114 @@ export function renderTimelineBuiltinStickerSvg(
 </svg>`
     }
     case 'sparkle-star':
-    default: {
-      const fill = customColor || '#FACC15'
       return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
-  <path d="M256 36L302 210L476 256L302 302L256 476L210 302L36 256L210 210L256 36Z" fill="${fill}" stroke="#FFFBEB" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M256 36L302 210L476 256L302 302L256 476L210 302L36 256L210 210L256 36Z" fill="${customColor || '#FACC15'}" stroke="#FFFBEB" stroke-width="14" stroke-linejoin="round"/>
   <circle cx="396" cy="116" r="24" fill="#38BDF8"/>
   <circle cx="116" cy="396" r="18" fill="#F472B6"/>
+</svg>`
+    case 'comic-boom': {
+      const fill = customColor || '#EF4444'
+      const label = escapeXml((customLabel || 'BOOM!').slice(0, 10))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <polygon points="256,22 306,124 416,58 378,168 492,192 396,264 474,366 356,358 364,478 268,396 184,486 182,368 62,394 128,288 24,224 136,178 86,68 202,126" fill="${fill}" stroke="#111111" stroke-width="14" stroke-linejoin="round"/>
+  <polygon points="256,68 296,148 384,96 354,184 444,204 368,260 428,340 336,334 342,428 266,364 200,434 198,342 104,362 156,278 74,228 162,192 122,106 214,150" fill="#FACC15" stroke="#111111" stroke-width="8" stroke-linejoin="round"/>
+  <text x="256" y="276" text-anchor="middle" fill="#111111" stroke="#FFFFFF" stroke-width="10" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="68" font-weight="900" transform="rotate(-6 256 256)">${label}</text>
+</svg>`
+    }
+    case 'electric-lightning': {
+      const stroke = customColor || '#FACC15'
+      const label = escapeXml((customLabel || '').slice(0, 10))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <path d="M296 24L116 268H248L188 488L408 216H268L296 24Z" fill="${stroke}" stroke="#111111" stroke-width="14" stroke-linejoin="round"/>
+  ${label ? `<text x="256" y="284" text-anchor="middle" fill="#FFFFFF" stroke="#111111" stroke-width="12" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="64" font-weight="900">${label}</text>` : ''}
+</svg>`
+    }
+    case 'neon-slash-combo': {
+      const stroke = customColor || '#0284C7'
+      const label = escapeXml((customLabel || '').slice(0, 10))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <path d="M48 448L464 64M72 112L440 416" stroke="${stroke}" stroke-width="28" stroke-linecap="round"/>
+  <path d="M48 448L464 64M72 112L440 416" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round"/>
+  ${label ? `<text x="256" y="276" text-anchor="middle" fill="#FFFFFF" stroke="#111111" stroke-width="12" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="64" font-weight="900" transform="rotate(-12 256 256)">${label}</text>` : ''}
+</svg>`
+    }
+    case 'manga-focus-lines':
+    case 'kaleidoscope_burst': {
+      const ink = customColor || '#111111'
+      const wedges: string[] = []
+      const count = 44
+      const cx = 480
+      const cy = 270
+      const outerR = 640
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2
+        const halfSpread = (0.012 + (i % 3) * 0.008) * Math.PI
+        const innerR = 175 + ((i * 37) % 65)
+        const x0 = (cx + Math.cos(a) * innerR).toFixed(1)
+        const y0 = (cy + Math.sin(a) * innerR).toFixed(1)
+        const x1 = (cx + Math.cos(a - halfSpread) * outerR).toFixed(1)
+        const y1 = (cy + Math.sin(a - halfSpread) * outerR).toFixed(1)
+        const x2 = (cx + Math.cos(a + halfSpread) * outerR).toFixed(1)
+        const y2 = (cy + Math.sin(a + halfSpread) * outerR).toFixed(1)
+        wedges.push(
+          `<polygon points="${x0},${y0} ${x1},${y1} ${x2},${y2}" fill="${ink}" fill-opacity="0.78"/>`
+        )
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  ${wedges.join('\n  ')}
+</svg>`
+    }
+    case 'manga-speed-lines':
+    case 'speed_lines': {
+      const ink = customColor || '#111111'
+      const lines: string[] = []
+      const count = 34
+      for (let i = 0; i < count; i++) {
+        const y = Math.round(16 + (i / (count - 1)) * 508)
+        // 中央留出视觉通道，上下两侧加密速度线
+        const distFromCenter = Math.abs(y - 270) / 270
+        if (distFromCenter < 0.22 && i % 2 === 0) continue
+        const xStart = (i * 83) % 240
+        const len = 360 + ((i * 137) % 480)
+        const sw = (1.8 + distFromCenter * 4.2 + (i % 3) * 1.1).toFixed(1)
+        lines.push(
+          `<line x1="${xStart}" y1="${y}" x2="${Math.min(960, xStart + len)}" y2="${y}" stroke="${ink}" stroke-width="${sw}" stroke-opacity="0.76" stroke-linecap="round"/>`
+        )
+      }
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
+  ${lines.join('\n  ')}
+</svg>`
+    }
+    case 'comic-speech-bubble': {
+      const stroke = customColor || '#111111'
+      const raw = customLabel || '...'
+      const line1 = escapeXml(raw.slice(0, 14))
+      const line2 = escapeXml(raw.slice(14, 28))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="320" viewBox="0 0 512 320" fill="none">
+  <path d="M256 24C392 24 484 78 484 148C484 218 392 268 256 268C224 268 194 264 166 258L108 304L126 244C62 222 28 188 28 148C28 78 120 24 256 24Z" fill="#FFFFFF" stroke="${stroke}" stroke-width="10" stroke-linejoin="round"/>
+  <text x="256" y="${line2 ? '134' : '158'}" text-anchor="middle" fill="#111111" font-family="system-ui, -apple-system, Microsoft YaHei, sans-serif" font-size="34" font-weight="800">${line1}</text>
+  ${line2 ? `<text x="256" y="182" text-anchor="middle" fill="#111111" font-family="system-ui, -apple-system, Microsoft YaHei, sans-serif" font-size="34" font-weight="800">${line2}</text>` : ''}
+</svg>`
+    }
+    case 'comic-shout-bubble': {
+      const stroke = customColor || '#111111'
+      const raw = customLabel || '!'
+      const line1 = escapeXml(raw.slice(0, 12))
+      const line2 = escapeXml(raw.slice(12, 24))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="340" viewBox="0 0 512 340" fill="none">
+  <polygon points="256,14 298,58 358,22 374,72 448,46 432,102 498,112 454,158 502,204 442,222 468,282 396,268 386,322 326,284 288,330 256,286 218,330 182,282 122,320 116,266 44,280 72,220 12,202 60,156 14,110 80,100 64,44 138,70 154,20 214,56" fill="#FFFFFF" stroke="${stroke}" stroke-width="10" stroke-linejoin="round"/>
+  <text x="256" y="${line2 ? '156' : '180'}" text-anchor="middle" fill="#111111" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="38" font-weight="900">${line1}</text>
+  ${line2 ? `<text x="256" y="204" text-anchor="middle" fill="#111111" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="38" font-weight="900">${line2}</text>` : ''}
+</svg>`
+    }
+    case 'shockwave-ring':
+    default: {
+      const stroke = customColor || '#F97316'
+      const label = escapeXml((customLabel || '').slice(0, 10))
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <circle cx="256" cy="256" r="204" stroke="${stroke}" stroke-width="18" stroke-dasharray="64 28"/>
+  <circle cx="256" cy="256" r="152" stroke="#FACC15" stroke-width="10" stroke-opacity="0.85"/>
+  ${label ? `<text x="256" y="276" text-anchor="middle" fill="${stroke}" stroke="#FFFFFF" stroke-width="12" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="68" font-weight="900">${label}</text>` : ''}
 </svg>`
     }
   }

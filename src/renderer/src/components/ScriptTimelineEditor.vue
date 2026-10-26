@@ -5449,6 +5449,17 @@ function buildCssCropClipPath(clip: ScriptTimelineClip | null | undefined): stri
   return `inset(${top}% ${right}% ${bottom}% ${left}%)`
 }
 
+function buildCssCropZoomTransform(clip: ScriptTimelineClip | null | undefined): string {
+  if (!isClipCropped(clip)) return ''
+  const rect = normalizeClipCropRect(clip)
+  const cx = rect.cropX + rect.cropWidth / 2
+  const cy = rect.cropY + rect.cropHeight / 2
+  const scale = 1 / Math.max(0.08, Math.max(rect.cropWidth, rect.cropHeight))
+  const tx = (0.5 - cx) * 100
+  const ty = (0.5 - cy) * 100
+  return `scale(${scale.toFixed(3)}) translate(${tx.toFixed(2)}%, ${ty.toFixed(2)}%)`
+}
+
 const mainTransitionVideoStyle = computed(() => {
   const transition = activeMainTransition.value
   if (!transition) return { display: 'none' }
@@ -5609,7 +5620,13 @@ const mainTransitionVideoStyle = computed(() => {
   }
   if (!style.clipPath) {
     const cropClip = buildCssCropClipPath(transition.to)
-    if (cropClip) style.clipPath = cropClip
+    if (cropClip) {
+      style.clipPath = cropClip
+      const cropZoom = buildCssCropZoomTransform(transition.to)
+      if (cropZoom) {
+        style.transform = style.transform ? `${cropZoom} ${style.transform}` : cropZoom
+      }
+    }
   }
   return style
 })
@@ -5741,6 +5758,12 @@ const previewVideoTransitionStyle = computed<Record<string, string> | null>(() =
     const fxTransform = buildClipVisualCssTransform(activeClip, clipLocalSec)
     if (fxTransform) {
       outgoingTransform = outgoingTransform ? `${outgoingTransform} ${fxTransform}` : fxTransform
+    }
+    if (!cropMode.value && activeClip.track === 'video' && cropClip) {
+      const cropZoom = buildCssCropZoomTransform(activeClip)
+      if (cropZoom) {
+        outgoingTransform = outgoingTransform ? `${cropZoom} ${outgoingTransform}` : cropZoom
+      }
     }
   }
 

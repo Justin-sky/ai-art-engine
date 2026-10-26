@@ -82,6 +82,8 @@ import {
 import { resolveMentionSources } from './context'
 import { hydrateTextItems, resolveGalleryOutputsFromNodeParams } from './helpers'
 import { cleanActSceneTitle, parseActSceneSubtitlePlan } from '../scriptTimeline'
+import { readComicPageFromGenParams } from '../comicPage'
+import { extractComicDialogueLines } from '../comicMotion'
 import { fail } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
@@ -335,6 +337,14 @@ export async function executeTimelineOutputNode(
     }
   > = []
   const orderedVisuals: Array<GraphTimelineVisualItem & { _order: number }> = []
+  const comicPages: Array<{
+    nodeId: string
+    nodeTitle?: string
+    comicPage: string
+    pageImageRelativePath?: string
+    panelImageRelativePaths?: Record<string, string>
+    bubbleImageRelativePaths?: Record<string, string>
+  }> = []
 
   if (doc) {
     const incomingEdges = doc.edges.filter((e) => e.target === ctx.node.id)
@@ -465,6 +475,47 @@ export async function executeTimelineOutputNode(
       })
     })
     orderedVisuals.sort((a, b) => a._order - b._order)
+
+    for (const { node: imgNode } of imageSourceEdges) {
+      if (imgNode.typeId !== 'comic.page') continue
+      const rawComicPage =
+        typeof imgNode.params?.comicPage === 'string' ? imgNode.params.comicPage.trim() : ''
+      if (!rawComicPage) continue
+      const matchedImg = images.find(
+        (im) =>
+          im.id === `comic-page:${imgNode.id}` ||
+          (im.relativePath && im.relativePath === imgNode.params?.previewRelativePath)
+      )
+      const pageRel =
+        matchedImg?.relativePath?.trim() ||
+        imgNode.params?.previewRelativePath?.trim() ||
+        imgNode.params?.generatedImages?.[0]?.relativePath?.trim() ||
+        undefined
+      const panelPrefix = `comic-panel:${imgNode.id}:`
+      const bubblePrefix = `comic-bubble:${imgNode.id}:`
+      const panelImageRelativePaths: Record<string, string> = {}
+      const bubbleImageRelativePaths: Record<string, string> = {}
+      for (const g of imgNode.params?.generatedImages ?? []) {
+        const gid = typeof g.id === 'string' ? g.id : ''
+        const grel = typeof g.relativePath === 'string' ? g.relativePath.trim() : ''
+        if (!grel) continue
+        if (gid.startsWith(panelPrefix)) {
+          const panelId = gid.slice(panelPrefix.length)
+          if (panelId) panelImageRelativePaths[panelId] = grel
+        } else if (gid.startsWith(bubblePrefix)) {
+          const bubbleId = gid.slice(bubblePrefix.length)
+          if (bubbleId) bubbleImageRelativePaths[bubbleId] = grel
+        }
+      }
+      comicPages.push({
+        nodeId: imgNode.id,
+        ...(imgNode.title?.trim() ? { nodeTitle: imgNode.title.trim() } : {}),
+        comicPage: rawComicPage,
+        ...(pageRel ? { pageImageRelativePath: pageRel } : {}),
+        ...(Object.keys(panelImageRelativePaths).length > 0 ? { panelImageRelativePaths } : {}),
+        ...(Object.keys(bubbleImageRelativePaths).length > 0 ? { bubbleImageRelativePaths } : {})
+      })
+    }
 
     const voiceSourceEdges = incomingEdges
       .map((e, edgeIdx) => ({ edge: e, node: nodeById.get(e.source), edgeIdx }))
@@ -630,6 +681,57 @@ export async function executeTimelineOutputNode(
       }
       voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
     }
+
+    // 动态漫（comic.page -> output.timeline）：若未连接外部配音轨且支持 generateSpeech，
+    // 自动按分镜与气泡阅读顺序提取台词，并按角色名分配差异化音色合成配音
+    if (comicPages.length > 0 && voices.length === 0 && ctx.generateSpeech) {
+      const ttsVoices = ['onyx', 'nova', 'alloy', 'shimmer', 'echo', 'fable'] as const
+      const speakerVoiceMap = new Map<string, string>()
+      let voiceOrder = 0
+      for (const cp of comicPages) {
+        const parsedPage = readComicPageFromGenParams({ comicPage: cp.comicPage })
+        if (!parsedPage) continue
+        const lines = extractComicDialogueLines(parsedPage)
+        for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+          const line = lines[lineIdx]!
+          const spokenText = line.text.trim()
+          if (!spokenText) continue
+          const speakerKey = (line.speaker?.trim() || '').toLowerCase()
+          let chosenVoice: string = line.shape === 'narration' ? 'onyx' : 'nova'
+          if (speakerKey) {
+            const existing = speakerVoiceMap.get(speakerKey)
+            if (existing) {
+              chosenVoice = existing
+            } else {
+              chosenVoice = ttsVoices[speakerVoiceMap.size % ttsVoices.length]!
+              speakerVoiceMap.set(speakerKey, chosenVoice)
+            }
+          }
+          try {
+            const ttsRes = await ctx.generateSpeech({
+              input: spokenText,
+              voice: chosenVoice,
+              name: `comic_${cp.nodeId}_p${line.panelIndex + 1}_b${lineIdx + 1}`
+            })
+            if (ttsRes?.relativePath?.trim()) {
+              voices.push({
+                id: ttsRes.assetId?.trim() || ttsRes.relativePath.trim(),
+                relativePath: ttsRes.relativePath.trim(),
+                title: line.speaker
+                  ? `Panel ${line.panelIndex + 1} · ${line.speaker}`
+                  : `Panel ${line.panelIndex + 1} · #${lineIdx + 1}`,
+                text: spokenText,
+                trackKind: 'voice',
+                lane: 0,
+                _order: voiceOrder++
+              })
+            }
+          } catch {
+            // 未配置语音合成模型时静默跳过，保留分镜逐字卡拉OK字幕
+          }
+        }
+      }
+    }
   } else {
     voices.push(...rawVoices)
     videos.forEach((v, idx) => {
@@ -669,6 +771,7 @@ export async function executeTimelineOutputNode(
         voices: cleanVoices,
         ...(music.length ? { music } : {}),
         ...(subtitles.length ? { subtitles } : {}),
+        ...(comicPages.length ? { comicPages } : {}),
         signal: ctx.signal
       })
     } catch {

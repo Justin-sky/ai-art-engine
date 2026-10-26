@@ -1563,6 +1563,34 @@ function safeFileBase(name: string): string {
   return base || 'comic-page'
 }
 
+async function renderPngDataUrl(): Promise<string> {
+  if (norm.value.panels.length === 0) return ''
+  const result = await composeComicPageImage({
+    page: norm.value,
+    resolveImage: resolveExportImage
+  })
+  return result.dataUrl || ''
+}
+
+async function renderMotionComicBundle(): Promise<{
+  dataUrl: string
+  panelDataUrls: Record<string, string>
+  bubbleDataUrls: Record<string, string>
+}> {
+  if (norm.value.panels.length === 0) {
+    return { dataUrl: '', panelDataUrls: {}, bubbleDataUrls: {} }
+  }
+  const result = await composeComicPageImage({
+    page: norm.value,
+    resolveImage: resolveExportImage
+  })
+  return {
+    dataUrl: result.dataUrl || '',
+    panelDataUrls: result.panelDataUrls || {},
+    bubbleDataUrls: result.bubbleDataUrls || {}
+  }
+}
+
 async function exportPng(): Promise<void> {
   if (exporting.value || norm.value.panels.length === 0) return
   exporting.value = true
@@ -1625,7 +1653,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('keyup', onKeyUp)
 })
 
-defineExpose({ exportPng, fitToViewport, setZoom100 })
+defineExpose({
+  exportPng,
+  renderPngDataUrl,
+  renderMotionComicBundle,
+  fitToViewport,
+  setZoom100
+})
 </script>
 
 <style scoped>

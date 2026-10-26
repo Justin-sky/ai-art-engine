@@ -1141,7 +1141,13 @@ export interface NodeExecuteContext {
   composeComicPageImage?: (input: {
     page: import('../comicPage').ComicPage
     resolveImage?: (imageUrl: string) => Promise<string>
-  }) => Promise<{ dataUrl: string; width: number; height: number }>
+  }) => Promise<{
+    dataUrl: string
+    width: number
+    height: number
+    panelDataUrls?: Record<string, string>
+    bubbleDataUrls?: Record<string, string>
+  }>
   /**
    * 人像处理：证件照的**纯几何输出**（按规格裁切 + 5 寸相纸拼版）。
    *
@@ -1352,6 +1358,14 @@ export interface NodeExecuteContext {
     sfx?: Array<GraphVoiceItem & { title?: string; lane?: number }>
     music?: GraphVoiceItem[]
     subtitles?: string[]
+    comicPages?: Array<{
+      nodeId: string
+      nodeTitle?: string
+      comicPage: string
+      pageImageRelativePath?: string
+      panelImageRelativePaths?: Record<string, string>
+      bubbleImageRelativePaths?: Record<string, string>
+    }>
     signal?: AbortSignal
   }) => Promise<{ relativePath?: string; assetId?: string } | null>
   /**

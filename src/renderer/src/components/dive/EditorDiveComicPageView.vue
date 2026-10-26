@@ -69,6 +69,20 @@
         </span>
         <button
           type="button"
+          class="tb-btn tb-btn--accent-soft"
+          :disabled="page.panels.length === 0 || generatingMotionComic"
+          :title="uiLabels.motionComicTitle"
+          @click="onGenerateMotionComic"
+        >
+          🎬
+          {{
+            generatingMotionComic
+              ? pickComicBi('合成中…', 'Building…')
+              : pickComicBi('生成动态漫', 'Motion Comic')
+          }}
+        </button>
+        <button
+          type="button"
           class="tb-btn"
           :disabled="page.panels.length === 0"
           @click="canvasRef?.exportPng()"
@@ -817,6 +831,122 @@
               </label>
             </div>
           </div>
+
+          <!-- 动态漫运镜与时长配置 -->
+          <div class="section-card">
+            <h3>
+              🎬
+              {{ pickComicBi('动态漫运镜与时长 (Motion Comic)', 'Motion Comic Camera & Timing') }}
+            </h3>
+            <label>
+              {{ pickComicBi('单格运镜预设', 'Panel Camera Motion') }}
+              <div class="chip-row">
+                <button
+                  v-for="cm in cameraMotionOptions"
+                  :key="cm.id"
+                  type="button"
+                  class="chip-btn"
+                  :class="{
+                    'chip-btn--active': (selectedPanel.cameraMotion ?? 'auto') === cm.id
+                  }"
+                  @click="patchSelectedPanel({ cameraMotion: cm.id })"
+                >
+                  {{ cm.label }}
+                </button>
+              </div>
+            </label>
+
+            <div class="row">
+              <label>
+                {{ pickComicBi('停留时长 (秒)', 'Duration (sec)') }}
+                <input
+                  type="number"
+                  min="0.5"
+                  max="60"
+                  step="0.2"
+                  :placeholder="pickComicBi('自动按台词推算', 'Auto from dialogue')"
+                  :value="selectedPanel.durationSec ?? ''"
+                  @change="onPanelDurationSec($event)"
+                />
+              </label>
+              <label>
+                {{ pickComicBi('动静混排视频源 (可选)', 'Panel Video URL (opt)') }}
+                <input
+                  :value="selectedPanel.videoUrl ?? ''"
+                  :placeholder="pickComicBi('相对路径，高潮格可播视频', 'Relative video path')"
+                  @change="
+                    patchSelectedPanel({ videoUrl: ($event.target as HTMLInputElement).value })
+                  "
+                />
+              </label>
+            </div>
+
+            <div class="row">
+              <button
+                type="button"
+                class="mini-btn"
+                :disabled="!selectedPanel.imageUrl || generatingPanelVideo"
+                @click="onGeneratePanelMicroVideo"
+              >
+                {{
+                  generatingPanelVideo
+                    ? pickComicBi('⏳ 生成微动视频中...', '⏳ Generating I2V...')
+                    : pickComicBi('⚡ AI 生成微动视频 (I2V)', '⚡ Generate Micro-Video (I2V)')
+                }}
+              </button>
+              <button
+                type="button"
+                class="mini-btn"
+                :disabled="!selectedPanel.imageUrl || extractingPanelForeground"
+                @click="onExtractPanelForeground"
+              >
+                {{
+                  extractingPanelForeground
+                    ? pickComicBi('⏳ 提取立绘中...', '⏳ Extracting FG...')
+                    : pickComicBi('✂️ AI 抠取前景立绘 (2.5D)', '✂️ Extract 2.5D Foreground')
+                }}
+              </button>
+            </div>
+
+            <div class="row">
+              <label>
+                {{ pickComicBi('2.5D 前景立绘图 (可选)', '2.5D Foreground PNG') }}
+                <input
+                  :value="selectedPanel.foregroundImageUrl ?? ''"
+                  :placeholder="pickComicBi('透明人物立绘相对路径', 'Transparent FG image path')"
+                  @change="
+                    patchSelectedPanel({
+                      foregroundImageUrl: ($event.target as HTMLInputElement).value
+                    })
+                  "
+                />
+              </label>
+              <label v-if="selectedPanel.foregroundImageUrl">
+                <span class="slider-head">
+                  <span>{{ pickComicBi('2.5D 视差深度', 'Parallax Depth') }}</span>
+                  <span>{{ Math.round((selectedPanel.parallaxDepth ?? 0.5) * 100) }}%</span>
+                </span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1"
+                  step="0.05"
+                  :value="selectedPanel.parallaxDepth ?? 0.5"
+                  @input="
+                    patchSelectedPanel(
+                      { parallaxDepth: Number(($event.target as HTMLInputElement).value) },
+                      { persist: false }
+                    )
+                  "
+                  @change="
+                    patchSelectedPanel({
+                      parallaxDepth: Number(($event.target as HTMLInputElement).value)
+                    })
+                  "
+                />
+              </label>
+            </div>
+          </div>
         </template>
 
         <!-- 3. 选中台词气泡 / 拟声词属性 -->
@@ -1101,10 +1231,13 @@
 
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { isDraftAssetId } from '@shared/domain'
+import { parseGraphHostContext } from '@shared/editorGlobals'
 import {
   addComicBubble,
   addComicPanel,
   applyComicLayoutTemplate,
+  buildComicMotionTimeline,
   COMIC_LAYOUT_TEMPLATES,
   comicOccupiedCellKeys,
   comicPanelPolygon,
@@ -1125,22 +1258,29 @@ import {
   updateComicBubble,
   upsertComicPanel,
   withComicPageLayout,
+  withScriptTimeline,
   type ComicBubbleShape,
   type ComicBubbleTail,
   type ComicBubbleWritingMode,
   type ComicLayoutTemplate,
   type ComicPage,
   type ComicPanel,
+  type ComicPanelCameraMotion,
   type ComicPanelEffectType,
   type ComicPanelFilter,
   type ComicPanelSlantPreset,
   type ComicSpeechBubble
 } from '@shared/graph'
+import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
+import { removeImageSolidBackground } from '../../features/graph/model/removeImageSolidBackground'
+import { saveGraphRunMediaForNode } from '../../features/graph/saveGraphRunMediaForNode'
 import { diveEditorHistory } from '../../features/graph/ui/diveEditorHistory'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
+import { useDraftStore } from '../../stores/drafts'
+import { useProjectStore } from '../../stores/project'
 import ComicPageCanvas, { type ComicPageCanvasHit } from '../ComicPageCanvas.vue'
 
 const props = defineProps<{
@@ -1150,9 +1290,21 @@ const props = defineProps<{
 }>()
 
 const { t, locale } = useStudioI18n()
+const project = useProjectStore()
+const drafts = useDraftStore()
 const editorDive = inject(editorDiveKey, null)
+const hostAssetId = computed(() => parseGraphHostContext(props.hostId).id?.trim() || '')
+const generatingMotionComic = ref(false)
+const generatingPanelVideo = ref(false)
+const extractingPanelForeground = ref(false)
 const canvasRef = ref<{
   exportPng: () => Promise<void>
+  renderPngDataUrl: () => Promise<string>
+  renderMotionComicBundle?: () => Promise<{
+    dataUrl: string
+    panelDataUrls: Record<string, string>
+    bubbleDataUrls: Record<string, string>
+  }>
   fitToViewport: () => void
   setZoom100: () => void
 } | null>(null)
@@ -1177,6 +1329,10 @@ const uiLabels = computed(() => ({
   emptyLayerHint: pickComicBi(
     '可从左侧「分镜模板」一键生成专业排版', // cjk-ok
     'Pick a layout preset on the left to start'
+  ),
+  motionComicTitle: pickComicBi(
+    '将当前漫画分格、气泡台词与拟声词一键编译为多轨动态漫时间线（自动推拉摇移运镜 + 卡拉 OK 字幕 + 贴纸音效）', // cjk-ok
+    'Compile comic panels, speech bubbles & SFX into a multi-track Motion Comic timeline'
   )
 }))
 
@@ -1251,6 +1407,17 @@ const effectOptions = computed<Array<{ id: ComicPanelEffectType; label: string }
   { id: 'speed-lines', label: pickComicBi('💨 速度线', '💨 Speed Lines') },
   { id: 'vignette', label: pickComicBi('🌑 情绪暗角', '🌑 Vignette') },
   { id: 'halftone-frame', label: pickComicBi('🏁 网点气氛', '🏁 Screentone') }
+])
+
+const cameraMotionOptions = computed<Array<{ id: ComicPanelCameraMotion; label: string }>>(() => [
+  { id: 'auto', label: pickComicBi('✨ 自动推算', '✨ Auto') },
+  { id: 'kenBurnsIn', label: pickComicBi('🔍 推镜特写', '🔍 Zoom In') },
+  { id: 'kenBurnsOut', label: pickComicBi('🔭 拉镜全景', '🔭 Zoom Out') },
+  { id: 'panRight', label: pickComicBi('➡ 右摇平移', '➡ Pan Right') },
+  { id: 'panLeft', label: pickComicBi('⬅ 左摇平移', '⬅ Pan Left') },
+  { id: 'panDown', label: pickComicBi('⬇ 下摇条漫', '⬇ Pan Down') },
+  { id: 'panUp', label: pickComicBi('⬆ 上摇仰视', '⬆ Pan Up') },
+  { id: 'none', label: pickComicBi('⏸ 静止定格', '⏸ Static') }
 ])
 
 const bubbleShapes = computed<Array<{ id: ComicBubbleShape; label: string }>>(() => [
@@ -1579,6 +1746,330 @@ function onPanelBorderWidth(event: Event): void {
   }
   const n = Number(raw)
   if (Number.isFinite(n)) patchSelectedPanel({ borderWidth: n })
+}
+
+function onPanelDurationSec(event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  if (!raw) {
+    patchSelectedPanel({ durationSec: undefined })
+    return
+  }
+  const n = Number(raw)
+  if (Number.isFinite(n) && n >= 0.5) patchSelectedPanel({ durationSec: n })
+}
+
+async function resolvePanelImageDataUrl(rawUrl: string): Promise<string> {
+  const url = rawUrl.trim()
+  if (!url) return ''
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url
+  }
+  try {
+    return (await window.studio.getAssetMediaDataUrl(url)) || ''
+  } catch {
+    return ''
+  }
+}
+
+async function onGeneratePanelMicroVideo(): Promise<void> {
+  const panel = selectedPanel.value
+  if (!panel?.imageUrl || generatingPanelVideo.value) return
+  generatingPanelVideo.value = true
+  try {
+    const firstFrameDataUrl = await resolvePanelImageDataUrl(panel.imageUrl)
+    if (!firstFrameDataUrl) return
+    const dialogueSummary = panel.bubbles
+      .map((b) => (b.speaker ? `${b.speaker}: ${b.text}` : b.text))
+      .join(' ')
+      .slice(0, 120)
+    const prompt = [
+      'Bilibili Motion Comic 2.5D micro-animation shot: strictly preserve original manga/comic art style, linework, character identity and framing.',
+      'Subtle natural blinking, breathing, hair and clothing gently swaying in the breeze, expressive lip movement and atmospheric lighting flow, steady camera.',
+      panel.title || panel.caption || '',
+      dialogueSummary
+    ]
+      .filter(Boolean)
+      .join(' ')
+    const res = await window.studio.generateVideo({
+      prompt,
+      firstFrameImageUrl: firstFrameDataUrl,
+      duration: Math.min(5, Math.max(3, Math.round(panel.durationSec ?? 4))),
+      name: `comic_panel_i2v_${panel.id}`
+    })
+    if (res?.relativePath?.trim()) {
+      patchSelectedPanel({ videoUrl: res.relativePath.trim() })
+    }
+  } catch {
+    // ignore video generation failure when model is unconfigured
+  } finally {
+    generatingPanelVideo.value = false
+  }
+}
+
+async function onExtractPanelForeground(): Promise<void> {
+  const panel = selectedPanel.value
+  const currentNode = node.value
+  if (!panel?.imageUrl || !currentNode || extractingPanelForeground.value) return
+  extractingPanelForeground.value = true
+  try {
+    const srcDataUrl = await resolvePanelImageDataUrl(panel.imageUrl)
+    if (!srcDataUrl) return
+    const genRes = await window.studio.generateImage({
+      prompt:
+        'Extract the main foreground character/subject on a pure solid white background (#FFFFFF) for transparent cutout, strictly preserving the exact pose, comic linework, colors, and proportions from @1.',
+      inputReferences: [srcDataUrl],
+      transparentBackground: true
+    })
+    const rawImgUrl = genRes?.images?.[0]?.trim() || ''
+    if (!rawImgUrl || !project.isOpen) return
+    let transparentDataUrl = rawImgUrl
+    try {
+      const keyed = await removeImageSolidBackground({ dataUrl: rawImgUrl })
+      if (keyed?.dataUrl) transparentDataUrl = keyed.dataUrl
+    } catch {
+      // keep rawImgUrl if background keying fails
+    }
+    const fgRel =
+      (await saveGraphRunMediaForNode({
+        dataUrl: transparentDataUrl,
+        key: `comicFg:${props.nodeId}:${panel.id}`,
+        node: currentNode,
+        hostAssetId: hostAssetId.value || null,
+        kind: 'image'
+      })) || ''
+    if (fgRel) {
+      patchSelectedPanel({
+        foregroundImageUrl: fgRel,
+        parallaxDepth: panel.parallaxDepth ?? 0.55
+      })
+    }
+  } catch {
+    // ignore foreground extraction failure when model is unconfigured
+  } finally {
+    extractingPanelForeground.value = false
+  }
+}
+
+async function onGenerateMotionComic(): Promise<void> {
+  if (generatingMotionComic.value || page.value.panels.length === 0) return
+  generatingMotionComic.value = true
+  try {
+    dirty.value = true
+    persist()
+    const currentNode = node.value
+    let pageRel =
+      currentNode?.params.previewRelativePath?.trim() ||
+      currentNode?.params.generatedImages?.[0]?.relativePath?.trim() ||
+      ''
+    const panelImageRelativePaths: Record<string, string> = {}
+    const bubbleImageRelativePaths: Record<string, string> = {}
+    const bundle = await canvasRef.value?.renderMotionComicBundle?.()
+    const pngDataUrl = bundle?.dataUrl || (await canvasRef.value?.renderPngDataUrl?.()) || ''
+    if (pngDataUrl && currentNode && project.isOpen) {
+      try {
+        const createdAt = new Date().toISOString()
+        const bubbleEntries = Object.entries(bundle?.bubbleDataUrls ?? {})
+        const savedBubbleItems: Array<{
+          id: string
+          title: string
+          dataUrl: string
+          relativePath: string
+          createdAt: string
+        }> = []
+        for (const [bubbleId, bubbleDataUrl] of bubbleEntries) {
+          if (!bubbleDataUrl) continue
+          const savedBubbleRel = await saveGraphRunMediaForNode({
+            dataUrl: bubbleDataUrl,
+            key: `comicBubble:${props.nodeId}:${bubbleId}`,
+            node: currentNode,
+            hostAssetId: hostAssetId.value || null,
+            kind: 'image'
+          })
+          if (savedBubbleRel) {
+            bubbleImageRelativePaths[bubbleId] = savedBubbleRel
+            savedBubbleItems.push({
+              id: `comic-bubble:${props.nodeId}:${bubbleId}`,
+              title: `${page.value.title?.trim() || currentNode.title || 'Comic Page'} · ${bubbleId}`,
+              dataUrl: bubbleDataUrl,
+              relativePath: savedBubbleRel,
+              createdAt
+            })
+          }
+        }
+        const panelEntries = Object.entries(bundle?.panelDataUrls ?? {})
+        const savedPanelItems: Array<{
+          id: string
+          title: string
+          dataUrl: string
+          relativePath: string
+          createdAt: string
+        }> = []
+        for (const [panelId, panelDataUrl] of panelEntries) {
+          if (!panelDataUrl) continue
+          const savedPanelRel = await saveGraphRunMediaForNode({
+            dataUrl: panelDataUrl,
+            key: `comicPanel:${props.nodeId}:${panelId}`,
+            node: currentNode,
+            hostAssetId: hostAssetId.value || null,
+            kind: 'image'
+          })
+          if (savedPanelRel) {
+            panelImageRelativePaths[panelId] = savedPanelRel
+            savedPanelItems.push({
+              id: `comic-panel:${props.nodeId}:${panelId}`,
+              title: `${page.value.title?.trim() || currentNode.title || 'Comic Page'} · ${panelId}`,
+              dataUrl: panelDataUrl,
+              relativePath: savedPanelRel,
+              createdAt
+            })
+          }
+        }
+        const savedRel = await saveGraphRunMediaForNode({
+          dataUrl: pngDataUrl,
+          key: `comicPage:${props.nodeId}`,
+          node: currentNode,
+          hostAssetId: hostAssetId.value || null,
+          kind: 'image'
+        })
+        if (savedRel) {
+          pageRel = savedRel
+          const imgId = `comic-page:${props.nodeId}`
+          graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+            comicPage: serializeComicPage(page.value),
+            previewRelativePath: savedRel,
+            generatedImages: [
+              ...savedBubbleItems,
+              ...savedPanelItems,
+              {
+                id: imgId,
+                title: page.value.title?.trim() || currentNode.title || 'Comic Page',
+                dataUrl: pngDataUrl,
+                relativePath: savedRel,
+                createdAt
+              }
+            ],
+            selectedImageId: imgId
+          })
+        }
+      } catch {
+        // ignore media save failure and fall back to panel imageUrls
+      }
+    }
+
+    const doc = graphEditorHosts.getDocument(props.hostId)
+    let timelineNodeId = ''
+    if (doc) {
+      const connectedTl = doc.nodes.find(
+        (n) =>
+          n.typeId === 'output.timeline' &&
+          doc.edges.some((e) => e.source === props.nodeId && e.target === n.id)
+      )
+      const anyTl = connectedTl ?? doc.nodes.find((n) => n.typeId === 'output.timeline')
+      if (anyTl) {
+        timelineNodeId = anyTl.id
+        if (!connectedTl) {
+          graphEditorHosts.applyExternalGraph(props.hostId, {
+            ...doc,
+            edges: [
+              ...doc.edges,
+              {
+                id: `edge-comic-${Date.now().toString(36)}`,
+                source: props.nodeId,
+                target: timelineNodeId,
+                sourcePort: 'out',
+                targetPort: 'in-image'
+              }
+            ]
+          })
+        }
+      }
+    }
+    if (!timelineNodeId) {
+      const addedId = graphEditorHosts.addNode(props.hostId, {
+        typeId: 'output.timeline',
+        title: pickComicBi('动态漫时间线', 'Motion Comic Timeline'),
+        linkFrom: [{ nodeId: props.nodeId, portId: 'out' }]
+      })
+      timelineNodeId = addedId ?? 'output-timeline'
+    }
+
+    await graphEditorHosts.flush(props.hostId)
+
+    const latestDoc = graphEditorHosts.getDocument(props.hostId) ?? doc
+    const discoveredVoices: Array<{
+      id: string
+      relativePath: string
+      text?: string
+      title?: string
+    }> = []
+    let discoveredMusic: { id: string; relativePath: string; title?: string } | null = null
+    if (latestDoc) {
+      for (const n of latestDoc.nodes) {
+        if (n.typeId === 'asset.music' && !discoveredMusic) {
+          const mRel =
+            n.params?.generatedVoices?.[0]?.relativePath?.trim() ||
+            n.params?.previewRelativePath?.trim()
+          if (mRel) {
+            discoveredMusic = {
+              id: n.params?.generatedVoices?.[0]?.id || n.id,
+              relativePath: mRel,
+              title: n.title?.trim() || 'BGM'
+            }
+          }
+        } else if (n.typeId === 'voice.tts' || n.typeId === 'asset.voice') {
+          const vRel =
+            n.params?.generatedVoices?.[0]?.relativePath?.trim() ||
+            n.params?.previewRelativePath?.trim()
+          if (vRel) {
+            discoveredVoices.push({
+              id: n.params?.generatedVoices?.[0]?.id || n.id,
+              relativePath: vRel,
+              text:
+                n.params?.notes?.trim() ||
+                n.params?.generateInstruction?.trim() ||
+                n.params?.text?.trim(),
+              title: n.title?.trim()
+            })
+          }
+        }
+      }
+    }
+
+    const motionDoc = buildComicMotionTimeline({
+      page: page.value,
+      pageImageRelativePath: pageRel || undefined,
+      panelImageRelativePaths:
+        Object.keys(panelImageRelativePaths).length > 0 ? panelImageRelativePaths : undefined,
+      bubbleImageRelativePaths:
+        Object.keys(bubbleImageRelativePaths).length > 0 ? bubbleImageRelativePaths : undefined,
+      nodeId: props.nodeId,
+      nodeTitle: currentNode?.title,
+      ...(discoveredVoices.length > 0 ? { voices: discoveredVoices } : {}),
+      ...(discoveredMusic ? { music: [discoveredMusic] } : {})
+    })
+
+    const aid = hostAssetId.value
+    if (aid) {
+      const baseGen = isDraftAssetId(aid)
+        ? { ...(drafts.getDraft(aid)?.genParams ?? {}) }
+        : {
+            ...((project.assets.find((a) => a.id === aid)?.genParams as
+              Record<string, unknown> | undefined) ?? {})
+          }
+      const nextGen = withScriptTimeline(baseGen, motionDoc, timelineNodeId)
+      if (isDraftAssetId(aid)) {
+        drafts.updateDraft(aid, { genParams: nextGen })
+      } else {
+        await persistAssetRecord(aid, { genParams: nextGen })
+      }
+      await editorDive?.diveView(
+        { viewId: 'script.timeline', scriptAssetId: aid, timelineNodeId },
+        pickComicBi('动态漫时间线', 'Motion Comic Timeline')
+      )
+    }
+  } finally {
+    generatingMotionComic.value = false
+  }
 }
 
 function onMetaNumber(

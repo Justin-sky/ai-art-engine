@@ -24,6 +24,10 @@ export type ComicPanelFilter = 'none' | 'manga-bw' | 'halftone' | 'sepia' | 'dra
 export type ComicPanelEffectType =
   'none' | 'focus-lines' | 'speed-lines' | 'vignette' | 'halftone-frame'
 
+/** 分镜格动态漫运镜预设（auto 表示按分格比例与阅读方向自动推算） */
+export type ComicPanelCameraMotion =
+  'auto' | 'kenBurnsIn' | 'kenBurnsOut' | 'panRight' | 'panLeft' | 'panUp' | 'panDown' | 'none'
+
 /** 分镜格斜切预设 */
 export type ComicPanelSlantPreset =
   | 'none'
@@ -127,6 +131,16 @@ export interface ComicPanel {
   borderColor?: string
   /** 分镜底部/顶部旁白字幕条 */
   caption?: string
+  /** 动态漫：分镜格可选绑定的动态视频路径（高潮格破框动效） */
+  videoUrl?: string
+  /** 动态漫：2.5D 视差前景透明立绘图片路径（与背景底图产生差速推拉摇移景深视差） */
+  foregroundImageUrl?: string
+  /** 动态漫：2.5D 前后景视差深度强度（0.1 ~ 1，缺省 0.5） */
+  parallaxDepth?: number
+  /** 动态漫：分镜格运镜方式（缺省按分格比例与阅读方向智能推算） */
+  cameraMotion?: ComicPanelCameraMotion
+  /** 动态漫：分镜格停留时长覆写（秒，0.5~30；缺省按气泡台词与配音时长自动计算） */
+  durationSec?: number
 }
 
 /** 漫画页：网格规格 + 像素尺寸 + 页面边距/框线风格 + 面板集合 */
@@ -192,6 +206,17 @@ const VALID_PANEL_EFFECTS = new Set<ComicPanelEffectType>([
   'speed-lines',
   'vignette',
   'halftone-frame'
+])
+
+const VALID_PANEL_CAMERA_MOTIONS = new Set<ComicPanelCameraMotion>([
+  'auto',
+  'kenBurnsIn',
+  'kenBurnsOut',
+  'panRight',
+  'panLeft',
+  'panUp',
+  'panDown',
+  'none'
 ])
 
 function clampInt(value: unknown, min: number, fallback: number): number {
@@ -355,6 +380,20 @@ function normalizePanel(
       ? clampFloat(panel.borderWidth, 0, 24, 2)
       : undefined
   const borderColor = typeof panel.borderColor === 'string' ? panel.borderColor.trim() : ''
+  const videoUrl = typeof panel.videoUrl === 'string' ? panel.videoUrl.trim() : ''
+  const foregroundImageUrl =
+    typeof panel.foregroundImageUrl === 'string' ? panel.foregroundImageUrl.trim() : ''
+  const parallaxDepth =
+    panel.parallaxDepth !== undefined && panel.parallaxDepth !== null && panel.parallaxDepth !== ''
+      ? round3(clampFloat(panel.parallaxDepth, 0.1, 1, 0.5))
+      : undefined
+  const camRaw = panel.cameraMotion as ComicPanelCameraMotion | undefined
+  const cameraMotion =
+    camRaw && VALID_PANEL_CAMERA_MOTIONS.has(camRaw) && camRaw !== 'auto' ? camRaw : undefined
+  const durationSec =
+    panel.durationSec !== undefined && panel.durationSec !== null && panel.durationSec !== ''
+      ? round3(clampFloat(panel.durationSec, 0.5, 30, 3))
+      : undefined
 
   return {
     id,
@@ -363,6 +402,9 @@ function normalizePanel(
     rowSpan,
     colSpan,
     ...(imageUrl ? { imageUrl } : {}),
+    ...(videoUrl ? { videoUrl } : {}),
+    ...(foregroundImageUrl ? { foregroundImageUrl } : {}),
+    ...(parallaxDepth !== undefined ? { parallaxDepth } : {}),
     ...(title ? { title } : {}),
     ...(panelBg ? { backgroundColor: panelBg } : {}),
     ...(caption ? { caption } : {}),
@@ -383,6 +425,8 @@ function normalizePanel(
     ...(zIndex !== 0 ? { zIndex } : {}),
     ...(borderWidth !== undefined ? { borderWidth } : {}),
     ...(borderColor ? { borderColor } : {}),
+    ...(cameraMotion ? { cameraMotion } : {}),
+    ...(durationSec !== undefined ? { durationSec } : {}),
     bubbles
   }
 }
@@ -637,6 +681,9 @@ export function swapComicPanelContents(
   if (!a || !b) return normalized
   const pickMedia = (p: ComicPanel) => ({
     imageUrl: p.imageUrl,
+    videoUrl: p.videoUrl,
+    foregroundImageUrl: p.foregroundImageUrl,
+    parallaxDepth: p.parallaxDepth,
     imagePanX: p.imagePanX,
     imagePanY: p.imagePanY,
     imageZoom: p.imageZoom,
@@ -1432,6 +1479,9 @@ export function applyComicLayoutTemplate(page: ComicPage, templateId: string): C
       ...(donor?.imageRotation !== undefined ? { imageRotation: donor.imageRotation } : {}),
       ...(donor?.imageFlipX ? { imageFlipX: donor.imageFlipX } : {}),
       ...(donor?.imageFilter ? { imageFilter: donor.imageFilter } : {}),
+      ...(donor?.videoUrl ? { videoUrl: donor.videoUrl } : {}),
+      ...(donor?.cameraMotion ? { cameraMotion: donor.cameraMotion } : {}),
+      ...(donor?.durationSec !== undefined ? { durationSec: donor.durationSec } : {}),
       bubbles: donor?.bubbles ?? []
     }
   })

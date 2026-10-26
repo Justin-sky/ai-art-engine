@@ -12,6 +12,7 @@ import {
   comicBubbleTailTipPagePoint,
   comicPanelPolygon,
   comicPanelRects,
+  computeComicPanelCropRect,
   normalizeComicPage,
   zOrderedPanels,
   type ComicBubbleShape,
@@ -36,6 +37,10 @@ export interface ComicPageComposeResult {
   dataUrl: string
   width: number
   height: number
+  /** 每个分镜格从整页无气泡纯净画布上裁切出的独立 PNG dataUrl（供动态漫逐格运镜直接作为独立无字底图使用） */
+  panelDataUrls?: Record<string, string>
+  /** 每个台词气泡/拟声词独立渲染裁切出的透明背景 PNG dataUrl（供动态漫按配音开口时机逐个在 overlay 轨弹出） */
+  bubbleDataUrls?: Record<string, string>
 }
 
 export interface ComicBubbleRenderedBounds {
@@ -876,6 +881,107 @@ export async function composeComicPageImage(
     )
   }
 
+  // 1) 先渲染无气泡纯净分镜页，切出每个分镜格的纯净无字底图（panelDataUrls），避免动态漫镜头一开始就出现所有气泡
+  const cleanPage: ComicPage = {
+    ...page,
+    title: undefined,
+    panels: page.panels.map((p) => ({ ...p, bubbles: [] }))
+  }
+  renderComicPageToCanvas(canvas, cleanPage, images, {
+    background: input.background,
+    panelFill: input.panelFill,
+    borderColor: input.borderColor,
+    bubbleFill: input.bubbleFill,
+    textColor: input.textColor
+  })
+
+  const panelDataUrls: Record<string, string> = {}
+  for (const panel of page.panels) {
+    const crop = computeComicPanelCropRect(page, panel.id, 0.025)
+    if (!crop) continue
+    const sx = Math.max(0, Math.round(crop.cropX * width))
+    const sy = Math.max(0, Math.round(crop.cropY * height))
+    const sw = Math.max(2, Math.min(width - sx, Math.round(crop.cropWidth * width)))
+    const sh = Math.max(2, Math.min(height - sy, Math.round(crop.cropHeight * height)))
+    try {
+      const pCanvas = document.createElement('canvas')
+      pCanvas.width = sw
+      pCanvas.height = sh
+      const pCtx = pCanvas.getContext('2d')
+      if (pCtx) {
+        pCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh)
+        const pUrl = pCanvas.toDataURL('image/png')
+        if (pUrl) panelDataUrls[panel.id] = pUrl
+      }
+    } catch {
+      /* ignore single panel slice error */
+    }
+  }
+
+  // 2) 为每个气泡独立渲染透明背景图层并紧密裁切（bubbleDataUrls），供动态漫按角色开口时机逐个弹出
+  const bubbleDataUrls: Record<string, string> = {}
+  const emptyImages = new Map<string, HTMLImageElement | null>()
+  for (const panel of page.panels) {
+    for (const bubble of panel.bubbles) {
+      if (!bubble.text?.trim()) continue
+      try {
+        const singleBubblePage: ComicPage = {
+          ...page,
+          title: undefined,
+          backgroundColor: 'transparent',
+          borderWidth: 0,
+          panels: [
+            {
+              ...panel,
+              imageUrl: undefined,
+              backgroundColor: 'transparent',
+              borderWidth: 0,
+              effectType: 'none',
+              caption: undefined,
+              bubbles: [bubble]
+            }
+          ]
+        }
+        const bLayout = renderComicPageToCanvas(canvas, singleBubblePage, emptyImages, {
+          background: 'transparent',
+          panelFill: 'transparent',
+          borderColor: input.borderColor,
+          bubbleFill: input.bubbleFill,
+          textColor: input.textColor
+        })
+        const bounds = bLayout.bubbleBounds.get(bubble.id)
+        if (!bounds) continue
+        const pad = Math.max(24, Math.round(Math.max(bounds.width, bounds.height) * 0.26))
+        const minX = Math.min(bounds.x, bounds.hasTail ? bounds.tailTipX : bounds.x)
+        const minY = Math.min(bounds.y, bounds.hasTail ? bounds.tailTipY : bounds.y)
+        const maxX = Math.max(
+          bounds.x + bounds.width,
+          bounds.hasTail ? bounds.tailTipX : bounds.x + bounds.width
+        )
+        const maxY = Math.max(
+          bounds.y + bounds.height,
+          bounds.hasTail ? bounds.tailTipY : bounds.y + bounds.height
+        )
+        const bx = Math.max(0, Math.floor(minX - pad))
+        const by = Math.max(0, Math.floor(minY - pad))
+        const bw = Math.max(8, Math.min(width - bx, Math.ceil(maxX - minX + pad * 2)))
+        const bh = Math.max(8, Math.min(height - by, Math.ceil(maxY - minY + pad * 2)))
+        const bCanvas = document.createElement('canvas')
+        bCanvas.width = bw
+        bCanvas.height = bh
+        const bCtx = bCanvas.getContext('2d')
+        if (bCtx) {
+          bCtx.drawImage(canvas, bx, by, bw, bh, 0, 0, bw, bh)
+          const bUrl = bCanvas.toDataURL('image/png')
+          if (bUrl) bubbleDataUrls[bubble.id] = bUrl
+        }
+      } catch {
+        /* ignore single bubble slice error */
+      }
+    }
+  }
+
+  // 3) 最终渲染包含全部面板、特效、台词气泡与标题徽章的完整漫画页（用于开场全景镜头与整页导出）
   renderComicPageToCanvas(canvas, page, images, {
     background: input.background,
     panelFill: input.panelFill,
@@ -884,5 +990,11 @@ export async function composeComicPageImage(
     textColor: input.textColor
   })
 
-  return { dataUrl: canvas.toDataURL('image/png'), width, height }
+  return {
+    dataUrl: canvas.toDataURL('image/png'),
+    width,
+    height,
+    panelDataUrls,
+    bubbleDataUrls
+  }
 }

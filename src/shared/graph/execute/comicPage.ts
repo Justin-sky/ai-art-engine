@@ -53,17 +53,46 @@ export async function executeComicPageNode(
   const dataUrl = composed.dataUrl?.trim()
   if (!dataUrl) throw new Error('COMIC_PAGE_COMPOSE_FAILED')
 
-  const batch: GraphImageItem[] = [
-    {
-      id: `comic-page:${ctx.node.id}`,
-      title: filled.title?.trim() || ctx.node.title || 'Comic page',
-      dataUrl,
-      createdAt: new Date().toISOString()
+  const createdAt = new Date().toISOString()
+  const batch: GraphImageItem[] = []
+  if (composed.bubbleDataUrls) {
+    for (const panel of filled.panels) {
+      for (const bubble of panel.bubbles) {
+        const bUrl = composed.bubbleDataUrls?.[bubble.id]?.trim()
+        if (!bUrl) continue
+        batch.push({
+          id: `comic-bubble:${ctx.node.id}:${bubble.id}`,
+          title: bubble.speaker ? `${bubble.speaker}: ${bubble.text}` : bubble.text,
+          dataUrl: bUrl,
+          createdAt
+        })
+      }
     }
-  ]
+  }
+  if (composed.panelDataUrls) {
+    filled.panels.forEach((panel, idx) => {
+      const pUrl = composed.panelDataUrls?.[panel.id]?.trim()
+      if (!pUrl) return
+      batch.push({
+        id: `comic-panel:${ctx.node.id}:${panel.id}`,
+        title: panel.title?.trim() || `Panel ${idx + 1}`,
+        dataUrl: pUrl,
+        createdAt
+      })
+    })
+  }
+  batch.push({
+    id: `comic-page:${ctx.node.id}`,
+    title: filled.title?.trim() || ctx.node.title || 'Comic page',
+    dataUrl,
+    createdAt
+  })
   const materialized = await materializeGeneratedBatch(ctx, batch, `comicPage:${ctx.node.id}`)
   if (!materialized.length) throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
-  const previewPath = materialized[0]?.relativePath?.trim()
+  const mainPageItem =
+    materialized.find((item) => item.id === `comic-page:${ctx.node.id}`) ??
+    materialized[materialized.length - 1]
+  const previewPath = mainPageItem?.relativePath?.trim()
   return commitGeneratedImages(ctx, materialized, previewPath, {
     comicPage: serializeComicPage(filled)
   })
