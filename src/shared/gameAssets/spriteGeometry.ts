@@ -210,8 +210,7 @@ export function computeStabilizedCellPlacement(
   }
   if (scale > 1) {
     const maxWScale = (cellWidth * 0.96) / Math.max(1, bounds.width)
-    const maxHScale =
-      (cellHeight * (mode === 'ground' ? 0.92 : 0.96)) / Math.max(1, bounds.height)
+    const maxHScale = (cellHeight * (mode === 'ground' ? 0.92 : 0.96)) / Math.max(1, bounds.height)
     scale = Math.max(1, Math.min(scale, maxWScale, maxHScale))
   }
 
@@ -519,4 +518,196 @@ export function estimateFrameTranslations(
     return { index, dx: t.dx, dy: t.dy }
   })
   return { referenceIndex, shifts }
+}
+
+/* ================= PixelOver 级精灵后处理：真像素网格规整 / 自动外描边 / 脚底接地阴影 ================= */
+
+export type SpriteOutlineColor = '' | 'black' | 'white' | 'gold' | 'cyan'
+
+/**
+ * 真像素网格规整（Pixel-Art Grid Snap）：
+ * 将 AI 生成的“伪像素画（大小不一的 Mixels 与模糊抗锯齿边缘）”按 `pixelSize × pixelSize` 晶格重采样，
+ * 并把半透明毛边二值化为锐利像素边界（alpha >= 110 → 255，否则 0）。
+ */
+export function applySpritePixelSnap(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  pixelSize: number
+): Uint8ClampedArray {
+  const step = Math.floor(Number(pixelSize) || 0)
+  if (step <= 1 || width <= 0 || height <= 0 || rgba.length < width * height * 4) {
+    return rgba
+  }
+  const clampedStep = Math.min(16, Math.max(2, step))
+  for (let by = 0; by < height; by += clampedStep) {
+    const bh = Math.min(clampedStep, height - by)
+    for (let bx = 0; bx < width; bx += clampedStep) {
+      const bw = Math.min(clampedStep, width - bx)
+      const cx = bx + Math.floor(bw / 2)
+      const cy = by + Math.floor(bh / 2)
+      let sampleIdx = (cy * width + cx) * 4
+      let opaqueCount = 0
+      const total = bw * bh
+      for (let yy = by; yy < by + bh; yy++) {
+        for (let xx = bx; xx < bx + bw; xx++) {
+          const p = (yy * width + xx) * 4
+          if (rgba[p + 3]! >= 110) {
+            opaqueCount++
+            if (rgba[sampleIdx + 3]! < 110) sampleIdx = p
+          }
+        }
+      }
+      const isOpaque = opaqueCount >= Math.max(1, Math.ceil(total * 0.4))
+      const r = isOpaque ? rgba[sampleIdx]! : 0
+      const g = isOpaque ? rgba[sampleIdx + 1]! : 0
+      const b = isOpaque ? rgba[sampleIdx + 2]! : 0
+      const a = isOpaque ? 255 : 0
+      for (let yy = by; yy < by + bh; yy++) {
+        for (let xx = bx; xx < bx + bw; xx++) {
+          const p = (yy * width + xx) * 4
+          rgba[p] = r
+          rgba[p + 1] = g
+          rgba[p + 2] = b
+          rgba[p + 3] = a
+        }
+      }
+    }
+  }
+  return rgba
+}
+
+const OUTLINE_RGB_MAP: Record<
+  Exclude<SpriteOutlineColor, ''>,
+  readonly [number, number, number]
+> = {
+  black: [17, 24, 39],
+  white: [255, 255, 255],
+  gold: [250, 204, 21],
+  cyan: [34, 211, 238]
+}
+
+/**
+ * 精灵外轮廓描边生成（1px 四连通 / 2px 八连通干净像素外描边）：
+ * 在主体不透明像素（alpha >= 140）外围紧贴生成统一色外描边，统一多帧边缘质感。
+ */
+export function applySpriteOuterOutline(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options: { color: SpriteOutlineColor; thickness?: 1 | 2 }
+): Uint8ClampedArray {
+  if (!options.color || !(options.color in OUTLINE_RGB_MAP)) return rgba
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  const total = w * h
+  if (total <= 0 || rgba.length < total * 4) return rgba
+
+  const [or, og, ob] = OUTLINE_RGB_MAP[options.color as Exclude<SpriteOutlineColor, ''>]
+  const thick = options.thickness === 2 ? 2 : 1
+  const fg = new Uint8Array(total)
+  for (let i = 0; i < total; i++) {
+    if (rgba[i * 4 + 3]! >= 140) fg[i] = 1
+  }
+
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    for (let x = 0; x < w; x++) {
+      const idx = row + x
+      if (fg[idx]) continue
+      let touchesFg = false
+      if (thick === 1) {
+        if (
+          (x > 0 && fg[idx - 1]) ||
+          (x + 1 < w && fg[idx + 1]) ||
+          (y > 0 && fg[idx - w]) ||
+          (y + 1 < h && fg[idx + w])
+        ) {
+          touchesFg = true
+        }
+      } else {
+        for (let dy = -1; dy <= 1 && !touchesFg; dy++) {
+          const ny = y + dy
+          if (ny < 0 || ny >= h) continue
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue
+            const nx = x + dx
+            if (nx >= 0 && nx < w && fg[ny * w + nx]) {
+              touchesFg = true
+              break
+            }
+          }
+        }
+      }
+      if (touchesFg) {
+        const p = idx * 4
+        rgba[p] = or
+        rgba[p + 1] = og
+        rgba[p + 2] = ob
+        rgba[p + 3] = 255
+      }
+    }
+  }
+  return rgba
+}
+
+/**
+ * 脚底接触椭圆阴影（Destination-Over 底层合成，不污染角色双脚像素）：
+ * 根据主体外接框与躯干水平主轴，在脚底基线处绘制半透明贴地椭圆阴影，增强游戏落地感。
+ */
+export function applySpriteGroundShadow(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  bounds?: SpriteBounds | null,
+  options?: { groundYRatio?: number; maxAlpha?: number }
+): Uint8ClampedArray {
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  if (w <= 8 || h <= 8 || rgba.length < w * h * 4) return rgba
+  const b = bounds ?? extractAlphaBounds(rgba, w, h, { alphaMin: 20 })
+  if (!b || b.width <= 4 || b.height <= 4) return rgba
+
+  const cx = extractSpriteCorePivotX(rgba, w, h, b, { alphaMin: 20 }) ?? b.x + b.width / 2
+  const groundY = Math.round(h * clamp(Number(options?.groundYRatio ?? 0.94), 0.5, 0.99))
+  const cy = clampInt(Math.max(b.y + b.height - 2, groundY), 2, h - 2)
+  const rx = Math.max(5, Math.min(Math.round(w * 0.42), Math.round(b.width * 0.38)))
+  const ry = Math.max(2, Math.min(12, Math.round(h * 0.036)))
+  const maxAlpha = clampInt(options?.maxAlpha ?? 110, 20, 220)
+
+  const x0 = Math.max(0, Math.floor(cx - rx))
+  const x1 = Math.min(w - 1, Math.ceil(cx + rx))
+  const y0 = Math.max(0, Math.floor(cy - ry))
+  const y1 = Math.min(h - 1, Math.ceil(cy + ry))
+
+  for (let y = y0; y <= y1; y++) {
+    const dy = (y - cy) / ry
+    for (let x = x0; x <= x1; x++) {
+      const dx = (x - cx) / rx
+      const distSq = dx * dx + dy * dy
+      if (distSq > 1) continue
+      const shadowA = Math.round(maxAlpha * (1 - distSq * 0.7))
+      if (shadowA <= 0) continue
+      const p = (y * w + x) * 4
+      const fgA = rgba[p + 3]!
+      if (fgA >= 250) continue
+      if (fgA === 0) {
+        rgba[p] = 10
+        rgba[p + 1] = 14
+        rgba[p + 2] = 24
+        rgba[p + 3] = shadowA
+      } else {
+        const fa = fgA / 255
+        const sa = (shadowA / 255) * (1 - fa)
+        const outA = fa + sa
+        if (outA > 0) {
+          rgba[p] = Math.round((rgba[p]! * fa + 10 * sa) / outA)
+          rgba[p + 1] = Math.round((rgba[p + 1]! * fa + 14 * sa) / outA)
+          rgba[p + 2] = Math.round((rgba[p + 2]! * fa + 24 * sa) / outA)
+          rgba[p + 3] = clampInt(outA * 255, 0, 255)
+        }
+      }
+    }
+  }
+  return rgba
 }
