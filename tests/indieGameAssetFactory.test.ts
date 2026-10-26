@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   analyzeSeamlessTile,
+  applyEqualPowerLoopCrossfadePcm,
   applySeamlessTileBlend,
   BLOB_47_BITMASKS,
   buildAutoTileAtlasManifest,
@@ -20,6 +21,8 @@ import {
   deriveDeterministicUnityGuid,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
+  encodePcmToWavBytes,
+  encodePcmToWavDataUrl,
   extractGuidFromUnityMeta,
   extractSpriteCollisionHull,
   generateEngineImporterScript,
@@ -27,6 +30,8 @@ import {
   generateUnityMetaFile,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
+  resamplePitchShiftPcm,
+  trimSilencePcm,
   validateSkillTreeDag
 } from '../src/shared/gameAssets'
 
@@ -679,5 +684,38 @@ describe('Phase 6: Product-Grade Art Bible Lock, Unity .meta GUID Preservation &
     })
     expect(platformer.levelAlgorithm).toBe('platformer_course')
     expect(platformer.html).toContain('Knight Jump Demo')
+  })
+
+  it('gameAudioWavDSP trims silence, applies equal-power loop crossfades, pitch-shifts SFX, and encodes valid RIFF WAVE', () => {
+    const sampleRate = 8000
+    const raw = new Float32Array(sampleRate * 2) // 2.0s
+    // 0.25s silence at head, 1.25s sine wave, 0.5s silence at tail
+    for (let i = 2000; i < 12000; i++) {
+      raw[i] = Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 0.8
+    }
+
+    const trimmed = trimSilencePcm(raw, sampleRate, { thresholdDb: -45 })
+    expect(trimmed.length).toBeLessThan(raw.length - 5000)
+    expect(trimmed.length).toBeGreaterThan(9500)
+
+    // Equal-power loop crossfade (0.3s crossfade on ~1.25s signal)
+    const looped = applyEqualPowerLoopCrossfadePcm(trimmed, sampleRate, 0.3)
+    expect(looped.length).toBe(trimmed.length - Math.round(0.3 * sampleRate))
+    expect(Number.isFinite(looped[0])).toBe(true)
+    expect(Number.isFinite(looped[looped.length - 1])).toBe(true)
+
+    // Pitch shift +3 semitones and encode to WAV
+    const shifted = resamplePitchShiftPcm(trimmed, 3, 1.5)
+    expect(shifted.length).toBeLessThan(trimmed.length)
+
+    const wavBytes = encodePcmToWavBytes([shifted], sampleRate)
+    const header = String.fromCharCode(wavBytes[0]!, wavBytes[1]!, wavBytes[2]!, wavBytes[3]!)
+    const waveTag = String.fromCharCode(wavBytes[8]!, wavBytes[9]!, wavBytes[10]!, wavBytes[11]!)
+    expect(header).toBe('RIFF')
+    expect(waveTag).toBe('WAVE')
+    expect(wavBytes.byteLength).toBe(44 + shifted.length * 2)
+
+    const dataUrl = encodePcmToWavDataUrl([shifted], sampleRate)
+    expect(dataUrl.startsWith('data:audio/wav;base64,')).toBe(true)
   })
 })

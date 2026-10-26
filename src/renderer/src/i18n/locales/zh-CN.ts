@@ -7729,5 +7729,58 @@ export default {
     cookStart: '🔥 熔炉启动',
     cookDone: '✦ 锻造完成',
     cookError: '⚠ 熔炼异常'
+  },
+  gameToolbox: {
+    imageTitle: '游戏资产工具箱',
+    analyzeBtn: '检测无缝 / 九宫格 / 碰撞壳',
+    makeSeamlessBtn: '一键四方连续无缝化',
+    deriveNormalBtn: '派生法线贴图',
+    exportFullPackBtn: '导出 PBR + 九宫格 + 物理包',
+    seamlessScore: '四方连续得分',
+    nineSliceBorders: '九宫格切边 (左/右/上/下)',
+    collisionHullPts: '凸包碰撞顶点',
+    audioTitle: '游戏音频工坊 (WAV DSP)',
+    makeLoopBgmBtn: '生成等功率无缝循环 BGM',
+    makeSfxVariantsBtn: '生成 4× 防听觉疲劳音效变体',
+    audioDuration: '音频时长',
+    audioSampleRate: '采样率',
+    preview: {
+      tile3x3Title: '3×3 四方连续无缝拼接预览',
+      nineSliceTitle: 'UI 九宫格自动切边辅助线',
+      collisionTitle: '2D 凸包碰撞体 / 受击框 / 攻击框 / 锚点预览',
+      normalLightTitle: '2D 法线贴图实时点光源交互预览（移动鼠标改变光源位置）',
+      normalLightBtn: '光影'
+    },
+    bible: {
+      title: '游戏美术圣经全局锁 (Art Bible)',
+      cameraLabel: '镜头透视锁定',
+      cameraFree: '自由透视（不锁定）',
+      cameraSide: '2D 横版正交平视 (Side-Scroller)',
+      cameraTopDown: '2.5D 俯视 45° 斜角 (Top-Down 3/4 RPG)',
+      cameraIso: '2:1 等轴测战棋视角 (Isometric)',
+      cameraFps: '第一人称地牢视角 (First-Person)',
+      artLabel: '美术风格圣经锁定',
+      artFree: '自由风格（不锁定）',
+      artPixel: '16-Bit 经典像素风 (Pixel Art)',
+      artCel: '赛璐璐二次元卡通渲染 (Cel-Shaded Anime)',
+      artInk: '手绘水墨厚涂风 (Hand-Drawn Ink)',
+      artPbr: '风格化 3D 次世代 PBR (Stylized PBR)',
+      artGothic: '暗黑哥特魂系风 (Dark Gothic)'
+    },
+    production: {
+      title: '游戏工程总控台 (Game Production Center)',
+      levelAlgoLabel: '程序化关卡拓扑算法',
+      algoBsp: 'BSP 地牢房间与走廊 (Roguelike Dungeon)',
+      algoCave: '元胞自动机自然洞穴 (Cellular Cave)',
+      algoPlatformer: '横版跳跃平台关卡 (Platformer Course)',
+      algoArena: '竞技场幸存者波次刷怪图 (Survivor Arena)',
+      genLevelBtn: '生成 Tiled 关卡 (.tmj)',
+      exportShadersBtn: '导出 8 套双引擎 Shader + 粒子包',
+      playDemoBtn: '▶ 立即试玩可交互原型 (WASD)',
+      playableModalTitle: '独立游戏实时可玩沙盒预览 (HTML5 60fps)',
+      playableModalHint:
+        'WASD / 方向键移动 · 空格跳跃/冲刺 · 鼠标左键或 J 键攻击并触发暴击飘字与粒子特效',
+      closeDemoBtn: '关闭试玩窗口'
+    }
   }
 } as const

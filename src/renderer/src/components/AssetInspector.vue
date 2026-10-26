@@ -80,7 +80,7 @@
     </section>
 
     <section v-if="cutoutSourcePath" class="cutout-section game-toolbox-section">
-      <div class="section-label">Game Asset Toolbox</div>
+      <div class="section-label">{{ t('gameToolbox.imageTitle') }}</div>
       <div class="game-toolbox-btns">
         <button
           type="button"
@@ -88,7 +88,7 @@
           :disabled="!cutoutUrl || gameToolBusy"
           @click="runGameImageInspect"
         >
-          Analyze Tile / 9-Slice / Hull
+          {{ t('gameToolbox.analyzeBtn') }}
         </button>
         <button
           type="button"
@@ -96,7 +96,7 @@
           :disabled="!cutoutUrl || gameToolBusy"
           @click="exportSeamlessTileFromInspector"
         >
-          Make Seamless
+          {{ t('gameToolbox.makeSeamlessBtn') }}
         </button>
         <button
           type="button"
@@ -104,21 +104,60 @@
           :disabled="!cutoutUrl || gameToolBusy"
           @click="exportNormalMapFromInspector"
         >
-          Derive Normal
+          {{ t('gameToolbox.deriveNormalBtn') }}
+        </button>
+        <button
+          type="button"
+          class="cutout-btn secondary"
+          :disabled="!cutoutUrl || gameToolBusy"
+          @click="exportFullGamePackFromInspector"
+        >
+          {{ t('gameToolbox.exportFullPackBtn') }}
         </button>
       </div>
       <div v-if="gameInspectReport" class="game-inspect-card">
         <div>
-          Seamless Score: <b>{{ gameInspectReport.seamlessScore }}%</b>
+          {{ t('gameToolbox.seamlessScore') }}: <b>{{ gameInspectReport.seamlessScore }}%</b>
         </div>
         <div>
-          9-Slice (L/R/T/B): <b>{{ gameInspectReport.nineSlice }}</b>
+          {{ t('gameToolbox.nineSliceBorders') }}: <b>{{ gameInspectReport.nineSlice }}</b>
         </div>
         <div>
-          Collision Hull: <b>{{ gameInspectReport.hullVertices }} pts</b>
+          {{ t('gameToolbox.collisionHullPts') }}: <b>{{ gameInspectReport.hullVertices }} pts</b>
         </div>
         <div v-if="gameInspectReport.savedNote" class="saved-note">
           {{ gameInspectReport.savedNote }}
+        </div>
+      </div>
+    </section>
+
+    <section v-if="audioSourcePath" class="cutout-section game-toolbox-section">
+      <div class="section-label">{{ t('gameToolbox.audioTitle') }}</div>
+      <div class="game-toolbox-btns">
+        <button
+          type="button"
+          class="cutout-btn"
+          :disabled="!audioResolvedUrl || gameAudioBusy"
+          @click="exportSeamlessLoopBgmFromInspector"
+        >
+          {{ t('gameToolbox.makeLoopBgmBtn') }}
+        </button>
+        <button
+          type="button"
+          class="cutout-btn secondary"
+          :disabled="!audioResolvedUrl || gameAudioBusy"
+          @click="exportSfxVariantsFromInspector"
+        >
+          {{ t('gameToolbox.makeSfxVariantsBtn') }}
+        </button>
+      </div>
+      <div v-if="gameAudioReport" class="game-inspect-card">
+        <div>
+          {{ t('gameToolbox.audioDuration') }}: <b>{{ gameAudioReport.durationSec }}s</b> ·
+          {{ t('gameToolbox.audioSampleRate') }}: <b>{{ gameAudioReport.sampleRate }} Hz</b>
+        </div>
+        <div v-if="gameAudioReport.savedNote" class="saved-note">
+          {{ gameAudioReport.savedNote }}
         </div>
       </div>
     </section>
@@ -397,10 +436,17 @@
 import { computed, reactive, ref, watch } from 'vue'
 import {
   analyzeSeamlessTile,
+  applyEqualPowerLoopCrossfadePcm,
   applySeamlessTileBlend,
+  buildNineSliceManifest,
+  buildSpritePhysicsManifest,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
-  extractSpriteCollisionHull
+  encodePcmToWavDataUrl,
+  extractSpriteCollisionHull,
+  planSfxVariantMatrix,
+  resamplePitchShiftPcm,
+  trimSilencePcm
 } from '@shared/gameAssets'
 import {
   assetDisplayIcon,
@@ -987,6 +1033,184 @@ async function exportNormalMapFromInspector(): Promise<void> {
     }
   } finally {
     gameToolBusy.value = false
+  }
+}
+
+async function exportFullGamePackFromInspector(): Promise<void> {
+  const a = asset.value
+  if (!a) return
+  gameToolBusy.value = true
+  try {
+    const decoded = await decodeCurrentImagePixels()
+    if (!decoded) return
+    const pbr = derivePbrMapsFromRgba(decoded.rgba, decoded.width, decoded.height, {
+      normalFormat: 'opengl',
+      normalStrength: 2.5
+    })
+    const [normalUrl, roughUrl, ormUrl] = await Promise.all([
+      rgbaToDataUrl(pbr.normal, decoded.width, decoded.height),
+      rgbaToDataUrl(pbr.roughness, decoded.width, decoded.height),
+      rgbaToDataUrl(pbr.orm, decoded.width, decoded.height)
+    ])
+    await window.studio.saveGraphRunMedia({
+      dataUrl: normalUrl,
+      key: `${a.name}_normal`,
+      outputDir: 'Assets/GamePbr'
+    })
+    await window.studio.saveGraphRunMedia({
+      dataUrl: roughUrl,
+      key: `${a.name}_roughness`,
+      outputDir: 'Assets/GamePbr'
+    })
+    await window.studio.saveGraphRunMedia({
+      dataUrl: ormUrl,
+      key: `${a.name}_orm`,
+      outputDir: 'Assets/GamePbr'
+    })
+
+    const nineDetection = detectNineSliceBorders(decoded.rgba, decoded.width, decoded.height)
+    const nineManifest = buildNineSliceManifest(a.name, nineDetection)
+    const physicsManifest = buildSpritePhysicsManifest(
+      a.id,
+      decoded.rgba,
+      decoded.width,
+      decoded.height
+    )
+    await window.studio.writeProjectFile({
+      relativePath: `Assets/GamePbr/${a.name}_9slice.json`,
+      content: JSON.stringify(nineManifest, null, 2)
+    })
+    await window.studio.writeProjectFile({
+      relativePath: `Assets/GamePbr/${a.name}_physics.json`,
+      content: JSON.stringify(physicsManifest, null, 2)
+    })
+
+    await project.scheduleRefreshLibrary()
+    await runGameImageInspect()
+    if (gameInspectReport.value) {
+      gameInspectReport.value.savedNote = `Saved PBR + 9-Slice + Physics -> Assets/GamePbr/${a.name}_*`
+    }
+  } finally {
+    gameToolBusy.value = false
+  }
+}
+
+const audioSourcePath = computed(() => {
+  const a = asset.value
+  if (!a || a.type !== 'voice') return ''
+  const rel =
+    a.relativePath?.trim() || resolveAssetPreviewMediaPath(a, project.assets)?.trim() || ''
+  return rel && isAudioFilePath(rel) ? rel : ''
+})
+
+const audioResolvedUrl = ref('')
+const gameAudioBusy = ref(false)
+const gameAudioReport = ref<{
+  durationSec: string
+  sampleRate: number
+  savedNote?: string
+} | null>(null)
+
+watch(
+  audioSourcePath,
+  async (path) => {
+    gameAudioReport.value = null
+    audioResolvedUrl.value = path ? await resolveAssetFileUrl(path) : ''
+  },
+  { immediate: true }
+)
+
+async function decodeCurrentAudioPcm(): Promise<{
+  channels: Float32Array[]
+  sampleRate: number
+  duration: number
+} | null> {
+  if (!audioResolvedUrl.value) return null
+  const resp = await fetch(audioResolvedUrl.value)
+  const arrayBuf = await resp.arrayBuffer()
+  const Ctx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+  const audioCtx = new Ctx()
+  try {
+    const decoded = await audioCtx.decodeAudioData(arrayBuf)
+    const channels: Float32Array[] = []
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      channels.push(new Float32Array(decoded.getChannelData(c)))
+    }
+    return {
+      channels,
+      sampleRate: decoded.sampleRate,
+      duration: decoded.duration
+    }
+  } finally {
+    void audioCtx.close()
+  }
+}
+
+async function exportSeamlessLoopBgmFromInspector(): Promise<void> {
+  const a = asset.value
+  if (!a) return
+  gameAudioBusy.value = true
+  try {
+    const decoded = await decodeCurrentAudioPcm()
+    if (!decoded) return
+    const looped = decoded.channels.map((ch) =>
+      applyEqualPowerLoopCrossfadePcm(ch, decoded.sampleRate, 2.0)
+    )
+    const wavDataUrl = encodePcmToWavDataUrl(looped, decoded.sampleRate)
+    const savedPath = await window.studio.saveGraphRunMedia({
+      dataUrl: wavDataUrl,
+      key: `${a.name}_loop`,
+      outputDir: 'Assets/GameAudio'
+    })
+    await project.scheduleRefreshLibrary()
+    const newDuration = (looped[0]?.length ?? 0) / decoded.sampleRate
+    gameAudioReport.value = {
+      durationSec: newDuration.toFixed(2),
+      sampleRate: decoded.sampleRate,
+      savedNote: `Saved Loop BGM: ${savedPath}`
+    }
+  } finally {
+    gameAudioBusy.value = false
+  }
+}
+
+async function exportSfxVariantsFromInspector(): Promise<void> {
+  const a = asset.value
+  if (!a) return
+  gameAudioBusy.value = true
+  try {
+    const decoded = await decodeCurrentAudioPcm()
+    if (!decoded) return
+    const trimmed = decoded.channels.map((ch) => trimSilencePcm(ch, decoded.sampleRate))
+    const variants = planSfxVariantMatrix({
+      count: 4,
+      pitchSpreadSemitones: 2.0,
+      tempoSpread: 0.08
+    })
+    const savedPaths: string[] = []
+    for (const v of variants) {
+      const shifted = trimmed.map((ch) =>
+        resamplePitchShiftPcm(ch, v.semitoneOffset, v.trebleGainDb)
+      )
+      const wavDataUrl = encodePcmToWavDataUrl(shifted, decoded.sampleRate)
+      const saved = await window.studio.saveGraphRunMedia({
+        dataUrl: wavDataUrl,
+        key: `${a.name}_${v.variantId}`,
+        outputDir: 'Assets/GameAudio'
+      })
+      savedPaths.push(saved)
+    }
+    await project.scheduleRefreshLibrary()
+    const baseDur = (trimmed[0]?.length ?? 0) / decoded.sampleRate
+    gameAudioReport.value = {
+      durationSec: baseDur.toFixed(2),
+      sampleRate: decoded.sampleRate,
+      savedNote: `Saved 4× Variants: ${savedPaths[0]} (+3 more)`
+    }
+  } finally {
+    gameAudioBusy.value = false
   }
 }
 

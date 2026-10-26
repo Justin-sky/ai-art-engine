@@ -44,7 +44,7 @@
         class="image-stage"
         :style="imageStyle"
         @pointerdown="onPanStart"
-        @pointermove="onPanMove"
+        @pointermove="onStagePointerMove"
         @pointerup="onPanEnd"
         @pointercancel="onPanEnd"
         @click.stop
@@ -56,17 +56,54 @@
           :class="{ grabbing: panning }"
           draggable="false"
         />
+        <canvas
+          v-show="normalLightMode"
+          ref="lightCanvasEl"
+          class="overlay-light-canvas"
+          aria-hidden="true"
+        />
         <div v-if="nineSliceOverlay" class="overlay-9slice" aria-hidden="true">
-          <span class="guide-h top" />
-          <span class="guide-h bottom" />
-          <span class="guide-v left" />
-          <span class="guide-v right" />
+          <span class="guide-h top" :style="{ top: `${nineSliceGuides.topPct}%` }" />
+          <span class="guide-h bottom" :style="{ bottom: `${nineSliceGuides.bottomPct}%` }" />
+          <span class="guide-v left" :style="{ left: `${nineSliceGuides.leftPct}%` }" />
+          <span class="guide-v right" :style="{ right: `${nineSliceGuides.rightPct}%` }" />
+          <span class="overlay-badge">{{ nineSliceGuides.label }}</span>
         </div>
-        <div v-if="collisionOverlay" class="overlay-collision" aria-hidden="true">
-          <span class="box-hurt" title="Hurtbox" />
-          <span class="box-hit" title="Hitbox" />
-          <span class="pivot-cross" title="Bottom-Center Pivot" />
-        </div>
+        <svg
+          v-if="collisionOverlay"
+          class="overlay-collision-svg"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          <polygon
+            v-if="collisionSvg.hullPoints"
+            :points="collisionSvg.hullPoints"
+            class="svg-hull"
+          />
+          <rect
+            :x="collisionSvg.hurt.x"
+            :y="collisionSvg.hurt.y"
+            :width="collisionSvg.hurt.w"
+            :height="collisionSvg.hurt.h"
+            class="svg-hurt"
+          />
+          <rect
+            :x="collisionSvg.hit.x"
+            :y="collisionSvg.hit.y"
+            :width="collisionSvg.hit.w"
+            :height="collisionSvg.hit.h"
+            class="svg-hit"
+          />
+          <rect
+            :x="collisionSvg.ground.x"
+            :y="collisionSvg.ground.y"
+            :width="collisionSvg.ground.w"
+            :height="collisionSvg.ground.h"
+            class="svg-ground"
+          />
+          <circle :cx="collisionSvg.pivot.x" :cy="collisionSvg.pivot.y" r="1.8" class="svg-pivot" />
+        </svg>
       </div>
       <video
         v-else-if="mediaKind === 'video'"
@@ -126,7 +163,7 @@
         type="button"
         class="bar-btn"
         :class="{ active: tile3x3Mode }"
-        title="3x3 Seamless Tile Preview"
+        :title="t('gameToolbox.preview.tile3x3Title')"
         @click="tile3x3Mode = !tile3x3Mode"
       >
         3×3
@@ -135,7 +172,7 @@
         type="button"
         class="bar-btn"
         :class="{ active: nineSliceOverlay }"
-        title="UI 9-Slice Guides Overlay"
+        :title="t('gameToolbox.preview.nineSliceTitle')"
         @click="nineSliceOverlay = !nineSliceOverlay"
       >
         9-Slice
@@ -144,10 +181,19 @@
         type="button"
         class="bar-btn"
         :class="{ active: collisionOverlay }"
-        title="2D Combat Hurtbox / Hitbox / Pivot Overlay"
+        :title="t('gameToolbox.preview.collisionTitle')"
         @click="collisionOverlay = !collisionOverlay"
       >
         Box
+      </button>
+      <button
+        type="button"
+        class="bar-btn"
+        :class="{ active: normalLightMode }"
+        :title="t('gameToolbox.preview.normalLightTitle')"
+        @click="normalLightMode = !normalLightMode"
+      >
+        {{ t('gameToolbox.preview.normalLightBtn') }}
       </button>
       <span class="bar-hint">{{ t('graph.preview.imageHint') }}</span>
     </div>
@@ -156,6 +202,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import {
+  deriveCombatBoxesFromAlpha,
+  derivePbrMapsFromRgba,
+  detectNineSliceBorders,
+  extractSpriteCollisionHull
+} from '@shared/gameAssets'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 
 const props = defineProps<{
@@ -169,6 +221,7 @@ const props = defineProps<{
 
 const { t } = useStudioI18n()
 const rootEl = ref<HTMLElement | null>(null)
+const lightCanvasEl = ref<HTMLCanvasElement | null>(null)
 const resolvedUrl = ref('')
 const mediaError = ref(false)
 const scale = ref(1)
@@ -179,10 +232,171 @@ const rotationDeg = ref(0)
 const tile3x3Mode = ref(false)
 const nineSliceOverlay = ref(false)
 const collisionOverlay = ref(false)
+const normalLightMode = ref(false)
 const panning = ref(false)
 let didPan = false
 let panPointerId: number | null = null
 let panStart = { x: 0, y: 0, ox: 0, oy: 0 }
+
+const nineSliceGuides = ref({
+  topPct: 22,
+  bottomPct: 22,
+  leftPct: 22,
+  rightPct: 22,
+  label: '22% / 22% / 22% / 22%'
+})
+
+const collisionSvg = ref({
+  hullPoints: '20,15 80,15 85,90 15,90',
+  hurt: { x: 24, y: 16, w: 50, h: 76 },
+  hit: { x: 55, y: 28, w: 37, h: 42 },
+  ground: { x: 30, y: 88, w: 40, h: 6 },
+  pivot: { x: 50, y: 94 }
+})
+
+let cachedPixelsUrl = ''
+let cachedRgba: Uint8ClampedArray | null = null
+let cachedNormalMap: Uint8ClampedArray | null = null
+let cachedWidth = 0
+let cachedHeight = 0
+let lightNormX = 0.35
+let lightNormY = 0.25
+
+async function ensureDecodedImageAnalysis(): Promise<void> {
+  const url = resolvedUrl.value
+  if (!url || props.mediaKind !== 'image') return
+  if (cachedPixelsUrl !== url || !cachedRgba) {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve) => {
+      img.onload = () => resolve()
+      img.onerror = () => resolve()
+      img.src = url
+    })
+    const w = img.naturalWidth || img.width
+    const h = img.naturalHeight || img.height
+    if (!w || !h) return
+    const off = document.createElement('canvas')
+    off.width = w
+    off.height = h
+    const ctx = off.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(img, 0, 0)
+    cachedRgba = new Uint8ClampedArray(ctx.getImageData(0, 0, w, h).data)
+    cachedWidth = w
+    cachedHeight = h
+    cachedPixelsUrl = url
+    cachedNormalMap = null
+
+    const nine = detectNineSliceBorders(cachedRgba, w, h)
+    nineSliceGuides.value = {
+      topPct: Number(((nine.borders.top / h) * 100).toFixed(1)),
+      bottomPct: Number(((nine.borders.bottom / h) * 100).toFixed(1)),
+      leftPct: Number(((nine.borders.left / w) * 100).toFixed(1)),
+      rightPct: Number(((nine.borders.right / w) * 100).toFixed(1)),
+      label: `L:${nine.borders.left} R:${nine.borders.right} T:${nine.borders.top} B:${nine.borders.bottom}px`
+    }
+
+    const hull = extractSpriteCollisionHull(cachedRgba, w, h, { maxVertices: 8 })
+    const boxes = deriveCombatBoxesFromAlpha(cachedRgba, w, h)
+    collisionSvg.value = {
+      hullPoints: hull.verticesNormalized
+        .map((pt) => `${(pt.x * 100).toFixed(1)},${(pt.y * 100).toFixed(1)}`)
+        .join(' '),
+      hurt: {
+        x: (boxes.hurtbox.x / w) * 100,
+        y: (boxes.hurtbox.y / h) * 100,
+        w: (boxes.hurtbox.width / w) * 100,
+        h: (boxes.hurtbox.height / h) * 100
+      },
+      hit: {
+        x: (boxes.hitbox.x / w) * 100,
+        y: (boxes.hitbox.y / h) * 100,
+        w: (boxes.hitbox.width / w) * 100,
+        h: (boxes.hitbox.height / h) * 100
+      },
+      ground: {
+        x: (boxes.groundSensor.x / w) * 100,
+        y: (boxes.groundSensor.y / h) * 100,
+        w: (boxes.groundSensor.width / w) * 100,
+        h: (boxes.groundSensor.height / h) * 100
+      },
+      pivot: {
+        x: (hull.pivot.x / w) * 100,
+        y: (hull.pivot.y / h) * 100
+      }
+    }
+  }
+
+  if (normalLightMode.value) {
+    if (!cachedNormalMap && cachedRgba && cachedWidth > 0 && cachedHeight > 0) {
+      const pbr = derivePbrMapsFromRgba(cachedRgba, cachedWidth, cachedHeight, {
+        normalFormat: 'opengl',
+        normalStrength: 3.0
+      })
+      cachedNormalMap = pbr.normal
+    }
+    renderNormalLightCanvas()
+  }
+}
+
+function renderNormalLightCanvas(): void {
+  const canvas = lightCanvasEl.value
+  if (!canvas || !cachedRgba || !cachedNormalMap || !cachedWidth || !cachedHeight) return
+  if (canvas.width !== cachedWidth || canvas.height !== cachedHeight) {
+    canvas.width = cachedWidth
+    canvas.height = cachedHeight
+  }
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const out = ctx.createImageData(cachedWidth, cachedHeight)
+  const dst = out.data
+  const src = cachedRgba
+  const nrm = cachedNormalMap
+  const lx = lightNormX * cachedWidth
+  const ly = lightNormY * cachedHeight
+  const lz = Math.max(cachedWidth, cachedHeight) * 0.35
+
+  for (let y = 0; y < cachedHeight; y++) {
+    for (let x = 0; x < cachedWidth; x++) {
+      const idx = (y * cachedWidth + x) * 4
+      const a = src[idx + 3]
+      if (a < 8) {
+        dst[idx + 3] = 0
+        continue
+      }
+      const nx = (nrm[idx] / 255) * 2 - 1
+      const ny = -((nrm[idx + 1] / 255) * 2 - 1)
+      const nz = (nrm[idx + 2] / 255) * 2 - 1
+      const dx = lx - x
+      const dy = ly - y
+      const invLen = 1 / (Math.hypot(dx, dy, lz) || 1)
+      const ldx = dx * invLen
+      const ldy = dy * invLen
+      const ldz = lz * invLen
+      const ndotl = Math.max(0, nx * ldx + ny * ldy + nz * ldz)
+      const hz = ldz + 1
+      const hInv = 1 / (Math.hypot(ldx, ldy, hz) || 1)
+      const ndoth = Math.max(0, nx * ldx * hInv + ny * ldy * hInv + nz * hz * hInv)
+      const spec = Math.pow(ndoth, 20) * 95
+      const shade = 0.25 + ndotl * 1.15
+      dst[idx] = Math.min(255, Math.round(src[idx] * shade + spec * 1.05))
+      dst[idx + 1] = Math.min(255, Math.round(src[idx + 1] * shade + spec * 0.96))
+      dst[idx + 2] = Math.min(255, Math.round(src[idx + 2] * shade + spec * 0.82))
+      dst[idx + 3] = a
+    }
+  }
+  ctx.putImageData(out, 0, 0)
+}
+
+watch(
+  () => [resolvedUrl.value, nineSliceOverlay.value, collisionOverlay.value, normalLightMode.value],
+  () => {
+    if (nineSliceOverlay.value || collisionOverlay.value || normalLightMode.value) {
+      void ensureDecodedImageAnalysis()
+    }
+  }
+)
 
 const isImageReady = computed(
   () => props.mediaKind === 'image' && !!resolvedUrl.value && !mediaError.value
@@ -315,6 +529,18 @@ function onPanMove(e: PointerEvent): void {
   offsetY.value = panStart.oy + dy
 }
 
+function onStagePointerMove(e: PointerEvent): void {
+  onPanMove(e)
+  if (normalLightMode.value && !panning.value) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      lightNormX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      lightNormY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+      renderNormalLightCanvas()
+    }
+  }
+}
+
 function onPanEnd(e: PointerEvent): void {
   if (panPointerId !== e.pointerId) return
   panning.value = false
@@ -435,9 +661,12 @@ function onBackdropClick(): void {
 }
 
 .overlay-9slice,
-.overlay-collision {
+.overlay-collision-svg,
+.overlay-light-canvas {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
 }
 
@@ -447,54 +676,55 @@ function onBackdropClick(): void {
   right: 0;
   border-top: 1.5px dashed #22c55e;
 }
-.overlay-9slice .guide-h.top {
-  top: 22%;
-}
-.overlay-9slice .guide-h.bottom {
-  bottom: 22%;
-}
+
 .overlay-9slice .guide-v {
   position: absolute;
   top: 0;
   bottom: 0;
   border-left: 1.5px dashed #22c55e;
 }
-.overlay-9slice .guide-v.left {
-  left: 22%;
-}
-.overlay-9slice .guide-v.right {
-  right: 22%;
+
+.overlay-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #4ade80;
+  font-size: 10px;
+  font-family: monospace;
 }
 
-.overlay-collision .box-hurt {
-  position: absolute;
-  left: 24%;
-  right: 26%;
-  top: 16%;
-  bottom: 8%;
-  border: 1.5px solid #38bdf8;
-  background: rgba(56, 189, 248, 0.12);
+.svg-hull {
+  fill: rgba(168, 85, 247, 0.14);
+  stroke: #a855f7;
+  stroke-width: 0.6;
+  stroke-dasharray: 1.5 1;
 }
 
-.overlay-collision .box-hit {
-  position: absolute;
-  left: 55%;
-  right: 8%;
-  top: 28%;
-  bottom: 30%;
-  border: 1.5px solid #f43f5e;
-  background: rgba(244, 63, 94, 0.14);
+.svg-hurt {
+  fill: rgba(56, 189, 248, 0.12);
+  stroke: #38bdf8;
+  stroke-width: 0.6;
 }
 
-.overlay-collision .pivot-cross {
-  position: absolute;
-  left: 50%;
-  bottom: 6%;
-  width: 10px;
-  height: 10px;
-  transform: translate(-50%, 50%);
-  border: 2px solid #facc15;
-  border-radius: 50%;
+.svg-hit {
+  fill: rgba(244, 63, 94, 0.15);
+  stroke: #f43f5e;
+  stroke-width: 0.6;
+}
+
+.svg-ground {
+  fill: rgba(34, 197, 94, 0.18);
+  stroke: #22c55e;
+  stroke-width: 0.5;
+}
+
+.svg-pivot {
+  fill: #facc15;
+  stroke: #000;
+  stroke-width: 0.4;
 }
 
 .bar-btn:disabled {

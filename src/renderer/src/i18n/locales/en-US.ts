@@ -7962,5 +7962,59 @@ export default {
     cookStart: '🔥 Forge Ignited',
     cookDone: '✦ Forge Complete',
     cookError: '⚠ Forge Fault'
+  },
+  gameToolbox: {
+    imageTitle: 'Game Asset Toolbox',
+    analyzeBtn: 'Analyze Tile / 9-Slice / Hull',
+    makeSeamlessBtn: 'Make Seamless Tile',
+    deriveNormalBtn: 'Derive Normal Map',
+    exportFullPackBtn: 'Export PBR + 9-Slice + Physics Pack',
+    seamlessScore: 'Seamless Score',
+    nineSliceBorders: '9-Slice (L/R/T/B)',
+    collisionHullPts: 'Collision Hull',
+    audioTitle: 'Game Audio Studio (WAV DSP)',
+    makeLoopBgmBtn: 'Make Seamless Loop BGM',
+    makeSfxVariantsBtn: 'Generate 4× SFX Variants',
+    audioDuration: 'Duration',
+    audioSampleRate: 'Sample Rate',
+    preview: {
+      tile3x3Title: '3×3 Seamless Tile Preview',
+      nineSliceTitle: 'UI 9-Slice Auto-Detected Guides',
+      collisionTitle: '2D Convex Hull / Hurtbox / Hitbox / Pivot Overlay',
+      normalLightTitle:
+        '2D Normal Map Interactive Point-Light Preview (Move cursor to steer light)',
+      normalLightBtn: 'Light'
+    },
+    bible: {
+      title: 'Game Art Bible Lock',
+      cameraLabel: 'Camera Projection',
+      cameraFree: 'Free / Unconstrained',
+      cameraSide: '2D Side-Scroller (Orthographic)',
+      cameraTopDown: 'Top-Down 3/4 RPG (45° Tilt)',
+      cameraIso: '2:1 Isometric Strategy',
+      cameraFps: 'First-Person / Dungeon Crawler',
+      artLabel: 'Art Direction Lock',
+      artFree: 'Free / Unconstrained',
+      artPixel: '16-Bit Pixel Art',
+      artCel: 'Cel-Shaded Anime',
+      artInk: 'Hand-Drawn Ink & Paint',
+      artPbr: 'Stylized 3D PBR',
+      artGothic: 'Dark Gothic Grimdark'
+    },
+    production: {
+      title: 'Game Production Center',
+      levelAlgoLabel: 'Procedural Level Algorithm',
+      algoBsp: 'BSP Dungeon Rooms & Corridors',
+      algoCave: 'Cellular Automata Organic Cave',
+      algoPlatformer: 'Side-Scroller Platformer Course',
+      algoArena: 'Arena Wave Spawner Map',
+      genLevelBtn: 'Generate Tiled Level (.tmj)',
+      exportShadersBtn: 'Export 8 Engine Shaders & Particles',
+      playDemoBtn: '▶ Play Instant Demo (WASD)',
+      playableModalTitle: 'Interactive Playable Game Sandbox (HTML5 60fps)',
+      playableModalHint:
+        'WASD / Arrows to move · Space to jump/dash · Click or J to attack with live hit-flash & damage numbers',
+      closeDemoBtn: 'Close Sandbox'
+    }
   }
 } as const

@@ -5535,7 +5535,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'game_playable_preview_compile',
     title: '编译应用内即点即玩HTML5微缩游戏沙盒',
     description:
-      '将当前工程的角色精灵、怪物精灵、瓦片与程序化关卡编译为零依赖、单文件可运行的 HTML5 可玩微缩游戏（支持 survivor 肉鸽割草模式与 platformer 横版平台跳跃模式实时切换，内建 WASD 移动、自动/点击射击、受击闪白与暴击伤害跳字），落盘到 Assets/GamePlayable/。',
+      '将当前工程的角色精灵、怪物精灵、瓦片与程序化关卡编译为零依赖、单文件可运行的 HTML5 可玩微缩游戏（支持 survivor 肉鸽割草模式与 platformer 横版平台跳跃模式实时切换，自动发现工程内角色/怪物/地面精灵贴图并内联为 Base64 DataURL，内建 WASD 移动、自动/点击射击、受击闪白与暴击伤害跳字），落盘到 Assets/GamePlayable/。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -5545,7 +5545,10 @@ const TOOL_DEFS: McpToolDef[] = [
           enum: ['survivor', 'platformer'],
           description: '初始试玩模式：survivor（肉鸽割草）或 platformer（横版平台跳跃）'
         },
-        levelSeed: { type: 'number', description: '关卡种子（默认 42）' }
+        levelSeed: { type: 'number', description: '关卡种子（默认 42）' },
+        playerAssetId: { type: 'string', description: '可选：指定主角精灵图片资产 ID' },
+        enemyAssetId: { type: 'string', description: '可选：指定怪物精灵图片资产 ID' },
+        tileAssetId: { type: 'string', description: '可选：指定地面瓦片图片资产 ID' }
       }
     },
     handler: (args) => {
@@ -5555,10 +5558,69 @@ const TOOL_DEFS: McpToolDef[] = [
       const modeRaw = optionalString(args, 'mode') ?? 'survivor'
       const mode: PlayableSandboxMode = modeRaw === 'platformer' ? 'platformer' : 'survivor'
 
+      const imageAssets = projectService
+        .listAssets()
+        .filter((a) => a.type === 'image' && Boolean(a.relativePath?.trim()))
+
+      const toDataUrl = (relPath: string | undefined): string | undefined => {
+        if (!relPath) return undefined
+        const norm = normalizeProjectRelativePath(relPath)
+        if (!norm) return undefined
+        const abs = join(root, norm)
+        if (!existsSync(abs)) return undefined
+        try {
+          const buf = readFileSync(abs)
+          const ext = extname(norm).toLowerCase()
+          const mime =
+            ext === '.jpg' || ext === '.jpeg'
+              ? 'image/jpeg'
+              : ext === '.webp'
+                ? 'image/webp'
+                : 'image/png'
+          return `data:${mime};base64,${buf.toString('base64')}`
+        } catch {
+          return undefined
+        }
+      }
+
+      const pickSpriteDataUrl = (
+        explicitId: string | undefined,
+        pattern: RegExp,
+        fallbackIndex: number
+      ): string | undefined => {
+        if (explicitId) {
+          const found = imageAssets.find((a) => a.id === explicitId)
+          if (found?.relativePath) return toDataUrl(found.relativePath)
+        }
+        const matched =
+          imageAssets.find((a) => pattern.test(a.name) || pattern.test(a.relativePath || '')) ??
+          imageAssets[fallbackIndex]
+        return toDataUrl(matched?.relativePath)
+      }
+
+      const playerSpriteDataUrl = pickSpriteDataUrl(
+        optionalString(args, 'playerAssetId'),
+        /hero|player|char|knight|warrior|protagonist|主角|角色/i,
+        0
+      )
+      const enemySpriteDataUrl = pickSpriteDataUrl(
+        optionalString(args, 'enemyAssetId'),
+        /enemy|monster|slime|boss|goblin|skeleton|怪|敌/i,
+        1
+      )
+      const tileSpriteDataUrl = pickSpriteDataUrl(
+        optionalString(args, 'tileAssetId'),
+        /tile|floor|ground|grass|stone|brick|地砖|地面/i,
+        2
+      )
+
       const compiled = compilePlayableGameSandboxHtml({
         title,
         mode,
-        levelSeed: typeof args.levelSeed === 'number' ? args.levelSeed : 42
+        levelSeed: typeof args.levelSeed === 'number' ? args.levelSeed : 42,
+        playerSpriteDataUrl,
+        enemySpriteDataUrl,
+        tileSpriteDataUrl
       })
 
       const outRelDir = 'Assets/GamePlayable'
@@ -5573,6 +5635,11 @@ const TOOL_DEFS: McpToolDef[] = [
         title: compiled.title,
         mode: compiled.mode,
         levelAlgorithm: compiled.levelAlgorithm,
+        embeddedSprites: {
+          player: Boolean(playerSpriteDataUrl),
+          enemy: Boolean(enemySpriteDataUrl),
+          tile: Boolean(tileSpriteDataUrl)
+        },
         htmlRelativePath: htmlRelPath
       }
     }
