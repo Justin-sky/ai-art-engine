@@ -222,3 +222,89 @@ export function encodePcmToWavDataUrl(channels: Float32Array[], sampleRate = 441
   const bytes = encodePcmToWavBytes(channels, sampleRate)
   return `data:audio/wav;base64,${uint8ToBase64(bytes)}`
 }
+
+/**
+ * Decodes a 16-bit PCM RIFF WAVE Uint8Array into mono/stereo Float32Array channels and sampleRate.
+ */
+export function decodeWavBytesToPcm(bytes: Uint8Array): {
+  channels: Float32Array[]
+  sampleRate: number
+} | null {
+  if (bytes.byteLength < 44) return null
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const magic =
+    String.fromCharCode(view.getUint8(0)) +
+    String.fromCharCode(view.getUint8(1)) +
+    String.fromCharCode(view.getUint8(2)) +
+    String.fromCharCode(view.getUint8(3))
+  if (magic !== 'RIFF') return null
+
+  const numChannels = Math.max(1, Math.min(2, view.getUint16(22, true) || 1))
+  const sampleRate = Math.max(8000, Math.min(96000, view.getUint32(24, true) || 44100))
+  const bitsPerSample = view.getUint16(34, true) || 16
+  if (bitsPerSample !== 16) return null
+
+  const dataOffset = 44
+  const bytesPerFrame = numChannels * 2
+  const numFrames = Math.max(0, Math.floor((bytes.byteLength - dataOffset) / bytesPerFrame))
+  const channels: Float32Array[] = Array.from(
+    { length: numChannels },
+    () => new Float32Array(numFrames)
+  )
+
+  let offset = dataOffset
+  for (let i = 0; i < numFrames; i++) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const s = view.getInt16(offset, true)
+      channels[ch]![i] = s < 0 ? s / 32768 : s / 32767
+      offset += 2
+    }
+  }
+  return { channels, sampleRate }
+}
+
+/**
+ * Synthesizes a procedural chiptune BGM phrase or retro combat SFX waveform
+ * when the audio DSP node runs standalone without an upstream audio file.
+ */
+export function synthesizeGameSeedPcm(
+  mode: 'loop_bgm' | 'sfx_variants',
+  sampleRate = 22050
+): { channels: Float32Array[]; sampleRate: number } {
+  const sr = Math.max(8000, Math.floor(sampleRate))
+  if (mode === 'loop_bgm') {
+    const durationSec = 3.2
+    const len = Math.floor(sr * durationSec)
+    const left = new Float32Array(len)
+    const right = new Float32Array(len)
+    const notes = [261.63, 329.63, 392.0, 523.25, 392.0, 329.63, 293.66, 349.23]
+    const stepSamples = Math.max(1, Math.floor(len / notes.length))
+    for (let i = 0; i < len; i++) {
+      const noteIdx = Math.min(notes.length - 1, Math.floor(i / stepSamples))
+      const freq = notes[noteIdx]!
+      const t = i / sr
+      const localT = (i % stepSamples) / stepSamples
+      const env = Math.sin(Math.min(1, localT * 8) * (Math.PI * 0.5)) * (1 - localT * 0.45)
+      const lead = Math.sin(2 * Math.PI * freq * t) * 0.42
+      const sub = Math.sin(2 * Math.PI * (freq * 0.5) * t) * 0.25
+      left[i] = (lead + sub) * env
+      right[i] = (lead * 0.9 + sub * 1.05) * env
+    }
+    return { channels: [left, right], sampleRate: sr }
+  }
+
+  // sfx_variants: crisp retro sword/laser impact with 25ms leading silence to test trimSilencePcm
+  const durationSec = 0.48
+  const len = Math.floor(sr * durationSec)
+  const mono = new Float32Array(len)
+  const silenceLead = Math.floor(sr * 0.025)
+  for (let i = silenceLead; i < len; i++) {
+    const t = (i - silenceLead) / sr
+    const freq = 660 * Math.exp(-t * 9.5) + 110
+    const env = Math.exp(-t * 8.0)
+    const tone = Math.sin(2 * Math.PI * freq * t)
+    const harmonic = Math.sin(2 * Math.PI * freq * 2.5 * t) * 0.35
+    mono[i] = (tone + harmonic) * env * 0.65
+  }
+  return { channels: [mono], sampleRate: sr }
+}

@@ -95,7 +95,11 @@ import {
   executeModelConvertNode,
   executeSpatialWorldExportNode,
   executeModelTextureNode,
-  executeModelAnimationNode
+  executeModelAnimationNode,
+  executeGamePbrTileNode,
+  executeGameAudioDspNode,
+  executeGameLevelMapNode,
+  executeGamePlayableNode
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
@@ -3108,6 +3112,155 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'model',
     contributeToGeneration: false,
     execute: executeModelAnimationNode
+  },
+  {
+    typeId: 'game.pbrTile',
+    category: 'note',
+    label: '无缝瓦片与PBR', // cjk-ok
+    icon: '🧱',
+    defaultTitle: '无缝瓦片与PBR', // cjk-ok
+    description:
+      '对输入贴图/精灵执行环面无缝瓦片融合（Toroidal Cosine Seam Blend），并派生 Sobel 切线空间法线贴图（Normal）、粗糙度（Roughness）、ORM 打包贴图（AO+Roughness+Metallic）与高度图（Height），同时自动测算 UI 9-Slice 拉伸边界与 2D 物理碰撞凸包（out-meta JSON）。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-meta',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Manifest'
+      }
+    ],
+    defaultParams: () => ({
+      gameTileSeamless: true,
+      gameTileBlendRatio: 0.22,
+      gamePbrNormalStrength: 2.8,
+      gamePbrInvertRoughness: false
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeGamePbrTileNode
+  },
+  {
+    typeId: 'game.audioDsp',
+    category: 'note',
+    label: '游戏音频工坊', // cjk-ok
+    icon: '🎛️',
+    defaultTitle: '游戏音频工坊', // cjk-ok
+    description:
+      '游戏音频 DSP 节点：支持 BGM 首尾等功率正余弦交叉淡化无缝循环（loop_bgm）与音效首尾静音修剪 + 4× 变调变速防听觉疲劳派生（sfx_variants），输出标准 16-bit PCM WAV 资产。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.voice, multiple: false, label: 'Audio' },
+      ...galleryOutPorts(GraphPortType.voice)
+    ],
+    defaultParams: () => ({
+      gameAudioDspMode: 'loop_bgm',
+      gameAudioCrossfadeSec: 1.5,
+      gameAudioTrimThresholdDb: -42
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'voice',
+    contributeToGeneration: false,
+    execute: executeGameAudioDspNode
+  },
+  {
+    typeId: 'game.levelMap',
+    category: 'note',
+    label: '2D关卡地图生成', // cjk-ok
+    icon: '🏰',
+    defaultTitle: '2D关卡地图生成', // cjk-ok
+    description:
+      '程序化生成 2D 游戏关卡地图（支持 BSP 地牢 / 元胞洞穴 / 幸存者竞技场 / 横版跳跃跑酷），同时输出高对比度 2D 关卡预览图（out）与标准 Tiled .tmj JSON（out-text，可直接连入可玩游戏沙盒节点）。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Config' },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-text',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Tiled JSON'
+      }
+    ],
+    defaultParams: () => ({
+      gameLevelAlgorithm: 'bsp_dungeon',
+      gameLevelWidth: 32,
+      gameLevelHeight: 20,
+      gameLevelSeed: 1337
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeGameLevelMapNode
+  },
+  {
+    typeId: 'game.playable',
+    category: 'note',
+    label: '可玩游戏沙盒', // cjk-ok
+    icon: '👾',
+    defaultTitle: '可玩游戏沙盒', // cjk-ok
+    description:
+      '接收上游连接的角色/怪物/瓦片精灵图（in-image）、关卡地图 Tiled JSON（in-text）与游戏音频（in-voice），一键编译为单文件零依赖 60fps HTML5 微型可玩原型（支持 WASD 移动、空格冲刺、鼠标攻击、波次刷怪与粒子特效），可在节点检查器内直接全屏试玩。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in-image',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'Sprites'
+      },
+      {
+        id: 'in-voice',
+        direction: 'in',
+        dataType: GraphPortType.voice,
+        multiple: true,
+        label: 'Audio'
+      },
+      {
+        id: 'in-text',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Level / Config'
+      },
+      ...galleryOutPorts(GraphPortType.text)
+    ],
+    defaultParams: () => ({
+      gamePlayableTitle: 'Indie Game Prototype',
+      gamePlayableGenre: 'roguelike_action',
+      gamePlayableCameraMode: 'topdown_34',
+      gameLevelAlgorithm: 'bsp_dungeon',
+      gameLevelSeed: 42
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    contributeToGeneration: false,
+    execute: executeGamePlayableNode
   }
 ]
 

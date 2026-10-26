@@ -3970,7 +3970,16 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'game',
-    typeIds: ['asset.gameSystem', 'ui.split', 'ui.gen', 'image.layerSplit']
+    typeIds: [
+      'asset.gameSystem',
+      'game.pbrTile',
+      'game.audioDsp',
+      'game.levelMap',
+      'game.playable',
+      'ui.split',
+      'ui.gen',
+      'image.layerSplit'
+    ]
   },
   {
     id: 'motionFx',

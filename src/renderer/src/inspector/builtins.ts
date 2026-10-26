@@ -50,6 +50,7 @@ import DirectorStageInspector from '../components/DirectorStageInspector.vue'
 import GraphHostInspector from '../components/GraphHostInspector.vue'
 import ScriptRunInspector from '../components/ScriptRunInspector.vue'
 import FilmInspector from '../components/FilmInspector.vue'
+import GameNodeInspector from '../components/GameNodeInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
 import { isAssetRefInputHostType, isFilmNodeTypeId, type GraphNode } from '@shared/graph'
@@ -394,6 +395,20 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.scriptRun',
     component: ScriptRunInspector,
     nodeTypeId: 'script.run'
+  },
+  {
+    id: 'studio.graph.gameNode',
+    component: GameNodeInspector,
+    match: (target) => {
+      if (target.kind !== 'graph.node') return false
+      const typeId = (target.subject as GraphNode | null)?.typeId
+      return (
+        typeId === 'game.pbrTile' ||
+        typeId === 'game.audioDsp' ||
+        typeId === 'game.levelMap' ||
+        typeId === 'game.playable'
+      )
+    }
   },
   {
     id: 'studio.graph.group',

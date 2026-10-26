@@ -17,12 +17,15 @@ import {
   classifyGameBundleItem,
   compileGameArtBiblePromptClause,
   compilePlayableGameSandboxHtml,
+  createProceduralStoneTileRgba,
+  decodeWavBytesToPcm,
   deriveCombatBoxesFromAlpha,
   deriveDeterministicUnityGuid,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
   encodePcmToWavBytes,
   encodePcmToWavDataUrl,
+  encodeRgbaToPngDataUrl,
   extractGuidFromUnityMeta,
   extractSpriteCollisionHull,
   generateEngineImporterScript,
@@ -30,10 +33,19 @@ import {
   generateUnityMetaFile,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
+  renderProceduralLevelToPng,
   resamplePitchShiftPcm,
+  synthesizeGameSeedPcm,
   trimSilencePcm,
   validateSkillTreeDag
 } from '../src/shared/gameAssets'
+import {
+  executeGameAudioDspNode,
+  executeGameLevelMapNode,
+  executeGamePbrTileNode,
+  executeGamePlayableNode
+} from '../src/shared/graph/execute/gameNodes'
+import { getNodeTypeOrThrow } from '../src/shared/graph'
 
 describe('Phase 1: 2D Seamless Tilemap & UI 9-Slice Operators', () => {
   it('applySeamlessTileBlend eliminates horizontal and vertical border seams while keeping center intact', () => {
@@ -717,5 +729,151 @@ describe('Phase 6: Product-Grade Art Bible Lock, Unity .meta GUID Preservation &
 
     const dataUrl = encodePcmToWavDataUrl([shifted], sampleRate)
     expect(dataUrl.startsWith('data:audio/wav;base64,')).toBe(true)
+  })
+})
+
+describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game.levelMap, game.playable)', () => {
+  it('registers all 4 game graph node types in built-in node registry with connectable ports', () => {
+    const pbrDef = getNodeTypeOrThrow('game.pbrTile')
+    expect(pbrDef).toBeDefined()
+    expect(pbrDef.ports.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['in', 'out', 'out-all', 'out-meta'])
+    )
+
+    const audioDef = getNodeTypeOrThrow('game.audioDsp')
+    expect(audioDef).toBeDefined()
+    expect(audioDef.ports.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['in', 'out', 'out-all'])
+    )
+
+    const levelDef = getNodeTypeOrThrow('game.levelMap')
+    expect(levelDef).toBeDefined()
+    expect(levelDef.ports.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['out', 'out-all', 'out-text'])
+    )
+
+    const playableDef = getNodeTypeOrThrow('game.playable')
+    expect(playableDef).toBeDefined()
+    expect(playableDef.ports.map((p) => p.id)).toEqual(
+      expect.arrayContaining(['in-image', 'in-text', 'in-voice', 'out', 'out-all'])
+    )
+  })
+
+  it('executes game.pbrTile, game.audioDsp, game.levelMap, and game.playable end-to-end as graph nodes', async () => {
+    // 1. game.pbrTile standalone execution
+    const pbrNode = {
+      id: 'n_pbr',
+      typeId: 'game.pbrTile' as const,
+      title: 'DungeonBrick',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gameTileSeamless: true,
+        gameTileBlendRatio: 0.2,
+        gamePbrNormalStrength: 3.0,
+        gamePbrInvertRoughness: false
+      }
+    }
+    const pbrOutputs = await executeGamePbrTileNode({ node: pbrNode, inputs: {} })
+    expect(pbrNode.params.generatedImages).toHaveLength(5)
+    expect(pbrOutputs['out-all']?.kind).toBe('images')
+    expect(pbrOutputs['out-meta']?.kind).toBe('text')
+    const metaJson = JSON.parse(
+      pbrOutputs['out-meta']?.kind === 'text' ? pbrOutputs['out-meta'].text : '{}'
+    )
+    expect(metaJson.summary?.seamScoreAfter).toBe(100)
+    expect(metaJson.nineSlice?.borders).toBeDefined()
+    expect(metaJson.physics?.hull?.verticesPx?.length).toBeGreaterThanOrEqual(3)
+
+    // 2. game.audioDsp standalone execution (loop_bgm & sfx_variants)
+    const audioLoopNode = {
+      id: 'n_audio_loop',
+      typeId: 'game.audioDsp' as const,
+      title: 'BattleBgm',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gameAudioDspMode: 'loop_bgm' as const,
+        gameAudioCrossfadeSec: 0.25
+      }
+    }
+    const loopOutputs = await executeGameAudioDspNode({ node: audioLoopNode, inputs: {} })
+    expect(audioLoopNode.params.generatedVoices).toHaveLength(1)
+    expect(loopOutputs.out?.kind).toBe('voice')
+
+    const audioSfxNode = {
+      id: 'n_audio_sfx',
+      typeId: 'game.audioDsp' as const,
+      title: 'SwordHit',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gameAudioDspMode: 'sfx_variants' as const,
+        gameAudioTrimThresholdDb: -42
+      }
+    }
+    const sfxOutputs = await executeGameAudioDspNode({ node: audioSfxNode, inputs: {} })
+    expect(audioSfxNode.params.generatedVoices).toHaveLength(4)
+    expect(sfxOutputs['out-all']?.kind).toBe('voices')
+
+    // 3. game.levelMap execution
+    const levelNode = {
+      id: 'n_level',
+      typeId: 'game.levelMap' as const,
+      title: 'CryptLevel',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gameLevelAlgorithm: 'bsp_dungeon' as const,
+        gameLevelWidth: 28,
+        gameLevelHeight: 18,
+        gameLevelSeed: 1234
+      }
+    }
+    const levelOutputs = await executeGameLevelMapNode({ node: levelNode, inputs: {} })
+    expect(levelNode.params.generatedImages).toHaveLength(1)
+    expect(levelOutputs.out?.kind).toBe('image')
+    if (levelOutputs.out?.kind === 'image') {
+      expect(levelOutputs.out.dataUrl).toMatch(/^data:image\/png;base64,/)
+    }
+    expect(levelOutputs['out-text']?.kind).toBe('text')
+    if (levelOutputs['out-text']?.kind === 'text') {
+      expect(levelOutputs['out-text'].text).toContain('"tiledversion"')
+    }
+
+    // 4. game.playable connected to upstream image, level text, and audio
+    const playableNode = {
+      id: 'n_playable',
+      typeId: 'game.playable' as const,
+      title: 'DungeonPlayable',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gamePlayableGenre: 'roguelike_action' as const,
+        gamePlayableCameraMode: 'topdown_34' as const,
+        gamePlayableTitle: 'Node Graph Dungeon Demo'
+      }
+    }
+    const playableOutputs = await executeGamePlayableNode({
+      node: playableNode,
+      inputs: {
+        'in-image': [pbrOutputs.out!],
+        'in-text': [levelOutputs['out-text']!],
+        'in-voice': [sfxOutputs.out!]
+      }
+    })
+    expect(playableNode.params.gamePlayableHtml).toContain('<!DOCTYPE html>')
+    expect(playableNode.params.gamePlayableHtml).toContain('Node Graph Dungeon Demo')
+    expect(playableOutputs.out?.kind).toBe('text')
   })
 })

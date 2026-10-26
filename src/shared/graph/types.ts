@@ -271,6 +271,10 @@ export type GraphNodeTypeId =
   | 'model.convert'
   | 'model.texture'
   | 'model.animation'
+  | 'game.pbrTile'
+  | 'game.audioDsp'
+  | 'game.levelMap'
+  | 'game.playable'
   | 'graph.input.slot'
   | (string & {})
 
@@ -1379,6 +1383,44 @@ export interface GraphNodeParams {
   scriptLastError?: string
   /** 脚本节点（script.run）：最近一次执行时间戳（ISO 字符串） */
   scriptLastRunAt?: string
+  /** 游戏节点（game.pbrTile）：是否对输入贴图做环面无缝瓦片融合 */
+  gameTileSeamless?: boolean
+  /** 游戏节点（game.pbrTile）：无缝融合过渡带宽比例（0.05..0.45） */
+  gameTileBlendRatio?: number
+  /** 游戏节点（game.pbrTile）：Sobel 法线贴图凹凸强度（0.5..8） */
+  gamePbrNormalStrength?: number
+  /** 游戏节点（game.pbrTile）：是否反转粗糙度贴图（光滑度 ↔ 粗糙度） */
+  gamePbrInvertRoughness?: boolean
+  /** 游戏节点（game.pbrTile）：最近一次输出的 9-Slice + 碰撞凸包 + PBR 摘要 JSON */
+  gamePbrReport?: string
+  /** 游戏节点（game.audioDsp）：DSP 模式（loop_bgm 无缝循环 / sfx_variants 4× 变体） */
+  gameAudioDspMode?: 'loop_bgm' | 'sfx_variants'
+  /** 游戏节点（game.audioDsp）：BGM 首尾等功率交叉淡化时长（秒） */
+  gameAudioCrossfadeSec?: number
+  /** 游戏节点（game.audioDsp）：音效首尾静音修剪门限（dBFS） */
+  gameAudioTrimThresholdDb?: number
+  /** 游戏节点（game.audioDsp）：最近一次音频 DSP 处理摘要 */
+  gameAudioReport?: string
+  /** 游戏节点（game.levelMap）：程序化关卡生成算法 */
+  gameLevelAlgorithm?: 'bsp_dungeon' | 'cellular_cave' | 'arena_waves' | 'platformer_course'
+  /** 游戏节点（game.levelMap）：关卡网格宽度（12..64） */
+  gameLevelWidth?: number
+  /** 游戏节点（game.levelMap）：关卡网格高度（10..48） */
+  gameLevelHeight?: number
+  /** 游戏节点（game.levelMap）：确定性随机种子 */
+  gameLevelSeed?: number
+  /** 游戏节点（game.levelMap）：最近一次关卡统计摘要 */
+  gameLevelReport?: string
+  /** 游戏节点（game.playable）：可玩原型标题 */
+  gamePlayableTitle?: string
+  /** 游戏节点（game.playable）：可玩原型玩法类型 */
+  gamePlayableGenre?: 'roguelike_action' | 'platformer' | 'dungeon_crawler'
+  /** 游戏节点（game.playable）：镜头视角规范 */
+  gamePlayableCameraMode?: 'topdown_90' | 'topdown_34' | 'isometric_45' | 'side_view'
+  /** 游戏节点（game.playable）：最近一次编译的 60fps 独立可玩 HTML5 源码 */
+  gamePlayableHtml?: string
+  /** 游戏节点（game.playable）：最近一次编译报告 */
+  gamePlayableReport?: string
 }
 
 export interface GraphPortDef {

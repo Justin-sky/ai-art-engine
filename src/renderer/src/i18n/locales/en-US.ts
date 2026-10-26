@@ -6081,7 +6081,11 @@ export default {
         gen: 'SVG Generation'
       },
       game: {
-        htmlGen: 'Playable HTML gen'
+        htmlGen: 'Playable HTML gen',
+        pbrTile: 'Seamless Tile & PBR',
+        audioDsp: 'Game Audio DSP',
+        levelMap: '2D Level Map Gen',
+        playable: 'Playable Game Sandbox'
       },
       frame: {
         animGen: 'Generate Frame Animation Sheet'
@@ -8015,6 +8019,70 @@ export default {
       playableModalHint:
         'WASD / Arrows to move · Space to jump/dash · Click or J to attack with live hit-flash & damage numbers',
       closeDemoBtn: 'Close Sandbox'
+    }
+  },
+  gameNodes: {
+    pbrTile: {
+      sectionTitle: 'Seamless Tile & PBR 4-Channel Params',
+      hint: 'Connect an upstream image or run standalone: executes toroidal seamless blending, Sobel Normal/Roughness/ORM/Height map derivation, UI 9-Slice border detection, and 2D convex hull extraction.',
+      seamlessToggle: 'Enable Toroidal Seamless Tile Blend',
+      blendRatio: 'Seamless Edge Blend Ratio',
+      normalStrength: 'Normal Bump Strength',
+      aoStrength: 'Ambient Occlusion (AO) Strength',
+      roughnessContrast: 'Roughness Contrast',
+      invertRoughness: 'Invert Roughness (Glossiness → Roughness)'
+    },
+    audioDsp: {
+      sectionTitle: 'Game Audio WAV DSP Params',
+      hint: 'Connect upstream audio or synthesize a retro seed waveform: runs equal-power cosine loop crossfading or 4× pitch/tempo anti-fatigue SFX variation.',
+      mode: 'Audio DSP Mode',
+      modeLoopBgm: 'Equal-Power Cosine Crossfade Loop BGM',
+      modeSfxVariants: 'Silence Trim + 4× Pitch/Tempo SFX Variants',
+      crossfadeSec: 'Loop Crossfade Duration (s)',
+      trimThresholdDb: 'Silence Trim Threshold (dB)',
+      variantCount: 'SFX Variant Count',
+      pitchSpreadCents: 'Pitch Spread (±cents)',
+      tempoSpreadPct: 'Tempo Spread (±%)'
+    },
+    levelMap: {
+      sectionTitle: '2D Level Map Topology Params',
+      hint: 'Procedurally generates 2D level topology and renders a crisp pixel-art map preview PNG while emitting Tiled (.tmj) JSON on the text port.',
+      algorithm: 'Level Topology Algorithm',
+      algBsp: 'BSP Dungeon Rooms & Corridors',
+      algCave: 'Cellular Automata Organic Cave',
+      algArena: 'Survivor Arena Wave Spawner',
+      algPlatformer: 'Side-Scroller Platformer Course',
+      algoBsp: 'BSP Dungeon Rooms & Corridors',
+      algoCave: 'Cellular Automata Organic Cave',
+      algoArena: 'Survivor Arena Wave Spawner',
+      algoPlatformer: 'Side-Scroller Platformer Course',
+      width: 'Grid Width (tiles)',
+      height: 'Grid Height (tiles)',
+      seed: 'Random Seed',
+      randomSeed: 'Randomize'
+    },
+    playable: {
+      sectionTitle: 'HTML5 Playable Sandbox Params',
+      hint: 'Connect hero/enemy/tile sprites, level .tmj JSON, and audio: run the node to compile a 60fps HTML5 playable prototype and launch fullscreen playtest below.',
+      title: 'Playable Prototype Title',
+      genre: 'Gameplay Physics Genre',
+      genreRogue: 'Top-Down Action Roguelike / Survivor (WASD + Dash)',
+      genrePlatformer: '2D Side-Scroller Platformer (Gravity + Jump + Slash)',
+      genreDungeon: 'Dungeon Crawler RPG (Rooms + Loot + Monsters)',
+      genreTopdown: 'Top-Down Action RPG / Survivor (WASD + Dash)',
+      cameraMode: 'Camera Projection Mode',
+      camTopdown34: '3/4 Top-Down RPG Tilt',
+      camTopdown90: '90° Orthographic Top-Down',
+      camIso45: '2:1 Isometric Projection',
+      camSide: '2D Side-Scroller View',
+      playNow: 'Launch Fullscreen Playable Sandbox (WASD / Attack)',
+      closeModal: 'Close Sandbox',
+      openFullscreenBtn: '▶ Launch Fullscreen Playable Sandbox (WASD / Attack)',
+      runNodeHint:
+        'Click the ▶ Run button on the node card first to compile the playable prototype, then launch fullscreen playtest here.',
+      modalHint:
+        'WASD / Arrows to move · Space to jump/dash · Click or J to attack with hit-flash, floating damage numbers & particles',
+      closeBtn: 'Close Sandbox'
     }
   }
 } as const

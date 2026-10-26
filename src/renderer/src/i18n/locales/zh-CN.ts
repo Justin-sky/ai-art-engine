@@ -5926,7 +5926,11 @@ export default {
         gen: 'SVG 生成'
       },
       game: {
-        htmlGen: '可玩 HTML 生成'
+        htmlGen: '可玩 HTML 生成',
+        pbrTile: '无缝瓦片与PBR',
+        audioDsp: '游戏音频工坊',
+        levelMap: '2D关卡地图生成',
+        playable: '可玩游戏沙盒'
       },
       frame: {
         animGen: '生成帧动画序列图'
@@ -7781,6 +7785,69 @@ export default {
       playableModalHint:
         'WASD / 方向键移动 · 空格跳跃/冲刺 · 鼠标左键或 J 键攻击并触发暴击飘字与粒子特效',
       closeDemoBtn: '关闭试玩窗口'
+    }
+  },
+  gameNodes: {
+    pbrTile: {
+      sectionTitle: '无缝瓦片与 PBR 四通道材质参数',
+      hint: '连接上游原图或独立运行：自动执行环形四方连续无缝化、Sobel 法线/粗糙度/ORM/高度图派生、UI 九宫格切边与 2D 凸包碰撞体提取。',
+      seamlessToggle: '启用环形四方连续无缝融合 (Toroidal Blend)',
+      blendRatio: '四方连续接缝融合宽度',
+      normalStrength: '法线凹凸强度',
+      aoStrength: '环境光遮蔽 (AO) 强度',
+      roughnessContrast: '粗糙度对比度',
+      invertRoughness: '反转粗糙度通道 (Glossiness → Roughness)'
+    },
+    audioDsp: {
+      sectionTitle: '游戏音频 WAV DSP 参数',
+      hint: '连接上游音频或独立合成 8-Bit 复古种子音：在纯前端/本地完成等功率无缝循环 BGM 或 4× 防听觉疲劳音效变体。',
+      mode: '音频处理模式',
+      modeLoopBgm: '等功率余弦交叉淡化无缝循环 BGM',
+      modeSfxVariants: '静音裁切 + 4× 音高/语速随机防疲劳变体',
+      crossfadeSec: '循环交叉淡化时长 (秒)',
+      trimThresholdDb: '首尾静音自动裁切门限 (dB)',
+      variantCount: '音效变体数量',
+      pitchSpreadCents: '音高随机偏移范围 (音分)',
+      tempoSpreadPct: '速度随机偏移范围 (%)'
+    },
+    levelMap: {
+      sectionTitle: '2D 关卡地图拓扑生成参数',
+      hint: '程序化生成 2D 关卡拓扑并渲染高清俯视像素预览图，同时在文本输出口产出 Tiled (.tmj) 标准关卡 JSON。',
+      algorithm: '关卡拓扑生成算法',
+      algBsp: 'BSP 地牢房间与走廊 (Roguelike Dungeon)',
+      algCave: '元胞自动机自然洞穴 (Cellular Cave)',
+      algArena: '竞技场幸存者波次刷怪图 (Survivor Arena)',
+      algPlatformer: '横版跳跃平台关卡 (Platformer Course)',
+      algoBsp: 'BSP 地牢房间与走廊 (Roguelike Dungeon)',
+      algoCave: '元胞自动机自然洞穴 (Cellular Cave)',
+      algoArena: '竞技场幸存者波次刷怪图 (Survivor Arena)',
+      algoPlatformer: '横版跳跃平台关卡 (Platformer Course)',
+      width: '地图宽度 (格)',
+      height: '地图高度 (格)',
+      seed: '随机种子 (Seed)',
+      randomSeed: '随机种子'
+    },
+    playable: {
+      sectionTitle: 'HTML5 可玩沙盒编译参数',
+      hint: '可连入主角/怪物/地砖图片、关卡 .tmj JSON 与音效：点击节点执行即可编译 60fps HTML5 可玩沙盒原型并在下方直接全屏试玩。',
+      title: '试玩游戏标题',
+      genre: '玩法物理模式',
+      genreRogue: '2.5D 肉鸽动作割草 (WASD + 冲刺 + 挥砍)',
+      genrePlatformer: '2D 横版跳跃动作闯关 (重力 + 跳跃 + 斩击)',
+      genreDungeon: '地牢探索 RPG (房间迷宫 + 宝箱与怪物)',
+      genreTopdown: '2.5D 俯视动作 RPG / 幸存者割草 (WASD + 冲刺)',
+      cameraMode: '镜头视角与物理投影',
+      camTopdown34: '3/4 俯视斜角 (Top-Down RPG)',
+      camTopdown90: '90° 正交顶视角 (Arena)',
+      camIso45: '2:1 等轴测视角 (Isometric)',
+      camSide: '2D 横版正交平视 (Side-Scroller)',
+      playNow: '立即全屏试玩可交互原型 (WASD / 攻击)',
+      closeModal: '关闭试玩窗口',
+      openFullscreenBtn: '▶ 立即全屏试玩可交互原型 (WASD / 攻击)',
+      runNodeHint: '请先点击画布节点右上角的「▶ 运行」按钮生成可玩原型，随后即可在此全屏试玩',
+      modalHint:
+        'WASD / 方向键移动 · 空格跳跃/冲刺 · 鼠标左键或 J 键攻击并触发受击闪白、暴击飘字与粒子特效',
+      closeBtn: '关闭试玩窗口'
     }
   }
 } as const

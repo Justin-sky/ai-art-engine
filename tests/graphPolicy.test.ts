@@ -144,7 +144,11 @@ describe('graph policy', () => {
         'stage.2d',
         'text.select',
         'spatialWorld.export',
-        'script.run'
+        'script.run',
+        'game.pbrTile',
+        'game.audioDsp',
+        'game.levelMap',
+        'game.playable'
       ].sort()
     )
   })
