@@ -127,4 +127,46 @@ describe('buildEngineSpriteSheetJson：通用引擎 Sprite Sheet Atlas JSON', ()
     expect(atlas.frames['f-8']?.frame).toEqual({ x: 0, y: 64, w: 64, h: 64 })
     expect(atlas.frames['f-9']?.frame).toEqual({ x: 64, y: 64, w: 64, h: 64 })
   })
+
+  it('支持逐帧停留倍率 frameHolds，导出不等长帧 duration（Hit-Stop 打击感顿帧）', () => {
+    const atlas = buildEngineSpriteSheetJson({
+      imageFileName: 'hero-slash.png',
+      frameWidth: 64,
+      frameHeight: 64,
+      frameNames: ['s-0', 's-1', 's-2', 's-3'],
+      fps: 10,
+      frameHolds: [1.5, 0.5, 2.5, 1]
+    })
+    expect(atlas.frames['s-0']?.duration).toBe(150)
+    expect(atlas.frames['s-1']?.duration).toBe(50)
+    expect(atlas.frames['s-2']?.duration).toBe(250)
+    expect(atlas.frames['s-3']?.duration).toBe(100)
+  })
+
+  it('支持导出配套 2D 法线贴图 normalMap 与逐帧 hurtbox + hitbox 攻防双判定框切片', () => {
+    const atlas = buildEngineSpriteSheetJson({
+      imageFileName: 'hero-slash.png',
+      normalMapFileName: 'hero-slash.normal.png',
+      frameWidth: 64,
+      frameHeight: 64,
+      frameNames: ['s-0', 's-1'],
+      fps: 12,
+      frameCombatBoxes: [
+        { hurtbox: { x: 20, y: 12, width: 16, height: 44 }, hitbox: null },
+        {
+          hurtbox: { x: 20, y: 12, width: 16, height: 44 },
+          hitbox: { x: 36, y: 24, width: 22, height: 10 }
+        }
+      ]
+    })
+    expect(atlas.meta.normalMap).toBe('hero-slash.normal.png')
+    const hurtSlice = atlas.meta.slices.find((s) => s.name === 'hurtbox')!
+    const hitSlice = atlas.meta.slices.find((s) => s.name === 'hitbox')!
+    expect(hurtSlice.keys.length).toBe(2)
+    expect(hitSlice.keys.length).toBe(1)
+    expect(hitSlice.keys[0]).toMatchObject({
+      frame: 1,
+      bounds: { x: 36, y: 24, w: 22, h: 10 }
+    })
+  })
 })

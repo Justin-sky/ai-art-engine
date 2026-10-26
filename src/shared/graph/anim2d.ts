@@ -43,6 +43,23 @@ export const ANIM2D_GRID_PRESETS: readonly Anim2dGridPreset[] = [
 ] as const
 
 /**
+ * 根据 rows×cols 网格比例自动推算最佳生图画幅（使每个单格接近 1:1 正方比例，防止 1×4/2×4 在 1:1 画布中挤压变形或诱发模型乱分格）。
+ */
+export function recommendAnimGridAspectRatio(
+  rows: number,
+  cols: number
+): '16:9' | '4:3' | '1:1' | '3:4' | '9:16' {
+  const r = Math.max(1, Math.floor(Number(rows) || 1))
+  const c = Math.max(1, Math.floor(Number(cols) || 1))
+  const ratio = c / r
+  if (ratio >= 1.65) return '16:9'
+  if (ratio >= 1.25) return '4:3'
+  if (ratio <= 1 / 1.65) return '9:16'
+  if (ratio <= 1 / 1.25) return '3:4'
+  return '1:1'
+}
+
+/**
  * 特效/角色序列透明化使用的背景模式：
  * - `''`/`none`：不约束背景；
  * - `'auto'`：切帧时自动采样每格四角背景色并键控抠除（适用纯色/灰底/立绘底）；
@@ -141,6 +158,185 @@ export function readAnimDisabledCellsFromNode(
 ): string[] {
   const s = readAnim2dFromNode(params ?? {})
   return normalizeAnimDisabledCells(params?.animDisabledCells, s.rows, s.cols)
+}
+
+/** 逐格停留时长倍率（0.25~8，默认 1；用于攻击蓄力、挥砍加速与命中顿帧 Hit-Stop） */
+export type AnimRhythmPresetId = 'uniform' | 'attack-hitstop' | 'jump-arc' | 'charge-burst'
+
+export function normalizeAnimCellHold(raw: unknown): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return 1
+  return Math.round(Math.max(0.25, Math.min(8, n)) * 100) / 100
+}
+
+export function normalizeAnimCellHolds(
+  raw: unknown,
+  rows: number,
+  cols: number
+): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const valid = new Set(anim2dCellKeys(rows, cols))
+  const out: Record<string, number> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim()
+    if (!valid.has(key)) continue
+    const hold = normalizeAnimCellHold(v)
+    if (Math.abs(hold - 1) >= 0.01) {
+      out[key] = hold
+    }
+  }
+  return out
+}
+
+export function readAnimCellHoldsFromNode(
+  params: { animCellHolds?: unknown; animRows?: unknown; animCols?: unknown } | null | undefined
+): Record<string, number> {
+  const s = readAnim2dFromNode(params ?? {})
+  return normalizeAnimCellHolds(params?.animCellHolds, s.rows, s.cols)
+}
+
+/**
+ * 构建专业游戏动作打击感节奏预设（逐格停留倍率）：
+ * - uniform: 全帧等长 1x
+ * - attack-hitstop: 蓄力预备(1.5x) → 极速挥砍(0.5x) → 命中定格顿帧 Hit-Stop(2.5x) → 收招(1x)
+ * - jump-arc: 下蹲蓄力(1.5x) → 起跳爆发(0.5x) → 最高点滞空悬停(2x) → 下落(0.5x) → 落地缓冲(1.5x)
+ * - charge-burst: 前半聚气蓄力(2x) → 瞬间爆发释放(0.5x) → 余威定格(2x)
+ */
+export function buildAnimRhythmPresetHolds(
+  presetId: AnimRhythmPresetId,
+  cellKeys: readonly string[]
+): Record<string, number> {
+  const n = cellKeys.length
+  if (n === 0 || presetId === 'uniform') return {}
+  const out: Record<string, number> = {}
+  if (presetId === 'attack-hitstop') {
+    cellKeys.forEach((key, i) => {
+      if (i === 0) out[key] = 1.5
+      else if (i === Math.max(1, Math.floor(n * 0.35))) out[key] = 0.5
+      else if (i === Math.min(n - 1, Math.max(1, Math.floor(n * 0.65)))) out[key] = 2.5
+    })
+  } else if (presetId === 'jump-arc') {
+    const apexIdx = Math.floor((n - 1) / 2)
+    cellKeys.forEach((key, i) => {
+      if (i === 0 || i === n - 1) out[key] = 1.5
+      else if (i === apexIdx) out[key] = 2
+      else out[key] = 0.5
+    })
+  } else if (presetId === 'charge-burst') {
+    const burstIdx = Math.max(1, Math.floor(n * 0.6))
+    cellKeys.forEach((key, i) => {
+      if (i < burstIdx) out[key] = 2
+      else if (i === burstIdx) out[key] = 0.5
+      else if (i === n - 1) out[key] = 2
+    })
+  }
+  return out
+}
+
+/** 单帧像素级偏移微调与水平镜像翻转 */
+export interface AnimCellOffset {
+  dx: number
+  dy: number
+  flipX?: boolean
+}
+
+export function normalizeAnimCellOffsets(
+  raw: unknown,
+  rows: number,
+  cols: number
+): Record<string, AnimCellOffset> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const valid = new Set(anim2dCellKeys(rows, cols))
+  const out: Record<string, AnimCellOffset> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim()
+    if (!valid.has(key) || !v || typeof v !== 'object') continue
+    const item = v as { dx?: unknown; dy?: unknown; flipX?: unknown }
+    const dx = Math.max(-256, Math.min(256, Math.round(Number(item.dx) || 0)))
+    const dy = Math.max(-256, Math.min(256, Math.round(Number(item.dy) || 0)))
+    const flipX = item.flipX === true
+    if (dx !== 0 || dy !== 0 || flipX) {
+      out[key] = { dx, dy, ...(flipX ? { flipX: true } : {}) }
+    }
+  }
+  return out
+}
+
+export function readAnimCellOffsetsFromNode(
+  params: { animCellOffsets?: unknown; animRows?: unknown; animCols?: unknown } | null | undefined
+): Record<string, AnimCellOffset> {
+  const s = readAnim2dFromNode(params ?? {})
+  return normalizeAnimCellOffsets(params?.animCellOffsets, s.rows, s.cols)
+}
+
+/** 精灵后处理：外轮廓描边色（'' | 'black' | 'white' | 'gold' | 'cyan'） */
+export type AnimOutlineColor = '' | 'black' | 'white' | 'gold' | 'cyan'
+
+export function normalizeAnimOutlineColor(raw: unknown): AnimOutlineColor {
+  return raw === 'black' || raw === 'white' || raw === 'gold' || raw === 'cyan' ? raw : ''
+}
+
+export function readAnimOutlineFromNode(
+  params: { animOutline?: unknown } | null | undefined
+): AnimOutlineColor {
+  return normalizeAnimOutlineColor(params?.animOutline)
+}
+
+/** 精灵后处理：真像素网格对齐粒度（0=关闭, 2/3/4/6 px） */
+export function normalizeAnimPixelSnap(raw: unknown): number {
+  const n = Math.floor(Number(raw) || 0)
+  if (!Number.isFinite(n) || n <= 1) return 0
+  return Math.min(16, Math.max(2, n))
+}
+
+export function readAnimPixelSnapFromNode(
+  params: { animPixelSnap?: unknown } | null | undefined
+): number {
+  return normalizeAnimPixelSnap(params?.animPixelSnap)
+}
+
+/** 精灵后处理：脚底接触椭圆阴影开关 */
+export function readAnimGroundShadowFromNode(
+  params: { animGroundShadow?: unknown } | null | undefined
+): boolean {
+  return params?.animGroundShadow === true
+}
+
+/** 精灵后处理：跨帧调色板锁死与限色量化（0=关闭, 16/32/64=像素索引色, 128=跨帧主色防闪烁锁死） */
+export type AnimPaletteLock = 0 | 16 | 32 | 64 | 128
+
+export function normalizeAnimPaletteLock(raw: unknown): AnimPaletteLock {
+  const n = Math.floor(Number(raw) || 0)
+  if (n === 16 || n === 32 || n === 64 || n === 128) return n
+  return 0
+}
+
+export function readAnimPaletteLockFromNode(
+  params: { animPaletteLock?: unknown } | null | undefined
+): AnimPaletteLock {
+  return normalizeAnimPaletteLock(params?.animPaletteLock)
+}
+
+/** 精灵后处理：动作残影/刀光幻影拖尾（'' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'） */
+export type AnimMotionTrail = '' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'
+
+export function normalizeAnimMotionTrail(raw: unknown): AnimMotionTrail {
+  return raw === 'cyan' || raw === 'gold' || raw === 'purple' || raw === 'crimson' || raw === 'echo'
+    ? raw
+    : ''
+}
+
+export function readAnimMotionTrailFromNode(
+  params: { animMotionTrail?: unknown } | null | undefined
+): AnimMotionTrail {
+  return normalizeAnimMotionTrail(params?.animMotionTrail)
+}
+
+/** 精灵后处理：首尾循环无缝平滑闭合开关 */
+export function readAnimLoopBlendFromNode(
+  params: { animLoopBlend?: unknown } | null | undefined
+): boolean {
+  return params?.animLoopBlend === true
 }
 
 /** 视角锁定与画风锁定（用于 frame.animGen 提示词增强） */

@@ -999,6 +999,24 @@ export interface NodeExecuteContext {
     chromaKey?: { color: 'black' | 'white' | 'auto'; threshold?: number; feather?: number }
     /** 帧间防抖稳像：ground=脚底基线对齐 / center=主体质心居中 */
     stabilize?: 'off' | 'ground' | 'center'
+    /** 单格像素级微调偏移与水平翻转 */
+    cellOffset?: { dx?: number; dy?: number; flipX?: boolean }
+    /** 真像素网格重采样粒度（0=关闭, 2/3/4/6 px） */
+    pixelSnap?: number
+    /** 精灵 1px 外轮廓描边色 */
+    outlineColor?: '' | 'black' | 'white' | 'gold' | 'cyan'
+    /** 脚底接触椭圆阴影 */
+    groundShadow?: boolean
+    /** 跨帧调色板锁死与限色量化（0=关闭, 16/32/64=像素画定色, 128=跨帧主色防闪烁锁死） */
+    paletteLock?: 0 | 16 | 32 | 64 | 128
+    /** 动作残影/刀光幻影拖尾（'' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'） */
+    motionTrail?: '' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'
+    /** 上一有效帧的 cellKey（用于合成动作残影拖尾） */
+    prevCellKey?: string
+    /** 首尾循环无缝平滑闭合开关（仅对循环尾帧生效） */
+    loopBlend?: boolean
+    /** 当前格是否为循环尾帧 */
+    isLastLoopCell?: boolean
   }) => Promise<{ dataUrl: string; width: number; height: number; cellKey: string }>
   /**
    * 视频抽帧或多张关键帧散图 → 标准 rows×cols 序列图（Sprite Sheet）：
@@ -1033,6 +1051,8 @@ export interface NodeExecuteContext {
     fps: number
     /** 缺省循环播放 */
     loop?: boolean
+    /** 逐帧停留时长倍率（1=标准帧长，2=2倍停顿，0.5=半帧加速） */
+    frameHolds?: number[]
   }) => Promise<{
     dataUrl: string
     width: number

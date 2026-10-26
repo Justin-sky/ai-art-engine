@@ -681,6 +681,22 @@ export interface GraphNodeParams {
   animPlayMode?: 'loop' | 'pingpong'
   /** 2D帧动画：禁用/跳过的坏帧格子键列表（如 ['1-3']） */
   animDisabledCells?: string[]
+  /** 2D帧动画：逐格停留时长倍率（如 {'1-1': 1.5, '1-2': 0.5, '1-3': 2.5}，用于 Hit-Stop 打击感顿帧） */
+  animCellHolds?: Record<string, number>
+  /** 2D帧动画：单格像素级偏移微调与水平翻转（如 {'1-2': { dx: 4, dy: -2, flipX: false }}） */
+  animCellOffsets?: Record<string, { dx: number; dy: number; flipX?: boolean }>
+  /** 2D帧动画：PixelOver 级精灵自动外描边颜色（''|black|white|gold|cyan） */
+  animOutline?: '' | 'black' | 'white' | 'gold' | 'cyan'
+  /** 2D帧动画：PixelOver 级真像素晶格规整块尺寸（0=关闭，2/3/4/6 px） */
+  animPixelSnap?: number
+  /** 2D帧动画：脚底接触椭圆阴影开关 */
+  animGroundShadow?: boolean
+  /** 2D帧动画：跨帧调色板锁死与限色量化（0=关闭，16/32/64=像素画定色，128=跨帧首帧色彩防闪烁） */
+  animPaletteLock?: 0 | 16 | 32 | 64 | 128
+  /** 2D帧动画：动作残影/幻影拖尾（''|cyan|gold|purple|crimson|echo） */
+  animMotionTrail?: '' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'
+  /** 2D帧动画：首尾循环无缝平滑闭合开关 */
+  animLoopBlend?: boolean
   /**
    * 生成帧动画序列图模式：
    * - 'auto'：智能判别（仅接视频→视频直抽拼表；视频+角色图→视频姿态引导重绘；多张散图→散帧拼表；单张角色图→AI生图）

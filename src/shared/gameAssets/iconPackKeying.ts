@@ -260,6 +260,9 @@ export function applyBorderFloodColorKey(
   if (total <= 0 || rgba.length < total * 4) {
     return { background: null, keyedPixels: 0, keyedRatio: 0 }
   }
+  if (!options?.background && hasNativeTransparentPixels(rgba, w, h)) {
+    return { background: null, keyedPixels: 0, keyedRatio: 0, nativeTransparent: true }
+  }
   const sampled = options?.background ?? samplePerimeterBackgroundColor(rgba, w, h)
   if (!sampled) {
     return { background: null, keyedPixels: 0, keyedRatio: 0 }
@@ -452,4 +455,29 @@ export function applyBorderFloodColorKey(
     keyedPixels,
     keyedRatio: keyedPixels / total
   }
+}
+
+/**
+ * 面向 2D 角色序列帧单格的智能背景键控（泛洪抠除外部背景 + 保护眼白/银白盔甲/服饰内部同色块）：
+ * 1. 若原图已自带原生透明像素（`hasNativeTransparentPixels`），直接跳过键控，严禁二次抠图破坏角色像素；
+ * 2. 否则仅执行四边连通泛洪 `applyBorderFloodColorKey`（带 1px 光学共线抗锯齿），严禁向角色封闭轮廓内部挖洞，
+ *    确保银白盔甲、眼白、浅色服饰等内部区域 100% 完整保留。
+ */
+export function applySpriteCellAutoKey(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: IconKeyOptions & { background?: IconKeyColor | null }
+): BorderFloodKeyResult {
+  const w = Math.max(0, Math.floor(width))
+  const h = Math.max(0, Math.floor(height))
+  const total = w * h
+  if (total <= 0 || rgba.length < total * 4) {
+    return { background: null, keyedPixels: 0, keyedRatio: 0 }
+  }
+  if (hasNativeTransparentPixels(rgba, w, h)) {
+    return { background: null, keyedPixels: 0, keyedRatio: 0, nativeTransparent: true }
+  }
+
+  return applyBorderFloodColorKey(rgba, w, h, options)
 }

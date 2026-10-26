@@ -72,6 +72,7 @@ import { composeStage2dCanvas } from '../features/graph/model/composeStage2dCanv
 import { composeStage2dFrameSheet } from '../features/graph/model/composeStage2dFrameSheet'
 import { autoDetectAndFitStage2dRig } from '../features/graph/model/composeStage2dAutoCut'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
+import { composeVideoFrameSheet } from '../features/graph/model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
 import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
@@ -1771,6 +1772,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           composeStage2dFrameSheet,
           autoRigStage2dScene: autoDetectAndFitStage2dRig,
           composeImageGridCell,
+          composeVideoFrameSheet,
           composeGifFrames: composeAnim2dGif,
           renderSvgFrames,
           composeImageIconPackSheet,

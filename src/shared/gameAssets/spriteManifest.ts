@@ -134,6 +134,8 @@ export interface EngineSpriteSheetJson {
     app: string
     version: string
     image: string
+    /** 配套 2D 切线空间法线贴图文件名（如 hero-normal.png） */
+    normalMap?: string
     format: 'RGBA8888'
     size: { w: number; h: number }
     scale: string
@@ -146,10 +148,11 @@ export interface EngineSpriteSheetJson {
 /**
  * 构建通用游戏引擎 Sprite Sheet Atlas JSON（兼容 TexturePacker / Aseprite / Godot / Unity / Phaser）。
  * 包含逐帧裁剪矩形 `frame`、毫秒帧长 `duration`、归一化锚点 `pivot`、
- * 动画剪辑标签 `meta.frameTags` 以及受击框/挂点切片 `meta.slices`。
+ * 动画剪辑标签 `meta.frameTags` 以及受击框/攻击判定框切片 `meta.slices`。
  */
 export function buildEngineSpriteSheetJson(input: {
   imageFileName: string
+  normalMapFileName?: string
   frameWidth: number
   frameHeight: number
   frameNames: string[]
@@ -158,6 +161,13 @@ export function buildEngineSpriteSheetJson(input: {
   anchor?: SpriteManifestAnchor
   playMode?: 'loop' | 'once' | 'pingpong'
   tagName?: string
+  /** 逐帧停留时长倍率（1=标准时长，2=2倍顿帧，0.5=极速帧） */
+  frameHolds?: number[]
+  /** 逐帧自动检测到的躯干受击框 (hurtbox) 与武器攻击判定框 (hitbox) */
+  frameCombatBoxes?: ReadonlyArray<{
+    hurtbox: { x: number; y: number; width: number; height: number }
+    hitbox?: { x: number; y: number; width: number; height: number } | null
+  }>
 }): EngineSpriteSheetJson {
   const frameWidth = clampInt(input.frameWidth, 1, 8192)
   const frameHeight = clampInt(input.frameHeight, 1, 8192)
@@ -174,13 +184,15 @@ export function buildEngineSpriteSheetJson(input: {
     const key = rawName.trim() || `frame-${idx}`
     const col = idx % columns
     const row = Math.floor(idx / columns)
+    const holdRaw = Number(input.frameHolds?.[idx] ?? 1)
+    const hold = Number.isFinite(holdRaw) && holdRaw > 0 ? Math.max(0.25, Math.min(8, holdRaw)) : 1
     frames[key] = {
       frame: { x: col * frameWidth, y: row * frameHeight, w: frameWidth, h: frameHeight },
       rotated: false,
       trimmed: false,
       spriteSourceSize: { x: 0, y: 0, w: frameWidth, h: frameHeight },
       sourceSize: { w: frameWidth, h: frameHeight },
-      duration: durationMs,
+      duration: Math.max(8, Math.round(durationMs * hold)),
       pivot
     }
   })
@@ -193,12 +205,75 @@ export function buildEngineSpriteSheetJson(input: {
   const hurtboxY =
     anchor === 'ground' ? frameHeight - hurtboxH : Math.round((frameHeight - hurtboxH) / 2)
 
+  const hurtboxKeys =
+    input.frameCombatBoxes && input.frameCombatBoxes.length > 0
+      ? input.frameCombatBoxes.map((cb, idx) => ({
+          frame: idx,
+          bounds: {
+            x: cb.hurtbox.x,
+            y: cb.hurtbox.y,
+            w: cb.hurtbox.width,
+            h: cb.hurtbox.height
+          },
+          pivot: {
+            x: Math.round(frameWidth * pivot.x) - cb.hurtbox.x,
+            y: Math.round(frameHeight * pivot.y) - cb.hurtbox.y
+          }
+        }))
+      : [
+          {
+            frame: 0,
+            bounds: { x: hurtboxX, y: hurtboxY, w: hurtboxW, h: hurtboxH },
+            pivot: {
+              x: Math.round(frameWidth * pivot.x) - hurtboxX,
+              y: Math.round(frameHeight * pivot.y) - hurtboxY
+            }
+          }
+        ]
+
+  const hitboxKeys = (input.frameCombatBoxes ?? [])
+    .map((cb, idx) =>
+      cb.hitbox
+        ? {
+            frame: idx,
+            bounds: {
+              x: cb.hitbox.x,
+              y: cb.hitbox.y,
+              w: cb.hitbox.width,
+              h: cb.hitbox.height
+            },
+            pivot: {
+              x: Math.round(cb.hitbox.width / 2),
+              y: Math.round(cb.hitbox.height / 2)
+            }
+          }
+        : null
+    )
+    .filter((k): k is NonNullable<typeof k> => k !== null)
+
+  const slices: EngineSpriteSheetSlice[] = [
+    {
+      name: 'hurtbox',
+      color: '#0000ffff',
+      keys: hurtboxKeys
+    }
+  ]
+  if (hitboxKeys.length > 0) {
+    slices.push({
+      name: 'hitbox',
+      color: '#ff0040ff',
+      keys: hitboxKeys
+    })
+  }
+
+  const normalMap = input.normalMapFileName?.trim()
   return {
     frames,
     meta: {
       app: 'ai-art-engine',
       version: '1.0',
       image: input.imageFileName.trim() || 'sheet.png',
+      ...(normalMap ? { normalMap } : {}),
       format: 'RGBA8888',
       size: { w: frameWidth * columns, h: frameHeight * rows },
       scale: '1',
@@ -211,22 +286,7 @@ export function buildEngineSpriteSheetJson(input: {
           direction
         }
       ],
-      slices: [
-        {
-          name: 'hurtbox',
-          color: '#0000ffff',
-          keys: [
-            {
-              frame: 0,
-              bounds: { x: hurtboxX, y: hurtboxY, w: hurtboxW, h: hurtboxH },
-              pivot: {
-                x: Math.round(frameWidth * pivot.x) - hurtboxX,
-                y: Math.round(frameHeight * pivot.y) - hurtboxY
-              }
-            }
-          ]
-        }
-      ]
+      slices
     }
   }
 }

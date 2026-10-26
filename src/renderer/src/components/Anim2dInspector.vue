@@ -175,9 +175,66 @@
           @change="onKeyThresholdChange"
         />
       </label>
+
+      <div class="grid2">
+        <label class="field">
+          <span>{{ pickBi('精灵外描边', 'Sprite Outline') }}</span>
+          <select :value="outlineColor" @change="onOutlineColorChange">
+            <option value="">{{ pickBi('无描边', 'None') }}</option>
+            <option value="black">{{ pickBi('⬛ 1px 黑边', '1px Black') }}</option>
+            <option value="white">{{ pickBi('⬜ 1px 白边', '1px White') }}</option>
+            <option value="gold">{{ pickBi('🟨 1px 金光', '1px Gold') }}</option>
+            <option value="cyan">{{ pickBi('🟦 1px 电光蓝', '1px Cyan') }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ pickBi('真像素规整', 'Pixel Snap') }}</span>
+          <select :value="String(pixelSnap)" @change="onPixelSnapChange">
+            <option value="0">{{ pickBi('关闭（原画）', 'Off') }}</option>
+            <option value="2">2px {{ pickBi('精细像素', 'Fine') }}</option>
+            <option value="3">3px {{ pickBi('16-bit', '16-bit') }}</option>
+            <option value="4">4px {{ pickBi('8-bit', '8-bit') }}</option>
+            <option value="6">6px {{ pickBi('粗像素', 'Chunky') }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="grid2">
+        <label class="field">
+          <span>{{ pickBi('调色板锁死', 'Palette Lock') }}</span>
+          <select :value="String(paletteLock)" @change="onPaletteLockChange">
+            <option value="0">{{ pickBi('关闭（自由色彩）', 'Off') }}</option>
+            <option value="128">{{ pickBi('🔒 跨帧防闪 (128色)', 'Cross-Frame Lock') }}</option>
+            <option value="64">{{ pickBi('🎨 64色 精良像素', '64-Color') }}</option>
+            <option value="32">{{ pickBi('🕹️ 32色 16-bit', '32-Color') }}</option>
+            <option value="16">{{ pickBi('👾 16色 8-bit', '16-Color') }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>{{ pickBi('动作残影拖尾', 'Motion Trail') }}</span>
+          <select :value="motionTrail" @change="onMotionTrailChange">
+            <option value="">{{ pickBi('无残影', 'None') }}</option>
+            <option value="cyan">{{ pickBi('🟦 霓虹青 (恶魔城)', 'Cyan Phantom') }}</option>
+            <option value="gold">{{ pickBi('🟨 疾风金闪', 'Gold Trail') }}</option>
+            <option value="purple">{{ pickBi('🟪 暗影紫魅', 'Purple Shadow') }}</option>
+            <option value="crimson">{{ pickBi('🟥 狂暴绯红', 'Crimson Slash') }}</option>
+            <option value="echo">{{ pickBi('👻 原色残像', 'Original Echo') }}</option>
+          </select>
+        </label>
+      </div>
+
+      <label class="anim-loop">
+        <input type="checkbox" :checked="groundShadow" @change="onGroundShadowChange" />
+        <span>{{ pickBi('绘制脚底接触椭圆阴影', 'Draw Ground Contact Shadow') }}</span>
+      </label>
+
+      <label class="anim-loop">
+        <input type="checkbox" :checked="loopBlend" @change="onLoopBlendChange" />
+        <span>{{ pickBi('首尾循环无缝平滑闭合', 'Seamless Loop Closure Blend') }}</span>
+      </label>
     </section>
 
-    <!-- 2. 运行自动合成配置 -->
+    <!-- 2. 运行自动合成配置与打击感律动预设 -->
     <section class="panel-card">
       <div class="grid2">
         <label class="field">
@@ -197,6 +254,25 @@
           </select>
         </label>
       </div>
+
+      <div class="field">
+        <span>{{ pickBi('打击感顿帧节奏预设（Hit-Stop）', 'Action Rhythm Presets') }}</span>
+        <div class="chip-grid">
+          <button type="button" class="chip" @click="applyRhythmPreset('uniform')">
+            {{ pickBi('1x 均匀', '1x Uniform') }}
+          </button>
+          <button type="button" class="chip" @click="applyRhythmPreset('attack-hitstop')">
+            ⚔️ {{ pickBi('挥砍顿帧', 'Attack Hit-Stop') }}
+          </button>
+          <button type="button" class="chip" @click="applyRhythmPreset('jump-arc')">
+            🦘 {{ pickBi('跳跃滞空', 'Jump Apex') }}
+          </button>
+          <button type="button" class="chip" @click="applyRhythmPreset('charge-burst')">
+            💥 {{ pickBi('蓄力爆发', 'Charge Burst') }}
+          </button>
+        </div>
+      </div>
+
       <p v-if="gifFps > 0" class="hint">
         {{ t('graph.anim2d.runGifHint') }}
       </p>
@@ -245,15 +321,54 @@
           v-if="onionSkin && prevActiveCell && prevActiveCell.key !== currentActiveCell?.key"
           :src="prevActiveCell.dataUrl"
           alt=""
-          class="onion-ghost"
+          class="onion-ghost onion-prev"
+        />
+        <img
+          v-if="
+            onionSkin &&
+            nextActiveCell &&
+            nextActiveCell.key !== currentActiveCell?.key &&
+            nextActiveCell.key !== prevActiveCell?.key
+          "
+          :src="nextActiveCell.dataUrl"
+          alt=""
+          class="onion-ghost onion-next"
         />
         <img v-if="currentActiveCell" :src="currentActiveCell.dataUrl" alt="" class="main-frame" />
         <div v-if="stabilize === 'ground'" class="guide-line ground" />
         <div v-else-if="stabilize === 'center'" class="guide-line center-h" />
         <div v-if="stabilize !== 'off'" class="guide-line center-v" />
         <span class="anim-frame-badge">
-          {{ activeIndex + 1 }}/{{ activeCells.length }} ({{ currentActiveCell?.key }})
+          {{ activeIndex + 1 }}/{{ activeCells.length }} ({{ currentActiveCell?.key }} ·
+          {{ getCellHold(currentActiveCell?.key) }}x)
         </span>
+      </div>
+
+      <div v-if="currentActiveCell" class="nudge-strip">
+        <span class="nudge-label"
+          >{{ pickBi('当前帧微调', 'Nudge') }} ({{ currentCellOffset.dx }},{{
+            currentCellOffset.dy
+          }})</span
+        >
+        <div class="nudge-btns">
+          <button type="button" class="icon-step" @click="nudgeCurrentCell(-1, 0, $event)">
+            ←
+          </button>
+          <button type="button" class="icon-step" @click="nudgeCurrentCell(0, -1, $event)">
+            ↑
+          </button>
+          <button type="button" class="icon-step" @click="nudgeCurrentCell(0, 1, $event)">↓</button>
+          <button type="button" class="icon-step" @click="nudgeCurrentCell(1, 0, $event)">→</button>
+          <button
+            type="button"
+            class="icon-step"
+            :class="{ active: currentCellOffset.flipX }"
+            @click="toggleCurrentCellFlipX"
+          >
+            ⇄
+          </button>
+          <button type="button" class="icon-step" @click="resetCurrentCellOffset">↺</button>
+        </div>
       </div>
 
       <div class="anim-bar">
@@ -341,6 +456,15 @@
           <span class="frame-index">#{{ index + 1 }}</span>
           <button
             type="button"
+            class="frame-hold-btn"
+            :class="{ custom: Math.abs(getCellHold(cell.key) - 1) >= 0.01 }"
+            :title="pickBi('点击切换顿帧倍率', 'Cycle frame hold')"
+            @click.stop="cycleCellHold(cell.key)"
+          >
+            {{ getCellHold(cell.key) }}x
+          </button>
+          <button
+            type="button"
             class="frame-enable-btn"
             :title="t('graph.anim2d.toggleFrameHint')"
             @click.stop="toggleCellDisabled(cell.key)"
@@ -387,21 +511,43 @@ import {
   ANIM2D_GRID_PRESETS,
   anim2dCellKeys,
   animGifFpsToNodePatch,
+  buildAnimRhythmPresetHolds,
+  normalizeAnimMotionTrail,
+  normalizeAnimOutlineColor,
+  normalizeAnimPaletteLock,
+  normalizeAnimPixelSnap,
   normalizeAnimVideoRange,
   readAnim2dFromNode,
+  readAnimCellHoldsFromNode,
+  readAnimCellOffsetsFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGifFpsFromNode,
+  readAnimGroundShadowFromNode,
   readAnimKeyColorFromNode,
   readAnimKeyThresholdFromNode,
+  readAnimLoopBlendFromNode,
+  readAnimMotionTrailFromNode,
+  readAnimOutlineFromNode,
+  readAnimPaletteLockFromNode,
+  readAnimPixelSnapFromNode,
   readAnimPlayModeFromNode,
   readAnimStabilizeFromNode,
   readAnimVideoRangeFromNode,
+  type AnimCellOffset,
   type AnimKeyColor,
+  type AnimMotionTrail,
+  type AnimOutlineColor,
+  type AnimPaletteLock,
   type AnimPlayMode,
+  type AnimRhythmPresetId,
   type AnimStabilizeMode
 } from '@shared/graph'
-import { buildSpriteManifest } from '@shared/gameAssets'
+import {
+  buildEngineSpriteSheetJson,
+  buildSpriteManifest,
+  generateSpriteNormalMap
+} from '@shared/gameAssets'
 import { resolveCacheOutputRoot } from '@shared/domain'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from './GraphNodeOutputPreview.vue'
@@ -423,9 +569,13 @@ import {
   type Stage2dFrameSheet
 } from '../features/graph/model/composeStage2dFrameSheet'
 
-const { t, graphTypeLabel } = useStudioI18n()
+const { t, locale, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
 const project = useProjectStore()
+
+function pickBi(zh: string, en: string): string {
+  return locale.value === 'en-US' ? en : zh
+}
 
 const node = computed(() => {
   void graphEditorHosts.revision.value
@@ -464,6 +614,26 @@ const stabilize = computed(() =>
 const playMode = computed(() => (node.value ? readAnimPlayModeFromNode(node.value.params) : 'loop'))
 const disabledCells = computed(() =>
   node.value ? readAnimDisabledCellsFromNode(node.value.params) : []
+)
+const cellHolds = computed(() => (node.value ? readAnimCellHoldsFromNode(node.value.params) : {}))
+const cellOffsets = computed(() =>
+  node.value ? readAnimCellOffsetsFromNode(node.value.params) : {}
+)
+const outlineColor = computed<AnimOutlineColor>(() =>
+  node.value ? readAnimOutlineFromNode(node.value.params) : ''
+)
+const pixelSnap = computed(() => (node.value ? readAnimPixelSnapFromNode(node.value.params) : 0))
+const groundShadow = computed(() =>
+  node.value ? readAnimGroundShadowFromNode(node.value.params) : false
+)
+const paletteLock = computed<AnimPaletteLock>(() =>
+  node.value ? readAnimPaletteLockFromNode(node.value.params) : 0
+)
+const motionTrail = computed<AnimMotionTrail>(() =>
+  node.value ? readAnimMotionTrailFromNode(node.value.params) : ''
+)
+const loopBlend = computed(() =>
+  node.value ? readAnimLoopBlendFromNode(node.value.params) : false
 )
 
 const backdrop = ref<'checker' | 'dark' | 'light'>('checker')
@@ -646,6 +816,54 @@ function onPlayModeChange(e: Event): void {
   patchParams({ animPlayMode: value })
 }
 
+function onOutlineColorChange(e: Event): void {
+  const value = normalizeAnimOutlineColor((e.target as HTMLSelectElement).value)
+  patchParams({ animOutline: value })
+}
+
+function onPixelSnapChange(e: Event): void {
+  const value = normalizeAnimPixelSnap((e.target as HTMLSelectElement).value)
+  patchParams({ animPixelSnap: value })
+}
+
+function onGroundShadowChange(e: Event): void {
+  patchParams({ animGroundShadow: (e.target as HTMLInputElement).checked })
+}
+
+function onPaletteLockChange(e: Event): void {
+  const value = normalizeAnimPaletteLock((e.target as HTMLSelectElement).value)
+  patchParams({ animPaletteLock: value })
+}
+
+function onMotionTrailChange(e: Event): void {
+  const value = normalizeAnimMotionTrail((e.target as HTMLSelectElement).value)
+  patchParams({ animMotionTrail: value })
+}
+
+function onLoopBlendChange(e: Event): void {
+  patchParams({ animLoopBlend: (e.target as HTMLInputElement).checked })
+}
+
+const HOLD_CYCLE_STEPS = [1, 1.5, 2, 3, 0.5] as const
+
+function getCellHold(key: string | undefined): number {
+  if (!key) return 1
+  return cellHolds.value[key] ?? 1
+}
+
+function cycleCellHold(key: string): void {
+  const cur = getCellHold(key)
+  const curIdx = HOLD_CYCLE_STEPS.findIndex((v) => Math.abs(v - cur) < 0.05)
+  const nextVal = HOLD_CYCLE_STEPS[(curIdx + 1) % HOLD_CYCLE_STEPS.length] ?? 1
+  const nextMap = { ...cellHolds.value }
+  if (Math.abs(nextVal - 1) < 0.01) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = nextVal
+  }
+  patchParams({ animCellHolds: nextMap })
+}
+
 function isCellDisabled(key: string): boolean {
   return disabledCells.value.includes(key)
 }
@@ -687,21 +905,6 @@ const cells = ref<AnimCell[]>([])
 const gridLoading = ref(false)
 let cellToken = 0
 
-const activeCells = computed(() => {
-  const set = new Set(disabledCells.value)
-  const filtered = cells.value.filter((c) => !set.has(c.key))
-  return filtered.length > 0 ? filtered : cells.value
-})
-
-const currentActiveCell = computed(
-  () => activeCells.value[activeIndex.value] ?? activeCells.value[0] ?? null
-)
-const prevActiveCell = computed(() => {
-  if (activeCells.value.length < 2) return null
-  const prevIdx = (activeIndex.value - 1 + activeCells.value.length) % activeCells.value.length
-  return activeCells.value[prevIdx] ?? null
-})
-
 const FPS_OPTIONS = [2, 4, 6, 8, 12, 16, 24]
 const FPS_STORAGE_KEY = 'ai-art-engine.anim2d.fps'
 const FPS_DEFAULT = 8
@@ -723,11 +926,81 @@ function readStoredFps(): number {
 }
 fps.value = readStoredFps()
 
-let frameTimer: ReturnType<typeof setInterval> | null = null
+const activeCells = computed(() => {
+  const set = new Set(disabledCells.value)
+  const filtered = cells.value.filter((c) => !set.has(c.key))
+  return filtered.length > 0 ? filtered : cells.value
+})
+
+const currentActiveCell = computed(
+  () => activeCells.value[activeIndex.value] ?? activeCells.value[0] ?? null
+)
+const prevActiveCell = computed(() => {
+  if (activeCells.value.length < 2) return null
+  const prevIdx = (activeIndex.value - 1 + activeCells.value.length) % activeCells.value.length
+  return activeCells.value[prevIdx] ?? null
+})
+const nextActiveCell = computed(() => {
+  if (activeCells.value.length < 2) return null
+  const nextIdx = (activeIndex.value + 1) % activeCells.value.length
+  return activeCells.value[nextIdx] ?? null
+})
+
+function applyRhythmPreset(presetId: AnimRhythmPresetId): void {
+  const keys = activeCells.value.map((c) => c.key)
+  const nextMap = buildAnimRhythmPresetHolds(presetId, keys)
+  patchParams({ animCellHolds: nextMap })
+}
+
+const currentCellOffset = computed<AnimCellOffset>(() => {
+  const key = currentActiveCell.value?.key
+  if (!key) return { dx: 0, dy: 0 }
+  return cellOffsets.value[key] ?? { dx: 0, dy: 0 }
+})
+
+function nudgeCurrentCell(stepX: number, stepY: number, ev?: MouseEvent): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const mult = ev?.shiftKey ? 4 : 1
+  const cur = currentCellOffset.value
+  const nextDx = Math.max(-256, Math.min(256, cur.dx + stepX * mult))
+  const nextDy = Math.max(-256, Math.min(256, cur.dy + stepY * mult))
+  const nextMap = { ...cellOffsets.value }
+  if (nextDx === 0 && nextDy === 0 && !cur.flipX) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = { dx: nextDx, dy: nextDy, ...(cur.flipX ? { flipX: true } : {}) }
+  }
+  patchParams({ animCellOffsets: nextMap })
+}
+
+function toggleCurrentCellFlipX(): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const cur = currentCellOffset.value
+  const nextFlip = !cur.flipX
+  const nextMap = { ...cellOffsets.value }
+  if (cur.dx === 0 && cur.dy === 0 && !nextFlip) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = { dx: cur.dx, dy: cur.dy, ...(nextFlip ? { flipX: true } : {}) }
+  }
+  patchParams({ animCellOffsets: nextMap })
+}
+
+function resetCurrentCellOffset(): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const nextMap = { ...cellOffsets.value }
+  delete nextMap[key]
+  patchParams({ animCellOffsets: nextMap })
+}
+
+let frameTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearFrameTimer(): void {
   if (frameTimer) {
-    clearInterval(frameTimer)
+    clearTimeout(frameTimer)
     frameTimer = null
   }
 }
@@ -737,40 +1010,51 @@ function stopPlayback(): void {
   playing.value = false
 }
 
+function scheduleNextFrameTick(): void {
+  clearFrameTimer()
+  if (!playing.value || !activeCells.value.length) return
+  const curKey = currentActiveCell.value?.key
+  const hold = getCellHold(curKey)
+  const delayMs = Math.max(16, Math.round((1000 / fps.value) * hold))
+  frameTimer = setTimeout(() => {
+    const count = activeCells.value.length
+    if (count <= 1) return
+    if (playMode.value === 'pingpong') {
+      const next = activeIndex.value + playDirection.value
+      if (next >= count) {
+        playDirection.value = -1
+        activeIndex.value = Math.max(0, count - 2)
+      } else if (next < 0) {
+        if (loop.value) {
+          playDirection.value = 1
+          activeIndex.value = Math.min(count - 1, 1)
+        } else {
+          stopPlayback()
+          return
+        }
+      } else {
+        activeIndex.value = next
+      }
+      scheduleNextFrameTick()
+      return
+    }
+    if (activeIndex.value + 1 >= count) {
+      if (loop.value) activeIndex.value = 0
+      else {
+        stopPlayback()
+        return
+      }
+    } else {
+      activeIndex.value += 1
+    }
+    scheduleNextFrameTick()
+  }, delayMs)
+}
+
 function startPlayback(): void {
   if (!activeCells.value.length) return
   playing.value = true
-  clearFrameTimer()
-  frameTimer = setInterval(
-    () => {
-      const count = activeCells.value.length
-      if (count <= 1) return
-      if (playMode.value === 'pingpong') {
-        const next = activeIndex.value + playDirection.value
-        if (next >= count) {
-          playDirection.value = -1
-          activeIndex.value = Math.max(0, count - 2)
-        } else if (next < 0) {
-          if (loop.value) {
-            playDirection.value = 1
-            activeIndex.value = Math.min(count - 1, 1)
-          } else {
-            stopPlayback()
-          }
-        } else {
-          activeIndex.value = next
-        }
-        return
-      }
-      if (activeIndex.value + 1 >= count) {
-        if (loop.value) activeIndex.value = 0
-        else stopPlayback()
-      } else {
-        activeIndex.value += 1
-      }
-    },
-    Math.max(1, Math.round(1000 / fps.value))
-  )
+  scheduleNextFrameTick()
 }
 
 function togglePlay(): void {
@@ -831,15 +1115,17 @@ const gifSaveRef = ref<InstanceType<typeof SaveAssetDialog> | null>(null)
 const gifSaving = ref(false)
 
 async function composeGifFromCells(): Promise<Anim2dGifResult> {
-  const baseUrls = activeCells.value.map((cell) => cell.dataUrl)
-  const frameUrls =
-    playMode.value === 'pingpong' && baseUrls.length > 2
-      ? [...baseUrls, ...baseUrls.slice(1, -1).reverse()]
-      : baseUrls
+  const seqCells =
+    playMode.value === 'pingpong' && activeCells.value.length > 2
+      ? [...activeCells.value, ...activeCells.value.slice(1, -1).reverse()]
+      : activeCells.value
+  const frameUrls = seqCells.map((cell) => cell.dataUrl)
+  const frameHolds = seqCells.map((cell) => getCellHold(cell.key))
   const gif = await composeAnim2dGif({
     frameUrls,
     fps: fps.value,
-    loop: loop.value
+    loop: loop.value,
+    frameHolds
   })
   if (!gif) throw new Error('ANIM2D_GIF_NO_FRAMES')
   return gif
@@ -912,23 +1198,74 @@ async function onGifSaveConfirm(payload: { name: string; folderId: string | null
     })
     if (saveMode.value === 'sheet' && sheetInfo && asset.relativePath) {
       const anchorMode = stabilize.value === 'center' ? 'center' : 'ground'
+      const imageFileName = asset.relativePath.split('/').pop() || `${payload.name}.png`
+      const normalMapFileName = imageFileName.replace(/\.png$/i, '.normal.png')
+      const frameNames = activeCells.value.map((cell, idx) => `${payload.name}-${cell.key || idx}`)
       const manifest = buildSpriteManifest({
         canvasWidth: sheetInfo.frameWidth,
         canvasHeight: sheetInfo.frameHeight,
         anchor: anchorMode,
-        sprites: activeCells.value.map((cell, idx) => ({
-          name: `${payload.name}-${cell.key || idx}`,
-          fileName: asset.relativePath.split('/').pop() || `${payload.name}.png`,
+        sprites: frameNames.map((name) => ({
+          name,
+          fileName: imageFileName,
           width: sheetInfo.frameWidth,
           height: sheetInfo.frameHeight
         }))
       })
+      const engineAtlas = buildEngineSpriteSheetJson({
+        imageFileName,
+        normalMapFileName,
+        frameWidth: sheetInfo.frameWidth,
+        frameHeight: sheetInfo.frameHeight,
+        frameNames,
+        columns: sheetInfo.columns,
+        fps: fps.value,
+        anchor: anchorMode,
+        playMode: playMode.value,
+        tagName: payload.name,
+        frameHolds: activeCells.value.map((cell) => getCellHold(cell.key))
+      })
       const manifestPath = asset.relativePath.replace(/\.png$/i, '.manifest.json')
+      const atlasPath = asset.relativePath.replace(/\.png$/i, '.atlas.json')
       try {
         await window.studio.writeProjectFile({
           relativePath: manifestPath,
           content: JSON.stringify(manifest, null, 2)
         })
+        await window.studio.writeProjectFile({
+          relativePath: atlasPath,
+          content: JSON.stringify(engineAtlas, null, 2)
+        })
+        const sheetImg = new Image()
+        await new Promise<void>((res, rej) => {
+          sheetImg.onload = () => res()
+          sheetImg.onerror = () => rej(new Error('LOAD_FAILED'))
+          sheetImg.src = sheetInfo.dataUrl
+        })
+        const nw = sheetImg.naturalWidth || 1
+        const nh = sheetImg.naturalHeight || 1
+        const nCanvas = document.createElement('canvas')
+        nCanvas.width = nw
+        nCanvas.height = nh
+        const nCtx = nCanvas.getContext('2d')
+        if (nCtx) {
+          nCtx.drawImage(sheetImg, 0, 0)
+          const sData = nCtx.getImageData(0, 0, nw, nh)
+          const nRgba = generateSpriteNormalMap(sData.data, nw, nh)
+          nCtx.putImageData(new ImageData(new Uint8ClampedArray(nRgba), nw, nh), 0, 0)
+          const nStagedPath = await window.studio.saveGraphRunMedia({
+            dataUrl: nCanvas.toDataURL('image/png'),
+            key: `anim2d-normal-${Date.now()}`,
+            outputDir: `${cacheRoot}/Sheets`
+          })
+          if (await window.studio.projectFileExists(nStagedPath)) {
+            await window.studio.saveProjectAsset({
+              relativePath: nStagedPath,
+              name: `${payload.name}-normal`,
+              folderId: payload.folderId
+            })
+          }
+        }
       } catch {
         /* ignore manifest write failure */
       }
@@ -997,9 +1334,25 @@ async function refreshCells(): Promise<void> {
     const thresholdValue = readAnimKeyThresholdFromNode(current.params)
     const insetValue = readAnimEdgeInsetFromNode(current.params)
     const stabilizeValue = readAnimStabilizeFromNode(current.params)
-    for (const cell of anim2dCellKeys(s.rows, s.cols)) {
+    const offsetsMap = readAnimCellOffsetsFromNode(current.params)
+    const outlineVal = readAnimOutlineFromNode(current.params)
+    const pixelSnapVal = readAnimPixelSnapFromNode(current.params)
+    const groundShadowVal = readAnimGroundShadowFromNode(current.params)
+    const paletteLockVal = readAnimPaletteLockFromNode(current.params)
+    const motionTrailVal = readAnimMotionTrailFromNode(current.params)
+    const loopBlendVal = readAnimLoopBlendFromNode(current.params)
+    const playModeVal = readAnimPlayModeFromNode(current.params)
+    const disabledSet = new Set(readAnimDisabledCellsFromNode(current.params))
+    const allKeys = anim2dCellKeys(s.rows, s.cols)
+    const enabledKeys = allKeys.filter((k) => !disabledSet.has(k))
+    const lastEnabledKey = enabledKeys.length >= 3 ? enabledKeys[enabledKeys.length - 1] : ''
+    for (const cell of allKeys) {
       if (token !== cellToken) return
       try {
+        const offset = offsetsMap[cell]
+        const enabledIdx = enabledKeys.indexOf(cell)
+        const prevCellKey = enabledIdx > 0 ? enabledKeys[enabledIdx - 1] : undefined
+        const isLastLoopCell = playModeVal === 'loop' && cell === lastEnabledKey
         const composed = await composeImageGridCell({
           sourceDataUrl: sourceUrl,
           state: { rows: s.rows, cols: s.cols, selected: [] },
@@ -1008,7 +1361,14 @@ async function refreshCells(): Promise<void> {
           ...(keyColorValue
             ? { chromaKey: { color: keyColorValue, threshold: thresholdValue } }
             : {}),
-          ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {})
+          ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {}),
+          ...(offset ? { cellOffset: offset } : {}),
+          ...(paletteLockVal > 0 ? { paletteLock: paletteLockVal } : {}),
+          ...(loopBlendVal && isLastLoopCell ? { loopBlend: true, isLastLoopCell: true } : {}),
+          ...(pixelSnapVal > 1 ? { pixelSnap: pixelSnapVal } : {}),
+          ...(outlineVal ? { outlineColor: outlineVal } : {}),
+          ...(motionTrailVal && prevCellKey ? { motionTrail: motionTrailVal, prevCellKey } : {}),
+          ...(groundShadowVal ? { groundShadow: true } : {})
         })
         if (composed.dataUrl) next.push({ key: cell, dataUrl: composed.dataUrl })
       } catch {
@@ -1033,6 +1393,13 @@ watch(
     () => readAnimKeyThresholdFromNode(node.value?.params),
     () => readAnimEdgeInsetFromNode(node.value?.params),
     () => readAnimStabilizeFromNode(node.value?.params),
+    () => readAnimOutlineFromNode(node.value?.params),
+    () => readAnimPixelSnapFromNode(node.value?.params),
+    () => readAnimGroundShadowFromNode(node.value?.params),
+    () => readAnimPaletteLockFromNode(node.value?.params),
+    () => readAnimMotionTrailFromNode(node.value?.params),
+    () => readAnimLoopBlendFromNode(node.value?.params),
+    () => JSON.stringify(readAnimCellOffsetsFromNode(node.value?.params)),
     () => {
       const grid = node.value?.params?.animGridImage as
         { dataUrl?: string; relativePath?: string } | undefined
@@ -1472,6 +1839,54 @@ onBeforeUnmount(stopPlayback)
 
 .frame-enable-btn:hover {
   background: var(--accent);
+}
+
+.frame-hold-btn {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+}
+
+.frame-hold-btn.custom {
+  border-color: rgba(251, 191, 36, 0.75);
+  background: rgba(251, 191, 36, 0.25);
+  color: #fde68a;
+  font-weight: 700;
+}
+
+.onion-prev {
+  filter: sepia(1) saturate(5) hue-rotate(-35deg);
+}
+
+.onion-next {
+  filter: sepia(1) saturate(5) hue-rotate(95deg);
+}
+
+.nudge-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.nudge-btns {
+  display: flex;
+  gap: 3px;
+}
+
+.icon-step.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .video-extract-card {

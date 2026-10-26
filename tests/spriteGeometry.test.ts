@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest'
 import {
+  applySpriteCellAutoKey,
+  applySpriteGroundShadow,
+  applySpriteLoopClosure,
+  applySpriteMotionTrail,
+  applySpriteOuterOutline,
+  applySpritePaletteLock,
+  applySpritePixelSnap,
   computeSpriteAlignPlan,
+  computeStabilizedCellPlacement,
   DEFAULT_SPRITE_ALIGN,
+  detectSpriteCombatBoxes,
   estimateContentTranslation,
   estimateFrameTranslations,
   extractAlphaBounds,
+  extractSpriteCorePivotX,
+  extractSpritePalette,
+  generateSpriteNormalMap,
   normalizeSpriteAlignOptions,
   type PixelImage,
   type SpriteAlignOptions
@@ -255,5 +267,189 @@ describe('estimateFrameTranslations：批量去抖', () => {
     const one = estimateFrameTranslations([makeFrame(32, 32, [[4, 4, 8, 8]])])!
     expect(one.referenceIndex).toBe(0)
     expect(one.shifts).toEqual([{ index: 0, dx: 0, dy: 0 }])
+  })
+})
+
+describe('extractSpriteCorePivotX & computeStabilizedCellPlacement：躯干主轴稳像与身高归一化', () => {
+  it('挥剑横向外扩时，躯干主轴 X 仍锁定在身体立柱中心，不随外接框右移', () => {
+    // 角色躯干位于 x=[24..36]（中心 30），高 40px；向右挥出一把细长剑 x=[36..58]，厚 3px
+    const f = makeFrame(
+      64,
+      64,
+      [
+        [24, 14, 12, 40],
+        [36, 28, 22, 3]
+      ],
+      true
+    )
+    const bounds = extractAlphaBounds(f.data, f.width, f.height)!
+    // 外接框中心被长剑拉到了 24 + 34/2 = 41
+    expect(bounds.x + bounds.width / 2).toBe(41)
+    // 而躯干主轴 X 依然牢牢锁在 30 附近（误差 < 1px）
+    const pivotX = extractSpriteCorePivotX(f.data, f.width, f.height, bounds)!
+    expect(pivotX).toBeGreaterThan(29.5)
+    expect(pivotX).toBeLessThan(31)
+
+    const placement = computeStabilizedCellPlacement({
+      cellWidth: 64,
+      cellHeight: 64,
+      bounds,
+      pivotX,
+      mode: 'ground',
+      referenceHeightPx: 44
+    })
+    expect(placement.scale).toBeCloseTo(1.1, 2)
+    expect(placement.dstH).toBe(44)
+    expect(placement.dstY).toBe(Math.round(64 * 0.94) - 44)
+  })
+
+  it('applySpriteCellAutoKey 对已透明图直接跳过二次抠图，对实底图仅泛洪外部背景且绝不挖穿角色内部银白盔甲与高光', () => {
+    const w = 32
+    const h = 32
+    // 1. 原生透明图（外部 alpha=0，内部有银白盔甲色块）：完全跳过抠图，内部银白盔甲 100% 保留
+    const nativeRgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 8; y < 24; y++) {
+      for (let x = 8; x < 24; x++) {
+        const p = (y * w + x) * 4
+        nativeRgba[p] = 240
+        nativeRgba[p + 1] = 242
+        nativeRgba[p + 2] = 245
+        nativeRgba[p + 3] = 255
+      }
+    }
+    const nativeRes = applySpriteCellAutoKey(nativeRgba, w, h, { distance: 42, feather: 30 })
+    expect(nativeRes.nativeTransparent).toBe(true)
+    expect(nativeRes.keyedPixels).toBe(0)
+    expect(nativeRgba[(16 * w + 16) * 4 + 3]).toBe(255)
+
+    // 2. 纯白实底图：泛洪外部背景，但角色轮廓内部的 4x4 银白胸甲 (16px) 与 2x2 眼神高光 (4px) 均被完整保护，绝不挖洞
+    const rgba = new Uint8ClampedArray(w * h * 4)
+    for (let i = 0; i < w * h * 4; i += 4) {
+      rgba[i] = 255
+      rgba[i + 1] = 255
+      rgba[i + 2] = 255
+      rgba[i + 3] = 255
+    }
+    for (let y = 6; y < 28; y++) {
+      for (let x = 8; x < 24; x++) {
+        const p = (y * w + x) * 4
+        rgba[p] = 30
+        rgba[p + 1] = 50
+        rgba[p + 2] = 160
+        rgba[p + 3] = 255
+      }
+    }
+    // 角色胸口/腿部 4x4=16px 的白色盔甲色块 (x=[14..18), y=[20..24)) -> 不与四边连通，必须完整保留不透明
+    for (let y = 20; y < 24; y++) {
+      for (let x = 14; x < 18; x++) {
+        const p = (y * w + x) * 4
+        rgba[p] = 255
+        rgba[p + 1] = 255
+        rgba[p + 2] = 255
+        rgba[p + 3] = 255
+      }
+    }
+    // 角色头部 2x2=4px 的白色眼神高光 (x=[12..14), y=[10..12)) -> 同样完整保留不透明
+    for (let y = 10; y < 12; y++) {
+      for (let x = 12; x < 14; x++) {
+        const p = (y * w + x) * 4
+        rgba[p] = 255
+        rgba[p + 1] = 255
+        rgba[p + 2] = 255
+        rgba[p + 3] = 255
+      }
+    }
+
+    const res = applySpriteCellAutoKey(rgba, w, h, { distance: 42, feather: 30 })
+    expect(res.keyedPixels).toBeGreaterThan(100)
+    // 外部四角透明
+    expect(rgba[3]).toBe(0)
+    // 角色内部 4x4 白色盔甲与 2x2 眼神高光均被完好保留，绝不被误挖成透明孔洞
+    expect(rgba[(21 * w + 15) * 4 + 3]).toBe(255)
+    expect(rgba[(10 * w + 12) * 4 + 3]).toBe(255)
+  })
+
+  it('applySpritePixelSnap + applySpriteOuterOutline + applySpriteGroundShadow：PixelOver 级像素规整、外描边与脚底阴影', () => {
+    const f = makeFrame(32, 32, [[10, 8, 12, 16]], true)
+    // 在边缘加一个半透明假像素毛刺 (x=9, y=10, alpha=110)
+    const fringeIdx = (10 * 32 + 9) * 4
+    f.data[fringeIdx] = 180
+    f.data[fringeIdx + 3] = 110
+
+    applySpritePixelSnap(f.data, 32, 32, 2)
+    // 2x2 块 (x=[8..10), y=[10..12)) 中仅 1 个像素有弱 alpha，少于 40%，被干净剔除为 0
+    expect(f.data[fringeIdx + 3]).toBe(0)
+    // 主体 2x2 块规整后保持 255 硬边缘
+    expect(f.data[(10 * 32 + 10) * 4 + 3]).toBe(255)
+
+    // 1px 外描边：主体紧邻外侧 (x=9, y=12) 原本透明，描边后变为不透明描边色
+    const outlineIdx = (12 * 32 + 9) * 4
+    expect(f.data[outlineIdx + 3]).toBe(0)
+    applySpriteOuterOutline(f.data, 32, 32, { color: 'gold', thickness: 1 })
+    expect(f.data[outlineIdx + 3]).toBe(255)
+    expect(f.data[outlineIdx]).toBe(250)
+
+    // 脚底接触椭圆阴影：在脚底下方产生半透明阴影像素，且不覆盖主体不透明像素
+    applySpriteGroundShadow(f.data, 32, 32)
+    expect(f.data[(30 * 32 + 16) * 4 + 3]).toBeGreaterThan(20)
+    expect(f.data[(12 * 32 + 12) * 4 + 3]).toBe(255)
+  })
+
+  it('extractSpritePalette & applySpritePaletteLock：跨帧调色板锁定消除色彩闪烁', () => {
+    const refFrame = makeFrame(32, 32, [[8, 8, 16, 16]], true)
+    const palette = extractSpritePalette(refFrame.data, 32, 32, 16)
+    expect(palette.length).toBeGreaterThan(0)
+    expect(palette[0]).toEqual([200, 100, 50])
+
+    // 造一帧颜色发生微漂移的帧 (212, 108, 58)
+    const drifted = makeFrame(32, 32, [[8, 8, 16, 16]], true)
+    const p = (12 * 32 + 12) * 4
+    drifted.data[p] = 212
+    drifted.data[p + 1] = 108
+    drifted.data[p + 2] = 58
+    applySpritePaletteLock(drifted.data, 32, 32, palette, 1)
+    expect([drifted.data[p], drifted.data[p + 1], drifted.data[p + 2]]).toEqual([200, 100, 50])
+  })
+
+  it('applySpriteMotionTrail + applySpriteLoopClosure + generateSpriteNormalMap + detectSpriteCombatBoxes', () => {
+    const prev = makeFrame(64, 64, [[24, 14, 12, 40]], true)
+    // 当前帧：角色躯干在 x=[24..36]，向右挥出长剑 x=[36..58], y=[26..32]
+    const cur = makeFrame(
+      64,
+      64,
+      [
+        [24, 14, 12, 40],
+        [36, 26, 22, 6]
+      ],
+      true
+    )
+
+    // 1. 自动识别躯干 hurtbox 与挥剑延伸 hitbox
+    const combat = detectSpriteCombatBoxes(cur.data, 64, 64)!
+    expect(combat).not.toBeNull()
+    expect(combat.hurtbox.width).toBeLessThan(26)
+    expect(combat.hitbox).not.toBeNull()
+    expect(combat.hitbox!.x).toBeGreaterThanOrEqual(34)
+    expect(combat.hitbox!.width).toBeGreaterThanOrEqual(16)
+
+    // 2. 动作残影拖尾（左移 6px 在 x=20 处产生青色半透明残影，且不污染 x=28 处的主体像素）
+    applySpriteMotionTrail(cur.data, prev.data, 64, 64, { style: 'cyan', offsetX: -6 })
+    expect(cur.data[(24 * 64 + 20) * 4 + 3]).toBeGreaterThan(40)
+    expect(cur.data[(24 * 64 + 28) * 4]).toBe(200)
+
+    // 3. 2D 切线空间法线贴图生成（主体区域 Z 分量 B > 128，透明区为 [128,128,255,0]）
+    const normalRgba = generateSpriteNormalMap(cur.data, 64, 64)
+    expect(normalRgba[3]).toBe(0)
+    expect(normalRgba[2]).toBe(255)
+    const bodyIdx = (24 * 64 + 30) * 4
+    expect(normalRgba[bodyIdx + 3]).toBe(255)
+    expect(normalRgba[bodyIdx + 2]).toBeGreaterThan(150)
+
+    // 4. 首尾循环闭合补偿
+    const first = makeFrame(64, 64, [[24, 14, 12, 40]], false)
+    const last = shiftPixelImage(first, 4, 0)
+    applySpriteLoopClosure(last.data, first.data, 64, 64, 0.5)
+    const afterShift = estimateContentTranslation(first, last)
+    expect(Math.abs(afterShift.dx)).toBeLessThan(4)
   })
 })

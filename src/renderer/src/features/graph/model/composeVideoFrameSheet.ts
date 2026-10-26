@@ -12,8 +12,12 @@ import {
 import {
   applyAssetQcFringeFix,
   applyColorDistanceKey,
-  averageRegionColor,
+  applySpriteCellAutoKey,
+  computeStabilizedCellPlacement,
   extractAlphaBounds,
+  extractSpriteCorePivotX,
+  hasNativeTransparentPixels,
+  samplePerimeterBackgroundColor,
   type IconKeyColor,
   type SpriteBounds
 } from '@shared/gameAssets'
@@ -59,46 +63,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error('VIDEO_SHEET_IMAGE_LOAD_FAILED'))
     img.src = src
   })
-}
-
-function sampleCornerBackgroundColor(
-  data: Uint8ClampedArray,
-  width: number,
-  height: number
-): IconKeyColor | null {
-  const patch = Math.max(1, Math.min(6, Math.floor(Math.min(width, height) / 10) || 1))
-  const corners = [
-    averageRegionColor(data, width, { x: 0, y: 0, width: patch, height: patch }),
-    averageRegionColor(data, width, {
-      x: Math.max(0, width - patch),
-      y: 0,
-      width: patch,
-      height: patch
-    }),
-    averageRegionColor(data, width, {
-      x: 0,
-      y: Math.max(0, height - patch),
-      width: patch,
-      height: patch
-    }),
-    averageRegionColor(data, width, {
-      x: Math.max(0, width - patch),
-      y: Math.max(0, height - patch),
-      width: patch,
-      height: patch
-    })
-  ].filter((c): c is IconKeyColor => c !== null)
-  if (!corners.length) return null
-  const sum = corners.reduce((acc, c) => ({ r: acc.r + c.r, g: acc.g + c.g, b: acc.b + c.b }), {
-    r: 0,
-    g: 0,
-    b: 0
-  })
-  return {
-    r: Math.round(sum.r / corners.length),
-    g: Math.round(sum.g / corners.length),
-    b: Math.round(sum.b / corners.length)
-  }
 }
 
 /**
@@ -358,21 +322,37 @@ export async function composeVideoFrameSheet(
   const cellWidth = cells[0]!.width
   const cellHeight = cells[0]!.height
 
-  // 逐格背景键控 + 去白边 + 原地脚底/中心稳像
+  // 第 1 遍：逐格背景键控 + 去白边，并收集各格主体框与躯干水平主轴
+  const cellMeta: Array<{
+    imageData: ImageData
+    cornerBg: IconKeyColor | null
+    bounds: SpriteBounds | null
+    pivotX: number | null
+  }> = []
+
   for (let i = 0; i < cells.length; i++) {
     const cellCanvas = cells[i]!
     const ctx = cellCanvas.getContext('2d')
-    if (!ctx) continue
+    if (!ctx) {
+      cellMeta.push({
+        imageData: new ImageData(cellWidth, cellHeight),
+        cornerBg: null,
+        bounds: null,
+        pivotX: null
+      })
+      continue
+    }
     const imageData = ctx.getImageData(0, 0, cellWidth, cellHeight)
-    const cornerBg = sampleCornerBackgroundColor(imageData.data, cellWidth, cellHeight)
+    const cornerBg = samplePerimeterBackgroundColor(imageData.data, cellWidth, cellHeight)
 
-    if (keyColor) {
+    if (keyColor && !hasNativeTransparentPixels(imageData.data, cellWidth, cellHeight)) {
       if (keyColor === 'auto') {
-        if (cornerBg) {
-          applyColorDistanceKey(imageData.data, cornerBg, {
-            distance: keyThreshold,
-            feather: 34
-          })
+        const res = applySpriteCellAutoKey(imageData.data, cellWidth, cellHeight, {
+          background: cornerBg,
+          distance: keyThreshold,
+          feather: 34
+        })
+        if (res.keyedPixels > 0) {
           applyAssetQcFringeFix({ data: imageData.data, width: cellWidth, height: cellHeight })
           ctx.putImageData(imageData, 0, 0)
         }
@@ -386,11 +366,13 @@ export async function composeVideoFrameSheet(
       }
     }
 
+    let bounds: SpriteBounds | null = null
+    let pivotX: number | null = null
     if (stabilize === 'ground' || stabilize === 'center') {
-      let bounds: SpriteBounds | null = extractAlphaBounds(imageData.data, cellWidth, cellHeight, {
+      bounds = extractAlphaBounds(imageData.data, cellWidth, cellHeight, {
         alphaMin: 12
       })
-      // 若未开透明键控（整张图不透明），用四角采样临时掩膜定位角色主体框以支持原地稳像
+      // 若未开透明键控（整张图不透明），用四周聚簇背景色临时掩膜定位角色主体框与躯干主轴
       if (
         (!bounds || (bounds.width === cellWidth && bounds.height === cellHeight)) &&
         !keyColor &&
@@ -399,20 +381,54 @@ export async function composeVideoFrameSheet(
         const probeData = new Uint8ClampedArray(imageData.data)
         applyColorDistanceKey(probeData, cornerBg, { distance: keyThreshold, feather: 24 })
         bounds = extractAlphaBounds(probeData, cellWidth, cellHeight, { alphaMin: 16 })
+        pivotX = extractSpriteCorePivotX(probeData, cellWidth, cellHeight, bounds, { alphaMin: 16 })
+      } else {
+        pivotX = extractSpriteCorePivotX(imageData.data, cellWidth, cellHeight, bounds, {
+          alphaMin: 12
+        })
       }
+    }
 
+    cellMeta.push({ imageData, cornerBg, bounds, pivotX })
+  }
+
+  const validHeights = cellMeta
+    .map((m) => m.bounds?.height ?? 0)
+    .filter((h) => h >= cellHeight * 0.18 && h < cellHeight)
+  let referenceHeightPx: number | null = null
+  if (validHeights.length >= 2) {
+    const sorted = [...validHeights].sort((a, b) => a - b)
+    referenceHeightPx = sorted[Math.floor(sorted.length / 2)]!
+  }
+
+  // 第 2 遍：按躯干主轴 + 跨帧中位身高原地稳像并绘制帧序号
+  for (let i = 0; i < cells.length; i++) {
+    const cellCanvas = cells[i]!
+    const ctx = cellCanvas.getContext('2d')
+    const meta = cellMeta[i]
+    if (!ctx || !meta) continue
+    const { imageData, cornerBg, bounds, pivotX } = meta
+
+    if ((stabilize === 'ground' || stabilize === 'center') && bounds) {
       if (
-        bounds &&
         bounds.width > 4 &&
         bounds.height > 4 &&
         (bounds.width < cellWidth || bounds.height < cellHeight)
       ) {
-        const dstX = Math.round((cellWidth - bounds.width) / 2)
-        const dstY =
-          stabilize === 'ground'
-            ? Math.max(0, Math.round(cellHeight * 0.94) - bounds.height)
-            : Math.round((cellHeight - bounds.height) / 2)
-        if (dstX !== bounds.x || dstY !== bounds.y) {
+        const placement = computeStabilizedCellPlacement({
+          cellWidth,
+          cellHeight,
+          bounds,
+          pivotX,
+          mode: stabilize,
+          referenceHeightPx: stabilize === 'ground' ? referenceHeightPx : null
+        })
+        if (
+          placement.dstX !== bounds.x ||
+          placement.dstY !== bounds.y ||
+          placement.dstW !== bounds.width ||
+          placement.dstH !== bounds.height
+        ) {
           const temp = document.createElement('canvas')
           temp.width = cellWidth
           temp.height = cellHeight
@@ -427,16 +443,17 @@ export async function composeVideoFrameSheet(
             } else {
               ctx.clearRect(0, 0, cellWidth, cellHeight)
             }
+            ctx.imageSmoothingEnabled = placement.scale !== 1
             ctx.drawImage(
               temp,
               bounds.x,
               bounds.y,
               bounds.width,
               bounds.height,
-              dstX,
-              dstY,
-              bounds.width,
-              bounds.height
+              placement.dstX,
+              placement.dstY,
+              placement.dstW,
+              placement.dstH
             )
           }
         }

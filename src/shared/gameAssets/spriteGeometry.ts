@@ -711,3 +711,537 @@ export function applySpriteGroundShadow(
   }
   return rgba
 }
+
+/* ================= 进阶工业级能力：跨帧调色板锁死 / 动作残影拖尾 / 首尾无缝闭合 / 2D法线贴图 / 攻防双判定框 ================= */
+
+export type RgbTuple = readonly [number, number, number]
+
+function colorDistRedmeanSq(
+  r1: number,
+  g1: number,
+  b1: number,
+  r2: number,
+  g2: number,
+  b2: number
+): number {
+  const rMean = (r1 + r2) >> 1
+  const dr = r1 - r2
+  const dg = g1 - g2
+  const db = b1 - b2
+  return (((512 + rMean) * dr * dr) >> 8) + 4 * dg * dg + (((767 - rMean) * db * db) >> 8)
+}
+
+/**
+ * 从参考帧（通常为第 1 帧）提取代表性主色调色板（最多 `maxColors` 色）：
+ * - 先按 5-bit (32×32×32) 量化统计频次并累计桶内精确 RGB 均值；
+ * - 优先选取最高频主色，再结合最远色差（Farthest-Point Sampling）保留高光/眼瞳/武器等关键点缀色。
+ */
+export function extractSpritePalette(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  maxColors = 32
+): RgbTuple[] {
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  const total = w * h
+  const targetCount = clampInt(maxColors, 2, 256)
+  if (total <= 0 || rgba.length < total * 4) return []
+
+  const counts = new Uint32Array(32768)
+  const sumR = new Float64Array(32768)
+  const sumG = new Float64Array(32768)
+  const sumB = new Float64Array(32768)
+
+  for (let i = 0; i < total; i++) {
+    const p = i * 4
+    if (rgba[p + 3]! < 64) continue
+    const r = rgba[p]!
+    const g = rgba[p + 1]!
+    const b = rgba[p + 2]!
+    const idx = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
+    counts[idx]!++
+    sumR[idx]! += r
+    sumG[idx]! += g
+    sumB[idx]! += b
+  }
+
+  const buckets: Array<{ r: number; g: number; b: number; count: number }> = []
+  for (let idx = 0; idx < 32768; idx++) {
+    const c = counts[idx]!
+    if (c === 0) continue
+    buckets.push({
+      r: Math.round(sumR[idx]! / c),
+      g: Math.round(sumG[idx]! / c),
+      b: Math.round(sumB[idx]! / c),
+      count: c
+    })
+  }
+  if (buckets.length === 0) return []
+  buckets.sort((a, b) => b.count - a.count)
+
+  if (buckets.length <= targetCount) {
+    return buckets.map((b) => [b.r, b.g, b.b] as const)
+  }
+
+  // 前 70% 名额给高频主色（且彼此间距不小于阈值），后 30% 用最远点采样保护小面积高光与特征色
+  const chosen: RgbTuple[] = []
+  const used = new Uint8Array(buckets.length)
+  const freqQuota = Math.max(1, Math.floor(targetCount * 0.7))
+
+  for (let i = 0; i < buckets.length && chosen.length < freqQuota; i++) {
+    const cand = buckets[i]!
+    let tooClose = false
+    for (const c of chosen) {
+      if (colorDistRedmeanSq(cand.r, cand.g, cand.b, c[0], c[1], c[2]) < 180) {
+        tooClose = true
+        break
+      }
+    }
+    if (!tooClose) {
+      chosen.push([cand.r, cand.g, cand.b])
+      used[i] = 1
+    }
+  }
+
+  while (chosen.length < targetCount) {
+    let bestIdx = -1
+    let bestScore = -1
+    for (let i = 0; i < buckets.length; i++) {
+      if (used[i]) continue
+      const cand = buckets[i]!
+      let minDist = Infinity
+      for (const c of chosen) {
+        const d = colorDistRedmeanSq(cand.r, cand.g, cand.b, c[0], c[1], c[2])
+        if (d < minDist) minDist = d
+      }
+      // 兼顾色差距离与出现频次权重，避免选入纯噪点
+      const score = minDist * Math.pow(cand.count, 0.25)
+      if (score > bestScore) {
+        bestScore = score
+        bestIdx = i
+      }
+    }
+    if (bestIdx < 0) break
+    used[bestIdx] = 1
+    const picked = buckets[bestIdx]!
+    chosen.push([picked.r, picked.g, picked.b])
+  }
+
+  return chosen
+}
+
+/**
+ * 将当前帧像素对齐到参考帧调色板（消除跨帧色彩闪烁 + 正统 16/32/64 色索引像素量化）：
+ * - `blendStrength = 1`（默认）：100% 映射为调色板定色（适用于 16/32/64 色像素画）；
+ * - `blendStrength < 1`（如 0.8）：平滑拉回参考色板，在保留赛璐璐柔和渐变的同时抑制跨帧色偏闪烁。
+ */
+export function applySpritePaletteLock(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  palette: ReadonlyArray<RgbTuple>,
+  blendStrength = 1
+): Uint8ClampedArray {
+  const total = Math.floor(width) * Math.floor(height)
+  if (total <= 0 || rgba.length < total * 4 || palette.length === 0) return rgba
+  const strength = clamp(blendStrength, 0, 1)
+  if (strength <= 0) return rgba
+
+  // 5-bit (32768) 查找表缓存，避免逐像素重复遍历调色板
+  const lutR = new Int16Array(32768)
+  const lutG = new Int16Array(32768)
+  const lutB = new Int16Array(32768)
+  lutR.fill(-1)
+
+  for (let i = 0; i < total; i++) {
+    const p = i * 4
+    if (rgba[p + 3]! < 20) continue
+    const r = rgba[p]!
+    const g = rgba[p + 1]!
+    const b = rgba[p + 2]!
+    const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3)
+    let pr = lutR[key]!
+    let pg = lutG[key]!
+    let pb = lutB[key]!
+    if (pr < 0) {
+      let bestDist = Infinity
+      pr = palette[0]![0]
+      pg = palette[0]![1]
+      pb = palette[0]![2]
+      for (let k = 0; k < palette.length; k++) {
+        const c = palette[k]!
+        const d = colorDistRedmeanSq(r, g, b, c[0], c[1], c[2])
+        if (d < bestDist) {
+          bestDist = d
+          pr = c[0]
+          pg = c[1]
+          pb = c[2]
+          if (d === 0) break
+        }
+      }
+      lutR[key] = pr
+      lutG[key] = pg
+      lutB[key] = pb
+    }
+    if (strength >= 0.999) {
+      rgba[p] = pr
+      rgba[p + 1] = pg
+      rgba[p + 2] = pb
+    } else {
+      rgba[p] = Math.round(r + (pr - r) * strength)
+      rgba[p + 1] = Math.round(g + (pg - g) * strength)
+      rgba[p + 2] = Math.round(b + (pb - b) * strength)
+    }
+  }
+  return rgba
+}
+
+export type SpriteMotionTrailColor = '' | 'cyan' | 'gold' | 'purple' | 'crimson' | 'echo'
+
+const TRAIL_TINT_MAP: Record<
+  Exclude<SpriteMotionTrailColor, '' | 'echo'>,
+  readonly [number, number, number]
+> = {
+  cyan: [34, 211, 238],
+  gold: [250, 204, 21],
+  purple: [168, 85, 247],
+  crimson: [244, 63, 94]
+}
+
+/**
+ * 动作残影 / 刀光幻影拖尾生成器（《恶魔城 / 死亡细胞》式 Afterimage Ghosting）：
+ * 将上一帧（`prevRgba`）施加轻微后移与幻影染色，以 `Destination-Over` 合成在当前帧底层，
+ * 100% 契合动作轨迹且绝不污染当前帧角色本体像素。
+ */
+export function applySpriteMotionTrail(
+  currentRgba: Uint8ClampedArray,
+  prevRgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options: {
+    style: SpriteMotionTrailColor
+    offsetX?: number
+    offsetY?: number
+    opacity?: number
+  }
+): Uint8ClampedArray {
+  const style = options.style
+  if (!style) return currentRgba
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  const total = w * h
+  if (total <= 0 || currentRgba.length < total * 4 || prevRgba.length < total * 4) {
+    return currentRgba
+  }
+
+  const ox = Math.round(options.offsetX ?? -6)
+  const oy = Math.round(options.offsetY ?? 0)
+  const opacity = clamp(options.opacity ?? 0.44, 0.1, 0.85)
+  const tint = style === 'echo' ? null : TRAIL_TINT_MAP[style]
+
+  for (let y = 0; y < h; y++) {
+    const sy = y - oy
+    if (sy < 0 || sy >= h) continue
+    for (let x = 0; x < w; x++) {
+      const sx = x - ox
+      if (sx < 0 || sx >= w) continue
+      const sp = (sy * w + sx) * 4
+      const prevA = prevRgba[sp + 3]!
+      if (prevA < 30) continue
+
+      const dp = (y * w + x) * 4
+      const fgA = currentRgba[dp + 3]!
+      if (fgA >= 250) continue
+
+      const trailA = Math.round(prevA * opacity)
+      if (trailA <= 0) continue
+
+      const tr = tint ? Math.round(prevRgba[sp]! * 0.25 + tint[0] * 0.75) : prevRgba[sp]!
+      const tg = tint ? Math.round(prevRgba[sp + 1]! * 0.25 + tint[1] * 0.75) : prevRgba[sp + 1]!
+      const tb = tint ? Math.round(prevRgba[sp + 2]! * 0.25 + tint[2] * 0.75) : prevRgba[sp + 2]!
+
+      if (fgA === 0) {
+        currentRgba[dp] = tr
+        currentRgba[dp + 1] = tg
+        currentRgba[dp + 2] = tb
+        currentRgba[dp + 3] = trailA
+      } else {
+        const fa = fgA / 255
+        const ba = (trailA / 255) * (1 - fa)
+        const outA = fa + ba
+        if (outA > 0) {
+          currentRgba[dp] = Math.round((currentRgba[dp]! * fa + tr * ba) / outA)
+          currentRgba[dp + 1] = Math.round((currentRgba[dp + 1]! * fa + tg * ba) / outA)
+          currentRgba[dp + 2] = Math.round((currentRgba[dp + 2]! * fa + tb * ba) / outA)
+          currentRgba[dp + 3] = clampInt(outA * 255, 0, 255)
+        }
+      }
+    }
+  }
+  return currentRgba
+}
+
+/**
+ * 首尾循环无缝闭合补偿（Seamless Loop Closure）：
+ * 对循环尾帧（`lastRgba`）向首帧（`firstRgba`）执行微幅质心平移拉回与重叠核心区柔化收敛，
+ * 显著降低 `Frame N → Frame 1` 循环跳回时的顿挫跳变感。
+ */
+export function applySpriteLoopClosure(
+  lastRgba: Uint8ClampedArray,
+  firstRgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  convergence = 0.3
+): Uint8ClampedArray {
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  const total = w * h
+  if (total <= 0 || lastRgba.length < total * 4 || firstRgba.length < total * 4) {
+    return lastRgba
+  }
+  const ratio = clamp(convergence, 0.05, 0.6)
+  const shift = estimateContentTranslation(
+    { width: w, height: h, data: firstRgba },
+    { width: w, height: h, data: lastRgba },
+    { maxShiftPx: Math.min(24, Math.floor(w * 0.15)) }
+  )
+  const pullX = Math.round(shift.dx * ratio)
+  const pullY = Math.round(shift.dy * ratio)
+  const snapshot = new Uint8ClampedArray(lastRgba)
+  lastRgba.fill(0)
+
+  for (let y = 0; y < h; y++) {
+    const sy = y - pullY
+    if (sy < 0 || sy >= h) continue
+    for (let x = 0; x < w; x++) {
+      const sx = x - pullX
+      if (sx < 0 || sx >= w) continue
+      const sp = (sy * w + sx) * 4
+      const dp = (y * w + x) * 4
+      const la = snapshot[sp + 3]!
+      const fa = firstRgba[dp + 3]!
+      if (la >= 40 && fa >= 40) {
+        // 首尾共同覆盖的躯干核心区：做轻微色彩/明度向首帧靠拢，消除尾帧跳回首帧的闪变
+        const mix = ratio * 0.65
+        lastRgba[dp] = Math.round(snapshot[sp]! * (1 - mix) + firstRgba[dp]! * mix)
+        lastRgba[dp + 1] = Math.round(snapshot[sp + 1]! * (1 - mix) + firstRgba[dp + 1]! * mix)
+        lastRgba[dp + 2] = Math.round(snapshot[sp + 2]! * (1 - mix) + firstRgba[dp + 2]! * mix)
+        lastRgba[dp + 3] = la
+      } else {
+        lastRgba[dp] = snapshot[sp]!
+        lastRgba[dp + 1] = snapshot[sp + 1]!
+        lastRgba[dp + 2] = snapshot[sp + 2]!
+        lastRgba[dp + 3] = la
+      }
+    }
+  }
+  return lastRgba
+}
+
+/**
+ * 2D 精灵切线空间法线贴图生成（对标 SpriteIlluminator / Laigter）：
+ * 融合「轮廓距离场立体圆拱隆起（SDF Bevel Dome）」与「表面亮度 Sobel 凹凸细节梯度」，
+ * 生成可直接用于 Unity URP 2D Lights / Godot CanvasTexture 的标准法线贴图（R=X, G=Y-up, B=Z）。
+ */
+export function generateSpriteNormalMap(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  options?: { bevelRadius?: number; detailWeight?: number }
+): Uint8ClampedArray {
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  const total = w * h
+  const out = new Uint8ClampedArray(total * 4)
+  if (total <= 0 || rgba.length < total * 4) return out
+
+  const bevelRadius = clamp(
+    options?.bevelRadius ?? Math.max(6, Math.round(Math.min(w, h) * 0.06)),
+    2,
+    32
+  )
+  const detailWeight = clamp(options?.detailWeight ?? 0.65, 0, 2)
+
+  // 1. 计算不透明掩码与灰度高度场 + 双向 Chamfer 距离变换（到透明边界的距离）
+  const dist = new Float32Array(total)
+  const luma = new Float32Array(total)
+  const INF = 1e4
+  for (let i = 0; i < total; i++) {
+    const p = i * 4
+    const a = rgba[p + 3]!
+    if (a >= 32) {
+      dist[i] = INF
+      luma[i] = (0.299 * rgba[p]! + 0.587 * rgba[p + 1]! + 0.114 * rgba[p + 2]!) / 255
+    } else {
+      dist[i] = 0
+      luma[i] = 0
+    }
+  }
+
+  // 正向扫描
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    for (let x = 0; x < w; x++) {
+      const idx = row + x
+      let d = dist[idx]!
+      if (d === 0) continue
+      if (x > 0) d = Math.min(d, dist[idx - 1]! + 1)
+      if (y > 0) d = Math.min(d, dist[idx - w]! + 1)
+      if (x > 0 && y > 0) d = Math.min(d, dist[idx - w - 1]! + 1.414)
+      if (x + 1 < w && y > 0) d = Math.min(d, dist[idx - w + 1]! + 1.414)
+      dist[idx] = d
+    }
+  }
+  // 反向扫描
+  for (let y = h - 1; y >= 0; y--) {
+    const row = y * w
+    for (let x = w - 1; x >= 0; x--) {
+      const idx = row + x
+      let d = dist[idx]!
+      if (d === 0) continue
+      if (x + 1 < w) d = Math.min(d, dist[idx + 1]! + 1)
+      if (y + 1 < h) d = Math.min(d, dist[idx + w]! + 1)
+      if (x + 1 < w && y + 1 < h) d = Math.min(d, dist[idx + w + 1]! + 1.414)
+      if (x > 0 && y + 1 < h) d = Math.min(d, dist[idx + w - 1]! + 1.414)
+      dist[idx] = d
+    }
+  }
+
+  // 将线性距离映射为平滑圆拱高度场（半球正弦隆起）
+  const dome = new Float32Array(total)
+  for (let i = 0; i < total; i++) {
+    const t = Math.min(1, dist[i]! / bevelRadius)
+    dome[i] = Math.sin(t * (Math.PI * 0.5))
+  }
+
+  // 2. 合成每个像素的法线向量 (nx, ny, nz)
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    const ym = Math.max(0, y - 1) * w
+    const yp = Math.min(h - 1, y + 1) * w
+    for (let x = 0; x < w; x++) {
+      const idx = row + x
+      const p = idx * 4
+      const a = rgba[p + 3]!
+      if (a < 32) {
+        // 透明区域填充标准平坦法线 (128, 128, 255, 0)
+        out[p] = 128
+        out[p + 1] = 128
+        out[p + 2] = 255
+        out[p + 3] = 0
+        continue
+      }
+      const xm = Math.max(0, x - 1)
+      const xp = Math.min(w - 1, x + 1)
+
+      // 轮廓体积隆起梯度
+      const dDx = (dome[row + xm]! - dome[row + xp]!) * 1.8
+      const dDy = (dome[ym + x]! - dome[yp + x]!) * 1.8
+
+      // 表面明暗细节 Sobel 梯度
+      const lDx =
+        luma[ym + xm]! +
+        2 * luma[row + xm]! +
+        luma[yp + xm]! -
+        (luma[ym + xp]! + 2 * luma[row + xp]! + luma[yp + xp]!)
+      const lDy =
+        luma[ym + xm]! +
+        2 * luma[ym + x]! +
+        luma[ym + xp]! -
+        (luma[yp + xm]! + 2 * luma[yp + x]! + luma[yp + xp]!)
+
+      const nx = dDx + lDx * detailWeight
+      // Y 轴采用 OpenGL / Unity / Godot 标准（上方受光 G>128）
+      const ny = -(dDy + lDy * detailWeight)
+      const nz = 1.0
+      const invLen = 1 / Math.hypot(nx, ny, nz)
+
+      out[p] = clampInt(Math.round((nx * invLen * 0.5 + 0.5) * 255), 0, 255)
+      out[p + 1] = clampInt(Math.round((ny * invLen * 0.5 + 0.5) * 255), 0, 255)
+      out[p + 2] = clampInt(Math.round((nz * invLen * 0.5 + 0.5) * 255), 128, 255)
+      out[p + 3] = a
+    }
+  }
+  return out
+}
+
+/**
+ * 自动识别单帧精灵的「躯干受击框 (`hurtbox`)」与「武器/刀光延伸攻击判定框 (`hitbox`)」：
+ * - `hurtbox`：锁定在躯干主轴 `pivotX` 周围的核心身体区域，避免挥刀时受击框随刀光暴涨；
+ * - `hitbox`：当检测到角色向躯干立柱外侧大幅挥出武器/刀光/踢腿时，自动框定该突出攻击判定区域。
+ */
+export interface SpriteCombatBoxes {
+  hurtbox: SpriteBounds
+  hitbox: SpriteBounds | null
+}
+
+export function detectSpriteCombatBoxes(
+  rgba: Uint8ClampedArray,
+  width: number,
+  height: number,
+  bounds?: SpriteBounds | null
+): SpriteCombatBoxes | null {
+  const w = Math.floor(width)
+  const h = Math.floor(height)
+  if (w <= 0 || h <= 0 || rgba.length < w * h * 4) return null
+  const b = bounds ?? extractAlphaBounds(rgba, w, h, { alphaMin: 20 })
+  if (!b) return null
+
+  const pivotX = extractSpriteCorePivotX(rgba, w, h, b, { alphaMin: 20 }) ?? b.x + b.width / 2
+  // 估计躯干核心半宽：取高度方向约 22% 与整体宽度 32% 的较小合理值
+  const coreHalfW = Math.max(6, Math.min(Math.round(b.width * 0.34), Math.round(b.height * 0.24)))
+  const coreLeft = clampInt(Math.round(pivotX - coreHalfW), b.x, b.x + b.width - 1)
+  const coreRight = clampInt(Math.round(pivotX + coreHalfW), coreLeft + 1, b.x + b.width)
+
+  const hurtX = coreLeft
+  const hurtW = Math.max(4, coreRight - coreLeft)
+  const hurtY = clampInt(Math.round(b.y + b.height * 0.06), 0, h - 1)
+  const hurtH = Math.max(4, Math.min(h - hurtY, Math.round(b.height * 0.9)))
+  const hurtbox: SpriteBounds = { x: hurtX, y: hurtY, width: hurtW, height: hurtH }
+
+  // 检查左/右侧是否存在明显超出躯干核心区的攻击延伸像素（如挥剑、长枪突刺、刀光）
+  const leftExt = coreLeft - b.x
+  const rightExt = b.x + b.width - coreRight
+  const minExtThreshold = Math.max(6, Math.round(b.height * 0.12))
+
+  if (rightExt < minExtThreshold && leftExt < minExtThreshold) {
+    return { hurtbox, hitbox: null }
+  }
+
+  const scanRight = rightExt >= leftExt
+  const scanX0 = scanRight ? coreRight : b.x
+  const scanX1 = scanRight ? b.x + b.width - 1 : coreLeft - 1
+  if (scanX1 < scanX0) return { hurtbox, hitbox: null }
+
+  let hx0 = w
+  let hy0 = h
+  let hx1 = -1
+  let hy1 = -1
+  let hitPixels = 0
+  for (let y = b.y; y < b.y + b.height; y++) {
+    const row = y * w
+    for (let x = scanX0; x <= scanX1; x++) {
+      if (rgba[(row + x) * 4 + 3]! >= 40) {
+        hitPixels++
+        if (x < hx0) hx0 = x
+        if (x > hx1) hx1 = x
+        if (y < hy0) hy0 = y
+        if (y > hy1) hy1 = y
+      }
+    }
+  }
+
+  if (hitPixels < 12 || hx1 < hx0 || hy1 < hy0) {
+    return { hurtbox, hitbox: null }
+  }
+  const hitW = hx1 - hx0 + 1
+  const hitH = hy1 - hy0 + 1
+  if (hitW < 4 || hitH < 4) {
+    return { hurtbox, hitbox: null }
+  }
+  return {
+    hurtbox,
+    hitbox: { x: hx0, y: hy0, width: hitW, height: hitH }
+  }
+}

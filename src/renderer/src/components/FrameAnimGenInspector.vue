@@ -311,6 +311,7 @@ import {
   readAnimStyleLockFromNode,
   readAnimVideoRangeFromNode,
   readAnimViewAngleFromNode,
+  recommendAnimGridAspectRatio,
   resolveAnim2dPreset,
   resolveFrameAnimGenSystemPrompt,
   type Anim2dGridPreset,
@@ -609,7 +610,6 @@ function selectActionPreset(preset: Anim2dPreset): void {
   }
   if (preset.category === 'vfx') {
     if (!styleLock.value) patch.animStyleLock = 'vfx'
-    if (!keyColor.value) patch.animKeyColor = 'black'
   } else if (preset.category === 'tile') {
     if (!viewAngle.value) patch.animViewAngle = 'top'
   } else if (preset.id === 'dir8') {
@@ -635,7 +635,12 @@ function onRowsInput(e: Event): void {
 function commitRows(): void {
   const n = Number(rowsDraft.value.trim())
   const next = Number.isFinite(n) && n >= 1 ? clampDim(n) : state.value.rows
-  patchParams({ animRows: next })
+  patchParams({
+    animRows: next,
+    ...(autoMatchAspect.value
+      ? { imageAspectRatio: recommendAnimGridAspectRatio(next, state.value.cols) }
+      : {})
+  })
   rowsDraft.value = String(next)
 }
 
@@ -657,7 +662,12 @@ function onColsInput(e: Event): void {
 function commitCols(): void {
   const n = Number(colsDraft.value.trim())
   const next = Number.isFinite(n) && n >= 1 ? clampDim(n) : state.value.cols
-  patchParams({ animCols: next })
+  patchParams({
+    animCols: next,
+    ...(autoMatchAspect.value
+      ? { imageAspectRatio: recommendAnimGridAspectRatio(state.value.rows, next) }
+      : {})
+  })
   colsDraft.value = String(next)
 }
 

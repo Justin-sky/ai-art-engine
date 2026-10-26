@@ -141,4 +141,57 @@ describe('anim.2d gif output', () => {
     )
     expect(genOut.out).toBeDefined()
   })
+
+  it('generates transparent sprite sheet directly in frame.animGen and slices in anim.2d without secondary chroma keying by default', async () => {
+    const genNode = createNodeFromType('frame.animGen', { x: 0, y: 0 })
+    expect(genNode.params.generateTransparentBg).toBe(true)
+    expect(genNode.params.animKeyColor).toBe('')
+
+    const generateImage = vi.fn(async () => ({
+      images: ['data:image/png;base64,dHJhbnNwYXJlbnRTaGVldA=='],
+      model: 'gpt-image-1'
+    }))
+    const saveRunMedia = vi.fn(async (opts: { key: string }) => `Cache/Images/${opts.key}.png`)
+    await executeFrameAnimGenNode({
+      node: genNode,
+      inputs: { in: [{ kind: 'image', dataUrl: 'data:image/png;base64,Y2hhclJlZg==' }] },
+      locale: 'zh-CN',
+      generateImage,
+      saveRunMedia,
+      patchNode: (patch: { params: Record<string, unknown> }) => {
+        genNode.params = { ...genNode.params, ...patch.params }
+      }
+    } as unknown as NodeExecuteContext)
+
+    expect(generateImage).toHaveBeenCalledTimes(1)
+    expect(generateImage.mock.calls[0]![0]).toMatchObject({
+      transparentBackground: true
+    })
+
+    const animNode = createNodeFromType('anim.2d', { x: 0, y: 0 })
+    expect(animNode.params.animKeyColor).toBe('')
+    const composeImageGridCell = vi.fn(async (input: { cellKey: string; chromaKey?: unknown }) => ({
+      dataUrl: `data:image/png;base64,Y2VsbA==${input.cellKey}`,
+      width: 16,
+      height: 16,
+      cellKey: input.cellKey
+    }))
+    await executeAnim2dNode({
+      node: animNode,
+      inputs: {
+        in: [{ kind: 'image', dataUrl: 'data:image/png;base64,dHJhbnNwYXJlbnRTaGVldA==' }]
+      },
+      locale: 'zh-CN',
+      composeImageGridCell,
+      saveRunMedia,
+      patchNode: (patch: { params: Record<string, unknown> }) => {
+        animNode.params = { ...animNode.params, ...patch.params }
+      }
+    } as unknown as NodeExecuteContext)
+
+    expect(composeImageGridCell).toHaveBeenCalled()
+    for (const call of composeImageGridCell.mock.calls) {
+      expect(call[0].chromaKey).toBeUndefined()
+    }
+  })
 })

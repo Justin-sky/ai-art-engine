@@ -28,6 +28,16 @@ import {
   readAnimPlayModeFromNode,
   readAnimDisabledCellsFromNode,
   normalizeAnimKeyThreshold,
+  recommendAnimGridAspectRatio,
+  buildAnimRhythmPresetHolds,
+  readAnimCellHoldsFromNode,
+  readAnimCellOffsetsFromNode,
+  readAnimOutlineFromNode,
+  readAnimPaletteLockFromNode,
+  readAnimMotionTrailFromNode,
+  readAnimLoopBlendFromNode,
+  readAnimPixelSnapFromNode,
+  readAnimGroundShadowFromNode,
   createNodeFromType,
   getNodePorts
 } from '../src/shared/graph'
@@ -49,6 +59,11 @@ describe('anim2d state', () => {
     expect(ANIM2D_GRID_PRESETS.length).toBeGreaterThanOrEqual(5)
     expect(ANIM2D_GRID_PRESETS.find((p) => p.id === '1x4')?.aspectRatio).toBe('16:9')
     expect(ANIM2D_GRID_PRESETS.find((p) => p.id === '3x3')?.aspectRatio).toBe('1:1')
+    expect(recommendAnimGridAspectRatio(1, 4)).toBe('16:9')
+    expect(recommendAnimGridAspectRatio(2, 4)).toBe('16:9')
+    expect(recommendAnimGridAspectRatio(2, 3)).toBe('4:3')
+    expect(recommendAnimGridAspectRatio(2, 2)).toBe('1:1')
+    expect(recommendAnimGridAspectRatio(3, 3)).toBe('1:1')
   })
 
   it('normalizes stabilize, edgeInset, playMode, disabledCells, and keyThreshold', () => {
@@ -216,5 +231,46 @@ describe('anim2d inner graph', () => {
       ['out', 'graph.port.spriteSheet'],
       ['out-all', 'graph.port.spriteSheetAll']
     ])
+  })
+
+  it('supports hit-stop rhythm presets, cell offsets, and PixelOver post-processing params', () => {
+    const cellKeys = anim2dCellKeys(2, 4)
+    const attackHolds = buildAnimRhythmPresetHolds('attack-hitstop', cellKeys)
+    const vals = Object.values(attackHolds)
+    expect(vals.length).toBeGreaterThan(0)
+    // 蓄力与命中帧 > 1x，挥砍帧 < 1x
+    expect(Math.max(...vals)).toBeGreaterThanOrEqual(2)
+    expect(Math.min(...vals)).toBeLessThanOrEqual(0.5)
+
+    expect(
+      readAnimCellHoldsFromNode({
+        animRows: 1,
+        animCols: 4,
+        animCellHolds: { '1-1': 1, '1-2': 2.5, '1-3': 0.5, '1-4': 99 }
+      })
+    ).toEqual({
+      '1-2': 2.5,
+      '1-3': 0.5,
+      '1-4': 8
+    })
+    expect(
+      readAnimCellOffsetsFromNode({
+        animRows: 1,
+        animCols: 4,
+        animCellOffsets: {
+          '1-2': { dx: 4, dy: -2, flipX: true },
+          bad: { dx: 0, dy: 0 }
+        }
+      })
+    ).toEqual({
+      '1-2': { dx: 4, dy: -2, flipX: true }
+    })
+    expect(readAnimOutlineFromNode({ animOutline: 'gold' })).toBe('gold')
+    expect(readAnimPixelSnapFromNode({ animPixelSnap: 4 })).toBe(4)
+    expect(readAnimGroundShadowFromNode({ animGroundShadow: true })).toBe(true)
+    expect(readAnimPaletteLockFromNode({ animPaletteLock: 32 })).toBe(32)
+    expect(readAnimMotionTrailFromNode({ animMotionTrail: 'cyan' })).toBe('cyan')
+    expect(readAnimLoopBlendFromNode({ animLoopBlend: true })).toBe(true)
+    expect(recommendAnimGridAspectRatio(2, 4)).toBe('16:9')
   })
 })

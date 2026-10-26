@@ -11,6 +11,11 @@ import {
   resolveGenerateSeed
 } from '../imageGenerateParams'
 import {
+  appendImageTransparentBgPrompt,
+  isExplicitOpaqueBgPrompt,
+  supportsNativeTransparentImageModel
+} from '../userPromptSchemes'
+import {
   anim2dCellKeys,
   ANIM2D_GIF_OUT_PORT_ID,
   buildAnim2dGridInstruction,
@@ -18,17 +23,26 @@ import {
   buildAnimVideoRestyleInstruction,
   buildAnimViewStylePrompt,
   readAnim2dFromNode,
+  readAnimCellHoldsFromNode,
+  readAnimCellOffsetsFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGenModeFromNode,
   readAnimGifFpsFromNode,
+  readAnimGroundShadowFromNode,
   readAnimKeyColorFromNode,
   readAnimKeyThresholdFromNode,
+  readAnimLoopBlendFromNode,
+  readAnimMotionTrailFromNode,
+  readAnimOutlineFromNode,
+  readAnimPaletteLockFromNode,
+  readAnimPixelSnapFromNode,
   readAnimPlayModeFromNode,
   readAnimStabilizeFromNode,
   readAnimStyleLockFromNode,
   readAnimVideoRangeFromNode,
   readAnimViewAngleFromNode,
+  recommendAnimGridAspectRatio,
   resolveAnim2dPreset,
   resolveFrameAnimGenSystemPrompt,
   type Anim2dState,
@@ -184,11 +198,22 @@ export async function executeFrameAnimGenNode(
     throw new Error('GRAPH_PROCESS_NO_INPUT')
   }
 
+  const effectiveNodeParams = node.params.generateAspectRatio?.trim()
+    ? node.params
+    : {
+        ...node.params,
+        generateAspectRatio: recommendAnimGridAspectRatio(state.rows, state.cols)
+      }
+  const genParams = resolveImageGenerateParamsForApi(effectiveNodeParams)
+  const paramsPatch = imageGenerateParamsToNodePatch(genParams)
+  node.params = { ...node.params, ...paramsPatch }
+  ctx.patchNode?.({ params: paramsPatch })
+
   const isEn = Boolean(ctx.locale?.startsWith('en'))
   const presetPrompt = preset ? (isEn ? preset.promptEn || preset.prompt : preset.prompt) : ''
   const instructionRaw = node.params.generateInstruction?.trim() || presetPrompt || ''
   const system = resolveFrameAnimGenSystemPrompt(node.params.generateSystemPrompt, ctx.locale)
-  const userPrompt = [
+  let userPrompt = [
     instructionRaw,
     restyleSheetUrl ? buildAnimVideoRestyleInstruction(state.rows, state.cols, ctx.locale) : '',
     buildAnimViewStylePrompt(viewAngle, styleLock, ctx.locale),
@@ -197,12 +222,14 @@ export async function executeFrameAnimGenNode(
   ]
     .filter(Boolean)
     .join('\n\n')
+  const useTransparentBg =
+    genParams.transparentBg !== false && !keyColor && !isExplicitOpaqueBgPrompt(userPrompt)
+  if (useTransparentBg && supportsNativeTransparentImageModel(node.params.generateModel)) {
+    userPrompt = appendImageTransparentBgPrompt(userPrompt, ctx.locale, {
+      nativeTransparentModel: true
+    })
+  }
   const prompt = system.trim() ? `${system.trim()}\n\n${userPrompt}` : userPrompt
-
-  const genParams = resolveImageGenerateParamsForApi(node.params)
-  const paramsPatch = imageGenerateParamsToNodePatch(genParams)
-  node.params = { ...node.params, ...paramsPatch }
-  ctx.patchNode?.({ params: paramsPatch })
 
   const result = await ctx.generateImage({
     prompt,
@@ -213,7 +240,7 @@ export async function executeFrameAnimGenNode(
     quality: genParams.quality,
     n: genParams.count,
     seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
-    ...(genParams.transparentBg ? { transparentBackground: true } : {}),
+    ...(useTransparentBg ? { transparentBackground: true } : {}),
     inputReferences: finalInputUrls,
     inputReferenceMeta: finalInputUrls.map((_, idx) => {
       const item = sourceItems[idx]
@@ -279,6 +306,22 @@ export async function executeAnim2dNode(
   const stabilize = readAnimStabilizeFromNode(node.params)
   const playMode = readAnimPlayModeFromNode(node.params)
   const videoRange = readAnimVideoRangeFromNode(node.params)
+  const cellHoldsMap = readAnimCellHoldsFromNode({
+    animCellHolds: node.params.animCellHolds,
+    animRows: state.rows,
+    animCols: state.cols
+  })
+  const cellOffsetsMap = readAnimCellOffsetsFromNode({
+    animCellOffsets: node.params.animCellOffsets,
+    animRows: state.rows,
+    animCols: state.cols
+  })
+  const outlineColor = readAnimOutlineFromNode(node.params)
+  const pixelSnap = readAnimPixelSnapFromNode(node.params)
+  const groundShadow = readAnimGroundShadowFromNode(node.params)
+  const paletteLock = readAnimPaletteLockFromNode(node.params)
+  const motionTrail = readAnimMotionTrailFromNode(node.params)
+  const loopBlend = readAnimLoopBlendFromNode(node.params)
 
   let preProcessedFromVideo = false
   if (!gridItem) {
@@ -341,11 +384,16 @@ export async function executeAnim2dNode(
 
   const createdAt = new Date().toISOString()
   const stamp = Date.now()
-  const batch: GraphImageItem[] = []
-  for (const cell of targetCells) {
+  const batch: Array<GraphImageItem & { cellKey?: string }> = []
+  for (let cellIdx = 0; cellIdx < targetCells.length; cellIdx++) {
+    const cell = targetCells[cellIdx]!
     if (ctx.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')
     }
+    const offset = cellOffsetsMap[cell]
+    const prevCellKey = cellIdx > 0 ? targetCells[cellIdx - 1] : undefined
+    const isLastLoopCell =
+      playMode === 'loop' && targetCells.length >= 3 && cellIdx === targetCells.length - 1
     const composed = await ctx.composeImageGridCell({
       sourceDataUrl: sourceUrl,
       state: { rows: state.rows, cols: state.cols, selected: [] },
@@ -361,7 +409,14 @@ export async function executeAnim2dNode(
             }
           }
         : {}),
-      ...(!preProcessedFromVideo && stabilize !== 'off' ? { stabilize } : {})
+      ...(!preProcessedFromVideo && stabilize !== 'off' ? { stabilize } : {}),
+      ...(offset ? { cellOffset: offset } : {}),
+      ...(paletteLock > 0 ? { paletteLock } : {}),
+      ...(loopBlend && isLastLoopCell ? { loopBlend: true, isLastLoopCell: true } : {}),
+      ...(pixelSnap > 1 ? { pixelSnap } : {}),
+      ...(outlineColor ? { outlineColor } : {}),
+      ...(motionTrail && prevCellKey ? { motionTrail, prevCellKey } : {}),
+      ...(groundShadow ? { groundShadow: true } : {})
     })
     const cellDataUrl = composed.dataUrl?.trim()
     if (!cellDataUrl) {
@@ -370,7 +425,8 @@ export async function executeAnim2dNode(
     batch.push({
       id: `anim2d:${node.id}:${stamp}:${cell}`,
       dataUrl: cellDataUrl,
-      createdAt
+      createdAt,
+      cellKey: cell
     })
   }
   if (!batch.length) {
@@ -395,7 +451,14 @@ export async function executeAnim2dNode(
     playMode === 'pingpong' && batch.length > 2
       ? [...batch, ...batch.slice(1, -1).reverse()]
       : batch
-  const gif = await composeAnim2dGifOutput(ctx, gifFrames, readAnimGifFpsFromNode(node.params))
+  const gifFrameHolds = gifFrames.map((f) => (f.cellKey ? (cellHoldsMap[f.cellKey] ?? 1) : 1))
+  const hasCustomHolds = gifFrameHolds.some((h) => Math.abs(h - 1) >= 0.01)
+  const gif = await composeAnim2dGifOutput(
+    ctx,
+    gifFrames,
+    readAnimGifFpsFromNode(node.params),
+    hasCustomHolds ? gifFrameHolds : undefined
+  )
   const outputs = commitGeneratedImages(
     ctx,
     generatedImages,
@@ -419,7 +482,8 @@ export async function executeAnim2dNode(
 async function composeAnim2dGifOutput(
   ctx: NodeExecuteContext,
   frames: GraphImageItem[],
-  fps: number
+  fps: number,
+  frameHolds?: number[]
 ): Promise<{ value?: GraphImageValue; params: Record<string, unknown> }> {
   if (fps <= 0 || !ctx.composeGifFrames || !ctx.saveRunMedia) return { params: {} }
   const frameUrls = frames
@@ -430,7 +494,12 @@ async function composeAnim2dGifOutput(
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')
   }
-  const gif = await ctx.composeGifFrames({ frameUrls, fps, loop: true })
+  const gif = await ctx.composeGifFrames({
+    frameUrls,
+    fps,
+    loop: true,
+    ...(frameHolds?.length ? { frameHolds } : {})
+  })
   if (!gif?.dataUrl) return { params: {} }
   if (ctx.signal?.aborted) {
     throw new DOMException('Aborted', 'AbortError')

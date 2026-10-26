@@ -89,6 +89,22 @@
         >
           👾 {{ pickBi('像素锐利', 'Pixelated') }}
         </button>
+        <button
+          type="button"
+          class="tb-btn"
+          :class="{ 'tb-btn--active': normalViewMode !== 'off' }"
+          :title="pickBi('切换 2D 法线贴图与动态点光源测试', 'Cycle 2D Normal Map & Dynamic Light')"
+          @click="cycleNormalViewMode"
+        >
+          💡
+          {{
+            normalViewMode === 'light'
+              ? pickBi('动态受光', '2D Light')
+              : normalViewMode === 'normal'
+                ? pickBi('法线贴图', 'Normal Map')
+                : pickBi('法线光影', '2D Normal')
+          }}
+        </button>
         <div class="zoom-pills">
           <button
             v-for="z in [1, 2, 3] as const"
@@ -308,6 +324,67 @@
             </label>
           </div>
 
+          <div class="two-col">
+            <label class="field">
+              <span class="field-label">{{ pickBi('精灵外描边', 'Sprite Outline') }}</span>
+              <select class="select" :value="outlineColor" @change="onOutlineColorChange">
+                <option value="">{{ pickBi('无描边', 'None') }}</option>
+                <option value="black">{{ pickBi('⬛ 1px 黑边', '1px Black') }}</option>
+                <option value="white">{{ pickBi('⬜ 1px 白边', '1px White') }}</option>
+                <option value="gold">{{ pickBi('🟨 1px 金光', '1px Gold') }}</option>
+                <option value="cyan">{{ pickBi('🟦 1px 电光蓝', '1px Cyan') }}</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">{{ pickBi('真像素规整', 'Pixel Snap') }}</span>
+              <select class="select" :value="String(pixelSnap)" @change="onPixelSnapChange">
+                <option value="0">{{ pickBi('关闭（原画）', 'Off') }}</option>
+                <option value="2">2px {{ pickBi('精细像素', 'Fine Pixel') }}</option>
+                <option value="3">3px {{ pickBi('16-bit 像素', '16-bit Pixel') }}</option>
+                <option value="4">4px {{ pickBi('8-bit 复古', '8-bit Retro') }}</option>
+                <option value="6">6px {{ pickBi('粗颗粒像素', 'Chunky Pixel') }}</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="two-col">
+            <label class="field">
+              <span class="field-label">{{ pickBi('调色板锁死', 'Palette Lock') }}</span>
+              <select class="select" :value="String(paletteLock)" @change="onPaletteLockChange">
+                <option value="0">{{ pickBi('关闭（自由色彩）', 'Off') }}</option>
+                <option value="128">{{ pickBi('🔒 跨帧防闪 (128色)', 'Cross-Frame Lock') }}</option>
+                <option value="64">{{ pickBi('🎨 64色 精良像素', '64-Color Pixel') }}</option>
+                <option value="32">{{ pickBi('🕹️ 32色 16-bit', '32-Color 16-bit') }}</option>
+                <option value="16">{{ pickBi('👾 16色 8-bit复古', '16-Color Retro') }}</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field-label">{{ pickBi('动作残影拖尾', 'Motion Trail') }}</span>
+              <select class="select" :value="motionTrail" @change="onMotionTrailChange">
+                <option value="">{{ pickBi('无残影', 'None') }}</option>
+                <option value="cyan">{{ pickBi('🟦 霓虹青 (恶魔城)', 'Cyan Phantom') }}</option>
+                <option value="gold">{{ pickBi('🟨 疾风金闪', 'Gold Afterimage') }}</option>
+                <option value="purple">{{ pickBi('🟪 暗影紫魅', 'Purple Shadow') }}</option>
+                <option value="crimson">{{ pickBi('🟥 狂暴绯红', 'Crimson Slash') }}</option>
+                <option value="echo">{{ pickBi('👻 原色残像', 'Original Echo') }}</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="inline-ctrl">
+            <input type="checkbox" :checked="groundShadow" @change="onGroundShadowChange" />
+            <span>{{ pickBi('绘制脚底接触椭圆阴影', 'Draw Ground Contact Shadow') }}</span>
+          </label>
+
+          <label class="inline-ctrl">
+            <input type="checkbox" :checked="loopBlend" @change="onLoopBlendChange" />
+            <span>{{
+              pickBi('首尾循环无缝平滑闭合（消除尾帧跳变）', 'Seamless Loop Closure Blend')
+            }}</span>
+          </label>
+
           <label class="field">
             <span class="field-label">{{ t('graph.anim2d.runGifFps') }}</span>
             <select class="select" :value="gifFps" @change="onGifFpsChange">
@@ -321,11 +398,98 @@
           <p v-if="gifStatus" class="status-ok">{{ gifStatus }}</p>
           <p v-if="gifError" class="status-err">{{ gifError }}</p>
         </section>
+
+        <!-- 单帧像素微调、打击感律动预设与坏帧插值修复 -->
+        <section v-if="currentActiveCell" class="panel-card">
+          <div class="panel-head">
+            <span class="panel-title">{{
+              pickBi('单帧微调 · 打击感顿帧与修复', 'Frame Nudge, Hit-Stop & Repair')
+            }}</span>
+            <span class="panel-badge">
+              #{{ activeIndex + 1 }} ({{ currentActiveCell.key }}) ·
+              {{ getCellHold(currentActiveCell.key) }}x
+            </span>
+          </div>
+
+          <div class="field">
+            <span class="field-label">{{
+              pickBi('动作打击感节奏预设（逐帧停留倍率）', 'Action Rhythm & Hit-Stop Presets')
+            }}</span>
+            <div class="rhythm-pills">
+              <button type="button" class="tb-pill" @click="applyRhythmPreset('uniform')">
+                {{ pickBi('1x 均匀', '1x Uniform') }}
+              </button>
+              <button type="button" class="tb-pill" @click="applyRhythmPreset('attack-hitstop')">
+                ⚔️ {{ pickBi('挥砍顿帧', 'Attack Hit-Stop') }}
+              </button>
+              <button type="button" class="tb-pill" @click="applyRhythmPreset('jump-arc')">
+                🦘 {{ pickBi('跳跃滞空', 'Jump Apex') }}
+              </button>
+              <button type="button" class="tb-pill" @click="applyRhythmPreset('charge-burst')">
+                💥 {{ pickBi('蓄力爆发', 'Charge Burst') }}
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <span class="field-label">{{
+                pickBi('当前帧像素微调 (Shift 步进 4px)', 'Current Frame Pixel Nudge')
+              }}</span>
+              <span class="field-val">
+                dx={{ currentCellOffset.dx }}, dy={{ currentCellOffset.dy
+                }}{{ currentCellOffset.flipX ? ' · ⇄' : '' }}
+              </span>
+            </div>
+            <div class="nudge-row">
+              <button type="button" class="ctrl-btn" @click="nudgeCurrentCell(-1, 0, $event)">
+                ←
+              </button>
+              <button type="button" class="ctrl-btn" @click="nudgeCurrentCell(0, -1, $event)">
+                ↑
+              </button>
+              <button type="button" class="ctrl-btn" @click="nudgeCurrentCell(0, 1, $event)">
+                ↓
+              </button>
+              <button type="button" class="ctrl-btn" @click="nudgeCurrentCell(1, 0, $event)">
+                →
+              </button>
+              <button
+                type="button"
+                class="ctrl-btn"
+                :class="{ primary: currentCellOffset.flipX }"
+                @click="toggleCurrentCellFlipX"
+              >
+                ⇄ {{ pickBi('翻转', 'Flip') }}
+              </button>
+              <button type="button" class="ctrl-btn" @click="resetCurrentCellOffset">↺</button>
+            </div>
+          </div>
+
+          <button
+            v-if="activeCells.length >= 3"
+            type="button"
+            class="extract-btn"
+            :disabled="cellRepairBusy"
+            @click="repairCurrentCellWithNeighbors"
+          >
+            {{
+              cellRepairBusy
+                ? pickBi('插值修补中…', 'Repairing cell…')
+                : pickBi('✨ 用前后帧插值修补此坏帧', '✨ Repair Bad Frame from Prev/Next')
+            }}
+          </button>
+        </section>
       </aside>
 
       <!-- 右侧主工作区：大画布动画舞台 + 底部时间轴胶片条 -->
       <main class="stage-main">
-        <div class="stage-viewport" :class="`bg-${backdrop}`" @click="togglePlay">
+        <div
+          class="stage-viewport"
+          :class="`bg-${backdrop}`"
+          @mousemove="onStageMouseMove"
+          @click="togglePlay"
+        >
           <div v-if="gridLoading" class="stage-empty">
             {{ t('graph.anim2d.loading') }}
           </div>
@@ -333,7 +497,7 @@
             {{ t('graph.anim2d.emptyPreview') }}
           </div>
           <div v-else class="stage-canvas-box" :style="{ transform: `scale(${stageZoom})` }">
-            <!-- 洋葱皮上一帧叠影 -->
+            <!-- Aseprite 双色洋葱皮：上一帧（红影）与下一帧（青绿影） -->
             <img
               v-if="onionSkin && prevActiveCell && prevActiveCell.key !== currentActiveCell?.key"
               :src="prevActiveCell.dataUrl"
@@ -342,20 +506,61 @@
               :class="{ pixelated }"
               draggable="false"
             />
-            <!-- 当前帧 -->
+            <img
+              v-if="
+                onionSkin &&
+                nextActiveCell &&
+                nextActiveCell.key !== currentActiveCell?.key &&
+                nextActiveCell.key !== prevActiveCell?.key
+              "
+              :src="nextActiveCell.dataUrl"
+              alt=""
+              class="stage-frame onion-next"
+              :class="{ pixelated }"
+              draggable="false"
+            />
+            <!-- 当前帧（或 2D 法线贴图 / 动态点光源受光渲染图） -->
             <img
               v-if="currentActiveCell"
-              :src="currentActiveCell.dataUrl"
+              :src="
+                normalViewMode !== 'off' && normalPreviewDataUrl
+                  ? normalPreviewDataUrl
+                  : currentActiveCell.dataUrl
+              "
               alt=""
               class="stage-frame"
               :class="{ pixelated }"
               draggable="false"
             />
-            <!-- 十字基准线与脚底接地线 -->
+            <!-- 十字基准线、脚底接地线与 Hurtbox(受击绿框)/Hitbox(攻击红框) -->
             <template v-if="showGuide">
               <div class="guide-v" />
               <div class="guide-h-center" />
               <div class="guide-h-ground" />
+              <div
+                v-if="currentCombatBoxes"
+                class="combat-box hurtbox-overlay"
+                :style="{
+                  left: `${currentCombatBoxes.hurtboxPct.left}%`,
+                  top: `${currentCombatBoxes.hurtboxPct.top}%`,
+                  width: `${currentCombatBoxes.hurtboxPct.width}%`,
+                  height: `${currentCombatBoxes.hurtboxPct.height}%`
+                }"
+              >
+                <span class="combat-tag">HURTBOX</span>
+              </div>
+              <div
+                v-if="currentCombatBoxes?.hitboxPct"
+                class="combat-box hitbox-overlay"
+                :style="{
+                  left: `${currentCombatBoxes.hitboxPct.left}%`,
+                  top: `${currentCombatBoxes.hitboxPct.top}%`,
+                  width: `${currentCombatBoxes.hitboxPct.width}%`,
+                  height: `${currentCombatBoxes.hitboxPct.height}%`
+                }"
+              >
+                <span class="combat-tag">HITBOX</span>
+              </div>
             </template>
           </div>
 
@@ -450,7 +655,15 @@
             </div>
             <div class="film-foot">
               <span class="film-idx">#{{ idx + 1 }}</span>
-              <span class="film-key">{{ cell.key }}</span>
+              <button
+                type="button"
+                class="film-hold-pill"
+                :class="{ custom: Math.abs(getCellHold(cell.key) - 1) >= 0.01 }"
+                :title="pickBi('点击切换顿帧倍率', 'Cycle frame hold')"
+                @click.stop="cycleCellHold(cell.key)"
+              >
+                {{ getCellHold(cell.key) }}x
+              </button>
               <button
                 type="button"
                 class="film-toggle"
@@ -489,21 +702,47 @@ import { computed, inject, onBeforeUnmount, ref, watch } from 'vue'
 import {
   anim2dCellKeys,
   animGifFpsToNodePatch,
+  buildAnimRhythmPresetHolds,
+  gridCellPixelRect,
+  normalizeAnimOutlineColor,
+  normalizeAnimPaletteLock,
+  normalizeAnimMotionTrail,
+  normalizeAnimPixelSnap,
   normalizeAnimVideoRange,
+  parseCellKey,
   readAnim2dFromNode,
+  readAnimCellHoldsFromNode,
+  readAnimCellOffsetsFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGifFpsFromNode,
+  readAnimGroundShadowFromNode,
   readAnimKeyColorFromNode,
   readAnimKeyThresholdFromNode,
+  readAnimLoopBlendFromNode,
+  readAnimMotionTrailFromNode,
+  readAnimOutlineFromNode,
+  readAnimPaletteLockFromNode,
+  readAnimPixelSnapFromNode,
   readAnimPlayModeFromNode,
   readAnimStabilizeFromNode,
   readAnimVideoRangeFromNode,
+  type AnimCellOffset,
   type AnimKeyColor,
+  type AnimMotionTrail,
+  type AnimOutlineColor,
+  type AnimPaletteLock,
   type AnimPlayMode,
+  type AnimRhythmPresetId,
   type AnimStabilizeMode
 } from '@shared/graph'
-import { buildEngineSpriteSheetJson, buildSpriteManifest } from '@shared/gameAssets'
+import {
+  buildEngineSpriteSheetJson,
+  buildSpriteManifest,
+  detectSpriteCombatBoxes,
+  generateSpriteNormalMap,
+  type SpriteCombatBoxes
+} from '@shared/gameAssets'
 import { resolveCacheOutputRoot } from '@shared/domain'
 import SaveAssetDialog from '../SaveAssetDialog.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
@@ -582,6 +821,26 @@ const playMode = computed(() => (node.value ? readAnimPlayModeFromNode(node.valu
 const disabledCells = computed(() =>
   node.value ? readAnimDisabledCellsFromNode(node.value.params) : []
 )
+const cellHolds = computed(() => (node.value ? readAnimCellHoldsFromNode(node.value.params) : {}))
+const cellOffsets = computed(() =>
+  node.value ? readAnimCellOffsetsFromNode(node.value.params) : {}
+)
+const outlineColor = computed<AnimOutlineColor>(() =>
+  node.value ? readAnimOutlineFromNode(node.value.params) : ''
+)
+const pixelSnap = computed(() => (node.value ? readAnimPixelSnapFromNode(node.value.params) : 0))
+const groundShadow = computed(() =>
+  node.value ? readAnimGroundShadowFromNode(node.value.params) : false
+)
+const paletteLock = computed<AnimPaletteLock>(() =>
+  node.value ? readAnimPaletteLockFromNode(node.value.params) : 0
+)
+const motionTrail = computed<AnimMotionTrail>(() =>
+  node.value ? readAnimMotionTrailFromNode(node.value.params) : ''
+)
+const loopBlend = computed(() =>
+  node.value ? readAnimLoopBlendFromNode(node.value.params) : false
+)
 const gifFps = computed(() => (node.value ? readAnimGifFpsFromNode(node.value.params) : 0))
 
 const backdrop = ref<'checker' | 'dark' | 'light'>('checker')
@@ -589,6 +848,27 @@ const onionSkin = ref(false)
 const showGuide = ref(true)
 const pixelated = ref(false)
 const stageZoom = ref<1 | 2 | 3>(1)
+const normalViewMode = ref<'off' | 'light' | 'normal'>('off')
+const lightNormPos = ref({ x: 0.72, y: 0.25 })
+const normalPreviewDataUrl = ref('')
+
+function cycleNormalViewMode(): void {
+  if (normalViewMode.value === 'off') normalViewMode.value = 'light'
+  else if (normalViewMode.value === 'light') normalViewMode.value = 'normal'
+  else normalViewMode.value = 'off'
+}
+
+function onStageMouseMove(e: MouseEvent): void {
+  if (normalViewMode.value !== 'light') return
+  const el = e.currentTarget as HTMLElement | null
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) return
+  lightNormPos.value = {
+    x: Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)),
+    y: Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+  }
+}
 
 const sourceSheetUrl = ref('')
 const upstreamVideoUrl = ref('')
@@ -764,6 +1044,135 @@ function onStabilizeChange(e: Event): void {
   patchParams({ animStabilize: value })
 }
 
+function onOutlineColorChange(e: Event): void {
+  const value = normalizeAnimOutlineColor((e.target as HTMLSelectElement).value)
+  patchParams({ animOutline: value })
+}
+
+function onPixelSnapChange(e: Event): void {
+  const value = normalizeAnimPixelSnap((e.target as HTMLSelectElement).value)
+  patchParams({ animPixelSnap: value })
+}
+
+function onGroundShadowChange(e: Event): void {
+  patchParams({ animGroundShadow: (e.target as HTMLInputElement).checked })
+}
+
+function onPaletteLockChange(e: Event): void {
+  const value = normalizeAnimPaletteLock((e.target as HTMLSelectElement).value)
+  patchParams({ animPaletteLock: value })
+}
+
+function onMotionTrailChange(e: Event): void {
+  const value = normalizeAnimMotionTrail((e.target as HTMLSelectElement).value)
+  patchParams({ animMotionTrail: value })
+}
+
+function onLoopBlendChange(e: Event): void {
+  patchParams({ animLoopBlend: (e.target as HTMLInputElement).checked })
+}
+
+const HOLD_CYCLE_STEPS = [1, 1.5, 2, 3, 0.5] as const
+
+function getCellHold(key: string | undefined): number {
+  if (!key) return 1
+  return cellHolds.value[key] ?? 1
+}
+
+function cycleCellHold(key: string): void {
+  const cur = getCellHold(key)
+  const curIdx = HOLD_CYCLE_STEPS.findIndex((v) => Math.abs(v - cur) < 0.05)
+  const nextVal = HOLD_CYCLE_STEPS[(curIdx + 1) % HOLD_CYCLE_STEPS.length] ?? 1
+  const nextMap = { ...cellHolds.value }
+  if (Math.abs(nextVal - 1) < 0.01) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = nextVal
+  }
+  patchParams({ animCellHolds: nextMap })
+}
+
+const cellRepairBusy = ref(false)
+
+function loadImgElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('IMAGE_LOAD_FAILED'))
+    img.src = src
+  })
+}
+
+/**
+ * 用当前选中坏帧的前一帧 (t-1) 与后一帧 (t+1) 合成运动过渡帧，并原位回写到源序列图对应格子。
+ */
+async function repairCurrentCellWithNeighbors(): Promise<void> {
+  if (cellRepairBusy.value || !node.value) return
+  const curCell = currentActiveCell.value
+  const prevCell = prevActiveCell.value
+  const nextCell = nextActiveCell.value
+  const sheetUrl = sourceSheetUrl.value
+  if (!curCell || !prevCell || !nextCell || !sheetUrl) return
+  const parsed = parseCellKey(curCell.key)
+  if (!parsed) return
+
+  cellRepairBusy.value = true
+  try {
+    const [sheetImg, prevImg, nextImg] = await Promise.all([
+      loadImgElement(sheetUrl),
+      loadImgElement(prevCell.dataUrl),
+      loadImgElement(nextCell.dataUrl)
+    ])
+    const sw = sheetImg.naturalWidth || 512
+    const sh = sheetImg.naturalHeight || 512
+    const rect = gridCellPixelRect(
+      sw,
+      sh,
+      state.value.rows,
+      state.value.cols,
+      parsed.row,
+      parsed.col
+    )
+
+    const sheetCanvas = document.createElement('canvas')
+    sheetCanvas.width = sw
+    sheetCanvas.height = sh
+    const sctx = sheetCanvas.getContext('2d')
+    if (!sctx) return
+    sctx.drawImage(sheetImg, 0, 0)
+
+    // 采样该格四角背景色填充底座，再将前后两帧以光学权重叠加合成过渡姿态
+    const cellData = sctx.getImageData(rect.sx, rect.sy, rect.width, rect.height)
+    const p0 = 0
+    const bgR = cellData.data[p0] ?? 255
+    const bgG = cellData.data[p0 + 1] ?? 255
+    const bgB = cellData.data[p0 + 2] ?? 255
+    const bgA = cellData.data[p0 + 3] ?? 255
+
+    sctx.clearRect(rect.sx, rect.sy, rect.width, rect.height)
+    if (bgA > 16 && !keyColor.value) {
+      sctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`
+      sctx.fillRect(rect.sx, rect.sy, rect.width, rect.height)
+    }
+
+    sctx.save()
+    sctx.globalAlpha = 0.55
+    sctx.drawImage(prevImg, rect.sx, rect.sy, rect.width, rect.height)
+    sctx.globalAlpha = 0.72
+    sctx.drawImage(nextImg, rect.sx, rect.sy, rect.width, rect.height)
+    sctx.restore()
+
+    patchParams({
+      animGridImage: { dataUrl: sheetCanvas.toDataURL('image/png') }
+    })
+  } catch (err) {
+    gifError.value = err instanceof Error ? err.message : String(err)
+  } finally {
+    cellRepairBusy.value = false
+  }
+}
+
 function onPlayModeChange(e: Event): void {
   const value = (e.target as HTMLSelectElement).value as AnimPlayMode
   patchParams({ animPlayMode: value })
@@ -794,21 +1203,6 @@ const cells = ref<AnimCell[]>([])
 const gridLoading = ref(false)
 let cellToken = 0
 
-const activeCells = computed(() => {
-  const set = new Set(disabledCells.value)
-  const filtered = cells.value.filter((c) => !set.has(c.key))
-  return filtered.length > 0 ? filtered : cells.value
-})
-
-const currentActiveCell = computed(
-  () => activeCells.value[activeIndex.value] ?? activeCells.value[0] ?? null
-)
-const prevActiveCell = computed(() => {
-  if (activeCells.value.length < 2) return null
-  const prevIdx = (activeIndex.value - 1 + activeCells.value.length) % activeCells.value.length
-  return activeCells.value[prevIdx] ?? null
-})
-
 const playing = ref(true)
 const loop = ref(true)
 const activeIndex = ref(0)
@@ -826,11 +1220,178 @@ function readStoredFps(): number {
 }
 fps.value = readStoredFps()
 
-let frameTimer: ReturnType<typeof setInterval> | null = null
+const activeCells = computed(() => {
+  const set = new Set(disabledCells.value)
+  const filtered = cells.value.filter((c) => !set.has(c.key))
+  return filtered.length > 0 ? filtered : cells.value
+})
+
+const currentActiveCell = computed(
+  () => activeCells.value[activeIndex.value] ?? activeCells.value[0] ?? null
+)
+const prevActiveCell = computed(() => {
+  if (activeCells.value.length < 2) return null
+  const prevIdx = (activeIndex.value - 1 + activeCells.value.length) % activeCells.value.length
+  return activeCells.value[prevIdx] ?? null
+})
+const nextActiveCell = computed(() => {
+  if (activeCells.value.length < 2) return null
+  const nextIdx = (activeIndex.value + 1) % activeCells.value.length
+  return activeCells.value[nextIdx] ?? null
+})
+
+function applyRhythmPreset(presetId: AnimRhythmPresetId): void {
+  const keys = activeCells.value.map((c) => c.key)
+  const nextMap = buildAnimRhythmPresetHolds(presetId, keys)
+  patchParams({ animCellHolds: nextMap })
+}
+
+const currentCellOffset = computed<AnimCellOffset>(() => {
+  const key = currentActiveCell.value?.key
+  if (!key) return { dx: 0, dy: 0 }
+  return cellOffsets.value[key] ?? { dx: 0, dy: 0 }
+})
+
+function nudgeCurrentCell(stepX: number, stepY: number, ev?: MouseEvent): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const mult = ev?.shiftKey ? 4 : 1
+  const cur = currentCellOffset.value
+  const nextDx = Math.max(-256, Math.min(256, cur.dx + stepX * mult))
+  const nextDy = Math.max(-256, Math.min(256, cur.dy + stepY * mult))
+  const nextMap = { ...cellOffsets.value }
+  if (nextDx === 0 && nextDy === 0 && !cur.flipX) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = { dx: nextDx, dy: nextDy, ...(cur.flipX ? { flipX: true } : {}) }
+  }
+  patchParams({ animCellOffsets: nextMap })
+}
+
+function toggleCurrentCellFlipX(): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const cur = currentCellOffset.value
+  const nextFlip = !cur.flipX
+  const nextMap = { ...cellOffsets.value }
+  if (cur.dx === 0 && cur.dy === 0 && !nextFlip) {
+    delete nextMap[key]
+  } else {
+    nextMap[key] = { dx: cur.dx, dy: cur.dy, ...(nextFlip ? { flipX: true } : {}) }
+  }
+  patchParams({ animCellOffsets: nextMap })
+}
+
+function resetCurrentCellOffset(): void {
+  const key = currentActiveCell.value?.key
+  if (!key) return
+  const nextMap = { ...cellOffsets.value }
+  delete nextMap[key]
+  patchParams({ animCellOffsets: nextMap })
+}
+
+interface NormalizedCombatBoxes {
+  raw: SpriteCombatBoxes
+  hurtboxPct: { left: number; top: number; width: number; height: number }
+  hitboxPct: { left: number; top: number; width: number; height: number } | null
+}
+const cellCombatBoxMap = ref<Record<string, NormalizedCombatBoxes>>({})
+const currentCombatBoxes = computed<NormalizedCombatBoxes | null>(() => {
+  const key = currentActiveCell.value?.key
+  if (!key) return null
+  return cellCombatBoxMap.value[key] ?? null
+})
+
+let normalRenderToken = 0
+watch(
+  () =>
+    [
+      normalViewMode.value,
+      currentActiveCell.value?.dataUrl ?? '',
+      lightNormPos.value.x,
+      lightNormPos.value.y
+    ] as const,
+  async ([mode, dataUrl, lx, ly]) => {
+    if (mode === 'off' || !dataUrl) {
+      normalPreviewDataUrl.value = ''
+      return
+    }
+    const token = ++normalRenderToken
+    try {
+      const img = await loadImgElement(dataUrl)
+      if (token !== normalRenderToken) return
+      const w = img.naturalWidth || 128
+      const h = img.naturalHeight || 128
+      const c = document.createElement('canvas')
+      c.width = w
+      c.height = h
+      const ctx = c.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(img, 0, 0)
+      const srcData = ctx.getImageData(0, 0, w, h)
+      const normalRgba = generateSpriteNormalMap(srcData.data, w, h)
+      if (mode === 'normal') {
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(normalRgba), w, h), 0, 0)
+        normalPreviewDataUrl.value = c.toDataURL('image/png')
+        return
+      }
+      // 实时 2D 点光源受光渲染（Lambertian 漫反射 + Blinn-Phong 高光）
+      const outData = ctx.createImageData(w, h)
+      const out = outData.data
+      const lightPxX = lx * w
+      const lightPxY = ly * h
+      const lightPxZ = Math.max(48, Math.min(w, h) * 0.45)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const p = (y * w + x) * 4
+          const a = srcData.data[p + 3]!
+          if (a < 16) continue
+          const nx = (normalRgba[p]! / 255) * 2 - 1
+          const ny = (normalRgba[p + 1]! / 255) * 2 - 1
+          const nz = (normalRgba[p + 2]! / 255) * 2 - 1
+          const dx = lightPxX - x
+          const dy = -(lightPxY - y)
+          const dz = lightPxZ
+          const invL = 1 / Math.hypot(dx, dy, dz)
+          const ldx = dx * invL
+          const ldy = dy * invL
+          const ldz = dz * invL
+          const ndotl = Math.max(0, nx * ldx + ny * ldy + nz * ldz)
+          // 半程向量 H = normalize(L + V)，V=(0,0,1)
+          const hx = ldx
+          const hy = ldy
+          const hz = ldz + 1
+          const invH = 1 / Math.hypot(hx, hy, hz)
+          const ndoth = Math.max(0, (nx * hx + ny * hy + nz * hz) * invH)
+          const spec = Math.pow(ndoth, 18) * 95
+          const ambient = 0.32
+          const diffuse = ndotl * 1.05
+          const lightFactor = ambient + diffuse
+          out[p] = Math.min(255, Math.round(srcData.data[p]! * lightFactor * 1.05 + spec))
+          out[p + 1] = Math.min(
+            255,
+            Math.round(srcData.data[p + 1]! * lightFactor * 0.98 + spec * 0.92)
+          )
+          out[p + 2] = Math.min(
+            255,
+            Math.round(srcData.data[p + 2]! * lightFactor * 0.88 + spec * 0.75)
+          )
+          out[p + 3] = a
+        }
+      }
+      ctx.putImageData(outData, 0, 0)
+      normalPreviewDataUrl.value = c.toDataURL('image/png')
+    } catch {
+      /* ignore */
+    }
+  }
+)
+
+let frameTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearFrameTimer(): void {
   if (frameTimer) {
-    clearInterval(frameTimer)
+    clearTimeout(frameTimer)
     frameTimer = null
   }
 }
@@ -840,40 +1401,51 @@ function stopPlayback(): void {
   playing.value = false
 }
 
+function scheduleNextFrameTick(): void {
+  clearFrameTimer()
+  if (!playing.value || !activeCells.value.length) return
+  const curKey = currentActiveCell.value?.key
+  const hold = getCellHold(curKey)
+  const delayMs = Math.max(16, Math.round((1000 / fps.value) * hold))
+  frameTimer = setTimeout(() => {
+    const count = activeCells.value.length
+    if (count <= 1) return
+    if (playMode.value === 'pingpong') {
+      const next = activeIndex.value + playDirection.value
+      if (next >= count) {
+        playDirection.value = -1
+        activeIndex.value = Math.max(0, count - 2)
+      } else if (next < 0) {
+        if (loop.value) {
+          playDirection.value = 1
+          activeIndex.value = Math.min(count - 1, 1)
+        } else {
+          stopPlayback()
+          return
+        }
+      } else {
+        activeIndex.value = next
+      }
+      scheduleNextFrameTick()
+      return
+    }
+    if (activeIndex.value + 1 >= count) {
+      if (loop.value) activeIndex.value = 0
+      else {
+        stopPlayback()
+        return
+      }
+    } else {
+      activeIndex.value += 1
+    }
+    scheduleNextFrameTick()
+  }, delayMs)
+}
+
 function startPlayback(): void {
   if (!activeCells.value.length) return
   playing.value = true
-  clearFrameTimer()
-  frameTimer = setInterval(
-    () => {
-      const count = activeCells.value.length
-      if (count <= 1) return
-      if (playMode.value === 'pingpong') {
-        const next = activeIndex.value + playDirection.value
-        if (next >= count) {
-          playDirection.value = -1
-          activeIndex.value = Math.max(0, count - 2)
-        } else if (next < 0) {
-          if (loop.value) {
-            playDirection.value = 1
-            activeIndex.value = Math.min(count - 1, 1)
-          } else {
-            stopPlayback()
-          }
-        } else {
-          activeIndex.value = next
-        }
-        return
-      }
-      if (activeIndex.value + 1 >= count) {
-        if (loop.value) activeIndex.value = 0
-        else stopPlayback()
-      } else {
-        activeIndex.value += 1
-      }
-    },
-    Math.max(1, Math.round(1000 / fps.value))
-  )
+  scheduleNextFrameTick()
 }
 
 function togglePlay(): void {
@@ -933,15 +1505,17 @@ const gifSaveRef = ref<InstanceType<typeof SaveAssetDialog> | null>(null)
 const gifSaving = ref(false)
 
 async function composeGifFromCells(): Promise<Anim2dGifResult> {
-  const baseUrls = activeCells.value.map((cell) => cell.dataUrl)
-  const frameUrls =
-    playMode.value === 'pingpong' && baseUrls.length > 2
-      ? [...baseUrls, ...baseUrls.slice(1, -1).reverse()]
-      : baseUrls
+  const seqCells =
+    playMode.value === 'pingpong' && activeCells.value.length > 2
+      ? [...activeCells.value, ...activeCells.value.slice(1, -1).reverse()]
+      : activeCells.value
+  const frameUrls = seqCells.map((cell) => cell.dataUrl)
+  const frameHolds = seqCells.map((cell) => getCellHold(cell.key))
   const gif = await composeAnim2dGif({
     frameUrls,
     fps: fps.value,
-    loop: loop.value
+    loop: loop.value,
+    frameHolds
   })
   if (!gif) throw new Error('ANIM2D_GIF_NO_FRAMES')
   return gif
@@ -1015,6 +1589,7 @@ async function onSaveConfirm(payload: { name: string; folderId: string | null })
     if (saveMode.value === 'sheet' && sheetInfo && asset.relativePath) {
       const anchorMode = stabilize.value === 'center' ? 'center' : 'ground'
       const imageFileName = asset.relativePath.split('/').pop() || `${payload.name}.png`
+      const normalMapFileName = imageFileName.replace(/\.png$/i, '.normal.png')
       const frameNames = activeCells.value.map((cell, idx) => `${payload.name}-${cell.key || idx}`)
       const manifest = buildSpriteManifest({
         canvasWidth: sheetInfo.frameWidth,
@@ -1027,8 +1602,12 @@ async function onSaveConfirm(payload: { name: string; folderId: string | null })
           height: sheetInfo.frameHeight
         }))
       })
+      const combatList = activeCells.value
+        .map((cell) => cellCombatBoxMap.value[cell.key]?.raw)
+        .filter((cb): cb is SpriteCombatBoxes => Boolean(cb))
       const engineAtlas = buildEngineSpriteSheetJson({
         imageFileName,
+        normalMapFileName,
         frameWidth: sheetInfo.frameWidth,
         frameHeight: sheetInfo.frameHeight,
         frameNames,
@@ -1036,7 +1615,9 @@ async function onSaveConfirm(payload: { name: string; folderId: string | null })
         fps: fps.value,
         anchor: anchorMode,
         playMode: playMode.value,
-        tagName: payload.name
+        tagName: payload.name,
+        frameHolds: activeCells.value.map((cell) => getCellHold(cell.key)),
+        ...(combatList.length === activeCells.value.length ? { frameCombatBoxes: combatList } : {})
       })
       const manifestPath = asset.relativePath.replace(/\.png$/i, '.manifest.json')
       const atlasPath = asset.relativePath.replace(/\.png$/i, '.atlas.json')
@@ -1049,6 +1630,32 @@ async function onSaveConfirm(payload: { name: string; folderId: string | null })
           relativePath: atlasPath,
           content: JSON.stringify(engineAtlas, null, 2)
         })
+        // 同步生成并保存配套 2D 切线空间法线贴图（.normal.png）到同一资产目录
+        const sheetImg = await loadImgElement(sheetInfo.dataUrl)
+        const nw = sheetImg.naturalWidth || 1
+        const nh = sheetImg.naturalHeight || 1
+        const nCanvas = document.createElement('canvas')
+        nCanvas.width = nw
+        nCanvas.height = nh
+        const nCtx = nCanvas.getContext('2d')
+        if (nCtx) {
+          nCtx.drawImage(sheetImg, 0, 0)
+          const sData = nCtx.getImageData(0, 0, nw, nh)
+          const nRgba = generateSpriteNormalMap(sData.data, nw, nh)
+          nCtx.putImageData(new ImageData(new Uint8ClampedArray(nRgba), nw, nh), 0, 0)
+          const nStagedPath = await window.studio.saveGraphRunMedia({
+            dataUrl: nCanvas.toDataURL('image/png'),
+            key: `anim2d-normal-${Date.now()}`,
+            outputDir: `${cacheRoot}/Sheets`
+          })
+          if (await window.studio.projectFileExists(nStagedPath)) {
+            await window.studio.saveProjectAsset({
+              relativePath: nStagedPath,
+              name: `${payload.name}-normal`,
+              folderId: payload.folderId
+            })
+          }
+        }
       } catch {
         /* ignore */
       }
@@ -1115,13 +1722,31 @@ async function refreshCells(): Promise<void> {
       return
     }
     const next: AnimCell[] = []
+    const nextCombatBoxes: Record<string, NormalizedCombatBoxes> = {}
     const keyColorValue = readAnimKeyColorFromNode(current.params)
     const thresholdValue = readAnimKeyThresholdFromNode(current.params)
     const insetValue = readAnimEdgeInsetFromNode(current.params)
     const stabilizeValue = readAnimStabilizeFromNode(current.params)
-    for (const cell of anim2dCellKeys(s.rows, s.cols)) {
+    const offsetsMap = readAnimCellOffsetsFromNode(current.params)
+    const outlineVal = readAnimOutlineFromNode(current.params)
+    const pixelSnapVal = readAnimPixelSnapFromNode(current.params)
+    const groundShadowVal = readAnimGroundShadowFromNode(current.params)
+    const paletteLockVal = readAnimPaletteLockFromNode(current.params)
+    const motionTrailVal = readAnimMotionTrailFromNode(current.params)
+    const loopBlendVal = readAnimLoopBlendFromNode(current.params)
+    const playModeVal = readAnimPlayModeFromNode(current.params)
+    const disabledSet = new Set(readAnimDisabledCellsFromNode(current.params))
+    const allKeys = anim2dCellKeys(s.rows, s.cols)
+    const enabledKeys = allKeys.filter((k) => !disabledSet.has(k))
+    const lastEnabledKey = enabledKeys.length >= 3 ? enabledKeys[enabledKeys.length - 1] : ''
+    for (let i = 0; i < allKeys.length; i++) {
+      const cell = allKeys[i]!
       if (token !== cellToken) return
       try {
+        const offset = offsetsMap[cell]
+        const enabledIdx = enabledKeys.indexOf(cell)
+        const prevCellKey = enabledIdx > 0 ? enabledKeys[enabledIdx - 1] : undefined
+        const isLastLoopCell = playModeVal === 'loop' && cell === lastEnabledKey
         const composed = await composeImageGridCell({
           sourceDataUrl: sourceUrl,
           state: { rows: s.rows, cols: s.cols, selected: [] },
@@ -1130,14 +1755,59 @@ async function refreshCells(): Promise<void> {
           ...(keyColorValue
             ? { chromaKey: { color: keyColorValue, threshold: thresholdValue } }
             : {}),
-          ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {})
+          ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {}),
+          ...(offset ? { cellOffset: offset } : {}),
+          ...(paletteLockVal > 0 ? { paletteLock: paletteLockVal } : {}),
+          ...(loopBlendVal && isLastLoopCell ? { loopBlend: true, isLastLoopCell: true } : {}),
+          ...(pixelSnapVal > 1 ? { pixelSnap: pixelSnapVal } : {}),
+          ...(outlineVal ? { outlineColor: outlineVal } : {}),
+          ...(motionTrailVal && prevCellKey ? { motionTrail: motionTrailVal, prevCellKey } : {}),
+          ...(groundShadowVal ? { groundShadow: true } : {})
         })
-        if (composed.dataUrl) next.push({ key: cell, dataUrl: composed.dataUrl })
+        if (composed.dataUrl) {
+          next.push({ key: cell, dataUrl: composed.dataUrl })
+          try {
+            const cImg = await loadImgElement(composed.dataUrl)
+            const cw = Math.max(1, cImg.naturalWidth || composed.width || 1)
+            const ch = Math.max(1, cImg.naturalHeight || composed.height || 1)
+            const cCan = document.createElement('canvas')
+            cCan.width = cw
+            cCan.height = ch
+            const cCtx = cCan.getContext('2d')
+            if (cCtx) {
+              cCtx.drawImage(cImg, 0, 0)
+              const rgba = cCtx.getImageData(0, 0, cw, ch).data
+              const cb = detectSpriteCombatBoxes(rgba, cw, ch)
+              if (cb) {
+                nextCombatBoxes[cell] = {
+                  raw: cb,
+                  hurtboxPct: {
+                    left: (cb.hurtbox.x / cw) * 100,
+                    top: (cb.hurtbox.y / ch) * 100,
+                    width: (cb.hurtbox.width / cw) * 100,
+                    height: (cb.hurtbox.height / ch) * 100
+                  },
+                  hitboxPct: cb.hitbox
+                    ? {
+                        left: (cb.hitbox.x / cw) * 100,
+                        top: (cb.hitbox.y / ch) * 100,
+                        width: (cb.hitbox.width / cw) * 100,
+                        height: (cb.hitbox.height / ch) * 100
+                      }
+                    : null
+                }
+              }
+            }
+          } catch {
+            /* ignore combat box detection error */
+          }
+        }
       } catch {
         /* skip */
       }
     }
     if (token !== cellToken) return
+    cellCombatBoxMap.value = nextCombatBoxes
     cells.value = next
     if (next.length > 1) {
       startPlayback()
@@ -1159,10 +1829,17 @@ watch(
     () => readAnimKeyThresholdFromNode(node.value?.params),
     () => readAnimEdgeInsetFromNode(node.value?.params),
     () => readAnimStabilizeFromNode(node.value?.params),
+    () => readAnimOutlineFromNode(node.value?.params),
+    () => readAnimPixelSnapFromNode(node.value?.params),
+    () => readAnimGroundShadowFromNode(node.value?.params),
+    () => readAnimPaletteLockFromNode(node.value?.params),
+    () => readAnimMotionTrailFromNode(node.value?.params),
+    () => readAnimLoopBlendFromNode(node.value?.params),
+    () => JSON.stringify(readAnimCellOffsetsFromNode(node.value?.params)),
     () => {
       const grid = node.value?.params?.animGridImage as
         { dataUrl?: string; relativePath?: string } | undefined
-      return grid?.dataUrl?.slice(0, 48) ?? grid?.relativePath ?? ''
+      return grid?.dataUrl?.slice(0, 64) ?? grid?.relativePath ?? ''
     }
   ],
   () => {
@@ -1535,9 +2212,46 @@ onBeforeUnmount(stopPlayback)
 
 .stage-frame.onion-prev {
   position: absolute;
-  opacity: 0.32;
-  filter: hue-rotate(150deg) saturate(1.6);
+  opacity: 0.36;
+  filter: sepia(1) saturate(5) hue-rotate(-35deg);
   pointer-events: none;
+}
+
+.stage-frame.onion-next {
+  position: absolute;
+  opacity: 0.3;
+  filter: sepia(1) saturate(5) hue-rotate(95deg);
+  pointer-events: none;
+}
+
+.rhythm-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.nudge-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.film-hold-pill {
+  padding: 0 5px;
+  font-size: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.film-hold-pill.custom {
+  border-color: rgba(251, 191, 36, 0.65);
+  background: rgba(251, 191, 36, 0.22);
+  color: #fde68a;
+  font-weight: 600;
 }
 
 .pixelated {
@@ -1572,6 +2286,46 @@ onBeforeUnmount(stopPlayback)
   height: 2px;
   background: rgba(251, 191, 36, 0.65);
   pointer-events: none;
+}
+
+.combat-box {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: 3px;
+}
+
+.hurtbox-overlay {
+  border: 1.5px dashed rgba(34, 197, 94, 0.85);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.hitbox-overlay {
+  border: 1.5px solid rgba(244, 63, 94, 0.92);
+  background: rgba(244, 63, 94, 0.16);
+  box-shadow: 0 0 8px rgba(244, 63, 94, 0.35);
+}
+
+.combat-tag {
+  position: absolute;
+  top: -14px;
+  left: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  border-radius: 2px;
+  line-height: 12px;
+  letter-spacing: 0.4px;
+}
+
+.hurtbox-overlay .combat-tag {
+  background: rgba(22, 163, 74, 0.85);
+  color: #dcfce7;
+}
+
+.hitbox-overlay .combat-tag {
+  background: rgba(225, 29, 72, 0.9);
+  color: #ffe4e6;
 }
 
 .stage-hud {

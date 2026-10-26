@@ -39,6 +39,7 @@ export async function composeAnim2dGif(input: {
   frameUrls: string[]
   fps: number
   loop?: boolean
+  frameHolds?: number[]
 }): Promise<Anim2dGifResult | null> {
   const urls = (input.frameUrls ?? [])
     .map((url) => url?.trim())
@@ -67,12 +68,23 @@ export async function composeAnim2dGif(input: {
 
   const quantized = quantizeGifFrames(pixels)
   const frameTransparent = quantized.transparentIndex !== null
+  const baseDelayCs = gifDelayCsFromFps(input.fps)
+  const holds = input.frameHolds
   const bytes = encodeGif({
     width,
     height,
     palette: quantized.palette,
-    frames: quantized.frames.map((indices) => ({ indices, transparent: frameTransparent })),
-    delayCs: gifDelayCsFromFps(input.fps),
+    frames: quantized.frames.map((indices, idx) => {
+      const holdRaw = Number(holds?.[idx] ?? 1)
+      const hold =
+        Number.isFinite(holdRaw) && holdRaw > 0 ? Math.max(0.25, Math.min(8, holdRaw)) : 1
+      return {
+        indices,
+        transparent: frameTransparent,
+        delayCs: Math.max(2, Math.round(baseDelayCs * hold))
+      }
+    }),
+    delayCs: baseDelayCs,
     loopCount: input.loop === false ? 1 : 0,
     ...(frameTransparent ? { transparentIndex: quantized.transparentIndex as number } : {})
   })
