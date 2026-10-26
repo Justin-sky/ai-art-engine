@@ -566,10 +566,10 @@ export async function executeTimelineOutputNode(
     })
     voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
 
-    // 古画一镜入画等混合入画模式（同时含取景切片图与写实复活视频）：
+    // 古画一镜入画等混合入画模式（同时含取景切片图与写实复活视频，且非动态漫页面模式）：
     // 若未接入或未水合出 subtitles，从图内识图节点/切片节点提取，或对尚未命名的古画切片即时调用多模态识图提炼场景名与专业历史文博解说词；
     // 若尚未配置独立历史解说配音轨且支持 generateSpeech，自动合成文博解说旁白。
-    if (images.length > 0 && videos.length > 0) {
+    if (comicPages.length === 0 && images.length > 0 && videos.length > 0) {
       const sortedImgVis = orderedVisuals.filter((v) => v.kind === 'image')
       for (let actIdx = 0; actIdx < sortedImgVis.length; actIdx++) {
         const imgVis = sortedImgVis[actIdx]!
@@ -683,10 +683,27 @@ export async function executeTimelineOutputNode(
     }
 
     // 动态漫（comic.page -> output.timeline）：若未连接外部配音轨且支持 generateSpeech，
-    // 自动按分镜与气泡阅读顺序提取台词，并按角色名分配差异化音色合成配音
+    // 自动按分镜与气泡阅读顺序提取台词，优先查询角色音色档案（voiceProfile）或按角色名分配差异化音色，并以 3 路受控并发合成配音（命中缓存直接复用）
     if (comicPages.length > 0 && voices.length === 0 && ctx.generateSpeech) {
       const ttsVoices = ['onyx', 'nova', 'alloy', 'shimmer', 'echo', 'fable'] as const
       const speakerVoiceMap = new Map<string, string>()
+      const cachedVoicesById = new Map<string, string>()
+      for (const prev of ctx.node.params.generatedVoices ?? []) {
+        if (prev?.id && prev?.relativePath?.trim()) {
+          cachedVoicesById.set(prev.id, prev.relativePath.trim())
+        }
+      }
+      interface PendingBubbleTtsTask {
+        order: number
+        cacheKey: string
+        cachedRelPath?: string
+        spokenText: string
+        speaker?: string
+        chosenVoice: string
+        name: string
+        title: string
+      }
+      const tasks: PendingBubbleTtsTask[] = []
       let voiceOrder = 0
       for (const cp of comicPages) {
         const parsedPage = readComicPageFromGenParams({ comicPage: cp.comicPage })
@@ -707,30 +724,71 @@ export async function executeTimelineOutputNode(
               speakerVoiceMap.set(speakerKey, chosenVoice)
             }
           }
-          try {
-            const ttsRes = await ctx.generateSpeech({
-              input: spokenText,
-              voice: chosenVoice,
-              name: `comic_${cp.nodeId}_p${line.panelIndex + 1}_b${lineIdx + 1}`
-            })
-            if (ttsRes?.relativePath?.trim()) {
-              voices.push({
-                id: ttsRes.assetId?.trim() || ttsRes.relativePath.trim(),
-                relativePath: ttsRes.relativePath.trim(),
-                title: line.speaker
-                  ? `Panel ${line.panelIndex + 1} · ${line.speaker}`
-                  : `Panel ${line.panelIndex + 1} · #${lineIdx + 1}`,
-                text: spokenText,
-                trackKind: 'voice',
-                lane: 0,
-                _order: voiceOrder++
-              })
-            }
-          } catch {
-            // 未配置语音合成模型时静默跳过，保留分镜逐字卡拉OK字幕
-          }
+          const cacheKey = `comic-tts:${cp.nodeId}:${line.bubbleId}:${chosenVoice}:${spokenText}`
+          const cachedRelPath = cachedVoicesById.get(cacheKey)
+          tasks.push({
+            order: voiceOrder++,
+            cacheKey,
+            cachedRelPath:
+              cachedRelPath && (!ctx.hasAsset || ctx.hasAsset(cachedRelPath))
+                ? cachedRelPath
+                : undefined,
+            spokenText,
+            speaker: line.speaker?.trim() || undefined,
+            chosenVoice,
+            name: `comic_${cp.nodeId}_p${line.panelIndex + 1}_b${lineIdx + 1}`,
+            title: line.speaker
+              ? `Panel ${line.panelIndex + 1} · ${line.speaker}`
+              : `Panel ${line.panelIndex + 1} · #${lineIdx + 1}`
+          })
         }
       }
+
+      const concurrency = 3
+      for (let i = 0; i < tasks.length; i += concurrency) {
+        const batch = tasks.slice(i, i + concurrency)
+        const batchResults = await Promise.all(
+          batch.map(async (t) => {
+            if (t.cachedRelPath) {
+              return {
+                id: t.cacheKey,
+                relativePath: t.cachedRelPath,
+                title: t.title,
+                text: t.spokenText,
+                trackKind: 'voice' as const,
+                lane: 0,
+                _order: t.order
+              }
+            }
+            try {
+              const ttsRes = await ctx.generateSpeech!({
+                input: t.spokenText,
+                voice: t.chosenVoice,
+                ...(t.speaker ? { voiceProfile: t.speaker } : {}),
+                name: t.name
+              })
+              if (ttsRes?.relativePath?.trim()) {
+                return {
+                  id: t.cacheKey,
+                  relativePath: ttsRes.relativePath.trim(),
+                  title: t.title,
+                  text: t.spokenText,
+                  trackKind: 'voice' as const,
+                  lane: 0,
+                  _order: t.order
+                }
+              }
+            } catch {
+              // 未配置语音合成模型时静默跳过，保留分镜逐字卡拉OK字幕
+            }
+            return null
+          })
+        )
+        for (const item of batchResults) {
+          if (item) voices.push(item)
+        }
+      }
+      voices.sort((a, b) => (a._order ?? 0) - (b._order ?? 0))
     }
   } else {
     voices.push(...rawVoices)
@@ -774,7 +832,10 @@ export async function executeTimelineOutputNode(
         ...(comicPages.length ? { comicPages } : {}),
         signal: ctx.signal
       })
-    } catch {
+    } catch (err) {
+      if (comicPages.length > 0 || (videos.length === 0 && images.length > 0)) {
+        throw err
+      }
       composed = null
     }
   }

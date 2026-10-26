@@ -609,7 +609,7 @@ export function buildComicMotionTimeline(
         overlayY: 0,
         overlayWidth: 1,
         overlayHeight: 1,
-        opacity: round3(Math.min(0.85, Math.max(0.35, (panel.effectIntensity ?? 0.65) * 0.82))),
+        opacity: round3(Math.min(0.42, Math.max(0.22, (panel.effectIntensity ?? 0.65) * 0.48))),
         tweenLoop: isFocus ? 'pulse' : 'shake',
         tweenLoopSpeedHz: isFocus ? 3.6 : 4.5,
         tweenLoopIntensity: 0.65
@@ -722,8 +722,30 @@ export function buildComicMotionTimeline(
           const bw = round3(Math.min(0.56, Math.max(0.24, 0.32 * bScale)))
           const bh = round3(Math.min(0.46, Math.max(0.16, 0.22 * bScale)))
           const bx = round3(Math.min(1 - bw - 0.02, Math.max(0.02, entry.bubble.x - bw / 2)))
-          const by = round3(Math.min(1 - bh - 0.02, Math.max(0.02, entry.bubble.y - bh / 2)))
+          // 限制气泡 Y 坐标上限为 0.72 - bh，避免与底部卡拉OK字幕条（y≈0.85）重叠
+          const by = round3(
+            Math.min(Math.max(0.08, 0.72 - bh), Math.max(0.08, entry.bubble.y - bh / 2))
+          )
           const holdDur = round3(Math.max(0.45, panelStartSec + panelDur - bStart))
+          const panelCam = inferComicPanelCameraMotion(page, panel, panelIdx)
+          const driftDx =
+            panelCam === 'panLeft'
+              ? 0.018
+              : panelCam === 'panRight'
+                ? -0.018
+                : panelCam === 'kenBurnsIn'
+                  ? round3((entry.bubble.x - 0.5) * 0.024)
+                  : 0
+          const driftDy =
+            panelCam === 'panUp'
+              ? 0.016
+              : panelCam === 'panDown'
+                ? -0.016
+                : panelCam === 'kenBurnsIn'
+                  ? -0.012
+                  : 0
+          const endBx = round3(Math.min(1 - bw - 0.02, Math.max(0.02, bx + driftDx)))
+          const endBy = round3(Math.min(Math.max(0.08, 0.72 - bh), Math.max(0.08, by + driftDy)))
           const fallbackBubbleSticker: TimelineBuiltinStickerId = isShout
             ? 'comic-shout-bubble'
             : 'comic-speech-bubble'
@@ -733,7 +755,7 @@ export function buildComicMotionTimeline(
             lane: 2,
             sourceId: bubbleSliceRel || `sticker:${fallbackBubbleSticker}:${entry.bubble.id}`,
             title: displaySub.slice(0, 20),
-            text: displaySub.slice(0, 28),
+            text: bubbleSliceRel ? '' : displaySub.slice(0, 28),
             ...(bubbleSliceRel
               ? { relativePath: bubbleSliceRel }
               : {
@@ -747,6 +769,30 @@ export function buildComicMotionTimeline(
             overlayWidth: bw,
             overlayHeight: bh,
             ...(entry.bubble.rotation ? { overlayRotation: entry.bubble.rotation } : {}),
+            ...(Math.abs(endBx - bx) > 0.002 || Math.abs(endBy - by) > 0.002
+              ? {
+                  keyframes: [
+                    {
+                      offsetSec: 0,
+                      x: bx,
+                      y: by,
+                      width: bw,
+                      height: bh,
+                      opacity: 1,
+                      ease: 'inOutSine' as const
+                    },
+                    {
+                      offsetSec: holdDur,
+                      x: endBx,
+                      y: endBy,
+                      width: panelCam === 'kenBurnsIn' ? round3(bw * 1.03) : bw,
+                      height: panelCam === 'kenBurnsIn' ? round3(bh * 1.03) : bh,
+                      opacity: 1,
+                      ease: 'inOutSine' as const
+                    }
+                  ]
+                }
+              : {}),
             tweenIn: isShout ? 'elasticIn' : 'popIn',
             tweenInDurationSec: 0.24,
             ...(isShout
@@ -768,15 +814,16 @@ export function buildComicMotionTimeline(
             lane: 3,
             sourceId: `sticker:${sfxInfo.stickerId}`,
             title: rawText.slice(0, 12),
-            text: rawText.slice(0, 12),
+            text: bubbleSliceRel ? '' : rawText.slice(0, 12),
             stickerId: sfxInfo.stickerId,
             stickerColor: sfxInfo.stickerColor,
             startSec: bStart,
             durationSec: round3(Math.min(1.4, bDur)),
             overlayX: round3(Math.min(0.78, Math.max(0.04, entry.bubble.x - 0.14))),
-            overlayY: round3(Math.min(0.78, Math.max(0.04, entry.bubble.y - 0.14))),
+            overlayY: round3(Math.min(0.62, Math.max(0.04, entry.bubble.y - 0.14))),
             overlayWidth: 0.28,
             overlayHeight: 0.28,
+            opacity: bubbleSliceRel ? 0.52 : 0.85,
             tweenIn: 'elasticIn',
             tweenInDurationSec: 0.28,
             tweenOut: 'fadeOut',
@@ -805,7 +852,7 @@ export function buildComicMotionTimeline(
           startSec: sStart,
           durationSec: round3(Math.max(0.5, panelStartSec + panelDur - sStart)),
           overlayX: round3(Math.min(0.74, Math.max(0.04, sfxBubble.x - 0.16))),
-          overlayY: round3(Math.min(0.74, Math.max(0.04, sfxBubble.y - 0.14))),
+          overlayY: round3(Math.min(0.62, Math.max(0.04, sfxBubble.y - 0.14))),
           overlayWidth: 0.32,
           overlayHeight: 0.28,
           overlayRotation: sfxBubble.rotation ?? 0,
@@ -825,15 +872,16 @@ export function buildComicMotionTimeline(
         lane: 3,
         sourceId: `sticker:${sfxInfo.stickerId}`,
         title: sfxBubble.text.trim(),
-        text: sfxBubble.text.trim(),
+        text: sfxSliceRel ? '' : sfxBubble.text.trim(),
         stickerId: sfxInfo.stickerId,
         stickerColor: sfxInfo.stickerColor,
         startSec: sStart,
         durationSec: sDur,
         overlayX: round3(Math.min(0.76, Math.max(0.04, sfxBubble.x - 0.15))),
-        overlayY: round3(Math.min(0.76, Math.max(0.04, sfxBubble.y - 0.15))),
+        overlayY: round3(Math.min(0.62, Math.max(0.04, sfxBubble.y - 0.15))),
         overlayWidth: 0.3,
         overlayHeight: 0.3,
+        opacity: sfxSliceRel ? 0.55 : 0.88,
         overlayRotation: sfxBubble.rotation ?? -10,
         tweenIn: 'elasticIn',
         tweenInDurationSec: 0.25,
@@ -879,12 +927,13 @@ export function buildComicMotionTimeline(
     })
   }
 
+  const isLandscapePage = page.width >= page.height
   const settings: ScriptTimelineSettings = {
     durationSec: totalDur,
     exportWidth,
     exportHeight,
     exportFps: 24,
-    scaleMode: 'blur',
+    scaleMode: isLandscapePage ? 'cover' : 'blur',
     subtitleFontSize: isVerticalStrip ? 42 : 46,
     subtitleYOffset: isVerticalStrip ? 140 : 88,
     subtitleColor: '#FACC15',

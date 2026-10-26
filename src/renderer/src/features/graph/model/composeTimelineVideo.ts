@@ -472,13 +472,35 @@ export async function composeTimelineVideoForNode(input: {
           doc.sources = mergedSources
         }
 
+        // 多页串联（page1 -> page2）时，为前一页末尾镜头预留 0.32s 几何交叠窗口，并为新页首镜加上翻页滑入转场（smoothleft）
+        const crossPageTransSec = pageIdx > 0 ? 0.32 : 0
+        if (crossPageTransSec > 0) {
+          const prevPageLastVideo = [...clips].reverse().find((c) => c.track === 'video')
+          if (
+            prevPageLastVideo &&
+            prevPageLastVideo.startSec + prevPageLastVideo.durationSec <= pageCursor + 0.01
+          ) {
+            prevPageLastVideo.durationSec =
+              Math.round((prevPageLastVideo.durationSec + crossPageTransSec) * 1000) / 1000
+          }
+        }
+
+        let isFirstPageVideo = true
         for (const c of built.clips) {
           if (hasManualSubtitleClips && c.track === 'subtitle') continue
           if (hasManualVoiceClips && c.track === 'voice') continue
+          const isCrossPageEntry = crossPageTransSec > 0 && c.track === 'video' && isFirstPageVideo
+          if (c.track === 'video') isFirstPageVideo = false
           clips.push({
             ...c,
             id: `${c.id}:p${pageIdx}:${stamp}`,
-            startSec: Math.round((c.startSec + pageCursor) * 1000) / 1000
+            startSec: Math.round((c.startSec + pageCursor) * 1000) / 1000,
+            ...(isCrossPageEntry
+              ? {
+                  transitionType: 'smoothleft' as const,
+                  transitionInSec: crossPageTransSec
+                }
+              : {})
           })
         }
         pageCursor = Math.round((pageCursor + contentEndSecOfTimeline(built.clips)) * 1000) / 1000
@@ -1484,7 +1506,7 @@ export async function composeTimelineVideoForNode(input: {
       .map(async (c): Promise<TimelineExportClip> => {
         const stickerPngDataUrl = c.stickerId
           ? ((await rasterizeTimelineStickerSvgToPngDataUrl(c.stickerId, {
-              text: c.text || c.title,
+              text: c.text,
               color: c.stickerColor
             })) ?? undefined)
           : undefined
@@ -1620,7 +1642,9 @@ export async function composeTimelineVideoForNode(input: {
     })
   )
 
-  if (!res.ok) return null
+  if (!res.ok) {
+    throw new Error(res.error || 'TIMELINE_EXPORT_FAILED')
+  }
   if (res.assetId) {
     await project.refreshAssets()
     const created = project.assets.find((a) => a.id === res.assetId)

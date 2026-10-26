@@ -119,6 +119,125 @@ export function extractAlphaBounds(
   return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
 }
 
+/**
+ * 提取精灵主体的水平躯干主轴 X 坐标（源图像素系）。
+ *
+ * 为什么不用外接框中心 `bounds.x + bounds.width / 2`？
+ * 当角色在某一帧向前挥剑、伸手或踢腿时，外接框单侧显著外扩，若按外接框中心居中，
+ * 会把角色躯干往反方向拉扯（产生“太空步/躯干反向抽动”）。
+ *
+ * 算法：取主体框纵向核心躯干带 `[y0 + 0.15*H, y0 + 0.85*H]`，统计每一列 `x` 的不透明像素数 `colCount`，
+ * 并以 `colCount^2`（列纵向厚度平方）作为权重求加权质心 X。
+ * 头+胸+胯所在的躯干立柱纵向厚度大，权重占绝对主导；横向伸出的武器/手臂纵向厚度薄，权重极小，
+ * 从而将水平锚点牢牢锁定在角色脊椎中轴线上。
+ */
+export function extractSpriteCorePivotX(
+  data: Uint8Array | Uint8ClampedArray,
+  srcWidth: number,
+  srcHeight: number,
+  bounds?: SpriteBounds | null,
+  options?: { alphaMin?: number }
+): number | null {
+  const b = bounds ?? extractAlphaBounds(data, srcWidth, srcHeight, options)
+  if (!b || b.width <= 0 || b.height <= 0) return null
+  const alphaMin = Math.max(0, Math.min(255, Math.round(options?.alphaMin ?? 12)))
+  const xStart = Math.max(0, Math.floor(b.x))
+  const xEnd = Math.min(srcWidth - 1, Math.ceil(b.x + b.width - 1))
+  const bandY0 = Math.max(0, Math.floor(b.y + b.height * 0.15))
+  const bandY1 = Math.min(srcHeight - 1, Math.ceil(b.y + b.height * 0.85))
+  const yStart = bandY1 >= bandY0 ? bandY0 : Math.max(0, Math.floor(b.y))
+  const yEnd = bandY1 >= bandY0 ? bandY1 : Math.min(srcHeight - 1, Math.ceil(b.y + b.height - 1))
+
+  let weightedX = 0
+  let totalWeight = 0
+  for (let x = xStart; x <= xEnd; x++) {
+    let colCount = 0
+    for (let y = yStart; y <= yEnd; y++) {
+      const a = data[(y * srcWidth + x) * 4 + 3]!
+      if (a >= alphaMin) colCount++
+    }
+    if (colCount > 0) {
+      const w = colCount * colCount
+      weightedX += (x + 0.5) * w
+      totalWeight += w
+    }
+  }
+  if (totalWeight <= 0) {
+    return b.x + b.width / 2
+  }
+  return weightedX / totalWeight
+}
+
+export interface StabilizedCellPlacementInput {
+  cellWidth: number
+  cellHeight: number
+  bounds: SpriteBounds
+  /** 躯干水平主轴 X（源格像素系）；缺省回退外接框中心 */
+  pivotX?: number | null
+  mode: 'ground' | 'center'
+  /** 同序列多格的中位主体高度（用于消除 AI 跨格忽大忽小的呼吸抖动） */
+  referenceHeightPx?: number | null
+  /** 地面基线占格高比例（默认 0.94） */
+  groundYRatio?: number
+}
+
+export interface StabilizedCellPlacement {
+  dstX: number
+  dstY: number
+  dstW: number
+  dstH: number
+  scale: number
+}
+
+/**
+ * 计算序列帧单格的原地稳像放置矩形（支持躯干主轴水平防抖 + 跨格身高尺度归一化）。
+ */
+export function computeStabilizedCellPlacement(
+  input: StabilizedCellPlacementInput
+): StabilizedCellPlacement {
+  const { cellWidth, cellHeight, bounds, mode } = input
+  let scale = 1
+  if (
+    typeof input.referenceHeightPx === 'number' &&
+    Number.isFinite(input.referenceHeightPx) &&
+    input.referenceHeightPx > 4 &&
+    bounds.height > 4
+  ) {
+    const ratio = input.referenceHeightPx / bounds.height
+    if (ratio >= 0.75 && ratio <= 1.32) {
+      scale = clamp(ratio, 0.84, 1.18)
+    }
+  }
+  if (scale > 1) {
+    const maxWScale = (cellWidth * 0.96) / Math.max(1, bounds.width)
+    const maxHScale =
+      (cellHeight * (mode === 'ground' ? 0.92 : 0.96)) / Math.max(1, bounds.height)
+    scale = Math.max(1, Math.min(scale, maxWScale, maxHScale))
+  }
+
+  const dstW = Math.max(1, Math.round(bounds.width * scale))
+  const dstH = Math.max(1, Math.round(bounds.height * scale))
+  const pivotOffset =
+    (typeof input.pivotX === 'number' && Number.isFinite(input.pivotX)
+      ? input.pivotX - bounds.x
+      : bounds.width / 2) * scale
+
+  let dstX = Math.round(cellWidth / 2 - pivotOffset)
+  if (dstW <= cellWidth) {
+    dstX = clampInt(dstX, 0, cellWidth - dstW)
+  } else {
+    dstX = Math.round((cellWidth - dstW) / 2)
+  }
+
+  const groundRatio = clamp(Number(input.groundYRatio ?? 0.94), 0.5, 0.99)
+  const dstY =
+    mode === 'ground'
+      ? clampInt(Math.round(cellHeight * groundRatio) - dstH, 0, Math.max(0, cellHeight - dstH))
+      : Math.round((cellHeight - dstH) / 2)
+
+  return { dstX, dstY, dstW, dstH, scale }
+}
+
 export interface SpriteAlignPlan {
   srcWidth: number
   srcHeight: number

@@ -378,36 +378,41 @@ async function syncCanvasTimelineAndAutoWire(
     if (tlNode) {
       effectiveNodeId = tlNode.id
       const existingEdges = Array.isArray(baseGraph.edges) ? [...baseGraph.edges] : []
+      // 仅当时间线节点完全没有任何入边时（例如通过纯命令新建时间线），才自动将画布内孤立媒体节点连入时间线；
+      // 若时间线已有显式连线（如动态漫 comicPage -> timeline，而 climaxVideo 为旁路 I2V 源），绝不擅自将旁路视频连入时间线以免污染轨道。
+      const tlHasIncoming = existingEdges.some((e) => e.target === tlNode.id)
       let edgesChanged = false
-      for (const node of baseGraph.nodes) {
-        if (node.id === tlNode.id) continue
-        const hasOutgoing = existingEdges.some((e) => e.source === node.id)
-        if (hasOutgoing) continue
-        if (node.typeId === 'asset.video' || node.typeId === 'asset.image') {
-          const targetPort = node.typeId === 'asset.video' ? 'in' : 'in-image'
-          existingEdges.push({
-            id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
-            source: node.id,
-            sourcePort: 'out',
-            target: tlNode.id,
-            targetPort
-          })
-          edgesChanged = true
-        } else if (
-          node.typeId === 'asset.voice' ||
-          node.typeId === 'asset.dialogue' ||
-          node.typeId === 'asset.music' ||
-          node.typeId === 'asset.sfx'
-        ) {
-          const targetPort = node.typeId === 'asset.music' ? 'in-music' : 'in-voice'
-          existingEdges.push({
-            id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
-            source: node.id,
-            sourcePort: 'out',
-            target: tlNode.id,
-            targetPort
-          })
-          edgesChanged = true
+      if (!tlHasIncoming) {
+        for (const node of baseGraph.nodes) {
+          if (node.id === tlNode.id) continue
+          const hasOutgoing = existingEdges.some((e) => e.source === node.id)
+          if (hasOutgoing) continue
+          if (node.typeId === 'asset.video' || node.typeId === 'asset.image') {
+            const targetPort = node.typeId === 'asset.video' ? 'in' : 'in-image'
+            existingEdges.push({
+              id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
+              source: node.id,
+              sourcePort: 'out',
+              target: tlNode.id,
+              targetPort
+            })
+            edgesChanged = true
+          } else if (
+            node.typeId === 'asset.voice' ||
+            node.typeId === 'asset.dialogue' ||
+            node.typeId === 'asset.music' ||
+            node.typeId === 'asset.sfx'
+          ) {
+            const targetPort = node.typeId === 'asset.music' ? 'in-music' : 'in-voice'
+            existingEdges.push({
+              id: `e:${node.id}:out->${tlNode.id}:${targetPort}`,
+              source: node.id,
+              sourcePort: 'out',
+              target: tlNode.id,
+              targetPort
+            })
+            edgesChanged = true
+          }
         }
       }
       if (edgesChanged) {

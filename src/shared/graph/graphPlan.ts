@@ -78,6 +78,8 @@ export const ALLOWED_PARAM_KEYS = new Set<keyof GraphNodeParams | string>([
   'generateSeedUseGlobal',
   'generateFrameMode',
   'generateAudio',
+  'generateSoundDurationSec',
+  'generateSoundLoop',
   'notes',
   'label',
   /** 通用落盘目录：各生成/持久化节点都从 node.params.mediaOutputDir 读取（见 resolveMediaOutputDir） */

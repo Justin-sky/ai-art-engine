@@ -61,6 +61,7 @@ import {
   normalizeVideoInputReference,
   pickTranscribeProvider,
   pickVisionGroundingProvider,
+  resolveAvailableVoices,
   resolveDefaultVoice,
   supportsModel3dRig,
   supportsModel3dSegment,
@@ -1635,8 +1636,39 @@ class ModelProviderFacade {
       resolved.providerInstanceId,
       resolved.model
     )
-    // 声音没显式给：用设置里 audio 页签选定的默认声音，再退回模型目录里声明的第一个
-    const voice = resolved.voice?.trim() || resolveDefaultVoice(provider, modelId)
+    // 声音没显式给：用设置里 audio 页签选定的默认声音，再退回模型目录里声明的第一个；
+    // 若调用方传入了通用角色预设音色名（onyx / nova / alloy / shimmer / echo / fable），而当前提供商为 ElevenLabs / MiniMax / 百炼 / 火山等专有 voice_id 体系，自动映射到该提供商的可用音色池
+    let voice = resolved.voice?.trim() || ''
+    const genericAliases = ['onyx', 'nova', 'alloy', 'shimmer', 'echo', 'fable']
+    const aliasIdx = voice ? genericAliases.indexOf(voice.toLowerCase()) : -1
+    if (
+      aliasIdx >= 0 &&
+      provider.providerKind !== 'openai' &&
+      provider.providerKind !== 'openrouter' &&
+      provider.providerKind !== 'custom'
+    ) {
+      const retiredElevenIds = new Set(['TxGEqnHWrfWFTfGW9XjX', 'bVMeCyTHy58xNoL34h3p'])
+      const available = resolveAvailableVoices(provider, modelId).filter(
+        (id) => !retiredElevenIds.has(id)
+      )
+      if (available.length > 0) {
+        voice = available[aliasIdx % available.length]!
+      } else if (provider.providerKind === 'elevenlabs') {
+        const elevenFallbacks = [
+          'nPczCjzI2devNBz1zQrb',
+          'EXAVITQu4vr4xnSDxMaL',
+          'pNInz6obpgDQGcFmaJgB',
+          'XrExE9yKIg1WjnnlVkGX',
+          'N2lVS1w4EtoT3dr4eOWO',
+          'cgSgspJ2msm6clMCkdW9'
+        ]
+        voice = elevenFallbacks[aliasIdx % elevenFallbacks.length]!
+      } else {
+        voice = resolveDefaultVoice(provider, modelId)
+      }
+    } else if (!voice) {
+      voice = resolveDefaultVoice(provider, modelId)
+    }
     return getProviderAdapter(provider.providerKind).generateSpeech(provider, modelId, {
       ...resolved,
       ...(voice ? { voice } : {})
@@ -1650,9 +1682,17 @@ class ModelProviderFacade {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const profiles = await this.readVoiceProfiles()
     const profile = findVoiceProfile(profiles, character)
-    if (!profile) throw fail(E_NO_VOICE_PROFILE, { character })
+    if (!profile) {
+      if (input.voice?.trim() || input.referenceAudio?.trim()) return input
+      throw fail(E_NO_VOICE_PROFILE, { character })
+    }
+    const genericAliases = new Set(['onyx', 'nova', 'alloy', 'shimmer', 'echo', 'fable'])
+    const explicitVoice =
+      input.voice?.trim() && !genericAliases.has(input.voice.trim().toLowerCase())
+        ? input.voice
+        : undefined
     const params = resolveVoiceProfileParams(profile, {
-      voice: input.voice,
+      voice: explicitVoice,
       referenceAudio: input.referenceAudio
     })
     return { ...input, ...params }

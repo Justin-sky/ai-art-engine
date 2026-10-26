@@ -12,7 +12,6 @@ import {
   comicBubbleTailTipPagePoint,
   comicPanelPolygon,
   comicPanelRects,
-  computeComicPanelCropRect,
   normalizeComicPage,
   zOrderedPanels,
   type ComicBubbleShape,
@@ -881,38 +880,54 @@ export async function composeComicPageImage(
     )
   }
 
-  // 1) 先渲染无气泡纯净分镜页，切出每个分镜格的纯净无字底图（panelDataUrls），避免动态漫镜头一开始就出现所有气泡
-  const cleanPage: ComicPage = {
-    ...page,
-    title: undefined,
-    panels: page.panels.map((p) => ({ ...p, bubbles: [] }))
-  }
-  renderComicPageToCanvas(canvas, cleanPage, images, {
-    background: input.background,
-    panelFill: input.panelFill,
-    borderColor: input.borderColor,
-    bubbleFill: input.bubbleFill,
-    textColor: input.textColor
-  })
-
+  // 1) 为每个分镜格按目标视频画幅比（横屏页 1280×720 16:9 / 竖屏条漫页 720×1280 9:16）独立全画幅渲染无气泡高清底图（panelDataUrls）：
+  //    彻底避免从拼页网格中抠出窄竖条造成的二次裁切、分辨率折损与横屏视频左右黑边/毛玻璃割裂感
+  const isVerticalPage = height > width * 1.08
+  const pWidth = isVerticalPage ? 720 : 1280
+  const pHeight = isVerticalPage ? 1280 : 720
   const panelDataUrls: Record<string, string> = {}
+  const pCanvas = document.createElement('canvas')
+  pCanvas.width = pWidth
+  pCanvas.height = pHeight
   for (const panel of page.panels) {
-    const crop = computeComicPanelCropRect(page, panel.id, 0.025)
-    if (!crop) continue
-    const sx = Math.max(0, Math.round(crop.cropX * width))
-    const sy = Math.max(0, Math.round(crop.cropY * height))
-    const sw = Math.max(2, Math.min(width - sx, Math.round(crop.cropWidth * width)))
-    const sh = Math.max(2, Math.min(height - sy, Math.round(crop.cropHeight * height)))
     try {
-      const pCanvas = document.createElement('canvas')
-      pCanvas.width = sw
-      pCanvas.height = sh
-      const pCtx = pCanvas.getContext('2d')
-      if (pCtx) {
-        pCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh)
-        const pUrl = pCanvas.toDataURL('image/png')
-        if (pUrl) panelDataUrls[panel.id] = pUrl
+      const singlePanelPage: ComicPage = {
+        ...page,
+        title: undefined,
+        width: pWidth,
+        height: pHeight,
+        columns: 1,
+        rows: 1,
+        gutter: 0,
+        padding: 0,
+        borderWidth: 0,
+        borderRadius: 0,
+        panels: [
+          {
+            ...panel,
+            row: 0,
+            col: 0,
+            rowSpan: 1,
+            colSpan: 1,
+            zIndex: 0,
+            title: undefined,
+            caption: undefined,
+            borderWidth: 0,
+            cornerOffsets: undefined,
+            imageFit: 'cover',
+            bubbles: []
+          }
+        ]
       }
+      renderComicPageToCanvas(pCanvas, singlePanelPage, images, {
+        background: input.background ?? page.backgroundColor ?? '#0f172a',
+        panelFill: input.panelFill ?? '#0f172a',
+        borderColor: input.borderColor,
+        bubbleFill: input.bubbleFill,
+        textColor: input.textColor
+      })
+      const pUrl = pCanvas.toDataURL('image/png')
+      if (pUrl) panelDataUrls[panel.id] = pUrl
     } catch {
       /* ignore single panel slice error */
     }
@@ -933,6 +948,8 @@ export async function composeComicPageImage(
           panels: [
             {
               ...panel,
+              title: undefined,
+              zIndex: 0,
               imageUrl: undefined,
               backgroundColor: 'transparent',
               borderWidth: 0,

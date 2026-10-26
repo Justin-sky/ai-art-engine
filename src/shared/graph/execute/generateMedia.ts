@@ -315,11 +315,15 @@ export async function executeSoundEffectNode(
   const prompt = [localNotes, incomingText].filter(Boolean).join('\n').trim()
   if (!prompt) throw new Error('GRAPH_PROCESS_NO_INPUT')
 
-  const durationSec =
+  const rawDur =
     typeof node.params.generateSoundDurationSec === 'number' &&
     Number.isFinite(node.params.generateSoundDurationSec)
       ? node.params.generateSoundDurationSec
-      : undefined
+      : typeof node.params.generateDuration === 'number' &&
+          Number.isFinite(node.params.generateDuration)
+        ? node.params.generateDuration
+        : undefined
+  const durationSec = rawDur !== undefined ? Math.min(22, Math.max(0.5, rawDur)) : undefined
   const promptInfluence =
     typeof node.params.generateSoundPromptInfluence === 'number' &&
     Number.isFinite(node.params.generateSoundPromptInfluence)

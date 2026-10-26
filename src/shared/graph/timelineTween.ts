@@ -1412,11 +1412,11 @@ export function renderTimelineBuiltinStickerSvg(
 </svg>`
     case 'comic-boom': {
       const fill = customColor || '#EF4444'
-      const label = escapeXml((customLabel || 'BOOM!').slice(0, 10))
+      const label = escapeXml((customLabel || '').slice(0, 10))
       return `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
   <polygon points="256,22 306,124 416,58 378,168 492,192 396,264 474,366 356,358 364,478 268,396 184,486 182,368 62,394 128,288 24,224 136,178 86,68 202,126" fill="${fill}" stroke="#111111" stroke-width="14" stroke-linejoin="round"/>
   <polygon points="256,68 296,148 384,96 354,184 444,204 368,260 428,340 336,334 342,428 266,364 200,434 198,342 104,362 156,278 74,228 162,192 122,106 214,150" fill="#FACC15" stroke="#111111" stroke-width="8" stroke-linejoin="round"/>
-  <text x="256" y="276" text-anchor="middle" fill="#111111" stroke="#FFFFFF" stroke-width="10" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="68" font-weight="900" transform="rotate(-6 256 256)">${label}</text>
+  ${label ? `<text x="256" y="276" text-anchor="middle" fill="#111111" stroke="#FFFFFF" stroke-width="10" paint-order="stroke" font-family="Impact, system-ui, Microsoft YaHei, sans-serif" font-size="68" font-weight="900" transform="rotate(-6 256 256)">${label}</text>` : ''}
 </svg>`
     }
     case 'electric-lightning': {
@@ -1440,22 +1440,25 @@ export function renderTimelineBuiltinStickerSvg(
     case 'kaleidoscope_burst': {
       const ink = customColor || '#111111'
       const wedges: string[] = []
-      const count = 44
+      const count = 48
       const cx = 480
       const cy = 270
       const outerR = 640
       for (let i = 0; i < count; i++) {
         const a = (i / count) * Math.PI * 2
-        const halfSpread = (0.012 + (i % 3) * 0.008) * Math.PI
-        const innerR = 175 + ((i * 37) % 65)
-        const x0 = (cx + Math.cos(a) * innerR).toFixed(1)
-        const y0 = (cy + Math.sin(a) * innerR).toFixed(1)
+        const halfSpread = (0.008 + (i % 3) * 0.004) * Math.PI
+        // 仅在画幅外缘 18% 环带绘制放射集中线（椭圆内径 rx≈394..440, ry≈220..248），中央 82% 完全留白不遮挡人物主体
+        const jitter = (i * 37) % 46
+        const innerRx = 394 + jitter
+        const innerRy = 220 + Math.round(jitter * 0.56)
+        const x0 = (cx + Math.cos(a) * innerRx).toFixed(1)
+        const y0 = (cy + Math.sin(a) * innerRy).toFixed(1)
         const x1 = (cx + Math.cos(a - halfSpread) * outerR).toFixed(1)
         const y1 = (cy + Math.sin(a - halfSpread) * outerR).toFixed(1)
         const x2 = (cx + Math.cos(a + halfSpread) * outerR).toFixed(1)
         const y2 = (cy + Math.sin(a + halfSpread) * outerR).toFixed(1)
         wedges.push(
-          `<polygon points="${x0},${y0} ${x1},${y1} ${x2},${y2}" fill="${ink}" fill-opacity="0.78"/>`
+          `<polygon points="${x0},${y0} ${x1},${y1} ${x2},${y2}" fill="${ink}" fill-opacity="0.48"/>`
         )
       }
       return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">
@@ -1466,17 +1469,18 @@ export function renderTimelineBuiltinStickerSvg(
     case 'speed_lines': {
       const ink = customColor || '#111111'
       const lines: string[] = []
-      const count = 34
+      const count = 36
       for (let i = 0; i < count; i++) {
-        const y = Math.round(16 + (i / (count - 1)) * 508)
-        // 中央留出视觉通道，上下两侧加密速度线
+        const y = Math.round(14 + (i / (count - 1)) * 512)
+        // 中央 56% 区域完全留白作视觉通道，仅在上下边缘绘制流线
         const distFromCenter = Math.abs(y - 270) / 270
-        if (distFromCenter < 0.22 && i % 2 === 0) continue
-        const xStart = (i * 83) % 240
-        const len = 360 + ((i * 137) % 480)
-        const sw = (1.8 + distFromCenter * 4.2 + (i % 3) * 1.1).toFixed(1)
+        if (distFromCenter < 0.56) continue
+        const isLeft = i % 2 === 0
+        const len = 180 + ((i * 97) % 210)
+        const xStart = isLeft ? (i * 43) % 70 : Math.max(520, 960 - len - ((i * 43) % 70))
+        const sw = (1.4 + (distFromCenter - 0.56) * 4.5 + (i % 3) * 0.7).toFixed(1)
         lines.push(
-          `<line x1="${xStart}" y1="${y}" x2="${Math.min(960, xStart + len)}" y2="${y}" stroke="${ink}" stroke-width="${sw}" stroke-opacity="0.76" stroke-linecap="round"/>`
+          `<line x1="${xStart}" y1="${y}" x2="${Math.min(960, xStart + len)}" y2="${y}" stroke="${ink}" stroke-width="${sw}" stroke-opacity="0.46" stroke-linecap="round"/>`
         )
       }
       return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" fill="none">

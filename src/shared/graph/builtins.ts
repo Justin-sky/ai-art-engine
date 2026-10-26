@@ -993,6 +993,13 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: true,
         label: 'Images'
       },
+      {
+        id: 'in-video',
+        direction: 'in',
+        dataType: GraphPortType.video,
+        multiple: true,
+        label: 'Videos'
+      },
       ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({ comicPage: '' }),

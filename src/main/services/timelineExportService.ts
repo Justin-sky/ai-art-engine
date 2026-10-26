@@ -489,6 +489,84 @@ export function renderBuiltinStickerPngBuffer(stickerId: string, customColor?: s
     .trim()
 
   if (
+    normId === 'manga-focus-lines' ||
+    normId === 'kaleidoscope_burst' ||
+    normId === 'manga-speed-lines' ||
+    normId === 'speed_lines'
+  ) {
+    const png = new PNG({ width: 640, height: 360 })
+    const cx = 320
+    const cy = 180
+    const lineCol = parseHexRgb(customColor, [17, 17, 17])
+    const accentCol: [number, number, number] = [255, 255, 255]
+    if (normId === 'manga-focus-lines' || normId === 'kaleidoscope_burst') {
+      // 仅在外围 22% 边缘环带绘制漫画集中线，保持中心 78% 区域完全透明，绝不遮挡画面主体
+      const rays = 56
+      for (let i = 0; i < rays; i++) {
+        const ang = (i * Math.PI * 2) / rays + ((i % 3) - 1) * 0.012
+        const innerRatio = i % 2 === 0 ? 0.76 : 0.83
+        const xIn = cx + Math.cos(ang) * (cx * innerRatio)
+        const yIn = cy + Math.sin(ang) * (cy * innerRatio)
+        const xOut = cx + Math.cos(ang) * (cx * 1.18)
+        const yOut = cy + Math.sin(ang) * (cy * 1.18)
+        drawThickLine(png, xIn, yIn, xOut, yOut, i % 3 === 0 ? 2.4 : 1.5, lineCol, 0.72)
+        if (i % 4 === 0) {
+          drawThickLine(png, xIn, yIn, xOut, yOut, 0.9, accentCol, 0.45)
+        }
+      }
+      return PNG.sync.write(png)
+    }
+    // manga-speed-lines / speed_lines：上下边缘高速流线，中心区域留空不遮挡人物
+    const streaks = 26
+    for (let i = 0; i < streaks; i++) {
+      const isTop = i % 2 === 0
+      const bandRatio = ((i * 37) % 100) / 100
+      const y = isTop ? Math.round(8 + bandRatio * 68) : Math.round(360 - 8 - bandRatio * 68)
+      const x0 = Math.round((i * 53) % 140)
+      const x1 = Math.round(640 - ((i * 29) % 120))
+      drawThickLine(png, x0, y, x1, y, i % 3 === 0 ? 2.2 : 1.3, lineCol, 0.68)
+      if (i % 4 === 0) {
+        drawThickLine(png, x0 + 24, y + 1, x1 - 24, y + 1, 0.9, accentCol, 0.48)
+      }
+    }
+    return PNG.sync.write(png)
+  }
+
+  if (normId === 'comic-speech-bubble' || normId === 'comic-shout-bubble') {
+    const png = new PNG({ width: 640, height: 360 })
+    const borderCol = parseHexRgb(customColor, [17, 17, 17])
+    const whiteFill: [number, number, number] = [255, 255, 255]
+    const cx = 320
+    const cy = 172
+    if (normId === 'comic-shout-bubble') {
+      drawCircleRing(png, cx, cy, 128, 1, whiteFill, 0.94, true)
+      const spikes = 20
+      for (let i = 0; i < spikes; i++) {
+        const ang = (i * Math.PI * 2) / spikes
+        const nextAng = ((i + 1) * Math.PI * 2) / spikes
+        const midAng = (ang + nextAng) / 2
+        const x0 = cx + Math.cos(ang) * 116
+        const y0 = cy + Math.sin(ang) * 92
+        const xm = cx + Math.cos(midAng) * 156
+        const ym = cy + Math.sin(midAng) * 124
+        const x1 = cx + Math.cos(nextAng) * 116
+        const y1 = cy + Math.sin(nextAng) * 92
+        drawThickLine(png, x0, y0, xm, ym, 4, borderCol, 0.96)
+        drawThickLine(png, xm, ym, x1, y1, 4, borderCol, 0.96)
+      }
+      return PNG.sync.write(png)
+    }
+    drawFilledRect(png, 110, 64, 420, 200, whiteFill, 0.94)
+    drawThickLine(png, 110, 64, 530, 64, 4, borderCol, 0.96)
+    drawThickLine(png, 530, 64, 530, 264, 4, borderCol, 0.96)
+    drawThickLine(png, 530, 264, 110, 264, 4, borderCol, 0.96)
+    drawThickLine(png, 110, 264, 110, 64, 4, borderCol, 0.96)
+    drawThickLine(png, 270, 264, 240, 316, 4, borderCol, 0.96)
+    drawThickLine(png, 240, 316, 315, 264, 4, borderCol, 0.96)
+    return PNG.sync.write(png)
+  }
+
+  if (
     normId === 'comic-boom' ||
     normId === 'neon-slash-combo' ||
     normId === 'electric-lightning' ||
@@ -1446,7 +1524,7 @@ export function buildFilterGraph(
           filterParts.push(
             `[${baseLabel}]split=2[${finalLabel}_fw][${finalLabel}_rv];` +
               `[${finalLabel}_rv]reverse,hflip[${finalLabel}_rev];` +
-              `[${finalLabel}_fw][${finalLabel}_rev]concat=n=2:v=1:a=0,setpts=0.5*(PTS-STARTPTS),fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,setsar=1,format=yuv420p[${finalLabel}]`
+              `[${finalLabel}_fw][${finalLabel}_rev]concat=n=2:v=1:a=0,setpts=0.5*(PTS-STARTPTS),tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1454,7 +1532,7 @@ export function buildFilterGraph(
           filterParts.push(
             `[${baseLabel}]split=2[${finalLabel}_n][${finalLabel}_f0];` +
               `[${finalLabel}_f0]hflip,hue=h=28:s=1.25[${finalLabel}_flp];` +
-              `[${finalLabel}_n][${finalLabel}_flp]overlay=x='if(gt(sin(2*PI*t*6),0),0,W*2)':y=0,setsar=1,format=yuv420p[${finalLabel}]`
+              `[${finalLabel}_n][${finalLabel}_flp]overlay=x='if(gt(sin(2*PI*t*6),0),0,W*2)':y=0,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1463,7 +1541,7 @@ export function buildFilterGraph(
           filterParts.push(
             `[${baseLabel}]crop=iw*0.56:ih:iw*0.22:0,scale=${w2}:${height},setsar=1,split=2[${finalLabel}_l][${finalLabel}_r0];` +
               `[${finalLabel}_r0]hflip[${finalLabel}_r];` +
-              `[${finalLabel}_l][${finalLabel}_r]hstack=inputs=2,scale=${width}:${height},drawbox=x=iw*0.497:y=0:w=iw*0.006:h=ih:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+              `[${finalLabel}_l][${finalLabel}_r]hstack=inputs=2,scale=${width}:${height},drawbox=x=iw*0.497:y=0:w=iw*0.006:h=ih:color=#22d3ee:t=fill,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1475,7 +1553,7 @@ export function buildFilterGraph(
               `[${finalLabel}_c30]hue=h=-35[${finalLabel}_c3];` +
               `[${finalLabel}_c1][${finalLabel}_c2][${finalLabel}_c3]hstack=inputs=3,scale=${width}:${height},` +
               `drawbox=x=iw*0.331:y=0:w=iw*0.005:h=ih:color=#f43f5e:t=fill,` +
-              `drawbox=x=iw*0.664:y=0:w=iw*0.005:h=ih:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+              `drawbox=x=iw*0.664:y=0:w=iw*0.005:h=ih:color=#22d3ee:t=fill,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1489,7 +1567,7 @@ export function buildFilterGraph(
               `[${finalLabel}_q40]rgbashift=rh=6:bh=-6[${finalLabel}_q4];` +
               `[${finalLabel}_q1][${finalLabel}_q2][${finalLabel}_q3][${finalLabel}_q4]xstack=inputs=4:layout=0_0|w0_0|0_h0|w0_h0,scale=${width}:${height},` +
               `drawbox=x=iw*0.497:y=0:w=iw*0.006:h=ih:color=#facc15:t=fill,` +
-              `drawbox=x=0:y=ih*0.497:w=iw:h=ih*0.006:color=#facc15:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+              `drawbox=x=0:y=ih*0.497:w=iw:h=ih*0.006:color=#facc15:t=fill,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1508,7 +1586,7 @@ export function buildFilterGraph(
               `drawbox=x=iw*0.331:y=0:w=iw*0.005:h=ih:color=#e879f9:t=fill,` +
               `drawbox=x=iw*0.664:y=0:w=iw*0.005:h=ih:color=#22d3ee:t=fill,` +
               `drawbox=x=0:y=ih*0.331:w=iw:h=ih*0.005:color=#e879f9:t=fill,` +
-              `drawbox=x=0:y=ih*0.664:w=iw:h=ih*0.005:color=#22d3ee:t=fill,setsar=1,format=yuv420p[${finalLabel}]`
+              `drawbox=x=0:y=ih*0.664:w=iw:h=ih*0.005:color=#22d3ee:t=fill,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1519,7 +1597,7 @@ export function buildFilterGraph(
           filterParts.push(
             `[${baseLabel}]split=2[${finalLabel}_b][${finalLabel}_g0];` +
               `[${finalLabel}_g0]scale=${gw}:${gh},crop=${width}:${height},rgbashift=rh=12:bh=-12,format=rgba,colorchannelmixer=aa=${alpha}[${finalLabel}_g];` +
-              `[${finalLabel}_b][${finalLabel}_g]overlay=0:0:format=auto,setsar=1,format=yuv420p[${finalLabel}]`
+              `[${finalLabel}_b][${finalLabel}_g]overlay=0:0:format=auto,setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1530,7 +1608,7 @@ export function buildFilterGraph(
           const freqX = fx === 'camera-shake' ? 13 : 19
           const freqY = fx === 'camera-shake' ? 17 : 25
           filterParts.push(
-            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.46)*sin(2*PI*t*${freqX})':y='(ih-oh)/2+((ih-oh)*0.46)*cos(2*PI*t*${freqY})',setsar=1,format=yuv420p[${finalLabel}]`
+            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.46)*sin(2*PI*t*${freqX})':y='(ih-oh)/2+((ih-oh)*0.46)*cos(2*PI*t*${freqY})',setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1538,7 +1616,7 @@ export function buildFilterGraph(
           const sw = Math.max(width + 4, Math.round(width * (1 + 0.07 * intensity)))
           const sh = Math.max(height + 4, Math.round(height * (1 + 0.04 * intensity)))
           filterParts.push(
-            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.48)*sin(2*PI*t*25)':y='(ih-oh)/2+((ih-oh)*0.35)*cos(2*PI*t*17)',setsar=1,format=yuv420p[${finalLabel}]`
+            `[${baseLabel}]scale=${sw}:${sh},crop=${width}:${height}:x='(iw-ow)/2+((iw-ow)*0.48)*sin(2*PI*t*25)':y='(ih-oh)/2+((ih-oh)*0.35)*cos(2*PI*t*17)',setsar=1,fps=${fps},format=yuv420p[${finalLabel}]`
           )
           return
         }
@@ -1558,6 +1636,18 @@ export function buildFilterGraph(
         clip.visualEffect === 'rgb-glitch' ||
         clip.visualEffect === 'bad-tv'
       const stageOutLabel = needsSpatialFx ? `${label}raw` : label
+      const camExpr = buildMainClipCameraFfmpegFilter(
+        clip.cameraMotion,
+        width,
+        height,
+        clipDur,
+        winStartSec
+      )
+
+      const isVideoStreamInput =
+        !isStillImagePath((clip as { path?: string }).path ?? '') &&
+        !isAnimatedGifPath((clip as { path?: string }).path ?? '')
+      const preTrimCloneOpt = isVideoStreamInput ? 'tpad=stop_mode=clone:stop_duration=8,' : ''
 
       if (scaleMode === 'blur') {
         const preLabel = `${label}pre`
@@ -1566,7 +1656,7 @@ export function buildFilterGraph(
         const bgBlurLabel = `${label}bgb`
         const fgFitLabel = `${label}fgf`
         filterParts.push(
-          `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},split=2[${bgLabel}][${fgLabel}]`
+          `[${srcPort}]${preTrimCloneOpt}trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},split=2[${bgLabel}][${fgLabel}]`
         )
         filterParts.push(
           `[${bgLabel}]scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height},boxblur=24:2[${bgBlurLabel}]`
@@ -1575,7 +1665,7 @@ export function buildFilterGraph(
           `[${fgLabel}]scale=${width}:${height}:force_original_aspect_ratio=decrease[${fgFitLabel}]`
         )
         filterParts.push(
-          `[${bgBlurLabel}][${fgFitLabel}]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p[${stageOutLabel}]`
+          `[${bgBlurLabel}][${fgFitLabel}]overlay=(W-w)/2:(H-h)/2${camExpr ? `,${camExpr}` : ''},setsar=1,tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},format=yuv420p[${stageOutLabel}]`
         )
         void preLabel
         if (needsSpatialFx) appendSpatialGuichuFx(stageOutLabel, label)
@@ -1586,17 +1676,10 @@ export function buildFilterGraph(
         scaleMode === 'cover'
           ? `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
           : `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`
-      const camExpr = buildMainClipCameraFfmpegFilter(
-        clip.cameraMotion,
-        width,
-        height,
-        clipDur,
-        winStartSec
-      )
       const scaleExpr = camExpr ? `${baseScaleExpr},${camExpr}` : baseScaleExpr
 
       filterParts.push(
-        `[${srcPort}]trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,fps=${fps},tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,format=yuv420p[${stageOutLabel}]`
+        `[${srcPort}]${preTrimCloneOpt}trim=${srcStart.toFixed(3)}:${(srcStart + srcTrimDur).toFixed(3)},${ptsExpr}${tpadOpt}${cropOpt}${eqOpt},${scaleExpr},setsar=1,tpad=stop_mode=clone:stop_duration=0.08,trim=0:${winDurSec.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps},format=yuv420p[${stageOutLabel}]`
       )
       if (needsSpatialFx) appendSpatialGuichuFx(stageOutLabel, label)
     }
@@ -1880,20 +1963,43 @@ export function buildFilterGraph(
       const lineTotalUnits = lines.map((ln) => Math.max(0.5, visualWidthUnits(ln)))
       let curLineIdx = 0
       let cursorInLineUnits = 0
+      let charSearchOffset = 0
 
       for (const [wi, w] of words.entries()) {
+        const wRaw = w.text.trim()
         const wText = escapeDrawtext(w.text)
         const wUnits = Math.max(0.5, visualWidthUnits(w.text))
-        while (
-          curLineIdx < lines.length - 1 &&
-          cursorInLineUnits + wUnits * 0.5 > lineTotalUnits[curLineIdx]! + 0.25
-        ) {
-          curLineIdx++
-          cursorInLineUnits = 0
+        let matchedCharIdx = -1
+        if (wRaw) {
+          for (let tryLine = curLineIdx; tryLine < lines.length; tryLine++) {
+            const fromIdx = tryLine === curLineIdx ? charSearchOffset : 0
+            const idx = lines[tryLine]!.indexOf(wRaw, fromIdx)
+            if (idx >= 0) {
+              curLineIdx = tryLine
+              matchedCharIdx = idx
+              charSearchOffset = idx + wRaw.length
+              break
+            }
+          }
+        }
+        let wordCenterU: number
+        if (matchedCharIdx >= 0) {
+          const prefixUnits = visualWidthUnits(lines[curLineIdx]!.slice(0, matchedCharIdx))
+          wordCenterU = prefixUnits + wUnits * 0.5
+          cursorInLineUnits = prefixUnits + wUnits
+        } else {
+          while (
+            curLineIdx < lines.length - 1 &&
+            cursorInLineUnits + wUnits * 0.5 > lineTotalUnits[curLineIdx]! + 0.25
+          ) {
+            curLineIdx++
+            cursorInLineUnits = 0
+            charSearchOffset = 0
+          }
+          wordCenterU = cursorInLineUnits + wUnits * 0.5
+          cursorInLineUnits += wUnits
         }
         const totalU = lineTotalUnits[curLineIdx] ?? wUnits
-        const wordCenterU = cursorInLineUnits + wUnits * 0.5
-        cursorInLineUnits += wUnits
         if (!wText) continue
 
         const inlineOffsetPx = Math.round((wordCenterU - totalU * 0.5) * clipFontSize * 0.96)
@@ -1904,7 +2010,16 @@ export function buildFilterGraph(
         const lineOffsetFromCenterPx = (curLineIdx - (lines.length - 1) / 2) * lineHeight
         const customXY = buildSubtitleKeyframeFfmpegXYExpr(sub, Math.round(lineOffsetFromCenterPx))
         const xExpr = customXY ? `${customXY.xExpr}${offsetSign}` : `x=(w-text_w)/2${offsetSign}`
-        const yExpr = customXY ? customXY.yExpr : `y=h-${lineFromBottom}-text_h`
+        const yExpr = customXY
+          ? customXY.yExpr
+          : motionEnabled
+            ? buildSubtitleDrawtextMotion({
+                startSec: start,
+                endSec: end,
+                fromBottom: lineFromBottom,
+                risePx
+              }).y
+            : `y=h-${lineFromBottom}-text_h`
         const ws = Math.max(start, start + w.startSec)
         const we = Math.min(end, Math.max(ws + 0.03, start + w.endSec))
         const next = `sub${i}kw${wi}`

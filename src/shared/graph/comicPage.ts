@@ -1076,7 +1076,7 @@ export interface ComicLayoutTemplate {
   }
 }
 
-/** 内置 12 款专业漫画分镜模板库 */
+/** 内置专业漫画分镜模板库（含 16:9 横屏动态漫与传统竖屏页漫/条漫） */
 export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
   {
     id: 'manga-standard-5',
@@ -1103,6 +1103,115 @@ export const COMIC_LAYOUT_TEMPLATES: readonly ComicLayoutTemplate[] = [
         { row: 2, col: 3, rowSpan: 2, colSpan: 3 },
         { row: 4, col: 0, rowSpan: 2, colSpan: 2 },
         { row: 4, col: 2, rowSpan: 2, colSpan: 4 }
+      ]
+    }
+  },
+  {
+    id: 'widescreen-motion-3',
+    category: 'action',
+    name: { zh: '16:9 横屏动态漫 3 格（对峙）', en: '16:9 Widescreen Motion 3-Panel' },
+    desc: {
+      zh: 'B站横屏漫剧标准：左侧跨高定场大格 + 右侧上下双特写对切', // cjk-ok
+      en: '16:9 widescreen: left hero establishing panel + right stacked close-ups'
+    },
+    page: {
+      columns: 6,
+      rows: 6,
+      gutter: 16,
+      padding: 28,
+      width: 1920,
+      height: 1080,
+      backgroundColor: '#0f172a',
+      borderWidth: 3,
+      borderColor: '#111111',
+      borderRadius: 0,
+      panels: [
+        { row: 0, col: 0, rowSpan: 6, colSpan: 3 },
+        { row: 0, col: 3, rowSpan: 3, colSpan: 3 },
+        {
+          row: 3,
+          col: 3,
+          rowSpan: 3,
+          colSpan: 3,
+          effectType: 'focus-lines',
+          effectIntensity: 0.65
+        }
+      ]
+    }
+  },
+  {
+    id: 'widescreen-slash-3',
+    category: 'action',
+    name: { zh: '16:9 横屏高潮斜切 3 格', en: '16:9 Widescreen Slash Climax' },
+    desc: {
+      zh: 'B站横屏高燃破局：左侧上下斜切交锋 + 右侧巨幅觉醒爆发格', // cjk-ok
+      en: '16:9 widescreen: left slanted clash panels + right wide climax burst'
+    },
+    page: {
+      columns: 6,
+      rows: 6,
+      gutter: 16,
+      padding: 28,
+      width: 1920,
+      height: 1080,
+      backgroundColor: '#0f172a',
+      borderWidth: 3.5,
+      borderColor: '#111111',
+      borderRadius: 0,
+      panels: [
+        {
+          row: 0,
+          col: 0,
+          rowSpan: 3,
+          colSpan: 2,
+          cornerOffsets: [0, 0, 0, 0, -0.08, 0, 0, 0],
+          effectType: 'speed-lines',
+          effectIntensity: 0.7
+        },
+        {
+          row: 3,
+          col: 0,
+          rowSpan: 3,
+          colSpan: 2,
+          cornerOffsets: [0, 0, -0.08, 0, 0, 0, 0, 0],
+          effectType: 'focus-lines',
+          effectIntensity: 0.72
+        },
+        {
+          row: 0,
+          col: 2,
+          rowSpan: 6,
+          colSpan: 4,
+          effectType: 'focus-lines',
+          effectIntensity: 0.78
+        }
+      ]
+    }
+  },
+  {
+    id: 'widescreen-cinematic-4',
+    category: 'manga',
+    name: { zh: '16:9 横屏宽银幕 4 格', en: '16:9 Widescreen Cinematic 4-Panel' },
+    desc: {
+      zh: '上二下二不对称宽银幕斜切叙事（1920×1080）', // cjk-ok
+      en: 'Asymmetric 16:9 widescreen 4-panel narrative layout'
+    },
+    page: {
+      columns: 6,
+      rows: 6,
+      gutter: 16,
+      padding: 28,
+      width: 1920,
+      height: 1080,
+      backgroundColor: '#0f172a',
+      borderWidth: 3,
+      borderColor: '#111111',
+      borderRadius: 0,
+      panels: [
+        { row: 0, col: 0, rowSpan: 3, colSpan: 4, cornerOffsets: [0, 0, 0.06, 0, -0.06, 0, 0, 0] },
+        { row: 0, col: 4, rowSpan: 3, colSpan: 2, cornerOffsets: [0.08, 0, 0, 0, 0, 0, -0.08, 0] },
+        { row: 3, col: 0, rowSpan: 3, colSpan: 2, cornerOffsets: [0, 0, 0.08, 0, -0.08, 0, 0, 0] },
+        { row: 3, col: 2, rowSpan: 3, colSpan: 4, cornerOffsets: [0.06, 0, 0, 0, 0, 0, -0.06, 0] }
       ]
     }
   },
@@ -1480,6 +1589,8 @@ export function applyComicLayoutTemplate(page: ComicPage, templateId: string): C
       ...(donor?.imageFlipX ? { imageFlipX: donor.imageFlipX } : {}),
       ...(donor?.imageFilter ? { imageFilter: donor.imageFilter } : {}),
       ...(donor?.videoUrl ? { videoUrl: donor.videoUrl } : {}),
+      ...(donor?.foregroundImageUrl ? { foregroundImageUrl: donor.foregroundImageUrl } : {}),
+      ...(donor?.parallaxDepth !== undefined ? { parallaxDepth: donor.parallaxDepth } : {}),
       ...(donor?.cameraMotion ? { cameraMotion: donor.cameraMotion } : {}),
       ...(donor?.durationSec !== undefined ? { durationSec: donor.durationSec } : {}),
       bubbles: donor?.bubbles ?? []

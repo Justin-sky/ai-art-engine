@@ -125,6 +125,7 @@ describe('graph canvas menu nodes', () => {
     const ports = getNodePorts(node)
     expect(ports.map((port) => [port.id, port.direction, port.dataType])).toEqual([
       ['in-image', 'in', 'image'],
+      ['in-video', 'in', 'video'],
       ['out', 'out', 'image'],
       ['out-all', 'out', 'images']
     ])

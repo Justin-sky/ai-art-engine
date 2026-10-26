@@ -1884,12 +1884,17 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         }
       })
 
-      if (result.ok) {
+      const degradedIds = result.degradedNodeIds ?? []
+      const hasAnyDone = result.order.some((id) => result.states[id]?.status === 'done')
+      const degradedSummary = degradedIds
+        .map((id) => `${id}: ${result.states[id]?.error ?? 'degraded'}`)
+        .join('; ')
+      if (result.ok && (degradedIds.length === 0 || hasAnyDone)) {
         task.status = 'done'
-        task.message = 'ok'
+        task.message = degradedIds.length > 0 ? `ok (degraded: ${degradedSummary})` : 'ok'
       } else {
         task.status = 'error'
-        task.message = result.error ?? 'failed'
+        task.message = result.error || degradedSummary || 'failed'
       }
       logBridge.endFromResult(result, { message: task.message })
       bump()

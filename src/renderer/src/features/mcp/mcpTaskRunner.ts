@@ -626,8 +626,16 @@ function normalizeNodeUpdateAliases(
   }
   const rawDuration =
     mergedParams.duration ?? mergedParams.durationSec ?? mergedParams.durationSeconds
-  if (rawDuration !== undefined && mergedParams.generateDuration === undefined) {
-    mergedParams.generateDuration = rawDuration
+  if (rawDuration !== undefined) {
+    if (mergedParams.generateDuration === undefined) {
+      mergedParams.generateDuration = rawDuration
+    }
+    if (mergedParams.generateSoundDurationSec === undefined) {
+      mergedParams.generateSoundDurationSec = rawDuration
+    }
+  }
+  if (mergedParams.loop !== undefined && mergedParams.generateSoundLoop === undefined) {
+    mergedParams.generateSoundLoop = mergedParams.loop
   }
   if (mergedParams.seed !== undefined && mergedParams.generateSeed === undefined) {
     mergedParams.generateSeed = mergedParams.seed

@@ -4491,6 +4491,31 @@ const TOOL_DEFS: McpToolDef[] = [
       }
 
       const ops: McpGraphEditOp[] = []
+      if (mode === 'seed') {
+        const seededNodeIds = new Set(keyMap.values())
+        for (const oldNodeId of existingNodeIds) {
+          if (!seededNodeIds.has(oldNodeId)) {
+            ops.push({ op: 'node_delete', nodeId: oldNodeId })
+          }
+        }
+        const curName = (targetCanvas.name ?? '').trim()
+        if (
+          bundle.title?.trim() &&
+          (!curName || /^(新画布|未命名|New\s*Canvas|Untitled)/i.test(curName))
+        ) {
+          const prevGen = (targetCanvas.genParams ?? {}) as Record<string, unknown>
+          const cleanGen: Record<string, unknown> = {}
+          for (const [k, v] of Object.entries(prevGen)) {
+            if (!k.startsWith('scriptTimeline')) cleanGen[k] = v
+          }
+          const renamed = projectService.updateAsset({
+            ...targetCanvas,
+            name: bundle.title.trim(),
+            genParams: cleanGen
+          })
+          broadcastToAllWindows(IpcChannels.ASSET_UPDATED, renamed)
+        }
+      }
       for (const spec of plan.nodes) {
         const mappedId = keyMap.get(spec.key) ?? spec.key
         ops.push({
