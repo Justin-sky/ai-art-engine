@@ -167,6 +167,10 @@ export async function executeGamePbrTileNode(
     4,
     Math.min(16, Math.round(Number(ctx.node.params.gamePbrMaxHullVertices ?? 8)))
   )
+  const pivotMode =
+    ctx.node.params.gamePbrPivotMode === 'center' || ctx.node.params.gamePbrPivotMode === 'top_left'
+      ? ctx.node.params.gamePbrPivotMode
+      : 'bottom_center'
 
   const seamBefore = analyzeSeamlessTile(rawRgba, width, height)
   const baseRgba = tileSeamless
@@ -183,14 +187,66 @@ export async function executeGamePbrTileNode(
     invertRoughness
   })
 
-  const nineSlice = detectNineSliceBorders(baseRgba, width, height)
+  const autoNineSlice = detectNineSliceBorders(baseRgba, width, height)
+  const customBorders = {
+    left:
+      ctx.node.params.gameNineSliceLeft != null
+        ? Math.max(
+            0,
+            Math.min(
+              Math.floor(width / 2) - 1,
+              Math.round(Number(ctx.node.params.gameNineSliceLeft))
+            )
+          )
+        : autoNineSlice.borders.left,
+    right:
+      ctx.node.params.gameNineSliceRight != null
+        ? Math.max(
+            0,
+            Math.min(
+              Math.floor(width / 2) - 1,
+              Math.round(Number(ctx.node.params.gameNineSliceRight))
+            )
+          )
+        : autoNineSlice.borders.right,
+    top:
+      ctx.node.params.gameNineSliceTop != null
+        ? Math.max(
+            0,
+            Math.min(
+              Math.floor(height / 2) - 1,
+              Math.round(Number(ctx.node.params.gameNineSliceTop))
+            )
+          )
+        : autoNineSlice.borders.top,
+    bottom:
+      ctx.node.params.gameNineSliceBottom != null
+        ? Math.max(
+            0,
+            Math.min(
+              Math.floor(height / 2) - 1,
+              Math.round(Number(ctx.node.params.gameNineSliceBottom))
+            )
+          )
+        : autoNineSlice.borders.bottom
+  }
+  const nineSlice = {
+    ...autoNineSlice,
+    borders: customBorders,
+    centerRect: {
+      x: customBorders.left,
+      y: customBorders.top,
+      width: Math.max(1, width - customBorders.left - customBorders.right),
+      height: Math.max(1, height - customBorders.top - customBorders.bottom)
+    }
+  }
   const nineSliceManifest = buildNineSliceManifest(ctx.node.title || 'sprite', nineSlice)
   const physicsManifest = buildSpritePhysicsManifest(
     ctx.node.title || 'sprite',
     baseRgba,
     width,
     height,
-    { maxVertices: maxHullVertices }
+    { maxVertices: maxHullVertices, pivotMode }
   )
 
   const stamp = Date.now()
@@ -384,7 +440,11 @@ async function resolveIncomingAudioPcm(
     ctx.node.params.gameAudioSynthPreset ?? (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')
   const synth = synthesizeGameSeedPcm(
     mode === 'loop_bgm' && !ctx.node.params.gameAudioSynthPreset ? 'chiptune_bgm' : preset,
-    22050
+    22050,
+    {
+      durationScale: Number(ctx.node.params.gameAudioSynthDuration ?? 1),
+      basePitchSemitones: Number(ctx.node.params.gameAudioBasePitch ?? 0)
+    }
   )
   return {
     ...synth,

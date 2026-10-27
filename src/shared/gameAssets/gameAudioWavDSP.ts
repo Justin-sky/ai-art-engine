@@ -658,11 +658,23 @@ export function decodeWavBytesToPcm(bytes: Uint8Array): {
  * Synthesizes a procedural chiptune BGM phrase or 8 classic jsfxr-style combat/UI SFX waveforms
  * when the audio DSP node runs standalone without an upstream audio file.
  */
+export interface SynthesizeSeedOptions {
+  /** Duration multiplier (0.25..2.5, default 1.0) */
+  durationScale?: number
+  /** Base pitch shift in semitones (-12..+12, default 0) */
+  basePitchSemitones?: number
+}
+
 export function synthesizeGameSeedPcm(
   modeOrPreset: 'loop_bgm' | 'sfx_variants' | GameAudioSynthPreset = 'sword_slash',
-  sampleRate = 22050
+  sampleRate = 22050,
+  options?: SynthesizeSeedOptions
 ): { channels: Float32Array[]; sampleRate: number } {
   const sr = Math.max(8000, Math.floor(sampleRate))
+  const durScale = Math.max(0.25, Math.min(2.5, Number(options?.durationScale ?? 1)))
+  const pitchSemis = Math.max(-12, Math.min(12, Number(options?.basePitchSemitones ?? 0)))
+  const pitchRatio = Math.pow(2, pitchSemis / 12)
+
   const preset: GameAudioSynthPreset =
     modeOrPreset === 'loop_bgm'
       ? 'chiptune_bgm'
@@ -671,7 +683,7 @@ export function synthesizeGameSeedPcm(
         : modeOrPreset
 
   if (preset === 'chiptune_bgm') {
-    const durationSec = 3.2
+    const durationSec = 3.2 * durScale
     const len = Math.floor(sr * durationSec)
     const left = new Float32Array(len)
     const right = new Float32Array(len)
@@ -679,7 +691,7 @@ export function synthesizeGameSeedPcm(
     const stepSamples = Math.max(1, Math.floor(len / notes.length))
     for (let i = 0; i < len; i++) {
       const noteIdx = Math.min(notes.length - 1, Math.floor(i / stepSamples))
-      const freq = notes[noteIdx]!
+      const freq = notes[noteIdx]! * pitchRatio
       const t = i / sr
       const localT = (i % stepSamples) / stepSamples
       const env = Math.sin(Math.min(1, localT * 8) * (Math.PI * 0.5)) * (1 - localT * 0.45)
@@ -699,15 +711,16 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'explosion') {
-    const durationSec = 0.72
+    const durationSec = 0.72 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.02)
     let lp = 0
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const env = Math.exp(-t * 4.5)
-      const rumbleFreq = 110 * Math.exp(-t * 3.2) + 32
+      const envT = t / durScale
+      const env = Math.exp(-envT * 4.5)
+      const rumbleFreq = (110 * Math.exp(-envT * 3.2) + 32) * pitchRatio
       const sub = Math.sin(2 * Math.PI * rumbleFreq * t) * 0.65
       lp += 0.18 * (nextNoise() - lp)
       mono[i] = Math.tanh((sub + lp * 0.95) * env * 1.3) * 0.85
@@ -716,16 +729,17 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'laser_shoot') {
-    const durationSec = 0.36
+    const durationSec = 0.36 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.018)
     let phase = 0
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const freq = 1280 * Math.exp(-t * 11.0) + 140 + Math.sin(t * 90) * 28
+      const envT = t / durScale
+      const freq = (1280 * Math.exp(-envT * 11.0) + 140 + Math.sin(t * 90) * 28) * pitchRatio
       phase += freq / sr
-      const env = Math.exp(-t * 7.5)
+      const env = Math.exp(-envT * 7.5)
       const saw = (phase % 1) * 2 - 1
       mono[i] = saw * env * 0.72
     }
@@ -733,14 +747,15 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'coin_pickup') {
-    const durationSec = 0.42
+    const durationSec = 0.42 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.015)
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const freq = t < 0.075 ? 987.77 : 1318.51 // B5 -> E6
-      const env = Math.exp(-t * 8.2)
+      const envT = t / durScale
+      const freq = (envT < 0.075 ? 987.77 : 1318.51) * pitchRatio // B5 -> E6
+      const env = Math.exp(-envT * 8.2)
       const bell =
         Math.sin(2 * Math.PI * freq * t) * 0.75 + Math.sin(2 * Math.PI * freq * 2.0 * t) * 0.25
       mono[i] = bell * env * 0.8
@@ -749,16 +764,17 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'jump_boost') {
-    const durationSec = 0.34
+    const durationSec = 0.34 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.015)
     let phase = 0
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const freq = 180 + t * t * 3600
+      const envT = t / durScale
+      const freq = (180 + envT * envT * 3600) * pitchRatio
       phase += freq / sr
-      const env = Math.sin(Math.min(1, t * 25) * (Math.PI * 0.5)) * Math.exp(-t * 5.2)
+      const env = Math.sin(Math.min(1, envT * 25) * (Math.PI * 0.5)) * Math.exp(-envT * 5.2)
       const sq = Math.sin(2 * Math.PI * phase) >= 0 ? 0.6 : -0.6
       mono[i] = (sq + Math.sin(2 * Math.PI * phase) * 0.4) * env * 0.75
     }
@@ -766,14 +782,15 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'hit_hurt') {
-    const durationSec = 0.32
+    const durationSec = 0.32 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.02)
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const freq = 240 * Math.exp(-t * 14) + 55
-      const env = Math.exp(-t * 10.5)
+      const envT = t / durScale
+      const freq = (240 * Math.exp(-envT * 14) + 55) * pitchRatio
+      const env = Math.exp(-envT * 10.5)
       const punch = Math.sin(2 * Math.PI * freq * t) * 0.75 + nextNoise() * 0.45
       mono[i] = Math.tanh(punch * 1.6) * env * 0.82
     }
@@ -781,16 +798,17 @@ export function synthesizeGameSeedPcm(
   }
 
   if (preset === 'powerup_chord') {
-    const durationSec = 0.6
+    const durationSec = 0.6 * durScale
     const len = Math.floor(sr * durationSec)
     const mono = new Float32Array(len)
     const silenceLead = Math.floor(sr * 0.015)
     const arp = [523.25, 659.25, 783.99, 1046.5] // C5, E5, G5, C6
     for (let i = silenceLead; i < len; i++) {
       const t = (i - silenceLead) / sr
-      const step = Math.min(arp.length - 1, Math.floor(t / 0.09))
-      const freq = arp[step]!
-      const env = Math.exp(-t * 3.8)
+      const envT = t / durScale
+      const step = Math.min(arp.length - 1, Math.floor(envT / 0.09))
+      const freq = arp[step]! * pitchRatio
+      const env = Math.exp(-envT * 3.8)
       mono[i] =
         (Math.sin(2 * Math.PI * freq * t) * 0.65 + Math.sin(2 * Math.PI * freq * 1.5 * t) * 0.25) *
         env *
@@ -800,17 +818,18 @@ export function synthesizeGameSeedPcm(
   }
 
   // Default 'sword_slash': crisp retro sword/laser impact with 25ms leading silence to test trimSilencePcm
-  const durationSec = 0.48
+  const durationSec = 0.48 * durScale
   const len = Math.floor(sr * durationSec)
   const mono = new Float32Array(len)
   const silenceLead = Math.floor(sr * 0.025)
   for (let i = silenceLead; i < len; i++) {
     const t = (i - silenceLead) / sr
-    const freq = 660 * Math.exp(-t * 9.5) + 110
-    const env = Math.exp(-t * 8.0)
+    const envT = t / durScale
+    const freq = (660 * Math.exp(-envT * 9.5) + 110) * pitchRatio
+    const env = Math.exp(-envT * 8.0)
     const tone = Math.sin(2 * Math.PI * freq * t)
     const harmonic = Math.sin(2 * Math.PI * freq * 2.5 * t) * 0.35
-    const whoosh = nextNoise() * Math.exp(-t * 16.0) * 0.35
+    const whoosh = nextNoise() * Math.exp(-envT * 16.0) * 0.35
     mono[i] = (tone + harmonic + whoosh) * env * 0.68
   }
   return { channels: [mono], sampleRate: sr }

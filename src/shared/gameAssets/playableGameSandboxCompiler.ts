@@ -34,6 +34,8 @@ export interface PlayableGameTuningOptions {
 export interface PlayableGameSandboxOptions extends PlayableGameTuningOptions {
   title?: string
   mode?: PlayableSandboxMode
+  genre?: string
+  cameraMode?: string
   levelSeed?: number
   playerSpriteDataUrl?: string
   enemySpriteDataUrl?: string
@@ -54,7 +56,12 @@ export function compilePlayableGameSandboxHtml(
   options: PlayableGameSandboxOptions = {}
 ): CompiledPlayableSandboxResult {
   const title = (options.title || 'AI Art Engine Playable Sandbox').trim()
-  const mode: PlayableSandboxMode = options.mode ?? 'survivor'
+  const inferredMode: PlayableSandboxMode =
+    options.mode ??
+    (options.cameraMode === 'side_scroller' || options.genre === 'metroidvania_platformer'
+      ? 'platformer'
+      : 'survivor')
+  const mode: PlayableSandboxMode = inferredMode
   const levelAlgorithm: LevelGeneratorAlgorithm =
     mode === 'platformer' ? 'platformer_course' : 'arena_waves'
 
@@ -117,8 +124,9 @@ export function compilePlayableGameSandboxHtml(
   }
   .hud-bar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     padding: 8px 16px;
     background: rgba(14, 23, 38, 0.92);
     border: 1px solid rgba(56, 189, 248, 0.35);
@@ -139,6 +147,12 @@ export function compilePlayableGameSandboxHtml(
     background: #0284c7;
     color: #fff;
   }
+  .stage-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   canvas {
     border: 2px solid rgba(56, 189, 248, 0.45);
     border-radius: 10px;
@@ -147,18 +161,78 @@ export function compilePlayableGameSandboxHtml(
     max-width: 96vw;
     max-height: 82vh;
   }
+  .perk-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 13, 24, 0.82);
+    backdrop-filter: blur(4px);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    border-radius: 10px;
+    z-index: 10;
+  }
+  .perk-modal.open {
+    display: flex;
+  }
+  .perk-title {
+    font-size: 20px;
+    font-weight: 800;
+    color: #fde047;
+    text-shadow: 0 2px 10px rgba(253, 224, 71, 0.4);
+  }
+  .perk-cards {
+    display: flex;
+    gap: 14px;
+    padding: 0 16px;
+  }
+  .perk-card {
+    width: 210px;
+    padding: 14px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, #162642 0%, #0f172a 100%);
+    border: 1px solid rgba(56, 189, 248, 0.5);
+    color: #f8fafc;
+    cursor: pointer;
+    text-align: left;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  }
+  .perk-card:hover {
+    transform: translateY(-4px);
+    border-color: #fde047;
+  }
+  .perk-card h4 {
+    font-size: 14px;
+    color: #38bdf8;
+    margin-bottom: 6px;
+  }
+  .perk-card p {
+    font-size: 12px;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
 </style>
 </head>
 <body>
   <div class="hud-bar">
     <strong id="gameTitle"></strong>
+    <span>Lv.<b id="lvVal">1</b></span>
     <span>HP: <b id="hpVal">100</b></span>
-    <span>Score/XP: <b id="scoreVal">0</b></span>
+    <span>XP: <b id="scoreVal">0</b>/<b id="xpNextVal">50</b></span>
     <span>Kills: <b id="killsVal">0</b></span>
     <button id="btnSurvivor" class="mode-btn">Survivor Mode (WASD + Auto-Fire)</button>
     <button id="btnPlatformer" class="mode-btn">Platformer Mode (A/D + Space + Click)</button>
+    <button id="btnAudio" class="mode-btn active">🔊 SFX</button>
   </div>
-  <canvas id="stage" width="960" height="600"></canvas>
+  <div class="stage-wrap">
+    <canvas id="stage" width="960" height="600"></canvas>
+    <div id="perkModal" class="perk-modal">
+      <div class="perk-title">✨ LEVEL UP! Choose a Roguelike Upgrade (Keys 1 / 2 / 3)</div>
+      <div id="perkCards" class="perk-cards"></div>
+    </div>
+  </div>
 <script>
 const CFG = ${configPayload};
 document.getElementById('gameTitle').textContent = CFG.title;
@@ -181,6 +255,93 @@ window.addEventListener('message', (ev) => {
   }
 });
 
+// Zero-config WebAudio procedural SFX + upstream WAV playback
+let audioEnabled = true;
+let audioCtx = null;
+const upstreamSfxAudio = CFG.sfxUrl ? new Audio(CFG.sfxUrl) : null;
+const upstreamBgmAudio = CFG.bgmUrl ? new Audio(CFG.bgmUrl) : null;
+if (upstreamBgmAudio) {
+  upstreamBgmAudio.loop = true;
+  upstreamBgmAudio.volume = 0.35;
+}
+
+function playSynthSfx(kind) {
+  if (!audioEnabled) return;
+  if ((kind === 'shoot' || kind === 'hit') && upstreamSfxAudio) {
+    try {
+      upstreamSfxAudio.currentTime = 0;
+      upstreamSfxAudio.volume = 0.45;
+      upstreamSfxAudio.play().catch(() => {});
+      return;
+    } catch {}
+  }
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    if (kind === 'shoot') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(580, now);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.08);
+      gain.gain.setValueAtTime(0.11, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.start(now);
+      osc.stop(now + 0.08);
+    } else if (kind === 'hit') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(210, now);
+      osc.frequency.exponentialRampToValueAtTime(75, now + 0.07);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+      osc.start(now);
+      osc.stop(now + 0.07);
+    } else if (kind === 'pickup') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(1174.66, now + 0.045);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      osc.start(now);
+      osc.stop(now + 0.11);
+    } else if (kind === 'levelup') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(659.25, now + 0.07);
+      osc.frequency.setValueAtTime(783.99, now + 0.14);
+      osc.frequency.setValueAtTime(1046.5, now + 0.21);
+      gain.gain.setValueAtTime(0.16, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.36);
+      osc.start(now);
+      osc.stop(now + 0.36);
+    } else if (kind === 'jump') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(540, now + 0.11);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+      osc.start(now);
+      osc.stop(now + 0.11);
+    }
+  } catch {}
+}
+
+document.getElementById('btnAudio').onclick = () => {
+  audioEnabled = !audioEnabled;
+  const btn = document.getElementById('btnAudio');
+  btn.classList.toggle('active', audioEnabled);
+  btn.textContent = audioEnabled ? '🔊 SFX' : '🔇 Mute';
+  if (upstreamBgmAudio) {
+    if (audioEnabled) upstreamBgmAudio.play().catch(() => {});
+    else upstreamBgmAudio.pause();
+  }
+};
+
 const loadOptImage = (src) => {
   if (!src) return null;
   const img = new Image();
@@ -191,17 +352,56 @@ const playerSprite = loadOptImage(CFG.playerImg);
 const enemySprite = loadOptImage(CFG.enemyImg);
 const tileSprite = loadOptImage(CFG.tileImg);
 
+// Parse level grid & interactive entities
+const lvlW = Math.max(8, Number((CFG.level && CFG.level.width) || 32));
+const lvlH = Math.max(8, Number((CFG.level && CFG.level.height) || 20));
+const cellW = canvas.width / lvlW;
+const cellH = canvas.height / lvlH;
+const lvlGrid = (CFG.level && Array.isArray(CFG.level.grid)) ? CFG.level.grid : [];
+const lvlEntities = (CFG.level && Array.isArray(CFG.level.entities)) ? CFG.level.entities : [];
+
+function getCellAtPx(px, py) {
+  const gx = Math.floor(px / cellW);
+  const gy = Math.floor(py / cellH);
+  if (gx <= 0 || gx >= lvlW - 1 || gy <= 0 || gy >= lvlH - 1) return 'border';
+  return (lvlGrid[gy] && lvlGrid[gy][gx]) || 'floor';
+}
+
+function isSolidWallAtPx(px, py) {
+  const gx = Math.floor(px / cellW);
+  const gy = Math.floor(py / cellH);
+  if (gx < 1 || gx >= lvlW - 1 || gy < 1 || gy >= lvlH - 1) return true;
+  // Keep central spawn corridor clear so player never gets trapped
+  if (Math.hypot(px - 480, py - 300) < 64) return false;
+  const cell = (lvlGrid[gy] && lvlGrid[gy][gx]) || 'floor';
+  return cell === 'wall';
+}
+
 const keys = {};
-window.addEventListener('keydown', (e) => { keys[e.code] = true; });
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (upgradeOpen) {
+    if (e.code === 'Digit1') applyPerk(0);
+    else if (e.code === 'Digit2') applyPerk(1);
+    else if (e.code === 'Digit3') applyPerk(2);
+  }
+});
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 const player = { x: 480, y: 300, vx: 0, vy: 0, hp: 100, maxHp: 100, facing: 1, flash: 0, grounded: false, dashCd: 0 };
+const perks = { multiShot: 1, critBonus: 0, dmgScale: 1.0, fireRateScale: 1.0, moveBonus: 1.0, lifesteal: 0 };
+let playerLevel = 1;
+let xp = 0;
+let xpNext = 50;
+let upgradeOpen = false;
+let activePerkChoices = [];
+let chests = [];
+let portal = { x: 840, y: 120 };
 let bullets = [];
 let enemies = [];
 let gems = [];
 let popups = [];
 let particles = [];
-let score = 0;
 let kills = 0;
 let fireTimer = 0;
 let spawnTimer = 0;
@@ -209,16 +409,81 @@ let shakeTrauma = 0;
 let lastFrameTime = performance.now();
 let fpsSmooth = 60;
 
+const PERK_POOL = [
+  { id: 'multishot', title: '⚡ Multi-Shot +1', desc: 'Fire +1 extra fan projectile per attack', apply: () => { perks.multiShot += 1; } },
+  { id: 'vampiric', title: '🩸 Vampiric Blade', desc: 'Heal 30 HP now and restore +3 HP per kill', apply: () => { player.hp = Math.min(player.maxHp, player.hp + 30); perks.lifesteal += 3; document.getElementById('hpVal').textContent = String(player.hp); } },
+  { id: 'crit', title: '🌩️ Crit Overdrive', desc: '+20% Crit Chance and +30% Base Bullet Damage', apply: () => { perks.critBonus += 0.2; perks.dmgScale *= 1.3; } },
+  { id: 'haste', title: '👟 Phantom Haste', desc: '+18% Move Speed and +25% Auto-Fire Rate', apply: () => { perks.moveBonus *= 1.18; perks.fireRateScale *= 1.25; } }
+];
+
+function openUpgradeModal() {
+  upgradeOpen = true;
+  playSynthSfx('levelup');
+  activePerkChoices = PERK_POOL.slice(0, 3);
+  const container = document.getElementById('perkCards');
+  container.innerHTML = '';
+  activePerkChoices.forEach((p, idx) => {
+    const card = document.createElement('button');
+    card.className = 'perk-card';
+    card.innerHTML = '<h4>[' + (idx + 1) + '] ' + p.title + '</h4><p>' + p.desc + '</p>';
+    card.onclick = () => applyPerk(idx);
+    container.appendChild(card);
+  });
+  document.getElementById('perkModal').classList.add('open');
+}
+
+function applyPerk(idx) {
+  const chosen = activePerkChoices[idx];
+  if (!chosen) return;
+  chosen.apply();
+  upgradeOpen = false;
+  document.getElementById('perkModal').classList.remove('open');
+  spawnPopup(player.x, player.y - 36, 'UPGRADE: ' + chosen.title.split(' ')[1], '#fde047', true);
+}
+
+function gainXp(amount) {
+  xp += amount;
+  while (xp >= xpNext) {
+    xp -= xpNext;
+    playerLevel += 1;
+    xpNext = Math.round(xpNext * 1.45);
+    document.getElementById('lvVal').textContent = String(playerLevel);
+    document.getElementById('xpNextVal').textContent = String(xpNext);
+    openUpgradeModal();
+  }
+  document.getElementById('scoreVal').textContent = String(xp);
+}
+
 function addShake(amount) {
   shakeTrauma = Math.min(18, shakeTrauma + amount * (tuning.screenShakeScale ?? 1));
+}
+
+function initLevelEntities() {
+  chests = [];
+  const sp = lvlEntities.find((e) => e.type === 'player_spawn');
+  const ep = lvlEntities.find((e) => e.type === 'exit_portal' || e.type === 'boss_spawn');
+  portal = ep ? { x: (ep.gridX + 0.5) * cellW, y: (ep.gridY + 0.5) * cellH } : { x: canvas.width - 96, y: 96 };
+  for (const e of lvlEntities) {
+    if (e.type === 'treasure_chest' || e.type === 'coin') {
+      chests.push({ x: (e.gridX + 0.5) * cellW, y: (e.gridY + 0.5) * cellH });
+    }
+  }
+  if (chests.length === 0) {
+    chests.push({ x: 200, y: 160 }, { x: 760, y: 440 });
+  }
+  if (sp && mode === 'survivor') {
+    player.x = Math.max(48, Math.min(canvas.width - 48, (sp.gridX + 0.5) * cellW));
+    player.y = Math.max(48, Math.min(canvas.height - 48, (sp.gridY + 0.5) * cellH));
+  } else {
+    player.x = 480;
+    player.y = mode === 'platformer' ? 380 : 300;
+  }
 }
 
 function setMode(nextMode) {
   mode = nextMode;
   document.getElementById('btnSurvivor').classList.toggle('active', mode === 'survivor');
   document.getElementById('btnPlatformer').classList.toggle('active', mode === 'platformer');
-  player.x = 480;
-  player.y = mode === 'platformer' ? 380 : 300;
   player.vx = 0;
   player.vy = 0;
   player.hp = 100;
@@ -227,6 +492,7 @@ function setMode(nextMode) {
   gems = [];
   popups = [];
   particles = [];
+  initLevelEntities();
 }
 
 document.getElementById('btnSurvivor').onclick = () => setMode('survivor');
@@ -245,17 +511,33 @@ function spawnHitParticles(x, y, color, count) {
   }
 }
 
+function fireProjectilesAt(ang) {
+  const count = perks.multiShot;
+  const spread = 0.16;
+  for (let i = 0; i < count; i++) {
+    const offset = (i - (count - 1) / 2) * spread;
+    const a = ang + offset;
+    bullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 9.2, vy: Math.sin(a) * 9.2, life: 75 });
+  }
+  playSynthSfx('shoot');
+}
+
 canvas.addEventListener('pointerdown', (e) => {
+  if (upgradeOpen) return;
+  if (upstreamBgmAudio && audioEnabled && upstreamBgmAudio.paused) {
+    upstreamBgmAudio.play().catch(() => {});
+  }
   const rect = canvas.getBoundingClientRect();
   const tx = ((e.clientX - rect.left) / rect.width) * canvas.width;
   const ty = ((e.clientY - rect.top) / rect.height) * canvas.height;
   const ang = Math.atan2(ty - player.y, tx - player.x);
-  bullets.push({ x: player.x, y: player.y, vx: Math.cos(ang) * 9, vy: Math.sin(ang) * 9, life: 70 });
+  fireProjectilesAt(ang);
 });
 
 function update() {
+  if (upgradeOpen) return;
   const dt = Math.max(0.2, Math.min(1.8, Number(tuning.timeScale ?? 1.0)));
-  const moveSpd = Number(tuning.moveSpeedScale ?? 1.0) * dt;
+  const moveSpd = Number(tuning.moveSpeedScale ?? 1.0) * perks.moveBonus * dt;
   const jumpSpd = Number(tuning.jumpDashScale ?? 1.0);
   const aggro = Number(tuning.enemyAggroScale ?? 1.0) * dt;
 
@@ -269,18 +551,22 @@ function update() {
     if (keys['Space'] && player.dashCd <= 0) {
       boost = 3.2 * jumpSpd;
       player.dashCd = 38;
+      playSynthSfx('jump');
       spawnHitParticles(player.x, player.y, '#38bdf8', 8);
     }
     player.vx = moveX * 3.6 * moveSpd * boost;
     player.vy = moveY * 3.6 * moveSpd * boost;
-    player.x = Math.max(32, Math.min(canvas.width - 32, player.x + player.vx));
-    player.y = Math.max(32, Math.min(canvas.height - 32, player.y + player.vy));
+    const nextX = Math.max(32, Math.min(canvas.width - 32, player.x + player.vx));
+    const nextY = Math.max(32, Math.min(canvas.height - 32, player.y + player.vy));
+    if (!isSolidWallAtPx(nextX, player.y)) player.x = nextX;
+    if (!isSolidWallAtPx(player.x, nextY)) player.y = nextY;
   } else {
     player.vx = moveX * 4.2 * moveSpd;
     player.vy += 0.55 * dt;
     if ((keys['Space'] || keys['KeyW'] || keys['ArrowUp']) && player.grounded) {
       player.vy = -11.5 * jumpSpd;
       player.grounded = false;
+      playSynthSfx('jump');
       spawnHitParticles(player.x, player.y + 16, '#7dd3fc', 6);
     }
     player.x = Math.max(32, Math.min(canvas.width - 32, player.x + player.vx));
@@ -293,11 +579,31 @@ function update() {
     }
   }
 
+  // Hazard cell check
+  if (getCellAtPx(player.x, player.y) === 'hazard' && player.flash <= 0) {
+    player.hp = Math.max(0, player.hp - 6);
+    player.flash = 25;
+    addShake(6.5);
+    document.getElementById('hpVal').textContent = String(player.hp);
+    spawnPopup(player.x, player.y - 24, '-6 HAZARD', '#fb923c', false);
+  }
+
+  // Chest pickup check
+  for (let i = chests.length - 1; i >= 0; i--) {
+    const ch = chests[i];
+    if (Math.hypot(player.x - ch.x, player.y - ch.y) < 28) {
+      chests.splice(i, 1);
+      spawnHitParticles(ch.x, ch.y, '#fde047', 14);
+      spawnPopup(ch.x, ch.y - 20, 'CHEST +35 XP!', '#fde047', true);
+      gainXp(35);
+    }
+  }
+
   if (player.flash > 0) player.flash -= dt;
   if (shakeTrauma > 0) shakeTrauma = Math.max(0, shakeTrauma - 0.85 * dt);
 
   // Auto-fire at nearest enemy
-  fireTimer += dt;
+  fireTimer += dt * perks.fireRateScale;
   if (fireTimer >= 18 && enemies.length > 0) {
     fireTimer = 0;
     let nearest = enemies[0];
@@ -307,7 +613,7 @@ function update() {
       if (d < bestD) { bestD = d; nearest = en; }
     }
     const ang = Math.atan2(nearest.y - player.y, nearest.x - player.x);
-    bullets.push({ x: player.x, y: player.y, vx: Math.cos(ang) * 8.5, vy: Math.sin(ang) * 8.5, life: 75 });
+    fireProjectilesAt(ang);
   }
 
   // Spawn enemies
@@ -315,8 +621,8 @@ function update() {
   if (spawnTimer >= 42 && enemies.length < 28) {
     spawnTimer = 0;
     const edge = Math.floor(Math.random() * 4);
-    const ex = edge === 0 ? 24 : edge === 1 ? canvas.width - 24 : Math.random() * canvas.width;
-    const ey = mode === 'platformer' ? 480 : (edge === 2 ? 24 : edge === 3 ? canvas.height - 24 : Math.random() * canvas.height);
+    const ex = edge === 0 ? 36 : edge === 1 ? canvas.width - 36 : Math.random() * canvas.width;
+    const ey = mode === 'platformer' ? 480 : (edge === 2 ? 36 : edge === 3 ? canvas.height - 36 : Math.random() * canvas.height);
     enemies.push({ x: ex, y: ey, hp: 35, maxHp: 35, flash: 0 });
   }
 
@@ -326,14 +632,15 @@ function update() {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
-    if (b.life <= 0) { bullets.splice(i, 1); continue; }
+    if (b.life <= 0 || isSolidWallAtPx(b.x, b.y)) { bullets.splice(i, 1); continue; }
     for (let j = enemies.length - 1; j >= 0; j--) {
       const en = enemies[j];
       if (Math.hypot(b.x - en.x, b.y - en.y) < 24) {
-        const isCrit = Math.random() < 0.3;
-        const dmg = isCrit ? 28 : 14;
+        const isCrit = Math.random() < (0.25 + perks.critBonus);
+        const dmg = Math.round((isCrit ? 28 : 14) * perks.dmgScale);
         en.hp -= dmg;
         en.flash = 6;
+        playSynthSfx('hit');
         if (isCrit) addShake(5.5);
         spawnHitParticles(en.x, en.y, isCrit ? '#fbbf24' : '#f87171', isCrit ? 10 : 5);
         spawnPopup(en.x, en.y - 18, isCrit ? '-' + dmg + '! CRIT' : '-' + dmg, isCrit ? '#fbbf24' : '#f8fafc', isCrit);
@@ -342,6 +649,10 @@ function update() {
           gems.push({ x: en.x, y: en.y });
           enemies.splice(j, 1);
           kills++;
+          if (perks.lifesteal > 0) {
+            player.hp = Math.min(player.maxHp, player.hp + perks.lifesteal);
+            document.getElementById('hpVal').textContent = String(player.hp);
+          }
           addShake(4.0);
           document.getElementById('killsVal').textContent = String(kills);
         }
@@ -353,8 +664,10 @@ function update() {
   // Update enemies
   for (const en of enemies) {
     const ang = Math.atan2(player.y - en.y, player.x - en.x);
-    en.x += Math.cos(ang) * 1.45 * aggro;
-    if (mode === 'survivor') en.y += Math.sin(ang) * 1.45 * aggro;
+    const nx = en.x + Math.cos(ang) * 1.45 * aggro;
+    const ny = mode === 'survivor' ? en.y + Math.sin(ang) * 1.45 * aggro : en.y;
+    if (!isSolidWallAtPx(nx, en.y)) en.x = nx;
+    if (!isSolidWallAtPx(en.x, ny)) en.y = ny;
     if (en.flash > 0) en.flash -= dt;
     if (Math.hypot(player.x - en.x, player.y - en.y) < 26 && player.flash <= 0) {
       player.hp = Math.max(0, player.hp - 5);
@@ -369,15 +682,15 @@ function update() {
   for (let i = gems.length - 1; i >= 0; i--) {
     const g = gems[i];
     const d = Math.hypot(player.x - g.x, player.y - g.y);
-    if (d < 110) {
-      g.x += ((player.x - g.x) / d) * 5.2 * dt;
-      g.y += ((player.y - g.y) / d) * 5.2 * dt;
+    if (d < 120) {
+      g.x += ((player.x - g.x) / d) * 5.6 * dt;
+      g.y += ((player.y - g.y) / d) * 5.6 * dt;
     }
     if (d < 22) {
-      score += 10;
-      document.getElementById('scoreVal').textContent = String(score);
-      spawnPopup(player.x, player.y - 28, '+10 XP', '#38bdf8', false);
+      playSynthSfx('pickup');
+      spawnPopup(player.x, player.y - 28, '+15 XP', '#38bdf8', false);
       gems.splice(i, 1);
+      gainXp(15);
     }
   }
 
@@ -404,8 +717,38 @@ function draw() {
     ctx.translate((Math.random() - 0.5) * shakeTrauma * 2, (Math.random() - 0.5) * shakeTrauma * 2);
   }
 
+  // Render Level Map Grid Tiles (Wall / Hazard / Platform / Floor)
+  for (let gy = 0; gy < lvlH; gy++) {
+    const row = lvlGrid[gy];
+    if (!row) continue;
+    for (let gx = 0; gx < lvlW; gx++) {
+      const cell = row[gx];
+      const rx = gx * cellW;
+      const ry = gy * cellH;
+      const isBorder = gx === 0 || gx === lvlW - 1 || gy === 0 || gy === lvlH - 1;
+      if (cell === 'wall' && (isBorder || Math.hypot(rx + cellW * 0.5 - 480, ry + cellH * 0.5 - 300) >= 64)) {
+        if (tileSprite && tileSprite.complete && tileSprite.naturalWidth > 0) {
+          ctx.drawImage(tileSprite, rx, ry, cellW, cellH);
+        } else {
+          ctx.fillStyle = isBorder ? '#162032' : '#1e293b';
+          ctx.fillRect(rx, ry, cellW, cellH);
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.18)';
+          ctx.strokeRect(rx + 0.5, ry + 0.5, cellW - 1, cellH - 1);
+        }
+      } else if (cell === 'hazard') {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.36)';
+        ctx.fillRect(rx, ry, cellW, cellH);
+        ctx.strokeStyle = '#f97316';
+        ctx.strokeRect(rx + 2, ry + 2, cellW - 4, cellH - 4);
+      } else if (cell === 'platform') {
+        ctx.fillStyle = '#a16207';
+        ctx.fillRect(rx, ry, cellW, 6);
+      }
+    }
+  }
+
   // Subtle tile grid background
-  ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.06)';
   ctx.lineWidth = 1;
   for (let x = 0; x < canvas.width; x += 48) {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
@@ -419,6 +762,28 @@ function draw() {
     ctx.fillRect(0, 504, canvas.width, 96);
     ctx.strokeStyle = '#38bdf8';
     ctx.beginPath(); ctx.moveTo(0, 504); ctx.lineTo(canvas.width, 504); ctx.stroke();
+  }
+
+  // Exit Portal vortex
+  if (portal) {
+    ctx.save();
+    ctx.translate(portal.x, portal.y);
+    ctx.strokeStyle = '#a855f7';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16 + Math.sin(performance.now() * 0.006) * 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Treasure Chests
+  for (const ch of chests) {
+    ctx.save();
+    ctx.fillStyle = '#eab308';
+    ctx.fillRect(ch.x - 10, ch.y - 8, 20, 16);
+    ctx.strokeStyle = '#fef08a';
+    ctx.strokeRect(ch.x - 10, ch.y - 8, 20, 16);
+    ctx.restore();
   }
 
   // Gems
@@ -506,14 +871,14 @@ function draw() {
   if (tuning.showDebugHitboxes) {
     ctx.save();
     ctx.fillStyle = 'rgba(15, 23, 42, 0.84)';
-    ctx.fillRect(12, 12, 245, 76);
+    ctx.fillRect(12, 12, 260, 76);
     ctx.strokeStyle = 'rgba(74, 222, 128, 0.55)';
-    ctx.strokeRect(12, 12, 245, 76);
+    ctx.strokeRect(12, 12, 260, 76);
     ctx.fillStyle = '#4ade80';
     ctx.font = '12px monospace';
     ctx.fillText('FPS: ' + Math.round(fpsSmooth) + ' | TimeScale: ' + Number(tuning.timeScale).toFixed(2) + 'x', 20, 32);
     ctx.fillText('Entities: ' + enemies.length + ' Enemies / ' + bullets.length + ' Bullets', 20, 50);
-    ctx.fillText('Move: ' + Number(tuning.moveSpeedScale).toFixed(1) + 'x | Shake: ' + Number(tuning.screenShakeScale).toFixed(1) + 'x', 20, 68);
+    ctx.fillText('Move: ' + Number(tuning.moveSpeedScale).toFixed(1) + 'x | MultiShot: ' + perks.multiShot, 20, 68);
     ctx.restore();
   }
 }

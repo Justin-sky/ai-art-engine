@@ -160,6 +160,65 @@
             />
           </label>
 
+          <label class="field">
+            <span>{{ t('gameNodes.pbrTile.pivotMode') }}</span>
+            <select
+              :value="node.params.gamePbrPivotMode ?? 'bottom_center'"
+              @change="onStringParam('gamePbrPivotMode', $event)"
+            >
+              <option value="bottom_center">{{ t('gameNodes.pbrTile.pivotBottomCenter') }}</option>
+              <option value="center">{{ t('gameNodes.pbrTile.pivotCenter') }}</option>
+              <option value="top_left">{{ t('gameNodes.pbrTile.pivotTopLeft') }}</option>
+            </select>
+          </label>
+
+          <div class="section-title">{{ t('gameNodes.pbrTile.nineSliceTitle') }}</div>
+          <div class="grid2">
+            <label class="field">
+              <span>{{ t('gameNodes.pbrTile.sliceLeft') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="44"
+                :value="node.params.gameNineSliceLeft ?? pbrAutoNineSlice.borders.left"
+                @change="onNumberParam('gameNineSliceLeft', $event)"
+              />
+            </label>
+            <label class="field">
+              <span>{{ t('gameNodes.pbrTile.sliceRight') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="44"
+                :value="node.params.gameNineSliceRight ?? pbrAutoNineSlice.borders.right"
+                @change="onNumberParam('gameNineSliceRight', $event)"
+              />
+            </label>
+            <label class="field">
+              <span>{{ t('gameNodes.pbrTile.sliceTop') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="44"
+                :value="node.params.gameNineSliceTop ?? pbrAutoNineSlice.borders.top"
+                @change="onNumberParam('gameNineSliceTop', $event)"
+              />
+            </label>
+            <label class="field">
+              <span>{{ t('gameNodes.pbrTile.sliceBottom') }}</span>
+              <input
+                type="number"
+                min="0"
+                max="44"
+                :value="node.params.gameNineSliceBottom ?? pbrAutoNineSlice.borders.bottom"
+                @change="onNumberParam('gameNineSliceBottom', $event)"
+              />
+            </label>
+          </div>
+          <button type="button" class="secondary-btn" @click="resetNineSliceBorders">
+            {{ t('gameNodes.pbrTile.resetNineSlice') }}
+          </button>
+
           <label class="check-row">
             <input
               type="checkbox"
@@ -209,6 +268,43 @@
               <option value="powerup_chord">{{ t('gameNodes.audioDsp.synthPowerup') }}</option>
               <option value="chiptune_bgm">{{ t('gameNodes.audioDsp.synthChiptune') }}</option>
             </select>
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.audioDsp.synthDuration') }}</span>
+              <b>{{ Number(node.params.gameAudioSynthDuration ?? 1.0).toFixed(2) }}×</b>
+            </div>
+            <input
+              type="range"
+              min="0.3"
+              max="2.5"
+              step="0.1"
+              :value="node.params.gameAudioSynthDuration ?? 1.0"
+              @change="onNumberParam('gameAudioSynthDuration', $event)"
+            />
+          </label>
+
+          <label class="slider-field">
+            <div class="slider-head">
+              <span>{{ t('gameNodes.audioDsp.basePitchSt') }}</span>
+              <b>
+                {{
+                  Number(node.params.gameAudioBasePitch ?? 0) >= 0
+                    ? `+${Number(node.params.gameAudioBasePitch ?? 0)}`
+                    : Number(node.params.gameAudioBasePitch ?? 0)
+                }}
+                st
+              </b>
+            </div>
+            <input
+              type="range"
+              min="-12"
+              max="12"
+              step="1"
+              :value="node.params.gameAudioBasePitch ?? 0"
+              @change="onNumberParam('gameAudioBasePitch', $event)"
+            />
           </label>
 
           <label class="field">
@@ -426,6 +522,13 @@
         <div v-else-if="node.typeId === 'game.playable'" class="param-card">
           <div class="section-title">{{ t('gameNodes.playable.sectionTitle') }}</div>
 
+          <button type="button" class="action-btn" @click="autoWireFourNodePipeline">
+            {{ t('gameNodes.playable.autoWireBtn') }}
+          </button>
+          <div v-if="autoWireDone" class="report-chip">
+            {{ t('gameNodes.playable.autoWireDoneHint') }}
+          </div>
+
           <label class="field">
             <span>{{ t('gameNodes.playable.title') }}</span>
             <input
@@ -550,8 +653,8 @@
             {{ t('gameNodes.workbench.recompileBtn') }}
           </button>
 
-          <button type="button" class="secondary-btn" @click="showHtmlSource = !showHtmlSource">
-            {{ t('gameNodes.workbench.toggleHtmlSource') }}
+          <button type="button" class="secondary-btn" @click="downloadPlayableHtml">
+            {{ t('gameNodes.playable.downloadHtmlBtn') }}
           </button>
 
           <div v-if="node.params.gamePlayableReport" class="report-chip">
@@ -777,13 +880,24 @@
             </div>
 
             <div
-              v-else-if="pbrTab === 'channels' && pbrChannelCards.length"
+              v-else-if="pbrTab === 'channels' && displayPbrChannelCards.length"
               class="pbr-channels-grid"
             >
-              <div v-for="(item, index) in pbrChannelCards" :key="item.key" class="channel-card">
+              <div
+                v-for="(item, index) in displayPbrChannelCards"
+                :key="item.key"
+                class="channel-card"
+              >
                 <div class="channel-card-head">
                   <span>#{{ index + 1 }}</span>
                   <b>{{ item.title }}</b>
+                  <button
+                    type="button"
+                    class="mini-play-btn"
+                    @click="downloadDataUrlFile(item.url, `${item.title}.png`)"
+                  >
+                    {{ t('gameNodes.pbrTile.downloadPngBtn') }}
+                  </button>
                 </div>
                 <img :src="item.url" alt="" class="channel-img" draggable="false" />
               </div>
@@ -817,6 +931,9 @@
                   {{ t('gameNodes.audioDsp.loopSeamBtn') }}
                 </button>
               </template>
+              <button type="button" class="secondary-btn" @click="downloadMasterWav">
+                {{ t('gameNodes.audioDsp.downloadWavBtn') }}
+              </button>
               <button type="button" class="secondary-btn" @click="stopWebAudioPlayback">
                 {{ t('gameNodes.audioDsp.stopAudioBtn') }}
               </button>
@@ -1016,16 +1133,29 @@
               </div>
             </div>
 
-            <!-- SFX Variant Matrix Cards with Live Single-Variant Audition -->
+            <!-- SFX Variant Matrix Cards with Live Single-Variant Audition & Download -->
             <div class="sfx-matrix-panel">
               <div class="section-title">{{ t('gameNodes.workbench.sfxMatrixTitle') }}</div>
               <div class="sfx-variant-cards">
                 <div v-for="v in sfxVariantsPlan" :key="v.variantId" class="sfx-card">
                   <div class="sfx-card-head">
                     <b>Variant #{{ v.index + 1 }} ({{ v.variantId }})</b>
-                    <button type="button" class="mini-play-btn" @click="playSingleVariant(v.index)">
-                      {{ t('gameNodes.audioDsp.playVariantBtn') }}
-                    </button>
+                    <div class="tab-pills">
+                      <button
+                        type="button"
+                        class="mini-play-btn"
+                        @click="playSingleVariant(v.index)"
+                      >
+                        {{ t('gameNodes.audioDsp.playVariantBtn') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="mini-play-btn"
+                        @click="downloadVariantWav(v.index, v.variantId)"
+                      >
+                        {{ t('gameNodes.audioDsp.downloadWavBtn') }}
+                      </button>
+                    </div>
                   </div>
                   <div class="sfx-metrics">
                     <span>
@@ -1113,6 +1243,9 @@
               >
                 {{ t('gameNodes.workbench.levelTmjTab') }}
               </button>
+              <button type="button" class="secondary-btn" @click="downloadLevelTmj">
+                {{ t('gameNodes.levelMap.downloadTmjBtn') }}
+              </button>
             </div>
           </div>
 
@@ -1130,6 +1263,22 @@
                     @click="activeLevelBrush = b.id"
                   >
                     {{ b.label }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-btn"
+                    :disabled="levelUndoStack.length === 0"
+                    @click="undoLevelBrush"
+                  >
+                    {{ t('gameNodes.levelMap.undoBtn') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-btn"
+                    :disabled="levelRedoStack.length === 0"
+                    @click="redoLevelBrush"
+                  >
+                    {{ t('gameNodes.levelMap.redoBtn') }}
                   </button>
                   <button type="button" class="secondary-btn" @click="clearLevelCustomEdits">
                     {{ t('gameNodes.levelMap.clearBrushEdits') }}
@@ -1205,14 +1354,40 @@
         <template v-else-if="node.typeId === 'game.playable'">
           <div class="stage-toolbar">
             <span class="stage-title">{{ t('gameNodes.workbench.playablePreviewTitle') }}</span>
-            <span class="spec-badge">
-              {{ t('gameNodes.playable.upstreamStatus') }}{{ playableUpstreamSummary }}
-            </span>
+            <div class="tab-pills">
+              <span class="spec-badge">
+                {{ t('gameNodes.playable.upstreamStatus') }}{{ playableUpstreamSummary }}
+              </span>
+              <button
+                type="button"
+                class="tab-pill"
+                :class="{ active: playableTab === 'play' }"
+                @click="playableTab = 'play'"
+              >
+                🎮 60fps Sandbox
+              </button>
+              <button
+                type="button"
+                class="tab-pill"
+                :class="{ active: playableTab === 'engine' }"
+                @click="playableTab = 'engine'"
+              >
+                {{ t('gameNodes.playable.engineShadersTab') }}
+              </button>
+              <button
+                type="button"
+                class="tab-pill"
+                :class="{ active: playableTab === 'html' }"
+                @click="playableTab = 'html'"
+              >
+                {{ t('gameNodes.workbench.toggleHtmlSource') }}
+              </button>
+            </div>
           </div>
 
           <div class="playable-stage-body">
             <iframe
-              v-show="!showHtmlSource"
+              v-show="playableTab === 'play'"
               ref="playableIframeRef"
               :key="playableReloadSeq"
               class="playable-sandbox-iframe"
@@ -1220,7 +1395,77 @@
               sandbox="allow-scripts"
               title="game-playable-workbench"
             />
-            <pre v-show="showHtmlSource" class="code-viewer">{{ livePlayableHtml }}</pre>
+            <div v-if="playableTab === 'engine'" class="audio-stage-body">
+              <div class="engine-export-panel">
+                <div class="engine-export-head">
+                  <span class="section-title">{{ t('gameNodes.playable.shaderPresetLabel') }}</span>
+                  <div class="tab-pills">
+                    <select v-model="selectedShaderId" class="title-input">
+                      <option
+                        v-for="sh in playableShaderBundle.shaders"
+                        :key="sh.id"
+                        :value="sh.id"
+                      >
+                        {{ sh.name }} ({{ sh.id }})
+                      </option>
+                    </select>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: playableShaderLang === 'godot' }"
+                      @click="playableShaderLang = 'godot'"
+                    >
+                      Godot 4 (.gdshader)
+                    </button>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: playableShaderLang === 'unity' }"
+                      @click="playableShaderLang = 'unity'"
+                    >
+                      Unity (.shader)
+                    </button>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: playableShaderLang === 'webgl' }"
+                      @click="playableShaderLang = 'webgl'"
+                    >
+                      WebGL (GLSL)
+                    </button>
+                  </div>
+                </div>
+                <pre class="code-viewer compact">{{ activePlayableShaderCode }}</pre>
+              </div>
+
+              <div class="engine-export-panel">
+                <div class="engine-export-head">
+                  <span class="section-title">{{
+                    t('gameNodes.playable.importerScriptTitle')
+                  }}</span>
+                  <div class="tab-pills">
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: playableImporterTarget === 'godot' }"
+                      @click="playableImporterTarget = 'godot'"
+                    >
+                      Godot 4 (.gd)
+                    </button>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: playableImporterTarget === 'unity' }"
+                      @click="playableImporterTarget = 'unity'"
+                    >
+                      Unity (C#)
+                    </button>
+                  </div>
+                </div>
+                <pre class="code-viewer compact">{{ activePlayableImporterCode }}</pre>
+              </div>
+            </div>
+            <pre v-show="playableTab === 'html'" class="code-viewer">{{ livePlayableHtml }}</pre>
           </div>
         </template>
       </main>
@@ -1243,6 +1488,8 @@ import {
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
   applySpatialAuditionPcm,
+  buildGameBundleManifest,
+  buildGameShaderParticleBundle,
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
   compilePlayableGameSandboxHtml,
@@ -1250,9 +1497,11 @@ import {
   decodeWavBytesToPcm,
   derivePbrMapsFromRgba,
   detectNineSliceBorders,
+  encodePcmToWavDataUrl,
   encodeRgbaToPngDataUrl,
   exportGodotAudioStreamRandomizerTres,
   exportUnityAudioRandomContainerJson,
+  generateEngineImporterScript,
   generateProceduralLevelMap,
   normalizePeakPcm,
   planSfxVariantMatrix,
@@ -1267,9 +1516,15 @@ import {
   type LevelGeneratorAlgorithm,
   type LevelMapCustomEditsPayload,
   type PbrMaterialPreset,
+  type PhysicsPivotMode,
   type ProceduralLevelMapResult
 } from '@shared/gameAssets'
-import { isGameProductionNode, type GraphNode, type GraphNodeParams } from '@shared/graph'
+import {
+  createNodeFromType,
+  isGameProductionNode,
+  type GraphNode,
+  type GraphNodeParams
+} from '@shared/graph'
 import GraphNodeRunControl from '../GraphNodeRunControl.vue'
 import GraphNodeOutputPreview from '../GraphNodeOutputPreview.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
@@ -1607,26 +1862,124 @@ const pbrLiveTileData = computed(() => {
   return { albedo, maps }
 })
 
+function downloadDataUrlFile(dataUrl: string, filename: string): void {
+  if (!dataUrl || typeof document === 'undefined') return
+  const link = document.createElement('a')
+  link.href = dataUrl
+  link.download = filename.replace(/[^\w.-]+/g, '_')
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+function downloadTextFile(
+  content: string,
+  filename: string,
+  mimeType = 'text/plain;charset=utf-8'
+): void {
+  if (typeof document === 'undefined' || typeof Blob === 'undefined') return
+  const blob = new Blob([content], { type: mimeType })
+  const url = URL.createObjectURL(blob)
+  try {
+    downloadDataUrlFile(url, filename)
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 500)
+  }
+}
+
 const pbrLiveAlbedoDataUrl = computed(() =>
   encodeRgbaToPngDataUrl(pbrLiveTileData.value.albedo, PBR_TILE_DIM, PBR_TILE_DIM)
 )
 
-const pbrLiveNineSlice = computed(() =>
+const pbrAutoNineSlice = computed(() =>
   detectNineSliceBorders(pbrLiveTileData.value.albedo, PBR_TILE_DIM, PBR_TILE_DIM)
 )
+
+const pbrLiveNineSlice = computed(() => {
+  const auto = pbrAutoNineSlice.value
+  const clampBorder = (val: unknown, fallback: number): number => {
+    const num = Number(val)
+    if (!Number.isFinite(num)) return fallback
+    return Math.max(0, Math.min(Math.floor(PBR_TILE_DIM * 0.46), Math.round(num)))
+  }
+  const left =
+    node.value?.params.gameNineSliceLeft !== undefined
+      ? clampBorder(node.value.params.gameNineSliceLeft, auto.borders.left)
+      : auto.borders.left
+  const right =
+    node.value?.params.gameNineSliceRight !== undefined
+      ? clampBorder(node.value.params.gameNineSliceRight, auto.borders.right)
+      : auto.borders.right
+  const top =
+    node.value?.params.gameNineSliceTop !== undefined
+      ? clampBorder(node.value.params.gameNineSliceTop, auto.borders.top)
+      : auto.borders.top
+  const bottom =
+    node.value?.params.gameNineSliceBottom !== undefined
+      ? clampBorder(node.value.params.gameNineSliceBottom, auto.borders.bottom)
+      : auto.borders.bottom
+  return {
+    ...auto,
+    borders: { left, right, top, bottom },
+    stretchCenterWidth: Math.max(1, PBR_TILE_DIM - left - right),
+    stretchCenterHeight: Math.max(1, PBR_TILE_DIM - top - bottom)
+  }
+})
+
+function resetNineSliceBorders(): void {
+  patchParams({
+    gameNineSliceLeft: undefined,
+    gameNineSliceRight: undefined,
+    gameNineSliceTop: undefined,
+    gameNineSliceBottom: undefined
+  })
+}
 
 const pbrLivePhysics = computed(() => {
   const maxVertices = Math.max(
     4,
     Math.min(16, Math.round(Number(node.value?.params.gamePbrMaxHullVertices ?? 8)))
   )
+  const pivotMode = (node.value?.params.gamePbrPivotMode ?? 'bottom_center') as PhysicsPivotMode
   return buildSpritePhysicsManifest(
     node.value?.title || 'sprite',
     pbrLiveTileData.value.albedo,
     PBR_TILE_DIM,
     PBR_TILE_DIM,
-    { maxVertices }
+    { maxVertices, pivotMode }
   )
+})
+
+const displayPbrChannelCards = computed(() => {
+  if (pbrChannelCards.value.length >= 2) return pbrChannelCards.value
+  const { albedo, maps } = pbrLiveTileData.value
+  return [
+    {
+      key: 'live-albedo',
+      title: 'Seamless_Albedo',
+      url: encodeRgbaToPngDataUrl(albedo, PBR_TILE_DIM, PBR_TILE_DIM)
+    },
+    {
+      key: 'live-normal',
+      title: 'PBR_Normal',
+      url: encodeRgbaToPngDataUrl(maps.normal, PBR_TILE_DIM, PBR_TILE_DIM)
+    },
+    {
+      key: 'live-roughness',
+      title: 'PBR_Roughness',
+      url: encodeRgbaToPngDataUrl(maps.roughness, PBR_TILE_DIM, PBR_TILE_DIM)
+    },
+    {
+      key: 'live-orm',
+      title: 'PBR_ORM_Packed',
+      url: encodeRgbaToPngDataUrl(maps.orm, PBR_TILE_DIM, PBR_TILE_DIM)
+    },
+    {
+      key: 'live-height',
+      title: 'PBR_Height',
+      url: encodeRgbaToPngDataUrl(maps.heightMap, PBR_TILE_DIM, PBR_TILE_DIM)
+    }
+  ]
 })
 
 const pbrHullPolygonPoints = computed(() =>
@@ -1948,7 +2301,18 @@ const liveRawAudioBuffer = computed(() => {
   const mode = node.value?.params.gameAudioDspMode ?? 'loop_bgm'
   const preset = (node.value?.params.gameAudioSynthPreset ??
     (mode === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')) as GameAudioSynthPreset
-  return synthesizeGameSeedPcm(preset, 22050)
+  const durationScale = Math.max(
+    0.3,
+    Math.min(2.5, Number(node.value?.params.gameAudioSynthDuration ?? 1.0))
+  )
+  const basePitchSemitones = Math.max(
+    -12,
+    Math.min(12, Number(node.value?.params.gameAudioBasePitch ?? 0))
+  )
+  return synthesizeGameSeedPcm(preset, 22050, {
+    durationScale,
+    basePitchSemitones
+  })
 })
 
 const liveProcessedPrimaryChannel = computed(() => {
@@ -2091,6 +2455,23 @@ function playSingleVariant(variantIndex: number): void {
   playPcmSamples(ctx, samples, sampleRate)
 }
 
+function downloadMasterWav(): void {
+  const samples = liveProcessedPrimaryChannel.value
+  const sr = liveRawAudioBuffer.value.sampleRate
+  if (!samples.length) return
+  const dataUrl = encodePcmToWavDataUrl([samples], sr)
+  const stem = (node.value?.title?.trim() || 'game_audio_master').replace(/\s+/g, '_')
+  downloadDataUrlFile(dataUrl, `${stem}.wav`)
+}
+
+function downloadVariantWav(variantIndex: number, variantId: string): void {
+  const { samples, sampleRate } = buildVariantSamples(variantIndex)
+  if (!samples.length) return
+  const dataUrl = encodePcmToWavDataUrl([samples], sampleRate)
+  const stem = (node.value?.title?.trim() || 'sfx').replace(/\s+/g, '_')
+  downloadDataUrlFile(dataUrl, `${stem}_${variantId}.wav`)
+}
+
 function triggerRapidFire(kind: 'raw' | 'pool'): void {
   const ctx = ensureAudioContext()
   if (!ctx) return
@@ -2167,6 +2548,8 @@ const activeLevelBrush = ref<LevelBrushToolId>('floor')
 const levelPainting = ref(false)
 const showCriticalPath = ref(true)
 const showWangBitmask = ref(false)
+const levelUndoStack = ref<string[]>([])
+const levelRedoStack = ref<string[]>([])
 
 const levelBrushOptions = computed<Array<{ id: LevelBrushToolId; icon: string; label: string }>>(
   () => [
@@ -2287,6 +2670,10 @@ function paintLevelAtPointer(event: PointerEvent, allowEntityPlacement: boolean)
 }
 
 function onLevelMapPointerDown(event: PointerEvent): void {
+  const prevState = node.value?.params.gameLevelCustomEdits ?? ''
+  levelUndoStack.value.push(prevState)
+  if (levelUndoStack.value.length > 32) levelUndoStack.value.shift()
+  levelRedoStack.value = []
   levelPainting.value = true
   paintLevelAtPointer(event, true)
 }
@@ -2296,7 +2683,36 @@ function onLevelMapPointerMove(event: PointerEvent): void {
   paintLevelAtPointer(event, false)
 }
 
+function undoLevelBrush(): void {
+  if (levelUndoStack.value.length === 0) return
+  const current = node.value?.params.gameLevelCustomEdits ?? ''
+  levelRedoStack.value.push(current)
+  const prev = levelUndoStack.value.pop() ?? ''
+  patchParams({
+    gameLevelCustomEdits: prev || undefined,
+    previewDataUrl: undefined,
+    text: undefined
+  })
+}
+
+function redoLevelBrush(): void {
+  if (levelRedoStack.value.length === 0) return
+  const current = node.value?.params.gameLevelCustomEdits ?? ''
+  levelUndoStack.value.push(current)
+  const next = levelRedoStack.value.pop() ?? ''
+  patchParams({
+    gameLevelCustomEdits: next || undefined,
+    previewDataUrl: undefined,
+    text: undefined
+  })
+}
+
 function clearLevelCustomEdits(): void {
+  const prevState = node.value?.params.gameLevelCustomEdits ?? ''
+  if (prevState) {
+    levelUndoStack.value.push(prevState)
+    levelRedoStack.value = []
+  }
   patchParams({
     gameLevelCustomEdits: undefined,
     previewDataUrl: undefined,
@@ -2304,10 +2720,134 @@ function clearLevelCustomEdits(): void {
   })
 }
 
+function downloadLevelTmj(): void {
+  const stem = (node.value?.title?.trim() || 'dungeon_level').replace(/\s+/g, '_')
+  downloadTextFile(liveLevelTmjJson.value, `${stem}.tmj`, 'application/json;charset=utf-8')
+}
+
 // --- 4. game.playable stage state, Upstream Asset Hot-Binding & Zero-Reload Live Tuning ---
-const showHtmlSource = ref(false)
+const playableTab = ref<'play' | 'engine' | 'html'>('play')
 const playableReloadSeq = ref(0)
 const playableIframeRef = ref<HTMLIFrameElement | null>(null)
+const autoWireDone = ref(false)
+
+const playableShaderBundle = computed(() => {
+  const bundle = buildGameShaderParticleBundle()
+  return {
+    ...bundle,
+    shaders: bundle.shaders.map((sh) => ({
+      ...sh,
+      id: sh.presetId,
+      name: sh.title
+    }))
+  }
+})
+const selectedShaderId = ref('hit_flash')
+const playableShaderLang = ref<'godot' | 'unity' | 'webgl'>('godot')
+
+const activePlayableShaderCode = computed(() => {
+  const list = playableShaderBundle.value.shaders
+  const found = list.find((s) => s.id === selectedShaderId.value) ?? list[0]
+  if (!found) return ''
+  if (playableShaderLang.value === 'unity') return found.unityShaderLab
+  if (playableShaderLang.value === 'webgl') return found.webglGlslFrag
+  return found.godotGdShader
+})
+
+const playableImporterTarget = ref<'godot' | 'unity'>('godot')
+const activePlayableImporterCode = computed(() => {
+  const manifest = buildGameBundleManifest({
+    bundleName: node.value?.params.gamePlayableTitle || 'IndieGameBundle',
+    targetEngine: playableImporterTarget.value,
+    items: [
+      { id: 'tile', name: 'seamless_albedo', sourcePath: 'seamless_albedo.png', type: 'tileset' },
+      { id: 'norm', name: 'seamless_normal', sourcePath: 'seamless_normal.png', type: 'pbr' },
+      { id: 'ui', name: 'panel_9slice', sourcePath: 'panel_9slice.json', type: 'data' },
+      { id: 'sfx1', name: 'attack_v1', sourcePath: 'attack_v1.wav', type: 'sfx' },
+      { id: 'sfx2', name: 'attack_v2', sourcePath: 'attack_v2.wav', type: 'sfx' }
+    ]
+  })
+  return generateEngineImporterScript(manifest).content
+})
+
+function autoWireFourNodePipeline(): void {
+  const current = node.value
+  const hId = hostId.value
+  if (!current || !hId) return
+  const doc = graphEditorHosts.getDocument(hId)
+  if (!doc) return
+
+  const nextNodes = [...doc.nodes]
+  const nextEdges = [...doc.edges]
+  const incoming = nextEdges.filter((e) => e.target === current.id)
+
+  const ensureUpstreamNode = (
+    typeId: 'game.pbrTile' | 'game.audioDsp' | 'game.levelMap',
+    sourcePortId: string,
+    targetPortId: string,
+    offsetY: number
+  ): void => {
+    const alreadyConnected = incoming.some((e) => {
+      const src = nextNodes.find((n) => n.id === e.source)
+      return src?.typeId === typeId
+    })
+    if (alreadyConnected) return
+
+    let srcNode = nextNodes.find((n) => n.typeId === typeId && n.id !== current.id)
+    if (!srcNode) {
+      const id = `${typeId.replace('.', '_')}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+      srcNode = createNodeFromType(
+        typeId,
+        {
+          x: Math.round(current.position.x - 360),
+          y: Math.round(current.position.y + offsetY)
+        },
+        { id }
+      )
+      nextNodes.push(srcNode)
+    }
+
+    const edgeExists = nextEdges.some(
+      (e) => e.source === srcNode!.id && e.target === current.id && e.targetPort === targetPortId
+    )
+    if (!edgeExists) {
+      nextEdges.push({
+        id: `e_${srcNode.id}_${current.id}_${Date.now().toString(36)}`,
+        source: srcNode.id,
+        sourcePort: sourcePortId,
+        target: current.id,
+        targetPort: targetPortId
+      })
+    }
+  }
+
+  ensureUpstreamNode('game.pbrTile', 'out', 'in-image', -220)
+  ensureUpstreamNode('game.levelMap', 'out-text', 'in-text', 0)
+  ensureUpstreamNode('game.audioDsp', 'out', 'in-voice', 220)
+
+  graphEditorHosts.applyExternalGraph(
+    hId,
+    {
+      ...doc,
+      nodes: nextNodes,
+      edges: nextEdges
+    },
+    { fitView: false }
+  )
+  graphEditorHosts.bumpRevision()
+  autoWireDone.value = true
+  setTimeout(() => {
+    autoWireDone.value = false
+  }, 2600)
+}
+
+function downloadPlayableHtml(): void {
+  const title = (node.value?.params.gamePlayableTitle || 'Indie_Game_Prototype').replace(
+    /\s+/g,
+    '_'
+  )
+  downloadTextFile(livePlayableHtml.value, `${title}.html`, 'text/html;charset=utf-8')
+}
 
 function broadcastPlayableTuning(overrides?: Record<string, unknown>): void {
   const current = node.value
@@ -2355,6 +2895,8 @@ const playableUpstreamAssets = ref<{
   playerSpriteDataUrl?: string
   enemySpriteDataUrl?: string
   tileSpriteDataUrl?: string
+  sfxDataUrl?: string
+  bgmDataUrl?: string
   levelMap?: ProceduralLevelMapResult
   audioCount: number
   spriteCount: number
@@ -2376,6 +2918,9 @@ watch(
     }
     const edges = graphEditorHosts.listIncomingEdges(hostId.value, current.id)
     const spriteUrls: string[] = []
+    let tileUrl: string | undefined
+    let sfxUrl: string | undefined
+    let bgmUrl: string | undefined
     let upstreamLevel: ProceduralLevelMapResult | undefined
     let audioCount = 0
 
@@ -2392,11 +2937,38 @@ watch(
         upstreamLevel = applyCustomEditsToLevelMap(base, srcNode.params.gameLevelCustomEdits)
       }
 
-      if ((srcNode.params.generatedVoices?.length ?? 0) > 0) {
-        audioCount += srcNode.params.generatedVoices?.length ?? 0
+      if (srcNode.typeId === 'game.audioDsp' || (srcNode.params.generatedVoices?.length ?? 0) > 0) {
+        const voices = srcNode.params.generatedVoices ?? []
+        audioCount += voices.length > 0 ? voices.length : 1
+        for (const rawVoice of voices) {
+          const voice = rawVoice as { dataUrl?: string; relativePath?: string }
+          let url = voice.dataUrl?.trim() || ''
+          if (!url && voice.relativePath?.trim()) {
+            try {
+              url = (await resolveAssetPreviewUrl(voice.relativePath.trim())) || ''
+            } catch {
+              url = ''
+            }
+          }
+          if (url) {
+            if ((srcNode.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm' && !bgmUrl) {
+              bgmUrl = url
+            } else if (!sfxUrl) {
+              sfxUrl = url
+            }
+            break
+          }
+        }
       }
 
-      if (srcNode.typeId !== 'game.levelMap') {
+      if (srcNode.typeId === 'game.pbrTile') {
+        const preset = (srcNode.params.gamePbrMaterialPreset ??
+          'stone_dungeon') as PbrMaterialPreset
+        const procTile = createProceduralMaterialTileRgba(preset, 64, 64)
+        tileUrl =
+          srcNode.params.previewDataUrl?.trim() ||
+          encodeRgbaToPngDataUrl(procTile.data, procTile.width, procTile.height)
+      } else if (srcNode.typeId !== 'game.levelMap') {
         const imgs = srcNode.params.generatedImages ?? []
         for (const item of imgs) {
           let url = item.dataUrl?.trim() || ''
@@ -2421,10 +2993,12 @@ watch(
     playableUpstreamAssets.value = {
       playerSpriteDataUrl: spriteUrls[0],
       enemySpriteDataUrl: spriteUrls[1],
-      tileSpriteDataUrl: spriteUrls[2],
+      tileSpriteDataUrl: tileUrl ?? spriteUrls[2],
+      sfxDataUrl: sfxUrl,
+      bgmDataUrl: bgmUrl,
       levelMap: upstreamLevel,
       audioCount,
-      spriteCount: spriteUrls.length,
+      spriteCount: spriteUrls.length + (tileUrl ? 1 : 0),
       hasUpstreamLevel: Boolean(upstreamLevel)
     }
   },
@@ -2439,7 +3013,7 @@ const playableUpstreamSummary = computed(() => {
 function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = false): string {
   if (!current) return ''
   const info = playableUpstreamAssets.value
-  const hasUpstream = info.spriteCount > 0 || info.hasUpstreamLevel
+  const hasUpstream = info.spriteCount > 0 || info.hasUpstreamLevel || info.audioCount > 0
   const stored = current.params.gamePlayableHtml?.trim()
   if (!ignoreStored && !hasUpstream && stored && stored.includes('<html')) return stored
   const alg = (current.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
@@ -2463,6 +3037,8 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
     playerSpriteDataUrl: info.playerSpriteDataUrl,
     enemySpriteDataUrl: info.enemySpriteDataUrl,
     tileSpriteDataUrl: info.tileSpriteDataUrl,
+    sfxDataUrl: info.sfxDataUrl,
+    bgmDataUrl: info.bgmDataUrl,
     moveSpeedScale: Number(current.params.gamePlayableMoveSpeed ?? 1.0),
     jumpDashScale: Number(current.params.gamePlayableJumpDash ?? 1.0),
     enemyAggroScale: Number(current.params.gamePlayableEnemyAggro ?? 1.0),

@@ -1404,6 +1404,16 @@ export interface GraphNodeParams {
   gamePbrInvertRoughness?: boolean
   /** 游戏节点（game.pbrTile）：2D 物理碰撞凸包最大顶点数预算（4..16，默认 8） */
   gamePbrMaxHullVertices?: number
+  /** 游戏节点（game.pbrTile）：物理碰撞坐标原点锚定模式（bottom_center / center / top_left） */
+  gamePbrPivotMode?: 'bottom_center' | 'center' | 'top_left'
+  /** 游戏节点（game.pbrTile）：手动微调 UI 九宫格左边距（px，未设则使用自动检测值） */
+  gameNineSliceLeft?: number
+  /** 游戏节点（game.pbrTile）：手动微调 UI 九宫格右边距（px，未设则使用自动检测值） */
+  gameNineSliceRight?: number
+  /** 游戏节点（game.pbrTile）：手动微调 UI 九宫格上边距（px，未设则使用自动检测值） */
+  gameNineSliceTop?: number
+  /** 游戏节点（game.pbrTile）：手动微调 UI 九宫格下边距（px，未设则使用自动检测值） */
+  gameNineSliceBottom?: number
   /** 游戏节点（game.pbrTile）：最近一次输出的 9-Slice + 碰撞凸包 + PBR 摘要 JSON */
   gamePbrReport?: string
   /** 游戏节点（game.audioDsp）：DSP 模式（loop_bgm 无缝循环 / sfx_variants 4× 变体） */
@@ -1429,6 +1439,10 @@ export interface GraphNodeParams {
     | 'hit_hurt'
     | 'powerup_chord'
     | 'chiptune_bgm'
+  /** 游戏节点（game.audioDsp）：内置合成器种子时长缩放系数（0.3..2.5，默认 1.0） */
+  gameAudioSynthDuration?: number
+  /** 游戏节点（game.audioDsp）：内置合成器基准音高偏移（-12..+12 半音，默认 0） */
+  gameAudioBasePitch?: number
   /** 游戏节点（game.audioDsp）：是否启用 -1 dBFS 峰值响度归一化 */
   gameAudioNormalize?: boolean
   /** 游戏节点（game.audioDsp）：高通滤波截止频率（Hz，20..1200） */

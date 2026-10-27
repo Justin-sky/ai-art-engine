@@ -1165,4 +1165,80 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(playablePkg.html).toContain('"moveSpeedScale":1.4')
     expect(playablePkg.html).toContain('"timeScale":0.5')
   })
+
+  it('supports end-to-end polish: synth duration/pitch, manual 9-slice & pivot overrides, wall brush entity cleanup, and full playable grid collision + roguelike perks + WebAudio SFX', async () => {
+    // 1. Audio synth durationScale & basePitchSemitones
+    const normalSeed = synthesizeGameSeedPcm('laser_shoot', 22050, {
+      durationScale: 1.0,
+      basePitchSemitones: 0
+    })
+    const stretchedSeed = synthesizeGameSeedPcm('laser_shoot', 22050, {
+      durationScale: 1.8,
+      basePitchSemitones: -5
+    })
+    expect(stretchedSeed.channels[0]!.length).toBeGreaterThan(
+      Math.floor(normalSeed.channels[0]!.length * 1.5)
+    )
+
+    // 2. PBR Tile manual 9-Slice borders & Pivot anchor mode
+    const pbrNode = {
+      id: 'n_pbr_custom',
+      typeId: 'game.pbrTile' as const,
+      title: 'CustomSlicePanel',
+      x: 0,
+      y: 0,
+      w: 260,
+      h: 220,
+      params: {
+        gamePbrMaterialPreset: 'gold_ornament' as const,
+        gamePbrPivotMode: 'center' as const,
+        gameNineSliceLeft: 12,
+        gameNineSliceRight: 14,
+        gameNineSliceTop: 10,
+        gameNineSliceBottom: 16
+      }
+    }
+    const pbrOut = await executeGamePbrTileNode({ node: pbrNode, inputs: {} })
+    const meta = JSON.parse(pbrOut['out-meta']?.kind === 'text' ? pbrOut['out-meta'].text : '{}')
+    expect(meta.nineSlice.borders).toEqual({ left: 12, right: 14, top: 10, bottom: 16 })
+    expect(meta.nineSlice.engineConfigs.unity.borderLBRT).toEqual([12, 16, 14, 10])
+    expect(meta.physics.hull.pivotMode).toBe('center')
+
+    // 3. Level brush wall painting removes non-singleton entities at that cell
+    const baseLevel = generateProceduralLevelMap({
+      algorithm: 'bsp_dungeon',
+      width: 24,
+      height: 16,
+      seed: 101
+    })
+    const enemyEnt = baseLevel.entities.find((e) => e.type === 'enemy_spawn')
+    if (enemyEnt) {
+      const edited = applyCustomEditsToLevelMap(
+        baseLevel,
+        JSON.stringify({
+          cells: { [`${enemyEnt.x},${enemyEnt.y}`]: 'wall' },
+          entities: []
+        })
+      )
+      expect(
+        edited.entities.some(
+          (e) => e.x === enemyEnt.x && e.y === enemyEnt.y && e.type === 'enemy_spawn'
+        )
+      ).toBe(false)
+    }
+
+    // 4. Playable sandbox: real grid collision, Roguelike 3-choice perk modal, and WebAudio procedural SFX
+    const fullPlayable = compilePlayableGameSandboxHtml({
+      title: 'Full Polish Sandbox',
+      mode: 'survivor',
+      levelMap: baseLevel,
+      tileSpriteDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    })
+    expect(fullPlayable.html).toContain('isSolidWallAtPx')
+    expect(fullPlayable.html).toContain('getCellAtPx')
+    expect(fullPlayable.html).toContain('openUpgradeModal')
+    expect(fullPlayable.html).toContain('PERK_POOL')
+    expect(fullPlayable.html).toContain('playSynthSfx')
+  })
 })

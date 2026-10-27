@@ -925,6 +925,13 @@ export function applyCustomEditsToLevelMap(
   }
 
   let entities: LevelEntitySpawn[] = base.entities.map((e) => ({ ...e }))
+  // Remove non-singleton entities if a manual wall was painted over their cell
+  entities = entities.filter((e) => {
+    const isSingleton =
+      e.type === 'player_spawn' || e.type === 'exit_portal' || e.type === 'boss_spawn'
+    if (isSingleton) return true
+    return grid[e.gridY]?.[e.gridX] !== 'wall'
+  })
   if (Array.isArray(parsed.entities)) {
     for (let i = 0; i < parsed.entities.length; i++) {
       const item = parsed.entities[i]!
