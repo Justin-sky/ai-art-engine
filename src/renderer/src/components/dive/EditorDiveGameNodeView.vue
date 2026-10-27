@@ -1370,11 +1370,13 @@
         <!-- Stage 4: game.playable -->
         <template v-else-if="node.typeId === 'game.playable'">
           <div class="stage-toolbar">
-            <span class="stage-title">{{ t('gameNodes.workbench.playablePreviewTitle') }}</span>
-            <div class="tab-pills">
+            <div class="header-left">
+              <span class="stage-title">{{ t('gameNodes.workbench.playablePreviewTitle') }}</span>
               <span class="spec-badge">
                 {{ t('gameNodes.playable.upstreamStatus') }}{{ playableUpstreamSummary }}
               </span>
+            </div>
+            <div class="tab-pills">
               <button
                 type="button"
                 class="tab-pill"
@@ -1416,8 +1418,8 @@
               ref="playableIframeRef"
               :key="playableReloadSeq"
               class="playable-sandbox-iframe"
-              :srcdoc="livePlayableHtml"
-              sandbox="allow-scripts"
+              :src="playableFrameSrc || 'about:blank'"
+              sandbox="allow-scripts allow-pointer-lock"
               title="game-playable-workbench"
             />
             <div v-if="playableTab === 'engine'" class="audio-stage-body">
@@ -3652,6 +3654,56 @@ function buildPlayableHtmlFromNode(current: GraphNode | null): string {
 }
 
 const livePlayableHtml = computed(() => buildPlayableHtmlFromNode(node.value))
+const playableFrameSrc = ref('')
+let activePlayableDocUrl = ''
+let playablePublishSeq = 0
+
+async function releasePlayableDoc(): Promise<void> {
+  const prev = activePlayableDocUrl
+  activePlayableDocUrl = ''
+  playableFrameSrc.value = ''
+  if (!prev || typeof window === 'undefined' || !window.studio?.releaseGameplayDocument) return
+  try {
+    await window.studio.releaseGameplayDocument(prev)
+  } catch {
+    /* ignore */
+  }
+}
+
+watch(
+  () => [livePlayableHtml.value, node.value?.typeId, playableReloadSeq.value] as const,
+  async ([htmlBody, typeId]) => {
+    const seq = ++playablePublishSeq
+    if (typeId !== 'game.playable' || !htmlBody.trim()) {
+      await releasePlayableDoc()
+      return
+    }
+    if (typeof window !== 'undefined' && window.studio?.openGameplayDocument) {
+      try {
+        const url = await window.studio.openGameplayDocument(htmlBody)
+        if (seq !== playablePublishSeq) {
+          await window.studio.releaseGameplayDocument(url).catch(() => {})
+          return
+        }
+        const prev = activePlayableDocUrl
+        activePlayableDocUrl = url
+        playableFrameSrc.value = url
+        if (prev && prev !== url) {
+          await window.studio.releaseGameplayDocument(prev).catch(() => {})
+        }
+        return
+      } catch {
+        /* fallback */
+      }
+    }
+    playableFrameSrc.value = `data:text/html;charset=utf-8,${encodeURIComponent(htmlBody)}`
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  void releasePlayableDoc()
+})
 
 function recompilePlayableNow(): void {
   const current = node.value
@@ -4294,7 +4346,8 @@ function exportFullEngineZipBundle(): void {
 
 .playable-stage-body {
   flex: 1;
-  min-height: 480px;
+  min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   border-radius: 10px;
@@ -4305,7 +4358,8 @@ function exportFullEngineZipBundle(): void {
 .playable-sandbox-iframe {
   width: 100%;
   flex: 1;
-  min-height: 480px;
+  min-height: 0;
+  height: 100%;
   border: 0;
   background: var(--bg);
 }

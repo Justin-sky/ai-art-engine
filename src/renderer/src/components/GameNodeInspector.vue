@@ -217,6 +217,8 @@
           <option value="cellular_cave">{{ t('gameNodes.levelMap.algCave') }}</option>
           <option value="arena_waves">{{ t('gameNodes.levelMap.algArena') }}</option>
           <option value="platformer_course">{{ t('gameNodes.levelMap.algPlatformer') }}</option>
+          <option value="tower_defense">{{ t('gameNodes.levelMap.algTowerDefense') }}</option>
+          <option value="labyrinth_maze">{{ t('gameNodes.levelMap.algLabyrinth') }}</option>
         </select>
       </label>
 
@@ -287,6 +289,9 @@
           <option value="roguelike_action">{{ t('gameNodes.playable.genreRogue') }}</option>
           <option value="platformer">{{ t('gameNodes.playable.genrePlatformer') }}</option>
           <option value="dungeon_crawler">{{ t('gameNodes.playable.genreDungeon') }}</option>
+          <option value="tower_defense">{{ t('gameNodes.playable.genreTowerDefense') }}</option>
+          <option value="card_dbg">{{ t('gameNodes.playable.genreCardDbg') }}</option>
+          <option value="avg_dialogue">{{ t('gameNodes.playable.genreAvgDialogue') }}</option>
         </select>
       </label>
 
@@ -331,9 +336,9 @@
             </button>
           </div>
           <iframe
-            v-if="activePlayableHtml"
+            v-if="playableModalFrameSrc"
             class="playable-iframe"
-            :srcdoc="activePlayableHtml"
+            :src="playableModalFrameSrc"
             sandbox="allow-scripts"
           />
         </div>
@@ -346,7 +351,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import {
   compilePlayableGameSandboxHtml,
   generateProceduralLevelMap,
@@ -460,13 +465,37 @@ function openWorkbench(): void {
 }
 
 const playableModalOpen = ref(false)
-const activePlayableHtml = ref('')
+const playableModalFrameSrc = ref('')
 
-function openPlayableSandbox(): void {
+function releaseModalFrameUrl(): void {
+  const prev = playableModalFrameSrc.value
+  playableModalFrameSrc.value = ''
+  if (prev.startsWith('studio-gameplay://') && window.studio?.releaseGameplayDocument) {
+    void window.studio.releaseGameplayDocument(prev)
+  }
+}
+
+async function mountModalPlayableHtml(htmlBody: string): Promise<void> {
+  releaseModalFrameUrl()
+  if (window.studio?.openGameplayDocument) {
+    try {
+      const url = await window.studio.openGameplayDocument(htmlBody)
+      if (url) {
+        playableModalFrameSrc.value = url
+        return
+      }
+    } catch {
+      /* fallback */
+    }
+  }
+  playableModalFrameSrc.value = `data:text/html;charset=utf-8,${encodeURIComponent(htmlBody)}`
+}
+
+async function openPlayableSandbox(): Promise<void> {
   if (!node.value) return
   const stored = node.value.params.gamePlayableHtml?.trim()
   if (stored && stored.includes('<html')) {
-    activePlayableHtml.value = stored
+    await mountModalPlayableHtml(stored)
     playableModalOpen.value = true
     return
   }
@@ -474,9 +503,23 @@ function openPlayableSandbox(): void {
   const seed = Number(node.value.params.gameLevelSeed ?? 42)
   const genreRaw = node.value.params.gamePlayableGenre ?? 'roguelike_action'
   const cameraRaw = node.value.params.gamePlayableCameraMode ?? 'topdown_34'
-  const mode = genreRaw === 'platformer' || cameraRaw === 'side_view' ? 'platformer' : 'survivor'
+  const mode =
+    genreRaw === 'platformer' || cameraRaw === 'side_view'
+      ? 'platformer'
+      : genreRaw === 'tower_defense'
+        ? 'tower_defense'
+        : genreRaw === 'card_dbg'
+          ? 'card_dbg'
+          : genreRaw === 'avg_dialogue'
+            ? 'avg_dialogue'
+            : 'survivor'
   const levelMap = generateProceduralLevelMap({
-    algorithm: mode === 'platformer' ? 'platformer_course' : alg,
+    algorithm:
+      mode === 'platformer'
+        ? 'platformer_course'
+        : mode === 'tower_defense'
+          ? 'tower_defense'
+          : alg,
     width: 28,
     height: 18,
     seed
@@ -488,13 +531,18 @@ function openPlayableSandbox(): void {
     levelMap
   })
   patchParams({ gamePlayableHtml: compiled.html })
-  activePlayableHtml.value = compiled.html
+  await mountModalPlayableHtml(compiled.html)
   playableModalOpen.value = true
 }
 
 function closePlayableModal(): void {
   playableModalOpen.value = false
+  releaseModalFrameUrl()
 }
+
+onUnmounted(() => {
+  releaseModalFrameUrl()
+})
 </script>
 
 <style scoped>

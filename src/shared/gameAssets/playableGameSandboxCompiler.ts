@@ -159,30 +159,43 @@ export function compilePlayableGameSandboxHtml(
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    padding: 8px 12px;
+    gap: 6px;
     height: 100vh;
     overflow: hidden;
   }
   .hud-bar {
+    width: min(960px, 98vw);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
-    padding: 8px 16px;
-    background: rgba(14, 23, 38, 0.92);
+    justify-content: space-between;
+    gap: 6px 8px;
+    padding: 6px 12px;
+    background: rgba(14, 23, 38, 0.94);
     border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 10px;
-    margin-bottom: 8px;
-    font-size: 13px;
+    border-radius: 8px;
+    flex-shrink: 0;
+    font-size: 12px;
+  }
+  .hud-stats,
+  .hud-modes {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
   }
   .mode-btn {
     background: #13233a;
     color: #7dd3fc;
     border: 1px solid rgba(56, 189, 248, 0.4);
     border-radius: 6px;
-    padding: 4px 10px;
+    padding: 4px 8px;
+    font-size: 12px;
     cursor: pointer;
     font-weight: 600;
+    white-space: nowrap;
   }
   .mode-btn.active {
     background: #0284c7;
@@ -190,7 +203,10 @@ export function compilePlayableGameSandboxHtml(
   }
   .stage-wrap {
     position: relative;
-    display: inline-flex;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    display: flex;
     align-items: center;
     justify-content: center;
   }
@@ -198,9 +214,12 @@ export function compilePlayableGameSandboxHtml(
     border: 2px solid rgba(56, 189, 248, 0.45);
     border-radius: 10px;
     background: #0c1424;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.65);
-    max-width: 96vw;
-    max-height: 82vh;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.6);
+    max-width: min(960px, 98vw);
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    aspect-ratio: 16 / 10;
   }
   .perk-modal {
     position: absolute;
@@ -258,18 +277,22 @@ export function compilePlayableGameSandboxHtml(
 </head>
 <body>
   <div class="hud-bar">
-    <strong id="gameTitle"></strong>
-    <span>Lv.<b id="lvVal">1</b></span>
-    <span>HP: <b id="hpVal">100</b></span>
-    <span>XP: <b id="scoreVal">0</b>/<b id="xpNextVal">50</b></span>
-    <span>Gold: <b id="goldVal">120</b></span>
-    <span>Kills: <b id="killsVal">0</b></span>
-    <button id="btnSurvivor" class="mode-btn">Survivor Mode (WASD + Auto-Fire)</button>
-    <button id="btnPlatformer" class="mode-btn">Platformer Mode (A/D + Space + Click)</button>
-    <button id="btnTowerDefense" class="mode-btn">Tower Defense Mode (Click Build Turret 40G)</button>
-    <button id="btnCardDbg" class="mode-btn">Card Battle Mode (Click Hand Cards)</button>
-    <button id="btnAvgDialogue" class="mode-btn">AVG Story Mode (Click Choices)</button>
-    <button id="btnAudio" class="mode-btn active">🔊 SFX</button>
+    <div class="hud-stats">
+      <strong id="gameTitle"></strong>
+      <span>Lv.<b id="lvVal">1</b></span>
+      <span>HP: <b id="hpVal">100</b></span>
+      <span>XP: <b id="scoreVal">0</b>/<b id="xpNextVal">50</b></span>
+      <span>Gold: <b id="goldVal">120</b></span>
+      <span>Kills: <b id="killsVal">0</b></span>
+    </div>
+    <div class="hud-modes">
+      <button id="btnSurvivor" class="mode-btn" title="Survivor Mode (WASD + Space Dash + Auto-Fire)">⚔️ Survivor</button>
+      <button id="btnPlatformer" class="mode-btn" title="Platformer Mode (A/D + Space Jump + Click Shoot)">🏃 Platformer</button>
+      <button id="btnTowerDefense" class="mode-btn" title="Tower Defense Mode (Click Map to Build/Upgrade Turrets 40G)">🗼 Tower Defense</button>
+      <button id="btnCardDbg" class="mode-btn" title="Card Battle Mode (Click Hand Cards + Keys 1-4)">🃏 Card Battle</button>
+      <button id="btnAvgDialogue" class="mode-btn" title="AVG Story Mode (Click Choices + Keys 1-2)">💬 AVG Story</button>
+      <button id="btnAudio" class="mode-btn active">🔊 SFX</button>
+    </div>
   </div>
   <div class="stage-wrap">
     <canvas id="stage" width="960" height="600"></canvas>
