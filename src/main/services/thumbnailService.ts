@@ -14,6 +14,7 @@ import {
   isVideoFilePath
 } from '@shared/import'
 import { encodeRgbaPng, readPsdCompositeFile } from './psdCompositeService'
+import { extractVideoFirstFramePngBuffer } from './videoFrameService'
 import { fail, defErrSimple } from '@shared/errors/appError'
 import { MAIN_ERRORS } from '../errors/messages'
 import { removeIfExists } from '../persistence/binaryStore'
@@ -123,7 +124,19 @@ async function createSystemThumbnail(sourceAbs: string): Promise<NativeImage | n
 
 async function loadNativeImageAsync(sourceAbs: string): Promise<NativeImage | null> {
   if (isVideoFilePath(sourceAbs)) {
-    return createSystemThumbnail(sourceAbs)
+    const sysThumb = await createSystemThumbnail(sourceAbs)
+    if (sysThumb) return sysThumb
+    // Windows Server / N 版 / 部分编码格式下系统 Shell 缩略图不可用，回退 ffmpeg 提取首帧 PNG
+    const pngBuf = await extractVideoFirstFramePngBuffer(sourceAbs, THUMB_MAX_EDGE)
+    if (pngBuf) {
+      try {
+        const fromFfmpeg = nativeImage.createFromBuffer(pngBuf)
+        if (isUsable(fromFfmpeg)) return fromFfmpeg
+      } catch {
+        /* ignore */
+      }
+    }
+    return null
   }
   const sync = loadNativeImageSync(sourceAbs)
   if (sync) return sync
@@ -256,8 +269,22 @@ export async function ensureImageThumbnailAsync(
     return sourceRel
   }
   // 解过一次且失败：会话内不再重试，免得每次预览都白等一轮合成解码
-  if (layeredDecodeFailed.has(jobKey(root, sourceRel))) {
+  const key = jobKey(root, sourceRel)
+  if (layeredDecodeFailed.has(key)) {
     throw fail(E_THUMB_DECODE_FAILED)
+  }
+  let srcMtimeMs = 0
+  try {
+    srcMtimeMs = statSync(sourceAbs).mtimeMs
+  } catch {
+    /* ignore */
+  }
+  if (
+    isVideoFilePath(sourceAbs) &&
+    srcMtimeMs > 0 &&
+    videoDecodeFailedMtime.get(key) === srcMtimeMs
+  ) {
+    throw fail(E_THUMB_VIDEO_FRAME_FAILED)
   }
 
   const thumbRel = thumbRelativePathFor(sourceRel)
@@ -268,10 +295,13 @@ export async function ensureImageThumbnailAsync(
   const image = await loadNativeImageAsync(sourceAbs)
   if (!image) {
     if (isLayeredSourceImageFilePath(sourceAbs)) {
-      layeredDecodeFailed.add(jobKey(root, sourceRel))
+      layeredDecodeFailed.add(key)
+    } else if (isVideoFilePath(sourceAbs) && srcMtimeMs > 0) {
+      videoDecodeFailedMtime.set(key, srcMtimeMs)
     }
     throw fail(isVideoFilePath(sourceAbs) ? E_THUMB_VIDEO_FRAME_FAILED : E_THUMB_DECODE_FAILED)
   }
+  videoDecodeFailedMtime.delete(key)
   writeResizedPng(image, thumbAbs, previewMaxEdgeFor(sourceAbs))
   return thumbRel
 }
@@ -327,6 +357,11 @@ const warnedDecode = new Set<string>()
  * 解一次数百毫秒且注定失败的文件，不该被每次预览请求反复拖住主进程。
  */
 const layeredDecodeFailed = new Set<string>()
+/**
+ * 视频首帧提取失败的 mtime 记录（同一文件未改动前不再反复重试系统缩略图与 ffmpeg）：
+ * 若文件在磁盘上被重新写入（mtimeMs 变化）则自动放行重试。
+ */
+const videoDecodeFailedMtime = new Map<string, number>()
 
 function jobKey(root: string, sourceRel: string): string {
   return `${root}::${sourceRel.replace(/\\/g, '/')}`
@@ -366,7 +401,8 @@ export function warnThumbnailOnce(relativePath: string, err: unknown): void {
   const key = relativePath.replace(/\\/g, '/')
   if (warnedDecode.has(key)) return
   warnedDecode.add(key)
-  console.warn('[thumbnail] preview fallback to full image', key, err)
+  const msg = err instanceof Error ? err.message : String(err)
+  console.warn('[thumbnail] preview fallback:', key, msg)
 }
 
 /** 删除原图及其旁挂缩略图（路径必须在工程内） */

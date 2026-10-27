@@ -137,6 +137,51 @@ function errSummary(err: unknown): string {
   return String(err)
 }
 
+/**
+ * 提取视频首帧为 PNG Buffer（供缩略图服务在系统 Shell 缩略图不可用时兜底）。
+ * 失败或无 ffmpeg 时返回 null。
+ */
+export async function extractVideoFirstFramePngBuffer(
+  fileAbs: string,
+  maxEdge = 480
+): Promise<Buffer | null> {
+  if (!existsSync(fileAbs)) return null
+  try {
+    const bin = findFfmpegBin()
+    if (!(await probeFfmpegAvailable(bin))) return null
+    const safeWidth = Number.isFinite(maxEdge)
+      ? Math.max(160, Math.min(1920, Math.floor(maxEdge)))
+      : 480
+    const args = [
+      '-v',
+      'error',
+      '-i',
+      fileAbs,
+      '-frames:v',
+      '1',
+      '-vf',
+      `scale=${safeWidth}:-2`,
+      '-f',
+      'image2pipe',
+      '-vcodec',
+      'png',
+      'pipe:1'
+    ]
+    const { stdout } = await execFileAsync(bin, args, {
+      encoding: 'buffer' as const,
+      timeout: 20_000,
+      maxBuffer: 32 * 1024 * 1024,
+      windowsHide: true
+    })
+    if (stdout?.length) {
+      return stdout
+    }
+  } catch {
+    /* ignore: caller handles fallback */
+  }
+  return null
+}
+
 /** 抓单帧为 PNG dataUrl；tsSec 为 null 时不 seek（取视频首帧）；width 控制输出帧宽（缺省 480，姿态检测等需要更大） */
 async function grabFrameAt(
   bin: string,

@@ -145,4 +145,11 @@ describe('projectService.getAssetFileUrl（asset:get-file-url 的委托方法）
 
     await expect(service.getAssetPreviewUrl('Assets/deleted.png')).resolves.toBe('')
   })
+
+  it('视频无法提取首帧（坏文件或无编码器）时 getAssetPreviewUrl 静默返回空串，不在 IPC 抛错刷屏', async () => {
+    const service = await openTempProject()
+    writeFileSync(join(dir, 'Assets', 'corrupt.mp4'), 'not-a-valid-video')
+
+    await expect(service.getAssetPreviewUrl('Assets/corrupt.mp4')).resolves.toBe('')
+  })
 })

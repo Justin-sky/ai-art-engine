@@ -1415,7 +1415,7 @@ class ProjectService {
         return this.getAssetFileUrl(thumbRel) ?? ''
       } catch (err) {
         warnThumbnailOnce(posix, err)
-        throw err instanceof Error ? err : new Error(String(err))
+        return ''
       }
     }
 
