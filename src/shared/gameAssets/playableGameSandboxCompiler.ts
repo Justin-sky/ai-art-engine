@@ -14,7 +14,7 @@ import {
   type ProceduralLevelMapResult
 } from './proceduralLevelMap'
 
-export type PlayableSandboxMode = 'platformer' | 'survivor'
+export type PlayableSandboxMode = 'platformer' | 'survivor' | 'tower_defense'
 
 export interface PlayableGameTuningOptions {
   /** 主角移速倍率（0.4~2.5，默认 1.0） */
@@ -58,12 +58,18 @@ export function compilePlayableGameSandboxHtml(
   const title = (options.title || 'AI Art Engine Playable Sandbox').trim()
   const inferredMode: PlayableSandboxMode =
     options.mode ??
-    (options.cameraMode === 'side_scroller' || options.genre === 'metroidvania_platformer'
-      ? 'platformer'
-      : 'survivor')
+    (options.genre === 'tower_defense'
+      ? 'tower_defense'
+      : options.cameraMode === 'side_scroller' || options.genre === 'metroidvania_platformer'
+        ? 'platformer'
+        : 'survivor')
   const mode: PlayableSandboxMode = inferredMode
   const levelAlgorithm: LevelGeneratorAlgorithm =
-    mode === 'platformer' ? 'platformer_course' : 'arena_waves'
+    mode === 'platformer'
+      ? 'platformer_course'
+      : mode === 'tower_defense'
+        ? 'tower_defense'
+        : 'arena_waves'
 
   const level =
     options.levelMap ??
@@ -221,9 +227,11 @@ export function compilePlayableGameSandboxHtml(
     <span>Lv.<b id="lvVal">1</b></span>
     <span>HP: <b id="hpVal">100</b></span>
     <span>XP: <b id="scoreVal">0</b>/<b id="xpNextVal">50</b></span>
+    <span>Gold: <b id="goldVal">120</b></span>
     <span>Kills: <b id="killsVal">0</b></span>
     <button id="btnSurvivor" class="mode-btn">Survivor Mode (WASD + Auto-Fire)</button>
     <button id="btnPlatformer" class="mode-btn">Platformer Mode (A/D + Space + Click)</button>
+    <button id="btnTowerDefense" class="mode-btn">Tower Defense Mode (Click Build Turret 40G)</button>
     <button id="btnAudio" class="mode-btn active">🔊 SFX</button>
   </div>
   <div class="stage-wrap">
@@ -393,9 +401,11 @@ const perks = { multiShot: 1, critBonus: 0, dmgScale: 1.0, fireRateScale: 1.0, m
 let playerLevel = 1;
 let xp = 0;
 let xpNext = 50;
+let gold = 120;
 let upgradeOpen = false;
 let activePerkChoices = [];
 let chests = [];
+let turrets = [];
 let portal = { x: 840, y: 120 };
 let bullets = [];
 let enemies = [];
@@ -460,6 +470,7 @@ function addShake(amount) {
 
 function initLevelEntities() {
   chests = [];
+  turrets = [];
   const sp = lvlEntities.find((e) => e.type === 'player_spawn');
   const ep = lvlEntities.find((e) => e.type === 'exit_portal' || e.type === 'boss_spawn');
   portal = ep ? { x: (ep.gridX + 0.5) * cellW, y: (ep.gridY + 0.5) * cellH } : { x: canvas.width - 96, y: 96 };
@@ -471,7 +482,14 @@ function initLevelEntities() {
   if (chests.length === 0) {
     chests.push({ x: 200, y: 160 }, { x: 760, y: 440 });
   }
-  if (sp && mode === 'survivor') {
+  if (mode === 'tower_defense') {
+    turrets.push(
+      { x: 320, y: 220, cd: 0, range: 185, level: 1, aim: 0 },
+      { x: 610, y: 360, cd: 10, range: 185, level: 1, aim: 0 }
+    );
+    player.x = portal.x - 40;
+    player.y = portal.y;
+  } else if (sp && mode === 'survivor') {
     player.x = Math.max(48, Math.min(canvas.width - 48, (sp.gridX + 0.5) * cellW));
     player.y = Math.max(48, Math.min(canvas.height - 48, (sp.gridY + 0.5) * cellH));
   } else {
@@ -484,9 +502,14 @@ function setMode(nextMode) {
   mode = nextMode;
   document.getElementById('btnSurvivor').classList.toggle('active', mode === 'survivor');
   document.getElementById('btnPlatformer').classList.toggle('active', mode === 'platformer');
+  const tdBtn = document.getElementById('btnTowerDefense');
+  if (tdBtn) tdBtn.classList.toggle('active', mode === 'tower_defense');
   player.vx = 0;
   player.vy = 0;
   player.hp = 100;
+  gold = 120;
+  const goldEl = document.getElementById('goldVal');
+  if (goldEl) goldEl.textContent = String(gold);
   bullets = [];
   enemies = [];
   gems = [];
@@ -497,6 +520,9 @@ function setMode(nextMode) {
 
 document.getElementById('btnSurvivor').onclick = () => setMode('survivor');
 document.getElementById('btnPlatformer').onclick = () => setMode('platformer');
+if (document.getElementById('btnTowerDefense')) {
+  document.getElementById('btnTowerDefense').onclick = () => setMode('tower_defense');
+}
 setMode(mode);
 
 function spawnPopup(x, y, text, color, isCrit) {
@@ -511,13 +537,15 @@ function spawnHitParticles(x, y, color, count) {
   }
 }
 
-function fireProjectilesAt(ang) {
+function fireProjectilesAt(ang, originX, originY) {
+  const ox = originX !== undefined ? originX : player.x;
+  const oy = originY !== undefined ? originY : player.y;
   const count = perks.multiShot;
   const spread = 0.16;
   for (let i = 0; i < count; i++) {
     const offset = (i - (count - 1) / 2) * spread;
     const a = ang + offset;
-    bullets.push({ x: player.x, y: player.y, vx: Math.cos(a) * 9.2, vy: Math.sin(a) * 9.2, life: 75 });
+    bullets.push({ x: ox, y: oy, vx: Math.cos(a) * 9.2, vy: Math.sin(a) * 9.2, life: 75 });
   }
   playSynthSfx('shoot');
 }
@@ -530,6 +558,27 @@ canvas.addEventListener('pointerdown', (e) => {
   const rect = canvas.getBoundingClientRect();
   const tx = ((e.clientX - rect.left) / rect.width) * canvas.width;
   const ty = ((e.clientY - rect.top) / rect.height) * canvas.height;
+  if (mode === 'tower_defense') {
+    const existing = turrets.find((t) => Math.hypot(t.x - tx, t.y - ty) < 28);
+    if (existing && gold >= 40) {
+      gold -= 40;
+      existing.level += 1;
+      existing.range += 22;
+      document.getElementById('goldVal').textContent = String(gold);
+      playSynthSfx('pickup');
+      spawnPopup(existing.x, existing.y - 24, 'TURRET Lv.' + existing.level + '!', '#4ade80', true);
+      return;
+    }
+    if (gold >= 40) {
+      gold -= 40;
+      turrets.push({ x: tx, y: ty, cd: 0, range: 185, level: 1, aim: 0 });
+      document.getElementById('goldVal').textContent = String(gold);
+      playSynthSfx('pickup');
+      spawnHitParticles(tx, ty, '#38bdf8', 10);
+      spawnPopup(tx, ty - 22, 'TURRET BUILT (-40G)', '#38bdf8', true);
+      return;
+    }
+  }
   const ang = Math.atan2(ty - player.y, tx - player.x);
   fireProjectilesAt(ang);
 });
@@ -546,7 +595,7 @@ function update() {
   if (moveX !== 0) player.facing = moveX;
 
   if (player.dashCd > 0) player.dashCd -= dt;
-  if (mode === 'survivor') {
+  if (mode === 'survivor' || mode === 'tower_defense') {
     let boost = 1;
     if (keys['Space'] && player.dashCd <= 0) {
       boost = 3.2 * jumpSpd;
@@ -616,13 +665,38 @@ function update() {
     fireProjectilesAt(ang);
   }
 
+  // Defense Turrets auto-fire (Tower Defense mode)
+  for (const tr of turrets) {
+    if (tr.cd > 0) tr.cd -= dt * (1 + (tr.level - 1) * 0.25);
+    if (tr.cd <= 0 && enemies.length > 0) {
+      let target = null;
+      let bestD = tr.range;
+      for (const en of enemies) {
+        const d = Math.hypot(en.x - tr.x, en.y - tr.y);
+        if (d <= bestD) { bestD = d; target = en; }
+      }
+      if (target) {
+        tr.cd = 24;
+        tr.aim = Math.atan2(target.y - tr.y, target.x - tr.x);
+        bullets.push({
+          x: tr.x,
+          y: tr.y,
+          vx: Math.cos(tr.aim) * 10.5,
+          vy: Math.sin(tr.aim) * 10.5,
+          life: 65
+        });
+        playSynthSfx('shoot');
+      }
+    }
+  }
+
   // Spawn enemies
   spawnTimer += aggro;
   if (spawnTimer >= 42 && enemies.length < 28) {
     spawnTimer = 0;
     const edge = Math.floor(Math.random() * 4);
-    const ex = edge === 0 ? 36 : edge === 1 ? canvas.width - 36 : Math.random() * canvas.width;
-    const ey = mode === 'platformer' ? 480 : (edge === 2 ? 36 : edge === 3 ? canvas.height - 36 : Math.random() * canvas.height);
+    const ex = mode === 'tower_defense' ? 48 : (edge === 0 ? 36 : edge === 1 ? canvas.width - 36 : Math.random() * canvas.width);
+    const ey = mode === 'platformer' ? 480 : mode === 'tower_defense' ? 300 : (edge === 2 ? 36 : edge === 3 ? canvas.height - 36 : Math.random() * canvas.height);
     enemies.push({ x: ex, y: ey, hp: 35, maxHp: 35, flash: 0 });
   }
 
@@ -649,6 +723,9 @@ function update() {
           gems.push({ x: en.x, y: en.y });
           enemies.splice(j, 1);
           kills++;
+          gold += 15;
+          const goldEl = document.getElementById('goldVal');
+          if (goldEl) goldEl.textContent = String(gold);
           if (perks.lifesteal > 0) {
             player.hp = Math.min(player.maxHp, player.hp + perks.lifesteal);
             document.getElementById('hpVal').textContent = String(player.hp);
@@ -663,9 +740,11 @@ function update() {
 
   // Update enemies
   for (const en of enemies) {
-    const ang = Math.atan2(player.y - en.y, player.x - en.x);
+    const goalX = mode === 'tower_defense' && portal ? portal.x : player.x;
+    const goalY = mode === 'tower_defense' && portal ? portal.y : player.y;
+    const ang = Math.atan2(goalY - en.y, goalX - en.x);
     const nx = en.x + Math.cos(ang) * 1.45 * aggro;
-    const ny = mode === 'survivor' ? en.y + Math.sin(ang) * 1.45 * aggro : en.y;
+    const ny = (mode === 'survivor' || mode === 'tower_defense') ? en.y + Math.sin(ang) * 1.45 * aggro : en.y;
     if (!isSolidWallAtPx(nx, en.y)) en.x = nx;
     if (!isSolidWallAtPx(en.x, ny)) en.y = ny;
     if (en.flash > 0) en.flash -= dt;
@@ -783,6 +862,29 @@ function draw() {
     ctx.fillRect(ch.x - 10, ch.y - 8, 20, 16);
     ctx.strokeStyle = '#fef08a';
     ctx.strokeRect(ch.x - 10, ch.y - 8, 20, 16);
+    ctx.restore();
+  }
+
+  // Defense Turrets
+  for (const tr of turrets) {
+    ctx.save();
+    ctx.translate(tr.x, tr.y);
+    if (tuning.showDebugHitboxes || mode === 'tower_defense') {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+      ctx.beginPath();
+      ctx.arc(0, 0, tr.range, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#0f172a';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.rotate(tr.aim || 0);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillRect(0, -4, 18, 8);
     ctx.restore();
   }
 

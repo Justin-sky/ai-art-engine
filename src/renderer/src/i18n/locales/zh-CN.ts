@@ -7855,7 +7855,9 @@ export default {
       sliceTop: '上切线 (T px)',
       sliceBottom: '下切线 (B px)',
       resetNineSlice: '🔄 恢复自动九宫格检测',
-      downloadPngBtn: '💾 下载 PNG'
+      downloadPngBtn: '💾 下载 PNG',
+      downloadAutoTileBtn: '💾 AutoTile (.json)',
+      downloadBmFontBtn: '💾 BMFont (.fnt)'
     },
     audioDsp: {
       sectionTitle: '游戏音频 WAV DSP 参数',
@@ -7921,6 +7923,8 @@ export default {
       algCave: '元胞自动机自然洞穴 (Cellular Cave)',
       algArena: '竞技场幸存者波次刷怪图 (Survivor Arena)',
       algPlatformer: '横版跳跃平台关卡 (Platformer Course)',
+      algTowerDefense: '策略塔防蜿蜒行军线 (Tower Defense)',
+      algLabyrinth: '递归回溯高密迷宫 (Labyrinth Maze)',
       algoBsp: 'BSP 地牢房间与走廊 (Roguelike Dungeon)',
       algoCave: '元胞自动机自然洞穴 (Cellular Cave)',
       algoArena: '竞技场幸存者波次刷怪图 (Survivor Arena)',
@@ -7957,6 +7961,12 @@ export default {
       autoWireDoneHint: '✓ 已在画布自动补全并连线 PBR 贴图 + 音频工坊 + 关卡地图节点！',
       downloadHtmlBtn: '💾 下载独立 .html 游戏',
       engineShadersTab: '⚙️ 引擎 Shader 与导入脚本',
+      dataTablesTab: '📊 数值/卡牌/剧情/多语言',
+      dataTablesTitle: '全品类数值配表、卡牌构筑、分支对白树与多语言 CSV (RPG / DBG / AVG / SLG)',
+      systemsGraphTitle: 'DAG 技能树、AI 行为状态机 (FSM) 与 Unity .meta GUID 保真',
+      downloadCsvBtn: '💾 下载当前 CSV',
+      downloadL10nBtn: '💾 下载 localization.csv',
+      downloadBundleJsonBtn: '💾 下载完整数值与系统 JSON',
       shaderPresetLabel: '内置游戏 Shader 特效包 (Godot 4 / Unity / WebGL)',
       importerScriptTitle:
         '自动化引擎资产导入脚本 (Godot 4 EditorScenePostImport / Unity AssetPostprocessor)',
@@ -7966,6 +7976,7 @@ export default {
       genreRogue: '2.5D 肉鸽动作割草 (WASD + 冲刺 + 挥砍)',
       genrePlatformer: '2D 横版跳跃动作闯关 (重力 + 跳跃 + 斩击)',
       genreDungeon: '地牢探索 RPG (房间迷宫 + 宝箱与怪物)',
+      genreTowerDefense: '策略塔防防线 (点击建塔/升级 + 波次阻击)',
       genreTopdown: '2.5D 俯视动作 RPG / 幸存者割草 (WASD + 冲刺)',
       cameraMode: '镜头视角与物理投影',
       camTopdown34: '3/4 俯视斜角 (Top-Down RPG)',

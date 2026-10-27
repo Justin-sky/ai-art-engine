@@ -460,6 +460,8 @@
               <option value="cellular_cave">{{ t('gameNodes.levelMap.algCave') }}</option>
               <option value="arena_waves">{{ t('gameNodes.levelMap.algArena') }}</option>
               <option value="platformer_course">{{ t('gameNodes.levelMap.algPlatformer') }}</option>
+              <option value="tower_defense">{{ t('gameNodes.levelMap.algTowerDefense') }}</option>
+              <option value="labyrinth_maze">{{ t('gameNodes.levelMap.algLabyrinth') }}</option>
             </select>
           </label>
 
@@ -547,6 +549,7 @@
               <option value="roguelike_action">{{ t('gameNodes.playable.genreRogue') }}</option>
               <option value="platformer">{{ t('gameNodes.playable.genrePlatformer') }}</option>
               <option value="dungeon_crawler">{{ t('gameNodes.playable.genreDungeon') }}</option>
+              <option value="tower_defense">{{ t('gameNodes.playable.genreTowerDefense') }}</option>
             </select>
           </label>
 
@@ -765,13 +768,21 @@
             <div v-else-if="pbrTab === 'physics'" class="pbr-lighting-stage">
               <div class="pbr-light-controls">
                 <span class="hint">{{ t('gameNodes.workbench.pbrPhysicsHullLegend') }}</span>
-                <button type="button" class="secondary-btn" @click="copyPbrPhysicsManifest">
-                  {{
-                    pbrManifestCopied
-                      ? t('gameNodes.audioDsp.copiedHint')
-                      : t('gameNodes.workbench.copyManifestBtn')
-                  }}
-                </button>
+                <div class="tab-pills">
+                  <button type="button" class="secondary-btn" @click="copyPbrPhysicsManifest">
+                    {{
+                      pbrManifestCopied
+                        ? t('gameNodes.audioDsp.copiedHint')
+                        : t('gameNodes.workbench.copyManifestBtn')
+                    }}
+                  </button>
+                  <button type="button" class="secondary-btn" @click="downloadAutoTileManifest">
+                    {{ t('gameNodes.pbrTile.downloadAutoTileBtn') }}
+                  </button>
+                  <button type="button" class="secondary-btn" @click="downloadBmFontFnt">
+                    {{ t('gameNodes.pbrTile.downloadBmFontBtn') }}
+                  </button>
+                </div>
               </div>
               <div class="physics-hull-stage">
                 <img
@@ -1377,6 +1388,14 @@
               <button
                 type="button"
                 class="tab-pill"
+                :class="{ active: playableTab === 'data' }"
+                @click="playableTab = 'data'"
+              >
+                {{ t('gameNodes.playable.dataTablesTab') }}
+              </button>
+              <button
+                type="button"
+                class="tab-pill"
                 :class="{ active: playableTab === 'html' }"
                 @click="playableTab = 'html'"
               >
@@ -1465,6 +1484,73 @@
                 <pre class="code-viewer compact">{{ activePlayableImporterCode }}</pre>
               </div>
             </div>
+            <div v-else-if="playableTab === 'data'" class="audio-stage-body">
+              <div class="engine-export-panel">
+                <div class="engine-export-head">
+                  <span class="section-title">{{ t('gameNodes.playable.dataTablesTitle') }}</span>
+                  <div class="tab-pills">
+                    <select v-model="selectedDataTableKey" class="title-input">
+                      <option value="characters.csv">RPG Characters (characters.csv)</option>
+                      <option value="skills.csv">Action Skills (skills.csv)</option>
+                      <option value="cards.csv">Deckbuilder Cards (cards.csv)</option>
+                      <option value="items.csv">Loot &amp; Items (items.csv)</option>
+                      <option value="waves.csv">Survivor / TD Waves (waves.csv)</option>
+                      <option value="localization.csv">
+                        RFC-4180 L10n zh/en/ja (localization.csv)
+                      </option>
+                      <option value="dialogues.json">AVG Branching Dialogue Tree (.json)</option>
+                    </select>
+                    <button type="button" class="secondary-btn" @click="downloadActiveDataTableCsv">
+                      {{ t('gameNodes.playable.downloadCsvBtn') }}
+                    </button>
+                    <button type="button" class="secondary-btn" @click="downloadLocalizationCsv">
+                      {{ t('gameNodes.playable.downloadL10nBtn') }}
+                    </button>
+                  </div>
+                </div>
+                <pre class="code-viewer compact">{{ activeDataTableContent }}</pre>
+              </div>
+
+              <div class="engine-export-panel">
+                <div class="engine-export-head">
+                  <span class="section-title">{{ t('gameNodes.playable.systemsGraphTitle') }}</span>
+                  <div class="tab-pills">
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: selectedSystemsSubTab === 'json' }"
+                      @click="selectedSystemsSubTab = 'json'"
+                    >
+                      DAG Skill Tree &amp; AI FSM (.json)
+                    </button>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: selectedSystemsSubTab === 'mermaid' }"
+                      @click="selectedSystemsSubTab = 'mermaid'"
+                    >
+                      Mermaid Flowchart (.mmd)
+                    </button>
+                    <button
+                      type="button"
+                      class="tab-pill"
+                      :class="{ active: selectedSystemsSubTab === 'unity_meta' }"
+                      @click="selectedSystemsSubTab = 'unity_meta'"
+                    >
+                      Unity GUID Lock (.meta)
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary-btn"
+                      @click="downloadFullDataAndSystemsJson"
+                    >
+                      {{ t('gameNodes.playable.downloadBundleJsonBtn') }}
+                    </button>
+                  </div>
+                </div>
+                <pre class="code-viewer compact">{{ activeSystemsContent }}</pre>
+              </div>
+            </div>
             <pre v-show="playableTab === 'html'" class="code-viewer">{{ livePlayableHtml }}</pre>
           </div>
         </template>
@@ -1488,8 +1574,12 @@ import {
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
   applySpatialAuditionPcm,
+  buildAutoTileAtlasManifest,
+  buildBitmapFontManifest,
   buildGameBundleManifest,
+  buildGameDataTableBundle,
   buildGameShaderParticleBundle,
+  buildGameplaySystemsBundle,
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
   compilePlayableGameSandboxHtml,
@@ -1503,6 +1593,7 @@ import {
   exportUnityAudioRandomContainerJson,
   generateEngineImporterScript,
   generateProceduralLevelMap,
+  generateUnityMetaFile,
   normalizePeakPcm,
   planSfxVariantMatrix,
   renderProceduralLevelToPng,
@@ -2006,6 +2097,32 @@ function copyPbrPhysicsManifest(): void {
       pbrManifestCopied.value = false
     }, 1800)
   }
+}
+
+function downloadAutoTileManifest(): void {
+  const stem = (node.value?.title?.trim() || 'terrain').replace(/\s+/g, '_')
+  const manifest = buildAutoTileAtlasManifest({
+    terrainName: stem,
+    layout: 'wang16',
+    tileWidth: PBR_TILE_DIM,
+    tileHeight: PBR_TILE_DIM
+  })
+  downloadTextFile(
+    JSON.stringify(manifest, null, 2),
+    `${stem}_autotile.json`,
+    'application/json;charset=utf-8'
+  )
+}
+
+function downloadBmFontFnt(): void {
+  const stem = (node.value?.title?.trim() || 'DamageFont').replace(/\s+/g, '_')
+  const bm = buildBitmapFontManifest({
+    fontName: stem,
+    textureFileName: `${stem}.png`,
+    atlasWidth: PBR_TILE_DIM * 4,
+    atlasHeight: PBR_TILE_DIM * 4
+  })
+  downloadTextFile(bm.fntText, `${stem}.fnt`, 'text/plain;charset=utf-8')
 }
 
 function onPbrLightPointerMove(event: PointerEvent): void {
@@ -2726,10 +2843,252 @@ function downloadLevelTmj(): void {
 }
 
 // --- 4. game.playable stage state, Upstream Asset Hot-Binding & Zero-Reload Live Tuning ---
-const playableTab = ref<'play' | 'engine' | 'html'>('play')
+const playableTab = ref<'play' | 'engine' | 'data' | 'html'>('play')
 const playableReloadSeq = ref(0)
 const playableIframeRef = ref<HTMLIFrameElement | null>(null)
 const autoWireDone = ref(false)
+
+const playableDataTableBundle = computed(() =>
+  buildGameDataTableBundle({
+    tableName: node.value?.params.gamePlayableTitle || 'IndieGameDatabase',
+    genre: node.value?.params.gamePlayableGenre || 'roguelike_action',
+    characters: [
+      {
+        id: 'hero_knight',
+        name: 'Vanguard Knight',
+        nameEn: 'Vanguard Knight',
+        nameJa: 'Vanguard Knight',
+        role: 'Tank / Melee',
+        hp: 150,
+        mp: 60,
+        atk: 24,
+        def: 16,
+        spd: 110,
+        critRate: 0.2,
+        spriteAsset: 'assets/sprites/hero_knight.png',
+        voiceAsset: 'assets/audio/sfx/attack_v1.wav',
+        description: 'Frontline cyber paladin with shield bash and blade wave.'
+      },
+      {
+        id: 'boss_lich',
+        name: 'Abyssal Archlich',
+        nameEn: 'Abyssal Archlich',
+        nameJa: 'Abyssal Archlich',
+        role: 'Dungeon Boss',
+        hp: 850,
+        mp: 300,
+        atk: 42,
+        def: 22,
+        spd: 90,
+        critRate: 0.25,
+        spriteAsset: 'assets/sprites/boss_lich.png',
+        description: 'Summons bone pillars and fires homing necrotic volleys.'
+      }
+    ],
+    skills: [
+      {
+        id: 'sk_plasma_slash',
+        name: 'Plasma Crescent',
+        element: 'lightning',
+        manaCost: 15,
+        cooldownSec: 2.4,
+        damageMultiplier: 1.85,
+        vfxAsset: 'assets/vfx/plasma_slash.png',
+        sfxAsset: 'assets/audio/sfx/sword_slash.wav',
+        description: 'Unleashes a piercing arc dealing 185% lightning damage.'
+      },
+      {
+        id: 'sk_frost_turret',
+        name: 'Cryo Sentry Tower',
+        element: 'ice',
+        manaCost: 40,
+        cooldownSec: 8.0,
+        damageMultiplier: 1.25,
+        vfxAsset: 'assets/vfx/frost_nova.png',
+        sfxAsset: 'assets/audio/sfx/laser_shoot.wav',
+        description: 'Deploys an automated turret that slows marching enemies.'
+      }
+    ],
+    cards: [
+      {
+        id: 'card_overcharge',
+        name: 'Overcharge Strike',
+        cost: 1,
+        cardType: 'attack',
+        rarity: 'rare',
+        damage: 14,
+        block: 0,
+        illustAsset: 'assets/ui/card_overcharge.png',
+        frameAsset: 'assets/ui/frame_rare_9slice.png',
+        description: 'Deal 14 damage. Draw 1 card if this triggers a Critical Hit.'
+      },
+      {
+        id: 'card_aegis_wall',
+        name: 'Aegis Bulwark',
+        cost: 2,
+        cardType: 'skill',
+        rarity: 'legendary',
+        damage: 0,
+        block: 18,
+        illustAsset: 'assets/ui/card_aegis.png',
+        frameAsset: 'assets/ui/frame_legendary_9slice.png',
+        description: 'Gain 18 Block and reflect 30% melee damage for 1 turn.'
+      }
+    ],
+    items: [
+      {
+        id: 'item_vampiric_core',
+        name: 'Vampiric Relic',
+        category: 'relic',
+        rarity: 'legendary',
+        price: 240,
+        stackLimit: 1,
+        iconAsset: 'assets/ui/icon_vampiric.png',
+        effect: 'Restore +3 HP whenever an enemy is defeated.'
+      }
+    ],
+    waves: [
+      { waveIndex: 1, durationSec: 30, spawnIntervalSec: 1.8, enemyId: 'slime_scout', count: 16 },
+      {
+        waveIndex: 2,
+        durationSec: 45,
+        spawnIntervalSec: 1.2,
+        enemyId: 'skeleton_raider',
+        count: 28,
+        eliteOrBossId: 'boss_lich'
+      }
+    ],
+    dialogues: [
+      {
+        id: 'dlg_intro_01',
+        speaker: 'Commander Aria',
+        portraitAsset: 'assets/sprites/aria_portrait.png',
+        expression: 'determined',
+        text: 'The dungeon portal is unstable. Reinforce the turret line or charge straight in!',
+        choices: [
+          {
+            label: 'Charge into the Abyss (Survivor)',
+            targetId: 'dlg_route_assault',
+            setFlag: 'route_survivor'
+          },
+          {
+            label: 'Fortify the Choke Point (Tower Defense)',
+            targetId: 'dlg_route_td',
+            setFlag: 'route_td'
+          }
+        ]
+      }
+    ]
+  })
+)
+
+const playableSystemsBundle = computed(() =>
+  buildGameplaySystemsBundle({
+    systemName: node.value?.params.gamePlayableTitle || 'CoreGameplaySystems',
+    skillTree: [
+      {
+        id: 'node_core_slash',
+        name: 'Blade Mastery I',
+        tier: 1,
+        costPoints: 1,
+        prerequisiteIds: [],
+        statModifiers: { atk_pct: 0.12 },
+        description: 'Base attack damage +12%'
+      },
+      {
+        id: 'node_multishot',
+        name: 'Split Barrage II',
+        tier: 2,
+        costPoints: 2,
+        prerequisiteIds: ['node_core_slash'],
+        statModifiers: { multishot: 1, crit_rate: 0.08 },
+        description: 'Fires +1 extra projectile and increases Crit Rate by 8%'
+      },
+      {
+        id: 'node_vampiric_ult',
+        name: 'Crimson Overdrive III',
+        tier: 3,
+        costPoints: 3,
+        prerequisiteIds: ['node_multishot'],
+        statModifiers: { lifesteal_hp: 3, move_spd_pct: 0.18 },
+        description: 'Restores 3 HP on kill and grants +18% movement speed'
+      }
+    ],
+    aiBehaviors: [
+      {
+        id: 'ai_boss_lich',
+        enemyName: 'Abyssal Archlich',
+        initialState: 'idle',
+        states: [],
+        transitions: []
+      }
+    ]
+  })
+)
+
+const selectedDataTableKey = ref<
+  | 'characters.csv'
+  | 'skills.csv'
+  | 'cards.csv'
+  | 'items.csv'
+  | 'waves.csv'
+  | 'localization.csv'
+  | 'dialogues.json'
+>('characters.csv')
+
+const activeDataTableContent = computed(() => {
+  const b = playableDataTableBundle.value
+  if (selectedDataTableKey.value === 'localization.csv') return b.localizationCsv
+  if (selectedDataTableKey.value === 'dialogues.json') {
+    return JSON.stringify(b.dialogues, null, 2)
+  }
+  return b.tableCsvs[selectedDataTableKey.value] || ''
+})
+
+const selectedSystemsSubTab = ref<'json' | 'mermaid' | 'unity_meta'>('json')
+const activeSystemsContent = computed(() => {
+  if (selectedSystemsSubTab.value === 'mermaid') {
+    return playableSystemsBundle.value.mermaidDiagram
+  }
+  if (selectedSystemsSubTab.value === 'unity_meta') {
+    const manifest = buildGameBundleManifest({
+      bundleName: node.value?.params.gamePlayableTitle || 'IndieGameBundle',
+      targetEngine: 'unity',
+      items: [{ id: 'hero', name: 'hero_knight', sourcePath: 'hero_knight.png', type: 'sprite' }]
+    })
+    return generateUnityMetaFile(manifest.assets[0]!, {
+      spriteBorders: { left: 12, bottom: 12, right: 12, top: 12 }
+    }).metaText
+  }
+  return playableSystemsBundle.value.jsonText
+})
+
+function downloadActiveDataTableCsv(): void {
+  const key = selectedDataTableKey.value
+  const mime = key.endsWith('.json') ? 'application/json;charset=utf-8' : 'text/csv;charset=utf-8'
+  downloadTextFile(activeDataTableContent.value, key, mime)
+}
+
+function downloadLocalizationCsv(): void {
+  downloadTextFile(
+    playableDataTableBundle.value.localizationCsv,
+    'localization.csv',
+    'text/csv;charset=utf-8'
+  )
+}
+
+function downloadFullDataAndSystemsJson(): void {
+  const combined = JSON.stringify(
+    {
+      dataTables: JSON.parse(playableDataTableBundle.value.jsonText),
+      gameplaySystems: JSON.parse(playableSystemsBundle.value.jsonText)
+    },
+    null,
+    2
+  )
+  const stem = (node.value?.params.gamePlayableTitle || 'game_bundle_data').replace(/\s+/g, '_')
+  downloadTextFile(combined, `${stem}_data_and_systems.json`, 'application/json;charset=utf-8')
+}
 
 const playableShaderBundle = computed(() => {
   const bundle = buildGameShaderParticleBundle()
@@ -3020,11 +3379,21 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
   const seed = Number(current.params.gameLevelSeed ?? 42)
   const genreRaw = current.params.gamePlayableGenre ?? 'roguelike_action'
   const cameraRaw = current.params.gamePlayableCameraMode ?? 'topdown_34'
-  const mode = genreRaw === 'platformer' || cameraRaw === 'side_view' ? 'platformer' : 'survivor'
+  const mode =
+    genreRaw === 'tower_defense'
+      ? 'tower_defense'
+      : genreRaw === 'platformer' || cameraRaw === 'side_view'
+        ? 'platformer'
+        : 'survivor'
   const levelMap =
     info.levelMap ??
     generateProceduralLevelMap({
-      algorithm: mode === 'platformer' ? 'platformer_course' : alg,
+      algorithm:
+        mode === 'platformer'
+          ? 'platformer_course'
+          : mode === 'tower_defense'
+            ? 'tower_defense'
+            : alg,
       width: 28,
       height: 18,
       seed

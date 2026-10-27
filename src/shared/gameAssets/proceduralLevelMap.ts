@@ -15,7 +15,12 @@
  */
 
 export type LevelGeneratorAlgorithm =
-  'bsp_dungeon' | 'cellular_cave' | 'platformer_course' | 'arena_waves'
+  | 'bsp_dungeon'
+  | 'cellular_cave'
+  | 'platformer_course'
+  | 'arena_waves'
+  | 'tower_defense'
+  | 'labyrinth_maze'
 
 export type LevelCellType = 'void' | 'wall' | 'floor' | 'platform' | 'hazard'
 
@@ -521,6 +526,182 @@ function generateArenaWaves(
   return { grid, rooms }
 }
 
+function generateTowerDefenseLane(
+  width: number,
+  height: number,
+  rng: () => number
+): { grid: LevelCellType[][]; rooms: LevelRoom[] } {
+  const grid = createGrid(width, height, 'wall')
+  // Create serpentine S-curve path from left entry to right base core
+  const col1 = Math.max(4, Math.floor(width * 0.25))
+  const col2 = Math.max(col1 + 4, Math.floor(width * 0.52))
+  const col3 = Math.max(col2 + 4, Math.floor(width * 0.78))
+  const topY = Math.max(2, Math.floor(height * 0.22))
+  const midY = Math.floor(height * 0.5)
+  const botY = Math.min(height - 4, Math.floor(height * 0.78))
+
+  const waypoints: Array<[number, number]> = [
+    [2, midY],
+    [col1, midY],
+    [col1, topY],
+    [col2, topY],
+    [col2, botY],
+    [col3, botY],
+    [col3, midY],
+    [width - 4, midY]
+  ]
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const [x1, y1] = waypoints[i]!
+    const [x2, y2] = waypoints[i + 1]!
+    carveCorridor(grid, x1, y1, x2, y2, true)
+  }
+
+  // Place elevated turret build pads ('platform') adjacent to the marching lane
+  for (let y = 2; y < height - 2; y += 2) {
+    for (let x = 3; x < width - 3; x += 2) {
+      if (grid[y]?.[x] !== 'wall') continue
+      const nearFloor =
+        grid[y - 1]?.[x] === 'floor' ||
+        grid[y + 1]?.[x] === 'floor' ||
+        grid[y]?.[x - 1] === 'floor' ||
+        grid[y]?.[x + 1] === 'floor'
+      if (nearFloor && rng() > 0.35) {
+        grid[y]![x] = 'platform'
+      }
+    }
+  }
+
+  const rooms: LevelRoom[] = [
+    {
+      id: 'td_wave_gate',
+      x: 2,
+      y: Math.max(2, midY - 1),
+      width: 3,
+      height: 3,
+      centerX: 2,
+      centerY: midY,
+      role: 'start'
+    },
+    {
+      id: 'td_killbox',
+      x: col2 - 1,
+      y: Math.max(2, midY - 2),
+      width: 3,
+      height: 4,
+      centerX: col2,
+      centerY: midY,
+      role: 'treasure'
+    },
+    {
+      id: 'td_base_core',
+      x: width - 5,
+      y: Math.max(2, midY - 1),
+      width: 3,
+      height: 3,
+      centerX: width - 4,
+      centerY: midY,
+      role: 'boss'
+    }
+  ]
+  return { grid, rooms }
+}
+
+function generateLabyrinthMaze(
+  width: number,
+  height: number,
+  rng: () => number
+): { grid: LevelCellType[][]; rooms: LevelRoom[] } {
+  const grid = createGrid(width, height, 'wall')
+  const visited = new Set<string>()
+  const cellCoords: Array<[number, number]> = []
+  for (let y = 2; y < height - 2; y += 2) {
+    for (let x = 2; x < width - 2; x += 2) {
+      cellCoords.push([x, y])
+    }
+  }
+  if (cellCoords.length > 0) {
+    const stack: Array<[number, number]> = [cellCoords[0]!]
+    visited.add(`${cellCoords[0]![0]},${cellCoords[0]![1]}`)
+    grid[cellCoords[0]![1]]![cellCoords[0]![0]] = 'floor'
+
+    while (stack.length > 0) {
+      const [cx, cy] = stack[stack.length - 1]!
+      const dirs: Array<[number, number]> = [
+        [2, 0],
+        [-2, 0],
+        [0, 2],
+        [0, -2]
+      ]
+      // Shuffle directions deterministically
+      for (let i = dirs.length - 1; i > 0; i--) {
+        const j = randInt(rng, 0, i)
+        const tmp = dirs[i]!
+        dirs[i] = dirs[j]!
+        dirs[j] = tmp
+      }
+      let moved = false
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx
+        const ny = cy + dy
+        if (
+          nx >= 2 &&
+          nx < width - 2 &&
+          ny >= 2 &&
+          ny < height - 2 &&
+          !visited.has(`${nx},${ny}`)
+        ) {
+          visited.add(`${nx},${ny}`)
+          grid[cy + dy / 2]![cx + dx / 2] = 'floor'
+          grid[ny]![nx] = 'floor'
+          stack.push([nx, ny])
+          moved = true
+          break
+        }
+      }
+      if (!moved) stack.pop()
+    }
+  }
+
+  // Carve start, center treasure chamber, and goal boss chamber
+  const startRoom: LevelRoom = {
+    id: 'maze_entry',
+    x: 2,
+    y: 2,
+    width: 3,
+    height: 3,
+    centerX: 3,
+    centerY: 3,
+    role: 'start'
+  }
+  const midRoom: LevelRoom = {
+    id: 'maze_sanctum',
+    x: Math.floor(width / 2) - 2,
+    y: Math.floor(height / 2) - 2,
+    width: 4,
+    height: 4,
+    centerX: Math.floor(width / 2),
+    centerY: Math.floor(height / 2),
+    role: 'treasure'
+  }
+  const bossRoom: LevelRoom = {
+    id: 'maze_exit',
+    x: width - 6,
+    y: height - 6,
+    width: 4,
+    height: 4,
+    centerX: width - 4,
+    centerY: height - 4,
+    role: 'boss'
+  }
+  for (const rm of [startRoom, midRoom, bossRoom]) {
+    carveRect(grid, rm.x, rm.y, rm.width, rm.height, 'floor')
+  }
+  carveCorridor(grid, startRoom.centerX, startRoom.centerY, midRoom.centerX, midRoom.centerY, true)
+  carveCorridor(grid, midRoom.centerX, midRoom.centerY, bossRoom.centerX, bossRoom.centerY, false)
+
+  return { grid, rooms: [startRoom, midRoom, bossRoom] }
+}
+
 function computeWang16BitmaskGrid(grid: LevelCellType[][]): number[][] {
   const height = grid.length
   const width = grid[0]?.length ?? 0
@@ -838,7 +1019,11 @@ export function generateProceduralLevelMap(
         ? generatePlatformerCourse(width, height, rng)
         : algorithm === 'arena_waves'
           ? generateArenaWaves(width, height)
-          : generateBspDungeon(width, height, rng)
+          : algorithm === 'tower_defense'
+            ? generateTowerDefenseLane(width, height, rng)
+            : algorithm === 'labyrinth_maze'
+              ? generateLabyrinthMaze(width, height, rng)
+              : generateBspDungeon(width, height, rng)
 
   const wang16BitmaskGrid = computeWang16BitmaskGrid(grid)
   const entities = populateEntities(algorithm, rooms, grid, tileWidth, tileHeight, rng)

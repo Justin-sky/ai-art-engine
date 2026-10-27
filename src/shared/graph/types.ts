@@ -1454,7 +1454,13 @@ export interface GraphNodeParams {
   /** 游戏节点（game.audioDsp）：最近一次音频 DSP 处理摘要 */
   gameAudioReport?: string
   /** 游戏节点（game.levelMap）：程序化关卡生成算法 */
-  gameLevelAlgorithm?: 'bsp_dungeon' | 'cellular_cave' | 'arena_waves' | 'platformer_course'
+  gameLevelAlgorithm?:
+    | 'bsp_dungeon'
+    | 'cellular_cave'
+    | 'arena_waves'
+    | 'platformer_course'
+    | 'tower_defense'
+    | 'labyrinth_maze'
   /** 游戏节点（game.levelMap）：关卡网格宽度（12..64） */
   gameLevelWidth?: number
   /** 游戏节点（game.levelMap）：关卡网格高度（10..48） */
@@ -1468,7 +1474,7 @@ export interface GraphNodeParams {
   /** 游戏节点（game.playable）：可玩原型标题 */
   gamePlayableTitle?: string
   /** 游戏节点（game.playable）：可玩原型玩法类型 */
-  gamePlayableGenre?: 'roguelike_action' | 'platformer' | 'dungeon_crawler'
+  gamePlayableGenre?: 'roguelike_action' | 'platformer' | 'dungeon_crawler' | 'tower_defense'
   /** 游戏节点（game.playable）：镜头视角规范 */
   gamePlayableCameraMode?: 'topdown_90' | 'topdown_34' | 'isometric_45' | 'side_view'
   /** 游戏节点（game.playable）：主角移速倍率（0.4..2.5，默认 1.0） */

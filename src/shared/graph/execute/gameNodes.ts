@@ -14,6 +14,8 @@ import {
   applyEqualPowerLoopCrossfadePcm,
   applyGameAudioEnvironmentFxPcm,
   applySeamlessTileBlend,
+  buildAutoTileAtlasManifest,
+  buildBitmapFontManifest,
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
   compilePlayableGameSandboxHtml,
@@ -312,11 +314,24 @@ export async function executeGamePbrTileNode(
     collisionHullVertices: hullVerts,
     pivot: physicsManifest.hull.pivot
   }
+  const autoTileManifest = buildAutoTileAtlasManifest({
+    terrainName: ctx.node.title || 'terrain',
+    layout: 'wang16',
+    tileWidth: width,
+    tileHeight: height
+  })
+  const bitmapFontManifest = buildBitmapFontManifest({
+    fontName: ctx.node.title || 'DamageFont',
+    atlasWidth: width,
+    atlasHeight: height
+  })
   const reportJson = JSON.stringify(
     {
       summary: reportObj,
       nineSlice: nineSliceManifest,
-      physics: physicsManifest
+      physics: physicsManifest,
+      autoTile: autoTileManifest,
+      bitmapFont: bitmapFontManifest
     },
     null,
     2
@@ -606,7 +621,9 @@ export async function executeGameLevelMapNode(
   const algorithm: LevelGeneratorAlgorithm =
     algorithmRaw === 'cellular_cave' ||
     algorithmRaw === 'arena_waves' ||
-    algorithmRaw === 'platformer_course'
+    algorithmRaw === 'platformer_course' ||
+    algorithmRaw === 'tower_defense' ||
+    algorithmRaw === 'labyrinth_maze'
       ? algorithmRaw
       : 'bsp_dungeon'
   const width = Math.max(12, Math.min(64, Math.floor(Number(ctx.node.params.gameLevelWidth ?? 32))))
@@ -832,7 +849,9 @@ export async function executeGamePlayableNode(
   const algorithm: LevelGeneratorAlgorithm =
     algorithmRaw === 'cellular_cave' ||
     algorithmRaw === 'arena_waves' ||
-    algorithmRaw === 'platformer_course'
+    algorithmRaw === 'platformer_course' ||
+    algorithmRaw === 'tower_defense' ||
+    algorithmRaw === 'labyrinth_maze'
       ? algorithmRaw
       : 'bsp_dungeon'
   const seed = Math.floor(Number(ctx.node.params.gameLevelSeed ?? 42))
@@ -840,11 +859,20 @@ export async function executeGamePlayableNode(
   const genreRaw = ctx.node.params.gamePlayableGenre ?? 'roguelike_action'
   const cameraRaw = ctx.node.params.gamePlayableCameraMode ?? 'topdown_34'
   const mode: PlayableSandboxMode =
-    genreRaw === 'platformer' || cameraRaw === 'side_view' ? 'platformer' : 'survivor'
+    genreRaw === 'tower_defense'
+      ? 'tower_defense'
+      : genreRaw === 'platformer' || cameraRaw === 'side_view'
+        ? 'platformer'
+        : 'survivor'
 
   if (!levelMap) {
     levelMap = generateProceduralLevelMap({
-      algorithm: mode === 'platformer' ? 'platformer_course' : algorithm,
+      algorithm:
+        mode === 'platformer'
+          ? 'platformer_course'
+          : mode === 'tower_defense'
+            ? 'tower_defense'
+            : algorithm,
       width: 32,
       height: 20,
       seed

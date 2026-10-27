@@ -1240,5 +1240,35 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(fullPlayable.html).toContain('openUpgradeModal')
     expect(fullPlayable.html).toContain('PERK_POOL')
     expect(fullPlayable.html).toContain('playSynthSfx')
+
+    // 5. Full-genre expansion: Tower Defense & Labyrinth Maze levels, AutoTile + BMFont in PBR meta, and Tower Defense sandbox mode
+    expect(meta.autoTile?.layout).toBe('wang16')
+    expect(meta.bitmapFont?.fntText).toContain('info face="CustomSlicePanel"')
+
+    const tdLevel = generateProceduralLevelMap({
+      algorithm: 'tower_defense',
+      width: 32,
+      height: 20,
+      seed: 77
+    })
+    expect(analyzeLevelConnectivityAndPacing(tdLevel).reachable).toBe(true)
+
+    const mazeLevel = generateProceduralLevelMap({
+      algorithm: 'labyrinth_maze',
+      width: 32,
+      height: 20,
+      seed: 88
+    })
+    expect(analyzeLevelConnectivityAndPacing(mazeLevel).reachable).toBe(true)
+
+    const tdSandbox = compilePlayableGameSandboxHtml({
+      title: 'Cyber TD Defense',
+      mode: 'tower_defense',
+      levelMap: tdLevel
+    })
+    expect(tdSandbox.mode).toBe('tower_defense')
+    expect(tdSandbox.levelAlgorithm).toBe('tower_defense')
+    expect(tdSandbox.html).toContain('btnTowerDefense')
+    expect(tdSandbox.html).toContain('TURRET BUILT')
   })
 })
