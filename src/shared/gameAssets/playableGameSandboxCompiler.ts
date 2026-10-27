@@ -14,7 +14,30 @@ import {
   type ProceduralLevelMapResult
 } from './proceduralLevelMap'
 
-export type PlayableSandboxMode = 'platformer' | 'survivor' | 'tower_defense'
+export type PlayableSandboxMode =
+  'platformer' | 'survivor' | 'tower_defense' | 'card_dbg' | 'avg_dialogue'
+
+export interface PlayableSandboxCardSpec {
+  id: string
+  name: string
+  cost: number
+  cardType: string
+  damage: number
+  block: number
+  description?: string
+}
+
+export interface PlayableSandboxDialogueNode {
+  id: string
+  speaker: string
+  portraitEmotion?: string
+  text: string
+  choices?: Array<{
+    label: string
+    nextId: string
+    effect?: string
+  }>
+}
 
 export interface PlayableGameTuningOptions {
   /** 主角移速倍率（0.4~2.5，默认 1.0） */
@@ -43,6 +66,10 @@ export interface PlayableGameSandboxOptions extends PlayableGameTuningOptions {
   bgmDataUrl?: string
   sfxDataUrl?: string
   levelMap?: ProceduralLevelMapResult
+  customPlayerMaxHp?: number
+  customPlayerBaseAtk?: number
+  customCards?: PlayableSandboxCardSpec[]
+  customDialogues?: PlayableSandboxDialogueNode[]
 }
 
 export interface CompiledPlayableSandboxResult {
@@ -60,9 +87,13 @@ export function compilePlayableGameSandboxHtml(
     options.mode ??
     (options.genre === 'tower_defense'
       ? 'tower_defense'
-      : options.cameraMode === 'side_scroller' || options.genre === 'metroidvania_platformer'
-        ? 'platformer'
-        : 'survivor')
+      : options.genre === 'card_dbg'
+        ? 'card_dbg'
+        : options.genre === 'avg_dialogue'
+          ? 'avg_dialogue'
+          : options.cameraMode === 'side_scroller' || options.genre === 'metroidvania_platformer'
+            ? 'platformer'
+            : 'survivor')
   const mode: PlayableSandboxMode = inferredMode
   const levelAlgorithm: LevelGeneratorAlgorithm =
     mode === 'platformer'
@@ -91,6 +122,10 @@ export function compilePlayableGameSandboxHtml(
     tileImg: options.tileSpriteDataUrl || '',
     bgmUrl: options.bgmDataUrl || '',
     sfxUrl: options.sfxDataUrl || '',
+    customPlayerMaxHp: Number(options.customPlayerMaxHp ?? 100),
+    customPlayerBaseAtk: Number(options.customPlayerBaseAtk ?? 14),
+    customCards: Array.isArray(options.customCards) ? options.customCards : [],
+    customDialogues: Array.isArray(options.customDialogues) ? options.customDialogues : [],
     tuning: {
       moveSpeedScale: Number(options.moveSpeedScale ?? 1.0),
       jumpDashScale: Number(options.jumpDashScale ?? 1.0),
@@ -232,6 +267,8 @@ export function compilePlayableGameSandboxHtml(
     <button id="btnSurvivor" class="mode-btn">Survivor Mode (WASD + Auto-Fire)</button>
     <button id="btnPlatformer" class="mode-btn">Platformer Mode (A/D + Space + Click)</button>
     <button id="btnTowerDefense" class="mode-btn">Tower Defense Mode (Click Build Turret 40G)</button>
+    <button id="btnCardDbg" class="mode-btn">Card Battle Mode (Click Hand Cards)</button>
+    <button id="btnAvgDialogue" class="mode-btn">AVG Story Mode (Click Choices)</button>
     <button id="btnAudio" class="mode-btn active">🔊 SFX</button>
   </div>
   <div class="stage-wrap">
@@ -260,6 +297,23 @@ const tuning = Object.assign({
 window.addEventListener('message', (ev) => {
   if (ev && ev.data && ev.data.type === 'aiart:playable-tune' && ev.data.payload) {
     Object.assign(tuning, ev.data.payload);
+  } else if (ev && ev.data && ev.data.type === 'aiart:playable-data' && ev.data.payload) {
+    const p = ev.data.payload;
+    if (typeof p.customPlayerMaxHp === 'number' && p.customPlayerMaxHp > 0) {
+      player.maxHp = p.customPlayerMaxHp;
+      player.hp = Math.min(player.hp, player.maxHp);
+      document.getElementById('hpVal').textContent = String(player.hp);
+    }
+    if (typeof p.customPlayerBaseAtk === 'number' && p.customPlayerBaseAtk > 0) {
+      perks.dmgScale = p.customPlayerBaseAtk / 14;
+    }
+    if (Array.isArray(p.customCards) && p.customCards.length > 0) {
+      cardPool = p.customCards;
+      if (mode === 'card_dbg') drawNewHand();
+    }
+    if (Array.isArray(p.customDialogues) && p.customDialogues.length > 0) {
+      avgDialogues = p.customDialogues;
+    }
   }
 });
 
@@ -392,12 +446,25 @@ window.addEventListener('keydown', (e) => {
     if (e.code === 'Digit1') applyPerk(0);
     else if (e.code === 'Digit2') applyPerk(1);
     else if (e.code === 'Digit3') applyPerk(2);
+    return;
+  }
+  if (mode === 'card_dbg') {
+    if (e.code === 'Digit1') playCardAtIndex(0);
+    else if (e.code === 'Digit2') playCardAtIndex(1);
+    else if (e.code === 'Digit3') playCardAtIndex(2);
+    else if (e.code === 'Digit4') playCardAtIndex(3);
+    else if (e.code === 'KeyE') endCardTurn();
+  } else if (mode === 'avg_dialogue') {
+    if (e.code === 'Digit1') selectAvgChoice(0);
+    else if (e.code === 'Digit2') selectAvgChoice(1);
   }
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-const player = { x: 480, y: 300, vx: 0, vy: 0, hp: 100, maxHp: 100, facing: 1, flash: 0, grounded: false, dashCd: 0 };
-const perks = { multiShot: 1, critBonus: 0, dmgScale: 1.0, fireRateScale: 1.0, moveBonus: 1.0, lifesteal: 0 };
+const baseMaxHp = Math.max(20, Number(CFG.customPlayerMaxHp || 100));
+const basePlayerAtk = Math.max(4, Number(CFG.customPlayerBaseAtk || 14));
+const player = { x: 480, y: 300, vx: 0, vy: 0, hp: baseMaxHp, maxHp: baseMaxHp, facing: 1, flash: 0, grounded: false, dashCd: 0 };
+const perks = { multiShot: 1, critBonus: 0, dmgScale: basePlayerAtk / 14, fireRateScale: 1.0, moveBonus: 1.0, lifesteal: 0 };
 let playerLevel = 1;
 let xp = 0;
 let xpNext = 50;
@@ -418,6 +485,166 @@ let spawnTimer = 0;
 let shakeTrauma = 0;
 let lastFrameTime = performance.now();
 let fpsSmooth = 60;
+
+// Deckbuilder Card Mode State
+const DEFAULT_CARD_POOL = [
+  { id: 'c_strike', name: 'Overcharge Strike', cost: 1, cardType: 'attack', damage: 16, block: 0, description: 'Deal 16 DMG to Boss' },
+  { id: 'c_aegis', name: 'Aegis Bulwark', cost: 1, cardType: 'skill', damage: 0, block: 14, description: 'Gain +14 Shield Block' },
+  { id: 'c_nova', name: 'Void Supernova', cost: 2, cardType: 'attack', damage: 32, block: 6, description: 'Deal 32 DMG & +6 Block' },
+  { id: 'c_siphon', name: 'Soul Siphon', cost: 1, cardType: 'skill', damage: 12, block: 8, description: 'Deal 12 DMG & +8 Block' }
+];
+let cardPool = (Array.isArray(CFG.customCards) && CFG.customCards.length > 0) ? CFG.customCards : DEFAULT_CARD_POOL;
+let handCards = [];
+let cardEnergy = 3;
+let cardMaxEnergy = 3;
+let cardBlock = 0;
+let cardTurn = 1;
+let bossHp = 140;
+let bossMaxHp = 140;
+let bossIntentDmg = 14;
+let bossStage = 1;
+
+function drawNewHand() {
+  handCards = [];
+  for (let i = 0; i < 4; i++) {
+    const template = cardPool[i % cardPool.length] || DEFAULT_CARD_POOL[i % DEFAULT_CARD_POOL.length];
+    handCards.push(Object.assign({}, template, { played: false }));
+  }
+}
+
+function playCardAtIndex(idx) {
+  if (mode !== 'card_dbg') return;
+  const c = handCards[idx];
+  if (!c || c.played) return;
+  const cost = Math.max(0, Number(c.cost ?? 1));
+  if (cardEnergy < cost) {
+    spawnPopup(240 + idx * 165, 420, 'NO ENERGY!', '#f43f5e', false);
+    return;
+  }
+  cardEnergy -= cost;
+  c.played = true;
+  const dmg = Math.round(Number(c.damage || 0) * perks.dmgScale);
+  const blk = Math.round(Number(c.block || 0));
+  if (blk > 0) {
+    cardBlock += blk;
+    playSynthSfx('pickup');
+    spawnHitParticles(230, 260, '#38bdf8', 12);
+    spawnPopup(230, 210, '+' + blk + ' BLOCK', '#38bdf8', true);
+  }
+  if (dmg > 0) {
+    bossHp = Math.max(0, bossHp - dmg);
+    playSynthSfx('hit');
+    addShake(7.0);
+    spawnHitParticles(720, 250, '#fbbf24', 16);
+    spawnPopup(720, 195, '-' + dmg + ' (' + c.name + ')', '#fbbf24', true);
+    if (bossHp <= 0) {
+      kills += 1;
+      gold += 45;
+      document.getElementById('killsVal').textContent = String(kills);
+      document.getElementById('goldVal').textContent = String(gold);
+      gainXp(40);
+      bossStage += 1;
+      bossMaxHp = Math.round(bossMaxHp * 1.35);
+      bossHp = bossMaxHp;
+      bossIntentDmg = 12 + bossStage * 4;
+      spawnPopup(720, 150, 'BOSS DEFEATED! STAGE ' + bossStage, '#4ade80', true);
+    }
+  }
+}
+
+function endCardTurn() {
+  if (mode !== 'card_dbg') return;
+  const incoming = Math.max(0, bossIntentDmg - cardBlock);
+  const blocked = Math.min(bossIntentDmg, cardBlock);
+  cardBlock = 0;
+  if (blocked > 0) {
+    spawnPopup(230, 230, 'BLOCKED ' + blocked, '#38bdf8', false);
+  }
+  if (incoming > 0) {
+    player.hp = Math.max(1, player.hp - incoming);
+    document.getElementById('hpVal').textContent = String(player.hp);
+    addShake(8.0);
+    playSynthSfx('hit');
+    spawnPopup(230, 195, '-' + incoming + ' BOSS HIT', '#f43f5e', true);
+  }
+  cardTurn += 1;
+  cardEnergy = cardMaxEnergy;
+  bossIntentDmg = 10 + ((cardTurn * 5) % 14);
+  drawNewHand();
+}
+
+// AVG Visual Novel Story State
+const DEFAULT_DIALOGUES = [
+  {
+    id: 'dlg_intro_01',
+    speaker: 'Astra (Valkyrie Commander)',
+    portraitEmotion: 'determined',
+    text: 'The Obsidian Rift is destabilizing! Which tactical protocol shall we execute before the Abyssal Warden awakens?',
+    choices: [
+      { label: '[Overcharge Core] Divert shield power to Astra Blade (+ATK / Affinity +15)', nextId: 'dlg_branch_atk', effect: '+15 Affinity | +25% Blade Damage' },
+      { label: '[Sanctuary Ward] Fortify ancient runes & rescue scouts (+HP / Affinity +20)', nextId: 'dlg_branch_def', effect: '+20 Affinity | Restore Full HP' }
+    ]
+  },
+  {
+    id: 'dlg_branch_atk',
+    speaker: 'Astra (Valkyrie Commander)',
+    portraitEmotion: 'smiling',
+    text: 'Bold choice! Crimson lightning surges through the blade. Let us cleave straight through the Warden heart!',
+    choices: [
+      { label: '[Launch Final Assault] Enter Boss Sanctum (+30 XP)', nextId: 'dlg_finale', effect: 'Flag: Crimson_Assault_Route' },
+      { label: '[Re-evaluate Strategy] Return to Rift Command', nextId: 'dlg_intro_01', effect: 'Loop Tactical Briefing' }
+    ]
+  },
+  {
+    id: 'dlg_branch_def',
+    speaker: 'Astra (Valkyrie Commander)',
+    portraitEmotion: 'surprised',
+    text: 'The trapped scouts are safe inside the Aegis barrier! They shared secret coordinates to the Warden weak point.',
+    choices: [
+      { label: '[Strike Weak Point] Trigger Sanctuary Counterattack (+30 XP)', nextId: 'dlg_finale', effect: 'Flag: Aegis_Savior_Route' },
+      { label: '[Re-evaluate Strategy] Return to Rift Command', nextId: 'dlg_intro_01', effect: 'Loop Tactical Briefing' }
+    ]
+  },
+  {
+    id: 'dlg_finale',
+    speaker: 'Abyssal Warden & Astra',
+    portraitEmotion: 'determined',
+    text: 'With your command, the Obsidian Rift is sealed! You can switch to Survivor / Card Battle at any time with your buffs active.',
+    choices: [
+      { label: '[Replay Story Chapter] Start New Timeline Branch', nextId: 'dlg_intro_01', effect: '+20 Gold Bonus' },
+      { label: '[Switch to Card Battle] Challenge Boss in Deckbuilder Mode', nextId: '__switch_card__', effect: 'Enter Card Battle' }
+    ]
+  }
+];
+let avgDialogues = (Array.isArray(CFG.customDialogues) && CFG.customDialogues.length > 0) ? CFG.customDialogues : DEFAULT_DIALOGUES;
+let avgCurrentId = (avgDialogues[0] && avgDialogues[0].id) || 'dlg_intro_01';
+let avgCharIndex = 0;
+let avgAffinity = 25;
+let avgRouteFlag = 'Prologue_Active';
+
+function getCurrentAvgNode() {
+  return avgDialogues.find((d) => d.id === avgCurrentId) || avgDialogues[0] || DEFAULT_DIALOGUES[0];
+}
+
+function selectAvgChoice(idx) {
+  if (mode !== 'avg_dialogue') return;
+  const node = getCurrentAvgNode();
+  const choices = (node && Array.isArray(node.choices)) ? node.choices : [];
+  const chosen = choices[idx];
+  if (!chosen) return;
+  playSynthSfx('pickup');
+  avgAffinity += 15;
+  if (chosen.effect) {
+    avgRouteFlag = chosen.effect;
+    spawnPopup(480, 320, chosen.effect, '#fde047', true);
+  }
+  if (chosen.nextId === '__switch_card__') {
+    setMode('card_dbg');
+    return;
+  }
+  avgCurrentId = chosen.nextId || (avgDialogues[0] && avgDialogues[0].id) || 'dlg_intro_01';
+  avgCharIndex = 0;
+}
 
 const PERK_POOL = [
   { id: 'multishot', title: '⚡ Multi-Shot +1', desc: 'Fire +1 extra fan projectile per attack', apply: () => { perks.multiShot += 1; } },
@@ -504,9 +731,14 @@ function setMode(nextMode) {
   document.getElementById('btnPlatformer').classList.toggle('active', mode === 'platformer');
   const tdBtn = document.getElementById('btnTowerDefense');
   if (tdBtn) tdBtn.classList.toggle('active', mode === 'tower_defense');
+  const cardBtn = document.getElementById('btnCardDbg');
+  if (cardBtn) cardBtn.classList.toggle('active', mode === 'card_dbg');
+  const avgBtn = document.getElementById('btnAvgDialogue');
+  if (avgBtn) avgBtn.classList.toggle('active', mode === 'avg_dialogue');
   player.vx = 0;
   player.vy = 0;
-  player.hp = 100;
+  player.hp = player.maxHp;
+  document.getElementById('hpVal').textContent = String(player.hp);
   gold = 120;
   const goldEl = document.getElementById('goldVal');
   if (goldEl) goldEl.textContent = String(gold);
@@ -515,6 +747,13 @@ function setMode(nextMode) {
   gems = [];
   popups = [];
   particles = [];
+  if (mode === 'card_dbg') {
+    cardEnergy = cardMaxEnergy;
+    cardBlock = 0;
+    drawNewHand();
+  } else if (mode === 'avg_dialogue') {
+    avgCharIndex = 0;
+  }
   initLevelEntities();
 }
 
@@ -522,6 +761,12 @@ document.getElementById('btnSurvivor').onclick = () => setMode('survivor');
 document.getElementById('btnPlatformer').onclick = () => setMode('platformer');
 if (document.getElementById('btnTowerDefense')) {
   document.getElementById('btnTowerDefense').onclick = () => setMode('tower_defense');
+}
+if (document.getElementById('btnCardDbg')) {
+  document.getElementById('btnCardDbg').onclick = () => setMode('card_dbg');
+}
+if (document.getElementById('btnAvgDialogue')) {
+  document.getElementById('btnAvgDialogue').onclick = () => setMode('avg_dialogue');
 }
 setMode(mode);
 
@@ -558,6 +803,35 @@ canvas.addEventListener('pointerdown', (e) => {
   const rect = canvas.getBoundingClientRect();
   const tx = ((e.clientX - rect.left) / rect.width) * canvas.width;
   const ty = ((e.clientY - rect.top) / rect.height) * canvas.height;
+  if (mode === 'card_dbg') {
+    // Check End Turn button click (x: 800..930, y: 460..520)
+    if (tx >= 790 && tx <= 935 && ty >= 450 && ty <= 530) {
+      endCardTurn();
+      return;
+    }
+    // Check 4 Hand Cards (x: 90 + i * 170, y: 395..575, width: 155)
+    for (let i = 0; i < handCards.length; i++) {
+      const cx = 90 + i * 170;
+      if (tx >= cx && tx <= cx + 155 && ty >= 395 && ty <= 575) {
+        playCardAtIndex(i);
+        return;
+      }
+    }
+    return;
+  }
+  if (mode === 'avg_dialogue') {
+    const node = getCurrentAvgNode();
+    const choices = (node && Array.isArray(node.choices)) ? node.choices : [];
+    for (let i = 0; i < choices.length; i++) {
+      const cy = 485 + i * 44;
+      if (tx >= 80 && tx <= 880 && ty >= cy && ty <= cy + 36) {
+        selectAvgChoice(i);
+        return;
+      }
+    }
+    avgCharIndex = 9999;
+    return;
+  }
   if (mode === 'tower_defense') {
     const existing = turrets.find((t) => Math.hypot(t.x - tx, t.y - ty) < 28);
     if (existing && gold >= 40) {
@@ -586,6 +860,27 @@ canvas.addEventListener('pointerdown', (e) => {
 function update() {
   if (upgradeOpen) return;
   const dt = Math.max(0.2, Math.min(1.8, Number(tuning.timeScale ?? 1.0)));
+  if (shakeTrauma > 0) shakeTrauma = Math.max(0, shakeTrauma - 0.85 * dt);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const pt = particles[i];
+    pt.x += pt.vx * dt;
+    pt.y += pt.vy * dt;
+    pt.life -= dt;
+    if (pt.life <= 0) particles.splice(i, 1);
+  }
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i];
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if (p.life <= 0) popups.splice(i, 1);
+  }
+  if (mode === 'card_dbg') {
+    return;
+  }
+  if (mode === 'avg_dialogue') {
+    avgCharIndex = Math.min(9999, avgCharIndex + 1.4 * dt);
+    return;
+  }
   const moveSpd = Number(tuning.moveSpeedScale ?? 1.0) * perks.moveBonus * dt;
   const jumpSpd = Number(tuning.jumpDashScale ?? 1.0);
   const aggro = Number(tuning.enemyAggroScale ?? 1.0) * dt;
@@ -649,7 +944,6 @@ function update() {
   }
 
   if (player.flash > 0) player.flash -= dt;
-  if (shakeTrauma > 0) shakeTrauma = Math.max(0, shakeTrauma - 0.85 * dt);
 
   // Auto-fire at nearest enemy
   fireTimer += dt * perks.fireRateScale;
@@ -771,21 +1065,6 @@ function update() {
       gems.splice(i, 1);
       gainXp(15);
     }
-  }
-
-  // Update particles & damage popups
-  for (let i = particles.length - 1; i >= 0; i--) {
-    const pt = particles[i];
-    pt.x += pt.vx * dt;
-    pt.y += pt.vy * dt;
-    pt.life -= dt;
-    if (pt.life <= 0) particles.splice(i, 1);
-  }
-  for (let i = popups.length - 1; i >= 0; i--) {
-    const p = popups[i];
-    p.y += p.vy * dt;
-    p.life -= dt;
-    if (p.life <= 0) popups.splice(i, 1);
   }
 }
 
@@ -954,6 +1233,162 @@ function draw() {
     if (tuning.showDebugHitboxes) {
       ctx.strokeStyle = '#fde047';
       ctx.strokeRect(b.x - 6, b.y - 6, 12, 12);
+    }
+  }
+
+  // Card Deckbuilder Mode Overlay
+  if (mode === 'card_dbg') {
+    ctx.fillStyle = 'rgba(10, 16, 30, 0.88)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Hero Panel (Left)
+    ctx.fillStyle = '#13233a';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.fillRect(140, 140, 180, 190);
+    ctx.strokeRect(140, 140, 180, 190);
+    if (playerSprite && playerSprite.complete && playerSprite.naturalWidth > 0) {
+      ctx.drawImage(playerSprite, 194, 165, 72, 72);
+    } else {
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath(); ctx.arc(230, 200, 30, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.fillText('Valkyrie Hero', 182, 265);
+    ctx.fillStyle = '#4ade80';
+    ctx.fillText('HP: ' + player.hp + '/' + player.maxHp, 175, 288);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('Shield Block: ' + cardBlock, 175, 310);
+
+    // Boss Panel (Right)
+    ctx.fillStyle = '#281424';
+    ctx.strokeStyle = '#f43f5e';
+    ctx.fillRect(630, 140, 190, 190);
+    ctx.strokeRect(630, 140, 190, 190);
+    if (enemySprite && enemySprite.complete && enemySprite.naturalWidth > 0) {
+      ctx.drawImage(enemySprite, 688, 165, 72, 72);
+    } else {
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath(); ctx.arc(725, 200, 32, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = '#fda4af';
+    ctx.fillText('Abyss Boss (Stage ' + bossStage + ')', 655, 265);
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText('Boss HP: ' + bossHp + '/' + bossMaxHp, 665, 288);
+    ctx.fillStyle = '#fde047';
+    ctx.fillText('Intent: Attack ' + bossIntentDmg, 665, 310);
+
+    // Energy Orb & Turn Banner
+    ctx.fillStyle = '#0284c7';
+    ctx.beginPath(); ctx.arc(48, 480, 28, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#bae6fd';
+    ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.fillText(cardEnergy + '/' + cardMaxEnergy, 34, 485);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.fillText('ENERGY', 26, 522);
+
+    // 4 Hand Cards
+    for (let i = 0; i < handCards.length; i++) {
+      const c = handCards[i];
+      const cx = 90 + i * 170;
+      const cy = 395;
+      ctx.fillStyle = c.played ? 'rgba(30, 41, 59, 0.35)' : '#162642';
+      ctx.strokeStyle = c.played ? '#475569' : (c.cardType === 'attack' ? '#f97316' : '#38bdf8');
+      ctx.lineWidth = 2;
+      ctx.fillRect(cx, cy, 155, 175);
+      ctx.strokeRect(cx, cy, 155, 175);
+      ctx.fillStyle = '#fde047';
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.fillText('[' + (i + 1) + '] Cost ' + c.cost, cx + 12, cy + 24);
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillText(String(c.name || 'Card').slice(0, 16), cx + 12, cy + 52);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '12px system-ui, sans-serif';
+      ctx.fillText('Type: ' + (c.cardType || 'skill'), cx + 12, cy + 78);
+      if (c.damage > 0) {
+        ctx.fillStyle = '#fb923c';
+        ctx.fillText('Damage: ' + Math.round(c.damage * perks.dmgScale), cx + 12, cy + 104);
+      }
+      if (c.block > 0) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText('Block: +' + c.block, cx + 12, cy + 126);
+      }
+      ctx.fillStyle = c.played ? '#64748b' : '#4ade80';
+      ctx.fillText(c.played ? 'PLAYED' : 'Click or Key [' + (i + 1) + ']', cx + 12, cy + 156);
+    }
+
+    // End Turn Button
+    ctx.fillStyle = '#be123c';
+    ctx.strokeStyle = '#fda4af';
+    ctx.fillRect(790, 455, 140, 68);
+    ctx.strokeRect(790, 455, 140, 68);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.fillText('End Turn [E]', 812, 495);
+  }
+
+  // AVG Visual Novel Story Mode Overlay
+  if (mode === 'avg_dialogue') {
+    const node = getCurrentAvgNode();
+    ctx.fillStyle = 'rgba(12, 18, 34, 0.9)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Stage Spotlight & Portrait
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.beginPath(); ctx.arc(480, 195, 115, 0, Math.PI * 2); ctx.fill();
+    if (playerSprite && playerSprite.complete && playerSprite.naturalWidth > 0) {
+      ctx.drawImage(playerSprite, 416, 120, 128, 128);
+    } else {
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath(); ctx.arc(480, 185, 48, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Emotion & Affinity Badge
+    ctx.fillStyle = '#1e293b';
+    ctx.strokeStyle = '#38bdf8';
+    ctx.fillRect(680, 28, 250, 64);
+    ctx.strokeRect(680, 28, 250, 64);
+    ctx.fillStyle = '#fde047';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    ctx.fillText('Affinity: ' + avgAffinity + ' | Emotion: ' + (node.portraitEmotion || 'calm'), 694, 52);
+    ctx.fillStyle = '#7dd3fc';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.fillText('Route: ' + String(avgRouteFlag).slice(0, 26), 694, 76);
+
+    // Dialogue Window
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.fillRect(60, 340, 840, 125);
+    ctx.strokeRect(60, 340, 840, 125);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 16px system-ui, sans-serif';
+    ctx.fillText(String(node.speaker || 'Narrator'), 84, 372);
+
+    const fullText = String(node.text || '');
+    const shownText = fullText.slice(0, Math.max(1, Math.floor(avgCharIndex)));
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '15px system-ui, sans-serif';
+    ctx.fillText(shownText.slice(0, 78), 84, 405);
+    if (shownText.length > 78) {
+      ctx.fillText(shownText.slice(78, 156), 84, 430);
+    }
+
+    // Interactive Branching Choices
+    const choices = Array.isArray(node.choices) ? node.choices : [];
+    for (let i = 0; i < choices.length; i++) {
+      const ch = choices[i];
+      const cy = 485 + i * 44;
+      ctx.fillStyle = '#162642';
+      ctx.strokeStyle = '#fde047';
+      ctx.fillRect(80, cy, 800, 36);
+      ctx.strokeRect(80, cy, 800, 36);
+      ctx.fillStyle = '#fef08a';
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      ctx.fillText('[' + (i + 1) + '] ' + ch.label, 98, cy + 23);
     }
   }
 

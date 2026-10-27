@@ -21,6 +21,8 @@ import {
   buildSeamlessLoopBgmFfmpegArgs,
   buildSfxVariantFfmpegArgs,
   buildSpritePhysicsManifest,
+  buildZipArchiveBytes,
+  buildZipArchiveDataUrl,
   classifyGameBundleItem,
   compileGameArtBiblePromptClause,
   compilePlayableGameSandboxHtml,
@@ -1270,5 +1272,93 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(tdSandbox.levelAlgorithm).toBe('tower_defense')
     expect(tdSandbox.html).toContain('btnTowerDefense')
     expect(tdSandbox.html).toContain('TURRET BUILT')
+
+    // 6. Card Deckbuilder (card_dbg) & AVG Visual Novel (avg_dialogue) playable modes + custom data tables + ZIP archive builder
+    const cardSandbox = compilePlayableGameSandboxHtml({
+      title: 'Slay The Rift',
+      mode: 'card_dbg',
+      customPlayerMaxHp: 220,
+      customPlayerBaseAtk: 28,
+      customCards: [
+        {
+          id: 'c_meteor',
+          name: 'Meteor Strike',
+          cost: 2,
+          cardType: 'attack',
+          damage: 45,
+          block: 0,
+          description: 'Deal 45 DMG'
+        }
+      ]
+    })
+    expect(cardSandbox.mode).toBe('card_dbg')
+    expect(cardSandbox.html).toContain('btnCardDbg')
+    expect(cardSandbox.html).toContain('playCardAtIndex')
+    expect(cardSandbox.html).toContain('endCardTurn')
+    expect(cardSandbox.html).toContain('Meteor Strike')
+
+    const avgSandbox = compilePlayableGameSandboxHtml({
+      title: 'Chronicles of Astra',
+      mode: 'avg_dialogue'
+    })
+    expect(avgSandbox.mode).toBe('avg_dialogue')
+    expect(avgSandbox.html).toContain('btnAvgDialogue')
+    expect(avgSandbox.html).toContain('selectAvgChoice')
+
+    const playableNodeOut = await executeGamePlayableNode({
+      node: {
+        id: 'n_play_full',
+        typeId: 'game.playable',
+        title: 'CardProto',
+        x: 0,
+        y: 0,
+        w: 280,
+        h: 220,
+        params: {
+          gamePlayableGenre: 'card_dbg',
+          gameCustomDataTables: {
+            characters: [{ id: 'hero_1', name: 'Paladin', baseHp: 180, baseAtk: 30 }],
+            cards: [
+              {
+                id: 'c_holy',
+                name: 'Holy Nova',
+                cost: 1,
+                cardType: 'attack',
+                damage: 25,
+                block: 10
+              }
+            ]
+          }
+        }
+      },
+      inputs: {
+        'in-voice': [
+          {
+            kind: 'voice',
+            id: 'v_bgm_loop',
+            relativePath:
+              'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+          }
+        ]
+      }
+    })
+    const compiledNodeHtml = playableNodeOut.out?.kind === 'text' ? playableNodeOut.out.text : ''
+    expect(compiledNodeHtml).toContain('Holy Nova')
+    expect(compiledNodeHtml).toContain('data:audio/wav;base64,')
+
+    const zipBytes = buildZipArchiveBytes([
+      { path: 'playable_build/index.html', data: '<html></html>' },
+      {
+        path: 'assets/sprites/pixel.png',
+        data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+      }
+    ])
+    // Verify PKZIP Local File Header signature (0x50, 0x4b, 0x03, 0x04)
+    expect(zipBytes[0]).toBe(0x50)
+    expect(zipBytes[1]).toBe(0x4b)
+    expect(zipBytes[2]).toBe(0x03)
+    expect(zipBytes[3]).toBe(0x04)
+    const zipDataUrl = buildZipArchiveDataUrl([{ path: 'README.txt', data: 'Indie Bundle' }])
+    expect(zipDataUrl.startsWith('data:application/zip;base64,UEsDB')).toBe(true)
   })
 })

@@ -1474,7 +1474,15 @@ export interface GraphNodeParams {
   /** 游戏节点（game.playable）：可玩原型标题 */
   gamePlayableTitle?: string
   /** 游戏节点（game.playable）：可玩原型玩法类型 */
-  gamePlayableGenre?: 'roguelike_action' | 'platformer' | 'dungeon_crawler' | 'tower_defense'
+  gamePlayableGenre?:
+    | 'roguelike_action'
+    | 'platformer'
+    | 'dungeon_crawler'
+    | 'tower_defense'
+    | 'card_dbg'
+    | 'avg_dialogue'
+  /** 游戏节点（game.playable）：在线编辑的自定义数值/卡牌/道具/波次/多语言配表覆写 */
+  gameCustomDataTables?: Record<string, Array<Record<string, string | number>>>
   /** 游戏节点（game.playable）：镜头视角规范 */
   gamePlayableCameraMode?: 'topdown_90' | 'topdown_34' | 'isometric_45' | 'side_view'
   /** 游戏节点（game.playable）：主角移速倍率（0.4..2.5，默认 1.0） */

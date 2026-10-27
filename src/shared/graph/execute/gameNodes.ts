@@ -825,6 +825,37 @@ export async function executeGamePlayableNode(
     }
   }
 
+  // Check incoming voice ports (`in-voice`) for BGM & SFX audio from `game.audioDsp`
+  const voiceInputs = [
+    ...(ctx.inputs['in-voice'] ?? []),
+    ...(ctx.inputs.in ?? []),
+    ...collectIncomingValues(ctx.inputs)
+  ]
+  const incomingVoiceItems = flattenVoicesValues(voiceInputs)
+  let bgmDataUrl: string | undefined
+  let sfxDataUrl: string | undefined
+  for (const vItem of incomingVoiceItems) {
+    const rel = vItem.relativePath?.trim()
+    let resolvedAudioUrl: string | undefined
+    if (rel && ctx.resolveProjectMediaUrl) {
+      resolvedAudioUrl = await ctx.resolveProjectMediaUrl(rel)
+    }
+    if (!resolvedAudioUrl && vItem.id && ctx.resolveAssetMediaUrl) {
+      resolvedAudioUrl = await ctx.resolveAssetMediaUrl(vItem.id)
+    }
+    if (!resolvedAudioUrl && rel?.startsWith('data:audio/')) {
+      resolvedAudioUrl = rel
+    }
+    if (!resolvedAudioUrl) continue
+    if (!bgmDataUrl && /loop|bgm|music/i.test(rel || vItem.id || '')) {
+      bgmDataUrl = resolvedAudioUrl
+    } else if (!sfxDataUrl) {
+      sfxDataUrl = resolvedAudioUrl
+    } else if (!bgmDataUrl) {
+      bgmDataUrl = resolvedAudioUrl
+    }
+  }
+
   // Check incoming text ports for Tiled .tmj JSON from game.levelMap
   const textInputs = [
     ...(ctx.inputs['in-text'] ?? []),
@@ -861,9 +892,13 @@ export async function executeGamePlayableNode(
   const mode: PlayableSandboxMode =
     genreRaw === 'tower_defense'
       ? 'tower_defense'
-      : genreRaw === 'platformer' || cameraRaw === 'side_view'
-        ? 'platformer'
-        : 'survivor'
+      : genreRaw === 'card_dbg'
+        ? 'card_dbg'
+        : genreRaw === 'avg_dialogue'
+          ? 'avg_dialogue'
+          : genreRaw === 'platformer' || cameraRaw === 'side_view'
+            ? 'platformer'
+            : 'survivor'
 
   if (!levelMap) {
     levelMap = generateProceduralLevelMap({
@@ -882,6 +917,24 @@ export async function executeGamePlayableNode(
   const title =
     ctx.node.params.gamePlayableTitle?.trim() || ctx.node.title?.trim() || 'Indie Game Prototype'
 
+  const customTables = ctx.node.params.gameCustomDataTables
+  const charRow0 = customTables?.characters?.[0]
+  const customPlayerMaxHp =
+    charRow0 && Number(charRow0.baseHp) > 0 ? Number(charRow0.baseHp) : undefined
+  const customPlayerBaseAtk =
+    charRow0 && Number(charRow0.baseAtk) > 0 ? Number(charRow0.baseAtk) : undefined
+  const customCards = Array.isArray(customTables?.cards)
+    ? customTables.cards.map((r, i) => ({
+        id: String(r.id ?? `card_${i + 1}`),
+        name: String(r.name ?? `Card ${i + 1}`),
+        cost: Number(r.cost ?? 1),
+        cardType: String(r.cardType ?? 'attack'),
+        damage: Number(r.damage ?? 12),
+        block: Number(r.block ?? 0),
+        description: String(r.description ?? '')
+      }))
+    : undefined
+
   const compiled = compilePlayableGameSandboxHtml({
     title,
     mode,
@@ -889,7 +942,12 @@ export async function executeGamePlayableNode(
     playerSpriteDataUrl,
     enemySpriteDataUrl,
     tileSpriteDataUrl,
+    bgmDataUrl,
+    sfxDataUrl,
     levelMap,
+    customPlayerMaxHp,
+    customPlayerBaseAtk,
+    customCards,
     moveSpeedScale: Number(ctx.node.params.gamePlayableMoveSpeed ?? 1.0),
     jumpDashScale: Number(ctx.node.params.gamePlayableJumpDash ?? 1.0),
     enemyAggroScale: Number(ctx.node.params.gamePlayableEnemyAggro ?? 1.0),
@@ -913,7 +971,8 @@ export async function executeGamePlayableNode(
   const spriteCount = [playerSpriteDataUrl, enemySpriteDataUrl, tileSpriteDataUrl].filter(
     Boolean
   ).length
-  const report = `${title} | ${genreRaw} (${cameraRaw}) | Map ${levelMap.width}x${levelMap.height} | Sprites: ${spriteCount} connected`
+  const audioCount = [bgmDataUrl, sfxDataUrl].filter(Boolean).length
+  const report = `${title} | ${genreRaw} (${cameraRaw}) | Map ${levelMap.width}x${levelMap.height} | Sprites: ${spriteCount} | Audio: ${audioCount}`
 
   const patchParams = {
     text: html,

@@ -550,6 +550,8 @@
               <option value="platformer">{{ t('gameNodes.playable.genrePlatformer') }}</option>
               <option value="dungeon_crawler">{{ t('gameNodes.playable.genreDungeon') }}</option>
               <option value="tower_defense">{{ t('gameNodes.playable.genreTowerDefense') }}</option>
+              <option value="card_dbg">{{ t('gameNodes.playable.genreCardDbg') }}</option>
+              <option value="avg_dialogue">{{ t('gameNodes.playable.genreAvgDialogue') }}</option>
             </select>
           </label>
 
@@ -658,6 +660,10 @@
 
           <button type="button" class="secondary-btn" @click="downloadPlayableHtml">
             {{ t('gameNodes.playable.downloadHtmlBtn') }}
+          </button>
+
+          <button type="button" class="secondary-btn" @click="exportFullEngineZipBundle">
+            {{ t('gameNodes.playable.exportZipBundleBtn') }}
           </button>
 
           <div v-if="node.params.gamePlayableReport" class="report-chip">
@@ -1500,14 +1506,66 @@
                       </option>
                       <option value="dialogues.json">AVG Branching Dialogue Tree (.json)</option>
                     </select>
+                    <button
+                      v-if="isSelectedTableInlineEditable"
+                      type="button"
+                      class="secondary-btn"
+                      @click="addDataTableRow"
+                    >
+                      {{ t('gameNodes.playable.addRowBtn') }}
+                    </button>
+                    <button
+                      v-if="isSelectedTableInlineEditable"
+                      type="button"
+                      class="secondary-btn"
+                      @click="resetDataTablesToDefault"
+                    >
+                      {{ t('gameNodes.playable.resetTableBtn') }}
+                    </button>
                     <button type="button" class="secondary-btn" @click="downloadActiveDataTableCsv">
                       {{ t('gameNodes.playable.downloadCsvBtn') }}
                     </button>
                     <button type="button" class="secondary-btn" @click="downloadLocalizationCsv">
                       {{ t('gameNodes.playable.downloadL10nBtn') }}
                     </button>
+                    <button type="button" class="action-btn" @click="exportFullEngineZipBundle">
+                      {{ t('gameNodes.playable.exportZipBundleBtn') }}
+                    </button>
                   </div>
                 </div>
+
+                <div v-if="isSelectedTableInlineEditable" class="data-grid-wrap">
+                  <table class="data-edit-table">
+                    <thead>
+                      <tr>
+                        <th v-for="col in editableDataColumns" :key="col">{{ col }}</th>
+                        <th>×</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, rIdx) in editableDataRows" :key="`row-${rIdx}`">
+                        <td v-for="col in editableDataColumns" :key="`cell-${rIdx}-${col}`">
+                          <input
+                            class="data-cell-input"
+                            :value="row[col] ?? ''"
+                            @change="onEditDataTableCell(rIdx, col, $event)"
+                          />
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            class="secondary-btn"
+                            :title="t('gameNodes.playable.deleteRowTip')"
+                            @click="removeDataTableRow(rIdx)"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
                 <pre class="code-viewer compact">{{ activeDataTableContent }}</pre>
               </div>
 
@@ -1582,6 +1640,7 @@ import {
   buildGameplaySystemsBundle,
   buildNineSliceManifest,
   buildSpritePhysicsManifest,
+  buildZipArchiveDataUrl,
   compilePlayableGameSandboxHtml,
   createProceduralMaterialTileRgba,
   decodeWavBytesToPcm,
@@ -2848,116 +2907,145 @@ const playableReloadSeq = ref(0)
 const playableIframeRef = ref<HTMLIFrameElement | null>(null)
 const autoWireDone = ref(false)
 
+const DEFAULT_DATA_TABLES = {
+  characters: [
+    {
+      id: 'hero_knight',
+      name: 'Vanguard Knight',
+      nameEn: 'Vanguard Knight',
+      nameJa: 'Vanguard Knight',
+      role: 'Tank / Melee',
+      hp: 150,
+      mp: 60,
+      atk: 24,
+      def: 16,
+      spd: 110,
+      critRate: 0.2,
+      spriteAsset: 'assets/sprites/hero_knight.png',
+      voiceAsset: 'assets/audio/sfx/attack_v1.wav',
+      description: 'Frontline cyber paladin with shield bash and blade wave.'
+    },
+    {
+      id: 'boss_lich',
+      name: 'Abyssal Archlich',
+      nameEn: 'Abyssal Archlich',
+      nameJa: 'Abyssal Archlich',
+      role: 'Dungeon Boss',
+      hp: 850,
+      mp: 300,
+      atk: 42,
+      def: 22,
+      spd: 90,
+      critRate: 0.25,
+      spriteAsset: 'assets/sprites/boss_lich.png',
+      description: 'Summons bone pillars and fires homing necrotic volleys.'
+    }
+  ],
+  skills: [
+    {
+      id: 'sk_plasma_slash',
+      name: 'Plasma Crescent',
+      element: 'lightning' as const,
+      manaCost: 15,
+      cooldownSec: 2.4,
+      damageMultiplier: 1.85,
+      vfxAsset: 'assets/vfx/plasma_slash.png',
+      sfxAsset: 'assets/audio/sfx/sword_slash.wav',
+      description: 'Unleashes a piercing arc dealing 185% lightning damage.'
+    },
+    {
+      id: 'sk_frost_turret',
+      name: 'Cryo Sentry Tower',
+      element: 'ice' as const,
+      manaCost: 40,
+      cooldownSec: 8.0,
+      damageMultiplier: 1.25,
+      vfxAsset: 'assets/vfx/frost_nova.png',
+      sfxAsset: 'assets/audio/sfx/laser_shoot.wav',
+      description: 'Deploys an automated turret that slows marching enemies.'
+    }
+  ],
+  cards: [
+    {
+      id: 'card_overcharge',
+      name: 'Overcharge Strike',
+      cost: 1,
+      cardType: 'attack' as const,
+      rarity: 'rare' as const,
+      damage: 14,
+      block: 0,
+      illustAsset: 'assets/ui/card_overcharge.png',
+      frameAsset: 'assets/ui/frame_rare_9slice.png',
+      description: 'Deal 14 damage. Draw 1 card if this triggers a Critical Hit.'
+    },
+    {
+      id: 'card_aegis_wall',
+      name: 'Aegis Bulwark',
+      cost: 2,
+      cardType: 'skill' as const,
+      rarity: 'legendary' as const,
+      damage: 0,
+      block: 18,
+      illustAsset: 'assets/ui/card_aegis.png',
+      frameAsset: 'assets/ui/frame_legendary_9slice.png',
+      description: 'Gain 18 Block and reflect 30% melee damage for 1 turn.'
+    }
+  ],
+  items: [
+    {
+      id: 'item_vampiric_core',
+      name: 'Vampiric Relic',
+      category: 'relic' as const,
+      rarity: 'legendary' as const,
+      price: 240,
+      stackLimit: 1,
+      iconAsset: 'assets/ui/icon_vampiric.png',
+      effect: 'Restore +3 HP whenever an enemy is defeated.'
+    }
+  ],
+  waves: [
+    { waveIndex: 1, durationSec: 30, spawnIntervalSec: 1.8, enemyId: 'slime_scout', count: 16 },
+    {
+      waveIndex: 2,
+      durationSec: 45,
+      spawnIntervalSec: 1.2,
+      enemyId: 'skeleton_raider',
+      count: 28,
+      eliteOrBossId: 'boss_lich'
+    }
+  ]
+}
+
+const resolvedCustomTables = computed(() => {
+  const custom = node.value?.params.gameCustomDataTables ?? {}
+  return {
+    characters: (custom.characters as typeof DEFAULT_DATA_TABLES.characters | undefined) ?? [
+      ...DEFAULT_DATA_TABLES.characters
+    ],
+    skills: (custom.skills as typeof DEFAULT_DATA_TABLES.skills | undefined) ?? [
+      ...DEFAULT_DATA_TABLES.skills
+    ],
+    cards: (custom.cards as typeof DEFAULT_DATA_TABLES.cards | undefined) ?? [
+      ...DEFAULT_DATA_TABLES.cards
+    ],
+    items: (custom.items as typeof DEFAULT_DATA_TABLES.items | undefined) ?? [
+      ...DEFAULT_DATA_TABLES.items
+    ],
+    waves: (custom.waves as typeof DEFAULT_DATA_TABLES.waves | undefined) ?? [
+      ...DEFAULT_DATA_TABLES.waves
+    ]
+  }
+})
+
 const playableDataTableBundle = computed(() =>
   buildGameDataTableBundle({
     tableName: node.value?.params.gamePlayableTitle || 'IndieGameDatabase',
     genre: node.value?.params.gamePlayableGenre || 'roguelike_action',
-    characters: [
-      {
-        id: 'hero_knight',
-        name: 'Vanguard Knight',
-        nameEn: 'Vanguard Knight',
-        nameJa: 'Vanguard Knight',
-        role: 'Tank / Melee',
-        hp: 150,
-        mp: 60,
-        atk: 24,
-        def: 16,
-        spd: 110,
-        critRate: 0.2,
-        spriteAsset: 'assets/sprites/hero_knight.png',
-        voiceAsset: 'assets/audio/sfx/attack_v1.wav',
-        description: 'Frontline cyber paladin with shield bash and blade wave.'
-      },
-      {
-        id: 'boss_lich',
-        name: 'Abyssal Archlich',
-        nameEn: 'Abyssal Archlich',
-        nameJa: 'Abyssal Archlich',
-        role: 'Dungeon Boss',
-        hp: 850,
-        mp: 300,
-        atk: 42,
-        def: 22,
-        spd: 90,
-        critRate: 0.25,
-        spriteAsset: 'assets/sprites/boss_lich.png',
-        description: 'Summons bone pillars and fires homing necrotic volleys.'
-      }
-    ],
-    skills: [
-      {
-        id: 'sk_plasma_slash',
-        name: 'Plasma Crescent',
-        element: 'lightning',
-        manaCost: 15,
-        cooldownSec: 2.4,
-        damageMultiplier: 1.85,
-        vfxAsset: 'assets/vfx/plasma_slash.png',
-        sfxAsset: 'assets/audio/sfx/sword_slash.wav',
-        description: 'Unleashes a piercing arc dealing 185% lightning damage.'
-      },
-      {
-        id: 'sk_frost_turret',
-        name: 'Cryo Sentry Tower',
-        element: 'ice',
-        manaCost: 40,
-        cooldownSec: 8.0,
-        damageMultiplier: 1.25,
-        vfxAsset: 'assets/vfx/frost_nova.png',
-        sfxAsset: 'assets/audio/sfx/laser_shoot.wav',
-        description: 'Deploys an automated turret that slows marching enemies.'
-      }
-    ],
-    cards: [
-      {
-        id: 'card_overcharge',
-        name: 'Overcharge Strike',
-        cost: 1,
-        cardType: 'attack',
-        rarity: 'rare',
-        damage: 14,
-        block: 0,
-        illustAsset: 'assets/ui/card_overcharge.png',
-        frameAsset: 'assets/ui/frame_rare_9slice.png',
-        description: 'Deal 14 damage. Draw 1 card if this triggers a Critical Hit.'
-      },
-      {
-        id: 'card_aegis_wall',
-        name: 'Aegis Bulwark',
-        cost: 2,
-        cardType: 'skill',
-        rarity: 'legendary',
-        damage: 0,
-        block: 18,
-        illustAsset: 'assets/ui/card_aegis.png',
-        frameAsset: 'assets/ui/frame_legendary_9slice.png',
-        description: 'Gain 18 Block and reflect 30% melee damage for 1 turn.'
-      }
-    ],
-    items: [
-      {
-        id: 'item_vampiric_core',
-        name: 'Vampiric Relic',
-        category: 'relic',
-        rarity: 'legendary',
-        price: 240,
-        stackLimit: 1,
-        iconAsset: 'assets/ui/icon_vampiric.png',
-        effect: 'Restore +3 HP whenever an enemy is defeated.'
-      }
-    ],
-    waves: [
-      { waveIndex: 1, durationSec: 30, spawnIntervalSec: 1.8, enemyId: 'slime_scout', count: 16 },
-      {
-        waveIndex: 2,
-        durationSec: 45,
-        spawnIntervalSec: 1.2,
-        enemyId: 'skeleton_raider',
-        count: 28,
-        eliteOrBossId: 'boss_lich'
-      }
-    ],
+    characters: resolvedCustomTables.value.characters,
+    skills: resolvedCustomTables.value.skills,
+    cards: resolvedCustomTables.value.cards,
+    items: resolvedCustomTables.value.items,
+    waves: resolvedCustomTables.value.waves,
     dialogues: [
       {
         id: 'dlg_intro_01',
@@ -3035,6 +3123,123 @@ const selectedDataTableKey = ref<
   | 'localization.csv'
   | 'dialogues.json'
 >('characters.csv')
+
+type EditableTableStem = 'characters' | 'skills' | 'cards' | 'items' | 'waves'
+
+const activeEditableTableStem = computed<EditableTableStem | null>(() => {
+  const k = selectedDataTableKey.value
+  if (k === 'characters.csv') return 'characters'
+  if (k === 'skills.csv') return 'skills'
+  if (k === 'cards.csv') return 'cards'
+  if (k === 'items.csv') return 'items'
+  if (k === 'waves.csv') return 'waves'
+  return null
+})
+
+const isSelectedTableInlineEditable = computed(() => activeEditableTableStem.value !== null)
+
+const editableDataRows = computed<Array<Record<string, string | number>>>(() => {
+  const stem = activeEditableTableStem.value
+  if (!stem) return []
+  return (
+    (resolvedCustomTables.value[stem] as unknown as Array<Record<string, string | number>>) ?? []
+  )
+})
+
+const editableDataColumns = computed<string[]>(() => {
+  const rows = editableDataRows.value
+  if (rows.length > 0) return Object.keys(rows[0]!)
+  const stem = activeEditableTableStem.value
+  if (!stem) return []
+  const fallback = DEFAULT_DATA_TABLES[stem][0] as unknown as Record<string, unknown>
+  return fallback ? Object.keys(fallback) : []
+})
+
+function broadcastPlayableDataTables(): void {
+  const win = playableIframeRef.value?.contentWindow
+  if (!win) return
+  const chars = resolvedCustomTables.value.characters
+  const cards = resolvedCustomTables.value.cards
+  const hero = chars[0]
+  win.postMessage(
+    {
+      type: 'aiart:playable-data',
+      payload: {
+        customPlayerMaxHp: hero ? Number(hero.hp || 100) : 100,
+        customPlayerBaseAtk: hero ? Number(hero.atk || 14) : 14,
+        customCards: cards.map((c) => ({
+          id: String(c.id),
+          name: String(c.name),
+          cost: Number(c.cost ?? 1),
+          cardType: String(c.cardType ?? 'attack'),
+          damage: Number(c.damage ?? 0),
+          block: Number(c.block ?? 0),
+          description: String(c.description ?? '')
+        }))
+      }
+    },
+    '*'
+  )
+}
+
+function saveEditableTableRows(
+  stem: EditableTableStem,
+  nextRows: Array<Record<string, string | number>>
+): void {
+  const existing = { ...(node.value?.params.gameCustomDataTables ?? {}) }
+  existing[stem] = nextRows
+  patchParams({ gameCustomDataTables: existing })
+  broadcastPlayableDataTables()
+}
+
+function onEditDataTableCell(rowIndex: number, col: string, event: Event): void {
+  const stem = activeEditableTableStem.value
+  if (!stem) return
+  const rawVal = (event.target as HTMLInputElement).value
+  const currentRows = editableDataRows.value.map((r) => ({ ...r }))
+  const targetRow = currentRows[rowIndex]
+  if (!targetRow) return
+  const prevVal = targetRow[col]
+  if (typeof prevVal === 'number') {
+    const num = Number(rawVal)
+    targetRow[col] = Number.isFinite(num) ? num : 0
+  } else {
+    targetRow[col] = rawVal
+  }
+  saveEditableTableRows(stem, currentRows)
+}
+
+function addDataTableRow(): void {
+  const stem = activeEditableTableStem.value
+  if (!stem) return
+  const currentRows = editableDataRows.value.map((r) => ({ ...r }))
+  const template =
+    currentRows[currentRows.length - 1] ??
+    (DEFAULT_DATA_TABLES[stem][0] as unknown as Record<string, string | number>)
+  const clone: Record<string, string | number> = { ...template }
+  if ('id' in clone) {
+    clone.id = `${stem.slice(0, 4)}_${currentRows.length + 1}`
+  }
+  if ('waveIndex' in clone) {
+    clone.waveIndex = currentRows.length + 1
+  }
+  currentRows.push(clone)
+  saveEditableTableRows(stem, currentRows)
+}
+
+function removeDataTableRow(rowIndex: number): void {
+  const stem = activeEditableTableStem.value
+  if (!stem) return
+  const currentRows = editableDataRows.value.map((r) => ({ ...r }))
+  if (currentRows.length <= 1) return
+  currentRows.splice(rowIndex, 1)
+  saveEditableTableRows(stem, currentRows)
+}
+
+function resetDataTablesToDefault(): void {
+  patchParams({ gameCustomDataTables: undefined })
+  broadcastPlayableDataTables()
+}
 
 const activeDataTableContent = computed(() => {
   const b = playableDataTableBundle.value
@@ -3318,6 +3523,19 @@ watch(
             break
           }
         }
+        if (!bgmUrl && !sfxUrl && srcNode.typeId === 'game.audioDsp') {
+          const modeDsp = srcNode.params.gameAudioDspMode ?? 'loop_bgm'
+          const synthPreset: GameAudioSynthPreset =
+            srcNode.params.gameAudioSynthPreset ??
+            (modeDsp === 'loop_bgm' ? 'chiptune_bgm' : 'sword_slash')
+          const synthPcm = synthesizeGameSeedPcm(synthPreset, 22050, {
+            durationScale: 0.7,
+            basePitchSemitones: Number(srcNode.params.gameAudioBasePitch ?? 0)
+          })
+          const wavUrl = encodePcmToWavDataUrl(synthPcm.channels, synthPcm.sampleRate)
+          if (modeDsp === 'loop_bgm') bgmUrl = wavUrl
+          else sfxUrl = wavUrl
+        }
       }
 
       if (srcNode.typeId === 'game.pbrTile') {
@@ -3369,12 +3587,9 @@ const playableUpstreamSummary = computed(() => {
   return `Sprites: ${info.spriteCount} · Level: ${info.hasUpstreamLevel ? 'Connected' : 'PCG'} · Audio: ${info.audioCount}`
 })
 
-function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = false): string {
+function buildPlayableHtmlFromNode(current: GraphNode | null): string {
   if (!current) return ''
   const info = playableUpstreamAssets.value
-  const hasUpstream = info.spriteCount > 0 || info.hasUpstreamLevel || info.audioCount > 0
-  const stored = current.params.gamePlayableHtml?.trim()
-  if (!ignoreStored && !hasUpstream && stored && stored.includes('<html')) return stored
   const alg = (current.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
   const seed = Number(current.params.gameLevelSeed ?? 42)
   const genreRaw = current.params.gamePlayableGenre ?? 'roguelike_action'
@@ -3382,9 +3597,13 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
   const mode =
     genreRaw === 'tower_defense'
       ? 'tower_defense'
-      : genreRaw === 'platformer' || cameraRaw === 'side_view'
-        ? 'platformer'
-        : 'survivor'
+      : genreRaw === 'card_dbg'
+        ? 'card_dbg'
+        : genreRaw === 'avg_dialogue'
+          ? 'avg_dialogue'
+          : genreRaw === 'platformer' || cameraRaw === 'side_view'
+            ? 'platformer'
+            : 'survivor'
   const levelMap =
     info.levelMap ??
     generateProceduralLevelMap({
@@ -3398,6 +3617,18 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
       height: 18,
       seed
     })
+  const chars = resolvedCustomTables.value.characters
+  const hero = chars[0]
+  const customCards = resolvedCustomTables.value.cards.map((c) => ({
+    id: String(c.id),
+    name: String(c.name),
+    cost: Number(c.cost ?? 1),
+    cardType: String(c.cardType ?? 'attack'),
+    damage: Number(c.damage ?? 0),
+    block: Number(c.block ?? 0),
+    description: String(c.description ?? '')
+  }))
+
   return compilePlayableGameSandboxHtml({
     title: current.params.gamePlayableTitle || 'Indie Game Prototype',
     mode,
@@ -3408,6 +3639,9 @@ function buildPlayableHtmlFromNode(current: GraphNode | null, ignoreStored = fal
     tileSpriteDataUrl: info.tileSpriteDataUrl,
     sfxDataUrl: info.sfxDataUrl,
     bgmDataUrl: info.bgmDataUrl,
+    customPlayerMaxHp: hero ? Number(hero.hp || 100) : 100,
+    customPlayerBaseAtk: hero ? Number(hero.atk || 14) : 14,
+    customCards,
     moveSpeedScale: Number(current.params.gamePlayableMoveSpeed ?? 1.0),
     jumpDashScale: Number(current.params.gamePlayableJumpDash ?? 1.0),
     enemyAggroScale: Number(current.params.gamePlayableEnemyAggro ?? 1.0),
@@ -3422,9 +3656,82 @@ const livePlayableHtml = computed(() => buildPlayableHtmlFromNode(node.value))
 function recompilePlayableNow(): void {
   const current = node.value
   if (!current) return
-  const html = buildPlayableHtmlFromNode(current, true)
+  const html = buildPlayableHtmlFromNode(current)
   patchParams({ gamePlayableHtml: html })
   playableReloadSeq.value += 1
+}
+
+function exportFullEngineZipBundle(): void {
+  const current = node.value
+  const bundleTitle = (current?.params.gamePlayableTitle || 'Indie_Game_Project_Bundle')
+    .trim()
+    .replace(/\s+/g, '_')
+  const dtb = playableDataTableBundle.value
+  const sys = playableSystemsBundle.value
+  const shaders = playableShaderBundle.value
+  const info = playableUpstreamAssets.value
+
+  const levelMap =
+    info.levelMap ??
+    generateProceduralLevelMap({
+      algorithm: (current?.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm,
+      width: 28,
+      height: 18,
+      seed: Number(current?.params.gameLevelSeed ?? 42)
+    })
+
+  const bmFont = buildBitmapFontManifest({
+    fontName: 'DamageNumbers',
+    atlasWidth: 256,
+    atlasHeight: 128
+  })
+  const autoTile = buildAutoTileAtlasManifest({
+    terrainName: 'DungeonTerrain',
+    layout: 'wang16',
+    tileWidth: 32,
+    tileHeight: 32
+  })
+
+  const entries: Array<{ path: string; data: string }> = [
+    { path: 'playable_build/index.html', data: livePlayableHtml.value },
+    { path: 'assets/levels/stage_01.tmj', data: levelMap.tiledTmjText },
+    { path: 'assets/data/characters.csv', data: dtb.tableCsvs['characters.csv'] },
+    { path: 'assets/data/skills.csv', data: dtb.tableCsvs['skills.csv'] },
+    { path: 'assets/data/cards.csv', data: dtb.tableCsvs['cards.csv'] },
+    { path: 'assets/data/items.csv', data: dtb.tableCsvs['items.csv'] },
+    { path: 'assets/data/waves.csv', data: dtb.tableCsvs['waves.csv'] },
+    { path: 'assets/data/localization.csv', data: dtb.localizationCsv },
+    { path: 'assets/data/dialogues.json', data: JSON.stringify(dtb.dialogues, null, 2) },
+    { path: 'assets/data/systems-graph.json', data: sys.jsonText },
+    { path: 'assets/data/systems-graph.mmd', data: sys.mermaidDiagram },
+    { path: 'assets/tilesets/autotile-wang16.json', data: JSON.stringify(autoTile, null, 2) },
+    { path: 'assets/fonts/DamageNumbers.fnt', data: bmFont.fntText },
+    { path: 'importers/godot4_import_bundle.gd', data: activePlayableImporterCode.value }
+  ]
+
+  for (const sh of shaders.shaders) {
+    entries.push({ path: `shaders/godot4/${sh.id}.gdshader`, data: sh.godotGdShader })
+    entries.push({ path: `shaders/unity/${sh.id}.shader`, data: sh.unityShaderLab })
+  }
+
+  if (info.playerSpriteDataUrl) {
+    entries.push({ path: 'assets/sprites/hero_sprite.png', data: info.playerSpriteDataUrl })
+  }
+  if (info.enemySpriteDataUrl) {
+    entries.push({ path: 'assets/sprites/enemy_sprite.png', data: info.enemySpriteDataUrl })
+  }
+  if (info.tileSpriteDataUrl) {
+    entries.push({ path: 'assets/tilesets/seamless_albedo.png', data: info.tileSpriteDataUrl })
+  }
+  if (info.bgmDataUrl) {
+    entries.push({ path: 'assets/audio/bgm/stage_loop.wav', data: info.bgmDataUrl })
+  }
+  if (info.sfxDataUrl) {
+    entries.push({ path: 'assets/audio/sfx/attack_v1.wav', data: info.sfxDataUrl })
+  }
+
+  const zipDataUrl = buildZipArchiveDataUrl(entries)
+  downloadDataUrlFile(zipDataUrl, `${bundleTitle}.zip`)
 }
 </script>
 
@@ -4216,5 +4523,50 @@ function recompilePlayableNow(): void {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.data-grid-wrap {
+  overflow-x: auto;
+  max-height: 220px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+  margin-bottom: 8px;
+}
+
+.data-edit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-edit-table th,
+.data-edit-table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-edit-table th {
+  background: var(--panel);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.data-cell-input {
+  width: 100%;
+  min-width: 72px;
+  padding: 3px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.data-cell-input:focus {
+  outline: none;
+  border-color: var(--accent);
 }
 </style>
