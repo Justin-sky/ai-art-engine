@@ -21,18 +21,24 @@ import { useI18n } from 'vue-i18n'
 import {
   analyzeMultiplierPipeline,
   createMxWorkbenchPreset,
+  exportMxCommercialQaReportMarkdown,
   exportWorkbenchToGameDataTables,
   MX_WORKBENCH_PRESETS,
+  runMxArchetypeBalanceMatrix,
   runMxCombatKernelSimulation,
+  runMxCommercialCohortAnalysis,
   runMxDeckRemovalRoiAnalysis,
   runMxEncounterCounterMatrix,
   runMxLootAndSubstatSimulation,
   runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
+  solveMxCombatTargetGoalSeek,
+  solveMxEnvelopeTargetGoalSeek,
   type MxCombatKernelKind,
   type MxEnemyMechanismKind,
   type MxLootRollMode,
   type MxNumericalWorkbench,
+  type MxRelicTriggerPreset,
   type MxWorkbenchPresetId
 } from '@shared/gameAssets'
 import { useMxStudioStore } from './mxStudioStore'
@@ -166,18 +172,73 @@ function setLootMode(m: MxLootRollMode): void {
   }, 'wbLootMode')
 }
 
+const debouncedCombatKernel = ref(wb.value.combatKernel)
+const debouncedLootRoll = ref(wb.value.lootRoll)
+let matrixDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(
+  () => [wb.value.combatKernel, wb.value.lootRoll] as const,
+  ([ck, lr]) => {
+    if (matrixDebounceTimer) clearTimeout(matrixDebounceTimer)
+    matrixDebounceTimer = setTimeout(() => {
+      debouncedCombatKernel.value = ck
+      debouncedLootRoll.value = lr
+    }, 120)
+  },
+  { deep: true, immediate: true }
+)
+
 const combatRes = computed(() => runMxCombatKernelSimulation(wb.value.combatKernel))
-const counterMatrixRes = computed(() => runMxEncounterCounterMatrix(wb.value.combatKernel))
-const deckRemovalRoiRes = computed(() => runMxDeckRemovalRoiAnalysis(wb.value.combatKernel))
+const counterMatrixRes = computed(() => runMxEncounterCounterMatrix(debouncedCombatKernel.value))
+const deckRemovalRoiRes = computed(() => runMxDeckRemovalRoiAnalysis(debouncedCombatKernel.value))
+const archetypeMatrixRes = computed(() => runMxArchetypeBalanceMatrix(debouncedCombatKernel.value))
 const envelopeRes = computed(() => runMxRoguelikeEnvelopeSimulation(wb.value.roguelikeEnvelope))
 const multRes = computed(() => analyzeMultiplierPipeline(wb.value.multiplier, 12))
 const lootRes = computed(() => runMxLootAndSubstatSimulation(wb.value.lootRoll))
-const poolDilutionRes = computed(() => runMxPoolDilutionAnalysis(wb.value.lootRoll))
+const poolDilutionRes = computed(() => runMxPoolDilutionAnalysis(debouncedLootRoll.value))
+const commercialCohortRes = computed(() => runMxCommercialCohortAnalysis(debouncedLootRoll.value))
+
+const goalSeekWinRate = ref(75)
+const goalSeekClearRate = ref(25)
 
 function setEnemyMechanism(mech: MxEnemyMechanismKind): void {
   mutateWb((w) => {
     w.combatKernel.enemyMechanism = mech
   }, 'wbEnemyMech')
+}
+
+function setRelicTriggerPreset(preset: MxRelicTriggerPreset): void {
+  mutateWb((w) => {
+    w.combatKernel.relicTriggerPreset = preset
+  }, 'wbRelicPreset')
+}
+
+function runCombatGoalSeek(): void {
+  const solved = solveMxCombatTargetGoalSeek(wb.value.combatKernel, goalSeekWinRate.value)
+  mutateWb((w) => {
+    if (w.combatKernel.kernel === 'deck_cycle') {
+      w.combatKernel.enemyHp = solved.recommendedEnemyHp
+    } else if (w.combatKernel.kernel === 'mana_tempo') {
+      w.combatKernel.opponentHp = solved.recommendedEnemyHp
+    } else {
+      w.combatKernel.targetEnemyHp = solved.recommendedEnemyHp
+    }
+  }, 'wbCombatGoalSeek')
+  bridgeFeedback.value = L(
+    `🎯 逆向求解完成：目标胜率 ${solved.targetWinRatePct}% → 敌方血量 ${solved.previousEnemyHp} ➔ ${solved.recommendedEnemyHp} (实测胜率 ${solved.achievedWinRatePct}%, TTK ${solved.achievedTtkP50}T)`, // cjk-ok
+    `🎯 Goal-Seek solved: Target Win ${solved.targetWinRatePct}% → Enemy HP ${solved.previousEnemyHp} ➔ ${solved.recommendedEnemyHp} (Actual ${solved.achievedWinRatePct}%, TTK ${solved.achievedTtkP50}T)`
+  )
+}
+
+function runEnvelopeGoalSeek(): void {
+  const solved = solveMxEnvelopeTargetGoalSeek(wb.value.roguelikeEnvelope, goalSeekClearRate.value)
+  mutateWb((w) => {
+    w.roguelikeEnvelope.enemyGrowthRate = solved.recommendedGrowthRate
+  }, 'wbEnvelopeGoalSeek')
+  bridgeFeedback.value = L(
+    `🎯 逆向求解完成：目标首通率 ${solved.targetClearRatePct}% → 怪物膨胀率 ${solved.previousGrowthRate}x ➔ ${solved.recommendedGrowthRate}x (实测首通 ${solved.achievedClearRatePct}%)`, // cjk-ok
+    `🎯 Goal-Seek solved: Target Clear ${solved.targetClearRatePct}% → Enemy Growth ${solved.previousGrowthRate}x ➔ ${solved.recommendedGrowthRate}x (Actual ${solved.achievedClearRatePct}%)`
+  )
 }
 
 function exportFullGameDataTables(): void {
@@ -195,6 +256,24 @@ function exportFullGameDataTables(): void {
   bridgeFeedback.value = L(
     `📦 已导出配表工程包 (cards:${bundle.cards.length} / waves:${bundle.waves.length} / items:${bundle.items.length}) 并复制卡牌 CSV`, // cjk-ok
     `📦 Exported Game Data Tables bundle (cards:${bundle.cards.length} / waves:${bundle.waves.length} / items:${bundle.items.length})`
+  )
+}
+
+function exportCommercialQaReport(): void {
+  const md = exportMxCommercialQaReportMarkdown(wb.value)
+  const blob = new Blob([md], {
+    type: 'text/markdown;charset=utf-8;'
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(wb.value.multiplier.title || wb.value.activePresetId || 'game').replace(/\s+/g, '-')}-commercial-qa-report.md`
+  a.click()
+  URL.revokeObjectURL(url)
+  navigator.clipboard?.writeText(md).catch(() => {})
+  bridgeFeedback.value = L(
+    `📋 已导出商业数值立项与 QA 签收审计报告 (.md) 并复制到剪贴板`, // cjk-ok
+    `📋 Exported Commercial Numerical QA Audit Report (.md) & copied to clipboard`
   )
 }
 
@@ -280,8 +359,8 @@ const customManaColName = ref('')
 const newAuditColName = ref('')
 const newAuditColWeight = ref(2)
 const actionBarRightView = ref<'units' | 'timeline'>('units')
-const deckRightView = ref<'cards' | 'counter_matrix' | 'removal_roi'>('cards')
-const lootRightView = ref<'histogram' | 'dilution'>('histogram')
+const deckRightView = ref<'cards' | 'counter_matrix' | 'removal_roi' | 'archetype_meta'>('cards')
+const lootRightView = ref<'histogram' | 'dilution' | 'commercial_cohorts'>('histogram')
 const newMultAttrName = ref('')
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const jsonFileInputRef = ref<HTMLInputElement | null>(null)
@@ -1611,7 +1690,44 @@ const uiText = computed(() => ({
   rerollsWave: L('每波商店刷新次数', 'Rerolls / Wave'), // cjk-ok
   attemptsP50: L('中位达成次数 P50 (P10~P90)', 'Attempts P50 (P10~P90)'), // cjk-ok
   expectedCost: L('中位消耗资源 P50 (均值)', 'Expected Cost P50 (Mean)'), // cjk-ok
-  hitRate: L('单胚子/整局达成率', 'Success / Hit Rate') // cjk-ok
+  hitRate: L('单胚子/整局达成率', 'Success / Hit Rate'), // cjk-ok
+  relicTriggers: L('被动遗物钩子', 'Relic Triggers'), // cjk-ok
+  relicNone: L('无遗物钩子', 'None'), // cjk-ok
+  relicShuriken: L('手里剑+苦无 (3攻+1力4甲)', 'Shuriken + Kunai'), // cjk-ok
+  relicNecro: L('死灵之书 (首张≥2费双发)', 'Necronomicon 2x'), // cjk-ok
+  relicBranch: L('枯木树枝 (消耗即衍生)', 'Dead Branch'), // cjk-ok
+  relicAll: L('全遗物协同开启', 'All Relics Active'), // cjk-ok
+  goalSeekTitle: L('逆向目标求解 (CRN二分)', 'Reverse Goal-Seek'), // cjk-ok
+  targetWinPct: L('目标胜率%', 'Target Win%'), // cjk-ok
+  solveEnemyHp: L('反推敌方血量', 'Solve Enemy HP'), // cjk-ok
+  targetClearPct: L('目标首通率%', 'Target Clear%'), // cjk-ok
+  solveGrowthRate: L('反推怪物膨胀率', 'Solve Growth Rate'), // cjk-ok
+  exportQaReportBtn: L('导出QA审计报告', 'Export QA Report'), // cjk-ok
+  exportQaReportTip: L(
+    '一键生成完整的商业数值立项与QA签收审计报告 (.md)，含4层全链路指标、多流派多样性与付费分层留存表', // cjk-ok
+    'Export executive Markdown Commercial Numerical QA Audit Report covering all 4 layers'
+  ),
+  tabArchetypeMeta: L('4流派天梯多样性', '4-Build Meta Matrix'), // cjk-ok
+  colArchetype: L('流派构筑模型', 'Build Archetype'), // cjk-ok
+  colMetaShare: L('预估天梯占比%', 'Meta Share %'), // cjk-ok
+  colTier: L('强度梯度', 'Tier'), // cjk-ok
+  metaScoreLabel: L('天梯流派百花齐放指数 (Shannon):', 'Meta Diversity Score (Shannon):'), // cjk-ok
+  metaHealthy: L('百花齐放 (健康)', 'Meta Healthy'), // cjk-ok
+  metaMonopoly: L('T0单流派垄断!', 'Tier-0 Monopoly!'), // cjk-ok
+  metaOvertuned: L('数值膨胀全坐牢!', 'Boss Overtuned!'), // cjk-ok
+  tabCommercialCohort: L('商业付费分层遥测', 'Commercial Cohorts'), // cjk-ok
+  colCohort: L('玩家付费分层', 'Player Cohort'), // cjk-ok
+  colSpend: L('月均付费$', 'Monthly $'), // cjk-ok
+  colDailyTries: L('日均获取', 'Daily Tries'), // cjk-ok
+  colGradDays: L('中位/非酋毕业天数', 'P50 / P90 Days'), // cjk-ok
+  colDay30Rate: L('首月30天毕业率%', '30d Grad %'), // cjk-ok
+  colChurnRisk: L('非酋流失风险', 'Churn Risk'), // cjk-ok
+  riskLow: L('留存健康', 'Low Risk'), // cjk-ok
+  riskMod: L('中度卡点', 'Moderate'), // cjk-ok
+  riskHigh: L('高危劝退!', 'High Churn!'), // cjk-ok
+  pityElasticityLbl: L('保底付费转化弹性:', 'Pity Elasticity:'), // cjk-ok
+  whaleRatioLbl: L('重氪/零氪首月进度比:', 'Whale/F2P 30d Ratio:'), // cjk-ok
+  blendedArpuLbl: L('预估月均ARPU:', 'Est. Monthly ARPU:') // cjk-ok
 }))
 </script>
 
@@ -1904,6 +2020,14 @@ const uiText = computed(() => ({
           </button>
           <button
             type="button"
+            class="mx-wb-mini-btn"
+            :title="uiText.exportQaReportTip"
+            @click="exportCommercialQaReport"
+          >
+            📋 {{ uiText.exportQaReportBtn }}
+          </button>
+          <button
+            type="button"
             class="mx-wb-sync-btn"
             :title="uiText.syncTip"
             @click="syncToMacroGraph"
@@ -2041,6 +2165,24 @@ const uiText = computed(() => ({
               <!-- cjk-ok -->
             </select>
           </label>
+          <label class="mx-wb-field">
+            <span>{{ uiText.relicTriggers }}</span>
+            <select
+              class="mx-wb-select"
+              :value="wb.combatKernel.relicTriggerPreset ?? 'none'"
+              @change="
+                setRelicTriggerPreset(
+                  ($event.target as HTMLSelectElement).value as MxRelicTriggerPreset
+                )
+              "
+            >
+              <option value="none">{{ uiText.relicNone }}</option>
+              <option value="shuriken_kunai">{{ uiText.relicShuriken }}</option>
+              <option value="necronomicon">{{ uiText.relicNecro }}</option>
+              <option value="dead_branch">{{ uiText.relicBranch }}</option>
+              <option value="all_synergy">{{ uiText.relicAll }}</option>
+            </select>
+          </label>
         </div>
 
         <div v-else-if="wb.combatKernel.kernel === 'mana_tempo'" class="mx-wb-param-grid">
@@ -2153,6 +2295,24 @@ const uiText = computed(() => ({
               "
             />
           </label>
+        </div>
+
+        <!-- 逆向目标求解器（Reverse Goal-Seek） -->
+        <div class="mx-wb-table-toolbar" style="margin-bottom: 4px">
+          <span class="mx-wb-tbl-title">🎯 {{ uiText.goalSeekTitle }}</span>
+          <div class="mx-wb-toolbar-btns">
+            <span style="font-size: 10px; color: var(--text-muted)">{{ uiText.targetWinPct }}</span>
+            <input
+              v-model.number="goalSeekWinRate"
+              type="number"
+              min="5"
+              max="98"
+              class="mx-wb-cell-input is-narrow"
+            />
+            <button type="button" class="mx-wb-mini-btn is-accent" @click="runCombatGoalSeek">
+              ⚡ {{ uiText.solveEnemyHp }}
+            </button>
+          </div>
         </div>
 
         <!-- KPI 摘要卡片 -->
@@ -2531,6 +2691,14 @@ const uiText = computed(() => ({
                 ✂ {{ L('删牌精简与定价ROI', 'Card Removal ROI') }}
                 <!-- cjk-ok -->
               </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'archetype_meta' }"
+                @click="deckRightView = 'archetype_meta'"
+              >
+                ⚖ {{ uiText.tabArchetypeMeta }}
+              </button>
             </div>
             <div v-if="deckRightView === 'cards'" class="mx-wb-toolbar-btns">
               <select
@@ -2757,7 +2925,7 @@ const uiText = computed(() => ({
           </table>
 
           <!-- 删牌精简 & 诅咒污染边际收益与商店删牌定价表 -->
-          <table v-else class="mx-wb-table">
+          <table v-else-if="deckRightView === 'removal_roi'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>{{ L('牌库精简/污染档位', 'Deck Thinning / Curse') }}</th>
@@ -2799,6 +2967,79 @@ const uiText = computed(() => ({
               </tr>
             </tbody>
           </table>
+
+          <!-- 商业产品级：4流派天梯多样性与生态平衡矩阵 -->
+          <div v-else>
+            <div class="mx-wb-table-toolbar" style="margin-bottom: 4px">
+              <span class="mx-wb-tbl-title">
+                {{ uiText.metaScoreLabel }}
+                <strong class="mx-mono">{{ archetypeMatrixRes.metaDiversityScore }}/100</strong>
+              </span>
+              <span
+                class="mx-wb-tag"
+                :class="
+                  archetypeMatrixRes.verdict === 'meta_healthy'
+                    ? 'is-good'
+                    : archetypeMatrixRes.verdict === 'tier0_monopoly'
+                      ? 'is-warn'
+                      : 'is-bad'
+                "
+              >
+                {{
+                  archetypeMatrixRes.verdict === 'meta_healthy'
+                    ? uiText.metaHealthy
+                    : archetypeMatrixRes.verdict === 'tier0_monopoly'
+                      ? uiText.metaMonopoly
+                      : uiText.metaOvertuned
+                }}
+              </span>
+            </div>
+            <table class="mx-wb-table">
+              <thead>
+                <tr>
+                  <th>{{ uiText.colArchetype }}</th>
+                  <th>Win %</th>
+                  <th>TTK P50</th>
+                  <th>HP Loss</th>
+                  <th>{{ uiText.colMetaShare }}</th>
+                  <th>{{ uiText.colTier }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="arc in archetypeMatrixRes.rows"
+                  :key="arc.archetypeId"
+                  :class="{
+                    'is-best-row': arc.archetypeId === 'current_custom',
+                    'is-warn-row': arc.tier === 'T0_dominant',
+                    'is-enemy-row': arc.tier === 'T3_unplayable'
+                  }"
+                >
+                  <td>
+                    <strong>{{ isZh ? arc.nameZh : arc.nameEn }}</strong>
+                  </td>
+                  <td class="mx-mono">{{ arc.winRatePct }}%</td>
+                  <td class="mx-mono">{{ arc.ttkP50 }}T</td>
+                  <td class="mx-mono">-{{ arc.avgHpLoss }}</td>
+                  <td class="mx-mono">{{ arc.metaSharePct }}%</td>
+                  <td>
+                    <span
+                      class="mx-wb-tag"
+                      :class="
+                        arc.tier === 'T1_viable'
+                          ? 'is-good'
+                          : arc.tier === 'T0_dominant' || arc.tier === 'T2_niche'
+                            ? 'is-warn'
+                            : 'is-bad'
+                      "
+                    >
+                      {{ arc.tier }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div v-else>
@@ -3140,6 +3381,26 @@ const uiText = computed(() => ({
               "
             />
           </label>
+        </div>
+
+        <!-- 肉鸽包络逆向目标求解器 -->
+        <div class="mx-wb-table-toolbar" style="margin-bottom: 4px">
+          <span class="mx-wb-tbl-title">🎯 {{ uiText.goalSeekTitle }}</span>
+          <div class="mx-wb-toolbar-btns">
+            <span style="font-size: 10px; color: var(--text-muted)">{{
+              uiText.targetClearPct
+            }}</span>
+            <input
+              v-model.number="goalSeekClearRate"
+              type="number"
+              min="5"
+              max="95"
+              class="mx-wb-cell-input is-narrow"
+            />
+            <button type="button" class="mx-wb-mini-btn is-accent" @click="runEnvelopeGoalSeek">
+              ⚡ {{ uiText.solveGrowthRate }}
+            </button>
+          </div>
         </div>
 
         <div class="mx-wb-kpi-strip">
@@ -4081,6 +4342,14 @@ const uiText = computed(() => ({
               🧪 {{ L('扩池稀释与Ban位补偿表', 'Pool Dilution & Ban-Slot Matrix') }}
               <!-- cjk-ok -->
             </button>
+            <button
+              type="button"
+              class="mx-wb-mini-btn"
+              :class="{ 'is-accent': lootRightView === 'commercial_cohorts' }"
+              @click="lootRightView = 'commercial_cohorts'"
+            >
+              💰 {{ uiText.tabCommercialCohort }}
+            </button>
           </div>
         </div>
         <table v-if="lootRightView === 'histogram'" class="mx-wb-table">
@@ -4108,7 +4377,7 @@ const uiText = computed(() => ({
             </tr>
           </tbody>
         </table>
-        <table v-else class="mx-wb-table">
+        <table v-else-if="lootRightView === 'dilution'" class="mx-wb-table">
           <thead>
             <tr>
               <th>{{ L('流派池总数', 'Archetypes') }}</th>
@@ -4168,6 +4437,72 @@ const uiText = computed(() => ({
             </tr>
           </tbody>
         </table>
+        <!-- 商业产品级：玩家付费分层（F2P/小R/中R/大R）留存卡点与毕业周期遥测表 -->
+        <div v-else>
+          <div class="mx-wb-table-toolbar" style="margin-bottom: 4px">
+            <span class="mx-wb-tbl-title">
+              {{ uiText.pityElasticityLbl }}
+              <strong class="mx-mono">{{ commercialCohortRes.pityElasticityScore }}/100</strong>
+              · {{ uiText.whaleRatioLbl }}
+              <strong class="mx-mono">{{ commercialCohortRes.whaleToF2pProgressRatio }}x</strong>
+              · {{ uiText.blendedArpuLbl }}
+              <strong class="mx-mono">${{ commercialCohortRes.estimatedBlendedArpuUsd }}</strong>
+            </span>
+          </div>
+          <table class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colCohort }}</th>
+                <th>{{ uiText.colSpend }}</th>
+                <th>{{ uiText.colDailyTries }}</th>
+                <th>{{ uiText.colGradDays }}</th>
+                <th>{{ uiText.colDay30Rate }}</th>
+                <th>{{ uiText.colChurnRisk }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="c in commercialCohortRes.cohorts"
+                :key="c.cohortId"
+                :class="{
+                  'is-best-row': c.cohortId === 'minnow_pass',
+                  'is-warn-row': c.frustrationChokeRisk === 'moderate',
+                  'is-enemy-row': c.frustrationChokeRisk === 'high_churn'
+                }"
+              >
+                <td>
+                  <strong>{{ isZh ? c.nameZh : c.nameEn }}</strong>
+                </td>
+                <td class="mx-mono">${{ c.monthlySpendUsd }}</td>
+                <td class="mx-mono">{{ c.dailyAttempts }}/d</td>
+                <td class="mx-mono">{{ c.daysToGraduateP50 }}d / {{ c.daysToGraduateP90 }}d</td>
+                <td class="mx-mono">
+                  <strong>{{ c.day30GraduationRatePct }}%</strong>
+                </td>
+                <td>
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      c.frustrationChokeRisk === 'low'
+                        ? 'is-good'
+                        : c.frustrationChokeRisk === 'moderate'
+                          ? 'is-warn'
+                          : 'is-bad'
+                    "
+                  >
+                    {{
+                      c.frustrationChokeRisk === 'low'
+                        ? uiText.riskLow
+                        : c.frustrationChokeRisk === 'moderate'
+                          ? uiText.riskMod
+                          : uiText.riskHigh
+                    }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>

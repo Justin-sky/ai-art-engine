@@ -82,16 +82,23 @@ import {
   parseMxDocumentJson,
   type PbrMaterialPreset,
   renderMxPreviewRgba,
+  runMxArchetypeBalanceMatrix,
   runMxCombatKernelSimulation,
+  runMxCommercialCohortAnalysis,
+  runMxDeckRemovalRoiAnalysis,
+  runMxEncounterCounterMatrix,
   runMxForecast,
   runMxLootAndSubstatSimulation,
+  runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
   runMxSimulation,
   synthesizeMxDiagramFromPrompt,
+  exportMxCommercialQaReportMarkdown,
   exportMxForecastCsv,
   exportMxGodotGd,
   exportMxToMermaid,
-  exportMxUnityCs
+  exportMxUnityCs,
+  exportWorkbenchToGameDataTables
 } from '../../gameAssets'
 import {
   dualVoiceGalleryOutputs,
@@ -2429,6 +2436,33 @@ export async function executeGameEconomyNode(
     runs: Math.min(300, runs * 4),
     seed
   })
+  const wbCounterMatrix = runMxEncounterCounterMatrix({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbDeckRemovalRoi = runMxDeckRemovalRoiAnalysis({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbPoolDilution = runMxPoolDilutionAnalysis({
+    ...wb.lootRoll,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbArchetypeBalance = runMxArchetypeBalanceMatrix({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbCommercialCohorts = runMxCommercialCohortAnalysis({
+    ...wb.lootRoll,
+    runs: Math.min(180, runs * 3),
+    seed
+  })
+  const wbQaReportMarkdown = exportMxCommercialQaReportMarkdown(wb)
+  const wbDataTables = exportWorkbenchToGameDataTables(wb)
   const rendered = renderMxPreviewRgba(doc, forecast, 640, 400)
   const previewDataUrl = await encodeRgbaWithCtx(
     ctx,
@@ -2492,8 +2526,17 @@ export async function executeGameEconomyNode(
         multiplier: wbMultiplier,
         lootRoll: wbLoot,
         combatKernel: wbCombat,
-        roguelikeEnvelope: wbEnvelope
+        roguelikeEnvelope: wbEnvelope,
+        counterMatrix: wbCounterMatrix,
+        deckRemovalRoi: wbDeckRemovalRoi,
+        poolDilution: wbPoolDilution,
+        archetypeBalance: wbArchetypeBalance,
+        commercialCohorts: wbCommercialCohorts,
+        qaReportMarkdown: wbQaReportMarkdown,
+        dataTableBundle: wbDataTables
       },
+      qaReportMarkdown: wbQaReportMarkdown,
+      dataTableBundle: wbDataTables,
       mermaidDiagram: exportMxToMermaid(doc),
       telemetryCsv: exportMxForecastCsv(doc, forecast),
       godotEconomyScriptGd: exportMxGodotGd(doc),

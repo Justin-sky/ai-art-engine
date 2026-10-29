@@ -23,24 +23,33 @@ import {
   createEmptyMxDocument,
   createMxNode,
   createMachinationsPresetDiagram,
+  exportMxCommercialQaReportMarkdown,
   exportMxGodotGd,
   exportMxUnityCs,
   exportWorkbenchToGameDataTables,
   createMxWorkbenchPreset,
+  runMxArchetypeBalanceMatrix,
+  runMxCombatKernelSimulation,
+  runMxCommercialCohortAnalysis,
   runMxDeckRemovalRoiAnalysis,
   runMxEncounterCounterMatrix,
   runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
+  solveMxCombatTargetGoalSeek,
+  solveMxEnvelopeTargetGoalSeek,
   generateMxAgentWithAi,
   runMxAgentArena,
   suggestMxAgentGoalsWithAi,
-  type MxDocument
+  type MxDocument,
+  type MxNode
 } from '../src/shared/gameAssets'
 import {
   createNodeFromType,
   executeGameEconomyNode,
+  executeGamePlayAssetNode,
   introspectNodeType,
-  mergeSmartNodeParams
+  mergeSmartNodeParams,
+  type NodeExecuteContext
 } from '../src/shared/graph'
 
 describe('Machinations v2 expression & formula parsing', () => {
@@ -894,10 +903,10 @@ describe('Machinations v2 simulation', () => {
       get abortSignal() {
         return new AbortController().signal
       }
-    } as any)
+    } as unknown as NodeExecuteContext)
     expect(out1.out?.kind).toBe('image')
     expect(out1['out-text']?.kind).toBe('text')
-    const bundle1 = JSON.parse((out1['out-text'] as any).text)
+    const bundle1 = JSON.parse((out1['out-text'] as { text: string }).text)
     expect(bundle1.kind).toBe('machinations_economy_bundle')
     expect(bundle1.document.agents.length).toBeGreaterThanOrEqual(1)
     // Because the auto-attached AI Agent clicked `Forge Blade` (`craft_1`), `blade_1` increased above 0!
@@ -922,11 +931,11 @@ describe('Machinations v2 simulation', () => {
       get abortSignal() {
         return new AbortController().signal
       }
-    } as any)
-    const bundle2 = JSON.parse((out2['out-text'] as any).text)
+    } as unknown as NodeExecuteContext)
+    const bundle2 = JSON.parse((out2['out-text'] as { text: string }).text)
     expect(bundle2.document.templateId).toBe('gacha_pity_banner')
     expect(bundle2.forecast.steps).toBe(25)
-    expect(bundle2.document.nodes.some((n: any) => n.kind === 'gate')).toBe(true)
+    expect(bundle2.document.nodes.some((n: MxNode) => n.kind === 'gate')).toBe(true)
   })
 
   it('verifies all 6 advanced Roguelike numerical capabilities (Counter Matrix, Deck Removal ROI, Pool Dilution & Ban, Branching Map + Interest, DataTable Export)', () => {
@@ -985,5 +994,95 @@ describe('Machinations v2 simulation', () => {
     expect(dataBundle.items.length).toBeGreaterThan(0)
     expect(dataBundle.characters.length).toBeGreaterThan(0)
     expect(dataBundle.tableCsvs['cards.csv']).toContain('id,name')
+  })
+
+  it('verifies CRN monotonicity, Relic Passive Trigger Hooks, Reverse Goal-Seek, Commercial Archetype/Cohort/QA Report & game.economy -> asset.gamePlay wiring', async () => {
+    const wb = createMxWorkbenchPreset('slay_the_spire_dbg')
+
+    // 1. Common Random Numbers (CRN) monotonicity: lowering enemyHp must never lower winRatePct
+    const highHpRes = runMxCombatKernelSimulation({
+      ...wb.combatKernel,
+      runs: 120,
+      enemyHp: 220,
+      relicTriggerPreset: 'none'
+    })
+    const lowHpRes = runMxCombatKernelSimulation({
+      ...wb.combatKernel,
+      runs: 120,
+      enemyHp: 170,
+      relicTriggerPreset: 'none'
+    })
+    expect(lowHpRes.winRatePct).toBeGreaterThanOrEqual(highHpRes.winRatePct)
+
+    // 2. Relic Passive Trigger Hooks (shuriken_kunai / necronomicon / dead_branch / all_synergy)
+    const allRelicsRes = runMxCombatKernelSimulation({
+      ...wb.combatKernel,
+      runs: 120,
+      enemyHp: 220,
+      relicTriggerPreset: 'all_synergy'
+    })
+    expect(allRelicsRes.winRatePct).toBeGreaterThan(highHpRes.winRatePct)
+
+    // 3. Reverse Goal-Seek Auto-Tuners (Combat & Roguelike Envelope)
+    const combatGoal = solveMxCombatTargetGoalSeek(wb.combatKernel, 70)
+    expect(combatGoal.recommendedEnemyHp).toBeGreaterThan(20)
+    expect(Math.abs(combatGoal.achievedWinRatePct - 70)).toBeLessThanOrEqual(20)
+
+    const envGoal = solveMxEnvelopeTargetGoalSeek(wb.roguelikeEnvelope, 35)
+    expect(envGoal.recommendedGrowthRate).toBeGreaterThanOrEqual(1.03)
+    expect(envGoal.recommendedGrowthRate).toBeLessThanOrEqual(1.65)
+    expect(Math.abs(envGoal.achievedClearRatePct - 35)).toBeLessThanOrEqual(20)
+
+    // 4. Commercial Product-Grade: Multi-Archetype Meta-Balance Matrix & Commercial Cohort Telemetry & QA Report
+    const archetypeRes = runMxArchetypeBalanceMatrix(wb.combatKernel)
+    expect(archetypeRes.rows).toHaveLength(4)
+    expect(archetypeRes.metaDiversityScore).toBeGreaterThanOrEqual(0)
+    expect(archetypeRes.metaDiversityScore).toBeLessThanOrEqual(100)
+
+    const cohortRes = runMxCommercialCohortAnalysis(wb.lootRoll)
+    expect(cohortRes.cohorts).toHaveLength(4)
+    expect(cohortRes.whaleToF2pProgressRatio).toBeGreaterThanOrEqual(1)
+    expect(cohortRes.cohorts[3]!.day30GraduationRatePct).toBeGreaterThanOrEqual(
+      cohortRes.cohorts[0]!.day30GraduationRatePct
+    )
+
+    const qaMd = exportMxCommercialQaReportMarkdown(wb)
+    expect(qaMd).toContain('# Commercial Numerical & Roguelike QA Audit Report')
+    expect(qaMd).toContain('Multi-Archetype Meta-Balance Matrix')
+    expect(qaMd).toContain('Player Spending Cohort Graduation Telemetry')
+
+    // 5. Headless executeGameEconomyNode -> executeGamePlayAssetNode direct port wiring
+    const econNode = createNodeFromType('game.economy', { x: 0, y: 0 })
+    const econOut = await executeGameEconomyNode({
+      node: econNode,
+      inputs: {},
+      get abortSignal() {
+        return new AbortController().signal
+      }
+    } as unknown as NodeExecuteContext)
+    const econJson = (econOut['out-text'] as { text: string }).text
+    const econParsed = JSON.parse(econJson)
+    expect(econParsed.workbenchReport.counterMatrix).toHaveLength(6)
+    expect(econParsed.workbenchReport.deckRemovalRoi).toHaveLength(6)
+    expect(econParsed.workbenchReport.poolDilution).toHaveLength(6)
+    expect(econParsed.workbenchReport.archetypeBalance.rows).toHaveLength(4)
+    expect(econParsed.workbenchReport.commercialCohorts.cohorts).toHaveLength(4)
+    expect(econParsed.qaReportMarkdown).toContain(
+      'Commercial Numerical & Roguelike QA Audit Report'
+    )
+    expect(econParsed.dataTableBundle.cards.length).toBeGreaterThan(0)
+
+    const playNode = createNodeFromType('asset.gamePlay', { x: 300, y: 0 })
+    await executeGamePlayAssetNode({
+      node: playNode,
+      inputs: {
+        in: [{ kind: 'text', text: econJson }]
+      },
+      get abortSignal() {
+        return new AbortController().signal
+      }
+    } as unknown as NodeExecuteContext)
+    expect(playNode.params.gamePlayHtml).toContain('card_dbg')
+    expect(playNode.params.gamePlayHtml).toContain('Pommel Strike')
   })
 })

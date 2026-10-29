@@ -2004,7 +2004,7 @@ export function runMxRoguelikeEnvelopeSimulation(
 ): MxRoguelikeEnvelopeResult {
   const floors = Math.max(5, Math.min(40, Math.round(cfg.floors || 15)))
   const runs = Math.max(20, Math.min(2000, Math.round(cfg.runs || 300)))
-  const rng = createMxRng(cfg.seed || 2026)
+  const baseSeed = cfg.seed || 2026
 
   const branchingOn = cfg.enableBranchingPath !== false
   const eliteRate = Math.max(0, Math.min(0.6, (cfg.eliteRoomRatePct ?? 24) / 100))
@@ -2051,6 +2051,7 @@ export function runMxRoguelikeEnvelopeSimulation(
   }
 
   for (let r = 0; r < runs; r++) {
+    const rng = createMxRng(baseSeed + (r + 1) * 7919)
     let addZone = Math.max(1, cfg.playerBasePower || 30)
     let multZone = 1.0
     let synergyCount = 0
@@ -2225,6 +2226,807 @@ export function runMxRoguelikeEnvelopeSimulation(
     runawayFloors,
     floorSeries
   }
+}
+
+export interface MxCombatGoalSeekResult {
+  targetWinRatePct: number
+  previousEnemyHp: number
+  recommendedEnemyHp: number
+  achievedWinRatePct: number
+  achievedTtkP50: number
+  iterations: number
+}
+
+/**
+ * 逆向目标求解器（Combat Kernel Reverse Goal-Seek）：
+ * 给定设计师期望的目标胜率（如 75%），利用共同随机数（CRN）单调二分搜索反推最匹配的 Boss/敌方生命值。
+ */
+export function solveMxCombatTargetGoalSeek(
+  cfg: MxCombatKernelConfig,
+  targetWinRatePct: number
+): MxCombatGoalSeekResult {
+  const target = Math.max(5, Math.min(98, Number(targetWinRatePct || 75)))
+  const curHp =
+    cfg.kernel === 'deck_cycle'
+      ? Math.max(10, cfg.enemyHp || 180)
+      : cfg.kernel === 'mana_tempo'
+        ? Math.max(5, cfg.opponentHp || 30)
+        : Math.max(100, cfg.targetEnemyHp || 65000)
+
+  let lo = Math.max(5, Math.round(curHp * 0.12))
+  let hi = Math.max(lo + 50, Math.round(curHp * 5.0))
+  let bestHp = curHp
+  let bestWinRate = 0
+  let bestTtk = cfg.maxTurns
+  let bestDiff = Number.POSITIVE_INFINITY
+  const sampleRuns = Math.min(240, Math.max(80, Math.round(cfg.runs || 160)))
+  const iterations = 12
+
+  for (let it = 0; it < iterations; it++) {
+    const mid = Math.round((lo + hi) / 2)
+    const trialCfg: MxCombatKernelConfig = {
+      ...cfg,
+      runs: sampleRuns,
+      ...(cfg.kernel === 'deck_cycle'
+        ? { enemyHp: mid }
+        : cfg.kernel === 'mana_tempo'
+          ? { opponentHp: mid }
+          : { targetEnemyHp: mid })
+    }
+    const res = runMxCombatKernelSimulation(trialCfg)
+    const diff = Math.abs(res.winRatePct - target)
+    if (diff < bestDiff) {
+      bestDiff = diff
+      bestHp = mid
+      bestWinRate = res.winRatePct
+      bestTtk = res.ttkP50
+    }
+    // 敌方血量越高，玩家胜率越低（单调递减）
+    if (res.winRatePct > target) {
+      lo = mid + 1
+    } else if (res.winRatePct < target) {
+      hi = Math.max(lo, mid - 1)
+    } else {
+      break
+    }
+  }
+
+  return {
+    targetWinRatePct: target,
+    previousEnemyHp: curHp,
+    recommendedEnemyHp: bestHp,
+    achievedWinRatePct: bestWinRate,
+    achievedTtkP50: bestTtk,
+    iterations
+  }
+}
+
+export interface MxEnvelopeGoalSeekResult {
+  targetClearRatePct: number
+  previousGrowthRate: number
+  recommendedGrowthRate: number
+  achievedClearRatePct: number
+  difficultyWallFloors: number[]
+  iterations: number
+}
+
+/**
+ * 逆向目标求解器（Roguelike Envelope Reverse Goal-Seek）：
+ * 给定设计师期望的首局通关率（如 25%），利用共同随机数（CRN）二分搜索反推最匹配的关卡怪物每层指数膨胀率（enemyGrowthRate）。
+ */
+export function solveMxEnvelopeTargetGoalSeek(
+  cfg: MxRoguelikeEnvelopeConfig,
+  targetClearRatePct: number
+): MxEnvelopeGoalSeekResult {
+  const target = Math.max(2, Math.min(95, Number(targetClearRatePct || 25)))
+  const prevRate = Math.max(1.02, cfg.enemyGrowthRate || 1.24)
+  let lo = 1.03
+  let hi = 1.65
+  let bestRate = prevRate
+  let bestClear = 0
+  let bestWalls: number[] = []
+  let bestDiff = Number.POSITIVE_INFINITY
+  const sampleRuns = Math.min(260, Math.max(100, Math.round(cfg.runs || 200)))
+  const iterations = 12
+
+  for (let it = 0; it < iterations; it++) {
+    const mid = Math.round(((lo + hi) / 2) * 1000) / 1000
+    const res = runMxRoguelikeEnvelopeSimulation({
+      ...cfg,
+      runs: sampleRuns,
+      enemyGrowthRate: mid
+    })
+    const diff = Math.abs(res.firstRunClearRatePct - target)
+    if (diff < bestDiff) {
+      bestDiff = diff
+      bestRate = mid
+      bestClear = res.firstRunClearRatePct
+      bestWalls = res.difficultyWallFloors
+    }
+    // 怪物指数膨胀率越高，首局通关率越低（单调递减）
+    if (res.firstRunClearRatePct > target) {
+      lo = mid
+    } else if (res.firstRunClearRatePct < target) {
+      hi = mid
+    } else {
+      break
+    }
+  }
+
+  return {
+    targetClearRatePct: target,
+    previousGrowthRate: prevRate,
+    recommendedGrowthRate: bestRate,
+    achievedClearRatePct: bestClear,
+    difficultyWallFloors: bestWalls,
+    iterations
+  }
+}
+
+// ───────────────────────────── 4.5 商业产品级：多流派天梯生态平衡矩阵 & 商业化分层留存变现审计 ─────────────────────────────
+
+export type MxBuildArchetypeId =
+  'current_custom' | 'strength_burst' | 'attrition_block' | 'high_cycle_combo'
+
+export interface MxArchetypeBalanceRow {
+  archetypeId: MxBuildArchetypeId
+  nameZh: string
+  nameEn: string
+  winRatePct: number
+  ttkP50: number
+  avgHpLoss: number
+  /** 基于胜率与通关效率 Softmax 估算的商业天梯流派使用率占比 (%) */
+  metaSharePct: number
+  tier: 'T0_dominant' | 'T1_viable' | 'T2_niche' | 'T3_unplayable'
+}
+
+export interface MxArchetypeBalanceMatrixResult {
+  /** 香农信息熵（Shannon Entropy）归一化流派百花齐放指数 (0..100，越高越均衡) */
+  metaDiversityScore: number
+  /** 当前流派生态健康度判定 */
+  verdict: 'meta_healthy' | 'tier0_monopoly' | 'boss_overtuned'
+  dominantArchetypeId: MxBuildArchetypeId
+  rows: MxArchetypeBalanceRow[]
+}
+
+/**
+ * 商业产品级：多流派天梯生态平衡矩阵（Multi-Archetype Meta-Balance Matrix）：
+ * 将玩家自定义卡组与 3 套标准基准流派（多段力量爆发流、叠甲壁垒反击流、高频消耗过牌无限流）
+ * 在相同 Boss 机制与随机种子下横向对标，计算天梯预估使用率与 Shannon 生态多样性评分。
+ */
+export function runMxArchetypeBalanceMatrix(
+  cfg: MxCombatKernelConfig
+): MxArchetypeBalanceMatrixResult {
+  const sampleRuns = Math.min(180, Math.max(60, Math.round((cfg.runs || 160) * 0.6)))
+
+  const strengthBurstDeck: MxDeckCardSpec[] = [
+    {
+      id: 'arc_str_inflame',
+      name: 'Inflame+',
+      cost: 1,
+      count: 2,
+      damage: 0,
+      block: 0,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 3,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: true,
+      priority: 5
+    },
+    {
+      id: 'arc_str_bash',
+      name: 'Bash+',
+      cost: 2,
+      count: 1,
+      damage: 10,
+      block: 0,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 3,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 4
+    },
+    {
+      id: 'arc_str_multi',
+      name: 'Twin / Pummel Strike',
+      cost: 1,
+      count: 4,
+      damage: 5,
+      hits: 3,
+      block: 0,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 3
+    },
+    {
+      id: 'arc_str_def',
+      name: 'Defend',
+      cost: 1,
+      count: 3,
+      damage: 0,
+      block: 5,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 1
+    }
+  ]
+
+  const attritionBlockDeck: MxDeckCardSpec[] = [
+    {
+      id: 'arc_blk_wall',
+      name: 'Impervious / Glacier',
+      cost: 2,
+      count: 2,
+      damage: 0,
+      block: 18,
+      draw: 1,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 1,
+      exhaust: false,
+      priority: 5
+    },
+    {
+      id: 'arc_blk_slam',
+      name: 'Body Slam / Counter',
+      cost: 1,
+      count: 3,
+      damage: 14,
+      block: 6,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 4
+    },
+    {
+      id: 'arc_blk_shrug',
+      name: 'Shrug It Off',
+      cost: 1,
+      count: 3,
+      damage: 0,
+      block: 9,
+      draw: 1,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 3
+    },
+    {
+      id: 'arc_blk_weak',
+      name: 'Clothesline (Weak)',
+      cost: 2,
+      count: 2,
+      damage: 12,
+      block: 0,
+      draw: 0,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 2,
+      exhaust: false,
+      priority: 2
+    }
+  ]
+
+  const highCycleComboDeck: MxDeckCardSpec[] = [
+    {
+      id: 'arc_cyc_offering',
+      name: 'Offering / Adrenaline',
+      cost: 0,
+      count: 2,
+      damage: 0,
+      block: 0,
+      draw: 3,
+      energyGain: 2,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: true,
+      priority: 5
+    },
+    {
+      id: 'arc_cyc_finesse',
+      name: 'Flash of Steel / Claw',
+      cost: 0,
+      count: 4,
+      damage: 6,
+      block: 3,
+      draw: 1,
+      energyGain: 0,
+      applyStrength: 1,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 4
+    },
+    {
+      id: 'arc_cyc_pommel',
+      name: 'Pommel Strike+',
+      cost: 1,
+      count: 3,
+      damage: 10,
+      block: 0,
+      draw: 2,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 3
+    },
+    {
+      id: 'arc_cyc_def',
+      name: 'Escape Plan',
+      cost: 0,
+      count: 2,
+      damage: 0,
+      block: 5,
+      draw: 1,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      exhaust: false,
+      priority: 2
+    }
+  ]
+
+  const specs: Array<{
+    id: MxBuildArchetypeId
+    nameZh: string
+    nameEn: string
+    deck: MxDeckCardSpec[]
+  }> = [
+    {
+      id: 'current_custom',
+      nameZh: '当前工作台流派 (Current Build)', // cjk-ok
+      nameEn: 'Current Workbench Build',
+      deck: cfg.deckCards
+    },
+    {
+      id: 'strength_burst',
+      nameZh: '多段力量爆发流 (Strength Burst)', // cjk-ok
+      nameEn: 'Strength Multi-Hit Burst',
+      deck: strengthBurstDeck
+    },
+    {
+      id: 'attrition_block',
+      nameZh: '叠甲壁垒反击流 (Turtle Block)', // cjk-ok
+      nameEn: 'Attrition Block & Slam',
+      deck: attritionBlockDeck
+    },
+    {
+      id: 'high_cycle_combo',
+      nameZh: '零费过牌无限流 (High-Cycle Engine)', // cjk-ok
+      nameEn: 'High-Cycle Combo Engine',
+      deck: highCycleComboDeck
+    }
+  ]
+
+  const rawRows = specs.map((sp) => {
+    const sim = runMxCombatKernelSimulation({
+      ...cfg,
+      kernel: 'deck_cycle',
+      runs: sampleRuns,
+      deckCards: sp.deck
+    })
+    // 综合强度分：胜率为主，兼顾低回合击杀与低战损
+    const score =
+      sim.winRatePct * 1.1 + Math.max(0, 12 - sim.ttkP50) * 2.5 - Math.min(40, sim.kpi1Value * 0.35)
+    return {
+      archetypeId: sp.id,
+      nameZh: sp.nameZh,
+      nameEn: sp.nameEn,
+      winRatePct: sim.winRatePct,
+      ttkP50: sim.ttkP50,
+      avgHpLoss: sim.kpi1Value,
+      rawScore: score
+    }
+  })
+
+  // 使用温度系数 T=18 的 Softmax 计算商业天梯预估使用率占比
+  const maxScore = Math.max(...rawRows.map((r) => r.rawScore))
+  const expWeights = rawRows.map((r) => Math.exp((r.rawScore - maxScore) / 18))
+  const sumExp = expWeights.reduce((a, b) => a + b, 0) || 1
+
+  const rows: MxArchetypeBalanceRow[] = rawRows.map((r, i) => {
+    const share = Math.round(((expWeights[i] ?? 0.25) / sumExp) * 1000) / 10
+    const tier: MxArchetypeBalanceRow['tier'] =
+      r.winRatePct >= 80 && share >= 34
+        ? 'T0_dominant'
+        : r.winRatePct >= 55
+          ? 'T1_viable'
+          : r.winRatePct >= 30
+            ? 'T2_niche'
+            : 'T3_unplayable'
+    return {
+      archetypeId: r.archetypeId,
+      nameZh: r.nameZh,
+      nameEn: r.nameEn,
+      winRatePct: r.winRatePct,
+      ttkP50: r.ttkP50,
+      avgHpLoss: r.avgHpLoss,
+      metaSharePct: share,
+      tier
+    }
+  })
+
+  // 计算归一化香农熵 H / ln(4) 并结合有效流派存活率给出 Meta 多样性指数
+  let entropy = 0
+  for (const r of rows) {
+    const p = Math.max(0.001, r.metaSharePct / 100)
+    entropy -= p * Math.log(p)
+  }
+  const normalizedEntropy = Math.min(1, entropy / Math.log(rows.length))
+  const viableCount = rows.filter((r) => r.winRatePct >= 45).length
+  const viabilityFactor = viableCount / rows.length
+  const metaDiversityScore = Math.round(normalizedEntropy * (0.65 + 0.35 * viabilityFactor) * 100)
+
+  const sortedByShare = [...rows].sort((a, b) => b.metaSharePct - a.metaSharePct)
+  const dominant = sortedByShare[0]!
+  const maxWin = Math.max(...rows.map((r) => r.winRatePct))
+  const verdict: MxArchetypeBalanceMatrixResult['verdict'] =
+    maxWin < 40
+      ? 'boss_overtuned'
+      : dominant.metaSharePct >= 46 || viableCount <= 1
+        ? 'tier0_monopoly'
+        : 'meta_healthy'
+
+  return {
+    metaDiversityScore,
+    verdict,
+    dominantArchetypeId: dominant.archetypeId,
+    rows
+  }
+}
+
+export type MxPlayerCohortId = 'f2p_grinder' | 'minnow_pass' | 'dolphin_spender' | 'whale_collector'
+
+export interface MxCommercialCohortRow {
+  cohortId: MxPlayerCohortId
+  nameZh: string
+  nameEn: string
+  monthlySpendUsd: number
+  dailyAttempts: number
+  daysToGraduateP50: number
+  daysToGraduateP90: number
+  day30GraduationRatePct: number
+  frustrationChokeRisk: 'low' | 'moderate' | 'high_churn'
+}
+
+export interface MxCommercialCohortAnalysisResult {
+  mode: MxLootRollMode
+  /** 保底机制付费转化弹性评分 (0..100) */
+  pityElasticityScore: number
+  /** 重氪 vs 零氪首月成型进度剪刀差倍率（理想健康区间 1.4x ~ 2.8x） */
+  whaleToF2pProgressRatio: number
+  /** 预估千人活跃日付费 ARPU ($) */
+  estimatedBlendedArpuUsd: number
+  cohorts: MxCommercialCohortRow[]
+}
+
+/**
+ * 商业产品级：玩家付费分层（F2P / 月卡小R / 中R季票 / 重氪大R）留存卡点与毕业周期遥测模型：
+ * 将第 2 层概率分布（P10/P50/P90）映射为各付费分层玩家的自然日毕业天数、首月 30 天毕业率与非酋流失风险。
+ */
+export function runMxCommercialCohortAnalysis(
+  lootCfg: MxLootRollConfig
+): MxCommercialCohortAnalysisResult {
+  const lootRes = runMxLootAndSubstatSimulation({
+    ...lootCfg,
+    runs: Math.min(400, Math.max(100, lootCfg.runs || 250))
+  })
+
+  // 按模式定义各付费分层每日可获取的抽数 / 刷本次数 / 构筑局数
+  const cohortSpecs: Array<{
+    cohortId: MxPlayerCohortId
+    nameZh: string
+    nameEn: string
+    monthlySpendUsd: number
+    populationWeight: number
+    dailyAttempts: number
+  }> =
+    lootCfg.mode === 'gacha_pity'
+      ? [
+          {
+            cohortId: 'f2p_grinder',
+            nameZh: '零氪全勤党 (F2P)', // cjk-ok
+            nameEn: 'F2P Daily Grinder',
+            monthlySpendUsd: 0,
+            populationWeight: 0.68,
+            dailyAttempts: 1.4
+          },
+          {
+            cohortId: 'minnow_pass',
+            nameZh: '月卡/通行证微氪 (Minnow)', // cjk-ok
+            nameEn: 'Monthly Pass & BP ($15)',
+            monthlySpendUsd: 15,
+            populationWeight: 0.22,
+            dailyAttempts: 3.2
+          },
+          {
+            cohortId: 'dolphin_spender',
+            nameZh: '中R首充礼包党 (Dolphin)', // cjk-ok
+            nameEn: 'Dolphin Pack Buyer ($80)',
+            monthlySpendUsd: 80,
+            populationWeight: 0.08,
+            dailyAttempts: 7.5
+          },
+          {
+            cohortId: 'whale_collector',
+            nameZh: '重氪满命全图鉴 (Whale)', // cjk-ok
+            nameEn: 'Whale Collector ($450)',
+            monthlySpendUsd: 450,
+            populationWeight: 0.02,
+            dailyAttempts: 28.0
+          }
+        ]
+      : lootCfg.mode === 'substat_enhance'
+        ? [
+            {
+              cohortId: 'f2p_grinder',
+              nameZh: '零氪自然回体党 (F2P)', // cjk-ok
+              nameEn: 'F2P Natural Stamina',
+              monthlySpendUsd: 0,
+              populationWeight: 0.65,
+              dailyAttempts: 8
+            },
+            {
+              cohortId: 'minnow_pass',
+              nameZh: '月卡每日买体党 (Minnow)', // cjk-ok
+              nameEn: 'Pass + 1x Stamina Refill',
+              monthlySpendUsd: 12,
+              populationWeight: 0.24,
+              dailyAttempts: 15
+            },
+            {
+              cohortId: 'dolphin_spender',
+              nameZh: '中R周常体力包 (Dolphin)', // cjk-ok
+              nameEn: 'Dolphin 3x Refill ($65)',
+              monthlySpendUsd: 65,
+              populationWeight: 0.09,
+              dailyAttempts: 26
+            },
+            {
+              cohortId: 'whale_collector',
+              nameZh: '重氪满体竞速党 (Whale)', // cjk-ok
+              nameEn: 'Whale Max Refill ($320)',
+              monthlySpendUsd: 320,
+              populationWeight: 0.02,
+              dailyAttempts: 55
+            }
+          ]
+        : [
+            {
+              cohortId: 'f2p_grinder',
+              nameZh: '轻度休闲玩家 (Casual)', // cjk-ok
+              nameEn: 'Casual (1 Run/Day)',
+              monthlySpendUsd: 0,
+              populationWeight: 0.6,
+              dailyAttempts: 3
+            },
+            {
+              cohortId: 'minnow_pass',
+              nameZh: '核心买断玩家 (Core)', // cjk-ok
+              nameEn: 'Core Buyer ($15 Base)',
+              monthlySpendUsd: 15,
+              populationWeight: 0.28,
+              dailyAttempts: 7
+            },
+            {
+              cohortId: 'dolphin_spender',
+              nameZh: '全DLC季票玩家 (Deluxe)', // cjk-ok
+              nameEn: 'Deluxe + DLC Pass ($35)',
+              monthlySpendUsd: 35,
+              populationWeight: 0.1,
+              dailyAttempts: 14
+            },
+            {
+              cohortId: 'whale_collector',
+              nameZh: '硬核全成就主播 (Hardcore)', // cjk-ok
+              nameEn: 'Hardcore Streamer ($60)',
+              monthlySpendUsd: 60,
+              populationWeight: 0.02,
+              dailyAttempts: 28
+            }
+          ]
+
+  const p10 = Math.max(1, lootRes.attemptsP10)
+  const p50 = Math.max(1, lootRes.attemptsP50)
+  const p90 = Math.max(p50 + 1, lootRes.attemptsP90)
+
+  const cohorts: MxCommercialCohortRow[] = cohortSpecs.map((sp) => {
+    const daysP50 = Math.max(1, Math.round((p50 / sp.dailyAttempts) * 10) / 10)
+    const daysP90 = Math.max(daysP50, Math.round((p90 / sp.dailyAttempts) * 10) / 10)
+    const budget30d = sp.dailyAttempts * 30
+
+    // 基于 P10/P50/P90 分位插值估算 30 天内达成毕业目标的玩家比例
+    let gradRate = 0
+    if (budget30d >= p90) {
+      gradRate = Math.min(99.5, 90 + ((budget30d - p90) / Math.max(10, p90)) * 9.5)
+    } else if (budget30d >= p50) {
+      gradRate = 50 + ((budget30d - p50) / Math.max(1, p90 - p50)) * 40
+    } else if (budget30d >= p10) {
+      gradRate = 10 + ((budget30d - p10) / Math.max(1, p50 - p10)) * 40
+    } else {
+      gradRate = (budget30d / Math.max(1, p10)) * 10
+    }
+    const day30GraduationRatePct = Math.round(Math.max(1, Math.min(99.5, gradRate)) * 10) / 10
+
+    const varianceRatio = p90 / Math.max(1, p50)
+    const frustrationChokeRisk: MxCommercialCohortRow['frustrationChokeRisk'] =
+      daysP90 > 65 || (sp.monthlySpendUsd > 0 && day30GraduationRatePct < 35)
+        ? 'high_churn'
+        : daysP90 > 30 || varianceRatio > 2.3
+          ? 'moderate'
+          : 'low'
+
+    return {
+      cohortId: sp.cohortId,
+      nameZh: sp.nameZh,
+      nameEn: sp.nameEn,
+      monthlySpendUsd: sp.monthlySpendUsd,
+      dailyAttempts: sp.dailyAttempts,
+      daysToGraduateP50: daysP50,
+      daysToGraduateP90: daysP90,
+      day30GraduationRatePct,
+      frustrationChokeRisk
+    }
+  })
+
+  const f2pRow = cohorts[0]!
+  const minnowRow = cohorts[1]!
+  const whaleRow = cohorts[cohorts.length - 1]!
+
+  // 保底弹性评分：衡量微氪/中R对比零氪在 30 天毕业率上的边际跃升与非酋方差收敛度
+  const conversionLift = Math.max(
+    0,
+    minnowRow.day30GraduationRatePct - f2pRow.day30GraduationRatePct
+  )
+  const tailTightness = Math.max(0, 100 - Math.max(0, (p90 / Math.max(1, p50) - 1.2) * 35))
+  const pityElasticityScore = Math.round(
+    Math.min(98, Math.max(15, conversionLift * 1.1 + tailTightness * 0.55))
+  )
+
+  const whaleToF2pProgressRatio =
+    Math.round(
+      (whaleRow.day30GraduationRatePct / Math.max(5, f2pRow.day30GraduationRatePct)) * 100
+    ) / 100
+
+  const estimatedBlendedArpuUsd =
+    Math.round(
+      cohortSpecs.reduce((acc, s) => acc + s.monthlySpendUsd * s.populationWeight, 0) * 100
+    ) / 100
+
+  return {
+    mode: lootCfg.mode,
+    pityElasticityScore,
+    whaleToF2pProgressRatio,
+    estimatedBlendedArpuUsd,
+    cohorts
+  }
+}
+
+/**
+ * 商业产品级：一键生成完整的 Markdown 商业数值立项与 QA 签收审计报告（Commercial Numerical QA Sign-Off Report）。
+ */
+export function exportMxCommercialQaReportMarkdown(wb: MxNumericalWorkbench): string {
+  const multRes = analyzeMultiplierPipeline(wb.multiplier)
+  const lootRes = runMxLootAndSubstatSimulation(wb.lootRoll)
+  const dilutionRows = runMxPoolDilutionAnalysis(wb.lootRoll)
+  const cohortRes = runMxCommercialCohortAnalysis(wb.lootRoll)
+  const combatRes = runMxCombatKernelSimulation(wb.combatKernel)
+  const counterRows = runMxEncounterCounterMatrix(wb.combatKernel)
+  const archetypeRes = runMxArchetypeBalanceMatrix(wb.combatKernel)
+  const removalRows = runMxDeckRemovalRoiAnalysis(wb.combatKernel)
+  const envelopeRes = runMxRoguelikeEnvelopeSimulation(wb.roguelikeEnvelope)
+
+  const opCount = multRes.entityAudits.filter((e) => e.verdict === 'overpowered').length
+  const upCount = multRes.entityAudits.filter((e) => e.verdict === 'underpowered').length
+  const hardCounters = counterRows.filter((c) => c.verdict === 'countered').length
+  const wallCount = envelopeRes.difficultyWallFloors.length
+  const bestMarginalAttr =
+    multRes.marginalReturns.find((m) => m.isOptimalNextPick)?.attrName ?? 'N/A'
+
+  const overallGrade =
+    archetypeRes.metaDiversityScore >= 72 && opCount <= 1 && hardCounters <= 1 && wallCount <= 2
+      ? 'S (Commercial Release Ready)'
+      : archetypeRes.metaDiversityScore >= 55 && hardCounters <= 2
+        ? 'A (Minor Tuning Recommended)'
+        : 'B (Balance Bottlenecks Detected)'
+
+  const lines: string[] = [
+    `# Commercial Numerical & Roguelike QA Audit Report`,
+    ``,
+    `- **Preset / System**: \`${wb.activePresetId}\` — ${wb.multiplier.title}`,
+    `- **Commercial Release Grade**: **${overallGrade}**`,
+    `- **Deterministic Seed (CRN)**: \`${wb.combatKernel.seed}\``,
+    ``,
+    `## 1. Layer 1 — Damage Multiplier Pipeline & Card Budget Audit`,
+    `- **Final Output**: \`${multRes.finalOutput}\` (Formula: \`${wb.multiplier.finalFormula}\`)`,
+    `- **Best Marginal Stat**: \`${bestMarginalAttr}\``,
+    `- **Entity Budget Deviations**: ${opCount} Overpowered / ${upCount} Underpowered / ${multRes.entityAudits.length} Total`,
+    ``,
+    `| Entity | Cost | Expected Budget | Actual Value | Deviation % | Verdict |`,
+    `| :--- | :---: | :---: | :---: | :---: | :--- |`,
+    ...multRes.entityAudits.map(
+      (e) =>
+        `| ${e.name} | ${e.cost} | ${e.expectedValue} | ${e.actualValue} | ${e.deviationPct > 0 ? '+' : ''}${e.deviationPct}% | **${e.verdict.toUpperCase()}** |`
+    ),
+    ``,
+    `## 2. Layer 2 — Probability, Pool Dilution & Commercial Cohort Telemetry`,
+    `- **Mode**: \`${lootRes.mode}\` | **P10**: \`${lootRes.attemptsP10}\` | **P50 (Median)**: \`${lootRes.attemptsP50}\` | **P90 (Unlucky)**: \`${lootRes.attemptsP90}\` | **Mean**: \`${lootRes.attemptsMean}\``,
+    `- **Pity Conversion Elasticity**: \`${cohortRes.pityElasticityScore}/100\` | **Whale/F2P 30d Ratio**: \`${cohortRes.whaleToF2pProgressRatio}x\` | **Blended Monthly ARPU**: \`$${cohortRes.estimatedBlendedArpuUsd}\``,
+    ``,
+    `### 2.1 Player Spending Cohort Graduation Telemetry`,
+    `| Cohort | Monthly Spend | Daily Attempts | P50 Days | P90 Days | Day-30 Graduation % | Churn Risk |`,
+    `| :--- | :---: | :---: | :---: | :---: | :---: | :--- |`,
+    ...cohortRes.cohorts.map(
+      (c) =>
+        `| ${c.nameEn} | $${c.monthlySpendUsd} | ${c.dailyAttempts}/d | ${c.daysToGraduateP50}d | ${c.daysToGraduateP90}d | ${c.day30GraduationRatePct}% | **${c.frustrationChokeRisk.toUpperCase()}** |`
+    ),
+    ``,
+    `### 2.2 DLC Expansion Pool Dilution & Ban-Slot Counteracting`,
+    `| Archetypes | Effective Pool | No-Ban Graduation % | With Ban % | Expected Gold | Verdict |`,
+    `| :---: | :---: | :---: | :---: | :---: | :--- |`,
+    ...dilutionRows.map(
+      (d) =>
+        `| ${d.archetypesCount} | ${d.effectivePoolSize} | ${d.noBanCompletionPct}% | ${d.withBanCompletionPct}% | ${d.expectedGoldCost}G | **${d.verdict.toUpperCase()}** |`
+    ),
+    ``,
+    `## 3. Layer 3 — Micro-Combat Kernel, Boss Counter Matrix & Meta Diversity`,
+    `- **Kernel**: \`${combatRes.kernel}\` | **Win Rate**: \`${combatRes.winRatePct}%\` | **TTK P10/P50/P90**: \`${combatRes.ttkP10} / ${combatRes.ttkP50} / ${combatRes.ttkP90}T\``,
+    `- **Meta Diversity Score (Shannon Entropy)**: \`${archetypeRes.metaDiversityScore}/100\` (\`${archetypeRes.verdict}\`)`,
+    ``,
+    `### 3.1 Multi-Archetype Meta-Balance Matrix`,
+    `| Build Archetype | Win Rate % | Median TTK | Avg HP Loss | Est. Meta Share % | Tier |`,
+    `| :--- | :---: | :---: | :---: | :---: | :--- |`,
+    ...archetypeRes.rows.map(
+      (r) =>
+        `| ${r.nameEn} | ${r.winRatePct}% | ${r.ttkP50}T | ${r.avgHpLoss} | ${r.metaSharePct}% | **${r.tier}** |`
+    ),
+    ``,
+    `### 3.2 6-Boss Encounter Build-Checker Matrix`,
+    `| Boss Mechanism | Win Rate % | Median TTK | Avg HP Loss | Verdict |`,
+    `| :--- | :---: | :---: | :---: | :--- |`,
+    ...counterRows.map(
+      (c) =>
+        `| ${c.nameEn} | ${c.winRatePct}% | ${c.ttkP50}T | ${c.avgHpLoss} | **${c.verdict.toUpperCase()}** |`
+    ),
+    ``,
+    `### 3.3 Shop Card Removal Pricing & Curse Bloat ROI`,
+    `| Deck Delta | Deck Size | T1 Core Draw % | Win Rate % | HP Saved vs Base | Fair Shop Price |`,
+    `| :--- | :---: | :---: | :---: | :---: | :---: |`,
+    ...removalRows.map(
+      (r) =>
+        `| ${r.labelEn} | ${r.deckSize} | ${r.turn1CoreDrawPct}% | ${r.winRatePct}% | ${r.hpSavedVsBase > 0 ? '+' : ''}${r.hpSavedVsBase} | **${r.fairShopGoldPrice}G** |`
+    ),
+    ``,
+    `## 4. Layer 4 — Roguelike Macro Power Envelope & Scaling Walls`,
+    `- **First-Run Clear Rate**: \`${envelopeRes.firstRunClearRatePct}%\` | **Meta Runs to 50% Clear**: \`${envelopeRes.metaRunsTo50PctClear} runs\``,
+    `- **Elite Challenge Rate**: \`${envelopeRes.eliteChallengeRatePct}%\` | **Campfire Smith Ratio**: \`${envelopeRes.campfireUpgradeRatioPct}%\` | **Snowball Polarization (P90/P10)**: \`${envelopeRes.snowballPolarizationIndex}x\``,
+    `- **Difficulty Wall Floors**: \`${envelopeRes.difficultyWallFloors.join(', ') || 'None'}\` | **Runaway Trivial Floors**: \`${envelopeRes.runawayFloors.join(', ') || 'None'}\``
+  ]
+
+  return lines.join('\n')
 }
 
 /**

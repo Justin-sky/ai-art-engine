@@ -8,8 +8,13 @@ import {
   seedGameHtml,
   type GamePlayMode
 } from '../../gamePlay'
+import { compilePlayableGameSandboxHtml, type GameDataTableBundle } from '../../gameAssets'
 import { flattenTextValues, flattenTextsValues } from './gallery'
-import { autoIncomingTextForInstruction, selectIncomingValuesForInstruction } from './incoming'
+import {
+  autoIncomingTextForInstruction,
+  collectIncomingValues,
+  selectIncomingValuesForInstruction
+} from './incoming'
 import { resolveMentionSources } from './context'
 import type { GraphValue, NodeExecuteContext } from './types'
 import { gamePlayJobError } from '../../gamePlayJob'
@@ -165,6 +170,65 @@ export async function executeGamePlayAssetNode(
     return commitGamePlay(ctx, prepared.html, prepared.mode)
   }
 
+  // 若上游连入了 `game.economy`（machinations_economy_bundle）或结构化数值配表 JSON，直接将其卡牌与角色数值注入可玩沙盒
+  const allIncoming = [...selected, ...collectIncomingValues(ctx.inputs)]
+  const candidateTexts = [
+    fromAuto,
+    ...flattenTextValues(allIncoming).map((t) => t.text),
+    ...flattenTextsValues(allIncoming).map((t) => t.text)
+  ].filter(Boolean)
+
+  for (const rawTxt of candidateTexts) {
+    if (
+      !rawTxt.includes('"machinations_economy_bundle"') &&
+      !rawTxt.includes('"tableCsvs"') &&
+      !rawTxt.includes('"dataTableBundle"')
+    ) {
+      continue
+    }
+    try {
+      const parsed = JSON.parse(rawTxt) as {
+        kind?: string
+        document?: { title?: string }
+        dataTableBundle?: GameDataTableBundle
+        workbenchReport?: { dataTableBundle?: GameDataTableBundle }
+        cards?: GameDataTableBundle['cards']
+        characters?: GameDataTableBundle['characters']
+      }
+      const bundle =
+        parsed.dataTableBundle ??
+        parsed.workbenchReport?.dataTableBundle ??
+        (Array.isArray(parsed.cards) ? (parsed as unknown as GameDataTableBundle) : undefined)
+      if (bundle && (bundle.cards?.length || bundle.characters?.length)) {
+        const hero = bundle.characters?.[0]
+        const compiled = compilePlayableGameSandboxHtml({
+          title:
+            parsed.document?.title || bundle.tableName || ctx.node.title || 'Roguelike Deckbuilder',
+          mode: bundle.cards?.length ? 'card_dbg' : 'survivor',
+          customPlayerMaxHp: hero?.hp,
+          customPlayerBaseAtk: hero?.atk,
+          customCards: bundle.cards?.map((c) => ({
+            id: c.id,
+            name: c.name,
+            cost: c.cost,
+            cardType: c.cardType,
+            damage: Number(c.damage ?? 0),
+            block: Number(c.block ?? 0),
+            description: c.description
+          }))
+        })
+        const prepared = prepareGameHtml(compiled.html, preferred)
+        return commitGamePlay(ctx, prepared.html, prepared.mode)
+      }
+    } catch {
+      // ignore non-json text
+    }
+  }
+
   const seeded = seedGameHtml(preferred)
-  return commitGamePlay(ctx, seeded.html, seeded.mode)
+  return commitGamePlay(ctx, seeded.html, preparedModeOrDefault(seeded.mode))
+}
+
+function preparedModeOrDefault(mode: '2d' | '3d'): '2d' | '3d' {
+  return mode
 }
