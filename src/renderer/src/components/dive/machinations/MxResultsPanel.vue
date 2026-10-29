@@ -803,8 +803,10 @@ function sweepSeriesPolyline(nodeId: string): string {
           class="mx-res-tab"
           :class="{ 'is-active': s.resultsTab.value === 'results' }"
           @click="
-            s.resultsTab.value = 'results'
-            s.resultsOpen.value = true
+            () => {
+              s.resultsTab.value = 'results'
+              s.resultsOpen.value = true
+            }
           "
         >
           {{ t('mx.results.tabResults') }}
@@ -814,8 +816,10 @@ function sweepSeriesPolyline(nodeId: string): string {
           class="mx-res-tab"
           :class="{ 'is-active': s.resultsTab.value === 'diagnostics' }"
           @click="
-            s.resultsTab.value = 'diagnostics'
-            s.resultsOpen.value = true
+            () => {
+              s.resultsTab.value = 'diagnostics'
+              s.resultsOpen.value = true
+            }
           "
         >
           🩺 {{ t('mx.results.tabDiagnostics') }}
@@ -828,8 +832,10 @@ function sweepSeriesPolyline(nodeId: string): string {
           class="mx-res-tab"
           :class="{ 'is-active': s.resultsTab.value === 'balancer' }"
           @click="
-            s.resultsTab.value = 'balancer'
-            s.resultsOpen.value = true
+            () => {
+              s.resultsTab.value = 'balancer'
+              s.resultsOpen.value = true
+            }
           "
         >
           🎯 {{ t('mx.results.tabBalancer') }}
@@ -839,8 +845,10 @@ function sweepSeriesPolyline(nodeId: string): string {
           class="mx-res-tab"
           :class="{ 'is-active': s.resultsTab.value === 'workbench' }"
           @click="
-            s.resultsTab.value = 'workbench'
-            s.resultsOpen.value = true
+            () => {
+              s.resultsTab.value = 'workbench'
+              s.resultsOpen.value = true
+            }
           "
         >
           ⚔ Numerical &amp; Roguelike Lab
@@ -850,8 +858,10 @@ function sweepSeriesPolyline(nodeId: string): string {
           class="mx-res-tab"
           :class="{ 'is-active': s.resultsTab.value === 'debugger' }"
           @click="
-            s.resultsTab.value = 'debugger'
-            s.resultsOpen.value = true
+            () => {
+              s.resultsTab.value = 'debugger'
+              s.resultsOpen.value = true
+            }
           "
         >
           {{ t('mx.results.tabDebugger') }}
@@ -914,8 +924,10 @@ function sweepSeriesPolyline(nodeId: string): string {
                 class="mx-play-item"
                 :class="{ 'is-active': s.activeRunId.value === r.id }"
                 @click="
-                  s.activeRunId.value = r.id
-                  s.playStep.value = r.stepsRun
+                  () => {
+                    s.activeRunId.value = r.id
+                    s.playStep.value = r.stepsRun
+                  }
                 "
               >
                 <input
@@ -1703,8 +1715,10 @@ function sweepSeriesPolyline(nodeId: string): string {
                   v-for="(ev, idx) in debugEvents"
                   :key="idx"
                   @click="
-                    s.playStep.value = ev.step
-                    if (ev.nodeId) s.select([ev.nodeId])
+                    () => {
+                      s.playStep.value = ev.step
+                      if (ev.nodeId) s.select([ev.nodeId])
+                    }
                   "
                 >
                   <td class="mx-mono">#{{ ev.step }}</td>

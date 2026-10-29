@@ -787,9 +787,7 @@ function addQuickConnectionFromInspector(): void {
                     type="button"
                     class="mx-conn-del"
                     @click="
-                      s.select([], [oe.id])
-                      s.deleteSelection()
-                      s.select([selectedNode.id])
+                      (s.select([], [oe.id]), s.deleteSelection(), s.select([selectedNode.id]))
                     "
                   >
                     ×
@@ -1150,10 +1148,12 @@ function addQuickConnectionFromInspector(): void {
                 class="mx-seg-btn"
                 :class="{ 'is-active': (s.doc.value.settings.botMode ?? 'off') === bm }"
                 @click="
-                  s.mutate((d) => {
-                    d.settings.botMode = bm
-                  })
-                  s.playAgain()
+                  () => {
+                    s.mutate((d) => {
+                      d.settings.botMode = bm
+                    })
+                    s.playAgain()
+                  }
                 "
               >
                 {{ t(`mx.inspector.botMode_${bm}`) }}

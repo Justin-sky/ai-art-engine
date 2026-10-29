@@ -388,7 +388,7 @@ function percentileOfSorted(sorted: number[], p: number): number {
 
 export function runMxLootAndSubstatSimulation(cfg: MxLootRollConfig): MxLootSimulationResult {
   const runs = Math.max(10, Math.min(5000, Math.round(cfg.runs || 500)))
-  const rng = createMxRng(cfg.seed || 2026)
+  const baseSeed = cfg.seed || 2026
 
   if (cfg.mode === 'gacha_pity') {
     const pullsNeeded: number[] = []
@@ -400,6 +400,7 @@ export function runMxLootAndSubstatSimulation(cfg: MxLootRollConfig): MxLootSimu
     const slope = Math.max(0, cfg.softPitySlopePct) / 100
 
     for (let r = 0; r < runs; r++) {
+      const rng = createMxRng(baseSeed + (r + 1) * 7919)
       let copies = 0
       let pity = 0
       let guaranteedUp = false
@@ -503,6 +504,7 @@ export function runMxLootAndSubstatSimulation(cfg: MxLootRollConfig): MxLootSimu
     let hitCount = 0
 
     for (let i = 0; i < sampleCount; i++) {
+      const rng = createMxRng(baseSeed + (i + 1) * 7919)
       const initCount = rng() < fourLineProb ? 4 : 3
       const chosen: MxSubstatWeightItem[] = []
       const remaining = [...pool]
@@ -645,6 +647,7 @@ export function runMxLootAndSubstatSimulation(cfg: MxLootRollConfig): MxLootSimu
   const completedByWave = new Array<number>(waves + 1).fill(0)
 
   for (let r = 0; r < runs; r++) {
+    const rng = createMxRng(baseSeed + (r + 1) * 7919)
     const ownedIds = new Set<string>()
     let tagCount = 0
     let missStreak = 0
@@ -914,6 +917,9 @@ export interface MxDeckRemovalRoiRow {
   fairShopGoldPrice: number
 }
 
+export type MxRelicTriggerPreset =
+  'none' | 'shuriken_kunai' | 'necronomicon' | 'dead_branch' | 'all_synergy'
+
 export interface MxCombatKernelConfig {
   kernel: MxCombatKernelKind
   runs: number
@@ -929,6 +935,8 @@ export interface MxCombatKernelConfig {
   enemyDamageGrowth: number
   /** 敌人机制检定类型（默认 standard 木桩，支持群怪/塞状态废牌/出牌限制/反伤护甲/狂暴检定） */
   enemyMechanism?: MxEnemyMechanismKind
+  /** 被动遗物触发器钩子预设（手里剑+苦无/死灵之书/枯木树枝/全开协同） */
+  relicTriggerPreset?: MxRelicTriggerPreset
   /** 塞状态卡检定下每回合塞入抽弃牌堆的眩晕/伤口废牌数（默认 1） */
   statusCardsPerTurn?: number
   /** 出牌限制检定下每回合最多允许打出的卡牌张数（如时间吞噬者，默认 5） */
@@ -1020,7 +1028,7 @@ function shuffleInPlace<T>(arr: T[], rng: () => number): void {
 export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombatKernelResult {
   const runs = Math.max(10, Math.min(2000, Math.round(cfg.runs || 200)))
   const maxTurns = Math.max(3, Math.min(40, Math.round(cfg.maxTurns || 12)))
-  const rng = createMxRng(cfg.seed || 2026)
+  const baseSeed = cfg.seed || 2026
 
   // ───────── Kernel A: 《杀戮尖塔》洗抽牌库与能量回合内核 ─────────
   if (cfg.kernel === 'deck_cycle') {
@@ -1035,7 +1043,13 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
     const dmgByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const blockByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
 
+    const relicPreset: MxRelicTriggerPreset = cfg.relicTriggerPreset ?? 'none'
+    const hasShurikenKunai = relicPreset === 'shuriken_kunai' || relicPreset === 'all_synergy'
+    const hasNecronomicon = relicPreset === 'necronomicon' || relicPreset === 'all_synergy'
+    const hasDeadBranch = relicPreset === 'dead_branch' || relicPreset === 'all_synergy'
+
     for (let r = 0; r < runs; r++) {
+      const rng = createMxRng(baseSeed + (r + 1) * 7919)
       const fullDeck: MxDeckCardSpec[] = []
       for (const spec of cfg.deckCards) {
         const cnt = Math.max(0, Math.min(20, Math.round(spec.count)))
@@ -1097,6 +1111,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
         let turnDmg = 0
         let turnBlock = 0
         let cardsPlayedThisTurn = 0
+        let attacksPlayedThisTurn = 0
+        let necronomiconTriggeredThisTurn = false
         let enemyArmorThisTurn = mechanism === 'thorns_armor' ? 10 : 0
 
         drawCards(Math.max(1, cfg.drawPerTurn || 5))
@@ -1143,10 +1159,23 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
             ? Object.values(card.customStats).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0)
             : 0
           if (card.damage > 0 || customFlatBonus > 0) {
+            attacksPlayedThisTurn++
+            if (hasShurikenKunai && attacksPlayedThisTurn % 3 === 0) {
+              // 手里剑 + 苦无被动：同一回合每打出 3 张攻击牌，获得 +1 力量与 +4 格挡
+              playerStr += 1
+              turnBlock += 4
+            }
+            let relicDoubleMult = 1
+            if (hasNecronomicon && !necronomiconTriggeredThisTurn && card.cost >= 2) {
+              // 死灵之书被动：每回合打出的第一张费用 >= 2 的攻击牌触发两次
+              necronomiconTriggeredThisTurn = true
+              relicDoubleMult = 2
+            }
             const vulnMult = enemyVuln > 0 ? 1.5 : 1.0
-            const hits = Math.max(1, Math.round(card.hits || 1))
+            const hits = Math.max(1, Math.round(card.hits || 1)) * relicDoubleMult
             const singleHit = Math.max(0, Math.floor((card.damage + playerStr) * vulnMult))
-            let hitDmg = singleHit * hits + Math.max(0, Math.round(customFlatBonus))
+            let hitDmg =
+              singleHit * hits + Math.max(0, Math.round(customFlatBonus)) * relicDoubleMult
             if (
               mechanism === 'aoe_swarm' &&
               hits <= 1 &&
@@ -1172,7 +1201,32 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
               }
             }
           }
-          if (!card.exhaust) discardPile.push(card)
+          if (card.exhaust) {
+            if (hasDeadBranch) {
+              // 枯木树枝被动：每消耗一张牌，立即向手牌生成一张随机低费衍生卡并过牌
+              const beforeLen = hand.length
+              drawCards(1)
+              if (hand.length === beforeLen && hand.length < 10) {
+                hand.push({
+                  id: `branch_gen_${t}_${cardsPlayedThisTurn}`,
+                  name: 'Branch Ephemeral',
+                  cost: 0,
+                  count: 1,
+                  damage: 7,
+                  block: 5,
+                  draw: 0,
+                  energyGain: 0,
+                  applyStrength: 0,
+                  applyVulnerable: 0,
+                  applyWeak: 0,
+                  exhaust: true,
+                  priority: 4
+                })
+              }
+            }
+          } else {
+            discardPile.push(card)
+          }
         }
 
         // 回合结束结算中毒/流血 DOT 伤害
@@ -1305,6 +1359,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
     const curveOutByTurn: number[] = new Array<number>(maxTurns).fill(0)
 
     for (let r = 0; r < runs; r++) {
+      const rng = createMxRng(baseSeed + (r + 1) * 7919)
       const deck: MxManaCurveCardSpec[] = []
       for (const spec of cfg.manaCurveDeck) {
         const cnt = Math.max(0, Math.min(10, Math.round(spec.count)))
@@ -1551,6 +1606,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
   const cycleDmgByStep: number[][] = Array.from({ length: maxTurns }, () => [])
 
   for (let r = 0; r < runs; r++) {
+    const rng = createMxRng(baseSeed + (r + 1) * 7919)
     const gauges = new Map<string, number>()
     for (const u of units) gauges.set(u.id, 0)
     let orbs = Math.min(maxOrbs, Math.max(0, cfg.initialOrbs ?? 4))

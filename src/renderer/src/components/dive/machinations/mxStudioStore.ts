@@ -1124,18 +1124,32 @@ export function createMxStudioStore(initial: MxDocument) {
         160
       )
 
-      // 若画布存在主资源池，则建立从乘区产出寄存器到主资源池附近转换器/源点的状态修正边
+      // 若画布存在主资源池，则建立从乘区产出寄存器到主资源池入向产出边（或源点）的状态修正边，避免直接连向 Pool 导致出向消耗边暴涨抽干资源池
       if (primaryPool) {
         touchedNodeIds.push(primaryPool.id)
         const hasLink = d.edges.some((e) => e.from === regDmg.id || e.from === regWin.id)
         if (!hasLink) {
-          d.edges.push({
-            id: 'wb_st_link_1',
-            kind: 'state',
-            from: regDmg.id,
-            to: primaryPool.id,
-            formula: '+1'
-          })
+          const incomingFeedEdge = d.edges.find(
+            (e) => e.kind === 'resource' && e.to === primaryPool.id
+          )
+          if (incomingFeedEdge) {
+            d.edges.push({
+              id: 'wb_st_link_1',
+              kind: 'state',
+              from: regDmg.id,
+              to: incomingFeedEdge.from,
+              targetEdgeId: incomingFeedEdge.id,
+              formula: '+1%'
+            })
+          } else {
+            d.edges.push({
+              id: 'wb_st_link_1',
+              kind: 'state',
+              from: regDmg.id,
+              to: regWin.id,
+              formula: '>0'
+            })
+          }
           d.edges.push({
             id: 'wb_st_link_2',
             kind: 'state',

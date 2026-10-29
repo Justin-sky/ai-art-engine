@@ -2732,10 +2732,10 @@ const uiText = computed(() => ({
                   >
                     {{
                       row.verdict === 'favored'
-                        ? L('优势碾压', 'Favored') // cjk-ok
+                        ? L('优势碾压', 'Favored')
                         : row.verdict === 'skill_check'
-                          ? L('机制均势', 'Skill Check') // cjk-ok
-                          : L('被严重针对', 'Countered!') // cjk-ok
+                          ? L('机制均势', 'Skill Check')
+                          : L('被严重针对', 'Countered!')
                     }}
                   </span>
                 </td>
@@ -4158,10 +4158,10 @@ const uiText = computed(() => ({
                 >
                   {{
                     row.verdict === 'healthy'
-                      ? L('成型健康', 'Healthy') // cjk-ok
+                      ? L('成型健康', 'Healthy')
                       : row.verdict === 'diluted'
-                        ? L('池稀释需Ban', 'Diluted') // cjk-ok
-                        : L('严重卡池崩塌', 'Collapsed') // cjk-ok
+                        ? L('池稀释需Ban', 'Diluted')
+                        : L('严重卡池崩塌', 'Collapsed')
                   }}
                 </span>
               </td>

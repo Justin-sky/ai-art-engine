@@ -1189,8 +1189,10 @@
                       class="tab-pill"
                       :class="{ active: vfxPlayerBg === 'checker' }"
                       @click="
-                        vfxPlayerBg = 'checker'
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxPlayerBg = 'checker'
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.playerBgChecker') }}
@@ -1200,8 +1202,10 @@
                       class="tab-pill"
                       :class="{ active: vfxPlayerBg === 'dark' }"
                       @click="
-                        vfxPlayerBg = 'dark'
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxPlayerBg = 'dark'
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.playerBgDark') }}
@@ -1211,8 +1215,10 @@
                       class="tab-pill"
                       :class="{ active: vfxPlayerBg === 'light' }"
                       @click="
-                        vfxPlayerBg = 'light'
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxPlayerBg = 'light'
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.playerBgLight') }}
@@ -1222,8 +1228,10 @@
                       class="tab-pill"
                       :class="{ active: vfxBlendMode === 'source-over' }"
                       @click="
-                        vfxBlendMode = 'source-over'
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxBlendMode = 'source-over'
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.blendAlpha') }}
@@ -1233,8 +1241,10 @@
                       class="tab-pill"
                       :class="{ active: vfxBlendMode === 'lighter' }"
                       @click="
-                        vfxBlendMode = 'lighter'
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxBlendMode = 'lighter'
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.blendAdditive') }}
@@ -1244,8 +1254,10 @@
                       class="tab-pill"
                       :class="{ active: vfxEnableOpticalFlow }"
                       @click="
-                        vfxEnableOpticalFlow = !vfxEnableOpticalFlow
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxEnableOpticalFlow = !vfxEnableOpticalFlow
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.layerOpticalFlowToggle') }}
@@ -1255,8 +1267,10 @@
                       class="tab-pill"
                       :class="{ active: vfxEnableDecalLayer }"
                       @click="
-                        vfxEnableDecalLayer = !vfxEnableDecalLayer
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxEnableDecalLayer = !vfxEnableDecalLayer
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.layerDecalToggle') }}
@@ -1266,8 +1280,10 @@
                       class="tab-pill"
                       :class="{ active: vfxEnableSparksLayer }"
                       @click="
-                        vfxEnableSparksLayer = !vfxEnableSparksLayer
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxEnableSparksLayer = !vfxEnableSparksLayer
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.layerSparksToggle') }}
@@ -1277,8 +1293,10 @@
                       class="tab-pill"
                       :class="{ active: vfxEnableDistortionLayer }"
                       @click="
-                        vfxEnableDistortionLayer = !vfxEnableDistortionLayer
-                        renderVfxPlayerCanvas()
+                        () => {
+                          vfxEnableDistortionLayer = !vfxEnableDistortionLayer
+                          renderVfxPlayerCanvas()
+                        }
                       "
                     >
                       {{ t('gameNodes.vfxAlpha.layerDistortionToggle') }}
@@ -3409,10 +3427,10 @@
                               type="color"
                               :value="psSelectedLayer.textColor || '#fef08a'"
                               @input="
-                                psSelectedLayer.textColor = (
+                                ((psSelectedLayer.textColor = (
                                   $event.target as HTMLInputElement
-                                ).value
-                                recordAndPersistPsArtboard()
+                                ).value),
+                                recordAndPersistPsArtboard())
                               "
                             />
                           </label>
@@ -3425,10 +3443,10 @@
                               type="color"
                               :value="psSelectedLayer.accentColor || '#eab308'"
                               @input="
-                                psSelectedLayer.accentColor = (
+                                ((psSelectedLayer.accentColor = (
                                   $event.target as HTMLInputElement
-                                ).value
-                                recordAndPersistPsArtboard()
+                                ).value),
+                                recordAndPersistPsArtboard())
                               "
                             />
                           </label>
@@ -3441,8 +3459,10 @@
                               type="color"
                               :value="psSelectedLayer.bgColor || '#0c101c'"
                               @input="
-                                psSelectedLayer.bgColor = ($event.target as HTMLInputElement).value
-                                recordAndPersistPsArtboard()
+                                ((psSelectedLayer.bgColor = (
+                                  $event.target as HTMLInputElement
+                                ).value),
+                                recordAndPersistPsArtboard())
                               "
                             />
                           </label>

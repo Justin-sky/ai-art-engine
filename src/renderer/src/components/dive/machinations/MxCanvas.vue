@@ -1111,8 +1111,10 @@
           type="button"
           class="mx-ctx-row"
           @click="
-            onAutoLayout()
-            closeMenus()
+            () => {
+              onAutoLayout()
+              closeMenus()
+            }
           "
         >
           ✨ {{ t('mx.canvas.autoLayout') }}
@@ -1121,8 +1123,10 @@
           type="button"
           class="mx-ctx-row"
           @click="
-            store.pasteNodes()
-            closeMenus()
+            () => {
+              store.pasteNodes()
+              closeMenus()
+            }
           "
         >
           📋 {{ t('mx.canvas.paste') }}
@@ -1131,8 +1135,10 @@
           type="button"
           class="mx-ctx-row"
           @click="
-            fitView()
-            closeMenus()
+            () => {
+              fitView()
+              closeMenus()
+            }
           "
         >
           ⤢ {{ t('mx.view.fit') }}
@@ -1143,10 +1149,7 @@
         <button
           type="button"
           class="mx-ctx-row"
-          @click="
-            if (contextMenu.nodeId) store.interact(contextMenu.nodeId)
-            closeMenus()
-          "
+          @click="(contextMenu.nodeId && store.interact(contextMenu.nodeId), closeMenus())"
         >
           ⚡ {{ t('mx.canvas.fireNodeNow') }}
         </button>
@@ -1154,8 +1157,10 @@
           type="button"
           class="mx-ctx-row"
           @click="
-            store.duplicateSelection()
-            closeMenus()
+            () => {
+              store.duplicateSelection()
+              closeMenus()
+            }
           "
         >
           ⧉ {{ t('mx.canvas.duplicate') }}
@@ -1165,8 +1170,10 @@
           type="button"
           class="mx-ctx-row is-danger"
           @click="
-            store.deleteSelection()
-            closeMenus()
+            () => {
+              store.deleteSelection()
+              closeMenus()
+            }
           "
         >
           🗑 {{ t('mx.inspector.deleteElement') }}
@@ -1177,20 +1184,14 @@
         <button
           type="button"
           class="mx-ctx-row"
-          @click="
-            if (contextMenu.edgeId) store.toggleEdgeKind(contextMenu.edgeId)
-            closeMenus()
-          "
+          @click="(contextMenu.edgeId && store.toggleEdgeKind(contextMenu.edgeId), closeMenus())"
         >
           ──/╌╌ {{ t('mx.inspector.edgeKind') }}
         </button>
         <button
           type="button"
           class="mx-ctx-row"
-          @click="
-            if (contextMenu.edgeId) store.reverseEdge(contextMenu.edgeId)
-            closeMenus()
-          "
+          @click="(contextMenu.edgeId && store.reverseEdge(contextMenu.edgeId), closeMenus())"
         >
           ⇄ {{ t('mx.canvas.reverseEdge') }}
         </button>
@@ -1199,8 +1200,10 @@
           type="button"
           class="mx-ctx-row is-danger"
           @click="
-            store.deleteSelection()
-            closeMenus()
+            () => {
+              store.deleteSelection()
+              closeMenus()
+            }
           "
         >
           🗑 {{ t('mx.inspector.deleteElement') }}
