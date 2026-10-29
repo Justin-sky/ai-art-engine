@@ -58,6 +58,15 @@ import { resolveNodeType } from './registry'
 import { normalizeStage2dScene, stage2dSceneToNodePatch } from './stage2d'
 import { stage2dActionToNodePatch } from './stage2dAction'
 import { resolveStage2dActionPreset } from '../gameAssets/stage2dActionPresets'
+import {
+  autoLayoutMxDocument,
+  createMxFromTemplate,
+  MX_TEMPLATES,
+  normalizeMxDocument,
+  parseMxDocumentJson,
+  type MxTemplateId
+} from '../gameAssets/machinationsV2'
+import { createMxWorkbenchPreset, MX_WORKBENCH_PRESETS } from '../gameAssets/gameNumericalWorkbench'
 import type { GraphNode, GraphNodeParams } from './types'
 
 /** 常见中文/口语键名到标准属性名的语义别名映射 */
@@ -161,6 +170,12 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   html: 'gamePlayHtml',
   svg: 'svgText',
   code: 'scriptCode',
+  economyDiagram: 'gameEconomyDiagramJson',
+  machinationsDiagram: 'gameEconomyDiagramJson',
+  machinations: 'gameEconomyDiagramJson',
+  diagramJson: 'gameEconomyDiagramJson',
+  diagram: 'gameEconomyDiagramJson',
+  economyPreset: 'gameEconomyPreset',
   previzVideoRef: 'filmRenderPrevizVideoRef',
   previz_video_ref: 'filmRenderPrevizVideoRef',
   usePrevizVideo: 'filmRenderPrevizVideoRef',
@@ -522,6 +537,23 @@ function unmarshalJsonStringField(key: string, currentVal: unknown): unknown {
     }
     return currentVal
   }
+  if (key === 'gameEconomyDiagramJson') {
+    if (typeof currentVal === 'string') {
+      const trimmed = currentVal.trim()
+      if (trimmed) {
+        try {
+          return parseMxDocumentJson(trimmed)
+        } catch {
+          return createMxFromTemplate('roguelike_run')
+        }
+      }
+      return createMxFromTemplate('roguelike_run')
+    }
+    if (currentVal === undefined || currentVal === null) {
+      return createMxFromTemplate('roguelike_run')
+    }
+    return currentVal
+  }
   if (typeof currentVal === 'string') {
     const trimmed = currentVal.trim()
     if (
@@ -562,6 +594,25 @@ function marshalJsonStringField(key: string, editedVal: unknown): string {
           ? (editedVal as any)
           : { schema: FILM_CAST_SCHEMA, style: '', entries: [] })
     )
+  }
+  if (key === 'gameEconomyDiagramJson') {
+    if (typeof editedVal === 'string') {
+      const trimmed = editedVal.trim()
+      if (trimmed.includes('{') && trimmed.includes('}')) {
+        const parsedDoc = parseMxDocumentJson(trimmed)
+        return JSON.stringify(parsedDoc)
+      }
+      return editedVal
+    }
+    const norm = normalizeMxDocument(editedVal)
+    // 若 AI 生成的新节点未给散开坐标（如全部在默认 200,180 或 0,0），自动执行拓扑排版
+    if (norm.nodes.length >= 2) {
+      const coords = new Set(norm.nodes.map((n) => `${Math.round(n.x)},${Math.round(n.y)}`))
+      if (coords.size < Math.ceil(norm.nodes.length / 2)) {
+        autoLayoutMxDocument(norm)
+      }
+    }
+    return JSON.stringify(norm)
   }
   if (typeof editedVal === 'string') return editedVal
   return JSON.stringify(editedVal)
@@ -790,6 +841,39 @@ export function applySmartNodePreset(
     }
   }
 
+  // 11. 游戏经济系统 Machinations 模板预设 & 五大旗舰数值工作台预设
+  if ('gameEconomyPreset' in baseParams || def?.typeId === 'game.economy') {
+    const wbToTpl: Record<string, MxTemplateId> = {
+      slay_the_spire_dbg: 'roguelike_mana_deck',
+      hearthstone_tcg: 'hearthstone_mana_pack',
+      onmyoji_atb: 'onmyoji_speed_orbs',
+      balatro_roguelike: 'balatro_ante_jokers',
+      survivor_brotato: 'survivor_xp_loop'
+    }
+    const wbHit = MX_WORKBENCH_PRESETS.find((w) =>
+      matchesPresetQuery({ id: w.id, name: w.nameEn, title: w.nameZh }, q)
+    )
+    const hit =
+      MX_TEMPLATES.find((t) =>
+        matchesPresetQuery({ id: t.id, name: t.nameEn, title: t.nameZh }, q)
+      ) ?? (wbHit ? MX_TEMPLATES.find((t) => t.id === wbToTpl[wbHit.id]) : undefined)
+    if (hit) {
+      const doc = createMxFromTemplate(hit.id)
+      if (wbHit) {
+        doc.workbench = createMxWorkbenchPreset(wbHit.id)
+      }
+      return {
+        matchedPresetId: hit.id,
+        paramsPatch: {
+          gameEconomyPreset: hit.id,
+          gameEconomyDiagramJson: JSON.stringify(doc),
+          gameEconomySteps: doc.settings.steps,
+          gameEconomySeed: doc.settings.seed
+        }
+      }
+    }
+  }
+
   return null
 }
 
@@ -878,6 +962,45 @@ function finalizeSubDocumentPatches(
   if (touchedTopKeys.has('stage2dAction') && working.stage2dAction !== undefined) {
     Object.assign(working, stage2dActionToNodePatch(working.stage2dAction as any))
   }
+  if (
+    touchedTopKeys.has('gameEconomyPreset') &&
+    !touchedTopKeys.has('gameEconomyDiagramJson') &&
+    typeof working.gameEconomyPreset === 'string'
+  ) {
+    const rawPresetStr = String(working.gameEconomyPreset).toLowerCase()
+    const wbToTpl: Record<string, MxTemplateId> = {
+      slay_the_spire_dbg: 'roguelike_mana_deck',
+      hearthstone_tcg: 'hearthstone_mana_pack',
+      onmyoji_atb: 'onmyoji_speed_orbs',
+      balatro_roguelike: 'balatro_ante_jokers',
+      survivor_brotato: 'survivor_xp_loop'
+    }
+    const wbHit = MX_WORKBENCH_PRESETS.find(
+      (w) =>
+        w.id === working.gameEconomyPreset ||
+        matchesPresetQuery({ id: w.id, name: w.nameEn, title: w.nameZh }, rawPresetStr)
+    )
+    const presetHit =
+      MX_TEMPLATES.find(
+        (t) =>
+          t.id === working.gameEconomyPreset ||
+          matchesPresetQuery({ id: t.id, name: t.nameEn, title: t.nameZh }, rawPresetStr)
+      ) ?? (wbHit ? MX_TEMPLATES.find((t) => t.id === wbToTpl[wbHit.id]) : undefined)
+    if (presetHit) {
+      const doc = createMxFromTemplate(presetHit.id)
+      if (wbHit) {
+        doc.workbench = createMxWorkbenchPreset(wbHit.id)
+      }
+      working.gameEconomyPreset = presetHit.id
+      working.gameEconomyDiagramJson = JSON.stringify(doc)
+      if (!touchedTopKeys.has('gameEconomySteps')) {
+        working.gameEconomySteps = doc.settings.steps
+      }
+      if (!touchedTopKeys.has('gameEconomySeed')) {
+        working.gameEconomySeed = doc.settings.seed
+      }
+    }
+  }
 }
 
 /**
@@ -917,7 +1040,8 @@ export function mergeSmartNodeParams(
       fieldSchema?.type === 'json-string' ||
       topKey === 'comicPage' ||
       topKey === 'filmStoryboard' ||
-      topKey === 'filmCast'
+      topKey === 'filmCast' ||
+      topKey === 'gameEconomyDiagramJson'
     ) {
       if (!unmarshaledJsonKeys.has(topKey)) {
         working[topKey] = unmarshalJsonStringField(topKey, working[topKey])
@@ -938,18 +1062,59 @@ export function mergeSmartNodeParams(
     }
   }
 
-  for (const [rawKey, rawVal] of Object.entries(incoming)) {
+  // 若 AI 在 game.economy 节点顶层 params 直接传入 nodes + edges（未包裹在 gameEconomyDiagramJson 中），自动收拢为 gameEconomyDiagramJson
+  let effectiveIncoming: Record<string, unknown> = incoming
+  if (
+    (node.typeId === 'game.economy' || 'gameEconomyPreset' in before) &&
+    Array.isArray(incoming.nodes) &&
+    Array.isArray(incoming.edges) &&
+    incoming.gameEconomyDiagramJson === undefined
+  ) {
+    const {
+      nodes: incNodes,
+      edges: incEdges,
+      resources: incResources,
+      params: incParams,
+      agents: incAgents,
+      settings: incSettings,
+      groups: incGroups,
+      scenarios: incScenarios,
+      ...restIncoming
+    } = incoming
+    effectiveIncoming = {
+      ...restIncoming,
+      gameEconomyDiagramJson: {
+        schema: 'mx@2',
+        ...(typeof incoming.title === 'string' ? { title: incoming.title } : {}),
+        ...(Array.isArray(incResources) ? { resources: incResources } : {}),
+        ...(Array.isArray(incParams) ? { params: incParams } : {}),
+        ...(Array.isArray(incAgents) ? { agents: incAgents } : {}),
+        ...(isPlainObject(incSettings) ? { settings: incSettings } : {}),
+        ...(Array.isArray(incGroups) ? { groups: incGroups } : {}),
+        ...(Array.isArray(incScenarios) ? { scenarios: incScenarios } : {}),
+        nodes: incNodes,
+        edges: incEdges
+      }
+    }
+  }
+
+  for (const [rawKey, rawVal] of Object.entries(effectiveIncoming)) {
     if (rawKey === 'preset' || rawKey === 'presetId') continue
 
-    // 情况 A：包含点路径或数组下标（如 "portraitRetouch.skinSmoothing" 或 "filmStoryboard.shots[0].action"）
+    // 情况 A：包含点路径或数组下标（如 "portraitRetouch.skinSmoothing" 或 "workbench.combatKernel.enemyHp"）
     if (rawKey.includes('.') || rawKey.includes('[')) {
       const firstToken = parseSmartPath(rawKey)[0]
       if (firstToken?.key) {
-        const normTopKey = normalizeSingleKey(firstToken.key, working, schema)
-        ensureJsonFieldUnmarshaled(normTopKey)
-        touchedTopKeys.add(normTopKey)
-        const normalizedPath = [normTopKey, ...rawKey.split('.').slice(1)].join('.')
-        setBySmartPath(working, normalizedPath, rawVal, schema)
+        const normFirstKey = normalizeSingleKey(firstToken.key, working, schema)
+        const shorthandPrefix =
+          !(normFirstKey in working) && schema?.shorthandMap[normFirstKey]
+            ? schema.shorthandMap[normFirstKey]
+            : normFirstKey
+        const actualTopKey = shorthandPrefix.split('.')[0]!
+        ensureJsonFieldUnmarshaled(actualTopKey)
+        touchedTopKeys.add(actualTopKey)
+        const firstPartReplaced = rawKey.replace(/^[^.\[]+/, shorthandPrefix)
+        setBySmartPath(working, firstPartReplaced, rawVal, schema)
       }
       continue
     }
@@ -976,11 +1141,28 @@ export function mergeSmartNodeParams(
       (fieldSchema?.type === 'json-string' ||
         normKey === 'comicPage' ||
         normKey === 'filmStoryboard' ||
-        normKey === 'filmCast') &&
+        normKey === 'filmCast' ||
+        normKey === 'gameEconomyDiagramJson') &&
       isPlainObject(rawVal)
     ) {
       ensureJsonFieldUnmarshaled(normKey)
-      working[normKey] = deepMergeSmartValues(working[normKey], rawVal)
+      if (
+        normKey === 'gameEconomyDiagramJson' &&
+        Array.isArray((rawVal as Record<string, unknown>).nodes) &&
+        Array.isArray((rawVal as Record<string, unknown>).edges)
+      ) {
+        // 若传入完整的 nodes + edges 经济图定义，则直接替换图结构并保留缺省元数据
+        working[normKey] = {
+          ...(isPlainObject(working[normKey]) ? (working[normKey] as Record<string, unknown>) : {}),
+          ...(rawVal as Record<string, unknown>)
+        }
+      } else {
+        working[normKey] = deepMergeSmartValues(working[normKey], rawVal)
+      }
+      continue
+    }
+    if (normKey === 'gameEconomyDiagramJson' && typeof rawVal === 'string' && rawVal.trim()) {
+      working[normKey] = marshalJsonStringField('gameEconomyDiagramJson', rawVal)
       continue
     }
 

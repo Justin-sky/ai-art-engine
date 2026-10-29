@@ -26,6 +26,7 @@ import { DEFAULT_PORTRAIT_TEXTURE, PORTRAIT_TEXTURE_FIELDS } from './portraitTex
 import { getNodeType, listNodeTypes, resolveNodeType, type NodeTypeDefinition } from './registry'
 import { createDefaultStage2dScene } from './stage2d'
 import { STAGE2D_ACTION_PRESETS } from '../gameAssets/stage2dActionPresets'
+import { createMxTemplate, MX_TEMPLATES, parseMxDocumentJson } from '../gameAssets/machinationsV2'
 import type {
   GraphInspectorKind,
   GraphNode,
@@ -589,6 +590,91 @@ function buildKnownSubDocPrototype(key: string): {
         },
         isJsonString: true
       }
+    case 'gameEconomyPreset':
+      return {
+        fieldOverrides: {
+          gameEconomyPreset: {
+            type: 'enum',
+            enumValues: MX_TEMPLATES.map((t) => t.id),
+            description: 'Machinations 游戏经济系统模板预设'
+          }
+        },
+        presets: MX_TEMPLATES.map((t) => ({
+          id: t.id,
+          label: `${t.nameZh} / ${t.nameEn}`,
+          description: `${t.descZh} (${t.descEn})`,
+          category: 'gameEconomyPreset'
+        }))
+      }
+    case 'gameEconomyDiagramJson':
+      return {
+        sample: {
+          ...createMxTemplate('roguelike_run'),
+          agents: [
+            {
+              id: 'agent_1',
+              name: 'Rational Player',
+              enabled: true,
+              personality: 'rational',
+              goals: [
+                {
+                  id: 'goal_1',
+                  nodeId: 'gold',
+                  targetFormula: '100',
+                  importance: 'high',
+                  continuePastTarget: true,
+                  trajectory: 'upwards',
+                  utilityCurve: 'linear'
+                }
+              ],
+              controlledNodeIds: [],
+              actionsPerStep: 1,
+              lookaheadHorizon: 2
+            }
+          ]
+        },
+        isJsonString: true,
+        fieldOverrides: {
+          'gameEconomyDiagramJson.nodes[].kind': {
+            type: 'enum',
+            enumValues: [
+              'source',
+              'pool',
+              'drain',
+              'converter',
+              'gate',
+              'trader',
+              'register',
+              'delay',
+              'queue',
+              'end',
+              'note'
+            ]
+          },
+          'gameEconomyDiagramJson.nodes[].trigger': {
+            type: 'enum',
+            enumValues: ['passive', 'automatic', 'interactive', 'enabling']
+          },
+          'gameEconomyDiagramJson.nodes[].pullMode': {
+            type: 'enum',
+            enumValues: ['pull_any', 'pull_all', 'push_any', 'push_all']
+          },
+          'gameEconomyDiagramJson.nodes[].gateMode': {
+            type: 'enum',
+            enumValues: ['random', 'deterministic', 'skill']
+          },
+          'gameEconomyDiagramJson.edges[].kind': {
+            type: 'enum',
+            enumValues: ['resource', 'state']
+          }
+        },
+        presets: MX_TEMPLATES.map((t) => ({
+          id: t.id,
+          label: `${t.nameZh} / ${t.nameEn}`,
+          description: `${t.descZh} (${t.descEn})`,
+          category: 'gameEconomyPreset'
+        }))
+      }
     default:
       return null
   }
@@ -638,6 +724,8 @@ export function reflectValueToFieldSchema(
       } else if (key === 'filmCast') {
         const cast = parseFilmCast(value)
         parsed = cast && cast.entries.length > 0 ? cast : knownProto.sample
+      } else if (key === 'gameEconomyDiagramJson') {
+        parsed = parseMxDocumentJson(value) ?? knownProto.sample
       } else {
         parsed = tryParseJsonObjectOrArray(value) ?? knownProto.sample
       }
@@ -754,19 +842,17 @@ function collectFlatPathsAndShorthands(fields: Record<string, NodeParamFieldSche
 
   function walk(field: NodeParamFieldSchema): void {
     flatPaths.push(field.path)
+    if (field.path.includes('.') && !field.path.includes('[]') && field.key !== '[]') {
+      const list = leafCandidates.get(field.key) ?? []
+      list.push(field.path)
+      leafCandidates.set(field.key, list)
+    }
     if (field.children) {
       for (const child of Object.values(field.children)) {
         walk(child)
       }
     } else if (field.itemSchema) {
       walk(field.itemSchema)
-    } else {
-      // 叶子字段且路径包含层级（例如 portraitRetouch.skinSmoothing）
-      if (field.path.includes('.') && !field.path.includes('[]')) {
-        const list = leafCandidates.get(field.key) ?? []
-        list.push(field.path)
-        leafCandidates.set(field.key, list)
-      }
     }
   }
 

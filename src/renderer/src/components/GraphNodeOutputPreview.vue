@@ -1347,8 +1347,18 @@ async function resolveTextBody(item: PreviewItem): Promise<string> {
   return ''
 }
 
-function displayText(item: PreviewItem): string {
+const MAX_INLINE_PREVIEW_CHARS = 4000
+
+function fullText(item: PreviewItem): string {
   return resolvedText.value[item.key] || item.text || item.relativePath || ''
+}
+
+function displayText(item: PreviewItem): string {
+  const raw = fullText(item)
+  if (raw.length <= MAX_INLINE_PREVIEW_CHARS) return raw
+  // 超长单文件产物（如内联 base64 的 HTML5 可玩包 / 大型 Tiled JSON）不在检查器侧栏全量排版，
+  // 防止百万字符 <pre> 阻塞 Blink 文本布局；双击仍可打开完整记事本查看
+  return `${raw.slice(0, MAX_INLINE_PREVIEW_CHARS)}\n… (${Math.round(raw.length / 1024)} KB)`
 }
 
 async function resolveItems(): Promise<void> {
@@ -1433,7 +1443,7 @@ const textOpenHint = computed(() => t('graph.notepad.openHint'))
 
 function openTextNotepad(item: PreviewItem | string | undefined): void {
   const text =
-    typeof item === 'string' || item == null ? (item?.trim() ? item : '') : displayText(item)
+    typeof item === 'string' || item == null ? (item?.trim() ? item : '') : fullText(item)
   notepadText.value = text
   notepadOpen.value = true
 }

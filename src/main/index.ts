@@ -120,7 +120,9 @@ function createWindow(): void {
     }
   }, 2500)
 
-  window.webContents.on('did-fail-load', (_e, code, desc, url) => {
+  window.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    // -3 = ERR_ABORTED：子框架（如可玩沙盒 iframe）加载中被新地址替换 / 旧文档被释放，属预期，不当错误刷屏
+    if (code === -3 && !isMainFrame) return
     console.error('[did-fail-load]', code, desc, url)
   })
 

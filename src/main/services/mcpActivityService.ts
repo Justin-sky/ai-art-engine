@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { IpcChannels, type McpActivity, type McpActivityTool } from '@shared/ipc'
+import {
+  IpcChannels,
+  type McpActivity,
+  type McpActivityTool,
+  type OneSentenceGameCardInfo
+} from '@shared/ipc'
 import type { GraphRunLogApiCall } from '@shared/graph'
 import { broadcastToAllWindows } from '../broadcast'
 
@@ -92,6 +97,8 @@ class McpActivityService {
       detail?: string
       error?: string
       apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
+      /** 仅 game_one_sentence_create：对话一句话游戏卡的规格摘要 */
+      oneSentenceGame?: OneSentenceGameCardInfo
     }
   ): void {
     const index = this.activities.findIndex((a) => a.id === activityId)
@@ -113,6 +120,7 @@ class McpActivityService {
       relativePaths: nextRelativePaths?.length ? [...nextRelativePaths] : undefined,
       relatedPaths: relatedPaths?.length ? [...relatedPaths] : prev.relatedPaths,
       error: input.ok ? undefined : input.error,
+      oneSentenceGame: input.oneSentenceGame ?? prev.oneSentenceGame,
       apiCall: input.apiCall
         ? {
             ...input.apiCall,

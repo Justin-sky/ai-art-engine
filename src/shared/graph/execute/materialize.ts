@@ -458,7 +458,13 @@ export function commitGeneratedImages(
   previewRelativePath?: string,
   extraParams?: Record<string, unknown>
 ): Record<string, GraphValue> {
-  const selectedImageId = newestImageSelectedId(generatedImages)
+  const explicitSelectedId =
+    typeof extraParams?.selectedImageId === 'string' && extraParams.selectedImageId.trim()
+      ? extraParams.selectedImageId.trim()
+      : previewRelativePath?.trim()
+        ? generatedImages.find((item) => item.relativePath === previewRelativePath.trim())?.id
+        : undefined
+  const selectedImageId = explicitSelectedId || newestImageSelectedId(generatedImages)
   const params = {
     generatedImages,
     selectedImageId,

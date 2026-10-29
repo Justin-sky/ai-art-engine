@@ -295,14 +295,23 @@ export function isComicPageNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'comic.page'
 }
 
+const GAME_IMAGE_ASSET_NODE_TYPE_IDS = new Set(['game.pbrTile', 'game.spriteProp', 'game.vfxAlpha'])
+
 const GAME_PRODUCTION_NODE_TYPE_IDS = new Set([
   'game.pbrTile',
+  'game.spriteProp',
+  'game.vfxAlpha',
   'game.audioDsp',
   'game.levelMap',
-  'game.playable'
+  'game.economy'
 ])
 
-/** 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒） */
+/** 游戏图像资产加工节点（无缝瓦片与PBR / 精灵描边与物件 / 2D特效去黑底） */
+export function isGameImageAssetNode(node: Pick<GraphNode, 'typeId'> | null | undefined): boolean {
+  return typeof node?.typeId === 'string' && GAME_IMAGE_ASSET_NODE_TYPE_IDS.has(node.typeId)
+}
+
+/** 游戏生产工坊节点（无缝瓦片 / UI容器 / 精灵物件 / 特效去黑底 / 音频工坊 / 关卡拓扑） */
 export function isGameProductionNode(node: Pick<GraphNode, 'typeId'> | null | undefined): boolean {
   return typeof node?.typeId === 'string' && GAME_PRODUCTION_NODE_TYPE_IDS.has(node.typeId)
 }

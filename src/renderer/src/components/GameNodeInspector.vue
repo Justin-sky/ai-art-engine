@@ -20,9 +20,20 @@
       @toggle="toggleRun"
     />
 
-    <!-- 1. game.pbrTile: 无缝瓦片与 PBR 四通道派生 -->
+    <!-- 1A. game.pbrTile: 四方连续无缝瓦片 & Wang-16 自动地形 -->
     <section v-if="node.typeId === 'game.pbrTile'" class="panel-card">
       <div class="section-title">{{ t('gameNodes.pbrTile.sectionTitle') }}</div>
+
+      <label class="field">
+        <span>{{ t('gameNodes.pbrTile.assetModeLabel') }}</span>
+        <select
+          :value="node.params.gamePbrAssetMode ?? 'pbr_tile'"
+          @change="onStringParam('gamePbrAssetMode', $event)"
+        >
+          <option value="pbr_tile">{{ t('gameNodes.pbrTile.modePbrTile') }}</option>
+          <option value="autotile_wang16">{{ t('gameNodes.pbrTile.modeAutotileWang16') }}</option>
+        </select>
+      </label>
 
       <label class="check-row">
         <input
@@ -48,28 +59,255 @@
         />
       </label>
 
+      <template v-if="(node.params.gamePbrAssetMode ?? 'pbr_tile') === 'pbr_tile'">
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.pbrTile.normalStrength') }}</span>
+            <b>{{ Number(node.params.gamePbrNormalStrength ?? 2.8).toFixed(1) }}</b>
+          </div>
+          <input
+            type="range"
+            min="0.5"
+            max="8"
+            step="0.1"
+            :value="node.params.gamePbrNormalStrength ?? 2.8"
+            @change="onNumberParam('gamePbrNormalStrength', $event)"
+          />
+        </label>
+
+        <label class="check-row">
+          <input
+            type="checkbox"
+            :checked="Boolean(node.params.gamePbrInvertRoughness)"
+            @change="onBoolParam('gamePbrInvertRoughness', $event)"
+          />
+          <span>{{ t('gameNodes.pbrTile.invertRoughness') }}</span>
+        </label>
+      </template>
+
+      <div v-if="node.params.gamePbrReport" class="report-chip">
+        {{ node.params.gamePbrReport }}
+      </div>
+    </section>
+
+    <!-- 1C. game.spriteProp: 通用精灵外描边+MIP链 & 模块化场景物件 Y-Sort -->
+    <section v-else-if="node.typeId === 'game.spriteProp'" class="panel-card">
+      <div class="section-title">{{ t('gameNodes.spriteProp.sectionTitle') }}</div>
+
+      <label class="field">
+        <span>{{ t('gameNodes.spriteProp.modeLabel') }}</span>
+        <select
+          :value="node.params.gamePbrAssetMode ?? 'sprite_stroke_mip'"
+          @change="onStringParam('gamePbrAssetMode', $event)"
+        >
+          <option value="sprite_stroke_mip">
+            {{ t('gameNodes.pbrTile.modeSpriteStrokeMip') }}
+          </option>
+          <option value="scene_prop">{{ t('gameNodes.pbrTile.modeSceneProp') }}</option>
+        </select>
+      </label>
+
+      <template
+        v-if="(node.params.gamePbrAssetMode ?? 'sprite_stroke_mip') === 'sprite_stroke_mip'"
+      >
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.pbrTile.strokeWidthLabel') }}</span>
+            <b>{{ Number(node.params.gameStrokeWidthPx ?? 3) }} px</b>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="8"
+            step="1"
+            :value="node.params.gameStrokeWidthPx ?? 3"
+            @change="onNumberParam('gameStrokeWidthPx', $event)"
+          />
+        </label>
+        <label class="field">
+          <span>{{ t('gameNodes.pbrTile.strokeColorLabel') }}</span>
+          <select
+            :value="node.params.gameStrokeColorPreset ?? 'gold'"
+            @change="onStringParam('gameStrokeColorPreset', $event)"
+          >
+            <option value="gold">{{ t('gameNodes.pbrTile.strokeColorGold') }}</option>
+            <option value="white">{{ t('gameNodes.pbrTile.strokeColorWhite') }}</option>
+            <option value="black">{{ t('gameNodes.pbrTile.strokeColorBlack') }}</option>
+            <option value="cyan">{{ t('gameNodes.pbrTile.strokeColorCyan') }}</option>
+            <option value="crimson">{{ t('gameNodes.pbrTile.strokeColorCrimson') }}</option>
+          </select>
+        </label>
+      </template>
+
+      <template v-else>
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.pbrTile.propShadowOpacity') }}</span>
+            <b>{{ Math.round(Number(node.params.gamePropShadowOpacity ?? 0.42) * 100) }}%</b>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="0.9"
+            step="0.02"
+            :value="node.params.gamePropShadowOpacity ?? 0.42"
+            @change="onNumberParam('gamePropShadowOpacity', $event)"
+          />
+        </label>
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.pbrTile.propFootprintRatio') }}</span>
+            <b>{{ Math.round(Number(node.params.gamePropFootprintRatio ?? 0.25) * 100) }}%</b>
+          </div>
+          <input
+            type="range"
+            min="0.1"
+            max="0.55"
+            step="0.02"
+            :value="node.params.gamePropFootprintRatio ?? 0.25"
+            @change="onNumberParam('gamePropFootprintRatio', $event)"
+          />
+        </label>
+      </template>
+
+      <div v-if="node.params.gamePbrReport" class="report-chip">
+        {{ node.params.gamePbrReport }}
+      </div>
+    </section>
+
+    <!-- 1D. game.vfxAlpha: 专业 2D 特效工坊 (Flipbook / 去黑底 / 元素换色 / 通道打包) -->
+    <section v-else-if="node.typeId === 'game.vfxAlpha'" class="panel-card">
+      <div class="section-title">{{ t('gameNodes.vfxAlpha.sectionTitle') }}</div>
+
+      <label class="field">
+        <span>{{ t('gameNodes.vfxAlpha.modeLabel') }}</span>
+        <select
+          :value="node.params.gameVfxMode ?? 'vfx_flipbook'"
+          @change="onStringParam('gameVfxMode', $event)"
+        >
+          <option value="vfx_flipbook">{{ t('gameNodes.vfxAlpha.modeFlipbook') }}</option>
+          <option value="vfx_demult">{{ t('gameNodes.vfxAlpha.modeDemult') }}</option>
+          <option value="vfx_trail_ribbon">{{ t('gameNodes.vfxAlpha.modeRibbon') }}</option>
+          <option value="vfx_channel_pack">{{ t('gameNodes.vfxAlpha.modeChannelPack') }}</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>{{ t('gameNodes.vfxAlpha.archetypeLabel') }}</span>
+        <select
+          :value="node.params.gameVfxArchetype ?? 'slash_arc'"
+          @change="onStringParam('gameVfxArchetype', $event)"
+        >
+          <option value="slash_arc">{{ t('gameNodes.vfxAlpha.archSlash') }}</option>
+          <option value="fire_explosion">{{ t('gameNodes.vfxAlpha.archExplosion') }}</option>
+          <option value="arcane_vortex">{{ t('gameNodes.vfxAlpha.archVortex') }}</option>
+          <option value="lightning_burst">{{ t('gameNodes.vfxAlpha.archLightning') }}</option>
+          <option value="heal_aura">{{ t('gameNodes.vfxAlpha.archHeal') }}</option>
+          <option value="poison_nova">{{ t('gameNodes.vfxAlpha.archPoison') }}</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>{{ t('gameNodes.vfxAlpha.paletteLabel') }}</span>
+        <select
+          :value="node.params.gameVfxPalette ?? 'original'"
+          @change="onStringParam('gameVfxPalette', $event)"
+        >
+          <option value="original">{{ t('gameNodes.vfxAlpha.palOriginal') }}</option>
+          <option value="solar_fire">{{ t('gameNodes.vfxAlpha.palSolarFire') }}</option>
+          <option value="arcane_cyan">{{ t('gameNodes.vfxAlpha.palArcaneCyan') }}</option>
+          <option value="void_purple">{{ t('gameNodes.vfxAlpha.palVoidPurple') }}</option>
+          <option value="fel_emerald">{{ t('gameNodes.vfxAlpha.palFelEmerald') }}</option>
+          <option value="holy_gold">{{ t('gameNodes.vfxAlpha.palHolyGold') }}</option>
+          <option value="blood_crimson">{{ t('gameNodes.vfxAlpha.palBloodCrimson') }}</option>
+        </select>
+      </label>
+
+      <label v-if="(node.params.gameVfxMode ?? 'vfx_flipbook') === 'vfx_flipbook'" class="field">
+        <span>{{ t('gameNodes.vfxAlpha.frameCountLabel') }}</span>
+        <select
+          :value="node.params.gameVfxFrameCount ?? 8"
+          @change="onNumberParam('gameVfxFrameCount', $event)"
+        >
+          <option :value="4">{{ t('gameNodes.vfxAlpha.frames4') }}</option>
+          <option :value="8">{{ t('gameNodes.vfxAlpha.frames8') }}</option>
+          <option :value="16">{{ t('gameNodes.vfxAlpha.frames16') }}</option>
+        </select>
+      </label>
+
       <label class="slider-field">
         <div class="slider-head">
-          <span>{{ t('gameNodes.pbrTile.normalStrength') }}</span>
-          <b>{{ Number(node.params.gamePbrNormalStrength ?? 2.8).toFixed(1) }}</b>
+          <span>{{ t('gameNodes.vfxAlpha.bloomStrengthLabel') }}</span>
+          <b>{{ Math.round(Number(node.params.gameVfxBloomStrength ?? 0.45) * 100) }}%</b>
         </div>
         <input
           type="range"
-          min="0.5"
-          max="8"
-          step="0.1"
-          :value="node.params.gamePbrNormalStrength ?? 2.8"
-          @change="onNumberParam('gamePbrNormalStrength', $event)"
+          min="0"
+          max="1.5"
+          step="0.05"
+          :value="node.params.gameVfxBloomStrength ?? 0.45"
+          @change="onNumberParam('gameVfxBloomStrength', $event)"
         />
       </label>
 
-      <label class="check-row">
+      <label class="slider-field">
+        <div class="slider-head">
+          <span>{{ t('gameNodes.vfxAlpha.dissolveErosionLabel') }}</span>
+          <b>{{ Math.round(Number(node.params.gameVfxDissolveErosion ?? 0.35) * 100) }}%</b>
+        </div>
         <input
-          type="checkbox"
-          :checked="Boolean(node.params.gamePbrInvertRoughness)"
-          @change="onBoolParam('gamePbrInvertRoughness', $event)"
+          type="range"
+          min="0"
+          max="1.0"
+          step="0.05"
+          :value="node.params.gameVfxDissolveErosion ?? 0.35"
+          @change="onNumberParam('gameVfxDissolveErosion', $event)"
         />
-        <span>{{ t('gameNodes.pbrTile.invertRoughness') }}</span>
+      </label>
+
+      <label class="slider-field">
+        <div class="slider-head">
+          <span>{{ t('gameNodes.vfxAlpha.turbulenceLabel') }}</span>
+          <b>{{ Math.round(Number(node.params.gameVfxTurbulence ?? 0.45) * 100) }}%</b>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="1.2"
+          step="0.05"
+          :value="node.params.gameVfxTurbulence ?? 0.45"
+          @change="onNumberParam('gameVfxTurbulence', $event)"
+        />
+      </label>
+
+      <label class="slider-field">
+        <div class="slider-head">
+          <span>{{ t('gameNodes.vfxAlpha.sparkCountLabel') }}</span>
+          <b>{{ Number(node.params.gameVfxSparkCount ?? 36) }}</b>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="96"
+          step="4"
+          :value="node.params.gameVfxSparkCount ?? 36"
+          @change="onNumberParam('gameVfxSparkCount', $event)"
+        />
+      </label>
+
+      <label class="slider-field">
+        <div class="slider-head">
+          <span>{{ t('gameNodes.pbrTile.vfxBlackClip') }}</span>
+          <b>{{ Number(node.params.gameVfxBlackClip ?? 0.04).toFixed(2) }}</b>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="0.35"
+          step="0.01"
+          :value="node.params.gameVfxBlackClip ?? 0.04"
+          @change="onNumberParam('gameVfxBlackClip', $event)"
+        />
       </label>
 
       <div v-if="node.params.gamePbrReport" class="report-chip">
@@ -88,6 +326,7 @@
           @change="onStringParam('gameAudioDspMode', $event)"
         >
           <option value="loop_bgm">{{ t('gameNodes.audioDsp.modeLoopBgm') }}</option>
+          <option value="bgm_intro_loop">{{ t('gameNodes.audioDsp.modeBgmIntroLoop') }}</option>
           <option value="sfx_variants">{{ t('gameNodes.audioDsp.modeSfxVariants') }}</option>
         </select>
       </label>
@@ -124,23 +363,42 @@
         </select>
       </label>
 
-      <label
-        v-if="(node.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'"
-        class="slider-field"
+      <template
+        v-if="
+          (node.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm' ||
+          node.params.gameAudioDspMode === 'bgm_intro_loop'
+        "
       >
-        <div class="slider-head">
-          <span>{{ t('gameNodes.audioDsp.crossfadeSec') }}</span>
-          <b>{{ Number(node.params.gameAudioCrossfadeSec ?? 1.5).toFixed(1) }}s</b>
-        </div>
-        <input
-          type="range"
-          min="0.2"
-          max="5"
-          step="0.1"
-          :value="node.params.gameAudioCrossfadeSec ?? 1.5"
-          @change="onNumberParam('gameAudioCrossfadeSec', $event)"
-        />
-      </label>
+        <label v-if="node.params.gameAudioDspMode === 'bgm_intro_loop'" class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.audioDsp.introSec') }}</span>
+            <b>{{ Number(node.params.gameAudioIntroSec ?? 2.0).toFixed(1) }}s</b>
+          </div>
+          <input
+            type="range"
+            min="0.4"
+            max="12"
+            step="0.2"
+            :value="node.params.gameAudioIntroSec ?? 2.0"
+            @change="onNumberParam('gameAudioIntroSec', $event)"
+          />
+        </label>
+
+        <label class="slider-field">
+          <div class="slider-head">
+            <span>{{ t('gameNodes.audioDsp.crossfadeSec') }}</span>
+            <b>{{ Number(node.params.gameAudioCrossfadeSec ?? 1.5).toFixed(1) }}s</b>
+          </div>
+          <input
+            type="range"
+            min="0.2"
+            max="5"
+            step="0.1"
+            :value="node.params.gameAudioCrossfadeSec ?? 1.5"
+            @change="onNumberParam('gameAudioCrossfadeSec', $event)"
+          />
+        </label>
+      </template>
 
       <template v-else>
         <label class="slider-field">
@@ -219,6 +477,7 @@
           <option value="platformer_course">{{ t('gameNodes.levelMap.algPlatformer') }}</option>
           <option value="tower_defense">{{ t('gameNodes.levelMap.algTowerDefense') }}</option>
           <option value="labyrinth_maze">{{ t('gameNodes.levelMap.algLabyrinth') }}</option>
+          <option value="node_graph_map">{{ t('gameNodes.levelMap.algNodeGraph') }}</option>
         </select>
       </label>
 
@@ -267,83 +526,68 @@
       </div>
     </section>
 
-    <!-- 4. game.playable: 可玩游戏沙盒编译 -->
-    <section v-else-if="node.typeId === 'game.playable'" class="panel-card">
-      <div class="section-title">{{ t('gameNodes.playable.sectionTitle') }}</div>
+    <!-- 4. game.economy: Machinations 游戏经济与数值平衡模拟 -->
+    <section v-else-if="node.typeId === 'game.economy'" class="panel-card">
+      <div class="section-title">{{ t('gameNodes.economy.sectionTitle') }}</div>
 
       <label class="field">
-        <span>{{ t('gameNodes.playable.title') }}</span>
-        <input
-          type="text"
-          :value="node.params.gamePlayableTitle ?? 'Indie Game Prototype'"
-          @change="onStringParam('gamePlayableTitle', $event)"
-        />
-      </label>
-
-      <label class="field">
-        <span>{{ t('gameNodes.playable.genre') }}</span>
+        <span>{{ t('gameNodes.economy.presetLabel') }}</span>
         <select
-          :value="node.params.gamePlayableGenre ?? 'roguelike_action'"
-          @change="onStringParam('gamePlayableGenre', $event)"
+          :value="node.params.gameEconomyPreset ?? 'roguelike_run'"
+          @change="onStringParam('gameEconomyPreset', $event)"
         >
-          <option value="roguelike_action">{{ t('gameNodes.playable.genreRogue') }}</option>
-          <option value="platformer">{{ t('gameNodes.playable.genrePlatformer') }}</option>
-          <option value="dungeon_crawler">{{ t('gameNodes.playable.genreDungeon') }}</option>
-          <option value="tower_defense">{{ t('gameNodes.playable.genreTowerDefense') }}</option>
-          <option value="card_dbg">{{ t('gameNodes.playable.genreCardDbg') }}</option>
-          <option value="avg_dialogue">{{ t('gameNodes.playable.genreAvgDialogue') }}</option>
+          <option v-for="tpl in MX_TEMPLATES" :key="tpl.id" :value="tpl.id">
+            {{ tpl.nameEn }}
+          </option>
         </select>
       </label>
 
-      <label class="field">
-        <span>{{ t('gameNodes.playable.cameraMode') }}</span>
-        <select
-          :value="node.params.gamePlayableCameraMode ?? 'topdown_34'"
-          @change="onStringParam('gamePlayableCameraMode', $event)"
-        >
-          <option value="topdown_34">{{ t('gameNodes.playable.camTopdown34') }}</option>
-          <option value="topdown_90">{{ t('gameNodes.playable.camTopdown90') }}</option>
-          <option value="isometric_45">{{ t('gameNodes.playable.camIso45') }}</option>
-          <option value="side_view">{{ t('gameNodes.playable.camSide') }}</option>
-        </select>
-      </label>
+      <div class="grid-2">
+        <label class="field">
+          <span>{{ t('gameNodes.economy.stepsLabel') }}</span>
+          <input
+            type="number"
+            min="10"
+            max="200"
+            step="5"
+            :value="node.params.gameEconomySteps ?? 50"
+            @change="onNumberParam('gameEconomySteps', $event)"
+          />
+        </label>
+        <label class="field">
+          <span>{{ t('gameNodes.economy.runsLabel') }}</span>
+          <input
+            type="number"
+            min="5"
+            max="200"
+            step="5"
+            :value="node.params.gameEconomyMonteCarloRuns ?? 40"
+            @change="onNumberParam('gameEconomyMonteCarloRuns', $event)"
+          />
+        </label>
+      </div>
 
-      <button type="button" class="play-btn" @click="openPlayableSandbox">
-        ▶ {{ t('gameNodes.playable.playNow') }}
-      </button>
+      <div class="seed-row">
+        <label class="field grow">
+          <span>{{ t('gameNodes.economy.seedLabel') }}</span>
+          <input
+            type="number"
+            step="1"
+            :value="node.params.gameEconomySeed ?? 2026"
+            @change="onNumberParam('gameEconomySeed', $event)"
+          />
+        </label>
+        <button type="button" class="dice-btn" @click="randomizeEconomySeed">
+          🎲 {{ t('gameNodes.levelMap.randomSeed') }}
+        </button>
+      </div>
 
-      <div v-if="node.params.gamePlayableReport" class="report-chip">
-        {{ node.params.gamePlayableReport }}
+      <div v-if="node.params.gameEconomyReport" class="report-chip">
+        {{ node.params.gameEconomyReport }}
       </div>
     </section>
 
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
-
-    <!-- Fullscreen Playable Sandbox Modal -->
-    <Teleport to="body">
-      <div
-        v-if="playableModalOpen"
-        class="playable-modal-backdrop"
-        @click.self="closePlayableModal"
-      >
-        <div class="playable-modal-window">
-          <div class="playable-modal-header">
-            <div class="playable-modal-title">
-              🎮 {{ node?.params.gamePlayableTitle || 'Indie Game Prototype' }}
-            </div>
-            <button type="button" class="playable-close-btn" @click="closePlayableModal">
-              ✕ {{ t('gameNodes.playable.closeModal') }}
-            </button>
-          </div>
-          <iframe
-            v-if="playableModalFrameSrc"
-            class="playable-iframe"
-            :src="playableModalFrameSrc"
-            sandbox="allow-scripts"
-          />
-        </div>
-      </div>
-    </Teleport>
   </div>
   <div v-else class="node-inspector empty">
     {{ t('graph.inspector.node.empty') }}
@@ -351,11 +595,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref } from 'vue'
+import { computed } from 'vue'
 import {
-  compilePlayableGameSandboxHtml,
-  generateProceduralLevelMap,
-  type LevelGeneratorAlgorithm
+  buildThemedArtboardSuitePayload,
+  createMxFromTemplate,
+  MX_TEMPLATES,
+  type MxTemplateId,
+  type UiStylePreset
 } from '@shared/gameAssets'
 import type { GraphNodeParams } from '@shared/graph'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -367,7 +613,14 @@ import { useEditorKernel } from '../editor/kernel'
 import { useWorkspaceStore } from '../stores/workspace'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 
-const GAME_NODE_TYPES = new Set(['game.pbrTile', 'game.audioDsp', 'game.levelMap', 'game.playable'])
+const GAME_NODE_TYPES = new Set([
+  'game.pbrTile',
+  'game.spriteProp',
+  'game.vfxAlpha',
+  'game.audioDsp',
+  'game.levelMap',
+  'game.economy'
+])
 
 const { t, graphTypeLabel } = useStudioI18n()
 const editor = useEditorKernel()
@@ -395,15 +648,19 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const nodeBadge = computed(() => {
   switch (node.value?.typeId) {
     case 'game.pbrTile':
-      return 'PBR + 9-Slice + Hull'
+      return 'PBR + AutoTile'
+    case 'game.spriteProp':
+      return 'Stroke + Mips + Y-Sort'
+    case 'game.vfxAlpha':
+      return 'Linear Alpha Demult'
     case 'game.audioDsp':
       return (node.value.params.gameAudioDspMode ?? 'loop_bgm') === 'loop_bgm'
         ? 'Loop BGM'
         : '4× SFX'
     case 'game.levelMap':
       return `${node.value.params.gameLevelWidth ?? 32}×${node.value.params.gameLevelHeight ?? 20}`
-    case 'game.playable':
-      return '60fps HTML5'
+    case 'game.economy':
+      return `MC ${node.value.params.gameEconomyMonteCarloRuns ?? 40}×${node.value.params.gameEconomySteps ?? 50}t`
     default:
       return ''
   }
@@ -413,12 +670,16 @@ const nodeHint = computed(() => {
   switch (node.value?.typeId) {
     case 'game.pbrTile':
       return t('gameNodes.pbrTile.hint')
+    case 'game.spriteProp':
+      return t('gameNodes.spriteProp.hint')
+    case 'game.vfxAlpha':
+      return t('gameNodes.vfxAlpha.hint')
     case 'game.audioDsp':
       return t('gameNodes.audioDsp.hint')
     case 'game.levelMap':
       return t('gameNodes.levelMap.hint')
-    case 'game.playable':
-      return t('gameNodes.playable.hint')
+    case 'game.economy':
+      return t('gameNodes.economy.hint')
     default:
       return ''
   }
@@ -442,11 +703,42 @@ function onNumberParam(key: keyof GraphNodeParams, event: Event): void {
 
 function onStringParam(key: keyof GraphNodeParams, event: Event): void {
   const val = (event.target as HTMLInputElement | HTMLSelectElement).value
+  if (key === 'gameUiStylePreset') {
+    const suiteTitle = (node.value?.title || 'CELESTIAL CHRONICLES').trim()
+    const themed = buildThemedArtboardSuitePayload(val as UiStylePreset, suiteTitle)
+    patchParams({
+      gameUiStylePreset: val as UiStylePreset,
+      gameUiArtboardJson: themed.jsonString,
+      gameUiArtboardPreviewDataUrl: undefined
+    })
+    return
+  }
+  if (key === 'gamePbrAssetMode') {
+    patchParams({
+      [key]: val,
+      gameUiArtboardPreviewDataUrl: undefined
+    } as Partial<GraphNodeParams>)
+    return
+  }
+  if (key === 'gameEconomyPreset') {
+    const presetDiagram = createMxFromTemplate(val as MxTemplateId)
+    patchParams({
+      gameEconomyPreset: val as MxTemplateId,
+      gameEconomyDiagramJson: JSON.stringify(presetDiagram),
+      gameEconomySteps: presetDiagram.settings.steps,
+      gameEconomySeed: presetDiagram.settings.seed
+    })
+    return
+  }
   patchParams({ [key]: val } as Partial<GraphNodeParams>)
 }
 
 function randomizeLevelSeed(): void {
   patchParams({ gameLevelSeed: Math.floor(100 + Math.random() * 99000) })
+}
+
+function randomizeEconomySeed(): void {
+  patchParams({ gameEconomySeed: Math.floor(100 + Math.random() * 99000) })
 }
 
 function openWorkbench(): void {
@@ -463,86 +755,6 @@ function openWorkbench(): void {
     displayTitle.value
   )
 }
-
-const playableModalOpen = ref(false)
-const playableModalFrameSrc = ref('')
-
-function releaseModalFrameUrl(): void {
-  const prev = playableModalFrameSrc.value
-  playableModalFrameSrc.value = ''
-  if (prev.startsWith('studio-gameplay://') && window.studio?.releaseGameplayDocument) {
-    void window.studio.releaseGameplayDocument(prev)
-  }
-}
-
-async function mountModalPlayableHtml(htmlBody: string): Promise<void> {
-  releaseModalFrameUrl()
-  if (window.studio?.openGameplayDocument) {
-    try {
-      const url = await window.studio.openGameplayDocument(htmlBody)
-      if (url) {
-        playableModalFrameSrc.value = url
-        return
-      }
-    } catch {
-      /* fallback */
-    }
-  }
-  playableModalFrameSrc.value = `data:text/html;charset=utf-8,${encodeURIComponent(htmlBody)}`
-}
-
-async function openPlayableSandbox(): Promise<void> {
-  if (!node.value) return
-  const stored = node.value.params.gamePlayableHtml?.trim()
-  if (stored && stored.includes('<html')) {
-    await mountModalPlayableHtml(stored)
-    playableModalOpen.value = true
-    return
-  }
-  const alg = (node.value.params.gameLevelAlgorithm ?? 'bsp_dungeon') as LevelGeneratorAlgorithm
-  const seed = Number(node.value.params.gameLevelSeed ?? 42)
-  const genreRaw = node.value.params.gamePlayableGenre ?? 'roguelike_action'
-  const cameraRaw = node.value.params.gamePlayableCameraMode ?? 'topdown_34'
-  const mode =
-    genreRaw === 'platformer' || cameraRaw === 'side_view'
-      ? 'platformer'
-      : genreRaw === 'tower_defense'
-        ? 'tower_defense'
-        : genreRaw === 'card_dbg'
-          ? 'card_dbg'
-          : genreRaw === 'avg_dialogue'
-            ? 'avg_dialogue'
-            : 'survivor'
-  const levelMap = generateProceduralLevelMap({
-    algorithm:
-      mode === 'platformer'
-        ? 'platformer_course'
-        : mode === 'tower_defense'
-          ? 'tower_defense'
-          : alg,
-    width: 28,
-    height: 18,
-    seed
-  })
-  const compiled = compilePlayableGameSandboxHtml({
-    title: node.value.params.gamePlayableTitle || 'Indie Game Prototype',
-    mode,
-    levelSeed: seed,
-    levelMap
-  })
-  patchParams({ gamePlayableHtml: compiled.html })
-  await mountModalPlayableHtml(compiled.html)
-  playableModalOpen.value = true
-}
-
-function closePlayableModal(): void {
-  playableModalOpen.value = false
-  releaseModalFrameUrl()
-}
-
-onUnmounted(() => {
-  releaseModalFrameUrl()
-})
 </script>
 
 <style scoped>
@@ -646,6 +858,46 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.nine-slice-box {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--bg) 45%, var(--panel));
+  border: 1px dashed color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.nine-slice-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.nine-slice-box-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-btn {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.mini-btn:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 .seed-row {

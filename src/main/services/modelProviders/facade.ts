@@ -85,6 +85,8 @@ import {
   resolveActiveSoundEffectProvider
 } from './resolve'
 import { settingsService } from '../settingsService'
+import { recordAudioProviderFailure, recordAudioProviderSuccess } from '../audioProviderHealth'
+import { canUseLocalWhisper, transcribeAudioViaLocalWhisper } from '../whisperService'
 import { getProviderAdapter } from './registry'
 import { prepareVideoInputReferencesForApi } from './videoRefs'
 import { ensureApiImageUrl, ensureApiImageUrls, ensureApiImageUrlsWithNotes } from './apiImageUrl'
@@ -1748,10 +1750,22 @@ class ModelProviderFacade {
     if (!adapter.generateSoundEffect) throw fail(E_SOUND_EFFECT_UNSUPPORTED)
 
     const resolvedPrompt = await this.resolveSoundEffectPromptForUpstream(input.prompt)
-    const result = await adapter.generateSoundEffect(provider, modelId, {
-      ...input,
-      prompt: resolvedPrompt
-    })
+    let result: Awaited<ReturnType<NonNullable<typeof adapter.generateSoundEffect>>>
+    try {
+      result = await adapter.generateSoundEffect(provider, modelId, {
+        ...input,
+        prompt: resolvedPrompt
+      })
+    } catch (err) {
+      // 额度耗尽 / 套餐不开放：记下来，一句话生成游戏后续改用程序化合成音效
+      recordAudioProviderFailure(
+        'sfx',
+        provider.id,
+        err instanceof Error ? err.message : String(err)
+      )
+      throw err
+    }
+    recordAudioProviderSuccess('sfx', provider.id)
 
     // 与音乐同形：两种取回方式（本地临时文件 / 下载地址）
     const dir = mkdtempSync(join(tmpdir(), 'aiae-sfx-'))
@@ -1831,7 +1845,19 @@ class ModelProviderFacade {
   ): Promise<GenerateMusicAssetResult> {
     if (!projectService.isOpen()) throw fail(E_NO_PROJECT)
     const { provider } = resolveActiveMusicProvider(input.providerInstanceId, input.model)
-    const result = await this.generateMusic(input)
+    let result: GenerateMusicResult
+    try {
+      result = await this.generateMusic(input)
+    } catch (err) {
+      // 免费套餐不开放音乐接口 / 额度耗尽：记下来，一句话生成游戏后续改用程序化合成 BGM
+      recordAudioProviderFailure(
+        'music',
+        provider.id,
+        err instanceof Error ? err.message : String(err)
+      )
+      throw err
+    }
+    recordAudioProviderSuccess('music', provider.id)
 
     // 中间文件始终写系统临时目录，由 attachExternalGeneratedFile 统一拷入最终目录
     const dir = mkdtempSync(join(tmpdir(), 'aiae-music-'))
@@ -1899,7 +1925,35 @@ class ModelProviderFacade {
       (input.relativePath?.trim() ? join(projectService.getRoot(), input.relativePath.trim()) : '')
     if (!absPath || !existsSync(absPath)) throw fail(E_TRANSCRIBE_NO_FILE)
 
-    const { provider, modelId } = this.resolveTranscribeProvider(input)
+    const instId = input.providerInstanceId?.trim() ?? ''
+    const reqModel = input.model?.trim().toLowerCase() ?? ''
+    const whisperSettings = settingsService.get().whisper
+    const explicitLocal = instId === 'local-whisper' || reqModel.startsWith('ggml-')
+
+    if (explicitLocal) {
+      return transcribeAudioViaLocalWhisper(input, absPath)
+    }
+
+    if (!instId && whisperSettings?.enabled !== false && whisperSettings?.preferLocal === true) {
+      if (await canUseLocalWhisper()) {
+        return transcribeAudioViaLocalWhisper(input, absPath)
+      }
+    }
+
+    let resolved: { provider: ModelProviderInstance; modelId: string }
+    try {
+      resolved = this.resolveTranscribeProvider(input)
+    } catch (err) {
+      // 未显式指定云端实例且无可用云端提供商时，自动回退本地离线 Whisper
+      if (!instId && whisperSettings?.enabled !== false) {
+        if (await canUseLocalWhisper()) {
+          return transcribeAudioViaLocalWhisper(input, absPath)
+        }
+      }
+      throw err
+    }
+
+    const { provider, modelId } = resolved
     const adapter = getProviderAdapter(provider.providerKind)
     if (!adapter.transcribeAudio) throw fail(E_TRANSCRIBE_UNSUPPORTED)
     return adapter.transcribeAudio(provider, modelId, { ...input, absPath })

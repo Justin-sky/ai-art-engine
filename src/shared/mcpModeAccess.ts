@@ -105,7 +105,10 @@ const GENERATE_TOOLS = new Set([
   'tutorial_compose',
   // 语义时间线：分析 / 构建会触达模型或 ffmpeg 长任务
   'semantic_analyze_video',
-  'semantic_build'
+  'semantic_build',
+  // 一句话生成游戏 / 全套 UI：建子图资产；用户开启「生成后自动运行」时会立即触发生图 / 音频生成
+  'game_one_sentence_create',
+  'game_ui_suite_create'
 ])
 
 // semantic_timeline_edit / semantic_plan 未列入上表 → 默认 write（Plan 确认前不可用）

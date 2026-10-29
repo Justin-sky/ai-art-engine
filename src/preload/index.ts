@@ -226,6 +226,37 @@ const api: StudioApi = {
   recognizeImageText: (input: { dataUrl: string }) =>
     ipcRenderer.invoke(IpcChannels.VISION_OCR_RECOGNIZE, input),
 
+  getWhisperStatus: () => ipcRenderer.invoke(IpcChannels.WHISPER_STATUS),
+  installWhisper: () => ipcRenderer.invoke(IpcChannels.WHISPER_INSTALL),
+  onWhisperInstallProgress: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/whisperCatalog').WhisperInstallProgress
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.WHISPER_INSTALL_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.WHISPER_INSTALL_PROGRESS, listener)
+  },
+  getWhisperModelCatalog: () => ipcRenderer.invoke(IpcChannels.WHISPER_MODEL_CATALOG),
+  downloadWhisperModel: (modelId: string) =>
+    ipcRenderer.invoke(IpcChannels.WHISPER_MODEL_DOWNLOAD, modelId),
+  cancelWhisperModelDownload: (modelId?: string) =>
+    ipcRenderer.invoke(IpcChannels.WHISPER_MODEL_DOWNLOAD_CANCEL, modelId),
+  deleteWhisperModel: (modelId: string) =>
+    ipcRenderer.invoke(IpcChannels.WHISPER_MODEL_DELETE, modelId),
+  openWhisperModelDir: () => ipcRenderer.invoke(IpcChannels.WHISPER_OPEN_MODEL_DIR),
+  onWhisperModelDownloadProgress: (callback) => {
+    const listener = (
+      _event: unknown,
+      payload: import('@shared/whisperCatalog').WhisperModelDownloadProgress
+    ): void => {
+      callback(payload)
+    }
+    ipcRenderer.on(IpcChannels.WHISPER_MODEL_DOWNLOAD_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.WHISPER_MODEL_DOWNLOAD_PROGRESS, listener)
+  },
+
   getAppVersion: () => ipcRenderer.invoke(IpcChannels.APP_GET_VERSION),
   checkForUpdates: () => ipcRenderer.invoke(IpcChannels.UPDATE_CHECK),
   installUpdate: () => ipcRenderer.invoke(IpcChannels.UPDATE_INSTALL),
@@ -341,6 +372,8 @@ const api: StudioApi = {
   },
   reportMcpTask: (payload: McpTaskReportPayload) =>
     ipcRenderer.invoke(IpcChannels.MCP_TASK_REPORT, payload),
+  runOneSentenceGame: (assetId: string) =>
+    ipcRenderer.invoke(IpcChannels.GAME_ONE_SENTENCE_RUN, assetId),
   onMcpGraphEdit: (callback) => {
     const listener = (_event: unknown, payload: McpGraphEditPayload): void => {
       callback(payload)
@@ -418,6 +451,7 @@ const api: StudioApi = {
   finalizeBlenderDshJob: (input) => ipcRenderer.invoke(IpcChannels.BLENDER_DSH_FINALIZE, input),
   cleanupBlenderDshJob: (jobId) => ipcRenderer.invoke(IpcChannels.BLENDER_DSH_CLEANUP, jobId),
   buildGamePlayProject: (input) => ipcRenderer.invoke(IpcChannels.GAMEPLAY_BUILD, input),
+  syncGameEngineBundle: (input) => ipcRenderer.invoke(IpcChannels.GAME_ENGINE_SYNC_BUNDLE, input),
   getGitStatus: () => ipcRenderer.invoke(IpcChannels.GIT_STATUS),
   getGitFileDiff: (input) => ipcRenderer.invoke(IpcChannels.GIT_FILE_DIFF, input),
   scanProjectOutputs: (input) => ipcRenderer.invoke(IpcChannels.PROJECT_SCAN_OUTPUTS, input),

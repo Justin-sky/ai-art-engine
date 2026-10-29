@@ -317,9 +317,17 @@ const tuning = Object.assign({
   showDebugHitboxes: false
 }, CFG.tuning || {});
 
+let hostPaused = false;
+let docPaused = false;
+let sandboxPaused = false;
+let rafId = 0;
+
 window.addEventListener('message', (ev) => {
   if (ev && ev.data && ev.data.type === 'aiart:playable-tune' && ev.data.payload) {
     Object.assign(tuning, ev.data.payload);
+  } else if (ev && ev.data && ev.data.type === 'aiart:playable-lifecycle') {
+    hostPaused = Boolean(ev.data.paused);
+    syncSandboxPaused();
   } else if (ev && ev.data && ev.data.type === 'aiart:playable-data' && ev.data.payload) {
     const p = ev.data.payload;
     if (typeof p.customPlayerMaxHp === 'number' && p.customPlayerMaxHp > 0) {
@@ -343,6 +351,7 @@ window.addEventListener('message', (ev) => {
 // Zero-config WebAudio procedural SFX + upstream WAV playback
 let audioEnabled = true;
 let audioCtx = null;
+let bgmStarted = false;
 const upstreamSfxAudio = CFG.sfxUrl ? new Audio(CFG.sfxUrl) : null;
 const upstreamBgmAudio = CFG.bgmUrl ? new Audio(CFG.bgmUrl) : null;
 if (upstreamBgmAudio) {
@@ -351,7 +360,7 @@ if (upstreamBgmAudio) {
 }
 
 function playSynthSfx(kind) {
-  if (!audioEnabled) return;
+  if (!audioEnabled || sandboxPaused) return;
   if ((kind === 'shoot' || kind === 'hit') && upstreamSfxAudio) {
     try {
       upstreamSfxAudio.currentTime = 0;
@@ -422,8 +431,12 @@ document.getElementById('btnAudio').onclick = () => {
   btn.classList.toggle('active', audioEnabled);
   btn.textContent = audioEnabled ? '🔊 SFX' : '🔇 Mute';
   if (upstreamBgmAudio) {
-    if (audioEnabled) upstreamBgmAudio.play().catch(() => {});
-    else upstreamBgmAudio.pause();
+    if (audioEnabled && !sandboxPaused) {
+      bgmStarted = true;
+      upstreamBgmAudio.play().catch(() => {});
+    } else {
+      upstreamBgmAudio.pause();
+    }
   }
 };
 
@@ -820,7 +833,8 @@ function fireProjectilesAt(ang, originX, originY) {
 
 canvas.addEventListener('pointerdown', (e) => {
   if (upgradeOpen) return;
-  if (upstreamBgmAudio && audioEnabled && upstreamBgmAudio.paused) {
+  if (upstreamBgmAudio && audioEnabled && !sandboxPaused && upstreamBgmAudio.paused) {
+    bgmStarted = true;
     upstreamBgmAudio.play().catch(() => {});
   }
   const rect = canvas.getBoundingClientRect();
@@ -1443,15 +1457,49 @@ function draw() {
   }
 }
 
+function syncSandboxPaused() {
+  const nextPaused = hostPaused || docPaused || document.hidden;
+  if (nextPaused === sandboxPaused) return;
+  sandboxPaused = nextPaused;
+  if (sandboxPaused) {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    for (const k of Object.keys(keys)) keys[k] = false;
+    if (upstreamBgmAudio) upstreamBgmAudio.pause();
+    if (audioCtx && audioCtx.state === 'running' && typeof audioCtx.suspend === 'function') {
+      audioCtx.suspend().catch(() => {});
+    }
+  } else {
+    lastFrameTime = performance.now();
+    if (audioEnabled && upstreamBgmAudio && bgmStarted) {
+      upstreamBgmAudio.play().catch(() => {});
+    }
+    if (!rafId) {
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  docPaused = document.hidden;
+  syncSandboxPaused();
+});
+
 function loop(now) {
-  const delta = Math.max(1, (now || performance.now()) - lastFrameTime);
+  if (sandboxPaused) {
+    rafId = 0;
+    return;
+  }
+  const delta = Math.max(1, Math.min(100, (now || performance.now()) - lastFrameTime));
   lastFrameTime = now || performance.now();
   fpsSmooth = fpsSmooth * 0.9 + (1000 / delta) * 0.1;
   update();
   draw();
-  requestAnimationFrame(loop);
+  rafId = requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
+rafId = requestAnimationFrame(loop);
 </script>
 </body>
 </html>

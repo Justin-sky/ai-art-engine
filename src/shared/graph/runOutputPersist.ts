@@ -57,7 +57,10 @@ function cloneGraphValue(value: GraphValue): GraphValue {
         kind: 'texts',
         items: value.items.map((item) => ({
           ...(item.id ? { id: item.id } : {}),
-          text: item.text
+          ...(item.title ? { title: item.title } : {}),
+          text: item.text,
+          ...(item.createdAt ? { createdAt: item.createdAt } : {}),
+          ...(item.relativePath ? { relativePath: item.relativePath } : {})
         }))
       }
     case 'camera':

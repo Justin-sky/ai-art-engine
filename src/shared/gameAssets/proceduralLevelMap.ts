@@ -21,6 +21,35 @@ export type LevelGeneratorAlgorithm =
   | 'arena_waves'
   | 'tower_defense'
   | 'labyrinth_maze'
+  | 'node_graph_map'
+
+export type LevelTopologyNodeRole =
+  'start' | 'normal' | 'elite' | 'treasure' | 'shop' | 'rest' | 'event' | 'boss'
+
+export interface LevelTopologyNode {
+  id: string
+  layer: number
+  lane: number
+  role: LevelTopologyNodeRole
+  gridX: number
+  gridY: number
+  nextIds: string[]
+  prevIds: string[]
+}
+
+export interface LevelTopologyEdge {
+  fromId: string
+  toId: string
+  fromLayer: number
+  toLayer: number
+}
+
+export interface LevelTopologyGraph {
+  layers: number
+  lanes: number
+  nodes: LevelTopologyNode[]
+  edges: LevelTopologyEdge[]
+}
 
 export type LevelCellType = 'void' | 'wall' | 'floor' | 'platform' | 'hazard'
 
@@ -150,6 +179,8 @@ export interface ProceduralLevelMapResult {
   tiledMap: TiledMapJson
   /** 格式化后的 Tiled .tmj 文本 */
   tiledTmjText: string
+  /** 通用有向拓扑节点图（当 algorithm === 'node_graph_map' 时输出多层分支路线 DAG） */
+  topologyGraph?: LevelTopologyGraph
 }
 
 /** 确定性 Mulberry32 伪随机数生成器 */
@@ -702,6 +733,195 @@ function generateLabyrinthMaze(
   return { grid, rooms: [startRoom, midRoom, bossRoom] }
 }
 
+/**
+ * 7. Universal Directed Node Graph & World Route Topology (`node_graph_map`):
+ * Generates a planar (non-crossing) multi-layer Directed Acyclic Graph (DAG) for world maps,
+ * branching stage progression trees, and encounter route networks.
+ */
+function generateNodeGraphMap(
+  width: number,
+  height: number,
+  rng: () => number
+): { grid: LevelCellType[][]; rooms: LevelRoom[]; topologyGraph: LevelTopologyGraph } {
+  const grid = createGrid(width, height, 'wall')
+  const layers = Math.max(5, Math.min(7, Math.floor(width / 7)))
+  const lanes = Math.max(3, Math.min(4, Math.floor(height / 6)))
+
+  const marginX = 4
+  const marginY = 3
+  const usableW = Math.max(8, width - marginX * 2)
+  const usableH = Math.max(6, height - marginY * 2)
+
+  const layerNodes: LevelTopologyNode[][] = []
+  const allNodes: LevelTopologyNode[] = []
+  const edges: LevelTopologyEdge[] = []
+  const rooms: LevelRoom[] = []
+
+  const midRoles: LevelTopologyNodeRole[] = ['normal', 'event', 'elite', 'treasure', 'shop', 'rest']
+
+  for (let l = 0; l < layers; l++) {
+    const colX = Math.round(marginX + (l / Math.max(1, layers - 1)) * usableW)
+    const nodesInLayer: LevelTopologyNode[] = []
+
+    if (l === 0 || l === layers - 1) {
+      const centerY = Math.round(height / 2)
+      const role: LevelTopologyNodeRole = l === 0 ? 'start' : 'boss'
+      const node: LevelTopologyNode = {
+        id: `node_L${l}_N0`,
+        layer: l,
+        lane: Math.floor(lanes / 2),
+        role,
+        gridX: colX,
+        gridY: centerY,
+        nextIds: [],
+        prevIds: []
+      }
+      nodesInLayer.push(node)
+      allNodes.push(node)
+    } else {
+      // Pick 2 or 3 active lanes in deterministic sorted order
+      const activeLanes: number[] = []
+      for (let lane = 0; lane < lanes; lane++) {
+        if (rng() > 0.28 || activeLanes.length === 0) {
+          activeLanes.push(lane)
+        }
+      }
+      while (activeLanes.length < 2 && lanes >= 2) {
+        const candidate = Math.min(lanes - 1, activeLanes.length)
+        if (!activeLanes.includes(candidate)) activeLanes.push(candidate)
+        else break
+      }
+      activeLanes.sort((a, b) => a - b)
+
+      for (let idx = 0; idx < activeLanes.length; idx++) {
+        const lane = activeLanes[idx]!
+        const rowY = Math.round(marginY + ((lane + 0.5) / lanes) * usableH)
+        let role: LevelTopologyNodeRole = 'normal'
+        if (l === Math.floor(layers / 2)) {
+          role = idx === 0 ? 'treasure' : 'shop'
+        } else if (l === layers - 2) {
+          role = idx % 2 === 0 ? 'rest' : 'elite'
+        } else {
+          role = midRoles[(l + idx + Math.floor(rng() * midRoles.length)) % midRoles.length]!
+        }
+        const node: LevelTopologyNode = {
+          id: `node_L${l}_N${lane}`,
+          layer: l,
+          lane,
+          role,
+          gridX: colX,
+          gridY: Math.max(2, Math.min(height - 3, rowY)),
+          nextIds: [],
+          prevIds: []
+        }
+        nodesInLayer.push(node)
+        allNodes.push(node)
+      }
+    }
+    layerNodes.push(nodesInLayer)
+  }
+
+  // Planar (non-crossing) edge wiring between adjacent layers
+  const linkNodes = (u: LevelTopologyNode, v: LevelTopologyNode): void => {
+    if (!u.nextIds.includes(v.id)) u.nextIds.push(v.id)
+    if (!v.prevIds.includes(u.id)) v.prevIds.push(u.id)
+    if (!edges.some((e) => e.fromId === u.id && e.toId === v.id)) {
+      edges.push({
+        fromId: u.id,
+        toId: v.id,
+        fromLayer: u.layer,
+        toLayer: v.layer
+      })
+    }
+  }
+
+  for (let l = 0; l < layers - 1; l++) {
+    const curr = layerNodes[l]!
+    const next = layerNodes[l + 1]!
+    let maxNextIdxSoFar = 0
+    for (let i = 0; i < curr.length; i++) {
+      const u = curr[i]!
+      const idealIdx = Math.min(
+        next.length - 1,
+        Math.max(
+          maxNextIdxSoFar,
+          Math.round((i / Math.max(1, curr.length - 1)) * (next.length - 1))
+        )
+      )
+      linkNodes(u, next[idealIdx]!)
+      maxNextIdxSoFar = idealIdx
+      // Optional non-crossing branch to idealIdx + 1
+      if (idealIdx + 1 < next.length && (i === curr.length - 1 || rng() > 0.45)) {
+        linkNodes(u, next[idealIdx + 1]!)
+        maxNextIdxSoFar = idealIdx + 1
+      }
+    }
+    // Guarantee every node in `next` has at least one incoming edge without crossing
+    for (let j = 0; j < next.length; j++) {
+      const v = next[j]!
+      if (v.prevIds.length === 0) {
+        const srcIdx = Math.min(
+          curr.length - 1,
+          Math.floor((j / Math.max(1, next.length - 1)) * (curr.length - 1))
+        )
+        linkNodes(curr[srcIdx]!, v)
+      }
+    }
+  }
+
+  // Carve rooms for each node and walkable corridors for each directed edge
+  for (const node of allNodes) {
+    const rmW = 3
+    const rmH = 3
+    const rx = Math.max(1, Math.min(width - rmW - 1, node.gridX - 1))
+    const ry = Math.max(1, Math.min(height - rmH - 1, node.gridY - 1))
+    carveRect(grid, rx, ry, rmW, rmH, 'floor')
+
+    const mappedRole: LevelRoom['role'] =
+      node.role === 'start'
+        ? 'start'
+        : node.role === 'boss'
+          ? 'boss'
+          : node.role === 'treasure' || node.role === 'rest'
+            ? 'treasure'
+            : node.role === 'shop'
+              ? 'shop'
+              : 'normal'
+
+    rooms.push({
+      id: node.id,
+      x: rx,
+      y: ry,
+      width: rmW,
+      height: rmH,
+      centerX: node.gridX,
+      centerY: node.gridY,
+      role: mappedRole
+    })
+  }
+
+  const nodeById = new Map(allNodes.map((n) => [n.id, n]))
+  for (const edge of edges) {
+    const u = nodeById.get(edge.fromId)
+    const v = nodeById.get(edge.toId)
+    if (!u || !v) continue
+    const midX = Math.round((u.gridX + v.gridX) / 2)
+    carveCorridor(grid, u.gridX, u.gridY, midX, u.gridY, true)
+    carveCorridor(grid, midX, u.gridY, v.gridX, v.gridY, false)
+  }
+
+  return {
+    grid,
+    rooms,
+    topologyGraph: {
+      layers,
+      lanes,
+      nodes: allNodes,
+      edges
+    }
+  }
+}
+
 function computeWang16BitmaskGrid(grid: LevelCellType[][]): number[][] {
   const height = grid.length
   const width = grid[0]?.length ?? 0
@@ -1012,7 +1232,11 @@ export function generateProceduralLevelMap(
 
   const rng = createSeededRng(seed)
 
-  const { grid, rooms } =
+  const generated: {
+    grid: LevelCellType[][]
+    rooms: LevelRoom[]
+    topologyGraph?: LevelTopologyGraph
+  } =
     algorithm === 'cellular_cave'
       ? generateCellularCave(width, height, rng)
       : algorithm === 'platformer_course'
@@ -1023,7 +1247,11 @@ export function generateProceduralLevelMap(
             ? generateTowerDefenseLane(width, height, rng)
             : algorithm === 'labyrinth_maze'
               ? generateLabyrinthMaze(width, height, rng)
-              : generateBspDungeon(width, height, rng)
+              : algorithm === 'node_graph_map'
+                ? generateNodeGraphMap(width, height, rng)
+                : generateBspDungeon(width, height, rng)
+
+  const { grid, rooms, topologyGraph } = generated
 
   const wang16BitmaskGrid = computeWang16BitmaskGrid(grid)
   const entities = populateEntities(algorithm, rooms, grid, tileWidth, tileHeight, rng)
@@ -1054,7 +1282,8 @@ export function generateProceduralLevelMap(
     wang16BitmaskGrid,
     asciiPreview,
     tiledMap,
-    tiledTmjText: JSON.stringify(tiledMap, null, 2)
+    tiledTmjText: JSON.stringify(tiledMap, null, 2),
+    ...(topologyGraph ? { topologyGraph } : {})
   }
 }
 

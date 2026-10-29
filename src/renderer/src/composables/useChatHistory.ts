@@ -7,7 +7,12 @@
  */
 import { computed, ref } from 'vue'
 import type { GitChangeFile } from '@shared/git'
-import type { HarnessGoalView, HarnessPresentFile, HarnessTodoItem } from '@shared/ipc'
+import type {
+  HarnessGoalView,
+  HarnessPresentFile,
+  HarnessTodoItem,
+  OneSentenceGameCardInfo
+} from '@shared/ipc'
 
 export type ChatMsg =
   | { kind: 'user'; text: string; steered?: boolean }
@@ -71,6 +76,16 @@ export type ChatMsg =
       title: string
       /** 单文件 HTML 的工程内相对路径（试玩窗口按它读取） */
       htmlPath: string
+    }
+  | {
+      /**
+       * 一句话游戏卡（MCP `game_one_sentence_create`）：节点图已建好，卡上可打开画布 / 运行整图 /
+       * 试玩，并带「生成后自动运行」复选框（默认不勾，写入 AppSettings.gameOneSentenceAutoRun）。
+       */
+      kind: 'oneSentenceGame'
+      /** 会话内唯一标识：`osgame:<assetId>` */
+      key: string
+      info: OneSentenceGameCardInfo
     }
   | {
       kind: 'prompt'

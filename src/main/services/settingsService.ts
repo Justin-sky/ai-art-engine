@@ -101,12 +101,18 @@ class SettingsService {
         ...DEFAULT_SETTINGS.yolo,
         ...(saved.yolo ?? {})
       },
+      whisper: {
+        ...DEFAULT_SETTINGS.whisper!,
+        ...(saved.whisper ?? {})
+      },
       blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp),
       // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层
       externalMcp: normalizeExternalMcpServers(saved.externalMcp),
       skillMarket: {
         source: typeof rawMarketSource === 'string' ? rawMarketSource.trim() : ''
-      }
+      },
+      // 只认显式 true：脏值 / 缺字段一律按「不自动运行」处理（自动运行会立刻产生模型费用）
+      gameOneSentenceAutoRun: saved.gameOneSentenceAutoRun === true
     }
   }
 
@@ -134,12 +140,17 @@ class SettingsService {
         ...DEFAULT_SETTINGS.yolo,
         ...(settings.yolo ?? {})
       },
+      whisper: {
+        ...DEFAULT_SETTINGS.whisper!,
+        ...(settings.whisper ?? {})
+      },
       blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp),
       externalMcp: normalizeExternalMcpServers(settings.externalMcp),
       skillMarket: {
         source:
           typeof settings.skillMarket?.source === 'string' ? settings.skillMarket.source.trim() : ''
-      }
+      },
+      gameOneSentenceAutoRun: settings.gameOneSentenceAutoRun === true
     }
     this.ensure().set('settings', normalized)
     this.syncWindowChrome()

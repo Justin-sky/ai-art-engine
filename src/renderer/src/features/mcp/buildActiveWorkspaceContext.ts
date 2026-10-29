@@ -1,4 +1,5 @@
 import { isDraftAssetId, type AssetInfo } from '@shared/domain'
+import { MX_TEMPLATES, parseMxDocumentJson } from '@shared/gameAssets'
 import {
   contentEndSecOfTimeline,
   parseComicPage,
@@ -146,6 +147,42 @@ export function sanitizeNodeParamsForContext(
           }))
         }
         continue
+      }
+    }
+    if (key === 'gameEconomyDiagramJson' && typeof value === 'string' && value.trim()) {
+      try {
+        const mx = parseMxDocumentJson(value)
+        summary.machinationsDiagramSummary = {
+          title: mx.title,
+          settings: mx.settings,
+          resources: mx.resources,
+          params: mx.params,
+          nodeCount: mx.nodes.length,
+          edgeCount: mx.edges.length,
+          nodes: mx.nodes.slice(0, 40).map((n) => ({
+            id: n.id,
+            kind: n.kind,
+            label: n.label,
+            trigger: n.trigger,
+            pullMode: n.pullMode,
+            initial: n.initial,
+            capacity: n.capacity,
+            formula: n.formula,
+            gateMode: n.gateMode,
+            delaySteps: n.delaySteps
+          })),
+          edges: mx.edges.slice(0, 60).map((e) => ({
+            id: e.id,
+            kind: e.kind,
+            from: e.from,
+            to: e.to,
+            targetEdgeId: e.targetEdgeId,
+            formula: e.formula
+          }))
+        }
+        continue
+      } catch {
+        // fallback to normal string truncation
       }
     }
     summary[key] = sanitizeValueForContext(value, key, 0)
@@ -389,6 +426,16 @@ export function buildActiveWorkspaceContext(): string | undefined {
           `  Dived Node Current Params: ${JSON.stringify(sanitizedParams)}`,
           ...formatNodeEditableSchemaSummary(divedNode, '  ')
         )
+        if (divedNode.typeId === 'game.economy') {
+          const tplIds = MX_TEMPLATES.map((t) => t.id).join('|')
+          lines.push(
+            `  [Machinations Economy Studio Live Protocol]: The user is currently inside the Machinations.io Economy Studio for nodeId="${divedNode.id}".`,
+            `    * To switch to a built-in template, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${tplIds}" }] })\`.`,
+            `    * To build or replace the custom Machinations diagram from the user's prompt, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42, speed: 1, actionMode: "simultaneous", botMode: "off|greedy|smart" }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "x1", value: 1 }], agents: [{ id: "ag1", name: "Rational AI", enabled: true, personality: "rational|aggressive|hoarder|balanced|chaotic", goals: [{ id: "g1", nodeId: "pool1", targetFormula: "100", importance: "min|low|med|high|max", continuePastTarget: true, trajectory: "upwards|downwards", utilityCurve: "linear|diminishing|urgency|step" }], controlledNodeIds: [], actionsPerStep: 1, lookaheadHorizon: 2 }], nodes: [{ id: "src1", kind: "source|pool|drain|converter|gate|trader|register|delay|queue|end|note", label: "...", trigger: "passive|automatic|interactive|enabling", pullMode: "pull_any|pull_all|push_any|push_all", initial: 0, capacity: -1, formula: "", gateMode: "random|deterministic|skill", delaySteps: 1, color: "#2563eb", tracked: true }], edges: [{ id: "e1", kind: "resource|state", from: "src1", to: "pool1", targetEdgeId: undefined, formula: "2|D6|50%|all|1 every 3|+1|>=5|*" }] } } }] })\` (` +
+              `x/y coordinates are optional: topological auto-layout runs automatically when omitted!).`,
+            `    * To tweak an existing node or edge in-place, pass dot-paths such as \`params: { "gameEconomyDiagramJson.nodes[id=hp].initial": 150, "gameEconomyDiagramJson.edges[id=e1].formula": "2D6+1" }\`.`
+          )
+        }
       }
     }
 
@@ -551,6 +598,14 @@ export function buildActiveWorkspaceContext(): string | undefined {
           return `  * ${n.id} [${n.typeId}] "${n.title || n.typeId}"${toolTag}${statusTag}`
         })
         lines.push(`Nodes on active canvas (${liveDoc.nodes.length}):`, ...visibleNodes)
+
+        const economyNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'game.economy')
+        if (economyNodeOnCanvas) {
+          const tplIds = MX_TEMPLATES.map((t) => t.id).join('|')
+          lines.push(
+            `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system on \`game.economy\`, pass \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "Rate", value: 2 }], nodes: [{ id: "src1", kind: "source|pool|drain|converter|gate|trader|register|delay|queue|end|note", label: "...", trigger: "passive|automatic|interactive|enabling", initial: 0, capacity: -1, formula: "", gateMode: "random|deterministic|skill", tracked: true }], edges: [{ id: "e1", kind: "resource|state", from: "src1", to: "pool1", formula: "2|D6|50%|all|+1|>=5|*" }] } }\` (or \`preset: "${tplIds}"\`) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\` to run Monte Carlo simulation and generate the preview chart & Godot/Unity scripts.`
+          )
+        }
       }
       if (liveDoc?.edges?.length) {
         const edgeSummary = liveDoc.edges

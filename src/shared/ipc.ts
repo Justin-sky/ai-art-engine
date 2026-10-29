@@ -106,6 +106,8 @@ export const IpcChannels = {
   /** 可玩 HTML 沙盒：登记文档并返回 studio-gameplay:// URL（绕过主窗口 CSP） */
   GAMEPLAY_OPEN_DOCUMENT: 'gameplay:open-document',
   GAMEPLAY_RELEASE_DOCUMENT: 'gameplay:release-document',
+  /** 游戏资产包：直接同步写入外部 Godot 4 / Unity 工程本地目录（保留已有 Unity .meta GUID） */
+  GAME_ENGINE_SYNC_BUNDLE: 'game-engine:sync-bundle',
   ASSET_FIND_REFERENCES: 'asset:find-references',
 
   ASSET_PACKAGE_EXPORT: 'asset-package:export',
@@ -243,6 +245,17 @@ export const IpcChannels = {
   /** 本地离线 OCR 识别（Windows.Media.Ocr / Vision）：输入 dataUrl，输出带精确像素坐标框的文字列表 */
   VISION_OCR_RECOGNIZE: 'vision:ocr-recognize',
 
+  // Local speech-to-text (Whisper / whisper.cpp)
+  WHISPER_STATUS: 'whisper:status',
+  WHISPER_INSTALL: 'whisper:install',
+  WHISPER_INSTALL_PROGRESS: 'whisper:install-progress',
+  WHISPER_MODEL_CATALOG: 'whisper:model-catalog',
+  WHISPER_MODEL_DOWNLOAD: 'whisper:model-download',
+  WHISPER_MODEL_DOWNLOAD_CANCEL: 'whisper:model-download-cancel',
+  WHISPER_MODEL_DOWNLOAD_PROGRESS: 'whisper:model-download-progress',
+  WHISPER_MODEL_DELETE: 'whisper:model-delete',
+  WHISPER_OPEN_MODEL_DIR: 'whisper:open-model-dir',
+
   // App version & updates
   APP_GET_VERSION: 'app:get-version',
   UPDATE_CHECK: 'update:check',
@@ -339,6 +352,8 @@ export const IpcChannels = {
   MCP_WORKFLOW_FOCUS: 'mcp:workflow-focus',
   /** MCP：渲染层回报任务受理 / 终态（渲染层 → 主进程） */
   MCP_TASK_REPORT: 'mcp:task-report',
+  /** 对话一句话游戏卡「运行」按钮：按资产 id 派发整图运行（与 task_run 同一条执行 / 回报通道） */
+  GAME_ONE_SENTENCE_RUN: 'game:one-sentence-run',
   /** MCP：主进程派发图编辑操作批（main → 渲染层） */
   MCP_GRAPH_EDIT: 'mcp:graph-edit',
   /** MCP：渲染层回报图编辑结果（渲染层 → 主进程） */
@@ -732,8 +747,26 @@ export type McpActivityTool =
   | 'skill_search'
   | 'skill_install'
   | 'skill_uninstall'
+  /** 一句话生成游戏：建好「生图 → 抠图 → 关卡 / 音频 → 可玩沙盒」子图（对话一句话游戏卡来源） */
+  | 'game_one_sentence_create'
 
 export type McpActivityStatus = 'running' | 'done' | 'error'
+
+/** 对话「一句话游戏卡」展示所需的规格摘要（随 game_one_sentence_create 活动下发） */
+export interface OneSentenceGameCardInfo {
+  assetId: string
+  title: string
+  genre: string
+  camera: string
+  difficulty: string
+  artStyle: string
+  audioSfx: 'ai' | 'procedural'
+  audioBgm: 'ai' | 'procedural'
+  scopeNotes: string[]
+  /** 本次是否已按用户设置自动派发整图运行 */
+  autoRun: boolean
+  mcpTaskId?: string
+}
 
 /** MCP：一次旁路生成活动的界面可见记录（主进程维护，事件推送给渲染层） */
 export interface McpActivity {
@@ -761,6 +794,8 @@ export interface McpActivity {
   error?: string
   /** 本次生成调用传入供应商的详细参数与结果摘要（终态时写入，桥接到执行日志 API 详情；id/ts 由日志会话生成） */
   apiCall?: Omit<GraphRunLogApiCall, 'id' | 'ts'>
+  /** 仅 game_one_sentence_create：对话一句话游戏卡的规格摘要 */
+  oneSentenceGame?: OneSentenceGameCardInfo
 }
 
 /** MCP：单条图编辑操作（见 shared/graph/mcpGraphEdit） */
@@ -2179,6 +2214,33 @@ export interface StudioApi {
     dataUrl: string
   }) => Promise<import('./graph/uiControlSpec').LocalOcrTextBox[]>
 
+  /** 查询本地 Whisper（whisper.cpp 引擎 + GGML 语音模型）状态 */
+  getWhisperStatus: () => Promise<import('./whisperCatalog').WhisperRuntimeStatus>
+  /** 一键下载并安装 whisper.cpp 便携版引擎到应用私有目录（Windows） */
+  installWhisper: () => Promise<import('./videoBeats').VideoBeatInstallResult>
+  /** 订阅 whisper.cpp 引擎安装进度 */
+  onWhisperInstallProgress: (
+    callback: (payload: import('./whisperCatalog').WhisperInstallProgress) => void
+  ) => () => void
+  /** 获取官方可下载的 Whisper GGML 模型目录 */
+  getWhisperModelCatalog: () => Promise<import('./whisperCatalog').WhisperCatalogModel[]>
+  /** 下载指定 Whisper GGML 模型到 local-models/whisper 目录 */
+  downloadWhisperModel: (
+    modelId: string
+  ) => Promise<import('./whisperCatalog').WhisperOperationResult>
+  /** 取消进行中的 Whisper 模型下载 */
+  cancelWhisperModelDownload: (modelId?: string) => Promise<void>
+  /** 删除已安装的 Whisper 模型文件 */
+  deleteWhisperModel: (
+    modelId: string
+  ) => Promise<import('./whisperCatalog').WhisperOperationResult>
+  /** 在系统文件管理器中打开 Whisper 模型目录 */
+  openWhisperModelDir: () => Promise<string | null>
+  /** 订阅 Whisper 模型下载进度 */
+  onWhisperModelDownloadProgress: (
+    callback: (payload: import('./whisperCatalog').WhisperModelDownloadProgress) => void
+  ) => () => void
+
   getAppVersion: () => Promise<string>
   checkForUpdates: () => Promise<import('./update').AppUpdateCheckResult>
   installUpdate: () => Promise<{ ok: boolean; message?: string }>
@@ -2270,6 +2332,9 @@ export interface StudioApi {
 
   /** MCP：渲染层回报任务受理 / 终态 */
   reportMcpTask: (payload: McpTaskReportPayload) => Promise<boolean>
+
+  /** 对话一句话游戏卡「运行」：按资产 id 派发整图运行，返回 mcpTaskId */
+  runOneSentenceGame: (assetId: string) => Promise<string>
 
   /** MCP：订阅主进程派发的图编辑操作批 */
   onMcpGraphEdit: (callback: (payload: McpGraphEditPayload) => void) => () => void
@@ -2433,4 +2498,9 @@ export interface StudioApi {
 
   /** 从拖放/选择的 File 对象解析本地绝对路径（Electron webUtils） */
   getPathForFile: (file: File) => string
+
+  /** 游戏生产管线：将游戏资产包直接增量同步到本地 Godot 4 / Unity 工程目录（保留已有 Unity .meta GUID） */
+  syncGameEngineBundle: (
+    input: import('./gameAssets').SyncGameEngineBundleInput
+  ) => Promise<import('./gameAssets').SyncGameEngineBundleResult>
 }

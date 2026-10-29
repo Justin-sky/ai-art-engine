@@ -3973,9 +3973,11 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: [
       'asset.gameSystem',
       'game.pbrTile',
+      'game.spriteProp',
+      'game.vfxAlpha',
       'game.audioDsp',
       'game.levelMap',
-      'game.playable',
+      'game.economy',
       'ui.split',
       'ui.gen',
       'image.layerSplit'

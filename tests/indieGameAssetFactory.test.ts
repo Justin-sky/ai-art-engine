@@ -26,6 +26,8 @@ import {
   classifyGameBundleItem,
   compileGameArtBiblePromptClause,
   compilePlayableGameSandboxHtml,
+  composeLayeredFrameTemplate,
+  compositeIconWithRarityFrame,
   createProceduralMaterialTileRgba,
   createProceduralStoneTileRgba,
   decodeWavBytesToPcm,
@@ -37,26 +39,56 @@ import {
   encodePcmToWavDataUrl,
   encodeRgbaToPngDataUrl,
   exportGodotAudioStreamRandomizerTres,
+  exportGodotFullScreenUiTscn,
+  exportGodotSpriteFramesTres,
+  exportGodotTileSetTres,
+  exportGodotUiButtonThemeTres,
   exportUnityAudioRandomContainerJson,
   extractGuidFromUnityMeta,
   extractSpriteCollisionHull,
+  extractVfxLuminanceAlpha,
   generateEngineImporterScript,
   generateProceduralLevelMap,
+  generateUiButtonFourStates,
   generateUnityMetaFile,
+  normalizeIntegratedLufsPcm,
+  normalizeMultiActionSpriteSuite,
   normalizePeakPcm,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
+  processScenePropWithYSortAndShadow,
+  processSpriteStrokeAndMipChain,
+  renderNineSliceResizedRgba,
   renderProceduralLevelToPng,
   resamplePitchShiftPcm,
+  splitBgmIntroAndSeamlessLoop,
+  synthesizeDialogueBoxKit,
   synthesizeGameSeedPcm,
+  synthesizeHudProgressBarKit,
+  synthesizeRadialHudKit,
+  synthesizeUiFormControlsKit,
+  synthesizeWang16AutoTileAtlas,
   trimSilencePcm,
-  validateSkillTreeDag
+  validateSkillTreeDag,
+  createMachinationsPresetDiagram,
+  createInitialMachinationsState,
+  stepMachinationsSimulation,
+  runMachinationsMonteCarlo,
+  renderMachinationsDiagramToRgba,
+  exportMachinationsToMermaid,
+  exportMachinationsTelemetryCsv,
+  exportGodotEconomySimulatorGd,
+  exportUnityEconomyManagerCs
 } from '../src/shared/gameAssets'
+import { syncGameEngineBundleToDirectory } from '../src/main/services/gameEngineSyncService'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import {
   executeGameAudioDspNode,
+  executeGameEconomyNode,
   executeGameLevelMapNode,
-  executeGamePbrTileNode,
-  executeGamePlayableNode
+  executeGamePbrTileNode
 } from '../src/shared/graph/execute/gameNodes'
 import {
   createNodeFromType,
@@ -751,8 +783,8 @@ describe('Phase 6: Product-Grade Art Bible Lock, Unity .meta GUID Preservation &
   })
 })
 
-describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game.levelMap, game.playable)', () => {
-  it('registers all 4 game graph node types in built-in node registry with connectable ports', () => {
+describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game.levelMap)', () => {
+  it('registers game graph node types in built-in node registry with connectable ports', () => {
     const pbrDef = getNodeTypeOrThrow('game.pbrTile')
     expect(pbrDef).toBeDefined()
     expect(pbrDef.ports.map((p) => p.id)).toEqual(
@@ -770,15 +802,9 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(levelDef.ports.map((p) => p.id)).toEqual(
       expect.arrayContaining(['out', 'out-all', 'out-text'])
     )
-
-    const playableDef = getNodeTypeOrThrow('game.playable')
-    expect(playableDef).toBeDefined()
-    expect(playableDef.ports.map((p) => p.id)).toEqual(
-      expect.arrayContaining(['in-image', 'in-text', 'in-voice', 'out', 'out-all'])
-    )
   })
 
-  it('executes game.pbrTile, game.audioDsp, game.levelMap, and game.playable end-to-end as graph nodes', async () => {
+  it('executes game.pbrTile, game.audioDsp, and game.levelMap end-to-end as graph nodes', async () => {
     // 1. game.pbrTile standalone execution
     const pbrNode = {
       id: 'n_pbr',
@@ -867,45 +893,13 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     if (levelOutputs['out-text']?.kind === 'text') {
       expect(levelOutputs['out-text'].text).toContain('"tiledversion"')
     }
-
-    // 4. game.playable connected to upstream image, level text, and audio
-    const playableNode = {
-      id: 'n_playable',
-      typeId: 'game.playable' as const,
-      title: 'DungeonPlayable',
-      x: 0,
-      y: 0,
-      w: 260,
-      h: 220,
-      params: {
-        gamePlayableGenre: 'roguelike_action' as const,
-        gamePlayableCameraMode: 'topdown_34' as const,
-        gamePlayableTitle: 'Node Graph Dungeon Demo'
-      }
-    }
-    const playableOutputs = await executeGamePlayableNode({
-      node: playableNode,
-      inputs: {
-        'in-image': [pbrOutputs.out!],
-        'in-text': [levelOutputs['out-text']!],
-        'in-voice': [sfxOutputs.out!]
-      }
-    })
-    expect(playableNode.params.gamePlayableHtml).toContain('<!DOCTYPE html>')
-    expect(playableNode.params.gamePlayableHtml).toContain('Node Graph Dungeon Demo')
-    expect(playableOutputs.out?.kind).toBe('text')
   })
 
-  it('excludes all 4 game.* nodes from isNodeTextCapable/resolveNodeTextContent and routes double-click to game.workbench instead of Notepad', async () => {
+  it('excludes game.* nodes from isNodeTextCapable/resolveNodeTextContent and routes double-click to game.workbench instead of Notepad', async () => {
     const { readFileSync } = await import('node:fs')
     const { join } = await import('node:path')
 
-    for (const typeId of [
-      'game.pbrTile',
-      'game.audioDsp',
-      'game.levelMap',
-      'game.playable'
-    ] as const) {
+    for (const typeId of ['game.pbrTile', 'game.audioDsp', 'game.levelMap'] as const) {
       const node = createNodeFromType(typeId, { x: 0, y: 0 })
       node.params.text = '{"hello":"world"}'
       node.params.resultText = 'some result'
@@ -1305,47 +1299,6 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(avgSandbox.html).toContain('btnAvgDialogue')
     expect(avgSandbox.html).toContain('selectAvgChoice')
 
-    const playableNodeOut = await executeGamePlayableNode({
-      node: {
-        id: 'n_play_full',
-        typeId: 'game.playable',
-        title: 'CardProto',
-        x: 0,
-        y: 0,
-        w: 280,
-        h: 220,
-        params: {
-          gamePlayableGenre: 'card_dbg',
-          gameCustomDataTables: {
-            characters: [{ id: 'hero_1', name: 'Paladin', baseHp: 180, baseAtk: 30 }],
-            cards: [
-              {
-                id: 'c_holy',
-                name: 'Holy Nova',
-                cost: 1,
-                cardType: 'attack',
-                damage: 25,
-                block: 10
-              }
-            ]
-          }
-        }
-      },
-      inputs: {
-        'in-voice': [
-          {
-            kind: 'voice',
-            id: 'v_bgm_loop',
-            relativePath:
-              'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
-          }
-        ]
-      }
-    })
-    const compiledNodeHtml = playableNodeOut.out?.kind === 'text' ? playableNodeOut.out.text : ''
-    expect(compiledNodeHtml).toContain('Holy Nova')
-    expect(compiledNodeHtml).toContain('data:audio/wav;base64,')
-
     const zipBytes = buildZipArchiveBytes([
       { path: 'playable_build/index.html', data: '<html></html>' },
       {
@@ -1360,5 +1313,708 @@ describe('Phase 7: Dedicated Game Graph Nodes (game.pbrTile, game.audioDsp, game
     expect(zipBytes[3]).toBe(0x04)
     const zipDataUrl = buildZipArchiveDataUrl([{ path: 'README.txt', data: 'Indie Bundle' }])
     expect(zipDataUrl.startsWith('data:application/zip;base64,UEsDB')).toBe(true)
+  })
+})
+
+describe('Phase 13: Production-Grade Indie Game Asset Pipeline (6 Modules + Local Engine Sync)', () => {
+  it('Module 1: normalizeMultiActionSpriteSuite locks foot pivot & torso scale across actions and exports Godot 4 SpriteFrames.tres', () => {
+    const makeCharFrame = (w: number, h: number, topY: number, botY: number): Uint8ClampedArray => {
+      const buf = new Uint8ClampedArray(w * h * 4)
+      for (let y = topY; y <= botY; y++) {
+        for (let x = Math.floor(w * 0.35); x <= Math.floor(w * 0.65); x++) {
+          const idx = (y * w + x) * 4
+          buf[idx] = 220
+          buf[idx + 1] = 140
+          buf[idx + 2] = 80
+          buf[idx + 3] = 255
+        }
+      }
+      return buf
+    }
+
+    const suite = normalizeMultiActionSpriteSuite(
+      [
+        {
+          actionName: 'idle',
+          fps: 8,
+          loop: true,
+          frames: [
+            { rgba: makeCharFrame(64, 64, 16, 56), width: 64, height: 64 },
+            { rgba: makeCharFrame(64, 64, 18, 58), width: 64, height: 64 }
+          ]
+        },
+        {
+          actionName: 'attack',
+          fps: 14,
+          loop: false,
+          frames: [{ rgba: makeCharFrame(64, 64, 10, 50), width: 64, height: 64 }]
+        }
+      ],
+      {
+        cellWidth: 64,
+        cellHeight: 64,
+        bottomMarginPx: 6,
+        targetBodyHeightRatio: 0.7,
+        atlasImageFileName: 'hero_suite.png'
+      }
+    )
+
+    expect(suite.frames).toHaveLength(3)
+    expect(suite.footPivotX).toBe(32)
+    expect(suite.footPivotY).toBe(58)
+    for (const f of suite.frames) {
+      expect(f.pivotX).toBe(32)
+      expect(f.pivotY).toBe(58)
+      // Bottom row at footPivotY - 1 should contain opaque character foot pixels
+      const footCheckIdx = ((suite.footPivotY - 1) * suite.cellWidth + suite.footPivotX) * 4 + 3
+      expect(f.rgba[footCheckIdx]).toBeGreaterThan(200)
+    }
+    expect(suite.spriteSheetJson.meta.frameTags).toHaveLength(2)
+    expect(suite.godotSpriteFramesTres).toContain('[gd_resource type="SpriteFrames"')
+    expect(suite.godotSpriteFramesTres).toContain('"name": &"idle"')
+    expect(suite.godotSpriteFramesTres).toContain('"name": &"attack"')
+    expect(
+      exportGodotSpriteFramesTres({
+        textureResPath: 'res://hero.png',
+        cellWidth: 64,
+        cellHeight: 64,
+        frames: suite.frames,
+        actions: suite.actions
+      })
+    ).toContain('AtlasTexture_0')
+  })
+
+  it('Module 2: synthesizeWang16AutoTileAtlas & autotile_wang16 node mode generate a 16-cell terrain atlas and Godot 4 TileSet.tres', async () => {
+    const primary = createProceduralMaterialTileRgba('stone_dungeon', 32, 32).data
+    const wang16 = synthesizeWang16AutoTileAtlas(primary, 32, 32, {
+      terrainName: 'AbyssBrick'
+    })
+    expect(wang16.atlasWidth).toBe(128)
+    expect(wang16.atlasHeight).toBe(128)
+    expect(wang16.cells).toHaveLength(16)
+    expect(wang16.godotTileSetTres).toContain('[gd_resource type="TileSet"')
+    expect(wang16.godotTileSetTres).toContain('terrains_peering_bit/top_side = 0')
+    expect(exportGodotTileSetTres(wang16, 'res://brick.png')).toContain('AbyssBrick')
+
+    const nodeOut = await executeGamePbrTileNode({
+      node: {
+        id: 'n_wang16',
+        typeId: 'game.pbrTile',
+        title: 'CaveFloor',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gamePbrAssetMode: 'autotile_wang16',
+          gamePbrMaterialPreset: 'stone_dungeon'
+        }
+      },
+      inputs: {}
+    })
+    expect(nodeOut['out-meta']?.kind).toBe('text')
+    const meta = JSON.parse(nodeOut['out-meta']?.kind === 'text' ? nodeOut['out-meta'].text : '{}')
+    expect(meta.mode).toBe('autotile_wang16')
+    expect(meta.summary.cellCount).toBe(16)
+    expect(meta.godotTileSetTres).toContain('[gd_resource type="TileSet"')
+  })
+
+  it('Module 3: processScenePropWithYSortAndShadow & scene_prop node mode compute Y-Sort baseline, contact shadow & footprint hull', async () => {
+    const w = 48
+    const h = 48
+    const propRgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 8; y < 40; y++) {
+      for (let x = 14; x < 34; x++) {
+        const idx = (y * w + x) * 4
+        propRgba[idx] = 160
+        propRgba[idx + 1] = 110
+        propRgba[idx + 2] = 60
+        propRgba[idx + 3] = 255
+      }
+    }
+    const propRes = processScenePropWithYSortAndShadow(propRgba, w, h, {
+      shadowOpacity: 0.5,
+      footprintHeightRatio: 0.3
+    })
+    expect(propRes.ySortBaselineY).toBeGreaterThanOrEqual(36)
+    expect(propRes.footprintRect.height).toBeLessThan(20)
+    expect(propRes.footprintHull.verticesPx.length).toBeGreaterThanOrEqual(3)
+
+    const nodeOut = await executeGamePbrTileNode({
+      node: {
+        id: 'n_prop',
+        typeId: 'game.pbrTile',
+        title: 'AncientPillar',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gamePbrAssetMode: 'scene_prop',
+          gamePropShadowOpacity: 0.45,
+          gamePropFootprintRatio: 0.25
+        }
+      },
+      inputs: {}
+    })
+    const meta = JSON.parse(nodeOut['out-meta']?.kind === 'text' ? nodeOut['out-meta'].text : '{}')
+    expect(meta.mode).toBe('scene_prop')
+    expect(meta.ySortBaselineY).toBeGreaterThan(0)
+  })
+
+  it('Module 4: generateUiButtonFourStates, compositeIconWithRarityFrame & ui_kit node mode produce 4-state button sheets, Godot Theme.tres, and rarity frames', async () => {
+    const base = createProceduralMaterialTileRgba('gold_ornament', 48, 24).data
+    const uiRes = generateUiButtonFourStates(base, 48, 24, {
+      symmetricNineSlice: true
+    })
+    expect(uiRes.sheetWidth).toBe(48)
+    expect(uiRes.sheetHeight).toBe(96)
+    expect(uiRes.borders.left).toBe(uiRes.borders.right)
+    expect(uiRes.godotThemeTres).toContain('[gd_resource type="Theme"')
+    expect(exportGodotUiButtonThemeTres(uiRes.borders, 'btn', 48, 24)).toContain(
+      'Button/styles/hover'
+    )
+
+    const rarityRes = compositeIconWithRarityFrame(base, 32, 32, 'legendary')
+    expect(rarityRes.width).toBe(32)
+    expect(rarityRes.height).toBe(32)
+    expect(rarityRes.data[3]).toBe(255)
+
+    const nodeOut = await executeGamePbrTileNode({
+      node: {
+        id: 'n_ui',
+        typeId: 'game.pbrTile',
+        title: 'GoldButton',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gamePbrAssetMode: 'ui_kit',
+          gameUiSymmetricLock: true,
+          gameIconRarityTier: 'epic'
+        }
+      },
+      inputs: {}
+    })
+    const meta = JSON.parse(nodeOut['out-meta']?.kind === 'text' ? nodeOut['out-meta'].text : '{}')
+    expect(meta.mode).toBe('ui_kit')
+    expect(meta.summary.rarityTier).toBe('epic')
+    expect(meta.godotThemeTres).toContain('StyleBoxTexture')
+  })
+
+  it('Module 5: extractVfxLuminanceAlpha & vfx_demult node mode convert black-background VFX into clean unpremultiplied linear alpha', async () => {
+    const w = 32
+    const h = 32
+    const vfxRaw = new Uint8ClampedArray(w * h * 4)
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4
+        const d = Math.hypot(x - 16, y - 16) / 14
+        const glow = Math.max(0, 1 - d)
+        vfxRaw[idx] = Math.round(glow * 255)
+        vfxRaw[idx + 1] = Math.round(glow * 140)
+        vfxRaw[idx + 2] = Math.round(glow * 40)
+        vfxRaw[idx + 3] = 255
+      }
+    }
+    const demult = extractVfxLuminanceAlpha(vfxRaw, w, h, {
+      blackClip: 0.05,
+      whitePoint: 0.85,
+      gamma: 0.85,
+      colorBoost: 1.2
+    })
+    // Corner pixel on black background must be 0 alpha
+    expect(demult.data[3]).toBe(0)
+    // Center core pixel must have high alpha
+    const centerAlpha = demult.data[(16 * w + 16) * 4 + 3]!
+    expect(centerAlpha).toBeGreaterThan(220)
+    expect(demult.transparentRatio).toBeGreaterThan(0.2)
+
+    const nodeOut = await executeGamePbrTileNode({
+      node: {
+        id: 'n_vfx',
+        typeId: 'game.pbrTile',
+        title: 'FireSlash',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gamePbrAssetMode: 'vfx_demult',
+          gameVfxBlackClip: 0.05
+        }
+      },
+      inputs: {}
+    })
+    const meta = JSON.parse(nodeOut['out-meta']?.kind === 'text' ? nodeOut['out-meta'].text : '{}')
+    expect(meta.mode).toBe('vfx_demult')
+    expect(meta.summary.peakAlpha).toBeGreaterThan(0)
+  })
+
+  it('Module 6: splitBgmIntroAndSeamlessLoop, normalizeIntegratedLufsPcm, bgm_intro_loop node mode & syncGameEngineBundleToDirectory preserve Unity .meta GUIDs', async () => {
+    const synth = synthesizeGameSeedPcm('chiptune_bgm', 22050, { durationScale: 1.8 })
+    const lufsNorm = normalizeIntegratedLufsPcm(synth.channels[0]!, -14, -1.0)
+    expect(lufsNorm.data.length).toBe(synth.channels[0]!.length)
+    expect(Math.abs(lufsNorm.measuredLufs)).toBeLessThan(70)
+
+    const split = splitBgmIntroAndSeamlessLoop(synth.channels, synth.sampleRate, {
+      introDurationSec: 0.8,
+      loopCrossfadeSec: 0.4
+    })
+    expect(split.introDurationSec).toBeGreaterThan(0.2)
+    expect(split.loopDurationSec).toBeGreaterThan(0.5)
+    // End of intro is micro-faded to zero to prevent click
+    expect(Math.abs(split.introSamples[split.introSamples.length - 1]!)).toBeLessThan(0.01)
+
+    const audioNodeOut = await executeGameAudioDspNode({
+      node: {
+        id: 'n_audio_intro_loop',
+        typeId: 'game.audioDsp',
+        title: 'BossTheme',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gameAudioDspMode: 'bgm_intro_loop',
+          gameAudioIntroSec: 0.8,
+          gameAudioCrossfadeSec: 0.4,
+          gameAudioTargetLufs: -14
+        }
+      },
+      inputs: {}
+    })
+    expect(audioNodeOut['out-all']?.kind).toBe('voices')
+    if (audioNodeOut['out-all']?.kind === 'voices') {
+      expect(audioNodeOut['out-all'].items.length).toBe(2)
+    }
+
+    // Test direct local Unity folder sync with existing .meta GUID preservation
+    const tempDir = mkdtempSync(join(tmpdir(), 'aiart-engine-sync-'))
+    try {
+      const spriteRel = 'assets/sprites/hero.png'
+      const metaFullPath = join(tempDir, `${spriteRel}.meta`)
+      const firstSync = await syncGameEngineBundleToDirectory({
+        targetDir: tempDir,
+        engineKind: 'unity',
+        files: [
+          {
+            relativePath: spriteRel,
+            content:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            encoding: 'dataUrl',
+            category: 'sprite',
+            spriteBorders: { left: 4, right: 4, top: 4, bottom: 4 }
+          }
+        ]
+      })
+      expect(firstSync.writtenCount).toBe(1)
+      expect(firstSync.unityMetaCount).toBe(1)
+      expect(firstSync.preservedGuidCount).toBe(0)
+
+      // Overwrite the .meta on disk with a custom Unity GUID and re-sync to verify GUID preservation
+      const customGuid = 'abcdef0123456789abcdef0123456789'
+      writeFileSync(
+        metaFullPath,
+        `fileFormatVersion: 2\nguid: ${customGuid}\nTextureImporter:\n  spriteMode: 1\n`,
+        'utf8'
+      )
+
+      const secondSync = await syncGameEngineBundleToDirectory({
+        targetDir: tempDir,
+        engineKind: 'unity',
+        files: [
+          {
+            relativePath: spriteRel,
+            content:
+              'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+            encoding: 'dataUrl',
+            category: 'sprite'
+          }
+        ]
+      })
+      expect(secondSync.preservedGuidCount).toBe(1)
+      const updatedMeta = readFileSync(metaFullPath, 'utf8')
+      expect(extractGuidFromUnityMeta(updatedMeta)).toBe(customGuid)
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
+  it('Universal Capabilities 7-9: composeLayeredFrameTemplate (composite_frame), processSpriteStrokeAndMipChain (sprite_stroke_mip), and node_graph_map planar DAG topology', async () => {
+    const w = 64
+    const h = 64
+    const baseArt = createProceduralMaterialTileRgba('gold_ornament', w, h).data
+
+    // 1. Universal Layered Frame & Mask Template Compositor (4-Layer + Foil Mask + 5 Styles)
+    for (const shape of [
+      'rect_card',
+      'square_slot',
+      'octagonal_medallion',
+      'banner_plaque'
+    ] as const) {
+      const layered = composeLayeredFrameTemplate(baseArt, w, h, {
+        frameShape: shape,
+        rarity: 'legendary',
+        stylePreset: 'royal_gold_enamel',
+        foilStrength: 0.8,
+        resourceName: `test_${shape}`
+      })
+      expect(layered.compositeRgba.length).toBe(w * h * 4)
+      expect(layered.maskedArtRgba.length).toBe(w * h * 4)
+      expect(layered.frameBorderRgba.length).toBe(w * h * 4)
+      expect(layered.socketHeaderRgba.length).toBe(w * h * 4)
+      expect(layered.foilShimmerMaskRgba.length).toBe(w * h * 4)
+      expect(layered.godotFoilShader).toContain('shader_type canvas_item;')
+      expect(layered.layoutRects.artViewportRect.width).toBeGreaterThan(10)
+      expect(layered.layoutRects.badgeSocketCenter.radius).toBeGreaterThan(2)
+      expect(layered.godotControlTres).toContain('[node name="Layer1_MaskedArt"')
+      expect(layered.godotControlTres).toContain('[node name="BodyRichTextLabel"')
+    }
+
+    // Verify 9-Slice Corner-Locked Resizer (stretch & tile) preserves 1:1 top-left corner pixels
+    const resizedStretch = renderNineSliceResizedRgba(
+      baseArt,
+      w,
+      h,
+      160,
+      96,
+      { left: 12, right: 12, top: 12, bottom: 12 },
+      'stretch'
+    )
+    const resizedTile = renderNineSliceResizedRgba(
+      baseArt,
+      w,
+      h,
+      160,
+      96,
+      { left: 12, right: 12, top: 12, bottom: 12 },
+      'tile'
+    )
+    expect(resizedStretch.length).toBe(160 * 96 * 4)
+    expect(resizedTile.length).toBe(160 * 96 * 4)
+    // Corner pixel (x=4, y=4) must be identical 1:1 to source pixel (x=4, y=4)
+    expect(resizedStretch[(4 * 160 + 4) * 4]).toBe(baseArt[(4 * w + 4) * 4])
+    expect(resizedTile[(4 * 160 + 4) * 4]).toBe(baseArt[(4 * w + 4) * 4])
+
+    // Verify 3-Layer Combat HUD Progress Bar Kit
+    const hudKit = synthesizeHudProgressBarKit(baseArt, 128, 48, {
+      preset: 'hp_crimson',
+      stylePreset: 'cyber_holo_grid',
+      resourceName: 'boss_hp'
+    })
+    expect(hudKit.backplateRgba.length).toBe(128 * 48 * 4)
+    expect(hudKit.fillStripRgba.length).toBe(128 * 48 * 4)
+    expect(hudKit.frameOverlayRgba.length).toBe(128 * 48 * 4)
+    expect(hudKit.godotProgressBarTscn).toContain('TextureProgressBar')
+
+    const uiContainerNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    uiContainerNode.params.gamePbrAssetMode = 'composite_frame'
+    uiContainerNode.params.gameFrameShape = 'rect_card'
+    expect(isGameProductionNode(uiContainerNode)).toBe(true)
+    const frameNodeOut = await executeGamePbrTileNode({
+      node: uiContainerNode,
+      inputs: {}
+    })
+    expect(frameNodeOut['out-all']?.kind).toBe('images')
+    if (frameNodeOut['out-all']?.kind === 'images') {
+      expect(frameNodeOut['out-all'].items).toHaveLength(5)
+    }
+    const frameMeta = JSON.parse(
+      frameNodeOut['out-meta']?.kind === 'text' ? frameNodeOut['out-meta'].text : '{}'
+    )
+    expect(frameMeta.mode).toBe('composite_frame')
+    expect(frameMeta.layoutRects.frameShape).toBe('rect_card')
+    expect(frameMeta.godotFoilShader).toContain('foil_mask_tex')
+
+    // Execute in hud_bar_kit mode
+    uiContainerNode.params.gamePbrAssetMode = 'hud_bar_kit'
+    uiContainerNode.params.gameHudBarPreset = 'shield_cyan'
+    const hudNodeOut = await executeGamePbrTileNode({
+      node: uiContainerNode,
+      inputs: {}
+    })
+    const hudMeta = JSON.parse(
+      hudNodeOut['out-meta']?.kind === 'text' ? hudNodeOut['out-meta'].text : '{}'
+    )
+    expect(hudMeta.mode).toBe('hud_bar_kit')
+    expect(hudMeta.summary.preset).toBe('shield_cyan')
+    expect(hudMeta.godotProgressBarTscn).toContain('TextureProgressBar')
+
+    // 1b. Polar/Radial HUD Kit, RPG Dialogue Kit, UI Form Controls Atlas & 16:9 Full-Screen UI Blueprint Exporter
+    const radialKit = synthesizeRadialHudKit(baseArt, w, h, {
+      stylePreset: 'royal_gold_enamel'
+    })
+    expect(radialKit.cooldownWipeMaskRgba.length).toBe(w * h * 4)
+    expect(radialKit.skillSlotFrameRgba.length).toBe(w * h * 4)
+    expect(radialKit.minimapCompassRgba.length).toBe(w * h * 4)
+    expect(radialKit.actionWheelRgba.length).toBe(w * h * 4)
+    expect(radialKit.godotRadialHudTscn).toContain('fill_mode = 4')
+
+    const dialogueKit = synthesizeDialogueBoxKit(baseArt, w, h, {
+      stylePreset: 'dark_iron_parchment'
+    })
+    expect(dialogueKit.mainBoxRgba.length).toBe(w * h * 4)
+    expect(dialogueKit.nameplateAndChoiceRgba.length).toBe(w * h * 4)
+    expect(dialogueKit.portraitAndCursorRgba.length).toBe(w * h * 4)
+    expect(dialogueKit.compositePreviewRgba.length).toBe(w * h * 4)
+    expect(dialogueKit.godotDialogueSceneTscn).toContain('SpeakerNameplate')
+
+    const controlsKit = synthesizeUiFormControlsKit(baseArt, w, h, {
+      stylePreset: 'cyber_holo_grid'
+    })
+    expect(controlsKit.tabsPairRgba.length).toBe(w * h * 4)
+    expect(controlsKit.sliderAndScrollRgba.length).toBe(w * h * 4)
+    expect(controlsKit.checkboxAndToggleRgba.length).toBe(w * h * 4)
+    expect(controlsKit.atlasSheetRgba.length).toBe(w * h * 4)
+    expect(controlsKit.godotFullControlsThemeTres).toContain('HSlider/styles/slider')
+    expect(controlsKit.godotFullControlsThemeTres).toContain('TabContainer/styles/tab_selected')
+
+    const fullScreenCombatTscn = exportGodotFullScreenUiTscn(
+      'combat_hud',
+      'royal_gold_enamel',
+      'valkyrie_hud'
+    )
+    expect(fullScreenCombatTscn).toContain('TopRightMinimapCompass')
+    expect(fullScreenCombatTscn).toContain('BottomActionSkillBar')
+
+    const radialNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    radialNode.params.gamePbrAssetMode = 'radial_hud_kit'
+    const radialOut = await executeGamePbrTileNode({ node: radialNode, inputs: {} })
+    const radialMeta = JSON.parse(
+      radialOut['out-meta']?.kind === 'text' ? radialOut['out-meta'].text : '{}'
+    )
+    expect(radialMeta.mode).toBe('radial_hud_kit')
+    expect(radialMeta.godotRadialHudTscn).toContain('SkillCooldownSlot')
+
+    const dlgNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    dlgNode.params.gamePbrAssetMode = 'dialogue_kit'
+    const dlgOut = await executeGamePbrTileNode({ node: dlgNode, inputs: {} })
+    const dlgMeta = JSON.parse(dlgOut['out-meta']?.kind === 'text' ? dlgOut['out-meta'].text : '{}')
+    expect(dlgMeta.mode).toBe('dialogue_kit')
+    expect(dlgMeta.godotDialogueSceneTscn).toContain('TypewriterRichText')
+
+    const ctrlNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    ctrlNode.params.gamePbrAssetMode = 'ui_controls_kit'
+    const ctrlOut = await executeGamePbrTileNode({ node: ctrlNode, inputs: {} })
+    const ctrlMeta = JSON.parse(
+      ctrlOut['out-meta']?.kind === 'text' ? ctrlOut['out-meta'].text : '{}'
+    )
+    expect(ctrlMeta.mode).toBe('ui_controls_kit')
+    expect(ctrlMeta.godotFullControlsThemeTres).toContain('CheckBox/icons/checked')
+
+    const allBlueprints = [
+      'combat_hud',
+      'title_menu',
+      'inventory_paperdoll',
+      'skill_tree',
+      'shop_gacha',
+      'dialogue_vn',
+      'quest_victory',
+      'settings_form'
+    ] as const
+    for (const bp of allBlueprints) {
+      const tscn = exportGodotFullScreenUiTscn(bp, 'dark_iron_parchment', `test_${bp}`)
+      expect(tscn).toContain('[gd_scene format=3]')
+      expect(tscn).toContain('metadata/ui_style_preset = "dark_iron_parchment"')
+    }
+
+    // 2. Universal Sprite Outer Stroke, Drop Shadow & Sharpened Mip Chain
+    const spriteRgba = new Uint8ClampedArray(w * h * 4)
+    for (let y = 20; y < 44; y++) {
+      for (let x = 20; x < 44; x++) {
+        const idx = (y * w + x) * 4
+        spriteRgba[idx] = 60
+        spriteRgba[idx + 1] = 180
+        spriteRgba[idx + 2] = 250
+        spriteRgba[idx + 3] = 255
+      }
+    }
+    const strokeMip = processSpriteStrokeAndMipChain(spriteRgba, w, h, {
+      strokeWidthPx: 3,
+      strokeColorPreset: 'gold',
+      shadowOpacity: 0.4
+    })
+    // Pixel 2px outside the 20..44 box (at x=18, y=32) must now be covered by the outer stroke
+    const strokePixelAlpha = strokeMip.strokedRgba[(32 * w + 18) * 4 + 3]!
+    expect(strokePixelAlpha).toBeGreaterThan(180)
+    expect(strokeMip.mip128.width).toBe(128)
+    expect(strokeMip.mip64.width).toBe(64)
+    expect(strokeMip.mip32.width).toBe(32)
+
+    const spritePropNode = createNodeFromType('game.spriteProp', { x: 0, y: 0 })
+    expect(isGameProductionNode(spritePropNode)).toBe(true)
+    const strokeNodeOut = await executeGamePbrTileNode({
+      node: spritePropNode,
+      inputs: {}
+    })
+    const strokeMeta = JSON.parse(
+      strokeNodeOut['out-meta']?.kind === 'text' ? strokeNodeOut['out-meta'].text : '{}'
+    )
+    expect(strokeMeta.mode).toBe('sprite_stroke_mip')
+    expect(strokeMeta.summary.mips).toEqual(['128x128', '64x64', '32x32'])
+
+    const vfxAlphaNode = createNodeFromType('game.vfxAlpha', { x: 0, y: 0 })
+    vfxAlphaNode.params.gameVfxArchetype = 'arcane_vortex'
+    vfxAlphaNode.params.gameVfxPalette = 'arcane_cyan'
+    vfxAlphaNode.params.gameVfxFrameCount = 8
+    expect(isGameProductionNode(vfxAlphaNode)).toBe(true)
+    const vfxNodeOut = await executeGamePbrTileNode({
+      node: vfxAlphaNode,
+      inputs: {}
+    })
+    const vfxMeta = JSON.parse(
+      vfxNodeOut['out-meta']?.kind === 'text' ? vfxNodeOut['out-meta'].text : '{}'
+    )
+    expect(vfxMeta.mode).toBe('vfx_demult')
+    expect(vfxMeta.vfxMode).toBe('vfx_flipbook')
+    expect(vfxMeta.summary.grid).toBe('4x2')
+    expect(vfxMeta.summary.frameCount).toBe(8)
+    expect(vfxMeta.summary.sheetResolution).toBe('512x256')
+    expect(vfxMeta.summary.palette).toBe('arcane_cyan')
+    expect(vfxMeta.godotSpriteFramesTres).toContain('[gd_resource type="SpriteFrames"')
+    expect(vfxMeta.godotVfxShader).toContain('shader_type canvas_item;')
+    expect(vfxMeta.godotVfxShader).toContain('vfx_flow_motion_vectors')
+    expect(vfxMeta.godotVfxPrefabTscn).toContain('Layer0_GroundScorchDecal')
+    expect(vfxMeta.godotVfxPrefabTscn).toContain('Layer3_SparksSubEmitter')
+    expect(vfxMeta.godotVfxPrefabTscn).toContain('Layer4_ShockwaveRefraction')
+    expect(vfxMeta.unityParticleJson.layers.sparksSubEmitter.burstCount).toBe(36)
+    expect(vfxMeta.unityParticleJson.layers.mainFlipbook.litSmokeSelfIllumination).toBe(true)
+    expect(vfxMeta.unityParticleJson.layers.groundScorchDecal.enabled).toBe(true)
+
+    // 3. Universal Directed Node Graph & World Route Topology (node_graph_map)
+    const dagLevel = generateProceduralLevelMap({
+      algorithm: 'node_graph_map',
+      width: 42,
+      height: 24,
+      seed: 2026
+    })
+    expect(dagLevel.topologyGraph).toBeDefined()
+    expect(dagLevel.topologyGraph!.layers).toBeGreaterThanOrEqual(5)
+    expect(dagLevel.topologyGraph!.nodes.length).toBeGreaterThanOrEqual(8)
+    expect(dagLevel.topologyGraph!.edges.length).toBeGreaterThanOrEqual(7)
+    // Verify A* pathfinding from start node to boss node is 100% solvable
+    const dagConn = analyzeLevelConnectivityAndPacing(dagLevel)
+    expect(dagConn.reachable).toBe(true)
+
+    const dagNodeOut = await executeGameLevelMapNode({
+      node: {
+        id: 'n_dag_map',
+        typeId: 'game.levelMap',
+        title: 'WorldRouteDAG',
+        x: 0,
+        y: 0,
+        w: 240,
+        h: 180,
+        params: {
+          gameLevelAlgorithm: 'node_graph_map',
+          gameLevelWidth: 40,
+          gameLevelHeight: 24,
+          gameLevelSeed: 777
+        }
+      },
+      inputs: {}
+    })
+    expect(dagNodeOut.out?.kind).toBe('image')
+    expect(dagNodeOut['out-text']?.kind).toBe('text')
+  })
+
+  it('produces distinct visual outputs across UI Material Style presets and refreshes all 6 component ports on re-run', async () => {
+    const uiNode = createNodeFromType('game.pbrTile', { x: 0, y: 0 })
+    uiNode.params.gamePbrAssetMode = 'ui_full_suite'
+    uiNode.params.gameUiStylePreset = 'celestial_star_gold'
+
+    const goldOut = await executeGamePbrTileNode({ node: uiNode, inputs: {} })
+    expect(goldOut.out?.kind).toBe('image')
+    expect(goldOut['out-medallion']?.kind).toBe('image')
+    expect(goldOut['out-card']?.kind).toBe('image')
+    expect(goldOut['out-slot']?.kind).toBe('image')
+    expect(goldOut['out-hud-bar']?.kind).toBe('image')
+    expect(goldOut['out-radial']?.kind).toBe('image')
+    expect(goldOut['out-dialogue']?.kind).toBe('image')
+
+    const goldMainSrc = goldOut.out?.kind === 'image' ? goldOut.out.dataUrl : ''
+    const goldMedallionSrc =
+      goldOut['out-medallion']?.kind === 'image' ? goldOut['out-medallion'].dataUrl : ''
+    const goldHudBarSrc =
+      goldOut['out-hud-bar']?.kind === 'image' ? goldOut['out-hud-bar'].dataUrl : ''
+    const goldDialogueSrc =
+      goldOut['out-dialogue']?.kind === 'image' ? goldOut['out-dialogue'].dataUrl : ''
+
+    // Switch style preset to ink_paper_cel (even with existing gameUiArtboardJson from celestial_star_gold)
+    uiNode.params.gameUiStylePreset = 'ink_paper_cel'
+    const inkOut = await executeGamePbrTileNode({ node: uiNode, inputs: {} })
+
+    const inkMainSrc = inkOut.out?.kind === 'image' ? inkOut.out.dataUrl : ''
+    const inkMedallionSrc =
+      inkOut['out-medallion']?.kind === 'image' ? inkOut['out-medallion'].dataUrl : ''
+    const inkHudBarSrc =
+      inkOut['out-hud-bar']?.kind === 'image' ? inkOut['out-hud-bar'].dataUrl : ''
+    const inkDialogueSrc =
+      inkOut['out-dialogue']?.kind === 'image' ? inkOut['out-dialogue'].dataUrl : ''
+
+    expect(inkMainSrc).not.toBe(goldMainSrc)
+    expect(inkMedallionSrc).not.toBe(goldMedallionSrc)
+    expect(inkHudBarSrc).not.toBe(goldHudBarSrc)
+    expect(inkDialogueSrc).not.toBe(goldDialogueSrc)
+    // Verify generatedImages replaced rather than endlessly appended (8 screens + 6 components = 14)
+    expect(uiNode.params.generatedImages).toHaveLength(14)
+    expect(uiNode.params.selectedImageId).toBe(uiNode.params.generatedImages?.[0]?.id)
+  })
+
+  it('Machinations Economy Engine & game.economy node simulate P10/P50/P90 Monte Carlo curves, diagnose balance, and export Godot/Unity scripts', async () => {
+    const presets = [
+      'arpg_equipment_economy',
+      'gacha_pity_banner',
+      'idle_exponential_tycoon',
+      'roguelike_mana_deck',
+      'survivor_xp_loop'
+    ] as const
+
+    for (const presetId of presets) {
+      const diagram = createMachinationsPresetDiagram(presetId)
+      expect(diagram.nodes.length).toBeGreaterThanOrEqual(6)
+      expect(diagram.edges.length).toBeGreaterThanOrEqual(6)
+
+      let state = createInitialMachinationsState(diagram)
+      state = stepMachinationsSimulation(diagram, state, { seed: 42 })
+      expect(state.tick).toBe(1)
+      expect(state.totalProduced).toBeGreaterThan(0)
+
+      const mc = runMachinationsMonteCarlo(diagram, { runs: 20, steps: 30, seed: 2026 })
+      expect(mc.poolSeries.length).toBeGreaterThanOrEqual(2)
+      expect(mc.poolSeries[0]?.p50).toHaveLength(31)
+      expect(mc.diagnostics.length).toBeGreaterThanOrEqual(2)
+
+      const rendered = renderMachinationsDiagramToRgba(diagram, mc, 320, 220)
+      expect(rendered.data.length).toBe(320 * 220 * 4)
+      expect(exportMachinationsToMermaid(diagram)).toContain('flowchart LR')
+      expect(exportMachinationsTelemetryCsv(mc)).toContain('tick,')
+      expect(exportGodotEconomySimulatorGd(diagram)).toContain('class_name GameEconomySimulator')
+      expect(exportUnityEconomyManagerCs(diagram)).toContain('public class EconomyManager')
+    }
+
+    // Verify registered game.economy node end-to-end execution
+    const def = getNodeTypeOrThrow('game.economy')
+    expect(def.ports.some((p) => p.id === 'out-text')).toBe(true)
+
+    const econNode = createNodeFromType('game.economy', { x: 0, y: 0 })
+    expect(isGameProductionNode(econNode)).toBe(true)
+    econNode.params.gameEconomyPreset = 'gacha_pity_banner'
+    econNode.params.gameEconomySteps = 40
+    econNode.params.gameEconomyMonteCarloRuns = 25
+
+    const econOut = await executeGameEconomyNode({ node: econNode, inputs: {} })
+    expect(econOut.out?.kind).toBe('image')
+    expect(econOut['out-text']?.kind).toBe('text')
+    const bundle = JSON.parse(
+      econOut['out-text']?.kind === 'text' ? econOut['out-text'].text : '{}'
+    )
+    expect(bundle.kind).toBe('machinations_economy_bundle')
+    expect(bundle.schemaVersion).toBe(2)
+    expect(bundle.document.templateId).toBe('gacha_pity_banner')
+    expect(bundle.forecast.runs).toBe(25)
+    expect(bundle.godotEconomyScriptGd).toContain('pool_primogems')
   })
 })

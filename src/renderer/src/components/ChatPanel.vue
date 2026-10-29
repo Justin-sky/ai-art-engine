@@ -25,6 +25,7 @@ import type {
   HarnessTodoItem,
   InstalledWorkflowRecordView,
   McpActivity,
+  OneSentenceGameCardInfo,
   SessionSkill
 } from '@shared/ipc'
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
@@ -76,6 +77,7 @@ import { gameHtmlBrowserIssue } from '@shared/gamePlay'
 import { useDraftSave } from '../composables/useDraftSave'
 import ChatAssetPreview from './ChatAssetPreview.vue'
 import ChatChangesCard from './ChatChangesCard.vue'
+import ChatOneSentenceGameCard from './ChatOneSentenceGameCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 import ChatCopyIcon from './ChatCopyIcon.vue'
 import ChatWishShrine from './ChatWishShrine.vue'
@@ -2451,6 +2453,13 @@ function onMcpActivity(activity: McpActivity): void {
     }
     return
   }
+  // 一句话生成游戏：节点图已建好（未必已运行），出一张带「打开画布 / 运行 / 试玩 / 自动运行」的游戏卡
+  if (activity.tool === 'game_one_sentence_create') {
+    if (state === 'done' && activity.oneSentenceGame) {
+      upsertOneSentenceGameCard(activity.oneSentenceGame)
+    }
+    return
+  }
   // 生成完成且产出了资产：在对话末尾追加独立预览卡（图片/视频/音频/3D），
   // 仅在任务卡存在或任务仍运行时插入，避免产生孤立的预览卡；
   // 一次运行产出多件（如绘本逐页生图 + 最终合成视频）时按稳定路径 key 逐条出卡
@@ -2485,6 +2494,24 @@ function upsertGameCard(activity: McpActivity, htmlPath: string): void {
     return
   }
   messages.value.push({ kind: 'game', key, title, htmlPath })
+  scrollToBottom()
+}
+
+/** 一句话游戏卡按资产 id 原地更新（同一张图重复创建只保留一张卡） */
+function upsertOneSentenceGameCard(info: OneSentenceGameCardInfo): void {
+  const key = `osgame:${info.assetId}`
+  const prev = messages.value.find(
+    (m): m is ChatMsg & { kind: 'oneSentenceGame' } => m.kind === 'oneSentenceGame' && m.key === key
+  )
+  if (prev) {
+    prev.info = { ...info, scopeNotes: [...info.scopeNotes] }
+    return
+  }
+  messages.value.push({
+    kind: 'oneSentenceGame',
+    key,
+    info: { ...info, scopeNotes: [...info.scopeNotes] }
+  })
   scrollToBottom()
 }
 
@@ -4088,6 +4115,12 @@ onBeforeUnmount(() => {
               <button type="button" class="play-btn" @click.stop="playGame(msg)">
                 ▶ {{ t('studio.chat.gamePlay.play') }}
               </button>
+            </div>
+          </div>
+          <!-- 一句话游戏卡：节点图已建好，可打开画布 / 运行整图 / 试玩，并可勾选「生成后自动运行」 -->
+          <div v-else-if="msg.kind === 'oneSentenceGame'" class="msg-row asset">
+            <div class="asset-card">
+              <ChatOneSentenceGameCard :info="msg.info" />
             </div>
           </div>
           <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D/HTML）时追加到对话末尾，与任务清单的状态卡分离 -->

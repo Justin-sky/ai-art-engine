@@ -1907,7 +1907,10 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     isCardAnimNode.value ||
     isFilmMediaPreviewNode.value ||
     props.node.typeId === 'game.pbrTile' ||
-    props.node.typeId === 'game.levelMap'
+    props.node.typeId === 'game.spriteProp' ||
+    props.node.typeId === 'game.vfxAlpha' ||
+    props.node.typeId === 'game.levelMap' ||
+    props.node.typeId === 'game.economy'
   ) {
     return 'image'
   }
@@ -2796,8 +2799,8 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒）：
-    // 双击进入全屏游戏生产工坊工作台（PBR贴图与无缝拼接预览、音频DSP变体试听、2D关卡地图编辑、HTML5可玩沙盒试玩），勿落入记事本
+    // 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成）：
+    // 双击进入全屏游戏生产工坊工作台（PBR贴图与无缝拼接预览、音频DSP变体试听、2D关卡地图编辑），勿落入记事本
     if (isGameProductionNode(props.node)) {
       const hostId = props.hostId?.trim()
       if (hostId) {
@@ -2806,15 +2809,6 @@ function onPreviewDblClick(): void {
           title
         )
         if (ok) return
-      }
-      if (props.node.typeId === 'game.playable') {
-        const { openGamePlaySandboxDialog } =
-          await import('../features/media/gamePlaySandboxDialog')
-        openGamePlaySandboxDialog({
-          hostId: hostId || undefined,
-          nodeId: props.node.id,
-          title
-        })
       }
       return
     }

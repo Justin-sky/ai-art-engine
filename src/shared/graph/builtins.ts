@@ -99,7 +99,7 @@ import {
   executeGamePbrTileNode,
   executeGameAudioDspNode,
   executeGameLevelMapNode,
-  executeGamePlayableNode
+  executeGameEconomyNode
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
@@ -3124,7 +3124,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
       ...galleryOutPorts(GraphPortType.image),
       {
         id: 'out-meta',
@@ -3135,10 +3135,99 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
       }
     ],
     defaultParams: () => ({
+      gamePbrAssetMode: 'pbr_tile',
       gameTileSeamless: true,
       gameTileBlendRatio: 0.22,
       gamePbrNormalStrength: 2.8,
-      gamePbrInvertRoughness: false
+      gamePbrInvertRoughness: false,
+      gamePbrMaterialPreset: 'stone_dungeon',
+      gamePropShadowOpacity: 0.42,
+      gamePropFootprintRatio: 0.25,
+      gameUiSymmetricLock: true,
+      gameIconRarityTier: 'legendary',
+      gameVfxBlackClip: 0.04,
+      gameVfxWhitePoint: 0.88,
+      gameVfxGamma: 0.85,
+      gameVfxColorBoost: 1.15,
+      gameFrameShape: 'rect_card',
+      gameStrokeWidthPx: 3,
+      gameStrokeColorPreset: 'gold'
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeGamePbrTileNode
+  },
+  {
+    typeId: 'game.spriteProp',
+    category: 'note',
+    label: '精灵描边与物件', // cjk-ok
+    icon: '✨',
+    defaultTitle: '精灵描边与物件', // cjk-ok
+    description:
+      '通用 2D 精灵与场景物件加工节点：支持距离场抗锯齿外描边 + 悬浮投影 + Alpha 加权多级 MIP 锐化链（128/64/32px），以及模块化场景物件自动抠底 + Y-Sort 遮挡排序基线 + 接地环境阴影 + 底座碰撞多边形提取。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-meta',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Manifest'
+      }
+    ],
+    defaultParams: () => ({
+      gamePbrAssetMode: 'sprite_stroke_mip',
+      gameStrokeWidthPx: 3,
+      gameStrokeColorPreset: 'gold',
+      gamePropShadowOpacity: 0.42,
+      gamePropFootprintRatio: 0.25,
+      gamePbrMaxHullVertices: 8,
+      gamePbrPivotMode: 'bottom_center'
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeGamePbrTileNode
+  },
+  {
+    typeId: 'game.vfxAlpha',
+    category: 'note',
+    label: '2D特效去黑底', // cjk-ok
+    icon: '🔥',
+    defaultTitle: '2D特效去黑底', // cjk-ok
+    description:
+      '2D 游戏特效黑底转透明去黑边节点（VFX Unpremultiply Linear Alpha）：将黑底/暗底火焰、刀光、法阵、激光特效图还原为无黑边线性半透明辉光 PNG 贴图。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-meta',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Manifest'
+      }
+    ],
+    defaultParams: () => ({
+      gamePbrAssetMode: 'vfx_demult',
+      gameVfxBlackClip: 0.04,
+      gameVfxWhitePoint: 0.88,
+      gameVfxGamma: 0.85,
+      gameVfxColorBoost: 1.15
     }),
     addable: true,
     deletable: true,
@@ -3166,6 +3255,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     defaultParams: () => ({
       gameAudioDspMode: 'loop_bgm',
       gameAudioCrossfadeSec: 1.5,
+      gameAudioIntroSec: 2.0,
+      gameAudioTargetLufs: -14,
       gameAudioTrimThresholdDb: -42,
       gameAudioVariantCount: 4,
       gameAudioPitchSpread: 2.0,
@@ -3219,53 +3310,41 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     execute: executeGameLevelMapNode
   },
   {
-    typeId: 'game.playable',
+    typeId: 'game.economy',
     category: 'note',
-    label: '可玩游戏沙盒', // cjk-ok
-    icon: '👾',
-    defaultTitle: '可玩游戏沙盒', // cjk-ok
+    label: '游戏经济系统', // cjk-ok
+    icon: '⚖️',
+    defaultTitle: '游戏经济系统', // cjk-ok
     description:
-      '接收上游连接的角色/怪物/瓦片精灵图（in-image）、关卡地图 Tiled JSON（in-text）与游戏音频（in-voice），一键编译为单文件零依赖 60fps HTML5 微型可玩原型（支持 WASD 移动、空格冲刺、鼠标攻击、波次刷怪与粒子特效），可在节点检查器内直接全屏试玩。', // cjk-ok
+      'Machinations 风格游戏经济系统动力学建模与蒙特卡洛（Monte Carlo）数值平衡节点：支持 Source（产出）/ Pool（资源池）/ Converter（合成转化）/ Drain（消耗回收）/ Gate（动态保底概率分流）/ Register（指数数值公式）可视化拓扑编辑、步进模拟与 P10/P50/P90 置信带曲线分析，输出可视化拓扑曲线图（out）与 Godot/Unity 经济脚本及遥测 JSON（out-text）。', // cjk-ok
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Config' },
+      ...galleryOutPorts(GraphPortType.image),
       {
-        id: 'in-image',
-        direction: 'in',
-        dataType: GraphPortType.image,
-        multiple: true,
-        label: 'Sprites'
-      },
-      {
-        id: 'in-voice',
-        direction: 'in',
-        dataType: GraphPortType.voice,
-        multiple: true,
-        label: 'Audio'
-      },
-      {
-        id: 'in-text',
-        direction: 'in',
+        id: 'out-text',
+        direction: 'out',
         dataType: GraphPortType.text,
-        multiple: true,
-        label: 'Level / Config'
-      },
-      ...galleryOutPorts(GraphPortType.text)
+        multiple: false,
+        label: 'Economy JSON'
+      }
     ],
     defaultParams: () => ({
-      gamePlayableTitle: 'Indie Game Prototype',
-      gamePlayableGenre: 'roguelike_action',
-      gamePlayableCameraMode: 'topdown_34',
-      gameLevelAlgorithm: 'bsp_dungeon',
-      gameLevelSeed: 42
+      gameEconomyPreset: 'roguelike_run',
+      gameEconomySteps: 20,
+      gameEconomyMonteCarloRuns: 50,
+      gameEconomySeed: 2026,
+      gameEconomyDiagramJson: ''
     }),
     addable: true,
     deletable: true,
     inspector: 'none',
     inspectorId: 'studio.graph.gameNode',
     card: 'media',
+    assetType: 'image',
     contributeToGeneration: false,
-    execute: executeGamePlayableNode
+    execute: executeGameEconomyNode
   }
 ]
 

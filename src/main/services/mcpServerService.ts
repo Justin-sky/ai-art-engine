@@ -123,6 +123,7 @@ import {
   type McpRestartInput,
   type McpServerInfo,
   type McpTaskReportPayload,
+  type OneSentenceGameCardInfo,
   type WriteAssetTextInput
 } from '@shared/ipc'
 import {
@@ -186,6 +187,17 @@ import {
   getExternalMcpSession
 } from './externalMcpClient'
 import { mcpActivityService } from './mcpActivityService'
+import { commitAiWorkflow } from './graphPlanService'
+import { audioProviderUnavailableReason } from './audioProviderHealth'
+import {
+  createOneSentenceGame,
+  detectOneSentenceGameAudio,
+  type CreateOneSentenceGameDeps
+} from './oneSentenceGameService'
+import {
+  GAME_SPEC_TOOL_INPUT_SCHEMA,
+  type PartialGameSpecInput
+} from '@shared/gameAssets/oneSentenceGameSpec'
 import { extractWebArticleWithHeadlessBrowser } from './webArticleExtractService'
 import { fetchWebVideoClipsToImports } from './webVideoFetchService'
 import { broadcastToAllWindows } from '../broadcast'
@@ -2217,26 +2229,7 @@ const TOOL_DEFS: McpToolDef[] = [
           ? [...lastMcpGraphEditTarget.nodeIds]
           : []
       const waitForCompletion = args.wait !== false
-      const mcpTaskId = randomUUID()
-      pendingMcpTaskReports.delete(mcpTaskId)
-      // 登记为界面可见的旁路活动：终点由渲染层回报本轮产物相对路径后收尾，
-      // 任务列表 / 执行日志 / AI 对话流三处共用这一条记录出预览
-      pendingMcpTaskActivities.set(
-        mcpTaskId,
-        mcpActivityService.begin({
-          tool: 'task_run',
-          title: `画布执行 · ${asset.name}`,
-          detail: requestedNodeIds.length
-            ? `实时执行画布节点 (${requestedNodeIds.join(', ')})`
-            : '按拓扑序实时执行画布节点',
-          assetId
-        })
-      )
-      broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, {
-        mcpTaskId,
-        assetId,
-        ...(requestedNodeIds.length ? { nodeIds: requestedNodeIds } : {})
-      })
+      const mcpTaskId = dispatchMcpCanvasRun(asset, requestedNodeIds)
 
       if (!waitForCompletion) {
         for (let i = 0; i < 20; i++) {
@@ -5532,6 +5525,157 @@ const TOOL_DEFS: McpToolDef[] = [
     }
   },
   {
+    name: 'game_one_sentence_create',
+    title: '一句话生成可玩游戏原型', // cjk-ok
+    description:
+      'Turn a one-sentence game request into a ready-to-run canvas workflow: hero / enemy / floor-tile image generation (1:1, auto background keying) → level map → BGM + SFX (AI sound models when configured, otherwise procedural synthesis) → playable 60fps HTML5 sandbox. ' +
+      'PREFER this tool whenever the request fits one of the 5 sandbox genres (survivor / platformer / tower_defense / card_dbg / avg_dialogue); use gameplay_* only for custom mechanics or real 3D. ' +
+      'Fill as many spec fields as you can from the request (English art/look descriptions, cards for card_dbg, branching dialogues for avg_dialogue); omitted fields are inferred. ' +
+      'The graph is NOT run unless the user enabled "Auto-run after generation" on the chat game card — never call task_run on it yourself; read `nextStep` and relay `scopeNotes` honestly.',
+    inputSchema: {
+      type: 'object',
+      properties: GAME_SPEC_TOOL_INPUT_SCHEMA.properties as unknown as Record<string, unknown>,
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const prompt = readString(args, 'prompt')
+      const activityId = mcpActivityService.begin({
+        tool: 'game_one_sentence_create',
+        title: prompt.slice(0, 40),
+        detail: 'building game workflow…'
+      })
+      try {
+        const result = await createOneSentenceGame(
+          { prompt, spec: args as PartialGameSpecInput },
+          createOneSentenceGameDeps()
+        )
+        if (!result.ok || !result.assetId || !result.gameSpec) {
+          mcpActivityService.end(activityId, { ok: false, error: result.error || 'failed' })
+          return result
+        }
+        const spec = result.gameSpec
+        const card: OneSentenceGameCardInfo = {
+          assetId: result.assetId,
+          title: spec.title,
+          genre: spec.genre,
+          camera: spec.camera,
+          difficulty: spec.difficulty,
+          artStyle: spec.artStyle,
+          audioSfx: result.audioSource?.sfx ?? 'procedural',
+          audioBgm: result.audioSource?.bgm ?? 'procedural',
+          scopeNotes: spec.scopeNotes,
+          autoRun: result.autoRun === true,
+          ...(result.mcpTaskId ? { mcpTaskId: result.mcpTaskId } : {})
+        }
+        mcpActivityService.end(activityId, {
+          ok: true,
+          assetId: result.assetId,
+          detail: `${spec.genre} · ${spec.camera} · ${spec.difficulty}`,
+          oneSentenceGame: card
+        })
+        return result
+      } catch (err) {
+        mcpActivityService.end(activityId, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        })
+        throw err
+      }
+    }
+  },
+  {
+    name: 'game_ui_suite_create',
+    title: '一句话生成全套游戏UI工作流', // cjk-ok
+    description:
+      'Turn a one-sentence game UI request (e.g. "生成原神风格全套UI", "P5红黑风格全套UI", "明日方舟极简战术全套UI", "暗黑哥特全套UI") into a complete high-resolution AI Game UI canvas workflow: `asset.gameSystem` (Game System & UI Spec) → `ui.split` (UI Screen Breakdown) → `ui.gen` (High-Res AI UI Screen Generation) → `image.layerSplit` (UI Layer Split with 9-Slice Resizer, Button Multi-State Generation & Multi-Engine Export).', // cjk-ok
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: "The user's original one-sentence UI suite request (required)."
+        },
+        title: {
+          type: 'string',
+          description: 'Optional UI suite title (e.g. "原神星轨幻想全套UI").' // cjk-ok
+        },
+        stylePreset: {
+          type: 'string',
+          enum: [
+            'celestial_star_gold',
+            'persona_rebel_red',
+            'minimal_ark_tech',
+            'dark_iron_parchment',
+            'royal_gold_enamel',
+            'arcane_crystal',
+            'cyber_holo_grid',
+            'ink_paper_cel'
+          ],
+          description:
+            'Optional UI theme preset: celestial_star_gold (Genshin style), persona_rebel_red (P5 style), minimal_ark_tech (Arknights style), cyber_holo_grid, ink_paper_cel, royal_gold_enamel, arcane_crystal, or dark_iron_parchment.'
+        },
+        artStyle: {
+          type: 'string',
+          description: 'Optional English art style prompt for the upstream AI image generators.'
+        }
+      },
+      required: ['prompt']
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const prompt = readString(args, 'prompt')
+      const activityId = mcpActivityService.begin({
+        tool: 'game_one_sentence_create',
+        title: prompt.slice(0, 40),
+        detail: 'building 8-screen UI suite workflow…'
+      })
+      try {
+        const result = await createOneSentenceGame(
+          {
+            prompt,
+            spec: {
+              ...(args as Record<string, unknown>),
+              uiSuiteOnly: true
+            } as PartialGameSpecInput
+          },
+          createOneSentenceGameDeps()
+        )
+        if (!result.ok || !result.assetId || !result.gameSpec) {
+          mcpActivityService.end(activityId, { ok: false, error: result.error || 'failed' })
+          return result
+        }
+        const spec = result.gameSpec
+        const card: OneSentenceGameCardInfo = {
+          assetId: result.assetId,
+          title: spec.title,
+          genre: spec.genre,
+          camera: spec.camera,
+          difficulty: spec.difficulty,
+          artStyle: spec.artStyle,
+          audioSfx: 'procedural',
+          audioBgm: 'procedural',
+          scopeNotes: spec.scopeNotes,
+          autoRun: result.autoRun === true,
+          ...(result.mcpTaskId ? { mcpTaskId: result.mcpTaskId } : {})
+        }
+        mcpActivityService.end(activityId, {
+          ok: true,
+          assetId: result.assetId,
+          detail: `8-Screen Full UI Suite · ${spec.title}`,
+          oneSentenceGame: card
+        })
+        return result
+      } catch (err) {
+        mcpActivityService.end(activityId, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err)
+        })
+        throw err
+      }
+    }
+  },
+  {
     name: 'game_playable_preview_compile',
     title: '编译应用内即点即玩HTML5微缩游戏沙盒',
     description:
@@ -6646,6 +6790,62 @@ const taskReportCleanups = new Map<string, NodeJS.Timeout>()
 /** mcpTaskId → 旁路活动 id：task_run 的产物路径随终态回报到达时据此收尾活动 */
 const pendingMcpTaskActivities = new Map<string, string>()
 
+/**
+ * 派发一次画布运行（task_run 与「一句话生成游戏」的自动运行 / 游戏卡「运行」按钮共用）：
+ * 登记为界面可见的旁路活动——终点由渲染层回报本轮产物相对路径后收尾，
+ * 任务列表 / 执行日志 / AI 对话流三处共用这一条记录出预览。返回 mcpTaskId。
+ */
+function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: string[] = []): string {
+  const mcpTaskId = randomUUID()
+  pendingMcpTaskReports.delete(mcpTaskId)
+  pendingMcpTaskActivities.set(
+    mcpTaskId,
+    mcpActivityService.begin({
+      tool: 'task_run',
+      title: `画布执行 · ${asset.name}`, // cjk-ok
+      detail: nodeIds.length
+        ? `实时执行画布节点 (${nodeIds.join(', ')})` // cjk-ok
+        : '按拓扑序实时执行画布节点', // cjk-ok
+      assetId: asset.id
+    })
+  )
+  broadcastToAllWindows(IpcChannels.MCP_TASK_RUN, {
+    mcpTaskId,
+    assetId: asset.id,
+    ...(nodeIds.length ? { nodeIds } : {})
+  })
+  return mcpTaskId
+}
+
+/** 按资产 id 派发整图运行（一句话游戏卡「运行」按钮 / 自动运行） */
+function dispatchOneSentenceGameRun(assetId: string): string {
+  const asset = projectService.listAssets().find((item) => item.id === assetId)
+  if (!asset) throw new Error(`asset not found: ${assetId}`)
+  return dispatchMcpCanvasRun(asset)
+}
+
+function createOneSentenceGameDeps(): CreateOneSentenceGameDeps {
+  return {
+    // 建完子图资产必须广播 ASSET_UPDATED：渲染层资产列表不知道这个新资产时，
+    // 游戏卡「打开画布 / 运行」与 task_run 执行器都会报「资产不存在或已删除」
+    commit: async (input) => {
+      const result = await commitAiWorkflow(input)
+      if (result.ok && result.assetId) {
+        const asset = projectService.listAssets().find((item) => item.id === result.assetId)
+        if (asset) broadcastToAllWindows(IpcChannels.ASSET_UPDATED, asset)
+      }
+      return result
+    },
+    detectAudio: () =>
+      detectOneSentenceGameAudio(settingsService.get().models.providers, {
+        sfx: audioProviderUnavailableReason('sfx'),
+        music: audioProviderUnavailableReason('music')
+      }),
+    getAutoRun: () => settingsService.get().gameOneSentenceAutoRun === true,
+    dispatchRun: dispatchOneSentenceGameRun
+  }
+}
+
 /** MCP ask_user 的渲染层回报（用户选择 / 取消），ask_user 工具轮询这里 */
 const pendingAskUserAnswers = new Map<string, AskUserAnswer>()
 
@@ -7486,6 +7686,12 @@ export async function startMcpServer(preferredPort?: number): Promise<void> {
     if (!candidates.includes(port)) candidates.push(port)
   }
 
+  ipcMain.handle(IpcChannels.GAME_ONE_SENTENCE_RUN, (_event, assetId: unknown) => {
+    if (typeof assetId !== 'string' || !assetId.trim()) throw new Error('assetId is required')
+    assertProjectOpen()
+    return dispatchOneSentenceGameRun(assetId.trim())
+  })
+
   ipcMain.handle(IpcChannels.MCP_TASK_REPORT, (_event, payload: McpTaskReportPayload) => {
     if (payload && typeof payload.mcpTaskId === 'string') {
       const existing = pendingMcpTaskReports.get(payload.mcpTaskId)
@@ -7620,6 +7826,7 @@ async function closeMcpServer(): Promise<void> {
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
+  ipcMain.removeHandler(IpcChannels.GAME_ONE_SENTENCE_RUN)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_RENDER_JOB_RESULT)
@@ -7680,6 +7887,7 @@ export function stopMcpServer(): void {
   const closing = server
   server = null
   ipcMain.removeHandler(IpcChannels.MCP_TASK_REPORT)
+  ipcMain.removeHandler(IpcChannels.GAME_ONE_SENTENCE_RUN)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_EDIT_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_GRAPH_ICON_REFINE_RESULT)
   ipcMain.removeHandler(IpcChannels.MCP_RENDER_JOB_RESULT)

@@ -566,6 +566,18 @@ export interface YoloSettings {
   iouThreshold: number
 }
 
+/** 本地语音识别（Whisper / whisper.cpp）设置 */
+export interface WhisperSettings {
+  /** 是否启用本地离线语音转写 */
+  enabled: boolean
+  /** 是否优先使用本地 Whisper 转写（即便已配置云端 OpenAI / ElevenLabs） */
+  preferLocal: boolean
+  /** 指定默认使用的 Whisper 模型 id（空字符串 = 按精度自动选用已安装模型） */
+  defaultModelId: string
+  /** 默认识别语言（空字符串或 'auto' = 自动检测；如 'zh'、'en'、'ja'、'ko'） */
+  language: string
+}
+
 /**
  * 3D 视口（导演台）的操控灵敏度。
  *
@@ -701,6 +713,8 @@ export interface AppSettings {
   }
   /** 本地视觉（YOLO）：ONNX 本地推理 */
   yolo: YoloSettings
+  /** 本地离线语音转写（Whisper / whisper.cpp） */
+  whisper?: WhisperSettings
   /**
    * Blender 工具面配置：应用内建的 MCP server 直接以 TCP 连 Blender addon，
    * 挂在主 MCP 服务的 `/mcp/blender` 路径上供 dsh 的 mcp-client 消费。
@@ -733,6 +747,12 @@ export interface AppSettings {
     /** 留空则用官方仓库 */
     source: string
   }
+  /**
+   * AI 对话「一句话生成游戏」（MCP `game_one_sentence_create`）建好节点图后是否立即整图运行。
+   * 默认 false：运行会立即调用生图 / 音频模型并产生费用，必须由用户在对话游戏卡上主动勾选；
+   * 工具只读这个设置，Agent 不能通过参数绕过。
+   */
+  gameOneSentenceAutoRun?: boolean
 }
 
 /** Blender 工具面配置；实现见 main/services/blenderMcpService.ts 顶部 JSDoc。 */
@@ -2595,9 +2615,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
     confThreshold: 0.25,
     iouThreshold: 0.45
   },
+  whisper: {
+    enabled: true,
+    preferLocal: false,
+    defaultModelId: '',
+    language: ''
+  },
   blenderMcp: createDefaultBlenderMcpSettings(),
   externalMcp: [],
-  skillMarket: { source: '' }
+  skillMarket: { source: '' },
+  gameOneSentenceAutoRun: false
 }
 
 /** Blender 工具面默认值：addon.py 的默认监听地址 */

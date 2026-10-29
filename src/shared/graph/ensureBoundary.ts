@@ -275,6 +275,40 @@ export function wireDanglingOutsToBoundaryOutputs(
       continue
     }
 
+    // 若某节点拥有与边界口 id 完全同名且类型兼容的专用输出口，
+    // 直接按该专用端口一对一接线。
+    if (port.id !== 'out') {
+      const dedicatedSource = nodes.find((n) => {
+        if (isBoundaryProxyNode(n) || n.category === 'output' || n.typeId === 'note.text') {
+          return false
+        }
+        const namedOut = getNodePorts(n).find((p) => p.direction === 'out' && p.id === port.id)
+        return !!namedOut && canConnectNodes(n, bout!, { sourcePort: port.id, targetPort: 'in' })
+      })
+      if (dedicatedSource) {
+        const hadDedicatedEdge = edges.some(
+          (e) =>
+            e.source === dedicatedSource.id &&
+            e.target === boutId &&
+            (e.sourcePort ?? 'out') === port.id
+        )
+        pushEdge(edges, dedicatedSource.id, boutId, port.id, 'in')
+        if (!hadDedicatedEdge && bout) {
+          const portIdx = Math.max(
+            0,
+            iface.outputs.findIndex((p) => p.id === port.id)
+          )
+          const col = portIdx % 2
+          const row = Math.floor(portIdx / 2)
+          bout.position = {
+            x: dedicatedSource.position.x + 520 + col * 320,
+            y: dedicatedSource.position.y - 60 + row * 220
+          }
+        }
+        continue
+      }
+    }
+
     let source =
       dangling.find((n) => {
         const title = n.title?.trim()
@@ -300,12 +334,13 @@ export function wireDanglingOutsToBoundaryOutputs(
 
     if (!source) continue
     const sourcePort = preferredSourcePort(source, false, port.dataType)
+    const hadInEdge = edges.some((e) => e.target === boutId)
     pushEdge(edges, source.id, boutId, sourcePort, 'in')
     usedSources.add(source.id)
-    // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对
+    // 出口节点靠齐对应汇点右侧，便于三路立绘各自成对；已显式连线并排版的边界节点保留其自定义 y 坐标
     bout!.position = {
       x: Math.max(bout!.position.x, source.position.x + 280),
-      y: source.position.y
+      y: hadInEdge ? bout!.position.y : source.position.y
     }
   }
 

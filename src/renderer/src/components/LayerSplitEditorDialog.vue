@@ -181,8 +181,20 @@
               :style="layerStyle(layer)"
               @pointerdown.stop="onLayerPointerDown($event, layer)"
             >
+              <div
+                v-if="
+                  layer.visible &&
+                  layerUrl(layer) &&
+                  !isBase(layer) &&
+                  nineSliceStretchMode &&
+                  layerHasNineSlice(layer) &&
+                  isLayerResizedFromOriginal(layer)
+                "
+                class="nine-slice-render"
+                :style="nineSliceRenderStyle(layer)"
+              />
               <img
-                v-if="layer.visible && layerUrl(layer)"
+                v-else-if="layer.visible && layerUrl(layer)"
                 :src="layerUrl(layer)"
                 alt=""
                 draggable="false"
@@ -192,6 +204,24 @@
                 z{{ layer.zIndex }} · {{ layerLabel(layer) }}
               </span>
               <template v-if="layer.id === draft.selectedId && !isBase(layer) && !exploded3d">
+                <template v-if="showNineSliceGuides && layerHasNineSlice(layer)">
+                  <span
+                    class="nine-slice-guide v left"
+                    :style="{ left: `${nineSliceGuidePct(layer, 'left')}%` }"
+                  />
+                  <span
+                    class="nine-slice-guide v right"
+                    :style="{ right: `${nineSliceGuidePct(layer, 'right')}%` }"
+                  />
+                  <span
+                    class="nine-slice-guide h top"
+                    :style="{ top: `${nineSliceGuidePct(layer, 'top')}%` }"
+                  />
+                  <span
+                    class="nine-slice-guide h bottom"
+                    :style="{ bottom: `${nineSliceGuidePct(layer, 'bottom')}%` }"
+                  />
+                </template>
                 <span
                   v-for="handle in handles"
                   :key="handle"
@@ -346,6 +376,85 @@
               :placeholder="t('graph.layerSplit.renamePlaceholder')"
               @change="onRenameSelectedLayer"
             />
+            <div class="side-nine-slice">
+              <div class="nine-slice-head">
+                <span class="nine-slice-title">
+                  {{
+                    isZhLocale ? '📏 九宫格切边 (L/T/R/B)' : '📏 9-Slice (L/T/R/B)'
+                  }}<!-- cjk-ok -->
+                </span>
+                <div class="nine-slice-tools">
+                  <button
+                    type="button"
+                    class="mini-pill"
+                    :class="{ active: showNineSliceGuides }"
+                    :title="
+                      isZhLocale
+                        ? '在画布选中图层上显示/隐藏九宫格切线' // cjk-ok
+                        : 'Toggle 9-slice guide lines on stage'
+                    "
+                    @click="showNineSliceGuides = !showNineSliceGuides"
+                  >
+                    {{ isZhLocale ? '📐 切线' : '📐 Guides' }}<!-- cjk-ok -->
+                  </button>
+                  <button
+                    type="button"
+                    class="mini-pill"
+                    :disabled="slicing"
+                    :title="
+                      isZhLocale
+                        ? '按当前图层真实像素自动测算九宫格安全边距' // cjk-ok
+                        : 'Auto-detect 9-slice borders from layer pixels'
+                    "
+                    @click="onAutoDetectSelectedNineSlice"
+                  >
+                    {{ isZhLocale ? '🔄 自动' : '🔄 Auto' }}<!-- cjk-ok -->
+                  </button>
+                </div>
+              </div>
+              <div class="nine-slice-grid">
+                <label class="ns-cell">
+                  <span>L</span>
+                  <input
+                    type="number"
+                    min="0"
+                    :max="Math.max(0, Math.floor(selectedLayer.width / 2))"
+                    :value="selectedLayer.nineSliceBorders?.[0] ?? 0"
+                    @change="onNineSliceBorderInput(0, $event)"
+                  />
+                </label>
+                <label class="ns-cell">
+                  <span>T</span>
+                  <input
+                    type="number"
+                    min="0"
+                    :max="Math.max(0, Math.floor(selectedLayer.height / 2))"
+                    :value="selectedLayer.nineSliceBorders?.[1] ?? 0"
+                    @change="onNineSliceBorderInput(1, $event)"
+                  />
+                </label>
+                <label class="ns-cell">
+                  <span>R</span>
+                  <input
+                    type="number"
+                    min="0"
+                    :max="Math.max(0, Math.floor(selectedLayer.width / 2))"
+                    :value="selectedLayer.nineSliceBorders?.[2] ?? 0"
+                    @change="onNineSliceBorderInput(2, $event)"
+                  />
+                </label>
+                <label class="ns-cell">
+                  <span>B</span>
+                  <input
+                    type="number"
+                    min="0"
+                    :max="Math.max(0, Math.floor(selectedLayer.height / 2))"
+                    :value="selectedLayer.nineSliceBorders?.[3] ?? 0"
+                    @change="onNineSliceBorderInput(3, $event)"
+                  />
+                </label>
+              </div>
+            </div>
           </div>
           <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
@@ -509,6 +618,7 @@ import {
   buildUnityUiToolkitUss,
   buildUnityUiToolkitUxml,
   collectLayerSplitGroupLayers,
+  computeNineSliceFromRgbaBuffer,
   findMergeDownTargetLayer,
   layerSplitExportFolderSegments,
   imageLayerSplitToNodePatch,
@@ -535,7 +645,8 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   decomposeSingleLayerUrlToControlParts,
   mergeTwoLayerImagesToDataUrl,
-  sliceUiLayerFromSourceCanvas
+  sliceUiLayerFromSourceCanvas,
+  uiRgbaCodec
 } from '../features/graph/model/composeImageLayerStack'
 import {
   loadGenerateModelOptions,
@@ -1654,6 +1765,105 @@ function onHandlePointerDown(
   window.addEventListener('pointerup', onPointerUp)
 }
 
+const showNineSliceGuides = ref(true)
+const nineSliceStretchMode = ref(true)
+
+function layerHasNineSlice(layer: ImageLayerSplitLayer | null | undefined): boolean {
+  const b = layer?.nineSliceBorders
+  return Array.isArray(b) && b.length === 4 && b.some((n) => Number(n) > 0)
+}
+
+function isLayerResizedFromOriginal(layer: ImageLayerSplitLayer): boolean {
+  if (Array.isArray(layer.originalAbsolute) && layer.originalAbsolute.length === 4) {
+    const origW = Math.max(1, layer.originalAbsolute[2] - layer.originalAbsolute[0])
+    const origH = Math.max(1, layer.originalAbsolute[3] - layer.originalAbsolute[1])
+    return Math.abs(layer.width - origW) > 1 || Math.abs(layer.height - origH) > 1
+  }
+  return false
+}
+
+function nineSliceRenderStyle(layer: ImageLayerSplitLayer): Record<string, string> {
+  const [left, top, right, bottom] = layer.nineSliceBorders ?? [0, 0, 0, 0]
+  const cw = Math.max(1, draft.canvasWidth)
+  const zw = Math.max(1, display.w * zoom.value)
+  const scale = zw / cw
+  const lPx = Math.max(0, Math.round(left * scale))
+  const tPx = Math.max(0, Math.round(top * scale))
+  const rPx = Math.max(0, Math.round(right * scale))
+  const bPx = Math.max(0, Math.round(bottom * scale))
+  return {
+    borderStyle: 'solid',
+    borderColor: 'transparent',
+    borderWidth: `${tPx}px ${rPx}px ${bPx}px ${lPx}px`,
+    borderImageSource: `url("${layerUrl(layer)}")`,
+    borderImageSlice: `${top} ${right} ${bottom} ${left} fill`,
+    borderImageRepeat: 'stretch'
+  }
+}
+
+function nineSliceGuidePct(
+  layer: ImageLayerSplitLayer,
+  side: 'left' | 'top' | 'right' | 'bottom'
+): number {
+  const [left, top, right, bottom] = layer.nineSliceBorders ?? [0, 0, 0, 0]
+  const w = Math.max(1, layer.width)
+  const h = Math.max(1, layer.height)
+  if (side === 'left') return Math.max(0, Math.min(100, (left / w) * 100))
+  if (side === 'right') return Math.max(0, Math.min(100, (right / w) * 100))
+  if (side === 'top') return Math.max(0, Math.min(100, (top / h) * 100))
+  return Math.max(0, Math.min(100, (bottom / h) * 100))
+}
+
+function onNineSliceBorderInput(index: 0 | 1 | 2 | 3, event: Event): void {
+  const layer = selectedLayer.value
+  if (!layer || isBase(layer)) return
+  const raw = Math.max(0, Math.round(Number((event.target as HTMLInputElement).value) || 0))
+  const maxVal =
+    index === 0 || index === 2
+      ? Math.max(0, Math.floor(layer.width / 2))
+      : Math.max(0, Math.floor(layer.height / 2))
+  const clamped = Math.min(maxVal, raw)
+  const current: [number, number, number, number] = layer.nineSliceBorders
+    ? [...layer.nineSliceBorders]
+    : [0, 0, 0, 0]
+  current[index] = clamped
+  pushDraftHistory()
+  replaceLayer({
+    ...layer,
+    nineSliceBorders: current
+  })
+}
+
+async function onAutoDetectSelectedNineSlice(): Promise<void> {
+  const layer = selectedLayer.value
+  if (!layer || isBase(layer)) return
+  const src = layerUrl(layer)
+  if (!src) return
+  slicing.value = true
+  try {
+    const decoded = await uiRgbaCodec.decodeImageRgba(src)
+    const borders = computeNineSliceFromRgbaBuffer(decoded.data, decoded.width, decoded.height) ?? [
+      16, 16, 16, 16
+    ]
+    pushDraftHistory()
+    replaceLayer({
+      ...layer,
+      nineSliceBorders: borders
+    })
+    showNineSliceGuides.value = true
+    flashExportMessage(
+      isZhLocale.value
+        ? `已自动测算九宫格切边：L=${borders[0]} T=${borders[1]} R=${borders[2]} B=${borders[3]}px` // cjk-ok
+        : `Auto-detected 9-slice borders: L=${borders[0]} T=${borders[1]} R=${borders[2]} B=${borders[3]}px`
+    )
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
+  } finally {
+    slicing.value = false
+  }
+}
+
 function onPointerMove(event: PointerEvent): void {
   if (!drag.kind || !drag.origin) return
   const delta = scaleFromDisplay(event.clientX - drag.startX, event.clientY - drag.startY)
@@ -1683,9 +1893,11 @@ function onPointerMove(event: PointerEvent): void {
     height = Math.max(8, origin.height - delta.dy)
     top = origin.top + origin.height - height
   }
-  height = Math.max(8, Math.round(width / ratio))
-  if (handle.includes('n')) top = origin.top + origin.height - height
-  if (handle.includes('w')) left = origin.left + origin.width - width
+  if (!layerHasNineSlice(origin) && handle.length === 2) {
+    height = Math.max(8, Math.round(width / ratio))
+    if (handle.includes('n')) top = origin.top + origin.height - height
+    if (handle.includes('w')) left = origin.left + origin.width - width
+  }
   replaceLayer({ ...origin, left, top, width, height })
 }
 
@@ -2446,6 +2658,105 @@ onBeforeUnmount(() => {
   color: var(--text);
   padding: 5px 8px;
   font-size: 12px;
+}
+
+.side-nine-slice {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nine-slice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.nine-slice-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.nine-slice-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mini-pill {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 10px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.mini-pill.active,
+.mini-pill:hover:not(:disabled) {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.nine-slice-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.ns-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.ns-cell input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  padding: 2px 4px;
+  font-size: 11px;
+}
+
+.nine-slice-render {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.nine-slice-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.nine-slice-guide.v {
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed #38bdf8;
+}
+
+.nine-slice-guide.h {
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed #38bdf8;
 }
 
 .side-export {

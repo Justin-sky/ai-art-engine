@@ -54,6 +54,15 @@ import { exportAdVariants } from './services/adVariantExportService'
 import { videoJobService } from './services/videoJobService'
 import { mcpActivityService } from './services/mcpActivityService'
 import { getFfmpegRuntimeStatus, installFfmpeg } from './services/ffmpegInstallService'
+import { WHISPER_CATALOG } from '@shared/whisperCatalog'
+import {
+  cancelWhisperModelDownload,
+  deleteWhisperModel,
+  downloadWhisperModel,
+  getWhisperRuntimeStatus,
+  installWhisper,
+  openWhisperModelDir
+} from './services/whisperService'
 import {
   abortHarnessTask,
   controlHarnessGoal,
@@ -88,6 +97,7 @@ import {
   prepareBlenderDshJob
 } from './services/blenderDshJobService'
 import { buildGamePlayProject } from './services/gamePlayBuildService'
+import { syncGameEngineBundleToDirectory } from './services/gameEngineSyncService'
 import { settingsService } from './services/settingsService'
 import { updateService } from './services/updateService'
 import {
@@ -680,6 +690,17 @@ export function registerIpcHandlers(): void {
     recognizeImageTextFromDataUrl(input)
   )
 
+  // Local speech-to-text (Whisper / whisper.cpp)
+  handle(IpcChannels.WHISPER_STATUS, () => getWhisperRuntimeStatus())
+  handle(IpcChannels.WHISPER_INSTALL, () => installWhisper())
+  handle(IpcChannels.WHISPER_MODEL_CATALOG, () => WHISPER_CATALOG)
+  handle(IpcChannels.WHISPER_MODEL_DOWNLOAD, (modelId: string) => downloadWhisperModel(modelId))
+  handle(IpcChannels.WHISPER_MODEL_DOWNLOAD_CANCEL, (modelId?: string) =>
+    cancelWhisperModelDownload(modelId)
+  )
+  handle(IpcChannels.WHISPER_MODEL_DELETE, (modelId: string) => deleteWhisperModel(modelId))
+  handle(IpcChannels.WHISPER_OPEN_MODEL_DIR, () => openWhisperModelDir())
+
   handle(IpcChannels.MCP_GET_INFO, () => getMcpServerInfo())
   handle(IpcChannels.MCP_RESTART, (input: import('@shared/ipc').McpRestartInput) =>
     restartMcpServer(input)
@@ -730,6 +751,11 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.BLENDER_DSH_CLEANUP, (jobId: string) => cleanupBlenderDshJob(jobId))
   handle(IpcChannels.GAMEPLAY_BUILD, (input: import('@shared/ipc').BuildGamePlayProjectInput) =>
     buildGamePlayProject(input)
+  )
+  handle(
+    IpcChannels.GAME_ENGINE_SYNC_BUNDLE,
+    (input: import('@shared/gameAssets').SyncGameEngineBundleInput) =>
+      syncGameEngineBundleToDirectory(input)
   )
   handle(IpcChannels.HARNESS_ABORT, () => abortHarnessTask())
   handle(IpcChannels.HARNESS_PREWARM, () => prewarmHarness())

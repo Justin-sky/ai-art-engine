@@ -146,9 +146,11 @@ describe('graph policy', () => {
         'spatialWorld.export',
         'script.run',
         'game.pbrTile',
+        'game.spriteProp',
+        'game.vfxAlpha',
         'game.audioDsp',
         'game.levelMap',
-        'game.playable'
+        'game.economy'
       ].sort()
     )
   })

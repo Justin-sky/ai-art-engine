@@ -70,9 +70,11 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'spatialWorld.export',
   'script.run',
   'game.pbrTile',
+  'game.spriteProp',
+  'game.vfxAlpha',
   'game.audioDsp',
   'game.levelMap',
-  'game.playable'
+  'game.economy'
 ] as const
 
 describe('graph canvas menu nodes', () => {

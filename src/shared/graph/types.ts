@@ -272,9 +272,11 @@ export type GraphNodeTypeId =
   | 'model.texture'
   | 'model.animation'
   | 'game.pbrTile'
+  | 'game.spriteProp'
+  | 'game.vfxAlpha'
   | 'game.audioDsp'
   | 'game.levelMap'
-  | 'game.playable'
+  | 'game.economy'
   | 'graph.input.slot'
   | (string & {})
 
@@ -1383,6 +1385,94 @@ export interface GraphNodeParams {
   scriptLastError?: string
   /** 脚本节点（script.run）：最近一次执行时间戳（ISO 字符串） */
   scriptLastRunAt?: string
+  /** 游戏节点（game.pbrTile）：生产资产模式（pbr_tile / autotile_wang16 / scene_prop / ui_kit / vfx_demult / composite_frame / sprite_stroke_mip） */
+  gamePbrAssetMode?:
+    | 'pbr_tile'
+    | 'autotile_wang16'
+    | 'scene_prop'
+    | 'ui_kit'
+    | 'vfx_demult'
+    | 'composite_frame'
+    | 'sprite_stroke_mip'
+    | 'hud_bar_kit'
+    | 'radial_hud_kit'
+    | 'dialogue_kit'
+    | 'ui_controls_kit'
+    | 'ui_full_suite'
+    | 'raw_nine_slice'
+  /** 游戏节点（game.pbrTile）：通用分层容器框体形态（rect_card / square_slot / octagonal_medallion / banner_plaque） */
+  gameFrameShape?: 'rect_card' | 'square_slot' | 'octagonal_medallion' | 'banner_plaque'
+  /** 游戏节点：UI 材质美学风格预设 */
+  gameUiStylePreset?:
+    | 'dark_iron_parchment'
+    | 'royal_gold_enamel'
+    | 'arcane_crystal'
+    | 'cyber_holo_grid'
+    | 'ink_paper_cel'
+    | 'celestial_star_gold'
+    | 'persona_rebel_red'
+    | 'minimal_ark_tech'
+  /** 游戏节点：九宫格边缘与中心延展模式（stretch 拉伸 / tile 整数平铺） */
+  gameNineSliceStretchMode?: 'stretch' | 'tile'
+  /** 游戏节点：传说级闪卡镭射流光强度（0..1.5，默认 0.65） */
+  gameUiFoilStrength?: number
+  /** 游戏节点：HUD 战斗状态条色彩与纹理预设 */
+  gameHudBarPreset?: 'hp_crimson' | 'shield_cyan' | 'mana_violet' | 'xp_gold' | 'boss_inferno'
+  /** 游戏节点（game.pbrTile）：通用精灵外描边像素宽度（1..10，默认 3） */
+  gameStrokeWidthPx?: number
+  /** 游戏节点（game.pbrTile）：通用精灵外描边色彩预设（gold / white / black / cyan / crimson） */
+  gameStrokeColorPreset?: 'gold' | 'white' | 'black' | 'cyan' | 'crimson'
+  /** 游戏节点（game.pbrTile）：场景物件模式下的接地环境光阴影不透明度（0..0.95，默认 0.42） */
+  gamePropShadowOpacity?: number
+  /** 游戏节点（game.pbrTile）：场景物件模式下的底部占地阻挡高度比例（0.1..0.55，默认 0.25） */
+  gamePropFootprintRatio?: number
+  /** 游戏节点（game.pbrTile）：UI 工坊模式下是否强制左右/上下九宫格边距对称锁 */
+  gameUiSymmetricLock?: boolean
+  /** 游戏节点（game.pbrTile）：UI 工坊模式下的道具图标稀有度边框档位 */
+  gameIconRarityTier?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
+  /** 游戏节点（game.vfxAlpha）：专业 2D 特效加工模式 */
+  gameVfxMode?: 'vfx_flipbook' | 'vfx_demult' | 'vfx_trail_ribbon' | 'vfx_channel_pack'
+  /** 游戏节点（game.vfxAlpha）：内置程序化 2D 特效形态种子预设（无上游图片时生效） */
+  gameVfxArchetype?:
+    | 'slash_arc'
+    | 'fire_explosion'
+    | 'arcane_vortex'
+    | 'lightning_burst'
+    | 'heal_aura'
+    | 'poison_nova'
+  /** 游戏节点（game.vfxAlpha）：特效元素热力学渐变映射调色板 */
+  gameVfxPalette?:
+    | 'original'
+    | 'solar_fire'
+    | 'arcane_cyan'
+    | 'void_purple'
+    | 'fel_emerald'
+    | 'holy_gold'
+    | 'blood_crimson'
+  /** 游戏节点（game.vfxAlpha）：Flipbook 序列帧总帧数（4 / 8 / 16，默认 8） */
+  gameVfxFrameCount?: number
+  /** 游戏节点（game.vfxAlpha）：Flipbook 序列帧播放帧率（6..30，默认 14） */
+  gameVfxFps?: number
+  /** 游戏节点（game.vfxAlpha）：HDR 辉光扩散强度（0..1.5，默认 0.45） */
+  gameVfxBloomStrength?: number
+  /** 游戏节点（game.vfxAlpha）：消散噪波侵蚀强度（0..1.0，默认 0.35） */
+  gameVfxDissolveErosion?: number
+  /** 游戏节点（game.vfxAlpha）：安全边界柔化防裁边宽度（0..0.35，默认 0.12） */
+  gameVfxEdgeFeather?: number
+  /** 游戏节点（game.vfxAlpha）：2D 旋度流场平流与湍流剪切强度（0..1.5，默认 0.65） */
+  gameVfxTurbulence?: number
+  /** 游戏节点（game.vfxAlpha）：次级物理飞溅火星发射器粒子数（0..80，默认 36） */
+  gameVfxSparkCount?: number
+  /** 游戏节点（game.vfxAlpha）：屏幕空间冲击波空气折射扭曲强度（0..1.5，默认 0.55） */
+  gameVfxDistortionStrength?: number
+  /** 游戏节点（game.pbrTile）：VFX 黑底转透明模式下的暗部裁剪阈值（0..0.4，默认 0.04） */
+  gameVfxBlackClip?: number
+  /** 游戏节点（game.pbrTile）：VFX 黑底转透明模式下的高光完全不透明点（0.4..1.0，默认 0.88） */
+  gameVfxWhitePoint?: number
+  /** 游戏节点（game.pbrTile）：VFX 黑底转透明模式下的 Alpha 伽马曲线（0.3..2.5，默认 0.85） */
+  gameVfxGamma?: number
+  /** 游戏节点（game.pbrTile）：VFX 黑底转透明模式下的半透明边缘色彩补偿（1.0..2.0，默认 1.15） */
+  gameVfxColorBoost?: number
   /** 游戏节点（game.pbrTile）：是否对输入贴图做环面无缝瓦片融合 */
   gameTileSeamless?: boolean
   /** 游戏节点（game.pbrTile）：无缝融合过渡带宽比例（0.05..0.45） */
@@ -1416,8 +1506,12 @@ export interface GraphNodeParams {
   gameNineSliceBottom?: number
   /** 游戏节点（game.pbrTile）：最近一次输出的 9-Slice + 碰撞凸包 + PBR 摘要 JSON */
   gamePbrReport?: string
-  /** 游戏节点（game.audioDsp）：DSP 模式（loop_bgm 无缝循环 / sfx_variants 4× 变体） */
-  gameAudioDspMode?: 'loop_bgm' | 'sfx_variants'
+  /** 游戏节点（game.audioDsp）：DSP 模式（loop_bgm 无缝循环 / bgm_intro_loop 前奏+无缝循环切分 / sfx_variants 4× 变体） */
+  gameAudioDspMode?: 'loop_bgm' | 'bgm_intro_loop' | 'sfx_variants'
+  /** 游戏节点（game.audioDsp）：BGM 前奏切分点（秒，默认 2.0，用于 bgm_intro_loop 模式） */
+  gameAudioIntroSec?: number
+  /** 游戏节点（game.audioDsp）：目标积分响度（LUFS，如 -14 或 -16） */
+  gameAudioTargetLufs?: number
   /** 游戏节点（game.audioDsp）：BGM 首尾等功率交叉淡化时长（秒） */
   gameAudioCrossfadeSec?: number
   /** 游戏节点（game.audioDsp）：音效首尾静音修剪门限（dBFS） */
@@ -1461,6 +1555,7 @@ export interface GraphNodeParams {
     | 'platformer_course'
     | 'tower_defense'
     | 'labyrinth_maze'
+    | 'node_graph_map'
   /** 游戏节点（game.levelMap）：关卡网格宽度（12..64） */
   gameLevelWidth?: number
   /** 游戏节点（game.levelMap）：关卡网格高度（10..48） */
@@ -1471,36 +1566,37 @@ export interface GraphNodeParams {
   gameLevelCustomEdits?: string
   /** 游戏节点（game.levelMap）：最近一次关卡统计摘要 */
   gameLevelReport?: string
-  /** 游戏节点（game.playable）：可玩原型标题 */
-  gamePlayableTitle?: string
-  /** 游戏节点（game.playable）：可玩原型玩法类型 */
-  gamePlayableGenre?:
-    | 'roguelike_action'
-    | 'platformer'
-    | 'dungeon_crawler'
-    | 'tower_defense'
-    | 'card_dbg'
-    | 'avg_dialogue'
-  /** 游戏节点（game.playable）：在线编辑的自定义数值/卡牌/道具/波次/多语言配表覆写 */
-  gameCustomDataTables?: Record<string, Array<Record<string, string | number>>>
-  /** 游戏节点（game.playable）：镜头视角规范 */
-  gamePlayableCameraMode?: 'topdown_90' | 'topdown_34' | 'isometric_45' | 'side_view'
-  /** 游戏节点（game.playable）：主角移速倍率（0.4..2.5，默认 1.0） */
-  gamePlayableMoveSpeed?: number
-  /** 游戏节点（game.playable）：跳跃/冲刺力度倍率（0.4..2.5，默认 1.0） */
-  gamePlayableJumpDash?: number
-  /** 游戏节点（game.playable）：怪物移速与刷怪频率倍率（0.4..2.5，默认 1.0） */
-  gamePlayableEnemyAggro?: number
-  /** 游戏节点（game.playable）：暴击与受击震屏强度倍率（0..2.0，默认 1.0） */
-  gamePlayableScreenShake?: number
-  /** 游戏节点（game.playable）：全局时间缩放 / 子弹时间（0.25..1.5，默认 1.0） */
-  gamePlayableTimeScale?: number
-  /** 游戏节点（game.playable）：是否开启碰撞框、攻击扇区与实时 FPS 遥测叠层 */
-  gamePlayableShowHitboxes?: boolean
-  /** 游戏节点（game.playable）：最近一次编译的 60fps 独立可玩 HTML5 源码 */
-  gamePlayableHtml?: string
-  /** 游戏节点（game.playable）：最近一次编译报告 */
-  gamePlayableReport?: string
+  /** 游戏节点（game.economy）：Machinations 经济系统模板（MxTemplateId） */
+  gameEconomyPreset?:
+    | 'hearthstone_mana_pack'
+    | 'onmyoji_speed_orbs'
+    | 'balatro_ante_jokers'
+    | 'arpg_equipment_economy'
+    | 'gacha_pity_banner'
+    | 'idle_exponential_tycoon'
+    | 'roguelike_mana_deck'
+    | 'survivor_xp_loop'
+    | 'roguelike_run'
+    | 'simple_faucet_sink'
+    | 'tower_defense_waves'
+    | 'crafting_chain'
+    | 'energy_stamina_timer'
+  /** 游戏节点（game.economy）：单次模拟时间步数（Ticks，10..200，默认 50） */
+  gameEconomySteps?: number
+  /** 游戏节点（game.economy）：蒙特卡洛（Monte Carlo）批量随机模拟采样次数（5..200，默认 40） */
+  gameEconomyMonteCarloRuns?: number
+  /** 游戏节点（game.economy）：确定性随机种子 */
+  gameEconomySeed?: number
+  /** 游戏节点（game.economy）：自定义编辑的 Machinations 节点与边拓扑图 JSON */
+  gameEconomyDiagramJson?: string
+  /** 游戏节点（game.economy）：最近一次经济系统蒙特卡洛诊断摘要 */
+  gameEconomyReport?: string
+  /** 游戏节点：UI 画板 JSON 载荷 */
+  gameUiArtboardJson?: string
+  /** 游戏节点：UI 画板预览图 DataURL */
+  gameUiArtboardPreviewDataUrl?: string
+  /** 游戏节点：UI 屏幕蓝图预设 */
+  gameUiScreenBlueprint?: string
 }
 
 export interface GraphPortDef {

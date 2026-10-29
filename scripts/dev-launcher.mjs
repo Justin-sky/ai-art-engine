@@ -55,7 +55,12 @@ if (removed.length > 0) {
 }
 
 const cli = resolve(projectRoot, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js')
-const args = [cli, ...process.argv.slice(2)]
+const userArgs = process.argv.slice(2)
+const isNonDevCmd = userArgs.some(
+  (a) => a === 'build' || a === 'preview' || a === '--help' || a === '-h'
+)
+const hasWatchFlag = userArgs.some((a) => a === '--watch' || a === '-w' || a === '--no-watch')
+const args = [cli, ...(!isNonDevCmd && !hasWatchFlag ? ['--watch'] : []), ...userArgs]
 
 /**
  * 低完整性标签兜底：工作区里任何可执行程序都起不来（Electron 表现得最明显——静默 0x80000003），

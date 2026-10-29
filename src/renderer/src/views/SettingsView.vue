@@ -34,6 +34,14 @@
         <button
           type="button"
           class="top-tab"
+          :class="{ active: mainTab === 'whisper' }"
+          @click="mainTab = 'whisper'"
+        >
+          {{ t('settings.section.whisper') }}
+        </button>
+        <button
+          type="button"
+          class="top-tab"
           :class="{ active: mainTab === 'ffmpeg' }"
           @click="mainTab = 'ffmpeg'"
         >
@@ -177,6 +185,11 @@
         <YoloModelsPanel v-model:yolo="form.yolo" />
       </section>
 
+      <section v-show="mainTab === 'whisper'" class="models-section">
+        <h2>{{ t('settings.section.whisper') }}</h2>
+        <WhisperPanel v-if="form.whisper" v-model:whisper="form.whisper" />
+      </section>
+
       <section v-show="mainTab === 'ffmpeg'" class="models-section">
         <h2>{{ t('settings.section.ffmpeg') }}</h2>
         <FfmpegPanel />
@@ -225,6 +238,7 @@ import { invalidateGenerateModelSettingsCache } from '../features/graph/model/ge
 import ModelsPanel from '../components/settings/ModelsPanel.vue'
 import ObjectStoragePanel from '../components/settings/ObjectStoragePanel.vue'
 import YoloModelsPanel from '../components/settings/YoloModelsPanel.vue'
+import WhisperPanel from '../components/settings/WhisperPanel.vue'
 import FfmpegPanel from '../components/settings/FfmpegPanel.vue'
 import SearchProvidersPanel from '../components/settings/SearchProvidersPanel.vue'
 
@@ -238,9 +252,9 @@ const message = ref('')
 
 /** Blender 工具集：v-model 直接绑 form.blenderMcp，「应用并重连」按钮统一提交 */
 const isError = ref(false)
-const mainTab = ref<'general' | 'models' | 'yolo' | 'ffmpeg' | 'objectStorage' | 'search'>(
-  'general'
-)
+const mainTab = ref<
+  'general' | 'models' | 'yolo' | 'whisper' | 'ffmpeg' | 'objectStorage' | 'search'
+>('general')
 const appVersion = ref('…')
 const updateStatus = ref('')
 const updateBusy = ref(false)
@@ -259,6 +273,7 @@ const SETTINGS_TAB_QUERY_VALUES = new Set([
   'general',
   'models',
   'yolo',
+  'whisper',
   'ffmpeg',
   'objectStorage',
   'search'
@@ -425,6 +440,7 @@ function cloneSettings(source: AppSettings): AppSettings {
     seedance: { ...toRaw(raw.seedance) },
     llm: { ...toRaw(raw.llm) },
     yolo: { ...DEFAULT_SETTINGS.yolo, ...toRaw(raw.yolo) },
+    whisper: { ...DEFAULT_SETTINGS.whisper!, ...toRaw(raw.whisper) },
     blenderMcp: {
       ...DEFAULT_SETTINGS.blenderMcp,
       ...toRaw(raw.blenderMcp)
@@ -449,6 +465,11 @@ function applyToForm(cloned: AppSettings): void {
   Object.assign(form.llm, cloned.llm)
   // yolo 目录等属于持久化设置，必须回填否则打开设置页保存会静默覆盖为默认值
   Object.assign(form.yolo, cloned.yolo)
+  if (form.whisper && cloned.whisper) {
+    Object.assign(form.whisper, cloned.whisper)
+  } else if (cloned.whisper) {
+    form.whisper = { ...cloned.whisper }
+  }
   // 就地替换 providers，避免拉取模型 await 期间整表替换导致设置页引用失效
   form.models.providers.splice(0, form.models.providers.length, ...cloned.models.providers)
   form.search.providers.splice(0, form.search.providers.length, ...cloned.search.providers)

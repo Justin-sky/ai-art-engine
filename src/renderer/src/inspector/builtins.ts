@@ -53,7 +53,12 @@ import FilmInspector from '../components/FilmInspector.vue'
 import GameNodeInspector from '../components/GameNodeInspector.vue'
 import type { InspectorDefinition } from './types'
 import type { ProjectConfig } from '@shared/domain'
-import { isAssetRefInputHostType, isFilmNodeTypeId, type GraphNode } from '@shared/graph'
+import {
+  isAssetRefInputHostType,
+  isFilmNodeTypeId,
+  isGameProductionNode,
+  type GraphNode
+} from '@shared/graph'
 import { activeDirectorStageScene } from '../features/director/activeDirectorStageScene'
 
 function isStageInspectorTarget(kind: string): boolean {
@@ -401,13 +406,7 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     component: GameNodeInspector,
     match: (target) => {
       if (target.kind !== 'graph.node') return false
-      const typeId = (target.subject as GraphNode | null)?.typeId
-      return (
-        typeId === 'game.pbrTile' ||
-        typeId === 'game.audioDsp' ||
-        typeId === 'game.levelMap' ||
-        typeId === 'game.playable'
-      )
+      return isGameProductionNode(target.subject as GraphNode | null)
     }
   },
   {
