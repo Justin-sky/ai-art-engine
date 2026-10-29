@@ -20,6 +20,14 @@
  * 纯函数、无 DOM 依赖：主进程节点执行器、渲染进程工作台与引擎代码导出共用。
  */
 
+import {
+  buildGameDataTableBundle,
+  type GameCardRow,
+  type GameCharacterRow,
+  type GameDataTableBundle,
+  type GameItemRow,
+  type GameWaveRow
+} from './gameDataTables'
 import { createMxRng, evaluateMxExpression } from './machinationsV2'
 
 // ───────────────────────────── 1. 乘区公式与配表审计层 ─────────────────────────────
@@ -1716,6 +1724,156 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
   }
 }
 
+/**
+ * 怪物机制检定克制矩阵（Enemy Encounter Build-Checker Matrix）：
+ * 将当前卡组依次置于 6 类经典肉鸽 Boss/精英机制下进行蒙特卡洛对局，自动定位当前流派的天敌机制。
+ */
+export function runMxEncounterCounterMatrix(cfg: MxCombatKernelConfig): MxEncounterCounterRow[] {
+  const mechanisms: Array<{
+    id: MxEnemyMechanismKind
+    nameZh: string
+    nameEn: string
+  }> = [
+    { id: 'standard', nameZh: '标准木桩 (Standard)', nameEn: 'Standard Boss' }, // cjk-ok
+    { id: 'aoe_swarm', nameZh: '群怪分摊检定 (AOE Swarm)', nameEn: 'AOE Swarm Check' }, // cjk-ok
+    { id: 'status_polluter', nameZh: '塞废牌污染 (Status Polluter)', nameEn: 'Status Polluter' }, // cjk-ok
+    { id: 'card_limit_punisher', nameZh: '出牌数惩罚 (Card Limit)', nameEn: 'Card Limit Punisher' }, // cjk-ok
+    { id: 'thorns_armor', nameZh: '高甲荆棘反伤 (Thorns & Armor)', nameEn: 'Thorns & Armor' }, // cjk-ok
+    { id: 'berserk_race', nameZh: '回合狂暴检定 (Berserk DPS Race)', nameEn: 'Berserk DPS Race' } // cjk-ok
+  ]
+
+  const sampleRuns = Math.min(200, Math.max(60, Math.round((cfg.runs || 200) * 0.6)))
+  return mechanisms.map((m) => {
+    const res = runMxCombatKernelSimulation({
+      ...cfg,
+      kernel: 'deck_cycle',
+      runs: sampleRuns,
+      enemyMechanism: m.id
+    })
+    const verdict: MxEncounterCounterRow['verdict'] =
+      res.winRatePct >= 75 ? 'favored' : res.winRatePct >= 45 ? 'skill_check' : 'countered'
+    return {
+      mechanism: m.id,
+      nameZh: m.nameZh,
+      nameEn: m.nameEn,
+      winRatePct: res.winRatePct,
+      ttkP50: res.ttkP50,
+      avgHpLoss: res.kpi1Value,
+      verdict
+    }
+  })
+}
+
+/**
+ * 牌库精简（商店删牌）与诅咒塞牌边际收益曲线（Deck Thinning & Removal ROI Curve）：
+ * 模拟从「塞入 2 张废牌/诅咒 (+2)」到「删去 3 张初始基础牌 (-3)」的起手核心卡摸到率、TTK 与平均战损变化，
+ * 并基于节省的生命值与胜率增益自动推算商店删牌合理定价（Gold）。
+ */
+export function runMxDeckRemovalRoiAnalysis(cfg: MxCombatKernelConfig): MxDeckRemovalRoiRow[] {
+  const deltas: Array<{ delta: number; labelZh: string; labelEn: string }> = [
+    { delta: 2, labelZh: '+2 诅咒/废牌 (污染)', labelEn: '+2 Curse / Bloat' }, // cjk-ok
+    { delta: 1, labelZh: '+1 诅咒/废牌', labelEn: '+1 Curse / Bloat' }, // cjk-ok
+    { delta: 0, labelZh: '0 基准初始牌库', labelEn: '0 Baseline Deck' }, // cjk-ok
+    { delta: -1, labelZh: '-1 删去1张基础牌', labelEn: '-1 Remove 1 Starter' }, // cjk-ok
+    { delta: -2, labelZh: '-2 删去2张基础牌', labelEn: '-2 Remove 2 Starters' }, // cjk-ok
+    { delta: -3, labelZh: '-3 删去3张基础牌', labelEn: '-3 Remove 3 Starters' } // cjk-ok
+  ]
+
+  const sampleRuns = Math.min(200, Math.max(80, Math.round((cfg.runs || 200) * 0.6)))
+  const drawN = Math.max(1, cfg.drawPerTurn || 5)
+
+  // 先克隆并调整牌库计算各档位指标
+  const rawResults = deltas.map((d) => {
+    const cardsClone: MxDeckCardSpec[] = cfg.deckCards.map((c) => ({ ...c }))
+    if (d.delta > 0) {
+      cardsClone.push({
+        id: `curse_bloat_${d.delta}`,
+        name: 'Curse: Clumsy',
+        cost: 99,
+        count: d.delta,
+        damage: 0,
+        block: 0,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: false,
+        priority: -10
+      })
+    } else if (d.delta < 0) {
+      let toRemove = Math.abs(d.delta)
+      // 优先从低优先级基础牌（priority <= 2 或 Strike/Defend）中删减
+      const sortedByLowPrio = [...cardsClone].sort((a, b) => a.priority - b.priority)
+      for (const lowCard of sortedByLowPrio) {
+        if (toRemove <= 0) break
+        const target = cardsClone.find((c) => c.id === lowCard.id)
+        if (!target || target.count <= 0) continue
+        const cut = Math.min(target.count, toRemove)
+        target.count -= cut
+        toRemove -= cut
+      }
+    }
+
+    const deckSize = Math.max(
+      1,
+      cardsClone.reduce((acc, c) => acc + Math.max(0, c.count), 0)
+    )
+    const coreCount = cardsClone
+      .filter((c) => c.priority >= 3 || c.applyStrength > 0 || c.draw > 0)
+      .reduce((acc, c) => acc + Math.max(0, c.count), 0)
+
+    // 超几何分布计算起手 Turn 1 至少抽到 1 张核心牌的概率
+    const nonCore = Math.max(0, deckSize - coreCount)
+    let probNoCore = 1
+    for (let i = 0; i < drawN; i++) {
+      if (deckSize - i <= 0) break
+      probNoCore *= Math.max(0, nonCore - i) / (deckSize - i)
+    }
+    const turn1CoreDrawPct = Math.round((1 - Math.max(0, Math.min(1, probNoCore))) * 1000) / 10
+
+    const sim = runMxCombatKernelSimulation({
+      ...cfg,
+      kernel: 'deck_cycle',
+      runs: sampleRuns,
+      deckCards: cardsClone
+    })
+
+    return {
+      deltaCards: d.delta,
+      labelZh: d.labelZh,
+      labelEn: d.labelEn,
+      deckSize,
+      turn1CoreDrawPct,
+      winRatePct: sim.winRatePct,
+      ttkP50: sim.ttkP50,
+      avgHpLoss: sim.kpi1Value
+    }
+  })
+
+  const baseRow = rawResults.find((r) => r.deltaCards === 0) ?? rawResults[0]!
+  return rawResults.map((r) => {
+    const hpSaved = Math.round((baseRow.avgHpLoss - r.avgHpLoss) * 10) / 10
+    const winGain = Math.max(0, r.winRatePct - baseRow.winRatePct)
+    const removalStep = r.deltaCards < 0 ? Math.abs(r.deltaCards) : 0
+    // 基于每点战损折合 ~12G + 胜率提升折算合理删牌费用（带递增阶梯）
+    const fairShopGoldPrice =
+      removalStep === 0
+        ? 0
+        : Math.max(
+            50,
+            Math.round(
+              (55 + Math.max(0, hpSaved) * 8 + winGain * 1.8 + (removalStep - 1) * 25) / 5
+            ) * 5
+          )
+    return {
+      ...r,
+      hpSavedVsBase: hpSaved,
+      fairShopGoldPrice
+    }
+  })
+}
+
 // ───────────────────────────── 4. 肉鸽全局战力包络线 vs 关卡难度膨胀墙 ─────────────────────────────
 
 export interface MxRoguelikeEnvelopeConfig {
@@ -1738,16 +1896,31 @@ export interface MxRoguelikeEnvelopeConfig {
   bossDifficultyMult: number
   /** 局外永久养成（Meta-Progression）每死一局提供的初始战力加成百分比 */
   metaBonusPerRunPct: number
+  /** 是否启用分支房间路径决策（精英怪/篝火回血vs锻造升级/商店消费）与局内复利利息 */
+  enableBranchingPath?: boolean
+  /** 精英怪房间出现率 (%)，挑战成功额外获得高阶遗物乘区与双倍金币 */
+  eliteRoomRatePct?: number
+  /** 篝火处选择回血而非升级强化（Smith）的生命值危险线百分比 (%) */
+  campfireRestHpThresholdPct?: number
+  /** 每层结算时每持有 10 金币获得的复利利息（如 Balatro 每 5 金币 +1 利息） */
+  interestPer10Gold?: number
+  /** 每层复利利息上限（默认 5） */
+  interestCapPerFloor?: number
+  /** 商店购买核心遗物/删牌的价格阈值（默认 100） */
+  shopSpendThresholdGold?: number
 }
 
 export interface MxRoguelikeFloorPoint {
   floor: number
   isBoss: boolean
+  roomType: 'combat' | 'elite_mix' | 'campfire' | 'shop' | 'boss'
   enemyPower: number
   playerP10: number
   playerP50: number
   playerP90: number
   survivalRatePct: number
+  avgHpPct: number
+  avgGold: number
   status: 'balanced' | 'difficulty_wall' | 'runaway_trivial'
 }
 
@@ -1757,6 +1930,14 @@ export interface MxRoguelikeEnvelopeResult {
   firstRunClearRatePct: number
   /** 计入局外永久天赋养成后，通关率达到 50% 所需的期望局数 */
   metaRunsTo50PctClear: number
+  /** 精英房间主动挑战率 (%) */
+  eliteChallengeRatePct: number
+  /** 篝火选择强化升级（Smith）而非被迫回血（Rest）的健康比例 (%) */
+  campfireUpgradeRatioPct: number
+  /** 单局平均复利利息总收益（Gold） */
+  avgInterestGoldEarned: number
+  /** 终局贫富分化指数（P90 / P10 战力比，理想区间 1.6x ~ 3.2x） */
+  snowballPolarizationIndex: number
   difficultyWallFloors: number[]
   runawayFloors: number[]
   floorSeries: MxRoguelikeFloorPoint[]
@@ -1769,42 +1950,141 @@ export function runMxRoguelikeEnvelopeSimulation(
   const runs = Math.max(20, Math.min(2000, Math.round(cfg.runs || 300)))
   const rng = createMxRng(cfg.seed || 2026)
 
+  const branchingOn = cfg.enableBranchingPath !== false
+  const eliteRate = Math.max(0, Math.min(0.6, (cfg.eliteRoomRatePct ?? 24) / 100))
+  const restHpThresh = Math.max(15, Math.min(80, cfg.campfireRestHpThresholdPct ?? 45))
+  const interestRate = Math.max(0, cfg.interestPer10Gold ?? 1)
+  const interestCap = Math.max(0, cfg.interestCapPerFloor ?? 5)
+  const shopThreshold = Math.max(40, cfg.shopSpendThresholdGold ?? 100)
+  const bossInterval = Math.max(2, Math.round(cfg.bossEveryNWave || 5))
+
   const powerByFloor: number[][] = Array.from({ length: floors }, () => [])
+  const hpByFloor: number[][] = Array.from({ length: floors }, () => [])
+  const goldByFloor: number[][] = Array.from({ length: floors }, () => [])
   const survivedByFloor: number[] = new Array<number>(floors).fill(0)
   let firstRunClears = 0
+  let totalEliteOpportunities = 0
+  let totalElitesChallenged = 0
+  let totalCampfires = 0
+  let totalCampfireUpgrades = 0
+  let totalInterestEarnedAllRuns = 0
 
-  const enemyPowers: Array<{ power: number; isBoss: boolean }> = []
+  const enemyPowers: Array<{
+    power: number
+    isBoss: boolean
+    roomType: MxRoguelikeFloorPoint['roomType']
+  }> = []
   for (let f = 1; f <= floors; f++) {
-    const isBoss = cfg.bossEveryNWave > 0 && f % cfg.bossEveryNWave === 0
+    const isBoss = cfg.bossEveryNWave > 0 && f % bossInterval === 0
+    const isCampfire = !isBoss && f > 1 && (f + 1) % bossInterval === 0
+    const isShop = !isBoss && !isCampfire && f > 2 && f % 4 === 0
+    const roomType: MxRoguelikeFloorPoint['roomType'] = isBoss
+      ? 'boss'
+      : isCampfire
+        ? 'campfire'
+        : isShop
+          ? 'shop'
+          : f >= 3
+            ? 'elite_mix'
+            : 'combat'
     const raw =
       (cfg.enemyBasePower || 25) *
       Math.pow(Math.max(1.01, cfg.enemyGrowthRate || 1.24), f - 1) *
       (isBoss ? Math.max(1, cfg.bossDifficultyMult || 1.45) : 1)
-    enemyPowers.push({ power: Math.round(raw * 10) / 10, isBoss })
+    enemyPowers.push({ power: Math.round(raw * 10) / 10, isBoss, roomType })
   }
 
   for (let r = 0; r < runs; r++) {
     let addZone = Math.max(1, cfg.playerBasePower || 30)
     let multZone = 1.0
     let synergyCount = 0
+    let hpPct = 100
+    let gold = 30
     let alive = true
 
     for (let f = 1; f <= floors; f++) {
-      if (f > 1) {
-        addZone += (cfg.baseAddPerFloor || 10) * (0.85 + rng() * 0.3)
-        // 随着已持有同流派组件增加，亲和度略微提升成型速度
-        const hitProb = Math.min(0.9, (cfg.synergyHitRatePct || 32) / 100 + synergyCount * 0.03)
-        if (rng() < hitProb) {
-          synergyCount++
-          multZone *= Math.max(1.02, cfg.synergyMultPerHit || 1.32)
+      const floorMeta = enemyPowers[f - 1]!
+      let effectiveEnemy = floorMeta.power
+
+      if (f > 1 && alive) {
+        // 复利利息结算
+        if (interestRate > 0 && interestCap > 0) {
+          const interest = Math.min(interestCap, Math.floor(gold / 10) * interestRate)
+          gold += interest
+          totalInterestEarnedAllRuns += interest
+        }
+
+        if (branchingOn && floorMeta.roomType === 'campfire') {
+          totalCampfires++
+          if (hpPct < restHpThresh) {
+            // 残血被迫睡觉回血（损失一次锻造升级乘区）
+            hpPct = Math.min(100, hpPct + 32)
+          } else {
+            // 血量健康：选择锻造升级卡牌/武器，提升基础与乘区
+            totalCampfireUpgrades++
+            addZone += (cfg.baseAddPerFloor || 10) * 0.85
+            multZone *= 1.1
+          }
+        } else if (branchingOn && floorMeta.roomType === 'shop') {
+          if (gold >= shopThreshold) {
+            gold -= shopThreshold
+            synergyCount++
+            multZone *= Math.max(1.05, (cfg.synergyMultPerHit || 1.28) * 0.96)
+          } else {
+            addZone += (cfg.baseAddPerFloor || 10) * 0.5
+          }
+        } else {
+          // 战斗层或精英分支层
+          addZone += (cfg.baseAddPerFloor || 10) * (0.85 + rng() * 0.3)
+          let tookElite = false
+          if (branchingOn && !floorMeta.isBoss && f >= 3 && rng() < eliteRate) {
+            totalEliteOpportunities++
+            // 血量高于阈值时主动挑战精英怪拿遗物滚雪球
+            if (hpPct >= restHpThresh + 10) {
+              tookElite = true
+              totalElitesChallenged++
+              effectiveEnemy *= 1.18
+            }
+          }
+          const hitProb = Math.min(
+            0.92,
+            (cfg.synergyHitRatePct || 32) / 100 + synergyCount * 0.03 + (tookElite ? 0.28 : 0)
+          )
+          if (rng() < hitProb) {
+            synergyCount++
+            multZone *= Math.max(1.02, cfg.synergyMultPerHit || 1.32)
+          }
+          gold += tookElite ? 32 : floorMeta.isBoss ? 50 : 16
         }
       }
+
       const pwr = Math.round(addZone * multZone * 10) / 10
       powerByFloor[f - 1]!.push(pwr)
 
-      if (alive && pwr < enemyPowers[f - 1]!.power) {
-        alive = false
+      if (alive) {
+        const isNonCombatRoom =
+          branchingOn && (floorMeta.roomType === 'campfire' || floorMeta.roomType === 'shop')
+        if (!isNonCombatRoom) {
+          const ratio = effectiveEnemy / Math.max(1, pwr)
+          if (pwr < effectiveEnemy && ratio > 1.06) {
+            alive = false
+            hpPct = 0
+          } else {
+            // 根据敌我战力比计算本层战损扣血
+            const hpLoss = Math.max(2, Math.round(Math.pow(ratio, 1.55) * 16))
+            hpPct = Math.max(0, hpPct - hpLoss)
+            if (hpPct <= 0) alive = false
+          }
+        }
+        if (alive && floorMeta.isBoss) {
+          // Boss 战后回血奖励
+          hpPct = Math.min(100, hpPct + 35)
+        }
       }
+
+      hpByFloor[f - 1]!.push(alive ? hpPct : 0)
+      goldByFloor[f - 1]!.push(gold)
+
       if (alive) {
         survivedByFloor[f - 1] = (survivedByFloor[f - 1] ?? 0) + 1
       }
@@ -1823,7 +2103,12 @@ export function runMxRoguelikeEnvelopeSimulation(
     const p90 = percentileOfSorted(sorted, 0.9)
     const enemy = enemyPowers[idx]!.power
     const isBoss = enemyPowers[idx]!.isBoss
+    const roomType = enemyPowers[idx]!.roomType
     const surv = Math.round(((survivedByFloor[idx] ?? 0) / runs) * 1000) / 10
+    const hps = hpByFloor[idx] ?? [0]
+    const golds = goldByFloor[idx] ?? [0]
+    const avgHpPct = Math.round(hps.reduce((a, b) => a + b, 0) / Math.max(1, hps.length))
+    const avgGold = Math.round(golds.reduce((a, b) => a + b, 0) / Math.max(1, golds.length))
 
     let status: MxRoguelikeFloorPoint['status'] = 'balanced'
     if (enemy > p50 * 1.05) {
@@ -1837,11 +2122,14 @@ export function runMxRoguelikeEnvelopeSimulation(
     return {
       floor: f,
       isBoss,
+      roomType,
       enemyPower: enemy,
       playerP10: p10,
       playerP50: p50,
       playerP90: p90,
       survivalRatePct: surv,
+      avgHpPct,
+      avgGold,
       status
     }
   })
@@ -1859,15 +2147,152 @@ export function runMxRoguelikeEnvelopeSimulation(
     metaRunsNeeded = mRun
   }
 
+  const lastPt = floorSeries[floorSeries.length - 1]
+  const snowballIndex = lastPt
+    ? Math.round((lastPt.playerP90 / Math.max(1, lastPt.playerP10)) * 100) / 100
+    : 1
+
   return {
     floors,
     runs,
     firstRunClearRatePct: Math.round((firstRunClears / runs) * 1000) / 10,
     metaRunsTo50PctClear: metaRunsNeeded,
+    eliteChallengeRatePct:
+      totalEliteOpportunities > 0
+        ? Math.round((totalElitesChallenged / totalEliteOpportunities) * 1000) / 10
+        : 0,
+    campfireUpgradeRatioPct:
+      totalCampfires > 0 ? Math.round((totalCampfireUpgrades / totalCampfires) * 1000) / 10 : 100,
+    avgInterestGoldEarned: Math.round((totalInterestEarnedAllRuns / runs) * 10) / 10,
+    snowballPolarizationIndex: snowballIndex,
     difficultyWallFloors,
     runawayFloors,
     floorSeries
   }
+}
+
+/**
+ * 将数值工作台当前调平后的卡牌表、式神/角色属性、肉鸽词条遗物池与关卡波次曲线
+ * 一键编译为符合 `game.data_table` 规范的全套结构化数据表（cards.csv / waves.csv / items.csv / characters.csv / localization.csv）。
+ */
+export function exportWorkbenchToGameDataTables(wb: MxNumericalWorkbench): GameDataTableBundle {
+  const envelopeRes = runMxRoguelikeEnvelopeSimulation(wb.roguelikeEnvelope)
+  const deckRemovalRoi = runMxDeckRemovalRoiAnalysis(wb.combatKernel)
+  const baseRemovalPrice = deckRemovalRoi.find((r) => r.deltaCards === -1)?.fairShopGoldPrice ?? 75
+
+  const cards: GameCardRow[] = wb.multiplier.entities.length
+    ? wb.multiplier.entities.map((ent) => {
+        const dmg = ent.stats.dmg ?? ent.stats.damage ?? ent.stats.atk ?? ent.stats.chips ?? 0
+        const blk = ent.stats.block ?? ent.stats.hp ?? ent.stats.shield ?? 0
+        const cardType: GameCardRow['cardType'] = dmg > 0 ? 'attack' : blk > 0 ? 'skill' : 'power'
+        const statSummary = Object.entries(ent.stats)
+          .filter(([, v]) => Number(v) !== 0)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(', ')
+        return {
+          id: ent.id,
+          name: ent.name,
+          nameEn: ent.name,
+          cost: ent.cost,
+          cardType,
+          rarity: ent.rarity,
+          damage: dmg,
+          block: blk,
+          description: statSummary || `${ent.name} (Cost ${ent.cost})`,
+          descriptionEn: statSummary || `${ent.name} (Cost ${ent.cost})`
+        }
+      })
+    : wb.combatKernel.deckCards.map((c) => ({
+        id: c.id,
+        name: c.name,
+        nameEn: c.name,
+        cost: c.cost,
+        cardType: c.damage > 0 ? 'attack' : c.block > 0 ? 'skill' : 'power',
+        rarity: c.priority >= 4 ? 'rare' : c.priority >= 2 ? 'uncommon' : 'common',
+        damage: c.damage,
+        block: c.block,
+        description: `DMG ${c.damage} / BLK ${c.block} / Draw ${c.draw}`,
+        descriptionEn: `DMG ${c.damage} / BLK ${c.block} / Draw ${c.draw}`
+      }))
+
+  const items: GameItemRow[] = wb.lootRoll.draftPool.map((it) => {
+    const rarityMap: Record<MxDraftPoolItem['rarity'], GameItemRow['rarity']> = {
+      common: 'common',
+      uncommon: 'rare',
+      rare: 'epic',
+      legendary: 'legendary'
+    }
+    const price = Math.round(
+      baseRemovalPrice * (it.rarity === 'legendary' ? 2.4 : it.rarity === 'rare' ? 1.7 : 1.1)
+    )
+    return {
+      id: it.id,
+      name: it.name,
+      nameEn: it.name,
+      category: it.tags[0] || 'relic',
+      rarity: rarityMap[it.rarity] ?? 'common',
+      price,
+      stackLimit: it.unique ? 1 : 9,
+      effect: `+${it.addPower} Power, ×${it.multPower} Mult [${it.tags.join('/')}]`,
+      effectEn: `+${it.addPower} Power, ×${it.multPower} Mult [${it.tags.join('/')}]`
+    }
+  })
+
+  const waves: GameWaveRow[] = envelopeRes.floorSeries.map((pt) => ({
+    waveIndex: pt.floor,
+    durationSec: pt.isBoss ? 90 : 45,
+    spawnIntervalSec: pt.isBoss ? 5 : 2.5,
+    enemyId: pt.isBoss ? `boss_floor_${pt.floor}` : `mob_floor_${pt.floor}`,
+    count: pt.isBoss ? 1 : Math.min(25, 3 + Math.floor(pt.floor * 0.8)),
+    eliteOrBossId: pt.isBoss
+      ? `boss_power_${Math.round(pt.enemyPower)}`
+      : pt.roomType === 'elite_mix'
+        ? `elite_power_${Math.round(pt.enemyPower * 1.18)}`
+        : ''
+  }))
+
+  const characters: GameCharacterRow[] = wb.combatKernel.actionUnits.length
+    ? wb.combatKernel.actionUnits.map((u) => ({
+        id: u.id,
+        name: u.name,
+        nameEn: u.name,
+        role: u.team,
+        hp: u.team === 'enemy' ? wb.combatKernel.targetEnemyHp : wb.combatKernel.playerHp * 100,
+        mp: u.orbCost,
+        atk: u.attack,
+        def: u.team === 'enemy' ? wb.combatKernel.targetEnemyDef : 300,
+        spd: u.speed,
+        critRate: 0.8,
+        description: `Ratio ${u.skillRatio}x / Pull ${u.pullGaugePct}%`,
+        descriptionEn: `Ratio ${u.skillRatio}x / Pull ${u.pullGaugePct}%`
+      }))
+    : [
+        {
+          id: 'char_protagonist',
+          name: 'Roguelike Hero',
+          nameEn: 'Roguelike Hero',
+          role: 'protagonist',
+          hp: wb.combatKernel.playerHp,
+          mp: wb.combatKernel.energyPerTurn,
+          atk: wb.roguelikeEnvelope.playerBasePower,
+          def: 10,
+          spd: 100,
+          critRate: 0.15,
+          description: `Base Power ${wb.roguelikeEnvelope.playerBasePower}`,
+          descriptionEn: `Base Power ${wb.roguelikeEnvelope.playerBasePower}`
+        }
+      ]
+
+  return buildGameDataTableBundle({
+    tableName: wb.multiplier.title || wb.activePresetId,
+    genre: 'roguelike',
+    characters,
+    skills: [],
+    items,
+    cards,
+    waves,
+    dialogues: []
+  })
 }
 
 // ───────────────────────────── 5. 统一工作台文档结构与五大旗舰预设 ─────────────────────────────

@@ -25,6 +25,12 @@ import {
   createMachinationsPresetDiagram,
   exportMxGodotGd,
   exportMxUnityCs,
+  exportWorkbenchToGameDataTables,
+  createMxWorkbenchPreset,
+  runMxDeckRemovalRoiAnalysis,
+  runMxEncounterCounterMatrix,
+  runMxPoolDilutionAnalysis,
+  runMxRoguelikeEnvelopeSimulation,
   generateMxAgentWithAi,
   runMxAgentArena,
   suggestMxAgentGoalsWithAi,
@@ -921,5 +927,63 @@ describe('Machinations v2 simulation', () => {
     expect(bundle2.document.templateId).toBe('gacha_pity_banner')
     expect(bundle2.forecast.steps).toBe(25)
     expect(bundle2.document.nodes.some((n: any) => n.kind === 'gate')).toBe(true)
+  })
+
+  it('verifies all 6 advanced Roguelike numerical capabilities (Counter Matrix, Deck Removal ROI, Pool Dilution & Ban, Branching Map + Interest, DataTable Export)', () => {
+    const wb = createMxWorkbenchPreset('slay_the_spire_dbg')
+
+    // 1. 6-Boss Mechanism Counter Matrix
+    const matrix = runMxEncounterCounterMatrix(wb.combatKernel)
+    expect(matrix).toHaveLength(6)
+    expect(matrix.map((r) => r.mechanism)).toEqual([
+      'standard',
+      'aoe_swarm',
+      'status_polluter',
+      'card_limit_punisher',
+      'thorns_armor',
+      'berserk_race'
+    ])
+    expect(matrix.every((r) => r.winRatePct >= 0 && r.winRatePct <= 100)).toBe(true)
+
+    // 2. Deck Thinning (Card Removal) & Curse Pollution Marginal ROI + Shop Pricing
+    const roi = runMxDeckRemovalRoiAnalysis(wb.combatKernel)
+    expect(roi).toHaveLength(6)
+    const curseRow = roi.find((r) => r.deltaCards === 2)!
+    const baseRow = roi.find((r) => r.deltaCards === 0)!
+    const thinRow = roi.find((r) => r.deltaCards === -3)!
+    expect(thinRow.deckSize).toBeLessThan(baseRow.deckSize)
+    expect(thinRow.turn1CoreDrawPct).toBeGreaterThan(curseRow.turn1CoreDrawPct)
+    expect(thinRow.fairShopGoldPrice).toBeGreaterThanOrEqual(45)
+
+    // 3. Multi-Archetype Pool Dilution & Ban-Slot / Pity Matrix
+    const dilution = runMxPoolDilutionAnalysis(wb.lootRoll)
+    expect(dilution).toHaveLength(6)
+    // Diluting from 3 archetypes to 8 archetypes lowers raw completion rate, while Ban slots lift it
+    expect(dilution[0]!.noBanCompletionPct).toBeGreaterThanOrEqual(dilution[5]!.noBanCompletionPct)
+    expect(dilution[3]!.withBanCompletionPct).toBeGreaterThanOrEqual(
+      dilution[3]!.noBanCompletionPct
+    )
+
+    // 4. Branching Map Pathing (Elite / Campfire Rest vs Smith Upgrade / Shop) & Compound Interest Economy
+    const envRes = runMxRoguelikeEnvelopeSimulation({
+      ...wb.roguelikeEnvelope,
+      eliteRoomRatePct: 30,
+      campfireRestHpThresholdPct: 55,
+      interestPer10Gold: 1.5,
+      interestCapPerFloor: 8
+    })
+    expect(envRes.floorSeries.some((f) => f.roomType === 'campfire')).toBe(true)
+    expect(envRes.floorSeries.some((f) => f.roomType === 'shop')).toBe(true)
+    expect(envRes.floorSeries.some((f) => f.roomType === 'boss')).toBe(true)
+    expect(envRes.avgInterestGoldEarned).toBeGreaterThan(0)
+    expect(envRes.snowballPolarizationIndex).toBeGreaterThanOrEqual(1)
+
+    // 5. One-Click Export to GameDataTableBundle
+    const dataBundle = exportWorkbenchToGameDataTables(wb)
+    expect(dataBundle.cards.length).toBeGreaterThan(0)
+    expect(dataBundle.waves.length).toBe(wb.roguelikeEnvelope.floors)
+    expect(dataBundle.items.length).toBeGreaterThan(0)
+    expect(dataBundle.characters.length).toBeGreaterThan(0)
+    expect(dataBundle.tableCsvs['cards.csv']).toContain('id,name')
   })
 })

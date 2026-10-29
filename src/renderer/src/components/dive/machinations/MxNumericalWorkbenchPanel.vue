@@ -21,11 +21,16 @@ import { useI18n } from 'vue-i18n'
 import {
   analyzeMultiplierPipeline,
   createMxWorkbenchPreset,
+  exportWorkbenchToGameDataTables,
   MX_WORKBENCH_PRESETS,
   runMxCombatKernelSimulation,
+  runMxDeckRemovalRoiAnalysis,
+  runMxEncounterCounterMatrix,
   runMxLootAndSubstatSimulation,
+  runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
   type MxCombatKernelKind,
+  type MxEnemyMechanismKind,
   type MxLootRollMode,
   type MxNumericalWorkbench,
   type MxWorkbenchPresetId
@@ -162,9 +167,36 @@ function setLootMode(m: MxLootRollMode): void {
 }
 
 const combatRes = computed(() => runMxCombatKernelSimulation(wb.value.combatKernel))
+const counterMatrixRes = computed(() => runMxEncounterCounterMatrix(wb.value.combatKernel))
+const deckRemovalRoiRes = computed(() => runMxDeckRemovalRoiAnalysis(wb.value.combatKernel))
 const envelopeRes = computed(() => runMxRoguelikeEnvelopeSimulation(wb.value.roguelikeEnvelope))
 const multRes = computed(() => analyzeMultiplierPipeline(wb.value.multiplier, 12))
 const lootRes = computed(() => runMxLootAndSubstatSimulation(wb.value.lootRoll))
+const poolDilutionRes = computed(() => runMxPoolDilutionAnalysis(wb.value.lootRoll))
+
+function setEnemyMechanism(mech: MxEnemyMechanismKind): void {
+  mutateWb((w) => {
+    w.combatKernel.enemyMechanism = mech
+  }, 'wbEnemyMech')
+}
+
+function exportFullGameDataTables(): void {
+  const bundle = exportWorkbenchToGameDataTables(wb.value)
+  const blob = new Blob([bundle.jsonText], {
+    type: 'application/json;charset=utf-8;'
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${(wb.value.multiplier.title || wb.value.activePresetId || 'game').replace(/\s+/g, '-')}-data-tables-bundle.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  navigator.clipboard?.writeText(bundle.tableCsvs['cards.csv'] ?? '').catch(() => {})
+  bridgeFeedback.value = L(
+    `📦 已导出配表工程包 (cards:${bundle.cards.length} / waves:${bundle.waves.length} / items:${bundle.items.length}) 并复制卡牌 CSV`, // cjk-ok
+    `📦 Exported Game Data Tables bundle (cards:${bundle.cards.length} / waves:${bundle.waves.length} / items:${bundle.items.length})`
+  )
+}
 
 function syncToMacroGraph(): void {
   const touched = s.syncWorkbenchToMacroParams({
@@ -248,6 +280,8 @@ const customManaColName = ref('')
 const newAuditColName = ref('')
 const newAuditColWeight = ref(2)
 const actionBarRightView = ref<'units' | 'timeline'>('units')
+const deckRightView = ref<'cards' | 'counter_matrix' | 'removal_roi'>('cards')
+const lootRightView = ref<'histogram' | 'dilution'>('histogram')
 const newMultAttrName = ref('')
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const jsonFileInputRef = ref<HTMLInputElement | null>(null)
@@ -1080,10 +1114,15 @@ function runFullPipelineCascade(): void {
       : 25
   const derivedBasePower = Math.max(10, Math.round(avgEarlyOut))
   const derivedSynergyRate = Math.max(15, Math.min(80, Math.round(lRes.successRatePct * 0.65 + 15)))
+  const derivedCampfireHpThresh = Math.max(
+    30,
+    Math.min(75, Math.round(100 - cRes.winRatePct * 0.55))
+  )
 
   mutateWb((w) => {
     w.roguelikeEnvelope.playerBasePower = derivedBasePower
     w.roguelikeEnvelope.synergyHitRatePct = derivedSynergyRate
+    w.roguelikeEnvelope.campfireRestHpThresholdPct = derivedCampfireHpThresh
   }, 'fullCascade')
 
   // 3) 全量回写至上方宏观图 Params 与桥接节点
@@ -1093,11 +1132,14 @@ function runFullPipelineCascade(): void {
     CombatTTK: cRes.ttkP50,
     DamageOutput: multRes.value.finalOutput,
     LootExpectedCost: lRes.costP50,
-    ClearRatePct: eRes.firstRunClearRatePct
+    ClearRatePct: eRes.firstRunClearRatePct,
+    EliteChallengePct: eRes.eliteChallengeRatePct ?? 0,
+    CampfireUpgradePct: eRes.campfireUpgradeRatioPct ?? 0,
+    SnowballIndex: eRes.snowballPolarizationIndex ?? 1
   })
   bridgeFeedback.value = L(
-    `⚡ 全链路已贯通：配表(${wb.value.multiplier.entities.length}项) → 战斗胜率 ${cRes.winRatePct}% → 肉鸽初战力 ${derivedBasePower} (通关率 ${eRes.firstRunClearRatePct}%) → 画布已同步`, // cjk-ok
-    `⚡ Full cascade: Table(${wb.value.multiplier.entities.length}) → Win ${cRes.winRatePct}% → BasePower ${derivedBasePower} (Clear ${eRes.firstRunClearRatePct}%) → Canvas synced`
+    `⚡ 全链路已贯通：配表(${wb.value.multiplier.entities.length}项) → 胜率 ${cRes.winRatePct}% → 初战力 ${derivedBasePower} / 锻造率 ${eRes.campfireUpgradeRatioPct ?? 0}% (通关率 ${eRes.firstRunClearRatePct}%) → 画布已同步`, // cjk-ok
+    `⚡ Full cascade: Table(${wb.value.multiplier.entities.length}) → Win ${cRes.winRatePct}% → BasePower ${derivedBasePower} / Upgrade ${eRes.campfireUpgradeRatioPct ?? 0}% (Clear ${eRes.firstRunClearRatePct}%) → Canvas synced`
   )
 }
 
@@ -1848,6 +1890,20 @@ const uiText = computed(() => ({
           </button>
           <button
             type="button"
+            class="mx-wb-mini-btn is-accent"
+            :title="
+              L(
+                '一键将当前卡牌、波次、遗物与角色编译为标准 game.data_table 工程数据包 (JSON + CSV)', // cjk-ok
+                'Compile cards, waves, relics & characters into standard GameDataTable bundle'
+              )
+            "
+            @click="exportFullGameDataTables"
+          >
+            📦 {{ L('导出配表工程包', 'Export Data Tables') }}
+            <!-- cjk-ok -->
+          </button>
+          <button
+            type="button"
             class="mx-wb-sync-btn"
             :title="uiText.syncTip"
             @click="syncToMacroGraph"
@@ -1956,6 +2012,34 @@ const uiText = computed(() => ({
                 )
               "
             />
+          </label>
+          <label class="mx-wb-field">
+            <span>{{ L('Boss机制检定', 'Boss Mechanism') }}</span>
+            <!-- cjk-ok -->
+            <select
+              class="mx-wb-select"
+              :value="wb.combatKernel.enemyMechanism ?? 'standard'"
+              @change="
+                setEnemyMechanism(
+                  ($event.target as HTMLSelectElement).value as MxEnemyMechanismKind
+                )
+              "
+            >
+              <option value="standard">{{ L('标准单体木桩', 'Standard Boss') }}</option>
+              <!-- cjk-ok -->
+              <option value="aoe_swarm">{{ L('多怪群攻 (AOE)', 'Multi-Mob Swarm') }}</option>
+              <!-- cjk-ok -->
+              <option value="status_polluter">{{ L('塞灼伤/眩晕污染', 'Status Polluter') }}</option>
+              <!-- cjk-ok -->
+              <option value="card_limit_punisher">
+                {{ L('限牌吞噬者 (12张/轮)', 'Time-Eater Cap') }}
+              </option>
+              <!-- cjk-ok -->
+              <option value="thorns_armor">{{ L('反伤重甲坦克', 'Thorns + Plated') }}</option>
+              <!-- cjk-ok -->
+              <option value="berserk_race">{{ L('狂暴竞速 DPS', 'Berserk Race') }}</option>
+              <!-- cjk-ok -->
+            </select>
           </label>
         </div>
 
@@ -2419,11 +2503,36 @@ const uiText = computed(() => ({
 
         <div v-else-if="wb.combatKernel.kernel === 'deck_cycle'">
           <div class="mx-wb-table-toolbar">
-            <span class="mx-wb-tbl-title">
-              🃏 {{ L('牌库构筑表', 'Deck Designer') }}
-              <!-- cjk-ok -->
-            </span>
             <div class="mx-wb-toolbar-btns">
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'cards' }"
+                @click="deckRightView = 'cards'"
+              >
+                🃏 {{ L('牌库构筑表', 'Deck Designer') }}
+                <!-- cjk-ok -->
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'counter_matrix' }"
+                @click="deckRightView = 'counter_matrix'"
+              >
+                🛡 {{ L('6机制克制矩阵', '6-Boss Counter Matrix') }}
+                <!-- cjk-ok -->
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'removal_roi' }"
+                @click="deckRightView = 'removal_roi'"
+              >
+                ✂ {{ L('删牌精简与定价ROI', 'Card Removal ROI') }}
+                <!-- cjk-ok -->
+              </button>
+            </div>
+            <div v-if="deckRightView === 'cards'" class="mx-wb-toolbar-btns">
               <select
                 v-if="availableDeckBuiltinCols.length"
                 v-model="newDeckColKey"
@@ -2469,7 +2578,7 @@ const uiText = computed(() => ({
               <!-- cjk-ok -->
             </div>
           </div>
-          <table class="mx-wb-table">
+          <table v-if="deckRightView === 'cards'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>Card</th>
@@ -2574,6 +2683,118 @@ const uiText = computed(() => ({
                   <button type="button" class="mx-wb-del-btn" @click="removeDeckCycleCard(c.id)">
                     ×
                   </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 6-Boss 机制克制矩阵表 -->
+          <table v-else-if="deckRightView === 'counter_matrix'" class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ L('Boss 机制', 'Mechanism') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('胜率%', 'Win %') }}</th>
+                <!-- cjk-ok -->
+                <th>TTK P50</th>
+                <th>{{ L('均战损HP', 'HP Lost') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('克制判定', 'Verdict') }}</th>
+                <!-- cjk-ok -->
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="row in counterMatrixRes"
+                :key="row.mechanism"
+                :class="{
+                  'is-enemy-row': row.verdict === 'countered',
+                  'is-warn-row': row.verdict === 'skill_check'
+                }"
+              >
+                <td>
+                  <strong>{{ isZh ? row.nameZh : row.nameEn }}</strong>
+                </td>
+                <td class="mx-mono">{{ row.winRatePct }}%</td>
+                <td class="mx-mono">{{ row.ttkP50 }}T</td>
+                <td class="mx-mono">-{{ row.avgHpLoss }}</td>
+                <td>
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      row.verdict === 'favored'
+                        ? 'is-good'
+                        : row.verdict === 'skill_check'
+                          ? 'is-warn'
+                          : 'is-bad'
+                    "
+                  >
+                    {{
+                      row.verdict === 'favored'
+                        ? L('优势碾压', 'Favored') // cjk-ok
+                        : row.verdict === 'skill_check'
+                          ? L('机制均势', 'Skill Check') // cjk-ok
+                          : L('被严重针对', 'Countered!') // cjk-ok
+                    }}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="mx-wb-mini-btn"
+                    :class="{
+                      'is-accent': (wb.combatKernel.enemyMechanism ?? 'standard') === row.mechanism
+                    }"
+                    @click="setEnemyMechanism(row.mechanism)"
+                  >
+                    {{ L('设为当前', 'Test') }}
+                    <!-- cjk-ok -->
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 删牌精简 & 诅咒污染边际收益与商店删牌定价表 -->
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ L('牌库精简/污染档位', 'Deck Thinning / Curse') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('总卡数', 'Deck') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('T1核心上手%', 'T1 Core %') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('胜率 / TTK', 'Win % / TTK') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('省血HP', 'HP Saved') }}</th>
+                <!-- cjk-ok -->
+                <th>{{ L('商店删牌建议金', 'Fair Gold') }}</th>
+                <!-- cjk-ok -->
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="r in deckRemovalRoiRes"
+                :key="r.deltaCards"
+                :class="{
+                  'is-enemy-row': r.deltaCards > 0,
+                  'is-best-row': r.deltaCards === -2
+                }"
+              >
+                <td>{{ isZh ? r.labelZh : r.labelEn }}</td>
+                <td class="mx-mono">{{ r.deckSize }}</td>
+                <td class="mx-mono">{{ r.turn1CoreDrawPct }}%</td>
+                <td class="mx-mono">{{ r.winRatePct }}% ({{ r.ttkP50 }}T)</td>
+                <td class="mx-mono">
+                  {{ r.hpSavedVsBase > 0 ? `+${r.hpSavedVsBase}` : r.hpSavedVsBase }}
+                </td>
+                <td class="mx-mono">
+                  <span v-if="r.fairShopGoldPrice > 0" class="mx-wb-tag is-good">
+                    {{ r.fairShopGoldPrice }}G
+                  </span>
+                  <span v-else class="mx-mono">-</span>
                 </td>
               </tr>
             </tbody>
@@ -2858,6 +3079,67 @@ const uiText = computed(() => ({
               "
             />
           </label>
+          <label class="mx-wb-field">
+            <span>{{ L('精英分岔房率%', 'Elite Room %') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="0"
+              max="80"
+              class="mx-wb-input"
+              :value="wb.roguelikeEnvelope.eliteRoomRatePct ?? 25"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.roguelikeEnvelope.eliteRoomRatePct = Math.max(
+                      0,
+                      Number(($event.target as HTMLInputElement).value) || 0
+                    ))
+                )
+              "
+            />
+          </label>
+          <label class="mx-wb-field">
+            <span>{{ L('营火睡觉HP阈值%', 'Campfire Rest HP%') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="10"
+              max="90"
+              class="mx-wb-input"
+              :value="wb.roguelikeEnvelope.campfireRestHpThresholdPct ?? 55"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.roguelikeEnvelope.campfireRestHpThresholdPct = Math.max(
+                      10,
+                      Number(($event.target as HTMLInputElement).value) || 55
+                    ))
+                )
+              "
+            />
+          </label>
+          <label class="mx-wb-field">
+            <span>{{ L('每10金层复利', 'Interest / 10G') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="0"
+              max="5"
+              step="0.5"
+              class="mx-wb-input"
+              :value="wb.roguelikeEnvelope.interestPer10Gold ?? 1"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.roguelikeEnvelope.interestPer10Gold = Math.max(
+                      0,
+                      Number(($event.target as HTMLInputElement).value) || 0
+                    ))
+                )
+              "
+            />
+          </label>
         </div>
 
         <div class="mx-wb-kpi-strip">
@@ -2911,13 +3193,22 @@ const uiText = computed(() => ({
             </strong>
           </div>
           <div class="mx-wb-kpi-box">
-            <span class="mx-wb-kpi-lbl">{{ uiText.runawayFloors }}</span>
+            <span class="mx-wb-kpi-lbl">{{ L('精英敢挑战 / 营火锻造', 'Elite / Smith %') }}</span>
+            <!-- cjk-ok -->
             <strong class="mx-wb-kpi-val">
-              {{
-                envelopeRes.runawayFloors.length
-                  ? `F${envelopeRes.runawayFloors.join(', F')}`
-                  : uiText.none
-              }}
+              {{ envelopeRes.eliteChallengeRatePct ?? 0 }}% /
+              {{ envelopeRes.campfireUpgradeRatioPct ?? 0 }}%
+            </strong>
+          </div>
+          <div class="mx-wb-kpi-box">
+            <span class="mx-wb-kpi-lbl">{{
+              L('复利利息 / 贫富极化比', 'Interest / P90÷P10')
+            }}</span>
+            <!-- cjk-ok -->
+            <strong class="mx-wb-kpi-val">
+              +{{ envelopeRes.avgInterestGoldEarned ?? 0 }}G ({{
+                envelopeRes.snowballPolarizationIndex ?? 1
+              }}x)
             </strong>
           </div>
         </div>
@@ -2969,8 +3260,10 @@ const uiText = computed(() => ({
           <thead>
             <tr>
               <th>Floor</th>
+              <th>Room</th>
               <th>Enemy</th>
               <th>Player P50 (P10~P90)</th>
+              <th>HP% / Gold</th>
               <th>Surv %</th>
               <th>Status</th>
             </tr>
@@ -2985,8 +3278,18 @@ const uiText = computed(() => ({
               }"
             >
               <td class="mx-mono">{{ pt.isBoss ? `★F${pt.floor}` : `F${pt.floor}` }}</td>
+              <td class="mx-mono">
+                <span v-if="pt.roomType === 'campfire'" class="mx-wb-tag is-good">🔥Camp</span>
+                <span v-else-if="pt.roomType === 'shop'" class="mx-wb-tag is-good">💰Shop</span>
+                <span v-else-if="pt.roomType === 'elite_mix'" class="mx-wb-tag is-warn"
+                  >⚔Elite</span
+                >
+                <span v-else-if="pt.roomType === 'boss'" class="mx-wb-tag is-bad">👑Boss</span>
+                <span v-else>Mob</span>
+              </td>
               <td class="mx-mono">{{ pt.enemyPower }}</td>
               <td class="mx-mono">{{ pt.playerP50 }} ({{ pt.playerP10 }}~{{ pt.playerP90 }})</td>
+              <td class="mx-mono">{{ pt.avgHpPct ?? 100 }}% / {{ pt.avgGold ?? 0 }}G</td>
               <td class="mx-mono">{{ pt.survivalRatePct }}%</td>
               <td>
                 <span v-if="pt.status === 'difficulty_wall'" class="mx-wb-tag is-bad">WALL!</span>
@@ -3654,6 +3957,66 @@ const uiText = computed(() => ({
               "
             />
           </label>
+          <label class="mx-wb-field">
+            <span>{{ L('竞争流派池数', 'Archetype Pool') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="2"
+              max="12"
+              class="mx-wb-input"
+              :value="wb.lootRoll.competingArchetypes ?? 5"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.lootRoll.competingArchetypes = Math.max(
+                      2,
+                      Number(($event.target as HTMLInputElement).value) || 5
+                    ))
+                )
+              "
+            />
+          </label>
+          <label class="mx-wb-field">
+            <span>{{ L('禁用Ban位数', 'Ban Slots') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="0"
+              max="5"
+              class="mx-wb-input"
+              :value="wb.lootRoll.banSlotsCount ?? 1"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.lootRoll.banSlotsCount = Math.max(
+                      0,
+                      Number(($event.target as HTMLInputElement).value) || 0
+                    ))
+                )
+              "
+            />
+          </label>
+          <label class="mx-wb-field">
+            <span>{{ L('未中保底加权%', 'Miss Pity +%') }}</span>
+            <!-- cjk-ok -->
+            <input
+              type="number"
+              min="0"
+              max="60"
+              class="mx-wb-input"
+              :value="wb.lootRoll.pityMissStreakBoostPct ?? 15"
+              @input="
+                mutateWb(
+                  (w) =>
+                    (w.lootRoll.pityMissStreakBoostPct = Math.max(
+                      0,
+                      Number(($event.target as HTMLInputElement).value) || 0
+                    ))
+                )
+              "
+            />
+          </label>
         </div>
 
         <div class="mx-wb-kpi-strip">
@@ -3696,9 +4059,31 @@ const uiText = computed(() => ({
         </div>
       </div>
 
-      <!-- 右侧分布直方图与累计达成曲线表 -->
+      <!-- 右侧分布直方图与扩池稀释/Ban位矩阵切换 -->
       <div class="mx-wb-table-box" style="flex: 1.4">
-        <table class="mx-wb-table">
+        <div class="mx-wb-table-toolbar">
+          <div class="mx-wb-toolbar-btns">
+            <button
+              type="button"
+              class="mx-wb-mini-btn"
+              :class="{ 'is-accent': lootRightView === 'histogram' }"
+              @click="lootRightView = 'histogram'"
+            >
+              📊 {{ L('分布直方图', 'Distribution Histogram') }}
+              <!-- cjk-ok -->
+            </button>
+            <button
+              type="button"
+              class="mx-wb-mini-btn"
+              :class="{ 'is-accent': lootRightView === 'dilution' }"
+              @click="lootRightView = 'dilution'"
+            >
+              🧪 {{ L('扩池稀释与Ban位补偿表', 'Pool Dilution & Ban-Slot Matrix') }}
+              <!-- cjk-ok -->
+            </button>
+          </div>
+        </div>
+        <table v-if="lootRightView === 'histogram'" class="mx-wb-table">
           <thead>
             <tr>
               <th>Bucket / Tier</th>
@@ -3719,6 +4104,66 @@ const uiText = computed(() => ({
                     :style="{ width: `${Math.min(100, b.pct * 1.6)}%` }"
                   />
                 </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <table v-else class="mx-wb-table">
+          <thead>
+            <tr>
+              <th>{{ L('流派池总数', 'Archetypes') }}</th>
+              <!-- cjk-ok -->
+              <th>{{ L('有效词条池', 'Pool Size') }}</th>
+              <!-- cjk-ok -->
+              <th>{{ L('无Ban成型率%', 'No-Ban %') }}</th>
+              <!-- cjk-ok -->
+              <th>{{ L(`开Ban+保底成型%`, 'With Ban %') }}</th>
+              <!-- cjk-ok -->
+              <th>{{ L('期望刷新金', 'Exp. Gold') }}</th>
+              <!-- cjk-ok -->
+              <th>{{ L('稀释诊断', 'Verdict') }}</th>
+              <!-- cjk-ok -->
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in poolDilutionRes"
+              :key="row.archetypesCount"
+              :class="{
+                'is-best-row': row.archetypesCount === (wb.lootRoll.competingArchetypes ?? 5),
+                'is-warn-row': row.verdict === 'diluted',
+                'is-enemy-row': row.verdict === 'collapsed'
+              }"
+            >
+              <td class="mx-mono">
+                <strong>{{ row.archetypesCount }} {{ L('大流派', 'Pools') }}</strong>
+                <!-- cjk-ok -->
+              </td>
+              <td class="mx-mono">{{ row.effectivePoolSize }}</td>
+              <td class="mx-mono">{{ row.noBanCompletionPct }}%</td>
+              <td class="mx-mono">
+                <strong>{{ row.withBanCompletionPct }}%</strong>
+              </td>
+              <td class="mx-mono">{{ row.expectedGoldCost }}G</td>
+              <td>
+                <span
+                  class="mx-wb-tag"
+                  :class="
+                    row.verdict === 'healthy'
+                      ? 'is-good'
+                      : row.verdict === 'diluted'
+                        ? 'is-warn'
+                        : 'is-bad'
+                  "
+                >
+                  {{
+                    row.verdict === 'healthy'
+                      ? L('成型健康', 'Healthy') // cjk-ok
+                      : row.verdict === 'diluted'
+                        ? L('池稀释需Ban', 'Diluted') // cjk-ok
+                        : L('严重卡池崩塌', 'Collapsed') // cjk-ok
+                  }}
+                </span>
               </td>
             </tr>
           </tbody>
