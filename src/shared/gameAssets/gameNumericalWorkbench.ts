@@ -966,6 +966,10 @@ export interface MxCombatKernelConfig {
   targetEnemyHp: number
   targetEnemyDef: number
   actionUnits: MxActionBarUnitSpec[]
+  /** 商业产品级：用户自定义保存的对标流派槽位牌库（用于 4 流派天梯矩阵自定义对标） */
+  customArchetypeDecks?: Partial<
+    Record<'strength_burst' | 'attrition_block' | 'high_cycle_combo', MxDeckCardSpec[]>
+  >
 }
 
 export interface MxTurnMetricPoint {
@@ -988,6 +992,18 @@ export interface MxActionBarTurnEvent {
   starvedOrb: boolean
   damageDealt: number
   pulledGaugePct: number
+}
+
+export interface MxCombatTurnReplayItem {
+  turn: number
+  cardsPlayed: string[]
+  energyUsed: string
+  damageDealt: number
+  blockGained: number
+  relicsTriggered: string[]
+  enemyAction: string
+  playerHpAfter: number
+  enemyHpAfter: number
 }
 
 export interface MxCombatKernelResult {
@@ -1014,6 +1030,8 @@ export interface MxCombatKernelResult {
   /** 阴阳师行动条专属：前 12 次行动的精确排轴时间线与超车/断火诊断 */
   actionTimeline?: MxActionBarTurnEvent[]
   speedTuneAdvisory?: string
+  /** 商业产品级：样本局（Run #1）逐回合微观出牌、遗物触发、敌方攻击与血量变化白盒战报 */
+  battleReplayLog?: MxCombatTurnReplayItem[]
 }
 
 function shuffleInPlace<T>(arr: T[], rng: () => number): void {
@@ -1042,6 +1060,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
 
     const dmgByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const blockByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
+    const battleReplayLog: MxCombatTurnReplayItem[] = []
 
     const relicPreset: MxRelicTriggerPreset = cfg.relicTriggerPreset ?? 'none'
     const hasShurikenKunai = relicPreset === 'shuriken_kunai' || relicPreset === 'all_synergy'
@@ -1106,7 +1125,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
 
       for (let t = 1; t <= maxTurns; t++) {
         totalTurnsPlayed++
-        let energy = Math.max(1, cfg.energyPerTurn || 3)
+        const startEnergy = Math.max(1, cfg.energyPerTurn || 3)
+        let energy = startEnergy
+        let extraEnergyGained = 0
         totalEnergyAvailable += energy
         let turnDmg = 0
         let turnBlock = 0
@@ -1114,6 +1135,10 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
         let attacksPlayedThisTurn = 0
         let necronomiconTriggeredThisTurn = false
         let enemyArmorThisTurn = mechanism === 'thorns_armor' ? 10 : 0
+        const turnPlayedNames: string[] = []
+        const turnRelicsTriggered: string[] = []
+        let turnThornsTaken = 0
+        let turnPunishTaken = 0
 
         drawCards(Math.max(1, cfg.drawPerTurn || 5))
 
@@ -1132,6 +1157,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           totalEnergySpent += card.cost
           cardsPlayedThisTurn++
           playedAny = true
+          if (r === 0) {
+            turnPlayedNames.push(`${card.name}(${card.cost})`)
+          }
 
           if (mechanism === 'card_limit_punisher') {
             // 心脏律动/出牌惩罚：每打出一张牌受到 1 点穿甲反制伤害
@@ -1139,11 +1167,13 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
               turnBlock = Math.max(0, turnBlock - 1)
             } else {
               playerHp -= 1
+              turnPunishTaken += 1
             }
           }
 
           if (card.energyGain > 0) {
             energy += card.energyGain
+            extraEnergyGained += card.energyGain
             totalEnergyAvailable += card.energyGain
           }
           if (card.draw > 0) drawCards(card.draw)
@@ -1164,12 +1194,14 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
               // 手里剑 + 苦无被动：同一回合每打出 3 张攻击牌，获得 +1 力量与 +4 格挡
               playerStr += 1
               turnBlock += 4
+              if (r === 0) turnRelicsTriggered.push('Shuriken/Kunai(+1STR/+4BLK)')
             }
             let relicDoubleMult = 1
             if (hasNecronomicon && !necronomiconTriggeredThisTurn && card.cost >= 2) {
               // 死灵之书被动：每回合打出的第一张费用 >= 2 的攻击牌触发两次
               necronomiconTriggeredThisTurn = true
               relicDoubleMult = 2
+              if (r === 0) turnRelicsTriggered.push(`Necronomicon(2x ${card.name})`)
             }
             const vulnMult = enemyVuln > 0 ? 1.5 : 1.0
             const hits = Math.max(1, Math.round(card.hits || 1)) * relicDoubleMult
@@ -1196,7 +1228,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
               if (turnBlock >= reflect) {
                 turnBlock -= reflect
               } else {
-                playerHp -= reflect - turnBlock
+                const netThorns = reflect - turnBlock
+                playerHp -= netThorns
+                turnThornsTaken += netThorns
                 turnBlock = 0
               }
             }
@@ -1223,6 +1257,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
                   priority: 4
                 })
               }
+              if (r === 0) turnRelicsTriggered.push('DeadBranch(+1 Card)')
             }
           } else {
             discardPile.push(card)
@@ -1263,7 +1298,23 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
         dmgByTurn[t - 1]!.push(turnDmg)
         blockByTurn[t - 1]!.push(turnBlock)
 
+        const totalTurnE = startEnergy + extraEnergyGained
+        const spentTurnE = Math.max(0, totalTurnE - energy)
+
         if (enemyHp <= 0) {
+          if (r === 0) {
+            battleReplayLog.push({
+              turn: t,
+              cardsPlayed: turnPlayedNames,
+              energyUsed: `${spentTurnE}/${totalTurnE}`,
+              damageDealt: turnDmg,
+              blockGained: turnBlock,
+              relicsTriggered: turnRelicsTriggered,
+              enemyAction: 'DEFEATED (Boss Slain)',
+              playerHpAfter: Math.max(0, playerHp),
+              enemyHpAfter: 0
+            })
+          }
           killedTurn = t
           wins++
           break
@@ -1284,6 +1335,25 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
         const incomingDmg = Math.floor(rawEnemyAtk * weakMult)
         const unblocked = Math.max(0, incomingDmg - turnBlock)
         playerHp -= unblocked
+
+        if (r === 0) {
+          const extraNotes: string[] = []
+          if (turnThornsTaken > 0) extraNotes.push(`Thorns -${turnThornsTaken}`)
+          if (turnPunishTaken > 0) extraNotes.push(`Beat -${turnPunishTaken}`)
+          if (mechanism === 'status_polluter') extraNotes.push(`+${statusPerTurn} Wounds`)
+          const extraStr = extraNotes.length ? ` [${extraNotes.join(', ')}]` : ''
+          battleReplayLog.push({
+            turn: t,
+            cardsPlayed: turnPlayedNames,
+            energyUsed: `${spentTurnE}/${totalTurnE}`,
+            damageDealt: turnDmg,
+            blockGained: turnBlock,
+            relicsTriggered: turnRelicsTriggered,
+            enemyAction: `Atk ${incomingDmg} -> HP -${unblocked}${extraStr}`,
+            playerHpAfter: Math.max(0, playerHp),
+            enemyHpAfter: Math.max(0, enemyHp)
+          })
+        }
 
         if (enemyVuln > 0) enemyVuln--
         if (enemyWeak > 0) enemyWeak--
@@ -1338,7 +1408,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       kpi2Value: energyUtil,
       kpi3Label: 'Deck Cycle Turns',
       kpi3Value: deckCycleTurns,
-      turnSeries
+      turnSeries,
+      battleReplayLog
     }
   }
 
@@ -1357,6 +1428,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
 
     const boardPowerByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const curveOutByTurn: number[] = new Array<number>(maxTurns).fill(0)
+    const battleReplayLog: MxCombatTurnReplayItem[] = []
 
     for (let r = 0; r < runs; r++) {
       const rng = createMxRng(baseSeed + (r + 1) * 7919)
@@ -1414,6 +1486,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
         let remMana = mana
         totalManaAvailable += mana
         totalTurnChecks++
+        const turnPlayedNames: string[] = []
+        let turnDmgDealt = 0
 
         // 贪心用满当回合水晶（优先打出费用最高的可用牌）
         let played = true
@@ -1429,6 +1503,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           const card = hand.splice(idx, 1)[0]!
           remMana -= card.manaCost
           played = true
+          if (r === 0) {
+            turnPlayedNames.push(`${card.name}(${card.manaCost})`)
+          }
 
           if (card.kind === 'minion') {
             board.push({
@@ -1438,7 +1515,10 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
               shield: Boolean(card.divineShield)
             })
           }
-          if (card.directDamage > 0) oppHp -= card.directDamage
+          if (card.directDamage > 0) {
+            oppHp -= card.directDamage
+            turnDmgDealt += card.directDamage
+          }
           if (card.drawCards > 0) {
             for (let d = 0; d < card.drawCards && deck.length > 0 && hand.length < 10; d++) {
               hand.push(deck.pop()!)
@@ -1454,20 +1534,37 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
 
         // 已就绪随从攻击对手
         for (const m of board) {
-          if (m.ready && m.attack > 0) oppHp -= m.attack
+          if (m.ready && m.attack > 0) {
+            oppHp -= m.attack
+            turnDmgDealt += m.attack
+          }
         }
 
         const totalBoardStats = board.reduce((s, m) => s + m.attack + m.health, 0)
         boardPowerByTurn[t - 1]!.push(totalBoardStats)
 
         if (oppHp <= 0 && lethalTurn > maxTurns) {
+          if (r === 0) {
+            battleReplayLog.push({
+              turn: t,
+              cardsPlayed: turnPlayedNames,
+              energyUsed: `${mana - remMana}/${mana}`,
+              damageDealt: turnDmgDealt,
+              blockGained: totalBoardStats,
+              relicsTriggered: remMana === 0 ? ['Curve-Out(100% Mana)'] : [],
+              enemyAction: 'LETHAL (Opponent Slain)',
+              playerHpAfter: board.length,
+              enemyHpAfter: 0
+            })
+          }
           lethalTurn = t
           wins++
           break
         }
 
         // 对手解场交换
-        let clearDmg = Math.max(0, (cfg.opponentClearPowerPerTurn || 2) * Math.ceil(t * 0.6))
+        const rawClearDmg = Math.max(0, (cfg.opponentClearPowerPerTurn || 2) * Math.ceil(t * 0.6))
+        let clearDmg = rawClearDmg
         while (clearDmg > 0 && board.length > 0) {
           const front = board[0]!
           if (front.shield) {
@@ -1479,6 +1576,20 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
             clearDmg -= dealt
             if (front.health <= 0) board.shift()
           }
+        }
+
+        if (r === 0) {
+          battleReplayLog.push({
+            turn: t,
+            cardsPlayed: turnPlayedNames,
+            energyUsed: `${mana - remMana}/${mana}`,
+            damageDealt: turnDmgDealt,
+            blockGained: totalBoardStats,
+            relicsTriggered: remMana === 0 ? ['Curve-Out(100% Mana)'] : [],
+            enemyAction: `Board Clear ${rawClearDmg} -> ${board.length} Minions Alive`,
+            playerHpAfter: board.length,
+            enemyHpAfter: Math.max(0, oppHp)
+          })
         }
       }
 
@@ -1522,7 +1633,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       kpi2Value: floatRate,
       kpi3Label: 'Turn 5 Board Stats',
       kpi3Value: turn5Mean,
-      turnSeries
+      turnSeries,
+      battleReplayLog
     }
   }
 
@@ -2390,143 +2502,141 @@ export interface MxArchetypeBalanceMatrixResult {
 }
 
 /**
- * 商业产品级：多流派天梯生态平衡矩阵（Multi-Archetype Meta-Balance Matrix）：
- * 将玩家自定义卡组与 3 套标准基准流派（多段力量爆发流、叠甲壁垒反击流、高频消耗过牌无限流）
- * 在相同 Boss 机制与随机种子下横向对标，计算天梯预估使用率与 Shannon 生态多样性评分。
+ * 获取天梯对标矩阵内置的标准基准流派卡组（也可载入工作台编辑器二次微调）。
  */
-export function runMxArchetypeBalanceMatrix(
-  cfg: MxCombatKernelConfig
-): MxArchetypeBalanceMatrixResult {
-  const sampleRuns = Math.min(180, Math.max(60, Math.round((cfg.runs || 160) * 0.6)))
-
-  const strengthBurstDeck: MxDeckCardSpec[] = [
-    {
-      id: 'arc_str_inflame',
-      name: 'Inflame+',
-      cost: 1,
-      count: 2,
-      damage: 0,
-      block: 0,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 3,
-      applyVulnerable: 0,
-      applyWeak: 0,
-      exhaust: true,
-      priority: 5
-    },
-    {
-      id: 'arc_str_bash',
-      name: 'Bash+',
-      cost: 2,
-      count: 1,
-      damage: 10,
-      block: 0,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 3,
-      applyWeak: 0,
-      exhaust: false,
-      priority: 4
-    },
-    {
-      id: 'arc_str_multi',
-      name: 'Twin / Pummel Strike',
-      cost: 1,
-      count: 4,
-      damage: 5,
-      hits: 3,
-      block: 0,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 0,
-      exhaust: false,
-      priority: 3
-    },
-    {
-      id: 'arc_str_def',
-      name: 'Defend',
-      cost: 1,
-      count: 3,
-      damage: 0,
-      block: 5,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 0,
-      exhaust: false,
-      priority: 1
-    }
-  ]
-
-  const attritionBlockDeck: MxDeckCardSpec[] = [
-    {
-      id: 'arc_blk_wall',
-      name: 'Impervious / Glacier',
-      cost: 2,
-      count: 2,
-      damage: 0,
-      block: 18,
-      draw: 1,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 1,
-      exhaust: false,
-      priority: 5
-    },
-    {
-      id: 'arc_blk_slam',
-      name: 'Body Slam / Counter',
-      cost: 1,
-      count: 3,
-      damage: 14,
-      block: 6,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 0,
-      exhaust: false,
-      priority: 4
-    },
-    {
-      id: 'arc_blk_shrug',
-      name: 'Shrug It Off',
-      cost: 1,
-      count: 3,
-      damage: 0,
-      block: 9,
-      draw: 1,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 0,
-      exhaust: false,
-      priority: 3
-    },
-    {
-      id: 'arc_blk_weak',
-      name: 'Clothesline (Weak)',
-      cost: 2,
-      count: 2,
-      damage: 12,
-      block: 0,
-      draw: 0,
-      energyGain: 0,
-      applyStrength: 0,
-      applyVulnerable: 0,
-      applyWeak: 2,
-      exhaust: false,
-      priority: 2
-    }
-  ]
-
-  const highCycleComboDeck: MxDeckCardSpec[] = [
+export function getMxCanonicalArchetypeDeck(
+  archetypeId: 'strength_burst' | 'attrition_block' | 'high_cycle_combo'
+): MxDeckCardSpec[] {
+  if (archetypeId === 'strength_burst') {
+    return [
+      {
+        id: 'arc_str_inflame',
+        name: 'Inflame+',
+        cost: 1,
+        count: 2,
+        damage: 0,
+        block: 0,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 3,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: true,
+        priority: 5
+      },
+      {
+        id: 'arc_str_bash',
+        name: 'Bash+',
+        cost: 2,
+        count: 1,
+        damage: 10,
+        block: 0,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 3,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 4
+      },
+      {
+        id: 'arc_str_multi',
+        name: 'Twin / Pummel Strike',
+        cost: 1,
+        count: 4,
+        damage: 5,
+        hits: 3,
+        block: 0,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 3
+      },
+      {
+        id: 'arc_str_def',
+        name: 'Defend',
+        cost: 1,
+        count: 3,
+        damage: 0,
+        block: 5,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 1
+      }
+    ]
+  }
+  if (archetypeId === 'attrition_block') {
+    return [
+      {
+        id: 'arc_blk_wall',
+        name: 'Impervious / Glacier',
+        cost: 2,
+        count: 2,
+        damage: 0,
+        block: 18,
+        draw: 1,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 1,
+        exhaust: false,
+        priority: 5
+      },
+      {
+        id: 'arc_blk_slam',
+        name: 'Body Slam / Counter',
+        cost: 1,
+        count: 3,
+        damage: 14,
+        block: 6,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 4
+      },
+      {
+        id: 'arc_blk_shrug',
+        name: 'Shrug It Off',
+        cost: 1,
+        count: 3,
+        damage: 0,
+        block: 9,
+        draw: 1,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 3
+      },
+      {
+        id: 'arc_blk_weak',
+        name: 'Clothesline (Weak)',
+        cost: 2,
+        count: 2,
+        damage: 12,
+        block: 0,
+        draw: 0,
+        energyGain: 0,
+        applyStrength: 0,
+        applyVulnerable: 0,
+        applyWeak: 2,
+        exhaust: false,
+        priority: 2
+      }
+    ]
+  }
+  return [
     {
       id: 'arc_cyc_offering',
       name: 'Offering / Adrenaline',
@@ -2588,6 +2698,31 @@ export function runMxArchetypeBalanceMatrix(
       priority: 2
     }
   ]
+}
+
+/**
+ * 商业产品级：多流派天梯生态平衡矩阵（Multi-Archetype Meta-Balance Matrix）：
+ * 将玩家自定义卡组与 3 套标准基准流派（支持用户自定义覆写槽位）
+ * 在相同 Boss 机制与随机种子下横向对标，计算天梯预估使用率与 Shannon 生态多样性评分。
+ */
+export function runMxArchetypeBalanceMatrix(
+  cfg: MxCombatKernelConfig
+): MxArchetypeBalanceMatrixResult {
+  const sampleRuns = Math.min(180, Math.max(60, Math.round((cfg.runs || 160) * 0.6)))
+
+  const strengthBurstDeck =
+    cfg.customArchetypeDecks?.strength_burst && cfg.customArchetypeDecks.strength_burst.length > 0
+      ? cfg.customArchetypeDecks.strength_burst
+      : getMxCanonicalArchetypeDeck('strength_burst')
+  const attritionBlockDeck =
+    cfg.customArchetypeDecks?.attrition_block && cfg.customArchetypeDecks.attrition_block.length > 0
+      ? cfg.customArchetypeDecks.attrition_block
+      : getMxCanonicalArchetypeDeck('attrition_block')
+  const highCycleComboDeck =
+    cfg.customArchetypeDecks?.high_cycle_combo &&
+    cfg.customArchetypeDecks.high_cycle_combo.length > 0
+      ? cfg.customArchetypeDecks.high_cycle_combo
+      : getMxCanonicalArchetypeDeck('high_cycle_combo')
 
   const specs: Array<{
     id: MxBuildArchetypeId

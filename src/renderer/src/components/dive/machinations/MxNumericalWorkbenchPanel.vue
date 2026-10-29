@@ -23,6 +23,7 @@ import {
   createMxWorkbenchPreset,
   exportMxCommercialQaReportMarkdown,
   exportWorkbenchToGameDataTables,
+  getMxCanonicalArchetypeDeck,
   MX_WORKBENCH_PRESETS,
   runMxArchetypeBalanceMatrix,
   runMxCombatKernelSimulation,
@@ -359,8 +360,18 @@ const customManaColName = ref('')
 const newAuditColName = ref('')
 const newAuditColWeight = ref(2)
 const actionBarRightView = ref<'units' | 'timeline'>('units')
-const deckRightView = ref<'cards' | 'counter_matrix' | 'removal_roi' | 'archetype_meta'>('cards')
+const deckRightView = ref<
+  'cards' | 'counter_matrix' | 'removal_roi' | 'archetype_meta' | 'battle_log'
+>('cards')
+const manaRightView = ref<'cards' | 'battle_log'>('cards')
 const lootRightView = ref<'histogram' | 'dilution' | 'commercial_cohorts'>('histogram')
+const bridgeBarOpen = ref(false)
+const stressAuditRunning = ref(false)
+const stressAuditProgress = ref(0)
+const hoverCombatTurnIdx = ref<number | null>(null)
+const selectedCombatTurn = ref<number | null>(null)
+const hoverEnvelopeFloorIdx = ref<number | null>(null)
+const selectedEnvelopeFloor = ref<number | null>(null)
 const newMultAttrName = ref('')
 const csvFileInputRef = ref<HTMLInputElement | null>(null)
 const jsonFileInputRef = ref<HTMLInputElement | null>(null)
@@ -1632,8 +1643,204 @@ const envelopeEnemyLine = computed(() => {
     .join(' ')
 })
 
+function toggleFullWorkbenchMode(): void {
+  if (s.mode.value === 'workbench') {
+    s.mode.value = 'build'
+  } else {
+    s.mode.value = 'workbench'
+    s.resultsOpen.value = true
+    s.resultsTab.value = 'workbench'
+  }
+}
+
+function loadArchetypeIntoEditor(
+  archetypeId: 'strength_burst' | 'attrition_block' | 'high_cycle_combo'
+): void {
+  const customSlot = wb.value.combatKernel.customArchetypeDecks?.[archetypeId]
+  const srcDeck =
+    customSlot && customSlot.length > 0 ? customSlot : getMxCanonicalArchetypeDeck(archetypeId)
+  mutateWb((w) => {
+    w.combatKernel.deckCards = JSON.parse(JSON.stringify(srcDeck))
+  }, `loadArchetype:${archetypeId}`)
+  deckRightView.value = 'cards'
+  bridgeFeedback.value = L(
+    `↙ 已将流派槽位 [${archetypeId}] 的卡组载入牌库编辑器`, // cjk-ok
+    `↙ Loaded archetype slot [${archetypeId}] deck into Deck Designer`
+  )
+}
+
+function saveCurrentDeckToArchetypeSlot(
+  archetypeId: 'strength_burst' | 'attrition_block' | 'high_cycle_combo'
+): void {
+  mutateWb((w) => {
+    if (!w.combatKernel.customArchetypeDecks) {
+      w.combatKernel.customArchetypeDecks = {}
+    }
+    w.combatKernel.customArchetypeDecks[archetypeId] = JSON.parse(
+      JSON.stringify(w.combatKernel.deckCards)
+    )
+  }, `saveArchetype:${archetypeId}`)
+  bridgeFeedback.value = L(
+    `💾 已将当前编辑卡组覆写保存至天梯对标槽位 [${archetypeId}]`, // cjk-ok
+    `💾 Saved current deck into benchmark slot [${archetypeId}]`
+  )
+}
+
+function resetCustomArchetypeSlot(
+  archetypeId: 'strength_burst' | 'attrition_block' | 'high_cycle_combo'
+): void {
+  mutateWb((w) => {
+    if (w.combatKernel.customArchetypeDecks) {
+      delete w.combatKernel.customArchetypeDecks[archetypeId]
+    }
+  }, `resetArchetype:${archetypeId}`)
+  bridgeFeedback.value = L(
+    `↺ 已恢复流派槽位 [${archetypeId}] 的官方默认基准牌库`, // cjk-ok
+    `↺ Restored default canonical deck for slot [${archetypeId}]`
+  )
+}
+
+async function runHighPrecisionStressAudit(): Promise<void> {
+  if (stressAuditRunning.value) return
+  stressAuditRunning.value = true
+  stressAuditProgress.value = 15
+  await new Promise((r) => setTimeout(r, 18))
+
+  // Stage 1: 1,500-run Micro-Combat Monte Carlo
+  const highCombat = runMxCombatKernelSimulation({
+    ...wb.value.combatKernel,
+    runs: 1500
+  })
+  stressAuditProgress.value = 45
+  await new Promise((r) => setTimeout(r, 18))
+
+  // Stage 2: 1,200-run Roguelike Floor Envelope
+  const highEnv = runMxRoguelikeEnvelopeSimulation({
+    ...wb.value.roguelikeEnvelope,
+    runs: 1200
+  })
+  stressAuditProgress.value = 75
+  await new Promise((r) => setTimeout(r, 18))
+
+  // Stage 3: 1,500-run Gacha / Sub-stat / Draft Pool
+  const highLoot = runMxLootAndSubstatSimulation({
+    ...wb.value.lootRoll,
+    runs: 1500
+  })
+  stressAuditProgress.value = 100
+
+  mutateWb((w) => {
+    w.combatKernel.runs = 1500
+    w.roguelikeEnvelope.runs = 1200
+    w.lootRoll.runs = 1500
+  }, 'highPrecisionStressAudit')
+
+  bridgeFeedback.value = L(
+    `🔬 1500局高精度压力审计完成：胜率 ${highCombat.winRatePct}% (TTK P50=${highCombat.ttkP50}T) | 首通率 ${highEnv.firstRunClearRatePct}% | 毕业消耗 P50=${highLoot.costP50}`, // cjk-ok
+    `🔬 1,500-Run Stress Audit Done: Win ${highCombat.winRatePct}% (TTK=${highCombat.ttkP50}T) | Clear ${highEnv.firstRunClearRatePct}% | Loot Cost P50=${highLoot.costP50}`
+  )
+  await new Promise((r) => setTimeout(r, 160))
+  stressAuditRunning.value = false
+  stressAuditProgress.value = 0
+}
+
+function onCombatSvgMove(ev: MouseEvent): void {
+  const svgEl = ev.currentTarget as SVGSVGElement | null
+  const pts = combatRes.value.turnSeries
+  if (!svgEl || !pts.length) return
+  const rect = svgEl.getBoundingClientRect()
+  if (rect.width <= 0) return
+  const relX = ((ev.clientX - rect.left) / rect.width) * SVG_W
+  const ratio = Math.max(0, Math.min(1, (relX - PAD_L) / Math.max(1, PLOT_W)))
+  hoverCombatTurnIdx.value = Math.min(
+    pts.length - 1,
+    Math.max(0, Math.round(ratio * (pts.length - 1)))
+  )
+}
+
+function onCombatSvgClick(): void {
+  const idx = hoverCombatTurnIdx.value
+  const pts = combatRes.value.turnSeries
+  if (idx === null || !pts[idx]) return
+  selectedCombatTurn.value = pts[idx]!.turn
+  if (wb.value.combatKernel.kernel === 'deck_cycle') {
+    deckRightView.value = 'battle_log'
+  } else if (wb.value.combatKernel.kernel === 'mana_tempo') {
+    manaRightView.value = 'battle_log'
+  }
+}
+
+const hoveredCombatPoint = computed(() => {
+  const pts = combatRes.value.turnSeries
+  const idx = hoverCombatTurnIdx.value
+  if (idx === null || !pts[idx]) return null
+  const pt = pts[idx]!
+  const max = combatChartBounds.value.max
+  return {
+    idx,
+    pt,
+    x: cxAt(idx, pts.length),
+    yP50: cyAt(pt.primaryP50, max),
+    ySec: cyAt(pt.secondaryMean, max)
+  }
+})
+
+function onEnvelopeSvgMove(ev: MouseEvent): void {
+  const svgEl = ev.currentTarget as SVGSVGElement | null
+  const pts = envelopeRes.value.floorSeries
+  if (!svgEl || !pts.length) return
+  const rect = svgEl.getBoundingClientRect()
+  if (rect.width <= 0) return
+  const relX = ((ev.clientX - rect.left) / rect.width) * SVG_W
+  const ratio = Math.max(0, Math.min(1, (relX - PAD_L) / Math.max(1, PLOT_W)))
+  hoverEnvelopeFloorIdx.value = Math.min(
+    pts.length - 1,
+    Math.max(0, Math.round(ratio * (pts.length - 1)))
+  )
+}
+
+function onEnvelopeSvgClick(): void {
+  const idx = hoverEnvelopeFloorIdx.value
+  const pts = envelopeRes.value.floorSeries
+  if (idx === null || !pts[idx]) return
+  selectedEnvelopeFloor.value = pts[idx]!.floor
+}
+
+const hoveredEnvelopePoint = computed(() => {
+  const pts = envelopeRes.value.floorSeries
+  const idx = hoverEnvelopeFloorIdx.value
+  if (idx === null || !pts[idx]) return null
+  const pt = pts[idx]!
+  const max = envelopeMaxPower.value
+  return {
+    idx,
+    pt,
+    x: cxAt(idx, pts.length),
+    yPlayer: cyAt(pt.playerP50, max),
+    yEnemy: cyAt(pt.enemyPower, max)
+  }
+})
+
 const uiText = computed(() => ({
   presetLabel: L('旗舰数值预设:', 'Genre Preset:'), // cjk-ok
+  bridgeToggleBtn: L('画布双向绑定', 'Canvas Bridge'), // cjk-ok
+  fullScreenBtn: L('全屏工作台', 'Full-Screen Lab'), // cjk-ok
+  splitScreenBtn: L('还原画布分屏', 'Split Canvas View'), // cjk-ok
+  stressAuditBtn: L('高精度审计(1500局)', '1,500-Run Audit'), // cjk-ok
+  stressAuditRunningBtn: L('压力采样中', 'Auditing'), // cjk-ok
+  tabBattleLog: L('单局逐回合战报', 'Turn Battle Log'), // cjk-ok
+  colTurn: L('回合', 'Turn'), // cjk-ok
+  colCardsPlayed: L('本回合出牌序列', 'Cards Played'), // cjk-ok
+  colEnergyUsed: L('费用消耗', 'NRG/Mana'), // cjk-ok
+  colDmgBlk: L('伤害 / 护甲(场面)', 'DMG / BLK(Board)'), // cjk-ok
+  colRelicProc: L('遗物/节奏触发', 'Relic / Tempo'), // cjk-ok
+  colEnemyAfter: L('敌方行动与余血 (我HP/敌HP)', 'Enemy Action & HP (Me/Boss)'), // cjk-ok
+  noCardsPlayed: L('(空过/卡手)', '(Pass / Brick)'), // cjk-ok
+  loadSlotBtn: L('↙载入', '↙Load'), // cjk-ok
+  saveSlotBtn: L('💾覆写', '💾Save'), // cjk-ok
+  resetSlotBtn: L('↺还原', '↺Reset'), // cjk-ok
+  customSlotTag: L('已自定义', 'Custom'), // cjk-ok
+  chartClickHint: L('点击曲线锚点可高亮右侧对应回合/楼层', 'Click point to highlight row'), // cjk-ok
   tabCombat: L('① 战斗调度内核 (尖塔/炉石/阴阳师)', '1. Combat Kernels (DBG / TCG / ATB)'), // cjk-ok
   tabEnvelope: L('② 肉鸽战力包络 vs 膨胀墙', '2. Roguelike Envelope vs. Scaling Wall'), // cjk-ok
   tabMultiplier: L('③ 乘区边际收益与配表审计', '3. Multiplier ROI & Table Audit'), // cjk-ok
@@ -1732,7 +1939,7 @@ const uiText = computed(() => ({
 </script>
 
 <template>
-  <div class="mx-wb-panel">
+  <div class="mx-wb-panel" :class="{ 'is-full-screen': s.mode.value === 'workbench' }">
     <!-- 顶部旗舰预设切换栏 + 子工作台标签 + 同步按钮 -->
     <header class="mx-wb-header">
       <div class="mx-wb-presets">
@@ -1844,10 +2051,32 @@ const uiText = computed(() => ({
           <span>{{ L('切预设同步画布节点', 'Sync Canvas Graph on Preset') }}</span>
           <!-- cjk-ok -->
         </label>
+
+        <button
+          type="button"
+          class="mx-wb-mini-btn"
+          :class="{ 'is-accent': bridgeBarOpen }"
+          @click="bridgeBarOpen = !bridgeBarOpen"
+        >
+          🔗 {{ uiText.bridgeToggleBtn }} {{ bridgeBarOpen ? '▴' : '▾' }}
+        </button>
+
+        <button
+          type="button"
+          class="mx-wb-mini-btn"
+          :class="{ 'is-accent': s.mode.value === 'workbench' }"
+          @click="toggleFullWorkbenchMode"
+        >
+          ⛶ {{ s.mode.value === 'workbench' ? uiText.splitScreenBtn : uiText.fullScreenBtn }}
+        </button>
+
+        <span v-if="!bridgeBarOpen && bridgeFeedback" class="mx-wb-bridge-feedback">
+          ✓ {{ bridgeFeedback }}
+        </span>
       </div>
 
-      <!-- ═════════════ 画布资源节点 ↔ 数值工作台 双向实时绑定栏 ═════════════ -->
-      <div class="mx-wb-bridge-bar">
+      <!-- ═════════════ 画布资源节点 ↔ 数值工作台 双向实时绑定栏（可折叠） ═════════════ -->
+      <div v-if="bridgeBarOpen" class="mx-wb-bridge-bar">
         <div class="mx-wb-bridge-group">
           <span class="mx-wb-bridge-tag is-in">
             {{ L('① 画布节点 → 数值属性:', '1. Canvas Node → Stat:') }}
@@ -2017,6 +2246,20 @@ const uiText = computed(() => ({
           >
             📦 {{ L('导出配表工程包', 'Export Data Tables') }}
             <!-- cjk-ok -->
+          </button>
+          <button
+            type="button"
+            class="mx-wb-mini-btn"
+            :class="{ 'is-accent': stressAuditRunning }"
+            :disabled="stressAuditRunning"
+            @click="runHighPrecisionStressAudit"
+          >
+            🔬
+            {{
+              stressAuditRunning
+                ? `${uiText.stressAuditRunningBtn} ${stressAuditProgress}%`
+                : uiText.stressAuditBtn
+            }}
           </button>
           <button
             type="button"
@@ -2362,9 +2605,25 @@ const uiText = computed(() => ({
         </div>
       </div>
 
-      <!-- 中间 SVG 曲线图 -->
-      <div class="mx-wb-chart-box">
-        <svg :viewBox="`0 0 ${SVG_W} ${SVG_H}`" class="mx-wb-svg">
+      <!-- 中间 SVG 曲线图（支持悬停十字准星与点击跳转战报回合） -->
+      <div class="mx-wb-chart-box" :title="uiText.chartClickHint">
+        <div v-if="hoveredCombatPoint" class="mx-wb-chart-tooltip">
+          <strong>T{{ hoveredCombatPoint.pt.turn }}</strong>
+          <span>
+            P50: {{ hoveredCombatPoint.pt.primaryP50 }} ({{ hoveredCombatPoint.pt.primaryP10 }}~{{
+              hoveredCombatPoint.pt.primaryP90
+            }})
+          </span>
+          <span>Sec: {{ hoveredCombatPoint.pt.secondaryMean }}</span>
+          <span>Kill%: {{ hoveredCombatPoint.pt.ratePct }}%</span>
+        </div>
+        <svg
+          :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
+          class="mx-wb-svg is-interactive"
+          @mousemove="onCombatSvgMove"
+          @mouseleave="hoverCombatTurnIdx = null"
+          @click="onCombatSvgClick"
+        >
           <line
             :x1="PAD_L"
             :y1="SVG_H - PAD_B"
@@ -2381,6 +2640,33 @@ const uiText = computed(() => ({
             stroke-width="1.6"
             stroke-dasharray="3 3"
           />
+          <g v-if="hoveredCombatPoint">
+            <line
+              :x1="hoveredCombatPoint.x"
+              :y1="PAD_T"
+              :x2="hoveredCombatPoint.x"
+              :y2="SVG_H - PAD_B"
+              stroke="var(--accent)"
+              stroke-width="1"
+              stroke-dasharray="2 2"
+            />
+            <circle
+              :cx="hoveredCombatPoint.x"
+              :cy="hoveredCombatPoint.yP50"
+              r="3.5"
+              fill="#3b82f6"
+              stroke="#fff"
+              stroke-width="1"
+            />
+            <circle
+              :cx="hoveredCombatPoint.x"
+              :cy="hoveredCombatPoint.ySec"
+              r="3"
+              fill="#10b981"
+              stroke="#fff"
+              stroke-width="1"
+            />
+          </g>
           <text
             :x="PAD_L - 4"
             :y="PAD_T + 8"
@@ -2699,6 +2985,14 @@ const uiText = computed(() => ({
               >
                 ⚖ {{ uiText.tabArchetypeMeta }}
               </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'battle_log' }"
+                @click="deckRightView = 'battle_log'"
+              >
+                📜 {{ uiText.tabBattleLog }}
+              </button>
             </div>
             <div v-if="deckRightView === 'cards'" class="mx-wb-toolbar-btns">
               <select
@@ -2968,8 +3262,8 @@ const uiText = computed(() => ({
             </tbody>
           </table>
 
-          <!-- 商业产品级：4流派天梯多样性与生态平衡矩阵 -->
-          <div v-else>
+          <!-- 商业产品级：4流派天梯多样性与生态平衡矩阵（支持一键载入编辑与自定义覆写槽位） -->
+          <div v-else-if="deckRightView === 'archetype_meta'">
             <div class="mx-wb-table-toolbar" style="margin-bottom: 4px">
               <span class="mx-wb-tbl-title">
                 {{ uiText.metaScoreLabel }}
@@ -3003,6 +3297,7 @@ const uiText = computed(() => ({
                   <th>HP Loss</th>
                   <th>{{ uiText.colMetaShare }}</th>
                   <th>{{ uiText.colTier }}</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -3017,6 +3312,16 @@ const uiText = computed(() => ({
                 >
                   <td>
                     <strong>{{ isZh ? arc.nameZh : arc.nameEn }}</strong>
+                    <span
+                      v-if="
+                        arc.archetypeId !== 'current_custom' &&
+                        wb.combatKernel.customArchetypeDecks?.[arc.archetypeId]?.length
+                      "
+                      class="mx-wb-tag is-good"
+                      style="margin-left: 4px"
+                    >
+                      {{ uiText.customSlotTag }}
+                    </span>
                   </td>
                   <td class="mx-mono">{{ arc.winRatePct }}%</td>
                   <td class="mx-mono">{{ arc.ttkP50 }}T</td>
@@ -3036,19 +3341,123 @@ const uiText = computed(() => ({
                       {{ arc.tier }}
                     </span>
                   </td>
+                  <td>
+                    <div
+                      v-if="arc.archetypeId !== 'current_custom'"
+                      class="mx-wb-toolbar-btns"
+                      style="gap: 2px"
+                    >
+                      <button
+                        type="button"
+                        class="mx-wb-mini-btn"
+                        @click="loadArchetypeIntoEditor(arc.archetypeId)"
+                      >
+                        {{ uiText.loadSlotBtn }}
+                      </button>
+                      <button
+                        type="button"
+                        class="mx-wb-mini-btn is-accent"
+                        @click="saveCurrentDeckToArchetypeSlot(arc.archetypeId)"
+                      >
+                        {{ uiText.saveSlotBtn }}
+                      </button>
+                      <button
+                        v-if="wb.combatKernel.customArchetypeDecks?.[arc.archetypeId]?.length"
+                        type="button"
+                        class="mx-wb-mini-btn"
+                        @click="resetCustomArchetypeSlot(arc.archetypeId)"
+                      >
+                        {{ uiText.resetSlotBtn }}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               </tbody>
             </table>
           </div>
+
+          <!-- 商业产品级：单局（Run #1）逐回合白盒出牌、遗物触发与Boss反击复盘战报 -->
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colTurn }}</th>
+                <th>{{ uiText.colCardsPlayed }}</th>
+                <th>{{ uiText.colEnergyUsed }}</th>
+                <th>{{ uiText.colDmgBlk }}</th>
+                <th>{{ uiText.colRelicProc }}</th>
+                <th>{{ uiText.colEnemyAfter }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in combatRes.battleReplayLog ?? []"
+                :key="item.turn"
+                :class="{
+                  'is-best-row': selectedCombatTurn === item.turn,
+                  'is-warn-row': item.relicsTriggered.length > 0,
+                  'is-enemy-row': item.playerHpAfter <= 0
+                }"
+                @click="selectedCombatTurn = item.turn"
+              >
+                <td class="mx-mono">
+                  <strong>T{{ item.turn }}</strong>
+                </td>
+                <td>
+                  <span v-if="!item.cardsPlayed.length" class="mx-mono">
+                    {{ uiText.noCardsPlayed }}
+                  </span>
+                  <span
+                    v-for="(cn, cIdx) in item.cardsPlayed"
+                    :key="cIdx"
+                    class="mx-wb-tag"
+                    style="margin-right: 3px; background: var(--bg-panel)"
+                  >
+                    {{ cn }}
+                  </span>
+                </td>
+                <td class="mx-mono">{{ item.energyUsed }}</td>
+                <td class="mx-mono">{{ item.damageDealt }} / +{{ item.blockGained }}</td>
+                <td>
+                  <span
+                    v-for="(rl, rIdx) in item.relicsTriggered"
+                    :key="rIdx"
+                    class="mx-wb-tag is-good"
+                    style="margin-right: 2px"
+                  >
+                    {{ rl }}
+                  </span>
+                  <span v-if="!item.relicsTriggered.length" class="mx-mono">-</span>
+                </td>
+                <td class="mx-mono">
+                  {{ item.enemyAction }} (HP {{ item.playerHpAfter }}/{{ item.enemyHpAfter }})
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div v-else>
           <div class="mx-wb-table-toolbar">
-            <span class="mx-wb-tbl-title">
-              💎 {{ L('法力曲线卡组表', 'Mana Curve Deck') }}
-              <!-- cjk-ok -->
-            </span>
             <div class="mx-wb-toolbar-btns">
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': manaRightView === 'cards' }"
+                @click="manaRightView = 'cards'"
+              >
+                💎 {{ L('法力曲线卡组表', 'Mana Curve Deck') }}
+                <!-- cjk-ok -->
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': manaRightView === 'battle_log' }"
+                @click="manaRightView = 'battle_log'"
+              >
+                📜 {{ uiText.tabBattleLog }}
+              </button>
+            </div>
+            <div v-if="manaRightView === 'cards'" class="mx-wb-toolbar-btns">
               <select
                 v-if="availableManaBuiltinCols.length"
                 v-model="newManaColKey"
@@ -3094,7 +3503,7 @@ const uiText = computed(() => ({
               <!-- cjk-ok -->
             </div>
           </div>
-          <table class="mx-wb-table">
+          <table v-if="manaRightView === 'cards'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>Card</th>
@@ -3200,6 +3609,60 @@ const uiText = computed(() => ({
                     ×
                   </button>
                 </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colTurn }}</th>
+                <th>{{ uiText.colCardsPlayed }}</th>
+                <th>{{ uiText.colEnergyUsed }}</th>
+                <th>{{ uiText.colDmgBlk }}</th>
+                <th>{{ uiText.colRelicProc }}</th>
+                <th>{{ uiText.colEnemyAfter }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="item in combatRes.battleReplayLog ?? []"
+                :key="item.turn"
+                :class="{
+                  'is-best-row': selectedCombatTurn === item.turn,
+                  'is-warn-row': item.relicsTriggered.length > 0
+                }"
+                @click="selectedCombatTurn = item.turn"
+              >
+                <td class="mx-mono">
+                  <strong>T{{ item.turn }}</strong>
+                </td>
+                <td>
+                  <span v-if="!item.cardsPlayed.length" class="mx-mono">
+                    {{ uiText.noCardsPlayed }}
+                  </span>
+                  <span
+                    v-for="(cn, cIdx) in item.cardsPlayed"
+                    :key="cIdx"
+                    class="mx-wb-tag"
+                    style="margin-right: 3px; background: var(--bg-panel)"
+                  >
+                    {{ cn }}
+                  </span>
+                </td>
+                <td class="mx-mono">{{ item.energyUsed }}</td>
+                <td class="mx-mono">{{ item.damageDealt }} / {{ item.blockGained }}</td>
+                <td>
+                  <span
+                    v-for="(rl, rIdx) in item.relicsTriggered"
+                    :key="rIdx"
+                    class="mx-wb-tag is-good"
+                  >
+                    {{ rl }}
+                  </span>
+                  <span v-if="!item.relicsTriggered.length" class="mx-mono">-</span>
+                </td>
+                <td class="mx-mono">{{ item.enemyAction }} (HP {{ item.enemyHpAfter }})</td>
               </tr>
             </tbody>
           </table>
@@ -3475,9 +3938,25 @@ const uiText = computed(() => ({
         </div>
       </div>
 
-      <!-- 中间剪刀差包络图（蓝色带：玩家 P10~P90 战力；红虚线：怪物难度膨胀墙） -->
-      <div class="mx-wb-chart-box">
-        <svg :viewBox="`0 0 ${SVG_W} ${SVG_H}`" class="mx-wb-svg">
+      <!-- 中间剪刀差包络图（蓝色带：玩家 P10~P90 战力；红虚线：怪物难度膨胀墙；支持悬停十字准星与点击高亮楼层） -->
+      <div class="mx-wb-chart-box" :title="uiText.chartClickHint">
+        <div v-if="hoveredEnvelopePoint" class="mx-wb-chart-tooltip">
+          <strong>F{{ hoveredEnvelopePoint.pt.floor }}</strong>
+          <span>
+            Player P50: {{ hoveredEnvelopePoint.pt.playerP50 }} ({{
+              hoveredEnvelopePoint.pt.playerP10
+            }}~{{ hoveredEnvelopePoint.pt.playerP90 }})
+          </span>
+          <span>Enemy: {{ hoveredEnvelopePoint.pt.enemyPower }}</span>
+          <span>Surv: {{ hoveredEnvelopePoint.pt.survivalRatePct }}%</span>
+        </div>
+        <svg
+          :viewBox="`0 0 ${SVG_W} ${SVG_H}`"
+          class="mx-wb-svg is-interactive"
+          @mousemove="onEnvelopeSvgMove"
+          @mouseleave="hoverEnvelopeFloorIdx = null"
+          @click="onEnvelopeSvgClick"
+        >
           <line
             :x1="PAD_L"
             :y1="SVG_H - PAD_B"
@@ -3499,6 +3978,33 @@ const uiText = computed(() => ({
             stroke-width="2"
             stroke-dasharray="4 3"
           />
+          <g v-if="hoveredEnvelopePoint">
+            <line
+              :x1="hoveredEnvelopePoint.x"
+              :y1="PAD_T"
+              :x2="hoveredEnvelopePoint.x"
+              :y2="SVG_H - PAD_B"
+              stroke="var(--accent)"
+              stroke-width="1"
+              stroke-dasharray="2 2"
+            />
+            <circle
+              :cx="hoveredEnvelopePoint.x"
+              :cy="hoveredEnvelopePoint.yPlayer"
+              r="3.5"
+              fill="#2563eb"
+              stroke="#fff"
+              stroke-width="1"
+            />
+            <circle
+              :cx="hoveredEnvelopePoint.x"
+              :cy="hoveredEnvelopePoint.yEnemy"
+              r="3"
+              fill="#dc2626"
+              stroke="#fff"
+              stroke-width="1"
+            />
+          </g>
           <text
             :x="PAD_L - 4"
             :y="PAD_T + 8"
@@ -3534,9 +4040,11 @@ const uiText = computed(() => ({
               v-for="pt in envelopeRes.floorSeries"
               :key="pt.floor"
               :class="{
+                'is-best-row': selectedEnvelopeFloor === pt.floor,
                 'is-warn-row': pt.status === 'difficulty_wall',
                 'is-enemy-row': pt.isBoss
               }"
+              @click="selectedEnvelopeFloor = pt.floor"
             >
               <td class="mx-mono">{{ pt.isBoss ? `★F${pt.floor}` : `F${pt.floor}` }}</td>
               <td class="mx-mono">
@@ -4768,6 +5276,7 @@ const uiText = computed(() => ({
 }
 
 .mx-wb-chart-box {
+  position: relative;
   flex: 1.05;
   min-width: 240px;
   border: 1px solid var(--border);
@@ -4779,10 +5288,36 @@ const uiText = computed(() => ({
   padding: 4px;
 }
 
+.mx-wb-chart-tooltip {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  font-size: 10px;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 4;
+}
+
 .mx-wb-svg {
   width: 100%;
   height: 100%;
   max-height: 145px;
+}
+
+.mx-wb-svg.is-interactive {
+  cursor: crosshair;
+}
+
+.mx-wb-panel.is-full-screen .mx-wb-svg {
+  max-height: 280px;
 }
 
 .mx-wb-table-box {

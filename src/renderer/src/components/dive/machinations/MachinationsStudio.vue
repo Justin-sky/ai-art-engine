@@ -285,7 +285,7 @@ async function runGraphNode(): Promise<void> {
         />
       </div>
 
-      <!-- 中央 Build | Scenarios 模式切换胶囊 -->
+      <!-- 中央 Build | Scenarios | Numerical Lab 模式切换胶囊 -->
       <div class="mx-topbar-center">
         <div class="mx-mode-pill">
           <button
@@ -303,6 +303,20 @@ async function runGraphNode(): Promise<void> {
             @click="store.mode.value = 'scenarios'"
           >
             {{ t('mx.top.scenarios') }}
+          </button>
+          <button
+            type="button"
+            class="mx-mode-btn"
+            :class="{ 'is-active': store.mode.value === 'workbench' }"
+            @click="
+              () => {
+                store.mode.value = 'workbench'
+                store.resultsOpen.value = true
+                store.resultsTab.value = 'workbench'
+              }
+            "
+          >
+            ⚔ Numerical Lab
           </button>
         </div>
 
@@ -397,12 +411,12 @@ async function runGraphNode(): Promise<void> {
 
       <!-- ③ 中央画布 + ⑤⑥ 底部结果与播放栏 -->
       <div class="mx-center-col">
-        <MxCanvas ref="canvasRef" />
+        <MxCanvas v-show="store.mode.value !== 'workbench'" ref="canvasRef" />
         <MxResultsPanel />
       </div>
 
       <!-- ④ 右侧属性检查器 -->
-      <MxInspector />
+      <MxInspector v-show="store.mode.value !== 'workbench'" />
     </div>
   </div>
 </template>

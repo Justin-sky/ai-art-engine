@@ -784,9 +784,10 @@ function sweepSeriesPolyline(nodeId: string): string {
 </script>
 
 <template>
-  <section class="mx-bottom-dock">
+  <section class="mx-bottom-dock" :class="{ 'is-full-workbench': s.mode.value === 'workbench' }">
     <!-- ═════════════ 顶部可拖拽缩放手柄 ═════════════ -->
     <div
+      v-if="s.mode.value !== 'workbench'"
       class="mx-dock-resize-handle"
       :class="{ 'is-dragging': isResizingDock }"
       @pointerdown="startResizeDock"
@@ -892,7 +893,15 @@ function sweepSeriesPolyline(nodeId: string): string {
     </header>
 
     <!-- ═════════════ 面板主体 ═════════════ -->
-    <div v-if="s.resultsOpen.value" class="mx-res-content" :style="{ height: `${dockHeight}px` }">
+    <div
+      v-if="s.resultsOpen.value || s.mode.value === 'workbench'"
+      class="mx-res-content"
+      :style="
+        s.mode.value === 'workbench'
+          ? { flex: '1', minHeight: '0', height: 'auto' }
+          : { height: `${dockHeight}px` }
+      "
+    >
       <!-- ─── TAB 1: RESULTS ─── -->
       <template v-if="s.resultsTab.value === 'results'">
         <div class="mx-res-upper">
@@ -1837,6 +1846,11 @@ function sweepSeriesPolyline(nodeId: string): string {
   font-size: 12px;
   user-select: none;
   flex-shrink: 0;
+}
+.mx-bottom-dock.is-full-workbench {
+  flex: 1;
+  min-height: 0;
+  border-top: none;
 }
 
 .mx-dock-resize-handle {

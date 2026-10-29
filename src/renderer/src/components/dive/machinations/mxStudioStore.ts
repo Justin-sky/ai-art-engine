@@ -36,7 +36,7 @@ import {
 export type MxTool = 'select' | MxNodeKind | 'resource_edge' | 'state_edge'
 export type MxDrawer =
   '' | 'agents' | 'templates' | 'resources' | 'params' | 'layers' | 'clips' | 'history' | 'docs'
-export type MxMode = 'build' | 'scenarios'
+export type MxMode = 'build' | 'scenarios' | 'workbench'
 export type MxCanvasTheme = 'auto' | 'light' | 'dark'
 
 function clone<T>(v: T): T {

@@ -28,6 +28,7 @@ import {
   exportMxUnityCs,
   exportWorkbenchToGameDataTables,
   createMxWorkbenchPreset,
+  getMxCanonicalArchetypeDeck,
   runMxArchetypeBalanceMatrix,
   runMxCombatKernelSimulation,
   runMxCommercialCohortAnalysis,
@@ -1014,7 +1015,7 @@ describe('Machinations v2 simulation', () => {
     })
     expect(lowHpRes.winRatePct).toBeGreaterThanOrEqual(highHpRes.winRatePct)
 
-    // 2. Relic Passive Trigger Hooks (shuriken_kunai / necronomicon / dead_branch / all_synergy)
+    // 2. Relic Passive Trigger Hooks (shuriken_kunai / necronomicon / dead_branch / all_synergy) & White-Box Turn Battle Replay Log
     const allRelicsRes = runMxCombatKernelSimulation({
       ...wb.combatKernel,
       runs: 120,
@@ -1022,6 +1023,17 @@ describe('Machinations v2 simulation', () => {
       relicTriggerPreset: 'all_synergy'
     })
     expect(allRelicsRes.winRatePct).toBeGreaterThan(highHpRes.winRatePct)
+    expect(allRelicsRes.battleReplayLog).toBeDefined()
+    expect(allRelicsRes.battleReplayLog!.length).toBeGreaterThan(0)
+    expect(allRelicsRes.battleReplayLog![0]!.turn).toBe(1)
+
+    const manaRes = runMxCombatKernelSimulation({
+      ...wb.combatKernel,
+      kernel: 'mana_tempo',
+      runs: 60
+    })
+    expect(manaRes.battleReplayLog).toBeDefined()
+    expect(manaRes.battleReplayLog!.length).toBeGreaterThan(0)
 
     // 3. Reverse Goal-Seek Auto-Tuners (Combat & Roguelike Envelope)
     const combatGoal = solveMxCombatTargetGoalSeek(wb.combatKernel, 70)
@@ -1033,8 +1045,15 @@ describe('Machinations v2 simulation', () => {
     expect(envGoal.recommendedGrowthRate).toBeLessThanOrEqual(1.65)
     expect(Math.abs(envGoal.achievedClearRatePct - 35)).toBeLessThanOrEqual(20)
 
-    // 4. Commercial Product-Grade: Multi-Archetype Meta-Balance Matrix & Commercial Cohort Telemetry & QA Report
-    const archetypeRes = runMxArchetypeBalanceMatrix(wb.combatKernel)
+    // 4. Commercial Product-Grade: Multi-Archetype Meta-Balance Matrix (with custom slot override) & Commercial Cohort Telemetry & QA Report
+    const canonStrDeck = getMxCanonicalArchetypeDeck('strength_burst')
+    expect(canonStrDeck.length).toBeGreaterThan(0)
+    const archetypeRes = runMxArchetypeBalanceMatrix({
+      ...wb.combatKernel,
+      customArchetypeDecks: {
+        strength_burst: canonStrDeck.map((c) => ({ ...c, damage: c.damage + 2 }))
+      }
+    })
     expect(archetypeRes.rows).toHaveLength(4)
     expect(archetypeRes.metaDiversityScore).toBeGreaterThanOrEqual(0)
     expect(archetypeRes.metaDiversityScore).toBeLessThanOrEqual(100)
