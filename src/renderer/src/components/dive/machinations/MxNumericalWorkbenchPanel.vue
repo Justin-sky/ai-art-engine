@@ -20,12 +20,15 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   analyzeMultiplierPipeline,
+  autoBalanceWorkbenchEntities,
   createMxWorkbenchPreset,
   exportMxCommercialQaReportMarkdown,
+  exportMxWorkbenchRuntimeCode,
   exportWorkbenchToGameDataTables,
   getMxCanonicalArchetypeDeck,
   MX_WORKBENCH_PRESETS,
   runMxArchetypeBalanceMatrix,
+  runMxAscensionLadderAudit,
   runMxCombatKernelSimulation,
   runMxCommercialCohortAnalysis,
   runMxDeckRemovalRoiAnalysis,
@@ -33,6 +36,7 @@ import {
   runMxLootAndSubstatSimulation,
   runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
+  runMxSensitivityTornado,
   solveMxCombatTargetGoalSeek,
   solveMxEnvelopeTargetGoalSeek,
   type MxCombatKernelKind,
@@ -175,15 +179,17 @@ function setLootMode(m: MxLootRollMode): void {
 
 const debouncedCombatKernel = ref(wb.value.combatKernel)
 const debouncedLootRoll = ref(wb.value.lootRoll)
+const debouncedEnvelope = ref(wb.value.roguelikeEnvelope)
 let matrixDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 watch(
-  () => [wb.value.combatKernel, wb.value.lootRoll] as const,
-  ([ck, lr]) => {
+  () => [wb.value.combatKernel, wb.value.lootRoll, wb.value.roguelikeEnvelope] as const,
+  ([ck, lr, env]) => {
     if (matrixDebounceTimer) clearTimeout(matrixDebounceTimer)
     matrixDebounceTimer = setTimeout(() => {
       debouncedCombatKernel.value = ck
       debouncedLootRoll.value = lr
+      debouncedEnvelope.value = env
     }, 120)
   },
   { deep: true, immediate: true }
@@ -193,7 +199,9 @@ const combatRes = computed(() => runMxCombatKernelSimulation(wb.value.combatKern
 const counterMatrixRes = computed(() => runMxEncounterCounterMatrix(debouncedCombatKernel.value))
 const deckRemovalRoiRes = computed(() => runMxDeckRemovalRoiAnalysis(debouncedCombatKernel.value))
 const archetypeMatrixRes = computed(() => runMxArchetypeBalanceMatrix(debouncedCombatKernel.value))
+const sensitivityTornadoRes = computed(() => runMxSensitivityTornado(debouncedCombatKernel.value))
 const envelopeRes = computed(() => runMxRoguelikeEnvelopeSimulation(wb.value.roguelikeEnvelope))
+const ascensionLadderRes = computed(() => runMxAscensionLadderAudit(debouncedEnvelope.value))
 const multRes = computed(() => analyzeMultiplierPipeline(wb.value.multiplier, 12))
 const lootRes = computed(() => runMxLootAndSubstatSimulation(wb.value.lootRoll))
 const poolDilutionRes = computed(() => runMxPoolDilutionAnalysis(debouncedLootRoll.value))
@@ -359,11 +367,18 @@ const newManaColKey = ref('taunt')
 const customManaColName = ref('')
 const newAuditColName = ref('')
 const newAuditColWeight = ref(2)
-const actionBarRightView = ref<'units' | 'timeline'>('units')
+const actionBarRightView = ref<'units' | 'timeline' | 'tornado'>('units')
 const deckRightView = ref<
-  'cards' | 'counter_matrix' | 'removal_roi' | 'archetype_meta' | 'battle_log'
+  | 'cards'
+  | 'counter_matrix'
+  | 'removal_roi'
+  | 'archetype_meta'
+  | 'battle_log'
+  | 'card_telemetry'
+  | 'tornado'
 >('cards')
-const manaRightView = ref<'cards' | 'battle_log'>('cards')
+const manaRightView = ref<'cards' | 'battle_log' | 'card_telemetry' | 'tornado'>('cards')
+const envelopeRightView = ref<'floors' | 'ascension_ladder'>('floors')
 const lootRightView = ref<'histogram' | 'dilution' | 'commercial_cohorts'>('histogram')
 const bridgeBarOpen = ref(false)
 const stressAuditRunning = ref(false)
@@ -1040,23 +1055,34 @@ function removeAuditEntity(id: string): void {
 }
 
 function autoBalanceAllEntities(): void {
-  const audits = multRes.value.entityAudits
-  const primaryCol = wb.value.multiplier.statColumns[0]
-  if (!primaryCol) return
-  const primaryWeight = Math.max(0.1, Math.abs(getAuditColWeight(primaryCol)) || 1)
+  let count = 0
   mutateWb((w) => {
-    for (const ent of w.multiplier.entities) {
-      const audit = audits.find((a) => a.id === ent.id)
-      if (!audit || audit.verdict === 'balanced') continue
-      const diff = (audit.expectedValue - audit.actualValue) / primaryWeight
-      const curPrimary = ent.stats[primaryCol] ?? 0
-      ent.stats[primaryCol] = Math.max(0, Math.round((curPrimary + diff) * 10) / 10)
-    }
+    const res = autoBalanceWorkbenchEntities(w.multiplier)
+    w.multiplier.entities = res.updatedEntities
+    count = res.adjustedCount
   }, 'autoBalanceCards')
   bridgeFeedback.value = L(
-    '已按费用基准公式自动配平全部超模/亏模卡牌',
-    'Auto-balanced all cards to match cost budget formula'
-  ) // cjk-ok
+    `⚖ 已按理论费用公式一键配平 ${count} 项超模/欠模实体配表`, // cjk-ok
+    `⚖ Auto-balanced ${count} overpowered/underpowered entities to match cost budget formula`
+  )
+}
+
+function exportRuntimeEngineCode(target: 'unity_cs' | 'godot_gd'): void {
+  const res = exportMxWorkbenchRuntimeCode(wb.value, target)
+  const blob = new Blob([res.code], {
+    type: 'text/plain;charset=utf-8;'
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = res.filename
+  a.click()
+  URL.revokeObjectURL(url)
+  navigator.clipboard?.writeText(res.code).catch(() => {})
+  bridgeFeedback.value = L(
+    `💻 已生成并下载引擎运行时代码 ${res.filename}（已复制到剪贴板）`, // cjk-ok
+    `💻 Exported engine runtime code ${res.filename} (& copied to clipboard)`
+  )
 }
 
 function syncAuditEntitiesToCombatDeck(switchTab = true): void {
@@ -1934,7 +1960,40 @@ const uiText = computed(() => ({
   riskHigh: L('高危劝退!', 'High Churn!'), // cjk-ok
   pityElasticityLbl: L('保底付费转化弹性:', 'Pity Elasticity:'), // cjk-ok
   whaleRatioLbl: L('重氪/零氪首月进度比:', 'Whale/F2P 30d Ratio:'), // cjk-ok
-  blendedArpuLbl: L('预估月均ARPU:', 'Est. Monthly ARPU:') // cjk-ok
+  blendedArpuLbl: L('预估月均ARPU:', 'Est. Monthly ARPU:'), // cjk-ok
+  tabCardTelemetry: L('单卡抓位遥测', 'Card Telemetry'), // cjk-ok
+  colPlaysPerRun: L('场均打出', 'Plays/Run'), // cjk-ok
+  colOutputShare: L('价值贡献占比%', 'Output Share%'), // cjk-ok
+  colStrandedPct: L('卡手弃置率%', 'Stranded Brick%'), // cjk-ok
+  colWinDelta: L('胜率抬升Δ%', 'Win Lift Δ%'), // cjk-ok
+  colPickGrade: L('抓位评级', 'Pick Grade'), // cjk-ok
+  gradeS: L('S 必抓核心', 'S Must-Pick'), // cjk-ok
+  gradeA: L('A 主力构筑', 'A Core'), // cjk-ok
+  gradeB: L('B 过渡填充', 'B Filler'), // cjk-ok
+  gradeC: L('C 卡手陷阱', 'C Brick Trap'), // cjk-ok
+  tabTornado: L('敏感度龙卷风', 'Sensitivity Tornado'), // cjk-ok
+  colParamLever: L('核心参数杠杆 (±20%扰动)', 'Parameter Lever (±20%)'), // cjk-ok
+  colLowWin: L('下调胜率%', 'Low Win%'), // cjk-ok
+  colBaseWin: L('基准胜率%', 'Base Win%'), // cjk-ok
+  colHighWin: L('上调胜率%', 'High Win%'), // cjk-ok
+  colSwingAmplitude: L('敏感度振幅Δ%', 'Swing Δ%'), // cjk-ok
+  tabEnvelopeFloors: L('逐层战力与房间明细', 'Floor-by-Floor Envelope'), // cjk-ok
+  tabAscensionLadder: L('A0~A20 进阶终局阶梯', 'A0–A20 Ascension Ladder'), // cjk-ok
+  colAscensionTier: L('进阶等级', 'Ascension Tier'), // cjk-ok
+  colAscModifier: L('叠加上升词条规则', 'Cumulative Modifiers'), // cjk-ok
+  colAscClear: L('首通率%', 'Clear %'), // cjk-ok
+  colDoubleBoss: L('双Boss连战通过%', '2x Boss Pass%'), // cjk-ok
+  colAscVerdict: L('终局生态诊断', 'Endgame Verdict'), // cjk-ok
+  ascSweetSpot: L('黄金甜点区', 'Sweet Spot'), // cjk-ok
+  ascBrutalFair: L('硬核可解', 'Brutal & Fair'), // cjk-ok
+  ascOvertuned: L('数值崩坏墙!', 'Overtuned Wall!'), // cjk-ok
+  ascTooEasy: L('膨胀割草', 'Too Easy'), // cjk-ok
+  exportUnityCsBtn: L('Unity .cs', 'Unity .cs'), // cjk-ok
+  exportGodotGdBtn: L('Godot .gd', 'Godot .gd'), // cjk-ok
+  exportEngineTip: L(
+    '一键编译当前乘区公式、费用预算、抽卡软硬保底与肉鸽A0~A20膨胀曲线为引擎运行时源码', // cjk-ok
+    'Compile current formulas, budget curve, gacha pity & A0-A20 scaling into engine runtime code'
+  )
 }))
 </script>
 
@@ -2268,6 +2327,22 @@ const uiText = computed(() => ({
             @click="exportCommercialQaReport"
           >
             📋 {{ uiText.exportQaReportBtn }}
+          </button>
+          <button
+            type="button"
+            class="mx-wb-mini-btn"
+            :title="uiText.exportEngineTip"
+            @click="exportRuntimeEngineCode('unity_cs')"
+          >
+            🎮 {{ uiText.exportUnityCsBtn }}
+          </button>
+          <button
+            type="button"
+            class="mx-wb-mini-btn"
+            :title="uiText.exportEngineTip"
+            @click="exportRuntimeEngineCode('godot_gd')"
+          >
+            🤖 {{ uiText.exportGodotGdBtn }}
           </button>
           <button
             type="button"
@@ -2721,6 +2796,14 @@ const uiText = computed(() => ({
                 📜 {{ L('行动排轴日志', 'Action Timeline') }}
                 <!-- cjk-ok -->
               </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': actionBarRightView === 'tornado' }"
+                @click="actionBarRightView = 'tornado'"
+              >
+                🌪 {{ uiText.tabTornado }}
+              </button>
             </div>
             <div v-if="actionBarRightView === 'units'" class="mx-wb-toolbar-btns">
               <button type="button" class="mx-wb-mini-btn is-accent" @click="addActionBarUnit">
@@ -2913,7 +2996,7 @@ const uiText = computed(() => ({
             </tbody>
           </table>
 
-          <table v-else class="mx-wb-table">
+          <table v-else-if="actionBarRightView === 'timeline'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>#</th>
@@ -2942,6 +3025,45 @@ const uiText = computed(() => ({
                   <span v-else>{{ ev.skillCast ? 'Skill' : 'Basic' }}</span>
                 </td>
                 <td class="mx-mono">{{ ev.damageDealt }}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colParamLever }}</th>
+                <th>{{ uiText.colLowWin }}</th>
+                <th>{{ uiText.colBaseWin }}</th>
+                <th>{{ uiText.colHighWin }}</th>
+                <th>{{ uiText.colSwingAmplitude }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(bar, bIdx) in sensitivityTornadoRes"
+                :key="bar.paramId"
+                :class="{ 'is-best-row': bIdx === 0 }"
+              >
+                <td>
+                  <strong>{{ isZh ? bar.labelZh : bar.labelEn }}</strong>
+                  <span class="mx-mono" style="margin-left: 4px; opacity: 0.75">
+                    ({{ bar.lowValueLabel }} / {{ bar.baseValueLabel }} / {{ bar.highValueLabel }})
+                  </span>
+                </td>
+                <td class="mx-mono">{{ bar.lowParamWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.baseWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.highParamWinRatePct }}%</td>
+                <td class="mx-mono">
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      bar.swingPct >= 20 ? 'is-bad' : bar.swingPct >= 8 ? 'is-warn' : 'is-good'
+                    "
+                  >
+                    ±{{ bar.swingPct }}%
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -2992,6 +3114,22 @@ const uiText = computed(() => ({
                 @click="deckRightView = 'battle_log'"
               >
                 📜 {{ uiText.tabBattleLog }}
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'card_telemetry' }"
+                @click="deckRightView = 'card_telemetry'"
+              >
+                📊 {{ uiText.tabCardTelemetry }}
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': deckRightView === 'tornado' }"
+                @click="deckRightView = 'tornado'"
+              >
+                🌪 {{ uiText.tabTornado }}
               </button>
             </div>
             <div v-if="deckRightView === 'cards'" class="mx-wb-toolbar-btns">
@@ -3377,7 +3515,7 @@ const uiText = computed(() => ({
           </div>
 
           <!-- 商业产品级：单局（Run #1）逐回合白盒出牌、遗物触发与Boss反击复盘战报 -->
-          <table v-else class="mx-wb-table">
+          <table v-else-if="deckRightView === 'battle_log'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>{{ uiText.colTurn }}</th>
@@ -3434,6 +3572,108 @@ const uiText = computed(() => ({
               </tr>
             </tbody>
           </table>
+
+          <!-- 商业产品级：单卡抓位归因、输出贡献占比与卡手弃置率遥测 -->
+          <table v-else-if="deckRightView === 'card_telemetry'" class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Cost×Cnt</th>
+                <th>{{ uiText.colPlaysPerRun }}</th>
+                <th>{{ uiText.colOutputShare }}</th>
+                <th>{{ uiText.colStrandedPct }}</th>
+                <th>{{ uiText.colWinDelta }}</th>
+                <th>{{ uiText.colPickGrade }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="ct in combatRes.cardTelemetry ?? []"
+                :key="ct.id"
+                :class="{
+                  'is-best-row': ct.grade === 'S_must_pick',
+                  'is-enemy-row': ct.grade === 'C_brick_trap'
+                }"
+              >
+                <td>
+                  <strong>{{ ct.name }}</strong>
+                </td>
+                <td class="mx-mono">{{ ct.cost }}E × {{ ct.count }}</td>
+                <td class="mx-mono">{{ ct.avgPlaysPerRun }}</td>
+                <td class="mx-mono">{{ ct.outputSharePct }}%</td>
+                <td class="mx-mono">{{ ct.strandedInHandPct }}%</td>
+                <td class="mx-mono">
+                  {{
+                    ct.playedWinDeltaPct > 0
+                      ? `+${ct.playedWinDeltaPct}%`
+                      : `${ct.playedWinDeltaPct}%`
+                  }}
+                </td>
+                <td>
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      ct.grade === 'S_must_pick'
+                        ? 'is-good'
+                        : ct.grade === 'C_brick_trap'
+                          ? 'is-bad'
+                          : 'is-warn'
+                    "
+                  >
+                    {{
+                      ct.grade === 'S_must_pick'
+                        ? uiText.gradeS
+                        : ct.grade === 'A_core'
+                          ? uiText.gradeA
+                          : ct.grade === 'B_filler'
+                            ? uiText.gradeB
+                            : uiText.gradeC
+                    }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 商业产品级：CRN 参数敏感度龙卷风图 -->
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colParamLever }}</th>
+                <th>{{ uiText.colLowWin }}</th>
+                <th>{{ uiText.colBaseWin }}</th>
+                <th>{{ uiText.colHighWin }}</th>
+                <th>{{ uiText.colSwingAmplitude }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(bar, bIdx) in sensitivityTornadoRes"
+                :key="bar.paramId"
+                :class="{ 'is-best-row': bIdx === 0 }"
+              >
+                <td>
+                  <strong>{{ isZh ? bar.labelZh : bar.labelEn }}</strong>
+                  <span class="mx-mono" style="margin-left: 4px; opacity: 0.75">
+                    ({{ bar.lowValueLabel }} / {{ bar.baseValueLabel }} / {{ bar.highValueLabel }})
+                  </span>
+                </td>
+                <td class="mx-mono">{{ bar.lowParamWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.baseWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.highParamWinRatePct }}%</td>
+                <td class="mx-mono">
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      bar.swingPct >= 20 ? 'is-bad' : bar.swingPct >= 8 ? 'is-warn' : 'is-good'
+                    "
+                  >
+                    ±{{ bar.swingPct }}%
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div v-else>
@@ -3455,6 +3695,22 @@ const uiText = computed(() => ({
                 @click="manaRightView = 'battle_log'"
               >
                 📜 {{ uiText.tabBattleLog }}
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': manaRightView === 'card_telemetry' }"
+                @click="manaRightView = 'card_telemetry'"
+              >
+                📊 {{ uiText.tabCardTelemetry }}
+              </button>
+              <button
+                type="button"
+                class="mx-wb-mini-btn"
+                :class="{ 'is-accent': manaRightView === 'tornado' }"
+                @click="manaRightView = 'tornado'"
+              >
+                🌪 {{ uiText.tabTornado }}
               </button>
             </div>
             <div v-if="manaRightView === 'cards'" class="mx-wb-toolbar-btns">
@@ -3613,7 +3869,7 @@ const uiText = computed(() => ({
             </tbody>
           </table>
 
-          <table v-else class="mx-wb-table">
+          <table v-else-if="manaRightView === 'battle_log'" class="mx-wb-table">
             <thead>
               <tr>
                 <th>{{ uiText.colTurn }}</th>
@@ -3663,6 +3919,106 @@ const uiText = computed(() => ({
                   <span v-if="!item.relicsTriggered.length" class="mx-mono">-</span>
                 </td>
                 <td class="mx-mono">{{ item.enemyAction }} (HP {{ item.enemyHpAfter }})</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else-if="manaRightView === 'card_telemetry'" class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>Card</th>
+                <th>Cost×Cnt</th>
+                <th>{{ uiText.colPlaysPerRun }}</th>
+                <th>{{ uiText.colOutputShare }}</th>
+                <th>{{ uiText.colStrandedPct }}</th>
+                <th>{{ uiText.colWinDelta }}</th>
+                <th>{{ uiText.colPickGrade }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="ct in combatRes.cardTelemetry ?? []"
+                :key="ct.id"
+                :class="{
+                  'is-best-row': ct.grade === 'S_must_pick',
+                  'is-enemy-row': ct.grade === 'C_brick_trap'
+                }"
+              >
+                <td>
+                  <strong>{{ ct.name }}</strong>
+                </td>
+                <td class="mx-mono">{{ ct.cost }}M × {{ ct.count }}</td>
+                <td class="mx-mono">{{ ct.avgPlaysPerRun }}</td>
+                <td class="mx-mono">{{ ct.outputSharePct }}%</td>
+                <td class="mx-mono">{{ ct.strandedInHandPct }}%</td>
+                <td class="mx-mono">
+                  {{
+                    ct.playedWinDeltaPct > 0
+                      ? `+${ct.playedWinDeltaPct}%`
+                      : `${ct.playedWinDeltaPct}%`
+                  }}
+                </td>
+                <td>
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      ct.grade === 'S_must_pick'
+                        ? 'is-good'
+                        : ct.grade === 'C_brick_trap'
+                          ? 'is-bad'
+                          : 'is-warn'
+                    "
+                  >
+                    {{
+                      ct.grade === 'S_must_pick'
+                        ? uiText.gradeS
+                        : ct.grade === 'A_core'
+                          ? uiText.gradeA
+                          : ct.grade === 'B_filler'
+                            ? uiText.gradeB
+                            : uiText.gradeC
+                    }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table v-else class="mx-wb-table">
+            <thead>
+              <tr>
+                <th>{{ uiText.colParamLever }}</th>
+                <th>{{ uiText.colLowWin }}</th>
+                <th>{{ uiText.colBaseWin }}</th>
+                <th>{{ uiText.colHighWin }}</th>
+                <th>{{ uiText.colSwingAmplitude }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="(bar, bIdx) in sensitivityTornadoRes"
+                :key="bar.paramId"
+                :class="{ 'is-best-row': bIdx === 0 }"
+              >
+                <td>
+                  <strong>{{ isZh ? bar.labelZh : bar.labelEn }}</strong>
+                  <span class="mx-mono" style="margin-left: 4px; opacity: 0.75">
+                    ({{ bar.lowValueLabel }} / {{ bar.baseValueLabel }} / {{ bar.highValueLabel }})
+                  </span>
+                </td>
+                <td class="mx-mono">{{ bar.lowParamWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.baseWinRatePct }}%</td>
+                <td class="mx-mono">{{ bar.highParamWinRatePct }}%</td>
+                <td class="mx-mono">
+                  <span
+                    class="mx-wb-tag"
+                    :class="
+                      bar.swingPct >= 20 ? 'is-bad' : bar.swingPct >= 8 ? 'is-warn' : 'is-good'
+                    "
+                  >
+                    ±{{ bar.swingPct }}%
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -4021,9 +4377,30 @@ const uiText = computed(() => ({
         </svg>
       </div>
 
-      <!-- 右侧逐层对比表 -->
+      <!-- 右侧逐层对比表 / A0~A20 进阶终局阶梯矩阵 -->
       <div class="mx-wb-table-box">
-        <table class="mx-wb-table">
+        <div class="mx-wb-table-toolbar">
+          <div class="mx-wb-toolbar-btns">
+            <button
+              type="button"
+              class="mx-wb-mini-btn"
+              :class="{ 'is-accent': envelopeRightView === 'floors' }"
+              @click="envelopeRightView = 'floors'"
+            >
+              🏰 {{ uiText.tabEnvelopeFloors }}
+            </button>
+            <button
+              type="button"
+              class="mx-wb-mini-btn"
+              :class="{ 'is-accent': envelopeRightView === 'ascension_ladder' }"
+              @click="envelopeRightView = 'ascension_ladder'"
+            >
+              🔥 {{ uiText.tabAscensionLadder }}
+            </button>
+          </div>
+        </div>
+
+        <table v-if="envelopeRightView === 'floors'" class="mx-wb-table">
           <thead>
             <tr>
               <th>Floor</th>
@@ -4066,6 +4443,60 @@ const uiText = computed(() => ({
                   >TRIVIAL</span
                 >
                 <span v-else class="mx-wb-tag is-good">OK</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table v-else class="mx-wb-table">
+          <thead>
+            <tr>
+              <th>{{ uiText.colAscensionTier }}</th>
+              <th>{{ uiText.colAscModifier }}</th>
+              <th>{{ uiText.colAscClear }}</th>
+              <th>{{ uiText.colDoubleBoss }}</th>
+              <th>Meta 50%</th>
+              <th>{{ uiText.colAscVerdict }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in ascensionLadderRes"
+              :key="row.code"
+              :class="{
+                'is-best-row': row.code === 'A0',
+                'is-warn-row': row.verdict === 'brutal_fair',
+                'is-enemy-row': row.verdict === 'overtuned_wall'
+              }"
+            >
+              <td>
+                <strong>{{ isZh ? row.nameZh : row.nameEn }}</strong>
+              </td>
+              <td>{{ isZh ? row.modifierDescZh : row.modifierDescEn }}</td>
+              <td class="mx-mono">{{ row.clearRatePct }}%</td>
+              <td class="mx-mono">{{ row.doubleBossPassPct }}%</td>
+              <td class="mx-mono">{{ row.metaRunsTo50Pct }} runs</td>
+              <td>
+                <span
+                  class="mx-wb-tag"
+                  :class="
+                    row.verdict === 'sweet_spot'
+                      ? 'is-good'
+                      : row.verdict === 'brutal_fair' || row.verdict === 'too_easy'
+                        ? 'is-warn'
+                        : 'is-bad'
+                  "
+                >
+                  {{
+                    row.verdict === 'sweet_spot'
+                      ? uiText.ascSweetSpot
+                      : row.verdict === 'brutal_fair'
+                        ? uiText.ascBrutalFair
+                        : row.verdict === 'too_easy'
+                          ? uiText.ascTooEasy
+                          : uiText.ascOvertuned
+                  }}
+                </span>
               </td>
             </tr>
           </tbody>

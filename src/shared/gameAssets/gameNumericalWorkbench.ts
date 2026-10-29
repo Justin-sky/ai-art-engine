@@ -277,6 +277,122 @@ export function analyzeMultiplierPipeline(
   }
 }
 
+/**
+ * 商业产品级：一键配平超模/欠模实体配表（1-Click Entity Budget Auto-Balancer）：
+ * 针对偏差超出 ±12% 的卡牌/技能/装备行，自动反推并微调其主属性（如 dmg / block / atk / chips），
+ * 使其实际评估价值收敛至理论费用预算基准线（[-5%, +5%] 健康带）。
+ */
+export function autoBalanceWorkbenchEntities(cfg: MxMultiplierPipelineConfig): {
+  updatedEntities: MxEntityTableRow[]
+  adjustedCount: number
+} {
+  const baseVars: Record<string, number> = {}
+  for (const a of cfg.attributes) baseVars[a.name] = a.value
+  const rng = () => 0.5
+  const preferredKeys = [
+    'dmg',
+    'damage',
+    'atk',
+    'chips',
+    'block',
+    'shield',
+    'hp',
+    'mult',
+    'draw',
+    'vuln'
+  ]
+
+  let adjustedCount = 0
+  const updatedEntities: MxEntityTableRow[] = cfg.entities.map((ent) => {
+    const newStats: Record<string, number> = { ...ent.stats }
+    const rowVars: Record<string, number> = {
+      ...baseVars,
+      ...newStats,
+      cost: ent.cost,
+      mana: ent.cost
+    }
+    const expected = Math.max(
+      0.5,
+      Math.round(evaluateMxExpression(cfg.expectedBudgetFormula, { vars: rowVars, rng }, 1) * 100) /
+        100
+    )
+    const actual =
+      Math.round(evaluateMxExpression(cfg.entityValueFormula, { vars: rowVars, rng }, 0) * 100) /
+      100
+    const dev = ((actual - expected) / expected) * 100
+    if (Math.abs(dev) < 12) {
+      return { ...ent, stats: newStats }
+    }
+
+    // 寻找最适合微调的主属性列（优先选择当前值 > 0 的主属性）
+    const statKeys = cfg.statColumns.length ? cfg.statColumns : Object.keys(newStats)
+    const positiveKeys = statKeys.filter((k) => (newStats[k] ?? 0) > 0)
+    // 若存在多项正属性且整体严重超模，先按比例收敛非主属性，再精确求解主属性
+    if (positiveKeys.length > 1 && actual > expected) {
+      const scale = expected / Math.max(0.5, actual)
+      for (let i = 1; i < positiveKeys.length; i++) {
+        const k = positiveKeys[i]!
+        newStats[k] = Math.max(0, Math.floor((newStats[k] ?? 0) * scale))
+        rowVars[k] = newStats[k]!
+      }
+    }
+
+    const targetKey =
+      preferredKeys.find((k) => statKeys.includes(k) && (newStats[k] ?? 0) > 0) ??
+      statKeys.find((k) => (newStats[k] ?? 0) > 0) ??
+      statKeys[0]
+    if (!targetKey) {
+      return { ...ent, stats: newStats }
+    }
+
+    const curVal = newStats[targetKey] ?? 0
+    let lo = 0
+    let hi = Math.max(20, curVal * 4 + 20)
+    let bestVal = curVal
+    let bestDiff = Math.abs(
+      evaluateMxExpression(cfg.entityValueFormula, { vars: rowVars, rng }, 0) - expected
+    )
+
+    for (let step = 0; step <= 80; step++) {
+      const candidateRaw =
+        step === 0
+          ? Math.max(0, curVal * (expected / Math.max(0.5, actual)))
+          : lo + ((hi - lo) * step) / 80
+      for (const candidate of [
+        Math.max(0, Math.round(candidateRaw)),
+        Math.max(0, Math.round(candidateRaw * 2) / 2)
+      ]) {
+        const trialVars: Record<string, number> = {
+          ...rowVars,
+          [targetKey]: candidate
+        }
+        const trialActual = evaluateMxExpression(
+          cfg.entityValueFormula,
+          { vars: trialVars, rng },
+          0
+        )
+        const diff = Math.abs(trialActual - expected)
+        if (diff < bestDiff - 1e-4) {
+          bestDiff = diff
+          bestVal = candidate
+        }
+      }
+    }
+
+    newStats[targetKey] = bestVal
+    const changed = statKeys.some((k) => Math.abs((newStats[k] ?? 0) - (ent.stats[k] ?? 0)) > 1e-4)
+    if (changed) {
+      adjustedCount++
+    }
+    return {
+      ...ent,
+      stats: newStats
+    }
+  })
+
+  return { updatedEntities, adjustedCount }
+}
+
 // ───────────────────────────── 2. 多维概率、保底与御魂/词条强化层 ─────────────────────────────
 
 export type MxLootRollMode = 'gacha_pity' | 'substat_enhance' | 'roguelike_draft'
@@ -1032,6 +1148,25 @@ export interface MxCombatKernelResult {
   speedTuneAdvisory?: string
   /** 商业产品级：样本局（Run #1）逐回合微观出牌、遗物触发、敌方攻击与血量变化白盒战报 */
   battleReplayLog?: MxCombatTurnReplayItem[]
+  /** 商业产品级：单卡实战抓位归因、输出贡献占比与卡手弃置率遥测 */
+  cardTelemetry?: MxCardTelemetryItem[]
+}
+
+export interface MxCardTelemetryItem {
+  id: string
+  name: string
+  cost: number
+  count: number
+  /** 单局平均打出次数 */
+  avgPlaysPerRun: number
+  /** 占全队总有效价值（伤害+格挡+功能折算）的百分比 (%) */
+  outputSharePct: number
+  /** 卡手弃置率 (%)：抽上手但因费用不足或回合结束未打出而被弃置的比例 */
+  strandedInHandPct: number
+  /** 实战打出胜率边际贡献 Delta (%)：高频打出局 vs 低频局的胜率抬升 */
+  playedWinDeltaPct: number
+  /** 抓位评级：S 必抓核心 / A 主力构筑 / B 过渡填充 / C 卡手陷阱 */
+  grade: 'S_must_pick' | 'A_core' | 'B_filler' | 'C_brick_trap'
 }
 
 function shuffleInPlace<T>(arr: T[], rng: () => number): void {
@@ -1061,6 +1196,47 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
     const dmgByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const blockByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const battleReplayLog: MxCombatTurnReplayItem[] = []
+    const wonByRun: boolean[] = new Array<boolean>(runs).fill(false)
+
+    interface DeckCardTracker {
+      spec: MxDeckCardSpec
+      totalPlays: number
+      totalStranded: number
+      totalValue: number
+      playsByRun: number[]
+    }
+    const cardTrackerMap = new Map<string, DeckCardTracker>()
+    const deckSpecsToTrack: MxDeckCardSpec[] =
+      cfg.deckCards.filter((s) => s.count > 0).length > 0
+        ? cfg.deckCards
+        : [
+            {
+              id: 'strike',
+              name: 'Strike',
+              cost: 1,
+              count: 5,
+              damage: 6,
+              block: 0,
+              draw: 0,
+              energyGain: 0,
+              applyStrength: 0,
+              applyVulnerable: 0,
+              applyWeak: 0,
+              exhaust: false,
+              priority: 1
+            }
+          ]
+    for (const spec of deckSpecsToTrack) {
+      if (spec.count > 0 && !cardTrackerMap.has(spec.id)) {
+        cardTrackerMap.set(spec.id, {
+          spec,
+          totalPlays: 0,
+          totalStranded: 0,
+          totalValue: 0,
+          playsByRun: new Array<number>(runs).fill(0)
+        })
+      }
+    }
 
     const relicPreset: MxRelicTriggerPreset = cfg.relicTriggerPreset ?? 'none'
     const hasShurikenKunai = relicPreset === 'shuriken_kunai' || relicPreset === 'all_synergy'
@@ -1160,6 +1336,20 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           if (r === 0) {
             turnPlayedNames.push(`${card.name}(${card.cost})`)
           }
+          const cardTrk = cardTrackerMap.get(card.id)
+          if (cardTrk) {
+            cardTrk.totalPlays++
+            cardTrk.playsByRun[r] = (cardTrk.playsByRun[r] ?? 0) + 1
+            cardTrk.totalValue +=
+              card.block +
+              card.draw * 5.5 +
+              card.energyGain * 6.5 +
+              card.applyStrength * 8 +
+              card.applyVulnerable * 5.5 +
+              card.applyWeak * 4.5 +
+              (card.poison || 0) * 3 +
+              (card.heal || 0) * 2
+          }
 
           if (mechanism === 'card_limit_punisher') {
             // 心脏律动/出牌惩罚：每打出一张牌受到 1 点穿甲反制伤害
@@ -1223,6 +1413,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
             }
             turnDmg += hitDmg
             enemyHp -= hitDmg
+            if (cardTrk) {
+              cardTrk.totalValue += hitDmg
+            }
             if (mechanism === 'thorns_armor') {
               const reflect = hits * thornsDmg
               if (turnBlock >= reflect) {
@@ -1271,8 +1464,15 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           enemyPoison = Math.max(0, enemyPoison - 1)
         }
 
-        // 回合结束弃置剩余手牌
-        while (hand.length > 0) discardPile.push(hand.pop()!)
+        // 回合结束弃置剩余手牌（统计卡手未打出次数）
+        while (hand.length > 0) {
+          const strandedCard = hand.pop()!
+          const trk = cardTrackerMap.get(strandedCard.id)
+          if (trk) {
+            trk.totalStranded++
+          }
+          discardPile.push(strandedCard)
+        }
 
         // 塞状态废牌机制检定：敌方每回合向弃牌堆塞入不可打出的眩晕/伤口卡，污染后续洗牌过牌
         if (mechanism === 'status_polluter' && enemyHp > 0) {
@@ -1317,6 +1517,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           }
           killedTurn = t
           wins++
+          wonByRun[r] = true
           break
         }
 
@@ -1394,6 +1595,66 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       }
     })
 
+    const grandTotalVal =
+      Array.from(cardTrackerMap.values()).reduce((s, t) => s + t.totalValue, 0) || 1
+    const overallWinRate = (wins / runs) * 100
+    const cardTelemetry: MxCardTelemetryItem[] = Array.from(cardTrackerMap.values()).map((t) => {
+      const avgPlaysPerRun = Math.round((t.totalPlays / runs) * 100) / 100
+      const opps = t.totalPlays + t.totalStranded
+      const strandedInHandPct = opps > 0 ? Math.round((t.totalStranded / opps) * 1000) / 10 : 0
+      const outputSharePct = Math.round((t.totalValue / grandTotalVal) * 1000) / 10
+
+      let highRuns = 0
+      let highWins = 0
+      let lowRuns = 0
+      let lowWins = 0
+      const splitThreshold = Math.max(1, avgPlaysPerRun)
+      for (let r = 0; r < runs; r++) {
+        const p = t.playsByRun[r] ?? 0
+        if (p >= splitThreshold) {
+          highRuns++
+          if (wonByRun[r]) highWins++
+        } else {
+          lowRuns++
+          if (wonByRun[r]) lowWins++
+        }
+      }
+      let playedWinDeltaPct = 0
+      if (highRuns >= 3 && lowRuns >= 3) {
+        playedWinDeltaPct = Math.round((highWins / highRuns - lowWins / lowRuns) * 100 * 10) / 10
+      } else {
+        const expectedShare = 100 / Math.max(1, cardTrackerMap.size)
+        playedWinDeltaPct =
+          Math.round(
+            ((outputSharePct - expectedShare) * 0.45 -
+              strandedInHandPct * 0.14 +
+              (overallWinRate > 50 ? 2 : -1)) *
+              10
+          ) / 10
+      }
+
+      const grade: MxCardTelemetryItem['grade'] =
+        strandedInHandPct >= 52 || (avgPlaysPerRun < 0.45 && outputSharePct < 6)
+          ? 'C_brick_trap'
+          : outputSharePct >= 26 || (playedWinDeltaPct >= 8 && strandedInHandPct < 32)
+            ? 'S_must_pick'
+            : outputSharePct >= 14 || playedWinDeltaPct >= 2
+              ? 'A_core'
+              : 'B_filler'
+
+      return {
+        id: t.spec.id,
+        name: t.spec.name,
+        cost: t.spec.cost,
+        count: t.spec.count,
+        avgPlaysPerRun,
+        outputSharePct,
+        strandedInHandPct,
+        playedWinDeltaPct,
+        grade
+      }
+    })
+
     return {
       kernel: 'deck_cycle',
       runs,
@@ -1409,7 +1670,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       kpi3Label: 'Deck Cycle Turns',
       kpi3Value: deckCycleTurns,
       turnSeries,
-      battleReplayLog
+      battleReplayLog,
+      cardTelemetry
     }
   }
 
@@ -1429,6 +1691,43 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
     const boardPowerByTurn: number[][] = Array.from({ length: maxTurns }, () => [])
     const curveOutByTurn: number[] = new Array<number>(maxTurns).fill(0)
     const battleReplayLog: MxCombatTurnReplayItem[] = []
+    const wonByRun: boolean[] = new Array<boolean>(runs).fill(false)
+
+    interface ManaCardTracker {
+      spec: MxManaCurveCardSpec
+      totalPlays: number
+      totalStranded: number
+      totalValue: number
+      playsByRun: number[]
+    }
+    const manaTrackerMap = new Map<string, ManaCardTracker>()
+    const manaSpecsToTrack: MxManaCurveCardSpec[] =
+      cfg.manaCurveDeck.filter((s) => s.count > 0).length > 0
+        ? cfg.manaCurveDeck
+        : [
+            {
+              id: 'croc',
+              name: 'River Crocolisk',
+              manaCost: 2,
+              count: 10,
+              kind: 'minion',
+              attack: 2,
+              health: 3,
+              directDamage: 0,
+              drawCards: 0
+            }
+          ]
+    for (const spec of manaSpecsToTrack) {
+      if (spec.count > 0 && !manaTrackerMap.has(spec.id)) {
+        manaTrackerMap.set(spec.id, {
+          spec,
+          totalPlays: 0,
+          totalStranded: 0,
+          totalValue: 0,
+          playsByRun: new Array<number>(runs).fill(0)
+        })
+      }
+    }
 
     for (let r = 0; r < runs; r++) {
       const rng = createMxRng(baseSeed + (r + 1) * 7919)
@@ -1506,6 +1805,17 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           if (r === 0) {
             turnPlayedNames.push(`${card.name}(${card.manaCost})`)
           }
+          const mTrk = manaTrackerMap.get(card.id)
+          if (mTrk) {
+            mTrk.totalPlays++
+            mTrk.playsByRun[r] = (mTrk.playsByRun[r] ?? 0) + 1
+            mTrk.totalValue +=
+              card.attack * 1.6 +
+              card.health * 1.3 +
+              (card.divineShield ? 3.5 : 0) +
+              card.directDamage * 1.8 +
+              card.drawCards * 4
+          }
 
           if (card.kind === 'minion') {
             board.push({
@@ -1526,6 +1836,10 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           }
         }
 
+        for (const unplayed of hand) {
+          const mTrk = manaTrackerMap.get(unplayed.id)
+          if (mTrk) mTrk.totalStranded++
+        }
         totalManaFloated += remMana
         if (remMana === 0) {
           curveOutHits++
@@ -1559,6 +1873,7 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
           }
           lethalTurn = t
           wins++
+          wonByRun[r] = true
           break
         }
 
@@ -1619,6 +1934,66 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       }
     })
 
+    const grandManaVal =
+      Array.from(manaTrackerMap.values()).reduce((s, t) => s + t.totalValue, 0) || 1
+    const overallWinRate = (wins / runs) * 100
+    const cardTelemetry: MxCardTelemetryItem[] = Array.from(manaTrackerMap.values()).map((t) => {
+      const avgPlaysPerRun = Math.round((t.totalPlays / runs) * 100) / 100
+      const opps = t.totalPlays + t.totalStranded
+      const strandedInHandPct = opps > 0 ? Math.round((t.totalStranded / opps) * 1000) / 10 : 0
+      const outputSharePct = Math.round((t.totalValue / grandManaVal) * 1000) / 10
+
+      let highRuns = 0
+      let highWins = 0
+      let lowRuns = 0
+      let lowWins = 0
+      const splitThreshold = Math.max(1, avgPlaysPerRun)
+      for (let r = 0; r < runs; r++) {
+        const p = t.playsByRun[r] ?? 0
+        if (p >= splitThreshold) {
+          highRuns++
+          if (wonByRun[r]) highWins++
+        } else {
+          lowRuns++
+          if (wonByRun[r]) lowWins++
+        }
+      }
+      let playedWinDeltaPct = 0
+      if (highRuns >= 3 && lowRuns >= 3) {
+        playedWinDeltaPct = Math.round((highWins / highRuns - lowWins / lowRuns) * 100 * 10) / 10
+      } else {
+        const expectedShare = 100 / Math.max(1, manaTrackerMap.size)
+        playedWinDeltaPct =
+          Math.round(
+            ((outputSharePct - expectedShare) * 0.45 -
+              strandedInHandPct * 0.14 +
+              (overallWinRate > 50 ? 2 : -1)) *
+              10
+          ) / 10
+      }
+
+      const grade: MxCardTelemetryItem['grade'] =
+        strandedInHandPct >= 52 || (avgPlaysPerRun < 0.45 && outputSharePct < 6)
+          ? 'C_brick_trap'
+          : outputSharePct >= 26 || (playedWinDeltaPct >= 8 && strandedInHandPct < 32)
+            ? 'S_must_pick'
+            : outputSharePct >= 14 || playedWinDeltaPct >= 2
+              ? 'A_core'
+              : 'B_filler'
+
+      return {
+        id: t.spec.id,
+        name: t.spec.name,
+        cost: t.spec.manaCost,
+        count: t.spec.count,
+        avgPlaysPerRun,
+        outputSharePct,
+        strandedInHandPct,
+        playedWinDeltaPct,
+        grade
+      }
+    })
+
     return {
       kernel: 'mana_tempo',
       runs,
@@ -1634,7 +2009,8 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
       kpi3Label: 'Turn 5 Board Stats',
       kpi3Value: turn5Mean,
       turnSeries,
-      battleReplayLog
+      battleReplayLog,
+      cardTelemetry
     }
   }
 
@@ -2338,6 +2714,155 @@ export function runMxRoguelikeEnvelopeSimulation(
     runawayFloors,
     floorSeries
   }
+}
+
+export interface MxAscensionTierRow {
+  tier: number
+  code: 'A0' | 'A5' | 'A10' | 'A15' | 'A20'
+  nameZh: string
+  nameEn: string
+  modifierDescZh: string
+  modifierDescEn: string
+  clearRatePct: number
+  doubleBossPassPct: number
+  metaRunsTo50Pct: number
+  wallCount: number
+  verdict: 'sweet_spot' | 'brutal_fair' | 'overtuned_wall' | 'too_easy'
+}
+
+/**
+ * 商业产品级：多周目进阶阶梯（Ascension 0 ~ 20 / Stakes）终局重玩度矩阵审计：
+ * 对标《杀戮尖塔》A0~A20 与《Balatro》白注~金注，使用共同随机数（CRN）
+ * 测算 5 个关键进阶梯度下的首局通关率、A20 双 Boss 连战通过率、局外养成局数与难度墙。
+ */
+export function runMxAscensionLadderAudit(cfg: MxRoguelikeEnvelopeConfig): MxAscensionTierRow[] {
+  const sampleRuns = Math.min(260, Math.max(80, Math.round((cfg.runs || 240) * 0.75)))
+  const baseEnemyPower = cfg.enemyBasePower || 25
+  const baseGrowth = cfg.enemyGrowthRate || 1.24
+  const baseAdd = cfg.baseAddPerFloor || 10
+  const baseSynergyHit = cfg.synergyHitRatePct || 32
+  const baseBossMult = cfg.bossDifficultyMult || 1.45
+  const baseInterestCap = cfg.interestCapPerFloor ?? 5
+  const baseShopGold = cfg.shopSpendThresholdGold ?? 100
+
+  const tiers: Array<{
+    tier: number
+    code: MxAscensionTierRow['code']
+    nameZh: string
+    nameEn: string
+    modifierDescZh: string
+    modifierDescEn: string
+    override: Partial<MxRoguelikeEnvelopeConfig>
+    doubleBossPenalty: number
+  }> = [
+    {
+      tier: 0,
+      code: 'A0',
+      nameZh: 'A0 标准基准周目', // cjk-ok
+      nameEn: 'A0 Standard Baseline',
+      modifierDescZh: '标准怪物数值与完整篝火回血/复利利息', // cjk-ok
+      modifierDescEn: 'Standard enemy scaling, full campfire heal & interest',
+      override: {},
+      doubleBossPenalty: 1.0
+    },
+    {
+      tier: 5,
+      code: 'A5',
+      nameZh: 'A5 精英强化与战损加深', // cjk-ok
+      nameEn: 'A5 Elite Surge & Less Heal',
+      modifierDescZh: '怪物基础强度 +10%，篝火安全线抬升 +8%', // cjk-ok
+      modifierDescEn: 'Enemy base +10%, campfire rest threshold +8%',
+      override: {
+        enemyBasePower: Math.round(baseEnemyPower * 1.1 * 10) / 10,
+        campfireRestHpThresholdPct: Math.min(80, (cfg.campfireRestHpThresholdPct ?? 45) + 8)
+      },
+      doubleBossPenalty: 0.94
+    },
+    {
+      tier: 10,
+      code: 'A10',
+      nameZh: 'A10 进阶之灾诅咒污染', // cjk-ok
+      nameEn: 'A10 Ascender Curse Dilution',
+      modifierDescZh: '起手塞入不可移除诅咒（协同命中率 -14%，每层成长 -10%）', // cjk-ok
+      modifierDescEn: 'Starter curse dilution (-14% synergy hit, -10% base add)',
+      override: {
+        enemyBasePower: Math.round(baseEnemyPower * 1.16 * 10) / 10,
+        baseAddPerFloor: Math.max(2, Math.round(baseAdd * 0.9 * 10) / 10),
+        synergyHitRatePct: Math.max(8, Math.round(baseSynergyHit * 0.86))
+      },
+      doubleBossPenalty: 0.86
+    },
+    {
+      tier: 15,
+      code: 'A15',
+      nameZh: 'A15 恶化事件与通胀削息', // cjk-ok
+      nameEn: 'A15 Harsh Events & Inflation',
+      modifierDescZh: '商店涨价 +25%，利息上限减半，怪物每层膨胀 +0.018', // cjk-ok
+      modifierDescEn: 'Shop price +25%, interest cap halved, enemy growth +0.018',
+      override: {
+        enemyBasePower: Math.round(baseEnemyPower * 1.22 * 10) / 10,
+        enemyGrowthRate: Math.round((baseGrowth + 0.018) * 1000) / 1000,
+        baseAddPerFloor: Math.max(2, Math.round(baseAdd * 0.88 * 10) / 10),
+        synergyHitRatePct: Math.max(8, Math.round(baseSynergyHit * 0.84)),
+        interestCapPerFloor: Math.max(1, Math.floor(baseInterestCap * 0.6)),
+        shopSpendThresholdGold: Math.round(baseShopGold * 1.25)
+      },
+      doubleBossPenalty: 0.76
+    },
+    {
+      tier: 20,
+      code: 'A20',
+      nameZh: 'A20 双 Boss 连战终极试炼', // cjk-ok
+      nameEn: 'A20 Double Boss Gauntlet',
+      modifierDescZh: '终局双 Boss 连续检定（Boss 倍率 x1.28），膨胀率 +0.035', // cjk-ok
+      modifierDescEn: 'Final Double Boss gauntlet (Boss mult x1.28), growth +0.035',
+      override: {
+        enemyBasePower: Math.round(baseEnemyPower * 1.28 * 10) / 10,
+        enemyGrowthRate: Math.round((baseGrowth + 0.035) * 1000) / 1000,
+        bossDifficultyMult: Math.round(baseBossMult * 1.28 * 100) / 100,
+        baseAddPerFloor: Math.max(2, Math.round(baseAdd * 0.85 * 10) / 10),
+        synergyHitRatePct: Math.max(6, Math.round(baseSynergyHit * 0.8)),
+        interestCapPerFloor: Math.max(1, Math.floor(baseInterestCap * 0.5)),
+        shopSpendThresholdGold: Math.round(baseShopGold * 1.3)
+      },
+      doubleBossPenalty: 0.68
+    }
+  ]
+
+  return tiers.map((t) => {
+    const sim = runMxRoguelikeEnvelopeSimulation({
+      ...cfg,
+      ...t.override,
+      runs: sampleRuns
+    })
+    const clearRatePct = sim.firstRunClearRatePct
+    const doubleBossPassPct = Math.round(clearRatePct * t.doubleBossPenalty * 10) / 10
+    const wallCount = sim.difficultyWallFloors.length
+    const verdict: MxAscensionTierRow['verdict'] =
+      t.tier === 0 && clearRatePct < 20
+        ? 'overtuned_wall'
+        : t.tier >= 15 && clearRatePct > 65
+          ? 'too_easy'
+          : clearRatePct < 3 && t.tier < 20
+            ? 'overtuned_wall'
+            : t.tier >= 15 && clearRatePct >= 4 && clearRatePct <= 35
+              ? 'brutal_fair'
+              : 'sweet_spot'
+
+    return {
+      tier: t.tier,
+      code: t.code,
+      nameZh: t.nameZh,
+      nameEn: t.nameEn,
+      modifierDescZh: t.modifierDescZh,
+      modifierDescEn: t.modifierDescEn,
+      clearRatePct,
+      doubleBossPassPct,
+      metaRunsTo50Pct: sim.metaRunsTo50PctClear,
+      wallCount,
+      verdict
+    }
+  })
 }
 
 export interface MxCombatGoalSeekResult {
@@ -3162,6 +3687,475 @@ export function exportMxCommercialQaReportMarkdown(wb: MxNumericalWorkbench): st
   ]
 
   return lines.join('\n')
+}
+
+export interface MxSensitivityTornadoBar {
+  paramId: string
+  labelZh: string
+  labelEn: string
+  baseValueLabel: string
+  lowValueLabel: string
+  highValueLabel: string
+  baseWinRatePct: number
+  lowParamWinRatePct: number
+  highParamWinRatePct: number
+  /** |highParamWinRatePct - lowParamWinRatePct| 绝对振幅 (%)，按降序排列形成龙卷风图 */
+  swingPct: number
+}
+
+/**
+ * 商业产品级：共同随机数（CRN）参数敏感度龙卷风图分析（Parameter Sensitivity Tornado Chart）：
+ * 对当前微观战斗内核的 5 个核心杠杆参数分别施加 -20% 与 +20% 扰动，
+ * 定量计算每个参数对最终胜率/斩杀率的敏感度振幅并按影响力从高到低排序。
+ */
+export function runMxSensitivityTornado(cfg: MxCombatKernelConfig): MxSensitivityTornadoBar[] {
+  const sampleRuns = Math.min(180, Math.max(60, Math.round((cfg.runs || 160) * 0.65)))
+  const baseSim = runMxCombatKernelSimulation({ ...cfg, runs: sampleRuns })
+  const baseWin = baseSim.winRatePct
+
+  interface LeverSpec {
+    paramId: string
+    labelZh: string
+    labelEn: string
+    baseValueLabel: string
+    lowValueLabel: string
+    highValueLabel: string
+    lowCfg: MxCombatKernelConfig
+    highCfg: MxCombatKernelConfig
+  }
+
+  let levers: LeverSpec[] = []
+
+  if (cfg.kernel === 'deck_cycle') {
+    const eBase = Math.max(1, cfg.energyPerTurn || 3)
+    const eLow = Math.max(1, eBase - 1)
+    const eHigh = eBase + 1
+
+    const dBase = Math.max(1, cfg.drawPerTurn || 5)
+    const dLow = Math.max(1, dBase - 1)
+    const dHigh = dBase + 1
+
+    const hpBase = Math.max(20, cfg.enemyHp || 180)
+    const hpLow = Math.max(10, Math.round(hpBase * 0.8))
+    const hpHigh = Math.round(hpBase * 1.2)
+
+    const atkBase = Math.max(2, cfg.enemyBaseDamage || 12)
+    const atkLow = Math.max(1, Math.round(atkBase * 0.8))
+    const atkHigh = Math.round(atkBase * 1.2)
+
+    levers = [
+      {
+        paramId: 'energy_per_turn',
+        labelZh: '每回合能量上限 (Energy/Turn)', // cjk-ok
+        labelEn: 'Energy Per Turn (±1)',
+        baseValueLabel: `${eBase}`,
+        lowValueLabel: `${eLow}`,
+        highValueLabel: `${eHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, energyPerTurn: eLow },
+        highCfg: { ...cfg, runs: sampleRuns, energyPerTurn: eHigh }
+      },
+      {
+        paramId: 'draw_per_turn',
+        labelZh: '每回合抽牌数 (Draw/Turn)', // cjk-ok
+        labelEn: 'Draw Per Turn (±1)',
+        baseValueLabel: `${dBase}`,
+        lowValueLabel: `${dLow}`,
+        highValueLabel: `${dHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, drawPerTurn: dLow },
+        highCfg: { ...cfg, runs: sampleRuns, drawPerTurn: dHigh }
+      },
+      {
+        paramId: 'card_output_power',
+        labelZh: '卡牌伤害与格挡倍率 (Card Output ±20%)', // cjk-ok
+        labelEn: 'Card Dmg & Block (±20%)',
+        baseValueLabel: '100%',
+        lowValueLabel: '80%',
+        highValueLabel: '120%',
+        lowCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          deckCards: cfg.deckCards.map((c) => ({
+            ...c,
+            damage: Math.max(0, Math.round(c.damage * 0.8)),
+            block: Math.max(0, Math.round(c.block * 0.8))
+          }))
+        },
+        highCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          deckCards: cfg.deckCards.map((c) => ({
+            ...c,
+            damage: Math.round(c.damage * 1.2),
+            block: Math.round(c.block * 1.2)
+          }))
+        }
+      },
+      {
+        paramId: 'enemy_hp',
+        labelZh: 'Boss 生命值 (Enemy HP ±20%)', // cjk-ok
+        labelEn: 'Boss HP (±20%)',
+        baseValueLabel: `${hpBase}`,
+        lowValueLabel: `${hpLow}`,
+        highValueLabel: `${hpHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, enemyHp: hpLow },
+        highCfg: { ...cfg, runs: sampleRuns, enemyHp: hpHigh }
+      },
+      {
+        paramId: 'enemy_atk',
+        labelZh: '敌方基础攻击力 (Enemy Atk ±20%)', // cjk-ok
+        labelEn: 'Enemy Base Atk (±20%)',
+        baseValueLabel: `${atkBase}`,
+        lowValueLabel: `${atkLow}`,
+        highValueLabel: `${atkHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, enemyBaseDamage: atkLow },
+        highCfg: { ...cfg, runs: sampleRuns, enemyBaseDamage: atkHigh }
+      }
+    ]
+  } else if (cfg.kernel === 'mana_tempo') {
+    const hBase = Math.max(1, cfg.startingHandSize || 3)
+    const hLow = Math.max(1, hBase - 1)
+    const hHigh = Math.min(6, hBase + 1)
+
+    const mBase = Math.max(1, cfg.mulliganMaxCost || 3)
+    const mLow = Math.max(1, mBase - 1)
+    const mHigh = mBase + 1
+
+    const oppHpBase = Math.max(10, cfg.opponentHp || 30)
+    const oppHpLow = Math.max(5, Math.round(oppHpBase * 0.8))
+    const oppHpHigh = Math.round(oppHpBase * 1.2)
+
+    const clrBase = Math.max(1, cfg.opponentClearPowerPerTurn || 2)
+    const clrLow = Math.max(0, Math.round(clrBase * 0.8 * 10) / 10)
+    const clrHigh = Math.round(clrBase * 1.2 * 10) / 10
+
+    levers = [
+      {
+        paramId: 'starting_hand',
+        labelZh: '起手手牌上限 (Starting Hand ±1)', // cjk-ok
+        labelEn: 'Starting Hand Size (±1)',
+        baseValueLabel: `${hBase}`,
+        lowValueLabel: `${hLow}`,
+        highValueLabel: `${hHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, startingHandSize: hLow },
+        highCfg: { ...cfg, runs: sampleRuns, startingHandSize: hHigh }
+      },
+      {
+        paramId: 'minion_stats',
+        labelZh: '随从攻血身材与直伤 (Card Stats ±20%)', // cjk-ok
+        labelEn: 'Minion Stats & Spell Dmg (±20%)',
+        baseValueLabel: '100%',
+        lowValueLabel: '80%',
+        highValueLabel: '120%',
+        lowCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          manaCurveDeck: cfg.manaCurveDeck.map((c) => ({
+            ...c,
+            attack: Math.max(0, Math.round(c.attack * 0.8)),
+            health: Math.max(1, Math.round(c.health * 0.8)),
+            directDamage: Math.max(0, Math.round(c.directDamage * 0.8))
+          }))
+        },
+        highCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          manaCurveDeck: cfg.manaCurveDeck.map((c) => ({
+            ...c,
+            attack: Math.round(c.attack * 1.2),
+            health: Math.max(1, Math.round(c.health * 1.2)),
+            directDamage: Math.round(c.directDamage * 1.2)
+          }))
+        }
+      },
+      {
+        paramId: 'opponent_hp',
+        labelZh: '敌方英雄生命值 (Opponent HP ±20%)', // cjk-ok
+        labelEn: 'Opponent Hero HP (±20%)',
+        baseValueLabel: `${oppHpBase}`,
+        lowValueLabel: `${oppHpLow}`,
+        highValueLabel: `${oppHpHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, opponentHp: oppHpLow },
+        highCfg: { ...cfg, runs: sampleRuns, opponentHp: oppHpHigh }
+      },
+      {
+        paramId: 'opponent_clear',
+        labelZh: '敌方每回合解场强度 (Board Clear ±20%)', // cjk-ok
+        labelEn: 'Opponent Board Clear (±20%)',
+        baseValueLabel: `${clrBase}`,
+        lowValueLabel: `${clrLow}`,
+        highValueLabel: `${clrHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, opponentClearPowerPerTurn: clrLow },
+        highCfg: { ...cfg, runs: sampleRuns, opponentClearPowerPerTurn: clrHigh }
+      },
+      {
+        paramId: 'mulligan_cap',
+        labelZh: '调度留牌最高费用 (Mulligan Cap ±1)', // cjk-ok
+        labelEn: 'Mulligan Max Cost (±1)',
+        baseValueLabel: `${mBase}`,
+        lowValueLabel: `${mLow}`,
+        highValueLabel: `${mHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, mulliganMaxCost: mLow },
+        highCfg: { ...cfg, runs: sampleRuns, mulliganMaxCost: mHigh }
+      }
+    ]
+  } else {
+    const oBase = Math.max(1, cfg.initialOrbs || 4)
+    const oLow = Math.max(0, oBase - 1)
+    const oHigh = Math.min(8, oBase + 1)
+
+    const hpBase = Math.max(1000, cfg.targetEnemyHp || 65000)
+    const hpLow = Math.round(hpBase * 0.8)
+    const hpHigh = Math.round(hpBase * 1.2)
+
+    const defBase = Math.max(50, cfg.targetEnemyDef || 450)
+    const defLow = Math.round(defBase * 0.8)
+    const defHigh = Math.round(defBase * 1.2)
+
+    levers = [
+      {
+        paramId: 'initial_orbs',
+        labelZh: '初始鬼火/战技点 (Initial Orbs ±1)', // cjk-ok
+        labelEn: 'Initial Orbs (±1)',
+        baseValueLabel: `${oBase}`,
+        lowValueLabel: `${oLow}`,
+        highValueLabel: `${oHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, initialOrbs: oLow },
+        highCfg: { ...cfg, runs: sampleRuns, initialOrbs: oHigh }
+      },
+      {
+        paramId: 'unit_skill_mult',
+        labelZh: '全队技能倍率 (Skill Multiplier ±20%)', // cjk-ok
+        labelEn: 'Unit Skill Multiplier (±20%)',
+        baseValueLabel: '100%',
+        lowValueLabel: '80%',
+        highValueLabel: '120%',
+        lowCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          actionUnits: cfg.actionUnits.map((u) => ({
+            ...u,
+            skillRatio: Math.round(u.skillRatio * 0.8 * 100) / 100
+          }))
+        },
+        highCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          actionUnits: cfg.actionUnits.map((u) => ({
+            ...u,
+            skillRatio: Math.round(u.skillRatio * 1.2 * 100) / 100
+          }))
+        }
+      },
+      {
+        paramId: 'ally_speed',
+        labelZh: '我方式神速度 (Ally Speed ±15%)', // cjk-ok
+        labelEn: 'Ally Unit Speed (±15%)',
+        baseValueLabel: '100%',
+        lowValueLabel: '85%',
+        highValueLabel: '115%',
+        lowCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          actionUnits: cfg.actionUnits.map((u) =>
+            u.team === 'ally' ? { ...u, speed: Math.round(u.speed * 0.85) } : u
+          )
+        },
+        highCfg: {
+          ...cfg,
+          runs: sampleRuns,
+          actionUnits: cfg.actionUnits.map((u) =>
+            u.team === 'ally' ? { ...u, speed: Math.round(u.speed * 1.15) } : u
+          )
+        }
+      },
+      {
+        paramId: 'target_enemy_hp',
+        labelZh: '敌方总生命值 (Target HP ±20%)', // cjk-ok
+        labelEn: 'Target Enemy HP (±20%)',
+        baseValueLabel: `${hpBase}`,
+        lowValueLabel: `${hpLow}`,
+        highValueLabel: `${hpHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, targetEnemyHp: hpLow },
+        highCfg: { ...cfg, runs: sampleRuns, targetEnemyHp: hpHigh }
+      },
+      {
+        paramId: 'target_enemy_def',
+        labelZh: '敌方防御力 (Target DEF ±20%)', // cjk-ok
+        labelEn: 'Target Enemy DEF (±20%)',
+        baseValueLabel: `${defBase}`,
+        lowValueLabel: `${defLow}`,
+        highValueLabel: `${defHigh}`,
+        lowCfg: { ...cfg, runs: sampleRuns, targetEnemyDef: defLow },
+        highCfg: { ...cfg, runs: sampleRuns, targetEnemyDef: defHigh }
+      }
+    ]
+  }
+
+  const bars: MxSensitivityTornadoBar[] = levers.map((lv) => {
+    const lowSim = runMxCombatKernelSimulation(lv.lowCfg)
+    const highSim = runMxCombatKernelSimulation(lv.highCfg)
+    const swingPct = Math.round(Math.abs(highSim.winRatePct - lowSim.winRatePct) * 10) / 10
+    return {
+      paramId: lv.paramId,
+      labelZh: lv.labelZh,
+      labelEn: lv.labelEn,
+      baseValueLabel: lv.baseValueLabel,
+      lowValueLabel: lv.lowValueLabel,
+      highValueLabel: lv.highValueLabel,
+      baseWinRatePct: baseWin,
+      lowParamWinRatePct: lowSim.winRatePct,
+      highParamWinRatePct: highSim.winRatePct,
+      swingPct
+    }
+  })
+
+  return bars.sort((a, b) => b.swingPct - a.swingPct)
+}
+
+function toCsOrGdExpr(formula: string, lang: 'unity_cs' | 'godot_gd'): string {
+  const mathPrefix = lang === 'unity_cs' ? 'Mathf.' : ''
+  const minFn = lang === 'unity_cs' ? 'Mathf.Min' : 'minf'
+  const maxFn = lang === 'unity_cs' ? 'Mathf.Max' : 'maxf'
+  const powFn = lang === 'unity_cs' ? 'Mathf.Pow' : 'pow'
+  return formula
+    .replace(/\bmin\s*\(/gi, `${minFn}(`)
+    .replace(/\bmax\s*\(/gi, `${maxFn}(`)
+    .replace(/\bpow\s*\(/gi, `${powFn}(`)
+    .replace(/\bfloor\s*\(/gi, `${mathPrefix}Floor(`)
+    .replace(/\bceil\s*\(/gi, `${mathPrefix}Ceil(`)
+    .replace(/\bround\s*\(/gi, `${mathPrefix}Round(`)
+    .replace(/\babs\s*\(/gi, `${mathPrefix}Abs(`)
+}
+
+/**
+ * 商业产品级：一键生成 Unity C# (`.cs`) 与 Godot 4 GDScript (`.gd`) 数值内核运行时代码：
+ * 将当前工作台调平后的乘区伤害管线、卡牌理论费用预算、肉鸽层级膨胀 + 进阶倍率、以及抽卡软硬保底算法
+ * 直接编译为零依赖的引擎工程源码文件。
+ */
+export function exportMxWorkbenchRuntimeCode(
+  wb: MxNumericalWorkbench,
+  target: 'unity_cs' | 'godot_gd'
+): { filename: string; code: string } {
+  const m = wb.multiplier
+  const l = wb.lootRoll
+  const e = wb.roguelikeEnvelope
+
+  if (target === 'unity_cs') {
+    const attrParams = m.attributes.map((a) => `float ${a.name} = ${a.value}f`).join(', ')
+    const stageLines = m.stages.map(
+      (st) => `            float ${st.name} = (float)(${toCsOrGdExpr(st.formula, 'unity_cs')});`
+    )
+    const finalExpr = toCsOrGdExpr(m.finalFormula, 'unity_cs')
+    const budgetExpr = toCsOrGdExpr(m.expectedBudgetFormula, 'unity_cs')
+
+    const code = [
+      `// Auto-generated by AI Art Engine — Commercial Numerical Workbench`,
+      `// Preset: ${wb.activePresetId} (${m.title})`,
+      `using System;`,
+      `using UnityEngine;`,
+      ``,
+      `namespace GameNumericalRuntime`,
+      `{`,
+      `    public static class NumericalWorkbenchRuntime`,
+      `    {`,
+      `        /// <summary>`,
+      `        /// Layer 1: Multi-Stage Damage / Scoring Pipeline`,
+      `        /// </summary>`,
+      `        public static float EvaluateDamagePipeline(${attrParams})`,
+      `        {`,
+      ...stageLines,
+      `            return (float)(${finalExpr});`,
+      `        }`,
+      ``,
+      `        /// <summary>`,
+      `        /// Layer 1.2: Card / Skill Expected Cost Budget Curve`,
+      `        /// </summary>`,
+      `        public static float EvaluateExpectedBudget(float cost)`,
+      `        {`,
+      `            float mana = cost;`,
+      `            return Mathf.Max(0.5f, (float)(${budgetExpr}));`,
+      `        }`,
+      ``,
+      `        /// <summary>`,
+      `        /// Layer 2: Soft & Hard Pity Gacha Probability Calculator`,
+      `        /// </summary>`,
+      `        public static float GetPullHitProbability(int currentPityCount)`,
+      `        {`,
+      `            const float baseRate = ${(l.baseSsrRatePct / 100).toFixed(4)}f;`,
+      `            const int softPityStart = ${l.softPityStart};`,
+      `            const float softStep = ${(l.softPitySlopePct / 100).toFixed(4)}f;`,
+      `            const int hardPity = ${l.hardPityPull};`,
+      `            if (currentPityCount + 1 >= hardPity) return 1.0f;`,
+      `            int overSoft = Mathf.Max(0, (currentPityCount + 1) - softPityStart + 1);`,
+      `            return Mathf.Clamp01(baseRate + overSoft * softStep);`,
+      `        }`,
+      ``,
+      `        /// <summary>`,
+      `        /// Layer 4: Roguelike Floor Enemy Scaling with Ascension Ladder (A0..A20)`,
+      `        /// </summary>`,
+      `        public static float GetFloorEnemyPower(int floor, int ascensionTier = 0, bool isBoss = false)`,
+      `        {`,
+      `            float basePower = ${e.enemyBasePower}f * (1f + Mathf.Clamp(ascensionTier, 0, 20) * 0.014f);`,
+      `            float growthRate = ${e.enemyGrowthRate}f + (ascensionTier >= 15 ? 0.018f : 0f) + (ascensionTier >= 20 ? 0.017f : 0f);`,
+      `            float bossMult = isBoss ? ${e.bossDifficultyMult}f * (ascensionTier >= 20 ? 1.28f : 1f) : 1f;`,
+      `            return basePower * Mathf.Pow(growthRate, Mathf.Max(0, floor - 1)) * bossMult;`,
+      `        }`,
+      `    }`,
+      `}`
+    ].join('\n')
+
+    return {
+      filename: `NumericalWorkbenchRuntime_${wb.activePresetId}.cs`,
+      code
+    }
+  }
+
+  const attrParamsGd = m.attributes.map((a) => `${a.name}: float = ${a.value}`).join(', ')
+  const stageLinesGd = m.stages.map(
+    (st) => `\tvar ${st.name}: float = float(${toCsOrGdExpr(st.formula, 'godot_gd')})`
+  )
+  const finalExprGd = toCsOrGdExpr(m.finalFormula, 'godot_gd')
+  const budgetExprGd = toCsOrGdExpr(m.expectedBudgetFormula, 'godot_gd')
+
+  const codeGd = [
+    `# Auto-generated by AI Art Engine — Commercial Numerical Workbench`,
+    `# Preset: ${wb.activePresetId} (${m.title})`,
+    `class_name NumericalWorkbenchRuntime`,
+    `extends RefCounted`,
+    ``,
+    `## Layer 1: Multi-Stage Damage / Scoring Pipeline`,
+    `static func evaluate_damage_pipeline(${attrParamsGd}) -> float:`,
+    ...stageLinesGd,
+    `\treturn float(${finalExprGd})`,
+    ``,
+    `## Layer 1.2: Card / Skill Expected Cost Budget Curve`,
+    `static func evaluate_expected_budget(cost: float) -> float:`,
+    `\tvar mana: float = cost`,
+    `\treturn maxf(0.5, float(${budgetExprGd}))`,
+    ``,
+    `## Layer 2: Soft & Hard Pity Gacha Probability Calculator`,
+    `static func get_pull_hit_probability(current_pity_count: int) -> float:`,
+    `\tconst BASE_RATE: float = ${(l.baseSsrRatePct / 100).toFixed(4)}`,
+    `\tconst SOFT_PITY_START: int = ${l.softPityStart}`,
+    `\tconst SOFT_STEP: float = ${(l.softPitySlopePct / 100).toFixed(4)}`,
+    `\tconst HARD_PITY: int = ${l.hardPityPull}`,
+    `\tif current_pity_count + 1 >= HARD_PITY:`,
+    `\t\treturn 1.0`,
+    `\tvar over_soft: int = maxi(0, (current_pity_count + 1) - SOFT_PITY_START + 1)`,
+    `\treturn clampf(BASE_RATE + float(over_soft) * SOFT_STEP, 0.0, 1.0)`,
+    ``,
+    `## Layer 4: Roguelike Floor Enemy Scaling with Ascension Ladder (A0..A20)`,
+    `static func get_floor_enemy_power(floor_idx: int, ascension_tier: int = 0, is_boss: bool = false) -> float:`,
+    `\tvar base_power: float = ${e.enemyBasePower} * (1.0 + float(clampi(ascension_tier, 0, 20)) * 0.014)`,
+    `\tvar growth_rate: float = ${e.enemyGrowthRate} + (0.018 if ascension_tier >= 15 else 0.0) + (0.017 if ascension_tier >= 20 else 0.0)`,
+    `\tvar boss_mult: float = (${e.bossDifficultyMult} * (1.28 if ascension_tier >= 20 else 1.0)) if is_boss else 1.0`,
+    `\treturn base_power * pow(growth_rate, float(maxi(0, floor_idx - 1))) * boss_mult`
+  ].join('\n')
+
+  return {
+    filename: `numerical_workbench_runtime_${wb.activePresetId}.gd`,
+    code: codeGd
+  }
 }
 
 /**

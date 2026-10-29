@@ -26,16 +26,21 @@ import {
   exportMxCommercialQaReportMarkdown,
   exportMxGodotGd,
   exportMxUnityCs,
+  exportMxWorkbenchRuntimeCode,
   exportWorkbenchToGameDataTables,
+  autoBalanceWorkbenchEntities,
+  analyzeMultiplierPipeline,
   createMxWorkbenchPreset,
   getMxCanonicalArchetypeDeck,
   runMxArchetypeBalanceMatrix,
+  runMxAscensionLadderAudit,
   runMxCombatKernelSimulation,
   runMxCommercialCohortAnalysis,
   runMxDeckRemovalRoiAnalysis,
   runMxEncounterCounterMatrix,
   runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
+  runMxSensitivityTornado,
   solveMxCombatTargetGoalSeek,
   solveMxEnvelopeTargetGoalSeek,
   generateMxAgentWithAi,
@@ -1034,6 +1039,41 @@ describe('Machinations v2 simulation', () => {
     })
     expect(manaRes.battleReplayLog).toBeDefined()
     expect(manaRes.battleReplayLog!.length).toBeGreaterThan(0)
+    expect(allRelicsRes.cardTelemetry).toBeDefined()
+    expect(allRelicsRes.cardTelemetry!.length).toBeGreaterThan(0)
+    expect(manaRes.cardTelemetry).toBeDefined()
+    expect(manaRes.cardTelemetry!.length).toBeGreaterThan(0)
+
+    // 2.5 Pro Studio Deepening: Ascension Ladder (A0..A20), Sensitivity Tornado, Entity Auto-Balancer & Unity/Godot Runtime Codegen
+    const ascRows = runMxAscensionLadderAudit(wb.roguelikeEnvelope)
+    expect(ascRows).toHaveLength(5)
+    expect(ascRows[0]!.code).toBe('A0')
+    expect(ascRows[4]!.code).toBe('A20')
+    expect(ascRows[0]!.clearRatePct).toBeGreaterThanOrEqual(ascRows[4]!.clearRatePct)
+
+    const tornadoBars = runMxSensitivityTornado(wb.combatKernel)
+    expect(tornadoBars).toHaveLength(5)
+    expect(tornadoBars[0]!.swingPct).toBeGreaterThanOrEqual(tornadoBars[4]!.swingPct)
+
+    const autoBal = autoBalanceWorkbenchEntities(wb.multiplier)
+    expect(autoBal.updatedEntities).toHaveLength(wb.multiplier.entities.length)
+    expect(autoBal.adjustedCount).toBeGreaterThanOrEqual(1)
+    const afterAudit = analyzeMultiplierPipeline({
+      ...wb.multiplier,
+      entities: autoBal.updatedEntities
+    })
+    const unbalancedAfter = afterAudit.entityAudits.filter((a) => a.verdict !== 'balanced')
+    expect(unbalancedAfter.length).toBe(0)
+
+    const unityCode = exportMxWorkbenchRuntimeCode(wb, 'unity_cs')
+    expect(unityCode.filename).toContain('.cs')
+    expect(unityCode.code).toContain('EvaluateDamagePipeline')
+    expect(unityCode.code).toContain('GetFloorEnemyPower')
+
+    const godotCode = exportMxWorkbenchRuntimeCode(wb, 'godot_gd')
+    expect(godotCode.filename).toContain('.gd')
+    expect(godotCode.code).toContain('evaluate_damage_pipeline')
+    expect(godotCode.code).toContain('get_floor_enemy_power')
 
     // 3. Reverse Goal-Seek Auto-Tuners (Combat & Roguelike Envelope)
     const combatGoal = solveMxCombatTargetGoalSeek(wb.combatKernel, 70)
