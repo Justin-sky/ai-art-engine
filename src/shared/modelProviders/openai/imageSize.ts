@@ -13,7 +13,13 @@ export const OPENAI_IMAGE_SIZES: ReadonlySet<string> = new Set([
   '1024x1536'
 ])
 
-/** 宽高比 → 最近的官方固定 size */
+export const OPENAI_DALLE3_IMAGE_SIZES: ReadonlySet<string> = new Set([
+  '1024x1024',
+  '1792x1024',
+  '1024x1792'
+])
+
+/** 宽高比 → 最近的官方固定 size（gpt-image 系列） */
 const RATIO_TO_SIZE: Readonly<Record<string, string>> = {
   '1:1': '1024x1024',
   '16:9': '1536x1024',
@@ -22,6 +28,17 @@ const RATIO_TO_SIZE: Readonly<Record<string, string>> = {
   '2:3': '1024x1536',
   '4:3': '1536x1024',
   '3:4': '1024x1536'
+}
+
+/** 宽高比 → DALL·E 3 官方固定 size */
+const DALLE3_RATIO_TO_SIZE: Readonly<Record<string, string>> = {
+  '1:1': '1024x1024',
+  '16:9': '1792x1024',
+  '9:16': '1024x1792',
+  '3:2': '1792x1024',
+  '2:3': '1024x1792',
+  '4:3': '1792x1024',
+  '3:4': '1024x1792'
 }
 
 function normalizeRatio(value: string | undefined): string | null {
@@ -37,7 +54,7 @@ function normalizeRatio(value: string | undefined): string | null {
   return `${width}:${height}`
 }
 
-function normalizeResolution(value: string | undefined): string | null {
+function normalizeResolution(value: string | undefined, isDalle3 = false): string | null {
   const raw = value?.trim().toLowerCase()
   if (!raw) return null
   const pixel = /^(\d+)\s*[x×*]\s*(\d+)$/.exec(raw)
@@ -46,7 +63,8 @@ function normalizeResolution(value: string | undefined): string | null {
     const height = Number(pixel[2])
     if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
       const size = `${width}x${height}`
-      return OPENAI_IMAGE_SIZES.has(size) ? size : 'auto'
+      const allowed = isDalle3 ? OPENAI_DALLE3_IMAGE_SIZES : OPENAI_IMAGE_SIZES
+      return allowed.has(size) ? size : 'auto'
     }
   }
   return null
@@ -55,13 +73,15 @@ function normalizeResolution(value: string | undefined): string | null {
 /** 把应用内 resolution + aspectRatio 换算为 OpenAI size；无法换算时返回 undefined */
 export function resolveOpenAiImageSize(
   resolution: string | undefined,
-  aspectRatio: string | undefined
+  aspectRatio: string | undefined,
+  modelId?: string
 ): string | undefined {
-  const pixel = normalizeResolution(resolution)
+  const isDalle3 = Boolean(modelId && /dall-?e-?3/i.test(modelId))
+  const pixel = normalizeResolution(resolution, isDalle3)
   if (pixel) return pixel === 'auto' ? undefined : pixel
 
   const ratio = normalizeRatio(aspectRatio)
-  if (ratio) return RATIO_TO_SIZE[ratio]
+  if (ratio) return isDalle3 ? DALLE3_RATIO_TO_SIZE[ratio] : RATIO_TO_SIZE[ratio]
 
   return undefined
 }

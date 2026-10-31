@@ -164,6 +164,16 @@ export async function executeVoiceGenerateNode(
     typeof node.params.generateSpeechReferenceAudio === 'string'
       ? node.params.generateSpeechReferenceAudio.trim()
       : undefined
+  const speechSpeed =
+    typeof node.params.generateSpeechSpeed === 'number' &&
+    Number.isFinite(node.params.generateSpeechSpeed) &&
+    node.params.generateSpeechSpeed > 0
+      ? Math.min(4, Math.max(0.25, node.params.generateSpeechSpeed))
+      : undefined
+  const speechInstructions =
+    typeof node.params.generateSpeechInstructions === 'string'
+      ? node.params.generateSpeechInstructions.trim()
+      : undefined
 
   const result = await ctx.generateSpeech({
     input: prompt,
@@ -172,6 +182,8 @@ export async function executeVoiceGenerateNode(
     voice: speechVoice || undefined,
     voiceProfile: speechCharacter || undefined,
     referenceAudio: speechReferenceAudio || undefined,
+    speed: speechSpeed,
+    instructions: speechInstructions || undefined,
     name: buildGeneratedMediaFileKey({
       hostAssetName: ctx.resolveHostAssetName?.(),
       nodeTitle: node.title || node.typeId || 'voice',

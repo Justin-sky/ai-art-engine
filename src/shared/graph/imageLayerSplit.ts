@@ -120,6 +120,12 @@ export interface ImageLayerSplitLayer {
   uiPartRole?: UiControlPartRole
   /** 原生 Photoshop 可编辑文本图层元数据（文字内容、估算字号、采样主色、对齐） */
   editableText?: UiEditableTextMeta
+  /** 引擎安全的导出名（如 Btn_Confirm_01）：导出切图文件名 / 预制体节点名使用，显示名仍用 name */
+  exportName?: string
+  /** 同一预制体（重复控件）共享的分组键：导出切图时同组只保留一份素材，多个实例引用它 */
+  prefabKey?: string
+  /** 精准拆层质检发现的问题（edge_halo / base_residue / occluded_blurry 等），供编辑器标红 */
+  qaIssues?: string[]
 }
 
 export interface ImageLayerSplitGroup {
@@ -350,6 +356,16 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
           ...(row.editableText.fontName ? { fontName: row.editableText.fontName } : {})
         }
       : undefined
+  const exportName =
+    typeof row.exportName === 'string' &&
+    /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(row.exportName.trim())
+      ? row.exportName.trim()
+      : ''
+  const prefabKey =
+    typeof row.prefabKey === 'string' && row.prefabKey.trim() ? row.prefabKey.trim() : ''
+  const qaIssues = Array.isArray(row.qaIssues)
+    ? row.qaIssues.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 8)
+    : []
   return {
     id,
     imageId,
@@ -370,7 +386,10 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
     ...(uiControlName ? { uiControlName } : {}),
     ...(uiControlType ? { uiControlType } : {}),
     ...(uiPartRole ? { uiPartRole } : {}),
-    ...(editableText ? { editableText } : {})
+    ...(editableText ? { editableText } : {}),
+    ...(exportName ? { exportName } : {}),
+    ...(prefabKey ? { prefabKey } : {}),
+    ...(qaIssues.length ? { qaIssues } : {})
   }
 }
 
@@ -1384,6 +1403,12 @@ export interface UiLayerManifestItem {
   html5StandardTag?: string
   unityUiToolkitTag?: string
   editableText?: UiEditableTextMeta
+  /** 引擎安全的导出名（预制体节点名 / 切图文件名） */
+  exportName?: string
+  /** 同一预制体分组键（重复控件共享同一份素材） */
+  prefabKey?: string
+  /** 精准拆层质检问题 */
+  qaIssues?: string[]
   zIndex: number
   visible: boolean
   groupPath: string[]
@@ -1627,6 +1652,9 @@ export function buildLayerSplitUiManifest(inputState: ImageLayerSplitState): UiL
           ? { html5StandardTag: ctrlSpec.html5Tag, unityUiToolkitTag: ctrlSpec.unityUiToolkitTag }
           : {}),
         ...(layer.editableText ? { editableText: layer.editableText } : {}),
+        ...(layer.exportName ? { exportName: layer.exportName } : {}),
+        ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {}),
+        ...(layer.qaIssues?.length ? { qaIssues: [...layer.qaIssues] } : {}),
         zIndex: layer.zIndex,
         visible: isLayerSplitLayerDrawable(state, layer),
         groupPath: layerSplitExportFolderSegments(state, layer.groupId),

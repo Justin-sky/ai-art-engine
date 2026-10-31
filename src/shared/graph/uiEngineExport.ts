@@ -656,7 +656,7 @@ export function buildInteractiveUiPrototypeHtml(input: {
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
-  .exploded .layer-tag { opacity: 1; }
+  .exploded:not(.hide-labels) .layer-tag { opacity: 1; }
   aside {
     width: 280px;
     background: rgba(15, 23, 42, 0.92);
@@ -716,9 +716,10 @@ export function buildInteractiveUiPrototypeHtml(input: {
     <div class="controls">
       <button id="modePlayBtn" class="btn active">🕹️ 交互试玩 (2D Playable)</button>
       <button id="mode3dBtn" class="btn">🧊 3D 全息爆炸视图 (3D Explode)</button>
+      <button id="toggleLabelsBtn" class="btn active" title="在 3D 爆炸视图中显示/隐藏图层名称标签">🏷️ 图层名 (Labels)</button>
       <label style="font-size:12px;color:#94a3b8;display:flex;align-items:center;gap:6px;">
         Z 轴层距
-        <input id="gapSlider" type="range" min="12" max="90" value="38" />
+        <input id="gapSlider" type="range" min="2" max="48" value="12" />
       </label>
     </div>
   </header>
@@ -740,10 +741,12 @@ export function buildInteractiveUiPrototypeHtml(input: {
   const toastEl = document.getElementById('toast');
   const modePlayBtn = document.getElementById('modePlayBtn');
   const mode3dBtn = document.getElementById('mode3dBtn');
+  const toggleLabelsBtn = document.getElementById('toggleLabelsBtn');
   const gapSlider = document.getElementById('gapSlider');
 
   let exploded = false;
-  let gap = 38;
+  let showLabels = true;
+  let gap = 12;
   let rotX = 18;
   let rotY = -26;
   let scale = 0.68;
@@ -778,6 +781,7 @@ export function buildInteractiveUiPrototypeHtml(input: {
     const vw = viewportEl.clientWidth - 48;
     const vh = viewportEl.clientHeight - 48;
     scale = Math.min(1, vw / DOC.canvasWidth, vh / DOC.canvasHeight) * (exploded ? 0.78 : 0.92);
+    canvasEl.classList.toggle('hide-labels', !showLabels);
     if (exploded) {
       canvasEl.classList.add('exploded');
       canvasEl.style.transform = \`scale(\${scale}) rotateX(\${rotX}deg) rotateY(\${rotY}deg)\`;
@@ -785,9 +789,13 @@ export function buildInteractiveUiPrototypeHtml(input: {
       canvasEl.classList.remove('exploded');
       canvasEl.style.transform = \`scale(\${scale})\`;
     }
-    document.querySelectorAll('.ui-layer').forEach((el) => {
-      const rank = Number(el.dataset.rank || 0);
-      el.style.transform = exploded ? \`translateZ(\${rank * gap}px)\` : 'translateZ(0px)';
+    const visibleEls = Array.from(document.querySelectorAll('.ui-layer')).filter((el) => el.style.display !== 'none');
+    const count = visibleEls.length;
+    const effectiveGap = count > 1 ? Math.min(gap, (gap * 9) / (count - 1)) : 0;
+    const centerRank = (count - 1) / 2;
+    visibleEls.forEach((el, idx) => {
+      const zOffset = Math.round((idx - centerRank) * effectiveGap);
+      el.style.transform = exploded ? \`translateZ(\${zOffset}px)\` : 'translateZ(0px)';
     });
   }
 
@@ -862,8 +870,14 @@ export function buildInteractiveUiPrototypeHtml(input: {
     updateTransform();
   });
 
+  toggleLabelsBtn.addEventListener('click', () => {
+    showLabels = !showLabels;
+    toggleLabelsBtn.classList.toggle('active', showLabels);
+    updateTransform();
+  });
+
   gapSlider.addEventListener('input', (e) => {
-    gap = Number(e.target.value) || 38;
+    gap = Number(e.target.value) || 12;
     if (!exploded) mode3dBtn.click();
     else updateTransform();
   });

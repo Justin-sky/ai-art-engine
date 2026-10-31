@@ -47,7 +47,7 @@
       }}</span>
     </div>
 
-    <div class="node-head">
+    <div class="node-head" @dblclick.stop="previewCollapsed && onPreviewDblClick()">
       <button
         type="button"
         class="collapse-tri-btn"
@@ -76,6 +76,35 @@
         >
           <LockIcon :locked="isLocked" :size="12" />
         </button>
+        <span
+          v-if="node.typeId === 'asset.novel' && isProcessingNode"
+          class="run-pill"
+          style="
+            background: rgba(168, 85, 247, 0.2);
+            color: #d8b4fe;
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            cursor: pointer;
+          "
+          @pointerdown.stop
+          @click.stop="onNovelBadgeClick"
+        >
+          Ch.{{ node.params.novelCurrentChapter || 1 }}/{{ node.params.novelTotalChapters || 800 }}
+        </span>
+        <span
+          v-if="node.typeId === 'asset.gameSystem'"
+          class="run-pill"
+          style="
+            background: rgba(56, 189, 248, 0.2);
+            color: #7dd3fc;
+            border: 1px solid rgba(56, 189, 248, 0.4);
+            cursor: pointer;
+          "
+          :title="gameSystemBadgeHint"
+          @pointerdown.stop
+          @click.stop="onGameSystemBadgeClick"
+        >
+          🕹️ GDD
+        </span>
         <span
           v-if="runStatus && runStatus !== 'idle' && runStatus !== 'skipped'"
           class="run-pill"
@@ -415,6 +444,11 @@
       <div class="instruction-panel-label">
         {{ t('graph.inspector.generate.instruction') }}
       </div>
+      <NovelChapterSerializerControls
+        v-if="instructionKind === 'novel'"
+        :host-id="hostId"
+        :node-id="node.id"
+      />
       <GraphInstructionMentionEditor
         v-model="instruction"
         :host-id="hostId"
@@ -590,6 +624,7 @@ import LockIcon from './icons/LockIcon.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
 import GraphInstructionEditorDialog from './GraphInstructionEditorDialog.vue'
+import NovelChapterSerializerControls from './NovelChapterSerializerControls.vue'
 import DecisionsQuestionsPanel from './DecisionsQuestionsPanel.vue'
 import InstructionModelSelect from './InstructionModelSelect.vue'
 import SpeechVoiceSelect from './SpeechVoiceSelect.vue'
@@ -632,6 +667,7 @@ import {
   VIDEO_LAST_FRAME_PORT_ID,
   GRAPH_OUT_ALL_PORT_ID,
   defaultGameSystemUserPrompt,
+  defaultNovelUserPrompt,
   defaultFrameAnimGenUserPrompt,
   defaultUiSplitUserPrompt,
   deductReservedImageSlots,
@@ -723,6 +759,7 @@ import { graphPreviewLoadScheduler } from '../features/media/previewLoadSchedule
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { useProjectStore } from '../stores/project'
+import { useWorkspaceStore } from '../stores/workspace'
 import {
   editorDiveKey,
   type EditorDiveNodeToolViewId,
@@ -734,6 +771,7 @@ import { requestOpenScriptCodeDialog } from '../features/graph/model/scriptNodeT
 
 const { t, te, locale, assetTypeLabel, graphTypeLabel } = useStudioI18n()
 const project = useProjectStore()
+const workspace = useWorkspaceStore()
 const graphScope = useGraphScope()
 const previewVisibility = inject(graphPreviewVisibilityKey, null)
 const editorDive = inject(editorDiveKey, null)
@@ -1037,6 +1075,8 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'modelTexture'
     case 'model.animation':
       return 'modelAnimation'
+    case 'asset.novel':
+      return isProcessingNode.value ? 'novel' : null
     case 'asset.screenplay':
       return isProcessingNode.value ? 'screenplay' : null
     case 'asset.gameSystem':
@@ -2138,6 +2178,9 @@ function resolvedNodeInstruction(): string {
   const stored = props.node.params.generateInstruction
   // 空字符串视为未填写，回落到类型默认（剧本/策划案/UI拆分/帧动画等）
   if (typeof stored === 'string' && stored.trim()) return stored
+  if (props.node.typeId === 'asset.novel') {
+    return defaultNovelUserPrompt(String(locale.value))
+  }
   if (props.node.typeId === 'asset.gameSystem') {
     return defaultGameSystemUserPrompt(String(locale.value))
   }
@@ -2174,7 +2217,29 @@ watch(instructionDialogOpen, (open) => {
   if (open) instructionDialogMounted.value = true
 })
 
-function openInstructionDialog(): void {
+async function openInstructionDialog(): Promise<void> {
+  const hostId = props.hostId?.trim()
+  if (hostId) {
+    if (props.node.typeId === 'asset.gameSystem' || props.node.assetType === 'gameSystem') {
+      const ok = await diveView(
+        { viewId: 'gameSystem.workbench', hostId, nodeId: props.node.id },
+        displayTitle.value
+      )
+      if (ok) return
+    } else if (props.node.typeId === 'asset.novel') {
+      const ok = await diveView(
+        { viewId: 'novel.workbench', hostId, nodeId: props.node.id },
+        displayTitle.value
+      )
+      if (ok) return
+    } else if (props.node.typeId === 'asset.screenplay') {
+      const ok = await diveView(
+        { viewId: 'screenplay.workbench', hostId, nodeId: props.node.id },
+        displayTitle.value
+      )
+      if (ok) return
+    }
+  }
   instructionDialogMounted.value = true
   instructionDialogOpen.value = true
 }
@@ -2631,7 +2696,8 @@ function onInPortDown(portId: string, e: PointerEvent): void {
 }
 
 async function diveView(meta: EditorDiveViewMeta, title?: string): Promise<boolean> {
-  if (!editorDive?.rootKey) return false
+  const rootKey = editorDive?.rootKey || workspace.activeDiveRootKey?.trim()
+  if (!rootKey) return false
   if (props.hostId) {
     try {
       await graphEditorHosts.flush(props.hostId)
@@ -2639,8 +2705,43 @@ async function diveView(meta: EditorDiveViewMeta, title?: string): Promise<boole
       console.error('[GraphNodeCard] flush before dive failed', err)
     }
   }
-  await editorDive.diveView(meta, title)
+  if (editorDive?.rootKey) {
+    await editorDive.diveView(meta, title)
+  } else {
+    workspace.diveIntoView(rootKey, meta, title || displayTitle.value)
+  }
   return true
+}
+
+const gameSystemBadgeHint = computed(
+  () =>
+    String(locale.value).toLowerCase().startsWith('en')
+      ? 'Click to enter Game System GDD Workbench (Dive)'
+      : '点击进入游戏系统策划案工作台 (Dive)' // cjk-ok
+)
+
+async function onNovelBadgeClick(): Promise<void> {
+  const hostId = props.hostId?.trim()
+  if (hostId) {
+    const ok = await diveView(
+      { viewId: 'novel.workbench', hostId, nodeId: props.node.id },
+      displayTitle.value
+    )
+    if (ok) return
+  }
+  instructionOpen.value = !instructionOpen.value
+}
+
+async function onGameSystemBadgeClick(): Promise<void> {
+  const hostId = props.hostId?.trim()
+  if (hostId) {
+    const ok = await diveView(
+      { viewId: 'gameSystem.workbench', hostId, nodeId: props.node.id },
+      displayTitle.value
+    )
+    if (ok) return
+  }
+  instructionOpen.value = !instructionOpen.value
 }
 
 async function diveNodeTool(
@@ -2990,6 +3091,18 @@ function onPreviewDblClick(): void {
       return
     }
 
+    // 小说生成节点：双击进入全屏多章节小说连载与数值记忆 Dive 工作台（无 dive 上下文时退回展开生成指令面板）
+    if (props.node.typeId === 'asset.novel' && isProcessingNode.value) {
+      const hostId = props.hostId?.trim()
+      if (hostId) {
+        const ok = await diveView(
+          { viewId: 'novel.workbench', hostId, nodeId: props.node.id },
+          title
+        )
+        if (ok) return
+      }
+    }
+
     // 剧本生成节点：双击进入全屏剧本与分集工作台（无 dive 上下文时退回展开生成指令面板）
     if (props.node.typeId === 'asset.screenplay' && isProcessingNode.value) {
       const hostId = props.hostId?.trim()
@@ -3002,7 +3115,24 @@ function onPreviewDblClick(): void {
       }
     }
 
-    // 生成剧本 / 策划案：双击展开生成指令面板（勿被正文预览抢成记事本）
+    // 策划案生成节点：双击进入全屏游戏系统策划案与 UI 原型工作台（无 dive 上下文时退回展开生成指令面板） // cjk-ok
+    if (props.node.typeId === 'asset.gameSystem' || props.node.assetType === 'gameSystem') {
+      const hostId = props.hostId?.trim()
+      if (hostId) {
+        const ok = await diveView(
+          { viewId: 'gameSystem.workbench', hostId, nodeId: props.node.id },
+          title
+        )
+        if (ok) return
+      }
+    }
+
+    // 生成小说：无 dive 上下文时双击退回展开生成指令面板 // cjk-ok
+    if (instructionKind.value === 'novel') {
+      instructionOpen.value = !instructionOpen.value
+      return
+    }
+    // 生成剧本 / 策划案：双击展开生成指令面板（勿被正文预览抢成记事本） // cjk-ok
     if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
       instructionOpen.value = !instructionOpen.value
       return

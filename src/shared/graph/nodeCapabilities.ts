@@ -28,6 +28,7 @@ import {
   defaultEmotionSystemPrompt,
   defaultEraseSystemPrompt,
   defaultExpandSystemPrompt,
+  defaultNovelSystemPrompt,
   defaultGameSystemSystemPrompt,
   defaultImageSystemPrompt,
   defaultLightingSystemPrompt,
@@ -126,8 +127,7 @@ export const TUTORIAL_RECORDING_USAGE_ZH =
   '文案三分法：title≤12 字；caption=完整一句；narration=口播（compose.steps 必带）。' +
   '**口播=画面（最高优先级，禁止「嘴上说选中/点击，实际没点」）**：' +
   'caption/narration 写到的每个操作，下一步工具必须做出**可见**动作。' +
-  '说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image；十合一图像处理：graph-ctx-group-imageEdit → graph-ctx-type-image-process；人像精修/多视角/打光：graph-ctx-group-imageRefine → graph-ctx-type-image-portrait / graph-ctx-type-image-multiAngle / graph-ctx-type-image-lighting；广告变体矩阵：graph-ctx-group-ad → graph-ctx-type-image-adVariants；视频语义：graph-ctx-group-videoSemantic → graph-ctx-type-semantic-analyze；动效与2D舞台：graph-ctx-group-motionFx → graph-ctx-type-anim-2d / graph-ctx-type-stage-2d / graph-ctx-type-image-align（禁止静默 node_upsert）；' +
-  '**影视类要多一层**：graph-ctx-group-filmTv → graph-ctx-group-filmPre（前期）/ filmArt（美术）/ filmShoot（拍摄）→ graph-ctx-type-film-workbench 或 graph-ctx-type-film-shot（第二层不开，type 项根本不在 DOM 里）；' +
+  '说「右键添加节点」→ step(graph-canvas, doContextMenu:true) → step(graph-ctx-group-{分组}, doClick) → step(graph-ctx-type-{typeId点改横杠}, doClick)；例图片：graph-ctx-group-image → graph-ctx-type-asset-image；十合一图像处理：graph-ctx-group-imageEdit → graph-ctx-type-image-process；人像精修/多视角/打光：graph-ctx-group-imageRefine → graph-ctx-type-image-portrait / graph-ctx-type-image-multiAngle / graph-ctx-type-image-lighting；广告变体矩阵：graph-ctx-group-ad → graph-ctx-type-image-adVariants；视频语义：graph-ctx-group-videoSemantic → graph-ctx-type-semantic-analyze；动效与2D舞台：graph-ctx-group-motionFx → graph-ctx-type-anim-2d / graph-ctx-type-stage-2d / graph-ctx-type-image-align；影视：graph-ctx-group-filmTv → graph-ctx-type-film-workbench / graph-ctx-type-film-shot / graph-ctx-type-asset-screenplay（禁止静默 node_upsert）；' +
   '说「选中节点」→ graph_edit node_select（编辑器没开时它会自己打开，保证画布上真的高亮）；' +
   '说「改提示词/参数」→ 指令面板节点：doDblClick → fillText(graph-instruction-input) → 可选 graph-model-select / graph-gen-params；**禁止**静默 node_update；' +
   '说「打开记事本/正文」→ doDblClick → 高亮 graph-notepad，编辑用 fillText(graph-notepad-input)；' +
@@ -149,8 +149,7 @@ export const TUTORIAL_RECORDING_USAGE_EN =
   'Outline: if the topic is clear, skip ask_user; otherwise ask once then shoot. ' +
   'Three fields: title ≤12 chars; caption = full sentence; narration required in compose.steps. ' +
   'SAY=SHOW (critical): every named action must be a visible tool action. ' +
-  'Right-click add: step(graph-canvas, doContextMenu) → graph-ctx-group-{group} → graph-ctx-type-{typeId with dots→dashes}; e.g. graph-ctx-group-image → graph-ctx-type-asset-image; 10-in-1 image process: graph-ctx-group-imageEdit → graph-ctx-type-image-process; portrait/multiAngle/lighting: graph-ctx-group-imageRefine → graph-ctx-type-image-portrait / graph-ctx-type-image-multiAngle / graph-ctx-type-image-lighting; ad matrix: graph-ctx-group-ad → graph-ctx-type-image-adVariants; semantic video: graph-ctx-group-videoSemantic → graph-ctx-type-semantic-analyze; motion/2D stage: graph-ctx-group-motionFx → graph-ctx-type-anim-2d / graph-ctx-type-stage-2d / graph-ctx-type-image-align. Never silent node_upsert. ' +
-  'Film/TV needs one more level: graph-ctx-group-filmTv → graph-ctx-group-filmPre / filmArt / filmShoot → graph-ctx-type-film-workbench or graph-ctx-type-film-shot etc. ' +
+  'Right-click add: step(graph-canvas, doContextMenu) → graph-ctx-group-{group} → graph-ctx-type-{typeId with dots→dashes}; e.g. graph-ctx-group-image → graph-ctx-type-asset-image; 10-in-1 image process: graph-ctx-group-imageEdit → graph-ctx-type-image-process; portrait/multiAngle/lighting: graph-ctx-group-imageRefine → graph-ctx-type-image-portrait / graph-ctx-type-image-multiAngle / graph-ctx-type-image-lighting; ad matrix: graph-ctx-group-ad → graph-ctx-type-image-adVariants; semantic video: graph-ctx-group-videoSemantic → graph-ctx-type-semantic-analyze; motion/2D stage: graph-ctx-group-motionFx → graph-ctx-type-anim-2d / graph-ctx-type-stage-2d / graph-ctx-type-image-align; Film/TV: graph-ctx-group-filmTv → graph-ctx-type-film-workbench / graph-ctx-type-film-shot / graph-ctx-type-asset-screenplay. Never silent node_upsert. ' +
   'Select: graph_edit node_select (it opens the editor if needed, so the canvas really highlights). ' +
   'Edit prompt/params: doDblClick → fillText graph-instruction-input (+ optional graph-model-select / graph-gen-params). Never silent node_update. ' +
   'Notepad/text: doDblClick → graph-notepad / fillText graph-notepad-input. ' +
@@ -630,6 +629,12 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
     usageZh: WORLD_SPATIAL_USAGE_ZH,
     usageEn: WORLD_SPATIAL_USAGE_EN
   },
+  fromNodeSystemDefault('asset.novel', '创建小说', 'Novel', defaultNovelSystemPrompt, {
+    usageZh:
+      '对应画布节点 `asset.novel`（创建小说节点）：可将上游 `game.economy`（游戏经济系统/角色成长数值体系 `out-text`）直接连入 `in` 端口，根据角色成长乘区公式、Lv.1~80 突破阶梯、反派膨胀卡点墙与最优打脸底牌序列创作多章节精品小说（含人物档案与第1~N章完整剧情），再由 `asset.novel` (`out`:text) 连入下游 `asset.screenplay` (`in`:text) 改编为标准分集拍摄剧本。',
+    usageEn:
+      'Maps to canvas node `asset.novel` (Novel generator): connect `game.economy` (`out-text`) into `in` to write a multi-chapter web novel / short-drama source novel driven by character progression multipliers, breakthrough milestones, climax walls, and optimal trump-card sequences, then wire `asset.novel` (`out`:text) into `asset.screenplay` (`in`:text) to adapt the novel into a production-ready multi-episode screenplay.'
+  }),
   fromNodeSystemDefault('asset.screenplay', '剧本', 'Screenplay', defaultScreenplaySystemPrompt, {
     usageZh:
       '对应画布节点 `asset.screenplay`（剧本生成节点）：既可在内置剧本工作台（`params.text`）直接编写成稿剧本或套用影视模板作为 `film.workbench` 的上游输入，也可设 `params.generateInstruction` 让文本模型按专业影视剧本格式创作、续写或改写剧本，经 `out`:text 输出。若仅需纯文本透传，可使用 `text.plain` 节点。',

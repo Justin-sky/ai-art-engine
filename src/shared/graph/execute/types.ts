@@ -724,6 +724,10 @@ export interface NodeExecuteContext {
     voiceProfile?: string
     /** 声音克隆参考音频（工程内相对路径或 http(s) URL） */
     referenceAudio?: string
+    /** 语速倍率（0.25 ~ 4.0） */
+    speed?: number
+    /** 语气/情绪控制指令（OpenAI gpt-4o-mini-tts instructions） */
+    instructions?: string
     name?: string
     /** 声音设计参考图（data URL 或 http(s)） */
     images?: string[]
@@ -1156,6 +1160,15 @@ export interface NodeExecuteContext {
     encodeRgbaPng: (img: import('../uiPreciseSplit/types').RgbaImage) => Promise<string>
     /** 本地离线 OCR（Windows.Media.Ocr / Vision / tesseract）；未注入时只靠 VLM 读字 */
     recognizeImageText?: (dataUrl: string) => Promise<import('../uiControlSpec').LocalOcrTextBox[]>
+    /**
+     * 本地 SAM 2.1 点 / 框提示实例分割（像素级遮罩）；未安装 SAM 2.1 时返回 null，
+     * 流水线自动回退到本地多候选分割。
+     */
+    segmentSam2?: (
+      req: import('../uiPreciseSplit/types').PreciseSplitSam2Request
+    ) => Promise<import('../uiPreciseSplit/types').PreciseSplitSam2Candidate[] | null>
+    /** SAM 2.1 是否已安装且推理进程就绪 */
+    hasSam2?: () => Promise<boolean>
   }
   /** 漫画页：分镜格 + 气泡合成一张 PNG（浏览器 canvas）。 */
   composeComicPageImage?: (input: {

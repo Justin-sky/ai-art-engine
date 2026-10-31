@@ -24,6 +24,8 @@ import {
   type YoloInferenceInput,
   type YoloModelInfo,
   type YoloPoseResult,
+  type YoloSam2PromptInput,
+  type YoloSam2PromptResult,
   type YoloSegmentResult,
   type YoloStatus,
   type YoloTaskKind
@@ -56,6 +58,7 @@ import type {
   YoloWorkerResponse,
   YoloWorkerStatus
 } from './protocol'
+import type { Sam2WorkerParams } from './sam2Infer'
 
 /** 模型目录下的内置模型安装清单（隐藏文件，不参与模型扫描） */
 const BUNDLED_MANIFEST = '.bundled-models.json'
@@ -490,6 +493,41 @@ class YoloService {
       files.push({ id, kind: kindOfModelId(id), path: join(dir, name), sizeMb })
     }
     return files
+  }
+
+  /**
+   * SAM 2.1 点 / 框提示分割（UI 精准拆层的像素级实例遮罩）。
+   * 档位挑选：显式 modelId 优先；否则 base_plus → large → small → tiny（精度与速度折中）。
+   * 未安装任何 SAM 2.1 时直接抛错，调用方按「可选能力」回退本地分割。
+   */
+  async sam2(input: YoloSam2PromptInput): Promise<YoloSam2PromptResult> {
+    await this.ensureStarted()
+    const installed = this.scanSam2Models()
+    if (!installed.length) {
+      throw new Error(
+        `SAM2: no SAM 2.1 ONNX installed in ${join(this.modelDir(), SAM2_SUBDIR)}; download one in Settings → Local models`
+      )
+    }
+    const preference = [
+      'sam2.1_hiera_base_plus',
+      'sam2.1_hiera_large',
+      'sam2.1_hiera_small',
+      'sam2.1_hiera_tiny'
+    ]
+    const chosen =
+      (input.modelId ? installed.find((m) => m.id === input.modelId) : undefined) ??
+      preference.map((id) => installed.find((m) => m.id === id)).find(Boolean) ??
+      installed[0]!
+    const dir = join(this.modelDir(), SAM2_SUBDIR)
+    const names = sam2OnnxFileNames(chosen.id)
+    const params: Sam2WorkerParams = {
+      ...input,
+      image: await prepareWorkerImageInput(input.image),
+      encoderPath: join(dir, names.encoder),
+      decoderPath: join(dir, names.decoder),
+      modelId: chosen.id
+    }
+    return (await this.call('sam2', params, YOLO_INFER_TIMEOUT_MS)) as YoloSam2PromptResult
   }
 
   /** SAM 2.1：encoder 与 decoder 都在 `<模型目录>/sam2/` 时才算已安装，不进入 YOLO 自动选型。 */

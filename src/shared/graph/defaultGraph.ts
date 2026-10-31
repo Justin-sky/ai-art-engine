@@ -86,6 +86,13 @@ export const DEFAULT_GRAPH_TEMPLATES: Record<
   workflow: ({ assetType }) => {
     const media = mediaProcessingTemplate(assetType)
     if (media) return media
+    if (assetType === 'gameSystem') {
+      return {
+        nodes: [{ key: 'gen', typeId: 'asset.gameSystem', x: 240, y: 160 }],
+        edges: [],
+        inputLinkTo: 'gen'
+      }
+    }
     // 可玩 HTML 资产不再有默认内图：游戏由 AI 对话面板生成（MCP gameplay_*），
     // 资产只带 genParams（工程目录 + 单文件路径）
     return null

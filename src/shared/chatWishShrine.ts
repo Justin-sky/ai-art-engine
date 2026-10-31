@@ -314,14 +314,19 @@ function randInt(rng: () => number, min: number, max: number): number {
 /**
  * 像游戏伤害数字一样随机掷出一次欧气增量。
  * - 被动（祈愿进行中自动飘）：大多 1–99，约 12% 大额 100–520，约 3% 暴击 666–2333
- * - 点击祈福（boost）：暴击率提升到约 28%，暴击 888–9999，普通 20–199
+ * - 点击祈福（boost）：暴击率提升到约 28%（随连击 combo 最高提升至 68%），暴击 888–9999，普通 20–199
  */
-export function rollLuckGain(options: { boost?: boolean; rng?: () => number } = {}): WishLuckRoll {
+export function rollLuckGain(
+  options: { boost?: boolean; combo?: number; rng?: () => number } = {}
+): WishLuckRoll {
   const rng = options.rng ?? Math.random
   const r = rng()
   if (options.boost) {
-    if (r < 0.28) return { value: randInt(rng, 888, 9999), tier: 'crit' }
-    if (r < 0.6) return { value: randInt(rng, 200, 777), tier: 'big' }
+    const comboBonus = Math.min(0.4, Math.max(0, (options.combo ?? 0) - 1) * 0.06)
+    const critChance = 0.28 + comboBonus
+    const bigChance = Math.min(0.88, 0.6 + comboBonus * 0.5)
+    if (r < critChance) return { value: randInt(rng, 888, 9999), tier: 'crit' }
+    if (r < bigChance) return { value: randInt(rng, 200, 777), tier: 'big' }
     return { value: randInt(rng, 20, 199), tier: 'normal' }
   }
   if (r < 0.03) return { value: randInt(rng, 666, 2333), tier: 'crit' }
@@ -337,4 +342,362 @@ export function formatLuckTotal(total: number, isEn?: boolean): string {
     return `${(n / 10000).toFixed(n >= 100000 ? 0 : 1)}w`
   }
   return n.toLocaleString('en-US')
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 多性格祈福仙子系统（Fairy Personas · 丰富表情 · 动态动作 · 会话专属）
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type WishFairyId = 'miko' | 'astral' | 'neko' | 'muse'
+
+export type WishFairyPose = 'pray' | 'wave' | 'cheer' | 'peek' | 'spin' | 'wand'
+
+export type WishFairyExpression =
+  'normal' | 'wink' | 'star' | 'heart' | 'happy' | 'surprised' | 'smug' | 'teary'
+
+export interface WishFairyPokeLine {
+  zh: string
+  en: string
+  expression: WishFairyExpression
+  pose: WishFairyPose
+}
+
+export interface WishFairyTheme {
+  hairTop: string
+  hairMid: string
+  hairBottom: string
+  hairShadeTop: string
+  hairShadeBottom: string
+  irisTop: string
+  irisMid: string
+  irisBottom: string
+  irisHighlight: string
+  outfitTop: string
+  outfitBottom: string
+  ribbonStart: string
+  ribbonEnd: string
+  accentColor: string
+  wingColor: string
+  auraGlow: string
+}
+
+export interface WishFairyPersona {
+  id: WishFairyId
+  nameZh: string
+  nameEn: string
+  titleZh: string
+  titleEn: string
+  personalityZh: string
+  personalityEn: string
+  emoji: string
+  affinityCategory: WishChantCategory
+  theme: WishFairyTheme
+  burstSymbols: readonly string[]
+  pokeLines: readonly WishFairyPokeLine[]
+}
+
+export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
+  {
+    id: 'miko',
+    nameZh: '小祈', // cjk-ok
+    nameEn: 'Koharu',
+    titleZh: '🌸 绯樱巫女 · 小祈', // cjk-ok
+    titleEn: '🌸 Sakura Miko · Koharu',
+    personalityZh: '元气软萌 · 锦鲤附体', // cjk-ok
+    personalityEn: 'Cheerful · Lucky Koi',
+    emoji: '🌸',
+    affinityCategory: 'general',
+    theme: {
+      hairTop: '#FFB7DD',
+      hairMid: '#F472B6',
+      hairBottom: '#A855F7',
+      hairShadeTop: '#EC4899',
+      hairShadeBottom: '#7E22CE',
+      irisTop: '#4A044E',
+      irisMid: '#DB2777',
+      irisBottom: '#F472B6',
+      irisHighlight: '#FCE7F3',
+      outfitTop: '#FFFFFF',
+      outfitBottom: '#FFE4E6',
+      ribbonStart: '#FB7185',
+      ribbonEnd: '#E11D48',
+      accentColor: '#FACC15',
+      wingColor: '#F9A8D4',
+      auraGlow: 'rgba(244, 114, 182, 0.42)'
+    },
+    burstSymbols: ['🌸', '🔔', '✦', '♥', '⛩️'],
+    pokeLines: [
+      {
+        zh: '🔔 叮铃铃~ 摇响神铃，欧气翻倍喵！', // cjk-ok
+        en: '🔔 Ring-a-ling! Double luck incoming!',
+        expression: 'wink',
+        pose: 'wave'
+      },
+      {
+        zh: '🌸 诶嘿~ 被你戳中幸运开关啦！', // cjk-ok
+        en: '🌸 Ehehe~ You hit my lucky switch!',
+        expression: 'heart',
+        pose: 'cheer'
+      },
+      {
+        zh: '✨ 转个圈圈~ Bug 统统退散！', // cjk-ok
+        en: '✨ Twirl around~ All bugs vanish!',
+        expression: 'happy',
+        pose: 'spin'
+      },
+      {
+        zh: '😳 呜哇！连戳摸头会害羞的啦~', // cjk-ok
+        en: '😳 Waa! Rapid headpats make me blush~',
+        expression: 'surprised',
+        pose: 'peek'
+      }
+    ]
+  },
+  {
+    id: 'astral',
+    nameZh: '星奈', // cjk-ok
+    nameEn: 'Hoshina',
+    titleZh: '⭐ 星穹魔女 · 星奈', // cjk-ok
+    titleEn: '⭐ Astral Witch · Hoshina',
+    personalityZh: '古灵精怪 · 构图天才', // cjk-ok
+    personalityEn: 'Playful Genius · Art Muse',
+    emoji: '🌟',
+    affinityCategory: 'image',
+    theme: {
+      hairTop: '#93C5FD',
+      hairMid: '#818CF8',
+      hairBottom: '#C084FC',
+      hairShadeTop: '#6366F1',
+      hairShadeBottom: '#4338CA',
+      irisTop: '#1E1B4B',
+      irisMid: '#6366F1',
+      irisBottom: '#FBBF24',
+      irisHighlight: '#FEF08A',
+      outfitTop: '#EDE9FE',
+      outfitBottom: '#C4B5FD',
+      ribbonStart: '#8B5CF6',
+      ribbonEnd: '#4F46E5',
+      accentColor: '#FDE047',
+      wingColor: '#A5B4FC',
+      auraGlow: 'rgba(129, 140, 248, 0.45)'
+    },
+    burstSymbols: ['🌟', '🌙', '🔮', '✨', '🎨'],
+    pokeLines: [
+      {
+        zh: '🌟 哼哼~ 本魔女挥杖，这张必出神图！', // cjk-ok
+        en: '🌟 Hehe~ With my wand, this art will be god-tier!',
+        expression: 'smug',
+        pose: 'wand'
+      },
+      {
+        zh: '🌙 别戳我魔女帽上的小星星呀~', // cjk-ok
+        en: '🌙 Hey! Dont poke the star on my witch hat~',
+        expression: 'surprised',
+        pose: 'peek'
+      },
+      {
+        zh: '🔮 星轨锁定！审美与细节 200% 拉满！', // cjk-ok
+        en: '🔮 Starlight locked! 200% aesthetics & detail!',
+        expression: 'star',
+        pose: 'spin'
+      },
+      {
+        zh: '💫 既然你这么诚心点我，就送你一道彩虹光！', // cjk-ok
+        en: '💫 Since you clicked me, heres a rainbow blessing!',
+        expression: 'wink',
+        pose: 'cheer'
+      }
+    ]
+  },
+  {
+    id: 'neko',
+    nameZh: '奈奈', // cjk-ok
+    nameEn: 'Nana',
+    titleZh: '🐾 赛博猫娘 · 奈奈', // cjk-ok
+    titleEn: '🐾 Cyber Neko · Nana',
+    personalityZh: '调皮极客 · 招财省钱', // cjk-ok
+    personalityEn: 'Playful Geek · Token Saver',
+    emoji: '🐾',
+    affinityCategory: 'code3d',
+    theme: {
+      hairTop: '#6EE7B7',
+      hairMid: '#2DD4BF',
+      hairBottom: '#0EA5E9',
+      hairShadeTop: '#14B8A6',
+      hairShadeBottom: '#0369A1',
+      irisTop: '#064E3B',
+      irisMid: '#10B981',
+      irisBottom: '#34D399',
+      irisHighlight: '#D1FAE5',
+      outfitTop: '#ECFEFF',
+      outfitBottom: '#BAE6FD',
+      ribbonStart: '#10B981',
+      ribbonEnd: '#0284C7',
+      accentColor: '#38BDF8',
+      wingColor: '#5EEAD4',
+      auraGlow: 'rgba(45, 212, 191, 0.44)'
+    },
+    burstSymbols: ['🐾', '🪙', '⚡', '🐟', '💎'],
+    pokeLines: [
+      {
+        zh: '🐾 喵呜！省下的 Token 记得给奈奈买小鱼干！', // cjk-ok
+        en: '🐾 Meow! Spend saved tokens on dried fish for Nana!',
+        expression: 'happy',
+        pose: 'wave'
+      },
+      {
+        zh: '⚡ 猫爪加速拍键盘~ 编译一把过喵！', // cjk-ok
+        en: '⚡ Neko paws turbo-typing~ First-try compile!',
+        expression: 'smug',
+        pose: 'cheer'
+      },
+      {
+        zh: '😻 呼噜噜…挠下巴好舒服，暴击率飙升喵！', // cjk-ok
+        en: '😻 Purrrr... Chin scratches boost crit rate!',
+        expression: 'heart',
+        pose: 'spin'
+      },
+      {
+        zh: '🪙 招财猫耳抖一抖，零报错零返工！', // cjk-ok
+        en: '🪙 Lucky neko ears twitching: zero bugs, zero rework!',
+        expression: 'wink',
+        pose: 'wand'
+      }
+    ]
+  },
+  {
+    id: 'muse',
+    nameZh: '露露', // cjk-ok
+    nameEn: 'Lulu',
+    titleZh: '🍀 云端妖精 · 露露', // cjk-ok
+    titleEn: '🍀 Cloud Fairy · Lulu',
+    personalityZh: '温柔治愈 · 天生欧皇', // cjk-ok
+    personalityEn: 'Gentle Healer · Born Lucky',
+    emoji: '🍀',
+    affinityCategory: 'video',
+    theme: {
+      hairTop: '#FDE68A',
+      hairMid: '#FBBF24',
+      hairBottom: '#FB923C',
+      hairShadeTop: '#F59E0B',
+      hairShadeBottom: '#EA580C',
+      irisTop: '#78350F',
+      irisMid: '#D97706',
+      irisBottom: '#34D399',
+      irisHighlight: '#FEF3C7',
+      outfitTop: '#FFFBEB',
+      outfitBottom: '#FDE68A',
+      ribbonStart: '#34D399',
+      ribbonEnd: '#059669',
+      accentColor: '#A7F3D0',
+      wingColor: '#FDE047',
+      auraGlow: 'rgba(251, 191, 36, 0.44)'
+    },
+    burstSymbols: ['🍀', '🎬', '♪', '💛', '✨'],
+    pokeLines: [
+      {
+        zh: '🍀 送你一朵四叶草~ 帧率丝滑不卡顿哟！', // cjk-ok
+        en: '🍀 A four-leaf clover for buttery-smooth frames!',
+        expression: 'happy',
+        pose: 'wand'
+      },
+      {
+        zh: '💛 嘿嘿，被你摸头啦，好运值 +999！', // cjk-ok
+        en: '💛 Hehe, headpat received! Luck +999!',
+        expression: 'heart',
+        pose: 'cheer'
+      },
+      {
+        zh: '♪ 啦啦啦~ 音画卡点完美对齐！', // cjk-ok
+        en: '♪ La-la-la~ Audio & visuals syncing perfectly!',
+        expression: 'wink',
+        pose: 'spin'
+      },
+      {
+        zh: '✨ 哇！你这一指头直接戳出金色传说啦！', // cjk-ok
+        en: '✨ Wow! Your poke triggered a golden legend!',
+        expression: 'star',
+        pose: 'wave'
+      }
+    ]
+  }
+] as const
+
+export const WISH_FAIRY_MAP: Readonly<Record<WishFairyId, WishFairyPersona>> = {
+  miko: WISH_FAIRY_PERSONAS[0]!,
+  astral: WISH_FAIRY_PERSONAS[1]!,
+  neko: WISH_FAIRY_PERSONAS[2]!,
+  muse: WISH_FAIRY_PERSONAS[3]!
+}
+
+function hashSessionKey(input: string): number {
+  let h = 2166136261
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return Math.abs(h >>> 0)
+}
+
+/**
+ * 根据当前会话（sessionId / sessionTitle / promptText）选择对应的祈福仙子：
+ * - 若传入有效的 preferredId（用户手动切换），优先使用；
+ * - 若有 sessionId，基于 sessionId 做确定性哈希分流，确保不同会话自动拥有不同性格的仙子且同一会话内稳定；
+ * - 若无 sessionId，则按当前任务意图（生图→星奈、视频→露露、代码3D→奈奈、通用→小祈）自动匹配。
+ */
+export function selectWishFairyForSession(options: {
+  sessionId?: string | null
+  sessionTitle?: string | null
+  promptText?: string | null
+  preferredId?: WishFairyId | null
+}): WishFairyPersona {
+  if (options.preferredId && options.preferredId in WISH_FAIRY_MAP) {
+    return WISH_FAIRY_MAP[options.preferredId]
+  }
+  const sid = (options.sessionId ?? '').trim()
+  if (sid) {
+    const idx = hashSessionKey(sid) % WISH_FAIRY_PERSONAS.length
+    return WISH_FAIRY_PERSONAS[idx]!
+  }
+  const combinedText = `${options.sessionTitle ?? ''} ${options.promptText ?? ''}`.trim()
+  const cat = detectWishPromptCategory(combinedText)
+  if (cat === 'image') return WISH_FAIRY_MAP.astral
+  if (cat === 'video') return WISH_FAIRY_MAP.muse
+  if (cat === 'code3d') return WISH_FAIRY_MAP.neko
+  return WISH_FAIRY_MAP.miko
+}
+
+/** 切换到下一位祈福仙子 */
+export function nextWishFairyId(currentId: WishFairyId): WishFairyId {
+  const idx = WISH_FAIRY_PERSONAS.findIndex((p) => p.id === currentId)
+  const nextIdx = (idx + 1) % WISH_FAIRY_PERSONAS.length
+  return WISH_FAIRY_PERSONAS[nextIdx]!.id
+}
+
+/** 点击仙子时获取她的专属互动台词、表情与动作姿态 */
+export function pickFairyPokeReaction(options: {
+  fairyId: WishFairyId
+  stepIndex: number
+  combo?: number
+  isEn?: boolean
+}): {
+  text: string
+  expression: WishFairyExpression
+  pose: WishFairyPose
+  burstSymbols: readonly string[]
+} {
+  const persona = WISH_FAIRY_MAP[options.fairyId] ?? WISH_FAIRY_PERSONAS[0]!
+  const idx = Math.max(0, Math.floor(options.stepIndex)) % persona.pokeLines.length
+  const line = persona.pokeLines[idx]!
+  const combo = options.combo ?? 1
+  // 连击高潮（combo >= 4）时必定露出星星眼或爱心眼并转圈欢呼
+  const expression: WishFairyExpression =
+    combo >= 5 ? 'star' : combo >= 3 ? 'heart' : line.expression
+  const pose: WishFairyPose = combo >= 4 ? 'spin' : line.pose
+  return {
+    text: options.isEn ? line.en : line.zh,
+    expression,
+    pose,
+    burstSymbols: persona.burstSymbols
+  }
 }

@@ -1912,38 +1912,50 @@ export async function executeLayerSplitNode(
         })
         const normalizedRes =
           prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
-        const [result, vlmHints] = await Promise.all([
-          ctx.generateImage({
+        const vlmHintsPromise = detectUiControlsViaVlmIfAvailable(
+          ctx,
+          sourceUrl,
+          effectiveUserPrompt,
+          sourceTitle,
+          prev.canvasWidth,
+          prev.canvasHeight
+        )
+        let result: Awaited<ReturnType<NonNullable<NodeExecuteContext['generateImage']>>> | null =
+          null
+        try {
+          result = await ctx.generateImage({
             prompt: inpaintPrompt,
             model,
             providerInstanceId,
             resolution: normalizedRes,
             inputReferences: [sourceUrl]
-          }),
-          detectUiControlsViaVlmIfAvailable(
-            ctx,
-            sourceUrl,
-            effectiveUserPrompt,
-            sourceTitle,
-            prev.canvasWidth,
-            prev.canvasHeight
+          })
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
+          if (!ctx.decomposeImageUiLayers) throw err
+          ctx.log?.(
+            `[layer-split] ai-inpaint-slice generateImage failed (${String((err as Error)?.message ?? err)}), falling back to local UI decomposition`,
+            'warn'
           )
-        ])
+        }
+        const vlmHints = await vlmHintsPromise
         if (ctx.signal?.aborted) {
           throw new DOMException('Aborted', 'AbortError')
         }
-        const cleanBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
-        if (ctx.decomposeImageUiLayers && cleanBaseUrl) {
-          const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
+        const cleanBaseUrl = result?.layers?.[0]?.url?.trim() || result?.images?.[0]?.trim() || ''
+        if (ctx.decomposeImageUiLayers && (!result || cleanBaseUrl)) {
+          const safeBaseDataUrl = cleanBaseUrl
+            ? await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
+            : undefined
           const rawApiLayerHints = extractApiLayerHintsFromResult(
-            result.layers,
+            result?.layers,
             prev.canvasWidth || 1024,
             prev.canvasHeight || 1024
           )
           const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
           const decomposed = await ctx.decomposeImageUiLayers({
             sourceDataUrl: sourceUrl,
-            cleanBaseDataUrl: safeBaseDataUrl,
+            ...(safeBaseDataUrl ? { cleanBaseDataUrl: safeBaseDataUrl } : {}),
             ...(apiLayerHints.length ? { apiLayerHints } : {})
           })
           mapped = layersFromUiWidgetDecomposition(
@@ -1951,9 +1963,9 @@ export async function executeLayerSplitNode(
             stamp,
             decomposed,
             sourceUrl,
-            safeBaseDataUrl || cleanBaseUrl
+            safeBaseDataUrl || cleanBaseUrl || undefined
           )
-        } else if (result.layers?.length && result.layers.length >= 2) {
+        } else if (result?.layers?.length && result.layers.length >= 2) {
           mapped = layersFromApiResult(ctx, stamp, result, {
             width: prev.canvasWidth,
             height: prev.canvasHeight
@@ -1966,7 +1978,7 @@ export async function executeLayerSplitNode(
             ctx,
             stamp,
             {
-              images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
+              images: [cleanBaseUrl, ...(result?.images?.slice(1) ?? []), sourceUrl]
             },
             {
               width: prev.canvasWidth || 1024,

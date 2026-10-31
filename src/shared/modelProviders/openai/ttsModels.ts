@@ -42,6 +42,12 @@ export function isKnownOpenAiTtsModel(modelId: string): boolean {
   return data.models.some((model) => model.id === id)
 }
 
+/** 该 TTS 模型是否支持 OpenAI `instructions` 语气/情绪/风格控制指令（gpt-4o-mini-tts 系列） */
+export function supportsOpenAiTtsInstructions(modelId: string): boolean {
+  const id = modelId.trim().replace(/^(?:openai|models)\//i, '')
+  return /^gpt-4o.*tts/i.test(id)
+}
+
 /**
  * 已知「不接受 voice 参数」的语音模型。
  *

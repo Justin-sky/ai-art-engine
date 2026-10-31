@@ -156,6 +156,32 @@ export interface YoloModelInfo {
   sizeMb: number
 }
 
+/**
+ * SAM 2.1 点 / 框提示分割入参（交互式实例分割，供 UI 精准拆层等使用）。
+ * 坐标均为输入图像的像素坐标。
+ */
+export interface YoloSam2PromptInput {
+  image: YoloImageInput
+  /** 框提示（像素）：左上 x0,y0 / 右下 x1,y1 */
+  box?: { x0: number; y0: number; x1: number; y1: number }
+  /** 点提示：label 1 = 前景，0 = 背景 */
+  points?: Array<{ x: number; y: number; label: 0 | 1 }>
+  /** 指定 SAM 2.1 模型 id（如 sam2.1_hiera_base_plus）；缺省自动挑选已安装的最佳档位 */
+  modelId?: string
+  /** 同一张图多次提示时的图像嵌入缓存键（缺省按像素指纹计算） */
+  cacheKey?: string
+}
+
+/** SAM 2.1 分割结果：多候选掩码（与输入图像同尺寸的前景概率 0..255）+ 预测 IoU 分 */
+export interface YoloSam2PromptResult {
+  width: number
+  height: number
+  masks: Array<{ width: number; height: number; data: Uint8Array }>
+  scores: number[]
+  modelId: string
+  inferenceMs: number
+}
+
 /** 推理后端：Windows DirectML (`dml`) / NVIDIA CUDA (`cuda`) / Apple CoreML (`coreml`) / WebGPU / CPU */
 export type YoloBackend = 'dml' | 'cuda' | 'coreml' | 'webgpu' | 'cpu'
 

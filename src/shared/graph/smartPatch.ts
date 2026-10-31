@@ -67,6 +67,12 @@ import {
   type MxTemplateId
 } from '../gameAssets/machinationsV2'
 import { createMxWorkbenchPreset, MX_WORKBENCH_PRESETS } from '../gameAssets/gameNumericalWorkbench'
+import { NOVEL_GENRE_PROFILES, resolveNovelGenreProfile } from '../gameAssets/novelGenreProfiles'
+import {
+  GAME_SYSTEM_ARCHETYPES,
+  resolveGameSystemArchetype,
+  synthesizeGameSystemDocOffline
+} from '../gameAssets/gameSystemDesignBridge'
 import type { GraphNode, GraphNodeParams } from './types'
 
 /** 常见中文/口语键名到标准属性名的语义别名映射 */
@@ -176,6 +182,40 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   diagramJson: 'gameEconomyDiagramJson',
   diagram: 'gameEconomyDiagramJson',
   economyPreset: 'gameEconomyPreset',
+  genre: 'novelGenre',
+  流派: 'novelGenre', // cjk-ok
+  题材: 'novelGenre', // cjk-ok
+  小说流派: 'novelGenre', // cjk-ok
+  currentChapter: 'novelCurrentChapter',
+  当前章: 'novelCurrentChapter', // cjk-ok
+  当前章节: 'novelCurrentChapter', // cjk-ok
+  totalChapters: 'novelTotalChapters',
+  总章数: 'novelTotalChapters', // cjk-ok
+  总章节: 'novelTotalChapters', // cjk-ok
+  targetWords: 'novelTargetWords',
+  单章字数: 'novelTargetWords', // cjk-ok
+  目标字数: 'novelTargetWords', // cjk-ok
+  worldBible: 'novelWorldBible',
+  世界观: 'novelWorldBible', // cjk-ok
+  世界观宪法: 'novelWorldBible', // cjk-ok
+  stateLedger: 'novelStateLedger',
+  状态台账: 'novelStateLedger', // cjk-ok
+  characterRoster: 'novelCharacterRosterJson',
+  人物名录: 'novelCharacterRosterJson', // cjk-ok
+  foreshadowing: 'novelForeshadowingJson',
+  伏笔账本: 'novelForeshadowingJson', // cjk-ok
+  chapterHistory: 'novelChapterHistoryJson',
+  章节历史: 'novelChapterHistoryJson', // cjk-ok
+  customStages: 'novelCustomStages',
+  customAxisProtagonist: 'novelCustomAxisProtagonist',
+  customAxisAntagonist: 'novelCustomAxisAntagonist',
+  customUnlockTerm: 'novelCustomUnlockTerm',
+  archetype: 'gameSystemArchetype',
+  系统原型: 'gameSystemArchetype', // cjk-ok
+  策划模板: 'gameSystemArchetype', // cjk-ok
+  系统模板: 'gameSystemArchetype', // cjk-ok
+  targetAspect: 'gameSystemTargetAspect',
+  目标画幅: 'gameSystemTargetAspect', // cjk-ok
   previzVideoRef: 'filmRenderPrevizVideoRef',
   previz_video_ref: 'filmRenderPrevizVideoRef',
   usePrevizVideo: 'filmRenderPrevizVideoRef',
@@ -554,6 +594,25 @@ function unmarshalJsonStringField(key: string, currentVal: unknown): unknown {
     }
     return currentVal
   }
+  if (
+    key === 'novelCharacterRosterJson' ||
+    key === 'novelForeshadowingJson' ||
+    key === 'novelChapterHistoryJson'
+  ) {
+    if (typeof currentVal === 'string') {
+      const trimmed = currentVal.trim()
+      if (trimmed) {
+        try {
+          const parsed = JSON.parse(trimmed)
+          return Array.isArray(parsed) ? parsed : []
+        } catch {
+          return []
+        }
+      }
+      return []
+    }
+    return Array.isArray(currentVal) ? currentVal : []
+  }
   if (typeof currentVal === 'string') {
     const trimmed = currentVal.trim()
     if (
@@ -848,7 +907,8 @@ export function applySmartNodePreset(
       hearthstone_tcg: 'hearthstone_mana_pack',
       onmyoji_atb: 'onmyoji_speed_orbs',
       balatro_roguelike: 'balatro_ante_jokers',
-      survivor_brotato: 'survivor_xp_loop'
+      survivor_brotato: 'survivor_xp_loop',
+      short_drama_progression: 'short_drama_reversal_loop'
     }
     const wbHit = MX_WORKBENCH_PRESETS.find((w) =>
       matchesPresetQuery({ id: w.id, name: w.nameEn, title: w.nameZh }, q)
@@ -869,6 +929,87 @@ export function applySmartNodePreset(
           gameEconomyDiagramJson: JSON.stringify(doc),
           gameEconomySteps: doc.settings.steps,
           gameEconomySeed: doc.settings.seed
+        }
+      }
+    }
+  }
+
+  // 12. 小说连载 8 大流派预设 (asset.novel) // cjk-ok
+  if ('novelGenre' in baseParams || def?.typeId === 'asset.novel') {
+    const hit = NOVEL_GENRE_PROFILES.find((p) =>
+      matchesPresetQuery({ id: p.id, name: p.labelEn, title: p.labelZh }, q)
+    )
+    if (hit) {
+      const totalCh = Number(baseParams.novelTotalChapters) || 20
+      const seededRoster = hit.roster.map((r, idx) => ({
+        id: `char_${idx + 1}`,
+        name: r.name,
+        faction: r.faction,
+        status: 'alive' as const,
+        realmStage: hit.stageNamesZh[0] ?? '初始阶', // cjk-ok
+        location: '开篇场景', // cjk-ok
+        keyItems: idx === 0 && hit.unlockItemsZh[0] ? [hit.unlockItemsZh[0]] : [],
+        relationshipToMc: r.role,
+        lastUpdatedChapter: Number(baseParams.novelCurrentChapter) || 1,
+        note: r.note
+      }))
+      const seededFs = hit.foreshadowings.map((f, idx) => ({
+        id: `fs_${idx + 1}`,
+        title: f.title,
+        plantedChapter: 1,
+        expectedPayoffChapter: Math.min(
+          totalCh,
+          Math.max(3, Math.round(((idx + 1) / (hit.foreshadowings.length + 1)) * totalCh))
+        ),
+        status: 'planted' as const,
+        clueSummary: f.payoffHint
+          .replace('{start}', String(Math.max(2, idx * 4 + 3)))
+          .replace('{end}', String(Math.min(totalCh, (idx + 1) * 6 + 4)))
+      }))
+      return {
+        matchedPresetId: hit.id,
+        paramsPatch: {
+          novelGenre: hit.id,
+          ...(!String(baseParams.novelWorldBible ?? '').trim()
+            ? { novelWorldBible: hit.worldBibleSeedZh.join('\n') }
+            : {}),
+          ...(!String(baseParams.novelCharacterRosterJson ?? '').trim() ||
+          String(baseParams.novelCharacterRosterJson).trim() === '[]'
+            ? { novelCharacterRosterJson: JSON.stringify(seededRoster) }
+            : {}),
+          ...(!String(baseParams.novelForeshadowingJson ?? '').trim() ||
+          String(baseParams.novelForeshadowingJson).trim() === '[]'
+            ? { novelForeshadowingJson: JSON.stringify(seededFs) }
+            : {})
+        }
+      }
+    }
+  }
+
+  // 13. 游戏系统策划案 8 大品类模板预设 (asset.gameSystem) // cjk-ok
+  if ('gameSystemArchetype' in baseParams || def?.typeId === 'asset.gameSystem') {
+    const hit = GAME_SYSTEM_ARCHETYPES.find((a) =>
+      matchesPresetQuery({ id: a.id, name: a.labelEn, title: a.labelZh }, q)
+    )
+    if (hit) {
+      const targetAspect =
+        (baseParams.gameSystemTargetAspect as '16:9' | '9:16' | '1:1' | undefined) || '16:9'
+      const curText = String(baseParams.text ?? '').trim()
+      const shouldSynthesize =
+        !curText || curText.startsWith('# 系统概述') || curText.startsWith('# System Overview') // cjk-ok
+      return {
+        matchedPresetId: hit.id,
+        paramsPatch: {
+          gameSystemArchetype: hit.id,
+          ...(shouldSynthesize
+            ? {
+                text: synthesizeGameSystemDocOffline({
+                  archetypeId: hit.id,
+                  targetAspect,
+                  customInstruction: String(baseParams.generateInstruction ?? '')
+                })
+              }
+            : {})
         }
       }
     }
@@ -973,7 +1114,8 @@ function finalizeSubDocumentPatches(
       hearthstone_tcg: 'hearthstone_mana_pack',
       onmyoji_atb: 'onmyoji_speed_orbs',
       balatro_roguelike: 'balatro_ante_jokers',
-      survivor_brotato: 'survivor_xp_loop'
+      survivor_brotato: 'survivor_xp_loop',
+      short_drama_progression: 'short_drama_reversal_loop'
     }
     const wbHit = MX_WORKBENCH_PRESETS.find(
       (w) =>
@@ -999,6 +1141,90 @@ function finalizeSubDocumentPatches(
       if (!touchedTopKeys.has('gameEconomySeed')) {
         working.gameEconomySeed = doc.settings.seed
       }
+    }
+  }
+  if (touchedTopKeys.has('novelGenre') && typeof working.novelGenre === 'string') {
+    const rawGenre = working.novelGenre.trim().toLowerCase()
+    const genreHit =
+      resolveNovelGenreProfile(working.novelGenre) ??
+      NOVEL_GENRE_PROFILES.find((p) =>
+        matchesPresetQuery({ id: p.id, name: p.labelEn, title: p.labelZh }, rawGenre)
+      )
+    if (genreHit) {
+      working.novelGenre = genreHit.id
+      if (!touchedTopKeys.has('novelWorldBible') && !String(working.novelWorldBible ?? '').trim()) {
+        working.novelWorldBible = genreHit.worldBibleSeedZh.join('\n')
+      }
+      const curRosterStr = String(working.novelCharacterRosterJson ?? '').trim()
+      if (
+        !touchedTopKeys.has('novelCharacterRosterJson') &&
+        (!curRosterStr || curRosterStr === '[]')
+      ) {
+        const seededRoster = genreHit.roster.map((r, idx) => ({
+          id: `char_${idx + 1}`,
+          name: r.name,
+          faction: r.faction,
+          status: 'alive' as const,
+          realmStage: genreHit.stageNamesZh[0] ?? '初始阶', // cjk-ok
+          location: '开篇场景', // cjk-ok
+          keyItems: idx === 0 && genreHit.unlockItemsZh[0] ? [genreHit.unlockItemsZh[0]] : [],
+          relationshipToMc: r.role,
+          lastUpdatedChapter: Number(working.novelCurrentChapter) || 1,
+          note: r.note
+        }))
+        working.novelCharacterRosterJson = JSON.stringify(seededRoster)
+      }
+      const curFsStr = String(working.novelForeshadowingJson ?? '').trim()
+      if (!touchedTopKeys.has('novelForeshadowingJson') && (!curFsStr || curFsStr === '[]')) {
+        const totalCh = Number(working.novelTotalChapters) || 20
+        const seededFs = genreHit.foreshadowings.map((f, idx) => ({
+          id: `fs_${idx + 1}`,
+          title: f.title,
+          plantedChapter: 1,
+          expectedPayoffChapter: Math.min(
+            totalCh,
+            Math.max(3, Math.round(((idx + 1) / (genreHit.foreshadowings.length + 1)) * totalCh))
+          ),
+          status: 'planted' as const,
+          clueSummary: f.payoffHint
+            .replace('{start}', String(Math.max(2, idx * 4 + 3)))
+            .replace('{end}', String(Math.min(totalCh, (idx + 1) * 6 + 4)))
+        }))
+        working.novelForeshadowingJson = JSON.stringify(seededFs)
+      }
+    }
+  }
+  if (
+    touchedTopKeys.has('gameSystemArchetype') ||
+    working.synthesizeOffline === true ||
+    working.autoFixQa === true
+  ) {
+    const rawArch = String(working.gameSystemArchetype ?? '')
+      .trim()
+      .toLowerCase()
+    const archHit =
+      GAME_SYSTEM_ARCHETYPES.find(
+        (a) =>
+          a.id === working.gameSystemArchetype ||
+          matchesPresetQuery({ id: a.id, name: a.labelEn, title: a.labelZh }, rawArch)
+      ) ?? resolveGameSystemArchetype(String(working.gameSystemArchetype ?? ''))
+    working.gameSystemArchetype = archHit.id
+    const curText = String(working.text ?? '').trim()
+    const forceSynth = working.synthesizeOffline === true || working.autoFixQa === true
+    const shouldSynth =
+      forceSynth ||
+      (!touchedTopKeys.has('text') &&
+        (!curText || curText.startsWith('# 系统概述') || curText.startsWith('# System Overview'))) // cjk-ok
+    delete working.synthesizeOffline
+    delete working.autoFixQa
+    if (shouldSynth) {
+      const targetAspect =
+        (working.gameSystemTargetAspect as '16:9' | '9:16' | '1:1' | undefined) || '16:9'
+      working.text = synthesizeGameSystemDocOffline({
+        archetypeId: archHit.id,
+        targetAspect,
+        customInstruction: String(working.generateInstruction ?? '')
+      })
     }
   }
 }
@@ -1041,7 +1267,10 @@ export function mergeSmartNodeParams(
       topKey === 'comicPage' ||
       topKey === 'filmStoryboard' ||
       topKey === 'filmCast' ||
-      topKey === 'gameEconomyDiagramJson'
+      topKey === 'gameEconomyDiagramJson' ||
+      topKey === 'novelCharacterRosterJson' ||
+      topKey === 'novelForeshadowingJson' ||
+      topKey === 'novelChapterHistoryJson'
     ) {
       if (!unmarshaledJsonKeys.has(topKey)) {
         working[topKey] = unmarshalJsonStringField(topKey, working[topKey])
@@ -1142,12 +1371,16 @@ export function mergeSmartNodeParams(
         normKey === 'comicPage' ||
         normKey === 'filmStoryboard' ||
         normKey === 'filmCast' ||
-        normKey === 'gameEconomyDiagramJson') &&
-      isPlainObject(rawVal)
+        normKey === 'gameEconomyDiagramJson' ||
+        normKey === 'novelCharacterRosterJson' ||
+        normKey === 'novelForeshadowingJson' ||
+        normKey === 'novelChapterHistoryJson') &&
+      (isPlainObject(rawVal) || Array.isArray(rawVal))
     ) {
       ensureJsonFieldUnmarshaled(normKey)
       if (
         normKey === 'gameEconomyDiagramJson' &&
+        isPlainObject(rawVal) &&
         Array.isArray((rawVal as Record<string, unknown>).nodes) &&
         Array.isArray((rawVal as Record<string, unknown>).edges)
       ) {

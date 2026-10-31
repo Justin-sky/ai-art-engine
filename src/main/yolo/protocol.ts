@@ -6,7 +6,7 @@
 
 import type { YoloInferenceInput, YoloStatus, YoloTaskKind } from '@shared/yolo'
 
-export type YoloWorkerMethod = 'ping' | 'status' | 'infer' | 'face'
+export type YoloWorkerMethod = 'ping' | 'status' | 'infer' | 'face' | 'sam2'
 
 /** infer 的参数：模型路径由 service 解析为绝对路径后下发 */
 export interface YoloWorkerInferParams extends YoloInferenceInput {

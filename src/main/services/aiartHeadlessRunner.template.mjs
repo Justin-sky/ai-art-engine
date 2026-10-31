@@ -152,9 +152,59 @@ const GEMINI_CHAT_FALLBACK_MODELS = [
   'gemini-3-flash-preview'
 ]
 
+const OPENAI_CHAT_FALLBACK_MODELS = [
+  'gpt-6.1-terra',
+  'gpt-6-sol',
+  'gpt-5.5',
+  'gpt-5.4',
+  'gpt-4.1',
+  'gpt-4o'
+]
+
+const OPENAI_CHAT_MODEL_ALIASES = {
+  'gpt-6.1': 'gpt-6.1-sol',
+  'gpt-6.1-pro': 'gpt-6.1-sol',
+  'gpt-6.1-mini': 'gpt-6.1-terra',
+  'gpt-6.1-nano': 'gpt-6.1-terra',
+  'gpt-6': 'gpt-6-astra',
+  'gpt-6-pro': 'gpt-6-astra',
+  'gpt-6-mini': 'gpt-6-luna',
+  'gpt-5.6': 'gpt-5.6-sol',
+  'gpt-5.6-pro': 'gpt-5.6-sol',
+  'gpt-5.6-mini': 'gpt-5.6-terra'
+}
+
+const OPENAI_CHAT_TOOLS_MODEL_MAP = {
+  'gpt-6.1-sol': 'gpt-6.1-terra',
+  'gpt-6-astra': 'gpt-6-sol'
+}
+
+function isOpenAiEndpoint(urlStr, modelId) {
+  if (typeof urlStr === 'string' && /\bapi\.openai\.com\b/i.test(urlStr)) {
+    return true
+  }
+  if (typeof modelId === 'string') {
+    const clean = modelId.trim()
+    if (/^(?:gpt-\d|o\d+(?:-|$)|chatgpt-|codex-)/i.test(clean)) return true
+  }
+  return false
+}
+
+function normalizeOpenAiChatModelId(rawModelId, hasTools = false) {
+  const clean = String(rawModelId || '').trim()
+  if (!clean) return clean
+  const lower = clean.toLowerCase()
+  const mapped = OPENAI_CHAT_MODEL_ALIASES[lower] || clean
+  if (hasTools) {
+    return OPENAI_CHAT_TOOLS_MODEL_MAP[mapped.toLowerCase()] || mapped
+  }
+  return mapped
+}
+
 const GEMINI_SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator'
 const thoughtSignatureCache = new Map()
 const geminiModelUnavailableUntil = new Map()
+const openAiModelUnavailableUntil = new Map()
 
 function isDeepSeekOfficialUrl(urlStr) {
   return typeof urlStr === 'string' && /\bapi\.deepseek\.com\b/i.test(urlStr)
@@ -272,12 +322,34 @@ function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureC
       delete parsed.max_tokens
     }
   } else {
+    const isOpenAi = isOpenAiEndpoint(urlStr, parsed.model)
+    const hasTools = Array.isArray(parsed.tools) && parsed.tools.length > 0
+    if (isOpenAi && typeof parsed.model === 'string') {
+      parsed.model = normalizeOpenAiChatModelId(parsed.model, hasTools)
+      const blockedUntil = openAiModelUnavailableUntil.get(parsed.model)
+      if (typeof blockedUntil === 'number' && blockedUntil > Date.now()) {
+        const replacement = OPENAI_CHAT_FALLBACK_MODELS.find((candidate) => {
+          const until = openAiModelUnavailableUntil.get(candidate)
+          return !(typeof until === 'number' && until > Date.now())
+        })
+        if (replacement) parsed.model = replacement
+      }
+    }
     if (thinkingType === 'disabled') {
       delete parsed.reasoning_effort
     } else if (parsed.reasoning_effort === 'max') {
       parsed.reasoning_effort = 'high'
     }
-    if (parsed.max_tokens === 256000) {
+    if (
+      isOpenAi &&
+      typeof parsed.model === 'string' &&
+      /^(?:gpt-(?:[5-9]|\d{2,})|o\d+)/i.test(parsed.model)
+    ) {
+      delete parsed.max_tokens
+      if (hasTools && /^gpt-(?:[5-9]|\d{2,})/i.test(parsed.model)) {
+        parsed.reasoning_effort = 'none'
+      }
+    } else if (parsed.max_tokens === 256000) {
       delete parsed.max_tokens
     }
   }
@@ -482,6 +554,16 @@ function shouldFallbackGeminiModel(status, rawErrorText) {
   return false
 }
 
+function shouldFallbackOpenAiModel(status, rawErrorText) {
+  if (status === 404) return true
+  if ((status === 400 || status === 403) && typeof rawErrorText === 'string') {
+    return /does not exist or you do not have access to it|model_not_found|Function tools with reasoning_effort are not supported|is not supported with the\s*'reasoning_effort'|unknown model|invalid model/i.test(
+      rawErrorText
+    )
+  }
+  return false
+}
+
 function installOpenAiCompatFetchBridge() {
   const FETCH_MARK = Symbol.for('aiart.openAiCompatFetch.patched')
   if (typeof globalThis.fetch !== 'function' || globalThis.fetch[FETCH_MARK]) return
@@ -578,6 +660,46 @@ function installOpenAiCompatFetchBridge() {
 
       if (!response.ok) {
         const errText = await response.text()
+        if (
+          !isGemini &&
+          parsed &&
+          typeof parsed.model === 'string' &&
+          isOpenAiEndpoint(urlStr, parsed.model) &&
+          shouldFallbackOpenAiModel(response.status, errText)
+        ) {
+          openAiModelUnavailableUntil.set(parsed.model, Date.now() + 5 * 60_000)
+          const hasTools = Array.isArray(parsed.tools) && parsed.tools.length > 0
+          const tried = new Set([parsed.model])
+          for (const candidateModel of OPENAI_CHAT_FALLBACK_MODELS) {
+            if (tried.has(candidateModel)) continue
+            tried.add(candidateModel)
+            const nextPayload = { ...parsed, model: candidateModel }
+            delete nextPayload.max_tokens
+            if (hasTools && /^gpt-[56]/i.test(candidateModel)) {
+              nextPayload.reasoning_effort = 'none'
+            }
+            const retryResp = await originalFetch(input, {
+              ...init,
+              body: JSON.stringify(nextPayload)
+            })
+            if (retryResp.ok) {
+              return retryResp
+            }
+            const retryErrText = await retryResp.text()
+            if (shouldFallbackOpenAiModel(retryResp.status, retryErrText)) {
+              openAiModelUnavailableUntil.set(candidateModel, Date.now() + 5 * 60_000)
+            }
+            response = new Response(unwrapJsonArrayErrorBody(retryErrText), {
+              status: retryResp.status,
+              statusText: retryResp.statusText,
+              headers: retryResp.headers
+            })
+            if (!shouldFallbackOpenAiModel(retryResp.status, retryErrText)) {
+              break
+            }
+          }
+          return response
+        }
         return new Response(unwrapJsonArrayErrorBody(errText), {
           status: response.status,
           statusText: response.statusText,

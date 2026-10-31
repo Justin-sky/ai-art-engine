@@ -712,51 +712,6 @@
                   item.portTypeLabel
                 }}</span>
               </button>
-              <!-- 影视：父级只作二级入口，子分组再悬浮出一层节点面板 -->
-              <div
-                v-for="child in group.children ?? []"
-                :key="child.id"
-                class="ctx-submenu ctx-nested-submenu"
-                @pointerenter="openNestedCtxSubmenu(child.id)"
-                @pointerleave="closeNestedCtxSubmenu(child.id)"
-              >
-                <button
-                  type="button"
-                  class="ctx-submenu-trigger"
-                  :class="{
-                    open: ctxNestedSubmenu === child.id,
-                    pinned: ctxNestedSubmenuPinned && ctxNestedSubmenu === child.id
-                  }"
-                  :data-tutorial-id="tutorialCtxGroupId(child.id)"
-                  @click="toggleNestedCtxSubmenu(child.id)"
-                >
-                  <span class="ctx-icon"><WorkspaceItemIcon :icon="child.icon" :size="14" /></span>
-                  <span class="ctx-label">{{ child.label }}</span>
-                  <span class="ctx-submenu-arrow" aria-hidden="true">›</span>
-                </button>
-                <div
-                  v-if="ctxNestedSubmenu === child.id"
-                  class="ctx-submenu-panel ctx-nested-panel"
-                  :class="{
-                    'open-left': nestedSubmenuFlip.left,
-                    'open-up': nestedSubmenuFlip.up
-                  }"
-                >
-                  <button
-                    v-for="item in child.items"
-                    :key="`${item.typeId}:${item.title ?? ''}`"
-                    type="button"
-                    :data-tutorial-id="tutorialCtxTypeId(item.typeId)"
-                    @click="addNodeFromMenu(item)"
-                  >
-                    <span class="ctx-icon"><WorkspaceItemIcon :icon="item.icon" :size="14" /></span>
-                    <span class="ctx-label">{{ item.label }}</span>
-                    <span v-if="item.portTypeLabel" class="ctx-item-type">{{
-                      item.portTypeLabel
-                    }}</span>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
           <div
@@ -889,6 +844,7 @@ import {
   canConnectNodes,
   canConnectToNodeType,
   findCompatibleInPort,
+  findCompatibleOutPort,
   findInPort,
   findOutPort,
   isBundleNode,
@@ -1071,6 +1027,7 @@ import {
   isCanvasSafeImageSrc,
   stringifyBeatRows,
   isBoundaryOutputNode,
+  isGameProductionNode,
   isGraphOutputTerminalNode,
   parseFilmCast,
   parseFilmRenderCache,
@@ -1855,12 +1812,8 @@ const lastPointerClient = { x: 0, y: 0 }
 const ctxSubmenu = ref<string | null>(null)
 /** 点击分组后固定子菜单，pointerleave 不再收起（拉线添加与右键同一套） */
 const ctxSubmenuPinned = ref(false)
-/** 影视二级分组（三级悬浮面板）当前展开项 */
-const ctxNestedSubmenu = ref<string | null>(null)
-const ctxNestedSubmenuPinned = ref(false)
 const ctxMenuEl = ref<HTMLElement | null>(null)
 const submenuFlip = ref({ left: false, up: false })
-const nestedSubmenuFlip = ref({ left: false, up: false })
 type CtxMenuState = {
   x: number
   y: number
@@ -3895,7 +3848,8 @@ type AddableMenuItem = {
 
 type ResourceMenuGroupId =
   | Extract<AssetType, 'image' | 'video' | 'voice' | 'motion'>
-  /** 影视流水线三个制作阶段（收进「影视」父级）：前期剧本分镜 / 美术设定 / 拍摄出片 */
+  /** 影视流水线节点统一归入「影视」分组（不再拆二级分组） */
+  | 'filmTv'
   | 'filmPre'
   | 'filmArt'
   | 'filmShoot'
@@ -3913,10 +3867,15 @@ type ResourceMenuGroupId =
   /** 视频语义时间线工具：分析 / 修复 / 变体 / 时间线 / 触发 / 编译 */
   | 'videoSemantic'
 
-/** 影视阶段分组：组内按流水线顺序展示（不按名称排序），文案走 graph.context.groups */
-const FILM_MENU_GROUP_IDS: ReadonlySet<string> = new Set(['filmPre', 'filmArt', 'filmShoot'])
+/** 影视分组：组内按流水线顺序展示（不按名称排序），文案走 graph.context.groups */
+const FILM_MENU_GROUP_IDS: ReadonlySet<string> = new Set([
+  'filmTv',
+  'filmPre',
+  'filmArt',
+  'filmShoot'
+])
 
-/** 菜单分组：影视父级 id 不是资产类型，只作二级入口，故不进 ResourceMenuGroupId（否则文案窄化会漏到 assetTypeLabel） */
+/** 菜单分组类型 */
 type ResourceMenuGroup = ContextMenuResourceGroup<
   AddableMenuItem,
   ResourceMenuGroupId | typeof CONTEXT_MENU_NESTED_PARENT_ID
@@ -3960,9 +3919,19 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     typeIds: ['asset.voice', 'asset.dialogue', 'asset.sfx', 'asset.music', 'voice.select']
   },
   {
-    // 影视·前期：剧本生成 → 分镜拆解 → 导演审核（组内按流水线顺序，不按名称排序）
-    id: 'filmPre',
-    typeIds: ['asset.screenplay', 'film.breakdown', 'film.review']
+    // 影视（去掉二级分组，全部直接放在影视分组下，按流水线顺序展示）：
+    // 创建小说 → 剧本生成 → 分镜拆解 → 导演审核 → 角色/场景/道具设定 → 影视工作台 → 批量拍摄 → 单镜精修
+    id: 'filmTv',
+    typeIds: [
+      'asset.novel',
+      'asset.screenplay',
+      'film.breakdown',
+      'film.review',
+      'film.cast',
+      'film.workbench',
+      'film.render',
+      'film.shot'
+    ]
   },
   {
     id: 'text',
@@ -3977,7 +3946,6 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'game.vfxAlpha',
       'game.audioDsp',
       'game.levelMap',
-      'game.economy',
       'ui.split',
       'ui.gen',
       'image.layerSplit'
@@ -3986,16 +3954,6 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'motionFx',
     typeIds: ['frame.animGen', 'anim.2d', 'image.align', 'stage.2d']
-  },
-  {
-    // 影视·美术：角色 / 场景 / 道具设定库
-    id: 'filmArt',
-    typeIds: ['film.cast']
-  },
-  {
-    // 影视·拍摄：影视工作台（分镜+审核+设定+拍摄合一）/ 单镜精修
-    id: 'filmShoot',
-    typeIds: ['film.workbench', 'film.render', 'film.shot']
   },
   {
     id: 'model3d',
@@ -4080,12 +4038,40 @@ const addableMenuItems = computed((): AddableMenuItem[] => {
 })
 
 /** 未归入资源分组的节点（上游接口槽 / 宿主边界 / 束结等）留在根菜单 */
-const rootAddableMenuItems = computed(() =>
-  addableMenuItems.value
+const rootAddableMenuItems = computed(() => {
+  const base = addableMenuItems.value
     .filter((item) => !CONTEXT_MENU_GROUPED_TYPE_IDS.has(item.typeId))
     .slice()
     .sort((a, b) => compareNames(a.label, b.label))
-)
+  const menu = ctxMenu.value
+  if (!menu) return base
+  const linkSource = menu.linkFromNodeId
+    ? graph.nodes.find((n) => n.id === menu.linkFromNodeId)
+    : undefined
+  const linkTarget = menu.linkToNodeId
+    ? graph.nodes.find((n) => n.id === menu.linkToNodeId)
+    : undefined
+  const promotedOrder: GraphNodeTypeId[] =
+    linkSource?.typeId === 'asset.novel'
+      ? ['asset.gameSystem', 'asset.screenplay', 'text.translate']
+      : linkSource?.typeId === 'game.economy'
+        ? ['asset.novel', 'asset.gameSystem', 'ui.split']
+        : linkSource?.typeId === 'asset.gameSystem'
+          ? ['ui.split', 'asset.novel', 'asset.screenplay']
+          : linkTarget?.typeId === 'asset.gameSystem'
+            ? ['asset.novel', 'game.economy']
+            : linkTarget?.typeId === 'asset.novel'
+              ? ['game.economy', 'asset.gameSystem']
+              : []
+  if (!promotedOrder.length) return base
+  const byType = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
+  const promoted = promotedOrder
+    .map((tid) => byType.get(tid))
+    .filter((item): item is AddableMenuItem => item != null)
+  if (!promoted.length) return base
+  const promotedSet = new Set(promoted.map((item) => item.typeId))
+  return [...promoted, ...base.filter((item) => !promotedSet.has(item.typeId))]
+})
 
 /** 资源分组完整清单（含影视的子分组），根菜单与二级菜单共用这一份派生 */
 const resourceMenuGroups = computed((): ResourceMenuGroup[] => {
@@ -4607,19 +4593,11 @@ function menuAddableNodeTypes() {
   return listAddableNodeTypes(graphScope.value)
 }
 
-/** 收起二级（影视子分组）面板；收起父面板或切到别的父分组时一并清理 */
-function resetNestedCtxSubmenu(): void {
-  ctxNestedSubmenu.value = null
-  ctxNestedSubmenuPinned.value = false
-  nestedSubmenuFlip.value = { left: false, up: false }
-}
-
 function closeCtxMenu(): void {
   ctxMenu.value = null
   ctxSubmenu.value = null
   ctxSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
-  resetNestedCtxSubmenu()
 }
 
 // Menu item actions must stay a single expression: prettier (semi: false) strips the
@@ -4635,7 +4613,6 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
   ctxSubmenu.value = null
   ctxSubmenuPinned.value = false
   submenuFlip.value = { left: false, up: false }
-  resetNestedCtxSubmenu()
   ctxMenu.value = next
   await nextTick()
   const el = ctxMenuEl.value
@@ -4649,8 +4626,6 @@ async function showCtxMenu(next: CtxMenuState): Promise<void> {
 function openCtxSubmenu(kind: string): void {
   // 已固定时悬停其他分组不抢开，避免误关已点开的面板
   if (ctxSubmenuPinned.value && ctxSubmenu.value && ctxSubmenu.value !== kind) return
-  // 换组时收起上一组的二级面板；同组内悬停不打断已展开的子分组
-  if (ctxSubmenu.value !== kind) resetNestedCtxSubmenu()
   ctxSubmenu.value = kind
   void repositionCtxSubmenu()
 }
@@ -4661,10 +4636,8 @@ function toggleCtxSubmenu(kind: string): void {
     ctxSubmenu.value = null
     ctxSubmenuPinned.value = false
     submenuFlip.value = { left: false, up: false }
-    resetNestedCtxSubmenu()
     return
   }
-  if (ctxSubmenu.value !== kind) resetNestedCtxSubmenu()
   ctxSubmenuPinned.value = true
   ctxSubmenu.value = kind
   void repositionCtxSubmenu()
@@ -4675,54 +4648,15 @@ function closeCtxSubmenu(kind: string): void {
   if (ctxSubmenu.value === kind) {
     ctxSubmenu.value = null
     submenuFlip.value = { left: false, up: false }
-    resetNestedCtxSubmenu()
-  }
-}
-
-/** 影视二级分组（三级悬浮面板）：与一级同款悬停展开 / 点击固定交互 */
-function openNestedCtxSubmenu(kind: string): void {
-  if (ctxNestedSubmenuPinned.value && ctxNestedSubmenu.value && ctxNestedSubmenu.value !== kind) {
-    return
-  }
-  ctxNestedSubmenu.value = kind
-  void repositionNestedCtxSubmenu()
-}
-
-function toggleNestedCtxSubmenu(kind: string): void {
-  if (ctxNestedSubmenu.value === kind && ctxNestedSubmenuPinned.value) {
-    ctxNestedSubmenu.value = null
-    ctxNestedSubmenuPinned.value = false
-    nestedSubmenuFlip.value = { left: false, up: false }
-    return
-  }
-  ctxNestedSubmenuPinned.value = true
-  ctxNestedSubmenu.value = kind
-  void repositionNestedCtxSubmenu()
-}
-
-function closeNestedCtxSubmenu(kind: string): void {
-  if (ctxNestedSubmenuPinned.value) return
-  if (ctxNestedSubmenu.value === kind) {
-    ctxNestedSubmenu.value = null
-    nestedSubmenuFlip.value = { left: false, up: false }
   }
 }
 
 async function repositionCtxSubmenu(): Promise<void> {
   submenuFlip.value = { left: false, up: false }
   await nextTick()
-  // 只量一级面板：三级面板带 .ctx-nested-panel，选择器必须区分开
   const panel = ctxMenuEl.value?.querySelector('.ctx-root-panel') as HTMLElement | null
   if (!panel || !ctxSubmenu.value) return
   submenuFlip.value = measureSubmenuFlip(panel)
-}
-
-async function repositionNestedCtxSubmenu(): Promise<void> {
-  nestedSubmenuFlip.value = { left: false, up: false }
-  await nextTick()
-  const panel = ctxMenuEl.value?.querySelector('.ctx-nested-panel') as HTMLElement | null
-  if (!panel || !ctxNestedSubmenu.value) return
-  nestedSubmenuFlip.value = measureSubmenuFlip(panel)
 }
 
 function onViewportPointerMove(e: PointerEvent): void {
@@ -4940,9 +4874,10 @@ function addNodeFromMenu(item: AddableMenuItem): void {
   if (linkFromSources.length) {
     for (const src of linkFromSources) {
       const source = graph.nodes.find((n) => n.id === src.nodeId)
-      const sourcePort = src.portId || findOutPort(source!)?.id || 'out'
-      if (!source || !canConnectNodes(source, node, { sourcePort })) continue
-      const outPort = findOutPort(source, sourcePort)
+      if (!source) continue
+      const outPort = findCompatibleOutPort(source, node, src.portId || undefined)
+      const sourcePort = outPort?.id || src.portId || 'out'
+      if (!canConnectNodes(source, node, { sourcePort })) continue
       let inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
       if (
         !inPort &&
@@ -4968,7 +4903,8 @@ function addNodeFromMenu(item: AddableMenuItem): void {
     const target = graph.nodes.find((n) => n.id === linkToId)
     const targetPort = menu.linkToPortId ?? undefined
     if (target && canConnectNodes(node, target, { targetPort })) {
-      const outPort = findOutPort(node)
+      const outPort =
+        findCompatibleOutPort(node, target, undefined, targetPort) ?? findOutPort(node)
       const inPort = outPort
         ? findCompatibleInPort(target, outPort.dataType, targetPort)
         : undefined
@@ -5523,6 +5459,33 @@ function findLinkTarget(
     if (!graph.nodes.some((n) => n.id === nodeId)) continue
     return { nodeId, portId }
   }
+  const activeSourceId =
+    linkingFrom.value ??
+    (rewireSession.value?.movingEnd === 'target' ? rewireSession.value.fixed[0]?.nodeId : null)
+  const activeSourcePortId = linkingFrom.value
+    ? (linkingFromPort.value ?? 'out')
+    : rewireSession.value?.fixed[0]?.portId
+  if (activeSourceId) {
+    const sourceNode = graph.nodes.find((n) => n.id === activeSourceId)
+    for (const el of hits) {
+      const nodeEl = el.closest('.graph-node[data-node-id]') as HTMLElement | null
+      const nodeId = nodeEl?.dataset.nodeId
+      if (!nodeId || nodeId === activeSourceId) continue
+      const targetNode = graph.nodes.find((n) => n.id === nodeId)
+      if (!sourceNode || !targetNode) continue
+      const outPort = findCompatibleOutPort(sourceNode, targetNode, activeSourcePortId)
+      let inPort = outPort ? findCompatibleInPort(targetNode, outPort.dataType) : undefined
+      if (
+        !inPort &&
+        outPort &&
+        isBundleNode(targetNode) &&
+        isBundleAcceptableDataType(outPort.dataType)
+      ) {
+        inPort = findInPort(targetNode, 'in') ?? undefined
+      }
+      if (inPort) return { nodeId, portId: inPort.id }
+    }
+  }
   return null
 }
 
@@ -5540,6 +5503,24 @@ function findLinkSource(
     if (!nodeId || !portId) continue
     if (!graph.nodes.some((n) => n.id === nodeId)) continue
     return { nodeId, portId }
+  }
+  const activeTargetId =
+    linkingTo.value ??
+    (rewireSession.value?.movingEnd === 'source' ? rewireSession.value.fixed[0]?.nodeId : null)
+  const activeTargetPortId = linkingTo.value
+    ? (linkingToPort.value ?? 'in')
+    : rewireSession.value?.fixed[0]?.portId
+  if (activeTargetId) {
+    const targetNode = graph.nodes.find((n) => n.id === activeTargetId)
+    for (const el of hits) {
+      const nodeEl = el.closest('.graph-node[data-node-id]') as HTMLElement | null
+      const nodeId = nodeEl?.dataset.nodeId
+      if (!nodeId || nodeId === activeTargetId) continue
+      const sourceNode = graph.nodes.find((n) => n.id === nodeId)
+      if (!sourceNode || !targetNode) continue
+      const outPort = findCompatibleOutPort(sourceNode, targetNode, undefined, activeTargetPortId)
+      if (outPort) return { nodeId, portId: outPort.id }
+    }
   }
   return null
 }
@@ -5855,7 +5836,7 @@ function connectNodes(
   const source = graph.nodes.find((n) => n.id === sourceId)
   const target = graph.nodes.find((n) => n.id === targetId)
   if (!source || !target) return false
-  const outPort = findOutPort(source, sourcePortId)
+  const outPort = findCompatibleOutPort(source, target, sourcePortId, targetPortId)
   if (!outPort) return false
   let inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
   if (!inPort && isBundleNode(target) && isBundleAcceptableDataType(outPort.dataType)) {
@@ -10426,12 +10407,13 @@ onMounted(() => {
       graph.nodes.push(node)
       for (const src of linkFrom) {
         const source = graph.nodes.find((item) => item.id === src.nodeId)
-        if (!source || !canConnectNodes(source, node, { sourcePort: src.portId || 'out' })) {
+        if (!source) continue
+        const outPort = findCompatibleOutPort(source, node, src.portId || undefined)
+        if (!outPort || !canConnectNodes(source, node, { sourcePort: outPort.id })) {
           continue
         }
-        const outPort = findOutPort(source, src.portId || undefined)
-        const inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
-        if (!outPort || !inPort) continue
+        const inPort = findCompatibleInPort(node, outPort.dataType)
+        if (!inPort) continue
         graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
           sourceId: source.id,
           targetId: node.id,
@@ -10445,6 +10427,8 @@ onMounted(() => {
       requestPreviewVisibilityUpdate()
       return node.id
     },
+    connectNodes: (sourceId, targetId, sourcePortId, targetPortId) =>
+      connectNodes(sourceId, targetId, sourcePortId, targetPortId),
     updateGroup: (groupId, patch) => {
       const group = graph.groups?.find((item) => item.id === groupId)
       if (!group) return
@@ -11128,6 +11112,32 @@ function onFocusDiveNode(nodeId: string): void {
   if (node.typeId === 'text.select') {
     onSelectTextOpen(nodeId)
     return
+  }
+  if (
+    node.typeId === 'asset.gameSystem' ||
+    node.typeId === 'asset.novel' ||
+    node.typeId === 'asset.screenplay' ||
+    isGameProductionNode(node)
+  ) {
+    const viewId =
+      node.typeId === 'asset.gameSystem'
+        ? ('gameSystem.workbench' as const)
+        : node.typeId === 'asset.novel'
+          ? ('novel.workbench' as const)
+          : node.typeId === 'asset.screenplay'
+            ? ('screenplay.workbench' as const)
+            : ('game.workbench' as const)
+    const meta = { viewId, hostId: graphHostId.value, nodeId }
+    const title = node.title?.trim() || graphTypeLabel(node.typeId ?? '')
+    if (editorDive?.rootKey) {
+      void editorDive.diveView(meta, title)
+      return
+    }
+    const rootKey = workspace.activeDiveRootKey?.trim()
+    if (rootKey) {
+      workspace.diveIntoView(rootKey, meta, title)
+      return
+    }
   }
   if (resolveNodeTextContent(node, runStates[nodeId])) {
     onTextOpen(nodeId)
@@ -11864,14 +11874,9 @@ defineExpose({
   background: color-mix(in srgb, var(--accent) 18%, var(--bg-hover));
 }
 
-/* 一级分组与二级分组（影视下的剧本 / 剧集 / 世界元素 / 场）共用定位与悬浮交互 */
+/* 一级资源分组定位与悬浮交互 */
 .ctx-submenu {
   position: relative;
-}
-
-/* 影视二级分组容器：复用 .ctx-submenu 定位，节点面板由 .ctx-nested-panel 承载 */
-.ctx-nested-submenu {
-  width: 100%;
 }
 
 .ctx-submenu-trigger {

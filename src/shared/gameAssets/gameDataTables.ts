@@ -85,6 +85,55 @@ export interface GameWaveRow {
   eliteOrBossId?: string
 }
 
+export interface GameLevelCurveRow {
+  level: number
+  ascensionStage: number
+  isBreakthrough: boolean
+  hp: number
+  atk: number
+  def: number
+  xpRequired: number
+  cumulativeXp: number
+  goldCost: number
+  breakthroughMats: number
+  staminaDaysToReach: number
+}
+
+export interface GameEquipmentUpgradeRow {
+  enhanceLevel: number
+  mainStatValue: number
+  substatRollsUnlocked: number
+  expCost: number
+  goldCost: number
+  successRatePct: number
+  expectedGoldWithFails: number
+  cumulativeExpectedGold: number
+  cumulativeExpectedStamina: number
+}
+
+export interface GameBattlePassRow {
+  bpLevel: number
+  xpRequired: number
+  cumulativeXp: number
+  daysToReach: number
+  freeRewardDesc: string
+  paidRewardDesc: string
+  cumulativeFreePullEquiv: number
+  cumulativePaidPullEquiv: number
+}
+
+export interface GameIapPackRow {
+  packId: string
+  nameZh: string
+  nameEn: string
+  priceUsd: number
+  pullsIncluded: number
+  bonusResourcesEquivPulls: number
+  totalPullEquiv: number
+  valueRatioPct: number
+  purchaseLimit: string
+}
+
 export interface GameDialogueChoice {
   label: string
   labelEn?: string
@@ -125,6 +174,10 @@ export interface GameDataTableInput {
   items?: Partial<GameItemRow>[]
   cards?: Partial<GameCardRow>[]
   waves?: Partial<GameWaveRow>[]
+  levelCurve?: GameLevelCurveRow[]
+  equipmentUpgrades?: GameEquipmentUpgradeRow[]
+  battlePass?: GameBattlePassRow[]
+  iapPacks?: GameIapPackRow[]
   dialogues?: Partial<GameDialogueNode>[]
   extraLocalization?: LocalizationEntry[]
 }
@@ -138,6 +191,10 @@ export interface GameDataTableBundle {
   items: GameItemRow[]
   cards: GameCardRow[]
   waves: GameWaveRow[]
+  levelCurve?: GameLevelCurveRow[]
+  equipmentUpgrades?: GameEquipmentUpgradeRow[]
+  battlePass?: GameBattlePassRow[]
+  iapPacks?: GameIapPackRow[]
   dialogues: GameDialogueNode[]
   localization: LocalizationEntry[]
   /** 完整 JSON 文本 */
@@ -441,6 +498,75 @@ export function buildGameDataTableBundle(input: GameDataTableInput): GameDataTab
       waves as unknown as Array<Record<string, unknown>>
     )
   }
+  const levelCurve = input.levelCurve ?? []
+  if (levelCurve.length) {
+    tableCsvs['level_curve.csv'] = rowsToCsv(
+      [
+        'level',
+        'ascensionStage',
+        'isBreakthrough',
+        'hp',
+        'atk',
+        'def',
+        'xpRequired',
+        'cumulativeXp',
+        'goldCost',
+        'breakthroughMats',
+        'staminaDaysToReach'
+      ],
+      levelCurve as unknown as Array<Record<string, unknown>>
+    )
+  }
+  const equipmentUpgrades = input.equipmentUpgrades ?? []
+  if (equipmentUpgrades.length) {
+    tableCsvs['equipment_upgrades.csv'] = rowsToCsv(
+      [
+        'enhanceLevel',
+        'mainStatValue',
+        'substatRollsUnlocked',
+        'expCost',
+        'goldCost',
+        'successRatePct',
+        'expectedGoldWithFails',
+        'cumulativeExpectedGold',
+        'cumulativeExpectedStamina'
+      ],
+      equipmentUpgrades as unknown as Array<Record<string, unknown>>
+    )
+  }
+  const battlePass = input.battlePass ?? []
+  if (battlePass.length) {
+    tableCsvs['battle_pass.csv'] = rowsToCsv(
+      [
+        'bpLevel',
+        'xpRequired',
+        'cumulativeXp',
+        'daysToReach',
+        'freeRewardDesc',
+        'paidRewardDesc',
+        'cumulativeFreePullEquiv',
+        'cumulativePaidPullEquiv'
+      ],
+      battlePass as unknown as Array<Record<string, unknown>>
+    )
+  }
+  const iapPacks = input.iapPacks ?? []
+  if (iapPacks.length) {
+    tableCsvs['iap_packs.csv'] = rowsToCsv(
+      [
+        'packId',
+        'nameZh',
+        'nameEn',
+        'priceUsd',
+        'pullsIncluded',
+        'bonusResourcesEquivPulls',
+        'totalPullEquiv',
+        'valueRatioPct',
+        'purchaseLimit'
+      ],
+      iapPacks as unknown as Array<Record<string, unknown>>
+    )
+  }
 
   const payload = {
     schemaVersion: 1 as const,
@@ -451,6 +577,10 @@ export function buildGameDataTableBundle(input: GameDataTableInput): GameDataTab
     items,
     cards,
     waves,
+    ...(levelCurve.length ? { levelCurve } : {}),
+    ...(equipmentUpgrades.length ? { equipmentUpgrades } : {}),
+    ...(battlePass.length ? { battlePass } : {}),
+    ...(iapPacks.length ? { iapPacks } : {}),
     dialogues,
     localization: locEntries
   }

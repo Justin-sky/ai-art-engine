@@ -1,6 +1,13 @@
 <template>
   <div class="dive-view">
+    <EditorDiveGameSystemView
+      v-if="node?.typeId === 'asset.gameSystem'"
+      :frame-key="frameKey"
+      :host-id="hostId"
+      :node-id="nodeId"
+    />
     <GraphInstructionEditorDialog
+      v-else
       :open="true"
       :model-value="instruction"
       :host-id="hostId"
@@ -22,6 +29,7 @@ import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import GraphInstructionEditorDialog from '../GraphInstructionEditorDialog.vue'
+import EditorDiveGameSystemView from './EditorDiveGameSystemView.vue'
 
 const props = defineProps<{
   frameKey: string
@@ -50,6 +58,8 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
+    case 'asset.novel':
+      return 'novel'
     case 'asset.screenplay':
       return 'screenplay'
     case 'asset.gameSystem':

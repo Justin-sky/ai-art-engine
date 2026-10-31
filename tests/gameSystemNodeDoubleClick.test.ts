@@ -52,4 +52,15 @@ describe('卡片双击分发：策划案生成', () => {
       /if \(instructionKind\.value === 'screenplay' \|\| instructionKind\.value === 'gameSystem'\) \{\s*\n\s*return t\('graph\.generateNode\.instructionHint'\)/
     )
   })
+
+  it('策划案生成节点（asset.gameSystem）双击、顶栏 GDD 徽章与右侧 Inspector 均直接进入 gameSystem.workbench Dive 工作台', () => {
+    expect(body).toContain("viewId: 'gameSystem.workbench'")
+    expect(card).toContain('onGameSystemBadgeClick')
+    const inspector = readFileSync(
+      join(process.cwd(), 'src/renderer/src/components/ShotNodeInspector.vue'),
+      'utf8'
+    )
+    expect(inspector).toContain('v-if="isScreenplay || isGameSystem" class="screenplay-studio"')
+    expect(inspector).toContain("viewId: 'gameSystem.workbench'")
+  })
 })

@@ -45,6 +45,7 @@ import {
   executeDecisionsJudgeNode,
   executeImageToPromptNode,
   executePromptOptimizeNode,
+  executeNovelGenerateNode,
   executeScreenplayGenerateNode,
   executeGameSystemGenerateNode,
   executeSelectImageNode,
@@ -103,10 +104,12 @@ import {
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+  DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
   DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH
 } from './systemPromptSchemes'
 import {
   DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
+  DEFAULT_NOVEL_USER_PROMPT_ZH,
   DEFAULT_UI_SPLIT_USER_PROMPT_ZH
 } from './userPromptSchemes'
 import { UI_SPLIT_INNER_GRAPH_VERSION } from './uiSplitParse'
@@ -337,6 +340,40 @@ function musicNodeDef(): NodeTypeDefinition {
     card: 'media',
     contributeToGeneration: true,
     execute: (ctx: NodeExecuteContext) => executeMusicGenerateNode(ctx)
+  }
+}
+
+function novelNodeDef(): NodeTypeDefinition {
+  return {
+    typeId: 'asset.novel',
+    category: 'asset',
+    label: '创建小说', // cjk-ok
+    icon: '📚',
+    defaultTitle: '创建小说', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
+      ...galleryOutPorts(GraphPortType.text)
+    ],
+    defaultParams: () => ({
+      text: '…',
+      generateInstruction: DEFAULT_NOVEL_USER_PROMPT_ZH,
+      generateSystemPrompt: DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
+      generateModel: '',
+      generateProviderInstanceId: '',
+      weight: 0.85,
+      volume: 1,
+      muted: false,
+      loop: true
+    }),
+    addable: true,
+    assetType: 'screenplay',
+    deletable: true,
+    inspector: 'asset',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: (ctx: NodeExecuteContext) => executeNovelGenerateNode(ctx)
   }
 }
 
@@ -882,6 +919,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
   ...VOICE_HOST_VARIANTS.map(voiceHostVariantDef),
   musicNodeDef(),
+  novelNodeDef(),
   outputDef('video', 'Video output', VIDEO_ASSET_ICON),
   outputDef('image', 'Image output', '🖼️'),
   outputDef('voice', 'Audio output', '🔊'),
@@ -3312,9 +3350,9 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'game.economy',
     category: 'note',
-    label: '游戏经济系统', // cjk-ok
+    label: '经济系统', // cjk-ok
     icon: '⚖️',
-    defaultTitle: '游戏经济系统', // cjk-ok
+    defaultTitle: '经济系统', // cjk-ok
     description:
       'Machinations 风格游戏经济系统动力学建模与蒙特卡洛（Monte Carlo）数值平衡节点：支持 Source（产出）/ Pool（资源池）/ Converter（合成转化）/ Drain（消耗回收）/ Gate（动态保底概率分流）/ Register（指数数值公式）可视化拓扑编辑、步进模拟与 P10/P50/P90 置信带曲线分析，输出可视化拓扑曲线图（out）与 Godot/Unity 经济脚本及遥测 JSON（out-text）。', // cjk-ok
     defaultSize: { ...ASSET_SIZE },

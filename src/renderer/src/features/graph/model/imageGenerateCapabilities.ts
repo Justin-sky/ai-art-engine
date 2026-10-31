@@ -4,31 +4,9 @@ import {
   parseImageGenerateCapabilities,
   type ImageGenerateParamCapabilities
 } from '@shared/graph'
-import {
-  getSavedModelCatalogEntry,
-  isDashScopeProvider,
-  isGoogleProvider,
-  isComfyUiProvider,
-  isKlingProvider,
-  isMagicRouterProvider,
-  isMiniMaxProvider,
-  isModelScopeProvider,
-  isOpenAiProvider,
-  isXaiProvider,
-  isZhipuProvider,
-  isVolcengineArkProvider
-} from '@shared/modelProvider'
+import { getSavedModelCatalogEntry, type ModelProviderKind } from '@shared/modelProvider'
+import { resolveStaticCapabilitiesForProvider } from '@shared/modelProviders/staticCatalogRegistry'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
-import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
-import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
-import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
-import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
-import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
-import { resolveOpenAiModelCapabilities } from '@shared/modelProviders/openai/modelCapabilities'
-import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
-import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
-import { resolveZhipuModelCapabilities } from '@shared/modelProviders/zhipu/modelCapabilities'
-import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import { modelKey, parseModelKey } from './generateModelOptions'
 
 const cache = new Map<string, ImageGenerateParamCapabilities>()
@@ -51,31 +29,11 @@ async function resolveSupportedParameters(
   modelId: string
 ): Promise<unknown> {
   let catalogName: string | undefined
-  let isArk = false
-  let isKling = false
-  let isMiniMax = false
-  let isDashScope = false
-  let isGoogle = false
-  let isModelScope = false
-  let isOpenAi = false
-  let isXai = false
-  let isZhipu = false
-  let isComfyUi = false
-  let isMagicRouter = false
+  let providerKind: ModelProviderKind | undefined
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
-    isArk = isVolcengineArkProvider(provider)
-    isKling = isKlingProvider(provider)
-    isComfyUi = isComfyUiProvider(provider)
-    isMiniMax = isMiniMaxProvider(provider)
-    isDashScope = isDashScopeProvider(provider)
-    isGoogle = isGoogleProvider(provider)
-    isModelScope = isModelScopeProvider(provider)
-    isOpenAi = isOpenAiProvider(provider)
-    isXai = isXaiProvider(provider)
-    isZhipu = isZhipuProvider(provider)
-    isMagicRouter = isMagicRouterProvider(provider)
+    providerKind = provider?.providerKind
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -102,74 +60,16 @@ async function resolveSupportedParameters(
     // 继续走本地静态配置 / 默认能力
   }
 
-  if (isKling) {
-    const local = resolveKlingModelCapabilities(modelId, 'image')
+  if (providerKind) {
+    const local = resolveStaticCapabilitiesForProvider(providerKind, modelId, 'image', catalogName)
     if (local?.supported_parameters) return local.supported_parameters
-    return undefined
+    if (providerKind !== 'openrouter' && providerKind !== 'custom' && providerKind !== 'newapi') {
+      return undefined
+    }
   }
 
-  if (isComfyUi) {
-    const local = resolveComfyUiModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isMiniMax) {
-    const local = resolveMiniMaxModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isDashScope) {
-    const local = resolveDashScopeModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isModelScope) {
-    const local = resolveModelScopeModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isOpenAi) {
-    const local = resolveOpenAiModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isXai) {
-    const local = resolveXaiModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isGoogle) {
-    const local = resolveGoogleModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isZhipu) {
-    const local = resolveZhipuModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isMagicRouter) {
-    const local = resolveMagicRouterModelCapabilities(modelId, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-    return undefined
-  }
-
-  if (isArk) {
-    const local = resolveVolcengineArkModelCapabilities(modelId, catalogName, 'image')
-    if (local?.supported_parameters) return local.supported_parameters
-  } else {
-    const local = resolveVolcengineArkModelCapabilities(modelId, catalogName)
-    if (local?.supported_parameters) return local.supported_parameters
-  }
-  return undefined
+  const fallback = resolveVolcengineArkModelCapabilities(modelId, catalogName)
+  return fallback?.supported_parameters
 }
 
 /** 同步读取已缓存的图片模型能力（未加载过则返回 null） */

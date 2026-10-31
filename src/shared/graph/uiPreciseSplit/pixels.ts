@@ -223,6 +223,45 @@ export function erodeMask(
   return out
 }
 
+/** 3x3 形态学闭运算（先膨胀 1px 再腐蚀 1px），连接断裂笔画并闭合细缝 */
+export function closeMask3x3(mask: Uint8Array, width: number, height: number): Uint8Array {
+  if (width <= 0 || height <= 0 || !mask.length) return new Uint8Array(mask)
+  return erodeMask(dilateMask(mask, width, height, 1), width, height, 1)
+}
+
+/** Otsu 最大类间方差阈值（输入 0..255 灰度/色差值数组，返回 0..255 最佳分割阈值） */
+export function computeOtsuThreshold(values: Uint8Array): number {
+  const n = values.length
+  if (!n) return 0
+  const hist = new Int32Array(256)
+  let totalSum = 0
+  for (let i = 0; i < n; i++) {
+    const v = values[i]!
+    hist[v]!++
+    totalSum += v
+  }
+  let wB = 0
+  let sumB = 0
+  let maxVar = -1
+  let bestThreshold = 0
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t]!
+    if (wB === 0) continue
+    const wF = n - wB
+    if (wF === 0) break
+    sumB += t * hist[t]!
+    const mB = sumB / wB
+    const mF = (totalSum - sumB) / wF
+    const diff = mB - mF
+    const betweenVar = wB * wF * diff * diff
+    if (betweenVar > maxVar) {
+      maxVar = betweenVar
+      bestThreshold = t
+    }
+  }
+  return bestThreshold
+}
+
 /** 浮点盒式模糊（可分离），用于羽化蒙版 */
 export function boxBlurFloat(
   src: Float32Array,
@@ -315,6 +354,59 @@ export function labelComponents(
       if (y + 1 < height && mask[p + width] && !labels[p + width]) {
         labels[p + width] = next
         stack.push(p + width)
+      }
+    }
+    stats.push(stat)
+  }
+  return { labels, stats }
+}
+
+/** 8 邻接连通域标记（包含对角线连通，用于文字与图标分割块过滤） */
+export function labelComponents8(
+  mask: Uint8Array,
+  width: number,
+  height: number
+): { labels: Int32Array; stats: ComponentStat[] } {
+  const labels = new Int32Array(mask.length)
+  const stats: ComponentStat[] = []
+  const stack: number[] = []
+  let next = 0
+  for (let start = 0; start < mask.length; start++) {
+    if (!mask[start] || labels[start]) continue
+    next++
+    const stat: ComponentStat = {
+      label: next,
+      area: 0,
+      minX: width,
+      minY: height,
+      maxX: -1,
+      maxY: -1
+    }
+    labels[start] = next
+    stack.push(start)
+    while (stack.length) {
+      const p = stack.pop()!
+      const x = p % width
+      const y = (p - x) / width
+      stat.area++
+      if (x < stat.minX) stat.minX = x
+      if (x > stat.maxX) stat.maxX = x
+      if (y < stat.minY) stat.minY = y
+      if (y > stat.maxY) stat.maxY = y
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= height) continue
+        const row = ny * width
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue
+          const nx = x + dx
+          if (nx < 0 || nx >= width) continue
+          const q = row + nx
+          if (mask[q] && !labels[q]) {
+            labels[q] = next
+            stack.push(q)
+          }
+        }
       }
     }
     stats.push(stat)

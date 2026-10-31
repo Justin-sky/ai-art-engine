@@ -122,7 +122,7 @@ export function extractScreenplayTitleFromText(text: string): string | undefined
       .map((line) => line.trim())
       .find(Boolean) ?? ''
   if (!firstLine) return undefined
-  const matched = firstLine.match(/^(?:剧本名|标题|剧名|Title)\s*[:：]\s*(.+)$/i)
+  const matched = firstLine.match(/^(?:剧本名|小说名|标题|剧名|Title)\s*[:：]\s*(.+)$/i) // cjk-ok
   const name = matched?.[1]?.trim()
   if (!name) return undefined
   if (/^(未命名|无题|untitled|tbd|n\/a)$/i.test(name)) return undefined
@@ -185,7 +185,8 @@ export async function materializeGeneratedText(
 
 export async function persistScreenplayGeneration(
   ctx: NodeExecuteContext,
-  text: string
+  text: string,
+  opts?: { title?: string }
 ): Promise<Record<string, GraphValue>> {
   const createdAt = new Date().toISOString()
   const stamp = formatGeneratedMediaStamp()
@@ -210,7 +211,10 @@ export async function persistScreenplayGeneration(
       batch.push(materialized)
     }
   } else {
-    const materialized = await materializeGeneratedText(ctx, text, id, createdAt, { stamp })
+    const materialized = await materializeGeneratedText(ctx, text, id, createdAt, {
+      title: opts?.title,
+      stamp
+    })
     batch.push(materialized)
   }
 

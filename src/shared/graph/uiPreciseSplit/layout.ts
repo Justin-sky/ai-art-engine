@@ -10,9 +10,12 @@ import type { LocalOcrTextBox, UiControlPartRole, UiControlType } from '../uiCon
 import { clampRect, rectArea, rectIntersection, rectUnion } from './pixels'
 import {
   UI_ELEMENT_KINDS,
+  type PixelPoint,
   type PixelRect,
+  type UiBackgroundRepairMode,
   type UiElementKind,
   type UiElementNode,
+  type UiElementRepairMode,
   type UiLayoutTree
 } from './types'
 
@@ -21,6 +24,9 @@ export interface RawLayoutElement {
   name: string
   kind: UiElementKind
   box: PixelRect
+  positivePoints?: PixelPoint[]
+  negativePoints?: PixelPoint[]
+  repairMode?: UiElementRepairMode
   /** VLM 声明的父级 id；null = 直接放在背景上 */
   parentRef: string | null
   order: number
@@ -30,6 +36,8 @@ export interface RawLayoutElement {
 
 export interface ParsedLayout {
   screenKind?: string
+  rasterTextIds?: number[]
+  backgroundRepairMode?: UiBackgroundRepairMode
   elements: RawLayoutElement[]
 }
 
@@ -180,12 +188,69 @@ function readBox(rec: Record<string, unknown>, width: number, height: number): P
 
 function readOcrRefs(raw: unknown): number[] {
   const list = Array.isArray(raw) ? raw : raw == null ? [] : [raw]
+  const hasZero = list.some((it) => String(it).trim() === '0')
   const out: number[] = []
   for (const item of list) {
-    const m = /^\s*T?\s*(\d+)\s*$/i.exec(String(item))
-    if (m) out.push(Number(m[1]) - 1)
+    const m = /^\s*(T)?\s*(\d+)\s*$/i.exec(String(item))
+    if (!m) continue
+    const n = Number(m[2])
+    if (m[1]) {
+      out.push(Math.max(0, n - 1))
+    } else if (hasZero) {
+      out.push(n)
+    } else {
+      out.push(Math.max(0, n - 1))
+    }
   }
   return out
+}
+
+function readPoints(raw: unknown, width: number, height: number): PixelPoint[] {
+  if (!Array.isArray(raw)) return []
+  const out: PixelPoint[] = []
+  for (const item of raw) {
+    let rx: number
+    let ry: number
+    if (Array.isArray(item) && item.length >= 2) {
+      rx = Number(item[0])
+      ry = Number(item[1])
+    } else if (item && typeof item === 'object') {
+      const rec = item as Record<string, unknown>
+      rx = Number(rec.x ?? rec.cx)
+      ry = Number(rec.y ?? rec.cy)
+    } else {
+      continue
+    }
+    if (!Number.isFinite(rx) || !Number.isFinite(ry)) continue
+    const maxV = Math.max(rx, ry)
+    const sx = maxV <= 1.05 ? width : maxV <= 1000.5 ? width / 1000 : 1
+    const sy = maxV <= 1.05 ? height : maxV <= 1000.5 ? height / 1000 : 1
+    out.push({
+      x: Math.max(0, Math.min(width - 1, Math.round(rx * sx))),
+      y: Math.max(0, Math.min(height - 1, Math.round(ry * sy)))
+    })
+  }
+  return out.slice(0, 6)
+}
+
+function readElementRepairMode(raw: unknown): UiElementRepairMode | undefined {
+  const s = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (s === 'image' || s === 'surface' || s === 'none') return s
+  return undefined
+}
+
+function readBackgroundRepairMode(raw: unknown): UiBackgroundRepairMode | undefined {
+  if (!raw) return undefined
+  const s =
+    typeof raw === 'string'
+      ? raw.trim().toLowerCase()
+      : typeof raw === 'object' && typeof (raw as Record<string, unknown>).mode === 'string'
+        ? String((raw as Record<string, unknown>).mode)
+            .trim()
+            .toLowerCase()
+        : ''
+  if (s === 'scene' || s === 'surface' || s === 'none') return s
+  return undefined
 }
 
 /** 宽容解析 VLM 版面 JSON，坐标换算到给定画布像素 */
@@ -198,11 +263,17 @@ export function parseLayoutResponse(
   const parsed = extractJsonCandidate(raw)
   let list: unknown[] = []
   let screenKind: string | undefined
+  let rasterTextIds: number[] = []
+  let backgroundRepairMode: UiBackgroundRepairMode | undefined
   if (Array.isArray(parsed)) {
     list = parsed
   } else if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>
     screenKind = typeof obj.screenKind === 'string' ? obj.screenKind.trim() : undefined
+    rasterTextIds = readOcrRefs(obj.raster_text_ids ?? obj.rasterTextIds)
+    backgroundRepairMode = readBackgroundRepairMode(
+      obj.background_repair ?? obj.backgroundRepair ?? obj.background_repair_mode
+    )
     const arr =
       (Array.isArray(obj.elements) && obj.elements) ||
       (Array.isArray(obj.layers) && obj.layers) ||
@@ -222,22 +293,39 @@ export function parseLayoutResponse(
     if (!id || seen.has(id)) id = `e${index + 1}_${elements.length}`
     seen.add(id)
     const kind = normalizeElementKind(rec.kind ?? rec.type ?? rec.controlType)
-    const parentRaw = rec.parent ?? rec.parentId ?? rec.parent_id
+    const parentRaw = rec.parent ?? rec.parentId ?? rec.parent_id ?? rec.parent_query_id
     const parentRef =
       parentRaw == null || parentRaw === '' || String(parentRaw).toLowerCase() === 'null'
         ? null
         : String(parentRaw).trim()
-    const orderNum = Number(rec.order ?? rec.z ?? rec.zIndex)
+    const orderNum = Number(rec.order ?? rec.z ?? rec.zIndex ?? rec.z_order)
     const textRaw =
       typeof rec.text === 'string' ? rec.text : typeof rec.ocrText === 'string' ? rec.ocrText : ''
     const text = cleanText(textRaw)
     const name =
-      (typeof rec.name === 'string' && rec.name.trim()) || text || `${kind}_${elements.length + 1}`
+      (typeof rec.name === 'string' && rec.name.trim()) ||
+      (typeof rec.label === 'string' && rec.label.trim()) ||
+      text ||
+      `${kind}_${elements.length + 1}`
+    const positivePoints = readPoints(
+      rec.positive_points_norm ?? rec.positivePoints ?? rec.positive_points,
+      width,
+      height
+    )
+    const negativePoints = readPoints(
+      rec.negative_points_norm ?? rec.negativePoints ?? rec.negative_points,
+      width,
+      height
+    )
+    const repairMode = readElementRepairMode(rec.element_repair_mode ?? rec.repairMode)
     elements.push({
       id,
       name: name.slice(0, 48),
       kind,
       box,
+      ...(positivePoints.length ? { positivePoints } : {}),
+      ...(negativePoints.length ? { negativePoints } : {}),
+      ...(repairMode ? { repairMode } : {}),
       parentRef: parentRef === id ? null : parentRef,
       order: Number.isFinite(orderNum) ? orderNum : index,
       ocrRefs: readOcrRefs(rec.ocr ?? rec.ocrIds ?? rec.ocr_ids),
@@ -246,8 +334,19 @@ export function parseLayoutResponse(
   }
   return {
     ...(screenKind ? { screenKind } : {}),
+    ...(rasterTextIds.length ? { rasterTextIds } : {}),
+    ...(backgroundRepairMode ? { backgroundRepairMode } : {}),
     elements: dedupeElements(elements, width, height)
   }
+}
+
+const CONTAINER_ELEMENT_KINDS = new Set<UiElementKind>(['panel', 'frame', 'banner', 'item-slot'])
+
+/** 判断是否为叠加在槽位/图标上的数量、倍率或等级短文本（如 x5, ×10, +12, Lv.99） */
+function isShortStackOrLevelLabel(text: string | undefined): boolean {
+  const s = (text ?? '').trim()
+  if (!s || s.length > 10) return false
+  return /^(?:[x×+*]\s*\d+|\d+\s*[x×%kmb]|\d+\s*\/\s*\d+|lv\.?\s*\d+)$/i.test(s)
 }
 
 function dedupeElements(
@@ -259,16 +358,22 @@ function dedupeElements(
   const out: RawLayoutElement[] = []
   for (const el of list) {
     const area = rectArea(el.box)
-    // 整张画布大小的非特效元素就是背景本身，交给底图
-    if (area >= canvasArea * 0.97 && el.kind !== 'effect') continue
+    // 整张画布大小的背景面板交给底图，但绝不丢弃头像/立绘/图标/角标等实体内容
+    if (
+      area >= canvasArea * 0.97 &&
+      (el.kind === 'panel' || el.kind === 'frame' || el.kind === 'other')
+    ) {
+      continue
+    }
     const dup = out.find((o) => {
       const inter = rectIntersection(o.box, el.box)
       const union = rectArea(o.box) + area - inter
-      return (
-        union > 0 &&
-        inter / union > 0.88 &&
-        (o.kind === el.kind || isTextKind(o.kind) === isTextKind(el.kind))
-      )
+      if (union <= 0 || inter / union <= 0.88) return false
+      // 容器（panel/frame/item-slot）与内部主体（avatar/illustration/icon/badge）绝不视为重复
+      const oContainer = CONTAINER_ELEMENT_KINDS.has(o.kind)
+      const elContainer = CONTAINER_ELEMENT_KINDS.has(el.kind)
+      if (oContainer !== elContainer) return false
+      return o.kind === el.kind || (isTextKind(o.kind) && isTextKind(el.kind))
     })
     if (dup) {
       if (!dup.text && el.text) dup.text = el.text
@@ -329,24 +434,41 @@ export function buildLayoutTree(input: {
   width: number
   height: number
   screenKind?: string
+  rasterTextIds?: readonly number[]
+  backgroundRepairMode?: UiBackgroundRepairMode
 }): UiLayoutTree {
   const { width, height } = input
   const ocr = input.ocr.map((b) => ({ ...b, text: cleanText(b.text) }))
+  const rasterSet = new Set<number>(
+    (input.rasterTextIds ?? []).filter((i) => i >= 0 && i < ocr.length)
+  )
   const claimed = new Set<number>()
   const nodes: UiElementNode[] = []
 
   // 1) VLM 元素 + 文字 OCR 融合
+  const canvasArea = width * height
   for (const raw of input.elements) {
+    const stackLabel =
+      rectArea(raw.box) < canvasArea * 0.18 &&
+      (raw.kind === 'badge' ||
+        raw.kind === 'art-text' ||
+        raw.kind === 'text' ||
+        raw.kind === 'other') &&
+      isShortStackOrLevelLabel(raw.text || raw.name)
+    const effectiveKind: UiElementKind = stackLabel ? 'text' : raw.kind
     const node: UiElementNode = {
       id: raw.id,
       name: raw.name,
-      kind: raw.kind,
+      kind: effectiveKind,
       box: { ...raw.box },
       rawBox: { ...raw.box },
+      ...(raw.positivePoints?.length ? { positivePoints: raw.positivePoints } : {}),
+      ...(raw.negativePoints?.length ? { negativePoints: raw.negativePoints } : {}),
+      ...(raw.repairMode ? { repairMode: raw.repairMode } : {}),
       parentId: raw.parentRef,
       order: raw.order
     }
-    if (isTextKind(raw.kind)) {
+    if (isTextKind(effectiveKind)) {
       let refs = raw.ocrRefs.filter((i) => i >= 0 && i < ocr.length && !claimed.has(i))
       if (!refs.length) {
         const pad = Math.max(4, Math.round(raw.box.height * 0.2))
@@ -368,14 +490,27 @@ export function buildLayoutTree(input: {
         .map((b) => b.text)
         .join(' ')
         .trim()
-      const vlmText = raw.text?.trim() ?? ''
+      const vlmText = (raw.text?.trim() || (stackLabel ? raw.name.trim() : '')) ?? ''
       // 文字内容：VLM 读字（纠正 OCR 误识）优先；VLM 没给时用 OCR
       node.text = vlmText || ocrText || undefined
-      if (vlmText && ocrText && similarity(vlmText, ocrText) < 0.25 && raw.kind === 'text') {
+      if (
+        vlmText &&
+        ocrText &&
+        similarity(vlmText, ocrText) < 0.25 &&
+        effectiveKind === 'text' &&
+        !stackLabel
+      ) {
         // 两者完全对不上时以本地 OCR 为准（VLM 可能把邻近文字读串了）
         node.text = ocrText
       }
-      node.plainText = raw.kind === 'text'
+      const isRasterByRef = !stackLabel && refs.some((i) => rasterSet.has(i))
+      if (isRasterByRef && node.kind === 'text') {
+        node.kind = 'art-text'
+      }
+      if (node.kind === 'art-text') {
+        for (const i of refs) rasterSet.add(i)
+      }
+      node.plainText = node.kind === 'text' && !isRasterByRef
       if (refs.length && node.plainText) {
         const union = rectUnion(refs.map((i) => ocr[i]!))
         if (union) node.box = clampRect(union, width, height)
@@ -385,13 +520,13 @@ export function buildLayoutTree(input: {
     nodes.push(node)
   }
 
-  // 2) 未被认领的 OCR 文本：不在艺术字/图标/立绘里的，补成普通文字元素
+  // 2) 未被认领的 OCR 文本：若在 raster_text_ids 中则保留在底板；否则补成普通文字元素（不屏蔽 avatar/illustration 上的数量/等级数字）
   const artLike = nodes.filter(
-    (n) =>
-      n.kind === 'art-text' || n.kind === 'icon' || n.kind === 'illustration' || n.kind === 'avatar'
+    (n) => n.kind === 'art-text' || (n.kind === 'icon' && rectArea(n.box) < canvasArea * 0.12)
   )
   for (const [i, box] of ocr.entries()) {
     if (claimed.has(i) || !box.text) continue
+    if (rasterSet.has(i)) continue
     if (box.width < 4 || box.height < 4) continue
     if (artLike.some((a) => centerInside(box, a.box))) continue
     nodes.push({
@@ -411,34 +546,87 @@ export function buildLayoutTree(input: {
   resolveParents(nodes)
   assignPaintOrder(nodes)
   assignOcclusionLevels(nodes)
+
+  // 3) 补齐默认正向锚点
+  for (const n of nodes) {
+    if (n.plainText) continue
+    if (!n.positivePoints?.length) {
+      n.positivePoints = [
+        {
+          x: Math.round(n.box.left + n.box.width * 0.5),
+          y: Math.round(n.box.top + n.box.height * 0.5)
+        }
+      ]
+    }
+  }
+
   return {
     canvasWidth: width,
     canvasHeight: height,
     ...(input.screenKind ? { screenKind: input.screenKind } : {}),
+    ...(rasterSet.size ? { rasterTextIds: [...rasterSet].sort((a, b) => a - b) } : {}),
+    ...(input.backgroundRepairMode ? { backgroundRepairMode: input.backgroundRepairMode } : {}),
     elements: nodes
   }
 }
 
-/** 几何校正父子：父级必须是面积更大的非文字元素且基本包含子级 */
+/** 几何校正父子：父级必须是面积更大的非文字元素（或承载内部立绘/图标的容器）且基本包含子级 */
 export function resolveParents(nodes: UiElementNode[]): void {
   const byId = new Map(nodes.map((n) => [n.id, n]))
   for (const node of nodes) {
     const area = rectArea(node.box)
     const declared = node.parentId ? byId.get(node.parentId) : undefined
-    const valid = (p: UiElementNode | undefined, minContain: number): boolean =>
-      !!p &&
-      p !== node &&
-      !isTextKind(p.kind) &&
-      p.kind !== 'effect' &&
-      rectArea(p.box) > area * 1.02 &&
-      containment(node.box, p.box) >= minContain
+    const valid = (p: UiElementNode | undefined, minContain: number): boolean => {
+      if (!p || p === node || isTextKind(p.kind) || p.kind === 'effect') return false
+      const pArea = rectArea(p.box)
+      const isContainerToContent =
+        CONTAINER_ELEMENT_KINDS.has(p.kind) && !CONTAINER_ELEMENT_KINDS.has(node.kind)
+      const areaOk = pArea > area * 1.02 || (isContainerToContent && pArea >= area * 0.88)
+      return areaOk && containment(node.box, p.box) >= minContain
+    }
     if (valid(declared, 0.55)) continue
     let best: UiElementNode | undefined
     for (const cand of nodes) {
-      if (!valid(cand, 0.8)) continue
-      if (!best || rectArea(cand.box) < rectArea(best.box)) best = cand
+      if (!valid(cand, 0.78)) continue
+      if (
+        !best ||
+        rectArea(cand.box) < rectArea(best.box) ||
+        (CONTAINER_ELEMENT_KINDS.has(cand.kind) && !CONTAINER_ELEMENT_KINDS.has(best.kind))
+      ) {
+        best = cand
+      }
     }
     node.parentId = best?.id ?? null
+  }
+}
+
+function siblingZTier(kind: UiElementKind): number {
+  switch (kind) {
+    case 'effect':
+      return -1
+    case 'panel':
+    case 'frame':
+    case 'item-slot':
+    case 'banner':
+      return 0
+    case 'illustration':
+    case 'avatar':
+      return 1
+    case 'progress-bar':
+    case 'divider':
+    case 'decoration':
+    case 'tab':
+    case 'other':
+      return 2
+    case 'badge':
+    case 'icon':
+    case 'button':
+    case 'close-button':
+    case 'arrow':
+      return 3
+    case 'art-text':
+    case 'text':
+      return 4
   }
 }
 
@@ -452,14 +640,17 @@ function childrenMap(nodes: UiElementNode[]): Map<string | null, UiElementNode[]
   }
   for (const list of map.values()) {
     list.sort((a, b) => {
-      // 文字压在同级图形之上；其余按 VLM 绘制序，再按面积从大到小
-      const ta = isTextKind(a.kind) ? 1 : 0
-      const tb = isTextKind(b.kind) ? 1 : 0
-      if (a.kind === 'effect' && b.kind !== 'effect') return -1
-      if (b.kind === 'effect' && a.kind !== 'effect') return 1
-      return (
-        ta - tb || a.order - b.order || rectArea(b.box) - rectArea(a.box) || a.box.top - b.box.top
-      )
+      // 1) 文字压在同级图形之上；角标/图标/按钮压在同级立绘/容器底框之上
+      const tierDiff = siblingZTier(a.kind) - siblingZTier(b.kind)
+      if (tierDiff !== 0) return tierDiff
+      // 2) 若两个同级元素存在明显空间重叠，面积大的必定在下层（先绘制），面积小的必定在上层（后绘制，否则会被遮挡不可见）
+      const inter = rectIntersection(a.box, b.box)
+      const minArea = Math.max(1, Math.min(rectArea(a.box), rectArea(b.box)))
+      if (inter / minArea >= 0.15) {
+        const areaDiff = rectArea(b.box) - rectArea(a.box)
+        if (Math.abs(areaDiff) >= minArea * 0.12) return areaDiff
+      }
+      return a.order - b.order || rectArea(b.box) - rectArea(a.box) || a.box.top - b.box.top
     })
   }
   return map

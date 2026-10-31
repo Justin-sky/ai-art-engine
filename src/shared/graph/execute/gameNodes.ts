@@ -94,6 +94,7 @@ import {
   runMxSimulation,
   synthesizeMxDiagramFromPrompt,
   exportMxCommercialQaReportMarkdown,
+  exportMxNarrativeProgressionBrief,
   exportMxForecastCsv,
   exportMxGodotGd,
   exportMxToMermaid,
@@ -2462,6 +2463,7 @@ export async function executeGameEconomyNode(
     seed
   })
   const wbQaReportMarkdown = exportMxCommercialQaReportMarkdown(wb)
+  const wbNarrativeBrief = exportMxNarrativeProgressionBrief(wb, doc)
   const wbDataTables = exportWorkbenchToGameDataTables(wb)
   const rendered = renderMxPreviewRgba(doc, forecast, 640, 400)
   const previewDataUrl = await encodeRgbaWithCtx(
@@ -2533,9 +2535,11 @@ export async function executeGameEconomyNode(
         archetypeBalance: wbArchetypeBalance,
         commercialCohorts: wbCommercialCohorts,
         qaReportMarkdown: wbQaReportMarkdown,
+        narrativeProgressionBrief: wbNarrativeBrief,
         dataTableBundle: wbDataTables
       },
       qaReportMarkdown: wbQaReportMarkdown,
+      narrativeProgressionBrief: wbNarrativeBrief,
       dataTableBundle: wbDataTables,
       mermaidDiagram: exportMxToMermaid(doc),
       telemetryCsv: exportMxForecastCsv(doc, forecast),

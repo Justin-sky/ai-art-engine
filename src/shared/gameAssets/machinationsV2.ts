@@ -18,7 +18,9 @@ import {
 } from './machinationsEconomyEngine'
 import {
   createMxWorkbenchPreset,
+  mapMxTemplateToWorkbenchPreset,
   normalizeMxNumericalWorkbench,
+  synthesizeMxWorkbenchFromPrompt,
   type MxNumericalWorkbench,
   type MxWorkbenchPresetId
 } from './gameNumericalWorkbench'
@@ -3988,6 +3990,7 @@ export type MxTemplateId =
   | 'hearthstone_mana_pack'
   | 'onmyoji_speed_orbs'
   | 'balatro_ante_jokers'
+  | 'short_drama_reversal_loop'
 
 export interface MxTemplateMeta {
   id: MxTemplateId
@@ -4151,6 +4154,17 @@ export const MX_TEMPLATES: MxTemplateMeta[] = [
     descEn: 'Capped stamina pool with interval regen, stage entry converter, and XP progression.',
     descZh:
       '\u5e26\u4e0a\u9650\u4f53\u529b\u6c60\u3001\u95f4\u9694\u6062\u590d\u3001\u95ef\u5173\u6d88\u8017\u4e0e\u7b49\u7ea7\u5bc4\u5b58\u5668'
+  },
+  {
+    id: 'short_drama_reversal_loop',
+    key: 'shortDrama',
+    category: 'rpg',
+    nameEn: 'Short Drama Progression: Humiliation Charge, System Multiplier & Climax Paywall',
+    nameZh: '🎬《逆袭爽剧 / 系统流》80集角色成长、受辱蓄能与打脸付费卡点闭环', // cjk-ok
+    descEn:
+      'Villain provocation charge, system multiplier breakthrough, climax face-slapping, faction prestige & paywall conversion.',
+    descZh: '反派打压蓄能、金手指返利/境界突破、名场面亮底牌打脸、红颜势力声望与付费卡点转化闭环', // cjk-ok
+    workbenchPreset: 'short_drama_progression'
   }
 ]
 
@@ -4215,6 +4229,18 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
         { id: 'p_curve', name: 'CurveEfficiency', value: 2.1 },
         { id: 'p_clear', name: 'EnemyBoardClear', value: 2.5 }
       ]
+      doc.scenarios = [
+        {
+          id: 'sc_aggro',
+          name: 'Fast Tempo',
+          params: { CurveEfficiency: 2.8, EnemyBoardClear: 1.8 }
+        },
+        {
+          id: 'sc_control',
+          name: 'Heavy Clear',
+          params: { CurveEfficiency: 1.7, EnemyBoardClear: 3.5 }
+        }
+      ]
       doc.nodes = [
         nd('ramp', 'source', 'Turn Mana (+1)', 140, 180, { resourceId: 'mana' }),
         nd('crystals', 'pool', 'Mana Crystals', 310, 180, {
@@ -4268,6 +4294,18 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
         { id: 'p_spd', name: 'PullerSPD', value: 265 },
         { id: 'p_cdmg', name: 'NukerCritDmg', value: 2.85 },
         { id: 'p_def', name: 'BossDEF', value: 450 }
+      ]
+      doc.scenarios = [
+        {
+          id: 'sc_fast',
+          name: 'Full +18 SPD',
+          params: { PullerSPD: 278, NukerCritDmg: 3.25, BossDEF: 380 }
+        },
+        {
+          id: 'sc_tank',
+          name: 'High DEF Boss',
+          params: { PullerSPD: 240, NukerCritDmg: 2.5, BossDEF: 680 }
+        }
       ]
       doc.nodes = [
         nd('spd_run', 'source', 'Speed Tick', 140, 180, { resourceId: 'av' }),
@@ -4325,6 +4363,18 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
         { id: 'p_chips', name: 'BaseChips', value: 140 },
         { id: 'p_mult', name: 'AddMult', value: 32 },
         { id: 'p_xmult', name: 'JokerXMult', value: 2.0 }
+      ]
+      doc.scenarios = [
+        {
+          id: 'sc_godrun',
+          name: 'Polychrome XMult',
+          params: { BaseChips: 180, AddMult: 45, JokerXMult: 2.6 }
+        },
+        {
+          id: 'sc_goldstake',
+          name: 'Gold Stake',
+          params: { BaseChips: 110, AddMult: 22, JokerXMult: 1.6 }
+        }
       ]
       doc.nodes = [
         nd('blind_reward', 'source', 'Blind Reward + Interest', 140, 200, { resourceId: 'gold' }),
@@ -4437,6 +4487,10 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
         { id: 'lives', name: 'Lives', color: '#ef4444' }
       ]
       doc.params = [{ id: 'p_wave', name: 'WaveGrowth', value: 0.35 }]
+      doc.scenarios = [
+        { id: 'sc_casual', name: 'Casual Wave', params: { WaveGrowth: 0.22 } },
+        { id: 'sc_nightmare', name: 'Nightmare Wave', params: { WaveGrowth: 0.55 } }
+      ]
       doc.nodes = [
         nd('kills', 'source', 'Enemy Kills', 140, 200, { resourceId: 'gold' }),
         nd('gold', 'pool', 'Gold', 320, 200, { resourceId: 'gold', initial: 30 }),
@@ -4521,12 +4575,78 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
       doc.settings.steps = 60
       break
     }
+    case 'short_drama_reversal_loop': {
+      doc.title = title || '🎬《逆袭爽剧 / 系统流》80集角色成长、受辱蓄能与打脸付费卡点闭环' // cjk-ok
+      doc.resources = [
+        { id: 'grievance', name: '受辱蓄能', color: '#f59e0b' }, // cjk-ok
+        { id: 'power', name: '主角境界/身价', color: '#3b82f6' }, // cjk-ok
+        { id: 'prestige', name: '震慑声望/好感', color: '#ec4899' } // cjk-ok
+      ]
+      doc.params = [
+        { id: 'p_sys', name: 'SystemRebateMult', value: 2.2 },
+        { id: 'p_slap', name: 'ClimaxSlapRatio', value: 1.8 }
+      ]
+      doc.scenarios = [
+        {
+          id: 'sc_god_rebate',
+          name: '百倍神豪爽剧节奏', // cjk-ok
+          params: { SystemRebateMult: 3.0, ClimaxSlapRatio: 2.4 }
+        },
+        {
+          id: 'sc_slow_burn',
+          name: '传统慢热隐忍节奏', // cjk-ok
+          params: { SystemRebateMult: 1.5, ClimaxSlapRatio: 1.3 }
+        }
+      ]
+      doc.nodes = [
+        nd('villain_provoke', 'source', /* cjk-ok */ '反派挑衅/退婚受辱', 130, 190, {
+          resourceId: 'grievance'
+        }),
+        nd('grievance_pool', 'pool', /* cjk-ok */ '受辱蓄能池 (压抑值)', 310, 190, {
+          resourceId: 'grievance',
+          initial: 6,
+          capacity: 30
+        }),
+        nd('system_awaken', 'converter', /* cjk-ok */ '金手指/奇遇突破', 500, 190, {
+          resourceId: 'power',
+          trigger: 'automatic'
+        }),
+        nd('protagonist_power', 'pool', /* cjk-ok */ '主角境界/百亿身价池', 700, 190, {
+          resourceId: 'power',
+          initial: 24
+        }),
+        nd('climax_slap', 'converter', /* cjk-ok */ '名场面亮底牌打脸', 700, 350, {
+          resourceId: 'prestige',
+          trigger: 'automatic'
+        }),
+        nd('prestige_pool', 'pool', /* cjk-ok */ '家族声望 & 红颜倾心度', 910, 260, {
+          resourceId: 'prestige',
+          initial: 10
+        }),
+        nd('villain_tier', 'register', /* cjk-ok */ '反派换地图阶梯 (1~4阶)', 500, 350, {
+          formula: 'min(4, floor(a / 25) + 1)'
+        }),
+        nd('finale_win', 'end', /* cjk-ok */ '80集登顶巅峰大结局', 1090, 260, {})
+      ]
+      doc.edges = [
+        ed('e1', 'resource', 'villain_provoke', 'grievance_pool', '4'),
+        ed('e2', 'resource', 'grievance_pool', 'system_awaken', '3'),
+        ed('e3', 'resource', 'system_awaken', 'protagonist_power', 'round(4 * SystemRebateMult)'),
+        ed('e4', 'resource', 'protagonist_power', 'climax_slap', '5'),
+        ed('e5', 'resource', 'climax_slap', 'prestige_pool', 'round(6 * ClimaxSlapRatio)'),
+        ed('e6', 'state', 'prestige_pool', 'villain_tier', '+1'),
+        ed('e7', 'state', 'prestige_pool', 'finale_win', '>=120')
+      ]
+      doc.settings.steps = 20
+      break
+    }
     default:
       if (id !== ('roguelike_run' as MxTemplateId)) {
         return createMxTemplate('roguelike_run', title)
       }
       break
   }
+  doc.workbench = createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(id))
   return doc
 }
 
@@ -4610,6 +4730,10 @@ export function parseMxDocumentJson(
 }
 
 const MX_PROMPT_TEMPLATE_RULES: Array<[RegExp, MxTemplateId]> = [
+  [
+    /short\s*drama|micro\s*drama|短剧|爽剧|逆袭|打脸|系统流|神豪|战神|赘婿|重生|女频|豪门|退婚|反派阶梯|付费卡点/, // cjk-ok
+    'short_drama_reversal_loop'
+  ],
   [
     /hearthstone|tcg|minion|dust|mulligan|\u7089\u77f3|\u968f\u4ece|\u6cd5\u529b\u6c34\u6676|\u5965\u672f\u4e4b\u5c18|\u5361\u5305|\u4e07\u667a\u724c/,
     'hearthstone_mana_pack'
@@ -4711,5 +4835,9 @@ export function synthesizeMxDiagramFromPrompt(
     const agent = generateMxAgentWithAi(doc, { prompt })
     doc.agents = [agent]
   }
+  doc.workbench = synthesizeMxWorkbenchFromPrompt(
+    prompt,
+    mapMxTemplateToWorkbenchPreset(matchedTpl)
+  )
   return doc
 }

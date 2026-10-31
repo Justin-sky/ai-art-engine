@@ -1,9 +1,9 @@
 /**
- * 画布右键菜单的资源分组嵌套。
+ * 画布右键菜单的资源分组。
  *
  * 分组声明（id → typeIds）仍在 `NodeGraphEditor.vue`：可添加节点随画布作用域变化，
- * 声明必须挨着 `addableMenuItems` 才看得清。这里只做纯数据搬运——把影视流水线的三个
- * 阶段分组（前期 / 美术 / 拍摄）收进「影视」父级，并把分组图标收成一处纯函数，便于单测锁住层级、顺序与图标。
+ * 声明必须挨着 `addableMenuItems` 才看得清。这里只做纯数据搬运——把影视流水线节点
+ * 统一平铺收进「影视」一级分组下（不设二级子分组），并把分组图标收成一处纯函数，便于单测锁住顺序与图标。
  */
 
 import { ANIM2D_ASSET_ICON, ASSET_TYPE_ICONS } from '@shared/domain'
@@ -13,7 +13,7 @@ export type ContextMenuResourceGroup<TItem, TId extends string = string> = {
   label: string
   icon: string
   items: TItem[]
-  /** 二级分组：有值时本组自身不放节点，只作入口（影视） */
+  /** 兼容保留字段；影视分组现已去掉二级分组，节点直接平铺在 items 下 */
   children?: Array<ContextMenuResourceGroup<TItem, TId>>
 }
 
@@ -74,6 +74,8 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
       return '🤖'
     case 'ad':
       return '📢'
+    case 'filmTv':
+      return CONTEXT_MENU_FILM_TV_ICON
     /**
      * 影视三个阶段分组：图标不能与组内节点撞（剧本生成 📜 / 设定 🎭 / 镜头 📷 / 批量拍摄 🪄），
      * 否则分不清谁是组、谁是节点（同 video / text 分组的教训）。
@@ -90,18 +92,21 @@ export function contextMenuResourceGroupIcon(groupId: string): string {
 }
 
 /**
- * 收进影视父级的分组 id；数组顺序＝二级菜单展示顺序（按制作阶段：前期 → 美术 → 拍摄）。
+ * 归入影视分组的阶段 id；数组顺序＝影视分组内节点的拼接顺序（按制作阶段：前期 → 美术 → 拍摄）。
  * 组内节点也按流水线顺序排列（不参与名称排序），见 NodeGraphEditor 的 FILM_MENU_GROUP_IDS。
  */
 export const CONTEXT_MENU_NESTED_CHILD_GROUP_IDS = ['filmPre', 'filmArt', 'filmShoot'] as const
 
-const NESTED_CHILD_ID_SET: ReadonlySet<string> = new Set(CONTEXT_MENU_NESTED_CHILD_GROUP_IDS)
+const NESTED_CHILD_ID_SET: ReadonlySet<string> = new Set([
+  CONTEXT_MENU_NESTED_PARENT_ID,
+  ...CONTEXT_MENU_NESTED_CHILD_GROUP_IDS
+])
 
 /**
- * 把影视相关的分组收进「影视」父级：
- * - 子分组从根菜单摘掉、改挂到父级下，顺序取 `CONTEXT_MENU_NESTED_CHILD_GROUP_IDS`（不参与名称排序）；
- * - 父级自身 items 为空，只提供二级入口，其余分组原样留在根菜单；
- * - 子分组在当前作用域下没有可添加节点时（上游已过滤）不占位；四个都不剩则父级不出现。
+ * 把影视相关的节点统一平铺收进「影视」分组（去掉二级分组）：
+ * - 影视阶段分组从根菜单摘掉，节点按 `前期 → 美术 → 拍摄` 流水线顺序直接放入「影视」分组 `items`；
+ * - 不再生成 `children` 二级子菜单，其余分组原样留在根菜单；
+ * - 当前作用域下没有任何影视可添加节点时不占位。
  */
 export function nestContextMenuResourceGroups<TItem, TId extends string>(
   groups: ReadonlyArray<ContextMenuResourceGroup<TItem, TId>>,
@@ -112,18 +117,17 @@ export function nestContextMenuResourceGroups<TItem, TId extends string>(
   const byId = new Map<string, ContextMenuResourceGroup<TItem, TId>>(
     groups.map((group) => [group.id, group])
   )
-  const children = CONTEXT_MENU_NESTED_CHILD_GROUP_IDS.map((id) => byId.get(id)).filter(
-    (group): group is ContextMenuResourceGroup<TItem, TId> => group != null
+  const items = [CONTEXT_MENU_NESTED_PARENT_ID, ...CONTEXT_MENU_NESTED_CHILD_GROUP_IDS].flatMap(
+    (id) => byId.get(id)?.items ?? []
   )
-  if (children.length === 0) return roots
+  if (items.length === 0) return roots
   return [
     ...roots,
     {
       id: CONTEXT_MENU_NESTED_PARENT_ID,
       label: parent.label,
       icon: parent.icon,
-      items: [],
-      children
+      items
     }
   ]
 }

@@ -37,6 +37,22 @@ export function buildScreenplayPrompt(instruction: string, locale?: string): str
   return buildOrDefault(instruction, locale, defaultScreenplayUserPrompt)
 }
 
+// ——— 创建小说 ———
+
+export const DEFAULT_NOVEL_USER_PROMPT_EN =
+  'Based on the connected character progression numerical system, worldbuilding, and plot requirements, write a complete, gripping multi-chapter web novel with [Core World & Character Profiles] and full chapters (Chapter 1, Chapter 2, Chapter 3...), faithfully translating the realm/wealth breakthroughs, climax walls, and optimal trump-card sequence into vivid narrative prose ready for screenplay adaptation.'
+
+export const DEFAULT_NOVEL_USER_PROMPT_ZH =
+  '请根据上游连接的角色成长数值体系、突破阶梯、高潮卡点与亮底牌序列，创作一部情节跌宕、爽点密集、细节饱满的多章精品小说（含小说名、【核心设定与人物档案】及第1章~第3章完整正文），供下游剧本节点直接改编为分集剧本。' // cjk-ok
+
+export function defaultNovelUserPrompt(locale?: string): string {
+  return pickByLocale(locale, DEFAULT_NOVEL_USER_PROMPT_EN, DEFAULT_NOVEL_USER_PROMPT_ZH)
+}
+
+export function buildNovelPrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultNovelUserPrompt)
+}
+
 // ——— 游戏系统策划案 ———
 
 export const DEFAULT_GAME_SYSTEM_USER_PROMPT_EN =

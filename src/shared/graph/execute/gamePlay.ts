@@ -189,9 +189,9 @@ export async function executeGamePlayAssetNode(
     try {
       const parsed = JSON.parse(rawTxt) as {
         kind?: string
-        document?: { title?: string }
+        document?: { title?: string; templateId?: string }
         dataTableBundle?: GameDataTableBundle
-        workbenchReport?: { dataTableBundle?: GameDataTableBundle }
+        workbenchReport?: { activePresetId?: string; dataTableBundle?: GameDataTableBundle }
         cards?: GameDataTableBundle['cards']
         characters?: GameDataTableBundle['characters']
       }
@@ -201,10 +201,15 @@ export async function executeGamePlayAssetNode(
         (Array.isArray(parsed.cards) ? (parsed as unknown as GameDataTableBundle) : undefined)
       if (bundle && (bundle.cards?.length || bundle.characters?.length)) {
         const hero = bundle.characters?.[0]
+        const isBalatro =
+          parsed.workbenchReport?.activePresetId === 'balatro_roguelike' ||
+          parsed.document?.templateId === 'balatro_ante_jokers' ||
+          /balatro|chips|joker|\u5c0f\u4e11/i.test(bundle.tableName || '')
         const compiled = compilePlayableGameSandboxHtml({
           title:
             parsed.document?.title || bundle.tableName || ctx.node.title || 'Roguelike Deckbuilder',
           mode: bundle.cards?.length ? 'card_dbg' : 'survivor',
+          balatroScoring: isBalatro,
           customPlayerMaxHp: hero?.hp,
           customPlayerBaseAtk: hero?.atk,
           customCards: bundle.cards?.map((c) => ({

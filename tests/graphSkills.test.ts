@@ -74,10 +74,10 @@ describe('nodeCapabilities', () => {
     expect(cap?.usageEn).toContain('screen_record_stop')
     expect(cap?.systemPromptZh).toBeUndefined()
     expect(cap?.instructionZh).toBeUndefined()
-    expect(cap?.usageZh).toContain('graph-ctx-group-filmPre')
+    expect(cap?.usageZh).toContain('graph-ctx-group-filmTv')
     expect(cap?.usageZh).toContain('必须带 tutorialId')
     expect(cap?.usageZh).toContain('别再加字幕轨')
-    expect(cap?.usageEn).toContain('graph-ctx-group-filmPre')
+    expect(cap?.usageEn).toContain('graph-ctx-group-filmTv')
     expect(cap?.usageEn).toContain('tutorialId is REQUIRED')
   })
 

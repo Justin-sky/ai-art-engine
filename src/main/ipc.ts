@@ -674,6 +674,9 @@ export function registerIpcHandlers(): void {
   handle(IpcChannels.YOLO_SEGMENT, (input: YoloInferenceInput) => yoloService.segment(input))
   handle(IpcChannels.YOLO_POSE, (input: YoloInferenceInput) => yoloService.pose(input))
   handle(IpcChannels.YOLO_FACE, (input: YoloInferenceInput) => yoloService.face(input))
+  handle(IpcChannels.YOLO_SAM2, (input: import('@shared/yolo').YoloSam2PromptInput) =>
+    yoloService.sam2(input)
+  )
   handle(IpcChannels.YOLO_OPEN_MODEL_DIR, () => yoloService.openModelDir())
   handle(IpcChannels.YOLO_MODEL_CATALOG, () => YOLO_CATALOG_ALL)
   // sourceUrl 可选：人脸两段式托管在本仓 Release，渲染层把最终地址传下来（主进程白名单校验）

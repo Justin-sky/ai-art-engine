@@ -167,6 +167,7 @@ const supportsGraph = computed(
     (isMediaFileAsset(asset.value.type) ||
       isScreenplayAsset(asset.value.type) ||
       isSubgraphAsset(asset.value.type) ||
+      asset.value.type === 'gameSystem' ||
       asset.value.type === 'gamePlay')
 )
 

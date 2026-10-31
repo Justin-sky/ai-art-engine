@@ -16,6 +16,7 @@ import {
   runMxSimulation,
   stepMxSimulation,
   suggestMxAgentGoalsWithAi,
+  synthesizeMxWorkbenchFromPrompt,
   type MxAgent,
   type MxDocument,
   type MxEdge,
@@ -758,8 +759,69 @@ export function createMxStudioStore(initial: MxDocument) {
     playStep.value = run.stepsRun
   }
 
+  /** 确保当前文档具备全局变量 Params 与至少 2 套可对比的数值方案 Scenarios */
+  function ensureScenariosReady(): void {
+    if (doc.value.params.length > 0 && doc.value.scenarios.length > 0) return
+    mutate((d) => {
+      if (d.params.length === 0) {
+        const resEdges = d.edges.filter((e) => e.kind === 'resource')
+        const nodeMap = new Map(d.nodes.map((n) => [n.id, n]))
+        const faucetEdge =
+          resEdges.find((e) => nodeMap.get(e.from)?.kind === 'source') ?? resEdges[0]
+        if (faucetEdge) {
+          const f = faucetEdge.formula.trim()
+          if (/^\d+(\.\d+)?$/.test(f)) {
+            d.params.push({ id: mxNewId('p'), name: 'FaucetRate', value: Number(f) })
+            faucetEdge.formula = 'FaucetRate'
+          } else if (!/%|\bevery\b|\|/i.test(f)) {
+            d.params.push({ id: mxNewId('p'), name: 'FaucetMult', value: 1 })
+            faucetEdge.formula = `round((${f}) * FaucetMult)`
+          }
+        }
+        const sinkEdge = resEdges.find(
+          (e) =>
+            e.id !== faucetEdge?.id &&
+            ['drain', 'converter', 'trader'].includes(nodeMap.get(e.to)?.kind ?? '')
+        )
+        if (sinkEdge) {
+          const f = sinkEdge.formula.trim()
+          if (/^\d+(\.\d+)?$/.test(f)) {
+            d.params.push({ id: mxNewId('p'), name: 'SinkCost', value: Number(f) })
+            sinkEdge.formula = 'SinkCost'
+          } else if (!/%|\bevery\b|\|/i.test(f)) {
+            d.params.push({ id: mxNewId('p'), name: 'SinkMult', value: 1 })
+            sinkEdge.formula = `round((${f}) * SinkMult)`
+          }
+        }
+        if (d.params.length === 0) {
+          d.params.push({ id: mxNewId('p'), name: 'FlowRate', value: 1 })
+        }
+      }
+
+      if (d.scenarios.length === 0) {
+        const easyParams: Record<string, number> = {}
+        const hardParams: Record<string, number> = {}
+        d.params.forEach((p, idx) => {
+          const base = Number(p.value) || 1
+          if (idx === 0) {
+            easyParams[p.name] = Math.round(base * 1.4 * 100) / 100
+            hardParams[p.name] = Math.round(base * 0.7 * 100) / 100
+          } else {
+            easyParams[p.name] = Math.round(base * 0.75 * 100) / 100
+            hardParams[p.name] = Math.round(base * 1.4 * 100) / 100
+          }
+        })
+        d.scenarios.push(
+          { id: mxNewId('sc'), name: 'Easy / Boost', params: easyParams },
+          { id: mxNewId('sc'), name: 'Hard / Strict', params: hardParams }
+        )
+      }
+    }, 'initScenarios')
+  }
+
   /** 一键运行并叠加对比全部方案（Scenarios）或多种子轨迹 */
   function runAllScenariosCompare(): void {
+    ensureScenariosReady()
     resetPlayback()
     const baseSeed = doc.value.settings.seed
     const steps = doc.value.settings.steps
@@ -793,11 +855,79 @@ export function createMxStudioStore(initial: MxDocument) {
       }
     }
     runs.value = newRuns
-    activeRunId.value = newRuns[0]?.id ?? ''
-    compareRunIds.value = newRuns.slice(1).map((r) => r.id)
-    playStep.value = newRuns[0]?.stepsRun ?? steps
+    const activeScId = doc.value.activeScenarioId
+    const primaryRun =
+      (activeScId ? newRuns.find((r) => r.scenarioId === activeScId) : newRuns[0]) ?? newRuns[0]
+    activeRunId.value = primaryRun?.id ?? ''
+    compareRunIds.value = newRuns.filter((r) => r.id !== primaryRun?.id).map((r) => r.id)
+    playStep.value = primaryRun?.stepsRun ?? steps
     resultsOpen.value = true
-    resultsTab.value = 'results'
+    if (resultsTab.value === 'workbench') {
+      resultsTab.value = 'results'
+    }
+  }
+
+  function enterScenariosMode(): void {
+    mode.value = 'scenarios'
+    ensureScenariosReady()
+    drawer.value = 'params'
+    runAllScenariosCompare()
+  }
+
+  function enterBuildMode(): void {
+    mode.value = 'build'
+    if (resultsTab.value === 'workbench') {
+      resultsTab.value = 'results'
+    }
+    if (drawer.value === 'params') {
+      drawer.value = ''
+    }
+    compareRunIds.value = []
+    playAgain()
+  }
+
+  function selectScenario(scId: string | undefined): void {
+    mode.value = 'scenarios'
+    mutate((d) => {
+      d.activeScenarioId = scId || undefined
+    }, 'selScenario')
+    runAllScenariosCompare()
+  }
+
+  function addScenario(customName?: string): void {
+    ensureScenariosReady()
+    let createdId = ''
+    mutate((d) => {
+      const idx = d.scenarios.length + 1
+      const scParams: Record<string, number> = {}
+      d.params.forEach((p, pIdx) => {
+        const mult = pIdx === 0 ? 1 + idx * 0.15 : Math.max(0.4, 1 - idx * 0.1)
+        scParams[p.name] = Math.round((Number(p.value) || 1) * mult * 100) / 100
+      })
+      const sc = {
+        id: mxNewId('sc'),
+        name: customName || `Scenario ${idx}`,
+        params: scParams
+      }
+      d.scenarios.push(sc)
+      d.activeScenarioId = sc.id
+      createdId = sc.id
+    }, 'addScenario')
+    if (createdId) {
+      selectScenario(createdId)
+    }
+  }
+
+  function removeScenario(scId: string): void {
+    mutate((d) => {
+      d.scenarios = d.scenarios.filter((s) => s.id !== scId)
+      if (d.activeScenarioId === scId) {
+        d.activeScenarioId = d.scenarios[0]?.id
+      }
+    }, 'delScenario')
+    if (mode.value === 'scenarios') {
+      runAllScenariosCompare()
+    }
   }
 
   function runForecast(): void {
@@ -1024,7 +1154,8 @@ export function createMxStudioStore(initial: MxDocument) {
       hearthstone_tcg: 'hearthstone_mana_pack',
       onmyoji_atb: 'onmyoji_speed_orbs',
       balatro_roguelike: 'balatro_ante_jokers',
-      survivor_brotato: 'survivor_xp_loop'
+      survivor_brotato: 'survivor_xp_loop',
+      short_drama_progression: 'short_drama_reversal_loop'
     }
     if (syncMacroCanvas) {
       const nextDoc = createMxFromTemplate(presetToTemplate[presetId])
@@ -1037,6 +1168,33 @@ export function createMxStudioStore(initial: MxDocument) {
     mutate((d) => {
       d.workbench = createMxWorkbenchPreset(presetId)
     }, `wbPreset:${presetId}`)
+  }
+
+  function applyWorkbenchPrompt(prompt: string, syncMacroCanvas = true): MxNumericalWorkbench {
+    const presetToTemplate: Record<MxWorkbenchPresetId, MxTemplateId> = {
+      slay_the_spire_dbg: 'roguelike_mana_deck',
+      hearthstone_tcg: 'hearthstone_mana_pack',
+      onmyoji_atb: 'onmyoji_speed_orbs',
+      balatro_roguelike: 'balatro_ante_jokers',
+      survivor_brotato: 'survivor_xp_loop',
+      short_drama_progression: 'short_drama_reversal_loop'
+    }
+    const synthesized = synthesizeMxWorkbenchFromPrompt(
+      prompt,
+      doc.value.workbench?.activePresetId ?? 'slay_the_spire_dbg'
+    )
+    if (syncMacroCanvas) {
+      const nextDoc = createMxFromTemplate(presetToTemplate[synthesized.activePresetId])
+      nextDoc.workbench = synthesized
+      replaceDoc(nextDoc, true)
+      playAgain()
+      runForecast()
+      return synthesized
+    }
+    mutate((d) => {
+      d.workbench = synthesized
+    }, `wbPrompt:${synthesized.activePresetId}`)
+    return synthesized
   }
 
   function syncWorkbenchToMacroParams(metrics: Record<string, number>): string[] {
@@ -1256,6 +1414,12 @@ export function createMxStudioStore(initial: MxDocument) {
     interact,
     adjustRegisterValue,
     playAgain,
+    ensureScenariosReady,
+    enterScenariosMode,
+    enterBuildMode,
+    selectScenario,
+    addScenario,
+    removeScenario,
     runAllScenariosCompare,
     resetPlayback,
     runForecast,
@@ -1274,6 +1438,7 @@ export function createMxStudioStore(initial: MxDocument) {
     fillAgentGoalsWithAi,
     ensureWorkbench,
     applyWorkbenchPreset,
+    applyWorkbenchPrompt,
     syncWorkbenchToMacroParams,
     injectValueToCanvasNode,
     stopTimer

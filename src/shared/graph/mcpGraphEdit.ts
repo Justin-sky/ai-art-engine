@@ -143,6 +143,15 @@ const TYPE_ID_ALIASES: Record<string, GraphNodeTypeId> = {
   'model3d.rig': 'model.rigSkin',
   'model3d.segment': 'model.segment',
   'spatialWorld.generate': 'asset.spatialWorld',
+  economy: 'game.economy',
+  'game.machinations': 'game.economy',
+  machinations: 'game.economy',
+  novel: 'asset.novel',
+  'game.novel': 'asset.novel',
+  'game.system': 'asset.gameSystem',
+  gameSystem: 'asset.gameSystem',
+  gdd: 'asset.gameSystem',
+  'asset.gdd': 'asset.gameSystem',
   text: 'note.text',
   note: 'note.text'
 }
@@ -211,6 +220,19 @@ function resolveEdgePorts(
       if (canConnectNodes(source, target, { sourcePort: musicPort, targetPort: 'in-music' })) {
         return { sourcePort: musicPort, targetPort: 'in-music' }
       }
+    }
+  }
+  if (
+    source.typeId === 'game.economy' &&
+    (!fromPort || fromPort === 'out') &&
+    (target.typeId === 'asset.novel' ||
+      target.typeId === 'asset.gameSystem' ||
+      target.typeId === 'asset.screenplay' ||
+      target.typeId === 'ui.split')
+  ) {
+    const targetPort = toPort || 'in'
+    if (canConnectNodes(source, target, { sourcePort: 'out-text', targetPort })) {
+      return { sourcePort: 'out-text', targetPort }
     }
   }
   if (fromPort || toPort) {

@@ -5,6 +5,7 @@
  */
 
 export type InstructionPresetKind =
+  | 'novel'
   | 'screenplay'
   | 'gameSystem'
   | 'image'
@@ -409,11 +410,36 @@ const GAME_SYSTEM_PRESETS: InstructionPreset[] = [
   }
 ]
 
+const SCREENPLAY_FROM_NOVEL_BODY = `请将上游传入的原著小说完整改编为标准多集短剧拍摄剧本。要求：
+1. 第一行写「剧本名：…」，空一行写【人物小传】（从小说人物档案提炼年龄、外貌、服装与性格）
+2. 将小说的每一章对应改编为独立一集（第1集：… / 第2集：… / 第3集：…）
+3. 将小说中的心理博弈、境界/身价差距与底牌亮出顺序全部外化为具象的「△ 视觉动作描写」与简短有力的冲突台词
+4. 完整保留每章末尾的黄金断章悬念钩子`
+
+const NOVEL_PROGRESSION_BODY = `请严格根据上游连接的角色成长数值体系（乘区公式、Lv.1~Lv.80突破阶梯、高潮Boss卡点与最优打脸底牌序列），创作一部3章连载的《都市神豪/龙王逆袭》精品爽文小说：
+1. 第1章（潜龙受辱·蓄能拉满）：对应前期压制阶段，细腻刻画退婚/寿宴上的势利羞辱与主角暗中激活金手指系统的冷静布局
+2. 第2章（奇遇破境·名流俯首）：对应中期突破阶梯，触发机缘池核心人脉，江城首富/泰斗躬身接驾，反派阵营初现裂痕
+3. 第3章（高潮亮底牌·终极审判）：严格按数值大纲的「单回合最优连招序列」依次亮出底牌，层层反转碾压全场，并在章末留下跨地图更高阶反派的强钩子`
+
+const NOVEL_CULTIVATION_BODY = `请根据上游连接的境界成长数值与破境阶梯，创作一部《仙侠/玄幻系统流》越级反杀精品小说：
+1. 将基础属性与独立乘区转化为灵根品阶、功法倍率、护道人底蕴与天道暴击异象
+2. 完整呈现从废柴受辱、禁地签到觉醒、宗门大比越级连斩到亮出仙帝底牌的三章高潮剧情
+3. 每章结尾保留强烈悬念钩子，供下游直接改编为多集漫剧/短剧剧本`
+
+const NOVEL_FEMALE_REVENGE_BODY = `请根据上游角色成长与身份蜕变数值大纲，创作一部《大女主重生/千金归来》高智商虐渣爽文小说：
+1. 将属性成长转化为商业版图、世家筹码、舆论反转铁证与顶级盟友权重
+2. 围绕认亲宴/慈善晚宴构建三章层层递进的设局、反杀与真身揭晓名场面`
+
 const SCREENPLAY_PRESETS: InstructionPreset[] = [
   {
     id: 'screenplay.create',
     titleKey: 'graph.inspector.generate.presets.screenplay.create',
     body: SCREENPLAY_CREATE_BODY
+  },
+  {
+    id: 'screenplay.fromNovel',
+    titleKey: 'graph.inspector.generate.presets.screenplay.fromNovel',
+    body: SCREENPLAY_FROM_NOVEL_BODY
   },
   {
     id: 'screenplay.twists',
@@ -429,6 +455,24 @@ const SCREENPLAY_PRESETS: InstructionPreset[] = [
     id: 'screenplay.hooks',
     titleKey: 'graph.inspector.generate.presets.screenplay.hooks',
     body: SCREENPLAY_HOOKS_BODY
+  }
+]
+
+const NOVEL_PRESETS: InstructionPreset[] = [
+  {
+    id: 'novel.progressionReversal',
+    titleKey: 'graph.inspector.generate.presets.novel.progressionReversal',
+    body: NOVEL_PROGRESSION_BODY
+  },
+  {
+    id: 'novel.cultivationSystem',
+    titleKey: 'graph.inspector.generate.presets.novel.cultivationSystem',
+    body: NOVEL_CULTIVATION_BODY
+  },
+  {
+    id: 'novel.femaleRevenge',
+    titleKey: 'graph.inspector.generate.presets.novel.femaleRevenge',
+    body: NOVEL_FEMALE_REVENGE_BODY
   }
 ]
 
@@ -2407,6 +2451,7 @@ const SEMANTIC_COMPILE_PRESETS: InstructionPreset[] = [
 
 const PRESET_PACKS: Record<InstructionPresetKind, InstructionPreset[]> = {
   semanticCompile: SEMANTIC_COMPILE_PRESETS,
+  novel: NOVEL_PRESETS,
   screenplay: SCREENPLAY_PRESETS,
   gameSystem: GAME_SYSTEM_PRESETS,
   image: IMAGE_PRESETS,

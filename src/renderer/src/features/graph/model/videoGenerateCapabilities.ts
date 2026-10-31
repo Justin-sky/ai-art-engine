@@ -8,26 +8,13 @@ import {
 } from '@shared/graph'
 import {
   getSavedModelCatalogEntry,
-  isDashScopeProvider,
   isGoogleProvider,
-  isComfyUiProvider,
-  isKlingProvider,
-  isMagicRouterProvider,
-  isMiniMaxProvider,
-  isVllmProvider,
-  isVolcengineArkProvider,
-  isXaiProvider,
-  type ModelModality
+  type ModelModality,
+  type ModelProviderKind
 } from '@shared/modelProvider'
+import { resolveStaticCapabilitiesForProvider } from '@shared/modelProviders/staticCatalogRegistry'
 import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
-import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
-import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
-import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
-import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
-import { resolveVllmModelCapabilities } from '@shared/modelProviders/vllm/modelCapabilities'
-import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
 import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
-import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
 import {
   modelKey,
   parseModelKey,
@@ -74,30 +61,14 @@ async function resolveVideoCapabilitiesRaw(
   modelId: string
 ): Promise<Record<string, unknown> | null> {
   let catalogName: string | undefined
-  let isArk = false
-  let isGoogle = false
-  let isKling = false
-  let isMiniMax = false
-  let isDashScope = false
-  let isVllm = false
-  let isXai = false
-  let isComfyUi = false
-  let isMagicRouter = false
+  let providerKind: ModelProviderKind | undefined
   try {
     const settings = await window.studio.getSettings()
     const provider = settings.models?.providers?.find((p) => p.id === providerInstanceId)
-    isArk = isVolcengineArkProvider(provider)
-    isGoogle = isGoogleProvider(provider)
-    if (isGoogle) {
+    providerKind = provider?.providerKind
+    if (isGoogleProvider(provider)) {
       return resolveGoogleModelCapabilities(modelId, 'video')
     }
-    isKling = isKlingProvider(provider)
-    isComfyUi = isComfyUiProvider(provider)
-    isMiniMax = isMiniMaxProvider(provider)
-    isDashScope = isDashScopeProvider(provider)
-    isVllm = isVllmProvider(provider)
-    isXai = isXaiProvider(provider)
-    isMagicRouter = isMagicRouterProvider(provider)
     const saved = getSavedModelCatalogEntry(
       settings.models?.providers,
       providerInstanceId,
@@ -127,32 +98,12 @@ async function resolveVideoCapabilitiesRaw(
     // 继续走本地静态配置
   }
 
-  if (isKling) {
-    return resolveKlingModelCapabilities(modelId, 'video')
-  }
-  if (isComfyUi) {
-    return resolveComfyUiModelCapabilities(modelId, 'video')
-  }
-  if (isMiniMax) {
-    return resolveMiniMaxModelCapabilities(modelId, 'video')
-  }
-  if (isDashScope) {
-    return resolveDashScopeModelCapabilities(modelId, 'video')
-  }
-  if (isArk) {
-    return resolveVolcengineArkModelCapabilities(modelId, catalogName, 'video')
-  }
-  if (isVllm) {
-    return resolveVllmModelCapabilities(modelId, 'video')
-  }
-  if (isXai) {
-    return resolveXaiModelCapabilities(modelId, 'video')
-  }
-  if (isGoogle) {
-    return resolveGoogleModelCapabilities(modelId, 'video')
-  }
-  if (isMagicRouter) {
-    return resolveMagicRouterModelCapabilities(modelId, 'video')
+  if (providerKind) {
+    const local = resolveStaticCapabilitiesForProvider(providerKind, modelId, 'video', catalogName)
+    if (local) return local
+    if (providerKind !== 'openrouter' && providerKind !== 'custom' && providerKind !== 'newapi') {
+      return resolveVolcengineArkModelCapabilities(modelId, catalogName)
+    }
   }
   return resolveVolcengineArkModelCapabilities(modelId, catalogName)
 }

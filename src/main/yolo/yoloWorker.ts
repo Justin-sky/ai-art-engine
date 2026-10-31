@@ -26,6 +26,7 @@ import {
   inferMattingSubject
 } from './mattingInfer'
 import { createOrtSession, getActiveOrtBackend } from './ortSession'
+import { disposeSam2Sessions, inferSam2, type Sam2WorkerParams } from './sam2Infer'
 import { rgbaToLetterboxTensor } from './preprocess'
 import { composeMask, parseSegOutput, parseYoloOutput, type Candidate } from './postprocess'
 import type {
@@ -327,6 +328,9 @@ async function handleRequest(req: YoloWorkerRequest): Promise<void> {
       case 'face':
         result = await runFace(req.params as YoloWorkerFaceParams)
         break
+      case 'sam2':
+        result = await inferSam2(loadOrt(), req.params as Sam2WorkerParams)
+        break
       default:
         throw new Error(
           `YOLO: unknown worker method: ${String((req as { method?: unknown }).method)}`
@@ -364,4 +368,5 @@ process.on('exit', () => {
   lastSession = null
   disposeFaceSessions()
   disposeMattingSession()
+  disposeSam2Sessions()
 })

@@ -1,5 +1,12 @@
 import { isDraftAssetId, type AssetInfo } from '@shared/domain'
-import { MX_TEMPLATES, parseMxDocumentJson } from '@shared/gameAssets'
+import {
+  auditGameSystemDocument,
+  GAME_SYSTEM_ARCHETYPES,
+  MX_TEMPLATES,
+  MX_WORKBENCH_PRESETS,
+  NOVEL_GENRE_PROFILES,
+  parseMxDocumentJson
+} from '@shared/gameAssets'
 import {
   contentEndSecOfTimeline,
   parseComicPage,
@@ -178,7 +185,20 @@ export function sanitizeNodeParamsForContext(
             to: e.to,
             targetEdgeId: e.targetEdgeId,
             formula: e.formula
-          }))
+          })),
+          ...(mx.workbench
+            ? {
+                workbench: {
+                  multiplierTitle: mx.workbench.multiplier?.title,
+                  finalFormula: mx.workbench.multiplier?.finalFormula,
+                  entityCount: mx.workbench.multiplier?.entities?.length ?? 0,
+                  combatKernel: mx.workbench.combatKernel?.kernel,
+                  softPityStart: mx.workbench.lootRoll?.softPityStart,
+                  hardPityPull: mx.workbench.lootRoll?.hardPityPull,
+                  envelopeFloors: mx.workbench.roguelikeEnvelope?.floors
+                }
+              }
+            : {})
         }
         continue
       } catch {
@@ -427,13 +447,33 @@ export function buildActiveWorkspaceContext(): string | undefined {
           ...formatNodeEditableSchemaSummary(divedNode, '  ')
         )
         if (divedNode.typeId === 'game.economy') {
-          const tplIds = MX_TEMPLATES.map((t) => t.id).join('|')
+          const tplIds = [
+            ...MX_TEMPLATES.map((t) => t.id),
+            ...MX_WORKBENCH_PRESETS.map((w) => w.id)
+          ].join('|')
           lines.push(
-            `  [Machinations Economy Studio Live Protocol]: The user is currently inside the Machinations.io Economy Studio for nodeId="${divedNode.id}".`,
-            `    * To switch to a built-in template, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${tplIds}" }] })\`.`,
-            `    * To build or replace the custom Machinations diagram from the user's prompt, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42, speed: 1, actionMode: "simultaneous", botMode: "off|greedy|smart" }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "x1", value: 1 }], agents: [{ id: "ag1", name: "Rational AI", enabled: true, personality: "rational|aggressive|hoarder|balanced|chaotic", goals: [{ id: "g1", nodeId: "pool1", targetFormula: "100", importance: "min|low|med|high|max", continuePastTarget: true, trajectory: "upwards|downwards", utilityCurve: "linear|diminishing|urgency|step" }], controlledNodeIds: [], actionsPerStep: 1, lookaheadHorizon: 2 }], nodes: [{ id: "src1", kind: "source|pool|drain|converter|gate|trader|register|delay|queue|end|note", label: "...", trigger: "passive|automatic|interactive|enabling", pullMode: "pull_any|pull_all|push_any|push_all", initial: 0, capacity: -1, formula: "", gateMode: "random|deterministic|skill", delaySteps: 1, color: "#2563eb", tracked: true }], edges: [{ id: "e1", kind: "resource|state", from: "src1", to: "pool1", targetEdgeId: undefined, formula: "2|D6|50%|all|1 every 3|+1|>=5|*" }] } } }] })\` (` +
-              `x/y coordinates are optional: topological auto-layout runs automatically when omitted!).`,
-            `    * To tweak an existing node or edge in-place, pass dot-paths such as \`params: { "gameEconomyDiagramJson.nodes[id=hp].initial": 150, "gameEconomyDiagramJson.edges[id=e1].formula": "2D6+1" }\`.`
+            `  [Machinations Economy Studio & 5-Layer Numerical Workbench Live Protocol]: The user is currently inside the Economy & Numerical Studio for nodeId="${divedNode.id}".`,
+            `    * To switch to a built-in Machinations template or Numerical Workbench preset, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${tplIds}" }] })\`.`,
+            `    * To build or replace the custom Machinations diagram, pass \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42, speed: 1, actionMode: "simultaneous", botMode: "off|greedy|smart" }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "x1", value: 1 }], agents: [...], nodes: [...], edges: [...] } }\` (x/y coordinates are optional: topological auto-layout runs automatically when omitted!).`,
+            `    * To edit the 5 Deep Numerical Workbench modules (Layer 1 Multiplier Pipeline, Layer 2 Entity Budget Table, Layer 3 Gacha Pity & Substat Roll, Layer 4 Roguelike Power vs Enemy Wall Envelope, Layer 5 Combat Kernel ATB/Turn/Deck), pass dot-paths under \`gameEconomyDiagramJson.workbench.*\`, e.g. \`params: { "gameEconomyDiagramJson.workbench.multiplier.finalFormula": "ATK * SkillPct * CritBonus", "gameEconomyDiagramJson.workbench.lootRoll.softPityStart": 65, "gameEconomyDiagramJson.workbench.lootRoll.hardPityPull": 80, "gameEconomyDiagramJson.workbench.combatKernel.kernel": "turn_based|atb_speed|deck_mana|roguelike_mult|survivor_wave" }\`.`,
+            `    * To tweak an existing diagram node or edge in-place, pass dot-paths such as \`params: { "gameEconomyDiagramJson.nodes[id=hp].initial": 150, "gameEconomyDiagramJson.edges[id=e1].formula": "2D6+1" }\`, then run \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
+          )
+        } else if (divedNode.typeId === 'asset.novel') {
+          const genreIds = NOVEL_GENRE_PROFILES.map((g) => g.id).join('|')
+          lines.push(
+            `  [Novel Serialization Studio Live Protocol]: The user is currently inside the Novel Serialization Workbench (\`novel.workbench\`) for nodeId="${divedNode.id}".`,
+            `    * To switch among the 8 Novel Genres (and auto-seed L1 World Bible, L3 Character Roster, and L3 Foreshadowing Ledger), call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${genreIds}" }] })\` (or pass \`params: { novelGenre: "..." }\`).`,
+            `    * To configure chapter serialization & 4-Layer Long-Term Memory, pass \`params: { novelCurrentChapter: 1, novelTotalChapters: 20, novelTargetWords: 2200, novelWorldBible: "...", novelStateLedger: "...", novelCharacterRosterJson: [{ id: "char_1", name: "...", faction: "protagonist|ally|villain|neutral", status: "alive|injured|missing|sealed|dead", realmStage: "...", location: "...", keyItems: ["..."], relationshipToMc: "...", note: "..." }], novelForeshadowingJson: [{ id: "fs_1", title: "...", plantedChapter: 1, expectedPayoffChapter: 12, status: "planted|escalated|paid_off", clueSummary: "..." }] }\` (or dot-paths like \`"novelCharacterRosterJson[name=主角].status": "injured"\`).`, // cjk-ok
+            `    * To write/generate the current chapter with AI (fusing upstream \`game.economy\` single-chapter numerical slice + L1-L4 memory), call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
+          )
+        } else if (divedNode.typeId === 'asset.gameSystem') {
+          const archIds = GAME_SYSTEM_ARCHETYPES.map((a) => a.id).join('|')
+          const audit = auditGameSystemDocument(String(divedNode.params?.text ?? ''))
+          lines.push(
+            `  [Game System GDD Workbench Live Protocol]: The user is currently inside the Game System Design Workbench (\`gameSystem.workbench\`) for nodeId="${divedNode.id}" (current QA Score=${audit.overallScore}/100, detected UI Screens=${audit.uiScreens.length}, features=${audit.featureCount}).`,
+            `    * To switch among the 8 Game System Archetypes or target aspect ratio, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${archIds}", params: { gameSystemTargetAspect: "16:9|9:16|1:1", synthesizeOffline: true } }] })\`.`,
+            `    * To 1-click synthesize or auto-complete all 6 engineering GDD sections (Overview, Goals, P0/P1 Features + Edge Cases, UI Layout with ASCII Wireframes & 9-slice PSD specs, UI Requirements, Data & Config Tables) to reach 100/100 QA score, pass \`params: { synthesizeOffline: true }\` (or \`autoFixQa: true\`) in \`graph_edit\`, or call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\` to generate with LLM.`,
+            `    * Closed-Loop Pipeline: wire \`game.economy (out-text) -> asset.novel (in)\`, \`game.economy (out-text) -> asset.gameSystem (in)\`, \`asset.novel (out) -> asset.gameSystem (in)\`, and \`asset.gameSystem (out) -> ui.split (in)\` to form the complete Numerical + IP Novel + System GDD + UI Split closed loop.`
           )
         }
       }
@@ -601,9 +641,26 @@ export function buildActiveWorkspaceContext(): string | undefined {
 
         const economyNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'game.economy')
         if (economyNodeOnCanvas) {
-          const tplIds = MX_TEMPLATES.map((t) => t.id).join('|')
+          const tplIds = [
+            ...MX_TEMPLATES.map((t) => t.id),
+            ...MX_WORKBENCH_PRESETS.map((w) => w.id)
+          ].join('|')
           lines.push(
-            `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system on \`game.economy\`, pass \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "Rate", value: 2 }], nodes: [{ id: "src1", kind: "source|pool|drain|converter|gate|trader|register|delay|queue|end|note", label: "...", trigger: "passive|automatic|interactive|enabling", initial: 0, capacity: -1, formula: "", gateMode: "random|deterministic|skill", tracked: true }], edges: [{ id: "e1", kind: "resource|state", from: "src1", to: "pool1", formula: "2|D6|50%|all|+1|>=5|*" }] } }\` (or \`preset: "${tplIds}"\`) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\` to run Monte Carlo simulation and generate the preview chart & Godot/Unity scripts.`
+            `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system or 5-Layer Numerical Workbench on \`game.economy\`, pass \`preset: "${tplIds}"\` or \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, resources: [...], params: [...], nodes: [...], edges: [...] } }\` (or dot-paths under \`gameEconomyDiagramJson.workbench.*\`, plus \`openDive: true\` to enter the workbench) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\`.`
+          )
+        }
+        const novelNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'asset.novel')
+        if (novelNodeOnCanvas) {
+          const genreIds = NOVEL_GENRE_PROFILES.map((g) => g.id).join('|')
+          lines.push(
+            `  [Novel Serialization Node Protocol (nodeId="${novelNodeOnCanvas.id}")]: Supports 8 genres (\`preset: "${genreIds}"\`), chapter progress (\`novelCurrentChapter\`, \`novelTotalChapters\`, \`novelTargetWords\`), and 4-Layer Long-Term Memory (\`novelWorldBible\`, \`novelStateLedger\`, \`novelCharacterRosterJson\`, \`novelForeshadowingJson\`, plus \`openDive: true\` to open \`novel.workbench\`). Wire \`game.economy (out-text) -> asset.novel (in)\` to inject single-chapter numerical pacing, and call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${novelNodeOnCanvas.id}"] })\` to write chapters.`
+          )
+        }
+        const gameSystemNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'asset.gameSystem')
+        if (gameSystemNodeOnCanvas) {
+          const archIds = GAME_SYSTEM_ARCHETYPES.map((a) => a.id).join('|')
+          lines.push(
+            `  [Game System GDD Node Protocol (nodeId="${gameSystemNodeOnCanvas.id}")]: Supports 8 archetypes (\`preset: "${archIds}"\`), aspect ratio (\`gameSystemTargetAspect: "16:9|9:16|1:1"\`), offline 100-score 6-section GDD synthesis (\`params: { synthesizeOffline: true }\` or \`autoFixQa: true\`), and LLM generation via \`task_run\`. Wire \`game.economy (out-text)\` + \`asset.novel (out)\` -> \`asset.gameSystem (in)\` -> \`ui.split (in)\` for full closed-loop pipeline.`
           )
         }
       }

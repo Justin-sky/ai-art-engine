@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildBinaryMaskRgba,
   buildLayoutTree,
   createImage,
   estimateShift,
+  filterOcrFalsePositives,
   inpaintPushPull,
+  packOcclusionAtlas,
   parseLayoutResponse,
+  postProcessInstanceMask,
   refineElementBox,
   runPreciseUiSplit,
+  scoreSamCandidateMask,
+  textStrokeMask,
+  unpackOcclusionAtlas,
   type PreciseSplitIo,
   type RgbaImage
 } from '../src/shared/graph/uiPreciseSplit'
@@ -63,12 +70,16 @@ function renderScene(
   return img
 }
 
-function toBox2d(r: { left: number; top: number; width: number; height: number }): number[] {
+function toBox2d(
+  r: { left: number; top: number; width: number; height: number },
+  w = W,
+  h = H
+): number[] {
   return [
-    Math.round((r.top / H) * 1000),
-    Math.round((r.left / W) * 1000),
-    Math.round(((r.top + r.height) / H) * 1000),
-    Math.round(((r.left + r.width) / W) * 1000)
+    Math.round((r.top / h) * 1000),
+    Math.round((r.left / w) * 1000),
+    Math.round(((r.top + r.height) / h) * 1000),
+    Math.round(((r.left + r.width) / w) * 1000)
   ]
 }
 
@@ -342,5 +353,394 @@ describe('vision grounding routing', () => {
     expect(picked?.provider.id).toBe('c')
     expect(picked?.modelId).toBe('gemini-2.5-flash')
     expect(pickVisionGroundingProvider([provider('a', ['deepseek-chat'])])).toBeNull()
+  })
+})
+
+describe('uiPreciseSplit · Zhihu scheme 5 enhancements', () => {
+  it('filters out low-confidence single-character and symbol-only OCR false positives', () => {
+    const filtered = filterOcrFalsePositives([
+      { text: '!', left: 10, top: 10, width: 12, height: 12, confidence: 0.99 },
+      { text: 'A', left: 20, top: 10, width: 12, height: 12, confidence: 0.72 },
+      { text: 'X', left: 30, top: 10, width: 3, height: 12, confidence: 0.96 },
+      { text: 'PLAY', left: 40, top: 10, width: 48, height: 16, confidence: 0.88 }
+    ])
+    expect(filtered.map((b) => b.text)).toEqual(['PLAY'])
+  })
+
+  it('scores SAM 2.1 candidate masks and cleans speckles via 3x3 closing + 8-CC filtering', () => {
+    const bw = 40
+    const bh = 20
+    const box = { left: 10, top: 10, width: bw, height: bh }
+    const goodMask = new Uint8Array(W * H)
+    const leakyMask = new Uint8Array(W * H)
+    for (let y = box.top + 2; y < box.top + bh - 2; y++) {
+      for (let x = box.left + 2; x < box.left + bw - 2; x++) {
+        goodMask[y * W + x] = 1
+        leakyMask[y * W + x] = 1
+      }
+    }
+    // Add competitor overlap to leakyMask
+    for (let y = 10; y < 30; y++) {
+      for (let x = 60; x < 80; x++) {
+        leakyMask[y * W + x] = 1
+      }
+    }
+    const pos = [{ x: 30, y: 20 }]
+    const neg = [{ x: 70, y: 20 }]
+    const goodScore = scoreSamCandidateMask({
+      mask: goodMask,
+      width: W,
+      height: H,
+      samScore: 0.85,
+      promptBox: box,
+      positivePoints: pos,
+      negativePoints: neg
+    })
+    const leakyScore = scoreSamCandidateMask({
+      mask: leakyMask,
+      width: W,
+      height: H,
+      samScore: 0.88,
+      promptBox: box,
+      positivePoints: pos,
+      negativePoints: neg
+    })
+    expect(goodScore.totalScore).toBeGreaterThan(leakyScore.totalScore)
+
+    // Add an isolated 2px speckle and a 1px interior pinhole to goodMask
+    goodMask[20 * W + 30] = 0 // 1px pinhole inside main component
+    goodMask[5 * W + 5] = 1 // isolated tiny speckle outside
+    const cleaned = postProcessInstanceMask(goodMask, W, H, pos)
+    expect(cleaned[20 * W + 30]).toBe(1) // closed by 3x3 closing
+    expect(cleaned[5 * W + 5]).toBe(0) // removed by 8-CC filter
+  })
+
+  it('supports dual-image VLM audit (raster_text_ids) and surface vs image repair routing', async () => {
+    const source = renderScene()
+    const vlmImageCounts: number[] = []
+    let editCalls = 0
+    const io = mockIo({
+      vlm: async (req) => {
+        vlmImageCounts.push(req.images.length)
+        return JSON.stringify({
+          screen_kind: 'popup',
+          raster_text_ids: [0],
+          background_repair: { mode: 'surface' },
+          elements: [
+            {
+              id: 'panel',
+              name: 'Panel',
+              kind: 'panel',
+              role: 'dialog-frame',
+              box_2d: [130, 150, 885, 850],
+              positive_points_norm: [[500, 500]],
+              negative_points_norm: [[50, 50]],
+              element_repair_mode: 'surface',
+              z_hint: 1
+            },
+            {
+              id: 'btn',
+              name: 'Buy Button',
+              kind: 'button',
+              role: 'primary-cta',
+              parent_id: 'panel',
+              box_2d: [580, 300, 785, 700],
+              positive_points_norm: [[680, 500]],
+              negative_points_norm: [[300, 500]],
+              element_repair_mode: 'none',
+              z_hint: 2
+            }
+          ]
+        })
+      },
+      editImage: async () => {
+        editCalls++
+        return source
+      }
+    })
+    const result = await runPreciseUiSplit(io, source, { zoomRefine: false })
+    // Dual-image input: original + initial OCR-cleaned preview
+    expect(vlmImageCounts[0]).toBe(2)
+    // Both panel and background_repair are marked 'surface', so generative editImage is skipped
+    expect(editCalls).toBe(0)
+    // OCR #0 is marked in raster_text_ids, so no separate editable text layer is emitted
+    expect(result.layers.some((l) => l.editableText != null)).toBe(false)
+    // And the button pixels at the text stroke remain intact (not erased from button)
+    const byName = new Map(result.layers.map((l) => [l.name, l]))
+    const button = byName.get('Buy Button')!
+    const bx = TEXT.left + 1 - button.left
+    const by = TEXT.top + 1 - button.top
+    const bp = pixel({ width: button.width, data: button.rgba }, bx, by)
+    expect(bp[0]).toBe(255)
+    expect(bp[1]).toBe(255)
+    expect(bp[2]).toBe(255)
+  })
+
+  it('packs and unpacks an occlusion atlas and builds binary mask RGBA', () => {
+    const source = renderScene()
+    const mask = new Uint8Array(W * H)
+    for (let y = BUTTON.top; y < BUTTON.top + BUTTON.height; y++) {
+      for (let x = BUTTON.left; x < BUTTON.left + BUTTON.width; x++) {
+        mask[y * W + x] = 1
+      }
+    }
+    const binRgba = buildBinaryMaskRgba(mask, W, H)
+    expect(pixel(binRgba, BUTTON.left + 2, BUTTON.top + 2).slice(0, 3)).toEqual([255, 255, 255])
+    expect(pixel(binRgba, 2, 2).slice(0, 3)).toEqual([0, 0, 0])
+
+    const packed = packOcclusionAtlas({
+      plate: source,
+      holeMask: mask,
+      targets: [{ id: 'btn', name: 'Buy Button', rect: BUTTON }]
+    })
+    expect(packed.cells.length).toBe(1)
+    // Simulate inpainting model filling the masked hole in the atlas with PANEL_RGB
+    const repairedAtlas = createImage(packed.atlas.width, packed.atlas.height)
+    repairedAtlas.data.set(packed.atlas.data)
+    for (let i = 0; i < packed.maskImage.data.length; i += 4) {
+      if (packed.maskImage.data[i]! > 128) {
+        repairedAtlas.data[i] = PANEL_RGB[0]!
+        repairedAtlas.data[i + 1] = PANEL_RGB[1]!
+        repairedAtlas.data[i + 2] = PANEL_RGB[2]!
+        repairedAtlas.data[i + 3] = 255
+      }
+    }
+    const unpacked = unpackOcclusionAtlas(source, repairedAtlas, packed, mask)
+    expect(pixel(unpacked, BUTTON.left + 5, BUTTON.top + 5)).toEqual([...PANEL_RGB, 255])
+
+    // Verify Otsu textStrokeMask quality gate on text vs uniform region
+    const textMask = textStrokeMask(source, TEXT)
+    expect(textMask.maskQuality).toBe('estimated_glyphs')
+    const uniformMask = textStrokeMask(source, { left: 35, top: 20, width: 20, height: 14 })
+    expect(uniformMask.maskQuality).toBe('coarse')
+  })
+
+  it('splits a game avatar slot into clean frame, portrait, pentagon corner badge, and outlined x5 text without border notches or hair bleed', async () => {
+    const cw = 160
+    const ch = 160
+    const card = { left: 20, top: 20, width: 120, height: 120 }
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [10, 35, 65] // outer dark blue
+        if (inRect(x, y, card)) {
+          const rx = x - card.left
+          const ry = y - card.top
+          if (rx < 2 || rx >= card.width - 2 || ry < 2 || ry >= card.height - 2) {
+            rgb = [135, 140, 145] // 2px grey border
+          } else if (ry >= card.height - 7) {
+            rgb = [205, 100, 250] // bottom purple rarity bar
+          } else {
+            // Vertical black-to-purple slot gradient
+            const t = ry / (card.height - 8)
+            rgb = [Math.round(12 + 62 * t), Math.round(12 + 16 * t), Math.round(18 + 74 * t)]
+            // Character portrait: blonde head/hair in upper-mid center + dark/yellow armor at bottom
+            const headDist = Math.hypot(rx - 62, ry - 48)
+            if (headDist <= 34) {
+              rgb = [242, 198, 142] // blonde hair / skin
+            } else if (ry >= 78 && rx >= 24 && rx <= 100) {
+              rgb = rx >= 68 && rx <= 82 ? [240, 170, 24] : [28, 28, 36] // yellow strap + dark armor
+            }
+          }
+          // Top-left purple pentagon badge (chamfered bottom-right corner)
+          if (rx >= 2 && rx < 34 && ry >= 2 && ry < 34 && rx + ry < 56) {
+            rgb = rx >= 10 && rx < 22 && ry >= 10 && ry < 22 ? [255, 255, 255] : [128, 0, 200]
+          }
+          // Bottom-right outlined "x5" text over shoulder armor + purple gradient
+          if (rx >= 84 && rx < 110 && ry >= 88 && ry < 108) {
+            const tx = rx - 84
+            const ty = ry - 88
+            const isCore =
+              (tx >= 4 && tx <= 7 && ty >= 4 && ty <= 15) ||
+              (tx >= 14 && tx <= 21 && (ty === 5 || ty === 10 || ty === 15))
+            const isOutline =
+              !isCore &&
+              tx >= 2 &&
+              tx <= 23 &&
+              ty >= 3 &&
+              ty <= 17 &&
+              ((tx >= 2 && tx <= 9) || (tx >= 12 && tx <= 23))
+            if (isCore) rgb = [255, 255, 255]
+            else if (isOutline) rgb = [10, 10, 14]
+          }
+        }
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    // VLM only outputs the outer card panel, an oversized badge box (overlapping top border & hair), and "x5" labeled as badge
+    const io = mockIo({
+      ocr: async () => [],
+      vlm: async () =>
+        JSON.stringify({
+          screen_kind: 'component',
+          background_repair: { mode: 'surface' },
+          elements: [
+            {
+              id: 'card',
+              name: 'Avatar Card',
+              kind: 'panel',
+              box_2d: toBox2d(card, cw, ch),
+              element_repair_mode: 'surface',
+              order: 1
+            },
+            {
+              id: 'badge',
+              name: 'Piece Badge',
+              kind: 'badge',
+              parent: 'card',
+              // Deliberately oversized box extending onto top border (top: 18) and blonde hair (width: 44, height: 44)
+              box_2d: toBox2d({ left: 20, top: 18, width: 44, height: 44 }, cw, ch),
+              positive_points_norm: [[Math.round((34 / cw) * 1000), Math.round((34 / ch) * 1000)]],
+              order: 3
+            },
+            {
+              id: 'count',
+              name: 'x5',
+              kind: 'badge',
+              parent: 'card',
+              box_2d: toBox2d({ left: 102, top: 106, width: 30, height: 24 }, cw, ch),
+              text: 'x5',
+              order: 4
+            }
+          ]
+        })
+    })
+
+    const res = await runPreciseUiSplit(io, img, { generativePeel: false, zoomRefine: false })
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+
+    // 1) Portrait was automatically decomposed out of Avatar Card as a separate layer!
+    expect(byName.has('Avatar Card')).toBe(true)
+    expect(byName.has('Portrait')).toBe(true)
+    expect(byName.has('Piece Badge')).toBe(true)
+    expect(byName.has('x5')).toBe(true)
+
+    // 2) Top-left grey border of Avatar Card is intact (not eaten by outer dark blue background!)
+    const cardLayer = byName.get('Avatar Card')!
+    const topBorderPx = pixel(
+      { width: cardLayer.width, data: cardLayer.rgba },
+      38 - cardLayer.left,
+      20 - cardLayer.top
+    )
+    expect(topBorderPx[0]).toBeGreaterThan(115)
+    expect(topBorderPx[3]).toBeGreaterThan(220)
+
+    // 3) Piece Badge Base (pentagon plate) and Piece Badge (white puzzle symbol) are both cleanly extracted!
+    expect(byName.has('Piece Badge Base')).toBe(true)
+    const plateLayer = byName.get('Piece Badge Base')!
+    const bx = plateLayer.width - 2
+    const by = plateLayer.height - 2
+    const badgeCornerPx = pixel({ width: plateLayer.width, data: plateLayer.rgba }, bx, by)
+    expect(badgeCornerPx[3]).toBe(0)
+    // And the center of Piece Badge Base (where the white puzzle icon sat) was inpainted to solid purple!
+    const plateCenterPx = pixel(
+      { width: plateLayer.width, data: plateLayer.rgba },
+      Math.floor(plateLayer.width / 2),
+      Math.floor(plateLayer.height / 2)
+    )
+    expect(plateCenterPx[0]).toBeGreaterThan(100)
+    expect(plateCenterPx[1]).toBeLessThan(80)
+    expect(plateCenterPx[2]).toBeGreaterThan(130)
+
+    // 4) Avatar Card inner cavity has clean dark-to-purple slot background (zero blonde hair / face ghost!)
+    const cardCenterPx = pixel(
+      { width: cardLayer.width, data: cardLayer.rgba },
+      Math.floor(cardLayer.width / 2),
+      Math.floor(cardLayer.height / 2)
+    )
+    expect(cardCenterPx[0]).toBeLessThan(90)
+    expect(cardCenterPx[1]).toBeLessThan(60)
+
+    // 5) "x5" is recognized as editable plainText and background between/outside characters is transparent (no armor block)
+    const countLayer = byName.get('x5')!
+    expect(countLayer.editableText?.text).toBe('x5')
+    const gapPx = pixel(
+      { width: countLayer.width, data: countLayer.rgba },
+      Math.floor(countLayer.width * 0.42),
+      0
+    )
+    expect(gapPx[3]).toBeLessThanOrEqual(8)
+  })
+
+  it('expands truncated +/- button boxes to full height and leaves zero button residue on base', async () => {
+    const bw = 200
+    const bh = 120
+    const img = createImage(bw, bh)
+    for (let p = 0; p < bw * bh; p++) {
+      const i = p * 4
+      img.data[i] = 8
+      img.data[i + 1] = 18
+      img.data[i + 2] = 30
+      img.data[i + 3] = 255
+    }
+    const paintBox = (
+      rect: { left: number; top: number; width: number; height: number },
+      rgba: [number, number, number, number]
+    ): void => {
+      for (let y = rect.top; y < rect.top + rect.height; y++) {
+        for (let x = rect.left; x < rect.left + rect.width; x++) {
+          const i = (y * bw + x) * 4
+          img.data[i] = rgba[0]
+          img.data[i + 1] = rgba[1]
+          img.data[i + 2] = rgba[2]
+          img.data[i + 3] = rgba[3]
+        }
+      }
+    }
+
+    // Minus button at (20, 40, 44x32) with cyan body and white "-" bar
+    paintBox({ left: 20, top: 40, width: 44, height: 32 }, [38, 155, 215, 255])
+    paintBox({ left: 34, top: 54, width: 16, height: 4 }, [255, 255, 255, 255])
+
+    // Plus button at (136, 40, 44x32) with cyan body and white "+" cross
+    paintBox({ left: 136, top: 40, width: 44, height: 32 }, [38, 155, 215, 255])
+    paintBox({ left: 150, top: 54, width: 16, height: 4 }, [255, 255, 255, 255])
+    paintBox({ left: 156, top: 48, width: 4, height: 16 }, [255, 255, 255, 255])
+
+    // VLM boxes for Minus and Plus only cover the top ~68% of the buttons (height=22 instead of 32)!
+    const vlmJson = JSON.stringify({
+      screen_kind: 'popup_dialog',
+      background_repair_mode: 'surface',
+      elements: [
+        {
+          id: 'btn_minus',
+          name: 'Minus Button',
+          kind: 'button',
+          bbox: [20 * 5, Math.round((40 / bh) * 1000), 64 * 5, Math.round((62 / bh) * 1000)],
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'btn_plus',
+          name: 'Plus Button',
+          kind: 'button',
+          bbox: [136 * 5, Math.round((40 / bh) * 1000), 180 * 5, Math.round((62 / bh) * 1000)],
+          parent: null,
+          order: 2
+        }
+      ]
+    })
+
+    const io: PreciseSplitIo = {
+      vlm: async () => vlmJson,
+      encodePng: async () => 'data:image/png;base64,AA=='
+    }
+
+    const res = await runPreciseUiSplit(io, img, { generativePeel: false, zoomRefine: false })
+    const minus = res.layers.find((l) => l.name === 'Minus Button')!
+    const plus = res.layers.find((l) => l.name === 'Plus Button')!
+    expect(minus.height).toBeGreaterThanOrEqual(31)
+    expect(plus.height).toBeGreaterThanOrEqual(31)
+
+    // Base plate where the bottom of the Minus/Plus buttons sat (y=68) has zero cyan residue!
+    const baseMinusBottom = pixel(res.base, 42, 68)
+    const basePlusBottom = pixel(res.base, 158, 68)
+    expect(baseMinusBottom[2]).toBeLessThan(55)
+    expect(basePlusBottom[2]).toBeLessThan(55)
   })
 })

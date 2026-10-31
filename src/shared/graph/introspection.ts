@@ -27,6 +27,9 @@ import { getNodeType, listNodeTypes, resolveNodeType, type NodeTypeDefinition } 
 import { createDefaultStage2dScene } from './stage2d'
 import { STAGE2D_ACTION_PRESETS } from '../gameAssets/stage2dActionPresets'
 import { createMxTemplate, MX_TEMPLATES, parseMxDocumentJson } from '../gameAssets/machinationsV2'
+import { createMxWorkbenchPreset, MX_WORKBENCH_PRESETS } from '../gameAssets/gameNumericalWorkbench'
+import { NOVEL_GENRE_PROFILES } from '../gameAssets/novelGenreProfiles'
+import { GAME_SYSTEM_ARCHETYPES } from '../gameAssets/gameSystemDesignBridge'
 import type {
   GraphInspectorKind,
   GraphNode,
@@ -595,21 +598,33 @@ function buildKnownSubDocPrototype(key: string): {
         fieldOverrides: {
           gameEconomyPreset: {
             type: 'enum',
-            enumValues: MX_TEMPLATES.map((t) => t.id),
-            description: 'Machinations 游戏经济系统模板预设'
+            enumValues: [
+              ...MX_TEMPLATES.map((t) => t.id),
+              ...MX_WORKBENCH_PRESETS.map((w) => w.id)
+            ],
+            description: 'Machinations 游戏经济系统模板预设' // cjk-ok
           }
         },
-        presets: MX_TEMPLATES.map((t) => ({
-          id: t.id,
-          label: `${t.nameZh} / ${t.nameEn}`,
-          description: `${t.descZh} (${t.descEn})`,
-          category: 'gameEconomyPreset'
-        }))
+        presets: [
+          ...MX_TEMPLATES.map((t) => ({
+            id: t.id,
+            label: `${t.nameZh} / ${t.nameEn}`,
+            description: `${t.descZh} (${t.descEn})`,
+            category: 'gameEconomyPreset'
+          })),
+          ...MX_WORKBENCH_PRESETS.map((w) => ({
+            id: w.id,
+            label: `${w.nameZh} / ${w.nameEn}`,
+            description: `${w.descZh} (${w.descEn})`,
+            category: 'gameEconomyWorkbenchPreset'
+          }))
+        ]
       }
     case 'gameEconomyDiagramJson':
       return {
         sample: {
           ...createMxTemplate('roguelike_run'),
+          workbench: createMxWorkbenchPreset('short_drama_progression'),
           agents: [
             {
               id: 'agent_1',
@@ -674,6 +689,96 @@ function buildKnownSubDocPrototype(key: string): {
           description: `${t.descZh} (${t.descEn})`,
           category: 'gameEconomyPreset'
         }))
+      }
+    case 'novelGenre':
+      return {
+        fieldOverrides: {
+          novelGenre: {
+            type: 'enum',
+            enumValues: NOVEL_GENRE_PROFILES.map((p) => p.id),
+            description: '小说题材流派预设（自动对齐阶段阶梯、成长轴、人物名录与伏笔账本）' // cjk-ok
+          }
+        },
+        presets: NOVEL_GENRE_PROFILES.map((p) => ({
+          id: p.id,
+          label: `${p.icon} ${p.labelZh} / ${p.labelEn}`,
+          description: p.styleDirectiveZh,
+          category: 'novelGenre'
+        }))
+      }
+    case 'novelCharacterRosterJson':
+      return {
+        sample: [
+          {
+            id: 'char_1',
+            name: '主角', // cjk-ok
+            faction: 'protagonist',
+            status: 'alive',
+            realmStage: '炼气期', // cjk-ok
+            location: '初始城镇', // cjk-ok
+            keyItems: ['本命信物'], // cjk-ok
+            relationshipToMc: '自身', // cjk-ok
+            lastUpdatedChapter: 1,
+            note: '核心主角' // cjk-ok
+          }
+        ],
+        isJsonString: true,
+        fieldOverrides: {
+          'novelCharacterRosterJson[].faction': {
+            type: 'enum',
+            enumValues: ['protagonist', 'ally', 'villain', 'neutral']
+          },
+          'novelCharacterRosterJson[].status': {
+            type: 'enum',
+            enumValues: ['alive', 'injured', 'missing', 'sealed', 'dead']
+          }
+        }
+      }
+    case 'novelForeshadowingJson':
+      return {
+        sample: [
+          {
+            id: 'fs_1',
+            title: '神秘信物身世之谜', // cjk-ok
+            plantedChapter: 1,
+            expectedPayoffChapter: 15,
+            status: 'planted',
+            clueSummary: '开篇埋下的核心长线伏笔' // cjk-ok
+          }
+        ],
+        isJsonString: true,
+        fieldOverrides: {
+          'novelForeshadowingJson[].status': {
+            type: 'enum',
+            enumValues: ['planted', 'escalated', 'paid_off']
+          }
+        }
+      }
+    case 'gameSystemArchetype':
+      return {
+        fieldOverrides: {
+          gameSystemArchetype: {
+            type: 'enum',
+            enumValues: GAME_SYSTEM_ARCHETYPES.map((a) => a.id),
+            description: '游戏系统策划案 8 大品类模板预设' // cjk-ok
+          }
+        },
+        presets: GAME_SYSTEM_ARCHETYPES.map((a) => ({
+          id: a.id,
+          label: `${a.icon} ${a.labelZh} / ${a.labelEn}`,
+          description: a.coreLoopZh,
+          category: 'gameSystemArchetype'
+        }))
+      }
+    case 'gameSystemTargetAspect':
+      return {
+        fieldOverrides: {
+          gameSystemTargetAspect: {
+            type: 'enum',
+            enumValues: ['16:9', '9:16', '1:1'],
+            description: '目标 UI 画幅比例（16:9 横屏 / 9:16 竖屏 / 1:1 弹窗）' // cjk-ok
+          }
+        }
       }
     default:
       return null

@@ -35,7 +35,7 @@ function idsOf(groups: ReadonlyArray<{ id: string }>): string[] {
 }
 
 describe('nestContextMenuResourceGroups', () => {
-  it('把前期 / 美术 / 拍摄 收进影视父级，根菜单不再平铺', () => {
+  it('把影视节点直接平铺收进影视分组（去掉二级分组）', () => {
     const nested = nestContextMenuResourceGroups(fixture(), { label: '影视', icon: '🎦' })
 
     expect(idsOf(nested)).toEqual(['image', 'ad', CONTEXT_MENU_NESTED_PARENT_ID])
@@ -43,36 +43,50 @@ describe('nestContextMenuResourceGroups', () => {
     const parent = nested[2]
     expect(parent.label).toBe('影视')
     expect(parent.icon).toBe('🎦')
-    // 父级只作入口，自身不放节点
-    expect(parent.items).toEqual([])
-    expect(idsOf(parent.children ?? [])).toEqual([...CONTEXT_MENU_NESTED_CHILD_GROUP_IDS])
+    expect(parent.children).toBeUndefined()
+    expect(parent.items.map((item) => item.typeId)).toEqual([
+      'asset.screenplay',
+      'film.breakdown',
+      'film.review',
+      'film.cast',
+      'film.render',
+      'film.shot'
+    ])
   })
 
-  it('二级顺序固定为 前期 → 美术 → 拍摄，不跟随输入顺序', () => {
+  it('影视组内节点顺序固定为 前期 → 美术 → 拍摄，不跟随输入顺序', () => {
     const shuffled = [...fixture()].reverse()
     const nested = nestContextMenuResourceGroups(shuffled, { label: '影视', icon: '🎦' })
     const parent = nested[nested.length - 1]
 
-    expect(parent.children?.map((g) => g.label)).toEqual([
-      'label:filmPre',
-      'label:filmArt',
-      'label:filmShoot'
+    expect(parent.children).toBeUndefined()
+    expect(parent.items.map((item) => item.typeId)).toEqual([
+      'asset.screenplay',
+      'film.breakdown',
+      'film.review',
+      'film.cast',
+      'film.render',
+      'film.shot'
     ])
   })
 
-  it('子分组节点清单与图标原样保留（组内保持流水线顺序）', () => {
-    const nested = nestContextMenuResourceGroups(fixture(), { label: '影视', icon: '🎦' })
+  it('直接传入 filmTv 分组时原样保留节点顺序且无二级分组', () => {
+    const nested = nestContextMenuResourceGroups(
+      [
+        group('image', ['asset.image']),
+        group('filmTv', ['asset.novel', 'asset.screenplay', 'film.workbench'])
+      ],
+      { label: '影视', icon: '🎦' }
+    )
     const parent = nested[nested.length - 1]
-    const pre = parent.children?.find((g) => g.id === 'filmPre')
-    const shoot = parent.children?.find((g) => g.id === 'filmShoot')
 
-    expect(pre?.items.map((item) => item.typeId)).toEqual([
+    expect(parent.id).toBe(CONTEXT_MENU_NESTED_PARENT_ID)
+    expect(parent.children).toBeUndefined()
+    expect(parent.items.map((item) => item.typeId)).toEqual([
+      'asset.novel',
       'asset.screenplay',
-      'film.breakdown',
-      'film.review'
+      'film.workbench'
     ])
-    expect(shoot?.icon).toBe('icon:filmShoot')
-    expect(shoot?.children).toBeUndefined()
   })
 
   it('无关分组保持原有顺序与内容', () => {
@@ -82,7 +96,7 @@ describe('nestContextMenuResourceGroups', () => {
     expect(nested[1].items.map((item) => item.typeId)).toEqual(['image.adVariants'])
   })
 
-  it('只命中部分子分组时，父级下只挂存在的分组', () => {
+  it('只命中部分影视节点时，直接平铺在影视分组下', () => {
     const nested = nestContextMenuResourceGroups(
       [group('image', ['asset.image']), group('filmArt', ['film.cast'])],
       { label: '影视', icon: '🎦' }
@@ -90,10 +104,11 @@ describe('nestContextMenuResourceGroups', () => {
     const parent = nested[nested.length - 1]
 
     expect(nested.length).toBe(2)
-    expect(idsOf(parent.children ?? [])).toEqual(['filmArt'])
+    expect(parent.children).toBeUndefined()
+    expect(parent.items.map((item) => item.typeId)).toEqual(['film.cast'])
   })
 
-  it('子分组全部落空时父级不出现', () => {
+  it('影视节点全部落空时影视分组不出现', () => {
     const nested = nestContextMenuResourceGroups([group('image', ['asset.image'])], {
       label: '影视',
       icon: '🎦'
@@ -103,7 +118,7 @@ describe('nestContextMenuResourceGroups', () => {
     expect(nested.some((g) => g.id === CONTEXT_MENU_NESTED_PARENT_ID)).toBe(false)
   })
 
-  it('清单为空时不产生父级', () => {
+  it('清单为空时不产生影视分组', () => {
     expect(nestContextMenuResourceGroups([], { label: '影视', icon: '🎦' })).toEqual([])
   })
 

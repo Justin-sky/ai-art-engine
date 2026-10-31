@@ -23,6 +23,7 @@ import { useWorkspaceStore } from '../../stores/workspace'
 import { persistAssetRecord } from '../../composables/useAssetRecord'
 import { executeDirectorStageEdit } from '../director/mcpDirectorStageOps'
 import { IconRefineError, runIconRefine } from '../graph/model/runIconRefine'
+import { editorDiveRootKey } from '../graph/model/editorDive'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
 import { semanticTimelineSavePayload } from '../graph/model/semanticTimelineSave'
 import { isGraphEditorOpen } from './openGraphEditors'
@@ -540,6 +541,7 @@ function normalizeNodeUpdateAliases(
     'w',
     'h',
     'locked',
+    'openDive',
     'params',
     'data',
     'patch'
@@ -828,6 +830,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     const assetOps: Array<Record<string, unknown>> = []
     const semanticOps: Array<Record<string, unknown>> = []
     const graphOps: GraphEditOp[] = []
+    const diveNodeIds: string[] = []
 
     const selectedGraphNodeId = activeTargets.defaultNodeId
     const selectedGraphGroupId = activeTargets.defaultGroupId
@@ -835,6 +838,27 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
     for (const item of payload.ops as unknown as Array<Record<string, unknown>>) {
       if (!item || typeof item !== 'object') continue
       const opName = resolveRawOpKind(item)
+
+      if (item.openDive === true) {
+        const dId =
+          (typeof item.nodeId === 'string' && item.nodeId.trim()) ||
+          (typeof item.id === 'string' && item.id.trim()) ||
+          selectedGraphNodeId ||
+          ''
+        if (dId) diveNodeIds.push(dId)
+      }
+      if (opName === 'node_dive' || opName === 'dive_node' || opName === 'open_dive') {
+        const dId =
+          (typeof item.nodeId === 'string' && item.nodeId.trim()) ||
+          (typeof item.id === 'string' && item.id.trim()) ||
+          selectedGraphNodeId ||
+          ''
+        if (dId) {
+          diveNodeIds.push(dId)
+          graphOps.push({ op: 'node_select', nodeId: dId })
+        }
+        continue
+      }
 
       if (opName === 'stage_edit' || opName === 'director_stage_edit') {
         if (Array.isArray(item.ops)) {
@@ -1243,6 +1267,33 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       const selectId = liveResult.selectNodeIds?.at(-1) ?? liveResult.touchedNodeIds?.at(-1)
       if (selectId) graphEditorHosts.selectNode(hostId, selectId)
       await graphEditorHosts.flush(hostId)
+      const targetDiveNodeId = diveNodeIds.at(-1)
+      if (targetDiveNodeId) {
+        const diveNode = liveResult.graph.nodes.find((n) => n.id === targetDiveNodeId)
+        if (diveNode) {
+          const diveViewId =
+            diveNode.typeId === 'game.economy'
+              ? ('game.workbench' as const)
+              : diveNode.typeId === 'asset.novel'
+                ? ('novel.workbench' as const)
+                : diveNode.typeId === 'asset.gameSystem'
+                  ? ('gameSystem.workbench' as const)
+                  : diveNode.typeId === 'ui.split'
+                    ? ('ui.split' as const)
+                    : null
+          if (diveViewId) {
+            const rootKind = asset?.type === 'canvas' || !asset ? 'canvas' : 'asset'
+            const rootKey =
+              workspace.activeDiveRootKey || editorDiveRootKey(rootKind, effectiveAssetId)
+            workspace.diveIntoView(
+              rootKey,
+              { viewId: diveViewId, hostId, nodeId: diveNode.id },
+              diveNode.title || diveNode.typeId
+            )
+            combinedApplied.push(`打开工作台(${diveViewId}):${diveNode.id}`) // cjk-ok
+          }
+        }
+      }
       if (syncedHostInterface && asset) {
         const latest = findProjectOrDraftAsset(effectiveAssetId) ?? asset
         await persistAssetRecord(effectiveAssetId, {

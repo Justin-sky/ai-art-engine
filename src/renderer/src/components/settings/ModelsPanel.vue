@@ -37,8 +37,24 @@
       {{ t('settings.models.emptyProviders') }}
     </p>
 
+    <div v-if="activeGlobalRoutes.length > 0" class="active-routes-bar">
+      <span class="active-routes-label">{{ t('settings.models.activeRoutesTitle') }}</span>
+      <div class="active-routes-list">
+        <button
+          v-for="route in activeGlobalRoutes"
+          :key="route.modality"
+          type="button"
+          class="active-route-pill"
+          @click="focusProviderRoute(route.providerId, route.modality)"
+        >
+          <span class="route-mod">{{ t(`settings.models.modality.${route.modality}`) }}</span>
+          <span class="route-target">{{ route.providerLabel }} · {{ route.modelName }}</span>
+        </button>
+      </div>
+    </div>
+
     <article
-      v-for="provider in providers"
+      v-for="(provider, providerIdx) in providers"
       :id="`provider-card-${provider.id}`"
       :key="provider.id"
       class="provider-card"
@@ -64,8 +80,41 @@
           <span class="chevron" aria-hidden="true">▾</span>
           <strong>{{ provider.label }}</strong>
           <span class="badge">{{ provider.providerKind }}</span>
+          <span
+            class="badge"
+            :class="canFetchCatalog(provider) ? 'badge-key-ok' : 'badge-key-warn'"
+          >
+            {{
+              canFetchCatalog(provider)
+                ? t('settings.models.keyConfigured')
+                : t('settings.models.keyMissing')
+            }}
+          </span>
+          <span class="badge badge-summary">
+            {{ providerSelectedSummary(provider) }}
+          </span>
         </button>
         <div class="head-actions">
+          <button
+            v-if="providers.length > 1"
+            type="button"
+            class="order-btn"
+            :disabled="providerIdx === 0"
+            :title="t('settings.models.moveUp')"
+            @click.stop="moveProvider(providerIdx, -1)"
+          >
+            ↑
+          </button>
+          <button
+            v-if="providers.length > 1"
+            type="button"
+            class="order-btn"
+            :disabled="providerIdx === providers.length - 1"
+            :title="t('settings.models.moveDown')"
+            @click.stop="moveProvider(providerIdx, 1)"
+          >
+            ↓
+          </button>
           <label class="check" @click.stop>
             <input v-model="provider.enabled" type="checkbox" />
             {{ t('settings.models.enabled') }}
@@ -104,6 +153,7 @@
               isCustomProvider(provider) ? t('settings.models.customBaseUrlPlaceholder') : undefined
             "
             spellcheck="false"
+            @change="maybeAutoRefreshModels(provider, currentModality(provider), true)"
           />
         </label>
         <label v-if="provider.providerKind === 'comfyui'">
@@ -125,6 +175,7 @@
               :type="revealedKeys[provider.id] ? 'text' : 'password'"
               autocomplete="off"
               spellcheck="false"
+              @change="maybeAutoRefreshModels(provider, currentModality(provider), true)"
             />
             <button
               type="button"
@@ -184,7 +235,7 @@
             class="mod-tab"
             :class="{ active: currentModality(provider) === mod }"
             :aria-selected="currentModality(provider) === mod"
-            @click="activeModality[provider.id] = mod"
+            @click="selectModalityTab(provider, mod)"
           >
             {{ modalityTabLabel(provider, mod) }}
             <span v-if="modalityConfig(provider, mod).selectedModelIds.length" class="mod-count">
@@ -307,6 +358,20 @@
             <button type="button" @click="clearSelection(provider, currentModality(provider))">
               {{ t('settings.models.clearSelection') }}
             </button>
+            <button
+              type="button"
+              :class="{
+                'primary-btn':
+                  onlySelectedFilter[catalogKey(provider.id, currentModality(provider))]
+              }"
+              @click="toggleOnlySelectedFilter(provider.id, currentModality(provider))"
+            >
+              {{
+                t('settings.models.onlySelectedFilter', {
+                  n: modalityConfig(provider, currentModality(provider)).selectedModelIds.length
+                })
+              }}
+            </button>
             <input
               v-model="filters[catalogKey(provider.id, currentModality(provider))]"
               class="filter"
@@ -419,6 +484,7 @@ import {
   isLocalOpenAiProvider,
   modalityConfig,
   modelProviderCredentialsUrl,
+  pickActiveProvider,
   syncModalityCatalogEntries,
   type CatalogModel,
   type CustomApiStyle,
@@ -428,15 +494,10 @@ import {
   type ModelProviderKind
 } from '@shared/modelProvider'
 import { settingsModalitiesFor } from '@shared/modelProviders/settingsModalities'
-import { resolveVolcengineArkModelCapabilities } from '@shared/modelProviders/volcengineArk/modelCapabilities'
-import { resolveKlingModelCapabilities } from '@shared/modelProviders/kling/modelCapabilities'
-import { resolveComfyUiModelCapabilities } from '@shared/modelProviders/comfyui/modelCapabilities'
-import { resolveMiniMaxModelCapabilities } from '@shared/modelProviders/minimax/modelCapabilities'
-import { resolveDashScopeModelCapabilities } from '@shared/modelProviders/dashscope/modelCapabilities'
-import { resolveModelScopeModelCapabilities } from '@shared/modelProviders/modelscope/modelCapabilities'
-import { resolveXaiModelCapabilities } from '@shared/modelProviders/xai/modelCapabilities'
-import { resolveGoogleModelCapabilities } from '@shared/modelProviders/google/modelCapabilities'
-import { resolveMagicRouterModelCapabilities } from '@shared/modelProviders/magicrouter/modelCapabilities'
+import {
+  getStaticCatalogForProvider,
+  resolveStaticCapabilitiesForProvider
+} from '@shared/modelProviders/staticCatalogRegistry'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { clearImageGenerateCapabilitiesCache } from '../../features/graph/model/imageGenerateCapabilities'
 import { clearVideoGenerateCapabilitiesCache } from '../../features/graph/model/videoGenerateCapabilities'
@@ -490,14 +551,89 @@ function ensureArkVoiceCatalog(provider: ModelProviderInstance): void {
   }
 }
 
+/** 初始化提供商当前模态的预置模型列表（内置最新目录 + 已保存目录/勾选） */
+function ensureProviderCatalog(
+  provider: ModelProviderInstance,
+  targetModality?: ModelModality
+): void {
+  if (isArkVoiceModality(provider) && (!targetModality || targetModality === 'audio')) {
+    ensureArkVoiceCatalog(provider)
+    return
+  }
+  const mod = targetModality ?? currentModality(provider)
+  const key = catalogKey(provider.id, mod)
+  if (catalogs[key] !== undefined) return
+  const staticList = getStaticCatalogForProvider(provider.providerKind, mod)
+  const sel = modalityConfig(provider, mod)
+  const next: CatalogModel[] = [...staticList]
+  const seen = new Set(next.map((m) => m.id))
+  if (sel.catalog) {
+    for (const [id, entry] of Object.entries(sel.catalog)) {
+      if (!seen.has(id)) {
+        next.push({
+          id,
+          name: entry.name || id,
+          modality: mod,
+          ...(entry.capabilities ? { capabilities: entry.capabilities } : {})
+        })
+        seen.add(id)
+      }
+    }
+  }
+  for (const id of sel.selectedModelIds) {
+    if (!seen.has(id)) {
+      const saved = sel.catalog?.[id]
+      next.push({
+        id,
+        name: saved?.name || id,
+        modality: mod,
+        ...(saved?.capabilities ? { capabilities: saved.capabilities } : {})
+      })
+      seen.add(id)
+    }
+  }
+  if (next.length > 0) {
+    catalogs[key] = next
+  }
+}
+
+/** 新建提供商时为其可用模态自动预勾选 1~2 个主力旗舰模型并写入能力快照，填好 Key 即开箱可用 */
+function seedDefaultModelsForNewProvider(provider: ModelProviderInstance): void {
+  for (const mod of settingsModalitiesFor(provider)) {
+    if (provider.providerKind === 'volcengine-ark' && mod === 'audio') continue
+    const staticList = getStaticCatalogForProvider(provider.providerKind, mod)
+    if (!staticList.length) continue
+    ensureProviderCatalog(provider, mod)
+    const sel = modalityConfig(provider, mod)
+    if (sel.selectedModelIds.length > 0) continue
+    const preferredCount = provider.providerKind === 'openai' && mod === 'text' ? 2 : 1
+    const picks = staticList.slice(0, preferredCount).map((m) => m.id)
+    sel.selectedModelIds = picks
+    sel.defaultModelId = picks[0] ?? ''
+    syncModalityCatalogEntries(sel, staticList)
+  }
+}
+
+/** 卡片标题栏展示各模态已选模型数量摘要 */
+function providerSelectedSummary(provider: ModelProviderInstance): string {
+  const parts: string[] = []
+  for (const mod of settingsModalitiesFor(provider)) {
+    const count = modalityConfig(provider, mod).selectedModelIds.length
+    if (count > 0) {
+      parts.push(`${modalityTabLabel(provider, mod)} ${count}`)
+    }
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('settings.models.noModelsSelected')
+}
+
 function modalityCatalog(provider: ModelProviderInstance): CatalogModel[] {
-  ensureArkVoiceCatalog(provider)
-  return filteredCatalog(provider.id, currentModality(provider))
+  ensureProviderCatalog(provider)
+  return filteredCatalog(provider, currentModality(provider))
 }
 
 /** 未筛选的目录数量（用于显示列表容器，避免筛选无匹配时整块消失） */
 function catalogSize(provider: ModelProviderInstance): number {
-  ensureArkVoiceCatalog(provider)
+  ensureProviderCatalog(provider)
   const key = catalogKey(provider.id, currentModality(provider))
   return (catalogs[key] ?? []).length
 }
@@ -517,6 +653,7 @@ const loadingKey = ref<string | null>(null)
 const catalogs = reactive<Record<string, CatalogModel[]>>({})
 const catalogErrors = reactive<Record<string, string>>({})
 const filters = reactive<Record<string, string>>({})
+const onlySelectedFilter = reactive<Record<string, boolean>>({})
 const manualModelIds = reactive<Record<string, string>>({})
 const revealedKeys = reactive<Record<string, boolean>>({})
 const activeModality = reactive<Record<string, ModelModality>>({})
@@ -524,15 +661,95 @@ const activeModality = reactive<Record<string, ModelModality>>({})
 const collapsedProviders = reactive<Record<string, boolean>>({})
 /** 同一页签并发/过期响应序号，避免第二次空结果盖住第一次成功列表 */
 const refreshSeqByKey = reactive<Record<string, number>>({})
+/** 已触发过自动远端拉取的 key，避免重复请求 */
+const autoRefreshedKeys = reactive<Record<string, boolean>>({})
 
 const providers = computed(() => props.models.providers)
+
+const activeGlobalRoutes = computed(() => {
+  const routes: Array<{
+    modality: ModelModality
+    providerId: string
+    providerLabel: string
+    modelId: string
+    modelName: string
+  }> = []
+  for (const mod of MODEL_MODALITIES) {
+    const picked = pickActiveProvider(providers.value, mod)
+    if (!picked) continue
+    const { provider, modelId } = picked
+    if (!modelId) continue
+    const cfg = modalityConfig(provider, mod)
+    const modelName = cfg.catalog?.[modelId]?.name?.trim() || modelId
+    routes.push({
+      modality: mod,
+      providerId: provider.id,
+      providerLabel: provider.label,
+      modelId,
+      modelName
+    })
+  }
+  return routes
+})
+
+function focusProviderRoute(providerId: string, modality: ModelModality): void {
+  collapsedProviders[providerId] = false
+  const provider = props.models.providers.find((p) => p.id === providerId)
+  if (provider) {
+    activeModality[providerId] = modality
+    ensureProviderCatalog(provider, modality)
+    maybeAutoRefreshModels(provider, modality)
+  }
+  scrollToProviderCard(providerId)
+}
+
+function toggleOnlySelectedFilter(providerId: string, modality: ModelModality): void {
+  const key = catalogKey(providerId, modality)
+  onlySelectedFilter[key] = !onlySelectedFilter[key]
+}
+
+function moveProvider(index: number, delta: -1 | 1): void {
+  const target = index + delta
+  const list = props.models.providers
+  if (target < 0 || target >= list.length) return
+  const [item] = list.splice(index, 1)
+  if (item) list.splice(target, 0, item)
+}
 
 function isProviderCollapsed(providerId: string): boolean {
   return collapsedProviders[providerId] !== false
 }
 
+function maybeAutoRefreshModels(
+  provider: ModelProviderInstance,
+  modality: ModelModality,
+  force = false
+): void {
+  if (isArkVoiceModality(provider)) return
+  if (!canFetchCatalog(provider)) return
+  const key = catalogKey(provider.id, modality)
+  if (!force && autoRefreshedKeys[key]) return
+  if (loadingKey.value === key) return
+  autoRefreshedKeys[key] = true
+  void refreshModels(provider, modality)
+}
+
 function toggleProviderCollapsed(providerId: string): void {
-  collapsedProviders[providerId] = !isProviderCollapsed(providerId)
+  const nextCollapsed = !isProviderCollapsed(providerId)
+  collapsedProviders[providerId] = nextCollapsed
+  if (!nextCollapsed) {
+    const provider = props.models.providers.find((p) => p.id === providerId)
+    if (provider) {
+      ensureProviderCatalog(provider)
+      maybeAutoRefreshModels(provider, currentModality(provider))
+    }
+  }
+}
+
+function selectModalityTab(provider: ModelProviderInstance, mod: ModelModality): void {
+  activeModality[provider.id] = mod
+  ensureProviderCatalog(provider)
+  maybeAutoRefreshModels(provider, mod)
 }
 
 function catalogKey(providerId: string, modality: ModelModality): string {
@@ -649,10 +866,18 @@ function scrollToProviderCard(providerId: string): void {
 
 function addProvider(): void {
   const provider = createProviderInstance(pendingProviderKind.value)
+  const kindMeta = providerKinds.value.find((p) => p.id === pendingProviderKind.value)
+  if (kindMeta?.labelKey) {
+    provider.label = t(kindMeta.labelKey)
+  }
   // eslint-disable-next-line vue/no-mutating-props
   props.models.providers.push(provider)
-  activeModality[provider.id] = settingsModalitiesFor(provider)[0] ?? 'text'
+  const initialModality = settingsModalitiesFor(provider)[0] ?? 'text'
+  activeModality[provider.id] = initialModality
   collapsedProviders[provider.id] = false
+  seedDefaultModelsForNewProvider(provider)
+  ensureProviderCatalog(provider)
+  maybeAutoRefreshModels(provider, initialModality)
   showAddFeedback(provider.label)
   scrollToProviderCard(provider.id)
 }
@@ -676,7 +901,9 @@ function removeProvider(id: string): void {
     delete catalogs[key]
     delete catalogErrors[key]
     delete filters[key]
+    delete onlySelectedFilter[key]
     delete manualModelIds[key]
+    delete autoRefreshedKeys[key]
   }
 }
 
@@ -828,63 +1055,37 @@ function addManualModel(provider: ModelProviderInstance, modality: ModelModality
   if (!id) return
   const list = catalogs[key] ?? (catalogs[key] = [])
   if (!list.some((m) => m.id === id)) {
-    // 方舟 / 可灵：手填模型时附带静态能力，便于一并写入设置快照
-    let capabilities: Record<string, unknown> | undefined
-    if (
-      provider.providerKind === 'volcengine-ark' &&
-      (modality === 'video' || modality === 'image')
-    ) {
-      capabilities = resolveVolcengineArkModelCapabilities(id, id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'kling' &&
-      (modality === 'video' || modality === 'image')
-    ) {
-      capabilities = resolveKlingModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'minimax' &&
-      (modality === 'video' || modality === 'text' || modality === 'image' || modality === 'audio')
-    ) {
-      capabilities = resolveMiniMaxModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'dashscope' &&
-      (modality === 'video' || modality === 'image' || modality === 'text' || modality === 'audio')
-    ) {
-      capabilities = resolveDashScopeModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'modelscope' &&
-      (modality === 'image' || modality === 'text')
-    ) {
-      capabilities = resolveModelScopeModelCapabilities(id, modality) ?? undefined
-    } else if (provider.providerKind === 'xai' && (modality === 'image' || modality === 'video')) {
-      capabilities = resolveXaiModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'google' &&
-      (modality === 'image' || modality === 'video')
-    ) {
-      capabilities = resolveGoogleModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'comfyui' &&
-      (modality === 'image' || modality === 'video' || modality === 'audio')
-    ) {
-      capabilities = resolveComfyUiModelCapabilities(id, modality) ?? undefined
-    } else if (
-      provider.providerKind === 'magicrouter' &&
-      (modality === 'image' || modality === 'video')
-    ) {
-      capabilities = resolveMagicRouterModelCapabilities(id, modality) ?? undefined
-    }
+    const capabilities = resolveStaticCapabilitiesForProvider(
+      provider.providerKind,
+      id,
+      modality,
+      id
+    )
     list.unshift({ id, name: id, modality, ...(capabilities ? { capabilities } : {}) })
   }
   toggleModel(provider, modality, id, true)
   manualModelIds[key] = ''
 }
 
-function filteredCatalog(providerId: string, modality: ModelModality): CatalogModel[] {
-  const key = catalogKey(providerId, modality)
+function filteredCatalog(provider: ModelProviderInstance, modality: ModelModality): CatalogModel[] {
+  const key = catalogKey(provider.id, modality)
   const q = (filters[key] ?? '').trim().toLowerCase()
+  const onlySelected = Boolean(onlySelectedFilter[key])
+  const selectedSet = new Set(modalityConfig(provider, modality).selectedModelIds)
   const list = catalogs[key] ?? []
-  if (!q) return list
-  return list.filter((m) => m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q))
+  const filtered = list.filter((m) => {
+    if (onlySelected && !selectedSet.has(m.id)) return false
+    if (!q) return true
+    return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
+  })
+  if (onlySelected || selectedSet.size === 0) return filtered
+  const selected: CatalogModel[] = []
+  const unselected: CatalogModel[] = []
+  for (const item of filtered) {
+    if (selectedSet.has(item.id)) selected.push(item)
+    else unselected.push(item)
+  }
+  return [...selected, ...unselected]
 }
 
 function toggleModel(
@@ -920,7 +1121,7 @@ function toggleModel(
 
 function selectAll(provider: ModelProviderInstance, modality: ModelModality): void {
   const sel = modalityConfig(provider, modality)
-  const list = filteredCatalog(provider.id, modality)
+  const list = filteredCatalog(provider, modality)
   const set = new Set(sel.selectedModelIds)
   for (const m of list) set.add(m.id)
   sel.selectedModelIds = [...set]
@@ -1056,6 +1257,53 @@ function capabilitySummary(model: CatalogModel): string {
   border-color: var(--accent-45);
 }
 
+.active-routes-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--wash-04);
+}
+
+.active-routes-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.active-routes-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.active-route-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-inset);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.active-route-pill:hover {
+  border-color: var(--accent-45);
+  background: var(--wash-08);
+}
+
+.route-mod {
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+
+.route-target {
+  color: var(--text);
+}
+
 .provider-card {
   display: flex;
   flex-direction: column;
@@ -1129,6 +1377,29 @@ function capabilitySummary(model: CatalogModel): string {
   padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.badge-key-ok {
+  color: var(--success, #4bb543);
+  border-color: rgba(75, 181, 67, 0.35);
+}
+
+.badge-key-warn {
+  color: #d9a441;
+  border-color: rgba(217, 164, 65, 0.4);
+}
+
+.badge-summary {
+  color: var(--text);
+  background: var(--wash-06);
+}
+
+.order-btn {
+  padding: 2px 7px;
+  min-width: 26px;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .head-actions {

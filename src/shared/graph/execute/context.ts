@@ -17,6 +17,7 @@ import {
   resolveImageSystemPrompt,
   resolveVideoSystemPrompt,
   resolveOptimizeSystemPrompt,
+  resolveNovelSystemPrompt,
   resolveScreenplaySystemPrompt,
   resolveGameSystemSystemPrompt,
   resolveWorldExtractSystemPrompt,
@@ -36,6 +37,7 @@ import {
   buildImagePrompt,
   buildVideoPrompt,
   buildOptimizePrompt,
+  buildNovelPrompt,
   buildScreenplayPrompt,
   buildGameSystemPrompt,
   buildWorldExtractPrompt,
@@ -49,6 +51,15 @@ import {
   buildSpatialWorldPrompt
 } from '../userPromptSchemes'
 import { buildAnim2dGridInstruction, resolveFrameAnimGenSystemPrompt } from '../anim2d'
+import {
+  createMxFromTemplate,
+  exportMxNarrativeProgressionBrief,
+  extractNovelIpContextForGameSystem,
+  parseMxDocumentJson,
+  unwrapEconomyBundleForGameSystem,
+  unwrapEconomyBundleForNarrative,
+  type MxTemplateId
+} from '../../gameAssets'
 import { expandIncomingThroughBundles } from '../bundleExpand'
 import { collectIncomingValues } from './incoming'
 import { isProcessingAssetNode } from '../nodeRole'
@@ -60,6 +71,7 @@ export function normalizeLocalScreenplayText(raw: string | undefined): string {
 }
 
 export type InstructionFinalPreviewKind =
+  | 'novel'
   | 'screenplay'
   | 'gameSystem'
   | 'image'
@@ -127,6 +139,9 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'asset.gameSystem' || assetType === 'gameSystem') {
     return 'gameSystem'
   }
+  if (typeId === 'asset.novel' || presetKind === 'novel') {
+    return 'novel'
+  }
   if (typeId === 'asset.screenplay' || assetType === 'screenplay' || presetKind === 'screenplay') {
     return 'screenplay'
   }
@@ -161,6 +176,8 @@ function resolveSystemPromptForPreviewKind(
       return resolveUiSplitSystemPrompt(raw, locale)
     case 'gameSystem':
       return resolveGameSystemSystemPrompt(raw, locale)
+    case 'novel':
+      return resolveNovelSystemPrompt(raw, locale)
     case 'frameAnimGen':
       return resolveFrameAnimGenSystemPrompt(raw, locale)
     case 'svgGen':
@@ -208,6 +225,8 @@ function buildUserPromptForPreviewKind(
       return buildUiSplitPrompt(instruction, locale)
     case 'gameSystem':
       return buildGameSystemPrompt(instruction, locale)
+    case 'novel':
+      return buildNovelPrompt(instruction, locale)
     case 'frameAnimGen':
       return buildFrameAnimGenPrompt(instruction, locale)
     case 'svgGen':
@@ -247,7 +266,24 @@ export function buildInstructionFinalPromptPreview(input: {
   frameAnimGrid?: { rows?: number; cols?: number }
   svgGen?: SvgGenState
 }): string {
-  const instruction = expandInstructionMentions(input.instructionRaw.trim(), input.sources)
+  const normalizedSources =
+    input.kind === 'gameSystem'
+      ? input.sources.map((s) => {
+          const unwrapped = unwrapEconomyBundleForGameSystem(s.text)
+          if (unwrapped !== s.text) return { ...s, text: unwrapped }
+          if (
+            !s.text.includes('【上游小说 IP（asset.novel）➔ 游戏系统策划案') && // cjk-ok
+            (/小说名[：:]|【核心设定|第\s*\d+\s*章/.test(s.text) || s.text.length >= 600) // cjk-ok
+          ) {
+            const ipBlock = extractNovelIpContextForGameSystem({ novelText: s.text })
+            return { ...s, text: ipBlock ? `${s.text}\n\n${ipBlock}` : s.text }
+          }
+          return s
+        })
+      : input.kind === 'novel' || input.kind === 'screenplay'
+        ? input.sources.map((s) => ({ ...s, text: unwrapEconomyBundleForNarrative(s.text) }))
+        : input.sources
+  const instruction = expandInstructionMentions(input.instructionRaw.trim(), normalizedSources)
   const userPromptBase = buildUserPromptForPreviewKind(
     input.kind,
     instruction,
@@ -256,7 +292,7 @@ export function buildInstructionFinalPromptPreview(input: {
   )
   let userPrompt = userPromptBase
   if (!instructionHasMentions(input.instructionRaw)) {
-    const auto = input.sources
+    const auto = normalizedSources
       .map((source) => source.text.trim())
       .filter(Boolean)
       .join('\n\n')
@@ -339,8 +375,45 @@ function graphValueToMentionSource(value: GraphValue, index: number): Instructio
 
 function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
   if (!node) return ''
+  if (node.typeId === 'game.economy') {
+    const raw = node.params.text?.trim() ?? ''
+    if (raw) return unwrapEconomyBundleForNarrative(raw)
+    const diagramRaw = node.params.gameEconomyDiagramJson?.trim() ?? ''
+    const parsedDoc = diagramRaw ? parseMxDocumentJson(diagramRaw) : null
+    const doc =
+      parsedDoc ??
+      createMxFromTemplate((node.params.gameEconomyPreset as MxTemplateId) || 'slay_the_spire_run')
+    if (doc.workbench) {
+      return exportMxNarrativeProgressionBrief(doc.workbench, doc)
+    }
+  }
+  if (node.typeId === 'asset.novel') {
+    const directText = normalizeLocalScreenplayText(node.params.text)
+    const galleryChapters = (node.params.generatedTexts ?? [])
+      .map((item) => normalizeLocalScreenplayText(item.text))
+      .filter(Boolean)
+      .join('\n\n')
+    const novelBody = galleryChapters || directText
+    const ipSpec = extractNovelIpContextForGameSystem({
+      novelText: novelBody,
+      novelGenre: node.params.novelGenre,
+      worldBible: node.params.novelWorldBible,
+      stateLedger: node.params.novelStateLedger,
+      characterRosterJson: node.params.novelCharacterRosterJson,
+      foreshadowingJson: node.params.novelForeshadowingJson,
+      totalChapters: node.params.novelTotalChapters,
+      customStagesText: node.params.novelCustomStagesText,
+      customAxisProtagonist: node.params.novelCustomAxisProtagonist,
+      customAxisAntagonist: node.params.novelCustomAxisAntagonist,
+      customUnlockTerm: node.params.novelCustomUnlockTerm
+    })
+    return [novelBody, ipSpec].filter(Boolean).join('\n\n')
+  }
   return (
-    node.params.text?.trim() || node.params.resultText?.trim() || node.params.notes?.trim() || ''
+    normalizeLocalScreenplayText(node.params.text) ||
+    node.params.resultText?.trim() ||
+    node.params.notes?.trim() ||
+    ''
   )
 }
 

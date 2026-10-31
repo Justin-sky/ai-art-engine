@@ -71,7 +71,7 @@
           给模型的指令会被一并念出来（详见 generateMedia 声音分支的说明）。
           剧本生成节点的系统提示词与详细精修移入全屏 Dive 工作台，保持右侧 Inspector 简洁。
         -->
-        <label v-if="!isVoice && !isScreenplay">
+        <label v-if="!isVoice && !isScreenplay && !isGameSystem">
           {{ t('graph.inspector.generate.systemPrompt') }}
           <ExpandableTextarea
             :key="`sys-${node.id}`"
@@ -129,6 +129,28 @@
             {{ t('graph.inspector.generate.voiceProfileManage') }}
           </button>
         </div>
+        <div v-if="showsVoiceProfile" class="voice-profile-row">
+          <label class="voice-profile-label">
+            {{ t('graph.inspector.generate.speechSpeed') }}
+            <input
+              type="number"
+              min="0.25"
+              max="4"
+              step="0.05"
+              :value="generateSpeechSpeed"
+              @change="onSpeechSpeedChange"
+            />
+          </label>
+          <label class="voice-profile-label">
+            {{ t('graph.inspector.generate.speechInstructions') }}
+            <input
+              type="text"
+              :value="generateSpeechInstructions"
+              :placeholder="t('graph.inspector.generate.speechInstructionsPlaceholder')"
+              @change="onSpeechInstructionsChange"
+            />
+          </label>
+        </div>
         <p v-if="supportsModelPicker && modelOptions.length === 0" class="hint">
           {{ modelsHint }}
         </p>
@@ -163,7 +185,7 @@
     </section>
 
     <GraphNodeOutputPreview
-      v-if="node && hostId && !isImage && !isScreenplay && !isVoice && !isVideo"
+      v-if="node && hostId && !isImage && !isScreenplay && !isGameSystem && !isVoice && !isVideo"
       :node="node"
       :host-id="hostId"
     />
@@ -230,16 +252,43 @@
       </div>
     </section>
 
-    <!-- 剧本生成节点（asset.screenplay）轻量化概览：一键进入剧本与分集 Dive 工作台 + 核心指标 + 快捷指令 + 正文预览 -->
-    <section v-if="isScreenplay" class="screenplay-studio">
+    <!-- 剧本/小说/策划案生成节点（asset.screenplay / asset.novel / asset.gameSystem）轻量化概览：一键进入 Dive 工作台 + 核心指标 + 快捷指令 + 正文预览 -->
+    <section v-if="isScreenplay || isGameSystem" class="screenplay-studio">
       <button type="button" class="screenplay-workbench-btn" @click="openScreenplayWorkbench">
-        {{ t('graph.scriptNode.workbench.openBtn') }}
+        {{
+          isGameSystem
+            ? gameSystemWorkbenchOpenLabel
+            : isNovel
+              ? novelWorkbenchOpenLabel
+              : t('graph.scriptNode.workbench.openBtn')
+        }}
       </button>
       <p class="section-hint">
-        {{ t('graph.scriptNode.workbench.openHint') }}
+        {{
+          isGameSystem
+            ? gameSystemWorkbenchHintLabel
+            : isNovel
+              ? novelWorkbenchHintLabel
+              : t('graph.scriptNode.workbench.openHint')
+        }}
       </p>
 
-      <div class="screenplay-telemetry">
+      <div v-if="isGameSystem" class="screenplay-telemetry">
+        <span class="stat-pill stat-accent">
+          {{ gameSystemTelemetrySummary.archetypeBadge }}
+        </span>
+        <span class="stat-pill">
+          {{ gameSystemTelemetrySummary.screensBadge }}
+        </span>
+        <span class="stat-pill">
+          {{ gameSystemTelemetrySummary.qaBadge }}
+        </span>
+      </div>
+      <div v-else class="screenplay-telemetry">
+        <span v-if="isNovel" class="stat-pill stat-accent">
+          Ch.{{ node?.params.novelCurrentChapter || 1 }} /
+          {{ node?.params.novelTotalChapters || 800 }}
+        </span>
         <span class="stat-pill stat-accent">{{
           t('graph.scriptNode.telemetry.episodes', { n: Math.max(1, generatedTexts.length) })
         }}</span>
@@ -274,14 +323,21 @@
 
       <div
         class="inspector-draft-card"
-        :title="t('graph.scriptNode.workbench.openBtn')"
+        :title="
+          isGameSystem ? gameSystemWorkbenchOpenLabel : t('graph.scriptNode.workbench.openBtn')
+        "
         @click="openScreenplayWorkbench"
       >
         <div class="draft-card-head">
           <span class="draft-card-title">{{
             t('graph.scriptNode.workbench.inspectorDraftPreview')
           }}</span>
-          <span class="draft-card-action">{{ t('graph.scriptNode.workbench.openBtn') }} →</span>
+          <span class="draft-card-action"
+            >{{
+              isGameSystem ? gameSystemWorkbenchOpenLabel : t('graph.scriptNode.workbench.openBtn')
+            }}
+            →</span
+          >
         </div>
         <pre class="draft-card-snippet">{{
           localText.trim() || t('graph.scriptNode.workbench.inspectorEmptyDraft')
@@ -290,7 +346,7 @@
     </section>
 
     <section
-      v-if="isScreenplay"
+      v-if="isScreenplay || isGameSystem"
       class="generated-texts"
       :aria-label="t('graph.inspector.generate.generatedTexts')"
     >
@@ -607,7 +663,7 @@
       :open="textNotepadOpen"
       :title="textNotepadTitle"
       :text="textNotepadBody"
-      :editable="isScreenplay"
+      :editable="isScreenplay || isGameSystem"
       @save="onSaveNotepadText"
       @close="textNotepadOpen = false"
     />
@@ -773,6 +829,7 @@ import {
   normalizeProjectStyleImages,
   type ProjectStyleImage
 } from '@shared/domain'
+import { auditGameSystemDocument, resolveGameSystemArchetype } from '@shared/gameAssets'
 import StyleImagePicker from './StyleImagePicker.vue'
 
 type StoredGeneratedImage = {
@@ -999,7 +1056,44 @@ function onMusicLyricsChange(event: Event): void {
 }
 
 const isScreenplay = computed(() => assetType.value === 'screenplay')
+const isNovel = computed(() => node.value?.typeId === 'asset.novel')
+const novelWorkbenchOpenLabel = computed(
+  () =>
+    String(locale.value).toLowerCase().startsWith('en')
+      ? '📚 Open Multi-Chapter Novel Workbench'
+      : '📚 进入多章节小说连载工作台' // cjk-ok
+)
+const novelWorkbenchHintLabel = computed(
+  () =>
+    String(locale.value).toLowerCase().startsWith('en')
+      ? 'Manage 1~5000 dynamic chapters, 3000+ words per chapter, numerical quota locks, and 4-tier memory.'
+      : '沉浸式管理多章节目录、动态总章数、单章3000+字精修、经济系统数值围栏与四层记忆金字塔。' // cjk-ok
+)
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
+const gameSystemWorkbenchOpenLabel = computed(
+  () =>
+    String(locale.value).toLowerCase().startsWith('en')
+      ? '🕹️ Open Game System GDD Workbench (Dive)'
+      : '🕹️ 进入游戏系统策划案工作台 (Dive)' // cjk-ok
+)
+const gameSystemWorkbenchHintLabel = computed(
+  () =>
+    String(locale.value).toLowerCase().startsWith('en')
+      ? 'Fuse upstream Economy System numbers & Novel IP lore with 8 game archetypes, ASCII wireframes & 9-slice specs.'
+      : '融合上游经济系统数值、小说 IP 设定与 8 大游戏原型，沉浸式精修含 ASCII 框线与九宫格规范的系统策划案。' // cjk-ok
+)
+const gameSystemTelemetrySummary = computed(() => {
+  const en = String(locale.value).toLowerCase().startsWith('en')
+  const arch = resolveGameSystemArchetype(node.value?.params?.gameSystemArchetype)
+  const audit = auditGameSystemDocument(localText.value || '')
+  return {
+    archetypeBadge: `${arch.icon} ${en ? arch.labelEn : arch.labelZh}`,
+    screensBadge: en
+      ? `UI Screens: ${audit.uiScreens.length}`
+      : `UI 界面: ${audit.uiScreens.length} 张`, // cjk-ok
+    qaBadge: `QA ${audit.overallScore}/100`
+  }
+})
 // 3D 生成节点类型为 model3d（GraphValue 里产物资产类型是 model，两者不同）
 const isModel3d = computed(() => assetType.value === 'model3d')
 // 空间世界生成节点同理：节点 assetType 是 spatialWorld，产物资产类型同样是 model
@@ -1228,7 +1322,7 @@ async function openGeneratedPreview(key: string): Promise<void> {
 const generatedTexts = computed((): StoredGeneratedText[] => {
   void graphEditorHosts.revision.value
   const current = node.value
-  if (!current || !isScreenplay.value) return []
+  if (!current || (!isScreenplay.value && !isGameSystem.value)) return []
   return (current.params.generatedTexts ?? []).filter(
     (item) => item.id && (item.text?.trim() || item.relativePath?.trim())
   )
@@ -1291,6 +1385,30 @@ function openScreenplayWorkbench(): void {
   const current = node.value
   const rootKey = workspace.activeDiveRootKey?.trim()
   if (!rootKey || !hostId.value || !current) return
+  if (current.typeId === 'asset.novel') {
+    workspace.diveIntoView(
+      rootKey,
+      {
+        viewId: 'novel.workbench',
+        hostId: hostId.value,
+        nodeId: current.id
+      },
+      displayTitle.value
+    )
+    return
+  }
+  if (current.typeId === 'asset.gameSystem') {
+    workspace.diveIntoView(
+      rootKey,
+      {
+        viewId: 'gameSystem.workbench',
+        hostId: hostId.value,
+        nodeId: current.id
+      },
+      displayTitle.value
+    )
+    return
+  }
   workspace.diveIntoView(
     rootKey,
     {
@@ -1305,7 +1423,7 @@ function openScreenplayWorkbench(): void {
 function persistScreenplayBody(): void {
   const current = node.value
   const hid = hostId.value
-  if (!current || !hid || !isScreenplay.value) return
+  if (!current || !hid || (!isScreenplay.value && !isGameSystem.value)) return
   const nextText = localText.value
   const list = [...(current.params.generatedTexts ?? [])]
   const selectedId = current.params.selectedTextId?.trim() || list[list.length - 1]?.id || ''
@@ -1440,7 +1558,7 @@ function onSaveNotepadText(nextText: string): void {
   localText.value = nextText
   const current = node.value
   const hid = hostId.value
-  if (!current || !hid || !isScreenplay.value) return
+  if (!current || !hid || (!isScreenplay.value && !isGameSystem.value)) return
   const targetId = editingTextId.value || current.params.selectedTextId?.trim() || ''
   const list = [...(current.params.generatedTexts ?? [])]
   if (list.length > 0 && targetId) {
@@ -1865,7 +1983,11 @@ watch(
     localWeight.value = current.params.weight ?? 0.85
     localNotes.value = current.params.notes ?? ''
     const rawText = current.params.text ?? ''
-    localText.value = current.assetType === 'screenplay' && rawText.trim() === '…' ? '' : rawText
+    localText.value =
+      (current.assetType === 'screenplay' || current.assetType === 'gameSystem') &&
+      rawText.trim() === '…'
+        ? ''
+        : rawText
     volume.value = current.params.volume ?? 1
     muted.value = current.params.muted === true
     loop.value = current.params.loop === true
@@ -1905,7 +2027,7 @@ watch(
   () => node.value?.params.text,
   (text) => {
     if (text === undefined) return
-    const next = isScreenplay.value && text.trim() === '…' ? '' : text
+    const next = (isScreenplay.value || isGameSystem.value) && text.trim() === '…' ? '' : text
     if (next !== localText.value) {
       localText.value = next
     }
@@ -2077,6 +2199,39 @@ const generateSpeechCharacter = computed(() => {
   const value = current?.params?.generateSpeechCharacter
   return typeof value === 'string' ? value.trim() : ''
 })
+
+const generateSpeechSpeed = computed(() => {
+  const current = node.value
+  const value = current?.params?.generateSpeechSpeed
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 1
+})
+
+const generateSpeechInstructions = computed(() => {
+  const current = node.value
+  const value = current?.params?.generateSpeechInstructions
+  return typeof value === 'string' ? value : ''
+})
+
+function onSpeechSpeedChange(event: Event): void {
+  const raw = Number((event.target as HTMLInputElement).value)
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  const next = Number.isFinite(raw) && raw > 0 ? Math.min(4, Math.max(0.25, raw)) : undefined
+  graphEditorHosts.updateNode(hid, current.id, {
+    generateSpeechSpeed: next === 1 ? undefined : next
+  })
+}
+
+function onSpeechInstructionsChange(event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  const current = node.value
+  const hid = hostId.value
+  if (!current || !hid) return
+  graphEditorHosts.updateNode(hid, current.id, {
+    generateSpeechInstructions: raw || undefined
+  })
+}
 
 async function refreshVoiceProfiles(): Promise<void> {
   try {

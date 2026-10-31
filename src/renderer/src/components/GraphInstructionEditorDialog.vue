@@ -18,6 +18,11 @@
     </template>
 
     <div ref="dialogEl" class="dialog-body" tabindex="-1">
+      <NovelChapterSerializerControls
+        v-if="presetKind === 'novel' && hostId && nodeId"
+        :host-id="hostId"
+        :node-id="nodeId"
+      />
       <GraphInstructionMentionEditor
         variant="dialog"
         :model-value="modelValue"
@@ -49,6 +54,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { InstructionPresetKind } from '@shared/graph/instructionPresets'
 import { estimateTokenCount } from '@shared/textTokens'
 import GraphInstructionMentionEditor from './GraphInstructionMentionEditor.vue'
+import NovelChapterSerializerControls from './NovelChapterSerializerControls.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
 

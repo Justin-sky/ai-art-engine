@@ -55,6 +55,10 @@ import {
   resolveGoogleChatModelId,
   resolveGoogleOpenAiBaseUrl
 } from '@shared/modelProviders/google/modelCapabilities'
+import {
+  OPENAI_CHAT_FALLBACK_MODELS,
+  normalizeOpenAiTextModelId
+} from '@shared/modelProviders/openai/modelCapabilities'
 import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelModalities'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
@@ -286,7 +290,12 @@ function resolveTextProvider(providerId?: string): {
       ''
     const isGoogle =
       p.providerKind === 'google' || /generativelanguage\.googleapis\.com/i.test(rawBaseUrl)
-    const modelId = isGoogle ? resolveGoogleChatModelId(rawModelId) : rawModelId
+    const isOpenAi = p.providerKind === 'openai' || /\bapi\.openai\.com\b/i.test(rawBaseUrl)
+    const modelId = isGoogle
+      ? resolveGoogleChatModelId(rawModelId)
+      : isOpenAi
+        ? normalizeOpenAiTextModelId(rawModelId, { hasTools: true })
+        : rawModelId
     const baseUrl = isGoogle
       ? resolveGoogleOpenAiBaseUrl(rawBaseUrl)
       : rawBaseUrl.replace(/\/+$/, '')
@@ -529,6 +538,8 @@ function buildDshCatalogModelEntries(llm: {
     const isGoogle =
       llm.provider.providerKind === 'google' ||
       /generativelanguage\.googleapis\.com/i.test(llm.baseUrl ?? '')
+    const isOpenAi =
+      llm.provider.providerKind === 'openai' || /\bapi\.openai\.com\b/i.test(llm.baseUrl ?? '')
     for (const rawSelected of textCfg.selectedModelIds ?? []) {
       const trimmed = rawSelected?.trim()
       if (!trimmed) continue
@@ -538,10 +549,17 @@ function buildDshCatalogModelEntries(llm: {
       if (isGoogle) {
         const normalized = resolveGoogleChatModelId(trimmed)
         addEntry(normalized, catName || normalized, mods)
+      } else if (isOpenAi) {
+        const normalized = normalizeOpenAiTextModelId(trimmed, { hasTools: true })
+        addEntry(normalized, catName || normalized, mods)
       }
     }
     if (isGoogle) {
       for (const fallbackId of GOOGLE_CHAT_FALLBACK_MODELS) {
+        addEntry(fallbackId, fallbackId, ['text', 'image'])
+      }
+    } else if (isOpenAi) {
+      for (const fallbackId of OPENAI_CHAT_FALLBACK_MODELS) {
         addEntry(fallbackId, fallbackId, ['text', 'image'])
       }
     }
@@ -2584,7 +2602,14 @@ async function ensurePersistentWorkerUnlocked(opts: {
   const isGoogle =
     opts.provider.provider.providerKind === 'google' ||
     /generativelanguage\.googleapis\.com/i.test(opts.provider.baseUrl ?? '')
-  const modelId = isGoogle ? resolveGoogleChatModelId(opts.modelId) : opts.modelId
+  const isOpenAi =
+    opts.provider.provider.providerKind === 'openai' ||
+    /\bapi\.openai\.com\b/i.test(opts.provider.baseUrl ?? '')
+  const modelId = isGoogle
+    ? resolveGoogleChatModelId(opts.modelId)
+    : isOpenAi
+      ? normalizeOpenAiTextModelId(opts.modelId, { hasTools: true })
+      : opts.modelId
   const textCatalog =
     modalityConfig(opts.provider.provider, 'text').catalog?.[opts.modelId] ??
     modalityConfig(opts.provider.provider, 'text').catalog?.[modelId]
@@ -3161,7 +3186,14 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
   const isGoogle =
     provider.provider.providerKind === 'google' ||
     /generativelanguage\.googleapis\.com/i.test(provider.baseUrl ?? '')
-  const modelId = isGoogle ? resolveGoogleChatModelId(rawModelId) : rawModelId
+  const isOpenAi =
+    provider.provider.providerKind === 'openai' ||
+    /\bapi\.openai\.com\b/i.test(provider.baseUrl ?? '')
+  const modelId = isGoogle
+    ? resolveGoogleChatModelId(rawModelId)
+    : isOpenAi
+      ? normalizeOpenAiTextModelId(rawModelId, { hasTools: true })
+      : rawModelId
   lastPreferredProviderId = provider.provider.id
   lastPreferredModelId = modelId
   const textCatalog =

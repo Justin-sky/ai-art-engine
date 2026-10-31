@@ -125,6 +125,8 @@ export interface UiEditableTextMeta {
   text: string
   /** 估算字号（px） */
   fontSize: number
+  /** 估算字重（字形覆盖率 >= 0.17 时为 700，否则 600） */
+  fontWeight?: 600 | 700
   /** 采样自文字笔画像素的主色调 RGB (0-255) */
   color: [number, number, number]
   /** 采样自文字外圈轮廓的描边色 RGB (0-255，若存在明显描边则自动提取) */
@@ -823,10 +825,13 @@ export function estimateEditableTextMeta(input: {
   ocrText?: string
   fallbackText?: string
   align?: 'left' | 'center' | 'right'
+  bgColor?: [number, number, number]
+  glyphCoverage?: number
 }): UiEditableTextMeta {
   const { foregroundRgba, width, height, rawName, ocrText, fallbackText, align } = input
   const w = Math.max(1, Math.round(width))
   const h = Math.max(1, Math.round(height))
+  const bg = input.bgColor ?? [36, 40, 44]
 
   let coreR = 0
   let coreG = 0
@@ -842,6 +847,12 @@ export function estimateEditableTextMeta(input: {
   let allG = 0
   let allB = 0
   let allW = 0
+
+  // 32 宽度 RGB 直方图分桶（中心 16, 48, ..., 240，共 8x8x8 = 512 桶，对标知乎方案 2.1.3）
+  const binCounts = new Int32Array(512)
+  const binSumR = new Float64Array(512)
+  const binSumG = new Float64Array(512)
+  const binSumB = new Float64Array(512)
 
   const colActive = new Uint8Array(w)
   let minY = h
@@ -871,6 +882,14 @@ export function estimateEditableTextMeta(input: {
         if (y > maxY) maxY = y
         xWeightSum += x
         activeCount++
+        const br = Math.min(7, r >> 5)
+        const bgBin = Math.min(7, g >> 5)
+        const bb = Math.min(7, b >> 5)
+        const binIdx = (br << 6) | (bgBin << 3) | bb
+        binCounts[binIdx]!++
+        binSumR[binIdx]! += r
+        binSumG[binIdx]! += g
+        binSumB[binIdx]! += b
       }
 
       // 判断是字芯内部像素还是笔画外圈轮廓像素
@@ -894,14 +913,59 @@ export function estimateEditableTextMeta(input: {
     }
   }
 
-  const fillR = coreW > 0 ? coreR / coreW : allW > 0 ? allR / allW : 248
-  const fillG = coreW > 0 ? coreG / coreW : allW > 0 ? allG / allW : 236
-  const fillB = coreW > 0 ? coreB / coreW : allW > 0 ? allB / allW : 200
+  // 按 score = count * (24 + ||C_bin - B||_2) 选最高分颜色桶（兼顾高频与背景高对比度）
+  let bestBin = -1
+  let bestBinScore = -1
+  for (let bIdx = 0; bIdx < 512; bIdx++) {
+    const cnt = binCounts[bIdx]!
+    if (!cnt) continue
+    const cr = ((bIdx >> 6) & 7) * 32 + 16
+    const cg = ((bIdx >> 3) & 7) * 32 + 16
+    const cb = (bIdx & 7) * 32 + 16
+    const dist = Math.hypot(cr - bg[0], cg - bg[1], cb - bg[2])
+    const score = cnt * (24 + dist)
+    if (score > bestBinScore) {
+      bestBinScore = score
+      bestBin = bIdx
+    }
+  }
+
+  const binR = bestBin >= 0 ? binSumR[bestBin]! / binCounts[bestBin]! : 248
+  const binG = bestBin >= 0 ? binSumG[bestBin]! / binCounts[bestBin]! : 236
+  const binB = bestBin >= 0 ? binSumB[bestBin]! / binCounts[bestBin]! : 200
+
+  const fillR =
+    coreW > 0
+      ? (coreR / coreW) * 0.65 + binR * 0.35
+      : bestBin >= 0
+        ? binR
+        : allW > 0
+          ? allR / allW
+          : 248
+  const fillG =
+    coreW > 0
+      ? (coreG / coreW) * 0.65 + binG * 0.35
+      : bestBin >= 0
+        ? binG
+        : allW > 0
+          ? allG / allW
+          : 236
+  const fillB =
+    coreW > 0
+      ? (coreB / coreW) * 0.65 + binB * 0.35
+      : bestBin >= 0
+        ? binB
+        : allW > 0
+          ? allB / allW
+          : 200
   const color: [number, number, number] = [
     Math.min(255, Math.max(0, Math.round(fillR))),
     Math.min(255, Math.max(0, Math.round(fillG))),
     Math.min(255, Math.max(0, Math.round(fillB)))
   ]
+
+  const coverage = input.glyphCoverage ?? (w * h > 0 ? activeCount / (w * h) : 0)
+  const fontWeight: 600 | 700 = coverage >= 0.17 ? 700 : 600
 
   let strokeColor: [number, number, number] | undefined
   let strokeWidth: number | undefined
@@ -916,7 +980,17 @@ export function estimateEditableTextMeta(input: {
         Math.min(255, Math.max(0, Math.round(eg))),
         Math.min(255, Math.max(0, Math.round(eb)))
       ]
-      strokeWidth = Math.max(1, Math.min(4, Math.round(h * 0.055)))
+      strokeWidth = Math.max(1, Math.min(2, Math.round(h * (coverage > 0.12 ? 0.045 : 0.03))))
+    }
+  }
+  if (!strokeColor && input.bgColor) {
+    // Rec.709 相对亮度对比估算描边色（亮字深色描边 #1e2322，暗字浅色描边 #f0f4f1）
+    const fgLuma = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2]
+    const bgLuma = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2]
+    const sw = Math.max(0, Math.min(2, Math.round(h * (coverage > 0.12 ? 0.045 : 0.03))))
+    if (sw > 0) {
+      strokeColor = fgLuma >= bgLuma ? [30, 35, 34] : [240, 244, 241]
+      strokeWidth = sw
     }
   }
 
@@ -974,8 +1048,13 @@ export function estimateEditableTextMeta(input: {
         .trim()
 
   const text = ocrText?.trim() || cleanedText || fallbackText || 'UI Text'
-  const effectiveGlyphH = maxY > minY ? Math.max(10, maxY - minY + 1) : Math.round(h * 0.72)
-  const fontSize = Math.max(12, Math.min(72, Math.round(Math.max(effectiveGlyphH, h * 0.68))))
+  const isSingleCjk = /^\p{Script=Han}$/u.test(text)
+  const baseFontSize = Math.max(8, Math.round(h * (isSingleCjk ? 0.88 : 0.82)))
+  const effectiveGlyphH = maxY > minY ? Math.max(8, maxY - minY + 1) : baseFontSize
+  const fontSize = Math.max(
+    8,
+    Math.min(72, Math.round(Math.max(effectiveGlyphH, baseFontSize * 0.85)))
+  )
 
   let resolvedAlign: 'left' | 'center' | 'right' = align ?? 'center'
   if (!align && activeCount >= 8 && w >= 32) {
@@ -987,6 +1066,7 @@ export function estimateEditableTextMeta(input: {
   return {
     text,
     fontSize,
+    fontWeight,
     color,
     ...(strokeColor ? { strokeColor, strokeWidth } : {}),
     ...(glyphCount > 0 ? { glyphCount } : {}),

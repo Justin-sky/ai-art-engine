@@ -89,6 +89,7 @@ describe('graph policy', () => {
         'asset.model3d',
         'asset.spatialWorld',
         'asset.motion',
+        'asset.novel',
         'asset.screenplay',
         'asset.gameSystem',
         'ui.gen',

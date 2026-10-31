@@ -8,7 +8,7 @@
  *  ⑤ 底部 Results 折线图与节点自然语言趋势卡片 + Runtime Debugger
  *  ⑥ 最底部播放控制栏（Play / Step / Play again / Scrubber / Forecast）
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { GraphNode } from '@shared/graph'
 import {
@@ -23,8 +23,10 @@ import {
   type MxTemplateId
 } from '@shared/gameAssets'
 import { useGraphNodeRun } from '../../../composables/useGraphNodeRun'
+import { editorDiveKey } from '../../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../../features/graph/model/graphEditorHosts'
 import { diveEditorHistory } from '../../../features/graph/ui/diveEditorHistory'
+import { useWorkspaceStore } from '../../../stores/workspace'
 import {
   createMxStudioStore,
   provideMxStudioStore,
@@ -44,10 +46,34 @@ const emit = defineEmits<{
   (e: 'close'): void
 }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const isEn = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('en')
+)
+const editorDive = inject(editorDiveKey, null)
+const workspace = useWorkspaceStore()
 const nodeRef = computed(() => props.node)
 const hostIdRef = computed(() => props.hostId ?? '')
 const { toggleRun } = useGraphNodeRun(nodeRef, hostIdRef)
+
+const pipelineUi = computed(() =>
+  isEn.value
+    ? {
+        pushNovelBtn: 'Novel Studio',
+        pushNovelTip: 'Create or connect downstream Novel Generator and open its Dive workbench',
+        pushGameSystemBtn: 'GDD Studio',
+        pushGameSystemTip:
+          'Create or connect downstream Game System Plan and open its Dive workbench'
+      }
+    : {
+        pushNovelBtn: '创建小说', // cjk-ok
+        pushNovelTip: '自动创建或连接下游「创建小说」节点并进入连载小说工作台', // cjk-ok
+        pushGameSystemBtn: '策划案生成', // cjk-ok
+        pushGameSystemTip: '自动创建或连接下游「策划案生成」节点并进入游戏策划案工作台' // cjk-ok
+      }
+)
 
 function persistNodeParams(patch: Record<string, unknown>): void {
   if (!props.hostId) return
@@ -168,6 +194,42 @@ const navItems: Array<{ id: Exclude<MxDrawerKind, ''>; icon: string; labelKey: s
 
 function toggleDrawer(id: Exclude<MxDrawerKind, ''>): void {
   store.drawer.value = store.drawer.value === id ? '' : id
+  if (store.drawer.value === 'params') {
+    store.ensureScenariosReady()
+  }
+}
+
+const activeScenario = computed(
+  () => store.doc.value.scenarios.find((sc) => sc.id === store.doc.value.activeScenarioId) ?? null
+)
+
+function getScenarioParamVal(paramName: string, fallback: number): number {
+  if (!activeScenario.value) return fallback
+  const ov = activeScenario.value.params[paramName]
+  return Number.isFinite(ov) ? ov! : fallback
+}
+
+function updateScenarioParamVal(paramName: string, rawVal: string): void {
+  const num = Number(rawVal)
+  const val = Number.isFinite(num) ? num : 0
+  store.mutate((d) => {
+    if (d.activeScenarioId) {
+      const sc = d.scenarios.find((x) => x.id === d.activeScenarioId)
+      if (sc) sc.params[paramName] = val
+    } else {
+      const p = d.params.find((x) => x.name === paramName)
+      if (p) p.value = val
+    }
+  }, `scParam:${paramName}`)
+  store.runAllScenariosCompare()
+}
+
+function formatScenarioDelta(paramName: string, baseVal: number): string {
+  if (!activeScenario.value || !baseVal) return ''
+  const cur = getScenarioParamVal(paramName, baseVal)
+  const diffPct = Math.round(((cur - baseVal) / Math.abs(baseVal)) * 100)
+  if (diffPct === 0) return ''
+  return diffPct > 0 ? `+${diffPct}%` : `${diffPct}%`
 }
 
 function downloadFile(filename: string, content: string, mime = 'text/plain;charset=utf-8'): void {
@@ -260,6 +322,144 @@ async function runGraphNode(): Promise<void> {
   })
   await toggleRun()
 }
+
+function flushDocToNodeParams(): void {
+  persistNodeParams({
+    gameEconomyDiagramJson: JSON.stringify(store.doc.value),
+    gameEconomySteps: store.doc.value.settings.steps,
+    gameEconomyMonteCarloRuns: store.forecastRuns.value,
+    gameEconomyRuns: store.forecastRuns.value,
+    gameEconomySeed: store.doc.value.settings.seed
+  })
+}
+
+async function switchToDownstreamDive(
+  viewId: 'novel.workbench' | 'gameSystem.workbench',
+  targetNodeId: string,
+  title: string
+): Promise<void> {
+  const hostId = props.hostId
+  if (!hostId) return
+  workspace.selectGraphNode(targetNodeId, hostId)
+  const meta = { viewId, hostId, nodeId: targetNodeId }
+  if (editorDive) {
+    await editorDive.popTo(Math.max(-1, editorDive.frames.length - 2))
+    await editorDive.diveView(meta, title)
+    return
+  }
+  const rootKey = workspace.activeDiveRootKey?.trim()
+  if (rootKey) {
+    workspace.divePopTo(rootKey, -1)
+    workspace.diveIntoView(rootKey, meta, title)
+  }
+}
+
+function pushAndOpenDownstreamNovel(): void {
+  flushDocToNodeParams()
+  const hostId = props.hostId
+  if (!hostId) return
+  const doc = graphEditorHosts.getDocument(hostId)
+  let novelNode: GraphNode | null = null
+  if (doc?.edges) {
+    for (const edge of doc.edges) {
+      if (edge.source === props.node.id) {
+        const tgt = graphEditorHosts.getNode(hostId, edge.target)
+        if (tgt?.typeId === 'asset.novel') {
+          novelNode = tgt
+          break
+        }
+      }
+    }
+  }
+  if (!novelNode) {
+    novelNode = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'asset.novel')
+  }
+  if (!novelNode) {
+    const newId = graphEditorHosts.addNode(hostId, {
+      typeId: 'asset.novel',
+      title: isEn.value ? 'Novel Studio' : '创建小说', // cjk-ok
+      position: {
+        x: (props.node.position?.x ?? 260) + 380,
+        y: (props.node.position?.y ?? 200) - 60
+      },
+      linkFrom: [{ nodeId: props.node.id, portId: 'out-text' }]
+    })
+    if (newId) {
+      novelNode = graphEditorHosts.getNode(hostId, newId)
+    }
+  } else {
+    const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
+    if (!edges.some((e) => e.source === props.node.id && e.target === novelNode!.id)) {
+      graphEditorHosts.connectNodes(hostId, props.node.id, novelNode.id, 'out-text', 'in')
+    }
+  }
+  if (!novelNode) return
+  switchToDownstreamDive(
+    'novel.workbench',
+    novelNode.id,
+    novelNode.title?.trim() || (isEn.value ? 'Novel Studio' : '创建小说') // cjk-ok
+  )
+}
+
+function pushAndOpenDownstreamGameSystem(): void {
+  flushDocToNodeParams()
+  const hostId = props.hostId
+  if (!hostId) return
+  const doc = graphEditorHosts.getDocument(hostId)
+  let gsNode: GraphNode | null = null
+  if (doc?.edges) {
+    for (const edge of doc.edges) {
+      if (edge.source === props.node.id) {
+        const tgt = graphEditorHosts.getNode(hostId, edge.target)
+        if (tgt?.typeId === 'asset.gameSystem') {
+          gsNode = tgt
+          break
+        }
+      }
+    }
+  }
+  if (!gsNode) {
+    gsNode = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'asset.gameSystem')
+  }
+  const existingNovel = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'asset.novel')
+  if (!gsNode) {
+    const linkSources: { nodeId: string; portId?: string }[] = [
+      { nodeId: props.node.id, portId: 'out-text' }
+    ]
+    if (existingNovel) {
+      linkSources.push({ nodeId: existingNovel.id, portId: 'out' })
+    }
+    const newId = graphEditorHosts.addNode(hostId, {
+      typeId: 'asset.gameSystem',
+      title: isEn.value ? 'Game System Plan' : '策划案生成', // cjk-ok
+      position: {
+        x: (props.node.position?.x ?? 260) + (existingNovel ? 760 : 380),
+        y: (props.node.position?.y ?? 200) + 120
+      },
+      linkFrom: linkSources
+    })
+    if (newId) {
+      gsNode = graphEditorHosts.getNode(hostId, newId)
+    }
+  } else {
+    const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
+    if (!edges.some((e) => e.source === props.node.id && e.target === gsNode!.id)) {
+      graphEditorHosts.connectNodes(hostId, props.node.id, gsNode.id, 'out-text', 'in')
+    }
+    if (
+      existingNovel &&
+      !edges.some((e) => e.source === existingNovel.id && e.target === gsNode!.id)
+    ) {
+      graphEditorHosts.connectNodes(hostId, existingNovel.id, gsNode.id, 'out', 'in')
+    }
+  }
+  if (!gsNode) return
+  switchToDownstreamDive(
+    'gameSystem.workbench',
+    gsNode.id,
+    gsNode.title?.trim() || (isEn.value ? 'Game System Plan' : '策划案生成') // cjk-ok
+  )
+}
 </script>
 
 <template>
@@ -291,25 +491,34 @@ async function runGraphNode(): Promise<void> {
           <button
             type="button"
             class="mx-mode-btn"
-            :class="{ 'is-active': store.mode.value === 'build' }"
-            @click="store.mode.value = 'build'"
+            :class="{
+              'is-active': store.mode.value === 'build' && store.resultsTab.value !== 'workbench'
+            }"
+            @click="store.enterBuildMode()"
           >
             {{ t('mx.top.build') }}
           </button>
           <button
             type="button"
             class="mx-mode-btn"
-            :class="{ 'is-active': store.mode.value === 'scenarios' }"
-            @click="store.mode.value = 'scenarios'"
+            :class="{
+              'is-active':
+                store.mode.value === 'scenarios' && store.resultsTab.value !== 'workbench'
+            }"
+            @click="store.enterScenariosMode()"
           >
             {{ t('mx.top.scenarios') }}
           </button>
           <button
             type="button"
             class="mx-mode-btn"
-            :class="{ 'is-active': store.mode.value === 'workbench' }"
+            :class="{
+              'is-active':
+                store.mode.value === 'workbench' || store.resultsTab.value === 'workbench'
+            }"
             @click="
               () => {
+                store.drawer.value = ''
                 store.mode.value = 'workbench'
                 store.resultsOpen.value = true
                 store.resultsTab.value = 'workbench'
@@ -324,11 +533,7 @@ async function runGraphNode(): Promise<void> {
           v-if="store.mode.value === 'scenarios' && store.doc.value.scenarios.length"
           class="mx-scenario-select"
           :value="store.doc.value.activeScenarioId ?? ''"
-          @change="
-            store.mutate((d) => {
-              d.activeScenarioId = ($event.target as HTMLSelectElement).value || undefined
-            })
-          "
+          @change="store.selectScenario(($event.target as HTMLSelectElement).value || undefined)"
         >
           <option value="">Baseline</option>
           <option v-for="sc in store.doc.value.scenarios" :key="sc.id" :value="sc.id">
@@ -379,6 +584,26 @@ async function runGraphNode(): Promise<void> {
           />
         </div>
 
+        <button
+          v-if="props.hostId"
+          type="button"
+          class="mx-top-btn"
+          :title="pipelineUi.pushNovelTip"
+          @click="pushAndOpenDownstreamNovel"
+        >
+          📚 {{ pipelineUi.pushNovelBtn }}
+        </button>
+
+        <button
+          v-if="props.hostId"
+          type="button"
+          class="mx-top-btn"
+          :title="pipelineUi.pushGameSystemTip"
+          @click="pushAndOpenDownstreamGameSystem"
+        >
+          🕹️ {{ pipelineUi.pushGameSystemBtn }}
+        </button>
+
         <button type="button" class="mx-top-btn is-run" @click="runGraphNode">
           ⚡ {{ t('mx.top.bakeToNode') }}
         </button>
@@ -392,7 +617,7 @@ async function runGraphNode(): Promise<void> {
     <!-- ═════════════ 主工作区（左栏 + 抽屉 + 画布/结果 + 右侧检查器） ═════════════ -->
     <div class="mx-main">
       <!-- ② 左侧图标导航栏 -->
-      <nav class="mx-left-rail">
+      <nav v-show="store.mode.value !== 'workbench'" class="mx-left-rail">
         <button
           v-for="item in navItems"
           :key="item.id"
@@ -407,10 +632,65 @@ async function runGraphNode(): Promise<void> {
       </nav>
 
       <!-- 滑出抽屉 -->
-      <MxDrawer @fit-view="canvasRef?.fitToScreen()" />
+      <MxDrawer v-show="store.mode.value !== 'workbench'" @fit-view="canvasRef?.fitToScreen()" />
 
       <!-- ③ 中央画布 + ⑤⑥ 底部结果与播放栏 -->
       <div class="mx-center-col">
+        <!-- 方案模式专属：多方案参数矩阵与实时切换对比条 -->
+        <div
+          v-if="store.mode.value === 'scenarios' && store.resultsTab.value !== 'workbench'"
+          class="mx-scenarios-bar"
+        >
+          <div class="mx-sc-bar-left">
+            <span class="mx-sc-bar-tag">⇄ {{ t('mx.top.scenarios') }}</span>
+            <button
+              type="button"
+              class="mx-sc-pill"
+              :class="{ 'is-active': !store.doc.value.activeScenarioId }"
+              @click="store.selectScenario(undefined)"
+            >
+              Baseline
+            </button>
+            <button
+              v-for="sc in store.doc.value.scenarios"
+              :key="sc.id"
+              type="button"
+              class="mx-sc-pill"
+              :class="{ 'is-active': store.doc.value.activeScenarioId === sc.id }"
+              @click="store.selectScenario(sc.id)"
+            >
+              {{ sc.name }}
+            </button>
+            <button type="button" class="mx-sc-pill is-add" @click="store.addScenario()">
+              + Scenario
+            </button>
+          </div>
+
+          <div class="mx-sc-bar-params">
+            <label v-for="p in store.doc.value.params" :key="p.id" class="mx-sc-param-chip">
+              <span class="mx-sc-param-name">{{ p.name }}</span>
+              <input
+                type="number"
+                step="0.1"
+                class="mx-sc-param-input"
+                :value="getScenarioParamVal(p.name, p.value)"
+                @input="updateScenarioParamVal(p.name, ($event.target as HTMLInputElement).value)"
+              />
+              <span
+                v-if="formatScenarioDelta(p.name, p.value)"
+                class="mx-sc-delta"
+                :class="formatScenarioDelta(p.name, p.value).startsWith('+') ? 'is-pos' : 'is-neg'"
+              >
+                {{ formatScenarioDelta(p.name, p.value) }}
+              </span>
+            </label>
+          </div>
+
+          <button type="button" class="mx-sc-compare-btn" @click="store.runAllScenariosCompare()">
+            ⇄ {{ t('mx.results.compare') }} ({{ store.doc.value.scenarios.length + 1 }})
+          </button>
+        </div>
+
         <MxCanvas v-show="store.mode.value !== 'workbench'" ref="canvasRef" />
         <MxResultsPanel />
       </div>
@@ -634,5 +914,124 @@ async function runGraphNode(): Promise<void> {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.mx-scenarios-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.mx-sc-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.mx-sc-bar-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  padding-right: 4px;
+}
+
+.mx-sc-pill {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mx-sc-pill:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.mx-sc-pill.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+.mx-sc-pill.is-add {
+  border-style: dashed;
+  color: var(--accent);
+}
+
+.mx-sc-bar-params {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.mx-sc-param-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.mx-sc-param-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.mx-sc-param-input {
+  width: 58px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.mx-sc-delta {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.mx-sc-delta.is-pos {
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+}
+.mx-sc-delta.is-neg {
+  background: rgba(239, 68, 68, 0.14);
+  color: #ef4444;
+}
+
+.mx-sc-compare-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent-12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mx-sc-compare-btn:hover {
+  background: var(--accent);
+  color: #ffffff;
 }
 </style>

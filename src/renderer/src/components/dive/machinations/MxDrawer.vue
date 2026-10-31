@@ -235,16 +235,7 @@ function removeParam(id: string): void {
 }
 
 function addScenario(): void {
-  s.mutate((d) => {
-    const sc = {
-      id: mxNewId('sc'),
-      name: `Scenario ${d.scenarios.length + 1}`,
-      params: {} as Record<string, number>
-    }
-    for (const p of d.params) sc.params[p.name] = p.value
-    d.scenarios.push(sc)
-    d.activeScenarioId = sc.id
-  })
+  s.addScenario()
 }
 
 function addLayer(): void {
@@ -510,21 +501,36 @@ function handleSaveSnapshot(): void {
 
         <div class="mx-list-hdr" style="margin-top: 12px">
           <span>Scenarios</span>
-          <button type="button" class="mx-mini-btn" @click="addScenario">+ Scenario</button>
+          <div style="display: flex; gap: 4px">
+            <button type="button" class="mx-mini-btn" @click="s.runAllScenariosCompare()">
+              ⇄ {{ t('mx.results.compare') }}
+            </button>
+            <button type="button" class="mx-mini-btn" @click="addScenario">+ Scenario</button>
+          </div>
         </div>
         <div class="mx-item-list">
+          <div
+            class="mx-scenario-card"
+            :class="{ 'is-active': !s.doc.value.activeScenarioId }"
+            @click="s.selectScenario(undefined)"
+          >
+            <div class="mx-sc-top">
+              <strong>Baseline</strong>
+            </div>
+          </div>
           <div
             v-for="sc in s.doc.value.scenarios"
             :key="sc.id"
             class="mx-scenario-card"
             :class="{ 'is-active': s.doc.value.activeScenarioId === sc.id }"
-            @click="s.mutate((d) => (d.activeScenarioId = sc.id))"
+            @click="s.selectScenario(sc.id)"
           >
-            <div class="mx-sc-top">
+            <div class="mx-sc-top" style="display: flex; gap: 4px; align-items: center">
               <input
                 type="text"
                 class="mx-input"
                 :value="sc.name"
+                @click.stop
                 @input="
                   s.mutate((d) => {
                     const target = d.scenarios.find((x) => x.id === sc.id)
@@ -532,19 +538,26 @@ function handleSaveSnapshot(): void {
                   }, 'scName')
                 "
               />
+              <button type="button" class="mx-row-del" @click.stop="s.removeScenario(sc.id)">
+                ×
+              </button>
             </div>
-            <div v-for="p in s.doc.value.params" :key="p.id" class="mx-sc-param">
+            <div v-for="p in s.doc.value.params" :key="p.id" class="mx-sc-param" @click.stop>
               <span class="mx-mono">{{ p.name }}</span>
               <input
                 type="number"
+                step="0.1"
                 class="mx-input mx-mono"
                 :value="sc.params[p.name] ?? p.value"
                 @input="
-                  s.mutate((d) => {
-                    const target = d.scenarios.find((x) => x.id === sc.id)
-                    if (target)
-                      target.params[p.name] = Number(($event.target as HTMLInputElement).value) || 0
-                  }, 'scOv')
+                  (ev) => {
+                    s.mutate((d) => {
+                      const target = d.scenarios.find((x) => x.id === sc.id)
+                      if (target)
+                        target.params[p.name] = Number((ev.target as HTMLInputElement).value) || 0
+                    }, 'scOv')
+                    s.runAllScenariosCompare()
+                  }
                 "
               />
             </div>

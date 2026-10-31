@@ -12,54 +12,41 @@
     >
       <component :is="viewComponent" :key="viewFrame.key" v-bind="viewBindings" />
     </div>
-    <AssetEditor
-      v-else-if="assetFrame && (assetFrame.kind === 'screenplay' || assetFrame.kind === 'asset')"
-      :key="assetFrame.assetId"
-      :asset-id="assetFrame.assetId"
-      embedded
-    />
-    <BeatAssetEditor
-      v-else-if="assetFrame && assetFrame.kind === 'beat'"
-      :key="assetFrame.assetId"
-      :beat-asset-id="assetFrame.assetId"
-      embedded
-    />
-    <WorldElementEditor
-      v-else-if="assetFrame && assetFrame.kind === 'world'"
-      :key="assetFrame.assetId"
-      :world-asset-id="assetFrame.assetId"
-      embedded
-    />
-    <DirectorEditor
-      v-else-if="assetFrame && assetFrame.kind === 'director'"
-      :key="assetFrame.assetId"
-      :director-asset-id="assetFrame.assetId"
-      embedded
-    />
     <!--
-      子图内打开节点工具时，dive 栈顶会替换子图编辑器；这里把目标子图编辑器以隐藏方式
-      继续挂载，保证 NodeGraphEditor 的工具宿主（dialog 状态 / 保存 / 预览）仍然可用。
+      统一挂载当前资产帧或栈底需保活的宿主资产帧（activeOrKeptAssetFrame）：
+      当子图内再下钻到节点工作台视图（如 gameSystem.workbench / novel.workbench / game.workbench）时，
+      仅通过 v-show 隐藏而非卸载重挂 AssetEditor，从而保证 graphEditorHosts 中的宿主图与新建节点不丢失。
     -->
-    <template v-if="keepAssetFrame">
-      <div v-show="false" :key="`keep:${keepAssetFrame.key}`" class="editor-dive-keep-host">
+    <template v-if="activeOrKeptAssetFrame">
+      <div
+        v-show="Boolean(assetFrame && !viewFrame)"
+        :key="`asset-host:${activeOrKeptAssetFrame.key}`"
+        :class="assetFrame && !viewFrame ? 'editor-dive-asset-active' : 'editor-dive-keep-host'"
+      >
         <AssetEditor
-          v-if="keepAssetFrame.kind === 'screenplay' || keepAssetFrame.kind === 'asset'"
-          :asset-id="keepAssetFrame.assetId"
+          v-if="
+            activeOrKeptAssetFrame.kind === 'screenplay' || activeOrKeptAssetFrame.kind === 'asset'
+          "
+          :key="activeOrKeptAssetFrame.assetId"
+          :asset-id="activeOrKeptAssetFrame.assetId"
           embedded
         />
         <BeatAssetEditor
-          v-else-if="keepAssetFrame.kind === 'beat'"
-          :beat-asset-id="keepAssetFrame.assetId"
+          v-else-if="activeOrKeptAssetFrame.kind === 'beat'"
+          :key="activeOrKeptAssetFrame.assetId"
+          :beat-asset-id="activeOrKeptAssetFrame.assetId"
           embedded
         />
         <WorldElementEditor
-          v-else-if="keepAssetFrame.kind === 'world'"
-          :world-asset-id="keepAssetFrame.assetId"
+          v-else-if="activeOrKeptAssetFrame.kind === 'world'"
+          :key="activeOrKeptAssetFrame.assetId"
+          :world-asset-id="activeOrKeptAssetFrame.assetId"
           embedded
         />
         <DirectorEditor
-          v-else-if="keepAssetFrame.kind === 'director'"
-          :director-asset-id="keepAssetFrame.assetId"
+          v-else-if="activeOrKeptAssetFrame.kind === 'director'"
+          :key="activeOrKeptAssetFrame.assetId"
+          :director-asset-id="activeOrKeptAssetFrame.assetId"
           embedded
         />
       </div>
@@ -128,7 +115,9 @@ const viewRegistry: Record<string, Component> = {
   'anim.2d': defineAsyncComponent(() => import('./dive/EditorDiveAnim2dView.vue')),
   'comic.page': defineAsyncComponent(() => import('./dive/EditorDiveComicPageView.vue')),
   'film.workbench': defineAsyncComponent(() => import('./dive/EditorDiveFilmView.vue')),
+  'novel.workbench': defineAsyncComponent(() => import('./dive/EditorDiveNovelView.vue')),
   'screenplay.workbench': defineAsyncComponent(() => import('./dive/EditorDiveScreenplayView.vue')),
+  'gameSystem.workbench': defineAsyncComponent(() => import('./dive/EditorDiveGameSystemView.vue')),
   'game.workbench': defineAsyncComponent(() => import('./dive/EditorDiveGameNodeView.vue')),
   'gamePlay.sandbox': defineAsyncComponent(() => import('./dive/EditorDiveGamePlayView.vue'))
 }
@@ -174,6 +163,10 @@ const keepAssetFrame = computed<EditorDiveAssetFrame | null>(() => {
   }
   return null
 })
+
+const activeOrKeptAssetFrame = computed<EditorDiveAssetFrame | null>(
+  () => assetFrame.value ?? keepAssetFrame.value
+)
 
 const viewComponent = computed(() => {
   const frame = viewFrame.value
@@ -225,7 +218,11 @@ const viewBindings = computed(() => {
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'film.workbench':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'novel.workbench':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'screenplay.workbench':
+      return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
+    case 'gameSystem.workbench':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
     case 'game.workbench':
       return { ...base, hostId: meta.hostId, nodeId: meta.nodeId }
@@ -285,6 +282,18 @@ const viewBindings = computed(() => {
   min-height: 0;
 }
 
+.editor-dive-asset-active {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-dive-asset-active > :deep(.asset-editor),
+.editor-dive-asset-active > :deep(.beat-asset-editor),
+.editor-dive-asset-active > :deep(.world-element-editor),
+.editor-dive-asset-active > :deep(.script-editor),
+.editor-dive-asset-active > :deep(.director-editor),
 .editor-dive-child > :deep(.asset-editor),
 .editor-dive-child > :deep(.beat-asset-editor),
 .editor-dive-child > :deep(.world-element-editor),

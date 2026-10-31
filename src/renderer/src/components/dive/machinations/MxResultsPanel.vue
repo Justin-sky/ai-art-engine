@@ -796,8 +796,8 @@ function sweepSeriesPolyline(nodeId: string): string {
       <span class="mx-dock-resize-pill" />
     </div>
 
-    <!-- ═════════════ 顶部标签栏：Results | Runtime Debugger ═════════════ -->
-    <header class="mx-res-tabs">
+    <!-- ═════════════ 顶部标签栏：Results | Diagnostics | Auto-Balancer | Runtime Debugger ═════════════ -->
+    <header v-if="s.resultsTab.value !== 'workbench'" class="mx-res-tabs">
       <div class="mx-res-tabs-left">
         <button
           type="button"
@@ -840,19 +840,6 @@ function sweepSeriesPolyline(nodeId: string): string {
           "
         >
           🎯 {{ t('mx.results.tabBalancer') }}
-        </button>
-        <button
-          type="button"
-          class="mx-res-tab"
-          :class="{ 'is-active': s.resultsTab.value === 'workbench' }"
-          @click="
-            () => {
-              s.resultsTab.value = 'workbench'
-              s.resultsOpen.value = true
-            }
-          "
-        >
-          ⚔ Numerical &amp; Roguelike Lab
         </button>
         <button
           type="button"
@@ -1746,7 +1733,7 @@ function sweepSeriesPolyline(nodeId: string): string {
     </div>
 
     <!-- ═════════════ 最底部播放控制栏（Transport Bar） ═════════════ -->
-    <footer class="mx-transport-bar">
+    <footer v-show="s.mode.value !== 'workbench'" class="mx-transport-bar">
       <div class="mx-tp-left">
         <button
           type="button"

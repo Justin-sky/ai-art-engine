@@ -15,6 +15,13 @@ import {
   type UiControlType,
   type UiEditableTextMeta
 } from '@shared/graph'
+import {
+  fillHoles,
+  inpaintPushPull,
+  type PreciseSplitSam2Candidate,
+  type PreciseSplitSam2Request
+} from '@shared/graph/uiPreciseSplit'
+import { getYoloStatus, yoloSam2 } from '../../yolo/api'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { layerSplitToPsdUint8Array } from './layerSplitPsd'
@@ -537,5 +544,437 @@ export const uiRgbaCodec = {
   },
   recognizeImageText(dataUrl: string): Promise<LocalOcrTextBox[]> {
     return runLocalOcrIfAvailable(dataUrl)
+  },
+  hasSam2(): Promise<boolean> {
+    return isSam2Available()
+  },
+  /**
+   * 本地 SAM 2.1 点 / 框提示分割：未安装模型、推理进程不可用或连续失败时返回 null，
+   * 由精准拆层流水线回退到本地多候选分割。
+   */
+  async segmentSam2(req: PreciseSplitSam2Request): Promise<PreciseSplitSam2Candidate[] | null> {
+    if (!(await isSam2Available())) return null
+    const { image, box } = req
+    try {
+      const res = await yoloSam2({
+        image: {
+          kind: 'raw',
+          width: image.width,
+          height: image.height,
+          rgba: new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength)
+        },
+        box: {
+          x0: box.left,
+          y0: box.top,
+          x1: box.left + box.width,
+          y1: box.top + box.height
+        },
+        points: [
+          ...req.positivePoints.map((p) => ({ x: p.x, y: p.y, label: 1 as const })),
+          ...req.negativePoints.map((p) => ({ x: p.x, y: p.y, label: 0 as const }))
+        ]
+      })
+      sam2FailureCount = 0
+      const n = image.width * image.height
+      const out: PreciseSplitSam2Candidate[] = []
+      res.masks.forEach((m, i) => {
+        if (m.width !== image.width || m.height !== image.height) return
+        const mask = new Uint8Array(n)
+        let fg = 0
+        for (let p = 0; p < n; p++) {
+          if (m.data[p]! >= 128) {
+            mask[p] = 1
+            fg++
+          }
+        }
+        if (fg > 0) out.push({ mask, samScore: res.scores[i] ?? 0.5 })
+      })
+      return out.length ? out : null
+    } catch (err) {
+      sam2FailureCount += 1
+      if (sam2FailureCount >= 2) sam2DisabledUntil = Date.now() + 60_000
+      console.warn('[precise-split] SAM 2.1 segmentation failed, falling back to local:', err)
+      return null
+    }
+  }
+}
+
+let sam2StatusCache: { at: number; available: boolean } | null = null
+let sam2FailureCount = 0
+let sam2DisabledUntil = 0
+
+async function isSam2Available(): Promise<boolean> {
+  if (Date.now() < sam2DisabledUntil) return false
+  if (sam2StatusCache && Date.now() - sam2StatusCache.at < 30_000) return sam2StatusCache.available
+  let available = false
+  try {
+    const status = await getYoloStatus()
+    available = status.ready && (status.sam2Models?.length ?? 0) > 0
+  } catch {
+    available = false
+  }
+  sam2StatusCache = { at: Date.now(), available }
+  return available
+}
+
+/**
+ * 在选中图层上应用手动画笔轨迹（擦除杂边像素 erase / 从原图还原漏抠像素 restore）。
+ */
+export async function applyLayerBrushStrokeToDataUrl(input: {
+  layer: ImageLayerSplitLayer
+  layerUrl: string
+  sourceUrl?: string
+  canvasWidth: number
+  canvasHeight: number
+  mode: 'erase' | 'restore'
+  radius: number
+  points: ReadonlyArray<{ x: number; y: number }>
+}): Promise<string> {
+  if (!input.points.length) return input.layerUrl
+  const layerDecoded = await uiRgbaCodec.decodeImageRgba(input.layerUrl)
+  const lw = Math.max(1, Math.round(input.layer.width) || layerDecoded.width)
+  const lh = Math.max(1, Math.round(input.layer.height) || layerDecoded.height)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = lw
+  canvas.height = lh
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
+  const layerImg = await loadImage(input.layerUrl)
+  ctx.drawImage(layerImg, 0, 0, lw, lh)
+  const imgData = ctx.getImageData(0, 0, lw, lh)
+  const data = imgData.data
+
+  let srcData: Uint8ClampedArray | null = null
+  const cw = Math.max(1, input.canvasWidth)
+  const ch = Math.max(1, input.canvasHeight)
+  if (input.mode === 'restore' && input.sourceUrl?.trim()) {
+    const srcImg = await loadImage(input.sourceUrl.trim())
+    const srcCanvas = document.createElement('canvas')
+    srcCanvas.width = cw
+    srcCanvas.height = ch
+    const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true })
+    if (srcCtx) {
+      srcCtx.drawImage(srcImg, 0, 0, cw, ch)
+      srcData = srcCtx.getImageData(0, 0, cw, ch).data
+    }
+  }
+
+  const r = Math.max(2, Math.min(80, Math.round(input.radius)))
+  const rSq = r * r
+  const paintDisk = (cxCanvas: number, cyCanvas: number): void => {
+    const lx = cxCanvas - input.layer.left
+    const ly = cyCanvas - input.layer.top
+    const x0 = Math.max(0, Math.floor(lx - r))
+    const x1 = Math.min(lw - 1, Math.ceil(lx + r))
+    const y0 = Math.max(0, Math.floor(ly - r))
+    const y1 = Math.min(lh - 1, Math.ceil(ly + r))
+    for (let y = y0; y <= y1; y++) {
+      const dy = y - ly
+      for (let x = x0; x <= x1; x++) {
+        const dx = x - lx
+        const dSq = dx * dx + dy * dy
+        if (dSq > rSq) continue
+        const dist = Math.sqrt(dSq)
+        // 外圈 25% 柔和羽化
+        const strength = dist <= r * 0.75 ? 1 : Math.max(0, (r - dist) / (r * 0.25))
+        const di = (y * lw + x) * 4
+        if (input.mode === 'erase') {
+          data[di + 3] = Math.round(data[di + 3]! * (1 - strength))
+        } else if (srcData) {
+          const sx = Math.max(0, Math.min(cw - 1, Math.round(input.layer.left + x)))
+          const sy = Math.max(0, Math.min(ch - 1, Math.round(input.layer.top + y)))
+          const si = (sy * cw + sx) * 4
+          const curA = data[di + 3]! / 255
+          const nextA = Math.min(1, curA + strength * (1 - curA))
+          data[di] = Math.round(data[di]! * (1 - strength) + srcData[si]! * strength)
+          data[di + 1] = Math.round(data[di + 1]! * (1 - strength) + srcData[si + 1]! * strength)
+          data[di + 2] = Math.round(data[di + 2]! * (1 - strength) + srcData[si + 2]! * strength)
+          data[di + 3] = Math.round(nextA * 255)
+        }
+      }
+    }
+  }
+
+  for (let i = 0; i < input.points.length; i++) {
+    const p0 = input.points[i]!
+    paintDisk(p0.x, p0.y)
+    if (i > 0) {
+      const prev = input.points[i - 1]!
+      const dist = Math.hypot(p0.x - prev.x, p0.y - prev.y)
+      const steps = Math.max(1, Math.ceil(dist / Math.max(1, r * 0.35)))
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps
+        paintDisk(prev.x + (p0.x - prev.x) * t, prev.y + (p0.y - prev.y) * t)
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
+/**
+ * 一键修补单图层内部的闭合残缺孔洞（利用形态学闭合孔洞检测 + 推拉金字塔平滑插值）。
+ */
+export async function inpaintSingleLayerHolesToDataUrl(layerUrl: string): Promise<string> {
+  const decoded = await uiRgbaCodec.decodeImageRgba(layerUrl)
+  const { width, height, data } = decoded
+  const n = width * height
+  const fg = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    if (data[p * 4 + 3]! >= 96) fg[p] = 1
+  }
+  const filled = fillHoles(fg, width, height)
+  const hole = new Uint8Array(n)
+  let holeCount = 0
+  for (let p = 0; p < n; p++) {
+    if (filled[p] && !fg[p]) {
+      hole[p] = 1
+      holeCount++
+    }
+  }
+  if (!holeCount) return layerUrl
+  inpaintPushPull(decoded, hole)
+  for (let p = 0; p < n; p++) {
+    if (hole[p]) decoded.data[p * 4 + 3] = 255
+  }
+  return uiRgbaCodec.encodeRgbaPng(decoded)
+}
+
+/**
+ * 将单层 AI 修补后生图模型返回的不透明底图（纯黑/纯白/纯灰/棋盘格或原透明区底色）自动抠除还原为透明通道，
+ * 同时对边缘 1~2px 做软边羽化与去色污染（color decontamination）。
+ */
+export function removeGeneratedLayerBackground(
+  generated: { width: number; height: number; data: Uint8ClampedArray },
+  original?: { width: number; height: number; data: Uint8ClampedArray }
+): void {
+  const { width: W, height: H, data } = generated
+  const n = W * H
+  if (n <= 0) return
+
+  const hasOrig = original != null && original.width === W && original.height === H
+  let origTransparentCount = 0
+  if (hasOrig) {
+    for (let p = 0; p < n; p++) {
+      if (original.data[p * 4 + 3]! < 24) origTransparentCount++
+    }
+  }
+  const origHasTransparency = origTransparentCount >= Math.max(4, Math.round(n * 0.02))
+
+  // 收集边缘背景种子像素
+  const isBg = new Uint8Array(n)
+  const seedOff = new Int32Array(n).fill(-1)
+  const queue = new Int32Array(n)
+  let qHead = 0
+  let qTail = 0
+
+  const pushSeed = (p: number): void => {
+    if (isBg[p]) return
+    isBg[p] = 1
+    seedOff[p] = p * 4
+    queue[qTail++] = p
+  }
+
+  // 1) 若原图层带透明通道，外圈及原透明外部区域直接作为背景种子候选
+  if (origHasTransparency && original) {
+    // 统计原透明区域在生成图中的主背景色（中位数）
+    const rList: number[] = []
+    const gList: number[] = []
+    const bList: number[] = []
+    for (let p = 0; p < n; p++) {
+      if (original.data[p * 4 + 3]! < 16) {
+        const i = p * 4
+        rList.push(data[i]!)
+        gList.push(data[i + 1]!)
+        bList.push(data[i + 2]!)
+      }
+    }
+    rList.sort((a, b) => a - b)
+    gList.sort((a, b) => a - b)
+    bList.sort((a, b) => a - b)
+    const mr = rList[rList.length >> 1] ?? 0
+    const mg = gList[gList.length >> 1] ?? 0
+    const mb = bList[bList.length >> 1] ?? 0
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const p = y * W + x
+        const onBorder = x === 0 || x === W - 1 || y === 0 || y === H - 1
+        const origA = original.data[p * 4 + 3]!
+        if (origA >= 24 && !onBorder) continue
+        const i = p * 4
+        const dMed = Math.hypot(data[i]! - mr, data[i + 1]! - mg, data[i + 2]! - mb)
+        if (onBorder && origA < 64) {
+          pushSeed(p)
+        } else if (origA < 16 && dMed <= 48) {
+          pushSeed(p)
+        }
+      }
+    }
+  }
+
+  // 2) 若原图层原本就是不透明矩形块（如粘连了背景的角标/文字），从四角的背景色向内泛洪
+  if (qTail === 0) {
+    const corners = [
+      0,
+      W - 1,
+      (H - 1) * W,
+      (H - 1) * W + (W - 1),
+      Math.min(n - 1, W + 1),
+      Math.max(0, (H - 2) * W + (W - 2))
+    ]
+    for (const cp of corners) {
+      pushSeed(cp)
+    }
+    for (let x = 0; x < W; x++) {
+      const pTop = x
+      const pBot = (H - 1) * W + x
+      for (const cp of corners) {
+        const ci = cp * 4
+        if (
+          Math.hypot(
+            data[pTop * 4]! - data[ci]!,
+            data[pTop * 4 + 1]! - data[ci + 1]!,
+            data[pTop * 4 + 2]! - data[ci + 2]!
+          ) <= 28
+        ) {
+          pushSeed(pTop)
+        }
+        if (
+          Math.hypot(
+            data[pBot * 4]! - data[ci]!,
+            data[pBot * 4 + 1]! - data[ci + 1]!,
+            data[pBot * 4 + 2]! - data[ci + 2]!
+          ) <= 28
+        ) {
+          pushSeed(pBot)
+        }
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const pLeft = y * W
+      const pRight = y * W + (W - 1)
+      for (const cp of corners) {
+        const ci = cp * 4
+        if (
+          Math.hypot(
+            data[pLeft * 4]! - data[ci]!,
+            data[pLeft * 4 + 1]! - data[ci + 1]!,
+            data[pLeft * 4 + 2]! - data[ci + 2]!
+          ) <= 28
+        ) {
+          pushSeed(pLeft)
+        }
+        if (
+          Math.hypot(
+            data[pRight * 4]! - data[ci]!,
+            data[pRight * 4 + 1]! - data[ci + 1]!,
+            data[pRight * 4 + 2]! - data[ci + 2]!
+          ) <= 28
+        ) {
+          pushSeed(pRight)
+        }
+      }
+    }
+  }
+
+  // 8 邻域泛洪标记背景
+  while (qHead < qTail) {
+    const p = queue[qHead++]!
+    const py = Math.floor(p / W)
+    const px = p - py * W
+    const pi = p * 4
+    const sOff = seedOff[p]!
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = py + dy
+      if (ny < 0 || ny >= H) continue
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = px + dx
+        if (nx < 0 || nx >= W) continue
+        const np = ny * W + nx
+        if (isBg[np]) continue
+        const ni = np * 4
+        const step = Math.hypot(
+          data[pi]! - data[ni]!,
+          data[pi + 1]! - data[ni + 1]!,
+          data[pi + 2]! - data[ni + 2]!
+        )
+        const seedDist = Math.hypot(
+          data[sOff]! - data[ni]!,
+          data[sOff + 1]! - data[ni + 1]!,
+          data[sOff + 2]! - data[ni + 2]!
+        )
+        const origA = hasOrig && original ? original.data[np * 4 + 3]! : 255
+        const maxStep = origA < 24 ? 28 : 16
+        const maxSeed = origA < 24 ? 52 : 34
+        if (step <= maxStep && seedDist <= maxSeed) {
+          isBg[np] = 1
+          seedOff[np] = sOff
+          queue[qTail++] = np
+        }
+      }
+    }
+  }
+
+  // 安全保护：若泛洪误吞了超过 94% 的画布，保留原图层非透明轮廓
+  let bgCount = 0
+  for (let p = 0; p < n; p++) bgCount += isBg[p]!
+  if (bgCount > n * 0.94 && origHasTransparency && original) {
+    for (let p = 0; p < n; p++) {
+      data[p * 4 + 3] = original.data[p * 4 + 3]!
+    }
+    return
+  }
+
+  // 应用背景透明与边缘 1~2px 软边羽化去色污染
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const p = y * W + x
+      const i = p * 4
+      if (isBg[p]) {
+        data[i + 3] = 0
+        continue
+      }
+      // 检查 1px 邻域是否紧挨背景，若是则按色差做抗锯齿半透明过渡与反解去杂边
+      let nearBgOff = -1
+      let minBgDist = Infinity
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= H) continue
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= W) continue
+          const np = ny * W + nx
+          if (!isBg[np]) continue
+          const bi = np * 4
+          const d = Math.hypot(
+            data[i]! - data[bi]!,
+            data[i + 1]! - data[bi + 1]!,
+            data[i + 2]! - data[bi + 2]!
+          )
+          if (d < minBgDist) {
+            minBgDist = d
+            nearBgOff = bi
+          }
+        }
+      }
+      if (nearBgOff >= 0 && minBgDist < 42) {
+        const t = Math.max(0.08, Math.min(1, (minBgDist - 8) / 34))
+        const alpha = t * t * (3 - 2 * t)
+        data[i + 3] = Math.round(alpha * 255)
+        if (alpha > 0.12 && alpha < 0.98) {
+          for (let c = 0; c < 3; c++) {
+            const u = data[i + c]!
+            const b = data[nearBgOff + c]!
+            data[i + c] = Math.max(0, Math.min(255, Math.round((u - b * (1 - alpha)) / alpha)))
+          }
+        }
+      } else {
+        data[i + 3] = 255
+      }
+    }
   }
 }

@@ -81,11 +81,9 @@ export function useEditorDiveHost(options: {
     frames: [] as EditorDiveFrame[],
     diveAsset: (assetId: string) => diveAsset(assetId),
     diveView: (meta: EditorDiveViewMeta, title?: string) => diveView(meta, title),
-    popTo: (index: number) => {
-      void (async () => {
-        await flushTop()
-        workspace.divePopTo(diveRootKey.value, index)
-      })()
+    popTo: async (index: number) => {
+      await flushTop()
+      workspace.divePopTo(diveRootKey.value, index)
     }
   })
 

@@ -16,9 +16,15 @@ import type {
   TranscribeAudioResult
 } from '@shared/modelProvider'
 import {
+  isOpenAiImageModelId,
   isOpenAiTextModelId,
-  listOpenAiCatalogModels
+  listOpenAiCatalogModels,
+  mergeOpenAiCatalogWithBuiltin
 } from '@shared/modelProviders/openai/modelCapabilities'
+import {
+  isCustomImageModelId,
+  isCustomTextModelId
+} from '@shared/modelProviders/custom/modelCapabilities'
 import { listOpenAiTtsCatalogModels } from '@shared/modelProviders/openai/ttsModels'
 import type { ModelProviderAdapter, VideoPollResult } from '../types'
 import { PROVIDER_ERRORS } from '../catalog'
@@ -47,22 +53,76 @@ function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never>
   return Promise.reject(fail(E_NOT_SUPPORTED, { kind }))
 }
 
+function isOfficialOpenAiBaseUrl(baseUrl?: string): boolean {
+  const trimmed = (baseUrl ?? '').trim()
+  if (!trimmed) return true
+  return /(^|\/\/|\.)api\.openai\.com(\/|$)/i.test(trimmed)
+}
+
+function extractRawModelIds(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') {
+    if (Array.isArray(payload)) {
+      return payload
+        .map((m) =>
+          String((m as { id?: string; name?: string })?.id ?? (m as { name?: string })?.name ?? '')
+        )
+        .map((id) => id.trim())
+        .filter(Boolean)
+    }
+    return []
+  }
+  const obj = payload as {
+    data?: Array<{ id?: string; name?: string; created?: number }>
+    models?: Array<{ id?: string; name?: string; created?: number }>
+  }
+  const list = Array.isArray(obj.data) ? obj.data : Array.isArray(obj.models) ? obj.models : []
+  return list.map((m) => String(m?.id ?? m?.name ?? '').trim()).filter(Boolean)
+}
+
+const NON_TEXT_OPENAI_PATTERN =
+  /(realtime|whisper|tts|embedding|dall|image|audio|speech|moderation|transcription|translation|video|sora|babbage|davinci|curie|ada)/i
+
 async function fetchTextCatalog(provider: ModelProviderInstance): Promise<CatalogModel[]> {
   const client = createProviderHttpClient(provider)
+  const official = isOfficialOpenAiBaseUrl(provider.baseUrl)
   try {
-    const { data } = await client.get<{ data?: Array<{ id?: string; created?: number }> }>(
-      '/models'
-    )
-    return (data.data ?? [])
-      .map((m) => String(m.id ?? '').trim())
-      .filter(Boolean)
-      .filter(isOpenAiTextModelId)
+    const resp = await client.get('/models')
+    const ids = extractRawModelIds(resp?.data)
+    const remoteRows = ids
+      .filter((id) => {
+        if (isOpenAiTextModelId(id)) return true
+        if (!official && isCustomTextModelId(id) && !NON_TEXT_OPENAI_PATTERN.test(id)) return true
+        return false
+      })
       .map((id) => ({ id, name: id, modality: 'text' as const }))
+    return mergeOpenAiCatalogWithBuiltin(remoteRows, 'text')
   } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : undefined
+    if (status === 404 || status === 405) {
+      return listOpenAiCatalogModels('text')
+    }
     throw fail(PROVIDER_ERRORS.actionFailed, {
       action: 'listModels',
       detail: await readHttpError(err)
     })
+  }
+}
+
+async function fetchImageCatalog(provider: ModelProviderInstance): Promise<CatalogModel[]> {
+  const official = isOfficialOpenAiBaseUrl(provider.baseUrl)
+  if (!provider.apiKey?.trim()) {
+    return listOpenAiCatalogModels('image')
+  }
+  const client = createProviderHttpClient(provider)
+  try {
+    const resp = await client.get('/models')
+    const ids = extractRawModelIds(resp?.data)
+    const remoteRows = ids
+      .filter((id) => isOpenAiImageModelId(id) || (!official && isCustomImageModelId(id)))
+      .map((id) => ({ id, name: id, modality: 'image' as const }))
+    return mergeOpenAiCatalogWithBuiltin(remoteRows, 'image')
+  } catch {
+    return listOpenAiCatalogModels('image')
   }
 }
 
@@ -87,7 +147,7 @@ export const openAiAdapter: ModelProviderAdapter = {
   },
 
   async fetchCatalog(provider, modality) {
-    if (modality === 'image') return listOpenAiCatalogModels('image')
+    if (modality === 'image') return fetchImageCatalog(provider)
     // TTS：/models 只给 id、不给声音列表，用本地静态表（含 supported_voices）
     if (modality === 'audio') return listOpenAiTtsCatalogModels()
     if (modality === 'text') return fetchTextCatalog(provider)

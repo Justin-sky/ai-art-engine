@@ -28,10 +28,21 @@ import {
   exportMxUnityCs,
   exportMxWorkbenchRuntimeCode,
   exportWorkbenchToGameDataTables,
+  generateMxBattlePassAndPackTable,
+  generateMxEquipmentUpgradeMatrix,
+  generateMxLevelProgressionTable,
   autoBalanceWorkbenchEntities,
   analyzeMultiplierPipeline,
+  analyzeMxCardUpgradeRoiAndDeckDoctor,
+  analyzeMxHypergeometricDrawAndComboOdds,
+  analyzeMxSynergyAndInfiniteLoopRisk,
+  applyMxInfiniteLoopCircuitBreaker,
+  applyMxTopCardUpgrades,
+  applyMxWorkbenchDeltaPatchFromPrompt,
+  computeMxWorkbenchSnapshotDiff,
   createMxWorkbenchPreset,
   getMxCanonicalArchetypeDeck,
+  isMxDeltaPatchPrompt,
   runMxArchetypeBalanceMatrix,
   runMxAscensionLadderAudit,
   runMxCombatKernelSimulation,
@@ -41,8 +52,15 @@ import {
   runMxPoolDilutionAnalysis,
   runMxRoguelikeEnvelopeSimulation,
   runMxSensitivityTornado,
+  simulateMxExtendedCardGenreMatrices,
+  simulateMxBossIntentTimelineAndPollution,
+  simulateMxJokerSlotOrderAndPlanetTable,
+  simulateMxPvpMatchupAndNashEquilibrium,
   solveMxCombatTargetGoalSeek,
   solveMxEnvelopeTargetGoalSeek,
+  solveMxSingleTurnLethalAndOrderSkill,
+  synthesizeMxDiagramFromPrompt,
+  synthesizeMxWorkbenchFromPrompt,
   generateMxAgentWithAi,
   runMxAgentArena,
   suggestMxAgentGoalsWithAi,
@@ -1109,6 +1127,159 @@ describe('Machinations v2 simulation', () => {
     expect(qaMd).toContain('# Commercial Numerical & Roguelike QA Audit Report')
     expect(qaMd).toContain('Multi-Archetype Meta-Balance Matrix')
     expect(qaMd).toContain('Player Spending Cohort Graduation Telemetry')
+    expect(qaMd).toContain('Character Level Progression & Ascension Breakthrough Curve')
+    expect(qaMd).toContain('Equipment +1 ~ +15 Upgrade Cost & Blacksmith Matrix')
+
+    // 4b. Full-Game Numerical Suite: Level 1..80 Progression & Ascension + Equipment +1..+15 Matrix + 6-Table CSV Bundle
+    const lvRes = generateMxLevelProgressionTable(wb.roguelikeEnvelope)
+    expect(lvRes.maxLevel).toBe(80)
+    expect(lvRes.rows).toHaveLength(80)
+    expect(lvRes.milestones.length).toBeGreaterThanOrEqual(5)
+    expect(lvRes.rows[79]!.atk).toBeGreaterThan(lvRes.rows[0]!.atk)
+    expect(lvRes.totalXpToMax).toBeGreaterThan(0)
+
+    const eqRes = generateMxEquipmentUpgradeMatrix(wb.lootRoll)
+    expect(eqRes.maxEnhanceLevel).toBe(15)
+    expect(eqRes.rows).toHaveLength(15)
+    expect(eqRes.rows[14]!.mainStatValue).toBeGreaterThan(eqRes.rows[0]!.mainStatValue)
+    expect(eqRes.rows[14]!.substatRollsUnlocked).toBe(5)
+    expect(eqRes.totalExpectedGoldWithFails).toBeGreaterThan(0)
+
+    const fullBundle = exportWorkbenchToGameDataTables(wb)
+    expect(fullBundle.skills.length).toBeGreaterThan(0)
+    expect(fullBundle.levelCurve?.length).toBe(80)
+    expect(fullBundle.equipmentUpgrades?.length).toBe(15)
+    expect(fullBundle.tableCsvs['level_curve.csv']).toContain('level,ascensionStage,isBreakthrough')
+    expect(fullBundle.tableCsvs['equipment_upgrades.csv']).toContain(
+      'enhanceLevel,mainStatValue,substatRollsUnlocked'
+    )
+
+    // 4c. One-Sentence Balatro Full Numerical Suite Synthesis (with Theme + Custom Entities + Joker Order + Planet Table + Battle Pass & IAP)
+    const balatroWb = synthesizeMxWorkbenchFromPrompt(
+      '做一套修仙炼丹主题的小丑牌整套数值体系，10个底注，筹码150，独立乘区2.5倍，刷新费用4，包含混沌青莲、万法道胎，自动调平'
+    )
+    expect(balatroWb.activePresetId).toBe('balatro_roguelike')
+    expect(balatroWb.roguelikeEnvelope.floors).toBe(10)
+    expect(balatroWb.lootRoll.rerollBaseCost).toBe(4)
+    expect(balatroWb.multiplier.attributes.find((a) => a.name === 'BaseChips')?.value).toBe(150)
+    expect(balatroWb.multiplier.attributes.find((a) => a.name === 'IndepMult')?.value).toBe(2.5)
+    expect(balatroWb.multiplier.entities.some((e) => e.name.includes('混沌青莲'))).toBe(true)
+    expect(balatroWb.multiplier.entities.some((e) => e.name.includes('九转金丹'))).toBe(true)
+
+    const jokerPlanet = simulateMxJokerSlotOrderAndPlanetTable(balatroWb.multiplier)
+    expect(jokerPlanet.optimalOrderScore).toBeGreaterThan(jokerPlanet.wrongOrderScore)
+    expect(jokerPlanet.orderGainRatio).toBeGreaterThan(1)
+    expect(jokerPlanet.planetHands).toHaveLength(9)
+    expect(jokerPlanet.bossBlinds).toHaveLength(6)
+
+    const bpIap = generateMxBattlePassAndPackTable(balatroWb.lootRoll)
+    expect(bpIap.battlePassRows).toHaveLength(50)
+    expect(bpIap.iapPacks).toHaveLength(6)
+
+    const balatroBundle = exportWorkbenchToGameDataTables(balatroWb)
+    expect(balatroBundle.tableCsvs['battle_pass.csv']).toContain('bpLevel,xpRequired')
+    expect(balatroBundle.tableCsvs['iap_packs.csv']).toContain('packId,nameZh,nameEn,priceUsd')
+
+    const balatroDoc = synthesizeMxDiagramFromPrompt(
+      '做一套小丑牌整套数值体系，10个底注，筹码150，独立乘区2.5倍'
+    )
+    expect(balatroDoc.templateId).toBe('balatro_ante_jokers')
+    expect(balatroDoc.workbench?.activePresetId).toBe('balatro_roguelike')
+    expect(balatroDoc.workbench?.roguelikeEnvelope.floors).toBe(10)
+
+    // 4d. Extended Card Genres (Auto-Battler 3-Star, Marvel Snap 3-Lane Cube EV, Three Kingdoms Response Chain)
+    //     + Arbitrary Unseen Topic Procedural Pool + Inline Single-Card Formula Specs
+    const arbitraryWb = synthesizeMxWorkbenchFromPrompt(
+      '做一套深海寿司料理卡牌数值体系，包含 蓝鳍金枪鱼斩(2费32伤×2段)、海胆鲜味盾(1费20甲抽2)'
+    )
+    expect(arbitraryWb.multiplier.title).toContain('深海寿司料理')
+    expect(
+      arbitraryWb.combatKernel.deckCards.some(
+        (c) => c.name.includes('蓝鳍金枪鱼斩') && c.cost === 2 && c.damage === 32 && c.hits === 2
+      )
+    ).toBe(true)
+    expect(
+      arbitraryWb.combatKernel.deckCards.some(
+        (c) => c.name.includes('海胆鲜味盾') && c.cost === 1 && c.block === 20 && c.draw === 2
+      )
+    ).toBe(true)
+
+    const extGenres = simulateMxExtendedCardGenreMatrices(arbitraryWb)
+    expect(extGenres.autoBattlerStarRows).toHaveLength(5)
+    expect(extGenres.autoBattlerStarRows[0]!.expectedGold3Star).toBeGreaterThan(
+      extGenres.autoBattlerStarRows[0]!.expectedGold2Star
+    )
+    expect(extGenres.snapLanes).toHaveLength(3)
+    expect(extGenres.snapCubeScenarios).toHaveLength(5)
+    expect(extGenres.responseChainRows).toHaveLength(6)
+
+    // 4e. Infinite Loop & OTK Detector + Circuit Breaker + 4×4 PvP Nash Equilibrium + Conversational Delta Patch
+    const synergyBefore = analyzeMxSynergyAndInfiniteLoopRisk(arbitraryWb)
+    expect(synergyBefore.infiniteLoopCount).toBeGreaterThanOrEqual(1)
+    expect(synergyBefore.pairs.length).toBeGreaterThan(0)
+    const fixedLoops = applyMxInfiniteLoopCircuitBreaker(arbitraryWb)
+    expect(fixedLoops).toBeGreaterThanOrEqual(1)
+    const synergyAfter = analyzeMxSynergyAndInfiniteLoopRisk(arbitraryWb)
+    expect(synergyAfter.infiniteLoopCount).toBe(0)
+
+    const pvpNash = simulateMxPvpMatchupAndNashEquilibrium(arbitraryWb)
+    expect(pvpNash.rows).toHaveLength(4)
+    const totalNashShare = pvpNash.rows.reduce((s, r) => s + r.nashEquilibriumSharePct, 0)
+    expect(totalNashShare).toBeGreaterThan(98)
+    expect(totalNashShare).toBeLessThan(102)
+
+    expect(
+      isMxDeltaPatchPrompt('所有高费卡伤害提高25%，Boss血量翻倍，再加一张 绝命毒师(1费12伤毒8)')
+    ).toBe(true)
+    const deltaRes = applyMxWorkbenchDeltaPatchFromPrompt(
+      arbitraryWb,
+      '所有高费卡伤害提高25%，Boss血量翻倍，再加一张 绝命毒师(1费12伤毒8)'
+    )
+    expect(deltaRes.touchedCount).toBeGreaterThan(0)
+    expect(deltaRes.workbench.combatKernel.enemyHp).toBe(arbitraryWb.combatKernel.enemyHp * 2)
+    expect(deltaRes.workbench.combatKernel.deckCards.some((c) => c.name.includes('绝命毒师'))).toBe(
+      true
+    )
+    // Existing custom card from before Delta Patch is preserved!
+    expect(
+      deltaRes.workbench.combatKernel.deckCards.some((c) => c.name.includes('蓝鳍金枪鱼斩'))
+    ).toBe(true)
+
+    // 4E. Card Upgrade (Card -> Card+) Campfire Smith ROI & Deck Curve / Role Composition Doctor
+    const upgradeDoc = analyzeMxCardUpgradeRoiAndDeckDoctor(deltaRes.workbench)
+    expect(upgradeDoc.upgradeRows.length).toBeGreaterThanOrEqual(5)
+    expect(upgradeDoc.upgradeRows[0]!.upgradedName).toContain('+')
+    expect(upgradeDoc.upgradeRows[0]!.valueGainPct).toBeGreaterThan(0)
+    expect(upgradeDoc.costCurve).toHaveLength(4)
+    expect(upgradeDoc.roleRatios).toHaveLength(4)
+    expect(upgradeDoc.deckHealthScore).toBeGreaterThanOrEqual(20)
+
+    const smithedCount = applyMxTopCardUpgrades(deltaRes.workbench, 2)
+    expect(smithedCount).toBeGreaterThanOrEqual(2)
+    expect(deltaRes.workbench.combatKernel.deckCards.some((c) => c.name.endsWith('+'))).toBe(true)
+
+    // 4F. Hypergeometric Mulligan & Combo Odds + Single-Turn Lethal Order Solver + Boss 4-Turn Intent Timeline + Snapshot A/B Diff
+    const hypergeom = analyzeMxHypergeometricDrawAndComboOdds(deltaRes.workbench)
+    expect(hypergeom.deckSize).toBeGreaterThanOrEqual(5)
+    expect(hypergeom.rows.length).toBeGreaterThanOrEqual(5)
+    expect(hypergeom.rows[0]!.t1MulliganProbPct).toBeGreaterThanOrEqual(
+      hypergeom.rows[0]!.t1RawProbPct
+    )
+    expect(hypergeom.comboT3ProbPct).toBeGreaterThanOrEqual(hypergeom.comboT1ProbPct)
+
+    const lethalPuzzle = solveMxSingleTurnLethalAndOrderSkill(deltaRes.workbench)
+    expect(lethalPuzzle.optimalLethalDamage).toBeGreaterThanOrEqual(lethalPuzzle.naiveOrderDamage)
+    expect(lethalPuzzle.skillGapRatio).toBeGreaterThanOrEqual(1)
+    expect(lethalPuzzle.optimalSteps.length).toBeGreaterThan(0)
+
+    const bossIntent = simulateMxBossIntentTimelineAndPollution(deltaRes.workbench)
+    expect(bossIntent.rows).toHaveLength(4)
+    expect(bossIntent.pollutedBrickRatePct).toBeGreaterThan(0)
+    expect(bossIntent.survivalScore).toBeGreaterThanOrEqual(10)
+
+    const abDiff = computeMxWorkbenchSnapshotDiff(arbitraryWb, deltaRes.workbench)
+    expect(abDiff.entityDiffs.length).toBeGreaterThan(0)
+    expect(typeof abDiff.winRateDeltaPct).toBe('number')
 
     // 5. Headless executeGameEconomyNode -> executeGamePlayAssetNode direct port wiring
     const econNode = createNodeFromType('game.economy', { x: 0, y: 0 })

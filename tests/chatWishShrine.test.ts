@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  WISH_FAIRY_PERSONAS,
   buildWishChantPool,
   detectWishPromptCategory,
   formatLuckTotal,
+  nextWishFairyId,
+  pickFairyPokeReaction,
   pickNextWishChant,
-  rollLuckGain
+  rollLuckGain,
+  selectWishFairyForSession
 } from '../src/shared/chatWishShrine'
 
 describe('chatWishShrine', () => {
@@ -42,7 +46,7 @@ describe('chatWishShrine', () => {
     expect(firstEn.text).toContain('Zero Errors')
   })
 
-  it('rolls random luck gains in game damage-number tiers', () => {
+  it('rolls random luck gains in game damage-number tiers and boosts crit chance with combo', () => {
     const seq = (values: number[]) => {
       let i = 0
       return () => values[i++ % values.length]!
@@ -51,6 +55,11 @@ describe('chatWishShrine', () => {
     expect(rollLuckGain({ rng: seq([0.1, 0.999]) })).toEqual({ value: 520, tier: 'big' })
     expect(rollLuckGain({ rng: seq([0.01, 0]) })).toEqual({ value: 666, tier: 'crit' })
     expect(rollLuckGain({ boost: true, rng: seq([0.2, 0.99999]) })).toEqual({
+      value: 9999,
+      tier: 'crit'
+    })
+    // High combo raises crit threshold up to 0.68
+    expect(rollLuckGain({ boost: true, combo: 8, rng: seq([0.6, 0.99999]) })).toEqual({
       value: 9999,
       tier: 'crit'
     })
@@ -65,5 +74,44 @@ describe('chatWishShrine', () => {
     expect(formatLuckTotal(1234)).toBe('1,234')
     expect(formatLuckTotal(12345)).toBe('1.2w')
     expect(formatLuckTotal(12345, true)).toBe('12.3k')
+  })
+
+  it('provides 4 distinct fairy personas and selects deterministically per session or prompt', () => {
+    expect(WISH_FAIRY_PERSONAS.map((p) => p.id)).toEqual(['miko', 'astral', 'neko', 'muse'])
+
+    // Preferred override wins
+    expect(selectWishFairyForSession({ sessionId: 'sess-123', preferredId: 'neko' }).id).toBe(
+      'neko'
+    )
+
+    // Deterministic per sessionId and distributes across all 4 personas
+    const seen = new Set<string>()
+    for (let i = 0; i < 40; i++) {
+      const p1 = selectWishFairyForSession({ sessionId: `session-id-${i}` })
+      const p2 = selectWishFairyForSession({ sessionId: `session-id-${i}` })
+      expect(p1.id).toBe(p2.id)
+      seen.add(p1.id)
+    }
+    expect(seen.size).toBe(4)
+
+    // Without sessionId, falls back to prompt category affinity
+    expect(selectWishFairyForSession({ promptText: '画一张原画海报' }).id).toBe('astral')
+    expect(selectWishFairyForSession({ promptText: '修复 Blender 绑定报错' }).id).toBe('neko')
+    expect(selectWishFairyForSession({ promptText: '生成一段分镜动画视频' }).id).toBe('muse')
+  })
+
+  it('cycles fairy personas and returns expressive poke reactions', () => {
+    expect(nextWishFairyId('miko')).toBe('astral')
+    expect(nextWishFairyId('astral')).toBe('neko')
+    expect(nextWishFairyId('neko')).toBe('muse')
+    expect(nextWishFairyId('muse')).toBe('miko')
+
+    const rZh = pickFairyPokeReaction({ fairyId: 'neko', stepIndex: 1, combo: 3, isEn: false })
+    expect(rZh.text.length).toBeGreaterThan(0)
+    expect(rZh.expression).toBeTruthy()
+    expect(rZh.pose).toBeTruthy()
+
+    const rEn = pickFairyPokeReaction({ fairyId: 'astral', stepIndex: 2, combo: 5, isEn: true })
+    expect(rEn.text.length).toBeGreaterThan(0)
   })
 })

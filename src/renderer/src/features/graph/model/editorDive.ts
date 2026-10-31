@@ -43,7 +43,9 @@ export type EditorDiveViewId =
   | 'anim.2d'
   | 'comic.page'
   | 'film.workbench'
+  | 'novel.workbench'
   | 'screenplay.workbench'
+  | 'gameSystem.workbench'
   | 'game.workbench'
   | 'gamePlay.sandbox'
   | 'media.preview'
@@ -107,7 +109,9 @@ export type EditorDiveViewMeta =
   | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
   | { viewId: 'film.workbench'; hostId: string; nodeId: string }
+  | { viewId: 'novel.workbench'; hostId: string; nodeId: string }
   | { viewId: 'screenplay.workbench'; hostId: string; nodeId: string }
+  | { viewId: 'gameSystem.workbench'; hostId: string; nodeId: string }
   | { viewId: 'game.workbench'; hostId: string; nodeId: string }
   | { viewId: 'gamePlay.sandbox'; hostId?: string; nodeId?: string; gamePlayAssetId?: string }
   | {
@@ -152,7 +156,7 @@ export interface EditorDiveContext {
   diveAsset: (assetId: string) => boolean | Promise<boolean>
   diveView: (meta: EditorDiveViewMeta, title?: string) => boolean | Promise<boolean>
   /** index=-1 回到根；否则 pop 到该帧（含） */
-  popTo: (index: number) => void
+  popTo: (index: number) => void | Promise<void>
 }
 
 export const editorDiveKey: InjectionKey<EditorDiveContext> = Symbol('editorDive')
@@ -194,8 +198,12 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:comic.page:${meta.hostId}:${meta.nodeId}`
     case 'film.workbench':
       return `${root}/view:film.workbench:${meta.hostId}`
+    case 'novel.workbench':
+      return `${root}/view:novel.workbench:${meta.hostId}:${meta.nodeId}`
     case 'screenplay.workbench':
       return `${root}/view:screenplay.workbench:${meta.hostId}:${meta.nodeId}`
+    case 'gameSystem.workbench':
+      return `${root}/view:gameSystem.workbench:${meta.hostId}:${meta.nodeId}`
     case 'game.workbench':
       return `${root}/view:game.workbench:${meta.hostId}:${meta.nodeId}`
     case 'gamePlay.sandbox':

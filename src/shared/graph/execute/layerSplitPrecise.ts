@@ -1,5 +1,10 @@
-import { type ImageLayerSplitGroup, type ImageLayerSplitLayer } from '../imageLayerSplit'
 import {
+  computeNineSliceFromRgbaBuffer,
+  type ImageLayerSplitGroup,
+  type ImageLayerSplitLayer
+} from '../imageLayerSplit'
+import {
+  buildUiExportNames,
   groupableElementIds,
   nearestAspectRatio,
   runPreciseUiSplit,
@@ -8,6 +13,17 @@ import {
   type RgbaImage
 } from '../uiPreciseSplit'
 import type { GraphImageItem, NodeExecuteContext } from './types'
+
+/** 需要九宫格切边的结构类控件 */
+const NINE_SLICE_KINDS: ReadonlySet<string> = new Set([
+  'panel',
+  'frame',
+  'banner',
+  'button',
+  'tab',
+  'item-slot',
+  'progress-bar'
+])
 
 /**
  * 精准拆层（OCR + 多模态版面树 + 逐级剥层）在执行器里的适配层：
@@ -68,6 +84,19 @@ export async function runPreciseLayerSplitForNode(
 
   let editIndex = 0
   const generateImage = ctx.generateImage
+  // SAM 2.1 只在确实已安装且推理进程就绪时注入：流水线据此切换「像素级实例遮罩」路径，
+  // 未安装时保持本地分割 + 槽位/角标启发式，不能因为注入了空壳能力而丢掉启发式。
+  let sam2Ready = false
+  if (codec.segmentSam2 && codec.hasSam2) {
+    try {
+      sam2Ready = await codec.hasSam2()
+    } catch {
+      sam2Ready = false
+    }
+  }
+  log(
+    `sam2: ${sam2Ready ? 'enabled (local SAM 2.1 ONNX)' : 'not installed, using local segmentation'}`
+  )
   const io: PreciseSplitIo = {
     vlm: async (req) => {
       const res = await generateText({
@@ -89,7 +118,7 @@ export async function runPreciseLayerSplitForNode(
               providerInstanceId: input.providerInstanceId,
               resolution: normalizeEditResolution(input.resolution),
               ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}),
-              inputReferences: [req.image]
+              inputReferences: req.maskImage ? [req.image, req.maskImage] : [req.image]
             })
             const url = res.layers?.[0]?.url?.trim() || res.images?.[0]?.trim() || ''
             if (!url) return null
@@ -101,6 +130,11 @@ export async function runPreciseLayerSplitForNode(
         }
       : {}),
     encodePng: (img) => codec.encodeRgbaPng(img),
+    ...(sam2Ready && codec.segmentSam2
+      ? {
+          segmentSam2: (req) => codec.segmentSam2!(req)
+        }
+      : {}),
     ...(codec.recognizeImageText
       ? {
           ocr: async (img) => {
@@ -191,6 +225,15 @@ export async function mapPreciseResultToLayers(
     })
   }
 
+  const qaById = new Map((result.qa?.layers ?? []).map((q) => [q.elementId, q.issues]))
+  const exportNames = buildUiExportNames(
+    result.layers.map((l) => ({
+      id: l.elementId,
+      kind: l.kind,
+      name: l.name,
+      ...(l.editableText?.text ? { text: l.editableText.text } : {})
+    }))
+  )
   for (const layer of result.layers) {
     const id = layerIdByElement.get(layer.elementId)!
     const ownGroup = groupIdByElement.get(layer.elementId)
@@ -205,6 +248,12 @@ export async function mapPreciseResultToLayers(
     })
     const right = layer.left + layer.width
     const bottom = layer.top + layer.height
+    // 结构类控件按像素自相似度测算九宫格切边（引擎可直接拉伸复用）
+    const nineSliceBorders = NINE_SLICE_KINDS.has(layer.kind)
+      ? computeNineSliceFromRgbaBuffer(layer.rgba, layer.width, layer.height)
+      : undefined
+    const qaIssues = qaById.get(layer.elementId)
+    const exportName = exportNames.get(layer.elementId)
     layers.push({
       id,
       imageId: id,
@@ -229,7 +278,11 @@ export async function mapPreciseResultToLayers(
       ...(groupId ? { groupId } : {}),
       ...(layer.uiControlType ? { uiControlType: layer.uiControlType } : {}),
       ...(layer.uiPartRole ? { uiPartRole: layer.uiPartRole } : {}),
-      ...(layer.editableText ? { editableText: layer.editableText } : {})
+      ...(layer.editableText ? { editableText: layer.editableText } : {}),
+      ...(nineSliceBorders ? { nineSliceBorders } : {}),
+      ...(exportName ? { exportName } : {}),
+      ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {}),
+      ...(qaIssues?.length ? { qaIssues: [...qaIssues] } : {})
     })
     batch.push({ id, title: layer.name, dataUrl, createdAt })
   }

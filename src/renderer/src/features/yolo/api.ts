@@ -8,6 +8,8 @@ import type {
   YoloImageInput,
   YoloInferenceInput,
   YoloPoseResult,
+  YoloSam2PromptInput,
+  YoloSam2PromptResult,
   YoloSegmentResult,
   YoloStatus
 } from '@shared/yolo'
@@ -34,6 +36,13 @@ export function yoloPose(input: YoloInferenceInput): Promise<YoloPoseResult> {
  */
 export function yoloFace(input: YoloInferenceInput): Promise<YoloFaceResult> {
   return window.studio.yoloFace(input)
+}
+
+/**
+ * SAM 2.1 点 / 框提示分割（本地 ONNX）。未安装 SAM 2.1 时 reject，调用方按可选能力回退。
+ */
+export function yoloSam2(input: YoloSam2PromptInput): Promise<YoloSam2PromptResult> {
+  return window.studio.yoloSam2(input)
 }
 
 export function openYoloModelDir(): Promise<string | null> {

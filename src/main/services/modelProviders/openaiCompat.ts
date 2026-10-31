@@ -15,9 +15,14 @@ import { buildOpenRouterMusicInput } from '@shared/modelProviders/openrouter/mus
 import { isVolcengineArkProvider } from '@shared/modelProvider'
 import {
   isKnownVoicelessTtsModel,
-  resolveOpenAiTtsVoice
+  resolveOpenAiTtsVoice,
+  supportsOpenAiTtsInstructions
 } from '@shared/modelProviders/openai/ttsModels'
 import { resolveOpenAiImageSize } from '@shared/modelProviders/openai/imageSize'
+import {
+  normalizeOpenAiTextModelId,
+  OPENAI_CHAT_FALLBACK_MODELS
+} from '@shared/modelProviders/openai/modelCapabilities'
 import { b64JsonToImageDataUrl } from '@shared/media/imageMimeSniff'
 import axios from 'axios'
 import {
@@ -393,6 +398,41 @@ async function formatTextGenerateFailure(
   return formatAuthError(raw, provider)
 }
 
+export { normalizeOpenAiTextModelId }
+
+function isModelNotFoundError(raw: string): boolean {
+  return (
+    /does not exist or you do not have access to it/i.test(raw) ||
+    /model_not_found/i.test(raw) ||
+    /model\s+[`'"][^`'"]+[`'"]\s+not found/i.test(raw) ||
+    /Function tools with reasoning_effort are not supported/i.test(raw) ||
+    /Unsupported value:\s*'none'\s*is not supported with the\s*'reasoning_effort'/i.test(raw)
+  )
+}
+
+function buildOpenAiModelNotFoundFallbacks(
+  provider: ModelProviderInstance,
+  failedModelId: string,
+  hasTools = false
+): string[] {
+  const candidates: string[] = []
+  const pushUnique = (id: string): void => {
+    const clean = normalizeOpenAiTextModelId(id, { hasTools })
+    if (!clean || clean === failedModelId) return
+    if (!candidates.includes(clean)) candidates.push(clean)
+  }
+
+  for (const id of provider.modalities?.text?.selectedModelIds ?? []) {
+    pushUnique(id)
+  }
+  if (/^gpt-(?:[5-9]|\d{2,})/i.test(failedModelId)) {
+    for (const id of OPENAI_CHAT_FALLBACK_MODELS) {
+      pushUnique(id)
+    }
+  }
+  return candidates
+}
+
 /** OpenAI 兼容：POST /chat/completions（OpenRouter / 方舟文本共用） */
 export async function generateOpenAiCompatibleText(
   provider: ModelProviderInstance,
@@ -400,6 +440,11 @@ export async function generateOpenAiCompatibleText(
   input: GenerateTextInput,
   options?: GenerateTextRequestOptions
 ): Promise<GenerateTextResult> {
+  const hasTools = Boolean(input.tools && input.tools.length)
+  const isOpenAiCompat = provider.providerKind === 'openai' || provider.providerKind === 'custom'
+  const effectiveModelId = isOpenAiCompat
+    ? normalizeOpenAiTextModelId(modelId, { hasTools })
+    : modelId
   const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
   const messages = buildChatMessages(input)
   // 默认重试 2 次：覆盖 OpenRouter 等网关的瞬时 502/504；方舟仍用同一套次数
@@ -409,7 +454,7 @@ export async function generateOpenAiCompatibleText(
   let lastError: unknown
   for (let attempt = 0; attempt <= retries; attempt++) {
     const body: Record<string, unknown> = {
-      model: modelId,
+      model: effectiveModelId,
       messages
     }
     // 方舟重试：部分 Seed 思考模型在重负载下易 500，第二次尝试关闭 thinking
@@ -417,9 +462,12 @@ export async function generateOpenAiCompatibleText(
       body.thinking = { type: 'disabled' }
     }
     // Agent loop：透传 tool schema + tool_choice。带了 tools 但没传 tool_choice 默认 'auto'
-    if (input.tools && input.tools.length) {
+    if (hasTools && input.tools) {
       body.tools = input.tools.map((t) => ({ ...t }))
       body.tool_choice = input.toolChoice ?? 'auto'
+      if (isOpenAiCompat && /^gpt-(?:[5-9]|\d{2,})/i.test(effectiveModelId)) {
+        body.reasoning_effort = 'none'
+      }
     } else if (input.toolChoice) {
       body.tool_choice = input.toolChoice
     }
@@ -435,7 +483,7 @@ export async function generateOpenAiCompatibleText(
       if (!text && !toolCalls.length) throw fail(E_EMPTY_CHAT_TEXT)
       return {
         text,
-        model: data.model ?? modelId,
+        model: data.model ?? effectiveModelId,
         toolCalls: toolCalls.length ? toolCalls : undefined,
         finishReason
       }
@@ -452,7 +500,7 @@ export async function generateOpenAiCompatibleText(
         try {
           const { data } = await client.post<ChatCompletionResponse>(
             '/chat/completions',
-            { model: modelId, messages },
+            { model: effectiveModelId, messages },
             { headers: authHeaders(provider.apiKey) }
           )
           const text = extractChatCompletionText(data)
@@ -461,7 +509,7 @@ export async function generateOpenAiCompatibleText(
           if (!text && !toolCalls.length) throw fail(E_EMPTY_CHAT_TEXT)
           return {
             text,
-            model: data.model ?? modelId,
+            model: data.model ?? effectiveModelId,
             toolCalls: toolCalls.length ? toolCalls : undefined,
             finishReason
           }
@@ -472,6 +520,47 @@ export async function generateOpenAiCompatibleText(
 
       if (attempt >= retries || !isRetryableTextError(err)) break
       await sleep(800 * (attempt + 1))
+    }
+  }
+
+  // OpenAI / 自定义网关上若模型因账号 Tier 未解锁或旧别名（如 gpt-6.1 → gpt-6.1-sol）返回 model_not_found，自动尝试可用候选模型
+  if (isOpenAiCompat && lastError) {
+    const rawErrText = await readHttpError(lastError)
+    if (isModelNotFoundError(rawErrText)) {
+      const fallbackModels = buildOpenAiModelNotFoundFallbacks(provider, effectiveModelId, hasTools)
+      for (const fallbackModel of fallbackModels) {
+        const fbBody: Record<string, unknown> = {
+          model: fallbackModel,
+          messages
+        }
+        if (hasTools && input.tools) {
+          fbBody.tools = input.tools.map((t) => ({ ...t }))
+          fbBody.tool_choice = input.toolChoice ?? 'auto'
+          if (/^gpt-(?:[5-9]|\d{2,})/i.test(fallbackModel)) {
+            fbBody.reasoning_effort = 'none'
+          }
+        } else if (input.toolChoice) {
+          fbBody.tool_choice = input.toolChoice
+        }
+        try {
+          const { data } = await client.post<ChatCompletionResponse>('/chat/completions', fbBody, {
+            headers: authHeaders(provider.apiKey)
+          })
+          const text = extractChatCompletionText(data)
+          const toolCalls = extractChatCompletionToolCalls(data)
+          const finishReason = data.choices?.[0]?.finish_reason ?? undefined
+          if (text || toolCalls.length) {
+            return {
+              text,
+              model: data.model ?? fallbackModel,
+              toolCalls: toolCalls.length ? toolCalls : undefined,
+              finishReason
+            }
+          }
+        } catch {
+          // 继续尝试下一个候选模型
+        }
+      }
     }
   }
 
@@ -592,6 +681,13 @@ export async function generateOpenAiCompatibleSpeech(
     )
   }
   const client = createProviderHttpClient(provider)
+  const rawInstructions = input.instructions?.trim()
+  const instructions =
+    rawInstructions && supportsOpenAiTtsInstructions(modelId) ? rawInstructions : undefined
+  const speed =
+    typeof input.speed === 'number' && Number.isFinite(input.speed) && input.speed > 0
+      ? Math.min(4, Math.max(0.25, input.speed))
+      : undefined
 
   try {
     const response = await client.post(
@@ -601,7 +697,8 @@ export async function generateOpenAiCompatibleSpeech(
         input: input.input,
         ...(voice ? { voice } : {}),
         response_format: format,
-        ...(input.speed != null ? { speed: input.speed } : {})
+        ...(speed != null ? { speed } : {}),
+        ...(instructions ? { instructions } : {})
       },
       { responseType: 'arraybuffer', timeout: 180_000 }
     )
@@ -729,15 +826,33 @@ function parseGeneratedImages(
   return { images, model: modelId }
 }
 
+function normalizeOpenAiImageQuality(
+  rawQuality: string | undefined,
+  modelId: string
+): string | undefined {
+  const q = rawQuality?.trim().toLowerCase()
+  if (!q) return undefined
+  if (/dall-?e-?3/i.test(modelId)) {
+    if (q === 'high' || q === 'hd') return 'hd'
+    if (q === 'low' || q === 'medium' || q === 'standard') return 'standard'
+    return rawQuality?.trim()
+  }
+  if (/dall-?e-?2/i.test(modelId)) {
+    return undefined
+  }
+  if (q === 'standard') return 'medium'
+  if (q === 'hd') return 'high'
+  return rawQuality?.trim()
+}
+
 /** OpenAI 兼容：POST /images/generations；有参考图时走 /images/edits（multipart） */
 export async function generateOpenAiCompatibleImage(
   provider: ModelProviderInstance,
   modelId: string,
   input: GenerateImageInput
 ): Promise<GenerateImageResult> {
-  const quality =
-    input.quality?.trim().toLowerCase() === 'standard' ? 'medium' : input.quality?.trim()
-  const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio)
+  const quality = normalizeOpenAiImageQuality(input.quality, modelId)
+  const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio, modelId)
   // 模型不认 `@n`（那是应用内的编号约定），发出去之前转成「图n」与 image[] 顺序对齐；
   // 与火山方舟 / Gemini / OpenRouter 三条链路同一口径（见 shared/modelProviders/imagePromptMentions）
   const prompt = rewriteAtMentionsForImagePrompt(input.prompt)
@@ -746,7 +861,7 @@ export async function generateOpenAiCompatibleImage(
     if (input.inputReferences?.length) {
       const refs = input.inputReferences.map((ref) => ref.trim()).filter(Boolean)
       const multi = refs.length > 1 && supportsMultipleEditImages(modelId)
-      const used = multi ? refs : refs.slice(0, 1)
+      const used = multi ? refs.slice(0, 16) : refs.slice(0, 1)
 
       const form = new FormData()
       form.append('model', modelId)
@@ -755,6 +870,10 @@ export async function generateOpenAiCompatibleImage(
         const { blob, filename } = await referenceToBlob(ref)
         // 单图用 `image`（各网关都认）；多图用官方约定的 `image[]` 重复字段
         form.append(multi ? 'image[]' : 'image', blob, filename)
+      }
+      if (input.mask?.trim()) {
+        const { blob: maskBlob, filename: maskFilename } = await referenceToBlob(input.mask.trim())
+        form.append('mask', maskBlob, maskFilename.replace(/^reference-/, 'mask-'))
       }
       if (quality) form.append('quality', quality)
       if (size) form.append('size', size)

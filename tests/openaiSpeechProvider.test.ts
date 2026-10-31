@@ -98,15 +98,19 @@ describe('OpenAI 语音生成（官方 provider）', () => {
     expect(result.filePath).toBeTruthy()
   })
 
-  it('选了音色 → 原样发出（含 gpt-4o-mini-tts 独有的 ballad/verse）', async () => {
+  it('选了音色与语气指令 → 原样发出（含 gpt-4o-mini-tts 的 cedar/marin 音色与 instructions）', async () => {
     postMock.mockReset()
     postMock.mockResolvedValueOnce({ data: new Uint8Array([1]) })
     await openAiAdapter.generateSpeech(openAiAudioProvider(), 'gpt-4o-mini-tts', {
       input: 'hi',
-      voice: 'verse'
+      voice: 'marin',
+      speed: 1.2,
+      instructions: '温柔舒缓的旁白语气'
     })
     const [, body] = postMock.mock.calls[0] as [string, Record<string, unknown>]
-    expect(body.voice).toBe('verse')
+    expect(body.voice).toBe('marin')
+    expect(body.speed).toBe(1.2)
+    expect(body.instructions).toBe('温柔舒缓的旁白语气')
   })
 
   it('OpenAI 的模型不会被当成「无音色表」误伤', async () => {
@@ -127,7 +131,12 @@ describe('OpenAI 语音生成（官方 provider）', () => {
       }
     })
     const text = await openAiAdapter.fetchCatalog(openAiAudioProvider(), 'text')
-    expect(text.map((m) => m.id)).toEqual(['gpt-5.5'])
+    const ids = text.map((m) => m.id)
+    expect(ids).toContain('gpt-6.1-sol')
+    expect(ids).toContain('gpt-5.5')
+    expect(ids).not.toContain('tts-1')
+    expect(ids).not.toContain('gpt-4o-mini-tts')
+    expect(ids).not.toContain('whisper-1')
   })
 
   it('音频模态不进文本 / 图片的下拉', () => {

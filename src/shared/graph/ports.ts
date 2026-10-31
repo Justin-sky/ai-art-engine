@@ -57,8 +57,9 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
   if (source === target) return true
   if (source === GraphPortType.image && target === GraphPortType.svg) return true
   if (target !== GraphPortType.text) return false
-  // 影视分镜文档 / 设定库同理：单向投影成规范 JSON 文本
+  // 影视分镜文档 / 设定库 / 文本组（如多章节小说的「全部文本」口 out-all）同理：单向投影/汇聚成文本
   return (
+    source === GraphPortType.texts ||
     source === GraphPortType.semanticTimeline ||
     source === GraphPortType.videoPrompts ||
     source === GraphPortType.storyboard ||
@@ -74,12 +75,14 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
  * 会把**所有**带文本入端的节点都列出来 —— 几乎等于没筛（实测从语义时间线拖出时，
  * 菜单里仍是一整片文本消费节点）。同一个数据类型：**菜单发现按「直接对口」算，
  * 实际连线按 `portsCompatible` 算**（拖到目标端口上仍允许投影，那是用户的明确意图）。
+ * 例外：`texts → text`（如从「创建小说」的 `out-all` 全部文本口拖出），允许直接连接下游策划案/剧本等文本节点。
  */
 export function portsCompatibleForMenu(
   source: GraphPortDataType,
   target: GraphPortDataType
 ): boolean {
   if (source === target) return true
+  if (source === GraphPortType.texts && target === GraphPortType.text) return true
   return source === GraphPortType.image && target === GraphPortType.svg
 }
 
@@ -364,6 +367,28 @@ export function findCompatibleInPort(
   return inPorts.find((p) => portsCompatible(outDataType, p.dataType))
 }
 
+/** 在源节点上找与目标节点（或指定目标口）匹配的第一个输出口 */
+export function findCompatibleOutPort(
+  source: GraphNode,
+  target: GraphNode,
+  preferredSourcePortId?: string,
+  preferredTargetPortId?: string
+): GraphPortDef | undefined {
+  const outPorts = getNodePorts(source).filter((p) => p.direction === 'out')
+  if (preferredSourcePortId) {
+    const preferred = outPorts.find((p) => p.id === preferredSourcePortId)
+    if (!preferred) return undefined
+    if (findCompatibleInPort(target, preferred.dataType, preferredTargetPortId)) return preferred
+    if (isBundleNode(target) && isBundleAcceptableDataType(preferred.dataType)) return preferred
+    return undefined
+  }
+  for (const outPort of outPorts) {
+    if (findCompatibleInPort(target, outPort.dataType, preferredTargetPortId)) return outPort
+    if (isBundleNode(target) && isBundleAcceptableDataType(outPort.dataType)) return outPort
+  }
+  return undefined
+}
+
 export interface GraphConnectOptions {
   /** 图作用域（normalize 校验连线时传入） */
   scope?: GraphAddScope
@@ -384,7 +409,9 @@ export function canConnectNodes(
   options: GraphConnectOptions = {}
 ): boolean {
   if (source.id === target.id) return false
-  const outPort = findOutPort(source, options.sourcePort)
+  const outPort = options.sourcePort
+    ? findOutPort(source, options.sourcePort)
+    : (findCompatibleOutPort(source, target, undefined, options.targetPort) ?? findOutPort(source))
   if (!outPort) return false
   // 未锁定束结：接受任意可束类型（不依赖占位 image 口）
   if (isBundleNode(target) && !target.params.bundleDataType) {

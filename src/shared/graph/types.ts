@@ -782,6 +782,10 @@ export interface GraphNodeParams {
   styleReferenceSubject?: StyleReferenceSubject
   /** 声音 TTS：供应商声音 ID（对应 API 字段 voice） */
   generateSpeechVoice?: string
+  /** 声音 TTS：语速倍率（0.25 ~ 4.0，对应 API 字段 speed） */
+  generateSpeechSpeed?: number
+  /** 声音 TTS：语气/情绪/演绎控制指令（对应 OpenAI gpt-4o-mini-tts API 字段 instructions） */
+  generateSpeechInstructions?: string
   /**
    * 多说话人对话节点：说话人 → 音色 id 的映射。
    *
@@ -1581,6 +1585,7 @@ export interface GraphNodeParams {
     | 'tower_defense_waves'
     | 'crafting_chain'
     | 'energy_stamina_timer'
+    | 'short_drama_reversal_loop'
   /** 游戏节点（game.economy）：单次模拟时间步数（Ticks，10..200，默认 50） */
   gameEconomySteps?: number
   /** 游戏节点（game.economy）：蒙特卡洛（Monte Carlo）批量随机模拟采样次数（5..200，默认 40） */
@@ -1597,6 +1602,40 @@ export interface GraphNodeParams {
   gameUiArtboardPreviewDataUrl?: string
   /** 游戏节点：UI 屏幕蓝图预设 */
   gameUiScreenBlueprint?: string
+  /** 小说生成节点（asset.novel）：全书动态总章节数（支持随时动态调整，如 60 / 80 / 800 / 2000，默认 800） */
+  novelTotalChapters?: number
+  /** 小说生成节点（asset.novel）：当前待生成章号游标（1 .. novelTotalChapters，默认 1） */
+  novelCurrentChapter?: number
+  /** 小说生成节点（asset.novel）：单章目标字数（如 3200，默认 3200） */
+  novelTargetWords?: number
+  /** 小说生成节点（asset.novel）：生成完当前章后是否自动将章号推进至 N+1（默认 true） */
+  novelAutoAdvanceChapter?: boolean
+  /** 小说生成节点（asset.novel）：L1 恒定世界观与力量体系宪法（跨全书锁定不漂移） */
+  novelWorldBible?: string
+  /** 小说生成节点（asset.novel）：L2 动态角色状态与持有底牌账本（随每章生成自动同步更新） */
+  novelStateLedger?: string
+  /** 小说生成节点（asset.novel）：L3 分层滚动前情摘要与反套路防重黑名单（随每章生成自动追加浓缩） */
+  novelRollingSummary?: string
+  /** 小说生成节点（asset.novel）：已生成章节索引与 L4 章末原文锚点 JSON（用于无缝续写下一章） */
+  novelChapterHistoryJson?: string
+  /** 小说生成节点（asset.novel）：L2.5 人物生死与仇恨状态名录 JSON（防已伏诛退场反派复活 OOC） */
+  novelCharacterRosterJson?: string
+  /** 小说生成节点（asset.novel）：L2.5 长线伏笔埋设与到期回收追踪池 JSON（防长篇挖坑不填） */
+  novelForeshadowingJson?: string
+  /** 小说生成节点（asset.novel）：小说流派模板 ID（urban_reversal / xianxia_cultivation / mystery_detective / romance_palace / scifi_apocalypse / lovecraft_rules / historical_intrigue / custom_literary） */
+  novelGenre?: string
+  /** 小说生成节点（asset.novel）：用户自定义境界/阶段序列（逗号或换行分隔，覆盖默认阶段名称） */
+  novelCustomStagesText?: string
+  /** 小说生成节点（asset.novel）：用户自定义主角成长轴名称（如“真相还原度”、“道行修为”、“情感羁绊值”） */
+  novelCustomAxisProtagonist?: string
+  /** 小说生成节点（asset.novel）：用户自定义阻力/对手轴名称（如“诡计迷雾度”、“天劫强敌”、“误会虐心值”） */
+  novelCustomAxisAntagonist?: string
+  /** 小说生成节点（asset.novel）：用户自定义阶段解锁物名称（如“关键物证”、“本命法宝”、“情感信物”） */ // cjk-ok
+  novelCustomUnlockTerm?: string
+  /** 策划案生成节点（asset.gameSystem）：系统策划品类模板 ID（rpg_progression / card_dbg_combat / gacha_equipment_loot / avg_mystery_branch / roguelike_survivor / rule_horror_sanity / slg_faction_intrigue / universal_full_ui） */ // cjk-ok
+  gameSystemArchetype?: string
+  /** 策划案生成节点（asset.gameSystem）：默认 UI 画幅比例（9:16 / 16:9 / 1:1） */ // cjk-ok
+  gameSystemTargetAspect?: string
 }
 
 export interface GraphPortDef {

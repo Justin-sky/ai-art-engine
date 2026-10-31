@@ -562,6 +562,12 @@ export default {
     models: {
       addProvider: '添加模型提供商',
       providerCustom: '自定义',
+      providerZhipu: '智谱',
+      providerMoonshot: 'Kimi（月之暗面）',
+      providerVolcengineArk: '火山方舟',
+      providerKling: '可灵',
+      providerDashscope: '通义千问',
+      providerModelscope: '魔塔',
       add: '添加',
       addedProvider: '已添加 {label}，请填写 Base URL / API Key 后点击「拉取可用模型」',
       collapseProvider: '收起提供商',
@@ -648,6 +654,13 @@ export default {
       selectedSpeakerCount: '已选择 {n} 个声音',
       defaultModel: '默认生成模型',
       selectedCount: '已选择 {n} 个模型',
+      keyConfigured: '已配置密钥',
+      keyMissing: '待填密钥',
+      noModelsSelected: '未选模型',
+      onlySelectedFilter: '只看已选 ({n})',
+      moveUp: '上移（提升默认优先级）',
+      moveDown: '下移',
+      activeRoutesTitle: '当前全局默认路由',
       filterPlaceholder: '筛选模型 id / 名称',
       modality: {
         text: '文本',
@@ -5928,6 +5941,7 @@ export default {
         music: '音乐生成',
         motion: '3D导演台',
         model: '模型',
+        novel: '创建小说',
         screenplay: '剧本生成',
         gameSystem: '策划案生成',
         gamePlay: '可玩 HTML',
@@ -6035,7 +6049,7 @@ export default {
         vfxAlpha: '2D特效去黑底',
         audioDsp: '游戏音频工坊',
         levelMap: '2D关卡地图生成',
-        economy: '游戏经济系统',
+        economy: '经济系统',
         playable: '可玩游戏沙盒'
       },
       frame: {
@@ -7229,6 +7243,9 @@ export default {
         voiceProfileReferenceAudio: '克隆参考音频（工程内路径或 URL）',
         voiceProfileDescription: '音色描述',
         voiceProfileSave: '保存档案',
+        speechSpeed: '合成语速（0.25 ~ 4.0）',
+        speechInstructions: '语气 / 演绎指令（gpt-4o-mini-tts）',
+        speechInstructionsPlaceholder: '如：温柔舒缓的旁白语气、语调沉稳自然',
         modelPreviewEmpty: '生成完成后在此预览 3D 模型',
         spatialWorldSeedHint: '世界生成随机种子（0 或留空 = 上游随机；同种子同描述可复现同一世界）',
         spatialWorldSeedPlaceholder: '随机',
@@ -7538,8 +7555,14 @@ export default {
             rulai: '如来神掌',
             tiyunzong: '梯云纵'
           },
+          novel: {
+            progressionReversal: '数值驱动逆袭爽文',
+            cultivationSystem: '系统流破境修仙小说',
+            femaleRevenge: '大女主成长虐渣小说'
+          },
           screenplay: {
             create: '短剧创作框架',
+            fromNovel: '原著小说改编分集剧本',
             twists: '增加爽点和反转',
             dialogue: '优化台词',
             hooks: '强化结尾钩子'

@@ -572,6 +572,12 @@ export default {
     models: {
       addProvider: 'Add model provider',
       providerCustom: 'Custom',
+      providerZhipu: 'Zhipu (GLM)',
+      providerMoonshot: 'Kimi (Moonshot)',
+      providerVolcengineArk: 'Volcengine Ark',
+      providerKling: 'Kling',
+      providerDashscope: 'Tongyi Qianwen (Bailian)',
+      providerModelscope: 'ModelScope',
       add: 'Add',
       addedProvider: 'Added {label}. Fill in Base URL / API key, then click Fetch models.',
       collapseProvider: 'Collapse provider',
@@ -646,6 +652,13 @@ export default {
       filterPlaceholder: 'Filter by id / name',
       defaultModel: 'Default model',
       selectedCount: '{n} models selected',
+      keyConfigured: 'Key set',
+      keyMissing: 'Key missing',
+      noModelsSelected: 'No models selected',
+      onlySelectedFilter: 'Selected only ({n})',
+      moveUp: 'Move up (higher priority)',
+      moveDown: 'Move down',
+      activeRoutesTitle: 'Active global routes',
       manualModelPlaceholder: 'Enter model / endpoint / Resource ID manually',
       manualModelAdd: 'Add & select',
       manualSpeakerPlaceholder: 'Enter purchased speaker_id (e.g. S_xxx)',
@@ -6087,6 +6100,7 @@ export default {
         music: 'Music generation',
         motion: '3D Director Deck',
         model: 'Model',
+        novel: 'Novel generation',
         screenplay: 'Screenplay generation',
         gameSystem: 'Plan generation',
         gamePlay: 'Playable HTML',
@@ -6194,7 +6208,7 @@ export default {
         vfxAlpha: '2D VFX Alpha Demult',
         audioDsp: 'Game Audio DSP',
         levelMap: '2D Level Map Gen',
-        economy: 'Game Economy Sim',
+        economy: 'Economy System',
         playable: 'Playable Game Sandbox'
       },
       frame: {
@@ -7447,6 +7461,9 @@ export default {
         voiceProfileReferenceAudio: 'Clone reference audio (in-project path or URL)',
         voiceProfileDescription: 'Voice description',
         voiceProfileSave: 'Save profile',
+        speechSpeed: 'Speech speed (0.25 ~ 4.0)',
+        speechInstructions: 'Voice style instructions (gpt-4o-mini-tts)',
+        speechInstructionsPlaceholder: 'e.g. Warm and calm narration tone, natural pacing',
         modelPreview: 'Model preview',
         modelPreviewEmpty: 'The generated 3D model appears here',
         spatialWorldSeedHint:
@@ -7768,8 +7785,14 @@ export default {
             rulai: "Buddha's Palm",
             tiyunzong: 'Cloud Ladder Leap'
           },
+          novel: {
+            progressionReversal: 'Progression-driven reversal novel',
+            cultivationSystem: 'System-litRPG cultivation novel',
+            femaleRevenge: 'Female-lead counterattack novel'
+          },
           screenplay: {
             create: 'Short-drama framework',
+            fromNovel: 'Adapt novel to multi-episode script',
             twists: 'Add payoffs & twists',
             dialogue: 'Polish dialogue',
             hooks: 'Strengthen ending hooks'

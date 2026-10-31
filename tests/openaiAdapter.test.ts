@@ -58,10 +58,11 @@ describe('openAiAdapter', () => {
     expect(images.some((m) => m.id === 'gpt-image-2')).toBe(true)
   })
 
-  it('fetches and filters text catalog from GET /models', async () => {
+  it('fetches and filters text catalog from GET /models and merges builtin latest models', async () => {
     getMock.mockResolvedValueOnce({
       data: {
         data: [
+          { id: 'gpt-6.1-custom-preview' },
           { id: 'gpt-5.5' },
           { id: 'gpt-4o-mini' },
           { id: 'gpt-image-1' },
@@ -71,7 +72,16 @@ describe('openAiAdapter', () => {
       }
     })
     const models = await openAiAdapter.fetchCatalog(provider(), 'text')
-    expect(models.map((m) => m.id).sort()).toEqual(['gpt-4o-mini', 'gpt-5.5', 'o3'])
+    const ids = models.map((m) => m.id)
+    expect(ids).toContain('gpt-6.1-sol')
+    expect(ids).toContain('gpt-6.1-terra')
+    expect(ids).toContain('gpt-6-astra')
+    expect(ids).toContain('gpt-6.1-custom-preview')
+    expect(ids).toContain('gpt-5.5')
+    expect(ids).toContain('gpt-4o-mini')
+    expect(ids).toContain('o3')
+    expect(ids).not.toContain('gpt-image-1')
+    expect(ids).not.toContain('whisper-1')
   })
 
   it('returns static TTS catalog for the audio modality (with voices)', async () => {

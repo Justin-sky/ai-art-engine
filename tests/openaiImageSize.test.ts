@@ -23,4 +23,10 @@ describe('openaiImageSize', () => {
     expect(resolveOpenAiImageSize(undefined, undefined)).toBeUndefined()
     expect(resolveOpenAiImageSize('1K', undefined)).toBeUndefined()
   })
+
+  it('maps DALL·E 3 aspect ratios to 1792x1024 / 1024x1792', () => {
+    expect(resolveOpenAiImageSize(undefined, '16:9', 'dall-e-3')).toBe('1792x1024')
+    expect(resolveOpenAiImageSize(undefined, '9:16', 'dall-e-3')).toBe('1024x1792')
+    expect(resolveOpenAiImageSize('1792x1024', undefined, 'dall-e-3')).toBe('1792x1024')
+  })
 })

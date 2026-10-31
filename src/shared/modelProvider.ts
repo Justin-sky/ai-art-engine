@@ -184,12 +184,14 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   {
     id: 'zhipu',
     label: '智谱',
+    labelKey: 'settings.models.providerZhipu',
     defaultBaseUrl: ZHIPU_DEFAULT_BASE_URL,
     credentialsUrl: 'https://open.bigmodel.cn/usercenter/apikeys'
   },
   {
     id: 'moonshot',
     label: 'Kimi（月之暗面）',
+    labelKey: 'settings.models.providerMoonshot',
     defaultBaseUrl: MOONSHOT_DEFAULT_BASE_URL,
     credentialsUrl: 'https://platform.moonshot.cn/console/api-keys'
   },
@@ -226,12 +228,14 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   {
     id: 'volcengine-ark',
     label: '火山方舟',
+    labelKey: 'settings.models.providerVolcengineArk',
     defaultBaseUrl: VOLCENGINE_ARK_DEFAULT_BASE_URL,
     credentialsUrl: 'https://console.volcengine.com/ark/region:ark-cn-beijing/apiKey'
   },
   {
     id: 'kling',
     label: '可灵',
+    labelKey: 'settings.models.providerKling',
     defaultBaseUrl: KLING_DEFAULT_BASE_URL,
     credentialsUrl: 'https://app.klingai.com/cn/dev'
   },
@@ -244,12 +248,14 @@ export const MODEL_PROVIDER_KINDS: readonly ModelProviderKindMeta[] = [
   {
     id: 'dashscope',
     label: '通义千问',
+    labelKey: 'settings.models.providerDashscope',
     defaultBaseUrl: DASHSCOPE_DEFAULT_BASE_URL,
     credentialsUrl: 'https://bailian.console.aliyun.com/?tab=model#/api-key'
   },
   {
     id: 'modelscope',
     label: '魔塔',
+    labelKey: 'settings.models.providerModelscope',
     defaultBaseUrl: MODELSCOPE_DEFAULT_BASE_URL,
     credentialsUrl: 'https://modelscope.cn/my/myaccesstoken'
   },
@@ -823,6 +829,40 @@ function cloneJsonRecord(value: unknown): Record<string, unknown> | undefined {
  * 未命中的 id 原样返回，保证新模型上线时仍可见（只是名字等于 id）。
  */
 const PROVIDER_MODEL_DISPLAY_NAMES: Partial<Record<ModelProviderKind, Record<string, string>>> = {
+  openai: {
+    'gpt-6.1-sol': 'GPT-6.1 Sol',
+    'gpt-6.1-terra': 'GPT-6.1 Terra',
+    'gpt-6-astra': 'GPT-6 Astra',
+    'gpt-6-sol': 'GPT-6 Sol',
+    'gpt-6-luna': 'GPT-6 Luna',
+    'gpt-6.1': 'GPT-6.1 Sol (alias)',
+    'gpt-5.5': 'GPT-5.5',
+    'gpt-5.4': 'GPT-5.4',
+    'gpt-5.4-pro': 'GPT-5.4 Pro',
+    'gpt-5.4-mini': 'GPT-5.4 Mini',
+    'gpt-5.4-nano': 'GPT-5.4 Nano',
+    'gpt-5.3': 'GPT-5.3',
+    'gpt-5.3-codex': 'GPT-5.3 Codex',
+    'gpt-5.2': 'GPT-5.2',
+    'gpt-5.2-pro': 'GPT-5.2 Pro',
+    'gpt-5.2-codex': 'GPT-5.2 Codex',
+    'gpt-5.1': 'GPT-5.1',
+    'gpt-5.1-codex': 'GPT-5.1 Codex',
+    'gpt-5.1-codex-max': 'GPT-5.1 Codex Max',
+    'gpt-5.1-codex-mini': 'GPT-5.1 Codex Mini',
+    'gpt-5': 'GPT-5',
+    'gpt-5-pro': 'GPT-5 Pro',
+    'gpt-5-mini': 'GPT-5 Mini',
+    'gpt-5-nano': 'GPT-5 Nano',
+    'gpt-5-codex': 'GPT-5 Codex',
+    'gpt-4.1': 'GPT-4.1',
+    'gpt-4.1-mini': 'GPT-4.1 Mini',
+    'gpt-4.1-nano': 'GPT-4.1 Nano',
+    'gpt-4o': 'GPT-4o',
+    'gpt-4o-mini': 'GPT-4o Mini',
+    'chatgpt-4o-latest': 'ChatGPT-4o Latest',
+    'codex-mini-latest': 'Codex Mini Latest'
+  },
   deepseek: {
     'deepseek-flash': 'DeepSeek V4.1 Flash',
     'deepseek-v4-pro': 'DeepSeek V4 Pro',
@@ -830,6 +870,11 @@ const PROVIDER_MODEL_DISPLAY_NAMES: Partial<Record<ModelProviderKind, Record<str
     'deepseek-v4-flash-vision-exp': 'DeepSeek V4 Flash Vision (legacy alias → V4.1 Flash)'
   },
   anthropic: {
+    'claude-opus-4-6': 'Claude Opus 4.6',
+    'claude-sonnet-4-6': 'Claude Sonnet 4.6',
+    'claude-opus-4-5': 'Claude Opus 4.5',
+    'claude-sonnet-4-5': 'Claude Sonnet 4.5',
+    'claude-haiku-4-5': 'Claude Haiku 4.5',
     'claude-opus-4-20250514': 'Claude Opus 4',
     'claude-sonnet-4-20250514': 'Claude Sonnet 4',
     'claude-3-7-sonnet-20250219': 'Claude Sonnet 3.7',
@@ -1080,6 +1125,8 @@ export interface GenerateImageInput {
   seed?: number
   /** 参考图 data URL 或 http(s) */
   inputReferences?: string[]
+  /** 局部重绘蒙版图（data URL 或 http(s)，供 /images/edits Inpainting 使用） */
+  mask?: string
   /** MCP：工程内相对输出目录（generateImageAsset 落盘位置，缺省 Cache/Images 只落盘不登记资产；指定 Assets/ 下目录则登记为资产） */
   outputDir?: string
   /** 与 inputReferences 一一对应的参考图元信息（仅用于日志） */
@@ -1866,6 +1913,8 @@ export interface GenerateSpeechInput {
   dialogue?: Array<{ text: string; voice?: string }>
   responseFormat?: 'mp3' | 'pcm'
   speed?: number
+  /** OpenAI gpt-4o-mini-tts 语气/情绪/口音控制指令（API 字段 instructions） */
+  instructions?: string
   name?: string
   /**
    * 可选参考图（data URL 或 http(s)）。
@@ -2238,16 +2287,44 @@ function normalizeSavedCatalog(
   return Object.keys(out).length ? out : undefined
 }
 
+const OPENAI_LEGACY_MODEL_ID_MAP: Readonly<Record<string, string>> = {
+  'gpt-6.1': 'gpt-6.1-sol',
+  'gpt-6.1-pro': 'gpt-6.1-sol',
+  'gpt-6.1-mini': 'gpt-6.1-terra',
+  'gpt-6.1-nano': 'gpt-6.1-terra',
+  'gpt-6': 'gpt-6-astra',
+  'gpt-6-pro': 'gpt-6-astra',
+  'gpt-6-mini': 'gpt-6-luna',
+  'gpt-5.6': 'gpt-5.6-sol',
+  'gpt-5.6-pro': 'gpt-5.6-sol',
+  'gpt-5.6-mini': 'gpt-5.6-terra'
+}
+
+function normalizeModelIdForProvider(id: string, kind: ModelProviderKind): string {
+  const trimmed = id.trim()
+  if (kind !== 'openai') return trimmed
+  return OPENAI_LEGACY_MODEL_ID_MAP[trimmed.toLowerCase()] ?? trimmed
+}
+
 function normalizeModalityConfig(
   raw: Partial<ModalityModelConfig> | null | undefined,
   kind: ModelProviderKind
 ): ModalityModelConfig {
-  const selected = Array.isArray(raw?.selectedModelIds)
+  const rawSelected = Array.isArray(raw?.selectedModelIds)
     ? raw.selectedModelIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
     : []
+  const selected: string[] = []
+  for (const rawId of rawSelected) {
+    const id = normalizeModelIdForProvider(rawId, kind)
+    if (id && !selected.includes(id)) selected.push(id)
+  }
+  const normalizedDefault =
+    typeof raw?.defaultModelId === 'string' && raw.defaultModelId
+      ? normalizeModelIdForProvider(raw.defaultModelId, kind)
+      : ''
   const defaultModelId =
-    typeof raw?.defaultModelId === 'string' && selected.includes(raw.defaultModelId)
-      ? raw.defaultModelId
+    normalizedDefault && selected.includes(normalizedDefault)
+      ? normalizedDefault
       : (selected[0] ?? '')
   const catalog = normalizeSavedCatalog(raw?.catalog, selected, kind)
   const defaultVoice = typeof raw?.defaultVoice === 'string' ? raw.defaultVoice.trim() : ''

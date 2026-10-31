@@ -34,6 +34,7 @@ const NOTE_CARD_ALLOWLIST = new Set([
 const ROOT_MENU_ALLOWLIST = new Set([
   'decisions.judge',
   'media.bundle',
+  'game.economy',
   'graph.input.slot',
   'graph.boundary.input',
   'graph.boundary.output'

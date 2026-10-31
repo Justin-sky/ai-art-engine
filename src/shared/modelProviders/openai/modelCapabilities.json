@@ -6,12 +6,264 @@
       "https://developers.openai.com/api/reference/resources/images/methods/create-edit",
       "https://developers.openai.com/api/reference/resources/models"
     ],
-    "note": "OpenAI 官方不提供图片模型目录接口，本地维护静态图片模型表；文本模型通过 GET /models 动态拉取。gpt-image 系列只接受固定 size（1024x1024 / 1536x1024 / 1024x1536 / auto），quality 为 low / medium / high，图生图走 /images/edits 且最多 1 张参考图。OpenAI 未向中国大陆开放，需可访问 api.openai.com 的网络与账号（2026-08）。"
+    "note": "OpenAI 文本模型由内置最新目录（GPT-6.1 / GPT-6 / GPT-5.x / o 系列 / GPT-4.1 / GPT-4o）与远端 GET /models 动态拉取合并；图片模型由本地静态目录与远端动态合并。gpt-image 系列接受固定 size（1024x1024 / 1536x1024 / 1024x1536 / auto），quality 为 low / medium / high，图生图走 /images/edits。"
   },
   "models": [
     {
-      "id": "gpt-image-1",
-      "name": "GPT Image 1",
+      "id": "gpt-6.1-sol",
+      "name": "GPT-6.1 Sol",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-6.1-terra",
+      "name": "GPT-6.1 Terra",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-6-astra",
+      "name": "GPT-6 Astra",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-6-sol",
+      "name": "GPT-6 Sol",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-6-luna",
+      "name": "GPT-6 Luna",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "name": "GPT-5.6 Sol",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "name": "GPT-5.6 Terra",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "name": "GPT-5.6 Luna",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.5",
+      "name": "GPT-5.5",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.5-pro",
+      "name": "GPT-5.5 Pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.4",
+      "name": "GPT-5.4",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "name": "GPT-5.4 Pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "name": "GPT-5.4 Mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "name": "GPT-5.4 Nano",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.3",
+      "name": "GPT-5.3",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "name": "GPT-5.3 Codex",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.2",
+      "name": "GPT-5.2",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.2-pro",
+      "name": "GPT-5.2 Pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.2-codex",
+      "name": "GPT-5.2 Codex",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.1",
+      "name": "GPT-5.1",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.1-codex",
+      "name": "GPT-5.1 Codex",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.1-codex-max",
+      "name": "GPT-5.1 Codex Max",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5.1-codex-mini",
+      "name": "GPT-5.1 Codex Mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5",
+      "name": "GPT-5",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5-pro",
+      "name": "GPT-5 Pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5-mini",
+      "name": "GPT-5 Mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5-nano",
+      "name": "GPT-5 Nano",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-5-codex",
+      "name": "GPT-5 Codex",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o4-mini",
+      "name": "o4-mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o3-pro",
+      "name": "o3-pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o3",
+      "name": "o3",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o3-mini",
+      "name": "o3-mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o1-pro",
+      "name": "o1-pro",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "o1",
+      "name": "o1",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-4.1",
+      "name": "GPT-4.1",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "name": "GPT-4.1 Mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-4.1-nano",
+      "name": "GPT-4.1 Nano",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "chatgpt-4o-latest",
+      "name": "ChatGPT-4o Latest",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "codex-mini-latest",
+      "name": "Codex Mini Latest",
+      "modality": "text",
+      "profile": "text-gpt"
+    },
+    {
+      "id": "gpt-image-2.5-sunburst",
+      "name": "GPT Image 2.5 Sunburst",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "gpt-image-2.5-flare",
+      "name": "GPT Image 2.5 Flare",
       "modality": "image",
       "profile": "image-gpt"
     },
@@ -20,9 +272,44 @@
       "name": "GPT Image 2",
       "modality": "image",
       "profile": "image-gpt"
+    },
+    {
+      "id": "gpt-image-1.5",
+      "name": "GPT Image 1.5",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "gpt-image-1",
+      "name": "GPT Image 1",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "gpt-image-1-mini",
+      "name": "GPT Image 1 Mini",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "chatgpt-image-latest",
+      "name": "ChatGPT Image Latest",
+      "modality": "image",
+      "profile": "image-gpt"
+    },
+    {
+      "id": "dall-e-3",
+      "name": "DALL·E 3",
+      "modality": "image",
+      "profile": "image-dalle3"
     }
   ],
   "profiles": {
+    "text-gpt": {
+      "modality": "text",
+      "label": "OpenAI GPT / o-series",
+      "capabilities": {}
+    },
     "image-gpt": {
       "modality": "image",
       "label": "OpenAI GPT Image",
@@ -33,6 +320,45 @@
           },
           "quality": {
             "values": ["low", "medium", "high"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 16
+          }
+        }
+      }
+    },
+    "image-dalle3": {
+      "modality": "image",
+      "label": "OpenAI DALL·E 3",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16"]
+          },
+          "quality": {
+            "values": ["standard", "hd"]
+          },
+          "n": {
+            "min": 1,
+            "max": 1
+          },
+          "input_references": {
+            "max": 0
+          }
+        }
+      }
+    },
+    "image-dalle2": {
+      "modality": "image",
+      "label": "OpenAI DALL·E 2",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1"]
           },
           "n": {
             "min": 1,

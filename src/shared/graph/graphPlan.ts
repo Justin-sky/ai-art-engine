@@ -183,6 +183,7 @@ export function applyDefaultGenerateModels(
       }
       if (aspectRatio) params.filmAspectRatio = aspectRatio
     } else if (
+      node.typeId === 'asset.novel' ||
       node.typeId === 'asset.screenplay' ||
       node.typeId === 'asset.gameSystem' ||
       node.typeId === 'prompt.optimize' ||

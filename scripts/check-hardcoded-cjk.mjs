@@ -69,6 +69,9 @@ const EXEMPT_FILES = new Set([
   'src/shared/graph/smartPatch.ts',
   // 对话路径的可玩 HTML 作业契约：smoke 报告文案随 MCP 工具返回给模型（Agent 域，非 UI i18n）
   'src/shared/gamePlayJob.ts',
+  // 小说流派与游戏系统策划桥接引擎：多流派双语提示词 / 节拍模板 / 系统策划与 UI 框线合成（AI 域数据，非 UI 文案）
+  'src/shared/gameAssets/novelGenreProfiles.ts',
+  'src/shared/gameAssets/gameSystemDesignBridge.ts',
   'src/main/services/gamePlaySmokeService.ts',
   'src/shared/graph/execute/generateText.ts',
   'src/shared/mcpModeAccess.ts',

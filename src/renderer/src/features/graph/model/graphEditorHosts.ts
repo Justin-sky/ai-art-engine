@@ -57,6 +57,13 @@ export interface GraphEditorHostApi {
    * 返回新节点 id；节点类型未注册或宿主不支持时返回 null。
    */
   addNode?: (input: GraphEditorAddNodeInput) => string | null
+  /** 连接图上已有两个节点（自动匹配兼容端口） */
+  connectNodes?: (
+    sourceId: string,
+    targetId: string,
+    sourcePortId?: string,
+    targetPortId?: string
+  ) => boolean
   updateGroup?: (groupId: string, patch: { title?: string }) => void
   setNodeAsset: (
     nodeId: string,
@@ -217,6 +224,11 @@ class GraphEditorHostRegistry {
     }
   }
 
+  get(hostId: string | null | undefined): GraphEditorHostApi | undefined {
+    void this.revision.value
+    return hostId ? this.hosts.get(hostId) : undefined
+  }
+
   getNode(hostId: string | null | undefined, nodeId: string): GraphNode | null {
     void this.revision.value
     return hostId ? (this.hosts.get(hostId)?.getNode(nodeId) ?? null) : null
@@ -320,6 +332,22 @@ class GraphEditorHostRegistry {
     const nodeId = this.hosts.get(hostId)?.addNode?.(input) ?? null
     if (nodeId) this.bumpRevision()
     return nodeId
+  }
+
+  /** 连接图上已有两个节点（自动匹配兼容端口） */
+  connectNodes(
+    hostId: string | null | undefined,
+    sourceId: string,
+    targetId: string,
+    sourcePortId?: string,
+    targetPortId?: string
+  ): boolean {
+    if (!hostId) return false
+    const ok =
+      this.hosts.get(hostId)?.connectNodes?.(sourceId, targetId, sourcePortId, targetPortId) ??
+      false
+    if (ok) this.bumpRevision()
+    return ok
   }
 
   setNodeAsset(hostId: string | null | undefined, nodeId: string, asset: AssetInfo | null): void {

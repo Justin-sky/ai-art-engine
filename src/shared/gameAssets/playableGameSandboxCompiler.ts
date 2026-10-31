@@ -70,6 +70,7 @@ export interface PlayableGameSandboxOptions extends PlayableGameTuningOptions {
   customPlayerBaseAtk?: number
   customCards?: PlayableSandboxCardSpec[]
   customDialogues?: PlayableSandboxDialogueNode[]
+  balatroScoring?: boolean
 }
 
 export interface CompiledPlayableSandboxResult {
@@ -126,6 +127,9 @@ export function compilePlayableGameSandboxHtml(
     customPlayerBaseAtk: Number(options.customPlayerBaseAtk ?? 14),
     customCards: Array.isArray(options.customCards) ? options.customCards : [],
     customDialogues: Array.isArray(options.customDialogues) ? options.customDialogues : [],
+    balatroScoring: Boolean(
+      options.balatroScoring || /balatro|chips|joker|\u5c0f\u4e11/i.test(title)
+    ),
     tuning: {
       moveSpeedScale: Number(options.moveSpeedScale ?? 1.0),
       jumpDashScale: Number(options.jumpDashScale ?? 1.0),
@@ -1273,10 +1277,31 @@ function draw() {
     }
   }
 
-  // Card Deckbuilder Mode Overlay
+  // Card Deckbuilder Mode Overlay (with Balatro Chips × Mult × Joker Slot Roll-Up when CFG.balatroScoring is active)
   if (mode === 'card_dbg') {
     ctx.fillStyle = 'rgba(10, 16, 30, 0.88)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    if (CFG.balatroScoring) {
+      // Balatro 5-Slot Joker Bar + Chips × Mult Exponential Roll-Up Banner
+      ctx.fillStyle = '#0f172a';
+      ctx.strokeStyle = '#a855f7';
+      ctx.lineWidth = 2;
+      ctx.fillRect(140, 48, 680, 74);
+      ctx.strokeRect(140, 48, 680, 74);
+      ctx.fillStyle = '#e9d5ff';
+      ctx.font = 'bold 13px system-ui, sans-serif';
+      ctx.fillText('JOKER SLOTS (Left +Chips / +Mult -> Right ×Mult): [Banner +120] -> [Half +20] -> [Blueprint ×2.5] -> [Cavendish ×3]', 156, 72);
+      const liveChips = 100 + cardTurn * 25;
+      const liveMult = Math.round((14 + cardBlock + kills * 6) * 7.5);
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillText('CHIPS: ' + liveChips, 156, 104);
+      ctx.fillStyle = '#f43f5e';
+      ctx.fillText('× MULT: ' + liveMult, 310, 104);
+      ctx.fillStyle = '#fde047';
+      ctx.fillText('= HAND SCORE: ' + (liveChips * liveMult) + ' vs ANTE BLIND ' + bossMaxHp, 470, 104);
+    }
 
     // Hero Panel (Left)
     ctx.fillStyle = '#13233a';

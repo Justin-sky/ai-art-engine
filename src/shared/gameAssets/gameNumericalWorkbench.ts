@@ -22,13 +22,36 @@
 
 import {
   buildGameDataTableBundle,
+  type GameBattlePassRow,
   type GameCardRow,
   type GameCharacterRow,
   type GameDataTableBundle,
+  type GameEquipmentUpgradeRow,
+  type GameIapPackRow,
   type GameItemRow,
+  type GameLevelCurveRow,
+  type GameSkillRow,
   type GameWaveRow
 } from './gameDataTables'
 import { createMxRng, evaluateMxExpression } from './machinationsV2'
+import {
+  mxScaleEffectScript,
+  simulateMxDeckVsDeckMatrix,
+  type MxPlayPolicy
+} from './cardEffectEngine'
+import {
+  mxShouldUseEffectEngine,
+  mxShouldUseEffectEngineForMana,
+  runMxDeckCycleKernelViaEffectEngine,
+  runMxManaTempoKernelViaEffectEngine
+} from './cardKernelBridge'
+import {
+  mxScaleAtbScript,
+  mxShouldUseAtbEngine,
+  runMxActionBarKernelViaAtbEngine
+} from './atbEffectEngine'
+import type { MxCardDesignLabConfig } from './cardDesignLab'
+import { fillNovelGenreTemplate, type NovelGenreProfile } from './novelGenreProfiles'
 
 // ───────────────────────────── 1. 乘区公式与配表审计层 ─────────────────────────────
 
@@ -38,6 +61,7 @@ export type MxWorkbenchPresetId =
   | 'onmyoji_atb'
   | 'balatro_roguelike'
   | 'survivor_brotato'
+  | 'short_drama_progression'
 
 export interface MxStatAttribute {
   id: string
@@ -460,6 +484,16 @@ export interface MxLootRollConfig {
   competingArchetypes?: number
   /** 连续未刷出目标标签时的动态保底权重补偿百分比（默认 0） */
   pityMissStreakBoostPct?: number
+  /** 装备最高强化等级（默认 15，即 +1 ~ +15） */
+  equipMaxEnhanceLevel?: number
+  /** 装备初始主属性（默认 47） */
+  equipBaseMainStat?: number
+  /** 每强化 +1 增加的主属性（默认 18） */
+  equipMainStatStep?: number
+  /** 强化经验消耗增长指数（默认 1.38） */
+  equipExpGrowthExponent?: number
+  /** +5 之后每级强化成功率衰减百分比 (%)（0 表示 100% 必成狗粮模式，>0 表示铁匠铺概率失败模式，默认 6） */
+  equipSuccessDecayAfter5Pct?: number
   draftPool: MxDraftPoolItem[]
 }
 
@@ -967,6 +1001,13 @@ export interface MxDeckCardSpec {
   priority: number
   /** 用户自定义扩展数值列 */
   customStats?: Record<string, number>
+  /**
+   * 卡牌效果脚本（可选）。若填写，则由 cardEffectEngine 解释执行，覆盖上述基础字段的效果语义。
+   * 例：`dmg 6x2; if hand<=2: draw 2; kw exhaust`（详见 parseMxCardEffectScript）
+   */
+  effectScript?: string
+  /** 卡牌稀有度（用于卡池抽取权重与单局经济闭环） */
+  rarity?: 'common' | 'uncommon' | 'rare'
 }
 
 export interface MxManaCurveCardSpec {
@@ -983,6 +1024,11 @@ export interface MxManaCurveCardSpec {
   divineShield?: boolean
   /** 用户自定义扩展数值列 */
   customStats?: Record<string, number>
+  /**
+   * 可选效果脚本：填写后 mana_tempo 内核改由卡牌效果引擎驱动，
+   * 例如 `summon 3/2 divine; deathrattle: dmg 2`；留空时按攻/血/直伤/抽牌列自动生成。
+   */
+  effectScript?: string
 }
 
 export interface MxActionBarUnitSpec {
@@ -1000,6 +1046,16 @@ export interface MxActionBarUnitSpec {
   pushGaugePct: number
   /** 被动或技能回火量（如座敷童子 +3 火） */
   orbGain: number
+  /** ATB 效果引擎：单位血量 / 防御（缺省时敌方平分目标血量、我方 12000） */
+  hp?: number
+  def?: number
+  /**
+   * ATB 技能脚本（填写后 action_bar 内核改由 ATB 效果引擎驱动，敌方也会出手），
+   * 例如 `dmg 1.2x3 @all; push 20 @all` / `heal 15% @allies` / `pull 30; spd 20`
+   */
+  skillScript?: string
+  /** 普攻脚本（缺省 `dmg 1`） */
+  basicScript?: string
 }
 
 export type MxEnemyMechanismKind =
@@ -1062,6 +1118,10 @@ export interface MxCombatKernelConfig {
   deckCards: MxDeckCardSpec[]
   /** 牌库表当前激活展示的列标识列表（可自由增删） */
   deckActiveColumns?: string[]
+  /** deck_cycle / mana_tempo 内核改用卡牌效果引擎（卡组含 effectScript 时自动开启） */
+  useEffectEngine?: boolean
+  /** 效果引擎出牌策略（random / greedy / search，默认 greedy） */
+  playPolicy?: MxPlayPolicy
 
   // Kernel B: Mana-Curve & Board Tempo (《炉石传说》/ TCG)
   maxManaCrystals: number
@@ -1178,12 +1238,44 @@ function shuffleInPlace<T>(arr: T[], rng: () => number): void {
   }
 }
 
+/** 自定义列中被视为「额外平伤」的列名白名单（大小写/下划线不敏感） */
+export const MX_CUSTOM_FLAT_DAMAGE_KEYS = [
+  'flatdamage',
+  'bonusdamage',
+  'dmgbonus',
+  'extradamage',
+  'flatdmg',
+  'bonusdmg'
+]
+
+/**
+ * 计算自定义列中显式声明为「额外平伤」的数值总和。
+ * 其他任意自定义列（如 poison_on_crit / costReduction）不会再被当作伤害加总。
+ */
+export function mxCustomStatsFlatDamage(customStats?: Record<string, number>): number {
+  if (!customStats) return 0
+  let sum = 0
+  for (const [k, v] of Object.entries(customStats)) {
+    const norm = k.toLowerCase().replace(/[_\s-]/g, '')
+    if (MX_CUSTOM_FLAT_DAMAGE_KEYS.includes(norm) && Number.isFinite(v)) sum += v
+  }
+  return sum
+}
+
 export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombatKernelResult {
   const runs = Math.max(10, Math.min(2000, Math.round(cfg.runs || 200)))
   const maxTurns = Math.max(3, Math.min(40, Math.round(cfg.maxTurns || 12)))
   const baseSeed = cfg.seed || 2026
 
   // ───────── Kernel A: 《杀戮尖塔》洗抽牌库与能量回合内核 ─────────
+  if (cfg.kernel === 'deck_cycle' && mxShouldUseEffectEngine(cfg)) {
+    // 牌库含效果脚本（或显式开启）时改由卡牌效果引擎驱动，返回结构完全一致
+    return runMxDeckCycleKernelViaEffectEngine(cfg)
+  }
+  if (cfg.kernel === 'mana_tempo' && mxShouldUseEffectEngineForMana(cfg)) {
+    // 法力卡组含效果脚本（或显式开启）时同样改由效果引擎驱动（圣盾/冲锋/吸血/亡语/搜索策略）
+    return runMxManaTempoKernelViaEffectEngine(cfg)
+  }
   if (cfg.kernel === 'deck_cycle') {
     const ttkList: number[] = []
     const hpLostList: number[] = []
@@ -1375,9 +1467,9 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
             playerHp = Math.min(maxPlayerHp, playerHp + card.heal)
           }
           if (card.block > 0) turnBlock += card.block
-          const customFlatBonus = card.customStats
-            ? Object.values(card.customStats).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0)
-            : 0
+          // 仅识别显式声明为「额外平伤」语义的自定义列；其余自定义列不再被误当作伤害加总
+          // （复杂机制请改用 effectScript 卡牌效果脚本，由 cardEffectEngine 解释执行）
+          const customFlatBonus = mxCustomStatsFlatDamage(card.customStats)
           if (card.damage > 0 || customFlatBonus > 0) {
             attacksPlayedThisTurn++
             if (hasShurikenKunai && attacksPlayedThisTurn % 3 === 0) {
@@ -2015,6 +2107,10 @@ export function runMxCombatKernelSimulation(cfg: MxCombatKernelConfig): MxCombat
   }
 
   // ───────── Kernel C: 《阴阳师》/《星铁》速度行动条（拉条/超车）与共享鬼火池内核 ─────────
+  if (mxShouldUseAtbEngine(cfg)) {
+    // 任一单位填写技能脚本（或显式开启）时改由 ATB 效果引擎驱动：双方真实血量、敌方出手、阵亡
+    return runMxActionBarKernelViaAtbEngine(cfg)
+  }
   const trackDist = Math.max(100, cfg.trackDistance || 1000)
   const maxOrbs = Math.max(1, Math.min(12, Math.round(cfg.maxOrbs || 8)))
   const defMitigation = 300 / (300 + Math.max(0, cfg.targetEnemyDef || 450))
@@ -2452,6 +2548,16 @@ export interface MxRoguelikeEnvelopeConfig {
   interestCapPerFloor?: number
   /** 商店购买核心遗物/删牌的价格阈值（默认 100） */
   shopSpendThresholdGold?: number
+  /** 角色/武器等级上限（默认 80） */
+  levelMax?: number
+  /** 每级属性复合成长率 (%)（默认 4.2） */
+  levelStatGrowthPct?: number
+  /** 每隔多少级触发一次突破（Ascension Breakthrough，默认 20） */
+  levelAscensionInterval?: number
+  /** 每次突破额外阶跃加成百分比 (%)（默认 18） */
+  levelAscensionBonusPct?: number
+  /** 升级经验曲线幂指数（XP(L) = baseXp * L^exp，默认 1.55） */
+  levelXpExponent?: number
 }
 
 export interface MxRoguelikeFloorPoint {
@@ -3585,6 +3691,1087 @@ export function runMxCommercialCohortAnalysis(
   }
 }
 
+export interface MxLevelProgressionResult {
+  maxLevel: number
+  ascensionInterval: number
+  maxLevelHp: number
+  maxLevelAtk: number
+  maxLevelDef: number
+  statMultiplierTotal: number
+  totalXpToMax: number
+  totalGoldToMax: number
+  totalDaysToMax: number
+  rows: GameLevelCurveRow[]
+  milestones: GameLevelCurveRow[]
+}
+
+/**
+ * 角色/武器等级与突破成长曲线生成器（Lv.1 ~ Lv.Max Progression & Ascension Breakthrough Table）：
+ * 結合基础属性、每级复合成长率与突破阶跃加成（如每 20 级突破一次），生成完整的等级属性、经验需求、金币消耗与体力养成天数配表。
+ */
+export function generateMxLevelProgressionTable(
+  cfg: MxRoguelikeEnvelopeConfig
+): MxLevelProgressionResult {
+  const maxLv = Math.max(10, Math.min(5000, Math.round(cfg.levelMax ?? 80)))
+  const rawGrowthPct = Math.max(0.5, Math.min(25, Number(cfg.levelStatGrowthPct ?? 4.2))) / 100
+  const rawInterval = Math.max(5, Math.min(500, Math.round(cfg.levelAscensionInterval ?? 20)))
+  // 当用户动态设置超大章节/等级上限（如 800 章、2000 章）时，自适应缩放突破周期与单级复合增长率，防止数值指数溢出
+  const ascInterval =
+    maxLv > 160 && rawInterval <= 30 ? Math.max(rawInterval, Math.round(maxLv / 10)) : rawInterval
+  const effectiveExponentSpan = Math.min(100, maxLv - 1)
+  const ascBonusPct = Math.max(0, Math.min(100, Number(cfg.levelAscensionBonusPct ?? 18))) / 100
+  const xpExp = Math.max(1.05, Math.min(3.0, Number(cfg.levelXpExponent ?? 1.55)))
+
+  const baseAtk = Math.max(10, Math.round((cfg.playerBasePower || 32) * 3.5))
+  const baseHp = baseAtk * 8
+  const baseDef = Math.round(baseAtk * 0.65)
+  const baseXp = 400
+  const dailyXpYield = 38000
+
+  const rows: GameLevelCurveRow[] = []
+  let cumXp = 0
+  let cumGold = 0
+
+  for (let lv = 1; lv <= maxLv; lv++) {
+    const ascStage = Math.floor((lv - 1) / ascInterval)
+    const isBreakthrough = lv > 1 && (lv - 1) % ascInterval === 0
+    const normalizedStep =
+      maxLv <= 100 ? lv - 1 : ((lv - 1) / Math.max(1, maxLv - 1)) * effectiveExponentSpan
+    const levelFactor = Math.pow(1 + rawGrowthPct, normalizedStep)
+    const ascFactor = 1 + ascStage * ascBonusPct
+    const mult = levelFactor * ascFactor
+
+    const hp = Math.round(baseHp * mult)
+    const atk = Math.round(baseAtk * mult)
+    const def = Math.round(baseDef * mult)
+
+    const xpReq = lv === 1 ? 0 : Math.round(baseXp * Math.pow(normalizedStep, xpExp))
+    cumXp += xpReq
+    const breakthroughMats = isBreakthrough ? ascStage * 6 : 0
+    const goldCost =
+      lv === 1 ? 0 : Math.round(xpReq * 0.8 + (isBreakthrough ? ascStage * 20000 : 0))
+    cumGold += goldCost
+    const staminaDaysToReach = Math.round((cumXp / dailyXpYield) * 10) / 10
+
+    rows.push({
+      level: lv,
+      ascensionStage: ascStage,
+      isBreakthrough,
+      hp,
+      atk,
+      def,
+      xpRequired: xpReq,
+      cumulativeXp: cumXp,
+      goldCost,
+      breakthroughMats,
+      staminaDaysToReach
+    })
+  }
+
+  const milestoneStep = Math.max(
+    ascInterval,
+    Math.ceil(maxLv / 16 / Math.max(1, ascInterval)) * ascInterval
+  )
+  const milestones = rows.filter(
+    (r) =>
+      r.level === 1 ||
+      (r.isBreakthrough && (r.level - 1) % milestoneStep === 0) ||
+      r.level % milestoneStep === 0 ||
+      r.level === maxLv
+  )
+  const lastRow = rows[rows.length - 1]!
+  const statMultiplierTotal = Math.round((lastRow.atk / Math.max(1, rows[0]!.atk)) * 100) / 100
+
+  return {
+    maxLevel: maxLv,
+    ascensionInterval: ascInterval,
+    maxLevelHp: lastRow.hp,
+    maxLevelAtk: lastRow.atk,
+    maxLevelDef: lastRow.def,
+    statMultiplierTotal,
+    totalXpToMax: cumXp,
+    totalGoldToMax: cumGold,
+    totalDaysToMax: lastRow.staminaDaysToReach,
+    rows,
+    milestones
+  }
+}
+
+export interface MxEquipmentUpgradeResult {
+  maxEnhanceLevel: number
+  finalMainStat: number
+  totalBaseGold: number
+  totalExpectedGoldWithFails: number
+  totalExpectedStamina: number
+  bottleneckEnhanceLevel: number
+  rows: GameEquipmentUpgradeRow[]
+}
+
+/**
+ * 装备强化等级与养成消耗阶梯表生成器（Equipment +1 ~ +15 Upgrade Cost & Blacksmith Success Matrix）：
+ * 支持狗粮必成模式（衰减率=0%）与铁匠铺概率失败模式（+5 后每级衰减），自动核算期望金币回收与期望体力消耗。
+ */
+export function generateMxEquipmentUpgradeMatrix(cfg: MxLootRollConfig): MxEquipmentUpgradeResult {
+  const maxLv = Math.max(5, Math.min(25, Math.round(cfg.equipMaxEnhanceLevel ?? 15)))
+  const baseMain = Math.max(1, Number(cfg.equipBaseMainStat ?? 47))
+  const stepMain = Math.max(1, Number(cfg.equipMainStatStep ?? 18))
+  const expExp = Math.max(1.05, Math.min(2.6, Number(cfg.equipExpGrowthExponent ?? 1.38)))
+  const decayPct = Math.max(0, Math.min(18, Number(cfg.equipSuccessDecayAfter5Pct ?? 6)))
+  const staminaPerDrop = Math.max(4, Number(cfg.staminaPerDrop || 12))
+  const baseExp = 800
+
+  const rows: GameEquipmentUpgradeRow[] = []
+  let cumBaseGold = 0
+  let cumExpGold = 0
+  let cumStamina = 0
+  let maxJumpGold = 0
+  let bottleneckLv = maxLv
+
+  for (let lv = 1; lv <= maxLv; lv++) {
+    const mainStatValue = Math.round((baseMain + lv * stepMain) * 10) / 10
+    const substatRollsUnlocked = Math.floor(lv / 3)
+    const expCost = Math.round(baseExp * Math.pow(lv, expExp))
+    const goldCost = Math.round(expCost * 1.5)
+    const successRatePct =
+      lv <= 5 ? 100 : Math.max(12, Math.round((100 - (lv - 5) * decayPct) * 10) / 10)
+    const expectedGoldWithFails = Math.round(goldCost / (successRatePct / 100))
+    const stepStamina = Math.round((expCost / 600 / (successRatePct / 100)) * staminaPerDrop)
+
+    cumBaseGold += goldCost
+    cumExpGold += expectedGoldWithFails
+    cumStamina += stepStamina
+
+    if (expectedGoldWithFails - goldCost > maxJumpGold) {
+      maxJumpGold = expectedGoldWithFails - goldCost
+      bottleneckLv = lv
+    }
+
+    rows.push({
+      enhanceLevel: lv,
+      mainStatValue,
+      substatRollsUnlocked,
+      expCost,
+      goldCost,
+      successRatePct,
+      expectedGoldWithFails,
+      cumulativeExpectedGold: cumExpGold,
+      cumulativeExpectedStamina: cumStamina
+    })
+  }
+
+  return {
+    maxEnhanceLevel: maxLv,
+    finalMainStat: rows[rows.length - 1]?.mainStatValue ?? baseMain,
+    totalBaseGold: cumBaseGold,
+    totalExpectedGoldWithFails: cumExpGold,
+    totalExpectedStamina: cumStamina,
+    bottleneckEnhanceLevel: bottleneckLv,
+    rows
+  }
+}
+
+export interface MxJokerSlotTriggerStep {
+  slotIndex: number
+  id: string
+  name: string
+  role: 'chips' | 'add_mult' | 'x_mult'
+  effectLabel: string
+  runningChips: number
+  runningMult: number
+  runningScore: number
+}
+
+export interface MxPokerPlanetRow {
+  handId: string
+  handNameZh: string
+  handNameEn: string
+  planetNameZh: string
+  planetNameEn: string
+  baseChips: number
+  baseMult: number
+  deltaChipsPerLv: number
+  deltaMultPerLv: number
+  lv1Score: number
+  lv5Score: number
+  lv10Score: number
+  lv15Score: number
+  lv5WithOptimalJokersScore: number
+}
+
+export interface MxBalatroBossBlindRow {
+  blindId: string
+  nameZh: string
+  nameEn: string
+  ruleDescZh: string
+  ruleDescEn: string
+  targetScore: number
+  achievedScoreWithOptimal: number
+  verdict: 'pass' | 'risky' | 'countered'
+}
+
+export interface MxJokerOrderAndPlanetResult {
+  baseHandChips: number
+  baseHandMult: number
+  wrongOrderScore: number
+  currentOrderScore: number
+  optimalOrderScore: number
+  orderGainRatio: number
+  optimalSlots: MxJokerSlotTriggerStep[]
+  planetHands: MxPokerPlanetRow[]
+  bossBlinds: MxBalatroBossBlindRow[]
+}
+
+/**
+ * 《小丑牌 Balatro》专属三大灵魂机制仿真器：
+ * 1. 小丑槽位顺序优化器（左加右乘：+Chips -> +Mult -> ×Mult 对比 ×Mult 在左 +Mult 在右的错位损失）
+ * 2. 9 大德州扑克牌型 × 行星牌（Planet Lv.1~Lv.15）成长阶梯表
+ * 3. 6 大经典 Boss 盲注（The Wall / The Flint / The Needle / The Plant / Amber Acorn / Violet Vessel）针对性封锁审计
+ */
+export function simulateMxJokerSlotOrderAndPlanetTable(
+  cfg: MxMultiplierPipelineConfig
+): MxJokerOrderAndPlanetResult {
+  const baseChipsAttr = cfg.attributes.find((a) => /basechips|atk|mana/i.test(a.name))
+  const baseMultAttr = cfg.attributes.find((a) => /basemult|crit|hp/i.test(a.name))
+  const baseHandChips = Math.max(10, Math.round(baseChipsAttr?.value ?? 100))
+  const baseHandMult = Math.max(1, Math.round(baseMultAttr?.value ?? 10))
+
+  // 从当前实体表提取或构造 5 张代表性槽位卡（含 +Chips、+Mult、×Mult）
+  const rawEntities = cfg.entities.slice(0, 5)
+  interface SlotSpec {
+    id: string
+    name: string
+    chips: number
+    addMult: number
+    xMult: number
+    role: 'chips' | 'add_mult' | 'x_mult'
+  }
+  const slots: SlotSpec[] = rawEntities.map((ent) => {
+    const chips = Number(ent.stats.chips ?? ent.stats.dmg ?? ent.stats.atk ?? 0)
+    const addMult = Number(ent.stats.addMult ?? ent.stats.block ?? ent.stats.hp ?? 0)
+    const rawXm = Number(ent.stats.xMult ?? 1)
+    const xMult = rawXm > 1 ? rawXm : ent.rarity === 'legendary' || ent.rarity === 'rare' ? 2.2 : 1
+    const role: SlotSpec['role'] = xMult > 1 ? 'x_mult' : addMult >= chips ? 'add_mult' : 'chips'
+    return {
+      id: ent.id,
+      name: ent.name,
+      chips: role === 'chips' ? Math.max(30, chips) : chips,
+      addMult: role === 'add_mult' ? Math.max(12, addMult) : addMult,
+      xMult,
+      role
+    }
+  })
+
+  // 确保至少存在 +Mult 与 ×Mult 以便展示左加右乘顺序差异
+  if (!slots.some((s) => s.role === 'x_mult') && slots.length >= 2) {
+    slots[slots.length - 1]!.role = 'x_mult'
+    slots[slots.length - 1]!.xMult = 2.5
+  }
+  if (!slots.some((s) => s.role === 'add_mult') && slots.length >= 1) {
+    slots[0]!.role = 'add_mult'
+    slots[0]!.addMult = 20
+  }
+
+  const evalSequence = (
+    seq: SlotSpec[],
+    initChips = baseHandChips,
+    initMult = baseHandMult
+  ): { score: number; steps: MxJokerSlotTriggerStep[] } => {
+    let c = initChips
+    let m = initMult
+    const steps: MxJokerSlotTriggerStep[] = []
+    seq.forEach((s, idx) => {
+      let effectLabel = ''
+      if (s.chips > 0) {
+        c += s.chips
+        effectLabel += `+${s.chips} Chips `
+      }
+      if (s.addMult > 0) {
+        m += s.addMult
+        effectLabel += `+${s.addMult} Mult `
+      }
+      if (s.xMult > 1) {
+        m = Math.round(m * s.xMult * 100) / 100
+        effectLabel += `×${s.xMult} Mult`
+      }
+      if (!effectLabel) effectLabel = '+10 Chips'
+      steps.push({
+        slotIndex: idx + 1,
+        id: s.id,
+        name: s.name,
+        role: s.role,
+        effectLabel: effectLabel.trim(),
+        runningChips: Math.round(c),
+        runningMult: Math.round(m * 10) / 10,
+        runningScore: Math.round(c * m)
+      })
+    })
+    return { score: Math.round(c * m), steps }
+  }
+
+  const currentEval = evalSequence(slots)
+  // 最优顺序：先 +Chips，再所有 +Mult，最后所有 ×Mult（左加右乘最大化乘区放大）
+  const optimalSorted = [...slots].sort((a, b) => {
+    const rank = (r: SlotSpec['role']): number => (r === 'chips' ? 0 : r === 'add_mult' ? 1 : 2)
+    return rank(a.role) - rank(b.role)
+  })
+  const optimalEval = evalSequence(optimalSorted)
+
+  // 最差错位顺序：把 ×Mult 放在最左边（先乘了小小的基础倍率），把 +Mult 放在最右边（吃不到独立乘区）
+  const wrongSorted = [...slots].sort((a, b) => {
+    const rank = (r: SlotSpec['role']): number => (r === 'x_mult' ? 0 : r === 'chips' ? 1 : 2)
+    return rank(a.role) - rank(b.role)
+  })
+  const wrongEval = evalSequence(wrongSorted)
+  const orderGainRatio = Math.round((optimalEval.score / Math.max(1, wrongEval.score)) * 100) / 100
+
+  const RAW_PLANETS: Array<{
+    handId: string
+    handNameZh: string
+    handNameEn: string
+    planetNameZh: string
+    planetNameEn: string
+    baseChips: number
+    baseMult: number
+    deltaChipsPerLv: number
+    deltaMultPerLv: number
+  }> = [
+    {
+      handId: 'high_card',
+      handNameZh: '高牌 (High Card)', // cjk-ok
+      handNameEn: 'High Card',
+      planetNameZh: '冥王星 (Pluto)', // cjk-ok
+      planetNameEn: 'Pluto',
+      baseChips: 5,
+      baseMult: 1,
+      deltaChipsPerLv: 10,
+      deltaMultPerLv: 1
+    },
+    {
+      handId: 'pair',
+      handNameZh: '对子 (Pair)', // cjk-ok
+      handNameEn: 'Pair',
+      planetNameZh: '水星 (Mercury)', // cjk-ok
+      planetNameEn: 'Mercury',
+      baseChips: 10,
+      baseMult: 2,
+      deltaChipsPerLv: 15,
+      deltaMultPerLv: 1
+    },
+    {
+      handId: 'two_pair',
+      handNameZh: '两对 (Two Pair)', // cjk-ok
+      handNameEn: 'Two Pair',
+      planetNameZh: '天王星 (Uranus)', // cjk-ok
+      planetNameEn: 'Uranus',
+      baseChips: 20,
+      baseMult: 2,
+      deltaChipsPerLv: 20,
+      deltaMultPerLv: 1
+    },
+    {
+      handId: 'three_kind',
+      handNameZh: '三条 (Three of a Kind)', // cjk-ok
+      handNameEn: 'Three of a Kind',
+      planetNameZh: '金星 (Venus)', // cjk-ok
+      planetNameEn: 'Venus',
+      baseChips: 30,
+      baseMult: 3,
+      deltaChipsPerLv: 20,
+      deltaMultPerLv: 2
+    },
+    {
+      handId: 'straight',
+      handNameZh: '顺子 (Straight)', // cjk-ok
+      handNameEn: 'Straight',
+      planetNameZh: '土星 (Saturn)', // cjk-ok
+      planetNameEn: 'Saturn',
+      baseChips: 30,
+      baseMult: 4,
+      deltaChipsPerLv: 30,
+      deltaMultPerLv: 3
+    },
+    {
+      handId: 'flush',
+      handNameZh: '同花 (Flush)', // cjk-ok
+      handNameEn: 'Flush',
+      planetNameZh: '木星 (Jupiter)', // cjk-ok
+      planetNameEn: 'Jupiter',
+      baseChips: 35,
+      baseMult: 4,
+      deltaChipsPerLv: 15,
+      deltaMultPerLv: 2
+    },
+    {
+      handId: 'full_house',
+      handNameZh: '葫芦 (Full House)', // cjk-ok
+      handNameEn: 'Full House',
+      planetNameZh: '地球 (Earth)', // cjk-ok
+      planetNameEn: 'Earth',
+      baseChips: 40,
+      baseMult: 4,
+      deltaChipsPerLv: 25,
+      deltaMultPerLv: 2
+    },
+    {
+      handId: 'four_kind',
+      handNameZh: '四条 (Four of a Kind)', // cjk-ok
+      handNameEn: 'Four of a Kind',
+      planetNameZh: '火星 (Mars)', // cjk-ok
+      planetNameEn: 'Mars',
+      baseChips: 60,
+      baseMult: 7,
+      deltaChipsPerLv: 30,
+      deltaMultPerLv: 3
+    },
+    {
+      handId: 'straight_flush',
+      handNameZh: '同花顺 (Straight Flush)', // cjk-ok
+      handNameEn: 'Straight Flush',
+      planetNameZh: '海王星 (Neptune)', // cjk-ok
+      planetNameEn: 'Neptune',
+      baseChips: 100,
+      baseMult: 8,
+      deltaChipsPerLv: 40,
+      deltaMultPerLv: 4
+    }
+  ]
+
+  const planetHands: MxPokerPlanetRow[] = RAW_PLANETS.map((p) => {
+    const scoreAt = (lv: number): number => {
+      const ch = p.baseChips + (lv - 1) * p.deltaChipsPerLv
+      const ml = p.baseMult + (lv - 1) * p.deltaMultPerLv
+      return ch * ml
+    }
+    const ch5 = p.baseChips + 4 * p.deltaChipsPerLv
+    const ml5 = p.baseMult + 4 * p.deltaMultPerLv
+    const withJokers = evalSequence(optimalSorted, ch5, ml5).score
+    return {
+      ...p,
+      lv1Score: scoreAt(1),
+      lv5Score: scoreAt(5),
+      lv10Score: scoreAt(10),
+      lv15Score: scoreAt(15),
+      lv5WithOptimalJokersScore: withJokers
+    }
+  })
+
+  // 6 大经典 Boss 盲注针对性封锁审计（以 3 手出牌或特殊限制对比盲注目标分）
+  const stdBlindTarget = Math.max(1200, Math.round(optimalEval.score * 2.1))
+  const flintEval = evalSequence(
+    optimalSorted,
+    Math.round(baseHandChips * 0.5),
+    Math.max(1, Math.round(baseHandMult * 0.5))
+  )
+  const plantEval = evalSequence(
+    optimalSorted.map((s) => (s.role === 'chips' ? { ...s, chips: Math.round(s.chips * 0.3) } : s)),
+    baseHandChips,
+    baseHandMult
+  )
+
+  const bossSpecs: Array<{
+    blindId: string
+    nameZh: string
+    nameEn: string
+    ruleDescZh: string
+    ruleDescEn: string
+    targetScore: number
+    achieved: number
+  }> = [
+    {
+      blindId: 'the_wall',
+      nameZh: '巨墙 (The Wall)', // cjk-ok
+      nameEn: 'The Wall (4x Blind)',
+      ruleDescZh: '超大盲注：目标分数膨胀为标准盲注的 2.0 倍 (3手总和)', // cjk-ok
+      ruleDescEn: 'Extra large blind: 2.0x standard target score over 3 hands',
+      targetScore: Math.round(stdBlindTarget * 1.45),
+      achieved: optimalEval.score * 3
+    },
+    {
+      blindId: 'the_flint',
+      nameZh: '燧石 (The Flint)', // cjk-ok
+      nameEn: 'The Flint (Halved Base)',
+      ruleDescZh: '出牌前牌型基础筹码与基础倍率减半 (×0.5)', // cjk-ok
+      ruleDescEn: 'Base Chips and Base Mult are halved before Joker triggers',
+      targetScore: stdBlindTarget,
+      achieved: flintEval.score * 3
+    },
+    {
+      blindId: 'the_needle',
+      nameZh: '细针 (The Needle)', // cjk-ok
+      nameEn: 'The Needle (1 Hand Only)',
+      ruleDescZh: '本回合只允许出 1 手牌，必须一击秒杀盲注', // cjk-ok
+      ruleDescEn: 'Play only 1 hand this round (must one-shot target)',
+      targetScore: Math.round(stdBlindTarget * 0.55),
+      achieved: optimalEval.score
+    },
+    {
+      blindId: 'the_plant',
+      nameZh: '植物 (The Plant)', // cjk-ok
+      nameEn: 'The Plant (Face Debuff)',
+      ruleDescZh: '所有人头牌被削弱，筹码型加成衰减 70%', // cjk-ok
+      ruleDescEn: 'All face cards debuffed; +Chips Joker contribution -70%',
+      targetScore: stdBlindTarget,
+      achieved: plantEval.score * 3
+    },
+    {
+      blindId: 'amber_acorn',
+      nameZh: '琥珀橡果 (Amber Acorn)', // cjk-ok
+      nameEn: 'Amber Acorn (Shuffled Slots)',
+      ruleDescZh: '翻转并打乱所有小丑牌槽位（按最差错位顺序结算）', // cjk-ok
+      ruleDescEn: 'Flips and shuffles all Joker cards (worst slot order)',
+      targetScore: stdBlindTarget,
+      achieved: wrongEval.score * 3
+    },
+    {
+      blindId: 'violet_vessel',
+      nameZh: '紫罗兰圣杯 (Violet Vessel)', // cjk-ok
+      nameEn: 'Violet Vessel (6x Showdown)',
+      ruleDescZh: '8底注终局 Boss：目标分数暴涨至极高阈值', // cjk-ok
+      ruleDescEn: 'Ante 8 Finisher Boss: Very large blind target score',
+      targetScore: Math.round(stdBlindTarget * 1.85),
+      achieved: optimalEval.score * 3
+    }
+  ]
+
+  const bossBlinds: MxBalatroBossBlindRow[] = bossSpecs.map((b) => ({
+    blindId: b.blindId,
+    nameZh: b.nameZh,
+    nameEn: b.nameEn,
+    ruleDescZh: b.ruleDescZh,
+    ruleDescEn: b.ruleDescEn,
+    targetScore: b.targetScore,
+    achievedScoreWithOptimal: b.achieved,
+    verdict:
+      b.achieved >= b.targetScore * 1.15
+        ? 'pass'
+        : b.achieved >= b.targetScore * 0.85
+          ? 'risky'
+          : 'countered'
+  }))
+
+  return {
+    baseHandChips,
+    baseHandMult,
+    wrongOrderScore: wrongEval.score,
+    currentOrderScore: currentEval.score,
+    optimalOrderScore: optimalEval.score,
+    orderGainRatio,
+    optimalSlots: optimalEval.steps,
+    planetHands,
+    bossBlinds
+  }
+}
+
+export interface MxBattlePassAndPackResult {
+  seasonDays: number
+  maxBpLevel: number
+  dailyQuestXp: number
+  weeklyQuestXp: number
+  expectedDaysToMax: number
+  totalFreePulls: number
+  totalPaidPulls: number
+  bpValueMultiple: number
+  battlePassRows: GameBattlePassRow[]
+  battlePassMilestones: GameBattlePassRow[]
+  iapPacks: GameIapPackRow[]
+}
+
+/**
+ * 商业化长线运营：赛季通行证（Battle Pass Lv.1~50）经验漏斗与商城礼包价格锚点（IAP Price Tier Matrix）生成器。
+ */
+export function generateMxBattlePassAndPackTable(cfg: MxLootRollConfig): MxBattlePassAndPackResult {
+  const seasonDays = 42
+  const maxBpLevel = 50
+  const xpPerLevel = 1000
+  const dailyQuestXp = 850
+  const weeklyQuestXp = 4500
+  const avgDailyXp = Math.round(dailyQuestXp + weeklyQuestXp / 7)
+  const expectedDaysToMax = Math.round(((maxBpLevel * xpPerLevel) / avgDailyXp) * 10) / 10
+
+  const battlePassRows: GameBattlePassRow[] = []
+  let cumXp = 0
+  let cumFreePulls = 0
+  let cumPaidPulls = 0
+
+  for (let lv = 1; lv <= maxBpLevel; lv++) {
+    cumXp += xpPerLevel
+    const daysToReach = Math.round((cumXp / avgDailyXp) * 10) / 10
+    const isMilestone = lv % 10 === 0 || lv === 1 || lv === 25 || lv === 30
+    const freePullGain = lv % 10 === 0 ? 1 : 0
+    const paidPullGain = lv % 5 === 0 ? 1.5 : 0.2
+    cumFreePulls = Math.round((cumFreePulls + freePullGain) * 10) / 10
+    cumPaidPulls = Math.round((cumPaidPulls + freePullGain + paidPullGain) * 10) / 10
+
+    battlePassRows.push({
+      bpLevel: lv,
+      xpRequired: xpPerLevel,
+      cumulativeXp: cumXp,
+      daysToReach,
+      freeRewardDesc:
+        lv % 10 === 0 ? 'Standard Pull ×1' : lv % 2 === 0 ? 'Gold ×5000' : 'EXP Book ×5',
+      paidRewardDesc:
+        lv === 30
+          ? 'Selector SSR Weapon / Relic ×1'
+          : lv === 50
+            ? 'Limited Pull ×5 + Exclusive Skin'
+            : isMilestone
+              ? 'Limited Pull ×2 + Rare Mat ×4'
+              : 'Gold ×15000 + Stamina ×60',
+      cumulativeFreePullEquiv: cumFreePulls,
+      cumulativePaidPullEquiv: cumPaidPulls
+    })
+  }
+
+  const battlePassMilestones = battlePassRows.filter(
+    (r) => r.bpLevel === 1 || r.bpLevel % 10 === 0 || r.bpLevel === 25
+  )
+
+  const basePullPriceUsd = Math.max(0.5, Number(((cfg.costPerPull || 160) / 80).toFixed(2)))
+  const rawPacks: Array<{
+    packId: string
+    nameZh: string
+    nameEn: string
+    priceUsd: number
+    pullsIncluded: number
+    bonusResourcesEquivPulls: number
+    purchaseLimit: string
+  }> = [
+    {
+      packId: 'pack_starter_099',
+      nameZh: '首充破冰迎新礼 ($0.99)', // cjk-ok
+      nameEn: 'Starter Icebreaker Pack',
+      priceUsd: 0.99,
+      pullsIncluded: 2,
+      bonusResourcesEquivPulls: 1.5,
+      purchaseLimit: '1 / Account'
+    },
+    {
+      packId: 'pack_monthly_499',
+      nameZh: '月度黑金祝福卡 ($4.99)', // cjk-ok
+      nameEn: '30-Day Blessing Pass',
+      priceUsd: 4.99,
+      pullsIncluded: 18,
+      bonusResourcesEquivPulls: 2.0,
+      purchaseLimit: '1 / Month'
+    },
+    {
+      packId: 'pack_bp_999',
+      nameZh: '高阶赛季通行证 ($9.99)', // cjk-ok
+      nameEn: 'Premium Battle Pass',
+      priceUsd: 9.99,
+      pullsIncluded: 9,
+      bonusResourcesEquivPulls: 14.0,
+      purchaseLimit: '1 / Season'
+    },
+    {
+      packId: 'pack_growth_1999',
+      nameZh: '版本突破养成礼盒 ($19.99)', // cjk-ok
+      nameEn: 'Ascension Growth Bundle',
+      priceUsd: 19.99,
+      pullsIncluded: 12,
+      bonusResourcesEquivPulls: 11.0,
+      purchaseLimit: '2 / Patch'
+    },
+    {
+      packId: 'pack_event_4999',
+      nameZh: '限定卡池十连大礼 ($49.99)', // cjk-ok
+      nameEn: 'Limited Banner Mega Box',
+      priceUsd: 49.99,
+      pullsIncluded: 30,
+      bonusResourcesEquivPulls: 16.0,
+      purchaseLimit: '3 / Banner'
+    },
+    {
+      packId: 'pack_whale_9999',
+      nameZh: '顶氪直充锚点档 ($99.99)', // cjk-ok
+      nameEn: 'Top-Up Anchor Vault (648)',
+      priceUsd: 99.99,
+      pullsIncluded: 55,
+      bonusResourcesEquivPulls: 10.0,
+      purchaseLimit: 'Unlimited'
+    }
+  ]
+
+  const iapPacks: GameIapPackRow[] = rawPacks.map((p) => {
+    const totalPullEquiv = Math.round((p.pullsIncluded + p.bonusResourcesEquivPulls) * 10) / 10
+    const rawDollarVal = totalPullEquiv * basePullPriceUsd
+    const valueRatioPct = Math.max(100, Math.round((rawDollarVal / p.priceUsd) * 100))
+    return {
+      ...p,
+      totalPullEquiv,
+      valueRatioPct
+    }
+  })
+
+  return {
+    seasonDays,
+    maxBpLevel,
+    dailyQuestXp,
+    weeklyQuestXp,
+    expectedDaysToMax,
+    totalFreePulls: cumFreePulls,
+    totalPaidPulls: cumPaidPulls,
+    bpValueMultiple: iapPacks.find((p) => p.packId === 'pack_bp_999')?.valueRatioPct ?? 420,
+    battlePassRows,
+    battlePassMilestones,
+    iapPacks
+  }
+}
+
+export interface MxAutoBattlerShopOddsRow {
+  tavernLevel: number
+  tier1Pct: number
+  tier2Pct: number
+  tier3Pct: number
+  tier4Pct: number
+  tier5Pct: number
+}
+
+export interface MxAutoBattlerUnitStarRow {
+  costTier: number
+  tierNameZh: string
+  tierNameEn: string
+  sharedPoolTotal: number
+  contestedTaken: number
+  optimalShopLevel: number
+  singleSlotHitProbPct: number
+  expectedRolls2Star: number
+  expectedGold2Star: number
+  expectedRolls3Star: number
+  expectedGold3Star: number
+  star1Power: number
+  star2Power: number
+  star3Power: number
+  verdict: 'easy_3star' | 'tempo_2star' | 'luxury_wincon'
+}
+
+export interface MxSnapLaneRow {
+  laneId: string
+  nameZh: string
+  nameEn: string
+  ruleZh: string
+  playerProjectedPts: number
+  enemyProjectedPts: number
+  winProbPct: number
+}
+
+export interface MxSnapCubeEvRow {
+  scenarioId: string
+  nameZh: string
+  nameEn: string
+  winProbPct: number
+  cubesWonOnWin: number
+  cubesLostOnLoss: number
+  retreatCostCubes: number
+  playOutEvCubes: number
+  optimalAction: 'SNAP' | 'HOLD' | 'RETREAT'
+  evGainVsCall: number
+}
+
+export interface MxResponseCardChainRow {
+  enemyHandCards: number
+  holdDodgeProbPct: number
+  strikeRawHitRatePct: number
+  doubleStrikeHitRatePct: number
+  holdPeachProbPct: number
+  trickNullifiedProbPct: number
+  tacticalAdviceZh: string
+}
+
+export interface MxExtendedCardGenreAuditResult {
+  shopOddsByLevel: MxAutoBattlerShopOddsRow[]
+  autoBattlerStarRows: MxAutoBattlerUnitStarRow[]
+  snapLanes: MxSnapLaneRow[]
+  snapWin2Of3RatePct: number
+  snapCubeScenarios: MxSnapCubeEvRow[]
+  responseChainRows: MxResponseCardChainRow[]
+}
+
+/**
+ * 全品类卡牌扩展仿真矩阵：
+ * 1. 自走棋 / 酒馆战棋（Lv.3~Lv.9 人口 D 牌概率 + 公共卡池抢卡稀释 + 1★→2★→3★ 追三期望金币）
+ * 2. 多路战区比大小与加注翻倍博弈（《Marvel Snap / 昆特牌》3 路地形点数 + 1→2→4→8 Cube 撤退/跟注 EV）
+ * 3. 身份局攻防响应链（《三国杀》1~6 张手牌下【杀】命中率、【闪】留存率、【桃】救回率与【无懈可击】反制率）
+ */
+export function simulateMxExtendedCardGenreMatrices(
+  wb: MxNumericalWorkbench
+): MxExtendedCardGenreAuditResult {
+  const shopOddsByLevel: MxAutoBattlerShopOddsRow[] = [
+    { tavernLevel: 3, tier1Pct: 75, tier2Pct: 25, tier3Pct: 0, tier4Pct: 0, tier5Pct: 0 },
+    { tavernLevel: 4, tier1Pct: 55, tier2Pct: 30, tier3Pct: 15, tier4Pct: 0, tier5Pct: 0 },
+    { tavernLevel: 5, tier1Pct: 45, tier2Pct: 33, tier3Pct: 20, tier4Pct: 2, tier5Pct: 0 },
+    { tavernLevel: 6, tier1Pct: 30, tier2Pct: 40, tier3Pct: 25, tier4Pct: 5, tier5Pct: 0 },
+    { tavernLevel: 7, tier1Pct: 19, tier2Pct: 30, tier3Pct: 35, tier4Pct: 15, tier5Pct: 1 },
+    { tavernLevel: 8, tier1Pct: 18, tier2Pct: 25, tier3Pct: 32, tier4Pct: 22, tier5Pct: 3 },
+    { tavernLevel: 9, tier1Pct: 10, tier2Pct: 15, tier3Pct: 25, tier4Pct: 35, tier5Pct: 15 }
+  ]
+
+  const rerollCost = Math.max(1, wb.lootRoll.rerollBaseCost || 2)
+  const tierSpecs: Array<{
+    costTier: number
+    tierNameZh: string
+    tierNameEn: string
+    uniqueChampsInTier: number
+    sharedPoolTotal: number
+    contestedTaken: number
+    optimalShopLevel: number
+    tierOddsPctAtOptimal: number
+    basePower: number
+    star3Mult: number
+  }> = [
+    {
+      costTier: 1,
+      tierNameZh: '1费基石棋子 (Tier 1)', // cjk-ok
+      tierNameEn: 'Tier 1 (1-Cost)',
+      uniqueChampsInTier: 13,
+      sharedPoolTotal: 29,
+      contestedTaken: 6,
+      optimalShopLevel: 5,
+      tierOddsPctAtOptimal: 45,
+      basePower: 100,
+      star3Mult: 3.24
+    },
+    {
+      costTier: 2,
+      tierNameZh: '2费过渡主C (Tier 2)', // cjk-ok
+      tierNameEn: 'Tier 2 (2-Cost)',
+      uniqueChampsInTier: 13,
+      sharedPoolTotal: 22,
+      contestedTaken: 5,
+      optimalShopLevel: 6,
+      tierOddsPctAtOptimal: 40,
+      basePower: 145,
+      star3Mult: 3.35
+    },
+    {
+      costTier: 3,
+      tierNameZh: '3费阵容核心 (Tier 3)', // cjk-ok
+      tierNameEn: 'Tier 3 (3-Cost)',
+      uniqueChampsInTier: 13,
+      sharedPoolTotal: 18,
+      contestedTaken: 4,
+      optimalShopLevel: 7,
+      tierOddsPctAtOptimal: 35,
+      basePower: 210,
+      star3Mult: 3.6
+    },
+    {
+      costTier: 4,
+      tierNameZh: '4费紫卡主C (Tier 4)', // cjk-ok
+      tierNameEn: 'Tier 4 (4-Cost)',
+      uniqueChampsInTier: 12,
+      sharedPoolTotal: 12,
+      contestedTaken: 3,
+      optimalShopLevel: 8,
+      tierOddsPctAtOptimal: 22,
+      basePower: 320,
+      star3Mult: 4.5
+    },
+    {
+      costTier: 5,
+      tierNameZh: '5费传说橙卡 (Tier 5)', // cjk-ok
+      tierNameEn: 'Tier 5 (5-Cost)',
+      uniqueChampsInTier: 8,
+      sharedPoolTotal: 10,
+      contestedTaken: 2,
+      optimalShopLevel: 9,
+      tierOddsPctAtOptimal: 15,
+      basePower: 480,
+      star3Mult: 8.0
+    }
+  ]
+
+  const autoBattlerStarRows: MxAutoBattlerUnitStarRow[] = tierSpecs.map((spec) => {
+    const totalPoolAtTier = spec.uniqueChampsInTier * spec.sharedPoolTotal
+    const remainingTarget = Math.max(1, spec.sharedPoolTotal - spec.contestedTaken)
+    const remainingTotal = Math.max(remainingTarget, totalPoolAtTier - spec.contestedTaken * 4)
+    const singleSlotProb = (spec.tierOddsPctAtOptimal / 100) * (remainingTarget / remainingTotal)
+    const shopSlots = 5
+    const expectedHitsPerRoll = Math.max(0.005, shopSlots * singleSlotProb)
+    const expectedRolls2Star = Math.max(1, Math.round(3 / expectedHitsPerRoll))
+    const expectedGold2Star = expectedRolls2Star * rerollCost + 3 * spec.costTier
+    const avgHitsFor3Star = Math.max(0.003, expectedHitsPerRoll * 0.72)
+    const expectedRolls3Star = Math.max(3, Math.round(9 / avgHitsFor3Star))
+    const expectedGold3Star = expectedRolls3Star * rerollCost + 9 * spec.costTier
+
+    return {
+      costTier: spec.costTier,
+      tierNameZh: spec.tierNameZh,
+      tierNameEn: spec.tierNameEn,
+      sharedPoolTotal: spec.sharedPoolTotal,
+      contestedTaken: spec.contestedTaken,
+      optimalShopLevel: spec.optimalShopLevel,
+      singleSlotHitProbPct: Math.round(singleSlotProb * 10000) / 100,
+      expectedRolls2Star,
+      expectedGold2Star,
+      expectedRolls3Star,
+      expectedGold3Star,
+      star1Power: spec.basePower,
+      star2Power: Math.round(spec.basePower * 1.8),
+      star3Power: Math.round(spec.basePower * spec.star3Mult),
+      verdict:
+        expectedGold3Star <= 48
+          ? 'easy_3star'
+          : expectedGold3Star <= 85
+            ? 'tempo_2star'
+            : 'luxury_wincon'
+    }
+  })
+
+  // 2. 多路区域比大小 + 翻倍加注博弈 (Marvel Snap / 昆特牌)
+  const basePower = Math.max(12, Math.round(wb.roguelikeEnvelope.playerBasePower || 24))
+  const enemyPower = Math.max(10, Math.round(wb.roguelikeEnvelope.enemyBasePower || 21))
+  const snapLanes: MxSnapLaneRow[] = [
+    {
+      laneId: 'lane_left',
+      nameZh: '左路·超频双倍区 (Onslaught Citadel)', // cjk-ok
+      nameEn: 'Left Lane (Double Ongoing)',
+      ruleZh: '在此战区持续类卡牌战力翻倍 (×2)', // cjk-ok
+      playerProjectedPts: Math.round(basePower * 1.45),
+      enemyProjectedPts: Math.round(enemyPower * 1.25),
+      winProbPct: 68
+    },
+    {
+      laneId: 'lane_center',
+      nameZh: '中路·标准争夺区 (Stark Tower)', // cjk-ok
+      nameEn: 'Center Lane (+2 Power T5)',
+      ruleZh: '第 5 回合结束时，双方在此战区所有单位 +2 战力', // cjk-ok
+      playerProjectedPts: Math.round(basePower * 1.05),
+      enemyProjectedPts: Math.round(enemyPower * 1.08),
+      winProbPct: 54
+    },
+    {
+      laneId: 'lane_right',
+      nameZh: '右路·封锁禁入区 (Sanctum Sanctorum)', // cjk-ok
+      nameEn: 'Right Lane (Locked After T4)',
+      ruleZh: '第 4 回合后禁止直接打出卡牌，仅可通过移动/召唤进入', // cjk-ok
+      playerProjectedPts: Math.round(basePower * 0.72),
+      enemyProjectedPts: Math.round(enemyPower * 0.78),
+      winProbPct: 49
+    }
+  ]
+
+  const p1 = snapLanes[0]!.winProbPct / 100
+  const p2 = snapLanes[1]!.winProbPct / 100
+  const p3 = snapLanes[2]!.winProbPct / 100
+  const win2Of3Prob = p1 * p2 * p3 + p1 * p2 * (1 - p3) + p1 * (1 - p2) * p3 + (1 - p1) * p2 * p3
+  const snapWin2Of3RatePct = Math.round(win2Of3Prob * 1000) / 10
+
+  const rawCubeSpecs: Array<{
+    scenarioId: string
+    nameZh: string
+    nameEn: string
+    winProbPct: number
+    cubesWonOnWin: number
+    cubesLostOnLoss: number
+    retreatCostCubes: number
+  }> = [
+    {
+      scenarioId: 'no_snap_steady',
+      nameZh: '全程不加注完赛 (1→2 Cubes)', // cjk-ok
+      nameEn: 'No-Snap Full Match (2 Cubes)',
+      winProbPct: snapWin2Of3RatePct,
+      cubesWonOnWin: 2,
+      cubesLostOnLoss: 2,
+      retreatCostCubes: 1
+    },
+    {
+      scenarioId: 't3_key_drawn_snap',
+      nameZh: 'T3 核心Combo上手主动 Snap (2→4 Cubes)', // cjk-ok
+      nameEn: 'T3 Combo Drawn Snap (4 Cubes)',
+      winProbPct: Math.min(85, Math.round(snapWin2Of3RatePct + 14)),
+      cubesWonOnWin: 4,
+      cubesLostOnLoss: 4,
+      retreatCostCubes: 1
+    },
+    {
+      scenarioId: 't5_bad_draw_retreat',
+      nameZh: 'T5 关键牌沉底遭敌方加注 (4 Cubes 局)', // cjk-ok
+      nameEn: 'T5 Brick Hand vs Enemy Snap',
+      winProbPct: 24,
+      cubesWonOnWin: 4,
+      cubesLostOnLoss: 4,
+      retreatCostCubes: 1
+    },
+    {
+      scenarioId: 't6_counter_8cubes',
+      nameZh: 'T6 手握克制牌双倍反加注 (4→8 Cubes)', // cjk-ok
+      nameEn: 'T6 Tech Counter Double-Snap (8 Cubes)',
+      winProbPct: 66,
+      cubesWonOnWin: 8,
+      cubesLostOnLoss: 8,
+      retreatCostCubes: 2
+    },
+    {
+      scenarioId: 't6_coinflip_8cubes',
+      nameZh: 'T6 50/50 赌命盲接 8 分局 (8 Cubes)', // cjk-ok
+      nameEn: 'T6 50/50 Coinflip Call (8 Cubes)',
+      winProbPct: 36,
+      cubesWonOnWin: 8,
+      cubesLostOnLoss: 8,
+      retreatCostCubes: 2
+    }
+  ]
+
+  const snapCubeScenarios: MxSnapCubeEvRow[] = rawCubeSpecs.map((sc) => {
+    const wp = sc.winProbPct / 100
+    const playOutEv =
+      Math.round((wp * sc.cubesWonOnWin - (1 - wp) * sc.cubesLostOnLoss) * 100) / 100
+    const retreatEv = -sc.retreatCostCubes
+    const optimalAction: MxSnapCubeEvRow['optimalAction'] =
+      playOutEv < retreatEv ? 'RETREAT' : sc.winProbPct >= 62 ? 'SNAP' : 'HOLD'
+    const bestEv = Math.max(playOutEv, retreatEv)
+    return {
+      ...sc,
+      playOutEvCubes: playOutEv,
+      optimalAction,
+      evGainVsCall: Math.round((bestEv - playOutEv) * 100) / 100
+    }
+  })
+
+  // 3. 身份局攻防响应链（《三国杀》1~6 张手牌下【杀/闪/桃/无懈可击】概率）
+  const dodgeDeckRatio = 0.15
+  const peachDeckRatio = 0.08
+  const nullifyDeckRatio = 0.045
+  const responseChainRows: MxResponseCardChainRow[] = [1, 2, 3, 4, 5, 6].map((handCount) => {
+    const holdDodgeProb = 1 - Math.pow(1 - dodgeDeckRatio, handCount)
+    const strikeHitProb = 1 - holdDodgeProb
+    const holdTwoDodgesProb =
+      1 -
+      Math.pow(1 - dodgeDeckRatio, handCount) -
+      handCount * dodgeDeckRatio * Math.pow(1 - dodgeDeckRatio, Math.max(0, handCount - 1))
+    const doubleStrikeHitProb = 1 - Math.max(0, holdTwoDodgesProb)
+    const holdPeachProb = 1 - Math.pow(1 - peachDeckRatio, handCount)
+    const trickNullifiedProb = 1 - Math.pow(1 - nullifyDeckRatio, handCount + 2)
+
+    const tacticalAdviceZh =
+      handCount <= 2
+        ? '强命斩杀窗口：单杀命中率 >70%，直接酒杀/决斗收割' // cjk-ok
+        : handCount <= 4
+          ? '骗闪消耗期：先用顺手/拆桥/南蛮压手牌，再出杀破防' // cjk-ok
+          : '高防憋牌期：敌方大概率握闪与桃，优先乐不思蜀控场' // cjk-ok
+
+    return {
+      enemyHandCards: handCount,
+      holdDodgeProbPct: Math.round(holdDodgeProb * 1000) / 10,
+      strikeRawHitRatePct: Math.round(strikeHitProb * 1000) / 10,
+      doubleStrikeHitRatePct: Math.round(doubleStrikeHitProb * 1000) / 10,
+      holdPeachProbPct: Math.round(holdPeachProb * 1000) / 10,
+      trickNullifiedProbPct: Math.round(trickNullifiedProb * 1000) / 10,
+      tacticalAdviceZh
+    }
+  })
+
+  return {
+    shopOddsByLevel,
+    autoBattlerStarRows,
+    snapLanes,
+    snapWin2Of3RatePct,
+    snapCubeScenarios,
+    responseChainRows
+  }
+}
+
 /**
  * 商业产品级：一键生成完整的 Markdown 商业数值立项与 QA 签收审计报告（Commercial Numerical QA Sign-Off Report）。
  */
@@ -3683,7 +4870,45 @@ export function exportMxCommercialQaReportMarkdown(wb: MxNumericalWorkbench): st
     `## 4. Layer 4 — Roguelike Macro Power Envelope & Scaling Walls`,
     `- **First-Run Clear Rate**: \`${envelopeRes.firstRunClearRatePct}%\` | **Meta Runs to 50% Clear**: \`${envelopeRes.metaRunsTo50PctClear} runs\``,
     `- **Elite Challenge Rate**: \`${envelopeRes.eliteChallengeRatePct}%\` | **Campfire Smith Ratio**: \`${envelopeRes.campfireUpgradeRatioPct}%\` | **Snowball Polarization (P90/P10)**: \`${envelopeRes.snowballPolarizationIndex}x\``,
-    `- **Difficulty Wall Floors**: \`${envelopeRes.difficultyWallFloors.join(', ') || 'None'}\` | **Runaway Trivial Floors**: \`${envelopeRes.runawayFloors.join(', ') || 'None'}\``
+    `- **Difficulty Wall Floors**: \`${envelopeRes.difficultyWallFloors.join(', ') || 'None'}\` | **Runaway Trivial Floors**: \`${envelopeRes.runawayFloors.join(', ') || 'None'}\``,
+    ``,
+    `## 5. Layer 5 — Character Level Progression & Ascension Breakthrough Curve`,
+    ...(() => {
+      const lvRes = generateMxLevelProgressionTable(wb.roguelikeEnvelope)
+      return [
+        `- **Max Level**: \`Lv.${lvRes.maxLevel}\` | **Ascension Interval**: Every \`${lvRes.ascensionInterval}\` Lvs | **Stat Growth Multiplier**: \`${lvRes.statMultiplierTotal}x\``,
+        `- **Total XP to Max**: \`${lvRes.totalXpToMax}\` | **Total Gold to Max**: \`${lvRes.totalGoldToMax}G\` | **Est. Stamina Days**: \`${lvRes.totalDaysToMax}d\``,
+        ``,
+        `| Level | Ascension | HP | ATK | DEF | Cumulative XP | Gold Cost | Est. Days |`,
+        `| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |`,
+        ...lvRes.milestones.map(
+          (r) =>
+            `| Lv.${r.level}${r.isBreakthrough ? ' ★' : ''} | A${r.ascensionStage} | ${r.hp} | ${r.atk} | ${r.def} | ${r.cumulativeXp} | ${r.goldCost}G | ${r.staminaDaysToReach}d |`
+        )
+      ]
+    })(),
+    ``,
+    `## 6. Layer 6 — Equipment +1 ~ +${wb.lootRoll.equipMaxEnhanceLevel ?? 15} Upgrade Cost & Blacksmith Matrix`,
+    ...(() => {
+      const eqRes = generateMxEquipmentUpgradeMatrix(wb.lootRoll)
+      return [
+        `- **Final Main Stat**: \`+${eqRes.finalMainStat}\` | **Total Base Gold**: \`${eqRes.totalBaseGold}G\` | **Expected Gold (with Fails)**: \`${eqRes.totalExpectedGoldWithFails}G\` | **Expected Stamina**: \`${eqRes.totalExpectedStamina}\``,
+        ``,
+        `| Enhance | Main Stat | Substat Rolls | EXP Cost | Base Gold | Success % | Expected Gold | Cum. Gold |`,
+        `| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |`,
+        ...eqRes.rows
+          .filter(
+            (r) =>
+              r.enhanceLevel === 1 ||
+              r.enhanceLevel % 3 === 0 ||
+              r.enhanceLevel === eqRes.maxEnhanceLevel
+          )
+          .map(
+            (r) =>
+              `| +${r.enhanceLevel} | ${r.mainStatValue} | ${r.substatRollsUnlocked} | ${r.expCost} | ${r.goldCost}G | ${r.successRatePct}% | ${r.expectedGoldWithFails}G | ${r.cumulativeExpectedGold}G |`
+          )
+      ]
+    })()
   ]
 
   return lines.join('\n')
@@ -3853,7 +5078,10 @@ export function runMxSensitivityTornado(cfg: MxCombatKernelConfig): MxSensitivit
             ...c,
             attack: Math.max(0, Math.round(c.attack * 0.8)),
             health: Math.max(1, Math.round(c.health * 0.8)),
-            directDamage: Math.max(0, Math.round(c.directDamage * 0.8))
+            directDamage: Math.max(0, Math.round(c.directDamage * 0.8)),
+            effectScript: c.effectScript?.trim()
+              ? mxScaleEffectScript(c.effectScript, 0.8)
+              : c.effectScript
           }))
         },
         highCfg: {
@@ -3863,7 +5091,10 @@ export function runMxSensitivityTornado(cfg: MxCombatKernelConfig): MxSensitivit
             ...c,
             attack: Math.round(c.attack * 1.2),
             health: Math.max(1, Math.round(c.health * 1.2)),
-            directDamage: Math.round(c.directDamage * 1.2)
+            directDamage: Math.round(c.directDamage * 1.2),
+            effectScript: c.effectScript?.trim()
+              ? mxScaleEffectScript(c.effectScript, 1.2)
+              : c.effectScript
           }))
         }
       },
@@ -3932,18 +5163,32 @@ export function runMxSensitivityTornado(cfg: MxCombatKernelConfig): MxSensitivit
         lowCfg: {
           ...cfg,
           runs: sampleRuns,
-          actionUnits: cfg.actionUnits.map((u) => ({
-            ...u,
-            skillRatio: Math.round(u.skillRatio * 0.8 * 100) / 100
-          }))
+          actionUnits: cfg.actionUnits.map((u) =>
+            u.team === 'ally'
+              ? {
+                  ...u,
+                  skillRatio: Math.round(u.skillRatio * 0.8 * 100) / 100,
+                  skillScript: u.skillScript?.trim()
+                    ? mxScaleAtbScript(u.skillScript, 0.8)
+                    : u.skillScript
+                }
+              : u
+          )
         },
         highCfg: {
           ...cfg,
           runs: sampleRuns,
-          actionUnits: cfg.actionUnits.map((u) => ({
-            ...u,
-            skillRatio: Math.round(u.skillRatio * 1.2 * 100) / 100
-          }))
+          actionUnits: cfg.actionUnits.map((u) =>
+            u.team === 'ally'
+              ? {
+                  ...u,
+                  skillRatio: Math.round(u.skillRatio * 1.2 * 100) / 100,
+                  skillScript: u.skillScript?.trim()
+                    ? mxScaleAtbScript(u.skillScript, 1.2)
+                    : u.skillScript
+                }
+              : u
+          )
         }
       },
       {
@@ -4164,6 +5409,9 @@ export function exportMxWorkbenchRuntimeCode(
  */
 export function exportWorkbenchToGameDataTables(wb: MxNumericalWorkbench): GameDataTableBundle {
   const envelopeRes = runMxRoguelikeEnvelopeSimulation(wb.roguelikeEnvelope)
+  const levelProgression = generateMxLevelProgressionTable(wb.roguelikeEnvelope)
+  const equipmentMatrix = generateMxEquipmentUpgradeMatrix(wb.lootRoll)
+  const bpAndPacks = generateMxBattlePassAndPackTable(wb.lootRoll)
   const deckRemovalRoi = runMxDeckRemovalRoiAnalysis(wb.combatKernel)
   const baseRemovalPrice = deckRemovalRoi.find((r) => r.deltaCards === -1)?.fairShopGoldPrice ?? 75
 
@@ -4270,14 +5518,42 @@ export function exportWorkbenchToGameDataTables(wb: MxNumericalWorkbench): GameD
         }
       ]
 
+  const skills: GameSkillRow[] = wb.combatKernel.actionUnits.length
+    ? wb.combatKernel.actionUnits.map((u) => ({
+        id: `skill_${u.id}`,
+        name: `${u.name} Skill`,
+        nameEn: `${u.name} Skill`,
+        element: u.team === 'enemy' ? 'dark' : 'holy',
+        manaCost: u.orbCost,
+        cooldownSec: u.orbCost > 0 ? 2 : 0,
+        damageMultiplier: u.skillRatio,
+        description: `Ratio ${u.skillRatio}x, Pull ${u.pullGaugePct}%`,
+        descriptionEn: `Ratio ${u.skillRatio}x, Pull ${u.pullGaugePct}%`
+      }))
+    : wb.combatKernel.deckCards.map((c) => ({
+        id: `skill_${c.id}`,
+        name: c.name,
+        nameEn: c.name,
+        element: c.damage > 0 ? 'fire' : 'ice',
+        manaCost: c.cost,
+        cooldownSec: c.cost,
+        damageMultiplier: Math.max(0.5, Number(((c.damage + c.block) / 6).toFixed(2))),
+        description: `DMG ${c.damage} / BLK ${c.block} / Draw ${c.draw}`,
+        descriptionEn: `DMG ${c.damage} / BLK ${c.block} / Draw ${c.draw}`
+      }))
+
   return buildGameDataTableBundle({
     tableName: wb.multiplier.title || wb.activePresetId,
     genre: 'roguelike',
     characters,
-    skills: [],
+    skills,
     items,
     cards,
     waves,
+    levelCurve: levelProgression.rows,
+    equipmentUpgrades: equipmentMatrix.rows,
+    battlePass: bpAndPacks.battlePassRows,
+    iapPacks: bpAndPacks.iapPacks,
     dialogues: []
   })
 }
@@ -4290,6 +5566,8 @@ export interface MxNumericalWorkbench {
   lootRoll: MxLootRollConfig
   combatKernel: MxCombatKernelConfig
   roguelikeEnvelope: MxRoguelikeEnvelopeConfig
+  /** 卡牌数值设计实验室：敌人/意图/遭遇/遗物/卡池表 + 单局经济闭环参数（可选） */
+  designLab?: MxCardDesignLabConfig
 }
 
 export const MX_WORKBENCH_PRESETS: Array<{
@@ -4335,6 +5613,15 @@ export const MX_WORKBENCH_PRESETS: Array<{
     nameEn: 'Brotato / Survivor (EDPS Multipliers & 20-Wave Shop)',
     descZh: '攻速×固定伤×百分比×暴击期望秒伤 + 标签亲和度商店刷新成型率 + 20波怪潮包络线', // cjk-ok
     descEn: 'AtkSpd × Flat × Pct × Crit EDPS, tag-affinity shop rerolls & 20-wave survival envelope'
+  },
+  {
+    id: 'short_drama_progression',
+    nameZh: '🎬《逆袭爽剧 / 系统流》80集角色成长、反派阶梯与打脸底牌', // cjk-ok
+    nameEn: 'Short Drama / System Progression (80-Ep Character & Villain Arc)',
+    descZh:
+      '主角身价/境界乘区防崩坏 + 80集四阶反派膨胀墙(小混混→豪门→京都→财阀) + 名场面打脸底牌交锋 + 付费卡点转化', // cjk-ok
+    descEn:
+      'Protagonist realm/wealth multiplier, 80-episode 4-tier villain scaling wall, climax trump cards & paywall funnel'
   }
 ]
 
@@ -5495,6 +6782,367 @@ export function createMxWorkbenchPreset(
         }
       }
 
+    case 'short_drama_progression':
+      return {
+        activePresetId: 'short_drama_progression',
+        multiplier: {
+          presetId: 'short_drama_progression',
+          title: '短剧主角成长乘区与名场面底牌审计 (Realm × System × Backing × Climax)', // cjk-ok
+          attributes: [
+            {
+              id: 'sd_realm',
+              name: 'BaseRealm',
+              label: '主角基础境界/身价', // cjk-ok
+              value: 24,
+              min: 1,
+              max: 500,
+              stepPerBudget: 8
+            },
+            {
+              id: 'sd_sys',
+              name: 'SystemMult',
+              label: '金手指/返利倍率', // cjk-ok
+              value: 1.5,
+              min: 1,
+              max: 20,
+              stepPerBudget: 0.35
+            },
+            {
+              id: 'sd_back',
+              name: 'FactionBacking',
+              label: '顶级人脉/势力权重', // cjk-ok
+              value: 18,
+              min: 0,
+              max: 300,
+              stepPerBudget: 6
+            },
+            {
+              id: 'sd_hum',
+              name: 'HumiliationStack',
+              label: '受辱蓄能反转倍率', // cjk-ok
+              value: 1.6,
+              min: 1,
+              max: 5,
+              stepPerBudget: 0.25
+            },
+            {
+              id: 'sd_sup',
+              name: 'VillainSuppression',
+              label: '反派背景威压阻力', // cjk-ok
+              value: 12,
+              min: 0,
+              max: 200,
+              stepPerBudget: 0
+            }
+          ],
+          stages: [
+            { id: 's1', name: 'CoreStanding', formula: 'BaseRealm * SystemMult + FactionBacking' },
+            { id: 's2', name: 'ClimaxSlapBurst', formula: 'floor(CoreStanding * HumiliationStack)' }
+          ],
+          finalFormula: 'max(1, ClimaxSlapBurst - VillainSuppression)',
+          expectedBudgetFormula: '6 + cost * 6.5',
+          entityValueFormula:
+            'dmg * 1.0 + block * 1.0 + draw * 4.0 + vuln * 3.0 + str * 4.5 + energy * 6.0',
+          statColumns: ['dmg', 'block', 'draw', 'vuln', 'str', 'energy'],
+          entities: [
+            {
+              id: 'sd_endure',
+              name: '隐忍蛰伏·暗中布局 (铺垫)', // cjk-ok
+              cost: 1,
+              rarity: 'common',
+              tags: ['skill', 'setup'],
+              stats: { dmg: 0, block: 8, draw: 1, vuln: 0, str: 1, energy: 0 }
+            },
+            {
+              id: 'sd_evidence',
+              name: '当众甩出铁证·舆论反转', // cjk-ok
+              cost: 1,
+              rarity: 'common',
+              tags: ['attack', 'reversal'],
+              stats: { dmg: 7, block: 0, draw: 0, vuln: 2, str: 0, energy: 0 }
+            },
+            {
+              id: 'sd_blackcard',
+              name: '亮出至尊黑卡·百亿验资', // cjk-ok
+              cost: 2,
+              rarity: 'uncommon',
+              tags: ['attack', 'wealth'],
+              stats: { dmg: 13, block: 6, draw: 0, vuln: 0, str: 0, energy: 0 }
+            },
+            {
+              id: 'sd_tycoon_kneel',
+              name: '江城首富到场·下跪接驾', // cjk-ok
+              cost: 2,
+              rarity: 'rare',
+              tags: ['attack', 'backing'],
+              stats: { dmg: 12, block: 0, draw: 1, vuln: 1, str: 0, energy: 0 }
+            },
+            {
+              id: 'sd_system_awakening',
+              name: '系统百倍暴击·血脉觉醒 (卡点)', // cjk-ok
+              cost: 0,
+              rarity: 'rare',
+              tags: ['skill', 'climax'],
+              stats: { dmg: 0, block: 0, draw: 2, vuln: 0, str: 2, energy: 1 }
+            },
+            {
+              id: 'sd_true_identity',
+              name: '终极底牌·龙王/剑仙真身揭晓', // cjk-ok
+              cost: 3,
+              rarity: 'legendary',
+              tags: ['attack', 'finisher'],
+              stats: { dmg: 18, block: 0, draw: 0, vuln: 1, str: 1, energy: 0 }
+            }
+          ]
+        },
+        lootRoll: {
+          mode: 'roguelike_draft',
+          runs: 400,
+          seed: 2026,
+          baseSsrRatePct: 3.5,
+          softPityStart: 20,
+          softPitySlopePct: 4.5,
+          hardPityPull: 35,
+          upGuarantee5050: false,
+          targetCopies: 1,
+          costPerPull: 50,
+          dupeDustYield: 12,
+          staminaPerDrop: 10,
+          targetSlotDropRatePct: 20,
+          targetMainStatRatePct: 100,
+          fourLineInitRatePct: 20,
+          upgradeLevels: 5,
+          targetSubstatName: 'SPD',
+          targetSubstatThreshold: 15,
+          substatPool: [],
+          draftWaves: 8,
+          choicesPerDraft: 3,
+          rerollsPerWave: 1,
+          rerollBaseCost: 30,
+          rerollCostStep: 15,
+          targetSynergyTag: 'backing',
+          targetSynergyCount: 4,
+          tagAffinityBonusPct: 15,
+          competingArchetypes: 5,
+          banSlotsCount: 1,
+          pityMissStreakBoostPct: 12,
+          draftPool: [
+            {
+              id: 'sd_dp1',
+              name: '鬼谷神医针法传承 (人脉核心)', // cjk-ok
+              rarity: 'uncommon',
+              baseWeight: 15,
+              tags: ['backing'],
+              unique: false,
+              addPower: 16,
+              multPower: 1.22
+            },
+            {
+              id: 'sd_dp2',
+              name: '系统百倍消费返利卡 (财富乘区)', // cjk-ok
+              rarity: 'uncommon',
+              baseWeight: 28,
+              tags: ['wealth'],
+              unique: false,
+              addPower: 20,
+              multPower: 1.25
+            },
+            {
+              id: 'sd_dp3',
+              name: '京都财阀千金联姻契约 (势力倍增)', // cjk-ok
+              rarity: 'rare',
+              baseWeight: 12,
+              tags: ['backing'],
+              unique: true,
+              addPower: 30,
+              multPower: 1.45
+            },
+            {
+              id: 'sd_dp4',
+              name: '隐世古武宗师护道人 (越级反杀)', // cjk-ok
+              rarity: 'uncommon',
+              baseWeight: 14,
+              tags: ['backing', 'combat'],
+              unique: false,
+              addPower: 18,
+              multPower: 1.2
+            },
+            {
+              id: 'sd_dp5',
+              name: '海外万亿主权基金掌控权 (终局底牌)', // cjk-ok
+              rarity: 'legendary',
+              baseWeight: 10,
+              tags: ['wealth', 'climax'],
+              unique: true,
+              prerequisiteIds: ['sd_dp2'],
+              addPower: 42,
+              multPower: 1.68
+            },
+            {
+              id: 'sd_dp6',
+              name: '拍卖会古玩捡漏第一桶金 (前期启动)', // cjk-ok
+              rarity: 'common',
+              baseWeight: 32,
+              tags: ['wealth'],
+              unique: false,
+              addPower: 12,
+              multPower: 1.05
+            },
+            {
+              id: 'sd_dp7',
+              name: '黑料铁证U盘·全网直播曝光 (舆论反转)', // cjk-ok
+              rarity: 'common',
+              baseWeight: 30,
+              tags: ['evidence'],
+              unique: false,
+              addPower: 14,
+              multPower: 1.1
+            },
+            {
+              id: 'sd_dp8',
+              name: '三年隐忍修为解封·灵脉觉醒 (实力暴涨)', // cjk-ok
+              rarity: 'uncommon',
+              baseWeight: 26,
+              tags: ['realm'],
+              unique: false,
+              addPower: 18,
+              multPower: 1.18
+            },
+            {
+              id: 'sd_dp9',
+              name: '豪门寿宴退婚书·当众休妻反杀 (名场面铺垫)', // cjk-ok
+              rarity: 'common',
+              baseWeight: 28,
+              tags: ['climax'],
+              unique: false,
+              addPower: 15,
+              multPower: 1.12
+            }
+          ]
+        },
+        combatKernel: {
+          kernel: 'deck_cycle',
+          runs: 300,
+          maxTurns: 8,
+          seed: 2026,
+          playerHp: 85,
+          energyPerTurn: 3,
+          drawPerTurn: 5,
+          enemyHp: 175,
+          enemyBaseDamage: 13,
+          enemyDamageGrowth: 2,
+          deckCards: [
+            {
+              id: 'sd_c_awaken',
+              name: '系统百倍觉醒 (高潮卡点)', // cjk-ok
+              cost: 0,
+              count: 1,
+              damage: 0,
+              block: 0,
+              draw: 2,
+              energyGain: 2,
+              applyStrength: 2,
+              applyVulnerable: 0,
+              applyWeak: 0,
+              exhaust: true,
+              priority: 5
+            },
+            {
+              id: 'sd_c_evidence',
+              name: '甩出铁证·舆论崩塌', // cjk-ok
+              cost: 1,
+              count: 2,
+              damage: 8,
+              block: 0,
+              draw: 1,
+              energyGain: 0,
+              applyStrength: 0,
+              applyVulnerable: 2,
+              applyWeak: 1,
+              exhaust: false,
+              priority: 4
+            },
+            {
+              id: 'sd_c_kneel',
+              name: '首富到场·下跪接驾', // cjk-ok
+              cost: 2,
+              count: 2,
+              damage: 14,
+              block: 4,
+              draw: 1,
+              energyGain: 0,
+              applyStrength: 2,
+              applyVulnerable: 1,
+              applyWeak: 0,
+              exhaust: false,
+              priority: 3
+            },
+            {
+              id: 'sd_c_reveal',
+              name: '真身揭晓·全员震怖 (终结)', // cjk-ok
+              cost: 2,
+              count: 2,
+              damage: 11,
+              hits: 2,
+              block: 0,
+              draw: 0,
+              energyGain: 0,
+              applyStrength: 0,
+              applyVulnerable: 0,
+              applyWeak: 0,
+              exhaust: false,
+              priority: 3
+            },
+            {
+              id: 'sd_c_endure',
+              name: '隐忍蛰伏·暗中布局', // cjk-ok
+              cost: 1,
+              count: 3,
+              damage: 0,
+              block: 9,
+              draw: 1,
+              energyGain: 0,
+              applyStrength: 1,
+              applyVulnerable: 0,
+              applyWeak: 0,
+              exhaust: false,
+              priority: 2
+            }
+          ],
+          maxManaCrystals: 10,
+          startingHandSize: 3,
+          mulliganMaxCost: 3,
+          opponentHp: 30,
+          opponentClearPowerPerTurn: 2,
+          manaCurveDeck: [],
+          trackDistance: 1000,
+          initialOrbs: 4,
+          maxOrbs: 8,
+          orbRecoveryPer5Actions: 3,
+          targetEnemyHp: 50000,
+          targetEnemyDef: 400,
+          actionUnits: []
+        },
+        roguelikeEnvelope: {
+          floors: 20,
+          runs: 300,
+          seed: 2026,
+          playerBasePower: 32,
+          baseAddPerFloor: 13,
+          synergyHitRatePct: 38,
+          synergyMultPerHit: 1.26,
+          enemyBasePower: 28,
+          enemyGrowthRate: 1.21,
+          bossEveryNWave: 5,
+          bossDifficultyMult: 1.38,
+          metaBonusPerRunPct: 6,
+          levelMax: 80,
+          levelStatGrowthPct: 4.5,
+          levelAscensionInterval: 20,
+          levelAscensionBonusPct: 22
+        }
+      }
+
     case 'slay_the_spire_dbg':
     default:
       return {
@@ -5883,7 +7531,8 @@ export function normalizeMxNumericalWorkbench(raw: unknown): MxNumericalWorkbenc
       'hearthstone_tcg',
       'onmyoji_atb',
       'balatro_roguelike',
-      'survivor_brotato'
+      'survivor_brotato',
+      'short_drama_progression'
     ] as MxWorkbenchPresetId[]
   ).includes(r.activePresetId as MxWorkbenchPresetId)
     ? (r.activePresetId as MxWorkbenchPresetId)
@@ -5906,6 +7555,3386 @@ export function normalizeMxNumericalWorkbench(raw: unknown): MxNumericalWorkbenc
     roguelikeEnvelope:
       r.roguelikeEnvelope && typeof r.roguelikeEnvelope === 'object'
         ? { ...base.roguelikeEnvelope, ...r.roguelikeEnvelope }
-        : base.roguelikeEnvelope
+        : base.roguelikeEnvelope,
+    ...(r.designLab && typeof r.designLab === 'object' ? { designLab: r.designLab } : {})
   }
+}
+
+/**
+ * 将 Machinations 宏观经济模板 ID 映射为对应的四大子工作台旗舰预设 ID。
+ */
+export function mapMxTemplateToWorkbenchPreset(templateId?: string): MxWorkbenchPresetId {
+  switch (templateId) {
+    case 'short_drama_reversal_loop':
+      return 'short_drama_progression'
+    case 'balatro_ante_jokers':
+      return 'balatro_roguelike'
+    case 'hearthstone_mana_pack':
+      return 'hearthstone_tcg'
+    case 'onmyoji_speed_orbs':
+    case 'gacha_pity_banner':
+      return 'onmyoji_atb'
+    case 'survivor_xp_loop':
+    case 'tower_defense_waves':
+    case 'idle_exponential_tycoon':
+      return 'survivor_brotato'
+    default:
+      return 'slay_the_spire_dbg'
+  }
+}
+
+/**
+ * 从一句话自然语言描述中推断最匹配的数值工作台旗舰预设 ID。
+ */
+export function inferMxWorkbenchPresetFromPrompt(
+  prompt: string,
+  fallback: MxWorkbenchPresetId = 'slay_the_spire_dbg'
+): MxWorkbenchPresetId {
+  const p = (prompt ?? '').toLowerCase()
+  if (!p.trim()) return fallback
+  if (
+    /* cjk-ok */ /short\s*drama|micro\s*drama|短剧|爽剧|逆袭|打脸|系统流|神豪|战神|赘婿|重生|女频|豪门|退婚|反派阶梯|付费卡点/.test(
+      p
+    )
+  ) {
+    return 'short_drama_progression'
+  }
+  if (
+    /* cjk-ok */ /balatro|joker|poker|ante|blind|chips|tft|autobattler|小丑牌|小丑|筹码|底注|盲注|德州扑克|倍率爆炸|自走棋|酒馆战棋|云顶|金铲铲|三合一|追三/.test(
+      p
+    )
+  ) {
+    return 'balatro_roguelike'
+  }
+  if (
+    /* cjk-ok */ /hearthstone|tcg|minion|mulligan|dust|snap|gwent|cube|炉石|随从|法力曲线|法力水晶|奥术之尘|万智牌|漫威|终极逆转|昆特牌|三路|战区|加注/.test(
+      p
+    )
+  ) {
+    return 'hearthstone_tcg'
+  }
+  if (
+    /* cjk-ok */ /onmyoji|shikigami|atb|action\s*bar|pull\s*gauge|阴阳师|御魂|鬼火|拉条|行动条|式神|星穹铁道|星铁|圣遗物|速度线/.test(
+      p
+    )
+  ) {
+    return 'onmyoji_atb'
+  }
+  if (/* cjk-ok */ /brotato|survivor|vampire|edps|wave|土豆兄弟|幸存者|割草|怪潮|塔防/.test(p)) {
+    return 'survivor_brotato'
+  }
+  if (
+    /* cjk-ok */ /spire|dbg|deck|yugioh|杀戮尖塔|爬塔|牌库|抽弃牌|三国杀|杀闪桃|身份局|无懈可击|游戏王|同调|超量/.test(
+      p
+    )
+  ) {
+    return 'slay_the_spire_dbg'
+  }
+  return fallback
+}
+
+/**
+ * 一句话生成整套游戏数值体系（One-Sentence Full-Game Numerical Suite Synthesizer）：
+ * 1. 自动匹配五大底层数学内核 + 自走棋/三路Snap/三国杀响应链扩展品类；
+ * 2. 支持内置旗舰主题包 + 任意脑洞题材（Universal Arbitrary-Topic）全卡池/乘区实体/遗物池动态派生；
+ * 3. 支持句子内直接编写单卡费用/攻防/多段/条件倍率（如 `狂暴斩(2费28伤×2段)`、`背水一战(血量低于30%伤害×3)`）；
+ * 4. 支持当句子包含「调平 / 平衡 / balance」时自动对全部超模/废卡执行一键预算调平。
+ */
+export function synthesizeMxWorkbenchFromPrompt(
+  prompt: string,
+  fallbackPresetId: MxWorkbenchPresetId = 'slay_the_spire_dbg'
+): MxNumericalWorkbench {
+  const presetId = inferMxWorkbenchPresetFromPrompt(prompt, fallbackPresetId)
+  const wb = createMxWorkbenchPreset(presetId)
+  const raw = (prompt ?? '').trim()
+  if (!raw) return wb
+
+  // 1. 解析层数 / 底注数 / 波次数（例如 "8底注" / "12层" / "20波" / "10 antes" / "18 floors"）
+  const floorMatch = /(\d{1,2})\s*(?:个)?(?:底注|盲注|层|波|关|antes?|floors?|waves?)/i.exec(raw) // cjk-ok
+  if (floorMatch?.[1]) {
+    const f = Math.max(4, Math.min(40, Number(floorMatch[1])))
+    wb.roguelikeEnvelope.floors = f
+    wb.lootRoll.draftWaves = f
+  }
+
+  // 2. 解析基础筹码 Chips（例如 "筹码 150" / "150 chips"）
+  const chipsMatch = /(?:筹码|chips?)\s*[:：=]?\s*(\d{2,4})|(\d{2,4})\s*(?:筹码|chips?)/i.exec(raw) // cjk-ok
+  const chipsVal = Number(chipsMatch?.[1] ?? chipsMatch?.[2])
+  if (Number.isFinite(chipsVal) && chipsVal >= 10) {
+    const chipAttr = wb.multiplier.attributes.find((a) => a.name === 'BaseChips')
+    if (chipAttr) chipAttr.value = chipsVal
+  }
+
+  // 3. 解析独立乘区 ×Mult（例如 "独立乘区 2.5" / "×2.5" / "x3倍"）
+  const xMultMatch = /(?:独立乘区|xmult|[×x])\s*[:：=]?\s*(\d+(?:\.\d+)?)\s*(?:倍)?/i.exec(raw) // cjk-ok
+  if (xMultMatch?.[1]) {
+    const xm = Number(xMultMatch[1])
+    if (Number.isFinite(xm) && xm >= 1.1 && xm <= 10) {
+      const xmAttr = wb.multiplier.attributes.find((a) => a.name === 'IndepMult')
+      if (xmAttr) xmAttr.value = xm
+    }
+  }
+
+  // 4. 解析商店刷新费用（例如 "刷新 4金" / "reroll 4"）
+  const rerollMatch = /(?:刷新|reroll)\s*(?:费用|费)?\s*[:：=]?\s*(\d{1,3})/i.exec(raw) // cjk-ok
+  if (rerollMatch?.[1]) {
+    wb.lootRoll.rerollBaseCost = Math.max(1, Number(rerollMatch[1]))
+  }
+
+  // 5. 解析每回合能量 / 鬼火 / 抽牌数（例如 "4点能量" / "抽6张"）
+  const energyMatch = /(\d{1,2})\s*(?:点)?(?:能量|费用|energy)/i.exec(raw) // cjk-ok
+  if (energyMatch?.[1]) {
+    wb.combatKernel.energyPerTurn = Math.max(1, Math.min(10, Number(energyMatch[1])))
+  }
+  const drawMatch = /(?:抽牌|抽)\s*(\d{1,2})\s*(?:张)?/i.exec(raw) // cjk-ok
+  if (drawMatch?.[1]) {
+    wb.combatKernel.drawPerTurn = Math.max(1, Math.min(12, Number(drawMatch[1])))
+  }
+
+  // 6. 解析硬保底抽数（例如 "80抽保底" / "90保底" / "pity 80"）
+  const pityMatch = /(\d{2,3})\s*(?:抽|包)?\s*(?:硬)?保底|pity\s*(\d{2,3})/i.exec(raw) // cjk-ok
+  const pityVal = Number(pityMatch?.[1] ?? pityMatch?.[2])
+  if (Number.isFinite(pityVal) && pityVal >= 10 && pityVal <= 300) {
+    wb.lootRoll.hardPityPull = pityVal
+    wb.lootRoll.softPityStart = Math.max(5, Math.round(pityVal * 0.78))
+  }
+
+  // 7. 解析角色满级上限（例如 "满级90" / "Lv.100" / "等级上限60"）
+  const lvMaxMatch = /(?:满级|等级上限|lv\.?\s*max|max\s*level)\s*[:：=]?\s*(\d{2,3})/i.exec(raw) // cjk-ok
+  if (lvMaxMatch?.[1]) {
+    wb.roguelikeEnvelope.levelMax = Math.max(10, Math.min(100, Number(lvMaxMatch[1])))
+  }
+
+  // 8A. 内置高保真主题包（修仙 / 赛博 / 克苏鲁 / 三国武侠 / 自走棋酒馆 / 漫威三路战区 / 三国杀响应 / 深海料理）
+  const THEME_PACKS: Array<{
+    regex: RegExp
+    titlePrefix: string
+    entities: Array<{ name: string; role: 'chips' | 'mult' | 'xmult' | 'copy' }>
+    cards: Array<{ name: string }>
+    drafts: Array<{ name: string }>
+  }> = [
+    {
+      regex: /修仙|炼丹|仙侠|法宝|灵根|金丹|xianxia|cultivation/i, // cjk-ok
+      titlePrefix: 'Xianxia Alchemy & Dharma',
+      entities: [
+        { name: '九转金丹 (+120 灵力)', role: 'chips' }, // cjk-ok
+        { name: '紫霄神雷 (+20 道韵)', role: 'mult' }, // cjk-ok
+        { name: '诛仙剑阵 (×3.0 剑意)', role: 'xmult' }, // cjk-ok
+        { name: '太虚乾坤镜 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '焚天业火 (+12 道韵)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '万剑归宗 (同花顺阵)' }, // cjk-ok
+        { name: '青莲剑歌 (顺子剑诀)' }, // cjk-ok
+        { name: '御剑术 (双剑合璧)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '先天混沌钟 (×Mult)' }, // cjk-ok
+        { name: '鸿蒙紫气 (×Mult)' }, // cjk-ok
+        { name: '阴阳造化炉 (×Mult)' }, // cjk-ok
+        { name: '东皇太一印 (×Mult)' }, // cjk-ok
+        { name: '大道元婴果 (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /赛博|黑客|义体|矩阵|算力|cyberpunk|netrunner|hacker/i, // cjk-ok
+      titlePrefix: 'Cyberpunk Netrunner Matrix',
+      entities: [
+        { name: '军用算力芯片 (+120 算力)', role: 'chips' }, // cjk-ok
+        { name: '神经超频协议 (+20 带宽)', role: 'mult' }, // cjk-ok
+        { name: '黑墙突破核心 (×3.0 协议)', role: 'xmult' }, // cjk-ok
+        { name: '量子镜像代理 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '过载散热阀 (+12 带宽)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '零日漏洞注入 (Flush)' }, // cjk-ok
+        { name: 'ICE破冰脉冲 (Straight)' }, // cjk-ok
+        { name: '双线程并发 (Pair)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '斯安威斯坦义体 (×Mult)' }, // cjk-ok
+        { name: '光学迷彩涂层 (×Mult)' }, // cjk-ok
+        { name: '荒坂原型内核 (×Mult)' }, // cjk-ok
+        { name: '赛博精神病模组 (×Mult)' }, // cjk-ok
+        { name: '灵魂杀手AI (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /克苏鲁|暗黑|深渊|诡秘|古神|eldritch|cthulhu|abyss/i, // cjk-ok
+      titlePrefix: 'Eldritch Abyss & Sanity',
+      entities: [
+        { name: '古神低语石板 (+120 灵视)', role: 'chips' }, // cjk-ok
+        { name: '深渊献祭契约 (+20 狂乱)', role: 'mult' }, // cjk-ok
+        { name: '黄衣之王印记 (×3.0 灾厄)', role: 'xmult' }, // cjk-ok
+        { name: '虚空拟态魔镜 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '残破死灵书 (+12 狂乱)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '群星归位仪式 (Flush)' }, // cjk-ok
+        { name: '不可名状低语 (Straight)' }, // cjk-ok
+        { name: '双生旧日支配者 (Pair)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '阿撒托斯之核 (×Mult)' }, // cjk-ok
+        { name: '银之匙门扉 (×Mult)' }, // cjk-ok
+        { name: '深潜者之冠 (×Mult)' }, // cjk-ok
+        { name: '奈亚拉托提普面具 (×Mult)' }, // cjk-ok
+        { name: '拉莱耶圣物 (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /三国杀|杀闪桃|无懈可击|身份局|南蛮入侵/i, // cjk-ok
+      titlePrefix: 'Three Kingdoms Tactical Response',
+      entities: [
+        { name: '诸葛连弩 (无限出杀×3.0)', role: 'xmult' }, // cjk-ok
+        { name: '青釭剑 (无视防具+120破甲)', role: 'chips' }, // cjk-ok
+        { name: '八卦阵 (判定闪避+20护体)', role: 'mult' }, // cjk-ok
+        { name: '木牛流马 (手牌调度×2.5)', role: 'copy' }, // cjk-ok
+        { name: '贯石斧 (强命弃牌+16武力)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '【酒杀】强命爆发' }, // cjk-ok
+        { name: '【南蛮入侵】全屏AOE' }, // cjk-ok
+        { name: '【无中生有】过牌调度' } // cjk-ok
+      ],
+      drafts: [
+        { name: '无双吕布将印 (×Mult)' }, // cjk-ok
+        { name: '观星诸葛羽扇 (×Mult)' }, // cjk-ok
+        { name: '奸雄曹操孟德书 (×Mult)' }, // cjk-ok
+        { name: '仁德刘备双股剑 (×Mult)' }, // cjk-ok
+        { name: '传国玉玺 (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /三国|武侠|江湖|兵法|wuxia|three\s*kingdoms/i, // cjk-ok
+      titlePrefix: 'Wuxia & Three Kingdoms Tactics',
+      entities: [
+        { name: '传国玉玺 (+120 兵力)', role: 'chips' }, // cjk-ok
+        { name: '青龙偃月刀 (+20 武威)', role: 'mult' }, // cjk-ok
+        { name: '火烧连营奇谋 (×3.0 兵略)', role: 'xmult' }, // cjk-ok
+        { name: '武侯八阵图 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '木牛流马 (+12 粮草)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '万箭齐发 (同花齐射)' }, // cjk-ok
+        { name: '桃园结义 (顺子连环)' }, // cjk-ok
+        { name: '单骑救主 (双将突围)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '方天画戟 (×Mult)' }, // cjk-ok
+        { name: '太平要术 (×Mult)' }, // cjk-ok
+        { name: '孟德新书 (×Mult)' }, // cjk-ok
+        { name: '赤兔神驹 (×Mult)' }, // cjk-ok
+        { name: '卧龙凤雏虎符 (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /自走棋|酒馆战棋|云顶|金铲铲|三合一|追三|tft|autobattler/i, // cjk-ok
+      titlePrefix: 'Auto-Battler Tavern & 3-Star Synergy',
+      entities: [
+        { name: '三星五费橙卡 (×3.24 升星质变)', role: 'xmult' }, // cjk-ok
+        { name: '6法神羁绊纹章 (+120 法强)', role: 'chips' }, // cjk-ok
+        { name: '铜须三倍战吼 (+22 触发)', role: 'mult' }, // cjk-ok
+        { name: '妮蔻之助复制器 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '利滚利50金利息 (+15 经济)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: '8人口梭哈追三 (All-In Roll)' }, // cjk-ok
+        { name: '三合一金色升星 (Triple Merge)' }, // cjk-ok
+        { name: '50金卡利息慢D (Slow Roll)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '升级咯海克斯 (×Mult)' }, // cjk-ok
+        { name: '高端购物海克斯 (×Mult)' }, // cjk-ok
+        { name: '潘朵拉备战席 (×Mult)' }, // cjk-ok
+        { name: '对冲基金海克斯 (×Mult)' }, // cjk-ok
+        { name: '金铲铲冠冕 (传说)' } // cjk-ok
+      ]
+    },
+    {
+      regex: /漫威|终极逆转|snap|昆特牌|三路|战区|加注|cube|gwent/i, // cjk-ok
+      titlePrefix: 'Multi-Lane Location & Cube Doubling',
+      entities: [
+        { name: '钢铁侠战区翻倍 (×3.0 战力)', role: 'xmult' }, // cjk-ok
+        { name: '奥丁揭示重触发 (复制×2.5)', role: 'copy' }, // cjk-ok
+        { name: '蓝惊奇全场光环 (+120 总点数)', role: 'chips' }, // cjk-ok
+        { name: '尚气摧毁大哥 (+20 逆转)', role: 'mult' }, // cjk-ok
+        { name: '魔方加注Snap (+15 威慑)', role: 'mult' } // cjk-ok
+      ],
+      cards: [
+        { name: 'T6 决胜奇袭 (8-Cube Finisher)' }, // cjk-ok
+        { name: '三路分兵铺场 (Wide Spread)' }, // cjk-ok
+        { name: '战区封锁控制 (Lane Lock)' } // cjk-ok
+      ],
+      drafts: [
+        { name: '无限手套核心 (×Mult)' }, // cjk-ok
+        { name: '宇宙魔方加注器 (×Mult)' }, // cjk-ok
+        { name: '瓦坎达振金盾 (×Mult)' }, // cjk-ok
+        { name: '时间宝石回溯 (×Mult)' }, // cjk-ok
+        { name: '至尊法师之眼 (传说)' } // cjk-ok
+      ]
+    }
+  ]
+
+  let matchedBuiltInTheme = false
+  for (const pack of THEME_PACKS) {
+    if (pack.regex.test(raw)) {
+      matchedBuiltInTheme = true
+      wb.multiplier.title = `${pack.titlePrefix} — ${wb.multiplier.title}`
+      pack.entities.forEach((spec, idx) => {
+        if (wb.multiplier.entities[idx]) {
+          wb.multiplier.entities[idx]!.name = spec.name
+        }
+      })
+      pack.cards.forEach((spec, idx) => {
+        if (wb.combatKernel.deckCards[idx]) {
+          wb.combatKernel.deckCards[idx]!.name = spec.name
+        }
+      })
+      pack.drafts.forEach((spec, idx) => {
+        if (wb.lootRoll.draftPool[idx]) {
+          wb.lootRoll.draftPool[idx]!.name = spec.name
+        }
+      })
+      break
+    }
+  }
+
+  // 8B. 任意脑洞题材全卡池动态派生引擎（Universal Arbitrary-Topic Procedural Card Pool Generator）
+  if (!matchedBuiltInTheme) {
+    const firstClause = (raw.split(/[，,。.；;\n]/)[0] ?? raw).trim()
+    const topicCandidate = firstClause
+      .replace(
+        /^(?:请|帮我|给我|能否|可以)?(?:做|设计|生成|来|搞|构建|直出)?(?:一套|一个|一款|一份)?\s*/i, // cjk-ok
+        ''
+      ) // cjk-ok
+      .replace(
+        /\s*(?:题材|主题|风格|背景|玩法)?(?:的)?(?:卡牌|小丑牌|自走棋|肉鸽|roguelike|dbg|tcg|ccg|atb|杀戮尖塔|炉石|阴阳师|土豆兄弟|幸存者|全套|整套|游戏)?(?:数值体系|数值系统|数值|体系|系统|卡组|牌组).*$/i, // cjk-ok
+        ''
+      )
+      .trim()
+
+    const isGenericWord =
+      /* cjk-ok */ /^(?:卡牌|小丑牌|杀戮尖塔|炉石|炉石传说|阴阳师|土豆兄弟|幸存者|肉鸽|数值|游戏|游戏经济|游戏经济系统|经济系统|经济|全套|一套|balatro|spire|hearthstone|onmyoji|game\s*economy|economy)$/i.test(
+        topicCandidate
+      )
+
+    if (topicCandidate.length >= 2 && topicCandidate.length <= 16 && !isGenericWord) {
+      const t = topicCandidate
+      wb.multiplier.title = `${t} — Custom Card Numerical Suite`
+      const topicEntities = [
+        `${t}·源质增幅核心 (+120 基础)`, // cjk-ok
+        `${t}·战术共鸣回路 (+20 加成)`, // cjk-ok
+        `${t}·终焉超载奇点 (×3.0 独立)`, // cjk-ok
+        `${t}·全息镜像投影 (复制×2.5)`, // cjk-ok
+        `${t}·高能催化模组 (+12 加成)` // cjk-ok
+      ]
+      topicEntities.forEach((name, idx) => {
+        if (wb.multiplier.entities[idx]) {
+          wb.multiplier.entities[idx]!.name = name
+        }
+      })
+
+      wb.combatKernel.deckCards = [
+        {
+          id: 'topic_c1',
+          name: `${t}·疾风突袭 (1费快攻)`, // cjk-ok
+          cost: 1,
+          count: 4,
+          damage: 9,
+          block: 0,
+          draw: 0,
+          energyGain: 0,
+          applyStrength: 0,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 2
+        },
+        {
+          id: 'topic_c2',
+          name: `${t}·铁壁防线 (1费护盾)`, // cjk-ok
+          cost: 1,
+          count: 4,
+          damage: 0,
+          block: 8,
+          draw: 1,
+          energyGain: 0,
+          applyStrength: 0,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 2
+        },
+        {
+          id: 'topic_c3',
+          name: `${t}·潜能汲取 (0费过牌回能)`, // cjk-ok
+          cost: 0,
+          count: 2,
+          damage: 0,
+          block: 0,
+          draw: 2,
+          energyGain: 1,
+          applyStrength: 0,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 5
+        },
+        {
+          id: 'topic_c4',
+          name: `${t}·连携重击 (2费多段破甲)`, // cjk-ok
+          cost: 2,
+          count: 2,
+          damage: 8,
+          hits: 2,
+          block: 0,
+          draw: 0,
+          energyGain: 0,
+          applyStrength: 0,
+          applyVulnerable: 2,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 4
+        },
+        {
+          id: 'topic_c5',
+          name: `${t}·终焉奥义 (3费爆发核心)`, // cjk-ok
+          cost: 3,
+          count: 1,
+          damage: 26,
+          block: 6,
+          draw: 0,
+          energyGain: 0,
+          applyStrength: 2,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 5
+        }
+      ]
+
+      wb.combatKernel.manaCurveDeck = [
+        {
+          id: 'topic_m1',
+          name: `${t}·1费先锋斥候`, // cjk-ok
+          manaCost: 1,
+          count: 6,
+          kind: 'minion',
+          attack: 2,
+          health: 3,
+          directDamage: 0,
+          drawCards: 0
+        },
+        {
+          id: 'topic_m2',
+          name: `${t}·2费战术技师`, // cjk-ok
+          manaCost: 2,
+          count: 6,
+          kind: 'minion',
+          attack: 3,
+          health: 2,
+          directDamage: 1,
+          drawCards: 0
+        },
+        {
+          id: 'topic_m3',
+          name: `${t}·3费重装守卫`, // cjk-ok
+          manaCost: 3,
+          count: 6,
+          kind: 'minion',
+          attack: 3,
+          health: 4,
+          directDamage: 0,
+          drawCards: 0,
+          taunt: true
+        },
+        {
+          id: 'topic_m4',
+          name: `${t}·4费中坚统领`, // cjk-ok
+          manaCost: 4,
+          count: 5,
+          kind: 'minion',
+          attack: 4,
+          health: 5,
+          directDamage: 0,
+          drawCards: 1
+        },
+        {
+          id: 'topic_m5',
+          name: `${t}·5费终极巨兽`, // cjk-ok
+          manaCost: 5,
+          count: 4,
+          kind: 'minion',
+          attack: 6,
+          health: 6,
+          directDamage: 2,
+          drawCards: 0
+        },
+        {
+          id: 'topic_m6',
+          name: `${t}·高能轰击咒文`, // cjk-ok
+          manaCost: 4,
+          count: 3,
+          kind: 'spell',
+          attack: 0,
+          health: 0,
+          directDamage: 6,
+          drawCards: 1
+        }
+      ]
+
+      const topicDraftNames = [
+        `${t}·起源圣物 (×Mult)`, // cjk-ok
+        `${t}·共鸣核心 (×Mult)`, // cjk-ok
+        `${t}·超越纹章 (×Mult)`, // cjk-ok
+        `${t}·宿命齿轮 (×Mult)`, // cjk-ok
+        `${t}·不朽王冠 (传说)` // cjk-ok
+      ]
+      topicDraftNames.forEach((dName, idx) => {
+        if (wb.lootRoll.draftPool[idx]) {
+          wb.lootRoll.draftPool[idx]!.name = dName
+        }
+      })
+    }
+  }
+
+  // 9A. 解析句子中带括号公式/费用/攻防/条件倍率的单卡定义（例如 "狂暴斩(2费28伤×2段)" / "背水一战(3费20伤×2.5倍)"）
+  const parsedBracketNames = new Set<string>()
+  const bracketCardRegex = /([^\s，,。.；;、:：()（）]{2,16})[（(]([^)）]{2,45})[)）]/g
+  let bMatch: RegExpExecArray | null
+  let bIdx = 0
+  while ((bMatch = bracketCardRegex.exec(raw)) !== null && bIdx < 6) {
+    const rawCardName = bMatch[1]!.replace(/^(?:包含|新增|加入|include|add)\s*/i, '').trim() // cjk-ok
+    const specStr = bMatch[2]!.trim()
+    if (!rawCardName || rawCardName.length < 2) continue
+    parsedBracketNames.add(rawCardName)
+    bIdx++
+
+    const cMatch = /(\d{1,2})\s*(?:费|耗|点能量|cost|mana)/i.exec(specStr) // cjk-ok
+    const dMatch = /(\d{1,4})\s*(?:伤|伤害|攻|攻击|筹码|dmg|atk|chips)/i.exec(specStr) // cjk-ok
+    const blkMatch = /(\d{1,4})\s*(?:甲|格挡|护盾|防|血|生命|block|hp|shield)/i.exec(specStr) // cjk-ok
+    const hitMatch = /[×x*]\s*(\d{1,2})\s*(?:段|连击|次|hits?)/i.exec(specStr) // cjk-ok
+    const multMatch = /[×x*]\s*(\d+(?:\.\d+)?)\s*(?:倍|独立|mult)?/i.exec(specStr) // cjk-ok
+    const drawSpecMatch = /(?:抽|摸|过牌|draw)\s*(\d{1,2})/i.exec(specStr) // cjk-ok
+    const poisonSpecMatch = /(?:毒|中毒|流血|灼烧|poison)\s*(\d{1,3})/i.exec(specStr) // cjk-ok
+
+    const cost = cMatch?.[1] ? Math.max(0, Math.min(10, Number(cMatch[1]))) : 2
+    const dmg = dMatch?.[1] ? Math.max(0, Number(dMatch[1])) : 14
+    const block = blkMatch?.[1] ? Math.max(0, Number(blkMatch[1])) : 0
+    const hits = hitMatch?.[1] ? Math.max(1, Math.min(10, Number(hitMatch[1]))) : 1
+    const draw = drawSpecMatch?.[1] ? Math.max(0, Math.min(6, Number(drawSpecMatch[1]))) : 0
+    const poison = poisonSpecMatch?.[1] ? Math.max(0, Number(poisonSpecMatch[1])) : 0
+    const hasCond = /低于|高于|每|暴击|残血|背水|连击|翻倍/i.test(specStr) // cjk-ok
+    const xMult =
+      multMatch?.[1] && !hitMatch ? Math.max(1, Number(multMatch[1])) : hasCond ? 2.0 : 1.0
+
+    const fullCardTitle = `${rawCardName} (${specStr})`
+    const stats: Record<string, number> = {}
+    for (const col of wb.multiplier.statColumns) {
+      if (col === 'chips' || col === 'dmg' || col === 'atk') {
+        stats[col] = dmg * hits
+      } else if (col === 'addMult' || col === 'block' || col === 'hp') {
+        stats[col] = block > 0 ? block : 12
+      } else if (col === 'xMult') {
+        stats[col] = xMult
+      } else if (col === 'draw') {
+        stats[col] = draw
+      } else {
+        stats[col] = 1
+      }
+    }
+
+    wb.multiplier.entities.unshift({
+      id: `formula_ent_${bIdx}`,
+      name: fullCardTitle,
+      cost: Math.max(1, cost),
+      rarity: xMult >= 2 || cost >= 3 ? 'rare' : 'uncommon',
+      tags: [xMult > 1 ? 'xmult' : 'mult'],
+      stats
+    })
+
+    wb.combatKernel.deckCards.unshift({
+      id: `formula_card_${bIdx}`,
+      name: fullCardTitle,
+      cost,
+      count: 2,
+      damage: Math.round(dmg * (xMult > 1 ? xMult : 1)),
+      hits,
+      block,
+      draw,
+      energyGain: 0,
+      applyStrength: xMult >= 2 ? 2 : 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      poison,
+      exhaust: false,
+      priority: 5
+    })
+
+    wb.combatKernel.manaCurveDeck.unshift({
+      id: `formula_mana_${bIdx}`,
+      name: fullCardTitle,
+      manaCost: Math.max(1, cost),
+      count: 2,
+      kind: block > 0 ? 'minion' : 'spell',
+      attack: dmg,
+      health: Math.max(1, block || cost * 2),
+      directDamage: block > 0 ? 0 : dmg,
+      drawCards: draw
+    })
+  }
+
+  // 9B. 解析句子中显式指定的原创卡牌/小丑实体名列表（例如 "包含九转金丹、诛仙剑阵、虚空道果" 或 "新增 血魔小丑、赌徒骰子"）
+  const customListMatch =
+    /* cjk-ok */ /(?:包含|新增|加入|include|add)\s*[:：]?\s*([^\n，,。.；;]+(?:[、/][^\n，,。.；;]+)*)/i.exec(
+      raw
+    )
+  if (customListMatch?.[1]) {
+    const names = customListMatch[1]
+      .split(/[、/]/)
+      .map((s) => s.replace(/[（(][^)）]*[)）]/g, '').trim())
+      .filter((s) => s.length >= 2 && s.length <= 24 && !parsedBracketNames.has(s))
+      .slice(0, 6)
+    names.forEach((customName, idx) => {
+      const cost = 2 + (idx % 3)
+      const isXMult = idx % 2 === 1
+      const stats: Record<string, number> = {}
+      for (const col of wb.multiplier.statColumns) {
+        if (col === 'chips' || col === 'dmg' || col === 'atk') {
+          stats[col] = isXMult ? 16 : 90 + idx * 25
+        } else if (col === 'addMult' || col === 'block' || col === 'hp') {
+          stats[col] = isXMult ? 10 : 18 + idx * 4
+        } else if (col === 'xMult') {
+          stats[col] = isXMult ? 2.2 + idx * 0.2 : 1.0
+        } else {
+          stats[col] = 1
+        }
+      }
+      wb.multiplier.entities.unshift({
+        id: `custom_ent_${idx + 1}`,
+        name: customName,
+        cost,
+        rarity: isXMult ? 'rare' : 'uncommon',
+        tags: [isXMult ? 'xmult' : 'mult'],
+        stats
+      })
+      wb.combatKernel.deckCards.unshift({
+        id: `custom_dc_${idx + 1}`,
+        name: customName,
+        cost: Math.min(3, cost),
+        count: 2,
+        damage: isXMult ? 18 : 12 + idx * 3,
+        block: isXMult ? 0 : 8,
+        draw: idx === 0 ? 1 : 0,
+        energyGain: 0,
+        applyStrength: isXMult ? 2 : 0,
+        applyVulnerable: 1,
+        applyWeak: 0,
+        exhaust: false,
+        priority: 4
+      })
+      wb.lootRoll.draftPool.unshift({
+        id: `custom_dp_${idx + 1}`,
+        name: customName,
+        rarity: isXMult ? 'rare' : 'uncommon',
+        baseWeight: isXMult ? 10 : 18,
+        tags: [isXMult ? 'xmult' : 'mult'],
+        unique: true,
+        addPower: 25 + idx * 5,
+        multPower: isXMult ? 1.85 : 1.25
+      })
+    })
+  }
+
+  // 10. 若句子要求自动调平（如 "自动调平" / "一键平衡" / "auto balance"），对实体表自动执行预算调平
+  if (/* cjk-ok */ /调平|自动平衡|auto[- ]?balance/i.test(raw)) {
+    const balanced = autoBalanceWorkbenchEntities(wb.multiplier)
+    wb.multiplier.entities = balanced.updatedEntities
+  }
+
+  return wb
+}
+
+// ───────────────────────────── 6. 进阶深度审计：无限死循环检测、4×4流派纳什均衡与增量微调 ─────────────────────────────
+
+export interface MxSynergyPairRow {
+  pairId: string
+  cardAName: string
+  cardBName: string
+  synergyType: 'infinite_cycle' | 'exponential_otk' | 'multihit_scaling' | 'tempo_engine'
+  synergyTypeLabelZh: string
+  synergyTypeLabelEn: string
+  combinedScoreOrMult: number
+  riskLevel: 'critical_infinite' | 'high_otk' | 'healthy_synergy'
+  fixSuggestionZh: string
+  fixSuggestionEn: string
+}
+
+export interface MxSynergyAndLoopAuditResult {
+  infiniteLoopCount: number
+  otkRiskScore: number
+  maxTurn1BurstDamage: number
+  pairs: MxSynergyPairRow[]
+}
+
+/**
+ * 双卡/多卡「无限死循环与 OTK 秒杀检测器」（Infinite Loop & Synergy Detector）：
+ * 自动扫描当前牌库与乘区实体池中的所有双卡组合，检测：
+ * 1. 净能量 >= 0 且净抽牌 >= 2 且未勾选【消耗 Exhaust】的「电表倒转无限循环链」；
+ * 2. 独立乘区 (xMult >= 2.0) × 复制/重触发 (Copy/Retrigger) 导致的「单回合指数爆炸 OTK」；
+ * 3. 高力量/易伤增益 × 多段连击 (Hits >= 2) 的「多段乘算爆发链」。
+ */
+export function analyzeMxSynergyAndInfiniteLoopRisk(
+  wb: MxNumericalWorkbench
+): MxSynergyAndLoopAuditResult {
+  const pairs: MxSynergyPairRow[] = []
+  const deck = wb.combatKernel.deckCards
+  const entities = wb.multiplier.entities
+
+  // 1. 检测牌库中的无限回费抽牌死循环（Infinite Draw/Energy Loop）
+  const cycleCandidates = deck.filter((c) => c.draw > 0 || c.energyGain > 0 || c.cost === 0)
+  for (let i = 0; i < cycleCandidates.length; i++) {
+    const a = cycleCandidates[i]!
+    // 单卡自循环检测（0费抽牌且回费且不消耗）
+    if (!a.exhaust && a.energyGain - a.cost >= 0 && a.draw >= 1) {
+      pairs.push({
+        pairId: `self_loop_${a.id}`,
+        cardAName: a.name,
+        cardBName: a.name,
+        synergyType: 'infinite_cycle',
+        synergyTypeLabelZh: '♾️ 0费自循环倒转', // cjk-ok
+        synergyTypeLabelEn: '♾️ 0-Cost Self-Cycle Loop',
+        combinedScoreOrMult: 999,
+        riskLevel: 'critical_infinite',
+        fixSuggestionZh: '必须勾选【消耗 Exhaust】或将费用上调至 1 费，否则精简牌库后可无限抽打', // cjk-ok
+        fixSuggestionEn: 'Set Exhaust=true or raise cost to 1 to prevent infinite deck cycling'
+      })
+    }
+    for (let j = i + 1; j < cycleCandidates.length; j++) {
+      const b = cycleCandidates[j]!
+      const netEnergy = a.energyGain - a.cost + (b.energyGain - b.cost)
+      const totalDraw = a.draw + b.draw
+      if (!a.exhaust && !b.exhaust && netEnergy >= 0 && totalDraw >= 2) {
+        pairs.push({
+          pairId: `pair_loop_${a.id}_${b.id}`,
+          cardAName: a.name,
+          cardBName: b.name,
+          synergyType: 'infinite_cycle',
+          synergyTypeLabelZh: '♾️ 双卡永动抽滤链', // cjk-ok
+          synergyTypeLabelEn: '♾️ 2-Card Infinite Draw/Energy',
+          combinedScoreOrMult: 850 + netEnergy * 50 + totalDraw * 20,
+          riskLevel: 'critical_infinite',
+          fixSuggestionZh: `净回费 +${netEnergy} 且抽 ${totalDraw} 张：建议为其中一张增加【消耗 Exhaust】或每回合限触发 2 次`, // cjk-ok
+          fixSuggestionEn: `Net +${netEnergy} NRG & +${totalDraw} Draw: Add Exhaust to one card or cap at 2 triggers/turn`
+        })
+      }
+    }
+  }
+
+  // 2. 检测乘区实体中的独立乘区 × 复制重触发指数 OTK
+  const xMultEntities = entities.filter(
+    (e) => (e.stats.xMult ?? 1) >= 1.8 || /×|复制|copy|retrigger|蓝图|头脑/i.test(e.name) // cjk-ok
+  )
+  for (let i = 0; i < xMultEntities.length; i++) {
+    for (let j = i + 1; j < xMultEntities.length; j++) {
+      const a = xMultEntities[i]!
+      const b = xMultEntities[j]!
+      const xmA = Math.max(1.5, Number(a.stats.xMult ?? 2.2))
+      const xmB = Math.max(1.5, Number(b.stats.xMult ?? 2.0))
+      const compound = Math.round(xmA * xmB * 100) / 100
+      if (compound >= 4.2) {
+        pairs.push({
+          pairId: `otk_${a.id}_${b.id}`,
+          cardAName: a.name,
+          cardBName: b.name,
+          synergyType: 'exponential_otk',
+          synergyTypeLabelZh: '💥 独立乘区叠乘爆炸', // cjk-ok
+          synergyTypeLabelEn: '💥 Compound ×Mult Explosion',
+          combinedScoreOrMult: compound,
+          riskLevel: compound >= 6.0 ? 'high_otk' : 'healthy_synergy',
+          fixSuggestionZh:
+            compound >= 6.0
+              ? `双卡叠乘达 ×${compound} 倍：建议将其中一张改为加算 (+Mult) 或稀有度升至传说并上调商店售价` // cjk-ok
+              : `双卡叠乘 ×${compound} 倍：属于核心爽点成型组合，保持稀有度门槛即可`, // cjk-ok
+          fixSuggestionEn:
+            compound >= 6.0
+              ? `×${compound} compound mult: Convert one to additive +Mult or raise rarity to Legendary`
+              : `×${compound} compound mult: Healthy build-around synergy`
+        })
+      }
+    }
+  }
+
+  // 3. 检测牌库中的 力量/易伤 × 多段连击 (Multi-hit Scaling)
+  const buffCards = deck.filter((c) => c.applyStrength > 0 || c.applyVulnerable > 0)
+  const multiHitCards = deck.filter((c) => (c.hits ?? 1) >= 2 || c.damage >= 16)
+  for (const buff of buffCards) {
+    for (const atk of multiHitCards) {
+      if (buff.id === atk.id) continue
+      const hits = Math.max(1, atk.hits ?? 1)
+      const strBonus = buff.applyStrength * hits
+      const vulnMult = buff.applyVulnerable > 0 ? 1.5 : 1.0
+      const burstDmg = Math.round((atk.damage * hits + strBonus * 2) * vulnMult)
+      if (burstDmg >= 22) {
+        pairs.push({
+          pairId: `scale_${buff.id}_${atk.id}`,
+          cardAName: buff.name,
+          cardBName: atk.name,
+          synergyType: 'multihit_scaling',
+          synergyTypeLabelZh: '⚔️ 增伤×多段连击放大', // cjk-ok
+          synergyTypeLabelEn: '⚔️ Buff × Multi-Hit Scaling',
+          combinedScoreOrMult: burstDmg,
+          riskLevel: burstDmg >= 48 ? 'high_otk' : 'healthy_synergy',
+          fixSuggestionZh:
+            burstDmg >= 48
+              ? `单轮协同爆发 ${burstDmg} 点伤害：注意高连击段数对固定力量加成的放大倍率 (${hits}段)` // cjk-ok
+              : `单轮协同爆发 ${burstDmg} 点伤害：良性主力输出配合`, // cjk-ok
+          fixSuggestionEn:
+            burstDmg >= 48
+              ? `${burstDmg} burst DMG: Watch flat Strength scaling across ${hits} hits`
+              : `${burstDmg} burst DMG: Healthy primary combo`
+        })
+      }
+    }
+  }
+
+  const sortedPairs = pairs
+    .sort((a, b) => {
+      const rank = (r: MxSynergyPairRow['riskLevel']): number =>
+        r === 'critical_infinite' ? 3 : r === 'high_otk' ? 2 : 1
+      return rank(b.riskLevel) - rank(a.riskLevel) || b.combinedScoreOrMult - a.combinedScoreOrMult
+    })
+    .slice(0, 10)
+
+  const infiniteLoopCount = sortedPairs.filter((p) => p.riskLevel === 'critical_infinite').length
+  const highOtkCount = sortedPairs.filter((p) => p.riskLevel === 'high_otk').length
+  const otkRiskScore = Math.min(100, infiniteLoopCount * 42 + highOtkCount * 22 + 12)
+  const maxTurn1BurstDamage = Math.max(
+    24,
+    ...sortedPairs
+      .filter((p) => p.synergyType === 'multihit_scaling')
+      .map((p) => p.combinedScoreOrMult),
+    Math.round(wb.roguelikeEnvelope.playerBasePower * 1.8)
+  )
+
+  return {
+    infiniteLoopCount,
+    otkRiskScore,
+    maxTurn1BurstDamage,
+    pairs: sortedPairs
+  }
+}
+
+/**
+ * 一键熔断无限死循环与超限指数爆炸（Auto-Circuit-Breaker）：
+ * 自动为所有 0 费回能/抽牌永动卡加上 `exhaust = true`，并将过高的独立乘区下调至安全上限。
+ */
+export function applyMxInfiniteLoopCircuitBreaker(wb: MxNumericalWorkbench): number {
+  let fixedCount = 0
+  for (const card of wb.combatKernel.deckCards) {
+    if (!card.exhaust && card.energyGain - card.cost >= 0 && card.draw >= 1) {
+      card.exhaust = true
+      fixedCount++
+    }
+  }
+  for (const ent of wb.multiplier.entities) {
+    if (typeof ent.stats.xMult === 'number' && ent.stats.xMult > 2.5) {
+      ent.stats.xMult = 2.4
+      fixedCount++
+    }
+  }
+  return fixedCount
+}
+
+export interface MxPvpMatchupRow {
+  archetypeId: string
+  nameZh: string
+  nameEn: string
+  /** 对矩阵中每套卡组的胜率（%），顺序同 MxPvpMatchupMatrixResult.archetypes */
+  vsPcts: number[]
+  avgWinRatePct: number
+  initialSharePct: number
+  nashEquilibriumSharePct: number
+  status: 'tier0_dominant' | 'balanced_pillar' | 'unplayable_weak'
+}
+
+export interface MxPvpMatchupMatrixResult {
+  archetypes: Array<{ id: string; nameZh: string; nameEn: string }>
+  rows: MxPvpMatchupRow[]
+  rpsCycleHealthScore: number
+  dominantTier0Archetype: string | null
+  verdict: 'healthy_rps_cycle' | 'slight_skew' | 'tier0_monopoly'
+  /** 矩阵来源：卡组对打真实模拟 */
+  matrixSource: 'deck_vs_deck_simulation'
+  runsPerPair: number
+}
+
+/**
+ * 流派互克矩阵与天梯均衡推演（基于卡组对打真实模拟）：
+ * 「当前卡组」+ 3 套基准流派卡组（力量爆发 / 叠甲消耗 / 高速过牌）两两交替先手对打，
+ * 生成 4×4 实测胜率矩阵，再以复制动态（Replicator Dynamics）求天梯均衡出场率。
+ */
+export function simulateMxPvpMatchupAndNashEquilibrium(
+  wb: Pick<MxNumericalWorkbench, 'combatKernel'>,
+  opts: { runsPerPair?: number; hp?: number } = {}
+): MxPvpMatchupMatrixResult {
+  const current = wb.combatKernel.deckCards.length
+    ? wb.combatKernel.deckCards
+    : getMxCanonicalArchetypeDeck('strength_burst')
+  const decks = [
+    { id: 'current', nameZh: '🎴 当前卡组', nameEn: 'Your Deck', cards: current }, // cjk-ok
+    {
+      id: 'strength_burst',
+      nameZh: '⚡ 力量爆发', // cjk-ok
+      nameEn: 'Strength Burst',
+      cards: getMxCanonicalArchetypeDeck('strength_burst')
+    },
+    {
+      id: 'attrition_block',
+      nameZh: '🛡️ 叠甲消耗', // cjk-ok
+      nameEn: 'Attrition Block',
+      cards: getMxCanonicalArchetypeDeck('attrition_block')
+    },
+    {
+      id: 'high_cycle_combo',
+      nameZh: '🌀 高速过牌', // cjk-ok
+      nameEn: 'High-Cycle Combo',
+      cards: getMxCanonicalArchetypeDeck('high_cycle_combo')
+    }
+  ]
+  const res = simulateMxDeckVsDeckMatrix(
+    decks.map((d) => ({ id: d.id, name: d.nameEn, cards: d.cards })),
+    {
+      runs: opts.runsPerPair ?? 24,
+      seed: wb.combatKernel.seed || 1,
+      hp: opts.hp ?? 60,
+      energyPerTurn: wb.combatKernel.energyPerTurn || 3,
+      drawPerTurn: wb.combatKernel.drawPerTurn || 5,
+      maxTurnsPerSide: 25,
+      policy: 'greedy'
+    }
+  )
+
+  const rows: MxPvpMatchupRow[] = decks.map((d, i) => {
+    const rowW = res.matrix[i]!
+    const others = rowW.filter((_, j) => j !== i)
+    const avgWin =
+      Math.round((others.reduce((a, b) => a + b, 0) / Math.max(1, others.length)) * 10) / 10
+    const nashPct = res.nashSharesPct[i] ?? 0
+    return {
+      archetypeId: d.id,
+      nameZh: d.nameZh,
+      nameEn: d.nameEn,
+      vsPcts: rowW.slice(),
+      avgWinRatePct: avgWin,
+      initialSharePct: Math.round(1000 / decks.length) / 10,
+      nashEquilibriumSharePct: nashPct,
+      status:
+        nashPct >= 42 ? 'tier0_dominant' : nashPct <= 11 ? 'unplayable_weak' : 'balanced_pillar'
+    }
+  })
+
+  const maxShare = Math.max(...rows.map((r) => r.nashEquilibriumSharePct))
+  const minShare = Math.min(...rows.map((r) => r.nashEquilibriumSharePct))
+  const rpsCycleHealthScore = Math.max(
+    0,
+    Math.min(100, Math.round(100 - (maxShare - 25) * 1.6 - Math.max(0, 15 - minShare) * 1.5))
+  )
+  const tier0Row = rows.find((r) => r.status === 'tier0_dominant')
+
+  return {
+    archetypes: decks.map((d) => ({ id: d.id, nameZh: d.nameZh, nameEn: d.nameEn })),
+    rows,
+    rpsCycleHealthScore,
+    dominantTier0Archetype: tier0Row ? tier0Row.nameZh : null,
+    verdict:
+      rpsCycleHealthScore >= 75
+        ? 'healthy_rps_cycle'
+        : rpsCycleHealthScore >= 52
+          ? 'slight_skew'
+          : 'tier0_monopoly',
+    matrixSource: 'deck_vs_deck_simulation',
+    runsPerPair: res.runsPerPair
+  }
+}
+
+export interface MxWorkbenchDeltaPatchResult {
+  workbench: MxNumericalWorkbench
+  touchedCount: number
+  summaryZh: string
+  summaryEn: string
+}
+
+/**
+ * 判断用户输入的一句话是否属于「在当前表基础上增量微调（Delta Patch）」而非整套推倒重建。
+ */
+export function isMxDeltaPatchPrompt(prompt: string): boolean {
+  const p = (prompt ?? '').trim()
+  if (!p) return false
+  if (/^(?:做一套|设计一套|生成一套|来一套|新建一套)/i.test(p)) return false // cjk-ok
+  return /* cjk-ok */ /所有|全部|全卡|高费|低费|提高|提升|增加|上调|降低|下调|减少|削弱|翻倍|减半|改成|改为|设为|再加|追加|熔断|[+-]\s*\d+%?/i.test(
+    p
+  )
+}
+
+/**
+ * 一句话「增量批处理微调（Delta Patch）」（不冲掉已调好的表）：
+ * 在完全保留当前工作台已有卡牌、乘区与参数的基础上，执行局部数值批处理修改。
+ */
+export function applyMxWorkbenchDeltaPatchFromPrompt(
+  currentWb: MxNumericalWorkbench,
+  prompt: string
+): MxWorkbenchDeltaPatchResult {
+  const wb: MxNumericalWorkbench = JSON.parse(JSON.stringify(currentWb))
+  const raw = (prompt ?? '').trim()
+  if (!raw) {
+    return {
+      workbench: wb,
+      touchedCount: 0,
+      summaryZh: '未检测到微调指令', // cjk-ok
+      summaryEn: 'No delta instructions detected'
+    }
+  }
+
+  let touchedCount = 0
+  const actionsZh: string[] = []
+  const actionsEn: string[] = []
+
+  // 是否仅针对高费卡（>=2费）或低费卡（<=1费）
+  const onlyHighCost = /高费|[23]费以上|大牌/i.test(raw) // cjk-ok
+  const onlyLowCost = /低费|[01]费|小牌/i.test(raw) // cjk-ok
+  const matchCostFilter = (cost: number): boolean => {
+    if (onlyHighCost) return cost >= 2
+    if (onlyLowCost) return cost <= 1
+    return true
+  }
+
+  // 1. 卡牌伤害 / 攻击力 / 筹码 百分比或固定值微调（例如 "所有卡牌伤害提高25%" / "高费卡伤害+20%" / "伤害下调15%"）
+  const dmgPctMatch =
+    /* cjk-ok */ /(?:伤害|攻击|攻击力|筹码|dmg|atk|damage)\s*(?:提高|提升|增加|上调|降低|下调|减少|削弱|[+-])\s*(\d{1,3})\s*%/i.exec(
+      raw
+    )
+  if (dmgPctMatch?.[1]) {
+    const isDown = /降低|下调|减少|削弱|-/i.test(dmgPctMatch[0]) // cjk-ok
+    const pct = Number(dmgPctMatch[1]) * (isDown ? -1 : 1)
+    const mult = Math.max(0.2, 1 + pct / 100)
+    for (const c of wb.combatKernel.deckCards) {
+      if (c.damage > 0 && matchCostFilter(c.cost)) {
+        c.damage = Math.max(1, Math.round(c.damage * mult))
+        touchedCount++
+      }
+    }
+    for (const m of wb.combatKernel.manaCurveDeck) {
+      if (matchCostFilter(m.manaCost)) {
+        if (m.attack > 0) m.attack = Math.max(1, Math.round(m.attack * mult))
+        if (m.directDamage > 0) m.directDamage = Math.max(1, Math.round(m.directDamage * mult))
+        touchedCount++
+      }
+    }
+    for (const e of wb.multiplier.entities) {
+      if (matchCostFilter(e.cost)) {
+        for (const k of ['dmg', 'atk', 'chips']) {
+          if (typeof e.stats[k] === 'number' && e.stats[k]! > 0) {
+            e.stats[k] = Math.max(1, Math.round(e.stats[k]! * mult))
+            touchedCount++
+          }
+        }
+      }
+    }
+    actionsZh.push(`卡牌伤害 ${pct > 0 ? `+${pct}%` : `${pct}%`}`) // cjk-ok
+    actionsEn.push(`Card DMG ${pct > 0 ? `+${pct}%` : `${pct}%`}`)
+  }
+
+  // 2. 护甲 / 格挡 / 生命值 百分比微调（例如 "护甲提高30%" / "格挡+20%"）
+  const blkPctMatch =
+    /* cjk-ok */ /(?:护甲|格挡|护盾|防御|血量|生命|block|shield)\s*(?:提高|提升|增加|上调|降低|下调|减少|削弱|[+-])\s*(\d{1,3})\s*%/i.exec(
+      raw
+    )
+  if (blkPctMatch?.[1] && !(/* cjk-ok */ /boss|敌方|怪物/i.test(raw))) {
+    const isDown = /降低|下调|减少|削弱|-/i.test(blkPctMatch[0]) // cjk-ok
+    const pct = Number(blkPctMatch[1]) * (isDown ? -1 : 1)
+    const mult = Math.max(0.2, 1 + pct / 100)
+    for (const c of wb.combatKernel.deckCards) {
+      if (c.block > 0 && matchCostFilter(c.cost)) {
+        c.block = Math.max(1, Math.round(c.block * mult))
+        touchedCount++
+      }
+    }
+    actionsZh.push(`护甲格挡 ${pct > 0 ? `+${pct}%` : `${pct}%`}`) // cjk-ok
+    actionsEn.push(`Card Block ${pct > 0 ? `+${pct}%` : `${pct}%`}`)
+  }
+
+  // 3. 卡牌费用批量加减（例如 "全卡费用-1" / "高费卡费用-1" / "费用+1"）
+  const costDeltaMatch = /(?:费用|耗能|法力|cost)\s*([+-])\s*(\d)/i.exec(raw) // cjk-ok
+  if (costDeltaMatch?.[1] && costDeltaMatch?.[2]) {
+    const delta = Number(costDeltaMatch[2]) * (costDeltaMatch[1] === '-' ? -1 : 1)
+    for (const c of wb.combatKernel.deckCards) {
+      if (matchCostFilter(c.cost)) {
+        c.cost = Math.max(0, Math.min(9, c.cost + delta))
+        touchedCount++
+      }
+    }
+    for (const e of wb.multiplier.entities) {
+      if (matchCostFilter(e.cost)) {
+        e.cost = Math.max(1, Math.min(10, e.cost + delta))
+        touchedCount++
+      }
+    }
+    actionsZh.push(`卡牌费用 ${delta > 0 ? `+${delta}` : delta}`) // cjk-ok
+    actionsEn.push(`Card Cost ${delta > 0 ? `+${delta}` : delta}`)
+  }
+
+  // 4. Boss / 敌方血量微调（例如 "Boss血量翻倍" / "Boss血量下调20%" / "敌方血量+30%"）
+  if (/* cjk-ok */ /boss\s*血量翻倍|敌方血量翻倍/i.test(raw)) {
+    wb.combatKernel.enemyHp = Math.round(wb.combatKernel.enemyHp * 2)
+    wb.combatKernel.opponentHp = Math.round(wb.combatKernel.opponentHp * 2)
+    wb.combatKernel.targetEnemyHp = Math.round(wb.combatKernel.targetEnemyHp * 2)
+    touchedCount += 3
+    actionsZh.push('Boss血量 ×2') // cjk-ok
+    actionsEn.push('Boss HP ×2')
+  } else {
+    const bossHpPct =
+      /* cjk-ok */ /(?:boss|敌方|怪物)\s*(?:血量|生命|hp)\s*(?:提高|提升|增加|上调|降低|下调|减少|削弱|[+-])\s*(\d{1,3})\s*%/i.exec(
+        raw
+      )
+    if (bossHpPct?.[1]) {
+      const isDown = /降低|下调|减少|削弱|-/i.test(bossHpPct[0]) // cjk-ok
+      const pct = Number(bossHpPct[1]) * (isDown ? -1 : 1)
+      const mult = Math.max(0.2, 1 + pct / 100)
+      wb.combatKernel.enemyHp = Math.max(10, Math.round(wb.combatKernel.enemyHp * mult))
+      wb.combatKernel.opponentHp = Math.max(10, Math.round(wb.combatKernel.opponentHp * mult))
+      wb.combatKernel.targetEnemyHp = Math.max(
+        100,
+        Math.round(wb.combatKernel.targetEnemyHp * mult)
+      )
+      touchedCount += 3
+      actionsZh.push(`Boss血量 ${pct > 0 ? `+${pct}%` : `${pct}%`}`) // cjk-ok
+      actionsEn.push(`Boss HP ${pct > 0 ? `+${pct}%` : `${pct}%`}`)
+    }
+  }
+
+  // 5. 保底抽数 / 能量 / 抽牌微调
+  const pityMatch = /保底\s*(?:改成|改为|设为|调到)?\s*(\d{2,3})\s*(?:抽|包)?/i.exec(raw) // cjk-ok
+  if (pityMatch?.[1]) {
+    wb.lootRoll.hardPityPull = Math.max(10, Math.min(300, Number(pityMatch[1])))
+    wb.lootRoll.softPityStart = Math.round(wb.lootRoll.hardPityPull * 0.78)
+    touchedCount++
+    actionsZh.push(`硬保底设为 ${wb.lootRoll.hardPityPull} 抽`) // cjk-ok
+    actionsEn.push(`Hard pity = ${wb.lootRoll.hardPityPull}`)
+  }
+
+  // 6. 在保留现有卡池的基础上追加新卡（如 "再加一张 绝命毒师(1费10伤毒8)"）
+  const bracketCardRegex = /([^\s，,。.；;、:：()（）]{2,16})[（(]([^)）]{2,45})[)）]/g
+  let bMatch: RegExpExecArray | null
+  while ((bMatch = bracketCardRegex.exec(raw)) !== null) {
+    const rawCardName = bMatch[1]!
+      .replace(/^(?:再加一张|再加|追加|新增|包含|加入|add)\s*/i, '') // cjk-ok
+      .trim()
+    const specStr = bMatch[2]!.trim()
+    if (!rawCardName || rawCardName.length < 2) continue
+
+    const cMatch = /(\d{1,2})\s*(?:费|耗|cost|mana)/i.exec(specStr) // cjk-ok
+    const dMatch = /(\d{1,4})\s*(?:伤|伤害|攻|筹码|dmg|atk|chips)/i.exec(specStr) // cjk-ok
+    const blkMatch = /(\d{1,4})\s*(?:甲|格挡|护盾|防|block|hp|shield)/i.exec(specStr) // cjk-ok
+    const hitMatch = /[×x*]\s*(\d{1,2})\s*(?:段|连击|hits?)/i.exec(specStr) // cjk-ok
+    const drawMatch = /(?:抽|摸|draw)\s*(\d{1,2})/i.exec(specStr) // cjk-ok
+    const poisonMatch = /(?:毒|中毒|流血|poison)\s*(\d{1,3})/i.exec(specStr) // cjk-ok
+
+    const cost = cMatch?.[1] ? Number(cMatch[1]) : 1
+    const dmg = dMatch?.[1] ? Number(dMatch[1]) : 10
+    const block = blkMatch?.[1] ? Number(blkMatch[1]) : 0
+    const hits = hitMatch?.[1] ? Number(hitMatch[1]) : 1
+    const draw = drawMatch?.[1] ? Number(drawMatch[1]) : 0
+    const poison = poisonMatch?.[1] ? Number(poisonMatch[1]) : 0
+    const title = `${rawCardName} (${specStr})`
+
+    wb.combatKernel.deckCards.unshift({
+      id: `delta_card_${Date.now()}_${touchedCount}`,
+      name: title,
+      cost,
+      count: 2,
+      damage: dmg,
+      hits,
+      block,
+      draw,
+      energyGain: 0,
+      applyStrength: 0,
+      applyVulnerable: 0,
+      applyWeak: 0,
+      poison,
+      exhaust: false,
+      priority: 4
+    })
+    wb.multiplier.entities.unshift({
+      id: `delta_ent_${Date.now()}_${touchedCount}`,
+      name: title,
+      cost: Math.max(1, cost),
+      rarity: 'rare',
+      tags: ['custom'],
+      stats: {
+        dmg: dmg * hits,
+        chips: dmg * hits * 5,
+        block,
+        addMult: Math.max(8, dmg),
+        xMult: 1.5
+      }
+    })
+    touchedCount++
+    actionsZh.push(`追加卡牌【${title}】`) // cjk-ok
+    actionsEn.push(`Added card [${title}]`)
+  }
+
+  // 7. 熔断无限连或自动调平
+  if (/* cjk-ok */ /熔断|防死循环|circuit/i.test(raw)) {
+    const fixed = applyMxInfiniteLoopCircuitBreaker(wb)
+    touchedCount += fixed
+    actionsZh.push(`熔断 ${fixed} 处无限连风险`) // cjk-ok
+    actionsEn.push(`Circuit-broke ${fixed} infinite risks`)
+  }
+  if (/* cjk-ok */ /调平|自动平衡|balance/i.test(raw)) {
+    const balanced = autoBalanceWorkbenchEntities(wb.multiplier)
+    wb.multiplier.entities = balanced.updatedEntities
+    touchedCount += balanced.adjustedCount
+    actionsZh.push(`自动调平 ${balanced.adjustedCount} 张超模/废卡`) // cjk-ok
+    actionsEn.push(`Balanced ${balanced.adjustedCount} entities`)
+  }
+
+  return {
+    workbench: wb,
+    touchedCount,
+    summaryZh: actionsZh.length
+      ? `🔧 已在当前表上增量微调 (${touchedCount} 项)：${actionsZh.join(' · ')}` // cjk-ok
+      : '🔧 未匹配到增量参数，已保留原表', // cjk-ok
+    summaryEn: actionsEn.length
+      ? `🔧 Delta-patched (${touchedCount} items): ${actionsEn.join(' · ')}`
+      : '🔧 No delta rules matched; kept existing table'
+  }
+}
+
+// ───────────────────────────── 7. 卡牌升级差分 (Card ➔ Card+) 与卡组构筑体检仪 ─────────────────────────────
+
+export interface MxCardUpgradeRoiRow {
+  cardId: string
+  baseName: string
+  upgradedName: string
+  upgradeKind: 'cost_minus_1' | 'extra_hit_or_buff' | 'stat_boost_35pct'
+  upgradeKindLabelZh: string
+  upgradeKindLabelEn: string
+  baseSummary: string
+  upgradedSummary: string
+  valueGainPct: number
+  winRateDeltaPct: number
+  campfirePriority: 'S_first_smith' | 'A_high_value' | 'B_filler_smith'
+}
+
+export interface MxDeckCostBucket {
+  costLabel: string
+  cardCount: number
+  sharePct: number
+  idealRangeLabel: string
+  status: 'optimal' | 'too_heavy' | 'too_low'
+}
+
+export interface MxDeckRoleRatioRow {
+  roleId: 'attack' | 'defense' | 'engine' | 'scaling'
+  labelZh: string
+  labelEn: string
+  cardCount: number
+  actualPct: number
+  recommendedRange: string
+  verdict: 'healthy' | 'deficient' | 'bloated'
+}
+
+export interface MxCardUpgradeAndDeckDoctorResult {
+  upgradeRows: MxCardUpgradeRoiRow[]
+  costCurve: MxDeckCostBucket[]
+  roleRatios: MxDeckRoleRatioRow[]
+  totalDeckSize: number
+  averageCost: number
+  deckHealthScore: number
+  doctorAdvisoryZh: string
+  doctorAdvisoryEn: string
+}
+
+/**
+ * 卡牌「升级前后差分 (Card ➔ Card+) 与篝火敲牌优先级 ROI」+「卡组费用曲线与四大职能黄金比例体检仪」：
+ * 1. 自动为每张卡推导升级版（Card+）方案（减费型 / 多段增益型 / 35%数值成长型），并计算篝火第一敲牌优先级；
+ * 2. 统计整套牌库的 0费/1费/2费/3费+ 费用分布直方图，以及 进攻/防御/过牌引擎/倍增启动 四大职能占比与卡手诊断。
+ */
+export function analyzeMxCardUpgradeRoiAndDeckDoctor(
+  wb: MxNumericalWorkbench
+): MxCardUpgradeAndDeckDoctorResult {
+  const sourceCards: MxDeckCardSpec[] =
+    wb.combatKernel.deckCards.length > 0
+      ? wb.combatKernel.deckCards
+      : wb.multiplier.entities.map((ent, idx) => ({
+          id: ent.id || `ent_${idx}`,
+          name: ent.name,
+          cost: Math.max(0, Math.min(5, Math.round(ent.cost || 1))),
+          count: 2,
+          damage: Number(ent.stats.dmg ?? ent.stats.atk ?? ent.stats.chips ?? 10),
+          hits: 1,
+          block: Number(ent.stats.block ?? ent.stats.hp ?? 0),
+          draw: Number(ent.stats.draw ?? 0),
+          energyGain: 0,
+          applyStrength: (ent.stats.xMult ?? 1) >= 2 ? 2 : 0,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 3
+        }))
+
+  const upgradeRows: MxCardUpgradeRoiRow[] = sourceCards.map((c) => {
+    const hits = Math.max(1, c.hits ?? 1)
+    const isAlreadyUpgraded = c.name.trim().endsWith('+')
+    const upName = isAlreadyUpgraded ? c.name.trim() : `${c.name.trim()}+`
+
+    let upgradeKind: MxCardUpgradeRoiRow['upgradeKind'] = 'stat_boost_35pct'
+    let upgradeKindLabelZh = '📈 数值强化 (+35%)' // cjk-ok
+    let upgradeKindLabelEn = '📈 +35% Output Boost'
+    let upCost = c.cost
+    let upDmg = c.damage
+    let upBlk = c.block
+    let upDraw = c.draw
+    let upStr = c.applyStrength
+    let upVuln = c.applyVulnerable
+
+    if (c.cost >= 2 && c.damage === 0 && c.block === 0) {
+      upgradeKind = 'cost_minus_1'
+      upgradeKindLabelZh = '💎 减费质变 (费用-1)' // cjk-ok
+      upgradeKindLabelEn = '💎 Cost -1 Reduction'
+      upCost = Math.max(0, c.cost - 1)
+      upDraw = c.draw + 1
+    } else if (hits >= 2 || c.applyStrength > 0 || c.applyVulnerable > 0) {
+      upgradeKind = 'extra_hit_or_buff'
+      upgradeKindLabelZh = '⚡ 连击/增益进阶' // cjk-ok
+      upgradeKindLabelEn = '⚡ Multi-Hit / Buff Scaling'
+      if (c.damage > 0) upDmg = c.damage + Math.max(2, Math.round(c.damage * 0.28))
+      if (c.applyStrength > 0) upStr = c.applyStrength + 1
+      if (c.applyVulnerable > 0) upVuln = c.applyVulnerable + 1
+    } else {
+      if (c.damage > 0) upDmg = c.damage + Math.max(3, Math.round(c.damage * 0.35))
+      if (c.block > 0) upBlk = c.block + Math.max(3, Math.round(c.block * 0.35))
+      if (c.damage === 0 && c.block === 0) upDraw = c.draw + 1
+    }
+
+    const baseVal =
+      c.damage * hits +
+      c.block +
+      c.draw * 4.5 +
+      c.energyGain * 6 +
+      c.applyStrength * 6 +
+      c.applyVulnerable * 4
+    const upVal =
+      upDmg * hits +
+      upBlk +
+      upDraw * 4.5 +
+      c.energyGain * 6 +
+      upStr * 6 +
+      upVuln * 4 +
+      (c.cost - upCost) * 7
+    const valueGainPct = Math.max(
+      12,
+      Math.min(120, Math.round(((upVal - baseVal) / Math.max(4, baseVal)) * 100))
+    )
+    const winRateDeltaPct =
+      Math.round(
+        valueGainPct *
+          (upgradeKind === 'cost_minus_1'
+            ? 0.24
+            : upgradeKind === 'extra_hit_or_buff'
+              ? 0.21
+              : 0.14) *
+          10
+      ) / 10
+
+    const fmtCard = (
+      cost: number,
+      dmg: number,
+      blk: number,
+      drw: number,
+      str: number,
+      vuln: number
+    ): string => {
+      const parts = [`${cost}NRG`]
+      if (dmg > 0) parts.push(hits > 1 ? `${dmg}×${hits}DMG` : `${dmg}DMG`)
+      if (blk > 0) parts.push(`${blk}BLK`)
+      if (drw > 0) parts.push(`+${drw}Draw`)
+      if (str > 0) parts.push(`+${str}STR`)
+      if (vuln > 0) parts.push(`${vuln}Vuln`)
+      return parts.join(' · ')
+    }
+
+    const campfirePriority: MxCardUpgradeRoiRow['campfirePriority'] =
+      winRateDeltaPct >= 6.5 || upgradeKind === 'cost_minus_1'
+        ? 'S_first_smith'
+        : winRateDeltaPct >= 4.2
+          ? 'A_high_value'
+          : 'B_filler_smith'
+
+    return {
+      cardId: c.id,
+      baseName: c.name,
+      upgradedName: upName,
+      upgradeKind,
+      upgradeKindLabelZh,
+      upgradeKindLabelEn,
+      baseSummary: fmtCard(c.cost, c.damage, c.block, c.draw, c.applyStrength, c.applyVulnerable),
+      upgradedSummary: fmtCard(upCost, upDmg, upBlk, upDraw, upStr, upVuln),
+      valueGainPct,
+      winRateDeltaPct,
+      campfirePriority
+    }
+  })
+
+  upgradeRows.sort((a, b) => b.winRateDeltaPct - a.winRateDeltaPct)
+
+  // 2. 卡组费用曲线分布（0费 / 1费 / 2费 / 3+费）
+  const totalDeckSize = Math.max(
+    1,
+    sourceCards.reduce((sum, c) => sum + Math.max(1, c.count || 1), 0)
+  )
+  const weightedCostSum = sourceCards.reduce(
+    (sum, c) => sum + c.cost * Math.max(1, c.count || 1),
+    0
+  )
+  const averageCost = Math.round((weightedCostSum / totalDeckSize) * 100) / 100
+
+  const countByCost = [0, 0, 0, 0]
+  let atkCount = 0
+  let defCount = 0
+  let engCount = 0
+  let sclCount = 0
+
+  for (const c of sourceCards) {
+    const cnt = Math.max(1, c.count || 1)
+    const bucketIdx = Math.min(3, Math.max(0, Math.round(c.cost)))
+    countByCost[bucketIdx] = (countByCost[bucketIdx] ?? 0) + cnt
+
+    if (c.draw > 0 || c.energyGain > 0) {
+      engCount += cnt
+    } else if (c.applyStrength > 0 || c.applyVulnerable > 0 || (c.poison ?? 0) > 0) {
+      sclCount += cnt
+    } else if (c.block > c.damage) {
+      defCount += cnt
+    } else {
+      atkCount += cnt
+    }
+  }
+
+  const bucketDefs: Array<{
+    idx: number
+    costLabel: string
+    idealLo: number
+    idealHi: number
+    idealRangeLabel: string
+  }> = [
+    { idx: 0, costLabel: '0 Cost', idealLo: 5, idealHi: 25, idealRangeLabel: '5%~25%' },
+    { idx: 1, costLabel: '1 Cost', idealLo: 35, idealHi: 65, idealRangeLabel: '35%~65%' },
+    { idx: 2, costLabel: '2 Cost', idealLo: 15, idealHi: 40, idealRangeLabel: '15%~40%' },
+    { idx: 3, costLabel: '3+ Cost', idealLo: 0, idealHi: 20, idealRangeLabel: '0%~20%' }
+  ]
+
+  const costCurve: MxDeckCostBucket[] = bucketDefs.map((b) => {
+    const cardCount = countByCost[b.idx] ?? 0
+    const sharePct = Math.round((cardCount / totalDeckSize) * 1000) / 10
+    const status: MxDeckCostBucket['status'] =
+      sharePct > b.idealHi ? 'too_heavy' : sharePct < b.idealLo ? 'too_low' : 'optimal'
+    return {
+      costLabel: b.costLabel,
+      cardCount,
+      sharePct,
+      idealRangeLabel: b.idealRangeLabel,
+      status
+    }
+  })
+
+  const roleSpecs: Array<{
+    roleId: MxDeckRoleRatioRow['roleId']
+    labelZh: string
+    labelEn: string
+    cardCount: number
+    lo: number
+    hi: number
+  }> = [
+    {
+      roleId: 'attack',
+      labelZh: '⚔️ 进攻输出卡 (Attack)', // cjk-ok
+      labelEn: '⚔️ Attack / Burst',
+      cardCount: atkCount,
+      lo: 30,
+      hi: 55
+    },
+    {
+      roleId: 'defense',
+      labelZh: '🛡️ 防御护盾卡 (Defense)', // cjk-ok
+      labelEn: '🛡️ Defense / Guard',
+      cardCount: defCount,
+      lo: 20,
+      hi: 45
+    },
+    {
+      roleId: 'engine',
+      labelZh: '🔄 过牌/回能引擎 (Draw/NRG)', // cjk-ok
+      labelEn: '🔄 Draw & Energy Engine',
+      cardCount: engCount,
+      lo: 10,
+      hi: 30
+    },
+    {
+      roleId: 'scaling',
+      labelZh: '✨ 增益/倍增核心 (Scaling)', // cjk-ok
+      labelEn: '✨ Scaling & Multipliers',
+      cardCount: sclCount,
+      lo: 10,
+      hi: 30
+    }
+  ]
+
+  const roleRatios: MxDeckRoleRatioRow[] = roleSpecs.map((r) => {
+    const actualPct = Math.round((r.cardCount / totalDeckSize) * 1000) / 10
+    return {
+      roleId: r.roleId,
+      labelZh: r.labelZh,
+      labelEn: r.labelEn,
+      cardCount: r.cardCount,
+      actualPct,
+      recommendedRange: `${r.lo}%~${r.hi}%`,
+      verdict: actualPct < r.lo ? 'deficient' : actualPct > r.hi ? 'bloated' : 'healthy'
+    }
+  })
+
+  const deficientCount = roleRatios.filter((r) => r.verdict !== 'healthy').length
+  const heavyCostPenalty = averageCost > 1.75 ? Math.round((averageCost - 1.75) * 35) : 0
+  const deckHealthScore = Math.max(25, Math.min(100, 96 - deficientCount * 14 - heavyCostPenalty))
+
+  const doctorAdvisoryZh =
+    averageCost > 1.8
+      ? `⚠️ 平均费用偏高 (${averageCost}费)：前3回合极易卡手空过，建议增加 0~1 费过牌/回能卡或下调高费卡数量` // cjk-ok
+      : roleRatios.find((r) => r.roleId === 'engine' && r.verdict === 'deficient')
+        ? `⚠️ 缺乏过牌/回能润滑引擎 (<10%)：牌库循环缓慢，难以在关键回合抽到核心必杀卡` // cjk-ok
+        : roleRatios.find((r) => r.roleId === 'defense' && r.verdict === 'deficient')
+          ? `⚠️ 防御护盾占比偏低 (<20%)：面对高攻精英与反伤 Boss 战损过高，建议补足 1 费护盾卡` // cjk-ok
+          : `✅ 牌库结构健康 (${totalDeckSize}张 · 均费 ${averageCost})：攻防与过牌引擎处于黄金配比区间` // cjk-ok
+
+  const doctorAdvisoryEn =
+    averageCost > 1.8
+      ? `⚠️ High avg cost (${averageCost}): High brick risk in Turns 1–3; add 0–1 cost draw/energy cards`
+      : roleRatios.find((r) => r.roleId === 'engine' && r.verdict === 'deficient')
+        ? `⚠️ Low Draw/Energy engine (<10%): Slow deck cycle; add draw/mana engine cards`
+        : `✅ Healthy deck composition (${totalDeckSize} cards · Avg cost ${averageCost})`
+
+  return {
+    upgradeRows,
+    costCurve,
+    roleRatios,
+    totalDeckSize,
+    averageCost,
+    deckHealthScore,
+    doctorAdvisoryZh,
+    doctorAdvisoryEn
+  }
+}
+
+/**
+ * 一键将篝火优先级最高的前 N 张核心卡牌升级为强化版（`Card` ➔ `Card+`），并同步更新战斗牌库与乘区实体表。
+ */
+export function applyMxTopCardUpgrades(wb: MxNumericalWorkbench, maxCount = 2): number {
+  const analysis = analyzeMxCardUpgradeRoiAndDeckDoctor(wb)
+  const topIds = new Set(
+    analysis.upgradeRows
+      .filter((r) => !r.baseName.trim().endsWith('+'))
+      .slice(0, maxCount)
+      .map((r) => r.cardId)
+  )
+  const upgradedIds = new Set<string>()
+
+  for (const c of wb.combatKernel.deckCards) {
+    if (!topIds.has(c.id) || c.name.trim().endsWith('+')) continue
+    c.name = `${c.name.trim()}+`
+    if (c.cost >= 2 && c.damage === 0 && c.block === 0) {
+      c.cost = Math.max(0, c.cost - 1)
+      c.draw += 1
+    } else {
+      if (c.damage > 0) c.damage += Math.max(3, Math.round(c.damage * 0.35))
+      if (c.block > 0) c.block += Math.max(3, Math.round(c.block * 0.35))
+      if (c.applyStrength > 0) c.applyStrength += 1
+      if (c.applyVulnerable > 0) c.applyVulnerable += 1
+    }
+    upgradedIds.add(c.id)
+  }
+
+  // 仅同步升级与牌库同 ID（或在无牌库时被选中）的配表实体，不再误升级优先榜之外的卡
+  for (const ent of wb.multiplier.entities) {
+    if (!topIds.has(ent.id) || ent.name.trim().endsWith('+')) continue
+    ent.name = `${ent.name.trim()}+`
+    for (const k of ['dmg', 'atk', 'chips', 'block', 'addMult']) {
+      if (typeof ent.stats[k] === 'number' && ent.stats[k]! > 0) {
+        ent.stats[k] = Math.round(ent.stats[k]! * 1.32)
+      }
+    }
+    upgradedIds.add(ent.id)
+  }
+
+  return upgradedIds.size
+}
+
+// ───────────────────────────── 8. 超几何上手率精算 + 单回合斩杀序列求解 + Boss意图轴压测 + 版本快照A/B差分 ─────────────────────────────
+
+export interface MxHypergeometricCardRow {
+  cardId: string
+  cardName: string
+  copiesInDeck: number
+  cost: number
+  t1RawProbPct: number
+  t1MulliganProbPct: number
+  t2ProbPct: number
+  t3ProbPct: number
+  thin3GainPct: number
+}
+
+export interface MxHypergeometricDrawResult {
+  deckSize: number
+  drawPerTurn: number
+  rows: MxHypergeometricCardRow[]
+  comboPairLabel: string
+  comboT1ProbPct: number
+  comboT2ProbPct: number
+  comboT3ProbPct: number
+  comboThin3T3ProbPct: number
+  onCurveT1Pct: number
+  brickTurn1Pct: number
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+function hypergeomChoose(n: number, k: number): number {
+  if (k < 0 || k > n) return 0
+  if (k === 0 || k === n) return 1
+  const m = Math.min(k, n - k)
+  let res = 1
+  for (let i = 1; i <= m; i++) {
+    res = (res * (n - m + i)) / i
+  }
+  return res
+}
+
+function hypergeomAtLeastOne(deckSize: number, copies: number, drawn: number): number {
+  const N = Math.max(1, deckSize)
+  const K = Math.max(0, Math.min(N, copies))
+  const n = Math.max(0, Math.min(N, drawn))
+  if (K === 0 || n === 0) return 0
+  if (n > N - K) return 1
+  const pZero = hypergeomChoose(N - K, n) / Math.max(1, hypergeomChoose(N, n))
+  return Math.max(0, Math.min(1, 1 - pZero))
+}
+
+function hypergeomBothAtLeastOne(
+  deckSize: number,
+  copiesA: number,
+  copiesB: number,
+  drawn: number
+): number {
+  const N = Math.max(2, deckSize)
+  const KA = Math.max(1, Math.min(N - 1, copiesA))
+  const KB = Math.max(1, Math.min(N - KA, copiesB))
+  const n = Math.max(0, Math.min(N, drawn))
+  if (n < 2) return 0
+  const denom = Math.max(1, hypergeomChoose(N, n))
+  const pNoA = hypergeomChoose(N - KA, n) / denom
+  const pNoB = hypergeomChoose(N - KB, n) / denom
+  const pNoAB = hypergeomChoose(Math.max(0, N - KA - KB), n) / denom
+  return Math.max(0, Math.min(1, 1 - pNoA - pNoB + pNoAB))
+}
+
+/**
+ * 1) 超几何分布：起手调度 (Mulligan) 与 Key 卡准时上手率 / 双卡 Combo 凑齐率精算器
+ */
+/** 公开：超几何 P(X ≥ 1)，牌库 N 张、目标 K 张、抽 n 张（供外部与已知答案测试使用） */
+export function mxHypergeomAtLeastOne(deckSize: number, copies: number, drawn: number): number {
+  return hypergeomAtLeastOne(deckSize, copies, drawn)
+}
+
+/** 公开：超几何容斥 P(A ≥ 1 且 B ≥ 1) */
+export function mxHypergeomBothAtLeastOne(
+  deckSize: number,
+  copiesA: number,
+  copiesB: number,
+  drawn: number
+): number {
+  return hypergeomBothAtLeastOne(deckSize, copiesA, copiesB, drawn)
+}
+
+export function analyzeMxHypergeometricDrawAndComboOdds(
+  wb: MxNumericalWorkbench
+): MxHypergeometricDrawResult {
+  const cards =
+    wb.combatKernel.deckCards.length > 0
+      ? wb.combatKernel.deckCards
+      : wb.multiplier.entities.map((e, i) => ({
+          id: e.id || `c_${i}`,
+          name: e.name,
+          cost: Math.max(0, Math.round(e.cost || 1)),
+          count: e.rarity === 'legendary' || e.rarity === 'rare' ? 1 : 2,
+          damage: Number(e.stats.dmg ?? e.stats.atk ?? e.stats.chips ?? 8),
+          hits: 1,
+          block: Number(e.stats.block ?? e.stats.hp ?? 0),
+          draw: Number(e.stats.draw ?? 0),
+          energyGain: 0,
+          applyStrength: 0,
+          applyVulnerable: 0,
+          applyWeak: 0,
+          exhaust: false,
+          priority: 5
+        }))
+
+  const deckSize = Math.max(
+    5,
+    cards.reduce((s, c) => s + Math.max(1, c.count || 1), 0)
+  )
+  const drawPerTurn = Math.max(3, Math.min(10, wb.combatKernel.drawPerTurn || 5))
+  const extraDrawPerTurn = Math.min(
+    3,
+    cards.reduce((s, c) => s + (c.draw || 0) * (c.count || 1), 0) / Math.max(1, deckSize)
+  )
+  const seenT1 = drawPerTurn
+  const mulliganReplace = Math.min(3, Math.max(1, Math.floor(drawPerTurn * 0.6)))
+  const seenT1Mulligan = Math.min(deckSize, seenT1 + mulliganReplace)
+  const seenT2 = Math.min(deckSize, Math.round(seenT1 + drawPerTurn + extraDrawPerTurn))
+  const seenT3 = Math.min(deckSize, Math.round(seenT1 + (drawPerTurn + extraDrawPerTurn) * 2))
+  const thinDeckSize = Math.max(5, deckSize - 3)
+
+  const rows: MxHypergeometricCardRow[] = cards.map((c) => {
+    const k = Math.max(1, c.count || 1)
+    const t1Raw = round2(hypergeomAtLeastOne(deckSize, k, seenT1) * 100)
+    const t1Mul = round2(hypergeomAtLeastOne(deckSize, k, seenT1Mulligan) * 100)
+    const t2 = round2(hypergeomAtLeastOne(deckSize, k, seenT2) * 100)
+    const t3 = round2(hypergeomAtLeastOne(deckSize, k, seenT3) * 100)
+    const t3Thin = round2(
+      hypergeomAtLeastOne(thinDeckSize, k, Math.min(thinDeckSize, seenT3)) * 100
+    )
+    return {
+      cardId: c.id,
+      cardName: c.name,
+      copiesInDeck: k,
+      cost: c.cost,
+      t1RawProbPct: t1Raw,
+      t1MulliganProbPct: t1Mul,
+      t2ProbPct: t2,
+      t3ProbPct: t3,
+      thin3GainPct: round2(Math.max(0, t3Thin - t3))
+    }
+  })
+
+  // Select top 2 synergistic / highest-impact cards as key Combo pair
+  const sortedForCombo = [...cards].sort(
+    (a, b) =>
+      b.damage * Math.max(1, b.hits ?? 1) +
+      b.applyStrength * 10 +
+      b.applyVulnerable * 8 +
+      b.draw * 6 -
+      (a.damage * Math.max(1, a.hits ?? 1) +
+        a.applyStrength * 10 +
+        a.applyVulnerable * 8 +
+        a.draw * 6)
+  )
+  const cardA = sortedForCombo[0] ?? cards[0]
+  const cardB = sortedForCombo[1] ?? sortedForCombo[0] ?? cards[0]
+  const kA = Math.max(1, cardA?.count ?? 1)
+  const kB = Math.max(1, cardB?.count ?? 1)
+  const comboPairLabel =
+    cardA && cardB && cardA.id !== cardB.id
+      ? `${cardA.name} + ${cardB.name}`
+      : `${cardA?.name ?? 'Key A'} ×2`
+
+  const comboT1ProbPct = round2(hypergeomBothAtLeastOne(deckSize, kA, kB, seenT1Mulligan) * 100)
+  const comboT2ProbPct = round2(hypergeomBothAtLeastOne(deckSize, kA, kB, seenT2) * 100)
+  const comboT3ProbPct = round2(hypergeomBothAtLeastOne(deckSize, kA, kB, seenT3) * 100)
+  const comboThin3T3ProbPct = round2(
+    hypergeomBothAtLeastOne(thinDeckSize, kA, kB, Math.min(thinDeckSize, seenT3)) * 100
+  )
+
+  const playableT1Copies = cards
+    .filter((c) => c.cost <= Math.max(1, wb.combatKernel.energyPerTurn || 3))
+    .reduce((s, c) => s + Math.max(1, c.count || 1), 0)
+  const onCurveT1Pct = round2(hypergeomAtLeastOne(deckSize, playableT1Copies, seenT1) * 100)
+  const brickTurn1Pct = round2(Math.max(0, 100 - onCurveT1Pct))
+
+  return {
+    deckSize,
+    drawPerTurn,
+    rows,
+    comboPairLabel,
+    comboT1ProbPct,
+    comboT2ProbPct,
+    comboT3ProbPct,
+    comboThin3T3ProbPct,
+    onCurveT1Pct,
+    brickTurn1Pct
+  }
+}
+
+export interface MxSingleTurnLethalStep {
+  stepIndex: number
+  cardName: string
+  costPaid: number
+  effectDesc: string
+  cumulativeDamage: number
+}
+
+export interface MxSingleTurnLethalResult {
+  handCardNames: string[]
+  availableEnergy: number
+  naiveOrderDamage: number
+  naiveSequenceLabel: string
+  optimalLethalDamage: number
+  optimalSequenceLabel: string
+  optimalSteps: MxSingleTurnLethalStep[]
+  skillGapRatio: number
+  skillCeilingVerdict: 'high_skill_ceiling' | 'moderate_tactics' | 'flat_brainless'
+  advisoryZh: string
+  advisoryEn: string
+}
+
+/**
+ * 2) 单回合最高斩杀线求解器 & 出牌顺序技巧深度评估 (Lethal Puzzle & Order-Sensitivity Solver)
+ * 枚举手牌在能量约束下的所有合法出牌排列（Permutation），对比「先打伤害再上Buff的逆序乱出」与「回能➔易伤➔加攻➔多段终结的最优序列」。
+ */
+export function solveMxSingleTurnLethalAndOrderSkill(
+  wb: MxNumericalWorkbench
+): MxSingleTurnLethalResult {
+  interface SimHandCard {
+    id: string
+    name: string
+    cost: number
+    damage: number
+    hits: number
+    energyGain: number
+    applyStrength: number
+    applyVulnerable: number
+    xMult: number
+  }
+
+  const rawPool: SimHandCard[] =
+    wb.combatKernel.deckCards.length > 0
+      ? wb.combatKernel.deckCards.map((c) => ({
+          id: c.id,
+          name: c.name,
+          cost: Math.max(0, c.cost),
+          damage: Math.max(0, c.damage),
+          hits: Math.max(1, c.hits || 1),
+          energyGain: Math.max(0, c.energyGain || 0),
+          applyStrength: Math.max(0, c.applyStrength || 0),
+          applyVulnerable: Math.max(0, c.applyVulnerable || 0),
+          xMult: Number(c.customStats?.xMult ?? c.customStats?.x_mult ?? 1)
+        }))
+      : wb.multiplier.entities.map((e, idx) => ({
+          id: e.id || `h_${idx}`,
+          name: e.name,
+          cost: Math.max(0, Math.min(3, Math.round(e.cost || 1))),
+          damage: Math.max(0, Number(e.stats.dmg ?? e.stats.atk ?? e.stats.chips ?? 8)),
+          hits: Math.max(1, Number(e.stats.hits ?? 1)),
+          energyGain: Math.max(0, Number(e.stats.nrg ?? e.stats.energyGain ?? 0)),
+          applyStrength: Math.max(0, Number(e.stats.str ?? e.stats.addMult ?? 0)),
+          applyVulnerable: Math.max(0, Number(e.stats.vuln ?? 0)),
+          xMult: Math.max(1, Number(e.stats.xMult ?? 1))
+        }))
+
+  // Construct a 5-card tactical burst hand from the pool (prioritizing diverse roles)
+  const hand: SimHandCard[] = []
+  const pickOne = (pred: (c: SimHandCard) => boolean): void => {
+    const found = rawPool.find((c) => !hand.some((h) => h.id === c.id) && pred(c))
+    if (found && hand.length < 5) hand.push({ ...found })
+  }
+  pickOne((c) => c.energyGain > 0 || c.cost === 0)
+  pickOne((c) => c.applyVulnerable > 0)
+  pickOne((c) => c.applyStrength > 0 || c.xMult > 1)
+  pickOne((c) => c.hits >= 2)
+  for (const c of rawPool) {
+    if (hand.length >= 5) break
+    if (!hand.some((h) => h.id === c.id)) hand.push({ ...c })
+  }
+  while (hand.length > 0 && hand.length < 4) {
+    const base = hand[hand.length - 1]!
+    hand.push({ ...base, id: `${base.id}_dup_${hand.length}`, name: `${base.name}` })
+  }
+
+  // 注意：不再人为注入易伤/力量效果。若卡组本身全是平伤卡，则如实给出「出牌顺序无差异」的评级。
+
+  const baseEnergy = Math.max(3, wb.combatKernel.energyPerTurn || 3)
+
+  const evaluateOrdering = (
+    order: SimHandCard[]
+  ): { totalDmg: number; steps: MxSingleTurnLethalStep[]; seqLabel: string } => {
+    let nrg = baseEnergy
+    let str = 0
+    let vuln = 0
+    let runningXMult = 1
+    let totalDmg = 0
+    const steps: MxSingleTurnLethalStep[] = []
+    for (const c of order) {
+      if (c.cost > nrg) continue
+      nrg = nrg - c.cost + c.energyGain
+      str += c.applyStrength
+      vuln += c.applyVulnerable
+      if (c.xMult > 1) runningXMult *= c.xMult
+      let cardDmg = 0
+      if (c.damage > 0) {
+        const perHit = (c.damage + str) * (vuln > 0 ? 1.5 : 1) * runningXMult
+        cardDmg = Math.round(perHit * c.hits)
+        totalDmg += cardDmg
+      }
+      steps.push({
+        stepIndex: steps.length + 1,
+        cardName: c.name,
+        costPaid: c.cost,
+        effectDesc: [
+          c.energyGain > 0 ? `+${c.energyGain}NRG` : '',
+          c.applyVulnerable > 0 ? `Vuln+${c.applyVulnerable}` : '',
+          c.applyStrength > 0 ? `Str+${c.applyStrength}` : '',
+          c.xMult > 1 ? `×${c.xMult}` : '',
+          cardDmg > 0 ? `${cardDmg} DMG` : ''
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        cumulativeDamage: totalDmg
+      })
+    }
+    return {
+      totalDmg,
+      steps,
+      seqLabel: steps.map((s) => s.cardName).join(' ➔ ') || '-'
+    }
+  }
+
+  // Generate permutations of `hand` (up to 5! = 120 permutations)
+  const perms: SimHandCard[][] = []
+  const permute = (arr: SimHandCard[], m: SimHandCard[] = []): void => {
+    if (arr.length === 0) {
+      perms.push(m)
+      return
+    }
+    for (let i = 0; i < arr.length; i++) {
+      const curr = arr.slice()
+      const next = curr.splice(i, 1)
+      permute(curr, m.concat(next))
+    }
+  }
+  permute(hand)
+
+  let bestEval = evaluateOrdering(hand)
+  let worstNonZeroEval = bestEval
+
+  for (const p of perms) {
+    const ev = evaluateOrdering(p)
+    if (ev.totalDmg > bestEval.totalDmg) {
+      bestEval = ev
+    }
+    if (
+      ev.totalDmg > 0 &&
+      (worstNonZeroEval.totalDmg === 0 || ev.totalDmg < worstNonZeroEval.totalDmg)
+    ) {
+      worstNonZeroEval = ev
+    }
+  }
+
+  const skillGapRatio =
+    worstNonZeroEval.totalDmg > 0 ? round2(bestEval.totalDmg / worstNonZeroEval.totalDmg) : 1
+  const skillCeilingVerdict: MxSingleTurnLethalResult['skillCeilingVerdict'] =
+    skillGapRatio >= 1.35
+      ? 'high_skill_ceiling'
+      : skillGapRatio >= 1.12
+        ? 'moderate_tactics'
+        : 'flat_brainless'
+
+  const advisoryZh =
+    skillCeilingVerdict === 'high_skill_ceiling'
+      ? `✅ 操作深度极佳 (${skillGapRatio}x)：最优出牌序列比乱序出牌高出 ${Math.round((skillGapRatio - 1) * 100)}% 爆发伤害` // cjk-ok
+      : skillCeilingVerdict === 'moderate_tactics'
+        ? `ℹ️ 具备一定出牌顺序技巧 (${skillGapRatio}x)：建议增加「多段连击」或「独立乘区」卡放大顺序收益` // cjk-ok
+        : `⚠️ 出牌顺序无显著差异 (${skillGapRatio}x)：卡牌同质化偏高，建议引入「易伤/回能/连击倍率」机制` // cjk-ok
+  const advisoryEn =
+    skillCeilingVerdict === 'high_skill_ceiling'
+      ? `✅ High Skill Ceiling (${skillGapRatio}x): Optimal play sequence deals +${Math.round((skillGapRatio - 1) * 100)}% more burst than naive order`
+      : skillCeilingVerdict === 'moderate_tactics'
+        ? `ℹ️ Moderate order sensitivity (${skillGapRatio}x): Add multi-hit or ×Mult triggers to reward sequencing`
+        : `⚠️ Flat sequencing (${skillGapRatio}x): Play order barely changes output; add Vulnerable/Energy/Combo hooks`
+
+  return {
+    handCardNames: hand.map((c) => c.name),
+    availableEnergy: baseEnergy,
+    naiveOrderDamage: worstNonZeroEval.totalDmg,
+    naiveSequenceLabel: worstNonZeroEval.seqLabel,
+    optimalLethalDamage: bestEval.totalDmg,
+    optimalSequenceLabel: bestEval.seqLabel,
+    optimalSteps: bestEval.steps,
+    skillGapRatio,
+    skillCeilingVerdict,
+    advisoryZh,
+    advisoryEn
+  }
+}
+
+export interface MxBossIntentTurnRow {
+  turn: number
+  intentCode: 'buff_debuff' | 'heavy_slam' | 'status_pollution' | 'multi_hit_execute'
+  intentNameZh: string
+  intentNameEn: string
+  incomingRawDmg: number
+  expectedPlayerBlock: number
+  netHpLoss: number
+  spikeDeathRiskPct: number
+  noteZh: string
+  noteEn: string
+}
+
+export interface MxBossIntentTimelineResult {
+  rows: MxBossIntentTurnRow[]
+  maxSingleTurnNetLoss: number
+  spikeDeathProbPct: number
+  pollutedBrickRatePct: number
+  postPollutionDpsDropPct: number
+  survivalScore: number
+}
+
+/**
+ * 3) Boss 4 回合意图循环轴 (Intent Timeline) 峰值暴毙率与塞废牌污染压测
+ */
+export function simulateMxBossIntentTimelineAndPollution(
+  wb: MxNumericalWorkbench
+): MxBossIntentTimelineResult {
+  const baseDmg = Math.max(8, wb.combatKernel.enemyBaseDamage || 12)
+  const cards = wb.combatKernel.deckCards
+  const totalCopies = Math.max(
+    5,
+    cards.reduce((s, c) => s + Math.max(1, c.count || 1), 0)
+  )
+  const avgBlockPerCard =
+    cards.reduce((s, c) => s + (c.block || 0) * (c.count || 1), 0) / totalCopies
+  const expectedTurnBlock = Math.round(avgBlockPerCard * 2.4)
+
+  const t1Dmg = Math.round(baseDmg * 0.75)
+  const t1Block = expectedTurnBlock
+  const t1Loss = Math.max(0, t1Dmg - t1Block)
+
+  // Turn 2: Heavy Slam (2.25x base damage + Frail/Vulnerable penalty reducing effective block by 25%)
+  const t2Dmg = Math.round(baseDmg * 2.25)
+  const t2Block = Math.round(expectedTurnBlock * 0.75)
+  const t2Loss = Math.max(0, t2Dmg - t2Block)
+  const spikeDeathProbPct = round2(Math.min(95, Math.max(2, (t2Loss / 45) * 100)))
+
+  // Turn 3: Boss shuffles 3 Status/Curse cards (Burn/Dazed/Slime) into draw pile
+  const statusInjected = 3
+  const pollutedDeckSize = totalCopies + statusInjected
+  const drawPerTurn = Math.max(4, wb.combatKernel.drawPerTurn || 5)
+  const probDrawAtLeastOneStatus = hypergeomAtLeastOne(
+    pollutedDeckSize,
+    statusInjected,
+    drawPerTurn
+  )
+  const pollutedBrickRatePct = round2(probDrawAtLeastOneStatus * 100)
+  const postPollutionDpsDropPct = round2(Math.min(60, (statusInjected / pollutedDeckSize) * 145))
+  const t3Dmg = Math.round(baseDmg * 1.1)
+  const t3Block = Math.round(expectedTurnBlock * (1 - statusInjected / pollutedDeckSize))
+  const t3Loss = Math.max(0, t3Dmg - t3Block)
+
+  // Turn 4: Multi-hit Execute (4 hits x 0.48x baseDmg) after deck pollution
+  const perHit = Math.max(3, Math.round(baseDmg * 0.48))
+  const t4Dmg = perHit * 4
+  const t4Block = t3Block
+  const t4Loss = Math.max(0, t4Dmg - t4Block)
+  const t4Risk = round2(Math.min(95, Math.max(4, ((t2Loss + t4Loss) / 65) * 100)))
+
+  const rows: MxBossIntentTurnRow[] = [
+    {
+      turn: 1,
+      intentCode: 'buff_debuff',
+      intentNameZh: 'T1 蓄力咆哮 + 施加脆弱/易伤', // cjk-ok
+      intentNameEn: 'T1 Roar + Apply Frail & Vulnerable',
+      incomingRawDmg: t1Dmg,
+      expectedPlayerBlock: t1Block,
+      netHpLoss: t1Loss,
+      spikeDeathRiskPct: round2(Math.min(35, (t1Loss / 50) * 100)),
+      noteZh: '下回合玩家护甲获取降低 25%，Boss 准备重击', // cjk-ok
+      noteEn: 'Player Block reduced by 25% next turn; Boss charges Slam'
+    },
+    {
+      turn: 2,
+      intentCode: 'heavy_slam',
+      intentNameZh: 'T2 蓄力重击 (225% 峰值斩杀检定)', // cjk-ok
+      intentNameEn: 'T2 Heavy Slam (225% Spike Check)',
+      incomingRawDmg: t2Dmg,
+      expectedPlayerBlock: t2Block,
+      netHpLoss: t2Loss,
+      spikeDeathRiskPct: spikeDeathProbPct,
+      noteZh:
+        t2Loss >= 18
+          ? `🚨 护甲缺口高达 ${t2Loss} 点，极易在此回合满血暴毙！` // cjk-ok
+          : `✅ 护甲厚度可扛住 T2 重击峰值`, // cjk-ok
+      noteEn:
+        t2Loss >= 18
+          ? `🚨 Block shortfall of ${t2Loss} HP — high spike-death risk!`
+          : `✅ Block density survives T2 Heavy Slam`
+    },
+    {
+      turn: 3,
+      intentCode: 'status_pollution',
+      intentNameZh: 'T3 塞入 3 张【眩晕/灼烧】污染牌库', // cjk-ok
+      intentNameEn: 'T3 Inject 3x [Dazed / Burn] Status Bricks',
+      incomingRawDmg: t3Dmg,
+      expectedPlayerBlock: t3Block,
+      netHpLoss: t3Loss,
+      spikeDeathRiskPct: round2(Math.min(60, ((t2Loss + t3Loss) / 60) * 100)),
+      noteZh: `摸到废牌概率 ${pollutedBrickRatePct}%，全套输出下滑 -${postPollutionDpsDropPct}%`, // cjk-ok
+      noteEn: `${pollutedBrickRatePct}% chance to draw Status brick; DPS drops -${postPollutionDpsDropPct}%`
+    },
+    {
+      turn: 4,
+      intentCode: 'multi_hit_execute',
+      intentNameZh: `T4 狂暴四连击 (${perHit}×4 多段处决)`, // cjk-ok
+      intentNameEn: `T4 Frenzy 4-Hit Execute (${perHit}×4)`,
+      incomingRawDmg: t4Dmg,
+      expectedPlayerBlock: t4Block,
+      netHpLoss: t4Loss,
+      spikeDeathRiskPct: t4Risk,
+      noteZh: '多段伤害击穿单次格挡缓冲，考验被污染后的持续过牌与护甲', // cjk-ok
+      noteEn: 'Multi-hit pierces single-hit buffers after draw pile pollution'
+    }
+  ]
+
+  const maxSingleTurnNetLoss = Math.max(t1Loss, t2Loss, t3Loss, t4Loss)
+  const survivalScore = Math.max(
+    10,
+    Math.min(100, Math.round(100 - spikeDeathProbPct * 0.55 - postPollutionDpsDropPct * 0.45))
+  )
+
+  return {
+    rows,
+    maxSingleTurnNetLoss,
+    spikeDeathProbPct,
+    pollutedBrickRatePct,
+    postPollutionDpsDropPct,
+    survivalScore
+  }
+}
+
+export interface MxWorkbenchEntityDiffRow {
+  entityId: string
+  name: string
+  beforeSummary: string
+  afterSummary: string
+  verdictBefore: string
+  verdictAfter: string
+}
+
+export interface MxWorkbenchSnapshotDiffResult {
+  winRateBaseline: number
+  winRateCurrent: number
+  winRateDeltaPct: number
+  ttkBaseline: number
+  ttkCurrent: number
+  ttkDeltaTurns: number
+  finalOutputBaseline: number
+  finalOutputCurrent: number
+  finalOutputDeltaPct: number
+  clearRateBaseline: number
+  clearRateCurrent: number
+  clearRateDeltaPct: number
+  opCountBaseline: number
+  opCountCurrent: number
+  entityDiffs: MxWorkbenchEntityDiffRow[]
+}
+
+/**
+ * 4) 版本补丁前/后快照 A/B 差分对比仪 (Balance Patch Snapshot Diff: v1.0 Baseline vs v1.1 Current)
+ */
+export function computeMxWorkbenchSnapshotDiff(
+  baseline: MxNumericalWorkbench,
+  current: MxNumericalWorkbench
+): MxWorkbenchSnapshotDiffResult {
+  const baseCombat = runMxCombatKernelSimulation({ ...baseline.combatKernel, runs: 160 })
+  const curCombat = runMxCombatKernelSimulation({ ...current.combatKernel, runs: 160 })
+
+  const baseMult = analyzeMultiplierPipeline(baseline.multiplier, 10)
+  const curMult = analyzeMultiplierPipeline(current.multiplier, 10)
+
+  const baseEnv = runMxRoguelikeEnvelopeSimulation({ ...baseline.roguelikeEnvelope, runs: 140 })
+  const curEnv = runMxRoguelikeEnvelopeSimulation({ ...current.roguelikeEnvelope, runs: 140 })
+
+  const opCountBaseline = baseMult.entityAudits.filter((a) => a.verdict === 'overpowered').length
+  const opCountCurrent = curMult.entityAudits.filter((a) => a.verdict === 'overpowered').length
+
+  const entityDiffs: MxWorkbenchEntityDiffRow[] = []
+  // 按实体 ID 对齐（ID 缺失时退化为名称），避免增删卡后按下标错位对比
+  const keyOf = (e: { id: string; name: string }): string => e.id || `name:${e.name}`
+  const baseIdx = new Map<string, number>()
+  baseline.multiplier.entities.forEach((e, i) => baseIdx.set(keyOf(e), i))
+  const curIdx = new Map<string, number>()
+  current.multiplier.entities.forEach((e, i) => curIdx.set(keyOf(e), i))
+  const orderedKeys: string[] = [
+    ...current.multiplier.entities.map(keyOf),
+    ...baseline.multiplier.entities.map(keyOf).filter((k) => !curIdx.has(k))
+  ]
+  for (const key of orderedKeys) {
+    const bi = baseIdx.get(key)
+    const ci = curIdx.get(key)
+    const bEnt = bi !== undefined ? baseline.multiplier.entities[bi] : undefined
+    const cEnt = ci !== undefined ? current.multiplier.entities[ci] : undefined
+    const bAud = bi !== undefined ? baseMult.entityAudits[bi] : undefined
+    const cAud = ci !== undefined ? curMult.entityAudits[ci] : undefined
+    if (!bEnt && cEnt) {
+      entityDiffs.push({
+        entityId: cEnt.id,
+        name: cEnt.name,
+        beforeSummary: '(New)',
+        afterSummary: `Cost ${cEnt.cost} · Act ${cAud?.actualValue ?? 0}`,
+        verdictBefore: '-',
+        verdictAfter: cAud?.verdict ?? 'balanced'
+      })
+    } else if (bEnt && !cEnt) {
+      entityDiffs.push({
+        entityId: bEnt.id,
+        name: bEnt.name,
+        beforeSummary: `Cost ${bEnt.cost} · Act ${bAud?.actualValue ?? 0}`,
+        afterSummary: '(Removed)',
+        verdictBefore: bAud?.verdict ?? 'balanced',
+        verdictAfter: '-'
+      })
+    } else if (bEnt && cEnt) {
+      const bAct = bAud?.actualValue ?? 0
+      const cAct = cAud?.actualValue ?? 0
+      if (bEnt.cost !== cEnt.cost || Math.abs(bAct - cAct) > 0.05 || bEnt.name !== cEnt.name) {
+        entityDiffs.push({
+          entityId: cEnt.id,
+          name: cEnt.name,
+          beforeSummary: `${bEnt.name} (${bEnt.cost}C · Val ${bAct})`,
+          afterSummary: `${cEnt.name} (${cEnt.cost}C · Val ${cAct})`,
+          verdictBefore: bAud?.verdict ?? 'balanced',
+          verdictAfter: cAud?.verdict ?? 'balanced'
+        })
+      }
+    }
+  }
+
+  return {
+    winRateBaseline: baseCombat.winRatePct,
+    winRateCurrent: curCombat.winRatePct,
+    winRateDeltaPct: round2(curCombat.winRatePct - baseCombat.winRatePct),
+    ttkBaseline: baseCombat.ttkP50,
+    ttkCurrent: curCombat.ttkP50,
+    ttkDeltaTurns: round2(curCombat.ttkP50 - baseCombat.ttkP50),
+    finalOutputBaseline: baseMult.finalOutput,
+    finalOutputCurrent: curMult.finalOutput,
+    finalOutputDeltaPct:
+      baseMult.finalOutput > 0
+        ? round2(((curMult.finalOutput - baseMult.finalOutput) / baseMult.finalOutput) * 100)
+        : 0,
+    clearRateBaseline: baseEnv.firstRunClearRatePct,
+    clearRateCurrent: curEnv.firstRunClearRatePct,
+    clearRateDeltaPct: round2(curEnv.firstRunClearRatePct - baseEnv.firstRunClearRatePct),
+    opCountBaseline,
+    opCountCurrent,
+    entityDiffs
+  }
+}
+
+/**
+ * 将数值工作台（角色成长乘区、等级突破阶梯、反派膨胀卡点墙、打脸底牌配表与最优连招序列）
+ * 导出为可直接喂给 `asset.screenplay`（剧本生成节点）的高信噪比叙事与角色成长数值大纲。
+ */
+export function exportMxNarrativeProgressionBrief(
+  wb: MxNumericalWorkbench,
+  docMeta?: {
+    title?: string
+    description?: string
+    nodes?: Array<{ label?: string; kind?: string }>
+  }
+): string {
+  const multRes = analyzeMultiplierPipeline(wb.multiplier)
+  const envRes = runMxRoguelikeEnvelopeSimulation({
+    ...wb.roguelikeEnvelope,
+    runs: Math.min(200, Math.max(60, wb.roguelikeEnvelope.runs || 120))
+  })
+  const lvRes = generateMxLevelProgressionTable(wb.roguelikeEnvelope)
+  const lethalRes = solveMxSingleTurnLethalAndOrderSkill(wb)
+  const lootRes = runMxLootAndSubstatSimulation({
+    ...wb.lootRoll,
+    runs: Math.min(200, Math.max(60, wb.lootRoll.runs || 120))
+  })
+  const bestMarginalAttr =
+    multRes.marginalReturns.find((m) => m.isOptimalNextPick)?.attrName ?? 'N/A'
+
+  const bossFloors = envRes.floorSeries.filter((f) => f.isBoss).map((f) => f.floor)
+  const wallFloors = envRes.difficultyWallFloors
+  const customTitle =
+    docMeta?.title && docMeta.title !== '游戏经济系统' && docMeta.title !== '经济系统' // cjk-ok
+      ? `${docMeta.title} · ${wb.multiplier.title}`
+      : wb.multiplier.title
+  const canvasNodesSummary = (docMeta?.nodes ?? [])
+    .map((n) => n.label?.trim())
+    .filter((l): l is string => Boolean(l))
+    .join(' ➔ ')
+
+  const lines: string[] = [
+    `# 【角色成长体系与分集高潮冲突数值大纲 (Character Progression & Narrative Pacing Brief)】`, // cjk-ok
+    `- **体系名称**: ${customTitle}`, // cjk-ok
+    ...(docMeta?.description ? [`- **核心爽点闭环**: ${docMeta.description}`] : []), // cjk-ok
+    ...(canvasNodesSummary ? [`- **宏观剧情流转节点**: ${canvasNodesSummary}`] : []), // cjk-ok
+    `- **高潮结局目标战力峰值**: \`${multRes.finalOutput}\` (结算公式: \`${wb.multiplier.finalFormula}\` · 边际收益最高属性: \`${bestMarginalAttr}\`)`, // cjk-ok
+    ``,
+    `## 1. 主角核心成长维度与乘区公式 (Character Stat & Multiplier Architecture)`, // cjk-ok
+    ...wb.multiplier.attributes.map(
+      (a) => `- **${a.name}** (${a.label}): 基准值 \`${a.value}\` (范围 \`${a.min}~${a.max}\`)` // cjk-ok
+    ),
+    ...wb.multiplier.stages.map((s) => `- **阶段结算 [${s.name}]**: \`${s.formula}\``), // cjk-ok
+    ``,
+    `## 2. 角色等级/集数突破里程碑阶梯 (Lv.1 ~ Lv.${lvRes.maxLevel} Breakthrough Milestones)`, // cjk-ok
+    `- **突破周期**: 每 \`${lvRes.ascensionInterval}\` 级/集迎来一次大境界或身份蜕变 (★) · 全周期属性成长倍率 \`${lvRes.statMultiplierTotal}x\``, // cjk-ok
+    `| 阶段节点 (Lv/集) | 身份蜕变阶位 | 气场/底蕴 (HP) | 实力/打脸战力 (ATK) | 护城河/背景 (DEF) | 累计爽点/资源需求 |`, // cjk-ok
+    `| :---: | :---: | :---: | :---: | :---: | :---: |`,
+    ...lvRes.milestones.map(
+      (r) =>
+        `| Lv.${r.level}${r.isBreakthrough ? ' ★突破' : ''} | Stage ${r.ascensionStage} | ${r.hp} | ${r.atk} | ${r.def} | XP ${r.cumulativeXp} / Gold ${r.goldCost} |` // cjk-ok
+    ),
+    ``,
+    `## 3. 分幕反派实力膨胀曲线、受辱压迫墙与付费高潮卡点 (Episode Conflict & Climax Paywall Beats)`, // cjk-ok
+    `- **总幕数/节点数**: \`${wb.roguelikeEnvelope.floors}\` 幕 · **大高潮 Boss 节点**: 第 \`${bossFloors.join(', ') || '-'}\` 幕 · **战力受阻/付费反转卡点幕 (Difficulty Walls)**: 第 \`${wallFloors.join(', ') || '无明显卡死'}\` 幕`, // cjk-ok
+    ...envRes.floorSeries.map((f) => {
+      const tag = f.isBoss
+        ? '🔥【大高潮Boss战/终极审判】' // cjk-ok
+        : wallFloors.includes(f.floor)
+          ? '⚠️【反派压制墙/付费反转卡点】' // cjk-ok
+          : '📈【日常冲突推进】' // cjk-ok
+      return `- **第 ${f.floor} 幕** ${tag}: 主角战力中位 \`${f.playerP50}\` (P10 \`${f.playerP10}\` ~ P90 \`${f.playerP90}\`) vs 反派压迫门槛 \`${f.enemyPower}\` · 正面碾压率 \`${f.survivalRatePct}%\`` // cjk-ok
+    }),
+    ``,
+    `## 4. 主角底牌配表与名场面最优打脸出牌序列 (Trump Cards & Optimal Climax Sequence)`, // cjk-ok
+    `- **高潮单回合最优连招序列**: \`${lethalRes.optimalSequenceLabel}\` (最优爆发伤害 \`${lethalRes.optimalLethalDamage}\` vs 乱序平庸出牌 \`${lethalRes.naiveOrderDamage}\`，爽感放大倍率 \`${lethalRes.skillGapRatio}x\`)`, // cjk-ok
+    ...lethalRes.optimalSteps.map(
+      (s) =>
+        `  ${s.stepIndex}. 亮出底牌【${s.cardName}】(耗能 ${s.costPaid}) ➔ ${s.effectDesc || '铺垫蓄势'} (累计爆发: ${s.cumulativeDamage})` // cjk-ok
+    ),
+    ``,
+    `### 底牌与反转技能强度清单`, // cjk-ok
+    ...wb.multiplier.entities.map((ent, idx) => {
+      const audit = multRes.entityAudits[idx]
+      const statsStr = Object.entries(ent.stats)
+        .filter(([, v]) => Number(v) !== 0)
+        .map(([k, v]) => `${k}:${v}`)
+        .join(', ')
+      return `- **${ent.name}** [稀有度:${ent.rarity} · 铺垫消耗:${ent.cost}]: 属性(${statsStr}) · 实测战力价值 \`${audit?.actualValue ?? 0}\` (${audit?.verdict ?? 'balanced'})` // cjk-ok
+    }),
+    ``,
+    `## 5. 奇遇机缘池与保底反转节奏 (Key Encounters & Pity Trigger Rhythm)`, // cjk-ok
+    `- **保底爆发节奏**: 第 \`${wb.lootRoll.softPityStart}\` 集/次进入高能升温期，第 \`${wb.lootRoll.hardPityPull}\` 集/次硬保底必出终极金手指反转 (实测中位 \`${lootRes.attemptsP50}\` 次触发)`, // cjk-ok
+    ...wb.lootRoll.draftPool.map(
+      (d) =>
+        `- **机缘/人脉【${d.name}】** (${d.rarity}): 基础战力 \`+${d.addPower}\` · 身份乘区 \`×${d.multPower}\`${d.prerequisiteIds?.length ? ` (前置条件: ${d.prerequisiteIds.join(', ')})` : ''}` // cjk-ok
+    )
+  ]
+
+  return lines.join('\n')
+}
+
+export interface MxChapterNumericalSlice {
+  chapterIndex: number
+  totalChapters: number
+  volumeIndex: number
+  totalVolumes: number
+  volumeChapterRange: [number, number]
+  volumeTitleZh: string
+  arcIndex: number
+  totalArcs: number
+  arcChapterRange: [number, number]
+  chapterBeatType:
+    'setup_endure' | 'encounter_growth' | 'villain_suppression_cliffhanger' | 'climax_reversal_slap'
+  chapterBeatLabelZh: string
+  realmStageIndex: number
+  realmStageLabelZh: string
+  isBreakthroughChapter: boolean
+  protagonistHp: number
+  protagonistAtk: number
+  protagonistDef: number
+  powerCeiling: number
+  villainPressure: number
+  survivalRatePct: number
+  isBossArc: boolean
+  isDifficultyWallArc: boolean
+  allowedTrumpCards: string[]
+  lockedEndgameTrumps: string[]
+  recommendedEncounterItem: string
+  /** 小说流派 ID（未指定流派时为 undefined，沿用都市逆袭语义） */
+  genreId?: string
+  /** 流派语义：阶段术语 / 主角成长轴 / 阻力轴 / 解锁物术语 */
+  stageTermZh?: string
+  protagonistAxisZh?: string
+  antagonistAxisZh?: string
+  unlockTermZh?: string
+  sliceMarkdown: string
+}
+
+const PRISTINE_PRESET_ENTITY_IDS = new Map<string, string>()
+
+/**
+ * 经济系统是否仍为「未修改实体配表」的内置预设：
+ * 是则小说流派可以用自身的解锁物 / 奇遇池替代游戏卡牌名称；
+ * 用户自定义过实体后则尊重用户配表。
+ */
+export function isMxWorkbenchPristinePreset(wb: MxNumericalWorkbench): boolean {
+  const presetId = wb.activePresetId
+  let sig = PRISTINE_PRESET_ENTITY_IDS.get(presetId)
+  if (sig === undefined) {
+    sig = createMxWorkbenchPreset(presetId)
+      .multiplier.entities.map((e) => e.id)
+      .join('|')
+    PRISTINE_PRESET_ENTITY_IDS.set(presetId, sig)
+  }
+  return wb.multiplier.entities.map((e) => e.id).join('|') === sig
+}
+
+function usesGenreItems(
+  wb: MxNumericalWorkbench,
+  genre?: NovelGenreProfile
+): genre is NovelGenreProfile {
+  return Boolean(genre && genre.id !== 'urban_reversal' && isMxWorkbenchPristinePreset(wb))
+}
+
+/**
+ * 动态总章数下的单章数值时钟切片器（Dynamic Chapter-Indexed Numerical Quota Lock）：
+ * 根据用户动态设定的总章节数 `totalChapters`（不写死，支持 20 ~ 5000+ 章任意动态调整）与当前章号 `chapterIndex`，
+ * 自动解算本章所属的大卷篇章、冲突幕次、境界战力天花板、反派施压阈值、本章剧情节拍定位、准入底牌白名单与封存底牌黑名单，
+ * 从源头杜绝长篇逐章连载时的「前期战力崩坏」与「过早亮出终局底牌」。
+ */
+export function exportMxChapterNumericalSlice(
+  wb: MxNumericalWorkbench,
+  chapterIndex: number,
+  totalChapters?: number,
+  genre?: NovelGenreProfile
+): MxChapterNumericalSlice {
+  const dynTotal = Math.max(
+    1,
+    Math.min(5000, Math.round(totalChapters || wb.roguelikeEnvelope.levelMax || 800))
+  )
+  const curChap = Math.max(1, Math.min(dynTotal, Math.round(chapterIndex || 1)))
+
+  const totalVolumes =
+    dynTotal <= 60
+      ? Math.max(2, Math.ceil(dynTotal / 15))
+      : dynTotal <= 160
+        ? Math.max(3, Math.ceil(dynTotal / 20))
+        : Math.min(12, Math.max(4, Math.round(dynTotal / 100)))
+  const chaptersPerVolume = Math.max(1, Math.ceil(dynTotal / totalVolumes))
+  const volumeIndex = Math.min(totalVolumes, Math.floor((curChap - 1) / chaptersPerVolume) + 1)
+  const volumeStart = (volumeIndex - 1) * chaptersPerVolume + 1
+  const volumeEnd = Math.min(dynTotal, volumeIndex * chaptersPerVolume)
+
+  const VOLUME_THEMES_ZH = genre?.volumeThemesZh?.length
+    ? genre.volumeThemesZh
+    : [
+        '潜龙在渊 · 基层受辱与微末觉醒', // cjk-ok
+        '锋芒初露 · 本土豪门洗牌与立威', // cjk-ok
+        '省域争锋 · 权贵围剿与底蕴扩张', // cjk-ok
+        '名震一方 · 跨界巨擘博弈与破壁', // cjk-ok
+        '巅峰暗涌 · 隐世财阀与禁区交锋', // cjk-ok
+        '只手遮天 · 顶级秩序重构与清算', // cjk-ok
+        '举世皆惊 · 终极宿敌总决战前夜', // cjk-ok
+        '万流归宗 · 登顶至尊与终局大审判' // cjk-ok
+      ]
+  const themeIdx = Math.min(
+    VOLUME_THEMES_ZH.length - 1,
+    Math.floor(((volumeIndex - 1) / Math.max(1, totalVolumes - 1)) * (VOLUME_THEMES_ZH.length - 1))
+  )
+  const volumeTitleZh = `第 ${volumeIndex} 卷【${VOLUME_THEMES_ZH[themeIdx]}】(第 ${volumeStart}~${volumeEnd} 章)` // cjk-ok
+
+  const totalArcs = Math.max(4, wb.roguelikeEnvelope.floors || 16)
+  const arcIndex = Math.min(
+    totalArcs,
+    Math.max(1, Math.floor(((curChap - 1) / Math.max(1, dynTotal)) * totalArcs) + 1)
+  )
+  const arcStart = Math.max(1, Math.floor(((arcIndex - 1) * dynTotal) / totalArcs) + 1)
+  const arcEnd = Math.min(
+    dynTotal,
+    Math.max(arcStart, Math.floor((arcIndex * dynTotal) / totalArcs))
+  )
+  const arcSpan = Math.max(1, arcEnd - arcStart + 1)
+  const progressInArc = arcSpan <= 1 ? 1 : (curChap - arcStart) / (arcSpan - 1)
+
+  let chapterBeatType: MxChapterNumericalSlice['chapterBeatType'] = 'setup_endure'
+  let chapterBeatLabelZh =
+    '起势铺垫与隐忍蓄势期（铺垫冲突导火索、主角隐忍布局、严禁提前亮底牌秒杀）' // cjk-ok
+  if (progressInArc >= 0.82 || (curChap === arcEnd && arcSpan > 1)) {
+    chapterBeatType = 'climax_reversal_slap'
+    chapterBeatLabelZh =
+      '本幕高潮亮底牌与身份审判打脸期（按最优连招亮出本阶段准入底牌，彻底碾压本幕反派）' // cjk-ok
+  } else if (progressInArc >= 0.55) {
+    chapterBeatType = 'villain_suppression_cliffhanger'
+    chapterBeatLabelZh =
+      '反派极限施压与绝境卡点期（反派动用底牌将主角逼入绝境，章末必须留高能反转悬念钩子）' // cjk-ok
+  } else if (progressInArc >= 0.25) {
+    chapterBeatType = 'encounter_growth'
+    chapterBeatLabelZh =
+      '机缘获取与小试牛刀期（触发奇遇/人脉信物、局部小反击立威，引出幕后真正主使）' // cjk-ok
+  }
+  if (genre) {
+    chapterBeatLabelZh = genre.beats[chapterBeatType].labelZh
+  }
+
+  const scaledEnvCfg: MxRoguelikeEnvelopeConfig = {
+    ...wb.roguelikeEnvelope,
+    levelMax: dynTotal,
+    runs: Math.min(160, Math.max(60, wb.roguelikeEnvelope.runs || 100))
+  }
+  const lvRes = generateMxLevelProgressionTable(scaledEnvCfg)
+  const envRes = runMxRoguelikeEnvelopeSimulation(scaledEnvCfg)
+  const lvRow =
+    lvRes.rows[Math.min(lvRes.rows.length - 1, Math.max(0, curChap - 1))] ?? lvRes.rows[0]!
+  const arcRow =
+    envRes.floorSeries[Math.min(envRes.floorSeries.length - 1, Math.max(0, arcIndex - 1))] ??
+    envRes.floorSeries[0]!
+  const prevArcRow =
+    arcIndex > 1
+      ? (envRes.floorSeries[arcIndex - 2] ?? arcRow)
+      : { ...arcRow, playerP50: Math.round(arcRow.playerP50 * 0.75) }
+
+  const powerCeiling = Math.round(
+    prevArcRow.playerP50 + (arcRow.playerP50 - prevArcRow.playerP50) * progressInArc
+  )
+  const villainPressure = arcRow.enemyPower
+  const isBossArc = Boolean(arcRow.isBoss)
+  const isDifficultyWallArc = envRes.difficultyWallFloors.includes(arcRow.floor)
+
+  const REALM_NAMES_ZH = genre?.stageNamesZh?.length
+    ? genre.stageNamesZh
+    : [
+        '第 0 阶·微末蛰伏期', // cjk-ok
+        '第 1 阶·初醒立威期', // cjk-ok
+        '第 2 阶·堂口掌权期', // cjk-ok
+        '第 3 阶·豪门座上宾', // cjk-ok
+        '第 4 阶·商界操盘手', // cjk-ok
+        '第 5 阶·省域巨头期', // cjk-ok
+        '第 6 阶·隐世掌舵人', // cjk-ok
+        '第 7 阶·执棋造浪者', // cjk-ok
+        '第 8 阶·当世无冕王' // cjk-ok
+      ]
+  const realmStageIndex = lvRow.ascensionStage
+  const realmStageLabelZh =
+    REALM_NAMES_ZH[Math.min(REALM_NAMES_ZH.length - 1, realmStageIndex)] ??
+    `第 ${realmStageIndex} 阶·蜕变境` // cjk-ok
+
+  const rarityRank: Record<string, number> = {
+    common: 1,
+    uncommon: 2,
+    rare: 3,
+    legendary: 4
+  }
+  const sortedEntities = usesGenreItems(wb, genre)
+    ? genre.unlockItemsZh.map((name, i) => ({ name, rarity: 'common', cost: i }))
+    : [...wb.multiplier.entities].sort(
+        (a, b) => (rarityRank[a.rarity] ?? 1) - (rarityRank[b.rarity] ?? 1) || a.cost - b.cost
+      )
+  const globalRatio = curChap / Math.max(1, dynTotal)
+  const unlockCount = Math.max(
+    1,
+    Math.min(
+      sortedEntities.length,
+      Math.ceil(sortedEntities.length * Math.max(0.25, Math.min(1, globalRatio + 0.2)))
+    )
+  )
+  const allowedTrumpCards = sortedEntities.slice(0, unlockCount).map((e) => e.name)
+  const lockedEndgameTrumps = sortedEntities.slice(unlockCount).map((e) => e.name)
+
+  const pool: Array<{ name: string }> = usesGenreItems(wb, genre)
+    ? genre.encounterItemsZh.map((name) => ({ name }))
+    : wb.lootRoll.draftPool
+  const recommendedEncounterItem =
+    pool.length > 0 ? pool[(curChap + arcIndex - 2) % pool.length]!.name : '关键机缘信物' // cjk-ok
+
+  const sliceLines: string[] = [
+    `## 🎯 【第 ${curChap} / ${dynTotal} 章 · 单章数值围栏与底牌配额锁 (Chapter ${curChap}/${dynTotal} Numerical Quota Lock)】`, // cjk-ok
+    `- **全书连载总进度**: 第 \`${curChap}\` 章 / 动态总章数 \`${dynTotal}\` 章 (${Math.round(globalRatio * 1000) / 10}%)`, // cjk-ok
+    `- **所属大卷篇章**: ${volumeTitleZh}`, // cjk-ok
+    `- **所属冲突单元**: 第 \`${arcIndex}/${totalArcs}\` 幕 (覆盖第 \`${arcStart}~${arcEnd}\` 章 · 本章为幕内第 \`${curChap - arcStart + 1}/${arcSpan}\` 章)${isBossArc ? ' 🔥【本幕为大高潮Boss决战幕】' : isDifficultyWallArc ? ' ⚠️【本幕为反派高压受挫反转幕】' : ''}`, // cjk-ok
+    `- **本章戏剧节拍指令**: **${chapterBeatLabelZh}** (\`${chapterBeatType}\`)`, // cjk-ok
+    `- **本章战力与境界天花板 (严禁越界)**: 主角当前境界 **${realmStageLabelZh}**${lvRow.isBreakthrough ? ' ★【本章触发大境界/新身份蜕变突破！】' : ''} · 气场底蕴(HP) \`${lvRow.hp}\` / 实力(ATK) \`${lvRow.atk}\` / 护城河(DEF) \`${lvRow.def}\` · **本章战力发挥上限 \`${powerCeiling}\`** vs **本幕反派压迫阈值 \`${villainPressure}\`** (正面胜算 \`${arcRow.survivalRatePct}%\`)`, // cjk-ok
+    `- **✅ 本章准入可用底牌/手段 (Allowed Trumps)**: ${allowedTrumpCards.length ? allowedTrumpCards.map((c) => `【${c}】`).join('、') : '基础隐忍与话术周旋'}`, // cjk-ok
+    `- **🔒 封存禁用的后期终局底牌 (Locked Trumps — 本章严禁提前亮出)**: ${lockedEndgameTrumps.length ? lockedEndgameTrumps.map((c) => `【${c}】`).join('、') : '已全部解锁（终局决战阶段）'}`, // cjk-ok
+    `- **🎁 本章推荐埋设/触发的奇遇与伏笔信物**: 【${recommendedEncounterItem}】`, // cjk-ok
+    ...(genre
+      ? [
+          `- **📖 流派语义映射 (${genre.labelZh})**: 「境界」=${genre.stageTermZh}；「战力」=${genre.protagonistAxisZh}；「反派压迫」=${genre.antagonistAxisZh}；「底牌」=${genre.unlockTermZh}；「奇遇信物」=${genre.encounterTermZh}` // cjk-ok
+        ]
+      : [])
+  ]
+
+  return {
+    chapterIndex: curChap,
+    totalChapters: dynTotal,
+    volumeIndex,
+    totalVolumes,
+    volumeChapterRange: [volumeStart, volumeEnd],
+    volumeTitleZh,
+    arcIndex,
+    totalArcs,
+    arcChapterRange: [arcStart, arcEnd],
+    chapterBeatType,
+    chapterBeatLabelZh,
+    realmStageIndex,
+    realmStageLabelZh,
+    isBreakthroughChapter: lvRow.isBreakthrough,
+    protagonistHp: lvRow.hp,
+    protagonistAtk: lvRow.atk,
+    protagonistDef: lvRow.def,
+    powerCeiling,
+    villainPressure,
+    survivalRatePct: arcRow.survivalRatePct,
+    isBossArc,
+    isDifficultyWallArc,
+    allowedTrumpCards,
+    lockedEndgameTrumps,
+    recommendedEncounterItem,
+    ...(genre
+      ? {
+          genreId: genre.id,
+          stageTermZh: genre.stageTermZh,
+          protagonistAxisZh: genre.protagonistAxisZh,
+          antagonistAxisZh: genre.antagonistAxisZh,
+          unlockTermZh: genre.unlockTermZh
+        }
+      : {}),
+    sliceMarkdown: sliceLines.join('\n')
+  }
+}
+
+export interface UnwrapEconomyNarrativeOptions {
+  currentChapter?: number
+  totalChapters?: number
+  targetWordsPerChapter?: number
+  genre?: NovelGenreProfile
+}
+
+/**
+ * 若上游传入文本为 `game.economy` 节点的 `machinations_economy_bundle`（或工作台 JSON），
+ * 自动提取/合成为结构化的【角色成长体系与分集高潮冲突数值大纲】；
+ * 若同时传入 `options.currentChapter` 与动态 `options.totalChapters`，
+ * 则自动将等级与突破阶梯缩放至 `totalChapters`，并追加精准的【第 N/Total 章 · 单章数值围栏与底牌配额锁】。
+ */
+export function unwrapEconomyBundleForNarrative(
+  rawText: string,
+  options?: UnwrapEconomyNarrativeOptions
+): string {
+  const trimmed = (rawText ?? '').trim()
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return rawText
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+    let wb: MxNumericalWorkbench | null = null
+    let docMeta: {
+      title?: string
+      description?: string
+      nodes?: Array<{ label?: string; kind?: string }>
+    } = {}
+
+    if (parsed.kind === 'machinations_economy_bundle') {
+      const docObj = parsed.document as
+        | {
+            title?: string
+            description?: string
+            nodes?: Array<{ label?: string; kind?: string }>
+            workbench?: unknown
+          }
+        | undefined
+      if (docObj?.workbench) {
+        wb = normalizeMxNumericalWorkbench(docObj.workbench)
+        docMeta = docObj
+      } else if (
+        typeof parsed.narrativeProgressionBrief === 'string' &&
+        parsed.narrativeProgressionBrief.trim()
+      ) {
+        return parsed.narrativeProgressionBrief.trim()
+      }
+    } else if (parsed.schemaVersion === 2 && Array.isArray(parsed.nodes) && parsed.workbench) {
+      wb = normalizeMxNumericalWorkbench(parsed.workbench)
+      docMeta = {
+        title: typeof parsed.title === 'string' ? parsed.title : undefined,
+        description: typeof parsed.description === 'string' ? parsed.description : undefined,
+        nodes: parsed.nodes as Array<{ label?: string; kind?: string }>
+      }
+    }
+
+    if (wb) {
+      const dynTotal =
+        options?.totalChapters && options.totalChapters >= 1
+          ? Math.min(5000, Math.round(options.totalChapters))
+          : undefined
+      const effectiveWb: MxNumericalWorkbench = dynTotal
+        ? {
+            ...wb,
+            roguelikeEnvelope: {
+              ...wb.roguelikeEnvelope,
+              levelMax: dynTotal
+            }
+          }
+        : wb
+
+      const macroBrief = exportMxNarrativeProgressionBrief(effectiveWb, docMeta)
+      if (options?.currentChapter && options.currentChapter >= 1) {
+        const slice = exportMxChapterNumericalSlice(
+          effectiveWb,
+          options.currentChapter,
+          dynTotal ?? effectiveWb.roguelikeEnvelope.levelMax,
+          options.genre
+        )
+        return `${slice.sliceMarkdown}\n\n${macroBrief}`
+      }
+      return macroBrief
+    }
+  } catch {
+    // 非 JSON 或解析失败，原样返回
+  }
+  return rawText
+}
+
+export interface MxChapterOutlinePlanItem {
+  chapter: number
+  totalChapters: number
+  arcIndex: number
+  totalArcs: number
+  volumeTitleZh: string
+  titleZh: string
+  titleEn: string
+  beatType: MxChapterNumericalSlice['chapterBeatType']
+  beatBadgeZh: string
+  beatBadgeEn: string
+  realmStageLabelZh: string
+  powerCeiling: number
+  villainPressure: number
+  isBossOrWall: boolean
+  allowedTrumps: string[]
+  recommendedItem: string
+  coreConflictZh: string
+  cliffhangerHookZh: string
+  outlinePromptZh: string
+  outlinePromptEn: string
+}
+
+/**
+ * 分卷与冲突幕次（Arc）多章连载细纲规划表生成器：
+ * 根据当前章号 `currentChapter` 与动态总章数 `totalChapters`，自动生成当前冲突幕（或连续窗口，最多 10 章）
+ * 的逐章起承转合排期表（铺垫蓄势 ➔ 奇遇立威 ➔ 反派极限卡点 ➔ 亮底牌高潮打脸），供创作者一键填入或批量连续连载。
+ */
+export function generateMxArcChapterOutlinePlan(
+  wb: MxNumericalWorkbench,
+  currentChapter: number,
+  totalChapters?: number,
+  targetWords = 3200,
+  genre?: NovelGenreProfile
+): MxChapterOutlinePlanItem[] {
+  const dynTotal = Math.max(
+    1,
+    Math.min(5000, Math.round(totalChapters || wb.roguelikeEnvelope.levelMax || 800))
+  )
+  const curChap = Math.max(1, Math.min(dynTotal, Math.round(currentChapter || 1)))
+  const baseSlice = exportMxChapterNumericalSlice(wb, curChap, dynTotal, genre)
+  const [arcStartRaw, arcEndRaw] = baseSlice.arcChapterRange
+  const span = arcEndRaw - arcStartRaw + 1
+  const windowStart =
+    span <= 10 ? arcStartRaw : Math.max(arcStartRaw, Math.min(curChap - 2, arcEndRaw - 9))
+  const windowEnd = Math.min(dynTotal, Math.min(arcEndRaw, windowStart + 9))
+
+  const items: MxChapterOutlinePlanItem[] = []
+  for (let ch = windowStart; ch <= windowEnd; ch++) {
+    const s = exportMxChapterNumericalSlice(wb, ch, dynTotal, genre)
+    const allowedTop = s.allowedTrumpCards.slice(0, 3).join('、') || '本阶段准入底牌' // cjk-ok
+    const lockedTop = s.lockedEndgameTrumps.slice(0, 2).join('、') || '终局底牌' // cjk-ok
+
+    let beatBadgeZh = '起势铺垫' // cjk-ok
+    let beatBadgeEn = 'Setup & Endure'
+    let titleZh = `第${ch}章：风暴将起·隐忍蓄势（${s.realmStageLabelZh}）` // cjk-ok
+    let titleEn = `Ch.${ch}: Storm Brewing & Hidden Edge`
+    let coreConflictZh = `反派借势挑衅施压，主角在【${s.realmStageLabelZh}】表面隐忍周旋，暗中锁定机缘【${s.recommendedEncounterItem}】。` // cjk-ok
+    let cliffhangerHookZh = `章末反派设下公开赌局/鸿门宴，试图在下一章彻底将主角踩入泥潭。` // cjk-ok
+
+    if (s.chapterBeatType === 'encounter_growth') {
+      beatBadgeZh = '奇遇立威' // cjk-ok
+      beatBadgeEn = 'Encounter & Growth'
+      titleZh = `第${ch}章：机缘入袋·初露锋芒（${s.recommendedEncounterItem}）` // cjk-ok
+      titleEn = `Ch.${ch}: Relic Acquired & First Strike`
+      coreConflictZh = `主角成功获取/激活【${s.recommendedEncounterItem}】，战力逼近上限 ${s.powerCeiling}，随手惩戒反派爪牙立威。` // cjk-ok
+      cliffhangerHookZh = `爪牙溃败引出幕后真正主使，对方动用威胁值 ${s.villainPressure} 的杀招封锁全场。` // cjk-ok
+    } else if (s.chapterBeatType === 'villain_suppression_cliffhanger') {
+      beatBadgeZh = '绝境卡点' // cjk-ok
+      beatBadgeEn = 'Villain Pressure Wall'
+      titleZh = `第${ch}章：绝境围剿·底牌将出（反派威胁 ${s.villainPressure}）` // cjk-ok
+      titleEn = `Ch.${ch}: Cornered at the Pressure Wall`
+      coreConflictZh = `本幕反派倾巢而出（压迫强度 ${s.villainPressure}），众目睽睽下逼主角低头认罪，全场冷嘲热讽达到顶点。` // cjk-ok
+      cliffhangerHookZh = `千钧一发之际，主角冷笑抬眸，手按核心底牌【${s.allowedTrumpCards[0] ?? allowedTop}】，大人物车队/异象已至门外！` // cjk-ok
+    } else if (s.chapterBeatType === 'climax_reversal_slap') {
+      beatBadgeZh = '高潮打脸' // cjk-ok
+      beatBadgeEn = 'Climax Reversal Slap'
+      titleZh = `第${ch}章：底牌全开·雷霆清算（执掌${s.allowedTrumpCards[0] ?? '王牌'}）` // cjk-ok
+      titleEn = `Ch.${ch}: Trump Card Unfolded & Total Reversal`
+      coreConflictZh = `主角按最优乘区顺序连环亮出【${allowedTop}】，战力爆发至 ${s.powerCeiling} 彻底粉碎反派依仗，全场权贵骸然跪拜！` // cjk-ok
+      cliffhangerHookZh = `本幕宿敌伏诛清算，但战利品中浮现指向更高阶势力（下一幕）的惊天秘辛钩子。` // cjk-ok
+    }
+
+    if (genre && genre.id !== 'urban_reversal') {
+      const spec = genre.beats[s.chapterBeatType]
+      const tplVars = {
+        stage: s.realmStageLabelZh,
+        item: s.recommendedEncounterItem,
+        unlock: s.allowedTrumpCards[s.allowedTrumpCards.length - 1] ?? allowedTop,
+        unlockTop: allowedTop,
+        lockedTop,
+        pressure: s.villainPressure,
+        ceiling: s.powerCeiling
+      }
+      beatBadgeZh = spec.badgeZh
+      beatBadgeEn = spec.badgeEn
+      titleZh = `第${ch}章：${fillNovelGenreTemplate(spec.titleZh, tplVars)}` // cjk-ok
+      titleEn = `Ch.${ch}: ${spec.titleEn}`
+      coreConflictZh = fillNovelGenreTemplate(spec.coreConflictZh, tplVars)
+      cliffhangerHookZh = fillNovelGenreTemplate(spec.cliffhangerZh, tplVars)
+    }
+    const stageTerm = genre?.stageTermZh ?? '境界' // cjk-ok
+    const axisP = genre?.protagonistAxisZh ?? '战力' // cjk-ok
+    const axisA = genre?.antagonistAxisZh ?? '反派威胁' // cjk-ok
+    const unlockTerm = genre?.unlockTermZh ?? '底牌' // cjk-ok
+
+    const outlinePromptZh = [
+      `精写第 ${ch} / ${dynTotal} 章《${titleZh.replace(/^第\d+章[:：]/, '')}》（单章满 ${targetWords}+ 字）：`, // cjk-ok
+      `- 所属卷幕：${s.volumeTitleZh} · 第 ${s.arcIndex}/${s.totalArcs} 冲突幕`, // cjk-ok
+      `- 本章戏剧定位：【${beatBadgeZh}】${s.chapterBeatLabelZh}`, // cjk-ok
+      `- 数值与${unlockTerm}围栏：主角当前${stageTerm}【${s.realmStageLabelZh}】，${axisP}上限 ${s.powerCeiling} vs ${axisA} ${s.villainPressure}；本章准许动用${unlockTerm}【${allowedTop}】，严禁提前剧透封存${unlockTerm}【${lockedTop}】。`, // cjk-ok
+      `- 本章核心剧情：${coreConflictZh}`, // cjk-ok
+      `- 章末断章钩子：${cliffhangerHookZh}` // cjk-ok
+    ].join('\n')
+
+    const outlinePromptEn = [
+      `Write Chapter ${ch} / ${dynTotal} "${titleEn}" (${targetWords}+ words):`,
+      `- Pacing Role: [${beatBadgeEn}] (Realm ${s.realmStageLabelZh}, Power Cap ${s.powerCeiling} vs Villain ${s.villainPressure})`,
+      `- Allowed Trumps: [${allowedTop}] (Strictly keep [${lockedTop}] locked)`,
+      `- Core Conflict: ${coreConflictZh}`,
+      `- Ending Cliffhanger: ${cliffhangerHookZh}`
+    ].join('\n')
+
+    items.push({
+      chapter: ch,
+      totalChapters: dynTotal,
+      arcIndex: s.arcIndex,
+      totalArcs: s.totalArcs,
+      volumeTitleZh: s.volumeTitleZh,
+      titleZh,
+      titleEn,
+      beatType: s.chapterBeatType,
+      beatBadgeZh,
+      beatBadgeEn,
+      realmStageLabelZh: s.realmStageLabelZh,
+      powerCeiling: s.powerCeiling,
+      villainPressure: s.villainPressure,
+      isBossOrWall: s.isBossArc || s.isDifficultyWallArc,
+      allowedTrumps: s.allowedTrumpCards,
+      recommendedItem: s.recommendedEncounterItem,
+      coreConflictZh,
+      cliffhangerHookZh,
+      outlinePromptZh,
+      outlinePromptEn
+    })
+  }
+  return items
+}
+
+export interface MxNovelCharacterStatusEntry {
+  id: string
+  name: string
+  faction: 'protagonist' | 'ally' | 'villain' | 'neutral'
+  status: 'active' | 'subdued' | 'injured' | 'eliminated'
+  realmOrRole: string
+  relationNote: string
+  updatedAtChapter: number
+}
+
+export interface MxNovelForeshadowingEntry {
+  id: string
+  title: string
+  plantedChapter: number
+  targetPayoffChapterRange: [number, number]
+  status: 'planted' | 'paid_off'
+  payoffHint: string
+  paidOffAtChapter?: number
+}
+
+export function createDefaultNovelCharacterRoster(
+  wb: MxNumericalWorkbench,
+  totalChapters = 800,
+  genre?: NovelGenreProfile
+): MxNovelCharacterStatusEntry[] {
+  const s = exportMxChapterNumericalSlice(wb, 1, totalChapters, genre)
+  if (genre && genre.id !== 'urban_reversal') {
+    return genre.roster.map((r, idx) => ({
+      id: `char_${r.faction}_${idx}`,
+      name: r.name,
+      faction: r.faction,
+      status: r.faction === 'ally' ? 'subdued' : 'active',
+      realmOrRole:
+        r.faction === 'protagonist'
+          ? `${s.realmStageLabelZh} · ${genre.protagonistAxisZh} ${s.powerCeiling}`
+          : r.role,
+      relationNote: r.note,
+      updatedAtChapter: 1
+    }))
+  }
+  const topAlly = wb.multiplier.entities[1]?.name || '赵天豪（江城首富）' // cjk-ok
+  const earlyVillain = '苏清雪（前期退婚反派）' // cjk-ok
+  const midVillain = wb.multiplier.entities[2]?.name || '省城豪门大少' // cjk-ok
+  return [
+    {
+      id: 'char_protagonist',
+      name: '林玄', // cjk-ok
+      faction: 'protagonist',
+      status: 'active',
+      realmOrRole: `${s.realmStageLabelZh} · 战力上限 ${s.powerCeiling}`, // cjk-ok
+      relationNote: '男主，表面隐忍赘婿，实则执掌黑金龙卡与百倍觉醒系统', // cjk-ok
+      updatedAtChapter: 1
+    },
+    {
+      id: 'char_ally_tycoon',
+      name: topAlly.replace(/（.*）/, ''),
+      faction: 'ally',
+      status: 'subdued',
+      realmOrRole: '百亿商界巨擘 · 核心人脉', // cjk-ok
+      relationNote: '受男主救命大恩，唯男主马首是瞻，负责前中期商战护航', // cjk-ok
+      updatedAtChapter: 1
+    },
+    {
+      id: 'char_villain_early',
+      name: earlyVillain.replace(/（.*）/, ''),
+      faction: 'villain',
+      status: 'active',
+      realmOrRole: `初级反派 · 压迫值 ${s.villainPressure}`, // cjk-ok
+      relationNote: '嫌贫爱富当众退婚，第 1 幕高潮被男主亮底牌打脸清算', // cjk-ok
+      updatedAtChapter: 1
+    },
+    {
+      id: 'char_villain_mid',
+      name: midVillain.replace(/（.*）/, ''),
+      faction: 'villain',
+      status: 'active',
+      realmOrRole: '省域豪门爪牙 · 幕后黑手前哨', // cjk-ok
+      relationNote: '觊觎苏家产业与男主奇遇信物，引出第 2 卷省域冲突', // cjk-ok
+      updatedAtChapter: 1
+    }
+  ]
+}
+
+export function createDefaultNovelForeshadowingPool(
+  wb: MxNumericalWorkbench,
+  totalChapters = 800,
+  genre?: NovelGenreProfile
+): MxNovelForeshadowingEntry[] {
+  const dynTotal = Math.max(10, totalChapters)
+  const firstArcEnd = Math.max(3, Math.min(20, Math.round(dynTotal * 0.04)))
+  const midArcStart = Math.max(4, Math.round(dynTotal * 0.12))
+  const midArcEnd = Math.max(midArcStart + 4, Math.round(dynTotal * 0.25))
+  const lateArcStart = Math.max(midArcEnd + 5, Math.round(dynTotal * 0.55))
+  const lateArcEnd = Math.max(lateArcStart + 10, Math.round(dynTotal * 0.85))
+  if (genre && genre.id !== 'urban_reversal') {
+    const ranges: Array<[number, number]> = [
+      [2, firstArcEnd],
+      [midArcStart, midArcEnd],
+      [lateArcStart, lateArcEnd]
+    ]
+    return genre.foreshadowings.map((f, idx) => {
+      const [start, end] = ranges[idx]!
+      return {
+        id: `fs_${genre.id}_${idx + 1}`,
+        title: f.title,
+        plantedChapter: idx + 1,
+        targetPayoffChapterRange: [start, end] as [number, number],
+        status: 'planted' as const,
+        payoffHint: fillNovelGenreTemplate(f.payoffHint, { start, end })
+      }
+    })
+  }
+  const firstItem = wb.lootRoll.draftPool[0]?.name || '天命金手指觉醒信物' // cjk-ok
+  const endTrump =
+    wb.multiplier.entities[wb.multiplier.entities.length - 1]?.name || '真身揭晓·全员震怖' // cjk-ok
+
+  return [
+    {
+      id: 'fs_1_contract',
+      title: `退婚宴三日之约与【${firstItem}】真伪验证`, // cjk-ok
+      plantedChapter: 1,
+      targetPayoffChapterRange: [2, firstArcEnd],
+      status: 'planted',
+      payoffHint: `反派嘲笑信物为地摊假货，需在第 2~${firstArcEnd} 章首富到场下跪接驾时当众验证打脸` // cjk-ok
+    },
+    {
+      id: 'fs_2_province_cabal',
+      title: '省域隐世豪门封锁令与父母失踪旧案线索', // cjk-ok
+      plantedChapter: 2,
+      targetPayoffChapterRange: [midArcStart, midArcEnd],
+      status: 'planted',
+      payoffHint: `第 ${midArcStart}~${midArcEnd} 章冲出新手村进入省域大地图时，揭晓当年设局害林家的幕后推手` // cjk-ok
+    },
+    {
+      id: 'fs_3_endgame_seal',
+      title: `终局禁区血脉玉佩与【${endTrump}】最高权限解封`, // cjk-ok
+      plantedChapter: 3,
+      targetPayoffChapterRange: [lateArcStart, lateArcEnd],
+      status: 'planted',
+      payoffHint: `全书后期（第 ${lateArcStart}~${lateArcEnd} 章）突破最高境界天花板时解封终极底牌完成万界清算` // cjk-ok
+    }
+  ]
+}
+
+export function buildNovelForeshadowingAndRosterPromptBlock(opts: {
+  currentChapter: number
+  roster?: MxNovelCharacterStatusEntry[]
+  characters?: MxNovelCharacterStatusEntry[]
+  foreshadowings?: MxNovelForeshadowingEntry[]
+}): string {
+  const cur = Math.max(1, opts.currentChapter)
+  const roster = opts.roster ?? opts.characters ?? []
+  const foreshadowings = opts.foreshadowings ?? []
+  const lines: string[] = []
+
+  if (roster.length > 0) {
+    const activeChars = roster.filter((c) => c.status !== 'eliminated')
+    const eliminatedChars = roster.filter((c) => c.status === 'eliminated')
+    lines.push(
+      `### [人物生死与仇恨状态名录 (Character Status & Anti-OOC Roster)]`, // cjk-ok
+      ...activeChars.map(
+        (c) =>
+          `- **${c.name}**（${c.realmOrRole} · 状态：${c.status === 'subdued' ? '已臣服归顺' : c.status === 'injured' ? '重伤潜伏' : '活跃在场'}）：${c.relationNote}` // cjk-ok
+      )
+    )
+    if (eliminatedChars.length > 0) {
+      lines.push(
+        `- 🚫 **已彻底退场/伏诛反派（严禁在本章无故复活再次登场挑衅！）**：${eliminatedChars.map((c) => `${c.name}（第${c.updatedAtChapter}章已退场）`).join('、')}` // cjk-ok
+      )
+    }
+  }
+
+  const dueForeshadowings = foreshadowings.filter(
+    (f) =>
+      f.status === 'planted' &&
+      cur >= f.targetPayoffChapterRange[0] &&
+      cur <= f.targetPayoffChapterRange[1]
+  )
+  const upcomingForeshadowings = foreshadowings
+    .filter((f) => f.status === 'planted' && cur < f.targetPayoffChapterRange[0])
+    .slice(0, 4)
+
+  if (dueForeshadowings.length > 0 || upcomingForeshadowings.length > 0) {
+    lines.push(
+      ``,
+      `### [长线伏笔追踪与本章到期回收指令 (Foreshadowing Payoff Tracker)]` // cjk-ok
+    )
+    for (const due of dueForeshadowings) {
+      lines.push(
+        `- 🔥 **【本章到期必回收伏笔】《${due.title}》**（第 ${due.plantedChapter} 章埋设，计划第 ${due.targetPayoffChapterRange[0]}~${due.targetPayoffChapterRange[1]} 章回收）：${due.payoffHint}` // cjk-ok
+      )
+    }
+    for (const up of upcomingForeshadowings) {
+      lines.push(
+        `- 🌱 **【长线铺垫中伏笔（请勿提前泄底，可侧面埋线）】《${up.title}》**（第 ${up.plantedChapter} 章埋设 ➔ 目标第 ${up.targetPayoffChapterRange[0]}~${up.targetPayoffChapterRange[1]} 章揭晓）：${up.payoffHint}` // cjk-ok
+      )
+    }
+  }
+
+  return lines.join('\n')
+}
+
+export interface MxNovelChapterContinuityAudit {
+  overallScore: number
+  wordCount: number
+  targetWords: number
+  wordQuotaPct: number
+  beatsPresentCount: number
+  leakedLockedTrumps: string[]
+  usedAllowedTrumps: string[]
+  revivedEliminatedCharacters: string[]
+  dueForeshadowingsUnpaid: string[]
+  anchorContinuityPassed: boolean
+  matchedAnchorKeywords: string[]
+  hasStrongEndingHook: boolean
+  issuesZh: string[]
+  suggestionsZh: string[]
+}
+
+/**
+ * 单章连贯性、战力围栏与爽点节奏自动审计器（Continuity & Power-Creep QA Doctor）：
+ * 实时扫描当前章节正文是否误触「封存禁用底牌黑名单」、「已退场死人复活 OOC」、「到期伏笔漏填」、首段是否承接上一章末尾锚点、字数与四拍结构是否达标。
+ */
+export function auditNovelChapterContinuityAndPacing(
+  text: string,
+  slice: MxChapterNumericalSlice,
+  opts?: {
+    targetWords?: number
+    prevTailAnchor?: string
+    eliminatedCharacterNames?: string[]
+    dueForeshadowingTitles?: string[]
+    genre?: NovelGenreProfile
+  }
+): MxNovelChapterContinuityAudit {
+  const raw = (text ?? '').trim()
+  const targetWords = Math.max(500, opts?.targetWords || 3200)
+  const wordCount = raw.replace(/\s+/g, '').length
+  const wordQuotaPct = Math.round((wordCount / targetWords) * 100)
+
+  const leakedLockedTrumps = slice.lockedEndgameTrumps.filter(
+    (card) => card && card.trim().length >= 2 && raw.includes(card.trim())
+  )
+  const usedAllowedTrumps = slice.allowedTrumpCards.filter(
+    (card) => card && card.trim().length >= 2 && raw.includes(card.trim())
+  )
+
+  const revivedEliminatedCharacters = (opts?.eliminatedCharacterNames ?? []).filter(
+    (name) => name && name.trim().length >= 2 && raw.includes(name.trim())
+  )
+
+  const dueForeshadowingsUnpaid = (opts?.dueForeshadowingTitles ?? []).filter((title) => {
+    const clean = title.trim()
+    if (!clean || wordCount === 0) return false
+    const tokens = clean.match(/[\u4e00-\u9fa5]{2,4}/g) ?? [clean]
+    return !tokens.some((tk) => raw.includes(tk))
+  })
+
+  let beatsPresentCount = 0
+  if (/第一拍|Beat\s*1/i.test(raw) || wordCount >= 400) beatsPresentCount++ // cjk-ok
+  if (/第二拍|Beat\s*2/i.test(raw) || wordCount >= 1200) beatsPresentCount++ // cjk-ok
+  if (/第三拍|Beat\s*3/i.test(raw) || wordCount >= 2200) beatsPresentCount++ // cjk-ok
+  if (/第四拍|Beat\s*4/i.test(raw) || wordCount >= targetWords) beatsPresentCount++ // cjk-ok
+
+  const prevTail = (opts?.prevTailAnchor ?? '').trim()
+  const matchedAnchorKeywords: string[] = []
+  let anchorContinuityPassed = true
+  if (slice.chapterIndex > 1 && prevTail.length >= 10 && raw.length >= 20) {
+    const candidateTokens = Array.from(
+      new Set(
+        (prevTail.match(/[\u4e00-\u9fa5]{2,4}/g) ?? []).filter(
+          (w) =>
+            ![
+              '第1章', // cjk-ok
+              '第2章', // cjk-ok
+              '然而', // cjk-ok
+              '此时', // cjk-ok
+              '就在', // cjk-ok
+              '突然', // cjk-ok
+              '一个', // cjk-ok
+              '自己', // cjk-ok
+              '他们', // cjk-ok
+              '没有', // cjk-ok
+              '什么' // cjk-ok
+            ].includes(w)
+        )
+      )
+    )
+    const openingSegment = raw.slice(0, 420)
+    for (const tk of candidateTokens) {
+      if (openingSegment.includes(tk)) {
+        matchedAnchorKeywords.push(tk)
+      }
+    }
+    anchorContinuityPassed = matchedAnchorKeywords.length > 0 || candidateTokens.length === 0
+  }
+
+  const tailSegment = raw.slice(-220)
+  let genreHookRe: RegExp | null = null
+  try {
+    genreHookRe = opts?.genre?.hookKeywordsRe ? new RegExp(opts.genre.hookKeywordsRe) : null
+  } catch {
+    genreHookRe = null
+  }
+  const hasStrongEndingHook =
+    raw.length > 0 &&
+    (/[？！?!…]/.test(tailSegment) || // cjk-ok
+      (genreHookRe ? genreHookRe.test(tailSegment) : false) ||
+      /* cjk-ok */ /忽然|骤然|轰然|震动|瞳孔|冷笑|踏入|亮出|电话|警报|跪|死寂|惊呼|究竟|倒计时|门外/.test(
+        tailSegment
+      ))
+
+  const issuesZh: string[] = []
+  const suggestionsZh: string[] = []
+  let score = 100
+
+  if (wordCount === 0) {
+    return {
+      overallScore: 0,
+      wordCount: 0,
+      targetWords,
+      wordQuotaPct: 0,
+      beatsPresentCount: 0,
+      leakedLockedTrumps: [],
+      usedAllowedTrumps: [],
+      revivedEliminatedCharacters: [],
+      dueForeshadowingsUnpaid: [],
+      anchorContinuityPassed: true,
+      matchedAnchorKeywords: [],
+      hasStrongEndingHook: false,
+      issuesZh: ['当前章节尚无正文内容'], // cjk-ok
+      suggestionsZh: ['点击顶栏「⚡ 生成第 X 章」或在幕次细纲表中选择一章开始生成'] // cjk-ok
+    }
+  }
+
+  if (leakedLockedTrumps.length > 0) {
+    const unlockTerm = opts?.genre?.unlockTermZh ?? '底牌' // cjk-ok
+    score -= Math.min(35, leakedLockedTrumps.length * 18)
+    issuesZh.push(
+      `⚠️ ${unlockTerm}抢跑告警：本章误出现了后期封存的${unlockTerm}【${leakedLockedTrumps.join('、')}】` // cjk-ok
+    )
+    suggestionsZh.push(
+      `点击下方「🔧 一键替换违规底牌」，将封存底牌替换为本章准入底牌【${slice.allowedTrumpCards[0] ?? '当前阶段底牌'}】` // cjk-ok
+    )
+  }
+
+  if (revivedEliminatedCharacters.length > 0) {
+    score -= Math.min(30, revivedEliminatedCharacters.length * 15)
+    issuesZh.push(
+      `💀 角色状态 OOC 告警：已退场/已伏诛角色【${revivedEliminatedCharacters.join('、')}】再次出现在本章正文中` // cjk-ok
+    )
+    suggestionsZh.push(
+      `点击下方「🧹 替换为新登场反派」，或检查人物生死名录` // cjk-ok
+    )
+  }
+
+  if (dueForeshadowingsUnpaid.length > 0) {
+    score -= Math.min(16, dueForeshadowingsUnpaid.length * 8)
+    issuesZh.push(
+      `🕸️ 到期伏笔待回收提醒：本章处于伏笔《${dueForeshadowingsUnpaid.join('》《')}》的计划揭晓区间，正文中尚未提及` // cjk-ok
+    )
+    suggestionsZh.push(
+      `可在「四层记忆 · 伏笔追踪池」点击「🔥 注入本章填坑指令」回收该伏笔` // cjk-ok
+    )
+  }
+
+  if (wordQuotaPct < 80) {
+    score -= Math.min(25, Math.round((80 - wordQuotaPct) * 0.4))
+    issuesZh.push(
+      `📏 字数未达标：当前 ${wordCount} 字（仅达目标 ${targetWords} 字的 ${wordQuotaPct}%）` // cjk-ok
+    )
+    suggestionsZh.push(
+      `建议选中核心冲突段落使用「🔍 扩写环境与五感细节 (+300字)」补足四拍场景描写` // cjk-ok
+    )
+  }
+
+  if (!anchorContinuityPassed) {
+    score -= 15
+    issuesZh.push(
+      `🔗 开篇承接偏弱：本章前 400 字未检测到上一章（第 ${slice.chapterIndex - 1} 章）末尾锚点关键词` // cjk-ok
+    )
+    suggestionsZh.push(
+      `建议在第一拍开头补入上一章末尾的场景/人物余波，保持跨章无缝咬合` // cjk-ok
+    )
+  }
+
+  if (!hasStrongEndingHook) {
+    score -= 12
+    issuesZh.push(`🪝 章末悬念钩子偏平淡：最后一段缺少强冲突转折或悬念标点`) // cjk-ok
+    suggestionsZh.push(
+      `建议选中章末最后一段，点击「🪝 改写为高能断章悬念钩子」拉升追读率` // cjk-ok
+    )
+  }
+
+  if (issuesZh.length === 0) {
+    suggestionsZh.push(
+      `✅ 本章数值围栏合规、跨章承接紧密、四拍结构与章末钩子俱佳，可直接推送下游改编剧本或继续连载下一章！` // cjk-ok
+    )
+  }
+
+  return {
+    overallScore: Math.max(0, Math.min(100, score)),
+    wordCount,
+    targetWords,
+    wordQuotaPct,
+    beatsPresentCount,
+    leakedLockedTrumps,
+    usedAllowedTrumps,
+    revivedEliminatedCharacters,
+    dueForeshadowingsUnpaid,
+    anchorContinuityPassed,
+    matchedAnchorKeywords,
+    hasStrongEndingHook,
+    issuesZh,
+    suggestionsZh
+  }
+}
+
+/**
+ * 将单章或多章小说正文实时转译为标准短剧分场剧本预览（用于小说 Dive 工作台「小说 ↔ 剧本双栏同屏对照」）：
+ */
+export function convertNovelChapterToScreenplayPreview(
+  novelText: string,
+  opts?: {
+    chapterIndex?: number
+    chapterTitle?: string
+    slice?: MxChapterNumericalSlice
+    protagonistName?: string
+    antagonistName?: string
+  }
+): string {
+  const raw = (novelText ?? '').trim()
+  const chapIdx = opts?.chapterIndex ?? opts?.slice?.chapterIndex ?? 1
+  const chapTitleClean =
+    (opts?.chapterTitle ?? '')
+      .replace(/^#+\s*/, '')
+      .replace(/^第\s*\d+\s*(?:\/\s*\d+\s*)?章[:：]?\s*/, '') // cjk-ok
+      .trim() || '风云突变·底牌亮出' // cjk-ok
+  const realm = opts?.slice?.realmStageLabelZh ?? '潜龙初醒期' // cjk-ok
+  const topTrump = opts?.slice?.allowedTrumpCards[0] ?? '至尊黑金龙卡' // cjk-ok
+  const pressure = opts?.slice?.villainPressure ?? 120
+  const hero = opts?.protagonistName?.trim() || '林玄' // cjk-ok
+  const foe = opts?.antagonistName?.trim() || '反派' // cjk-ok
+
+  const paragraphs = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('#'))
+
+  const dialogueLines = paragraphs.filter((l) => /[“"「『]/.test(l) || /^[^:：]{1,10}[:：]/.test(l))
+  const actionParas = paragraphs.filter((l) => !dialogueLines.includes(l))
+
+  const act1 =
+    actionParas[0]?.slice(0, 110) ||
+    `璀璨水晶灯下宾客云集，${foe}释放威胁强度 ${pressure} 的威压逼迫${hero}当众低头。` // cjk-ok
+  const act2 =
+    actionParas[Math.floor(actionParas.length / 2)]?.slice(0, 110) ||
+    `${hero}眼底寒芒一闪（${realm}气机流转），缓步上前亮出核心信物【${topTrump}】，全场哗然死寂！` // cjk-ok
+  const act3 =
+    actionParas[actionParas.length - 1]?.slice(0, 110) ||
+    `宴会厅大门轰然推开，黑衣保镖分列两侧，大人物疾步入场九十度躬身行礼，悬念陡升！` // cjk-ok
+
+  const dlg1 =
+    dialogueLines[0]?.replace(/^[“"「『]|[”"」』]$/g, '') ||
+    '认清你自己的身份！今天就算天王老子来了，你也休想踏出这扇门！' // cjk-ok
+  const dlg2 =
+    dialogueLines[1]?.replace(/^[“"「『]|[”"」』]$/g, '') ||
+    `是吗？睁大你的眼睛看清楚，这枚【${topTrump}】代表什么。三分钟后，你会跪着求我。` // cjk-ok
+
+  const ep1Num = (chapIdx - 1) * 2 + 1
+  const ep2Num = ep1Num + 1
+
+  return [
+    `剧本名：《第${chapIdx}章改编：${chapTitleClean}》`, // cjk-ok
+    ``,
+    `【人物小传】`, // cjk-ok
+    `- ${hero}（${realm}）：表面隐忍内敛，实则执掌【${topTrump}】，眼神冷冽果决。`, // cjk-ok
+    `- ${foe}（威胁值 ${pressure}）：神情倨傲、步步紧逼，从胜券在握到方寸大乱。`, // cjk-ok
+    ``,
+    `## 第${ep1Num}集：绝境施压·锋芒暗藏`, // cjk-ok
+    `第1场 【内景 · 核心冲突现场 - 夜】`, // cjk-ok
+    `△ ${act1}`,
+    `${foe}：（冷笑讥讽）${dlg1}`, // cjk-ok
+    `△ 四周众人窃窃私语，镜头急速推近${hero}古井无波的侧脸，${hero}手指轻叩桌面。`, // cjk-ok
+    `${hero}：（平静冷冽）${dlg2}`, // cjk-ok
+    ``,
+    `## 第${ep2Num}集：底牌亮出·全场震怖`, // cjk-ok
+    `第1场 【内景 · 核心冲突现场 - 夜】`, // cjk-ok
+    `△ ${act2}`,
+    `${foe}：（瞳孔骤缩，声音颤抖）这不可能……你怎么可能有【${topTrump}】？！`, // cjk-ok
+    `△ ${act3}`,
+    `${hero}：（负手而立）好戏，现在才刚刚开始。` // cjk-ok
+  ].join('\n')
 }

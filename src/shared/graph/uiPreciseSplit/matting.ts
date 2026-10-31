@@ -26,6 +26,8 @@ export interface MatteOptions {
   t1?: number
   /** 实心控件：填补主体内部空洞 */
   fillHoles?: boolean
+  /** 实例分割/笔画前景掩码约束：限制前景核心不得越出该掩码（消除框内相邻背景/肩甲粘连） */
+  instanceMask?: { rect: PixelRect; mask: Uint8Array }
 }
 
 export interface MatteResult {
@@ -87,9 +89,47 @@ export function extractMatte(
     }
   }
 
+  // 若传入了实例分割/字形笔画掩码，将其投射到当前局部 rect 坐标系下，限制前景与羽化边界
+  let projectedInstance: Uint8Array | null = null
+  let projectedBand: Uint8Array | null = null
+  if (options.instanceMask) {
+    const im = options.instanceMask
+    const proj = new Uint8Array(n)
+    let hit = 0
+    for (let y = 0; y < rh; y++) {
+      const cy = rect.top + y
+      const iy = cy - im.rect.top
+      if (iy < 0 || iy >= im.rect.height) continue
+      const iRow = iy * im.rect.width
+      const rRow = y * rw
+      for (let x = 0; x < rw; x++) {
+        const cx = rect.left + x
+        const ix = cx - im.rect.left
+        if (ix < 0 || ix >= im.rect.width) continue
+        if (im.mask[iRow + ix]) {
+          proj[rRow + x] = 1
+          hit++
+        }
+      }
+    }
+    if (hit > 0) {
+      projectedInstance = proj
+      projectedBand = dilateMask(proj, rw, rh, 1)
+    }
+  }
+
   // 主体：alpha ≥ 0.5 的连通域，去掉与框核心无关的零碎噪点
   let core: Uint8Array = new Uint8Array(n)
-  for (let p = 0; p < n; p++) core[p] = alpha[p]! >= 0.5 ? 1 : 0
+  for (let p = 0; p < n; p++) {
+    if (projectedBand && !projectedBand[p]) {
+      alpha[p] = 0
+      continue
+    }
+    if (projectedInstance && projectedInstance[p] && alpha[p]! >= 0.25) {
+      alpha[p] = Math.max(alpha[p]!, 0.85)
+    }
+    core[p] = alpha[p]! >= 0.5 ? 1 : 0
+  }
   const { labels, stats } = labelComponents(core, rw, rh)
   if (!stats.length) return null
   const localBox: PixelRect = {

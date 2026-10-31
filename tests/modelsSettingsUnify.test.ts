@@ -346,3 +346,39 @@ describe('pickActiveProvider', () => {
     expect(pickActiveProvider([onlyDecisions], 'decisions')?.modelId).toBe('liquid/d1')
   })
 })
+
+describe('staticCatalogRegistry', () => {
+  it('returns builtin static catalogs for text, image, audio, 3d, and world providers', async () => {
+    const { getStaticCatalogForProvider, resolveStaticCapabilitiesForProvider } =
+      await import('../src/shared/modelProviders/staticCatalogRegistry')
+    expect(getStaticCatalogForProvider('openai', 'text').map((m) => m.id)).toContain('gpt-6.1-sol')
+    expect(getStaticCatalogForProvider('anthropic', 'text').map((m) => m.id)).toContain(
+      'claude-sonnet-4-6'
+    )
+    expect(getStaticCatalogForProvider('deepseek', 'text').map((m) => m.id)).toContain(
+      'deepseek-flash'
+    )
+    expect(getStaticCatalogForProvider('moonshot', 'text').map((m) => m.id)).toContain('kimi-k2.5')
+    expect(getStaticCatalogForProvider('elevenlabs', 'audio').map((m) => m.id)).toContain(
+      'eleven_v3'
+    )
+    expect(getStaticCatalogForProvider('elevenlabs', 'music').map((m) => m.id)).toContain(
+      'music_v2_5'
+    )
+    expect(getStaticCatalogForProvider('elevenlabs', 'sfx').map((m) => m.id)).toContain(
+      'eleven_text_to_sound_v2'
+    )
+    expect(getStaticCatalogForProvider('tripo', 'model3d').map((m) => m.id)).toContain(
+      'tripo-3d-v1'
+    )
+    expect(getStaticCatalogForProvider('worldlabs', 'spatialWorld').map((m) => m.id)).toContain(
+      'marble-1.1'
+    )
+
+    const caps = resolveStaticCapabilitiesForProvider('openai', 'gpt-image-1.5', 'image')
+    expect(
+      (caps?.supported_parameters as { input_references?: { max?: number } } | undefined)
+        ?.input_references?.max
+    ).toBe(16)
+  })
+})

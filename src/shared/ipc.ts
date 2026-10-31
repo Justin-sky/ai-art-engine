@@ -227,6 +227,7 @@ export const IpcChannels = {
   YOLO_POSE: 'yolo:pose',
   /** 人脸关键点（两段式：BlazeFace 检测器 + FaceMesh 468 点），返回 canonical-68 映射 */
   YOLO_FACE: 'yolo:face',
+  YOLO_SAM2: 'yolo:sam2',
   YOLO_OPEN_MODEL_DIR: 'yolo:open-model-dir',
   /** 官方模型下载目录（detect/segment/pose × s/m/l/x） */
   YOLO_MODEL_CATALOG: 'yolo:model-catalog',
@@ -2186,6 +2187,10 @@ export interface StudioApi {
    * 输出 468 点与 canonical-68 映射；两个模型缺一即抛错（调用方按能力可选处理）。
    */
   yoloFace: (input: YoloInferenceInput) => Promise<YoloFaceResult>
+  /** SAM 2.1 点 / 框提示分割：本地 ONNX，返回多候选前景概率掩码；未安装 SAM 2.1 时 reject */
+  yoloSam2: (
+    input: import('./yolo').YoloSam2PromptInput
+  ) => Promise<import('./yolo').YoloSam2PromptResult>
   /** 在系统文件管理器中打开 YOLO 模型目录（不存在则创建）；返回目录路径 */
   openYoloModelDir: () => Promise<string | null>
   /**
