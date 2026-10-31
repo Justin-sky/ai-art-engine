@@ -1996,6 +1996,61 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                   </g>
                 </g>
               </svg>
+
+              <!-- 仙子侧边悬浮快捷图标栏（动作切换 / 切换仙子） -->
+              <div
+                class="fairy-side-actions"
+                @mouseenter="onActorMouseEnter"
+                @mouseleave="onActorMouseLeave"
+                @click.stop
+              >
+                <button
+                  type="button"
+                  class="wish-switch-fairy-btn act-btn"
+                  :title="
+                    isEn
+                      ? 'Trigger Magic / Dance / Window Peek / Spin'
+                      : '切换炫酷动作（挥杖施法 / 律动热舞 / 窗边躲猫猫 / 360°回旋）' /* cjk-ok */
+                  "
+                  :aria-label="
+                    isEn
+                      ? 'Trigger Magic / Dance / Window Peek / Spin'
+                      : '切换炫酷动作（挥杖施法 / 律动热舞 / 窗边躲猫猫 / 360°回旋）' /* cjk-ok */
+                  "
+                  @pointerdown.stop
+                  @click.stop="onCycleStageAct"
+                >
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <path
+                      d="M3 13L10.8 5.2M11.5 2L12.1 3.7L13.8 4.3L12.1 4.9L11.5 6.6L10.9 4.9L9.2 4.3L10.9 3.7L11.5 2ZM5.2 2.2L5.5 3.1L6.4 3.4L5.5 3.7L5.2 4.6L4.9 3.7L4 3.4L4.9 3.1L5.2 2.2Z"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="wish-switch-fairy-btn"
+                  :title="switchFairyTooltip"
+                  :aria-label="switchFairyTooltip"
+                  @pointerdown.stop
+                  @click.stop="onCycleFairy"
+                >
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <path
+                      d="M3 5.5H12.5M12.5 5.5L10 3M12.5 5.5L10 8M13 10.5H3.5M3.5 10.5L6 8M3.5 10.5L6 13"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             <!-- 从仙子口中源源不断飘向空中的咒语粒子流 -->
@@ -2016,7 +2071,7 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
             </div>
           </div>
 
-          <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 切换动作 + 切换仙子 + 一键折叠） -->
+          <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 一键折叠） -->
           <div
             class="sprite-foot-ribbon"
             @mouseenter="onActorMouseEnter"
@@ -2027,29 +2082,6 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
             <span class="ribbon-karma" :class="{ bump: karmaBump }">
               {{ isEn ? `✨ Luck ${luckTotalText}` : `✨ 欧气 ${luckTotalText}` /* cjk-ok */ }}
             </span>
-            <button
-              type="button"
-              class="wish-switch-fairy-btn act-btn"
-              :title="
-                isEn
-                  ? 'Trigger Magic / Dance / Window Peek / Spin'
-                  : '切换炫酷动作（挥杖施法 / 律动热舞 / 窗边躲猫猫 / 360°回旋）' /* cjk-ok */
-              "
-              @pointerdown.stop
-              @click.stop="onCycleStageAct"
-            >
-              {{ isEn ? '🪄 Act' : '🪄 动作' /* cjk-ok */ }}
-            </button>
-            <button
-              type="button"
-              class="wish-switch-fairy-btn"
-              :title="switchFairyTooltip"
-              :aria-label="switchFairyTooltip"
-              @pointerdown.stop
-              @click.stop="onCycleFairy"
-            >
-              {{ isEn ? '⇄' : '⇄ 换人' /* cjk-ok */ }}
-            </button>
             <button
               type="button"
               class="wish-minimize-btn"
@@ -2748,20 +2780,29 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   animation: wish-karma-bump 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+.fairy-side-actions {
+  position: absolute;
+  right: -10px;
+  bottom: 10px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: auto;
+}
+
 .wish-switch-fairy-btn {
-  height: 18px;
-  padding: 0 7px;
-  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  font-size: 10px;
-  font-weight: 800;
-  white-space: nowrap;
   color: #fef08a;
-  background: rgba(168, 85, 247, 0.38);
-  border: 1px solid rgba(250, 204, 21, 0.55);
+  background: linear-gradient(135deg, rgba(88, 28, 135, 0.88), rgba(168, 85, 247, 0.72));
+  border: 1px solid rgba(250, 204, 21, 0.65);
+  box-shadow: 0 2px 8px rgba(15, 10, 40, 0.55);
   cursor: pointer;
   transition:
     transform 0.14s ease,

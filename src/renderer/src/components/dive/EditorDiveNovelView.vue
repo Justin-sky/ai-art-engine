@@ -12,8 +12,10 @@
           :placeholder="typeLabel"
           @change="persistTitle"
         />
-        <span class="cursor-pill"> Ch.{{ currentChapterCursor }} / {{ totalChapters }} </span>
+        <span class="cursor-pill">Ch.{{ currentChapterCursor }} / {{ totalChapters }}</span>
       </div>
+
+      <span class="header-divider" aria-hidden="true" />
 
       <div class="header-telemetry">
         <span class="stat-pill stat-chap">
@@ -39,14 +41,13 @@
           {{ ui.telemetryPowerCeiling }}
         </span>
         <span
-          class="stat-pill"
+          class="stat-pill stat-clickable"
           :class="{
             'stat-ok': chapterAudit.overallScore >= 85 && !chapterAudit.leakedLockedTrumps.length,
             'stat-warn':
               chapterAudit.overallScore > 0 &&
               (chapterAudit.overallScore < 85 || chapterAudit.leakedLockedTrumps.length > 0)
           }"
-          style="cursor: pointer"
           @click="rightTab = 'pacing'"
         >
           🩺 {{ ui.telemetryQaScore(chapterAudit.overallScore) }}
@@ -54,47 +55,54 @@
       </div>
 
       <div class="header-right">
-        <button type="button" class="head-gen-btn" @click="exportFullBookAnthology">
-          📦 {{ exportBookFlash ? ui.exportBookDoneBtn : ui.exportBookBtn }}
-        </button>
-        <button
-          v-if="downstreamScreenplayNode"
-          type="button"
-          class="head-gen-btn head-sp-btn"
-          @click="pushAndOpenDownstreamScreenplay"
-        >
-          🎬 {{ ui.pushToScreenplayBtn }}
-        </button>
-        <button
-          type="button"
-          class="head-gen-btn head-sp-btn"
-          @click="pushAndOpenDownstreamGameSystem"
-        >
-          🎮 {{ ui.pushToGameSystemBtn }}
-        </button>
-        <button
-          type="button"
-          class="head-gen-btn"
-          :disabled="isGraphRunning || runStatus === 'running'"
-          @click="triggerGenerateCurrentChapter"
-        >
-          ⚡ {{ ui.generateCurrentBtn }}
-        </button>
-        <button
-          type="button"
-          class="head-gen-btn head-gen-accent"
-          :disabled="isGraphRunning || runStatus === 'running'"
-          @click="triggerAiNextChapter"
-        >
-          ✨ {{ ui.aiNextChapterBtn }}
-        </button>
-        <GraphNodeRunControl
-          v-if="hasInPort"
-          :status="runStatus"
-          :is-running="isGraphRunning"
-          :blocked="blocked"
-          @toggle="toggleRun"
-        />
+        <div class="header-btn-group">
+          <button type="button" class="head-gen-btn" @click="exportFullBookAnthology">
+            📦 <span>{{ exportBookFlash ? ui.exportBookDoneBtn : ui.exportBookBtn }}</span>
+          </button>
+          <button
+            v-if="downstreamScreenplayNode"
+            type="button"
+            class="head-gen-btn head-sp-btn"
+            @click="pushAndOpenDownstreamScreenplay"
+          >
+            🎬 <span>{{ ui.pushToScreenplayBtn }}</span>
+          </button>
+          <button
+            type="button"
+            class="head-gen-btn head-sp-btn"
+            @click="pushAndOpenDownstreamGameSystem"
+          >
+            🎮 <span>{{ ui.pushToGameSystemBtn }}</span>
+          </button>
+        </div>
+
+        <span class="header-divider" aria-hidden="true" />
+
+        <div class="header-btn-group">
+          <button
+            type="button"
+            class="head-gen-btn"
+            :disabled="isGraphRunning || runStatus === 'running'"
+            @click="triggerGenerateCurrentChapter"
+          >
+            ⚡ <span>{{ ui.generateCurrentBtn }}</span>
+          </button>
+          <button
+            type="button"
+            class="head-gen-btn head-gen-accent"
+            :disabled="isGraphRunning || runStatus === 'running'"
+            @click="triggerAiNextChapter"
+          >
+            ✨ <span>{{ ui.aiNextChapterBtn }}</span>
+          </button>
+          <GraphNodeRunControl
+            v-if="hasInPort"
+            :status="runStatus"
+            :is-running="isGraphRunning"
+            :blocked="blocked"
+            @toggle="toggleRun"
+          />
+        </div>
       </div>
     </header>
 
@@ -3679,10 +3687,10 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
 .workbench-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  background: rgba(15, 23, 42, 0.92);
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(15, 23, 42, 0.94);
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   flex-shrink: 0;
 }
@@ -3691,7 +3699,14 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 200px;
+  flex-shrink: 0;
+}
+
+.header-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(148, 163, 184, 0.22);
+  flex-shrink: 0;
 }
 
 .kind-badge {
@@ -3703,6 +3718,7 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   border-radius: 7px;
   background: rgba(168, 85, 247, 0.18);
   border: 1px solid rgba(168, 85, 247, 0.38);
+  flex-shrink: 0;
 }
 
 .title-input {
@@ -3712,15 +3728,23 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   color: #f8fafc;
   font-size: 13px;
   font-weight: 600;
-  padding: 5px 10px;
-  min-width: 150px;
+  padding: 4px 10px;
+  height: 28px;
+  width: clamp(120px, 13vw, 176px);
+  min-width: 110px;
 }
 
 .cursor-pill {
-  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(168, 85, 247, 0.22);
   color: #e9d5ff;
   border: 1px solid rgba(168, 85, 247, 0.45);
@@ -3731,15 +3755,33 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .stat-pill {
-  padding: 3px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
   background: rgba(30, 41, 59, 0.85);
   color: #cbd5e1;
   border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.stat-clickable {
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+
+.stat-clickable:hover {
+  filter: brightness(1.12);
 }
 
 .stat-chap {
@@ -3775,14 +3817,32 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
 .header-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.header-btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .head-gen-btn {
-  padding: 5px 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
   border-radius: 6px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   background: rgba(51, 65, 85, 0.85);
   color: #f1f5f9;
@@ -3800,15 +3860,33 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   border-color: rgba(16, 185, 129, 0.45);
 }
 
+.head-sp-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.3);
+}
+
 .head-gen-accent {
-  background: linear-gradient(135deg, rgba(147, 51, 234, 0.85), rgba(79, 70, 229, 0.85));
-  border-color: rgba(192, 132, 252, 0.5);
+  background: linear-gradient(135deg, rgba(147, 51, 234, 0.88), rgba(79, 70, 229, 0.88));
+  border-color: rgba(192, 132, 252, 0.55);
   color: #ffffff;
+}
+
+.head-gen-accent:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.95), rgba(99, 102, 241, 0.95));
 }
 
 .head-gen-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.header-right :deep(.node-run-btn) {
+  width: auto;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .workbench-body {
