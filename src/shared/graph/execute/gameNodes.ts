@@ -93,6 +93,7 @@ import {
   runMxRoguelikeEnvelopeSimulation,
   runMxSimulation,
   synthesizeMxDiagramFromPrompt,
+  synthesizeMxWorkbenchFromPrompt,
   exportMxCommercialQaReportMarkdown,
   exportMxNarrativeProgressionBrief,
   exportMxForecastCsv,
@@ -2419,7 +2420,11 @@ export async function executeGameEconomyNode(
   const forecast = runMxForecast(doc, { runs, steps, seed })
   const playRun = runMxSimulation(doc, { steps, seed, name: 'Play 1' })
   const healthReport = analyzeMxEconomyHealth(doc, playRun)
-  const wb = doc.workbench ?? createMxWorkbenchPreset('slay_the_spire_dbg')
+  const wb =
+    doc.workbench ??
+    (promptHint
+      ? synthesizeMxWorkbenchFromPrompt(promptHint, 'slay_the_spire_dbg')
+      : createMxWorkbenchPreset('slay_the_spire_dbg'))
   doc.workbench = wb
   const wbMultiplier = analyzeMultiplierPipeline(wb.multiplier)
   const wbLoot = runMxLootAndSubstatSimulation({

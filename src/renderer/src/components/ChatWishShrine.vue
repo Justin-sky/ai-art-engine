@@ -473,7 +473,7 @@ function startIdlePoseCycle(): void {
   if (poseCycleTimer !== null) window.clearInterval(poseCycleTimer)
   let tickCount = 0
   poseCycleTimer = window.setInterval(() => {
-    if (!props.running || !visible.value || comboCount.value > 0) return
+    if (!props.running || !visible.value || comboCount.value > 0 || hoveringActor.value) return
     const nextAct = AUTO_STAGE_ACTS[tickCount % AUTO_STAGE_ACTS.length] ?? 'roam'
     tickCount++
     performStageAct(nextAct, nextAct === 'cast' || nextAct === 'edge-peek' || nextAct === 'dance')
@@ -765,8 +765,6 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
         :style="{
           transform: `translate3d(${Math.round(posX)}px, ${Math.round(posY)}px, 0)`
         }"
-        @mouseenter="hoveringActor = true"
-        @mouseleave="hoveringActor = false"
       >
         <!-- 游戏伤害数字式欧气飘字：随机数值、随机甩出方向，暴击金色放大 -->
         <div class="luck-popup-layer" :class="{ mini: minimized }" aria-hidden="true">
@@ -791,8 +789,8 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
         <div
           v-if="minimized"
           class="wish-shrine-mini-pill"
-          @mouseenter="hoveringActor = true"
-          @mouseleave="hoveringActor = false"
+          @mouseenter="onActorMouseEnter"
+          @mouseleave="onActorMouseLeave"
           @click="onBlessClick"
         >
           <span class="mini-pray-icon" aria-hidden="true">{{ currentFairy.emoji }}</span>
@@ -867,8 +865,8 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                 }
               ]"
               :title="blessTooltip"
-              @mouseenter="hoveringActor = true"
-              @mouseleave="hoveringActor = false"
+              @mouseenter="onActorMouseEnter"
+              @mouseleave="onActorMouseLeave"
               @click="onBlessClick"
             >
               <!-- 律动热舞舞台聚光灯与飘飞音符（dance 专属） -->
@@ -2021,8 +2019,8 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
           <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 切换动作 + 切换仙子 + 一键折叠） -->
           <div
             class="sprite-foot-ribbon"
-            @mouseenter="hoveringActor = true"
-            @mouseleave="hoveringActor = false"
+            @mouseenter="onActorMouseEnter"
+            @mouseleave="onActorMouseLeave"
             @click="onBlessClick"
           >
             <span class="ribbon-status">{{ ribbonBadgeText }}</span>
@@ -2241,7 +2239,7 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   z-index: 2;
 }
 
-/* ── Q 版祈福仙子 SVG 精灵 ── */
+/* ── Q 版祈福仙子 SVG 精灵（外层作为绝对稳定的固定点击热区，不做位移/旋转以彻底杜绝悬停边界抖动） ── */
 .wish-anime-girl-wrap {
   position: relative;
   z-index: 3;
@@ -2250,7 +2248,7 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   flex-shrink: 0;
   cursor: pointer;
   pointer-events: auto;
-  border-radius: 50%;
+  border-radius: 28px;
   background: radial-gradient(
     circle at 50% 48%,
     var(--fairy-glow, rgba(244, 114, 182, 0.36)) 0%,
@@ -2259,23 +2257,22 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   );
   filter: drop-shadow(0 6px 16px rgba(15, 10, 40, 0.55))
     drop-shadow(0 0 12px var(--fairy-glow, rgba(244, 114, 182, 0.4)));
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.wish-anime-girl-wrap:hover {
-  transform: scale(1.11) rotate(-3deg);
+.wish-anime-girl-wrap.is-hovered .wish-anime-girl-svg {
+  scale: 1.08;
 }
 
-/* 窗口边缘躲藏探头模式（从左/右窗沿斜探出半个身子偷看） */
-.wish-anime-girl-wrap.is-edge-peeking.edge-left {
+/* 窗口边缘躲藏探头模式（作用在 pointer-events: none 的内部 SVG 上，不影响外层热区盒） */
+.wish-anime-girl-wrap.is-edge-peeking.edge-left .wish-anime-girl-svg {
   animation: wish-edge-peek-left 1.4s ease-in-out infinite alternate;
 }
 
-.wish-anime-girl-wrap.is-edge-peeking.edge-right {
+.wish-anime-girl-wrap.is-edge-peeking.edge-right .wish-anime-girl-svg {
   animation: wish-edge-peek-right 1.4s ease-in-out infinite alternate;
 }
 
-.wish-anime-girl-wrap.bounce {
+.wish-anime-girl-wrap.bounce .wish-anime-girl-svg {
   animation: wish-girl-squish 0.38s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
@@ -2299,6 +2296,8 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   width: 100%;
   height: 100%;
   overflow: visible;
+  pointer-events: none;
+  transition: scale 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
   animation: wish-girl-float 2s ease-in-out infinite alternate;
 }
 
@@ -2452,22 +2451,14 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   animation: wish-halo-spin 12s linear infinite;
 }
 
-/* 精灵蝶翼扑扇 */
+/* 精灵蝶翼扑扇（不动态修改 animation-duration，防止关键帧相位重置引起的瞬移跳变） */
 .wing-left {
   transform-origin: 42px 88px;
-  animation: wish-wing-flap-left 0.42s ease-in-out infinite alternate;
+  animation: wish-wing-flap-left 0.36s ease-in-out infinite alternate;
 }
 .wing-right {
   transform-origin: 78px 88px;
-  animation: wish-wing-flap-right 0.42s ease-in-out infinite alternate;
-}
-.wish-anime-girl-wrap:hover .wing-left,
-.wish-anime-girl-wrap.combo-fever .wing-left {
-  animation-duration: 0.18s;
-}
-.wish-anime-girl-wrap:hover .wing-right,
-.wish-anime-girl-wrap.combo-fever .wing-right {
-  animation-duration: 0.18s;
+  animation: wish-wing-flap-right 0.36s ease-in-out infinite alternate;
 }
 
 /* 头部歪头杀动画 */
@@ -2475,12 +2466,12 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   transform-origin: 60px 76px;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-.wish-anime-girl-wrap:hover .girl-head-group,
 .wish-anime-girl-wrap.pose-peek .girl-head-group {
   transform: rotate(-7deg);
 }
-.wish-anime-girl-wrap.pose-wave .girl-head-group {
-  transform: rotate(5deg);
+.wish-anime-girl-wrap.pose-wave .girl-head-group,
+.wish-anime-girl-wrap.is-hovered .girl-head-group {
+  transform: rotate(-4deg);
 }
 
 /* 兽耳 / 猫耳抖动 */
@@ -2865,35 +2856,29 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 }
 
 .wish-minimize-btn {
-  width: 0;
+  width: 16px;
   height: 16px;
-  margin-left: -6px;
+  margin-left: 0;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  opacity: 0;
+  opacity: 0.78;
   color: #cbd5e1;
   background: rgba(15, 23, 42, 0.6);
-  border: 1px solid transparent;
+  border: 1px solid rgba(148, 163, 184, 0.35);
   cursor: pointer;
   padding: 0;
   transition:
-    width 0.18s ease,
-    margin 0.18s ease,
-    opacity 0.18s ease;
+    opacity 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease;
 }
 
-.wish-roaming-actor:hover .wish-minimize-btn,
+.wish-minimize-btn:hover,
 .wish-minimize-btn:focus-visible {
-  width: 16px;
-  margin-left: 0;
   opacity: 1;
-  border-color: rgba(148, 163, 184, 0.35);
-}
-
-.wish-minimize-btn:hover {
   color: #f8fafc;
   border-color: #c084fc;
 }

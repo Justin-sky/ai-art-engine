@@ -2407,7 +2407,7 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_node_types',
     title: '节点类型清单',
     description:
-      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含影视制作工作台 / 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。需要影视 / 短剧 / 分镜创作时查 `film.workbench` 与 `film.shot`：`text.plain` → `film.workbench` 一站式完成分镜拆解、导演审核、角色/场景设定图与各镜头关键帧/视频拍摄（参数见 filmStoryboard / filmCast / filmRenderMode / filmWorkbenchRunMode）；需按镜展开节点链或单镜精修时用 `film.workbench` → `film.shot`（out→in，out-cast→in-cast，参数 filmShotRef）→ `asset.image`（out→in-text，out-refs→in-image）→ `asset.video`（out-motion→in-text）。需要 2D 帧动画 / GIF 动图时查 `anim.2d`：一张按行列分格的序列图（sprite sheet）从 in 端口接入，按 animRows / animCols 逐格切成帧 PNG；animGifFps（1–24，默认 0 = 只切帧）> 0 时额外经 out-gif 端口产出 GIF 动图并落盘为工程资产；动作预设与自定义描述见 animPresetId / animInstruction。只读操作，无需打开工程。需要 SVG 矢量图 / 矢量动画（不是位图）时查 `svg.gen` 与 `svg.anim`：`svg.gen` 用文本模型把描述画成 SVG 源码并落盘为工程 .svg 资产（in 接文本指令、in-image 接参考图照图生矢量，自带 SVG 系统提示词）；要帧序列 / GIF 就把它接到 `svg.anim` 的 in 端口（端口类型 svg）烘焙：含 SMIL 动效出多帧 PNG（out / out-all）+ GIF（out-gif），静态 SVG 只出 1 帧、不产 GIF（动效须写在 SVG 自身的 <animate> / <animateTransform> / <set> 里，CSS @keyframes 与 <animateMotion> 不参与求值）。关键参数：svgGenWidth / svgGenHeight（16–2048，默认 512）、svgGenBackground、svgFrames（2–60，默认 12）、svgDurationSec（0 = 自动探测动画周期，上限 30 秒），用 includeParams 查询。',
+      '列出能被 graph_edit 添加到宿主资产子图的节点类型（与 graph_edit 的 node_upsert 校验同一白名单，含经济与数值系统 `game.economy` / 创建小说 `asset.novel` / 策划案生成 `asset.gameSystem` / 影视制作工作台 / 2D 舞台 / 宫格切分 / 图标包等新节点）：typeId、名称、分类、端口（连线时 fromPort / toPort 用的 id）与可选默认参数。用于外部 Agent 自发现可建节点，避免用猜的 typeId 被 graph_edit 跳过。需要游戏经济系统 / 数值仿真 / 小说连载 / 游戏系统策划案时查 `game.economy`、`asset.novel`、`asset.gameSystem`（支持单节点或闭环串联 `game.economy` out-text → `asset.novel` in → `asset.gameSystem` in → `ui.split` in）。需要影视 / 短剧 / 分镜创作时查 `film.workbench` 与 `film.shot`：`text.plain` → `film.workbench` 一站式完成分镜拆解、导演审核、角色/场景设定图与各镜头关键帧/视频拍摄（参数见 filmStoryboard / filmCast / filmRenderMode / filmWorkbenchRunMode）；需按镜展开节点链或单镜精修时用 `film.workbench` → `film.shot`（out→in，out-cast→in-cast，参数 filmShotRef）→ `asset.image`（out→in-text，out-refs→in-image）→ `asset.video`（out-motion→in-text）。需要 2D 帧动画 / GIF 动图时查 `anim.2d`：一张按行列分格的序列图（sprite sheet）从 in 端口接入，按 animRows / animCols 逐格切成帧 PNG；animGifFps（1–24，默认 0 = 只切帧）> 0 时额外经 out-gif 端口产出 GIF 动图并落盘为工程资产；动作预设与自定义描述见 animPresetId / animInstruction。只读操作，无需打开工程。需要 SVG 矢量图 / 矢量动画（不是位图）时查 `svg.gen` 与 `svg.anim`：`svg.gen` 用文本模型把描述画成 SVG 源码并落盘为工程 .svg 资产（in 接文本指令、in-image 接参考图照图生矢量，自带 SVG 系统提示词）；要帧序列 / GIF 就把它接到 `svg.anim` 的 in 端口（端口类型 svg）烘焙：含 SMIL 动效出多帧 PNG（out / out-all）+ GIF（out-gif），静态 SVG 只出 1 帧、不产 GIF（动效须写在 SVG 自身的 <animate> / <animateTransform> / <set> 里，CSS @keyframes 与 <animateMotion> 不参与求值）。关键参数：svgGenWidth / svgGenHeight（16–2048，默认 512）、svgGenBackground、svgFrames（2–60，默认 12）、svgDurationSec（0 = 自动探测动画周期，上限 30 秒），用 includeParams 查询。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2537,8 +2537,8 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'graph_edit',
     title: '编辑画布节点图 / 3D 导演台 / 检查器',
     description:
-      '对左侧打开或工程内的宿主画布、任意节点 Dive 视图、3D 导演台（director.stage）以及右侧检查器（Inspector）应用实时编辑操作（**所有图片/视频/配音/对话/音效/音乐/3D模型/空间世界生成与加工任务均须通过本工具创建或修改画布节点，再调用 `task_run` 在画布上实时执行**）：\n' +
-      '1. **画布节点创建、修改与连线操作**：`node_upsert` / `node_add` / `node_update`（或 `update_params`） / `apply_preset` / `node_delete` / `edge_connect` / `edge_delete` / `node_select` / `group_add` / `group_update` / `group_delete` / `auto_layout`。\n' +
+      '对左侧打开或工程内的宿主画布、任意节点 Dive 视图、3D 导演台（director.stage）以及右侧检查器（Inspector）应用实时编辑操作（**所有图片/视频/配音/对话/音效/音乐/3D模型/空间世界/小说连载/经济与数值系统/游戏系统策划案生成与加工任务均须通过本工具创建或修改画布节点，再调用 `task_run` 在画布上实时执行，严禁仅在聊天中回复长篇纯文本或写本地文件代替画布节点**）：\n' +
+      '1. **画布节点创建、修改、连线与 Dive 操作**：`node_upsert` / `node_add` / `node_update`（或 `update_params`） / `apply_preset` / `node_dive` / `node_delete` / `edge_connect` / `edge_delete` / `node_select` / `group_add` / `group_update` / `group_delete` / `auto_layout`。\n' +
       '   - 常用生成节点 `typeId`：\n' +
       '     * 图片生成：`asset.image`（`params: { prompt, aspectRatio, model, providerInstanceId, count, generateTransparentBg, referenceImageUrls }`，默认开启透明背景 `generateTransparentBg: true`——支持透明的模型生成透明图、不支持的模型生成不透明图且生图后不做去背景处理；明确要求非透明场景背景时传 `false`）\n' +
       '     * 视频生成：`asset.video`（`params: { prompt, aspectRatio, duration, generateAudio, model, providerInstanceId, firstFrameImageUrl, lastFrameImageUrl, referenceImageUrls }`）\n' +
@@ -2548,6 +2548,9 @@ const TOOL_DEFS: McpToolDef[] = [
       '     * 音乐/BGM 生成：`audio.music`（`params: { prompt, lyrics, instrumental, model, providerInstanceId }`）\n' +
       '     * 3D 模型生成与加工：`asset.model3d`（`params: { prompt, style, model, providerInstanceId, referenceImageUrls }`）、`model3d.rig`（骨骼蒙皮）、`model3d.segment`（部件拆分）、`model3d.postProcess`（重拓扑/补全/重定向/格式转换）\n' +
       '     * 空间世界生成与导出：`spatialWorld.generate`（`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`）、`spatialWorld.export`（导出 HQ GLB 网格或 PLY 泼溅）\n' +
+      '     * 游戏经济与数值系统：`game.economy`（`params: { prompt, gameEconomyTemplateId, gameEconomySteps, gameEconomyMonteCarloRuns, gameEconomySeed, gameEconomyWorkbench }`；支持 `preset: "slay_the_spire_dbg" | "genshin_gacha" | "diablo_arpg" | "lol_moba" | "idle_tycoon" | "battle_royale"`；输出端口 `out-text` 产出含完整数值设定的策划规格与仿真结论，可直连 `asset.novel` 的 `in` 或 `asset.gameSystem` 的 `in`）\n' +
+      '     * 创建小说 / 长篇剧集连载：`asset.novel`（`params: { prompt, novelTargetEpisodes, novelGenre, novelTone, novelChapterWords, novelChapters, novelCharacters, novelFactions, novelLocations, novelBibles }`；支持 `preset: "xianxia_cultivation" | "cyber_apocalypse" | "urban_suspense" | "ancient_court"`；输入端口 `in` 可接收上游 `game.economy` 的 `out-text`，输出端口 `out` / `out-all` 可直连下游 `asset.gameSystem` 的 `in`）\n' +
+      '     * 策划案生成（游戏系统与模块规格 GDD）：`asset.gameSystem`（`params: { prompt, gameGenre, gameArtStyle, gamePlatform, gamePerspective, gameSyncMode, gameSystemTargetModules, gameSystemFocus, gameSystemIncludeNumerical, gameSystemIncludeUiFlow, gameSystemIncludeStateFlow, gameSystemOverview, gameSystemModules }`；支持 `preset: "arpg_combat" | "roguelike_dbg" | "slg_kingdom" | "mmo_economy" | "survivor_bullet" | "avg_narrative"`；输入端口 `in` 可同时接收上游 `game.economy` 的 `out-text` 与 `asset.novel` 的 `out` / `out-all`，输出端口 `out` / `out-all` 可连 `ui.split` 的 `in`）\n' +
       '   - 在 `params` 中传入 `referenceImageUrls` / `firstFrameImageUrl` / `lastFrameImageUrl` / `referenceVideoUrl` 时，系统会自动在画布上创建锁定的上游参考媒体节点并连线到对应端口；\n' +
       '   - 省略 `assetId` 时自动作用于当前左侧打开的画布（若工程尚无画布会自动创建并打开默认自由画布）；返回值包含 `assetId` 与本次触达的 `nodeIds`，可直接传给 `task_run` 执行。\n' +
       '2. **3D 导演台实时操作**：当左侧打开了 3D 导演台 / 3D 分镜预演时，可直接在 `ops` 中传入 3D 舞台操作：`object_update` / `hide_object` / `show_object` / `lock_object` / `unlock_object` / `object_add` / `object_delete` / `object_duplicate` / `object_copy` / `object_paste` / `object_select` / `camera_update` / `camera_add` / `camera_delete` / `lighting_preset` / `environment_update` / `viewport_update` / `ai_blocking` / `cinemachine_pack` / `storyboard_previz` / `capture_shot` / `anim_control`；\n' +
@@ -2592,6 +2595,8 @@ const TOOL_DEFS: McpToolDef[] = [
                   'node_update',
                   'update_params',
                   'apply_preset',
+                  'node_dive',
+                  'open_dive',
                   'node_delete',
                   'edge_connect',
                   'edge_add',
@@ -2638,12 +2643,18 @@ const TOOL_DEFS: McpToolDef[] = [
               typeId: {
                 type: 'string',
                 description:
-                  'node_upsert / node_add 必填，如 asset.image / asset.video / voice.tts / audio.sfx / audio.music / asset.model3d / spatialWorld.generate / text.plain'
+                  'node_upsert / node_add 必填，如 asset.image / asset.video / voice.tts / audio.sfx / audio.music / asset.model3d / spatialWorld.generate / game.economy / asset.novel / asset.gameSystem / text.plain'
               },
               title: { type: 'string' },
               preset: {
                 type: 'string',
-                description: '一键预设 ID 或名称（如 natural / studio / rembrandt / 4koma 等）'
+                description:
+                  '一键预设 ID 或名称（如 slay_the_spire_dbg / genshin_gacha / diablo_arpg / xianxia_cultivation / arpg_combat / natural / studio / rembrandt / 4koma 等）'
+              },
+              openDive: {
+                type: 'boolean',
+                description:
+                  '是否在左侧主视口自动 Dive 进入该节点的专属工作台（如经济与数值台 / 小说工作台 / 策划案生成台）'
               },
               locked: { type: 'boolean', description: '节点或 3D 对象锁定状态' },
               params: {
@@ -2738,6 +2749,8 @@ const TOOL_DEFS: McpToolDef[] = [
           op === 'node_update' ||
           op === 'update_params' ||
           op === 'apply_preset' ||
+          op === 'node_dive' ||
+          op === 'open_dive' ||
           op === 'node_delete' ||
           op === 'edge_connect' ||
           op === 'edge_add' ||
