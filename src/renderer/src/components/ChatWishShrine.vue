@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   detectWishPromptCategory,
   formatLuckTotal,
+  getFairyStageActReaction,
+  nextFairyStageAct,
   nextWishFairyId,
   pickFairyPokeReaction,
   pickNextWishChant,
@@ -13,6 +15,7 @@ import {
   type WishFairyId,
   type WishFairyPersona,
   type WishFairyPose,
+  type WishFairyStageAct,
   type WishFloatingChant,
   type WishLuckPopup,
   type WishShrinePhase
@@ -61,11 +64,24 @@ const activeChants = ref<WishFloatingChant[]>([])
 const latestChantText = ref('')
 const hoveringActor = ref(false)
 
-/** 每个会话手动切换过的仙子记录 */
-const sessionFairyOverrides = reactive<Record<string, WishFairyId>>({})
-const fallbackFairyOverride = ref<WishFairyId | null>(null)
+/** 每个会话手动切换过的仙子记录 + 当前激活覆盖 */
+const STORAGE_FAIRY_KEY = 'studio.chat.wishFairyPreferred'
+function readInitialFairyOverride(): WishFairyId | null {
+  try {
+    const v = localStorage.getItem(STORAGE_FAIRY_KEY)
+    if (v === 'miko' || v === 'astral' || v === 'neko' || v === 'muse') return v
+  } catch {
+    /* ignore */
+  }
+  return null
+}
 
-/** 当前动作姿态与表情状态 */
+const sessionFairyOverrides = ref<Record<string, WishFairyId>>({})
+const manualFairyId = ref<WishFairyId | null>(readInitialFairyOverride())
+
+/** 当前全身舞台动作剧目（巡游 / 挥杖大魔法 / 律动热舞 / 窗边躲猫猫 / 360°星光回旋） */
+const stageAct = ref<WishFairyStageAct>('roam')
+const edgeSide = ref<'left' | 'right'>('left')
 const activePose = ref<WishFairyPose>('pray')
 const activeExpression = ref<WishFairyExpression>('normal')
 const comboCount = ref(0)
@@ -78,8 +94,8 @@ const posY = ref(64)
 const facingDir = ref<'right' | 'left'>('right')
 
 let roamRafId: number | null = null
-let roamStartTime = 0
-let roamPhaseOffset = Math.random() * Math.PI * 2
+let roamLastTime = 0
+let roamElapsed = Math.random() * Math.PI * 2
 let lastX = 48
 
 let chantTimer: number | null = null
@@ -92,20 +108,50 @@ let critPhaseTimer: number | null = null
 let bounceTimer: number | null = null
 let expressionResetTimer: number | null = null
 let comboResetTimer: number | null = null
+let hoverLeaveTimer: number | null = null
 let chantSeq = 0
 let luckSeq = 0
 let burstSeq = 0
 let stepIndex = 0
 let pokeStepIndex = 0
 
+function onActorMouseEnter(): void {
+  if (hoverLeaveTimer !== null) {
+    window.clearTimeout(hoverLeaveTimer)
+    hoverLeaveTimer = null
+  }
+  hoveringActor.value = true
+}
+
+function onActorMouseLeave(): void {
+  if (hoverLeaveTimer !== null) {
+    window.clearTimeout(hoverLeaveTimer)
+  }
+  hoverLeaveTimer = window.setTimeout(() => {
+    hoverLeaveTimer = null
+    hoveringActor.value = false
+  }, 150)
+}
+
 const promptCategory = computed<WishChantCategory>(() =>
   detectWishPromptCategory(props.promptText ?? '')
+)
+
+// 切换不同会话时：若该会话曾手动指定过仙子则恢复，否则清空手动覆盖以按新会话自动分配不同仙子
+watch(
+  () => props.sessionId,
+  (newSid, oldSid) => {
+    if (newSid === oldSid) return
+    const sid = (newSid ?? '').trim()
+    manualFairyId.value = sid ? (sessionFairyOverrides.value[sid] ?? null) : null
+  }
 )
 
 /** 当前会话激活的祈福仙子（支持按会话自动匹配 + 手动切换） */
 const currentFairy = computed<WishFairyPersona>(() => {
   const sid = (props.sessionId ?? '').trim()
-  const preferredId = sid ? (sessionFairyOverrides[sid] ?? null) : fallbackFairyOverride.value
+  const preferredId =
+    manualFairyId.value ?? (sid ? (sessionFairyOverrides.value[sid] ?? null) : null)
   return selectWishFairyForSession({
     sessionId: sid,
     sessionTitle: props.sessionTitle,
@@ -127,20 +173,12 @@ const effectiveExpression = computed<WishFairyExpression>(() => {
 /** 综合当前阶段、悬停与点击状态计算的最终动作姿态 */
 const effectivePose = computed<WishFairyPose>(() => {
   if (displayPhase.value === 'success') return 'cheer'
+  if (displayPhase.value === 'crit') return 'cast'
   if (activePose.value !== 'pray') return activePose.value
   if (hoveringActor.value) return 'wave'
   return 'pray'
 })
 
-const IDLE_POSES: readonly WishFairyPose[] = ['pray', 'wave', 'wand', 'pray', 'cheer', 'peek']
-const IDLE_EXPRESSIONS: readonly WishFairyExpression[] = [
-  'normal',
-  'happy',
-  'wink',
-  'normal',
-  'smug',
-  'normal'
-]
 const LANE_OFFSETS = [-18, 6, -8, 14, -12, 10] as const
 
 function toggleMinimized(): void {
@@ -153,45 +191,64 @@ function toggleMinimized(): void {
 }
 
 /**
- * 启动窗口内平滑巡游动画（Lissajous 8 字形 + 柔和水波漂浮轨迹），
- * 自动感知聊天面板宽高并在面板安全边距内上下左右来回飘动。
+ * 启动窗口内平滑巡游动画：
+ * - 普通巡游：Lissajous 8 字形轨迹自由飞行；
+ * - 窗边躲猫猫（edge-peek）：飞到聊天窗口左/右边缘藏起半个身子探头偷看；
+ * - 施法/跳舞：驻留舞台中央区域施展大法阵或热舞；
+ * - 悬停在仙子或铭牌上时完全定格，确保点击「换人」「魔法」按钮稳如泰山。
  */
 function startRoamingLoop(): void {
   stopRoamingLoop()
-  roamStartTime = performance.now()
-  roamPhaseOffset = Math.random() * Math.PI * 2
+  roamLastTime = performance.now()
+  roamElapsed = Math.random() * Math.PI * 2
 
   const step = (now: number): void => {
     if (!visible.value) return
+    const dt = Math.min(0.08, Math.max(0, (now - roamLastTime) / 1000))
+    roamLastTime = now
+
     const container = overlayRef.value
     const cw = container?.clientWidth || 380
     const ch = container?.clientHeight || 520
 
-    const actorW = minimized.value ? 190 : 260
-    const actorH = minimized.value ? 48 : 165
-    const minX = 16
-    const maxX = Math.max(minX + 20, cw - actorW - 16)
-    const minY = minimized.value ? 40 : 62
+    const actorW = minimized.value ? 220 : 280
+    const actorH = minimized.value ? 48 : 178
+    const minX = 18
+    const maxX = Math.max(minX + 20, cw - actorW - 18)
+    const minY = minimized.value ? 40 : 58
     const maxY = Math.max(minY + 30, ch - actorH - 28)
 
-    // 悬停时几乎停住并朝向用户招手，方便用户连点摸头攒欧气
-    const speedFactor = hoveringActor.value ? 0.12 : 1
-    const elapsed = ((now - roamStartTime) / 1000) * speedFactor + roamPhaseOffset
+    if (!hoveringActor.value) {
+      roamElapsed += dt
+      if (!minimized.value && stageAct.value === 'edge-peek') {
+        // 躲在左/右窗口边缘探出半个身子偷看
+        const targetX = edgeSide.value === 'left' ? -24 : Math.max(60, cw - 92)
+        const normY = 0.42 + 0.22 * Math.sin(roamElapsed * 0.65)
+        const targetY = minY + normY * (maxY - minY)
+        posX.value += (targetX - posX.value) * 0.13
+        posY.value += (targetY - posY.value) * 0.08
+        facingDir.value = edgeSide.value === 'left' ? 'right' : 'left'
+        lastX = posX.value
+      } else {
+        // 施法或跳舞时缩小巡游幅度，聚焦舞台中央展示全身大动作
+        const ampScale = stageAct.value === 'cast' || stageAct.value === 'dance' ? 0.35 : 1
+        const normX =
+          0.5 + 0.45 * ampScale * Math.sin(roamElapsed * 0.55) * Math.cos(roamElapsed * 0.19)
+        const normY = 0.45 + 0.4 * ampScale * Math.sin(roamElapsed * 0.37 + 1.1)
 
-    const normX = 0.5 + 0.46 * Math.sin(elapsed * 0.55) * Math.cos(elapsed * 0.19)
-    const normY = 0.45 + 0.42 * Math.sin(elapsed * 0.37 + 1.1)
+        const targetX = minX + normX * (maxX - minX)
+        const targetY = minY + normY * (maxY - minY)
 
-    const targetX = minX + normX * (maxX - minX)
-    const targetY = minY + normY * (maxY - minY)
+        posX.value += (targetX - posX.value) * 0.065
+        posY.value += (targetY - posY.value) * 0.065
 
-    posX.value += (targetX - posX.value) * 0.06
-    posY.value += (targetY - posY.value) * 0.06
-
-    const dx = posX.value - lastX
-    if (Math.abs(dx) > 0.15) {
-      facingDir.value = dx >= 0 ? 'right' : 'left'
+        const dx = posX.value - lastX
+        if (Math.abs(dx) > 0.15) {
+          facingDir.value = dx >= 0 ? 'right' : 'left'
+        }
+        lastX = posX.value
+      }
     }
-    lastX = posX.value
 
     // 铭牌欧气值逐帧追赶真实总值（金币滚动跳字）
     const gap = luckTotal.value - displayedLuck.value
@@ -252,6 +309,10 @@ function clearTimers(): void {
   if (comboResetTimer !== null) {
     window.clearTimeout(comboResetTimer)
     comboResetTimer = null
+  }
+  if (hoverLeaveTimer !== null) {
+    window.clearTimeout(hoverLeaveTimer)
+    hoverLeaveTimer = null
   }
 }
 
@@ -376,16 +437,47 @@ function stopLuckLoop(): void {
   }
 }
 
-/** 祈愿进行中自动轮换仙子的俏皮微动作与微表情，让她时刻灵动鲜活 */
+const AUTO_STAGE_ACTS: readonly WishFairyStageAct[] = [
+  'cast',
+  'roam',
+  'dance',
+  'edge-peek',
+  'spin',
+  'roam'
+]
+
+function performStageAct(act: WishFairyStageAct, emitChant = false): void {
+  stageAct.value = act
+  if (act === 'edge-peek') {
+    const container = overlayRef.value
+    const cw = container?.clientWidth || 380
+    edgeSide.value = posX.value < cw * 0.5 ? 'left' : 'right'
+  }
+  const spec = getFairyStageActReaction({
+    fairyId: currentFairy.value.id,
+    act,
+    isEn: props.isEn
+  })
+  activePose.value = spec.pose
+  activeExpression.value = spec.expression
+  if (act === 'cast' || act === 'dance' || act === 'spin') {
+    spawnBurstParticles(spec.burstSymbols)
+  }
+  if (emitChant) {
+    pushCustomChantBubble(spec.text, act === 'cast' ? 'gold' : 'charm', false)
+  }
+}
+
+/** 祈愿进行中自动轮换仙子的全身舞台大动作（挥杖施法 / 律动热舞 / 窗边躲猫猫 / 360°回旋） */
 function startIdlePoseCycle(): void {
   if (poseCycleTimer !== null) window.clearInterval(poseCycleTimer)
   let tickCount = 0
   poseCycleTimer = window.setInterval(() => {
     if (!props.running || !visible.value || comboCount.value > 0) return
+    const nextAct = AUTO_STAGE_ACTS[tickCount % AUTO_STAGE_ACTS.length] ?? 'roam'
     tickCount++
-    activePose.value = IDLE_POSES[tickCount % IDLE_POSES.length] ?? 'pray'
-    activeExpression.value = IDLE_EXPRESSIONS[tickCount % IDLE_EXPRESSIONS.length] ?? 'normal'
-  }, 2400)
+    performStageAct(nextAct, nextAct === 'cast' || nextAct === 'edge-peek' || nextAct === 'dance')
+  }, 3600)
 }
 
 function startPraying(): void {
@@ -397,19 +489,21 @@ function startPraying(): void {
   luckPopups.value = []
   activeChants.value = []
   burstParticles.value = []
-  activePose.value = 'wave'
-  activeExpression.value = 'happy'
+  stageAct.value = 'cast'
+  activePose.value = 'cast'
+  activeExpression.value = 'star'
   displayPhase.value = 'praying'
   visible.value = true
   startRoamingLoop()
   startIdlePoseCycle()
+  spawnBurstParticles(currentFairy.value.burstSymbols)
   spawnChant(false)
   scheduleLuckLoop()
   chantTimer = window.setInterval(() => {
     if (props.running) {
       spawnChant(false)
     }
-  }, 1250)
+  }, 1450)
 }
 
 function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
@@ -423,6 +517,7 @@ function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
   }
   stopLuckLoop()
   if (!visible.value) return
+  stageAct.value = 'roam'
   if (outcome === 'error') {
     displayPhase.value = 'error'
     activeExpression.value = 'teary'
@@ -431,7 +526,7 @@ function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
       : '💦 呜哇…法力波动了！' // cjk-ok
   } else {
     displayPhase.value = 'success'
-    activePose.value = 'cheer'
+    activePose.value = 'dance'
     activeExpression.value = 'happy'
     spawnBurstParticles(currentFairy.value.burstSymbols)
     latestChantText.value = props.isEn ? '✌️ Wish Granted! All Green!' : '✌️ 许愿灵验！功德圆满！' // cjk-ok
@@ -441,32 +536,41 @@ function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
     displayPhase.value = 'idle'
     activeChants.value = []
     stopRoamingLoop()
-  }, 1250)
+  }, 1600)
 }
 
 function applyTemporaryReaction(
   expression: WishFairyExpression,
   pose: WishFairyPose,
-  ms = 1100
+  ms = 1250
 ): void {
   activeExpression.value = expression
   activePose.value = pose
   if (expressionResetTimer !== null) window.clearTimeout(expressionResetTimer)
   expressionResetTimer = window.setTimeout(() => {
-    activeExpression.value = 'normal'
-    activePose.value = 'pray'
+    const spec = getFairyStageActReaction({
+      fairyId: currentFairy.value.id,
+      act: stageAct.value,
+      isEn: props.isEn
+    })
+    activeExpression.value = spec.expression
+    activePose.value = spec.pose
   }, ms)
 }
 
-/** 用户点击祈福仙子或铭牌：触发连击 Combo + 专属表情动作 + 粒子爆发 + 随机欧气飘字 */
-function onBlessClick(): void {
-  if (!visible.value) return
-  comboCount.value += 1
-  if (comboResetTimer !== null) window.clearTimeout(comboResetTimer)
-  comboResetTimer = window.setTimeout(() => {
-    comboCount.value = 0
-  }, 2200)
+function extendPostRunVisibility(): void {
+  if (!props.running && visible.value && hideTimer !== null) {
+    window.clearTimeout(hideTimer)
+    hideTimer = window.setTimeout(() => {
+      visible.value = false
+      displayPhase.value = 'idle'
+      activeChants.value = []
+      stopRoamingLoop()
+    }, 3800)
+  }
+}
 
+function triggerGirlBounce(): void {
   girlBounce.value = false
   if (bounceTimer !== null) window.clearTimeout(bounceTimer)
   window.requestAnimationFrame(() => {
@@ -475,6 +579,35 @@ function onBlessClick(): void {
       girlBounce.value = false
     }, 380)
   })
+}
+
+/** 用户点击祈福仙子或铭牌：若正在窗边躲猫猫则惊呼跃出，否则触发连击 Combo + 全身魔法/热舞动作 */
+function onBlessClick(): void {
+  if (!visible.value) return
+  extendPostRunVisibility()
+  comboCount.value += 1
+  if (comboResetTimer !== null) window.clearTimeout(comboResetTimer)
+  comboResetTimer = window.setTimeout(() => {
+    comboCount.value = 0
+  }, 2400)
+
+  triggerGirlBounce()
+
+  // 如果正在窗边躲猫猫时被抓包点击，惊呼一声并华丽旋转跳回舞台中央！
+  if (stageAct.value === 'edge-peek') {
+    stageAct.value = 'spin'
+    spawnBurstParticles(currentFairy.value.burstSymbols)
+    applyTemporaryReaction('surprised', 'spin', 1350)
+    pushCustomChantBubble(
+      props.isEn
+        ? '😳 Eek! You caught me peeking! Here is a huge luck burst✨'
+        : '😳 呀！躲在窗边被你抓到啦~ 送你一波超级大欧气✨', // cjk-ok
+      'gold',
+      false
+    )
+    spawnLuck(true)
+    return
+  }
 
   const reaction = pickFairyPokeReaction({
     fairyId: currentFairy.value.id,
@@ -483,7 +616,7 @@ function onBlessClick(): void {
     isEn: props.isEn
   })
   spawnBurstParticles(reaction.burstSymbols)
-  applyTemporaryReaction(reaction.expression, reaction.pose, 1150)
+  applyTemporaryReaction(reaction.expression, reaction.pose, 1300)
 
   const tier = spawnLuck(true)
   if (props.running && tier === 'crit') {
@@ -492,27 +625,46 @@ function onBlessClick(): void {
     if (critPhaseTimer !== null) window.clearTimeout(critPhaseTimer)
     critPhaseTimer = window.setTimeout(() => {
       if (props.running) displayPhase.value = 'praying'
-    }, 950)
+    }, 1050)
   } else {
     pushCustomChantBubble(reaction.text, 'charm', false)
   }
 }
 
-/** 一键切换当前会话的祈福仙子，并触发华丽转圈登场动作 */
+/** 一键切换仙子全身舞台大动作（挥杖施法 → 律动热舞 → 窗边躲猫猫 → 360°回旋） */
+function onCycleStageAct(): void {
+  extendPostRunVisibility()
+  const nextAct = nextFairyStageAct(stageAct.value)
+  triggerGirlBounce()
+  performStageAct(nextAct, true)
+  spawnLuck(true)
+}
+
+/** 一键切换当前会话的祈福仙子，并触发华丽挥杖转圈登场动作 */
 function onCycleFairy(): void {
+  extendPostRunVisibility()
   const nextId = nextWishFairyId(currentFairy.value.id)
+  manualFairyId.value = nextId
   const sid = (props.sessionId ?? '').trim()
   if (sid) {
-    sessionFairyOverrides[sid] = nextId
-  } else {
-    fallbackFairyOverride.value = nextId
+    sessionFairyOverrides.value = {
+      ...sessionFairyOverrides.value,
+      [sid]: nextId
+    }
   }
+  try {
+    localStorage.setItem(STORAGE_FAIRY_KEY, nextId)
+  } catch {
+    /* ignore */
+  }
+  triggerGirlBounce()
   const nextPersona = currentFairy.value
   spawnBurstParticles(nextPersona.burstSymbols)
-  applyTemporaryReaction('wink', 'spin', 1200)
+  stageAct.value = 'cast'
+  applyTemporaryReaction('star', 'cast', 1400)
   const greet = props.isEn
     ? `${nextPersona.titleEn} (${nextPersona.personalityEn}) reporting in!`
-    : `${nextPersona.titleZh}（${nextPersona.personalityZh}）登场祈福！` // cjk-ok
+    : `${nextPersona.titleZh}（${nextPersona.personalityZh}）挥杖登场！` // cjk-ok
   pushCustomChantBubble(greet, 'gold', false)
   spawnLuck(true)
 }
@@ -636,7 +788,13 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
         </div>
 
         <!-- 折叠态：跟随后退飘动的迷你护身符胶囊 -->
-        <div v-if="minimized" class="wish-shrine-mini-pill" @click="onBlessClick">
+        <div
+          v-if="minimized"
+          class="wish-shrine-mini-pill"
+          @mouseenter="hoveringActor = true"
+          @mouseleave="hoveringActor = false"
+          @click="onBlessClick"
+        >
           <span class="mini-pray-icon" aria-hidden="true">{{ currentFairy.emoji }}</span>
           <span class="mini-meteor-spark" aria-hidden="true">🌠</span>
           <span class="mini-chant-text">{{ latestChantText }}</span>
@@ -646,15 +804,30 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
           <button
             type="button"
             class="mini-expand-btn"
+            :title="
+              isEn
+                ? 'Trigger Magic / Dance / Edge Peek'
+                : '切换动作（施法/跳舞/躲猫猫）' /* cjk-ok */
+            "
+            @pointerdown.stop
+            @click.stop="onCycleStageAct"
+          >
+            {{ isEn ? '🪄' : '🪄 动作' /* cjk-ok */ }}
+          </button>
+          <button
+            type="button"
+            class="mini-expand-btn"
             :title="isEn ? 'Switch Fairy' : '切换祈福仙子' /* cjk-ok */"
+            @pointerdown.stop
             @click.stop="onCycleFairy"
           >
-            ⇄
+            {{ isEn ? '⇄' : '⇄ 换人' /* cjk-ok */ }}
           </button>
           <button
             type="button"
             class="mini-expand-btn"
             :title="isEn ? 'Expand Wish Fairy' : '展开祈福仙子' /* cjk-ok */"
+            @pointerdown.stop
             @click.stop="toggleMinimized"
           >
             ▾
@@ -682,25 +855,59 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
               :class="[
                 `pose-${effectivePose}`,
                 `expr-${effectiveExpression}`,
+                `act-${stageAct}`,
+                `edge-${edgeSide}`,
                 {
                   bounce: girlBounce,
                   talking: mouthTalking,
                   'face-left': facingDir === 'left',
                   'is-hovered': hoveringActor,
+                  'is-edge-peeking': stageAct === 'edge-peek',
                   'combo-fever': comboCount >= 3
                 }
               ]"
               :title="blessTooltip"
+              @mouseenter="hoveringActor = true"
+              @mouseleave="hoveringActor = false"
               @click="onBlessClick"
             >
+              <!-- 律动热舞舞台聚光灯与飘飞音符（dance 专属） -->
+              <div
+                v-if="effectivePose === 'dance' || stageAct === 'dance'"
+                class="fairy-dance-stage-fx"
+                aria-hidden="true"
+              >
+                <span class="dance-spotlight-cone" />
+                <span class="dance-note n1">♪</span>
+                <span class="dance-note n2">♫</span>
+                <span class="dance-note n3">♬</span>
+              </div>
+
+              <!-- 挥杖大魔法全屏激光束与星轨光束（cast / crit 专属） -->
+              <div
+                v-if="effectivePose === 'cast' || displayPhase === 'crit'"
+                class="fairy-spell-beam-fx"
+                aria-hidden="true"
+              >
+                <span class="spell-beam b1" />
+                <span class="spell-beam b2" />
+                <span class="spell-beam b3" />
+              </div>
+
               <!-- 悬停或连击时头顶跳出的诱人小气泡（「戳戳摸头 +欧气✨」/「连戳 xN」） -->
               <div
-                v-if="hoveringActor || comboCount >= 2"
+                v-if="hoveringActor || comboCount >= 2 || stageAct === 'edge-peek'"
                 class="fairy-poke-callout"
                 :class="{ combo: comboCount >= 2 }"
                 aria-hidden="true"
               >
-                {{ pokeCalloutText }}
+                {{
+                  stageAct === 'edge-peek' && comboCount < 2
+                    ? isEn
+                      ? '🫣 Peeking! Click me✨'
+                      : '🫣 躲猫猫中~ 戳我抓包✨' /* cjk-ok */
+                    : pokeCalloutText
+                }}
               </div>
 
               <!-- 点击爆发的主题粒子（爱心 / 铃铛 / 星芒 / 猫爪 / 四叶草） -->
@@ -720,8 +927,9 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
               </div>
 
               <svg
+                :key="currentFairy.id"
                 class="wish-anime-girl-svg"
-                viewBox="0 0 120 142"
+                viewBox="0 0 136 146"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -813,36 +1021,90 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                   </radialGradient>
                 </defs>
 
-                <!-- 脚下托举的星云浮空光阵 -->
-                <ellipse
-                  cx="60"
-                  cy="134"
-                  rx="36"
-                  ry="5.5"
-                  fill="url(#wishCloudGrad)"
-                  class="girl-cloud-base"
-                />
+                <!-- 脚下托举的星云浮空光阵 + 施法/跳舞时的展开式多层魔法阵 -->
+                <g class="girl-foot-circle-group">
+                  <ellipse
+                    cx="60"
+                    cy="134"
+                    rx="38"
+                    ry="6.5"
+                    fill="url(#wishCloudGrad)"
+                    class="girl-cloud-base"
+                  />
+                  <ellipse
+                    cx="60"
+                    cy="134"
+                    rx="32"
+                    ry="5"
+                    fill="none"
+                    :stroke="currentFairy.theme.accentColor"
+                    stroke-width="1.2"
+                    stroke-dasharray="4 3"
+                    class="girl-foot-rune-ring"
+                  />
+                </g>
 
-                <!-- 脑后旋转祈愿星阵光环 -->
+                <!-- 脑后旋转祈愿星阵光环 + 施法时暴涨的六芒星大结界 -->
                 <g class="girl-halo">
                   <circle
                     cx="60"
-                    cy="56"
-                    r="46"
+                    cy="58"
+                    r="47"
                     :stroke="currentFairy.theme.accentColor"
-                    stroke-opacity="0.52"
-                    stroke-width="1.4"
-                    stroke-dasharray="4 6"
+                    stroke-opacity="0.58"
+                    stroke-width="1.5"
+                    stroke-dasharray="4 5 10 5"
                   />
                   <circle
                     cx="60"
-                    cy="56"
+                    cy="58"
                     r="40"
                     :stroke="currentFairy.theme.wingColor"
-                    stroke-opacity="0.4"
-                    stroke-width="1"
+                    stroke-opacity="0.45"
+                    stroke-width="1.1"
                   />
+                  <!-- 施展大魔法或暴击时显现的巨型六芒星法阵几何 -->
+                  <g
+                    v-if="
+                      effectivePose === 'cast' ||
+                      effectivePose === 'dance' ||
+                      displayPhase === 'crit'
+                    "
+                    class="girl-grand-hexagram"
+                  >
+                    <polygon
+                      points="60,12 99,80 21,80"
+                      fill="none"
+                      :stroke="currentFairy.theme.accentColor"
+                      stroke-opacity="0.55"
+                      stroke-width="1.2"
+                    />
+                    <polygon
+                      points="60,104 99,36 21,36"
+                      fill="none"
+                      :stroke="currentFairy.theme.wingColor"
+                      stroke-opacity="0.55"
+                      stroke-width="1.2"
+                    />
+                  </g>
                 </g>
+
+                <!-- 魔杖挥舞时划出的炫酷 S 形霓虹流光飘带轨迹 -->
+                <path
+                  v-if="
+                    effectivePose === 'cast' ||
+                    effectivePose === 'dance' ||
+                    effectivePose === 'spin' ||
+                    effectivePose === 'wand'
+                  "
+                  class="girl-wand-ribbon-trail"
+                  d="M20 116C34 134 78 130 98 94C114 66 122 34 104 18"
+                  fill="none"
+                  stroke="url(#wishRibbonGrad)"
+                  stroke-width="3.2"
+                  stroke-linecap="round"
+                  stroke-dasharray="10 6"
+                />
 
                 <!-- 背后扑扇的半透明精灵蝶翼（悬停/连击时加速扇动） -->
                 <g class="girl-wings">
@@ -895,17 +1157,72 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                   stroke-linecap="round"
                 />
 
-                <!-- 双马尾（随风摆动）+ 后发 -->
-                <path
-                  class="girl-twintail-left"
-                  d="M30 34C13 38 7 57 11 77C14 92 9 106 3 115C17 113 26 99 26 84C26 70 24 55 34 45Z"
-                  fill="url(#wishHairShade)"
-                />
-                <path
-                  class="girl-twintail-right"
-                  d="M90 34C107 38 113 57 109 77C106 92 111 106 117 115C103 113 94 99 94 84C94 70 96 55 86 45Z"
-                  fill="url(#wishHairShade)"
-                />
+                <!-- ── 四位仙子专属后发与发型轮廓 ── -->
+                <!-- 1. 小祈 (miko)：樱粉长双马尾随风摆动 -->
+                <g v-if="currentFairy.id === 'miko'">
+                  <path
+                    class="girl-twintail-left"
+                    d="M30 34C13 38 7 57 11 77C14 92 9 106 3 115C17 113 26 99 26 84C26 70 24 55 34 45Z"
+                    fill="url(#wishHairShade)"
+                  />
+                  <path
+                    class="girl-twintail-right"
+                    d="M90 34C107 38 113 57 109 77C106 92 111 106 117 115C103 113 94 99 94 84C94 70 96 55 86 45Z"
+                    fill="url(#wishHairShade)"
+                  />
+                </g>
+
+                <!-- 2. 星奈 (astral)：星夜大波浪披肩银河长发（内嵌闪烁星辰） -->
+                <g v-else-if="currentFairy.id === 'astral'">
+                  <path
+                    class="girl-twintail-left"
+                    d="M28 40C14 54 10 82 14 114C24 118 36 112 42 100L78 100C84 112 96 118 106 114C110 82 106 54 92 40Z"
+                    fill="url(#wishHairShade)"
+                  />
+                  <circle cx="24" cy="96" r="1.8" fill="#FDE047" class="pray-sparkle" />
+                  <circle cx="96" cy="92" r="2" fill="#FDE047" class="pray-sparkle sp-left" />
+                  <circle cx="29" cy="108" r="1.3" fill="#A5B4FC" />
+                </g>
+
+                <!-- 3. 奈奈 (neko)：俏皮高扎赛博双丸子头 + 短翘发束 -->
+                <g v-else-if="currentFairy.id === 'neko'">
+                  <circle
+                    cx="26"
+                    cy="30"
+                    r="10.5"
+                    fill="url(#wishHairShade)"
+                    stroke="#2DD4BF"
+                    stroke-width="1.2"
+                  />
+                  <circle
+                    cx="94"
+                    cy="30"
+                    r="10.5"
+                    fill="url(#wishHairShade)"
+                    stroke="#2DD4BF"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    class="girl-twintail-left"
+                    d="M22 36C12 44 10 58 16 68C22 63 25 54 27 42Z"
+                    fill="url(#wishHairGrad)"
+                  />
+                  <path
+                    class="girl-twintail-right"
+                    d="M98 36C108 44 110 58 104 68C98 63 95 54 93 42Z"
+                    fill="url(#wishHairGrad)"
+                  />
+                </g>
+
+                <!-- 4. 露露 (muse)：蜜桃金蓬松精灵云朵卷发 -->
+                <g v-else>
+                  <circle cx="24" cy="64" r="12" fill="url(#wishHairShade)" />
+                  <circle cx="96" cy="64" r="12" fill="url(#wishHairShade)" />
+                  <circle cx="26" cy="82" r="10" fill="url(#wishHairGrad)" />
+                  <circle cx="94" cy="82" r="10" fill="url(#wishHairGrad)" />
+                </g>
+
+                <!-- 基础后发底衬 -->
                 <path
                   d="M60 14C34 14 22 34 23 58C24 78 22 92 17 100C29 100 36 94 40 86L80 86C84 94 91 100 103 100C98 92 96 78 97 58C98 34 86 14 60 14Z"
                   fill="url(#wishHairShade)"
@@ -945,31 +1262,86 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                   </g>
                 </g>
 
-                <!-- 仙子蓬松连衣裙 + 宽袖 + 蝴蝶结腰封 -->
-                <path
-                  d="M38 118C38 97 46 87 60 87C74 87 82 97 82 118Z"
-                  fill="url(#wishOutfitGrad)"
-                />
-                <path
-                  d="M39 95C29 101 25 111 28 119L45 118C43 109 45 102 49 97Z"
-                  :fill="currentFairy.theme.outfitTop"
-                  stroke="#FFFFFF"
-                  stroke-width="1"
-                />
-                <path
-                  d="M81 95C91 101 95 111 92 119L75 118C77 109 75 102 71 97Z"
-                  :fill="currentFairy.theme.outfitTop"
-                  stroke="#FFFFFF"
-                  stroke-width="1"
-                />
-                <path d="M37 112Q60 117 83 112L85 119Q60 123 35 119Z" fill="url(#wishRibbonGrad)" />
-                <path
-                  d="M50 88L60 99L70 88"
-                  :stroke="currentFairy.theme.ribbonStart"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
+                <!-- ── 四位仙子专属服饰造型 ── -->
+                <!-- 1. 小祈 (miko)：红白巫女羽织宽袖 + 绯红百褶袴裙 -->
+                <g v-if="currentFairy.id === 'miko'">
+                  <path d="M37 119L44 92L76 92L83 119Z" fill="#E11D48" />
+                  <path d="M44 87L60 103L76 87L78 102L42 102Z" fill="#FFF1F2" />
+                  <path
+                    d="M39 93C27 99 23 111 26 120L44 117C42 108 44 100 48 95Z"
+                    fill="#FFFFFF"
+                    stroke="#F43F5E"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M81 93C93 99 97 111 94 120L76 117C78 108 76 100 72 95Z"
+                    fill="#FFFFFF"
+                    stroke="#F43F5E"
+                    stroke-width="1.2"
+                  />
+                  <path
+                    d="M50 88L60 99L70 88"
+                    stroke="#E11D48"
+                    stroke-width="2.6"
+                    stroke-linecap="round"
+                  />
+                </g>
+
+                <!-- 2. 星奈 (astral)：星穹魔女深蓝披肩斗篷 + 金星礼裙 -->
+                <g v-else-if="currentFairy.id === 'astral'">
+                  <path
+                    d="M35 119C36 96 45 87 60 87C75 87 84 96 85 119Z"
+                    fill="url(#wishOutfitGrad)"
+                  />
+                  <path
+                    d="M32 108C34 93 45 87 60 87C75 87 86 93 88 108Q74 103 60 107Q46 103 32 108Z"
+                    fill="#1E1B4B"
+                    stroke="#FDE047"
+                    stroke-width="1.1"
+                  />
+                  <polygon
+                    points="60,89 62,93 66,93 63,96 64,100 60,97 56,100 57,96 54,93 58,93"
+                    fill="#FDE047"
+                  />
+                </g>
+
+                <!-- 3. 奈奈 (neko)：赛博机能风霓虹卫衣 + 发光猫爪徽章 -->
+                <g v-else-if="currentFairy.id === 'neko'">
+                  <path
+                    d="M38 118C38 96 46 87 60 87C74 87 82 96 82 118Z"
+                    fill="#0F172A"
+                    stroke="#2DD4BF"
+                    stroke-width="1.3"
+                  />
+                  <path
+                    d="M39 95C29 101 26 111 29 118L44 117C43 108 45 101 49 96Z"
+                    fill="#1E293B"
+                    stroke="#2DD4BF"
+                    stroke-width="1.1"
+                  />
+                  <path
+                    d="M81 95C91 101 94 111 91 118L76 117C77 108 75 101 71 96Z"
+                    fill="#1E293B"
+                    stroke="#2DD4BF"
+                    stroke-width="1.1"
+                  />
+                  <path d="M38 113L82 113" stroke="#F472B6" stroke-width="2.5" />
+                  <circle cx="60" cy="96" r="3.5" fill="#2DD4BF" />
+                </g>
+
+                <!-- 4. 露露 (muse)：森系翡翠花瓣蓬蓬裙 -->
+                <g v-else>
+                  <path
+                    d="M34 118C36 96 46 87 60 87C74 87 84 96 86 118Q73 123 60 116Q47 123 34 118Z"
+                    fill="url(#wishOutfitGrad)"
+                    stroke="#34D399"
+                    stroke-width="1.1"
+                  />
+                  <path
+                    d="M37 112Q60 118 83 112L85 118Q60 123 35 118Z"
+                    fill="url(#wishRibbonGrad)"
+                  />
+                </g>
 
                 <!-- 头部整体（支持歪头杀 Head-Tilt 动画） -->
                 <g class="girl-head-group">
@@ -1418,127 +1790,212 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
                   />
                 </g>
 
-                <!-- ── 多姿态手部与仙子法器（根据 effectivePose 切换动作） ── -->
-                <!-- 姿态 A: wave / cheer / wand（高举挥手或挥动法杖，热情互动） -->
-                <g
-                  v-if="
-                    effectivePose === 'wave' ||
-                    effectivePose === 'cheer' ||
-                    effectivePose === 'wand'
-                  "
-                  class="girl-waving-hands"
-                >
-                  <circle cx="60" cy="98" r="13" fill="url(#wishOrbGrad)" class="pray-orb" />
-                  <!-- 左手轻抚胸口 -->
-                  <circle
-                    cx="48"
-                    cy="98"
-                    r="4.6"
-                    fill="#FFF3EE"
-                    :stroke="currentFairy.theme.wingColor"
-                    stroke-width="1"
-                  />
-                  <!-- 右手高举挥手 + 手持专属小法器 -->
+                <!-- ── 全身大动作双臂与专属巨型魔法杖（施法 / 热舞 / 窗边躲猫猫 / 祈福） ── -->
+                <g class="girl-arms-and-staff">
+                  <!-- 左手动作：热舞/欢呼时高举左臂挥舞，躲猫猫时扶住窗框，施法时托起星芒宝珠 -->
+                  <g class="girl-left-arm-group">
+                    <path
+                      v-if="
+                        effectivePose === 'dance' ||
+                        effectivePose === 'cheer' ||
+                        effectivePose === 'cast'
+                      "
+                      d="M46 95L28 74"
+                      stroke="#FFFFFF"
+                      stroke-width="5.8"
+                      stroke-linecap="round"
+                    />
+                    <circle
+                      v-if="
+                        effectivePose === 'dance' ||
+                        effectivePose === 'cheer' ||
+                        effectivePose === 'cast'
+                      "
+                      cx="26"
+                      cy="72"
+                      r="4.8"
+                      fill="#FFF3EE"
+                      :stroke="currentFairy.theme.wingColor"
+                      stroke-width="1.1"
+                    />
+                    <g v-else-if="effectivePose === 'peek'">
+                      <!-- 窗边躲猫猫时小手扒住窗沿 -->
+                      <circle
+                        cx="36"
+                        cy="84"
+                        r="5"
+                        fill="#FFF3EE"
+                        :stroke="currentFairy.theme.wingColor"
+                        stroke-width="1.2"
+                      />
+                    </g>
+                    <g v-else>
+                      <circle cx="56" cy="98" r="12" fill="url(#wishOrbGrad)" class="pray-orb" />
+                      <circle
+                        cx="48"
+                        cy="98"
+                        r="4.8"
+                        fill="#FFF3EE"
+                        :stroke="currentFairy.theme.wingColor"
+                        stroke-width="1.1"
+                      />
+                    </g>
+                  </g>
+
+                  <!-- 右臂大幅度挥动 + 超长华丽专属大魔法杖 -->
                   <g class="girl-right-arm-wave">
                     <path
-                      d="M73 95L88 79"
+                      d="M73 95L92 78"
                       stroke="#FFFFFF"
                       stroke-width="6"
                       stroke-linecap="round"
                     />
+                    <!-- 巨型魔法杖整体（长杖杆 + 飘带 + 四仙子专属华丽杖头 + 杖尖旋转法阵） -->
+                    <g class="girl-magic-staff">
+                      <!-- 超长发光魔杖杖杆（从身侧斜贯至头顶上方） -->
+                      <line
+                        x1="68"
+                        y1="122"
+                        x2="114"
+                        y2="34"
+                        stroke="#FDE047"
+                        stroke-width="3.4"
+                        stroke-linecap="round"
+                      />
+                      <line
+                        x1="68"
+                        y1="122"
+                        x2="114"
+                        y2="34"
+                        :stroke="currentFairy.theme.ribbonStart"
+                        stroke-width="1.6"
+                        stroke-dasharray="5 5"
+                        stroke-linecap="round"
+                      />
+                      <!-- 杖身飘逸长丝带 -->
+                      <path
+                        class="staff-streamer"
+                        d="M104 52C118 58 126 74 118 90C112 102 122 112 130 116"
+                        fill="none"
+                        stroke="url(#wishRibbonGrad)"
+                        stroke-width="2.6"
+                        stroke-linecap="round"
+                      />
+
+                      <!-- 杖尖召唤小法阵（施法/跳舞时高速旋转放光） -->
+                      <circle cx="115" cy="32" r="16" fill="url(#wishOrbGrad)" class="pray-orb" />
+                      <circle
+                        cx="115"
+                        cy="32"
+                        r="14"
+                        fill="none"
+                        :stroke="currentFairy.theme.accentColor"
+                        stroke-width="1.2"
+                        stroke-dasharray="3 3"
+                        class="staff-tip-ring"
+                      />
+
+                      <!-- 1. 小祈专属杖头：绯樱神乐大御币金环 + 双神铃 + 垂落纸垂 -->
+                      <g v-if="currentFairy.id === 'miko'">
+                        <circle
+                          cx="115"
+                          cy="32"
+                          r="9"
+                          fill="none"
+                          stroke="#FACC15"
+                          stroke-width="2.4"
+                        />
+                        <path
+                          d="M115 19L121 27L111 29L118 37L109 40L114 48"
+                          fill="none"
+                          stroke="#FFFFFF"
+                          stroke-width="3"
+                          stroke-linejoin="round"
+                        />
+                        <path
+                          d="M115 21L108 28L117 31L109 39"
+                          fill="none"
+                          stroke="#FB7185"
+                          stroke-width="2.4"
+                          stroke-linejoin="round"
+                        />
+                        <circle
+                          cx="106"
+                          cy="36"
+                          r="3.4"
+                          fill="#FACC15"
+                          stroke="#B45309"
+                          stroke-width="0.8"
+                        />
+                        <circle
+                          cx="123"
+                          cy="34"
+                          r="3.4"
+                          fill="#FACC15"
+                          stroke="#B45309"
+                          stroke-width="0.8"
+                        />
+                      </g>
+
+                      <!-- 2. 星奈专属杖头：星穹月冕巨型黄金新月 + 八芒星核 -->
+                      <g v-else-if="currentFairy.id === 'astral'">
+                        <path
+                          d="M118 18C107 18 100 27 103 38C106 47 116 50 124 44C116 45 110 39 110 31C110 24 114 20 118 18Z"
+                          fill="#FDE047"
+                          stroke="#F59E0B"
+                          stroke-width="1"
+                        />
+                        <path
+                          d="M118 24L120 29.5L125.5 31.5L120 33.5L118 39L116 33.5L110.5 31.5L116 29.5Z"
+                          fill="#FFFFFF"
+                          class="pray-sparkle"
+                        />
+                      </g>
+
+                      <!-- 3. 奈奈专属杖头：赛博霓虹发光猫爪权杖 + 金币挂饰 -->
+                      <g v-else-if="currentFairy.id === 'neko'">
+                        <circle
+                          cx="115"
+                          cy="32"
+                          r="9.5"
+                          fill="#0F172A"
+                          stroke="#2DD4BF"
+                          stroke-width="2"
+                        />
+                        <!-- 猫爪肉垫 -->
+                        <ellipse cx="115" cy="34.5" rx="4.2" ry="3.2" fill="#F472B6" />
+                        <circle cx="110.5" cy="29.5" r="1.8" fill="#5EEAD4" />
+                        <circle cx="115" cy="28" r="1.9" fill="#5EEAD4" />
+                        <circle cx="119.5" cy="29.5" r="1.8" fill="#5EEAD4" />
+                      </g>
+
+                      <!-- 4. 露露专属杖头：森罗四叶草黄金羽翼圣晶杖 -->
+                      <g v-else>
+                        <path
+                          d="M104 32C97 25 99 18 107 23M126 32C133 25 131 18 123 23"
+                          fill="none"
+                          stroke="#FDE047"
+                          stroke-width="2.4"
+                          stroke-linecap="round"
+                        />
+                        <circle cx="112" cy="29" r="4.2" fill="#34D399" />
+                        <circle cx="118" cy="29" r="4.2" fill="#10B981" />
+                        <circle cx="112" cy="35" r="4.2" fill="#10B981" />
+                        <circle cx="118" cy="35" r="4.2" fill="#34D399" />
+                        <circle cx="115" cy="32" r="2.2" fill="#FEF08A" />
+                      </g>
+                    </g>
+
+                    <!-- 握持魔杖的右手 -->
                     <circle
-                      cx="90"
-                      cy="77"
+                      cx="91"
+                      cy="79"
                       r="4.8"
                       fill="#FFF3EE"
                       :stroke="currentFairy.theme.wingColor"
-                      stroke-width="1"
-                    />
-                    <!-- 仙子手持魔法棒 / 祈福铃杖 -->
-                    <line
-                      x1="90"
-                      y1="77"
-                      x2="103"
-                      y2="60"
-                      stroke="#FACC15"
-                      stroke-width="2.2"
-                      stroke-linecap="round"
-                    />
-                    <path
-                      d="M103 53L105 58L110 60L105 62L103 67L101 62L96 60L101 58Z"
-                      fill="#FDE047"
-                      class="pray-sparkle"
+                      stroke-width="1.1"
                     />
                   </g>
-                </g>
-
-                <!-- 姿态 B: peek（害羞捧脸歪头杀） -->
-                <g v-else-if="effectivePose === 'peek'" class="girl-peek-hands">
-                  <circle
-                    cx="44"
-                    cy="76"
-                    r="4.8"
-                    fill="#FFF3EE"
-                    :stroke="currentFairy.theme.wingColor"
-                    stroke-width="1"
-                  />
-                  <circle
-                    cx="76"
-                    cy="76"
-                    r="4.8"
-                    fill="#FFF3EE"
-                    :stroke="currentFairy.theme.wingColor"
-                    stroke-width="1"
-                  />
-                  <path
-                    d="M57 86C57 83.5 63 83.5 63 86C63 89 60 91 60 91C60 91 57 89 57 86Z"
-                    fill="#FF6FA8"
-                    class="pray-sparkle"
-                  />
-                </g>
-
-                <!-- 姿态 C: 默认双手合十祈福 + 怀抱发光宝珠 -->
-                <g v-else class="girl-praying-hands">
-                  <circle cx="60" cy="98" r="14" fill="url(#wishOrbGrad)" class="pray-orb" />
-                  <path
-                    d="M43 108C47 103.5 51.5 102 55 102.5L56 107C52 107 48 109 45 111.5Z"
-                    fill="#FFFFFF"
-                    stroke="#DDD6FE"
-                    stroke-width="0.9"
-                  />
-                  <path
-                    d="M77 108C73 103.5 68.5 102 65 102.5L64 107C68 107 72 109 75 111.5Z"
-                    fill="#FFFFFF"
-                    stroke="#DDD6FE"
-                    stroke-width="0.9"
-                  />
-                  <path
-                    d="M59.6 86C57.4 86.6 55 90.5 54.6 95.5C54.3 99.5 55.6 103.5 59.6 105.5Z"
-                    fill="#FFF3EE"
-                    :stroke="currentFairy.theme.wingColor"
-                    stroke-width="0.9"
-                  />
-                  <path
-                    d="M60.4 86C62.6 86.6 65 90.5 65.4 95.5C65.7 99.5 64.4 103.5 60.4 105.5Z"
-                    fill="#FFEDE6"
-                    :stroke="currentFairy.theme.wingColor"
-                    stroke-width="0.9"
-                  />
-                  <path
-                    class="pray-sparkle sp-top"
-                    d="M72 82L73.2 85.2L76.4 86.4L73.2 87.6L72 90.8L70.8 87.6L67.6 86.4L70.8 85.2Z"
-                    fill="#FEF08A"
-                  />
-                  <path
-                    class="pray-sparkle sp-left"
-                    d="M46 92L47 94.5L49.5 95.5L47 96.5L46 99L45 96.5L42.5 95.5L45 94.5Z"
-                    fill="#7DD3FC"
-                  />
-                  <path
-                    class="pray-sparkle sp-right"
-                    d="M74 92L75 94.5L77.5 95.5L75 96.5L74 99L73 96.5L70.5 95.5L73 94.5Z"
-                    fill="#F472B6"
-                  />
                 </g>
               </svg>
             </div>
@@ -1561,26 +2018,46 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
             </div>
           </div>
 
-          <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 切换仙子 + 一键折叠） -->
-          <div class="sprite-foot-ribbon" @click="onBlessClick">
+          <!-- 仙子身下悬浮的轻巧祈愿铭牌（点按攒欧气 + 切换动作 + 切换仙子 + 一键折叠） -->
+          <div
+            class="sprite-foot-ribbon"
+            @mouseenter="hoveringActor = true"
+            @mouseleave="hoveringActor = false"
+            @click="onBlessClick"
+          >
             <span class="ribbon-status">{{ ribbonBadgeText }}</span>
             <span class="ribbon-karma" :class="{ bump: karmaBump }">
               {{ isEn ? `✨ Luck ${luckTotalText}` : `✨ 欧气 ${luckTotalText}` /* cjk-ok */ }}
             </span>
             <button
               type="button"
+              class="wish-switch-fairy-btn act-btn"
+              :title="
+                isEn
+                  ? 'Trigger Magic / Dance / Window Peek / Spin'
+                  : '切换炫酷动作（挥杖施法 / 律动热舞 / 窗边躲猫猫 / 360°回旋）' /* cjk-ok */
+              "
+              @pointerdown.stop
+              @click.stop="onCycleStageAct"
+            >
+              {{ isEn ? '🪄 Act' : '🪄 动作' /* cjk-ok */ }}
+            </button>
+            <button
+              type="button"
               class="wish-switch-fairy-btn"
               :title="switchFairyTooltip"
               :aria-label="switchFairyTooltip"
+              @pointerdown.stop
               @click.stop="onCycleFairy"
             >
-              ⇄
+              {{ isEn ? '⇄' : '⇄ 换人' /* cjk-ok */ }}
             </button>
             <button
               type="button"
               class="wish-minimize-btn"
               :title="isEn ? 'Minimize' : '收起为小护身符' /* cjk-ok */"
               :aria-label="isEn ? 'Minimize' : '收起为小护身符' /* cjk-ok */"
+              @pointerdown.stop
               @click.stop="toggleMinimized"
             >
               <svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true">
@@ -1768,8 +2245,8 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 .wish-anime-girl-wrap {
   position: relative;
   z-index: 3;
-  width: 102px;
-  height: 114px;
+  width: 120px;
+  height: 132px;
   flex-shrink: 0;
   cursor: pointer;
   pointer-events: auto;
@@ -1782,11 +2259,20 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   );
   filter: drop-shadow(0 6px 16px rgba(15, 10, 40, 0.55))
     drop-shadow(0 0 12px var(--fairy-glow, rgba(244, 114, 182, 0.4)));
-  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .wish-anime-girl-wrap:hover {
   transform: scale(1.11) rotate(-3deg);
+}
+
+/* 窗口边缘躲藏探头模式（从左/右窗沿斜探出半个身子偷看） */
+.wish-anime-girl-wrap.is-edge-peeking.edge-left {
+  animation: wish-edge-peek-left 1.4s ease-in-out infinite alternate;
+}
+
+.wish-anime-girl-wrap.is-edge-peeking.edge-right {
+  animation: wish-edge-peek-right 1.4s ease-in-out infinite alternate;
 }
 
 .wish-anime-girl-wrap.bounce {
@@ -1794,11 +2280,19 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 }
 
 .wish-anime-girl-wrap.pose-spin .wish-anime-girl-svg {
-  animation: wish-girl-twirl 0.68s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: wish-girl-twirl 0.72s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .wish-anime-girl-wrap.pose-cheer .wish-anime-girl-svg {
-  animation: wish-girl-hop 0.48s ease-in-out infinite alternate;
+  animation: wish-girl-hop 0.46s ease-in-out infinite alternate;
+}
+
+.wish-anime-girl-wrap.pose-dance .wish-anime-girl-svg {
+  animation: wish-girl-idol-dance 0.52s ease-in-out infinite alternate;
+}
+
+.wish-anime-girl-wrap.pose-cast .wish-anime-girl-svg {
+  animation: wish-girl-cast-levitate 0.9s ease-in-out infinite alternate;
 }
 
 .wish-anime-girl-svg {
@@ -1806,6 +2300,102 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   height: 100%;
   overflow: visible;
   animation: wish-girl-float 2s ease-in-out infinite alternate;
+}
+
+/* ── 偶像热舞舞台聚光灯与跳动音符特效 ── */
+.fairy-dance-stage-fx {
+  position: absolute;
+  inset: -24px -18px -10px -18px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dance-spotlight-cone {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  width: 112px;
+  height: 148px;
+  transform: translateX(-50%);
+  clip-path: polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(254, 240, 138, 0.45) 0%,
+    var(--fairy-glow, rgba(244, 114, 182, 0.25)) 60%,
+    rgba(30, 27, 75, 0) 100%
+  );
+  animation: wish-spotlight-sway 1.1s ease-in-out infinite alternate;
+}
+
+.dance-note {
+  position: absolute;
+  font-size: 14px;
+  font-weight: 900;
+  color: #fde047;
+  text-shadow:
+    0 0 8px #f472b6,
+    0 0 14px #fde047;
+  animation: wish-dance-note-float 1.2s ease-out infinite;
+}
+
+.dance-note.n1 {
+  left: 8px;
+  top: 28px;
+  animation-delay: 0s;
+}
+.dance-note.n2 {
+  right: 6px;
+  top: 18px;
+  color: #38bdf8;
+  animation-delay: 0.4s;
+}
+.dance-note.n3 {
+  left: 22px;
+  top: 6px;
+  color: #f472b6;
+  animation-delay: 0.8s;
+}
+
+/* ── 挥杖施展大魔法的奥术光束特效 ── */
+.fairy-spell-beam-fx {
+  position: absolute;
+  inset: -20px -40px -20px -20px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.spell-beam {
+  position: absolute;
+  left: 72%;
+  top: 26%;
+  width: 110px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #ffffff 0%,
+    #fde047 35%,
+    var(--fairy-accent, #f472b6) 75%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  filter: drop-shadow(0 0 8px #fde047);
+  transform-origin: left center;
+  animation: wish-spell-beam-shoot 0.85s ease-out infinite;
+}
+
+.spell-beam.b1 {
+  transform: rotate(-28deg);
+  animation-delay: 0s;
+}
+.spell-beam.b2 {
+  transform: rotate(-6deg);
+  width: 130px;
+  animation-delay: 0.22s;
+}
+.spell-beam.b3 {
+  transform: rotate(18deg);
+  width: 96px;
+  animation-delay: 0.45s;
 }
 
 /* 悬停或连击时头顶弹出的互动小气泡 */
@@ -1909,7 +2499,7 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   animation: wish-tail-wag 0.9s ease-in-out infinite alternate;
 }
 
-/* 悬空小短腿晃动 */
+/* 悬空小短腿晃动 + 热舞时高抬腿律动踢踏 */
 .girl-leg-left {
   transform-origin: 51px 116px;
   animation: wish-leg-swing 0.95s ease-in-out infinite alternate;
@@ -1918,11 +2508,57 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   transform-origin: 69px 116px;
   animation: wish-leg-swing 0.95s ease-in-out infinite alternate-reverse;
 }
+.wish-anime-girl-wrap.pose-dance .girl-leg-left {
+  animation: wish-leg-dance-kick-l 0.42s ease-in-out infinite alternate;
+}
+.wish-anime-girl-wrap.pose-dance .girl-leg-right {
+  animation: wish-leg-dance-kick-r 0.42s ease-in-out infinite alternate;
+}
+.wish-anime-girl-wrap.pose-cast .girl-leg-left {
+  transform: rotate(14deg) translateY(-3px);
+}
+.wish-anime-girl-wrap.pose-cast .girl-leg-right {
+  transform: rotate(-18deg) translateY(-5px);
+}
 
-/* 挥手手臂摆动 */
+/* 挥手与巨型魔法杖手臂大幅度摆动 */
 .girl-right-arm-wave {
   transform-origin: 73px 95px;
-  animation: wish-arm-wave 0.45s ease-in-out infinite alternate;
+  animation: wish-arm-wave 0.55s ease-in-out infinite alternate;
+}
+.wish-anime-girl-wrap.pose-cast .girl-right-arm-wave {
+  animation: wish-staff-cast-sweep 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) infinite alternate;
+}
+.wish-anime-girl-wrap.pose-dance .girl-right-arm-wave {
+  animation: wish-staff-dance-wave 0.42s ease-in-out infinite alternate;
+}
+.girl-left-arm-group {
+  transform-origin: 48px 95px;
+}
+.wish-anime-girl-wrap.pose-dance .girl-left-arm-group {
+  animation: wish-staff-dance-wave 0.42s ease-in-out infinite alternate-reverse;
+}
+
+/* 杖尖召唤法阵、流光丝带与脚底符文圈 */
+.staff-tip-ring {
+  transform-origin: 115px 32px;
+  animation: wish-halo-spin 3.2s linear infinite;
+}
+.staff-streamer {
+  transform-origin: 104px 52px;
+  animation: wish-tail-wag 0.65s ease-in-out infinite alternate;
+}
+.girl-wand-ribbon-trail {
+  animation: wish-ribbon-dash 0.7s linear infinite;
+  filter: drop-shadow(0 0 6px var(--fairy-accent, #fde047));
+}
+.girl-foot-rune-ring {
+  transform-origin: 60px 134px;
+  animation: wish-orb-pulse 0.9s ease-in-out infinite alternate;
+}
+.girl-grand-hexagram {
+  transform-origin: 60px 58px;
+  animation: wish-halo-spin 6s linear infinite reverse;
 }
 
 .girl-ahoge {
@@ -2122,27 +2758,34 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 }
 
 .wish-switch-fairy-btn {
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   font-size: 10px;
   font-weight: 800;
+  white-space: nowrap;
   color: #fef08a;
-  background: rgba(168, 85, 247, 0.32);
-  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: rgba(168, 85, 247, 0.38);
+  border: 1px solid rgba(250, 204, 21, 0.55);
   cursor: pointer;
-  padding: 0;
   transition:
-    transform 0.18s ease,
-    background 0.18s ease;
+    transform 0.14s ease,
+    background 0.14s ease,
+    box-shadow 0.14s ease;
 }
 
 .wish-switch-fairy-btn:hover {
-  transform: rotate(180deg) scale(1.12);
-  background: rgba(236, 72, 153, 0.55);
+  transform: scale(1.06);
+  background: rgba(236, 72, 153, 0.68);
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.55);
+}
+
+.wish-switch-fairy-btn:active {
+  transform: scale(0.95);
 }
 
 /* ── 游戏伤害数字式欧气飘字 ── */
@@ -2366,6 +3009,130 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   }
   100% {
     transform: translateY(-8px) scale(1.04);
+  }
+}
+
+@keyframes wish-girl-idol-dance {
+  0% {
+    transform: translateX(-6px) translateY(2px) rotate(-8deg) scale(1.02, 0.98);
+  }
+  50% {
+    transform: translateX(0) translateY(-7px) rotate(0deg) scale(0.98, 1.05);
+  }
+  100% {
+    transform: translateX(6px) translateY(2px) rotate(8deg) scale(1.02, 0.98);
+  }
+}
+
+@keyframes wish-girl-cast-levitate {
+  0% {
+    transform: translateY(-2px) rotate(-4deg) scale(1.04);
+  }
+  100% {
+    transform: translateY(-10px) rotate(4deg) scale(1.09);
+  }
+}
+
+@keyframes wish-edge-peek-left {
+  0% {
+    transform: translateX(-14px) rotate(18deg);
+  }
+  100% {
+    transform: translateX(6px) rotate(26deg);
+  }
+}
+
+@keyframes wish-edge-peek-right {
+  0% {
+    transform: translateX(14px) rotate(-18deg);
+  }
+  100% {
+    transform: translateX(-6px) rotate(-26deg);
+  }
+}
+
+@keyframes wish-spotlight-sway {
+  0% {
+    transform: translateX(-50%) rotate(-10deg);
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateX(-50%) rotate(10deg);
+    opacity: 0.95;
+  }
+}
+
+@keyframes wish-dance-note-float {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.5) rotate(-15deg);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.15) rotate(10deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-28px) scale(0.85) rotate(-12deg);
+  }
+}
+
+@keyframes wish-spell-beam-shoot {
+  0% {
+    opacity: 0;
+    transform: scaleX(0.15) translateX(0);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1.35) translateX(52px);
+  }
+}
+
+@keyframes wish-leg-dance-kick-l {
+  0% {
+    transform: rotate(-6deg) translateY(0);
+  }
+  100% {
+    transform: rotate(28deg) translateY(-4px);
+  }
+}
+
+@keyframes wish-leg-dance-kick-r {
+  0% {
+    transform: rotate(-28deg) translateY(-4px);
+  }
+  100% {
+    transform: rotate(6deg) translateY(0);
+  }
+}
+
+@keyframes wish-staff-cast-sweep {
+  0% {
+    transform: rotate(-28deg) scale(1.04);
+  }
+  100% {
+    transform: rotate(24deg) scale(1.1);
+  }
+}
+
+@keyframes wish-staff-dance-wave {
+  0% {
+    transform: rotate(-22deg);
+  }
+  100% {
+    transform: rotate(22deg);
+  }
+}
+
+@keyframes wish-ribbon-dash {
+  from {
+    stroke-dashoffset: 32;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }
 

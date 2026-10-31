@@ -4,6 +4,8 @@ import {
   buildWishChantPool,
   detectWishPromptCategory,
   formatLuckTotal,
+  getFairyStageActReaction,
+  nextFairyStageAct,
   nextWishFairyId,
   pickFairyPokeReaction,
   pickNextWishChant,
@@ -113,5 +115,14 @@ describe('chatWishShrine', () => {
 
     const rEn = pickFairyPokeReaction({ fairyId: 'astral', stepIndex: 2, combo: 5, isEn: true })
     expect(rEn.text.length).toBeGreaterThan(0)
+    expect(rEn.pose).toBe('cast')
+
+    expect(nextFairyStageAct('cast')).toBe('dance')
+    expect(nextFairyStageAct('dance')).toBe('edge-peek')
+    expect(nextFairyStageAct('edge-peek')).toBe('spin')
+
+    const actReaction = getFairyStageActReaction({ fairyId: 'miko', act: 'edge-peek' })
+    expect(actReaction.pose).toBe('peek')
+    expect(actReaction.text).toContain('窗边')
   })
 })

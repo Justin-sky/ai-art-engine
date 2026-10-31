@@ -350,7 +350,9 @@ export function formatLuckTotal(total: number, isEn?: boolean): string {
 
 export type WishFairyId = 'miko' | 'astral' | 'neko' | 'muse'
 
-export type WishFairyPose = 'pray' | 'wave' | 'cheer' | 'peek' | 'spin' | 'wand'
+export type WishFairyPose = 'pray' | 'wave' | 'cheer' | 'peek' | 'spin' | 'wand' | 'cast' | 'dance'
+
+export type WishFairyStageAct = 'roam' | 'cast' | 'dance' | 'edge-peek' | 'spin'
 
 export type WishFairyExpression =
   'normal' | 'wink' | 'star' | 'heart' | 'happy' | 'surprised' | 'smug' | 'teary'
@@ -690,14 +692,189 @@ export function pickFairyPokeReaction(options: {
   const idx = Math.max(0, Math.floor(options.stepIndex)) % persona.pokeLines.length
   const line = persona.pokeLines[idx]!
   const combo = options.combo ?? 1
-  // 连击高潮（combo >= 4）时必定露出星星眼或爱心眼并转圈欢呼
+  // 连击高潮（combo >= 4）时必定露出星星眼或爱心眼并转圈或跳起魔法舞
   const expression: WishFairyExpression =
     combo >= 5 ? 'star' : combo >= 3 ? 'heart' : line.expression
-  const pose: WishFairyPose = combo >= 4 ? 'spin' : line.pose
+  const pose: WishFairyPose =
+    combo >= 5 ? 'cast' : combo === 4 ? 'dance' : combo === 3 ? 'spin' : line.pose
   return {
     text: options.isEn ? line.en : line.zh,
     expression,
     pose,
+    burstSymbols: persona.burstSymbols
+  }
+}
+
+export const FAIRY_STAGE_ACT_ORDER: readonly WishFairyStageAct[] = [
+  'cast',
+  'dance',
+  'edge-peek',
+  'spin',
+  'roam'
+] as const
+
+export function nextFairyStageAct(current: WishFairyStageAct): WishFairyStageAct {
+  const idx = FAIRY_STAGE_ACT_ORDER.indexOf(current)
+  return FAIRY_STAGE_ACT_ORDER[(idx + 1) % FAIRY_STAGE_ACT_ORDER.length]!
+}
+
+const STAGE_ACT_LINES: Readonly<
+  Record<
+    WishFairyId,
+    Readonly<
+      Record<
+        WishFairyStageAct,
+        { zh: string; en: string; pose: WishFairyPose; expression: WishFairyExpression }
+      >
+    >
+  >
+> = {
+  miko: {
+    cast: {
+      zh: '🪄 绯樱神乐大结界 · 万物一次成功敕令！', // cjk-ok
+      en: '🪄 Grand Sakura Barrier · First-Try Success Decree!',
+      pose: 'cast',
+      expression: 'star'
+    },
+    dance: {
+      zh: '💃 叮铃铃~ 巫女丰年祈福舞，欧气全开♪', // cjk-ok
+      en: '💃 Ring-a-ling~ Shrine Maiden Blessing Dance♪',
+      pose: 'dance',
+      expression: 'happy'
+    },
+    'edge-peek': {
+      zh: '🫣 盯——小祈躲在窗边偷偷给你塞满锦鲤好运✨', // cjk-ok
+      en: '🫣 Peek~ Hiding by the window to slip you lucky koi vibes✨',
+      pose: 'peek',
+      expression: 'wink'
+    },
+    spin: {
+      zh: '🌪️ 漫天樱吹雪回旋！所有报错统统退散！', // cjk-ok
+      en: '🌪️ Sakura Blizzard Pirouette! All errors vanish!',
+      pose: 'spin',
+      expression: 'heart'
+    },
+    roam: {
+      zh: '🌸 御币乘风巡游中，随时守护你的灵感~', // cjk-ok
+      en: '🌸 Gliding on sakura winds, guarding your inspiration~',
+      pose: 'pray',
+      expression: 'normal'
+    }
+  },
+  astral: {
+    cast: {
+      zh: '🔮 星穹十二宫大魔阵展开 · 极光神图降临！', // cjk-ok
+      en: '🔮 Grand Astral Zodiac Circle · Masterpiece Summon!',
+      pose: 'cast',
+      expression: 'star'
+    },
+    dance: {
+      zh: '💃 星轨华尔兹起舞♪ 构图光影灵感到位！', // cjk-ok
+      en: '💃 Starlight Waltz in motion♪ Peak lighting & composition!',
+      pose: 'dance',
+      expression: 'smug'
+    },
+    'edge-peek': {
+      zh: '🫣 嘘…本魔女趴在窗框边偷看你写神级 Prompt 呢🌙', // cjk-ok
+      en: '🫣 Shh... Peeking from the window bezel at your god-tier prompt🌙',
+      pose: 'peek',
+      expression: 'wink'
+    },
+    spin: {
+      zh: '🌪️ 银河星爆大回旋！细节拉满零崩坏！', // cjk-ok
+      en: '🌪️ Galaxy Starburst Spin! Max detail, zero artifacts!',
+      pose: 'spin',
+      expression: 'star'
+    },
+    roam: {
+      zh: '🌟 骑着星月魔杖巡航，算力星尘全速充能~', // cjk-ok
+      en: '🌟 Cruising on my crescent staff, charging astral mana~',
+      pose: 'wand',
+      expression: 'normal'
+    }
+  },
+  neko: {
+    cast: {
+      zh: '⚡ 赛博猫爪超频大法阵 · 零 Bug 秒编译启动！', // cjk-ok
+      en: '⚡ Cyber Neko Overclock Array · Zero-Bug Instant Compile!',
+      pose: 'cast',
+      expression: 'star'
+    },
+    dance: {
+      zh: '💃 喵帕斯霓虹热舞♪ Token 消耗立减 50% 喵！', // cjk-ok
+      en: '💃 Neon Neko Idol Dance♪ Token cost -50% meow!',
+      pose: 'dance',
+      expression: 'happy'
+    },
+    'edge-peek': {
+      zh: '🫣 喵呜~ 挂在窗口边边暗中观察，Bug 不敢靠近🐾', // cjk-ok
+      en: '🫣 Meow~ Hanging on the window edge, bugs dare not approach🐾',
+      pose: 'peek',
+      expression: 'smug'
+    },
+    spin: {
+      zh: '🌪️ 招财猫龙卷风大回旋！满屏金币欧气爆表！', // cjk-ok
+      en: '🌪️ Lucky Neko Tornado Spin! Jackpot coins everywhere!',
+      pose: 'spin',
+      expression: 'heart'
+    },
+    roam: {
+      zh: '🐾 霓虹滑板巡航中~ 随时准备抓走小 Bug！', // cjk-ok
+      en: '🐾 Cruising the neon grid~ Ready to swat any bug!',
+      pose: 'wave',
+      expression: 'normal'
+    }
+  },
+  muse: {
+    cast: {
+      zh: '🍀 森罗四叶草圣晶阵 · 丝滑成片一次过！', // cjk-ok
+      en: '🍀 Grand Four-Leaf Crystal Circle · Silky One-Take Render!',
+      pose: 'cast',
+      expression: 'star'
+    },
+    dance: {
+      zh: '💃 云端精灵芭蕾舞♪ 每一帧都踩在节拍上~', // cjk-ok
+      en: '💃 Cloud Fairy Ballet♪ Every frame lands on the beat~',
+      pose: 'dance',
+      expression: 'heart'
+    },
+    'edge-peek': {
+      zh: '🫣 呼呼~ 露露躲在窗帘边偷偷给你吹一口欧皇仙气🍀', // cjk-ok
+      en: '🫣 Hehe~ Peeking from the window edge to blow lucky fairy dust🍀',
+      pose: 'peek',
+      expression: 'wink'
+    },
+    spin: {
+      zh: '🌪️ 金色羽翼大回旋！天选欧皇附体！', // cjk-ok
+      en: '🌪️ Golden Feather Pirouette! Blessed by pure luck!',
+      pose: 'spin',
+      expression: 'happy'
+    },
+    roam: {
+      zh: '🍀 乘着四叶草微风飘呀飘，把好运洒满画布~', // cjk-ok
+      en: '🍀 Floating on clover breezes, sprinkling luck across the canvas~',
+      pose: 'pray',
+      expression: 'normal'
+    }
+  }
+}
+
+export function getFairyStageActReaction(options: {
+  fairyId: WishFairyId
+  act: WishFairyStageAct
+  isEn?: boolean
+}): {
+  text: string
+  pose: WishFairyPose
+  expression: WishFairyExpression
+  burstSymbols: readonly string[]
+} {
+  const persona = WISH_FAIRY_MAP[options.fairyId] ?? WISH_FAIRY_PERSONAS[0]!
+  const spec = STAGE_ACT_LINES[persona.id][options.act]
+  return {
+    text: options.isEn ? spec.en : spec.zh,
+    pose: spec.pose,
+    expression: spec.expression,
     burstSymbols: persona.burstSymbols
   }
 }

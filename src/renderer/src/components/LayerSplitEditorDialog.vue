@@ -17,7 +17,7 @@
             {{
               selectedNonBaseLayers.length > 1
                 ? isZhLocale
-                  ? `已框选 ${selectedNonBaseLayers.length} 个图层` // cjk-ok
+                  ? /* cjk-ok */ `已框选 ${selectedNonBaseLayers.length} 个图层`
                   : `${selectedNonBaseLayers.length} layers selected`
                 : selectedLayer?.name || t('graph.layerSplit.noSelection')
             }}
@@ -57,7 +57,7 @@
           :disabled="!hasCanvas || splitting || slicing || exploded3d"
           :title="
             isZhLocale
-              ? '鼠标框选图层模式（也可直接在底板/空白区域拖拽或按住 Shift 拖拽框选多个图层）' // cjk-ok
+              ? /* cjk-ok */ '鼠标框选图层模式（也可直接在底板/空白区域拖拽或按住 Shift 拖拽框选多个图层）'
               : 'Marquee box-select layers (or drag directly on base/empty area or hold Shift + drag)'
           "
           @click="toggleMarqueeSelectMode"
@@ -65,10 +65,10 @@
           {{
             marqueeSelectActive
               ? isZhLocale
-                ? '🔲 框选中…' // cjk-ok
+                ? /* cjk-ok */ '🔲 框选中…'
                 : '🔲 Selecting…'
               : isZhLocale
-                ? '🔲 框选图层' // cjk-ok
+                ? /* cjk-ok */ '🔲 框选图层'
                 : '🔲 Box Select'
           }}
         </button>
@@ -152,7 +152,7 @@
           class="explode-gap-ctl"
           :title="
             isZhLocale
-              ? 'Z 轴层间距（图层多时自动自适应压缩总厚度）' // cjk-ok
+              ? /* cjk-ok */ 'Z 轴层间距（图层多时自动自适应压缩总厚度）'
               : 'Z-Depth Gap (auto-adapts total depth for many layers)'
           "
         >
@@ -173,7 +173,7 @@
           :class="{ active: explodeShowLabels }"
           :title="
             isZhLocale
-              ? '在 3D 爆炸视图中显示/隐藏图层名称标签' // cjk-ok
+              ? /* cjk-ok */ '在 3D 爆炸视图中显示/隐藏图层名称标签'
               : 'Show/hide layer name badges in 3D Exploded View'
           "
           @click="explodeShowLabels = !explodeShowLabels"
@@ -186,7 +186,7 @@
           class="tool-btn qa-review-btn"
           :title="
             isZhLocale
-              ? '精准拆层质检发现问题的图层：点击依次定位到下一个需要复核的图层' // cjk-ok
+              ? /* cjk-ok */ '精准拆层质检发现问题的图层：点击依次定位到下一个需要复核的图层'
               : 'Layers flagged by precise-split QA: click to jump to the next one to review'
           "
           @click="focusNextQaLayer"
@@ -201,7 +201,7 @@
           :disabled="!qaFlaggedLayers.length"
           :title="
             isZhLocale
-              ? '在画布上用红色虚线标出质检有问题的图层' // cjk-ok
+              ? /* cjk-ok */ '在画布上用红色虚线标出质检有问题的图层'
               : 'Outline QA-flagged layers on the stage'
           "
           @click="showQaOutlines = !showQaOutlines"
@@ -479,12 +479,12 @@
                 :value="selectedLayer.exportName ?? ''"
                 :placeholder="
                   isZhLocale
-                    ? '如 Btn_Confirm_01（字母/数字/下划线）' // cjk-ok
+                    ? /* cjk-ok */ '如 Btn_Confirm_01（字母/数字/下划线）'
                     : 'e.g. Btn_Confirm_01'
                 "
                 :title="
                   isZhLocale
-                    ? '引擎安全导出名：用作切图文件名与 Unity / Godot 节点名' // cjk-ok
+                    ? /* cjk-ok */ '引擎安全导出名：用作切图文件名与 Unity / Godot 节点名'
                     : 'Engine-safe export name used for sliced file names and Unity / Godot nodes'
                 "
                 @change="onExportNameInput"
@@ -494,7 +494,7 @@
                 class="prefab-chip"
                 :title="
                   isZhLocale
-                    ? `与 ${prefabSiblingCount(selectedLayer) - 1} 个同款控件共享同一份切图（预制体 ${selectedLayer.prefabKey}）` // cjk-ok
+                    ? /* cjk-ok */ `与 ${prefabSiblingCount(selectedLayer) - 1} 个同款控件共享同一份切图（预制体 ${selectedLayer.prefabKey}）`
                     : `Shares one sliced asset with ${prefabSiblingCount(selectedLayer) - 1} identical control(s) (${selectedLayer.prefabKey})`
                 "
                 >🔗 ×{{ prefabSiblingCount(selectedLayer) }}</span
@@ -510,7 +510,7 @@
                   class="mini-pill"
                   :title="
                     isZhLocale
-                      ? '确认该图层没问题，清除质检标记' // cjk-ok
+                      ? /* cjk-ok */ '确认该图层没问题，清除质检标记'
                       : 'Accept this layer and clear its QA flags'
                   "
                   @click="markSelectedQaReviewed"
@@ -545,7 +545,7 @@
                     :class="{ active: showNineSliceGuides }"
                     :title="
                       isZhLocale
-                        ? '在画布选中图层上显示/隐藏九宫格切线' // cjk-ok
+                        ? /* cjk-ok */ '在画布选中图层上显示/隐藏九宫格切线'
                         : 'Toggle 9-slice guide lines on stage'
                     "
                     @click="showNineSliceGuides = !showNineSliceGuides"
@@ -558,7 +558,7 @@
                     :disabled="slicing"
                     :title="
                       isZhLocale
-                        ? '按当前图层真实像素自动测算九宫格安全边距' // cjk-ok
+                        ? /* cjk-ok */ '按当前图层真实像素自动测算九宫格安全边距'
                         : 'Auto-detect 9-slice borders from layer pixels'
                     "
                     @click="onAutoDetectSelectedNineSlice"
@@ -615,8 +615,8 @@
               <div class="nine-slice-head">
                 <span class="nine-slice-title">
                   {{
-                    isZhLocale ? '🖌️ 单层画笔 / AI 修补' : '🖌️ Layer Brush & AI Repair'  // cjk-ok
-                  }}<!-- cjk-ok -->
+                    isZhLocale ? /* cjk-ok */ '🖌️ 单层画笔 / AI 修补' : '🖌️ Layer Brush & AI Repair'
+                  }}
                 </span>
                 <div class="nine-slice-tools">
                   <button
@@ -626,7 +626,7 @@
                     :disabled="slicing"
                     :title="
                       isZhLocale
-                        ? '在画布拖拽擦除当前图层的多余杂边像素' // cjk-ok
+                        ? /* cjk-ok */ '在画布拖拽擦除当前图层的多余杂边像素'
                         : 'Drag on canvas to erase stray pixels on selected layer'
                     "
                     @click="toggleBrushMode('erase')"
@@ -640,7 +640,7 @@
                     :disabled="slicing"
                     :title="
                       isZhLocale
-                        ? '在画布拖拽从原图还原当前图层漏抠的边缘像素' // cjk-ok
+                        ? /* cjk-ok */ '在画布拖拽从原图还原当前图层漏抠的边缘像素'
                         : 'Drag on canvas to restore missing pixels from source image'
                     "
                     @click="toggleBrushMode('restore')"
@@ -653,7 +653,7 @@
                     :disabled="slicing"
                     :title="
                       isZhLocale
-                        ? '自动检测并填补当前图层内部的闭合破洞' // cjk-ok
+                        ? /* cjk-ok */ '自动检测并填补当前图层内部的闭合破洞'
                         : 'Fill internal transparent holes on selected layer'
                     "
                     @click="onFillSelectedLayerHoles"
@@ -680,7 +680,7 @@
                   class="ai-repair-input"
                   :placeholder="
                     isZhLocale
-                      ? '输入单层 AI 修补指令（留空自动补全遮挡纹理）' // cjk-ok
+                      ? /* cjk-ok */ '输入单层 AI 修补指令（留空自动补全遮挡纹理）'
                       : 'Prompt to AI-repair this layer (blank = auto inpaint)'
                   "
                   @keydown.enter.prevent="onAiRepairSelectedLayer"
