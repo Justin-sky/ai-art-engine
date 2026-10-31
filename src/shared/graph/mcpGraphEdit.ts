@@ -24,10 +24,14 @@ import type {
 export type McpGraphEditOp =
   | {
       op: 'node_upsert' | 'node_add' | 'add_node'
-      /** 缺省自动生成；已存在同 id 节点时转为更新 */
+      /** 缺省自动生成；已存在同 id 节点时转为更新（兼容 id / key / node 嵌套写法） */
       nodeId?: string
-      typeId: string
+      id?: string
+      key?: string
+      typeId?: string
+      type?: string
       title?: string
+      label?: string
       params?: Record<string, unknown>
       preset?: string
       x?: number
@@ -35,11 +39,16 @@ export type McpGraphEditOp =
       w?: number
       h?: number
       locked?: boolean
+      node?: Record<string, unknown>
+      [extraKey: string]: unknown
     }
   | {
       op: 'node_update' | 'update_node'
-      nodeId: string
+      nodeId?: string
+      id?: string
+      key?: string
       title?: string
+      label?: string
       x?: number
       y?: number
       w?: number
@@ -48,14 +57,17 @@ export type McpGraphEditOp =
       preset?: string
       /** 与现有 params 深度智能合并（支持点路径、子对象、JSON-string 及顶层简写路由） */
       params?: Record<string, unknown>
+      node?: Record<string, unknown>
       [extraKey: string]: unknown
     }
   | {
       op: 'apply_preset'
-      nodeId: string
+      nodeId?: string
+      id?: string
+      key?: string
       preset: string
     }
-  | { op: 'node_delete' | 'delete_node'; nodeId: string }
+  | { op: 'node_delete' | 'delete_node'; nodeId?: string; id?: string; key?: string }
   | {
       op: 'edge_connect' | 'edge_add' | 'add_edge'
       fromNodeId?: string
@@ -79,7 +91,7 @@ export type McpGraphEditOp =
       target?: string
     }
   /** 教学录屏：在打开的编辑器里选中节点（可见高亮；不改图结构） */
-  | { op: 'node_select' | 'select_node'; nodeId: string }
+  | { op: 'node_select' | 'select_node'; nodeId?: string; id?: string; key?: string }
   | {
       op: 'group_add' | 'add_group'
       groupId?: string
@@ -171,8 +183,40 @@ function isProtectedNode(node: GraphNode): boolean {
   )
 }
 
-function findNode(graph: GraphDocument, nodeId: string): GraphNode | undefined {
-  return graph.nodes.find((node) => node.id === nodeId)
+function findNode(graph: GraphDocument, nodeIdOrTitle: string | undefined): GraphNode | undefined {
+  const key = typeof nodeIdOrTitle === 'string' ? nodeIdOrTitle.trim() : ''
+  if (!key) return undefined
+  return (
+    graph.nodes.find((node) => node.id === key) ??
+    graph.nodes.find((node) => (node.title ?? '').trim() === key)
+  )
+}
+
+function resolveOpNodeId(op: Record<string, unknown>): string {
+  const nested =
+    op.node && typeof op.node === 'object' && !Array.isArray(op.node)
+      ? (op.node as Record<string, unknown>)
+      : undefined
+  const raw = op.nodeId ?? op.id ?? op.key ?? nested?.nodeId ?? nested?.id ?? nested?.key
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+function resolveOpTypeId(op: Record<string, unknown>): string {
+  const nested =
+    op.node && typeof op.node === 'object' && !Array.isArray(op.node)
+      ? (op.node as Record<string, unknown>)
+      : undefined
+  const raw = op.typeId ?? op.type ?? nested?.typeId ?? nested?.type
+  return typeof raw === 'string' ? raw.trim() : ''
+}
+
+function resolveOpTitle(op: Record<string, unknown>): string | undefined {
+  const nested =
+    op.node && typeof op.node === 'object' && !Array.isArray(op.node)
+      ? (op.node as Record<string, unknown>)
+      : undefined
+  const raw = op.title ?? op.label ?? nested?.title ?? nested?.label
+  return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
 }
 
 function resolveEdgePorts(
@@ -382,27 +426,47 @@ function extractInlineNodeParams(op: Record<string, unknown>): Record<string, un
     'op',
     'nodeId',
     'id',
+    'key',
     'typeId',
+    'type',
     'title',
+    'label',
     'x',
     'y',
     'w',
     'h',
     'locked',
-    'params'
+    'params',
+    'node'
   ])
   const inline: Record<string, unknown> = {}
+  const nested =
+    op.node && typeof op.node === 'object' && !Array.isArray(op.node)
+      ? (op.node as Record<string, unknown>)
+      : undefined
+  if (nested) {
+    for (const [k, v] of Object.entries(nested)) {
+      if (!reserved.has(k) && v !== undefined) {
+        inline[k] = v
+      }
+    }
+  }
   for (const [k, v] of Object.entries(op)) {
     if (!reserved.has(k) && v !== undefined) {
       inline[k] = v
     }
   }
+  const nestedParams =
+    nested?.params && typeof nested.params === 'object' && !Array.isArray(nested.params)
+      ? (nested.params as Record<string, unknown>)
+      : {}
   const explicitParams =
     op.params && typeof op.params === 'object' && !Array.isArray(op.params)
       ? (op.params as Record<string, unknown>)
       : {}
   return {
     ...inline,
+    ...nestedParams,
     ...explicitParams
   }
 }
@@ -708,6 +772,15 @@ function isUnexecutedStandaloneNode(
   return true
 }
 
+function isInstructionalNoteNode(node: GraphNode): boolean {
+  const title = (node.title ?? '').trim()
+  if (/^(备注|说明|指南|必读|提示|注释|readme|guide|help)$/i.test(title)) return true // cjk-ok
+  if (/工作流说明|使用指南|节点说明/.test(title)) return true // cjk-ok
+  const text = String(node.params?.text ?? '').trim()
+  if (/^【.*(?:工作流|使用指南|使用说明)/.test(text)) return true // cjk-ok
+  return false
+}
+
 function applyOp(
   graph: GraphDocument,
   op: McpGraphEditOp,
@@ -715,17 +788,21 @@ function applyOp(
   warnings: string[],
   touchedNodeIds: string[]
 ): string | null {
+  const opRecord = op as unknown as Record<string, unknown>
   switch (op.op) {
     case 'node_upsert':
     case 'node_add':
     case 'add_node': {
-      const canonicalTypeId = normalizeMcpNodeTypeId(op.typeId)
+      const rawTypeId = resolveOpTypeId(opRecord)
+      const canonicalTypeId = normalizeMcpNodeTypeId(rawTypeId)
       if (!addable.has(canonicalTypeId)) {
-        warnings.push(`未知或不可添加的节点类型「${op.typeId}」，已跳过`)
+        warnings.push(`未知或不可添加的节点类型「${rawTypeId || op.typeId}」，已跳过`)
         return null
       }
-      const existing = op.nodeId
-        ? findNode(graph, op.nodeId)
+      const explicitNodeId = resolveOpNodeId(opRecord)
+      const resolvedTitle = resolveOpTitle(opRecord)
+      const existing = explicitNodeId
+        ? findNode(graph, explicitNodeId)
         : canonicalTypeId === 'output.timeline'
           ? graph.nodes.find((n) => n.typeId === 'output.timeline')
           : op.op === 'node_upsert'
@@ -735,9 +812,9 @@ function applyOp(
                   isUnexecutedStandaloneNode(graph, n, touchedNodeIds)
               )
             : undefined
-      const combinedParams = extractInlineNodeParams(op as unknown as Record<string, unknown>)
+      const combinedParams = extractInlineNodeParams(opRecord)
       if (existing) {
-        if (typeof op.title === 'string' && op.title.trim()) existing.title = op.title.trim()
+        if (resolvedTitle) existing.title = resolvedTitle
         applyNodeGeometryAndLock(existing, op)
         wireInlineReferenceMedia(graph, existing, combinedParams)
         if (Object.keys(combinedParams).length > 0) {
@@ -753,10 +830,10 @@ function applyOp(
           x: op.x ?? 0,
           y: op.y ?? 0
         },
-        { title: op.title?.trim() || undefined }
+        { title: resolvedTitle }
       )
-      if (op.nodeId) node.id = op.nodeId
-      if (findNode(graph, node.id)) {
+      if (explicitNodeId) node.id = explicitNodeId
+      if (graph.nodes.some((n) => n.id === node.id)) {
         warnings.push(`节点 id「${node.id}」已存在，已跳过新建`)
         return null
       }
@@ -772,14 +849,16 @@ function applyOp(
     }
     case 'node_update':
     case 'update_node': {
-      const node = findNode(graph, op.nodeId)
+      const targetRef = resolveOpNodeId(opRecord) || resolveOpTitle(opRecord) || ''
+      const node = findNode(graph, targetRef)
       if (!node) {
-        warnings.push(`节点「${op.nodeId}」不存在，更新已跳过`)
+        warnings.push(`节点「${targetRef}」不存在，更新已跳过`)
         return null
       }
-      if (typeof op.title === 'string' && op.title.trim()) node.title = op.title.trim()
+      const resolvedTitle = resolveOpTitle(opRecord)
+      if (resolvedTitle) node.title = resolvedTitle
       applyNodeGeometryAndLock(node, op)
-      const combinedParams = extractInlineNodeParams(op as unknown as Record<string, unknown>)
+      const combinedParams = extractInlineNodeParams(opRecord)
       wireInlineReferenceMedia(graph, node, combinedParams)
       if (Object.keys(combinedParams).length > 0) {
         mergeNodeParams(node, combinedParams, warnings)
@@ -789,14 +868,15 @@ function applyOp(
       return `更新节点 ${node.id}${updatedTitle}`
     }
     case 'apply_preset': {
-      const node = findNode(graph, op.nodeId)
+      const targetRef = resolveOpNodeId(opRecord)
+      const node = findNode(graph, targetRef)
       if (!node) {
-        warnings.push(`节点「${op.nodeId}」不存在，预设应用已跳过`)
+        warnings.push(`节点「${targetRef}」不存在，预设应用已跳过`)
         return null
       }
       const presetRes = applySmartNodePreset(node, op.preset)
       if (!presetRes) {
-        warnings.push(`节点「${op.nodeId}」未找到匹配的预设「${op.preset}」`)
+        warnings.push(`节点「${targetRef}」未找到匹配的预设「${op.preset}」`)
         return null
       }
       mergeNodeParams(node, presetRes.paramsPatch as Record<string, unknown>, warnings)
@@ -806,21 +886,20 @@ function applyOp(
     }
     case 'node_delete':
     case 'delete_node': {
-      const node = findNode(graph, op.nodeId)
+      const targetRef = resolveOpNodeId(opRecord)
+      const node = findNode(graph, targetRef)
       if (!node) {
-        warnings.push(`节点「${op.nodeId}」不存在，删除已跳过`)
+        warnings.push(`节点「${targetRef}」不存在，删除已跳过`)
         return null
       }
       if (isProtectedNode(node)) {
-        warnings.push(`节点「${op.nodeId}」为输出 / 边界节点，禁止删除`)
+        warnings.push(`节点「${node.id}」为输出 / 边界节点，禁止删除`)
         return null
       }
       const deletedTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
-      graph.nodes = graph.nodes.filter((item) => item.id !== op.nodeId)
-      graph.edges = graph.edges.filter(
-        (edge) => edge.source !== op.nodeId && edge.target !== op.nodeId
-      )
-      return `删除节点 ${op.nodeId}${deletedTitle}（含连线）`
+      graph.nodes = graph.nodes.filter((item) => item.id !== node.id)
+      graph.edges = graph.edges.filter((edge) => edge.source !== node.id && edge.target !== node.id)
+      return `删除节点 ${node.id}${deletedTitle}（含连线）`
     }
     case 'edge_connect':
     case 'edge_add':
@@ -835,13 +914,17 @@ function applyOp(
         warnings.push(`连线端点不存在（${fromId} → ${toId}），已跳过`)
         return null
       }
+      // 若源节点误建为无输出口的 note.text，当作为连线起点时自动升级为可输出文本的 text.plain
+      if (source.typeId === 'note.text' && target.typeId !== 'note.text') {
+        source.typeId = 'text.plain'
+      }
       const ports = resolveEdgePorts(source, target, fromPort, toPort)
       if (!ports) {
         warnings.push(`连线不兼容（${fromId} → ${toId}），已跳过`)
         return null
       }
-      const fromLabel = source.title?.trim() ? `${fromId}「${source.title.trim()}」` : fromId
-      const toLabel = target.title?.trim() ? `${toId}「${target.title.trim()}」` : toId
+      const fromLabel = source.title?.trim() ? `${source.id}「${source.title.trim()}」` : source.id
+      const toLabel = target.title?.trim() ? `${target.id}「${target.title.trim()}」` : target.id
       const duplicate = graph.edges.some(
         (edge) =>
           edge.source === source.id &&
@@ -867,23 +950,28 @@ function applyOp(
       const toId = op.toNodeId ?? op.to ?? op.target ?? ''
       const source = findNode(graph, fromId)
       const target = findNode(graph, toId)
-      const fromLabel = source?.title?.trim() ? `${fromId}「${source.title.trim()}」` : fromId
-      const toLabel = target?.title?.trim() ? `${toId}「${target.title.trim()}」` : toId
+      const sourceId = source?.id ?? fromId
+      const targetId = target?.id ?? toId
+      const fromLabel = source?.title?.trim() ? `${sourceId}「${source.title.trim()}」` : fromId
+      const toLabel = target?.title?.trim() ? `${targetId}「${target.title.trim()}」` : toId
       const before = graph.edges.length
-      graph.edges = graph.edges.filter((edge) => !(edge.source === fromId && edge.target === toId))
+      graph.edges = graph.edges.filter(
+        (edge) => !(edge.source === sourceId && edge.target === targetId)
+      )
       const removed = before - graph.edges.length
       if (!removed) warnings.push(`连线不存在（${fromId} → ${toId}），已跳过`)
-      else touchedNodeIds.push(toId)
+      else touchedNodeIds.push(targetId)
       return `删除连线 ${fromLabel} → ${toLabel}`
     }
     case 'node_select':
     case 'select_node': {
-      const node = findNode(graph, op.nodeId)
+      const targetRef = resolveOpNodeId(opRecord)
+      const node = findNode(graph, targetRef)
       if (!node) {
-        warnings.push(`节点「${op.nodeId}」不存在，选中已跳过`)
+        warnings.push(`节点「${targetRef}」不存在，选中已跳过`)
         return null
       }
-      return `选中节点 ${op.nodeId}`
+      return `选中节点 ${node.id}`
     }
     case 'group_add':
     case 'add_group': {
@@ -1031,7 +1119,10 @@ export function applyGraphEditOps(
       const appliedDesc = applyOp(next, op, addable, warnings, touchedNodeIds)
       if (appliedDesc) {
         applied.push(appliedDesc)
-        if (op.op === 'node_select' || op.op === 'select_node') selectNodeIds.push(op.nodeId)
+        if (op.op === 'node_select' || op.op === 'select_node') {
+          const sel = findNode(next, resolveOpNodeId(op as unknown as Record<string, unknown>))
+          if (sel) selectNodeIds.push(sel.id)
+        }
       }
     } catch (err) {
       warnings.push(
@@ -1077,12 +1168,102 @@ export function applyGraphEditOps(
       })
     }
   }
+  // 兜底防断连（小说连载 / 策划案 / 剧本流水线）：
+  // 当 Agent 新建或更新了 asset.novel / asset.gameSystem / asset.screenplay 但漏写 edge_connect，
+  // 或将构思/总纲/正式连载拆成多个孤立节点时，自动将同画布无出边的上游创意/数值/阶段节点按顺序串联汇入末端主节点。
+  let autoWiredNarrative = false
+  if (timelineNodes.length === 0 && next.nodes.length > 1 && next.nodes.length <= 24) {
+    const narrativeStagePriority: Record<string, number> = {
+      'asset.novel': 2,
+      'asset.screenplay': 3,
+      'asset.gameSystem': 3
+    }
+    const touchedNarrativeSinks = next.nodes.filter(
+      (n) =>
+        uniqueTouchedIds.includes(n.id) &&
+        narrativeStagePriority[n.typeId ?? ''] !== undefined &&
+        !next.edges.some((e) => e.target === n.id)
+    )
+    if (touchedNarrativeSinks.length > 0) {
+      // 取处于最末端阶段的最后触达节点作为汇聚点（如多个 asset.novel 时取最后一个「正式连载」节点）
+      let sink = touchedNarrativeSinks[touchedNarrativeSinks.length - 1]!
+      for (const cand of touchedNarrativeSinks) {
+        if (
+          (narrativeStagePriority[cand.typeId ?? ''] ?? 0) >=
+          (narrativeStagePriority[sink.typeId ?? ''] ?? 0)
+        ) {
+          sink = cand
+        }
+      }
+      // 将非说明类的孤立 note.text 创意卡片自动升级为可连线的 text.plain
+      for (const n of next.nodes) {
+        if (
+          n.id !== sink.id &&
+          n.typeId === 'note.text' &&
+          !next.edges.some((e) => e.source === n.id || e.target === n.id) &&
+          !isInstructionalNoteNode(n)
+        ) {
+          n.typeId = 'text.plain'
+        }
+      }
+      const textSources = next.nodes.filter(
+        (n) =>
+          n.id !== sink.id &&
+          n.typeId === 'text.plain' &&
+          !next.edges.some((e) => e.source === n.id)
+      )
+      const economyStages = next.nodes.filter(
+        (n) =>
+          n.id !== sink.id &&
+          n.typeId === 'game.economy' &&
+          !next.edges.some((e) => e.source === n.id)
+      )
+      const novelStages = next.nodes.filter(
+        (n) =>
+          n.id !== sink.id &&
+          n.typeId === 'asset.novel' &&
+          !next.edges.some((e) => e.source === n.id)
+      )
+      const chain: GraphNode[] = [...economyStages, ...novelStages, sink]
+      const headTarget = chain[0]!
+      for (const src of textSources) {
+        const ports = resolveEdgePorts(src, headTarget)
+        if (!ports) continue
+        next.edges.push({
+          id: `edge-mcp-auto-${src.id}-${headTarget.id}`,
+          source: src.id,
+          target: headTarget.id,
+          sourcePort: ports.sourcePort,
+          targetPort: ports.targetPort
+        })
+        if (!uniqueTouchedIds.includes(headTarget.id)) uniqueTouchedIds.push(headTarget.id)
+        autoWiredNarrative = true
+      }
+      for (let i = 0; i < chain.length - 1; i++) {
+        const fromNode = chain[i]!
+        const toNode = chain[i + 1]!
+        if (next.edges.some((e) => e.source === fromNode.id && e.target === toNode.id)) continue
+        const ports = resolveEdgePorts(fromNode, toNode)
+        if (!ports) continue
+        next.edges.push({
+          id: `edge-mcp-auto-${fromNode.id}-${toNode.id}`,
+          source: fromNode.id,
+          target: toNode.id,
+          sourcePort: ports.sourcePort,
+          targetPort: ports.targetPort
+        })
+        if (!uniqueTouchedIds.includes(toNode.id)) uniqueTouchedIds.push(toNode.id)
+        autoWiredNarrative = true
+      }
+    }
+  }
   if (uniqueTouchedIds.length > 0) {
     invalidateTouchedRunStates(next, uniqueTouchedIds)
   }
   // 教学录屏 / 批量建节点后：按连线拓扑左→右分层，避免节点叠在默认原点
   if (
-    shouldAutoLayoutAfterOps(applied, options) &&
+    (shouldAutoLayoutAfterOps(applied, options) ||
+      (autoWiredNarrative && options?.autoLayout !== false)) &&
     !applied.includes('自动布局') &&
     next.nodes.length > 1
   ) {

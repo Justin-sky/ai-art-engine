@@ -689,4 +689,74 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
       'sfx-boom:out->in-voice'
     ])
   })
+
+  it('supports id / key / nested node object and title-based edge_connect', () => {
+    const emptyGraph = { version: 1 as const, nodes: [], edges: [] }
+    const res = applyGraphEditOps(emptyGraph, [
+      {
+        op: 'node_upsert',
+        id: 'brief-node',
+        typeId: 'text',
+        title: '科幻末世小说创意',
+        params: { text: '熵债纪元，主角靠逆熵怀表求生' }
+      },
+      {
+        op: 'node_upsert',
+        node: {
+          key: 'econ-node',
+          typeId: 'game.economy',
+          title: '《熵债》数值经济体系',
+          params: { gameEconomyPreset: 'short_drama_progression' }
+        }
+      },
+      {
+        op: 'node_upsert',
+        id: 'novel-main',
+        typeId: 'asset.novel',
+        title: '《熵债》正式连载',
+        params: {
+          genre: 'scifi_apocalypse',
+          totalChapters: 868,
+          currentChapter: 1,
+          targetWords: 3200
+        }
+      },
+      { op: 'edge_connect', from: '科幻末世小说创意', to: '《熵债》数值经济体系' },
+      { op: 'edge_connect', from: '《熵债》数值经济体系', to: '《熵债》正式连载' }
+    ])
+    expect(res.warnings).toEqual([])
+    expect(
+      res.graph.edges.map((e) => `${e.source}:${e.sourcePort}->${e.target}:${e.targetPort}`)
+    ).toEqual(['brief-node:out->econ-node:in', 'econ-node:out-text->novel-main:in'])
+    const novel = res.graph.nodes.find((n) => n.id === 'novel-main')
+    expect(novel?.params?.novelGenre).toBe('scifi_apocalypse')
+    expect(novel?.params?.novelTotalChapters).toBe(868)
+  })
+
+  it('auto-connects scattered novel concept/outline/serialization nodes when LLM omits edge_connect', () => {
+    const emptyGraph = { version: 1 as const, nodes: [], edges: [] }
+    const step1 = applyGraphEditOps(emptyGraph, [
+      { op: 'node_upsert', nodeId: 'n-idea', typeId: 'text.plain', title: '科幻末世小说创意' },
+      {
+        op: 'node_upsert',
+        nodeId: 'n-concept',
+        typeId: 'asset.novel',
+        title: '《熵债》科幻悬疑与末世求生构思'
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'n-outline',
+        typeId: 'asset.novel',
+        title: '《熵债》868章分卷总纲'
+      },
+      { op: 'node_upsert', nodeId: 'n-serial', typeId: 'asset.novel', title: '《熵债》正式连载' }
+    ])
+    expect(
+      step1.graph.edges.map((e) => `${e.source}:${e.sourcePort}->${e.target}:${e.targetPort}`)
+    ).toEqual([
+      'n-idea:out->n-concept:in',
+      'n-concept:out->n-outline:in',
+      'n-outline:out->n-serial:in'
+    ])
+  })
 })

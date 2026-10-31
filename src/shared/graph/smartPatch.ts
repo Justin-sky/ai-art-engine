@@ -200,13 +200,18 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   世界观宪法: 'novelWorldBible', // cjk-ok
   stateLedger: 'novelStateLedger',
   状态台账: 'novelStateLedger', // cjk-ok
+  rollingSummary: 'novelRollingSummary',
+  前情提要: 'novelRollingSummary', // cjk-ok
+  滚动摘要: 'novelRollingSummary', // cjk-ok
+  autoAdvanceChapter: 'novelAutoAdvanceChapter',
   characterRoster: 'novelCharacterRosterJson',
   人物名录: 'novelCharacterRosterJson', // cjk-ok
   foreshadowing: 'novelForeshadowingJson',
   伏笔账本: 'novelForeshadowingJson', // cjk-ok
   chapterHistory: 'novelChapterHistoryJson',
   章节历史: 'novelChapterHistoryJson', // cjk-ok
-  customStages: 'novelCustomStages',
+  customStages: 'novelCustomStagesText',
+  customStagesText: 'novelCustomStagesText',
   customAxisProtagonist: 'novelCustomAxisProtagonist',
   customAxisAntagonist: 'novelCustomAxisAntagonist',
   customUnlockTerm: 'novelCustomUnlockTerm',
