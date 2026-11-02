@@ -401,55 +401,55 @@ export interface WishFairyPersona {
 export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
   {
     id: 'miko',
-    nameZh: '小祈', // cjk-ok
-    nameEn: 'Koharu',
-    titleZh: '🌸 绯樱巫女 · 小祈', // cjk-ok
-    titleEn: '🌸 Sakura Miko · Koharu',
-    personalityZh: '元气软萌 · 锦鲤附体', // cjk-ok
-    personalityEn: 'Cheerful · Lucky Koi',
-    emoji: '🌸',
+    nameZh: '小鲸', // cjk-ok
+    nameEn: 'Whaley',
+    titleZh: '🐋 蓝鲸仙子 · 小鲸', // cjk-ok
+    titleEn: '🐋 Blue Whale Fairy · Whaley',
+    personalityZh: '呆萌治愈 · 锦鲤附体', // cjk-ok
+    personalityEn: 'Sweet & Dorky · Lucky Whale',
+    emoji: '🐋',
     affinityCategory: 'general',
     theme: {
-      hairTop: '#FFB7DD',
-      hairMid: '#F472B6',
-      hairBottom: '#A855F7',
-      hairShadeTop: '#EC4899',
-      hairShadeBottom: '#7E22CE',
-      irisTop: '#4A044E',
-      irisMid: '#DB2777',
-      irisBottom: '#F472B6',
-      irisHighlight: '#FCE7F3',
+      hairTop: '#60A5FA',
+      hairMid: '#3B82F6',
+      hairBottom: '#1D4ED8',
+      hairShadeTop: '#2563EB',
+      hairShadeBottom: '#1E3A8A',
+      irisTop: '#1E3A8A',
+      irisMid: '#3B82F6',
+      irisBottom: '#93C5FD',
+      irisHighlight: '#EFF6FF',
       outfitTop: '#FFFFFF',
-      outfitBottom: '#FFE4E6',
-      ribbonStart: '#FB7185',
-      ribbonEnd: '#E11D48',
+      outfitBottom: '#DBEAFE',
+      ribbonStart: '#38BDF8',
+      ribbonEnd: '#2563EB',
       accentColor: '#FACC15',
-      wingColor: '#F9A8D4',
-      auraGlow: 'rgba(244, 114, 182, 0.42)'
+      wingColor: '#7DD3FC',
+      auraGlow: 'rgba(56, 189, 248, 0.45)'
     },
-    burstSymbols: ['🌸', '🔔', '✦', '♥', '⛩️'],
+    burstSymbols: ['🐋', '🫧', '✦', '💙', '🌟'],
     pokeLines: [
       {
-        zh: '🔔 叮铃铃~ 摇响神铃，欧气翻倍喵！', // cjk-ok
-        en: '🔔 Ring-a-ling! Double luck incoming!',
+        zh: '🐋 呜哇~ 蓝鲸鳍耳抖一抖，欧气翻倍喷泉！', // cjk-ok
+        en: '🐋 Splash~ Whale fin ears twitching, double luck fountain!',
         expression: 'wink',
         pose: 'wave'
       },
       {
-        zh: '🌸 诶嘿~ 被你戳中幸运开关啦！', // cjk-ok
-        en: '🌸 Ehehe~ You hit my lucky switch!',
+        zh: '🫧 诶嘿~ 被你戳中蓝鲸仙子的幸运开关啦！', // cjk-ok
+        en: '🫧 Ehehe~ You hit the Blue Whale Fairys lucky switch!',
         expression: 'heart',
         pose: 'cheer'
       },
       {
-        zh: '✨ 转个圈圈~ Bug 统统退散！', // cjk-ok
-        en: '✨ Twirl around~ All bugs vanish!',
+        zh: '✨ 转个圈圈~ 深海锦鲤护体，Bug 统统退散！', // cjk-ok
+        en: '✨ Twirl around~ Deep-sea blessing, all bugs vanish!',
         expression: 'happy',
         pose: 'spin'
       },
       {
-        zh: '😳 呜哇！连戳摸头会害羞的啦~', // cjk-ok
-        en: '😳 Waa! Rapid headpats make me blush~',
+        zh: '😳 呜哇！连戳摸头小鲸会脑子转圈圈的啦~', // cjk-ok
+        en: '😳 Waa! Rapid headpats make Whaley dizzy~',
         expression: 'surprised',
         pose: 'peek'
       }
@@ -457,10 +457,10 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
   },
   {
     id: 'astral',
-    nameZh: '星奈', // cjk-ok
-    nameEn: 'Hoshina',
-    titleZh: '⭐ 星穹魔女 · 星奈', // cjk-ok
-    titleEn: '⭐ Astral Witch · Hoshina',
+    nameZh: '星鲸', // cjk-ok
+    nameEn: 'AstraWhale',
+    titleZh: '🌟 星穹蓝鲸 · 星鲸', // cjk-ok
+    titleEn: '🌟 Astral Whale · Hoshina',
     personalityZh: '古灵精怪 · 构图天才', // cjk-ok
     personalityEn: 'Playful Genius · Art Muse',
     emoji: '🌟',
@@ -483,17 +483,17 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
       wingColor: '#A5B4FC',
       auraGlow: 'rgba(129, 140, 248, 0.45)'
     },
-    burstSymbols: ['🌟', '🌙', '🔮', '✨', '🎨'],
+    burstSymbols: ['🌟', '🐋', '🔮', '✨', '🎨'],
     pokeLines: [
       {
-        zh: '🌟 哼哼~ 本魔女挥杖，这张必出神图！', // cjk-ok
-        en: '🌟 Hehe~ With my wand, this art will be god-tier!',
+        zh: '🌟 哼哼~ 星鲸挥动星芒杖，这张必出神图！', // cjk-ok
+        en: '🌟 Hehe~ With my star wand, this art will be god-tier!',
         expression: 'smug',
         pose: 'wand'
       },
       {
-        zh: '🌙 别戳我魔女帽上的小星星呀~', // cjk-ok
-        en: '🌙 Hey! Dont poke the star on my witch hat~',
+        zh: '🌙 别戳我女仆发箍上的小呆毛呀~', // cjk-ok
+        en: '🌙 Hey! Dont poke my little ahoge~',
         expression: 'surprised',
         pose: 'peek'
       },
@@ -504,8 +504,8 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
         pose: 'spin'
       },
       {
-        zh: '💫 既然你这么诚心点我，就送你一道彩虹光！', // cjk-ok
-        en: '💫 Since you clicked me, heres a rainbow blessing!',
+        zh: '💫 既然你这么诚心点我，就送你一道星海极光！', // cjk-ok
+        en: '💫 Since you clicked me, heres a starlight aurora blessing!',
         expression: 'wink',
         pose: 'cheer'
       }
@@ -513,13 +513,13 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
   },
   {
     id: 'neko',
-    nameZh: '奈奈', // cjk-ok
-    nameEn: 'Nana',
-    titleZh: '🐾 赛博猫娘 · 奈奈', // cjk-ok
-    titleEn: '🐾 Cyber Neko · Nana',
+    nameZh: '极客小鲸', // cjk-ok
+    nameEn: 'CyberWhale',
+    titleZh: '⚡ 超频蓝鲸 · 小鲸', // cjk-ok
+    titleEn: '⚡ Overclock Whale · Nana',
     personalityZh: '调皮极客 · 招财省钱', // cjk-ok
     personalityEn: 'Playful Geek · Token Saver',
-    emoji: '🐾',
+    emoji: '⚡',
     affinityCategory: 'code3d',
     theme: {
       hairTop: '#6EE7B7',
@@ -539,29 +539,29 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
       wingColor: '#5EEAD4',
       auraGlow: 'rgba(45, 212, 191, 0.44)'
     },
-    burstSymbols: ['🐾', '🪙', '⚡', '🐟', '💎'],
+    burstSymbols: ['⚡', '🪙', '🐋', '🫧', '💎'],
     pokeLines: [
       {
-        zh: '🐾 喵呜！省下的 Token 记得给奈奈买小鱼干！', // cjk-ok
-        en: '🐾 Meow! Spend saved tokens on dried fish for Nana!',
+        zh: '🪙 省下的 Token 记得给小鲸买深海小鱼干！', // cjk-ok
+        en: '🪙 Spend saved tokens on snacks for Whaley!',
         expression: 'happy',
         pose: 'wave'
       },
       {
-        zh: '⚡ 猫爪加速拍键盘~ 编译一把过喵！', // cjk-ok
-        en: '⚡ Neko paws turbo-typing~ First-try compile!',
+        zh: '⚡ 蓝鲸算力超频中~ 编译一把过！', // cjk-ok
+        en: '⚡ Whale mana overclocking~ First-try compile!',
         expression: 'smug',
         pose: 'cheer'
       },
       {
-        zh: '😻 呼噜噜…挠下巴好舒服，暴击率飙升喵！', // cjk-ok
-        en: '😻 Purrrr... Chin scratches boost crit rate!',
+        zh: '💙 呼噜噜…摸头好舒服，暴击率飙升！', // cjk-ok
+        en: '💙 Headpats feel great, crit rate surging!',
         expression: 'heart',
         pose: 'spin'
       },
       {
-        zh: '🪙 招财猫耳抖一抖，零报错零返工！', // cjk-ok
-        en: '🪙 Lucky neko ears twitching: zero bugs, zero rework!',
+        zh: '🐋 蓝鲸小耳朵抖一抖，零报错零返工！', // cjk-ok
+        en: '🐋 Lucky whale ears twitching: zero bugs, zero rework!',
         expression: 'wink',
         pose: 'wand'
       }
@@ -569,10 +569,10 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
   },
   {
     id: 'muse',
-    nameZh: '露露', // cjk-ok
-    nameEn: 'Lulu',
-    titleZh: '🍀 云端妖精 · 露露', // cjk-ok
-    titleEn: '🍀 Cloud Fairy · Lulu',
+    nameZh: '欧皇小鲸', // cjk-ok
+    nameEn: 'LuckyWhale',
+    titleZh: '🍀 欧皇蓝鲸 · 小鲸', // cjk-ok
+    titleEn: '🍀 Lucky Whale · Lulu',
     personalityZh: '温柔治愈 · 天生欧皇', // cjk-ok
     personalityEn: 'Gentle Healer · Born Lucky',
     emoji: '🍀',
@@ -598,8 +598,8 @@ export const WISH_FAIRY_PERSONAS: readonly WishFairyPersona[] = [
     burstSymbols: ['🍀', '🎬', '♪', '💛', '✨'],
     pokeLines: [
       {
-        zh: '🍀 送你一朵四叶草~ 帧率丝滑不卡顿哟！', // cjk-ok
-        en: '🍀 A four-leaf clover for buttery-smooth frames!',
+        zh: '🍀 送你一朵幸运浪花~ 帧率丝滑不卡顿哟！', // cjk-ok
+        en: '🍀 A lucky wave for buttery-smooth frames!',
         expression: 'happy',
         pose: 'wand'
       },
@@ -731,32 +731,32 @@ const STAGE_ACT_LINES: Readonly<
 > = {
   miko: {
     cast: {
-      zh: '🪄 绯樱神乐大结界 · 万物一次成功敕令！', // cjk-ok
-      en: '🪄 Grand Sakura Barrier · First-Try Success Decree!',
+      zh: '🪄 蓝鲸星海大结界 · 万物一次成功敕令！', // cjk-ok
+      en: '🪄 Grand Blue Whale Barrier · First-Try Success Decree!',
       pose: 'cast',
       expression: 'star'
     },
     dance: {
-      zh: '💃 叮铃铃~ 巫女丰年祈福舞，欧气全开♪', // cjk-ok
-      en: '💃 Ring-a-ling~ Shrine Maiden Blessing Dance♪',
+      zh: '💃 哗啦啦~ 蓝鲸祈福律动舞，欧气全开♪', // cjk-ok
+      en: '💃 Splash~ Blue Whale Blessing Dance♪',
       pose: 'dance',
       expression: 'happy'
     },
     'edge-peek': {
-      zh: '🫣 盯——小祈躲在窗边偷偷给你塞满锦鲤好运✨', // cjk-ok
-      en: '🫣 Peek~ Hiding by the window to slip you lucky koi vibes✨',
+      zh: '🫣 盯——小鲸躲在窗边偷偷给你塞满深海锦鲤好运✨', // cjk-ok
+      en: '🫣 Peek~ Whaley hiding by the window to slip you lucky vibes✨',
       pose: 'peek',
       expression: 'wink'
     },
     spin: {
-      zh: '🌪️ 漫天樱吹雪回旋！所有报错统统退散！', // cjk-ok
-      en: '🌪️ Sakura Blizzard Pirouette! All errors vanish!',
+      zh: '🌪️ 深海星芒大回旋！所有报错统统退散！', // cjk-ok
+      en: '🌪️ Deep-Sea Starlight Pirouette! All errors vanish!',
       pose: 'spin',
       expression: 'heart'
     },
     roam: {
-      zh: '🌸 御币乘风巡游中，随时守护你的灵感~', // cjk-ok
-      en: '🌸 Gliding on sakura winds, guarding your inspiration~',
+      zh: '🐋 正在思考中… 蓝鲸仙子全力守护你的灵感~', // cjk-ok
+      en: '🐋 Thinking hard... Blue Whale Fairy guarding your inspiration~',
       pose: 'pray',
       expression: 'normal'
     }
@@ -1039,14 +1039,15 @@ export function computeFairyCastPosition(
 
 /**
  * 为每个正在 cook 的目标节点生成施法轨迹（自动根据距离切换近程赋能光束 vs 远程高拱曲率星轨大魔法）
+ * - 支持传入由 DOM 实时测量的法杖杖头中心坐标 `wandX` / `wandY`，缺省按仙子 SVG 法杖杖头位置 `(x + 111, y + 34)` 计算
  */
 export function buildFairySpellLinks(
-  fairyPos: { x: number; y: number; facing: 'left' | 'right' },
+  fairyPos: { x: number; y: number; facing?: 'left' | 'right'; wandX?: number; wandY?: number },
   targets: readonly WishCookingNodeTarget[]
 ): WishSpellLink[] {
   if (!targets.length) return []
-  const wandX = Math.round(fairyPos.x + (fairyPos.facing === 'right' ? 96 : 24))
-  const wandY = Math.round(fairyPos.y + 42)
+  const wandX = Math.round(fairyPos.wandX ?? fairyPos.x + 111)
+  const wandY = Math.round(fairyPos.wandY ?? fairyPos.y + 34)
 
   return targets.map((t, idx) => {
     const targetX = Math.round(t.screenX + t.screenWidth * 0.5)
@@ -1142,4 +1143,88 @@ export function buildFairySpellLinks(
       angleDeg
     }
   })
+}
+
+export interface WishLightningBoltBranch {
+  points: Array<{ x: number; y: number }>
+  alpha: number
+  widthScale: number
+}
+
+/**
+ * 生成游戏级多段折线闪电与随机分叉电弧（Midpoint Displacement + 曲率拱起 + 子分支电弧）：
+ * - 每一帧调用都会生成形态各异的狂暴电弧与侧向分叉；
+ * - 远距离（archLift > 0）时沿着高空抛物线主干撕裂出天基雷霆与分叉闪电链。
+ */
+export function generateJaggedLightningBolt(options: {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  archLift?: number
+  swayOffset?: number
+  jitterAmplitude?: number
+  segments?: number
+  forkChance?: number
+  rng?: () => number
+}): {
+  main: Array<{ x: number; y: number }>
+  forks: WishLightningBoltBranch[]
+} {
+  const rng = options.rng ?? Math.random
+  const dx = options.x2 - options.x1
+  const dy = options.y2 - options.y1
+  const dist = Math.max(1, Math.hypot(dx, dy))
+  const nx = -dy / dist
+  const ny = dx / dist
+  const upwardSign = ny <= 0 ? 1 : -1
+
+  const segments = Math.max(6, Math.min(28, options.segments ?? Math.round(dist / 18)))
+  const archLift = options.archLift ?? 0
+  const sway = options.swayOffset ?? 0
+  const jitterAmp = options.jitterAmplitude ?? Math.min(34, Math.max(10, dist * 0.085))
+  const forkChance = options.forkChance ?? 0.28
+
+  const main: Array<{ x: number; y: number }> = []
+  const forks: WishLightningBoltBranch[] = []
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments
+    const env = Math.sin(t * Math.PI)
+    const baseX = options.x1 + dx * t + nx * sway * env + nx * upwardSign * (archLift * 0.22) * env
+    const baseY = options.y1 + dy * t + ny * sway * env - archLift * env
+
+    if (i === 0 || i === segments) {
+      main.push({ x: baseX, y: baseY })
+      continue
+    }
+
+    const offset = (rng() - 0.5) * 2 * jitterAmp * (0.35 + 0.65 * env)
+    const alongJitter = (rng() - 0.5) * (dist / segments) * 0.35
+    const px = baseX + nx * offset + (dx / dist) * alongJitter
+    const py = baseY + ny * offset + (dy / dist) * alongJitter
+    main.push({ x: px, y: py })
+
+    // 随机分叉出侧向电弧（如雷霆分叉与游离奥术电火花）
+    if (i > 1 && i < segments - 1 && rng() < forkChance) {
+      const forkLen = Math.min(95, Math.max(24, dist * (0.14 + rng() * 0.16)))
+      const forkAngle = Math.atan2(dy, dx) + (rng() < 0.5 ? -1 : 1) * (0.42 + rng() * 0.58)
+      const forkSteps = 4 + Math.floor(rng() * 3)
+      const fPts: Array<{ x: number; y: number }> = [{ x: px, y: py }]
+      for (let k = 1; k <= forkSteps; k++) {
+        const ft = k / forkSteps
+        const fJitter = (rng() - 0.5) * jitterAmp * 0.65
+        const fx = px + Math.cos(forkAngle) * forkLen * ft - Math.sin(forkAngle) * fJitter
+        const fy = py + Math.sin(forkAngle) * forkLen * ft + Math.cos(forkAngle) * fJitter
+        fPts.push({ x: fx, y: fy })
+      }
+      forks.push({
+        points: fPts,
+        alpha: 0.45 + rng() * 0.4,
+        widthScale: 0.45 + rng() * 0.35
+      })
+    }
+  }
+
+  return { main, forks }
 }

@@ -2814,14 +2814,15 @@ const weatherVisibleNodes = computed<WeatherNodeRect[]>(() => {
   })
 })
 
-/** 节点画布中正在 cook（运行中）的节点屏幕坐标列表，驱动祈福仙子飞赴节点或移动到多节点中心施法 */
+/** 节点画布中正在 cook（运行中或当前批次等待执行）的节点屏幕坐标列表，驱动祈福仙子飞赴节点或移动到多节点中心同时施法 */
 const wishCookingTargets = computed<WishCookingNodeTarget[]>(() => {
   const zoom = Math.max(0.05, graph.viewport.zoom)
   const vx = graph.viewport.x
   const vy = graph.viewport.y
   const out: WishCookingNodeTarget[] = []
   for (const { node } of renderedGraphCards.value) {
-    if (runStates[node.id]?.status !== 'running') continue
+    const st = runStates[node.id]?.status
+    if (st !== 'running' && !(isGraphOrTaskRunning.value && st === 'pending')) continue
     const { w, h } = getNodeSize(node)
     out.push({
       id: node.id,

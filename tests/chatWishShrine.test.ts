@@ -6,6 +6,7 @@ import {
   computeFairyCastPosition,
   detectWishPromptCategory,
   formatLuckTotal,
+  generateJaggedLightningBolt,
   getFairyStageActReaction,
   nextFairyStageAct,
   nextWishFairyId,
@@ -185,5 +186,43 @@ describe('chatWishShrine', () => {
     expect(multiLinks.every((l) => l.mode === 'longRange')).toBe(true)
     expect(multiLinks[0]!.beamPath).toContain('Q ')
     expect(multiLinks[0]!.helixPathA).toContain('C ')
+  })
+
+  it('always emits spells from the magic wand tip and generates jagged forked lightning bolts', () => {
+    const targets = [
+      {
+        id: 'n1',
+        title: '小说·第1章',
+        screenX: 400,
+        screenY: 320,
+        screenWidth: 200,
+        screenHeight: 140
+      } // cjk-ok
+    ]
+    // Even if facing is 'left', wand is on the right side of the SVG (posX + 111, posY + 34) unless overridden by live DOM measurement
+    const linksDefault = buildFairySpellLinks({ x: 300, y: 100, facing: 'left' }, targets)
+    expect(linksDefault[0]!.wandX).toBe(300 + 111)
+    expect(linksDefault[0]!.wandY).toBe(100 + 34)
+
+    // When live DOM wand tip coordinates are provided, uses exact wand tip
+    const linksLive = buildFairySpellLinks(
+      { x: 300, y: 100, facing: 'left', wandX: 418.5, wandY: 129.2 },
+      targets
+    )
+    expect(linksLive[0]!.wandX).toBe(419)
+    expect(linksLive[0]!.wandY).toBe(129)
+
+    const bolt = generateJaggedLightningBolt({
+      x1: 418,
+      y1: 129,
+      x2: 500,
+      y2: 390,
+      segments: 12,
+      forkChance: 1
+    })
+    expect(bolt.main).toHaveLength(13)
+    expect(bolt.main[0]).toEqual({ x: 418, y: 129 })
+    expect(bolt.main[12]).toEqual({ x: 500, y: 390 })
+    expect(bolt.forks.length).toBeGreaterThan(0)
   })
 })
