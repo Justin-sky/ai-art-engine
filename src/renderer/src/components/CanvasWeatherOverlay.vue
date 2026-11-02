@@ -972,7 +972,7 @@ function renderFrame(now: number): void {
       return
     }
     const ctx = cvs.getContext('2d')
-    if (!ctx) {
+    if (!ctx || viewportW <= 2 || viewportH <= 2) {
       return
     }
 
@@ -2065,7 +2065,14 @@ function drawSunnySpectacle(ctx: CanvasRenderingContext2D, dt: number, now: numb
   const sunY = viewportH * 0.11
 
   // Luminous golden-azure anime sun halo
-  const sunGlow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, viewportW * 0.58)
+  const sunGlow = ctx.createRadialGradient(
+    sunX,
+    sunY,
+    10,
+    sunX,
+    sunY,
+    Math.max(12, viewportW * 0.58)
+  )
   sunGlow.addColorStop(0, 'rgba(255, 251, 235, 0.52)')
   sunGlow.addColorStop(0.22, 'rgba(254, 240, 138, 0.24)')
   sunGlow.addColorStop(0.55, 'rgba(186, 230, 253, 0.09)')
@@ -2083,7 +2090,14 @@ function drawSunnySpectacle(ctx: CanvasRenderingContext2D, dt: number, now: numb
     ctx.lineTo(sunX + Math.cos(angle - spread) * beamLen, sunY + Math.sin(angle - spread) * beamLen)
     ctx.lineTo(sunX + Math.cos(angle + spread) * beamLen, sunY + Math.sin(angle + spread) * beamLen)
     ctx.closePath()
-    const beamGrad = ctx.createRadialGradient(sunX, sunY, 20, sunX, sunY, beamLen * 0.78)
+    const beamGrad = ctx.createRadialGradient(
+      sunX,
+      sunY,
+      20,
+      sunX,
+      sunY,
+      Math.max(22, beamLen * 0.78)
+    )
     beamGrad.addColorStop(0, 'rgba(255, 251, 235, 0.18)')
     beamGrad.addColorStop(1, 'rgba(255, 251, 235, 0)')
     ctx.fillStyle = beamGrad
@@ -2123,8 +2137,10 @@ function drawSunnySpectacle(ctx: CanvasRenderingContext2D, dt: number, now: numb
   ]
   ctx.lineCap = 'round'
   rainbowColors.forEach((color, idx) => {
+    const arcRadius = rbRadius - idx * 8.5
+    if (arcRadius <= 0.5) return
     ctx.beginPath()
-    ctx.arc(rbCx, rbCy, rbRadius - idx * 8.5, Math.PI * 1.12, Math.PI * 1.88)
+    ctx.arc(rbCx, rbCy, arcRadius, Math.PI * 1.12, Math.PI * 1.88)
     ctx.strokeStyle = color
     ctx.lineWidth = 7.5
     ctx.stroke()

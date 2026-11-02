@@ -584,14 +584,14 @@ function deriveEpisodeTitleFromFirstScene(
 
 function prependSharedHeaderIfNeeded(
   episodeBody: string,
-  sharedHeader: string,
+  formattedSharedHeader: string,
   includeSharedBios: boolean
 ): string {
   const body = formatScreenplayText(episodeBody.trim())
-  if (!includeSharedBios || !sharedHeader.trim()) return body
+  if (!includeSharedBios || !formattedSharedHeader) return body
   const hasOwnBio = body.split(/\r?\n/).some((line) => BIO_SECTION_RE.test(line.trim()))
   if (hasOwnBio) return body
-  return formatScreenplayText(`${sharedHeader.trim()}\n\n${body}`)
+  return `${formattedSharedHeader}\n\n${body}`.trim()
 }
 
 /**
@@ -611,6 +611,8 @@ export function splitScreenplayIntoEpisodes(
   const isEn = (options.locale ?? 'zh-CN').toLowerCase().startsWith('en')
 
   const { sharedHeader, bodyText } = extractSharedScreenplayHeader(normalized)
+  const formattedSharedHeader =
+    includeSharedBios && sharedHeader.trim() ? formatScreenplayText(sharedHeader.trim()) : ''
   const workingText = bodyText || normalized
   const lines = workingText.split('\n')
 
@@ -636,8 +638,12 @@ export function splitScreenplayIntoEpisodes(
         .join('\n')
         .trim()
       const content = chunkBody || headerLine
-      const fullText = prependSharedHeaderIfNeeded(content, sharedHeader, includeSharedBios)
-      const stats = analyzeScreenplay(fullText)
+      const fullText = prependSharedHeaderIfNeeded(
+        content,
+        formattedSharedHeader,
+        includeSharedBios
+      )
+      const stats = analyzeScreenplay(content)
       const epIndex = episodes.length + 1
       episodes.push({
         index: epIndex,
@@ -677,8 +683,12 @@ export function splitScreenplayIntoEpisodes(
       if (!group.length) continue
       const epIndex = episodes.length + 1
       const combinedScenes = group.map((g) => g.blockText).join('\n\n')
-      const fullText = prependSharedHeaderIfNeeded(combinedScenes, sharedHeader, includeSharedBios)
-      const stats = analyzeScreenplay(fullText)
+      const fullText = prependSharedHeaderIfNeeded(
+        combinedScenes,
+        formattedSharedHeader,
+        includeSharedBios
+      )
+      const stats = analyzeScreenplay(combinedScenes)
       episodes.push({
         index: epIndex,
         title: deriveEpisodeTitleFromFirstScene(group[0]!.header, epIndex, isEn),
@@ -702,12 +712,13 @@ export function splitScreenplayIntoEpisodes(
     for (let i = 0; i < paragraphs.length; i += chunkSize) {
       const group = paragraphs.slice(i, i + chunkSize)
       const epIndex = episodes.length + 1
+      const joinedGroup = group.join('\n\n')
       const fullText = prependSharedHeaderIfNeeded(
-        group.join('\n\n'),
-        sharedHeader,
+        joinedGroup,
+        formattedSharedHeader,
         includeSharedBios
       )
-      const stats = analyzeScreenplay(fullText)
+      const stats = analyzeScreenplay(joinedGroup)
       episodes.push({
         index: epIndex,
         title: isEn ? `Episode ${epIndex}` : `第${epIndex}集`,
@@ -738,7 +749,9 @@ export function splitScreenplayIntoEpisodes(
  */
 export function splitScreenplayByExplicitEpisodeMarkers(
   text: string,
-  options: Pick<ScreenplaySplitOptions, 'includeSharedBios' | 'locale'> = {}
+  options: Pick<ScreenplaySplitOptions, 'includeSharedBios' | 'locale'> & {
+    skipStats?: boolean
+  } = {}
 ): ScreenplayEpisodeItem[] {
   const raw = typeof text === 'string' ? text : ''
   const normalized = raw.replace(/\r\n/g, '\n').trim()
@@ -747,6 +760,8 @@ export function splitScreenplayByExplicitEpisodeMarkers(
   const includeSharedBios = options.includeSharedBios !== false
   const isEn = (options.locale ?? 'zh-CN').toLowerCase().startsWith('en')
   const { sharedHeader, bodyText } = extractSharedScreenplayHeader(normalized)
+  const formattedSharedHeader =
+    includeSharedBios && sharedHeader.trim() ? formatScreenplayText(sharedHeader.trim()) : ''
   const workingText = bodyText || normalized
   const lines = workingText.split('\n')
 
@@ -768,8 +783,10 @@ export function splitScreenplayByExplicitEpisodeMarkers(
       .join('\n')
       .trim()
     const content = chunkBody || headerLine
-    const fullText = prependSharedHeaderIfNeeded(content, sharedHeader, includeSharedBios)
-    const stats = analyzeScreenplay(fullText)
+    const fullText = prependSharedHeaderIfNeeded(content, formattedSharedHeader, includeSharedBios)
+    const stats = options.skipStats
+      ? { sceneCount: 1, estimatedDurationSec: 5 }
+      : analyzeScreenplay(content)
     const epIndex = episodes.length + 1
     episodes.push({
       index: epIndex,

@@ -197,7 +197,8 @@ export async function persistScreenplayGeneration(
     (ctx.node.typeId === 'asset.novel' && ctx.node.params.novelNodeMode === 'outline')
       ? splitScreenplayByExplicitEpisodeMarkers(text, {
           includeSharedBios: true,
-          locale: ctx.locale
+          locale: ctx.locale,
+          skipStats: true
         })
       : []
 
@@ -228,15 +229,27 @@ export async function persistScreenplayGeneration(
     ...(item.relativePath ? { relativePath: item.relativePath } : {})
   }))
   const selectedTextId = newestTextSelectedId(generatedTexts)
+  const latestRelPath =
+    batch[batch.length - 1]?.relativePath?.trim() ||
+    generatedTexts[generatedTexts.length - 1]?.relativePath?.trim() ||
+    ''
+  const shouldOffloadInlineText =
+    Boolean(latestRelPath) &&
+    (ctx.node.typeId === 'asset.novel' ||
+      ctx.node.typeId === 'novel.outline' ||
+      ctx.node.typeId === 'asset.gameSystem')
+  const storedInlineText = shouldOffloadInlineText ? '' : text
   ctx.node.params = {
     ...ctx.node.params,
-    text,
+    text: storedInlineText,
+    ...(shouldOffloadInlineText ? { previewRelativePath: latestRelPath } : {}),
     generatedTexts,
     selectedTextId
   }
   ctx.patchNode?.({
     params: {
-      text,
+      text: storedInlineText,
+      ...(shouldOffloadInlineText ? { previewRelativePath: latestRelPath } : {}),
       generatedTexts,
       selectedTextId
     }
@@ -258,7 +271,8 @@ export function commitInMemoryTextGallery(
     (ctx.node.typeId === 'asset.novel' && ctx.node.params.novelNodeMode === 'outline')
       ? splitScreenplayByExplicitEpisodeMarkers(text, {
           includeSharedBios: true,
-          locale: ctx.locale
+          locale: ctx.locale,
+          skipStats: true
         })
       : []
   const batch: GraphTextItem[] =

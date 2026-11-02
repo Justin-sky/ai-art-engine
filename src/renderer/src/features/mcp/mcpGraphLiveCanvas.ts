@@ -121,7 +121,22 @@ const LIVE_CANVAS_PARAM_KEYS = new Set([
   'filmWorkbenchRunMode',
   'filmCastOnlyId',
   'filmRenderOnlyShotId',
-  'comicPage'
+  'comicPage',
+  'novelNodeMode',
+  'novelGenre',
+  'novelCurrentChapter',
+  'novelTotalChapters',
+  'novelTargetWords',
+  'novelAutoAdvanceChapter',
+  'novelWorldBible',
+  'novelStateLedger',
+  'novelRollingSummary',
+  'novelChapterHistoryJson',
+  'novelCharacterRosterJson',
+  'novelForeshadowingJson',
+  'gameEconomySimSummary',
+  'gameNumericalReport',
+  'gameSystemQaReport'
 ])
 
 function slimLiveCanvasParams(params: Partial<GraphNodeParams>): Partial<GraphNodeParams> | null {

@@ -306,6 +306,7 @@ import {
   getDefaultStylePreset
 } from '../features/stylePresets/defaultLibrary'
 import {
+  type GraphEdge,
   VIDEO_FIRST_FRAME_PORT_ID,
   VIDEO_LAST_FRAME_PORT_ID,
   isVideoFramePortId
@@ -873,9 +874,10 @@ const styleChips = computed((): StyleChip[] => {
 
 const mentionChips = computed((): RefChip[] => {
   void revision.value
-  const doc = graphEditorHosts.getDocument(props.hostId)
+  const liveNodes = graphEditorHosts.listNodes(props.hostId)
+  const liveEdges = graphEditorHosts.listEdges(props.hostId)
   const reserve = styleMentionReserve.value
-  if (!doc) {
+  if (liveNodes.length === 0) {
     const currentNode = graphEditorHosts.getNode(props.hostId, props.nodeId)
     const edges = graphEditorHosts
       .listIncomingEdges(props.hostId, props.nodeId)
@@ -896,9 +898,16 @@ const mentionChips = computed((): RefChip[] => {
       })
     )
   }
-  // 束结入边展开为真实上游缩略图，与 cook @n 一致
-  const logical = expandIncomingThroughBundles(doc, props.nodeId)
-  const edgeById = new Map(doc.edges.map((e) => [e.id, e]))
+  // 束结入边展开为真实上游缩略图，与 cook @n 一致（使用轻量只读引用，避免整图深拷贝）
+  const logical = expandIncomingThroughBundles(
+    {
+      nodes: liveNodes as GraphNode[],
+      edges: liveEdges as GraphEdge[],
+      viewport: { x: 0, y: 0, zoom: 1 }
+    },
+    props.nodeId
+  )
+  const edgeById = new Map(liveEdges.map((e) => [e.id, e]))
   return decorateModel3dImageChips(
     logical.map((edge, i) => {
       const source = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)

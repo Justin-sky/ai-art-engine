@@ -113,6 +113,7 @@ import {
   newestVoiceSelectedId,
   stripEmbeddedImageData
 } from './gallery'
+import { hydrateTextItems } from './helpers'
 import { collectIncomingValues } from './incoming'
 import {
   commitGeneratedImages,
@@ -2344,9 +2345,10 @@ export async function executeGameEconomyNode(
     ...(ctx.inputs['in-text'] ?? []),
     ...collectIncomingValues(ctx.inputs)
   ]
+  const hydratedTextItems = await hydrateTextItems(flattenTextsValues(textInputs), ctx.readRunText)
   const incomingTexts = [
     ...flattenTextValues(textInputs).map((t) => t.text),
-    ...flattenTextsValues(textInputs).map((t) => t.text)
+    ...hydratedTextItems.map((t) => t.text)
   ].filter(Boolean)
 
   const rawDiagramJson =
@@ -2587,7 +2589,8 @@ export async function executeGameEconomyNode(
     gameEconomySeed: seed,
     gameEconomyDiagramJson: JSON.stringify(doc),
     gameEconomyReport: report,
-    text: economyPayloadJson,
+    text: jsonRelativePath ? '' : economyPayloadJson,
+    ...(jsonRelativePath ? { previewRelativePath: jsonRelativePath } : {}),
     generatedImages: cleanImages,
     selectedImageId: materialized[0]?.id,
     ...(primaryPath ? { imagePath: primaryPath } : {})
@@ -2605,7 +2608,7 @@ export async function executeGameEconomyNode(
     'out-all': { kind: 'images', items: materialized },
     'out-text': {
       kind: 'text',
-      text: economyPayloadJson,
+      text: jsonRelativePath ? '' : economyPayloadJson,
       ...(jsonRelativePath ? { relativePath: jsonRelativePath } : {})
     }
   }
@@ -2760,9 +2763,10 @@ export async function executeGameNumericalNode(
     ...economyInputs,
     ...collectIncomingValues(ctx.inputs)
   ]
+  const hydratedTextItems = await hydrateTextItems(flattenTextsValues(textInputs), ctx.readRunText)
   const incomingTexts = [
     ...flattenTextValues(textInputs).map((t) => t.text),
-    ...flattenTextsValues(textInputs).map((t) => t.text)
+    ...hydratedTextItems.map((t) => t.text)
   ].filter(Boolean)
 
   // Parse upstream game.economy bundle if connected on in-economy or in
@@ -3013,7 +3017,8 @@ export async function executeGameNumericalNode(
     gameNumericalReport: report,
     gameEconomyMonteCarloRuns: runs,
     gameEconomySeed: seed,
-    text: numericalPayloadJson,
+    text: jsonRelativePath ? '' : numericalPayloadJson,
+    ...(jsonRelativePath ? { previewRelativePath: jsonRelativePath } : {}),
     generatedImages: cleanImages,
     selectedImageId: materialized[0]?.id,
     ...(primaryPath ? { imagePath: primaryPath } : {})
@@ -3031,7 +3036,7 @@ export async function executeGameNumericalNode(
     'out-all': { kind: 'images', items: materialized },
     'out-text': {
       kind: 'text',
-      text: numericalPayloadJson,
+      text: jsonRelativePath ? '' : numericalPayloadJson,
       ...(jsonRelativePath ? { relativePath: jsonRelativePath } : {})
     }
   }

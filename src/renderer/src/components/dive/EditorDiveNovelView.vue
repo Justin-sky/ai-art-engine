@@ -39,30 +39,6 @@
               : `大纲 ${currentChapterStats.wordCount} 字`
           }}
         </span>
-        <span class="stat-pill" :class="upstreamEconomyNode ? 'stat-ok' : 'stat-warn'">
-          ⚖️
-          {{
-            upstreamEconomyNode
-              ? isEn
-                ? `Economy: ${upstreamEconomyNode.title || 'Connected'}`
-                : `经济系统：${upstreamEconomyNode.title || '已连线'}`
-              : isEn
-                ? 'Economy: Default'
-                : '经济系统：未连线'
-          }}
-        </span>
-        <span class="stat-pill" :class="upstreamNumericalNode ? 'stat-ok' : 'stat-warn'">
-          ⚔️
-          {{
-            upstreamNumericalNode
-              ? isEn
-                ? `Numerical: ${upstreamNumericalNode.title || 'Connected'}`
-                : `数值系统：${upstreamNumericalNode.title || '已连线'}`
-              : isEn
-                ? 'Numerical: Default Curve'
-                : '数值系统：默认曲线'
-          }}
-        </span>
       </div>
       <div v-else class="header-telemetry">
         <span
@@ -537,11 +513,71 @@
             @change="persistChapterTitle"
           />
 
-          <div class="tool-btns">
-            <button type="button" class="tool-chip" @click="insertCharacterProfileBlock">
-              {{ ui.btnInsertBios }}
+          <div class="doc-view-mode-group" role="tablist">
+            <button
+              type="button"
+              class="view-mode-btn"
+              :class="{ active: docViewMode === 'preview' }"
+              @click="docViewMode = 'preview'"
+            >
+              📖 {{ ui.viewModePreview }}
             </button>
-            <template v-if="!isOutlineModeNode">
+            <button
+              type="button"
+              class="view-mode-btn"
+              :class="{ active: docViewMode === 'split' }"
+              @click="docViewMode = 'split'"
+            >
+              ◫ {{ ui.viewModeSplit }}
+            </button>
+            <button
+              type="button"
+              class="view-mode-btn"
+              :class="{ active: docViewMode === 'edit' }"
+              @click="docViewMode = 'edit'"
+            >
+              ✏️ {{ ui.viewModeEdit }}
+            </button>
+          </div>
+
+          <div class="tool-btns">
+            <template v-if="isOutlineModeNode">
+              <button
+                type="button"
+                class="tool-chip tool-chip-readme"
+                @click="synthesizeOutlineReadmeDoc"
+              >
+                📐
+                {{
+                  synthesizeOutlineFlash
+                    ? ui.btnSynthesizedReadmeOutline
+                    : ui.btnSynthesizeReadmeOutline
+                }}
+              </button>
+              <button type="button" class="tool-chip" @click="insertCharacterProfileBlock">
+                {{ insertBiosFlash ? ui.btnInsertedBios : ui.btnInsertBios }}
+              </button>
+              <button type="button" class="tool-chip" @click="insertVolumeTableBlock">
+                {{ insertVolumeFlash ? ui.btnInsertedVolumeTable : ui.btnInsertVolumeTable }}
+              </button>
+              <button
+                type="button"
+                class="tool-chip tool-chip-accent"
+                @click="formatNovelManuscript"
+              >
+                {{ formatFlash ? ui.btnFormatDone : ui.btnFormatReadme }}
+              </button>
+              <button type="button" class="tool-chip" @click="copyOutlineMarkdown">
+                {{ copyMdFlash ? ui.btnCopiedMd : ui.btnCopyMd }}
+              </button>
+              <button type="button" class="tool-chip" @click="exportOutlineReadmeMd">
+                {{ exportMdFlash ? ui.btnExportedMd : ui.btnExportMd }}
+              </button>
+            </template>
+            <template v-else>
+              <button type="button" class="tool-chip" @click="insertCharacterProfileBlock">
+                {{ ui.btnInsertBios }}
+              </button>
               <button type="button" class="tool-chip" @click="insertBeatMarker(1)">
                 {{ ui.btnBeat1 }}
               </button>
@@ -554,9 +590,33 @@
               <button type="button" class="tool-chip" @click="insertBeatMarker(4)">
                 {{ ui.btnBeat4 }}
               </button>
+              <button
+                type="button"
+                class="tool-chip tool-chip-accent"
+                @click="formatNovelManuscript"
+              >
+                {{ formatFlash ? ui.btnFormatDone : ui.btnFormat }}
+              </button>
             </template>
-            <button type="button" class="tool-chip tool-chip-accent" @click="formatNovelManuscript">
-              {{ formatFlash ? ui.btnFormatDone : ui.btnFormat }}
+          </div>
+        </div>
+
+        <!-- README TOC Navigation Strip (Outline Mode or Preview/Split Mode) -->
+        <div
+          v-if="(isOutlineModeNode || docViewMode !== 'edit') && outlineTocItems.length > 0"
+          class="readme-toc-strip"
+        >
+          <span class="toc-strip-label">📑 {{ ui.readmeTocLabel }}</span>
+          <div class="toc-pills-wrap">
+            <button
+              v-for="toc in outlineTocItems"
+              :key="toc.id"
+              type="button"
+              class="toc-pill"
+              :class="[`toc-lv-${toc.level}`, { 'is-chap': toc.isChapter }]"
+              @click="scrollToOutlineHeading(toc)"
+            >
+              {{ toc.shortLabel }}
             </button>
           </div>
         </div>
@@ -619,18 +679,163 @@
           </div>
         </div>
 
-        <div class="novel-textarea-wrap">
-          <textarea
-            ref="editorTextareaRef"
-            v-model="localText"
-            class="novel-textarea"
-            :placeholder="ui.editorPlaceholder(currentChapterCursor, targetWords)"
-            @input="onEditorInput"
-            @change="persistNovelBody"
-            @select="updateSelectionRange"
-            @mouseup="updateSelectionRange"
-            @keyup="updateSelectionRange"
-          />
+        <div class="novel-editor-workspace" :class="`mode-${docViewMode}`">
+          <div
+            v-show="docViewMode === 'edit' || docViewMode === 'split'"
+            class="novel-textarea-wrap"
+          >
+            <textarea
+              ref="editorTextareaRef"
+              v-model="localText"
+              class="novel-textarea"
+              :placeholder="ui.editorPlaceholder(currentChapterCursor, targetWords)"
+              @input="onEditorInput"
+              @change="persistNovelBody"
+              @select="updateSelectionRange"
+              @mouseup="updateSelectionRange"
+              @keyup="updateSelectionRange"
+            />
+          </div>
+
+          <div
+            v-show="docViewMode === 'preview' || docViewMode === 'split'"
+            ref="readmePaneRef"
+            class="outline-readme-pane"
+          >
+            <article
+              v-if="
+                (docViewMode === 'preview' || docViewMode === 'split') &&
+                parsedReadmeBlocks.length > 0
+              "
+              class="outline-readme-article"
+            >
+              <div class="readme-repo-header">
+                <span class="repo-badge">📘 README.md</span>
+                <span class="repo-meta">
+                  {{ activeGenreProfile.icon }}
+                  {{ isEn ? activeGenreProfile.labelEn : activeGenreProfile.labelZh }} ·
+                  {{ ui.readmeRepoMeta(totalChapters, currentChapterStats.wordCount) }}
+                </span>
+              </div>
+
+              <template v-for="block in parsedReadmeBlocks" :key="block.id">
+                <component
+                  :is="'h' + block.level"
+                  v-if="block.kind === 'heading'"
+                  :id="block.anchorId"
+                  class="readme-heading"
+                  :class="[
+                    `readme-h${block.level}`,
+                    { 'readme-chapter-heading': Boolean(block.chapterBadge) }
+                  ]"
+                >
+                  <span v-if="block.chapterBadge" class="readme-chap-badge">{{
+                    block.chapterBadge
+                  }}</span>
+                  <span
+                    class="readme-heading-text"
+                    v-html="formatInlineMarkdown(block.text || '')"
+                  />
+                  <span v-if="block.stageBadge" class="readme-stage-badge">{{
+                    block.stageBadge
+                  }}</span>
+                  <button
+                    type="button"
+                    class="readme-heading-edit-btn"
+                    :title="ui.jumpToSourceHint"
+                    @click="focusHeadingInSource(block.rawHeading || block.text || '')"
+                  >
+                    ✏️
+                  </button>
+                </component>
+
+                <hr v-else-if="block.kind === 'hr'" class="readme-hr" />
+
+                <blockquote
+                  v-else-if="block.kind === 'blockquote'"
+                  class="readme-blockquote"
+                  :class="block.alertType ? `alert-${block.alertType}` : ''"
+                >
+                  <p
+                    v-for="(bLine, bIdx) in block.lines"
+                    :key="bIdx"
+                    v-html="formatInlineMarkdown(bLine)"
+                  />
+                </blockquote>
+
+                <div v-else-if="block.kind === 'code'" class="readme-code-wrap">
+                  <div class="readme-code-bar">
+                    <span class="readme-code-lang">{{ block.lang || 'TEXT / BLUEPRINT' }}</span>
+                    <button
+                      type="button"
+                      class="readme-code-copy"
+                      @click="copyCodeBlock(block.code || '', block.id)"
+                    >
+                      {{ copiedCodeBlockId === block.id ? '✓ Copied' : 'Copy' }}
+                    </button>
+                  </div>
+                  <pre class="readme-pre"><code>{{ block.code }}</code></pre>
+                </div>
+
+                <div v-else-if="block.kind === 'table'" class="readme-table-scroll">
+                  <table class="readme-table">
+                    <thead>
+                      <tr>
+                        <th
+                          v-for="(th, thIdx) in block.headers"
+                          :key="thIdx"
+                          v-html="formatInlineMarkdown(th)"
+                        />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(row, rIdx) in block.rows" :key="rIdx">
+                        <td
+                          v-for="(cell, cIdx) in row"
+                          :key="cIdx"
+                          v-html="formatInlineMarkdown(cell)"
+                        />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <ol v-else-if="block.kind === 'list' && block.ordered" class="readme-list ordered">
+                  <li
+                    v-for="(li, lIdx) in block.items"
+                    :key="lIdx"
+                    v-html="formatInlineMarkdown(li)"
+                  />
+                </ol>
+
+                <ul v-else-if="block.kind === 'list'" class="readme-list">
+                  <li
+                    v-for="(li, lIdx) in block.items"
+                    :key="lIdx"
+                    v-html="formatInlineMarkdown(li)"
+                  />
+                </ul>
+
+                <p
+                  v-else-if="block.kind === 'paragraph'"
+                  class="readme-p"
+                  v-html="formatInlineMarkdown(block.text || '')"
+                />
+              </template>
+            </article>
+
+            <div v-else class="readme-empty-state">
+              <div class="empty-icon">📘</div>
+              <p>{{ ui.emptyOutlineHint }}</p>
+              <button
+                type="button"
+                class="tool-chip tool-chip-readme"
+                @click="synthesizeOutlineReadmeDoc"
+              >
+                📐 {{ ui.btnSynthesizeReadmeOutline }}
+              </button>
+            </div>
+          </div>
         </div>
       </main>
 
@@ -1178,6 +1383,8 @@ import {
   fillNovelGenreTemplate,
   generateMxArcChapterOutlinePlan,
   isNovelGenreId,
+  normalizeNovelCharacterRoster,
+  normalizeNovelForeshadowingPool,
   parseMxDocumentJson,
   resolveNovelGenreProfile,
   type MxChapterNumericalSlice,
@@ -1202,6 +1409,7 @@ import { useSaveCacheAsset } from '../../composables/useSaveCacheAsset'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
+import { saveGraphRunTextForNode } from '../../features/graph/saveGraphRunTextForNode'
 import {
   invalidateGenerateModelSettingsCache,
   loadGenerateModelOptions,
@@ -1287,8 +1495,16 @@ const rollingSummary = ref('')
 const chapterHistoryJson = ref('')
 
 const rightTab = ref<'pacing' | 'arcPlan' | 'memory'>('pacing')
+const docViewMode = ref<'preview' | 'split' | 'edit'>('preview')
+const readmePaneRef = ref<HTMLElement | null>(null)
 const chapterSearchQuery = ref('')
 const formatFlash = ref(false)
+const copyMdFlash = ref(false)
+const exportMdFlash = ref(false)
+const insertBiosFlash = ref(false)
+const insertVolumeFlash = ref(false)
+const synthesizeOutlineFlash = ref(false)
+const copiedCodeBlockId = ref<string | null>(null)
 
 // Batch auto-serialization state
 const batchRunning = ref(false)
@@ -1351,10 +1567,8 @@ const resolvedGeneratedSnippet = ref<Record<string, string>>({})
 const resolvedFullChapterText = ref<Record<string, string>>({})
 let resolveTextToken = 0
 
-async function loadGeneratedTextBody(item: StoredGeneratedText): Promise<string> {
-  const inline = item.text?.trim()
-  if (inline) return item.text
-  const relativePath = item.relativePath?.trim()
+async function loadTextByRelativePath(rawRel?: string): Promise<string> {
+  const relativePath = rawRel?.trim()
   if (!relativePath) return ''
   try {
     const url = await window.studio.getAssetFileUrl(relativePath)
@@ -1365,6 +1579,12 @@ async function loadGeneratedTextBody(item: StoredGeneratedText): Promise<string>
   } catch {
     return ''
   }
+}
+
+async function loadGeneratedTextBody(item: StoredGeneratedText): Promise<string> {
+  const inline = item.text?.trim()
+  if (inline) return item.text
+  return loadTextByRelativePath(item.relativePath)
 }
 
 async function resolveGeneratedTextPreviews(): Promise<void> {
@@ -1542,8 +1762,8 @@ const canvasChapterChainNodes = computed(() => {
   void graphEditorHosts.revision.value
   const current = node.value
   if (!props.hostId || !current) return []
-  const doc = graphEditorHosts.getDocument(props.hostId)
-  const allNodes = doc?.nodes ?? [current]
+  const liveNodes = graphEditorHosts.listNodes(props.hostId)
+  const allNodes = liveNodes.length > 0 ? liveNodes : [current]
   const chapterNodes = allNodes.filter(
     (n) => n.typeId === 'asset.novel' && n.params.novelNodeMode !== 'outline'
   )
@@ -1564,9 +1784,29 @@ const canvasChapterChainNodes = computed(() => {
           : (n.params.text ?? '').trim() === '…'
             ? ''
             : (n.params.text ?? '')
-      const stats = analyzeNovelChapter(bodyRaw)
+      let stats = analyzeNovelChapter(bodyRaw)
       const trimmed = bodyRaw.trim()
-      const snippet = trimmed ? (trimmed.length > 88 ? `${trimmed.slice(0, 88)}…` : trimmed) : ''
+      let snippet = trimmed ? (trimmed.length > 88 ? `${trimmed.slice(0, 88)}…` : trimmed) : ''
+      if (!trimmed && n.params.novelChapterHistoryJson) {
+        try {
+          const hist = JSON.parse(n.params.novelChapterHistoryJson) as Record<
+            string,
+            NovelChapterHistoryRecord
+          >
+          const rec = hist?.[String(chapNum)] ?? Object.values(hist ?? {}).pop()
+          if (rec) {
+            const wc = Number(rec.wordCount) || 0
+            stats = {
+              wordCount: wc,
+              paragraphCount: wc > 0 ? Math.max(1, Math.round(wc / 80)) : 0,
+              dialogueCount: 0
+            }
+            snippet = rec.summary?.trim() || rec.tailAnchor?.trim().slice(0, 88) || ''
+          }
+        } catch {
+          // ignore
+        }
+      }
       return {
         node: n,
         chapterNumber: chapNum,
@@ -1754,6 +1994,51 @@ const activePrevTailAnchor = computed((): string => {
   return ''
 })
 
+const resolvedUpstreamOutlineText = ref('')
+watch(
+  () =>
+    [
+      upstreamOutlineNode.value?.id,
+      upstreamOutlineNode.value?.params.text,
+      upstreamOutlineNode.value?.params.previewRelativePath,
+      upstreamOutlineNode.value?.params.selectedTextId
+    ] as const,
+  async () => {
+    const outline = upstreamOutlineNode.value
+    if (!outline || outline.id === node.value?.id) {
+      resolvedUpstreamOutlineText.value = ''
+      return
+    }
+    const inline = (outline.params.text ?? '').trim()
+    if (inline && inline !== '…') {
+      resolvedUpstreamOutlineText.value = inline
+      return
+    }
+    const previewRel = outline.params.previewRelativePath?.trim()
+    if (previewRel) {
+      const loaded = await loadTextByRelativePath(previewRel)
+      if (loaded.trim()) {
+        resolvedUpstreamOutlineText.value = loaded.trim()
+        return
+      }
+    }
+    const list = outline.params.generatedTexts ?? []
+    if (list.length > 0) {
+      const parts = await Promise.all(list.map((it) => loadGeneratedTextBody(it)))
+      const joined = parts
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .join('\n\n')
+      if (joined) {
+        resolvedUpstreamOutlineText.value = joined
+        return
+      }
+    }
+    resolvedUpstreamOutlineText.value = ''
+  },
+  { immediate: true }
+)
+
 const currentChapterOutlineSlice = computed((): string => {
   if (isOutlineModeNode.value) return ''
   const outline = upstreamOutlineNode.value
@@ -1761,7 +2046,9 @@ const currentChapterOutlineSlice = computed((): string => {
   const rawOutline =
     (outline.params.text ?? '').trim() === '…'
       ? ''
-      : (outline.params.text ?? '').trim() || (outline.params.novelWorldBible ?? '').trim()
+      : (outline.params.text ?? '').trim() ||
+        resolvedUpstreamOutlineText.value.trim() ||
+        (outline.params.novelWorldBible ?? '').trim()
   if (!rawOutline) return ''
   const sliced = narrowOutlineTextForChapter(
     rawOutline,
@@ -1780,20 +2067,21 @@ function injectUpstreamOutlineSliceIntoInstruction(): void {
 
 function insertArcPlanItemIntoOutline(planItem: MxChapterOutlinePlanItem): void {
   const block = isEn.value
-    ? `Chapter ${planItem.chapter}: ${planItem.titleEn}\n- Beat: ${planItem.beatBadgeEn} (Power Cap ${planItem.powerCeiling})\n- Conflict: ${planItem.coreConflictZh}\n- Hook: ${planItem.cliffhangerHookZh}`
-    : `第${planItem.chapter}章：${planItem.titleZh}\n- 戏剧节拍：${planItem.beatBadgeZh}（战力上限 ${planItem.powerCeiling}）\n- 核心冲突：${planItem.coreConflictZh}\n- 章末钩子：${planItem.cliffhangerHookZh}` // cjk-ok
+    ? `### Chapter ${planItem.chapter}: ${planItem.titleEn}\n- **Dramatic Beat**: ${planItem.beatBadgeEn} (Power Cap ${planItem.powerCeiling})\n- **Core Conflict**: ${planItem.coreConflictZh}\n- **Cliffhanger Hook**: ${planItem.cliffhangerHookZh}`
+    : `### 第${planItem.chapter}章：${planItem.titleZh}\n- **戏剧节拍**：${planItem.beatBadgeZh}（战力上限 ${planItem.powerCeiling}）\n- **核心冲突**：${planItem.coreConflictZh}\n- **章末钩子**：${planItem.cliffhangerHookZh}` // cjk-ok
   insertAtCursorOrAppend(block)
 }
 
 const chapterAudit = computed((): MxNovelChapterContinuityAudit => {
   const eliminatedNames = characterRoster.value
-    .filter((c) => c.status === 'eliminated' && c.name.trim())
+    .filter((c) => c.status === 'eliminated' && c.name?.trim())
     .map((c) => c.name.trim())
   const dueTitles = foreshadowingPool.value
     .filter(
       (f) =>
         f.status === 'planted' &&
-        f.title.trim() &&
+        f.title?.trim() &&
+        Array.isArray(f.targetPayoffChapterRange) &&
         currentChapterCursor.value >= f.targetPayoffChapterRange[0] &&
         currentChapterCursor.value <= f.targetPayoffChapterRange[1]
     )
@@ -1967,7 +2255,26 @@ const ui = computed(() => {
       en ? `✓ Split into ${n} chapters` : `✓ 已拆分为 ${n} 个独立章节`, // cjk-ok
     chapterTitlePlaceholder: (n: number) =>
       en ? `Chapter ${n}: Enter chapter title…` : `第${n}章：输入本章标题…`, // cjk-ok
-    btnInsertBios: en ? '+ Character Bios' : '+ 人物档案头', // cjk-ok
+    btnInsertBios: en ? '+ Character Bios' : '+ 人物档案表', // cjk-ok
+    btnInsertedBios: en ? '✓ Bios Inserted' : '✓ 已插入人物表', // cjk-ok
+    btnInsertVolumeTable: en ? '+ Volume Table' : '+ 分卷规划表', // cjk-ok
+    btnInsertedVolumeTable: en ? '✓ Volume Table Inserted' : '✓ 已插入分卷表', // cjk-ok
+    btnSynthesizeReadmeOutline: en ? 'Synthesize README Outline' : '合成 README 标准大纲', // cjk-ok
+    btnSynthesizedReadmeOutline: en ? '✓ README Outline Ready' : '✓ 已合成标准大纲', // cjk-ok
+    btnFormatReadme: en ? '✨ README Format' : '✨ 转为 README 格式', // cjk-ok
+    btnCopyMd: en ? '📋 Copy MD' : '📋 复制 MD', // cjk-ok
+    btnCopiedMd: en ? '✓ Copied MD' : '✓ 已复制', // cjk-ok
+    btnExportMd: en ? '📥 Export .md' : '📥 导出 .md', // cjk-ok
+    btnExportedMd: en ? '✓ Exported' : '✓ 已导出', // cjk-ok
+    viewModePreview: en ? 'README Preview' : 'README 预览', // cjk-ok
+    viewModeSplit: en ? 'Split View' : '双栏对照', // cjk-ok
+    viewModeEdit: en ? 'Source' : '源码编辑', // cjk-ok
+    readmeTocLabel: en ? 'README TOC:' : 'README 章节导览：', // cjk-ok
+    readmeRepoMeta: (tot: number, words: number) =>
+      en ? `${tot} Chaps · ${words} chars` : `${tot} 章规划 · ${words} 字`, // cjk-ok
+    jumpToSourceHint: en
+      ? 'Jump to this section in Markdown source'
+      : '在 Markdown 源码中定位编辑此节', // cjk-ok
     btnBeat1: en
       ? `+ Beat 1: ${gp.beats.setup_endure.badgeEn}`
       : `+ 第一拍·${gp.beats.setup_endure.badgeZh}`, // cjk-ok
@@ -2153,7 +2460,32 @@ async function loadModels(preferredKey: string): Promise<void> {
   }
 }
 
+function extractOutlineMasterTitle(rawText: string): string {
+  const lines = (rawText ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  for (const line of lines.slice(0, 12)) {
+    const h1 = /^#\s+(.+)$/.exec(line)
+    if (h1?.[1]?.trim()) return h1[1].trim()
+    const plainTitle = /^(?:小说名|书名|Title)\s*[:：]\s*(.+)$/i.exec(line) // cjk-ok
+    if (plainTitle?.[1]?.trim()) {
+      return isEn.value
+        ? `${plainTitle[1].trim()} · Master Outline (${totalChapters.value} Chaps)`
+        : `${plainTitle[1].trim()} · 全书大纲总纲（${totalChapters.value}章）` // cjk-ok
+    }
+  }
+  const baseName = displayName.value.trim() || (isEn.value ? 'Novel Outline' : '小说大纲') // cjk-ok
+  return isEn.value
+    ? `${baseName} (${totalChapters.value} Chapters)`
+    : `${baseName}（${totalChapters.value}章全书总纲）` // cjk-ok
+}
+
 function syncCurrentChapterTitleFromNode(): void {
+  if (isOutlineModeNode.value) {
+    currentChapterTitle.value = extractOutlineMasterTitle(localText.value || worldBible.value || '')
+    return
+  }
   const list = generatedTexts.value
   const idx = activeChapterIndex()
   if (idx >= 0 && list[idx]) {
@@ -2176,6 +2508,7 @@ function loadFromNode(): void {
   localText.value = rawText.trim() === '…' ? '' : rawText
   const isOutline = current.typeId === 'novel.outline' || current.params.novelNodeMode === 'outline'
   rightTab.value = isOutline ? 'arcPlan' : 'pacing'
+  docViewMode.value = isOutline ? 'preview' : 'edit'
 
   const upPrev = !isOutline ? upstreamPrevChapterNode.value : null
   const upOutline = !isOutline ? upstreamOutlineNode.value : null
@@ -2262,14 +2595,7 @@ function loadFromNode(): void {
     current.params.novelCharacterRosterJson?.trim() ||
     upPrev?.params.novelCharacterRosterJson?.trim() ||
     upOutline?.params.novelCharacterRosterJson?.trim()
-  if (rawRoster) {
-    try {
-      const parsed = JSON.parse(rawRoster) as MxNovelCharacterStatusEntry[]
-      characterRoster.value = Array.isArray(parsed) ? parsed : []
-    } catch {
-      characterRoster.value = []
-    }
-  }
+  characterRoster.value = normalizeNovelCharacterRoster(rawRoster)
   if (!characterRoster.value.length) {
     characterRoster.value = createDefaultNovelCharacterRoster(
       activeWorkbench.value,
@@ -2282,14 +2608,7 @@ function loadFromNode(): void {
     current.params.novelForeshadowingJson?.trim() ||
     upPrev?.params.novelForeshadowingJson?.trim() ||
     upOutline?.params.novelForeshadowingJson?.trim()
-  if (rawFs) {
-    try {
-      const parsed = JSON.parse(rawFs) as MxNovelForeshadowingEntry[]
-      foreshadowingPool.value = Array.isArray(parsed) ? parsed : []
-    } catch {
-      foreshadowingPool.value = []
-    }
-  }
+  foreshadowingPool.value = normalizeNovelForeshadowingPool(rawFs, totalChapters.value)
   if (!foreshadowingPool.value.length) {
     foreshadowingPool.value = createDefaultNovelForeshadowingPool(
       activeWorkbench.value,
@@ -2305,17 +2624,39 @@ function loadFromNode(): void {
   selectedModelKey.value = preferred
 
   const existingGallery = current.params.generatedTexts ?? []
-  if (!localText.value.trim() && existingGallery.length > 0 && current.params.selectedTextId) {
+  const previewRel = current.params.previewRelativePath?.trim()
+  if (!localText.value.trim() && isOutline && previewRel) {
+    void loadTextByRelativePath(previewRel).then((body) => {
+      if (body.trim() && !localText.value.trim()) {
+        localText.value = body.trim()
+        editorDirty.value = false
+        syncCurrentChapterTitleFromNode()
+      }
+    })
+  } else if (!localText.value.trim() && !isOutline && existingGallery.length > 0) {
     const activeIdx = activeChapterIndex()
-    const activeItem = activeIdx >= 0 ? existingGallery[activeIdx] : existingGallery[0]
+    const activeItem =
+      activeIdx >= 0 ? existingGallery[activeIdx] : existingGallery[existingGallery.length - 1]
     if (activeItem) {
       void loadGeneratedTextBody(activeItem).then((body) => {
         if (body.trim() && !localText.value.trim()) {
           localText.value = body.trim()
           editorDirty.value = false
+          syncCurrentChapterTitleFromNode()
         }
       })
     }
+  } else if (!localText.value.trim() && previewRel) {
+    void loadTextByRelativePath(previewRel).then((body) => {
+      if (body.trim() && !localText.value.trim()) {
+        localText.value = body.trim()
+        editorDirty.value = false
+        syncCurrentChapterTitleFromNode()
+      }
+    })
+  } else if (isOutline && !localText.value.trim() && existingGallery.length === 0) {
+    localText.value = buildStandardOutlineReadmeDoc()
+    persistNovelBody(true)
   }
 
   syncCurrentChapterTitleFromNode()
@@ -2332,8 +2673,11 @@ watch(
   () =>
     [
       node.value?.params.text,
+      node.value?.params.previewRelativePath,
       node.value?.params.selectedTextId,
-      generatedTexts.value.length,
+      generatedTexts.value
+        .map((item) => `${item.id}:${item.relativePath ?? ''}:${(item.text ?? '').length}`)
+        .join('|'),
       node.value?.params.novelCurrentChapter,
       node.value?.params.novelTotalChapters,
       node.value?.params.novelWorldBible,
@@ -2344,8 +2688,9 @@ watch(
   (
     [
       nextNodeText,
+      nextPreviewRel,
       nextSelectedId,
-      ,
+      nextGallerySig,
       nextCursor,
       nextTotal,
       nextBible,
@@ -2356,24 +2701,42 @@ watch(
     prevTuple
   ) => {
     const prevNodeText = prevTuple?.[0]
-    const prevSelectedId = prevTuple?.[1]
+    const prevPreviewRel = prevTuple?.[1]
+    const prevSelectedId = prevTuple?.[2]
+    const prevGallerySig = prevTuple?.[3]
     const normalized = (nextNodeText ?? '').trim() === '…' ? '' : (nextNodeText ?? '')
-    if (nextNodeText !== prevNodeText && normalized !== localText.value) {
+    if (nextNodeText !== prevNodeText && normalized && normalized !== localText.value) {
       localText.value = normalized
       editorDirty.value = false
-    } else if (nextSelectedId !== prevSelectedId) {
-      if (!nextSelectedId) {
-        if (!normalized) {
+      syncCurrentChapterTitleFromNode()
+    } else if (nextPreviewRel && nextPreviewRel !== prevPreviewRel) {
+      void loadTextByRelativePath(nextPreviewRel).then((body) => {
+        if (body.trim()) {
+          localText.value = body.trim()
+          editorDirty.value = false
+          syncCurrentChapterTitleFromNode()
+        }
+      })
+    } else if (
+      !isOutlineModeNode.value &&
+      (nextSelectedId !== prevSelectedId || nextGallerySig !== prevGallerySig)
+    ) {
+      if (!nextSelectedId && !generatedTexts.value.length) {
+        if (!normalized && !nextPreviewRel) {
           localText.value = ''
           editorDirty.value = false
         }
       } else {
-        const matched = generatedTexts.value.find((item) => item.id === nextSelectedId)
+        const matched =
+          (nextSelectedId
+            ? generatedTexts.value.find((item) => item.id === nextSelectedId)
+            : undefined) ?? generatedTexts.value[generatedTexts.value.length - 1]
         if (matched) {
           void loadGeneratedTextBody(matched).then((body) => {
             if (body.trim()) {
               localText.value = body.trim()
               editorDirty.value = false
+              syncCurrentChapterTitleFromNode()
             }
           })
         }
@@ -2766,19 +3129,45 @@ function persistNovelBody(force?: boolean | Event): void {
         ...resolvedFullChapterText.value,
         [currentItemId]: nextText.trim()
       }
-      syncRunOutputsAfterGeneratedTextsChange(cumulativeItems, currentItemId, nextText)
-      graphEditorHosts.updateNode(props.hostId, current.id, {
-        text: nextText,
-        generatedTexts: cumulativeItems,
-        selectedTextId: currentItemId,
-        novelChapterHistoryJson: chapterHistoryJson.value
+      const hostIdSnapshot = props.hostId
+      const nodeIdSnapshot = current.id
+      void saveGraphRunTextForNode({
+        node: current,
+        content: nextText,
+        key: currentItemId
+      }).then((relPath) => {
+        const offloadedItems = cumulativeItems.map((it) =>
+          it.id === currentItemId && relPath
+            ? { ...it, text: '', relativePath: relPath }
+            : it.relativePath
+              ? { ...it, text: '' }
+              : it
+        )
+        syncRunOutputsAfterGeneratedTextsChange(
+          offloadedItems,
+          currentItemId,
+          relPath ? '' : nextText
+        )
+        graphEditorHosts.updateNode(hostIdSnapshot, nodeIdSnapshot, {
+          text: relPath ? '' : nextText,
+          ...(relPath ? { previewRelativePath: relPath } : {}),
+          generatedTexts: offloadedItems,
+          selectedTextId: currentItemId,
+          novelChapterHistoryJson: chapterHistoryJson.value
+        })
+        graphEditorHosts.bumpRevision()
       })
-      graphEditorHosts.bumpRevision()
       return
     }
   }
 
-  if (list.length > 0 && selectedId && selectedIdx >= 0 && selectedItem) {
+  if (
+    !isOutlineModeNode.value &&
+    list.length > 0 &&
+    selectedId &&
+    selectedIdx >= 0 &&
+    selectedItem
+  ) {
     const prevKnownText = (
       resolvedFullChapterText.value[selectedId] ??
       selectedItem.text ??
@@ -2788,38 +3177,61 @@ function persistNovelBody(force?: boolean | Event): void {
     if (!trimmedNext && selectedItem.relativePath?.trim() && !prevKnownText) {
       return
     }
-    const textChanged = Boolean(prevKnownText) && prevKnownText !== trimmedNext
-    list[selectedIdx] = {
-      ...selectedItem,
-      text: nextText,
-      ...(textChanged ? { relativePath: undefined } : {})
-    }
     resolvedFullChapterText.value = {
       ...resolvedFullChapterText.value,
       [selectedId]: trimmedNext
     }
-    syncRunOutputsAfterGeneratedTextsChange(list, selectedId)
-    graphEditorHosts.updateNode(props.hostId, current.id, {
-      text: nextText,
-      generatedTexts: list,
-      novelChapterHistoryJson: chapterHistoryJson.value
+    const hostIdSnapshot = props.hostId
+    const nodeIdSnapshot = current.id
+    void saveGraphRunTextForNode({
+      node: current,
+      content: nextText,
+      key: selectedId
+    }).then((relPath) => {
+      list[selectedIdx] = {
+        ...selectedItem,
+        text: relPath ? '' : nextText,
+        ...(relPath ? { relativePath: relPath } : {})
+      }
+      syncRunOutputsAfterGeneratedTextsChange(list, selectedId, relPath ? '' : undefined)
+      graphEditorHosts.updateNode(hostIdSnapshot, nodeIdSnapshot, {
+        text: relPath ? '' : nextText,
+        ...(relPath ? { previewRelativePath: relPath } : {}),
+        generatedTexts: list,
+        novelChapterHistoryJson: chapterHistoryJson.value
+      })
+      graphEditorHosts.bumpRevision()
     })
   } else {
-    const host = graphRunHosts.get(props.hostId)
-    if (host) {
-      const prev = host.runStates[current.id] ?? { status: 'done' as const }
-      host.runStates[current.id] = {
-        ...prev,
-        status: prev.status === 'idle' ? 'done' : prev.status,
-        outputs: {
-          ...(prev.outputs ?? {}),
-          out: { kind: 'text', text: nextText }
+    const hostIdSnapshot = props.hostId
+    const nodeIdSnapshot = current.id
+    void saveGraphRunTextForNode({
+      node: current,
+      content: nextText,
+      key: isOutlineModeNode.value ? 'outline-full' : `chap-${currentChapterCursor.value}`
+    }).then((relPath) => {
+      const host = graphRunHosts.get(hostIdSnapshot)
+      if (host) {
+        const prev = host.runStates[nodeIdSnapshot] ?? { status: 'done' as const }
+        host.runStates[nodeIdSnapshot] = {
+          ...prev,
+          status: prev.status === 'idle' ? 'done' : prev.status,
+          outputs: {
+            ...(prev.outputs ?? {}),
+            out: {
+              kind: 'text',
+              text: relPath ? '' : nextText,
+              ...(relPath ? { relativePath: relPath } : {})
+            }
+          }
         }
       }
-    }
-    graphEditorHosts.updateNode(props.hostId, current.id, {
-      text: nextText,
-      novelChapterHistoryJson: chapterHistoryJson.value
+      graphEditorHosts.updateNode(hostIdSnapshot, nodeIdSnapshot, {
+        text: relPath ? '' : nextText,
+        ...(relPath ? { previewRelativePath: relPath } : {}),
+        novelChapterHistoryJson: chapterHistoryJson.value
+      })
+      graphEditorHosts.bumpRevision()
     })
   }
   graphEditorHosts.bumpRevision()
@@ -2829,23 +3241,45 @@ function persistChapterTitle(): void {
   const current = node.value
   if (!current || !props.hostId) return
   const trimmedTitle = currentChapterTitle.value.trim()
+  if (isOutlineModeNode.value) {
+    if (!trimmedTitle) return
+    const lines = localText.value.split(/\r?\n/)
+    const firstNonEmptyIdx = lines.findIndex((l) => l.trim().length > 0)
+    if (firstNonEmptyIdx >= 0 && /^#\s+/.test(lines[firstNonEmptyIdx]!.trim())) {
+      lines[firstNonEmptyIdx] = `# ${trimmedTitle.replace(/^#+\s*/, '')}`
+      localText.value = lines.join('\n')
+      persistNovelBody(true)
+    }
+    return
+  }
   const list = [...(current.params.generatedTexts ?? [])]
   if (list.length === 0) {
     if (!trimmedTitle && !localText.value.trim()) return
     const id = `chap:${Date.now()}:1`
-    const firstItem: StoredGeneratedText = {
-      id,
-      title: trimmedTitle || ui.value.defaultChapterTitle(currentChapterCursor.value),
-      text: localText.value,
-      createdAt: new Date().toISOString()
-    }
-    syncRunOutputsAfterGeneratedTextsChange([firstItem], id)
-    graphEditorHosts.updateNode(props.hostId, current.id, {
-      generatedTexts: [firstItem],
-      selectedTextId: id,
-      text: localText.value
+    const bodyText = localText.value
+    const hostIdSnapshot = props.hostId
+    const nodeIdSnapshot = current.id
+    void saveGraphRunTextForNode({
+      node: current,
+      content: bodyText,
+      key: id
+    }).then((relPath) => {
+      const firstItem: StoredGeneratedText = {
+        id,
+        title: trimmedTitle || ui.value.defaultChapterTitle(currentChapterCursor.value),
+        text: relPath ? '' : bodyText,
+        ...(relPath ? { relativePath: relPath } : {}),
+        createdAt: new Date().toISOString()
+      }
+      syncRunOutputsAfterGeneratedTextsChange([firstItem], id)
+      graphEditorHosts.updateNode(hostIdSnapshot, nodeIdSnapshot, {
+        generatedTexts: [firstItem],
+        selectedTextId: id,
+        text: relPath ? '' : bodyText,
+        ...(relPath ? { previewRelativePath: relPath } : {})
+      })
+      graphEditorHosts.bumpRevision()
     })
-    graphEditorHosts.bumpRevision()
     return
   }
   const idx = activeChapterIndex()
@@ -2879,9 +3313,11 @@ async function selectChapter(key: string, indexFallback?: number): Promise<void>
   const chapNum = extractChapterNumFromTitle(dispTitle, idx >= 0 ? idx : 0)
   currentChapterCursor.value = Math.max(1, Math.min(totalChapters.value, chapNum))
   syncRunOutputsAfterGeneratedTextsChange(list, item.id)
+  const itemRel = item.relativePath?.trim()
   graphEditorHosts.updateNode(props.hostId, current.id, {
     selectedTextId: item.id,
-    text: localText.value,
+    text: itemRel ? '' : localText.value,
+    ...(itemRel ? { previewRelativePath: itemRel } : {}),
     novelCurrentChapter: currentChapterCursor.value
   })
   graphEditorHosts.bumpRevision()
@@ -3122,23 +3558,660 @@ function insertAtCursorOrAppend(snippet: string): void {
   persistNovelBody(true)
 }
 
+interface ReadmeDocBlock {
+  id: string
+  kind: 'heading' | 'paragraph' | 'list' | 'table' | 'blockquote' | 'code' | 'hr'
+  level?: 1 | 2 | 3 | 4
+  anchorId?: string
+  rawHeading?: string
+  text?: string
+  chapterBadge?: string
+  stageBadge?: string
+  items?: string[]
+  ordered?: boolean
+  headers?: string[]
+  rows?: string[][]
+  lines?: string[]
+  alertType?: 'note' | 'tip' | 'warning'
+  lang?: string
+  code?: string
+}
+
+interface OutlineTocItem {
+  id: string
+  anchorId: string
+  rawHeading: string
+  shortLabel: string
+  level: 1 | 2 | 3 | 4
+  isChapter: boolean
+}
+
+function escapeHtml(raw: string): string {
+  return raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function formatInlineMarkdown(raw: string): string {
+  const escaped = escapeHtml(raw)
+  return escaped
+    .replace(/^\[x\]\s+/i, '<span class="md-checkbox checked">☑</span> ')
+    .replace(/^\[\s\]\s+/, '<span class="md-checkbox">☐</span> ')
+    .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/【([^】]{1,28})】/g, '<span class="md-bracket-pill">【$1】</span>')
+}
+
+const OUTLINE_PLAIN_CHAP_HEADING_RE =
+  /^(?:第\s*([0-9一二三四五六七八九十百千]+)\s*(?:\/\s*\d+\s*)?章|Chapter\s+(\d+))(?:\s*[:：·—-]\s*(.*))?$/i // cjk-ok
+
+const parsedReadmeBlocks = computed((): ReadmeDocBlock[] => {
+  const raw = (localText.value ?? '').replace(/\r\n/g, '\n').trim()
+  if (!raw) return []
+  const lines = raw.split('\n')
+  const blocks: ReadmeDocBlock[] = []
+  let i = 0
+  let blockSeq = 0
+
+  while (i < lines.length) {
+    const rawLine = lines[i] ?? ''
+    const trimmed = rawLine.trim()
+    if (!trimmed) {
+      i++
+      continue
+    }
+
+    // 1. Fenced code block ```
+    if (trimmed.startsWith('```')) {
+      const lang = trimmed.slice(3).trim()
+      const codeLines: string[] = []
+      i++
+      while (i < lines.length && !(lines[i] ?? '').trim().startsWith('```')) {
+        codeLines.push(lines[i] ?? '')
+        i++
+      }
+      if (i < lines.length) i++
+      blocks.push({
+        id: `b_${++blockSeq}`,
+        kind: 'code',
+        lang,
+        code: codeLines.join('\n')
+      })
+      continue
+    }
+
+    // 2. Horizontal rule --- / ***
+    if (/^(?:---+|\*\*\*+|___+)$/.test(trimmed)) {
+      blocks.push({ id: `b_${++blockSeq}`, kind: 'hr' })
+      i++
+      continue
+    }
+
+    // 3. Explicit Markdown Heading (# ~ ####) OR Plain-text Novel Outline Title / Section / Chapter Header
+    const mdHeadingMatch = /^(#{1,4})\s+(.+)$/.exec(trimmed)
+    const plainTitleMatch = !mdHeadingMatch ? /^小说名\s*[:：]\s*(.+)$/.exec(trimmed) : null // cjk-ok
+    const plainSectionMatch =
+      !mdHeadingMatch && !plainTitleMatch ? /^【([^】]{2,32})】$/.exec(trimmed) : null
+    const plainChapMatch =
+      !mdHeadingMatch && !plainTitleMatch && !plainSectionMatch
+        ? OUTLINE_PLAIN_CHAP_HEADING_RE.exec(trimmed)
+        : null
+
+    if (mdHeadingMatch || plainTitleMatch || plainSectionMatch || plainChapMatch) {
+      let level: 1 | 2 | 3 | 4 = 2
+      let headingBody = trimmed
+      if (mdHeadingMatch) {
+        level = Math.min(4, Math.max(1, mdHeadingMatch[1]!.length)) as 1 | 2 | 3 | 4
+        headingBody = mdHeadingMatch[2]!.trim()
+      } else if (plainTitleMatch) {
+        level = 1
+        headingBody = trimmed
+      } else if (plainSectionMatch) {
+        level = 2
+        headingBody = trimmed
+      } else if (plainChapMatch) {
+        level = 3
+        headingBody = trimmed
+      }
+
+      // Extract optional chapter badge and stage badge for chapter headings
+      let chapterBadge: string | undefined
+      let stageBadge: string | undefined
+      const chapCheckRe =
+        /^(?:【\s*)?(?:第\s*([0-9一二三四五六七八九十百千]+)\s*(?:\/\s*\d+\s*)?章|Chapter\s+(\d+))/i // cjk-ok
+      const chapCheck = chapCheckRe.exec(headingBody)
+      if (chapCheck) {
+        const chapToken = chapCheck[1] || chapCheck[2] || ''
+        chapterBadge = isEn.value ? `Ch.${chapToken}` : `第${chapToken}章` // cjk-ok
+        const parenMatch = /[（(]([^）)\n]{2,36})[）)]\s*$/.exec(headingBody)
+        if (parenMatch?.[1]) {
+          stageBadge = parenMatch[1].trim()
+          headingBody = headingBody.slice(0, parenMatch.index).trim()
+        }
+      }
+
+      const id = `b_${++blockSeq}`
+      blocks.push({
+        id,
+        kind: 'heading',
+        level,
+        anchorId: `outline_sec_${blockSeq}`,
+        rawHeading: trimmed.replace(/^#+\s*/, ''),
+        text: headingBody,
+        chapterBadge,
+        stageBadge
+      })
+      i++
+      continue
+    }
+
+    // 4. Blockquote > ...
+    if (trimmed.startsWith('>')) {
+      const quoteLines: string[] = []
+      let alertType: 'note' | 'tip' | 'warning' | undefined
+      while (i < lines.length && (lines[i] ?? '').trim().startsWith('>')) {
+        const qContent = (lines[i] ?? '').trim().replace(/^>\s?/, '')
+        if (!quoteLines.length && /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i.test(qContent)) {
+          const tag = qContent.toUpperCase()
+          alertType =
+            tag.includes('WARN') || tag.includes('CAUTION')
+              ? 'warning'
+              : tag.includes('TIP')
+                ? 'tip'
+                : 'note'
+          const rest = qContent.replace(/^\[![A-Z]+\]\s*/i, '').trim()
+          if (rest) quoteLines.push(rest)
+        } else if (qContent) {
+          quoteLines.push(qContent)
+        }
+        i++
+      }
+      blocks.push({
+        id: `b_${++blockSeq}`,
+        kind: 'blockquote',
+        lines: quoteLines,
+        alertType
+      })
+      continue
+    }
+
+    // 5. GFM Table | ... |
+    if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2) {
+      const tableLines: string[] = []
+      while (i < lines.length) {
+        const tLine = (lines[i] ?? '').trim()
+        if (tLine.startsWith('|') && tLine.endsWith('|')) {
+          tableLines.push(tLine)
+          i++
+        } else {
+          break
+        }
+      }
+      if (tableLines.length >= 2) {
+        const parseRow = (r: string): string[] =>
+          r
+            .slice(1, -1)
+            .split('|')
+            .map((c) => c.trim())
+        const headers = parseRow(tableLines[0]!)
+        const isSep = /^[\s|:-]+$/.test(tableLines[1]!)
+        const dataStart = isSep ? 2 : 1
+        const rows = tableLines.slice(dataStart).map(parseRow)
+        blocks.push({
+          id: `b_${++blockSeq}`,
+          kind: 'table',
+          headers,
+          rows
+        })
+        continue
+      }
+    }
+
+    // 6. Unordered or Ordered List
+    const ulMatch = /^[-*•]\s+(.+)$/.exec(trimmed)
+    const olMatch = !ulMatch ? /^\d+\.\s+(.+)$/.exec(trimmed) : null
+    if (ulMatch || olMatch) {
+      const ordered = Boolean(olMatch)
+      const items: string[] = []
+      while (i < lines.length) {
+        const lTrim = (lines[i] ?? '').trim()
+        const m = ordered ? /^\d+\.\s+(.+)$/.exec(lTrim) : /^[-*•]\s+(.+)$/.exec(lTrim)
+        if (!m?.[1]) break
+        let itemText = m[1].trim()
+        // Auto-bold plain "字段名：内容" list items for cleaner README presentation
+        if (!itemText.includes('**')) {
+          itemText = itemText.replace(
+            /^([\u4e00-\u9fa5A-Za-z0-9·/（()）\s]{2,22})\s*([:：])\s*(.+)$/,
+            '**$1**$2$3'
+          )
+        }
+        items.push(itemText)
+        i++
+      }
+      blocks.push({
+        id: `b_${++blockSeq}`,
+        kind: 'list',
+        ordered,
+        items
+      })
+      continue
+    }
+
+    // 7. Paragraph
+    const paraLines: string[] = []
+    while (i < lines.length) {
+      const pTrim = (lines[i] ?? '').trim()
+      if (
+        !pTrim ||
+        pTrim.startsWith('#') ||
+        pTrim.startsWith('>') ||
+        pTrim.startsWith('```') ||
+        (pTrim.startsWith('|') && pTrim.endsWith('|')) ||
+        /^[-*•]\s+/.test(pTrim) ||
+        /^\d+\.\s+/.test(pTrim) ||
+        /^(?:---+|\*\*\*+|___+)$/.test(pTrim) ||
+        /^小说名\s*[:：]/.test(pTrim) || // cjk-ok
+        /^【[^】]{2,32}】$/.test(pTrim) ||
+        OUTLINE_PLAIN_CHAP_HEADING_RE.test(pTrim)
+      ) {
+        break
+      }
+      paraLines.push(pTrim)
+      i++
+    }
+    if (paraLines.length > 0) {
+      blocks.push({
+        id: `b_${++blockSeq}`,
+        kind: 'paragraph',
+        text: paraLines.join(' ')
+      })
+    } else {
+      i++
+    }
+  }
+
+  return blocks
+})
+
+const outlineTocItems = computed((): OutlineTocItem[] => {
+  return parsedReadmeBlocks.value
+    .filter((b) => b.kind === 'heading' && b.anchorId && b.text)
+    .map((b) => {
+      const rawText = (b.text ?? '').replace(/\*\*/g, '').trim()
+      const isChapter = Boolean(b.chapterBadge)
+      let shortLabel = rawText
+      if (isChapter && b.chapterBadge) {
+        const afterColon = rawText.split(/[:：]/)[1]?.trim() || ''
+        shortLabel = afterColon ? `${b.chapterBadge}·${afterColon.slice(0, 8)}` : b.chapterBadge
+      } else {
+        shortLabel = rawText
+          .replace(/^小说名\s*[:：]\s*/i, '') // cjk-ok
+          .replace(/^[【[]|[】\]]$/g, '')
+          .slice(0, 14)
+      }
+      return {
+        id: b.id,
+        anchorId: b.anchorId!,
+        rawHeading: b.rawHeading || rawText,
+        shortLabel,
+        level: b.level ?? 2,
+        isChapter
+      }
+    })
+})
+
+function focusHeadingInSource(headingText: string): void {
+  const cleanTarget = headingText.replace(/^#+\s*/, '').trim()
+  if (!cleanTarget) return
+  if (docViewMode.value === 'preview') {
+    docViewMode.value = 'split'
+  }
+  void nextTick(() => {
+    const el = editorTextareaRef.value
+    if (!el) return
+    const src = localText.value
+    const idx = src.indexOf(cleanTarget)
+    el.focus()
+    if (idx >= 0) {
+      el.setSelectionRange(idx, idx + cleanTarget.length)
+      const lineNo = src.slice(0, idx).split('\n').length
+      el.scrollTop = Math.max(0, (lineNo - 3) * 26)
+    }
+  })
+}
+
+function scrollToOutlineHeading(toc: OutlineTocItem): void {
+  if (docViewMode.value === 'preview' || docViewMode.value === 'split') {
+    const container = readmePaneRef.value
+    const targetEl = container?.querySelector(`#${toc.anchorId}`) as HTMLElement | null
+    if (targetEl && container) {
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+  if (docViewMode.value === 'edit' || docViewMode.value === 'split') {
+    const el = editorTextareaRef.value
+    if (el) {
+      const idx = localText.value.indexOf(toc.rawHeading)
+      if (idx >= 0) {
+        el.focus()
+        el.setSelectionRange(idx, idx + toc.rawHeading.length)
+        const lineNo = localText.value.slice(0, idx).split('\n').length
+        el.scrollTop = Math.max(0, (lineNo - 3) * 26)
+      }
+    }
+  }
+}
+
+async function copyCodeBlock(code: string, id: string): Promise<void> {
+  try {
+    await navigator.clipboard?.writeText(code)
+    copiedCodeBlockId.value = id
+    setTimeout(() => {
+      if (copiedCodeBlockId.value === id) copiedCodeBlockId.value = null
+    }, 1500)
+  } catch {
+    // ignore clipboard errors in headless environments
+  }
+}
+
+function buildStandardOutlineReadmeDoc(): string {
+  const gp = activeGenreProfile.value
+  const tot = totalChapters.value
+  const words = targetWords.value
+  const rawTitle = displayName.value.trim() || currentChapterTitle.value.trim()
+  const cleanBookTitle =
+    rawTitle.replace(/^《|》$/g, '').trim() ||
+    (isEn.value
+      ? `${gp.labelEn.split(' / ')[0]} Master Outline`
+      : `${gp.labelZh.split(' / ')[0]}·长篇连载总纲`) // cjk-ok
+
+  const stages = gp.stageNamesZh.length
+    ? gp.stageNamesZh
+    : ['潜龙蛰伏期', '锋芒初露期', '省域争霸期', '万界巅峰期'] // cjk-ok
+  const roster = characterRoster.value.length
+    ? characterRoster.value
+    : createDefaultNovelCharacterRoster(activeWorkbench.value, tot, gp)
+  const hero = roster.find((r) => r.faction === 'protagonist') || roster[0]
+  const ally = roster.find((r) => r.faction === 'ally') || roster[1]
+  const villain = roster.find((r) => r.faction === 'villain') || roster[2]
+  const heroName = hero?.name || gp.roster[0]?.name || '林深' // cjk-ok
+  const allyName = ally?.name || '苏凛' // cjk-ok
+  const villainName = villain?.name || '赵天铭' // cjk-ok
+
+  const rosterRows = roster.map((c) => {
+    const factionZh =
+      c.faction === 'protagonist'
+        ? '核心主角' // cjk-ok
+        : c.faction === 'ally'
+          ? '关键盟友' // cjk-ok
+          : c.faction === 'villain'
+            ? '宿敌反派' // cjk-ok
+            : '中立势力' // cjk-ok
+    return `| **${c.name}** | ${factionZh} | ${c.realmOrRole || stages[0]} | ${c.relationNote || '核心剧情推动者'} |` // cjk-ok
+  })
+
+  const v1End = Math.min(tot, 30)
+  const v2Start = Math.min(tot, 31)
+  const v2End = Math.min(tot, 120)
+  const v3Start = Math.min(tot, 121)
+  const v3End = Math.min(tot, 360)
+
+  const planItems = arcOutlinePlan.value.slice(0, 6)
+  const chapterOutlineBlocks =
+    planItems.length > 0
+      ? planItems.flatMap((p) => [
+          `### 第${p.chapter}章：${p.titleZh}（第 ${p.chapter}/${tot} 章 · ${stages[0]}）`, // cjk-ok
+          `- **章节导读与节拍**：${p.beatBadgeZh}（本章${gp.protagonistAxisZh}上限 ${p.powerCeiling}）。${p.coreConflictZh}`, // cjk-ok
+          `- **数值与底牌锚点**：准许动用【${chapterSlice.value.allowedTrumpCards.slice(0, 2).join(' / ') || gp.unlockItemsZh[0] || '初期底牌'}】，严禁提前解封终局底牌。`, // cjk-ok
+          `- **章末断章钩子**：${p.cliffhangerHookZh}`, // cjk-ok
+          ``
+        ])
+      : [
+          `### 第1章：绝境死局与初次觉醒（第 1/${tot} 章 · ${stages[0]}）`, // cjk-ok
+          `- **章节导读与节拍**：起势铺垫期。${heroName}在底层绝境中遭遇${villainName}势力的极限挤压，在生死临界点首次触动初期${gp.unlockTermZh}，并在章末发现更深层的危机线索。`, // cjk-ok
+          `- **章末断章钩子**：暗中窥伺的神秘势力浮出水面，危机倒计时正式开启。`, // cjk-ok
+          ``,
+          `### 第2章：暗流博弈与机缘试锋（第 2/${tot} 章 · ${stages[0]}）`, // cjk-ok
+          `- **章节导读与节拍**：机缘成长期。承接第 1 章末尾的突发危机，${heroName}与${allyName}首次交锋试探，利用新掌控的初期${gp.unlockTermZh}化解杀局，反手夺取关键破局筹码。`, // cjk-ok
+          `- **章末断章钩子**：${villainName}察觉外围据点失守，调集核心人手布下天罗地网。`, // cjk-ok
+          ``,
+          `### 第3章：强敌反扑与底牌立威（第 3/${tot} 章 · ${stages[0]}）`, // cjk-ok
+          `- **章节导读与节拍**：高潮破局期。${villainName}亲自下场封锁退路，${heroName}引爆本阶段准入${gp.unlockTermZh}完成当众反杀，震动全场并引出幕后更高阶势力。`, // cjk-ok
+          `- **章末断章钩子**：战利品中惊现指向更高版图的机密残卷，新风暴酝酿成形。` // cjk-ok
+        ]
+
+  return [
+    `# 小说名：《${cleanBookTitle}》`, // cjk-ok
+    ``,
+    `> **题材流派**：${gp.icon} ${gp.labelZh} ｜ **规划总章数**：${tot} 章 ｜ **单章规格**：${words}+ 字 ｜ **数值驱动**：${activeWorkbench.value.multiplier.title} (\`${activeWorkbench.value.multiplier.finalFormula}\`)`, // cjk-ok
+    ``,
+    `## 【核心设定与人物档案】`, // cjk-ok
+    `- **题材流派与总规模**：${gp.labelZh}（规划总章数：${tot} 章 · 单章规格：${words}+ 字）`, // cjk-ok
+    `- **${gp.stageTermZh}突破阶梯**：\`${stages.join(' ➔ ')}\``, // cjk-ok
+    `- **${heroName}**（核心主角）：身处【${stages[0]}】逆境，凭借初期${gp.unlockTermZh}步步破局。`, // cjk-ok
+    `- **${allyName}**（关键盟友）：掌握关键情报与资源渠道，在主角破局后建立深度同盟。`, // cjk-ok
+    `- **${villainName}**（首卷宿敌）：掌控前期局部资源垄断，屡次施压设局。`, // cjk-ok
+    ``,
+    `| 角色姓名 | 阵营定位 | 初始${gp.stageTermZh} | 核心动机与戏剧功能 |`, // cjk-ok
+    `| :--- | :--- | :--- | :--- |`,
+    ...rosterRows,
+    ``,
+    `---`,
+    ``,
+    `## 【全书分卷与长线大纲】`, // cjk-ok
+    ``,
+    `| 卷序 | 章节区间 | 分卷核心主题 | 对应${gp.stageTermZh}阶段 | 卷末高潮卡点 |`, // cjk-ok
+    `| :--- | :--- | :--- | :--- | :--- |`,
+    `| **第一卷** | 第 1~${v1End} 章 | ${gp.volumeThemesZh[0] ?? '危机降临与初露锋芒'} | ${stages[0]} | 引爆初期${gp.unlockTermZh}，粉碎首轮围剿 |`, // cjk-ok
+    `| **第二卷** | 第 ${v2Start}~${v2End} 章 | ${gp.volumeThemesZh[1] ?? '势力洗牌与破局立威'} | ${stages[1] ?? stages[0]} | 跨入更高版图，正面击溃宿敌主力 |`, // cjk-ok
+    `| **第三卷** | 第 ${v3Start}~${v3End} 章 | ${gp.volumeThemesZh[2] ?? '省域争霸与法则重构'} | ${stages[2] ?? stages[0]} | 登顶区域霸主，揭开终局幕后黑手 |`, // cjk-ok
+    `| **第四卷** | 第 ${Math.min(tot, v3End + 1)}~${tot} 章 | ${gp.volumeThemesZh[3] ?? '终局决战与万界登顶'} | ${stages[3] ?? stages[stages.length - 1]} | 兑现全部长线伏笔，成就终极巅峰 |`, // cjk-ok
+    ``,
+    `- 第一卷（第 1~${v1End} 章）：${gp.volumeThemesZh[0] ?? '危机降临与初露锋芒'}（当前阶段：${stages[0]}）`, // cjk-ok
+    `- 第二卷（第 ${v2Start}~${v2End} 章）：${gp.volumeThemesZh[1] ?? '势力洗牌与破局立威'}（进阶阶段：${stages[1] ?? stages[0]}）`, // cjk-ok
+    `- 第三卷（第 ${v3Start}~${v3End} 章）：${gp.volumeThemesZh[2] ?? '省域争霸与法则重构'}（高阶阶段：${stages[2] ?? stages[0]}）`, // cjk-ok
+    ``,
+    `---`,
+    ``,
+    `## 【分章细纲】`, // cjk-ok
+    ``,
+    ...chapterOutlineBlocks
+  ]
+    .join('\n')
+    .trim()
+}
+
+function scrollPreviewAndEditorToHeadingKeyword(keyword: string): void {
+  void nextTick(() => {
+    if (docViewMode.value === 'preview' || docViewMode.value === 'split') {
+      const container = readmePaneRef.value
+      if (container) {
+        const headings = Array.from(container.querySelectorAll('.readme-heading')) as HTMLElement[]
+        const matchEl = headings.find((h) => (h.textContent ?? '').includes(keyword))
+        if (matchEl) {
+          matchEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }
+    if (docViewMode.value === 'edit' || docViewMode.value === 'split') {
+      const el = editorTextareaRef.value
+      if (el) {
+        const idx = localText.value.indexOf(keyword)
+        if (idx >= 0) {
+          el.focus()
+          el.setSelectionRange(idx, idx + keyword.length)
+          const lineNo = localText.value.slice(0, idx).split('\n').length
+          el.scrollTop = Math.max(0, (lineNo - 3) * 26)
+        }
+      }
+    }
+  })
+}
+
+function synthesizeOutlineReadmeDoc(): void {
+  localText.value = buildStandardOutlineReadmeDoc()
+  syncCurrentChapterTitleFromNode()
+  persistNovelBody(true)
+  if (docViewMode.value === 'edit') {
+    docViewMode.value = 'preview'
+  }
+  synthesizeOutlineFlash.value = true
+  setTimeout(() => {
+    synthesizeOutlineFlash.value = false
+  }, 1600)
+  void nextTick(() => {
+    if (readmePaneRef.value) {
+      readmePaneRef.value.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  })
+}
+
+function insertVolumeTableBlock(): void {
+  const gp = activeGenreProfile.value
+  const tot = totalChapters.value
+  const stages = gp.stageNamesZh.length
+    ? gp.stageNamesZh
+    : ['潜龙蛰伏期', '锋芒初露期', '省域争霸期', '万界巅峰期'] // cjk-ok
+  const v1End = Math.min(tot, 30)
+  const v2Start = Math.min(tot, 31)
+  const v2End = Math.min(tot, 120)
+  const v3Start = Math.min(tot, 121)
+  const v3End = Math.min(tot, 360)
+  const v4Start = Math.min(tot, v3End + 1)
+  const snippet = isEn.value
+    ? [
+        `## 【Volume Architecture (${gp.labelEn} · ${tot} Chaps)】`,
+        ``,
+        `| Volume | Chapter Range | Core Theme | Stage Target | Volume Climax |`,
+        `| :--- | :--- | :--- | :--- | :--- |`,
+        `| **Vol. 1** | Ch. 1~${v1End} | ${gp.volumeThemesZh[0] ?? 'Opening Crisis'} | ${stages[0]} | First major reversal |`,
+        `| **Vol. 2** | Ch. ${v2Start}~${v2End} | ${gp.volumeThemesZh[1] ?? 'Faction Showdown'} | ${stages[1] ?? stages[0]} | Regional dominance |`,
+        `| **Vol. 3** | Ch. ${v3Start}~${v3End} | ${gp.volumeThemesZh[2] ?? 'Domain Hegemony'} | ${stages[2] ?? stages[0]} | Uncover mastermind |`,
+        `| **Vol. 4** | Ch. ${v4Start}~${tot} | ${gp.volumeThemesZh[3] ?? 'Final Ascension'} | ${stages[3] ?? stages[stages.length - 1]} | Ultimate payoff |`,
+        ``,
+        `- 第一卷（第 1~${v1End} 章）：${gp.volumeThemesZh[0] ?? '危机降临与初露锋芒'}（当前阶段：${stages[0]}）`, // cjk-ok
+        `- 第二卷（第 ${v2Start}~${v2End} 章）：${gp.volumeThemesZh[1] ?? '势力洗牌与破局立威'}（进阶阶段：${stages[1] ?? stages[0]}）`, // cjk-ok
+        `- 第三卷（第 ${v3Start}~${v3End} 章）：${gp.volumeThemesZh[2] ?? '省域争霸与法则重构'}（高阶阶段：${stages[2] ?? stages[0]}）`, // cjk-ok
+        `- 第四卷（第 ${v4Start}~${tot} 章）：${gp.volumeThemesZh[3] ?? '终局决战与万界登顶'}（巅峰阶段：${stages[3] ?? stages[stages.length - 1]}）` // cjk-ok
+      ].join('\n')
+    : [
+        `## 【全书分卷与长线大纲】`, // cjk-ok
+        ``,
+        `| 卷序 | 章节区间 | 分卷核心主题 | 对应${gp.stageTermZh}阶段 | 卷末高潮卡点 |`, // cjk-ok
+        `| :--- | :--- | :--- | :--- | :--- |`,
+        `| **第一卷** | 第 1~${v1End} 章 | ${gp.volumeThemesZh[0] ?? '危机降临与初露锋芒'} | ${stages[0]} | 引爆初期${gp.unlockTermZh}，粉碎首轮围剿 |`, // cjk-ok
+        `| **第二卷** | 第 ${v2Start}~${v2End} 章 | ${gp.volumeThemesZh[1] ?? '势力洗牌与破局立威'} | ${stages[1] ?? stages[0]} | 跨入更高版图，正面击溃宿敌主力 |`, // cjk-ok
+        `| **第三卷** | 第 ${v3Start}~${v3End} 章 | ${gp.volumeThemesZh[2] ?? '省域争霸与法则重构'} | ${stages[2] ?? stages[0]} | 登顶区域霸主，揭开终局幕后黑手 |`, // cjk-ok
+        `| **第四卷** | 第 ${v4Start}~${tot} 章 | ${gp.volumeThemesZh[3] ?? '终局决战与万界登顶'} | ${stages[3] ?? stages[stages.length - 1]} | 兑现全部长线伏笔，成就终极巅峰 |`, // cjk-ok
+        ``,
+        `- 第一卷（第 1~${v1End} 章）：${gp.volumeThemesZh[0] ?? '危机降临与初露锋芒'}（当前阶段：${stages[0]}）`, // cjk-ok
+        `- 第二卷（第 ${v2Start}~${v2End} 章）：${gp.volumeThemesZh[1] ?? '势力洗牌与破局立威'}（进阶阶段：${stages[1] ?? stages[0]}）`, // cjk-ok
+        `- 第三卷（第 ${v3Start}~${v3End} 章）：${gp.volumeThemesZh[2] ?? '省域争霸与法则重构'}（高阶阶段：${stages[2] ?? stages[0]}）`, // cjk-ok
+        `- 第四卷（第 ${v4Start}~${tot} 章）：${gp.volumeThemesZh[3] ?? '终局决战与万界登顶'}（巅峰阶段：${stages[3] ?? stages[stages.length - 1]}）` // cjk-ok
+      ].join('\n')
+
+  const base = localText.value.trim()
+  if (!base || base === '…') {
+    localText.value = snippet
+    persistNovelBody(true)
+  } else if (docViewMode.value === 'edit' && document.activeElement === editorTextareaRef.value) {
+    insertAtCursorOrAppend(snippet)
+  } else {
+    // 若已存在【全书分卷与长线大纲】章节，原地刷新该分卷表；否则智能插入到【分章细纲】或「第1章」标题之前
+    const existingVolSectionRe =
+      /##\s*(?:【全书分卷与长线大纲】|【Volume Architecture[^】]*】)[\s\S]*?(?=\n(?:---|##\s+|\n###\s*第\s*1\s*章)|$)/i // cjk-ok
+    if (existingVolSectionRe.test(base)) {
+      localText.value = base.replace(existingVolSectionRe, snippet)
+    } else {
+      const chapSectionRe =
+        /^(?:#{1,4}\s*)?(?:[一二三四五六1-9][、.．]\s*)?(?:【?分章细纲|第\s*1\s*(?:\/\s*\d+\s*)?章|Chapter\s+1\b)/im // cjk-ok
+      const m = chapSectionRe.exec(base)
+      if (m && typeof m.index === 'number' && m.index > 0) {
+        const before = base.slice(0, m.index).trimEnd()
+        const after = base.slice(m.index).trimStart()
+        localText.value = `${before}\n\n${snippet}\n\n---\n\n${after}`
+      } else {
+        localText.value = `${base}\n\n---\n\n${snippet}`
+      }
+    }
+    persistNovelBody(true)
+  }
+
+  insertVolumeFlash.value = true
+  setTimeout(() => {
+    insertVolumeFlash.value = false
+  }, 1600)
+  scrollPreviewAndEditorToHeadingKeyword(isEn.value ? 'Volume Architecture' : '全书分卷与长线大纲') // cjk-ok
+}
+
 function insertCharacterProfileBlock(): void {
   const s = chapterSlice.value
   const gp = activeGenreProfile.value
   const hero = characterRoster.value.find((c) => c.faction === 'protagonist')
+  const ally = characterRoster.value.find((c) => c.faction === 'ally')
   const foe = characterRoster.value.find((c) => c.faction === 'villain')
   const heroName = hero?.name || gp.roster[0]?.name || '林玄' // cjk-ok
   const heroNote = hero?.relationNote || gp.roster[0]?.note || '谋定后动，果决坚韧' // cjk-ok
+  const allyName = ally?.name || '苏凛' // cjk-ok
   const foeName = foe?.name || '本幕对手' // cjk-ok
-  const snippet = isEn.value
-    ? `## [Core Character Profiles (${gp.labelEn})]\n- **${heroName}** (${s.realmStageLabelZh}, ${gp.protagonistAxisEn} ${s.powerCeiling}): ${heroNote}. Allowed ${gp.unlockTermEn}: [${s.allowedTrumpCards.slice(0, 2).join(', ')}].\n- **${foeName}** (${gp.antagonistAxisEn} ${s.villainPressure}): Primary opposition in this arc.`
-    : `## 【核心人物档案 · ${gp.labelZh}】\n- **${heroName}（当前${gp.stageTermZh}：${s.realmStageLabelZh} · ${gp.protagonistAxisZh} ${s.powerCeiling}）**：${heroNote}；本章可用${gp.unlockTermZh}【${s.allowedTrumpCards.slice(0, 2).join(' / ') || '核心筹码'}】。\n- **${foeName}（${gp.antagonistAxisZh}：${s.villainPressure}）**：${foe?.relationNote || '本幕核心对立势力'}。` // cjk-ok
-  if (!localText.value.trim()) {
+  const snippet = isOutlineModeNode.value
+    ? [
+        `## 【核心设定与人物档案】`, // cjk-ok
+        `- **${heroName}**（核心主角）：${heroNote}；初始处于【${s.realmStageLabelZh}】，掌握准入${gp.unlockTermZh}【${s.allowedTrumpCards.slice(0, 2).join(' / ') || '核心筹码'}】。`, // cjk-ok
+        `- **${allyName}**（关键盟友）：${ally?.relationNote || '掌握关键情报与高阶渠道，与主角形成战略互补'}。`, // cjk-ok
+        `- **${foeName}**（首卷宿敌）：${foe?.relationNote || '掌控前期资源垄断，屡次设局施压'}。`, // cjk-ok
+        ``,
+        `| 角色姓名 | 阵营定位 | 当前${gp.stageTermZh} | 核心动机与剧情定位 |`, // cjk-ok
+        `| :--- | :--- | :--- | :--- |`,
+        `| **${heroName}** | 核心主角 | ${s.realmStageLabelZh} | ${heroNote} |`, // cjk-ok
+        `| **${allyName}** | 关键盟友 | 情报/资源枢纽 | 协助破局并串联高阶地图版图 |`, // cjk-ok
+        `| **${foeName}** | 首卷宿敌 | 威胁值 ${s.villainPressure} | 首卷核心冲突源与立威踏脚石 |` // cjk-ok
+      ].join('\n')
+    : isEn.value
+      ? `## [Core Character Profiles (${gp.labelEn})]\n- **${heroName}** (${s.realmStageLabelZh}, ${gp.protagonistAxisEn} ${s.powerCeiling}): ${heroNote}. Allowed ${gp.unlockTermEn}: [${s.allowedTrumpCards.slice(0, 2).join(', ')}].\n- **${foeName}** (${gp.antagonistAxisEn} ${s.villainPressure}): Primary opposition in this arc.`
+      : `## 【核心人物档案 · ${gp.labelZh}】\n- **${heroName}（当前${gp.stageTermZh}：${s.realmStageLabelZh} · ${gp.protagonistAxisZh} ${s.powerCeiling}）**：${heroNote}；本章可用${gp.unlockTermZh}【${s.allowedTrumpCards.slice(0, 2).join(' / ') || '核心筹码'}】。\n- **${foeName}（${gp.antagonistAxisZh}：${s.villainPressure}）**：${foe?.relationNote || '本幕核心对立势力'}。` // cjk-ok
+  const base = localText.value.trim()
+  if (!base || base === '…') {
     localText.value = snippet
   } else {
-    localText.value = `${snippet}\n\n${localText.value.trimStart()}`
+    const existingBiosSectionRe =
+      /##\s*(?:【核心设定与人物档案】|\[Core Character Profiles[^\]]*\]|【核心人物档案[^】]*】)[\s\S]*?(?=\n(?:---|##\s+|#\s+)|$)/i // cjk-ok
+    if (existingBiosSectionRe.test(base)) {
+      localText.value = base.replace(existingBiosSectionRe, snippet)
+    } else {
+      const lines = base.split(/\r?\n/)
+      const novelTitleHeaderRe = /^#\s+|^小说名\s*[:：]/ // cjk-ok
+      if (novelTitleHeaderRe.test(lines[0]?.trim() ?? '')) {
+        let insertAfterLine = 1
+        while (
+          insertAfterLine < lines.length &&
+          (lines[insertAfterLine]!.trim() === '' || lines[insertAfterLine]!.trim().startsWith('>'))
+        ) {
+          insertAfterLine++
+        }
+        const headPart = lines.slice(0, insertAfterLine).join('\n').trimEnd()
+        const tailPart = lines.slice(insertAfterLine).join('\n').trimStart()
+        localText.value = `${headPart}\n\n${snippet}\n\n${tailPart}`
+      } else {
+        localText.value = `${snippet}\n\n${base}`
+      }
+    }
   }
   persistNovelBody(true)
+  insertBiosFlash.value = true
+  setTimeout(() => {
+    insertBiosFlash.value = false
+  }, 1600)
+  const biosScrollTarget = isOutlineModeNode.value
+    ? '核心设定与人物档案' // cjk-ok
+    : isEn.value
+      ? 'Core Character Profiles'
+      : '核心人物档案' // cjk-ok
+  scrollPreviewAndEditorToHeadingKeyword(biosScrollTarget)
 }
 
 function insertBeatMarker(beatIndex: 1 | 2 | 3 | 4): void {
@@ -3174,6 +4247,36 @@ function formatNovelManuscript(): void {
       }
       continue
     }
+    if (isOutlineModeNode.value) {
+      // Automatically upgrade plain-text novel outline markers to GitHub README Markdown
+      const plainTitlePrefixRe = /^小说名\s*[:：]/ // cjk-ok
+      if (plainTitlePrefixRe.test(line)) {
+        formatted.push(`# ${line}`)
+        continue
+      }
+      if (/^【[^】]{2,32}】$/.test(line) && !OUTLINE_PLAIN_CHAP_HEADING_RE.test(line)) {
+        if (formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+          formatted.push('')
+        }
+        formatted.push(`## ${line}`)
+        continue
+      }
+      if (OUTLINE_PLAIN_CHAP_HEADING_RE.test(line)) {
+        if (formatted.length > 0 && formatted[formatted.length - 1] !== '') {
+          formatted.push('')
+        }
+        formatted.push(`### ${line}`)
+        continue
+      }
+      if (/^[-*•]\s+/.test(line) && !line.includes('**')) {
+        const upgradedBullet = line.replace(
+          /^([-*•]\s+)([\u4e00-\u9fa5A-Za-z0-9·/（()）\s]{2,22})\s*([:：])\s*(.+)$/,
+          '$1**$2**$3$4'
+        )
+        formatted.push(upgradedBullet)
+        continue
+      }
+    }
     formatted.push(line)
   }
   localText.value = formatted.join('\n').trim()
@@ -3182,6 +4285,45 @@ function formatNovelManuscript(): void {
   setTimeout(() => {
     formatFlash.value = false
   }, 1400)
+}
+
+async function copyOutlineMarkdown(): Promise<void> {
+  const md = localText.value.trim() || buildStandardOutlineReadmeDoc()
+  try {
+    await navigator.clipboard?.writeText(md)
+  } catch {
+    // ignore clipboard error in restricted environment
+  }
+  copyMdFlash.value = true
+  setTimeout(() => {
+    copyMdFlash.value = false
+  }, 1500)
+}
+
+function exportOutlineReadmeMd(): void {
+  const md = localText.value.trim() || buildStandardOutlineReadmeDoc()
+  const rawTitle =
+    displayName.value.trim() ||
+    currentChapterTitle.value.trim() ||
+    (isEn.value ? 'Novel_Master_Outline_README' : '小说总纲与分章细纲_README') // cjk-ok
+  const safeName = rawTitle.replace(/[\\/:*?"<>|]/g, '_')
+  try {
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${safeName}.md`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch {
+    // ignore download error in headless test
+  }
+  exportMdFlash.value = true
+  setTimeout(() => {
+    exportMdFlash.value = false
+  }, 1800)
 }
 
 function jumpToArcPlanChapter(chapNo: number): void {
@@ -4177,6 +5319,121 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   border-color: rgba(245, 158, 11, 0.5);
 }
 
+.doc-view-mode-group {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.view-mode-btn {
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.view-mode-btn:hover {
+  color: #e2e8f0;
+}
+
+.view-mode-btn.active {
+  background: rgba(168, 85, 247, 0.28);
+  color: #f3e8ff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.tool-chip-readme {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.24), rgba(168, 85, 247, 0.26));
+  color: #dbeafe;
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.readme-toc-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(15, 23, 42, 0.78);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.toc-strip-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toc-pills-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.toc-pill {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  background: rgba(30, 41, 59, 0.85);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  transition: all 0.14s ease;
+}
+
+.toc-pill:hover {
+  border-color: rgba(168, 85, 247, 0.55);
+  color: #f3e8ff;
+  background: rgba(88, 28, 135, 0.28);
+}
+
+.toc-pill.toc-lv-1 {
+  background: rgba(168, 85, 247, 0.2);
+  color: #e9d5ff;
+  border-color: rgba(168, 85, 247, 0.4);
+}
+
+.toc-pill.is-chap {
+  background: rgba(59, 130, 246, 0.16);
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.novel-editor-workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.novel-editor-workspace.mode-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+}
+
+.novel-editor-workspace.mode-split .novel-textarea-wrap {
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+}
+
 .novel-textarea-wrap {
   flex: 1;
   display: flex;
@@ -4201,6 +5458,303 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
 .novel-textarea:focus {
   outline: none;
   border-color: rgba(168, 85, 247, 0.5);
+}
+
+.outline-readme-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 22px 32px;
+  background:
+    radial-gradient(circle at top right, rgba(88, 28, 135, 0.08), transparent 55%),
+    rgba(11, 14, 20, 0.65);
+}
+
+.outline-readme-article {
+  max-width: 920px;
+  margin: 0 auto;
+  background: rgba(15, 23, 42, 0.62);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  padding: 22px 28px 30px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.42);
+  color: #e2e8f0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.readme-repo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 12px;
+}
+
+.repo-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: rgba(59, 130, 246, 0.16);
+  color: #93c5fd;
+  border: 1px solid rgba(59, 130, 246, 0.32);
+}
+
+.repo-meta {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.readme-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 20px 0 10px;
+  font-weight: 700;
+  color: #f8fafc;
+  scroll-margin-top: 16px;
+}
+
+.readme-h1 {
+  font-size: 21px;
+  padding-bottom: 10px;
+  margin-top: 4px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  color: #f3e8ff;
+}
+
+.readme-h2 {
+  font-size: 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+  color: #e9d5ff;
+}
+
+.readme-h3 {
+  font-size: 14px;
+  color: #f1f5f9;
+}
+
+.readme-chapter-heading {
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.14), rgba(168, 85, 247, 0.08));
+  border-left: 3px solid #60a5fa;
+}
+
+.readme-chap-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(59, 130, 246, 0.25);
+  color: #bfdbfe;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+}
+
+.readme-stage-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(168, 85, 247, 0.2);
+  color: #e9d5ff;
+  border: 1px solid rgba(168, 85, 247, 0.38);
+}
+
+.readme-heading-edit-btn {
+  margin-left: auto;
+  opacity: 0.4;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.readme-heading:hover .readme-heading-edit-btn {
+  opacity: 1;
+}
+
+.readme-hr {
+  border: none;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  margin: 18px 0;
+}
+
+.readme-blockquote {
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border-left: 4px solid #a855f7;
+  background: rgba(88, 28, 135, 0.16);
+  border-radius: 0 8px 8px 0;
+  color: #e2e8f0;
+  font-size: 13px;
+}
+
+.readme-blockquote p {
+  margin: 3px 0;
+}
+
+.readme-blockquote.alert-tip {
+  border-left-color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.readme-blockquote.alert-warning {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.readme-table-scroll {
+  overflow-x: auto;
+  margin: 12px 0 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.readme-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.readme-table th {
+  background: rgba(30, 41, 59, 0.9);
+  color: #f3e8ff;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+  white-space: nowrap;
+}
+
+.readme-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  vertical-align: top;
+}
+
+.readme-table tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.readme-table tbody tr:hover {
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.readme-list {
+  margin: 8px 0 14px;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.readme-list li {
+  color: #e2e8f0;
+  line-height: 1.7;
+}
+
+.readme-p {
+  margin: 8px 0 12px;
+  color: #cbd5e1;
+  line-height: 1.8;
+}
+
+.readme-code-wrap {
+  margin: 12px 0 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(2, 6, 23, 0.78);
+}
+
+.readme-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  background: rgba(30, 41, 59, 0.85);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.readme-code-copy {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  background: rgba(51, 65, 85, 0.9);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  cursor: pointer;
+}
+
+.readme-pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #bae6fd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.readme-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 280px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.empty-icon {
+  font-size: 32px;
+}
+
+:deep(.md-inline-code) {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: rgba(30, 41, 59, 0.9);
+  color: #f9a8d4;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+:deep(.md-bracket-pill) {
+  display: inline-block;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(168, 85, 247, 0.16);
+  color: #e9d5ff;
+  font-weight: 600;
+}
+
+:deep(.md-checkbox) {
+  font-weight: 700;
+  color: #94a3b8;
+}
+
+:deep(.md-checkbox.checked) {
+  color: #34d399;
 }
 
 .right-tabs {

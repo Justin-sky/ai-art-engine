@@ -1359,32 +1359,22 @@ export function synthesizeGenreNovelChapterOffline(
     'climax_reversal_slap'
   ]
   const headBeat = profile.beats[beatOrder[(o.currentChapter - 1) % 4]!]
-  const chapTitle = `${fillNovelGenreTemplate(headBeat.titleZh, vars)}（第 ${o.currentChapter}/${o.totalChapters} 章 · ${o.stage}）`
+  const genreTag = profile.labelZh.split(' / ')[0]
+  const chapTitle = `${fillNovelGenreTemplate(headBeat.titleZh, vars)}（${genreTag} · 第 ${o.currentChapter}/${o.totalChapters} 章 · ${o.stage}）`
   const prevHook = o.prevTailAnchor?.trim()
     ? `承接第 ${o.currentChapter - 1} 章末尾余波（“${o.prevTailAnchor.trim().slice(-120)}”），`
     : ''
   const b = profile.beats
   return [
-    `小说名：《${profile.labelZh.split(' / ')[0]}·长篇连载》`,
-    ``,
-    `【核心设定与人物档案】`,
-    `- 流派：${profile.labelZh}（全书动态总章数：${o.totalChapters} 章 · 当前连载进度：第 ${o.currentChapter}/${o.totalChapters} 章）`,
-    `- 所属篇章：${o.volumeLabel} · 当前${profile.stageTermZh}【${o.stage}】· ${profile.protagonistAxisZh} ${o.ceiling} vs ${profile.antagonistAxisZh} ${o.pressure}`,
-    `- 本章可用${profile.unlockTermZh}：${o.allowed}（封存：${o.locked}）`,
-    ...profile.roster.map((r) => `- ${r.name}（${r.role}）：${r.note}`),
-    ``,
     `第${o.currentChapter}章：${chapTitle}`,
-    `【第一拍 · ${b.setup_endure.badgeZh}】`,
-    `${prevHook}${name}${fillNovelGenreTemplate(b.setup_endure.coreConflictZh, vars).replace(/^主角|^主人公|^二人/, '')}按照本章节拍（${o.beatLabel}），${name}没有急于动用仍处于封存状态的${profile.unlockTermZh}（${o.locked}），而是把每一个细节都记在心里。`,
     ``,
-    `【第二拍 · ${b.encounter_growth.badgeZh}】`,
-    `${ally}带来了新的消息，局势出现了转机。${fillNovelGenreTemplate(b.encounter_growth.coreConflictZh, vars)}`,
+    `${prevHook}${name}${fillNovelGenreTemplate(b.setup_endure.coreConflictZh, vars).replace(/^主角|^主人公|^二人/, '')}面对眼前的局势，${name}收敛心神，并未动用尚未到火候的深层手段，而是将每一分异常都默默记在心里。`,
     ``,
-    `【第三拍 · ${b.villain_suppression_cliffhanger.badgeZh}】`,
+    `${ally}悄然递来了新的消息，令原本僵持的局面浮现出一线转机。${fillNovelGenreTemplate(b.encounter_growth.coreConflictZh, vars)}`,
+    ``,
     `${foe}的反扑来得比预想更快。${fillNovelGenreTemplate(b.villain_suppression_cliffhanger.coreConflictZh, vars)}${fillNovelGenreTemplate(b.villain_suppression_cliffhanger.cliffhangerZh, vars)}`,
     ``,
-    `【第四拍 · ${b.climax_reversal_slap.badgeZh}】`,
-    `${fillNovelGenreTemplate(b.climax_reversal_slap.coreConflictZh, vars)}${fillNovelGenreTemplate(b.climax_reversal_slap.cliffhangerZh, vars)}（目标字数规格：${o.targetWords}+ 字，静待第 ${Math.min(o.totalChapters, o.currentChapter + 1)} 章继续连载推进）`
+    `${fillNovelGenreTemplate(b.climax_reversal_slap.coreConflictZh, vars)}${fillNovelGenreTemplate(b.climax_reversal_slap.cliffhangerZh, vars)}`
   ].join('\n')
 }
 

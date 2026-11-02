@@ -66,7 +66,15 @@ export function resolveGalleryOutputsFromNodeParams(
     const selectedId = params.selectedImageId?.trim() || newestImageSelectedId(items)
     const base = dualImageGalleryOutputs(items, selectedId)
     if (options?.typeId === 'game.economy' || options?.typeId === 'game.numerical') {
+      const econRel =
+        typeof params.previewRelativePath === 'string' ? params.previewRelativePath.trim() : ''
       const econText = typeof params.text === 'string' ? params.text.trim() : ''
+      if (econRel) {
+        return {
+          ...base,
+          'out-text': { kind: 'text', text: '', relativePath: econRel }
+        }
+      }
       if (econText && econText !== '…') {
         return {
           ...base,
@@ -156,7 +164,10 @@ export function resolveGalleryOutputsFromNodeParams(
       const candidateText =
         items[0]!.text.trim() || (typeof params.text === 'string' ? params.text.trim() : '')
       const explicitEpisodes = candidateText
-        ? splitScreenplayByExplicitEpisodeMarkers(candidateText, { includeSharedBios: true })
+        ? splitScreenplayByExplicitEpisodeMarkers(candidateText, {
+            includeSharedBios: true,
+            skipStats: true
+          })
         : []
       if (explicitEpisodes.length >= 2) {
         const baseId = items[0]!.id?.trim() || 'ep'
@@ -176,9 +187,15 @@ export function resolveGalleryOutputsFromNodeParams(
     const isOutlineNode =
       options?.typeId === 'novel.outline' ||
       (options?.typeId === 'asset.novel' && params.novelNodeMode === 'outline')
+    const fullOutlineRel =
+      typeof params.previewRelativePath === 'string' ? params.previewRelativePath.trim() : ''
     const fullOutlineText = typeof params.text === 'string' ? params.text.trim() : ''
-    if (isOutlineNode && fullOutlineText && fullOutlineText !== '…' && dual.out?.kind === 'text') {
-      dual.out = { ...dual.out, text: fullOutlineText, relativePath: undefined }
+    if (isOutlineNode && dual.out?.kind === 'text') {
+      if (fullOutlineRel) {
+        dual.out = { ...dual.out, text: '', relativePath: fullOutlineRel }
+      } else if (fullOutlineText && fullOutlineText !== '…') {
+        dual.out = { ...dual.out, text: fullOutlineText, relativePath: undefined }
+      }
     }
     return dual
   }
@@ -216,20 +233,20 @@ export function resolveGalleryOutputsFromNodeParams(
     }
   }
 
-  if (
-    options?.typeId === 'asset.novel' &&
-    params.novelNodeMode !== 'outline' &&
-    typeof params.text === 'string' &&
-    params.text.trim() &&
-    params.text.trim() !== '…'
-  ) {
-    const chapNum = Math.max(1, Math.round(Number(params.novelCurrentChapter) || 1))
-    const item: GraphTextItem = {
-      id: `chap:${chapNum}`,
-      title: `第${chapNum}章`, // cjk-ok
-      text: params.text.trim()
+  if (options?.typeId === 'asset.novel' && params.novelNodeMode !== 'outline') {
+    const novelRel =
+      typeof params.previewRelativePath === 'string' ? params.previewRelativePath.trim() : ''
+    const novelText = typeof params.text === 'string' ? params.text.trim() : ''
+    if (novelRel || (novelText && novelText !== '…')) {
+      const chapNum = Math.max(1, Math.round(Number(params.novelCurrentChapter) || 1))
+      const item: GraphTextItem = {
+        id: `chap:${chapNum}`,
+        title: `第${chapNum}章`, // cjk-ok
+        text: novelRel ? '' : novelText,
+        ...(novelRel ? { relativePath: novelRel } : {})
+      }
+      return dualTextGalleryOutputs([item], item.id!)
     }
-    return dualTextGalleryOutputs([item], item.id!)
   }
 
   const cameraShots = params.cameraShots

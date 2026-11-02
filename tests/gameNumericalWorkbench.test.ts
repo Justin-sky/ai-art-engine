@@ -862,8 +862,9 @@ describe('Universal Game Numerical & Roguelike Workbench', () => {
     expect(novelNode.params.novelCurrentChapter).toBe(2)
     expect(novelNode.params.generatedTexts?.[0]?.text).toBe('')
     expect(novelNode.params.generatedTexts?.[0]?.relativePath).toBeTruthy()
-    // node.params.text still holds Chapter 1 text in memory
-    expect(novelNode.params.text).toContain('第一段：陈默在雨夜修理怀表') // cjk-ok
+    // When saveRunText is provided, node.params.text is offloaded to disk and previewRelativePath is set
+    expect(novelNode.params.text).toBe('')
+    expect(novelNode.params.previewRelativePath).toBeTruthy()
 
     // Run 2: Chapter 2 on the same node
     novelNode.params.generateInstruction = '撰写第2章正文' // cjk-ok
@@ -1654,13 +1655,14 @@ describe('Universal Game Numerical & Roguelike Workbench', () => {
     expect(ch3NodeA.params.novelGenre).toBe('xianxia_cultivation')
 
     const gddNodeA = graphA.nodes.find((n) => n.id === 'node-gdd')!
-    expect(gddNodeA.params.text).toContain('# 系统概述') // cjk-ok
-    expect(gddNodeA.params.text).toContain('# UI 布局设计') // cjk-ok
-    expect(gddNodeA.params.text).toContain('【上游经济系统（game.economy）➔ 游戏系统策划案') // cjk-ok
-    expect(gddNodeA.params.text).toContain('【上游小说 IP（asset.novel）➔ 游戏系统策划案') // cjk-ok
-    expect(auditGameSystemDocument(gddNodeA.params.text ?? '').overallScore).toBeGreaterThanOrEqual(
-      85
-    )
+    expect(gddNodeA.params.text).toBe('')
+    expect(gddNodeA.params.previewRelativePath).toBeTruthy()
+    const gddTextA = diskFilesA.get(gddNodeA.params.previewRelativePath!) ?? ''
+    expect(gddTextA).toContain('# 系统概述') // cjk-ok
+    expect(gddTextA).toContain('# UI 布局设计') // cjk-ok
+    expect(gddTextA).toContain('【上游经济系统（game.economy）➔ 游戏系统策划案') // cjk-ok
+    expect(gddTextA).toContain('【上游小说 IP（asset.novel）➔ 游戏系统策划案') // cjk-ok
+    expect(auditGameSystemDocument(gddTextA).overallScore).toBeGreaterThanOrEqual(85)
 
     const splitNodeA = graphA.nodes.find((n) => n.id === 'node-ui-split')!
     const splitScreensA = splitNodeA.params.uiScreens ?? []
@@ -1713,11 +1715,14 @@ describe('Universal Game Numerical & Roguelike Workbench', () => {
     const gddNodeB = graphB.nodes.find((n) => n.id === 'node-gdd')!
     // Even without priorNodeStates passed between steps, softSnapshotOutputs + resolveGalleryOutputsFromNodeParams
     // must preserve game.economy's out-text AND hydrate ch3's out-all relativePaths from disk!
-    expect(gddNodeB.params.text).toContain('【上游经济系统（game.economy）➔ 游戏系统策划案') // cjk-ok
-    expect(gddNodeB.params.text).toContain('【上游小说 IP（asset.novel）➔ 游戏系统策划案') // cjk-ok
-    expect(gddNodeB.params.text).toContain('第1/800章') // cjk-ok
-    expect(gddNodeB.params.text).toContain('第2/800章') // cjk-ok
-    expect(gddNodeB.params.text).toContain('第3/800章') // cjk-ok
+    expect(gddNodeB.params.text).toBe('')
+    expect(gddNodeB.params.previewRelativePath).toBeTruthy()
+    const gddTextB = diskFilesB.get(gddNodeB.params.previewRelativePath!) ?? ''
+    expect(gddTextB).toContain('【上游经济系统（game.economy）➔ 游戏系统策划案') // cjk-ok
+    expect(gddTextB).toContain('【上游小说 IP（asset.novel）➔ 游戏系统策划案') // cjk-ok
+    expect(gddTextB).toContain('第1/800章') // cjk-ok
+    expect(gddTextB).toContain('第2/800章') // cjk-ok
+    expect(gddTextB).toContain('第3/800章') // cjk-ok
 
     const splitNodeB = graphB.nodes.find((n) => n.id === 'node-ui-split')!
     expect(splitNodeB.params.uiScreens?.length).toBeGreaterThanOrEqual(3)

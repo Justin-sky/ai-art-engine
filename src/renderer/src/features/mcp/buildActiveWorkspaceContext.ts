@@ -465,7 +465,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
             `    * To switch among the 8 Novel Genres (and auto-seed L1 World Bible, L3 Character Roster, and L3 Foreshadowing Ledger), call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${genreIds}" }] })\` (or pass \`params: { novelGenre: "..." }\`).`,
             `    * 3-Way Conditioned Markov-Chain Architecture ($P(C_t | C_{t-1}, O_t, E_t)$): Use a dedicated \`novel.outline\` node for the World Bible + per-chapter outlines, a \`game.economy\` node for the numerical progression system, and independent \`asset.novel\` nodes for each chapter (\`第1章 -> 第2章 -> 第3章\`), wiring \`novel.outline (out) -> C_t (in)\`, \`game.economy (out-text) -> C_t (in)\`, and \`C_{t-1} (out) -> C_t (in)\`.`, // cjk-ok
             `    * To configure chapter serialization & 4-Layer Long-Term Memory, pass \`params: { novelCurrentChapter: 1, novelTotalChapters: 20, novelTargetWords: 3200, novelWorldBible: "...", novelStateLedger: "...", novelCharacterRosterJson: [...], novelForeshadowingJson: [...] }\`.`,
-            `    * To write/generate the outline or current chapter with AI, call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
+            `    * To write/generate the outline or current chapter with AI (equivalent to clicking the "⚡ 生成第 N 章" button in the workbench), call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\` (do NOT pass \`wait: false\`).`
           )
         } else if (divedNode.typeId === 'asset.gameSystem') {
           const archIds = GAME_SYSTEM_ARCHETYPES.map((a) => a.id).join('|')
@@ -656,7 +656,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
         if (novelNodeOnCanvas) {
           const genreIds = NOVEL_GENRE_PROFILES.map((g) => g.id).join('|')
           lines.push(
-            `  [Novel Outline & Markov-Chain Chapter Protocol (nodeId="${novelNodeOnCanvas.id}")]: Supports 8 genres (\`preset: "${genreIds}"\`), dedicated \`novel.outline\` node (World Bible + per-chapter outlines), and Markov-chained per-chapter \`asset.novel\` nodes (\`第1章 -> 第2章 -> 第3章\`). Wire 3 inputs into every chapter node: \`C_{t-1} (out) -> C_t (in)\`, \`novel.outline (out) -> C_t (in)\`, and \`game.economy (out-text) -> C_t (in)\`, then call \`task_run\` to generate.` // cjk-ok
+            `  [Novel Outline & Markov-Chain Chapter Protocol (nodeId="${novelNodeOnCanvas.id}")]: Supports 8 genres (\`preset: "${genreIds}"\`), dedicated \`novel.outline\` node (World Bible + per-chapter outlines), and Markov-chained per-chapter \`asset.novel\` nodes (\`第1章 -> 第2章 -> 第3章\`). Wire 3 inputs into every chapter node: \`C_{t-1} (out) -> C_t (in)\`, \`novel.outline (out) -> C_t (in)\`, and \`game.economy (out-text) -> C_t (in)\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["chapter1"] })\` (without \`wait: false\`) to trigger the chapter node's generation.` // cjk-ok
           )
         }
         const gameSystemNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'asset.gameSystem')

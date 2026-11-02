@@ -3027,10 +3027,13 @@ function collectEdgeGeometry(
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
     const preferredTargetPort = resolvePreferredNovelTargetPort(source, target, edge.targetPort)
-    if (preferredTargetPort && edge.targetPort !== preferredTargetPort) {
-      edge.targetPort = preferredTargetPort
-    }
-    geoms.push(computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value))
+    const effectiveEdge =
+      preferredTargetPort && edge.targetPort !== preferredTargetPort
+        ? { ...edge, targetPort: preferredTargetPort }
+        : edge
+    geoms.push(
+      computeEdgeScreenGeometry(effectiveEdge, source, target, liveViewport, edgePathStyle.value)
+    )
   }
   return geoms
 }
@@ -10607,7 +10610,9 @@ onMounted(() => {
   unregisterGraphHost = graphEditorHosts.register(graphHostId.value, {
     getNode: (nodeId) => graph.nodes.find((n) => n.id === nodeId) ?? null,
     findNode: (predicate) => graph.nodes.find(predicate) ?? null,
-    getDocument: () => cloneGraphDocument(buildGraphJson()),
+    listNodes: () => graph.nodes,
+    listEdges: () => graph.edges,
+    getDocument: () => buildGraphJson(),
     getGroup: (groupId) => graph.groups?.find((group) => group.id === groupId) ?? null,
     getGroupMemberIds: (groupId) =>
       graph.nodes.filter((node) => node.groupId === groupId).map((node) => node.id),

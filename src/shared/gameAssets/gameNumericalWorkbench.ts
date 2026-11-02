@@ -10002,6 +10002,33 @@ function usesGenreItems(
   return Boolean(genre && genre.id !== 'urban_reversal' && isMxWorkbenchPristinePreset(wb))
 }
 
+const CHAPTER_SLICE_SIM_CACHE = new Map<
+  string,
+  {
+    lvRes: ReturnType<typeof generateMxLevelProgressionTable>
+    envRes: ReturnType<typeof runMxRoguelikeEnvelopeSimulation>
+  }
+>()
+
+function getCachedChapterSliceSimulation(cfg: MxRoguelikeEnvelopeConfig): {
+  lvRes: ReturnType<typeof generateMxLevelProgressionTable>
+  envRes: ReturnType<typeof runMxRoguelikeEnvelopeSimulation>
+} {
+  const cacheKey = JSON.stringify(cfg)
+  const hit = CHAPTER_SLICE_SIM_CACHE.get(cacheKey)
+  if (hit) return hit
+  const computed = {
+    lvRes: generateMxLevelProgressionTable(cfg),
+    envRes: runMxRoguelikeEnvelopeSimulation(cfg)
+  }
+  if (CHAPTER_SLICE_SIM_CACHE.size >= 32) {
+    const oldestKey = CHAPTER_SLICE_SIM_CACHE.keys().next().value
+    if (oldestKey !== undefined) CHAPTER_SLICE_SIM_CACHE.delete(oldestKey)
+  }
+  CHAPTER_SLICE_SIM_CACHE.set(cacheKey, computed)
+  return computed
+}
+
 /**
  * 动态总章数下的单章数值时钟切片器（Dynamic Chapter-Indexed Numerical Quota Lock）：
  * 根据用户动态设定的总章节数 `totalChapters`（不写死，支持 20 ~ 5000+ 章任意动态调整）与当前章号 `chapterIndex`，
@@ -10087,8 +10114,7 @@ export function exportMxChapterNumericalSlice(
     levelMax: dynTotal,
     runs: Math.min(160, Math.max(60, wb.roguelikeEnvelope.runs || 100))
   }
-  const lvRes = generateMxLevelProgressionTable(scaledEnvCfg)
-  const envRes = runMxRoguelikeEnvelopeSimulation(scaledEnvCfg)
+  const { lvRes, envRes } = getCachedChapterSliceSimulation(scaledEnvCfg)
   const lvRow =
     lvRes.rows[Math.min(lvRes.rows.length - 1, Math.max(0, curChap - 1))] ?? lvRes.rows[0]!
   const arcRow =
@@ -10465,6 +10491,162 @@ export interface MxNovelForeshadowingEntry {
   paidOffAtChapter?: number
 }
 
+export function normalizeNovelCharacterRoster(raw: unknown): MxNovelCharacterStatusEntry[] {
+  let arr: unknown[] = []
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) arr = parsed
+    } catch {
+      return []
+    }
+  } else if (Array.isArray(raw)) {
+    arr = raw
+  } else {
+    return []
+  }
+
+  const out: MxNovelCharacterStatusEntry[] = []
+  arr.forEach((item, idx) => {
+    if (!item || typeof item !== 'object') return
+    const rec = item as Record<string, unknown>
+    const name = String(rec.name ?? '').trim()
+    if (!name) return
+
+    const rawFaction = String(rec.faction ?? 'neutral')
+      .trim()
+      .toLowerCase()
+    const faction: MxNovelCharacterStatusEntry['faction'] =
+      rawFaction === 'protagonist' || rawFaction === 'mc' || rawFaction === 'hero'
+        ? 'protagonist'
+        : rawFaction === 'ally' || rawFaction === 'friend' || rawFaction === 'partner'
+          ? 'ally'
+          : rawFaction === 'villain' || rawFaction === 'enemy' || rawFaction === 'antagonist'
+            ? 'villain'
+            : 'neutral'
+
+    const rawStatus = String(rec.status ?? 'active')
+      .trim()
+      .toLowerCase()
+    const status: MxNovelCharacterStatusEntry['status'] =
+      rawStatus === 'eliminated' || rawStatus === 'dead' || rawStatus === 'deceased'
+        ? 'eliminated'
+        : rawStatus === 'subdued' || rawStatus === 'loyal'
+          ? 'subdued'
+          : rawStatus === 'injured' || rawStatus === 'wounded'
+            ? 'injured'
+            : 'active'
+
+    const realmOrRole =
+      String(
+        rec.realmOrRole ?? rec.realmStage ?? rec.role ?? rec.realm ?? rec.title ?? '凡人' // cjk-ok
+      ).trim() || '凡人' // cjk-ok
+    const relationNote = String(
+      rec.relationNote ?? rec.note ?? rec.relationshipToMc ?? rec.description ?? rec.summary ?? ''
+    ).trim()
+    const updatedRaw = Number(rec.updatedAtChapter ?? rec.lastUpdatedChapter ?? 1)
+    const updatedAtChapter =
+      Number.isFinite(updatedRaw) && updatedRaw >= 1 ? Math.round(updatedRaw) : 1
+
+    out.push({
+      id: String(rec.id || `char_${faction}_${idx}`),
+      name,
+      faction,
+      status,
+      realmOrRole,
+      relationNote,
+      updatedAtChapter
+    })
+  })
+  return out
+}
+
+export function normalizeNovelForeshadowingPool(
+  raw: unknown,
+  totalChapters = 200
+): MxNovelForeshadowingEntry[] {
+  let arr: unknown[] = []
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return []
+    try {
+      const parsed = JSON.parse(trimmed)
+      if (Array.isArray(parsed)) arr = parsed
+    } catch {
+      return []
+    }
+  } else if (Array.isArray(raw)) {
+    arr = raw
+  } else {
+    return []
+  }
+
+  const maxChap = Math.max(10, Math.round(Number(totalChapters) || 200))
+  const out: MxNovelForeshadowingEntry[] = []
+  arr.forEach((item, idx) => {
+    if (!item || typeof item !== 'object') return
+    const rec = item as Record<string, unknown>
+    const title = String(rec.title ?? rec.name ?? '').trim()
+    if (!title) return
+
+    const plantedRaw = Number(rec.plantedChapter ?? rec.chapter ?? 1)
+    const plantedChapter =
+      Number.isFinite(plantedRaw) && plantedRaw >= 1 ? Math.round(plantedRaw) : 1
+
+    let startChap = plantedChapter + 2
+    let endChap = Math.min(maxChap, Math.max(startChap + 3, plantedChapter + 15))
+    const rawRange = rec.targetPayoffChapterRange ?? rec.payoffChapterRange ?? rec.payoffRange
+    if (Array.isArray(rawRange) && rawRange.length >= 2) {
+      const r0 = Number(rawRange[0])
+      const r1 = Number(rawRange[1])
+      if (Number.isFinite(r0) && r0 >= 1) startChap = Math.round(r0)
+      if (Number.isFinite(r1) && r1 >= startChap) {
+        endChap = Math.round(r1)
+      } else {
+        endChap = Math.max(startChap + 2, plantedChapter + 10)
+      }
+    } else {
+      const singleTarget = Number(
+        rec.expectedPayoffChapter ?? rec.payoffChapter ?? rec.targetChapter
+      )
+      if (Number.isFinite(singleTarget) && singleTarget >= 1) {
+        const target = Math.max(plantedChapter + 1, Math.round(singleTarget))
+        startChap = Math.max(plantedChapter + 1, target - 3)
+        endChap = Math.max(startChap + 1, target + 4)
+      }
+    }
+
+    const rawStatus = String(rec.status ?? 'planted')
+      .trim()
+      .toLowerCase()
+    const status: MxNovelForeshadowingEntry['status'] =
+      rawStatus === 'paid_off' || rawStatus === 'resolved' || rawStatus === 'completed'
+        ? 'paid_off'
+        : 'planted'
+
+    const payoffHint = String(
+      rec.payoffHint ?? rec.clueSummary ?? rec.hint ?? rec.summary ?? rec.description ?? ''
+    ).trim()
+
+    const paidRaw = Number(rec.paidOffAtChapter)
+    const entry: MxNovelForeshadowingEntry = {
+      id: String(rec.id || `fs_${idx + 1}`),
+      title,
+      plantedChapter,
+      targetPayoffChapterRange: [startChap, endChap],
+      status,
+      payoffHint
+    }
+    if (Number.isFinite(paidRaw) && paidRaw >= 1) {
+      entry.paidOffAtChapter = Math.round(paidRaw)
+    }
+    out.push(entry)
+  })
+  return out
+}
+
 export function createDefaultNovelCharacterRoster(
   wb: MxNumericalWorkbench,
   totalChapters = 800,
@@ -10596,8 +10778,8 @@ export function buildNovelForeshadowingAndRosterPromptBlock(opts: {
   foreshadowings?: MxNovelForeshadowingEntry[]
 }): string {
   const cur = Math.max(1, opts.currentChapter)
-  const roster = opts.roster ?? opts.characters ?? []
-  const foreshadowings = opts.foreshadowings ?? []
+  const roster = normalizeNovelCharacterRoster(opts.roster ?? opts.characters ?? [])
+  const foreshadowings = normalizeNovelForeshadowingPool(opts.foreshadowings ?? [])
   const lines: string[] = []
 
   if (roster.length > 0) {

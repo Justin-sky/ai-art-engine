@@ -38,6 +38,10 @@ export interface GraphEditorAddNodeInput {
 export interface GraphEditorHostApi {
   getNode: (nodeId: string) => GraphNode | null
   findNode?: (predicate: (node: GraphNode) => boolean) => GraphNode | null
+  /** 轻量读取画布节点引用列表（避免 getDocument 整图 JSON 深拷贝） */
+  listNodes?: () => readonly GraphNode[]
+  /** 轻量读取画布连线引用列表（避免 getDocument 整图 JSON 深拷贝） */
+  listEdges?: () => readonly GraphEdge[]
   /** 当前打开图画布的实时文档（含未落盘的边 / runStates） */
   getDocument?: () => GraphDocument
   getGroup?: (groupId: string) => GraphGroup | null
@@ -240,6 +244,26 @@ class GraphEditorHostRegistry {
   ): GraphNode | null {
     void this.revision.value
     return hostId ? (this.hosts.get(hostId)?.findNode?.(predicate) ?? null) : null
+  }
+
+  listNodes(hostId: string | null | undefined): readonly GraphNode[] {
+    void this.revision.value
+    if (!hostId) return []
+    const host = this.hosts.get(hostId)
+    if (!host) return []
+    if (host.listNodes) return host.listNodes()
+    const doc = host.getDocument?.()
+    return Array.isArray(doc?.nodes) ? doc.nodes : []
+  }
+
+  listEdges(hostId: string | null | undefined): readonly GraphEdge[] {
+    void this.revision.value
+    if (!hostId) return []
+    const host = this.hosts.get(hostId)
+    if (!host) return []
+    if (host.listEdges) return host.listEdges()
+    const doc = host.getDocument?.()
+    return Array.isArray(doc?.edges) ? doc.edges : []
   }
 
   getGroup(hostId: string | null | undefined, groupId: string): GraphGroup | null {

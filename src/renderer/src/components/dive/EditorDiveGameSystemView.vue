@@ -779,6 +779,7 @@ import { resolveNodeType, type GraphNode } from '@shared/graph'
 import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
+import { saveGraphRunTextForNode } from '../../features/graph/saveGraphRunTextForNode'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
@@ -962,7 +963,74 @@ const unwrappedEconomySpecPreview = computed(() => {
   return unwrapEconomyBundleForGameSystem(raw)
 })
 
-const upstreamNovelRawText = computed(() => extractNodePrimaryText(upstreamNovelNode.value))
+async function loadTextByRelativePath(rawRel?: string): Promise<string> {
+  const relativePath = rawRel?.trim()
+  if (!relativePath) return ''
+  try {
+    const url = await window.studio.getAssetFileUrl(relativePath)
+    if (!url) return ''
+    const res = await fetch(url)
+    if (!res.ok) return ''
+    return await res.text()
+  } catch {
+    return ''
+  }
+}
+
+const resolvedUpstreamNovelText = ref('')
+watch(
+  () =>
+    [
+      upstreamNovelNode.value?.id,
+      upstreamNovelNode.value?.params?.text,
+      upstreamNovelNode.value?.params?.previewRelativePath,
+      upstreamNovelNode.value?.params?.selectedTextId
+    ] as const,
+  async () => {
+    const n = upstreamNovelNode.value
+    if (!n) {
+      resolvedUpstreamNovelText.value = ''
+      return
+    }
+    const inline = extractNodePrimaryText(n)
+    if (inline) {
+      resolvedUpstreamNovelText.value = inline
+      return
+    }
+    const previewRel = n.params?.previewRelativePath?.trim()
+    if (previewRel) {
+      const loaded = await loadTextByRelativePath(previewRel)
+      if (loaded.trim()) {
+        resolvedUpstreamNovelText.value = loaded.trim()
+        return
+      }
+    }
+    const genList = n.params?.generatedTexts ?? []
+    if (genList.length > 0) {
+      const parts = await Promise.all(
+        genList.map(async (it) => {
+          const body = (it.text?.trim() || (await loadTextByRelativePath(it.relativePath))).trim()
+          if (!body) return ''
+          const title = (it.title ?? '').trim()
+          return title && !body.startsWith('#') && !body.startsWith(title)
+            ? `## ${title}\n${body}`
+            : body
+        })
+      )
+      const joined = parts.filter(Boolean).join('\n\n')
+      if (joined) {
+        resolvedUpstreamNovelText.value = joined
+        return
+      }
+    }
+    resolvedUpstreamNovelText.value = ''
+  },
+  { immediate: true }
+)
+
+const upstreamNovelRawText = computed(
+  () => extractNodePrimaryText(upstreamNovelNode.value) || resolvedUpstreamNovelText.value
+)
 
 const extractedNovelIpPreview = computed(() => {
   const n = upstreamNovelNode.value
@@ -1228,8 +1296,15 @@ function loadFromNode(): void {
   const selId = cur.params?.selectedTextId
   const selItem = list.find((i) => i.id === selId) ?? list[list.length - 1]
   const rawText = selItem?.text || cur.params?.text || ''
+  const relPath = selItem?.relativePath?.trim() || cur.params?.previewRelativePath?.trim() || ''
   if (rawText.trim() && rawText.trim() !== '…') {
     localText.value = rawText
+  } else if (relPath) {
+    void loadTextByRelativePath(relPath).then((loaded) => {
+      if (loaded.trim() && !dirtyText.value) {
+        localText.value = loaded
+      }
+    })
   } else {
     // Auto-populate a rich initial GDD skeleton when opening an empty gameSystem node in Dive
     const initialDoc = synthesizeGameSystemDocOffline({
@@ -1291,17 +1366,28 @@ function persistDocText(): void {
   const nextText = localText.value
   const list = [...(cur.params?.generatedTexts ?? [])]
   const selId = selectedVersionId.value
-  if (list.length > 0 && selId) {
-    const idx = list.findIndex((i) => i.id === selId)
-    if (idx >= 0) {
-      list[idx] = { ...list[idx]!, text: nextText }
-    }
-  }
-  updateTargetNode({
-    text: nextText,
-    ...(list.length > 0 ? { generatedTexts: list } : {})
-  })
   dirtyText.value = false
+  void saveGraphRunTextForNode({
+    node: cur,
+    content: nextText,
+    key: selId || 'game-system-doc'
+  }).then((relPath) => {
+    if (list.length > 0 && selId) {
+      const idx = list.findIndex((i) => i.id === selId)
+      if (idx >= 0) {
+        list[idx] = {
+          ...list[idx]!,
+          text: relPath ? '' : nextText,
+          ...(relPath ? { relativePath: relPath } : {})
+        }
+      }
+    }
+    updateTargetNode({
+      text: relPath ? '' : nextText,
+      ...(relPath ? { previewRelativePath: relPath } : {}),
+      ...(list.length > 0 ? { generatedTexts: list } : {})
+    })
+  })
 }
 
 useEditorDiveFrameFlush(
@@ -1336,11 +1422,23 @@ function selectVersion(id: string): void {
   if (!id) return
   const item = generatedList.value.find((i) => i.id === id)
   if (!item) return
-  localText.value = item.text || ''
+  const itemRel = item.relativePath?.trim()
+  if (item.text?.trim()) {
+    localText.value = item.text
+  } else if (itemRel) {
+    void loadTextByRelativePath(itemRel).then((loaded) => {
+      if (loaded.trim()) {
+        localText.value = loaded
+      }
+    })
+  } else {
+    localText.value = ''
+  }
   dirtyText.value = false
   updateTargetNode({
     selectedTextId: id,
-    text: localText.value
+    text: itemRel ? '' : localText.value,
+    ...(itemRel ? { previewRelativePath: itemRel } : {})
   })
 }
 

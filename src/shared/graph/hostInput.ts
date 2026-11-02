@@ -888,9 +888,18 @@ export function softResolveSourceOutput(
       const isOutlineNode =
         node.typeId === 'novel.outline' ||
         (node.typeId === 'asset.novel' && node.params.novelNodeMode === 'outline')
+      const fullOutlineRel =
+        typeof node.params.previewRelativePath === 'string'
+          ? node.params.previewRelativePath.trim()
+          : ''
       const fullOutlineText = typeof node.params.text === 'string' ? node.params.text.trim() : ''
-      if (isOutlineNode && fullOutlineText && fullOutlineText !== '…') {
-        return { kind: 'text', text: fullOutlineText }
+      if (isOutlineNode) {
+        if (fullOutlineRel) {
+          return { kind: 'text', text: '', relativePath: fullOutlineRel }
+        }
+        if (fullOutlineText && fullOutlineText !== '…') {
+          return { kind: 'text', text: fullOutlineText }
+        }
       }
       const selectedId = node.params.selectedTextId?.trim()
       const picked =
@@ -912,6 +921,13 @@ export function softResolveSourceOutput(
     sourcePort === 'out-text'
   ) {
     if (graphValueHasPayload(fromRun)) return fromRun
+    const econRel =
+      typeof node.params.previewRelativePath === 'string'
+        ? node.params.previewRelativePath.trim()
+        : ''
+    if (econRel) {
+      return { kind: 'text', text: '', relativePath: econRel }
+    }
     const econText = typeof node.params.text === 'string' ? node.params.text.trim() : ''
     if (econText && econText !== '…') {
       return { kind: 'text', text: econText }
@@ -1105,6 +1121,9 @@ export function softResolveSourceOutput(
       const isTextLike =
         node.assetType === 'screenplay' ||
         typeId === 'asset.screenplay' ||
+        typeId === 'asset.novel' ||
+        typeId === 'novel.outline' ||
+        typeId === 'asset.gameSystem' ||
         typeId === 'text.select' ||
         typeId === 'note.text' ||
         typeId === 'text.plain' ||

@@ -13,6 +13,8 @@ import {
   analyzeMultiplierPipeline,
   createMxWorkbenchPreset,
   normalizeMxNumericalWorkbench,
+  normalizeNovelCharacterRoster,
+  normalizeNovelForeshadowingPool,
   runMxCombatKernelSimulation,
   runMxLootAndSubstatSimulation,
   runMxRoguelikeEnvelopeSimulation,
@@ -1055,15 +1057,9 @@ export function extractNovelIpContextForGameSystem(opts: NovelIpContextExtractOp
   const novelTitle = titleMatch?.[1]?.trim() || `${profile.labelZh.split(' / ')[0]}原著IP`
   const totalChaps = Math.max(1, opts.totalChapters || 800)
 
-  let roster: MxNovelCharacterStatusEntry[] = []
-  if (opts.characterRosterJson?.trim()) {
-    try {
-      const parsed = JSON.parse(opts.characterRosterJson) as MxNovelCharacterStatusEntry[]
-      if (Array.isArray(parsed)) roster = parsed
-    } catch {
-      roster = []
-    }
-  }
+  let roster: MxNovelCharacterStatusEntry[] = normalizeNovelCharacterRoster(
+    opts.characterRosterJson
+  )
   if (!roster.length) {
     roster = profile.roster.map((r, idx) => ({
       id: `char_${idx}`,
@@ -1076,15 +1072,10 @@ export function extractNovelIpContextForGameSystem(opts: NovelIpContextExtractOp
     }))
   }
 
-  let foreshadowings: MxNovelForeshadowingEntry[] = []
-  if (opts.foreshadowingJson?.trim()) {
-    try {
-      const parsed = JSON.parse(opts.foreshadowingJson) as MxNovelForeshadowingEntry[]
-      if (Array.isArray(parsed)) foreshadowings = parsed
-    } catch {
-      foreshadowings = []
-    }
-  }
+  const foreshadowings: MxNovelForeshadowingEntry[] = normalizeNovelForeshadowingPool(
+    opts.foreshadowingJson,
+    totalChaps
+  )
 
   const allies = roster.filter((c) => c.faction === 'protagonist' || c.faction === 'ally')
   const villains = roster.filter((c) => c.faction === 'villain')

@@ -1824,6 +1824,7 @@ const cardTextGridItems = computed((): string[] => {
   const items = props.node.params.generatedTexts ?? []
   if (items.length <= 1) return []
   return items
+    .slice(0, 12)
     .map((item, idx) => {
       const title = item.title?.trim()
       const text = item.text?.trim()

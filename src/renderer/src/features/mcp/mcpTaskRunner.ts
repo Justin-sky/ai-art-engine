@@ -186,26 +186,24 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     lastEditedNodeIdsByAsset.delete(effectiveAssetId)
   }
 
-  const invalidatedSet = new Set(invalidatedNodeIds)
-  const priorRunStates = graphJson.runStates ?? {}
-  const priorPathSet = new Set<string>(
-    collectRunMediaPaths(
-      graphJson,
-      Object.fromEntries(
-        Object.entries(priorRunStates).filter(([nodeId]) => !invalidatedSet.has(nodeId))
-      )
-    )
+  const invalidatedSet = new Set([...invalidatedNodeIds, ...validExplicitNodeIds])
+  const priorRunStates = Object.fromEntries(
+    Object.entries(graphJson.runStates ?? {}).filter(([nodeId]) => !invalidatedSet.has(nodeId))
   )
+  const priorPathSet = new Set<string>(collectRunMediaPaths(graphJson, priorRunStates))
+  if (invalidatedSet.size) {
+    clearLiveCanvasRunStates(`asset:${effectiveAssetId}`, [...invalidatedSet])
+  }
 
   const result = taskStore.enqueueWorkflow({
     title: `${asset.name} · MCP`,
     graph: graphJson,
     target: { kind: 'asset', assetId: effectiveAssetId, hostId: `asset:${effectiveAssetId}` },
-    priorNodeStates: graphJson.runStates,
+    priorNodeStates: priorRunStates,
     skipCompletedNodes: true,
     liveCanvasSync: true,
     ...(targetNodeIds.length ? { targetNodeIds } : {}),
-    ...(invalidatedNodeIds.length ? { invalidatedNodeIds } : {})
+    ...(invalidatedSet.size ? { invalidatedNodeIds: [...invalidatedSet] } : {})
   })
 
   if (!result.ok) {

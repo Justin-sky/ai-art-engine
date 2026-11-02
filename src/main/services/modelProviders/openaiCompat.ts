@@ -187,20 +187,50 @@ function normalizeMessageContent(content: unknown): string {
     .trim()
 }
 
+function collapseRunawayRepetition(text: string): string {
+  const withoutThink = text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/i, '')
+    .trim()
+  const source = withoutThink || text.trim()
+  const lines = source.split(/\r?\n/)
+  const dedupedLines: string[] = []
+  let lastNorm = ''
+  let repeatCount = 0
+  for (const line of lines) {
+    const norm = line.trim()
+    if (norm.length >= 8 && norm === lastNorm) {
+      repeatCount += 1
+      if (repeatCount >= 2) continue
+    } else {
+      lastNorm = norm
+      repeatCount = 0
+    }
+    dedupedLines.push(line)
+  }
+  // 同时折叠单行内连续重复 3 次以上的相同短句（例如推理死循环）
+  return dedupedLines
+    .join('\n')
+    .replace(/(.{12,120}?)(?:\s*\1){3,}/g, '$1')
+    .trim()
+}
+
 /** 从 chat/completions 响应提取可展示/可解析的文本（供测试与生成共用） */
 export function extractChatCompletionText(data: ChatCompletionResponse): string {
   const choice = data.choices?.[0]
   const message = choice?.message
   const fromContent = normalizeMessageContent(message?.content)
-  if (fromContent) return fromContent
+  if (fromContent) return collapseRunawayRepetition(fromContent)
 
-  if (typeof choice?.text === 'string' && choice.text.trim()) return choice.text.trim()
+  if (typeof choice?.text === 'string' && choice.text.trim()) {
+    return collapseRunawayRepetition(choice.text.trim())
+  }
 
   const reasoning =
     (typeof message?.reasoning_content === 'string' && message.reasoning_content.trim()) ||
     (typeof message?.reasoning === 'string' && message.reasoning.trim()) ||
     ''
-  if (reasoning) return reasoning
+  if (reasoning) return collapseRunawayRepetition(reasoning)
 
   // 部分模型只回 tool_calls；序列化为 JSON，供 AI 姿势等解析器使用
   const toolCall = message?.tool_calls?.[0]?.function
