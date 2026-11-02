@@ -12,6 +12,7 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'asset.model3d',
   'asset.spatialWorld',
   'asset.motion',
+  'novel.outline',
   'asset.novel',
   'asset.screenplay',
   'asset.gameSystem',
@@ -75,7 +76,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'game.vfxAlpha',
   'game.audioDsp',
   'game.levelMap',
-  'game.economy'
+  'game.economy',
+  'game.numerical'
 ] as const
 
 describe('graph canvas menu nodes', () => {

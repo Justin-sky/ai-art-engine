@@ -231,10 +231,10 @@ export async function executeSelectTextNode(
     (item) => item.text?.trim() || item.relativePath?.trim()
   )
   const requestedSelector = ctx.node.params.selectedTextId?.trim() ?? ''
-  const symbolicEpisodeSelector = /^ep:\d+$/i.test(requestedSelector)
+  const symbolicEpisodeSelector = /^(?:ep|chap|ch):\d+$/i.test(requestedSelector)
     ? requestedSelector
     : undefined
-  // 若仅收到 1 条剧本且正文中含 >= 2 个显式「第X集 / EPISODE X」标记（或下游显式按 ep:N 选集且含多场戏），支持先落盘读取再按集展开选取
+  // 若仅收到 1 条剧本/大纲且正文中含 >= 2 个显式「第X集 / 第X章 / EPISODE X / CHAPTER X」标记（或下游显式按 ep:N / chap:N 选集），支持先落盘读取再按集/章展开选取
   if (items.length === 1) {
     const singleHydrated = (await hydrateTextItems(items, ctx.readRunText))[0]
     const rawBody = singleHydrated?.text?.trim() ?? ''
@@ -244,7 +244,7 @@ export async function executeSelectTextNode(
           locale: ctx.locale
         })
       : []
-    if (episodes.length < 2 && rawBody && /(?:^|:)ep:\d+$/i.test(requestedSelector)) {
+    if (episodes.length < 2 && rawBody && /(?:^|:)(?:ep|chap|ch):\d+$/i.test(requestedSelector)) {
       const autoEpisodes = splitScreenplayIntoEpisodes(rawBody, {
         mode: 'auto',
         scenesPerEpisode: 2,

@@ -80,7 +80,7 @@ import ChatChangesCard from './ChatChangesCard.vue'
 import ChatOneSentenceGameCard from './ChatOneSentenceGameCard.vue'
 import ChatAssetPicker from './ChatAssetPicker.vue'
 import ChatCopyIcon from './ChatCopyIcon.vue'
-import ChatWishShrine from './ChatWishShrine.vue'
+import { syncWishShrineChatBridge } from '../features/graph/model/wishShrineBridge'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import {
   notifyWeatherTaskComplete,
@@ -1331,6 +1331,28 @@ const activityPhase = ref<ActivityPhase>('idle')
 let activityTimer: number | null = null
 /** 状态在顶部保留多久后自动消失；够读完一句较长的等待/错误提示 */
 const ACTIVITY_TTL_MS = 6000
+
+watch(
+  [
+    running,
+    () => activeSession.value?.id ?? '',
+    () => activeSession.value?.title ?? '',
+    latestUserPromptText,
+    activity,
+    lastRoundOutcome
+  ],
+  ([isRun, sid, stitle, prompt, act, out]) => {
+    syncWishShrineChatBridge({
+      running: isRun,
+      sessionId: sid,
+      sessionTitle: stitle,
+      promptText: prompt,
+      activityText: act,
+      outcome: out
+    })
+  },
+  { immediate: true }
+)
 
 /**
  * 任务清单：内嵌在消息流中，跟随各自任务的 user 消息展示（agent 风格 todo 卡）。
@@ -3851,16 +3873,6 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="chat-messages-wrap">
-      <!-- 许愿式编程（Vibe Coding）二次元流星祈愿浮窗：发送指令后在会话面板上方浮动祈福 -->
-      <ChatWishShrine
-        :running="running"
-        :session-id="activeSession?.id"
-        :session-title="activeSession?.title"
-        :prompt-text="latestUserPromptText"
-        :activity-text="activity"
-        :outcome="lastRoundOutcome"
-        :is-en="isEnChat"
-      />
       <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
         <div v-if="!messages.length" class="chat-empty">
           <div class="chat-empty-hero">

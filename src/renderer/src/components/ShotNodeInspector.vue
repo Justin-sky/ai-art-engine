@@ -286,10 +286,13 @@
       </div>
       <div v-else class="screenplay-telemetry">
         <span v-if="isNovel" class="stat-pill stat-accent">
-          Ch.{{ node?.params.novelCurrentChapter || 1 }} /
-          {{ node?.params.novelTotalChapters || 800 }}
+          {{
+            node?.typeId === 'novel.outline'
+              ? `🗺️ ${node?.params.novelTotalChapters || 800}`
+              : `Ch.${node?.params.novelCurrentChapter || 1} / ${node?.params.novelTotalChapters || 800}`
+          }}
         </span>
-        <span class="stat-pill stat-accent">{{
+        <span v-if="!isNovel" class="stat-pill stat-accent">{{
           t('graph.scriptNode.telemetry.episodes', { n: Math.max(1, generatedTexts.length) })
         }}</span>
         <span class="stat-pill">{{
@@ -1056,18 +1059,21 @@ function onMusicLyricsChange(event: Event): void {
 }
 
 const isScreenplay = computed(() => assetType.value === 'screenplay')
-const isNovel = computed(() => node.value?.typeId === 'asset.novel')
-const novelWorkbenchOpenLabel = computed(
-  () =>
-    String(locale.value).toLowerCase().startsWith('en')
-      ? '📚 Open Multi-Chapter Novel Workbench'
-      : '📚 进入多章节小说连载工作台' // cjk-ok
+const isNovel = computed(
+  () => node.value?.typeId === 'asset.novel' || node.value?.typeId === 'novel.outline'
 )
+const novelWorkbenchOpenLabel = computed(() => {
+  const en = String(locale.value).toLowerCase().startsWith('en')
+  if (node.value?.typeId === 'novel.outline') {
+    return en ? '🗺️ Open Novel Outline Workbench' : '🗺️ 进入小说大纲工作台' // cjk-ok
+  }
+  return en ? '📚 Open Chapter & Markov Chain Workbench' : '📚 进入单章精修与章节链工作台' // cjk-ok
+})
 const novelWorkbenchHintLabel = computed(
   () =>
     String(locale.value).toLowerCase().startsWith('en')
-      ? 'Manage 1~5000 dynamic chapters, 3000+ words per chapter, numerical quota locks, and 4-tier memory.'
-      : '沉浸式管理多章节目录、动态总章数、单章3000+字精修、经济系统数值围栏与四层记忆金字塔。' // cjk-ok
+      ? 'Manage 3-way Markov inputs (Prev Chap + Outline + Economy), canvas chapter chain, and 4-tier memory.'
+      : '管理三路条件输入（上一章 + 小说大纲 + 经济系统）、画布马尔可夫章节链拓扑、单章精修与四层记忆账本。' // cjk-ok
 )
 const isGameSystem = computed(() => assetType.value === 'gameSystem')
 const gameSystemWorkbenchOpenLabel = computed(
@@ -1385,7 +1391,7 @@ function openScreenplayWorkbench(): void {
   const current = node.value
   const rootKey = workspace.activeDiveRootKey?.trim()
   if (!rootKey || !hostId.value || !current) return
-  if (current.typeId === 'asset.novel') {
+  if (current.typeId === 'asset.novel' || current.typeId === 'novel.outline') {
     workspace.diveIntoView(
       rootKey,
       {

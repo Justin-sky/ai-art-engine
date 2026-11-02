@@ -1,5 +1,10 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
+import {
+  inferExplicitNovelChapterNumber,
+  isOutlineNovelNodeTitle,
+  resolveNovelNodeExecutionMode
+} from './execute/generateText'
 import { autoLayoutNodes } from './layout'
 import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes, listNodeTypes } from './registry'
@@ -158,6 +163,15 @@ const TYPE_ID_ALIASES: Record<string, GraphNodeTypeId> = {
   economy: 'game.economy',
   'game.machinations': 'game.economy',
   machinations: 'game.economy',
+  numerical: 'game.numerical',
+  'game.numerical': 'game.numerical',
+  数值系统: 'game.numerical', // cjk-ok
+  游戏数值: 'game.numerical', // cjk-ok
+  'novel.outline': 'novel.outline',
+  'asset.novelOutline': 'novel.outline',
+  novelOutline: 'novel.outline',
+  小说大纲: 'novel.outline', // cjk-ok
+  小说总纲: 'novel.outline', // cjk-ok
   novel: 'asset.novel',
   'game.novel': 'asset.novel',
   'game.system': 'asset.gameSystem',
@@ -267,14 +281,43 @@ function resolveEdgePorts(
     }
   }
   if (
-    source.typeId === 'game.economy' &&
-    (!fromPort || fromPort === 'out') &&
+    (target.typeId === 'asset.novel' || target.typeId === 'novel.outline') &&
+    (toPort === 'in-prev' || toPort === 'in-text')
+  ) {
+    toPort = 'in'
+  }
+  if (
+    target.typeId === 'asset.novel' &&
+    !toPort &&
+    (source.typeId === 'novel.outline' ||
+      (source.typeId === 'asset.novel' && resolveNovelNodeExecutionMode(source) === 'outline'))
+  ) {
+    const srcPort = fromPort || 'out'
+    if (canConnectNodes(source, target, { sourcePort: srcPort, targetPort: 'in-outline' })) {
+      return { sourcePort: srcPort, targetPort: 'in-outline' }
+    }
+  }
+  if (
+    (source.typeId === 'game.economy' || source.typeId === 'game.numerical') &&
+    (!fromPort || fromPort === 'out' || fromPort === 'out-text') &&
     (target.typeId === 'asset.novel' ||
+      target.typeId === 'novel.outline' ||
       target.typeId === 'asset.gameSystem' ||
+      target.typeId === 'game.numerical' ||
       target.typeId === 'asset.screenplay' ||
       target.typeId === 'ui.split')
   ) {
-    const targetPort = toPort || 'in'
+    const defaultTargetPort =
+      target.typeId === 'game.numerical'
+        ? 'in-economy'
+        : target.typeId === 'asset.novel' ||
+            target.typeId === 'novel.outline' ||
+            target.typeId === 'asset.gameSystem'
+          ? source.typeId === 'game.numerical'
+            ? 'in-numerical'
+            : 'in-economy'
+          : 'in'
+    const targetPort = toPort || defaultTargetPort
     if (canConnectNodes(source, target, { sourcePort: 'out-text', targetPort })) {
       return { sourcePort: 'out-text', targetPort }
     }
@@ -366,17 +409,100 @@ function normalizeActVideoNodeParams(node: GraphNode): void {
   }
 }
 
+function normalizeNovelNodeParams(
+  node: GraphNode,
+  before?: Record<string, unknown>,
+  incoming?: Record<string, unknown>
+): void {
+  if (node.typeId !== 'asset.novel' && node.typeId !== 'novel.outline') return
+  const p = node.params
+  if (!p) return
+
+  if (node.typeId === 'novel.outline') {
+    p.novelNodeMode = 'outline'
+    p.novelAutoAdvanceChapter = false
+    return
+  }
+
+  const hasExplicitMode =
+    incoming !== undefined &&
+    ('novelNodeMode' in incoming || 'novelMode' in incoming || '小说模式' in incoming) // cjk-ok
+  if (!hasExplicitMode) {
+    if (isOutlineNovelNodeTitle(node.title, p.generateInstruction)) {
+      p.novelNodeMode = 'outline'
+    } else if (inferExplicitNovelChapterNumber(node.title, p.generateInstruction) !== null) {
+      p.novelNodeMode = 'chapter'
+    } else if (!p.novelNodeMode) {
+      p.novelNodeMode = 'chapter'
+    }
+  }
+
+  const mode = resolveNovelNodeExecutionMode(node)
+  if (mode === 'chapter') {
+    const hasExplicitChapter =
+      incoming !== undefined &&
+      ('novelCurrentChapter' in incoming ||
+        'currentChapter' in incoming ||
+        'chapter' in incoming ||
+        '当前章节' in incoming || // cjk-ok
+        '当前章' in incoming) // cjk-ok
+    const explicitChapFromTitleOrInst = inferExplicitNovelChapterNumber(
+      node.title,
+      p.generateInstruction
+    )
+    if (!hasExplicitChapter && explicitChapFromTitleOrInst !== null) {
+      p.novelCurrentChapter = explicitChapFromTitleOrInst
+    }
+    const hasExplicitAutoAdvance =
+      incoming !== undefined &&
+      ('novelAutoAdvanceChapter' in incoming || 'autoAdvanceChapter' in incoming)
+    if (
+      !hasExplicitAutoAdvance &&
+      inferExplicitNovelChapterNumber(node.title, undefined) !== null
+    ) {
+      p.novelAutoAdvanceChapter = false
+    }
+  }
+
+  // 当通过 MCP 更新单节点当前章节游标（如从第 2 章切到第 3 章）且未显式指定 selectedTextId 时，
+  // 自动同步或清空 selectedTextId，防止详情工作台继续锁定旧章节条目把新章参数覆盖回旧正文
+  const prevChap = before ? Number(before.novelCurrentChapter) || 1 : undefined
+  const nextChap = Number(p.novelCurrentChapter) || 1
+  const chapterChanged = prevChap !== undefined && prevChap !== nextChap
+  const textExplicitlyCleared =
+    incoming !== undefined && 'text' in incoming && String(incoming.text ?? '').trim() === ''
+  const hasExplicitSelectedTextId = incoming !== undefined && 'selectedTextId' in incoming
+  if ((chapterChanged || textExplicitlyCleared) && !hasExplicitSelectedTextId) {
+    const gallery = Array.isArray(p.generatedTexts) ? p.generatedTexts : []
+    const matchedItem = gallery.find((item, idx) => {
+      const m =
+        /第\s*(\d+)\s*(?:\/\s*\d+\s*)?章/.exec(item.title ?? '') || // cjk-ok
+        /Chapter\s*(\d+)/i.exec(item.title ?? '')
+      const itemChap = m?.[1] ? Number(m[1]) : idx + 1
+      return itemChap === nextChap
+    })
+    p.selectedTextId = matchedItem?.id ?? ''
+    if (!matchedItem && chapterChanged && !('text' in (incoming ?? {}))) {
+      p.text = ''
+    }
+  }
+}
+
 function mergeNodeParams(
   node: GraphNode,
   incoming: Record<string, unknown> | undefined,
   warnings: string[]
 ): void {
-  if (!incoming || typeof incoming !== 'object') return
+  if (!incoming || typeof incoming !== 'object') {
+    normalizeNovelNodeParams(node)
+    return
+  }
   const before = (node.params ?? {}) as Record<string, unknown>
   const merged = mergeSmartNodeParams(node, incoming) as Record<string, unknown>
   if (!REFERENCE_PARAM_KEYS.some((key) => key in incoming)) {
     node.params = merged as GraphNodeParams
     normalizeActVideoNodeParams(node)
+    normalizeNovelNodeParams(node, before, incoming)
     return
   }
   const sanitized = sanitizeReferenceParams(
@@ -392,6 +518,7 @@ function mergeNodeParams(
   }
   node.params = sanitized as GraphNodeParams
   normalizeActVideoNodeParams(node)
+  normalizeNovelNodeParams(node, before, incoming)
 }
 
 function applyNodeGeometryAndLock(
@@ -819,6 +946,8 @@ function applyOp(
         wireInlineReferenceMedia(graph, existing, combinedParams)
         if (Object.keys(combinedParams).length > 0) {
           mergeNodeParams(existing, combinedParams, warnings)
+        } else {
+          normalizeNovelNodeParams(existing)
         }
         touchedNodeIds.push(existing.id)
         const existingTitle = existing.title?.trim() ? `「${existing.title.trim()}」` : ''
@@ -842,6 +971,8 @@ function applyOp(
       wireInlineReferenceMedia(graph, node, combinedParams)
       if (Object.keys(combinedParams).length > 0) {
         mergeNodeParams(node, combinedParams, warnings)
+      } else {
+        normalizeNovelNodeParams(node)
       }
       touchedNodeIds.push(node.id)
       const newTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
@@ -862,6 +993,8 @@ function applyOp(
       wireInlineReferenceMedia(graph, node, combinedParams)
       if (Object.keys(combinedParams).length > 0) {
         mergeNodeParams(node, combinedParams, warnings)
+      } else {
+        normalizeNovelNodeParams(node)
       }
       touchedNodeIds.push(node.id)
       const updatedTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
@@ -941,6 +1074,28 @@ function applyOp(
         targetPort: ports.targetPort
       }
       graph.edges.push(edge)
+      if (
+        source.typeId === 'asset.novel' &&
+        target.typeId === 'asset.novel' &&
+        resolveNovelNodeExecutionMode(source) === 'chapter' &&
+        resolveNovelNodeExecutionMode(target) === 'chapter'
+      ) {
+        const srcChap =
+          inferExplicitNovelChapterNumber(source.title, source.params.generateInstruction) ??
+          (Number(source.params.novelCurrentChapter) || 1)
+        const tgtExplicitChap = inferExplicitNovelChapterNumber(
+          target.title,
+          target.params.generateInstruction
+        )
+        const tgtCurChap = Number(target.params.novelCurrentChapter) || 1
+        if (tgtExplicitChap === null && tgtCurChap <= srcChap) {
+          target.params.novelCurrentChapter = srcChap + 1
+        }
+        if (!source.params.novelNodeMode) source.params.novelNodeMode = 'chapter'
+        if (!target.params.novelNodeMode) target.params.novelNodeMode = 'chapter'
+        source.params.novelAutoAdvanceChapter = false
+        target.params.novelAutoAdvanceChapter = false
+      }
       touchedNodeIds.push(target.id)
       return `连线 ${fromLabel} → ${toLabel}`
     }
@@ -1168,12 +1323,33 @@ export function applyGraphEditOps(
       })
     }
   }
-  // 兜底防断连（小说连载 / 策划案 / 剧本流水线）：
-  // 当 Agent 新建或更新了 asset.novel / asset.gameSystem / asset.screenplay 但漏写 edge_connect，
-  // 或将构思/总纲/正式连载拆成多个孤立节点时，自动将同画布无出边的上游创意/数值/阶段节点按顺序串联汇入末端主节点。
+  // 兜底防断连与三路马尔可夫链自动布线（小说大纲 + 经济系统 + 独立章节链）：
+  // 1) 当 Agent 新建或更新了 novel.outline / asset.novel / asset.gameSystem / asset.screenplay 但漏写 edge_connect，
+  //    自动将同画布无出边的上游创意/数值/大纲/章节节点串联；
+  // 2) 当存在 novel.outline 或多章 asset.novel 串联链时，自动为每个独立章节节点 C_t 补齐三路输入：
+  //    - C_{t-1} (out) -> C_t (in)（马尔可夫状态传递）
+  //    - novel.outline (out) -> C_t (in)（全书大纲按章切片）
+  //    - game.economy (out-text) -> C_t (in)（单章数值配额锁）
   let autoWiredNarrative = false
+  const connectOnce = (fromNode: GraphNode, toNode: GraphNode): boolean => {
+    if (fromNode.id === toNode.id) return false
+    if (next.edges.some((e) => e.source === fromNode.id && e.target === toNode.id)) return false
+    const ports = resolveEdgePorts(fromNode, toNode)
+    if (!ports) return false
+    next.edges.push({
+      id: `edge-mcp-auto-${fromNode.id}-${toNode.id}`,
+      source: fromNode.id,
+      target: toNode.id,
+      sourcePort: ports.sourcePort,
+      targetPort: ports.targetPort
+    })
+    if (!uniqueTouchedIds.includes(toNode.id)) uniqueTouchedIds.push(toNode.id)
+    autoWiredNarrative = true
+    return true
+  }
   if (timelineNodes.length === 0 && next.nodes.length > 1 && next.nodes.length <= 24) {
     const narrativeStagePriority: Record<string, number> = {
+      'novel.outline': 1,
       'asset.novel': 2,
       'asset.screenplay': 3,
       'asset.gameSystem': 3
@@ -1185,7 +1361,7 @@ export function applyGraphEditOps(
         !next.edges.some((e) => e.target === n.id)
     )
     if (touchedNarrativeSinks.length > 0) {
-      // 取处于最末端阶段的最后触达节点作为汇聚点（如多个 asset.novel 时取最后一个「正式连载」节点）
+      // 取处于最末端阶段的最后触达节点作为汇聚点（如多个 asset.novel 时取最后一个「正式连载/第k章」节点）
       let sink = touchedNarrativeSinks[touchedNarrativeSinks.length - 1]!
       for (const cand of touchedNarrativeSinks) {
         if (
@@ -1218,42 +1394,107 @@ export function applyGraphEditOps(
           n.typeId === 'game.economy' &&
           !next.edges.some((e) => e.source === n.id)
       )
-      const novelStages = next.nodes.filter(
-        (n) =>
-          n.id !== sink.id &&
-          n.typeId === 'asset.novel' &&
-          !next.edges.some((e) => e.source === n.id)
-      )
+      const novelStages = next.nodes
+        .filter(
+          (n) =>
+            n.id !== sink.id &&
+            (n.typeId === 'novel.outline' || n.typeId === 'asset.novel') &&
+            !next.edges.some((e) => e.source === n.id)
+        )
+        .sort((a, b) => {
+          const modeA = resolveNovelNodeExecutionMode(a) === 'outline' ? 0 : 1
+          const modeB = resolveNovelNodeExecutionMode(b) === 'outline' ? 0 : 1
+          if (modeA !== modeB) return modeA - modeB
+          const chapA =
+            inferExplicitNovelChapterNumber(a.title, a.params.generateInstruction) ??
+            (Number(a.params.novelCurrentChapter) || 1)
+          const chapB =
+            inferExplicitNovelChapterNumber(b.title, b.params.generateInstruction) ??
+            (Number(b.params.novelCurrentChapter) || 1)
+          return chapA - chapB
+        })
       const chain: GraphNode[] = [...economyStages, ...novelStages, sink]
       const headTarget = chain[0]!
       for (const src of textSources) {
-        const ports = resolveEdgePorts(src, headTarget)
-        if (!ports) continue
-        next.edges.push({
-          id: `edge-mcp-auto-${src.id}-${headTarget.id}`,
-          source: src.id,
-          target: headTarget.id,
-          sourcePort: ports.sourcePort,
-          targetPort: ports.targetPort
-        })
-        if (!uniqueTouchedIds.includes(headTarget.id)) uniqueTouchedIds.push(headTarget.id)
-        autoWiredNarrative = true
+        connectOnce(src, headTarget)
       }
       for (let i = 0; i < chain.length - 1; i++) {
         const fromNode = chain[i]!
         const toNode = chain[i + 1]!
-        if (next.edges.some((e) => e.source === fromNode.id && e.target === toNode.id)) continue
-        const ports = resolveEdgePorts(fromNode, toNode)
-        if (!ports) continue
-        next.edges.push({
-          id: `edge-mcp-auto-${fromNode.id}-${toNode.id}`,
-          source: fromNode.id,
-          target: toNode.id,
-          sourcePort: ports.sourcePort,
-          targetPort: ports.targetPort
+        connectOnce(fromNode, toNode)
+        if (
+          fromNode.typeId === 'asset.novel' &&
+          toNode.typeId === 'asset.novel' &&
+          resolveNovelNodeExecutionMode(fromNode) === 'chapter' &&
+          resolveNovelNodeExecutionMode(toNode) === 'chapter'
+        ) {
+          const srcChap =
+            inferExplicitNovelChapterNumber(fromNode.title, fromNode.params.generateInstruction) ??
+            (Number(fromNode.params.novelCurrentChapter) || 1)
+          const tgtExplicitChap = inferExplicitNovelChapterNumber(
+            toNode.title,
+            toNode.params.generateInstruction
+          )
+          const tgtCurChap = Number(toNode.params.novelCurrentChapter) || 1
+          if (tgtExplicitChap === null && tgtCurChap <= srcChap) {
+            toNode.params.novelCurrentChapter = srcChap + 1
+          }
+          fromNode.params.novelAutoAdvanceChapter = false
+          toNode.params.novelAutoAdvanceChapter = false
+        }
+      }
+    }
+
+    // 三路条件输入马尔可夫链广播补全：
+    // 当画布上存在 novel.outline 节点（或存在 >= 2 个串联的章节 asset.novel 节点且配有大纲/经济节点）时，
+    // 自动将大纲节点（novel.outline）和经济节点（game.economy）广播连入每一个独立章节节点 C_t。
+    const allChapterNodes = next.nodes.filter(
+      (n) =>
+        n.typeId === 'asset.novel' &&
+        resolveNovelNodeExecutionMode(n) === 'chapter' &&
+        uniqueTouchedIds.includes(n.id)
+    )
+    const dedicatedOutlineNode = next.nodes.find((n) => n.typeId === 'novel.outline')
+    const fallbackOutlineNode =
+      allChapterNodes.length >= 2
+        ? next.nodes.find(
+            (n) => n.typeId === 'asset.novel' && resolveNovelNodeExecutionMode(n) === 'outline'
+          )
+        : undefined
+    const broadcastOutlineNode = dedicatedOutlineNode ?? fallbackOutlineNode
+    const broadcastEconomyNode =
+      dedicatedOutlineNode || allChapterNodes.length >= 2
+        ? next.nodes.find((n) => n.typeId === 'game.economy')
+        : undefined
+    const broadcastNumericalNode =
+      dedicatedOutlineNode || allChapterNodes.length >= 2
+        ? next.nodes.find((n) => n.typeId === 'game.numerical')
+        : undefined
+    if (broadcastEconomyNode && broadcastNumericalNode) {
+      connectOnce(broadcastEconomyNode, broadcastNumericalNode)
+    }
+    if (broadcastOutlineNode && broadcastEconomyNode) {
+      connectOnce(broadcastEconomyNode, broadcastOutlineNode)
+    }
+    if (broadcastOutlineNode && broadcastNumericalNode) {
+      connectOnce(broadcastNumericalNode, broadcastOutlineNode)
+    }
+    if (broadcastOutlineNode || broadcastEconomyNode || broadcastNumericalNode) {
+      for (const chapNode of allChapterNodes) {
+        const hasSelectorInput = next.edges.some((e) => {
+          if (e.target !== chapNode.id) return false
+          const src = next.nodes.find((n) => n.id === e.source)
+          return src?.typeId === 'text.select'
         })
-        if (!uniqueTouchedIds.includes(toNode.id)) uniqueTouchedIds.push(toNode.id)
-        autoWiredNarrative = true
+        if (broadcastOutlineNode && !hasSelectorInput) {
+          connectOnce(broadcastOutlineNode, chapNode)
+        }
+        if (broadcastEconomyNode) {
+          connectOnce(broadcastEconomyNode, chapNode)
+        }
+        if (broadcastNumericalNode) {
+          connectOnce(broadcastNumericalNode, chapNode)
+        }
       }
     }
   }

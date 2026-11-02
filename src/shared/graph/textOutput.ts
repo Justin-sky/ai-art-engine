@@ -42,6 +42,14 @@ export function textFromGraphValue(value: GraphValue | undefined): string {
   return ''
 }
 
+/** 过滤默认占位符「…」/「...」，避免未生成节点把占位符当成真实正文预览或下游输入 */
+function normalizeNodeTextValue(raw: string | undefined): string {
+  if (typeof raw !== 'string') return ''
+  const trimmed = raw.trim()
+  if (trimmed === '…' || trimmed === '...') return ''
+  return raw
+}
+
 /** 拆解 / 提取类工具：执行结果写在 params.text */
 function isTextToolNode(node: GraphNode): boolean {
   return (
@@ -77,10 +85,15 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   if (node.category === 'note') return true
   if (node.typeId === 'note.text' || node.typeId === 'text.plain') return true
   if (isTextToolNode(node)) return true
-  if (isProcessingAssetNode(node) && node.assetType === 'screenplay') return true
+  if (
+    isProcessingAssetNode(node) &&
+    (node.assetType === 'screenplay' || node.assetType === 'gameSystem')
+  ) {
+    return true
+  }
   if (isTextOutputNode(node)) return true
   if (typeof node.params.resultText === 'string') return true
-  if (typeof node.params.text === 'string' && node.params.text.length > 0) return true
+  if (normalizeNodeTextValue(node.params.text).length > 0) return true
   return false
 }
 
@@ -89,7 +102,12 @@ function preferredField(node: GraphNode): GraphNodeTextField | null {
     return 'text'
   }
   if (isTextToolNode(node)) return 'text'
-  if (isProcessingAssetNode(node) && node.assetType === 'screenplay') return 'text'
+  if (
+    isProcessingAssetNode(node) &&
+    (node.assetType === 'screenplay' || node.assetType === 'gameSystem')
+  ) {
+    return 'text'
+  }
   if (isTextOutputNode(node)) return 'resultText'
   if (typeof node.params.resultText === 'string') return 'resultText'
   if (typeof node.params.text === 'string') return 'text'
@@ -105,11 +123,11 @@ export function resolveNodeTextContent(
   runState?: GraphNodeRunState | null
 ): GraphNodeTextContent | null {
   if (isGameProductionNode(node)) return null
-  if (!isNodeTextCapable(node) && !textFromGraphValue(runState?.outputs?.out).trim()) {
+  const live = normalizeNodeTextValue(textFromGraphValue(runState?.outputs?.out))
+  if (!isNodeTextCapable(node) && !live.trim()) {
     return null
   }
 
-  const live = textFromGraphValue(runState?.outputs?.out)
   const field = preferredField(node)
 
   if (live.trim()) {
@@ -117,16 +135,16 @@ export function resolveNodeTextContent(
   }
 
   if (field === 'resultText') {
-    return { text: node.params.resultText ?? '', field }
+    return { text: normalizeNodeTextValue(node.params.resultText), field }
   }
   if (field === 'text') {
-    return { text: node.params.text ?? '', field }
+    return { text: normalizeNodeTextValue(node.params.text), field }
   }
 
   const fallback = node.params.resultText ?? node.params.text
   if (typeof fallback === 'string') {
     return {
-      text: fallback,
+      text: normalizeNodeTextValue(fallback),
       field: typeof node.params.resultText === 'string' ? 'resultText' : 'text'
     }
   }

@@ -878,3 +878,268 @@ export function getFairyStageActReaction(options: {
     burstSymbols: persona.burstSymbols
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────────────
+ * 节点画布施法定位与近程/远程多重魔法轨迹计算
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export interface WishCookingNodeTarget {
+  id: string
+  title: string
+  /** 节点在画布视口中的左上角 X（CSS px） */
+  screenX: number
+  /** 节点在画布视口中的左上角 Y（CSS px） */
+  screenY: number
+  /** 节点在画布视口中的宽度（CSS px） */
+  screenWidth: number
+  /** 节点在画布视口中的高度（CSS px） */
+  screenHeight: number
+}
+
+export type WishSpellRangeMode = 'close' | 'longRange'
+
+export interface WishSpellLink {
+  id: string
+  title: string
+  mode: WishSpellRangeMode
+  distance: number
+  wandX: number
+  wandY: number
+  targetX: number
+  targetY: number
+  nodeScreenX: number
+  nodeScreenY: number
+  nodeScreenWidth: number
+  nodeScreenHeight: number
+  /** 主魔力轨道 SVG path（近程为柔和流光束，远程为高拱天基星轨抛物线） */
+  beamPath: string
+  /** 双螺旋伴生能量丝带 A */
+  helixPathA: string
+  /** 双螺旋伴生能量丝带 B */
+  helixPathB: string
+  /** 冲击角度（deg），用于定向旋转靶心冲击波与天降星陨特效 */
+  angleDeg: number
+}
+
+/** 超过该像素距离时自动切换为「远程星轨炮 + 追踪奥术飞弹 + 天降圣光星陨柱」特效 */
+export const LONG_RANGE_SPELL_DISTANCE_PX = 320
+
+function clampNum(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val))
+}
+
+/** 仙子本体+底部铭牌总高度约 152px，再额外留出 64px 净空，使仙子悬浮在节点正上方不挤占节点区域 */
+export const FAIRY_ABOVE_NODE_OFFSET_Y = 216
+export const FAIRY_BELOW_NODE_GAP_Y = 56
+
+/**
+ * 根据当前画布中正在 cook（运行中）的节点集合，计算仙子的最佳施法站位与朝向：
+ * - 单节点 cook：悬浮在该节点正上方（预留充足净空，若节点紧贴画布顶边则悬浮在节点下方）对准节点持续施法；
+ * - 多节点同时 cook：移动到所有 cook 节点的水平中心上方（预留净空不遮挡中间节点），开启中央万象法阵同时对所有节点施法。
+ */
+export function computeFairyCastPosition(
+  targets: readonly WishCookingNodeTarget[],
+  viewport: { width: number; height: number },
+  currentFacing: 'left' | 'right' = 'right'
+): {
+  x: number
+  y: number
+  facing: 'left' | 'right'
+  isMultiTarget: boolean
+  centroidX: number
+  centroidY: number
+} {
+  const cw = Math.max(320, viewport.width || 800)
+  const ch = Math.max(260, viewport.height || 600)
+  const minX = 16
+  const maxX = Math.max(minX + 20, cw - 148)
+  const minY = 20
+  const maxY = Math.max(minY + 20, ch - 168)
+
+  if (targets.length === 0) {
+    return {
+      x: clampNum(cw * 0.5 - 60, minX, maxX),
+      y: clampNum(ch * 0.5 - 66, minY, maxY),
+      facing: currentFacing,
+      isMultiTarget: false,
+      centroidX: cw * 0.5,
+      centroidY: ch * 0.5
+    }
+  }
+
+  if (targets.length === 1) {
+    const t = targets[0]!
+    const cx = t.screenX + t.screenWidth * 0.5
+    const cy = t.screenY + t.screenHeight * 0.5
+    // 站在节点上方偏左一点（使右侧法杖尖端恰好对准节点正上方中心），留出 64px 施法空间
+    const x = clampNum(cx - 76, minX, maxX)
+    const preferAboveY = t.screenY - FAIRY_ABOVE_NODE_OFFSET_Y
+    const preferBelowY = t.screenY + t.screenHeight + FAIRY_BELOW_NODE_GAP_Y
+    const rawY = preferAboveY >= minY ? preferAboveY : preferBelowY <= maxY ? preferBelowY : minY
+    const y = clampNum(rawY, minY, maxY)
+    const facing: 'left' | 'right' = cx >= x + 48 ? 'right' : 'left'
+    return {
+      x,
+      y,
+      facing,
+      isMultiTarget: false,
+      centroidX: cx,
+      centroidY: cy
+    }
+  }
+
+  // 多节点同时 cook：水平移动到所有 cook 节点的几何中心，纵向悬浮在节点群上方留出净空
+  let sumX = 0
+  let sumY = 0
+  let minNodeTop = Number.POSITIVE_INFINITY
+  let maxNodeBottom = Number.NEGATIVE_INFINITY
+  for (const t of targets) {
+    sumX += t.screenX + t.screenWidth * 0.5
+    sumY += t.screenY + t.screenHeight * 0.5
+    if (t.screenY < minNodeTop) minNodeTop = t.screenY
+    if (t.screenY + t.screenHeight > maxNodeBottom) maxNodeBottom = t.screenY + t.screenHeight
+  }
+  const centroidX = sumX / targets.length
+  const centroidY = sumY / targets.length
+  const x = clampNum(centroidX - 60, minX, maxX)
+
+  const preferAboveClusterY = Math.min(
+    centroidY - FAIRY_ABOVE_NODE_OFFSET_Y,
+    minNodeTop - FAIRY_ABOVE_NODE_OFFSET_Y + 24
+  )
+  const preferBelowClusterY = maxNodeBottom + FAIRY_BELOW_NODE_GAP_Y
+  const rawY =
+    preferAboveClusterY >= minY
+      ? preferAboveClusterY
+      : preferBelowClusterY <= maxY
+        ? preferBelowClusterY
+        : minY
+  const y = clampNum(rawY, minY, maxY)
+
+  // 朝向距离最远或最右侧的主节点，保持姿态灵动
+  let rightmostDelta = 0
+  for (const t of targets) {
+    const dx = t.screenX + t.screenWidth * 0.5 - centroidX
+    if (Math.abs(dx) > Math.abs(rightmostDelta)) {
+      rightmostDelta = dx
+    }
+  }
+  const facing: 'left' | 'right' =
+    Math.abs(rightmostDelta) < 8 ? currentFacing : rightmostDelta >= 0 ? 'right' : 'left'
+
+  return {
+    x,
+    y,
+    facing,
+    isMultiTarget: true,
+    centroidX,
+    centroidY
+  }
+}
+
+/**
+ * 为每个正在 cook 的目标节点生成施法轨迹（自动根据距离切换近程赋能光束 vs 远程高拱曲率星轨大魔法）
+ */
+export function buildFairySpellLinks(
+  fairyPos: { x: number; y: number; facing: 'left' | 'right' },
+  targets: readonly WishCookingNodeTarget[]
+): WishSpellLink[] {
+  if (!targets.length) return []
+  const wandX = Math.round(fairyPos.x + (fairyPos.facing === 'right' ? 96 : 24))
+  const wandY = Math.round(fairyPos.y + 42)
+
+  return targets.map((t, idx) => {
+    const targetX = Math.round(t.screenX + t.screenWidth * 0.5)
+    const targetY = Math.round(t.screenY + t.screenHeight * 0.5)
+    const dx = targetX - wandX
+    const dy = targetY - wandY
+    const distance = Math.hypot(dx, dy)
+    const mode: WishSpellRangeMode =
+      distance >= LONG_RANGE_SPELL_DISTANCE_PX ? 'longRange' : 'close'
+    const angleDeg = Math.round((Math.atan2(dy, dx) * 180) / Math.PI)
+
+    const midX = (wandX + targetX) * 0.5
+    const midY = (wandY + targetY) * 0.5
+    const invLen = distance > 1 ? 1 / distance : 0
+    // 法向量（始终向上拱起以形成炫酷的远程天基星轨抛物线）
+    const nx = -dy * invLen
+    const ny = dx * invLen
+    const upwardSign = ny <= 0 ? 1 : -1
+
+    if (mode === 'longRange') {
+      const archLift = Math.min(210, Math.max(78, distance * 0.32))
+      const ctrlX = Math.round(midX + nx * upwardSign * (archLift * 0.35))
+      const ctrlY = Math.round(midY - archLift)
+      const beamPath = `M ${wandX} ${wandY} Q ${ctrlX} ${ctrlY} ${targetX} ${targetY}`
+
+      const c1x = Math.round(wandX + dx * 0.32 + nx * 38)
+      const c1y = Math.round(wandY + dy * 0.32 - archLift * 0.85 + ny * 38)
+      const c2x = Math.round(wandX + dx * 0.68 - nx * 38)
+      const c2y = Math.round(wandY + dy * 0.68 - archLift * 0.85 - ny * 38)
+      const helixPathA = `M ${wandX} ${wandY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}`
+
+      const d1x = Math.round(wandX + dx * 0.32 - nx * 38)
+      const d1y = Math.round(wandY + dy * 0.32 - archLift * 1.15 - ny * 38)
+      const d2x = Math.round(wandX + dx * 0.68 + nx * 38)
+      const d2y = Math.round(wandY + dy * 0.68 - archLift * 1.15 + ny * 38)
+      const helixPathB = `M ${wandX} ${wandY} C ${d1x} ${d1y}, ${d2x} ${d2y}, ${targetX} ${targetY}`
+
+      return {
+        id: t.id,
+        title: t.title,
+        mode,
+        distance: Math.round(distance),
+        wandX,
+        wandY,
+        targetX,
+        targetY,
+        nodeScreenX: Math.round(t.screenX),
+        nodeScreenY: Math.round(t.screenY),
+        nodeScreenWidth: Math.round(t.screenWidth),
+        nodeScreenHeight: Math.round(t.screenHeight),
+        beamPath,
+        helixPathA,
+        helixPathB,
+        angleDeg
+      }
+    }
+
+    // 近程施法：直接魔力洪流 + 双螺旋丝带缠绕
+    const waveOffset = (idx % 2 === 0 ? 1 : -1) * Math.min(28, Math.max(12, distance * 0.14))
+    const ctrlX = Math.round(midX + nx * waveOffset)
+    const ctrlY = Math.round(midY + ny * waveOffset)
+    const beamPath = `M ${wandX} ${wandY} Q ${ctrlX} ${ctrlY} ${targetX} ${targetY}`
+
+    const spread = Math.min(26, Math.max(12, distance * 0.16))
+    const c1x = Math.round(wandX + dx * 0.33 + nx * spread)
+    const c1y = Math.round(wandY + dy * 0.33 + ny * spread)
+    const c2x = Math.round(wandX + dx * 0.66 - nx * spread)
+    const c2y = Math.round(wandY + dy * 0.66 - ny * spread)
+    const helixPathA = `M ${wandX} ${wandY} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${targetX} ${targetY}`
+
+    const d1x = Math.round(wandX + dx * 0.33 - nx * spread)
+    const d1y = Math.round(wandY + dy * 0.33 - ny * spread)
+    const d2x = Math.round(wandX + dx * 0.66 + nx * spread)
+    const d2y = Math.round(wandY + dy * 0.66 + ny * spread)
+    const helixPathB = `M ${wandX} ${wandY} C ${d1x} ${d1y}, ${d2x} ${d2y}, ${targetX} ${targetY}`
+
+    return {
+      id: t.id,
+      title: t.title,
+      mode,
+      distance: Math.round(distance),
+      wandX,
+      wandY,
+      targetX,
+      targetY,
+      nodeScreenX: Math.round(t.screenX),
+      nodeScreenY: Math.round(t.screenY),
+      nodeScreenWidth: Math.round(t.screenWidth),
+      nodeScreenHeight: Math.round(t.screenHeight),
+      beamPath,
+      helixPathA,
+      helixPathB,
+      angleDeg
+    }
+  })
+}

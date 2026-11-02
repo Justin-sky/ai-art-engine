@@ -277,6 +277,8 @@ export type GraphNodeTypeId =
   | 'game.audioDsp'
   | 'game.levelMap'
   | 'game.economy'
+  | 'game.numerical'
+  | 'novel.outline'
   | 'graph.input.slot'
   | (string & {})
 
@@ -1602,6 +1604,8 @@ export interface GraphNodeParams {
   gameUiArtboardPreviewDataUrl?: string
   /** 游戏节点：UI 屏幕蓝图预设 */
   gameUiScreenBlueprint?: string
+  /** 小说生成节点（asset.novel）：节点执行角色模式（'auto' 自动识别 | 'outline' 世界观与分卷/分章总纲 | 'chapter' 单章/连载正文） */
+  novelNodeMode?: 'auto' | 'outline' | 'chapter'
   /** 小说生成节点（asset.novel）：全书动态总章节数（支持随时动态调整，如 60 / 80 / 800 / 2000，默认 800） */
   novelTotalChapters?: number
   /** 小说生成节点（asset.novel）：当前待生成章号游标（1 .. novelTotalChapters，默认 1） */
@@ -1636,6 +1640,12 @@ export interface GraphNodeParams {
   gameSystemArchetype?: string
   /** 策划案生成节点（asset.gameSystem）：默认 UI 画幅比例（9:16 / 16:9 / 1:1） */ // cjk-ok
   gameSystemTargetAspect?: string
+  /** 数值系统节点（game.numerical）：数值配表与战力仿真预设模板 ID */ // cjk-ok
+  gameNumericalPreset?: string
+  /** 数值系统节点（game.numerical）：独立数值工作台 JSON 载荷（MxNumericalWorkbench） */ // cjk-ok
+  gameNumericalWorkbenchJson?: string
+  /** 数值系统节点（game.numerical）：数值仿真与平衡审计摘要报告 */ // cjk-ok
+  gameNumericalReport?: string
 }
 
 export interface GraphPortDef {

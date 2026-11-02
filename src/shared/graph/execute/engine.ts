@@ -29,7 +29,7 @@ import type {
 } from './types'
 import { contributionFromAssets } from './contribution'
 import { buildMentionSourcesForNode, resolveGenerateMentionIndexBase } from './context'
-import { resolveGalleryOutputsFromNodeParams } from './helpers'
+import { hydrateTextItems, resolveGalleryOutputsFromNodeParams } from './helpers'
 import { executeAssetHostInnerGraph } from './host'
 import { resolveNodeExecutor } from './registry'
 import { semanticTimelineValue } from './semanticTimelineValue'
@@ -364,7 +364,7 @@ async function softSnapshotOutputs(
   )
 }
 
-/** 路径-only text / catalog 在复用 prior 时按 relativePath 补全文 */
+/** 路径-only text / texts / catalog 在复用 prior 时按 relativePath 补全文 */
 async function hydrateOutputRecordTexts(
   outputs: Record<string, GraphValue>,
   readRunText?: (relativePath: string) => Promise<string>
@@ -386,6 +386,18 @@ async function hydrateOutputRecordTexts(
         if (text) next[key] = { ...value, text }
       } catch {
         // keep path-only
+      }
+    } else if (value.kind === 'texts') {
+      const needsHydrate = value.items.some(
+        (item) => !item.text?.trim() && item.relativePath?.trim()
+      )
+      if (needsHydrate) {
+        try {
+          const items = await hydrateTextItems(value.items, readRunText)
+          next[key] = { ...value, items }
+        } catch {
+          // keep path-only
+        }
       }
     }
   }
@@ -751,10 +763,10 @@ export async function runGraph(
   if (onlyTarget) {
     for (const edge of graph.edges) {
       if (edge.target !== target.id) continue
-      if (outputs.has(edge.source)) continue
       const source = byId.get(edge.source)
       if (!source) continue
       const sourcePort = edge.sourcePort ?? 'out'
+      if (outputs.get(edge.source)?.[sourcePort]) continue
       try {
         const snap = await softSnapshotOutputs(
           source,
@@ -782,11 +794,14 @@ export async function runGraph(
         if (emptyText && source.assetId && options.resolveAssetText) {
           const text = (await options.resolveAssetText(source.assetId))?.trim() ?? ''
           if (text) {
-            outputs.set(edge.source, { out: { kind: 'text', text } })
+            outputs.set(edge.source, {
+              ...(outputs.get(edge.source) ?? {}),
+              out: { kind: 'text', text }
+            })
             continue
           }
         }
-        outputs.set(edge.source, snap)
+        outputs.set(edge.source, { ...(outputs.get(edge.source) ?? {}), ...snap })
       } catch {
         // 上游快照抛错时：资产引用仍尝试直接读正文
         if (source.assetId && options.resolveAssetText) {

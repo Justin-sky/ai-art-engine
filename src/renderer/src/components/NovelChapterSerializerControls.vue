@@ -72,10 +72,14 @@
         <span class="novel-lbl">{{ uiText.wordsUnit }}</span>
       </div>
 
-      <label class="novel-chk" :title="uiText.autoAdvanceTip">
-        <input type="checkbox" :checked="autoAdvance" @change="onAutoAdvanceChange" />
-        <span>{{ uiText.autoAdvanceLbl }}</span>
-      </label>
+      <button
+        type="button"
+        class="novel-pill-btn is-active"
+        :title="uiText.spawnNextTip"
+        @click="spawnNextChapterNode"
+      >
+        ⛓️ {{ uiText.spawnNextLbl }}
+      </button>
 
       <button
         type="button"
@@ -205,7 +209,6 @@ const currentChapter = computed(() =>
 const targetWords = computed(() =>
   Math.max(1000, Math.min(15000, Math.round(Number(node.value?.params?.novelTargetWords) || 3200)))
 )
-const autoAdvance = computed(() => node.value?.params?.novelAutoAdvanceChapter !== false)
 const worldBible = computed(() => String(node.value?.params?.novelWorldBible ?? ''))
 const stateLedger = computed(() => String(node.value?.params?.novelStateLedger ?? ''))
 const rollingSummary = computed(() => String(node.value?.params?.novelRollingSummary ?? ''))
@@ -242,10 +245,10 @@ const uiText = computed(() => ({
   ),
   wordsLabel: L('单章字数:', 'Words/Ch:'), // cjk-ok
   wordsUnit: L('字+', 'w+'), // cjk-ok
-  autoAdvanceLbl: L('自动+1章', 'Auto +1 Ch'), // cjk-ok
-  autoAdvanceTip: L(
-    '生成完当前第 N 章后，自动将连载游标推进至第 N+1 章', // cjk-ok
-    'Automatically advance chapter cursor to N+1 after generating Chapter N'
+  spawnNextLbl: L('+ 下一章节点', '+ Next Chap Node'), // cjk-ok
+  spawnNextTip: L(
+    '在画布新建并串联「下一章」小说节点（自动连接上一章 out->in、小说大纲 -> in-outline、经济系统 -> in-economy）', // cjk-ok
+    'Create and wire the next chapter node on the canvas (Prev Chap + Outline + Economy)'
   ),
   memoryBtn: L('四层记忆账本', '4-Tier Memory'), // cjk-ok
   tabLedger: L('L2 动态状态与底牌账本', 'L2 Live State Ledger'), // cjk-ok
@@ -308,9 +311,56 @@ function onTargetWordsChange(e: Event): void {
   patchParams({ novelTargetWords: nextWords })
 }
 
-function onAutoAdvanceChange(e: Event): void {
-  const checked = (e.target as HTMLInputElement).checked
-  patchParams({ novelAutoAdvanceChapter: checked })
+function spawnNextChapterNode(): void {
+  const cur = node.value
+  if (!cur || !props.hostId) return
+  const isOutlineSelf = cur.typeId === 'novel.outline' || cur.params?.novelNodeMode === 'outline'
+  const nextChap = isOutlineSelf ? 1 : Math.min(totalChapters.value, currentChapter.value + 1)
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, cur.id)
+  const linkSources: { nodeId: string; portId?: string }[] = []
+  for (const edge of incoming) {
+    const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+    if (src?.typeId === 'game.economy' || src?.typeId === 'game.numerical') {
+      linkSources.push({ nodeId: src.id, portId: 'out-text' })
+    } else if (
+      src &&
+      (src.typeId === 'novel.outline' ||
+        (src.typeId === 'asset.novel' && src.params?.novelNodeMode === 'outline'))
+    ) {
+      linkSources.push({ nodeId: src.id, portId: 'out' })
+    }
+  }
+  linkSources.push({ nodeId: cur.id, portId: 'out' })
+  graphEditorHosts.addNode(props.hostId, {
+    typeId: 'asset.novel',
+    title: L(`第${nextChap}章`, `Ch.${nextChap}`), // cjk-ok
+    position: {
+      x: (cur.position?.x ?? 400) + 380,
+      y: cur.position?.y ?? 200
+    },
+    linkFrom: linkSources,
+    params: {
+      novelNodeMode: 'chapter',
+      novelTotalChapters: totalChapters.value,
+      novelCurrentChapter: nextChap,
+      novelTargetWords: targetWords.value,
+      novelAutoAdvanceChapter: false,
+      novelGenre: cur.params?.novelGenre ?? '',
+      novelWorldBible: worldBible.value,
+      novelStateLedger: stateLedger.value,
+      novelRollingSummary: rollingSummary.value,
+      novelCharacterRosterJson: cur.params?.novelCharacterRosterJson ?? '',
+      novelForeshadowingJson: cur.params?.novelForeshadowingJson ?? '',
+      novelChapterHistoryJson: cur.params?.novelChapterHistoryJson ?? '',
+      generateInstruction: L(
+        `结合上游【小说大纲】第${nextChap}章细纲、【经济系统】第${nextChap}章数值配额锁与上一章马尔可夫状态锚点，撰写第${nextChap}章完整正文。`, // cjk-ok
+        `Write Chapter ${nextChap} following the connected novel outline, numerical lock, and previous chapter Markov state.`
+      ),
+      text: '',
+      selectedTextId: '',
+      generatedTexts: []
+    }
+  })
 }
 
 function onLedgerChange(e: Event): void {

@@ -58,6 +58,7 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'frameAnimGen'
     case 'svg.gen':
       return 'svgGen'
+    case 'novel.outline':
     case 'asset.novel':
       return 'novel'
     case 'asset.screenplay':

@@ -458,13 +458,14 @@ export function buildActiveWorkspaceContext(): string | undefined {
             `    * To edit the 5 Deep Numerical Workbench modules (Layer 1 Multiplier Pipeline, Layer 2 Entity Budget Table, Layer 3 Gacha Pity & Substat Roll, Layer 4 Roguelike Power vs Enemy Wall Envelope, Layer 5 Combat Kernel ATB/Turn/Deck), pass dot-paths under \`gameEconomyDiagramJson.workbench.*\`, e.g. \`params: { "gameEconomyDiagramJson.workbench.multiplier.finalFormula": "ATK * SkillPct * CritBonus", "gameEconomyDiagramJson.workbench.lootRoll.softPityStart": 65, "gameEconomyDiagramJson.workbench.lootRoll.hardPityPull": 80, "gameEconomyDiagramJson.workbench.combatKernel.kernel": "turn_based|atb_speed|deck_mana|roguelike_mult|survivor_wave" }\`.`,
             `    * To tweak an existing diagram node or edge in-place, pass dot-paths such as \`params: { "gameEconomyDiagramJson.nodes[id=hp].initial": 150, "gameEconomyDiagramJson.edges[id=e1].formula": "2D6+1" }\`, then run \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
           )
-        } else if (divedNode.typeId === 'asset.novel') {
+        } else if (divedNode.typeId === 'asset.novel' || divedNode.typeId === 'novel.outline') {
           const genreIds = NOVEL_GENRE_PROFILES.map((g) => g.id).join('|')
           lines.push(
-            `  [Novel Serialization Studio Live Protocol]: The user is currently inside the Novel Serialization Workbench (\`novel.workbench\`) for nodeId="${divedNode.id}".`,
+            `  [Novel Outline & Markov-Chain Chapter Studio Live Protocol]: The user is currently inside the Novel Workbench (\`novel.workbench\`) for nodeId="${divedNode.id}" (typeId="${divedNode.typeId}").`,
             `    * To switch among the 8 Novel Genres (and auto-seed L1 World Bible, L3 Character Roster, and L3 Foreshadowing Ledger), call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${genreIds}" }] })\` (or pass \`params: { novelGenre: "..." }\`).`,
-            `    * To configure chapter serialization & 4-Layer Long-Term Memory, pass \`params: { novelCurrentChapter: 1, novelTotalChapters: 20, novelTargetWords: 2200, novelWorldBible: "...", novelStateLedger: "...", novelCharacterRosterJson: [{ id: "char_1", name: "...", faction: "protagonist|ally|villain|neutral", status: "alive|injured|missing|sealed|dead", realmStage: "...", location: "...", keyItems: ["..."], relationshipToMc: "...", note: "..." }], novelForeshadowingJson: [{ id: "fs_1", title: "...", plantedChapter: 1, expectedPayoffChapter: 12, status: "planted|escalated|paid_off", clueSummary: "..." }] }\` (or dot-paths like \`"novelCharacterRosterJson[name=主角].status": "injured"\`).`, // cjk-ok
-            `    * To write/generate the current chapter with AI (fusing upstream \`game.economy\` single-chapter numerical slice + L1-L4 memory), call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
+            `    * 3-Way Conditioned Markov-Chain Architecture ($P(C_t | C_{t-1}, O_t, E_t)$): Use a dedicated \`novel.outline\` node for the World Bible + per-chapter outlines, a \`game.economy\` node for the numerical progression system, and independent \`asset.novel\` nodes for each chapter (\`第1章 -> 第2章 -> 第3章\`), wiring \`novel.outline (out) -> C_t (in)\`, \`game.economy (out-text) -> C_t (in)\`, and \`C_{t-1} (out) -> C_t (in)\`.`, // cjk-ok
+            `    * To configure chapter serialization & 4-Layer Long-Term Memory, pass \`params: { novelCurrentChapter: 1, novelTotalChapters: 20, novelTargetWords: 3200, novelWorldBible: "...", novelStateLedger: "...", novelCharacterRosterJson: [...], novelForeshadowingJson: [...] }\`.`,
+            `    * To write/generate the outline or current chapter with AI, call \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
           )
         } else if (divedNode.typeId === 'asset.gameSystem') {
           const archIds = GAME_SYSTEM_ARCHETYPES.map((a) => a.id).join('|')
@@ -649,11 +650,13 @@ export function buildActiveWorkspaceContext(): string | undefined {
             `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system or 5-Layer Numerical Workbench on \`game.economy\`, pass \`preset: "${tplIds}"\` or \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, resources: [...], params: [...], nodes: [...], edges: [...] } }\` (or dot-paths under \`gameEconomyDiagramJson.workbench.*\`, plus \`openDive: true\` to enter the workbench) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\`.`
           )
         }
-        const novelNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'asset.novel')
+        const novelNodeOnCanvas = liveDoc.nodes.find(
+          (n) => n.typeId === 'asset.novel' || n.typeId === 'novel.outline'
+        )
         if (novelNodeOnCanvas) {
           const genreIds = NOVEL_GENRE_PROFILES.map((g) => g.id).join('|')
           lines.push(
-            `  [Novel Serialization Node Protocol (nodeId="${novelNodeOnCanvas.id}")]: Supports 8 genres (\`preset: "${genreIds}"\`), chapter progress (\`novelCurrentChapter\`, \`novelTotalChapters\`, \`novelTargetWords\`), and 4-Layer Long-Term Memory (\`novelWorldBible\`, \`novelStateLedger\`, \`novelCharacterRosterJson\`, \`novelForeshadowingJson\`, plus \`openDive: true\` to open \`novel.workbench\`). Wire \`game.economy (out-text) -> asset.novel (in)\` to inject single-chapter numerical pacing, and call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${novelNodeOnCanvas.id}"] })\` to write chapters.`
+            `  [Novel Outline & Markov-Chain Chapter Protocol (nodeId="${novelNodeOnCanvas.id}")]: Supports 8 genres (\`preset: "${genreIds}"\`), dedicated \`novel.outline\` node (World Bible + per-chapter outlines), and Markov-chained per-chapter \`asset.novel\` nodes (\`第1章 -> 第2章 -> 第3章\`). Wire 3 inputs into every chapter node: \`C_{t-1} (out) -> C_t (in)\`, \`novel.outline (out) -> C_t (in)\`, and \`game.economy (out-text) -> C_t (in)\`, then call \`task_run\` to generate.` // cjk-ok
           )
         }
         const gameSystemNodeOnCanvas = liveDoc.nodes.find((n) => n.typeId === 'asset.gameSystem')

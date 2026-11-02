@@ -1251,6 +1251,11 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
             synced.graph,
             liveResult.touchedNodeIds
           )
+          if (synced.graph.runStates) {
+            for (const invId of invalidatedNodeIds) {
+              delete synced.graph.runStates[invId]
+            }
+          }
           clearLiveCanvasRunStates(hostId, invalidatedNodeIds)
         }
         graphEditorHosts.applyExternalGraph(
@@ -1274,7 +1279,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
           const diveViewId =
             diveNode.typeId === 'game.economy'
               ? ('game.workbench' as const)
-              : diveNode.typeId === 'asset.novel'
+              : diveNode.typeId === 'asset.novel' || diveNode.typeId === 'novel.outline'
                 ? ('novel.workbench' as const)
                 : diveNode.typeId === 'asset.gameSystem'
                   ? ('gameSystem.workbench' as const)

@@ -31,8 +31,8 @@ export interface GraphEditorAddNodeInput {
   params?: Partial<GraphNodeParams>
   /** 世界坐标；省略时放在第一个上游节点右侧，无上游则落在视口中心 */
   position?: { x: number; y: number }
-  /** 上游连线：从这些节点的输出口连到新节点的第一个兼容输入口 */
-  linkFrom?: { nodeId: string; portId?: string }[]
+  /** 上游连线：从这些节点的输出口连到新节点的兼容输入口（可指定 targetPort） */
+  linkFrom?: { nodeId: string; portId?: string; targetPort?: string }[]
 }
 
 export interface GraphEditorHostApi {

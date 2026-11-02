@@ -690,6 +690,33 @@ function buildKnownSubDocPrototype(key: string): {
           category: 'gameEconomyPreset'
         }))
       }
+    case 'gameNumericalPreset':
+      return {
+        fieldOverrides: {
+          gameNumericalPreset: {
+            type: 'enum',
+            enumValues: MX_WORKBENCH_PRESETS.map((w) => w.id),
+            description: '游戏数值系统与战力配表工作台模板预设' // cjk-ok
+          }
+        },
+        presets: MX_WORKBENCH_PRESETS.map((w) => ({
+          id: w.id,
+          label: `${w.nameZh} / ${w.nameEn}`,
+          description: `${w.descZh} (${w.descEn})`,
+          category: 'gameNumericalPreset'
+        }))
+      }
+    case 'gameNumericalWorkbenchJson':
+      return {
+        sample: createMxWorkbenchPreset('slay_the_spire_dbg'),
+        isJsonString: true,
+        presets: MX_WORKBENCH_PRESETS.map((w) => ({
+          id: w.id,
+          label: `${w.nameZh} / ${w.nameEn}`,
+          description: `${w.descZh} (${w.descEn})`,
+          category: 'gameNumericalPreset'
+        }))
+      }
     case 'novelGenre':
       return {
         fieldOverrides: {

@@ -183,6 +183,7 @@ export function applyDefaultGenerateModels(
       }
       if (aspectRatio) params.filmAspectRatio = aspectRatio
     } else if (
+      node.typeId === 'novel.outline' ||
       node.typeId === 'asset.novel' ||
       node.typeId === 'asset.screenplay' ||
       node.typeId === 'asset.gameSystem' ||
@@ -245,7 +246,10 @@ export function buildGraphPlanCatalog(
  */
 export function declaredParamKeys(def: NodeTypeDefinition): Set<string> {
   try {
-    return new Set(Object.keys(def.defaultParams() ?? {}))
+    return new Set([
+      ...Object.keys(def.defaultParams() ?? {}),
+      ...Object.keys(def.paramSchema ?? {})
+    ])
   } catch {
     return new Set()
   }

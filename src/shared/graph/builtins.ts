@@ -100,15 +100,18 @@ import {
   executeGamePbrTileNode,
   executeGameAudioDspNode,
   executeGameLevelMapNode,
-  executeGameEconomyNode
+  executeGameEconomyNode,
+  executeGameNumericalNode
 } from './execute'
 import {
   DEFAULT_GAME_SYSTEM_SYSTEM_PROMPT_ZH,
+  DEFAULT_NOVEL_OUTLINE_SYSTEM_PROMPT_ZH,
   DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
   DEFAULT_UI_SPLIT_SYSTEM_PROMPT_ZH
 } from './systemPromptSchemes'
 import {
   DEFAULT_GAME_SYSTEM_USER_PROMPT_ZH,
+  DEFAULT_NOVEL_OUTLINE_USER_PROMPT_ZH,
   DEFAULT_NOVEL_USER_PROMPT_ZH,
   DEFAULT_UI_SPLIT_USER_PROMPT_ZH
 } from './userPromptSchemes'
@@ -343,30 +346,55 @@ function musicNodeDef(): NodeTypeDefinition {
   }
 }
 
-function novelNodeDef(): NodeTypeDefinition {
+function novelOutlineNodeDef(): NodeTypeDefinition {
   return {
-    typeId: 'asset.novel',
+    typeId: 'novel.outline',
     category: 'asset',
-    label: '创建小说', // cjk-ok
-    icon: '📚',
-    defaultTitle: '创建小说', // cjk-ok
+    label: '小说大纲', // cjk-ok
+    icon: '🗺️',
+    defaultTitle: '小说大纲', // cjk-ok
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
-      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'In' },
-      ...galleryOutPorts(GraphPortType.text)
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Premise',
+        labelKey: 'graph.port.novelPremiseIn'
+      },
+      {
+        id: 'in-economy',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Economy',
+        labelKey: 'graph.port.novelEconomyIn'
+      },
+      {
+        id: 'in-numerical',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Numerical',
+        labelKey: 'graph.port.numericalIn'
+      },
+      ...galleryOutPorts(GraphPortType.text, {
+        out: 'graph.port.novelOutlineOut'
+      })
     ],
     defaultParams: () => ({
       text: '…',
-      generateInstruction: DEFAULT_NOVEL_USER_PROMPT_ZH,
-      generateSystemPrompt: DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
+      generateInstruction: DEFAULT_NOVEL_OUTLINE_USER_PROMPT_ZH,
+      generateSystemPrompt: DEFAULT_NOVEL_OUTLINE_SYSTEM_PROMPT_ZH,
       generateModel: '',
       generateProviderInstanceId: '',
+      novelNodeMode: 'outline',
       novelGenre: '',
       novelTotalChapters: 800,
       novelCurrentChapter: 1,
       novelTargetWords: 3200,
-      novelAutoAdvanceChapter: true,
       novelWorldBible: '',
       novelStateLedger: '',
       novelRollingSummary: '',
@@ -382,6 +410,104 @@ function novelNodeDef(): NodeTypeDefinition {
       muted: false,
       loop: true
     }),
+    paramSchema: {
+      novelAutoAdvanceChapter: {
+        type: 'boolean',
+        label: '自动推进章节游标 / Auto-advance chapter cursor'
+      }
+    },
+    description:
+      '小说大纲节点（World Bible + 分卷总纲 + 逐章细纲）：可接收上游创意文本（in）与 game.economy（in-economy 经济系统），生成全局世界观宪法、主要人物档案、长线伏笔池及「第1章：…」「第2章：…」逐章细纲。在马尔可夫链章节管线中，将本节点 out 广播连接到每一个独立章节节点（asset.novel 的 in-outline），单章节点会自动切片提取【全局设定 + 当前第 t 章专属细纲】。', // cjk-ok
+    addable: true,
+    assetType: 'screenplay',
+    deletable: true,
+    inspector: 'asset',
+    card: 'media',
+    contributeToGeneration: true,
+    execute: (ctx: NodeExecuteContext) => executeNovelGenerateNode(ctx)
+  }
+}
+
+function novelNodeDef(): NodeTypeDefinition {
+  return {
+    typeId: 'asset.novel',
+    category: 'asset',
+    label: '创建小说', // cjk-ok
+    icon: '📚',
+    defaultTitle: '创建小说', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: true,
+        label: 'Prev chapter',
+        labelKey: 'graph.port.novelPrevChapterIn'
+      },
+      {
+        id: 'in-outline',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Outline',
+        labelKey: 'graph.port.novelOutlineIn'
+      },
+      {
+        id: 'in-economy',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Economy',
+        labelKey: 'graph.port.novelEconomyIn'
+      },
+      {
+        id: 'in-numerical',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Numerical',
+        labelKey: 'graph.port.numericalIn'
+      },
+      ...galleryOutPorts(GraphPortType.text, {
+        out: 'graph.port.novelChapterOut'
+      })
+    ],
+    defaultParams: () => ({
+      text: '…',
+      generateInstruction: DEFAULT_NOVEL_USER_PROMPT_ZH,
+      generateSystemPrompt: DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
+      generateModel: '',
+      generateProviderInstanceId: '',
+      novelNodeMode: 'chapter',
+      novelGenre: '',
+      novelTotalChapters: 800,
+      novelCurrentChapter: 1,
+      novelTargetWords: 3200,
+      novelWorldBible: '',
+      novelStateLedger: '',
+      novelRollingSummary: '',
+      novelChapterHistoryJson: '',
+      novelCharacterRosterJson: '',
+      novelForeshadowingJson: '',
+      novelCustomStagesText: '',
+      novelCustomAxisProtagonist: '',
+      novelCustomAxisAntagonist: '',
+      novelCustomUnlockTerm: '',
+      weight: 0.85,
+      volume: 1,
+      muted: false,
+      loop: true
+    }),
+    paramSchema: {
+      novelAutoAdvanceChapter: {
+        type: 'boolean',
+        label: '自动推进章节游标 / Auto-advance chapter cursor'
+      }
+    },
+    description:
+      '小说单章马尔可夫链生成节点 P(C_t | C_{t-1}, O_t, E_t)：每一章作为独立节点（第1章 → 第2章 → 第3章顺序串联），配备三个专属输入端口：① in（上一章：接入上一章 asset.novel 的 out，自动继承 L2 状态账本、人物状态表、伏笔池、近 20 章滚动摘要与上一章末尾原文钩子，自动剥离上一章 3000 字冗余正文）、② in-outline（小说大纲：接入 novel.outline 的 out，自动按当前章号 t 切片注入本章细纲与全局设定）、③ in-economy（经济系统：接入 game.economy 的 out-text，自动按当前章号 t 注入单章战力上限与准入底牌配额锁）；配备两个输出端口：① out（下一章：输出本章正文与马尔可夫状态锚点，串联下一章节点的 in 端口）、② out-all（全部：输出当前第 t 章及之前第 1~t 章的累计汇总，最后一章节点的 out-all 即输出全书所有章节）。', // cjk-ok
     addable: true,
     assetType: 'screenplay',
     deletable: true,
@@ -669,20 +795,47 @@ function assetDef(meta: (typeof ASSET_META)[number]): NodeTypeDefinition {
                               label: 'In'
                             }
                           ]
-                        : [
-                            ...(meta.processingIn
-                              ? [
-                                  {
-                                    id: 'in',
-                                    direction: 'in' as const,
-                                    dataType: meta.processingIn,
-                                    multiple: true,
-                                    label: 'In'
-                                  }
-                                ]
-                              : []),
-                            ...galleryOutPorts(meta.outType)
-                          ]
+                        : meta.type === 'gameSystem'
+                          ? [
+                              {
+                                id: 'in',
+                                direction: 'in' as const,
+                                dataType: GraphPortType.text,
+                                multiple: true,
+                                label: 'Text'
+                              },
+                              {
+                                id: 'in-economy',
+                                direction: 'in' as const,
+                                dataType: GraphPortType.text,
+                                multiple: false,
+                                label: 'Economy',
+                                labelKey: 'graph.port.novelEconomyIn'
+                              },
+                              {
+                                id: 'in-numerical',
+                                direction: 'in' as const,
+                                dataType: GraphPortType.text,
+                                multiple: false,
+                                label: 'Numerical',
+                                labelKey: 'graph.port.numericalIn'
+                              },
+                              ...galleryOutPorts(meta.outType)
+                            ]
+                          : [
+                              ...(meta.processingIn
+                                ? [
+                                    {
+                                      id: 'in',
+                                      direction: 'in' as const,
+                                      dataType: meta.processingIn,
+                                      multiple: true,
+                                      label: 'In'
+                                    }
+                                  ]
+                                : []),
+                              ...galleryOutPorts(meta.outType)
+                            ]
 
   const defaultViewer = {
     position: { x: 0, y: 2.2, z: 10 },
@@ -936,6 +1089,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   ...ASSET_META.map(assetDef),
   ...VOICE_HOST_VARIANTS.map(voiceHostVariantDef),
   musicNodeDef(),
+  novelOutlineNodeDef(),
   novelNodeDef(),
   outputDef('video', 'Video output', VIDEO_ASSET_ICON),
   outputDef('image', 'Image output', '🖼️'),
@@ -3382,7 +3536,8 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         direction: 'out',
         dataType: GraphPortType.text,
         multiple: false,
-        label: 'Economy JSON'
+        label: 'Economy',
+        labelKey: 'graph.port.novelEconomyIn'
       }
     ],
     defaultParams: () => ({
@@ -3400,6 +3555,53 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeGameEconomyNode
+  },
+  {
+    typeId: 'game.numerical',
+    category: 'note',
+    label: '数值系统', // cjk-ok
+    icon: '⚔️',
+    defaultTitle: '数值系统', // cjk-ok
+    description:
+      '游戏微观战斗仿真与战力配表工作台节点：专职负责战斗调度内核（洗抽牌库 / 法力节奏 / ATB 速度行动条）、等级与境界成长包络线 vs 怪物膨胀墙（Power Envelope）、伤害乘区公式边际收益（Multiplier Pipeline）、抽卡与词条强化期望（Loot Roll）及卡牌/技能/装备超模审计。支持从 in-economy 接入上游「经济系统」宏观资源产出率，并在 out-text（数值系统）输出完整数值规约、配表 JSON 与分章战力切片。', // cjk-ok
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      { id: 'in', direction: 'in', dataType: GraphPortType.text, multiple: true, label: 'Config' },
+      {
+        id: 'in-economy',
+        direction: 'in',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Economy',
+        labelKey: 'graph.port.novelEconomyIn'
+      },
+      ...galleryOutPorts(GraphPortType.image),
+      {
+        id: 'out-text',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        multiple: false,
+        label: 'Numerical',
+        labelKey: 'graph.port.numericalOut'
+      }
+    ],
+    defaultParams: () => ({
+      gameNumericalPreset: 'slay_the_spire_dbg',
+      gameNumericalWorkbenchJson: '',
+      gameEconomyPreset: 'roguelike_run',
+      gameEconomySteps: 20,
+      gameEconomyMonteCarloRuns: 50,
+      gameEconomySeed: 2026
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.gameNode',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeGameNumericalNode
   }
 ]
 

@@ -5802,6 +5802,14 @@ export default {
       filmCastRefs: '出场设定图',
       filmKeyframes: '关键帧',
       filmClips: '镜头视频',
+      novelPremiseIn: '创意设定',
+      novelPrevChapterIn: '上一章',
+      novelOutlineIn: '小说大纲',
+      novelEconomyIn: '经济系统',
+      numericalIn: '数值系统',
+      numericalOut: '数值系统',
+      novelOutlineOut: '大纲',
+      novelChapterOut: '下一章',
       types: {
         image: '图片',
         images: '图片组',
@@ -5967,6 +5975,9 @@ export default {
       comic: {
         page: '漫画页'
       },
+      novel: {
+        outline: '小说大纲'
+      },
       model: {
         pose: '3D姿势',
         rigSkin: '3D 骨骼蒙皮',
@@ -6050,6 +6061,7 @@ export default {
         audioDsp: '游戏音频工坊',
         levelMap: '2D关卡地图生成',
         economy: '经济系统',
+        numerical: '数值系统',
         playable: '可玩游戏沙盒'
       },
       frame: {

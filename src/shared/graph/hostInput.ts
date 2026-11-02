@@ -885,6 +885,13 @@ export function softResolveSourceOutput(
       return { kind: 'texts', items }
     }
     if (sourcePort === 'out' || !sourcePort) {
+      const isOutlineNode =
+        node.typeId === 'novel.outline' ||
+        (node.typeId === 'asset.novel' && node.params.novelNodeMode === 'outline')
+      const fullOutlineText = typeof node.params.text === 'string' ? node.params.text.trim() : ''
+      if (isOutlineNode && fullOutlineText && fullOutlineText !== '…') {
+        return { kind: 'text', text: fullOutlineText }
+      }
       const selectedId = node.params.selectedTextId?.trim()
       const picked =
         (selectedId ? items.find((item) => item.id === selectedId) : undefined) ||
@@ -897,6 +904,17 @@ export function softResolveSourceOutput(
       }
       // 图库项正文与路径皆空时继续向下软解析（params / runStates）
       if (graphValueHasPayload(galleryOut)) return galleryOut
+    }
+  }
+
+  if (
+    (node.typeId === 'game.economy' || node.typeId === 'game.numerical') &&
+    sourcePort === 'out-text'
+  ) {
+    if (graphValueHasPayload(fromRun)) return fromRun
+    const econText = typeof node.params.text === 'string' ? node.params.text.trim() : ''
+    if (econText && econText !== '…') {
+      return { kind: 'text', text: econText }
     }
   }
 

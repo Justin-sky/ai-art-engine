@@ -1,7 +1,7 @@
 import { ensureBuiltinNodeTypes } from './builtinState'
 import { isProcessingAssetNode } from './nodeRole'
 import { sanitizeGraphGroups } from './groups'
-import { canConnectNodes } from './ports'
+import { canConnectNodes, resolvePreferredNovelTargetPort } from './ports'
 import { inferNodeTypeId, resolveNodeType } from './registry'
 import type { GraphAddScope } from './registry'
 import { ensureDefaultGraphFromTemplate, resolveDefaultGraphTemplate } from './defaultGraph'
@@ -154,17 +154,29 @@ function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddSc
     const source = byId.get(edge.source)
     const target = byId.get(edge.target)
     if (!source || !target) continue
-    const sourcePort = remapLegacySourcePort(source, edge.sourcePort)
+    let sourcePort = remapLegacySourcePort(source, edge.sourcePort)
+    if (
+      (source.typeId === 'game.economy' || source.typeId === 'game.numerical') &&
+      (target.typeId === 'asset.novel' ||
+        target.typeId === 'novel.outline' ||
+        target.typeId === 'asset.gameSystem' ||
+        target.typeId === 'game.numerical') &&
+      sourcePort === 'out'
+    ) {
+      sourcePort = 'out-text'
+    }
+    const targetPort =
+      resolvePreferredNovelTargetPort(source, target, edge.targetPort) ?? edge.targetPort ?? 'in'
     if (
       !canConnectNodes(source, target, {
         scope,
         sourcePort,
-        targetPort: edge.targetPort
+        targetPort
       })
     ) {
       continue
     }
-    const key = `${edge.source}:${sourcePort}->${edge.target}:${edge.targetPort ?? 'in'}`
+    const key = `${edge.source}:${sourcePort}->${edge.target}:${targetPort}`
     if (seen.has(key)) continue
     seen.add(key)
     next.push({
@@ -172,7 +184,7 @@ function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddSc
       source: edge.source,
       target: edge.target,
       sourcePort,
-      targetPort: edge.targetPort ?? 'in'
+      targetPort
     })
   }
   return next

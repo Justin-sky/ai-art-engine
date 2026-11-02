@@ -77,7 +77,9 @@
           <LockIcon :locked="isLocked" :size="12" />
         </button>
         <span
-          v-if="node.typeId === 'asset.novel' && isProcessingNode"
+          v-if="
+            (node.typeId === 'asset.novel' || node.typeId === 'novel.outline') && isProcessingNode
+          "
           class="run-pill"
           style="
             background: rgba(168, 85, 247, 0.2);
@@ -88,7 +90,11 @@
           @pointerdown.stop
           @click.stop="onNovelBadgeClick"
         >
-          Ch.{{ node.params.novelCurrentChapter || 1 }}/{{ node.params.novelTotalChapters || 800 }}
+          {{
+            node.typeId === 'novel.outline' || node.params.novelNodeMode === 'outline'
+              ? `🗺️ 大纲 · ${node.params.novelTotalChapters || 800}章`
+              : `Ch.${node.params.novelCurrentChapter || 1}/${node.params.novelTotalChapters || 800}`
+          }}
         </span>
         <span
           v-if="node.typeId === 'asset.gameSystem'"
@@ -667,6 +673,7 @@ import {
   VIDEO_LAST_FRAME_PORT_ID,
   GRAPH_OUT_ALL_PORT_ID,
   defaultGameSystemUserPrompt,
+  defaultNovelOutlineUserPrompt,
   defaultNovelUserPrompt,
   defaultFrameAnimGenUserPrompt,
   defaultUiSplitUserPrompt,
@@ -947,7 +954,7 @@ function outPortTypeLabel(port: GraphPortDef): string {
 }
 
 function outPortTitle(port: GraphPortDef): string {
-  const type = portTypeLabel(port.dataType)
+  const type = port.labelKey ? t(port.labelKey) : portTypeLabel(port.dataType)
   if (port.id === GRAPH_OUT_ALL_PORT_ID) {
     return `${t('graph.port.outAllTitle')} · ${type}`
   }
@@ -1075,6 +1082,7 @@ const instructionKind = computed((): InstructionPresetKind | null => {
       return 'modelTexture'
     case 'model.animation':
       return 'modelAnimation'
+    case 'novel.outline':
     case 'asset.novel':
       return isProcessingNode.value ? 'novel' : null
     case 'asset.screenplay':
@@ -1810,6 +1818,9 @@ function cardImageStackStyle(index: number, total: number): Record<string, strin
 /** 多结果文本：节点卡小网格（≥2） */
 const cardTextGridItems = computed((): string[] => {
   if (hideCardPreview.value) return []
+  if (props.node.typeId === 'asset.novel' && props.node.params.novelNodeMode !== 'outline') {
+    return []
+  }
   const items = props.node.params.generatedTexts ?? []
   if (items.length <= 1) return []
   return items
@@ -1914,6 +1925,9 @@ const previewOpenHint = computed(() => {
   if (isFilmNode.value) {
     return t('graph.inspector.film.openWorkbenchHint')
   }
+  if (instructionKind.value === 'novel') {
+    return t('graph.generateNode.instructionHint')
+  }
   // 生成剧本 / 策划案：双击开的是生成指令面板，不是正文记事本（与上方双击分发同顺序）
   if (instructionKind.value === 'screenplay' || instructionKind.value === 'gameSystem') {
     return t('graph.generateNode.instructionHint')
@@ -1950,7 +1964,8 @@ const previewKind = computed((): 'image' | 'video' | 'voice' | 'none' => {
     props.node.typeId === 'game.spriteProp' ||
     props.node.typeId === 'game.vfxAlpha' ||
     props.node.typeId === 'game.levelMap' ||
-    props.node.typeId === 'game.economy'
+    props.node.typeId === 'game.economy' ||
+    props.node.typeId === 'game.numerical'
   ) {
     return 'image'
   }
@@ -2178,6 +2193,9 @@ function resolvedNodeInstruction(): string {
   const stored = props.node.params.generateInstruction
   // 空字符串视为未填写，回落到类型默认（剧本/策划案/UI拆分/帧动画等）
   if (typeof stored === 'string' && stored.trim()) return stored
+  if (props.node.typeId === 'novel.outline') {
+    return defaultNovelOutlineUserPrompt(String(locale.value))
+  }
   if (props.node.typeId === 'asset.novel') {
     return defaultNovelUserPrompt(String(locale.value))
   }
@@ -2226,7 +2244,7 @@ async function openInstructionDialog(): Promise<void> {
         displayTitle.value
       )
       if (ok) return
-    } else if (props.node.typeId === 'asset.novel') {
+    } else if (props.node.typeId === 'asset.novel' || props.node.typeId === 'novel.outline') {
       const ok = await diveView(
         { viewId: 'novel.workbench', hostId, nodeId: props.node.id },
         displayTitle.value
@@ -3091,8 +3109,11 @@ function onPreviewDblClick(): void {
       return
     }
 
-    // 小说生成节点：双击进入全屏多章节小说连载与数值记忆 Dive 工作台（无 dive 上下文时退回展开生成指令面板）
-    if (props.node.typeId === 'asset.novel' && isProcessingNode.value) {
+    // 小说大纲 / 小说章节生成节点：双击进入全屏多章节小说连载与数值记忆 Dive 工作台（无 dive 上下文时退回展开生成指令面板）
+    if (
+      (props.node.typeId === 'asset.novel' || props.node.typeId === 'novel.outline') &&
+      isProcessingNode.value
+    ) {
       const hostId = props.hostId?.trim()
       if (hostId) {
         const ok = await diveView(

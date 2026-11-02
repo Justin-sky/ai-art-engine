@@ -587,6 +587,27 @@
       </div>
     </section>
 
+    <!-- 5. game.numerical: 战斗公式、成长曲线与战力封顶模拟 -->
+    <section v-else-if="node.typeId === 'game.numerical'" class="panel-card">
+      <div class="section-title">{{ isEn ? 'Numerical System' : '数值系统工作台' }}</div>
+
+      <label class="field">
+        <span>{{ isEn ? 'Numerical Preset' : '数值体系预设' }}</span>
+        <select
+          :value="node.params.gameNumericalPreset ?? 'short_drama_progression'"
+          @change="onStringParam('gameNumericalPreset', $event)"
+        >
+          <option v-for="preset in MX_WORKBENCH_PRESETS" :key="preset.id" :value="preset.id">
+            {{ isEn ? preset.nameEn : preset.nameZh }}
+          </option>
+        </select>
+      </label>
+
+      <div v-if="node.params.gameNumericalReport" class="report-chip">
+        {{ node.params.gameNumericalReport }}
+      </div>
+    </section>
+
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
   </div>
   <div v-else class="node-inspector empty">
@@ -599,8 +620,11 @@ import { computed } from 'vue'
 import {
   buildThemedArtboardSuitePayload,
   createMxFromTemplate,
+  createMxWorkbenchPreset,
   MX_TEMPLATES,
+  MX_WORKBENCH_PRESETS,
   type MxTemplateId,
+  type MxWorkbenchPresetId,
   type UiStylePreset
 } from '@shared/gameAssets'
 import type { GraphNodeParams } from '@shared/graph'
@@ -619,10 +643,12 @@ const GAME_NODE_TYPES = new Set([
   'game.vfxAlpha',
   'game.audioDsp',
   'game.levelMap',
-  'game.economy'
+  'game.economy',
+  'game.numerical'
 ])
 
-const { t, graphTypeLabel } = useStudioI18n()
+const { t, locale, graphTypeLabel } = useStudioI18n()
+const isEn = computed(() => String(locale.value || '').startsWith('en'))
 const editor = useEditorKernel()
 const workspace = useWorkspaceStore()
 
@@ -661,6 +687,8 @@ const nodeBadge = computed(() => {
       return `${node.value.params.gameLevelWidth ?? 32}×${node.value.params.gameLevelHeight ?? 20}`
     case 'game.economy':
       return `MC ${node.value.params.gameEconomyMonteCarloRuns ?? 40}×${node.value.params.gameEconomySteps ?? 50}t`
+    case 'game.numerical':
+      return String(node.value.params.gameNumericalPreset ?? 'short_drama_progression')
     default:
       return ''
   }
@@ -680,6 +708,10 @@ const nodeHint = computed(() => {
       return t('gameNodes.levelMap.hint')
     case 'game.economy':
       return t('gameNodes.economy.hint')
+    case 'game.numerical':
+      return isEn.value
+        ? 'Double-click to open Numerical System Workbench (Combat Kernel, Power Envelope, Multiplier Audit & Loot Odds)'
+        : '双击进入数值系统工作台（战斗帧推演、战力封顶曲线、伤害乘区稀释与掉落保底精算）' // cjk-ok
     default:
       return ''
   }
@@ -727,6 +759,14 @@ function onStringParam(key: keyof GraphNodeParams, event: Event): void {
       gameEconomyDiagramJson: JSON.stringify(presetDiagram),
       gameEconomySteps: presetDiagram.settings.steps,
       gameEconomySeed: presetDiagram.settings.seed
+    })
+    return
+  }
+  if (key === 'gameNumericalPreset') {
+    const wb = createMxWorkbenchPreset(val as MxWorkbenchPresetId)
+    patchParams({
+      gameNumericalPreset: val as MxWorkbenchPresetId,
+      gameNumericalWorkbenchJson: JSON.stringify(wb)
     })
     return
   }

@@ -303,7 +303,8 @@ const GAME_PRODUCTION_NODE_TYPE_IDS = new Set([
   'game.vfxAlpha',
   'game.audioDsp',
   'game.levelMap',
-  'game.economy'
+  'game.economy',
+  'game.numerical'
 ])
 
 /** 游戏图像资产加工节点（无缝瓦片与PBR / 精灵描边与物件 / 2D特效去黑底） */

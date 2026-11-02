@@ -39,7 +39,11 @@ import {
   resolveUiImageSystemPrompt,
   resolveUiSplitSystemPrompt
 } from '../systemPromptSchemes'
-import { buildOptimizePrompt, buildUiSplitPrompt } from '../userPromptSchemes'
+import {
+  buildOptimizePrompt,
+  buildUiSplitPrompt,
+  defaultUiSplitUserPrompt
+} from '../userPromptSchemes'
 import { resolveAssetTextFromGenParams } from '../assetText'
 import {
   applyUiGenStylePreset,
@@ -901,19 +905,35 @@ async function resolveUiSplitSourceText(
 
   // 上游仅有落盘路径、或软快照曾给出空 text 时，按路径 / 资产再读一遍
   for (const value of selected) {
-    if (value.kind === 'text' && value.text.trim()) return value.text.trim()
+    if (value.kind === 'text') {
+      if (value.text.trim()) return value.text.trim()
+      const rel = value.relativePath?.trim()
+      if (rel && ctx.readRunText) {
+        const fromFile = (await ctx.readRunText(rel))?.trim() ?? ''
+        if (fromFile) return fromFile
+      }
+    }
     if (value.kind === 'texts') {
+      const hydratedParts: string[] = []
       for (const item of value.items) {
         const body = item.text?.trim() ?? ''
-        if (body) return body
+        if (body) {
+          hydratedParts.push(body)
+          continue
+        }
         const rel = item.relativePath?.trim()
         if (rel && ctx.readRunText) {
           const fromFile = (await ctx.readRunText(rel))?.trim() ?? ''
-          if (fromFile) return fromFile
+          if (fromFile) hydratedParts.push(fromFile)
         }
       }
+      if (hydratedParts.length > 0) return hydratedParts.join('\n\n')
     }
-    if (value.kind === 'asset' && value.assetType === 'screenplay' && value.assetId) {
+    if (
+      value.kind === 'asset' &&
+      (value.assetType === 'screenplay' || value.assetType === 'gameSystem') &&
+      value.assetId
+    ) {
       const fromAsset = (await ctx.resolveAssetText?.(value.assetId))?.trim() ?? ''
       if (fromAsset) return fromAsset
       const genParams = ctx.resolveAssetGenParams?.(value.assetId)
@@ -941,12 +961,22 @@ export async function executeUiSplitNode(
     const existing = resolveGalleryOutputsFromNodeParams(node.params, {
       typeId: node.typeId
     })
+    if (existing && !incomingText.trim()) return existing
+    const trimmedInstr = instruction.trim()
+    const isDefaultInstruction =
+      !trimmedInstr ||
+      trimmedInstr === defaultUiSplitUserPrompt('zh-CN').trim() ||
+      trimmedInstr === defaultUiSplitUserPrompt('en-US').trim()
+    const customInstr = isDefaultInstruction ? '' : trimmedInstr
+    const candidates = [customInstr, incomingText.trim()].filter(Boolean)
+    for (const candidate of candidates) {
+      const screens = parseUiScreenPrompts(candidate)
+      if (screens.length > 0) {
+        return persistUiSplitGeneration(ctx, screens)
+      }
+    }
     if (existing) return existing
-    const fallback = instruction.trim() || incomingText.trim()
-    if (!fallback) return { out: { kind: 'texts', items: [] } }
-    const screens = parseUiScreenPrompts(fallback)
-    if (!screens.length) return { out: { kind: 'texts', items: [] } }
-    return persistUiSplitGeneration(ctx, screens)
+    return { out: { kind: 'texts', items: [] } }
   }
 
   if (ctx.signal?.aborted) {

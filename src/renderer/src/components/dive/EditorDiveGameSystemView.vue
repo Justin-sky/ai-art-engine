@@ -21,20 +21,22 @@
       </div>
 
       <div class="header-telemetry">
-        <span
-          class="stat-pill"
-          :class="upstreamEconomyNode ? 'stat-ok' : 'stat-muted'"
-          style="cursor: pointer"
-          @click="leftSection = 'economy'"
-        >
+        <span class="stat-pill" :class="upstreamEconomyNode ? 'stat-ok' : 'stat-muted'">
           📊 {{ ui.telemetryEconomy(Boolean(upstreamEconomyNode)) }}
         </span>
-        <span
-          class="stat-pill"
-          :class="upstreamNovelNode ? 'stat-ok' : 'stat-muted'"
-          style="cursor: pointer"
-          @click="leftSection = 'novel'"
-        >
+        <span class="stat-pill" :class="upstreamNumericalNode ? 'stat-ok' : 'stat-muted'">
+          ⚔️
+          {{
+            isEn
+              ? upstreamNumericalNode
+                ? 'Numerical Linked'
+                : 'No Numerical'
+              : upstreamNumericalNode
+                ? '已连数值系统'
+                : '未连数值系统'
+          }}
+        </span>
+        <span class="stat-pill" :class="upstreamNovelNode ? 'stat-ok' : 'stat-muted'">
           📖 {{ ui.telemetryNovel(Boolean(upstreamNovelNode)) }}
         </span>
         <span class="stat-pill stat-accent" style="cursor: pointer" @click="rightTab = 'uiPreview'">
@@ -91,9 +93,6 @@
           ⚡
           <span class="hdr-btn-text">{{ isRunningNode ? ui.generatingBtn : ui.generateBtn }}</span>
         </button>
-        <button type="button" class="hdr-btn hdr-btn-ui" @click="pushAndOpenUiSplitNode">
-          🖼️ <span class="hdr-btn-text">{{ ui.pushToUiSplitBtn }}</span>
-        </button>
         <button type="button" class="hdr-btn" @click="popDive">
           ← <span class="hdr-btn-text">{{ ui.backToCanvas }}</span>
         </button>
@@ -112,45 +111,10 @@
         'hide-right': !showRightCol
       }"
     >
-      <!-- Left Column: 8 Archetypes + Upstream Economy & Novel Closed-Loop Bridge -->
+      <!-- Left Column: Unified System Archetype Selector + Port-Scoped Upstream Input Summary -->
       <aside v-show="showLeftCol" class="col-left">
-        <div class="left-tabs" role="tablist">
-          <button
-            type="button"
-            class="left-tab"
-            :class="{ active: leftSection === 'archetype' }"
-            :title="ui.tabArchetypes"
-            @click="leftSection = 'archetype'"
-          >
-            <span class="tab-icon">🎮</span>
-            <span class="tab-label">{{ ui.tabArchetypes }}</span>
-          </button>
-          <button
-            type="button"
-            class="left-tab"
-            :class="{ active: leftSection === 'economy' }"
-            :title="ui.tabEconomyBridge"
-            @click="leftSection = 'economy'"
-          >
-            <span class="tab-icon">📊</span>
-            <span class="tab-label">{{ ui.tabEconomyBridge }}</span>
-            <span class="tab-dot" :class="upstreamEconomyNode ? 'dot-ok' : 'dot-Idle'" />
-          </button>
-          <button
-            type="button"
-            class="left-tab"
-            :class="{ active: leftSection === 'novel' }"
-            :title="ui.tabNovelBridge"
-            @click="leftSection = 'novel'"
-          >
-            <span class="tab-icon">📖</span>
-            <span class="tab-label">{{ ui.tabNovelBridge }}</span>
-            <span class="tab-dot" :class="upstreamNovelNode ? 'dot-ok' : 'dot-Idle'" />
-          </button>
-        </div>
-
-        <!-- Tab 1: 8 Game System Archetypes -->
-        <div v-if="leftSection === 'archetype'" class="left-panel-scroll">
+        <div class="left-panel-scroll">
+          <!-- Card 1: 8 Game System Archetypes & Aspect Ratio -->
           <div class="panel-card">
             <div class="card-header-row">
               <span class="card-title">{{ ui.archetypeSectionTitle }}</span>
@@ -188,14 +152,13 @@
             </div>
           </div>
 
+          <!-- Card 2: Core Gameplay Loop & One-Click Synthesize -->
           <div class="panel-card">
             <div class="card-title">{{ ui.coreLoopTitle }}</div>
             <p class="card-desc">
               {{ isEn ? activeArchetype.coreLoopEn : activeArchetype.coreLoopZh }}
             </p>
-            <div class="card-title" style="margin-top: 8px">{{ ui.designGoalTitle }}</div>
-            <p class="card-desc">{{ activeArchetype.designGoalZh }}</p>
-            <div class="btn-row" style="margin-top: 10px">
+            <div class="btn-row" style="margin-top: 8px">
               <button
                 type="button"
                 class="action-btn action-btn-primary"
@@ -205,105 +168,95 @@
               </button>
             </div>
           </div>
-        </div>
 
-        <!-- Tab 2: Upstream Economy Bridge -->
-        <div v-else-if="leftSection === 'economy'" class="left-panel-scroll">
+          <!-- Card 3: Connected Input Ports Status (in-economy & in) -->
           <div class="panel-card">
             <div class="card-header-row">
-              <span class="card-title">{{ ui.economyBridgeTitle }}</span>
-              <span class="badge-dot" :class="upstreamEconomyNode ? 'badge-ok' : 'badge-warn'">
-                {{ upstreamEconomyNode ? ui.connectedLabel : ui.unconnectedLabel }}
-              </span>
+              <span class="card-title"
+                >🔌 {{ isEn ? 'Connected Input Ports' : '上游端口输入感知' }}</span
+              >
             </div>
 
-            <template v-if="upstreamEconomyNode">
-              <div class="bridge-node-box">
-                <div class="bridge-node-name">
-                  📊 {{ upstreamEconomyNode.title || 'game.economy' }}
-                </div>
-                <div class="bridge-btn-row">
-                  <button type="button" class="mini-action-btn" @click="injectEconomySpecIntoDoc">
-                    💉 {{ ui.injectEconomyBtn }}
-                  </button>
-                  <button
-                    type="button"
-                    class="mini-action-btn"
-                    @click="diveToUpstreamNode(upstreamEconomyNode.id, 'game.workbench')"
-                  >
-                    🔧 {{ ui.openEconomyWorkbenchBtn }}
-                  </button>
-                </div>
-              </div>
-              <pre class="bridge-preview-pre">{{ unwrappedEconomySpecPreview }}</pre>
-            </template>
-
-            <template v-else>
-              <p class="card-desc">{{ ui.economyEmptyDesc }}</p>
-              <div class="btn-col">
+            <!-- Port: in-economy (经济系统) -->
+            <div class="bridge-node-box" style="margin-top: 6px">
+              <div class="card-header-row">
+                <span class="bridge-node-name">
+                  📊 {{ isEn ? 'Port [Economy System]' : '端口【经济系统】' }}:
+                  {{
+                    upstreamEconomyNode
+                      ? upstreamEconomyNode.title || 'game.economy'
+                      : ui.unconnectedLabel
+                  }}
+                </span>
                 <button
-                  v-if="availableCanvasEconomyNode"
+                  v-if="upstreamEconomyNode || upstreamNumericalNode"
                   type="button"
-                  class="action-btn action-btn-primary"
-                  @click="connectExistingUpstreamNode(availableCanvasEconomyNode.id)"
+                  class="mini-action-btn"
+                  @click="injectEconomySpecIntoDoc"
                 >
-                  🔗 {{ ui.linkExistingEconomyBtn(availableCanvasEconomyNode.title) }}
-                </button>
-                <button type="button" class="action-btn" @click="createAndConnectEconomyNode">
-                  ➕ {{ ui.createEconomyNodeBtn }}
+                  💉 {{ ui.injectEconomyBtn }}
                 </button>
               </div>
-            </template>
-          </div>
-        </div>
-
-        <!-- Tab 3: Upstream Novel IP Bridge -->
-        <div v-else class="left-panel-scroll">
-          <div class="panel-card">
-            <div class="card-header-row">
-              <span class="card-title">{{ ui.novelBridgeTitle }}</span>
-              <span class="badge-dot" :class="upstreamNovelNode ? 'badge-ok' : 'badge-warn'">
-                {{ upstreamNovelNode ? ui.connectedLabel : ui.unconnectedLabel }}
-              </span>
+              <div class="card-header-row" style="margin-top: 6px">
+                <span class="bridge-node-name">
+                  ⚔️ {{ isEn ? 'Port [Numerical System]' : '端口【数值系统】' }}:
+                  {{
+                    upstreamNumericalNode
+                      ? upstreamNumericalNode.title || 'game.numerical'
+                      : ui.unconnectedLabel
+                  }}
+                </span>
+              </div>
+              <details
+                v-if="(upstreamEconomyNode || upstreamNumericalNode) && unwrappedEconomySpecPreview"
+                style="margin-top: 6px"
+              >
+                <summary class="card-desc" style="cursor: pointer">
+                  {{
+                    isEn
+                      ? 'View parsed multiplier formula & tables'
+                      : '展开已解析的乘区公式与数值预算表'
+                  }}
+                </summary>
+                <pre class="bridge-preview-pre" style="margin-top: 6px">{{
+                  unwrappedEconomySpecPreview
+                }}</pre>
+              </details>
             </div>
 
-            <template v-if="upstreamNovelNode">
-              <div class="bridge-node-box">
-                <div class="bridge-node-name">
-                  📖 {{ upstreamNovelNode.title || 'asset.novel' }}
-                </div>
-                <div class="bridge-btn-row">
-                  <button type="button" class="mini-action-btn" @click="injectNovelIpIntoDoc">
-                    💉 {{ ui.injectNovelBtn }}
-                  </button>
-                  <button
-                    type="button"
-                    class="mini-action-btn"
-                    @click="diveToUpstreamNode(upstreamNovelNode.id, 'novel.workbench')"
-                  >
-                    📖 {{ ui.openNovelWorkbenchBtn }}
-                  </button>
-                </div>
-              </div>
-              <pre class="bridge-preview-pre">{{ extractedNovelIpPreview }}</pre>
-            </template>
-
-            <template v-else>
-              <p class="card-desc">{{ ui.novelEmptyDesc }}</p>
-              <div class="btn-col">
+            <!-- Port: in (文本 / 小说IP) -->
+            <div class="bridge-node-box" style="margin-top: 8px">
+              <div class="card-header-row">
+                <span class="bridge-node-name">
+                  📖 {{ isEn ? 'Port [Text / Novel IP]' : '端口【文本 / 小说IP】' }}:
+                  {{
+                    upstreamNovelNode
+                      ? upstreamNovelNode.title || 'asset.novel'
+                      : ui.unconnectedLabel
+                  }}
+                </span>
                 <button
-                  v-if="availableCanvasNovelNode"
+                  v-if="upstreamNovelNode"
                   type="button"
-                  class="action-btn action-btn-primary"
-                  @click="connectExistingUpstreamNode(availableCanvasNovelNode.id)"
+                  class="mini-action-btn"
+                  @click="injectNovelIpIntoDoc"
                 >
-                  🔗 {{ ui.linkExistingNovelBtn(availableCanvasNovelNode.title) }}
-                </button>
-                <button type="button" class="action-btn" @click="createAndConnectNovelNode">
-                  ➕ {{ ui.createNovelNodeBtn }}
+                  💉 {{ ui.injectNovelBtn }}
                 </button>
               </div>
-            </template>
+              <details v-if="upstreamNovelNode && extractedNovelIpPreview" style="margin-top: 6px">
+                <summary class="card-desc" style="cursor: pointer">
+                  {{
+                    isEn
+                      ? 'View extracted IP stages, roster & chapters'
+                      : '展开已提取的境界阶梯、角色卡池与章节关卡'
+                  }}
+                </summary>
+                <pre class="bridge-preview-pre" style="margin-top: 6px">{{
+                  extractedNovelIpPreview
+                }}</pre>
+              </details>
+            </div>
           </div>
         </div>
       </aside>
@@ -804,6 +757,8 @@ import {
   GAME_SYSTEM_ARCHETYPES,
   auditGameSystemDocument,
   buildStandardUiScreenMarkdownBlock,
+  createMxFromTemplate,
+  createMxWorkbenchPreset,
   extractNovelIpContextForGameSystem,
   inferGameSystemArchetypeFromContext,
   isGameSystemArchetypeId,
@@ -815,12 +770,14 @@ import {
   type GameSystemArchetypeId,
   type GameSystemFeatureModuleSpec,
   type GameSystemUiScreenSpec,
-  type MxTemplateId
+  type MxNumericalWorkbench,
+  type MxTemplateId,
+  type MxWorkbenchPresetId
 } from '@shared/gameAssets'
 import { listInstructionPresets } from '@shared/graph/instructionPresets'
 import { resolveNodeType, type GraphNode } from '@shared/graph'
 import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
-import { editorDiveKey, type EditorDiveViewId } from '../../features/graph/model/editorDive'
+import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
@@ -845,7 +802,6 @@ const workspace = useWorkspaceStore()
 const archetypes = GAME_SYSTEM_ARCHETYPES
 const gameSystemPresets = listInstructionPresets('gameSystem')
 
-const leftSection = ref<'archetype' | 'economy' | 'novel'>('archetype')
 const rightTab = ref<'uiPreview' | 'features' | 'qa'>('uiPreview')
 const docViewMode = ref<'preview' | 'split' | 'edit'>('preview')
 const showLeftCol = ref(true)
@@ -938,23 +894,34 @@ const upstreamEconomyNode = computed<GraphNode | null>(() => {
   return upstreamNodes.value.find((n) => n.typeId === 'game.economy') ?? null
 })
 
+const upstreamNumericalNode = computed<GraphNode | null>(() => {
+  return upstreamNodes.value.find((n) => n.typeId === 'game.numerical') ?? null
+})
+
 const upstreamNovelNode = computed<GraphNode | null>(() => {
-  return upstreamNodes.value.find((n) => n.typeId === 'asset.novel') ?? null
-})
-
-const availableCanvasEconomyNode = computed<GraphNode | null>(() => {
-  if (upstreamEconomyNode.value) return null
-  return graphEditorHosts.findNode(resolvedHostId.value, (n) => n.typeId === 'game.economy')
-})
-
-const availableCanvasNovelNode = computed<GraphNode | null>(() => {
-  if (upstreamNovelNode.value) return null
-  return graphEditorHosts.findNode(resolvedHostId.value, (n) => n.typeId === 'asset.novel')
+  return (
+    upstreamNodes.value.find((n) => n.typeId === 'asset.novel' || n.typeId === 'novel.outline') ??
+    null
+  )
 })
 
 function extractNodePrimaryText(n: GraphNode | null): string {
   if (!n) return ''
   const genList = n.params?.generatedTexts ?? []
+  if (genList.length > 1) {
+    const joined = genList
+      .map((it) => {
+        const body = (it.text ?? '').trim()
+        if (!body) return ''
+        const title = (it.title ?? '').trim()
+        return title && !body.startsWith('#') && !body.startsWith(title)
+          ? `## ${title}\n${body}`
+          : body
+      })
+      .filter(Boolean)
+      .join('\n\n')
+    if (joined) return joined
+  }
   const selId = n.params?.selectedTextId
   const selItem = genList.find((it) => it.id === selId) ?? genList[genList.length - 1]
   if (selItem?.text?.trim()) return selItem.text.trim()
@@ -963,14 +930,29 @@ function extractNodePrimaryText(n: GraphNode | null): string {
 }
 
 const upstreamEconomyRawText = computed(() => {
-  const n = upstreamEconomyNode.value
-  if (!n) return ''
-  const tplRaw = String(n.params?.gameEconomyPreset ?? 'short_drama_reversal_loop')
-  const mxDoc = parseMxDocumentJson(
-    n.params?.gameEconomyDiagramJson,
-    tplRaw as MxTemplateId,
-    n.title
-  )
+  const econ = upstreamEconomyNode.value
+  const numNode = upstreamNumericalNode.value
+  if (!econ && !numNode) return ''
+  const tplRaw = String(econ?.params?.gameEconomyPreset ?? 'short_drama_reversal_loop')
+  const mxDoc = econ
+    ? parseMxDocumentJson(econ.params?.gameEconomyDiagramJson, tplRaw as MxTemplateId, econ.title)
+    : createMxFromTemplate('short_drama_reversal_loop', numNode?.title)
+  if (numNode) {
+    const presetRaw = String(numNode.params?.gameNumericalPreset ?? 'short_drama_progression')
+    const rawJson = numNode.params?.gameNumericalWorkbenchJson
+    let wb: MxNumericalWorkbench | null = null
+    if (typeof rawJson === 'string' && rawJson.trim()) {
+      try {
+        const parsed = JSON.parse(rawJson) as MxNumericalWorkbench
+        if (parsed && typeof parsed === 'object' && parsed.multiplier && parsed.combatKernel) {
+          wb = parsed
+        }
+      } catch {
+        wb = null
+      }
+    }
+    mxDoc.workbench = wb ?? createMxWorkbenchPreset(presetRaw as MxWorkbenchPresetId)
+  }
   return serializeMxNumericContextForDownstream(mxDoc)
 })
 
@@ -1417,49 +1399,6 @@ function injectNovelIpIntoDoc(): void {
     : '已将上游小说 IP 的境界阶梯、人物卡池、底牌道具与章节关卡注入策划案！' // cjk-ok
 }
 
-function connectExistingUpstreamNode(sourceNodeId: string): void {
-  const hid = resolvedHostId.value
-  const cur = realNode.value
-  if (!hid || !cur) return
-  const srcNode = graphEditorHosts.getNode(hid, sourceNodeId)
-  const sourcePort = srcNode?.typeId === 'game.economy' ? 'out-text' : 'out'
-  graphEditorHosts.connectNodes(hid, sourceNodeId, cur.id, sourcePort, 'in')
-}
-
-function createAndConnectEconomyNode(): void {
-  const cur = node.value
-  const hid = resolvedHostId.value
-  if (!cur || !hid) return
-  const newId = graphEditorHosts.addNode(hid, {
-    typeId: 'game.economy',
-    title: isEn.value ? 'Economy System' : '经济与数值系统', // cjk-ok
-    position: {
-      x: (cur.position?.x ?? 400) - 380,
-      y: (cur.position?.y ?? 200) - 120
-    }
-  })
-  if (newId) {
-    connectExistingUpstreamNode(newId)
-  }
-}
-
-function createAndConnectNovelNode(): void {
-  const cur = node.value
-  const hid = resolvedHostId.value
-  if (!cur || !hid) return
-  const newId = graphEditorHosts.addNode(hid, {
-    typeId: 'asset.novel',
-    title: isEn.value ? 'Novel Generator' : '创建小说', // cjk-ok
-    position: {
-      x: (cur.position?.x ?? 400) - 380,
-      y: (cur.position?.y ?? 200) + 140
-    }
-  })
-  if (newId) {
-    connectExistingUpstreamNode(newId)
-  }
-}
-
 async function switchToPeerNodeDive(
   meta: {
     viewId: 'game.workbench' | 'novel.workbench' | 'ui.split'
@@ -1480,20 +1419,6 @@ async function switchToPeerNodeDive(
     workspace.divePopTo(rootKey, -1)
     workspace.diveIntoView(rootKey, meta, title)
   }
-}
-
-async function diveToUpstreamNode(targetNodeId: string, viewId: EditorDiveViewId): Promise<void> {
-  if (dirtyText.value) persistDocText()
-  const hid = resolvedHostId.value
-  const targetNode = graphEditorHosts.getNode(hid, targetNodeId)
-  await switchToPeerNodeDive(
-    {
-      viewId: viewId as 'game.workbench' | 'novel.workbench',
-      hostId: hid,
-      nodeId: targetNodeId
-    },
-    targetNode?.title || viewId
-  )
 }
 
 async function pushAndOpenUiSplitNode(): Promise<void> {

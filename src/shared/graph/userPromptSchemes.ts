@@ -37,13 +37,33 @@ export function buildScreenplayPrompt(instruction: string, locale?: string): str
   return buildOrDefault(instruction, locale, defaultScreenplayUserPrompt)
 }
 
+// ——— 小说大纲 ———
+
+export const DEFAULT_NOVEL_OUTLINE_USER_PROMPT_EN =
+  'Based on the connected numerical progression system, worldbuilding, and plot premise, design a comprehensive Novel World Bible, Character Roster, Volume Architecture, and Chapter-by-Chapter Detailed Outline (with per-chapter plot beats, realm/resource anchors, and cliffhanger hooks) to guide downstream chapter nodes.'
+
+export const DEFAULT_NOVEL_OUTLINE_USER_PROMPT_ZH =
+  '请根据上游连接的数值成长体系、世界观构想与核心梗概，创作一份结构严密的【小说总纲与分章细纲】（含小说名、核心世界观宪法、主要人物档案、分卷架构及逐章细纲：每章核心冲突、爽点卡点、境界/底牌锚点与章末断章钩子），供下游各章小说节点按马尔可夫链逐章扩写正文。' // cjk-ok
+
+export function defaultNovelOutlineUserPrompt(locale?: string): string {
+  return pickByLocale(
+    locale,
+    DEFAULT_NOVEL_OUTLINE_USER_PROMPT_EN,
+    DEFAULT_NOVEL_OUTLINE_USER_PROMPT_ZH
+  )
+}
+
+export function buildNovelOutlinePrompt(instruction: string, locale?: string): string {
+  return buildOrDefault(instruction, locale, defaultNovelOutlineUserPrompt)
+}
+
 // ——— 创建小说 ———
 
 export const DEFAULT_NOVEL_USER_PROMPT_EN =
-  'Based on the connected character progression numerical system, worldbuilding, and plot requirements, write a complete, gripping multi-chapter web novel with [Core World & Character Profiles] and full chapters (Chapter 1, Chapter 2, Chapter 3...), faithfully translating the realm/wealth breakthroughs, climax walls, and optimal trump-card sequence into vivid narrative prose ready for screenplay adaptation.'
+  'Based on the connected novel outline, character progression numerical system, and previous chapter Markov state, write the current chapter full narrative prose (3000+ words) with vivid scene beats and a sharp cliffhanger hook.'
 
 export const DEFAULT_NOVEL_USER_PROMPT_ZH =
-  '请根据上游连接的角色成长数值体系、突破阶梯、高潮卡点与亮底牌序列，创作一部情节跌宕、爽点密集、细节饱满的多章精品小说（含小说名、【核心设定与人物档案】及第1章~第3章完整正文），供下游剧本节点直接改编为分集剧本。' // cjk-ok
+  '请结合上游接入的【小说大纲】、【数值成长体系】与【上一章马尔可夫状态锚点】，严格按本章细纲与单章数值配额锁，创作本章 3000+ 字跌宕饱满的小说正文（含四拍场景细节与章末强悬念钩子）。' // cjk-ok
 
 export function defaultNovelUserPrompt(locale?: string): string {
   return pickByLocale(locale, DEFAULT_NOVEL_USER_PROMPT_EN, DEFAULT_NOVEL_USER_PROMPT_ZH)

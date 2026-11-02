@@ -255,15 +255,16 @@ export function pickTextItem(
       if (Number.isFinite(index) && items[index]) return items[index]
     }
 
-    // 支持分集选择器（ep:1 / <baseId>:ep:2 / gen-text:<stamp>:2）：
-    // 优先从最新一轮生成的分集里匹配相同集号，确保上游剧本重跑后各集选择器仍精确命中对应集数
-    const epMatch = /(?:^|:)ep:(\d+)$/i.exec(rawSel) ?? /^gen-text:[^:]+:(\d+)$/i.exec(rawSel)
+    // 支持分集/分章选择器（ep:1 / chap:1 / ch:1 / <baseId>:ep:2 / gen-text:<stamp>:2）：
+    // 优先从最新一轮生成的分集/分章里匹配相同集号或章号，确保上游重跑后选择器仍精确命中对应条目
+    const epMatch =
+      /(?:^|:)(?:ep|chap|ch):(\d+)$/i.exec(rawSel) ?? /^gen-text:[^:]+:(\d+)$/i.exec(rawSel)
     if (epMatch) {
       const epNum = Number(epMatch[1])
       if (Number.isFinite(epNum) && epNum >= 1) {
-        const suffixRe = new RegExp(`(?::ep:|:)${epNum}$`, 'i')
+        const suffixRe = new RegExp(`(?::(?:ep|chap|ch):|:)${epNum}$`, 'i')
         const titleRe = new RegExp(
-          `^(?:第\\s*0*${epNum}\\s*[集话回幕]|(?:EPISODE|EP\\.?)\\s*0*${epNum}\\b)`, // cjk-ok
+          `^(?:#+\\s*)?(?:第\\s*0*${epNum}\\s*(?:\\/\\s*\\d+\\s*)?[集章话回幕]|(?:EPISODE|EP\\.?|CHAPTER|CHAP\\.?|CH\\.?)\\s*0*${epNum}\\b)`, // cjk-ok
           'i'
         )
         for (let i = items.length - 1; i >= 0; i--) {

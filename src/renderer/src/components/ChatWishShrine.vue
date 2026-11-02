@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  buildFairySpellLinks,
+  computeFairyCastPosition,
   detectWishPromptCategory,
   formatLuckTotal,
   getFairyStageActReaction,
@@ -11,6 +13,7 @@ import {
   rollLuckGain,
   selectWishFairyForSession,
   type WishChantCategory,
+  type WishCookingNodeTarget,
   type WishFairyExpression,
   type WishFairyId,
   type WishFairyPersona,
@@ -18,7 +21,8 @@ import {
   type WishFairyStageAct,
   type WishFloatingChant,
   type WishLuckPopup,
-  type WishShrinePhase
+  type WishShrinePhase,
+  type WishSpellLink
 } from '@shared/chatWishShrine'
 
 const props = defineProps<{
@@ -29,7 +33,15 @@ const props = defineProps<{
   activityText?: string
   outcome?: 'idle' | 'success' | 'error'
   isEn?: boolean
+  /** 节点画布中正在 cook（运行中）的节点目标列表（屏幕坐标） */
+  cookingTargets?: readonly WishCookingNodeTarget[]
 }>()
+
+const activeCookingTargets = computed<readonly WishCookingNodeTarget[]>(
+  () => props.cookingTargets ?? []
+)
+
+const isAnyActive = computed(() => props.running || activeCookingTargets.value.length > 0)
 
 const STORAGE_MINI_KEY = 'studio.chat.wishShrineMini'
 
@@ -164,7 +176,7 @@ const currentFairy = computed<WishFairyPersona>(() => {
 const effectiveExpression = computed<WishFairyExpression>(() => {
   if (displayPhase.value === 'error') return 'teary'
   if (displayPhase.value === 'success') return 'happy'
-  if (displayPhase.value === 'crit') return 'star'
+  if (displayPhase.value === 'crit' || activeCookingTargets.value.length > 0) return 'star'
   if (activeExpression.value !== 'normal') return activeExpression.value
   if (hoveringActor.value) return 'wink'
   return 'normal'
@@ -173,11 +185,26 @@ const effectiveExpression = computed<WishFairyExpression>(() => {
 /** 综合当前阶段、悬停与点击状态计算的最终动作姿态 */
 const effectivePose = computed<WishFairyPose>(() => {
   if (displayPhase.value === 'success') return 'cheer'
-  if (displayPhase.value === 'crit') return 'cast'
+  if (displayPhase.value === 'crit' || activeCookingTargets.value.length > 0) return 'cast'
   if (activePose.value !== 'pray') return activePose.value
   if (hoveringActor.value) return 'wave'
   return 'pray'
 })
+
+/** 实时计算从仙子法杖尖端飞向所有正在 cook 节点的近程/远程魔法轨迹 */
+const spellLinks = computed<WishSpellLink[]>(() =>
+  buildFairySpellLinks(
+    { x: posX.value, y: posY.value, facing: facingDir.value },
+    activeCookingTargets.value
+  )
+)
+
+const wandScreenPoint = computed(() => ({
+  x: Math.round(posX.value + (facingDir.value === 'right' ? 96 : 24)),
+  y: Math.round(posY.value + 42),
+  bodyCenterX: Math.round(posX.value + 60),
+  bodyCenterY: Math.round(posY.value + 72)
+}))
 
 const LANE_OFFSETS = [-18, 6, -8, 14, -12, 10] as const
 
@@ -220,7 +247,23 @@ function startRoamingLoop(): void {
 
     if (!hoveringActor.value) {
       roamElapsed += dt
-      if (!minimized.value && stageAct.value === 'edge-peek') {
+      const cookingList = activeCookingTargets.value
+      if (!minimized.value && cookingList.length > 0) {
+        // 节点正在 cook：单节点时飞到该节点旁专注施法；多节点时飞到所有节点的几何中心同时对所有节点施法
+        stageAct.value = 'cast'
+        activePose.value = 'cast'
+        const castTarget = computeFairyCastPosition(
+          cookingList,
+          { width: cw, height: ch },
+          facingDir.value
+        )
+        const hoverBobY = Math.sin(roamElapsed * 3.2) * 5
+        const hoverBobX = cookingList.length >= 2 ? Math.cos(roamElapsed * 2.1) * 4 : 0
+        posX.value += (castTarget.x + hoverBobX - posX.value) * 0.14
+        posY.value += (castTarget.y + hoverBobY - posY.value) * 0.14
+        facingDir.value = castTarget.facing
+        lastX = posX.value
+      } else if (!minimized.value && stageAct.value === 'edge-peek') {
         // 躲在左/右窗口边缘探出半个身子偷看
         const targetX = edgeSide.value === 'left' ? -24 : Math.max(60, cw - 92)
         const normY = 0.42 + 0.22 * Math.sin(roamElapsed * 0.65)
@@ -418,11 +461,11 @@ function spawnLuck(boost = false): WishLuckPopup['tier'] {
 function scheduleLuckLoop(): void {
   stopLuckLoop()
   const tick = (): void => {
-    if (!props.running || !visible.value) return
+    if (!isAnyActive.value || !visible.value) return
     spawnLuck(false)
     if (Math.random() < 0.22) {
       window.setTimeout(() => {
-        if (props.running && visible.value) spawnLuck(false)
+        if (isAnyActive.value && visible.value) spawnLuck(false)
       }, 140)
     }
     luckTimer = window.setTimeout(tick, Math.round(randBetween(620, 1500)))
@@ -473,7 +516,15 @@ function startIdlePoseCycle(): void {
   if (poseCycleTimer !== null) window.clearInterval(poseCycleTimer)
   let tickCount = 0
   poseCycleTimer = window.setInterval(() => {
-    if (!props.running || !visible.value || comboCount.value > 0 || hoveringActor.value) return
+    if (
+      !isAnyActive.value ||
+      !visible.value ||
+      comboCount.value > 0 ||
+      hoveringActor.value ||
+      activeCookingTargets.value.length > 0
+    ) {
+      return
+    }
     const nextAct = AUTO_STAGE_ACTS[tickCount % AUTO_STAGE_ACTS.length] ?? 'roam'
     tickCount++
     performStageAct(nextAct, nextAct === 'cast' || nextAct === 'edge-peek' || nextAct === 'dance')
@@ -500,7 +551,7 @@ function startPraying(): void {
   spawnChant(false)
   scheduleLuckLoop()
   chantTimer = window.setInterval(() => {
-    if (props.running) {
+    if (isAnyActive.value) {
       spawnChant(false)
     }
   }, 1450)
@@ -670,12 +721,12 @@ function onCycleFairy(): void {
 }
 
 watch(
-  () => props.running,
-  (isRunning, wasRunning) => {
-    if (isRunning) {
+  isAnyActive,
+  (active, wasActive) => {
+    if (active) {
       startPraying()
-    } else if (wasRunning) {
-      stopPrayingWithOutcome(props.outcome ?? 'success')
+    } else if (wasActive) {
+      stopPrayingWithOutcome(props.outcome === 'error' ? 'error' : 'success')
     }
   },
   { immediate: true }
@@ -750,13 +801,322 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
       role="status"
       aria-live="polite"
     >
-      <!-- 全窗口背景流星群：在对话窗口上空快速划过 -->
+      <!-- 全窗口背景流星群：在画布上空快速划过 -->
       <div v-if="!minimized" class="wish-window-meteors" aria-hidden="true">
         <span class="window-meteor wm1" />
         <span class="window-meteor wm2" />
         <span class="window-meteor wm3" />
         <span class="window-meteor wm4" />
         <span class="window-meteor wm5" />
+      </div>
+
+      <!-- 全画布节点施法特效层：支持单节点专注施法、多节点中央聚灵同时施法、以及远距离曲率星轨炮/追踪飞弹/天降星陨柱 -->
+      <svg
+        v-if="!minimized && spellLinks.length > 0"
+        class="wish-canvas-spell-layer"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id="wish-spell-beam-close" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fef08a" stop-opacity="0.98" />
+            <stop offset="45%" :stop-color="currentFairy.theme.accentColor" stop-opacity="0.92" />
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.95" />
+          </linearGradient>
+          <linearGradient id="wish-spell-beam-long" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#fde047" stop-opacity="1" />
+            <stop offset="35%" stop-color="#f472b6" stop-opacity="0.96" />
+            <stop offset="70%" stop-color="#a855f7" stop-opacity="0.96" />
+            <stop offset="100%" stop-color="#38bdf8" stop-opacity="1" />
+          </linearGradient>
+          <linearGradient id="wish-sky-pillar-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#38bdf8" stop-opacity="0" />
+            <stop offset="35%" :stop-color="currentFairy.theme.accentColor" stop-opacity="0.32" />
+            <stop offset="85%" stop-color="#fde047" stop-opacity="0.65" />
+            <stop offset="100%" stop-color="#ffffff" stop-opacity="0.9" />
+          </linearGradient>
+          <filter id="wish-spell-glow" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="4.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <!-- 多节点同时 cook 时：在仙子脚下展开「中央万象聚灵大法阵」 -->
+        <g
+          v-if="spellLinks.length >= 2"
+          class="wish-central-conflux-array"
+          :transform="`translate(${wandScreenPoint.bodyCenterX}, ${wandScreenPoint.bodyCenterY})`"
+        >
+          <circle
+            r="68"
+            fill="none"
+            :stroke="currentFairy.theme.accentColor"
+            stroke-width="1.6"
+            stroke-dasharray="8 6 2 6"
+            class="conflux-ring-outer"
+          />
+          <circle
+            r="52"
+            fill="none"
+            stroke="#fde047"
+            stroke-width="1.4"
+            stroke-dasharray="14 8"
+            class="conflux-ring-inner"
+          />
+          <polygon
+            points="0,-48 41.5,24 -41.5,24"
+            fill="none"
+            stroke="#38bdf8"
+            stroke-width="1.2"
+            stroke-opacity="0.78"
+            class="conflux-hex-a"
+          />
+          <polygon
+            points="0,48 41.5,-24 -41.5,-24"
+            fill="none"
+            stroke="#f472b6"
+            stroke-width="1.2"
+            stroke-opacity="0.78"
+            class="conflux-hex-b"
+          />
+        </g>
+
+        <!-- 法杖尖端聚能星核 -->
+        <g
+          class="wish-wand-muzzle"
+          :transform="`translate(${wandScreenPoint.x}, ${wandScreenPoint.y})`"
+        >
+          <circle
+            r="15"
+            :fill="currentFairy.theme.accentColor"
+            fill-opacity="0.28"
+            class="muzzle-pulse-outer"
+          />
+          <circle
+            r="9"
+            fill="none"
+            stroke="#fef08a"
+            stroke-width="1.5"
+            stroke-dasharray="4 3"
+            class="muzzle-spin-ring"
+          />
+          <circle r="4.5" fill="#ffffff" filter="url(#wish-spell-glow)" />
+        </g>
+
+        <!-- 逐个渲染每个正在 cook 节点的施法光束 / 远程曲率星轨炮与靶心大法阵 -->
+        <g
+          v-for="link in spellLinks"
+          :key="link.id"
+          class="wish-spell-link-group"
+          :class="`mode-${link.mode}`"
+        >
+          <!-- 节点外围赋能结界框 -->
+          <rect
+            :x="link.nodeScreenX - 6"
+            :y="link.nodeScreenY - 6"
+            :width="Math.max(24, link.nodeScreenWidth + 12)"
+            :height="Math.max(24, link.nodeScreenHeight + 12)"
+            rx="16"
+            fill="none"
+            :stroke="link.mode === 'longRange' ? '#38bdf8' : '#fde047'"
+            stroke-width="2"
+            stroke-dasharray="12 6"
+            class="target-node-aura-rect"
+          />
+
+          <!-- 远程大魔法专属：天降圣光星陨柱（Orbital Sky Pillar） -->
+          <g v-if="link.mode === 'longRange'" class="long-range-orbital-pillar">
+            <rect
+              :x="link.targetX - 26"
+              :y="Math.max(0, link.targetY - 260)"
+              width="52"
+              :height="Math.min(270, link.targetY + 10)"
+              fill="url(#wish-sky-pillar-grad)"
+              class="orbital-pillar-column"
+            />
+            <line
+              :x1="link.targetX"
+              :y1="Math.max(0, link.targetY - 260)"
+              :x2="link.targetX"
+              :y2="link.targetY"
+              stroke="#ffffff"
+              stroke-width="2.4"
+              stroke-dasharray="10 8"
+              class="orbital-pillar-core"
+            />
+          </g>
+
+          <!-- 主能量束底层辉光 -->
+          <path
+            :d="link.beamPath"
+            fill="none"
+            :stroke="
+              link.mode === 'longRange'
+                ? 'url(#wish-spell-beam-long)'
+                : 'url(#wish-spell-beam-close)'
+            "
+            :stroke-width="link.mode === 'longRange' ? 12 : 10"
+            stroke-linecap="round"
+            stroke-opacity="0.34"
+            filter="url(#wish-spell-glow)"
+            class="spell-beam-outer-glow"
+          />
+
+          <!-- 双螺旋交织能量丝带 A & B -->
+          <path
+            :d="link.helixPathA"
+            fill="none"
+            stroke="#f472b6"
+            stroke-width="2"
+            stroke-dasharray="10 10"
+            stroke-linecap="round"
+            class="spell-helix-ribbon ribbon-a"
+          />
+          <path
+            :d="link.helixPathB"
+            fill="none"
+            stroke="#38bdf8"
+            stroke-width="2"
+            stroke-dasharray="8 12"
+            stroke-linecap="round"
+            class="spell-helix-ribbon ribbon-b"
+          />
+
+          <!-- 主魔力激光核心束（脉冲流动符文） -->
+          <path
+            :d="link.beamPath"
+            fill="none"
+            :stroke="
+              link.mode === 'longRange'
+                ? 'url(#wish-spell-beam-long)'
+                : 'url(#wish-spell-beam-close)'
+            "
+            :stroke-width="link.mode === 'longRange' ? 4 : 3.2"
+            stroke-linecap="round"
+            class="spell-beam-core-line"
+          />
+          <path
+            :d="link.beamPath"
+            fill="none"
+            stroke="#ffffff"
+            stroke-width="1.8"
+            stroke-dasharray="14 18"
+            stroke-linecap="round"
+            class="spell-beam-rune-pulse"
+          />
+
+          <!-- 远程大魔法专属：沿高拱曲率轨道连续飞行的 3 枚追踪奥术流星飞弹 -->
+          <template v-if="link.mode === 'longRange'">
+            <g v-for="missileIdx in [0, 1, 2]" :key="missileIdx" class="homing-arcane-comet">
+              <animateMotion
+                :path="link.beamPath"
+                dur="1.05s"
+                :begin="`${missileIdx * 0.35}s`"
+                repeatCount="indefinite"
+                rotate="auto"
+              />
+              <path
+                d="M -22,0 L 0,-4 L 7,0 L 0,4 Z"
+                :fill="missileIdx === 0 ? '#fde047' : missileIdx === 1 ? '#38bdf8' : '#f472b6'"
+                filter="url(#wish-spell-glow)"
+              />
+              <circle r="3.2" fill="#ffffff" />
+            </g>
+          </template>
+          <!-- 近程专属：沿光束疾驰的魔力光球 -->
+          <template v-else>
+            <g v-for="orbIdx in [0, 1]" :key="orbIdx" class="close-mana-orb">
+              <animateMotion
+                :path="link.beamPath"
+                dur="0.72s"
+                :begin="`${orbIdx * 0.36}s`"
+                repeatCount="indefinite"
+              />
+              <circle r="5" fill="#fde047" filter="url(#wish-spell-glow)" />
+              <circle r="2.4" fill="#ffffff" />
+            </g>
+          </template>
+
+          <!-- 目标节点中心：逆旋双重六芒星封印大法阵与冲击波 -->
+          <g
+            class="wish-target-impact-sigil"
+            :transform="`translate(${link.targetX}, ${link.targetY})`"
+          >
+            <circle
+              :r="link.mode === 'longRange' ? 48 : 34"
+              fill="none"
+              :stroke="link.mode === 'longRange' ? '#38bdf8' : '#fde047'"
+              stroke-width="1.8"
+              stroke-dasharray="8 5 2 5"
+              class="target-sigil-outer"
+            />
+            <circle
+              :r="link.mode === 'longRange' ? 32 : 22"
+              fill="none"
+              stroke="#f472b6"
+              stroke-width="1.4"
+              stroke-dasharray="6 4"
+              class="target-sigil-inner"
+            />
+            <polygon
+              :points="link.mode === 'longRange' ? '0,-30 26,15 -26,15' : '0,-20 17.3,10 -17.3,10'"
+              fill="none"
+              stroke="#fef08a"
+              stroke-width="1.3"
+              class="target-sigil-hex-a"
+            />
+            <polygon
+              :points="
+                link.mode === 'longRange' ? '0,30 26,-15 -26,-15' : '0,20 17.3,-10 -17.3,-10'
+              "
+              fill="none"
+              stroke="#38bdf8"
+              stroke-width="1.3"
+              class="target-sigil-hex-b"
+            />
+            <circle
+              r="10"
+              fill="none"
+              stroke="#ffffff"
+              stroke-width="2"
+              class="target-shockwave-ring"
+            />
+            <circle r="4.5" fill="#ffffff" filter="url(#wish-spell-glow)" />
+          </g>
+        </g>
+      </svg>
+
+      <!-- 目标节点头顶的实时施法状态铭牌（区分近程魔力注入 vs 远程天基星轨轰击） -->
+      <div
+        v-if="!minimized && spellLinks.length > 0"
+        class="wish-target-hud-layer"
+        aria-hidden="true"
+      >
+        <div
+          v-for="link in spellLinks"
+          :key="`hud-${link.id}`"
+          class="wish-target-hud-pill"
+          :class="`mode-${link.mode}`"
+          :style="{
+            left: `${link.targetX}px`,
+            top: `${link.nodeScreenY + link.nodeScreenHeight + 10}px`
+          }"
+        >
+          <span class="hud-icon">{{ link.mode === 'longRange' ? '☄️' : '⚡' }}</span>
+          <span class="hud-label">
+            {{
+              link.mode === 'longRange'
+                ? isEn
+                  ? `Starlight Artillery · ${link.title}`
+                  : `远程星轨大魔法 · ${link.title}` /* cjk-ok */
+                : isEn
+                  ? `Arcane Channeling · ${link.title}`
+                  : `魔力持续注入 · ${link.title}` /* cjk-ok */
+            }}
+          </span>
+        </div>
       </div>
 
       <!-- 在窗口内自由来回飘动的祈愿仙子主体 -->
@@ -2109,13 +2469,192 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 </template>
 
 <style scoped>
-/* 覆盖整个对话消息视口，本身不拦截鼠标滚动与点击 */
+/* 覆盖整个节点画布视口，本身不拦截鼠标滚动与点击 */
 .wish-shrine-overlay {
   position: absolute;
   inset: 0;
   z-index: 16;
   pointer-events: none;
   overflow: hidden;
+}
+
+/* ── 全画布节点施法 SVG 特效层（近程赋能 + 远程曲率星轨炮 + 中央聚灵大法阵） ── */
+.wish-canvas-spell-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.wish-roaming-actor {
+  position: relative;
+  z-index: 4;
+}
+
+.conflux-ring-outer {
+  animation: wish-halo-spin 8s linear infinite;
+}
+
+.conflux-ring-inner {
+  animation: wish-halo-spin-reverse 5.5s linear infinite;
+}
+
+.conflux-hex-a {
+  animation: wish-halo-spin 10s linear infinite;
+}
+
+.conflux-hex-b {
+  animation: wish-halo-spin-reverse 10s linear infinite;
+}
+
+.muzzle-pulse-outer {
+  animation: wish-spell-muzzle-pulse 0.75s ease-in-out infinite alternate;
+}
+
+.muzzle-spin-ring {
+  animation: wish-halo-spin 2.4s linear infinite;
+}
+
+.target-node-aura-rect {
+  animation: wish-dash-march 1.1s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.65));
+}
+
+.orbital-pillar-column {
+  animation: wish-pillar-throb 0.65s ease-in-out infinite alternate;
+}
+
+.orbital-pillar-core {
+  animation: wish-dash-fall 0.45s linear infinite;
+}
+
+.spell-helix-ribbon.ribbon-a {
+  animation: wish-dash-march 0.6s linear infinite;
+}
+
+.spell-helix-ribbon.ribbon-b {
+  animation: wish-dash-march 0.78s linear infinite reverse;
+}
+
+.spell-beam-rune-pulse {
+  animation: wish-dash-march 0.42s linear infinite;
+}
+
+.target-sigil-outer {
+  animation: wish-halo-spin 4.2s linear infinite;
+}
+
+.target-sigil-inner {
+  animation: wish-halo-spin-reverse 2.8s linear infinite;
+}
+
+.target-sigil-hex-a {
+  animation: wish-halo-spin 6s linear infinite;
+}
+
+.target-sigil-hex-b {
+  animation: wish-halo-spin-reverse 6s linear infinite;
+}
+
+.target-shockwave-ring {
+  animation: wish-target-shockwave 1.1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+/* ── 目标节点头顶的实时施法状态铭牌 ── */
+.wish-target-hud-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.wish-target-hud-pill {
+  position: absolute;
+  transform: translate(-50%, 0);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2.5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  color: #fef08a;
+  background: linear-gradient(135deg, rgba(24, 16, 56, 0.92), rgba(76, 29, 149, 0.9));
+  border: 1px solid rgba(250, 204, 21, 0.72);
+  box-shadow:
+    0 4px 14px rgba(15, 10, 40, 0.55),
+    0 0 12px rgba(250, 204, 21, 0.42);
+}
+
+.wish-target-hud-pill.mode-longRange {
+  color: #e0f2fe;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(88, 28, 135, 0.92));
+  border-color: rgba(56, 189, 248, 0.85);
+  box-shadow:
+    0 4px 16px rgba(15, 10, 40, 0.65),
+    0 0 16px rgba(56, 189, 248, 0.6);
+}
+
+@keyframes wish-halo-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes wish-dash-march {
+  from {
+    stroke-dashoffset: 64;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wish-dash-fall {
+  from {
+    stroke-dashoffset: 36;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes wish-pillar-throb {
+  from {
+    opacity: 0.55;
+  }
+  to {
+    opacity: 0.95;
+  }
+}
+
+@keyframes wish-spell-muzzle-pulse {
+  from {
+    transform: scale(0.85);
+    opacity: 0.65;
+  }
+  to {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+@keyframes wish-target-shockwave {
+  0% {
+    transform: scale(0.5);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(3.4);
+    opacity: 0;
+  }
 }
 
 /* 全窗口上空斜掠而过的背景流星群 */

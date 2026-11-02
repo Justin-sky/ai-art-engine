@@ -643,6 +643,111 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
   return items
 }
 
+/**
+ * 从系统策划案（GDD Markdown）的 `# UI 布局设计` 章节（或带 `screenKind` / `区域划分` 的二级子标题块）
+ * 结构化提取独立 UI 界面列表（含 id、title、prompt、cleanPrompt、screenKind、aspectRatio、layerPrompt）。
+ */
+function parseUiScreensFromGddMarkdown(text: string): UiScreenPromptItem[] {
+  const uiLayoutMatch =
+    /#\s*(?:UI\s*布局设计[^\n]*|UI Layout Design[^\n]*)([\s\S]*?)(?=\n#\s+[^#]|$)/i.exec(text)
+  const hasGddMarkers =
+    Boolean(uiLayoutMatch) ||
+    (/(?:^|\n)##+\s*4\.\d+/m.test(text) && /screenKind|界面规格|区域划分|控件清单/i.test(text))
+  if (!hasGddMarkers) return []
+
+  const uiBody = uiLayoutMatch?.[1] ?? text
+  const subHeadingRe = /(?:^|\n)##+\s*(?:4\.\d+\s*)?([^\n]+)\n([\s\S]*?)(?=\n##+\s+|\n#\s+|$)/g
+  const items: UiScreenPromptItem[] = []
+  const seen = new Set<string>()
+  let m: RegExpExecArray | null
+  let index = 0
+
+  while ((m = subHeadingRe.exec(uiBody)) !== null) {
+    const rawHeading = m[1]!.trim()
+    const block = m[2]!.trim()
+    if (
+      !uiLayoutMatch &&
+      !/screenKind|界面规格|界面结构|区域划分|控件清单|9-slice|PSD/i.test(`${rawHeading}\n${block}`)
+    ) {
+      continue
+    }
+
+    const explicitIdMatch = /[（(]\s*`([^`]+)`\s*[)）]/.exec(rawHeading)
+    const rawTitle = rawHeading
+      .replace(/[（(]\s*`[^`]+`\s*[)）]/g, '')
+      .replace(/^\d+(?:\.\d+)*\s*/, '')
+      .replace(/\*\*([^*]*)\*\*/g, '$1')
+      .trim()
+    const title = rawTitle || `界面 ${index + 1}` // cjk-ok
+
+    const kindMatch = /screenKind\s*[:：]\s*`?([a-zA-Z]+)`?/i.exec(block)
+    const screenKind = normalizeUiScreenKind(kindMatch?.[1], title, block)
+
+    const aspectMatch = /aspectRatio\s*[:：]\s*`?(\d+\s*:\s*\d+)`?/i.exec(block)
+    const aspectRatio = normalizeUiScreenAspectRatio(
+      aspectMatch?.[1]?.replace(/\s+/g, ''),
+      block,
+      title
+    )
+
+    const noCodeBlock = block.replace(/```[\s\S]*?```/g, '')
+    const detailLines: string[] = []
+    let psdSpecLine = ''
+    let inPsdSection = false
+    for (const rawLine of noCodeBlock.split(/\r?\n/)) {
+      const cleanLine = rawLine
+        .replace(/^\s*[-*•]\s*/, '')
+        .replace(/\*\*([^*]*)\*\*/g, '$1')
+        .replace(/`([^`]*)`/g, '$1')
+        .trim()
+      if (!cleanLine) continue
+      if (/^界面结构|^ASCII/i.test(cleanLine)) continue // cjk-ok
+      if (/^PSD\s*图层拆分|^九宫格/i.test(cleanLine)) {
+        // cjk-ok
+        inPsdSection = true
+        const afterColon = cleanLine.replace(/^[^:：]+[:：]\s*/, '').trim()
+        if (afterColon) psdSpecLine = afterColon
+        continue
+      }
+      if (inPsdSection) {
+        if (/^(?:01_|02_|03_|04_)/.test(cleanLine) || /9-slice|图层|底板|控件/i.test(cleanLine)) {
+          // cjk-ok
+          psdSpecLine = psdSpecLine ? `${psdSpecLine}；${cleanLine}` : cleanLine
+          continue
+        }
+        inPsdSection = false
+      }
+      detailLines.push(cleanLine)
+    }
+
+    const bodySpec = detailLines.join('；')
+    const styleLockSuffix = '请严格参考风格参考图中的 UI 元素、界面风格、控件、配色等所有细节。' // cjk-ok
+    const prompt = `${title}（画幅比例 ${aspectRatio ?? '9:16'}，界面形态 ${screenKind ?? 'fullscreen'}）：${bodySpec}。${styleLockSuffix}` // cjk-ok
+    const cleanPrompt = buildTextlessUiPrompt(prompt)
+
+    let nextId = explicitIdMatch?.[1]?.trim() || slugify(title, index)
+    if (seen.has(nextId)) nextId = `${nextId}-${index + 1}`
+    seen.add(nextId)
+
+    const item: UiScreenPromptItem = {
+      id: nextId,
+      title,
+      prompt,
+      cleanPrompt,
+      ...(screenKind ? { screenKind } : {}),
+      ...(aspectRatio ? { aspectRatio } : {})
+    }
+    item.layerPrompt = psdSpecLine
+      ? `游戏UI界面分层拆解（${title}）：请按 PSD 与九宫格（9-slice）规范拆分为独立透明图层：${psdSpecLine}。各控件边缘干净独立、互不粘连。` // cjk-ok
+      : buildDefaultUiLayerSplitPrompt(item)
+
+    items.push(item)
+    index += 1
+  }
+
+  return items
+}
+
 /** 容错：模型忽略 JSON 要求、输出 markdown 列表（- / * / 1. 标题：提示词）时逐行转条目 */
 function parseUiScreenMarkdownList(text: string): UiScreenPromptItem[] {
   const items: UiScreenPromptItem[] = []
@@ -671,7 +776,7 @@ function parseUiScreenMarkdownList(text: string): UiScreenPromptItem[] {
 
 /**
  * 解析 UI 界面拆分模型输出：JSON 数组，每项含 title + prompt（可含 cleanPrompt 空字轨），
- * 或纯字符串。
+ * 或 GDD Markdown `# UI 布局设计` 章节，或纯列表字符串。
  */
 export function parseUiScreenPrompts(raw: string): UiScreenPromptItem[] {
   const text = stripJsonCodeFence(raw)
@@ -689,6 +794,10 @@ export function parseUiScreenPrompts(raw: string): UiScreenPromptItem[] {
   }
 
   if (Array.isArray(parsed)) return normalizeUiScreenRows(parsed)
+
+  // 容错：若输入为系统策划案（GDD Markdown 含 # UI 布局设计 / 4.x 界面块），优先提取真实 UI 界面块
+  const gddScreens = parseUiScreensFromGddMarkdown(text)
+  if (gddScreens.length > 0) return gddScreens
 
   // 容错：模型输出 markdown 列表时逐行兜底
   return parseUiScreenMarkdownList(text)

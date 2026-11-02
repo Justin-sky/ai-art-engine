@@ -367,6 +367,75 @@ export function findCompatibleInPort(
   return inPorts.find((p) => portsCompatible(outDataType, p.dataType))
 }
 
+/**
+ * 判断节点是否为「小说大纲」节点（含独立 `novel.outline` 节点或总纲模式的 `asset.novel` 节点）
+ */
+export function isNovelOutlineSourceNode(
+  node: Pick<GraphNode, 'typeId' | 'title' | 'params'>
+): boolean {
+  if (node.typeId === 'novel.outline') return true
+  if (node.typeId !== 'asset.novel') return false
+  if (node.params?.novelNodeMode === 'outline') return true
+  const t = (node.title ?? '').trim()
+  if (!t) return false
+  if (
+    /第\s*[0-9一二三四五六七八九十百千两〇零]+\s*(?:\/\s*\d+\s*)?章|\b(?:chapter|chap|ch)\.?\s*\d+\b/i.test(
+      t
+    )
+  ) {
+    // cjk-ok
+    return false
+  }
+  return /总纲|大纲|分卷|世界观|设定集|outline|bible/i.test(t) // cjk-ok
+}
+
+/**
+ * 针对小说工作流节点（asset.novel / novel.outline），根据源节点类型自动路由到对应的专属输入端口：
+ * - novel.outline（或大纲模式 asset.novel）-> asset.novel : 强制路由到 `in-outline`（小说大纲口，绝不落入 `in` 上一章口）
+ * - game.economy -> asset.novel / novel.outline : 强制路由到 `in-economy`（经济系统口）
+ * - 章节 asset.novel -> asset.novel : 路由到 `in`（上一章口）
+ */
+export function resolvePreferredNovelTargetPort(
+  source: Pick<GraphNode, 'typeId' | 'title' | 'params'>,
+  target: Pick<GraphNode, 'typeId'>,
+  explicitTargetPort?: string
+): string | undefined {
+  if (target.typeId === 'asset.novel') {
+    if (isNovelOutlineSourceNode(source)) {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-outline'
+      return explicitTargetPort
+    }
+    if (source.typeId === 'game.economy') {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-economy'
+      return explicitTargetPort
+    }
+    if (source.typeId === 'game.numerical') {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-numerical'
+      return explicitTargetPort
+    }
+    return explicitTargetPort || 'in'
+  }
+  if (target.typeId === 'novel.outline' || target.typeId === 'asset.gameSystem') {
+    if (source.typeId === 'game.economy') {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-economy'
+      return explicitTargetPort
+    }
+    if (source.typeId === 'game.numerical') {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-numerical'
+      return explicitTargetPort
+    }
+    return explicitTargetPort || 'in'
+  }
+  if (target.typeId === 'game.numerical') {
+    if (source.typeId === 'game.economy') {
+      if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-economy'
+      return explicitTargetPort
+    }
+    return explicitTargetPort || 'in'
+  }
+  return explicitTargetPort
+}
+
 /** 在源节点上找与目标节点（或指定目标口）匹配的第一个输出口 */
 export function findCompatibleOutPort(
   source: GraphNode,
@@ -380,6 +449,16 @@ export function findCompatibleOutPort(
     if (!preferred) return undefined
     if (findCompatibleInPort(target, preferred.dataType, preferredTargetPortId)) return preferred
     if (isBundleNode(target) && isBundleAcceptableDataType(preferred.dataType)) return preferred
+    // 特例：从 game.economy / game.numerical 的默认 out（图片口）拖向只收文本的节点（如创建小说/小说大纲/策划案/数值系统）时，自动改走 out-text
+    if (
+      (source.typeId === 'game.economy' || source.typeId === 'game.numerical') &&
+      preferredSourcePortId === 'out'
+    ) {
+      const textOut = outPorts.find((p) => p.id === 'out-text')
+      if (textOut && findCompatibleInPort(target, textOut.dataType, preferredTargetPortId)) {
+        return textOut
+      }
+    }
     return undefined
   }
   for (const outPort of outPorts) {
@@ -410,7 +489,8 @@ export function canConnectNodes(
 ): boolean {
   if (source.id === target.id) return false
   const outPort = options.sourcePort
-    ? findOutPort(source, options.sourcePort)
+    ? (findCompatibleOutPort(source, target, options.sourcePort, options.targetPort) ??
+      findOutPort(source, options.sourcePort))
     : (findCompatibleOutPort(source, target, undefined, options.targetPort) ?? findOutPort(source))
   if (!outPort) return false
   // 未锁定束结：接受任意可束类型（不依赖占位 image 口）

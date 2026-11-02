@@ -1887,7 +1887,21 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       })
 
       const degradedIds = result.degradedNodeIds ?? []
-      const hasAnyDone = result.order.some((id) => result.states[id]?.status === 'done')
+      const explicitTargetIds = task.targetNodeIds?.length
+        ? resolveTaskTargets(task.graph, task.targetNodeIds).map((n) => n.id)
+        : []
+      const explicitTargetsAllFailed =
+        explicitTargetIds.length > 0 &&
+        explicitTargetIds.every((id) => {
+          const st = result.states[id]?.status
+          return st === 'degraded' || st === 'error'
+        })
+      const executedIds =
+        task.touchedNodeIds && task.touchedNodeIds.size > 0
+          ? [...task.touchedNodeIds]
+          : result.order
+      const hasAnyDone =
+        !explicitTargetsAllFailed && executedIds.some((id) => result.states[id]?.status === 'done')
       const degradedSummary = degradedIds
         .map((id) => `${id}: ${result.states[id]?.error ?? 'degraded'}`)
         .join('; ')

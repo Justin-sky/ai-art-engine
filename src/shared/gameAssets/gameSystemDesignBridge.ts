@@ -857,19 +857,39 @@ export function inferGameSystemArchetypeFromContext(opts: {
   prompt?: string
   novelGenre?: string
   economyPreset?: string
+  workbenchPreset?: string
 }): GameSystemArchetypeId {
-  const p =
-    `${opts.prompt ?? ''} ${opts.novelGenre ?? ''} ${opts.economyPreset ?? ''}`.toLowerCase()
-  if (/怪谈|理智|san值|克苏鲁|收容|rule_horror|lovecraft/.test(p)) return 'rule_horror_sanity'
-  if (/悬疑|推理|搜证|刑侦|分支|影游|宫斗|avg|mystery|detective|romance/.test(p))
-    return 'avg_mystery_branch'
-  if (/权谋|朝堂|势力|内阁|外交|slg|historical_intrigue/.test(p)) return 'slg_faction_intrigue'
-  if (/割草|幸存者|波次|尸潮|废土|survivor|scifi_apocalypse/.test(p)) return 'roguelike_survivor'
-  if (/抽卡|卡池|保底|御魂|词条|gacha|onmyoji/.test(p)) return 'gacha_equipment_loot'
-  if (/卡牌|构筑|牌库|杀戮尖塔|炉石|小丑牌|dbg|deck|slay_the_spire|balatro|hearthstone/.test(p))
-    return 'card_dbg_combat'
-  if (/全套|总纲|大厅|universal/.test(p)) return 'universal_full_ui'
-  return 'rpg_progression'
+  const genre = (opts.novelGenre ?? '').trim().toLowerCase()
+  const rawPrompt = (opts.prompt ?? '').trim().toLowerCase()
+  const shortPrompt = rawPrompt.length <= 240 ? rawPrompt : ''
+
+  const matchFromText = (s: string): GameSystemArchetypeId | null => {
+    if (!s) return null
+    if (/怪谈|理智|san值|克苏鲁|收容|rule_horror|lovecraft/.test(s)) return 'rule_horror_sanity'
+    if (/悬疑|推理|搜证|刑侦|影游|宫斗|avg|mystery|detective|romance/.test(s))
+      return 'avg_mystery_branch'
+    if (/权谋|朝堂|内阁|外交|slg|historical_intrigue/.test(s)) return 'slg_faction_intrigue'
+    if (/割草|幸存者|波次|尸潮|废土|survivor|scifi_apocalypse/.test(s)) return 'roguelike_survivor'
+    if (/抽卡|卡池|御魂|gacha|onmyoji/.test(s)) return 'gacha_equipment_loot'
+    if (/卡牌|构筑|牌库|杀戮尖塔|炉石|小丑牌|dbg|deck|slay_the_spire|balatro|hearthstone/.test(s))
+      return 'card_dbg_combat'
+    if (/全套|总纲|大厅|universal/.test(s)) return 'universal_full_ui'
+    if (/修仙|玄幻|突破|境界|养成|xianxia/.test(s)) return 'rpg_progression'
+    return null
+  }
+
+  // 1. 短指令（用户显式指定）最高优先级
+  const fromShortPrompt = matchFromText(shortPrompt)
+  if (fromShortPrompt) return fromShortPrompt
+
+  // 2. 显式小说题材流派映射
+  const fromGenre = matchFromText(genre)
+  if (fromGenre) return fromGenre
+
+  // 3. 经济系统/数值工作台预设或长上下文兜底
+  const combined =
+    `${rawPrompt} ${genre} ${opts.economyPreset ?? ''} ${opts.workbenchPreset ?? ''}`.toLowerCase()
+  return matchFromText(combined) ?? 'rpg_progression'
 }
 
 /**
@@ -1096,6 +1116,17 @@ export function extractNovelIpContextForGameSystem(opts: NovelIpContextExtractOp
         .trim()
         .split(/\r?\n/)
         .slice(0, 4)
+        .map((l) => `  ${l.trim()}`)
+    )
+  }
+
+  if (opts.stateLedger?.trim()) {
+    lines.push(
+      `- **4.5. 原著 L2 当前连载推进状态与已解锁底牌账本**:`,
+      ...opts.stateLedger
+        .trim()
+        .split(/\r?\n/)
+        .slice(0, 5)
         .map((l) => `  ${l.trim()}`)
     )
   }

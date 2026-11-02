@@ -192,7 +192,9 @@ export async function persistScreenplayGeneration(
   const stamp = formatGeneratedMediaStamp()
   const id = `gen-text:${stamp}`
   const explicitEpisodes =
-    ctx.node.typeId === 'asset.screenplay'
+    ctx.node.typeId === 'asset.screenplay' ||
+    ctx.node.typeId === 'novel.outline' ||
+    (ctx.node.typeId === 'asset.novel' && ctx.node.params.novelNodeMode === 'outline')
       ? splitScreenplayByExplicitEpisodeMarkers(text, {
           includeSharedBios: true,
           locale: ctx.locale
@@ -251,7 +253,9 @@ export function commitInMemoryTextGallery(
   const stamp = formatGeneratedMediaStamp()
   const id = `gen-text:${stamp}`
   const explicitEpisodes =
-    ctx.node.typeId === 'asset.screenplay'
+    ctx.node.typeId === 'asset.screenplay' ||
+    ctx.node.typeId === 'novel.outline' ||
+    (ctx.node.typeId === 'asset.novel' && ctx.node.params.novelNodeMode === 'outline')
       ? splitScreenplayByExplicitEpisodeMarkers(text, {
           includeSharedBios: true,
           locale: ctx.locale

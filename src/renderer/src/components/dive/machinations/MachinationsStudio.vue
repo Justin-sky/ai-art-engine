@@ -61,6 +61,9 @@ const { toggleRun } = useGraphNodeRun(nodeRef, hostIdRef)
 const pipelineUi = computed(() =>
   isEn.value
     ? {
+        pushNumericalBtn: 'Numerical Studio',
+        pushNumericalTip:
+          'Create or connect downstream Numerical System and open its Dive workbench',
         pushNovelBtn: 'Novel Studio',
         pushNovelTip: 'Create or connect downstream Novel Generator and open its Dive workbench',
         pushGameSystemBtn: 'GDD Studio',
@@ -68,6 +71,8 @@ const pipelineUi = computed(() =>
           'Create or connect downstream Game System Plan and open its Dive workbench'
       }
     : {
+        pushNumericalBtn: '数值系统', // cjk-ok
+        pushNumericalTip: '自动创建或连接下游「数值系统」节点并进入游戏数值与战力配表工作台', // cjk-ok
         pushNovelBtn: '创建小说', // cjk-ok
         pushNovelTip: '自动创建或连接下游「创建小说」节点并进入连载小说工作台', // cjk-ok
         pushGameSystemBtn: '策划案生成', // cjk-ok
@@ -334,7 +339,7 @@ function flushDocToNodeParams(): void {
 }
 
 async function switchToDownstreamDive(
-  viewId: 'novel.workbench' | 'gameSystem.workbench',
+  viewId: 'novel.workbench' | 'gameSystem.workbench' | 'game.workbench',
   targetNodeId: string,
   title: string
 ): Promise<void> {
@@ -354,6 +359,53 @@ async function switchToDownstreamDive(
   }
 }
 
+function pushAndOpenDownstreamNumerical(): void {
+  flushDocToNodeParams()
+  const hostId = props.hostId
+  if (!hostId) return
+  const doc = graphEditorHosts.getDocument(hostId)
+  let numNode: GraphNode | null = null
+  if (doc?.edges) {
+    for (const edge of doc.edges) {
+      if (edge.source === props.node.id) {
+        const tgt = graphEditorHosts.getNode(hostId, edge.target)
+        if (tgt?.typeId === 'game.numerical') {
+          numNode = tgt
+          break
+        }
+      }
+    }
+  }
+  if (!numNode) {
+    numNode = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'game.numerical')
+  }
+  if (!numNode) {
+    const newId = graphEditorHosts.addNode(hostId, {
+      typeId: 'game.numerical',
+      title: isEn.value ? 'Numerical System' : '数值系统', // cjk-ok
+      position: {
+        x: (props.node.position?.x ?? 260) + 380,
+        y: props.node.position?.y ?? 200
+      },
+      linkFrom: [{ nodeId: props.node.id, portId: 'out-text' }]
+    })
+    if (newId) {
+      numNode = graphEditorHosts.getNode(hostId, newId)
+    }
+  } else {
+    const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
+    if (!edges.some((e) => e.source === props.node.id && e.target === numNode!.id)) {
+      graphEditorHosts.connectNodes(hostId, props.node.id, numNode.id, 'out-text', 'in-economy')
+    }
+  }
+  if (!numNode) return
+  switchToDownstreamDive(
+    'game.workbench',
+    numNode.id,
+    numNode.title?.trim() || (isEn.value ? 'Numerical System' : '数值系统') // cjk-ok
+  )
+}
+
 function pushAndOpenDownstreamNovel(): void {
   flushDocToNodeParams()
   const hostId = props.hostId
@@ -364,7 +416,7 @@ function pushAndOpenDownstreamNovel(): void {
     for (const edge of doc.edges) {
       if (edge.source === props.node.id) {
         const tgt = graphEditorHosts.getNode(hostId, edge.target)
-        if (tgt?.typeId === 'asset.novel') {
+        if (tgt?.typeId === 'asset.novel' || tgt?.typeId === 'novel.outline') {
           novelNode = tgt
           break
         }
@@ -372,7 +424,10 @@ function pushAndOpenDownstreamNovel(): void {
     }
   }
   if (!novelNode) {
-    novelNode = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'asset.novel')
+    novelNode = graphEditorHosts.findNode(
+      hostId,
+      (n) => n.typeId === 'asset.novel' || n.typeId === 'novel.outline'
+    )
   }
   if (!novelNode) {
     const newId = graphEditorHosts.addNode(hostId, {
@@ -390,7 +445,7 @@ function pushAndOpenDownstreamNovel(): void {
   } else {
     const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
     if (!edges.some((e) => e.source === props.node.id && e.target === novelNode!.id)) {
-      graphEditorHosts.connectNodes(hostId, props.node.id, novelNode.id, 'out-text', 'in')
+      graphEditorHosts.connectNodes(hostId, props.node.id, novelNode.id, 'out-text', 'in-economy')
     }
   }
   if (!novelNode) return
@@ -427,7 +482,7 @@ function pushAndOpenDownstreamGameSystem(): void {
       { nodeId: props.node.id, portId: 'out-text' }
     ]
     if (existingNovel) {
-      linkSources.push({ nodeId: existingNovel.id, portId: 'out' })
+      linkSources.push({ nodeId: existingNovel.id, portId: 'out-all' })
     }
     const newId = graphEditorHosts.addNode(hostId, {
       typeId: 'asset.gameSystem',
@@ -444,13 +499,13 @@ function pushAndOpenDownstreamGameSystem(): void {
   } else {
     const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
     if (!edges.some((e) => e.source === props.node.id && e.target === gsNode!.id)) {
-      graphEditorHosts.connectNodes(hostId, props.node.id, gsNode.id, 'out-text', 'in')
+      graphEditorHosts.connectNodes(hostId, props.node.id, gsNode.id, 'out-text', 'in-economy')
     }
     if (
       existingNovel &&
       !edges.some((e) => e.source === existingNovel.id && e.target === gsNode!.id)
     ) {
-      graphEditorHosts.connectNodes(hostId, existingNovel.id, gsNode.id, 'out', 'in')
+      graphEditorHosts.connectNodes(hostId, existingNovel.id, gsNode.id, 'out-all', 'in')
     }
   }
   if (!gsNode) return
@@ -485,14 +540,14 @@ function pushAndOpenDownstreamGameSystem(): void {
         />
       </div>
 
-      <!-- 中央 Build | Scenarios | Numerical Lab 模式切换胶囊 -->
+      <!-- 中央 Build | Scenarios 模式切换胶囊 -->
       <div class="mx-topbar-center">
         <div class="mx-mode-pill">
           <button
             type="button"
             class="mx-mode-btn"
             :class="{
-              'is-active': store.mode.value === 'build' && store.resultsTab.value !== 'workbench'
+              'is-active': store.mode.value === 'build'
             }"
             @click="store.enterBuildMode()"
           >
@@ -502,30 +557,11 @@ function pushAndOpenDownstreamGameSystem(): void {
             type="button"
             class="mx-mode-btn"
             :class="{
-              'is-active':
-                store.mode.value === 'scenarios' && store.resultsTab.value !== 'workbench'
+              'is-active': store.mode.value === 'scenarios'
             }"
             @click="store.enterScenariosMode()"
           >
             {{ t('mx.top.scenarios') }}
-          </button>
-          <button
-            type="button"
-            class="mx-mode-btn"
-            :class="{
-              'is-active':
-                store.mode.value === 'workbench' || store.resultsTab.value === 'workbench'
-            }"
-            @click="
-              () => {
-                store.drawer.value = ''
-                store.mode.value = 'workbench'
-                store.resultsOpen.value = true
-                store.resultsTab.value = 'workbench'
-              }
-            "
-          >
-            ⚔ Numerical Lab
           </button>
         </div>
 
@@ -583,6 +619,16 @@ function pushAndOpenDownstreamGameSystem(): void {
             @change="onImportFile"
           />
         </div>
+
+        <button
+          v-if="props.hostId"
+          type="button"
+          class="mx-top-btn"
+          :title="pipelineUi.pushNumericalTip"
+          @click="pushAndOpenDownstreamNumerical"
+        >
+          ⚔️ {{ pipelineUi.pushNumericalBtn }}
+        </button>
 
         <button
           v-if="props.hostId"

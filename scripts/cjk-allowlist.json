@@ -601,7 +601,8 @@
       "'# 每行一条：问题名 | 类型(noul/choice/score) | 问题 | 判定说明',",
       "'is_ok | noul | 这个方案成立吗？ | 满足设定与逻辑 / 存在明显漏洞',",
       "'pick | choice | 选哪个方案？ | a:方案A; b:方案B; c:方案C',",
-      "'quality | score | 质量如何？ | 需要返工; 基本可用; 可直接用'"
+      "'quality | score | 质量如何？ | 需要返工; 基本可用; 可直接用'",
+      "label: '自动推进章节游标 / Auto-advance chapter cursor'"
     ],
     "src/shared/graph/create.ts": ["gameSystem: '策划案生成',", "gamePlay: '可玩 HTML',"],
     "src/shared/graph/episodeBoardParse.ts": [
@@ -1153,7 +1154,13 @@
       "label: `底图·${screen.title}`,",
       "title: `底图·${screen.title}`,",
       "* 解析 UI 界面拆分模型输出：JSON 数组，每项含 title + prompt（可含 cleanPrompt 空字轨），",
-      "* 或纯字符串。"
+      "* 或纯字符串。",
+      "/#\\s*(?:UI\\s*布局设计[^\\n]*|UI Layout Design[^\\n]*)([\\s\\S]*?)(?=\\n#\\s+[^#]|$)/i.exec(text)",
+      "(/(?:^|\\n)##+\\s*4\\.\\d+/m.test(text) && /screenKind|界面规格|区域划分|控件清单/i.test(text))",
+      "!/screenKind|界面规格|界面结构|区域划分|控件清单|9-slice|PSD/i.test(`${rawHeading}\\n${block}`)",
+      "if (/^PSD\\s*图层拆分|^九宫格/i.test(cleanLine)) {",
+      "if (/^(?:01_|02_|03_|04_)/.test(cleanLine) || /9-slice|图层|底板|控件/i.test(cleanLine)) {",
+      "/** 容错：模型忽略 JSON 要求、输出 markdown 列表（- / * / 1. 标题：提示词）时逐行转条目 */"
     ],
     "src/shared/graph/userPromptSchemes.ts": [
       "'请用纯文本创作一个完整、可读的故事剧本（不要使用 Markdown）。第一行写「剧本名：…」，空一行后再写正文。'",
@@ -1302,7 +1309,9 @@
     "src/renderer/src/components/NodeGraphEditor.vue": [
       "? `✨ 已从 PNG 配方海报一键复刻完整工作流（共 ${extracted.nodes.length} 个节点）`",
       "(isZhLocale.value ? 'AI Art Engine 创作配方' : 'AI Art Engine Recipe')",
-      "? '📸 已导出 PNG 配方海报（已内嵌完整工作流，拖入画布即可一键复刻）'"
+      "? '📸 已导出 PNG 配方海报（已内嵌完整工作流，拖入画布即可一键复刻）'",
+      "const hasExplicitTargetChap = /第\\s*\\d+\\s*章|\\b(?:chapter|chap|ch)\\.?\\s*\\d+\\b/i.test(",
+      "if (!curTitle || curTitle === '创建小说' || curTitle === 'Novel') {"
     ],
     "src/renderer/src/components/ScriptTimelineEditor.vue": [
       "<span>{{ isZhLocale ? '可编程动态组件 (Widgets)' : 'Motion Widgets' }}</span>",
@@ -1856,6 +1865,56 @@
       "? L('成型健康', 'Healthy')",
       "? L('池稀释需Ban', 'Diluted')",
       ": L('严重卡池崩塌', 'Collapsed')"
+    ],
+    "src/renderer/src/components/dive/EditorDiveGameSystemView.vue": [
+      "? '已连数值系统'",
+      ": '未连数值系统'",
+      ">🔌 {{ isEn ? 'Connected Input Ports' : '上游端口输入感知' }}</span",
+      "📊 {{ isEn ? 'Port [Economy System]' : '端口【经济系统】' }}:",
+      "⚔️ {{ isEn ? 'Port [Numerical System]' : '端口【数值系统】' }}:",
+      ": '展开已解析的乘区公式与数值预算表'",
+      "📖 {{ isEn ? 'Port [Text / Novel IP]' : '端口【文本 / 小说IP】' }}:",
+      ": '展开已提取的境界阶梯、角色卡池与章节关卡'"
+    ],
+    "src/renderer/src/components/dive/EditorDiveNovelView.vue": [
+      "{{ isEn ? `Planned ${totalChapters} Chaps` : `规划总规模 ${totalChapters} 章` }}",
+      ": `大纲 ${currentChapterStats.wordCount} 字`",
+      ": `经济系统：${upstreamEconomyNode.title || '已连线'}`",
+      ": '经济系统：未连线'",
+      ": `数值系统：${upstreamNumericalNode.title || '已连线'}`",
+      ": '数值系统：默认曲线'",
+      ": `第 ${currentChapterCursor} 章 · 上游三路连线快照`",
+      "<span class=\"port-tag port-econ\">⚔️ {{ isEn ? 'Numerical' : '数值系统' }}</span>",
+      "? upstreamNumericalNode.title || (isEn ? 'Numerical' : '数值系统')",
+      "📋 {{ isEn ? 'Inject Quota' : '写入配额' }}",
+      ": `章节号与规格微调（第 ${currentChapterCursor}/${totalChapters} 章 · ${targetWords}字）`",
+      ": '输入全书总纲与分章企划标题…'",
+      "🗺️ {{ isEn ? 'Arc Power & Chapter Plan' : '战力包络 & 分章排期' }}",
+      ": '世界观与人物伏笔'",
+      "✍️ {{ isEn ? 'Insert into Outline' : '插入分章细纲' }}"
+    ],
+    "src/renderer/src/components/dive/machinations/NumericalStudio.vue": [
+      "<div class=\"num-brand\" :title=\"isEn ? 'Numerical System Studio' : '数值系统工作台'\">⚔️</div>",
+      ":value=\"props.node.title || (isEn ? 'Numerical System' : '数值系统')\"",
+      ": '已接入上游「经济系统」宏观资源参数（点击跳转查看）'",
+      ": `已连经济系统：${upstreamEconomyNode.title || '经济系统'}`",
+      "isEn ? 'Standalone Numerical Mode' : '独立数值配表模式（可从 in-economy 接入经济系统）'",
+      ":title=\"isEn ? 'Connect to Novel Outline' : '自动连接或创建下游「小说大纲」节点'\"",
+      "🗺️ {{ isEn ? 'Outline' : '小说大纲' }}",
+      ":title=\"isEn ? 'Connect to Novel Chapter' : '自动连接或创建下游「创建小说」节点'\"",
+      "📚 {{ isEn ? 'Novel Studio' : '创建小说' }}",
+      ":title=\"isEn ? 'Connect to Game System Plan' : '自动连接或创建下游「策划案生成」节点'\"",
+      "🕹️ {{ isEn ? 'GDD Studio' : '策划案生成' }}"
+    ],
+    "src/renderer/src/components/GameNodeInspector.vue": [
+      "<div class=\"section-title\">{{ isEn ? 'Numerical System' : '数值系统工作台' }}</div>",
+      "<span>{{ isEn ? 'Numerical Preset' : '数值体系预设' }}</span>"
+    ],
+    "src/renderer/src/components/GraphNodeCard.vue": [
+      "? `🗺️ 大纲 · ${node.params.novelTotalChapters || 800}章`"
+    ],
+    "src/shared/graph/ports.ts": [
+      "/第\\s*[0-9一二三四五六七八九十百千两〇零]+\\s*(?:\\/\\s*\\d+\\s*)?章|\\b(?:chapter|chap|ch)\\.?\\s*\\d+\\b/i.test("
     ]
   }
 }

@@ -186,6 +186,8 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   流派: 'novelGenre', // cjk-ok
   题材: 'novelGenre', // cjk-ok
   小说流派: 'novelGenre', // cjk-ok
+  novelMode: 'novelNodeMode',
+  小说模式: 'novelNodeMode', // cjk-ok
   currentChapter: 'novelCurrentChapter',
   当前章: 'novelCurrentChapter', // cjk-ok
   当前章节: 'novelCurrentChapter', // cjk-ok
@@ -939,8 +941,29 @@ export function applySmartNodePreset(
     }
   }
 
-  // 12. 小说连载 8 大流派预设 (asset.novel) // cjk-ok
-  if ('novelGenre' in baseParams || def?.typeId === 'asset.novel') {
+  // 11b. 数值系统 (game.numerical) 六大旗舰数值工作台预设
+  if ('gameNumericalPreset' in baseParams || def?.typeId === 'game.numerical') {
+    const wbHit = MX_WORKBENCH_PRESETS.find((w) =>
+      matchesPresetQuery({ id: w.id, name: w.nameEn, title: w.nameZh }, q)
+    )
+    if (wbHit) {
+      const wb = createMxWorkbenchPreset(wbHit.id)
+      return {
+        matchedPresetId: wbHit.id,
+        paramsPatch: {
+          gameNumericalPreset: wbHit.id,
+          gameNumericalWorkbenchJson: JSON.stringify(wb)
+        }
+      }
+    }
+  }
+
+  // 12. 小说连载 8 大流派预设 (asset.novel / novel.outline) // cjk-ok
+  if (
+    'novelGenre' in baseParams ||
+    def?.typeId === 'asset.novel' ||
+    def?.typeId === 'novel.outline'
+  ) {
     const hit = NOVEL_GENRE_PROFILES.find((p) =>
       matchesPresetQuery({ id: p.id, name: p.labelEn, title: p.labelZh }, q)
     )

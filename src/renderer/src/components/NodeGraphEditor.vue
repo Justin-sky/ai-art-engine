@@ -552,6 +552,16 @@
         :visible-nodes="weatherVisibleNodes"
         :suppress-node-physics="isDraggingNodes || viewportGesturing || isResizingNode"
       />
+      <ChatWishShrine
+        :running="wishShrineChatBridge.running || isGraphOrTaskRunning"
+        :session-id="wishShrineChatBridge.sessionId || props.assetId"
+        :session-title="wishShrineChatBridge.sessionTitle"
+        :prompt-text="wishShrineChatBridge.promptText"
+        :activity-text="wishShrineChatBridge.activityText"
+        :outcome="wishShrineChatBridge.outcome"
+        :cooking-targets="wishCookingTargets"
+        :is-en="/^en/i.test(locale)"
+      />
     </div>
 
     <Teleport to="body">
@@ -847,6 +857,7 @@ import {
   findCompatibleOutPort,
   findInPort,
   findOutPort,
+  resolvePreferredNovelTargetPort,
   isBundleNode,
   isBundleAcceptableDataType,
   lockBundleDataType,
@@ -1094,6 +1105,9 @@ import {
 } from '../graph/vfx/canvasWeatherEngine'
 import CanvasGenshinVista from './CanvasGenshinVista.vue'
 import CanvasWeatherOverlay from './CanvasWeatherOverlay.vue'
+import ChatWishShrine from './ChatWishShrine.vue'
+import { wishShrineChatBridge } from '../features/graph/model/wishShrineBridge'
+import type { WishCookingNodeTarget } from '@shared/chatWishShrine'
 import { graphPreviewVisibilityKey } from '../features/media/graphPreviewVisibility'
 import {
   clearAssetUrlCaches,
@@ -2800,6 +2814,27 @@ const weatherVisibleNodes = computed<WeatherNodeRect[]>(() => {
   })
 })
 
+/** 节点画布中正在 cook（运行中）的节点屏幕坐标列表，驱动祈福仙子飞赴节点或移动到多节点中心施法 */
+const wishCookingTargets = computed<WishCookingNodeTarget[]>(() => {
+  const zoom = Math.max(0.05, graph.viewport.zoom)
+  const vx = graph.viewport.x
+  const vy = graph.viewport.y
+  const out: WishCookingNodeTarget[] = []
+  for (const { node } of renderedGraphCards.value) {
+    if (runStates[node.id]?.status !== 'running') continue
+    const { w, h } = getNodeSize(node)
+    out.push({
+      id: node.id,
+      title: node.title || graphTypeLabel(node.typeId ?? '') || node.id,
+      screenX: node.position.x * zoom + vx,
+      screenY: node.position.y * zoom + vy,
+      screenWidth: w * zoom,
+      screenHeight: h * zoom
+    })
+  }
+  return out
+})
+
 watch(
   [isGraphOrTaskRunning, graphHostId],
   ([running, hostId], _prev, onCleanup) => {
@@ -2990,6 +3025,10 @@ function collectEdgeGeometry(
     const source = nodeById.get(edge.source)
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
+    const preferredTargetPort = resolvePreferredNovelTargetPort(source, target, edge.targetPort)
+    if (preferredTargetPort && edge.targetPort !== preferredTargetPort) {
+      edge.targetPort = preferredTargetPort
+    }
     geoms.push(computeEdgeScreenGeometry(edge, source, target, liveViewport, edgePathStyle.value))
   }
   return geoms
@@ -3923,6 +3962,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
     // 创建小说 → 剧本生成 → 分镜拆解 → 导演审核 → 角色/场景/道具设定 → 影视工作台 → 批量拍摄 → 单镜精修
     id: 'filmTv',
     typeIds: [
+      'novel.outline',
       'asset.novel',
       'asset.screenplay',
       'film.breakdown',
@@ -3940,6 +3980,8 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   {
     id: 'game',
     typeIds: [
+      'game.economy',
+      'game.numerical',
       'asset.gameSystem',
       'game.pbrTile',
       'game.spriteProp',
@@ -4052,17 +4094,41 @@ const rootAddableMenuItems = computed(() => {
     ? graph.nodes.find((n) => n.id === menu.linkToNodeId)
     : undefined
   const promotedOrder: GraphNodeTypeId[] =
-    linkSource?.typeId === 'asset.novel'
-      ? ['asset.gameSystem', 'asset.screenplay', 'text.translate']
-      : linkSource?.typeId === 'game.economy'
-        ? ['asset.novel', 'asset.gameSystem', 'ui.split']
-        : linkSource?.typeId === 'asset.gameSystem'
-          ? ['ui.split', 'asset.novel', 'asset.screenplay']
-          : linkTarget?.typeId === 'asset.gameSystem'
-            ? ['asset.novel', 'game.economy']
-            : linkTarget?.typeId === 'asset.novel'
-              ? ['game.economy', 'asset.gameSystem']
-              : []
+    linkSource?.typeId === 'novel.outline'
+      ? ['asset.novel', 'text.select', 'asset.gameSystem']
+      : linkSource?.typeId === 'asset.novel'
+        ? ['asset.novel', 'asset.screenplay', 'asset.gameSystem', 'text.translate']
+        : linkSource?.typeId === 'game.economy'
+          ? ['game.numerical', 'novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
+          : linkSource?.typeId === 'game.numerical'
+            ? ['novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
+            : linkSource?.typeId === 'asset.gameSystem'
+              ? ['ui.split', 'asset.novel', 'asset.screenplay']
+              : linkTarget?.typeId === 'game.numerical'
+                ? menu.linkToPortId === 'in-economy'
+                  ? ['game.economy', 'text.plain']
+                  : ['game.economy', 'text.plain']
+                : linkTarget?.typeId === 'asset.gameSystem'
+                  ? menu.linkToPortId === 'in-economy'
+                    ? ['game.economy', 'text.plain']
+                    : menu.linkToPortId === 'in-numerical'
+                      ? ['game.numerical', 'text.plain']
+                      : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                  : linkTarget?.typeId === 'novel.outline'
+                    ? menu.linkToPortId === 'in-economy'
+                      ? ['game.economy', 'text.plain']
+                      : menu.linkToPortId === 'in-numerical'
+                        ? ['game.numerical', 'text.plain']
+                        : ['text.plain', 'game.economy', 'game.numerical']
+                    : linkTarget?.typeId === 'asset.novel'
+                      ? menu.linkToPortId === 'in-economy'
+                        ? ['game.economy', 'text.plain']
+                        : menu.linkToPortId === 'in-numerical'
+                          ? ['game.numerical', 'text.plain']
+                          : menu.linkToPortId === 'in-outline'
+                            ? ['novel.outline', 'text.plain']
+                            : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                      : []
   if (!promotedOrder.length) return base
   const byType = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
   const promoted = promotedOrder
@@ -4875,10 +4941,19 @@ function addNodeFromMenu(item: AddableMenuItem): void {
     for (const src of linkFromSources) {
       const source = graph.nodes.find((n) => n.id === src.nodeId)
       if (!source) continue
-      const outPort = findCompatibleOutPort(source, node, src.portId || undefined)
+      const preferredTargetPort = resolvePreferredNovelTargetPort(source, node)
+      const outPort = findCompatibleOutPort(
+        source,
+        node,
+        src.portId || undefined,
+        preferredTargetPort
+      )
       const sourcePort = outPort?.id || src.portId || 'out'
-      if (!canConnectNodes(source, node, { sourcePort })) continue
-      let inPort = outPort ? findCompatibleInPort(node, outPort.dataType) : undefined
+      if (!canConnectNodes(source, node, { sourcePort, targetPort: preferredTargetPort })) continue
+      let inPort = outPort
+        ? (findCompatibleInPort(node, outPort.dataType, preferredTargetPort) ??
+          findCompatibleInPort(node, outPort.dataType))
+        : undefined
       if (
         !inPort &&
         isBundleNode(node) &&
@@ -4898,10 +4973,142 @@ function addNodeFromMenu(item: AddableMenuItem): void {
       if (isBundleNode(node)) {
         lockBundleDataType(node, outPort.dataType)
       }
+
+      // 马尔可夫链式章节节点自动编号与三路输入继承（第1章 -> 第2章 -> 第3章）
+      if (!existing && node.typeId === 'asset.novel') {
+        const isEnLocale = String(locale.value).toLowerCase().startsWith('en')
+        if (source.typeId === 'asset.novel' && source.params.novelNodeMode !== 'outline') {
+          const prevChap = Math.max(1, Math.floor(Number(source.params.novelCurrentChapter) || 1))
+          const nextChap = prevChap + 1
+          node.params.novelNodeMode = 'chapter'
+          node.params.novelCurrentChapter = nextChap
+          node.params.novelAutoAdvanceChapter = false
+          node.params.novelTotalChapters = source.params.novelTotalChapters || 800
+          node.params.novelTargetWords = source.params.novelTargetWords || 3200
+          if (source.params.novelGenre) node.params.novelGenre = source.params.novelGenre
+          if (source.params.novelWorldBible)
+            node.params.novelWorldBible = source.params.novelWorldBible
+          if (source.params.novelStateLedger)
+            node.params.novelStateLedger = source.params.novelStateLedger
+          if (source.params.novelRollingSummary)
+            node.params.novelRollingSummary = source.params.novelRollingSummary
+          if (source.params.novelCharacterRosterJson)
+            node.params.novelCharacterRosterJson = source.params.novelCharacterRosterJson
+          if (source.params.novelForeshadowingJson)
+            node.params.novelForeshadowingJson = source.params.novelForeshadowingJson
+          if (source.params.novelChapterHistoryJson)
+            node.params.novelChapterHistoryJson = source.params.novelChapterHistoryJson
+          node.title = isEnLocale ? `Ch.${nextChap}` : `第${nextChap}章` // cjk-ok
+
+          // 自动继承并连接上游小说大纲 (in-outline) 与经济系统 (in-economy)
+          const srcIncoming = graph.edges.filter((e) => e.target === source.id)
+          const outlineNode =
+            srcIncoming
+              .map((e) => graph.nodes.find((n) => n.id === e.source))
+              .find(
+                (n) =>
+                  n?.typeId === 'novel.outline' ||
+                  (n?.typeId === 'asset.novel' && n.params.novelNodeMode === 'outline')
+              ) ?? graph.nodes.find((n) => n.typeId === 'novel.outline')
+          if (outlineNode) {
+            graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+              sourceId: outlineNode.id,
+              targetId: node.id,
+              sourcePort: 'out',
+              targetPort: 'in-outline',
+              edgeId: `edge-${crypto.randomUUID()}`
+            })
+          }
+          const econNode =
+            srcIncoming
+              .map((e) => graph.nodes.find((n) => n.id === e.source))
+              .find((n) => n?.typeId === 'game.economy') ??
+            graph.nodes.find((n) => n.typeId === 'game.economy')
+          if (econNode) {
+            graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+              sourceId: econNode.id,
+              targetId: node.id,
+              sourcePort: 'out-text',
+              targetPort: 'in-economy',
+              edgeId: `edge-${crypto.randomUUID()}`
+            })
+          }
+          const numNode =
+            srcIncoming
+              .map((e) => graph.nodes.find((n) => n.id === e.source))
+              .find((n) => n?.typeId === 'game.numerical') ??
+            graph.nodes.find((n) => n.typeId === 'game.numerical')
+          if (numNode) {
+            graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+              sourceId: numNode.id,
+              targetId: node.id,
+              sourcePort: 'out-text',
+              targetPort: 'in-numerical',
+              edgeId: `edge-${crypto.randomUUID()}`
+            })
+          }
+        } else if (
+          source.typeId === 'novel.outline' ||
+          (source.typeId === 'asset.novel' && source.params.novelNodeMode === 'outline')
+        ) {
+          const existingChapters = graph.nodes.filter(
+            (n) =>
+              n.id !== node.id && n.typeId === 'asset.novel' && n.params.novelNodeMode !== 'outline'
+          )
+          const maxChap = existingChapters.reduce(
+            (acc, n) => Math.max(acc, Math.floor(Number(n.params.novelCurrentChapter) || 0)),
+            0
+          )
+          const nextChap = maxChap + 1
+          node.params.novelNodeMode = 'chapter'
+          node.params.novelCurrentChapter = nextChap
+          node.params.novelAutoAdvanceChapter = false
+          node.params.novelTotalChapters = source.params.novelTotalChapters || 800
+          node.params.novelTargetWords = source.params.novelTargetWords || 3200
+          if (source.params.novelGenre) node.params.novelGenre = source.params.novelGenre
+          node.title = isEnLocale ? `Ch.${nextChap}` : `第${nextChap}章` // cjk-ok
+          if (nextChap > 1) {
+            const prevChapNode = existingChapters.find(
+              (n) => Math.floor(Number(n.params.novelCurrentChapter) || 0) === nextChap - 1
+            )
+            if (prevChapNode) {
+              graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+                sourceId: prevChapNode.id,
+                targetId: node.id,
+                sourcePort: 'out',
+                targetPort: 'in',
+                edgeId: `edge-${crypto.randomUUID()}`
+              })
+            }
+          }
+          const econNode = graph.nodes.find((n) => n.typeId === 'game.economy')
+          if (econNode) {
+            graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+              sourceId: econNode.id,
+              targetId: node.id,
+              sourcePort: 'out-text',
+              targetPort: 'in-economy',
+              edgeId: `edge-${crypto.randomUUID()}`
+            })
+          }
+          const numNode = graph.nodes.find((n) => n.typeId === 'game.numerical')
+          if (numNode) {
+            graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
+              sourceId: numNode.id,
+              targetId: node.id,
+              sourcePort: 'out-text',
+              targetPort: 'in-numerical',
+              edgeId: `edge-${crypto.randomUUID()}`
+            })
+          }
+        }
+      }
     }
   } else if (linkToId) {
     const target = graph.nodes.find((n) => n.id === linkToId)
-    const targetPort = menu.linkToPortId ?? undefined
+    const targetPort = target
+      ? resolvePreferredNovelTargetPort(node, target, menu.linkToPortId ?? undefined)
+      : (menu.linkToPortId ?? undefined)
     if (target && canConnectNodes(node, target, { targetPort })) {
       const outPort =
         findCompatibleOutPort(node, target, undefined, targetPort) ?? findOutPort(node)
@@ -5473,8 +5680,17 @@ function findLinkTarget(
       if (!nodeId || nodeId === activeSourceId) continue
       const targetNode = graph.nodes.find((n) => n.id === nodeId)
       if (!sourceNode || !targetNode) continue
-      const outPort = findCompatibleOutPort(sourceNode, targetNode, activeSourcePortId)
-      let inPort = outPort ? findCompatibleInPort(targetNode, outPort.dataType) : undefined
+      const preferredTargetPort = resolvePreferredNovelTargetPort(sourceNode, targetNode)
+      const outPort = findCompatibleOutPort(
+        sourceNode,
+        targetNode,
+        activeSourcePortId,
+        preferredTargetPort
+      )
+      let inPort = outPort
+        ? (findCompatibleInPort(targetNode, outPort.dataType, preferredTargetPort) ??
+          findCompatibleInPort(targetNode, outPort.dataType))
+        : undefined
       if (
         !inPort &&
         outPort &&
@@ -5836,11 +6052,12 @@ function connectNodes(
   const source = graph.nodes.find((n) => n.id === sourceId)
   const target = graph.nodes.find((n) => n.id === targetId)
   if (!source || !target) return false
-  const outPort = findCompatibleOutPort(source, target, sourcePortId, targetPortId)
+  const resolvedTargetPortId = resolvePreferredNovelTargetPort(source, target, targetPortId)
+  const outPort = findCompatibleOutPort(source, target, sourcePortId, resolvedTargetPortId)
   if (!outPort) return false
-  let inPort = findCompatibleInPort(target, outPort.dataType, targetPortId)
+  let inPort = findCompatibleInPort(target, outPort.dataType, resolvedTargetPortId)
   if (!inPort && isBundleNode(target) && isBundleAcceptableDataType(outPort.dataType)) {
-    inPort = findInPort(target, targetPortId ?? 'in') ?? undefined
+    inPort = findInPort(target, resolvedTargetPortId ?? 'in') ?? undefined
   }
   if (!inPort) return false
   if (
@@ -5862,6 +6079,39 @@ function connectNodes(
   })
   if (isBundleNode(target)) {
     lockBundleDataType(target, outPort.dataType)
+  }
+  // 手动连线「上一章 -> 下一章」时，若下游章节节点仍处于默认第 1 章且标题无显式章号，自动递增章号并继承长篇参数
+  if (
+    source.typeId === 'asset.novel' &&
+    source.params.novelNodeMode !== 'outline' &&
+    target.typeId === 'asset.novel' &&
+    target.params.novelNodeMode !== 'outline' &&
+    inPort.id === 'in'
+  ) {
+    const prevChap = Math.max(1, Math.floor(Number(source.params.novelCurrentChapter) || 1))
+    const curTargetChap = Math.max(1, Math.floor(Number(target.params.novelCurrentChapter) || 1))
+    const hasExplicitTargetChap = /第\s*\d+\s*章|\b(?:chapter|chap|ch)\.?\s*\d+\b/i.test(
+      target.title ?? ''
+    ) // cjk-ok
+    if (!hasExplicitTargetChap && curTargetChap <= prevChap) {
+      const nextChap = prevChap + 1
+      target.params.novelCurrentChapter = nextChap
+      target.params.novelAutoAdvanceChapter = false
+      if (!target.params.novelGenre && source.params.novelGenre) {
+        target.params.novelGenre = source.params.novelGenre
+      }
+      if (
+        (!target.params.novelTotalChapters || target.params.novelTotalChapters === 800) &&
+        source.params.novelTotalChapters
+      ) {
+        target.params.novelTotalChapters = source.params.novelTotalChapters
+      }
+      const isEnLocale = String(locale.value).toLowerCase().startsWith('en')
+      const curTitle = (target.title ?? '').trim()
+      if (!curTitle || curTitle === '创建小说' || curTitle === 'Novel') {
+        target.title = isEnLocale ? `Ch.${nextChap}` : `第${nextChap}章` // cjk-ok
+      }
+    }
   }
   scheduleSave()
   if (before) {
@@ -10408,11 +10658,27 @@ onMounted(() => {
       for (const src of linkFrom) {
         const source = graph.nodes.find((item) => item.id === src.nodeId)
         if (!source) continue
-        const outPort = findCompatibleOutPort(source, node, src.portId || undefined)
-        if (!outPort || !canConnectNodes(source, node, { sourcePort: outPort.id })) {
+        const preferredTargetPort = resolvePreferredNovelTargetPort(
+          source,
+          node,
+          src.targetPort || undefined
+        )
+        const outPort = findCompatibleOutPort(
+          source,
+          node,
+          src.portId || undefined,
+          preferredTargetPort
+        )
+        if (
+          !outPort ||
+          !canConnectNodes(source, node, {
+            sourcePort: outPort.id,
+            targetPort: preferredTargetPort
+          })
+        ) {
           continue
         }
-        const inPort = findCompatibleInPort(node, outPort.dataType)
+        const inPort = findCompatibleInPort(node, outPort.dataType, preferredTargetPort)
         if (!inPort) continue
         graph.edges = connectEdgesWithShortcutPrune(graph.edges, {
           sourceId: source.id,
@@ -11115,6 +11381,7 @@ function onFocusDiveNode(nodeId: string): void {
   }
   if (
     node.typeId === 'asset.gameSystem' ||
+    node.typeId === 'novel.outline' ||
     node.typeId === 'asset.novel' ||
     node.typeId === 'asset.screenplay' ||
     isGameProductionNode(node)
@@ -11122,7 +11389,7 @@ function onFocusDiveNode(nodeId: string): void {
     const viewId =
       node.typeId === 'asset.gameSystem'
         ? ('gameSystem.workbench' as const)
-        : node.typeId === 'asset.novel'
+        : node.typeId === 'asset.novel' || node.typeId === 'novel.outline'
           ? ('novel.workbench' as const)
           : node.typeId === 'asset.screenplay'
             ? ('screenplay.workbench' as const)

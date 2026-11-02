@@ -89,6 +89,7 @@ describe('graph policy', () => {
         'asset.model3d',
         'asset.spatialWorld',
         'asset.motion',
+        'novel.outline',
         'asset.novel',
         'asset.screenplay',
         'asset.gameSystem',
@@ -151,7 +152,8 @@ describe('graph policy', () => {
         'game.vfxAlpha',
         'game.audioDsp',
         'game.levelMap',
-        'game.economy'
+        'game.economy',
+        'game.numerical'
       ].sort()
     )
   })

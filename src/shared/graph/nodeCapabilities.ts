@@ -28,6 +28,7 @@ import {
   defaultEmotionSystemPrompt,
   defaultEraseSystemPrompt,
   defaultExpandSystemPrompt,
+  defaultNovelOutlineSystemPrompt,
   defaultNovelSystemPrompt,
   defaultGameSystemSystemPrompt,
   defaultImageSystemPrompt,
@@ -629,11 +630,23 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
     usageZh: WORLD_SPATIAL_USAGE_ZH,
     usageEn: WORLD_SPATIAL_USAGE_EN
   },
+  fromNodeSystemDefault(
+    'novel.outline',
+    '小说大纲',
+    'Novel Outline',
+    defaultNovelOutlineSystemPrompt,
+    {
+      usageZh:
+        '对应画布节点 `novel.outline`（小说大纲节点）：端口 `in`:text（创意设定）、`in-economy`:text（接入 `game.economy` 的 `out-text` 经济系统）、`in-numerical`:text（接入 `game.numerical` 的 `out-text` 数值系统）→ `out`:text（大纲）。产出【核心世界观宪法 + 主要人物档案 + 分卷架构 + 逐章细纲（第1章：…、第2章：…）】。在马尔可夫链小说管线中，将 `novel.outline` (`out`) 广播连接到每一个独立章节节点 `asset.novel` (`in-outline`)，各章节点会自动按当前章号切片读取专属细纲。',
+      usageEn:
+        'Maps to canvas node `novel.outline` (Novel Outline generator): ports `in`:text (premise), `in-economy`:text (from `game.economy` `out-text`), `in-numerical`:text (from `game.numerical` `out-text`) → `out`:text (outline). Generates [World Bible + Character Roster + Volume Architecture + Per-Chapter Detailed Outlines]. Broadcast `novel.outline` (`out`) into every Markov-chained `asset.novel` (`in-outline`) chapter node.'
+    }
+  ),
   fromNodeSystemDefault('asset.novel', '创建小说', 'Novel', defaultNovelSystemPrompt, {
     usageZh:
-      '对应画布节点 `asset.novel`（创建小说节点）：可将上游 `game.economy`（游戏经济系统/角色成长数值体系 `out-text`）直接连入 `in` 端口，根据角色成长乘区公式、Lv.1~80 突破阶梯、反派膨胀卡点墙与最优打脸底牌序列创作多章节精品小说（含人物档案与第1~N章完整剧情），再由 `asset.novel` (`out`:text) 连入下游 `asset.screenplay` (`in`:text) 改编为标准分集拍摄剧本。',
+      '对应画布节点 `asset.novel`（小说单章马尔可夫链生成节点）：支持每章一个独立节点（第1章 → 第2章 → 第3章顺序串联），具备四路专属输入端口：① `in`（上一章）：接入上一章 `asset.novel` (`out`) 传递马尔可夫状态（L2 状态账本、人物状态表、伏笔池、近 20 章滚动摘要与上一章末尾原文钩子）；② `in-outline`（小说大纲）：接入 `novel.outline` (`out`) 自动按当前章号切片本章细纲；③ `in-economy`（经济系统）：接入 `game.economy` (`out-text`) 提供宏观资源与筹码约束；④ `in-numerical`（数值系统）：接入 `game.numerical` (`out-text`) 提供本章战力天花板与准入底牌配额锁。输出端口：`out`（下一章，输出本章正文供下一章节点串联）、`out-all`（全部，汇总第一章至当前章的全部累计章节，在最后一章可直连 `asset.gameSystem` 的 `in` 或 `asset.screenplay` 的 `in`）。',
     usageEn:
-      'Maps to canvas node `asset.novel` (Novel generator): connect `game.economy` (`out-text`) into `in` to write a multi-chapter web novel / short-drama source novel driven by character progression multipliers, breakthrough milestones, climax walls, and optimal trump-card sequences, then wire `asset.novel` (`out`:text) into `asset.screenplay` (`in`:text) to adapt the novel into a production-ready multi-episode screenplay.'
+      'Maps to canvas node `asset.novel` (Markov-chain chapter generator): each chapter is an independent node (`Ch.1 -> Ch.2 -> Ch.3`) with 4 dedicated input ports: (1) `in` (Prev chap) from previous `asset.novel` (`out`) for Markov state transfer, (2) `in-outline` (Outline) from `novel.outline` (`out`) for chapter-specific outline slicing, (3) `in-economy` (Economy) from `game.economy` (`out-text`), and (4) `in-numerical` (Numerical) from `game.numerical` (`out-text`) for single-chapter power ceiling & trump-card quota locks. Outputs: `out` (Next chap, current chapter text) and `out-all` (All, cumulative chapters 1..N for downstream `asset.gameSystem` or `asset.screenplay`).'
   }),
   fromNodeSystemDefault('asset.screenplay', '剧本', 'Screenplay', defaultScreenplaySystemPrompt, {
     usageZh:
@@ -648,9 +661,9 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
     defaultGameSystemSystemPrompt,
     {
       usageZh:
-        '对应画布节点 `asset.gameSystem`：输入一句话玩法或题材，产出结构化游戏系统策划案，可下游接 `ui.split`（界面拆分）、`image.iconPack`（图标套包）或 `game.htmlGen`（可玩 HTML 生成）。',
+        '对应画布节点 `asset.gameSystem`（策划案生成）：输入端口 `in`:text（接收创意梗概或上游 `asset.novel` 最后一章 `out-all` 的全书章节与 IP 设定）、`in-economy`:text（接入 `game.economy` 的 `out-text` 宏观经济系统）、`in-numerical`:text（接入 `game.numerical` 的 `out-text` 战斗公式与数值配表）→ 输出端口 `out`:text（策划案正文）、`out-all`:texts（全部版本），可下游接 `ui.split`（UI 界面拆分）、`image.iconPack`（图标包）或 `game.htmlGen`（可玩 HTML 生成）。',
       usageEn:
-        'Maps to canvas node `asset.gameSystem`: turns a high-level game pitch into a structured game system design document that can feed `ui.split`, `image.iconPack`, or `game.htmlGen`.'
+        'Maps to canvas node `asset.gameSystem`: input ports `in`:text (pitch or cumulative novel IP from `asset.novel` `out-all`), `in-economy`:text (from `game.economy` `out-text`), and `in-numerical`:text (from `game.numerical` `out-text`) → outputs `out`:text and `out-all`:texts, feeding `ui.split`, `image.iconPack`, or `game.htmlGen`.'
     }
   ),
   fromNodeSystemDefault('asset.image', '图片生成', 'Image', defaultImageSystemPrompt, {

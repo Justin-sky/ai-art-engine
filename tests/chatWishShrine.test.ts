@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   WISH_FAIRY_PERSONAS,
+  buildFairySpellLinks,
   buildWishChantPool,
+  computeFairyCastPosition,
   detectWishPromptCategory,
   formatLuckTotal,
   getFairyStageActReaction,
@@ -124,5 +126,64 @@ describe('chatWishShrine', () => {
     const actReaction = getFairyStageActReaction({ fairyId: 'miko', act: 'edge-peek' })
     expect(actReaction.pose).toBe('peek')
     expect(actReaction.text).toContain('窗边')
+  })
+
+  it('positions fairy above a single cooking node with clearance, moves above centroid for multiple cooking nodes, and switches between close and long-range magic', () => {
+    const viewport = { width: 1200, height: 800 }
+
+    // Single cooking node -> positions above it with generous vertical clearance (216px above node top)
+    const singleNode = [
+      {
+        id: 'n1',
+        title: '创建小说',
+        screenX: 460,
+        screenY: 320,
+        screenWidth: 220,
+        screenHeight: 160
+      } // cjk-ok
+    ]
+    const posSingle = computeFairyCastPosition(singleNode, viewport, 'left')
+    expect(posSingle.isMultiTarget).toBe(false)
+    expect(posSingle.facing).toBe('right')
+    // cx = 460 + 110 = 570 -> x = 570 - 76 = 494, y = 320 - 216 = 104
+    expect(posSingle.x).toBe(494)
+    expect(posSingle.y).toBe(320 - 216)
+
+    const singleLinks = buildFairySpellLinks(posSingle, singleNode)
+    expect(singleLinks).toHaveLength(1)
+    expect(singleLinks[0]!.mode).toBe('close')
+
+    // Multiple cooking nodes spread far apart -> moves above horizontal centroid and uses long-range magic
+    const multiNodes = [
+      {
+        id: 'n1',
+        title: '经济系统',
+        screenX: 80,
+        screenY: 360,
+        screenWidth: 200,
+        screenHeight: 140
+      }, // cjk-ok
+      {
+        id: 'n2',
+        title: '创建小说',
+        screenX: 880,
+        screenY: 540,
+        screenWidth: 200,
+        screenHeight: 140
+      } // cjk-ok
+    ]
+    const posMulti = computeFairyCastPosition(multiNodes, viewport, 'right')
+    expect(posMulti.isMultiTarget).toBe(true)
+    // Centroid X = ((80+100) + (880+100)) / 2 = 580; Centroid Y = ((360+70) + (540+70)) / 2 = 520
+    expect(posMulti.centroidX).toBe(580)
+    expect(posMulti.centroidY).toBe(520)
+    expect(posMulti.x).toBe(580 - 60)
+    expect(posMulti.y).toBeLessThan(360 - 150)
+
+    const multiLinks = buildFairySpellLinks(posMulti, multiNodes)
+    expect(multiLinks).toHaveLength(2)
+    expect(multiLinks.every((l) => l.mode === 'longRange')).toBe(true)
+    expect(multiLinks[0]!.beamPath).toContain('Q ')
+    expect(multiLinks[0]!.helixPathA).toContain('C ')
   })
 })

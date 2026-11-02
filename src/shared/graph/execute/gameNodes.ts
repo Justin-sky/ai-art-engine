@@ -77,8 +77,11 @@ import {
   generateMxAgentWithAi,
   matchMxTemplateFromPrompt,
   MX_TEMPLATES,
+  MX_WORKBENCH_PRESETS,
   type MxDocument,
+  type MxNumericalWorkbench,
   type MxTemplateId,
+  type MxWorkbenchPresetId,
   parseMxDocumentJson,
   type PbrMaterialPreset,
   renderMxPreviewRgba,
@@ -2603,6 +2606,432 @@ export async function executeGameEconomyNode(
     'out-text': {
       kind: 'text',
       text: economyPayloadJson,
+      ...(jsonRelativePath ? { relativePath: jsonRelativePath } : {})
+    }
+  }
+}
+
+function renderNumericalWorkbenchPreviewRgba(
+  wb: MxNumericalWorkbench,
+  envelope: ReturnType<typeof runMxRoguelikeEnvelopeSimulation>,
+  multiplier: ReturnType<typeof analyzeMultiplierPipeline>,
+  width = 640,
+  height = 400
+): { width: number; height: number; data: Uint8ClampedArray } {
+  const data = new Uint8ClampedArray(width * height * 4)
+  const setPx = (x: number, y: number, r: number, g: number, b: number, a = 255): void => {
+    const ix = Math.round(x)
+    const iy = Math.round(y)
+    if (ix < 0 || ix >= width || iy < 0 || iy >= height) return
+    const idx = (iy * width + ix) * 4
+    if (a >= 255) {
+      data[idx] = r
+      data[idx + 1] = g
+      data[idx + 2] = b
+      data[idx + 3] = 255
+    } else {
+      const alpha = a / 255
+      data[idx] = Math.round(data[idx]! * (1 - alpha) + r * alpha)
+      data[idx + 1] = Math.round(data[idx + 1]! * (1 - alpha) + g * alpha)
+      data[idx + 2] = Math.round(data[idx + 2]! * (1 - alpha) + b * alpha)
+      data[idx + 3] = 255
+    }
+  }
+
+  const drawLine = (
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    r: number,
+    g: number,
+    b: number,
+    thickness = 2
+  ): void => {
+    const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0)))
+    const rad = Math.max(0, Math.floor(thickness / 2))
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps
+      const cx = x0 + (x1 - x0) * t
+      const cy = y0 + (y1 - y0) * t
+      for (let dy = -rad; dy <= rad; dy++) {
+        for (let dx = -rad; dx <= rad; dx++) {
+          setPx(cx + dx, cy + dy, r, g, b, 255)
+        }
+      }
+    }
+  }
+
+  // Dark slate technical background with grid
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const isGrid = x % 32 === 0 || y % 32 === 0
+      setPx(x, y, isGrid ? 24 : 13, isGrid ? 32 : 19, isGrid ? 48 : 30, 255)
+    }
+  }
+
+  // Left chart box: Power Envelope (P10 / P50 / P90 vs Enemy Wall)
+  const chartX = 36
+  const chartY = 44
+  const chartW = 360
+  const chartH = 300
+  const floors = envelope.floorSeries ?? []
+  if (floors.length > 1) {
+    let maxVal = 10
+    for (const f of floors) {
+      maxVal = Math.max(maxVal, f.playerP90, f.enemyPower)
+    }
+    const mapX = (idx: number): number => chartX + (idx / Math.max(1, floors.length - 1)) * chartW
+    const mapY = (val: number): number =>
+      chartY + chartH - Math.min(1, Math.max(0, val / maxVal)) * chartH
+
+    // Shaded P10..P90 band
+    for (let i = 0; i < floors.length - 1; i++) {
+      const f0 = floors[i]!
+      const f1 = floors[i + 1]!
+      const x0 = Math.round(mapX(i))
+      const x1 = Math.round(mapX(i + 1))
+      for (let x = x0; x <= x1; x++) {
+        const t = x1 === x0 ? 0 : (x - x0) / (x1 - x0)
+        const topY = Math.round(mapY(f0.playerP90 * (1 - t) + f1.playerP90 * t))
+        const botY = Math.round(mapY(f0.playerP10 * (1 - t) + f1.playerP10 * t))
+        for (let y = Math.min(topY, botY); y <= Math.max(topY, botY); y++) {
+          setPx(x, y, 56, 189, 248, 48)
+        }
+      }
+    }
+
+    // Curves: Enemy Difficulty (Red), P50 Player Power (Emerald), P90 (Cyan)
+    for (let i = 0; i < floors.length - 1; i++) {
+      const f0 = floors[i]!
+      const f1 = floors[i + 1]!
+      drawLine(mapX(i), mapY(f0.enemyPower), mapX(i + 1), mapY(f1.enemyPower), 244, 63, 94, 2)
+      drawLine(mapX(i), mapY(f0.playerP50), mapX(i + 1), mapY(f1.playerP50), 16, 185, 129, 3)
+      drawLine(mapX(i), mapY(f0.playerP90), mapX(i + 1), mapY(f1.playerP90), 56, 189, 248, 2)
+    }
+  }
+
+  // Right panel: Multiplier & Entity Audit Bars
+  const barX = 424
+  const barW = 180
+  const stages = multiplier.marginalReturns.slice(0, 5)
+  const maxMult = Math.max(
+    1,
+    ...stages.map((s) => Math.abs(s.marginalRoiPct)),
+    wb.multiplier.entities.length
+  )
+  stages.forEach((st, idx) => {
+    const by = 60 + idx * 54
+    const fillW = Math.max(
+      12,
+      Math.min(barW, Math.round((Math.abs(st.marginalRoiPct) / maxMult) * barW))
+    )
+    for (let y = by; y < by + 24; y++) {
+      for (let x = barX; x < barX + barW; x++) {
+        const filled = x < barX + fillW
+        setPx(x, y, filled ? 168 : 30, filled ? 85 : 41, filled ? 247 : 59, 255)
+      }
+    }
+  })
+
+  return { width, height, data }
+}
+
+/**
+ * `game.numerical`：独立游戏数值与战力配表工作台节点。
+ * 专职负责：战斗调度内核（洗抽牌库/法力节奏/ATB行动条）、等级与境界战力成长包络线（Power Envelope）、
+ * 伤害乘区公式边际收益（Multiplier Pipeline）、抽卡与词条强化期望（Loot Roll）及卡牌/技能/装备超模审计。
+ * 支持从 `in-economy` 接入上游 `game.economy`（经济系统）的宏观资源产出率，并在 `out-text`（数值系统）输出完整数值规约与分章战力切片。
+ */
+export async function executeGameNumericalNode(
+  ctx: NodeExecuteContext
+): Promise<Record<string, GraphValue>> {
+  const presetRaw = String(
+    ctx.node.params.gameNumericalPreset ?? ctx.node.params.gameEconomyPreset ?? 'slay_the_spire_dbg'
+  )
+  const validPresetId: MxWorkbenchPresetId = (
+    MX_WORKBENCH_PRESETS.some((p) => p.id === presetRaw) ? presetRaw : 'slay_the_spire_dbg'
+  ) as MxWorkbenchPresetId
+
+  const economyInputs = ctx.inputs['in-economy'] ?? []
+  const textInputs = [
+    ...(ctx.inputs.in ?? []),
+    ...(ctx.inputs['in-text'] ?? []),
+    ...economyInputs,
+    ...collectIncomingValues(ctx.inputs)
+  ]
+  const incomingTexts = [
+    ...flattenTextValues(textInputs).map((t) => t.text),
+    ...flattenTextsValues(textInputs).map((t) => t.text)
+  ].filter(Boolean)
+
+  // Parse upstream game.economy bundle if connected on in-economy or in
+  let upstreamEconomyBundle: Record<string, unknown> | null = null
+  let upstreamDoc: MxDocument | undefined
+  for (const raw of incomingTexts) {
+    if (
+      raw.includes('"machinations_economy_bundle"') ||
+      (raw.includes('"nodes"') && raw.includes('"edges"'))
+    ) {
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        if (parsed && typeof parsed === 'object') {
+          upstreamEconomyBundle = parsed
+          if (parsed.document && typeof parsed.document === 'object') {
+            upstreamDoc = parseMxDocumentJson(parsed.document, 'roguelike_run', ctx.node.title)
+          } else if (Array.isArray(parsed.nodes) && Array.isArray(parsed.edges)) {
+            upstreamDoc = parseMxDocumentJson(parsed, 'roguelike_run', ctx.node.title)
+          }
+          break
+        }
+      } catch {
+        // ignore invalid upstream json
+      }
+    }
+  }
+
+  const naturalPrompts = [
+    typeof ctx.node.params.generateInstruction === 'string'
+      ? ctx.node.params.generateInstruction
+      : '',
+    typeof ctx.node.params.text === 'string' &&
+    !ctx.node.params.text.includes('"machinations_economy_bundle"')
+      ? ctx.node.params.text
+      : '',
+    ...incomingTexts.filter(
+      (t) =>
+        !(t.includes('"nodes"') && t.includes('"edges"')) &&
+        !t.includes('"machinations_economy_bundle"')
+    ),
+    ctx.node.title ?? ''
+  ]
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const promptHint = naturalPrompts.join(' ')
+
+  let resolvedWb: MxNumericalWorkbench | null = null
+  const rawWbJson = String(ctx.node.params.gameNumericalWorkbenchJson ?? '').trim()
+  if (rawWbJson) {
+    try {
+      const parsed = JSON.parse(rawWbJson) as Partial<MxNumericalWorkbench>
+      if (parsed && typeof parsed === 'object' && parsed.multiplier && parsed.combatKernel) {
+        resolvedWb = {
+          ...createMxWorkbenchPreset(validPresetId),
+          ...parsed
+        }
+      }
+    } catch {
+      resolvedWb = null
+    }
+  }
+  if (!resolvedWb && ctx.node.params.gameEconomyDiagramJson) {
+    try {
+      const docFromParam = parseMxDocumentJson(
+        ctx.node.params.gameEconomyDiagramJson,
+        'roguelike_run',
+        ctx.node.title
+      )
+      if (docFromParam.workbench) {
+        resolvedWb = docFromParam.workbench
+      }
+    } catch {
+      // ignore
+    }
+  }
+  let wb: MxNumericalWorkbench =
+    resolvedWb ??
+    (promptHint
+      ? synthesizeMxWorkbenchFromPrompt(promptHint, validPresetId)
+      : createMxWorkbenchPreset(validPresetId))
+
+  // Bridge macro economy metrics from upstream game.economy into numerical workbench
+  if (upstreamEconomyBundle && upstreamDoc) {
+    const forecastObj = upstreamEconomyBundle.forecast as
+      { sourceSinkRatio?: number; series?: Array<{ label?: string; p50?: number[] }> } | undefined
+    const firstSeries = forecastObj?.series?.[0]
+    const lastP50 =
+      firstSeries?.p50 && firstSeries.p50.length > 0
+        ? firstSeries.p50[firstSeries.p50.length - 1]
+        : undefined
+    if (typeof lastP50 === 'number' && Number.isFinite(lastP50) && lastP50 > 0) {
+      wb = {
+        ...wb,
+        roguelikeEnvelope: {
+          ...wb.roguelikeEnvelope,
+          metaBonusPerRunPct: Math.max(
+            2,
+            Math.min(25, Math.round(wb.roguelikeEnvelope.metaBonusPerRunPct || 8))
+          )
+        }
+      }
+    }
+  }
+
+  const runs = Math.max(
+    5,
+    Math.min(500, Math.round(Number(ctx.node.params.gameEconomyMonteCarloRuns ?? 50)))
+  )
+  const seed = Math.floor(Number(ctx.node.params.gameEconomySeed ?? 2026))
+  const hostDoc: MxDocument =
+    upstreamDoc ??
+    parseMxDocumentJson(
+      ctx.node.params.gameEconomyDiagramJson,
+      'roguelike_run',
+      ctx.node.title || '数值系统' // cjk-ok
+    )
+  hostDoc.workbench = wb
+
+  const wbMultiplier = analyzeMultiplierPipeline(wb.multiplier)
+  const wbLoot = runMxLootAndSubstatSimulation({
+    ...wb.lootRoll,
+    runs: Math.min(400, runs * 5),
+    seed
+  })
+  const wbCombat = runMxCombatKernelSimulation({
+    ...wb.combatKernel,
+    runs: Math.min(300, runs * 4),
+    seed
+  })
+  const wbEnvelope = runMxRoguelikeEnvelopeSimulation({
+    ...wb.roguelikeEnvelope,
+    runs: Math.min(300, runs * 4),
+    seed
+  })
+  const wbCounterMatrix = runMxEncounterCounterMatrix({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbDeckRemovalRoi = runMxDeckRemovalRoiAnalysis({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbPoolDilution = runMxPoolDilutionAnalysis({
+    ...wb.lootRoll,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbArchetypeBalance = runMxArchetypeBalanceMatrix({
+    ...wb.combatKernel,
+    runs: Math.min(160, runs * 3),
+    seed
+  })
+  const wbCommercialCohorts = runMxCommercialCohortAnalysis({
+    ...wb.lootRoll,
+    runs: Math.min(180, runs * 3),
+    seed
+  })
+  const wbQaReportMarkdown = exportMxCommercialQaReportMarkdown(wb)
+  const wbNarrativeBrief = exportMxNarrativeProgressionBrief(wb, hostDoc)
+  const wbDataTables = exportWorkbenchToGameDataTables(wb)
+
+  const rendered = renderNumericalWorkbenchPreviewRgba(wb, wbEnvelope, wbMultiplier, 640, 400)
+  const previewDataUrl = await encodeRgbaWithCtx(
+    ctx,
+    rendered.data,
+    rendered.width,
+    rendered.height
+  )
+
+  const stamp = formatGeneratedMediaStamp()
+  const createdAt = new Date().toISOString()
+  const batch: GraphImageItem[] = [
+    {
+      id: buildGeneratedMediaFileKey({
+        nodeTitle: `numerical_${wb.activePresetId}_${runs}r`,
+        stamp,
+        index: 1
+      }),
+      dataUrl: previewDataUrl,
+      title: `Numerical_${wb.activePresetId}`,
+      createdAt
+    }
+  ]
+
+  const materialized = await materializeGeneratedBatch(
+    ctx,
+    batch,
+    ctx.node.params.mediaOutputDir?.trim() || 'Assets/Numerical'
+  )
+
+  const numericalPayloadJson = JSON.stringify(
+    {
+      kind: 'machinations_economy_bundle',
+      subKind: 'numerical_workbench_bundle',
+      schemaVersion: 2,
+      document: hostDoc,
+      ...(upstreamEconomyBundle?.forecast ? { forecast: upstreamEconomyBundle.forecast } : {}),
+      ...(upstreamEconomyBundle?.healthReport
+        ? { healthReport: upstreamEconomyBundle.healthReport }
+        : {}),
+      workbenchReport: {
+        activePresetId: wb.activePresetId,
+        multiplier: wbMultiplier,
+        lootRoll: wbLoot,
+        combatKernel: wbCombat,
+        roguelikeEnvelope: wbEnvelope,
+        counterMatrix: wbCounterMatrix,
+        deckRemovalRoi: wbDeckRemovalRoi,
+        poolDilution: wbPoolDilution,
+        archetypeBalance: wbArchetypeBalance,
+        commercialCohorts: wbCommercialCohorts,
+        qaReportMarkdown: wbQaReportMarkdown,
+        narrativeProgressionBrief: wbNarrativeBrief,
+        dataTableBundle: wbDataTables
+      },
+      qaReportMarkdown: wbQaReportMarkdown,
+      narrativeProgressionBrief: wbNarrativeBrief,
+      dataTableBundle: wbDataTables
+    },
+    null,
+    2
+  )
+
+  let jsonRelativePath: string | undefined
+  if (ctx.saveRunText) {
+    try {
+      jsonRelativePath = await ctx.saveRunText({
+        content: numericalPayloadJson,
+        key: `numerical_${wb.activePresetId}_${seed}`,
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/Numerical',
+        node: ctx.node
+      })
+    } catch {
+      /* ignore persist error */
+    }
+  }
+
+  const report = `${wb.activePresetId} | WinRate: ${Math.round(wbCombat.winRatePct)}% | TTK: ${wbCombat.ttkMean}T | ClearRate: ${Math.round(wbEnvelope.firstRunClearRatePct)}% | Entities: ${wb.multiplier.entities.length}`
+
+  const cleanImages = materialized.map(stripEmbeddedImageData)
+  const primaryPath = materialized[0]?.relativePath?.trim()
+  const serializedWb = JSON.stringify(wb)
+  const nextParams = {
+    gameNumericalPreset: wb.activePresetId,
+    gameNumericalWorkbenchJson: serializedWb,
+    gameNumericalReport: report,
+    gameEconomyMonteCarloRuns: runs,
+    gameEconomySeed: seed,
+    text: numericalPayloadJson,
+    generatedImages: cleanImages,
+    selectedImageId: materialized[0]?.id,
+    ...(primaryPath ? { imagePath: primaryPath } : {})
+  }
+  ctx.node.params = { ...ctx.node.params, ...nextParams }
+  ctx.patchNode?.({ params: nextParams })
+
+  const first = materialized[0]!
+  const primaryOut: GraphValue = first.relativePath?.trim()
+    ? { kind: 'image', relativePath: first.relativePath.trim(), dataUrl: '' }
+    : { kind: 'image', dataUrl: first.dataUrl ?? '' }
+
+  return {
+    out: primaryOut,
+    'out-all': { kind: 'images', items: materialized },
+    'out-text': {
+      kind: 'text',
+      text: numericalPayloadJson,
       ...(jsonRelativePath ? { relativePath: jsonRelativePath } : {})
     }
   }

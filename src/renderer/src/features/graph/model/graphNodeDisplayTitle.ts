@@ -139,6 +139,7 @@ export function resolveGraphNodeDisplayTitle(
     const def = resolveNodeType(node) ?? (node.typeId ? getNodeType(node.typeId) : undefined)
     if (
       (def?.defaultTitle && custom === def.defaultTitle) ||
+      (node.typeId === 'novel.outline' && (custom === 'Novel Outline' || custom === '小说大纲')) || // cjk-ok
       (node.typeId === 'image.layerSplit' && custom === 'Layer split')
     ) {
       if (node.typeId) return options.graphTypeLabel(node.typeId)

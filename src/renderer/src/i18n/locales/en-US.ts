@@ -5957,6 +5957,14 @@ export default {
       filmCastRefs: 'Cast refs',
       filmKeyframes: 'Keyframes',
       filmClips: 'Clips',
+      novelPremiseIn: 'Premise',
+      novelPrevChapterIn: 'Prev chap',
+      novelOutlineIn: 'Outline',
+      novelEconomyIn: 'Economy',
+      numericalIn: 'Numerical',
+      numericalOut: 'Numerical',
+      novelOutlineOut: 'Outline',
+      novelChapterOut: 'Next chap',
       types: {
         image: 'Image',
         images: 'Images',
@@ -6126,6 +6134,9 @@ export default {
       comic: {
         page: 'Comic page'
       },
+      novel: {
+        outline: 'Novel Outline'
+      },
       model: {
         pose: '3D pose',
         rigSkin: '3D Rigging',
@@ -6209,6 +6220,7 @@ export default {
         audioDsp: 'Game Audio DSP',
         levelMap: '2D Level Map Gen',
         economy: 'Economy System',
+        numerical: 'Numerical System',
         playable: 'Playable Game Sandbox'
       },
       frame: {

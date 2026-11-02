@@ -12,15 +12,59 @@
           :placeholder="typeLabel"
           @change="persistTitle"
         />
-        <span class="cursor-pill">Ch.{{ currentChapterCursor }} / {{ totalChapters }}</span>
+        <span class="cursor-pill">
+          {{
+            isOutlineModeNode
+              ? ui.outlineHeaderPill
+              : `Ch.${currentChapterCursor} / ${totalChapters}`
+          }}
+        </span>
       </div>
 
       <span class="header-divider" aria-hidden="true" />
 
-      <div class="header-telemetry">
-        <span class="stat-pill stat-chap">
-          {{ ui.telemetryChapters }}
+      <!-- Role-separated Header Telemetry -->
+      <div v-if="isOutlineModeNode" class="header-telemetry">
+        <span class="stat-pill stat-realm">
+          {{ activeGenreProfile.icon }}
+          {{ isEn ? activeGenreProfile.labelEn : activeGenreProfile.labelZh.split(' / ')[0] }}
         </span>
+        <span class="stat-pill stat-chap">
+          {{ isEn ? `Planned ${totalChapters} Chaps` : `规划总规模 ${totalChapters} 章` }}
+        </span>
+        <span class="stat-pill">
+          {{
+            isEn
+              ? `Outline ${currentChapterStats.wordCount} chars`
+              : `大纲 ${currentChapterStats.wordCount} 字`
+          }}
+        </span>
+        <span class="stat-pill" :class="upstreamEconomyNode ? 'stat-ok' : 'stat-warn'">
+          ⚖️
+          {{
+            upstreamEconomyNode
+              ? isEn
+                ? `Economy: ${upstreamEconomyNode.title || 'Connected'}`
+                : `经济系统：${upstreamEconomyNode.title || '已连线'}`
+              : isEn
+                ? 'Economy: Default'
+                : '经济系统：未连线'
+          }}
+        </span>
+        <span class="stat-pill" :class="upstreamNumericalNode ? 'stat-ok' : 'stat-warn'">
+          ⚔️
+          {{
+            upstreamNumericalNode
+              ? isEn
+                ? `Numerical: ${upstreamNumericalNode.title || 'Connected'}`
+                : `数值系统：${upstreamNumericalNode.title || '已连线'}`
+              : isEn
+                ? 'Numerical: Default Curve'
+                : '数值系统：默认曲线'
+          }}
+        </span>
+      </div>
+      <div v-else class="header-telemetry">
         <span
           class="stat-pill"
           :class="{
@@ -56,44 +100,21 @@
 
       <div class="header-right">
         <div class="header-btn-group">
-          <button type="button" class="head-gen-btn" @click="exportFullBookAnthology">
-            📦 <span>{{ exportBookFlash ? ui.exportBookDoneBtn : ui.exportBookBtn }}</span>
-          </button>
           <button
-            v-if="downstreamScreenplayNode"
-            type="button"
-            class="head-gen-btn head-sp-btn"
-            @click="pushAndOpenDownstreamScreenplay"
-          >
-            🎬 <span>{{ ui.pushToScreenplayBtn }}</span>
-          </button>
-          <button
-            type="button"
-            class="head-gen-btn head-sp-btn"
-            @click="pushAndOpenDownstreamGameSystem"
-          >
-            🎮 <span>{{ ui.pushToGameSystemBtn }}</span>
-          </button>
-        </div>
-
-        <span class="header-divider" aria-hidden="true" />
-
-        <div class="header-btn-group">
-          <button
+            v-if="!isOutlineModeNode"
             type="button"
             class="head-gen-btn"
-            :disabled="isGraphRunning || runStatus === 'running'"
-            @click="triggerGenerateCurrentChapter"
+            @click="exportFullBookAnthology"
           >
-            ⚡ <span>{{ ui.generateCurrentBtn }}</span>
+            📦 <span>{{ exportBookFlash ? ui.exportBookDoneBtn : ui.exportBookBtn }}</span>
           </button>
           <button
             type="button"
             class="head-gen-btn head-gen-accent"
             :disabled="isGraphRunning || runStatus === 'running'"
-            @click="triggerAiNextChapter"
+            @click="triggerGenerateCurrentChapter"
           >
-            ✨ <span>{{ ui.aiNextChapterBtn }}</span>
+            ⚡ <span>{{ ui.generateCurrentBtn }}</span>
           </button>
           <GraphNodeRunControl
             v-if="hasInPort"
@@ -107,357 +128,412 @@
     </header>
 
     <div class="workbench-body">
-      <!-- Left Sidebar: Dynamic Serialization Config + Multi-Chapter Directory + Multi-Chapter Range Merge + Smart Splitter -->
+      <!-- Left Sidebar: Cleanly separated between Novel Outline Node vs Single-Chapter Node -->
       <aside class="chapter-sidebar">
-        <!-- 1. Dynamic Total Chapters & Cursor Controls -->
-        <section class="sidebar-group config-group">
-          <div class="group-head">
-            <h3>{{ ui.serialConfigTitle }}</h3>
-            <span class="group-badge">{{ ui.dynamicTotalBadge }}</span>
-          </div>
+        <template v-if="isOutlineModeNode">
+          <!-- Outline Mode Left 1: Global Genre & Serialization Scale -->
+          <section class="sidebar-group config-group">
+            <div class="group-head">
+              <h3>{{ ui.serialConfigTitle }}</h3>
+              <span class="group-badge">{{ ui.dynamicTotalBadge }}</span>
+            </div>
 
-          <div class="genre-selector-block">
-            <div class="genre-row-head">
-              <span class="field-label">{{ ui.genreSelectorLabel }}</span>
-              <button
-                type="button"
-                class="genre-custom-toggle"
-                :class="{ active: customGenreOpen || novelGenre === 'custom_literary' }"
-                @click="customGenreOpen = !customGenreOpen"
+            <div class="genre-selector-block">
+              <div class="genre-row-head">
+                <span class="field-label">{{ ui.genreSelectorLabel }}</span>
+                <button
+                  type="button"
+                  class="genre-custom-toggle"
+                  :class="{ active: customGenreOpen || novelGenre === 'custom_literary' }"
+                  @click="customGenreOpen = !customGenreOpen"
+                >
+                  ⚙️ {{ ui.genreCustomToggleBtn }}
+                </button>
+              </div>
+              <div class="genre-pills-grid">
+                <button
+                  v-for="g in genreOptions"
+                  :key="g.id"
+                  type="button"
+                  class="genre-pill"
+                  :class="{ active: novelGenre === g.id }"
+                  @click="onSelectGenre(g.id)"
+                >
+                  <span>{{ g.icon }}</span>
+                  <span>{{ g.label }}</span>
+                </button>
+              </div>
+              <div
+                v-if="customGenreOpen || novelGenre === 'custom_literary'"
+                class="genre-custom-panel"
               >
-                ⚙️ {{ ui.genreCustomToggleBtn }}
-              </button>
+                <label class="config-field">
+                  <span class="field-label">{{ ui.customStagesLabel }}</span>
+                  <input
+                    v-model="customStagesText"
+                    type="text"
+                    class="num-input"
+                    :placeholder="ui.customStagesPlaceholder"
+                    @change="onCustomGenreOverridesChange"
+                  />
+                </label>
+                <div class="config-grid">
+                  <label class="config-field">
+                    <span class="field-label">{{ ui.customAxisProtagonistLabel }}</span>
+                    <input
+                      v-model="customAxisProtagonist"
+                      type="text"
+                      class="num-input"
+                      :placeholder="activeGenreProfile.protagonistAxisZh"
+                      @change="onCustomGenreOverridesChange"
+                    />
+                  </label>
+                  <label class="config-field">
+                    <span class="field-label">{{ ui.customAxisAntagonistLabel }}</span>
+                    <input
+                      v-model="customAxisAntagonist"
+                      type="text"
+                      class="num-input"
+                      :placeholder="activeGenreProfile.antagonistAxisZh"
+                      @change="onCustomGenreOverridesChange"
+                    />
+                  </label>
+                </div>
+                <div class="genre-custom-foot">
+                  <input
+                    v-model="customUnlockTerm"
+                    type="text"
+                    class="num-input"
+                    :placeholder="ui.customUnlockTermPlaceholder"
+                    @change="onCustomGenreOverridesChange"
+                  />
+                  <button type="button" class="chap-action-btn" @click="applyGenreTemplateToMemory">
+                    {{ ui.seedGenreMemoryBtn }}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="genre-pills-grid">
-              <button
-                v-for="g in genreOptions"
-                :key="g.id"
-                type="button"
-                class="genre-pill"
-                :class="{ active: novelGenre === g.id }"
-                @click="onSelectGenre(g.id)"
-              >
-                <span>{{ g.icon }}</span>
-                <span>{{ g.label }}</span>
-              </button>
-            </div>
-            <div
-              v-if="customGenreOpen || novelGenre === 'custom_literary'"
-              class="genre-custom-panel"
-            >
+
+            <div class="config-grid">
               <label class="config-field">
-                <span class="field-label">{{ ui.customStagesLabel }}</span>
+                <span class="field-label">{{ ui.totalChaptersLabel }}</span>
                 <input
-                  v-model="customStagesText"
-                  type="text"
+                  type="number"
+                  min="1"
+                  max="5000"
+                  step="10"
                   class="num-input"
-                  :placeholder="ui.customStagesPlaceholder"
-                  @change="onCustomGenreOverridesChange"
+                  :value="totalChapters"
+                  @change="onTotalChaptersInput(($event.target as HTMLInputElement).value)"
                 />
               </label>
-              <div class="config-grid">
-                <label class="config-field">
-                  <span class="field-label">{{ ui.customAxisProtagonistLabel }}</span>
-                  <input
-                    v-model="customAxisProtagonist"
-                    type="text"
-                    class="num-input"
-                    :placeholder="activeGenreProfile.protagonistAxisZh"
-                    @change="onCustomGenreOverridesChange"
-                  />
-                </label>
-                <label class="config-field">
-                  <span class="field-label">{{ ui.customAxisAntagonistLabel }}</span>
-                  <input
-                    v-model="customAxisAntagonist"
-                    type="text"
-                    class="num-input"
-                    :placeholder="activeGenreProfile.antagonistAxisZh"
-                    @change="onCustomGenreOverridesChange"
-                  />
-                </label>
-              </div>
-              <div class="genre-custom-foot">
+              <label class="config-field">
+                <span class="field-label">{{ ui.targetWordsLabel }}</span>
                 <input
-                  v-model="customUnlockTerm"
-                  type="text"
+                  type="number"
+                  min="1000"
+                  max="15000"
+                  step="200"
                   class="num-input"
-                  :placeholder="ui.customUnlockTermPlaceholder"
-                  @change="onCustomGenreOverridesChange"
-                />
-                <button type="button" class="chap-action-btn" @click="applyGenreTemplateToMemory">
-                  {{ ui.seedGenreMemoryBtn }}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="config-grid">
-            <label class="config-field">
-              <span class="field-label">{{ ui.totalChaptersLabel }}</span>
-              <input
-                type="number"
-                min="1"
-                max="5000"
-                step="10"
-                class="num-input"
-                :value="totalChapters"
-                @change="onTotalChaptersInput(($event.target as HTMLInputElement).value)"
-              />
-            </label>
-            <label class="config-field">
-              <span class="field-label">{{ ui.targetWordsLabel }}</span>
-              <input
-                type="number"
-                min="1000"
-                max="15000"
-                step="200"
-                class="num-input"
-                :value="targetWords"
-                @change="onTargetWordsInput(($event.target as HTMLInputElement).value)"
-              />
-            </label>
-          </div>
-
-          <div class="quick-scale-row">
-            <span class="scale-label">{{ ui.quickScaleLabel }}</span>
-            <div class="scale-pills">
-              <button
-                v-for="presetTotal in [80, 200, 500, 800, 1200]"
-                :key="presetTotal"
-                type="button"
-                class="scale-pill"
-                :class="{ active: totalChapters === presetTotal }"
-                @click="setTotalChaptersPreset(presetTotal)"
-              >
-                {{ presetTotal }}
-              </button>
-            </div>
-          </div>
-
-          <div class="cursor-stepper-row">
-            <span class="scale-label">{{ ui.targetCursorLabel }}</span>
-            <div class="stepper-controls">
-              <button
-                type="button"
-                class="step-btn"
-                :disabled="currentChapterCursor <= 1"
-                @click="stepChapterCursor(-1)"
-              >
-                ◀
-              </button>
-              <input
-                type="number"
-                min="1"
-                :max="totalChapters"
-                class="cursor-input"
-                :value="currentChapterCursor"
-                @change="onCursorInput(($event.target as HTMLInputElement).value)"
-              />
-              <span class="cursor-sep">/ {{ totalChapters }}</span>
-              <button
-                type="button"
-                class="step-btn"
-                :disabled="currentChapterCursor >= totalChapters"
-                @click="stepChapterCursor(1)"
-              >
-                ▶
-              </button>
-            </div>
-          </div>
-
-          <label class="auto-advance-row">
-            <input
-              type="checkbox"
-              :checked="autoAdvanceChapter"
-              @change="onAutoAdvanceToggle(($event.target as HTMLInputElement).checked)"
-            />
-            <span>{{ ui.autoAdvanceLabel }}</span>
-          </label>
-        </section>
-
-        <!-- 2. Multi-Chapter Directory List + Multi-Chapter Merge Output -->
-        <section class="sidebar-group chapters-group">
-          <div class="group-head">
-            <h3>{{ ui.chapterListTitle }}</h3>
-            <span class="group-count">{{
-              ui.chapterCountBadge(Math.max(1, generatedTexts.length), totalChapters)
-            }}</span>
-          </div>
-
-          <div class="chapter-actions-bar">
-            <button type="button" class="chap-action-btn" @click="addNewChapter">
-              + {{ ui.addChapterBtn }}
-            </button>
-            <button
-              type="button"
-              class="chap-action-btn chap-action-accent"
-              :disabled="isGraphRunning || runStatus === 'running'"
-              @click="triggerAiNextChapter"
-            >
-              ✨ {{ ui.aiNextChapterBtn }}
-            </button>
-          </div>
-
-          <div v-if="checkedChapterKeys.length >= 2" class="merge-output-bar">
-            <button type="button" class="merge-output-btn" @click="mergeCheckedChaptersToOutput">
-              🔗 {{ ui.mergeCheckedBtn(checkedChapterKeys.length) }}
-            </button>
-            <button type="button" class="merge-clear-btn" @click="checkedChapterKeys = []">
-              ×
-            </button>
-          </div>
-          <div v-if="mergedOutputToast" class="merge-toast">
-            {{ mergedOutputToast }}
-          </div>
-
-          <div v-if="generatedTexts.length > 3" class="chapter-search-wrap">
-            <input
-              v-model="chapterSearchQuery"
-              type="text"
-              class="chapter-search-input"
-              :placeholder="ui.searchChaptersPlaceholder"
-            />
-          </div>
-
-          <div v-if="!generatedTexts.length" class="chapter-list">
-            <div class="chapter-card active">
-              <div class="chap-card-main">
-                <div class="chap-card-top">
-                  <span class="chap-index">#{{ currentChapterCursor }}</span>
-                  <span class="chap-title">{{
-                    currentChapterTitle.trim() || ui.defaultChapterTitle(currentChapterCursor)
-                  }}</span>
-                  <span class="chap-output-badge">{{ ui.activeOutputBadge }}</span>
-                </div>
-                <p class="chap-snippet">{{ localText.trim() || ui.emptyChapterHint }}</p>
-                <div class="chap-meta">
-                  <span>{{ ui.wordsCountLabel(currentChapterStats.wordCount) }}</span>
-                  <span>·</span>
-                  <span>{{ ui.paragraphsCountLabel(currentChapterStats.paragraphCount) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div v-else class="chapter-list">
-            <div
-              v-for="entry in filteredChapterEntries"
-              :key="entry.key"
-              class="chapter-card"
-              :class="{ active: isSelectedText(entry.key) }"
-              :title="ui.setAsOutputHint"
-              @click="selectChapter(entry.key, entry.index)"
-            >
-              <label class="chap-check-wrap" @click.stop>
-                <input
-                  type="checkbox"
-                  :checked="checkedChapterKeys.includes(entry.key)"
-                  @change="toggleChapterCheck(entry.key)"
+                  :value="targetWords"
+                  @change="onTargetWordsInput(($event.target as HTMLInputElement).value)"
                 />
               </label>
+            </div>
 
-              <div class="chap-card-main">
-                <div class="chap-card-top">
-                  <span class="chap-index">#{{ entry.chapterNumber }}</span>
-                  <span class="chap-title">{{ entry.displayTitle }}</span>
-                  <span v-if="isSelectedText(entry.key)" class="chap-output-badge">
-                    {{ ui.activeOutputBadge }}
-                  </span>
-                </div>
-                <p class="chap-snippet">
-                  {{ resolvedGeneratedSnippet[entry.key] || '…' }}
-                </p>
-                <div class="chap-meta">
-                  <span
-                    :class="{
-                      'meta-ok': entry.stats.wordCount >= targetWords,
-                      'meta-warn': entry.stats.wordCount > 0 && entry.stats.wordCount < targetWords
-                    }"
-                  >
-                    {{ ui.wordsCountLabel(entry.stats.wordCount) }}
-                  </span>
-                  <span>·</span>
-                  <span>{{ ui.paragraphsCountLabel(entry.stats.paragraphCount) }}</span>
-                  <span>·</span>
-                  <span>{{ ui.dialoguesCountLabel(entry.stats.dialogueCount) }}</span>
-                </div>
-              </div>
-
-              <div class="chap-card-tools" @click.stop>
+            <div class="quick-scale-row">
+              <span class="scale-label">{{ ui.quickScaleLabel }}</span>
+              <div class="scale-pills">
                 <button
+                  v-for="presetTotal in [80, 200, 500, 800, 1200]"
+                  :key="presetTotal"
                   type="button"
-                  class="chap-icon-btn"
-                  :disabled="entry.index === 0"
-                  :title="ui.moveUpHint"
-                  @click="moveChapter(entry.index, -1)"
+                  class="scale-pill"
+                  :class="{ active: totalChapters === presetTotal }"
+                  @click="setTotalChaptersPreset(presetTotal)"
                 >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  class="chap-icon-btn"
-                  :disabled="entry.index === generatedTexts.length - 1"
-                  :title="ui.moveDownHint"
-                  @click="moveChapter(entry.index, 1)"
-                >
-                  ↓
-                </button>
-                <button
-                  type="button"
-                  class="chap-icon-btn"
-                  :title="ui.duplicateHint"
-                  @click="duplicateChapter(entry.index)"
-                >
-                  ⧉
-                </button>
-                <PreviewSaveToLibraryButton
-                  v-if="canSave(entry.item.relativePath)"
-                  compact
-                  class="chap-save-btn"
-                  :can-save="true"
-                  :saved="isSaved(entry.item.relativePath)"
-                  :saving="isSaving(entry.item.relativePath)"
-                  @save="openSave(entry.item.relativePath!)"
-                />
-                <button
-                  type="button"
-                  class="chap-icon-btn chap-delete-btn"
-                  :title="ui.deleteHint"
-                  @click="removeGeneratedText(entry.item.id)"
-                >
-                  ×
+                  {{ presetTotal }}
                 </button>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- 3. Smart Multi-Chapter Splitter -->
-        <section class="sidebar-group split-group">
-          <div class="group-head">
-            <h3>{{ ui.splitBoxTitle }}</h3>
-          </div>
-          <p class="split-desc">{{ ui.splitBoxDesc }}</p>
-          <button
-            type="button"
-            class="split-submit-btn"
-            :disabled="!localText.trim()"
-            @click="handleSplitChapters"
-          >
-            {{ splitDoneCount > 0 ? ui.splitDoneToast(splitDoneCount) : ui.splitNowBtn }}
-          </button>
-        </section>
+          <!-- Outline Mode Left 2: AI Model & Outline Generation Prompt -->
+          <section class="sidebar-group ai-assistant-group">
+            <div class="group-head">
+              <h3>🤖 {{ ui.chapterOutlineTitle(currentChapterCursor) }}</h3>
+            </div>
+            <InstructionModelSelect
+              v-if="modelOptions.length > 0"
+              v-model="selectedModelKey"
+              :options="modelOptions"
+              :title="t('graph.inspector.generate.model')"
+              :empty-label="t('graph.inspector.generate.noModels')"
+              @change="persistGenerateConfig"
+            />
+            <ExpandableTextarea
+              :key="`${node.id}-dive-novel-inst`"
+              v-model="instruction"
+              :title="ui.chapterOutlineTitle(currentChapterCursor)"
+              :rows="5"
+              :placeholder="ui.instructionPlaceholder"
+              @change="persistGenerateConfig"
+            />
+            <details class="sys-prompt-details">
+              <summary>{{ ui.systemPromptToggle }}</summary>
+              <div class="sys-prompt-body">
+                <ExpandableTextarea
+                  :key="`${node.id}-dive-novel-sys`"
+                  v-model="systemPrompt"
+                  :title="t('graph.inspector.generate.systemPrompt')"
+                  :rows="4"
+                  :placeholder="t('graph.inspector.generate.systemPromptPlaceholder')"
+                  @change="persistGenerateConfig"
+                />
+              </div>
+            </details>
+          </section>
+        </template>
+
+        <template v-else>
+          <!-- Chapter Mode Left 1: Upstream 3-Port Connected Context Snapshot (in-outline / in-economy / in) -->
+          <section class="sidebar-group markov-ports-group">
+            <div class="group-head">
+              <h3>
+                📥
+                {{
+                  isEn
+                    ? `Ch.${currentChapterCursor} Upstream Edge Context`
+                    : `第 ${currentChapterCursor} 章 · 上游三路连线快照`
+                }}
+              </h3>
+              <span class="group-badge">{{
+                `${activeGenreProfile.icon} ${isEn ? activeGenreProfile.labelEn : activeGenreProfile.labelZh.split(' / ')[0]}`
+              }}</span>
+            </div>
+
+            <!-- Port 1: in-outline (Chapter t Specific Outline Slice) -->
+            <div class="upstream-slice-card">
+              <div class="port-item-left">
+                <span class="port-tag port-outline">🗺️ {{ ui.portOutlineLabel }}</span>
+                <span class="port-target-name" :class="{ muted: !upstreamOutlineNode }">
+                  {{
+                    upstreamOutlineNode
+                      ? upstreamOutlineNode.title || ui.portOutlineLabel
+                      : ui.portUnconnected
+                  }}
+                </span>
+                <button
+                  v-if="currentChapterOutlineSlice"
+                  type="button"
+                  class="mini-link-btn"
+                  @click="injectUpstreamOutlineSliceIntoInstruction"
+                >
+                  ✍️ {{ ui.useOutlineBtn }}
+                </button>
+              </div>
+              <pre v-if="currentChapterOutlineSlice" class="tail-anchor-preview">{{
+                currentChapterOutlineSlice
+              }}</pre>
+            </div>
+
+            <!-- Port 2: in-economy & in-numerical (Chapter t Economy & Numerical Lock) -->
+            <div class="upstream-slice-card">
+              <div class="port-item-left">
+                <span class="port-tag port-econ">⚖️ {{ ui.portEconomyLabel }}</span>
+                <span class="port-target-name" :class="{ muted: !upstreamEconomyNode }">
+                  {{
+                    upstreamEconomyNode
+                      ? upstreamEconomyNode.title || ui.portEconomyLabel
+                      : ui.portUnconnected
+                  }}
+                </span>
+              </div>
+              <div class="port-item-left" style="margin-top: 4px">
+                <span class="port-tag port-econ">⚔️ {{ isEn ? 'Numerical' : '数值系统' }}</span>
+                <span class="port-target-name" :class="{ muted: !upstreamNumericalNode }">
+                  {{
+                    upstreamNumericalNode
+                      ? upstreamNumericalNode.title || (isEn ? 'Numerical' : '数值系统')
+                      : ui.portUnconnected
+                  }}
+                </span>
+                <button
+                  type="button"
+                  class="mini-link-btn"
+                  @click="injectNumericalSliceIntoInstruction"
+                >
+                  📋 {{ isEn ? 'Inject Quota' : '写入配额' }}
+                </button>
+              </div>
+              <div class="slice-kpi-grid">
+                <div class="slice-kpi">
+                  <span class="kpi-label">{{ ui.kpiRealmLabel }}</span>
+                  <span class="kpi-val">{{ chapterSlice.realmStageLabelZh }}</span>
+                </div>
+                <div class="slice-kpi">
+                  <span class="kpi-label">{{ ui.kpiPowerLabel }}</span>
+                  <span class="kpi-val kpi-accent">
+                    {{ chapterSlice.powerCeiling }} vs {{ chapterSlice.villainPressure }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Port 3: in (Prev Chapter Tail Anchor) -->
+            <div class="upstream-slice-card">
+              <div class="port-item-left">
+                <span class="port-tag port-in">🔗 {{ ui.portPrevChapLabel }}</span>
+                <span class="port-target-name" :class="{ muted: !upstreamPrevChapterNode }">
+                  {{
+                    upstreamPrevChapterNode
+                      ? upstreamPrevChapterNode.title ||
+                        `Ch.${Math.max(1, currentChapterCursor - 1)}`
+                      : ui.portPrevChapEmpty
+                  }}
+                </span>
+              </div>
+              <pre v-if="activePrevTailAnchor" class="tail-anchor-preview">{{
+                activePrevTailAnchor
+              }}</pre>
+            </div>
+          </section>
+
+          <!-- Chapter Mode Left 2: Chapter Plot Prompt, 4-Beat Presets & Model -->
+          <section class="sidebar-group ai-assistant-group">
+            <div class="group-head">
+              <h3>✍️ {{ ui.chapterOutlineTitle(currentChapterCursor) }}</h3>
+            </div>
+            <InstructionModelSelect
+              v-if="modelOptions.length > 0"
+              v-model="selectedModelKey"
+              :options="modelOptions"
+              :title="t('graph.inspector.generate.model')"
+              :empty-label="t('graph.inspector.generate.noModels')"
+              @change="persistGenerateConfig"
+            />
+            <div class="ai-presets">
+              <button
+                v-for="preset in novelAiPresets"
+                :key="preset.key"
+                type="button"
+                class="preset-chip"
+                @click="applyNovelAiPreset(preset.prompt)"
+              >
+                {{ preset.label }}
+              </button>
+            </div>
+            <ExpandableTextarea
+              :key="`${node.id}-dive-novel-inst`"
+              v-model="instruction"
+              :title="ui.chapterOutlineTitle(currentChapterCursor)"
+              :rows="5"
+              :placeholder="ui.instructionPlaceholder"
+              @change="persistGenerateConfig"
+            />
+            <details class="sys-prompt-details">
+              <summary>{{ ui.systemPromptToggle }}</summary>
+              <div class="sys-prompt-body">
+                <ExpandableTextarea
+                  :key="`${node.id}-dive-novel-sys`"
+                  v-model="systemPrompt"
+                  :title="t('graph.inspector.generate.systemPrompt')"
+                  :rows="4"
+                  :placeholder="t('graph.inspector.generate.systemPromptPlaceholder')"
+                  @change="persistGenerateConfig"
+                />
+              </div>
+            </details>
+          </section>
+
+          <!-- Chapter Mode Left 3: Compact Collapsible Chapter Index & Scale Override -->
+          <section class="sidebar-group config-group">
+            <details class="sys-prompt-details">
+              <summary>
+                ⚙️
+                {{
+                  isEn
+                    ? `Chapter Index & Scale Override (Ch.${currentChapterCursor}/${totalChapters})`
+                    : `章节号与规格微调（第 ${currentChapterCursor}/${totalChapters} 章 · ${targetWords}字）`
+                }}
+              </summary>
+              <div class="sys-prompt-body">
+                <div class="cursor-stepper-row">
+                  <span class="scale-label">{{ ui.targetCursorLabel }}</span>
+                  <div class="stepper-controls">
+                    <button
+                      type="button"
+                      class="step-btn"
+                      :disabled="currentChapterCursor <= 1"
+                      @click="stepChapterCursor(-1)"
+                    >
+                      ◀
+                    </button>
+                    <input
+                      type="number"
+                      min="1"
+                      :max="totalChapters"
+                      class="cursor-input"
+                      :value="currentChapterCursor"
+                      @change="onCursorInput(($event.target as HTMLInputElement).value)"
+                    />
+                    <span class="cursor-sep">/ {{ totalChapters }}</span>
+                    <button
+                      type="button"
+                      class="step-btn"
+                      :disabled="currentChapterCursor >= totalChapters"
+                      @click="stepChapterCursor(1)"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+                <div class="config-grid">
+                  <label class="config-field">
+                    <span class="field-label">{{ ui.totalChaptersLabel }}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="5000"
+                      step="10"
+                      class="num-input"
+                      :value="totalChapters"
+                      @change="onTotalChaptersInput(($event.target as HTMLInputElement).value)"
+                    />
+                  </label>
+                  <label class="config-field">
+                    <span class="field-label">{{ ui.targetWordsLabel }}</span>
+                    <input
+                      type="number"
+                      min="1000"
+                      max="15000"
+                      step="200"
+                      class="num-input"
+                      :value="targetWords"
+                      @change="onTargetWordsInput(($event.target as HTMLInputElement).value)"
+                    />
+                  </label>
+                </div>
+              </div>
+            </details>
+          </section>
+        </template>
       </aside>
 
-      <!-- Center Column: Immersive 3000+ Word Chapter Manuscript Editor + Inline Selection Polish Bar -->
+      <!-- Center Column: Clean Role-Separated Editor (Outline Document vs Single-Chapter 4-Beat Manuscript) -->
       <main class="editor-main">
         <div class="studio-toolbar">
           <input
             v-model="currentChapterTitle"
             type="text"
             class="chapter-title-input"
-            :placeholder="ui.chapterTitlePlaceholder(currentChapterCursor)"
+            :placeholder="
+              isOutlineModeNode
+                ? isEn
+                  ? 'Novel World Bible & Master Outline Title…'
+                  : '输入全书总纲与分章企划标题…'
+                : ui.chapterTitlePlaceholder(currentChapterCursor)
+            "
             @change="persistChapterTitle"
           />
 
@@ -465,34 +541,28 @@
             <button type="button" class="tool-chip" @click="insertCharacterProfileBlock">
               {{ ui.btnInsertBios }}
             </button>
-            <button type="button" class="tool-chip" @click="insertBeatMarker(1)">
-              {{ ui.btnBeat1 }}
-            </button>
-            <button type="button" class="tool-chip" @click="insertBeatMarker(2)">
-              {{ ui.btnBeat2 }}
-            </button>
-            <button type="button" class="tool-chip" @click="insertBeatMarker(3)">
-              {{ ui.btnBeat3 }}
-            </button>
-            <button type="button" class="tool-chip" @click="insertBeatMarker(4)">
-              {{ ui.btnBeat4 }}
-            </button>
+            <template v-if="!isOutlineModeNode">
+              <button type="button" class="tool-chip" @click="insertBeatMarker(1)">
+                {{ ui.btnBeat1 }}
+              </button>
+              <button type="button" class="tool-chip" @click="insertBeatMarker(2)">
+                {{ ui.btnBeat2 }}
+              </button>
+              <button type="button" class="tool-chip" @click="insertBeatMarker(3)">
+                {{ ui.btnBeat3 }}
+              </button>
+              <button type="button" class="tool-chip" @click="insertBeatMarker(4)">
+                {{ ui.btnBeat4 }}
+              </button>
+            </template>
             <button type="button" class="tool-chip tool-chip-accent" @click="formatNovelManuscript">
               {{ formatFlash ? ui.btnFormatDone : ui.btnFormat }}
-            </button>
-            <button
-              type="button"
-              class="tool-chip tool-chip-sp"
-              :class="{ active: dualScreenplayPreviewOpen }"
-              @click="toggleDualScreenplayPreview"
-            >
-              🎬 {{ ui.btnDualScreenplay }}
             </button>
           </div>
         </div>
 
-        <!-- Chapter Word Quota & 4-Beat Pacing Progress Bar -->
-        <div class="chapter-progress-strip">
+        <!-- Chapter Word Quota & 4-Beat Pacing Progress Bar (Chapter Mode Only) -->
+        <div v-if="!isOutlineModeNode" class="chapter-progress-strip">
           <div class="progress-left">
             <span class="progress-title">{{
               ui.progressLabel(currentChapterStats.wordCount, targetWords, wordProgressPct)
@@ -522,8 +592,8 @@
           </div>
         </div>
 
-        <!-- Enhancement 5: Inline Text Selection AI Polish & Beat Booster Bar -->
-        <div v-if="selectedPassageLength > 0" class="selection-polish-bar">
+        <!-- Inline Text Selection AI Polish & Beat Booster Bar (Chapter Mode Only) -->
+        <div v-if="!isOutlineModeNode && selectedPassageLength > 0" class="selection-polish-bar">
           <span class="sel-badge"> ✍️ {{ ui.selectionActiveBadge(selectedPassageLength) }} </span>
           <div class="sel-actions">
             <button
@@ -549,7 +619,7 @@
           </div>
         </div>
 
-        <div class="novel-textarea-wrap" :class="{ 'dual-split': dualScreenplayPreviewOpen }">
+        <div class="novel-textarea-wrap">
           <textarea
             ref="editorTextareaRef"
             v-model="localText"
@@ -561,41 +631,14 @@
             @mouseup="updateSelectionRange"
             @keyup="updateSelectionRange"
           />
-
-          <div v-if="dualScreenplayPreviewOpen" class="screenplay-preview-pane">
-            <div class="sp-pane-header">
-              <span class="sp-pane-title">🎬 {{ ui.dualSpTitle(currentChapterCursor) }}</span>
-              <div class="sp-pane-actions">
-                <button
-                  type="button"
-                  class="sp-mini-btn"
-                  @click="refreshScreenplayPreviewFromNovel"
-                >
-                  🔄 {{ ui.dualSpRefreshBtn }}
-                </button>
-                <button
-                  v-if="downstreamScreenplayNode"
-                  type="button"
-                  class="sp-mini-btn sp-mini-accent"
-                  @click="syncDualPreviewToDownstreamScreenplay"
-                >
-                  📤 {{ dualSpSyncedFlash ? ui.dualSpSyncedToast : ui.dualSpSyncDownstreamBtn }}
-                </button>
-              </div>
-            </div>
-            <textarea
-              v-model="screenplayPreviewDraft"
-              class="sp-preview-textarea"
-              :placeholder="ui.dualSpPlaceholder"
-            />
-          </div>
         </div>
       </main>
 
-      <!-- Right Sidebar: 3 Tabs (1. Numerical Quota & QA / 2. Arc Outline Plan & Batch Serialize / 3. 4-Tier Memory Pyramid) -->
+      <!-- Right Sidebar: Clean 2-Tab Role-Separated Assistant -->
       <aside class="ai-sidebar">
         <div class="right-tabs">
           <button
+            v-if="!isOutlineModeNode"
             type="button"
             class="right-tab-btn"
             :class="{ active: rightTab === 'pacing' }"
@@ -604,12 +647,13 @@
             ⚖️ {{ ui.tabPacingAndOutline }}
           </button>
           <button
+            v-if="isOutlineModeNode"
             type="button"
             class="right-tab-btn"
             :class="{ active: rightTab === 'arcPlan' }"
             @click="rightTab = 'arcPlan'"
           >
-            🗺️ {{ ui.tabArcPlan }}
+            🗺️ {{ isEn ? 'Arc Power & Chapter Plan' : '战力包络 & 分章排期' }}
           </button>
           <button
             type="button"
@@ -617,23 +661,22 @@
             :class="{ active: rightTab === 'memory' }"
             @click="rightTab = 'memory'"
           >
-            🧠 {{ ui.tabMemoryPyramid }}
+            🧠
+            {{
+              isOutlineModeNode
+                ? isEn
+                  ? 'World Bible & Roster'
+                  : '世界观与人物伏笔'
+                : ui.tabMemoryPyramid
+            }}
           </button>
         </div>
 
-        <template v-if="rightTab === 'pacing'">
+        <template v-if="!isOutlineModeNode && rightTab === 'pacing'">
           <!-- Upstream Economy System Chapter Numerical Quota Slice -->
           <section class="sidebar-group slice-group">
             <div class="group-head">
               <h3>{{ ui.sliceCardTitle(currentChapterCursor, totalChapters) }}</h3>
-              <button
-                v-if="upstreamEconomyNode"
-                type="button"
-                class="mini-link-btn"
-                @click="openUpstreamEconomyWorkbench"
-              >
-                ⚖️ {{ ui.openEconomyBtn }}
-              </button>
             </div>
 
             <div class="slice-volume-banner">
@@ -719,7 +762,7 @@
             </button>
           </section>
 
-          <!-- Enhancement 3: Chapter Continuity & Power-Creep QA Doctor Card -->
+          <!-- Chapter Continuity & Power-Creep QA Doctor Card -->
           <section class="sidebar-group qa-group">
             <div class="group-head">
               <h3>🩺 {{ ui.qaCardTitle }}</h3>
@@ -772,105 +815,9 @@
               💀 {{ ui.fixRevivedCharsBtn(chapterAudit.revivedEliminatedCharacters.length) }}
             </button>
           </section>
-
-          <!-- AI Model Selection -->
-          <section class="sidebar-group">
-            <div class="group-head">
-              <h3>{{ ui.modelSectionTitle }}</h3>
-            </div>
-            <InstructionModelSelect
-              v-if="modelOptions.length > 0"
-              v-model="selectedModelKey"
-              :options="modelOptions"
-              :title="t('graph.inspector.generate.model')"
-              :empty-label="t('graph.inspector.generate.noModels')"
-              @change="persistGenerateConfig"
-            />
-            <p v-else class="hint">{{ t('graph.inspector.generate.noModels') }}</p>
-          </section>
-
-          <!-- Chapter Plot Instruction & Quick Presets -->
-          <section class="sidebar-group ai-assistant-group">
-            <div class="group-head">
-              <h3>{{ ui.chapterOutlineTitle(currentChapterCursor) }}</h3>
-            </div>
-            <div class="ai-presets">
-              <button
-                v-for="preset in novelAiPresets"
-                :key="preset.key"
-                type="button"
-                class="preset-chip"
-                @click="applyNovelAiPreset(preset.prompt)"
-              >
-                {{ preset.label }}
-              </button>
-            </div>
-            <ExpandableTextarea
-              :key="`${node.id}-dive-novel-inst`"
-              v-model="instruction"
-              :title="ui.chapterOutlineTitle(currentChapterCursor)"
-              :rows="5"
-              :placeholder="ui.instructionPlaceholder"
-              @change="persistGenerateConfig"
-            />
-          </section>
-
-          <section class="sidebar-group">
-            <details class="sys-prompt-details">
-              <summary>{{ ui.systemPromptToggle }}</summary>
-              <div class="sys-prompt-body">
-                <ExpandableTextarea
-                  :key="`${node.id}-dive-novel-sys`"
-                  v-model="systemPrompt"
-                  :title="t('graph.inspector.generate.systemPrompt')"
-                  :rows="5"
-                  :placeholder="t('graph.inspector.generate.systemPromptPlaceholder')"
-                  @change="persistGenerateConfig"
-                />
-              </div>
-            </details>
-          </section>
         </template>
 
-        <!-- Enhancement 2: Arc Multi-Chapter Outline Planner & Batch Auto-Serializer -->
-        <template v-else-if="rightTab === 'arcPlan'">
-          <section class="sidebar-group batch-serial-group">
-            <div class="group-head">
-              <h3>🚀 {{ ui.batchSerialTitle }}</h3>
-              <span class="group-badge">{{
-                batchRunning ? ui.batchRunningBadge(batchRemainingCount) : ui.batchReadyBadge
-              }}</span>
-            </div>
-            <p class="mem-hint">{{ ui.batchSerialDesc }}</p>
-
-            <div class="batch-controls-row">
-              <div class="scale-pills">
-                <button
-                  v-for="cnt in [2, 3, 5]"
-                  :key="cnt"
-                  type="button"
-                  class="scale-pill"
-                  :class="{ active: batchChapterCount === cnt }"
-                  @click="batchChapterCount = cnt"
-                >
-                  {{ ui.batchCountPill(cnt) }}
-                </button>
-              </div>
-              <button
-                v-if="!batchRunning"
-                type="button"
-                class="batch-start-btn"
-                :disabled="isGraphRunning || runStatus === 'running'"
-                @click="startBatchAutoSerialize"
-              >
-                🚀 {{ ui.startBatchBtn(batchChapterCount) }}
-              </button>
-              <button v-else type="button" class="batch-stop-btn" @click="stopBatchAutoSerialize">
-                ⏹ {{ ui.stopBatchBtn }}
-              </button>
-            </div>
-          </section>
-
+        <template v-else-if="isOutlineModeNode && rightTab === 'arcPlan'">
           <!-- Visual Arc Power Envelope & Beat ECG SVG Curve -->
           <section class="sidebar-group arc-svg-group">
             <div class="group-head">
@@ -878,7 +825,6 @@
               <span class="group-count">{{ ui.arcSvgLegend }}</span>
             </div>
             <svg class="arc-ecg-svg" viewBox="0 0 300 112" preserveAspectRatio="none">
-              <!-- Grid baselines -->
               <line
                 x1="16"
                 y1="22"
@@ -897,7 +843,6 @@
               />
               <line x1="16" y1="86" x2="284" y2="86" stroke="rgba(148,163,184,0.2)" />
 
-              <!-- Beat intensity vertical bars -->
               <rect
                 v-for="pt in arcPacingSvg.points"
                 :key="`bar-${pt.chapter}`"
@@ -910,7 +855,6 @@
                 opacity="0.28"
               />
 
-              <!-- Villain Pressure Polyline -->
               <polyline
                 :points="arcPacingSvg.villainPolyline"
                 fill="none"
@@ -919,7 +863,6 @@
                 stroke-dasharray="3 2"
               />
 
-              <!-- Protagonist Power Ceiling Polyline -->
               <polyline
                 :points="arcPacingSvg.powerPolyline"
                 fill="none"
@@ -927,7 +870,6 @@
                 stroke-width="2.2"
               />
 
-              <!-- Interactive Chapter Nodes -->
               <g
                 v-for="pt in arcPacingSvg.points"
                 :key="`node-${pt.chapter}`"
@@ -983,16 +925,12 @@
                 <p class="plan-conflict">{{ planItem.coreConflictZh }}</p>
                 <p class="plan-hook">🪝 {{ planItem.cliffhangerHookZh }}</p>
                 <div class="plan-actions">
-                  <button type="button" class="plan-btn" @click="applyArcPlanItem(planItem, false)">
-                    ✍️ {{ ui.useOutlineBtn }}
-                  </button>
                   <button
                     type="button"
-                    class="plan-btn plan-btn-run"
-                    :disabled="isGraphRunning || runStatus === 'running'"
-                    @click="applyArcPlanItem(planItem, true)"
+                    class="plan-btn"
+                    @click="insertArcPlanItemIntoOutline(planItem)"
                   >
-                    ⚡ {{ ui.runOutlineNowBtn(planItem.chapter) }}
+                    ✍️ {{ isEn ? 'Insert into Outline' : '插入分章细纲' }}
                   </button>
                 </div>
               </div>
@@ -1001,7 +939,7 @@
         </template>
 
         <template v-else>
-          <!-- 4-Tier Memory Pyramid (L1 World Bible / L2 State Ledger / L3 Rolling Summary / L4 Prev Tail Anchor) -->
+          <!-- Memory & Roster Tab: Role-separated for Outline vs Chapter -->
           <section class="sidebar-group memory-group">
             <div class="group-head">
               <h3>🏛️ {{ ui.l1Title }}</h3>
@@ -1020,7 +958,7 @@
             />
           </section>
 
-          <section class="sidebar-group memory-group">
+          <section v-if="!isOutlineModeNode" class="sidebar-group memory-group">
             <div class="group-head">
               <h3>📊 {{ ui.l2Title }}</h3>
               <button type="button" class="mini-link-btn" @click="refreshStateLedgerFromCurrent">
@@ -1032,13 +970,13 @@
               :key="`${node.id}-novel-l2`"
               v-model="stateLedger"
               :title="ui.l2Title"
-              :rows="5"
+              :rows="4"
               :placeholder="ui.l2Placeholder"
               @change="persistMemoryFields"
             />
           </section>
 
-          <section class="sidebar-group memory-group">
+          <section v-if="!isOutlineModeNode" class="sidebar-group memory-group">
             <div class="group-head">
               <h3>📜 {{ ui.l3Title }}</h3>
             </div>
@@ -1047,28 +985,13 @@
               :key="`${node.id}-novel-l3`"
               v-model="rollingSummary"
               :title="ui.l3Title"
-              :rows="5"
+              :rows="4"
               :placeholder="ui.l3Placeholder"
               @change="persistMemoryFields"
             />
           </section>
 
-          <section class="sidebar-group memory-group">
-            <div class="group-head">
-              <h3>🔗 {{ ui.l4Title(Math.max(1, currentChapterCursor - 1)) }}</h3>
-              <button
-                type="button"
-                class="mini-link-btn"
-                @click="syncPrevTailAnchorFromPreviousChapter"
-              >
-                🔄 {{ ui.extractTailBtn }}
-              </button>
-            </div>
-            <p class="mem-hint">{{ ui.l4Hint }}</p>
-            <pre class="tail-anchor-preview">{{ activePrevTailAnchor || ui.l4EmptyHint }}</pre>
-          </section>
-
-          <!-- Enhancement: Character Status & Grudge Roster -->
+          <!-- Character Status & Grudge Roster -->
           <section class="sidebar-group memory-group">
             <div class="group-head">
               <h3>👥 {{ ui.rosterSectionTitle }}</h3>
@@ -1131,7 +1054,7 @@
             </div>
           </section>
 
-          <!-- Enhancement: Long-Term Foreshadowing Tracker Pool -->
+          <!-- Long-Term Foreshadowing Tracker Pool -->
           <section class="sidebar-group memory-group">
             <div class="group-head">
               <h3>🕸️ {{ ui.foreshadowSectionTitle }}</h3>
@@ -1197,7 +1120,7 @@
                     )
                   }}</span>
                   <button
-                    v-if="fsItem.status === 'planted'"
+                    v-if="fsItem.status === 'planted' && !isOutlineModeNode"
                     type="button"
                     class="mini-link-btn"
                     @click="injectForeshadowingPayoffIntoInstruction(fsItem)"
@@ -1233,18 +1156,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   DEFAULT_NOVEL_SYSTEM_PROMPT_EN,
   DEFAULT_NOVEL_SYSTEM_PROMPT_ZH,
+  defaultNovelOutlineSystemPrompt,
+  defaultNovelOutlineUserPrompt,
   defaultNovelSystemPrompt,
+  inferExplicitNovelChapterNumber,
+  narrowOutlineTextForChapter,
   resolveNodeType,
   type GraphNode
 } from '@shared/graph'
 import {
   NOVEL_GENRE_PROFILES,
   auditNovelChapterContinuityAndPacing,
-  convertNovelChapterToScreenplayPreview,
   createDefaultNovelCharacterRoster,
   createDefaultNovelForeshadowingPool,
   createMxWorkbenchPreset,
@@ -1261,24 +1187,21 @@ import {
   type MxNovelForeshadowingEntry,
   type MxNumericalWorkbench,
   type MxTemplateId,
+  type MxWorkbenchPresetId,
   type NovelGenreId,
   type NovelGenreProfile
 } from '@shared/gameAssets'
 import ExpandableTextarea from '../ExpandableTextarea.vue'
 import GraphNodeRunControl from '../GraphNodeRunControl.vue'
 import InstructionModelSelect from '../InstructionModelSelect.vue'
-import PreviewSaveToLibraryButton from '../PreviewSaveToLibraryButton.vue'
 import SaveAssetDialog from '../SaveAssetDialog.vue'
 import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { useSaveCacheAsset } from '../../composables/useSaveCacheAsset'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
-import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
-import { invalidateAssetUrlCache } from '../../features/media/assetUrlCache'
-import { useWorkspaceStore } from '../../stores/workspace'
 import {
   invalidateGenerateModelSettingsCache,
   loadGenerateModelOptions,
@@ -1317,27 +1240,19 @@ const props = defineProps<{
 }>()
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
-const workspace = useWorkspaceStore()
-const editorDive = inject(editorDiveKey, null)
 
-const {
-  dialogOpen,
-  defaultName,
-  defaultFolderId,
-  dialogRef,
-  canSave,
-  isSaved,
-  isSaving,
-  openSave,
-  closeDialog,
-  confirmSave
-} = useSaveCacheAsset()
+const { dialogOpen, defaultName, defaultFolderId, dialogRef, closeDialog, confirmSave } =
+  useSaveCacheAsset()
 
 const node = computed((): GraphNode | null => {
   void graphEditorHosts.revision.value
   const current = graphEditorHosts.getNode(props.hostId, props.nodeId)
-  return current?.typeId === 'asset.novel' ? current : null
+  return current?.typeId === 'asset.novel' || current?.typeId === 'novel.outline' ? current : null
 })
+
+const isOutlineModeNode = computed(
+  () => node.value?.typeId === 'novel.outline' || node.value?.params.novelNodeMode === 'outline'
+)
 
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.defaultNode')
@@ -1373,15 +1288,9 @@ const chapterHistoryJson = ref('')
 
 const rightTab = ref<'pacing' | 'arcPlan' | 'memory'>('pacing')
 const chapterSearchQuery = ref('')
-const splitDoneCount = ref(0)
 const formatFlash = ref(false)
 
-// Multi-chapter range merge state
-const checkedChapterKeys = ref<string[]>([])
-const mergedOutputToast = ref('')
-
 // Batch auto-serialization state
-const batchChapterCount = ref(3)
 const batchRunning = ref(false)
 const batchRemainingCount = ref(0)
 
@@ -1396,10 +1305,6 @@ const selectedPassageLength = computed(() =>
 const characterRoster = ref<MxNovelCharacterStatusEntry[]>([])
 const foreshadowingPool = ref<MxNovelForeshadowingEntry[]>([])
 
-// Dual-column screenplay live preview & full-book export state
-const dualScreenplayPreviewOpen = ref(false)
-const screenplayPreviewDraft = ref('')
-const dualSpSyncedFlash = ref(false)
 const exportBookFlash = ref(false)
 
 const isEn = computed(() => String(locale.value).toLowerCase().startsWith('en'))
@@ -1572,7 +1477,7 @@ const filteredChapterEntries = computed(() => {
     })
 })
 
-// Inspect upstream game.economy node and downstream asset.screenplay node in the same graph
+// Inspect upstream game.economy node, novel.outline node, and downstream asset.screenplay node in the same graph
 const upstreamEconomyNode = computed((): GraphNode | null => {
   void graphEditorHosts.revision.value
   if (!props.hostId || !node.value) return null
@@ -1584,22 +1489,115 @@ const upstreamEconomyNode = computed((): GraphNode | null => {
   return graphEditorHosts.findNode(props.hostId, (n) => n.typeId === 'game.economy')
 })
 
-const downstreamScreenplayNode = computed((): GraphNode | null => {
+const upstreamNumericalNode = computed((): GraphNode | null => {
   void graphEditorHosts.revision.value
   if (!props.hostId || !node.value) return null
-  const doc = graphEditorHosts.getDocument(props.hostId)
-  if (doc?.edges) {
-    for (const edge of doc.edges) {
-      if (edge.source === node.value.id) {
-        const tgt = graphEditorHosts.getNode(props.hostId, edge.target)
-        if (tgt?.typeId === 'asset.screenplay') return tgt
-      }
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, node.value.id)
+  for (const edge of incoming) {
+    const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+    if (src?.typeId === 'game.numerical') return src
+  }
+  return graphEditorHosts.findNode(props.hostId, (n) => n.typeId === 'game.numerical')
+})
+
+const upstreamOutlineNode = computed((): GraphNode | null => {
+  void graphEditorHosts.revision.value
+  if (!props.hostId || !node.value) return null
+  if (node.value.typeId === 'novel.outline' || node.value.params.novelNodeMode === 'outline') {
+    return node.value
+  }
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, node.value.id)
+  for (const edge of incoming) {
+    const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+    if (
+      src &&
+      (src.typeId === 'novel.outline' ||
+        (src.typeId === 'asset.novel' && src.params.novelNodeMode === 'outline'))
+    ) {
+      return src
     }
   }
-  return graphEditorHosts.findNode(props.hostId, (n) => n.typeId === 'asset.screenplay')
+  return graphEditorHosts.findNode(
+    props.hostId,
+    (n) =>
+      n.typeId === 'novel.outline' ||
+      (n.typeId === 'asset.novel' && n.params.novelNodeMode === 'outline')
+  )
+})
+
+const upstreamPrevChapterNode = computed((): GraphNode | null => {
+  void graphEditorHosts.revision.value
+  if (!props.hostId || !node.value || isOutlineModeNode.value) return null
+  const incoming = graphEditorHosts.listIncomingEdges(props.hostId, node.value.id)
+  for (const edge of incoming) {
+    const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+    if (src?.typeId === 'asset.novel' && src.params.novelNodeMode !== 'outline') {
+      return src
+    }
+  }
+  return null
+})
+
+const canvasChapterChainNodes = computed(() => {
+  void graphEditorHosts.revision.value
+  const current = node.value
+  if (!props.hostId || !current) return []
+  const doc = graphEditorHosts.getDocument(props.hostId)
+  const allNodes = doc?.nodes ?? [current]
+  const chapterNodes = allNodes.filter(
+    (n) => n.typeId === 'asset.novel' && n.params.novelNodeMode !== 'outline'
+  )
+  return chapterNodes
+    .map((n, idx) => {
+      const chapNum =
+        n.id === current.id
+          ? currentChapterCursor.value
+          : Math.max(
+              1,
+              Math.floor(
+                Number(n.params.novelCurrentChapter) || extractChapterNumFromTitle(n.title, idx)
+              )
+            )
+      const bodyRaw =
+        n.id === current.id
+          ? localText.value
+          : (n.params.text ?? '').trim() === '…'
+            ? ''
+            : (n.params.text ?? '')
+      const stats = analyzeNovelChapter(bodyRaw)
+      const trimmed = bodyRaw.trim()
+      const snippet = trimmed ? (trimmed.length > 88 ? `${trimmed.slice(0, 88)}…` : trimmed) : ''
+      return {
+        node: n,
+        chapterNumber: chapNum,
+        displayTitle: n.title?.trim() || (isEn.value ? `Chapter ${chapNum}` : `第${chapNum}章`), // cjk-ok
+        snippet,
+        stats
+      }
+    })
+    .sort(
+      (a, b) =>
+        a.chapterNumber - b.chapterNumber || (a.node.position?.x ?? 0) - (b.node.position?.x ?? 0)
+    )
 })
 
 const activeWorkbench = computed((): MxNumericalWorkbench => {
+  const numNode = upstreamNumericalNode.value
+  if (numNode) {
+    const presetRaw = String(numNode.params.gameNumericalPreset ?? 'short_drama_progression')
+    const rawJson = numNode.params.gameNumericalWorkbenchJson
+    if (typeof rawJson === 'string' && rawJson.trim()) {
+      try {
+        const parsed = JSON.parse(rawJson) as MxNumericalWorkbench
+        if (parsed && typeof parsed === 'object' && parsed.multiplier && parsed.combatKernel) {
+          return parsed
+        }
+      } catch {
+        // fallback to preset
+      }
+    }
+    return createMxWorkbenchPreset(presetRaw as MxWorkbenchPresetId)
+  }
   const econ = upstreamEconomyNode.value
   if (econ) {
     const tplRaw = String(econ.params.gameEconomyPreset ?? 'short_drama_reversal_loop')
@@ -1727,6 +1725,19 @@ const parsedHistoryMap = computed((): Record<string, NovelChapterHistoryRecord> 
 })
 
 const activePrevTailAnchor = computed((): string => {
+  const prevNode = upstreamPrevChapterNode.value
+  if (prevNode) {
+    const prevRaw = (prevNode.params.text ?? '').trim()
+    if (prevRaw && prevRaw !== '…') {
+      const lines = prevRaw
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => Boolean(l) && !/^#+\s*第\s*\d+/i.test(l) && !/^#+\s*Chapter\s*\d+/i.test(l)) // cjk-ok
+      if (lines.length) {
+        return lines.slice(-4).join('\n').slice(-550)
+      }
+    }
+  }
   const prevChap = currentChapterCursor.value - 1
   if (prevChap < 1) return ''
   const fromHistory = parsedHistoryMap.value[String(prevChap)]?.tailAnchor?.trim()
@@ -1742,6 +1753,37 @@ const activePrevTailAnchor = computed((): string => {
   }
   return ''
 })
+
+const currentChapterOutlineSlice = computed((): string => {
+  if (isOutlineModeNode.value) return ''
+  const outline = upstreamOutlineNode.value
+  if (!outline || outline.id === node.value?.id) return ''
+  const rawOutline =
+    (outline.params.text ?? '').trim() === '…'
+      ? ''
+      : (outline.params.text ?? '').trim() || (outline.params.novelWorldBible ?? '').trim()
+  if (!rawOutline) return ''
+  const sliced = narrowOutlineTextForChapter(
+    rawOutline,
+    currentChapterCursor.value,
+    String(locale.value)
+  )
+  return sliced.trim()
+})
+
+function injectUpstreamOutlineSliceIntoInstruction(): void {
+  const slice = currentChapterOutlineSlice.value
+  if (!slice) return
+  instruction.value = instruction.value.trim() ? `${instruction.value.trim()}\n\n${slice}` : slice
+  persistGenerateConfig()
+}
+
+function insertArcPlanItemIntoOutline(planItem: MxChapterOutlinePlanItem): void {
+  const block = isEn.value
+    ? `Chapter ${planItem.chapter}: ${planItem.titleEn}\n- Beat: ${planItem.beatBadgeEn} (Power Cap ${planItem.powerCeiling})\n- Conflict: ${planItem.coreConflictZh}\n- Hook: ${planItem.cliffhangerHookZh}`
+    : `第${planItem.chapter}章：${planItem.titleZh}\n- 戏剧节拍：${planItem.beatBadgeZh}（战力上限 ${planItem.powerCeiling}）\n- 核心冲突：${planItem.coreConflictZh}\n- 章末钩子：${planItem.cliffhangerHookZh}` // cjk-ok
+  insertAtCursorOrAppend(block)
+}
 
 const chapterAudit = computed((): MxNovelChapterContinuityAudit => {
   const eliminatedNames = characterRoster.value
@@ -1800,9 +1842,10 @@ const beatCheckItems = computed(() => {
 
 const ui = computed(() => {
   const en = isEn.value
-  const genCount = generatedTexts.value.length
+  const genCount = Math.max(1, canvasChapterChainNodes.value.length)
   const curWords = currentChapterStats.value.wordCount
-  const totWords = totalBookWordCount.value
+  const totWords =
+    canvasChapterChainNodes.value.reduce((acc, c) => acc + c.stats.wordCount, 0) || curWords
   const gp = activeGenreProfile.value
   return {
     genreSelectorLabel: en ? 'Novel Genre & Narrative Engine' : '小说题材流派与叙事引擎', // cjk-ok
@@ -1818,14 +1861,14 @@ const ui = computed(() => {
       : `解锁物名称（当前：${gp.unlockTermZh}）`, // cjk-ok
     seedGenreMemoryBtn: en ? 'Apply Genre Roster & Bible' : '按当前流派重置人物与世界观', // cjk-ok
     telemetryChapters: en
-      ? `Written ${genCount} / ${totalChapters.value} Chaps`
-      : `已写 ${genCount} / ${totalChapters.value} 章`, // cjk-ok
+      ? `Chain ${genCount} / ${totalChapters.value} Chaps`
+      : `章节链 ${genCount} / ${totalChapters.value} 章`, // cjk-ok
     telemetryCurrentWords: en
       ? `Ch.${currentChapterCursor.value}: ${curWords} / ${targetWords.value} chars`
       : `本章 ${curWords} / ${targetWords.value} 字`, // cjk-ok
     telemetryTotalWords: en
-      ? `Total: ${totWords.toLocaleString()} chars`
-      : `累计 ${totWords.toLocaleString()} 字`, // cjk-ok
+      ? `Chain Total: ${totWords.toLocaleString()} chars`
+      : `全链累计 ${totWords.toLocaleString()} 字`, // cjk-ok
     telemetryPowerCeiling: en
       ? `${gp.protagonistAxisEn}: ${chapterSlice.value.powerCeiling}`
       : `${gp.protagonistAxisZh} ${chapterSlice.value.powerCeiling}`,
@@ -1834,22 +1877,68 @@ const ui = computed(() => {
     exportBookDoneBtn: en ? '✓ Exported & Copied' : '✓ 已导出并复制全书', // cjk-ok
     pushToScreenplayBtn: en ? 'Push to Screenplay' : '推送至剧本工作台', // cjk-ok
     pushToGameSystemBtn: en ? 'Push to Game GDD' : '推送至策划案工作台', // cjk-ok
-    generateCurrentBtn: en
-      ? `Generate Ch.${currentChapterCursor.value}`
-      : `生成第 ${currentChapterCursor.value} 章`, // cjk-ok
+    outlineHeaderPill: en
+      ? `🗺️ Outline · ${totalChapters.value} Chaps`
+      : `🗺️ 全书大纲 · ${totalChapters.value}章`, // cjk-ok
+    generateCurrentBtn: isOutlineModeNode.value
+      ? en
+        ? 'Generate Outline'
+        : '生成小说大纲' // cjk-ok
+      : en
+        ? `Generate Ch.${currentChapterCursor.value}`
+        : `生成第 ${currentChapterCursor.value} 章`, // cjk-ok
     aiNextChapterBtn: en ? 'AI Next Chapter' : 'AI 续写下一章', // cjk-ok
+    spawnNextNodeBtn: isOutlineModeNode.value
+      ? en
+        ? '+ Ch.1 Node'
+        : '新建第1章节点' // cjk-ok
+      : en
+        ? `+ Ch.${Math.min(totalChapters.value, currentChapterCursor.value + 1)} Node`
+        : `串联下一章节点`, // cjk-ok
+    spawnNextNodeHint: en
+      ? 'Create a chained novel node for the next chapter on the canvas (wired to Prev Chap + Outline + Economy)'
+      : '在画布上新建并串联「下一章」独立小说节点（自动连接上一章 out -> in、小说大纲 -> in-outline、经济系统 -> in-economy）', // cjk-ok
+    spawnBatchNodesBtn: en ? '+3 Chaps Chain' : '批量+3章链', // cjk-ok
+    spawnBatchNodesHint: en
+      ? 'Spawn and wire the next 3 Markov-chained chapter nodes on the canvas (each wired to Previous Chapter + Outline + Economy)'
+      : '在画布上一键批量生成并串联后续 3 章马尔可夫链节点（每章均自动连接上一章、小说大纲与经济数值节点）', // cjk-ok
     serialConfigTitle: en ? 'Dynamic Serialization & Chapter Clock' : '长篇连载规模与章节时钟', // cjk-ok
     dynamicTotalBadge: en ? 'Dynamic' : '总章数可随时动态调整', // cjk-ok
     totalChaptersLabel: en ? 'Planned Total Chapters' : '规划总章节数 (1~5000)', // cjk-ok
     targetWordsLabel: en ? 'Target Words / Chapter' : '单章目标字数', // cjk-ok
     quickScaleLabel: en ? 'Quick Total Scale:' : '总章数快捷规格：', // cjk-ok
-    targetCursorLabel: en ? 'Current Target Chapter:' : '当前生成章号游标：', // cjk-ok
+    targetCursorLabel: en ? 'Chapter Node Index (C_t):' : '本节点所属章号 (C_t)：', // cjk-ok
     autoAdvanceLabel: en
       ? 'Auto-advance to next chapter (+1) after generation'
       : '生成本章后自动将游标推进至下一章 (+1)', // cjk-ok
-    chapterListTitle: en ? 'Multi-Chapter Manuscript Tree' : '多章节连载目录树', // cjk-ok
+    markovPortsTitle: en ? '3-Way Markov Ports & Chain' : '三路输入与链式输出端口', // cjk-ok
+    portPrevChapLabel: en ? 'Prev Chap' : '上一章', // cjk-ok
+    portPrevChapEmpty: en ? '(Ch.1 Start Node)' : '（首章起点 · 无前置章节）', // cjk-ok
+    portOutlineLabel: en ? 'Novel Outline' : '小说大纲', // cjk-ok
+    portEconomyLabel: en ? 'Economy System' : '经济系统', // cjk-ok
+    portNextChapLabel: en ? 'Next Chap' : '下一章', // cjk-ok
+    portOutlineOutLabel: en ? 'Outline Out' : '大纲输出', // cjk-ok
+    portAllChapsLabel: en ? 'All' : '全部', // cjk-ok
+    portAllChapsSummary: (cur: number) =>
+      en
+        ? `Cumulative Ch.1–${cur} (${cur} chaps total)`
+        : `汇总第 1~${cur} 章（共 ${cur} 章累计输出）`, // cjk-ok
+    portOutlineAllSummary: en
+      ? 'Per-Chapter Split Outlines (chap:1…N)'
+      : '按章号拆分的全部细纲集合', // cjk-ok
+    exportBookShortBtn: en ? 'Export' : '导出汇总', // cjk-ok
+    portNextChapEmpty: en ? 'Not chained yet' : '尚未串联下一章节点', // cjk-ok
+    portUnconnected: en ? 'Not connected' : '尚未连接', // cjk-ok
+    jumpNodeBtn: en ? 'Open' : '跳转', // cjk-ok
+    connectPortBtn: en ? '+ Connect' : '+ 连接/创建', // cjk-ok
+    spawnNextShortBtn: en ? '+ Chain Next' : '+ 串联下一章', // cjk-ok
+    activeNodeBadge: en ? 'Current Node' : '当前节点', // cjk-ok
+    emptyOutlineHint: en
+      ? 'Click "Generate Outline" to create the World Bible & Per-Chapter Outline…'
+      : '点击右上角「⚡ 生成小说大纲」生成世界观与分章细纲…', // cjk-ok
+    chapterListTitle: en ? 'Canvas Markov Chapter Chain' : '画布马尔可夫章节链拓扑', // cjk-ok
     chapterCountBadge: (written: number, total: number) =>
-      en ? `${written} / ${total} chaps` : `已存 ${written} 章 / 规划 ${total} 章`, // cjk-ok
+      en ? `${written} / ${total} nodes` : `画布 ${written} 章 / 规划 ${total} 章`, // cjk-ok
     addChapterBtn: en ? 'New Chapter' : '新建章节', // cjk-ok
     mergeCheckedBtn: (n: number) =>
       en ? `Merge ${n} Checked Chaps to Output` : `合并已勾选的 ${n} 章作为节点输出`, // cjk-ok
@@ -1863,8 +1952,8 @@ const ui = computed(() => {
     paragraphsCountLabel: (n: number) => (en ? `${n} paras` : `${n} 段`), // cjk-ok
     dialoguesCountLabel: (n: number) => (en ? `${n} lines` : `${n} 句对话`), // cjk-ok
     setAsOutputHint: en
-      ? 'Click to edit this chapter and set it as the active node output (out)'
-      : '点击切换编辑该章节，并将其设为节点当前输出（供下游创建剧本节点改编）', // cjk-ok
+      ? 'Click to switch Dive workbench to this chapter node'
+      : '点击切换至该章节节点的工作台', // cjk-ok
     moveUpHint: en ? 'Move chapter up' : '上移章节', // cjk-ok
     moveDownHint: en ? 'Move chapter down' : '下移章节', // cjk-ok
     duplicateHint: en ? 'Duplicate chapter' : '复制章节副本', // cjk-ok
@@ -1915,11 +2004,15 @@ const ui = computed(() => {
     selFixTrumpsBtn: en ? gp.polish.fixEn : gp.polish.fixZh,
     selRewriteHookBtn: en ? gp.polish.hookEn : gp.polish.hookZh,
     editorPlaceholder: (chap: number, words: number) =>
-      en
-        ? `Write or generate Chapter ${chap} (${words}+ words, 4-beat structure)…`
-        : `在此撰写或 AI 生成【第 ${chap} 章】正文（目标 ${words}+ 字，流派：${gp.labelZh}，四拍结构：${gp.beats.setup_endure.badgeZh} → ${gp.beats.encounter_growth.badgeZh} → ${gp.beats.villain_suppression_cliffhanger.badgeZh} → ${gp.beats.climax_reversal_slap.badgeZh}）…`, // cjk-ok
+      isOutlineModeNode.value
+        ? en
+          ? 'Write or generate the Novel World Bible, Character Roster, Volume Architecture, and Per-Chapter Detailed Outlines (Chapter 1: ..., Chapter 2: ...)…'
+          : `在此撰写或 AI 生成【核心世界观宪法 + 主要人物档案 + 分卷总纲 + 第1章/第2章逐章细纲】（流派：${gp.labelZh}，规划 ${totalChapters.value} 章，广播连入下游每一章节点自动按章号切片）…` // cjk-ok
+        : en
+          ? `Write or generate Chapter ${chap} (${words}+ words, 4-beat structure)…`
+          : `在此撰写或 AI 生成【第 ${chap} 章】正文（目标 ${words}+ 字，流派：${gp.labelZh}，四拍结构：${gp.beats.setup_endure.badgeZh} → ${gp.beats.encounter_growth.badgeZh} → ${gp.beats.villain_suppression_cliffhanger.badgeZh} → ${gp.beats.climax_reversal_slap.badgeZh}）…`, // cjk-ok
     tabPacingAndOutline: en ? 'Quota & QA' : '数值围栏 & 审计', // cjk-ok
-    tabArcPlan: en ? 'Arc Plan & Batch' : '幕次细纲 & 连写', // cjk-ok
+    tabArcPlan: en ? 'Arc Plan & Chain' : '幕次细纲 & 章节链', // cjk-ok
     tabMemoryPyramid: en ? '4-Tier Memory' : '四层记忆 (L1~L4)', // cjk-ok
     sliceCardTitle: (cur: number, tot: number) =>
       en
@@ -1961,16 +2054,16 @@ const ui = computed(() => {
         : `一键修正 ${cnt} 名已退场却异常复活的角色`, // cjk-ok
     arcSvgTitle: en ? 'Arc Power Envelope & Beat ECG Curve' : '本幕战力包络与爽点心电图 (点击跳章)', // cjk-ok
     arcSvgLegend: en ? 'Blue: Power / Orange: Villain' : '蓝:主角上限 / 橙:反派威胁', // cjk-ok
-    batchSerialTitle: en ? 'Batch Auto-Serializer (Multi-Chapter)' : '多章连续自动连载生成器', // cjk-ok
+    batchSerialTitle: en ? 'Markov Chapter Chain Spawner' : '画布马尔可夫章节链批量生成器', // cjk-ok
     batchRunningBadge: (rem: number) =>
       en ? `Serializing (${rem} left)…` : `连续连载中（剩余 ${rem} 章）…`, // cjk-ok
-    batchReadyBadge: en ? 'Stateful Loop' : '按幕次细纲自动接力', // cjk-ok
+    batchReadyBadge: en ? '3-Way Wired' : '自动串联三路输入', // cjk-ok
     batchSerialDesc: en
-      ? 'Automatically steps through consecutive chapters using the Arc Outline Plan, updating L2/L3/L4 memory after each chapter.'
-      : '按下方幕次分章细纲表，从当前章开始自动逐章生成正文，每写完一章自动结算更新 L2 状态账本与 L4 章末锚点并接力下一章。', // cjk-ok
-    batchCountPill: (cnt: number) => (en ? `${cnt} Chaps` : `连写 ${cnt} 章`), // cjk-ok
+      ? 'Spawns consecutive chapter nodes on the canvas in a Markov chain (Ch.t -> Ch.t+1) and wires each node to Novel Outline (in-outline) + Economy System (in-economy).'
+      : '按下方幕次分章细纲表，在画布上一键批量生成并串联后续章节节点（每章自动连接：上一章 out -> in、小说大纲 -> in-outline、经济系统 -> in-economy）。', // cjk-ok
+    batchCountPill: (cnt: number) => (en ? `+${cnt} Nodes` : `+${cnt} 章链`), // cjk-ok
     startBatchBtn: (cnt: number) =>
-      en ? `Auto-Serialize ${cnt} Chapters` : `连续自动连载 ${cnt} 章`, // cjk-ok
+      en ? `Spawn & Wire ${cnt} Chapter Nodes` : `在画布串联生成 ${cnt} 个章节节点`, // cjk-ok
     stopBatchBtn: en ? 'Stop Batch' : '停止连写', // cjk-ok
     arcPlanTableTitle: en ? 'Current Arc Chapter Outline Plan' : '当前冲突幕 · 分章细纲排期表', // cjk-ok
     arcPlanTableHint: en
@@ -1980,7 +2073,13 @@ const ui = computed(() => {
     runOutlineNowBtn: (ch: number) => (en ? `Gen Ch.${ch}` : `立即生成第${ch}章`), // cjk-ok
     modelSectionTitle: en ? 'Text Generation Model' : '小说创作大模型', // cjk-ok
     chapterOutlineTitle: (chap: number) =>
-      en ? `Chapter ${chap} Plot Outline & Prompt` : `第 ${chap} 章剧情细纲与写作指令`, // cjk-ok
+      isOutlineModeNode.value
+        ? en
+          ? 'Novel Outline & Per-Chapter Plan Prompt'
+          : '全书大纲与分章细纲生成指令' // cjk-ok
+        : en
+          ? `Chapter ${chap} Plot Outline & Prompt`
+          : `第 ${chap} 章剧情细纲与写作指令`, // cjk-ok
     instructionPlaceholder: en
       ? 'Enter specific plot beats, characters, or conflict requirements for this chapter…'
       : '输入本章专属剧情细纲（如出场反派、冲突地点、本章亮出的底牌与章末悬念钩子）…', // cjk-ok
@@ -2066,44 +2165,103 @@ function syncCurrentChapterTitleFromNode(): void {
   }
 }
 
+const editorDirty = ref(false)
+
 function loadFromNode(): void {
   const current = node.value
   if (!current) return
+  editorDirty.value = false
   displayName.value = current.title?.trim() || ''
   const rawText = current.params.text ?? ''
   localText.value = rawText.trim() === '…' ? '' : rawText
-  instruction.value = current.params.generateInstruction ?? ''
+  const isOutline = current.typeId === 'novel.outline' || current.params.novelNodeMode === 'outline'
+  rightTab.value = isOutline ? 'arcPlan' : 'pacing'
+
+  const upPrev = !isOutline ? upstreamPrevChapterNode.value : null
+  const upOutline = !isOutline ? upstreamOutlineNode.value : null
+
+  const storedInst = current.params.generateInstruction?.trim()
+  instruction.value =
+    storedInst || (isOutline ? defaultNovelOutlineUserPrompt(String(locale.value)) : '')
   const storedSys = current.params.generateSystemPrompt?.trim()
-  systemPrompt.value = storedSys || defaultNovelSystemPrompt(String(locale.value))
+  systemPrompt.value =
+    storedSys ||
+    (isOutline
+      ? defaultNovelOutlineSystemPrompt(String(locale.value))
+      : defaultNovelSystemPrompt(String(locale.value)))
 
-  novelGenre.value = isNovelGenreId(current.params.novelGenre)
-    ? current.params.novelGenre
-    : 'urban_reversal'
-  customStagesText.value = current.params.novelCustomStagesText ?? ''
-  customAxisProtagonist.value = current.params.novelCustomAxisProtagonist ?? ''
-  customAxisAntagonist.value = current.params.novelCustomAxisAntagonist ?? ''
-  customUnlockTerm.value = current.params.novelCustomUnlockTerm ?? ''
+  const resolvedGenre =
+    current.params.novelGenre || upPrev?.params.novelGenre || upOutline?.params.novelGenre
+  novelGenre.value = isNovelGenreId(resolvedGenre) ? resolvedGenre : 'urban_reversal'
+  customStagesText.value =
+    current.params.novelCustomStagesText ??
+    upPrev?.params.novelCustomStagesText ??
+    upOutline?.params.novelCustomStagesText ??
+    ''
+  customAxisProtagonist.value =
+    current.params.novelCustomAxisProtagonist ??
+    upPrev?.params.novelCustomAxisProtagonist ??
+    upOutline?.params.novelCustomAxisProtagonist ??
+    ''
+  customAxisAntagonist.value =
+    current.params.novelCustomAxisAntagonist ??
+    upPrev?.params.novelCustomAxisAntagonist ??
+    upOutline?.params.novelCustomAxisAntagonist ??
+    ''
+  customUnlockTerm.value =
+    current.params.novelCustomUnlockTerm ??
+    upPrev?.params.novelCustomUnlockTerm ??
+    upOutline?.params.novelCustomUnlockTerm ??
+    ''
 
-  totalChapters.value = Math.max(
-    1,
-    Math.min(5000, Math.round(Number(current.params.novelTotalChapters) || 800))
-  )
-  currentChapterCursor.value = Math.max(
-    1,
-    Math.min(totalChapters.value, Math.round(Number(current.params.novelCurrentChapter) || 1))
-  )
-  targetWords.value = Math.max(
-    1000,
-    Math.min(15000, Math.round(Number(current.params.novelTargetWords) || 3200))
-  )
+  const rawTotal =
+    Number(current.params.novelTotalChapters) ||
+    Number(upOutline?.params.novelTotalChapters) ||
+    Number(upPrev?.params.novelTotalChapters) ||
+    800
+  totalChapters.value = Math.max(1, Math.min(5000, Math.round(rawTotal)))
+
+  let resolvedChap = Math.round(Number(current.params.novelCurrentChapter) || 1)
+  if (!isOutline) {
+    const titleChap = inferExplicitNovelChapterNumber(current.title, undefined)
+    if (titleChap !== null) {
+      resolvedChap = titleChap
+    } else if (upPrev && resolvedChap <= 1) {
+      const prevChap =
+        inferExplicitNovelChapterNumber(upPrev.title, undefined) ??
+        Math.max(1, Math.round(Number(upPrev.params.novelCurrentChapter) || 1))
+      resolvedChap = prevChap + 1
+    }
+  }
+  currentChapterCursor.value = Math.max(1, Math.min(totalChapters.value, resolvedChap))
+
+  const rawTargetWords =
+    Number(current.params.novelTargetWords) ||
+    Number(upPrev?.params.novelTargetWords) ||
+    Number(upOutline?.params.novelTargetWords) ||
+    3200
+  targetWords.value = Math.max(1000, Math.min(15000, Math.round(rawTargetWords)))
   autoAdvanceChapter.value = current.params.novelAutoAdvanceChapter !== false
-  worldBible.value = current.params.novelWorldBible ?? ''
-  stateLedger.value = current.params.novelStateLedger ?? ''
-  rollingSummary.value = current.params.novelRollingSummary ?? ''
-  chapterHistoryJson.value = current.params.novelChapterHistoryJson ?? ''
 
-  // Parse or initialize character roster & foreshadowing pool
-  const rawRoster = current.params.novelCharacterRosterJson?.trim()
+  worldBible.value =
+    current.params.novelWorldBible?.trim() ||
+    upPrev?.params.novelWorldBible?.trim() ||
+    upOutline?.params.novelWorldBible?.trim() ||
+    ''
+  stateLedger.value =
+    current.params.novelStateLedger?.trim() || upPrev?.params.novelStateLedger?.trim() || ''
+  rollingSummary.value =
+    current.params.novelRollingSummary?.trim() || upPrev?.params.novelRollingSummary?.trim() || ''
+  chapterHistoryJson.value =
+    current.params.novelChapterHistoryJson?.trim() ||
+    upPrev?.params.novelChapterHistoryJson?.trim() ||
+    ''
+
+  // Parse or initialize character roster & foreshadowing pool (auto-inheriting from upstream chain)
+  const rawRoster =
+    current.params.novelCharacterRosterJson?.trim() ||
+    upPrev?.params.novelCharacterRosterJson?.trim() ||
+    upOutline?.params.novelCharacterRosterJson?.trim()
   if (rawRoster) {
     try {
       const parsed = JSON.parse(rawRoster) as MxNovelCharacterStatusEntry[]
@@ -2120,7 +2278,10 @@ function loadFromNode(): void {
     )
   }
 
-  const rawFs = current.params.novelForeshadowingJson?.trim()
+  const rawFs =
+    current.params.novelForeshadowingJson?.trim() ||
+    upPrev?.params.novelForeshadowingJson?.trim() ||
+    upOutline?.params.novelForeshadowingJson?.trim()
   if (rawFs) {
     try {
       const parsed = JSON.parse(rawFs) as MxNovelForeshadowingEntry[]
@@ -2144,13 +2305,14 @@ function loadFromNode(): void {
   selectedModelKey.value = preferred
 
   const existingGallery = current.params.generatedTexts ?? []
-  if (!localText.value.trim() && existingGallery.length > 0) {
+  if (!localText.value.trim() && existingGallery.length > 0 && current.params.selectedTextId) {
     const activeIdx = activeChapterIndex()
     const activeItem = activeIdx >= 0 ? existingGallery[activeIdx] : existingGallery[0]
     if (activeItem) {
       void loadGeneratedTextBody(activeItem).then((body) => {
         if (body.trim() && !localText.value.trim()) {
           localText.value = body.trim()
+          editorDirty.value = false
         }
       })
     }
@@ -2179,10 +2341,43 @@ watch(
       node.value?.params.novelRollingSummary,
       node.value?.params.novelChapterHistoryJson
     ] as const,
-  ([nextNodeText, , , nextCursor, nextTotal, nextBible, nextLedger, nextSummary, nextHistJson]) => {
+  (
+    [
+      nextNodeText,
+      nextSelectedId,
+      ,
+      nextCursor,
+      nextTotal,
+      nextBible,
+      nextLedger,
+      nextSummary,
+      nextHistJson
+    ],
+    prevTuple
+  ) => {
+    const prevNodeText = prevTuple?.[0]
+    const prevSelectedId = prevTuple?.[1]
     const normalized = (nextNodeText ?? '').trim() === '…' ? '' : (nextNodeText ?? '')
-    if (normalized && normalized !== localText.value) {
+    if (nextNodeText !== prevNodeText && normalized !== localText.value) {
       localText.value = normalized
+      editorDirty.value = false
+    } else if (nextSelectedId !== prevSelectedId) {
+      if (!nextSelectedId) {
+        if (!normalized) {
+          localText.value = ''
+          editorDirty.value = false
+        }
+      } else {
+        const matched = generatedTexts.value.find((item) => item.id === nextSelectedId)
+        if (matched) {
+          void loadGeneratedTextBody(matched).then((body) => {
+            if (body.trim()) {
+              localText.value = body.trim()
+              editorDirty.value = false
+            }
+          })
+        }
+      }
     }
     if (typeof nextTotal === 'number' && nextTotal >= 1) {
       totalChapters.value = nextTotal
@@ -2401,11 +2596,6 @@ function stepChapterCursor(delta: -1 | 1): void {
   }
 }
 
-function onAutoAdvanceToggle(checked: boolean): void {
-  autoAdvanceChapter.value = checked
-  persistGenerateConfig()
-}
-
 function syncRunOutputsAfterGeneratedTextsChange(
   items: StoredGeneratedText[],
   selectedTextId?: string,
@@ -2451,25 +2641,101 @@ function syncRunOutputsAfterGeneratedTextsChange(
   }
 }
 
+function buildCumulativeGalleryUpToCurrentChapter(currentBodyOverride?: string): {
+  items: StoredGeneratedText[]
+  currentItemId: string
+} {
+  const current = node.value
+  const curChap = Math.max(1, Math.floor(currentChapterCursor.value || 1))
+  const byChap = new Map<number, StoredGeneratedText>()
+  const parseItemChap = (title: string | undefined, fallbackChap: number): number => {
+    if (!title) return fallbackChap
+    const m = /第\s*(\d+)\s*(?:\/\s*\d+\s*)?章/.exec(title) || /Chapter\s*(\d+)/i.exec(title) // cjk-ok
+    return m && m[1] ? Number(m[1]) : fallbackChap
+  }
+
+  // 1. 收集画布章节链中早于本章（1 ~ curChap-1）的所有章节
+  for (const chainEntry of canvasChapterChainNodes.value) {
+    if (chainEntry.chapterNumber >= curChap && chainEntry.node.id !== current?.id) continue
+    const ancNode = chainEntry.node
+    for (const [idx, item] of (ancNode.params.generatedTexts ?? []).entries()) {
+      const chapNo = parseItemChap(item.title, idx + 1)
+      if (chapNo >= 1 && chapNo <= curChap) {
+        byChap.set(chapNo, { ...item })
+      }
+    }
+    if (ancNode.id !== current?.id && chainEntry.chapterNumber < curChap) {
+      const ancBody =
+        (ancNode.params.text ?? '').trim() === '…' ? '' : (ancNode.params.text ?? '').trim()
+      if (ancBody && !byChap.has(chainEntry.chapterNumber)) {
+        const rawTitle = ancNode.title?.trim() || `第${chainEntry.chapterNumber}章` // cjk-ok
+        const hasChapPrefix =
+          /第\s*\d+\s*(?:\/\s*\d+\s*)?章/.test(rawTitle) || /Chapter\s*\d+/i.test(rawTitle) // cjk-ok
+        byChap.set(chainEntry.chapterNumber, {
+          id: `chap:${chainEntry.chapterNumber}:${ancNode.id}`,
+          title: hasChapPrefix ? rawTitle : `第${chainEntry.chapterNumber}章：${rawTitle}`, // cjk-ok
+          text: ancBody,
+          createdAt: new Date().toISOString()
+        })
+      }
+    }
+  }
+
+  // 2. 合并当前节点已有的 generatedTexts（章号 <= curChap）
+  for (const [idx, item] of (current?.params.generatedTexts ?? []).entries()) {
+    const chapNo = parseItemChap(item.title, idx + 1)
+    if (chapNo >= 1 && chapNo <= curChap) {
+      byChap.set(chapNo, { ...item })
+    }
+  }
+
+  // 3. 写入或更新当前第 curChap 章
+  const curBody = (currentBodyOverride ?? localText.value).trim()
+  const existingCur = byChap.get(curChap)
+  const curItemId = existingCur?.id || `chap:${curChap}:${current?.id ?? 'self'}`
+  const rawCurTitle =
+    currentChapterTitle.value.trim() || existingCur?.title?.trim() || `第${curChap}章` // cjk-ok
+  const hasCurChapPrefix =
+    /第\s*\d+\s*(?:\/\s*\d+\s*)?章/.test(rawCurTitle) || /Chapter\s*\d+/i.test(rawCurTitle) // cjk-ok
+  if (curBody || existingCur) {
+    byChap.set(curChap, {
+      ...(existingCur ?? {}),
+      id: curItemId,
+      title: hasCurChapPrefix ? rawCurTitle : `第${curChap}章：${rawCurTitle}`, // cjk-ok
+      text: currentBodyOverride ?? localText.value,
+      createdAt: existingCur?.createdAt || new Date().toISOString()
+    })
+  }
+
+  const sortedItems = [...byChap.entries()].sort((a, b) => a[0] - b[0]).map(([, item]) => item)
+
+  return { items: sortedItems, currentItemId: curItemId }
+}
+
 let editorDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function onEditorInput(): void {
+  editorDirty.value = true
   if (editorDebounceTimer) clearTimeout(editorDebounceTimer)
   editorDebounceTimer = setTimeout(() => {
     persistNovelBody()
   }, 280)
 }
 
-function persistNovelBody(): void {
+function persistNovelBody(force?: boolean | Event): void {
   if (editorDebounceTimer) {
     clearTimeout(editorDebounceTimer)
     editorDebounceTimer = null
   }
+  if (force !== true && !editorDirty.value) return
   const current = node.value
   if (!current || !props.hostId) return
+  editorDirty.value = false
   const nextText = localText.value
   const list = [...(current.params.generatedTexts ?? [])]
   const selectedId = current.params.selectedTextId?.trim() || list[list.length - 1]?.id || ''
+  const selectedIdx = selectedId ? list.findIndex((item) => item.id === selectedId) : -1
+  const selectedItem = selectedIdx >= 0 ? list[selectedIdx] : undefined
 
   const nextHist = { ...parsedHistoryMap.value }
   if (nextText.trim()) {
@@ -2478,7 +2744,9 @@ function persistNovelBody(): void {
       .map((l) => l.trim())
       .filter(Boolean)
     const tailAnchor = cleanedLines.slice(-4).join('\n').slice(-550)
-    const chapNum = currentChapterCursor.value
+    const chapNum = selectedItem
+      ? extractChapterNumFromTitle(selectedItem.title, selectedIdx)
+      : currentChapterCursor.value
     nextHist[String(chapNum)] = {
       chapter: chapNum,
       title: currentChapterTitle.value.trim() || `第${chapNum}章`, // cjk-ok
@@ -2490,29 +2758,45 @@ function persistNovelBody(): void {
     chapterHistoryJson.value = JSON.stringify(nextHist)
   }
 
-  if (list.length > 0 && selectedId) {
-    const idx = list.findIndex((item) => item.id === selectedId)
-    if (idx >= 0) {
-      const prevItem = list[idx]!
-      const prevKnownText = (
-        resolvedFullChapterText.value[selectedId] ??
-        prevItem.text ??
-        ''
-      ).trim()
-      const trimmedNext = nextText.trim()
-      if (!trimmedNext && prevItem.relativePath?.trim() && !prevKnownText) {
-        return
-      }
-      const textChanged = prevKnownText !== trimmedNext
-      list[idx] = {
-        ...prevItem,
-        text: nextText,
-        ...(textChanged ? { relativePath: undefined } : {})
-      }
+  if (!isOutlineModeNode.value) {
+    const { items: cumulativeItems, currentItemId } =
+      buildCumulativeGalleryUpToCurrentChapter(nextText)
+    if (cumulativeItems.length > 0) {
       resolvedFullChapterText.value = {
         ...resolvedFullChapterText.value,
-        [selectedId]: trimmedNext
+        [currentItemId]: nextText.trim()
       }
+      syncRunOutputsAfterGeneratedTextsChange(cumulativeItems, currentItemId, nextText)
+      graphEditorHosts.updateNode(props.hostId, current.id, {
+        text: nextText,
+        generatedTexts: cumulativeItems,
+        selectedTextId: currentItemId,
+        novelChapterHistoryJson: chapterHistoryJson.value
+      })
+      graphEditorHosts.bumpRevision()
+      return
+    }
+  }
+
+  if (list.length > 0 && selectedId && selectedIdx >= 0 && selectedItem) {
+    const prevKnownText = (
+      resolvedFullChapterText.value[selectedId] ??
+      selectedItem.text ??
+      ''
+    ).trim()
+    const trimmedNext = nextText.trim()
+    if (!trimmedNext && selectedItem.relativePath?.trim() && !prevKnownText) {
+      return
+    }
+    const textChanged = Boolean(prevKnownText) && prevKnownText !== trimmedNext
+    list[selectedIdx] = {
+      ...selectedItem,
+      text: nextText,
+      ...(textChanged ? { relativePath: undefined } : {})
+    }
+    resolvedFullChapterText.value = {
+      ...resolvedFullChapterText.value,
+      [selectedId]: trimmedNext
     }
     syncRunOutputsAfterGeneratedTextsChange(list, selectedId)
     graphEditorHosts.updateNode(props.hostId, current.id, {
@@ -2589,6 +2873,7 @@ async function selectChapter(key: string, indexFallback?: number): Promise<void>
   const body = (await loadGeneratedTextBody(item)).trim()
   const nextText = body || item.text?.trim() || ''
   localText.value = nextText === '…' ? '' : nextText
+  editorDirty.value = false
   const dispTitle = chapterDisplayTitle(item, idx >= 0 ? idx : (indexFallback ?? 0))
   currentChapterTitle.value = dispTitle
   const chapNum = extractChapterNumFromTitle(dispTitle, idx >= 0 ? idx : 0)
@@ -2602,260 +2887,6 @@ async function selectChapter(key: string, indexFallback?: number): Promise<void>
   graphEditorHosts.bumpRevision()
 }
 
-function toggleChapterCheck(key: string): void {
-  if (checkedChapterKeys.value.includes(key)) {
-    checkedChapterKeys.value = checkedChapterKeys.value.filter((k) => k !== key)
-  } else {
-    checkedChapterKeys.value = [...checkedChapterKeys.value, key]
-  }
-}
-
-async function mergeCheckedChaptersToOutput(): Promise<void> {
-  persistNovelBody()
-  const current = node.value
-  if (!current || !props.hostId || checkedChapterKeys.value.length < 2) return
-  const pickedEntries = filteredChapterEntries.value
-    .filter((e) => checkedChapterKeys.value.includes(e.key))
-    .sort((a, b) => a.chapterNumber - b.chapterNumber)
-  if (pickedEntries.length < 2) return
-
-  const parts: string[] = []
-  for (const entry of pickedEntries) {
-    const body =
-      (await loadGeneratedTextBody(entry.item)).trim() ||
-      resolvedFullChapterText.value[entry.key] ||
-      entry.item.text ||
-      ''
-    if (body) {
-      parts.push(body)
-    }
-  }
-  const mergedText = parts.join('\n\n---\n\n')
-  if (!mergedText.trim()) return
-
-  const list = [...generatedTexts.value]
-  syncRunOutputsAfterGeneratedTextsChange(list, current.params.selectedTextId, mergedText)
-  const chapNums = pickedEntries.map((e) => `第${e.chapterNumber}章`).join(' + ') // cjk-ok
-  mergedOutputToast.value = isEn.value
-    ? `✓ Merged ${pickedEntries.length} chapters into node output (out)`
-    : `✓ 已将【${chapNums}】合并写入节点 out 输出端口，可直接推送给下游剧本节点！` // cjk-ok
-  setTimeout(() => {
-    mergedOutputToast.value = ''
-  }, 3200)
-}
-
-function pushAndOpenDownstreamScreenplay(): void {
-  persistNovelBody()
-  const spNode = downstreamScreenplayNode.value
-  if (!spNode || !props.hostId) return
-
-  // Ensure current novel node output is fresh in graphRunHosts
-  const list = [...generatedTexts.value]
-  if (list.length > 0) {
-    syncRunOutputsAfterGeneratedTextsChange(list, node.value?.params.selectedTextId)
-  } else if (localText.value.trim() && node.value) {
-    const host = graphRunHosts.get(props.hostId)
-    if (host) {
-      host.runStates[node.value.id] = {
-        status: 'done',
-        outputs: {
-          out: { kind: 'text', text: localText.value }
-        }
-      }
-    }
-  }
-
-  const meta = {
-    viewId: 'screenplay.workbench' as const,
-    hostId: props.hostId,
-    nodeId: spNode.id
-  }
-  const spTitle = spNode.title?.trim() || '创建剧本' // cjk-ok
-  if (editorDive) {
-    void editorDive.diveView(meta, spTitle)
-    return
-  }
-  const rootKey = workspace.activeDiveRootKey?.trim()
-  if (rootKey) {
-    workspace.diveIntoView(rootKey, meta, spTitle)
-  }
-}
-
-function addNewChapter(): void {
-  persistNovelBody()
-  const current = node.value
-  if (!current || !props.hostId) return
-  const now = new Date().toISOString()
-  const baseStamp = Date.now()
-  const list = [...generatedTexts.value]
-
-  if (list.length === 0 && localText.value.trim()) {
-    const ch1Title = currentChapterTitle.value.trim() || ui.value.defaultChapterTitle(1)
-    list.push({
-      id: `chap:${baseStamp}:1`,
-      title: ch1Title,
-      text: localText.value.trim(),
-      createdAt: now
-    })
-  }
-
-  const nextIndex = list.length + 1
-  const newId = `chap:${baseStamp}:${nextIndex}`
-  const newTitle = isEn.value ? `Chapter ${nextIndex}: New Chapter` : `第${nextIndex}章：新章节` // cjk-ok
-  const newBody = `# ${newTitle}\n\n`
-
-  list.push({
-    id: newId,
-    title: newTitle,
-    text: newBody,
-    createdAt: now
-  })
-
-  localText.value = newBody
-  currentChapterTitle.value = newTitle
-  currentChapterCursor.value = Math.min(totalChapters.value, nextIndex)
-  syncRunOutputsAfterGeneratedTextsChange(list, newId)
-  graphEditorHosts.updateNode(props.hostId, current.id, {
-    generatedTexts: list,
-    selectedTextId: newId,
-    text: newBody,
-    novelCurrentChapter: currentChapterCursor.value
-  })
-  graphEditorHosts.bumpRevision()
-}
-
-function duplicateChapter(index: number): void {
-  persistNovelBody()
-  const current = node.value
-  if (!current || !props.hostId) return
-  const list = [...generatedTexts.value]
-  const source = list[index]
-  if (!source) return
-  const key = source.id || `index:${index}`
-  const sourceBody = resolvedFullChapterText.value[key] || source.text || localText.value
-  const newId = `chap:${Date.now()}:copy`
-  const copyTitle = `${chapterDisplayTitle(source, index)} (Copy)`
-  const copyItem: StoredGeneratedText = {
-    id: newId,
-    title: copyTitle,
-    text: sourceBody,
-    createdAt: new Date().toISOString()
-  }
-  list.splice(index + 1, 0, copyItem)
-  localText.value = sourceBody
-  currentChapterTitle.value = copyTitle
-  syncRunOutputsAfterGeneratedTextsChange(list, newId)
-  graphEditorHosts.updateNode(props.hostId, current.id, {
-    generatedTexts: list,
-    selectedTextId: newId,
-    text: sourceBody
-  })
-  graphEditorHosts.bumpRevision()
-}
-
-function moveChapter(index: number, delta: -1 | 1): void {
-  const current = node.value
-  if (!current || !props.hostId) return
-  const list = [...generatedTexts.value]
-  const targetIndex = index + delta
-  if (targetIndex < 0 || targetIndex >= list.length) return
-  const [moved] = list.splice(index, 1)
-  if (!moved) return
-  list.splice(targetIndex, 0, moved)
-  const selectedId = current.params.selectedTextId || moved.id || ''
-  syncRunOutputsAfterGeneratedTextsChange(list, selectedId)
-  graphEditorHosts.updateNode(props.hostId, current.id, {
-    generatedTexts: list
-  })
-  graphEditorHosts.bumpRevision()
-}
-
-function removeGeneratedText(textId: string | undefined): void {
-  const current = node.value
-  if (!current || !props.hostId || !textId) return
-  const removed = (current.params.generatedTexts ?? []).find((item) => item.id === textId)
-  const next = (current.params.generatedTexts ?? []).filter((item) => item.id !== textId)
-  const nextSelected =
-    current.params.selectedTextId === textId
-      ? next[next.length - 1]?.id || ''
-      : current.params.selectedTextId || next[next.length - 1]?.id || ''
-  const latest = next.find((item) => item.id === nextSelected) || next[next.length - 1]
-  const nextBody = latest?.text?.trim()
-    ? latest.text
-    : latest?.id
-      ? resolvedFullChapterText.value[latest.id] || ''
-      : ''
-  localText.value = nextBody
-  syncRunOutputsAfterGeneratedTextsChange(next, nextSelected)
-  graphEditorHosts.updateNode(props.hostId, current.id, {
-    generatedTexts: next,
-    selectedTextId: nextSelected,
-    text: nextBody
-  })
-  graphEditorHosts.bumpRevision()
-
-  const relativePath = removed?.relativePath?.trim()
-  if (relativePath) {
-    invalidateAssetUrlCache(relativePath)
-    void window.studio.deleteGraphRunMedia(relativePath).catch((err) => {
-      console.warn('[EditorDiveNovelView] delete graph text failed', relativePath, err)
-    })
-  }
-}
-
-function handleSplitChapters(): void {
-  const current = node.value
-  if (!current || !props.hostId || !localText.value.trim()) return
-  const raw = localText.value.replace(/\r\n/g, '\n')
-  const lines = raw.split('\n')
-
-  const headerIndices: Array<{ lineIdx: number; title: string }> = []
-  const chapHeaderRe = /^(?:#+\s*)?(第\s*\d+\s*(?:\/\s*\d+\s*)?章[^\n]*|Chapter\s+\d+[^\n]*)$/i // cjk-ok
-  lines.forEach((line, idx) => {
-    const trimmed = line.trim()
-    const m = chapHeaderRe.exec(trimmed)
-    if (m) {
-      headerIndices.push({ lineIdx: idx, title: m[1]!.trim() })
-    }
-  })
-
-  if (headerIndices.length < 2) return
-
-  const sharedPreamble = lines.slice(0, headerIndices[0]!.lineIdx).join('\n').trim()
-  const now = new Date().toISOString()
-  const stamp = Date.now()
-
-  const nextList: StoredGeneratedText[] = headerIndices.map((hdr, idx) => {
-    const endLine = idx + 1 < headerIndices.length ? headerIndices[idx + 1]!.lineIdx : lines.length
-    const chapBody = lines.slice(hdr.lineIdx, endLine).join('\n').trim()
-    const fullText = sharedPreamble ? `${sharedPreamble}\n\n${chapBody}` : chapBody
-    return {
-      id: `chap:${stamp}:${idx + 1}`,
-      title: hdr.title,
-      text: fullText,
-      createdAt: now
-    }
-  })
-
-  const first = nextList[0]!
-  localText.value = first.text
-  currentChapterTitle.value = first.title || ''
-  currentChapterCursor.value = 1
-  syncRunOutputsAfterGeneratedTextsChange(nextList, first.id)
-  graphEditorHosts.updateNode(props.hostId, current.id, {
-    generatedTexts: nextList,
-    selectedTextId: first.id,
-    text: first.text,
-    novelCurrentChapter: 1
-  })
-  graphEditorHosts.bumpRevision()
-
-  splitDoneCount.value = nextList.length
-  setTimeout(() => {
-    splitDoneCount.value = 0
-  }, 2200)
-}
-
 function triggerGenerateCurrentChapter(): void {
   persistNovelBody()
   persistGenerateConfig()
@@ -2863,94 +2894,6 @@ function triggerGenerateCurrentChapter(): void {
   if (hasInPort.value && !blocked.value && runStatus.value !== 'running') {
     toggleRun()
   }
-}
-
-function triggerAiNextChapter(): void {
-  persistNovelBody()
-  const current = node.value
-  if (!current || !props.hostId) return
-
-  const list = [...generatedTexts.value]
-  if (list.length === 0 && localText.value.trim()) {
-    const firstId = `chap:${Date.now()}:1`
-    const firstItem: StoredGeneratedText = {
-      id: firstId,
-      title: currentChapterTitle.value.trim() || ui.value.defaultChapterTitle(1),
-      text: localText.value,
-      createdAt: new Date().toISOString()
-    }
-    graphEditorHosts.updateNode(props.hostId, current.id, {
-      generatedTexts: [firstItem],
-      selectedTextId: firstId
-    })
-  }
-
-  const maxExistingChap = filteredChapterEntries.value.reduce(
-    (acc, e) => Math.max(acc, e.chapterNumber),
-    0
-  )
-  const nextChap = Math.min(
-    totalChapters.value,
-    Math.max(currentChapterCursor.value, maxExistingChap + 1)
-  )
-  currentChapterCursor.value = nextChap
-  const slice = exportMxChapterNumericalSlice(
-    activeWorkbench.value,
-    nextChap,
-    totalChapters.value,
-    activeGenreProfile.value
-  )
-  const gp = activeGenreProfile.value
-  const allowedStr = slice.allowedTrumpCards.slice(0, 3).join('、') || `当前准入${gp.unlockTermZh}` // cjk-ok
-  instruction.value = isEn.value
-    ? `Write Chapter ${nextChap} / ${totalChapters.value} (${targetWords.value}+ words, Genre: ${gp.labelEn}): seamlessly continue from Chapter ${Math.max(1, nextChap - 1)}'s ending hook. Pacing role: ${slice.chapterBeatType}. Keep ${gp.stageTermEn} within ${slice.realmStageLabelZh} (${gp.protagonistAxisEn} ${slice.powerCeiling}), use allowed ${gp.unlockTermEn} (${allowedStr}), and end with a strong cliffhanger.`
-    : `创作第 ${nextChap} / ${totalChapters.value} 章（流派：${gp.labelZh}，单章满 ${targetWords.value}+ 字）：第一段无缝咬合第 ${Math.max(1, nextChap - 1)} 章末尾悬念钩子。本章所属【${slice.volumeTitleZh}】，戏剧节拍定位为「${slice.chapterBeatLabelZh}」；主角当前${gp.stageTermZh}锁死在【${slice.realmStageLabelZh}】（${gp.protagonistAxisZh} ${slice.powerCeiling} vs ${gp.antagonistAxisZh} ${slice.villainPressure}），仅准许动用${gp.unlockTermZh}【${allowedStr}】，章末留高能断章悬念钩子。` // cjk-ok
-  persistGenerateConfig()
-  persistMemoryFields()
-  if (hasInPort.value && !blocked.value && runStatus.value !== 'running') {
-    toggleRun()
-  }
-}
-
-function applyArcPlanItem(item: MxChapterOutlinePlanItem, runImmediately: boolean): void {
-  persistNovelBody()
-  currentChapterCursor.value = item.chapter
-  instruction.value = isEn.value ? item.outlinePromptEn : item.outlinePromptZh
-  persistGenerateConfig()
-  persistMemoryFields()
-  if (runImmediately) {
-    if (hasInPort.value && !blocked.value && runStatus.value !== 'running') {
-      toggleRun()
-    }
-  } else {
-    rightTab.value = 'pacing'
-  }
-}
-
-function startBatchAutoSerialize(): void {
-  if (isGraphRunning.value || runStatus.value === 'running') return
-  persistNovelBody()
-  autoAdvanceChapter.value = true
-  batchRemainingCount.value = Math.max(1, Math.min(10, batchChapterCount.value))
-  batchRunning.value = true
-
-  const curChap = currentChapterCursor.value
-  const planMatch = arcOutlinePlan.value.find((p) => p.chapter === curChap)
-  if (planMatch) {
-    instruction.value = isEn.value ? planMatch.outlinePromptEn : planMatch.outlinePromptZh
-  }
-  persistGenerateConfig()
-  persistMemoryFields()
-  if (hasInPort.value && !blocked.value) {
-    toggleRun()
-  } else {
-    batchRunning.value = false
-  }
-}
-
-function stopBatchAutoSerialize(): void {
-  batchRunning.value = false
-  batchRemainingCount.value = 0
 }
 
 function fixLeakedLockedTrumpsInPlace(): void {
@@ -2964,7 +2907,7 @@ function fixLeakedLockedTrumpsInPlace(): void {
     }
   }
   localText.value = updated
-  persistNovelBody()
+  persistNovelBody(true)
 }
 
 function updateSelectionRange(): void {
@@ -3027,7 +2970,7 @@ function boostSelectedPassage(
   }
 
   localText.value = `${before}${replaced}${after}`
-  persistNovelBody()
+  persistNovelBody(true)
   void nextTick(() => {
     el.focus()
     el.setSelectionRange(start, start + replaced.length)
@@ -3149,157 +3092,12 @@ function refreshStateLedgerFromCurrent(): void {
   persistMemoryFields()
 }
 
-function syncPrevTailAnchorFromPreviousChapter(): void {
-  const prevChap = currentChapterCursor.value - 1
-  if (prevChap < 1) return
-  const matchEntry = filteredChapterEntries.value.find((e) => e.chapterNumber === prevChap)
-  if (!matchEntry) return
-  const full = resolvedFullChapterText.value[matchEntry.key] ?? matchEntry.item.text ?? ''
-  if (!full.trim()) return
-  const cleanedLines = full
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean)
-  const tailAnchor = cleanedLines.slice(-4).join('\n').slice(-550)
-  const nextHist = { ...parsedHistoryMap.value }
-  nextHist[String(prevChap)] = {
-    chapter: prevChap,
-    title: matchEntry.displayTitle,
-    wordCount: full.replace(/\s+/g, '').length,
-    summary: cleanedLines[cleanedLines.length - 1]?.slice(-100) || '',
-    tailAnchor,
-    updatedAt: new Date().toISOString()
-  }
-  chapterHistoryJson.value = JSON.stringify(nextHist)
-  persistMemoryFields()
-}
-
-async function switchToPeerNodeDive(
-  meta: {
-    viewId: 'game.workbench' | 'gameSystem.workbench' | 'screenplay.workbench'
-    hostId: string
-    nodeId: string
-  },
-  title: string
-): Promise<void> {
-  workspace.selectGraphNode(meta.nodeId, meta.hostId)
-  if (editorDive) {
-    const idx = editorDive.frames.findIndex((f) => f.key === props.frameKey)
-    await editorDive.popTo(idx <= 0 ? -1 : idx - 1)
-    await editorDive.diveView(meta, title)
-    return
-  }
-  const rootKey = workspace.activeDiveRootKey?.trim()
-  if (rootKey) {
-    workspace.divePopTo(rootKey, -1)
-    workspace.diveIntoView(rootKey, meta, title)
-  }
-}
-
-function openUpstreamEconomyWorkbench(): void {
-  const cur = node.value
-  if (!cur || !props.hostId) return
-  let econ = upstreamEconomyNode.value
-  if (!econ) {
-    const newId = graphEditorHosts.addNode(props.hostId, {
-      typeId: 'game.economy',
-      title: isEn.value ? 'Economy & Numerical System' : '经济系统', // cjk-ok
-      position: {
-        x: Math.max(40, (cur.position?.x ?? 400) - 380),
-        y: cur.position?.y ?? 200
-      }
-    })
-    if (newId) {
-      econ = graphEditorHosts.getNode(props.hostId, newId)
-    }
-  }
-  if (!econ) return
-  const hasEdge = (graphEditorHosts.getDocument(props.hostId)?.edges ?? []).some(
-    (e) => e.source === econ!.id && e.target === cur.id
-  )
-  if (!hasEdge) {
-    graphEditorHosts.connectNodes(props.hostId, econ.id, cur.id, 'out-text', 'in')
-  }
-  const meta = {
-    viewId: 'game.workbench' as const,
-    hostId: props.hostId,
-    nodeId: econ.id
-  }
-  const econTitle = econ.title?.trim() || '经济系统' // cjk-ok
-  switchToPeerNodeDive(meta, econTitle)
-}
-
-function pushAndOpenDownstreamGameSystem(): void {
-  flushAll()
-  const cur = node.value
-  if (!cur || !props.hostId) return
-  const doc = graphEditorHosts.getDocument(props.hostId)
-  let gsNode: GraphNode | null = null
-  if (doc?.edges) {
-    for (const edge of doc.edges) {
-      if (edge.source === cur.id) {
-        const tgt = graphEditorHosts.getNode(props.hostId, edge.target)
-        if (tgt?.typeId === 'asset.gameSystem') {
-          gsNode = tgt
-          break
-        }
-      }
-    }
-  }
-  if (!gsNode) {
-    gsNode = graphEditorHosts.findNode(props.hostId, (n) => n.typeId === 'asset.gameSystem')
-  }
-  if (!gsNode) {
-    const linkSources: { nodeId: string; portId?: string }[] = [{ nodeId: cur.id, portId: 'out' }]
-    if (upstreamEconomyNode.value) {
-      linkSources.unshift({ nodeId: upstreamEconomyNode.value.id, portId: 'out-text' })
-    }
-    const newId = graphEditorHosts.addNode(props.hostId, {
-      typeId: 'asset.gameSystem',
-      title: isEn.value ? 'Game System Plan' : '策划案生成', // cjk-ok
-      position: {
-        x: (cur.position?.x ?? 400) + 380,
-        y: (cur.position?.y ?? 200) + 120
-      },
-      linkFrom: linkSources
-    })
-    if (newId) {
-      gsNode = graphEditorHosts.getNode(props.hostId, newId)
-    }
-  } else {
-    const edges = graphEditorHosts.getDocument(props.hostId)?.edges ?? []
-    if (!edges.some((e) => e.source === cur.id && e.target === gsNode!.id)) {
-      graphEditorHosts.connectNodes(props.hostId, cur.id, gsNode.id, 'out', 'in')
-    }
-    if (
-      upstreamEconomyNode.value &&
-      !edges.some((e) => e.source === upstreamEconomyNode.value!.id && e.target === gsNode!.id)
-    ) {
-      graphEditorHosts.connectNodes(
-        props.hostId,
-        upstreamEconomyNode.value.id,
-        gsNode.id,
-        'out-text',
-        'in'
-      )
-    }
-  }
-  if (!gsNode) return
-  const meta = {
-    viewId: 'gameSystem.workbench' as const,
-    hostId: props.hostId,
-    nodeId: gsNode.id
-  }
-  const gsTitle = gsNode.title?.trim() || (isEn.value ? 'Game System Plan' : '策划案生成') // cjk-ok
-  switchToPeerNodeDive(meta, gsTitle)
-}
-
 function insertAtCursorOrAppend(snippet: string): void {
   const el = editorTextareaRef.value
   const base = localText.value
   if (!base.trim() || base.trim() === '…') {
     localText.value = snippet.trimStart()
-    persistNovelBody()
+    persistNovelBody(true)
     return
   }
   if (el && typeof el.selectionStart === 'number') {
@@ -3312,7 +3110,7 @@ function insertAtCursorOrAppend(snippet: string): void {
     const suffix = after.length > 0 && !after.startsWith('\n') ? '\n\n' : ''
     const inserted = `${prefix}${cleanSnippet}${suffix}`
     localText.value = `${before}${inserted}${after}`
-    persistNovelBody()
+    persistNovelBody(true)
     void nextTick(() => {
       el.focus()
       const nextPos = start + inserted.length
@@ -3321,7 +3119,7 @@ function insertAtCursorOrAppend(snippet: string): void {
     return
   }
   localText.value = `${base.trimEnd()}\n\n${snippet.trimStart()}`
-  persistNovelBody()
+  persistNovelBody(true)
 }
 
 function insertCharacterProfileBlock(): void {
@@ -3340,7 +3138,7 @@ function insertCharacterProfileBlock(): void {
   } else {
     localText.value = `${snippet}\n\n${localText.value.trimStart()}`
   }
-  persistNovelBody()
+  persistNovelBody(true)
 }
 
 function insertBeatMarker(beatIndex: 1 | 2 | 3 | 4): void {
@@ -3379,7 +3177,7 @@ function formatNovelManuscript(): void {
     formatted.push(line)
   }
   localText.value = formatted.join('\n').trim()
-  persistNovelBody()
+  persistNovelBody(true)
   formatFlash.value = true
   setTimeout(() => {
     formatFlash.value = false
@@ -3413,7 +3211,7 @@ function fixRevivedCharactersInPlace(): void {
     }
   }
   localText.value = updated
-  persistNovelBody()
+  persistNovelBody(true)
 }
 
 function seedRosterAndForeshadowing(): void {
@@ -3513,77 +3311,6 @@ function injectForeshadowingPayoffIntoInstruction(item: MxNovelForeshadowingEntr
   rightTab.value = 'pacing'
 }
 
-function refreshScreenplayPreviewFromNovel(): void {
-  const hero = characterRoster.value.find((c) => c.faction === 'protagonist')?.name
-  const foe = characterRoster.value.find((c) => c.faction === 'villain')?.name
-  screenplayPreviewDraft.value = convertNovelChapterToScreenplayPreview(localText.value, {
-    chapterIndex: currentChapterCursor.value,
-    chapterTitle: currentChapterTitle.value,
-    slice: chapterSlice.value,
-    protagonistName: hero || activeGenreProfile.value.roster[0]?.name,
-    antagonistName: foe
-  })
-}
-
-function toggleDualScreenplayPreview(): void {
-  dualScreenplayPreviewOpen.value = !dualScreenplayPreviewOpen.value
-  if (dualScreenplayPreviewOpen.value) {
-    refreshScreenplayPreviewFromNovel()
-  }
-}
-
-watch(
-  () => [localText.value, currentChapterCursor.value] as const,
-  () => {
-    if (dualScreenplayPreviewOpen.value) {
-      refreshScreenplayPreviewFromNovel()
-    }
-  }
-)
-
-function syncDualPreviewToDownstreamScreenplay(): void {
-  const spNode = downstreamScreenplayNode.value
-  if (!spNode || !props.hostId) return
-  if (!screenplayPreviewDraft.value.trim()) {
-    refreshScreenplayPreviewFromNovel()
-  }
-  const adapted = screenplayPreviewDraft.value.trim()
-  if (!adapted) return
-
-  const epTitle = `第${currentChapterCursor.value}集：${currentChapterTitle.value.replace(/^第\s*\d+\s*章[:：]?\s*/, '').trim() || '短剧分场剧本'}` // cjk-ok
-  const existing = [...(spNode.params.generatedTexts ?? [])]
-  const newId = `sp:${Date.now()}:${currentChapterCursor.value}`
-  existing.push({
-    id: newId,
-    title: epTitle,
-    text: adapted,
-    createdAt: new Date().toISOString()
-  })
-
-  graphEditorHosts.updateNode(props.hostId, spNode.id, {
-    text: adapted,
-    generatedTexts: existing,
-    selectedTextId: newId
-  })
-  const host = graphRunHosts.get(props.hostId)
-  if (host) {
-    const prev = host.runStates[spNode.id] ?? { status: 'done' as const }
-    host.runStates[spNode.id] = {
-      ...prev,
-      status: 'done',
-      outputs: {
-        ...(prev.outputs ?? {}),
-        out: { kind: 'text', text: adapted, id: newId }
-      }
-    }
-  }
-  graphEditorHosts.bumpRevision()
-  dualSpSyncedFlash.value = true
-  setTimeout(() => {
-    dualSpSyncedFlash.value = false
-  }, 2200)
-}
-
 async function exportFullBookAnthology(): Promise<void> {
   persistNovelBody()
   persistMemoryFields()
@@ -3591,22 +3318,28 @@ async function exportFullBookAnthology(): Promise<void> {
     displayName.value.trim() ||
     (isEn.value ? 'Serialized_Novel_Anthology' : '潜龙出渊_全书连载合集') // cjk-ok
 
-  const sortedEntries = [...filteredChapterEntries.value].sort(
-    (a, b) => a.chapterNumber - b.chapterNumber
-  )
   const chapterBlocks: string[] = []
-  if (sortedEntries.length > 0) {
-    for (const entry of sortedEntries) {
-      const body =
-        (await loadGeneratedTextBody(entry.item)).trim() ||
-        resolvedFullChapterText.value[entry.key] ||
-        entry.item.text ||
-        ''
+  if (canvasChapterChainNodes.value.length > 0) {
+    for (const chainEntry of canvasChapterChainNodes.value) {
+      const n = chainEntry.node
+      let body =
+        n.id === node.value?.id
+          ? localText.value.trim()
+          : (n.params.text ?? '').trim() === '…'
+            ? ''
+            : (n.params.text ?? '').trim()
+      if (!body && n.params.generatedTexts?.length) {
+        const lastItem = n.params.generatedTexts[n.params.generatedTexts.length - 1]
+        if (lastItem) {
+          body = (await loadGeneratedTextBody(lastItem)).trim() || lastItem.text?.trim() || ''
+        }
+      }
       if (body) {
-        chapterBlocks.push(`## ${entry.displayTitle}\n\n${body}`)
+        chapterBlocks.push(`## ${chainEntry.displayTitle}\n\n${body}`)
       }
     }
-  } else if (localText.value.trim()) {
+  }
+  if (chapterBlocks.length === 0 && localText.value.trim()) {
     chapterBlocks.push(
       `## ${currentChapterTitle.value.trim() || `第${currentChapterCursor.value}章`}\n\n${localText.value.trim()}` // cjk-ok
     )
@@ -3622,7 +3355,7 @@ async function exportFullBookAnthology(): Promise<void> {
 
   const fullMarkdown = [
     `# 《${bookTitle}》全书设定与连载合集`, // cjk-ok
-    `> 动态规划总章数：${totalChapters.value} 章 | 已完成章节：${Math.max(1, sortedEntries.length)} 章 | 累计总字数：${totalBookWordCount.value} 字`, // cjk-ok
+    `> 动态规划总章数：${totalChapters.value} 章 | 已完成章节：${Math.max(1, chapterBlocks.length)} 章 | 累计总字数：${totalBookWordCount.value} 字`, // cjk-ok
     ``,
     `## 一、L1 恒定世界观与力量体系宪法`, // cjk-ok
     worldBible.value.trim() || '（默认绑定经济系统数值工作台）', // cjk-ok
@@ -5154,5 +4887,103 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
   grid-template-columns: 1fr auto;
   gap: 6px;
   align-items: center;
+}
+
+.markov-ports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.markov-port-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.port-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.port-tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(56, 189, 248, 0.16);
+  color: #7dd3fc;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+}
+
+.port-tag.port-outline {
+  background: rgba(168, 85, 247, 0.18);
+  color: #d8b4fe;
+  border-color: rgba(168, 85, 247, 0.36);
+}
+
+.port-tag.port-econ {
+  background: rgba(245, 158, 11, 0.16);
+  color: #fcd34d;
+  border-color: rgba(245, 158, 11, 0.36);
+}
+
+.port-tag.port-out {
+  background: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.36);
+}
+
+.port-tag.port-out-all {
+  background: rgba(56, 189, 248, 0.18);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.42);
+}
+
+.port-target-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.port-target-name.muted {
+  font-weight: 400;
+  color: #64748b;
+}
+
+.upstream-slice-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.upstream-slice-card .port-item-left {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.upstream-slice-card .port-target-name {
+  flex: 1;
 }
 </style>

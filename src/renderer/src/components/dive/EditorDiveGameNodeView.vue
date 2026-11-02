@@ -6,6 +6,12 @@
       :host-id="hostId"
       @close="onClose"
     />
+    <NumericalStudio
+      v-else-if="node.typeId === 'game.numerical'"
+      :node="node"
+      :host-id="hostId"
+      @close="onClose"
+    />
     <template v-else>
       <div class="workbench-body">
         <!-- Left Parameter Sidebar -->
@@ -4929,6 +4935,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import MachinationsStudio from './machinations/MachinationsStudio.vue'
+import NumericalStudio from './machinations/NumericalStudio.vue'
 import {
   analyzeAudioWaveformAndTrim,
   analyzeLevelConnectivityAndPacing,

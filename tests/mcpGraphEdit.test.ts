@@ -727,7 +727,7 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
     expect(res.warnings).toEqual([])
     expect(
       res.graph.edges.map((e) => `${e.source}:${e.sourcePort}->${e.target}:${e.targetPort}`)
-    ).toEqual(['brief-node:out->econ-node:in', 'econ-node:out-text->novel-main:in'])
+    ).toEqual(['brief-node:out->econ-node:in', 'econ-node:out-text->novel-main:in-economy'])
     const novel = res.graph.nodes.find((n) => n.id === 'novel-main')
     expect(novel?.params?.novelGenre).toBe('scifi_apocalypse')
     expect(novel?.params?.novelTotalChapters).toBe(868)
@@ -755,8 +755,153 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
       step1.graph.edges.map((e) => `${e.source}:${e.sourcePort}->${e.target}:${e.targetPort}`)
     ).toEqual([
       'n-idea:out->n-concept:in',
-      'n-concept:out->n-outline:in',
-      'n-outline:out->n-serial:in'
+      'n-concept:out->n-outline:in-outline',
+      'n-outline:out->n-serial:in-outline'
     ])
+  })
+
+  it('auto-infers novelNodeMode, chapter numbers from titles/edges, and clears stale selectedTextId when advancing chapters', () => {
+    const emptyGraph = { version: 1 as const, nodes: [], edges: [] }
+    const res = applyGraphEditOps(emptyGraph, [
+      {
+        op: 'node_upsert',
+        nodeId: 'n-outline',
+        typeId: 'asset.novel',
+        title: '《熵债》868章分卷总纲',
+        params: { genre: 'scifi_apocalypse', totalChapters: 868 }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'n-ch1',
+        typeId: 'asset.novel',
+        title: '《熵债》第1章：灰区钟摆',
+        params: { genre: 'scifi_apocalypse', totalChapters: 868 }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'n-ch2',
+        typeId: 'asset.novel',
+        title: '《熵债》续写下一章',
+        params: { genre: 'scifi_apocalypse', totalChapters: 868 }
+      },
+      { op: 'edge_connect', from: 'n-outline', to: 'n-ch1' },
+      { op: 'edge_connect', from: 'n-ch1', to: 'n-ch2' }
+    ])
+
+    const outline = res.graph.nodes.find((n) => n.id === 'n-outline')
+    const ch1 = res.graph.nodes.find((n) => n.id === 'n-ch1')
+    const ch2 = res.graph.nodes.find((n) => n.id === 'n-ch2')
+    expect(outline?.params?.novelNodeMode).toBe('outline')
+    expect(ch1?.params?.novelNodeMode).toBe('chapter')
+    expect(ch1?.params?.novelCurrentChapter).toBe(1)
+    expect(ch1?.params?.novelAutoAdvanceChapter).toBe(false)
+    expect(ch2?.params?.novelNodeMode).toBe('chapter')
+    expect(ch2?.params?.novelCurrentChapter).toBe(2)
+    expect(ch2?.params?.novelAutoAdvanceChapter).toBe(false)
+
+    // Simulate single-node chapter advancement clearing stale selectedTextId
+    const singleGraph = {
+      version: 1 as const,
+      nodes: [
+        {
+          id: 'n-single',
+          typeId: 'asset.novel',
+          title: '《熵债》正式连载',
+          position: { x: 0, y: 0 },
+          params: {
+            novelCurrentChapter: 2,
+            selectedTextId: 'ntxt-ch2',
+            text: '# 第2/868章 旧正文',
+            generatedTexts: [
+              { id: 'ntxt-ch1', title: '# 第1/868章 第一章', text: '...' },
+              { id: 'ntxt-ch2', title: '# 第2/868章 第二章', text: '...' }
+            ]
+          }
+        }
+      ],
+      edges: []
+    }
+    const updated = applyGraphEditOps(singleGraph, [
+      {
+        op: 'node_update',
+        nodeId: 'n-single',
+        params: {
+          novelCurrentChapter: 3,
+          prompt: '撰写第3章正文'
+        }
+      }
+    ])
+    const singleNode = updated.graph.nodes[0]
+    expect(singleNode.params.novelCurrentChapter).toBe(3)
+    expect(singleNode.params.selectedTextId).toBe('')
+    expect(singleNode.params.text).toBe('')
+  })
+
+  it('supports dedicated novel.outline node and auto-wires 3-way Markov chain (Outline + Economy + Ch.1 -> Ch.2 -> Ch.3)', () => {
+    const emptyGraph = { version: 1 as const, nodes: [], edges: [] }
+    const res = applyGraphEditOps(emptyGraph, [
+      {
+        op: 'node_upsert',
+        nodeId: 'econ-1',
+        typeId: 'game.economy',
+        title: '末世生存数值体系'
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'outline-1',
+        typeId: 'novel.outline',
+        title: '《熵债》小说大纲',
+        params: { genre: 'scifi_apocalypse', totalChapters: 868 }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'ch-1',
+        typeId: 'asset.novel',
+        title: '第1章：灰区钟摆'
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'ch-2',
+        typeId: 'asset.novel',
+        title: '第2章：极夜猎杀'
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'ch-3',
+        typeId: 'asset.novel',
+        title: '第3章：黑塔觉醒'
+      }
+    ])
+
+    const outline = res.graph.nodes.find((n) => n.id === 'outline-1')
+    const ch1 = res.graph.nodes.find((n) => n.id === 'ch-1')
+    const ch2 = res.graph.nodes.find((n) => n.id === 'ch-2')
+    const ch3 = res.graph.nodes.find((n) => n.id === 'ch-3')
+
+    expect(outline?.typeId).toBe('novel.outline')
+    expect(outline?.params.novelNodeMode).toBe('outline')
+    expect(ch1?.params.novelCurrentChapter).toBe(1)
+    expect(ch2?.params.novelCurrentChapter).toBe(2)
+    expect(ch3?.params.novelCurrentChapter).toBe(3)
+    expect(ch1?.params.novelAutoAdvanceChapter).toBe(false)
+    expect(ch2?.params.novelAutoAdvanceChapter).toBe(false)
+    expect(ch3?.params.novelAutoAdvanceChapter).toBe(false)
+
+    const edgeSet = new Set(
+      res.graph.edges.map((e) => `${e.source}:${e.sourcePort}->${e.target}:${e.targetPort}`)
+    )
+    // Economy -> Outline
+    expect(edgeSet.has('econ-1:out-text->outline-1:in-economy')).toBe(true)
+    // Chapter 1 receives Outline + Economy
+    expect(edgeSet.has('outline-1:out->ch-1:in-outline')).toBe(true)
+    expect(edgeSet.has('econ-1:out-text->ch-1:in-economy')).toBe(true)
+    // Chapter 2 receives Ch.1 + Outline + Economy (3-Way Markov Chain)
+    expect(edgeSet.has('ch-1:out->ch-2:in')).toBe(true)
+    expect(edgeSet.has('outline-1:out->ch-2:in-outline')).toBe(true)
+    expect(edgeSet.has('econ-1:out-text->ch-2:in-economy')).toBe(true)
+    // Chapter 3 receives Ch.2 + Outline + Economy (3-Way Markov Chain)
+    expect(edgeSet.has('ch-2:out->ch-3:in')).toBe(true)
+    expect(edgeSet.has('outline-1:out->ch-3:in-outline')).toBe(true)
+    expect(edgeSet.has('econ-1:out-text->ch-3:in-economy')).toBe(true)
   })
 })

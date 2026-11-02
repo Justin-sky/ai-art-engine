@@ -139,7 +139,7 @@ export function resolveInstructionFinalPreviewKind(
   if (typeId === 'asset.gameSystem' || assetType === 'gameSystem') {
     return 'gameSystem'
   }
-  if (typeId === 'asset.novel' || presetKind === 'novel') {
+  if (typeId === 'asset.novel' || typeId === 'novel.outline' || presetKind === 'novel') {
     return 'novel'
   }
   if (typeId === 'asset.screenplay' || assetType === 'screenplay' || presetKind === 'screenplay') {
@@ -373,27 +373,45 @@ function graphValueToMentionSource(value: GraphValue, index: number): Instructio
   return { index, title: `@${index}`, text: '' }
 }
 
-function fallbackMentionTextFromNode(node: GraphNode | undefined): string {
+function fallbackMentionTextFromNode(node: GraphNode | undefined, targetNode?: GraphNode): string {
   if (!node) return ''
+  const isTargetGameSystem =
+    targetNode?.typeId === 'asset.gameSystem' || targetNode?.assetType === 'gameSystem'
   if (node.typeId === 'game.economy') {
-    const raw = node.params.text?.trim() ?? ''
-    if (raw) return unwrapEconomyBundleForNarrative(raw)
+    const raw = normalizeLocalScreenplayText(node.params.text)
+    if (raw) {
+      return isTargetGameSystem
+        ? unwrapEconomyBundleForGameSystem(raw)
+        : unwrapEconomyBundleForNarrative(raw)
+    }
     const diagramRaw = node.params.gameEconomyDiagramJson?.trim() ?? ''
     const parsedDoc = diagramRaw ? parseMxDocumentJson(diagramRaw) : null
     const doc =
       parsedDoc ??
       createMxFromTemplate((node.params.gameEconomyPreset as MxTemplateId) || 'slay_the_spire_run')
+    if (isTargetGameSystem) {
+      return unwrapEconomyBundleForGameSystem(
+        JSON.stringify({
+          kind: 'machinations_economy_bundle',
+          schemaVersion: 2,
+          document: doc
+        })
+      )
+    }
     if (doc.workbench) {
       return exportMxNarrativeProgressionBrief(doc.workbench, doc)
     }
   }
-  if (node.typeId === 'asset.novel') {
+  if (node.typeId === 'asset.novel' || node.typeId === 'novel.outline') {
     const directText = normalizeLocalScreenplayText(node.params.text)
     const galleryChapters = (node.params.generatedTexts ?? [])
       .map((item) => normalizeLocalScreenplayText(item.text))
       .filter(Boolean)
       .join('\n\n')
     const novelBody = galleryChapters || directText
+    if (!isTargetGameSystem) {
+      return novelBody
+    }
     const ipSpec = extractNovelIpContextForGameSystem({
       novelText: novelBody,
       novelGenre: node.params.novelGenre,
@@ -430,6 +448,7 @@ export function buildMentionSourcesForNode(input: {
   mentionIndexBase?: number
 }): InstructionMentionSource[] {
   const base = Math.max(0, Math.floor(input.mentionIndexBase ?? 0))
+  const targetNode = input.byId.get(input.nodeId)
   const incoming = expandIncomingThroughBundles(input.graph, input.nodeId)
   return incoming.map((edge, i) => {
     const index = portMentionIndex(i, base)
@@ -446,7 +465,7 @@ export function buildMentionSourcesForNode(input: {
       `@${index}`
     const text = keepMentionToken
       ? ''
-      : fromValue?.text?.trim() || fallbackMentionTextFromNode(source)
+      : fromValue?.text?.trim() || fallbackMentionTextFromNode(source, targetNode)
     return { index, title, text, keepMentionToken }
   })
 }
