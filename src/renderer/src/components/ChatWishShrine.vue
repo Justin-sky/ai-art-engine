@@ -1303,15 +1303,6 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
       role="status"
       aria-live="polite"
     >
-      <!-- 全窗口背景流星群：在画布上空快速划过 -->
-      <div v-if="!minimized" class="wish-window-meteors" aria-hidden="true">
-        <span class="window-meteor wm1" />
-        <span class="window-meteor wm2" />
-        <span class="window-meteor wm3" />
-        <span class="window-meteor wm4" />
-        <span class="window-meteor wm5" />
-      </div>
-
       <!-- 60fps 游戏级 Canvas 施法特效层：加法混色渲染分叉闪电链、多条不规则湍流魔力流光、追踪奥术流星群与节点护盾电弧 -->
       <canvas
         v-show="!minimized && spellLinks.length > 0"
@@ -1559,16 +1550,12 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
 
         <!-- 展开态：环绕流星光环的灵动 Q 版祈福仙子 + 口中飘出咒语气泡 -->
         <div v-else class="wish-sprite-scene">
-          <!-- 环绕仙子身周的局部快速流星与星尘 -->
+          <!-- 环绕仙子身周的微光星尘 -->
           <div class="sprite-local-sky" aria-hidden="true">
             <span class="wish-star s1">✦</span>
             <span class="wish-star s2">✧</span>
             <span class="wish-star s3">✦</span>
             <span class="wish-star s4">⋆</span>
-            <span class="wish-meteor m1" />
-            <span class="wish-meteor m2" />
-            <span class="wish-meteor m3" />
-            <span class="wish-meteor m4" />
           </div>
 
           <div class="sprite-main-row">
@@ -2233,61 +2220,6 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   }
 }
 
-/* 全窗口上空斜掠而过的背景流星群 */
-.wish-window-meteors {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.window-meteor {
-  position: absolute;
-  width: 96px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #fef08a 0%, #38bdf8 48%, rgba(56, 189, 248, 0) 100%);
-  transform: rotate(-24deg);
-  opacity: 0;
-  filter: drop-shadow(0 0 6px #38bdf8);
-  animation: wish-window-meteor-fly 2.6s linear infinite;
-}
-
-.window-meteor.wm1 {
-  top: 12%;
-  left: 65%;
-  animation-delay: 0.1s;
-  animation-duration: 2.2s;
-}
-.window-meteor.wm2 {
-  top: 28%;
-  left: 85%;
-  background: linear-gradient(90deg, #fbcfe8 0%, #f472b6 48%, rgba(244, 114, 182, 0) 100%);
-  filter: drop-shadow(0 0 6px #f472b6);
-  animation-delay: 0.8s;
-  animation-duration: 2.5s;
-}
-.window-meteor.wm3 {
-  top: 48%;
-  left: 72%;
-  animation-delay: 1.45s;
-  animation-duration: 2.1s;
-}
-.window-meteor.wm4 {
-  top: 18%;
-  left: 42%;
-  background: linear-gradient(90deg, #fde047 0%, #f59e0b 48%, rgba(245, 158, 11, 0) 100%);
-  filter: drop-shadow(0 0 6px #facc15);
-  animation-delay: 1.9s;
-  animation-duration: 2.4s;
-}
-.window-meteor.wm5 {
-  top: 64%;
-  left: 88%;
-  animation-delay: 0.45s;
-  animation-duration: 2.3s;
-}
-
 /* 在窗口中自由飘动的仙子容器 */
 .wish-roaming-actor {
   position: absolute;
@@ -2342,41 +2274,6 @@ const critTag = computed(() => (props.isEn ? 'CRIT!' : '暴击!')) // cjk-ok
   left: 56%;
   color: #f472b6;
   animation-delay: 0.6s;
-}
-
-.wish-meteor {
-  position: absolute;
-  width: 58px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #fef08a 0%, #38bdf8 48%, rgba(56, 189, 248, 0) 100%);
-  transform: rotate(-22deg);
-  opacity: 0;
-  filter: drop-shadow(0 0 5px #38bdf8);
-  animation: wish-meteor-fly 1.8s linear infinite;
-}
-
-.wish-meteor.m1 {
-  top: 6px;
-  left: 36px;
-  animation-delay: 0s;
-}
-.wish-meteor.m2 {
-  top: 28px;
-  left: 72px;
-  background: linear-gradient(90deg, #fbcfe8 0%, #f472b6 48%, rgba(244, 114, 182, 0) 100%);
-  animation-delay: 0.55s;
-}
-.wish-meteor.m3 {
-  top: 52px;
-  left: 48px;
-  background: linear-gradient(90deg, #fde047 0%, #f59e0b 48%, rgba(245, 158, 11, 0) 100%);
-  animation-delay: 1.05s;
-}
-.wish-meteor.m4 {
-  top: 16px;
-  left: 96px;
-  animation-delay: 1.4s;
 }
 
 .sprite-main-row {
