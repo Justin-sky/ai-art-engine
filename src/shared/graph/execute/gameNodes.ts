@@ -73,8 +73,12 @@ import {
   type LevelGeneratorAlgorithm,
   analyzeMxEconomyHealth,
   analyzeMultiplierPipeline,
+  buildDomainNumericalSuiteFromContext,
   createMxWorkbenchPreset,
+  createXianxia200LifespanWorkbench,
+  exportDomainNumericalSuiteMarkdown,
   generateMxAgentWithAi,
+  isNonCombatDomainContext,
   matchMxTemplateFromPrompt,
   MX_TEMPLATES,
   MX_WORKBENCH_PRESETS,
@@ -2110,7 +2114,7 @@ export async function executeGameAudioDspNode(
             nodeTitle: `${baseStem}_loop`,
             stamp
           }),
-          outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/GameAudio',
+          outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
           node: ctx.node
         }),
         ctx.saveRunMedia({
@@ -2120,7 +2124,7 @@ export async function executeGameAudioDspNode(
             nodeTitle: `${baseStem}_intro`,
             stamp
           }),
-          outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/GameAudio',
+          outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
           node: ctx.node
         })
       ])
@@ -2154,7 +2158,7 @@ export async function executeGameAudioDspNode(
           nodeTitle: `${baseStem}_loop`,
           stamp
         }),
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/GameAudio',
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
         node: ctx.node
       })
       if (saved?.trim()) relativePath = saved.trim()
@@ -2190,7 +2194,7 @@ export async function executeGameAudioDspNode(
             nodeTitle: outStem,
             stamp
           }),
-          outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/GameAudio',
+          outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
           node: ctx.node
         })
         if (saved?.trim()) relativePath = saved.trim()
@@ -2292,7 +2296,7 @@ export async function executeGameLevelMapNode(
       tmjRelativePath = await ctx.saveRunText({
         content: tmjJson,
         key: `level_${algorithm}_${width}x${height}_${seed}`,
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/LevelMaps',
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
         node: ctx.node
       })
     } catch {
@@ -2498,11 +2502,7 @@ export async function executeGameEconomyNode(
     }
   ]
 
-  const materialized = await materializeGeneratedBatch(
-    ctx,
-    batch,
-    ctx.node.params.mediaOutputDir?.trim() || 'Assets/Economy'
-  )
+  const materialized = await materializeGeneratedBatch(ctx, batch, `economy:${ctx.node.id}`)
 
   const economyPayloadJson = JSON.stringify(
     {
@@ -2566,7 +2566,7 @@ export async function executeGameEconomyNode(
       jsonRelativePath = await ctx.saveRunText({
         content: economyPayloadJson,
         key: `economy_${presetId}_${steps}t_${seed}`,
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/Economy',
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
         node: ctx.node
       })
     } catch {
@@ -2671,6 +2671,60 @@ function renderNumericalWorkbenchPreviewRgba(
       const isGrid = x % 32 === 0 || y % 32 === 0
       setPx(x, y, isGrid ? 24 : 13, isGrid ? 32 : 19, isGrid ? 48 : 30, 255)
     }
+  }
+
+  // Domain Spec Data Tables mode: render structured table matrix & SLA bars
+  if (wb.domainTables?.enabled && wb.domainTables.tables.length > 0) {
+    const tables = wb.domainTables.tables.slice(0, 5)
+    const palette: Array<[number, number, number]> = [
+      [16, 185, 129],
+      [56, 189, 248],
+      [251, 191, 36],
+      [168, 85, 247],
+      [244, 63, 94]
+    ]
+    tables.forEach((tb, tIdx) => {
+      const cardX = 32
+      const cardY = 28 + tIdx * 68
+      const cardW = 372
+      const cardH = 56
+      const [cr, cg, cb] = palette[tIdx % palette.length]!
+      for (let y = cardY; y < cardY + cardH; y++) {
+        for (let x = cardX; x < cardX + cardW; x++) {
+          const isHeader = y < cardY + 16
+          const isBorder =
+            x === cardX || x === cardX + cardW - 1 || y === cardY || y === cardY + cardH - 1
+          if (isBorder || isHeader) {
+            setPx(x, y, cr, cg, cb, isHeader ? 185 : 220)
+          } else {
+            const isRowStripe = Math.floor((y - (cardY + 16)) / 10) % 2 === 0
+            setPx(x, y, isRowStripe ? 22 : 16, isRowStripe ? 33 : 24, isRowStripe ? 50 : 38, 235)
+          }
+        }
+      }
+      const cols = Math.max(2, Math.min(6, tb.columns.length))
+      for (let c = 1; c < cols; c++) {
+        const cx = cardX + Math.round((c / cols) * cardW)
+        drawLine(cx, cardY + 16, cx, cardY + cardH - 2, 45, 62, 88, 1)
+      }
+    })
+
+    // Right panel: SLA & scoring weight bars
+    const rX = 432
+    const rW = 176
+    const maxRows = Math.max(1, ...tables.map((t) => t.rows.length))
+    tables.forEach((tb, idx) => {
+      const by = 42 + idx * 68
+      const [cr, cg, cb] = palette[idx % palette.length]!
+      const fillW = Math.max(24, Math.min(rW, Math.round((tb.rows.length / maxRows) * rW)))
+      for (let y = by; y < by + 26; y++) {
+        for (let x = rX; x < rX + rW; x++) {
+          const filled = x < rX + fillW
+          setPx(x, y, filled ? cr : 28, filled ? cg : 38, filled ? cb : 56, 255)
+        }
+      }
+    })
+    return { width, height, data }
   }
 
   // Left chart box: Power Envelope (P10 / P50 / P90 vs Enemy Wall)
@@ -2844,12 +2898,92 @@ export async function executeGameNumericalNode(
   }
   let wb: MxNumericalWorkbench =
     resolvedWb ??
+    upstreamDoc?.workbench ??
     (promptHint
       ? synthesizeMxWorkbenchFromPrompt(promptHint, validPresetId)
       : createMxWorkbenchPreset(validPresetId))
 
+  // 仅从与当前数值节点存在真实连线的节点识别小说节点或策划案节点（绝不跨画布误连无关小说/经济节点） // cjk-ok
+  const adjacentNodeIds = new Set<string>()
+  for (const edge of ctx.document?.edges ?? []) {
+    if (edge.source === ctx.node.id) adjacentNodeIds.add(edge.target)
+    if (edge.target === ctx.node.id) adjacentNodeIds.add(edge.source)
+  }
+  const connectedNovelNode = ctx.document?.nodes?.find(
+    (n) =>
+      adjacentNodeIds.has(n.id) &&
+      (n.typeId === 'novel.outline' || n.typeId === 'asset.novel') &&
+      Number(n.params.novelTotalChapters) >= 50
+  )
+  const connectedGameSystemNode = ctx.document?.nodes?.find(
+    (n) => adjacentNodeIds.has(n.id) && n.typeId === 'asset.gameSystem'
+  )
+  let connectedGddText = String(connectedGameSystemNode?.params.text ?? '').trim()
+  if (!connectedGddText && connectedGameSystemNode && ctx.readRunText) {
+    const gddRelPath = (
+      connectedGameSystemNode.params.previewRelativePath ||
+      connectedGameSystemNode.params.generatedTexts?.[0]?.relativePath ||
+      ''
+    ).trim()
+    if (gddRelPath) {
+      try {
+        connectedGddText = (await ctx.readRunText(gddRelPath))?.trim() ?? ''
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  const isNonCombatNode =
+    !connectedNovelNode &&
+    (isNonCombatDomainContext(
+      `${ctx.node.title ?? ''} ${String(ctx.node.params.generateInstruction ?? '')} ${connectedGameSystemNode?.title ?? ''}`
+    ) ||
+      isNonCombatDomainContext(`${promptHint} ${connectedGddText.slice(0, 1200)}`))
+
+  if (!wb.domainTables && isNonCombatNode) {
+    const cleanBase = createMxWorkbenchPreset('slay_the_spire_dbg')
+    wb = {
+      ...cleanBase,
+      domainTables: buildDomainNumericalSuiteFromContext({
+        title: ctx.node.title,
+        prompt: promptHint,
+        gddText: connectedGddText
+      })
+    }
+  }
+
+  const isDomainTablesMode = Boolean(wb.domainTables?.enabled)
+  const targetNovelChapters = isDomainTablesMode
+    ? 0
+    : Math.max(
+        Number(connectedNovelNode?.params.novelTotalChapters) || 0,
+        upstreamDoc && (upstreamDoc.settings.steps ?? 0) >= 100 ? upstreamDoc.settings.steps : 0
+      )
+  const isXianxiaContext =
+    !isDomainTablesMode &&
+    (upstreamDoc?.templateId === 'xianxia_lifespan_alchemy' ||
+      String(upstreamDoc?.title ?? '').includes('山海借命录') || // cjk-ok
+      String(ctx.node.title ?? '').includes('山海借命录')) // cjk-ok
+
+  if (
+    isXianxiaContext &&
+    (wb.activePresetId === 'slay_the_spire_dbg' || (wb.roguelikeEnvelope.levelMax ?? 80) <= 80)
+  ) {
+    wb = createXianxia200LifespanWorkbench()
+  }
+  if (targetNovelChapters >= 100 && (wb.roguelikeEnvelope.levelMax ?? 80) <= 80) {
+    wb = {
+      ...wb,
+      roguelikeEnvelope: {
+        ...wb.roguelikeEnvelope,
+        levelMax: targetNovelChapters
+      }
+    }
+  }
+
   // Bridge macro economy metrics from upstream game.economy into numerical workbench
-  if (upstreamEconomyBundle && upstreamDoc) {
+  if (!isDomainTablesMode && upstreamEconomyBundle && upstreamDoc) {
     const forecastObj = upstreamEconomyBundle.forecast as
       { sourceSinkRatio?: number; series?: Array<{ label?: string; p50?: number[] }> } | undefined
     const firstSeries = forecastObj?.series?.[0]
@@ -2926,8 +3060,12 @@ export async function executeGameNumericalNode(
     runs: Math.min(180, runs * 3),
     seed
   })
-  const wbQaReportMarkdown = exportMxCommercialQaReportMarkdown(wb)
-  const wbNarrativeBrief = exportMxNarrativeProgressionBrief(wb, hostDoc)
+  const domainSpecMarkdown =
+    isDomainTablesMode && wb.domainTables
+      ? exportDomainNumericalSuiteMarkdown(wb.domainTables)
+      : undefined
+  const wbQaReportMarkdown = domainSpecMarkdown ?? exportMxCommercialQaReportMarkdown(wb)
+  const wbNarrativeBrief = domainSpecMarkdown ?? exportMxNarrativeProgressionBrief(wb, hostDoc)
   const wbDataTables = exportWorkbenchToGameDataTables(wb)
 
   const rendered = renderNumericalWorkbenchPreviewRgba(wb, wbEnvelope, wbMultiplier, 640, 400)
@@ -2940,37 +3078,39 @@ export async function executeGameNumericalNode(
 
   const stamp = formatGeneratedMediaStamp()
   const createdAt = new Date().toISOString()
+  const runPresetTag =
+    isDomainTablesMode && wb.domainTables ? `domain_${wb.domainTables.domainId}` : wb.activePresetId
   const batch: GraphImageItem[] = [
     {
       id: buildGeneratedMediaFileKey({
-        nodeTitle: `numerical_${wb.activePresetId}_${runs}r`,
+        nodeTitle: `numerical_${runPresetTag}_${runs}r`,
         stamp,
         index: 1
       }),
       dataUrl: previewDataUrl,
-      title: `Numerical_${wb.activePresetId}`,
+      title: `Numerical_${runPresetTag}`,
       createdAt
     }
   ]
 
-  const materialized = await materializeGeneratedBatch(
-    ctx,
-    batch,
-    ctx.node.params.mediaOutputDir?.trim() || 'Assets/Numerical'
-  )
+  const materialized = await materializeGeneratedBatch(ctx, batch, `numerical:${ctx.node.id}`)
 
   const numericalPayloadJson = JSON.stringify(
     {
       kind: 'machinations_economy_bundle',
-      subKind: 'numerical_workbench_bundle',
+      subKind: isDomainTablesMode ? 'domain_numerical_tables_bundle' : 'numerical_workbench_bundle',
       schemaVersion: 2,
       document: hostDoc,
-      ...(upstreamEconomyBundle?.forecast ? { forecast: upstreamEconomyBundle.forecast } : {}),
-      ...(upstreamEconomyBundle?.healthReport
+      ...(domainSpecMarkdown ? { domainSpecMarkdown, domainTables: wb.domainTables } : {}),
+      ...(!isDomainTablesMode && upstreamEconomyBundle?.forecast
+        ? { forecast: upstreamEconomyBundle.forecast }
+        : {}),
+      ...(!isDomainTablesMode && upstreamEconomyBundle?.healthReport
         ? { healthReport: upstreamEconomyBundle.healthReport }
         : {}),
       workbenchReport: {
         activePresetId: wb.activePresetId,
+        ...(domainSpecMarkdown ? { domainSpecMarkdown, domainTables: wb.domainTables } : {}),
         multiplier: wbMultiplier,
         lootRoll: wbLoot,
         combatKernel: wbCombat,
@@ -2997,8 +3137,8 @@ export async function executeGameNumericalNode(
     try {
       jsonRelativePath = await ctx.saveRunText({
         content: numericalPayloadJson,
-        key: `numerical_${wb.activePresetId}_${seed}`,
-        outputDir: ctx.node.params.mediaOutputDir?.trim() || 'Assets/Numerical',
+        key: `numerical_${runPresetTag}_${seed}`,
+        outputDir: ctx.node.params.mediaOutputDir?.trim() || undefined,
         node: ctx.node
       })
     } catch {
@@ -3006,7 +3146,10 @@ export async function executeGameNumericalNode(
     }
   }
 
-  const report = `${wb.activePresetId} | WinRate: ${Math.round(wbCombat.winRatePct)}% | TTK: ${wbCombat.ttkMean}T | ClearRate: ${Math.round(wbEnvelope.firstRunClearRatePct)}% | Entities: ${wb.multiplier.entities.length}`
+  const report =
+    isDomainTablesMode && wb.domainTables
+      ? `DomainSpec(${wb.domainTables.domainId}) | Tables: ${wb.domainTables.tables.length} | Formulas: ${wb.domainTables.formulas.length}`
+      : `${wb.activePresetId} | WinRate: ${Math.round(wbCombat.winRatePct)}% | TTK: ${wbCombat.ttkMean}T | ClearRate: ${Math.round(wbEnvelope.firstRunClearRatePct)}% | Entities: ${wb.multiplier.entities.length}`
 
   const cleanImages = materialized.map(stripEmbeddedImageData)
   const primaryPath = materialized[0]?.relativePath?.trim()
@@ -3014,6 +3157,7 @@ export async function executeGameNumericalNode(
   const nextParams = {
     gameNumericalPreset: wb.activePresetId,
     gameNumericalWorkbenchJson: serializedWb,
+    gameEconomyDiagramJson: JSON.stringify(hostDoc),
     gameNumericalReport: report,
     gameEconomyMonteCarloRuns: runs,
     gameEconomySeed: seed,

@@ -19,6 +19,10 @@ import {
   runMxLootAndSubstatSimulation,
   runMxRoguelikeEnvelopeSimulation,
   solveMxSingleTurnLethalAndOrderSkill,
+  type MxDomainDataTable,
+  type MxDomainFormulaRule,
+  type MxDomainNumericalSuite,
+  type MxDomainTableColumn,
   type MxNovelCharacterStatusEntry,
   type MxNovelForeshadowingEntry,
   type MxNumericalWorkbench
@@ -793,27 +797,180 @@ const ARCHETYPE_SLG_INTRIGUE: GameSystemArchetypeProfile = {
 
 const ARCHETYPE_UNIVERSAL: GameSystemArchetypeProfile = {
   id: 'universal_full_ui',
-  labelZh: '通用全套游戏系统与 UI 总纲',
-  labelEn: 'Universal Full-Stack Game System & UI Suite',
-  icon: '🎮',
+  labelZh: '通用交互系统 / 虚拟仿真与全套 UI',
+  labelEn: 'Universal Interactive / Simulation & Full UI Suite',
+  icon: '🏛️',
   linkedNovelGenres: ['custom_literary', 'urban_reversal', 'xianxia_cultivation'],
   linkedEconomyPresets: ['short_drama_reversal_loop', 'slay_the_spire_dbg', 'mmorpg_economy'],
   coreLoopZh:
-    '主界面大厅与核心资源统筹 ➔ 角色/卡组/装备深度养成 ➔ 局内核心战斗与章节Boss挑战 ➔ 战利品抽卡结算与长线目标推进',
+    '主场景导览与状态总览 ➔ 核心主题/三维模型深度交互 ➔ 智能问答/任务测评与实时反馈 ➔ 记录归档与阶段目标达成',
   coreLoopEn:
-    'Lobby & resource management -> Character/deck build -> Core battle & Boss stage -> Loot settlement & progression',
-  playerGoalZh: '清晰感知短期每局正反馈、中期阵容构筑成型与长期章节主线通关的三层目标闭环',
+    'Main hub navigation -> Core model/module interaction -> Q&A / assessment feedback -> Record archiving & milestone completion',
+  playerGoalZh: '零学习成本完成核心场景切换、对象多维检视、即时反馈校验与结果复盘的完整交互闭环',
   designGoalZh:
-    '输出覆盖大厅、养成、战斗 HUD、结算弹窗全链路的标准系统策划案与可一键拆分的 UI 界面矩阵',
+    '输出不强行绑定战斗/抽卡数值的通用工程级系统策划案（兼容虚拟教学、数字孪生、模拟交互与综合应用大厅）及可一键拆分的 UI 界面矩阵',
   defaultFeatures: [
-    ...ARCHETYPE_RPG.defaultFeatures.slice(0, 2),
-    ...ARCHETYPE_GACHA_LOOT.defaultFeatures.slice(0, 1)
+    {
+      id: 'SYS-HUB-01',
+      code: 'SYS-HUB-01',
+      nameZh: '主场景分区导航与全局状态总览',
+      nameEn: 'Main Hub Navigation & Global Status HUD',
+      priority: 'P0',
+      triggerZh: '系统启动默认进入主场景，或通过顶部/底部导航栏一键切换主题分区',
+      rulesZh:
+        '维护当前激活场景 ID、用户角色权限、设备/网络状态与进度快照；切换分区前自动保存相机视角与上下文状态，异步预加载目标资源并通过平滑转场完成切换。',
+      edgeCasesZh:
+        '同控件 300ms 防抖合并重复点击；目标分区资源加载超时（>8s）提供取消与重试入口并回退原场景；断网状态保留本地已缓存模块可用。'
+    },
+    {
+      id: 'SYS-INTERACT-02',
+      code: 'SYS-INTERACT-02',
+      nameZh: '核心对象多维检视、分层交互与知识联动',
+      nameEn: 'Multi-View Object Inspection & Knowledge Linkage',
+      priority: 'P0',
+      triggerZh: '在主题工作台选中三维模型、图谱条目或交互热点',
+      rulesZh:
+        '支持旋转、缩放、剖切/分层显隐与标准锚点高亮；选中热点实时联动右侧结构化详情卡、操作步骤演示与语音/文本同步讲解。',
+      edgeCasesZh:
+        '缩放与视角设置安全上下限防止穿模；输入失焦或追踪丢失时立即终止拖拽并保持上一有效姿态；缺失某层扩展资产时禁用对应开关并明示原因。'
+    },
+    {
+      id: 'SYS-EVAL-03',
+      code: 'SYS-EVAL-03',
+      nameZh: '实训测评计分、幂等提交与记录报告归档',
+      nameEn: 'Assessment Scoring, Idempotent Submit & Report Archive',
+      priority: 'P1',
+      triggerZh: '完成主题学习后点击「开始测评」或进入记录中心查看历史报告',
+      rulesZh:
+        '服务端生成固定版本测评快照，每次作答实时草稿落盘；按计分公式结算总分、耗时与薄弱项分布，生成可导出与错题重做的闭环报告。',
+      edgeCasesZh:
+        '提交携带唯一幂等键防止连点产生重复成绩；断网时本地加密暂存草稿并在重连后按时间戳去重同步；未达权限不提前暴露标准答案。'
+    }
   ],
   defaultScreens: [
-    ARCHETYPE_RPG.defaultScreens[0]!,
-    ARCHETYPE_RPG.defaultScreens[1]!,
-    ARCHETYPE_GACHA_LOOT.defaultScreens[0]!,
-    ARCHETYPE_RPG.defaultScreens[2]!
+    {
+      id: 'ui_univ_main_hud',
+      titleZh: '沉浸式主场景导航与状态总览 HUD',
+      titleEn: 'Main Scene Navigation & Status HUD',
+      screenKind: 'hud',
+      aspectRatio: '16:9',
+      regionsZh: [
+        '顶部全局状态栏（占高 8%，Top-Stretch）：展示当前场景/主题名称、设备连接状态与个人权限入口',
+        '中央主视口交互区（占高 84%，Center）：承载核心三维场景/主视觉画布与热点标记悬浮气泡',
+        '底部模块导航坞（占高 8%，Bottom-Stretch）：核心业务模块一键切换按钮组与快捷辅助工具'
+      ],
+      controlsZh: [
+        '底部模块导航按钮组：默认常驻态 / 悬停高亮提示态 / 按下切换态 / 受限模式禁用态',
+        '场景对象热点标记：默认呼吸锚点态 / 悬停展开摘要态 / 选中锁定详情态 / 超出同屏上限聚合态'
+      ],
+      wireframeAscii: [
+        '+------------------------------------------------------------+',
+        '| [当前场景/主题]                      [设备状态] [账号/设置] |',
+        '+------------------------------------------------------------+',
+        '|                                                            |',
+        '|               ( 中央主场景 / 核心交互视口 )                |',
+        '|                                         [快捷问答/助手浮窗] |',
+        '| [操作引导提示条]                                           |',
+        '+------------------------------------------------------------+',
+        '|   [场景切换]   [核心交互]   [知识检索]   [实训测评] [记录] |',
+        '+------------------------------------------------------------+'
+      ].join('\n'),
+      psdLayersZh:
+        '01_Header_Ornaments（顶栏状态横幅与角标装饰） / 02_Interactive_Controls（底部导航坞七态按钮、热点标记图标、麦克风/设置按钮） / 03_Panels_Containers（顶部与底部 HUD 9-slice 九宫格底框、快捷浮窗九宫格面板） / 04_Backdrop（独立主场景渲染视口层）',
+      boundMetrics: ['activeSceneId', 'frameLatencyMs', 'completionRatePct']
+    },
+    {
+      id: 'ui_univ_workspace',
+      titleZh: '核心对象多维检视与步骤演示工作台',
+      titleEn: 'Interactive Inspection & Step Demo Workspace',
+      screenKind: 'fullscreen',
+      aspectRatio: '16:9',
+      regionsZh: [
+        '左侧分类检索与目录树栏（占宽 22%，Left-Stretch）：关键词搜索框、多级分类筛选与对象列表',
+        '中央多维模型/图谱检视视口（占宽 54%，Center）：支持旋转、分层显隐、局部放大与步骤播放控制',
+        '右侧结构化详情与规范说明栏（占宽 24%，Right-Stretch）：属性参数表、标准依据引用与演示控制条'
+      ],
+      controlsZh: [
+        '目录检索输入框与列表项：默认态 / 悬停态 / 选中锁定态 / 空搜索结果引导态',
+        '分层开关与步骤播放器（播放/暂停/单步/复位）：默认态 / 激活态 / 未审核资源禁用态 / 加载进度态'
+      ],
+      wireframeAscii: [
+        '+------------------------------------------------------------+',
+        '| [←返回]  [当前交互主题标题]                  [引用/版本状态]|',
+        '+-------------+--------------------------------+-------------+',
+        '| [搜索框...] |                                | [对象标准名] |',
+        '| - 分类目录A |      ( 三维模型 / 高清图谱 )   | - 核心参数   |',
+        '| - 分类目录B |        [剖切/局部放大手柄]     | - 步骤说明   |',
+        '| - 分类目录C |                                | - 来源依据   |',
+        '+-------------+--------------------------------+-------------+',
+        '| [图层显隐]         [◀单步] [▶播放/暂停] [复位]   [进入练习]|',
+        '+------------------------------------------------------------+'
+      ].join('\n'),
+      psdLayersZh:
+        '01_Header_Ornaments（顶栏面包屑与标题纹样） / 02_Interactive_Controls（播放控制按钮组、图层切换开关、搜索框组件） / 03_Panels_Containers（左中右三栏 9-slice 九宫格容器底板、详情卡片底框） / 04_Backdrop（全屏工作台环境底图）',
+      boundMetrics: ['selectedEntityId', 'layerMaskState', 'demoStepIndex']
+    },
+    {
+      id: 'ui_univ_eval_panel',
+      titleZh: '实训测评答题与进度状态界面',
+      titleEn: 'Assessment & Practice Workspace',
+      screenKind: 'fullscreen',
+      aspectRatio: '16:9',
+      regionsZh: [
+        '顶栏测评状态区（占高 8%，Top-Stretch）：题组名称、当前进度、倒计时与草稿保存状态指示',
+        '左侧题干与交互作答区（占宽 74%，Center-Left）：题干描述、选项列表或模型点选视口',
+        '右侧答题卡与规则摘要区（占宽 26%，Center-Right）：题号矩阵（已答/未答/标记）与提交按钮'
+      ],
+      controlsZh: [
+        '答题选项卡片：默认未选态 / 悬停描边态 / 选中态 / 已结算锁定态 / 保存异常重试态',
+        '交卷主按钮：默认可提交态 / 按下态 / 二次确认弹窗态 / 提交中防重禁用态'
+      ],
+      wireframeAscii: [
+        '+------------------------------------------------------------+',
+        '| [测评模式]  进度: 08 / 20           [已自动保存] [⏱ 14:25] |',
+        '+-------------------------------------------+----------------+',
+        '| 【题干】请根据当前展示结构选择正确选项：  | [答题卡矩阵]   |',
+        '|  (A) 选项内容一                           | [01][02][03]...|',
+        '|  (B) 选项内容二                           |                |',
+        '|  (C) 选项内容三                           | [计分规则摘要] |',
+        '+-------------------------------------------+----------------+',
+        '| [上一题]  [⭐标记复查]            [下一题]   (( 提交试卷 ))|',
+        '+------------------------------------------------------------+'
+      ].join('\n'),
+      psdLayersZh:
+        '01_Header_Ornaments（计时器外框与进度条装饰） / 02_Interactive_Controls（选项七态组件、题号格子、上下题与提交主按钮） / 03_Panels_Containers（题干区与答题卡 9-slice 九宫格底框） / 04_Backdrop（专注模式底层背景）',
+      boundMetrics: ['questionIndex', 'remainingSeconds', 'draftSyncState']
+    },
+    {
+      id: 'ui_univ_result_popup',
+      titleZh: '测评结算报告与异常确认弹窗',
+      titleEn: 'Result Summary & Confirmation Modal',
+      screenKind: 'popup',
+      aspectRatio: '16:9',
+      regionsZh: [
+        '弹窗标题与总评徽章区（Top-Center）：展示完成状态、总分、正确率与用时统计',
+        '中部知识点掌握度与错题摘要区（Center）：分维度得分条与待巩固条目列表',
+        '底部操作按钮区（Bottom-Center）：导出报告、错题复盘与返回主场景按钮'
+      ],
+      controlsZh: [
+        '主确认/继续按钮：默认高亮态 / 悬停态 / 按下态 / 导出加载态',
+        '错题定位条目：默认态 / 悬停态 / 点击跳转对应知识详情态'
+      ],
+      wireframeAscii: [
+        '+--------------------------------------------+',
+        '|          ★ 阶段测评结算报告 ★              |',
+        '|     总分: 92 / 100     耗时: 06分18秒      |',
+        '|  +--------------------------------------+  |',
+        '|  | 维度A掌握度: [████████████░░] 88%    |  |',
+        '|  | 维度B掌握度: [██████████████] 96%    |  |',
+        '|  +--------------------------------------+  |',
+        '|     [导出报告]   [错题复盘]   (( 完成 ))   |',
+        '+--------------------------------------------+'
+      ].join('\n'),
+      psdLayersZh:
+        '01_Header_Ornaments（完成勋章与标题横幅） / 02_Interactive_Controls（完成主按钮、导出与复盘次级按钮、关闭按钮） / 03_Panels_Containers（居中模态弹窗 9-slice 九宫格底板、半透明遮罩层）',
+      boundMetrics: ['totalScore', 'accuracyPct', 'elapsedSeconds']
+    }
   ]
 }
 
@@ -867,6 +1024,13 @@ export function inferGameSystemArchetypeFromContext(opts: {
 
   const matchFromText = (s: string): GameSystemArchetypeId | null => {
     if (!s) return null
+    if (
+      /教学|教育|实训|题库|数字孪生|展厅|博物馆|医疗|中医|针灸|科普|仿真|虚拟空间|导览|课件|培训|simulation|education|training|digital.?twin/.test(
+        s
+      )
+    ) {
+      return 'universal_full_ui'
+    }
     if (/怪谈|理智|san值|克苏鲁|收容|rule_horror|lovecraft/.test(s)) return 'rule_horror_sanity'
     if (/悬疑|推理|搜证|刑侦|影游|宫斗|avg|mystery|detective|romance/.test(s))
       return 'avg_mystery_branch'
@@ -875,8 +1039,8 @@ export function inferGameSystemArchetypeFromContext(opts: {
     if (/抽卡|卡池|御魂|gacha|onmyoji/.test(s)) return 'gacha_equipment_loot'
     if (/卡牌|构筑|牌库|杀戮尖塔|炉石|小丑牌|dbg|deck|slay_the_spire|balatro|hearthstone/.test(s))
       return 'card_dbg_combat'
+    if (/修仙|玄幻|突破|境界|养成|角色扮演|rpg|xianxia/.test(s)) return 'rpg_progression'
     if (/全套|总纲|大厅|universal/.test(s)) return 'universal_full_ui'
-    if (/修仙|玄幻|突破|境界|养成|xianxia/.test(s)) return 'rpg_progression'
     return null
   }
 
@@ -935,6 +1099,9 @@ export function unwrapEconomyBundleForGameSystem(
     const wb = rawWb
       ? normalizeMxNumericalWorkbench(rawWb)
       : createMxWorkbenchPreset('short_drama_progression')
+    if (wb.domainTables?.enabled && wb.domainTables.tables.length > 0) {
+      return exportDomainNumericalSuiteMarkdown(wb.domainTables)
+    }
     const multAnalysis = analyzeMultiplierPipeline(wb.multiplier)
     const lootSim = runMxLootAndSubstatSimulation({
       ...wb.lootRoll,
@@ -1168,25 +1335,12 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
             prompt: `${instr} ${combinedIncoming}`
           })
         ))
-  const wb = opts.wb ?? createMxWorkbenchPreset('short_drama_progression')
-  const multAnalysis = analyzeMultiplierPipeline(wb.multiplier)
-  const lootSim = runMxLootAndSubstatSimulation({ ...wb.lootRoll, runs: 60 })
-  const combatSim = runMxCombatKernelSimulation({ ...wb.combatKernel, runs: 60 })
 
-  const featureBlocks = arch.defaultFeatures
-    .map((f, idx) =>
-      [
-        `## 3.${idx + 1} [${f.id}] ${f.nameZh}（优先级：${f.priority}）`,
-        `- **功能编号与名称**：\`${f.id}\` · ${f.nameZh} (${f.nameEn})`,
-        `- **触发方式与入口**：${f.triggerZh}`,
-        `- **规则描述（流程、条件、结算公式）**：`,
-        `  - ${f.rulesZh}`,
-        `  - 绑定核心结算公式：\`${wb.multiplier.finalFormula}\`（单次标准期望：\`${multAnalysis.finalOutput.toFixed(1)}\`）`,
-        `- **优先级**：\`${f.priority}\`（核心必做闭环）`,
-        `- **边界与异常处理**：${f.edgeCasesZh}`
-      ].join('\n')
-    )
-    .join('\n\n')
+  const hasExplicitEconomyOrCombat =
+    Boolean(opts.wb) ||
+    Boolean(opts.economyText?.trim()) ||
+    /machinations_economy_bundle|核心乘区结算公式/.test(combinedIncoming) ||
+    arch.id !== 'universal_full_ui'
 
   const screenBlocks = arch.defaultScreens
     .map((scr, idx) => {
@@ -1209,6 +1363,96 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
     })
     .join('\n\n')
 
+  const extraContextBlock =
+    opts.novelIpSpec?.trim() ||
+    (combinedIncoming ? `\n## 6.2 上游输入与联动数据契约\n${combinedIncoming}\n` : '')
+
+  // 非战斗/通用交互仿真模式（未连接经济/数值节点时，绝不硬塞短剧逆袭/战斗/抽卡数值）
+  if (!hasExplicitEconomyOrCombat) {
+    const neutralFeatureBlocks = arch.defaultFeatures
+      .map((f, idx) =>
+        [
+          `## 3.${idx + 1} [${f.id}] ${f.nameZh}（优先级：${f.priority}）`,
+          `- **功能编号与名称**：\`${f.id}\` · ${f.nameZh} (${f.nameEn})`,
+          `- **触发方式与入口**：${f.triggerZh}`,
+          `- **规则描述（流程、状态机与计分公式）**：`,
+          `  - ${f.rulesZh}`,
+          `  - 绑定核心测评结算公式：\`TotalScore = Σ(itemWeight_i × accuracy_i)\`（标准通过期望阈值：\`>= 80.0\`）`,
+          `- **优先级**：\`${f.priority}\`（核心必做闭环）`,
+          `- **边界与异常处理**：${f.edgeCasesZh}`
+        ].join('\n')
+      )
+      .join('\n\n')
+
+    return [
+      `# 系统概述`,
+      `- **系统名称与品类定位**：${arch.icon} **${arch.labelZh}**（\`${arch.id}\`）`,
+      ...(instr ? [`- **定制策划要求**：${instr}`] : []),
+      `- **核心交互循环（Core Loop）**：${arch.coreLoopZh}`,
+      `- **上下游模块耦合关系**：`,
+      `  - 上游承接业务需求说明、领域知识库、三维/多媒体内容清单与配置规范；`,
+      `  - 下游直接驱动 **UI 界面拆分 (\`ui.split\`) ➔ UI 界面生成 (\`ui.gen\`) ➔ UI 图层分离 (\`image.layerSplit\`)** 与交互原型验证。`,
+      ``,
+      `# 系统目标`,
+      `- **用户体验目标**：${arch.playerGoalZh}`,
+      `- **工程交付设计目标**：${arch.designGoalZh}`,
+      `- **可验证验收标准（Acceptance Criteria）**：`,
+      `  1. 本地有效交互视觉反馈延迟 \`P95 <= 50ms\`，连续运行无黑屏或焦点死锁；`,
+      `  2. 核心任务全流程首次独立完成率期望 \`>= 90%\`，空态与错误态覆盖率 \`100%\`；`,
+      `  3. 测评计分结算公式精度与幂等提交一致性 \`100%\`，重复提交零脏数据。`,
+      ``,
+      `# 功能点设计`,
+      neutralFeatureBlocks,
+      ``,
+      `# UI 布局设计`,
+      screenBlocks,
+      ``,
+      `# UI 要求`,
+      `- **视觉层级与一致性**：严格区分底层环境背景（Backdrop）、九宫格可拉伸容器面板（9-Slice Containers）、顶栏装饰横幅（Ornaments）与高频交互控件（Interactive Controls），不要指定颜色，由下游统一美术风格参考图决定色板。`,
+      `- **栅格与多分辨率安全区**：采用 8pt 基准栅格；竖屏（9:16）顶部预留 44px 安全区、底部预留 34px 手势条安全区；横屏（16:9）左右两侧预留 48px 安全边距。`,
+      `- **交互触控与动效反馈**：所有可点击控件最小热区不小于 \`48×48px\`；按下态 80ms 视觉反馈，同命令 300ms 去重防抖。`,
+      ``,
+      `# 数据与配置`,
+      `## 6.0 核心交互性能阈值与测评结算公式`,
+      `- **测评计分结算公式**：\`TotalScore = Σ(itemWeight_i × accuracy_i)\`（满分 \`100\`，达标期望阈值 \`80\`）`,
+      `- **交互与请求边界阈值**：点击防抖窗口 \`300ms\`，业务接口超时 \`8000ms\`，失败自动重试上限 \`2\` 次`,
+      ``,
+      `## 6.1 核心业务实体与配置结构表`,
+      `| 实体ID | 模块名称 | 发布级别 | 版本策略 | 核心配置字段明细 |`,
+      `| :--- | :--- | :--- | :--- | :--- |`,
+      `| \`hub_scene_cfg\` | 主场景与分区导航配置 | required | versioned | sceneId / cameraPreset / entryHotspots / preloadAssets |`,
+      `| \`interact_unit_cfg\` | 核心交互对象与分层元数据 | required | versioned | unitId / modelRef / layerMask / anchorPoints / sourceRefs |`,
+      `| \`eval_rule_cfg\` | 实训测评题组与计分规则 | required | snapshot | paperId / questionIds / scoringFormula / durationSec |`,
+      `| \`session_log_cfg\` | 会话进度与幂等归档记录 | standard | idempotent | sessionId / eventId / progressPct / totalScore / syncedAt |`,
+      extraContextBlock,
+      `# 开放问题与风险`,
+      `- **内容与资产版本一致性**：三维模型锚点、图谱资源与业务题库需绑定固定发布版本号，未审核草稿严禁直接下发客户端。`,
+      `- **UI 图层切分规范**：下游 \`image.layerSplit\` 进行九宫格切图时，需确保 \`03_Panels_Containers\` 层边框四角装饰与中间拉伸区边界清晰无遮挡。`
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  const wb = opts.wb ?? createMxWorkbenchPreset('short_drama_progression')
+  const multAnalysis = analyzeMultiplierPipeline(wb.multiplier)
+  const lootSim = runMxLootAndSubstatSimulation({ ...wb.lootRoll, runs: 60 })
+  const combatSim = runMxCombatKernelSimulation({ ...wb.combatKernel, runs: 60 })
+
+  const featureBlocks = arch.defaultFeatures
+    .map((f, idx) =>
+      [
+        `## 3.${idx + 1} [${f.id}] ${f.nameZh}（优先级：${f.priority}）`,
+        `- **功能编号与名称**：\`${f.id}\` · ${f.nameZh} (${f.nameEn})`,
+        `- **触发方式与入口**：${f.triggerZh}`,
+        `- **规则描述（流程、条件、结算公式）**：`,
+        `  - ${f.rulesZh}`,
+        `  - 绑定核心结算公式：\`${wb.multiplier.finalFormula}\`（单次标准期望：\`${multAnalysis.finalOutput.toFixed(1)}\`）`,
+        `- **优先级**：\`${f.priority}\`（核心必做闭环）`,
+        `- **边界与异常处理**：${f.edgeCasesZh}`
+      ].join('\n')
+    )
+    .join('\n\n')
+
   const entityTableRows = wb.multiplier.entities
     .map((e) => {
       const statStr = Object.entries(e.stats)
@@ -1217,10 +1461,6 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
       return `| \`${e.id}\` | ${e.name} | ${e.rarity} | ${e.cost} | ${statStr} |`
     })
     .join('\n')
-
-  const extraContextBlock =
-    opts.novelIpSpec?.trim() ||
-    (combinedIncoming ? `\n## 6.2 上游经济系统与小说 IP 联动数据契约\n${combinedIncoming}\n` : '')
 
   return [
     `# 系统概述`,
@@ -1252,6 +1492,10 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
     `- **交互触控与动效反馈**：所有可点击按钮最小热区不小于 \`48×48px\`；按下态 80ms 缩放反馈，数值跳字采用弹簧缓动（Spring Ease-Out），高阶底牌解锁伴随屏幕微震与流光扫光。`,
     ``,
     `# 数据与配置`,
+    `## 6.0 核心乘区结算公式与保底参数（绑定经济系统）`,
+    `- **核心乘区结算公式**：\`${wb.multiplier.finalFormula}\`（基准单轮期望输出：\`${multAnalysis.finalOutput.toFixed(1)}\`）`,
+    `- **抽卡与掉落保底参数**：软保底起始第 \`${wb.lootRoll.softPityStart}\` 抽，硬保底第 \`${wb.lootRoll.hardPityPull}\` 抽必出，综合期望 \`${lootSim.attemptsMean.toFixed(1)}\` 抽`,
+    ``,
     `## 6.1 标准角色与宿敌属性配置表（源自经济系统工作台）`,
     `| 实体ID | 名称 | 稀有度 | 费用/阶位 | 核心属性明细 |`,
     `| :--- | :--- | :--- | :--- | :--- |`,
@@ -1274,6 +1518,187 @@ export interface GameSystemUiScreenPreviewItem {
   hasPsdSpec: boolean
   wireframeSnippet: string
   promptSummary: string
+}
+
+export type GddSectionKey =
+  'overview' | 'goals' | 'features' | 'uiLayout' | 'uiRequirements' | 'dataConfig'
+
+export interface GddSectionSpan {
+  key: GddSectionKey
+  start: number
+  headingEnd: number
+  end: number
+  level: number
+  rawLine: string
+}
+
+const GDD_SECTION_LABELS: Record<GddSectionKey, { zh: string; en: string }> = {
+  overview: { zh: '# 系统概述', en: '# System Overview' },
+  goals: { zh: '# 系统目标', en: '# System Goals' },
+  features: { zh: '# 功能点设计', en: '# Feature Design' },
+  uiLayout: { zh: '# UI 布局设计', en: '# UI Layout Design' },
+  uiRequirements: { zh: '# UI 要求', en: '# UI Requirements' },
+  dataConfig: { zh: '# 数据与配置', en: '# Data & Configuration' }
+}
+
+/**
+ * 识别策划案章节标题所属的 6 大标准章节 ID（兼容 `# 一、系统概述`、`# 1. 系统概述`、`# 四、界面清单与 UI 布局设计` 等模型常见编号变体）。
+ */
+export function matchGddHeadingSectionId(headingText: string): GddSectionKey | null {
+  const clean = (headingText ?? '').replace(/^#+\s*/, '').trim()
+  if (!clean) return null
+  // 排除 3.1 / 4.2 / UI-01 / F01 / SYS-01 等子条目编号，避免子节被误判为顶层章节
+  if (/^(?:\d+\.\d+|UI-\d+|F\d+\b|SYS-)/i.test(clean)) return null
+  const stripped = clean
+    .replace(/^(?:[（(]?第?[一二三四五六七八九十百\d]+[章节部分篇)）]?|[IVX]+)[.、:：\s）)-]*/i, '')
+    .trim()
+
+  if (
+    /^(?:[^\n]{0,10})?(?:系统概述|项目概述|玩法概述|设计概述|总览与概述|System\s*Overview)/i.test(
+      stripped
+    )
+  ) {
+    return 'overview'
+  }
+  if (
+    /^(?:[^\n]{0,10})?(?:系统目标|设计目标|体验目标|项目目标|核心目标|System\s*Goals|Design\s*Goals)/i.test(
+      stripped
+    )
+  ) {
+    return 'goals'
+  }
+  if (
+    /^(?:[^\n]{0,12})?(?:功能点设计|功能模块|核心功能|功能设计|玩法规则|Feature\s*Design|Feature\s*Modules)/i.test(
+      stripped
+    )
+  ) {
+    return 'features'
+  }
+  if (
+    /^(?:[^\n]{0,16})?(?:UI\s*布局设计|界面清单|界面布局|UI\s*界面设计|界面设计|UI\s*Layout)/i.test(
+      stripped
+    )
+  ) {
+    return 'uiLayout'
+  }
+  if (
+    /^(?:[^\n]{0,16})?(?:UI\s*要求|UI\s*规范|交互与反馈规范|交互规范|美术与\s*UI|视觉与交互|UI\s*Requirements|UI\s*Specs|Interaction\s*(?:&|and)\s*Feedback)/i.test(
+      stripped
+    )
+  ) {
+    return 'uiRequirements'
+  }
+  if (
+    /^(?:[^\n]{0,16})?(?:数据与配置|核心数值|数值与配置|配置表|数据表与配置|数据结构|Data\s*(?:&|and)\s*Config|Data\s*(?:&|and)\s*Formulas)/i.test(
+      stripped
+    )
+  ) {
+    return 'dataConfig'
+  }
+  return null
+}
+
+interface ScannedMdHeading {
+  level: number
+  text: string
+  rawLine: string
+  start: number
+  lineEnd: number
+}
+
+function scanMarkdownHeadingsOutsideCodeFences(txt: string): ScannedMdHeading[] {
+  const out: ScannedMdHeading[] = []
+  let inFence = false
+  let pos = 0
+  while (pos <= txt.length) {
+    const nl = txt.indexOf('\n', pos)
+    const lineEnd = nl >= 0 ? nl : txt.length
+    const rawLine = txt.slice(pos, lineEnd).replace(/\r$/, '')
+    const trimmed = rawLine.trim()
+    if (trimmed.startsWith('```')) {
+      inFence = !inFence
+    } else if (!inFence) {
+      const m = /^(#{1,4})\s+(.+)$/.exec(trimmed)
+      if (m) {
+        out.push({
+          level: m[1]!.length,
+          text: m[2]!.trim(),
+          rawLine: trimmed,
+          start: pos,
+          lineEnd
+        })
+      }
+    }
+    if (nl < 0) break
+    pos = nl + 1
+  }
+  return out
+}
+
+/**
+ * 在 Markdown 正文中定位指定标准章节的起止字符区间（跳过代码块内的 `#`）。
+ */
+export function findGddSectionSpan(docText: string, key: GddSectionKey): GddSectionSpan | null {
+  const headings = scanMarkdownHeadingsOutsideCodeFences(docText)
+  let hitIdx = headings.findIndex((h) => h.level === 1 && matchGddHeadingSectionId(h.text) === key)
+  if (hitIdx < 0) {
+    hitIdx = headings.findIndex((h) => h.level === 2 && matchGddHeadingSectionId(h.text) === key)
+  }
+  if (hitIdx < 0) return null
+  const hit = headings[hitIdx]!
+  let end = docText.length
+  for (let i = hitIdx + 1; i < headings.length; i += 1) {
+    if (headings[i]!.level <= hit.level) {
+      end = headings[i]!.start
+      break
+    }
+  }
+  return {
+    key,
+    start: hit.start,
+    headingEnd: hit.lineEnd,
+    end,
+    level: hit.level,
+    rawLine: hit.rawLine
+  }
+}
+
+export function isGlobalUiPreambleSubheading(rawHeading: string, block: string): boolean {
+  if (
+    !/(?:全局布局|通用规范|通用状态|通用七态|设计总则|全局规范|资产规则|Global\s*Layout|General\s*Rules)/i.test(
+      rawHeading
+    )
+  ) {
+    return false
+  }
+  const hasExplicitScreenKind = /screenKind\s*[:：]/i.test(block)
+  const hasAsciiFence = /```(?:text|ascii)?\s*\n[\s\S]*?[+┌┐└┘─│]/i.test(block)
+  return !hasExplicitScreenKind && !hasAsciiFence
+}
+
+/**
+ * 检测由旧版「一键补全」在已有完整章节后误追加的默认 RPG/短剧尾部模板（`ui_rpg_realm_main` / `sd_endure`），
+ * 返回该冗余尾部在全文中的起始偏移；若不存在或本身就是唯一正文章节则返回 `null`。
+ */
+export function detectPollutedLegacyRpgTailStart(docText: string): number | null {
+  const txt = docText ?? ''
+  if (!txt) return null
+  const legacyUiRe =
+    /\n# UI 布局设计\s*\n+## 4\.1 角色境界突破与属性总览主界面（`ui_rpg_realm_main`）/
+  const legacyDataRe =
+    /\n# 数据与配置\s*\n+## 6\.1 标准角色与宿敌属性配置表（源自经济系统工作台）\s*\n\|[^\n]*\n\|[^\n]*\n\|\s*`sd_endure`/
+  const uiHit = legacyUiRe.exec(txt)
+  const dataHit = legacyDataRe.exec(txt)
+  const candidates = [uiHit?.index, dataHit?.index].filter(
+    (idx): idx is number => typeof idx === 'number' && idx > 0
+  )
+  if (!candidates.length) return null
+  const cutIdx = Math.min(...candidates)
+  const head = txt.slice(0, cutIdx).trim()
+  if (!head) return null
+  const headHasOwnSections =
+    Boolean(findGddSectionSpan(head, 'uiLayout')) || Boolean(findGddSectionSpan(head, 'dataConfig'))
+  return headHasOwnSections ? cutIdx : null
 }
 
 export interface GameSystemDocumentAudit {
@@ -1304,16 +1729,17 @@ export interface GameSystemDocumentAudit {
  */
 export function auditGameSystemDocument(docText: string): GameSystemDocumentAudit {
   const txt = (docText ?? '').trim()
+  const uiLayoutSpan = findGddSectionSpan(txt, 'uiLayout')
   const sectionChecks = {
-    overview: /#\s*系统概述|#\s*System Overview/i.test(txt),
-    goals: /#\s*系统目标|#\s*System Goals/i.test(txt),
-    features: /#\s*功能点设计|#\s*Feature Design/i.test(txt),
-    uiLayout: /#\s*UI\s*布局设计|#\s*UI Layout Design/i.test(txt),
-    uiRequirements: /#\s*UI\s*要求|#\s*UI Requirements/i.test(txt),
-    dataConfig: /#\s*数据与配置|#\s*核心数值|#\s*Data\s*&\s*Configuration/i.test(txt)
+    overview: Boolean(findGddSectionSpan(txt, 'overview')),
+    goals: Boolean(findGddSectionSpan(txt, 'goals')),
+    features: Boolean(findGddSectionSpan(txt, 'features')),
+    uiLayout: Boolean(uiLayoutSpan),
+    uiRequirements: Boolean(findGddSectionSpan(txt, 'uiRequirements')),
+    dataConfig: Boolean(findGddSectionSpan(txt, 'dataConfig'))
   }
 
-  const featureMatches = txt.match(/SYS-[A-Z0-9-]+|##\s*3\.\d+|功能编号/g) ?? []
+  const featureMatches = txt.match(/SYS-[A-Z0-9-]+|F\d{2,3}\b|##\s*3\.\d+|功能编号/g) ?? []
   const featureCount = Math.max(
     featureMatches.length,
     (txt.match(/优先级[：:]\s*`?P[012]/g) ?? []).length
@@ -1321,23 +1747,29 @@ export function auditGameSystemDocument(docText: string): GameSystemDocumentAudi
   const hasPriorityTags = /\bP0\b|\bP1\b|\bP2\b/.test(txt)
   const hasEdgeCaseHandling = /边界与异常|异常处理|断线|超时|不足|溢出|防抖|Edge cases/i.test(txt)
   const hasNumericalFormulaBinding =
-    /乘区|公式|保底|ATK|HP|的概率|期望|Formula|Multiplier|Pity/i.test(txt)
+    /乘区|公式|保底|ATK|HP|的概率|期望|计分规则|Formula|Multiplier|Pity/i.test(txt)
 
   // Extract UI Screens from `# UI 布局设计` section
   const uiScreens: GameSystemUiScreenPreviewItem[] = []
-  const uiLayoutMatch = /#\s*(?:UI\s*布局设计|UI Layout Design)([\s\S]*?)(?=\n#\s+[^#]|$)/i.exec(
-    txt
-  )
-  const uiBody = uiLayoutMatch?.[1] ?? txt
+  const uiBody = uiLayoutSpan ? txt.slice(uiLayoutSpan.headingEnd, uiLayoutSpan.end) : txt
+  const firstSubIdx = uiBody.search(/(?:^|\n)##+\s+/)
+  const introText = firstSubIdx > 0 ? uiBody.slice(0, firstSubIdx) : ''
+  let globalPsdInherited = /9-slice|九宫格|PSD/i.test(introText)
 
-  const subHeadingRe = /##+\s*(?:4\.\d+\s*)?([^\n]+)\n([\s\S]*?)(?=\n##+\s+|\n#\s+|$)/g
+  const subHeadingRe = /(?:^|\n)##+\s*(?:4\.\d+\s*)?([^\n]+)\n([\s\S]*?)(?=\n##+\s+|\n#\s+|$)/g
   let m: RegExpExecArray | null
   let idx = 1
   while ((m = subHeadingRe.exec(uiBody)) !== null) {
     const rawHeading = m[1]!.trim()
     const block = m[2]!.trim()
+    if (uiLayoutSpan && isGlobalUiPreambleSubheading(rawHeading, block)) {
+      if (/9-slice|九宫格|PSD/i.test(block)) {
+        globalPsdInherited = true
+      }
+      continue
+    }
     if (
-      !uiLayoutMatch &&
+      !uiLayoutSpan &&
       !/screenKind|界面规格|界面结构|框线|HUD|弹窗|主界面|面板|9:16|16:9/i.test(
         `${rawHeading}\n${block}`
       )
@@ -1362,7 +1794,11 @@ export function auditGameSystemDocument(docText: string): GameSystemDocumentAudi
       /(\+[\-+]+\+[\s\S]*?\+[\-+]+\+)/.exec(block)
     const wireframeSnippet = asciiMatch?.[1]?.trim() ?? ''
     const hasWireframe = wireframeSnippet.length > 20 || /[+┌┐└┘├┤┬┴┼─│]/.test(block)
-    const hasPsdSpec = /9-slice|九宫格|PSD|01_Header|02_Interactive|03_Panels/i.test(block)
+    const hasPsdSpec =
+      /9-slice|九宫格|PSD|01_Header|02_Interactive|03_Panels|图层拆分|分层输出|独立分层|分别成组|分别输出|单独输出/i.test(
+        block
+      ) ||
+      (globalPsdInherited && /(?:^|\n)\s*[-*•]?\s*(?:\*\*)?拆分/m.test(block))
 
     uiScreens.push({
       id: `scr_${idx}`,
@@ -1385,13 +1821,15 @@ export function auditGameSystemDocument(docText: string): GameSystemDocumentAudi
   const warningsZh: string[] = []
   const warningsEn: string[] = []
 
-  const secCount = Object.values(sectionChecks).filter(Boolean).length
+  const sectionKeys = Object.keys(sectionChecks) as GddSectionKey[]
+  const missingKeys = sectionKeys.filter((k) => !sectionChecks[k])
+  const secCount = sectionKeys.length - missingKeys.length
   score += Math.round((secCount / 6) * 30)
-  if (secCount < 5) {
-    warningsZh.push(
-      `当前策划案仅包含 ${secCount}/6 个标准章节，建议补全缺失的「# 功能点设计 / # UI 布局设计 / # 数据与配置」章节。`
-    )
-    warningsEn.push(`Document has ${secCount}/6 standard GDD sections.`)
+  if (missingKeys.length > 0) {
+    const missingZh = missingKeys.map((k) => GDD_SECTION_LABELS[k].zh).join(' / ')
+    const missingEn = missingKeys.map((k) => GDD_SECTION_LABELS[k].en).join(' / ')
+    warningsZh.push(`当前策划案包含 ${secCount}/6 个标准章节，建议补全缺失的「${missingZh}」章节。`)
+    warningsEn.push(`Document has ${secCount}/6 standard GDD sections (missing: ${missingEn}).`)
   }
 
   if (hasPriorityTags && hasEdgeCaseHandling) {
@@ -1432,6 +1870,20 @@ export function auditGameSystemDocument(docText: string): GameSystemDocumentAudi
     score += 8
     warningsZh.push('部分 UI 界面缺少 ASCII 字符框线图或 9-slice 九宫格 PSD 图层拆分规范。')
     warningsEn.push('Some UI screens are missing ASCII wireframes or 9-slice PSD layer specs.')
+  } else if (uiScreens.length > 0) {
+    warningsZh.push('UI 界面缺少 ASCII 字符框线图与 9-slice 九宫格 PSD 图层拆分规范。')
+    warningsEn.push('UI screens are missing ASCII wireframes and 9-slice PSD layer specs.')
+  }
+
+  const pollutedTailIdx = detectPollutedLegacyRpgTailStart(txt)
+  if (pollutedTailIdx !== null) {
+    score = Math.max(5, score - 10)
+    warningsZh.push(
+      '检测到文档末尾存在旧版误追加的默认战斗/短剧数值与境界界面模板，点击下方按钮可一键清理还原。'
+    )
+    warningsEn.push(
+      'Detected duplicate default RPG/short-drama template sections appended at the end of the document; click below to clean up.'
+    )
   }
 
   return {
@@ -1466,4 +1918,1272 @@ export function buildStandardUiScreenMarkdownBlock(scr: GameSystemUiScreenSpec, 
     `- **PSD 图层拆分与九宫格（9-slice）规范**：`,
     `  - ${scr.psdLayersZh}`
   ].join('\n')
+}
+
+export interface AutoCompleteGameSystemResult {
+  text: string
+  fixedItemsZh: string[]
+  fixedItemsEn: string[]
+  changed: boolean
+}
+
+function insertBlockAtPosition(doc: string, pos: number, block: string): string {
+  const before = doc.slice(0, pos).trimEnd()
+  const after = doc.slice(pos).trimStart()
+  if (!before) return after ? `${block.trim()}\n\n${after}` : block.trim()
+  if (!after) return `${before}\n\n${block.trim()}`
+  return `${before}\n\n${block.trim()}\n\n${after}`
+}
+
+/**
+ * 一键补全策划案 6 维工程完备度缺失项（覆盖全部 6 大标准章节、P0/P1 与异常边界、乘区公式与配置表、多屏 UI 清单、ASCII 框线与 9-slice PSD 规范）。
+ */
+export function autoCompleteGameSystemDocument(
+  docText: string,
+  opts: SynthesizeGameSystemDocOptions
+): AutoCompleteGameSystemResult {
+  const rawTrimmed = (docText ?? '').trim()
+  const fullRef = synthesizeGameSystemDocOffline(opts)
+  if (!rawTrimmed) {
+    return {
+      text: fullRef,
+      fixedItemsZh: ['完整 6 大标准章节策划案'],
+      fixedItemsEn: ['Full 6-section GDD'],
+      changed: true
+    }
+  }
+
+  const arch =
+    opts.archetype ??
+    (opts.archetypeId && isGameSystemArchetypeId(opts.archetypeId)
+      ? resolveGameSystemArchetype(opts.archetypeId)
+      : resolveGameSystemArchetype(
+          inferGameSystemArchetypeFromContext({
+            prompt: `${opts.customInstruction ?? opts.instruction ?? ''} ${rawTrimmed}`
+          })
+        ))
+  const targetAspect = opts.targetAspect ?? arch.defaultScreens[0]?.aspectRatio ?? '16:9'
+
+  const getRefSection = (key: GddSectionKey): string => {
+    const sp = findGddSectionSpan(fullRef, key)
+    return sp ? fullRef.slice(sp.start, sp.end).trim() : ''
+  }
+  const getRefSectionBody = (key: GddSectionKey): string => {
+    const sp = findGddSectionSpan(fullRef, key)
+    return sp ? fullRef.slice(sp.headingEnd, sp.end).trim() : ''
+  }
+
+  let next = rawTrimmed
+  const fixedItemsZh: string[] = []
+  const fixedItemsEn: string[] = []
+
+  // 0. 清理旧版误追加的默认 RPG 境界突破界面与短剧宿敌数值表冗余尾部
+  const pollutedTailIdx = detectPollutedLegacyRpgTailStart(next)
+  if (pollutedTailIdx !== null) {
+    next = next.slice(0, pollutedTailIdx).trim()
+    fixedItemsZh.push('清理末尾误追加的战斗/短剧默认模板')
+    fixedItemsEn.push('Cleaned up duplicate RPG/short-drama boilerplate tail')
+  }
+
+  // 1. # 系统概述
+  if (!findGddSectionSpan(next, 'overview')) {
+    const sec = getRefSection('overview')
+    if (sec) {
+      next = `${sec}\n\n${next}`
+      fixedItemsZh.push('# 系统概述')
+      fixedItemsEn.push('# System Overview')
+    }
+  }
+
+  // 2. # 系统目标
+  if (!findGddSectionSpan(next, 'goals')) {
+    const sec = getRefSection('goals')
+    if (sec) {
+      const ov = findGddSectionSpan(next, 'overview')
+      next = insertBlockAtPosition(next, ov ? ov.end : 0, sec)
+      fixedItemsZh.push('# 系统目标')
+      fixedItemsEn.push('# System Goals')
+    }
+  }
+
+  // 3. # 功能点设计 + P0/P1/P2 优先级 + 断线/连点/资源不足异常边界
+  {
+    const featSpan = findGddSectionSpan(next, 'features')
+    const curAudit = auditGameSystemDocument(next)
+    if (!featSpan) {
+      const sec = getRefSection('features')
+      if (sec) {
+        const anchor = findGddSectionSpan(next, 'goals') ?? findGddSectionSpan(next, 'overview')
+        next = insertBlockAtPosition(next, anchor ? anchor.end : next.length, sec)
+        fixedItemsZh.push('# 功能点设计（含 P0/P1 与异常边界）')
+        fixedItemsEn.push('# Feature Design (P0/P1 & edge cases)')
+      }
+    } else if (!curAudit.hasPriorityTags || !curAudit.hasEdgeCaseHandling) {
+      const body = getRefSectionBody('features')
+      if (body) {
+        next = insertBlockAtPosition(next, featSpan.end, body)
+        fixedItemsZh.push('功能点 P0/P1/P2 优先级与异常边界规则')
+        fixedItemsEn.push('P0/P1/P2 priorities & edge-case rules')
+      }
+    }
+  }
+
+  // 4. # UI 布局设计 + 多界面 (>=2屏) + ASCII 框线图与 9-slice PSD 规范
+  {
+    const uiSpan = findGddSectionSpan(next, 'uiLayout')
+    if (!uiSpan) {
+      const sec = getRefSection('uiLayout')
+      if (sec) {
+        const anchor =
+          findGddSectionSpan(next, 'features') ??
+          findGddSectionSpan(next, 'goals') ??
+          findGddSectionSpan(next, 'overview')
+        next = insertBlockAtPosition(next, anchor ? anchor.end : next.length, sec)
+        fixedItemsZh.push('# UI 布局设计（含多屏 ASCII 框线与 9-slice 规范）')
+        fixedItemsEn.push('# UI Layout Design (multi-screen wireframes & 9-slice specs)')
+      }
+    } else {
+      // 4a. 为已有但缺少 ASCII 框线图或 9-slice PSD 规范的子界面补齐缺失字段
+      const curAudit = auditGameSystemDocument(next)
+      if (curAudit.uiScreens.some((s) => !s.hasWireframe || !s.hasPsdSpec)) {
+        const freshSpan = findGddSectionSpan(next, 'uiLayout')!
+        const headerLine = next.slice(freshSpan.start, freshSpan.headingEnd)
+        const rawUiBody = next.slice(freshSpan.headingEnd, freshSpan.end)
+        let scrCursor = 0
+        const patchedUiBody = rawUiBody.replace(
+          /((?:^|\n)##+\s*(?:4\.\d+\s*)?([^\n]+)\n)([\s\S]*?)(?=\n##+\s+|\n#\s+|$)/g,
+          (fullMatch, headingPart: string, rawHeading: string, blockBody: string) => {
+            if (isGlobalUiPreambleSubheading(rawHeading.trim(), blockBody.trim())) {
+              return fullMatch
+            }
+            const fallbackScr =
+              arch.defaultScreens[scrCursor % arch.defaultScreens.length] ?? arch.defaultScreens[0]
+            scrCursor += 1
+            const asciiMatch =
+              /```(?:text|ascii)?\s*\n([\s\S]*?)```/.exec(blockBody) ||
+              /(\+[\-+]+\+[\s\S]*?\+[\-+]+\+)/.exec(blockBody)
+            const wfSnippet = asciiMatch?.[1]?.trim() ?? ''
+            const hasWf = wfSnippet.length > 20 || /[+┌┐└┘├┤┬┴┼─│]/.test(blockBody)
+            const hasPsd =
+              /9-slice|九宫格|PSD|01_Header|02_Interactive|03_Panels|图层拆分|分层输出|独立分层|分别成组|分别输出|单独输出/i.test(
+                blockBody
+              )
+            const additions: string[] = []
+            if (!hasWf && fallbackScr) {
+              additions.push(
+                `- **界面规格**：界面形态 \`screenKind: ${fallbackScr.screenKind}\` · 建议画幅比例 \`aspectRatio: ${targetAspect}\``,
+                `- **界面结构（ASCII 字符框线布局草图）**：`,
+                '```text',
+                fallbackScr.wireframeAscii,
+                '```'
+              )
+            }
+            if (!hasPsd) {
+              additions.push(
+                `- **PSD 图层拆分与九宫格（9-slice）规范**：`,
+                `  - ${fallbackScr?.psdLayersZh ?? '01_Header_Ornaments（顶栏标题与角标） / 02_Interactive_Controls（交互按钮七态独立组件） / 03_Panels_Containers（面板底框采用 9-slice 九宫格切边，四角不拉伸） / 04_Backdrop（底层背景独立分层）'}`
+              )
+            }
+            if (!additions.length) return fullMatch
+            return `${headingPart}${blockBody.trimEnd()}\n${additions.join('\n')}\n`
+          }
+        )
+        if (patchedUiBody !== rawUiBody) {
+          next = `${next.slice(0, freshSpan.start)}${headerLine}${patchedUiBody}${next.slice(freshSpan.end)}`
+          fixedItemsZh.push('UI 界面 ASCII 框线图与 9-slice PSD 规范')
+          fixedItemsEn.push('UI screen ASCII wireframes & 9-slice PSD specs')
+        }
+      }
+
+      // 4b. 若界面数量仍不足 2 屏，追加原型标准界面直至 >= 2 屏
+      const afterScreenAudit = auditGameSystemDocument(next)
+      if (afterScreenAudit.uiScreens.length < 2) {
+        const needed = Math.max(2 - afterScreenAudit.uiScreens.length, 1)
+        const startIdx = afterScreenAudit.uiScreens.length + 1
+        const extraBlocks = arch.defaultScreens
+          .slice(0, Math.max(needed, 2))
+          .map((scr, i) =>
+            buildStandardUiScreenMarkdownBlock({ ...scr, aspectRatio: targetAspect }, startIdx + i)
+          )
+          .join('\n\n')
+        const latestUiSpan = findGddSectionSpan(next, 'uiLayout')!
+        next = insertBlockAtPosition(next, latestUiSpan.end, extraBlocks)
+        fixedItemsZh.push('多界面 UI 拆分清单 (>=2屏)')
+        fixedItemsEn.push('Multi-screen UI layout specs (>=2 screens)')
+      }
+    }
+  }
+
+  // 5. # UI 要求
+  if (!findGddSectionSpan(next, 'uiRequirements')) {
+    const sec = getRefSection('uiRequirements')
+    if (sec) {
+      const uiSpan = findGddSectionSpan(next, 'uiLayout')
+      next = insertBlockAtPosition(next, uiSpan ? uiSpan.end : next.length, sec)
+      fixedItemsZh.push('# UI 要求')
+      fixedItemsEn.push('# UI Requirements')
+    }
+  }
+
+  // 6. # 数据与配置 + 经济系统乘区公式与配置表绑定
+  {
+    const dcSpan = findGddSectionSpan(next, 'dataConfig')
+    const curAudit = auditGameSystemDocument(next)
+    if (!dcSpan) {
+      const sec = getRefSection('dataConfig')
+      if (sec) {
+        const uiReqSpan = findGddSectionSpan(next, 'uiRequirements')
+        next = insertBlockAtPosition(next, uiReqSpan ? uiReqSpan.end : next.length, sec)
+        fixedItemsZh.push('# 数据与配置（含乘区公式与配置表）')
+        fixedItemsEn.push('# Data & Configuration (formulas & tables)')
+      }
+    } else if (!curAudit.hasNumericalFormulaBinding) {
+      const body = getRefSectionBody('dataConfig')
+      if (body) {
+        next = insertBlockAtPosition(next, dcSpan.end, body)
+        fixedItemsZh.push('经济系统乘区公式与属性表绑定')
+        fixedItemsEn.push('Economy multiplier formula & stat table binding')
+      }
+    }
+  }
+
+  return {
+    text: next.trim(),
+    fixedItemsZh,
+    fixedItemsEn,
+    changed: next.trim() !== rawTrimmed
+  }
+}
+
+// ───────────────────────────── 策划案专属业务/教学数值配表引擎 ─────────────────────────────
+
+/**
+ * 判断节点标题、提示词或关联策划案是否属于非战斗业务/教学/实训/仿真场景（如中医药沉浸式虚拟教学系统）。
+ */
+export function isNonCombatDomainContext(text: string): boolean {
+  const s = (text ?? '').trim()
+  if (!s) return false
+  if (
+    /杀戮尖塔|炉石传说|阴阳师|小丑牌|幸存者|逆袭爽剧|打脸底牌|slay_the_spire|hearthstone|onmyoji|balatro|brotato/i.test(
+      s
+    )
+  ) {
+    return false
+  }
+  return /中医|经络|穴位|腧穴|药材|饮片|针灸|配伍|十八反|十九畏|教学|教育|实训|题库|测验|评分标准|数字孪生|展厅|展馆|博物馆|医疗|临床|解剖|科普|虚拟仿真|虚拟空间|导览|课件|培训|tcm|acupoint|meridian|simulation|education|training|digital.?twin/i.test(
+    s
+  )
+}
+
+export function isTcmTeachingDomain(text: string): boolean {
+  return /中医|经络|穴位|腧穴|药材|饮片|针灸|配伍|十八反|十九畏|本草|脉诊|辨证|tcm|acupoint|meridian/i.test(
+    text ?? ''
+  )
+}
+
+function splitMdRowCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((c) => c.trim().replace(/^`|`$/g, ''))
+}
+
+function isMdTableSeparator(line: string): boolean {
+  const trimmed = line.trim()
+  if (!trimmed.includes('|')) return false
+  const cells = splitMdRowCells(trimmed)
+  return cells.length >= 2 && cells.every((c) => /^:?-{2,}:?$/.test(c))
+}
+
+/**
+ * 从系统策划案 Markdown 正文中自动提取所有业务表格（优先提取「数据与配置」「系统目标/关键验收项」中的表格），
+ * 转换为可在数值系统工作台直接查看、搜索、编辑与导出的结构化 `MxDomainDataTable`。
+ */
+export function extractMarkdownTablesFromGdd(gddText: string): MxDomainDataTable[] {
+  const src = (gddText ?? '').replace(/\r\n/g, '\n')
+  if (!src.trim()) return []
+  const lines = src.split('\n')
+  const extracted: MxDomainDataTable[] = []
+
+  let h2Title = ''
+  let h3Title = ''
+  let h4Title = ''
+  let i = 0
+
+  while (i < lines.length) {
+    const line = (lines[i] ?? '').trim()
+    if (line.startsWith('```')) {
+      i++
+      while (i < lines.length && !(lines[i] ?? '').trim().startsWith('```')) i++
+      i++
+      continue
+    }
+    const hMatch = /^(#{1,4})\s+(.+)$/.exec(line)
+    if (hMatch) {
+      const lv = hMatch[1]!.length
+      const txt = hMatch[2]!.trim()
+      if (lv <= 2) {
+        h2Title = txt
+        h3Title = ''
+        h4Title = ''
+      } else if (lv === 3) {
+        h3Title = txt
+        h4Title = ''
+      } else {
+        h4Title = txt
+      }
+      i++
+      continue
+    }
+
+    if (line.includes('|') && i + 1 < lines.length && isMdTableSeparator(lines[i + 1] ?? '')) {
+      const headers = splitMdRowCells(line)
+      i += 2
+      const rawRows: string[][] = []
+      while (i < lines.length) {
+        const rLine = (lines[i] ?? '').trim()
+        if (!rLine || !rLine.includes('|') || /^(#{1,4})\s+/.test(rLine)) break
+        if (!isMdTableSeparator(rLine)) {
+          rawRows.push(splitMdRowCells(rLine))
+        }
+        i++
+      }
+      if (headers.length >= 2 && rawRows.length >= 1) {
+        const columns: MxDomainTableColumn[] = headers.map((hdr, cIdx) => ({
+          key: `col_${cIdx + 1}`,
+          label: hdr || `列${cIdx + 1}`,
+          kind: 'text'
+        }))
+        const rows = rawRows.map((cells) => {
+          const obj: Record<string, string | number> = {}
+          columns.forEach((col, cIdx) => {
+            const rawVal = cells[cIdx] ?? ''
+            const asNum = Number(rawVal)
+            obj[col.key] =
+              rawVal !== '' && /^-?\d+(?:\.\d+)?$/.test(rawVal) && Number.isFinite(asNum)
+                ? asNum
+                : rawVal
+          })
+          return obj
+        })
+        const leafHeading = h4Title || h3Title || h2Title || `策划案表格 ${extracted.length + 1}`
+        const category = h2Title || '策划案提取表'
+        extracted.push({
+          id: `gdd_tbl_${extracted.length + 1}`,
+          title: leafHeading,
+          category,
+          description:
+            h2Title && leafHeading !== h2Title
+              ? `提取自策划案「${h2Title} / ${leafHeading}」`
+              : `提取自策划案「${leafHeading}」`,
+          columns,
+          rows
+        })
+      }
+      continue
+    }
+    i++
+  }
+
+  return extracted
+}
+
+function createTcmTeachingNumericalSuite(
+  customTitle?: string,
+  gddText?: string
+): MxDomainNumericalSuite {
+  const cleanTitle =
+    customTitle?.trim() && !/数值系统$/.test(customTitle.trim())
+      ? `${customTitle.trim()} · 策划案专属数值配表`
+      : customTitle?.trim() || '中医药沉浸式虚拟教学系统 · 策划案专属数值配表'
+
+  const formulas: MxDomainFormulaRule[] = [
+    {
+      id: 'f_total_score',
+      name: '实训与理论综合成绩结算公式',
+      expression:
+        'TotalScore = round(AcupointScore * 0.40 + HerbScore * 0.25 + QuizScore * 0.25 + SafetyScore * 0.10, 1)',
+      threshold: '合格 >= 80.0 分 · 优秀 >= 90.0 分 · 触碰安全红线直接判 0 分',
+      description:
+        '融合三维取穴实操、饮片性状鉴别、知识题库作答与医疗安全禁忌红线四维权重结算，交卷接口幂等一致。'
+    },
+    {
+      id: 'f_acupoint_hit',
+      name: '三维人体腧穴定位单点判分公式',
+      expression:
+        'PointScore = (dist_mm <= tol_perfect_mm ? 100 : dist_mm <= tol_pass_mm ? 75 : 0) * max(0.30, 1 - hint_level * 0.25)',
+      threshold: '满分容差 <= 5mm · 合格容差 <= 10mm · 分级提示每级折减 25%',
+      description:
+        '基于当前绑定模型版本的表面锚点测地距离（mm）与法向夹角判定，未校准设备提示重校准。'
+    },
+    {
+      id: 'f_interaction_sla',
+      name: '本地沉浸交互与实时渲染性能红线',
+      expression:
+        'LocalFeedback_P99 <= 50ms && RayDropErr_2m_P95 <= 20mm && FrameTime_60Hz_P95 <= 14ms (90Hz <= 9ms)',
+      threshold: '核心操作采样 >= 1000 次 · 连续运行 240 分钟无崩溃与显存持续增长',
+      description:
+        '严格区分本地首个可见反馈延迟（<=50ms）与云端模型流式推理耗时，禁止以按钮加载态冒充完整问答响应。'
+    },
+    {
+      id: 'f_voice_barge_in',
+      name: '数字人多轮问答、语音打断与字幕同步指标',
+      expression:
+        'BargeInStop_P95 <= 200ms && FirstText_P95 <= 3000ms && FirstAudio_P95 <= 4000ms && SubtitleSkew_P95 <= 150ms',
+      threshold: '中医术语 ASR 识别率 >= 95% · 打断召回率/精确率 >= 90%',
+      description: '客户端按 turn_id 与 sequence 过滤已取消或迟到语音分片，杜绝串会话与旧音频重播。'
+    }
+  ]
+
+  const coreTables: MxDomainDataTable[] = [
+    {
+      id: 'tcm_runtime_params',
+      title: '关键可配置参数与交互性能阈值表（runtime_config）',
+      category: '系统性能与交互参数',
+      description:
+        '严格对应策划案「数据与配置 · 关键可配置参数」及「系统目标 · 关键验收项」，现场验收前冻结。',
+      formulaHint: 'LocalFeedback_P99 <= 50ms · PinchDebounce = 250ms · FrameTime_60Hz_P95 <= 14ms',
+      columns: [
+        { key: 'param_key', label: '参数键名', kind: 'text' },
+        { key: 'param_name', label: '配置项名称', kind: 'text' },
+        { key: 'default_val', label: '默认值', kind: 'number' },
+        { key: 'unit', label: '单位', kind: 'text' },
+        { key: 'valid_range', label: '允许范围 / 验收阈值', kind: 'range' },
+        { key: 'module', label: '归属子系统', kind: 'text' },
+        { key: 'rule', label: '校验与冻结规则', kind: 'text' }
+      ],
+      rows: [
+        {
+          param_key: 'local_feedback_p99_ms',
+          param_name: '本地交互反馈阈值',
+          default_val: 50,
+          unit: 'ms',
+          valid_range: 'P99 <= 50 (采样>=1000次)',
+          module: '交互输入',
+          rule: '禁止后台放宽阈值后仍声称达标'
+        },
+        {
+          param_key: 'pinch_debounce_ms',
+          param_name: '捏合防重复窗口',
+          default_val: 250,
+          unit: 'ms',
+          valid_range: '100 ~ 600',
+          module: '手势识别',
+          rule: '同命令去重，防止双触发'
+        },
+        {
+          param_key: 'hand_lost_cancel_ms',
+          param_name: '手部丢失取消时间',
+          default_val: 300,
+          unit: 'ms',
+          valid_range: '100 ~ 1000',
+          module: '手势识别',
+          rule: '丢手超阈值回退预览态不误提交'
+        },
+        {
+          param_key: 'dwell_confirm_ms',
+          param_name: '射线驻留确认时间',
+          default_val: 800,
+          unit: 'ms',
+          valid_range: '400 ~ 2000',
+          module: '射线交互',
+          rule: '无捏合辅助确认窗口'
+        },
+        {
+          param_key: 'palm_open_hold_ms',
+          param_name: '自定义菜单张掌保持',
+          default_val: 400,
+          unit: 'ms',
+          valid_range: '300 ~ 1000',
+          module: '手势识别',
+          rule: '保存映射前检查作用域冲突'
+        },
+        {
+          param_key: 'ray_angle_err_p95_deg',
+          param_name: '射线静态角度误差上限',
+          default_val: 0.5,
+          unit: 'deg',
+          valid_range: 'P95 <= 0.5° (2m落点<=20mm)',
+          module: '设备校准',
+          rule: '静态指向10秒漂移超限主动提示重校准'
+        },
+        {
+          param_key: 'vad_endpoint_silence_ms',
+          param_name: 'VAD 端点静音判定',
+          default_val: 600,
+          unit: 'ms',
+          valid_range: '300 ~ 1200',
+          module: '语音问答',
+          rule: '需配套安静与噪声场景 ASR 测试'
+        },
+        {
+          param_key: 'single_voice_max_s',
+          param_name: '单次语音输入上限',
+          default_val: 60,
+          unit: 's',
+          valid_range: '10 ~ 60',
+          module: '语音问答',
+          rule: '超限自动分段，不截断已识别文本'
+        },
+        {
+          param_key: 'barge_in_buffer_ms',
+          param_name: '语音打断预录缓冲',
+          default_val: 500,
+          unit: 'ms',
+          valid_range: '200 ~ 800 (停播P95<=200ms)',
+          module: '语音打断',
+          rule: '仅内存循环保留，默认不落盘原始录音'
+        },
+        {
+          param_key: 'first_text_timeout_s',
+          param_name: '首段有效文本超时',
+          default_val: 10,
+          unit: 's',
+          valid_range: '常态P95<=3s / 超时10s',
+          module: '模型网关',
+          rule: '超时进入明确错误态并提供重试与取消'
+        },
+        {
+          param_key: 'total_gen_timeout_s',
+          param_name: '单轮总生成超时',
+          default_val: 60,
+          unit: 's',
+          valid_range: '15 ~ 60',
+          module: '模型网关',
+          rule: '服务端网关强制执行，支持幂等取消'
+        },
+        {
+          param_key: 'subtitle_sync_p95_ms',
+          param_name: '句级字幕与语音偏差',
+          default_val: 150,
+          unit: 'ms',
+          valid_range: 'P95 <= 150 (文本一致率100%)',
+          module: '数字人播报',
+          rule: '读听同步，严禁口播与屏幕文本不一致'
+        },
+        {
+          param_key: 'gpu_frametime_60hz_ms',
+          param_name: '60Hz 基准 GPU 帧时间',
+          default_val: 14,
+          unit: 'ms',
+          valid_range: '60Hz<=14ms / 90Hz<=9ms',
+          module: '3D实时渲染',
+          rule: '连续30分钟呈现间隔P99<=2周期，无>100ms停顿'
+        },
+        {
+          param_key: 'idle_guide_prompt_min',
+          param_name: '空闲引导提示时间',
+          default_val: 10,
+          unit: 'min',
+          valid_range: '3 ~ 30',
+          module: '会话生命周期',
+          rule: '访客展厅模式与课堂实训模式可分档配置'
+        },
+        {
+          param_key: 'history_retention_days',
+          param_name: '常规学习记录保留期',
+          default_val: 90,
+          unit: '天',
+          valid_range: '30 ~ 365 (本地日志<=1GB)',
+          module: '合规与审计',
+          rule: '敏感字段脱敏，支持按用户授权删除'
+        }
+      ]
+    },
+    {
+      id: 'tcm_acupoint_rules',
+      title: '十二正经核心腧穴三维定位与取穴实训容差配表（acupoint_training_rule）',
+      category: '经络与腧穴实训',
+      description:
+        '对应策划案 F09/F10 及业务表 meridian / acupoint / acupoint_training_rule，定义三维取穴距离容差、安全针深与扣分阶梯。',
+      formulaHint:
+        'PointScore = (dist_mm <= tol_perfect_mm ? 100 : dist_mm <= tol_pass_mm ? 75 : 0) * (1 - hint_level * 0.25)',
+      columns: [
+        { key: 'point_code', label: '国际代码', kind: 'text' },
+        { key: 'point_name', label: '穴位名称', kind: 'text' },
+        { key: 'meridian', label: '归属经络', kind: 'text' },
+        { key: 'tol_perfect_mm', label: '满分容差(mm)', kind: 'number' },
+        { key: 'tol_pass_mm', label: '合格容差(mm)', kind: 'number' },
+        { key: 'safe_depth_mm', label: '安全深度上限(mm)', kind: 'number' },
+        { key: 'time_limit_s', label: '单点限时(s)', kind: 'number' },
+        { key: 'score_weight', label: '标准分值', kind: 'number' },
+        { key: 'safety_note', label: '解剖定位标志与安全禁忌红线', kind: 'text' }
+      ],
+      rows: [
+        {
+          point_code: 'LU7',
+          point_name: '列缺',
+          meridian: '手太阴肺经',
+          tol_perfect_mm: 4.5,
+          tol_pass_mm: 9.0,
+          safe_depth_mm: 12,
+          time_limit_s: 30,
+          score_weight: 10,
+          safety_note: '桡骨茎突上方腕横纹上1.5寸；避开桡动脉浅支，宜向上斜刺'
+        },
+        {
+          point_code: 'LI4',
+          point_name: '合谷',
+          meridian: '手阳明大肠经',
+          tol_perfect_mm: 5.0,
+          tol_pass_mm: 10.0,
+          safe_depth_mm: 20,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '第2掌骨桡侧中点处；【高危红线】孕妇严禁针刺'
+        },
+        {
+          point_code: 'ST36',
+          point_name: '足三里',
+          meridian: '足阳明胃经',
+          tol_perfect_mm: 5.5,
+          tol_pass_mm: 11.0,
+          safe_depth_mm: 30,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '犊鼻下3寸，胫骨前嵴外1横指；常规直刺'
+        },
+        {
+          point_code: 'SP6',
+          point_name: '三阴交',
+          meridian: '足太阴脾经',
+          tol_perfect_mm: 5.0,
+          tol_pass_mm: 9.5,
+          safe_depth_mm: 25,
+          time_limit_s: 30,
+          score_weight: 10,
+          safety_note: '内踝尖上3寸胫骨内侧缘后际；【高危红线】孕妇严禁针刺'
+        },
+        {
+          point_code: 'HT7',
+          point_name: '神门',
+          meridian: '手少阴心经',
+          tol_perfect_mm: 4.0,
+          tol_pass_mm: 8.0,
+          safe_depth_mm: 10,
+          time_limit_s: 30,
+          score_weight: 10,
+          safety_note: '腕掌侧远端横纹尺侧端，尺侧腕屈肌腱桡侧；避开尺动静脉'
+        },
+        {
+          point_code: 'BL23',
+          point_name: '肾俞',
+          meridian: '足太阳膀胱经',
+          tol_perfect_mm: 5.5,
+          tol_pass_mm: 10.5,
+          safe_depth_mm: 22,
+          time_limit_s: 30,
+          score_weight: 10,
+          safety_note: '第2腰椎棘突下旁开1.5寸；严禁向内深刺伤及肾脏'
+        },
+        {
+          point_code: 'KI3',
+          point_name: '太溪',
+          meridian: '足少阴肾经',
+          tol_perfect_mm: 4.5,
+          tol_pass_mm: 9.0,
+          safe_depth_mm: 15,
+          time_limit_s: 30,
+          score_weight: 10,
+          safety_note: '内踝高点与跟腱后缘连线中点凹陷；避开胫后动脉'
+        },
+        {
+          point_code: 'PC6',
+          point_name: '内关',
+          meridian: '手厥阴心包经',
+          tol_perfect_mm: 4.5,
+          tol_pass_mm: 9.0,
+          safe_depth_mm: 18,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '腕掌侧远端横纹上2寸两筋之间；忌深刺重提插损伤正中神经'
+        },
+        {
+          point_code: 'GB20',
+          point_name: '风池',
+          meridian: '足少阳胆经',
+          tol_perfect_mm: 4.5,
+          tol_pass_mm: 8.5,
+          safe_depth_mm: 20,
+          time_limit_s: 35,
+          score_weight: 12,
+          safety_note:
+            '枕骨之下胸锁乳突肌与斜方肌上端凹陷；【高危红线】针尖微下向鼻尖，严禁向对侧眼眶深刺延髓'
+        },
+        {
+          point_code: 'LR3',
+          point_name: '太冲',
+          meridian: '足厥阴肝经',
+          tol_perfect_mm: 4.5,
+          tol_pass_mm: 9.0,
+          safe_depth_mm: 15,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '足背第1、2跖骨结合部前方凹陷；避开足背动脉'
+        },
+        {
+          point_code: 'GV20',
+          point_name: '百会',
+          meridian: '督脉',
+          tol_perfect_mm: 5.0,
+          tol_pass_mm: 9.5,
+          safe_depth_mm: 12,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '前发际正中直上5寸或两耳尖连线中点；平刺为主，小儿囟门未闭禁针'
+        },
+        {
+          point_code: 'CV4',
+          point_name: '关元',
+          meridian: '任脉',
+          tol_perfect_mm: 5.0,
+          tol_pass_mm: 10.0,
+          safe_depth_mm: 25,
+          time_limit_s: 25,
+          score_weight: 10,
+          safety_note: '脐中下3寸前正中线上；针前须排空膀胱，孕妇慎用/禁深刺'
+        }
+      ]
+    },
+    {
+      id: 'tcm_herb_catalog',
+      title: '中药饮片三维鉴别、剂量区间与配伍禁忌权重表（herb_entry）',
+      category: '中药材三维图鉴',
+      description:
+        '对应策划案 F11 及业务表 herb_entry，规范标准名、药用部位、四气五味归经、药典常规剂量及十八反/十九畏安全拦截权重。',
+      formulaHint:
+        'HerbScore = TraitMatchPct * 0.70 + MeridianMatchPct * 0.30（触发十八反高危配伍直接拦截并扣满安全分）',
+      columns: [
+        { key: 'herb_id', label: '药材ID', kind: 'text' },
+        { key: 'standard_name', label: '标准名称', kind: 'text' },
+        { key: 'part', label: '药用部位', kind: 'text' },
+        { key: 'nature_flavor', label: '四气五味', kind: 'text' },
+        { key: 'meridians', label: '归经', kind: 'text' },
+        { key: 'min_dose_g', label: '药典下限(g)', kind: 'number' },
+        { key: 'max_dose_g', label: '药典上限(g)', kind: 'number' },
+        { key: 'safety_tier', label: '安全等级', kind: 'enum' },
+        {
+          key: 'key_features_cautions',
+          label: '三维性状鉴别考点与配伍禁忌（十八反/十九畏）',
+          kind: 'text'
+        }
+      ],
+      rows: [
+        {
+          herb_id: 'HB_001',
+          standard_name: '人参',
+          part: '干燥根及根茎',
+          nature_flavor: '微温 · 甘、微苦',
+          meridians: '脾、肺、心、肾',
+          min_dose_g: 3,
+          max_dose_g: 9,
+          safety_tier: '十九畏警示',
+          key_features_cautions:
+            '芦头芦碗、珍珠点、皮细腻；【配伍禁忌】不宜与藜芦（十八反）、五灵脂（十九畏）同用'
+        },
+        {
+          herb_id: 'HB_002',
+          standard_name: '黄芪',
+          part: '干燥根',
+          nature_flavor: '微温 · 甘',
+          meridians: '脾、肺',
+          min_dose_g: 9,
+          max_dose_g: 30,
+          safety_tier: '常规教学',
+          key_features_cautions:
+            '断面纤维性强呈毛状、菊花心、嚼之微甜带豆腥味；表实邪盛气滞湿阻慎用'
+        },
+        {
+          herb_id: 'HB_003',
+          standard_name: '当归',
+          part: '干燥根',
+          nature_flavor: '温 · 甘、辛',
+          meridians: '肝、心、脾',
+          min_dose_g: 6,
+          max_dose_g: 12,
+          safety_tier: '常规教学',
+          key_features_cautions:
+            '归头止血、归身补血、归尾破血，断面黄白有棕色油点，香气浓郁；湿盛中满大便溏泄慎服'
+        },
+        {
+          herb_id: 'HB_004',
+          standard_name: '甘草',
+          part: '干燥根及根茎',
+          nature_flavor: '平 · 甘',
+          meridians: '心、肺、脾、胃',
+          min_dose_g: 2,
+          max_dose_g: 10,
+          safety_tier: '十八反红线',
+          key_features_cautions:
+            '断面纤维性黄白色、形成层环明显、放射状菊花心；【高危红线】反甘遂、京大戟、海藻、芫花'
+        },
+        {
+          herb_id: 'HB_005',
+          standard_name: '制附子（黑顺片）',
+          part: '子根加工品',
+          nature_flavor: '大热 · 辛、甘（有毒）',
+          meridians: '心、肾、脾',
+          min_dose_g: 3,
+          max_dose_g: 15,
+          safety_tier: '十八反红线',
+          key_features_cautions:
+            '纵切片外皮黑褐色、半透明角质样；【高危红线】须先煎30~60min；反半夏、瓜蒌、贝母、白蔹、白及；孕妇禁用'
+        },
+        {
+          herb_id: 'HB_006',
+          standard_name: '法半夏',
+          part: '干燥块茎炮制品',
+          nature_flavor: '温 · 辛',
+          meridians: '脾、胃、肺',
+          min_dose_g: 3,
+          max_dose_g: 9,
+          safety_tier: '十八反红线',
+          key_features_cautions:
+            '类球形顶端有凹陷茎痕，周围密布麻点根痕；【高危红线】反川乌、草乌、附子'
+        },
+        {
+          herb_id: 'HB_007',
+          standard_name: '川贝母（松贝）',
+          part: '干燥鳞茎',
+          nature_flavor: '微寒 · 苦、甘',
+          meridians: '肺、心',
+          min_dose_g: 3,
+          max_dose_g: 10,
+          safety_tier: '十八反红线',
+          key_features_cautions:
+            '外层鳞叶2瓣大小悬殊“怀中抱月”，顶端闭合底部平；【高危红线】反川乌、制川乌、草乌、附子'
+        },
+        {
+          herb_id: 'HB_008',
+          standard_name: '黄连（味连）',
+          part: '干燥根茎',
+          nature_flavor: '寒 · 苦',
+          meridians: '心、脾、胃、肝、胆、大肠',
+          min_dose_g: 2,
+          max_dose_g: 5,
+          safety_tier: '常规教学',
+          key_features_cautions:
+            '多分支聚集成簇形如鸡爪、中段有“过桥”、皮部橙红木部鲜黄；大苦大寒脾胃虚寒慎用'
+        },
+        {
+          herb_id: 'HB_009',
+          standard_name: '茯苓',
+          part: '干燥菌核',
+          nature_flavor: '平 · 甘、淡',
+          meridians: '心、肺、脾、肾',
+          min_dose_g: 10,
+          max_dose_g: 15,
+          safety_tier: '常规教学',
+          key_features_cautions: '白色或淡红色块片，断面颗粒性有裂隙，无臭味淡嚼之粘牙'
+        },
+        {
+          herb_id: 'HB_010',
+          standard_name: '金银花',
+          part: '干燥花蕾或带初开的花',
+          nature_flavor: '寒 · 甘',
+          meridians: '肺、心、胃',
+          min_dose_g: 6,
+          max_dose_g: 15,
+          safety_tier: '常规教学',
+          key_features_cautions:
+            '棒状上粗下细略弯曲，表面黄白密被短柔毛，气清香；脾胃虚寒及气虚疮疡脓清者慎用'
+        }
+      ]
+    },
+    {
+      id: 'tcm_exam_quota',
+      title: '首版题库配比与实训测评计分权重表（question & exam_attempt）',
+      category: '题库与测评计分',
+      description:
+        '对应策划案 F12 及业务表 question / exam_attempt，明确首版 100 题题库分布、标准试卷抽题量、分值权重与幂等判分规则。',
+      formulaHint: 'PaperTotal = 100 分（限时 45 分钟，合格线 80 分，优秀线 90 分）',
+      columns: [
+        { key: 'q_type_id', label: '题型编码', kind: 'text' },
+        { key: 'q_type_name', label: '考核题型与实训环节', kind: 'text' },
+        { key: 'bank_total', label: '首版题库储备量(题)', kind: 'number' },
+        { key: 'paper_count', label: '单卷抽题数(题)', kind: 'number' },
+        { key: 'unit_score', label: '单题分值(分)', kind: 'number' },
+        { key: 'subtotal_score', label: '分值小计(分)', kind: 'number' },
+        { key: 'weight_pct', label: '总评权重(%)', kind: 'number' },
+        { key: 'scoring_rule', label: '自动判分与边界规则', kind: 'text' }
+      ],
+      rows: [
+        {
+          q_type_id: 'QT_ACU_3D',
+          q_type_name: '三维人体模型交互取穴实操',
+          bank_total: 30,
+          paper_count: 4,
+          unit_score: 10,
+          subtotal_score: 40,
+          weight_pct: 40,
+          scoring_rule: '按表面锚点容差半径(<=5mm满分/<=10mm得75%)×提示折减系数自动计分'
+        },
+        {
+          q_type_id: 'QT_HERB_3D',
+          q_type_name: '中药饮片三维外观性状与归经鉴别',
+          bank_total: 25,
+          paper_count: 5,
+          unit_score: 5,
+          subtotal_score: 25,
+          weight_pct: 25,
+          scoring_rule: '部位+典型性状特征(怀中抱月/鸡爪过桥/菊花心)+归经多维匹配计分'
+        },
+        {
+          q_type_id: 'QT_MERIDIAN_MC',
+          q_type_name: '十二正经循行走向与主治知识题',
+          bank_total: 30,
+          paper_count: 10,
+          unit_score: 2.5,
+          subtotal_score: 25,
+          weight_pct: 25,
+          scoring_rule: '单选全对得分；多选漏选得50%、错选得0分；试卷发布生成不可变快照'
+        },
+        {
+          q_type_id: 'QT_SAFETY_RED',
+          q_type_name: '针刺解剖危险区与十八反安全红线',
+          bank_total: 15,
+          paper_count: 5,
+          unit_score: 2,
+          subtotal_score: 10,
+          weight_pct: 10,
+          scoring_rule:
+            '【安全红线】风池深刺延髓、孕妇合谷/三阴交、乌头反半夏等错判触发强告警与安全否决'
+        }
+      ]
+    },
+    {
+      id: 'tcm_data_schema',
+      title: '策划案核心业务数据表字典与约束总表（18张核心实体表）',
+      category: '数据库与接口契约',
+      description:
+        '严格同步策划案「数据与配置 · 1. 核心业务数据表」，用于前后端模型网关、三维资产与教务归档表结构对齐。',
+      columns: [
+        { key: 'table_name', label: '表 / 对象名', kind: 'text' },
+        { key: 'key_fields', label: '关键字段清单', kind: 'text' },
+        { key: 'domain_group', label: '业务域', kind: 'text' },
+        { key: 'constraint_rule', label: '强约束与校验规则', kind: 'text' }
+      ],
+      rows: [
+        {
+          table_name: 'user_profile',
+          key_fields: 'user_id, role, organization_id, consent_flags',
+          domain_group: '用户与权限',
+          constraint_rule: '角色权限一律由服务端判定，客户端仅控制展示'
+        },
+        {
+          table_name: 'learning_session',
+          key_fields: 'session_id, user_id, device_id, course_id, config_version',
+          domain_group: '会话与记录',
+          constraint_rule: '会话结束后状态不可回退为进行中'
+        },
+        {
+          table_name: 'scene_config',
+          key_fields: 'scene_id, asset_bundle, spawn_point, quality_profile',
+          domain_group: '3D场景与资产',
+          constraint_rule: '资源包与场景配置版本强制配套校验'
+        },
+        {
+          table_name: 'meridian',
+          key_fields: 'meridian_id, name, path_asset, source_id, version',
+          domain_group: '经络与腧穴',
+          constraint_rule: '经络ID永久稳定，禁止随模型重导变更'
+        },
+        {
+          table_name: 'acupoint',
+          key_fields:
+            'point_id, code, name, meridian_id, model_version, surface_anchor, normal, source_id',
+          domain_group: '经络与腧穴',
+          constraint_rule: '三维坐标与法线必须强绑定唯一解剖模型版本'
+        },
+        {
+          table_name: 'acupoint_training_rule',
+          key_fields: 'point_id, region_asset, distance_method, tolerance, hint_levels',
+          domain_group: '经络与腧穴',
+          constraint_rule: '容差半径与分级提示扣分需经中医专家审核冻结'
+        },
+        {
+          table_name: 'herb_entry',
+          key_fields: 'herb_id, standard_name, aliases, category, source, part, features, cautions',
+          domain_group: '中药材图鉴',
+          constraint_rule: '药典标准名与地方别名分开存储检索'
+        },
+        {
+          table_name: 'teaching_content',
+          key_fields: 'content_id, type, body, citation_ids, review_status, version',
+          domain_group: '知识库与审核',
+          constraint_rule: '未通过专家审核发布的内容对学员端不可见'
+        },
+        {
+          table_name: 'question',
+          key_fields: 'question_id, type, stem, options, answer, score, knowledge_tags, version',
+          domain_group: '题库与考核',
+          constraint_rule: '发布后形成不可变版本快照，修改须升版'
+        },
+        {
+          table_name: 'exam_attempt',
+          key_fields: 'attempt_id, paper_snapshot, started_at, deadline_at, answers, status, score',
+          domain_group: '题库与考核',
+          constraint_rule: 'POST /exam-attempts/{id}/submit 交卷幂等，查询与提交结果一致'
+        },
+        {
+          table_name: 'dialogue_turn',
+          key_fields: 'turn_id, session_id, question, answer, citations, model_version, status',
+          domain_group: '多模态问答',
+          constraint_rule: '完整覆盖完成、取消、语音打断、超时失败四态'
+        },
+        {
+          table_name: 'speech_segment',
+          key_fields: 'segment_id, turn_id, text, audio_ref, timing, emotion',
+          domain_group: '多模态问答',
+          constraint_rule: '临时语音分片按保留策略自动过期清理'
+        },
+        {
+          table_name: 'avatar_action',
+          key_fields: 'action_id, clip_ref, body_mask, priority, interrupt_window',
+          domain_group: '数字人表现',
+          constraint_rule: '动作切片与语义事件解耦，风险提示禁止娱乐化动作'
+        },
+        {
+          table_name: 'gesture_binding',
+          key_fields: 'profile_id, gesture_id, scope, command, thresholds',
+          domain_group: '设备与输入',
+          constraint_rule: '保存自定义手势映射前强制检查同作用域冲突'
+        },
+        {
+          table_name: 'device_profile',
+          key_fields: 'device_id, calibration_version, handedness, tracking_bounds',
+          domain_group: '设备与输入',
+          constraint_rule: '校准矩阵不可跨非兼容硬件设备直接复用'
+        },
+        {
+          table_name: 'model_service',
+          key_fields: 'service_id, provider, model_id, endpoint, secret_ref, capabilities, status',
+          domain_group: '多模型网关',
+          constraint_rule: '严禁将明文 API 密钥下发或存储在客户端'
+        },
+        {
+          table_name: 'model_route',
+          key_fields: 'scene_type, default_service, allowed_services, fallback_policy',
+          domain_group: '多模型网关',
+          constraint_rule: '前端仅读取已授权路由列表，至少联通4款商用大模型'
+        },
+        {
+          table_name: 'audit_log',
+          key_fields: 'actor, action, target, before_hash, after_hash, time',
+          domain_group: '安全与运维',
+          constraint_rule: '配置发布、回滚与记录删除全量留痕，敏感字段脱敏'
+        }
+      ]
+    }
+  ]
+
+  // 若关联策划案中包含定量验收指标、手势识别阈值或计分规则表（且不与上述 5 张核心表重复），精选并入配表工作台，过滤纯文字权限/风险/交付清单表
+  const extraGddTables = extractMarkdownTablesFromGdd(gddText ?? '').filter(
+    (gt) =>
+      !/核心业务数据表|关键可配置参数|角色|权限|系统边界|情绪|交付|问题|待确认|风险|接口|路由/.test(
+        gt.title
+      ) &&
+      /验收|指标|阈值|手势|指令|容差|分值|配比|延迟|帧率|参数/.test(gt.title) &&
+      gt.rows.length >= 3
+  )
+
+  return {
+    enabled: true,
+    domainId: 'tcm_virtual_teaching',
+    title: cleanTitle,
+    summary:
+      '面向《中医药沉浸式虚拟交互教学系统》策划案的纯净工程数值与业务配表体系（零小说经济/零战斗卡牌污染）：涵盖本地50ms交互与帧率阈值、十二正经腧穴定位容差、中药饮片性状与十八反红线、100题实训测评计分权重及18张核心业务数据字典。',
+    formulas,
+    tables: [...coreTables, ...extraGddTables]
+  }
+}
+
+/**
+ * 根据节点标题、指令提示词或关联策划案全文，构建纯净的「策划案专属业务/教学数值配表套件」。
+ */
+export function buildDomainNumericalSuiteFromContext(opts: {
+  title?: string
+  prompt?: string
+  gddText?: string
+}): MxDomainNumericalSuite {
+  const combined = `${opts.title ?? ''}\n${opts.prompt ?? ''}\n${(opts.gddText ?? '').slice(0, 3000)}`
+  if (isTcmTeachingDomain(combined)) {
+    return createTcmTeachingNumericalSuite(opts.title, opts.gddText)
+  }
+
+  const parsedTables = extractMarkdownTablesFromGdd(opts.gddText ?? '')
+  const baseTitle = opts.title?.trim() || '系统策划案 · 专属业务参数与测评数值配表'
+
+  const defaultTables: MxDomainDataTable[] = [
+    {
+      id: 'domain_runtime_sla',
+      title: '交互响应与系统运行性能阈值表（runtime_sla）',
+      category: '系统性能参数',
+      description: '定义前端交互防抖、响应延迟、接口超时与渲染帧率红线。',
+      columns: [
+        { key: 'param_key', label: '参数键名', kind: 'text' },
+        { key: 'param_name', label: '参数说明', kind: 'text' },
+        { key: 'default_val', label: '默认值', kind: 'number' },
+        { key: 'unit', label: '单位', kind: 'text' },
+        { key: 'valid_range', label: '允许范围 / 验收标准', kind: 'range' }
+      ],
+      rows: [
+        {
+          param_key: 'local_feedback_p95_ms',
+          param_name: '本地交互反馈延迟',
+          default_val: 50,
+          unit: 'ms',
+          valid_range: 'P95 <= 50ms'
+        },
+        {
+          param_key: 'click_debounce_ms',
+          param_name: '重复点击防抖窗口',
+          default_val: 300,
+          unit: 'ms',
+          valid_range: '150 ~ 500ms'
+        },
+        {
+          param_key: 'api_timeout_ms',
+          param_name: '业务接口请求超时',
+          default_val: 8000,
+          unit: 'ms',
+          valid_range: '3000 ~ 15000ms'
+        },
+        {
+          param_key: 'max_retry_count',
+          param_name: '异常自动重试上限',
+          default_val: 2,
+          unit: '次',
+          valid_range: '0 ~ 3次'
+        },
+        {
+          param_key: 'target_fps',
+          param_name: '基准运行帧率',
+          default_val: 60,
+          unit: 'fps',
+          valid_range: '>= 60fps'
+        }
+      ]
+    },
+    {
+      id: 'domain_eval_scoring',
+      title: '核心任务与实训考核计分权重表（scoring_rules）',
+      category: '业务计分规则',
+      description: '定义各业务模块的分值配比、容错扣分规则与达标阈值。',
+      columns: [
+        { key: 'item_id', label: '指标编码', kind: 'text' },
+        { key: 'item_name', label: '考核维度', kind: 'text' },
+        { key: 'full_score', label: '满分分值', kind: 'number' },
+        { key: 'weight_pct', label: '权重(%)', kind: 'number' },
+        { key: 'pass_rule', label: '判定与扣分规则', kind: 'text' }
+      ],
+      rows: [
+        {
+          item_id: 'EVAL_CORE_01',
+          item_name: '核心实操准确性',
+          full_score: 50,
+          weight_pct: 50,
+          pass_rule: '按标准步骤与空间容差自动计算准确率'
+        },
+        {
+          item_id: 'EVAL_THEORY_02',
+          item_name: '专业知识题库测验',
+          full_score: 30,
+          weight_pct: 30,
+          pass_rule: '发布快照判分，交卷幂等'
+        },
+        {
+          item_id: 'EVAL_NORM_03',
+          item_name: '操作规范与安全红线',
+          full_score: 20,
+          weight_pct: 20,
+          pass_rule: '违背高危安全红线触发即时告警并一票否决'
+        }
+      ]
+    }
+  ]
+
+  return {
+    enabled: true,
+    domainId: 'custom_gdd_tables',
+    title: baseTitle,
+    summary:
+      '根据关联系统策划案生成的专属业务参数、验收阈值与测评计分数值表（不含无关小说或战斗数值）。',
+    formulas: [
+      {
+        id: 'f_domain_score',
+        name: '综合测评结算公式',
+        expression: 'TotalScore = Σ(itemWeight_i * accuracy_i)',
+        threshold: '满分 100 · 达标线 >= 80.0',
+        description: '所有考核记录按 attempt_id 幂等归档，查询与提交结果严格一致。'
+      },
+      {
+        id: 'f_domain_latency',
+        name: '交互反馈与稳定性阈值',
+        expression: 'LocalFeedback_P95 <= 50ms && DebounceWindow = 300ms',
+        threshold: '核心任务独立完成率 >= 90%',
+        description: '所有异步操作均具备加载态、超时重试态与可取消入口。'
+      }
+    ],
+    tables: parsedTables.length > 0 ? [...defaultTables, ...parsedTables] : defaultTables
+  }
+}
+
+/**
+ * 将 `MxDomainNumericalSuite` 导出为下游 `asset.gameSystem` 可直接嵌入「# 数据与配置」的完整 Markdown 规格。
+ */
+export function exportDomainNumericalSuiteMarkdown(suite: MxDomainNumericalSuite): string {
+  const lines: string[] = [
+    `## 📋 【上游数值系统（game.numerical）➔ 系统策划案专属数值表与验收公式】`,
+    `- **数值体系名称**：${suite.title}`,
+    `- **适用说明**：${suite.summary}`,
+    ``,
+    `### 核心计分与性能验收公式`
+  ]
+
+  for (const f of suite.formulas) {
+    lines.push(
+      `- **${f.name}**：\`${f.expression}\`（标准阈值：${f.threshold}）—— ${f.description}`
+    )
+  }
+
+  for (const tbl of suite.tables) {
+    lines.push(``, `### ${tbl.title}`)
+    if (tbl.description) {
+      lines.push(`> ${tbl.description}`)
+    }
+    const headers = tbl.columns.map((c) => c.label).join(' | ')
+    const sep = tbl.columns.map(() => '---').join(' | ')
+    lines.push(`| ${headers} |`, `| ${sep} |`)
+    for (const r of tbl.rows) {
+      const cells = tbl.columns
+        .map((c) =>
+          String(r[c.key] ?? '')
+            .replace(/\|/g, '\\|')
+            .replace(/\r?\n/g, ' ')
+        )
+        .join(' | ')
+      lines.push(`| ${cells} |`)
+    }
+  }
+
+  return lines.join('\n')
+}
+
+/**
+ * 将单张 `MxDomainDataTable` 导出为带 UTF-8 BOM 的标准 CSV 文本（Excel 可直接无乱码打开）。
+ */
+export function exportDomainTableCsv(table: MxDomainDataTable): string {
+  const esc = (val: string | number | undefined): string => {
+    const s = String(val ?? '')
+    if (/[",\r\n]/.test(s)) {
+      return `"${s.replace(/"/g, '""')}"`
+    }
+    return s
+  }
+  const headerLine = table.columns.map((c) => esc(c.label)).join(',')
+  const bodyLines = table.rows.map((r) => table.columns.map((c) => esc(r[c.key])).join(','))
+  return `\uFEFF${[headerLine, ...bodyLines].join('\r\n')}`
 }

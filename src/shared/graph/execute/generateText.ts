@@ -28,8 +28,13 @@ import {
   createDefaultNovelForeshadowingPool,
   createMxFromTemplate,
   createMxWorkbenchPreset,
+  createXianxia200LifespanWorkbench,
+  exportMxChapterEconomySlice,
+  exportMxEconomyResourceNarrativeSpec,
   exportMxNarrativeProgressionBrief,
   extractNovelIpContextForGameSystem,
+  generateMxArcChapterOutlinePlan,
+  generateMxFullLifecycleArcScheduleMarkdown,
   inferGameSystemArchetypeFromContext,
   inferNovelGenreFromText,
   isGameSystemArchetypeId,
@@ -307,16 +312,24 @@ function describeArcPhaseForChapter(
   return `${macroZh} ｜ ${microBeatZh}`
 }
 
+export interface NarrowOutlineForChapterOptions {
+  totalChapters?: number
+  targetWords?: number
+  genre?: NovelGenreProfile
+}
+
 /**
  * 当上游总纲节点（`novel.outline` 或总纲模式 `asset.novel`）直接连入单章节点 `C_t` 时，
- * 支持两级自适应切片（Two-Tier Hierarchical Outline Slicing）：
+ * 支持三级全生命周期自适应切片（Three-Tier Full-Lifecycle Outline Slicing）：
  * 1. **Tier 1（精确单章细纲匹配）**：若总纲中存在 `第 t 章` 专属细纲，提取【全局世界观与人物设定共享头】+【第 t 章专属细纲】+【下一章（第 t+1 章）衔接预告】，剥离其他无关单章；
- * 2. **Tier 2（分卷/章节区间自适应回退）**：当连载推进到中后期（如第 25 章），而大纲节点仅输出了前几章单章细纲 + `第一卷（第1~30章）` / `第二卷（第31~120章）` 等区间总纲时，自动命中覆盖第 `t` 章的最精确分卷/区间大纲，并计算第 `t` 章在该区间内的叙事相位，同时剔除无关的前序单章细纲。
+ * 2. **Tier 2（分卷/章节区间自适应回退 + 确定性单章执行细纲合成）**：当连载推进到中后期（如第 25 章），而大纲节点仅输出了前几章单章细纲 + `第一卷（第1~30章）` / `第 21~30 章` 等区间总纲时，自动命中覆盖第 `t` 章的最精确分卷/区间大纲，并结合数值与经济曲线自动推演生成【第 `t` 章确定性单章执行细纲卡】；
+ * 3. **Tier 3（跨区间全局延展 + 确定性单章执行细纲兜底）**：若连载章号超出大纲显式列出的单章细纲，自动提取全局世界观共享头并附上【第 `t` 章确定性单章执行细纲卡】，确保第 1 ~ `totalChapters` 章 100% 享有单章级大纲指令。
  */
 export function narrowOutlineTextForChapter(
   rawOutline: string,
   targetChapter: number,
-  locale?: string
+  locale?: string,
+  options?: NarrowOutlineForChapterOptions
 ): string {
   const trimmed = (rawOutline ?? '').trim()
   if (!trimmed) return ''
@@ -331,6 +344,35 @@ export function narrowOutlineTextForChapter(
     return n !== null ? n : fallbackIndex
   }
 
+  const dynTotal = Math.max(
+    targetChapter,
+    Math.min(5000, Math.round(options?.totalChapters || 200))
+  )
+  const targetWords = Math.max(1000, Math.round(options?.targetWords || 3200))
+  const isXianxiaLifespanOutline = /山海借命|借命契|残缺药经|续命丹/.test(trimmed) // cjk-ok
+  const fallbackWb = isXianxiaLifespanOutline
+    ? createXianxia200LifespanWorkbench()
+    : createMxWorkbenchPreset('short_drama_progression')
+  fallbackWb.roguelikeEnvelope.levelMax = dynTotal
+  const arcPlanItems = generateMxArcChapterOutlinePlan(
+    fallbackWb,
+    targetChapter,
+    dynTotal,
+    targetWords,
+    options?.genre
+  )
+  const exactChapterPlan = arcPlanItems.find((item) => item.chapter === targetChapter)
+  const deterministicCard = exactChapterPlan
+    ? isEn
+      ? `### 🎯 [Chapter ${targetChapter}/${dynTotal} Deterministic Chapter Execution Card]\n${exactChapterPlan.outlinePromptEn}`
+      : `### 🎯 【第 ${targetChapter}/${dynTotal} 章确定性单章执行细纲卡（大纲分卷 × 数值经济曲线联合推演）】\n${exactChapterPlan.outlinePromptZh}` // cjk-ok
+    : ''
+
+  const rangeBlocks = parseOutlineRangeArcBlocks(trimmed)
+  const coveringBlocks = rangeBlocks
+    .filter((b) => targetChapter >= b.startChapter && targetChapter <= b.endChapter)
+    .sort((a, b) => a.endChapter - a.startChapter - (b.endChapter - b.startChapter))
+
   if (splitChaps.length >= 2) {
     const matchedIdx = splitChaps.findIndex(
       (ep) => resolveChapNum(ep.title, ep.index) === targetChapter
@@ -338,6 +380,7 @@ export function narrowOutlineTextForChapter(
     if (matchedIdx >= 0) {
       const matched = splitChaps[matchedIdx]!
       const nextEp = splitChaps[matchedIdx + 1]
+      const primaryArc = coveringBlocks[0]
       const lines: string[] = isEn
         ? [
             `## 🗺️ [Chapter ${targetChapter} Specific Outline Slice (from Novel Outline Node)]`,
@@ -349,6 +392,16 @@ export function narrowOutlineTextForChapter(
             `- **本章细纲标题**: ${matched.title}`, // cjk-ok
             matched.text.trim()
           ]
+      if (primaryArc && !matched.text.includes(primaryArc.heading)) {
+        lines.push(
+          isEn
+            ? `### [Covering Arc Schedule (${primaryArc.heading})]\n${primaryArc.body.trim()}`
+            : `### 【所属分幕排期与数值经济锚点（${primaryArc.heading}）】\n${primaryArc.body.trim()}` // cjk-ok
+        )
+      }
+      if (deterministicCard) {
+        lines.push(deterministicCard)
+      }
       if (nextEp?.title) {
         lines.push(
           isEn
@@ -359,12 +412,6 @@ export function narrowOutlineTextForChapter(
       return lines.join('\n\n')
     }
   }
-
-  // Tier 2: 分卷 / 章节区间（如「第一卷（第1~30章）」「第11-20章」）自适应匹配与相位解算
-  const rangeBlocks = parseOutlineRangeArcBlocks(trimmed)
-  const coveringBlocks = rangeBlocks
-    .filter((b) => targetChapter >= b.startChapter && targetChapter <= b.endChapter)
-    .sort((a, b) => a.endChapter - a.startChapter - (b.endChapter - b.startChapter))
 
   if (coveringBlocks.length > 0) {
     const primaryArc = coveringBlocks[0]!
@@ -389,7 +436,8 @@ export function narrowOutlineTextForChapter(
             ? [`- **Parent Volume Arc**: ${broaderVolumeArc.heading}`]
             : []),
           `- **Active Chapter Range Arc (Ch.${primaryArc.startChapter}–${primaryArc.endChapter})**:\n${primaryArc.body}`,
-          `- **Chapter ${targetChapter} Pacing Phase in Arc**: ${phaseDesc}`
+          `- **Chapter ${targetChapter} Pacing Phase in Arc**: ${phaseDesc}`,
+          ...(deterministicCard ? [deterministicCard] : [])
         ]
       : [
           `## 🗺️ 【来自小说大纲节点的第 ${targetChapter} 章所属分卷/区间细纲切片 (Volume/Arc Outline Slice)】`, // cjk-ok
@@ -398,7 +446,8 @@ export function narrowOutlineTextForChapter(
             ? [`- **所属分卷总纲**: ${broaderVolumeArc.heading}`] // cjk-ok
             : []),
           `- **当前命中区间大纲（第 ${primaryArc.startChapter}~${primaryArc.endChapter} 章）**:\n${primaryArc.body}`, // cjk-ok
-          `- **第 ${targetChapter} 章在当前区间内的叙事相位指令**: ${phaseDesc}` // cjk-ok
+          `- **第 ${targetChapter} 章在当前区间内的叙事相位指令**: ${phaseDesc}`, // cjk-ok
+          ...(deterministicCard ? [deterministicCard] : [])
         ]
     if (nextArc) {
       lines.push(
@@ -410,7 +459,7 @@ export function narrowOutlineTextForChapter(
     return lines.join('\n\n')
   }
 
-  // 若既无精确单章匹配也无区间命中，但含多章单章块（如仅有第1-3章而当前是第4章），提取共享头 + 最后一章之后的方向提示，剥离早先章节细纲防干扰
+  // Tier 3: 若既无精确单章匹配也无区间命中，但含多章单章块（如仅有第1-3章而当前是第4章），提取共享头 + 确定性单章执行细纲卡
   if (splitChaps.length >= 2) {
     const sharedHeader = extractSharedScreenplayHeader(trimmed).sharedHeader.trim()
     const lastDefined = splitChaps[splitChaps.length - 1]!
@@ -420,12 +469,14 @@ export function narrowOutlineTextForChapter(
         ? [
             `## 🗺️ [Chapter ${targetChapter} Global World Bible & Continuation Directive (from Novel Outline Node)]`,
             sharedHeader,
-            `- **Progression Note**: Chapters 1–${lastNum} outlines are complete (latest: "${lastDefined.title}"). Advance the narrative naturally into Chapter ${targetChapter} following the global World Bible and current Markov state.`
+            `- **Progression Note**: Chapters 1–${lastNum} outlines are complete (latest: "${lastDefined.title}"). Advance the narrative naturally into Chapter ${targetChapter} following the global World Bible and current Markov state.`,
+            ...(deterministicCard ? [deterministicCard] : [])
           ].join('\n\n')
         : [
             `## 🗺️ 【来自小说大纲节点的第 ${targetChapter} 章全局设定与延展指令 (Global Outline Continuation)】`, // cjk-ok
             sharedHeader,
-            `- **连载延展提示**: 大纲节点前序单章细纲已推进至第 ${lastNum} 章（《${lastDefined.title}》），请严格遵循上述全书世界观设定集与上一章马尔可夫状态账本，自然推进第 ${targetChapter} 章剧情。` // cjk-ok
+            `- **连载延展提示**: 大纲节点前序单章细纲已推进至第 ${lastNum} 章（《${lastDefined.title}》），请严格遵循上述全书世界观设定集、单章执行细纲卡与上一章马尔可夫状态账本，推进第 ${targetChapter} 章剧情。`, // cjk-ok
+            ...(deterministicCard ? [deterministicCard] : [])
           ].join('\n\n')
     }
   }
@@ -556,7 +607,6 @@ function synthesizeNovelFromProgressionBriefOffline(
   const totalChaps = Math.max(curChap, opts?.targetWords ? (opts?.totalChapters ?? 800) : 800)
   const targetWords = Math.max(1000, opts?.targetWords ?? 3200)
 
-  const seqMatch = /\*\*高潮单回合最优连招序列\*\*:\s*`([^`]+)`/.exec(raw) // cjk-ok
   const realmMatch = /主角当前[^*]*\*\*([^*]+)\*\*/.exec(raw) // cjk-ok
   const ceilingMatch = /\*\*本章[^`]*上限\s*`([^`]+)`\*\*/.exec(raw) // cjk-ok
   const villainMatch = /\*\*本幕[^`]*\s*`([^`]+)`\*\*/.exec(raw) // cjk-ok
@@ -606,10 +656,6 @@ function synthesizeNovelFromProgressionBriefOffline(
     })
   }
 
-  const optimalSeq =
-    seqMatch?.[1]?.trim() ||
-    '系统百倍觉醒 (高潮卡点) ➔ 首富到场·下跪接驾 ➔ 甩出铁证·舆论崩塌 ➔ 真身揭晓·全员震怖 (终结)' // cjk-ok
-
   const prevHook = opts?.prevTailAnchor?.trim()
     ? `承接第 ${curChap - 1} 章末尾余波（“${opts.prevTailAnchor.trim().slice(-120)}”），` // cjk-ok
     : ''
@@ -624,18 +670,49 @@ function synthesizeNovelFromProgressionBriefOffline(
   ]
   const chapTitle =
     chapterHeadings[(curChap - 1) % chapterHeadings.length] +
-    `（第 ${curChap}/${totalChaps} 章 · ${curRealm} · 战力上限 ${curCeiling}）` // cjk-ok
+    `（第 ${curChap}/${totalChaps} 章 · ${curRealm}）` // cjk-ok
+
+  const cleanAllowed = allowedTrumps.replace(
+    /(?:·?反手打脸)?\s*[(（](?:第\s*\d+\s*(?:~\d+\s*)?[卷幕][^)）]*|势力倍增|丹道乘区|越级反杀|舆论反转|前期启动|名场面铺垫|境界暴涨|铺垫|卡点|终结|高潮卡点)[)）]/g, // cjk-ok
+    ''
+  )
+  const cleanItem = encounterItem.replace(
+    /(?:·?反手打脸)?\s*[(（](?:第\s*\d+\s*(?:~\d+\s*)?[卷幕][^)）]*|势力倍增|丹道乘区|越级反杀|舆论反转|前期启动|名场面铺垫|境界暴涨|铺垫|卡点|终结|高潮卡点)[)）]/g, // cjk-ok
+    ''
+  )
+
+  const sceneOpenPool = [
+    `璀璨的水晶吊灯将江城云顶宴会厅照得如同白昼，冷冽的香槟气泡在杯壁上不断炸裂。满堂宾客交头接耳，目光像淬了冰的针尖一样汇聚在角落里的林玄身上。苏清雪高昂着下巴，将一纸加盖了苏氏集团法务鲜红印章的协议狠狠甩在桌面，纸张哗啦散落一地。`, // cjk-ok
+    `夜雨敲打着云州商会顶层落地玻璃，会议长桌两侧的豪门董事面色阴沉。刚赶到现场的省城财阀代表将三份断供封杀令推到桌心，试图以雷霆手腕将林玄逼入绝境。`, // cjk-ok
+    `黑金拍卖行地下贵宾厅内灯影幽暗，竞价牌起落间暗藏杀机。掌控半城渠道的对手冷笑着抬手封死竞拍上限，笃定林玄绝无翻盘筹码。`, // cjk-ok
+    `江畔古武演武台四周旌旗猎猎，数道强横气机锁死了整片石坪。居中坐镇的世家供奉负手而立，居高临下地审视着缓步登台的林玄。` // cjk-ok
+  ]
+  const clashPool = [
+    `“林玄，睁大你的眼睛看清楚，如今站在你面前的是省城豪门联席代表，捏死你不过是一句话的事！”豪门大少冷笑着拍出三份资产冻结令，凌厉的权势威压笼罩全场，试图在气势与资金链上将林玄彻底锁死。林玄缓缓弯腰拈起那页协议的一角，指节泛起微不可察的玉泽，抬眸直视对方：“你们以为握住几条商业渠道就能定人生死？三分钟之内，你们引以为傲的靠山，连站着跟我说话的资格都没有。”`, // cjk-ok
+    `“断了你的原料与银根，看你还拿什么撑过今晚子时！”对手森然冷笑，身后十余名黑衣护卫同时踏前一步，肃杀威压令全场呼吸一滞。林玄神色古井无波，指尖轻轻叩击桌面三下，清朗嗓音穿透重重压迫：“账还没算完，急什么？你们吞下去的每一分血汗筹码，今晚都得连本带利吐出来。”`, // cjk-ok
+    `“不知死活的东西，真以为凭一点微末底牌就能撼动百年世家的铁律？”主座强敌猛然拍案而起，狂暴气劲震得茶盏粉碎。林玄非但没有后退半步，反而迎着锋芒缓步上前，眸底寒芒如电：“世家铁律？从你们动我逆鳞的那一刻起，这江城的规矩就该换人来定了！”` // cjk-ok
+  ]
+  const turnPool = [
+    `话音落下的刹那，林玄怀中的${cleanItem}骤然微烫——${cleanAllowed}顺势发动！厚重的雕花大门被人从外轰然推开，两排黑衣保镖疾步分列两侧，江城首富赵天豪快步入场，越过满脸堆笑的苏家众人，径直走到林玄面前九十度躬身行礼：“赵某救驾来迟，恭迎尊上！反收购铁证与审计底稿已全部送达！”林玄反手将铁证重重拍在主桌上，瞬间击碎豪门联席防线！`, // cjk-ok
+    `电光石火之间，林玄袖中${cleanItem}轰然共鸣，${cleanAllowed}精准切入对手最致命的破绽枢纽！伴随着三道加密清算指令同步亮起，原本不可一世的封锁链条当场反噬崩断，替林玄护航的盟友精锐自四面合围而入，局势在十息之内彻底天翻地覆！`, // cjk-ok
+    `就在全场以为胜负已定的一瞬，林玄掌心${cleanItem}绽出一抹冷冽幽芒，借${cleanAllowed}之势借力打力！只听一声闷雷般的气浪炸响，对手引以为傲的杀招寸寸瓦解，整个人气血翻涌连退数步，满堂哗然失色！` // cjk-ok
+  ]
+  const hookPool = [
+    `铁证展开的瞬间，大屏幕上同步跳出资金链全线崩盘的红色预警，对手面如死灰地瘫坐在地。然而林玄正欲转身离席，口袋里的加密电话却突然震动——屏幕跳出一串猩红编码：“尊上，省域背后的隐世大族已察觉${cleanItem}的异动，三名护法长老正连夜封锁出城通道……”林玄眸光骤寒，望向风雨欲来的夜空。`, // cjk-ok
+    `余波未平之际，暗处一名溃逃心腹怀中跌落半枚刻着古老图腾的玄铁残令，令牌背面赫然浮现出指向禁区地宫的血色坐标！林玄拾起残令，指尖刚一触及，远方天际便传来低沉压抑的轰鸣，一场更凶险的围猎已在暗夜中悄然张网！`, // cjk-ok
+    `满场死寂之中，林玄冷静收拢战利筹码，然而手腕内侧一道隐秘印记却突然泛起灼人寒意——对手背后真正执棋的神秘主使，竟在此刻隔空传来了三日后的生死战帖！` // cjk-ok
+  ]
 
   return [
     `第${curChap}章：${chapTitle}`, // cjk-ok
     ``,
-    `${prevHook}璀璨的水晶吊灯将江城云顶宴会厅照得如同白昼，冷冽的香槟气泡在杯壁上不断炸裂。满堂宾客交头接耳，目光像淬了冰的针尖一样汇聚在角落里的林玄身上。苏清雪高昂着下巴，将一纸加盖了苏氏集团法务鲜红印章的协议狠狠甩在林玄面前的桌面，纸张哗啦散落一地。按照本章戏剧节拍（${beatDesc}），林玄并未急于暴露那些仍处于封存状态的终局底牌（${lockedTrumps}），而是平静地垂下眼帘，任由胸臆间的受辱蓄能池悄然攀升至临界值。他能清晰感知到体内【${curRealm}】的气场底蕴正在暗流下剧烈翻涌，距离本章战力发挥上限（${curCeiling}）只差一个引爆契机。`, // cjk-ok
+    `${prevHook}${sceneOpenPool[(curChap - 1) % sceneOpenPool.length]}面对步步紧逼的危局，林玄并未急于亮出尚未解封的终极手段，而是稳稳运转体内【${curRealm}】的气机，在隐忍蓄势间静候致命破绽。`, // cjk-ok
     ``,
-    `“林玄，睁大你的眼睛看清楚，如今站在你面前的是省城豪门联席代表，压迫门槛高达 ${villainPress}！”苏清雪身旁的豪门大少冷笑着拍出三份资产冻结令，试图在气势与资金链上将林玄彻底锁死在尘埃里。四周权贵纷纷附和嘲弄，有人幸灾乐祸地举起酒杯，等待看他跪地求饶的狼狈模样。林玄缓缓弯腰，修长的手指拈起那页协议的一角，指节因暗劲凝聚而泛起微不可察的玉泽。他抬眸直视对方，声音不大，却字字如刀：“你们以为握住几条商业渠道就能定人生死？三分钟之内，你们引以为傲的靠山，连站着跟我说话的资格都没有。”`, // cjk-ok
+    clashPool[(curChap - 1) % clashPool.length],
     ``,
-    `话音落下的刹那，林玄怀中的${encounterItem}骤然发烫，脑海中轰然炸响清脆的提示音——本章准入底牌（${allowedTrumps}）正式激活！宴会厅厚重的雕花大门被人从外轰然推开，两排黑衣保镖疾步分列两侧，原本被苏家苦苦巴结的江城首富赵天豪快步入场。在全场权贵呆滞的目光中，赵天豪越过满脸堆笑迎上来的苏家众人，径直走到林玄面前九十度躬身行礼：“赵某救驾来迟，恭迎尊上！您交代的百亿反收购铁证与审计底稿已全部送达！”林玄顺势踏着最优交锋序列（${optimalSeq}）中的本阶段准入杀招，将一叠铁证重重拍在主桌上，战力气场瞬间拉满至本章上限 ${curCeiling}，当场击穿反派 ${villainPress} 的防线！`, // cjk-ok
+    turnPool[(curChap - 1) % turnPool.length],
     ``,
-    `铁证展开的瞬间，大屏幕上同步跳出苏氏集团资金链全线崩盘的红色预警。苏清雪脸上的高傲寸寸碎裂，面如死灰地跌坐在红毯之上，满堂权贵鸦雀无声，冷汗浸透后背。然而林玄连多看她一眼的兴致都没有，他正欲转身离席，口袋里的加密卫星电话却突然震动起来——屏幕跳出一串来自更高层禁区的猩红编码，电话那头传来一道沙哑而急促的声音：“尊上，省域背后的隐世大族已经察觉到${encounterItem}的异动，三名护法长老正连夜封锁出城高速，目标直指您的软肋……”林玄眸光骤然一寒，望向窗外风雨欲来的夜空。` // cjk-ok
+    hookPool[(curChap - 1) % hookPool.length]
   ].join('\n')
 }
 
@@ -997,7 +1074,11 @@ interface UpstreamNovelChainContext {
   inheritedTotalChapters?: number
   inheritedTargetWords?: number
   upstreamEconomyRawText?: string
+  upstreamEconomyOnlyRawText?: string
   upstreamChapterOutlineSlice?: string
+  outlinePassthroughValue?: GraphValue
+  economyPassthroughValue?: GraphValue
+  numericalPassthroughValue?: GraphValue
   directUpstreamChapterNodeIds: Set<string>
   directUpstreamChapterTexts: Set<string>
   directUpstreamOutlineTexts: Set<string>
@@ -1122,7 +1203,8 @@ async function resolveUpstreamNovelChainContext(
   }))
   const upstreamChapterNodes: Array<{ node: GraphNode; depth: number }> = []
   const upstreamOutlineNodes: Array<{ node: GraphNode; depth: number }> = []
-  let upstreamEconomyNode: { node: GraphNode; depth: number } | null = null
+  let upstreamNumericalNode: { node: GraphNode; depth: number } | null = null
+  let upstreamEconomyOnlyNode: { node: GraphNode; depth: number } | null = null
 
   while (queue.length > 0) {
     const cur = queue.shift()!
@@ -1140,11 +1222,10 @@ async function resolveUpstreamNovelChainContext(
       } else {
         upstreamOutlineNodes.push({ node: curNode, depth: cur.depth })
       }
-    } else if (
-      (curNode.typeId === 'game.numerical' || curNode.typeId === 'game.economy') &&
-      (!upstreamEconomyNode || curNode.typeId === 'game.numerical')
-    ) {
-      upstreamEconomyNode = { node: curNode, depth: cur.depth }
+    } else if (curNode.typeId === 'game.numerical' && !upstreamNumericalNode) {
+      upstreamNumericalNode = { node: curNode, depth: cur.depth }
+    } else if (curNode.typeId === 'game.economy' && !upstreamEconomyOnlyNode) {
+      upstreamEconomyOnlyNode = { node: curNode, depth: cur.depth }
     }
 
     for (const inEdge of doc.edges) {
@@ -1220,6 +1301,13 @@ async function resolveUpstreamNovelChainContext(
   const outlineText = outlineNode
     ? resolvedOutlineBody || outlineNode.params.novelWorldBible?.trim() || ''
     : ''
+  const outlineRelPath = outlineNode?.params.previewRelativePath?.trim()
+  const outlinePassthroughValue: GraphValue | undefined =
+    outlineRelPath && ctx.readRunText
+      ? { kind: 'text', text: '', relativePath: outlineRelPath }
+      : outlineText
+        ? { kind: 'text', text: outlineText }
+        : undefined
   const rawOutlineBible =
     prevChapterNode?.params.novelWorldBible?.trim() ||
     outlineNode?.params.novelWorldBible?.trim() ||
@@ -1254,18 +1342,23 @@ async function resolveUpstreamNovelChainContext(
         ?.tailAnchor
     : undefined
 
-  // 提取上游 game.numerical / game.economy 祖先（或直连但尚未显式运行节点）的数值载荷，以便按本章章号解算单章数值围栏
+  // 提取上游 game.numerical 与 game.economy 祖先（或直连但尚未显式运行节点）的数值与经济载荷，以便按本章章号同时解算单章数值围栏与经济资源供需法则
   let upstreamEconomyRawText: string | undefined
-  if (upstreamEconomyNode) {
-    const econ = upstreamEconomyNode.node
+  let upstreamEconomyOnlyRawText: string | undefined
+  let numericalPassthroughValue: GraphValue | undefined
+  let economyPassthroughValue: GraphValue | undefined
+  if (upstreamNumericalNode) {
+    const numNode = upstreamNumericalNode.node
+    const numRelPath = numNode.params.previewRelativePath?.trim()
     const rawText =
-      (await readNodeTextWithFallback(econ, ctx.readRunText)) || (econ.params.text?.trim() ?? '')
+      (await readNodeTextWithFallback(numNode, ctx.readRunText)) ||
+      (numNode.params.text?.trim() ?? '')
     if (rawText && rawText !== '…') {
       upstreamEconomyRawText = rawText
-    } else if (econ.typeId === 'game.numerical') {
-      const wbJson = econ.params.gameNumericalWorkbenchJson?.trim() ?? ''
+    } else {
+      const wbJson = numNode.params.gameNumericalWorkbenchJson?.trim() ?? ''
       let wb = createMxWorkbenchPreset(
-        (econ.params.gameNumericalPreset as any) || 'short_drama_progression'
+        (numNode.params.gameNumericalPreset as any) || 'short_drama_progression'
       )
       if (wbJson) {
         try {
@@ -1278,6 +1371,21 @@ async function resolveUpstreamNovelChainContext(
       const mxDoc = createMxFromTemplate('short_drama_reversal_loop')
       mxDoc.workbench = wb
       upstreamEconomyRawText = exportMxNarrativeProgressionBrief(wb, mxDoc)
+    }
+    numericalPassthroughValue =
+      numRelPath && ctx.readRunText
+        ? { kind: 'text', text: '', relativePath: numRelPath }
+        : upstreamEconomyRawText
+          ? { kind: 'text', text: upstreamEconomyRawText }
+          : undefined
+  }
+  if (upstreamEconomyOnlyNode) {
+    const econ = upstreamEconomyOnlyNode.node
+    const econRelPath = econ.params.previewRelativePath?.trim()
+    const rawText =
+      (await readNodeTextWithFallback(econ, ctx.readRunText)) || (econ.params.text?.trim() ?? '')
+    if (rawText && rawText !== '…') {
+      upstreamEconomyOnlyRawText = rawText
     } else {
       const diagramRaw = econ.params.gameEconomyDiagramJson?.trim() ?? ''
       const parsedDoc = diagramRaw ? parseMxDocumentJson(diagramRaw) : null
@@ -1286,10 +1394,28 @@ async function resolveUpstreamNovelChainContext(
         createMxFromTemplate(
           (econ.params.gameEconomyPreset as MxTemplateId) || 'short_drama_reversal_loop'
         )
-      if (mxDoc.workbench) {
-        upstreamEconomyRawText = exportMxNarrativeProgressionBrief(mxDoc.workbench, mxDoc)
+      const econSpec = exportMxEconomyResourceNarrativeSpec(mxDoc)
+      if (mxDoc.workbench && !upstreamEconomyRawText) {
+        upstreamEconomyOnlyRawText = [
+          econSpec,
+          exportMxNarrativeProgressionBrief(mxDoc.workbench, mxDoc)
+        ]
+          .filter(Boolean)
+          .join('\n\n')
+      } else {
+        upstreamEconomyOnlyRawText = econSpec || undefined
       }
     }
+    economyPassthroughValue =
+      econRelPath && ctx.readRunText
+        ? { kind: 'text', text: '', relativePath: econRelPath }
+        : upstreamEconomyOnlyRawText
+          ? { kind: 'text', text: upstreamEconomyOnlyRawText }
+          : undefined
+  }
+  if (!upstreamEconomyRawText && upstreamEconomyOnlyRawText) {
+    upstreamEconomyRawText = upstreamEconomyOnlyRawText
+    upstreamEconomyOnlyRawText = undefined
   }
 
   // 若上游存在总纲节点且未直接连线到当前节点，提取对应章号的大纲分节
@@ -1306,7 +1432,10 @@ async function resolveUpstreamNovelChainContext(
   const targetChapForSlice =
     inferredChapter ?? Math.max(1, Math.round(Number(node.params.novelCurrentChapter) || 1))
   if (outlineText && !isDirectOutlineConnected) {
-    const sliced = narrowOutlineTextForChapter(outlineText, targetChapForSlice, ctx.locale)
+    const sliced = narrowOutlineTextForChapter(outlineText, targetChapForSlice, ctx.locale, {
+      totalChapters: inheritedTotalChapters || Number(node.params.novelTotalChapters) || 200,
+      targetWords: inheritedTargetWords || Number(node.params.novelTargetWords) || 3200
+    })
     if (sliced && sliced !== outlineText.trim()) {
       upstreamChapterOutlineSlice = sliced
     }
@@ -1327,11 +1456,43 @@ async function resolveUpstreamNovelChainContext(
     inheritedTotalChapters,
     inheritedTargetWords,
     upstreamEconomyRawText,
+    upstreamEconomyOnlyRawText,
     upstreamChapterOutlineSlice,
+    outlinePassthroughValue,
+    economyPassthroughValue,
+    numericalPassthroughValue,
     directUpstreamChapterNodeIds,
     directUpstreamChapterTexts,
     directUpstreamOutlineTexts
   }
+}
+
+const DEFAULT_TEMPLATE_CHARACTER_NAMES = new Set([
+  '林玄', // cjk-ok
+  '赵天豪', // cjk-ok
+  '苏清雪', // cjk-ok
+  '陆尘', // cjk-ok
+  '苏若雪', // cjk-ok
+  '赵元霸', // cjk-ok
+  '血煞老祖', // cjk-ok
+  '沈墨', // cjk-ok
+  '林夏', // cjk-ok
+  '周维民', // cjk-ok
+  '谢云澜', // cjk-ok
+  '萧景琰', // cjk-ok
+  '沈娇娇', // cjk-ok
+  '太后', // cjk-ok
+  '霍星河', // cjk-ok
+  '艾琳娜', // cjk-ok
+  '维克多', // cjk-ok
+  '陈烬', // cjk-ok
+  '顾青', // cjk-ok
+  '顾怀安' // cjk-ok
+])
+
+function isDefaultTemplateCharacterEntry(c: MxNovelCharacterStatusEntry): boolean {
+  if (DEFAULT_TEMPLATE_CHARACTER_NAMES.has(c.name.trim())) return true
+  return /^char_(?:protagonist|ally|villain|\d+)(?:_\d+)?$/.test(c.id)
 }
 
 function parseCharacterRosterFromOutlineText(
@@ -1343,38 +1504,105 @@ function parseCharacterRosterFromOutlineText(
   if (!raw) return baseRoster
   const lines = raw.split(/\r?\n/).map((l) => l.trim())
   const extracted: MxNovelCharacterStatusEntry[] = []
+  const seenNames = new Set<string>()
 
-  const charBulletRe =
-    /^[-*•]\s*\**([\u4e00-\u9fa5A-Za-z·]{2,10})\**\s*[（(]([^）)\n]{1,24})[）)]\**\s*[:：]\s*(.+)$/ // cjk-ok
-  for (const line of lines) {
-    const m = charBulletRe.exec(line)
-    if (!m?.[1] || !m[2] || !m[3]) continue
-    const name = m[1].trim()
-    const roleTag = m[2].trim()
-    const desc = m[3].trim()
-    if (/题材|规模|体系|阶梯|总章数|第一卷|第二卷|第三卷|阶段/.test(name)) continue // cjk-ok
-    const faction: MxNovelCharacterStatusEntry['faction'] = /主角|男主|女主|protagonist|hero/i.test(
-      roleTag
-    ) // cjk-ok
-      ? 'protagonist'
-      : /盟友|伙伴|首富|人脉|护道|ally|partner/i.test(roleTag) // cjk-ok
-        ? 'ally'
-        : /反派|宿敌|仇敌|执政官|大少|villain|antagonist|boss/i.test(roleTag) // cjk-ok
-          ? 'villain'
-          : 'neutral'
+  const pushExtracted = (
+    nameRaw: string,
+    roleTagRaw: string,
+    descRaw: string,
+    explicitFaction?: MxNovelCharacterStatusEntry['faction']
+  ): void => {
+    const name = nameRaw.replace(/[*`]/g, '').trim()
+    if (!name || name.length < 2 || name.length > 10 || seenNames.has(name)) return
+    if (
+      /题材|规模|体系|阶梯|总章数|第一卷|第二卷|第三卷|第四卷|阶段|核心|力量|修炼|境界|主角|男主|女主|盟友|反派|宿敌|角色姓名/.test(
+        name
+      ) // cjk-ok
+    ) {
+      return
+    }
+    const roleTag = roleTagRaw.replace(/[*`]/g, '').trim() || '核心角色' // cjk-ok
+    const desc = descRaw.replace(/[*`]/g, '').trim()
+    const combinedTag = `${roleTag} ${desc}`
+    const faction: MxNovelCharacterStatusEntry['faction'] =
+      explicitFaction ??
+      (/主角|男主|女主|protagonist|hero/i.test(combinedTag) // cjk-ok
+        ? 'protagonist'
+        : /盟友|伙伴|首富|人脉|护道|师姐|师妹|同盟|ally|partner/i.test(combinedTag) // cjk-ok
+          ? 'ally'
+          : /反派|宿敌|仇敌|执政官|大少|执事|管事|魔道|villain|antagonist|boss/i.test(combinedTag) // cjk-ok
+            ? 'villain'
+            : 'neutral')
+    seenNames.add(name)
     extracted.push({
       id: `char_outline_${extracted.length + 1}_${name}`,
       name,
       faction,
       status: faction === 'ally' ? 'subdued' : 'active',
-      realmOrRole: roleTag,
-      relationNote: desc.slice(0, 120),
+      realmOrRole: roleTag.slice(0, 32),
+      relationNote: (desc || roleTag).slice(0, 120),
       updatedAtChapter: currentChapter
     })
   }
 
+  const charBulletRe =
+    /^[-*•]\s*\**([\u4e00-\u9fa5A-Za-z·]{2,10})\**\s*[（(]([^）)\n]{1,24})[）)]\**\s*[:：]\s*(.+)$/ // cjk-ok
+  const roleLeadBulletRe =
+    /^[-*•]?\s*\**(?:核心)?(主角|男主|女主|关键盟友|盟友|首卷反派|首卷宿敌|反派|宿敌)\**\s*[:：]\s*\**([\u4e00-\u9fa5A-Za-z·]{2,8})\**\s*[，,（(：:\s]*(.+)$/ // cjk-ok
+  const tableRowRe =
+    /^\|\s*\**([\u4e00-\u9fa5A-Za-z·]{2,8})\**\s*\|\s*([^|]+)\|\s*([^|]+)\|\s*([^|]+)\|/
+
+  for (const line of lines) {
+    const m = charBulletRe.exec(line)
+    if (m?.[1] && m[2] && m[3]) {
+      pushExtracted(m[1], m[2], m[3])
+      continue
+    }
+    const rm = roleLeadBulletRe.exec(line)
+    if (rm?.[1] && rm[2] && rm[3]) {
+      const fTag = rm[1]
+      const f: MxNovelCharacterStatusEntry['faction'] = /主角|男主|女主/.test(fTag) // cjk-ok
+        ? 'protagonist'
+        : /盟友/.test(fTag) // cjk-ok
+          ? 'ally'
+          : 'villain'
+      pushExtracted(rm[2], fTag, rm[3], f)
+      continue
+    }
+    const tm = tableRowRe.exec(line)
+    if (tm?.[1] && tm[2] && tm[3] && tm[4] && !tm[1].includes('-')) {
+      pushExtracted(tm[1], `${tm[2].trim()} · ${tm[3].trim()}`, tm[4].trim())
+    }
+  }
+
+  // 同时支持从立项自然段（如「主角沈砚，山村药童……；盟友林照月，外门女弟子……；首卷反派外门执事裴玄，借采药任务……」) 提取
+  const inlineProtagonistRe =
+    /(?:主角|男主|女主)\s*[:：为是]?\s*([\u4e00-\u9fa5]{2,4})\s*[，,（(]([^；;。\n]+)/g // cjk-ok
+  for (const m of raw.matchAll(inlineProtagonistRe)) {
+    if (m[1] && m[2]) {
+      const parts = m[2].split(/[，,]/)
+      pushExtracted(m[1], parts[0]?.trim() || '主角', m[2].trim(), 'protagonist') // cjk-ok
+    }
+  }
+  const inlineAllyRe =
+    /(?:关键)?盟友(?:[\u4e00-\u9fa5]{0,6}?)\s*[:：为是]?\s*([\u4e00-\u9fa5]{2,4})\s*[，,（(]([^；;。\n]+)/g // cjk-ok
+  for (const m of raw.matchAll(inlineAllyRe)) {
+    if (m[1] && m[2]) {
+      const parts = m[2].split(/[，,]/)
+      pushExtracted(m[1], parts[0]?.trim() || '盟友', m[2].trim(), 'ally') // cjk-ok
+    }
+  }
+  const inlineVillainRe =
+    /(?:首卷|前期|核心)?(?:反派|宿敌)(?:外门执事|内门执事|管事|长老|大少)?\s*[:：为是]?\s*([\u4e00-\u9fa5]{2,4})\s*[，,（(]([^；;。\n]+)/g // cjk-ok
+  for (const m of raw.matchAll(inlineVillainRe)) {
+    if (m[1] && m[2]) {
+      const parts = m[2].split(/[，,]/)
+      pushExtracted(m[1], parts[0]?.trim() || '反派', m[2].trim(), 'villain') // cjk-ok
+    }
+  }
+
   if (extracted.length === 0) return baseRoster
-  // 若从大纲提取到了显式人物表，合并或替换默认占位角色
+  // 若从大纲或立项提取到了显式人物表，合并并剔除未在文本中出现的流派默认占位角色（如陆尘/苏若雪/赵元霸）
   const byName = new Map<string, MxNovelCharacterStatusEntry>()
   for (const c of extracted) {
     byName.set(c.name, c)
@@ -1389,7 +1617,10 @@ function parseCharacterRosterFromOutlineText(
         realmOrRole: existing.realmOrRole || ext.realmOrRole,
         updatedAtChapter: Math.max(existing.updatedAtChapter, ext.updatedAtChapter)
       })
-    } else if (!(hasOutlineProtagonist && existing.id.startsWith('char_'))) {
+    } else if (!(
+      hasOutlineProtagonist &&
+      (isDefaultTemplateCharacterEntry(existing) || existing.faction === 'protagonist')
+    )) {
       byName.set(existing.name, existing)
     }
   }
@@ -1583,6 +1814,13 @@ function synthesizeNovelOutlineOffline(opts: {
   const villainName = genre?.roster.find((r) => r.faction === 'villain')?.name || '赵天铭' // cjk-ok
   const stageTerm = genre?.stageTermZh || '境界/阶位' // cjk-ok
   const unlockTerm = genre?.unlockTermZh || '核心底牌' // cjk-ok
+  const presetWb = createMxWorkbenchPreset('short_drama_progression')
+  presetWb.roguelikeEnvelope.levelMax = totalChapters
+  const fullLifecycleArcSchedule = generateMxFullLifecycleArcScheduleMarkdown(
+    presetWb,
+    totalChapters,
+    genre
+  )
 
   return [
     `# 小说名：《${bookTitle}》`, // cjk-ok
@@ -1608,11 +1846,15 @@ function synthesizeNovelOutlineOffline(opts: {
     ``,
     `| 卷序 | 章节区间 | 分卷核心主题 | 对应${stageTerm}阶段 | 卷末高潮卡点 |`, // cjk-ok
     `| :--- | :--- | :--- | :--- | :--- |`,
-    `| **第一卷** | 第 1~${Math.min(totalChapters, 30)} 章 | ${genre?.volumeThemesZh[0] ?? '危机降临与初露锋芒'} | ${stageNames[0]} | 引爆初期${unlockTerm}，粉碎首轮围剿 |`, // cjk-ok
-    `| **第二卷** | 第 ${Math.min(totalChapters, 31)}~${Math.min(totalChapters, 120)} 章 | ${genre?.volumeThemesZh[1] ?? '势力洗牌与破局立威'} | ${stageNames[1] ?? stageNames[0]} | 跨入更高版图，正面击溃宿敌主力 |`, // cjk-ok
+    `| **第一卷** | 第 1~${Math.min(totalChapters, Math.max(10, Math.round(totalChapters * 0.25)))} 章 | ${genre?.volumeThemesZh[0] ?? '危机降临与初露锋芒'} | ${stageNames[0]} | 引爆初期${unlockTerm}，粉碎首轮围剿 |`, // cjk-ok
+    `| **第二卷** | 第 ${Math.min(totalChapters, Math.max(10, Math.round(totalChapters * 0.25)) + 1)}~${Math.min(totalChapters, Math.max(20, Math.round(totalChapters * 0.6)))} 章 | ${genre?.volumeThemesZh[1] ?? '势力洗牌与破局立威'} | ${stageNames[1] ?? stageNames[0]} | 跨入更高版图，正面击溃宿敌主力 |`, // cjk-ok
+    `| **第三卷** | 第 ${Math.min(totalChapters, Math.max(20, Math.round(totalChapters * 0.6)) + 1)}~${totalChapters} 章 | ${genre?.volumeThemesZh[2] ?? '终局决战与万界登顶'} | ${stageNames[stageNames.length - 1] ?? stageNames[0]} | 揭晓终极秘辛，完成全书大结局清算 |`, // cjk-ok
     ``,
-    `- 第一卷（第 1~${Math.min(totalChapters, 30)} 章）：${genre?.volumeThemesZh[0] ?? '危机降临与初露锋芒'}（当前阶段：${stageNames[0]}）`, // cjk-ok
-    `- 第二卷（第 ${Math.min(totalChapters, 31)}~${Math.min(totalChapters, 120)} 章）：${genre?.volumeThemesZh[1] ?? '势力洗牌与破局立威'}（进阶阶段：${stageNames[1] ?? stageNames[0]}）`, // cjk-ok
+    `- 第一卷（第 1~${Math.min(totalChapters, Math.max(10, Math.round(totalChapters * 0.25)))} 章）：${genre?.volumeThemesZh[0] ?? '危机降临与初露锋芒'}（当前阶段：${stageNames[0]}）`, // cjk-ok
+    `- 第二卷（第 ${Math.min(totalChapters, Math.max(10, Math.round(totalChapters * 0.25)) + 1)}~${Math.min(totalChapters, Math.max(20, Math.round(totalChapters * 0.6)))} 章）：${genre?.volumeThemesZh[1] ?? '势力洗牌与破局立威'}（进阶阶段：${stageNames[1] ?? stageNames[0]}）`, // cjk-ok
+    `- 第三卷（第 ${Math.min(totalChapters, Math.max(20, Math.round(totalChapters * 0.6)) + 1)}~${totalChapters} 章）：${genre?.volumeThemesZh[2] ?? '终局决战与万界登顶'}（终局阶段：${stageNames[stageNames.length - 1] ?? stageNames[0]}）`, // cjk-ok
+    ``,
+    fullLifecycleArcSchedule,
     ``,
     `---`,
     ``,
@@ -1732,17 +1974,21 @@ async function executeNovelOutlineNode(
     activeGenre
   )
   const outlineRoster = parseCharacterRosterFromOutlineText(
-    extractedHeader || text,
+    `${extractedHeader || text}\n${incomingText}\n${instruction}`,
     defaultOutlineRoster,
     1
   )
+  const existingOutlineRoster = normalizeNovelCharacterRoster(node.params.novelCharacterRosterJson)
+  const existingIsAllDefault =
+    existingOutlineRoster.length === 0 ||
+    existingOutlineRoster.every((c) => isDefaultTemplateCharacterEntry(c))
   const outlinePatch = {
     novelNodeMode: 'outline' as const,
     ...(activeGenre ? { novelGenre: activeGenre.id } : {}),
     novelTotalChapters: totalChapters,
     novelTargetWords: targetWords,
     novelWorldBible: (extractedHeader || text).slice(0, 6000),
-    ...(!node.params.novelCharacterRosterJson?.trim()
+    ...(existingIsAllDefault
       ? {
           novelCharacterRosterJson: JSON.stringify(outlineRoster)
         }
@@ -1817,6 +2063,10 @@ interface ParsedNovelStateDeltaPayload {
     status?: 'active' | 'subdued' | 'injured' | 'eliminated'
     role?: string
     note?: string
+  }>
+  resources?: Array<{
+    name?: string
+    status?: string
   }>
   paidOff?: string[]
   newForeshadowing?: {
@@ -1895,12 +2145,82 @@ export function sanitizeNovelChapterGeneratedText(rawText: string): string {
     }
   }
 
-  // 剥离独立成行的【第一拍 · ...】/【第二拍 · ...】节拍标签行
+  // 剥离独立成行的【第一拍 · ...】/【第二拍 · ...】节拍标签行，以及首行误包在 HTML 注释中的章节标题、末尾残留的裸 JSON 状态行
+  // 同时净化偶发泄露的面板数值括号（如「（当前气血底蕴 `2519`...）」「（映射全书经济仿真步 Step 36/200...）」「（Lv.36/200）」）与词条系统批注后缀
   text = text
+    .replace(/^\s*<!--\s*(第\s*\d+\s*章[^\n]*?)\s*-->/i, '# $1') // cjk-ok
     .replace(/^\s*(?:#+\s*)?【第[一二三四1234]拍\s*[·:：—\-][^】\n]*】\s*\n?/gm, '') // cjk-ok
+    .replace(
+      /【(?:临界蓄满待发|蓄势敛息|局部激活|全功率解封爆发|高潮反噬与调息冷却)窗口[^】\n]*】/g,
+      ''
+    ) // cjk-ok
+    .replace(/[（(](?:当前)?(?:气血底蕴|气血HP|实测战力|战力发挥上限)[^）)\n]*[）)]/g, '') // cjk-ok
+    .replace(/[（(]映射全书经济仿真步[^）)\n]*[）)]/g, '') // cjk-ok
+    .replace(/[（(](?:当前)?契约(?:\/代价)?反噬压力指数[^）)\n]*[）)]/g, '') // cjk-ok
+    .replace(/[（(]Lv\.\s*\d+\s*\/\s*\d+[）)]/gi, '')
+    .replace(/\$E\(t=[^$\n]+\)\$\s*/g, '')
+    .replace(
+      /【([^】\n]*?)(?:·?反手打脸)?\s*[(（](?:第\s*\d+\s*(?:~\d+\s*)?[卷幕][^)）\n]*|势力倍增|丹道乘区|越级反杀|舆论反转|前期启动|名场面铺垫|境界暴涨|铺垫|卡点|终结|高潮卡点)[)）]】/g, // cjk-ok
+      '【$1】'
+    )
+    .replace(/`([+-]?\d+(?:\.\d+)?)`/g, '$1')
+    .replace(/^\s*<!--[^\n]*?(?:完|下一章)[^\n]*?-->\s*$/gim, '') // cjk-ok
+    .replace(/^\s*\{\s*\x22[A-Za-z]+\x22\s*:[^\n]*\}\s*$/gm, '')
+    .replace(/(?:\n\s*---+\s*)+$/g, '')
     .trim()
 
   return text
+}
+
+/**
+ * 跨章与章内段落防复读净化：
+ * 剥离同一章内完全重复的长段落，以及与上一章正文高度雷同（归一化长度 >= 36 且完全一致）的套话段落。
+ */
+export function deduplicateNovelParagraphsAgainstPrevious(
+  chapterText: string,
+  prevChapterText?: string
+): string {
+  const trimmed = chapterText.trim()
+  if (!trimmed) return ''
+  const normPara = (s: string): string =>
+    s
+      .replace(/\s+/g, '')
+      .replace(/[，。！？；：“”‘’「」『』、—…·,.!?;:'"()-]/g, '')
+      .trim()
+
+  const prevSet = new Set<string>()
+  if (prevChapterText?.trim()) {
+    for (const p of prevChapterText.split(/\n\s*\n/)) {
+      const n = normPara(p)
+      if (n.length >= 36) prevSet.add(n)
+    }
+  }
+
+  const rawBlocks = trimmed.split(/\n\s*\n/)
+  const seenSelf = new Set<string>()
+  const kept: string[] = []
+  for (let i = 0; i < rawBlocks.length; i++) {
+    const block = rawBlocks[i]!.trim()
+    if (!block) continue
+    const isHeading = i === 0 && /^(?:#+\s*)?(?:第\s*\d+|Chapter\s+\d+)/i.test(block) // cjk-ok
+    const isEndingHook = i === rawBlocks.length - 1
+    const n = normPara(block)
+    if (!isHeading && n.length >= 32) {
+      if (seenSelf.has(n)) continue
+      seenSelf.add(n)
+      const remainingCandidates = rawBlocks.length - 1 - i
+      if (
+        !isEndingHook &&
+        n.length >= 36 &&
+        prevSet.has(n) &&
+        kept.length + remainingCandidates >= 3
+      ) {
+        continue
+      }
+    }
+    kept.push(block)
+  }
+  return kept.join('\n\n')
 }
 
 function isPureReasoningLeakWithoutNovelProse(text: string): boolean {
@@ -1945,12 +2265,23 @@ function sanitizeChapterProseAgainstGuardrails(opts: {
   const lockedList = parseBracketedItemsList(opts.lockedRaw).filter(
     (lk) => !allowedList.includes(lk)
   )
-  const primaryAllowed = allowedList[0] || '本阶段准入核心手段' // cjk-ok
+  const stripMetaSuffix = (s: string): string =>
+    s
+      .replace(
+        /(?:·?反手打脸)?\s*[(（](?:第\s*\d+\s*(?:~\d+\s*)?[卷幕][^)）\n]*|势力倍增|丹道乘区|越级反杀|舆论反转|前期启动|名场面铺垫|境界暴涨|铺垫|卡点|终结|高潮卡点)[)）]$/g, // cjk-ok
+        ''
+      )
+      .trim()
+  const primaryAllowed = stripMetaSuffix(allowedList[0] || '') || '本阶段准入核心手段' // cjk-ok
   const healedLockedTrumps: Array<{ from: string; to: string }> = []
 
   for (const lockedItem of lockedList) {
+    const cleanLocked = stripMetaSuffix(lockedItem)
     if (lockedItem.length >= 2 && sanitizedText.includes(lockedItem)) {
       sanitizedText = sanitizedText.split(lockedItem).join(primaryAllowed)
+      healedLockedTrumps.push({ from: lockedItem, to: primaryAllowed })
+    } else if (cleanLocked.length >= 2 && sanitizedText.includes(cleanLocked)) {
+      sanitizedText = sanitizedText.split(cleanLocked).join(primaryAllowed)
       healedLockedTrumps.push({ from: lockedItem, to: primaryAllowed })
     }
   }
@@ -2014,8 +2345,32 @@ async function finalizeNovelChapterMemoryAndPersist(
   } = meta
 
   // 1. 提取并剥离末尾隐式状态增量注释 <!-- NOVEL_STATE_DELTA: {...} -->，确保正文 100% 纯净
-  const { cleanText: strippedText, delta: llmDelta } =
+  const { cleanText: strippedRawText, delta: llmDelta } =
     extractAndStripNovelStateDeltaComment(rawText)
+
+  // 1b. 跨章与章内段落防复读净化：若上一章正文已落盘或在内联列表中，剥离完全雷同的套话长段落
+  let prevChapterBody = ''
+  if (currentChapter > 1) {
+    const prevPool = [...(inheritedGalleryItems ?? []), ...(node.params.generatedTexts ?? [])]
+    const prevRe = new RegExp(
+      `^(?:#+\\s*)?(?:第\\s*${currentChapter - 1}\\s*(?:\\/\\s*\\d+\\s*)?章|Chapter\\s+${currentChapter - 1}\\b)`, // cjk-ok
+      'i'
+    )
+    const prevItem =
+      prevPool.find((it) => prevRe.test(it.title?.trim() ?? '')) ??
+      prevPool[currentChapter - 2] ??
+      prevPool[prevPool.length - 1]
+    if (prevItem?.text?.trim()) {
+      prevChapterBody = prevItem.text.trim()
+    } else if (prevItem?.relativePath?.trim() && ctx.readRunText) {
+      try {
+        prevChapterBody = (await ctx.readRunText(prevItem.relativePath.trim()))?.trim() ?? ''
+      } catch {
+        prevChapterBody = ''
+      }
+    }
+  }
+  const strippedText = deduplicateNovelParagraphsAgainstPrevious(strippedRawText, prevChapterBody)
 
   // 提取本章关键信息以自动演进 L1/L2/L3/L4 记忆
   const realmMatch = /主角当前[^*]*\*\*([^*]+)\*\*/.exec(incomingBrief) // cjk-ok
@@ -2105,7 +2460,7 @@ async function finalizeNovelChapterMemoryAndPersist(
 
   const evolvedRosterResult = evolveCharacterRosterFromProse({
     proseText: text,
-    worldBible: nextWorldBible,
+    worldBible: `${nextWorldBible}\n${incomingBrief}`,
     currentChapter,
     curRealm,
     curCeiling,
@@ -2168,7 +2523,14 @@ async function finalizeNovelChapterMemoryAndPersist(
         }
       }
     }
-    evolvedRosterResult.roster = [...byName.values()]
+    const mergedList = [...byName.values()]
+    const hasActiveCustomProtagonist = mergedList.some(
+      (c) =>
+        c.faction === 'protagonist' && !isDefaultTemplateCharacterEntry(c) && text.includes(c.name)
+    )
+    evolvedRosterResult.roster = hasActiveCustomProtagonist
+      ? mergedList.filter((c) => !isDefaultTemplateCharacterEntry(c) || text.includes(c.name))
+      : mergedList
   }
 
   if (llmDelta?.paidOff && Array.isArray(llmDelta.paidOff)) {
@@ -2222,6 +2584,36 @@ async function finalizeNovelChapterMemoryAndPersist(
     `- 当前已解锁${unlockTerm}：${curAllowed}`, // cjk-ok
     `- 仍处于封存禁用的终局${unlockTerm}：${curLocked}` // cjk-ok
   ]
+  const econSliceAtChap = exportMxChapterEconomySlice(
+    { description: `${nextWorldBible}\n${incomingBrief}` },
+    { steps: totalChapters },
+    { currentChapter, totalChapters, genre }
+  )
+  const deltaResourceEntries = Array.isArray(llmDelta?.resources)
+    ? llmDelta!.resources
+        .map((r) => {
+          const n = r.name?.trim()
+          const s = r.status?.trim()
+          return n && s ? `${n}（${s}）` : n || s || ''
+        })
+        .filter(Boolean)
+    : []
+  const econKeywords = Array.from(
+    new Set(
+      text.match(
+        /(?:下品|中品|上品|极品)?灵石|丹药|药材|仙草|寿元|阳寿|生机|命火|气血|真元|功德|香火|符箓|阵盘|晶核|银两|铜钱|资金链/g // cjk-ok
+      ) ?? []
+    )
+  ).slice(0, 5)
+  const resourceDetailSuffix =
+    deltaResourceEntries.length > 0
+      ? `；本章资源明细：${deltaResourceEntries.join('；')}` // cjk-ok
+      : econKeywords.length > 0
+        ? `；本章涉及【${econKeywords.join('、')}】流转与损耗` // cjk-ok
+        : ''
+  stateLedgerLines.push(
+    `- 当前核心资源与代价账本（经济系统时间序列 E(t=${currentChapter}) · ${econSliceAtChap.economyBeatLabelZh}）：期初储备 ${econSliceAtChap.openingReserve} ➔ 本章获取上限 +${econSliceAtChap.inflowQuota} / 刚性消耗 -${econSliceAtChap.mandatoryDrain} ➔ 期末结余 ${econSliceAtChap.closingReserveTarget}（契约反噬压力指数 ${econSliceAtChap.contractPressureIndex}）${resourceDetailSuffix}` // cjk-ok
+  )
   if (evolvedRosterResult.activeInChapterNames.length > 0) {
     stateLedgerLines.push(
       `- 本章登场活跃人物：${evolvedRosterResult.activeInChapterNames.join('、')}` // cjk-ok
@@ -2437,7 +2829,8 @@ export async function executeNovelGenerateNode(
       stagesText: node.params.novelCustomStagesText,
       axisProtagonist: node.params.novelCustomAxisProtagonist,
       axisAntagonist: node.params.novelCustomAxisAntagonist,
-      unlockTerm: node.params.novelCustomUnlockTerm
+      unlockTerm: node.params.novelCustomUnlockTerm,
+      sourceContextText: `${node.params.generateInstruction ?? ''}\n${node.params.novelWorldBible ?? ''}\n${upstreamChain.inheritedWorldBible ?? ''}\n${rawUpstreamSample}`
     }
   )
 
@@ -2447,18 +2840,24 @@ export async function executeNovelGenerateNode(
     targetWordsPerChapter: targetWords,
     genre: activeGenre
   }
+  const narrowOpts = {
+    totalChapters,
+    targetWords,
+    genre: activeGenre
+  }
 
   const mentionSources = rawMentionSources.map((s) => {
     const unwrapped = unwrapEconomyBundleForNarrative(s.text, unwrapOpts)
     const isEconomyDoc =
       unwrapped !== s.text ||
       unwrapped.includes('单章数值围栏与底牌配额锁') || // cjk-ok
+      unwrapped.includes('全书经济系统与核心资源供需法则') || // cjk-ok
       unwrapped.includes('叙事与爽点节奏导引书') // cjk-ok
     return {
       ...s,
       text:
         executionMode === 'chapter' && !isEconomyDoc
-          ? narrowOutlineTextForChapter(unwrapped, currentChapter, ctx.locale)
+          ? narrowOutlineTextForChapter(unwrapped, currentChapter, ctx.locale, narrowOpts)
           : unwrapped
     }
   })
@@ -2507,6 +2906,7 @@ export async function executeNovelGenerateNode(
     const isEconomyDoc =
       unwrapped !== trimmedRaw ||
       unwrapped.includes('单章数值围栏与底牌配额锁') || // cjk-ok
+      unwrapped.includes('全书经济系统与核心资源供需法则') || // cjk-ok
       unwrapped.includes('叙事与爽点节奏导引书') // cjk-ok
     if (isEconomyDoc) {
       incomingChunks.push(unwrapped)
@@ -2520,7 +2920,7 @@ export async function executeNovelGenerateNode(
       ) {
         continue
       }
-      // (B) 确定性源节点识别、端口识别或结构识别：若来自 novel.outline 节点（或 in-outline 端口）、含多章细纲标记、或含分卷区间标记，则执行两级大纲切片
+      // (B) 确定性源节点识别、端口识别或结构识别：若来自 novel.outline 节点（或 in-outline 端口）、含多章细纲标记、或含分卷区间标记，则执行三级全生命周期大纲切片
       const isFromOutlineNode =
         outlinePortTexts.has(trimmedRaw) ||
         outlinePortTexts.has(unwrapped) ||
@@ -2533,7 +2933,9 @@ export async function executeNovelGenerateNode(
       })
       const hasRangeArcs = parseOutlineRangeArcBlocks(unwrapped).length > 0
       if (isFromOutlineNode || splitChaps.length >= 2 || hasRangeArcs) {
-        incomingChunks.push(narrowOutlineTextForChapter(unwrapped, currentChapter, ctx.locale))
+        incomingChunks.push(
+          narrowOutlineTextForChapter(unwrapped, currentChapter, ctx.locale, narrowOpts)
+        )
         continue
       }
       // (C) 兜底无图上下文（独立调用）时的上一章全文剥离
@@ -2564,6 +2966,18 @@ export async function executeNovelGenerateNode(
     if (econSlice && !incomingChunks.some((c) => c.includes('单章数值围栏与底牌配额锁'))) {
       // cjk-ok
       incomingChunks.unshift(econSlice)
+    }
+  }
+  if (upstreamChain.upstreamEconomyOnlyRawText) {
+    const econOnlySlice = unwrapEconomyBundleForNarrative(
+      upstreamChain.upstreamEconomyOnlyRawText,
+      unwrapOpts
+    ).trim()
+    if (
+      econOnlySlice &&
+      !incomingChunks.some((c) => c.includes('全书经济系统与核心资源供需法则')) // cjk-ok
+    ) {
+      incomingChunks.unshift(econOnlySlice)
     }
   }
   if (upstreamChain.upstreamChapterOutlineSlice) {
@@ -2625,6 +3039,15 @@ export async function executeNovelGenerateNode(
     genre: activeGenre
   })
 
+  const passthroughOutputs: Record<string, GraphValue> = {}
+  const outOutlineVal = rawCtx.inputs?.['in-outline']?.[0] ?? upstreamChain.outlinePassthroughValue
+  const outEconomyVal = rawCtx.inputs?.['in-economy']?.[0] ?? upstreamChain.economyPassthroughValue
+  const outNumericalVal =
+    rawCtx.inputs?.['in-numerical']?.[0] ?? upstreamChain.numericalPassthroughValue
+  if (outOutlineVal) passthroughOutputs['out-outline'] = outOutlineVal
+  if (outEconomyVal) passthroughOutputs['out-economy'] = outEconomyVal
+  if (outNumericalVal) passthroughOutputs['out-numerical'] = outNumericalVal
+
   if (!ctx.generateText) {
     const localText = normalizeLocalScreenplayText(node.params.text)
     const offlineNovel = synthesizeNovelFromProgressionBriefOffline(
@@ -2642,8 +3065,8 @@ export async function executeNovelGenerateNode(
       }
     )
     const text = offlineNovel || instruction.trim() || incomingText || localText
-    if (!text.trim()) return dualTextGalleryOutputs([], '')
-    return await finalizeNovelChapterMemoryAndPersist(ctx, text, {
+    if (!text.trim()) return { ...dualTextGalleryOutputs([], ''), ...passthroughOutputs }
+    const baseOut = await finalizeNovelChapterMemoryAndPersist(ctx, text, {
       currentChapter,
       totalChapters,
       targetWords,
@@ -2658,6 +3081,7 @@ export async function executeNovelGenerateNode(
       inheritedHistoryMap: upstreamChain.inheritedHistoryMap,
       inheritedGalleryItems: upstreamChain.inheritedGalleryItems
     })
+    return { ...baseOut, ...passthroughOutputs }
   }
 
   if (ctx.signal?.aborted) {
@@ -2706,7 +3130,7 @@ export async function executeNovelGenerateNode(
     : cleanedCandidate
   if (!text) throw fail(SHARED_ERRORS.resultMissing, { what: { zh: '小说文本', en: 'novel text' } }) // cjk-ok 双语错误数据（zh/en，由 errors/catalog 统一格式化）
 
-  return await finalizeNovelChapterMemoryAndPersist(ctx, text, {
+  const baseOut = await finalizeNovelChapterMemoryAndPersist(ctx, text, {
     currentChapter,
     totalChapters,
     targetWords,
@@ -2721,6 +3145,7 @@ export async function executeNovelGenerateNode(
     inheritedHistoryMap: upstreamChain.inheritedHistoryMap,
     inheritedGalleryItems: upstreamChain.inheritedGalleryItems
   })
+  return { ...baseOut, ...passthroughOutputs }
 }
 
 function unwrapIncomingChunkForGameSystem(
@@ -2996,13 +3421,25 @@ export async function executeGameSystemGenerateNode(
       workbenchPreset: upstreamEconomyDoc?.workbench?.activePresetId
     })
   const arch = resolveGameSystemArchetype(activeArchetypeId)
-  const archetypeDirective = [
-    `【本案系统原型约束：${arch.icon} ${arch.labelZh}（${arch.id}）】`, // cjk-ok
-    `- 核心玩法闭环：${arch.coreLoopZh}`, // cjk-ok
-    `- 玩家核心体验目标：${arch.playerGoalZh}`, // cjk-ok
-    `- 必备功能模块：${arch.defaultFeatures.map((f) => `${f.code || f.id}《${f.nameZh}》(${f.priority})`).join('、')}`, // cjk-ok
-    `- 必备 UI 界面清单（供下游 ui.split 拆分）：${arch.defaultScreens.map((s) => `《${s.titleZh}》(${s.screenKind}/${targetAspect ?? s.aspectRatio})`).join('、')}` // cjk-ok
-  ].join('\n')
+  const hasCombatOrUpstreamModel =
+    Boolean(explicitArchetypeId && explicitArchetypeId !== 'universal_full_ui') ||
+    Boolean(directUpstreamEconomyNode) ||
+    Boolean(directUpstreamNovelNode) ||
+    arch.id !== 'universal_full_ui'
+  const archetypeDirective =
+    customInstruction && !hasCombatOrUpstreamModel
+      ? [
+          `【工程交付完备度约束（供下游 ui.split / ui.gen 自动拆图使用）】`, // cjk-ok
+          `- 领域与模块边界：严格以用户主需求的业务/教学/仿真/产品定位及界面划分为准，严禁混入与主需求无关的战斗、境界突破、宿敌数值或概率抽卡模块。`, // cjk-ok
+          `- 章节与界面拆图规范：确保包含完整系统概述、可验收目标、带 P0/P1/P2 与异常边界的功能设计、包含 ASCII 字符框线草图与 9-slice 九宫格 PSD 分层规范的 UI 布局设计（默认画幅 ${targetAspect ?? arch.defaultScreens[0]?.aspectRatio ?? '16:9'}）、交互反馈规范及业务数据配置表。` // cjk-ok
+        ].join('\n')
+      : [
+          `【本案系统原型约束：${arch.icon} ${arch.labelZh}（${arch.id}）】`, // cjk-ok
+          `- 核心玩法/交互闭环：${arch.coreLoopZh}`, // cjk-ok
+          `- 核心体验目标：${arch.playerGoalZh}`, // cjk-ok
+          `- 必备功能模块：${arch.defaultFeatures.map((f) => `${f.code || f.id}《${f.nameZh}》(${f.priority})`).join('、')}`, // cjk-ok
+          `- 必备 UI 界面清单（供下游 ui.split 拆分）：${arch.defaultScreens.map((s) => `《${s.titleZh}》(${s.screenKind}/${targetAspect ?? s.aspectRatio})`).join('、')}` // cjk-ok
+        ].join('\n')
 
   let prompt = incomingText ? `${userPrompt.trim()}\n\n${incomingText}` : userPrompt
   if (archetypeDirective) {

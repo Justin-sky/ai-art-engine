@@ -5,6 +5,7 @@
  */
 
 import { normalizeExpandResolution } from './imageExpand'
+import type { GraphImageItem } from './execute/types'
 import {
   decomposeControlIntoStandardParts,
   getUiControlSpec,
@@ -162,6 +163,19 @@ export interface ImageLayerSplitNestedRequest {
   visionModel?: string
   visionProviderInstanceId?: string
   imageLayerSplit: ImageLayerSplitState
+}
+
+export interface ImageLayerSplitRepairRequest {
+  layerId: string
+  prompt: string
+  resolution: string
+  generateModel: string
+  generateProviderInstanceId: string
+  visionModel?: string
+  visionProviderInstanceId?: string
+  layerDataUrl?: string
+  imageLayerSplit: ImageLayerSplitState
+  extraGeneratedImages?: GraphImageItem[]
 }
 
 export const DEFAULT_IMAGE_LAYER_SPLIT: ImageLayerSplitState = {

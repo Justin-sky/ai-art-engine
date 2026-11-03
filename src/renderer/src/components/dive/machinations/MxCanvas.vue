@@ -29,7 +29,13 @@
           :x="store.view.x"
           :y="store.view.y"
         >
-          <circle cx="1.2" cy="1.2" r="1.15" class="mx-grid-dot" />
+          <circle
+            cx="1.2"
+            cy="1.2"
+            r="1.15"
+            class="mx-grid-dot"
+            :opacity="store.snapToGrid.value ? 1 : 0.26"
+          />
         </pattern>
         <marker
           id="mx-arrow"
@@ -176,6 +182,13 @@
             :d="geo.path"
             fill="none"
             :stroke="geo.color"
+            :stroke-opacity="
+              !isEdgeSelected(geo.edge.id) &&
+              geo.edge.kind === 'state' &&
+              isStateEdgeDormantCondition(geo.edge)
+                ? 0.42
+                : 1
+            "
             :stroke-width="
               isEdgeSelected(geo.edge.id)
                 ? 2.8
@@ -239,9 +252,9 @@
             </g>
           </template>
 
-          <!-- 状态控制边触发时的信号脉冲光点 -->
+          <!-- 状态控制边触发时的信号脉冲光点（仅当条件满足、触发器激活或修正器实际生效时发射） -->
           <g
-            v-else-if="isFlowAnimating && geo.edge.kind === 'state' && firedIds.has(geo.edge.from)"
+            v-else-if="isFlowAnimating && geo.edge.kind === 'state' && isStateEdgePulsing(geo.edge)"
             :transform="`translate(${sampleEdgePoint(geo, streamPhase).x}, ${sampleEdgePoint(geo, streamPhase).y})`"
           >
             <polygon
@@ -830,10 +843,28 @@
       <button
         type="button"
         :class="{ 'is-on': store.snapToGrid.value }"
-        :title="t('mx.canvas.snapGrid')"
+        :aria-pressed="store.snapToGrid.value"
+        :title="`${t('mx.canvas.snapGrid')} (${store.snapToGrid.value ? 'ON' : 'OFF'})`"
         @click="store.snapToGrid.value = !store.snapToGrid.value"
       >
-        ⊞
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.3"
+            :opacity="store.snapToGrid.value ? 1 : 0.55"
+            d="M2.5 2.5h11v11h-11zM2.5 6.2h11M2.5 9.8h11M6.2 2.5v11M9.8 2.5v11"
+          />
+          <circle v-if="store.snapToGrid.value" cx="9.8" cy="9.8" r="2.1" fill="currentColor" />
+          <path
+            v-else
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            d="M2 14L14 2"
+          />
+        </svg>
       </button>
       <button
         type="button"
@@ -1330,7 +1361,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  evaluateMxExpression,
   mxNodeColor,
+  parseMxStateFormula,
+  resolveMxParams,
   type MxEdge,
   type MxEdgeKind,
   type MxGroup,
@@ -1467,6 +1501,100 @@ const firedIds = computed(() => {
   }
   return set
 })
+
+const outgoingFiredIds = computed(() => {
+  const set = new Set<string>()
+  const flows = store.displayFlows.value
+  for (const e of store.doc.value.edges) {
+    if ((flows[e.id] ?? 0) > 0) {
+      set.add(e.from)
+    }
+  }
+  return set
+})
+
+const resolvedParamsMap = computed(() => resolveMxParams(store.doc.value))
+
+function evalStateEdgeCondition(edge: MxEdge): boolean | null {
+  const spec = parseMxStateFormula(edge.formula)
+  const srcNode = nodeById.value.get(edge.from)
+  const srcVal =
+    store.displayValues.value?.[edge.from] ??
+    (srcNode?.kind === 'pool' || srcNode?.kind === 'register' ? (srcNode.initial ?? 0) : 0)
+
+  switch (spec.type) {
+    case 'activator':
+      switch (spec.op) {
+        case '>':
+          return srcVal > spec.value
+        case '<':
+          return srcVal < spec.value
+        case '>=':
+          return srcVal >= spec.value
+        case '<=':
+          return srcVal <= spec.value
+        case '==':
+          return Math.abs(srcVal - spec.value) < 1e-9
+        case '!=':
+          return Math.abs(srcVal - spec.value) >= 1e-9
+      }
+      return null
+    case 'range':
+      return srcVal >= spec.lo && srcVal <= spec.hi
+    case 'expr': {
+      if (!/[<>=!]/.test(spec.expr)) return null
+      return (
+        evaluateMxExpression(
+          spec.expr,
+          {
+            vars: {
+              ...resolvedParamsMap.value,
+              ...(store.displayValues.value ?? {}),
+              step: store.playStep.value,
+              t: store.playStep.value,
+              a: srcVal,
+              self: srcVal
+            },
+            rng: () => 0.5
+          },
+          0
+        ) !== 0
+      )
+    }
+    default:
+      return null
+  }
+}
+
+/** 条件型状态边（如 <=0、>=225）当前尚未满足时，置为半透明静默待命态 */
+function isStateEdgeDormantCondition(edge: MxEdge): boolean {
+  const cond = evalStateEdgeCondition(edge)
+  return cond === false
+}
+
+/** 判断状态边在当前步是否真的发射控制信号脉冲光点（避免未满足的结束条件误发信号） */
+function isStateEdgePulsing(edge: MxEdge): boolean {
+  const cond = evalStateEdgeCondition(edge)
+  if (cond !== null) {
+    // 比较条件边（Activator / End 条件）：仅当条件成立（true）时才发射信号菱形
+    return cond
+  }
+  const spec = parseMxStateFormula(edge.formula)
+  if (spec.type === 'trigger') {
+    return outgoingFiredIds.value.has(edge.from)
+  }
+  if (spec.type === 'reverse_trigger') {
+    return store.nodeBottlenecks.value[edge.from]?.kind === 'blocked'
+  }
+  // 数值修正边（如 +0.1、+1）：源节点值非 0，且目标实线有流量或源节点本步活跃时显示脉冲
+  const srcNode = nodeById.value.get(edge.from)
+  const srcVal = store.displayValues.value?.[edge.from] ?? srcNode?.initial ?? 0
+  if (Math.abs(srcVal) < 1e-9) return false
+  if (edge.targetEdgeId) {
+    return (store.displayFlows.value[edge.targetEdgeId] ?? 0) > 0
+  }
+  return firedIds.value.has(edge.from)
+}
 
 function nodeColor(node: MxNode): string {
   return mxNodeColor(store.doc.value, node)
@@ -1719,10 +1847,12 @@ interface EdgeGeo {
 
 const edgeGeometries = computed<EdgeGeo[]>(() => {
   const out: EdgeGeo[] = []
-  const midByEdgeId = new Map<string, { x: number; y: number }>()
-  const pairs = new Set(store.doc.value.edges.map((e) => `${e.from}>${e.to}`))
+  const midByEdgeId = new Map<string, { x: number; y: number; labelW: number }>()
+  const pairs = new Set(
+    store.doc.value.edges.filter((e) => !e.targetEdgeId).map((e) => `${e.from}>${e.to}`)
+  )
 
-  // 第一遍先算普通 Node -> Node 连线，记录中点供 Edge -> Edge 状态边引用
+  // 第一遍先算普通 Node -> Node 连线，记录中点与胶囊宽度供 Edge -> Edge 状态边精确停靠在胶囊边缘
   const firstPass = store.doc.value.edges.filter((e) => !e.targetEdgeId)
   const secondPass = store.doc.value.edges.filter((e) => !!e.targetEdgeId)
 
@@ -1734,12 +1864,13 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
     let bx = 0
     let by = 0
     let rb = 10
+    let targetPillW = 0
     if (e.targetEdgeId) {
       const targetMid = midByEdgeId.get(e.targetEdgeId)
       if (!targetMid) continue
       bx = targetMid.x
       by = targetMid.y
-      rb = 12
+      targetPillW = targetMid.labelW
     } else {
       if (!visibleIds.value.has(e.to)) continue
       const b = nodeById.value.get(e.to)
@@ -1755,21 +1886,41 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
     const ux = dx / len
     const uy = dy / len
     const reverse = !e.targetEdgeId && pairs.has(`${e.to}>${e.from}`)
-    const defaultBend = reverse
-      ? 28
-      : e.kind === 'state' && !e.targetEdgeId
-        ? Math.min(48, len * 0.14)
-        : 0
+    const defaultBend = reverse ? 28 : e.kind === 'state' ? Math.min(44, len * 0.12) : 0
     const bend = e.bend !== undefined ? e.bend : defaultBend
     const nx = -uy
     const ny = ux
     const ra = nodeRadius(a) + 2
     const sx = a.x + ux * ra
     const sy = a.y + uy * ra
-    const ex = bx - ux * rb
-    const ey = by - uy * rb
-    const cx = (sx + ex) / 2 + nx * bend
-    const cy = (sy + ey) / 2 + ny * bend
+
+    let ex = bx - ux * rb
+    let ey = by - uy * rb
+    let cx = (sx + ex) / 2 + nx * bend
+    let cy = (sy + ey) / 2 + ny * bend
+
+    if (e.targetEdgeId && targetPillW > 0) {
+      // 按曲线入向切线（控制点 → 目标胶囊中心）计算与公式胶囊外框的交点，避免虚线箭头穿透覆盖公式文字
+      const approxCx = (sx + bx) / 2 + nx * bend
+      const approxCy = (sy + by) / 2 + ny * bend
+      const tdx = bx - approxCx
+      const tdy = by - approxCy
+      const tlen = Math.max(1, Math.hypot(tdx, tdy))
+      const tux = tdx / tlen
+      const tuy = tdy / tlen
+      const hw = targetPillW / 2 + 5
+      const hh = 13.5
+      const pillDist = Math.min(
+        len * 0.45,
+        hw / Math.max(1e-4, Math.abs(tux)),
+        hh / Math.max(1e-4, Math.abs(tuy))
+      )
+      ex = bx - tux * pillDist
+      ey = by - tuy * pillDist
+      cx = approxCx
+      cy = approxCy
+    }
+
     const path =
       Math.abs(bend) > 0.5
         ? `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
@@ -1778,8 +1929,6 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
       Math.abs(bend) > 0.5
         ? { x: (sx + 2 * cx + ex) / 4, y: (sy + 2 * cy + ey) / 4 }
         : { x: (sx + ex) / 2, y: (sy + ey) / 2 }
-
-    midByEdgeId.set(e.id, mid)
 
     const negative = e.kind === 'state' && /^\s*(-|!|<)/.test(e.formula)
     const selected = isEdgeSelected(e.id)
@@ -1798,6 +1947,8 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
       flow > 0 && e.kind === 'resource'
         ? `${e.formula || '1'} → ${formatValue(Math.round(flow * 10) / 10)}`
         : e.formula || (e.kind === 'state' ? '*' : '1')
+    const labelW = Math.max(24, label.length * 6.4 + 14)
+    midByEdgeId.set(e.id, { x: mid.x, y: mid.y, labelW })
     const src = nodeById.value.get(e.from)
     out.push({
       edge: e,
@@ -1815,7 +1966,7 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
       tokenColor: src ? nodeColor(src) : '#3d8bfd',
       marker,
       label,
-      labelW: Math.max(24, label.length * 6.4 + 14)
+      labelW
     })
   }
   return out
@@ -1897,8 +2048,10 @@ function toWorld(ev: PointerEvent | WheelEvent | MouseEvent): {
 const panState = ref<{ sx: number; sy: number; vx: number; vy: number } | null>(null)
 const dragState = ref<{
   ids: string[]
-  lastX: number
-  lastY: number
+  leadId: string
+  startX: number
+  startY: number
+  origins: Record<string, { x: number; y: number }>
   key: string
   moved: boolean
 } | null>(null)
@@ -1912,6 +2065,10 @@ const bendDrag = ref<{
 } | null>(null)
 const groupDrag = ref<{
   groupId: string
+  startX: number
+  startY: number
+  originX: number
+  originY: number
   lastX: number
   lastY: number
   key: string
@@ -2025,8 +2182,12 @@ function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
   const p = toWorld(ev)
   groupDrag.value = {
     groupId: grp.id,
-    lastX: p.x,
-    lastY: p.y,
+    startX: p.x,
+    startY: p.y,
+    originX: grp.x,
+    originY: grp.y,
+    lastX: Math.round(grp.x),
+    lastY: Math.round(grp.y),
     key: `grpDrag:${grp.id}:${Date.now()}`
   }
 }
@@ -2125,8 +2286,23 @@ function onNodePointerDown(node: MxNode, ev: PointerEvent): void {
     const n = nodeById.value.get(id)
     return n && !isLocked(n)
   })
+  if (!ids.length) return
+  const origins: Record<string, { x: number; y: number }> = {}
+  for (const id of ids) {
+    const n = nodeById.value.get(id)
+    if (n) origins[id] = { x: n.x, y: n.y }
+  }
+  const leadId = ids.includes(node.id) ? node.id : ids[0]!
   const p = toWorld(ev)
-  dragState.value = { ids, lastX: p.x, lastY: p.y, key: `drag:${Date.now()}`, moved: false }
+  dragState.value = {
+    ids,
+    leadId,
+    startX: p.x,
+    startY: p.y,
+    origins,
+    key: `drag:${Date.now()}`,
+    moved: false
+  }
 }
 
 function onNodeDblClick(node: MxNode): void {
@@ -2179,65 +2355,121 @@ function onPointerMove(ev: PointerEvent): void {
 
   if (groupResize.value) {
     const gr = groupResize.value
-    const nextW = Math.max(120, Math.round(gr.initW + (p.x - gr.startX)))
-    const nextH = Math.max(90, Math.round(gr.initH + (p.y - gr.startY)))
+    const rawW = gr.initW + (p.x - gr.startX)
+    const rawH = gr.initH + (p.y - gr.startY)
+    const nextW = Math.max(
+      120,
+      store.snapToGrid.value ? Math.round(rawW / 20) * 20 : Math.round(rawW)
+    )
+    const nextH = Math.max(
+      100,
+      store.snapToGrid.value ? Math.round(rawH / 20) * 20 : Math.round(rawH)
+    )
     store.updateGroup(gr.groupId, { width: nextW, height: nextH }, gr.key)
     return
   }
 
   if (groupDrag.value) {
     const gd = groupDrag.value
-    const dx = p.x - gd.lastX
-    const dy = p.y - gd.lastY
-    if (Math.abs(dx) + Math.abs(dy) >= 0.5) {
-      gd.lastX = p.x
-      gd.lastY = p.y
-      store.moveGroup(gd.groupId, dx, dy, gd.key)
+    const rawX = gd.originX + (p.x - gd.startX)
+    const rawY = gd.originY + (p.y - gd.startY)
+    const targetX = store.snapToGrid.value ? Math.round(rawX / 20) * 20 : Math.round(rawX)
+    const targetY = store.snapToGrid.value ? Math.round(rawY / 20) * 20 : Math.round(rawY)
+    const stepDx = targetX - gd.lastX
+    const stepDy = targetY - gd.lastY
+    if (stepDx !== 0 || stepDy !== 0) {
+      gd.lastX = targetX
+      gd.lastY = targetY
+      store.moveGroup(gd.groupId, stepDx, stepDy, gd.key)
     }
     return
   }
 
   if (dragState.value && dragState.value.ids.length) {
-    let dx = p.x - dragState.value.lastX
-    let dy = p.y - dragState.value.lastY
-    if (Math.abs(dx) + Math.abs(dy) < 0.5) return
+    const ds = dragState.value
+    const rawDx = p.x - ds.startX
+    const rawDy = p.y - ds.startY
+    if (!ds.moved && Math.hypot(rawDx, rawDy) < 2) return
+    ds.moved = true
 
-    // 单节点拖拽时计算智能对齐辅助线 (Smart Alignment Guides)
-    const guides: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
-    if (dragState.value.ids.length === 1) {
-      const moving = nodeById.value.get(dragState.value.ids[0]!)
-      if (moving) {
-        const nextX = moving.x + dx
-        const nextY = moving.y + dy
+    const leadOrig = ds.origins[ds.leadId] ?? { x: 0, y: 0 }
+    let effDx = rawDx
+    let effDy = rawDy
+
+    if (store.snapToGrid.value) {
+      const rawLeadX = leadOrig.x + rawDx
+      const rawLeadY = leadOrig.y + rawDy
+      let targetLeadX = Math.round(rawLeadX / 20) * 20
+      let targetLeadY = Math.round(rawLeadY / 20) * 20
+
+      const guides: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+      if (ds.ids.length === 1) {
+        let bestXDist = 7
+        let bestYDist = 7
         for (const other of visibleNodes.value) {
-          if (other.id === moving.id) continue
-          if (Math.abs(other.x - nextX) < 6) {
-            dx = other.x - moving.x
+          if (other.id === ds.leadId) continue
+          const distX = Math.abs(other.x - rawLeadX)
+          if (distX < bestXDist) {
+            bestXDist = distX
+            targetLeadX = other.x
+          }
+          const distY = Math.abs(other.y - rawLeadY)
+          if (distY < bestYDist) {
+            bestYDist = distY
+            targetLeadY = other.y
+          }
+        }
+        for (const other of visibleNodes.value) {
+          if (other.id === ds.leadId) continue
+          if (Math.abs(other.x - targetLeadX) < 0.5) {
             guides.push({
               x1: other.x,
-              y1: Math.min(other.y, nextY) - 40,
+              y1: Math.min(other.y, targetLeadY) - 40,
               x2: other.x,
-              y2: Math.max(other.y, nextY) + 40
+              y2: Math.max(other.y, targetLeadY) + 40
             })
           }
-          if (Math.abs(other.y - nextY) < 6) {
-            dy = other.y - moving.y
+          if (Math.abs(other.y - targetLeadY) < 0.5) {
             guides.push({
-              x1: Math.min(other.x, nextX) - 40,
+              x1: Math.min(other.x, targetLeadX) - 40,
               y1: other.y,
-              x2: Math.max(other.x, nextX) + 40,
+              x2: Math.max(other.x, targetLeadX) + 40,
               y2: other.y
             })
           }
         }
       }
+      alignGuides.value = guides
+      effDx = targetLeadX - leadOrig.x
+      effDy = targetLeadY - leadOrig.y
+    } else {
+      alignGuides.value = []
     }
-    alignGuides.value = guides
 
-    dragState.value.lastX = p.x
-    dragState.value.lastY = p.y
-    dragState.value.moved = true
-    store.moveNodes(dragState.value.ids, dx, dy, dragState.value.key)
+    let changed = false
+    for (const id of ds.ids) {
+      const orig = ds.origins[id]
+      const cur = nodeById.value.get(id)
+      if (!orig || !cur) continue
+      const nx = Math.round(orig.x + effDx)
+      const ny = Math.round(orig.y + effDy)
+      if (cur.x !== nx || cur.y !== ny) {
+        changed = true
+        break
+      }
+    }
+    if (changed) {
+      const idSet = new Set(ds.ids)
+      store.mutate((d) => {
+        for (const n of d.nodes) {
+          if (!idSet.has(n.id)) continue
+          const orig = ds.origins[n.id]
+          if (!orig) continue
+          n.x = Math.round(orig.x + effDx)
+          n.y = Math.round(orig.y + effDy)
+        }
+      }, ds.key)
+    }
     return
   }
 
@@ -2335,17 +2567,6 @@ function onPointerUp(ev: PointerEvent): void {
     }
     marquee.value = null
   }
-  if (dragState.value?.moved && store.snapToGrid.value) {
-    const ids = dragState.value.ids
-    store.mutate((d) => {
-      for (const n of d.nodes) {
-        if (ids.includes(n.id)) {
-          n.x = Math.round(n.x / 10) * 10
-          n.y = Math.round(n.y / 10) * 10
-        }
-      }
-    }, dragState.value.key)
-  }
   panState.value = null
   dragState.value = null
 }
@@ -2399,7 +2620,9 @@ function onEdgeContextMenu(edge: MxEdge, ev: MouseEvent): void {
 function spawnNodeAtContext(kind: MxNodeKind): void {
   const cm = contextMenu.value
   if (!cm) return
-  store.addNode(kind, cm.wx, cm.wy)
+  const gx = store.snapToGrid.value ? Math.round(cm.wx / 20) * 20 : Math.round(cm.wx)
+  const gy = store.snapToGrid.value ? Math.round(cm.wy / 20) * 20 : Math.round(cm.wy)
+  store.addNode(kind, gx, gy)
   contextMenu.value = null
 }
 
@@ -3150,18 +3373,25 @@ defineExpose({
   background: transparent;
   border-radius: 5px;
   cursor: pointer;
-  color: var(--text, #e8eaed);
+  color: var(--text-muted, #9aa0a6);
   font-size: 14px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transition:
+    color 0.14s ease,
+    background 0.14s ease,
+    box-shadow 0.14s ease;
 }
 .mx-viewbar button:hover:not(:disabled) {
+  color: var(--text, #e8eaed);
   background: var(--bg-hover);
 }
-.mx-viewbar button.is-on {
+.mx-viewbar button.is-on,
+.mx-viewbar button.is-on:hover:not(:disabled) {
   color: var(--accent, #3d8bfd);
-  background: var(--accent-12, rgba(61, 139, 253, 0.12));
+  background: var(--accent-18, rgba(61, 139, 253, 0.2));
+  box-shadow: inset 0 0 0 1.25px var(--accent, #3d8bfd);
 }
 .mx-viewbar button:disabled {
   opacity: 0.35;

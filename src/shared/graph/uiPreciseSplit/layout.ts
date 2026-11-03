@@ -643,10 +643,16 @@ function childrenMap(nodes: UiElementNode[]): Map<string | null, UiElementNode[]
       // 1) 文字压在同级图形之上；角标/图标/按钮压在同级立绘/容器底框之上
       const tierDiff = siblingZTier(a.kind) - siblingZTier(b.kind)
       if (tierDiff !== 0) return tierDiff
-      // 2) 若两个同级元素存在明显空间重叠，面积大的必定在下层（先绘制），面积小的必定在上层（后绘制，否则会被遮挡不可见）
-      const inter = rectIntersection(a.box, b.box)
+      // 2) 若两个同级元素存在明显空间重叠（含跨角压盖），面积大的必定在下层（先绘制），面积小的必定在上层
+      const interW =
+        Math.min(a.box.left + a.box.width, b.box.left + b.box.width) -
+        Math.max(a.box.left, b.box.left)
+      const interH =
+        Math.min(a.box.top + a.box.height, b.box.top + b.box.height) -
+        Math.max(a.box.top, b.box.top)
+      const inter = interW > 0 && interH > 0 ? interW * interH : 0
       const minArea = Math.max(1, Math.min(rectArea(a.box), rectArea(b.box)))
-      if (inter / minArea >= 0.15) {
+      if (inter / minArea >= 0.15 || (interW >= 4 && interH >= 4 && inter / minArea >= 0.04)) {
         const areaDiff = rectArea(b.box) - rectArea(a.box)
         if (Math.abs(areaDiff) >= minArea * 0.12) return areaDiff
       }
@@ -681,7 +687,7 @@ export function assignPaintOrder(nodes: UiElementNode[]): void {
  * （祖先必然满足）。要还原 A 被 E 挡住的部分，必须先剥掉 E，所以 E 的层级更高。
  * 普通文字不参与（在最顶层本地去字）。
  */
-export function assignOcclusionLevels(nodes: UiElementNode[], maxLevel = 12): void {
+export function assignOcclusionLevels(nodes: UiElementNode[], maxLevel = 24): void {
   const ordered = nodes
     .filter((n) => !n.plainText)
     .sort((a, b) => (a.paintIndex ?? 0) - (b.paintIndex ?? 0))
@@ -691,10 +697,17 @@ export function assignOcclusionLevels(nodes: UiElementNode[], maxLevel = 12): vo
     let level = 1
     for (let j = 0; j < i; j++) {
       const a = ordered[j]!
-      const inter = rectIntersection(a.box, e.box)
-      if (!inter) continue
+      const interW =
+        Math.min(a.box.left + a.box.width, e.box.left + e.box.width) -
+        Math.max(a.box.left, e.box.left)
+      const interH =
+        Math.min(a.box.top + a.box.height, e.box.top + e.box.height) -
+        Math.max(a.box.top, e.box.top)
+      if (interW <= 0 || interH <= 0) continue
+      const inter = interW * interH
       const minArea = Math.max(1, Math.min(area, rectArea(a.box)))
-      if (inter / minArea < 0.06) continue
+      const isCornerOverlap = interW >= 4 && interH >= 4 && inter / minArea >= 0.02
+      if (inter / minArea < 0.06 && !isCornerOverlap) continue
       level = Math.max(level, (a.level ?? 1) + 1)
     }
     e.level = Math.min(maxLevel, level)

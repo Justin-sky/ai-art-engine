@@ -11,6 +11,10 @@ import {
 import { GraphPortType, type GraphDocument, type GraphEdge, type GraphNode } from './types'
 import { resolveUiImageSystemPrompt } from './systemPromptSchemes'
 import { isExplicitOpaqueBgPrompt } from './userPromptSchemes'
+import {
+  findGddSectionSpan,
+  isGlobalUiPreambleSubheading
+} from '../gameAssets/gameSystemDesignBridge'
 
 export type UiScreenKind = 'fullscreen' | 'hud' | 'popup' | 'panel' | 'component'
 export type UiScreenAspectRatio = '9:16' | '16:9' | '1:1' | '4:3' | '3:4'
@@ -648,14 +652,14 @@ function normalizeUiScreenRows(parsed: unknown[]): UiScreenPromptItem[] {
  * 结构化提取独立 UI 界面列表（含 id、title、prompt、cleanPrompt、screenKind、aspectRatio、layerPrompt）。
  */
 function parseUiScreensFromGddMarkdown(text: string): UiScreenPromptItem[] {
-  const uiLayoutMatch =
-    /#\s*(?:UI\s*布局设计[^\n]*|UI Layout Design[^\n]*)([\s\S]*?)(?=\n#\s+[^#]|$)/i.exec(text)
+  const uiLayoutSpan = findGddSectionSpan(text, 'uiLayout')
   const hasGddMarkers =
-    Boolean(uiLayoutMatch) ||
-    (/(?:^|\n)##+\s*4\.\d+/m.test(text) && /screenKind|界面规格|区域划分|控件清单/i.test(text))
+    Boolean(uiLayoutSpan) ||
+    (/(?:^|\n)##+\s*(?:4\.\d+|UI-\d+)/im.test(text) &&
+      /screenKind|界面规格|形态\s*[/／]\s*比例|区域划分|控件清单/i.test(text)) // cjk-ok
   if (!hasGddMarkers) return []
 
-  const uiBody = uiLayoutMatch?.[1] ?? text
+  const uiBody = uiLayoutSpan ? text.slice(uiLayoutSpan.headingEnd, uiLayoutSpan.end) : text
   const subHeadingRe = /(?:^|\n)##+\s*(?:4\.\d+\s*)?([^\n]+)\n([\s\S]*?)(?=\n##+\s+|\n#\s+|$)/g
   const items: UiScreenPromptItem[] = []
   const seen = new Set<string>()
@@ -665,9 +669,12 @@ function parseUiScreensFromGddMarkdown(text: string): UiScreenPromptItem[] {
   while ((m = subHeadingRe.exec(uiBody)) !== null) {
     const rawHeading = m[1]!.trim()
     const block = m[2]!.trim()
+    if (uiLayoutSpan && isGlobalUiPreambleSubheading(rawHeading, block)) {
+      continue
+    }
     if (
-      !uiLayoutMatch &&
-      !/screenKind|界面规格|界面结构|区域划分|控件清单|9-slice|PSD/i.test(`${rawHeading}\n${block}`)
+      !uiLayoutSpan &&
+      !/screenKind|界面规格|界面结构|区域划分|控件清单|9-slice|PSD/i.test(`${rawHeading}\n${block}`) // cjk-ok
     ) {
       continue
     }
@@ -680,7 +687,9 @@ function parseUiScreensFromGddMarkdown(text: string): UiScreenPromptItem[] {
       .trim()
     const title = rawTitle || `界面 ${index + 1}` // cjk-ok
 
-    const kindMatch = /screenKind\s*[:：]\s*`?([a-zA-Z]+)`?/i.exec(block)
+    const kindRe =
+      /* cjk-ok */ /(?:screenKind|形态\s*[/／]\s*比例|界面形态)\s*[:：]\s*`?([a-zA-Z]+)`?/i
+    const kindMatch = kindRe.exec(block)
     const screenKind = normalizeUiScreenKind(kindMatch?.[1], title, block)
 
     const aspectMatch = /aspectRatio\s*[:：]\s*`?(\d+\s*:\s*\d+)`?/i.exec(block)
@@ -701,9 +710,9 @@ function parseUiScreensFromGddMarkdown(text: string): UiScreenPromptItem[] {
         .replace(/`([^`]*)`/g, '$1')
         .trim()
       if (!cleanLine) continue
-      if (/^界面结构|^ASCII/i.test(cleanLine)) continue // cjk-ok
-      if (/^PSD\s*图层拆分|^九宫格/i.test(cleanLine)) {
-        // cjk-ok
+      if (/^界面结构|^布局草图|^ASCII/i.test(cleanLine)) continue // cjk-ok
+      const isPsdHead = /* cjk-ok */ /^PSD\s*图层拆分|^九宫格|^拆分\s*[:：]/i.test(cleanLine)
+      if (isPsdHead) {
         inPsdSection = true
         const afterColon = cleanLine.replace(/^[^:：]+[:：]\s*/, '').trim()
         if (afterColon) psdSpecLine = afterColon

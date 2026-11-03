@@ -376,10 +376,14 @@
         :vision-provider-instance-id="api.layerSplit.visionProviderInstanceId"
         :splitting="api.layerSplit.splitting"
         :split-error="api.layerSplit.splitError"
+        :repairing="api.layerSplit.repairing"
+        :repair-error="api.layerSplit.repairError"
+        :repair-done-message="api.layerSplit.repairDoneMessage"
         @close="onClose(api.closeLayerSplit)"
         @update="api.previewLayerSplit as never"
         @save="api.saveLayerSplit as never"
         @split-selected="api.splitSelectedLayerSplit as never"
+        @repair-layer="api.repairSelectedLayerSplit as never"
       />
 
       <p v-else-if="ready" class="missing">

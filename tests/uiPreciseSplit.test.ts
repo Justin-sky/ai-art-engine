@@ -743,4 +743,159 @@ describe('uiPreciseSplit · Zhihu scheme 5 enhancements', () => {
     expect(baseMinusBottom[2]).toBeLessThan(55)
     expect(basePlusBottom[2]).toBeLessThan(55)
   })
+
+  it('peels leaf-to-root when a corner-straddling badge with outer glow and stale negative point overlaps a button', async () => {
+    const cw = 200
+    const ch = 128
+    const panelRect = { left: 20, top: 16, width: 160, height: 96 }
+    const btnRect = { left: 44, top: 52, width: 100, height: 36 }
+    // 角标中心在 (146, 46)，严格落在按钮框 (44..144, 52..88) 之外，同时压住按钮右上角 10x6 区域 (134..144, 52..58)
+    const badgeRect = { left: 134, top: 34, width: 24, height: 24 }
+    const textRect = { left: 78, top: 64, width: 32, height: 12 }
+
+    const panelRgb: [number, number, number] = [28, 42, 78]
+    const btnBodyRgb: [number, number, number] = [238, 168, 36]
+    const btnBorderRgb: [number, number, number] = [255, 224, 118]
+    const badgeRgb: [number, number, number] = [225, 40, 58]
+
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [12, 16, 26]
+        if (inRect(x, y, panelRect)) {
+          rgb = [...panelRgb]
+        }
+        if (inRect(x, y, btnRect)) {
+          const onBorder =
+            x - btnRect.left < 2 ||
+            btnRect.left + btnRect.width - x <= 2 ||
+            y - btnRect.top < 2 ||
+            btnRect.top + btnRect.height - y <= 2
+          rgb = onBorder ? [...btnBorderRgb] : [...btnBodyRgb]
+        }
+        if (
+          inRect(x, y, textRect) &&
+          (x - textRect.left < 3 ||
+            textRect.left + textRect.width - x <= 3 ||
+            Math.abs(y - (textRect.top + 6)) <= 1)
+        ) {
+          rgb = [255, 255, 255]
+        }
+        // 角标外圈 2px 软红光晕 + 实心红角标压在最顶层
+        const dx = Math.max(badgeRect.left - x, 0, x - (badgeRect.left + badgeRect.width - 1))
+        const dy = Math.max(badgeRect.top - y, 0, y - (badgeRect.top + badgeRect.height - 1))
+        const dist = Math.hypot(dx, dy)
+        if (dist === 0) {
+          rgb = [...badgeRgb]
+        } else if (dist <= 2.2) {
+          const a = dist <= 1.2 ? 0.45 : 0.22
+          rgb = [
+            Math.round(rgb[0] * (1 - a) + badgeRgb[0] * a),
+            Math.round(rgb[1] * (1 - a) + badgeRgb[1] * a),
+            Math.round(rgb[2] * (1 - a) + badgeRgb[2] * a)
+          ]
+        }
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    // 故意让 VLM 把 badge 的 order 排在 btn 前面，且在 btn 被角标压住的右上角 (139, 55) 打了负向提示点
+    const vlmJson = JSON.stringify({
+      screen_kind: 'popup',
+      background_repair: { mode: 'surface' },
+      elements: [
+        {
+          id: 'panel',
+          name: 'Dialog Panel',
+          kind: 'panel',
+          box_2d: toBox2d(panelRect, cw, ch),
+          element_repair_mode: 'surface',
+          order: 1
+        },
+        {
+          id: 'badge',
+          name: 'Corner Dot',
+          kind: 'badge',
+          parent_id: 'panel',
+          box_2d: toBox2d(badgeRect, cw, ch),
+          positive_points_norm: [[Math.round((46 / ch) * 1000), Math.round((146 / cw) * 1000)]],
+          order: 2
+        },
+        {
+          id: 'btn',
+          name: 'Claim Button',
+          kind: 'button',
+          parent_id: 'panel',
+          box_2d: toBox2d(btnRect, cw, ch),
+          positive_points_norm: [[Math.round((70 / ch) * 1000), Math.round((94 / cw) * 1000)]],
+          negative_points_norm: [[Math.round((55 / ch) * 1000), Math.round((139 / cw) * 1000)]],
+          element_repair_mode: 'surface',
+          order: 3
+        },
+        {
+          id: 'txt',
+          name: 'Claim Label',
+          kind: 'text',
+          parent_id: 'btn',
+          box_2d: toBox2d(textRect, cw, ch),
+          ocr: ['T1'],
+          text: 'OK',
+          order: 4
+        }
+      ]
+    })
+
+    const io: PreciseSplitIo = {
+      vlm: async () => vlmJson,
+      encodePng: async () => 'data:image/png;base64,AAAA',
+      ocr: async () => [{ text: 'OK', ...textRect }]
+    }
+
+    const res = await runPreciseUiSplit(io, img, { generativePeel: false, zoomRefine: false })
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+    const treeById = new Map(res.tree.elements.map((e) => [e.id, e]))
+
+    // 1) 层级树按叶→根分配：Corner Dot(L3) 先于 Claim Button(L2) 先于 Dialog Panel(L1)
+    expect(treeById.get('panel')!.level).toBe(1)
+    expect(treeById.get('btn')!.level).toBe(2)
+    expect(treeById.get('badge')!.level).toBe(3)
+
+    // 2) Claim Button 被角标跨角遮住的右上角 (140, 55) 已完整恢复（不缺角、不透明、金色表面）
+    const btnLayer = byName.get('Claim Button')!
+    expect(btnLayer.width).toBeGreaterThanOrEqual(btnRect.width)
+    expect(btnLayer.height).toBeGreaterThanOrEqual(btnRect.height)
+    const occCornerPx = pixel(
+      { width: btnLayer.width, data: btnLayer.rgba },
+      140 - btnLayer.left,
+      55 - btnLayer.top
+    )
+    expect(occCornerPx[3]).toBe(255)
+    expect(occCornerPx[0]).toBeGreaterThan(215)
+    expect(occCornerPx[1]).toBeGreaterThan(145)
+    expect(occCornerPx[2]).toBeLessThan(95)
+
+    // 3) Dialog Panel 在按钮右上角 (140, 55) 与角标外探区 (148, 40) 均恢复为纯净深蓝面板色，无金边/红晕残留
+    const panelLayer = byName.get('Dialog Panel')!
+    for (const [gx, gy] of [
+      [140, 55],
+      [148, 40],
+      [133, 44]
+    ] as const) {
+      const p = pixel(
+        { width: panelLayer.width, data: panelLayer.rgba },
+        gx - panelLayer.left,
+        gy - panelLayer.top
+      )
+      expect(Math.abs(p[0]! - panelRgb[0])).toBeLessThanOrEqual(8)
+      expect(Math.abs(p[1]! - panelRgb[1])).toBeLessThanOrEqual(8)
+      expect(Math.abs(p[2]! - panelRgb[2])).toBeLessThanOrEqual(8)
+      expect(p[3]).toBe(255)
+    }
+
+    expect(res.reconstructionError).toBeLessThan(1.5)
+  })
 })

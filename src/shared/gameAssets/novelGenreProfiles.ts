@@ -101,6 +101,73 @@ export interface NovelGenreCustomOverrides {
   axisProtagonist?: string
   axisAntagonist?: string
   unlockTerm?: string
+  unlockItemsText?: string
+  encounterItemsText?: string
+  /** 上游立项梗概、生成指令或世界观文本，用于自动提取原著专属的成长轴、阻力轴与前期/终局底牌 */
+  sourceContextText?: string
+}
+
+export function extractCustomNarrativeOverridesFromText(rawText?: string): {
+  axisProtagonist?: string
+  axisAntagonist?: string
+  earlyUnlockItems: string[]
+  lateLockedItems: string[]
+} {
+  const raw = (rawText ?? '').trim()
+  if (!raw) return { earlyUnlockItems: [], lateLockedItems: [] }
+
+  const axisPMatch = /(?:主角)?成长轴\s*[:：]\s*([^；;。\n]{2,48})/.exec(raw)
+  const axisAMatch = /(?:反派|核心)?阻力轴\s*[:：]\s*([^；;。\n]{2,48})/.exec(raw)
+
+  const earlyUnlockItems: string[] = []
+  const earlyMatch =
+    /(?:前期底牌|初始底牌|核心底牌|准入底牌)\s*[:：]\s*([^；;。\n]{2,64})/.exec(raw) || // cjk-ok
+    /(?:只允许动用|准许动用|初期凭借|初期底牌为)\s*[\x22“「【《]?([^\x22”」】》；;。\n]{2,48})/.exec(
+      raw
+    ) // cjk-ok
+  if (earlyMatch?.[1]) {
+    const clause = earlyMatch[1].trim()
+    const shortNoun = /^([\u4e00-\u9fa5A-Za-z0-9·《》]{2,14})(?:能|可|可以|能够|，|,)/.exec(clause) // cjk-ok
+    if (shortNoun?.[1]) {
+      earlyUnlockItems.push(
+        `${shortNoun[1]}（${clause
+          .slice(shortNoun[1].length)
+          .replace(/^[，,]/, '')
+          .slice(0, 22)}）`
+      )
+    } else {
+      earlyUnlockItems.push(clause.replace(/[\x22“”「」【】]/g, '').slice(0, 28))
+    }
+  }
+
+  const lateLockedItems: string[] = []
+  const lateMatch =
+    /(?:终局底牌|封存底牌|终局真相(?:与高阶神通)?)\s*[:：]?\s*([^；;。\n]{2,56})/.exec(raw) // cjk-ok
+  if (lateMatch?.[0]) {
+    const quotedInLate = Array.from(
+      lateMatch[0].matchAll(/[\x22“「【《]([^\x22”」】》]{2,24})[\x22”」】》]/g)
+    )
+      .map((m) => m[1]?.trim())
+      .filter((s): s is string => Boolean(s))
+    if (quotedInLate.length > 0) {
+      lateLockedItems.push(...quotedInLate)
+    } else {
+      const token = lateMatch[0]
+        .replace(/(?:封存|前中期不得提前揭露|严禁提前.*)/g, '') // cjk-ok
+        .replace(/^[:：，,\s]+|[:：，,\s]+$/g, '')
+        .trim()
+      if (token.length >= 2) {
+        lateLockedItems.push(token.slice(0, 24))
+      }
+    }
+  }
+
+  return {
+    axisProtagonist: axisPMatch?.[1]?.trim(),
+    axisAntagonist: axisAMatch?.[1]?.trim(),
+    earlyUnlockItems,
+    lateLockedItems
+  }
 }
 
 export function fillNovelGenreTemplate(
@@ -1289,16 +1356,43 @@ export function resolveNovelGenreProfile(
     .split(/[,，、\n;；|]+/)
     .map((s) => s.trim())
     .filter(Boolean)
-  const axisP = custom?.axisProtagonist?.trim()
-  const axisA = custom?.axisAntagonist?.trim()
+  const extractedFromContext = extractCustomNarrativeOverridesFromText(custom?.sourceContextText)
+  const axisP = custom?.axisProtagonist?.trim() || extractedFromContext.axisProtagonist
+  const axisA = custom?.axisAntagonist?.trim() || extractedFromContext.axisAntagonist
   const unlock = custom?.unlockTerm?.trim()
-  if (!stages.length && !axisP && !axisA && !unlock) return base
+  const customUnlocks = (custom?.unlockItemsText ?? '')
+    .split(/[,，、\n;；|]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  let mergedUnlocks: string[] | undefined
+  if (customUnlocks.length > 0) {
+    mergedUnlocks = customUnlocks
+  } else if (
+    extractedFromContext.earlyUnlockItems.length > 0 ||
+    extractedFromContext.lateLockedItems.length > 0
+  ) {
+    const baseMid = base.unlockItemsZh.slice(
+      extractedFromContext.earlyUnlockItems.length > 0 ? 1 : 0,
+      extractedFromContext.lateLockedItems.length > 0
+        ? Math.max(2, base.unlockItemsZh.length - 1)
+        : base.unlockItemsZh.length
+    )
+    mergedUnlocks = [
+      ...extractedFromContext.earlyUnlockItems,
+      ...baseMid,
+      ...extractedFromContext.lateLockedItems
+    ]
+  }
+
+  if (!stages.length && !axisP && !axisA && !unlock && !mergedUnlocks) return base
   return {
     ...base,
     ...(stages.length ? { stageNamesZh: stages } : {}),
     ...(axisP ? { protagonistAxisZh: axisP, protagonistAxisEn: axisP } : {}),
     ...(axisA ? { antagonistAxisZh: axisA, antagonistAxisEn: axisA } : {}),
-    ...(unlock ? { unlockTermZh: unlock, unlockTermEn: unlock } : {})
+    ...(unlock ? { unlockTermZh: unlock, unlockTermEn: unlock } : {}),
+    ...(mergedUnlocks ? { unlockItemsZh: mergedUnlocks } : {})
   }
 }
 
@@ -1360,7 +1454,12 @@ export function synthesizeGenreNovelChapterOffline(
   ]
   const headBeat = profile.beats[beatOrder[(o.currentChapter - 1) % 4]!]
   const genreTag = profile.labelZh.split(' / ')[0]
-  const chapTitle = `${fillNovelGenreTemplate(headBeat.titleZh, vars)}（${genreTag} · 第 ${o.currentChapter}/${o.totalChapters} 章 · ${o.stage}）`
+  const cleanProseNumbers = (segment: string): string =>
+    segment
+      .replace(/[（(][^）)\n]*?(?:威胁|压迫|迷雾度|阻力|异变度)\s*\d+(?:\.\d+)?[）)]/g, '')
+      .replace(/(?:升至|达到|逼近上限|突破至)\s*\d+(?:\.\d+)?[，,]?/g, '节节攀升，')
+      .replace(/(?:威胁等级|压迫强度|迷雾度|异变阈值)\s*\d+(?:\.\d+)?\s*的/g, '令人窒息的')
+  const chapTitle = `${cleanProseNumbers(fillNovelGenreTemplate(headBeat.titleZh, vars))}（${genreTag} · 第 ${o.currentChapter}/${o.totalChapters} 章 · ${o.stage}）`
   const prevHook = o.prevTailAnchor?.trim()
     ? `承接第 ${o.currentChapter - 1} 章末尾余波（“${o.prevTailAnchor.trim().slice(-120)}”），`
     : ''
@@ -1368,13 +1467,13 @@ export function synthesizeGenreNovelChapterOffline(
   return [
     `第${o.currentChapter}章：${chapTitle}`,
     ``,
-    `${prevHook}${name}${fillNovelGenreTemplate(b.setup_endure.coreConflictZh, vars).replace(/^主角|^主人公|^二人/, '')}面对眼前的局势，${name}收敛心神，并未动用尚未到火候的深层手段，而是将每一分异常都默默记在心里。`,
+    `${prevHook}${name}${cleanProseNumbers(fillNovelGenreTemplate(b.setup_endure.coreConflictZh, vars)).replace(/^主角|^主人公|^二人/, '')}面对眼前的局势，${name}收敛心神，并未动用尚未到火候的深层手段，而是将每一分异常都默默记在心里。`,
     ``,
-    `${ally}悄然递来了新的消息，令原本僵持的局面浮现出一线转机。${fillNovelGenreTemplate(b.encounter_growth.coreConflictZh, vars)}`,
+    `${ally}悄然递来了新的消息，令原本僵持的局面浮现出一线转机。${cleanProseNumbers(fillNovelGenreTemplate(b.encounter_growth.coreConflictZh, vars))}`,
     ``,
-    `${foe}的反扑来得比预想更快。${fillNovelGenreTemplate(b.villain_suppression_cliffhanger.coreConflictZh, vars)}${fillNovelGenreTemplate(b.villain_suppression_cliffhanger.cliffhangerZh, vars)}`,
+    `${foe}的反扑来得比预想更快。${cleanProseNumbers(fillNovelGenreTemplate(b.villain_suppression_cliffhanger.coreConflictZh, vars))}${cleanProseNumbers(fillNovelGenreTemplate(b.villain_suppression_cliffhanger.cliffhangerZh, vars))}`,
     ``,
-    `${fillNovelGenreTemplate(b.climax_reversal_slap.coreConflictZh, vars)}${fillNovelGenreTemplate(b.climax_reversal_slap.cliffhangerZh, vars)}`
+    `${cleanProseNumbers(fillNovelGenreTemplate(b.climax_reversal_slap.coreConflictZh, vars))}${cleanProseNumbers(fillNovelGenreTemplate(b.climax_reversal_slap.cliffhangerZh, vars))}`
   ].join('\n')
 }
 

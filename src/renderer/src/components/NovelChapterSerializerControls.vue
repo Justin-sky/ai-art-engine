@@ -169,6 +169,12 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import {
+  isNovelChapterLayoutNode,
+  NOVEL_ARC_ROW_GAP,
+  NOVEL_CHAPTERS_PER_ARC_ROW,
+  resolveNovelChapterIndexForLayout
+} from '@shared/graph'
 import { parseNovelChapterHistory } from '@shared/graph/execute/generateText'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { useStudioI18n } from '../composables/useStudioI18n'
@@ -317,26 +323,48 @@ function spawnNextChapterNode(): void {
   const isOutlineSelf = cur.typeId === 'novel.outline' || cur.params?.novelNodeMode === 'outline'
   const nextChap = isOutlineSelf ? 1 : Math.min(totalChapters.value, currentChapter.value + 1)
   const incoming = graphEditorHosts.listIncomingEdges(props.hostId, cur.id)
-  const linkSources: { nodeId: string; portId?: string }[] = []
-  for (const edge of incoming) {
-    const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
-    if (src?.typeId === 'game.economy' || src?.typeId === 'game.numerical') {
-      linkSources.push({ nodeId: src.id, portId: 'out-text' })
-    } else if (
-      src &&
-      (src.typeId === 'novel.outline' ||
-        (src.typeId === 'asset.novel' && src.params?.novelNodeMode === 'outline'))
-    ) {
-      linkSources.push({ nodeId: src.id, portId: 'out' })
+  const linkSources: { nodeId: string; portId?: string; targetPort?: string }[] = []
+  if (isOutlineSelf) {
+    linkSources.push({ nodeId: cur.id, portId: 'out', targetPort: 'in-outline' })
+    for (const edge of incoming) {
+      const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+      if (src?.typeId === 'game.economy') {
+        linkSources.push({ nodeId: src.id, portId: 'out-text', targetPort: 'in-economy' })
+      } else if (src?.typeId === 'game.numerical') {
+        linkSources.push({ nodeId: src.id, portId: 'out-text', targetPort: 'in-numerical' })
+      }
     }
+  } else {
+    linkSources.push({ nodeId: cur.id, portId: 'out', targetPort: 'in' })
+    linkSources.push({ nodeId: cur.id, portId: 'out-outline', targetPort: 'in-outline' })
+    linkSources.push({ nodeId: cur.id, portId: 'out-economy', targetPort: 'in-economy' })
+    linkSources.push({ nodeId: cur.id, portId: 'out-numerical', targetPort: 'in-numerical' })
   }
-  linkSources.push({ nodeId: cur.id, portId: 'out' })
+  const colStep = (cur.size?.w ?? 260) + 96
+  const rowStep = (cur.size?.h ?? 180) + NOVEL_ARC_ROW_GAP
+  const isNewArcRow =
+    !isOutlineSelf && nextChap > 1 && (nextChap - 1) % NOVEL_CHAPTERS_PER_ARC_ROW === 0
+  let nextX = (cur.position?.x ?? 400) + colStep
+  let nextY = cur.position?.y ?? 200
+  if (isNewArcRow) {
+    const allChapterNodes = graphEditorHosts
+      .listNodes(props.hostId)
+      .filter((n) => isNovelChapterLayoutNode(n))
+    const prevRowHead =
+      allChapterNodes.find(
+        (n) => resolveNovelChapterIndexForLayout(n) === nextChap - NOVEL_CHAPTERS_PER_ARC_ROW
+      ) ?? allChapterNodes.find((n) => resolveNovelChapterIndexForLayout(n) === 1)
+    nextX =
+      prevRowHead?.position?.x ??
+      (cur.position?.x ?? 400) - (NOVEL_CHAPTERS_PER_ARC_ROW - 1) * colStep
+    nextY = (cur.position?.y ?? 200) + rowStep
+  }
   graphEditorHosts.addNode(props.hostId, {
     typeId: 'asset.novel',
     title: L(`第${nextChap}章`, `Ch.${nextChap}`), // cjk-ok
     position: {
-      x: (cur.position?.x ?? 400) + 380,
-      y: cur.position?.y ?? 200
+      x: nextX,
+      y: nextY
     },
     linkFrom: linkSources,
     params: {

@@ -917,6 +917,38 @@ export function softResolveSourceOutput(
   }
 
   if (
+    node.typeId === 'asset.novel' &&
+    (sourcePort === 'out-outline' || sourcePort === 'out-economy' || sourcePort === 'out-numerical')
+  ) {
+    if (graphValueHasPayload(fromRun)) return fromRun
+    const matchingInPort =
+      sourcePort === 'out-outline'
+        ? 'in-outline'
+        : sourcePort === 'out-economy'
+          ? 'in-economy'
+          : 'in-numerical'
+    let cursorId: string | undefined = node.id
+    const seen = new Set<string>()
+    while (cursorId && !seen.has(cursorId)) {
+      seen.add(cursorId)
+      const passEdge = parent.edges.find(
+        (e) => e.target === cursorId && (e.targetPort ?? 'in') === matchingInPort
+      )
+      if (!passEdge) break
+      const srcNode = parent.nodes.find((n) => n.id === passEdge.source)
+      if (!srcNode) break
+      const srcPort = passEdge.sourcePort ?? 'out'
+      if (srcNode.typeId === 'asset.novel' && srcPort === sourcePort) {
+        const cached = runStates[srcNode.id]?.outputs?.[srcPort] as GraphValue | undefined
+        if (graphValueHasPayload(cached)) return cached
+        cursorId = srcNode.id
+        continue
+      }
+      return softResolveSourceOutput(parent, srcNode.id, srcPort, options)
+    }
+  }
+
+  if (
     (node.typeId === 'game.economy' || node.typeId === 'game.numerical') &&
     sourcePort === 'out-text'
   ) {

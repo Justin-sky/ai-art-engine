@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildOwnershipMap,
   completeOccludedRegions,
+  completeOccludedSilhouette,
   createImage,
   refineMaskByPalette,
   runPreciseUiSplit,
@@ -269,5 +270,131 @@ describe('uiPreciseSplit v2 · P2 deterministic occlusion completion', () => {
         expect(got).toEqual([...texture(x - s.left, y - s.top), 255])
       }
     })
+  })
+
+  it('completeOccludedSilhouette restores a badge-notched rounded corner without squaring off the curve', () => {
+    const W = 120
+    const H = 70
+    const btn = { left: 20, top: 18, width: 80, height: 34 }
+    const radius = 7
+    const badge = { left: 88, top: 10, width: 20, height: 20 }
+    const plate = createImage(W, H)
+    fill(plate, [18, 26, 48])
+
+    const inRoundedRect = (x: number, y: number): boolean => {
+      if (x < btn.left || x >= btn.left + btn.width || y < btn.top || y >= btn.top + btn.height) {
+        return false
+      }
+      const lx = x - btn.left
+      const ly = y - btn.top
+      const cx = lx < radius ? radius : lx >= btn.width - radius ? btn.width - 1 - radius : lx
+      const cy = ly < radius ? radius : ly >= btn.height - radius ? btn.height - 1 - radius : ly
+      return Math.hypot(lx - cx, ly - cy) <= radius + 0.25
+    }
+
+    const truthMask = new Uint8Array(btn.width * btn.height)
+    const choppedMask = new Uint8Array(btn.width * btn.height)
+    for (let y = 0; y < btn.height; y++) {
+      for (let x = 0; x < btn.width; x++) {
+        const gx = btn.left + x
+        const gy = btn.top + y
+        if (!inRoundedRect(gx, gy)) continue
+        truthMask[y * btn.width + x] = 1
+        setPx(plate, gx, gy, [235, 168, 38])
+        const inBadge =
+          gx >= badge.left &&
+          gx < badge.left + badge.width &&
+          gy >= badge.top &&
+          gy < badge.top + badge.height
+        if (inBadge) {
+          // 模拟第一遍推拉补底在跨角处混入外侧深蓝底色，导致实例分割在此缺角
+          setPx(plate, gx, gy, [70, 68, 72])
+        } else {
+          choppedMask[y * btn.width + x] = 1
+        }
+      }
+    }
+
+    const own = buildOwnershipMap(W, H, [{ id: 'badge', paintIndex: 5, mask: rectMask(badge) }])
+    const res = completeOccludedSilhouette({
+      box: btn,
+      mask: { rect: btn, mask: choppedMask },
+      plate,
+      kind: 'button',
+      ownership: own,
+      selfPaint: 2,
+      occluderPad: 4
+    })
+
+    expect(res.added).toBeGreaterThan(40)
+    // 圆角内部被角标啃掉的像素已恢复为 1
+    const innerX = btn.width - 5
+    const innerY = 5
+    expect(res.mask.mask[innerY * res.mask.rect.width + innerX]).toBe(1)
+    // 圆角外侧极角处依然保持透明（0），不会补成死板直角
+    expect(res.mask.mask[0 * res.mask.rect.width + (btn.width - 1)]).toBe(0)
+    expect(res.mask.mask[0 * res.mask.rect.width + (btn.width - 2)]).toBe(0)
+  })
+
+  it('completeOccludedRegions borrows clean pixels from upper-level donors across progressive peel rounds', () => {
+    const W = 120
+    const H = 50
+    const upperSlot = { left: 12, top: 10, width: 32, height: 32 }
+    const lowerSlot = { left: 68, top: 10, width: 32, height: 32 }
+    const upperOcc = { left: upperSlot.left + 4, top: 14, width: 8, height: 8 }
+    const lowerOcc = { left: lowerSlot.left + 18, top: 18, width: 10, height: 10 }
+
+    const plateUpper = createImage(W, H)
+    const plateLower = createImage(W, H)
+    fill(plateUpper, [10, 12, 18])
+    fill(plateLower, [10, 12, 18])
+    for (let ry = 0; ry < 32; ry++) {
+      for (let rx = 0; rx < 32; rx++) {
+        const c = texture(rx, ry)
+        setPx(plateUpper, upperSlot.left + rx, upperSlot.top + ry, c)
+        setPx(plateLower, lowerSlot.left + rx, lowerSlot.top + ry, c)
+      }
+    }
+    fill(plateLower, GARBAGE, lowerOcc)
+
+    const own = buildOwnershipMap(W, H, [
+      { id: 'lowerSlot', paintIndex: 1, mask: rectMask(lowerSlot) },
+      { id: 'upperSlot', paintIndex: 2, mask: rectMask(upperSlot) },
+      { id: 'upperIcon', paintIndex: 3, mask: rectMask(upperOcc) },
+      { id: 'lowerBadge', paintIndex: 4, mask: rectMask(lowerOcc) }
+    ])
+
+    const rep = completeOccludedRegions({
+      ownership: own,
+      targets: [
+        {
+          id: 'lowerSlot',
+          kind: 'item-slot',
+          entryIndex: 0,
+          mask: rectMask(lowerSlot),
+          plate: plateLower
+        }
+      ],
+      donors: [
+        {
+          id: 'upperSlot',
+          kind: 'item-slot',
+          entryIndex: 1,
+          mask: rectMask(upperSlot),
+          plate: plateUpper
+        }
+      ]
+    })
+
+    expect(rep.instances).toBeGreaterThanOrEqual(80)
+    expect(rep.prefabGroups).toEqual([['lowerSlot', 'upperSlot']])
+    for (let y = lowerOcc.top; y < lowerOcc.top + lowerOcc.height; y++) {
+      for (let x = lowerOcc.left; x < lowerOcc.left + lowerOcc.width; x++) {
+        expect(px(plateLower, x, y)).toEqual([
+          ...texture(x - lowerSlot.left, y - lowerSlot.top),
+          255
+        ])
+      }
+    }
   })
 })

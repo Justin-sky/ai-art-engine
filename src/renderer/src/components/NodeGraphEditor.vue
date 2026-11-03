@@ -924,6 +924,8 @@ import {
   alignNodes,
   autoLayoutNodes,
   distributeNodes,
+  optimizeNovelChapterPassthroughEdges,
+  syncNovelChapterArcGroups,
   type AlignMode,
   type DistributeMode,
   type GraphAddScope,
@@ -1004,6 +1006,7 @@ import {
   type IconPackState,
   type ImageLayerSplitState,
   type ImageLayerSplitNestedRequest,
+  type ImageLayerSplitRepairRequest,
   type Stage2dPose,
   type Stage2dRig,
   type Stage2dSceneState,
@@ -1028,6 +1031,7 @@ import {
   readImageGridSplitFromNode,
   readIconPackFromNode,
   readImageLayerSplitFromNode,
+  isLayerSplitBase,
   nestLayerSplitResult,
   mapDecompositionToLayers,
   placeLayersInParentRect,
@@ -1036,6 +1040,13 @@ import {
   resolveEffectiveLayerSplitPrompt,
   resolveEffectiveUiLayerSplitStrategy,
   isCanvasSafeImageSrc,
+  supportsNativeTransparentImageModel,
+  applyRepairedLayerToState,
+  buildLayerRepairPrompt,
+  finalizeLayerRepairRgba,
+  isExplicitLayerCutoutHint,
+  normalizeLayerRepairResolution,
+  prepareLayerRepairReference,
   stringifyBeatRows,
   isBoundaryOutputNode,
   isGameProductionNode,
@@ -1051,7 +1062,7 @@ import {
   extractGraphFromPngBytes
 } from '@shared/graph'
 import { buildZeroKeyLiveDemoGraph } from '@shared/chatShowcaseStarters'
-import { decomposeImageUiLayers } from '../features/graph/model/composeImageLayerStack'
+import { decomposeImageUiLayers, uiRgbaCodec } from '../features/graph/model/composeImageLayerStack'
 import { buildRecipePosterPngDataUrl } from '../features/graph/model/recipePosterExport'
 import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
@@ -1340,6 +1351,9 @@ function syncHostInterfaceSnapshots(doc: GraphDocument): GraphDocument {
 
 function applyGraphDocument(doc: GraphDocument, options?: { skipRenderWindow?: boolean }): void {
   const synced = syncHostInterfaceSnapshots(doc)
+  optimizeNovelChapterPassthroughEdges(synced.nodes, synced.edges)
+  if (!synced.groups) synced.groups = []
+  syncNovelChapterArcGroups(synced.nodes, synced.groups)
   replaceGraphDocument(graph, synced)
   runStateBridge.importFromDocument(synced)
   syncLiveViewportFromGraph()
@@ -1546,8 +1560,15 @@ function commitAssetGraph(): boolean {
 }
 
 function loadGraphFromAsset(): void {
-  applyGraphDocument(readAssetGraph())
-  if (syncBoundaryInputsFromParents()) scheduleSave()
+  const rawDoc = readAssetGraph()
+  const rawEdgeSig = rawDoc.edges
+    .map((e) => `${e.source}:${e.sourcePort ?? 'out'}->${e.target}:${e.targetPort ?? 'in'}`)
+    .join('|')
+  applyGraphDocument(rawDoc)
+  const nextEdgeSig = graph.edges
+    .map((e) => `${e.source}:${e.sourcePort ?? 'out'}->${e.target}:${e.targetPort ?? 'in'}`)
+    .join('|')
+  if (syncBoundaryInputsFromParents() || rawEdgeSig !== nextEdgeSig) scheduleSave()
   void hydrateHostInputSlotTextsInGraph()
 }
 
@@ -3026,7 +3047,12 @@ function collectEdgeGeometry(
     const source = nodeById.get(edge.source)
     const target = nodeById.get(edge.target)
     if (!source || !target) continue
-    const preferredTargetPort = resolvePreferredNovelTargetPort(source, target, edge.targetPort)
+    const preferredTargetPort = resolvePreferredNovelTargetPort(
+      source,
+      target,
+      edge.targetPort,
+      edge.sourcePort
+    )
     const effectiveEdge =
       preferredTargetPort && edge.targetPort !== preferredTargetPort
         ? { ...edge, targetPort: preferredTargetPort }
@@ -4588,7 +4614,18 @@ function applyDistribute(mode: DistributeMode): void {
 }
 
 function applyAutoLayout(): void {
-  applyLayoutMutation('auto-layout', (nodes) => autoLayoutNodes(nodes, graph.edges))
+  const targetNodes =
+    selectedLayoutNodes.value.length >= 2 ? selectedLayoutNodes.value : graph.nodes
+  if (targetNodes.length < 2) return
+  const before = buildGraphJson()
+  ensureGraphGroups()
+  optimizeNovelChapterPassthroughEdges(graph.nodes, graph.edges)
+  autoLayoutNodes(targetNodes, graph.edges, { groups: graph.groups })
+  pruneGraphGroups()
+  bumpGroupLayout(targetNodes.map((node) => node.id))
+  scheduleSave()
+  recordGraphChange('auto-layout', before)
+  requestEdgeRender()
 }
 
 /** 折叠 / 展开全部节点预览 */
@@ -4945,7 +4982,12 @@ function addNodeFromMenu(item: AddableMenuItem): void {
     for (const src of linkFromSources) {
       const source = graph.nodes.find((n) => n.id === src.nodeId)
       if (!source) continue
-      const preferredTargetPort = resolvePreferredNovelTargetPort(source, node)
+      const preferredTargetPort = resolvePreferredNovelTargetPort(
+        source,
+        node,
+        undefined,
+        src.portId || undefined
+      )
       const outPort = findCompatibleOutPort(
         source,
         node,
@@ -5684,7 +5726,12 @@ function findLinkTarget(
       if (!nodeId || nodeId === activeSourceId) continue
       const targetNode = graph.nodes.find((n) => n.id === nodeId)
       if (!sourceNode || !targetNode) continue
-      const preferredTargetPort = resolvePreferredNovelTargetPort(sourceNode, targetNode)
+      const preferredTargetPort = resolvePreferredNovelTargetPort(
+        sourceNode,
+        targetNode,
+        undefined,
+        activeSourcePortId
+      )
       const outPort = findCompatibleOutPort(
         sourceNode,
         targetNode,
@@ -6056,7 +6103,12 @@ function connectNodes(
   const source = graph.nodes.find((n) => n.id === sourceId)
   const target = graph.nodes.find((n) => n.id === targetId)
   if (!source || !target) return false
-  const resolvedTargetPortId = resolvePreferredNovelTargetPort(source, target, targetPortId)
+  const resolvedTargetPortId = resolvePreferredNovelTargetPort(
+    source,
+    target,
+    targetPortId,
+    sourcePortId
+  )
   const outPort = findCompatibleOutPort(source, target, sourcePortId, resolvedTargetPortId)
   if (!outPort) return false
   let inPort = findCompatibleInPort(target, outPort.dataType, resolvedTargetPortId)
@@ -9597,7 +9649,10 @@ const layerSplit = reactive({
   visionModel: '',
   visionProviderInstanceId: '',
   splitting: false,
-  splitError: ''
+  splitError: '',
+  repairing: false,
+  repairError: '',
+  repairDoneMessage: ''
 })
 
 async function resolveGeneratedImageUrls(nodeId: string): Promise<Record<string, string>> {
@@ -9631,6 +9686,9 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
+  layerSplit.repairing = false
+  layerSplit.repairError = ''
+  layerSplit.repairDoneMessage = ''
   layerSplit.historyBefore = buildGraphJson()
   layerSplit.open = true
   await fillEditorSourceUrl(
@@ -9663,6 +9721,9 @@ function closeLayerSplit(): void {
   layerSplit.visionProviderInstanceId = ''
   layerSplit.splitting = false
   layerSplit.splitError = ''
+  layerSplit.repairing = false
+  layerSplit.repairError = ''
+  layerSplit.repairDoneMessage = ''
 }
 
 function mergeExtraLayerSplitImages(
@@ -9694,7 +9755,7 @@ function previewLayerSplit(payload: {
   visionProviderInstanceId?: string
   extraGeneratedImages?: GraphImageItem[]
 }): void {
-  if (layerSplit.splitting) return
+  if (layerSplit.splitting || layerSplit.repairing) return
   const node = graph.nodes.find((n) => n.id === layerSplit.nodeId)
   if (!node) return
   const generatedImages = mergeExtraLayerSplitImages(node, payload.extraGeneratedImages)
@@ -10075,6 +10136,259 @@ async function splitSelectedLayerSplit(payload: ImageLayerSplitNestedRequest): P
   }
 }
 
+async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): Promise<void> {
+  const nodeId = layerSplit.nodeId
+  const node = graph.nodes.find((n) => n.id === nodeId)
+  if (!node || layerSplit.splitting || layerSplit.repairing) return
+
+  const state = payload.imageLayerSplit
+  const target = state.layers.find((layer) => layer.id === payload.layerId)
+  if (!target) {
+    layerSplit.repairError = t('graph.layerSplit.splitNeedLayer')
+    return
+  }
+
+  const mergedExtra = mergeExtraLayerSplitImages(node, payload.extraGeneratedImages)
+  if (mergedExtra) {
+    node.params = { ...node.params, generatedImages: mergedExtra }
+  }
+  const rawInputUrl =
+    payload.layerDataUrl?.trim() ||
+    (await resolveLayerSplitLayerApiUrl(node, target.imageId || target.id))
+  if (!rawInputUrl) {
+    layerSplit.repairError = t('graph.layerSplit.splitNeedImage')
+    return
+  }
+
+  const before = layerSplit.historyBefore ?? buildGraphJson()
+  layerSplit.repairing = true
+  layerSplit.repairError = ''
+  layerSplit.repairDoneMessage = ''
+  node.params = {
+    ...node.params,
+    imageLayerSplit: state,
+    generateModel: payload.generateModel,
+    generateProviderInstanceId: payload.generateProviderInstanceId,
+    visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+    visionProviderInstanceId:
+      payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+  }
+
+  const nodeTitle = resolveGraphNodeDisplayTitle(node, {
+    scope: graphScope.value,
+    t: (key, params) => t(key, params ?? {}),
+    graphTypeLabel,
+    fallbackId: node.id
+  })
+  const targetIsBase = isLayerSplitBase(target)
+  const layerLabel = targetIsBase
+    ? t('graph.layerSplit.baseLayer')
+    : target.name?.trim() || target.id
+  const logBridge = createGraphRunLogBridge({
+    runId: `layer-split-repair-${crypto.randomUUID()}`,
+    title: t('graph.layerSplit.repairLogTitle', { name: nodeTitle }),
+    hostId: graphHostId.value,
+    mode: 'nodeOnly',
+    graph: buildGraphJson(),
+    targetNodeId: node.id,
+    resolveNodeTitle: (item, fallbackId) =>
+      resolveGraphNodeDisplayTitle(item, {
+        scope: graphScope.value,
+        t: (key, params) => t(key, params ?? {}),
+        graphTypeLabel,
+        fallbackId
+      }),
+    startMessage: t('graph.layerSplit.repairLogStart', { layer: layerLabel })
+  })
+  let logClosed = false
+  const finishLog = (ok: boolean, message?: string): void => {
+    if (logClosed) return
+    logClosed = true
+    logBridge.onNodeUpdate(node.id, ok ? { status: 'done' } : { status: 'error', error: message })
+    logBridge.endFromResult(
+      ok
+        ? { ok: true, order: [node.id], states: {} }
+        : { ok: false, order: [node.id], states: {}, error: message },
+      { message }
+    )
+  }
+
+  const model = payload.generateModel?.trim() || undefined
+  const providerInstanceId = payload.generateProviderInstanceId?.trim() || undefined
+  const effectiveResolution = normalizeLayerRepairResolution(payload.resolution)
+
+  try {
+    logBridge.onNodeUpdate(node.id, { status: 'running' })
+    const stamp = Date.now()
+
+    let safeInputUrl = rawInputUrl
+    if (!isCanvasSafeImageSrc(safeInputUrl)) {
+      const srcRel = await saveGraphRunMediaForNode({
+        dataUrl: safeInputUrl,
+        key: `layerSplit-repair-src-${node.id}-${stamp}`,
+        node,
+        hostAssetId: props.assetId ?? null
+      })
+      safeInputUrl = await resolveAssetFileUrl(srcRel)
+    }
+    if (!safeInputUrl || !isCanvasSafeImageSrc(safeInputUrl)) {
+      throw new Error(t('graph.layerSplit.splitNeedImage'))
+    }
+
+    const origRgba = await uiRgbaCodec.decodeImageRgba(safeInputUrl)
+    const nativeTransparent = supportsNativeTransparentImageModel(model)
+    const prepared = prepareLayerRepairReference(origRgba, {
+      nativeTransparent,
+      isBase: targetIsBase
+    })
+    const refPngDataUrl = await uiRgbaCodec.encodeRgbaPng(prepared.image)
+    const effectivePrompt = buildLayerRepairPrompt({
+      userInstruction: payload.prompt,
+      layerName: layerLabel,
+      locale: String(locale.value),
+      nativeTransparent,
+      matteRgb: prepared.matteRgb,
+      isBase: targetIsBase
+    })
+    const wantTransparentBg = !prepared.keepOpaque
+
+    const apiRequest = {
+      prompt: effectivePrompt,
+      model,
+      providerInstanceId,
+      resolution: effectiveResolution,
+      aspectRatio: prepared.aspectRatio,
+      transparentBackground: wantTransparentBg,
+      inputReferenceCount: 1,
+      inputReferences: [{ source: 'port' as const, name: layerLabel }],
+      inputReferenceUrls: summarizeReferenceListForLog([refPngDataUrl])
+    }
+
+    const apiStarted = Date.now()
+    let result
+    try {
+      result = await window.studio.generateImage({
+        prompt: effectivePrompt,
+        ...(model ? { model } : {}),
+        ...(providerInstanceId ? { providerInstanceId } : {}),
+        resolution: effectiveResolution,
+        aspectRatio: prepared.aspectRatio,
+        transparentBackground: wantTransparentBg,
+        inputReferences: [refPngDataUrl]
+      })
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        response: {
+          model: result.model,
+          imageCount: result.layers?.length || result.images?.length || 0,
+          referenceNotes: result.referenceNotes
+        },
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err)
+      const error = formatProviderErrorForLog(raw, String(locale.value))
+      logBridge.recordApiCall({
+        kind: 'generateImage',
+        request: apiRequest,
+        error,
+        durationMs: Math.max(0, Date.now() - apiStarted)
+      })
+      throw new Error(error)
+    }
+
+    const rawOutUrl = result?.layers?.[0]?.url?.trim() || result?.images?.[0]?.trim() || ''
+    if (!rawOutUrl) {
+      throw fail(SHARED_ERRORS.noModelImage)
+    }
+
+    let safeOutUrl = rawOutUrl
+    if (!isCanvasSafeImageSrc(safeOutUrl)) {
+      const rawRel = await saveGraphRunMediaForNode({
+        dataUrl: safeOutUrl,
+        key: `layerSplit-repair-raw-${node.id}-${stamp}`,
+        node,
+        hostAssetId: props.assetId ?? null
+      })
+      safeOutUrl = await resolveAssetFileUrl(rawRel)
+    }
+    if (!safeOutUrl || !isCanvasSafeImageSrc(safeOutUrl)) {
+      throw fail(SHARED_ERRORS.noModelImage)
+    }
+
+    const genRgba = await uiRgbaCodec.decodeImageRgba(safeOutUrl)
+    const finalRgba = finalizeLayerRepairRgba(genRgba, origRgba, {
+      cropLeft: prepared.cropLeft,
+      cropTop: prepared.cropTop,
+      workWidth: prepared.workWidth,
+      workHeight: prepared.workHeight,
+      matteRgb: prepared.matteRgb,
+      keepOpaque: prepared.keepOpaque,
+      forceCutout: isExplicitLayerCutoutHint(payload.prompt)
+    })
+    const finalDataUrl = await uiRgbaCodec.encodeRgbaPng(finalRgba)
+
+    const relativePath = await saveGraphRunMediaForNode({
+      dataUrl: finalDataUrl,
+      key: `layerSplit-repair-${node.id}-${stamp}`,
+      node,
+      hostAssetId: props.assetId ?? null
+    })
+    const newImageId = `${target.id}:aiFix:${stamp}`
+    const newItem: GraphImageItem = {
+      id: newImageId,
+      title: layerLabel,
+      dataUrl: '',
+      createdAt: new Date().toISOString(),
+      relativePath
+    }
+    const previous = node.params.generatedImages ?? []
+    const byId = new Map(previous.map((item) => [item.id ?? '', item]))
+    byId.set(newImageId, newItem)
+    const nextState = applyRepairedLayerToState(state, target.id, newImageId)
+
+    node.params = {
+      ...node.params,
+      generatedImages: [...byId.values()],
+      imageLayerSplit: nextState,
+      generateModel: payload.generateModel,
+      generateProviderInstanceId: payload.generateProviderInstanceId,
+      visionModel: payload.visionModel ?? node.params.visionModel ?? '',
+      visionProviderInstanceId:
+        payload.visionProviderInstanceId ?? node.params.visionProviderInstanceId ?? ''
+    }
+    scheduleSave()
+    graphEditorHosts.bumpRevision()
+    recordGraphChange('layerSplitAiRepair', before)
+
+    const doneMsg = t('graph.layerSplit.repairLogDone', { layer: layerLabel })
+    if (layerSplit.open && layerSplit.nodeId === nodeId) {
+      const resolvedUrls = await resolveGeneratedImageUrls(nodeId)
+      layerSplit.layerUrls = {
+        ...resolvedUrls,
+        [newImageId]: resolvedUrls[newImageId] || finalDataUrl
+      }
+      layerSplit.setup = nextState
+      layerSplit.generateModel = payload.generateModel
+      layerSplit.generateProviderInstanceId = payload.generateProviderInstanceId
+      layerSplit.visionModel = node.params.visionModel ?? ''
+      layerSplit.visionProviderInstanceId = node.params.visionProviderInstanceId ?? ''
+      layerSplit.historyBefore = buildGraphJson()
+      layerSplit.repairDoneMessage = doneMsg
+    }
+    finishLog(true, doneMsg)
+  } catch (err) {
+    const message = err instanceof Error && err.message.trim() ? err.message.trim() : String(err)
+    if (layerSplit.nodeId === nodeId) layerSplit.repairError = message
+    console.warn('[graph] ai repair selected layer failed', err)
+    finishLog(false, message)
+  } finally {
+    if (!logClosed) finishLog(false)
+    if (layerSplit.nodeId === nodeId) layerSplit.repairing = false
+  }
+}
+
 watch(
   () => {
     if (!layerSplit.open || !layerSplit.nodeId) return ''
@@ -10192,6 +10506,7 @@ const graphDialogsApi = {
   previewLayerSplit,
   saveLayerSplit,
   splitSelectedLayerSplit,
+  repairSelectedLayerSplit,
   flushLayerSplit,
   closeCutout,
   saveCutout,
@@ -10661,13 +10976,18 @@ onMounted(() => {
         }
       )
       graph.nodes.push(node)
+      if (input.typeId === 'asset.novel') {
+        ensureGraphGroups()
+        syncNovelChapterArcGroups(graph.nodes, graph.groups)
+      }
       for (const src of linkFrom) {
         const source = graph.nodes.find((item) => item.id === src.nodeId)
         if (!source) continue
         const preferredTargetPort = resolvePreferredNovelTargetPort(
           source,
           node,
-          src.targetPort || undefined
+          src.targetPort || undefined,
+          src.portId || undefined
         )
         const outPort = findCompatibleOutPort(
           source,

@@ -193,12 +193,7 @@
       >
         {{ t('graph.layout.distributeVShort') }}
       </button>
-      <button
-        type="button"
-        :disabled="selectedCount < 2"
-        :title="t('graph.layout.auto')"
-        @click="emit('auto-layout')"
-      >
+      <button type="button" :title="t('graph.layout.auto')" @click="emit('auto-layout')">
         {{ t('graph.layout.autoShort') }}
       </button>
     </template>

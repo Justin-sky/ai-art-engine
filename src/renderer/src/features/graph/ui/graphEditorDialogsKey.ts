@@ -13,6 +13,7 @@ import type {
   ImageCutoutState,
   ImageLayerSplitState,
   ImageLayerSplitNestedRequest,
+  ImageLayerSplitRepairRequest,
   ImageMatteState,
   ImageRedrawState,
   ImageUpscaleState,
@@ -280,6 +281,9 @@ export type GraphEditorDialogsApi = {
     visionProviderInstanceId: string
     splitting: boolean
     splitError: string
+    repairing: boolean
+    repairError: string
+    repairDoneMessage: string
   }
   closeTextNotepad: () => void
   saveTextNotepad: (text: string) => void
@@ -398,6 +402,7 @@ export type GraphEditorDialogsApi = {
   previewLayerSplit: (payload: unknown) => void
   saveLayerSplit: (payload: unknown) => void
   splitSelectedLayerSplit: (payload: ImageLayerSplitNestedRequest) => void | Promise<void>
+  repairSelectedLayerSplit: (payload: ImageLayerSplitRepairRequest) => void | Promise<void>
   /** dive 面包屑回退前提交图层拆分的实时预览编辑，补记撤销命令 */
   flushLayerSplit: () => void
 }

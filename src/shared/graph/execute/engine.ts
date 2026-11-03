@@ -196,7 +196,20 @@ function resolveLockedOutputs(
     typeId: node.typeId
   })
   if (gallery && hasUsableOutputRecord(gallery)) {
-    return hasUsablePriorOutputs(prior) ? { ...prior!.outputs!, ...gallery } : gallery
+    const merged: Record<string, GraphValue> = hasUsablePriorOutputs(prior)
+      ? { ...prior!.outputs!, ...gallery }
+      : { ...gallery }
+    if (node.typeId === 'asset.novel' && graph) {
+      for (const passPort of ['out-outline', 'out-economy', 'out-numerical'] as const) {
+        if (!graphValueHasPayload(merged[passPort])) {
+          const resolved = softResolveSourceOutput(graph, node.id, passPort, softOptions)
+          if (graphValueHasPayload(resolved) && resolved) {
+            merged[passPort] = resolved
+          }
+        }
+      }
+    }
+    return merged
   }
   if (hasUsablePriorOutputs(prior)) return prior!.outputs!
   if (graph) {

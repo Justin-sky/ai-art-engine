@@ -177,6 +177,14 @@ onMounted(() => {
   if (!store.runs.value.length) {
     store.playAgain()
   }
+  const initialRaw = String(props.node.params.gameEconomyDiagramJson ?? '').trim()
+  if (initialRaw && initialRaw !== lastPersistedJson) {
+    persistNodeParams({
+      gameEconomyDiagramJson: lastPersistedJson,
+      gameEconomySteps: store.doc.value.settings.steps
+    })
+  }
+  setTimeout(() => canvasRef.value?.fitToScreen(), 50)
 })
 
 onBeforeUnmount(() => {
@@ -377,9 +385,6 @@ function pushAndOpenDownstreamNumerical(): void {
     }
   }
   if (!numNode) {
-    numNode = graphEditorHosts.findNode(hostId, (n) => n.typeId === 'game.numerical')
-  }
-  if (!numNode) {
     const newId = graphEditorHosts.addNode(hostId, {
       typeId: 'game.numerical',
       title: isEn.value ? 'Numerical System' : '数值系统', // cjk-ok
@@ -391,11 +396,6 @@ function pushAndOpenDownstreamNumerical(): void {
     })
     if (newId) {
       numNode = graphEditorHosts.getNode(hostId, newId)
-    }
-  } else {
-    const edges = graphEditorHosts.getDocument(hostId)?.edges ?? []
-    if (!edges.some((e) => e.source === props.node.id && e.target === numNode!.id)) {
-      graphEditorHosts.connectNodes(hostId, props.node.id, numNode.id, 'out-text', 'in-economy')
     }
   }
   if (!numNode) return

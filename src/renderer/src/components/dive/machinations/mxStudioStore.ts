@@ -339,7 +339,11 @@ export function createMxStudioStore(initial: MxDocument) {
     mutate((d) => {
       d.nodes = d.nodes.filter((n) => !nodeSet.has(n.id))
       d.edges = d.edges.filter(
-        (e) => !edgeSet.has(e.id) && !nodeSet.has(e.from) && !nodeSet.has(e.to)
+        (e) =>
+          !edgeSet.has(e.id) &&
+          !(e.targetEdgeId && edgeSet.has(e.targetEdgeId)) &&
+          !nodeSet.has(e.from) &&
+          !nodeSet.has(e.to)
       )
     })
     select([])

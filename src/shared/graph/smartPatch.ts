@@ -70,6 +70,7 @@ import { createMxWorkbenchPreset, MX_WORKBENCH_PRESETS } from '../gameAssets/gam
 import { NOVEL_GENRE_PROFILES, resolveNovelGenreProfile } from '../gameAssets/novelGenreProfiles'
 import {
   GAME_SYSTEM_ARCHETYPES,
+  autoCompleteGameSystemDocument,
   resolveGameSystemArchetype,
   synthesizeGameSystemDocOffline
 } from '../gameAssets/gameSystemDesignBridge'
@@ -1238,16 +1239,24 @@ function finalizeSubDocumentPatches(
       ) ?? resolveGameSystemArchetype(String(working.gameSystemArchetype ?? ''))
     working.gameSystemArchetype = archHit.id
     const curText = String(working.text ?? '').trim()
-    const forceSynth = working.synthesizeOffline === true || working.autoFixQa === true
+    const isAutoFixOnly = working.autoFixQa === true && working.synthesizeOffline !== true
+    const forceSynth = working.synthesizeOffline === true
     const shouldSynth =
       forceSynth ||
-      (!touchedTopKeys.has('text') &&
+      (!isAutoFixOnly &&
+        !touchedTopKeys.has('text') &&
         (!curText || curText.startsWith('# 系统概述') || curText.startsWith('# System Overview'))) // cjk-ok
     delete working.synthesizeOffline
     delete working.autoFixQa
-    if (shouldSynth) {
-      const targetAspect =
-        (working.gameSystemTargetAspect as '16:9' | '9:16' | '1:1' | undefined) || '16:9'
+    const targetAspect =
+      (working.gameSystemTargetAspect as '16:9' | '9:16' | '1:1' | undefined) || '16:9'
+    if (isAutoFixOnly) {
+      working.text = autoCompleteGameSystemDocument(curText, {
+        archetypeId: archHit.id,
+        targetAspect,
+        customInstruction: String(working.generateInstruction ?? '')
+      }).text
+    } else if (shouldSynth) {
       working.text = synthesizeGameSystemDocOffline({
         archetypeId: archHit.id,
         targetAspect,

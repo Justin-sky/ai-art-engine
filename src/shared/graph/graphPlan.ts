@@ -518,7 +518,8 @@ export function materializeGraphPlan(
   )
 
   // normalize 可能增删节点；再布局一次业务节点（边界节点也参与拓扑）
-  autoLayoutNodes(document.nodes, document.edges)
+  if (!document.groups) document.groups = []
+  autoLayoutNodes(document.nodes, document.edges, { groups: document.groups })
   document = {
     ...document,
     viewport: document.viewport ?? { x: 0, y: 0, zoom: 1 }

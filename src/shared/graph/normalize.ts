@@ -166,7 +166,9 @@ function sanitizeEdges(nodes: GraphNode[], edges: GraphEdge[], scope: GraphAddSc
       sourcePort = 'out-text'
     }
     const targetPort =
-      resolvePreferredNovelTargetPort(source, target, edge.targetPort) ?? edge.targetPort ?? 'in'
+      resolvePreferredNovelTargetPort(source, target, edge.targetPort, sourcePort) ??
+      edge.targetPort ??
+      'in'
     if (
       !canConnectNodes(source, target, {
         scope,

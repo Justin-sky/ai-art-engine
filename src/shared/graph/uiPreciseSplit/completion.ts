@@ -16,8 +16,8 @@
  */
 
 import type { CanvasMask, OwnershipMap } from './ownership'
-import { dilateMask, pixelDistance } from './pixels'
-import type { RgbaImage } from './types'
+import { clampRect, dilateMask, pixelDistance, rectUnion } from './pixels'
+import type { PixelRect, RgbaImage } from './types'
 
 export interface CompletionTarget {
   id: string
@@ -404,18 +404,300 @@ function fillByAxis(it: Prepared): number {
   return filled
 }
 
+export interface SilhouetteCompletionInput {
+  box: PixelRect
+  mask: CanvasMask
+  plate: RgbaImage
+  kind: string
+  repairMode?: string
+  ownership: OwnershipMap
+  selfPaint: number
+  /** 上层剥层羽化外扩半径（默认 4px） */
+  occluderPad?: number
+}
+
+/**
+ * 遮挡区轮廓补全（供由叶向根逐级剥层循环调用）：
+ * 当上层角标/按钮跨过下层结构类控件的边或角时，第一遍本地推拉补底会把外侧底色混入该边角，
+ * 导致下层控件在分割时边角被啃出一个小缺口。这里利用控件在未遮挡区域的镜像对称性与直线跨度连续性，
+ * 只在「上层遮挡区（含羽化带）∩ 元素框」内把被啃掉的二值轮廓补齐，随后再交由 {@link completeOccludedRegions}
+ * 填入精确像素，既保留圆角弧度，又消除缺角与底板残留。
+ */
+export function completeOccludedSilhouette(input: SilhouetteCompletionInput): {
+  mask: CanvasMask
+  added: number
+} {
+  if (!STRUCTURED_KINDS.has(input.kind) || input.repairMode === 'image') {
+    return { mask: input.mask, added: 0 }
+  }
+  const W = input.plate.width
+  const H = input.plate.height
+  const clampedBox = clampRect(input.box, W, H)
+  const rawUnion = rectUnion([clampedBox, input.mask.rect]) ?? clampedBox
+  const union = clampRect(rawUnion, W, H)
+  const w = union.width
+  const h = union.height
+  const n = w * h
+  if (w < 6 || h < 6) return { mask: input.mask, added: 0 }
+
+  const cur = new Uint8Array(n)
+  let cMinX = w
+  let cMinY = h
+  let cMaxX = -1
+  let cMaxY = -1
+  for (let y = 0; y < input.mask.rect.height; y++) {
+    const uy = input.mask.rect.top + y - union.top
+    if (uy < 0 || uy >= h) continue
+    const mRow = y * input.mask.rect.width
+    const uRow = uy * w
+    for (let x = 0; x < input.mask.rect.width; x++) {
+      if (!input.mask.mask[mRow + x]) continue
+      const ux = input.mask.rect.left + x - union.left
+      if (ux < 0 || ux >= w) continue
+      cur[uRow + ux] = 1
+      if (ux < cMinX) cMinX = ux
+      if (ux > cMaxX) cMaxX = ux
+      if (uy < cMinY) cMinY = uy
+      if (uy > cMaxY) cMaxY = uy
+    }
+  }
+  if (cMaxX < cMinX) return { mask: input.mask, added: 0 }
+
+  const inBox = new Uint8Array(n)
+  const bx0 = clampedBox.left - union.left
+  const by0 = clampedBox.top - union.top
+  const bx1 = bx0 + clampedBox.width - 1
+  const by1 = by0 + clampedBox.height - 1
+  for (let y = Math.max(0, by0); y <= Math.min(h - 1, by1); y++) {
+    const row = y * w
+    for (let x = Math.max(0, bx0); x <= Math.min(w - 1, bx1); x++) {
+      inBox[row + x] = 1
+    }
+  }
+
+  const rawOcc = new Uint8Array(n)
+  let rawOccCount = 0
+  for (let y = 0; y < h; y++) {
+    const cy = union.top + y
+    const row = y * w
+    for (let x = 0; x < w; x++) {
+      const own = input.ownership.owner[cy * W + union.left + x]!
+      if (own >= 0 && (input.ownership.entries[own]?.paintIndex ?? -1) > input.selfPaint) {
+        rawOcc[row + x] = 1
+        rawOccCount++
+      }
+    }
+  }
+  if (rawOccCount < 4) return { mask: input.mask, added: 0 }
+
+  const pad = Math.max(3, Math.round(input.occluderPad ?? 4))
+  const uncertain = dilateMask(rawOcc, w, h, pad)
+  let missing = 0
+  for (let p = 0; p < n; p++) {
+    if (inBox[p] && uncertain[p] && !cur[p]) missing++
+  }
+  if (!missing) return { mask: input.mask, added: 0 }
+
+  const frames: Array<{ x0: number; y0: number; x1: number; y1: number }> = [
+    { x0: cMinX, y0: cMinY, x1: cMaxX, y1: cMaxY }
+  ]
+  if (
+    Math.abs(bx0 - cMinX) >= 2 ||
+    Math.abs(by0 - cMinY) >= 2 ||
+    Math.abs(bx1 - cMaxX) >= 2 ||
+    Math.abs(by1 - cMaxY) >= 2
+  ) {
+    frames.push({
+      x0: Math.max(0, bx0),
+      y0: Math.max(0, by0),
+      x1: Math.min(w - 1, bx1),
+      y1: Math.min(h - 1, by1)
+    })
+  }
+
+  type MirrorFn = [(x: number) => number, (y: number) => number]
+  const validMirrors: Array<{ m: MirrorFn; score: number }> = []
+  const step = Math.max(1, Math.floor(Math.sqrt(n / 4000)))
+  for (const f of frames) {
+    const maps: MirrorFn[] = [
+      [(x) => f.x0 + f.x1 - x, (y) => y],
+      [(x) => x, (y) => f.y0 + f.y1 - y],
+      [(x) => f.x0 + f.x1 - x, (y) => f.y0 + f.y1 - y]
+    ]
+    for (const m of maps) {
+      let knownFg = 0
+      let pairedTotal = 0
+      let mismatch = 0
+      let fgPairs = 0
+      let rgbSum = 0
+      for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
+          const p = y * w + x
+          if (uncertain[p]) continue
+          if (cur[p]) knownFg++
+          const mx = m[0](x)
+          const my = m[1](y)
+          if (mx < 0 || my < 0 || mx >= w || my >= h) continue
+          const mp = my * w + mx
+          if (uncertain[mp] || mp === p) continue
+          pairedTotal++
+          if (cur[p] !== cur[mp]) {
+            mismatch++
+          } else if (cur[p]) {
+            fgPairs++
+            rgbSum += pixelDistance(
+              input.plate.data,
+              ((union.top + y) * W + union.left + x) * 4,
+              input.plate.data,
+              ((union.top + my) * W + union.left + mx) * 4
+            )
+          }
+        }
+      }
+      if (knownFg < 12 || fgPairs < Math.max(10, knownFg * 0.25)) continue
+      const mismatchRate = mismatch / Math.max(1, pairedTotal)
+      const rgbErr = rgbSum / fgPairs
+      if (mismatchRate <= 0.06 && rgbErr <= 8) {
+        validMirrors.push({ m, score: mismatchRate * 100 + rgbErr })
+      }
+    }
+  }
+  validMirrors.sort((a, b) => a.score - b.score)
+
+  const out = new Uint8Array(cur)
+  let added = 0
+  if (validMirrors.length > 0) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const p = y * w + x
+        if (!inBox[p] || !uncertain[p] || out[p]) continue
+        for (const { m } of validMirrors) {
+          const mx = m[0](x)
+          const my = m[1](y)
+          if (mx < 0 || my < 0 || mx >= w || my >= h) continue
+          const mp = my * w + mx
+          if (uncertain[mp]) continue
+          if (cur[mp]) {
+            out[p] = 1
+            added++
+          }
+          // 最可信对称轴明确判定该位置在轮廓外（如圆角外侧）时不再回退次优轴
+          break
+        }
+      }
+    }
+  }
+
+  // 非对称控件被跨边遮挡（例如左侧带图标的按钮顶部压了一个角标）：沿同行/同列两侧可信同色前景直线补齐
+  const maxSpan = Math.max(8, Math.round(Math.max(w, h) * 0.6))
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x
+      if (!inBox[p] || !uncertain[p] || out[p]) continue
+      for (const [dx, dy] of [
+        [1, 0],
+        [0, 1]
+      ] as const) {
+        let x0 = x - dx
+        let y0 = y - dy
+        let steps0 = 0
+        while (
+          x0 >= 0 &&
+          y0 >= 0 &&
+          x0 < w &&
+          y0 < h &&
+          uncertain[y0 * w + x0] &&
+          steps0 < maxSpan
+        ) {
+          x0 -= dx
+          y0 -= dy
+          steps0++
+        }
+        if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) continue
+        const p0 = y0 * w + x0
+        if (uncertain[p0] || !cur[p0]) continue
+
+        let x1 = x + dx
+        let y1 = y + dy
+        let steps1 = 0
+        while (
+          x1 >= 0 &&
+          y1 >= 0 &&
+          x1 < w &&
+          y1 < h &&
+          uncertain[y1 * w + x1] &&
+          steps1 < maxSpan
+        ) {
+          x1 += dx
+          y1 += dy
+          steps1++
+        }
+        if (x1 < 0 || y1 < 0 || x1 >= w || y1 >= h) continue
+        const p1 = y1 * w + x1
+        if (uncertain[p1] || !cur[p1]) continue
+
+        const dRgb = pixelDistance(
+          input.plate.data,
+          ((union.top + y0) * W + union.left + x0) * 4,
+          input.plate.data,
+          ((union.top + y1) * W + union.left + x1) * 4
+        )
+        if (dRgb <= 24) {
+          out[p] = 1
+          added++
+          break
+        }
+      }
+    }
+  }
+
+  if (!added) return { mask: input.mask, added: 0 }
+
+  let oMinX = w
+  let oMinY = h
+  let oMaxX = -1
+  let oMaxY = -1
+  for (let y = 0; y < h; y++) {
+    const row = y * w
+    for (let x = 0; x < w; x++) {
+      if (!out[row + x]) continue
+      if (x < oMinX) oMinX = x
+      if (x > oMaxX) oMaxX = x
+      if (y < oMinY) oMinY = y
+      if (y > oMaxY) oMaxY = y
+    }
+  }
+  const tw = oMaxX - oMinX + 1
+  const th = oMaxY - oMinY + 1
+  const tight = new Uint8Array(tw * th)
+  for (let y = 0; y < th; y++) {
+    tight.set(out.subarray((oMinY + y) * w + oMinX, (oMinY + y) * w + oMinX + tw), y * tw)
+  }
+  return {
+    mask: {
+      rect: { left: union.left + oMinX, top: union.top + oMinY, width: tw, height: th },
+      mask: tight
+    },
+    added
+  }
+}
+
 /**
  * 对所有结构类元素执行遮挡区确定性补全，原地修改各自的 plates[level+1]。
+ * 可选传入已剥离层级的只读 `donors` 参与跨层级预制体分组与像素借用，避免重复计分与重复改写。
  */
 export function completeOccludedRegions(input: {
   targets: readonly CompletionTarget[]
+  donors?: readonly CompletionTarget[]
   ownership: OwnershipMap
 }): CompletionReport {
   const report: CompletionReport = { instances: 0, mirror: 0, axis: 0, kept: 0, prefabGroups: [] }
   const prepared: Prepared[] = []
-  // 预制体分组用全部结构类元素（包括没有遮挡的实例：它们提供真实像素）
+  // 预制体分组用全部结构类元素（包括没有遮挡的实例与跨层级只读样本：它们提供真实像素）
   const allForGrouping: Prepared[] = []
+  const targetIds = new Set<string>()
   for (const t of input.targets) {
+    targetIds.add(t.id)
     if (!STRUCTURED_KINDS.has(t.kind) || t.repairMode === 'image') continue
     const pr = prepare(t, input.ownership)
     if (pr) {
@@ -435,10 +717,30 @@ export function completeOccludedRegions(input: {
       })
     }
   }
+  if (input.donors?.length) {
+    for (const d of input.donors) {
+      if (targetIds.has(d.id)) continue
+      if (!STRUCTURED_KINDS.has(d.kind) || d.repairMode === 'image') continue
+      const pr = prepare(d, input.ownership)
+      const { width: w, height: h } = d.mask.rect
+      const known = pr ? pr.known : new Uint8Array(d.mask.mask)
+      allForGrouping.push({
+        t: d,
+        w,
+        h,
+        known,
+        target: new Uint8Array(w * h),
+        targetCount: 0,
+        done: new Uint8Array(w * h)
+      })
+    }
+  }
   if (!prepared.length && allForGrouping.length < 2) return report
 
   for (const group of groupInstances(allForGrouping)) {
-    report.prefabGroups.push(group.map((g) => g.t.id))
+    if (group.some((g) => targetIds.has(g.t.id))) {
+      report.prefabGroups.push(group.map((g) => g.t.id))
+    }
     report.instances += fillFromInstances(group)
   }
   for (const it of prepared) {

@@ -398,9 +398,13 @@ export function isNovelOutlineSourceNode(
 export function resolvePreferredNovelTargetPort(
   source: Pick<GraphNode, 'typeId' | 'title' | 'params'>,
   target: Pick<GraphNode, 'typeId'>,
-  explicitTargetPort?: string
+  explicitTargetPort?: string,
+  explicitSourcePort?: string
 ): string | undefined {
   if (target.typeId === 'asset.novel') {
+    if (explicitSourcePort === 'out-outline') return 'in-outline'
+    if (explicitSourcePort === 'out-economy') return 'in-economy'
+    if (explicitSourcePort === 'out-numerical') return 'in-numerical'
     if (isNovelOutlineSourceNode(source)) {
       if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-outline'
       return explicitTargetPort
@@ -416,6 +420,8 @@ export function resolvePreferredNovelTargetPort(
     return explicitTargetPort || 'in'
   }
   if (target.typeId === 'novel.outline' || target.typeId === 'asset.gameSystem') {
+    if (explicitSourcePort === 'out-economy') return 'in-economy'
+    if (explicitSourcePort === 'out-numerical') return 'in-numerical'
     if (source.typeId === 'game.economy') {
       if (!explicitTargetPort || explicitTargetPort === 'in') return 'in-economy'
       return explicitTargetPort

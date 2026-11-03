@@ -1822,6 +1822,19 @@ const canvasChapterChainNodes = computed(() => {
 })
 
 const activeWorkbench = computed((): MxNumericalWorkbench => {
+  const withSyncedTotal = (wb: MxNumericalWorkbench): MxNumericalWorkbench => {
+    const targetMax = Math.max(10, Math.round(totalChapters.value || 200))
+    if ((wb.roguelikeEnvelope?.levelMax ?? 80) <= 80 && targetMax > 80) {
+      return {
+        ...wb,
+        roguelikeEnvelope: {
+          ...wb.roguelikeEnvelope,
+          levelMax: targetMax
+        }
+      }
+    }
+    return wb
+  }
   const numNode = upstreamNumericalNode.value
   if (numNode) {
     const presetRaw = String(numNode.params.gameNumericalPreset ?? 'short_drama_progression')
@@ -1830,13 +1843,13 @@ const activeWorkbench = computed((): MxNumericalWorkbench => {
       try {
         const parsed = JSON.parse(rawJson) as MxNumericalWorkbench
         if (parsed && typeof parsed === 'object' && parsed.multiplier && parsed.combatKernel) {
-          return parsed
+          return withSyncedTotal(parsed)
         }
       } catch {
         // fallback to preset
       }
     }
-    return createMxWorkbenchPreset(presetRaw as MxWorkbenchPresetId)
+    return withSyncedTotal(createMxWorkbenchPreset(presetRaw as MxWorkbenchPresetId))
   }
   const econ = upstreamEconomyNode.value
   if (econ) {
@@ -1846,9 +1859,9 @@ const activeWorkbench = computed((): MxNumericalWorkbench => {
       tplRaw as MxTemplateId,
       econ.title
     )
-    if (doc.workbench) return doc.workbench
+    if (doc.workbench) return withSyncedTotal(doc.workbench)
   }
-  return createMxWorkbenchPreset('short_drama_progression')
+  return withSyncedTotal(createMxWorkbenchPreset('short_drama_progression'))
 })
 
 const novelGenre = ref<NovelGenreId>('urban_reversal')

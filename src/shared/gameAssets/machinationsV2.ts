@@ -18,6 +18,7 @@ import {
 } from './machinationsEconomyEngine'
 import {
   createMxWorkbenchPreset,
+  createXianxia200LifespanWorkbench,
   mapMxTemplateToWorkbenchPreset,
   normalizeMxNumericalWorkbench,
   synthesizeMxWorkbenchFromPrompt,
@@ -3775,11 +3776,73 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
       discount: Math.max(0.1, Math.min(1.0, Number(a.discount ?? 0.65))),
       shapingEnabled: a.shapingEnabled !== false
     }))
+  const isXianxiaLifespanDoc =
+    r.templateId === 'xianxia_lifespan_alchemy' ||
+    String(r.title ?? '').includes('山海借命录') || // cjk-ok
+    nodes.some(
+      (n) =>
+        n.label.includes('沈砚') || // cjk-ok
+        n.label.includes('残缺药经') || // cjk-ok
+        n.label.includes('宗门寿元契约') || // cjk-ok
+        n.label.includes('借命契') // cjk-ok
+    )
+
+  const hasLegacyXianxiaEdges =
+    isXianxiaLifespanDoc &&
+    (nodes.length <= 8 ||
+      edges.some(
+        (e) =>
+          e.id === 'e_lifespan_to_upkeep' ||
+          e.id === 'e_cult_to_poison' ||
+          e.formula.includes('Cost_50_1_18_N') ||
+          e.formula.includes('min(120')
+      ))
+
+  if (hasLegacyXianxiaEdges) {
+    const upgraded = createMxTemplate(
+      'xianxia_lifespan_alchemy',
+      String(r.title ?? '').trim() || undefined
+    )
+    if (r.description) upgraded.description = r.description
+    if (Number(r.settings?.steps) > 20) {
+      upgraded.settings.steps = Math.max(1, Math.min(2000, Number(r.settings?.steps)))
+    }
+    return upgraded
+  }
+
+  const normalizedSteps = Math.max(1, Math.min(2000, Number(r.settings?.steps ?? 20)))
+  let normalizedWb = r.workbench ? normalizeMxNumericalWorkbench(r.workbench) : undefined
+  if (isXianxiaLifespanDoc) {
+    const existingLvMax = normalizedWb?.roguelikeEnvelope?.levelMax ?? 80
+    if (
+      !normalizedWb ||
+      normalizedWb.activePresetId === 'slay_the_spire_dbg' ||
+      existingLvMax <= 80 ||
+      !normalizedWb.multiplier?.title?.includes('山海借命录') // cjk-ok
+    ) {
+      const targetLvMax = existingLvMax > 80 ? existingLvMax : Math.max(200, normalizedSteps)
+      normalizedWb = createXianxia200LifespanWorkbench()
+      normalizedWb.roguelikeEnvelope.levelMax = targetLvMax
+    }
+  } else if (
+    normalizedWb &&
+    normalizedSteps >= 100 &&
+    (normalizedWb.roguelikeEnvelope.levelMax ?? 80) === 80
+  ) {
+    normalizedWb = {
+      ...normalizedWb,
+      roguelikeEnvelope: {
+        ...normalizedWb.roguelikeEnvelope,
+        levelMax: normalizedSteps
+      }
+    }
+  }
+
   return {
     schema: 'mx@2',
     title: String(r.title ?? base.title),
     description: r.description,
-    templateId: r.templateId,
+    templateId: isXianxiaLifespanDoc ? 'xianxia_lifespan_alchemy' : r.templateId,
     resources: Array.isArray(r.resources) && r.resources.length ? r.resources : base.resources,
     params: Array.isArray(r.params) ? r.params : [],
     scenarios: Array.isArray(r.scenarios) ? r.scenarios : [],
@@ -3792,7 +3855,7 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
     clips: Array.isArray(r.clips) ? r.clips : [],
     history: Array.isArray(r.history) ? r.history.slice(-15) : [],
     settings: {
-      steps: Math.max(1, Math.min(2000, Number(r.settings?.steps ?? 20))),
+      steps: isXianxiaLifespanDoc && normalizedSteps < 200 ? 200 : normalizedSteps,
       runs: Math.max(1, Math.min(1000, Number(r.settings?.runs ?? 50))),
       seed: Math.floor(Number(r.settings?.seed ?? 2026)),
       speed: Math.max(0.25, Math.min(8, Number(r.settings?.speed ?? 1))),
@@ -3802,7 +3865,7 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
           ? r.settings.botMode
           : 'off'
     },
-    ...(r.workbench ? { workbench: normalizeMxNumericalWorkbench(r.workbench) } : {})
+    ...(normalizedWb ? { workbench: normalizedWb } : {})
   }
 }
 
@@ -3991,6 +4054,7 @@ export type MxTemplateId =
   | 'onmyoji_speed_orbs'
   | 'balatro_ante_jokers'
   | 'short_drama_reversal_loop'
+  | 'xianxia_lifespan_alchemy'
 
 export interface MxTemplateMeta {
   id: MxTemplateId
@@ -4164,6 +4228,20 @@ export const MX_TEMPLATES: MxTemplateMeta[] = [
     descEn:
       'Villain provocation charge, system multiplier breakthrough, climax face-slapping, faction prestige & paywall conversion.',
     descZh: '反派打压蓄能、金手指返利/境界突破、名场面亮底牌打脸、红颜势力声望与付费卡点转化闭环', // cjk-ok
+    workbenchPreset: 'short_drama_progression'
+  },
+  {
+    id: 'xianxia_lifespan_alchemy',
+    key: 'xianxiaLifespan',
+    category: 'rpg',
+    nameEn:
+      'Xianxia 200-Ch Full Lifecycle: Herb Alchemy, Black Market, Lifespan Contract & 4-Volume Reckoning',
+    nameZh:
+      '📜《山海借命录 / 凡人仙侠》200章四象限全生命周期经济系统（采药炼丹·黑市置换·借命契剥削·四卷破契清算）', // cjk-ok
+    descEn:
+      '4-subsystem 23-node closed-loop economy: cliff herb gathering, sect bounty, black market trading, medicine canon alchemy, realm breakthrough, sect lifespan contract exploitation, and 4-volume boss reckoning.',
+    descZh:
+      '四象限23节点完整经济闭环：断魂崖采药与外门悬赏、黑市药石置换、残缺药经炼丹与成丹率分流、太虚引气破境、青岚宗借命契剥削与丹毒反噬、寒门同盟与四卷破契总清算', // cjk-ok
     workbenchPreset: 'short_drama_progression'
   }
 ]
@@ -4640,13 +4718,289 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
       doc.settings.steps = 20
       break
     }
+    case 'xianxia_lifespan_alchemy': {
+      doc.title =
+        title ||
+        '《山海借命录》200章四象限全生命周期经济系统（采药炼丹·黑市置换·借命契剥削·四卷清算）' // cjk-ok
+      doc.description =
+        '覆盖《山海借命录》第1~200章四卷（凡尘问道➔秘境争锋➔中州风云➔仙路尽头）的完整系统动力学模型：包含4大子系统象限、6类核心战略资源、23个动态图元与29条资源/状态反馈闭环，实现产出/消耗动态紧平衡（Source/Sink ≈ 1.08x）。' // cjk-ok
+      doc.resources = [
+        { id: 'res_stones', name: '下品/中品灵石', color: '#10b981' }, // cjk-ok
+        { id: 'res_herbs', name: '百年灵药与奇珍', color: '#fbbf24' }, // cjk-ok
+        { id: 'res_elixirs', name: '续命/破境灵丹', color: '#38bdf8' }, // cjk-ok
+        { id: 'res_lifespan', name: '母子剩余阳寿', color: '#f43f5e' }, // cjk-ok
+        { id: 'res_insight', name: '药经医道感悟', color: '#a855f7' }, // cjk-ok
+        { id: 'res_alliance', name: '寒门同盟声望', color: '#ec4899' } // cjk-ok
+      ]
+      doc.params = [
+        { id: 'p_herb', name: 'HerbYieldBase', value: 18 },
+        { id: 'p_bounty', name: 'SectBountyBase', value: 26 },
+        { id: 'p_tax', name: 'ContractTaxBase', value: 16 },
+        { id: 'p_growth', name: 'BreakthroughGrowth', value: 1.12 },
+        { id: 'p_alchemy', name: 'AlchemyYield', value: 4 },
+        { id: 'p_reckon', name: 'ReckoningLifespan', value: 1 }
+      ]
+      doc.scenarios = [
+        {
+          id: 'sc_vol1_survival',
+          name: '第一卷·凡尘外门求生期 (Ch.1-50)', // cjk-ok
+          params: {
+            HerbYieldBase: 14,
+            SectBountyBase: 20,
+            ContractTaxBase: 20,
+            BreakthroughGrowth: 1.15,
+            AlchemyYield: 3,
+            ReckoningLifespan: 1
+          }
+        },
+        {
+          id: 'sc_vol23_ascend',
+          name: '第二三卷·秘境与中州破契期 (Ch.51-150)', // cjk-ok
+          params: {
+            HerbYieldBase: 16,
+            SectBountyBase: 24,
+            ContractTaxBase: 18,
+            BreakthroughGrowth: 1.12,
+            AlchemyYield: 4,
+            ReckoningLifespan: 1
+          }
+        },
+        {
+          id: 'sc_vol4_reckoning',
+          name: '第四卷·仙路尽头总清算 (Ch.151-200)', // cjk-ok
+          params: {
+            HerbYieldBase: 20,
+            SectBountyBase: 30,
+            ContractTaxBase: 15,
+            BreakthroughGrowth: 1.09,
+            AlchemyYield: 5,
+            ReckoningLifespan: 2
+          }
+        }
+      ]
+      doc.groups = [
+        {
+          id: 'grp_faucet_market',
+          label: '第一层：山林采药、外门悬赏与坊市黑市开源层 (Faucets & Black Market)', // cjk-ok
+          x: 40,
+          y: 40,
+          width: 550,
+          height: 320,
+          color: '#10b981'
+        },
+        {
+          id: 'grp_alchemy_realm',
+          label: '第二层：残缺药经炼丹、品阶分流与太虚破境引擎 (Alchemy & Cultivation)', // cjk-ok
+          x: 630,
+          y: 40,
+          width: 630,
+          height: 320,
+          color: '#3b82f6'
+        },
+        {
+          id: 'grp_lifespan_sink',
+          label: '第三层：宗门借命契剥削、丹毒反噬与母子阳寿生死闭环 (Lifespan & Sinks)', // cjk-ok
+          x: 40,
+          y: 400,
+          width: 550,
+          height: 320,
+          color: '#f43f5e'
+        },
+        {
+          id: 'grp_alliance_reckon',
+          label: '第四层：寒门同盟声望、四卷破契反杀与山海终局清算 (Alliance & Finale)', // cjk-ok
+          x: 630,
+          y: 400,
+          width: 630,
+          height: 320,
+          color: '#a855f7'
+        }
+      ]
+      doc.nodes = [
+        // ── 象限 I：山林采药、外门悬赏与黑市置换 ──
+        nd('src_mine_prod', 'source', /* cjk-ok */ '断魂崖采药与药庐灵田', 130, 130, {
+          resourceId: 'res_herbs',
+          color: '#fbbf24'
+        }),
+        nd('pool_herbs', 'pool', /* cjk-ok */ '百年灵药与奇珍储备囊', 330, 130, {
+          resourceId: 'res_herbs',
+          initial: 45,
+          capacity: 9999,
+          color: '#fbbf24'
+        }),
+        nd('src_sect_bounty', 'source', /* cjk-ok */ '外门悬赏与除妖历练', 130, 275, {
+          resourceId: 'res_stones',
+          color: '#10b981'
+        }),
+        nd('pool_coins', 'pool', /* cjk-ok */ '沈砚灵石与药材储备囊', 330, 275, {
+          resourceId: 'res_stones',
+          initial: 80,
+          capacity: 999999,
+          color: '#10b981'
+        }),
+        nd('trader_black_market', 'converter', /* cjk-ok */ '坊市黑市·药石置换与秘闻', 510, 200, {
+          resourceId: 'res_herbs',
+          trigger: 'automatic',
+          color: '#f59e0b'
+        }),
+
+        // ── 象限 II：残缺药经炼丹、品阶分流与修为破境 ──
+        nd('conv_buy_miner', 'converter', /* cjk-ok */ '残缺药经·辨药试药炼丹', 715, 130, {
+          resourceId: 'res_elixirs',
+          trigger: 'automatic',
+          color: '#38bdf8'
+        }),
+        nd('gate_pill_quality', 'gate', /* cjk-ok */ '成丹品阶闸 (75%灵丹/25%丹毒)', 885, 130, {
+          gateMode: 'random',
+          color: '#ec4899'
+        }),
+        nd('pool_elixirs', 'pool', /* cjk-ok */ '续命灵丹与破境灵丹池', 1055, 130, {
+          resourceId: 'res_elixirs',
+          initial: 28,
+          capacity: 2000,
+          color: '#38bdf8'
+        }),
+        nd('pool_canon_insight', 'pool', /* cjk-ok */ '药经残卷与医道感悟池', 715, 275, {
+          resourceId: 'res_insight',
+          initial: 24,
+          capacity: 5000,
+          color: '#a855f7'
+        }),
+        nd('conv_realm_break', 'converter', /* cjk-ok */ '太虚引气·淬脉冲关破境', 885, 275, {
+          resourceId: 'res_insight',
+          trigger: 'automatic',
+          color: '#6366f1'
+        }),
+        nd('pool_cultivation', 'pool', /* cjk-ok */ '沈砚修为境界池 (凡人➔大乘)', 1055, 275, {
+          resourceId: 'res_insight',
+          initial: 1,
+          capacity: 500,
+          color: '#6366f1'
+        }),
+        nd('reg_miner_cost', 'register', /* cjk-ok */ '突破与借息代价曲线: 50+1.8*N', 1190, 200, {
+          formula: 'round(50 + a * 1.8 + step * 0.25)',
+          color: '#a855f7'
+        }),
+
+        // ── 象限 III：宗门借命契剥削、丹毒反噬与母子阳寿生死闭环 ──
+        nd('drain_upkeep', 'drain', /* cjk-ok */ '宗门寿元契约抽成与折寿反噬', 130, 495, {
+          trigger: 'automatic',
+          color: '#f43f5e'
+        }),
+        nd('drain_poison_backlash', 'drain', /* cjk-ok */ '试药丹毒淤积与借息损耗', 330, 495, {
+          trigger: 'automatic',
+          color: '#fb7185'
+        }),
+        nd('conv_lifespan_heal', 'converter', /* cjk-ok */ '服食续命丹·修补母子阳寿', 510, 495, {
+          resourceId: 'res_lifespan',
+          trigger: 'automatic',
+          color: '#34d399'
+        }),
+        nd('reg_contract_pressure', 'register', /* cjk-ok */ '四卷宿敌压迫与催缴强度', 130, 640, {
+          formula: 'round(15 + step * 0.45 + a * 1.6)',
+          color: '#f43f5e'
+        }),
+        nd('pool_miners', 'pool', /* cjk-ok */ '沈砚与沈母剩余阳寿池', 330, 640, {
+          resourceId: 'res_lifespan',
+          initial: 32,
+          capacity: 500,
+          color: '#f43f5e'
+        }),
+        nd('end_lifespan_exhausted', 'end', /* cjk-ok */ '败局红线: 母子阳寿断绝', 510, 640, {
+          formula: 'a <= 0',
+          color: '#ef4444'
+        }),
+
+        // ── 象限 IV：寒门同盟声望、四卷破契反杀与终局清算 ──
+        nd('pool_alliance', 'pool', /* cjk-ok */ '林照月/苏若雪·寒门同盟声望池', 715, 495, {
+          resourceId: 'res_alliance',
+          initial: 24,
+          capacity: 2000,
+          color: '#ec4899'
+        }),
+        nd('conv_arc_reckoning', 'converter', /* cjk-ok */ '卷末大高潮·破契反杀与清算', 905, 495, {
+          resourceId: 'res_lifespan',
+          trigger: 'automatic',
+          color: '#f59e0b'
+        }),
+        nd('reg_volume_tier', 'register', /* cjk-ok */ '四卷换地图阶梯与天道威压', 715, 640, {
+          formula: 'round(10 + a * 1.5 + floor(step / 50) * 12)',
+          color: '#38bdf8'
+        }),
+        nd('pool_primordial_seals', 'pool', /* cjk-ok */ '山海古印与本源借契碎片池', 905, 640, {
+          resourceId: 'res_alliance',
+          initial: 2,
+          capacity: 500,
+          color: '#fbbf24'
+        }),
+        nd('end_tycoon_goal', 'end', /* cjk-ok */ '阶段目标: 赎回母命·执掌山海总纲', 1140, 565, {
+          formula: 'a >= 225',
+          color: '#22d3ee'
+        })
+      ]
+      doc.edges = [
+        // 象限 I 内部与跨象限输出
+        ed('e_herb_gather', 'resource', 'src_mine_prod', 'pool_herbs', 'HerbYieldBase'),
+        ed('e_bounty_stones', 'resource', 'src_sect_bounty', 'pool_coins', 'SectBountyBase'),
+        ed('e_stones_to_market', 'resource', 'pool_coins', 'trader_black_market', '6'),
+        ed('e_market_to_herbs', 'resource', 'trader_black_market', 'pool_herbs', '4'),
+        ed('e_market_to_insight', 'resource', 'trader_black_market', 'pool_canon_insight', '2'),
+
+        // 象限 I -> 象限 II（药材与灵石进入残缺药经炼丹炉）
+        ed('e_herbs_to_alchemy', 'resource', 'pool_herbs', 'conv_buy_miner', '10'),
+        ed('e_coins_to_buy', 'resource', 'pool_coins', 'conv_buy_miner', '8'),
+        ed('e_alchemy_to_gate', 'resource', 'conv_buy_miner', 'gate_pill_quality', 'AlchemyYield'),
+        ed('e_alchemy_to_insight', 'resource', 'conv_buy_miner', 'pool_canon_insight', '3'),
+        ed('e_gate_to_elixirs', 'resource', 'gate_pill_quality', 'pool_elixirs', '75%'),
+        ed('e_gate_to_poison', 'resource', 'gate_pill_quality', 'drain_poison_backlash', '25%'),
+        ed('e_insight_boost_herb', 'state', 'pool_cultivation', 'src_mine_prod', '+0.06', {
+          targetEdgeId: 'e_herb_gather'
+        }),
+
+        // 象限 II 内部（破境冲关与指数代价曲线）
+        ed('e_elixirs_to_break', 'resource', 'pool_elixirs', 'conv_realm_break', '1'),
+        ed('e_insight_to_break', 'resource', 'pool_canon_insight', 'conv_realm_break', '2'),
+        ed('e_break_to_cult', 'resource', 'conv_realm_break', 'pool_cultivation', '1'),
+        ed('e_break_to_alliance', 'resource', 'conv_realm_break', 'pool_alliance', '3'),
+        ed('e_cult_boost_bounty', 'state', 'pool_cultivation', 'src_sect_bounty', '+0.12', {
+          targetEdgeId: 'e_bounty_stones'
+        }),
+        ed('e_miners_to_reg', 'state', 'pool_cultivation', 'reg_miner_cost', '+1'),
+
+        // 象限 II -> 象限 III（续命灵丹修补母子阳寿 & 宗门借命契剥削与丹毒回收）
+        ed('e_elixirs_to_heal', 'resource', 'pool_elixirs', 'conv_lifespan_heal', '1'),
+        ed('e_buy_to_miners', 'resource', 'conv_lifespan_heal', 'pool_miners', '1 every 2'),
+        ed('e_coins_to_upkeep', 'resource', 'pool_coins', 'drain_upkeep', 'ContractTaxBase'),
+        ed('e_herbs_to_poison', 'resource', 'pool_herbs', 'drain_poison_backlash', '10'),
+        ed('e_insight_to_poison', 'resource', 'pool_canon_insight', 'drain_poison_backlash', '2'),
+        ed('e_cult_to_upkeep', 'state', 'pool_cultivation', 'pool_coins', '+0.1', {
+          targetEdgeId: 'e_coins_to_upkeep'
+        }),
+        ed('e_cult_to_pressure', 'state', 'pool_cultivation', 'reg_contract_pressure', '+1'),
+        ed('e_lifespan_to_death', 'state', 'pool_miners', 'end_lifespan_exhausted', '<=0'),
+
+        // 象限 IV（寒门同盟声望、四卷破契清算回补阳寿与终局目标）
+        ed('e_alliance_to_reckon', 'resource', 'pool_alliance', 'conv_arc_reckoning', '2'),
+        ed('e_reckon_to_lifespan', 'resource', 'conv_arc_reckoning', 'pool_miners', '1 every 2'),
+        ed('e_reckon_to_seals', 'resource', 'conv_arc_reckoning', 'pool_primordial_seals', '1'),
+        ed('e_reckon_to_stones', 'resource', 'conv_arc_reckoning', 'pool_coins', '6'),
+        ed('e_seals_to_vol', 'state', 'pool_primordial_seals', 'reg_volume_tier', '+1'),
+        ed('e_miners_to_goal', 'state', 'pool_miners', 'end_tycoon_goal', '>=225')
+      ]
+      doc.settings.steps = 200
+      doc.settings.runs = 60
+      break
+    }
     default:
       if (id !== ('roguelike_run' as MxTemplateId)) {
         return createMxTemplate('roguelike_run', title)
       }
       break
   }
-  doc.workbench = createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(id))
+  doc.workbench =
+    id === 'xianxia_lifespan_alchemy'
+      ? createXianxia200LifespanWorkbench()
+      : createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(id))
   return doc
 }
 
@@ -4730,6 +5084,10 @@ export function parseMxDocumentJson(
 }
 
 const MX_PROMPT_TEMPLATE_RULES: Array<[RegExp, MxTemplateId]> = [
+  [
+    /山海借命|借命契|残缺药经|寿元契约|阳寿池|外门采药|仙侠经济|灵石.*药材.*丹药/, // cjk-ok
+    'xianxia_lifespan_alchemy'
+  ],
   [
     /short\s*drama|micro\s*drama|短剧|爽剧|逆袭|打脸|系统流|神豪|战神|赘婿|重生|女频|豪门|退婚|反派阶梯|付费卡点/, // cjk-ok
     'short_drama_reversal_loop'

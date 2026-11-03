@@ -470,9 +470,41 @@ function novelNodeDef(): NodeTypeDefinition {
         label: 'Numerical',
         labelKey: 'graph.port.numericalIn'
       },
-      ...galleryOutPorts(GraphPortType.text, {
-        out: 'graph.port.novelChapterOut'
-      })
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        label: 'Next chapter',
+        labelKey: 'graph.port.novelChapterOut'
+      },
+      {
+        id: 'out-outline',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        label: 'Outline',
+        labelKey: 'graph.port.novelOutlineIn'
+      },
+      {
+        id: 'out-economy',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        label: 'Economy',
+        labelKey: 'graph.port.novelEconomyIn'
+      },
+      {
+        id: 'out-numerical',
+        direction: 'out',
+        dataType: GraphPortType.text,
+        label: 'Numerical',
+        labelKey: 'graph.port.numericalIn'
+      },
+      {
+        id: 'out-all',
+        direction: 'out',
+        dataType: GraphPortType.texts,
+        label: 'All',
+        labelKey: 'graph.port.outAll'
+      }
     ],
     defaultParams: () => ({
       text: '…',

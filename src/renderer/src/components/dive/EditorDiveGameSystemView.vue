@@ -736,13 +736,18 @@
               </div>
             </div>
 
+            <div v-if="qaLastFixSummary" class="qa-fix-feedback">✅ {{ qaLastFixSummary }}</div>
+
             <button
               type="button"
-              class="action-btn action-btn-primary"
+              class="action-btn"
+              :class="isQaAllPassed ? 'action-btn-success' : 'action-btn-primary'"
               style="margin-top: 10px"
+              :disabled="isQaAllPassed"
               @click="autoFixMissingGddSections"
             >
-              🛠️ {{ ui.autoFixQaBtn }}
+              <template v-if="isQaAllPassed">✅ {{ ui.qaAllPassedBtn }}</template>
+              <template v-else>🛠️ {{ ui.autoFixQaBtn }}</template>
             </button>
           </div>
         </div>
@@ -756,12 +761,18 @@ import { computed, inject, nextTick, reactive, ref, watch } from 'vue'
 import {
   GAME_SYSTEM_ARCHETYPES,
   auditGameSystemDocument,
+  autoCompleteGameSystemDocument,
+  buildDomainNumericalSuiteFromContext,
   buildStandardUiScreenMarkdownBlock,
   createMxFromTemplate,
   createMxWorkbenchPreset,
+  exportDomainNumericalSuiteMarkdown,
   extractNovelIpContextForGameSystem,
+  findGddSectionSpan,
   inferGameSystemArchetypeFromContext,
   isGameSystemArchetypeId,
+  isNonCombatDomainContext,
+  matchGddHeadingSectionId,
   parseMxDocumentJson,
   resolveGameSystemArchetype,
   serializeMxNumericContextForDownstream,
@@ -770,6 +781,7 @@ import {
   type GameSystemArchetypeId,
   type GameSystemFeatureModuleSpec,
   type GameSystemUiScreenSpec,
+  type GddSectionKey,
   type MxNumericalWorkbench,
   type MxTemplateId,
   type MxWorkbenchPresetId
@@ -934,14 +946,10 @@ const upstreamEconomyRawText = computed(() => {
   const econ = upstreamEconomyNode.value
   const numNode = upstreamNumericalNode.value
   if (!econ && !numNode) return ''
-  const tplRaw = String(econ?.params?.gameEconomyPreset ?? 'short_drama_reversal_loop')
-  const mxDoc = econ
-    ? parseMxDocumentJson(econ.params?.gameEconomyDiagramJson, tplRaw as MxTemplateId, econ.title)
-    : createMxFromTemplate('short_drama_reversal_loop', numNode?.title)
+
+  let wb: MxNumericalWorkbench | null = null
   if (numNode) {
-    const presetRaw = String(numNode.params?.gameNumericalPreset ?? 'short_drama_progression')
     const rawJson = numNode.params?.gameNumericalWorkbenchJson
-    let wb: MxNumericalWorkbench | null = null
     if (typeof rawJson === 'string' && rawJson.trim()) {
       try {
         const parsed = JSON.parse(rawJson) as MxNumericalWorkbench
@@ -952,6 +960,39 @@ const upstreamEconomyRawText = computed(() => {
         wb = null
       }
     }
+    if (wb?.domainTables?.enabled && wb.domainTables.tables.length > 0 && !econ) {
+      return exportDomainNumericalSuiteMarkdown(wb.domainTables)
+    }
+    const domainProbe = `${numNode.title ?? ''} ${displayName.value} ${localText.value.slice(0, 600)}`
+    if (!econ && !upstreamNovelNode.value && isNonCombatDomainContext(domainProbe)) {
+      const suite =
+        wb?.domainTables && wb.domainTables.tables.length > 0
+          ? wb.domainTables
+          : buildDomainNumericalSuiteFromContext({
+              title: numNode.title || displayName.value,
+              prompt: String(
+                numNode.params?.generateInstruction ??
+                  realNode.value?.params?.generateInstruction ??
+                  ''
+              ),
+              gddText: localText.value
+            })
+      return exportDomainNumericalSuiteMarkdown(suite)
+    }
+  }
+
+  const hasNovel = Boolean(upstreamNovelNode.value)
+  const tplRaw = String(
+    econ?.params?.gameEconomyPreset ?? (hasNovel ? 'short_drama_reversal_loop' : 'roguelike_run')
+  )
+  const mxDoc = econ
+    ? parseMxDocumentJson(econ.params?.gameEconomyDiagramJson, tplRaw as MxTemplateId, econ.title)
+    : createMxFromTemplate(hasNovel ? 'short_drama_reversal_loop' : 'roguelike_run', numNode?.title)
+  if (numNode) {
+    const presetRaw = String(
+      numNode.params?.gameNumericalPreset ??
+        (hasNovel ? 'short_drama_progression' : 'slay_the_spire_dbg')
+    )
     mxDoc.workbench = wb ?? createMxWorkbenchPreset(presetRaw as MxWorkbenchPresetId)
   }
   return serializeMxNumericContextForDownstream(mxDoc)
@@ -1142,6 +1183,11 @@ const qaCheckItems = computed(() => {
   ]
 })
 
+const isQaAllPassed = computed(
+  () => docAudit.value.overallScore >= 100 && qaCheckItems.value.every((i) => i.ok)
+)
+const qaLastFixSummary = ref('')
+
 const ui = computed(() => {
   if (isEn.value) {
     return {
@@ -1211,7 +1257,8 @@ const ui = computed(() => {
         'Click to insert any standard feature module with economy metric bindings and edge-case rules.',
       insertFeatureBtn: 'Insert Feature into GDD',
       qaCardTitle: '6-Dimension GDD Engineering Audit',
-      autoFixQaBtn: '1-Click Auto-Complete Missing Sections & UI Wireframes'
+      autoFixQaBtn: '1-Click Auto-Complete Missing Sections & UI Wireframes',
+      qaAllPassedBtn: 'All 6 Engineering Dimensions Passed (100/100)'
     }
   }
   return {
@@ -1283,7 +1330,8 @@ const ui = computed(() => {
       '点击可将任意标准功能点（含数值公式绑定与断线/连点/资源不足异常边界）插入策划案。', // cjk-ok
     insertFeatureBtn: '插入此功能模块到策划案', // cjk-ok
     qaCardTitle: '系统策划案 6 维工程完备度体检', // cjk-ok
-    autoFixQaBtn: '一键补全缺失章节、数值表与 UI 框线规范' // cjk-ok
+    autoFixQaBtn: '一键补全缺失章节、数值表与 UI 框线规范', // cjk-ok
+    qaAllPassedBtn: '6 维工程完备度已全部达标 (100/100)' // cjk-ok
   }
 })
 
@@ -1358,6 +1406,7 @@ function persistInstruction(): void {
 
 function onDocInput(): void {
   dirtyText.value = true
+  qaLastFixSummary.value = ''
 }
 
 function persistDocText(): void {
@@ -1466,11 +1515,9 @@ async function runGameSystemGeneration(): Promise<void> {
 function injectEconomySpecIntoDoc(): void {
   const spec = unwrappedEconomySpecPreview.value
   if (!spec) return
-  if (localText.value.includes(/* cjk-ok */ '# 数据与配置')) {
-    localText.value = localText.value.replace(
-      /# 数据与配置[^\n]*\n/, // cjk-ok
-      `# 数据与配置（核心数值公式与配置表）\n\n${spec}\n\n` // cjk-ok
-    )
+  const dcSpan = findGddSectionSpan(localText.value, 'dataConfig')
+  if (dcSpan) {
+    localText.value = `${localText.value.slice(0, dcSpan.headingEnd)}\n\n${spec}\n${localText.value.slice(dcSpan.headingEnd)}`
   } else {
     localText.value = `${localText.value.trim()}\n\n# 数据与配置（核心数值公式与配置表）\n\n${spec}\n` // cjk-ok
   }
@@ -1483,11 +1530,9 @@ function injectEconomySpecIntoDoc(): void {
 function injectNovelIpIntoDoc(): void {
   const ip = extractedNovelIpPreview.value
   if (!ip) return
-  if (localText.value.includes(/* cjk-ok */ '# 系统概述')) {
-    localText.value = localText.value.replace(
-      /# 系统概述[^\n]*\n/, // cjk-ok
-      `# 系统概述\n\n${ip}\n\n` // cjk-ok
-    )
+  const ovSpan = findGddSectionSpan(localText.value, 'overview')
+  if (ovSpan) {
+    localText.value = `${localText.value.slice(0, ovSpan.headingEnd)}\n\n${ip}\n${localText.value.slice(ovSpan.headingEnd)}`
   } else {
     localText.value = `# 系统概述\n\n${ip}\n\n${localText.value.trim()}` // cjk-ok
   }
@@ -1565,10 +1610,12 @@ async function pushAndOpenUiSplitNode(): Promise<void> {
 }
 
 function jumpOrInsertSection(sec: { id: string; heading: string; present: boolean }): void {
-  const idx = localText.value.indexOf(sec.heading)
-  if (idx < 0) {
+  const secKey = sec.id as GddSectionKey
+  let span = findGddSectionSpan(localText.value, secKey)
+  if (!span) {
     localText.value = `${localText.value.trim()}\n\n${sec.heading}\n- （待补充）\n` // cjk-ok
     persistDocText()
+    span = findGddSectionSpan(localText.value, secKey)
   }
   void nextTick(() => {
     if (docViewMode.value === 'preview' || docViewMode.value === 'split') {
@@ -1580,10 +1627,9 @@ function jumpOrInsertSection(sec: { id: string; heading: string; present: boolea
     }
     if (docViewMode.value === 'edit' || docViewMode.value === 'split') {
       const el = docTextareaRef.value
-      const targetIdx = localText.value.indexOf(sec.heading)
-      if (targetIdx >= 0 && el) {
+      if (span && el) {
         el.focus()
-        el.setSelectionRange(targetIdx, targetIdx + sec.heading.length)
+        el.setSelectionRange(span.start, span.headingEnd)
       }
     }
   })
@@ -1670,13 +1716,7 @@ function parseGddInlineSpans(raw: string): GddInlineSpan[] {
 }
 
 function resolveHeadingSectionId(headingText: string): string | null {
-  if (/系统概述|System\s*Overview/i.test(headingText)) return 'overview' // cjk-ok
-  if (/系统目标|System\s*Goals/i.test(headingText)) return 'goals' // cjk-ok
-  if (/功能点设计|Feature\s*Design/i.test(headingText)) return 'features' // cjk-ok
-  if (/UI\s*布局设计|UI\s*Layout/i.test(headingText)) return 'uiLayout' // cjk-ok
-  if (/UI\s*要求|UI\s*Requirements/i.test(headingText)) return 'uiRequirements' // cjk-ok
-  if (/数据与配置|Data\s*&\s*Config/i.test(headingText)) return 'dataConfig' // cjk-ok
-  return null
+  return matchGddHeadingSectionId(headingText)
 }
 
 function extractHeadingBadges(headingText: string): GddHeadingBadge[] {
@@ -1909,11 +1949,10 @@ function insertStandardScreenBlock(scr: GameSystemUiScreenSpec, index: number): 
     { ...scr, aspectRatio: targetAspect.value },
     index
   )
-  if (localText.value.includes(/* cjk-ok */ '# UI 布局设计')) {
-    localText.value = localText.value.replace(
-      /(#\s*UI\s*布局设计[^\n]*\n)/, // cjk-ok
-      `$1\n${block}\n\n`
-    )
+  const uiSpan = findGddSectionSpan(localText.value, 'uiLayout')
+  if (uiSpan) {
+    localText.value =
+      `${localText.value.slice(0, uiSpan.end).trimEnd()}\n\n${block}\n\n${localText.value.slice(uiSpan.end).trimStart()}`.trim()
   } else {
     localText.value = `${localText.value.trim()}\n\n# UI 布局设计\n\n${block}\n` // cjk-ok
   }
@@ -1929,11 +1968,10 @@ function appendAllArchetypeScreens(): void {
       buildStandardUiScreenMarkdownBlock({ ...scr, aspectRatio: targetAspect.value }, idx + 1)
     )
     .join('\n\n')
-  if (localText.value.includes(/* cjk-ok */ '# UI 布局设计')) {
-    localText.value = localText.value.replace(
-      /(#\s*UI\s*布局设计[^\n]*\n)/, // cjk-ok
-      `$1\n${blocks}\n\n`
-    )
+  const uiSpan = findGddSectionSpan(localText.value, 'uiLayout')
+  if (uiSpan) {
+    localText.value =
+      `${localText.value.slice(0, uiSpan.end).trimEnd()}\n\n${blocks}\n\n${localText.value.slice(uiSpan.end).trimStart()}`.trim()
   } else {
     localText.value = `${localText.value.trim()}\n\n# UI 布局设计\n\n${blocks}\n` // cjk-ok
   }
@@ -1950,11 +1988,10 @@ function insertFeatureModuleBlock(feat: GameSystemFeatureModuleSpec): void {
     `- **规则与交互流程**：${rules}`, // cjk-ok
     `- **边界与异常处理**：${feat.edgeCasesZh}` // cjk-ok
   ].join('\n')
-  if (localText.value.includes(/* cjk-ok */ '# 功能点设计')) {
-    localText.value = localText.value.replace(
-      /(#\s*功能点设计[^\n]*\n)/, // cjk-ok
-      `$1\n${block}\n\n`
-    )
+  const featSpan = findGddSectionSpan(localText.value, 'features')
+  if (featSpan) {
+    localText.value =
+      `${localText.value.slice(0, featSpan.end).trimEnd()}\n\n${block}\n\n${localText.value.slice(featSpan.end).trimStart()}`.trim()
   } else {
     localText.value = `${localText.value.trim()}\n\n# 功能点设计\n\n${block}\n` // cjk-ok
   }
@@ -1962,44 +1999,30 @@ function insertFeatureModuleBlock(feat: GameSystemFeatureModuleSpec): void {
 }
 
 function autoFixMissingGddSections(): void {
-  if (!localText.value.trim()) {
-    synthesizeStandardDocFromContext()
-    return
-  }
-  const fullRef = synthesizeGameSystemDocOffline({
+  const res = autoCompleteGameSystemDocument(localText.value, {
     archetypeId: activeArchetype.value.id,
     customInstruction: localInstruction.value,
     economyText: unwrappedEconomySpecPreview.value,
     novelText: extractedNovelIpPreview.value,
     targetAspect: targetAspect.value
   })
-  const audit = docAudit.value
-  let next = localText.value.trim()
-  if (!audit.sectionChecks.uiLayout || audit.uiScreens.length === 0) {
-    const blocks = activeArchetype.value.defaultScreens
-      .map((scr, idx) =>
-        buildStandardUiScreenMarkdownBlock({ ...scr, aspectRatio: targetAspect.value }, idx + 1)
-      )
-      .join('\n\n')
-    next += `\n\n# UI 布局设计\n\n${blocks}` // cjk-ok
+  if (!res.changed) {
+    qaLastFixSummary.value = isEn.value
+      ? 'All 6 engineering dimensions are already complete (100/100).'
+      : '当前策划案 6 大工程维度均已齐备（100/100），无需重复补齐。' // cjk-ok
+    statusBanner.value = qaLastFixSummary.value
+    return
   }
-  if (!audit.sectionChecks.dataConfig || !audit.hasNumericalFormulaBinding) {
-    const dataSectionMatch = /#\s*数据与配置[\s\S]*?(?=\n#\s+|$)/.exec(fullRef) // cjk-ok
-    if (dataSectionMatch) {
-      next += `\n\n${dataSectionMatch[0]}`
-    }
-  }
-  if (!audit.sectionChecks.uiRequirements) {
-    const reqMatch = /#\s*UI\s*要求[\s\S]*?(?=\n#\s+|$)/.exec(fullRef) // cjk-ok
-    if (reqMatch) {
-      next += `\n\n${reqMatch[0]}`
-    }
-  }
-  localText.value = next
+  localText.value = res.text
   persistDocText()
-  statusBanner.value = isEn.value
-    ? 'Auto-completed missing GDD sections, numerical formulas, and UI wireframes.'
-    : '已自动补全缺失的标准章节、数值公式绑定与 UI 界面框线规范！' // cjk-ok
+  const itemsText = (isEn.value ? res.fixedItemsEn : res.fixedItemsZh).join(
+    isEn.value ? ', ' : '、'
+  )
+  const newScore = auditGameSystemDocument(res.text).overallScore
+  qaLastFixSummary.value = isEn.value
+    ? `Auto-completed: ${itemsText} (${newScore}/100)`
+    : `已自动补全：${itemsText}（完备度 ${newScore}/100）` // cjk-ok
+  statusBanner.value = qaLastFixSummary.value
 }
 
 function popDive(): void {
@@ -3205,6 +3228,26 @@ function popDive(): void {
   font-size: 11px;
   color: #fde68a;
   line-height: 1.4;
+}
+
+.qa-fix-feedback {
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #a7f3d0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.action-btn-success,
+.action-btn-success:disabled {
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #6ee7b7;
+  cursor: default;
+  opacity: 1;
 }
 
 .badge-dot {

@@ -1315,4 +1315,62 @@ describe('Machinations v2 simulation', () => {
     expect(playNode.params.gamePlayHtml).toContain('card_dbg')
     expect(playNode.params.gamePlayHtml).toContain('Pommel Strike')
   })
+
+  it('models 200-chapter xianxia_lifespan_alchemy economy with S(100) health and auto-upgrades legacy 7-node diagrams', () => {
+    const doc = createMxTemplate('xianxia_lifespan_alchemy')
+    expect(doc.nodes).toHaveLength(23)
+    expect(doc.edges).toHaveLength(32)
+    expect(doc.groups).toHaveLength(4)
+    expect(doc.resources).toHaveLength(6)
+    expect(doc.settings.steps).toBe(200)
+
+    const run = runMxSimulation(doc, { steps: 200, seed: 2026 })
+    const health = analyzeMxEconomyHealth(doc, run)
+    expect(health.grade).toBe('S')
+    expect(health.score).toBe(100)
+    expect(health.blockedCount).toBe(0)
+    expect(health.depletedPoolsCount).toBe(0)
+    expect(health.findings).toHaveLength(1)
+    expect(health.findings[0]!.kind).toBe('balanced')
+
+    // Legacy 7-node diagram with broken Cost_50_1_18_N reference auto-upgrades to 23-node S(100) model
+    const legacyBroken = {
+      schema: 'mx@2',
+      title: '《山海借命录》修仙资源产出、炼丹转化与借命契消耗闭环', // cjk-ok
+      nodes: [
+        { id: 'src_mine_prod', kind: 'source', label: '山林采药与外门悬赏产出', x: 100, y: 100 }, // cjk-ok
+        { id: 'pool_coins', kind: 'pool', label: '沈砚灵石与药材储备囊', x: 250, y: 100 }, // cjk-ok
+        { id: 'conv_buy_miner', kind: 'converter', label: '残缺药经·辨药试药炼丹', x: 400, y: 100 }, // cjk-ok
+        { id: 'pool_miners', kind: 'pool', label: '沈砚与沈母剩余阳寿池', x: 550, y: 100 }, // cjk-ok
+        { id: 'drain_upkeep', kind: 'drain', label: '宗门寿元契约抽成与折寿反噬', x: 250, y: 250 }, // cjk-ok
+        {
+          id: 'reg_miner_cost',
+          kind: 'register',
+          label: '突破与借息代价曲线: 50*1.18^N', // cjk-ok
+          x: 400,
+          y: 250
+        },
+        { id: 'end_tycoon_goal', kind: 'end', label: '阶段目标: 赎回母命', x: 700, y: 100 } // cjk-ok
+      ],
+      edges: [
+        {
+          id: 'e_coins_to_buy',
+          kind: 'resource',
+          from: 'pool_coins',
+          to: 'conv_buy_miner',
+          formula: 'Cost_50_1_18_N'
+        }
+      ],
+      settings: { steps: 200, runs: 60, seed: 2026, speed: 2, actionMode: 'simultaneous' }
+    }
+    const upgraded = normalizeMxDocument(legacyBroken)
+    expect(upgraded.nodes).toHaveLength(23)
+    expect(upgraded.templateId).toBe('xianxia_lifespan_alchemy')
+    const upgHealth = analyzeMxEconomyHealth(
+      upgraded,
+      runMxSimulation(upgraded, { steps: 200, seed: 2026 })
+    )
+    expect(upgHealth.grade).toBe('S')
+    expect(upgHealth.score).toBe(100)
+  })
 })

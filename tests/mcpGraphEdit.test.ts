@@ -892,16 +892,16 @@ describe('知识科普文档转视频流水线 (graph_edit + output.timeline)', 
     )
     // Economy -> Outline
     expect(edgeSet.has('econ-1:out-text->outline-1:in-economy')).toBe(true)
-    // Chapter 1 receives Outline + Economy
+    // Chapter 1 receives Outline + Economy directly
     expect(edgeSet.has('outline-1:out->ch-1:in-outline')).toBe(true)
     expect(edgeSet.has('econ-1:out-text->ch-1:in-economy')).toBe(true)
-    // Chapter 2 receives Ch.1 + Outline + Economy (3-Way Markov Chain)
+    // Chapter 2 receives Ch.1 + pass-through Outline + pass-through Economy from Ch.1
     expect(edgeSet.has('ch-1:out->ch-2:in')).toBe(true)
-    expect(edgeSet.has('outline-1:out->ch-2:in-outline')).toBe(true)
-    expect(edgeSet.has('econ-1:out-text->ch-2:in-economy')).toBe(true)
-    // Chapter 3 receives Ch.2 + Outline + Economy (3-Way Markov Chain)
+    expect(edgeSet.has('ch-1:out-outline->ch-2:in-outline')).toBe(true)
+    expect(edgeSet.has('ch-1:out-economy->ch-2:in-economy')).toBe(true)
+    // Chapter 3 receives Ch.2 + pass-through Outline + pass-through Economy from Ch.2
     expect(edgeSet.has('ch-2:out->ch-3:in')).toBe(true)
-    expect(edgeSet.has('outline-1:out->ch-3:in-outline')).toBe(true)
-    expect(edgeSet.has('econ-1:out-text->ch-3:in-economy')).toBe(true)
+    expect(edgeSet.has('ch-2:out-outline->ch-3:in-outline')).toBe(true)
+    expect(edgeSet.has('ch-2:out-economy->ch-3:in-economy')).toBe(true)
   })
 })

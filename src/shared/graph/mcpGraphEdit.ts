@@ -1,11 +1,12 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
+import { isNonCombatDomainContext } from '../gameAssets'
 import {
   inferExplicitNovelChapterNumber,
   isOutlineNovelNodeTitle,
   resolveNovelNodeExecutionMode
 } from './execute/generateText'
-import { autoLayoutNodes } from './layout'
+import { autoLayoutNodes, optimizeNovelChapterPassthroughEdges } from './layout'
 import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes, listNodeTypes } from './registry'
 import { parseActSceneSubtitlePlan } from './scriptTimeline'
@@ -285,6 +286,11 @@ function resolveEdgePorts(
     (toPort === 'in-prev' || toPort === 'in-text')
   ) {
     toPort = 'in'
+  }
+  if (target.typeId === 'asset.novel' && !toPort) {
+    if (fromPort === 'out-outline') toPort = 'in-outline'
+    else if (fromPort === 'out-economy') toPort = 'in-economy'
+    else if (fromPort === 'out-numerical') toPort = 'in-numerical'
   }
   if (
     target.typeId === 'asset.novel' &&
@@ -1198,7 +1204,13 @@ function applyOp(
     }
     case 'auto_layout': {
       if (graph.nodes.length > 1) {
-        autoLayoutNodes(graph.nodes, graph.edges, { columnGap: 96, rowGap: 56 })
+        if (!graph.groups) graph.groups = []
+        optimizeNovelChapterPassthroughEdges(graph.nodes, graph.edges)
+        autoLayoutNodes(graph.nodes, graph.edges, {
+          columnGap: 96,
+          rowGap: 56,
+          groups: graph.groups
+        })
       }
       return '自动布局'
     }
@@ -1331,13 +1343,28 @@ export function applyGraphEditOps(
   //    - novel.outline (out) -> C_t (in)（全书大纲按章切片）
   //    - game.economy (out-text) -> C_t (in)（单章数值配额锁）
   let autoWiredNarrative = false
-  const connectOnce = (fromNode: GraphNode, toNode: GraphNode): boolean => {
+  const connectOnce = (
+    fromNode: GraphNode,
+    toNode: GraphNode,
+    explicitFromPort?: string,
+    explicitToPort?: string
+  ): boolean => {
     if (fromNode.id === toNode.id) return false
-    if (next.edges.some((e) => e.source === fromNode.id && e.target === toNode.id)) return false
-    const ports = resolveEdgePorts(fromNode, toNode)
+    const ports = resolveEdgePorts(fromNode, toNode, explicitFromPort, explicitToPort)
     if (!ports) return false
+    if (
+      next.edges.some(
+        (e) =>
+          e.source === fromNode.id &&
+          e.target === toNode.id &&
+          (e.sourcePort ?? 'out') === ports.sourcePort &&
+          (e.targetPort ?? 'in') === ports.targetPort
+      )
+    ) {
+      return false
+    }
     next.edges.push({
-      id: `edge-mcp-auto-${fromNode.id}-${toNode.id}`,
+      id: `edge-mcp-auto-${fromNode.id}-${ports.sourcePort}-${toNode.id}-${ports.targetPort}`,
       source: fromNode.id,
       target: toNode.id,
       sourcePort: ports.sourcePort,
@@ -1445,16 +1472,32 @@ export function applyGraphEditOps(
       }
     }
 
-    // 三路条件输入马尔可夫链广播补全：
-    // 当画布上存在 novel.outline 节点（或存在 >= 2 个串联的章节 asset.novel 节点且配有大纲/经济节点）时，
-    // 自动将大纲节点（novel.outline）和经济节点（game.economy）广播连入每一个独立章节节点 C_t。
-    const allChapterNodes = next.nodes.filter(
-      (n) =>
-        n.typeId === 'asset.novel' &&
-        resolveNovelNodeExecutionMode(n) === 'chapter' &&
-        uniqueTouchedIds.includes(n.id)
+    // 四路条件马尔可夫链级联透传补全：
+    // 首章节点 C_1 直接接收大纲（novel.outline）、经济系统（game.economy）与数值系统（game.numerical），
+    // 后续章节节点 C_t (t >= 2) 从上一章节点 C_{t-1} 的 out / out-outline / out-economy / out-numerical 端口级联透传，避免跨画布放射状扇出连线。
+    const allChapterNodes = next.nodes
+      .filter(
+        (n) =>
+          n.typeId === 'asset.novel' &&
+          resolveNovelNodeExecutionMode(n) === 'chapter' &&
+          uniqueTouchedIds.includes(n.id)
+      )
+      .sort((a, b) => {
+        const chapA =
+          inferExplicitNovelChapterNumber(a.title, a.params.generateInstruction) ??
+          (Number(a.params.novelCurrentChapter) || 1)
+        const chapB =
+          inferExplicitNovelChapterNumber(b.title, b.params.generateInstruction) ??
+          (Number(b.params.novelCurrentChapter) || 1)
+        return chapA - chapB
+      })
+    const touchedOutlineNode = next.nodes.find(
+      (n) => n.typeId === 'novel.outline' && uniqueTouchedIds.includes(n.id)
     )
-    const dedicatedOutlineNode = next.nodes.find((n) => n.typeId === 'novel.outline')
+    const novelPipelineActive = Boolean(touchedOutlineNode) || allChapterNodes.length > 0
+    const dedicatedOutlineNode = novelPipelineActive
+      ? (touchedOutlineNode ?? next.nodes.find((n) => n.typeId === 'novel.outline'))
+      : undefined
     const fallbackOutlineNode =
       allChapterNodes.length >= 2
         ? next.nodes.find(
@@ -1462,13 +1505,30 @@ export function applyGraphEditOps(
           )
         : undefined
     const broadcastOutlineNode = dedicatedOutlineNode ?? fallbackOutlineNode
+    const isLinkedToNovelFlow = (candId: string): boolean =>
+      next.edges.some((e) => {
+        const peerId = e.source === candId ? e.target : e.target === candId ? e.source : ''
+        if (!peerId) return false
+        const peer = next.nodes.find((n) => n.id === peerId)
+        return peer?.typeId === 'novel.outline' || peer?.typeId === 'asset.novel'
+      })
     const broadcastEconomyNode =
-      dedicatedOutlineNode || allChapterNodes.length >= 2
-        ? next.nodes.find((n) => n.typeId === 'game.economy')
+      novelPipelineActive && (dedicatedOutlineNode || allChapterNodes.length >= 2)
+        ? next.nodes.find(
+            (n) =>
+              n.typeId === 'game.economy' &&
+              !isNonCombatDomainContext(n.title ?? '') &&
+              (uniqueTouchedIds.includes(n.id) || isLinkedToNovelFlow(n.id))
+          )
         : undefined
     const broadcastNumericalNode =
-      dedicatedOutlineNode || allChapterNodes.length >= 2
-        ? next.nodes.find((n) => n.typeId === 'game.numerical')
+      novelPipelineActive && (dedicatedOutlineNode || allChapterNodes.length >= 2)
+        ? next.nodes.find(
+            (n) =>
+              n.typeId === 'game.numerical' &&
+              !isNonCombatDomainContext(n.title ?? '') &&
+              (uniqueTouchedIds.includes(n.id) || isLinkedToNovelFlow(n.id))
+          )
         : undefined
     if (broadcastEconomyNode && broadcastNumericalNode) {
       connectOnce(broadcastEconomyNode, broadcastNumericalNode)
@@ -1479,21 +1539,37 @@ export function applyGraphEditOps(
     if (broadcastOutlineNode && broadcastNumericalNode) {
       connectOnce(broadcastNumericalNode, broadcastOutlineNode)
     }
-    if (broadcastOutlineNode || broadcastEconomyNode || broadcastNumericalNode) {
-      for (const chapNode of allChapterNodes) {
-        const hasSelectorInput = next.edges.some((e) => {
-          if (e.target !== chapNode.id) return false
-          const src = next.nodes.find((n) => n.id === e.source)
-          return src?.typeId === 'text.select'
-        })
-        if (broadcastOutlineNode && !hasSelectorInput) {
-          connectOnce(broadcastOutlineNode, chapNode)
+    if (
+      (broadcastOutlineNode || broadcastEconomyNode || broadcastNumericalNode) &&
+      allChapterNodes.length > 0
+    ) {
+      const headChap = allChapterNodes[0]!
+      const hasSelectorInput = next.edges.some((e) => {
+        if (e.target !== headChap.id) return false
+        const src = next.nodes.find((n) => n.id === e.source)
+        return src?.typeId === 'text.select'
+      })
+      if (broadcastOutlineNode && !hasSelectorInput) {
+        connectOnce(broadcastOutlineNode, headChap, 'out', 'in-outline')
+      }
+      if (broadcastEconomyNode) {
+        connectOnce(broadcastEconomyNode, headChap, 'out-text', 'in-economy')
+      }
+      if (broadcastNumericalNode) {
+        connectOnce(broadcastNumericalNode, headChap, 'out-text', 'in-numerical')
+      }
+      for (let i = 0; i < allChapterNodes.length - 1; i++) {
+        const prevChap = allChapterNodes[i]!
+        const curChap = allChapterNodes[i + 1]!
+        connectOnce(prevChap, curChap, 'out', 'in')
+        if (broadcastOutlineNode) {
+          connectOnce(prevChap, curChap, 'out-outline', 'in-outline')
         }
         if (broadcastEconomyNode) {
-          connectOnce(broadcastEconomyNode, chapNode)
+          connectOnce(prevChap, curChap, 'out-economy', 'in-economy')
         }
         if (broadcastNumericalNode) {
-          connectOnce(broadcastNumericalNode, chapNode)
+          connectOnce(prevChap, curChap, 'out-numerical', 'in-numerical')
         }
       }
     }
@@ -1508,7 +1584,12 @@ export function applyGraphEditOps(
     !applied.includes('自动布局') &&
     next.nodes.length > 1
   ) {
-    autoLayoutNodes(next.nodes, next.edges, { columnGap: 96, rowGap: 56 })
+    if (!next.groups) next.groups = []
+    autoLayoutNodes(next.nodes, next.edges, {
+      columnGap: 96,
+      rowGap: 56,
+      groups: next.groups
+    })
     applied.push('自动布局')
   }
   return {

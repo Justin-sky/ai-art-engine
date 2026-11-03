@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   analyzeMultiplierPipeline,
   auditGameSystemDocument,
+  autoCompleteGameSystemDocument,
   auditNovelChapterContinuityAndPacing,
   buildNovelForeshadowingAndRosterPromptBlock,
   compileMxFormulaToCs,
@@ -13,11 +14,14 @@ import {
   createMxWorkbenchPreset,
   evaluateMultiplierPipeline,
   exportMxChapterNumericalSlice,
+  exportMxEconomyResourceNarrativeSpec,
   exportMxGodotGd,
   exportMxUnityCs,
+  extractCustomNarrativeOverridesFromText,
   extractNovelIpContextForGameSystem,
   GAME_SYSTEM_ARCHETYPES,
   generateMxArcChapterOutlinePlan,
+  generateMxFullLifecycleArcScheduleMarkdown,
   inferGameSystemArchetypeFromContext,
   inferMxTemplateFromPrompt,
   inferNovelGenreFromText,
@@ -32,19 +36,27 @@ import {
   unwrapEconomyBundleForGameSystem
 } from '../src/shared/gameAssets'
 import {
+  applyGraphEditOps,
   applySmartNodePatch,
   createNodeFromType,
   executeGameEconomyNode,
+  executeGameNumericalNode,
   executeGameSystemGenerateNode,
   executeNovelGenerateNode,
   executeScreenplayGenerateNode,
   executeSelectTextNode,
   getNodePorts,
+  narrowOutlineTextForChapter,
   normalizeGraph,
   resolveNodeTextContent,
   resolvePreferredNovelTargetPort,
   runGraph
 } from '../src/shared/graph'
+import {
+  deduplicateNovelParagraphsAgainstPrevious,
+  sanitizeNovelChapterGeneratedText
+} from '../src/shared/graph/execute/generateText'
+import { DEFAULT_NOVEL_SYSTEM_PROMPT_ZH } from '../src/shared/graph/systemPromptSchemes'
 
 describe('Universal Game Numerical & Roguelike Workbench', () => {
   it('provides 6 flagship genre presets with valid configurations', () => {
@@ -1911,5 +1923,483 @@ describe('Universal Game Numerical & Roguelike Workbench', () => {
     expect(gddAfter.params.text).toContain('# 系统概述') // cjk-ok
     expect(gddAfter.params.text).toContain('# UI 布局设计') // cjk-ok
     expect(gddAfter.params.text).toContain('【上游经济系统（game.economy）➔ 游戏系统策划案') // cjk-ok
+  })
+
+  it('covers 100% of totalChapters across Outline, Economy Resource Flow, and Custom Narrative Trumps', () => {
+    const customBrief = `请创作《山海借命录》。成长轴：借命修为、药道造诣、山海残卷执掌度。阻力轴：折寿反噬、宗门围剿强度。主角沈砚只允许动用“残缺药经·第一页借息术”与凡俗医毒手段，严禁提前解锁终局底牌“山海借命总纲”或“九幽黄泉印”。核心流通资源：下品灵石、百年血参药材、阳寿寿元。` // cjk-ok
+    const extracted = extractCustomNarrativeOverridesFromText(customBrief)
+    expect(extracted.axisProtagonist).toContain('借命修为') // cjk-ok
+    expect(extracted.axisAntagonist).toContain('折寿反噬') // cjk-ok
+    expect(extracted.earlyUnlockItems[0]).toContain('残缺药经·第一页借息术') // cjk-ok
+    expect(extracted.lateLockedItems).toContain('山海借命总纲') // cjk-ok
+
+    const profile = resolveNovelGenreProfile('xianxia_cultivation', {
+      sourceContextText: customBrief
+    })
+    expect(profile.unlockItemsZh[0]).toContain('残缺药经·第一页借息术') // cjk-ok
+    expect(profile.unlockItemsZh).toContain('山海借命总纲') // cjk-ok
+
+    const wb = createMxWorkbenchPreset('short_drama_progression')
+    const ch1Slice = exportMxChapterNumericalSlice(wb, 1, 200, profile)
+    const ch8Slice = exportMxChapterNumericalSlice(wb, 8, 200, profile)
+    const ch11Slice = exportMxChapterNumericalSlice(wb, 11, 200, profile)
+    expect(ch1Slice.allowedTrumpCards).toContain('残缺药经·第一页借息术') // cjk-ok
+    expect(ch1Slice.lockedEndgameTrumps).toContain('山海借命总纲') // cjk-ok
+    expect(ch1Slice.villainPressure).toBeLessThan(ch8Slice.villainPressure)
+    expect(ch11Slice.trumpCooldownStatusZh).toContain('高潮反噬与调息冷却窗口') // cjk-ok
+
+    const fullSchedule = generateMxFullLifecycleArcScheduleMarkdown(wb, 200, profile)
+    expect(fullSchedule).toContain('第 1~10 章') // cjk-ok
+    expect(fullSchedule).toContain('第 61~70 章') // cjk-ok
+    expect(fullSchedule).toContain('第 191~200 章') // cjk-ok
+
+    const slicedCh68 = narrowOutlineTextForChapter(fullSchedule, 68, 'zh-CN', {
+      totalChapters: 200,
+      targetWords: 3200,
+      genre: profile
+    })
+    expect(slicedCh68).toContain('第 61~70 章') // cjk-ok
+    expect(slicedCh68).toContain('第 68/200 章确定性单章执行细纲卡') // cjk-ok
+
+    const mxDoc = createMxFromTemplate('short_drama_reversal_loop')
+    mxDoc.description = customBrief
+    const econSpec = exportMxEconomyResourceNarrativeSpec(
+      mxDoc,
+      { sourceSinkRatio: 1.04 },
+      { currentChapter: 4, totalChapters: 200, genre: profile }
+    )
+    expect(econSpec).toContain('全书经济系统与核心资源供需法则') // cjk-ok
+    expect(econSpec).toContain('第 4/200 章时间完备经济切片') // cjk-ok
+    expect(econSpec).toContain('定量收支预算锁') // cjk-ok
+  })
+
+  it('wraps multi-chapter novel chains into a 10-chapters-per-row 2D grid and creates Arc GraphGroups', async () => {
+    const {
+      autoLayoutNodes,
+      createNodeFromType,
+      getNodePorts,
+      optimizeNovelChapterPassthroughEdges
+    } = await import('../src/shared/graph')
+    const outline = createNodeFromType('novel.outline', { x: 0, y: 0 }, { title: '小说大纲' }) // cjk-ok
+    const economy = createNodeFromType('game.economy', { x: 0, y: 200 }, { title: '经济系统' }) // cjk-ok
+    const numerical = createNodeFromType('game.numerical', { x: 0, y: 400 }, { title: '数值系统' }) // cjk-ok
+    const chapters = Array.from({ length: 25 }, (_, i) => {
+      const chapNo = i + 1
+      return createNodeFromType(
+        'asset.novel',
+        { x: chapNo * 400, y: 0 },
+        {
+          title: `第${chapNo}章`, // cjk-ok
+          params: {
+            novelNodeMode: 'chapter',
+            novelCurrentChapter: chapNo,
+            novelTotalChapters: 200
+          }
+        }
+      )
+    })
+
+    // Verify each chapter node has the 5 output ports: out, out-outline, out-economy, out-numerical, out-all
+    const outPortIds = getNodePorts(chapters[0]!)
+      .filter((p) => p.direction === 'out')
+      .map((p) => p.id)
+    expect(outPortIds).toEqual(['out', 'out-outline', 'out-economy', 'out-numerical', 'out-all'])
+
+    const nodes = [economy, numerical, outline, ...chapters]
+    // Simulate legacy broadcast edges where outline/economy/numerical connect to all 25 chapters
+    const edges = [
+      ...chapters.map((ch) => ({
+        id: `e-out-${ch.id}`,
+        source: outline.id,
+        sourcePort: 'out',
+        target: ch.id,
+        targetPort: 'in-outline'
+      })),
+      ...chapters.map((ch) => ({
+        id: `e-econ-${ch.id}`,
+        source: economy.id,
+        sourcePort: 'out-text',
+        target: ch.id,
+        targetPort: 'in-economy'
+      })),
+      ...chapters.map((ch) => ({
+        id: `e-num-${ch.id}`,
+        source: numerical.id,
+        sourcePort: 'out-text',
+        target: ch.id,
+        targetPort: 'in-numerical'
+      }))
+    ]
+    optimizeNovelChapterPassthroughEdges(nodes, edges)
+
+    // Outline, Economy, and Numerical only connect to Chapter 1
+    expect(edges.filter((e) => e.source === outline.id).map((e) => e.target)).toEqual([
+      chapters[0]!.id
+    ])
+    expect(edges.filter((e) => e.source === economy.id).map((e) => e.target)).toEqual([
+      chapters[0]!.id
+    ])
+    expect(edges.filter((e) => e.source === numerical.id).map((e) => e.target)).toEqual([
+      chapters[0]!.id
+    ])
+
+    // Chapter 1 passes out, out-outline, out-economy, out-numerical to Chapter 2
+    const ch1ToCh2 = edges
+      .filter((e) => e.source === chapters[0]!.id && e.target === chapters[1]!.id)
+      .map((e) => `${e.sourcePort}->${e.targetPort}`)
+    expect(ch1ToCh2).toEqual([
+      'out->in',
+      'out-outline->in-outline',
+      'out-economy->in-economy',
+      'out-numerical->in-numerical'
+    ])
+
+    const groups: Array<{ id: string; title?: string }> = []
+    autoLayoutNodes(nodes, edges, { groups })
+
+    // Chapter 1 and Chapter 11 and Chapter 21 should be aligned on the same X column, on 3 distinct Y rows
+    expect(chapters[0]!.position.x).toBe(chapters[10]!.position.x)
+    expect(chapters[10]!.position.x).toBe(chapters[20]!.position.x)
+    expect(chapters[10]!.position.y).toBeGreaterThan(chapters[0]!.position.y)
+    expect(chapters[20]!.position.y).toBeGreaterThan(chapters[10]!.position.y)
+
+    // 3 Arc groups created
+    expect(groups.map((g) => g.id)).toEqual([
+      'group-novel-arc-1',
+      'group-novel-arc-2',
+      'group-novel-arc-3'
+    ])
+    expect(groups[0]!.title).toContain('第一幕（第1~10章）') // cjk-ok
+    expect(groups[1]!.title).toContain('第二幕（第11~20章）') // cjk-ok
+    expect(groups[2]!.title).toContain('第三幕（第21~30章）') // cjk-ok
+    expect(chapters[0]!.groupId).toBe('group-novel-arc-1')
+    expect(chapters[10]!.groupId).toBe('group-novel-arc-2')
+    expect(chapters[24]!.groupId).toBe('group-novel-arc-3')
+  })
+
+  it('builds a complete 200-chapter numerical system (4 Volumes × 50 Chapters, 10 Realm Stages, 20 Conflict Arcs) and auto-upgrades legacy 80-cap workbenches', async () => {
+    const {
+      createXianxia200LifespanWorkbench,
+      generateMxLevelProgressionTable,
+      normalizeMxDocument,
+      resolveNovelChapterStageMeta
+    } = await import('../src/shared/gameAssets')
+
+    const wb = createXianxia200LifespanWorkbench()
+    expect(wb.roguelikeEnvelope.levelMax).toBe(200)
+    expect(wb.roguelikeEnvelope.floors).toBe(20)
+    expect(wb.roguelikeEnvelope.levelAscensionInterval).toBe(20)
+
+    const lvTable = generateMxLevelProgressionTable(wb.roguelikeEnvelope)
+    expect(lvTable.maxLevel).toBe(200)
+    expect(lvTable.rows.length).toBe(200)
+    expect(lvTable.rows[0]!.level).toBe(1)
+    expect(lvTable.rows[199]!.level).toBe(200)
+
+    const s1 = resolveNovelChapterStageMeta(1, 200, true, 20)
+    const s85 = resolveNovelChapterStageMeta(85, 200, true, 20)
+    const s145 = resolveNovelChapterStageMeta(145, 200, true, 20)
+    const s200 = resolveNovelChapterStageMeta(200, 200, true, 20)
+    expect(s1.volumeBadgeZh).toContain('第一卷') // cjk-ok
+    expect(s1.realmNameZh).toContain('凡尘采药徒') // cjk-ok
+    expect(s85.volumeBadgeZh).toContain('第二卷') // cjk-ok
+    expect(s145.volumeBadgeZh).toContain('第三卷') // cjk-ok
+    expect(s200.volumeBadgeZh).toContain('第四卷') // cjk-ok
+    expect(s200.realmNameZh).toContain('渡劫执道') // cjk-ok
+
+    // Legacy saved diagram with 80-cap workbench should auto-upgrade to 200 chapters
+    const tplDoc = createMxFromTemplate('xianxia_lifespan_alchemy')
+    expect(tplDoc.workbench?.roguelikeEnvelope.levelMax).toBe(200)
+
+    const legacyDoc = {
+      ...tplDoc,
+      workbench: {
+        ...createMxWorkbenchPreset('slay_the_spire_dbg'),
+        roguelikeEnvelope: {
+          ...createMxWorkbenchPreset('slay_the_spire_dbg').roguelikeEnvelope,
+          levelMax: 80
+        }
+      }
+    }
+    const upgraded = normalizeMxDocument(legacyDoc)
+    expect(upgraded.workbench?.roguelikeEnvelope.levelMax).toBe(200)
+    expect(upgraded.workbench?.activePresetId).toBe('short_drama_progression')
+  })
+
+  it('recognizes numbered Chinese GDD headings and auto-completes all 6 engineering dimensions to 100/100', () => {
+    const numberedGdd = [
+      '# 一、系统概述',
+      '- 中医药沉浸式虚拟交互教学空间。',
+      '# 二、系统目标',
+      '- 首版不少于 30 个穴位、100 道题库，计分规则全量可测。',
+      '# 三、功能点设计',
+      '## F01 中医馆数字孪生场景｜P0',
+      '- **边界与异常**：300ms 防抖、断线保留草稿、资源不足前拦截。',
+      '# 四、界面清单与 UI 布局设计',
+      '## 4.1 全局布局、状态与拆分规范',
+      '- 面板底框采用九宫格，每屏 PSD 组名含 Frame_9Slice。',
+      '## UI-01 沉浸式主场景 HUD',
+      '- **形态/比例**：`hud / 16:9`',
+      '```text',
+      '┌──────────────────────────────┐',
+      '│ 顶部状态栏           账号信息│',
+      '│       3D 主场景与数字人      │',
+      '└──────────────────────────────┘',
+      '```',
+      '- **拆分**：场景独立渲染；顶部/底部 HUD 九宫格。',
+      '## UI-06 题库答题',
+      '- **形态/比例**：`fullscreen / 16:9`',
+      '```text',
+      '┌──────────────────────────────┐',
+      '│ 题干区 74%        │ 答题卡26%│',
+      '│ 选项与交卷按钮    │ 计时器   │',
+      '└──────────────────────────────┘',
+      '```',
+      '- **拆分**：题干底框、选项七态、答题卡格子分别成组。',
+      '# 五、交互与反馈规范',
+      '- 最小热区 48×48px，点击反馈 ≤50ms。',
+      '# 六、数据与配置',
+      '| 字段名 | 类型 | 说明 |',
+      '| --- | --- | --- |',
+      '| score | number | 计分规则分值 |'
+    ].join('\n')
+
+    const auditNumbered = auditGameSystemDocument(numberedGdd)
+    expect(auditNumbered.sectionChecks).toEqual({
+      overview: true,
+      goals: true,
+      features: true,
+      uiLayout: true,
+      uiRequirements: true,
+      dataConfig: true
+    })
+    expect(auditNumbered.uiScreens.length).toBe(2)
+    expect(auditNumbered.overallScore).toBe(100)
+    expect(auditNumbered.warningsZh).toEqual([])
+
+    // Partial GDD missing overview/goals/features and having bare UI screens without wireframes
+    const partialGdd = [
+      '# UI 布局设计',
+      '## 主界面',
+      '- 展示角色与按钮',
+      '# 数据与配置',
+      '- 待补充'
+    ].join('\n')
+    const beforeAudit = auditGameSystemDocument(partialGdd)
+    expect(beforeAudit.overallScore).toBeLessThan(100)
+
+    const fixed = autoCompleteGameSystemDocument(partialGdd, {
+      archetypeId: 'rpg_progression',
+      targetAspect: '16:9'
+    })
+    expect(fixed.changed).toBe(true)
+    const afterAudit = auditGameSystemDocument(fixed.text)
+    expect(afterAudit.overallScore).toBe(100)
+    expect(Object.values(afterAudit.sectionChecks).every(Boolean)).toBe(true)
+    expect(afterAudit.uiScreens.length).toBeGreaterThanOrEqual(2)
+    expect(afterAudit.uiScreens.every((s) => s.hasWireframe && s.hasPsdSpec)).toBe(true)
+    expect(afterAudit.warningsZh).toEqual([])
+
+    // Non-combat teaching/simulation GDD never injects combat/RPG/short-drama stats
+    expect(inferGameSystemArchetypeFromContext({ prompt: '中医药沉浸式虚拟交互教学空间' })).toBe(
+      'universal_full_ui'
+    )
+    const teachingFixed = autoCompleteGameSystemDocument('', {
+      customInstruction: '中医药沉浸式虚拟交互教学空间：经络穴位、药材辨识与实训考核',
+      targetAspect: '16:9'
+    })
+    expect(teachingFixed.text).not.toContain('sd_endure')
+    expect(teachingFixed.text).not.toContain('至尊黑卡')
+    expect(teachingFixed.text).not.toContain('角色境界突破')
+    expect(teachingFixed.text).not.toContain('寻访卡池')
+    expect(auditGameSystemDocument(teachingFixed.text).overallScore).toBe(100)
+
+    // Polluted legacy RPG/short-drama duplicate tail is detected and stripped cleanly
+    const pollutedGdd = [
+      numberedGdd,
+      '',
+      '# UI 布局设计',
+      '',
+      '## 4.1 角色境界突破与属性总览主界面（`ui_rpg_realm_main`）',
+      '- **界面规格**：界面形态 `screenKind: fullscreen` · 建议画幅比例 `aspectRatio: 16:9`',
+      '# 数据与配置',
+      '## 6.1 标准角色与宿敌属性配置表（源自经济系统工作台）',
+      '| 实体ID | 名称 | 稀有度 | 费用/阶位 | 核心属性明细 |',
+      '| :--- | :--- | :--- | :--- | :--- |',
+      '| `sd_endure` | 隐忍蛰伏·暗中布局 (铺垫) | common | 1 | dmg:0 / block:8 |'
+    ].join('\n')
+    const pollutedAudit = auditGameSystemDocument(pollutedGdd)
+    expect(pollutedAudit.overallScore).toBeLessThan(100)
+    expect(pollutedAudit.warningsZh.some((w) => w.includes('误追加'))).toBe(true)
+
+    const cleaned = autoCompleteGameSystemDocument(pollutedGdd, {
+      customInstruction: '中医药沉浸式虚拟交互教学空间'
+    })
+    expect(cleaned.changed).toBe(true)
+    expect(cleaned.text).not.toContain('sd_endure')
+    expect(cleaned.text).not.toContain('ui_rpg_realm_main')
+    expect(auditGameSystemDocument(cleaned.text).overallScore).toBe(100)
+  })
+
+  it('isolates TCM / non-combat game.numerical nodes from unrelated novel & economy nodes on the same canvas and outputs pure GDD domain tables', async () => {
+    const econNode = createNodeFromType('game.economy', 0, 0)
+    econNode.id = 'novel-econ'
+    econNode.title = '经济系统'
+    econNode.params.gameEconomyPreset = 'xianxia_lifespan_alchemy'
+
+    const outlineNode = createNodeFromType('novel.outline', 300, 0)
+    outlineNode.id = 'novel-outline'
+    outlineNode.title = '山海借命录·小说大纲'
+    outlineNode.params.novelTotalChapters = 200
+
+    const gddNode = createNodeFromType('asset.gameSystem', 0, 500)
+    gddNode.id = 'tcm-gdd'
+    gddNode.title = '中医药沉浸式虚拟教学系统·策划案'
+    gddNode.params.text =
+      '# 一、概述\n中医药沉浸式虚拟交互教学空间，含十二正经穴位实训与中药饮片鉴别。'
+
+    const initialGraph = normalizeGraph({
+      nodes: [econNode, outlineNode, gddNode],
+      edges: [
+        {
+          id: 'e-novel-1',
+          source: econNode.id,
+          sourcePort: 'out-text',
+          target: outlineNode.id,
+          targetPort: 'in-economy'
+        }
+      ],
+      groups: [],
+      runStates: {}
+    })
+
+    // Adding a TCM numerical node and connecting it ONLY to tcm-gdd must NOT auto-wire novel-econ or novel-outline!
+    const editRes = applyGraphEditOps(initialGraph, [
+      {
+        op: 'node_add',
+        nodeId: 'tcm-num',
+        typeId: 'game.numerical',
+        title: '中医药沉浸式教学系统·数值系统',
+        params: {
+          prompt: '生成中医十二正经取穴容差表、中药饮片剂量配伍表与端云交互性能阈值表'
+        }
+      },
+      {
+        op: 'edge_connect',
+        fromNodeId: 'tcm-num',
+        fromPort: 'out-text',
+        toNodeId: 'tcm-gdd',
+        toPort: 'in-numerical'
+      }
+    ])
+
+    const edgesTouchingTcmNum = editRes.graph.edges.filter(
+      (e) => e.source === 'tcm-num' || e.target === 'tcm-num'
+    )
+    expect(edgesTouchingTcmNum).toHaveLength(1)
+    expect(edgesTouchingTcmNum[0]?.target).toBe('tcm-gdd')
+    expect(
+      editRes.graph.edges.some((e) => e.source === 'novel-econ' && e.target === 'tcm-num')
+    ).toBe(false)
+
+    // Executing tcm-num on the mixed canvas produces pure TCM domain tables (zero 200-chapter / short-drama / SSR pollution)
+    const tcmNumNode = editRes.graph.nodes.find((n) => n.id === 'tcm-num')!
+    const numOut = await executeGameNumericalNode({
+      node: tcmNumNode,
+      inputs: {},
+      document: editRes.graph
+    })
+    const outText = numOut['out-text']
+    expect(outText?.kind).toBe('text')
+    const rawBundle = outText && outText.kind === 'text' ? outText.text : ''
+    const parsedBundle = JSON.parse(rawBundle)
+    expect(parsedBundle.subKind).toBe('domain_numerical_tables_bundle')
+    expect(parsedBundle.domainTables?.enabled).toBe(true)
+    expect(parsedBundle.domainTables?.domainId).toBe('tcm_virtual_teaching')
+    expect(parsedBundle.domainTables?.tables.length).toBeGreaterThanOrEqual(5)
+    expect(parsedBundle.domainTables?.tables.map((t: { id: string }) => t.id)).toEqual(
+      expect.arrayContaining([
+        'tcm_runtime_params',
+        'tcm_acupoint_rules',
+        'tcm_herb_catalog',
+        'tcm_exam_quota',
+        'tcm_data_schema'
+      ])
+    )
+
+    const unwrappedMd = unwrapEconomyBundleForGameSystem(rawBundle)
+    expect(unwrappedMd).toContain('十二正经核心腧穴三维定位与取穴实训容差配表')
+    expect(unwrappedMd).toContain('中药饮片三维鉴别、剂量区间与配伍禁忌权重表')
+    expect(unwrappedMd).toContain('LU7')
+    expect(unwrappedMd).toContain('十八反')
+    expect(unwrappedMd).not.toContain('sd_endure')
+    expect(unwrappedMd).not.toContain('标准角色与宿敌属性配置表')
+    expect(unwrappedMd).not.toContain('200 章')
+  })
+
+  it('enforces diegetic ("藏数于戏") numerical & economy translation in prompts, offline synthesis, and post-generation sanitizer', async () => {
+    expect(DEFAULT_NOVEL_SYSTEM_PROMPT_ZH).toContain('藏数于戏')
+    expect(DEFAULT_NOVEL_SYSTEM_PROMPT_ZH).toContain('严禁面板数字直出正文')
+
+    const wb = createMxWorkbenchPreset('short_drama_progression')
+    const slice36 = exportMxChapterNumericalSlice(wb, 36, 200)
+    expect(slice36.sliceMarkdown).toContain('藏数于戏·正文隐形转译红线')
+
+    const econSpec36 = exportMxEconomyResourceNarrativeSpec(
+      {
+        title: '山海借命录经济系统',
+        resources: [
+          { id: 'stone', name: '下品灵石' },
+          { id: 'life', name: '母子剩余阳寿' }
+        ],
+        nodes: [{ kind: 'Pool', label: '灵石囊', initial: 80 }]
+      },
+      { steps: 200, sourceSinkRatio: 1.58 },
+      { currentChapter: 36, totalChapters: 200 }
+    )
+    expect(econSpec36).toContain('藏数于戏·去报表化铁律')
+
+    const leakedExcerpt = [
+      '# 第36章：水牢伏击·血战突围',
+      '',
+      '沈砚立于风雪廊下，体内【第 1 阶·引气入体】的气机平稳流转（当前气血底蕴 `2519`、实测战力 `315`、护体底蕴 `204`，本章战力发挥上限锁定为 `91`）。【临界蓄满待发窗口】随身账册上的【下品/中品灵石】期初储备定格在 `119` 单位（映射全书经济仿真步 `Step 36/200` · 幕末前夜）。他运转【残缺药经·去毒提纯反手打脸 (第1卷反转)】与【林照月·青云内门剑帖与寒门同盟契 (势力倍增)】，按照 $E(t=36)$ 将根基（Lv.36/200）打磨圆融（契约反噬压力指数控制在 `91`）。'
+    ].join('\n')
+
+    const cleaned = sanitizeNovelChapterGeneratedText(leakedExcerpt)
+    expect(cleaned).not.toContain('当前气血底蕴')
+    expect(cleaned).not.toContain('2519')
+    expect(cleaned).not.toContain('映射全书经济仿真步')
+    expect(cleaned).not.toContain('Step 36/200')
+    expect(cleaned).not.toContain('临界蓄满待发窗口')
+    expect(cleaned).not.toContain('$E(t=36)$')
+    expect(cleaned).not.toContain('(第1卷反转)')
+    expect(cleaned).not.toContain('(势力倍增)')
+    expect(cleaned).not.toContain('(Lv.36/200)')
+    expect(cleaned).toContain('【残缺药经·去毒提纯】')
+    expect(cleaned).toContain('【林照月·青云内门剑帖与寒门同盟契】')
+    expect(DEFAULT_NOVEL_SYSTEM_PROMPT_ZH).toContain('跨章零复读')
+
+    const ch1Sample = [
+      '# 第1章：风雪催命·三日绝契',
+      '',
+      '朔风卷着鹅毛大雪拍打东崖药庐单薄的木窗，小泥炉上的粗陶药罐咕嘟冒着苦涩白气。',
+      '',
+      '夜色间隙里，沈砚下意识摸了摸腰间那只洗得发白的粗布药囊，囊底仅剩的几块下品灵石磕碰在一起发出清冷脆响。',
+      '',
+      '风雪拍打木窗，一行血字骤然映入眼帘！'
+    ].join('\n')
+    const ch2WithDup = [
+      '# 第2章：残经借息·古鼎微温',
+      '',
+      '沈砚指尖抚过泛黄残经，趁着风雪夜色悄然掩上药庐后院暗室的木门，取出巴掌大的青铜古药铫。',
+      '',
+      '夜色间隙里，沈砚下意识摸了摸腰间那只洗得发白的粗布药囊，囊底仅剩的几块下品灵石磕碰在一起发出清冷脆响。',
+      '',
+      '药铫底部浮现出一道指向断魂崖第三裂谷的微弱红芒，那是林听潮留下的血息烙印！'
+    ].join('\n')
+    const dedupedCh2 = deduplicateNovelParagraphsAgainstPrevious(ch2WithDup, ch1Sample)
+    expect(dedupedCh2).toContain('青铜古药铫')
+    expect(dedupedCh2).not.toContain('洗得发白的粗布药囊')
+    expect(dedupedCh2).toContain('指向断魂崖第三裂谷的微弱红芒')
   })
 })

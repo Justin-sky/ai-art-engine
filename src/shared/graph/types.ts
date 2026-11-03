@@ -1588,6 +1588,7 @@ export interface GraphNodeParams {
     | 'crafting_chain'
     | 'energy_stamina_timer'
     | 'short_drama_reversal_loop'
+    | 'xianxia_lifespan_alchemy'
   /** 游戏节点（game.economy）：单次模拟时间步数（Ticks，10..200，默认 50） */
   gameEconomySteps?: number
   /** 游戏节点（game.economy）：蒙特卡洛（Monte Carlo）批量随机模拟采样次数（5..200，默认 40） */

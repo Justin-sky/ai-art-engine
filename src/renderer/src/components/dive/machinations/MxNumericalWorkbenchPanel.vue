@@ -43,6 +43,7 @@ import {
   mxShouldUseEffectEngine,
   mxShouldUseEffectEngineForMana,
   MX_WORKBENCH_PRESETS,
+  resolveNovelChapterStageMeta,
   runMxArchetypeBalanceMatrix,
   runMxAscensionLadderAudit,
   runMxCombatKernelSimulation,
@@ -175,12 +176,38 @@ const dramaPreviewChapter = ref(1)
 const narrativeBriefMarkdown = computed(() => {
   const totalChaps = Math.max(
     10,
-    Math.min(5000, Math.round(wb.value.roguelikeEnvelope.levelMax || 80))
+    Math.min(5000, Math.round(wb.value.roguelikeEnvelope.levelMax || 200))
   )
   const curChap = Math.max(1, Math.min(totalChaps, Math.round(dramaPreviewChapter.value || 1)))
   const slice = exportMxChapterNumericalSlice(wb.value, curChap, totalChaps)
   return `${slice.sliceMarkdown}\n\n${exportMxNarrativeProgressionBrief(wb.value)}`
 })
+
+const isXianxiaWb = computed(() => {
+  const title = `${wb.value.multiplier.title} ${s.doc.value.title ?? ''}`
+  return /* cjk-ok */ /山海借命|修仙|仙侠|药经|借命契|丹道|修为/.test(title)
+})
+
+function getChapterStageMeta(lv: number) {
+  return resolveNovelChapterStageMeta(
+    lv,
+    wb.value.roguelikeEnvelope.levelMax || 200,
+    isXianxiaWb.value,
+    wb.value.roguelikeEnvelope.levelAscensionInterval || 20
+  )
+}
+
+function formatArcChapterSpan(floor: number): string {
+  const totalChaps = Math.max(10, Math.round(wb.value.roguelikeEnvelope.levelMax || 200))
+  const totalArcs = Math.max(4, Math.round(wb.value.roguelikeEnvelope.floors || 20))
+  const start = Math.max(1, Math.floor(((floor - 1) * totalChaps) / totalArcs) + 1)
+  const end = Math.min(totalChaps, Math.max(start, Math.floor((floor * totalChaps) / totalArcs)))
+  return isZh.value ? `第${start}~${end}章` : `Ch.${start}-${end}` // cjk-ok
+}
+
+function formatChapterLabel(level: number): string {
+  return isZh.value ? `第${level}章` : `Ch.${level}` // cjk-ok
+}
 
 function D(gameZh: string, gameEn: string, dramaZh: string, dramaEn: string): string {
   return isShortDramaMode.value ? L(dramaZh, dramaEn) : L(gameZh, gameEn)
@@ -188,10 +215,11 @@ function D(gameZh: string, gameEn: string, dramaZh: string, dramaEn: string): st
 
 function copyNarrativeBriefToClipboard(): void {
   const md = narrativeBriefMarkdown.value
+  const totalChaps = wb.value.roguelikeEnvelope.levelMax || 200
   navigator.clipboard?.writeText(md).catch(() => {})
   bridgeFeedback.value = L(
-    '📋 已复制《短剧/网文 80 集角色成长与爽点数值大纲》，可直接连线至「创建小说」或「创建剧本」节点', // cjk-ok
-    '📋 Copied 80-Episode Narrative Progression Brief for Novel / Screenplay nodes'
+    `📋 已复制《${totalChaps} 章角色成长与爽点数值大纲》，可直接连线至「创建小说」或「创建剧本」节点`, // cjk-ok
+    `📋 Copied ${totalChaps}-Chapter Narrative Progression Brief for Novel / Screenplay nodes`
   )
 }
 
@@ -2170,14 +2198,14 @@ const uiText = computed(() => ({
   tabEnvelope: D(
     '② 肉鸽战力包络', // cjk-ok
     '2. Roguelike Envelope',
-    '② 80集战力与卡点包络', // cjk-ok
-    '2. 80-Ep Power & Cliffhangers'
+    `② ${wb.value.roguelikeEnvelope.levelMax || 200}章战力与卡点包络`, // cjk-ok
+    `2. ${wb.value.roguelikeEnvelope.levelMax || 200}-Ch Power & Cliffhangers`
   ), // cjk-ok
   tabEnvelopeTip: D(
     '② 肉鸽战力包络 vs 怪物膨胀墙 & 进阶审计', // cjk-ok
     '2. Roguelike Envelope vs. Scaling Wall',
-    '② 80集主角成长包络 vs 反派跨阶威压墙 & 付费卡点审计', // cjk-ok
-    '2. 80-Ep Protagonist Growth vs. Villain Scaling Wall & Paywall Cliffhangers'
+    `② ${wb.value.roguelikeEnvelope.levelMax || 200}章主角成长包络 vs 反派跨阶威压墙 & 付费卡点审计`, // cjk-ok
+    `2. ${wb.value.roguelikeEnvelope.levelMax || 200}-Ch Protagonist Growth vs. Villain Scaling Wall & Paywall Cliffhangers`
   ),
   tabMultiplier: D(
     '③ 乘区与配表审计', // cjk-ok
@@ -2255,8 +2283,8 @@ const uiText = computed(() => ({
   floorCount: D(
     '总层数 / 波次', // cjk-ok
     'Total Floors / Waves',
-    '全剧冲突大幕数 (每幕4集)', // cjk-ok
-    'Conflict Chapters (4 Ep/ea)'
+    `全书冲突大幕数 (每幕${Math.max(1, Math.round((wb.value.roguelikeEnvelope.levelMax || 200) / Math.max(1, wb.value.roguelikeEnvelope.floors || 20)))}章)`, // cjk-ok
+    `Conflict Arcs (${Math.max(1, Math.round((wb.value.roguelikeEnvelope.levelMax || 200) / Math.max(1, wb.value.roguelikeEnvelope.floors || 20)))} Ch/ea)`
   ), // cjk-ok
   playerBase: D('初始构筑战力', 'Player Base Power', '主角开局身价/实力', 'Protagonist Init Power'), // cjk-ok
   synergyRate: D(
@@ -2465,7 +2493,12 @@ const uiText = computed(() => ({
     '中位/慢热追完天数', // cjk-ok
     'P50 / P90 Finish Days'
   ), // cjk-ok
-  colDay30Rate: D('首月30天毕业率%', '30d Grad %', '全剧80集完播率%', '80-Ep Completion %'), // cjk-ok
+  colDay30Rate: D(
+    '首月30天毕业率%', // cjk-ok
+    '30d Grad %',
+    `全书${wb.value.roguelikeEnvelope.levelMax || 200}章完读率%`, // cjk-ok
+    `${wb.value.roguelikeEnvelope.levelMax || 200}-Ch Completion %`
+  ), // cjk-ok
   colChurnRisk: D('非酋流失风险', 'Churn Risk', '卡点弃剧风险', 'Drop-Off Risk'), // cjk-ok
   riskLow: L('留存健康', 'Low Risk'), // cjk-ok
   riskMod: L('中度卡点', 'Moderate'), // cjk-ok
@@ -2542,19 +2575,29 @@ const uiText = computed(() => ({
     'Compile current formulas, budget curve, gacha pity & A0-A20 scaling into engine runtime code'
   ),
   tabLevelCurve: D(
-    'Lv.1~80 角色突破成长表', // cjk-ok
-    'Lv.1–80 Progression & Ascension',
-    '第1~80集 角色身份蜕变表', // cjk-ok
-    'Ep.1–80 Identity Progression'
+    `Lv.1~${wb.value.roguelikeEnvelope.levelMax || 80} 角色突破成长表`, // cjk-ok
+    `Lv.1–${wb.value.roguelikeEnvelope.levelMax || 80} Progression & Ascension`,
+    `第1~${wb.value.roguelikeEnvelope.levelMax || 200}章 角色境界与身份蜕变表`, // cjk-ok
+    `Ch.1–${wb.value.roguelikeEnvelope.levelMax || 200} Realm & Identity Progression`
   ), // cjk-ok
-  lvMaxLbl: D('满级上限', 'Max Lv', '总集数上限', 'Total Eps'), // cjk-ok
-  lvGrowthLbl: D('每级成长%', 'Growth%/Lv', '每集身价成长%', 'Growth%/Ep'), // cjk-ok
-  lvAscIntervalLbl: D('突破间隔', 'Asc Interval', '大高潮集距', 'Climax Interval'), // cjk-ok
-  lvAscBonusLbl: D('突破跃迁%', 'Asc Bonus%', '身份揭晓跃迁%', 'Reveal Jump%'), // cjk-ok
+  lvMaxLbl: D('满级上限', 'Max Lv', '总章/集数上限', 'Total Chaps'), // cjk-ok
+  lvGrowthLbl: D('每级成长%', 'Growth%/Lv', '每章成长%', 'Growth%/Ch'), // cjk-ok
+  lvAscIntervalLbl: D('突破间隔', 'Asc Interval', '大境界突破章距', 'Realm Interval'), // cjk-ok
+  lvAscBonusLbl: D('突破跃迁%', 'Asc Bonus%', '破境跃迁%', 'Breakthrough Jump%'), // cjk-ok
   lvXpExpLbl: D('经验指数', 'XP Exp', '爽点膨胀指数', 'Climax Exp'), // cjk-ok
-  lvShowAllBtn: D('展开全等级', 'All Levels', '展开全80集', 'All 80 Eps'), // cjk-ok
-  lvShowMilestonesBtn: D('仅里程碑', 'Milestones', '仅关键卡点集', 'Key Climax Eps'), // cjk-ok
-  colLvPhase: D('等级 / 突破阶', 'Level / Phase', '剧集 / 身份蜕变阶', 'Episode / Identity Stage'), // cjk-ok
+  lvShowAllBtn: D(
+    '展开全等级', // cjk-ok
+    'All Levels',
+    `展开全${wb.value.roguelikeEnvelope.levelMax || 200}章`, // cjk-ok
+    `All ${wb.value.roguelikeEnvelope.levelMax || 200} Chs`
+  ), // cjk-ok
+  lvShowMilestonesBtn: D('仅里程碑', 'Milestones', '仅突破关键章', 'Key Breakthrough Chs'), // cjk-ok
+  colLvPhase: D(
+    '等级 / 突破阶', // cjk-ok
+    'Level / Phase',
+    '章节 / 分卷与境界阶位', // cjk-ok
+    'Chapter / Volume & Realm'
+  ),
   colLvAtkHpDef: D(
     'HP / ATK / DEF',
     'HP / ATK / DEF',
@@ -2818,8 +2861,8 @@ const uiText = computed(() => ({
   tabCardLabMainTip: D(
     '⑤ 卡牌与单局实验室 (DSL效果引擎 · 博弈树AI · 单局经济 · 自动配平)', // cjk-ok
     '5. Card & Run Lab (DSL · AI · Economy · Calibration)',
-    '⑤ 剧情连招与爽点实验室 (底牌脚本 · 最佳打脸顺序求解 · 80集经济闭环 · 自动配平)', // cjk-ok
-    '5. Plot Combo & Climax Lab (Trump DSL · Optimal Slap Solver · 80-Ep Economy)'
+    `⑤ 剧情连招与爽点实验室 (底牌脚本 · 最佳打脸顺序求解 · ${wb.value.roguelikeEnvelope.levelMax || 200}章经济闭环 · 自动配平)`, // cjk-ok
+    `5. Plot Combo & Climax Lab (Trump DSL · Optimal Slap Solver · ${wb.value.roguelikeEnvelope.levelMax || 200}-Ch Economy)`
   ),
   aiPromptToggleBtn: L('🪄 AI 一句话生成/改表', '🪄 AI Prompt / Patch'), // cjk-ok
   presetExportMenuBtn: L('📦 预设与导出', '📦 Presets & Export'), // cjk-ok
@@ -2889,9 +2932,15 @@ const uiText = computed(() => ({
     'Audience Drop Risk%'
   ), // cjk-ok
   colBossNote: D('机制压测诊断', 'Mechanism Diagnosis', '爽点承接诊断', 'Climax Pacing Diagnosis'), // cjk-ok
-  dramaViewTag: L('短剧数值视图:', 'Short-Drama View:'), // cjk-ok
-  dramaBtnLadder: L('第1~80集身份蜕变阶梯', 'Ep.1-80 Identity Ladder'), // cjk-ok
-  dramaBtnWall: L('20幕正反派威压与付费卡点', '20-Act Villain Wall & Paywall'), // cjk-ok
+  dramaViewTag: L('小说/短剧数值视图:', 'Novel/Drama View:'), // cjk-ok
+  dramaBtnLadder: L(
+    `第1~${wb.value.roguelikeEnvelope.levelMax || 200}章境界与身份阶梯`, // cjk-ok
+    `Ch.1-${wb.value.roguelikeEnvelope.levelMax || 200} Realm Ladder`
+  ),
+  dramaBtnWall: L(
+    `${wb.value.roguelikeEnvelope.floors || 20}幕正反派威压与付费卡点`, // cjk-ok
+    `${wb.value.roguelikeEnvelope.floors || 20}-Act Villain Wall & Paywall`
+  ),
   dramaBtnTrumps: L('主角成长乘区与6大打脸底牌', 'Growth Multiplier & 6 Trump Cards'), // cjk-ok
   dramaBtnClimaxSim: L('名场面逐幕反转推演', 'Scene-by-Scene Climax Sim'), // cjk-ok
   dramaBtnEncounters: L('奇遇贵人凑4大靠山 & 付费转化', '4-Tycoon Backing & Paywall Funnel'), // cjk-ok
@@ -5250,7 +5299,7 @@ const uiText = computed(() => ({
             <input
               type="number"
               min="5"
-              max="40"
+              max="200"
               class="mx-wb-input"
               :value="wb.roguelikeEnvelope.floors"
               @input="
@@ -5643,7 +5692,12 @@ const uiText = computed(() => ({
               }"
               @click="selectedEnvelopeFloor = pt.floor"
             >
-              <td class="mx-mono">{{ pt.isBoss ? `★F${pt.floor}` : `F${pt.floor}` }}</td>
+              <td class="mx-mono">
+                {{ pt.isBoss ? `★F${pt.floor}` : `F${pt.floor}` }}
+                <span v-if="isShortDramaMode" class="mx-wb-tag" style="margin-left: 4px">
+                  {{ formatArcChapterSpan(pt.floor) }}
+                </span>
+              </td>
               <td class="mx-mono">
                 <span v-if="pt.roomType === 'campfire'" class="mx-wb-tag is-good">🔥Camp</span>
                 <span v-else-if="pt.roomType === 'shop'" class="mx-wb-tag is-good">💰Shop</span>
@@ -5815,10 +5869,30 @@ const uiText = computed(() => ({
                 }"
               >
                 <td class="mx-mono">
-                  <strong>Lv.{{ r.level }}</strong>
-                  <span class="mx-wb-tag is-good" style="margin-left: 4px"
-                    >★A{{ r.ascensionStage }}</span
-                  >
+                  <template v-if="isShortDramaMode">
+                    <strong>{{ formatChapterLabel(r.level) }}</strong>
+                    <span class="mx-wb-tag" style="margin-left: 4px">
+                      {{
+                        isZh
+                          ? getChapterStageMeta(r.level).volumeBadgeZh
+                          : getChapterStageMeta(r.level).volumeBadgeEn
+                      }}
+                    </span>
+                    <span class="mx-wb-tag is-good" style="margin-left: 4px">
+                      {{ r.isBreakthrough ? '★' : ''
+                      }}{{
+                        isZh
+                          ? getChapterStageMeta(r.level).realmNameZh
+                          : getChapterStageMeta(r.level).realmNameEn
+                      }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    <strong>Lv.{{ r.level }}</strong>
+                    <span class="mx-wb-tag is-good" style="margin-left: 4px"
+                      >★A{{ r.ascensionStage }}</span
+                    >
+                  </template>
                 </td>
                 <td class="mx-mono">{{ r.hp }} / {{ r.atk }} / {{ r.def }}</td>
                 <td class="mx-mono">{{ r.xpRequired }} / {{ r.cumulativeXp }}</td>

@@ -5336,6 +5336,38 @@ export default {
       splitLogTitle: 'Split selected layer · {name}',
       splitLogStart: 'Decompose layer “{layer}” further',
       splitLogDone: 'Split into {n} layers and added a group',
+      repairLogTitle: 'AI repair layer · {name}',
+      repairLogStart: 'AI-repairing layer “{layer}”…',
+      repairLogDone: 'AI-repaired layer “{layer}”',
+      aiRepairBtn: '🤖 AI Fix',
+      aiRepairRunning: '⏳ Fixing…',
+      aiRepairProgress: 'Calling image model to repair “{layer}” (see Execution Log for details)…',
+      aiRepairFailed: 'AI repair failed: {error}',
+      repairPanelTitle: '🖌️ Layer Brush & AI Repair',
+      repairBasePanelTitle: '🖌️ Base Brush & AI Inpaint',
+      soloLayerBtn: '👁 Solo',
+      soloLayerTip:
+        'Preview only the selected layer on stage to inspect and repair occluded areas (does not change exported visibility)',
+      brushEraseBtn: '🧹 Erase',
+      brushEraseTip: 'Drag on canvas to erase stray pixels on selected layer',
+      brushHealBaseBtn: '🧽 Heal',
+      brushHealBaseTip:
+        'Drag on base plate to heal shadow/glow residue smoothly using surrounding background pixels',
+      brushRestoreBtn: '✨ Restore',
+      brushRestoreTip: 'Drag on canvas to restore missing pixels from source image',
+      brushRestoreBaseTip: 'Drag on base plate to restore pixels from the original source image',
+      fillHolesBtn: '🩹 Fill',
+      fillHolesTip: 'Fill internal transparent holes on selected layer',
+      brushRadiusLabel: 'Radius {n}px',
+      aiRepairPlaceholder: 'Prompt to AI-repair this layer (blank = auto inpaint)',
+      aiRepairBasePlaceholder: 'Prompt to AI-repair base plate (blank = auto clean residue)',
+      brushHealBaseActive:
+        'Base heal brush active: drag over residue to blend with surrounding background (toggle "👁 Solo" to inspect unobstructed)',
+      brushEraseActive: 'Erase brush active: drag on selected layer to erase stray pixels',
+      brushRestoreActive:
+        'Restore brush active: drag on selected layer to restore pixels from source',
+      fillHolesNone: 'No internal closed holes detected on selected layer',
+      fillHolesDone: 'Filled internal holes on “{layer}”',
       collapseGroup: 'Collapse group',
       expandGroup: 'Expand group',
       hideGroup: 'Hide group',
@@ -5369,7 +5401,20 @@ export default {
       deleteLayerDone: 'Deleted selected layer',
       mergeDown: 'Merge down',
       mergeDownHint: 'Merge the selected layer into the foreground layer directly below it',
-      mergeDownDone: 'Merged down into “{name}”'
+      mergeDownDone: 'Merged down into “{name}”',
+      explode2d: '💥 2D Explode',
+      explode2dHint:
+        '2D Planar Exploded View: arrange base plate and split foreground chunks into a flat grid or radial layout (scroll to zoom, drag to pan)',
+      explode2dTiled: '⊞ Tiled',
+      explode2dTiledHint:
+        'Tiled flat-lay: arrange all split chunks without overlap in hierarchy order',
+      explode2dRadial: '✳ Radial',
+      explode2dRadialHint:
+        'Radial 2D explode: push overlapping chunks outward around original UI anchors with leader lines',
+      explode2dGap: 'Gap',
+      explode2dGapHint: 'Adjust planar spacing between 2D exploded chunks',
+      explodeLabels: '🏷️ Labels',
+      explodeLabelsHint: 'Show or hide layer name and size badges in exploded view'
     },
     uiGen: {
       hint: 'Batch-generates Game UI screens directly on the canvas (Dual-Track: text preview + 100% layout-aligned textless base plate) or double-click to dive into the per-screen subgraph; feeds clean base plates directly into UI Layer Split for PSD export',
@@ -5965,6 +6010,7 @@ export default {
       numericalOut: 'Numerical',
       novelOutlineOut: 'Outline',
       novelChapterOut: 'Next chap',
+      outAll: 'All chapters',
       types: {
         image: 'Image',
         images: 'Images',

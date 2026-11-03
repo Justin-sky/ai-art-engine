@@ -2596,7 +2596,7 @@ export interface MxRoguelikeEnvelopeResult {
 export function runMxRoguelikeEnvelopeSimulation(
   cfg: MxRoguelikeEnvelopeConfig
 ): MxRoguelikeEnvelopeResult {
-  const floors = Math.max(5, Math.min(40, Math.round(cfg.floors || 15)))
+  const floors = Math.max(5, Math.min(200, Math.round(cfg.floors || 15)))
   const runs = Math.max(20, Math.min(2000, Math.round(cfg.runs || 300)))
   const baseSeed = cfg.seed || 2026
 
@@ -3705,6 +3705,139 @@ export interface MxLevelProgressionResult {
   milestones: GameLevelCurveRow[]
 }
 
+export interface NovelChapterStageMeta {
+  chapter: number
+  maxChapter: number
+  volumeIndex: number
+  totalVolumes: number
+  volumeRange: [number, number]
+  volumeBadgeZh: string
+  volumeBadgeEn: string
+  realmStageIndex: number
+  realmNameZh: string
+  realmNameEn: string
+}
+
+const XIANXIA_200_VOLUME_BADGES_ZH = [
+  '第一卷·凡尘借命', // cjk-ok
+  '第二卷·青云丹争', // cjk-ok
+  '第三卷·太虚古印', // cjk-ok
+  '第四卷·执道山海' // cjk-ok
+]
+const XIANXIA_200_VOLUME_BADGES_EN = [
+  'Vol.1 Mortal Debt',
+  'Vol.2 Sect Alchemy',
+  'Vol.3 Primordial Seal',
+  'Vol.4 Dao Reckoning'
+]
+const GENERAL_VOLUME_BADGES_ZH = [
+  '第一卷·潜龙蛰伏', // cjk-ok
+  '第二卷·锋芒立威', // cjk-ok
+  '第三卷·跨界破局', // cjk-ok
+  '第四卷·登顶清算' // cjk-ok
+]
+const GENERAL_VOLUME_BADGES_EN = [
+  'Vol.1 Hidden Dragon',
+  'Vol.2 First Strike',
+  'Vol.3 Cross-Realm Clash',
+  'Vol.4 Final Reckoning'
+]
+
+const XIANXIA_REALM_LADDER_ZH = [
+  '凡尘采药徒', // cjk-ok
+  '引气入体', // cjk-ok
+  '凝脉筑炉', // cjk-ok
+  '筑基丹师', // cjk-ok
+  '紫府真人', // cjk-ok
+  '金丹大道', // cjk-ok
+  '元婴真君', // cjk-ok
+  '化神尊者', // cjk-ok
+  '合体天君', // cjk-ok
+  '渡劫执道' // cjk-ok
+]
+const XIANXIA_REALM_LADDER_EN = [
+  'Mortal Herbalist',
+  'Qi Sensing',
+  'Meridian Forging',
+  'Foundation Alchemist',
+  'Violet Palace',
+  'Golden Core',
+  'Nascent Soul',
+  'Spirit Severing',
+  'Dao Integration',
+  'Tribulation Lord'
+]
+
+const URBAN_REALM_LADDER_ZH = [
+  '受辱蛰伏期', // cjk-ok
+  '金手指觉醒', // cjk-ok
+  '黑市第一桶金', // cjk-ok
+  '区县立威', // cjk-ok
+  '江城新贵', // cjk-ok
+  '省域巨擘', // cjk-ok
+  '豪门洗牌', // cjk-ok
+  '京都博弈', // cjk-ok
+  '跨国财阀', // cjk-ok
+  '只手遮天' // cjk-ok
+]
+const URBAN_REALM_LADDER_EN = [
+  'Enduring Underdog',
+  'System Awakening',
+  'First Fortune',
+  'District Rising',
+  'City Tycoon',
+  'Provincial Titan',
+  'Clan Reshuffle',
+  'Capital Gambit',
+  'Global Syndicate',
+  'Supreme Sovereign'
+]
+
+/**
+ * 为任意章节 `1..maxChapter`（特别是 200 章完整四卷八境/十阶体系）解算所属分卷与境界/身份阶位标签。
+ */
+export function resolveNovelChapterStageMeta(
+  chapter: number,
+  maxChapter = 200,
+  isXianxia = true,
+  ascensionInterval = 20
+): NovelChapterStageMeta {
+  const total = Math.max(10, Math.round(maxChapter || 200))
+  const ch = Math.max(1, Math.min(total, Math.round(chapter || 1)))
+  const totalVolumes = total <= 60 ? 2 : total <= 120 ? 3 : 4
+  const chPerVol = Math.max(1, Math.ceil(total / totalVolumes))
+  const volumeIndex = Math.min(totalVolumes, Math.floor((ch - 1) / chPerVol) + 1)
+  const volStart = (volumeIndex - 1) * chPerVol + 1
+  const volEnd = Math.min(total, volumeIndex * chPerVol)
+
+  const volIdx0 = Math.min(3, volumeIndex - 1)
+  const volumeBadgeZh = isXianxia
+    ? (XIANXIA_200_VOLUME_BADGES_ZH[volIdx0] ?? `第${volumeIndex}卷`) // cjk-ok
+    : (GENERAL_VOLUME_BADGES_ZH[volIdx0] ?? `第${volumeIndex}卷`) // cjk-ok
+  const volumeBadgeEn = isXianxia
+    ? (XIANXIA_200_VOLUME_BADGES_EN[volIdx0] ?? `Vol.${volumeIndex}`)
+    : (GENERAL_VOLUME_BADGES_EN[volIdx0] ?? `Vol.${volumeIndex}`)
+
+  const interval = Math.max(5, Math.round(ascensionInterval || Math.round(total / 10)))
+  const stageIdx = Math.floor((ch - 1) / interval)
+  const ladderZh = isXianxia ? XIANXIA_REALM_LADDER_ZH : URBAN_REALM_LADDER_ZH
+  const ladderEn = isXianxia ? XIANXIA_REALM_LADDER_EN : URBAN_REALM_LADDER_EN
+  const clampedIdx = Math.min(ladderZh.length - 1, Math.max(0, stageIdx))
+
+  return {
+    chapter: ch,
+    maxChapter: total,
+    volumeIndex,
+    totalVolumes,
+    volumeRange: [volStart, volEnd],
+    volumeBadgeZh,
+    volumeBadgeEn,
+    realmStageIndex: stageIdx,
+    realmNameZh: ladderZh[clampedIdx]!,
+    realmNameEn: ladderEn[clampedIdx]!
+  }
+}
+
 /**
  * 角色/武器等级与突破成长曲线生成器（Lv.1 ~ Lv.Max Progression & Ascension Breakthrough Table）：
  * 結合基础属性、每级复合成长率与突破阶跃加成（如每 20 级突破一次），生成完整的等级属性、经验需求、金币消耗与体力养成天数配表。
@@ -3717,7 +3850,7 @@ export function generateMxLevelProgressionTable(
   const rawInterval = Math.max(5, Math.min(500, Math.round(cfg.levelAscensionInterval ?? 20)))
   // 当用户动态设置超大章节/等级上限（如 800 章、2000 章）时，自适应缩放突破周期与单级复合增长率，防止数值指数溢出
   const ascInterval =
-    maxLv > 160 && rawInterval <= 30 ? Math.max(rawInterval, Math.round(maxLv / 10)) : rawInterval
+    maxLv > 300 && rawInterval <= 30 ? Math.max(rawInterval, Math.round(maxLv / 10)) : rawInterval
   const effectiveExponentSpan = Math.min(100, maxLv - 1)
   const ascBonusPct = Math.max(0, Math.min(100, Number(cfg.levelAscensionBonusPct ?? 18))) / 100
   const xpExp = Math.max(1.05, Math.min(3.0, Number(cfg.levelXpExponent ?? 1.55)))
@@ -5560,6 +5693,40 @@ export function exportWorkbenchToGameDataTables(wb: MxNumericalWorkbench): GameD
 
 // ───────────────────────────── 5. 统一工作台文档结构与五大旗舰预设 ─────────────────────────────
 
+export interface MxDomainTableColumn {
+  key: string
+  label: string
+  unit?: string
+  kind?: 'text' | 'number' | 'range' | 'enum'
+}
+
+export interface MxDomainDataTable {
+  id: string
+  title: string
+  category: string
+  description: string
+  formulaHint?: string
+  columns: MxDomainTableColumn[]
+  rows: Array<Record<string, string | number>>
+}
+
+export interface MxDomainFormulaRule {
+  id: string
+  name: string
+  expression: string
+  threshold: string
+  description: string
+}
+
+export interface MxDomainNumericalSuite {
+  enabled: boolean
+  domainId: string
+  title: string
+  summary: string
+  formulas: MxDomainFormulaRule[]
+  tables: MxDomainDataTable[]
+}
+
 export interface MxNumericalWorkbench {
   activePresetId: MxWorkbenchPresetId
   multiplier: MxMultiplierPipelineConfig
@@ -5568,6 +5735,8 @@ export interface MxNumericalWorkbench {
   roguelikeEnvelope: MxRoguelikeEnvelopeConfig
   /** 卡牌数值设计实验室：敌人/意图/遭遇/遗物/卡池表 + 单局经济闭环参数（可选） */
   designLab?: MxCardDesignLabConfig
+  /** 策划案专属业务/教学/仿真数值配表工作台（非战斗/非小说模式，可选） */
+  domainTables?: MxDomainNumericalSuite
 }
 
 export const MX_WORKBENCH_PRESETS: Array<{
@@ -5616,12 +5785,12 @@ export const MX_WORKBENCH_PRESETS: Array<{
   },
   {
     id: 'short_drama_progression',
-    nameZh: '🎬《逆袭爽剧 / 系统流》80集角色成长、反派阶梯与打脸底牌', // cjk-ok
-    nameEn: 'Short Drama / System Progression (80-Ep Character & Villain Arc)',
+    nameZh: '🎬《长篇小说 / 逆袭爽剧》200章角色成长、境界阶梯与打脸底牌', // cjk-ok
+    nameEn: 'Novel & Short Drama (200-Ch Character, Realm & Villain Arc)',
     descZh:
-      '主角身价/境界乘区防崩坏 + 80集四阶反派膨胀墙(小混混→豪门→京都→财阀) + 名场面打脸底牌交锋 + 付费卡点转化', // cjk-ok
+      '主角境界/身价乘区防崩坏 + 200章四卷十阶反派膨胀墙(微末→豪门→宗门→终局) + 名场面打脸底牌交锋 + 付费卡点转化', // cjk-ok
     descEn:
-      'Protagonist realm/wealth multiplier, 80-episode 4-tier villain scaling wall, climax trump cards & paywall funnel'
+      'Protagonist realm/wealth multiplier, 200-chapter 4-volume villain scaling wall, climax trump cards & paywall funnel'
   }
 ]
 
@@ -7136,7 +7305,7 @@ export function createMxWorkbenchPreset(
           bossEveryNWave: 5,
           bossDifficultyMult: 1.38,
           metaBonusPerRunPct: 6,
-          levelMax: 80,
+          levelMax: 200,
           levelStatGrowthPct: 4.5,
           levelAscensionInterval: 20,
           levelAscensionBonusPct: 22
@@ -7556,7 +7725,243 @@ export function normalizeMxNumericalWorkbench(raw: unknown): MxNumericalWorkbenc
       r.roguelikeEnvelope && typeof r.roguelikeEnvelope === 'object'
         ? { ...base.roguelikeEnvelope, ...r.roguelikeEnvelope }
         : base.roguelikeEnvelope,
-    ...(r.designLab && typeof r.designLab === 'object' ? { designLab: r.designLab } : {})
+    ...(r.designLab && typeof r.designLab === 'object' ? { designLab: r.designLab } : {}),
+    ...(r.domainTables && typeof r.domainTables === 'object'
+      ? { domainTables: r.domainTables }
+      : {})
+  }
+}
+
+/**
+ * 创建《山海借命录》（200章四卷十阶·修仙借命与丹道反杀）完整生命周期专属数值工作台：
+ *  - 第1~200章完整等级与修真十阶突破曲线（levelMax = 200, levelAscensionInterval = 20）
+ *  - 20大冲突幕（每幕10章，第5/10/15/20幕对应第50/100/150/200章四卷终局大高潮Boss战）
+ *  - 四维核心乘区（修为根基 × 残缺药经丹道倍率 + 寒门同盟权重）× 燃命破契爆发倍率 - 宗门借命契压迫阻力
+ *  - 四卷分阶段准入底牌与9大修真奇遇池
+ */
+export function createXianxia200LifespanWorkbench(): MxNumericalWorkbench {
+  const base = createMxWorkbenchPreset('short_drama_progression')
+  return {
+    ...base,
+    activePresetId: 'short_drama_progression',
+    multiplier: {
+      ...base.multiplier,
+      presetId: 'short_drama_progression',
+      title: '《山海借命录》200章修为乘区与借命底牌审计 (Realm × Alchemy × Alliance × Lifespan)', // cjk-ok
+      attributes: [
+        {
+          id: 'sd_realm',
+          name: 'BaseRealm',
+          label: '沈砚修为根基/药道境界', // cjk-ok
+          value: 28,
+          min: 1,
+          max: 800,
+          stepPerBudget: 10
+        },
+        {
+          id: 'sd_sys',
+          name: 'SystemMult',
+          label: '残缺药经/丹道提纯倍率', // cjk-ok
+          value: 1.65,
+          min: 1,
+          max: 20,
+          stepPerBudget: 0.35
+        },
+        {
+          id: 'sd_back',
+          name: 'FactionBacking',
+          label: '寒门同盟/林照月护道权重', // cjk-ok
+          value: 20,
+          min: 0,
+          max: 400,
+          stepPerBudget: 7
+        },
+        {
+          id: 'sd_hum',
+          name: 'HumiliationStack',
+          label: '燃命破契/护母逆鳞倍率', // cjk-ok
+          value: 1.7,
+          min: 1,
+          max: 6,
+          stepPerBudget: 0.25
+        },
+        {
+          id: 'sd_sup',
+          name: 'VillainSuppression',
+          label: '宗门借命契/宿敌威压阻力', // cjk-ok
+          value: 12,
+          min: 0,
+          max: 250,
+          stepPerBudget: 0
+        }
+      ],
+      entities: [
+        {
+          id: 'sd_endure',
+          name: '断魂崖百草辨药·隐忍蛰伏 (第1卷铺垫)', // cjk-ok
+          cost: 1,
+          rarity: 'common',
+          tags: ['skill', 'setup'],
+          stats: { dmg: 0, block: 8, draw: 1, vuln: 0, str: 1, energy: 0 }
+        },
+        {
+          id: 'sd_evidence',
+          name: '残缺药经·去毒提纯反手打脸 (第1卷反转)', // cjk-ok
+          cost: 1,
+          rarity: 'common',
+          tags: ['attack', 'reversal'],
+          stats: { dmg: 7, block: 0, draw: 0, vuln: 2, str: 0, energy: 0 }
+        },
+        {
+          id: 'sd_blackcard',
+          name: '黑市九转续命丹·垄断药石竞价 (第2卷立威)', // cjk-ok
+          cost: 2,
+          rarity: 'uncommon',
+          tags: ['attack', 'wealth'],
+          stats: { dmg: 13, block: 6, draw: 0, vuln: 0, str: 0, energy: 0 }
+        },
+        {
+          id: 'sd_tycoon_kneel',
+          name: '寒门同盟·林照月剑阵护道接驾 (第2~3卷人脉)', // cjk-ok
+          cost: 2,
+          rarity: 'rare',
+          tags: ['attack', 'backing'],
+          stats: { dmg: 12, block: 0, draw: 1, vuln: 1, str: 0, energy: 0 }
+        },
+        {
+          id: 'sd_system_awakening',
+          name: '燃命破契·百倍药力暴击冲关 (第3卷高潮卡点)', // cjk-ok
+          cost: 0,
+          rarity: 'rare',
+          tags: ['skill', 'climax'],
+          stats: { dmg: 0, block: 0, draw: 2, vuln: 0, str: 2, energy: 1 }
+        },
+        {
+          id: 'sd_true_identity',
+          name: '终极底牌·山海借命总纲与古印清算 (第4卷终局)', // cjk-ok
+          cost: 3,
+          rarity: 'legendary',
+          tags: ['attack', 'finisher'],
+          stats: { dmg: 18, block: 0, draw: 0, vuln: 1, str: 1, energy: 0 }
+        }
+      ]
+    },
+    lootRoll: {
+      ...base.lootRoll,
+      draftWaves: 10,
+      draftPool: [
+        {
+          id: 'sd_dp1',
+          name: '残缺药经·第一页借息术 (第1卷核心)', // cjk-ok
+          rarity: 'uncommon',
+          baseWeight: 18,
+          tags: ['backing'],
+          unique: false,
+          addPower: 18,
+          multPower: 1.24
+        },
+        {
+          id: 'sd_dp2',
+          name: '九转淬火提纯法·废丹化灵丹 (丹道乘区)', // cjk-ok
+          rarity: 'uncommon',
+          baseWeight: 28,
+          tags: ['wealth'],
+          unique: false,
+          addPower: 22,
+          multPower: 1.26
+        },
+        {
+          id: 'sd_dp3',
+          name: '林照月·青云内门剑帖与寒门同盟契 (势力倍增)', // cjk-ok
+          rarity: 'rare',
+          baseWeight: 14,
+          tags: ['backing'],
+          unique: true,
+          addPower: 32,
+          multPower: 1.48
+        },
+        {
+          id: 'sd_dp4',
+          name: '地火药鼎·寒髓真火种 (越级反杀)', // cjk-ok
+          rarity: 'uncommon',
+          baseWeight: 16,
+          tags: ['backing', 'combat'],
+          unique: false,
+          addPower: 20,
+          multPower: 1.22
+        },
+        {
+          id: 'sd_dp5',
+          name: '山海借命总纲·九幽黄泉印 (第4卷终局底牌)', // cjk-ok
+          rarity: 'legendary',
+          baseWeight: 10,
+          tags: ['wealth', 'climax'],
+          unique: true,
+          prerequisiteIds: ['sd_dp2'],
+          addPower: 46,
+          multPower: 1.72
+        },
+        {
+          id: 'sd_dp6',
+          name: '断魂崖百年血参王 (前期启动)', // cjk-ok
+          rarity: 'common',
+          baseWeight: 32,
+          tags: ['wealth'],
+          unique: false,
+          addPower: 13,
+          multPower: 1.06
+        },
+        {
+          id: 'sd_dp7',
+          name: '百草堂执事令与借命血账铁证 (舆论反转)', // cjk-ok
+          rarity: 'common',
+          baseWeight: 30,
+          tags: ['evidence'],
+          unique: false,
+          addPower: 15,
+          multPower: 1.12
+        },
+        {
+          id: 'sd_dp8',
+          name: '林听潮遗留·黑市密令与太虚引气诀 (境界暴涨)', // cjk-ok
+          rarity: 'uncommon',
+          baseWeight: 26,
+          tags: ['realm'],
+          unique: false,
+          addPower: 20,
+          multPower: 1.2
+        },
+        {
+          id: 'sd_dp9',
+          name: '太虚古印·半枚残印与破契血书 (名场面铺垫)', // cjk-ok
+          rarity: 'common',
+          baseWeight: 28,
+          tags: ['climax'],
+          unique: false,
+          addPower: 16,
+          multPower: 1.14
+        }
+      ]
+    },
+    roguelikeEnvelope: {
+      ...base.roguelikeEnvelope,
+      floors: 20,
+      runs: 300,
+      seed: 2026,
+      playerBasePower: 34,
+      baseAddPerFloor: 14,
+      synergyHitRatePct: 40,
+      synergyMultPerHit: 1.26,
+      enemyBasePower: 28,
+      enemyGrowthRate: 1.21,
+      bossEveryNWave: 5,
+      bossDifficultyMult: 1.38,
+      metaBonusPerRunPct: 6,
+      levelMax: 200,
+      levelStatGrowthPct: 4.5,
+      levelAscensionInterval: 20,
+      levelAscensionBonusPct: 22
+    }
   }
 }
 
@@ -7566,6 +7971,7 @@ export function normalizeMxNumericalWorkbench(raw: unknown): MxNumericalWorkbenc
 export function mapMxTemplateToWorkbenchPreset(templateId?: string): MxWorkbenchPresetId {
   switch (templateId) {
     case 'short_drama_reversal_loop':
+    case 'xianxia_lifespan_alchemy':
       return 'short_drama_progression'
     case 'balatro_ante_jokers':
       return 'balatro_roguelike'
@@ -7593,7 +7999,7 @@ export function inferMxWorkbenchPresetFromPrompt(
   const p = (prompt ?? '').toLowerCase()
   if (!p.trim()) return fallback
   if (
-    /* cjk-ok */ /short\s*drama|micro\s*drama|短剧|爽剧|逆袭|打脸|系统流|神豪|战神|赘婿|重生|女频|豪门|退婚|反派阶梯|付费卡点/.test(
+    /* cjk-ok */ /short\s*drama|micro\s*drama|novel|短剧|爽剧|逆袭|打脸|系统流|神豪|战神|赘婿|重生|女频|豪门|退婚|反派阶梯|付费卡点|小说|长篇|山海借命|借命契|残缺药经|\d+\s*章/.test(
       p
     )
   ) {
@@ -7644,17 +8050,22 @@ export function synthesizeMxWorkbenchFromPrompt(
   prompt: string,
   fallbackPresetId: MxWorkbenchPresetId = 'slay_the_spire_dbg'
 ): MxNumericalWorkbench {
-  const presetId = inferMxWorkbenchPresetFromPrompt(prompt, fallbackPresetId)
-  const wb = createMxWorkbenchPreset(presetId)
   const raw = (prompt ?? '').trim()
+  const presetId = inferMxWorkbenchPresetFromPrompt(raw, fallbackPresetId)
+  const isXianxiaLifespan = /* cjk-ok */ /山海借命|借命契|残缺药经|沈砚|续命丹/.test(raw)
+  const wb = isXianxiaLifespan
+    ? createXianxia200LifespanWorkbench()
+    : createMxWorkbenchPreset(presetId)
   if (!raw) return wb
 
-  // 1. 解析层数 / 底注数 / 波次数（例如 "8底注" / "12层" / "20波" / "10 antes" / "18 floors"）
-  const floorMatch = /(\d{1,2})\s*(?:个)?(?:底注|盲注|层|波|关|antes?|floors?|waves?)/i.exec(raw) // cjk-ok
+  // 1. 解析层数 / 底注数 / 波次数 / 大幕数（例如 "8底注" / "12层" / "20波" / "20幕" / "10 antes" / "18 floors"）
+  const floorRe =
+    /* cjk-ok */ /(\d{1,3})\s*(?:个|大)?(?:底注|盲注|层|波|关|幕|antes?|floors?|waves?)/i
+  const floorMatch = floorRe.exec(raw)
   if (floorMatch?.[1]) {
-    const f = Math.max(4, Math.min(40, Number(floorMatch[1])))
+    const f = Math.max(4, Math.min(200, Number(floorMatch[1])))
     wb.roguelikeEnvelope.floors = f
-    wb.lootRoll.draftWaves = f
+    wb.lootRoll.draftWaves = Math.min(40, f)
   }
 
   // 2. 解析基础筹码 Chips（例如 "筹码 150" / "150 chips"）
@@ -7699,10 +8110,13 @@ export function synthesizeMxWorkbenchFromPrompt(
     wb.lootRoll.softPityStart = Math.max(5, Math.round(pityVal * 0.78))
   }
 
-  // 7. 解析角色满级上限（例如 "满级90" / "Lv.100" / "等级上限60"）
-  const lvMaxMatch = /(?:满级|等级上限|lv\.?\s*max|max\s*level)\s*[:：=]?\s*(\d{2,3})/i.exec(raw) // cjk-ok
-  if (lvMaxMatch?.[1]) {
-    wb.roguelikeEnvelope.levelMax = Math.max(10, Math.min(100, Number(lvMaxMatch[1])))
+  // 7. 解析角色满级上限 / 小说总章节上限（例如 "满级90" / "Lv.100" / "200章" / "80集"）
+  const lvMaxRegex =
+    /(?:满级|等级上限|总章数|总集数|lv\.?\s*max|max\s*level)\s*[:：=]?\s*(\d{2,4})|(\d{2,4})\s*(?:章|集|chapters?|episodes?)/i // cjk-ok
+  const lvMaxMatch = lvMaxRegex.exec(raw)
+  const parsedLvMax = Number(lvMaxMatch?.[1] ?? lvMaxMatch?.[2])
+  if (Number.isFinite(parsedLvMax) && parsedLvMax >= 10) {
+    wb.roguelikeEnvelope.levelMax = Math.max(10, Math.min(5000, parsedLvMax))
   }
 
   // 8A. 内置高保真主题包（修仙 / 赛博 / 克苏鲁 / 三国武侠 / 自走棋酒馆 / 漫威三路战区 / 三国杀响应 / 深海料理）
@@ -9960,6 +10374,8 @@ export interface MxChapterNumericalSlice {
   protagonistDef: number
   powerCeiling: number
   villainPressure: number
+  arcPeakVillainPressure?: number
+  trumpCooldownStatusZh?: string
   survivalRatePct: number
   isBossArc: boolean
   isDifficultyWallArc: boolean
@@ -9978,21 +10394,25 @@ export interface MxChapterNumericalSlice {
 
 const PRISTINE_PRESET_ENTITY_IDS = new Map<string, string>()
 
+function buildWorkbenchEntitySignature(wb: MxNumericalWorkbench): string {
+  const entSig = wb.multiplier.entities.map((e) => `${e.id}:${e.name}`).join('|')
+  const poolSig = wb.lootRoll.draftPool.map((d) => `${d.id}:${d.name}`).join('|')
+  return `${wb.multiplier.title}::${entSig}::${poolSig}`
+}
+
 /**
  * 经济系统是否仍为「未修改实体配表」的内置预设：
  * 是则小说流派可以用自身的解锁物 / 奇遇池替代游戏卡牌名称；
- * 用户自定义过实体后则尊重用户配表。
+ * 用户自定义过实体或使用专属 200 章借命体系后则严格尊重工作台配表。
  */
 export function isMxWorkbenchPristinePreset(wb: MxNumericalWorkbench): boolean {
   const presetId = wb.activePresetId
   let sig = PRISTINE_PRESET_ENTITY_IDS.get(presetId)
   if (sig === undefined) {
-    sig = createMxWorkbenchPreset(presetId)
-      .multiplier.entities.map((e) => e.id)
-      .join('|')
+    sig = buildWorkbenchEntitySignature(createMxWorkbenchPreset(presetId))
     PRISTINE_PRESET_ENTITY_IDS.set(presetId, sig)
   }
-  return wb.multiplier.entities.map((e) => e.id).join('|') === sig
+  return buildWorkbenchEntitySignature(wb) === sig
 }
 
 function usesGenreItems(
@@ -10047,16 +10467,33 @@ export function exportMxChapterNumericalSlice(
   )
   const curChap = Math.max(1, Math.min(dynTotal, Math.round(chapterIndex || 1)))
 
-  const totalVolumes =
-    dynTotal <= 60
+  const isXianxiaLifespanWb = /山海借命|借命契|续命丹|残缺药经/.test(wb.multiplier.title || '') // cjk-ok
+  const xianxiaStageMeta = isXianxiaLifespanWb
+    ? resolveNovelChapterStageMeta(
+        curChap,
+        dynTotal,
+        true,
+        wb.roguelikeEnvelope.levelAscensionInterval || 20
+      )
+    : null
+
+  const totalVolumes = xianxiaStageMeta
+    ? xianxiaStageMeta.totalVolumes
+    : dynTotal <= 60
       ? Math.max(2, Math.ceil(dynTotal / 15))
       : dynTotal <= 160
         ? Math.max(3, Math.ceil(dynTotal / 20))
         : Math.min(12, Math.max(4, Math.round(dynTotal / 100)))
   const chaptersPerVolume = Math.max(1, Math.ceil(dynTotal / totalVolumes))
-  const volumeIndex = Math.min(totalVolumes, Math.floor((curChap - 1) / chaptersPerVolume) + 1)
-  const volumeStart = (volumeIndex - 1) * chaptersPerVolume + 1
-  const volumeEnd = Math.min(dynTotal, volumeIndex * chaptersPerVolume)
+  const volumeIndex = xianxiaStageMeta
+    ? xianxiaStageMeta.volumeIndex
+    : Math.min(totalVolumes, Math.floor((curChap - 1) / chaptersPerVolume) + 1)
+  const volumeStart = xianxiaStageMeta
+    ? xianxiaStageMeta.volumeRange[0]
+    : (volumeIndex - 1) * chaptersPerVolume + 1
+  const volumeEnd = xianxiaStageMeta
+    ? xianxiaStageMeta.volumeRange[1]
+    : Math.min(dynTotal, volumeIndex * chaptersPerVolume)
 
   const VOLUME_THEMES_ZH = genre?.volumeThemesZh?.length
     ? genre.volumeThemesZh
@@ -10074,7 +10511,9 @@ export function exportMxChapterNumericalSlice(
     VOLUME_THEMES_ZH.length - 1,
     Math.floor(((volumeIndex - 1) / Math.max(1, totalVolumes - 1)) * (VOLUME_THEMES_ZH.length - 1))
   )
-  const volumeTitleZh = `第 ${volumeIndex} 卷【${VOLUME_THEMES_ZH[themeIdx]}】(第 ${volumeStart}~${volumeEnd} 章)` // cjk-ok
+  const volumeTitleZh = xianxiaStageMeta
+    ? `第 ${volumeIndex} 卷【${xianxiaStageMeta.volumeBadgeZh}】(第 ${volumeStart}~${volumeEnd} 章)` // cjk-ok
+    : `第 ${volumeIndex} 卷【${VOLUME_THEMES_ZH[themeIdx]}】(第 ${volumeStart}~${volumeEnd} 章)` // cjk-ok
 
   const totalArcs = Math.max(4, wb.roguelikeEnvelope.floors || 16)
   const arcIndex = Math.min(
@@ -10128,7 +10567,35 @@ export function exportMxChapterNumericalSlice(
   const powerCeiling = Math.round(
     prevArcRow.playerP50 + (arcRow.playerP50 - prevArcRow.playerP50) * progressInArc
   )
-  const villainPressure = arcRow.enemyPower
+  const arcPeakVillainPressure = arcRow.enemyPower
+  const prevArcEnemyPower =
+    arcIndex > 1
+      ? (envRes.floorSeries[arcIndex - 2]?.enemyPower ?? Math.round(arcPeakVillainPressure * 0.72))
+      : Math.round(arcPeakVillainPressure * 0.68)
+  const villainPressure =
+    chapterBeatType === 'climax_reversal_slap'
+      ? arcPeakVillainPressure
+      : chapterBeatType === 'villain_suppression_cliffhanger'
+        ? Math.round(arcPeakVillainPressure * 1.04)
+        : chapterBeatType === 'encounter_growth'
+          ? Math.round(
+              prevArcEnemyPower +
+                (arcPeakVillainPressure - prevArcEnemyPower) * (0.52 + 0.35 * progressInArc)
+            )
+          : Math.round(
+              prevArcEnemyPower +
+                (arcPeakVillainPressure - prevArcEnemyPower) * (0.3 + 0.35 * progressInArc)
+            )
+  const isPostClimaxCooldown = curChap === arcStart && arcIndex > 1
+  const trumpCooldownStatusZh = isPostClimaxCooldown
+    ? `【高潮反噬与调息冷却窗口 (Cooldown Active)】上一章（第 ${curChap - 1} 章）刚爆发幕末底牌清算，本章处于秘术反噬、经脉调息与战后潜藏窗口，严禁连续两章无消耗开大秒杀。` // cjk-ok
+    : chapterBeatType === 'setup_endure'
+      ? `【蓄势敛息窗口】底牌处于暗中蓄能态，本章仅允许试探性动用基础手段，禁止提前亮出压箱底杀招。` // cjk-ok
+      : chapterBeatType === 'encounter_growth'
+        ? `【局部激活窗口】准许动用初期准入底牌或新获奇遇信物小试锋芒，核心杀招仍须留有余力。` // cjk-ok
+        : chapterBeatType === 'villain_suppression_cliffhanger'
+          ? `【临界蓄满待发窗口】面对反派峰值压迫（${villainPressure}），底牌蓄势已达临界点，可在章末最后一刻起手引而不发。` // cjk-ok
+          : `【全功率解封爆发窗口】准许按最优乘区序列全额引爆本阶段准入底牌，彻底击穿反派压迫墙（下章将转入反噬冷却期）。` // cjk-ok
   const isBossArc = Boolean(arcRow.isBoss)
   const isDifficultyWallArc = envRes.difficultyWallFloors.includes(arcRow.floor)
 
@@ -10145,10 +10612,11 @@ export function exportMxChapterNumericalSlice(
         '第 7 阶·执棋造浪者', // cjk-ok
         '第 8 阶·当世无冕王' // cjk-ok
       ]
-  const realmStageIndex = lvRow.ascensionStage
-  const realmStageLabelZh =
-    REALM_NAMES_ZH[Math.min(REALM_NAMES_ZH.length - 1, realmStageIndex)] ??
-    `第 ${realmStageIndex} 阶·蜕变境` // cjk-ok
+  const realmStageIndex = xianxiaStageMeta ? xianxiaStageMeta.realmStageIndex : lvRow.ascensionStage
+  const realmStageLabelZh = xianxiaStageMeta
+    ? `第 ${xianxiaStageMeta.realmStageIndex} 阶·${xianxiaStageMeta.realmNameZh}` // cjk-ok
+    : (REALM_NAMES_ZH[Math.min(REALM_NAMES_ZH.length - 1, realmStageIndex)] ??
+      `第 ${realmStageIndex} 阶·蜕变境`) // cjk-ok
 
   const rarityRank: Record<string, number> = {
     common: 1,
@@ -10184,10 +10652,12 @@ export function exportMxChapterNumericalSlice(
     `- **所属大卷篇章**: ${volumeTitleZh}`, // cjk-ok
     `- **所属冲突单元**: 第 \`${arcIndex}/${totalArcs}\` 幕 (覆盖第 \`${arcStart}~${arcEnd}\` 章 · 本章为幕内第 \`${curChap - arcStart + 1}/${arcSpan}\` 章)${isBossArc ? ' 🔥【本幕为大高潮Boss决战幕】' : isDifficultyWallArc ? ' ⚠️【本幕为反派高压受挫反转幕】' : ''}`, // cjk-ok
     `- **本章戏剧节拍指令**: **${chapterBeatLabelZh}** (\`${chapterBeatType}\`)`, // cjk-ok
-    `- **本章战力与境界天花板 (严禁越界)**: 主角当前境界 **${realmStageLabelZh}**${lvRow.isBreakthrough ? ' ★【本章触发大境界/新身份蜕变突破！】' : ''} · 气场底蕴(HP) \`${lvRow.hp}\` / 实力(ATK) \`${lvRow.atk}\` / 护城河(DEF) \`${lvRow.def}\` · **本章战力发挥上限 \`${powerCeiling}\`** vs **本幕反派压迫阈值 \`${villainPressure}\`** (正面胜算 \`${arcRow.survivalRatePct}%\`)`, // cjk-ok
+    `- **本章战力与境界天花板 (严禁越界)**: 主角当前境界 **${realmStageLabelZh}**${lvRow.isBreakthrough ? ' ★【本章触发大境界/新身份蜕变突破！】' : ''} · 气场底蕴(HP) \`${lvRow.hp}\` / 实力(ATK) \`${lvRow.atk}\` / 护城河(DEF) \`${lvRow.def}\` · **本章战力发挥上限 \`${powerCeiling}\`** vs **本章反派动态压迫阈值 \`${villainPressure}\`** (本幕宿敌峰值 \`${arcPeakVillainPressure}\` · 正面胜算 \`${arcRow.survivalRatePct}%\`)`, // cjk-ok
+    `- **⏳ 底牌冷却与反噬时间窗口 (Temporal Trump State)**: ${trumpCooldownStatusZh}`, // cjk-ok
     `- **✅ 本章准入可用底牌/手段 (Allowed Trumps)**: ${allowedTrumpCards.length ? allowedTrumpCards.map((c) => `【${c}】`).join('、') : '基础隐忍与话术周旋'}`, // cjk-ok
     `- **🔒 封存禁用的后期终局底牌 (Locked Trumps — 本章严禁提前亮出)**: ${lockedEndgameTrumps.length ? lockedEndgameTrumps.map((c) => `【${c}】`).join('、') : '已全部解锁（终局决战阶段）'}`, // cjk-ok
     `- **🎁 本章推荐埋设/触发的奇遇与伏笔信物**: 【${recommendedEncounterItem}】`, // cjk-ok
+    `- **🎭 藏数于戏·正文隐形转译红线 (Show, Don't Tell Numbers)**: 以上气血/战力/上限/压迫数值、窗口标签及括号内的卷幕批注（如 \`(第1卷反转)\`）均为幕后导演标尺，**严禁在小说正文中直接写出任何面板数字、乘区术语或带括号的系统词条名**，必须自然化作人物气机交锋、经脉负荷与器物细节融入剧情！`, // cjk-ok
     ...(genre
       ? [
           `- **📖 流派语义映射 (${genre.labelZh})**: 「境界」=${genre.stageTermZh}；「战力」=${genre.protagonistAxisZh}；「反派压迫」=${genre.antagonistAxisZh}；「底牌」=${genre.unlockTermZh}；「奇遇信物」=${genre.encounterTermZh}` // cjk-ok
@@ -10215,6 +10685,8 @@ export function exportMxChapterNumericalSlice(
     protagonistDef: lvRow.def,
     powerCeiling,
     villainPressure,
+    arcPeakVillainPressure,
+    trumpCooldownStatusZh,
     survivalRatePct: arcRow.survivalRatePct,
     isBossArc,
     isDifficultyWallArc,
@@ -10241,9 +10713,302 @@ export interface UnwrapEconomyNarrativeOptions {
   genre?: NovelGenreProfile
 }
 
+export interface MxEconomyNarrativeDocMeta {
+  title?: string
+  description?: string
+  resources?: Array<{ id?: string; name?: string; maxStack?: number }>
+  nodes?: Array<{
+    label?: string
+    kind?: string
+    resourceId?: string
+    initial?: number
+    capacity?: number
+    rateExpr?: string
+    pullMode?: string
+  }>
+}
+
+export interface MxEconomyNarrativeForecastMeta {
+  runs?: number
+  steps?: number
+  sourceSinkRatio?: number
+}
+
+export interface MxChapterEconomySlice {
+  chapterIndex: number
+  totalChapters: number
+  arcIndex: number
+  totalArcs: number
+  mappedSimulationStep: number
+  totalSimulationSteps: number
+  primaryCurrencyName: string
+  lifespanOrCostName: string
+  openingReserve: number
+  inflowQuota: number
+  mandatoryDrain: number
+  closingReserveTarget: number
+  contractPressureIndex: number
+  economyBeatType:
+    'deficit_procurement' | 'refining_conversion' | 'debt_wall_overdraft' | 'climax_settlement_loot'
+  economyBeatLabelZh: string
+  chapterDirectiveZh: string
+}
+
+const NARRATIVE_ECONOMY_RESOURCE_NOUN_RE =
+  /([^\s，。；：、（）()【】《》\x22“”]{1,6}(?:灵石|丹药|药材|仙草|灵草|寿元|阳寿|生机|命火|气血|真元|灵力|功德|香火|符箓|阵盘|法宝|晶核|金币|银两|铜钱|能源|算力|物资|粮食|贡献点))/g // cjk-ok
+
+/**
+ * 逐章时间完备经济系统切片器（Time-Complete Chapter Economy Dynamical Slice $E(t)$，$\forall t \in [1, T]$）：
+ * 将 `game.economy` 的离散时间动力系统方程 $R(t) = R(t-1) + I(t) - D(t)$ 精确映射到每一章 $t$，
+ * 解算第 $t$ 章的仿真步映射点 $s(t)$、期初资源池储备 $R(t-1)$、单章产出配额 $I(t)$、刚性消耗与契约抽成 $D(t)$、
+ * 期末目标结余 $R(t)$ 以及幕内四拍经济行为指令（赤字筹措 ➔ 炼制转化 ➔ 契约催缴卡点 ➔ 战利品清算回血）。
+ */
+export function exportMxChapterEconomySlice(
+  docMeta: MxEconomyNarrativeDocMeta,
+  forecastMeta?: MxEconomyNarrativeForecastMeta,
+  options?: UnwrapEconomyNarrativeOptions
+): MxChapterEconomySlice {
+  const dynTotal = Math.max(1, Math.min(5000, Math.round(options?.totalChapters || 200)))
+  const curChap = Math.max(1, Math.min(dynTotal, Math.round(options?.currentChapter || 1)))
+  const totalArcs = 20
+  const arcIndex = Math.min(
+    totalArcs,
+    Math.max(1, Math.floor(((curChap - 1) / Math.max(1, dynTotal)) * totalArcs) + 1)
+  )
+  const arcStart = Math.max(1, Math.floor(((arcIndex - 1) * dynTotal) / totalArcs) + 1)
+  const arcEnd = Math.min(
+    dynTotal,
+    Math.max(arcStart, Math.floor((arcIndex * dynTotal) / totalArcs))
+  )
+  const arcSpan = Math.max(1, arcEnd - arcStart + 1)
+  const progressInArc = arcSpan <= 1 ? 1 : (curChap - arcStart) / (arcSpan - 1)
+
+  const totalSimulationSteps = Math.max(10, Math.round(forecastMeta?.steps || 20))
+  const mappedSimulationStep = Number(
+    (1 + ((curChap - 1) / Math.max(1, dynTotal - 1)) * (totalSimulationSteps - 1)).toFixed(2)
+  )
+
+  const resources = Array.isArray(docMeta.resources) ? docMeta.resources : []
+  const descText = `${docMeta.title ?? ''} ${docMeta.description ?? ''}`
+  const customNouns: string[] = []
+  let m: RegExpExecArray | null
+  const nounRe = new RegExp(NARRATIVE_ECONOMY_RESOURCE_NOUN_RE.source, 'g')
+  while ((m = nounRe.exec(descText)) !== null) {
+    const tk = m[1]?.trim()
+    if (tk && !customNouns.includes(tk)) customNouns.push(tk)
+  }
+  const allResNames = Array.from(
+    new Set([
+      ...customNouns,
+      ...resources.map((r) => (r.name || r.id || '').trim()).filter(Boolean)
+    ])
+  )
+  const primaryCurrencyName =
+    allResNames.find((n) => /灵石|金币|银两|铜钱|晶核|资金|物资/.test(n)) || // cjk-ok
+    allResNames[0] ||
+    '下品灵石与药材' // cjk-ok
+  const lifespanOrCostName =
+    allResNames.find((n) => /寿元|阳寿|生机|命火|气血|代价/.test(n)) || // cjk-ok
+    allResNames[1] ||
+    '阳寿寿元与气血代价' // cjk-ok
+
+  const pools = (Array.isArray(docMeta.nodes) ? docMeta.nodes : []).filter(
+    (n) => (n.kind === 'Pool' || n.kind === 'pool') && typeof n.initial === 'number'
+  )
+  const initialSeed = pools[0]?.initial && pools[0].initial > 0 ? pools[0].initial : 60
+  const ratio =
+    typeof forecastMeta?.sourceSinkRatio === 'number' &&
+    Number.isFinite(forecastMeta.sourceSinkRatio)
+      ? Math.max(0.6, Math.min(2.5, forecastMeta.sourceSinkRatio))
+      : 1.08
+
+  // 逐章递推 t = 1..curChap 的离散时间动力系统状态 R(t) = max(8, R(t-1) + I(t) - D(t))
+  let reserve = initialSeed
+  let openingReserve = initialSeed
+  let inflowQuota = 20
+  let mandatoryDrain = 18
+  for (let k = 1; k <= curChap; k++) {
+    openingReserve = reserve
+    const kArc = Math.min(
+      totalArcs,
+      Math.max(1, Math.floor(((k - 1) / Math.max(1, dynTotal)) * totalArcs) + 1)
+    )
+    const kArcStart = Math.max(1, Math.floor(((kArc - 1) * dynTotal) / totalArcs) + 1)
+    const kArcEnd = Math.min(
+      dynTotal,
+      Math.max(kArcStart, Math.floor((kArc * dynTotal) / totalArcs))
+    )
+    const kSpan = Math.max(1, kArcEnd - kArcStart + 1)
+    const kProg = kSpan <= 1 ? 1 : (k - kArcStart) / (kSpan - 1)
+    const scaleMult = Math.pow(1.14, kArc - 1)
+
+    if (kProg >= 0.82 || (k === kArcEnd && kSpan > 1)) {
+      // 幕末高潮：重注消耗底牌代价 + 击溃宿敌战利品清算回血
+      inflowQuota = Math.round(28 * scaleMult * Math.min(1.35, ratio))
+      mandatoryDrain = Math.round(22 * scaleMult)
+    } else if (kProg >= 0.55) {
+      // 绝境卡点：契约催缴与反派资源封锁，入不敷出逼入透支临界
+      inflowQuota = Math.round(12 * scaleMult)
+      mandatoryDrain = Math.round(24 * scaleMult)
+    } else if (kProg >= 0.25) {
+      // 炼制转化：采集/交易与药经试药转化，收支微幅顺差蓄能
+      inflowQuota = Math.round(20 * scaleMult * Math.min(1.25, ratio))
+      mandatoryDrain = Math.round(16 * scaleMult)
+    } else {
+      // 幕初筹措：上一幕高潮刚消耗大量储备，需承接日常维护与筹措
+      inflowQuota = Math.round(15 * scaleMult)
+      mandatoryDrain = Math.round(15 * scaleMult)
+    }
+    reserve = Math.max(8, openingReserve + inflowQuota - mandatoryDrain)
+  }
+  const closingReserveTarget = reserve
+  const contractPressureIndex = Math.round(
+    (25 + arcIndex * 12) * (progressInArc >= 0.55 && progressInArc < 0.82 ? 1.25 : 1.0)
+  )
+
+  let economyBeatType: MxChapterEconomySlice['economyBeatType'] = 'deficit_procurement'
+  let economyBeatLabelZh = '幕初·赤字筹措与采集负重期' // cjk-ok
+  let chapterDirectiveZh = `主角期初【${primaryCurrencyName}】储备仅 \`${openingReserve}\` 单位（刚性消耗/抽成 \`${mandatoryDrain}\` 单位），必须通过采药、外门杂役或悬赏筹措资源（本章获取上限 \`${inflowQuota}\` 单位），严禁凭空暴富。` // cjk-ok
+
+  if (progressInArc >= 0.82 || (curChap === arcEnd && arcSpan > 1)) {
+    economyBeatType = 'climax_settlement_loot'
+    economyBeatLabelZh = '幕末高潮·代价爆发与战利品清算回血期' // cjk-ok
+    chapterDirectiveZh = `主角支付【${lifespanOrCostName}】与资源重注（消耗 \`${mandatoryDrain}\` 单位）引爆准入底牌破局，并在战后清算本幕反派战利品（回血上限 \`${inflowQuota}\` 单位，期末结余升至 \`${closingReserveTarget}\` 单位）。` // cjk-ok
+  } else if (progressInArc >= 0.55) {
+    economyBeatType = 'debt_wall_overdraft'
+    economyBeatLabelZh = '幕末前夜·契约催缴与资源封锁透支卡点期' // cjk-ok
+    chapterDirectiveZh = `反派封锁资源渠道并强行催缴契约/抽成（本章刚性消耗高达 \`${mandatoryDrain}\` 单位 > 正常产出 \`${inflowQuota}\` 单位，契约反噬压力指数 \`${contractPressureIndex}\`），主角储备跌至谷底 \`${closingReserveTarget}\`，被迫押上【${lifespanOrCostName}】背水一战。` // cjk-ok
+  } else if (progressInArc >= 0.25) {
+    economyBeatType = 'refining_conversion'
+    economyBeatLabelZh = '幕中·试药炼制转化与等价情报交易期' // cjk-ok
+    chapterDirectiveZh = `利用转化枢纽（如药经辨药试药、炼丹或盟友等价交易）将采集到的原料转化为破局筹码（本章产出上限 \`${inflowQuota}\` 单位，损耗 \`${mandatoryDrain}\` 单位，期末储备 \`${closingReserveTarget}\` 单位）。` // cjk-ok
+  }
+
+  return {
+    chapterIndex: curChap,
+    totalChapters: dynTotal,
+    arcIndex,
+    totalArcs,
+    mappedSimulationStep,
+    totalSimulationSteps,
+    primaryCurrencyName,
+    lifespanOrCostName,
+    openingReserve,
+    inflowQuota,
+    mandatoryDrain,
+    closingReserveTarget,
+    contractPressureIndex,
+    economyBeatType,
+    economyBeatLabelZh,
+    chapterDirectiveZh
+  }
+}
+
+/**
+ * 从 `game.economy` 的 `machinations_economy_bundle` 提取专属【全书经济系统与核心资源供需法则（含逐章时间完备切片 $E(t)$）】：
+ * 区分于 `game.numerical` 的战力/境界包络，专门约束小说全生命周期 $t \in [1, T]$ 的货币/灵石/药材/寿元等资源的产出（Source）、
+ * 消耗代价（Drain）、炼制转化（Converter）、稀缺度通胀比（Source/Sink Ratio）以及第 $t$ 章的定量收支预算锁。
+ */
+export function exportMxEconomyResourceNarrativeSpec(
+  docMeta: MxEconomyNarrativeDocMeta,
+  forecastMeta?: MxEconomyNarrativeForecastMeta,
+  options?: UnwrapEconomyNarrativeOptions
+): string {
+  const resources = Array.isArray(docMeta.resources) ? docMeta.resources : []
+  const nodes = Array.isArray(docMeta.nodes) ? docMeta.nodes : []
+  const descText = `${docMeta.title ?? ''} ${docMeta.description ?? ''}`
+  const customResourceNouns: string[] = []
+  let m: RegExpExecArray | null
+  const nounRe = new RegExp(NARRATIVE_ECONOMY_RESOURCE_NOUN_RE.source, 'g')
+  while ((m = nounRe.exec(descText)) !== null) {
+    const token = m[1]?.trim()
+    if (token && !customResourceNouns.includes(token)) {
+      customResourceNouns.push(token)
+    }
+  }
+
+  if (resources.length === 0 && nodes.length === 0 && customResourceNouns.length === 0) {
+    return ''
+  }
+
+  const resNames = resources.map((r) => (r.name || r.id || '').trim()).filter(Boolean)
+  const mergedResList = Array.from(new Set([...customResourceNouns, ...resNames])).slice(0, 8)
+
+  const pools = nodes.filter((n) => (n.kind === 'Pool' || n.kind === 'pool') && n.label)
+  const sources = nodes.filter((n) => (n.kind === 'Source' || n.kind === 'source') && n.label)
+  const drains = nodes.filter((n) => (n.kind === 'Drain' || n.kind === 'drain') && n.label)
+  const converters = nodes.filter(
+    (n) => (n.kind === 'Converter' || n.kind === 'converter') && n.label
+  )
+
+  const ratio =
+    typeof forecastMeta?.sourceSinkRatio === 'number' &&
+    Number.isFinite(forecastMeta.sourceSinkRatio)
+      ? Number(forecastMeta.sourceSinkRatio.toFixed(2))
+      : 1.08
+
+  const scarcityTag =
+    ratio <= 1.05
+      ? '紧缩稀缺型（入不敷出，每一笔资源获取都伴随高昂风险与代价）' // cjk-ok
+      : ratio <= 1.25
+        ? '动态紧平衡型（以战养战，突破与炼制消耗迫使主角不断涉险开拓新资源点）' // cjk-ok
+        : '扩张积累型（阶段性暴富后遭遇高阶资源壁垒与大额消耗水槽）' // cjk-ok
+
+  const lines: string[] = [
+    `### 💰 【全书经济系统与核心资源供需法则 (Economy Resource Flow & Scarcity Rules)】`, // cjk-ok
+    `- **核心流通资源与硬通货**: ${mergedResList.length > 0 ? mergedResList.join('、') : '灵石、药材、丹药、寿元/气血代价'}`, // cjk-ok
+    `- **宏观供需通胀比 (Source/Sink Ratio)**: \`${ratio}\` —— **${scarcityTag}**` // cjk-ok
+  ]
+
+  if (pools.length > 0) {
+    const poolSummary = pools
+      .slice(0, 6)
+      .map((p) => {
+        const cap =
+          typeof p.capacity === 'number' && p.capacity > 0 ? `上限 ${p.capacity}` : '无硬上限' // cjk-ok
+        return `【${p.label}】（初始 ${p.initial ?? 0} / ${cap}）` // cjk-ok
+      })
+      .join('、')
+    lines.push(`- **资源储备池 (Resource Pools)**: ${poolSummary}`) // cjk-ok
+  }
+  if (sources.length > 0) {
+    const srcSummary = sources
+      .slice(0, 5)
+      .map((s) => `【${s.label}】${s.rateExpr ? `(${s.rateExpr})` : ''}`)
+      .join('、')
+    lines.push(`- **资源产出源 (Sources / 机缘获取途径)**: ${srcSummary}`) // cjk-ok
+  }
+  if (drains.length > 0) {
+    const drainSummary = drains
+      .slice(0, 5)
+      .map((d) => `【${d.label}】${d.rateExpr ? `(${d.rateExpr})` : ''}`)
+      .join('、')
+    lines.push(`- **资源消耗与代价水槽 (Drains / 突破与动用底牌代价)**: ${drainSummary}`) // cjk-ok
+  }
+  if (converters.length > 0) {
+    const convSummary = converters
+      .slice(0, 5)
+      .map((c) => `【${c.label}】`)
+      .join('、')
+    lines.push(`- **资源炼制与转化枢纽 (Converters / 交易与炼丹炼器)**: ${convSummary}`) // cjk-ok
+  }
+
+  if (options?.currentChapter && options.currentChapter >= 1) {
+    const econSlice = exportMxChapterEconomySlice(docMeta, forecastMeta, options)
+    lines.push(
+      `- **⏱️ 第 ${econSlice.chapterIndex}/${econSlice.totalChapters} 章时间完备经济切片 $E(t=${econSlice.chapterIndex})$（映射仿真步 \`Step ${econSlice.mappedSimulationStep}/${econSlice.totalSimulationSteps}\` · ${econSlice.economyBeatLabelZh}）**:`, // cjk-ok
+      `  - **定量收支预算锁**: 期初储备 \`${econSlice.openingReserve}\` ➔ 本章获取上限 \`+${econSlice.inflowQuota}\` / 刚性消耗与抽成 \`-${econSlice.mandatoryDrain}\` ➔ 期末目标结余 \`${econSlice.closingReserveTarget}\`（契约/代价反噬压力指数 \`${econSlice.contractPressureIndex}\`）`, // cjk-ok
+      `  - **本章经济叙事执行铁律**: ${econSlice.chapterDirectiveZh}`, // cjk-ok
+      `  - **🎭 藏数于戏·去报表化铁律**: 严禁在小说正文中出现 \`Step ${econSlice.mappedSimulationStep}\`、\`$E(t=${econSlice.chapterIndex})$\`、\`${econSlice.openingReserve} 单位\`、\`+${econSlice.inflowQuota}/-${econSlice.mandatoryDrain}\` 等仿真数字与单位字眼，必须化为囊中灵石药草多寡、炼药火耗成色与契约体征细节！` // cjk-ok
+    )
+  }
+
+  return lines.join('\n')
+}
+
 /**
  * 若上游传入文本为 `game.economy` 节点的 `machinations_economy_bundle`（或工作台 JSON），
- * 自动提取/合成为结构化的【角色成长体系与分集高潮冲突数值大纲】；
+ * 自动提取/合成为结构化的【全书经济系统资源供需法则】+【角色成长体系与分集高潮冲突数值大纲】；
  * 若同时传入 `options.currentChapter` 与动态 `options.totalChapters`，
  * 则自动将等级与突破阶梯缩放至 `totalChapters`，并追加精准的【第 N/Total 章 · 单章数值围栏与底牌配额锁】。
  */
@@ -10256,21 +11021,15 @@ export function unwrapEconomyBundleForNarrative(
   try {
     const parsed = JSON.parse(trimmed) as Record<string, unknown>
     let wb: MxNumericalWorkbench | null = null
-    let docMeta: {
-      title?: string
-      description?: string
-      nodes?: Array<{ label?: string; kind?: string }>
-    } = {}
+    let docMeta: MxEconomyNarrativeDocMeta = {}
+    let forecastMeta: MxEconomyNarrativeForecastMeta | undefined
 
     if (parsed.kind === 'machinations_economy_bundle') {
       const docObj = parsed.document as
-        | {
-            title?: string
-            description?: string
-            nodes?: Array<{ label?: string; kind?: string }>
-            workbench?: unknown
-          }
-        | undefined
+        (MxEconomyNarrativeDocMeta & { workbench?: unknown }) | undefined
+      if (parsed.forecast && typeof parsed.forecast === 'object') {
+        forecastMeta = parsed.forecast as MxEconomyNarrativeForecastMeta
+      }
       if (docObj?.workbench) {
         wb = normalizeMxNumericalWorkbench(docObj.workbench)
         docMeta = docObj
@@ -10278,14 +11037,20 @@ export function unwrapEconomyBundleForNarrative(
         typeof parsed.narrativeProgressionBrief === 'string' &&
         parsed.narrativeProgressionBrief.trim()
       ) {
-        return parsed.narrativeProgressionBrief.trim()
+        const econSpec = docObj
+          ? exportMxEconomyResourceNarrativeSpec(docObj, forecastMeta, options)
+          : ''
+        return [econSpec, parsed.narrativeProgressionBrief.trim()].filter(Boolean).join('\n\n')
       }
     } else if (parsed.schemaVersion === 2 && Array.isArray(parsed.nodes) && parsed.workbench) {
       wb = normalizeMxNumericalWorkbench(parsed.workbench)
       docMeta = {
         title: typeof parsed.title === 'string' ? parsed.title : undefined,
         description: typeof parsed.description === 'string' ? parsed.description : undefined,
-        nodes: parsed.nodes as Array<{ label?: string; kind?: string }>
+        resources: Array.isArray(parsed.resources)
+          ? (parsed.resources as MxEconomyNarrativeDocMeta['resources'])
+          : undefined,
+        nodes: parsed.nodes as MxEconomyNarrativeDocMeta['nodes']
       }
     }
 
@@ -10304,6 +11069,10 @@ export function unwrapEconomyBundleForNarrative(
           }
         : wb
 
+      const econSpec = exportMxEconomyResourceNarrativeSpec(docMeta, forecastMeta, {
+        ...options,
+        totalChapters: dynTotal ?? effectiveWb.roguelikeEnvelope.levelMax
+      })
       const macroBrief = exportMxNarrativeProgressionBrief(effectiveWb, docMeta)
       if (options?.currentChapter && options.currentChapter >= 1) {
         const slice = exportMxChapterNumericalSlice(
@@ -10312,9 +11081,9 @@ export function unwrapEconomyBundleForNarrative(
           dynTotal ?? effectiveWb.roguelikeEnvelope.levelMax,
           options.genre
         )
-        return `${slice.sliceMarkdown}\n\n${macroBrief}`
+        return [slice.sliceMarkdown, econSpec, macroBrief].filter(Boolean).join('\n\n')
       }
-      return macroBrief
+      return [econSpec, macroBrief].filter(Boolean).join('\n\n')
     }
   } catch {
     // 非 JSON 或解析失败，原样返回
@@ -10469,6 +11238,77 @@ export function generateMxArcChapterOutlinePlan(
     })
   }
   return items
+}
+
+/**
+ * 全生命周期冲突幕次（Arc）与分卷排期总表生成器（覆盖第 1 ~ `totalChapters` 章 100% 生命周期）：
+ * 将全书划分为完整的多卷与 20 个高潮冲突幕（Arc 1..N），确保无论生成第几章（包括第 21~200+ 章），
+ * 大纲切片器都能精确命中对应的区间段（`### 第 X~Y 章`），并与经济系统和数值系统的境界、战力上限、反派压迫墙、准入底牌及奇遇信物一一对齐。
+ */
+export function generateMxFullLifecycleArcScheduleMarkdown(
+  wb: MxNumericalWorkbench,
+  totalChapters = 200,
+  genre?: NovelGenreProfile
+): string {
+  const dynTotal = Math.max(1, Math.min(5000, Math.round(totalChapters || 200)))
+  const sampleSlice = exportMxChapterNumericalSlice(wb, 1, dynTotal, genre)
+  const totalArcs = Math.max(1, sampleSlice.totalArcs)
+  const stageTerm = genre?.stageTermZh ?? '境界' // cjk-ok
+  const axisP = genre?.protagonistAxisZh ?? '战力上限' // cjk-ok
+  const axisA = genre?.antagonistAxisZh ?? '反派压迫' // cjk-ok
+  const unlockTerm = genre?.unlockTermZh ?? '准入底牌' // cjk-ok
+  const itemTerm = genre?.encounterTermZh ?? '核心奇遇/信物' // cjk-ok
+
+  const lines: string[] = [
+    `## 【全书全生命周期冲突幕次与数值经济排期总表（第 1~${dynTotal} 章完整覆盖）】`, // cjk-ok
+    `| 幕次 | 章节区间 | 所属分卷 | ${stageTerm}阶段 | ${axisP} vs ${axisA} | 本幕${unlockTerm}配额 | 关键${itemTerm}与高潮清算节点 |`, // cjk-ok
+    `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |`
+  ]
+
+  const arcSectionBlocks: string[] = []
+  let prevEnd = 0
+  for (let arcIdx = 1; arcIdx <= totalArcs; arcIdx++) {
+    const arcStart = prevEnd + 1
+    const arcEnd =
+      arcIdx === totalArcs
+        ? dynTotal
+        : Math.max(arcStart, Math.round((arcIdx / totalArcs) * dynTotal))
+    prevEnd = arcEnd
+    const midChap = Math.min(dynTotal, Math.max(arcStart, Math.floor((arcStart + arcEnd) / 2)))
+    const climaxChap = arcEnd
+    const s = exportMxChapterNumericalSlice(wb, climaxChap, dynTotal, genre)
+    const midSlice = exportMxChapterNumericalSlice(wb, midChap, dynTotal, genre)
+    const allowedTop = s.allowedTrumpCards.slice(0, 3).join('、') || '基础底牌' // cjk-ok
+    const lockedTop = s.lockedEndgameTrumps.slice(0, 2).join('、') || '终局王牌' // cjk-ok
+    const bossBadge = s.isBossArc
+      ? '🔥 卷末大高潮清算' // cjk-ok
+      : s.isDifficultyWallArc
+        ? '🧱 数值高压破壁' // cjk-ok
+        : '⚡ 阶段爽点反转' // cjk-ok
+
+    const econClimax = exportMxChapterEconomySlice(
+      { title: wb.multiplier.title, description: wb.multiplier.title },
+      { steps: dynTotal },
+      { currentChapter: climaxChap, totalChapters: dynTotal, genre }
+    )
+
+    lines.push(
+      `| 第 ${arcIdx}/${totalArcs} 幕 | 第 ${arcStart}~${arcEnd} 章 | ${s.volumeTitleZh} | ${s.realmStageLabelZh} | \`${s.powerCeiling}\` vs \`${s.villainPressure}\` | ${allowedTop} | 【${midSlice.recommendedEncounterItem}】➔ 第 ${climaxChap} 章${bossBadge} |` // cjk-ok
+    )
+
+    arcSectionBlocks.push(
+      [
+        `### 第 ${arcStart}~${arcEnd} 章（第 ${arcIdx}/${totalArcs} 幕 · ${s.volumeTitleZh} · ${bossBadge}）`, // cjk-ok
+        `- **阶段${stageTerm}与数值围栏**: 主角处于【${s.realmStageLabelZh}】，本幕${axisP}上限 \`${s.powerCeiling}\` 对抗${axisA}强度 \`${s.villainPressure}\`（生存容错率 ${s.survivalRatePct}%）。`, // cjk-ok
+        `- **本幕经济收支预算锁 $E(t=${arcStart}..${arcEnd})$**: 幕末储备目标 \`${econClimax.closingReserveTarget}\`（单章产出峰值 \`+${econClimax.inflowQuota}\` / 刚性消耗与契约抽成 \`-${econClimax.mandatoryDrain}\` · 契约反噬压力指数 \`${econClimax.contractPressureIndex}\`）。`, // cjk-ok
+        `- **${unlockTerm}解锁与封存铁律**: 准许动用【${allowedTop}】；严禁提前透支【${lockedTop}】。`, // cjk-ok
+        `- **本幕起承转合排期**: 第 ${arcStart} 章起势隐忍与资源筹措 ➔ 第 ${midChap} 章围绕【${midSlice.recommendedEncounterItem}】博弈立威 ➔ 第 ${Math.max(arcStart, arcEnd - 1)} 章遭遇反派极限围剿卡点 ➔ 第 ${climaxChap} 章亮出底牌完成高潮反转与战利品结算。` // cjk-ok
+      ].join('\n')
+    )
+    if (arcEnd >= dynTotal) break
+  }
+
+  return [...lines, '', ...arcSectionBlocks].join('\n')
 }
 
 export interface MxNovelCharacterStatusEntry {

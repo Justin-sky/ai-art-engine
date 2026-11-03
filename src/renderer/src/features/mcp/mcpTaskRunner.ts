@@ -1177,7 +1177,8 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
       const hostInterface = inferHostInterfaceFromGraph(doc)
       const synced = ensureBoundaryProxyNodes(doc, hostInterface)
       if (reLayout) {
-        autoLayoutNodes(synced.nodes, synced.edges)
+        if (!synced.groups) synced.groups = []
+        autoLayoutNodes(synced.nodes, synced.edges, { groups: synced.groups })
       }
       return { graph: synced, hostInterface }
     }

@@ -54,7 +54,7 @@
           type="button"
           class="tool-btn"
           :class="{ active: marqueeSelectActive }"
-          :disabled="!hasCanvas || splitting || slicing || exploded3d"
+          :disabled="!hasCanvas || splitting || slicing || isExplodedView"
           :title="
             isZhLocale
               ? /* cjk-ok */ '鼠标框选图层模式（也可直接在底板/空白区域拖拽或按住 Shift 拖拽框选多个图层）'
@@ -135,6 +135,52 @@
         </button>
         <button
           type="button"
+          class="tool-btn explode-2d-btn"
+          :class="{ active: exploded2d }"
+          :disabled="!hasCanvas"
+          :title="t('graph.layerSplit.explode2dHint')"
+          @click="toggleExploded2d"
+        >
+          {{ t('graph.layerSplit.explode2d') }}
+        </button>
+        <template v-if="exploded2d">
+          <div class="explode-2d-modes">
+            <button
+              type="button"
+              class="mini-mode-btn"
+              :class="{ active: explode2dMode === 'tiled' }"
+              :title="t('graph.layerSplit.explode2dTiledHint')"
+              @click="setExplode2dMode('tiled')"
+            >
+              {{ t('graph.layerSplit.explode2dTiled') }}
+            </button>
+            <button
+              type="button"
+              class="mini-mode-btn"
+              :class="{ active: explode2dMode === 'radial' }"
+              :title="t('graph.layerSplit.explode2dRadialHint')"
+              @click="setExplode2dMode('radial')"
+            >
+              {{ t('graph.layerSplit.explode2dRadial') }}
+            </button>
+          </div>
+          <label
+            class="explode-gap-ctl explode-2d-gap-ctl"
+            :title="t('graph.layerSplit.explode2dGapHint')"
+          >
+            <span>{{ t('graph.layerSplit.explode2dGap') }}</span>
+            <input
+              v-model.number="explode2dGap"
+              type="range"
+              min="8"
+              max="72"
+              step="2"
+              class="explode-slider explode-2d-slider"
+            />
+          </label>
+        </template>
+        <button
+          type="button"
           class="tool-btn explode-3d-btn"
           :class="{ active: exploded3d }"
           :disabled="!hasCanvas"
@@ -167,18 +213,14 @@
           />
         </label>
         <button
-          v-if="exploded3d"
+          v-if="isExplodedView"
           type="button"
           class="tool-btn explode-3d-btn"
           :class="{ active: explodeShowLabels }"
-          :title="
-            isZhLocale
-              ? /* cjk-ok */ '在 3D 爆炸视图中显示/隐藏图层名称标签'
-              : 'Show/hide layer name badges in 3D Exploded View'
-          "
+          :title="t('graph.layerSplit.explodeLabelsHint')"
           @click="explodeShowLabels = !explodeShowLabels"
         >
-          🏷️ {{ isZhLocale ? '图层名' : 'Labels' }}<!-- cjk-ok -->
+          {{ t('graph.layerSplit.explodeLabels') }}
         </button>
         <button
           v-if="qaFlaggedLayers.length"
@@ -221,6 +263,7 @@
           :class="{
             'space-pan': spaceHeld && hasCanvas,
             panning: pan.active || orbitDrag.active,
+            'stage-exploded-2d': exploded2d,
             'stage-exploded-3d': exploded3d
           }"
           @keydown="onKeydown"
@@ -241,6 +284,8 @@
             :class="{
               'box-slice-mode': boxSliceActive,
               'marquee-select-mode': marqueeSelectActive,
+              'brush-mode': brushMode !== 'none',
+              'exploded-2d': exploded2d,
               'exploded-3d': exploded3d
             }"
             :style="canvasWrapStyle"
@@ -250,6 +295,37 @@
             <div v-if="splitting" class="stage-mask">
               {{ t('graph.layerSplit.splitting') }}
             </div>
+            <svg
+              v-if="exploded2d && explode2dMode === 'radial'"
+              class="explode-2d-overlay"
+              :viewBox="`0 0 ${explode2dLayout.boardWidth} ${explode2dLayout.boardHeight}`"
+              preserveAspectRatio="none"
+            >
+              <rect
+                :x="explode2dLayout.originFrame.left"
+                :y="explode2dLayout.originFrame.top"
+                :width="explode2dLayout.originFrame.width"
+                :height="explode2dLayout.originFrame.height"
+                class="origin-ghost-rect"
+              />
+              <g v-for="item in radialLeaderItems" :key="`leader:${item.id}`">
+                <line
+                  :x1="item.originCenterX"
+                  :y1="item.originCenterY"
+                  :x2="item.explodedCenterX"
+                  :y2="item.explodedCenterY"
+                  class="leader-line"
+                  :class="{ active: isLayerSelected(item.id) }"
+                />
+                <circle
+                  :cx="item.originCenterX"
+                  :cy="item.originCenterY"
+                  :r="Math.max(2.5, Math.min(6, explode2dLayout.boardWidth * 0.0032))"
+                  class="leader-dot"
+                  :class="{ active: isLayerSelected(item.id) }"
+                />
+              </g>
+            </svg>
             <div
               v-for="layer in stackedLayers"
               v-show="layerOnCanvas(layer)"
@@ -259,6 +335,14 @@
                 selected: isLayerSelected(layer.id),
                 'multi-selected': selectedNonBaseLayers.length > 1 && isLayerSelected(layer.id),
                 base: isBase(layer),
+                'solo-dimmed':
+                  soloSelectedLayer &&
+                  !!selectedLayer &&
+                  layer.id !== selectedLayer.id &&
+                  !isExplodedView,
+                'layer-exploded-2d': exploded2d,
+                'layer-exploded-2d-radial-base':
+                  exploded2d && explode2dMode === 'radial' && isBase(layer),
                 'layer-exploded-3d': exploded3d,
                 'qa-flagged': showQaOutlines && !exploded3d && !!layer.qaIssues?.length
               }"
@@ -270,6 +354,7 @@
                   layer.visible &&
                   layerUrl(layer) &&
                   !isBase(layer) &&
+                  !isExplodedView &&
                   nineSliceStretchMode &&
                   layerHasNineSlice(layer) &&
                   isLayerResizedFromOriginal(layer)
@@ -287,7 +372,12 @@
               <span v-if="exploded3d && explodeShowLabels" class="layer-3d-badge">
                 z{{ layer.zIndex }} · {{ layerLabel(layer) }}
               </span>
-              <template v-if="layer.id === draft.selectedId && !isBase(layer) && !exploded3d">
+              <span v-else-if="exploded2d && explodeShowLabels" class="layer-2d-badge">
+                <span class="layer-2d-z">z{{ layer.zIndex }}</span>
+                <span class="layer-2d-name">{{ layerLabel(layer) }}</span>
+                <span class="layer-2d-dim">{{ layerDimensionTag(layer) }}</span>
+              </span>
+              <template v-if="layer.id === draft.selectedId && !isBase(layer) && !isExplodedView">
                 <template v-if="showNineSliceGuides && layerHasNineSlice(layer)">
                   <span
                     class="nine-slice-guide v left"
@@ -325,6 +415,26 @@
                 {{ selectedNonBaseLayers.length }}
               </span>
             </div>
+            <svg
+              v-if="brushDrag.active && brushDrag.points.length"
+              class="brush-stroke-overlay"
+              :viewBox="`0 0 ${Math.max(1, draft.canvasWidth)} ${Math.max(1, draft.canvasHeight)}`"
+              preserveAspectRatio="none"
+            >
+              <circle
+                v-if="brushDrag.points.length === 1"
+                :cx="brushDrag.points[0]!.x"
+                :cy="brushDrag.points[0]!.y"
+                :r="brushRadius"
+                :class="['brush-stroke-dot', brushMode]"
+              />
+              <polyline
+                v-else
+                :points="brushStrokeSvgPoints"
+                :stroke-width="brushRadius * 2"
+                :class="['brush-stroke-line', brushMode]"
+              />
+            </svg>
           </div>
         </div>
 
@@ -524,7 +634,7 @@
                   v-if="qaIssueFix(issue)"
                   type="button"
                   class="mini-pill qa-fix-btn"
-                  :disabled="slicing || splitting"
+                  :disabled="slicing || splitting || repairing"
                   @click="applyQaFix(issue)"
                 >
                   {{ qaIssueFix(issue)!.label }}
@@ -610,91 +720,121 @@
                 </label>
               </div>
             </div>
-
-            <div class="side-layer-repair">
-              <div class="nine-slice-head">
-                <span class="nine-slice-title">
-                  {{
-                    isZhLocale ? /* cjk-ok */ '🖌️ 单层画笔 / AI 修补' : '🖌️ Layer Brush & AI Repair'
-                  }}
-                </span>
-                <div class="nine-slice-tools">
-                  <button
-                    type="button"
-                    class="mini-pill"
-                    :class="{ active: brushMode === 'erase' }"
-                    :disabled="slicing"
-                    :title="
-                      isZhLocale
-                        ? /* cjk-ok */ '在画布拖拽擦除当前图层的多余杂边像素'
-                        : 'Drag on canvas to erase stray pixels on selected layer'
-                    "
-                    @click="toggleBrushMode('erase')"
-                  >
-                    {{ isZhLocale ? '🧹 擦除' : '🧹 Erase' }}<!-- cjk-ok -->
-                  </button>
-                  <button
-                    type="button"
-                    class="mini-pill"
-                    :class="{ active: brushMode === 'restore' }"
-                    :disabled="slicing"
-                    :title="
-                      isZhLocale
-                        ? /* cjk-ok */ '在画布拖拽从原图还原当前图层漏抠的边缘像素'
-                        : 'Drag on canvas to restore missing pixels from source image'
-                    "
-                    @click="toggleBrushMode('restore')"
-                  >
-                    {{ isZhLocale ? '✨ 还原' : '✨ Restore' }}<!-- cjk-ok -->
-                  </button>
-                  <button
-                    type="button"
-                    class="mini-pill"
-                    :disabled="slicing"
-                    :title="
-                      isZhLocale
-                        ? /* cjk-ok */ '自动检测并填补当前图层内部的闭合破洞'
-                        : 'Fill internal transparent holes on selected layer'
-                    "
-                    @click="onFillSelectedLayerHoles"
-                  >
-                    {{ isZhLocale ? '🩹 补洞' : '🩹 Fill' }}<!-- cjk-ok -->
-                  </button>
-                </div>
-              </div>
-              <div v-if="brushMode !== 'none'" class="brush-radius-row">
-                <span>{{ isZhLocale ? '半径' : 'Radius' }} {{ brushRadius }}px<!-- cjk-ok --></span>
-                <input
-                  v-model.number="brushRadius"
-                  type="range"
-                  min="4"
-                  max="60"
-                  step="2"
-                  class="brush-slider"
-                />
-              </div>
-              <div class="ai-repair-row">
-                <input
-                  v-model="layerRepairPrompt"
-                  type="text"
-                  class="ai-repair-input"
-                  :placeholder="
-                    isZhLocale
-                      ? /* cjk-ok */ '输入单层 AI 修补指令（留空自动补全遮挡纹理）'
-                      : 'Prompt to AI-repair this layer (blank = auto inpaint)'
-                  "
-                  @keydown.enter.prevent="onAiRepairSelectedLayer"
-                />
-                <button
-                  type="button"
-                  class="mini-pill ai-repair-btn"
-                  :disabled="slicing || splitting"
-                  @click="onAiRepairSelectedLayer"
-                >
-                  {{ isZhLocale ? '🤖 AI 修补' : '🤖 AI Fix' }}<!-- cjk-ok -->
-                </button>
-              </div>
+          </div>
+          <div v-if="selectedLayer" class="side-layer-repair">
+            <div class="nine-slice-head">
+              <span class="nine-slice-title">
+                {{
+                  isBase(selectedLayer)
+                    ? t('graph.layerSplit.repairBasePanelTitle')
+                    : t('graph.layerSplit.repairPanelTitle')
+                }}
+              </span>
+              <button
+                type="button"
+                class="mini-pill repair-pill"
+                :class="{ active: soloSelectedLayer }"
+                :disabled="isExplodedView"
+                :title="t('graph.layerSplit.soloLayerTip')"
+                @click="soloSelectedLayer = !soloSelectedLayer"
+              >
+                {{ t('graph.layerSplit.soloLayerBtn') }}
+              </button>
             </div>
+            <div class="repair-tools-row">
+              <button
+                type="button"
+                class="mini-pill repair-pill"
+                :class="{ active: brushMode === 'erase' }"
+                :disabled="slicing || repairing"
+                :title="
+                  isBase(selectedLayer)
+                    ? t('graph.layerSplit.brushHealBaseTip')
+                    : t('graph.layerSplit.brushEraseTip')
+                "
+                @click="toggleBrushMode('erase')"
+              >
+                {{
+                  isBase(selectedLayer)
+                    ? t('graph.layerSplit.brushHealBaseBtn')
+                    : t('graph.layerSplit.brushEraseBtn')
+                }}
+              </button>
+              <button
+                type="button"
+                class="mini-pill repair-pill"
+                :class="{ active: brushMode === 'restore' }"
+                :disabled="slicing || repairing || (isBase(selectedLayer) && !sourceUrl?.trim())"
+                :title="
+                  isBase(selectedLayer)
+                    ? t('graph.layerSplit.brushRestoreBaseTip')
+                    : t('graph.layerSplit.brushRestoreTip')
+                "
+                @click="toggleBrushMode('restore')"
+              >
+                {{ t('graph.layerSplit.brushRestoreBtn') }}
+              </button>
+              <button
+                type="button"
+                class="mini-pill repair-pill"
+                :disabled="slicing || repairing"
+                :title="t('graph.layerSplit.fillHolesTip')"
+                @click="onFillSelectedLayerHoles"
+              >
+                {{ t('graph.layerSplit.fillHolesBtn') }}
+              </button>
+            </div>
+            <div v-if="brushMode !== 'none'" class="brush-radius-row">
+              <span>{{ t('graph.layerSplit.brushRadiusLabel', { n: brushRadius }) }}</span>
+              <input
+                v-model.number="brushRadius"
+                type="range"
+                min="4"
+                max="60"
+                step="2"
+                class="brush-slider"
+              />
+            </div>
+            <div class="ai-repair-row">
+              <input
+                v-model="layerRepairPrompt"
+                type="text"
+                class="ai-repair-input"
+                :disabled="slicing || splitting || repairing"
+                :placeholder="
+                  isBase(selectedLayer)
+                    ? t('graph.layerSplit.aiRepairBasePlaceholder')
+                    : t('graph.layerSplit.aiRepairPlaceholder')
+                "
+                @keydown.enter.prevent="onAiRepairSelectedLayer"
+              />
+              <button
+                type="button"
+                class="mini-pill ai-repair-btn"
+                :class="{ running: repairing }"
+                :disabled="slicing || splitting || repairing"
+                @click="onAiRepairSelectedLayer"
+              >
+                {{
+                  repairing
+                    ? t('graph.layerSplit.aiRepairRunning')
+                    : t('graph.layerSplit.aiRepairBtn')
+                }}
+              </button>
+            </div>
+            <p
+              v-if="repairing || activeRepairStatusText"
+              class="ai-repair-status"
+              :class="{ running: repairing, error: !repairing && !!activeRepairErrorText }"
+            >
+              {{
+                repairing
+                  ? t('graph.layerSplit.aiRepairProgress', {
+                      layer: layerLabel(selectedLayer)
+                    })
+                  : activeRepairStatusText
+              }}
+            </p>
           </div>
           <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
@@ -837,7 +977,7 @@
               </option>
             </select>
           </label>
-          <label v-if="draft.splitMode !== 'local-slice'" class="tool tool-model">
+          <label class="tool tool-model">
             <span class="tool-label">{{ t('graph.inspector.generate.imageModel') }}</span>
             <select v-model="selectionKey" class="select" @change="onModelChange">
               <option v-for="opt in modelOptions" :key="opt.key" :value="opt.key">
@@ -848,7 +988,7 @@
               </option>
             </select>
           </label>
-          <label v-if="draft.splitMode !== 'local-slice'" class="tool">
+          <label class="tool">
             <span class="tool-label">{{ t('graph.layerSplit.resolution') }}</span>
             <select v-model="draft.resolution" class="select">
               <option v-for="r in resolutions" :key="r" :value="r">{{ r }}</option>
@@ -876,6 +1016,7 @@ import {
   buildUnityUiToolkitUss,
   buildUnityUiToolkitUxml,
   collectLayerSplitGroupLayers,
+  computeLayerSplitExplode2dLayout,
   computeNineSliceFromRgbaBuffer,
   findMergeDownTargetLayer,
   layerSplitExportFolderSegments,
@@ -895,11 +1036,12 @@ import {
   type GraphImageItem,
   type ImageLayerSplitLayer,
   type ImageLayerSplitNestedRequest,
+  type ImageLayerSplitRepairRequest,
   type ImageLayerSplitState,
+  type LayerSplitExplode2dMode,
   type UiLayerSplitMode,
   type UiLayerSplitPresetId
 } from '@shared/graph'
-import { nearestAspectRatio, resizeBilinear } from '@shared/graph/uiPreciseSplit'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   applyLayerBrushStrokeToDataUrl,
@@ -942,6 +1084,9 @@ const props = withDefaults(
     visionProviderInstanceId?: string
     splitting?: boolean
     splitError?: string
+    repairing?: boolean
+    repairError?: string
+    repairDoneMessage?: string
   }>(),
   {
     setup: null,
@@ -953,7 +1098,10 @@ const props = withDefaults(
     visionModel: '',
     visionProviderInstanceId: '',
     splitting: false,
-    splitError: ''
+    splitError: '',
+    repairing: false,
+    repairError: '',
+    repairDoneMessage: ''
   }
 )
 
@@ -962,6 +1110,7 @@ const emit = defineEmits<{
   update: [payload: LayerSplitEditorSavePayload]
   save: [payload: LayerSplitEditorSavePayload]
   'split-selected': [payload: ImageLayerSplitNestedRequest]
+  'repair-layer': [payload: ImageLayerSplitRepairRequest]
 }>()
 
 const { t, locale } = useStudioI18n()
@@ -990,9 +1139,14 @@ const pan = reactive({
   originX: 0,
   originY: 0
 })
+const exploded2d = ref(false)
+const explode2dMode = ref<LayerSplitExplode2dMode>('tiled')
+const explode2dGap = ref(24)
+const stageAspect = ref(1.45)
 const exploded3d = ref(false)
 const explodeGap = ref(12)
 const explodeShowLabels = ref(true)
+const isExplodedView = computed(() => exploded2d.value || exploded3d.value)
 const orbitRotX = ref(18)
 const orbitRotY = ref(-24)
 const orbitDrag = reactive({
@@ -1111,6 +1265,24 @@ const canReorder = computed(() => {
 })
 const splitting = computed(() => props.splitting === true)
 const splitError = computed(() => props.splitError?.trim() || '')
+const repairing = computed(() => props.repairing === true)
+const repairTargetLayerId = ref('')
+const localRepairError = ref('')
+const activeRepairErrorText = computed(() => {
+  const curId = selectedLayer.value?.id ?? ''
+  if (!curId) return ''
+  if (localRepairError.value) return localRepairError.value
+  if (repairTargetLayerId.value && repairTargetLayerId.value !== curId) return ''
+  return props.repairError?.trim() || ''
+})
+const activeRepairStatusText = computed(() => {
+  if (activeRepairErrorText.value) {
+    return t('graph.layerSplit.aiRepairFailed', { error: activeRepairErrorText.value })
+  }
+  const curId = selectedLayer.value?.id ?? ''
+  if (!curId || (repairTargetLayerId.value && repairTargetLayerId.value !== curId)) return ''
+  return props.repairDoneMessage?.trim() || ''
+})
 const alreadySplitSource = computed(() => {
   const layer = selectedLayer.value
   return !!layer && !!layerSplitGroupForSource(draft, layer.id)
@@ -1120,6 +1292,7 @@ const canSplitSelected = computed(() => {
   return (
     !!layer &&
     !splitting.value &&
+    !repairing.value &&
     !slicing.value &&
     !alreadySplitSource.value &&
     hasCanvas.value &&
@@ -1127,12 +1300,19 @@ const canSplitSelected = computed(() => {
   )
 })
 const canDeleteLayer = computed(() => {
-  return selectedNonBaseLayers.value.length > 0 && !splitting.value && !slicing.value
+  return (
+    selectedNonBaseLayers.value.length > 0 && !splitting.value && !repairing.value && !slicing.value
+  )
 })
 const canDecomposeControlParts = computed(() => {
   const layer = selectedLayer.value
   return (
-    !!layer && !isLayerSplitBase(layer) && !splitting.value && !slicing.value && !!layerUrl(layer)
+    !!layer &&
+    !isLayerSplitBase(layer) &&
+    !splitting.value &&
+    !repairing.value &&
+    !slicing.value &&
+    !!layerUrl(layer)
   )
 })
 const mergeDownTarget = computed(() =>
@@ -1143,6 +1323,7 @@ const canMergeDown = computed(() => {
   const lower = mergeDownTarget.value
   return (
     !splitting.value &&
+    !repairing.value &&
     !slicing.value &&
     !!upper &&
     !!lower &&
@@ -1190,13 +1371,73 @@ const canvasWrapStyle = computed(() => {
   }
 })
 
-function toggleExploded3d(): void {
-  exploded3d.value = !exploded3d.value
-  if (exploded3d.value) {
+const explode2dLayout = computed(() => {
+  const cw = Math.max(1, draft.canvasWidth)
+  const ch = Math.max(1, draft.canvasHeight)
+  if (!exploded2d.value) {
+    return {
+      mode: explode2dMode.value,
+      boardWidth: cw,
+      boardHeight: ch,
+      originFrame: { left: 0, top: 0, width: cw, height: ch },
+      items: [],
+      byId: {}
+    }
+  }
+  return computeLayerSplitExplode2dLayout(draft, {
+    mode: explode2dMode.value,
+    gap: explode2dGap.value,
+    targetAspect: stageAspect.value,
+    reserveLabelHeight: explodeShowLabels.value
+  })
+})
+
+const radialLeaderItems = computed(() =>
+  explode2dLayout.value.items.filter(
+    (it) =>
+      !it.isBase &&
+      Math.hypot(it.explodedCenterX - it.originCenterX, it.explodedCenterY - it.originCenterY) > 4
+  )
+)
+
+function layerDimensionTag(layer: ImageLayerSplitLayer): string {
+  const w = isBase(layer) ? Math.max(1, draft.canvasWidth) : Math.max(1, Math.round(layer.width))
+  const h = isBase(layer) ? Math.max(1, draft.canvasHeight) : Math.max(1, Math.round(layer.height))
+  return `${w}×${h}`
+}
+
+function toggleExploded2d(): void {
+  exploded2d.value = !exploded2d.value
+  if (exploded2d.value) {
+    exploded3d.value = false
     boxSliceActive.value = false
     marqueeSelectActive.value = false
+    brushMode.value = 'none'
+    soloSelectedLayer.value = false
+  }
+  void nextTick(() => fitDisplay(false))
+}
+
+function setExplode2dMode(mode: LayerSplitExplode2dMode): void {
+  if (explode2dMode.value === mode) return
+  explode2dMode.value = mode
+  void nextTick(() => fitDisplay(false))
+}
+
+function toggleExploded3d(): void {
+  const was2d = exploded2d.value
+  exploded3d.value = !exploded3d.value
+  if (exploded3d.value) {
+    exploded2d.value = false
+    boxSliceActive.value = false
+    marqueeSelectActive.value = false
+    brushMode.value = 'none'
+    soloSelectedLayer.value = false
     orbitRotX.value = 18
     orbitRotY.value = -24
+  }
+  if (was2d) {
+    void nextTick(() => fitDisplay(false))
   }
 }
 
@@ -1614,6 +1855,20 @@ const explodedLayerZMap = computed<Record<string, number>>(() => {
 })
 
 function layerStyle(layer: ImageLayerSplitLayer): Record<string, string> {
+  if (exploded2d.value) {
+    const item = explode2dLayout.value.byId[layer.id]
+    const bw = Math.max(1, explode2dLayout.value.boardWidth)
+    const bh = Math.max(1, explode2dLayout.value.boardHeight)
+    if (item) {
+      return {
+        left: `${(item.left / bw) * 100}%`,
+        top: `${(item.top / bh) * 100}%`,
+        width: `${(item.width / bw) * 100}%`,
+        height: `${(item.height / bh) * 100}%`,
+        zIndex: String(isLayerSelected(layer.id) ? 900 : item.isBase ? 1 : layer.zIndex + 2)
+      }
+    }
+  }
   const cw = Math.max(1, draft.canvasWidth)
   const ch = Math.max(1, draft.canvasHeight)
   const zOffset = explodedLayerZMap.value[layer.id] ?? 0
@@ -1755,16 +2010,20 @@ function clientToCanvasPoint(clientX: number, clientY: number): { x: number; y: 
 
 function toggleBoxSliceMode(): void {
   if (!hasCanvas.value || splitting.value || slicing.value) return
+  const was2d = exploded2d.value
   boxSliceActive.value = !boxSliceActive.value
   if (boxSliceActive.value) {
+    exploded2d.value = false
+    exploded3d.value = false
     marqueeSelectActive.value = false
     brushMode.value = 'none'
     flashExportMessage(t('graph.layerSplit.boxSliceHint'))
+    if (was2d) void nextTick(() => fitDisplay(false))
   }
 }
 
 function toggleMarqueeSelectMode(): void {
-  if (!hasCanvas.value || splitting.value || slicing.value || exploded3d.value) return
+  if (!hasCanvas.value || splitting.value || slicing.value || isExplodedView.value) return
   marqueeSelectActive.value = !marqueeSelectActive.value
   if (marqueeSelectActive.value) {
     boxSliceActive.value = false
@@ -1865,7 +2124,7 @@ function startMarqueeSelect(
   event: PointerEvent,
   options?: { additive?: boolean; clickedLayerId?: string }
 ): void {
-  if (!hasCanvas.value || splitting.value || slicing.value || exploded3d.value) return
+  if (!hasCanvas.value || splitting.value || slicing.value || isExplodedView.value) return
   if (!event.isPrimary) return
   event.preventDefault()
   event.stopPropagation()
@@ -1954,8 +2213,12 @@ function onMarqueePointerUp(): void {
 }
 
 function onCanvasWrapPointerDown(event: PointerEvent): void {
-  if (spaceHeld.value) {
+  if (spaceHeld.value || exploded2d.value) {
     onStagePanStart(event)
+    return
+  }
+  if (brushMode.value !== 'none' && selectedLayer.value) {
+    startBrushStroke(event)
     return
   }
   if (!boxSliceActive.value) {
@@ -2238,6 +2501,7 @@ async function onMergeDownSelected(): Promise<void> {
 
 const brushMode = ref<'none' | 'erase' | 'restore'>('none')
 const brushRadius = ref(14)
+const soloSelectedLayer = ref(false)
 const layerRepairPrompt = ref('')
 const brushDrag = reactive<{
   active: boolean
@@ -2246,30 +2510,33 @@ const brushDrag = reactive<{
   active: false,
   points: []
 })
+const brushStrokeSvgPoints = computed(() => brushDrag.points.map((p) => `${p.x},${p.y}`).join(' '))
 
 function toggleBrushMode(mode: 'erase' | 'restore'): void {
   if (brushMode.value === mode) {
     brushMode.value = 'none'
     return
   }
+  const was2d = exploded2d.value
   brushMode.value = mode
   boxSliceActive.value = false
   marqueeSelectActive.value = false
+  exploded2d.value = false
   exploded3d.value = false
+  if (was2d) void nextTick(() => fitDisplay(false))
+  const targetIsBase = !!selectedLayer.value && isBase(selectedLayer.value)
   flashExportMessage(
-    isZhLocale.value
-      ? mode === 'erase'
-        ? '已开启擦除画笔：在选中图层上拖拽可擦除多余杂边像素' // cjk-ok
-        : '已开启原图还原画笔：在选中图层上拖拽可从原图恢复漏抠像素' // cjk-ok
-      : mode === 'erase'
-        ? 'Erase brush active: drag on selected layer to erase stray pixels'
-        : 'Restore brush active: drag on selected layer to restore pixels from source'
+    mode === 'erase'
+      ? targetIsBase
+        ? t('graph.layerSplit.brushHealBaseActive')
+        : t('graph.layerSplit.brushEraseActive')
+      : t('graph.layerSplit.brushRestoreActive')
   )
 }
 
 function startBrushStroke(event: PointerEvent): void {
   const target = selectedLayer.value
-  if (!target || isBase(target) || slicing.value) return
+  if (!target || slicing.value || repairing.value) return
   event.preventDefault()
   event.stopPropagation()
   const pt = clientToCanvasPoint(event.clientX, event.clientY)
@@ -2294,11 +2561,13 @@ async function onBrushPointerUp(): Promise<void> {
   brushDrag.points = []
   const target = selectedLayer.value
   const mode = brushMode.value
-  if (!target || isBase(target) || mode === 'none' || !pts.length) return
+  if (!target || mode === 'none' || !pts.length) return
   const curUrl = layerUrl(target)
   if (!curUrl) return
   const base = baseLayer.value
-  const srcUrl = props.sourceUrl?.trim() || (base ? layerUrl(base) : '')
+  const srcUrl = isBase(target)
+    ? props.sourceUrl?.trim() || ''
+    : props.sourceUrl?.trim() || (base ? layerUrl(base) : '')
 
   slicing.value = true
   try {
@@ -2333,7 +2602,7 @@ function commitUpdatedLayerTexture(
     ...extraImages.value,
     {
       id: newImageId,
-      title: target.name || target.id,
+      title: layerLabel(target),
       dataUrl,
       createdAt: new Date().toISOString()
     }
@@ -2442,7 +2711,11 @@ function focusLayerBelowSelected(): void {
   if (!target) return
   selectedIds.value = [target.id]
   selectAndRevealLayerFromStage(target.id)
-  if (!isBase(target) && brushMode.value !== 'erase') toggleBrushMode('erase')
+  if (brushMode.value !== 'erase') {
+    toggleBrushMode('erase')
+  } else if (isBase(target)) {
+    flashExportMessage(t('graph.layerSplit.brushHealBaseActive'))
+  }
 }
 
 function focusNextQaLayer(): void {
@@ -2508,7 +2781,7 @@ function onExportNameInput(event: Event): void {
 
 async function onFillSelectedLayerHoles(): Promise<void> {
   const target = selectedLayer.value
-  if (!target || isBase(target) || slicing.value) return
+  if (!target || slicing.value || repairing.value) return
   const curUrl = layerUrl(target)
   if (!curUrl) return
   slicing.value = true
@@ -2516,19 +2789,11 @@ async function onFillSelectedLayerHoles(): Promise<void> {
     pushDraftHistory()
     const nextUrl = await inpaintSingleLayerHolesToDataUrl(curUrl)
     if (nextUrl === curUrl) {
-      flashExportMessage(
-        isZhLocale.value
-          ? '当前图层内部未检测到闭合破洞' // cjk-ok
-          : 'No internal closed holes detected on selected layer'
-      )
+      flashExportMessage(t('graph.layerSplit.fillHolesNone'))
       return
     }
     commitUpdatedLayerTexture(target, nextUrl, 'fill')
-    flashExportMessage(
-      isZhLocale.value
-        ? `已修补「${target.name}」内部残缺孔洞` // cjk-ok
-        : `Filled internal holes on "${target.name}"`
-    )
+    flashExportMessage(t('graph.layerSplit.fillHolesDone', { layer: layerLabel(target) }))
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
@@ -2537,55 +2802,34 @@ async function onFillSelectedLayerHoles(): Promise<void> {
   }
 }
 
-async function onAiRepairSelectedLayer(): Promise<void> {
+function onAiRepairSelectedLayer(): void {
   const target = selectedLayer.value
-  if (!target || isBase(target) || slicing.value || splitting.value) return
+  if (!target || slicing.value || splitting.value || repairing.value) return
   const curUrl = layerUrl(target)
-  if (!curUrl) return
-  slicing.value = true
-  try {
-    pushDraftHistory()
-    const decoded = await uiRgbaCodec.decodeImageRgba(curUrl)
-    const pngDataUrl = await uiRgbaCodec.encodeRgbaPng(decoded)
-    const userInstruction = layerRepairPrompt.value.trim()
-    const prompt = userInstruction
-      ? isZhLocale.value
-        ? `${userInstruction}。请直接在原生透明/半透明背景（RGBA 透明通道）上输出修补后的独立 UI 元件，严格保持元件原有的外轮廓、尺寸、材质、边框与半透明光效一致，外围背景直接生成透明通道（严禁填充纯色底或绘制灰白棋盘格纹理）。` // cjk-ok
-        : `${userInstruction}. Directly output the repaired isolated UI element on a true transparent/semi-transparent background (RGBA alpha channel), strictly preserving the element silhouette, bounds, colors, borders, and translucent effects, with a transparent exterior background (no solid fill and strictly no drawn checkerboard pattern).`
-      : isZhLocale.value
-        ? `这是游戏 UI 元件「${target.name}」的独立图层。请直接在原生透明/半透明背景（RGBA 透明通道）上修补该元件因上层子控件剥离留下的残缺孔洞、遮挡痕迹或边缘缺失，延续元件原有的材质、边框、光影与半透明过渡效果，外围背景直接生成透明/半透明通道（严禁填充纯色底或绘制灰白棋盘格纹理），不要改变外轮廓与尺寸，不要新增任何文字或多余装饰。` // cjk-ok
-        : `This is an isolated game UI element layer ("${target.name}"). Directly repair any occlusion holes, missing surface texture, or edge artifacts on a true transparent/semi-transparent background (RGBA alpha channel), strictly preserving its silhouette, borders, colors, lighting, and translucent alpha transitions. Generate the exterior background directly as transparent RGBA (no solid color fill and no checkerboard pattern), and do not add any new text or icons.`
-    const res = await window.studio.generateImage({
-      prompt,
-      ...(selectedModel.value ? { model: selectedModel.value } : {}),
-      ...(selectedProviderInstanceId.value
-        ? { providerInstanceId: selectedProviderInstanceId.value }
-        : {}),
-      resolution: draft.resolution === 'auto' ? '2K' : draft.resolution,
-      aspectRatio: nearestAspectRatio(target.width, target.height),
-      transparentBackground: true,
-      inputReferences: [pngDataUrl]
-    })
-    const outUrl = res?.layers?.[0]?.url?.trim() || res?.images?.[0]?.trim() || ''
-    if (!outUrl) {
-      throw new Error(isZhLocale.value ? '生图模型未返回修补结果' : 'No image returned from model') // cjk-ok
-    }
-    const genDecoded = await uiRgbaCodec.decodeImageRgba(outUrl)
-    const resized = resizeBilinear(genDecoded, decoded.width, decoded.height)
-    const finalDataUrl = await uiRgbaCodec.encodeRgbaPng(resized)
-    commitUpdatedLayerTexture(target, finalDataUrl, 'aiFix')
-    layerRepairPrompt.value = ''
-    flashExportMessage(
-      isZhLocale.value
-        ? `已完成「${target.name}」的单层 AI 修补` // cjk-ok
-        : `AI-repaired layer "${target.name}"`
-    )
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    flashExportMessage(t('graph.layerSplit.exportFailed', { error: message }), true)
-  } finally {
-    slicing.value = false
+  if (!curUrl) {
+    const needImgMsg = t('graph.layerSplit.splitNeedImage')
+    localRepairError.value = needImgMsg
+    flashExportMessage(needImgMsg, true)
+    return
   }
+  if (previewTimer) {
+    clearTimeout(previewTimer)
+    previewTimer = null
+  }
+  localRepairError.value = ''
+  repairTargetLayerId.value = target.id
+  emit('repair-layer', {
+    layerId: target.id,
+    prompt: layerRepairPrompt.value.trim(),
+    resolution: draft.resolution,
+    generateModel: selectedModel.value,
+    generateProviderInstanceId: selectedProviderInstanceId.value,
+    visionModel: selectedVisionModel.value,
+    visionProviderInstanceId: selectedVisionProviderInstanceId.value,
+    layerDataUrl: curUrl,
+    imageLayerSplit: normalizeImageLayerSplit(draft),
+    ...(extraImages.value.length ? { extraGeneratedImages: [...extraImages.value] } : {})
+  })
 }
 
 function expandAncestorGroupsForLayer(layerId: string): void {
@@ -2625,6 +2869,13 @@ function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): v
     onStagePanStart(event)
     return
   }
+  if (exploded2d.value) {
+    selectedIds.value = [layer.id]
+    selectAndRevealLayerFromStage(layer.id)
+    stageEl.value?.focus()
+    startDirectPan(event)
+    return
+  }
   if (exploded3d.value) {
     selectedIds.value = [layer.id]
     selectAndRevealLayerFromStage(layer.id)
@@ -2636,7 +2887,7 @@ function onLayerPointerDown(event: PointerEvent, layer: ImageLayerSplitLayer): v
     onCanvasWrapPointerDown(event)
     return
   }
-  if (brushMode.value !== 'none' && selectedLayer.value && !isBase(selectedLayer.value)) {
+  if (brushMode.value !== 'none' && selectedLayer.value) {
     startBrushStroke(event)
     return
   }
@@ -3006,13 +3257,14 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-function fitDisplay(): void {
+function fitDisplay(preserveZoom = false): void {
   const stage = stageEl.value
-  const cw = Math.max(1, draft.canvasWidth)
-  const ch = Math.max(1, draft.canvasHeight)
-  const ar = cw / ch
   const maxW = Math.max(200, (stage?.clientWidth ?? 640) - 24)
   const maxH = Math.max(180, (stage?.clientHeight ?? 400) - 16)
+  stageAspect.value = Math.max(0.7, Math.min(2.6, maxW / Math.max(1, maxH)))
+  const cw = Math.max(1, exploded2d.value ? explode2dLayout.value.boardWidth : draft.canvasWidth)
+  const ch = Math.max(1, exploded2d.value ? explode2dLayout.value.boardHeight : draft.canvasHeight)
+  const ar = cw / ch
   let w = maxW
   let h = w / ar
   if (h > maxH) {
@@ -3021,7 +3273,7 @@ function fitDisplay(): void {
   }
   display.w = Math.max(80, Math.round(w))
   display.h = Math.max(80, Math.round(h))
-  resetView()
+  if (!preserveZoom) resetView()
 }
 
 function resetView(): void {
@@ -3089,24 +3341,8 @@ function endStagePan(): void {
   window.removeEventListener('pointerup', onStagePanEnd)
 }
 
-function onStagePanStart(event: PointerEvent): void {
-  if (exploded3d.value && !spaceHeld.value && hasCanvas.value && event.isPrimary) {
-    startOrbitDrag(event)
-    return
-  }
-  if (
-    !spaceHeld.value &&
-    !boxSliceActive.value &&
-    brushMode.value === 'none' &&
-    hasCanvas.value &&
-    event.isPrimary
-  ) {
-    startMarqueeSelect(event, {
-      additive: event.shiftKey || event.ctrlKey || event.metaKey
-    })
-    return
-  }
-  if (!spaceHeld.value || !hasCanvas.value || !event.isPrimary) return
+function startDirectPan(event: PointerEvent): void {
+  if (!hasCanvas.value || !event.isPrimary) return
   event.preventDefault()
   pan.active = true
   pan.startX = event.clientX
@@ -3115,6 +3351,31 @@ function onStagePanStart(event: PointerEvent): void {
   pan.originY = panOffset.y
   window.addEventListener('pointermove', onStagePanMove)
   window.addEventListener('pointerup', onStagePanEnd)
+}
+
+function onStagePanStart(event: PointerEvent): void {
+  if (exploded2d.value && hasCanvas.value && event.isPrimary) {
+    startDirectPan(event)
+    return
+  }
+  if (exploded3d.value && !spaceHeld.value && hasCanvas.value && event.isPrimary) {
+    startOrbitDrag(event)
+    return
+  }
+  if (!spaceHeld.value && !boxSliceActive.value && hasCanvas.value && event.isPrimary) {
+    if (brushMode.value !== 'none' && selectedLayer.value) {
+      startBrushStroke(event)
+      return
+    }
+    if (brushMode.value === 'none') {
+      startMarqueeSelect(event, {
+        additive: event.shiftKey || event.ctrlKey || event.metaKey
+      })
+      return
+    }
+  }
+  if (!spaceHeld.value || !hasCanvas.value || !event.isPrimary) return
+  startDirectPan(event)
 }
 
 function onStagePanMove(event: PointerEvent): void {
@@ -3157,11 +3418,11 @@ function buildSavePayload(): LayerSplitEditorSavePayload {
 }
 
 function emitPreview(): void {
-  if (!props.open || hydrating.value || splitting.value) return
+  if (!props.open || hydrating.value || splitting.value || repairing.value) return
   if (previewTimer) clearTimeout(previewTimer)
   previewTimer = setTimeout(() => {
     previewTimer = null
-    if (!props.open || hydrating.value) return
+    if (!props.open || hydrating.value || splitting.value || repairing.value) return
     emit('update', buildSavePayload())
   }, 48)
 }
@@ -3201,6 +3462,7 @@ async function refreshModels(): Promise<void> {
 watch(
   () => draft.selectedId,
   (id) => {
+    localRepairError.value = ''
     if (!id) {
       if (!marqueeDrag.active) selectedIds.value = []
       return
@@ -3244,12 +3506,23 @@ watch(
       marqueeSelectActive.value = false
       marqueeDrag.active = false
       marqueeDrag.moved = false
+      brushMode.value = 'none'
+      brushDrag.active = false
+      brushDrag.points = []
+      soloSelectedLayer.value = false
+      exploded2d.value = false
       exploded3d.value = false
       return
     }
     resetLocalHistory()
     for (const k of Object.keys(localLayerUrls)) delete localLayerUrls[k]
     extraImages.value = []
+    localRepairError.value = ''
+    repairTargetLayerId.value = ''
+    brushMode.value = 'none'
+    brushDrag.active = false
+    brushDrag.points = []
+    soloSelectedLayer.value = false
     boxSliceActive.value = false
     boxSliceDrag.active = false
     marqueeSelectActive.value = false
@@ -3297,6 +3570,41 @@ watch(
   }
 )
 
+watch(
+  () => (props.setup?.layers ?? []).map((layer) => `${layer.id}=>${layer.imageId}`).join('|'),
+  (incomingSig) => {
+    if (!props.open || hydrating.value || !incomingSig) return
+    const incomingLayers = props.setup?.layers ?? []
+    const sameLayerIds =
+      incomingLayers.map((l) => l.id).join('|') === draft.layers.map((l) => l.id).join('|')
+    if (!sameLayerIds) return
+    const draftSig = draft.layers.map((layer) => `${layer.id}=>${layer.imageId}`).join('|')
+    if (incomingSig === draftSig) return
+
+    pushDraftHistory()
+    hydrating.value = true
+    const incomingById = new Map(incomingLayers.map((l) => [l.id, l]))
+    draft.layers = draft.layers.map((cur) => {
+      const inc = incomingById.get(cur.id)
+      if (!inc || inc.imageId === cur.imageId) return cur
+      const next = { ...cur, imageId: inc.imageId }
+      if (inc.qaIssues?.length) next.qaIssues = [...inc.qaIssues]
+      else delete next.qaIssues
+      return next
+    })
+    if (extraImages.value.length) {
+      extraImages.value = extraImages.value.filter((item) => !(item.id && props.layerUrls[item.id]))
+    }
+    layerRepairPrompt.value = ''
+    if (props.repairDoneMessage?.trim()) {
+      flashExportMessage(props.repairDoneMessage.trim())
+    }
+    void nextTick(() => {
+      hydrating.value = false
+    })
+  }
+)
+
 watch(draft, () => emitPreview(), { deep: true })
 watch(
   [
@@ -3312,6 +3620,24 @@ watch(
   () => [props.open, draft.canvasWidth, draft.canvasHeight] as const,
   ([open]) => {
     if (open) fitDisplay()
+  }
+)
+
+watch([explode2dGap, explodeShowLabels], () => {
+  if (exploded2d.value) {
+    void nextTick(() => fitDisplay(true))
+  }
+})
+
+watch(
+  () =>
+    draft.layers
+      .map((l) => `${l.id}:${l.visible ? 1 : 0}:${l.zIndex}:${l.groupId ?? ''}`)
+      .join('|'),
+  () => {
+    if (exploded2d.value) {
+      void nextTick(() => fitDisplay(true))
+    }
   }
 )
 
@@ -3409,6 +3735,52 @@ onBeforeUnmount(() => {
   color: #7ab8ff;
 }
 
+.tool-btn.explode-2d-btn.active {
+  border-color: #34d399;
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.explode-2d-modes {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.mini-mode-btn {
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+
+.mini-mode-btn.active {
+  background: rgba(16, 185, 129, 0.26);
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.mini-mode-btn:hover:not(.active) {
+  color: var(--text);
+}
+
+.explode-gap-ctl.explode-2d-gap-ctl {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.explode-2d-slider {
+  accent-color: #34d399;
+}
+
 .tool-btn.explode-3d-btn.active {
   border-color: #38bdf8;
   background: rgba(56, 189, 248, 0.2);
@@ -3461,6 +3833,26 @@ onBeforeUnmount(() => {
   background: var(--image-checker-bg);
 }
 
+.stage.stage-exploded-2d {
+  cursor: grab;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(16, 185, 129, 0.08), rgba(9, 13, 22, 0.94)),
+    repeating-linear-gradient(
+      0deg,
+      rgba(148, 163, 184, 0.05) 0,
+      rgba(148, 163, 184, 0.05) 1px,
+      transparent 1px,
+      transparent 24px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(148, 163, 184, 0.05) 0,
+      rgba(148, 163, 184, 0.05) 1px,
+      transparent 1px,
+      transparent 24px
+    );
+}
+
 .stage.stage-exploded-3d {
   perspective: 1400px;
   cursor: grab;
@@ -3493,6 +3885,52 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
   margin: auto;
   background: var(--image-checker-bg);
+}
+
+.canvas-wrap.exploded-2d {
+  background: rgba(15, 23, 42, 0.42);
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+}
+
+.explode-2d-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+  overflow: visible;
+}
+
+.origin-ghost-rect {
+  fill: rgba(15, 23, 42, 0.28);
+  stroke: rgba(52, 211, 153, 0.42);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.leader-line {
+  stroke: rgba(148, 163, 184, 0.45);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+  vector-effect: non-scaling-stroke;
+}
+
+.leader-line.active {
+  stroke: #f59e0b;
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.leader-dot {
+  fill: rgba(52, 211, 153, 0.72);
+}
+
+.leader-dot.active {
+  fill: #f59e0b;
 }
 
 .canvas-wrap.exploded-3d {
@@ -3564,6 +4002,93 @@ onBeforeUnmount(() => {
   transition:
     transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 0.28s ease;
+}
+
+.layer.layer-exploded-2d {
+  cursor: pointer;
+  border-radius: 6px;
+  background: var(--image-checker-bg);
+  outline: 1px solid rgba(52, 211, 153, 0.48);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.42);
+  padding: 3px;
+  transition:
+    left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    top 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    height 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.24s ease,
+    opacity 0.24s ease;
+}
+
+.layer.layer-exploded-2d img {
+  object-fit: contain;
+}
+
+.layer.layer-exploded-2d.layer-exploded-2d-radial-base:not(.selected) {
+  opacity: 0.24;
+  outline-style: dashed;
+  box-shadow: none;
+}
+
+.layer.layer-exploded-2d:hover {
+  outline-color: #6ee7b7;
+}
+
+.layer.layer-exploded-2d.selected {
+  outline: 2px solid #f59e0b;
+  box-shadow: 0 12px 30px rgba(245, 158, 11, 0.32);
+}
+
+.layer-2d-badge {
+  position: absolute;
+  left: 0;
+  top: -19px;
+  max-width: max(100%, 150px);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(10, 18, 28, 0.9);
+  border: 1px solid rgba(52, 211, 153, 0.48);
+  color: #d1fae5;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.layer-2d-z {
+  flex: 0 0 auto;
+  color: #6ee7b7;
+  font-weight: 700;
+}
+
+.layer-2d-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.layer-2d-dim {
+  flex: 0 0 auto;
+  color: rgba(209, 250, 229, 0.68);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+}
+
+.layer.layer-exploded-2d.selected .layer-2d-badge {
+  background: rgba(120, 53, 15, 0.94);
+  border-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.layer.layer-exploded-2d.selected .layer-2d-z,
+.layer.layer-exploded-2d.selected .layer-2d-dim {
+  color: #fde68a;
 }
 
 .layer.layer-exploded-3d {
@@ -3783,6 +4308,11 @@ onBeforeUnmount(() => {
 .mini-pill:hover:not(:disabled) {
   border-color: #38bdf8;
   color: #38bdf8;
+}
+
+.mini-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .nine-slice-grid {
@@ -4116,12 +4646,67 @@ onBeforeUnmount(() => {
 }
 
 .side-layer-repair {
+  flex: 0 0 auto;
   margin-top: 6px;
+  margin-bottom: 8px;
   padding-top: 6px;
   border-top: 1px dashed var(--border);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.repair-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.repair-pill {
+  white-space: nowrap;
+}
+
+.canvas-wrap.brush-mode,
+.canvas-wrap.brush-mode .layer {
+  cursor: crosshair;
+}
+
+.layer.solo-dimmed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.brush-stroke-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 950;
+  overflow: visible;
+}
+
+.brush-stroke-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brush-stroke-line.erase {
+  stroke: rgba(251, 146, 60, 0.45);
+}
+
+.brush-stroke-line.restore {
+  stroke: rgba(56, 189, 248, 0.45);
+}
+
+.brush-stroke-dot.erase {
+  fill: rgba(251, 146, 60, 0.45);
+}
+
+.brush-stroke-dot.restore {
+  fill: rgba(56, 189, 248, 0.45);
 }
 
 .brush-radius-row {
@@ -4155,8 +4740,37 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
+.ai-repair-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .ai-repair-btn {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+.ai-repair-btn.running {
+  opacity: 1;
+  border-color: #38bdf8;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  cursor: wait;
+}
+
+.ai-repair-status {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #7dcea0;
+  word-break: break-word;
+}
+
+.ai-repair-status.running {
+  color: #38bdf8;
+}
+
+.ai-repair-status.error {
+  color: #e07070;
 }
 </style>
