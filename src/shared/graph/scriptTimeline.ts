@@ -60,6 +60,9 @@ export type ScriptTimelineSourceOrigin = 'input' | 'imported'
 /** 左侧素材媒体类型（决定双击默认上哪条轨） */
 export type ScriptTimelineSourceMediaKind = 'video' | 'voice'
 
+/** 上游节点语义轨道提示（区分旁白、音效与背景音乐） */
+export type ScriptTimelineSourceTrackHint = 'video' | 'voice' | 'sfx' | 'music'
+
 export type ScriptTimelineSourceGroup = {
   id: string
   title: string
@@ -76,6 +79,8 @@ export type ScriptTimelineSource = {
   origin?: ScriptTimelineSourceOrigin
   /** 缺省按 video 兼容旧数据 */
   mediaKind?: ScriptTimelineSourceMediaKind
+  /** 默认目标轨道提示（如 asset.music -> music，asset.sfx -> sfx） */
+  trackHint?: ScriptTimelineSourceTrackHint
   /** 仅 imported：所属分组；空/缺省=未分组 */
   groupId?: string | null
   /** 仅 input：来源图节点 id（时间线上「重拍此镜头」定位用） */
@@ -685,20 +690,24 @@ export function extractActNarrationSegments(rawText: string | undefined): string
       ''
     )
 
-  // 若包含多行「第二行/第三行」结构，优先提取描述鲜活运动的第三行或去除行号前缀
+  // 若包含多行「第二行/第三行」或「人物对白/历史解说」结构，优先提取解说行并过滤对白前缀
   const lines = body
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-  const thirdLine = lines.find((l) => /^第三行\s*[:：]/.test(l)) // cjk-ok
+  const commentaryLineRe =
+    /^(?:第[三3]行|(?:画面与)?(?:历史|文博|艺术史|古画|名画)?解说(?:旁白|词)?|旁白(?:解说|词)?)\s*[:：]/ // cjk-ok
+  const nonCommentaryLineRe =
+    /^(?:第[一1]行|(?:画面与)?人物(?:说话)?对白|人物台词|角色对白)\s*[:：]/ // cjk-ok
+  const thirdLine = lines.find((l) => commentaryLineRe.test(l))
   if (thirdLine) {
     body = thirdLine
   } else {
-    body = lines.filter((l) => !/^第[一1]行\s*[:：]/.test(l)).join('，') // cjk-ok
+    body = lines.filter((l) => !nonCommentaryLineRe.test(l)).join('，') // cjk-ok
   }
 
   const prefixLabelRe =
-    /^(?:第[一二三四1234]行|场景名|画面描述|动态描述|镜头描述|解说词|旁白|字幕)\s*[:：]\s*/gm // cjk-ok
+    /^(?:第[一二三四1234]行|场景名|画面描述|动态描述|镜头描述|(?:画面与)?(?:历史|文博|艺术史|古画|名画)?解说(?:旁白|词)?|旁白(?:解说|词)?|字幕)\s*[:：]\s*/gm // cjk-ok
   const dollyLeadRe =
     /^[^：:\n]{0,38}(?:一镜到底|向前推进|严格依据参考图|转化为\s*8K)[^：:\n]*[：:]\s*/gm // cjk-ok
   const reviveLeadRe =
@@ -756,6 +765,44 @@ export function isWesternMasterpieceHint(text: string | undefined): boolean {
   return westernRe.test(text)
 }
 
+export function isQingmingShanghetuHint(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const qingmingRe =
+    /清明上河|张择端|汴京|汴河|虹桥|孙羊正店|汴郊|东京梦华|漕船|漕运|瓮城|qm[-_]jpg/i // cjk-ok
+  return qingmingRe.test(text)
+}
+
+export function isNonHumanPaintingHint(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const nonHumanRe =
+    /百骏|骏马|牧马|群马|良驹|八骏|五牛|花鸟|芙蓉锦鸡|瑞鹤|纯山水|无人声|无人物对白/ // cjk-ok
+  return nonHumanRe.test(text)
+}
+
+export function hasSpecificPaintingContent(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const stripped = text
+    .replace(/(?:第\s*\d+\s*幕|分镜\s*#?\d+|act\s*#?\d+|shot\s*#?\d+)/gi, '') // cjk-ok
+    .replace(
+      /(?:[右中左上前下后]段|古画取景|名画取景|写实复活|实景还原|一镜入画|古画入画|名画入画|画面解说旁白|解说旁白|人物说话与活动复活|成片|局部|选区|原画|母本)/g, // cjk-ok
+      ''
+    )
+    .replace(
+      /\b(?:assets|images|videos|cache|imports|scroll|src|crop|real|video|voice|sfx|jpg|jpeg|png|webp|mp4)\b/gi,
+      ''
+    )
+    .replace(/[\s\d·•:：,，.。!！?？;；\-—_()（）【】[\]'"“”‘’「」/\\@#]+/g, '')
+  return stripped.length >= 2
+}
+
+function isConflictingNonQingmingHint(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  if (isNonHumanPaintingHint(text) || isWesternMasterpieceHint(text)) return true
+  const otherPaintingRe =
+    /百骏|郎世宁|汉宫春晓|仇英|千里江山|王希孟|富春山居|黄公望|韩熙载|顾闳中|步辇|阎立本|簪花仕女|洛神赋|唐宫|捣练|挥扇仕女|溪山行旅|早春图|万壑松风/ // cjk-ok
+  return otherPaintingRe.test(text)
+}
+
 function inferActSceneTitleFromDescription(
   text: string,
   actIndex: number,
@@ -770,13 +817,30 @@ function inferActSceneTitleFromDescription(
     const westDefaults = ['古典群像', '透视焦点', '光影余韵'] // cjk-ok
     return `${prefix} · ${westDefaults[actIndex] ?? '名画入画'}` // cjk-ok
   }
+  const horseRe = /百骏|骏马|牧马|群马|良驹|八骏/ // cjk-ok
+  if (horseRe.test(text)) {
+    const horseTitles = ['郊原牧骏', '河谷群驹', '林溪饮马', '疏林骏影', '秋牧长卷', '平野归驹'] // cjk-ok
+    return `${prefix} · ${horseTitles[actIndex] ?? '百骏长卷'}` // cjk-ok
+  }
+  if (/五牛/.test(text)) return `${prefix} · 田畴五牛` // cjk-ok
+  const courtRe = /汉宫|春晓|宫苑|仕女|嫔妃|捣练|簪花/ // cjk-ok
+  if (courtRe.test(text)) {
+    const courtTitles = ['宫苑晨妆', '画阁调琴', '曲槛春深', '花间弈棋', '回廊戏婴', '琼台雅集'] // cjk-ok
+    return `${prefix} · ${courtTitles[actIndex] ?? '宫苑春晓'}` // cjk-ok
+  }
+  if (/夜宴|韩熙载|琵琶/.test(text)) return `${prefix} · 夜宴清音` // cjk-ok
   if (/虹桥|争渡|漕船|撑篙|拉纤|叠梁/.test(text)) return `${prefix} · 虹桥争渡` // cjk-ok
   if (/孙羊正店|彩楼|欢门|酒旗|茶肆|酒肆|古街|坊市|宵禁/.test(text)) return `${prefix} · 孙羊正店` // cjk-ok
   if (/柳岸|石桥|驮队|毛驴|城郊|汴郊/.test(text)) return `${prefix} · 汴郊柳岸` // cjk-ok
   if (/庭院|回廊|轩窗|雅集/.test(text)) return `${prefix} · 翠柳庭院` // cjk-ok
   if (/江山|青绿|峰峦|远帆/.test(text)) return `${prefix} · 千里江山` // cjk-ok
-  const defaults = ['汴郊柳岸', '虹桥争渡', '孙羊正店'] // cjk-ok
-  return `${prefix} · ${defaults[actIndex] ?? '古画入画'}` // cjk-ok
+  if (/富春|溪山|层峦|渔隐|松风/.test(text)) return `${prefix} · 层峦叠翠` // cjk-ok
+  if (isQingmingShanghetuHint(text) || !hasSpecificPaintingContent(text)) {
+    const defaults = ['汴郊柳岸', '虹桥争渡', '孙羊正店'] // cjk-ok
+    return `${prefix} · ${defaults[actIndex] ?? '古画入画'}` // cjk-ok
+  }
+  const neutralDefaults = ['丹青起首', '画境寻幽', '尺素余韵', '笔墨流光', '丹青入胜', '长卷归真'] // cjk-ok
+  return `${prefix} · ${neutralDefaults[actIndex] ?? '古画入画'}` // cjk-ok
 }
 
 export interface ActCharacterDialogueLine {
@@ -991,11 +1055,27 @@ const DEFAULT_HISTORICAL_COMMENTARY_BY_ACT: Array<{
   }
 ]
 
+const DEFAULT_HORSE_SCROLL_COMMENTARY_BY_ACT: string[][] = [
+  [
+    '画卷徐徐铺展宫廷传世名作，群骏散牧于疏林秋草之间', // cjk-ok
+    '中西合璧的细腻笔触勾勒骏骨神采，尽显郊原牧野的闲适生机' // cjk-ok
+  ],
+  [
+    '视线移入长卷腹地，群驹或昂首嘶鸣，或腾跃追逐嬉戏', // cjk-ok
+    '光影流转间皮毛肌理纤毫毕现，定格百骏灵动鲜活的自然野趣' // cjk-ok
+  ],
+  [
+    '画卷远景林溪蜿蜒，良驹涉水饮泉、顾盼相呼', // cjk-ok
+    '山水牧野与骏马神态浑然天成，尺素余韵悠长' // cjk-ok
+  ]
+]
+
 function extractActDialogueLines(
   rawText: string | undefined,
   actIndex: number,
   fallbackPromptTexts?: Array<string | undefined>,
-  culture: 'chinese' | 'western' = 'chinese'
+  culture: 'chinese' | 'western' = 'chinese',
+  allowPresetFallback = true
 ): ActCharacterDialogueLine[] {
   const presetList =
     culture === 'western' ? DEFAULT_WESTERN_COMMENTARY_BY_ACT : DEFAULT_HISTORICAL_COMMENTARY_BY_ACT
@@ -1019,8 +1099,14 @@ function extractActDialogueLines(
   const candidateTexts = [rawText, ...(fallbackPromptTexts ?? [])].filter(
     (s): s is string => typeof s === 'string' && s.trim().length > 0
   )
-  if (!candidateTexts.length) return fallbackDialogues
+  if (!candidateTexts.length) return allowPresetFallback ? fallbackDialogues : []
+  const muteVoiceRe = /无人物对白|无人声|无任何人声/ // cjk-ok
+  if (candidateTexts.some((s) => muteVoiceRe.test(s))) {
+    return []
+  }
 
+  const nonSpeakerLabelRe =
+    /^(?:第一行|第二行|第三行|场景名|画面描述|历史解说|画面与历史解说|画面解说|旁白|严禁|请识别)/ // cjk-ok
   const parsed: ActCharacterDialogueLine[] = []
   const voices = ['onyx', 'echo', 'fable', 'alloy']
   for (const src of candidateTexts) {
@@ -1037,7 +1123,7 @@ function extractActDialogueLines(
         const text = (m[2] ?? '').trim()
         if (
           text &&
-          !/^(?:第一行|第二行|第三行|场景名|画面描述|历史解说|严禁|请识别)/.test(speaker) && // cjk-ok
+          !nonSpeakerLabelRe.test(speaker) &&
           !/1:1|8K|ARRI|水印/.test(text) // cjk-ok
         ) {
           const lane = parsed.length % 2
@@ -1073,14 +1159,22 @@ function extractActDialogueLines(
     }
     if (parsed.length >= 2) break
   }
-  return parsed.length >= 1 ? parsed.slice(0, 2) : fallbackDialogues
+  if (parsed.length >= 1) return parsed.slice(0, 2)
+  return allowPresetFallback ? fallbackDialogues : []
+}
+
+function isGenerationCameraPrompt(text: string | undefined): boolean {
+  if (!text?.trim()) return false
+  const cameraPromptRe =
+    /以\s*@?\d|以首帧|唯一构图依据|严格依据参考图|一镜到底向前推进|镜头从全景平滑拉近|dolly\s*in|generateFrameMode/i // cjk-ok
+  return cameraPromptRe.test(text)
 }
 
 function isHistoricalCommentaryText(text: string | undefined): boolean {
   if (!text?.trim()) return false
-  if (/以\s*@?\d|以首帧|唯一构图依据|dolly\s*in|generateFrameMode/i.test(text)) return false // cjk-ok
+  if (isGenerationCameraPrompt(text)) return false
   const historyRe =
-    /画卷|起笔|工笔|界画|张择端|漕运|坊市|宵禁|东京梦华|叠梁|北宋|汴京|汴河|柳岸|虹桥|茶肆|酒旗|长街|绢上|八百年|江南钱粮|传世|朝代|画师|笔墨|文博|历史|油画|壁画|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|古典主义|卢浮宫|艺术史|画布/ // cjk-ok
+    /画卷|长卷|起笔|工笔|界画|设色|水墨|绢本|纸本|丹青|名画|张择端|郎世宁|仇英|王希孟|黄公望|顾闳中|宫廷|中西合璧|百骏|骏马|青绿山水|漕运|坊市|宵禁|东京梦华|叠梁|北宋|汴京|汴河|柳岸|虹桥|茶肆|酒旗|长街|绢上|八百年|江南钱粮|传世|朝代|画师|笔墨|文博|历史|油画|壁画|焦点透视|明暗对照|伦勃朗|巴洛克|文艺复兴|印象派|古典主义|卢浮宫|艺术史|画布/ // cjk-ok
   return historyRe.test(text)
 }
 
@@ -1098,13 +1192,23 @@ export function parseActSceneSubtitlePlan(input: {
   culture: 'chinese' | 'western'
 } {
   const { actIndex, rawText, titleCandidates = [], fallbackPromptTexts = [], cultureHint } = input
-  const allHintText = [rawText, ...titleCandidates, ...fallbackPromptTexts]
+  const nonRawHints = [...titleCandidates, ...fallbackPromptTexts].filter(Boolean).join(' ')
+  // 防御：若识图/配音节点残留了《清明上河图》模板默认文案，而当前幕标题或生成提示词明确指向其他画作（如《百骏图》），自动丢弃残留模板文案
+  const effectiveRawText =
+    rawText &&
+    isQingmingShanghetuHint(rawText) &&
+    !isQingmingShanghetuHint(nonRawHints) &&
+    isConflictingNonQingmingHint(nonRawHints)
+      ? undefined
+      : rawText
+
+  const allHintText = [effectiveRawText, ...titleCandidates, ...fallbackPromptTexts]
     .filter(Boolean)
     .join(' ')
   const culture: 'chinese' | 'western' =
     cultureHint ?? (isWesternMasterpieceHint(allHintText) ? 'western' : 'chinese')
 
-  const bracketMatch = rawText?.match(/【([^】]{2,28})】/)
+  const bracketMatch = effectiveRawText?.match(/【([^】]{2,28})】/)
   let sceneTitle = cleanActSceneTitle(bracketMatch?.[1], actIndex)
   if (!sceneTitle) {
     for (const cand of titleCandidates) {
@@ -1126,9 +1230,10 @@ export function parseActSceneSubtitlePlan(input: {
     }
   }
 
-  let narrationSegments = isHistoricalCommentaryText(rawText)
-    ? extractActNarrationSegments(rawText)
-    : []
+  let narrationSegments =
+    effectiveRawText && !isGenerationCameraPrompt(effectiveRawText)
+      ? extractActNarrationSegments(effectiveRawText)
+      : []
   if (!narrationSegments.length) {
     for (const fb of fallbackPromptTexts) {
       if (!isHistoricalCommentaryText(fb)) continue
@@ -1140,39 +1245,72 @@ export function parseActSceneSubtitlePlan(input: {
     }
   }
 
-  const combinedHint = [rawText, ...fallbackPromptTexts, ...narrationSegments]
+  const combinedHint = [
+    effectiveRawText,
+    ...titleCandidates,
+    ...fallbackPromptTexts,
+    ...narrationSegments
+  ]
     .filter(Boolean)
     .join(' ')
   if (!sceneTitle) {
     sceneTitle = inferActSceneTitleFromDescription(combinedHint, actIndex, culture)
   }
 
+  const hasSpecificContent = hasSpecificPaintingContent(allHintText)
+  const allowQingmingPreset =
+    culture === 'chinese' && (isQingmingShanghetuHint(allHintText) || !hasSpecificContent)
+  const allowWesternPreset =
+    culture === 'western' &&
+    (!hasSpecificContent || /雅典|哲人|柏拉图|亚里士多德|学派/.test(allHintText)) // cjk-ok
+
   if (!narrationSegments.length) {
-    const presetList =
-      culture === 'western'
-        ? DEFAULT_WESTERN_COMMENTARY_BY_ACT
-        : DEFAULT_HISTORICAL_COMMENTARY_BY_ACT
-    const preset = presetList[actIndex]
-    if (preset) {
-      narrationSegments = [...preset.segments]
+    if (allowWesternPreset && DEFAULT_WESTERN_COMMENTARY_BY_ACT[actIndex]) {
+      narrationSegments = [...DEFAULT_WESTERN_COMMENTARY_BY_ACT[actIndex]!.segments]
+    } else if (allowQingmingPreset && DEFAULT_HISTORICAL_COMMENTARY_BY_ACT[actIndex]) {
+      narrationSegments = [...DEFAULT_HISTORICAL_COMMENTARY_BY_ACT[actIndex]!.segments]
     } else {
-      const extracted = extractActNarrationSegments(rawText)
-      narrationSegments = extracted.length
-        ? extracted
-        : culture === 'western'
-          ? [
-              '传世西洋名画以精妙透视与光影肌理，定格欧洲人文史的辉煌瞬间', // cjk-ok
-              '随着镜头推入画布深处，油彩笔触渐次消融，画中人物尽数复苏' // cjk-ok
-            ]
-          : [
-              '传世古画以细腻界画工笔，定格千年前的山水楼阁与市井百态', // cjk-ok
-              '随着镜头推入画卷深处，历史长河中的人物与烟火尽数复苏' // cjk-ok
-            ]
+      for (const fb of fallbackPromptTexts) {
+        const segs = extractActNarrationSegments(fb)
+        if (segs.length) {
+          narrationSegments = segs
+          break
+        }
+      }
+      if (!narrationSegments.length) {
+        const horseHintRe = /百骏|骏马|牧马|群马|良驹|八骏/ // cjk-ok
+        if (culture === 'western') {
+          narrationSegments = [
+            '传世西洋名画以精妙透视与光影肌理，定格艺术史上的经典瞬间', // cjk-ok
+            '随着镜头推入画布深处，油彩笔触渐次消融，画中意境悄然复苏' // cjk-ok
+          ]
+        } else if (horseHintRe.test(allHintText)) {
+          const horseSegs =
+            DEFAULT_HORSE_SCROLL_COMMENTARY_BY_ACT[
+              actIndex % DEFAULT_HORSE_SCROLL_COMMENTARY_BY_ACT.length
+            ]!
+          narrationSegments = [...horseSegs]
+        } else {
+          narrationSegments = [
+            '传世丹青以精湛笔墨设色，凝练画卷中鲜活灵动的时代气象', // cjk-ok
+            '随着镜头推入画境深处，千年尺素间的神韵与生机悄然复苏' // cjk-ok
+          ]
+        }
+      }
     }
   }
 
-  const dialogueLines = extractActDialogueLines(rawText, actIndex, fallbackPromptTexts, culture)
-  const narrationText = `${narrationSegments.join('，')}。`
+  const allowDialogueFallback =
+    !isNonHumanPaintingHint(allHintText) &&
+    (culture === 'western' ? allowWesternPreset : allowQingmingPreset)
+  const dialogueLines = extractActDialogueLines(
+    effectiveRawText,
+    actIndex,
+    fallbackPromptTexts,
+    culture,
+    allowDialogueFallback
+  )
+  const narrationText = `${narrationSegments.join('，')}。` // cjk-ok
   return { sceneTitle, narrationText, narrationSegments, dialogueLines, culture }
 }
 
@@ -1309,6 +1447,15 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
     return m ? Math.max(0, Number(m[1]) - 1) : null
   }
 
+  const rootScrollHints = graphNodes
+    .filter((n) => n.typeId === 'asset.image' && extractNodeActIdx(n.title, n.id) === null)
+    .flatMap((n) => [
+      n.title,
+      typeof n.params?.previewRelativePath === 'string' ? n.params.previewRelativePath : undefined,
+      typeof n.params?.sourceRelativePath === 'string' ? n.params.sourceRelativePath : undefined
+    ])
+    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+
   const getActPlan = (actIndex: number) => {
     const matchingNodes = graphNodes.filter((n) => extractNodeActIdx(n.title, n.id) === actIndex)
     const voiceNode = matchingNodes.find((n) => n.typeId === 'asset.voice')
@@ -1329,7 +1476,8 @@ export function upgradeTemporaryAutoSubtitlesInTimeline(
         : undefined,
       typeof realNode?.params?.generateInstruction === 'string'
         ? realNode.params.generateInstruction
-        : undefined
+        : undefined,
+      ...rootScrollHints
     ]
     const cultureHint =
       cropNode?.params?.paintingCulture === 'western'
@@ -1777,6 +1925,14 @@ export function normalizeScriptTimelineSource(
     raw.durationSec > 0
   ) {
     next.durationSec = raw.durationSec
+  }
+  if (
+    raw.trackHint === 'video' ||
+    raw.trackHint === 'voice' ||
+    raw.trackHint === 'sfx' ||
+    raw.trackHint === 'music'
+  ) {
+    next.trackHint = raw.trackHint
   }
   if (origin === 'input') {
     if (typeof raw.nodeId === 'string' && raw.nodeId.trim()) {

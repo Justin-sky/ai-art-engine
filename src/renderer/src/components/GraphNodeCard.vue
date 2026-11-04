@@ -3097,6 +3097,9 @@ function onPreviewDblClick(): void {
     }
     const scriptAssetId = hostAssetId.value
     if (isTimelineOutputNode(props.node) && scriptAssetId) {
+      if (props.hostId?.trim()) {
+        await graphEditorHosts.flush(props.hostId.trim())
+      }
       await diveView(
         { viewId: 'script.timeline', scriptAssetId, timelineNodeId: props.node.id },
         title

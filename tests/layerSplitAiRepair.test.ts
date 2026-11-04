@@ -4,6 +4,7 @@ import {
   applyRepairedLayerToState,
   buildLayerRepairPrompt,
   finalizeLayerRepairRgba,
+  inpaintLayerHolesInPlace,
   isExplicitLayerCutoutHint,
   normalizeLayerRepairResolution,
   pickContrastMatteRgb,
@@ -380,5 +381,96 @@ describe('layerSplitAiRepair', () => {
       transparentBackground: false
     })
     expect(prompt).toContain('保持不透明背景')
+  })
+
+  it('fills feathered brush holes & 1-2px dark cutout rims without leaving a seam ring', () => {
+    const W = 120
+    const H = 80
+    const img = createImage(W, H)
+    // Build a golden-yellow foreground card [8..112, 8..72] with 1px outer anti-aliased silhouette
+    for (let y = 7; y <= 72; y++) {
+      for (let x = 7; x <= 112; x++) {
+        const i = (y * W + x) * 4
+        const isOuterAa = x === 7 || x === 112 || y === 7 || y === 72
+        img.data[i] = 247
+        img.data[i + 1] = 194
+        img.data[i + 2] = 54
+        img.data[i + 3] = isOuterAa ? 140 : 255
+      }
+    }
+
+    // Simulate a feathered brush erase (radius 18 at center 60,40, outer 25% feathered alpha 0..254)
+    // plus dark anti-aliased stroke contamination right on the alpha=180..255 rim
+    const cx = 60
+    const cy = 40
+    const r = 18
+    for (let y = 18; y <= 62; y++) {
+      for (let x = 38; x <= 82; x++) {
+        const dist = Math.hypot(x - cx, y - cy)
+        if (dist > r + 1.2) continue
+        const i = (y * W + x) * 4
+        if (dist <= r * 0.75) {
+          img.data[i + 3] = 0
+        } else if (dist <= r) {
+          const strength = Math.max(0, (r - dist) / (r * 0.25))
+          img.data[i + 3] = Math.round(255 * (1 - strength))
+          // Dark residue in the semi-transparent band
+          img.data[i] = 120
+          img.data[i + 1] = 95
+          img.data[i + 2] = 40
+        } else {
+          // 1px opaque dark anti-aliased stroke ring right outside the brush feather
+          img.data[i] = 150
+          img.data[i + 1] = 118
+          img.data[i + 2] = 45
+          img.data[i + 3] = 255
+        }
+      }
+    }
+
+    expect(inpaintLayerHolesInPlace(img)).toBe(true)
+
+    // Every pixel across the hole center AND the entire former feather/dark-rim band must be seamlessly yellow & alpha=255
+    for (let x = 36; x <= 84; x++) {
+      const i = (40 * W + x) * 4
+      expect(img.data[i + 3]).toBe(255)
+      expect(Math.abs(img.data[i]! - 247)).toBeLessThanOrEqual(2)
+      expect(Math.abs(img.data[i + 1]! - 194)).toBeLessThanOrEqual(2)
+      expect(Math.abs(img.data[i + 2]! - 54)).toBeLessThanOrEqual(2)
+    }
+
+    // Outer transparent background and 1px outer silhouette anti-aliasing remain untouched
+    expect(img.data[(2 * W + 60) * 4 + 3]).toBe(0)
+    expect(img.data[(7 * W + 60) * 4 + 3]).toBe(140)
+  })
+
+  it('preserves plateau translucency when filling holes inside a semi-transparent glass panel', () => {
+    const W = 80
+    const H = 60
+    const glass = createImage(W, H)
+    for (let y = 6; y < 54; y++) {
+      for (let x = 6; x < 74; x++) {
+        const i = (y * W + x) * 4
+        const isBorder = x < 9 || x >= 71 || y < 9 || y >= 51
+        glass.data[i] = 48
+        glass.data[i + 1] = 168
+        glass.data[i + 2] = 235
+        glass.data[i + 3] = isBorder ? 255 : 176
+      }
+    }
+    // Punch an internal hole [34..46, 24..36]
+    for (let y = 24; y < 36; y++) {
+      for (let x = 34; x < 46; x++) {
+        glass.data[(y * W + x) * 4 + 3] = 0
+      }
+    }
+
+    expect(inpaintLayerHolesInPlace(glass)).toBe(true)
+    // Hole is filled to match surrounding glass translucency (~176), not forced to opaque 255
+    const centerAlpha = glass.data[(30 * W + 40) * 4 + 3]!
+    expect(centerAlpha).toBeGreaterThanOrEqual(168)
+    expect(centerAlpha).toBeLessThanOrEqual(184)
+    // Untouched glass region remains 176
+    expect(glass.data[(16 * W + 16) * 4 + 3]).toBe(176)
   })
 })

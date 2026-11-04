@@ -1414,6 +1414,7 @@ export default {
       mentionTypeAudio: 'Audio',
       mentionTypeFile: 'File',
       removeMention: 'Remove reference',
+      dropMediaHint: 'Drop to reference image / video / audio assets',
       saveToLibrary: 'Save to asset library',
       saveToLibraryTitle: 'Save generated result to asset library',
       saveToLibrarySubtitle: 'Choose a target folder and file name',

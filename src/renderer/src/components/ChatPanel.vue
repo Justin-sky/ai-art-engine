@@ -41,6 +41,15 @@ import { resolveAssetFileUrl, resolveAssetPreviewUrl } from '../features/media/a
 import { getChatAssetFingerprint } from '../features/media/chatAssetFingerprint'
 import { copyTextToClipboard } from '../utils/copyText'
 import { useProjectStore } from '../stores/project'
+import { useWorkspaceStore } from '../stores/workspace'
+import {
+  canAcceptChatDropTransfer,
+  classifyDroppedExternalMediaFile,
+  inferChatMediaAssetType,
+  isStudioAssetDragTransfer,
+  resolveChatDropOutputDir,
+  resolveDroppedChatAssetPaths
+} from '../features/chat/chatAssetDrop'
 import { buildActiveWorkspaceContext } from '../features/mcp/buildActiveWorkspaceContext'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
@@ -233,6 +242,8 @@ interface MentionAsset {
 }
 const referenced = ref<MentionAsset[]>([])
 const project = useProjectStore()
+const workspaceStore = useWorkspaceStore()
+const assetDragOver = ref(false)
 let historyTimer: number | null = null
 
 /** 从当前激活会话恢复消息与上下文用量 */
@@ -636,16 +647,24 @@ function addReferencedPath(raw: string): void {
       })
     return
   }
-  // 资产库可能尚未刷新到该文件（如刚粘贴落盘），直接用相对路径请求预览图
-  referenced.value.push({ path, name: path.split('/').pop() ?? path, type: 'image', thumbUrl: '' })
-  void resolveAssetPreviewUrl(path)
-    .then((url) => {
-      const item = referenced.value.find((r) => r.path === path)
-      if (item) item.thumbUrl = url
-    })
-    .catch(() => {
-      /* chips 保留图标 fallback */
-    })
+  // 资产库可能尚未刷新到该文件（如刚粘贴/拖入落盘），按扩展名推断类型；非音频才请求缩略图
+  const inferredType = inferChatMediaAssetType(path)
+  referenced.value.push({
+    path,
+    name: path.split('/').pop() ?? path,
+    type: inferredType,
+    thumbUrl: ''
+  })
+  if (inferredType !== 'voice') {
+    void resolveAssetPreviewUrl(path)
+      .then((url) => {
+        const item = referenced.value.find((r) => r.path === path)
+        if (item) item.thumbUrl = url
+      })
+      .catch(() => {
+        /* chips 保留图标 fallback */
+      })
+  }
 }
 
 /** 编辑区内容序列化为文本模型：图片引用 → `@相对路径`，块级元素/换行 → \n */
@@ -720,7 +739,7 @@ function textBeforeCursor(): string {
   return clone.toString()
 }
 
-/** 构造内联引用节点：图片显示缩略图（图文混排），其它资产显示 @路径 文本 chip */
+/** 构造内联引用节点：图片显示缩略图（图文混排），视频/声音/模型显示带类型徽标的紧凑胶囊 */
 function createMentionNode(path: string): HTMLElement {
   const span = document.createElement('span')
   span.className = 'editor-mention'
@@ -728,6 +747,10 @@ function createMentionNode(path: string): HTMLElement {
   span.title = path
   span.contentEditable = 'false'
   const name = path.split('/').pop() ?? path
+  const matchedAsset = project.assets.find(
+    (a) => (a.relativePath ?? '').replace(/\\/g, '/').trim() === path
+  )
+  const mediaType = matchedAsset?.type ?? inferChatMediaAssetType(path)
   if (isImageLikePath(path)) {
     const img = document.createElement('img')
     img.className = 'editor-mention-img'
@@ -746,6 +769,36 @@ function createMentionNode(path: string): HTMLElement {
           span.appendChild(label)
         }
       })
+  } else if (
+    mediaType === 'video' ||
+    mediaType === 'voice' ||
+    mediaType === 'model' ||
+    mediaType === 'model3d'
+  ) {
+    const label = document.createElement('span')
+    label.className = 'editor-mention-label editor-mention-media'
+    const icon = document.createElement('span')
+    icon.className = 'editor-mention-media-icon'
+    icon.textContent = mediaType === 'video' ? '🎬' : mediaType === 'voice' ? '🎵' : '🧊'
+    const text = document.createElement('span')
+    text.className = 'editor-mention-media-name'
+    text.textContent = matchedAsset?.name || name
+    label.append(icon, text)
+    span.appendChild(label)
+    if (mediaType === 'video') {
+      void resolveAssetPreviewUrl(path)
+        .then((url) => {
+          if (!url || !label.isConnected) return
+          const thumb = document.createElement('img')
+          thumb.className = 'editor-mention-media-thumb'
+          thumb.alt = ''
+          thumb.src = url
+          label.insertBefore(thumb, icon)
+        })
+        .catch(() => {
+          /* keep video icon fallback */
+        })
+    }
   } else {
     const label = document.createElement('span')
     label.className = 'editor-mention-label'
@@ -952,36 +1005,119 @@ async function onComposerPaste(event: ClipboardEvent): Promise<void> {
   }
 }
 
+function clearAssetDragOver(): void {
+  assetDragOver.value = false
+}
+
+function isCurrentStudioAssetDrag(event: DragEvent): boolean {
+  return isStudioAssetDragTransfer(
+    event.dataTransfer,
+    workspaceStore.draggingAsset,
+    workspaceStore.draggingAssetIds
+  )
+}
+
+function canAcceptCurrentChatDrop(event: DragEvent): boolean {
+  return canAcceptChatDropTransfer({
+    transfer: event.dataTransfer,
+    draggingAsset: workspaceStore.draggingAsset,
+    draggingAssetIds: workspaceStore.draggingAssetIds,
+    projectAssets: project.assets
+  })
+}
+
+function placeComposerCaretAtDropPoint(event: DragEvent): void {
+  const el = inputRef.value
+  if (!el || !(event.target instanceof Node) || !el.contains(event.target)) return
+  const docWithCaret = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null
+  }
+  const dropRange = docWithCaret.caretRangeFromPoint?.(event.clientX, event.clientY)
+  if (!dropRange || !el.contains(dropRange.commonAncestorContainer)) return
+  el.focus()
+  const sel = window.getSelection()
+  if (sel) {
+    sel.removeAllRanges()
+    sel.addRange(dropRange)
+  }
+}
+
+function onChatDragEnter(event: DragEvent): void {
+  if (canAcceptCurrentChatDrop(event)) {
+    assetDragOver.value = true
+  }
+}
+
+function onChatDragOver(event: DragEvent): void {
+  if (canAcceptCurrentChatDrop(event)) {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    assetDragOver.value = true
+    return
+  }
+  // 非媒体工程资产（如画布/文件夹）拖过编辑区时同样拦截默认行为，避免把裸 UUID 插入输入框
+  if (isCurrentStudioAssetDrag(event)) {
+    event.preventDefault()
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
+    assetDragOver.value = false
+  }
+}
+
+function onChatDragLeave(event: DragEvent): void {
+  const current = event.currentTarget as HTMLElement | null
+  const related = event.relatedTarget as Node | null
+  if (current && related && current.contains(related)) return
+  assetDragOver.value = false
+}
+
 /**
- * 输入框拖拽：支持从文件管理器拖入图片/视频/音频等媒体文件。
- * 统一落盘到工程资产库并以内联引用节点插入，避免浏览器默认插入裸路径文本。
+ * 对话面板拖拽接收：
+ * 1) 支持从资产窗口直接拖入图片、视频、声音（及 3D 模型）资产（含多选批量拖入）；
+ * 2) 支持从系统文件管理器拖入图片 / 视频 / 音频文件，自动按媒体类型落盘后插入内联引用。
  */
-async function onComposerDrop(event: DragEvent): Promise<void> {
+async function onChatDrop(event: DragEvent): Promise<void> {
+  assetDragOver.value = false
   if (composing.value) return
+
+  // 1) 优先处理应用内资产窗口拖拽（Chromium 拖动缩略图卡片时可能同时附带 Files 类型）
+  if (isCurrentStudioAssetDrag(event)) {
+    event.preventDefault()
+    const paths = resolveDroppedChatAssetPaths({
+      transfer: event.dataTransfer,
+      draggingAsset: workspaceStore.draggingAsset,
+      draggingAssetIds: workspaceStore.draggingAssetIds,
+      projectAssets: project.assets
+    })
+    workspaceStore.setDraggingAsset(null)
+    if (!paths.length) return
+    placeComposerCaretAtDropPoint(event)
+    for (const relPath of paths) {
+      insertMentionNode(relPath)
+    }
+    return
+  }
+
+  // 2) 系统外部媒体文件拖入
   const files = event.dataTransfer?.files
   if (!files?.length) return
-  const mediaFiles: File[] = []
+  const mediaEntries: Array<{ file: File; kind: 'image' | 'video' | 'voice' }> = []
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
     if (!file) continue
-    if (
-      file.type.startsWith('image/') ||
-      file.type.startsWith('video/') ||
-      file.type.startsWith('audio/')
-    ) {
-      mediaFiles.push(file)
-    }
+    const kind = classifyDroppedExternalMediaFile(file)
+    if (kind) mediaEntries.push({ file, kind })
   }
-  if (!mediaFiles.length) return
+  if (!mediaEntries.length) return
   event.preventDefault()
-  for (const file of mediaFiles) {
+  placeComposerCaretAtDropPoint(event)
+  for (const { file, kind } of mediaEntries) {
     try {
       const dataUrl = await readFileAsDataUrl(file)
       if (!dataUrl) continue
       const relativePath = await window.studio.saveGraphRunMedia({
         dataUrl,
         key: `drop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        outputDir: 'Assets/Images/Paste'
+        outputDir: resolveChatDropOutputDir(kind)
       })
       if (!relativePath) continue
       void project.scheduleRefreshLibrary()
@@ -3578,6 +3714,7 @@ onMounted(async () => {
   // 按当前工程作用域恢复历史会话（新建工程自动创建独立空白会话），再订阅事件流
   loadHistory(currentProjectChatScope.value)
   loadActiveMessages()
+  window.addEventListener('dragend', clearAssetDragOver)
   void refreshSessionSkills()
   void refreshInstalledWorkflows()
   stopEvent = window.studio.onHarnessEvent(onHarnessEvent)
@@ -3612,6 +3749,7 @@ onBeforeUnmount(() => {
   stopAssetRemoved?.()
   document.removeEventListener('click', onModeOutside)
   document.removeEventListener('keydown', onModeOutside)
+  window.removeEventListener('dragend', clearAssetDragOver)
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
   if (activityTimer !== null) window.clearTimeout(activityTimer)
@@ -3625,7 +3763,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="chat-panel">
+  <div
+    class="chat-panel"
+    :class="{ 'asset-drag-over': assetDragOver }"
+    @dragenter="onChatDragEnter"
+    @dragover="onChatDragOver"
+    @dragleave="onChatDragLeave"
+    @drop="onChatDrop"
+  >
     <div class="chat-status" :class="{ warn: statusWarn }">
       <!--
         当前会话标题放在面板最上方：它回答的是「我在看哪段对话」，
@@ -4922,6 +5067,7 @@ onBeforeUnmount(() => {
       <div v-if="referenced.length" class="mention-chips">
         <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
           <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
+          <span v-else-if="item.type === 'video'" class="chip-icon">🎬</span>
           <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
           <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
             >🧊</span
@@ -4971,6 +5117,9 @@ onBeforeUnmount(() => {
           </button>
           <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
         </div>
+        <div v-if="assetDragOver" class="composer-drop-hint" aria-hidden="true">
+          {{ t('studio.chat.dropMediaHint') }}
+        </div>
         <div
           ref="inputRef"
           class="composer-editor"
@@ -4982,8 +5131,6 @@ onBeforeUnmount(() => {
           :data-placeholder="t('studio.chat.placeholder')"
           @input="onComposerInput"
           @paste="onComposerPaste"
-          @drop.prevent="onComposerDrop"
-          @dragover.prevent
           @compositionstart="composing = true"
           @compositionend="onCompositionEnd"
           @keydown.enter.exact.prevent="onComposerEnter"
@@ -5309,12 +5456,22 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .chat-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   background: var(--bg-panel);
   color: var(--text);
+}
+
+.chat-panel.asset-drag-over {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.chat-panel.asset-drag-over .composer-editor {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-input));
 }
 
 .chat-status {
@@ -7213,6 +7370,23 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
+.composer-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-panel) 84%, transparent);
+  color: var(--accent-fg);
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+}
+
 .slash-menu {
   position: absolute;
   left: 0;
@@ -8280,7 +8454,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   vertical-align: text-bottom;
-  max-width: 140px;
+  max-width: 180px;
   margin: 0 1px;
   border-radius: 4px;
   overflow: hidden;
@@ -8307,6 +8481,38 @@ onBeforeUnmount(() => {
   color: var(--accent-fg);
   font-size: 12px;
   line-height: 1.6;
+  white-space: nowrap;
+}
+
+.editor-mention-label.editor-mention-media {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.editor-mention-media-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
+  background: var(--bg-input);
+}
+
+.editor-mention-media-icon {
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.editor-mention-media-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

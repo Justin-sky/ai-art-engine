@@ -2,6 +2,7 @@ import {
   computeNineSliceFromRgbaBuffer,
   decomposeControlIntoStandardParts,
   decomposeRgbaBufferToUiLayers,
+  inpaintLayerHolesInPlace,
   isCanvasSafeImageSrc,
   isLayerSplitBase,
   isLayerSplitLayerDrawable,
@@ -17,7 +18,6 @@ import {
   type UiEditableTextMeta
 } from '@shared/graph'
 import {
-  fillHoles,
   inpaintPushPull,
   type PreciseSplitSam2Candidate,
   type PreciseSplitSam2Request
@@ -760,30 +760,11 @@ export async function applyLayerBrushStrokeToDataUrl(input: {
 }
 
 /**
- * 一键修补单图层内部的闭合残缺孔洞（利用形态学闭合孔洞检测 + 推拉金字塔平滑插值）。
+ * 一键修补单图层内部的闭合残缺孔洞（吸收完整半透明羽化带 + 外扩清理抗锯齿杂边 + 推拉金字塔平滑插值）。
  */
 export async function inpaintSingleLayerHolesToDataUrl(layerUrl: string): Promise<string> {
   const decoded = await uiRgbaCodec.decodeImageRgba(layerUrl)
-  const { width, height, data } = decoded
-  const n = width * height
-  const fg = new Uint8Array(n)
-  for (let p = 0; p < n; p++) {
-    if (data[p * 4 + 3]! >= 96) fg[p] = 1
-  }
-  const filled = fillHoles(fg, width, height)
-  const hole = new Uint8Array(n)
-  let holeCount = 0
-  for (let p = 0; p < n; p++) {
-    if (filled[p] && !fg[p]) {
-      hole[p] = 1
-      holeCount++
-    }
-  }
-  if (!holeCount) return layerUrl
-  inpaintPushPull(decoded, hole)
-  for (let p = 0; p < n; p++) {
-    if (hole[p]) decoded.data[p * 4 + 3] = 255
-  }
+  if (!inpaintLayerHolesInPlace(decoded)) return layerUrl
   return uiRgbaCodec.encodeRgbaPng(decoded)
 }
 

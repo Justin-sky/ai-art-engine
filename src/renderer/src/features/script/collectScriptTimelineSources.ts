@@ -19,7 +19,8 @@ import {
   type GraphNodeRunState,
   type GraphVoiceItem,
   type GraphVideoItem,
-  type ScriptTimelineSource
+  type ScriptTimelineSource,
+  type ScriptTimelineSourceTrackHint
 } from '@shared/graph'
 import { useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
@@ -77,12 +78,30 @@ function isVoiceEdge(sourceNode: GraphNode, targetPort: string): boolean {
   return sourceNode.assetType === 'voice' || isVoiceNodeType(sourceNode.typeId)
 }
 
+function normalizeMediaRel(raw?: string | null): string | undefined {
+  const cleaned = raw?.trim().replace(/^@+/, '').trim()
+  return cleaned || undefined
+}
+
+function inferAudioTrackHint(
+  sourceNode?: GraphNode,
+  targetPort?: string
+): Extract<ScriptTimelineSourceTrackHint, 'voice' | 'sfx' | 'music'> {
+  if (targetPort === 'in-music' || sourceNode?.typeId === 'asset.music') return 'music'
+  if (sourceNode?.typeId === 'asset.sfx') return 'sfx'
+  return 'voice'
+}
+
 function extractShotNum(title?: string): number | null {
   if (!title) return null
   const m =
     title.match(
-      /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|Shot|Scene|Step|Part|Clip)\s*#?(\d+)/i
-    ) ?? title.match(/^#?(\d+)[\s._:\uff1a-]/i)
+      /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image|Episode|Ep\.?)\s*#?(\d+)/i
+    ) ??
+    title.match(
+      /\u7b2c\s*(\d+)\s*(?:\u96c6|\u573a|\u5e55|\u955c|\u7ae0|\u8282|\u6b65|\u8bdd|\u56de)/i
+    ) ??
+    title.match(/^#?(\d+)[\s._:\uff1a-]/i)
   return m ? Number(m[1]) : null
 }
 
@@ -101,7 +120,7 @@ function videoItemToSource(
   nodeTitle?: string
 ): ScriptTimelineSource | null {
   if (isTimelineComposedItem(item)) return null
-  const relativePath = item.relativePath?.trim()
+  const relativePath = normalizeMediaRel(item.relativePath)
   const assetId = item.id?.trim()
   if (!relativePath && !assetId) return null
   const project = useProjectStore()
@@ -114,7 +133,7 @@ function videoItemToSource(
             a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
         )
       : undefined
-  const resolvedRel = relativePath || asset?.relativePath?.trim()
+  const resolvedRel = relativePath || normalizeMediaRel(asset?.relativePath)
   if (!resolvedRel && !asset?.id && !assetId) return null
   return {
     id: resolvedRel || asset?.id || assetId || `video:${index}`,
@@ -126,6 +145,7 @@ function videoItemToSource(
     assetId: asset?.id || assetId,
     durationSec: undefined,
     mediaKind: 'video',
+    trackHint: 'video',
     ...(nodeId?.trim() ? { nodeId: nodeId.trim() } : {}),
     ...(nodeTitle?.trim() ? { nodeTitle: nodeTitle.trim() } : {})
   }
@@ -135,9 +155,10 @@ function voiceItemToSource(
   item: GraphVoiceItem,
   index: number,
   nodeId?: string,
-  nodeTitle?: string
+  nodeTitle?: string,
+  trackHint: Extract<ScriptTimelineSourceTrackHint, 'voice' | 'sfx' | 'music'> = 'voice'
 ): ScriptTimelineSource | null {
-  const relativePath = item.relativePath?.trim()
+  const relativePath = normalizeMediaRel(item.relativePath)
   const assetId = item.id?.trim()
   if (!relativePath && !assetId) return null
   const project = useProjectStore()
@@ -150,7 +171,7 @@ function voiceItemToSource(
             a.relativePath?.replace(/\\/g, '/') === relativePath.replace(/\\/g, '/')
         )
       : undefined
-  const resolvedRel = relativePath || asset?.relativePath?.trim()
+  const resolvedRel = relativePath || normalizeMediaRel(asset?.relativePath)
   if (!resolvedRel && !asset?.id && !assetId) return null
   return {
     id: resolvedRel || asset?.id || assetId || `voice:${index}`,
@@ -162,6 +183,7 @@ function voiceItemToSource(
     assetId: asset?.id || assetId,
     durationSec: undefined,
     mediaKind: 'voice',
+    trackHint,
     ...(nodeId?.trim() ? { nodeId: nodeId.trim() } : {}),
     ...(nodeTitle?.trim() ? { nodeTitle: nodeTitle.trim() } : {})
   }
@@ -194,7 +216,7 @@ function extractSemanticNodeVideos(node: GraphNode): GraphVideoItem[] {
   const out: GraphVideoItem[] = []
   const seen = new Set<string>()
   const push = (relativePath?: string, id?: string): void => {
-    const rel = relativePath?.trim()
+    const rel = normalizeMediaRel(relativePath)
     const rawId = id?.trim()
     if (!rel && !rawId) return
     if (rel && isTimelineComposedItem({ id: rawId, relativePath: rel })) return
@@ -599,7 +621,9 @@ function resolveNodeVoices(
     return picked ? [picked] : []
   }
 
-  const previewRel = node.params?.previewRelativePath?.trim()
+  const previewRel =
+    normalizeMediaRel(node.params?.previewRelativePath) ||
+    normalizeMediaRel(node.params?.sourceRelativePath)
   if (previewRel) {
     return [{ relativePath: previewRel }]
   }
@@ -706,6 +730,51 @@ function collectFromTargetOutputNode(
   }
 
   const incomingEdges = expandOutputIncomingEdges(doc, output.id)
+  const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+  const directVisualNodeIds = new Set(
+    incomingEdges
+      .filter((e) => e.targetPort !== 'in-text' && !isVoiceEdge(e.sourceNode, e.targetPort))
+      .map((e) => e.sourceNode.id)
+  )
+  const hasHybridCropEdge = incomingEdges.some(
+    (e) =>
+      !isVoiceEdge(e.sourceNode, e.targetPort) &&
+      (e.targetPort === 'in-image' ||
+        e.targetPort === 'in-images' ||
+        e.sourceNode.typeId === 'image.process')
+  )
+  const resolveOwnNodeImageItem = (node: GraphNode): GraphVideoItem | null => {
+    const outputs = readNodeRunOutputs(doc, hostId, node.id)
+    const rawOut = outputs?.out ?? outputs?.['out-all']
+    if (rawOut) {
+      const fromImgRun = flattenImagesValues([rawOut]).filter(
+        (item) => !isTimelineComposedItem(item)
+      )
+      const picked = pickImageItem(fromImgRun, node.params?.selectedImageId) ?? fromImgRun[0]
+      if (picked && (picked.relativePath?.trim() || picked.id?.trim())) {
+        return { id: picked.id, relativePath: picked.relativePath, createdAt: picked.createdAt }
+      }
+    }
+    const generatedImgs = (
+      Array.isArray(node.params?.generatedImages) ? node.params.generatedImages : []
+    )
+      .filter((item) => item && !isTimelineComposedItem(item))
+      .filter((item) => Boolean(item.relativePath?.trim() || item.id?.trim()))
+    if (generatedImgs.length) {
+      const picked = pickImageItem(generatedImgs, node.params?.selectedImageId) ?? generatedImgs[0]
+      if (picked) {
+        return { id: picked.id, relativePath: picked.relativePath, createdAt: picked.createdAt }
+      }
+    }
+    const ownRel =
+      normalizeMediaRel(node.params?.previewRelativePath) ||
+      normalizeMediaRel(node.params?.sourceRelativePath)
+    if (ownRel && !isTimelineComposedItem({ relativePath: ownRel })) {
+      return { relativePath: ownRel }
+    }
+    return null
+  }
+
   const videos: ScriptTimelineSource[] = []
   const voices: ScriptTimelineSource[] = []
   const seenVideos = new Set<string>()
@@ -719,13 +788,14 @@ function collectFromTargetOutputNode(
 
     if (isVoiceEdge(sourceNode, targetPort)) {
       hasVoiceEdges = true
+      const trackHint = inferAudioTrackHint(sourceNode, targetPort)
       const resolved = resolveNodeVoices(doc, hostId, sourceNode, sourcePort, targetPort, new Set())
       for (const [i, item] of resolved.entries()) {
         const title =
           resolved.length > 1 && sourceNode.title?.trim()
             ? `${sourceNode.title.trim()} ${i + 1}`
             : sourceNode.title
-        const src = voiceItemToSource(item, voices.length, sourceNode.id, title)
+        const src = voiceItemToSource(item, voices.length, sourceNode.id, title, trackHint)
         if (!src) continue
         const key = src.relativePath || src.assetId || src.id
         if (seenVoices.has(key)) continue
@@ -734,6 +804,23 @@ function collectFromTargetOutputNode(
       }
     } else {
       hasVideoEdges = true
+      if (hasHybridCropEdge && sourceNode.typeId === 'asset.video') {
+        const ffEdge = doc.edges.find(
+          (e) => e.target === sourceNode.id && e.targetPort === 'in-first-frame'
+        )
+        const ffNode = ffEdge ? nodeById.get(ffEdge.source) : undefined
+        if (ffNode && ffNode.id !== 'scroll-src' && !directVisualNodeIds.has(ffNode.id)) {
+          const ffItem = resolveOwnNodeImageItem(ffNode)
+          const ffSrc = ffItem
+            ? videoItemToSource(ffItem, videos.length, ffNode.id, ffNode.title)
+            : null
+          const ffKey = ffSrc ? ffSrc.relativePath || ffSrc.assetId || ffSrc.id : ''
+          if (ffSrc && ffKey && !seenVideos.has(ffKey)) {
+            seenVideos.add(ffKey)
+            videos.push(ffSrc)
+          }
+        }
+      }
       const resolved = resolveNodeVideos(doc, hostId, sourceNode, sourcePort, targetPort, new Set())
       for (const [i, item] of resolved.entries()) {
         const title =
@@ -750,22 +837,76 @@ function collectFromTargetOutputNode(
     }
   }
 
-  const sortByShotNum = (list: ScriptTimelineSource[]): void => {
+  const isVideoClipSource = (src: ScriptTimelineSource): boolean => {
+    const n = src.nodeId ? nodeById.get(src.nodeId) : undefined
+    if (n?.typeId === 'asset.video') return true
+    if (n?.typeId === 'image.process' || n?.typeId === 'asset.image') return false
+    return /\.(?:mp4|webm|mov|m4v|mkv)$/i.test(src.relativePath ?? '')
+  }
+
+  const isCropImageSource = (src: ScriptTimelineSource): boolean => {
+    const n = src.nodeId ? nodeById.get(src.nodeId) : undefined
+    if (n?.typeId === 'image.process') return true
+    const meta = `${src.nodeTitle ?? ''} ${src.title ?? ''} ${src.nodeId ?? ''}`
+    return /(?:-crop\b|\u53e4\u753b\u53d6\u666f)/i.test(meta)
+  }
+
+  const sortVisualsByShotNum = (list: ScriptTimelineSource[]): void => {
+    const shotHasMixedMedia = new Map<number, { hasImg: boolean; hasVid: boolean }>()
+    for (const src of list) {
+      const sNum = extractShotNum(src.nodeTitle || src.title || src.nodeId)
+      if (sNum === null) continue
+      const entry = shotHasMixedMedia.get(sNum) ?? { hasImg: false, hasVid: false }
+      if (isVideoClipSource(src)) entry.hasVid = true
+      else entry.hasImg = true
+      shotHasMixedMedia.set(sNum, entry)
+    }
     const withOrder = list.map((src, idx) => {
-      const shotNum = extractShotNum(src.nodeTitle || src.title)
+      const shotNum = extractShotNum(src.nodeTitle || src.title || src.nodeId)
+      if (shotNum === null) {
+        return { src, order: 1000000 + idx }
+      }
+      const mix = shotHasMixedMedia.get(shotNum)
+      const subRank =
+        mix?.hasImg && mix?.hasVid
+          ? isVideoClipSource(src)
+            ? 400
+            : isCropImageSource(src)
+              ? 0
+              : 200
+          : 0
       return {
         src,
-        order: shotNum !== null ? shotNum * 1000 + idx : 100000 + idx
+        order: shotNum * 1000 + subRank + idx
       }
     })
     withOrder.sort((a, b) => a.order - b.order)
     list.splice(0, list.length, ...withOrder.map((x) => x.src))
   }
-  if (videos.some((s) => extractShotNum(s.nodeTitle || s.title) !== null)) {
-    sortByShotNum(videos)
+
+  const sortVoicesByShotNum = (list: ScriptTimelineSource[]): void => {
+    const withOrder = list.map((src, idx) => {
+      const shotNum = extractShotNum(src.nodeTitle || src.title || src.nodeId)
+      const roleRank = src.trackHint === 'music' ? 2000000 : src.trackHint === 'sfx' ? 300 : 0
+      return {
+        src,
+        order:
+          src.trackHint === 'music'
+            ? roleRank + idx
+            : shotNum !== null
+              ? shotNum * 1000 + roleRank + idx
+              : 1000000 + roleRank + idx
+      }
+    })
+    withOrder.sort((a, b) => a.order - b.order)
+    list.splice(0, list.length, ...withOrder.map((x) => x.src))
   }
-  if (voices.some((s) => extractShotNum(s.nodeTitle || s.title) !== null)) {
-    sortByShotNum(voices)
+
+  if (videos.some((s) => extractShotNum(s.nodeTitle || s.title || s.nodeId) !== null)) {
+    sortVisualsByShotNum(videos)
+  }
+  if (voices.some((s) => extractShotNum(s.nodeTitle || s.title || s.nodeId) !== null)) {
+    sortVoicesByShotNum(voices)
   }
 
   if (!videos.length) {
@@ -881,13 +1022,15 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
     assetId: string | undefined,
     title?: string,
     nodeId?: string,
-    nodeTitle?: string
+    nodeTitle?: string,
+    trackHint: Extract<ScriptTimelineSourceTrackHint, 'voice' | 'sfx' | 'music'> = 'voice'
   ): void => {
     const src = voiceItemToSource(
       { id: assetId, relativePath, createdAt: undefined },
       sources.length,
       nodeId,
-      nodeTitle
+      nodeTitle,
+      trackHint
     )
     if (!src) return
     const key = src.relativePath || src.assetId || src.id
@@ -906,18 +1049,22 @@ function collectFromVoiceNodes(doc: GraphDocument, hostId: string): ScriptTimeli
 
     const title = node.title?.trim()
     const params = node.params ?? {}
+    const trackHint = inferAudioTrackHint(node)
     const runOut = readNodeRunOutputs(doc, hostId, node.id)?.out
     if (runOut) {
       const voices = flattenVoicesValues([runOut])
-      for (const item of voices) push(item.relativePath, item.id, title, node.id, node.title)
+      for (const item of voices) {
+        push(item.relativePath, item.id, title, node.id, node.title, trackHint)
+      }
     }
     for (const item of Array.isArray(params.generatedVoices) ? params.generatedVoices : []) {
-      push(item?.relativePath, item?.id, title, node.id, node.title)
+      push(item?.relativePath, item?.id, title, node.id, node.title, trackHint)
     }
-    const rel = params.previewRelativePath?.trim()
-    if (rel) push(rel, undefined, title, node.id, node.title)
+    const rel =
+      normalizeMediaRel(params.previewRelativePath) || normalizeMediaRel(params.sourceRelativePath)
+    if (rel) push(rel, undefined, title, node.id, node.title, trackHint)
     if (node.assetId?.trim() && (node.assetType === 'voice' || isVoiceNodeType(node.typeId))) {
-      push(undefined, node.assetId.trim(), title, node.id, node.title)
+      push(undefined, node.assetId.trim(), title, node.id, node.title, trackHint)
     }
   }
   return sources

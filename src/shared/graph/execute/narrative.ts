@@ -587,6 +587,19 @@ export async function executeTimelineOutputNode(
         const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
         const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
         const realNode = actMatchingNodes.find((n) => n.typeId === 'asset.image')
+        const rootScrollHints = doc.nodes
+          .filter(
+            (n) =>
+              n.typeId === 'asset.image' &&
+              (extractShotNum(n.title) ?? extractShotNum(n.id)) === null
+          )
+          .flatMap((n) => [
+            n.title,
+            typeof n.params?.previewRelativePath === 'string'
+              ? n.params.previewRelativePath
+              : undefined
+          ])
+          .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
 
         let rawText =
           subtitles[actIdx]?.trim() ||
@@ -614,8 +627,8 @@ export async function executeTimelineOutputNode(
             if (imgUrl) {
               const vlmRes = await ctx.generateText({
                 system:
-                  'You are a Chief Curator of Chinese Classical Painting at the Palace Museum and a CCTV historical documentary writer. Inspect the painting slice and output ONLY valid JSON: {"sceneName": "四字古风场景名", "subtitle": "四十至六十字专业历史文博解说词，深入剖析画作朝代笔墨技法（如宋代界画/工笔设色）、建筑舟车形制与当时社会人文历史典故"}', // cjk-ok
-                prompt: `Analyze Act ${actNum} of this classical Chinese painting and write an authoritative museum-grade historical documentary commentary in Chinese. Return JSON only.`,
+                  'You are a Chief Curator of Classical Painting at the Palace Museum and a historical documentary writer. Inspect the painting slice and output ONLY valid JSON: {"sceneName": "四字古风场景名", "subtitle": "四十至六十字专业历史文博解说词，严格依据画面真实所绘题材（如宫廷骏马、青绿山水、仕女庭院或市井人物）剖析朝代笔墨技法与画中意境，严禁套用画面中不存在的虹桥舟船或街市典故"}', // cjk-ok
+                prompt: `Analyze Act ${actNum} of this classical painting and write an authoritative museum-grade documentary commentary in Chinese strictly matching what is visible in the image. Return JSON only.`,
                 images: [imgUrl],
                 visionGrounding: true
               })
@@ -651,7 +664,8 @@ export async function executeTimelineOutputNode(
           titleCandidates: [imgVis.title, cropNode?.title, videoNode?.title, realNode?.title],
           fallbackPromptTexts: [
             videoNode?.params?.generateInstruction,
-            realNode?.params?.generateInstruction
+            realNode?.params?.generateInstruction,
+            ...rootScrollHints
           ]
         })
         imgVis.title = plan.sceneTitle
@@ -827,6 +841,7 @@ export async function executeTimelineOutputNode(
     try {
       composed = await ctx.composeTimelineVideo({
         nodeId: ctx.node.id,
+        ...(doc ? { document: doc } : {}),
         videos,
         ...(images.length ? { images } : {}),
         ...(visuals.length ? { visuals } : {}),

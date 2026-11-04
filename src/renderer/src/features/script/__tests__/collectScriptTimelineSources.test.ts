@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { flattenVideosValues, type GraphDocument } from '@shared/graph'
 import { useProjectStore } from '../../../stores/project'
 import { graphEditorHosts } from '../../graph/model/graphEditorHosts'
+import { autoArrangeTimelineFromGraphHost } from '../../graph/model/composeTimelineVideo'
 import { collectScriptTimelineSources } from '../collectScriptTimelineSources'
 
 describe('collectScriptTimelineSources', () => {
@@ -428,5 +429,272 @@ describe('collectScriptTimelineSources', () => {
       'Semantic/tl-1/rebuild.mp4',
       'Semantic/tl-1/rebuild-v1.mp4'
     ])
+  })
+
+  it('collects and auto-arranges 6-act ancient scroll revival (Act 1..Act 6) across all timeline tracks on dive without FFmpeg export', async () => {
+    const project = useProjectStore()
+    const nodes: GraphDocument['nodes'] = [
+      {
+        id: 'scroll-src',
+        typeId: 'asset.image',
+        category: 'asset',
+        assetType: 'image',
+        title: '汉宫春晓图 · 原画全卷', // cjk-ok
+        position: { x: 0, y: 0 },
+        params: {
+          sourceRelativePath: '@Assets/hangong-scroll.jpg'
+        }
+      },
+      {
+        id: 'bgm',
+        typeId: 'asset.music',
+        category: 'asset',
+        assetType: 'voice',
+        title: '宫廷古琴雅乐', // cjk-ok
+        position: { x: 0, y: 600 },
+        params: {
+          sourceRelativePath: '@Assets/Audio/palace-bgm.mp3'
+        }
+      },
+      {
+        id: 'timeline-out',
+        typeId: 'output.timeline',
+        category: 'output',
+        title: '汉宫春晓图·六幕一镜入画成片', // cjk-ok
+        position: { x: 1200, y: 300 },
+        params: {}
+      }
+    ]
+    const edges: GraphDocument['edges'] = []
+
+    for (let act = 1; act <= 6; act++) {
+      nodes.push(
+        {
+          id: `act${act}-crop`,
+          typeId: 'image.process',
+          category: 'note',
+          assetType: 'image',
+          title: `第${act}幕·古画取景`, // cjk-ok
+          position: { x: 300, y: act * 120 },
+          params: {
+            imageProcessTool: 'crop',
+            imageCrop: { cropX: (act - 1) * 0.15, cropY: 0.1, cropW: 0.25, cropH: 0.8 },
+            previewRelativePath: `Cache/Images/act${act}-crop.png`
+          }
+        },
+        {
+          id: `act${act}-recognize`,
+          typeId: 'image.toPrompt',
+          category: 'note',
+          title: `第${act}幕·识图考据`, // cjk-ok
+          position: { x: 500, y: act * 120 },
+          params: {
+            text: `晨光熹微，第${act}幕宫苑仕女执扇轻语。仕女甲：「今日春光正好。」` // cjk-ok
+          }
+        },
+        {
+          id: `act${act}-real`,
+          typeId: 'asset.image',
+          category: 'asset',
+          assetType: 'image',
+          title: `第${act}幕·实景还原`, // cjk-ok
+          position: { x: 700, y: act * 120 },
+          params: {
+            previewRelativePath: `Cache/Images/act${act}-real.png`
+          }
+        },
+        {
+          id: `act${act}-video`,
+          typeId: 'asset.video',
+          category: 'asset',
+          assetType: 'video',
+          title: `第${act}幕·一镜入画`, // cjk-ok
+          position: { x: 900, y: act * 120 },
+          params: {
+            previewRelativePath: `Cache/Videos/act${act}-shot.mp4`
+          }
+        },
+        {
+          id: `act${act}-voice`,
+          typeId: 'asset.voice',
+          category: 'asset',
+          assetType: 'voice',
+          title: `第${act}幕解说`, // cjk-ok
+          position: { x: 900, y: 800 + act * 80 },
+          params: {
+            generateInstruction: `第${act}幕文博解说词，细腻呈现宫廷春晓盛景。`, // cjk-ok
+            previewRelativePath: `Cache/Voices/act${act}-voice.mp3`
+          }
+        },
+        {
+          id: `act${act}-sfx`,
+          typeId: 'asset.sfx',
+          category: 'asset',
+          assetType: 'voice',
+          title: `第${act}幕环境音`, // cjk-ok
+          position: { x: 900, y: 1400 + act * 80 },
+          params: {
+            previewRelativePath: `Cache/Sfx/act${act}-sfx.mp3`
+          }
+        }
+      )
+
+      // Intentionally wire video BEFORE crop (reverse order across acts too) to test robust 第N幕 sorting
+      edges.push(
+        {
+          id: `e-src-crop-${act}`,
+          source: 'scroll-src',
+          sourcePort: 'out',
+          target: `act${act}-crop`,
+          targetPort: 'in'
+        },
+        {
+          id: `e-crop-real-${act}`,
+          source: `act${act}-crop`,
+          sourcePort: 'out',
+          target: `act${act}-real`,
+          targetPort: 'in-image'
+        },
+        {
+          id: `e-real-vid-${act}`,
+          source: `act${act}-real`,
+          sourcePort: 'out',
+          target: `act${act}-video`,
+          targetPort: 'in-first-frame'
+        },
+        {
+          id: `e-vid-tl-${act}`,
+          source: `act${act}-video`,
+          sourcePort: 'out',
+          target: 'timeline-out',
+          targetPort: 'in'
+        },
+        {
+          id: `e-crop-tl-${act}`,
+          source: `act${act}-crop`,
+          sourcePort: 'out',
+          target: 'timeline-out',
+          targetPort: 'in-image'
+        },
+        {
+          id: `e-sfx-tl-${act}`,
+          source: `act${act}-sfx`,
+          sourcePort: 'out',
+          target: 'timeline-out',
+          targetPort: 'in-voice'
+        },
+        {
+          id: `e-voice-tl-${act}`,
+          source: `act${act}-voice`,
+          sourcePort: 'out',
+          target: 'timeline-out',
+          targetPort: 'in-voice'
+        }
+      )
+    }
+    edges.push({
+      id: 'e-bgm-tl',
+      source: 'bgm',
+      sourcePort: 'out',
+      target: 'timeline-out',
+      targetPort: 'in-music'
+    })
+
+    const doc: GraphDocument = {
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes,
+      edges
+    }
+
+    project.assets = [
+      {
+        id: 'canvas-hangong',
+        name: '汉宫春晓图画布', // cjk-ok
+        type: 'canvas',
+        createdAt: 1,
+        updatedAt: 1,
+        genParams: { graphJson: doc }
+      } as never
+    ]
+
+    const collected = await collectScriptTimelineSources({
+      scriptAssetId: 'canvas-hangong',
+      timelineNodeId: 'timeline-out'
+    })
+
+    const visualPaths = collected.filter((s) => s.mediaKind === 'video').map((s) => s.relativePath)
+    // Expect 6 acts * (crop + real + video) = 18 visual sources in exact Act 1..6 order
+    expect(visualPaths).toEqual([
+      'Cache/Images/act1-crop.png',
+      'Cache/Images/act1-real.png',
+      'Cache/Videos/act1-shot.mp4',
+      'Cache/Images/act2-crop.png',
+      'Cache/Images/act2-real.png',
+      'Cache/Videos/act2-shot.mp4',
+      'Cache/Images/act3-crop.png',
+      'Cache/Images/act3-real.png',
+      'Cache/Videos/act3-shot.mp4',
+      'Cache/Images/act4-crop.png',
+      'Cache/Images/act4-real.png',
+      'Cache/Videos/act4-shot.mp4',
+      'Cache/Images/act5-crop.png',
+      'Cache/Images/act5-real.png',
+      'Cache/Videos/act5-shot.mp4',
+      'Cache/Images/act6-crop.png',
+      'Cache/Images/act6-real.png',
+      'Cache/Videos/act6-shot.mp4'
+    ])
+
+    const bgmSrc = collected.find((s) => s.nodeId === 'bgm')
+    expect(bgmSrc).toMatchObject({
+      relativePath: 'Assets/Audio/palace-bgm.mp3',
+      mediaKind: 'voice',
+      trackHint: 'music'
+    })
+    expect(collected.filter((s) => s.trackHint === 'sfx')).toHaveLength(6)
+    expect(collected.filter((s) => s.trackHint === 'voice')).toHaveLength(6)
+
+    // Simulate diving into timeline-out (even if an early placeholder auto clip existed before acts finished)
+    const arranged = await autoArrangeTimelineFromGraphHost({
+      scriptAssetId: 'canvas-hangong',
+      timelineNodeId: 'timeline-out',
+      baseDoc: {
+        clips: [
+          {
+            id: 'clip:auto:v:0:early',
+            track: 'video',
+            sourceId: 'Assets/hangong-scroll.jpg',
+            title: 'Placeholder',
+            relativePath: 'Assets/hangong-scroll.jpg',
+            startSec: 0,
+            durationSec: 4
+          }
+        ]
+      },
+      collectedSources: collected,
+      persist: false
+    })
+
+    expect(arranged?.dirty).toBe(true)
+    const clips = arranged!.doc.clips
+    // All 6 tracks (video, overlay, subtitle, voice, sfx, music) must be populated!
+    expect(
+      clips.filter((c) => c.track === 'video' && c.id.startsWith('clip:auto:pre:'))
+    ).toHaveLength(6)
+    expect(
+      clips.filter((c) => c.track === 'video' && c.id.startsWith('clip:auto:real:'))
+    ).toHaveLength(6)
+    expect(
+      clips.filter((c) => c.track === 'video' && c.id.startsWith('clip:auto:v:'))
+    ).toHaveLength(6)
+    expect(
+      clips.filter((c) => c.track === 'overlay' && c.id.startsWith('clip:auto:vf:'))
+    ).toHaveLength(6)
+    expect(clips.filter((c) => c.track === 'voice')).toHaveLength(6)
+    expect(clips.filter((c) => c.track === 'sfx').length).toBeGreaterThanOrEqual(6)
+    expect(clips.filter((c) => c.track === 'subtitle').length).toBeGreaterThanOrEqual(12)
+    expect(clips.filter((c) => c.track === 'music')).toHaveLength(1)
+    expect(arranged!.doc.settings?.scaleMode).toBe('cover')
+    expect(arranged!.doc.settings?.mixAutoDucking).toBe(true)
   })
 })

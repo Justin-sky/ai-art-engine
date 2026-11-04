@@ -2889,7 +2889,7 @@ function onDragStart(e: DragEvent, asset: AssetInfo): void {
     ids = [asset.id]
   }
   draggingAssetIds.value = ids
-  workspace.setDraggingAsset(asset)
+  workspace.setDraggingAsset(asset, ids)
   e.dataTransfer?.setData(STUDIO_ASSET_DRAG_MIME, JSON.stringify(asset))
   e.dataTransfer?.setData(ASSET_MOVE_MIME, asset.id)
   e.dataTransfer?.setData(STUDIO_ASSET_IDS_DRAG_MIME, JSON.stringify(ids))

@@ -7,7 +7,7 @@ import type { GraphImageReferenceMeta } from '../../modelProvider'
 import { expandInstructionMentions } from '../instructionMentions'
 import { resolveCharacterReferenceUrls } from '../characterConsistency'
 import { episodeFailReasonForStep, parseEpisodeAgentState } from '../episodeAgentState'
-import { parseActSceneSubtitlePlan } from '../scriptTimeline'
+import { isNonHumanPaintingHint, parseActSceneSubtitlePlan } from '../scriptTimeline'
 import { resolveImageSystemPrompt, resolveVideoSystemPrompt } from '../systemPromptSchemes'
 import { buildLipSyncPrompt, resolveLipSyncSystemPrompt } from '../lipSync'
 import {
@@ -477,14 +477,33 @@ export async function executeVideoGenerateNode(
   let patchedActInstruction: string | undefined
   if (actVideoMatch) {
     const actIdx = Math.max(0, Number(actVideoMatch[1]) - 1)
+    const rootScrollHints = (ctx.document?.nodes ?? [])
+      .filter(
+        (n) =>
+          n.typeId === 'asset.image' &&
+          !/(?:第\s*\d+\s*幕|act\s*\d+)/i.test(`${n.title ?? ''} ${n.id}`) // cjk-ok
+      )
+      .flatMap((n) => [
+        n.title,
+        typeof n.params?.previewRelativePath === 'string' ? n.params.previewRelativePath : undefined
+      ])
+      .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+    const nonHuman = isNonHumanPaintingHint(
+      [node.title, instruction, incomingText, ...rootScrollHints].filter(Boolean).join(' ')
+    )
     let cleaned = instruction
-      .replace(
+    if (!nonHuman) {
+      cleaned = cleaned.replace(
         /[，,；;。]?\s*(?:全片|全程)?无人物对白(?:[、，,]?无旁白)?(?:[、，,]?无任何人声)?/g, // cjk-ok
         ''
       )
+    }
+    cleaned = cleaned
       .replace(
         /推近幅度不超过\s*\d+%/g, // cjk-ok
-        '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
+        nonHuman
+          ? '镜头从全景平滑拉近推入画中焦点主体的近景特写' // cjk-ok
+          : '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
       )
       .trim()
     const hasDialogueQuote = /[“"「][^”"」]{4,}[”"」]/.test(`${cleaned}\n${incomingText}`)
@@ -493,7 +512,7 @@ export async function executeVideoGenerateNode(
         actIndex: actIdx,
         rawText: incomingText,
         titleCandidates: [node.title],
-        fallbackPromptTexts: [cleaned]
+        fallbackPromptTexts: [cleaned, ...rootScrollHints]
       })
       const d0 = plan.dialogueLines[0]
       const d1 = plan.dialogueLines[1]

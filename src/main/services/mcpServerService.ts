@@ -4561,15 +4561,58 @@ const TOOL_DEFS: McpToolDef[] = [
 
       assertProjectOpen()
       const rawAssetIdArg = optionalString(args, 'assetId') ?? ''
-      const targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, {
+      let targetCanvas = resolveOrEnsureCanvasAsset(rawAssetIdArg, {
         autoCreateCanvas: true,
         preferUiActiveCanvas: true
       })
       if (!targetCanvas) {
         throw new Error('无法定位或创建目标画布资产')
       }
-      const existingGraph = ((targetCanvas.genParams as Record<string, unknown> | undefined)
+      let existingGraph = ((targetCanvas.genParams as Record<string, unknown> | undefined)
         ?.graphJson ?? { nodes: [], edges: [] }) as GraphDocument
+      const planKeySet = new Set(plan.nodes.map((s) => s.key))
+      const initialExistingNodes = existingGraph.nodes ?? []
+      const singleExistingImageNode =
+        mode === 'seed' &&
+        initialExistingNodes.length === 1 &&
+        (existingGraph.edges?.length ?? 0) === 0 &&
+        initialExistingNodes[0]?.typeId === 'asset.image' &&
+        planKeySet.has('scroll_src')
+          ? initialExistingNodes[0]
+          : undefined
+      const hasUnrelatedExistingGraph =
+        mode === 'seed' &&
+        initialExistingNodes.length > 0 &&
+        !singleExistingImageNode &&
+        !initialExistingNodes.every((n) => planKeySet.has(n.id))
+      if (hasUnrelatedExistingGraph) {
+        // 保护用户当前正在编辑的非空画布：新建独立画布承载工作流种子，严禁 node_delete 清空用户已有节点图
+        const createdCanvas = projectService.createAsset({
+          type: 'canvas',
+          ...(bundle.title?.trim() ? { name: bundle.title.trim() } : {})
+        })
+        broadcastToAllWindows(IpcChannels.ASSET_UPDATED, createdCanvas)
+        targetCanvas = createdCanvas
+        existingGraph = { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } }
+      }
+
+      const preservedScrollParams = (() => {
+        if (!singleExistingImageNode?.params) return undefined
+        const sp = singleExistingImageNode.params as Record<string, unknown>
+        const hasMedia =
+          (typeof sp.previewRelativePath === 'string' && sp.previewRelativePath.trim()) ||
+          (typeof sp.previewDataUrl === 'string' && sp.previewDataUrl.trim()) ||
+          (Array.isArray(sp.generatedImages) && sp.generatedImages.length > 0)
+        if (!hasMedia) return undefined
+        return {
+          title: singleExistingImageNode.title?.trim() || undefined,
+          params: { ...sp, locked: true },
+          isNonQingming: !/清明上河|qm[-_]jpg/i.test(
+            `${singleExistingImageNode.title ?? ''} ${String(sp.previewRelativePath ?? '')}`
+          )
+        }
+      })()
+
       const existingNodeIds = new Set((existingGraph.nodes ?? []).map((n) => n.id))
       const existingTimelineNode = (existingGraph.nodes ?? []).find(
         (n) => n.typeId === 'output.timeline'
@@ -4635,12 +4678,25 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       for (const spec of plan.nodes) {
         const mappedId = keyMap.get(spec.key) ?? spec.key
+        let nodeTitle = spec.title
+        let nodeParams = spec.params ? { ...spec.params } : undefined
+        if (spec.key === 'scroll_src' && preservedScrollParams) {
+          if (preservedScrollParams.title) nodeTitle = preservedScrollParams.title
+          nodeParams = { ...(nodeParams ?? {}), ...preservedScrollParams.params }
+        } else if (
+          preservedScrollParams?.isNonQingming &&
+          spec.typeId === 'image.toPrompt' &&
+          nodeParams &&
+          typeof nodeParams.text === 'string'
+        ) {
+          nodeParams = { ...nodeParams, text: '' }
+        }
         ops.push({
           op: 'node_upsert',
           nodeId: mappedId,
           typeId: spec.typeId,
-          ...(spec.title ? { title: spec.title } : {}),
-          ...(spec.params ? { params: spec.params } : {})
+          ...(nodeTitle ? { title: nodeTitle } : {}),
+          ...(nodeParams ? { params: nodeParams } : {})
         })
       }
       for (const edge of plan.edges) {
@@ -4734,6 +4790,10 @@ const TOOL_DEFS: McpToolDef[] = [
         nodeIds: touchedNodeIds
       }
 
+      const scrollPlaceholderWarning = planKeySet.has('scroll_src')
+        ? '【重要提醒】模板内置的 scroll_src 原图路径及各幕标题/提示词/识图解说均为《清明上河图》示例占位符！若用户实际画作并非《清明上河图》（如《百骏图》《汉宫春晓图》《千里江山图》等），请务必先用 graph_edit 将 scroll_src 替换为用户真实原图，并逐幕重写全部 actN_crop / actN_recognize / actN_real / actN_video / actN_voice / actN_sfx / bgm 的标题与提示词（动物或纯山水画仅保留自然环境音效与历史解说，严禁编写人物街头/船夫对白），再调用 task_run！'
+        : ''
+
       return {
         ok: true,
         id: bundle.id,
@@ -4745,7 +4805,7 @@ const TOOL_DEFS: McpToolDef[] = [
         edgeCount: plan.edges.length,
         applied,
         warnings,
-        hint: '种子拓扑与连线已就绪！这只是起点骨架：你现在可以随时用 graph_edit（node_upsert / edge_connect / node_delete）自由增删扩展节点（例如跨技能加入 svg.gen->svg.anim 动态图形、image.process 抠图、asset.voice 配音等），或用 timeline_edit（含 pitchSemitones 半音爬音、voiceEffect 变声、1/4与1/8拍切片）精编成片。'
+        hint: `种子拓扑与连线已就绪！这只是起点骨架：你现在可以随时用 graph_edit（node_upsert / edge_connect / node_delete）自由增删扩展节点（例如跨技能加入 svg.gen->svg.anim 动态图形、image.process 抠图、asset.voice 配音等），或用 timeline_edit（含 pitchSemitones 半音爬音、voiceEffect 变声、1/4与1/8拍切片）精编成片。${scrollPlaceholderWarning}`
       }
     }
   },

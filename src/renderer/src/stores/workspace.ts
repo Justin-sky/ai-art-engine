@@ -36,9 +36,13 @@ export type CloseEditorsForAssetsResult = { ok: true } | { ok: false; reason: 'g
 
 type CloseEditorsForAssetsFn = (assetIds: string[]) => CloseEditorsForAssetsResult
 
-export const STUDIO_ASSET_DRAG_MIME = 'application/x-studio-asset'
-export const STUDIO_ASSET_ID_DRAG_MIME = 'application/x-studio-asset-id'
-export const STUDIO_ASSET_IDS_DRAG_MIME = 'application/x-studio-asset-ids'
+import {
+  STUDIO_ASSET_DRAG_MIME,
+  STUDIO_ASSET_IDS_DRAG_MIME,
+  STUDIO_ASSET_ID_DRAG_MIME
+} from '@shared/studioDragMime'
+
+export { STUDIO_ASSET_DRAG_MIME, STUDIO_ASSET_ID_DRAG_MIME, STUDIO_ASSET_IDS_DRAG_MIME }
 /** 资产库内部：左侧目录树拖动目录（多选 ids）到另一目录 */
 export const STUDIO_FOLDER_IDS_DRAG_MIME = 'application/x-studio-folder-ids'
 /** 场栏 → 画布：拖入创建场参考节点 */
@@ -61,6 +65,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   )
   /** 资产库拖出时缓存，跨面板拖放时 dataTransfer 可能读不到自定义 MIME */
   const draggingAsset = ref<AssetInfo | null>(null)
+  /** 资产库多选拖出时缓存的全部资产 ID 列表 */
+  const draggingAssetIds = ref<string[]>([])
   /** 节点图选中的节点 id（null = 当前编辑器全局参数） */
   const selectedGraphNodeId = computed(() =>
     editor.selection.current.value.kind === 'graph.node'
@@ -531,8 +537,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (editor.selection.is('asset')) focusProjectGlobals()
   }
 
-  function setDraggingAsset(asset: AssetInfo | null): void {
+  function setDraggingAsset(asset: AssetInfo | null, assetIds?: readonly string[]): void {
     draggingAsset.value = asset
+    draggingAssetIds.value = asset ? (assetIds?.length ? [...assetIds] : [asset.id]) : []
   }
 
   function resolveDraggedAsset(e?: DragEvent): AssetInfo | null {
@@ -602,6 +609,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     clearAssetSelection,
     clearAssetInspectorFocus,
     draggingAsset,
+    draggingAssetIds,
     setDraggingAsset,
     resolveDraggedAsset,
     resolveAssetById,

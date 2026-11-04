@@ -1377,6 +1377,7 @@ export interface NodeExecuteContext {
    */
   composeTimelineVideo?: (input: {
     nodeId: string
+    document?: GraphDocument
     videos: GraphVideoItem[]
     images?: GraphImageItem[]
     visuals?: GraphTimelineVisualItem[]

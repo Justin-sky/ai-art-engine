@@ -211,25 +211,28 @@ export function prepareLayerRepairReference(
   const origTransparent = !keepOpaque && hasOriginalTransparency(orig)
 
   let sourceForRef = orig
-  if (keepOpaque && countTransparentPixels(orig, 240) > 0) {
+  if (keepOpaque && countTransparentPixels(orig, 254) > 0) {
     sourceForRef = cloneImage(orig)
     const n = W * H
     const hole = new Uint8Array(n)
     let hasHole = false
     for (let p = 0; p < n; p++) {
-      if (sourceForRef.data[p * 4 + 3]! < 240) {
+      if (sourceForRef.data[p * 4 + 3]! < 254) {
         hole[p] = 1
         hasHole = true
       }
     }
     if (hasHole) {
-      inpaintPushPull(sourceForRef, hole)
+      const grownHole = dilateBinaryBox(hole, W, H, 2)
+      let grownCount = 0
+      for (let p = 0; p < n; p++) if (grownHole[p]) grownCount++
+      inpaintPushPull(sourceForRef, grownCount < n ? grownHole : hole)
       for (let p = 0; p < n; p++) {
         sourceForRef.data[p * 4 + 3] = 255
       }
     }
   } else if (origTransparent) {
-    // 前景透明层：1) 先用推拉金字塔预填元件轮廓内部因剥离子控件留下的透明孔洞，防止垫底色穿透孔洞误导模型；
+    // 前景透明层：1) 先用完整羽化坡面 + 2px 外扩的补洞逻辑预填元件内部孔洞，防止垫底色穿透或半透明细线误导模型；
     // 2) 当需垫纯色底送非原生透明模型时，清理元件实心轮廓外的半透明残影/微弱外发光，避免与纯色底混合成灰白斑块触发模型绘制假棋盘格。
     const n = W * H
     let maxA = 0
@@ -244,13 +247,11 @@ export function prepareLayerRepairReference(
     }
     const closedCore = fillHoles(coreFg, W, H)
     const cleanRim = dilateBinaryBox(closedCore, W, H, 1)
-    const internalHole = new Uint8Array(n)
     let hasInternalHole = false
     let hasExteriorHaze = false
     for (let p = 0; p < n; p++) {
       const a = orig.data[p * 4 + 3]!
-      if (closedCore[p] && a < 220) {
-        internalHole[p] = 1
+      if (closedCore[p] && a < 254) {
         hasInternalHole = true
       } else if (!opts.nativeTransparent && !cleanRim[p] && a > 0) {
         hasExteriorHaze = true
@@ -259,10 +260,7 @@ export function prepareLayerRepairReference(
     if (hasInternalHole || hasExteriorHaze) {
       sourceForRef = cloneImage(orig)
       if (hasInternalHole) {
-        inpaintPushPull(sourceForRef, internalHole)
-        for (let p = 0; p < n; p++) {
-          if (internalHole[p]) sourceForRef.data[p * 4 + 3] = 255
-        }
+        inpaintLayerHolesInPlace(sourceForRef)
       }
       if (hasExteriorHaze) {
         for (let p = 0; p < n; p++) {
@@ -973,6 +971,128 @@ export function finalizeLayerRepairRgba(
     })
   }
   return cropped
+}
+
+/**
+ * 原地检测并修补单图层内部的闭合残缺孔洞（含画笔擦除留下的半透明羽化坡面与抠图边缘 1~2px 抗锯齿杂色环）：
+ *
+ * 1) 先以稳健阈值（alpha >= seedThr）做边界泛洪定位真实外圈透明背景（exteriorBg）与内部闭合孔洞核心（seedHole）；
+ * 2) 采样孔洞外围健康区域的平台不透明度（plateauAlpha，如实心控件为 255、半透明玻璃底板为 180）；
+ * 3) 从 seedHole 向外沿 8 邻域泛洪吸收整个半透明羽化过渡带（alpha <= plateauAlpha - 2，避开外轮廓 1px 保护带），
+ *    再向外形态学膨胀 2px 吞并孔洞边缘残留的 alpha=254 尾端、上层深色抗锯齿杂色与预乘量化暗边；
+ * 4) 调用推拉金字塔仅以完全干净的健康内部像素为锚点插值 RGB/Alpha，彻底消除补洞边缘的一圈黑灰细线。
+ *
+ * @returns 是否检测并修补了至少 1 个内部孔洞像素
+ */
+export function inpaintLayerHolesInPlace(img: RgbaImage): boolean {
+  const { width: W, height: H, data } = img
+  const n = W * H
+  if (W < 3 || H < 3 || n <= 0) return false
+
+  let maxA = 0
+  for (let p = 0; p < n; p++) {
+    const a = data[p * 4 + 3]!
+    if (a > maxA) maxA = a
+  }
+  if (maxA < 32) return false
+
+  const seedThr = maxA >= 200 ? 128 : Math.max(24, Math.round(maxA * 0.55))
+  const fgSeed = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    if (data[p * 4 + 3]! >= seedThr) fgSeed[p] = 1
+  }
+  const filled = fillHoles(fgSeed, W, H)
+
+  const exteriorBg = new Uint8Array(n)
+  const seedHole = new Uint8Array(n)
+  let seedCount = 0
+  let hasExteriorBg = false
+  for (let p = 0; p < n; p++) {
+    if (!filled[p]) {
+      exteriorBg[p] = 1
+      hasExteriorBg = true
+    } else if (!fgSeed[p]) {
+      seedHole[p] = 1
+      seedCount++
+    }
+  }
+  if (!seedCount) return false
+
+  // 外轮廓保护带：距真实外圈透明背景 1px 内禁止半透明泛洪越界，2px 内禁止实心膨胀破坏外边缘抗锯齿
+  const outerRim1 = hasExteriorBg ? dilateBinaryBox(exteriorBg, W, H, 1) : new Uint8Array(n)
+  const outerRim2 = hasExteriorBg ? dilateBinaryBox(exteriorBg, W, H, 2) : new Uint8Array(n)
+
+  // 采样孔洞周围健康内部像素的不透明度分布（取 85% 分位数代表周围正常表面不透明度）
+  const probeZone = dilateBinaryBox(seedHole, W, H, 14)
+  const surroundAlphas: number[] = []
+  for (let p = 0; p < n; p++) {
+    if (!probeZone[p] || seedHole[p] || exteriorBg[p] || outerRim2[p]) continue
+    const a = data[p * 4 + 3]!
+    if (a >= seedThr) surroundAlphas.push(a)
+  }
+  let plateauAlpha = maxA
+  if (surroundAlphas.length >= 4) {
+    surroundAlphas.sort((a, b) => a - b)
+    plateauAlpha =
+      surroundAlphas[Math.min(surroundAlphas.length - 1, Math.floor(surroundAlphas.length * 0.85))]!
+  }
+
+  // 从 seedHole 向外沿 8 邻域吸收连续的半透明羽化坡面（如半径 r<=80 画笔外圈 25% 羽化带或抗锯齿软边）
+  const featherCeil = Math.max(seedThr, plateauAlpha - 2)
+  const holeRamp = new Uint8Array(seedHole)
+  const distMap = new Int16Array(n).fill(-1)
+  const queue = new Int32Array(n)
+  let qHead = 0
+  let qTail = 0
+  for (let p = 0; p < n; p++) {
+    if (!seedHole[p]) continue
+    distMap[p] = 0
+    queue[qTail++] = p
+  }
+  const maxFeatherSpan = 28
+  while (qHead < qTail) {
+    const p = queue[qHead++]!
+    const d = distMap[p]!
+    if (d >= maxFeatherSpan) continue
+    const y = Math.floor(p / W)
+    const x = p - y * W
+    for (let dy = -1; dy <= 1; dy++) {
+      const ny = y + dy
+      if (ny < 0 || ny >= H) continue
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = x + dx
+        if (nx < 0 || nx >= W) continue
+        const q = ny * W + nx
+        if (holeRamp[q] || exteriorBg[q] || outerRim1[q]) continue
+        if (data[q * 4 + 3]! <= featherCeil) {
+          holeRamp[q] = 1
+          distMap[q] = d + 1
+          queue[qTail++] = q
+        }
+      }
+    }
+  }
+
+  // 再向外形态学膨胀 2px，吞掉 alpha=254 尾端与抠除子控件残留的 1~2px 深色抗锯齿杂色环，确保插值锚点完全干净
+  const dilated = dilateBinaryBox(holeRamp, W, H, 2)
+  const hole = new Uint8Array(n)
+  let holeCount = 0
+  for (let p = 0; p < n; p++) {
+    if (seedHole[p] || holeRamp[p] || (dilated[p] && !exteriorBg[p] && !outerRim2[p])) {
+      hole[p] = 1
+      holeCount++
+    }
+  }
+  if (!holeCount || holeCount >= n) return false
+
+  inpaintPushPull(img, hole)
+  if (plateauAlpha >= 248) {
+    for (let p = 0; p < n; p++) {
+      if (hole[p]) data[p * 4 + 3] = 255
+    }
+  }
+  return true
 }
 
 /**

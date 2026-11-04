@@ -9,7 +9,11 @@ import {
 import { autoLayoutNodes, optimizeNovelChapterPassthroughEdges } from './layout'
 import { REFERENCE_PARAM_KEYS, sanitizeReferenceParams } from './referenceParams'
 import { listAddableNodeTypes, listNodeTypes } from './registry'
-import { parseActSceneSubtitlePlan } from './scriptTimeline'
+import {
+  isNonHumanPaintingHint,
+  isQingmingShanghetuHint,
+  parseActSceneSubtitlePlan
+} from './scriptTimeline'
 import type { GraphAddScope } from './scopes'
 import { applySmartNodePreset, mergeSmartNodeParams } from './smartPatch'
 import type {
@@ -374,7 +378,66 @@ function resolveEdgePorts(
  *   否则会把「本地风格图 + 关掉全局风格」的合法组合误判成无风格；
  * - 本次传入不可用时保留节点原值（有的话），不静默销毁既有参考图配置。
  */
-function normalizeActVideoNodeParams(node: GraphNode): void {
+function collectRootScrollHints(graph?: GraphDocument): string[] {
+  if (!graph?.nodes?.length) return []
+  return graph.nodes
+    .filter(
+      (n) =>
+        n.typeId === 'asset.image' &&
+        !/(?:第\s*\d+\s*幕|act\s*\d+)/i.test(`${n.title ?? ''} ${n.id}`)
+    )
+    .flatMap((n) => [
+      n.title,
+      typeof n.params?.previewRelativePath === 'string' ? n.params.previewRelativePath : undefined
+    ])
+    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+}
+
+function purgeStaleQingmingSeedTextsOnScrollChange(
+  graph: GraphDocument,
+  updatedNode: GraphNode
+): void {
+  if (updatedNode.typeId !== 'asset.image') return
+  if (!/^(?:scroll[_-]src|painting[_-]src)$/i.test(updatedNode.id)) return
+  const p = (updatedNode.params ?? {}) as Record<string, unknown>
+  const rel =
+    (typeof p.previewRelativePath === 'string' && p.previewRelativePath.trim()) ||
+    (Array.isArray(p.generatedImages) &&
+    typeof (p.generatedImages[0] as { relativePath?: string } | undefined)?.relativePath ===
+      'string'
+      ? (p.generatedImages[0] as { relativePath: string }).relativePath.trim()
+      : '')
+  const sig = `${updatedNode.title ?? ''} ${rel}`.trim()
+  if (!sig || isQingmingShanghetuHint(sig)) return
+  for (const n of graph.nodes) {
+    if (n.typeId === 'image.toPrompt' && typeof n.params?.text === 'string') {
+      if (isQingmingShanghetuHint(n.params.text)) {
+        n.params = { ...n.params, text: '' }
+        delete (n.params as Record<string, unknown>).resultText
+      }
+    }
+  }
+}
+
+function normalizeImageToPromptNodeParams(
+  node: GraphNode,
+  before?: Record<string, unknown>,
+  incoming?: Record<string, unknown>
+): void {
+  if (node.typeId !== 'image.toPrompt' || !node.params || !incoming) return
+  const p = node.params as Record<string, unknown>
+  const prevInst =
+    typeof before?.generateInstruction === 'string' ? before.generateInstruction.trim() : ''
+  const nextInst = typeof p.generateInstruction === 'string' ? p.generateInstruction.trim() : ''
+  const hasExplicitText =
+    'text' in incoming || 'resultText' in incoming || '正文' in incoming || '文本' in incoming
+  if (prevInst && nextInst && prevInst !== nextInst && !hasExplicitText) {
+    p.text = ''
+    delete p.resultText
+  }
+}
+
+function normalizeActVideoNodeParams(node: GraphNode, graph?: GraphDocument): void {
   if (node.typeId !== 'asset.video' && node.assetType !== 'video') return
   const actMatch =
     node.id.match(/^act(\d+)[-_](?:video|shot)$/i) ??
@@ -385,21 +448,30 @@ function normalizeActVideoNodeParams(node: GraphNode): void {
   p.generateAudio = true
   const rawInst = typeof p.generateInstruction === 'string' ? p.generateInstruction.trim() : ''
   if (rawInst) {
+    const rootScrollHints = collectRootScrollHints(graph)
+    const nonHuman = isNonHumanPaintingHint(
+      [node.title, rawInst, ...rootScrollHints].filter(Boolean).join(' ')
+    )
     let cleaned = rawInst
-      .replace(
+    if (!nonHuman) {
+      cleaned = cleaned.replace(
         /[，,；;。]?\s*(?:全片|全程)?无人物对白(?:[、，,]?无旁白)?(?:[、，,]?无任何人声)?/g, // cjk-ok
         ''
       )
+    }
+    cleaned = cleaned
       .replace(
         /推近幅度不超过\s*\d+%/g, // cjk-ok
-        '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
+        nonHuman
+          ? '镜头从全景平滑拉近推入画中焦点主体的近景特写' // cjk-ok
+          : '镜头从全景平滑拉近推入画中对应焦点人物的近景特写' // cjk-ok
       )
       .trim()
     if (!/[“"「][^”"」]{4,}[”"」]/.test(cleaned)) {
       const plan = parseActSceneSubtitlePlan({
         actIndex: actIdx,
         titleCandidates: [node.title],
-        fallbackPromptTexts: [cleaned]
+        fallbackPromptTexts: [cleaned, ...rootScrollHints]
       })
       const d0 = plan.dialogueLines[0]
       const d1 = plan.dialogueLines[1]
@@ -497,7 +569,8 @@ function normalizeNovelNodeParams(
 function mergeNodeParams(
   node: GraphNode,
   incoming: Record<string, unknown> | undefined,
-  warnings: string[]
+  warnings: string[],
+  graph?: GraphDocument
 ): void {
   if (!incoming || typeof incoming !== 'object') {
     normalizeNovelNodeParams(node)
@@ -507,7 +580,8 @@ function mergeNodeParams(
   const merged = mergeSmartNodeParams(node, incoming) as Record<string, unknown>
   if (!REFERENCE_PARAM_KEYS.some((key) => key in incoming)) {
     node.params = merged as GraphNodeParams
-    normalizeActVideoNodeParams(node)
+    normalizeImageToPromptNodeParams(node, before, incoming)
+    normalizeActVideoNodeParams(node, graph)
     normalizeNovelNodeParams(node, before, incoming)
     return
   }
@@ -523,7 +597,8 @@ function mergeNodeParams(
     warnings.push(`节点「${node.id}」${key} 本次改动无法生效，已保留原值`)
   }
   node.params = sanitized as GraphNodeParams
-  normalizeActVideoNodeParams(node)
+  normalizeImageToPromptNodeParams(node, before, incoming)
+  normalizeActVideoNodeParams(node, graph)
   normalizeNovelNodeParams(node, before, incoming)
 }
 
@@ -951,10 +1026,11 @@ function applyOp(
         applyNodeGeometryAndLock(existing, op)
         wireInlineReferenceMedia(graph, existing, combinedParams)
         if (Object.keys(combinedParams).length > 0) {
-          mergeNodeParams(existing, combinedParams, warnings)
+          mergeNodeParams(existing, combinedParams, warnings, graph)
         } else {
           normalizeNovelNodeParams(existing)
         }
+        purgeStaleQingmingSeedTextsOnScrollChange(graph, existing)
         touchedNodeIds.push(existing.id)
         const existingTitle = existing.title?.trim() ? `「${existing.title.trim()}」` : ''
         return `更新节点 ${existing.id}${existingTitle}`
@@ -976,10 +1052,11 @@ function applyOp(
       graph.nodes.push(node)
       wireInlineReferenceMedia(graph, node, combinedParams)
       if (Object.keys(combinedParams).length > 0) {
-        mergeNodeParams(node, combinedParams, warnings)
+        mergeNodeParams(node, combinedParams, warnings, graph)
       } else {
         normalizeNovelNodeParams(node)
       }
+      purgeStaleQingmingSeedTextsOnScrollChange(graph, node)
       touchedNodeIds.push(node.id)
       const newTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
       return `新建节点 ${node.id}${newTitle}（${canonicalTypeId}）`
@@ -998,10 +1075,11 @@ function applyOp(
       const combinedParams = extractInlineNodeParams(opRecord)
       wireInlineReferenceMedia(graph, node, combinedParams)
       if (Object.keys(combinedParams).length > 0) {
-        mergeNodeParams(node, combinedParams, warnings)
+        mergeNodeParams(node, combinedParams, warnings, graph)
       } else {
         normalizeNovelNodeParams(node)
       }
+      purgeStaleQingmingSeedTextsOnScrollChange(graph, node)
       touchedNodeIds.push(node.id)
       const updatedTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
       return `更新节点 ${node.id}${updatedTitle}`
@@ -1018,7 +1096,7 @@ function applyOp(
         warnings.push(`节点「${targetRef}」未找到匹配的预设「${op.preset}」`)
         return null
       }
-      mergeNodeParams(node, presetRes.paramsPatch as Record<string, unknown>, warnings)
+      mergeNodeParams(node, presetRes.paramsPatch as Record<string, unknown>, warnings, graph)
       touchedNodeIds.push(node.id)
       const presetNodeTitle = node.title?.trim() ? `「${node.title.trim()}」` : ''
       return `应用预设 ${presetRes.matchedPresetId} → 节点 ${node.id}${presetNodeTitle}`

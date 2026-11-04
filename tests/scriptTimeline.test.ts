@@ -33,6 +33,7 @@ import {
   upsertTimelineClipKeyframe
 } from '../src/shared/graph/timelineTween'
 import { applyTimelineEdits } from '../src/shared/graph/timelineEdit'
+import { applyGraphEditOps } from '../src/shared/graph/mcpGraphEdit'
 import {
   buildAtempoChain,
   buildFilterGraph,
@@ -1132,5 +1133,107 @@ describe('Stage 4 · 裁剪工具（Trim In/Out + Frame Crop）与专业片段�
     const cleaned = upgradeTemporaryAutoSubtitlesInTimeline(reactiveClips.value)
     expect(cleaned.some((c) => c.id.startsWith('clip:auto:narr:0:'))).toBe(false)
     expect(cleaned.some((c) => c.id === 'clip:auto:a:0_0:abc')).toBe(true)
+  })
+
+  it('非《清明上河图》古画（如郎世宁《百骏图》）绝不混入虹桥漕运解说或船夫街头对白，且更换原图自动清空模板残留文本', () => {
+    // 1. 仅凭百骏图提示词回退（无 VLM 识图文本时）：绝不出现宋代界画/漕运/虹桥/船头舵工
+    const horseFallbackPlan = parseActSceneSubtitlePlan({
+      actIndex: 1,
+      titleCandidates: ['第2幕·古画取景（中段）'],
+      fallbackPromptTexts: [
+        '以首帧 1:1 实景还原照片为起点，广袤秋日草甸上斑点白马与枣红骏马昂首嘶鸣、腾跃追逐嬉戏，全程无人物对白',
+        '清代郎世宁《百骏图》全卷母本'
+      ]
+    })
+    expect(horseFallbackPlan.sceneTitle).toBe('第2幕 · 河谷群驹')
+    expect(horseFallbackPlan.narrationText).not.toContain('桥上商贩行人凭栏呼应')
+    expect(horseFallbackPlan.narrationText).not.toContain('漕运文明')
+    expect(horseFallbackPlan.narrationText).not.toContain('虹桥')
+    expect(horseFallbackPlan.dialogueLines).toEqual([])
+
+    // 2. 识图节点残留了《清明上河图》模板默认文案，但本幕实际为《百骏图》：自动丢弃残留模板文案
+    const staleTemplatePlan = parseActSceneSubtitlePlan({
+      actIndex: 1,
+      rawText:
+        '【第2幕 · 虹桥争渡】\n画面与历史解说：全卷高潮聚焦汴河虹桥，无柱叠梁木拱桥横跨湍急水面，满载江南钱粮的漕船紧急降桅穿桥，桥上商贩行人凭栏呼应，堪称宋代界画与漕运文明的巅峰。',
+      titleCandidates: ['第2幕 · 草甸戏马'],
+      fallbackPromptTexts: ['清代郎世宁《百骏图》秋日牧场群马嬉戏']
+    })
+    expect(staleTemplatePlan.sceneTitle).toBe('第2幕 · 草甸戏马')
+    expect(staleTemplatePlan.narrationText).not.toContain('桥上商贩行人凭栏呼应')
+    expect(staleTemplatePlan.narrationText).not.toContain('汴河虹桥')
+    expect(staleTemplatePlan.dialogueLines).toEqual([])
+
+    // 3. 真实《百骏图》识图解说（不含宋代都市关键词）可被完整保留，不被误判丢弃
+    const horseVlmPlan = parseActSceneSubtitlePlan({
+      actIndex: 1,
+      rawText:
+        '【第2幕 · 秋牧群驹】\n画面与历史解说：广袤秋日牧场之上，数匹骏马相互追逐嬉戏，鬃毛随风轻扬，尽显清代宫廷画卷中西合璧的自然野趣。'
+    })
+    expect(horseVlmPlan.sceneTitle).toBe('第2幕 · 秋牧群驹')
+    expect(horseVlmPlan.narrationText).toContain('数匹骏马相互追逐嬉戏')
+    expect(horseVlmPlan.narrationText).not.toContain('漕运文明')
+    expect(horseVlmPlan.dialogueLines).toEqual([])
+
+    // 4. graph_edit 更新 scroll_src 为百骏图，并编辑 act2_video 时：
+    //    自动清空 act2_recognize 上残留的清明上河图 text，且不在 act2_video 中注入船头舵工对白
+    const seededGraph = {
+      nodes: [
+        {
+          id: 'scroll_src',
+          typeId: 'asset.image' as const,
+          title: '古画全卷母本（清明上河图）',
+          position: { x: 0, y: 0 },
+          locked: true,
+          params: { previewRelativePath: 'Assets/qm-jpg.jpeg', locked: true }
+        },
+        {
+          id: 'act2_recognize',
+          typeId: 'image.toPrompt' as const,
+          title: '第2幕·多模态识图与台词提炼',
+          position: { x: 300, y: 0 },
+          params: {
+            generateInstruction: '请识别清明上河图第2幕',
+            text: '【第2幕 · 虹桥争渡】\n第三行：桥上商贩行人凭栏呼应，堪称宋代界画与漕运文明的巅峰。'
+          }
+        },
+        {
+          id: 'act2_video',
+          typeId: 'asset.video' as const,
+          title: '第2幕·视频生成',
+          position: { x: 600, y: 0 },
+          params: {
+            generateInstruction: '旧清明上河图视频提示词'
+          }
+        }
+      ],
+      edges: []
+    }
+    const edited = applyGraphEditOps(seededGraph, [
+      {
+        op: 'node_upsert',
+        nodeId: 'scroll_src',
+        typeId: 'asset.image',
+        title: '清代郎世宁《百骏图》全卷母本',
+        locked: true,
+        params: { sourceRelativePath: 'Assets/baijuntu.jpg' }
+      },
+      {
+        op: 'node_upsert',
+        nodeId: 'act2_video',
+        typeId: 'asset.video',
+        title: '第2幕·群骏嬉戏复活视频',
+        params: {
+          generateInstruction:
+            '以首帧实景照片为起点，草甸上的斑点白马与枣红马追逐嬉戏，全程无人物对白，保留自然马蹄与风声。'
+        }
+      }
+    ])
+    const updatedRec = edited.graph.nodes.find((n) => n.id === 'act2_recognize')
+    const updatedVid = edited.graph.nodes.find((n) => n.id === 'act2_video')
+    expect(updatedRec?.params?.text).toBe('')
+    expect(updatedVid?.params?.generateInstruction).not.toContain('船头舵工')
+    expect(updatedVid?.params?.generateInstruction).not.toContain('市井环境音响')
+    expect(updatedVid?.params?.generateInstruction).toContain('无人物对白')
   })
 })

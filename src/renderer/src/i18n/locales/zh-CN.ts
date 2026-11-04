@@ -1381,6 +1381,7 @@ export default {
       mentionTypeAudio: '音频',
       mentionTypeFile: '文件',
       removeMention: '移除引用',
+      dropMediaHint: '松开以引用图片 / 视频 / 声音资产',
       saveToLibrary: '保存到资产库',
       saveToLibraryTitle: '将生成结果保存到资产库',
       saveToLibrarySubtitle: '选择目标文件夹并输入文件名',

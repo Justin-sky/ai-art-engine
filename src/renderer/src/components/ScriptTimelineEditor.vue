@@ -4357,6 +4357,7 @@ import {
   clampMixEqGainDb,
   clampTrackGain,
   closeTimelineTrackGaps,
+  contentEndSecOfTimeline,
   applyCuePunchZoomToVideoClips,
   autoAnnotateSubtitleCueTags,
   buildAutoCueSfxClips,
@@ -4434,6 +4435,7 @@ import {
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
   type ScriptTimelineScaleMode,
+  type ScriptTimelineSettings,
   type ScriptTimelineSource,
   type ScriptTimelineSourceGroup,
   type ScriptTimelineSourceMediaKind,
@@ -4505,6 +4507,7 @@ import {
   useWorkspaceStore
 } from '../stores/workspace'
 import { collectScriptTimelineSources } from '../features/script/collectScriptTimelineSources'
+import { autoArrangeTimelineFromGraphHost } from '../features/graph/model/composeTimelineVideo'
 import { exportTimelineViaRecorder } from '../features/script/exportTimelineFallback'
 import { useSettingsPanelNavigator } from '../composables/useSettingsPanelNavigator'
 import {
@@ -6629,6 +6632,8 @@ async function refreshSourceThumbs(): Promise<void> {
 }
 
 function defaultTrackForSource(src: ScriptTimelineSource): ScriptTimelineTrackKind {
+  if (src.trackHint === 'music') return 'music'
+  if (src.trackHint === 'sfx') return 'sfx'
   return sourceMediaKind(src) === 'voice' ? 'voice' : 'video'
 }
 
@@ -8984,24 +8989,79 @@ async function onGenerateBgm(): Promise<void> {
   }
 }
 
+function applyAutoArrangedSettings(
+  settings: ScriptTimelineSettings | undefined,
+  nextClips: ScriptTimelineClip[]
+): void {
+  if (settings?.scaleMode) {
+    scaleMode.value = settings.scaleMode
+  }
+  if (settings?.exportWidth) {
+    exportWidth.value = settings.exportWidth
+  }
+  if (settings?.exportHeight) {
+    exportHeight.value = settings.exportHeight
+  }
+  if (settings?.exportWidth || settings?.exportHeight) {
+    isCustomResolution.value = !EXPORT_RESOLUTIONS.some(
+      (res) => res.w === exportWidth.value && res.h === exportHeight.value
+    )
+  }
+  if (
+    settings?.subtitleKaraokeMode &&
+    (SUBTITLE_KARAOKE_MODES as readonly string[]).includes(settings.subtitleKaraokeMode)
+  ) {
+    subtitleKaraokeMode.value = settings.subtitleKaraokeMode
+  }
+  if (settings?.mixCompression !== undefined) {
+    mixCompression.value = settings.mixCompression === true
+  }
+  if (settings?.mixAutoDucking !== undefined) {
+    mixAutoDucking.value = settings.mixAutoDucking === true
+  }
+  const contentEnd = contentEndSecOfTimeline(nextClips)
+  if (contentEnd > 0) {
+    const nextDur = Math.max(durationSec.value, minLaneSec, contentEnd + 2)
+    durationSec.value = nextDur
+    durationInputSec.value = Math.round(nextDur)
+  }
+}
+
 async function autoPlaceSourcesOnTracks(toPlace: ScriptTimelineSource[]): Promise<void> {
   if (!toPlace.length) return
+  const candidateItems = toPlace
+    .map((src) => ({ src, track: defaultTrackForSource(src) }))
+    .filter(({ track }) => !lockedTracks.value.has(track))
+  if (!candidateItems.length) return
+
+  const probedList = await Promise.all(
+    candidateItems.map(async ({ src, track }) => {
+      const isAudio = track === 'voice' || track === 'sfx' || track === 'music'
+      if (src.durationSec && src.durationSec > 0) {
+        return { src, track, isAudio, durationSec: src.durationSec }
+      }
+      const url = await resolveSrc(src)
+      const durationSec = await probeDuration(url, isAudio ? 'audio' : 'video')
+      return { src, track, isAudio, durationSec }
+    })
+  )
+
   const nextClips = clips.value.map((c) => ({ ...c }))
-  let videoCursor = nextStartOnTrack('video')
-  let voiceCursor = nextStartOnTrack('voice')
-  let addedAny = false
-  for (const src of toPlace) {
-    const isVoice = sourceMediaKind(src) === 'voice'
-    const track: ScriptTimelineTrackKind = isVoice ? 'voice' : 'video'
-    if (lockedTracks.value.has(track)) continue
-    const url = await resolveSrc(src)
-    const durationSec =
-      src.durationSec && src.durationSec > 0
-        ? src.durationSec
-        : await probeDuration(url, isVoice ? 'audio' : 'video')
-    const startSec = isVoice ? voiceCursor : videoCursor
+  const cursors: Record<ScriptTimelineTrackKind, number> = {
+    video: nextStartOnTrack('video'),
+    overlay: nextStartOnTrack('overlay'),
+    voice: nextStartOnTrack('voice'),
+    subtitle: nextStartOnTrack('subtitle'),
+    music: nextStartOnTrack('music'),
+    sfx: nextStartOnTrack('sfx')
+  }
+  const stamp = Date.now().toString(36)
+  for (const [idx, item] of probedList.entries()) {
+    const { src, track, isAudio, durationSec } = item
+    const startSec = cursors[track]
+    const prefix = track === 'music' ? 'bgm' : track === 'sfx' ? 'sfx' : isAudio ? 'a' : 'v'
     nextClips.push({
-      id: `clip:auto:${isVoice ? 'a' : 'v'}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 7)}`,
+      id: `clip:auto:${prefix}:${idx}:${stamp}`,
       track,
       sourceId: src.id,
       title: src.title,
@@ -9013,11 +9073,8 @@ async function autoPlaceSourcesOnTracks(toPlace: ScriptTimelineSource[]): Promis
       durationSec
     })
     patchSourceDuration(src.id, durationSec)
-    if (isVoice) voiceCursor = startSec + durationSec
-    else videoCursor = startSec + durationSec
-    addedAny = true
+    cursors[track] = startSec + durationSec
   }
-  if (!addedAny) return
   commitClips(nextClips)
   const firstVideo = visibleClipsOn('video')[0]
   if (firstVideo && !activeClipId.value) {
@@ -9080,6 +9137,14 @@ async function reloadSources(): Promise<void> {
         const rel = clip.relativePath?.trim()
         if (!rel) continue
         const mediaKind = clip.track === 'video' ? 'video' : 'voice'
+        const trackHint =
+          clip.track === 'music'
+            ? 'music'
+            : clip.track === 'sfx'
+              ? 'sfx'
+              : clip.track === 'voice'
+                ? 'voice'
+                : 'video'
         const candidate = normalizeScriptTimelineSource({
           id: clip.sourceId?.trim() || rel,
           title:
@@ -9092,6 +9157,7 @@ async function reloadSources(): Promise<void> {
           durationSec: clip.durationSec,
           origin: 'input',
           mediaKind,
+          trackHint,
           ...(clip.nodeId?.trim() ? { nodeId: clip.nodeId.trim() } : {}),
           ...(clip.nodeTitle?.trim() ? { nodeTitle: clip.nodeTitle.trim() } : {})
         })
@@ -9180,20 +9246,85 @@ async function reloadSources(): Promise<void> {
       commitClips(nextClips)
     }
 
-    const hasStructuredActTimeline = clips.value.some((c) => /^clip:auto:(?:pre|v):\d+:/.test(c.id))
-    const hasVideoClips = clips.value.some((c) => c.track === 'video')
-    const hasVoiceClips = clips.value.some((c) => c.track === 'voice')
-    const toAutoPlace = inputNext.filter((src) => {
-      const key = sourceIdentityKey(src)
-      if (existingClipKeys.has(key)) return false
-      if (hasStructuredActTimeline) return false
-      const isVoice = sourceMediaKind(src) === 'voice'
-      if (isVoice && !hasVoiceClips) return true
-      if (!isVoice && !hasVideoClips) return true
-      return !prevKnownInputKeys.has(key)
-    })
-    if (toAutoPlace.length) {
-      await autoPlaceSourcesOnTracks(toAutoPlace)
+    const isAutoOrUntouchedClip = (c: ScriptTimelineClip): boolean => {
+      if (c.id.startsWith('clip:auto:')) return true
+      if (
+        c.nodeId &&
+        !c.sourceOffsetSec &&
+        !c.speed &&
+        !c.pitchSemitones &&
+        (!c.voiceEffect || c.voiceEffect === 'none') &&
+        (!c.visualEffect || c.visualEffect === 'none') &&
+        (!c.transitionType || c.transitionType === 'none')
+      ) {
+        return true
+      }
+      return false
+    }
+    const hasManualEditedClips = clips.value.some(
+      (c) => (c.track === 'video' || c.track === 'voice') && !isAutoOrUntouchedClip(c)
+    )
+    const unplacedInputSources = inputNext.filter(
+      (src) => !existingClipKeys.has(sourceIdentityKey(src))
+    )
+    const hasUnplacedCoreSource = unplacedInputSources.some(
+      (src) =>
+        sourceMediaKind(src) !== 'voice' ||
+        (src.trackHint ?? 'voice') === 'voice' ||
+        !prevKnownInputKeys.has(sourceIdentityKey(src))
+    )
+
+    let arrangedOnGraph = false
+    if (
+      inputNext.length > 0 &&
+      !hasManualEditedClips &&
+      (clips.value.length === 0 || hasUnplacedCoreSource)
+    ) {
+      const arranged = await autoArrangeTimelineFromGraphHost({
+        scriptAssetId: props.scriptAssetId,
+        hostId: hostId.value,
+        timelineNodeId: props.timelineNodeId,
+        baseDoc: {
+          clips: clips.value,
+          sources: sources.value
+        },
+        collectedSources: inputNext,
+        persist: false
+      })
+      if (arranged?.dirty && arranged.doc.clips.length > 0) {
+        applyAutoArrangedSettings(arranged.doc.settings, arranged.doc.clips)
+        commitClips(arranged.doc.clips)
+        const firstVideo = visibleClipsOn('video')[0]
+        if (firstVideo && !activeClipId.value) {
+          activeClipId.value = firstVideo.id
+          void showClipPreview(firstVideo)
+        }
+        arrangedOnGraph = true
+      }
+    }
+
+    if (!arrangedOnGraph) {
+      const hasStructuredActTimeline = clips.value.some((c) =>
+        /^clip:auto:(?:pre|v):\d+:/.test(c.id)
+      )
+      const hasVideoClips = clips.value.some((c) => c.track === 'video')
+      const hasVoiceClips = clips.value.some((c) => c.track === 'voice')
+      const hasSfxClips = clips.value.some((c) => c.track === 'sfx')
+      const hasMusicClips = clips.value.some((c) => c.track === 'music')
+      const toAutoPlace = inputNext.filter((src) => {
+        const key = sourceIdentityKey(src)
+        if (existingClipKeys.has(key)) return false
+        if (hasStructuredActTimeline && hasManualEditedClips) return false
+        const track = defaultTrackForSource(src)
+        if (track === 'video' && !hasVideoClips) return true
+        if (track === 'voice' && !hasVoiceClips) return true
+        if (track === 'sfx' && !hasSfxClips) return true
+        if (track === 'music' && !hasMusicClips) return true
+        return !prevKnownInputKeys.has(key)
+      })
+      if (toAutoPlace.length) {
+        await autoPlaceSourcesOnTracks(toAutoPlace)
+      }
     }
 
     scheduleSave()
@@ -11787,19 +11918,64 @@ async function trackSpeakerFaceForAllSubtitles(): Promise<void> {
 
 async function autoPlaceAll(): Promise<void> {
   if (!sources.value.length) await reloadSources()
+  const arranged = await autoArrangeTimelineFromGraphHost({
+    scriptAssetId: props.scriptAssetId,
+    hostId: hostId.value,
+    timelineNodeId: props.timelineNodeId,
+    baseDoc: {
+      clips: clips.value,
+      sources: sources.value
+    },
+    collectedSources: sources.value,
+    persist: false,
+    replaceAllVideoAndVoice: true
+  })
+  if (arranged?.dirty && arranged.doc.clips.length > 0) {
+    applyAutoArrangedSettings(arranged.doc.settings, arranged.doc.clips)
+    commitClips(arranged.doc.clips)
+    scheduleSave()
+    const first = visibleClipsOn('video')[0]
+    if (first) {
+      activeClipId.value = first.id
+      void showClipPreview(first)
+    }
+    return
+  }
+
   const videos = videoSources.value
-  const voices = sources.value.filter((s) => sourceMediaKind(s) === 'voice')
-  if (!videos.length && !voices.length) return
-  const placeVoice =
-    voices.length > 0 && (!videos.length || !clips.value.some((c) => c.track === 'voice'))
+  const audioList = sources.value.filter((s) => sourceMediaKind(s) === 'voice')
+  if (!videos.length && !audioList.length) return
+  const placeAudio =
+    audioList.length > 0 &&
+    (!videos.length ||
+      !clips.value.some((c) => c.track === 'voice' || c.track === 'sfx' || c.track === 'music'))
   const nextClips = clips.value.filter(
-    (c) => (videos.length ? c.track !== 'video' : true) && (placeVoice ? c.track !== 'voice' : true)
+    (c) =>
+      (videos.length ? c.track !== 'video' : true) &&
+      (placeAudio ? c.track !== 'voice' && c.track !== 'sfx' && c.track !== 'music' : true)
   )
+
+  const [probedVideos, probedAudios] = await Promise.all([
+    Promise.all(
+      videos.map(async (src) => {
+        if (src.durationSec && src.durationSec > 0) return { src, durationSec: src.durationSec }
+        const url = await resolveSrc(src)
+        return { src, durationSec: await probeDuration(url, 'video') }
+      })
+    ),
+    placeAudio
+      ? Promise.all(
+          audioList.map(async (src) => {
+            if (src.durationSec && src.durationSec > 0) return { src, durationSec: src.durationSec }
+            const url = await resolveSrc(src)
+            return { src, durationSec: await probeDuration(url, 'audio') }
+          })
+        )
+      : Promise.resolve([])
+  ])
+
   let videoCursor = 0
-  for (const src of videos) {
-    const url = await resolveSrc(src)
-    const durationSec =
-      src.durationSec && src.durationSec > 0 ? src.durationSec : await probeDuration(url, 'video')
+  for (const { src, durationSec } of probedVideos) {
     nextClips.push({
       id: newClipId(),
       track: 'video',
@@ -11815,26 +11991,30 @@ async function autoPlaceAll(): Promise<void> {
     patchSourceDuration(src.id, durationSec)
     videoCursor += durationSec
   }
-  if (placeVoice) {
-    let voiceCursor = 0
-    for (const src of voices) {
-      const url = await resolveSrc(src)
-      const durationSec =
-        src.durationSec && src.durationSec > 0 ? src.durationSec : await probeDuration(url, 'audio')
+  if (placeAudio) {
+    const audioCursors: Record<'voice' | 'sfx' | 'music', number> = {
+      voice: 0,
+      sfx: 0,
+      music: 0
+    }
+    for (const { src, durationSec } of probedAudios) {
+      const targetTrack: 'voice' | 'sfx' | 'music' =
+        src.trackHint === 'music' ? 'music' : src.trackHint === 'sfx' ? 'sfx' : 'voice'
+      const startSec = audioCursors[targetTrack]
       nextClips.push({
         id: newClipId(),
-        track: 'voice',
+        track: targetTrack,
         sourceId: src.id,
         title: src.title,
         relativePath: src.relativePath,
         assetId: src.assetId,
         ...(src.nodeId ? { nodeId: src.nodeId } : {}),
         ...(src.nodeTitle ? { nodeTitle: src.nodeTitle } : {}),
-        startSec: voiceCursor,
+        startSec,
         durationSec
       })
       patchSourceDuration(src.id, durationSec)
-      voiceCursor += durationSec
+      audioCursors[targetTrack] = startSec + durationSec
     }
   }
   commitClips(nextClips)
@@ -14121,7 +14301,8 @@ function confirmExportDialog(): void {
 async function exportTimeline(): Promise<void> {
   if (exporting.value || !clips.value.length) return
   stopPlayback()
-  clips.value = upgradeTemporaryAutoSubtitlesInTimeline(clips.value, readGenParams())
+  const hostGenParams = readGenParams()
+  clips.value = upgradeTemporaryAutoSubtitlesInTimeline(clips.value, hostGenParams)
 
   exporting.value = true
   exportProgress.value = 0.01
@@ -14143,6 +14324,37 @@ async function exportTimeline(): Promise<void> {
       !hasAutoNarration &&
       typeof window.studio?.generateSpeech === 'function'
     ) {
+      const hostNodes: Array<{
+        id?: string
+        typeId?: string
+        title?: string
+        params?: Record<string, unknown>
+      }> =
+        hostGenParams?.graphJson &&
+        typeof hostGenParams.graphJson === 'object' &&
+        Array.isArray((hostGenParams.graphJson as { nodes?: unknown[] }).nodes)
+          ? ((hostGenParams.graphJson as { nodes: Array<Record<string, unknown>> }).nodes as Array<{
+              id?: string
+              typeId?: string
+              title?: string
+              params?: Record<string, unknown>
+            }>)
+          : []
+      const matchHostActIdx = (title?: string, id?: string): number | null => {
+        const s = `${title ?? ''} ${id ?? ''}`
+        const m = s.match(/第\s*(\d+)\s*幕/i) ?? s.match(/act\s*(\d+)/i) // cjk-ok
+        return m ? Math.max(0, Number(m[1]) - 1) : null
+      }
+      const rootScrollHints = hostNodes
+        .filter((n) => n.typeId === 'asset.image' && matchHostActIdx(n.title, n.id) === null)
+        .flatMap((n) => [
+          n.title,
+          typeof n.params?.previewRelativePath === 'string'
+            ? n.params.previewRelativePath
+            : undefined
+        ])
+        .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
+
       const nextClips = clips.value.map((c) => {
         if (
           c.track === 'voice' &&
@@ -14159,8 +14371,47 @@ async function exportTimeline(): Promise<void> {
         if (!m) continue
         const actIdx = Number(m[1])
         const stamp = m[2]!
-        const plan = parseActSceneSubtitlePlan({ actIndex: actIdx })
+        const actNodes = hostNodes.filter((n) => matchHostActIdx(n.title, n.id) === actIdx)
+        const voiceNode = actNodes.find((n) => n.typeId === 'asset.voice')
+        const recognizeNode = actNodes.find((n) => n.typeId === 'image.toPrompt')
+        const cropNode = actNodes.find((n) => n.typeId === 'image.process')
+        const videoNode = actNodes.find((n) => n.typeId === 'asset.video')
+        const realNode = actNodes.find((n) => n.typeId === 'asset.image')
+        const existingActSubTexts = nextClips
+          .filter(
+            (c) =>
+              c.track === 'subtitle' &&
+              new RegExp(`^clip:auto:sub:${actIdx}_[123]:`).test(c.id) &&
+              typeof c.text === 'string' &&
+              c.text.trim().length > 0
+          )
+          .map((c) => c.text!.trim())
         const mainVid = nextClips.find((c) => c.id.startsWith(`clip:auto:v:${actIdx}:`))
+        const plan = parseActSceneSubtitlePlan({
+          actIndex: actIdx,
+          rawText:
+            (existingActSubTexts.length > 0 ? existingActSubTexts.join('，') : undefined) || // cjk-ok
+            (typeof voiceNode?.params?.generateInstruction === 'string' &&
+              voiceNode.params.generateInstruction.trim()) ||
+            (typeof recognizeNode?.params?.text === 'string' && recognizeNode.params.text.trim()) ||
+            undefined,
+          titleCandidates: [
+            preClip.title,
+            mainVid?.title,
+            cropNode?.title,
+            videoNode?.title,
+            realNode?.title
+          ],
+          fallbackPromptTexts: [
+            typeof videoNode?.params?.generateInstruction === 'string'
+              ? videoNode.params.generateInstruction
+              : undefined,
+            typeof realNode?.params?.generateInstruction === 'string'
+              ? realNode.params.generateInstruction
+              : undefined,
+            ...rootScrollHints
+          ]
+        })
         const actEndSec = mainVid ? mainVid.startSec + mainVid.durationSec : preClip.startSec + 10
         const narrStart = Math.round((preClip.startSec + 0.15) * 100) / 100
         const narrDur = Math.min(

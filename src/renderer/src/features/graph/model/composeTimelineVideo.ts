@@ -2,18 +2,21 @@ import {
   buildComicMotionTimeline,
   contentEndSecOfTimeline,
   extractComicDialogueLines,
+  flattenTextsValues,
   parseActSceneSubtitlePlan,
   rasterizeTimelineStickerSvgToPngDataUrl,
   readComicPageFromGenParams,
   readScriptTimelineFromGenParams,
   withScriptTimeline,
   type ComicPage,
+  type GraphDocument,
   type GraphImageItem,
   type GraphTimelineVisualItem,
   type GraphVideoItem,
   type GraphVoiceItem,
   type ScriptTimelineClip,
   type ScriptTimelineDocument,
+  type ScriptTimelineSource,
   type TimelineExportClip
 } from '@shared/graph'
 import { isDraftAssetId } from '@shared/domain'
@@ -22,6 +25,8 @@ import { resolveAssetFileUrl } from '../../media/assetUrlCache'
 import { useDraftStore } from '../../../stores/drafts'
 import { useProjectStore } from '../../../stores/project'
 import { toPlain } from '../../../utils/toPlain'
+import { graphEditorHosts } from './graphEditorHosts'
+import { graphRunHosts } from './graphRunHosts'
 
 function resolveMediaRelPath(
   item: { relativePath?: string; id?: string; assetId?: string },
@@ -139,9 +144,13 @@ export function splitNarrationIntoSubtitleSegments(text: string): string[] {
  * - 若接入背景音乐（`music`），自动铺入 `track: 'music'` 并开启 `mixAutoDucking` 人声闪避；
  * - 调用主进程 `exportScriptTimeline` 无界面合成单条 MP4，返回新成片的工程相对路径与 assetId。
  */
-export async function composeTimelineVideoForNode(input: {
+export interface TimelineAutoArrangeInput {
   hostAssetId?: string
   nodeId: string
+  document?: GraphDocument
+  baseDoc?: ScriptTimelineDocument
+  persist?: boolean
+  replaceAllVideoAndVoice?: boolean
   videos: GraphVideoItem[]
   images?: GraphImageItem[]
   visuals?: GraphTimelineVisualItem[]
@@ -160,11 +169,17 @@ export async function composeTimelineVideoForNode(input: {
     bubbleImageRelativePaths?: Record<string, string>
   }>
   signal?: AbortSignal
-}): Promise<{ relativePath?: string; assetId?: string } | null> {
+}
+
+/**
+ * 构建并自动编排成片时间线文档（不执行 FFmpeg 导出，供 Dive 打开时间线编辑器与「一键上轨」即时复用）。
+ */
+export async function arrangeTimelineDocumentForNode(
+  input: TimelineAutoArrangeInput
+): Promise<{ doc: ScriptTimelineDocument; dirty: boolean } | null> {
   if (input.signal?.aborted) return null
   const project = useProjectStore()
   const drafts = useDraftStore()
-  if (!project.isOpen || !project.rootPath) return null
 
   const hostAssetId = input.hostAssetId?.trim()
   const readGenParams = (): Record<string, unknown> => {
@@ -176,7 +191,17 @@ export async function composeTimelineVideoForNode(input: {
     return { ...((asset?.genParams as Record<string, unknown> | undefined) ?? {}) }
   }
 
-  const doc: ScriptTimelineDocument = readScriptTimelineFromGenParams(readGenParams(), input.nodeId)
+  const liveGraphDoc: GraphDocument | null =
+    input.document ?? (hostAssetId ? graphEditorHosts.getLiveAssetDocument(hostAssetId) : null)
+
+  const persistedDoc = readScriptTimelineFromGenParams(readGenParams(), input.nodeId)
+  const doc: ScriptTimelineDocument = input.baseDoc
+    ? {
+        ...persistedDoc,
+        ...input.baseDoc,
+        clips: input.baseDoc.clips.map((c) => ({ ...c }))
+      }
+    : persistedDoc
   let clips: ScriptTimelineClip[] = doc.clips.map((c) => ({ ...c }))
   let dirtyDoc = false
 
@@ -236,7 +261,10 @@ export async function composeTimelineVideoForNode(input: {
     if (!title) return null
     const m =
       title.match(
-        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image)\s*#?(\d+)/i
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image|Episode|Ep\.?)\s*#?(\d+)/i
+      ) ??
+      title.match(
+        /\u7b2c\s*(\d+)\s*(?:\u96c6|\u573a|\u5e55|\u955c|\u7ae0|\u8282|\u6b65|\u8bdd|\u56de)/i
       ) ??
       title.match(/^#?(\d+)[\s._:\uff1a-]/i) ??
       title.match(/(\d+)/)
@@ -265,10 +293,11 @@ export async function composeTimelineVideoForNode(input: {
       : project.assets.find((a) => a.id === hostAssetId)
     : undefined
   const initialGenParams = readGenParams()
-  const initialGraphNodes =
-    initialGenParams.graphJson &&
-    typeof initialGenParams.graphJson === 'object' &&
-    Array.isArray((initialGenParams.graphJson as { nodes?: unknown[] }).nodes)
+  const initialGraphNodes: Array<Record<string, unknown>> = Array.isArray(liveGraphDoc?.nodes)
+    ? (liveGraphDoc!.nodes as unknown as Array<Record<string, unknown>>)
+    : initialGenParams.graphJson &&
+        typeof initialGenParams.graphJson === 'object' &&
+        Array.isArray((initialGenParams.graphJson as { nodes?: unknown[] }).nodes)
       ? ((initialGenParams.graphJson as { nodes: Array<Record<string, unknown>> }).nodes ?? [])
       : []
   const guichuContextCorpus = [
@@ -287,8 +316,12 @@ export async function composeTimelineVideoForNode(input: {
   const isGuichuRemixMode = guichuRe.test(guichuContextCorpus)
 
   // 仅当轨道上不存在用户手动精编的非 auto 片段时，用最新上游产物重建自动时间线
-  const hasManualVideoClips = clips.some((c) => c.track === 'video' && !isAutoOrInputClip(c))
-  const hasManualVoiceClips = clips.some((c) => c.track === 'voice' && !isAutoOrInputClip(c))
+  const hasManualVideoClips =
+    !input.replaceAllVideoAndVoice &&
+    clips.some((c) => c.track === 'video' && !isAutoOrInputClip(c))
+  const hasManualVoiceClips =
+    !input.replaceAllVideoAndVoice &&
+    clips.some((c) => c.track === 'voice' && !isAutoOrInputClip(c))
   const hasManualSubtitleClips = clips.some(
     (c) => c.track === 'subtitle' && !c.id.startsWith('clip:auto:')
   )
@@ -319,10 +352,11 @@ export async function composeTimelineVideoForNode(input: {
       }
     }
   } else if (initialGraphNodes.length > 0) {
-    const initialGraphEdges =
-      initialGenParams.graphJson &&
-      typeof initialGenParams.graphJson === 'object' &&
-      Array.isArray((initialGenParams.graphJson as { edges?: unknown[] }).edges)
+    const initialGraphEdges: Array<Record<string, unknown>> = Array.isArray(liveGraphDoc?.edges)
+      ? (liveGraphDoc!.edges as unknown as Array<Record<string, unknown>>)
+      : initialGenParams.graphJson &&
+          typeof initialGenParams.graphJson === 'object' &&
+          Array.isArray((initialGenParams.graphJson as { edges?: unknown[] }).edges)
         ? ((initialGenParams.graphJson as { edges: Array<Record<string, unknown>> }).edges ?? [])
         : []
     const upstreamComicNodeIds = new Set(
@@ -643,24 +677,12 @@ export async function composeTimelineVideoForNode(input: {
         if (preImg && vis) {
           // ── 混合入画槽位（古画/世界名画多段复活剪辑：3.6s 原画移动镜头寻景与焦点定格 + 0.45s 焦点拍照闪光呈现 1:1 写实还原照片(1.6s) + 0.35s 无缝叠化进入首帧生成视频 + 幕尾融回原画移向下一焦点） ──
           const rawSub = input.subtitles?.[i]?.trim() || voice?.text?.trim() || ''
-          const rawGenParams = readGenParams()
-          const graphNodes: Array<{
+          const graphNodes = initialGraphNodes as Array<{
             id?: string
             typeId?: string
             title?: string
             params?: Record<string, unknown>
-          }> =
-            rawGenParams.graphJson &&
-            typeof rawGenParams.graphJson === 'object' &&
-            Array.isArray((rawGenParams.graphJson as { nodes?: unknown[] }).nodes)
-              ? ((rawGenParams.graphJson as { nodes: Array<Record<string, unknown>> })
-                  .nodes as Array<{
-                  id?: string
-                  typeId?: string
-                  title?: string
-                  params?: Record<string, unknown>
-                }>)
-              : []
+          }>
           const actMatchingNodes = graphNodes.filter(
             (n) => extractShotNum(`${n.title ?? ''} ${n.id ?? ''}`) === i + 1
           )
@@ -668,8 +690,24 @@ export async function composeTimelineVideoForNode(input: {
           const cropNode = actMatchingNodes.find((n) => n.typeId === 'image.process')
           const videoNode = actMatchingNodes.find((n) => n.typeId === 'asset.video')
           const realNode = actMatchingNodes.find(
-            (n) => n.typeId === 'asset.image' && n.id !== 'scroll-src'
+            (n) => n.typeId === 'asset.image' && n.id !== 'scroll-src' && n.id !== 'scroll_src'
           )
+          const rootScrollHints = graphNodes
+            .filter(
+              (n) =>
+                n.typeId === 'asset.image' &&
+                extractShotNum(`${n.title ?? ''} ${n.id ?? ''}`) === null
+            )
+            .flatMap((n) => [
+              n.title,
+              typeof n.params?.previewRelativePath === 'string'
+                ? n.params.previewRelativePath
+                : undefined,
+              typeof n.params?.sourceRelativePath === 'string'
+                ? n.params.sourceRelativePath
+                : undefined
+            ])
+            .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
           const resolveNodeImageRelPath = (node?: {
             id?: string
             params?: Record<string, unknown>
@@ -739,7 +777,8 @@ export async function composeTimelineVideoForNode(input: {
                 : undefined,
               typeof realNode?.params?.generateInstruction === 'string'
                 ? realNode.params.generateInstruction
-                : undefined
+                : undefined,
+              ...rootScrollHints
             ],
             cultureHint
           })
@@ -1254,6 +1293,32 @@ export async function composeTimelineVideoForNode(input: {
           })
         }
 
+        if (resolvedSfx.length > 0) {
+          const numberedSfx = resolvedSfx.filter((s) => extractShotNum(s.title) === i + 1)
+          const shotSfxList =
+            numberedSfx.length > 0
+              ? numberedSfx
+              : !resolvedSfx.some((s) => extractShotNum(s.title) !== null) && resolvedSfx[i]
+                ? [resolvedSfx[i]!]
+                : []
+          shotSfxList.forEach((sfxItem, sfxLaneIdx) => {
+            clips.push({
+              id: `clip:auto:sfx:${i}_${sfxLaneIdx}:${stamp}`,
+              track: 'sfx',
+              lane: sfxItem.lane ?? sfxLaneIdx,
+              sourceId: sfxItem.id || sfxItem.rel,
+              title: sfxItem.title?.trim() || `SFX ${i + 1}`,
+              relativePath: sfxItem.rel,
+              ...(sfxItem.id ? { assetId: sfxItem.id } : {}),
+              startSec: cursor,
+              durationSec: shotDur,
+              volume: voice ? 0.6 : 0.85,
+              fadeInSec: 0.25,
+              fadeOutSec: 0.3
+            })
+          })
+        }
+
         cursor = Math.round((cursor + shotDur) * 100) / 100
 
         // ── 网络鬼畜模式：在每幕叙事铺垫后自动注入高密度「鬼畜电音洗脑副歌卡点暴走段 (Guichu Electro Hook Drop)」──
@@ -1480,17 +1545,18 @@ export async function composeTimelineVideoForNode(input: {
   const hasBothVoiceAndMusic =
     clips.some((c) => c.track === 'voice') && clips.some((c) => c.track === 'music')
 
-  if (dirtyDoc && hostAssetId) {
-    const nextDoc: ScriptTimelineDocument = {
-      ...doc,
-      clips,
-      settings: {
-        ...doc.settings,
-        ...(hasBothVoiceAndMusic && doc.settings?.mixAutoDucking === undefined
-          ? { mixAutoDucking: true }
-          : {})
-      }
+  const nextDoc: ScriptTimelineDocument = {
+    ...doc,
+    clips,
+    settings: {
+      ...doc.settings,
+      ...(hasBothVoiceAndMusic && doc.settings?.mixAutoDucking === undefined
+        ? { mixAutoDucking: true }
+        : {})
     }
+  }
+
+  if ((input.persist ?? true) && dirtyDoc && hostAssetId) {
     const nextGen = withScriptTimeline(readGenParams(), nextDoc, input.nodeId)
     if (isDraftAssetId(hostAssetId)) {
       drafts.updateDraft(hostAssetId, { genParams: nextGen })
@@ -1498,6 +1564,186 @@ export async function composeTimelineVideoForNode(input: {
       await persistAssetRecord(hostAssetId, { genParams: nextGen })
     }
   }
+
+  return { doc: nextDoc, dirty: dirtyDoc }
+}
+
+/**
+ * 从当前宿主画布/剧本资产图上的 `output.timeline` 节点即时编排多幕多轨时间线（供 Dive 打开时间线与「一键上轨」直接调用，不跑 FFmpeg 导出）。
+ */
+export async function autoArrangeTimelineFromGraphHost(options: {
+  scriptAssetId: string
+  hostId?: string
+  timelineNodeId?: string
+  baseDoc?: ScriptTimelineDocument
+  collectedSources: ScriptTimelineSource[]
+  persist?: boolean
+  replaceAllVideoAndVoice?: boolean
+}): Promise<{ doc: ScriptTimelineDocument; dirty: boolean } | null> {
+  const scriptAssetId = options.scriptAssetId?.trim()
+  if (!scriptAssetId) return null
+  const project = useProjectStore()
+  const drafts = useDraftStore()
+  const rawGenParams: Record<string, unknown> = isDraftAssetId(scriptAssetId)
+    ? { ...(drafts.getDraft(scriptAssetId)?.genParams ?? {}) }
+    : {
+        ...((project.assets.find((a) => a.id === scriptAssetId)?.genParams as
+          Record<string, unknown> | undefined) ?? {})
+      }
+  const resolvedHostId = options.hostId?.trim() || `asset:${scriptAssetId}`
+  const graphDoc: GraphDocument | null =
+    graphEditorHosts.getDocument(resolvedHostId) ??
+    graphEditorHosts.getLiveAssetDocument(scriptAssetId) ??
+    (rawGenParams.graphJson && typeof rawGenParams.graphJson === 'object'
+      ? (rawGenParams.graphJson as GraphDocument)
+      : null)
+  if (!graphDoc) return null
+
+  const preferredNodeId = options.timelineNodeId?.trim()
+  const tlNode =
+    (preferredNodeId ? graphDoc.nodes.find((n) => n.id === preferredNodeId) : undefined) ??
+    graphDoc.nodes.find((n) => n.typeId === 'output.timeline')
+  if (!tlNode || tlNode.typeId !== 'output.timeline') return null
+
+  const nodeById = new Map(graphDoc.nodes.map((n) => [n.id, n]))
+  const runStates = graphRunHosts.get(resolvedHostId)?.runStates ?? graphDoc.runStates ?? {}
+
+  const extractActShotNum = (title?: string): number | null => {
+    if (!title) return null
+    const m =
+      title.match(
+        /(?:\u5206\u955c|\u955c\u5934|\u7247\u6bb5|\u7ae0\u8282|\u5e55|\u6b65\u9aa4|\u7167\u7247|\u56fe\u7247|Shot|Scene|Step|Part|Clip|Photo|Image|Episode|Ep\.?)\s*#?(\d+)/i
+      ) ??
+      title.match(
+        /\u7b2c\s*(\d+)\s*(?:\u96c6|\u573a|\u5e55|\u955c|\u7ae0|\u8282|\u6b65|\u8bdd|\u56de)/i
+      ) ??
+      title.match(/^#?(\d+)[\s._:\uff1a-]/i)
+    return m ? Number(m[1]) : null
+  }
+
+  const inputSources = options.collectedSources.filter((s) => (s.origin ?? 'input') === 'input')
+  const visuals: GraphTimelineVisualItem[] = []
+  const videos: GraphVideoItem[] = []
+  const voices: TimelineAutoArrangeInput['voices'] = []
+  const sfx: NonNullable<TimelineAutoArrangeInput['sfx']> = []
+  const music: GraphVoiceItem[] = []
+
+  for (const src of inputSources) {
+    const rel = src.relativePath?.trim().replace(/^@+/, '').trim()
+    const id = src.assetId?.trim() || src.id?.trim()
+    const srcNode = src.nodeId ? nodeById.get(src.nodeId) : undefined
+    const title = src.nodeTitle?.trim() || src.title?.trim()
+    if (src.mediaKind === 'voice') {
+      const hint =
+        src.trackHint ??
+        (srcNode?.typeId === 'asset.music'
+          ? 'music'
+          : srcNode?.typeId === 'asset.sfx'
+            ? 'sfx'
+            : 'voice')
+      if (hint === 'music') {
+        music.push({ ...(id ? { id } : {}), ...(rel ? { relativePath: rel } : {}) })
+      } else if (hint === 'sfx') {
+        sfx.push({
+          ...(id ? { id } : {}),
+          ...(rel ? { relativePath: rel } : {}),
+          ...(title ? { title } : {})
+        })
+      } else {
+        const spokenText = (
+          srcNode?.params?.notes?.trim() ||
+          srcNode?.params?.generateInstruction?.trim() ||
+          srcNode?.params?.text?.trim() ||
+          ''
+        )
+          .replace(/@\d+/g, '')
+          .trim()
+        voices.push({
+          ...(id ? { id } : {}),
+          ...(rel ? { relativePath: rel } : {}),
+          ...(title ? { title } : {}),
+          ...(spokenText ? { text: spokenText } : {}),
+          trackKind: 'voice'
+        })
+      }
+      continue
+    }
+
+    const isImgNode =
+      srcNode?.typeId === 'image.process' ||
+      srcNode?.typeId === 'asset.image' ||
+      srcNode?.typeId === 'comic.page' ||
+      srcNode?.typeId === 'svg.anim' ||
+      srcNode?.typeId === 'anim.2d'
+    const kind: 'image' | 'video' =
+      isImgNode || (rel ? isImageOrGifPath(rel) : false) ? 'image' : 'video'
+    visuals.push({
+      ...(id ? { id } : {}),
+      kind,
+      ...(rel ? { relativePath: rel } : {}),
+      ...(title ? { title } : {})
+    })
+    if (kind === 'video') {
+      videos.push({ ...(id ? { id } : {}), ...(rel ? { relativePath: rel } : {}) })
+    }
+  }
+
+  const textEdges = graphDoc.edges
+    .filter((e) => e.target === tlNode.id && e.targetPort === 'in-text')
+    .map((e, idx) => ({ node: nodeById.get(e.source), idx }))
+    .filter((item): item is { node: NonNullable<typeof item.node>; idx: number } =>
+      Boolean(item.node)
+    )
+  if (
+    textEdges.some((item) => extractActShotNum(`${item.node.title ?? ''} ${item.node.id}`) !== null)
+  ) {
+    textEdges.sort((a, b) => {
+      const sa = extractActShotNum(`${a.node.title ?? ''} ${a.node.id}`) ?? 9999
+      const sb = extractActShotNum(`${b.node.title ?? ''} ${b.node.id}`) ?? 9999
+      return sa !== sb ? sa - sb : a.idx - b.idx
+    })
+  }
+  const subtitles: string[] = []
+  for (const { node: tn } of textEdges) {
+    const outVal = runStates[tn.id]?.outputs?.out
+    const fromRun = outVal
+      ? flattenTextsValues([outVal])
+          .map((t) => t.text?.trim() ?? '')
+          .find(Boolean)
+      : undefined
+    const txt = fromRun || tn.params?.text?.trim() || tn.params?.resultText?.trim() || ''
+    if (txt) subtitles.push(txt)
+  }
+
+  return arrangeTimelineDocumentForNode({
+    hostAssetId: scriptAssetId,
+    nodeId: tlNode.id,
+    document: graphDoc,
+    baseDoc: options.baseDoc,
+    persist: options.persist ?? false,
+    replaceAllVideoAndVoice: options.replaceAllVideoAndVoice,
+    videos,
+    visuals,
+    voices,
+    ...(sfx.length ? { sfx } : {}),
+    ...(music.length ? { music } : {}),
+    ...(subtitles.length ? { subtitles } : {})
+  })
+}
+
+export async function composeTimelineVideoForNode(
+  input: Omit<TimelineAutoArrangeInput, 'baseDoc' | 'persist' | 'replaceAllVideoAndVoice'>
+): Promise<{ relativePath?: string; assetId?: string } | null> {
+  if (input.signal?.aborted) return null
+  const project = useProjectStore()
+  if (!project.isOpen || !project.rootPath) return null
+
+  const arranged = await arrangeTimelineDocumentForNode({ ...input, persist: true })
+  if (!arranged) return null
+  const doc = arranged.doc
+  const clips = doc.clips
+  const hasBothVoiceAndMusic =
+    clips.some((c) => c.track === 'voice') && clips.some((c) => c.track === 'music')
 
   const hidden = new Set(doc.hiddenTracks ?? [])
   const exportClips: TimelineExportClip[] = await Promise.all(
