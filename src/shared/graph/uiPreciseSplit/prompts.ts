@@ -477,3 +477,50 @@ export function buildCompanionLayerPurifyPrompt(input: {
     `3. 严守原构图比例：可见部位的姿态、透视、比例与色彩必须与原图保持 1:1 一致，以便回贴对齐。`
   ].join('\n')
 }
+
+/**
+ * 独立图形元素（图标 / 艺术字标题 / 角色头像立绘 / 装饰纹样）纯色摄影棚伴生抠图与遮挡提纯提示词：
+ * 保持主体自身笔触、字形、细节与色彩 1:1 不变，彻底剥离外围底板杂景与跨界遮挡物，以获得零毛边高精度 Alpha 轮廓。
+ */
+export function buildStandaloneLayerPurifyPrompt(input: {
+  locale?: string
+  name: string
+  kind: string
+  bgHex: '#FFFFFF' | '#141820'
+  occluderDesc?: string
+  artTextValue?: string
+}): string {
+  const en = isEnglish(input.locale)
+  const bgDescEn =
+    input.bgHex === '#FFFFFF'
+      ? 'pure flat solid white (#FFFFFF, RGB 255,255,255)'
+      : 'pure flat solid dark slate (#141820, RGB 20,24,32)'
+  const bgDescZh =
+    input.bgHex === '#FFFFFF'
+      ? '100% 纯平涂纯白背景（#FFFFFF，RGB 255,255,255）'
+      : '100% 纯平涂深灰黑背景（#141820，RGB 20,24,32）'
+
+  if (en) {
+    return [
+      `Extract and purify ONLY the standalone UI graphical element "${input.name}" (kind: ${input.kind}) from the reference crop onto a flat studio background.`,
+      `1. SOLID STUDIO BACKGROUND: Place ONLY this isolated element centered on a ${bgDescEn} background with ~6% clean margin. Remove 100% of surrounding slot frames, panel backgrounds, textures, and checkerboard patterns.`,
+      input.occluderDesc
+        ? `2. STRIP EXTERNAL OCCLUDERS & RESTORE SILHOUETTE: Completely remove overlapping external UI items (${input.occluderDesc}) and cleanly complete the occluded portion of "${input.name}".`
+        : `2. CLEAN SILHOUETTE: Preserve the element's own outer stroke, bevel, and crisp contour while removing any external background residue trapped in concave gaps.`,
+      input.artTextValue
+        ? `3. EXACT GLYPHS: Preserve the exact stylized characters "${input.artTextValue}", stroke shapes, 3D bevel, and colors 1:1 without changing a single stroke.`
+        : `3. STRICT 1:1 FIDELITY: Preserve the exact silhouette, proportions, internal details, lighting, and colors 1:1 with zero pose or style drift.`
+    ].join('\n')
+  }
+
+  return [
+    `请从参考裁剪图中单独提取并提纯 UI 独立图形元素「${input.name}」（类型：${input.kind}），输出置于纯色摄影棚背景中央的高精度单层素材图。`,
+    `1. 纯净纯色背景：将且仅将该独立元素完整置于 ${bgDescZh} 中央（四周留约 6% 均匀纯色边距），100% 彻底剥离周围的槽位底框、面板底纹、场景杂色，严禁画棋盘格或地面投影。`,
+    input.occluderDesc
+      ? `2. 剥离外部跨界遮挡并补全轮廓：彻底清除压在该元素上方的外部无关遮挡物（${input.occluderDesc}），并自然延续补全被遮挡处的自身轮廓与材质细节。`
+      : `2. 锐利无毛边轮廓：完整保留该元素自身的描边、倒角与精细剪影，彻底清除字缝、发丝或凹角内残留的外部底板颜色。`,
+    input.artTextValue
+      ? `3. 字形零篡改：严格保持艺术字内容「${input.artTextValue}」的每一笔字形结构、立体描边与渐变色彩 1:1 完全一致，绝不增删或改写笔画。`
+      : `3. 严格 1:1 保真：主体的比例、轮廓、五官/图标细节、光影与配色必须与原图保持 1:1 完全一致，严禁移位或变形。`
+  ].join('\n')
+}

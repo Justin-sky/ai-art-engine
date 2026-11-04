@@ -4,6 +4,7 @@ import {
   buildLayoutTree,
   buildOwnershipMap,
   completeOccludedGenerative,
+  computeComponentVisualDescriptor,
   createImage,
   estimateShift,
   filterOcrFalsePositives,
@@ -14,8 +15,10 @@ import {
   refineElementBox,
   runPreciseUiSplit,
   scoreSamCandidateMask,
+  segmentContainerSilhouette,
   textStrokeMask,
   unpackOcclusionAtlas,
+  type PreciseSplitComponentCandidate,
   type PreciseSplitIo,
   type RgbaImage
 } from '../src/shared/graph/uiPreciseSplit'
@@ -1621,6 +1624,59 @@ describe('uiPreciseSplit · bggg-creator-image2psd layerSplit optimizations', ()
     }
     const sourceUrl = await encodeImg(img)
 
+    // Missing generateImage must fail fast without falling back to local segmentation
+    await expect(
+      runPreciseLayerSplitForNode(
+        {
+          node: { id: 'split1', typeId: 'image.layerSplit', params: {} } as never,
+          inputs: {},
+          uiRgbaCodec: {
+            decodeImageRgba: async (url: string) => encodedStore.get(url)!,
+            encodeRgbaPng: encodeImg
+          },
+          generateText: async () => ({ text: '{}' })
+        } as never,
+        {
+          sourceUrl,
+          userHint: '',
+          stamp: 99,
+          toCanvasSafeUrl: async (u) => u
+        }
+      )
+    ).rejects.toMatchObject({ code: 'graphExec.capability.imageGenerate' })
+
+    const cleanBase = createImage(cw, ch)
+    for (let p = 0; p < cw * ch; p++) {
+      cleanBase.data[p * 4] = 14
+      cleanBase.data[p * 4 + 1] = 18
+      cleanBase.data[p * 4 + 2] = 28
+      cleanBase.data[p * 4 + 3] = 255
+    }
+    const cleanSlotStudio = createImage(68, 68)
+    cleanSlotStudio.data.fill(255)
+    for (let ly = 0; ly < 48; ly++) {
+      for (let lx = 0; lx < 48; lx++) {
+        const onBorder = lx < 4 || lx >= 44 || ly < 4 || ly >= 44
+        const rgb = onBorder ? [228, 178, 56] : [34, 42, 66]
+        const si = ((10 + ly) * 68 + (10 + lx)) * 4
+        cleanSlotStudio.data[si] = rgb[0]
+        cleanSlotStudio.data[si + 1] = rgb[1]
+        cleanSlotStudio.data[si + 2] = rgb[2]
+        cleanSlotStudio.data[si + 3] = 255
+      }
+    }
+    const cleanPortraitStudio = createImage(36, 36)
+    cleanPortraitStudio.data.fill(255)
+    for (let ly = 0; ly < 16; ly++) {
+      for (let lx = 0; lx < 16; lx++) {
+        const si = ((10 + ly) * 36 + (10 + lx)) * 4
+        cleanPortraitStudio.data[si] = 60
+        cleanPortraitStudio.data[si + 1] = 210
+        cleanPortraitStudio.data[si + 2] = 245
+        cleanPortraitStudio.data[si + 3] = 255
+      }
+    }
+
     const mapped = await runPreciseLayerSplitForNode(
       {
         node: { id: 'split1', typeId: 'image.layerSplit', params: {} } as never,
@@ -1656,7 +1712,16 @@ describe('uiPreciseSplit · bggg-creator-image2psd layerSplit optimizations', ()
               }
             ]
           })
-        })
+        }),
+        generateImage: async (req: { inputReferences?: string[]; prompt: string }) => {
+          if ((req.inputReferences?.length ?? 0) >= 2) {
+            return { images: [await encodeImg(cleanBase)] }
+          }
+          if (req.prompt.includes('Portrait')) {
+            return { images: [await encodeImg(cleanPortraitStudio)] }
+          }
+          return { images: [await encodeImg(cleanSlotStudio)] }
+        }
       } as never,
       {
         sourceUrl,
@@ -1762,5 +1827,548 @@ describe('uiPreciseSplit · bggg-creator-image2psd layerSplit optimizations', ()
     const hlY = 40 - fgLayer.top
     const hlPx = pixel(outImg!, hlX, hlY)
     expect(hlPx).toEqual([255, 255, 255, 255])
+  })
+
+  it('segmentContainerSilhouette extracts crisp rounded containers across two-tone/gradient exterior backgrounds', () => {
+    const cw = 160
+    const ch = 100
+    const canvas = createImage(cw, ch)
+    const box = { left: 30, top: 20, width: 100, height: 60 }
+    const rad = 12
+
+    const insideRounded = (x: number, y: number): boolean => {
+      if (!inRect(x, y, box)) return false
+      const lx = x - box.left
+      const ly = y - box.top
+      const cx = lx < rad ? rad : lx >= box.width - rad ? box.width - rad - 1 : lx
+      const cy = ly < rad ? rad : ly >= box.height - rad ? box.height - rad - 1 : ly
+      return Math.hypot(lx - cx, ly - cy) <= rad
+    }
+
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const i = (y * cw + x) * 4
+        if (insideRounded(x, y)) {
+          canvas.data[i] = 225
+          canvas.data[i + 1] = 176
+          canvas.data[i + 2] = 52
+          canvas.data[i + 3] = 255
+        } else if (x < cw / 2) {
+          // Left backdrop: dark navy
+          canvas.data[i] = 20
+          canvas.data[i + 1] = 28
+          canvas.data[i + 2] = 52
+          canvas.data[i + 3] = 255
+        } else {
+          // Right backdrop: warm bronze (global outerRing.spread > 50, previously caused null bailout)
+          canvas.data[i] = 86
+          canvas.data[i + 1] = 62
+          canvas.data[i + 2] = 36
+          canvas.data[i + 3] = 255
+        }
+      }
+    }
+
+    const sil = segmentContainerSilhouette(canvas, { left: 28, top: 18, width: 104, height: 64 })
+    expect(sil).not.toBeNull()
+    const w = sil!.rect.width
+    // Exterior rounded corners must be background (0) while center stays solid foreground (1)
+    expect(sil!.mask[(20 - sil!.rect.top) * w + (30 - sil!.rect.left)]).toBe(0)
+    expect(sil!.mask[(20 - sil!.rect.top) * w + (129 - sil!.rect.left)]).toBe(0)
+    expect(sil!.mask[(50 - sil!.rect.top) * w + (80 - sil!.rect.left)]).toBe(1)
+  })
+
+  it('pre-segmentation maskless upstream component matching replaces UI controls cleanly even on gradient backdrops', async () => {
+    const cw = 200
+    const ch = 120
+    const btnRect = { left: 50, top: 44, width: 100, height: 32 }
+    const txtRect = { left: 78, top: 53, width: 44, height: 14 }
+
+    // Canonical 80x32 9-slice button master with dark outer border + vertical gradient sheen
+    const mw = 80
+    const mh = 32
+    const master = createImage(mw, mh)
+    for (let y = 0; y < mh; y++) {
+      for (let x = 0; x < mw; x++) {
+        const i = (y * mw + x) * 4
+        const isBorder = x < 3 || x >= mw - 3 || y < 3 || y >= mh - 3
+        if (isBorder) {
+          master.data[i] = 28
+          master.data[i + 1] = 34
+          master.data[i + 2] = 54
+        } else {
+          const t = y / Math.max(1, mh - 1)
+          master.data[i] = Math.round(92 - 42 * t)
+          master.data[i + 1] = Math.round(156 - 58 * t)
+          master.data[i + 2] = Math.round(232 - 52 * t)
+        }
+        master.data[i + 3] = 255
+      }
+    }
+    const candidate: PreciseSplitComponentCandidate = {
+      item: {
+        id: 'comp_btn_primary_01',
+        psdGuid: '11111111-2222-4333-8444-555555555555',
+        name: 'Primary Button',
+        exportName: 'Comp_Button_01',
+        kind: 'button',
+        canonicalWidth: mw,
+        canonicalHeight: mh,
+        scalePolicy: 'nine-slice',
+        nineSliceBorders: [6, 8, 6, 8],
+        sourceCount: 3,
+        descriptor: computeComponentVisualDescriptor(master)
+      },
+      rgba: master
+    }
+
+    // Scene where left backdrop nearly matches the button's dark outer border (causing local seg border chew)
+    const scene = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const i = (y * cw + x) * 4
+        if (inRect(x, y, btnRect)) {
+          const lx = x - btnRect.left
+          const ly = y - btnRect.top
+          const isBorder = lx < 3 || lx >= btnRect.width - 3 || ly < 3 || ly >= btnRect.height - 3
+          if (isBorder) {
+            scene.data[i] = 28
+            scene.data[i + 1] = 34
+            scene.data[i + 2] = 54
+          } else {
+            const t = ly / Math.max(1, btnRect.height - 1)
+            scene.data[i] = Math.round(92 - 42 * t)
+            scene.data[i + 1] = Math.round(156 - 58 * t)
+            scene.data[i + 2] = Math.round(232 - 52 * t)
+          }
+          if (inRect(x, y, txtRect) && ((x - txtRect.left) % 6 < 2 || Math.abs(y - 60) <= 1)) {
+            scene.data[i] = 255
+            scene.data[i + 1] = 255
+            scene.data[i + 2] = 255
+          }
+        } else {
+          scene.data[i] = 26 + Math.round((x / cw) * 54)
+          scene.data[i + 1] = 32 + Math.round((y / ch) * 28)
+          scene.data[i + 2] = 52
+        }
+        scene.data[i + 3] = 255
+      }
+    }
+
+    const vlmLayout = JSON.stringify({
+      screenKind: 'popup',
+      elements: [
+        {
+          id: 'e_btn',
+          name: 'Confirm Button',
+          kind: 'button',
+          box_2d: toBox2d(btnRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'e_txt',
+          name: 'Confirm Label',
+          kind: 'text',
+          box_2d: toBox2d(txtRect, cw, ch),
+          parent: 'e_btn',
+          order: 2,
+          ocr: ['T1'],
+          text: 'CONFIRM'
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmLayout,
+        ocr: async () => [{ ...txtRect, text: 'CONFIRM', confidence: 0.96 }]
+      }),
+      scene,
+      { generativePeel: false, zoomRefine: false, components: [candidate] }
+    )
+
+    expect(res.componentMatches?.some((m) => m.elementId === 'e_btn')).toBe(true)
+    const btnLayer = res.layers.find((l) => l.elementId === 'e_btn')!
+    expect(btnLayer.componentId).toBe('comp_btn_primary_01')
+    expect(btnLayer.width).toBe(btnRect.width)
+    expect(btnLayer.height).toBe(btnRect.height)
+    // Center pixel under former text stroke must match clean vertical gradient (~[66, 127, 206]), not white text scar
+    const centerOff = (16 * btnLayer.width + 50) * 4
+    expect(btnLayer.rgba[centerOff]!).toBeLessThan(95)
+    expect(btnLayer.rgba[centerOff + 3]!).toBe(255)
+  })
+
+  it('purifyLayerImage purifies repeated control skins on solid bg and composes hybrid pixel-locked graphical layers without intermediate 2K peels', async () => {
+    const cw = 220
+    const ch = 140
+    const panelRect = { left: 16, top: 12, width: 188, height: 116 }
+    const btn1Rect = { left: 32, top: 88, width: 68, height: 26 }
+    const btn2Rect = { left: 120, top: 88, width: 68, height: 26 }
+    const txt1Rect = { left: 48, top: 95, width: 36, height: 12 }
+    const txt2Rect = { left: 136, top: 95, width: 36, height: 12 }
+    const artRect = { left: 60, top: 24, width: 100, height: 34 }
+    const badgeRect = { left: 140, top: 42, width: 24, height: 18 }
+
+    const buttonPixel = (
+      lx: number,
+      ly: number,
+      w: number,
+      h: number
+    ): [number, number, number] => {
+      if (lx < 2 || lx >= w - 2 || ly < 2 || ly >= h - 2) return [218, 172, 54]
+      // Distinct bright horizontal specular band at ly === 7..9 that push-pull text removal normally blurs
+      if (ly >= 7 && ly <= 9) return [130, 198, 250]
+      return [48, 108, 188]
+    }
+
+    const isArtGlyph = (lx: number, ly: number): boolean =>
+      lx >= 8 &&
+      lx < 92 &&
+      ly >= 5 &&
+      ly < 29 &&
+      // Leave interior background gaps between stylized strokes
+      !(lx >= 42 && lx < 56 && ly >= 4 && ly < 30)
+
+    const renderFullScene = (withPanel: boolean): RgbaImage => {
+      const img = createImage(cw, ch)
+      for (let y = 0; y < ch; y++) {
+        for (let x = 0; x < cw; x++) {
+          let rgb: [number, number, number] = [18, 22, 34]
+          if (withPanel && inRect(x, y, panelRect)) {
+            rgb = [38, 46, 68]
+            if (inRect(x, y, btn1Rect)) {
+              rgb = buttonPixel(
+                x - btn1Rect.left,
+                y - btn1Rect.top,
+                btn1Rect.width,
+                btn1Rect.height
+              )
+              if (inRect(x, y, txt1Rect) && (x - txt1Rect.left) % 5 < 2) rgb = [255, 255, 255]
+            } else if (inRect(x, y, btn2Rect)) {
+              rgb = buttonPixel(
+                x - btn2Rect.left,
+                y - btn2Rect.top,
+                btn2Rect.width,
+                btn2Rect.height
+              )
+              if (inRect(x, y, txt2Rect) && (x - txt2Rect.left) % 5 < 2) rgb = [255, 255, 255]
+            } else if (inRect(x, y, artRect) && isArtGlyph(x - artRect.left, y - artRect.top)) {
+              rgb = [238, 72, 54]
+            }
+            if (inRect(x, y, badgeRect)) {
+              rgb = [56, 196, 112]
+            }
+          }
+          const i = (y * cw + x) * 4
+          img.data[i] = rgb[0]
+          img.data[i + 1] = rgb[1]
+          img.data[i + 2] = rgb[2]
+          img.data[i + 3] = 255
+        }
+      }
+      return img
+    }
+
+    const scene = renderFullScene(true)
+    const cleanBase = renderFullScene(false)
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'popup',
+      background_repair_mode: 'scene',
+      elements: [
+        {
+          id: 'p1',
+          name: 'Dialog Panel',
+          kind: 'panel',
+          box_2d: toBox2d(panelRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'btn1',
+          name: 'Buy Button',
+          kind: 'button',
+          box_2d: toBox2d(btn1Rect, cw, ch),
+          parent: 'p1',
+          order: 2
+        },
+        {
+          id: 'btn2',
+          name: 'Sell Button',
+          kind: 'button',
+          box_2d: toBox2d(btn2Rect, cw, ch),
+          parent: 'p1',
+          order: 3
+        },
+        {
+          id: 'art1',
+          name: 'Victory Banner Art',
+          kind: 'icon',
+          box_2d: toBox2d(artRect, cw, ch),
+          parent: 'p1',
+          order: 4
+        },
+        {
+          id: 'b1',
+          name: 'New Tag',
+          kind: 'badge',
+          box_2d: toBox2d(badgeRect, cw, ch),
+          parent: 'p1',
+          order: 5
+        },
+        {
+          id: 't1',
+          name: 'Buy Text',
+          kind: 'text',
+          box_2d: toBox2d(txt1Rect, cw, ch),
+          parent: 'btn1',
+          order: 6,
+          ocr: ['T1'],
+          text: 'BUY'
+        },
+        {
+          id: 't2',
+          name: 'Sell Text',
+          kind: 'text',
+          box_2d: toBox2d(txt2Rect, cw, ch),
+          parent: 'btn2',
+          order: 7,
+          ocr: ['T2'],
+          text: 'SELL'
+        }
+      ]
+    })
+
+    let editImageCalls = 0
+    let purifyCalls = 0
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        ocr: async () => [
+          { ...txt1Rect, text: 'BUY', confidence: 0.98 },
+          { ...txt2Rect, text: 'SELL', confidence: 0.98 }
+        ],
+        editImage: async () => {
+          editImageCalls++
+          return cleanBase
+        },
+        purifyLayerImage: async (req) => {
+          purifyCalls++
+          if (req.prompt.includes('Victory Banner Art')) {
+            // Render unoccluded art-text on flat #FFFFFF studio bg with slightly shifted RGB [232, 78, 60]
+            // to prove visible pixels stay 100% locked to original source [238, 72, 54]
+            const sw = 120
+            const sh = 50
+            const studio = createImage(sw, sh)
+            studio.data.fill(255)
+            const ox = 10
+            const oy = 8
+            for (let ly = 0; ly < artRect.height; ly++) {
+              for (let lx = 0; lx < artRect.width; lx++) {
+                if (!isArtGlyph(lx, ly)) continue
+                const si = ((oy + ly) * sw + (ox + lx)) * 4
+                studio.data[si] = 232
+                studio.data[si + 1] = 78
+                studio.data[si + 2] = 60
+                studio.data[si + 3] = 255
+              }
+            }
+            return studio
+          }
+          if (req.prompt.includes('Button')) {
+            const sw = 88
+            const sh = 42
+            const studio = createImage(sw, sh)
+            studio.data.fill(255)
+            const ox = 10
+            const oy = 8
+            for (let ly = 0; ly < btn1Rect.height; ly++) {
+              for (let lx = 0; lx < btn1Rect.width; lx++) {
+                const rgb = buttonPixel(lx, ly, btn1Rect.width, btn1Rect.height)
+                const si = ((oy + ly) * sw + (ox + lx)) * 4
+                studio.data[si] = rgb[0]
+                studio.data[si + 1] = rgb[1]
+                studio.data[si + 2] = rgb[2]
+                studio.data[si + 3] = 255
+              }
+            }
+            return studio
+          }
+          if (req.prompt.includes('Dialog Panel')) {
+            const sw = panelRect.width + 20
+            const sh = panelRect.height + 20
+            const studio = createImage(sw, sh)
+            studio.data.fill(255)
+            for (let ly = 0; ly < panelRect.height; ly++) {
+              for (let lx = 0; lx < panelRect.width; lx++) {
+                const si = ((10 + ly) * sw + (10 + lx)) * 4
+                studio.data[si] = 38
+                studio.data[si + 1] = 46
+                studio.data[si + 2] = 68
+                studio.data[si + 3] = 255
+              }
+            }
+            return studio
+          }
+          if (req.prompt.includes('New Tag')) {
+            const sw = 44
+            const sh = 36
+            const studio = createImage(sw, sh)
+            studio.data.fill(255)
+            for (let ly = 0; ly < badgeRect.height; ly++) {
+              for (let lx = 0; lx < badgeRect.width; lx++) {
+                const si = ((9 + ly) * sw + (10 + lx)) * 4
+                studio.data[si] = 56
+                studio.data[si + 1] = 196
+                studio.data[si + 2] = 112
+                studio.data[si + 3] = 255
+              }
+            }
+            return studio
+          }
+          return null
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    expect(purifyCalls).toBe(4)
+    // Intermediate L3 / L2 whole-canvas 2K peels are skipped; only L1 Base scene repair calls editImage once!
+    expect(editImageCalls).toBe(1)
+
+    // Both buttons share a single clean studio-purified Smart Object master with intact specular band
+    const btn1 = res.layers.find((l) => l.elementId === 'btn1')!
+    const btn2 = res.layers.find((l) => l.elementId === 'btn2')!
+    expect(btn1.componentId).toBeTruthy()
+    expect(btn1.componentId).toBe(btn2.componentId)
+    expect(res.synthesizedComponents?.some((c) => c.item.id === btn1.componentId)).toBe(true)
+    const specularIdx = (8 * btn1.width + 24) * 4
+    expect(btn1.rgba[specularIdx + 2]!).toBeGreaterThan(220)
+
+    // Art-text layer:
+    // 1) Concave gap between strokes (lx=48, ly=16 -> canvas x=108, y=40) is clean transparent (alpha === 0)
+    // 2) Visible unoccluded glyph stroke (canvas x=75, y=36) is 100% pixel-locked to source [238, 72, 54, 255]
+    // 3) Occluded glyph stroke under New Tag badge (canvas x=144, y=46) is cleanly completed (alpha === 255, crimson)
+    const art = res.layers.find((l) => l.elementId === 'art1')!
+    const gapOff = ((40 - art.top) * art.width + (108 - art.left)) * 4
+    expect(art.rgba[gapOff + 3]!).toBe(0)
+
+    const visOff = ((36 - art.top) * art.width + (75 - art.left)) * 4
+    expect([
+      art.rgba[visOff]!,
+      art.rgba[visOff + 1]!,
+      art.rgba[visOff + 2]!,
+      art.rgba[visOff + 3]!
+    ]).toEqual([238, 72, 54, 255])
+
+    const occOff = ((46 - art.top) * art.width + (144 - art.left)) * 4
+    expect(art.rgba[occOff + 3]!).toBeGreaterThanOrEqual(240)
+    expect(art.rgba[occOff]!).toBeGreaterThan(200)
+    expect(art.rgba[occOff + 1]!).toBeLessThan(110)
+  })
+
+  it('purifies > 24 distinct UI elements without budget caps and fails fast without falling back to local on studio failure', async () => {
+    const cw = 300
+    const ch = 200
+    const scene = createImage(cw, ch)
+    const cleanBase = createImage(cw, ch)
+    for (let p = 0; p < cw * ch; p++) {
+      scene.data[p * 4] = 16
+      scene.data[p * 4 + 1] = 20
+      scene.data[p * 4 + 2] = 32
+      scene.data[p * 4 + 3] = 255
+      cleanBase.data.set([16, 20, 32, 255], p * 4)
+    }
+
+    const elements: Array<{
+      id: string
+      name: string
+      kind: string
+      box_2d: [number, number, number, number]
+      parent: null
+      order: number
+    }> = []
+
+    // Place 28 distinct icons (7 cols x 4 rows) exceeding the former 24-call budget limit
+    for (let idx = 0; idx < 28; idx++) {
+      const col = idx % 7
+      const row = Math.floor(idx / 7)
+      const rect = { left: 12 + col * 40, top: 14 + row * 44, width: 28, height: 28 }
+      const rCol = 60 + ((idx * 37) % 180)
+      const gCol = 50 + ((idx * 61) % 185)
+      const bCol = 70 + ((idx * 89) % 175)
+      for (let y = rect.top; y < rect.top + rect.height; y++) {
+        for (let x = rect.left; x < rect.left + rect.width; x++) {
+          const i = (y * cw + x) * 4
+          scene.data[i] = rCol
+          scene.data[i + 1] = gCol
+          scene.data[i + 2] = bCol
+          scene.data[i + 3] = 255
+        }
+      }
+      elements.push({
+        id: `icon_${idx + 1}`,
+        name: `Skill Icon ${idx + 1}`,
+        kind: 'icon',
+        box_2d: toBox2d(rect, cw, ch),
+        parent: null,
+        order: idx + 1
+      })
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'fullscreen',
+      background_repair_mode: 'surface',
+      elements
+    })
+
+    let purifyCalls = 0
+    let editCalls = 0
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        editImage: async () => {
+          editCalls++
+          return cleanBase
+        },
+        purifyLayerImage: async () => {
+          purifyCalls++
+          const studio = createImage(48, 48)
+          studio.data.fill(255)
+          for (let ly = 0; ly < 28; ly++) {
+            for (let lx = 0; lx < 28; lx++) {
+              const si = ((10 + ly) * 48 + (10 + lx)) * 4
+              studio.data[si] = 90
+              studio.data[si + 1] = 150
+              studio.data[si + 2] = 220
+              studio.data[si + 3] = 255
+            }
+          }
+          return studio
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    expect(purifyCalls).toBe(28)
+    expect(res.companionPurifiedCount).toBe(28)
+    expect(editCalls).toBe(1)
+
+    // Verify studio failure throws instead of silently degrading to local segmentation
+    await expect(
+      runPreciseUiSplit(
+        mockIo({
+          vlm: async () => vlmJson,
+          editImage: async () => cleanBase,
+          purifyLayerImage: async () => null
+        }),
+        scene,
+        { zoomRefine: false }
+      )
+    ).rejects.toThrow(/PRECISE_SPLIT_PURIFY_FAILED/)
   })
 })

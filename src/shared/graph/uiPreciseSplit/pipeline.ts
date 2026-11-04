@@ -61,6 +61,11 @@ import {
   type ComponentMatchResult
 } from './componentLibrary'
 import {
+  composeHybridCompanionContentLayer,
+  purifySplitLayersOnSolidBg,
+  type CompanionContentEntry
+} from './layerPurify'
+import {
   cloneImage,
   compositeOver,
   cropImage,
@@ -106,7 +111,11 @@ import type { LocalOcrTextBox } from '../uiControlSpec'
 
 export class PreciseSplitError extends Error {
   constructor(
-    public readonly code: 'PRECISE_SPLIT_NO_VLM_RESPONSE' | 'PRECISE_SPLIT_NO_ELEMENTS',
+    public readonly code:
+      | 'PRECISE_SPLIT_NO_VLM_RESPONSE'
+      | 'PRECISE_SPLIT_NO_ELEMENTS'
+      | 'PRECISE_SPLIT_PURIFY_FAILED'
+      | 'PRECISE_SPLIT_BASE_REPAIR_FAILED',
     message?: string
   ) {
     super(message ?? code)
@@ -965,6 +974,204 @@ export async function runPreciseUiSplit(
     return known
   }
 
+  const buildPreSegKnownMask = (box: PixelRect, selfEl: UiElementNode): Uint8Array => {
+    const known = new Uint8Array(box.width * box.height)
+    known.fill(1)
+    const selfPaint = selfEl.paintIndex ?? 0
+    for (const other of ordered) {
+      if (other.id === selfEl.id || other.plainText) continue
+      if ((other.paintIndex ?? 0) <= selfPaint && other.parentId !== selfEl.id) continue
+      const ob = other.rawBox
+        ? {
+            left: Math.min(other.box.left, other.rawBox.left),
+            top: Math.min(other.box.top, other.rawBox.top),
+            width:
+              Math.max(other.box.left + other.box.width, other.rawBox.left + other.rawBox.width) -
+              Math.min(other.box.left, other.rawBox.left),
+            height:
+              Math.max(other.box.top + other.box.height, other.rawBox.top + other.rawBox.height) -
+              Math.min(other.box.top, other.rawBox.top)
+          }
+        : other.box
+      const x0 = Math.max(box.left, ob.left - 2)
+      const y0 = Math.max(box.top, ob.top - 2)
+      const x1 = Math.min(box.left + box.width, ob.left + ob.width + 2)
+      const y1 = Math.min(box.top + box.height, ob.top + ob.height + 2)
+      for (let cy = y0; cy < y1; cy++) {
+        const by = cy - box.top
+        for (let cx = x0; cx < x1; cx++) {
+          known[by * box.width + (cx - box.left)] = 0
+        }
+      }
+    }
+    for (const t of plainTexts) {
+      const lm = textMaskById.get(t.id)
+      if (!lm) continue
+      const erase = dilateMask(lm.eraseMask ?? lm.mask, lm.rect.width, lm.rect.height, 1)
+      const x0 = Math.max(box.left, lm.rect.left)
+      const y0 = Math.max(box.top, lm.rect.top)
+      const x1 = Math.min(box.left + box.width, lm.rect.left + lm.rect.width)
+      const y1 = Math.min(box.top + box.height, lm.rect.top + lm.rect.height)
+      for (let cy = y0; cy < y1; cy++) {
+        const by = cy - box.top
+        const ly = cy - lm.rect.top
+        for (let cx = x0; cx < x1; cx++) {
+          if (erase[ly * lm.rect.width + (cx - lm.rect.left)]) {
+            known[by * box.width + (cx - box.left)] = 0
+          }
+        }
+      }
+    }
+    return known
+  }
+
+  // 5.6) Pre-segmentation upstream component library matching: match directly on `textFree` before
+  // noisy local segmentation can chew control borders or shrink `el.box` (including recovering dark
+  // outer rims chewed inward by `refineElementBox`).
+  const preStampedControlIds = new Set<string>()
+  if (options.components?.length) {
+    for (const el of peelable) {
+      if (isTranslucentGlowElement(el)) continue
+      const candBoxes: PixelRect[] = []
+      const pushUniqueBox = (b: PixelRect | null | undefined): void => {
+        if (!b || b.width < 10 || b.height < 10) return
+        if (
+          !candBoxes.some(
+            (p) =>
+              p.left === b.left && p.top === b.top && p.width === b.width && p.height === b.height
+          )
+        ) {
+          candBoxes.push(b)
+        }
+      }
+      pushUniqueBox(el.box)
+      const rawEl = rawBoxById.get(el.id)
+      pushUniqueBox(rawEl)
+      if (rawEl) {
+        for (const pad of [1, 2, 3, 4]) {
+          pushUniqueBox(expandRect(el.box, pad, W, H))
+        }
+      }
+      const contSil = segmentContainerSilhouette(textFree, rawEl ?? el.box)
+      if (contSil) {
+        const tightSil = maskBoundingBox(contSil.rect, contSil.mask)
+        if (
+          tightSil &&
+          tightSil.width >= el.box.width * 0.78 &&
+          tightSil.height >= el.box.height * 0.78
+        ) {
+          pushUniqueBox(tightSil)
+        }
+      }
+
+      let bestPreMatch: { box: PixelRect; match: ComponentMatchResult; known: Uint8Array } | null =
+        null
+      for (const cb of candBoxes) {
+        const known = buildPreSegKnownMask(cb, el)
+        const patch = cropImage(textFree, cb)
+        const emptyDet = new Uint8Array(cb.width * cb.height)
+        const matched = matchElementToComponentLibrary({
+          elementKind: el.kind,
+          box: cb,
+          observedPatch: patch,
+          detectedMask: emptyDet,
+          knownMask: known,
+          hintedComponentId: el.matchedComponentId,
+          candidates: options.components,
+          allowMasklessBoxMatch: true
+        })
+        if (matched && (!bestPreMatch || matched.score > bestPreMatch.match.score)) {
+          bestPreMatch = { box: cb, match: matched, known }
+        }
+      }
+
+      if (bestPreMatch) {
+        el.box = bestPreMatch.box
+        componentMatchById.set(el.id, bestPreMatch.match)
+        const { unionMask } = buildComponentUnionPeelMask(
+          bestPreMatch.box,
+          new Uint8Array(bestPreMatch.box.width * bestPreMatch.box.height),
+          bestPreMatch.match.rendered,
+          textFree,
+          bestPreMatch.known
+        )
+        stampCanvasFootprint(bestPreMatch.box, unionMask)
+        el.instanceMask = { rect: { ...bestPreMatch.box }, mask: unionMask }
+        preStampedControlIds.add(el.id)
+      }
+    }
+  }
+
+  // 5.7) Solid-studio companion layer purification (`ui.componentLib` paradigm inside `image.layerSplit`):
+  // purifies all screen UI control skins (zero push-pull text/icon smudges) and standalone graphical elements
+  // with zero per-screen element cap and zero local-segmentation fallback.
+  const studioMode =
+    options.generativePeel !== false &&
+    Boolean(io.purifyLayerImage) &&
+    (options.maxCompanionPurifications === undefined || options.maxCompanionPurifications > 0)
+  let synthesizedComponents: PreciseSplitResult['synthesizedComponents']
+  let companionContentById = new Map<string, CompanionContentEntry>()
+  let companionPurifiedCount = 0
+  if (studioMode) {
+    const purified = await purifySplitLayersOnSolidBg({
+      io,
+      source,
+      textFree,
+      tree,
+      ocr,
+      ordered,
+      isTranslucentGlow: isTranslucentGlowElement,
+      buildPreSegKnownMask,
+      existingMatches: componentMatchById,
+      locale: options.locale,
+      ...(options.maxCompanionPurifications !== undefined
+        ? { maxCalls: options.maxCompanionPurifications }
+        : {})
+    })
+    if (purified.synthesizedComponents.length > 0) {
+      synthesizedComponents = purified.synthesizedComponents
+    }
+    companionContentById = purified.companionContentById
+    companionPurifiedCount = purified.purifiedCount
+
+    for (const el of peelable) {
+      const m = componentMatchById.get(el.id)
+      if (m && !preStampedControlIds.has(el.id)) {
+        const known = buildPreSegKnownMask(el.box, el)
+        const { unionMask } = buildComponentUnionPeelMask(
+          el.box,
+          new Uint8Array(el.box.width * el.box.height),
+          m.rendered,
+          textFree,
+          known
+        )
+        stampCanvasFootprint(el.box, dilateMask(unionMask, el.box.width, el.box.height, 2))
+        el.instanceMask = { rect: { ...el.box }, mask: unionMask }
+        preStampedControlIds.add(el.id)
+        continue
+      }
+      const compEntry = companionContentById.get(el.id)
+      if (compEntry) {
+        const cw = compEntry.rect.width
+        const ch = compEntry.rect.height
+        const n = cw * ch
+        const fgMask = new Uint8Array(n)
+        for (let p = 0; p < n; p++) {
+          if (compEntry.companionRgba.data[p * 4 + 3]! >= 16) fgMask[p] = 1
+        }
+        stampCanvasFootprint(compEntry.rect, dilateMask(fgMask, cw, ch, 2))
+        el.instanceMask = { rect: { ...compEntry.rect }, mask: fgMask }
+      }
+    }
+    for (const t of plainTexts) {
+      if (t.parentId) continue
+      const lm = textMaskById.get(t.id)
+      if (!lm) continue
+      const erase = dilateMask(lm.eraseMask ?? lm.mask, lm.rect.width, lm.rect.height, 1)
+      stampCanvasFootprint(lm.rect, erase)
+    }
+  }
+
   for (let k = maxLevel; k >= 1; k--) {
     throwIfAborted(io.signal)
     const currPlate = plates[k + 1]!
@@ -978,6 +1185,9 @@ export async function runPreciseUiSplit(
     for (const el of levelElements) {
       throwIfAborted(io.signal)
       if (isTranslucentGlowElement(el)) continue
+      if ((componentMatchById.has(el.id) || companionContentById.has(el.id)) && el.instanceMask) {
+        continue
+      }
 
       const preSegBox = { ...el.box }
       const parent = el.parentId ? byId.get(el.parentId) : undefined
@@ -1091,7 +1301,7 @@ export async function runPreciseUiSplit(
         if (tight) el.box = tight
 
         // 6.1b 若传入了共享组件库，在剥层前执行抗遮挡匹配并将剥层掩码扩展为 (原掩码 ∪ 母本足迹)
-        if (options.components?.length && !el.plainText) {
+        if (options.components?.length && !el.plainText && !componentMatchById.has(el.id)) {
           const detectedMask = projectCanvasMaskToBox(el.instanceMask, el.box)
           const knownMask = buildUnobstructedKnownMask(el.box, selfPaint)
           const observedPatch = cropImage(currPlate, el.box)
@@ -1120,21 +1330,50 @@ export async function runPreciseUiSplit(
       }
     }
 
-    // 6.2 膨胀白洞 + 补图（本地推拉 / 槽位纯净渐变 / 图集或整版生图剥层），得到下一层底板 plates[k]
-    const useGenerative = options.generativePeel !== false && k <= maxGen
-    const { plate, report } = await peelLevel({
-      io,
-      plate: currPlate,
-      elements: levelElements,
-      allElements: tree.elements,
-      backgroundRepairMode: tree.backgroundRepairMode,
-      level: k,
-      useGenerative,
-      locale: options.locale
-    })
-    plates[k] = plate
-    peelReport.push(...report)
-    log(`peel L${k}: ${report.map((r) => `${r.method}×${r.elementCount}`).join(', ')}`)
+    // 6.2 膨胀白洞 + 补图：studioMode 下跳过全部中间层本地推拉补图，仅在 L1 对原图执行单次整图生成式场景补底
+    const allLowerPurified = !peelable.some(
+      (lowerEl) =>
+        (lowerEl.level ?? 1) < k &&
+        !isTranslucentGlowElement(lowerEl) &&
+        !componentMatchById.has(lowerEl.id) &&
+        !companionContentById.has(lowerEl.id)
+    )
+    if (studioMode && k > 1 && allLowerPurified) {
+      plates[k] = currPlate
+    } else {
+      const needsIntermediateGenPeel =
+        k === 1 ||
+        companionPurifiedCount === 0 ||
+        levelElements.some((el) =>
+          peelable.some(
+            (lowerEl) =>
+              (lowerEl.level ?? 1) < k &&
+              !componentMatchById.has(lowerEl.id) &&
+              !companionContentById.has(lowerEl.id) &&
+              (lowerEl.repairMode === 'image' ||
+                lowerEl.kind === 'illustration' ||
+                lowerEl.kind === 'avatar') &&
+              rectIntersection(el.box, lowerEl.box) > 0
+          )
+        )
+      const useGenerative =
+        options.generativePeel !== false &&
+        (studioMode || (k <= maxGen && needsIntermediateGenPeel))
+      const { plate, report } = await peelLevel({
+        io,
+        plate: studioMode && k === 1 ? source : currPlate,
+        elements: levelElements,
+        allElements: tree.elements,
+        backgroundRepairMode: studioMode && k === 1 ? 'scene' : tree.backgroundRepairMode,
+        requireGenerative: studioMode && k === 1,
+        level: k,
+        useGenerative,
+        locale: options.locale
+      })
+      plates[k] = plate
+      peelReport.push(...report)
+      log(`peel L${k}: ${report.map((r) => `${r.method}×${r.elementCount}`).join(', ')}`)
+    }
 
     // 6.3 登记本轮叶子完整轮廓，刷新渐进归属图供下一轮下层元素感知遮挡
     for (const el of levelElements) {
@@ -1201,23 +1440,25 @@ export async function runPreciseUiSplit(
   //    a) 清扫各层外发光/抗锯齿残影（拥有 100% 完整归属图，绝不误伤同层或下层兄弟控件）；
   //    b) 对全部结构类控件执行跨层多实例融合 / 镜像 / 横轴扫描线补全；
   //    c) 对被遮挡立绘/全息影像执行按需单图层 AI 补全。
-  for (const el of [...ordered].reverse()) {
-    if (!isResidueScrubEligible(el, W, H)) continue
-    const idx = entryIdx.get(el.id)
-    const m = maskById.get(el.id)
-    if (idx === undefined || !m) continue
-    const k = levelOf(el)
-    const scan = scanPlateResidue({
-      plate: plates[k]!,
-      upper: plates[k + 1]!,
-      mask: m,
-      ownership,
-      entryIndex: idx,
-      radius: haloRadiusFor(el)
-    })
-    if (scan.pixels.length < 3) continue
-    scrubbedPx += scrubPlateResidue({ plates, level: k, residue: scan.pixels, mask: m })
-    scrubbedEls++
+  if (!studioMode) {
+    for (const el of [...ordered].reverse()) {
+      if (!isResidueScrubEligible(el, W, H)) continue
+      const idx = entryIdx.get(el.id)
+      const m = maskById.get(el.id)
+      if (idx === undefined || !m) continue
+      const k = levelOf(el)
+      const scan = scanPlateResidue({
+        plate: plates[k]!,
+        upper: plates[k + 1]!,
+        mask: m,
+        ownership,
+        entryIndex: idx,
+        radius: haloRadiusFor(el)
+      })
+      if (scan.pixels.length < 3) continue
+      scrubbedPx += scrubPlateResidue({ plates, level: k, residue: scan.pixels, mask: m })
+      scrubbedEls++
+    }
   }
 
   const allCompletionTargets: CompletionTarget[] = ordered
@@ -1225,6 +1466,7 @@ export async function runPreciseUiSplit(
       (el) =>
         !el.plainText &&
         !componentMatchById.has(el.id) &&
+        !companionContentById.has(el.id) &&
         entryIdx.has(el.id) &&
         maskById.has(el.id)
     )
@@ -1256,6 +1498,7 @@ export async function runPreciseUiSplit(
             (el) =>
               !el.plainText &&
               !componentMatchById.has(el.id) &&
+              !companionContentById.has(el.id) &&
               entryIdx.has(el.id) &&
               maskById.has(el.id)
           )
@@ -1334,53 +1577,80 @@ export async function runPreciseUiSplit(
       const idx = entryIdx.get(el.id)
       const m = maskById.get(el.id)
       const unmixGlow = isTranslucentGlowElement(el)
-      if (!unmixGlow && idx !== undefined && m) {
-        matte = composeOwnedLayer({
-          source,
-          upper: plates[k + 1]!,
-          lower: plates[k]!,
-          mask: m,
-          ownership,
-          entryIndex: idx,
-          haloRadius: haloRadiusFor(el),
-          detectTranslucent: !OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
-          aboveAlpha
-        })
-        if (matte) ownedCount++
-      }
-      if (!matte) {
-        // 半透明光效/发光底座/无轮廓面板：物理去底色反解 alpha，彻底剥离下层棕色桌面底色
-        matte = extractMatte(plates[k + 1]!, plates[k]!, el.box, {
-          fillHoles: !unmixGlow && OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
-          unmixTranslucent: unmixGlow,
-          ...(unmixGlow ? { t0: 6, t1: 32 } : {}),
-          ...(!unmixGlow && el.instanceMask ? { instanceMask: el.instanceMask } : {})
-        })
-        if (matte) fallbackCount++
-      }
       const compMatch = componentMatchById.get(el.id)
-      if (compMatch) {
+      const compContent = companionContentById.get(el.id)
+      if (compMatch && studioMode) {
         const targetRect = {
           left: el.box.left,
           top: el.box.top,
           width: compMatch.rendered.width,
           height: compMatch.rendered.height
         }
-        if (matte) {
-          if (matte.rect.width === targetRect.width && matte.rect.height === targetRect.height) {
-            originalRgbaById.set(el.id, new Uint8ClampedArray(matte.rgba))
-          } else {
-            const resizedOrig = resizeBilinear(
-              { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
-              targetRect.width,
-              targetRect.height
-            )
-            originalRgbaById.set(el.id, resizedOrig.data)
-          }
-        }
+        originalRgbaById.set(el.id, cropImage(source, targetRect).data)
         matte = {
           rect: targetRect,
           rgba: new Uint8ClampedArray(compMatch.rendered.data)
+        }
+        ownedCount++
+      } else {
+        if (!unmixGlow && compContent && !compMatch) {
+          matte = composeHybridCompanionContentLayer({
+            source,
+            lower: studioMode ? base : plates[k]!,
+            entry: compContent,
+            aboveAlpha
+          })
+          if (matte) ownedCount++
+        }
+        if (!matte && !unmixGlow && idx !== undefined && m) {
+          matte = composeOwnedLayer({
+            source,
+            upper: plates[k + 1]!,
+            lower: plates[k]!,
+            mask: m,
+            ownership,
+            entryIndex: idx,
+            haloRadius: haloRadiusFor(el),
+            detectTranslucent: !OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
+            aboveAlpha
+          })
+          if (matte) ownedCount++
+        }
+        if (!matte) {
+          // 半透明光效/发光底座/无轮廓面板：物理去底色反解 alpha，彻底剥离下层棕色桌面底色
+          const upperForDiff = studioMode && unmixGlow ? source : plates[k + 1]!
+          const lowerForDiff = studioMode && unmixGlow ? base : plates[k]!
+          matte = extractMatte(upperForDiff, lowerForDiff, el.box, {
+            fillHoles: !unmixGlow && OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
+            unmixTranslucent: unmixGlow,
+            ...(unmixGlow ? { t0: 6, t1: 32 } : {}),
+            ...(!unmixGlow && el.instanceMask ? { instanceMask: el.instanceMask } : {})
+          })
+          if (matte) fallbackCount++
+        }
+        if (compMatch) {
+          const targetRect = {
+            left: el.box.left,
+            top: el.box.top,
+            width: compMatch.rendered.width,
+            height: compMatch.rendered.height
+          }
+          if (matte) {
+            if (matte.rect.width === targetRect.width && matte.rect.height === targetRect.height) {
+              originalRgbaById.set(el.id, new Uint8ClampedArray(matte.rgba))
+            } else {
+              const resizedOrig = resizeBilinear(
+                { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
+                targetRect.width,
+                targetRect.height
+              )
+              originalRgbaById.set(el.id, resizedOrig.data)
+            }
+          }
+          matte = {
+            rect: targetRect,
+            rgba: new Uint8ClampedArray(compMatch.rendered.data)
+          }
         }
       }
     }
@@ -1406,6 +1676,7 @@ export async function runPreciseUiSplit(
     levelOf,
     matteById,
     componentMatchById,
+    companionContentById,
     ownership,
     entryIdx,
     aboveAlpha,
@@ -1417,15 +1688,17 @@ export async function runPreciseUiSplit(
     )
   }
 
-  // 7.5c 前景 Union Mask 底板残影二次清扫（吸收 bggg-creator-image2psd Step 4：清除扩框或光晕带下方未剥净的前景残边）
-  const unionScrubbedPx = scrubBaseWithForegroundUnionMask({
-    base,
-    source,
-    aboveAlpha,
-    peeledByReplacement
-  })
-  if (unionScrubbedPx > 0) {
-    log(`union-mask base cleanup: ${unionScrubbedPx} residual px scrubbed`)
+  // 7.5c 前景 Union Mask 底板残影二次清扫（studioMode 下已由单次生成式场景补底覆盖全前景掩码，无需本地推拉清扫）
+  if (!studioMode) {
+    const unionScrubbedPx = scrubBaseWithForegroundUnionMask({
+      base,
+      source,
+      aboveAlpha,
+      peeledByReplacement
+    })
+    if (unionScrubbedPx > 0) {
+      log(`union-mask base cleanup: ${unionScrubbedPx} residual px scrubbed`)
+    }
   }
 
   // 7.6 底板可见像素锁定：没有任何图层覆盖（且非组件替换已剥离区域）的像素一律取原图
@@ -1576,6 +1849,8 @@ export async function runPreciseUiSplit(
           }))
         }
       : {}),
+    ...(synthesizedComponents?.length ? { synthesizedComponents } : {}),
+    ...(companionPurifiedCount > 0 ? { companionPurifiedCount } : {}),
     notes
   }
 }
@@ -1945,6 +2220,7 @@ function healClippedLayersByCompositeDiff(input: {
   levelOf: (el: UiElementNode) => number
   matteById: Map<string, { rect: PixelRect; rgba: Uint8ClampedArray }>
   componentMatchById: ReadonlyMap<string, unknown>
+  companionContentById?: ReadonlyMap<string, unknown>
   ownership: OwnershipMap
   entryIdx: ReadonlyMap<string, number>
   aboveAlpha: Float32Array
@@ -1960,6 +2236,7 @@ function healClippedLayersByCompositeDiff(input: {
     levelOf,
     matteById,
     componentMatchById,
+    companionContentById,
     ownership,
     entryIdx,
     aboveAlpha,
@@ -2006,7 +2283,13 @@ function healClippedLayersByCompositeDiff(input: {
 
   for (let ordIdx = ordered.length - 1; ordIdx >= 0; ordIdx--) {
     const el = ordered[ordIdx]!
-    if (componentMatchById.has(el.id) || isTranslucentGlowElement(el)) continue
+    if (
+      componentMatchById.has(el.id) ||
+      companionContentById?.has(el.id) ||
+      isTranslucentGlowElement(el)
+    ) {
+      continue
+    }
     const matte = matteById.get(el.id)
     if (!matte) continue
 

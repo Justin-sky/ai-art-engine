@@ -89,7 +89,7 @@ import { resolveMentionSources } from './context'
 import { collectIncomingImageItems } from './mediaInputs'
 import { resolveImageProcessTool } from '../nodeRole'
 import { executeComposeNode, executeCutoutNode, executeImageTransformNode } from './imageLocal'
-import { fail } from '@shared/errors/appError'
+import { fail, isAppError } from '@shared/errors/appError'
 import { SHARED_ERRORS } from '../../errors/catalog'
 
 /**
@@ -1871,19 +1871,14 @@ export async function executeLayerSplitNode(
           embeddedComponentLibrary = precise.componentLibrary ?? []
         } catch (err) {
           if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
+          if (isAppError(err)) throw err
           const detail =
             err instanceof PreciseSplitError ? err.code : String((err as Error)?.message ?? err)
-          const canFallbackLegacy = Boolean(ctx.decomposeImageUiLayers || ctx.generateImage)
-          ctx.log?.(
-            `[precise-split] failed: ${detail}${canFallbackLegacy ? ' (falling back to universal split engine)' : ''}`,
-            explicit && !canFallbackLegacy ? 'error' : 'warn'
-          )
+          ctx.log?.(`[precise-split] failed: ${detail}`, 'error')
           console.warn('[graph] precise layer split failed', err)
-          if (explicit && !canFallbackLegacy) {
-            throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
-          }
+          throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail })
         }
-      } else if (explicit && !ctx.decomposeImageUiLayers && !ctx.generateImage) {
+      } else if (explicit) {
         throw fail(SHARED_ERRORS.layerSplitPreciseFailed, { detail: 'no vision capability' })
       }
     }
@@ -1915,104 +1910,75 @@ export async function executeLayerSplitNode(
       }
     } else if (strategy === 'ai-inpaint-slice') {
       if (!ctx.generateImage) {
-        if (ctx.decomposeImageUiLayers) {
-          const vlmHints = await detectUiControlsViaVlmIfAvailable(
-            ctx,
-            sourceUrl,
-            effectiveUserPrompt,
-            sourceTitle,
-            prev.canvasWidth,
-            prev.canvasHeight
-          )
-          const decomposed = await ctx.decomposeImageUiLayers({
-            sourceDataUrl: sourceUrl,
-            ...(vlmHints.length ? { apiLayerHints: vlmHints } : {})
-          })
-          mapped = layersFromUiWidgetDecomposition(ctx, stamp, decomposed, sourceUrl)
-        } else {
-          throw fail(SHARED_ERRORS.capabilityImageGenerate)
-        }
-      } else {
-        const inpaintPrompt = buildUiCleanBaseInpaintPrompt(effectiveUserPrompt, {
-          locale: ctx.locale,
-          sourceTitle
-        })
-        const normalizedRes =
-          prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
-        const vlmHintsPromise = detectUiControlsViaVlmIfAvailable(
-          ctx,
-          sourceUrl,
-          effectiveUserPrompt,
-          sourceTitle,
-          prev.canvasWidth,
-          prev.canvasHeight
+        throw fail(SHARED_ERRORS.capabilityImageGenerate)
+      }
+      const inpaintPrompt = buildUiCleanBaseInpaintPrompt(effectiveUserPrompt, {
+        locale: ctx.locale,
+        sourceTitle
+      })
+      const normalizedRes =
+        prev.resolution === '1.5K' || prev.resolution === 'auto' ? '2K' : prev.resolution
+      const vlmHintsPromise = detectUiControlsViaVlmIfAvailable(
+        ctx,
+        sourceUrl,
+        effectiveUserPrompt,
+        sourceTitle,
+        prev.canvasWidth,
+        prev.canvasHeight
+      )
+      vlmHintsPromise.catch(() => [])
+      const result = await ctx.generateImage({
+        prompt: inpaintPrompt,
+        model,
+        providerInstanceId,
+        resolution: normalizedRes,
+        inputReferences: [sourceUrl]
+      })
+      const vlmHints = await vlmHintsPromise
+      if (ctx.signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError')
+      }
+      const cleanBaseUrl = result.layers?.[0]?.url?.trim() || result.images?.[0]?.trim() || ''
+      if (ctx.decomposeImageUiLayers && cleanBaseUrl) {
+        const safeBaseDataUrl = await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
+        const rawApiLayerHints = extractApiLayerHintsFromResult(
+          result.layers,
+          prev.canvasWidth || 1024,
+          prev.canvasHeight || 1024
         )
-        let result: Awaited<ReturnType<NonNullable<NodeExecuteContext['generateImage']>>> | null =
-          null
-        try {
-          result = await ctx.generateImage({
-            prompt: inpaintPrompt,
-            model,
-            providerInstanceId,
-            resolution: normalizedRes,
-            inputReferences: [sourceUrl]
-          })
-        } catch (err) {
-          if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
-          if (!ctx.decomposeImageUiLayers) throw err
-          ctx.log?.(
-            `[layer-split] ai-inpaint-slice generateImage failed (${String((err as Error)?.message ?? err)}), falling back to local UI decomposition`,
-            'warn'
-          )
+        const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
+        const decomposed = await ctx.decomposeImageUiLayers({
+          sourceDataUrl: sourceUrl,
+          ...(safeBaseDataUrl ? { cleanBaseDataUrl: safeBaseDataUrl } : {}),
+          ...(apiLayerHints.length ? { apiLayerHints } : {})
+        })
+        mapped = layersFromUiWidgetDecomposition(
+          ctx,
+          stamp,
+          decomposed,
+          sourceUrl,
+          safeBaseDataUrl || cleanBaseUrl || undefined
+        )
+      } else if (result.layers?.length && result.layers.length >= 2) {
+        mapped = layersFromApiResult(ctx, stamp, result, {
+          width: prev.canvasWidth,
+          height: prev.canvasHeight
+        })
+      } else {
+        if (!cleanBaseUrl) {
+          throw fail(SHARED_ERRORS.layerSplitNoLayers)
         }
-        const vlmHints = await vlmHintsPromise
-        if (ctx.signal?.aborted) {
-          throw new DOMException('Aborted', 'AbortError')
-        }
-        const cleanBaseUrl = result?.layers?.[0]?.url?.trim() || result?.images?.[0]?.trim() || ''
-        if (ctx.decomposeImageUiLayers && (!result || cleanBaseUrl)) {
-          const safeBaseDataUrl = cleanBaseUrl
-            ? await resolveCanvasSafeBaseDataUrl(ctx, cleanBaseUrl, stamp)
-            : undefined
-          const rawApiLayerHints = extractApiLayerHintsFromResult(
-            result?.layers,
-            prev.canvasWidth || 1024,
-            prev.canvasHeight || 1024
-          )
-          const apiLayerHints = mergeUiControlHints(rawApiLayerHints, vlmHints)
-          const decomposed = await ctx.decomposeImageUiLayers({
-            sourceDataUrl: sourceUrl,
-            ...(safeBaseDataUrl ? { cleanBaseDataUrl: safeBaseDataUrl } : {}),
-            ...(apiLayerHints.length ? { apiLayerHints } : {})
-          })
-          mapped = layersFromUiWidgetDecomposition(
-            ctx,
-            stamp,
-            decomposed,
-            sourceUrl,
-            safeBaseDataUrl || cleanBaseUrl || undefined
-          )
-        } else if (result?.layers?.length && result.layers.length >= 2) {
-          mapped = layersFromApiResult(ctx, stamp, result, {
-            width: prev.canvasWidth,
-            height: prev.canvasHeight
-          })
-        } else {
-          if (!cleanBaseUrl) {
-            throw fail(SHARED_ERRORS.layerSplitNoLayers)
+        mapped = layersFromApiResult(
+          ctx,
+          stamp,
+          {
+            images: [cleanBaseUrl, ...(result.images?.slice(1) ?? []), sourceUrl]
+          },
+          {
+            width: prev.canvasWidth || 1024,
+            height: prev.canvasHeight || 1024
           }
-          mapped = layersFromApiResult(
-            ctx,
-            stamp,
-            {
-              images: [cleanBaseUrl, ...(result?.images?.slice(1) ?? []), sourceUrl]
-            },
-            {
-              width: prev.canvasWidth || 1024,
-              height: prev.canvasHeight || 1024
-            }
-          )
-        }
+        )
       }
     } else {
       // 'ai-layers'：调用原生 layerDecomposition，并结合标准 UI 控件识别与子部件结构拆解引擎生成按控件组织的 PSD

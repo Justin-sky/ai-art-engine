@@ -306,9 +306,12 @@ export async function peelLevel(input: {
   useAtlasPacking?: boolean
   level: number
   useGenerative: boolean
+  /** Studio-purified mode: strictly require generative base repair without any local inpaint fallback */
+  requireGenerative?: boolean
   locale?: string
 }): Promise<{ plate: RgbaImage; report: PeelLevelReport[] }> {
   const { io, plate, elements, level } = input
+  const requireGenerative = Boolean(input.requireGenerative)
   const W = plate.width
   const H = plate.height
   const pad = peelPad(plate)
@@ -413,61 +416,61 @@ export async function peelLevel(input: {
   // 1) 对位于父容器内腔（parentInner）中的子元素，严格在父容器内腔子图上执行补底，绝不采样容器外的深蓝画布背景，也绝不破坏容器边框！
   // 2) 对槽位内的大尺寸人像/立绘（avatar/illustration），结合槽位垂直背景渐变与内腔推拉金字塔还原干净底板。
   const local = cloneImage(next)
-  for (const grp of parentGroups.values()) {
-    const ir = grp.innerRect
-    const sub = cropImage(local, ir)
-    const subHole = new Uint8Array(ir.width * ir.height)
-    for (let y = 0; y < ir.height; y++) {
-      const srcRow = (ir.top + y) * W + ir.left
-      const dstRow = y * ir.width
-      for (let x = 0; x < ir.width; x++) {
-        if (grp.mask[srcRow + x]) subHole[dstRow + x] = 1
-      }
-    }
-    const hasPortrait = grp.els.some(
-      (e) => (e.kind === 'avatar' || e.kind === 'illustration') && e.box.width >= ir.width * 0.42
-    )
-    if (hasPortrait) {
-      // 剥除槽位主立绘时，将整个槽位内腔（ir）标记为待还原区并以 100% 槽位纯净垂直渐变填充，
-      // 彻底消除 inpaintPushPull 全洞短路或 28% 原图混色导致的底板人像五官重影与发丝残留
-      const rowBg = estimateSlotRowBackground(local, ir)
-      paintRect(hole, W, H, ir)
-      paintRect(grp.mask, W, H, ir)
+  if (!requireGenerative) {
+    for (const grp of parentGroups.values()) {
+      const ir = grp.innerRect
+      const sub = cropImage(local, ir)
+      const subHole = new Uint8Array(ir.width * ir.height)
       for (let y = 0; y < ir.height; y++) {
-        const bg = rowBg[y]!
+        const srcRow = (ir.top + y) * W + ir.left
+        const dstRow = y * ir.width
         for (let x = 0; x < ir.width; x++) {
-          const di = ((ir.top + y) * W + (ir.left + x)) * 4
-          local.data[di] = bg[0]
-          local.data[di + 1] = bg[1]
-          local.data[di + 2] = bg[2]
-          local.data[di + 3] = 255
+          if (grp.mask[srcRow + x]) subHole[dstRow + x] = 1
         }
       }
-    } else {
-      inpaintPushPull(sub, subHole)
-      for (let y = 0; y < ir.height; y++) {
-        for (let x = 0; x < ir.width; x++) {
-          const sp = y * ir.width + x
-          if (!subHole[sp]) continue
-          const si = sp * 4
-          const di = ((ir.top + y) * W + (ir.left + x)) * 4
-          local.data[di] = sub.data[si]!
-          local.data[di + 1] = sub.data[si + 1]!
-          local.data[di + 2] = sub.data[si + 2]!
-          local.data[di + 3] = sub.data[si + 3]!
+      const hasPortrait = grp.els.some(
+        (e) => (e.kind === 'avatar' || e.kind === 'illustration') && e.box.width >= ir.width * 0.42
+      )
+      if (hasPortrait) {
+        const rowBg = estimateSlotRowBackground(local, ir)
+        paintRect(hole, W, H, ir)
+        paintRect(grp.mask, W, H, ir)
+        for (let y = 0; y < ir.height; y++) {
+          const bg = rowBg[y]!
+          for (let x = 0; x < ir.width; x++) {
+            const di = ((ir.top + y) * W + (ir.left + x)) * 4
+            local.data[di] = bg[0]
+            local.data[di + 1] = bg[1]
+            local.data[di + 2] = bg[2]
+            local.data[di + 3] = 255
+          }
+        }
+      } else {
+        inpaintPushPull(sub, subHole)
+        for (let y = 0; y < ir.height; y++) {
+          for (let x = 0; x < ir.width; x++) {
+            const sp = y * ir.width + x
+            if (!subHole[sp]) continue
+            const si = sp * 4
+            const di = ((ir.top + y) * W + (ir.left + x)) * 4
+            local.data[di] = sub.data[si]!
+            local.data[di + 1] = sub.data[si + 1]!
+            local.data[di + 2] = sub.data[si + 2]!
+            local.data[di + 3] = sub.data[si + 3]!
+          }
         }
       }
     }
-  }
-  let hasRootHole = false
-  for (let p = 0; p < rootHole.length; p++) {
-    if (rootHole[p]) {
-      hasRootHole = true
-      break
+    let hasRootHole = false
+    for (let p = 0; p < rootHole.length; p++) {
+      if (rootHole[p]) {
+        hasRootHole = true
+        break
+      }
     }
-  }
-  if (hasRootHole) {
-    inpaintPushPull(local, rootHole)
+    if (hasRootHole) {
+      inpaintPushPull(local, rootHole)
+    }
   }
 
   const copyLocal = (rect: PixelRect): void => {
@@ -477,14 +480,14 @@ export async function peelLevel(input: {
     }
   }
 
-  if (!solid.length) {
+  if (!solid.length && !requireGenerative) {
     for (const el of transparent) copyLocal(expandRect(el.box, pad, W, H))
     report.push({ level, method: 'transparent', elementCount: transparent.length })
     return { plate: next, report }
   }
 
-  // 检查是否所有实心元素下方的承载面都显式声明为 'surface' 或 'none'（无需生图）
   const allSurfaceOnly =
+    !requireGenerative &&
     byId != null &&
     solid.every((el) => {
       if (el.parentId) {
@@ -494,109 +497,131 @@ export async function peelLevel(input: {
       return input.backgroundRepairMode === 'surface' || input.backgroundRepairMode === 'none'
     })
 
+  if (requireGenerative && !io.editImage) {
+    throw new Error('PRECISE_SPLIT_BASE_REPAIR_FAILED: missing editImage capability')
+  }
+
   let generated: RgbaImage | null = null
-  if (input.useGenerative && !allSurfaceOnly && io.editImage) {
+  if ((input.useGenerative || requireGenerative) && !allSurfaceOnly && io.editImage) {
     throwIfAborted(io.signal)
-    try {
-      if (input.useAtlasPacking && solid.length >= 2) {
-        const packed = packOcclusionAtlas({
-          plate: next,
-          holeMask: hole,
-          targets: solid.map((el) => ({
-            id: el.id,
-            name: el.name,
-            rect: expandRect(el.box, Math.max(pad * 3, 12), W, H)
-          }))
-        })
-        const [atlasUrl, maskUrl] = await Promise.all([
-          io.encodePng(packed.atlas),
-          io.encodePng(packed.maskImage)
-        ])
-        const rawAtlas = await io.editImage({
-          prompt: buildAtlasInpaintPrompt({
-            locale: input.locale,
-            cellNames: solid.map((el) => el.name)
-          }),
-          image: atlasUrl,
-          maskImage: maskUrl,
-          aspectRatio: nearestAspectRatio(packed.atlas.width, packed.atlas.height)
-        })
-        if (rawAtlas) {
-          generated = unpackOcclusionAtlas(next, rawAtlas, packed, hole)
-        }
-      } else {
-        const isSceneBg =
-          level === 1 && input.backgroundRepairMode === 'scene' && solid.every((el) => !el.parentId)
-        let activeHole = hole
-        if (isSceneBg && input.allElements?.length) {
-          // Union-mask scene background cleanup (`bggg-creator-image2psd` method):
-          // Include all root foreground cutouts across upper levels too so earlier local fills
-          // from floating badges / HUD bars are cleanly reconstructed in one unified scene pass.
-          const unionSceneHole = new Uint8Array(hole)
-          for (const upperEl of input.allElements) {
-            if (upperEl.plainText || upperEl.parentId || (upperEl.level ?? 1) <= 1) continue
-            if (upperEl.instanceMask) {
-              const im = upperEl.instanceMask
-              const grownUpper = dilateMask(im.mask, im.rect.width, im.rect.height, pad + 2)
-              for (let y = 0; y < im.rect.height; y++) {
-                const cy = im.rect.top + y
-                if (cy < 0 || cy >= H) continue
-                const rowOff = y * im.rect.width
-                for (let x = 0; x < im.rect.width; x++) {
-                  if (!grownUpper[rowOff + x]) continue
-                  const cx = im.rect.left + x
-                  if (cx < 0 || cx >= W) continue
-                  unionSceneHole[cy * W + cx] = 1
+    const maxAttempts = requireGenerative ? 2 : 1
+    let lastGenErr = 'empty generative output'
+    for (let attempt = 0; attempt < maxAttempts && !generated; attempt++) {
+      throwIfAborted(io.signal)
+      try {
+        if (!requireGenerative && input.useAtlasPacking && solid.length >= 2) {
+          const packed = packOcclusionAtlas({
+            plate: next,
+            holeMask: hole,
+            targets: solid.map((el) => ({
+              id: el.id,
+              name: el.name,
+              rect: expandRect(el.box, Math.max(pad * 3, 12), W, H)
+            }))
+          })
+          const [atlasUrl, maskUrl] = await Promise.all([
+            io.encodePng(packed.atlas),
+            io.encodePng(packed.maskImage)
+          ])
+          const rawAtlas = await io.editImage({
+            prompt: buildAtlasInpaintPrompt({
+              locale: input.locale,
+              cellNames: solid.map((el) => el.name)
+            }),
+            image: atlasUrl,
+            maskImage: maskUrl,
+            aspectRatio: nearestAspectRatio(packed.atlas.width, packed.atlas.height)
+          })
+          if (rawAtlas) {
+            generated = unpackOcclusionAtlas(next, rawAtlas, packed, hole)
+          }
+        } else {
+          const isSceneBg =
+            level === 1 &&
+            (requireGenerative ||
+              (input.backgroundRepairMode === 'scene' && solid.every((el) => !el.parentId)))
+          let activeHole = hole
+          if (isSceneBg && input.allElements?.length) {
+            const unionSceneHole = new Uint8Array(hole)
+            for (const upperEl of input.allElements) {
+              if (!requireGenerative) {
+                if (upperEl.plainText || upperEl.parentId || (upperEl.level ?? 1) <= 1) continue
+              } else if (upperEl.plainText && upperEl.parentId) {
+                continue
+              }
+              if (upperEl.instanceMask) {
+                const im = upperEl.instanceMask
+                const grownUpper = dilateMask(im.mask, im.rect.width, im.rect.height, pad + 2)
+                for (let y = 0; y < im.rect.height; y++) {
+                  const cy = im.rect.top + y
+                  if (cy < 0 || cy >= H) continue
+                  const rowOff = y * im.rect.width
+                  for (let x = 0; x < im.rect.width; x++) {
+                    if (!grownUpper[rowOff + x]) continue
+                    const cx = im.rect.left + x
+                    if (cx < 0 || cx >= W) continue
+                    unionSceneHole[cy * W + cx] = 1
+                  }
+                }
+              } else {
+                paintRect(unionSceneHole, W, H, expandRect(upperEl.box, pad + 2, W, H))
+              }
+              paintRect(featherAllow, W, H, expandRect(upperEl.box, pad + 6, W, H))
+            }
+            activeHole = unionSceneHole
+          }
+          const [image, maskImage] = await Promise.all([
+            io.encodePng(next),
+            io.encodePng(buildBinaryMaskRgba(activeHole, W, H))
+          ])
+          const prompt = isSceneBg
+            ? buildSceneBackgroundPrompt({ locale: input.locale })
+            : buildPeelEditPrompt({
+                locale: input.locale,
+                width: W,
+                height: H,
+                targets: solid.map((el) => ({ name: el.name, box: el.box }))
+              })
+          const raw = await io.editImage({
+            prompt,
+            image,
+            maskImage,
+            aspectRatio: nearestAspectRatio(W, H)
+          })
+          if (raw) {
+            const resized = resizeBilinear(raw, W, H)
+            const shift = estimateShift(next, resized, activeHole)
+            if (Number.isFinite(shift.error) && shift.error <= 24) {
+              generated = shiftImage(resized, shift.dx, shift.dy)
+              if (activeHole !== hole) {
+                for (let p = 0; p < hole.length; p++) {
+                  if (activeHole[p]) hole[p] = 1
+                }
+              }
+            } else if (requireGenerative) {
+              generated = resized
+              if (activeHole !== hole) {
+                for (let p = 0; p < hole.length; p++) {
+                  if (activeHole[p]) hole[p] = 1
                 }
               }
             } else {
-              paintRect(unionSceneHole, W, H, expandRect(upperEl.box, pad + 2, W, H))
+              io.log?.(
+                `peel L${level}: generated plate rejected (misaligned, err=${shift.error.toFixed(1)})`
+              )
             }
-            paintRect(featherAllow, W, H, expandRect(upperEl.box, pad + 6, W, H))
           }
-          activeHole = unionSceneHole
         }
-        const [image, maskImage] = await Promise.all([
-          io.encodePng(next),
-          io.encodePng(buildBinaryMaskRgba(activeHole, W, H))
-        ])
-        const prompt = isSceneBg
-          ? buildSceneBackgroundPrompt({ locale: input.locale })
-          : buildPeelEditPrompt({
-              locale: input.locale,
-              width: W,
-              height: H,
-              targets: solid.map((el) => ({ name: el.name, box: el.box }))
-            })
-        const raw = await io.editImage({
-          prompt,
-          image,
-          maskImage,
-          aspectRatio: nearestAspectRatio(W, H)
-        })
-        if (raw) {
-          const resized = resizeBilinear(raw, W, H)
-          const shift = estimateShift(next, resized, activeHole)
-          // 蒙版外平均色差过大 = 模型改了构图/画幅，结果不可用
-          if (Number.isFinite(shift.error) && shift.error <= 24) {
-            generated = shiftImage(resized, shift.dx, shift.dy)
-            if (activeHole !== hole) {
-              for (let p = 0; p < hole.length; p++) {
-                if (activeHole[p]) hole[p] = 1
-              }
-            }
-          } else {
-            io.log?.(
-              `peel L${level}: generated plate rejected (misaligned, err=${shift.error.toFixed(1)})`
-            )
-          }
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError' || io.signal?.aborted) throw err
+        lastGenErr = String((err as Error)?.message ?? err)
+        if (!requireGenerative) {
+          io.log?.(`peel L${level}: generative inpaint failed, using local fill (${lastGenErr})`)
         }
       }
-    } catch (err) {
-      if ((err as Error)?.name === 'AbortError') throw err
-      io.log?.(
-        `peel L${level}: generative inpaint failed, using local fill (${String((err as Error)?.message ?? err)})`
-      )
+    }
+    if (requireGenerative && !generated) {
+      throw new Error(`PRECISE_SPLIT_BASE_REPAIR_FAILED: ${lastGenErr}`)
     }
   }
 
@@ -615,26 +640,32 @@ export async function peelLevel(input: {
     const i = p * 4
     for (let c = 0; c < 3; c++)
       next.data[i + c] = fill.data[i + c]! * m + next.data[i + c]! * (1 - m)
-    // alpha 跟随本地补底（生图模型输出不带透明通道）
-    next.data[i + 3] = local.data[i + 3]! * m + next.data[i + 3]! * (1 - m)
+    next.data[i + 3] = requireGenerative
+      ? 255
+      : local.data[i + 3]! * m + next.data[i + 3]! * (1 - m)
   }
-  for (const el of transparent) copyLocal(expandRect(el.box, pad, W, H))
-  if (transparent.length)
-    report.push({ level, method: 'transparent', elementCount: transparent.length })
+  if (!requireGenerative) {
+    for (const el of transparent) copyLocal(expandRect(el.box, pad, W, H))
+    if (transparent.length)
+      report.push({ level, method: 'transparent', elementCount: transparent.length })
+  }
 
   if (generated) {
-    // 模型没移掉的元素：改用本地补底
-    let fallback = 0
-    for (const el of solid) {
-      const r = expandRect(el.box, pad, W, H)
-      if (meanDistanceInRect(next, plate, r) >= 6) continue
-      fallback++
-      copyLocal(r)
+    if (requireGenerative) {
+      report.push({ level, method: 'generative', elementCount: elements.length })
+    } else {
+      let fallback = 0
+      for (const el of solid) {
+        const r = expandRect(el.box, pad, W, H)
+        if (meanDistanceInRect(next, plate, r) >= 6) continue
+        fallback++
+        copyLocal(r)
+      }
+      if (fallback)
+        io.log?.(`peel L${level}: ${fallback} element(s) not removed by the model, used local fill`)
+      report.push({ level, method: 'generative', elementCount: solid.length - fallback })
+      if (fallback) report.push({ level, method: 'local', elementCount: fallback })
     }
-    if (fallback)
-      io.log?.(`peel L${level}: ${fallback} element(s) not removed by the model, used local fill`)
-    report.push({ level, method: 'generative', elementCount: solid.length - fallback })
-    if (fallback) report.push({ level, method: 'local', elementCount: fallback })
   } else {
     report.push({ level, method: 'local', elementCount: solid.length })
   }

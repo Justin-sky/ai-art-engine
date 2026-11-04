@@ -431,6 +431,11 @@ export interface ComponentMatchInput {
   candidates: readonly PreciseSplitComponentCandidate[]
   /** Minimum match confidence in `[0, 1]` (default `0.72`). */
   minScore?: number
+  /**
+   * When true, matches directly against `observedPatch` on `compOpaque ∩ knownMask` before local
+   * instance segmentation runs, preventing noisy local masks from rejecting valid component masters.
+   */
+  allowMasklessBoxMatch?: boolean
 }
 
 export interface ComponentMatchResult {
@@ -1348,7 +1353,8 @@ export function matchElementToComponentLibrary(
     knownMask,
     hintedComponentId,
     candidates,
-    minScore = 0.72
+    minScore = 0.72,
+    allowMasklessBoxMatch = false
   } = input
   if (!candidates.length || NON_COMPONENT_KINDS.has(elementKind)) return null
   if (box.width < 10 || box.height < 10) return null
@@ -1391,7 +1397,7 @@ export function matchElementToComponentLibrary(
         const i = p * 4
         const compA = rendered.data[i + 3]!
         const compOpaque = compA >= 48
-        const obsOpaque = detectedMask[p] === 1
+        const obsOpaque = allowMasklessBoxMatch ? compOpaque : detectedMask[p] === 1
         if (compOpaque && obsOpaque) inter++
         if (compOpaque || obsOpaque) union++
 
@@ -1429,9 +1435,21 @@ export function matchElementToComponentLibrary(
     const borderMae = borderCnt >= 4 ? borderErrSum / borderCnt : trimmedMae
     const chromaMae = chromaCnt >= 4 ? chromaErrSum / chromaCnt : trimmedMae
 
-    const maxAllowedMae = explicitHint ? 31 : 27
-    const maxAllowedBorderMae = explicitHint ? 33 : 29
-    const maxAllowedChroma = explicitHint ? 28 : 24
+    const maxAllowedMae = allowMasklessBoxMatch ? (explicitHint ? 26 : 22) : explicitHint ? 31 : 27
+    const maxAllowedBorderMae = allowMasklessBoxMatch
+      ? explicitHint
+        ? 27
+        : 23
+      : explicitHint
+        ? 33
+        : 29
+    const maxAllowedChroma = allowMasklessBoxMatch
+      ? explicitHint
+        ? 23
+        : 19
+      : explicitHint
+        ? 28
+        : 24
     if (
       trimmedMae > maxAllowedMae ||
       borderMae > maxAllowedBorderMae ||

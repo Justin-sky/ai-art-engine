@@ -193,6 +193,10 @@ export interface PreciseSplitResult {
   generativeCompletion?: import('./generativeCompletion').GenerativeCompletionReport
   /** 共享组件库匹配替换报告 */
   componentMatches?: Array<{ elementId: string; componentId: string; score: number }>
+  /** 本次拆层内部经纯色底伴生提纯合成的可复用控件母本（供自动注册 PSD 智能对象） */
+  synthesizedComponents?: PreciseSplitComponentCandidate[]
+  /** 经纯色底伴生提纯或混合轮廓抠图优化的图层数量 */
+  companionPurifiedCount?: number
   notes: string[]
 }
 
@@ -212,12 +216,22 @@ export interface PreciseSplitEditRequest {
   aspectRatio?: string
 }
 
+export interface PreciseSplitPurifyRequest {
+  prompt: string
+  /** 裁剪并放大后的单控件/单元素参考图 data URL */
+  referenceImage: string
+  aspectRatio?: string
+  resolution?: '1K' | '2K'
+}
+
 /** 流水线的全部外部能力（执行器 / 测试各自注入） */
 export interface PreciseSplitIo {
   /** 多模态大模型：返回原始文本（JSON） */
   vlm: (req: PreciseSplitVlmRequest) => Promise<string>
   /** 生图模型指令编辑（剥层补底用）；缺省时全部走本地补底 */
   editImage?: (req: PreciseSplitEditRequest) => Promise<RgbaImage | null>
+  /** 单控件/单图层纯色摄影棚伴生提纯生成（与 ui.componentLib 同源的 1K 纯色底高保真提纯） */
+  purifyLayerImage?: (req: PreciseSplitPurifyRequest) => Promise<RgbaImage | null>
   /** 可选本地 SAM 2.1 点+框提示实例分割（返回 3 个多尺度候选掩码及置信度） */
   segmentSam2?: (req: PreciseSplitSam2Request) => Promise<PreciseSplitSam2Candidate[] | null>
   /** 把 RGBA 编码为 PNG data URL（送 VLM / 生图模型用） */
@@ -242,6 +256,8 @@ export interface PreciseSplitOptions {
   generativePeel?: boolean
   /** 复杂画面遮挡区单图层生成式补全的最多调用次数（默认 4；0 = 关闭） */
   maxLayerCompletions?: number
+  /** 单屏纯色底伴生图层提纯的最大调用次数（缺省为无限制，全量提纯；0 = 关闭） */
+  maxCompanionPurifications?: number
   /** 元素上限 */
   maxElements?: number
   /** 传入的共享组件库母本候选（命中元素直接用纯净母本替换并扩掩码剥底、跳过生成式补全） */

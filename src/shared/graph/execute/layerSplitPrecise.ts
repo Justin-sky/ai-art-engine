@@ -11,12 +11,13 @@ import {
   nearestAspectRatio,
   resizeAreaAverage,
   runPreciseUiSplit,
-  unifyRepeatedComponentsInSplitResult,
   type PreciseSplitComponentCandidate,
   type PreciseSplitIo,
   type PreciseSplitResult,
   type RgbaImage
 } from '../uiPreciseSplit'
+import { fail } from '@shared/errors/appError'
+import { SHARED_ERRORS } from '../../errors/catalog'
 import type { GraphImageItem, NodeExecuteContext } from './types'
 
 /** 需要九宫格切边的结构类控件 */
@@ -77,6 +78,10 @@ export async function runPreciseLayerSplitForNode(
   if (!codec || !generateText) {
     throw new Error('PRECISE_SPLIT_NO_CAPABILITY')
   }
+  const generateImage = ctx.generateImage
+  if (!generateImage) {
+    throw fail(SHARED_ERRORS.capabilityImageGenerate)
+  }
   const { stamp } = input
   const nodeId = ctx.node.id
   const visionModel = ctx.node.params.visionModel?.trim() || undefined
@@ -91,9 +96,6 @@ export async function runPreciseLayerSplitForNode(
   }
 
   let editIndex = 0
-  const generateImage = ctx.generateImage
-  // SAM 2.1 只在确实已安装且推理进程就绪时注入：流水线据此切换「像素级实例遮罩」路径，
-  // 未安装时保持本地分割 + 槽位/角标启发式，不能因为注入了空壳能力而丢掉启发式。
   let sam2Ready = false
   if (codec.segmentSam2 && codec.hasSam2) {
     try {
@@ -103,7 +105,7 @@ export async function runPreciseLayerSplitForNode(
     }
   }
   log(
-    `sam2: ${sam2Ready ? 'enabled (local SAM 2.1 ONNX)' : 'not installed, using local segmentation'}`
+    `sam2: ${sam2Ready ? 'enabled (local SAM 2.1 ONNX)' : 'not installed, using studio solid-bg purification'}`
   )
   const io: PreciseSplitIo = {
     vlm: async (req) => {
@@ -117,26 +119,38 @@ export async function runPreciseLayerSplitForNode(
       })
       return res?.text ?? ''
     },
-    ...(generateImage
-      ? {
-          editImage: async (req): Promise<RgbaImage | null> => {
-            const res = await generateImage({
-              prompt: req.prompt,
-              model: input.model,
-              providerInstanceId: input.providerInstanceId,
-              resolution: normalizeEditResolution(input.resolution),
-              ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}),
-              inputReferences: req.maskImage ? [req.image, req.maskImage] : [req.image]
-            })
-            const url = res.layers?.[0]?.url?.trim() || res.images?.[0]?.trim() || ''
-            if (!url) return null
-            editIndex += 1
-            const safe = await input.toCanvasSafeUrl(url, `peel${editIndex}`)
-            if (!safe) return null
-            return codec.decodeImageRgba(safe)
-          }
-        }
-      : {}),
+    editImage: async (req): Promise<RgbaImage | null> => {
+      const res = await generateImage({
+        prompt: req.prompt,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        resolution: normalizeEditResolution(input.resolution),
+        ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}),
+        inputReferences: req.maskImage ? [req.image, req.maskImage] : [req.image]
+      })
+      const url = res.layers?.[0]?.url?.trim() || res.images?.[0]?.trim() || ''
+      if (!url) return null
+      editIndex += 1
+      const safe = await input.toCanvasSafeUrl(url, `peel${editIndex}`)
+      if (!safe) return null
+      return codec.decodeImageRgba(safe)
+    },
+    purifyLayerImage: async (req): Promise<RgbaImage | null> => {
+      const res = await generateImage({
+        prompt: req.prompt,
+        model: input.model,
+        providerInstanceId: input.providerInstanceId,
+        resolution: req.resolution ?? '1K',
+        ...(req.aspectRatio ? { aspectRatio: req.aspectRatio } : {}),
+        inputReferences: [req.referenceImage]
+      })
+      const url = res.layers?.[0]?.url?.trim() || res.images?.[0]?.trim() || ''
+      if (!url) return null
+      editIndex += 1
+      const safe = await input.toCanvasSafeUrl(url, `purify${editIndex}`)
+      if (!safe) return null
+      return codec.decodeImageRgba(safe)
+    },
     encodePng: (img) => codec.encodeRgbaPng(img),
     ...(sam2Ready && codec.segmentSam2
       ? {
@@ -171,16 +185,11 @@ export async function runPreciseLayerSplitForNode(
     `canvas ${result.canvasWidth}x${result.canvasHeight} (${nearestAspectRatio(result.canvasWidth, result.canvasHeight)})`
   )
 
-  let effectiveComponents: readonly PreciseSplitComponentCandidate[] | undefined = input.components
-  if (!effectiveComponents?.length) {
-    const autoComponents = unifyRepeatedComponentsInSplitResult(result)
-    if (autoComponents.length > 0) {
-      effectiveComponents = autoComponents
-      log(
-        `auto component library: unified ${autoComponents.length} repeated UI control family(s) into shared Smart Object masters`
-      )
-    }
-  }
+  const mergedComponents: PreciseSplitComponentCandidate[] = [
+    ...(input.components ?? []),
+    ...(result.synthesizedComponents ?? [])
+  ]
+  const effectiveComponents = mergedComponents.length > 0 ? mergedComponents : undefined
 
   return mapPreciseResultToLayers(result, {
     idPrefix: `layerSplit:${nodeId}:${stamp}`,

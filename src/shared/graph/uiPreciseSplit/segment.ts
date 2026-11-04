@@ -595,8 +595,42 @@ export function segmentContainerSilhouette(
   const n = rw * rh
   const strip = Math.max(1, Math.min(3, pad))
   const outerRing = ringStats(img, rect, strip)
-  // 框外环境颜色离散度过高（跨多种大反差场景物体）时保守退回，仅在可辨识外背景上裁剪外沿与圆角
-  if (outerRing.spread > 34) return null
+  // 若整圈外环跨渐变或双色背景（34 < spread <= 68），按四角局部外环分别评估离散度，
+  // 只要各象限局部背景本身平稳即可按象限参考色做圆角泛洪，不再一刀切退回矩形硬切框
+  const quadH = Math.max(4, Math.floor(rh * 0.35))
+  const quadW = Math.max(4, Math.floor(rw * 0.35))
+  const tlRing = ringStats(
+    img,
+    { left: rect.left, top: rect.top, width: quadW, height: quadH },
+    strip
+  )
+  const trRing = ringStats(
+    img,
+    { left: rect.left + rw - quadW, top: rect.top, width: quadW, height: quadH },
+    strip
+  )
+  const blRing = ringStats(
+    img,
+    { left: rect.left, top: rect.top + rh - quadH, width: quadW, height: quadH },
+    strip
+  )
+  const brRing = ringStats(
+    img,
+    { left: rect.left + rw - quadW, top: rect.top + rh - quadH, width: quadW, height: quadH },
+    strip
+  )
+  const maxCornerSpread = Math.max(tlRing.spread, trRing.spread, blRing.spread, brRing.spread)
+  if (outerRing.spread > 34 && (outerRing.spread > 68 || maxCornerSpread > 24)) return null
+
+  const localOuterRefFor = (x: number, y: number): { color: Uint8ClampedArray; spread: number } => {
+    if (outerRing.spread <= 34) return outerRing
+    const right = x >= rw * 0.5
+    const bottom = y >= rh * 0.5
+    if (!right && !bottom) return tlRing
+    if (right && !bottom) return trRing
+    if (!right && bottom) return blRing
+    return brRing
+  }
 
   const bx0 = box.left - rect.left
   const by0 = box.top - rect.top
@@ -626,14 +660,14 @@ export function segmentContainerSilhouette(
       ])
     : outerRing.color
 
-  const bgSeedTol = Math.max(22, Math.min(42, outerRing.spread * 1.8 + 12))
   const barrier = new Uint8Array(n)
   for (let y = Math.max(0, by0 - 1); y < Math.min(rh, by1 + 1); y++) {
     const cy = rect.top + y
     for (let x = Math.max(0, bx0 - 1); x < Math.min(rw, bx1 + 1); x++) {
+      const ref = localOuterRefFor(x, y)
       const gi = (cy * W + (rect.left + x)) * 4
-      const dOut = pixelDistance(img.data, gi, outerRing.color, 0)
-      if (dOut >= Math.max(18, outerRing.spread * 1.6 + 8)) {
+      const dOut = pixelDistance(img.data, gi, ref.color, 0)
+      if (dOut >= Math.max(18, ref.spread * 1.6 + 8)) {
         barrier[y * rw + x] = 1
       }
     }
@@ -648,8 +682,10 @@ export function segmentContainerSilhouette(
   const trySeed = (x: number, y: number): void => {
     const p = y * rw + x
     if (outsideBg[p] || closedBarrier[p]) return
+    const ref = localOuterRefFor(x, y)
+    const bgSeedTol = Math.max(22, Math.min(42, ref.spread * 1.8 + 12))
     const gi = ((rect.top + y) * W + (rect.left + x)) * 4
-    const dOut = pixelDistance(img.data, gi, outerRing.color, 0)
+    const dOut = pixelDistance(img.data, gi, ref.color, 0)
     if (dOut > bgSeedTol) return
     outsideBg[p] = 1
     seedOff[p] = gi
