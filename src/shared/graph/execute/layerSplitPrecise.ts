@@ -3,11 +3,13 @@ import {
   type ImageLayerSplitGroup,
   type ImageLayerSplitLayer
 } from '../imageLayerSplit'
+import type { UiSharedComponentItem } from '../uiComponentLibrary'
 import {
   buildUiExportNames,
   groupableElementIds,
   nearestAspectRatio,
   runPreciseUiSplit,
+  type PreciseSplitComponentCandidate,
   type PreciseSplitIo,
   type PreciseSplitResult,
   type RgbaImage
@@ -36,6 +38,7 @@ export interface PreciseLayerSplitMapped {
   batch: GraphImageItem[]
   canvasWidth: number
   canvasHeight: number
+  componentLibrary?: UiSharedComponentItem[]
   result: PreciseSplitResult
 }
 
@@ -60,6 +63,8 @@ export async function runPreciseLayerSplitForNode(
     providerInstanceId?: string
     resolution?: string
     stamp: number
+    /** 上游共享组件库母本候选 */
+    components?: readonly PreciseSplitComponentCandidate[]
     /** 把任意图片地址（https / TOS）转成 canvas 可解码地址 */
     toCanvasSafeUrl: (url: string, suffix: string) => Promise<string | undefined>
   }
@@ -150,7 +155,8 @@ export async function runPreciseLayerSplitForNode(
   const result = await runPreciseUiSplit(io, source, {
     locale: ctx.locale,
     userHint: input.userHint,
-    sourceTitle: input.sourceTitle
+    sourceTitle: input.sourceTitle,
+    ...(input.components?.length ? { components: input.components } : {})
   })
   log(
     `done: ${result.layers.length} layers, recon error ${result.reconstructionError.toFixed(2)}, peel ${result.peelReport
@@ -164,20 +170,46 @@ export async function runPreciseLayerSplitForNode(
 
   return mapPreciseResultToLayers(result, {
     idPrefix: `layerSplit:${nodeId}:${stamp}`,
-    encodePng: (img) => codec.encodeRgbaPng(img)
+    encodePng: (img) => codec.encodeRgbaPng(img),
+    components: input.components
   })
 }
 
 /** 纯转换：流水线结果 → 图层 / 分组 / 批次（导出供测试） */
 export async function mapPreciseResultToLayers(
   result: PreciseSplitResult,
-  opts: { idPrefix: string; encodePng: (img: RgbaImage) => Promise<string> }
+  opts: {
+    idPrefix: string
+    encodePng: (img: RgbaImage) => Promise<string>
+    components?: readonly PreciseSplitComponentCandidate[]
+  }
 ): Promise<PreciseLayerSplitMapped> {
   const W = result.canvasWidth
   const H = result.canvasHeight
   const createdAt = new Date().toISOString()
   const layers: ImageLayerSplitLayer[] = []
   const batch: GraphImageItem[] = []
+  const componentLibrary: UiSharedComponentItem[] = []
+  const compById = new Map<string, UiSharedComponentItem>()
+
+  if (opts.components?.length) {
+    for (const cand of opts.components) {
+      const compImgId = `${opts.idPrefix}:comp:${cand.item.id}`
+      const compUrl = await opts.encodePng(cand.rgba)
+      batch.push({
+        id: compImgId,
+        title: `Master · ${cand.item.name}`,
+        dataUrl: compUrl,
+        createdAt
+      })
+      const enriched: UiSharedComponentItem = {
+        ...cand.item,
+        imageId: compImgId
+      }
+      componentLibrary.push(enriched)
+      compById.set(enriched.id, enriched)
+    }
+  }
 
   const baseId = `${opts.idPrefix}:base`
   const baseUrl = await opts.encodePng(result.base)
@@ -248,12 +280,30 @@ export async function mapPreciseResultToLayers(
     })
     const right = layer.left + layer.width
     const bottom = layer.top + layer.height
-    // 结构类控件按像素自相似度测算九宫格切边（引擎可直接拉伸复用）
-    const nineSliceBorders = NINE_SLICE_KINDS.has(layer.kind)
-      ? computeNineSliceFromRgbaBuffer(layer.rgba, layer.width, layer.height)
-      : undefined
+    const matchedComp = layer.componentId ? compById.get(layer.componentId) : undefined
+    // 结构类控件按像素自相似度测算九宫格切边（若命中九宫格组件母本则优先继承母本九宫格）
+    const nineSliceBorders =
+      matchedComp?.nineSliceBorders ??
+      (NINE_SLICE_KINDS.has(layer.kind)
+        ? computeNineSliceFromRgbaBuffer(layer.rgba, layer.width, layer.height)
+        : undefined)
     const qaIssues = qaById.get(layer.elementId)
     const exportName = exportNames.get(layer.elementId)
+    let originalImageId: string | undefined
+    if (layer.componentId && layer.originalRgba) {
+      originalImageId = `${id}:orig`
+      const origUrl = await opts.encodePng({
+        width: layer.width,
+        height: layer.height,
+        data: layer.originalRgba
+      })
+      batch.push({
+        id: originalImageId,
+        title: `${layer.name} (orig)`,
+        dataUrl: origUrl,
+        createdAt
+      })
+    }
     layers.push({
       id,
       imageId: id,
@@ -282,10 +332,28 @@ export async function mapPreciseResultToLayers(
       ...(nineSliceBorders ? { nineSliceBorders } : {}),
       ...(exportName ? { exportName } : {}),
       ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {}),
+      ...(layer.componentId
+        ? {
+            componentId: layer.componentId,
+            componentImageId: id,
+            ...(layer.componentMatchScore !== undefined
+              ? { componentMatchScore: layer.componentMatchScore }
+              : {}),
+            ...(originalImageId ? { originalImageId } : {})
+          }
+        : {}),
       ...(qaIssues?.length ? { qaIssues: [...qaIssues] } : {})
     })
     batch.push({ id, title: layer.name, dataUrl, createdAt })
   }
 
-  return { layers, groups, batch, canvasWidth: W, canvasHeight: H, result }
+  return {
+    layers,
+    groups,
+    batch,
+    canvasWidth: W,
+    canvasHeight: H,
+    ...(componentLibrary.length ? { componentLibrary } : {}),
+    result
+  }
 }

@@ -11,9 +11,11 @@ import {
   isBoundaryOutputNode,
   parseFilmCast,
   parseFilmRenderCache,
+  parseUiComponentLibrary,
   resolveNodeTextContent,
   softResolveBoundaryOutputValue,
   splitScreenplayByExplicitEpisodeMarkers,
+  uiComponentLibrarySummary,
   type GraphDocument,
   type GraphNode,
   type GraphValue
@@ -354,6 +356,13 @@ function collectFromValue(value: GraphValue | undefined, into: PreviewItem[]): v
     if (summary) into.push({ key: `filmCast:${summary.slice(0, 32)}`, kind: 'text', text: summary })
     return
   }
+  if (value.kind === 'uiComponents') {
+    const summary = uiComponentLibrarySummary(value.doc, locale.value)
+    if (summary) {
+      into.push({ key: `uiComponents:${summary.slice(0, 32)}`, kind: 'text', text: summary })
+    }
+    return
+  }
   if (value.kind === 'texts') {
     for (const [index, item] of (value.items ?? []).entries()) {
       const text = item.text?.trim() ?? ''
@@ -509,6 +518,31 @@ function collectFallback(into: PreviewItem[]): void {
   void runState?.status
 
   // 影视设定图 / 批量拍摄分端口预览：重开项目尚未重跑时，从持久化 params 还原，勿退回总结文本
+  if (node.typeId === 'ui.componentLib') {
+    const lib = parseUiComponentLibrary(node.params.uiComponentLibrary ?? '')
+    if (props.portId === 'out') {
+      const summary = uiComponentLibrarySummary(lib, locale.value)
+      if (summary) {
+        into.push({ key: `uiComponents:${summary.slice(0, 32)}`, kind: 'text', text: summary })
+      }
+      return
+    }
+    for (const [idx, item] of (lib?.items ?? []).entries()) {
+      const url = item.imageUrl?.trim() ?? ''
+      const rel = item.imageRelativePath?.trim() || (url && !url.startsWith('data:') ? url : '')
+      const dataUrl = url.startsWith('data:') ? url : ''
+      const src = imageItemSrc({ dataUrl, relativePath: rel || undefined })
+      if (!src) continue
+      into.push({
+        key: `uicmp:${item.id || idx}`,
+        kind: 'image',
+        src,
+        label: item.name,
+        assetId: assetIdByRelativePath(rel || undefined)
+      })
+    }
+    if (into.length) return
+  }
   if (
     (node.typeId === 'film.workbench' || node.typeId === 'film.cast') &&
     props.portId === 'out-sheets'

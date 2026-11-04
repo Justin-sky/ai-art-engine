@@ -5273,7 +5273,72 @@ export default {
       explode2dGap: '间距',
       explode2dGapHint: '调整 2D 爆炸图块之间的平面间距',
       explodeLabels: '🏷️ 图层名',
-      explodeLabelsHint: '在爆炸视图中显示或隐藏图层名称与尺寸标签'
+      explodeLabelsHint: '在爆炸视图中显示或隐藏图层名称与尺寸标签',
+      componentLibTitle: '共享组件库',
+      componentLibSummary: '{libCount} 个母版 · 已替换 {matchedCount} 层（智能对象）',
+      componentSectionTitle: '🧩 共享组件母版（PSD 智能对象）',
+      componentBindNone: '— 不绑定共享组件（使用原图切件）—',
+      componentToggleMaster: '🧩 使用组件库母版',
+      componentToggleRaw: '🖼️ 已退回原图切件',
+      componentToggleTip:
+        '切换当前图层使用干净的共享组件母版（导出为共享 PSD 智能对象）或保留原图切件像素',
+      componentMatchScoreTip: '组件匹配度 {score}% · 导出 PSD 时与同母版图层共享同一内嵌智能对象'
+    },
+    uiComponentLib: {
+      hint: '从 1 张或多张 UI 画面中自动聚类、多实例无遮挡像素融合并提取无文字纯净共享组件母版；将输出端连入「UI 图层分离」的组件库端口，即可自动替换同款控件并导出为共享 PSD 智能对象（Smart Object）与引擎去重贴图',
+      extractMode: '提取范围',
+      extractModeAuto: '⚡ 智能自动（优先聚类重复控件，单界面自动收录标准按钮与槽位）',
+      extractModeRepeated: '🔁 仅重复控件（至少出现 2 次的共享母版）',
+      extractModeAllControls: '🧩 全部标准控件（按钮 / 槽位 / 标签页 / 徽章 / 面板）',
+      extractHintLabel: '提取提示（可选）',
+      extractHintPlaceholder:
+        '可选：补充需要重点提取或命名的共享控件（留空自动识别通用按钮、道具槽位、标签页与底框）',
+      componentsTitle: '共享组件母版',
+      componentCount: '{n} 个组件',
+      emptyComponents:
+        '尚未提取组件。请连接 1 张或多张 UI 画面（如「UI 界面生成」输出）并运行节点。',
+      sourceInstances: '×{n} 融合',
+      scaleExact: '原尺寸',
+      scaleUniform: '等比缩放',
+      scaleNineSlice: '九宫格',
+      lockItem: '锁定母版（重提时保留）',
+      unlockItem: '已锁定（点击解锁）',
+      removeItem: '移除该组件',
+      reextract: '清空缓存并重新提取',
+      exportNamePlaceholder: '引擎导出名（如 Comp_Btn_Primary）',
+      psdSmartObjectTip: 'PSD 智能对象 GUID：{guid}（同母版图层共享一份内嵌智能对象）',
+      openWorkbench: '打开组件库工作台',
+      workbenchSubtitle: '多界面共享母版清洗 · 九宫格切线与拉伸模拟 · PSD 智能对象溯源',
+      filterAll: '全部类型',
+      searchPlaceholder: '搜索组件名或导出名…',
+      exportAllPng: '批量导出母版 PNG',
+      exportSinglePng: '导出当前 PNG',
+      exportedToast: '已导出 {n} 张组件母版 PNG',
+      masterStageTitle: '组件母版与九宫格切线',
+      stretchSimTitle: '实时缩放 / 九宫格拉伸模拟',
+      stretchWidth: '模拟宽度',
+      stretchHeight: '模拟高度',
+      preset1x: '1× 原尺寸',
+      presetWideBtn: '1.8× 宽按钮',
+      presetBanner: '2.5× 宽横幅',
+      presetPanel: '2×2 弹窗底框',
+      propName: '组件名称',
+      propExportName: '引擎 / 智能对象导出名',
+      propKind: '控件语义分类',
+      propScalePolicy: '尺寸适配策略',
+      nineSliceTitle: '九宫格切线边距 (px)',
+      nineSliceTop: '上 (Top)',
+      nineSliceRight: '右 (Right)',
+      nineSliceBottom: '下 (Bottom)',
+      nineSliceLeft: '左 (Left)',
+      autoDetectNineSlice: '自动识别九宫格切线',
+      autoDetectSuccess: '已自动识别九宫格边距：{borders}',
+      autoDetectFallback: '当前组件尺寸较小或无明显边框，已使用默认 25% 安全边距',
+      smartObjectGuidLabel: 'PSD 智能对象 GUID',
+      copyGuid: '复制 GUID',
+      copiedGuid: '已复制',
+      zoomFit: '适应',
+      selectComponentHint: '在左侧列表中选择一个共享组件以预览与编辑九宫格参数'
     },
     uiGen: {
       hint: '支持外层一键批量生成游戏 UI（双轨带字预览 + 100% 布局对齐的无字底板），也可双击进入 Dive 子图逐屏精调；输出无字底板可直连「UI 图层分离」导出分层 PSD',
@@ -5858,6 +5923,11 @@ export default {
       novelOutlineOut: '大纲',
       novelChapterOut: '下一章',
       outAll: '全部章节',
+      uiComponentsIn: '组件库',
+      uiComponentsOut: '组件库',
+      uiComponentImages: '组件切图',
+      uiScreenImage: 'UI 画面',
+      uiScreenImages: 'UI 画面组',
       types: {
         image: '图片',
         images: '图片组',
@@ -5878,7 +5948,8 @@ export default {
         semanticTimeline: '拆解时间线',
         videoPrompts: '重制提示词方案',
         storyboard: '分镜文档',
-        filmCast: '设定库'
+        filmCast: '设定库',
+        uiComponents: 'UI 组件库'
       }
     },
     media: {
@@ -6091,7 +6162,8 @@ export default {
       },
       ui: {
         split: 'UI 界面拆分',
-        gen: 'UI 界面生成'
+        gen: 'UI 界面生成',
+        componentLib: 'UI 共享组件库'
       },
       anim: {
         '2d': '2D帧动画'
@@ -7159,7 +7231,10 @@ export default {
         hint: '双击调整键控与画布参数；运行节点按名单逐格键控透明并命名落盘 PNG'
       },
       layerSplit: {
-        hint: '支持任意图片模型与 4 种拆层引擎（智能自动 / 通用模型 AI 底板重绘+软抠图切件 / Seedream 5 原生拆层 / 零 API 本地智能切件），自动归入游戏 UI 标准 PSD 分组并导出分层 PSD 与 JSON 布局清单。'
+        hint: '支持任意图片模型与 4 种拆层引擎（智能自动 / 通用模型 AI 底板重绘+软抠图切件 / Seedream 5 原生拆层 / 零 API 本地智能切件）；可接入「UI 共享组件库」自动替换重复控件并导出 PSD 智能对象与 JSON 布局清单。'
+      },
+      uiComponentLib: {
+        hint: '接入 1 张或多张 UI 画面提取干净共享组件母版，连入「UI 图层分离」即可自动替换同款控件并导出为共享 PSD 智能对象。'
       },
       camera: {
         hint: '修改参数会同步到导演台编辑预览；在预览中环视也会实时更新。',

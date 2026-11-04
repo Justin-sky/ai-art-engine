@@ -15,6 +15,11 @@ import {
   stringifyFilmCast,
   stringifyFilmStoryboard
 } from './film/storyboard'
+import {
+  emptyUiComponentLibrary,
+  parseUiComponentLibrary,
+  stringifyUiComponentLibrary
+} from './uiComponentLibrary'
 import { iconPackToNodePatch, normalizeIconPackState } from './iconPack'
 import { IMAGE_ALIGN_SIZE_PRESETS, imageAlignToNodePatch, normalizeImageAlign } from './imageAlign'
 import { imageComposeToNodePatch, normalizeImageCompose } from './imageCompose'
@@ -585,6 +590,15 @@ function unmarshalJsonStringField(key: string, currentVal: unknown): unknown {
     }
     return currentVal
   }
+  if (key === 'uiComponentLibrary') {
+    if (typeof currentVal === 'string' || currentVal === undefined || currentVal === null) {
+      return (
+        parseUiComponentLibrary(typeof currentVal === 'string' ? currentVal : undefined) ??
+        emptyUiComponentLibrary()
+      )
+    }
+    return currentVal
+  }
   if (key === 'gameEconomyDiagramJson') {
     if (typeof currentVal === 'string') {
       const trimmed = currentVal.trim()
@@ -660,6 +674,12 @@ function marshalJsonStringField(key: string, editedVal: unknown): string {
         (isPlainObject(editedVal)
           ? (editedVal as any)
           : { schema: FILM_CAST_SCHEMA, style: '', entries: [] })
+    )
+  }
+  if (key === 'uiComponentLibrary') {
+    const parsed = parseUiComponentLibrary(editedVal)
+    return stringifyUiComponentLibrary(
+      parsed ?? (isPlainObject(editedVal) ? (editedVal as any) : emptyUiComponentLibrary())
     )
   }
   if (key === 'gameEconomyDiagramJson') {
@@ -1304,6 +1324,7 @@ export function mergeSmartNodeParams(
       topKey === 'comicPage' ||
       topKey === 'filmStoryboard' ||
       topKey === 'filmCast' ||
+      topKey === 'uiComponentLibrary' ||
       topKey === 'gameEconomyDiagramJson' ||
       topKey === 'novelCharacterRosterJson' ||
       topKey === 'novelForeshadowingJson' ||

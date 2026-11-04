@@ -53,7 +53,8 @@ function projectValueForPort(
     value.kind === 'semanticTimeline' ||
     value.kind === 'videoPrompts' ||
     value.kind === 'storyboard' ||
-    value.kind === 'filmCast'
+    value.kind === 'filmCast' ||
+    value.kind === 'uiComponents'
   ) {
     return { kind: 'text', text: value.text }
   }

@@ -51,8 +51,15 @@ import {
   buildLayoutSystemPrompt,
   buildLayoutUserPrompt,
   buildZoomUserPrompt,
+  formatComponentCatalogHints,
   formatOcrHints
 } from './prompts'
+import {
+  buildComponentUnionPeelMask,
+  eraseExtraComponentFootprintOnPlate,
+  matchElementToComponentLibrary,
+  type ComponentMatchResult
+} from './componentLibrary'
 import {
   cloneImage,
   compositeOver,
@@ -147,7 +154,14 @@ async function runLayoutPass(input: {
         ocrHints,
         userHint: options.userHint,
         sourceTitle: options.sourceTitle,
-        hasCleanedPreview: images.length > 1
+        hasCleanedPreview: images.length > 1,
+        ...(options.components?.length
+          ? {
+              componentCatalogHints: formatComponentCatalogHints(
+                options.components.map((c) => c.item)
+              )
+            }
+          : {})
       })
   let text = ''
   try {
@@ -881,6 +895,75 @@ export async function runPreciseUiSplit(
   let silhouetteRestoredPx = 0
   let scrubbedPx = 0
   let scrubbedEls = 0
+  const componentMatchById = new Map<string, ComponentMatchResult>()
+  const peeledByReplacement = new Uint8Array(W * H)
+
+  const projectCanvasMaskToBox = (cm: CanvasMask, box: PixelRect): Uint8Array => {
+    const out = new Uint8Array(box.width * box.height)
+    const x0 = Math.max(box.left, cm.rect.left)
+    const y0 = Math.max(box.top, cm.rect.top)
+    const x1 = Math.min(box.left + box.width, cm.rect.left + cm.rect.width)
+    const y1 = Math.min(box.top + box.height, cm.rect.top + cm.rect.height)
+    for (let cy = y0; cy < y1; cy++) {
+      const by = cy - box.top
+      const my = cy - cm.rect.top
+      for (let cx = x0; cx < x1; cx++) {
+        if (cm.mask[my * cm.rect.width + (cx - cm.rect.left)]) {
+          out[by * box.width + (cx - box.left)] = 1
+        }
+      }
+    }
+    return out
+  }
+
+  const stampCanvasFootprint = (box: PixelRect, localMask: Uint8Array): void => {
+    for (let y = 0; y < box.height; y++) {
+      const cy = box.top + y
+      if (cy < 0 || cy >= H) continue
+      for (let x = 0; x < box.width; x++) {
+        if (!localMask[y * box.width + x]) continue
+        const cx = box.left + x
+        if (cx >= 0 && cx < W) peeledByReplacement[cy * W + cx] = 1
+      }
+    }
+  }
+
+  const buildUnobstructedKnownMask = (box: PixelRect, selfPaint: number): Uint8Array => {
+    const known = new Uint8Array(box.width * box.height)
+    known.fill(1)
+    for (let y = 0; y < box.height; y++) {
+      const cy = box.top + y
+      if (cy < 0 || cy >= H) continue
+      for (let x = 0; x < box.width; x++) {
+        const cx = box.left + x
+        if (cx < 0 || cx >= W) continue
+        const own = ownership.owner[cy * W + cx]!
+        if (own >= 0 && (ownership.entries[own]?.paintIndex ?? -1) > selfPaint) {
+          known[y * box.width + x] = 0
+        }
+      }
+    }
+    // Exclude pixels where plain text was locally inpainted so text strokes never penalize matching
+    for (const t of plainTexts) {
+      const lm = textMaskById.get(t.id)
+      if (!lm) continue
+      const erase = lm.eraseMask ?? lm.mask
+      const x0 = Math.max(box.left, lm.rect.left)
+      const y0 = Math.max(box.top, lm.rect.top)
+      const x1 = Math.min(box.left + box.width, lm.rect.left + lm.rect.width)
+      const y1 = Math.min(box.top + box.height, lm.rect.top + lm.rect.height)
+      for (let cy = y0; cy < y1; cy++) {
+        const by = cy - box.top
+        const ly = cy - lm.rect.top
+        for (let cx = x0; cx < x1; cx++) {
+          if (erase[ly * lm.rect.width + (cx - lm.rect.left)]) {
+            known[by * box.width + (cx - box.left)] = 0
+          }
+        }
+      }
+    }
+    return known
+  }
 
   for (let k = maxLevel; k >= 1; k--) {
     throwIfAborted(io.signal)
@@ -1006,6 +1089,34 @@ export async function runPreciseUiSplit(
         el.instanceMask = { rect: cm.rect, mask: cm.mask }
         const tight = maskBoundingBox(cm.rect, cm.mask)
         if (tight) el.box = tight
+
+        // 6.1b 若传入了共享组件库，在剥层前执行抗遮挡匹配并将剥层掩码扩展为 (原掩码 ∪ 母本足迹)
+        if (options.components?.length && !el.plainText) {
+          const detectedMask = projectCanvasMaskToBox(el.instanceMask, el.box)
+          const knownMask = buildUnobstructedKnownMask(el.box, selfPaint)
+          const observedPatch = cropImage(currPlate, el.box)
+          const matched = matchElementToComponentLibrary({
+            elementKind: el.kind,
+            box: el.box,
+            observedPatch,
+            detectedMask,
+            knownMask,
+            hintedComponentId: el.matchedComponentId,
+            candidates: options.components
+          })
+          if (matched) {
+            componentMatchById.set(el.id, matched)
+            const { unionMask } = buildComponentUnionPeelMask(
+              el.box,
+              detectedMask,
+              matched.rendered,
+              currPlate,
+              knownMask
+            )
+            stampCanvasFootprint(el.box, unionMask)
+            el.instanceMask = { rect: { ...el.box }, mask: unionMask }
+          }
+        }
       }
     }
 
@@ -1052,6 +1163,35 @@ export async function runPreciseUiSplit(
         cm = sil.mask
         silhouetteRestoredPx += sil.added
       }
+      if (options.components?.length && !el.plainText && !componentMatchById.has(el.id)) {
+        const tightBox = maskBoundingBox(cm.rect, cm.mask) ?? cm.rect
+        el.box = tightBox
+        const detectedMask = projectCanvasMaskToBox(cm, tightBox)
+        const knownMask = buildUnobstructedKnownMask(tightBox, el.paintIndex ?? 0)
+        const observedPatch = cropImage(currPlate, tightBox)
+        const matched = matchElementToComponentLibrary({
+          elementKind: el.kind,
+          box: tightBox,
+          observedPatch,
+          detectedMask,
+          knownMask,
+          hintedComponentId: el.matchedComponentId,
+          candidates: options.components
+        })
+        if (matched) {
+          componentMatchById.set(el.id, matched)
+          const { unionMask, extraMask, extraPixelCount } = buildComponentUnionPeelMask(
+            tightBox,
+            detectedMask,
+            matched.rendered,
+            currPlate,
+            knownMask
+          )
+          stampCanvasFootprint(tightBox, unionMask)
+          eraseExtraComponentFootprintOnPlate(plates[k]!, tightBox, extraMask, extraPixelCount)
+          cm = { rect: { ...tightBox }, mask: unionMask }
+        }
+      }
       maskById.set(el.id, cm)
     }
     ownership = rebuildProgressiveOwnership()
@@ -1081,7 +1221,13 @@ export async function runPreciseUiSplit(
   }
 
   const allCompletionTargets: CompletionTarget[] = ordered
-    .filter((el) => !el.plainText && entryIdx.has(el.id) && maskById.has(el.id))
+    .filter(
+      (el) =>
+        !el.plainText &&
+        !componentMatchById.has(el.id) &&
+        entryIdx.has(el.id) &&
+        maskById.has(el.id)
+    )
     .map((el) => ({
       id: el.id,
       kind: el.kind,
@@ -1106,7 +1252,13 @@ export async function runPreciseUiSplit(
         locale: options.locale,
         maxCalls,
         targets: ordered
-          .filter((el) => !el.plainText && entryIdx.has(el.id) && maskById.has(el.id))
+          .filter(
+            (el) =>
+              !el.plainText &&
+              !componentMatchById.has(el.id) &&
+              entryIdx.has(el.id) &&
+              maskById.has(el.id)
+          )
           .map((el) => ({
             id: el.id,
             name: el.name,
@@ -1169,6 +1321,7 @@ export async function runPreciseUiSplit(
     }
   }
   const matteById = new Map<string, { rect: PixelRect; rgba: Uint8ClampedArray }>()
+  const originalRgbaById = new Map<string, Uint8ClampedArray>()
   let ownedCount = 0
   let fallbackCount = 0
   for (const el of [...ordered].reverse()) {
@@ -1205,17 +1358,47 @@ export async function runPreciseUiSplit(
         })
         if (matte) fallbackCount++
       }
+      const compMatch = componentMatchById.get(el.id)
+      if (compMatch) {
+        const targetRect = {
+          left: el.box.left,
+          top: el.box.top,
+          width: compMatch.rendered.width,
+          height: compMatch.rendered.height
+        }
+        if (matte) {
+          if (matte.rect.width === targetRect.width && matte.rect.height === targetRect.height) {
+            originalRgbaById.set(el.id, new Uint8ClampedArray(matte.rgba))
+          } else {
+            const resizedOrig = resizeBilinear(
+              { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
+              targetRect.width,
+              targetRect.height
+            )
+            originalRgbaById.set(el.id, resizedOrig.data)
+          }
+        }
+        matte = {
+          rect: targetRect,
+          rgba: new Uint8ClampedArray(compMatch.rendered.data)
+        }
+      }
     }
     if (!matte) continue
     matteById.set(el.id, matte)
     stampAlpha(matte.rect, matte.rgba)
   }
+  if (componentMatchById.size > 0) {
+    log(
+      `component library matched: ${componentMatchById.size} element(s) replaced by clean masters`
+    )
+  }
   log(`compose: ${ownedCount} owned (pixel-locked), ${fallbackCount} diff-matte fallback`)
 
-  // 7.6 底板可见像素锁定：没有任何图层覆盖的像素一律取原图（消除补底羽化带的涂抹痕迹）
+  // 7.6 底板可见像素锁定：没有任何图层覆盖（且非组件替换已剥离区域）的像素一律取原图
   let baseLocked = 0
   for (let g = 0; g < W * H; g++) {
-    if (aboveAlpha[g]! > 0) continue
+    if (aboveAlpha[g]! > 0 || peeledByReplacement[g]) continue
     const i = g * 4
     if (
       base.data[i] !== source.data[i] ||
@@ -1260,6 +1443,14 @@ export async function runPreciseUiSplit(
     if (role) layer.uiPartRole = role
     const prefabKey = prefabKeyById.get(el.id)
     if (prefabKey) layer.prefabKey = prefabKey
+    const compMatch = componentMatchById.get(el.id)
+    if (compMatch) {
+      layer.componentId = compMatch.candidate.item.id
+      layer.componentMatchScore = compMatch.score
+      layer.prefabKey = compMatch.candidate.item.id
+      const origRgba = originalRgbaById.get(el.id)
+      if (origRgba) layer.originalRgba = origRgba
+    }
     if (el.plainText && el.text) {
       const lm = textMaskById.get(el.id)
       layer.editableText = estimateEditableTextMeta({
@@ -1343,6 +1534,15 @@ export async function runPreciseUiSplit(
     qa,
     completion,
     ...(generativeCompletion ? { generativeCompletion } : {}),
+    ...(componentMatchById.size > 0
+      ? {
+          componentMatches: [...componentMatchById.entries()].map(([elementId, m]) => ({
+            elementId,
+            componentId: m.candidate.item.id,
+            score: m.score
+          }))
+        }
+      : {}),
     notes
   }
 }

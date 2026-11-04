@@ -48,6 +48,15 @@ describe('editorDive keys', () => {
     expect(comic).toContain('asset:x')
     expect(comic).toContain('comic-1')
 
+    const uiCompLib = editorDiveViewFrameKey('canvas-editor-c', {
+      viewId: 'ui.componentLib',
+      hostId: 'asset:x',
+      nodeId: 'comp-1'
+    })
+    expect(uiCompLib).toContain('ui.componentLib')
+    expect(uiCompLib).toContain('asset:x')
+    expect(uiCompLib).toContain('comp-1')
+
     const anim2d = editorDiveViewFrameKey('canvas-editor-c', {
       viewId: 'anim.2d',
       hostId: 'asset:x',

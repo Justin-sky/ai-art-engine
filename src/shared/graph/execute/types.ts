@@ -328,11 +328,19 @@ export interface GraphFilmCastValue {
   text: string
 }
 
+/** UI 共享组件库值（ui.componentLib 出口；image.layerSplit 的 in-components 入口） */
+export interface GraphUiComponentsValue {
+  kind: 'uiComponents'
+  doc: import('../uiComponentLibrary').UiComponentLibrary
+  text: string
+}
+
 export type GraphValue =
   | GraphSemanticTimelineValue
   | GraphVideoPromptsValue
   | GraphFilmStoryboardValue
   | GraphFilmCastValue
+  | GraphUiComponentsValue
   | GraphAssetValue
   | GraphTextValue
   | GraphTextsValue

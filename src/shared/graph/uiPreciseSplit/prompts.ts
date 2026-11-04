@@ -107,6 +107,26 @@ Rules:
 9. 重复元素（如 4 个奖励格）必须逐个列出，每个都带自己的图标、数量文字子元素。最多 90 个元素。`
 }
 
+export function formatComponentCatalogHints(
+  components: ReadonlyArray<{
+    id: string
+    name: string
+    kind: string
+    canonicalWidth: number
+    canonicalHeight: number
+    scalePolicy: string
+  }>,
+  limit = 48
+): string {
+  return components
+    .slice(0, limit)
+    .map(
+      (c) =>
+        `- id=${JSON.stringify(c.id)} kind=${c.kind} size=${c.canonicalWidth}x${c.canonicalHeight} scale=${c.scalePolicy} name=${JSON.stringify(c.name)}`
+    )
+    .join('\n')
+}
+
 export function buildLayoutUserPrompt(input: {
   locale?: string
   width: number
@@ -115,6 +135,7 @@ export function buildLayoutUserPrompt(input: {
   userHint?: string
   sourceTitle?: string
   hasCleanedPreview?: boolean
+  componentCatalogHints?: string
 }): string {
   const en = isEnglish(input.locale)
   const context = [input.sourceTitle?.trim(), input.userHint?.trim()].filter(Boolean).join(' | ')
@@ -127,6 +148,9 @@ export function buildLayoutUserPrompt(input: {
       input.ocrHints
         ? `Local OCR found these text boxes (pixel-accurate positions, text may contain misreads):\n${input.ocrHints}`
         : 'Local OCR found no text; read all text yourself.',
+      input.componentCatalogHints
+        ? `Shared UI component library available (if an element visually matches one of these clean master components, set optional "component_id" on that element while still splitting any overlaid text or icons into separate child elements):\n${input.componentCatalogHints}`
+        : '',
       context ? `Context from the user: ${context}` : '',
       'Output the JSON object now.'
     ]
@@ -141,6 +165,9 @@ export function buildLayoutUserPrompt(input: {
     input.ocrHints
       ? `本地 OCR 识别到以下文字框（位置像素级准确，文字可能有误识）：\n${input.ocrHints}`
       : '本地 OCR 未识别到文字，请自行读取画面中的所有文字。',
+    input.componentCatalogHints
+      ? `已挂载共享 UI 组件库（若画面中的按钮、道具槽、页签、角标、底框等与下列母本同款，请在该元素上填写可选字段 "component_id"，同时仍须将其上方的文字或物品图标拆为独立子元素）：\n${input.componentCatalogHints}`
+      : '',
     context ? `用户补充说明：${context}` : '',
     '现在输出 JSON 对象。'
   ]

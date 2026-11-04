@@ -32,6 +32,7 @@ export interface RawLayoutElement {
   order: number
   ocrRefs: number[]
   text?: string
+  matchedComponentId?: string
 }
 
 export interface ParsedLayout {
@@ -322,6 +323,12 @@ export function parseLayoutResponse(
       height
     )
     const repairMode = readElementRepairMode(rec.element_repair_mode ?? rec.repairMode)
+    const rawCompId =
+      rec.component_id ?? rec.componentId ?? rec.matched_component_id ?? rec.matchedComponentId
+    const matchedComponentId =
+      typeof rawCompId === 'string' && rawCompId.trim() && rawCompId.trim().toLowerCase() !== 'null'
+        ? rawCompId.trim()
+        : undefined
     const effectiveParentRef = parentRef === id ? null : parentRef
     if (
       !effectiveParentRef &&
@@ -354,7 +361,8 @@ export function parseLayoutResponse(
       parentRef: effectiveParentRef,
       order: Number.isFinite(orderNum) ? orderNum : index,
       ocrRefs: readOcrRefs(rec.ocr ?? rec.ocrIds ?? rec.ocr_ids),
-      ...(text ? { text } : {})
+      ...(text ? { text } : {}),
+      ...(matchedComponentId ? { matchedComponentId } : {})
     })
   }
   return {
@@ -520,6 +528,7 @@ export function buildLayoutTree(input: {
       ...(raw.positivePoints?.length ? { positivePoints: raw.positivePoints } : {}),
       ...(raw.negativePoints?.length ? { negativePoints: raw.negativePoints } : {}),
       ...(raw.repairMode ? { repairMode: raw.repairMode } : {}),
+      ...(raw.matchedComponentId ? { matchedComponentId: raw.matchedComponentId } : {}),
       parentId: raw.parentRef,
       order: raw.order
     }

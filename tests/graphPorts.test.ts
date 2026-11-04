@@ -33,7 +33,8 @@ describe('GraphPortType', () => {
       // 视频生成提示词计划（语义编译 → 语义重建）
       GraphPortType.videoPrompts,
       GraphPortType.storyboard,
-      GraphPortType.filmCast
+      GraphPortType.filmCast,
+      GraphPortType.uiComponents
     ])
     expect(isGraphPortDataType('image')).toBe(true)
     expect(isGraphPortDataType('images')).toBe(true)

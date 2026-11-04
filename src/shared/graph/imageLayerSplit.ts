@@ -6,6 +6,7 @@
 
 import { normalizeExpandResolution } from './imageExpand'
 import type { GraphImageItem } from './execute/types'
+import { normalizeUiSharedComponentItem, type UiSharedComponentItem } from './uiComponentLibrary'
 import {
   decomposeControlIntoStandardParts,
   getUiControlSpec,
@@ -125,6 +126,16 @@ export interface ImageLayerSplitLayer {
   exportName?: string
   /** 同一预制体（重复控件）共享的分组键：导出切图时同组只保留一份素材，多个实例引用它 */
   prefabKey?: string
+  /** 绑定的共享组件库母本 ID（来自 ui.componentLib 或跨界面组件库） */
+  componentId?: string
+  /** 组件库匹配得分（0~1） */
+  componentMatchScore?: number
+  /** 为 true 时禁用共享组件母本替换，回退使用原图抠图（originalImageId） */
+  keepOriginalPixels?: boolean
+  /** 组件替换前保留的原图提取图层 imageId（供编辑器一键切换回原图抠图） */
+  originalImageId?: string
+  /** 组件替换渲染后的图层 imageId（供编辑器切换回组件库母本） */
+  componentImageId?: string
   /** 精准拆层质检发现的问题（edge_halo / base_residue / occluded_blurry 等），供编辑器标红 */
   qaIssues?: string[]
 }
@@ -149,6 +160,8 @@ export interface ImageLayerSplitState {
   canvasHeight: number
   layers: ImageLayerSplitLayer[]
   groups: ImageLayerSplitGroup[]
+  /** 随拆层结果嵌入的共享组件库母本列表（供 PSD 智能对象导出、引擎切图去重与编辑器切换） */
+  componentLibrary?: UiSharedComponentItem[]
   /** 源图 + prompt + 分辨率指纹；变化时重新调用拆层 API */
   sourceFingerprint: string
 }
@@ -300,6 +313,8 @@ export function layerSplitFingerprint(
     providerInstanceId?: string
     /** 精准拆层的多模态模型覆盖（仅设置时计入指纹，兼容旧指纹） */
     visionModelKey?: string
+    /** 上游共享组件库指纹（仅接入组件库时计入，兼容旧指纹） */
+    componentLibraryKey?: string
   }
 ): string {
   const src = sourceUrl.trim()
@@ -310,9 +325,14 @@ export function layerSplitFingerprint(
   const mode = normalizeLayerSplitMode(extra.splitMode)
   const modelKey = `${extra.providerInstanceId?.trim() ?? ''}:${extra.model?.trim() ?? ''}`
   const visionKey = extra.visionModelKey?.trim() || ''
-  const withVision = (fp: string): string => (visionKey ? `${fp}|v:${visionKey}` : fp)
-  if (mode === 'auto' && modelKey === ':') return withVision(base)
-  return withVision(`${base}|${mode}|${modelKey}`)
+  const compKey = extra.componentLibraryKey?.trim() || ''
+  const withExtras = (fp: string): string => {
+    let out = visionKey ? `${fp}|v:${visionKey}` : fp
+    if (compKey) out = `${out}|c:${compKey}`
+    return out
+  }
+  if (mode === 'auto' && modelKey === ':') return withExtras(base)
+  return withExtras(`${base}|${mode}|${modelKey}`)
 }
 
 function normalizeLayerRole(
@@ -378,6 +398,21 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
       : ''
   const prefabKey =
     typeof row.prefabKey === 'string' && row.prefabKey.trim() ? row.prefabKey.trim() : ''
+  const componentId =
+    typeof row.componentId === 'string' && row.componentId.trim() ? row.componentId.trim() : ''
+  const componentMatchScore =
+    typeof row.componentMatchScore === 'number' && Number.isFinite(row.componentMatchScore)
+      ? Math.max(0, Math.min(1, Number(row.componentMatchScore.toFixed(4))))
+      : undefined
+  const keepOriginalPixels = row.keepOriginalPixels === true
+  const originalImageId =
+    typeof row.originalImageId === 'string' && row.originalImageId.trim()
+      ? row.originalImageId.trim()
+      : ''
+  const componentImageId =
+    typeof row.componentImageId === 'string' && row.componentImageId.trim()
+      ? row.componentImageId.trim()
+      : ''
   const qaIssues = Array.isArray(row.qaIssues)
     ? row.qaIssues.filter((s): s is string => typeof s === 'string' && !!s.trim()).slice(0, 8)
     : []
@@ -404,6 +439,11 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
     ...(editableText ? { editableText } : {}),
     ...(exportName ? { exportName } : {}),
     ...(prefabKey ? { prefabKey } : {}),
+    ...(componentId ? { componentId } : {}),
+    ...(componentMatchScore !== undefined ? { componentMatchScore } : {}),
+    ...(keepOriginalPixels ? { keepOriginalPixels: true } : {}),
+    ...(originalImageId ? { originalImageId } : {}),
+    ...(componentImageId ? { componentImageId } : {}),
     ...(qaIssues.length ? { qaIssues } : {})
   }
 }
@@ -464,6 +504,16 @@ export function normalizeImageLayerSplit(
     layersWithGroups.some((l) => l.id === base.selectedId.trim())
       ? base.selectedId.trim()
       : ''
+  const componentLibrary: UiSharedComponentItem[] = []
+  const seenComp = new Set<string>()
+  if (Array.isArray(base.componentLibrary)) {
+    for (const [idx, rawComp] of base.componentLibrary.entries()) {
+      const comp = normalizeUiSharedComponentItem(rawComp, idx)
+      if (!comp || seenComp.has(comp.id)) continue
+      seenComp.add(comp.id)
+      componentLibrary.push(comp)
+    }
+  }
   return {
     prompt: typeof base.prompt === 'string' ? base.prompt : '',
     resolution: normalizeLayerSplitResolution(base.resolution),
@@ -473,8 +523,44 @@ export function normalizeImageLayerSplit(
     canvasHeight: clampInt(base.canvasHeight, 0, 0),
     layers: layersWithGroups,
     groups,
+    ...(componentLibrary.length ? { componentLibrary } : {}),
     sourceFingerprint: typeof base.sourceFingerprint === 'string' ? base.sourceFingerprint : ''
   }
+}
+
+/**
+ * Toggles a component-bound layer between using the shared component master (`keepOriginalPixels=false`)
+ * and reverting to its original extracted cutout (`keepOriginalPixels=true`), preserving both imageIds.
+ */
+export function toggleLayerComponentReplacement(
+  inputState: ImageLayerSplitState,
+  layerId: string,
+  keepOriginalPixels: boolean
+): ImageLayerSplitState {
+  const state = normalizeImageLayerSplit(inputState)
+  const layers = state.layers.map((layer) => {
+    if (layer.id !== layerId || !layer.componentId) return layer
+    const compImgId = layer.componentImageId || (!layer.keepOriginalPixels ? layer.imageId : '')
+    const origImgId = layer.originalImageId || (layer.keepOriginalPixels ? layer.imageId : '')
+    if (keepOriginalPixels) {
+      return {
+        ...layer,
+        keepOriginalPixels: true,
+        ...(origImgId ? { imageId: origImgId } : {}),
+        ...(compImgId ? { componentImageId: compImgId } : {}),
+        ...(origImgId ? { originalImageId: origImgId } : {})
+      }
+    }
+    return {
+      ...layer,
+      keepOriginalPixels: undefined,
+      ...(compImgId ? { imageId: compImgId } : {}),
+      ...(compImgId ? { componentImageId: compImgId } : {}),
+      ...(origImgId ? { originalImageId: origImgId } : {}),
+      prefabKey: layer.prefabKey || layer.componentId
+    }
+  })
+  return normalizeImageLayerSplit({ ...state, layers })
 }
 
 export function readImageLayerSplitFromNode(params: {
@@ -1422,6 +1508,8 @@ export interface UiLayerManifestItem {
   exportName?: string
   /** 同一预制体分组键（重复控件共享同一份素材） */
   prefabKey?: string
+  /** 绑定的共享组件库母本 ID */
+  componentId?: string
   /** 精准拆层质检问题 */
   qaIssues?: string[]
   zIndex: number
@@ -1465,6 +1553,17 @@ export interface UiLayerLayoutManifest {
     parentGroupId?: string
     visible: boolean
   }[]
+  componentLibrary?: Array<{
+    id: string
+    psdGuid: string
+    name: string
+    exportName: string
+    kind: string
+    canonicalWidth: number
+    canonicalHeight: number
+    scalePolicy: string
+    nineSliceBorders?: [number, number, number, number]
+  }>
   layers: UiLayerManifestItem[]
 }
 
@@ -1653,8 +1752,26 @@ export function buildLayerSplitUiManifest(inputState: ImageLayerSplitState): UiL
       ...(group.parentGroupId ? { parentGroupId: group.parentGroupId } : {}),
       visible: group.visible
     })),
+    ...(state.componentLibrary?.length
+      ? {
+          componentLibrary: state.componentLibrary.map((comp) => ({
+            id: comp.id,
+            psdGuid: comp.psdGuid,
+            name: comp.name,
+            exportName: comp.exportName,
+            kind: comp.kind,
+            canonicalWidth: comp.canonicalWidth,
+            canonicalHeight: comp.canonicalHeight,
+            scalePolicy: comp.scalePolicy,
+            ...(comp.nineSliceBorders ? { nineSliceBorders: comp.nineSliceBorders } : {})
+          }))
+        }
+      : {}),
     layers: ordered.map((layer) => {
       const ctrlSpec = layer.uiControlType ? getUiControlSpec(layer.uiControlType) : undefined
+      const activeCompId =
+        layer.componentId && !layer.keepOriginalPixels ? layer.componentId : undefined
+      const activePrefabKey = activeCompId || (!layer.keepOriginalPixels ? layer.prefabKey : '')
       return {
         id: layer.id,
         name: layer.name,
@@ -1668,7 +1785,8 @@ export function buildLayerSplitUiManifest(inputState: ImageLayerSplitState): UiL
           : {}),
         ...(layer.editableText ? { editableText: layer.editableText } : {}),
         ...(layer.exportName ? { exportName: layer.exportName } : {}),
-        ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {}),
+        ...(activePrefabKey ? { prefabKey: activePrefabKey } : {}),
+        ...(activeCompId ? { componentId: activeCompId } : {}),
         ...(layer.qaIssues?.length ? { qaIssues: [...layer.qaIssues] } : {}),
         zIndex: layer.zIndex,
         visible: isLayerSplitLayerDrawable(state, layer),

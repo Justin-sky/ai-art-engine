@@ -58,13 +58,50 @@ function sanitizeNodeIdentifier(raw: string, fallback: string): string {
   return cleaned || fallback
 }
 
+function resolveSharedLayerFilePath(
+  state: ImageLayerSplitState,
+  layer: ImageLayerSplitLayer,
+  layerFileNames: Record<string, string> | undefined,
+  sharedPathByKey: Map<string, string>
+): string {
+  const activeCompId =
+    !layer.keepOriginalPixels && layer.componentId ? layer.componentId.trim() : ''
+  const activePrefabKey = !layer.keepOriginalPixels && layer.prefabKey ? layer.prefabKey.trim() : ''
+  const shareKey = activeCompId
+    ? `comp:${activeCompId}`
+    : activePrefabKey
+      ? `prefab:${activePrefabKey}`
+      : ''
+
+  if (shareKey && sharedPathByKey.has(shareKey)) {
+    return sharedPathByKey.get(shareKey)!
+  }
+  const explicit = layerFileNames?.[layer.id]?.trim()
+  if (explicit) {
+    if (shareKey) sharedPathByKey.set(shareKey, explicit)
+    return explicit
+  }
+  if (activeCompId) {
+    const comp = state.componentLibrary?.find((c) => c.id === activeCompId)
+    const compFile = `components/${comp?.exportName || sanitizeNodeIdentifier(activeCompId, 'Comp')}.png`
+    sharedPathByKey.set(shareKey, compFile)
+    return compFile
+  }
+  if (activePrefabKey) {
+    const prefabFile = `layers/${sanitizeNodeIdentifier(layer.exportName || activePrefabKey, `prefab_${layer.zIndex}`)}.png`
+    sharedPathByKey.set(shareKey, prefabFile)
+    return prefabFile
+  }
+  return `layers/layer_${layer.zIndex}.png`
+}
+
 /**
  * 生成 Godot 4 `.tscn` 界面场景文件（支持 TextureRect、NinePatchRect 九宫格面板与带 Normal/Pressed/Hover 三态绑定的 TextureButton）。
  */
 export function buildGodotSceneTscn(input: {
   state: ImageLayerSplitState
   /** layer.id → 导出切片相对文件名（如 `layers/01_button.png`） */
-  layerFileNames: Record<string, string>
+  layerFileNames?: Record<string, string>
   sceneName?: string
 }): string {
   const { state, layerFileNames } = input
@@ -74,10 +111,19 @@ export function buildGodotSceneTscn(input: {
 
   const extResources: string[] = []
   const resIdByLayerId = new Map<string, string>()
-  allLayers.forEach((layer, idx) => {
-    const resId = `tex_${idx + 1}`
-    const relFile = layerFileNames[layer.id] || `layers/layer_${layer.zIndex}.png`
-    extResources.push(`[ext_resource type="Texture2D" path="res://${relFile}" id="${resId}"]`)
+  const resIdByRelFile = new Map<string, string>()
+  const sharedPathByKey = new Map<string, string>()
+  let resCounter = 0
+
+  allLayers.forEach((layer) => {
+    const relFile = resolveSharedLayerFilePath(state, layer, layerFileNames, sharedPathByKey)
+    let resId = resIdByRelFile.get(relFile)
+    if (!resId) {
+      resCounter += 1
+      resId = `tex_${resCounter}`
+      resIdByRelFile.set(relFile, resId)
+      extResources.push(`[ext_resource type="Texture2D" path="res://${relFile}" id="${resId}"]`)
+    }
     resIdByLayerId.set(layer.id, resId)
   })
 
@@ -308,7 +354,7 @@ export function buildUnityUiToolkitUxml(input: {
  */
 export function buildUnityUiToolkitUss(input: {
   state: ImageLayerSplitState
-  layerFileNames: Record<string, string>
+  layerFileNames?: Record<string, string>
 }): string {
   const { state, layerFileNames } = input
   const cw = Math.max(1, Math.round(state.canvasWidth || 1280))
@@ -330,9 +376,10 @@ export function buildUnityUiToolkitUss(input: {
     `}`
   ]
 
+  const sharedPathByKey = new Map<string, string>()
   for (const layer of allLayers) {
     const cls = `layer-${sanitizeNodeIdentifier(layer.id, isLayerSplitBase(layer) ? 'base' : `z${layer.zIndex}`)}`
-    const relFile = layerFileNames[layer.id] || `layers/layer_${layer.zIndex}.png`
+    const relFile = resolveSharedLayerFilePath(state, layer, layerFileNames, sharedPathByKey)
     const isBase = isLayerSplitBase(layer)
     const left = isBase ? 0 : Math.round(layer.left)
     const top = isBase ? 0 : Math.round(layer.top)
@@ -369,12 +416,12 @@ export function buildUnityUiToolkitUss(input: {
       const pressedSibling = siblings.find((s) => s.uiPartRole === 'button-bg-pressed')
       if (hoverSibling) {
         const hoverFile =
-          layerFileNames[hoverSibling.id] || `layers/layer_${hoverSibling.zIndex}.png`
+          layerFileNames?.[hoverSibling.id] || `layers/layer_${hoverSibling.zIndex}.png`
         rules.push([`.${cls}:hover {`, `  background-image: url("${hoverFile}");`, `}`].join('\n'))
       }
       if (pressedSibling) {
         const pressedFile =
-          layerFileNames[pressedSibling.id] || `layers/layer_${pressedSibling.zIndex}.png`
+          layerFileNames?.[pressedSibling.id] || `layers/layer_${pressedSibling.zIndex}.png`
         rules.push(
           [
             `.${cls}:active {`,

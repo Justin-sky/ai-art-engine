@@ -24,6 +24,7 @@ import SelectNodeInspector from '../components/SelectNodeInspector.vue'
 import GridSplitInspector from '../components/GridSplitInspector.vue'
 import IconPackInspector from '../components/IconPackInspector.vue'
 import LayerSplitInspector from '../components/LayerSplitInspector.vue'
+import UiComponentLibInspector from '../components/UiComponentLibInspector.vue'
 import UiGenInspector from '../components/UiGenInspector.vue'
 import PromptOptimizeInspector from '../components/PromptOptimizeInspector.vue'
 import DecisionsJudgeInspector from '../components/DecisionsJudgeInspector.vue'
@@ -218,6 +219,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     id: 'studio.graph.uiGen',
     component: UiGenInspector,
     nodeTypeId: 'ui.gen'
+  },
+  {
+    id: 'studio.graph.uiComponentLib',
+    component: UiComponentLibInspector,
+    nodeTypeId: 'ui.componentLib'
   },
   {
     id: 'studio.graph.anim2d',

@@ -610,6 +610,50 @@
                 >🔗 ×{{ prefabSiblingCount(selectedLayer) }}</span
               >
             </div>
+            <div v-if="draft.componentLibrary?.length" class="side-component-lib">
+              <div class="nine-slice-head">
+                <span class="nine-slice-title">
+                  {{ t('graph.layerSplit.componentSectionTitle') }}
+                </span>
+                <span
+                  v-if="selectedLayer.componentId && selectedLayer.componentMatchScore != null"
+                  class="prefab-chip"
+                  :title="
+                    t('graph.layerSplit.componentMatchScoreTip', {
+                      score: Math.round(selectedLayer.componentMatchScore * 100)
+                    })
+                  "
+                >
+                  {{ Math.round(selectedLayer.componentMatchScore * 100) }}%
+                </span>
+              </div>
+              <div class="component-bind-row">
+                <select
+                  class="select comp-bind-select"
+                  :value="selectedLayer.componentId ?? ''"
+                  @change="onBindSelectedLayerComponent"
+                >
+                  <option value="">{{ t('graph.layerSplit.componentBindNone') }}</option>
+                  <option v-for="comp in draft.componentLibrary" :key="comp.id" :value="comp.id">
+                    {{ comp.name }} ({{ comp.canonicalWidth }}×{{ comp.canonicalHeight }})
+                  </option>
+                </select>
+                <button
+                  v-if="selectedLayer.componentId && selectedLayer.originalImageId"
+                  type="button"
+                  class="mini-pill"
+                  :class="{ active: !selectedLayer.keepOriginalPixels }"
+                  :title="t('graph.layerSplit.componentToggleTip')"
+                  @click="onToggleSelectedLayerComponent"
+                >
+                  {{
+                    selectedLayer.keepOriginalPixels
+                      ? t('graph.layerSplit.componentToggleRaw')
+                      : t('graph.layerSplit.componentToggleMaster')
+                  }}
+                </button>
+              </div>
+            </div>
             <div v-if="selectedLayer.qaIssues?.length" class="side-qa">
               <div class="nine-slice-head">
                 <span class="nine-slice-title qa-title">
@@ -931,6 +975,12 @@
                   >
                 </span>
                 <span
+                  v-if="row.layer.componentId && !row.layer.keepOriginalPixels"
+                  class="row-badge prefab"
+                  :title="row.layer.componentId"
+                  >🧩</span
+                >
+                <span
                   v-if="row.layer.prefabKey"
                   class="row-badge prefab"
                   :title="row.layer.prefabKey"
@@ -1046,6 +1096,7 @@ import {
   reorderLayerSplit,
   resetLayerSplitRect,
   sortLayersForCompose,
+  toggleLayerComponentReplacement,
   toggleLayerSplitGroupCollapsed,
   toggleLayerSplitGroupVisible,
   type GraphImageItem,
@@ -1606,6 +1657,80 @@ function onRenameSelectedLayer(event: Event): void {
   Object.assign(draft, renameLayerSplitItem(draft, layer.id, nextName))
 }
 
+watch(
+  () => draft.componentLibrary,
+  async (comps) => {
+    for (const comp of comps ?? []) {
+      const key = comp.imageId?.trim() || comp.id
+      if (localLayerUrls[key] || props.layerUrls[key]) continue
+      if (comp.imageUrl?.trim()) {
+        localLayerUrls[key] = comp.imageUrl.trim()
+        localLayerUrls[comp.id] = comp.imageUrl.trim()
+        continue
+      }
+      if (comp.imageRelativePath?.trim()) {
+        const fileUrl = await window.studio
+          ?.getAssetFileUrl?.(comp.imageRelativePath.trim())
+          .catch(() => '')
+        if (fileUrl) {
+          localLayerUrls[key] = fileUrl
+          localLayerUrls[comp.id] = fileUrl
+        }
+      }
+    }
+  },
+  { immediate: true, deep: true }
+)
+
+function onToggleSelectedLayerComponent(): void {
+  const layer = selectedLayer.value
+  if (!layer || !layer.componentId) return
+  pushDraftHistory()
+  Object.assign(draft, toggleLayerComponentReplacement(draft, layer.id, !layer.keepOriginalPixels))
+}
+
+function onBindSelectedLayerComponent(event: Event): void {
+  const layer = selectedLayer.value
+  if (!layer || isBase(layer)) return
+  const nextCompId = (event.target as HTMLSelectElement).value.trim()
+  pushDraftHistory()
+  if (!nextCompId) {
+    const rawImgId = layer.originalImageId || layer.imageId
+    draft.layers = draft.layers.map((item) =>
+      item.id === layer.id
+        ? {
+            ...item,
+            imageId: rawImgId,
+            componentId: undefined,
+            componentImageId: undefined,
+            keepOriginalPixels: undefined,
+            componentMatchScore: undefined
+          }
+        : item
+    )
+    return
+  }
+  const comp = draft.componentLibrary?.find((c) => c.id === nextCompId)
+  if (!comp) return
+  const compImgId = comp.imageId?.trim() || comp.id
+  const origImgId = layer.originalImageId || layer.imageId
+  draft.layers = draft.layers.map((item) =>
+    item.id === layer.id
+      ? {
+          ...item,
+          imageId: compImgId,
+          originalImageId: origImgId,
+          componentId: comp.id,
+          componentImageId: compImgId,
+          keepOriginalPixels: false,
+          ...(comp.scalePolicy === 'nine-slice' && comp.nineSliceBorders
+            ? { nineSliceBorders: [...comp.nineSliceBorders] as [number, number, number, number] }
+            : {})
+        }
+      : item
+  )
+}
+
 function encodeManifestBytes(): Uint8Array {
   const manifest = buildLayerSplitUiManifest(draft)
   return new TextEncoder().encode(JSON.stringify(manifest, null, 2))
@@ -1618,30 +1743,52 @@ async function exportLayerFiles(
   const counts = new Map<string, number>()
   const files: Array<{ fileName: string; data: Uint8Array }> = []
   const layerFileMap: Record<string, string> = {}
-  // 同一预制体（重复控件）只导出一份切图，其余实例在清单 / UXML / tscn 中引用同一文件
+  // 同一共享组件母版 / 同一预制体（重复控件）只导出一份切图，其余实例在清单 / UXML / tscn 中引用同一文件
+  const componentFileMap = new Map<string, string>()
+  const componentById = new Map((draft.componentLibrary ?? []).map((c) => [c.id, c]))
   const prefabFileMap = new Map<string, string>()
   for (const layer of layers) {
-    const src = layerUrl(layer)
+    const activeComp =
+      !isBase(layer) && !layer.keepOriginalPixels && layer.componentId
+        ? componentById.get(layer.componentId)
+        : undefined
+    if (activeComp && componentFileMap.has(activeComp.id)) {
+      layerFileMap[layer.id] = componentFileMap.get(activeComp.id)!
+      continue
+    }
+    const compMasterUrl = activeComp
+      ? localLayerUrls[activeComp.imageId || activeComp.id] ||
+        props.layerUrls[activeComp.imageId || activeComp.id] ||
+        activeComp.imageUrl ||
+        ''
+      : ''
+    const src = compMasterUrl || layerUrl(layer)
     if (!src) continue
-    if (layer.prefabKey && prefabFileMap.has(layer.prefabKey)) {
+    if (!activeComp && layer.prefabKey && prefabFileMap.has(layer.prefabKey)) {
       layerFileMap[layer.id] = prefabFileMap.get(layer.prefabKey)!
       continue
     }
     const { data, ext } = await resolveLayerBytes(src)
-    let dirPrefix = ''
-    let dirKey = ''
-    if (options?.nestGroups) {
-      const segs = layerSplitExportFolderSegments(draft, layer.groupId, options.rootGroupId).map(
-        (name) => sanitizeFileBase(name)
-      )
-      dirKey = segs.join('/')
-      dirPrefix = segs.length ? `${segs.join('/')}/` : ''
+    let fileName = ''
+    if (activeComp) {
+      fileName = `components/${sanitizeFileBase(activeComp.exportName || activeComp.id)}.${ext}`
+      componentFileMap.set(activeComp.id, fileName)
+    } else {
+      let dirPrefix = ''
+      let dirKey = ''
+      if (options?.nestGroups) {
+        const segs = layerSplitExportFolderSegments(draft, layer.groupId, options.rootGroupId).map(
+          (name) => sanitizeFileBase(name)
+        )
+        dirKey = segs.join('/')
+        dirPrefix = segs.length ? `${segs.join('/')}/` : ''
+      }
+      const n = (counts.get(dirKey) ?? 0) + 1
+      counts.set(dirKey, n)
+      fileName = `${dirPrefix}${String(n).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`
+      if (layer.prefabKey) prefabFileMap.set(layer.prefabKey, fileName)
     }
-    const n = (counts.get(dirKey) ?? 0) + 1
-    counts.set(dirKey, n)
-    const fileName = `${dirPrefix}${String(n).padStart(2, '0')}-${layerFileBase(layer)}.${ext}`
     layerFileMap[layer.id] = fileName
-    if (layer.prefabKey) prefabFileMap.set(layer.prefabKey, fileName)
     files.push({
       fileName,
       data
@@ -4832,5 +4979,27 @@ onBeforeUnmount(() => {
 
 .ai-repair-status.error {
   color: #e07070;
+}
+
+.side-component-lib {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.component-bind-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.comp-bind-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 11px;
+  padding: 4px 6px;
 }
 </style>

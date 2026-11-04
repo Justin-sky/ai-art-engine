@@ -162,6 +162,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         return meta.title?.trim() || 'Preview'
       case 'ui.split':
         return String(i18n.global.t('graph.types.ui.split'))
+      case 'ui.componentLib':
+        return String(i18n.global.t('graph.types.ui.componentLib'))
       case 'anim.2d':
         return String(i18n.global.t('graph.types.anim.2d'))
       case 'comic.page':

@@ -424,6 +424,15 @@ export function summarizeGraphValueForLog(value: GraphValue): GraphRunLogPortSna
         imageCount: entries.filter((entry) => !!entry.imageRelativePath || !!entry.imageUrl).length
       }
     }
+    case 'uiComponents': {
+      const items = value.doc?.items ?? []
+      return {
+        kind: 'uiComponents',
+        label: 'components',
+        itemCount: items.length,
+        imageCount: items.filter((item) => !!item.imageRelativePath || !!item.imageUrl).length
+      }
+    }
     default: {
       const kind =
         value && typeof value === 'object' && 'kind' in value

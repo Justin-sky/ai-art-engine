@@ -59,7 +59,13 @@ import {
   type ImageLayerSplitState
 } from '../imageLayerSplit'
 import { PreciseSplitError } from '../uiPreciseSplit'
+import { uiComponentLibraryFingerprintKey, type UiSharedComponentItem } from '../uiComponentLibrary'
 import { canRunPreciseLayerSplit, runPreciseLayerSplitForNode } from './layerSplitPrecise'
+import {
+  applyComponentLibraryToFallbackLayers,
+  readUpstreamUiComponentLibrary,
+  resolveUpstreamComponentCandidates
+} from './uiComponentLib'
 import {
   buildVlmUiControlDetectionPrompt,
   parseVlmUiControlDetectionResponse,
@@ -1775,6 +1781,7 @@ export async function executeLayerSplitNode(
   const effectiveUserPrompt = prev.prompt.trim() || sourceLayerPrompt || ''
   const model = ctx.node.params.generateModel?.trim() || undefined
   const providerInstanceId = ctx.node.params.generateProviderInstanceId?.trim() || undefined
+  const upstreamCompLib = readUpstreamUiComponentLibrary(ctx.inputs['in-components'])
   const fingerprint = layerSplitFingerprint(sourceUrl, effectiveUserPrompt, prev.resolution, {
     splitMode: prev.splitMode,
     model,
@@ -1784,7 +1791,8 @@ export async function executeLayerSplitNode(
       ctx.node.params.visionModel?.trim()
     ]
       .filter(Boolean)
-      .join(':')
+      .join(':'),
+    componentLibraryKey: uiComponentLibraryFingerprintKey(upstreamCompLib.items)
   })
   const canReuse =
     prev.layers.length > 0 &&
@@ -1803,7 +1811,15 @@ export async function executeLayerSplitNode(
   let reused = false
   if (canReuse) {
     const previous = ctx.node.params.generatedImages ?? []
-    const wanted = new Set(prev.layers.map((layer) => layer.imageId))
+    const wanted = new Set<string>()
+    for (const layer of prev.layers) {
+      if (layer.imageId) wanted.add(layer.imageId)
+      if (layer.originalImageId) wanted.add(layer.originalImageId)
+      if (layer.componentImageId) wanted.add(layer.componentImageId)
+    }
+    for (const comp of prev.componentLibrary ?? []) {
+      if (comp.imageId) wanted.add(comp.imageId)
+    }
     layerBatch = previous.filter((item) => item.id && wanted.has(item.id))
     if (layerBatch.length < prev.layers.length && ctx.resolveImageUrls) {
       const urls = await ctx.resolveImageUrls(layerBatch)
@@ -1817,6 +1833,10 @@ export async function executeLayerSplitNode(
 
   if (!reused) {
     const strategy = resolveEffectiveUiLayerSplitStrategy(prev.splitMode, model)
+    const { candidates: upstreamCompCandidates } =
+      upstreamCompLib.items.length > 0
+        ? await resolveUpstreamComponentCandidates(ctx, stamp)
+        : { candidates: [] }
     let mapped: {
       layers: ImageLayerSplitLayer[]
       batch: GraphImageItem[]
@@ -1825,6 +1845,7 @@ export async function executeLayerSplitNode(
     } | null = null
     /** 精准拆层自带元素树分组；为 null 时走游戏 UI 自动归类 */
     let preciseGroups: ImageLayerSplitGroup[] | null = null
+    let embeddedComponentLibrary: UiSharedComponentItem[] = []
 
     if (prefersPreciseUiLayerSplit(prev.splitMode)) {
       const explicit = prev.splitMode === 'precise'
@@ -1838,10 +1859,12 @@ export async function executeLayerSplitNode(
             providerInstanceId,
             resolution: prev.resolution,
             stamp,
+            ...(upstreamCompCandidates.length ? { components: upstreamCompCandidates } : {}),
             toCanvasSafeUrl: (url, suffix) => resolveCanvasSafeBaseDataUrl(ctx, url, stamp, suffix)
           })
           mapped = precise
           preciseGroups = precise.groups
+          embeddedComponentLibrary = precise.componentLibrary ?? []
         } catch (err) {
           if ((err as Error)?.name === 'AbortError' || ctx.signal?.aborted) throw err
           const detail =
@@ -2051,6 +2074,18 @@ export async function executeLayerSplitNode(
     if (!mapped || !mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
     }
+    if (
+      !preciseGroups &&
+      upstreamCompCandidates.length > 0 &&
+      embeddedComponentLibrary.length === 0
+    ) {
+      embeddedComponentLibrary = await applyComponentLibraryToFallbackLayers(
+        ctx,
+        stamp,
+        mapped,
+        upstreamCompCandidates
+      )
+    }
     layerBatch = mapped.batch
     const selectedId =
       mapped.layers.find((layer) => !isLayerSplitBase(layer))?.id || mapped.layers[0]?.id || ''
@@ -2062,6 +2097,9 @@ export async function executeLayerSplitNode(
       canvasHeight: mapped.canvasHeight,
       layers: sortLayersForCompose(mapped.layers),
       groups: preciseGroups ?? [],
+      ...(embeddedComponentLibrary.length
+        ? { componentLibrary: embeddedComponentLibrary }
+        : { componentLibrary: undefined }),
       sourceFingerprint: fingerprint
     }
     // 精准拆层按元素树嵌套分组；其余引擎自动按游戏 UI 规范归类 PSD 文件夹（顶栏与装饰 / 交互控件与按钮 / 面板与容器底框）
@@ -2075,6 +2113,17 @@ export async function executeLayerSplitNode(
   )
   if (!materializedLayers.length) {
     throw fail(SHARED_ERRORS.persistImageFailed, { detail: '' })
+  }
+  if (state.componentLibrary?.length) {
+    const matMap = new Map(materializedLayers.map((m) => [m.id, m]))
+    state = {
+      ...state,
+      componentLibrary: state.componentLibrary.map((comp) => {
+        const mat = comp.imageId ? matMap.get(comp.imageId) : undefined
+        const rel = mat?.relativePath?.trim()
+        return rel ? { ...comp, imageRelativePath: rel } : comp
+      })
+    }
   }
 
   let composite: GraphImageItem | null = null

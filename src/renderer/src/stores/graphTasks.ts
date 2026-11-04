@@ -1065,6 +1065,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               if (
                 patch.params.filmStoryboard !== undefined ||
                 patch.params.filmCast !== undefined ||
+                patch.params.uiComponentLibrary !== undefined ||
                 patch.params.filmRenders !== undefined ||
                 patch.params.filmReviewReport !== undefined ||
                 patch.params.comicPage !== undefined ||

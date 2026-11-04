@@ -76,6 +76,7 @@ import {
   executeIconPackNode,
   executePortraitNode,
   executeLayerSplitNode,
+  executeUiComponentLibNode,
   executeMediaReviewNode,
   executeMediaReworkNode,
   executeUiSplitNode,
@@ -2373,6 +2374,14 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
       { id: 'in', direction: 'in', dataType: GraphPortType.image, multiple: false, label: 'In' },
+      {
+        id: 'in-components',
+        direction: 'in',
+        dataType: GraphPortType.uiComponents,
+        multiple: true,
+        label: 'Components',
+        labelKey: 'graph.port.uiComponentsIn'
+      },
       ...galleryOutPorts(GraphPortType.image)
     ],
     defaultParams: () => ({
@@ -2398,6 +2407,75 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
     assetType: 'image',
     contributeToGeneration: false,
     execute: executeLayerSplitNode
+  },
+  {
+    typeId: 'ui.componentLib',
+    category: 'note',
+    label: 'UI component library',
+    icon: '🧩',
+    defaultTitle: 'UI component library',
+    defaultSize: { ...ASSET_SIZE },
+    sizeLimits: { ...ASSET_LIMITS },
+    ports: [
+      {
+        id: 'in',
+        direction: 'in',
+        dataType: GraphPortType.image,
+        multiple: true,
+        label: 'UI Screen',
+        labelKey: 'graph.port.uiScreenImage'
+      },
+      {
+        id: 'in-images',
+        direction: 'in',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'UI Batch',
+        labelKey: 'graph.port.uiScreenImages'
+      },
+      {
+        id: 'in-components',
+        direction: 'in',
+        dataType: GraphPortType.uiComponents,
+        multiple: true,
+        label: 'Base Lib',
+        labelKey: 'graph.port.uiComponentsIn'
+      },
+      {
+        id: 'out',
+        direction: 'out',
+        dataType: GraphPortType.uiComponents,
+        multiple: true,
+        label: 'Components',
+        labelKey: 'graph.port.uiComponentsOut'
+      },
+      {
+        id: 'out-images',
+        direction: 'out',
+        dataType: GraphPortType.images,
+        multiple: true,
+        label: 'Component Sheets',
+        labelKey: 'graph.port.uiComponentImages'
+      }
+    ],
+    defaultParams: () => ({
+      uiComponentLibrary: '',
+      uiComponentExtractMode: 'auto',
+      uiComponentLibSourceHash: '',
+      generateInstruction: '',
+      generateModel: '',
+      generateProviderInstanceId: '',
+      visionModel: '',
+      visionProviderInstanceId: ''
+    }),
+    addable: true,
+    deletable: true,
+    inspector: 'none',
+    inspectorId: 'studio.graph.uiComponentLib',
+    card: 'media',
+    assetType: 'image',
+    contributeToGeneration: false,
+    execute: executeUiComponentLibNode
   },
   {
     typeId: 'prompt.optimize',

@@ -5420,7 +5420,77 @@ export default {
       explode2dGap: 'Gap',
       explode2dGapHint: 'Adjust planar spacing between 2D exploded chunks',
       explodeLabels: '🏷️ Labels',
-      explodeLabelsHint: 'Show or hide layer name and size badges in exploded view'
+      explodeLabelsHint: 'Show or hide layer name and size badges in exploded view',
+      componentLibTitle: 'Component library',
+      componentLibSummary:
+        '{libCount} master(s) · {matchedCount} layer(s) replaced (Smart Objects)',
+      componentSectionTitle: '🧩 Shared Component Master (PSD Smart Object)',
+      componentBindNone: '— Unbound (use raw cutout) —',
+      componentToggleMaster: '🧩 Using Master',
+      componentToggleRaw: '🖼️ Raw Cutout',
+      componentToggleTip:
+        'Toggle between the clean shared component master (exported as a shared PSD Smart Object) and raw cutout pixels',
+      componentMatchScoreTip:
+        'Match score {score}% · Shares one embedded PSD Smart Object across instances'
+    },
+    uiComponentLib: {
+      hint: 'Clusters and fuses unobstructed pixels across one or more UI screens to extract clean, text-free shared component masters. Wire its output into UI Layer Split’s Component lib port to replace repeated controls and export shared PSD Smart Objects & deduplicated engine slices',
+      extractMode: 'Extraction Scope',
+      extractModeAuto:
+        '⚡ Smart Auto (repeated controls first; includes standard buttons & slots on single screen)',
+      extractModeRepeated: '🔁 Repeated Controls Only (shared masters appearing ≥ 2 times)',
+      extractModeAllControls: '🧩 All Standard Controls (buttons, slots, tabs, badges, frames)',
+      extractHintLabel: 'Extraction Hint (Optional)',
+      extractHintPlaceholder:
+        'Optional: describe shared controls to prioritize or name (blank = auto-detect buttons, item slots, tabs, and frames)',
+      componentsTitle: 'Shared Component Masters',
+      componentCount: '{n} component(s)',
+      emptyComponents:
+        'No components extracted yet. Connect one or more UI screens (e.g. from UI Screen Gen) and run the node.',
+      sourceInstances: '×{n} fused',
+      scaleExact: 'Exact',
+      scaleUniform: 'Uniform',
+      scaleNineSlice: '9-Slice',
+      lockItem: 'Lock master (preserve on re-extract)',
+      unlockItem: 'Locked (click to unlock)',
+      removeItem: 'Remove component',
+      reextract: 'Clear Cache & Re-extract',
+      exportNamePlaceholder: 'Export name (e.g. Comp_Btn_Primary)',
+      psdSmartObjectTip: 'PSD Smart Object GUID: {guid} (shared across instances)',
+      openWorkbench: 'Open Component Workbench',
+      workbenchSubtitle:
+        'Shared Master Curation · 9-Slice Guides & Stretch Simulator · PSD Smart Object Lineage',
+      filterAll: 'All Kinds',
+      searchPlaceholder: 'Search name or export ID…',
+      exportAllPng: 'Export All Master PNGs',
+      exportSinglePng: 'Export Selected PNG',
+      exportedToast: 'Exported {n} component master PNG(s)',
+      masterStageTitle: 'Component Master & 9-Slice Guides',
+      stretchSimTitle: 'Live Scale / 9-Slice Stretch Simulator',
+      stretchWidth: 'Test Width',
+      stretchHeight: 'Test Height',
+      preset1x: '1× Canonical',
+      presetWideBtn: '1.8× Wide Button',
+      presetBanner: '2.5× Wide Banner',
+      presetPanel: '2×2 Dialog Frame',
+      propName: 'Display Name',
+      propExportName: 'Engine / Smart Object Name',
+      propKind: 'Control Kind',
+      propScalePolicy: 'Scale Policy',
+      nineSliceTitle: '9-Slice Borders (px)',
+      nineSliceTop: 'Top',
+      nineSliceRight: 'Right',
+      nineSliceBottom: 'Bottom',
+      nineSliceLeft: 'Left',
+      autoDetectNineSlice: 'Auto-Detect 9-Slice',
+      autoDetectSuccess: 'Auto-detected 9-slice borders: {borders}',
+      autoDetectFallback: 'Component is small or lacks distinct borders; applied 25% safe inset',
+      smartObjectGuidLabel: 'PSD Smart Object GUID',
+      copyGuid: 'Copy GUID',
+      copiedGuid: 'Copied',
+      zoomFit: 'Fit',
+      selectComponentHint:
+        'Select a shared component on the left to inspect and edit 9-slice settings'
     },
     uiGen: {
       hint: 'Batch-generates Game UI screens directly on the canvas (Dual-Track: text preview + 100% layout-aligned textless base plate) or double-click to dive into the per-screen subgraph; feeds clean base plates directly into UI Layer Split for PSD export',
@@ -6017,6 +6087,11 @@ export default {
       novelOutlineOut: 'Outline',
       novelChapterOut: 'Next chap',
       outAll: 'All chapters',
+      uiComponentsIn: 'Component lib',
+      uiComponentsOut: 'Components',
+      uiComponentImages: 'Component sheets',
+      uiScreenImage: 'UI screen',
+      uiScreenImages: 'UI screens',
       types: {
         image: 'Image',
         images: 'Images',
@@ -6037,7 +6112,8 @@ export default {
         semanticTimeline: 'Breakdown timeline',
         videoPrompts: 'Remake prompt plan',
         storyboard: 'Storyboard',
-        filmCast: 'Cast library'
+        filmCast: 'Cast library',
+        uiComponents: 'UI component library'
       }
     },
     media: {
@@ -6254,7 +6330,8 @@ export default {
       },
       ui: {
         split: 'UI screen split',
-        gen: 'UI screen gen'
+        gen: 'UI screen gen',
+        componentLib: 'UI component library'
       },
       anim: {
         '2d': '2D Frame Animation'
@@ -7371,7 +7448,10 @@ export default {
         hint: 'Double-click to tune keying and canvas options. Run the node to key cells to transparent and save PNGs named after the list.'
       },
       layerSplit: {
-        hint: 'Supports any image model and 4 decomposition engines (Smart Auto / Universal AI Clean Base + Soft-Matte Slice / Seedream 5 Native / 0-API Local Smart Slice), auto-grouping into Game UI PSD folders and exporting layered PSD + JSON layout manifest.'
+        hint: 'Supports any image model and 4 decomposition engines (Smart Auto / Universal AI Clean Base + Soft-Matte Slice / Seedream 5 Native / 0-API Local Smart Slice); wire a UI Component Library to replace repeated controls with PSD Smart Objects and export JSON manifests.'
+      },
+      uiComponentLib: {
+        hint: 'Connect one or more UI screens to extract clean shared component masters, then wire into UI Layer Split to replace repeated controls and export shared PSD Smart Objects.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

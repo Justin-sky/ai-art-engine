@@ -11,6 +11,7 @@ export type EditorDiveViewId =
   | 'world.editor'
   | 'director.stage'
   | 'ui.split'
+  | 'ui.componentLib'
   | 'node.notepad'
   | 'node.textsPreview'
   | 'node.selectImage'
@@ -106,6 +107,7 @@ export type EditorDiveViewMeta =
     }
   | { viewId: 'director.stage'; directorAssetId: string; processingNodeId?: string }
   | { viewId: 'ui.split'; hostId: string; nodeId: string }
+  | { viewId: 'ui.componentLib'; hostId: string; nodeId: string }
   | { viewId: 'anim.2d'; hostId: string; nodeId: string }
   | { viewId: 'comic.page'; hostId: string; nodeId: string }
   | { viewId: 'film.workbench'; hostId: string; nodeId: string }
@@ -192,6 +194,8 @@ export function editorDiveViewFrameKey(rootKey: string, meta: EditorDiveViewMeta
       return `${root}/view:director.stage:${meta.directorAssetId}:${meta.processingNodeId ?? '_default'}`
     case 'ui.split':
       return `${root}/view:ui.split:${meta.hostId}:${meta.nodeId}`
+    case 'ui.componentLib':
+      return `${root}/view:ui.componentLib:${meta.hostId}:${meta.nodeId}`
     case 'anim.2d':
       return `${root}/view:anim.2d:${meta.hostId}:${meta.nodeId}`
     case 'comic.page':

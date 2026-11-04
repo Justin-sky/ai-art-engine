@@ -67,7 +67,13 @@ function isTextToolNode(node: GraphNode): boolean {
  * （双击卡片会弹出记事本，而不是播放帧动画）。
  */
 export function isNodeTextCapable(node: GraphNode): boolean {
-  if (node.typeId === 'stage.2d' || node.typeId === 'svg.anim') return false
+  if (
+    node.typeId === 'stage.2d' ||
+    node.typeId === 'svg.anim' ||
+    node.typeId === 'ui.componentLib'
+  ) {
+    return false
+  }
   // 游戏生产工坊节点（无缝瓦片与PBR / 游戏音频工坊 / 2D关卡地图生成 / 可玩游戏沙盒）：双击进游戏全屏工作台，勿弹记事本
   if (isGameProductionNode(node)) return false
   // 可玩 HTML：cook 后 params 可能残留整页 HTML，绝不能当记事本/卡片正文预览
@@ -122,7 +128,7 @@ export function resolveNodeTextContent(
   node: GraphNode,
   runState?: GraphNodeRunState | null
 ): GraphNodeTextContent | null {
-  if (isGameProductionNode(node)) return null
+  if (isGameProductionNode(node) || node.typeId === 'ui.componentLib') return null
   const live = normalizeNodeTextValue(textFromGraphValue(runState?.outputs?.out))
   if (!isNodeTextCapable(node) && !live.trim()) {
     return null

@@ -148,7 +148,14 @@ export const GraphPortType = {
    * film.cast 产出，film.shot / film.render 按镜头出场名单自动取参考图锁一致性。
    * 单向放宽 `filmCast → text`。
    */
-  filmCast: 'filmCast'
+  filmCast: 'filmCast',
+  /**
+   * UI 共享组件库（`UiComponentLibrary`，schema `aiart.ui-component-library@1`）：
+   * 从 1 或多张 UI 效果图中提炼去字、去遮挡的标准共享组件母本（按钮、道具槽、页签、角标、九宫格底框），
+   * 由 `ui.componentLib` 产出并送入 `image.layerSplit`（`in-components`）完成同款替换与 PSD 智能对象共享。
+   * 单向放宽 `uiComponents → text`。
+   */
+  uiComponents: 'uiComponents'
 } as const
 
 /** 目录 JSON 端口 / 运行时 kind（与 GraphPortType 同名） */
@@ -258,6 +265,7 @@ export type GraphNodeTypeId =
   | 'image.transform'
   | 'image.gridSplit'
   | 'image.layerSplit'
+  | 'ui.componentLib'
   | 'image.toPrompt'
   | 'decisions.judge'
   | 'svg.gen'
@@ -1317,6 +1325,12 @@ export interface GraphNodeParams {
   filmStoryboard?: string
   /** 影视流水线：角色 / 场景 / 道具设定库 JSON（schema `aiart.film-cast@1`），film.cast 写回 */
   filmCast?: string
+  /** UI 流水线：共享组件库 JSON（schema `aiart.ui-component-library@1`），ui.componentLib 写回 */
+  uiComponentLibrary?: string
+  /** UI 共享组件库提取策略：auto（单图提全部复用控件/多图提重复组件）| repeated | all-controls */
+  uiComponentExtractMode?: 'auto' | 'repeated' | 'all-controls'
+  /** UI 共享组件库源输入指纹（未变且未强制重跑时直接复用） */
+  uiComponentLibSourceHash?: string
   /** 影视流水线：film.render 每镜产物缓存 JSON（shotId → 关键帧 / 视频 / 指纹 / 质检） */
   filmRenders?: string
   /** 分镜拆解：目标镜头数（0 = 由剧情节奏自动决定） */

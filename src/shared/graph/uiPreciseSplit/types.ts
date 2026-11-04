@@ -108,6 +108,8 @@ export interface UiElementNode {
   instanceMask?: { rect: PixelRect; mask: Uint8Array }
   /** 容器/槽位的内腔矩形（扣除四周外边框与底部品质条），用于限制子元素补底范围 */
   slotInnerRect?: PixelRect
+  /** VLM 预判匹配的共享组件库母本 ID（仍需经像素几何一致性校验） */
+  matchedComponentId?: string
 }
 
 export interface UiLayoutTree {
@@ -154,6 +156,17 @@ export interface PreciseSplitLayer {
   editableText?: UiEditableTextMeta
   /** 同一预制体（重复控件，如 3 个奖励槽）共享的分组键；导出时可只保留一份素材 */
   prefabKey?: string
+  /** 匹配到的共享组件库母本 ID */
+  componentId?: string
+  /** 组件库匹配得分（0..1） */
+  componentMatchScore?: number
+  /** 组件母本替换前保留的原图提取像素（供编辑器无损切换回原图抠图） */
+  originalRgba?: Uint8ClampedArray
+}
+
+export interface PreciseSplitComponentCandidate {
+  item: import('../uiComponentLibrary').UiSharedComponentItem
+  rgba: RgbaImage
 }
 
 export interface PreciseSplitResult {
@@ -176,6 +189,8 @@ export interface PreciseSplitResult {
   completion?: import('./completion').CompletionReport
   /** 复杂画面遮挡区单图层生成式补全统计 */
   generativeCompletion?: import('./generativeCompletion').GenerativeCompletionReport
+  /** 共享组件库匹配替换报告 */
+  componentMatches?: Array<{ elementId: string; componentId: string; score: number }>
   notes: string[]
 }
 
@@ -227,4 +242,6 @@ export interface PreciseSplitOptions {
   maxLayerCompletions?: number
   /** 元素上限 */
   maxElements?: number
+  /** 传入的共享组件库母本候选（命中元素直接用纯净母本替换并扩掩码剥底、跳过生成式补全） */
+  components?: readonly PreciseSplitComponentCandidate[]
 }

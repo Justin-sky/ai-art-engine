@@ -731,14 +731,24 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
       'Maps to canvas node `ui.split` (for breaking down a full game system spec into a structured UI manifest; if the user only wants a single UI screen split into a layered PSD, use `asset.image` → `image.layerSplit` instead): ports `in`:text (game doc or UI spec), `in-image`:image (optional wireframe) → `out`:text (spec), `out-manifest`:uiManifest (to wire into `ui.gen` `in-manifest`).'
   }),
   {
+    id: 'ui.componentLib',
+    kind: 'node',
+    titleZh: 'UI 共享组件库提取',
+    titleEn: 'UI shared component library',
+    usageZh:
+      '对应画布节点 `ui.componentLib`（从 1 张或多张 UI 效果图中自动聚类、去字、去遮挡并提取共享 UI 组件母本库，如按钮、道具槽、页签、角标、九宫格底框）：端口 `in`:image（支持多连单张 UI 图）、`in-images`:images（可直接连入 `ui.gen` 的 `out` 整批界面图）、`in-components`:uiComponents（可选增量合并上游组件库）→ `out`:uiComponents（连入下游 `image.layerSplit` 的 `in-components` 端口，将同款组件替换为纯净母本并导出共享 PSD 智能对象）、`out-images`:images（全部提取出的纯净组件母本 PNG 图集）。',
+    usageEn:
+      'Maps to canvas node `ui.componentLib` (clusters, de-texts, and de-occludes 1 or multiple UI mockups into clean canonical UI component masters with 9-slice metadata and PSD Smart Object GUIDs): ports `in`:image (multi-image), `in-images`:images (batch from `ui.gen` `out`), `in-components`:uiComponents (optional base library) → `out`:uiComponents (connect to `image.layerSplit` `in-components` for clean master replacement and shared PSD Smart Objects), `out-images`:images (clean master PNGs).'
+  },
+  {
     id: 'image.layerSplit',
     kind: 'node',
     titleZh: '图层分离 / PSD 拆分',
     titleEn: 'Layer split & PSD export',
     usageZh:
-      '对应画布节点 `image.layerSplit`（图层分离工作台 & PSD 导出，双击可进入全屏图层分离编辑台）：端口 `in`:image（输入单张 UI 界面图、海报或插画）→ `out`:image（图层合成预览图）、`out-all`:images（分离出的背景底图与全部独立透明 PNG 图层序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，同時写入 `params.layerSplitPsdRelativePath`，包含完整图层树与游戏 UI 自动分组文件夹）。当用户要求“创建某游戏界面 UI 并拆分出 PSD”或“把图片拆成图层/PSD”时，直接在当前画布创建 `asset.image` → `image.layerSplit` 并运行即可。',
+      '对应画布节点 `image.layerSplit`（图层分离工作台 & PSD 导出，双击可进入全屏图层分离编辑台）：端口 `in`:image（输入单张 UI 界面图、海报或插画）、`in-components`:uiComponents（可选，连入 `ui.componentLib` 共享组件库，拆层时自动用纯净母本替换同款控件并输出共享 PSD 智能对象与去重引擎切图）→ `out`:image（图层合成预览图）、`out-all`:images（分离出的背景底图与全部独立透明 PNG 图层序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，同时写入 `params.layerSplitPsdRelativePath`，包含完整图层树、可编辑文字层、共享智能对象与游戏 UI 自动分组文件夹）。当用户要求“提取共享组件库再拆分 UI 图层/PSD”时，搭建 `ui.componentLib` → `image.layerSplit`（`in-components`）即可。',
     usageEn:
-      'Maps to canvas node `image.layerSplit` (Layer Split & PSD Export workbench; double-click to open the full-screen layer editor): ports `in`:image (input UI mockup, poster, or illustration) → `out`:image (composite preview), `out-all`:images (clean background plate + all isolated transparent PNG layers), `out-psd`:text (auto-generated `.psd` file path, also saved to `params.layerSplitPsdRelativePath`, with full layer hierarchy and auto-grouped game UI folders). When the user asks to create a UI screen and split it into a PSD, wire `asset.image` → `image.layerSplit` directly on the active canvas.'
+      'Maps to canvas node `image.layerSplit` (Layer Split & PSD Export workbench; double-click to open the full-screen layer editor): ports `in`:image (input UI mockup, poster, or illustration), `in-components`:uiComponents (optional shared component library from `ui.componentLib` to replace matching controls with clean masters and emit shared PSD Smart Objects) → `out`:image (composite preview), `out-all`:images (clean background plate + all isolated transparent PNG layers), `out-psd`:text (auto-generated `.psd` file path, also saved to `params.layerSplitPsdRelativePath`, with full layer hierarchy, editable text layers, Smart Objects, and auto-grouped game UI folders).'
   },
   fromNodeSystemDefault('image.upscale', '高清放大', 'Upscale', defaultUpscaleSystemPrompt, {
     usageZh: IMAGE_PROCESS_USAGE_ZH,

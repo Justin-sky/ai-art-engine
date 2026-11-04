@@ -1053,6 +1053,7 @@ import {
   isGraphOutputTerminalNode,
   parseFilmCast,
   parseFilmRenderCache,
+  parseUiComponentLibrary,
   summarizeReferenceListForLog,
   GraphPortType,
   PORTRAIT_FACES_VERSION,
@@ -4020,6 +4021,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'game.levelMap',
       'ui.split',
       'ui.gen',
+      'ui.componentLib',
       'image.layerSplit'
     ]
   },
@@ -11487,6 +11489,30 @@ async function refreshFocusStagePreviewUrls(): Promise<void> {
     }
     if (resolved) continue
 
+    if (
+      typeof node.params.uiComponentLibrary === 'string' &&
+      node.params.uiComponentLibrary.trim()
+    ) {
+      const compLib = parseUiComponentLibrary(node.params.uiComponentLibrary)
+      for (const entry of compLib?.items ?? []) {
+        const inlineUrl = entry.imageUrl?.trim() || ''
+        if (inlineUrl.startsWith('data:') && isPlayableOrRenderableMediaUrl(inlineUrl)) {
+          focusStagePreviewUrls[node.id] = inlineUrl
+          resolved = true
+          break
+        }
+        const rel =
+          entry.imageRelativePath?.trim() || (!inlineUrl.startsWith('data:') ? inlineUrl : '')
+        const url = await resolveMediaUrlFromRelPath(rel)
+        if (url) {
+          focusStagePreviewUrls[node.id] = url
+          resolved = true
+          break
+        }
+      }
+    }
+    if (resolved) continue
+
     // SVG 节点内联源码
     const svgRaw =
       typeof (node.params as Record<string, unknown>)?.svgCode === 'string'
@@ -11717,6 +11743,7 @@ function onFocusDiveNode(nodeId: string): void {
     node.typeId === 'novel.outline' ||
     node.typeId === 'asset.novel' ||
     node.typeId === 'asset.screenplay' ||
+    node.typeId === 'ui.componentLib' ||
     isGameProductionNode(node)
   ) {
     const viewId =
@@ -11726,7 +11753,9 @@ function onFocusDiveNode(nodeId: string): void {
           ? ('novel.workbench' as const)
           : node.typeId === 'asset.screenplay'
             ? ('screenplay.workbench' as const)
-            : ('game.workbench' as const)
+            : node.typeId === 'ui.componentLib'
+              ? ('ui.componentLib' as const)
+              : ('game.workbench' as const)
     const meta = { viewId, hostId: graphHostId.value, nodeId }
     const title = node.title?.trim() || graphTypeLabel(node.typeId ?? '')
     if (editorDive?.rootKey) {

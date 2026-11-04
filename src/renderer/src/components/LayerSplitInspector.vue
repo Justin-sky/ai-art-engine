@@ -98,6 +98,17 @@
         <dt>{{ t('graph.layerSplit.group') }}</dt>
         <dd>{{ state.groups.length }}</dd>
       </div>
+      <div v-if="state.componentLibrary?.length">
+        <dt>{{ t('graph.layerSplit.componentLibTitle') }}</dt>
+        <dd>
+          {{
+            t('graph.layerSplit.componentLibSummary', {
+              libCount: state.componentLibrary.length,
+              matchedCount: matchedComponentLayerCount
+            })
+          }}
+        </dd>
+      </div>
     </dl>
 
     <div v-if="state.layers.length" class="inspector-actions">
@@ -196,6 +207,11 @@ const state = computed(() =>
   node.value ? readImageLayerSplitFromNode(node.value.params) : readImageLayerSplitFromNode({})
 )
 
+const matchedComponentLayerCount = computed(
+  () =>
+    state.value.layers.filter((l) => Boolean(l.componentId) && l.keepOriginalPixels !== true).length
+)
+
 const splitModeOptions = computed<Array<{ id: UiLayerSplitMode; label: string }>>(() => [
   { id: 'auto', label: t('graph.layerSplit.splitModeAuto') },
   { id: 'precise', label: t('graph.layerSplit.splitModePrecise') },
@@ -289,6 +305,24 @@ async function resolveInspectorLayerUrls(): Promise<Record<string, string>> {
     if (rel) {
       const fileUrl = await window.studio.getAssetFileUrl(rel).catch(() => '')
       if (fileUrl) urls[id] = fileUrl
+    }
+  }
+  for (const comp of state.value.componentLibrary ?? []) {
+    const key = comp.imageId?.trim() || comp.id
+    if (urls[key]) continue
+    if (comp.imageUrl?.trim()) {
+      urls[key] = comp.imageUrl.trim()
+      urls[comp.id] = comp.imageUrl.trim()
+      continue
+    }
+    if (comp.imageRelativePath?.trim()) {
+      const fileUrl = await window.studio
+        .getAssetFileUrl(comp.imageRelativePath.trim())
+        .catch(() => '')
+      if (fileUrl) {
+        urls[key] = fileUrl
+        urls[comp.id] = fileUrl
+      }
     }
   }
   return urls

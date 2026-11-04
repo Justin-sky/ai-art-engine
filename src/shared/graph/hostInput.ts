@@ -36,6 +36,11 @@ import { parsePromptPlan } from '../semanticTimeline'
 import { splitScreenplayByExplicitEpisodeMarkers } from './screenplayFormat'
 import { filmStoryboardToMarkdown, parseFilmCast, parseFilmStoryboard } from './film/storyboard'
 import { filmCastValue, filmStoryboardValue, parseFilmRenderCache } from './execute/film'
+import {
+  parseUiComponentLibrary,
+  stringifyUiComponentLibrary,
+  uiComponentItemImage
+} from './uiComponentLibrary'
 
 /**
  * 把抬升/软解析出的宿主出口值物化到宿主节点 params 图库：
@@ -406,6 +411,7 @@ export function graphValueHasPayload(value: GraphValue | undefined): value is Gr
   }
   if (value.kind === 'storyboard') return (value.doc?.shots?.length ?? 0) > 0
   if (value.kind === 'filmCast') return (value.doc?.entries?.length ?? 0) > 0
+  if (value.kind === 'uiComponents') return (value.doc?.items?.length ?? 0) > 0
   return false
 }
 
@@ -781,6 +787,29 @@ export function softResolveSourceOutput(
               ? { relativePath: entry.imageRelativePath.trim() }
               : entry.imageUrl && !entry.imageUrl.startsWith('data:')
                 ? { relativePath: entry.imageUrl.trim() }
+                : {})
+          }))
+        if (items.length) return { kind: 'images', items }
+      }
+    }
+  }
+  if (node.typeId === 'ui.componentLib') {
+    const lib = parseUiComponentLibrary(node.params.uiComponentLibrary ?? '')
+    if (lib?.items?.length) {
+      if (sourcePort === 'out' || !sourcePort) {
+        return { kind: 'uiComponents', doc: lib, text: stringifyUiComponentLibrary(lib) }
+      }
+      if (sourcePort === 'out-images') {
+        const items = lib.items
+          .filter((item) => uiComponentItemImage(item))
+          .map((item) => ({
+            id: item.imageId || `uiComp:${item.id}`,
+            title: item.name,
+            dataUrl: item.imageUrl?.startsWith('data:') ? item.imageUrl : '',
+            ...(item.imageRelativePath?.trim()
+              ? { relativePath: item.imageRelativePath.trim() }
+              : item.imageUrl && !item.imageUrl.startsWith('data:')
+                ? { relativePath: item.imageUrl.trim() }
                 : {})
           }))
         if (items.length) return { kind: 'images', items }

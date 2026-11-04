@@ -1,6 +1,7 @@
 import { COMIC_LAYOUT_TEMPLATES, createComicPage, parseComicPage } from './comicPage'
 import { DEFAULT_EMOTION_PAD, EMOTION_GRID } from './emotionPad'
 import { emptyFilmStoryboard, parseFilmCast, parseFilmStoryboard } from './film/storyboard'
+import { parseUiComponentLibrary } from './uiComponentLibrary'
 import { DEFAULT_ICON_PACK } from './iconPack'
 import { DEFAULT_IMAGE_ALIGN, IMAGE_ALIGN_SIZE_PRESETS } from './imageAlign'
 import { DEFAULT_IMAGE_COMPOSE } from './imageCompose'
@@ -593,6 +594,27 @@ function buildKnownSubDocPrototype(key: string): {
         },
         isJsonString: true
       }
+    case 'uiComponentLibrary':
+      return {
+        sample: {
+          schema: 'aiart.ui-component-library@1',
+          name: '',
+          items: [
+            {
+              id: 'comp_button_01',
+              psdGuid: '00000000-0000-4000-8000-000000000001',
+              name: '',
+              exportName: 'Comp_Button_01',
+              kind: 'button',
+              canonicalWidth: 160,
+              canonicalHeight: 60,
+              scalePolicy: 'nine-slice',
+              imageRelativePath: ''
+            }
+          ]
+        },
+        isJsonString: true
+      }
     case 'gameEconomyPreset':
       return {
         fieldOverrides: {
@@ -856,6 +878,9 @@ export function reflectValueToFieldSchema(
       } else if (key === 'filmCast') {
         const cast = parseFilmCast(value)
         parsed = cast && cast.entries.length > 0 ? cast : knownProto.sample
+      } else if (key === 'uiComponentLibrary') {
+        const lib = parseUiComponentLibrary(value)
+        parsed = lib && lib.items.length > 0 ? lib : knownProto.sample
       } else if (key === 'gameEconomyDiagramJson') {
         parsed = parseMxDocumentJson(value) ?? knownProto.sample
       } else {
