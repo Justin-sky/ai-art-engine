@@ -1,6 +1,7 @@
 import { computeNineSliceFromRgbaBuffer } from '../imageLayerSplit'
 import {
   componentIdToPsdGuid,
+  decodeBase64ToUint8,
   encodeUint8ToBase64,
   sanitizeComponentExportName,
   type UiComponentScalePolicy,
@@ -12,9 +13,19 @@ import {
   cloneImage,
   createImage,
   cropImage,
+  dilateMask,
+  erodeMask,
+  fillHoles,
   inpaintPushPull,
+  labelComponents,
+  median,
+  rectArea,
+  rectIntersection,
   resizeBilinear
 } from './pixels'
+import { normalizeElementKind } from './layout'
+import { bleedTransparentRgb } from './productize'
+import { inferComponentKindFromLabel } from './prompts'
 import type {
   PixelRect,
   PreciseSplitComponentCandidate,
@@ -50,12 +61,42 @@ const REUSABLE_SINGLETON_KINDS = new Set<string>([
   'progress-bar'
 ])
 
-const NON_COMPONENT_KINDS = new Set<string>(['text', 'art-text', 'illustration', 'effect'])
+const BORDER_RING_CLUSTERABLE_KINDS = new Set<string>([
+  'item-slot',
+  'button',
+  'tab',
+  'frame',
+  'panel',
+  'banner',
+  'card'
+])
+
+export const NON_COMPONENT_KINDS = new Set<string>([
+  'text',
+  'art-text',
+  'illustration',
+  'effect',
+  'avatar',
+  'icon',
+  'decoration',
+  'divider'
+])
+
+export function componentKindPriority(kind: string): number {
+  const k = kind.trim().toLowerCase()
+  if (k === 'button' || k === 'item-slot') return 10
+  if (k === 'tab' || k === 'close-button') return 9
+  if (k === 'progress-bar' || k === 'badge') return 8
+  if (k === 'banner' || k === 'arrow') return 7
+  if (k === 'frame' || k === 'card') return 6
+  if (k === 'panel') return 3
+  return 4
+}
 
 function kindFamily(kind: string): string {
   const k = kind.trim().toLowerCase()
   if (k === 'button' || k === 'tab' || k === 'banner') return 'action'
-  if (k === 'close-button' || k === 'badge' || k === 'icon' || k === 'arrow') return 'glyph-widget'
+  if (k === 'close-button' || k === 'badge' || k === 'arrow') return 'glyph-widget'
   if (k === 'item-slot' || k === 'frame' || k === 'panel' || k === 'card') return 'container'
   if (k === 'progress-bar' || k === 'slider' || k === 'bar') return 'bar'
   return k || 'other'
@@ -149,6 +190,104 @@ export function computeComponentVisualDescriptor(master: RgbaImage): UiComponent
     meanRgb,
     borderMeanRgb
   }
+}
+
+/**
+ * Strictly checks whether two cataloged component skins from different UI screens represent
+ * the exact same reusable skin (matching kind, aspect ratio, border color, and interior fill/ring
+ * chroma), preventing distinct buttons, active/inactive tabs, or different rarity slots from
+ * being falsely collapsed just because they share a common dark/gold border theme.
+ */
+export function areComponentDescriptorsSameSkin(
+  aKind: UiElementKind | string,
+  aDesc: UiComponentVisualDescriptor,
+  bKind: UiElementKind | string,
+  bDesc: UiComponentVisualDescriptor
+): boolean {
+  if (aKind !== bKind) return false
+
+  const ar1 = aDesc.aspectRatio
+  const ar2 = bDesc.aspectRatio
+  const arRatio = Math.max(ar1 / Math.max(0.01, ar2), ar2 / Math.max(0.01, ar1))
+  const can9s = NINE_SLICE_ELIGIBLE_KINDS.has(aKind)
+  if (arRatio > (can9s ? 1.35 : 1.16)) return false
+
+  const bDiff =
+    (Math.abs(aDesc.borderMeanRgb[0] - bDesc.borderMeanRgb[0]) +
+      Math.abs(aDesc.borderMeanRgb[1] - bDesc.borderMeanRgb[1]) +
+      Math.abs(aDesc.borderMeanRgb[2] - bDesc.borderMeanRgb[2])) /
+    3
+  if (bDiff > 18) return false
+  const bChroma =
+    (Math.abs(
+      aDesc.borderMeanRgb[0] -
+        aDesc.borderMeanRgb[1] -
+        (bDesc.borderMeanRgb[0] - bDesc.borderMeanRgb[1])
+    ) +
+      Math.abs(
+        aDesc.borderMeanRgb[1] -
+          aDesc.borderMeanRgb[2] -
+          (bDesc.borderMeanRgb[1] - bDesc.borderMeanRgb[2])
+      )) *
+    0.5
+  if (bChroma > 16) return false
+
+  const isHollowOrSlot = aKind === 'item-slot' || aKind === 'frame'
+  if (!isHollowOrSlot) {
+    const mDiff =
+      (Math.abs(aDesc.meanRgb[0] - bDesc.meanRgb[0]) +
+        Math.abs(aDesc.meanRgb[1] - bDesc.meanRgb[1]) +
+        Math.abs(aDesc.meanRgb[2] - bDesc.meanRgb[2])) /
+      3
+    if (mDiff > 22) return false
+    const mChroma =
+      (Math.abs(aDesc.meanRgb[0] - aDesc.meanRgb[1] - (bDesc.meanRgb[0] - bDesc.meanRgb[1])) +
+        Math.abs(aDesc.meanRgb[1] - aDesc.meanRgb[2] - (bDesc.meanRgb[1] - bDesc.meanRgb[2]))) *
+      0.5
+    if (mChroma > 18) return false
+  }
+
+  const side = aDesc.thumbSize
+  if (side < 8 || bDesc.thumbSize !== side || !aDesc.thumbRgbaBase64 || !bDesc.thumbRgbaBase64) {
+    return true
+  }
+  const bytesA = decodeBase64ToUint8(aDesc.thumbRgbaBase64)
+  const bytesB = decodeBase64ToUint8(bDesc.thumbRgbaBase64)
+  const expectedLen = side * side * 4
+  if (bytesA.length < expectedLen || bytesB.length < expectedLen) return true
+
+  const ringMargin = Math.max(2, Math.round(side * 0.25))
+  const rgbErrs: number[] = []
+  const chromaErrs: number[] = []
+  for (let y = 0; y < side; y++) {
+    const inRingY = y < ringMargin || y >= side - ringMargin
+    for (let x = 0; x < side; x++) {
+      if (isHollowOrSlot && !inRingY && x >= ringMargin && x < side - ringMargin) continue
+      const i = (y * side + x) * 4
+      if (bytesA[i + 3]! < 64 || bytesB[i + 3]! < 64) continue
+      const r1 = bytesA[i]!
+      const g1 = bytesA[i + 1]!
+      const b1 = bytesA[i + 2]!
+      const r2 = bytesB[i]!
+      const g2 = bytesB[i + 1]!
+      const b2 = bytesB[i + 2]!
+      rgbErrs.push((Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2)) / 3)
+      chromaErrs.push((Math.abs(r1 - g1 - (r2 - g2)) + Math.abs(g1 - b1 - (g2 - b2))) * 0.5)
+    }
+  }
+  if (rgbErrs.length < 12) return true
+
+  rgbErrs.sort((x, y) => x - y)
+  chromaErrs.sort((x, y) => x - y)
+  const trimRatio = isHollowOrSlot ? 0.8 : 0.7
+  const trimCnt = Math.max(8, Math.floor(rgbErrs.length * trimRatio))
+  let rgbSum = 0
+  let chSum = 0
+  for (let k = 0; k < trimCnt; k++) {
+    rgbSum += rgbErrs[k]!
+    chSum += chromaErrs[k]!
+  }
+  return rgbSum / trimCnt <= 18 && chSum / trimCnt <= 15
 }
 
 function blitPatch(dst: RgbaImage, src: RgbaImage, srcRect: PixelRect, dstRect: PixelRect): void {
@@ -321,15 +460,877 @@ function isAspectAndScaleCompatible(
     const maxAr = explicitHintMatch ? 4.2 : 3.4
     return (
       arRatio <= maxAr &&
-      box.width >= Math.min(24, cw * 0.45) &&
-      box.height >= Math.min(20, ch * 0.45) &&
+      box.width >= Math.min(20, cw * 0.22) &&
+      box.height >= Math.min(16, ch * 0.22) &&
       scaleX <= 4.5 &&
       scaleY <= 4.5
     )
   }
   // 'uniform'
   const maxAr = explicitHintMatch ? 1.32 : 1.22
-  return arRatio <= maxAr && scaleX >= 0.35 && scaleX <= 2.8 && scaleY >= 0.35 && scaleY <= 2.8
+  return arRatio <= maxAr && scaleX >= 0.22 && scaleX <= 2.8 && scaleY >= 0.22 && scaleY <= 2.8
+}
+
+/**
+ * Supersampled premultiplied area-averaging downsampler (`INTER_AREA` equivalent).
+ * Eliminates jagged stair-stepping and edge halos when shrinking high-res AI studio masters
+ * down to canonical UI pixel dimensions; delegates to `resizeBilinear` when upscaling.
+ */
+export function resizeAreaAverage(img: RgbaImage, width: number, height: number): RgbaImage {
+  const w = Math.max(1, Math.round(width))
+  const h = Math.max(1, Math.round(height))
+  if (w === img.width && h === img.height) return cloneImage(img)
+  if (w >= img.width && h >= img.height) return resizeBilinear(img, w, h)
+
+  const out = createImage(w, h)
+  const scaleX = img.width / w
+  const scaleY = img.height / h
+  const src = img.data
+  const iw = img.width
+  const ih = img.height
+
+  for (let y = 0; y < h; y++) {
+    const sy0 = y * scaleY
+    const sy1 = (y + 1) * scaleY
+    const iy0 = Math.max(0, Math.floor(sy0))
+    const iy1 = Math.min(ih - 1, Math.ceil(sy1) - 1)
+    for (let x = 0; x < w; x++) {
+      const sx0 = x * scaleX
+      const sx1 = (x + 1) * scaleX
+      const ix0 = Math.max(0, Math.floor(sx0))
+      const ix1 = Math.min(iw - 1, Math.ceil(sx1) - 1)
+
+      let sumW = 0
+      let sumA = 0
+      let sumR = 0
+      let sumG = 0
+      let sumB = 0
+
+      for (let iy = iy0; iy <= iy1; iy++) {
+        const wy = Math.min(sy1, iy + 1) - Math.max(sy0, iy)
+        if (wy <= 0) continue
+        const rowOff = iy * iw
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const wx = Math.min(sx1, ix + 1) - Math.max(sx0, ix)
+          if (wx <= 0) continue
+          const weight = wx * wy
+          const idx = (rowOff + ix) * 4
+          const sa = (src[idx + 3]! / 255) * weight
+          sumW += weight
+          sumA += sa
+          sumR += src[idx]! * sa
+          sumG += src[idx + 1]! * sa
+          sumB += src[idx + 2]! * sa
+        }
+      }
+
+      const o = (y * w + x) * 4
+      const outA = sumW > 0 ? sumA / sumW : 0
+      if (sumA > 1e-5 && outA >= 1 / 510) {
+        out.data[o] = Math.round(sumR / sumA)
+        out.data[o + 1] = Math.round(sumG / sumA)
+        out.data[o + 2] = Math.round(sumB / sumA)
+        out.data[o + 3] = Math.round(outA * 255)
+      }
+    }
+  }
+  return out
+}
+
+export interface SolidBgMatteOptions {
+  /** Expected studio solid background RGB (e.g. `[255, 255, 255]` or `[20, 24, 32]`). */
+  expectedBgRgb?: [number, number, number]
+  /** Color distance tolerance treated as pure background (default auto-adapted from corner noise, min 14). */
+  tolerance?: number
+  /** Smooth alpha transition band width in RGB Euclidean units (default 26). */
+  feather?: number
+  /** Allow punching out a large uniform interior window (> 22% area) for hollow `frame` skins. */
+  allowHollowCenter?: boolean
+}
+
+function smoothstep01(e0: number, e1: number, x: number): number {
+  if (x <= e0) return 0
+  if (x >= e1) return 1
+  const t = (x - e0) / (e1 - e0)
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * Samples `patchSize × patchSize` patches at all 4 image corners (`bggg-creator-image2psd` `corner_color`)
+ * to estimate the actual solid background RGB produced by an image generation model (which often outputs
+ * `(252, 252, 250)` instead of exact `(255, 255, 255)`).
+ */
+export function sampleCornerBackgroundRgb(
+  img: RgbaImage,
+  patchSize = 12
+): { bgRgb: [number, number, number]; cornerNoise: number } {
+  const { width: W, height: H } = img
+  const p = Math.max(1, Math.min(patchSize, Math.floor(Math.min(W, H) * 0.18)))
+  const rs: number[] = []
+  const gs: number[] = []
+  const bs: number[] = []
+  const corners: Array<[number, number]> = [
+    [0, 0],
+    [Math.max(0, W - p), 0],
+    [0, Math.max(0, H - p)],
+    [Math.max(0, W - p), Math.max(0, H - p)]
+  ]
+
+  for (const [cx, cy] of corners) {
+    for (let y = cy; y < Math.min(H, cy + p); y++) {
+      for (let x = cx; x < Math.min(W, cx + p); x++) {
+        const i = (y * W + x) * 4
+        if (img.data[i + 3]! < 32) continue
+        rs.push(img.data[i]!)
+        gs.push(img.data[i + 1]!)
+        bs.push(img.data[i + 2]!)
+      }
+    }
+  }
+
+  const bgRgb: [number, number, number] = rs.length
+    ? [median(rs), median(gs), median(bs)]
+    : [255, 255, 255]
+
+  const dists: number[] = []
+  for (let k = 0; k < rs.length; k++) {
+    dists.push(Math.hypot(rs[k]! - bgRgb[0], gs[k]! - bgRgb[1], bs[k]! - bgRgb[2]))
+  }
+  dists.sort((a, b) => a - b)
+  const p90Idx = dists.length ? Math.min(dists.length - 1, Math.floor(dists.length * 0.9)) : 0
+  return {
+    bgRgb,
+    cornerNoise: dists.length ? dists[p90Idx]! : 0
+  }
+}
+
+/**
+ * Picks `#FFFFFF` studio background by default (`bggg-creator-image2psd` standard), automatically
+ * switching to dark `#141820` when the UI control itself has a pale/white/silver outer border.
+ */
+export function choosePurificationStudioBg(exemplar: RgbaImage): {
+  bgHex: '#FFFFFF' | '#141820'
+  bgRgb: [number, number, number]
+} {
+  const { width: W, height: H } = exemplar
+  const rx = Math.max(2, Math.round(W * 0.18))
+  const ry = Math.max(2, Math.round(H * 0.18))
+  let count = 0
+  let lumSum = 0
+  let nearWhiteCount = 0
+
+  for (let y = 0; y < H; y++) {
+    const borderY = y < ry || y >= H - ry
+    for (let x = 0; x < W; x++) {
+      if (!borderY && x >= rx && x < W - rx) continue
+      const i = (y * W + x) * 4
+      if (exemplar.data[i + 3]! < 48) continue
+      const r = exemplar.data[i]!
+      const g = exemplar.data[i + 1]!
+      const b = exemplar.data[i + 2]!
+      count++
+      lumSum += 0.2126 * r + 0.7152 * g + 0.0722 * b
+      if (r >= 210 && g >= 210 && b >= 205) nearWhiteCount++
+    }
+  }
+
+  if (count > 0 && (lumSum / count >= 200 || nearWhiteCount / count >= 0.22)) {
+    return { bgHex: '#141820', bgRgb: [20, 24, 32] }
+  }
+  return { bgHex: '#FFFFFF', bgRgb: [255, 255, 255] }
+}
+
+/**
+ * Structure-protected solid-background-to-alpha extraction (`bggg-creator-image2psd`
+ * `corner_color` + `preserve_light_foreground_to_alpha` + `background_to_alpha`):
+ * 1. Estimates solid background RGB from the 4 corners.
+ * 2. Builds a closed foreground structure silhouette and flood-fills exterior background from image
+ *    borders (`fillHoles`) so white/pale/gold interior specular highlights stay 100% opaque (`alpha=255`).
+ * 3. Analytically unmixes foreground RGB on the outer anti-aliased transition band (`(rgb - bg*(1-a))/a`)
+ *    so zero white/dark edge halo remains, then tight-crops and applies 4px `bleedTransparentRgb`.
+ */
+export function extractCleanComponentMatteFromSolidBg(
+  img: RgbaImage,
+  options?: SolidBgMatteOptions
+): RgbaImage | null {
+  const { width: W, height: H } = img
+  if (W < 8 || H < 8) return null
+  const n = W * H
+
+  let { bgRgb, cornerNoise } = sampleCornerBackgroundRgb(img)
+  if (options?.expectedBgRgb) {
+    const exp = options.expectedBgRgb
+    const drift = Math.hypot(bgRgb[0] - exp[0], bgRgb[1] - exp[1], bgRgb[2] - exp[2])
+    if (drift > 95) {
+      // Corner touched foreground; sample 2px outer perimeter pixels closest to expected studio bg
+      const nearRs: number[] = []
+      const nearGs: number[] = []
+      const nearBs: number[] = []
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (x >= 2 && x < W - 2 && y >= 2 && y < H - 2) continue
+          const i = (y * W + x) * 4
+          if (img.data[i + 3]! < 32) continue
+          const d = Math.hypot(
+            img.data[i]! - exp[0],
+            img.data[i + 1]! - exp[1],
+            img.data[i + 2]! - exp[2]
+          )
+          if (d <= 65) {
+            nearRs.push(img.data[i]!)
+            nearGs.push(img.data[i + 1]!)
+            nearBs.push(img.data[i + 2]!)
+          }
+        }
+      }
+      bgRgb = nearRs.length >= 8 ? [median(nearRs), median(nearGs), median(nearBs)] : [...exp]
+      cornerNoise = Math.min(cornerNoise, 8)
+    }
+  }
+
+  const tol = Math.max(options?.tolerance ?? 14, Math.min(24, Math.ceil(cornerNoise + 5)))
+  const feather = Math.max(8, options?.feather ?? 26)
+
+  const dist = new Float32Array(n)
+  const fgRaw = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    const i = p * 4
+    if (img.data[i + 3]! < 24) continue
+    const d = Math.hypot(
+      img.data[i]! - bgRgb[0],
+      img.data[i + 1]! - bgRgb[1],
+      img.data[i + 2]! - bgRgb[2]
+    )
+    dist[p] = d
+    if (d > tol + 3) fgRaw[p] = 1
+  }
+
+  // 5x5 morphological close seals small pale/white highlight gaps on the outer control rim
+  const closed = erodeMask(dilateMask(fgRaw, W, H, 2), W, H, 2)
+  const { labels, stats } = labelComponents(closed, W, H)
+  if (!stats.length) return null
+
+  const centerBox: PixelRect = {
+    left: Math.floor(W * 0.14),
+    top: Math.floor(H * 0.14),
+    width: Math.max(1, Math.ceil(W * 0.72)),
+    height: Math.max(1, Math.ceil(H * 0.72))
+  }
+  const largestArea = stats.reduce((m, s) => Math.max(m, s.area), 0)
+  const minKeepArea = Math.max(12, Math.round(n * 0.0012))
+  const keepLabel = new Uint8Array(stats.length + 1)
+  for (const s of stats) {
+    const sr: PixelRect = {
+      left: s.minX,
+      top: s.minY,
+      width: s.maxX - s.minX + 1,
+      height: s.maxY - s.minY + 1
+    }
+    if (
+      (s.area >= minKeepArea && rectIntersection(sr, centerBox) > 0) ||
+      s.area >= largestArea * 0.35
+    ) {
+      keepLabel[s.label] = 1
+    }
+  }
+
+  const fgBody = new Uint8Array(n)
+  let fgCount = 0
+  let bMinX = W
+  let bMinY = H
+  let bMaxX = -1
+  let bMaxY = -1
+  for (let p = 0; p < n; p++) {
+    const lbl = labels[p]!
+    if (lbl && keepLabel[lbl]) {
+      fgBody[p] = 1
+      fgCount++
+      const x = p % W
+      const y = (p - x) / W
+      if (x < bMinX) bMinX = x
+      if (x > bMaxX) bMaxX = x
+      if (y < bMinY) bMinY = y
+      if (y > bMaxY) bMaxY = y
+    }
+  }
+  if (fgCount < 16 || bMaxX < bMinX || bMaxY < bMinY) return null
+
+  // Exterior flood-fill (`fillHoles`): every enclosed interior cavity stays opaque (`silhouette = 1`)
+  const silhouette = fillHoles(fgBody, W, H)
+
+  // Only for hollow `frame` skins: allow genuinely large uniform empty center windows (>= 22% bbox area)
+  if (options?.allowHollowCenter) {
+    const bboxArea = Math.max(1, (bMaxX - bMinX + 1) * (bMaxY - bMinY + 1))
+    const cavity = new Uint8Array(n)
+    for (let p = 0; p < n; p++) {
+      if (silhouette[p] && !fgBody[p] && dist[p]! <= tol + 4) cavity[p] = 1
+    }
+    const cavComp = labelComponents(cavity, W, H)
+    const punchLabel = new Uint8Array(cavComp.stats.length + 1)
+    for (const cs of cavComp.stats) {
+      if (cs.area >= bboxArea * 0.22) punchLabel[cs.label] = 1
+    }
+    for (let p = 0; p < n; p++) {
+      const cl = cavComp.labels[p]!
+      if (cl && punchLabel[cl]) silhouette[p] = 0
+    }
+  }
+
+  const coreInterior = erodeMask(silhouette, W, H, 2)
+  const outerBand = dilateMask(silhouette, W, H, 2)
+  const matte = createImage(W, H)
+
+  let minX = W
+  let minY = H
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < H; y++) {
+    const row = y * W
+    for (let x = 0; x < W; x++) {
+      const p = row + x
+      if (!outerBand[p]) continue
+      const i = p * 4
+      const srcA = img.data[i + 3]! / 255
+      if (srcA < 0.02) continue
+
+      if (coreInterior[p]) {
+        // Protected interior: preserve 100% opacity & exact RGB (white/gold specular highlights intact!)
+        matte.data[i] = img.data[i]!
+        matte.data[i + 1] = img.data[i + 1]!
+        matte.data[i + 2] = img.data[i + 2]!
+        matte.data[i + 3] = Math.round(srcA * 255)
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        continue
+      }
+
+      const d = dist[p]!
+      if (d <= tol * 0.55) continue
+
+      // Sample nearest solid `coreInterior` foreground neighbor (within 3px) to solve exact sub-pixel
+      // Porter-Duff linear coverage `obs = fg * a + bg * (1 - a)` along the vector `(fg - bg)`.
+      let fgSumR = 0
+      let fgSumG = 0
+      let fgSumB = 0
+      let fgCnt = 0
+      for (let dy = -3; dy <= 3; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= H) continue
+        const nRow = ny * W
+        for (let dx = -3; dx <= 3; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= W) continue
+          const np = nRow + nx
+          if (!coreInterior[np]) continue
+          const ni = np * 4
+          fgSumR += img.data[ni]!
+          fgSumG += img.data[ni + 1]!
+          fgSumB += img.data[ni + 2]!
+          fgCnt++
+        }
+      }
+
+      let baseAlpha: number
+      if (fgCnt > 0) {
+        const vr = fgSumR / fgCnt - bgRgb[0]
+        const vg = fgSumG / fgCnt - bgRgb[1]
+        const vb = fgSumB / fgCnt - bgRgb[2]
+        const vLen2 = vr * vr + vg * vg + vb * vb
+        if (vLen2 >= 400) {
+          const ur = img.data[i]! - bgRgb[0]
+          const ug = img.data[i + 1]! - bgRgb[1]
+          const ub = img.data[i + 2]! - bgRgb[2]
+          const proj = Math.max(0, Math.min(1, (ur * vr + ug * vg + ub * vb) / vLen2))
+          const perp = Math.hypot(ur - proj * vr, ug - proj * vg, ub - proj * vb)
+          if (perp <= 28) {
+            baseAlpha = proj
+          } else {
+            baseAlpha = Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+          }
+        } else {
+          baseAlpha = silhouette[p] ? 1 : Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+        }
+      } else {
+        const rawAlpha = Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+        baseAlpha = silhouette[p]
+          ? Math.max(rawAlpha, Math.max(0, Math.min(1, (d - tol * 0.3) / (feather * 0.8))))
+          : rawAlpha * 0.92
+      }
+
+      const ea = baseAlpha * srcA
+      if (ea < 0.03) continue
+
+      let trust = smoothstep01(0.05, 0.32, ea)
+      if (silhouette[p] && d <= tol + feather * 0.35) {
+        trust *= 0.35
+      }
+      for (let c = 0; c < 3; c++) {
+        const sc = img.data[i + c]!
+        const solved = Math.max(0, Math.min(255, (sc - bgRgb[c]! * (1 - ea)) / Math.max(0.05, ea)))
+        matte.data[i + c] = Math.round(solved * trust + sc * (1 - trust))
+      }
+      const outA = Math.round(ea * 255)
+      matte.data[i + 3] = outA
+      if (outA >= 8) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null
+  const cropped = cropImage(matte, {
+    left: minX,
+    top: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  })
+  if (cropped.width < 8 || cropped.height < 8) return null
+  bleedTransparentRgb(cropped.data, cropped.width, cropped.height, 4)
+  return cropped
+}
+
+export interface SolidBgCanvasLayerOptions {
+  /** Maximum corner noise to classify the image as having a uniform studio background (default 15). */
+  maxCornerNoise?: number
+  /** Minimum fraction of 2px perimeter matching the sampled corner background (default 0.62). */
+  minPerimeterBgRatio?: number
+  tolerance?: number
+  feather?: number
+  /** Punch large enclosed solid-bg windows (e.g. hollow frames). Default true. */
+  allowLargeHollowWindows?: boolean
+}
+
+export interface ExtractedSolidBgCanvasLayer {
+  cropped: RgbaImage
+  box: PixelRect
+  bgRgb: [number, number, number]
+  cornerNoise: number
+}
+
+/**
+ * Full-canvas / region solid-background-to-alpha matting (`bggg-creator-image2psd` `white-preserve`
+ * mode for AI-emitted layers). Automatically skips layers that already carry genuine alpha
+ * transparency or full-bleed heterogeneous backgrounds, while stripping uniform white / dark /
+ * colored studio backgrounds without punching holes inside pale or white foreground interiors,
+ * and returning the exact tight canvas bounding box `box` so layer coordinates never drift.
+ */
+export function extractCleanLayerFromSolidBgCanvas(
+  img: RgbaImage,
+  options?: SolidBgCanvasLayerOptions
+): ExtractedSolidBgCanvasLayer | null {
+  const { width: W, height: H } = img
+  if (W < 8 || H < 8) return null
+  const n = W * H
+
+  // 1) Skip images that already carry genuine alpha transparency in corners or along the perimeter
+  const cornerPatch = Math.min(3, Math.max(1, Math.floor(Math.min(W, H) * 0.08)))
+  let cornerTotal = 0
+  let cornerTransparent = 0
+  for (const [ox, oy] of [
+    [0, 0],
+    [W - cornerPatch, 0],
+    [0, H - cornerPatch],
+    [W - cornerPatch, H - cornerPatch]
+  ] as const) {
+    for (let dy = 0; dy < cornerPatch; dy++) {
+      for (let dx = 0; dx < cornerPatch; dx++) {
+        cornerTotal++
+        if (img.data[((oy + dy) * W + (ox + dx)) * 4 + 3]! < 200) cornerTransparent++
+      }
+    }
+  }
+  if (cornerTotal > 0 && cornerTransparent / cornerTotal >= 0.1) return null
+
+  let perimTotal = 0
+  let perimTransparent = 0
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (x >= 2 && x < W - 2 && y >= 2 && y < H - 2) continue
+      perimTotal++
+      if (img.data[(y * W + x) * 4 + 3]! < 200) perimTransparent++
+    }
+  }
+  if (perimTotal > 0 && perimTransparent / perimTotal > 0.08) return null
+
+  // 2) Require uniform solid background across corners + majority of outer perimeter
+  const { bgRgb, cornerNoise } = sampleCornerBackgroundRgb(img)
+  const maxCornerNoise = options?.maxCornerNoise ?? 15
+  if (cornerNoise > maxCornerNoise) return null
+
+  const tol = Math.max(options?.tolerance ?? 14, Math.min(24, Math.ceil(cornerNoise + 5)))
+  const feather = Math.max(8, options?.feather ?? 26)
+
+  let perimBgMatch = 0
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (x >= 2 && x < W - 2 && y >= 2 && y < H - 2) continue
+      const i = (y * W + x) * 4
+      const d = Math.hypot(
+        img.data[i]! - bgRgb[0],
+        img.data[i + 1]! - bgRgb[1],
+        img.data[i + 2]! - bgRgb[2]
+      )
+      if (d <= tol + 8) perimBgMatch++
+    }
+  }
+  const minPerimRatio = options?.minPerimeterBgRatio ?? 0.62
+  if (perimTotal > 0 && perimBgMatch / perimTotal < minPerimRatio) return null
+
+  const dist = new Float32Array(n)
+  const fgRaw = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    const i = p * 4
+    if (img.data[i + 3]! < 24) continue
+    const d = Math.hypot(
+      img.data[i]! - bgRgb[0],
+      img.data[i + 1]! - bgRgb[1],
+      img.data[i + 2]! - bgRgb[2]
+    )
+    dist[p] = d
+    if (d > tol + 3) fgRaw[p] = 1
+  }
+
+  const closed = erodeMask(dilateMask(fgRaw, W, H, 2), W, H, 2)
+  const { labels, stats } = labelComponents(closed, W, H)
+  if (!stats.length) return null
+
+  const minKeepArea = Math.max(8, Math.round(n * 0.00035))
+  const keepLabel = new Uint8Array(stats.length + 1)
+  for (const s of stats) {
+    if (s.area >= minKeepArea) keepLabel[s.label] = 1
+  }
+
+  const fgBody = new Uint8Array(n)
+  let fgCount = 0
+  let bMinX = W
+  let bMinY = H
+  let bMaxX = -1
+  let bMaxY = -1
+  for (let p = 0; p < n; p++) {
+    const lbl = labels[p]!
+    if (lbl && keepLabel[lbl]) {
+      fgBody[p] = 1
+      fgCount++
+      const x = p % W
+      const y = (p - x) / W
+      if (x < bMinX) bMinX = x
+      if (x > bMaxX) bMaxX = x
+      if (y < bMinY) bMinY = y
+      if (y > bMaxY) bMaxY = y
+    }
+  }
+  if (fgCount < 12 || fgCount > n * 0.88 || bMaxX < bMinX || bMaxY < bMinY) return null
+
+  // Exterior flood-fill (`white-preserve` cavity protection): enclosed highlights/text stay solid
+  const silhouette = fillHoles(fgBody, W, H)
+
+  // Allow genuinely large empty window cavities inside hollow frames (>= 32% of foreground bbox)
+  if (options?.allowLargeHollowWindows !== false) {
+    const bboxArea = Math.max(1, (bMaxX - bMinX + 1) * (bMaxY - bMinY + 1))
+    const cavity = new Uint8Array(n)
+    for (let p = 0; p < n; p++) {
+      if (silhouette[p] && !fgBody[p] && dist[p]! <= tol + 2) cavity[p] = 1
+    }
+    const cavComp = labelComponents(cavity, W, H)
+    const punchLabel = new Uint8Array(cavComp.stats.length + 1)
+    for (const cs of cavComp.stats) {
+      if (cs.area >= bboxArea * 0.32) punchLabel[cs.label] = 1
+    }
+    for (let p = 0; p < n; p++) {
+      const cl = cavComp.labels[p]!
+      if (cl && punchLabel[cl]) silhouette[p] = 0
+    }
+  }
+
+  const coreInterior = erodeMask(silhouette, W, H, 2)
+  const outerBand = dilateMask(silhouette, W, H, 2)
+  const matte = createImage(W, H)
+
+  let minX = W
+  let minY = H
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < H; y++) {
+    const row = y * W
+    for (let x = 0; x < W; x++) {
+      const p = row + x
+      if (!outerBand[p]) continue
+      const i = p * 4
+      const srcA = img.data[i + 3]! / 255
+      if (srcA < 0.02) continue
+
+      if (coreInterior[p]) {
+        matte.data[i] = img.data[i]!
+        matte.data[i + 1] = img.data[i + 1]!
+        matte.data[i + 2] = img.data[i + 2]!
+        matte.data[i + 3] = Math.round(srcA * 255)
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        continue
+      }
+
+      const d = dist[p]!
+      if (d <= tol * 0.55) continue
+
+      let fgSumR = 0
+      let fgSumG = 0
+      let fgSumB = 0
+      let fgCnt = 0
+      for (let dy = -3; dy <= 3; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= H) continue
+        const nRow = ny * W
+        for (let dx = -3; dx <= 3; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= W) continue
+          const np = nRow + nx
+          if (!coreInterior[np]) continue
+          const ni = np * 4
+          fgSumR += img.data[ni]!
+          fgSumG += img.data[ni + 1]!
+          fgSumB += img.data[ni + 2]!
+          fgCnt++
+        }
+      }
+
+      let baseAlpha: number
+      if (fgCnt > 0) {
+        const vr = fgSumR / fgCnt - bgRgb[0]
+        const vg = fgSumG / fgCnt - bgRgb[1]
+        const vb = fgSumB / fgCnt - bgRgb[2]
+        const vLen2 = vr * vr + vg * vg + vb * vb
+        if (vLen2 >= 400) {
+          const ur = img.data[i]! - bgRgb[0]
+          const ug = img.data[i + 1]! - bgRgb[1]
+          const ub = img.data[i + 2]! - bgRgb[2]
+          const proj = Math.max(0, Math.min(1, (ur * vr + ug * vg + ub * vb) / vLen2))
+          const perp = Math.hypot(ur - proj * vr, ug - proj * vg, ub - proj * vb)
+          if (perp <= 28) {
+            baseAlpha = proj
+          } else {
+            baseAlpha = Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+          }
+        } else {
+          baseAlpha = silhouette[p] ? 1 : Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+        }
+      } else {
+        const rawAlpha = Math.max(0, Math.min(1, (d - tol * 0.6) / feather))
+        baseAlpha = silhouette[p]
+          ? Math.max(rawAlpha, Math.max(0, Math.min(1, (d - tol * 0.3) / (feather * 0.8))))
+          : rawAlpha * 0.92
+      }
+
+      const ea = baseAlpha * srcA
+      if (ea < 0.03) continue
+
+      let trust = smoothstep01(0.05, 0.32, ea)
+      if (silhouette[p] && d <= tol + feather * 0.35) {
+        trust *= 0.35
+      }
+      for (let c = 0; c < 3; c++) {
+        const sc = img.data[i + c]!
+        const solved = Math.max(0, Math.min(255, (sc - bgRgb[c]! * (1 - ea)) / Math.max(0.05, ea)))
+        matte.data[i + c] = Math.round(solved * trust + sc * (1 - trust))
+      }
+      const outA = Math.round(ea * 255)
+      matte.data[i + 3] = outA
+      if (outA >= 8) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null
+  const box: PixelRect = {
+    left: minX,
+    top: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  }
+  if (box.width < 6 || box.height < 6) return null
+  const cropped = cropImage(matte, box)
+  bleedTransparentRgb(cropped.data, cropped.width, cropped.height, 4)
+  return { cropped, box, bgRgb, cornerNoise }
+}
+
+export interface DetectedComponentFamilyEntry {
+  id: string
+  name: string
+  kind: UiElementKind
+  exemplarBox: PixelRect
+  instanceBoxes: PixelRect[]
+  hasEmbeddedContent: boolean
+  embeddedContentDesc?: string
+  skinDesc?: string
+}
+
+function parseJsonObjectOrArray(raw: string): unknown {
+  const trimmed = raw?.trim() ?? ''
+  if (!trimmed) return null
+  const fence = /```(?:json)?\s*([\s\S]*?)```/i.exec(trimmed)
+  const body = fence ? fence[1]!.trim() : trimmed
+  const tryParse = (s: string): unknown => {
+    try {
+      return JSON.parse(s)
+    } catch {
+      return undefined
+    }
+  }
+  const direct = tryParse(body)
+  if (direct !== undefined) return direct
+  const o0 = body.indexOf('{')
+  const o1 = body.lastIndexOf('}')
+  if (o0 >= 0 && o1 > o0) {
+    const obj = tryParse(body.slice(o0, o1 + 1))
+    if (obj !== undefined) return obj
+  }
+  const a0 = body.indexOf('[')
+  const a1 = body.lastIndexOf(']')
+  if (a0 >= 0 && a1 > a0) {
+    const arr = tryParse(body.slice(a0, a1 + 1))
+    if (arr !== undefined) return arr
+  }
+  return null
+}
+
+function parseBox2dOrBbox(raw: unknown, width: number, height: number): PixelRect | null {
+  if (!Array.isArray(raw) || raw.length < 4) return null
+  const [v0, v1, v2, v3] = raw.slice(0, 4).map(Number) as [number, number, number, number]
+  if (![v0, v1, v2, v3].every(Number.isFinite)) return null
+  // `box_2d` convention across VLM prompts is `[ymin, xmin, ymax, xmax]` in `0..1000` (or `0..1`)
+  const maxV = Math.max(v0, v1, v2, v3)
+  const sx = maxV <= 1.05 ? width : maxV <= 1000.5 ? width / 1000 : 1
+  const sy = maxV <= 1.05 ? height : maxV <= 1000.5 ? height / 1000 : 1
+  const x0 = Math.min(v1, v3) * sx
+  const x1 = Math.max(v1, v3) * sx
+  const y0 = Math.min(v0, v2) * sy
+  const y1 = Math.max(v0, v2) * sy
+  if (x1 - x0 < 12 || y1 - y0 < 12) return null
+  return clampRect({ left: x0, top: y0, width: x1 - x0, height: y1 - y0 }, width, height)
+}
+
+/**
+ * Parses the VLM reusable component catalog response into validated pixel-space component families,
+ * filtering out non-component kinds (`text`, `avatar`, `icon`, `illustration`, full-screen backdrops).
+ */
+export function parseComponentCatalogResponse(
+  raw: string,
+  width: number,
+  height: number,
+  maxFamilies = 20
+): DetectedComponentFamilyEntry[] {
+  const parsed = parseJsonObjectOrArray(raw)
+  let list: unknown[] = []
+  if (Array.isArray(parsed)) {
+    list = parsed
+  } else if (parsed && typeof parsed === 'object') {
+    const obj = parsed as Record<string, unknown>
+    const arr =
+      (Array.isArray(obj.components) && obj.components) ||
+      (Array.isArray(obj.families) && obj.families) ||
+      (Array.isArray(obj.items) && obj.items) ||
+      (Array.isArray(obj.elements) && obj.elements) ||
+      Object.values(obj).find((v) => Array.isArray(v))
+    list = Array.isArray(arr) ? arr : []
+  }
+
+  const canvasArea = Math.max(1, width * height)
+  const out: DetectedComponentFamilyEntry[] = []
+  for (let idx = 0; idx < list.length && out.length < maxFamilies; idx++) {
+    const entry = list[idx]
+    if (!entry || typeof entry !== 'object') continue
+    const rec = entry as Record<string, unknown>
+    let kind = normalizeElementKind(rec.kind ?? rec.type ?? rec.controlType)
+    const rawName = typeof rec.name === 'string' && rec.name.trim() ? rec.name.trim() : ''
+    if (kind === 'other' && rawName) {
+      kind = inferComponentKindFromLabel(rawName)
+    }
+    if (NON_COMPONENT_KINDS.has(kind) || kind === 'other') continue
+
+    const rawInstList = Array.isArray(rec.instance_boxes_2d)
+      ? rec.instance_boxes_2d
+      : Array.isArray(rec.instanceBoxes2d)
+        ? rec.instanceBoxes2d
+        : Array.isArray(rec.instances)
+          ? rec.instances.map((it) =>
+              it && typeof it === 'object' ? (it as Record<string, unknown>).box_2d : it
+            )
+          : []
+    const parsedInstances: PixelRect[] = []
+    for (const rawBox of rawInstList) {
+      const b = parseBox2dOrBbox(rawBox, width, height)
+      if (!b) continue
+      if (rectArea(b) > canvasArea * 0.5) continue
+      const dup = parsedInstances.some((prev) => {
+        const inter = rectIntersection(prev, b)
+        const union = rectArea(prev) + rectArea(b) - inter
+        return union > 0 && inter / union > 0.72
+      })
+      if (!dup) parsedInstances.push(b)
+    }
+
+    const exemplarRaw =
+      rec.exemplar_box_2d ?? rec.exemplarBox2d ?? rec.box_2d ?? rec.box2d ?? rawInstList[0]
+    const exemplarBox = parseBox2dOrBbox(exemplarRaw, width, height) ?? parsedInstances[0] ?? null
+    if (!exemplarBox) continue
+    if (rectArea(exemplarBox) > canvasArea * (kind === 'panel' ? 0.42 : 0.5)) continue
+
+    if (
+      !parsedInstances.some((prev) => {
+        const inter = rectIntersection(prev, exemplarBox)
+        const union = rectArea(prev) + rectArea(exemplarBox) - inter
+        return union > 0 && inter / union > 0.72
+      })
+    ) {
+      parsedInstances.unshift(exemplarBox)
+    }
+
+    const embeddedDesc =
+      typeof rec.embedded_content_desc === 'string'
+        ? rec.embedded_content_desc.trim()
+        : typeof rec.embeddedContentDesc === 'string'
+          ? rec.embeddedContentDesc.trim()
+          : ''
+    const skinDesc =
+      typeof rec.skin_desc === 'string'
+        ? rec.skin_desc.trim()
+        : typeof rec.skinDesc === 'string'
+          ? rec.skinDesc.trim()
+          : ''
+    const hasEmbedded =
+      typeof rec.has_embedded_content === 'boolean'
+        ? rec.has_embedded_content
+        : typeof rec.hasEmbeddedContent === 'boolean'
+          ? rec.hasEmbeddedContent
+          : Boolean(embeddedDesc)
+
+    out.push({
+      id:
+        typeof rec.id === 'string' && rec.id.trim()
+          ? rec.id.trim()
+          : `fam_${kind}_${out.length + 1}`,
+      name: (rawName || `${kind} ${out.length + 1}`).slice(0, 48),
+      kind,
+      exemplarBox,
+      instanceBoxes: parsedInstances,
+      hasEmbeddedContent: hasEmbedded,
+      ...(embeddedDesc ? { embeddedContentDesc: embeddedDesc.slice(0, 140) } : {}),
+      ...(skinDesc ? { skinDesc: skinDesc.slice(0, 180) } : {})
+    })
+  }
+  return out
 }
 
 /**
@@ -467,10 +1468,15 @@ export interface ExtractSharedComponentsOptions {
 
 interface ExtractedInstanceSample {
   screenIndex: number
+  canvasArea: number
   layer: PreciseSplitLayer
   rgba: RgbaImage
-  /** 1 = unobstructed valid pixel, 0 = occluded by upper text / child icon / sibling */
+  /** 1 = unobstructed valid pixel for matching/median fusion */
   knownMask: Uint8Array
+  /** 1 = valid pixel NOT occluded by non-text child cutouts (avoids destructive push-pull over already de-texted glyphs) */
+  repairMask: Uint8Array
+  /** Interior high-frequency clutter score (lower = cleaner/emptier interior) */
+  clutterScore: number
   descriptor: UiComponentVisualDescriptor
   prefabKey?: string
 }
@@ -501,44 +1507,93 @@ function medianOfSorted(arr: number[]): number {
 }
 
 /**
+ * Measures interior visual clutter (mean horizontal/vertical RGB gradient inside the central 56% box
+ * plus occlusion penalty) so empty/clean component exemplars always sort ahead of icon-filled ones.
+ */
+function computeInteriorClutterScore(img: RgbaImage, knownMask: Uint8Array): number {
+  const { width: w, height: h } = img
+  const x0 = Math.max(1, Math.floor(w * 0.22))
+  const x1 = Math.min(w - 1, Math.ceil(w * 0.78))
+  const y0 = Math.max(1, Math.floor(h * 0.22))
+  const y1 = Math.min(h - 1, Math.ceil(h * 0.78))
+  if (x1 <= x0 || y1 <= y0) return 0
+
+  let gradSum = 0
+  let count = 0
+  let occluded = 0
+  let total = 0
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const p = y * w + x
+      total++
+      if (!knownMask[p]) {
+        occluded++
+        continue
+      }
+      const i = p * 4
+      if (img.data[i + 3]! < 32) continue
+      const ir = (p - 1) * 4
+      const iu = (p - w) * 4
+      const gx =
+        (Math.abs(img.data[i]! - img.data[ir]!) +
+          Math.abs(img.data[i + 1]! - img.data[ir + 1]!) +
+          Math.abs(img.data[i + 2]! - img.data[ir + 2]!)) /
+        3
+      const gy =
+        (Math.abs(img.data[i]! - img.data[iu]!) +
+          Math.abs(img.data[i + 1]! - img.data[iu + 1]!) +
+          Math.abs(img.data[i + 2]! - img.data[iu + 2]!)) /
+        3
+      gradSum += (gx + gy) * 0.5
+      count++
+    }
+  }
+  const meanGrad = count > 0 ? gradSum / count : 0
+  const occludedPenalty = total > 0 ? (occluded / total) * 18 : 0
+  return meanGrad + occludedPenalty
+}
+
+/**
  * Fuses N instances of a UI component into a single clean, de-texted, de-occluded canonical master RGBA:
- * - Warps each instance and its unobstructed `knownMask` to canonical median dimensions
- * - Computes per-pixel median RGBA across unobstructed (`known=1`) samples
- * - Fills any remaining occluded pixels via horizontal/vertical mirror symmetry + `inpaintPushPull`
+ * - Orders samples from cleanest least-cluttered interior to most cluttered
+ * - Warps each instance and its unobstructed mask to canonical median dimensions
+ * - Excludes unseparated interior icons/art-text in cluttered instances when a clean exemplar exists
+ * - Preserves single-sample interiors untouched unless explicit non-text cutout holes require repair
  */
 function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
   master: RgbaImage
   canonicalWidth: number
   canonicalHeight: number
 } {
-  const widths = samples.map((s) => s.rgba.width).sort((a, b) => a - b)
-  const heights = samples.map((s) => s.rgba.height).sort((a, b) => a - b)
+  const ordered = [...samples].sort((a, b) => a.clutterScore - b.clutterScore)
+  const widths = ordered.map((s) => s.rgba.width).sort((a, b) => a - b)
+  const heights = ordered.map((s) => s.rgba.height).sort((a, b) => a - b)
   const canonicalWidth = Math.max(8, medianOfSorted(widths))
   const canonicalHeight = Math.max(8, medianOfSorted(heights))
 
-  if (samples.length === 1) {
-    const single = samples[0]!
+  if (ordered.length === 1) {
+    const single = ordered[0]!
     const out =
       single.rgba.width === canonicalWidth && single.rgba.height === canonicalHeight
         ? cloneImage(single.rgba)
         : resizeBilinear(single.rgba, canonicalWidth, canonicalHeight)
-    const warpedKnown = resizeBinaryMaskNearest(
-      single.knownMask,
+    const warpedRepair = resizeBinaryMaskNearest(
+      single.repairMask,
       single.rgba.width,
       single.rgba.height,
       canonicalWidth,
       canonicalHeight
     )
-    repairResidualOccludedHoles(out, warpedKnown)
+    repairResidualOccludedHoles(out, warpedRepair)
     return { master: out, canonicalWidth, canonicalHeight }
   }
 
-  const warpedImgs = samples.map((s) =>
+  const warpedImgs = ordered.map((s) =>
     s.rgba.width === canonicalWidth && s.rgba.height === canonicalHeight
       ? s.rgba
       : resizeBilinear(s.rgba, canonicalWidth, canonicalHeight)
   )
-  const warpedKnowns = samples.map((s) =>
+  const warpedKnowns = ordered.map((s) =>
     resizeBinaryMaskNearest(
       s.knownMask,
       s.rgba.width,
@@ -547,9 +1602,47 @@ function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
       canonicalHeight
     )
   )
+  const warpedRepairs = ordered.map((s) =>
+    resizeBinaryMaskNearest(
+      s.repairMask,
+      s.rgba.width,
+      s.rgba.height,
+      canonicalWidth,
+      canonicalHeight
+    )
+  )
+
+  // If the cleanest exemplar has a calm uniform/gradient interior while sibling instances hold
+  // unseparated item icons (high interior clutter), suppress high-deviation interior pixels in cluttered siblings.
+  const cleanest = warpedImgs[0]!
+  const cleanestKnown = warpedKnowns[0]!
+  const cleanClutter = ordered[0]!.clutterScore
+  const ix0 = Math.floor(canonicalWidth * 0.22)
+  const ix1 = Math.ceil(canonicalWidth * 0.78)
+  const iy0 = Math.floor(canonicalHeight * 0.22)
+  const iy1 = Math.ceil(canonicalHeight * 0.78)
+  for (let k = 1; k < warpedImgs.length; k++) {
+    if (ordered[k]!.clutterScore <= cleanClutter + 8) continue
+    const wk = warpedKnowns[k]!
+    const imgK = warpedImgs[k]!
+    for (let y = iy0; y < iy1; y++) {
+      const row = y * canonicalWidth
+      for (let x = ix0; x < ix1; x++) {
+        const p = row + x
+        if (!cleanestKnown[p] || !wk[p]) continue
+        const i = p * 4
+        const diff =
+          (Math.abs(imgK.data[i]! - cleanest.data[i]!) +
+            Math.abs(imgK.data[i + 1]! - cleanest.data[i + 1]!) +
+            Math.abs(imgK.data[i + 2]! - cleanest.data[i + 2]!)) /
+          3
+        if (diff > 26) wk[p] = 0
+      }
+    }
+  }
 
   const master = createImage(canonicalWidth, canonicalHeight)
-  const fusedKnown = new Uint8Array(canonicalWidth * canonicalHeight)
+  const fusedRepair = new Uint8Array(canonicalWidth * canonicalHeight)
   const rs: number[] = []
   const gs: number[] = []
   const bs: number[] = []
@@ -572,7 +1665,7 @@ function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
       }
     }
     if (as.length > 0) {
-      fusedKnown[p] = 1
+      fusedRepair[p] = 1
       as.sort((a, b) => a - b)
       const medA = medianOfSorted(as)
       const o = p * 4
@@ -586,8 +1679,16 @@ function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
         master.data[o + 2] = medianOfSorted(bs)
       }
     } else {
-      // Fallback if every instance was occluded at pixel p: take median of all instances and mark hole
+      let anyCleanDeTexted = false
+      for (let k = 0; k < warpedRepairs.length; k++) {
+        if (warpedRepairs[k]![p]) {
+          anyCleanDeTexted = true
+          break
+        }
+      }
+      if (anyCleanDeTexted) fusedRepair[p] = 1
       for (let k = 0; k < warpedImgs.length; k++) {
+        if (anyCleanDeTexted && !warpedRepairs[k]![p]) continue
         const i = p * 4
         const img = warpedImgs[k]!
         as.push(img.data[i + 3]!)
@@ -598,8 +1699,10 @@ function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
         }
       }
       const o = p * 4
-      as.sort((a, b) => a - b)
-      master.data[o + 3] = medianOfSorted(as)
+      if (as.length > 0) {
+        as.sort((a, b) => a - b)
+        master.data[o + 3] = medianOfSorted(as)
+      }
       if (rs.length > 0) {
         rs.sort((a, b) => a - b)
         gs.sort((a, b) => a - b)
@@ -611,7 +1714,8 @@ function fuseClusterMasterRgba(samples: readonly ExtractedInstanceSample[]): {
     }
   }
 
-  repairResidualOccludedHoles(master, fusedKnown)
+  repairResidualOccludedHoles(master, fusedRepair)
+  bleedTransparentRgb(master.data, canonicalWidth, canonicalHeight, 3)
   return { master, canonicalWidth, canonicalHeight }
 }
 
@@ -676,6 +1780,71 @@ function repairResidualOccludedHoles(img: RgbaImage, knownMask: Uint8Array): voi
   }
 }
 
+/**
+ * Matches two UI skin instances by their outer 22% border frame ring so slots holding different
+ * item icons or buttons with different embedded art-text still cluster into one shared component.
+ */
+function samplesMatchByBorderRing(
+  a: ExtractedInstanceSample,
+  b: ExtractedInstanceSample,
+  scalePolicy: UiComponentScalePolicy,
+  bNine?: readonly [number, number, number, number]
+): boolean {
+  if (
+    !BORDER_RING_CLUSTERABLE_KINDS.has(a.layer.kind) &&
+    !BORDER_RING_CLUSTERABLE_KINDS.has(b.layer.kind)
+  ) {
+    return false
+  }
+  const w = a.rgba.width
+  const h = a.rgba.height
+  if (w < 18 || h < 18) return false
+
+  const renderedB = renderComponentToRect(b.rgba, w, h, scalePolicy, bNine)
+  const rx = Math.max(3, Math.min(18, Math.round(w * 0.22)))
+  const ry = Math.max(3, Math.min(18, Math.round(h * 0.22)))
+
+  let ringInter = 0
+  let ringUnion = 0
+  let chromaSum = 0
+  const ringErrors: number[] = []
+
+  for (let y = 0; y < h; y++) {
+    const borderY = y < ry || y >= h - ry
+    for (let x = 0; x < w; x++) {
+      if (!borderY && x >= rx && x < w - rx) continue
+      const p = y * w + x
+      if (!a.knownMask[p]) continue
+      const i = p * 4
+      const opA = a.rgba.data[i + 3]! >= 48
+      const opB = renderedB.data[i + 3]! >= 48
+      if (opA && opB) ringInter++
+      if (opA || opB) ringUnion++
+      if (a.rgba.data[i + 3]! >= 96 && renderedB.data[i + 3]! >= 96) {
+        const r1 = a.rgba.data[i]!
+        const g1 = a.rgba.data[i + 1]!
+        const b1 = a.rgba.data[i + 2]!
+        const r2 = renderedB.data[i]!
+        const g2 = renderedB.data[i + 1]!
+        const b2 = renderedB.data[i + 2]!
+        ringErrors.push((Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2)) / 3)
+        chromaSum += (Math.abs(r1 - g1 - (r2 - g2)) + Math.abs(g1 - b1 - (g2 - b2))) * 0.5
+      }
+    }
+  }
+
+  if (ringUnion < 16 || ringErrors.length < 16) return false
+  if (ringInter / ringUnion < 0.78) return false
+
+  ringErrors.sort((x, y) => x - y)
+  const trimCnt = Math.max(8, Math.floor(ringErrors.length * 0.85))
+  let sum = 0
+  for (let k = 0; k < trimCnt; k++) sum += ringErrors[k]!
+  const trimmedRingMae = sum / trimCnt
+  const chromaMae = chromaSum / ringErrors.length
+  return trimmedRingMae <= 19 && chromaMae <= 16
+}
+
 function samplesAreSameComponent(a: ExtractedInstanceSample, b: ExtractedInstanceSample): boolean {
   if (a.screenIndex === b.screenIndex && a.prefabKey && a.prefabKey === b.prefabKey) {
     return true
@@ -727,17 +1896,31 @@ function samplesAreSameComponent(a: ExtractedInstanceSample, b: ExtractedInstanc
     candidates: [candB],
     minScore: 0.75
   })
-  return match !== null
+  if (match !== null) return true
+
+  return samplesMatchByBorderRing(a, b, scalePolicy, bNine)
 }
 
-function buildKnownMaskForSplitLayer(
+function buildMasksForSplitLayer(
   target: PreciseSplitLayer,
   allLayers: readonly PreciseSplitLayer[]
-): Uint8Array {
+): { knownMask: Uint8Array; repairMask: Uint8Array } {
   const w = Math.max(1, target.width)
   const h = Math.max(1, target.height)
-  const known = new Uint8Array(w * h)
-  known.fill(1)
+  const n = w * h
+  const knownMask = new Uint8Array(n)
+  const repairMask = new Uint8Array(n)
+  knownMask.fill(1)
+  repairMask.fill(1)
+
+  if (target.knownMask && target.knownMask.length === n) {
+    for (let p = 0; p < n; p++) {
+      if (!target.knownMask[p]) {
+        knownMask[p] = 0
+        repairMask[p] = 0
+      }
+    }
+  }
 
   for (const upper of allLayers) {
     if (upper.id === target.id) continue
@@ -753,15 +1936,23 @@ function buildKnownMaskForSplitLayer(
     if (ox1 <= ox0 || oy1 <= oy0) continue
 
     if (upper.editableText) {
-      // Expand plain-text bbox by 2px so text strokes/anti-aliased halos are marked unknown
-      const padX0 = Math.max(target.left, ox0 - 2)
-      const padY0 = Math.max(target.top, oy0 - 2)
-      const padX1 = Math.min(target.left + target.width, ox1 + 2)
-      const padY1 = Math.min(target.top + target.height, oy1 + 2)
-      for (let y = padY0; y < padY1; y++) {
+      let hasGlyphAlpha = false
+      const glyphHits = new Uint8Array(n)
+      for (let y = oy0; y < oy1; y++) {
         const ty = y - target.top
-        for (let x = padX0; x < padX1; x++) {
-          known[ty * w + (x - target.left)] = 0
+        const uy = y - upper.top
+        for (let x = ox0; x < ox1; x++) {
+          const ux = x - upper.left
+          if (upper.rgba[(uy * upper.width + ux) * 4 + 3]! >= 16) {
+            glyphHits[ty * w + (x - target.left)] = 1
+            hasGlyphAlpha = true
+          }
+        }
+      }
+      if (hasGlyphAlpha) {
+        const dilated = dilateMask(glyphHits, w, h, 2)
+        for (let p = 0; p < n; p++) {
+          if (dilated[p]) knownMask[p] = 0
         }
       }
       continue
@@ -774,13 +1965,17 @@ function buildKnownMaskForSplitLayer(
         const ux = x - upper.left
         const ua = upper.rgba[(uy * upper.width + ux) * 4 + 3]!
         if (ua >= 24) {
-          known[ty * w + (x - target.left)] = 0
+          const idx = ty * w + (x - target.left)
+          knownMask[idx] = 0
+          if (target.rgba[idx * 4 + 3]! < 32) {
+            repairMask[idx] = 0
+          }
         }
       }
     }
   }
 
-  return known
+  return { knownMask, repairMask }
 }
 
 /**
@@ -790,9 +1985,9 @@ export function extractSharedComponentsFromSplitResults(
   screens: ReadonlyArray<{ split: PreciseSplitResult; title?: string }>,
   options?: ExtractSharedComponentsOptions
 ): PreciseSplitComponentCandidate[] {
-  const maxComponents = Math.max(1, Math.min(128, options?.maxComponents ?? 48))
+  const maxComponents = Math.max(1, Math.min(128, options?.maxComponents ?? 64))
   const mode = options?.mode ?? 'auto'
-  const includeSingletons = mode === 'all-controls' || (mode === 'auto' && screens.length <= 1)
+  const includeSingletons = mode !== 'repeated'
 
   const samples: ExtractedInstanceSample[] = []
   for (let sIdx = 0; sIdx < screens.length; sIdx++) {
@@ -801,7 +1996,7 @@ export function extractSharedComponentsFromSplitResults(
     for (const layer of split.layers) {
       if (layer.editableText || NON_COMPONENT_KINDS.has(layer.kind)) continue
       if (layer.width < 14 || layer.height < 14) continue
-      if (layer.width * layer.height > canvasArea * 0.75) continue
+      if (layer.width * layer.height > canvasArea * 0.55) continue
       const rgba: RgbaImage = {
         width: layer.width,
         height: layer.height,
@@ -809,19 +2004,24 @@ export function extractSharedComponentsFromSplitResults(
       }
       const descriptor = computeComponentVisualDescriptor(rgba)
       if (descriptor.opaqueRatio < 0.06) continue
-      const knownMask = buildKnownMaskForSplitLayer(layer, split.layers)
+      const { knownMask, repairMask } = buildMasksForSplitLayer(layer, split.layers)
+      const clutterScore = computeInteriorClutterScore(rgba, knownMask)
       samples.push({
         screenIndex: sIdx,
+        canvasArea,
         layer,
         rgba,
         knownMask,
+        repairMask,
+        clutterScore,
         descriptor,
         ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {})
       })
     }
   }
 
-  // Greedy similarity clustering (largest/cleanest samples first)
+  samples.sort((a, b) => a.clutterScore - b.clutterScore)
+
   const clusters: ExtractedInstanceSample[][] = []
   for (const sample of samples) {
     let placed = false
@@ -835,25 +2035,35 @@ export function extractSharedComponentsFromSplitResults(
     if (!placed) clusters.push([sample])
   }
 
-  // Sort clusters: multi-instance repeated components first, then reusable singletons by area
+  const isEligibleSingleton = (s: ExtractedInstanceSample): boolean => {
+    if (!REUSABLE_SINGLETON_KINDS.has(s.layer.kind)) return false
+    const areaRatio = (s.rgba.width * s.rgba.height) / Math.max(1, s.canvasArea)
+    if ((s.layer.kind === 'panel' || s.layer.kind === 'frame') && areaRatio > 0.4) return false
+    return true
+  }
+
+  const rankClusters = (a: ExtractedInstanceSample[], b: ExtractedInstanceSample[]): number => {
+    const aRep = a.length >= 2 ? 1 : 0
+    const bRep = b.length >= 2 ? 1 : 0
+    if (bRep !== aRep) return bRep - aRep
+    if (b.length !== a.length) return b.length - a.length
+    const prioDiff =
+      componentKindPriority(b[0]!.layer.kind) - componentKindPriority(a[0]!.layer.kind)
+    if (prioDiff !== 0) return prioDiff
+    return a[0]!.clutterScore - b[0]!.clutterScore
+  }
+
   const eligibleClusters = clusters
-    .filter(
-      (c) => c.length >= 2 || (includeSingletons && REUSABLE_SINGLETON_KINDS.has(c[0]!.layer.kind))
-    )
-    .sort((a, b) => {
-      if (b.length !== a.length) return b.length - a.length
-      const areaA = a[0]!.rgba.width * a[0]!.rgba.height
-      const areaB = b[0]!.rgba.width * b[0]!.rgba.height
-      return areaB - areaA
-    })
+    .filter((c) => c.length >= 2 || (includeSingletons && isEligibleSingleton(c[0]!)))
+    .sort(rankClusters)
     .slice(0, maxComponents)
 
-  // If mode === 'repeated' produced 0 clusters on a single screen, gracefully fall back to reusable controls
   const finalClusters =
     eligibleClusters.length > 0
       ? eligibleClusters
       : clusters
-          .filter((c) => REUSABLE_SINGLETON_KINDS.has(c[0]!.layer.kind))
+          .filter((c) => isEligibleSingleton(c[0]!))
+          .sort(rankClusters)
           .slice(0, maxComponents)
 
   const out: PreciseSplitComponentCandidate[] = []
@@ -861,6 +2071,7 @@ export function extractSharedComponentsFromSplitResults(
 
   for (let idx = 0; idx < finalClusters.length; idx++) {
     const cluster = finalClusters[idx]!
+    cluster.sort((a, b) => a.clutterScore - b.clutterScore)
     const rep = cluster[0]!
     const kind = rep.layer.kind
     const kindSeq = (kindCounters.get(kind) ?? 0) + 1
@@ -870,11 +2081,7 @@ export function extractSharedComponentsFromSplitResults(
     const nineSliceBorders = NINE_SLICE_ELIGIBLE_KINDS.has(kind)
       ? computeNineSliceFromRgbaBuffer(master.data, canonicalWidth, canonicalHeight)
       : undefined
-    const scalePolicy: UiComponentScalePolicy = nineSliceBorders
-      ? 'nine-slice'
-      : kind === 'close-button' || kind === 'icon' || kind === 'badge'
-        ? 'uniform'
-        : 'uniform'
+    const scalePolicy: UiComponentScalePolicy = nineSliceBorders ? 'nine-slice' : 'uniform'
     const descriptor = computeComponentVisualDescriptor(master)
     const kindSlug = kind.replace(/[^a-z0-9]+/gi, '_').toLowerCase()
     const id = `comp_${kindSlug}_${String(kindSeq).padStart(2, '0')}`
@@ -1055,4 +2262,145 @@ export function eraseExtraComponentFootprintOnPlate(
       plate.data[dstOff + 3] = sub.data[srcOff + 3]!
     }
   }
+}
+
+/**
+ * Automatically discovers genuinely repeated (`>= 2` instances) UI control skins inside a single
+ * `PreciseSplitResult` when no external upstream component library was wired, promotes clean
+ * unified masters (preferring the lowest-clutter / empty instance via border-ring clustering),
+ * and links matching layers as shared PSD Smart Object / 9-slice prefab instances.
+ */
+export function unifyRepeatedComponentsInSplitResult(
+  split: PreciseSplitResult,
+  options?: { maxComponents?: number }
+): PreciseSplitComponentCandidate[] {
+  const rawCandidates = extractSharedComponentsFromSplitResults([{ split }], {
+    mode: 'repeated',
+    maxComponents: options?.maxComponents ?? 16
+  }).filter((c) => (c.item.sourceCount ?? 0) >= 2)
+  if (!rawCandidates.length) return []
+
+  const canvasArea = Math.max(1, split.canvasWidth * split.canvasHeight)
+  const usedCandidates: PreciseSplitComponentCandidate[] = []
+
+  for (const cand of rawCandidates) {
+    const matches: Array<{
+      layer: PreciseSplitLayer
+      rendered: RgbaImage
+      layerClutter: number
+      masterClutter: number
+    }> = []
+
+    for (const layer of split.layers) {
+      if (layer.componentId || layer.editableText || NON_COMPONENT_KINDS.has(layer.kind)) continue
+      if (layer.kind !== cand.item.kind) continue
+      if (layer.width < 14 || layer.height < 14) continue
+      if (
+        (layer.kind === 'panel' || layer.kind === 'frame') &&
+        layer.width * layer.height > canvasArea * 0.25
+      ) {
+        continue
+      }
+      const wRatio = layer.width / Math.max(1, cand.item.canonicalWidth)
+      const hRatio = layer.height / Math.max(1, cand.item.canonicalHeight)
+      if (cand.item.scalePolicy !== 'nine-slice') {
+        if (wRatio < 0.8 || wRatio > 1.25 || hRatio < 0.8 || hRatio > 1.25) continue
+      } else {
+        if (wRatio < 0.55 || wRatio > 2.2 || hRatio < 0.55 || hRatio > 2.2) continue
+      }
+
+      const layerImg: RgbaImage = {
+        width: layer.width,
+        height: layer.height,
+        data: layer.rgba
+      }
+      const { knownMask, repairMask } = buildMasksForSplitLayer(layer, split.layers)
+      const detectedMask = new Uint8Array(layer.width * layer.height)
+      for (let p = 0; p < detectedMask.length; p++) {
+        if (layer.rgba[p * 4 + 3]! >= 32) detectedMask[p] = 1
+      }
+      const fullMatch = matchElementToComponentLibrary({
+        elementKind: layer.kind,
+        box: { left: layer.left, top: layer.top, width: layer.width, height: layer.height },
+        observedPatch: layerImg,
+        detectedMask,
+        knownMask,
+        candidates: [cand],
+        minScore: 0.76
+      })
+
+      let rendered: RgbaImage
+      if (fullMatch) {
+        rendered = fullMatch.rendered
+      } else {
+        const masterKnown = new Uint8Array(cand.rgba.width * cand.rgba.height).fill(1)
+        const sampleA: ExtractedInstanceSample = {
+          screenIndex: 0,
+          canvasArea,
+          layer,
+          rgba: layerImg,
+          knownMask,
+          repairMask,
+          clutterScore: 0,
+          descriptor: computeComponentVisualDescriptor(layerImg)
+        }
+        const sampleB: ExtractedInstanceSample = {
+          screenIndex: 0,
+          canvasArea,
+          layer: {
+            ...layer,
+            width: cand.rgba.width,
+            height: cand.rgba.height,
+            rgba: cand.rgba.data
+          },
+          rgba: cand.rgba,
+          knownMask: masterKnown,
+          repairMask: masterKnown,
+          clutterScore: 0,
+          descriptor: cand.item.descriptor ?? computeComponentVisualDescriptor(cand.rgba)
+        }
+        if (
+          !samplesMatchByBorderRing(
+            sampleA,
+            sampleB,
+            cand.item.scalePolicy,
+            cand.item.nineSliceBorders
+          )
+        ) {
+          continue
+        }
+        rendered = renderComponentToRect(
+          cand.rgba,
+          layer.width,
+          layer.height,
+          cand.item.scalePolicy,
+          cand.item.nineSliceBorders
+        )
+      }
+
+      const renderedKnown = new Uint8Array(rendered.width * rendered.height).fill(1)
+      const layerClutter = computeInteriorClutterScore(layerImg, knownMask)
+      const masterClutter = computeInteriorClutterScore(rendered, renderedKnown)
+      matches.push({ layer, rendered, layerClutter, masterClutter })
+    }
+
+    if (matches.length < 2) continue
+
+    for (const m of matches) {
+      m.layer.componentId = cand.item.id
+      m.layer.componentMatchScore = 0.94
+      m.layer.prefabKey = cand.item.id
+      if (m.masterClutter <= m.layerClutter + 2.5) {
+        bleedTransparentRgb(m.rendered.data, m.rendered.width, m.rendered.height, 4)
+        m.layer.originalRgba = new Uint8ClampedArray(m.layer.rgba)
+        m.layer.rgba = new Uint8ClampedArray(m.rendered.data)
+      }
+    }
+    usedCandidates.push({
+      item: { ...cand.item, sourceCount: matches.length },
+      rgba: cand.rgba
+    })
+  }
+
+  return usedCandidates
 }

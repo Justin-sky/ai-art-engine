@@ -21,6 +21,8 @@ import {
   dilateMask,
   expandRect,
   inpaintPushPull,
+  labelComponents,
+  median,
   nearestAspectRatio,
   pixelDistance,
   resizeBilinear
@@ -523,12 +525,41 @@ export async function peelLevel(input: {
           generated = unpackOcclusionAtlas(next, rawAtlas, packed, hole)
         }
       } else {
-        const [image, maskImage] = await Promise.all([
-          io.encodePng(next),
-          io.encodePng(buildBinaryMaskRgba(hole, W, H))
-        ])
         const isSceneBg =
           level === 1 && input.backgroundRepairMode === 'scene' && solid.every((el) => !el.parentId)
+        let activeHole = hole
+        if (isSceneBg && input.allElements?.length) {
+          // Union-mask scene background cleanup (`bggg-creator-image2psd` method):
+          // Include all root foreground cutouts across upper levels too so earlier local fills
+          // from floating badges / HUD bars are cleanly reconstructed in one unified scene pass.
+          const unionSceneHole = new Uint8Array(hole)
+          for (const upperEl of input.allElements) {
+            if (upperEl.plainText || upperEl.parentId || (upperEl.level ?? 1) <= 1) continue
+            if (upperEl.instanceMask) {
+              const im = upperEl.instanceMask
+              const grownUpper = dilateMask(im.mask, im.rect.width, im.rect.height, pad + 2)
+              for (let y = 0; y < im.rect.height; y++) {
+                const cy = im.rect.top + y
+                if (cy < 0 || cy >= H) continue
+                const rowOff = y * im.rect.width
+                for (let x = 0; x < im.rect.width; x++) {
+                  if (!grownUpper[rowOff + x]) continue
+                  const cx = im.rect.left + x
+                  if (cx < 0 || cx >= W) continue
+                  unionSceneHole[cy * W + cx] = 1
+                }
+              }
+            } else {
+              paintRect(unionSceneHole, W, H, expandRect(upperEl.box, pad + 2, W, H))
+            }
+            paintRect(featherAllow, W, H, expandRect(upperEl.box, pad + 6, W, H))
+          }
+          activeHole = unionSceneHole
+        }
+        const [image, maskImage] = await Promise.all([
+          io.encodePng(next),
+          io.encodePng(buildBinaryMaskRgba(activeHole, W, H))
+        ])
         const prompt = isSceneBg
           ? buildSceneBackgroundPrompt({ locale: input.locale })
           : buildPeelEditPrompt({
@@ -545,10 +576,15 @@ export async function peelLevel(input: {
         })
         if (raw) {
           const resized = resizeBilinear(raw, W, H)
-          const shift = estimateShift(next, resized, hole)
+          const shift = estimateShift(next, resized, activeHole)
           // 蒙版外平均色差过大 = 模型改了构图/画幅，结果不可用
           if (Number.isFinite(shift.error) && shift.error <= 24) {
             generated = shiftImage(resized, shift.dx, shift.dy)
+            if (activeHole !== hole) {
+              for (let p = 0; p < hole.length; p++) {
+                if (activeHole[p]) hole[p] = 1
+              }
+            }
           } else {
             io.log?.(
               `peel L${level}: generated plate rejected (misaligned, err=${shift.error.toFixed(1)})`
@@ -603,4 +639,131 @@ export async function peelLevel(input: {
     report.push({ level, method: 'local', elementCount: solid.length })
   }
   return { plate: next, report }
+}
+
+/**
+ * Final foreground Union-Mask base cleanup (`bggg-creator-image2psd` Step 4):
+ * After all foreground layer mattes (`aboveAlpha`) and any clipped-edge expansions are finalized,
+ * checks whether any pixel inside the union of foreground layers (`aboveAlpha >= 0.12` or
+ * `peeledByReplacement`) was left unpeeled on `base` (`pixelDistance(base, source) <= 3`) while
+ * contrasting with surrounding clean background, and locally inpaints those ghost rims away.
+ */
+export function scrubBaseWithForegroundUnionMask(input: {
+  base: RgbaImage
+  source: RgbaImage
+  aboveAlpha: Float32Array
+  peeledByReplacement: Uint8Array
+}): number {
+  const { base, source, aboveAlpha, peeledByReplacement } = input
+  const W = base.width
+  const H = base.height
+  const n = W * H
+  const fgUnion = new Uint8Array(n)
+  const ghost = new Uint8Array(n)
+  let ghostCount = 0
+
+  for (let p = 0; p < n; p++) {
+    const owned = aboveAlpha[p]! >= 0.06 || peeledByReplacement[p] === 1
+    if (owned) fgUnion[p] = 1
+    const strongOwned = aboveAlpha[p]! >= 0.12 || peeledByReplacement[p] === 1
+    if (!strongOwned) continue
+    const i = p * 4
+    if (pixelDistance(base.data, i, source.data, i) <= 3) {
+      ghost[p] = 1
+      ghostCount++
+    }
+  }
+  if (!ghostCount) return 0
+
+  const unionGrown = dilateMask(fgUnion, W, H, 1)
+  const { labels, stats } = labelComponents(ghost, W, H)
+  if (!stats.length) return 0
+
+  let repaired = 0
+  const refColor = new Uint8ClampedArray([0, 0, 0, 255])
+
+  for (const cs of stats) {
+    if (cs.area > n * 0.18) continue
+    const ctx = expandRect(
+      {
+        left: cs.minX,
+        top: cs.minY,
+        width: cs.maxX - cs.minX + 1,
+        height: cs.maxY - cs.minY + 1
+      },
+      10,
+      W,
+      H
+    )
+    const extRs: number[] = []
+    const extGs: number[] = []
+    const extBs: number[] = []
+    for (let y = ctx.top; y < ctx.top + ctx.height; y++) {
+      const row = y * W
+      for (let x = ctx.left; x < ctx.left + ctx.width; x++) {
+        const gp = row + x
+        if (unionGrown[gp]) continue
+        const gi = gp * 4
+        if (base.data[gi + 3]! < 180) continue
+        extRs.push(base.data[gi]!)
+        extGs.push(base.data[gi + 1]!)
+        extBs.push(base.data[gi + 2]!)
+      }
+    }
+    if (extRs.length < 6) continue
+    refColor[0] = median(extRs)
+    refColor[1] = median(extGs)
+    refColor[2] = median(extBs)
+
+    let diffSum = 0
+    let diffCnt = 0
+    for (let y = cs.minY; y <= cs.maxY; y++) {
+      const row = y * W
+      for (let x = cs.minX; x <= cs.maxX; x++) {
+        const gp = row + x
+        if (labels[gp] !== cs.label) continue
+        diffSum += pixelDistance(base.data, gp * 4, refColor, 0)
+        diffCnt++
+      }
+    }
+    if (!diffCnt || diffSum / diffCnt < 18) continue
+
+    const sub = cropImage(base, ctx)
+    const subHole = new Uint8Array(ctx.width * ctx.height)
+    for (let y = cs.minY; y <= cs.maxY; y++) {
+      const row = y * W
+      for (let x = cs.minX; x <= cs.maxX; x++) {
+        const gp = row + x
+        if (labels[gp] !== cs.label) continue
+        for (let dy = -1; dy <= 1; dy++) {
+          const cy = y + dy
+          if (cy < ctx.top || cy >= ctx.top + ctx.height) continue
+          for (let dx = -1; dx <= 1; dx++) {
+            const cx = x + dx
+            if (cx < ctx.left || cx >= ctx.left + ctx.width) continue
+            const ngp = cy * W + cx
+            if (!unionGrown[ngp]) continue
+            subHole[(cy - ctx.top) * ctx.width + (cx - ctx.left)] = 1
+          }
+        }
+      }
+    }
+    inpaintPushPull(sub, subHole)
+    for (let y = 0; y < ctx.height; y++) {
+      const cy = ctx.top + y
+      for (let x = 0; x < ctx.width; x++) {
+        const lp = y * ctx.width + x
+        if (!subHole[lp]) continue
+        const li = lp * 4
+        const gi = (cy * W + (ctx.left + x)) * 4
+        base.data[gi] = sub.data[li]!
+        base.data[gi + 1] = sub.data[li + 1]!
+        base.data[gi + 2] = sub.data[li + 2]!
+        base.data[gi + 3] = sub.data[li + 3]!
+        repaired++
+      }
+    }
+  }
+
+  return repaired
 }

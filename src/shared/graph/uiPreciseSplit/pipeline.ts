@@ -36,7 +36,7 @@ import {
   type OwnershipEntry,
   type OwnershipMap
 } from './ownership'
-import { peelLevel, type PeelLevelReport } from './plates'
+import { peelLevel, scrubBaseWithForegroundUnionMask, type PeelLevelReport } from './plates'
 import { runSplitQa, type QaLayerInput } from './qa'
 import {
   completeOccludedRegions,
@@ -1395,6 +1395,39 @@ export async function runPreciseUiSplit(
   }
   log(`compose: ${ownedCount} owned (pixel-locked), ${fallbackCount} diff-matte fallback`)
 
+  // 7.5b 叠回像素差分自检与扩框修边（吸收 bggg-creator-image2psd Step 5：边缘被裁时原地外扩 mask，绝不移动图层坐标）
+  const clippedHeal = healClippedLayersByCompositeDiff({
+    source,
+    base,
+    textFree,
+    plates,
+    ordered,
+    byId,
+    levelOf,
+    matteById,
+    componentMatchById,
+    ownership,
+    entryIdx,
+    aboveAlpha,
+    peeledByReplacement
+  })
+  if (clippedHeal.healedPx > 0) {
+    log(
+      `composite diff edge heal: ${clippedHeal.healedPx} px expanded across ${clippedHeal.healedLayers} layer(s)`
+    )
+  }
+
+  // 7.5c 前景 Union Mask 底板残影二次清扫（吸收 bggg-creator-image2psd Step 4：清除扩框或光晕带下方未剥净的前景残边）
+  const unionScrubbedPx = scrubBaseWithForegroundUnionMask({
+    base,
+    source,
+    aboveAlpha,
+    peeledByReplacement
+  })
+  if (unionScrubbedPx > 0) {
+    log(`union-mask base cleanup: ${unionScrubbedPx} residual px scrubbed`)
+  }
+
   // 7.6 底板可见像素锁定：没有任何图层覆盖（且非组件替换已剥离区域）的像素一律取原图
   let baseLocked = 0
   for (let g = 0; g < W * H; g++) {
@@ -1885,6 +1918,384 @@ export function groupableElementIds(layers: readonly PreciseSplitLayer[]): Set<s
     if (l.parentElementId && present.has(l.parentElementId)) out.add(l.parentElementId)
   }
   return out
+}
+
+function intersectRectBounds(a: PixelRect, b: PixelRect): PixelRect | null {
+  const x0 = Math.max(a.left, b.left)
+  const y0 = Math.max(a.top, b.top)
+  const x1 = Math.min(a.left + a.width, b.left + b.width)
+  const y1 = Math.min(a.top + a.height, b.top + b.height)
+  if (x1 <= x0 || y1 <= y0) return null
+  return { left: x0, top: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/**
+ * 叠回像素差分自检与被裁边缘原地扩框修复（吸收 bggg-creator-image2psd Step 5）：
+ * 在底板锁定原图像素之前，先按原坐标把 `base + 全部前景图层` 叠回成预览图并与 `source` 做逐像素对比；
+ * 若某非组件替换图层的紧邻外圈（1~3px）出现明显叠回色差，或 OCR/VLM 框在边界处硬裁切了同色笔画/描边，
+ * 则在保持画布绝对坐标 `(cx, cy)` 零位移的前提下原地外扩该图层的 `rect` 与 `rgba`。
+ */
+function healClippedLayersByCompositeDiff(input: {
+  source: RgbaImage
+  base: RgbaImage
+  textFree: RgbaImage
+  plates: readonly RgbaImage[]
+  ordered: readonly UiElementNode[]
+  byId: ReadonlyMap<string, UiElementNode>
+  levelOf: (el: UiElementNode) => number
+  matteById: Map<string, { rect: PixelRect; rgba: Uint8ClampedArray }>
+  componentMatchById: ReadonlyMap<string, unknown>
+  ownership: OwnershipMap
+  entryIdx: ReadonlyMap<string, number>
+  aboveAlpha: Float32Array
+  peeledByReplacement: Uint8Array
+}): { healedPx: number; healedLayers: number } {
+  const {
+    source,
+    base,
+    textFree,
+    plates,
+    ordered,
+    byId,
+    levelOf,
+    matteById,
+    componentMatchById,
+    ownership,
+    entryIdx,
+    aboveAlpha,
+    peeledByReplacement
+  } = input
+  const W = source.width
+  const H = source.height
+  const n = W * H
+
+  const preLock = cloneImage(base)
+  const topOwnerLayer = new Int32Array(n).fill(-1)
+
+  for (let ordIdx = 0; ordIdx < ordered.length; ordIdx++) {
+    const el = ordered[ordIdx]!
+    const matte = matteById.get(el.id)
+    if (!matte) continue
+    compositeOver(
+      preLock,
+      { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
+      matte.rect.left,
+      matte.rect.top
+    )
+    const { rect, rgba } = matte
+    for (let y = 0; y < rect.height; y++) {
+      const cy = rect.top + y
+      if (cy < 0 || cy >= H) continue
+      const row = cy * W
+      const mRow = y * rect.width
+      for (let x = 0; x < rect.width; x++) {
+        const cx = rect.left + x
+        if (cx < 0 || cx >= W) continue
+        if (rgba[(mRow + x) * 4 + 3]! >= 32) {
+          topOwnerLayer[row + cx] = ordIdx
+        }
+      }
+    }
+  }
+
+  let healedPx = 0
+  let healedLayers = 0
+  const maxGrow = 3
+  const tmpColorA = new Uint8ClampedArray([0, 0, 0, 255])
+  const tmpColorB = new Uint8ClampedArray([0, 0, 0, 255])
+
+  for (let ordIdx = ordered.length - 1; ordIdx >= 0; ordIdx--) {
+    const el = ordered[ordIdx]!
+    if (componentMatchById.has(el.id) || isTranslucentGlowElement(el)) continue
+    const matte = matteById.get(el.id)
+    if (!matte) continue
+
+    let bounds: PixelRect | null = expandRect(matte.rect, maxGrow, W, H)
+    if (el.parentId) {
+      const parent = byId.get(el.parentId)
+      if (parent?.slotInnerRect) {
+        const paddedSlot = expandRect(parent.slotInnerRect, 1, W, H)
+        if (
+          matte.rect.left >= paddedSlot.left &&
+          matte.rect.top >= paddedSlot.top &&
+          matte.rect.left + matte.rect.width <= paddedSlot.left + paddedSlot.width &&
+          matte.rect.top + matte.rect.height <= paddedSlot.top + paddedSlot.height
+        ) {
+          bounds = intersectRectBounds(bounds, parent.slotInnerRect)
+        }
+      } else if (
+        parent &&
+        (parent.kind === 'panel' ||
+          parent.kind === 'frame' ||
+          parent.kind === 'item-slot' ||
+          parent.kind === 'banner') &&
+        parent.box.width > 8 &&
+        parent.box.height > 8 &&
+        matte.rect.left >= parent.box.left + 2 &&
+        matte.rect.top >= parent.box.top + 2 &&
+        matte.rect.left + matte.rect.width <= parent.box.left + parent.box.width - 2 &&
+        matte.rect.top + matte.rect.height <= parent.box.top + parent.box.height - 2
+      ) {
+        bounds = intersectRectBounds(bounds, {
+          left: parent.box.left + 2,
+          top: parent.box.top + 2,
+          width: parent.box.width - 4,
+          height: parent.box.height - 4
+        })
+      }
+    }
+    if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue
+
+    const bw = bounds.width
+    const bh = bounds.height
+    const bn = bw * bh
+    const lower = el.plainText ? textFree : plates[levelOf(el)]!
+    const selfEntryIdx = entryIdx.get(el.id) ?? -2
+    const parentEntryIdx = el.parentId ? (entryIdx.get(el.parentId) ?? -2) : -2
+    const selfPaint = el.paintIndex ?? 0
+
+    const curAlpha = new Uint8Array(bn)
+    const curRgb = new Uint8ClampedArray(bn * 4)
+    const stepDist = new Uint8Array(bn).fill(255)
+    const seedBg = new Uint8ClampedArray(bn * 4)
+
+    for (let y = 0; y < matte.rect.height; y++) {
+      const by = matte.rect.top + y - bounds.top
+      if (by < 0 || by >= bh) continue
+      const mRow = y * matte.rect.width
+      const bRow = by * bw
+      for (let x = 0; x < matte.rect.width; x++) {
+        const bx = matte.rect.left + x - bounds.left
+        if (bx < 0 || bx >= bw) continue
+        const mi = (mRow + x) * 4
+        const a = matte.rgba[mi + 3]!
+        if (!a) continue
+        const bp = bRow + bx
+        const bi = bp * 4
+        curAlpha[bp] = a
+        curRgb[bi] = matte.rgba[mi]!
+        curRgb[bi + 1] = matte.rgba[mi + 1]!
+        curRgb[bi + 2] = matte.rgba[mi + 2]!
+        curRgb[bi + 3] = 255
+      }
+    }
+
+    const queue = new Int32Array(bn)
+    let head = 0
+    let tail = 0
+    for (let y = 0; y < bh; y++) {
+      const cy = bounds.top + y
+      const bRow = y * bw
+      for (let x = 0; x < bw; x++) {
+        const bp = bRow + x
+        if (curAlpha[bp]! < 140) continue
+        let onBoundary = false
+        for (let dy = -1; dy <= 1 && !onBoundary; dy++) {
+          const ny = y + dy
+          if (ny < 0 || ny >= bh) {
+            onBoundary = true
+            break
+          }
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue
+            const nx = x + dx
+            if (nx < 0 || nx >= bw || curAlpha[ny * bw + nx]! < 64) {
+              onBoundary = true
+              break
+            }
+          }
+        }
+        if (!onBoundary) continue
+        const gi = (cy * W + (bounds.left + x)) * 4
+        const bi = bp * 4
+        seedBg[bi] = lower.data[gi]!
+        seedBg[bi + 1] = lower.data[gi + 1]!
+        seedBg[bi + 2] = lower.data[gi + 2]!
+        seedBg[bi + 3] = 255
+        // Require the seed itself to contrast meaningfully with its underlying background
+        if (pixelDistance(curRgb, bi, seedBg, bi) < 28) continue
+        stepDist[bp] = 0
+        queue[tail++] = bp
+      }
+    }
+
+    let added = 0
+    while (head < tail) {
+      const p = queue[head++]!
+      const d = stepDist[p]!
+      if (d >= maxGrow) continue
+      const py = (p / bw) | 0
+      const px = p - py * bw
+      const pi = p * 4
+
+      const onOldRectWall =
+        d === 0 &&
+        (bounds.left + px === matte.rect.left ||
+          bounds.left + px === matte.rect.left + matte.rect.width - 1 ||
+          bounds.top + py === matte.rect.top ||
+          bounds.top + py === matte.rect.top + matte.rect.height - 1)
+
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = py + dy
+        if (ny < 0 || ny >= bh) continue
+        const cy = bounds.top + ny
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue
+          const nx = px + dx
+          if (nx < 0 || nx >= bw) continue
+          const np = ny * bw + nx
+          if (stepDist[np]! <= d + 1 || curAlpha[np]! >= 96) continue
+
+          const cx = bounds.left + nx
+          const g = cy * W + cx
+          if (peeledByReplacement[g] || aboveAlpha[g]! >= 0.55) continue
+          if (topOwnerLayer[g]! >= 0 && topOwnerLayer[g]! !== ordIdx) continue
+
+          if (!el.plainText) {
+            const own = ownership.owner[g]!
+            if (own >= 0 && own !== selfEntryIdx && own !== parentEntryIdx) {
+              const ownPaint = ownership.entries[own]?.paintIndex ?? -1
+              if (ownPaint >= selfPaint) continue
+            }
+          }
+
+          const gi = g * 4
+          const outsideOldRect =
+            cx < matte.rect.left ||
+            cx >= matte.rect.left + matte.rect.width ||
+            cy < matte.rect.top ||
+            cy >= matte.rect.top + matte.rect.height
+
+          const compErr = pixelDistance(preLock.data, gi, source.data, gi)
+          const fgDist = pixelDistance(source.data, gi, curRgb, pi)
+          const bgDist = pixelDistance(source.data, gi, seedBg, pi)
+
+          const hardWallClip =
+            (onOldRectWall || d >= 1) && outsideOldRect && fgDist <= 20 && bgDist >= 32
+          const diffClip = compErr >= (d === 0 ? 18 : 16) && fgDist <= 28 && bgDist >= 24
+
+          if (!hardWallClip && !diffClip) continue
+
+          // Solve linear coverage between `curRgb[p]` (foreground) and `seedBg[p]` (background)
+          const vr = curRgb[pi]! - seedBg[pi]!
+          const vg = curRgb[pi + 1]! - seedBg[pi + 1]!
+          const vb = curRgb[pi + 2]! - seedBg[pi + 2]!
+          const vLen2 = vr * vr + vg * vg + vb * vb
+          let solvedA = 255
+          let sr = source.data[gi]!
+          let sg = source.data[gi + 1]!
+          let sb = source.data[gi + 2]!
+          if (vLen2 >= 400 && fgDist > 10) {
+            const ur = sr - seedBg[pi]!
+            const ug = sg - seedBg[pi + 1]!
+            const ub = sb - seedBg[pi + 2]!
+            const proj = Math.max(0, Math.min(1, (ur * vr + ug * vg + ub * vb) / vLen2))
+            const perp = Math.hypot(ur - proj * vr, ug - proj * vg, ub - proj * vb)
+            if (proj >= 0.18 && perp <= 22) {
+              solvedA = Math.round(proj * 255)
+              if (proj < 0.96) {
+                sr = Math.max(0, Math.min(255, Math.round((sr - seedBg[pi]! * (1 - proj)) / proj)))
+                sg = Math.max(
+                  0,
+                  Math.min(255, Math.round((sg - seedBg[pi + 1]! * (1 - proj)) / proj))
+                )
+                sb = Math.max(
+                  0,
+                  Math.min(255, Math.round((sb - seedBg[pi + 2]! * (1 - proj)) / proj))
+                )
+              }
+            }
+          }
+          if (solvedA <= curAlpha[np]!) continue
+
+          const ni = np * 4
+          curAlpha[np] = solvedA
+          curRgb[ni] = sr
+          curRgb[ni + 1] = sg
+          curRgb[ni + 2] = sb
+          curRgb[ni + 3] = 255
+          seedBg[ni] = seedBg[pi]!
+          seedBg[ni + 1] = seedBg[pi + 1]!
+          seedBg[ni + 2] = seedBg[pi + 2]!
+          seedBg[ni + 3] = 255
+          stepDist[np] = d + 1
+          if (solvedA >= 160) queue[tail++] = np
+
+          const normA = solvedA / 255
+          if (normA > aboveAlpha[g]!) aboveAlpha[g] = normA
+          if (solvedA >= 32) topOwnerLayer[g] = ordIdx
+
+          // Update `preLock` and `textFree` (if plainText overhang) so lower layers see the healed state
+          tmpColorA[0] = sr
+          tmpColorA[1] = sg
+          tmpColorA[2] = sb
+          tmpColorB[0] = preLock.data[gi]!
+          tmpColorB[1] = preLock.data[gi + 1]!
+          tmpColorB[2] = preLock.data[gi + 2]!
+          preLock.data[gi] = Math.round(sr * normA + tmpColorB[0] * (1 - normA))
+          preLock.data[gi + 1] = Math.round(sg * normA + tmpColorB[1] * (1 - normA))
+          preLock.data[gi + 2] = Math.round(sb * normA + tmpColorB[2] * (1 - normA))
+
+          if (el.plainText && pixelDistance(textFree.data, gi, source.data, gi) <= 4) {
+            textFree.data[gi] = seedBg[pi]!
+            textFree.data[gi + 1] = seedBg[pi + 1]!
+            textFree.data[gi + 2] = seedBg[pi + 2]!
+          }
+          added++
+        }
+      }
+    }
+
+    if (added <= 0) continue
+
+    let minX = bw
+    let minY = bh
+    let maxX = -1
+    let maxY = -1
+    for (let y = 0; y < bh; y++) {
+      const bRow = y * bw
+      for (let x = 0; x < bw; x++) {
+        if (!curAlpha[bRow + x]) continue
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+    if (maxX < minX || maxY < minY) continue
+
+    const nw = maxX - minX + 1
+    const nh = maxY - minY + 1
+    const nextRgba = new Uint8ClampedArray(nw * nh * 4)
+    for (let y = 0; y < nh; y++) {
+      const bRow = (minY + y) * bw
+      const nRow = y * nw
+      for (let x = 0; x < nw; x++) {
+        const bp = bRow + (minX + x)
+        const a = curAlpha[bp]!
+        if (!a) continue
+        const bi = bp * 4
+        const ni = (nRow + x) * 4
+        nextRgba[ni] = curRgb[bi]!
+        nextRgba[ni + 1] = curRgb[bi + 1]!
+        nextRgba[ni + 2] = curRgb[bi + 2]!
+        nextRgba[ni + 3] = a
+      }
+    }
+    matteById.set(el.id, {
+      rect: {
+        left: bounds.left + minX,
+        top: bounds.top + minY,
+        width: nw,
+        height: nh
+      },
+      rgba: nextRgba
+    })
+    healedPx += added
+    healedLayers++
+  }
+
+  return { healedPx, healedLayers }
 }
 
 export type { UiElementNode }

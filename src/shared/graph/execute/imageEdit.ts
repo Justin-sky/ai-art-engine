@@ -60,7 +60,11 @@ import {
 } from '../imageLayerSplit'
 import { PreciseSplitError } from '../uiPreciseSplit'
 import { uiComponentLibraryFingerprintKey, type UiSharedComponentItem } from '../uiComponentLibrary'
-import { canRunPreciseLayerSplit, runPreciseLayerSplitForNode } from './layerSplitPrecise'
+import {
+  canRunPreciseLayerSplit,
+  purifySolidBgFallbackSplitLayers,
+  runPreciseLayerSplitForNode
+} from './layerSplitPrecise'
 import {
   applyComponentLibraryToFallbackLayers,
   readUpstreamUiComponentLibrary,
@@ -2073,6 +2077,11 @@ export async function executeLayerSplitNode(
 
     if (!mapped || !mapped.layers.length) {
       throw fail(SHARED_ERRORS.layerSplitEmpty)
+    }
+    if (!preciseGroups) {
+      await purifySolidBgFallbackSplitLayers(ctx, mapped, (url, suffix) =>
+        resolveCanvasSafeBaseDataUrl(ctx, url, stamp, suffix)
+      )
     }
     if (
       !preciseGroups &&

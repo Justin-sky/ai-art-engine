@@ -28,8 +28,10 @@ import {
   type UiSharedComponentItem
 } from '../src/shared/graph'
 import {
+  choosePurificationStudioBg,
   computeComponentVisualDescriptor,
   createImage,
+  extractCleanComponentMatteFromSolidBg,
   extractSharedComponentsFromSplitResults,
   matchElementToComponentLibrary,
   renderComponentToRect,
@@ -40,6 +42,7 @@ import {
   type RgbaImage
 } from '../src/shared/graph/uiPreciseSplit'
 import { mapPreciseResultToLayers } from '../src/shared/graph/execute/layerSplitPrecise'
+import { resolveGalleryOutputsFromNodeParams } from '../src/shared/graph/execute/helpers'
 import { layerSplitToPsdUint8Array } from '../src/renderer/src/features/graph/model/layerSplitPsd'
 
 function encodeRawRgbaDataUrl(img: RgbaImage): string {
@@ -938,5 +941,693 @@ describe('UI Shared Component Library & PSD Smart Object Split Pipeline', () => 
     expect(diveViewCode).toContain("t('graph.uiComponentLib.extractMode')")
     expect(diveViewCode).toContain("t('graph.layerSplit.visionModelLabel')")
     expect(diveViewCode).toContain('<ImageGenerateModelField')
+  })
+
+  it('unmixes solid studio backgrounds while preserving white interior highlights (bggg-creator-image2psd white-preserve)', () => {
+    // Off-white AI studio canvas (252, 252, 250)
+    const W = 96
+    const H = 64
+    const studio = createImage(W, H)
+    for (let p = 0; p < W * H; p++) {
+      studio.data[p * 4] = 252
+      studio.data[p * 4 + 1] = 252
+      studio.data[p * 4 + 2] = 250
+      studio.data[p * 4 + 3] = 255
+    }
+
+    const btn = makeButtonFrameRgba(60, 32, {
+      borderPx: 5,
+      borderRgb: [228, 176, 62],
+      fillRgb: [36, 74, 142],
+      cornerRadius: 4
+    })
+    // Paint a pure-white [255, 255, 255] specular shine bar right inside the button interior!
+    for (let y = 11; y < 18; y++) {
+      for (let x = 18; x < 42; x++) {
+        const i = (y * 60 + x) * 4
+        btn.data[i] = 255
+        btn.data[i + 1] = 255
+        btn.data[i + 2] = 255
+        btn.data[i + 3] = 255
+      }
+    }
+    // Add 50% translucent anti-aliased top border edge row (y = 0, x = 10..50)
+    for (let x = 10; x < 50; x++) {
+      const i = x * 4
+      btn.data[i] = 228
+      btn.data[i + 1] = 176
+      btn.data[i + 2] = 62
+      btn.data[i + 3] = 128
+    }
+
+    compositeOver(studio, btn, 18, 16)
+
+    const matte = extractCleanComponentMatteFromSolidBg(studio, {
+      expectedBgRgb: [255, 255, 255]
+    })
+    expect(matte).not.toBeNull()
+    expect(matte!.width).toBe(60)
+    expect(matte!.height).toBe(32)
+
+    // Rounded corner at (0, 0) is cleanly transparent (alpha = 0)
+    expect(matte!.data[3]).toBe(0)
+
+    // Pure-white interior highlight at button center (30, 14) MUST stay 100% opaque [255, 255, 255, 255] (zero punch-through hole!)
+    const centerIdx = (14 * matte!.width + 30) * 4
+    expect(matte!.data[centerIdx]).toBe(255)
+    expect(matte!.data[centerIdx + 1]).toBe(255)
+    expect(matte!.data[centerIdx + 2]).toBe(255)
+    expect(matte!.data[centerIdx + 3]).toBe(255)
+
+    // Anti-aliased top border pixel (x = 25, y = 0) unmixed cleanly from off-white background (blue channel recovered near 62, not 156!)
+    const edgeIdx = 25 * 4
+    expect(matte!.data[edgeIdx + 3]).toBeGreaterThan(60)
+    expect(matte!.data[edgeIdx + 3]).toBeLessThan(220)
+    expect(matte!.data[edgeIdx + 2]).toBeLessThan(120)
+
+    // Adaptive studio background selector picks #FFFFFF for gold-rimmed controls and #141820 for white-rimmed controls
+    expect(choosePurificationStudioBg(btn).bgHex).toBe('#FFFFFF')
+    const whiteRimmed = makeButtonFrameRgba(60, 32, {
+      borderPx: 5,
+      borderRgb: [246, 248, 252],
+      fillRgb: [40, 48, 68],
+      cornerRadius: 4
+    })
+    expect(choosePurificationStudioBg(whiteRimmed).bgHex).toBe('#141820')
+  })
+
+  it('clusters occupied item-slots by outer border ring, suppresses unseparated interior icons via cleanest exemplar, and filters non-components', () => {
+    const w = 48
+    const h = 48
+    const cleanSlot = makeButtonFrameRgba(w, h, { borderPx: 6, cornerRadius: 4 })
+
+    // Slot 1 & Slot 2 contain unseparated bright red/green item icons in their centers (with NO explicit knownMask=0!)
+    const occupiedSlotRed = {
+      width: w,
+      height: h,
+      data: new Uint8ClampedArray(cleanSlot.data)
+    }
+    const occupiedSlotGreen = {
+      width: w,
+      height: h,
+      data: new Uint8ClampedArray(cleanSlot.data)
+    }
+    for (let y = 14; y < 34; y++) {
+      for (let x = 14; x < 34; x++) {
+        const i = (y * w + x) * 4
+        // Checker/textured icon pattern so interior gradient clutter is high
+        const alt = (x + y) % 2 === 0 ? 245 : 165
+        occupiedSlotRed.data[i] = alt
+        occupiedSlotRed.data[i + 1] = 25
+        occupiedSlotRed.data[i + 2] = 30
+        occupiedSlotGreen.data[i] = 20
+        occupiedSlotGreen.data[i + 1] = alt
+        occupiedSlotGreen.data[i + 2] = 45
+      }
+    }
+
+    const giantBackdrop = makeButtonFrameRgba(180, 140, { borderPx: 4, cornerRadius: 2 })
+
+    const splitResult: PreciseSplitResult = {
+      canvasWidth: 200,
+      canvasHeight: 160,
+      base: createImage(200, 160),
+      layers: [
+        {
+          id: 'bg_panel',
+          elementId: 'bg_panel',
+          name: 'Giant Dialog Backdrop',
+          kind: 'panel',
+          parentElementId: null,
+          paintIndex: 1,
+          left: 10,
+          top: 10,
+          width: 180,
+          height: 140,
+          rgba: giantBackdrop.data
+        },
+        {
+          id: 'slot_red',
+          elementId: 'slot_red',
+          name: 'Reward Slot',
+          kind: 'item-slot',
+          parentElementId: 'bg_panel',
+          paintIndex: 2,
+          left: 16,
+          top: 30,
+          width: w,
+          height: h,
+          rgba: occupiedSlotRed.data
+        },
+        {
+          id: 'slot_green',
+          elementId: 'slot_green',
+          name: 'Reward Slot',
+          kind: 'item-slot',
+          parentElementId: 'bg_panel',
+          paintIndex: 3,
+          left: 72,
+          top: 30,
+          width: w,
+          height: h,
+          rgba: occupiedSlotGreen.data
+        },
+        {
+          id: 'slot_empty',
+          elementId: 'slot_empty',
+          name: 'Reward Slot',
+          kind: 'item-slot',
+          parentElementId: 'bg_panel',
+          paintIndex: 4,
+          left: 128,
+          top: 30,
+          width: w,
+          height: h,
+          rgba: cleanSlot.data
+        },
+        {
+          id: 'hero_avatar',
+          elementId: 'hero_avatar',
+          name: 'Hero Portrait',
+          kind: 'avatar',
+          parentElementId: 'bg_panel',
+          paintIndex: 5,
+          left: 20,
+          top: 90,
+          width: 48,
+          height: 48,
+          rgba: occupiedSlotRed.data
+        },
+        {
+          id: 'sword_icon',
+          elementId: 'sword_icon',
+          name: 'Sword Icon',
+          kind: 'icon',
+          parentElementId: 'slot_red',
+          paintIndex: 6,
+          left: 24,
+          top: 38,
+          width: 32,
+          height: 32,
+          rgba: occupiedSlotGreen.data
+        }
+      ],
+      tree: { canvasWidth: 200, canvasHeight: 160, elements: [] },
+      reconstructionError: 0,
+      peelReport: [],
+      notes: []
+    }
+
+    const extracted = extractSharedComponentsFromSplitResults([{ split: splitResult }], {
+      mode: 'auto'
+    })
+
+    // Avatar, standalone icon, and >40%-screen giant panel backdrop are all excluded;
+    // the 3 item-slots (2 occupied + 1 empty) cluster into a single clean master!
+    expect(extracted).toHaveLength(1)
+    expect(extracted[0]!.item.kind).toBe('item-slot')
+    expect(extracted[0]!.item.sourceCount).toBe(3)
+
+    // Center pixel (24, 24) matches the clean slot's blue fill [38, 72, 136] without red/green icon ghosting
+    const centerOff = (24 * w + 24) * 4
+    expect(extracted[0]!.rgba.data[centerOff]).toBeCloseTo(38, 0)
+    expect(extracted[0]!.rgba.data[centerOff + 1]).toBeCloseTo(72, 0)
+    expect(extracted[0]!.rgba.data[centerOff + 2]).toBeCloseTo(136, 0)
+  })
+
+  it('runs VLM component-family catalog + solid-BG imagegen purification in executeUiComponentLibNode even when generateModel is default empty', async () => {
+    const W = 200
+    const H = 100
+    const screen = createImage(W, H)
+    for (let p = 0; p < W * H; p++) {
+      screen.data[p * 4] = 24
+      screen.data[p * 4 + 1] = 28
+      screen.data[p * 4 + 2] = 40
+      screen.data[p * 4 + 3] = 255
+    }
+    const rawBtn = makeButtonFrameRgba(64, 30, { borderPx: 5, cornerRadius: 4 })
+    compositeOver(screen, rawBtn, 20, 35)
+    compositeOver(screen, rawBtn, 110, 35)
+
+    // Simulate dirty white label glyphs drawn across button 1 on the mockup
+    for (let y = 45; y < 55; y++) {
+      for (let x = 36; x < 68; x += 2) {
+        const i = (y * W + x) * 4
+        screen.data[i] = 255
+        screen.data[i + 1] = 255
+        screen.data[i + 2] = 255
+      }
+    }
+
+    // Simulate a 2x higher-res purified studio render on #FFFFFF returned by ctx.generateImage
+    const studioW = 160
+    const studioH = 90
+    const studioRender = createImage(studioW, studioH)
+    for (let p = 0; p < studioW * studioH; p++) {
+      studioRender.data[p * 4] = 254
+      studioRender.data[p * 4 + 1] = 254
+      studioRender.data[p * 4 + 2] = 252
+      studioRender.data[p * 4 + 3] = 255
+    }
+    const hiResCleanBtn = makeButtonFrameRgba(128, 60, { borderPx: 10, cornerRadius: 8 })
+    compositeOver(studioRender, hiResCleanBtn, 16, 15)
+
+    const generateText = vi.fn(async () => ({
+      text: JSON.stringify({
+        components: [
+          {
+            id: 'c1',
+            name: 'Primary Gold Button',
+            kind: 'button',
+            exemplar_box_2d: [350, 550, 650, 870],
+            instance_boxes_2d: [
+              [350, 100, 650, 420],
+              [350, 550, 650, 870]
+            ],
+            has_embedded_content: true,
+            embedded_content_desc: 'white text BUY',
+            skin_desc: 'rounded gold-bordered blue button'
+          }
+        ]
+      })
+    }))
+
+    const generateImage = vi.fn(async () => ({
+      images: [encodeRawRgbaDataUrl(studioRender)]
+    }))
+
+    const libNode = createNodeFromType('ui.componentLib', { x: 0, y: 0 })
+    // Explicitly verify default empty `generateModel: ''` still activates AI solid-BG purification!
+    expect(libNode.params.generateModel ?? '').toBe('')
+
+    const uiRgbaCodec = {
+      decodeImageRgba: async (url: string) => decodeRawRgbaDataUrl(url),
+      encodeRgbaPng: async (img: RgbaImage) => encodeRawRgbaDataUrl(img)
+    }
+
+    const out = await executeUiComponentLibNode({
+      node: libNode,
+      inputs: {
+        in: [{ kind: 'image', dataUrl: encodeRawRgbaDataUrl(screen) }]
+      },
+      generateText,
+      generateImage,
+      uiRgbaCodec,
+      patchNode: vi.fn()
+    } as unknown as NodeExecuteContext)
+
+    expect(generateText).toHaveBeenCalledTimes(1)
+    expect(generateImage).toHaveBeenCalledTimes(1)
+    expect(out.out.kind).toBe('uiComponents')
+    if (out.out.kind !== 'uiComponents') throw new Error('expected uiComponents')
+    expect(out.out.doc.items).toHaveLength(1)
+
+    const item = out.out.doc.items[0]!
+    expect(item.name).toBe('Primary Gold Button')
+    expect(item.kind).toBe('button')
+    expect(item.sourceCount).toBe(2)
+    expect(item.canonicalWidth).toBe(64)
+    expect(item.canonicalHeight).toBe(30)
+    expect(item.scalePolicy).toBe('nine-slice')
+
+    const masterDecoded = decodeRawRgbaDataUrl(item.imageUrl!)
+    expect(masterDecoded.width).toBe(64)
+    expect(masterDecoded.height).toBe(30)
+    // Outer corner (0,0) is transparent, interior center (32, 15) is clean blue fill [38, 72, 136, 255]
+    expect(masterDecoded.data[3]).toBe(0)
+    const mid = (15 * 64 + 32) * 4
+    expect(masterDecoded.data[mid]).toBeCloseTo(38, 1)
+    expect(masterDecoded.data[mid + 1]).toBeCloseTo(72, 1)
+    expect(masterDecoded.data[mid + 2]).toBeCloseTo(136, 1)
+    expect(masterDecoded.data[mid + 3]).toBe(255)
+  })
+
+  it('extracts ALL distinct UI components across multiple screens in auto mode (>12 cap, singletons, same-border color variants, asset/colliding-id inputs, and local fallback on imagegen error)', async () => {
+    const W = 400
+    const H = 300
+    const makeDarkScreen = (): RgbaImage => {
+      const img = createImage(W, H)
+      for (let p = 0; p < W * H; p++) {
+        img.data[p * 4] = 20
+        img.data[p * 4 + 1] = 24
+        img.data[p * 4 + 2] = 34
+        img.data[p * 4 + 3] = 255
+      }
+      return img
+    }
+
+    const screen1 = makeDarkScreen()
+    const screen2 = makeDarkScreen()
+    const screen3 = makeDarkScreen()
+
+    // Shared Blue Item Slot across Screen 1 (2x) and Screen 2 (1x) -> should merge into 1 entry with sourceCount = 3
+    const sharedSlot = makeButtonFrameRgba(44, 44, {
+      borderPx: 4,
+      borderRgb: [224, 178, 68],
+      fillRgb: [38, 72, 136],
+      cornerRadius: 4
+    })
+    compositeOver(screen1, sharedSlot, 20, 20)
+    compositeOver(screen1, sharedSlot, 80, 20)
+    compositeOver(screen2, sharedSlot, 20, 20)
+
+    // 14 MORE distinct single-instance controls across the 3 screens (total = 15 distinct component skins > old 12 cap!),
+    // ALL sharing the exact same gold border [224, 178, 68] so old border-only deduplication would falsely collapse them!
+    const distinctControls: Array<{
+      screenIdx: 0 | 1 | 2
+      name: string
+      kind: string
+      x: number
+      y: number
+      w: number
+      h: number
+      fillRgb: [number, number, number]
+    }> = [
+      {
+        screenIdx: 0,
+        name: 'Green Confirm Btn',
+        kind: 'button',
+        x: 150,
+        y: 20,
+        w: 68,
+        h: 32,
+        fillRgb: [42, 168, 76]
+      },
+      {
+        screenIdx: 0,
+        name: 'Blue Upgrade Btn',
+        kind: 'button',
+        x: 240,
+        y: 20,
+        w: 68,
+        h: 32,
+        fillRgb: [40, 96, 204]
+      },
+      {
+        screenIdx: 0,
+        name: 'Close Btn S1',
+        kind: 'close-button',
+        x: 340,
+        y: 20,
+        w: 32,
+        h: 32,
+        fillRgb: [176, 44, 52]
+      },
+      {
+        screenIdx: 0,
+        name: 'Active Gold Tab',
+        kind: 'tab',
+        x: 20,
+        y: 90,
+        w: 72,
+        h: 28,
+        fillRgb: [212, 152, 42]
+      },
+      {
+        screenIdx: 0,
+        name: 'Inactive Slate Tab',
+        kind: 'tab',
+        x: 110,
+        y: 90,
+        w: 72,
+        h: 28,
+        fillRgb: [52, 58, 76]
+      },
+      {
+        screenIdx: 1,
+        name: 'Red Danger Btn',
+        kind: 'button',
+        x: 100,
+        y: 20,
+        w: 68,
+        h: 32,
+        fillRgb: [198, 48, 56]
+      },
+      {
+        screenIdx: 1,
+        name: 'Purple Gacha Btn',
+        kind: 'button',
+        x: 190,
+        y: 20,
+        w: 68,
+        h: 32,
+        fillRgb: [138, 56, 196]
+      },
+      {
+        screenIdx: 1,
+        name: 'Legendary Gold Slot',
+        kind: 'item-slot',
+        x: 280,
+        y: 20,
+        w: 44,
+        h: 44,
+        fillRgb: [164, 112, 28]
+      },
+      {
+        screenIdx: 1,
+        name: 'HP Progress Bar',
+        kind: 'progress-bar',
+        x: 20,
+        y: 100,
+        w: 120,
+        h: 22,
+        fillRgb: [36, 148, 92]
+      },
+      {
+        screenIdx: 1,
+        name: 'VIP Badge Pill',
+        kind: 'badge',
+        x: 170,
+        y: 100,
+        w: 52,
+        h: 24,
+        fillRgb: [192, 92, 34]
+      },
+      {
+        screenIdx: 2,
+        name: 'Cyan Craft Btn',
+        kind: 'button',
+        x: 20,
+        y: 20,
+        w: 68,
+        h: 32,
+        fillRgb: [32, 164, 182]
+      },
+      {
+        screenIdx: 2,
+        name: 'Epic Violet Slot',
+        kind: 'item-slot',
+        x: 110,
+        y: 20,
+        w: 44,
+        h: 44,
+        fillRgb: [116, 44, 158]
+      },
+      {
+        screenIdx: 2,
+        name: 'Quest Header Banner',
+        kind: 'banner',
+        x: 180,
+        y: 20,
+        w: 140,
+        h: 36,
+        fillRgb: [88, 52, 36]
+      },
+      {
+        screenIdx: 2,
+        name: 'Compact Sub Panel',
+        kind: 'panel',
+        x: 20,
+        y: 100,
+        w: 130,
+        h: 80,
+        fillRgb: [44, 52, 74]
+      }
+    ]
+
+    const screens = [screen1, screen2, screen3]
+    for (const ctrl of distinctControls) {
+      const sprite = makeButtonFrameRgba(ctrl.w, ctrl.h, {
+        borderPx: 4,
+        borderRgb: [224, 178, 68],
+        fillRgb: ctrl.fillRgb,
+        cornerRadius: 4
+      })
+      compositeOver(screens[ctrl.screenIdx]!, sprite, ctrl.x, ctrl.y)
+    }
+
+    const toBox2d = (
+      x: number,
+      y: number,
+      w: number,
+      h: number
+    ): [number, number, number, number] => [
+      Math.round((y / H) * 1000),
+      Math.round((x / W) * 1000),
+      Math.round(((y + h) / H) * 1000),
+      Math.round(((x + w) / W) * 1000)
+    ]
+
+    const catalogsByScreen = [0, 1, 2].map((sIdx) => {
+      const entries: Array<Record<string, unknown>> = []
+      if (sIdx === 0) {
+        entries.push({
+          id: 'shared_slot_s1',
+          name: 'Shared Blue Slot',
+          kind: 'item-slot',
+          exemplar_box_2d: toBox2d(20, 20, 44, 44),
+          instance_boxes_2d: [toBox2d(20, 20, 44, 44), toBox2d(80, 20, 44, 44)],
+          has_embedded_content: false,
+          skin_desc: 'gold-bordered blue item slot'
+        })
+      } else if (sIdx === 1) {
+        entries.push({
+          id: 'shared_slot_s2',
+          name: 'Shared Blue Slot',
+          kind: 'item-slot',
+          exemplar_box_2d: toBox2d(20, 20, 44, 44),
+          instance_boxes_2d: [toBox2d(20, 20, 44, 44)],
+          has_embedded_content: false,
+          skin_desc: 'gold-bordered blue item slot'
+        })
+      }
+      for (const ctrl of distinctControls.filter((c) => c.screenIdx === sIdx)) {
+        entries.push({
+          id: ctrl.name.replace(/\s+/g, '_').toLowerCase(),
+          name: ctrl.name,
+          kind: ctrl.kind,
+          exemplar_box_2d: toBox2d(ctrl.x, ctrl.y, ctrl.w, ctrl.h),
+          instance_boxes_2d: [toBox2d(ctrl.x, ctrl.y, ctrl.w, ctrl.h)],
+          has_embedded_content: false,
+          skin_desc: ctrl.name
+        })
+      }
+      return { components: entries }
+    })
+
+    const url1 = encodeRawRgbaDataUrl(screen1)
+    const url2 = encodeRawRgbaDataUrl(screen2)
+    const url3 = encodeRawRgbaDataUrl(screen3)
+
+    const generateText = vi.fn(async (req: { images?: string[] }) => {
+      const imgUrl = req.images?.[0] ?? ''
+      const idx = imgUrl === url1 ? 0 : imgUrl === url2 ? 1 : 2
+      return { text: JSON.stringify(catalogsByScreen[idx]) }
+    })
+
+    // Simulate solid-BG purified studio render for all components EXCEPT 'Quest Header Banner',
+    // where `generateImage` throws a simulated timeout error to verify local fallback preservation!
+    const generateImage = vi.fn(async (req: { prompt: string }) => {
+      if (req.prompt.includes('Quest Header Banner')) {
+        throw new Error('Simulated upstream imagegen rate limit')
+      }
+      const matchCtrl = distinctControls.find((c) => req.prompt.includes(c.name))
+      const cw = matchCtrl ? matchCtrl.w : 44
+      const ch = matchCtrl ? matchCtrl.h : 44
+      const fill = matchCtrl ? matchCtrl.fillRgb : ([38, 72, 136] as [number, number, number])
+      const studio = createImage(cw + 24, ch + 24)
+      for (let p = 0; p < studio.width * studio.height; p++) {
+        studio.data[p * 4] = 255
+        studio.data[p * 4 + 1] = 255
+        studio.data[p * 4 + 2] = 255
+        studio.data[p * 4 + 3] = 255
+      }
+      const clean = makeButtonFrameRgba(cw, ch, {
+        borderPx: 4,
+        borderRgb: [224, 178, 68],
+        fillRgb: fill,
+        cornerRadius: 4
+      })
+      compositeOver(studio, clean, 12, 12)
+      return { images: [encodeRawRgbaDataUrl(studio)] }
+    })
+
+    const libNode = createNodeFromType('ui.componentLib', { x: 0, y: 0 })
+    // Default extract mode is `auto`!
+    expect(libNode.params.uiComponentExtractMode).toBe('auto')
+
+    const uiRgbaCodec = {
+      decodeImageRgba: async (url: string) => decodeRawRgbaDataUrl(url),
+      encodeRgbaPng: async (img: RgbaImage) => encodeRawRgbaDataUrl(img)
+    }
+
+    // Wire Screen 1 & Screen 2 with colliding generic `id: '0'` on `in`, and Screen 3 as an `asset` on `in-images`!
+    const out = await executeUiComponentLibNode({
+      node: libNode,
+      inputs: {
+        in: [
+          { kind: 'image', id: '0', title: 'Main HUD', dataUrl: url1 },
+          { kind: 'image', id: '0', title: 'Inventory', dataUrl: url2 }
+        ],
+        'in-images': [{ kind: 'asset', assetId: 'asset_s3', assetType: 'image', name: 'Quest UI' }]
+      },
+      resolveAssetImageUrl: async (assetId: string) => (assetId === 'asset_s3' ? url3 : undefined),
+      generateText,
+      generateImage,
+      uiRgbaCodec,
+      patchNode: vi.fn()
+    } as unknown as NodeExecuteContext)
+
+    expect(generateText).toHaveBeenCalledTimes(3)
+    expect(out.out.kind).toBe('uiComponents')
+    if (out.out.kind !== 'uiComponents') throw new Error('expected uiComponents')
+
+    const names = out.out.doc.items.map((i) => i.name)
+    // 1 shared cross-screen slot + 14 distinct controls = ALL 15 components extracted!
+    expect(out.out.doc.items).toHaveLength(15)
+    expect(names).toContain('Shared Blue Slot')
+    for (const ctrl of distinctControls) {
+      expect(names).toContain(ctrl.name)
+    }
+
+    const mergedSlot = out.out.doc.items.find((i) => i.name === 'Shared Blue Slot')!
+    expect(mergedSlot.sourceCount).toBe(3)
+  })
+
+  it('preserves multi-screen batch out on ui.gen and uiComponents out on ui.componentLib in resolveGalleryOutputsFromNodeParams', () => {
+    const uiGenOutputs = resolveGalleryOutputsFromNodeParams(
+      {
+        generatedImages: [
+          { id: 's1', title: 'Screen 1', dataUrl: 'data:image/png;base64,AAA' },
+          { id: 's2', title: 'Screen 2', dataUrl: 'data:image/png;base64,BBB' },
+          { id: 's3', title: 'Screen 3', dataUrl: 'data:image/png;base64,CCC' }
+        ],
+        selectedImageId: 's2'
+      },
+      { typeId: 'ui.gen' }
+    )
+    expect(uiGenOutputs?.out).toEqual({
+      kind: 'images',
+      items: expect.arrayContaining([
+        expect.objectContaining({ id: 's1' }),
+        expect.objectContaining({ id: 's2' }),
+        expect.objectContaining({ id: 's3' })
+      ])
+    })
+    expect(uiGenOutputs?.['out-selected']).toMatchObject({ kind: 'image', id: 's2' })
+
+    const sampleLib = emptyUiComponentLibrary('Test Lib')
+    sampleLib.items.push({
+      id: 'comp_btn_01',
+      psdGuid: componentIdToPsdGuid('comp_btn_01'),
+      name: 'Gold Button',
+      exportName: 'Comp_Btn_01',
+      kind: 'button',
+      canonicalWidth: 64,
+      canonicalHeight: 32,
+      scalePolicy: 'nine-slice',
+      imageUrl: 'data:image/png;base64,AAA'
+    })
+    const compLibOutputs = resolveGalleryOutputsFromNodeParams(
+      {
+        uiComponentLibrary: stringifyUiComponentLibrary(sampleLib),
+        generatedImages: [
+          { id: 'img_1', title: 'Gold Button', dataUrl: 'data:image/png;base64,AAA' }
+        ]
+      },
+      { typeId: 'ui.componentLib' }
+    )
+    expect(compLibOutputs?.out?.kind).toBe('uiComponents')
+    expect(compLibOutputs?.['out-images']?.kind).toBe('images')
   })
 })

@@ -162,6 +162,8 @@ export interface PreciseSplitLayer {
   componentMatchScore?: number
   /** 组件母本替换前保留的原图提取像素（供编辑器无损切换回原图抠图） */
   originalRgba?: Uint8ClampedArray
+  /** 可选：显式无遮挡有效像素掩码（1 = 未被上层遮挡，长度 = width * height） */
+  knownMask?: Uint8Array
 }
 
 export interface PreciseSplitComponentCandidate {

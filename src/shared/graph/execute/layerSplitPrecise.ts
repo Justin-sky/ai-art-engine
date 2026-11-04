@@ -6,9 +6,12 @@ import {
 import type { UiSharedComponentItem } from '../uiComponentLibrary'
 import {
   buildUiExportNames,
+  extractCleanLayerFromSolidBgCanvas,
   groupableElementIds,
   nearestAspectRatio,
+  resizeAreaAverage,
   runPreciseUiSplit,
+  unifyRepeatedComponentsInSplitResult,
   type PreciseSplitComponentCandidate,
   type PreciseSplitIo,
   type PreciseSplitResult,
@@ -168,10 +171,21 @@ export async function runPreciseLayerSplitForNode(
     `canvas ${result.canvasWidth}x${result.canvasHeight} (${nearestAspectRatio(result.canvasWidth, result.canvasHeight)})`
   )
 
+  let effectiveComponents: readonly PreciseSplitComponentCandidate[] | undefined = input.components
+  if (!effectiveComponents?.length) {
+    const autoComponents = unifyRepeatedComponentsInSplitResult(result)
+    if (autoComponents.length > 0) {
+      effectiveComponents = autoComponents
+      log(
+        `auto component library: unified ${autoComponents.length} repeated UI control family(s) into shared Smart Object masters`
+      )
+    }
+  }
+
   return mapPreciseResultToLayers(result, {
     idPrefix: `layerSplit:${nodeId}:${stamp}`,
     encodePng: (img) => codec.encodeRgbaPng(img),
-    components: input.components
+    components: effectiveComponents
   })
 }
 
@@ -356,4 +370,112 @@ export async function mapPreciseResultToLayers(
     ...(componentLibrary.length ? { componentLibrary } : {}),
     result
   }
+}
+
+/**
+ * Post-processes full-canvas AI-generated foreground layers (`ai-layers` / `ai-inpaint-slice` API fallback)
+ * that were returned on an opaque uniform white/dark studio background rather than genuine PNG alpha,
+ * applying `bggg-creator-image2psd`'s `white-preserve` cavity-protected matting and tight-cropping
+ * to exact canvas coordinates without moving pixels.
+ */
+export async function purifySolidBgFallbackSplitLayers(
+  ctx: Pick<NodeExecuteContext, 'uiRgbaCodec' | 'log' | 'signal'>,
+  mapped: {
+    layers: ImageLayerSplitLayer[]
+    batch: GraphImageItem[]
+    canvasWidth: number
+    canvasHeight: number
+  },
+  toCanvasSafeUrl?: (url: string, suffix: string) => Promise<string | undefined>
+): Promise<number> {
+  const codec = ctx.uiRgbaCodec
+  if (!codec || !mapped.layers.length) return 0
+  const baseLayer = mapped.layers.find(
+    (l) => l.role === 'canvas-base' || l.uiPartRole === 'canvas-base' || l.zIndex <= 0
+  )
+  const rawCw =
+    Number.isFinite(mapped.canvasWidth) && mapped.canvasWidth > 1 ? mapped.canvasWidth : 0
+  const rawCh =
+    Number.isFinite(mapped.canvasHeight) && mapped.canvasHeight > 1 ? mapped.canvasHeight : 0
+  const cw = Math.max(rawCw, baseLayer?.width ?? 0)
+  const ch = Math.max(rawCh, baseLayer?.height ?? 0)
+  if (cw < 32 || ch < 32) return 0
+  const batchById = new Map<string, GraphImageItem>()
+  for (const item of mapped.batch) {
+    if (item.id) batchById.set(item.id, item)
+  }
+
+  let purified = 0
+  let fgIdx = 0
+  for (const layer of mapped.layers) {
+    if (ctx.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+    if (layer.role === 'canvas-base' || layer.uiPartRole === 'canvas-base' || layer.zIndex <= 0) {
+      continue
+    }
+    // Only run on uncropped full-canvas AI layer outputs sitting at (0, 0)
+    if (
+      layer.left !== 0 ||
+      layer.top !== 0 ||
+      layer.width < cw * 0.95 ||
+      layer.height < ch * 0.95
+    ) {
+      continue
+    }
+    const item = layer.imageId ? batchById.get(layer.imageId) : undefined
+    const rawUrl = item?.dataUrl?.trim()
+    if (!item || !rawUrl) continue
+
+    fgIdx += 1
+    let rgba: RgbaImage
+    try {
+      const safeUrl = toCanvasSafeUrl ? await toCanvasSafeUrl(rawUrl, `aifg${fgIdx}`) : rawUrl
+      if (!safeUrl) continue
+      rgba = await codec.decodeImageRgba(safeUrl)
+    } catch {
+      continue
+    }
+    if (rgba.width < 64 || rgba.height < 64) continue
+
+    const allowHollow =
+      layer.uiControlType === 'panel' || /\bframe\b/i.test(layer.name || layer.description || '')
+    const cleaned = extractCleanLayerFromSolidBgCanvas(rgba, {
+      allowLargeHollowWindows: allowHollow
+    })
+    if (!cleaned) continue
+
+    const scaleX = layer.width / Math.max(1, rgba.width)
+    const scaleY = layer.height / Math.max(1, rgba.height)
+    const nextLeft = Math.max(0, Math.round(layer.left + cleaned.box.left * scaleX))
+    const nextTop = Math.max(0, Math.round(layer.top + cleaned.box.top * scaleY))
+    const nextW = Math.max(1, Math.min(cw - nextLeft, Math.round(cleaned.box.width * scaleX)))
+    const nextH = Math.max(1, Math.min(ch - nextTop, Math.round(cleaned.box.height * scaleY)))
+    const outImg =
+      cleaned.cropped.width === nextW && cleaned.cropped.height === nextH
+        ? cleaned.cropped
+        : resizeAreaAverage(cleaned.cropped, nextW, nextH)
+
+    item.dataUrl = await codec.encodeRgbaPng(outImg)
+    layer.left = nextLeft
+    layer.top = nextTop
+    layer.width = nextW
+    layer.height = nextH
+    const right = nextLeft + nextW
+    const bottom = nextTop + nextH
+    layer.originalAbsolute = [nextLeft, nextTop, right, bottom]
+    layer.originalNormalized = [
+      Math.round((nextLeft / cw) * 1000),
+      Math.round((nextTop / ch) * 1000),
+      Math.round((right / cw) * 1000),
+      Math.round((bottom / ch) * 1000)
+    ]
+    purified += 1
+  }
+
+  if (purified > 0) {
+    ctx.log?.(
+      `[layer-split] white-preserve solid-bg matte purified ${purified} full-canvas AI foreground layer(s)`,
+      'info'
+    )
+  }
+  return purified
 }

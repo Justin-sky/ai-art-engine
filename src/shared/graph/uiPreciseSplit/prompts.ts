@@ -6,7 +6,7 @@
  */
 
 import type { LocalOcrTextBox } from '../uiControlSpec'
-import { UI_ELEMENT_KINDS, type PixelRect } from './types'
+import { UI_ELEMENT_KINDS, type PixelRect, type UiElementKind } from './types'
 
 function isEnglish(locale?: string): boolean {
   return typeof locale === 'string' && /^en\b/i.test(locale.trim())
@@ -275,4 +275,205 @@ export function buildSceneBackgroundPrompt(input?: { locale?: string }): string 
     return `This is a game UI background diagnostic plate where foreground UI panels, buttons, and text have been removed, leaving black cutout holes. Reconstruct a complete, clean background scene by naturally continuing the surrounding environment, lighting, perspective, and textures into the black holes. Do not modify any visible non-hole background pixels, and do not add any UI controls, frames, icons, or text.`
   }
   return `这是一张已剥离前景 UI 面板、按钮与文字的底层背景诊断图，被剥离的前景区域呈现为黑色空洞。请顺着周围可见背景的环境结构、透视、光影与材质，将黑色空洞自然补全为完整、干净的游戏底层背景。保留所有原有的非空洞背景像素不变，不要添加任何 UI 框体、按钮、图标或文字。`
+}
+
+/**
+ * 共享 UI 组件库母版盘点系统提示词（参考 bggg-creator-image2psd 语义规划思路）：
+ * 只盘点可复用的 UI 皮肤母版族（按钮、关闭按钮、道具槽/卡框、页签、角标底托、进度条框、横幅飘带、装饰外框、中小型弹窗底板），
+ * 严禁把文案、角色头像/立绘、独立物品图标、全屏背景混入组件库，并为每族挑出遮挡最少的最干净样本框。
+ */
+export function buildComponentCatalogSystemPrompt(locale?: string): string {
+  if (isEnglish(locale)) {
+    return `You are a Principal Game & App UI Prefab Architect building a clean, reusable UI Component Library (Smart Object / 9-Slice Prefab Atlas) from UI mockups.
+Inspect the UI image and catalog ONLY reusable UI skin component families:
+- Allowed kinds: "button" | "close-button" | "item-slot" | "tab" | "badge" | "progress-bar" | "banner" | "frame" | "panel"
+- STRICTLY EXCLUDE: plain text, artistic title logos ("art-text"), character portraits/avatars, character/scene illustrations, unique item icons inside slots (swords, potions, coins, gems without a frame), thin 1px dividers, particle/glow effects, and full-screen or giant modal backgrounds (> 40% of screen area).
+
+Return ONLY one JSON object, no markdown:
+{
+  "components": [
+    {
+      "id": "c1",
+      "name": "concise English or localized prefab name, e.g. Primary Gold Button / Inventory Slot Frame / Inactive Tab",
+      "kind": "button | close-button | item-slot | tab | badge | progress-bar | banner | frame | panel",
+      "exemplar_box_2d": [ymin, xmin, ymax, xmax],
+      "instance_boxes_2d": [[ymin, xmin, ymax, xmax]],
+      "has_embedded_content": true,
+      "embedded_content_desc": "what sits on top of or inside this exemplar that must be stripped for an empty master (e.g. 'white label BUY and gem icon', or '' if already empty)",
+      "skin_desc": "precise visual description of the empty UI skin itself (shape, corner style, border bevel, inner fill color/gradient)"
+    }
+  ]
+}
+Rules:
+1. Group all visually identical skins (same border color, corner style, and fill palette, even if they contain different text labels or different item icons inside!) into ONE component entry, listing all their tight [ymin, xmin, ymax, xmax] (0..1000) boxes in "instance_boxes_2d". Separate active vs inactive states (e.g. selected gold tab vs unselected dark tab) into separate component entries.
+2. Choose "exemplar_box_2d" as the SINGLE CLEANEST, LEAST-OCCLUDED instance of that family (e.g. prefer an empty slot over an occupied slot, or a button with short centered text and zero overlapping character hair/badges).
+3. Every box_2d must tightly hug ONLY the component's own outer border/bevel (0..1000 integers), excluding external background clutter.
+4. Exhaustively catalog EVERY distinct reusable UI control skin on this screen — including all button color/size styles, active & inactive tabs, all slot/card rarity frames, close/back/icon-buttons, top resource/currency pills, badges, progress/slider bars, header banners, and compact sub-panels (<= 40% screen area). Do NOT omit controls that appear only once on this screen. Order from atomic controls to compact frames/cards, up to 28 component families.`
+  }
+  return `你是资深游戏与应用 UI 组件化架构师，负责从 UI 界面图中盘点并提取「可复用 UI 共享组件母版库」（供 PSD 智能对象与引擎九宫格预制体复用）。
+请审视画面，**全面盘点画面中所有可复用的 UI 控件皮肤母版族（切勿遗漏单次出现的独立通用控件）**：
+- 允许的 kind："button" | "close-button" | "item-slot" | "tab" | "badge" | "progress-bar" | "banner" | "frame" | "panel"
+- **严禁收录**：普通文字、艺术字大标题/Logo、角色头像（avatar）、角色立绘与插画、槽位内独立的武器/药水/金币/宝石等具体物品图标、细分割线、光效粒子，以及全屏底图或占画面 > 40% 的巨型背景大底板。
+
+只输出一个 JSON 对象，不要 markdown、不要解释：
+{
+  "components": [
+    {
+      "id": "c1",
+      "name": "精炼组件母版名，如：主操作金边按钮 / 道具品质底槽 / 未选中页签 / 关闭按钮",
+      "kind": "button | close-button | item-slot | tab | badge | progress-bar | banner | frame | panel",
+      "exemplar_box_2d": [ymin, xmin, ymax, xmax],
+      "instance_boxes_2d": [[ymin, xmin, ymax, xmax]],
+      "has_embedded_content": true,
+      "embedded_content_desc": "该样本框内部或上方压着、制作空白母版时必须剥离的内容（如：白色“购买”文字与钻石小图标；若本身已是空槽则填 \"\"）",
+      "skin_desc": "剥离文字与内容物后，该纯净空白控件皮肤自身的外观描述（外轮廓圆角/切角、描边金属倒角、内腔底色或渐变材质）"
+    }
+  ]
+}
+规则：
+1. 凡是底框皮肤外观完全相同（边框配色、圆角造型、内腔底色材质完全一致，仅内部按钮文案或槽内道具图标不同）的多个实例，才归并到同一个组件条目下，在 instance_boxes_2d 中逐一列出它们紧贴外沿的 [ymin, xmin, ymax, xmax]（0~1000 归一化整数）。凡是底色、状态或造型不同的控件（如选中亮色页签 vs 未选中暗色页签、橙色主按钮 vs 蓝色次按钮、不同品质色道具框、顶部货币胶囊条、返回/关闭按钮等），必须各自拆分为独立组件条目，严禁漏报或混并！
+2. exemplar_box_2d 必须从同族实例中挑选**遮挡最少、最干净**的那一个（例如：有空道具槽时优先选空槽；按钮优先选无外部立绘头发/红点跨界遮挡、文案简短居中的那一个）。
+3. 每个 box_2d 必须紧贴该控件自身的外边框边缘（0~1000 整数），切勿把周围底板杂物框进来。
+4. 全面扫描整张界面的顶栏、侧栏、主内容区、底栏与弹窗区，完整列出本图所有可复用控件皮肤（含仅出现 1 次的按钮、关闭/返回按钮、货币底条、进度条框、角标底托、横幅与紧凑小底板），按复用价值从高到低排序，最多输出 28 类组件族。`
+}
+
+export function buildComponentCatalogUserPrompt(input: {
+  locale?: string
+  width: number
+  height: number
+  extractMode: 'auto' | 'repeated' | 'all-controls'
+  userHint?: string
+  sourceTitle?: string
+}): string {
+  const en = isEnglish(input.locale)
+  const context = [input.sourceTitle?.trim(), input.userHint?.trim()].filter(Boolean).join(' | ')
+  if (en) {
+    const modeNote =
+      input.extractMode === 'repeated'
+        ? 'Extraction mode: REPEATED ONLY — prioritize component skins that appear >= 2 times on this screen (still include clear multi-screen candidate buttons/slots).'
+        : 'Extraction mode: ALL REUSABLE CONTROLS — include both repeated component families and standalone reusable UI controls (buttons, close buttons, tabs, slots, badges, progress bars, banners).'
+    return [
+      `Screen size: ${input.width}x${input.height} px.`,
+      modeNote,
+      context ? `User hint: ${context}` : '',
+      'Output the JSON catalog now.'
+    ]
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  const modeNote =
+    input.extractMode === 'repeated'
+      ? '提取范围：仅重复组件优先 —— 重点盘点画面中重复出现 ≥ 2 次的同款控件皮肤（同时保留典型的通用按钮/槽位候选以便跨界面归并）。'
+      : '提取范围：全部通用控件 —— 同时盘点重复出现的组件族与单次出现的标准可复用控件（按钮、关闭按钮、页签、道具槽、角标底托、进度条框、横幅）。'
+  return [
+    `界面尺寸：${input.width}x${input.height} 像素。`,
+    modeNote,
+    context ? `用户补充说明：${context}` : '',
+    '现在输出 JSON 对象。'
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+/**
+ * 纯色底独立组件母版提纯重绘提示词（吸收 bggg-creator-image2psd 的 companion imagegen 方法）：
+ * 将裁剪出的单个 UI 控件样本重绘为置于 100% 纯色平涂背景（#FFFFFF 或 #141820）中央的高清空白组件母版，
+ * 彻底剥离内部文字/图标/角标与外部投影背景污染，供后续 flood-fill 结构保护反预乘抠出完美透明边缘。
+ */
+export function buildComponentPurifyPrompt(input: {
+  locale?: string
+  name: string
+  kind: string
+  skinDesc?: string
+  embeddedContentDesc?: string
+  bgHex: '#FFFFFF' | '#141820'
+  userHint?: string
+}): string {
+  const en = isEnglish(input.locale)
+  const isCloseOrGlyphBtn = input.kind === 'close-button'
+  const bgDescEn =
+    input.bgHex === '#FFFFFF'
+      ? 'pure flat solid white (#FFFFFF, RGB 255,255,255)'
+      : 'pure flat solid dark slate (#141820, RGB 20,24,32)'
+  const bgDescZh =
+    input.bgHex === '#FFFFFF'
+      ? '100% 纯平涂纯白背景（#FFFFFF，RGB 255,255,255）'
+      : '100% 纯平涂深灰黑背景（#141820，RGB 20,24,32）'
+
+  if (en) {
+    return [
+      `Reconstruct this cropped UI control "${input.name}" (${input.kind}) into a crisp, studio-clean, standalone reusable UI component master asset.`,
+      `1. BACKGROUND: Place the single UI component centered on a ${bgDescEn} background with ~10% clean uniform margin on all four sides. Zero background gradients, zero checkerboard, zero external drop shadows or outer glow bleeding onto the background.`,
+      isCloseOrGlyphBtn
+        ? `2. CLEAN CLOSE BUTTON MASTER: Keep the close button's own built-in 'X' / cross icon crisp and centered if it is a close button, but remove any surrounding background fragments, overlapping hair/ornaments, or red notification dots.`
+        : `2. EMPTY REUSABLE SKIN (100% DE-TEXTED & DE-ICONED): Completely remove ALL overlaid text, numbers, labels, item icons, character portraits, and notification dots${input.embeddedContentDesc ? ` (specifically remove: ${input.embeddedContentDesc})` : ''}. Smoothly reconstruct and continue the control's own empty inner surface, gradient, bevel, and recessed backplate.`,
+      `3. STRICT 1:1 GEOMETRY & STYLE: Preserve the exact aspect ratio, outer silhouette, corner radius/chamfer, corner ornaments, border thickness, bevel highlights, and color palette${input.skinDesc ? ` (${input.skinDesc})` : ''}. Orthographic flat 2D front view, razor-sharp anti-aliased edges.`,
+      input.userHint ? `4. Additional note: ${input.userHint}` : ''
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return [
+    `请将这张裁剪出的 UI 控件样本「${input.name}」（类型：${input.kind}）提纯重绘为一张**高清、边缘锋利、可直接复用的独立 UI 组件空白母版素材**。`,
+    `1. 纯净纯色背景：将单个控件居中放置在 ${bgDescZh} 上，四周留出约 10% 的均匀纯色边距。严禁画棋盘格、严禁背景渐变、严禁外部投影或外发光污染纯色背景，确保控件外边缘与纯色底干净分离。`,
+    isCloseOrGlyphBtn
+      ? `2. 关闭按钮提纯：保留关闭按钮自身固有的居中“×”叉号造型与金属/立体高光，彻底清除周围粘连的底板背景残片、红点角标或跨界遮挡物。`
+      : `2. 彻底清空内部文案与内容物：100% 移除控件上方或槽位内部的所有文字、数字、标签、道具图标、角色头像、红点角标与外部遮挡残片${input.embeddedContentDesc ? `（特别需清除：${input.embeddedContentDesc}）` : ''}，平滑延续该控件原本的空白内腔底面、渐变光泽、内凹槽底板与倒角纹理。`,
+    `3. 严格保持 1:1 造型与美术风格：严格保持原控件的长宽比例、外轮廓圆角/切角、四角装饰纹样、描边粗细、高光倒角与色彩质感完全一致${input.skinDesc ? `（皮肤特征：${input.skinDesc}）` : ''}。正交 2D 平视视角，线条笔直对称、边缘清晰锐利。`,
+    input.userHint ? `4. 补充要求：${input.userHint}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+export function inferComponentKindFromLabel(rawName: string): UiElementKind {
+  const lower = rawName.toLowerCase()
+  if (lower.includes('close') || rawName.includes('关闭')) return 'close-button'
+  if (lower.includes('slot') || lower.includes('grid') || rawName.includes('槽')) return 'item-slot'
+  if (lower.includes('tab') || rawName.includes('页签') || rawName.includes('标签页')) return 'tab'
+  if (lower.includes('btn') || lower.includes('button') || rawName.includes('按钮')) return 'button'
+  if (lower.includes('badge') || rawName.includes('角标')) return 'badge'
+  if (lower.includes('banner') || rawName.includes('横幅')) return 'banner'
+  if (lower.includes('bar') || rawName.includes('进度')) return 'progress-bar'
+  if (lower.includes('frame') || rawName.includes('框')) return 'frame'
+  return 'other'
+}
+
+/**
+ * 遮挡图层纯色棚拍伴生补全提示词（吸收 bggg-creator-image2psd 的 companion imagegen 方法）：
+ * 当局部挖黑洞修补因重绘漂移或接缝色差失败时，将该前景主体（角色立绘/头像/图标/艺术字等）
+ * 独立补全到 100% 纯色摄影棚底（#FFFFFF 或 #141820）上，再经 white-preserve 抠图与可见像素锁定回贴遮挡区。
+ */
+export function buildCompanionLayerPurifyPrompt(input: {
+  locale?: string
+  name: string
+  kind: string
+  bgHex: '#FFFFFF' | '#141820'
+}): string {
+  const en = isEnglish(input.locale)
+  const bgDescEn =
+    input.bgHex === '#FFFFFF'
+      ? 'pure flat solid white (#FFFFFF, RGB 255,255,255)'
+      : 'pure flat solid dark slate (#141820, RGB 20,24,32)'
+  const bgDescZh =
+    input.bgHex === '#FFFFFF'
+      ? '100% 纯平涂纯白背景（#FFFFFF，RGB 255,255,255）'
+      : '100% 纯平涂深灰黑背景（#141820，RGB 20,24,32）'
+
+  if (en) {
+    return [
+      `Reconstruct this cropped foreground UI element "${input.name}" (${input.kind}) as a complete, unobstructed standalone layer asset.`,
+      `1. SOLID STUDIO BACKGROUND: Render ONLY this single subject on a ${bgDescEn} background with ~8% clean uniform margin. Do not draw checkerboard patterns, background scenery, or external UI frames.`,
+      `2. COMPLETE OCCLUDED PARTS: Naturally restore any parts that were cut off, blacked out, or occluded by overlapping badges, buttons, or text (continuing the exact character hair, outfit, emblem silhouette, line art, lighting, and colors).`,
+      `3. PIXEL-CONSISTENT FRAMING: Keep the exact camera angle, pose, proportions, and color palette of the visible regions so it aligns 1:1 when composited back.`
+    ].join('\n')
+  }
+
+  return [
+    `请将这张裁剪出的前景 UI 元素「${input.name}」（类型：${input.kind}）独立补全并提纯为一张**完整无遮挡的单层素材图**。`,
+    `1. 纯净纯色棚拍底：只保留该单一主体，将其完整绘制在 ${bgDescZh} 上（四周留出约 8% 均匀纯色边距），严禁画棋盘格、背景杂景或外围无关 UI 框。`,
+    `2. 完整还原被遮挡部位：将原图中被角标、按钮、文字压住或涂黑缺失的部位自然补全（严格延续该角色发丝、服饰、图标纹样或艺术字自身的轮廓、线稿、光影与配色）。`,
+    `3. 严守原构图比例：可见部位的姿态、透视、比例与色彩必须与原图保持 1:1 一致，以便回贴对齐。`
+  ].join('\n')
 }

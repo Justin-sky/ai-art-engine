@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBinaryMaskRgba,
   buildLayoutTree,
+  buildOwnershipMap,
+  completeOccludedGenerative,
   createImage,
   estimateShift,
   filterOcrFalsePositives,
@@ -17,7 +19,11 @@ import {
   type PreciseSplitIo,
   type RgbaImage
 } from '../src/shared/graph/uiPreciseSplit'
-import { mapPreciseResultToLayers } from '../src/shared/graph/execute/layerSplitPrecise'
+import {
+  mapPreciseResultToLayers,
+  purifySolidBgFallbackSplitLayers,
+  runPreciseLayerSplitForNode
+} from '../src/shared/graph/execute/layerSplitPrecise'
 import { prefersPreciseUiLayerSplit } from '../src/shared/graph/imageLayerSplit'
 import { pickVisionGroundingProvider, visionGroundingScore } from '../src/shared/modelProvider'
 
@@ -1366,5 +1372,395 @@ describe('uiPreciseSplit · Zhihu scheme 5 enhancements', () => {
     expect(pedGlowSample[3]).toBeLessThan(210)
     expect(pedGlowSample[2]).toBeGreaterThan(pedGlowSample[0] + 90)
     expect(res.reconstructionError).toBeLessThan(1.8)
+  })
+})
+
+describe('uiPreciseSplit · bggg-creator-image2psd layerSplit optimizations', () => {
+  it('heals clipped OCR/SAM edges in-place via composite pixel-diff check without moving layer coordinates and scrubs union-mask base ghosts', async () => {
+    const cw = 180
+    const ch = 100
+    const bgRgb: [number, number, number] = [18, 26, 44]
+    // Badge spans x=40..79 (width=40), y=32..63 (height=32)
+    const badgeFull = { left: 40, top: 32, width: 40, height: 32 }
+    // Text glyph block spans x=104..139 (width=36), y=42..53 (height=12)
+    const textFull = { left: 104, top: 42, width: 36, height: 12 }
+
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [...bgRgb]
+        if (inRect(x, y, badgeFull)) {
+          rgb = [238, 178, 42]
+        }
+        if (inRect(x, y, textFull) && y >= 44 && y <= 51) {
+          rgb = [252, 252, 255]
+        }
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    // Deliberately clip 2px off the right side of BOTH the SAM mask (width=38) and OCR box (width=34)
+    const clippedBadgeBox = { left: 40, top: 32, width: 38, height: 32 }
+    const clippedTextBox = { left: 104, top: 42, width: 34, height: 12 }
+
+    const io: PreciseSplitIo = {
+      vlm: async () =>
+        JSON.stringify({
+          background_repair: { mode: 'surface' },
+          elements: [
+            {
+              id: 'b1',
+              name: 'Gold Badge',
+              kind: 'badge',
+              box_2d: toBox2d(clippedBadgeBox, cw, ch),
+              order: 1
+            },
+            {
+              id: 't1',
+              name: 'Title Text',
+              kind: 'text',
+              box_2d: toBox2d(clippedTextBox, cw, ch),
+              ocr: ['T1'],
+              text: 'CLAIM',
+              order: 2
+            }
+          ]
+        }),
+      encodePng: async () => 'data:image/png;base64,AAAA',
+      ocr: async () => [{ text: 'CLAIM', ...clippedTextBox }],
+      segmentSam2: async () => {
+        const mask = new Uint8Array(cw * ch)
+        for (let y = clippedBadgeBox.top; y < clippedBadgeBox.top + clippedBadgeBox.height; y++) {
+          for (
+            let x = clippedBadgeBox.left;
+            x < clippedBadgeBox.left + clippedBadgeBox.width;
+            x++
+          ) {
+            mask[y * cw + x] = 1
+          }
+        }
+        return { masks: [{ mask, score: 0.96 }] }
+      }
+    }
+
+    const res = await runPreciseUiSplit(io, img, { generativePeel: false, zoomRefine: false })
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+    const badgeLayer = byName.get('Gold Badge')!
+    const textLayer = byName.get('Title Text')!
+
+    // Origin left coordinates remain locked (zero shift), while clipped right 2px strokes are healed!
+    expect(badgeLayer.left).toBe(40)
+    expect(badgeLayer.left + badgeLayer.width).toBeGreaterThanOrEqual(80)
+    expect(textLayer.left).toBe(104)
+    expect(textLayer.left + textLayer.width).toBeGreaterThanOrEqual(140)
+
+    // Base layer under the newly healed right-edge pixels (x=79 and x=139) is scrubbed clean (no gold/white ghost!)
+    const baseUnderClippedBadge = pixel(res.base, 79, 48)
+    const baseUnderClippedText = pixel(res.base, 139, 47)
+    expect(Math.abs(baseUnderClippedBadge[0]! - bgRgb[0])).toBeLessThanOrEqual(8)
+    expect(Math.abs(baseUnderClippedText[0]! - bgRgb[0])).toBeLessThanOrEqual(8)
+    expect(res.reconstructionError).toBeLessThan(1.0)
+  })
+
+  it('recovers heavily occluded subjects via solid-studio-BG companion fallback when masked hole-inpaint misaligns', async () => {
+    const cw = 120
+    const ch = 120
+    const rect = { left: 24, top: 24, width: 72, height: 72 }
+    const plate = createImage(cw, ch)
+    const fullSubject = createImage(rect.width, rect.height)
+
+    // Render textured emblem with checkerboard crest + bright white central highlight
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const i = (y * cw + x) * 4
+        plate.data[i] = 16
+        plate.data[i + 1] = 22
+        plate.data[i + 2] = 36
+        plate.data[i + 3] = 255
+      }
+    }
+    for (let y = 0; y < rect.height; y++) {
+      for (let x = 0; x < rect.width; x++) {
+        const si = (y * rect.width + x) * 4
+        const inCenterGem = x >= 28 && x < 44 && y >= 28 && y < 44
+        const stripe = ((x >> 2) + (y >> 2)) % 2 === 0
+        const rgb: [number, number, number] = inCenterGem
+          ? [255, 255, 255]
+          : stripe
+            ? [216, 74, 48]
+            : [148, 36, 28]
+        fullSubject.data[si] = rgb[0]
+        fullSubject.data[si + 1] = rgb[1]
+        fullSubject.data[si + 2] = rgb[2]
+        fullSubject.data[si + 3] = 255
+
+        const gi = ((rect.top + y) * cw + (rect.left + x)) * 4
+        // Right-bottom quadrant (x>=40, y>=40) was occluded and left as flat blurry push-pull smear
+        if (x >= 40 && y >= 40) {
+          plate.data[gi] = 180
+          plate.data[gi + 1] = 55
+          plate.data[gi + 2] = 38
+        } else {
+          plate.data[gi] = rgb[0]
+          plate.data[gi + 1] = rgb[1]
+          plate.data[gi + 2] = rgb[2]
+        }
+      }
+    }
+
+    const subjMask = new Uint8Array(rect.width * rect.height).fill(1)
+    const occluderRect = { left: rect.left + 40, top: rect.top + 40, width: 32, height: 32 }
+    const occMask = new Uint8Array(occluderRect.width * occluderRect.height).fill(1)
+    const ownership = buildOwnershipMap(cw, ch, [
+      { id: 'emblem', paintIndex: 1, mask: { rect, mask: subjMask } },
+      { id: 'occ_badge', paintIndex: 2, mask: { rect: occluderRect, mask: occMask } }
+    ])
+
+    const visibleBefore = pixel(plate, rect.left + 32, rect.top + 32)
+    let callIdx = 0
+    const report = await completeOccludedGenerative({
+      io: {
+        encodePng: async () => 'data:image/png;base64,AAAA',
+        editImage: async (req) => {
+          callIdx += 1
+          if (req.maskImage) {
+            // 1st call (black-hole mask inpaint): return misaligned garbage so shift.error > 26
+            const bad = createImage(96, 96)
+            bad.data.fill(240)
+            return bad
+          }
+          // 2nd call (bggg solid-studio-BG companion fallback): return standalone subject on #FFFFFF with 8px margin
+          const pad = 8
+          const studio = createImage(rect.width + pad * 2, rect.height + pad * 2)
+          studio.data.fill(255) // pure #FFFFFF studio background
+          for (let y = 0; y < rect.height; y++) {
+            for (let x = 0; x < rect.width; x++) {
+              const si = (y * rect.width + x) * 4
+              const di = ((y + pad) * studio.width + (x + pad)) * 4
+              studio.data[di] = fullSubject.data[si]!
+              studio.data[di + 1] = fullSubject.data[si + 1]!
+              studio.data[di + 2] = fullSubject.data[si + 2]!
+              studio.data[di + 3] = 255
+            }
+          }
+          return studio
+        }
+      },
+      ownership,
+      maxCalls: 3,
+      targets: [
+        {
+          id: 'emblem',
+          name: 'Crest Icon',
+          kind: 'icon',
+          entryIndex: 0,
+          mask: { rect, mask: subjMask },
+          plate
+        }
+      ]
+    })
+
+    expect(callIdx).toBe(2)
+    expect(report.accepted).toBe(1)
+    expect(report.pixels).toBeGreaterThan(500)
+    // Visible unoccluded white gem pixel remains 100% locked
+    expect(pixel(plate, rect.left + 32, rect.top + 32)).toEqual(visibleBefore)
+    // Occluded region now has restored checkerboard contrast instead of flat [180,55,38] blur
+    const restoredLight = pixel(plate, rect.left + 48, rect.top + 48)
+    const restoredDark = pixel(plate, rect.left + 52, rect.top + 48)
+    expect(Math.abs(restoredLight[0]! - restoredDark[0]!)).toBeGreaterThan(35)
+  })
+
+  it('auto-unifies repeated in-screen UI slots into shared Smart Object masters in standalone runPreciseLayerSplitForNode', async () => {
+    const cw = 220
+    const ch = 96
+    const slots = [
+      { left: 16, top: 24, width: 48, height: 48 },
+      { left: 86, top: 24, width: 48, height: 48 },
+      { left: 156, top: 24, width: 48, height: 48 }
+    ]
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [14, 18, 28]
+        for (let si = 0; si < slots.length; si++) {
+          const s = slots[si]!
+          if (!inRect(x, y, s)) continue
+          const lx = x - s.left
+          const ly = y - s.top
+          const onBorder = lx < 4 || lx >= s.width - 4 || ly < 4 || ly >= s.height - 4
+          rgb = onBorder ? [228, 178, 56] : [34, 42, 66]
+          // First two slots hold colored item blocks in their center; 3rd slot is clean empty!
+          if (si < 2 && lx >= 16 && lx < 32 && ly >= 16 && ly < 32) {
+            rgb = si === 0 ? [60, 210, 245] : [240, 72, 96]
+          }
+        }
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    const encodedStore = new Map<string, RgbaImage>()
+    let seq = 0
+    const encodeImg = async (rgba: RgbaImage): Promise<string> => {
+      seq += 1
+      const url = `data:image/png;base64,SLOT_${seq}`
+      encodedStore.set(url, {
+        width: rgba.width,
+        height: rgba.height,
+        data: new Uint8ClampedArray(rgba.data)
+      })
+      return url
+    }
+    const sourceUrl = await encodeImg(img)
+
+    const mapped = await runPreciseLayerSplitForNode(
+      {
+        node: { id: 'split1', typeId: 'image.layerSplit', params: {} } as never,
+        inputs: {},
+        uiRgbaCodec: {
+          decodeImageRgba: async (url: string) => encodedStore.get(url)!,
+          encodeRgbaPng: encodeImg
+        },
+        generateText: async () => ({
+          text: JSON.stringify({
+            background_repair: { mode: 'surface' },
+            elements: [
+              {
+                id: 's1',
+                name: 'Slot 1',
+                kind: 'item-slot',
+                box_2d: toBox2d(slots[0]!, cw, ch),
+                order: 1
+              },
+              {
+                id: 's2',
+                name: 'Slot 2',
+                kind: 'item-slot',
+                box_2d: toBox2d(slots[1]!, cw, ch),
+                order: 2
+              },
+              {
+                id: 's3',
+                name: 'Slot 3',
+                kind: 'item-slot',
+                box_2d: toBox2d(slots[2]!, cw, ch),
+                order: 3
+              }
+            ]
+          })
+        })
+      } as never,
+      {
+        sourceUrl,
+        userHint: '',
+        stamp: 100,
+        toCanvasSafeUrl: async (u) => u
+      }
+    )
+
+    expect(mapped.componentLibrary?.length).toBe(1)
+    expect(mapped.componentLibrary![0]!.sourceCount).toBe(3)
+    const linkedSlots = mapped.layers.filter(
+      (l) => l.componentId === mapped.componentLibrary![0]!.id
+    )
+    expect(linkedSlots).toHaveLength(3)
+  })
+
+  it('strips white studio background from full-canvas AI foreground layers while protecting white interior highlights', async () => {
+    const cw = 120
+    const ch = 80
+    const fgOnWhite = createImage(cw, ch)
+    fgOnWhite.data.fill(255) // Opaque #FFFFFF studio background from AI layer generator
+    const btnRect = { left: 32, top: 24, width: 56, height: 32 }
+    for (let y = btnRect.top; y < btnRect.top + btnRect.height; y++) {
+      for (let x = btnRect.left; x < btnRect.left + btnRect.width; x++) {
+        const i = (y * cw + x) * 4
+        const inWhiteHighlight = x >= 50 && x < 70 && y >= 34 && y < 46
+        if (inWhiteHighlight) {
+          fgOnWhite.data[i] = 255
+          fgOnWhite.data[i + 1] = 255
+          fgOnWhite.data[i + 2] = 255
+        } else {
+          fgOnWhite.data[i] = 36
+          fgOnWhite.data[i + 1] = 132
+          fgOnWhite.data[i + 2] = 228
+        }
+        fgOnWhite.data[i + 3] = 255
+      }
+    }
+
+    const store = new Map<string, RgbaImage>([['data:image/png;base64,FG_WHITE', fgOnWhite]])
+    let outImg: RgbaImage | null = null
+    const mapped = {
+      canvasWidth: cw,
+      canvasHeight: ch,
+      layers: [
+        {
+          id: 'l_base',
+          imageId: 'img_base',
+          zIndex: 0,
+          name: 'Base',
+          description: '',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: cw,
+          height: ch,
+          role: 'canvas-base' as const,
+          uiPartRole: 'canvas-base' as const
+        },
+        {
+          id: 'l_fg',
+          imageId: 'img_fg',
+          zIndex: 1,
+          name: 'CTA Button',
+          description: 'button',
+          visible: true,
+          left: 0,
+          top: 0,
+          width: cw,
+          height: ch,
+          role: 'layer' as const
+        }
+      ],
+      batch: [
+        { id: 'img_base', title: 'Base', dataUrl: 'data:image/png;base64,BASE' },
+        { id: 'img_fg', title: 'CTA Button', dataUrl: 'data:image/png;base64,FG_WHITE' }
+      ]
+    }
+
+    const purified = await purifySolidBgFallbackSplitLayers(
+      {
+        uiRgbaCodec: {
+          decodeImageRgba: async (url) => store.get(url)!,
+          encodeRgbaPng: async (rgba) => {
+            outImg = rgba
+            return 'data:image/png;base64,FG_CLEAN'
+          }
+        }
+      },
+      mapped
+    )
+
+    expect(purified).toBe(1)
+    const fgLayer = mapped.layers[1]!
+    expect(Math.abs(fgLayer.left - btnRect.left)).toBeLessThanOrEqual(2)
+    expect(Math.abs(fgLayer.top - btnRect.top)).toBeLessThanOrEqual(2)
+    expect(Math.abs(fgLayer.width - btnRect.width)).toBeLessThanOrEqual(4)
+    expect(Math.abs(fgLayer.height - btnRect.height)).toBeLessThanOrEqual(4)
+    expect(outImg).not.toBeNull()
+    // Interior white highlight stays 100% opaque (alpha = 255, RGB = [255,255,255])!
+    const hlX = 60 - fgLayer.left
+    const hlY = 40 - fgLayer.top
+    const hlPx = pixel(outImg!, hlX, hlY)
+    expect(hlPx).toEqual([255, 255, 255, 255])
   })
 })

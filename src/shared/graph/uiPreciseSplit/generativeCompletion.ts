@@ -14,9 +14,13 @@
  *    消除色差接缝。
  */
 
-import { buildLayerCompletionPrompt } from './prompts'
+import {
+  choosePurificationStudioBg,
+  extractCleanComponentMatteFromSolidBg,
+  resizeAreaAverage,
+  sampleCornerBackgroundRgb
+} from './componentLibrary'
 import type { CanvasMask, OwnershipMap } from './ownership'
-import { estimateShift } from './plates'
 import {
   clampRect,
   createImage,
@@ -28,6 +32,8 @@ import {
   pixelDistance,
   resizeBilinear
 } from './pixels'
+import { estimateShift } from './plates'
+import { buildCompanionLayerPurifyPrompt, buildLayerCompletionPrompt } from './prompts'
 import type { PixelRect, PreciseSplitIo, RgbaImage } from './types'
 
 export interface GenerativeCompletionTarget {
@@ -50,7 +56,12 @@ export interface GenerativeCompletionReport {
 }
 
 /** 需要内容级补全（而非结构化补全）的元素类别 */
-export const IMAGE_CONTENT_KINDS: ReadonlySet<string> = new Set(['avatar', 'illustration'])
+export const IMAGE_CONTENT_KINDS: ReadonlySet<string> = new Set([
+  'avatar',
+  'illustration',
+  'art-text',
+  'icon'
+])
 
 export function needsImageCompletion(kind: string, repairMode?: string): boolean {
   return IMAGE_CONTENT_KINDS.has(kind) || repairMode === 'image'
@@ -113,6 +124,7 @@ interface Plan {
   known: Uint8Array
   core: Uint8Array
   count: number
+  maskArea: number
 }
 
 /**
@@ -159,7 +171,14 @@ export function occludedRegionOf(
 function planTarget(t: GenerativeCompletionTarget, ownership: OwnershipMap): Plan | null {
   const r = occludedRegionOf(t.mask, ownership, t.entryIndex)
   if (r.count < 64 || r.count < r.maskArea * 0.015) return null
-  return { t, target: r.target, known: r.known, core: r.core, count: r.count }
+  return {
+    t,
+    target: r.target,
+    known: r.known,
+    core: r.core,
+    count: r.count,
+    maskArea: r.maskArea
+  }
 }
 
 /**
@@ -206,6 +225,118 @@ export function blendWithOffsetField(
   return out
 }
 
+function graftSolidBgCompanionOntoCrop(input: {
+  rawGen: RgbaImage
+  plateCrop: RgbaImage
+  crop: PixelRect
+  rect: PixelRect
+  hole: Uint8Array
+  known: Uint8Array
+  mask: Uint8Array
+  allowHollowCenter: boolean
+  expectedBgRgb?: [number, number, number]
+}): RgbaImage | null {
+  const { rawGen, plateCrop, crop, rect, hole, known, mask } = input
+  if (!input.expectedBgRgb) {
+    const { cornerNoise } = sampleCornerBackgroundRgb(rawGen)
+    if (cornerNoise > 15) return null
+  }
+  const cleanMatte = extractCleanComponentMatteFromSolidBg(rawGen, {
+    ...(input.expectedBgRgb ? { expectedBgRgb: input.expectedBgRgb } : {}),
+    allowHollowCenter: input.allowHollowCenter
+  })
+  if (!cleanMatte) return null
+
+  const scaled = resizeAreaAverage(cleanMatte, rect.width, rect.height)
+  const cw = plateCrop.width
+  const ch = plateCrop.height
+  const ox = rect.left - crop.left
+  const oy = rect.top - crop.top
+
+  // Search fine sub-4px translation on visible unoccluded foreground (`known`)
+  let bestDx = 0
+  let bestDy = 0
+  let bestErr = Infinity
+  for (let dy = -4; dy <= 4; dy++) {
+    for (let dx = -4; dx <= 4; dx++) {
+      let sum = 0
+      let cnt = 0
+      for (let y = 0; y < rect.height; y += 2) {
+        const sy = y + dy
+        if (sy < 0 || sy >= rect.height) continue
+        const cy = oy + y
+        if (cy < 0 || cy >= ch) continue
+        for (let x = 0; x < rect.width; x += 2) {
+          if (!known[y * rect.width + x]) continue
+          const sx = x + dx
+          if (sx < 0 || sx >= rect.width) continue
+          const si = (sy * rect.width + sx) * 4
+          if (scaled.data[si + 3]! < 128) continue
+          const cx = ox + x
+          if (cx < 0 || cx >= cw) continue
+          const ci = (cy * cw + cx) * 4
+          sum += pixelDistance(plateCrop.data, ci, scaled.data, si)
+          cnt++
+        }
+      }
+      if (cnt < 12) continue
+      const err = sum / cnt
+      if (err < bestErr) {
+        bestErr = err
+        bestDx = dx
+        bestDy = dy
+      }
+    }
+  }
+  if (!Number.isFinite(bestErr) || bestErr > 38) return null
+
+  const synth = createImage(cw, ch)
+  synth.data.set(plateCrop.data)
+  for (let y = 0; y < rect.height; y++) {
+    const sy = y + bestDy
+    if (sy < 0 || sy >= rect.height) continue
+    const cy = oy + y
+    if (cy < 0 || cy >= ch) continue
+    for (let x = 0; x < rect.width; x++) {
+      const sx = x + bestDx
+      if (sx < 0 || sx >= rect.width) continue
+      const cx = ox + x
+      if (cx < 0 || cx >= cw) continue
+      const si = (sy * rect.width + sx) * 4
+      const a = scaled.data[si + 3]! / 255
+      if (a < 0.08) continue
+      const ci = (cy * cw + cx) * 4
+      for (let c = 0; c < 3; c++) {
+        synth.data[ci + c] = Math.round(
+          scaled.data[si + c]! * a + plateCrop.data[ci + c]! * (1 - a)
+        )
+      }
+      synth.data[ci + 3] = 255
+    }
+  }
+
+  // Verify seam agreement only inside the element's own visible silhouette
+  const ring = dilateMask(hole, cw, ch, 3)
+  let rs = 0
+  let rn = 0
+  for (let y = 0; y < rect.height; y++) {
+    const cy = oy + y
+    if (cy < 0 || cy >= ch) continue
+    for (let x = 0; x < rect.width; x++) {
+      if (!mask[y * rect.width + x]) continue
+      const cx = ox + x
+      if (cx < 0 || cx >= cw) continue
+      const lp = cy * cw + cx
+      if (!ring[lp] || hole[lp]) continue
+      rs += pixelDistance(plateCrop.data, lp * 4, synth.data, lp * 4)
+      rn++
+    }
+  }
+  if (rn > 0 && rs / rn > 44) return null
+
+  return blendWithOffsetField(plateCrop, synth, hole)
+}
+
 export async function completeOccludedGenerative(input: {
   io: Pick<PreciseSplitIo, 'editImage' | 'encodePng' | 'log' | 'signal'>
   targets: readonly GenerativeCompletionTarget[]
@@ -229,7 +360,9 @@ export async function completeOccludedGenerative(input: {
   }
   plans.sort((a, b) => b.count - a.count)
   const maxCalls = Math.max(0, input.maxCalls ?? 4)
-  for (const plan of plans.slice(0, maxCalls)) {
+  let callsUsed = 0
+  for (const plan of plans) {
+    if (callsUsed >= maxCalls) break
     if (io.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     const { t } = plan
     const { rect } = t.mask
@@ -302,6 +435,7 @@ export async function completeOccludedGenerative(input: {
       maskImg.data[i + 3] = 255
     }
     report.attempted++
+    callsUsed++
     let gen: RgbaImage | null = null
     try {
       const [image, maskImage] = await Promise.all([io.encodePng(diag), io.encodePng(maskImg)])
@@ -318,37 +452,98 @@ export async function completeOccludedGenerative(input: {
       )
       gen = null
     }
-    if (!gen) {
+
+    let blended: RgbaImage | null = null
+    let rejectReason = ''
+
+    if (gen) {
+      const resized = gen.width === cw && gen.height === ch ? gen : resizeBilinear(gen, cw, ch)
+      const shift = estimateShift(plateCrop, resized, hole)
+      if (Number.isFinite(shift.error) && shift.error <= 26) {
+        const aligned = shiftCrop(resized, shift.dx, shift.dy)
+        const ring = dilateMask(hole, cw, ch, 3)
+        let rs = 0
+        let rn = 0
+        for (let p = 0; p < cw * ch; p++) {
+          if (!ring[p] || hole[p]) continue
+          rs += pixelDistance(plateCrop.data, p * 4, aligned.data, p * 4)
+          rn++
+        }
+        if (!rn || rs / rn <= 38) {
+          blended = blendWithOffsetField(plateCrop, aligned, hole)
+        } else {
+          rejectReason = `seam colour mismatch ${(rs / rn).toFixed(1)}`
+        }
+      } else {
+        rejectReason = `misaligned / recomposed, err=${shift.error.toFixed(1)}`
+      }
+
+      // If the model ignored mask inpainting and emitted the standalone subject on a solid studio bg,
+      // salvage it via bggg-style white-preserve matting + visible-pixel alignment!
+      if (!blended) {
+        blended = graftSolidBgCompanionOntoCrop({
+          rawGen: gen,
+          plateCrop,
+          crop,
+          rect,
+          hole,
+          known: plan.known,
+          mask: t.mask.mask,
+          allowHollowCenter: t.kind === 'frame'
+        })
+      }
+    }
+
+    // Companion solid-studio-BG fallback (`bggg-creator-image2psd` method) for heavily occluded subjects
+    // when masked black-hole inpainting misaligned or was rejected
+    if (!blended && callsUsed < maxCalls && plan.count >= Math.max(96, plan.maskArea * 0.08)) {
+      if (io.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      const tightCrop = cropImage(t.plate, rect)
+      const studio = choosePurificationStudioBg(tightCrop)
+      callsUsed++
+      try {
+        const refPng = await io.encodePng(tightCrop)
+        const compGen = await io.editImage({
+          prompt: buildCompanionLayerPurifyPrompt({
+            locale: input.locale,
+            name: t.name,
+            kind: t.kind,
+            bgHex: studio.bgHex
+          }),
+          image: refPng,
+          aspectRatio: nearestAspectRatio(rect.width, rect.height)
+        })
+        if (compGen) {
+          blended = graftSolidBgCompanionOntoCrop({
+            rawGen: compGen,
+            plateCrop,
+            crop,
+            rect,
+            hole,
+            known: plan.known,
+            mask: t.mask.mask,
+            allowHollowCenter: t.kind === 'frame',
+            expectedBgRgb: studio.bgRgb
+          })
+          if (blended) {
+            io.log?.(
+              `layer completion "${t.name}": healed via solid-studio-bg (${studio.bgHex}) companion fallback`
+            )
+          }
+        }
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') throw err
+      }
+    }
+
+    if (!blended) {
+      if (rejectReason) {
+        io.log?.(`layer completion "${t.name}": rejected (${rejectReason})`)
+      }
       report.rejected++
       continue
     }
-    const resized = gen.width === cw && gen.height === ch ? gen : resizeBilinear(gen, cw, ch)
-    const shift = estimateShift(plateCrop, resized, hole)
-    if (!Number.isFinite(shift.error) || shift.error > 26) {
-      io.log?.(
-        `layer completion "${t.name}": rejected (misaligned / recomposed, err=${shift.error.toFixed(1)})`
-      )
-      report.rejected++
-      continue
-    }
-    const aligned = shiftCrop(resized, shift.dx, shift.dy)
-    // 遮挡区边界 3px 的色差也要可接受（模型整体调色时偏移场能修，但差太多说明内容不连贯）
-    const ring = dilateMask(hole, cw, ch, 3)
-    let rs = 0
-    let rn = 0
-    for (let p = 0; p < cw * ch; p++) {
-      if (!ring[p] || hole[p]) continue
-      rs += pixelDistance(plateCrop.data, p * 4, aligned.data, p * 4)
-      rn++
-    }
-    if (rn && rs / rn > 38) {
-      io.log?.(
-        `layer completion "${t.name}": rejected (seam colour mismatch ${(rs / rn).toFixed(1)})`
-      )
-      report.rejected++
-      continue
-    }
-    const blended = blendWithOffsetField(plateCrop, aligned, hole)
+
     let written = 0
     for (let y = 0; y < ch; y++) {
       for (let x = 0; x < cw; x++) {

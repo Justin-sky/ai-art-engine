@@ -1,5 +1,10 @@
 import type { GraphNode, GraphNodeParams } from '../types'
 import { splitScreenplayByExplicitEpisodeMarkers } from '../screenplayFormat'
+import {
+  parseUiComponentLibrary,
+  stringifyUiComponentLibrary,
+  uiComponentItemImage
+} from '../uiComponentLibrary'
 import type {
   GraphAssetValue,
   GraphImageItem,
@@ -19,7 +24,8 @@ import {
   newestModelSelectedId,
   newestTextSelectedId,
   newestVideoSelectedId,
-  newestVoiceSelectedId
+  newestVoiceSelectedId,
+  pickImageItem
 } from './gallery'
 
 /** 预览/汇总时按路径补全文；无 readRunText 或无路径则原样返回 */
@@ -63,7 +69,47 @@ export function resolveGalleryOutputsFromNodeParams(
       relativePath: item.relativePath,
       createdAt: item.createdAt
     }))
-    const selectedId = params.selectedImageId?.trim() || newestImageSelectedId(items)
+    if (options?.typeId === 'ui.componentLib') {
+      const lib = parseUiComponentLibrary(params.uiComponentLibrary ?? '')
+      if (lib?.items?.length) {
+        return {
+          out: { kind: 'uiComponents', doc: lib, text: stringifyUiComponentLibrary(lib) },
+          'out-images': { kind: 'images', items }
+        }
+      }
+      const fallbackLibItems = lib?.items?.filter((i) => uiComponentItemImage(i)) ?? []
+      void fallbackLibItems
+      return {
+        'out-images': { kind: 'images', items }
+      }
+    }
+    const selectedId =
+      params.selectedImageId?.trim() ||
+      (options?.typeId === 'ui.gen'
+        ? items.find((item) => item.title?.startsWith('\u5e95\u56fe\u00b7'))?.id
+        : undefined) ||
+      newestImageSelectedId(items)
+    if (options?.typeId === 'ui.gen') {
+      const picked = pickImageItem(items, selectedId)
+      const layerPrompt =
+        picked?.layerPrompt?.trim() || params.uiSelectedLayerPrompt?.trim() || undefined
+      const outSelected: GraphValue | undefined = picked
+        ? {
+            kind: 'image',
+            id: picked.id,
+            ...(picked.title ? { title: picked.title } : {}),
+            ...(layerPrompt ? { layerPrompt } : {}),
+            dataUrl: picked.dataUrl || '',
+            createdAt: picked.createdAt,
+            ...(picked.relativePath ? { relativePath: picked.relativePath } : {})
+          }
+        : undefined
+      return {
+        out: { kind: 'images', items },
+        'out-all': { kind: 'images', items },
+        ...(outSelected ? { 'out-selected': outSelected } : {})
+      }
+    }
     const base = dualImageGalleryOutputs(items, selectedId)
     if (options?.typeId === 'game.economy' || options?.typeId === 'game.numerical') {
       const econRel =
