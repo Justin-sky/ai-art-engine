@@ -898,4 +898,473 @@ describe('uiPreciseSplit · Zhihu scheme 5 enhancements', () => {
 
     expect(res.reconstructionError).toBeLessThan(1.5)
   })
+
+  it('recognizes gpt-6+ vision grounding models and drops root full-canvas scene backgrounds from VLM elements', () => {
+    expect(visionGroundingScore('gpt-6.1-sol')).toBeGreaterThanOrEqual(70)
+    expect(visionGroundingScore('gpt-6-mini')).toBeGreaterThanOrEqual(70)
+    expect(visionGroundingScore('o4-mini')).toBeGreaterThanOrEqual(70)
+
+    const parsed = parseLayoutResponse(
+      JSON.stringify({
+        screenKind: 'hud',
+        elements: [
+          {
+            id: 'e1',
+            name: '全屏中医馆场景背景',
+            kind: 'illustration',
+            bbox: [7, 0, 1536, 840],
+            parent: null,
+            order: 1
+          },
+          {
+            id: 'e2',
+            name: '底部播放控制条',
+            kind: 'panel',
+            bbox: [38, 705, 772, 831],
+            parent: null,
+            order: 2
+          }
+        ]
+      }),
+      1536,
+      864
+    )
+    expect(parsed.elements.map((e) => e.id)).toEqual(['e2'])
+    expect(parsed.backgroundRepairMode).toBe('scene')
+  })
+
+  it('preserves thin 2px gold-ring hollow buttons and carves rounded control bar corners without wooden table debris', async () => {
+    const cw = 260
+    const ch = 120
+    const barRect = { left: 24, top: 32, width: 212, height: 60 }
+    const radius = 16
+    const stopBtnCenter = { x: 64, y: 62 }
+    const stopBtnR = 18
+
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        // Warm textured wooden table background
+        const grain = Math.round(Math.sin(x * 0.25 + y * 0.08) * 5)
+        let rgb: [number, number, number] = [92 + grain, 58 + grain, 34 + grain]
+
+        // Rounded capsule playback control bar
+        if (inRect(x, y, barRect)) {
+          const lx = x - barRect.left
+          const ly = y - barRect.top
+          const cx =
+            lx < radius ? radius : lx >= barRect.width - radius ? barRect.width - 1 - radius : lx
+          const cy =
+            ly < radius ? radius : ly >= barRect.height - radius ? barRect.height - 1 - radius : ly
+          const dist = Math.hypot(lx - cx, ly - cy)
+          if (dist <= radius + 0.3) {
+            const onBarBorder = dist >= radius - 1.4
+            rgb = onBarBorder ? [68, 132, 148] : [22, 30, 42]
+          }
+        }
+
+        // Hollow 2px gold outline circular Stop Button + inner gold square
+        const bDist = Math.hypot(x - stopBtnCenter.x, y - stopBtnCenter.y)
+        if (bDist >= stopBtnR - 2 && bDist <= stopBtnR) {
+          rgb = [235, 192, 92]
+        } else if (Math.abs(x - stopBtnCenter.x) <= 5 && Math.abs(y - stopBtnCenter.y) <= 5) {
+          rgb = [235, 192, 92]
+        }
+
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    const stopBox = {
+      left: stopBtnCenter.x - stopBtnR,
+      top: stopBtnCenter.y - stopBtnR,
+      width: stopBtnR * 2 + 1,
+      height: stopBtnR * 2 + 1
+    }
+    const vlmJson = JSON.stringify({
+      background_repair: { mode: 'surface' },
+      elements: [
+        {
+          id: 'bar',
+          name: '底部播放控制条',
+          kind: 'panel',
+          box_2d: toBox2d(barRect, cw, ch),
+          element_repair_mode: 'surface',
+          order: 1
+        },
+        {
+          id: 'stop_btn',
+          name: '停止按钮',
+          kind: 'button',
+          parent_id: 'bar',
+          box_2d: toBox2d(stopBox, cw, ch),
+          order: 2
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      {
+        vlm: async () => vlmJson,
+        encodePng: async () => 'data:image/png;base64,AAAA',
+        ocr: async () => []
+      },
+      img,
+      { generativePeel: false, zoomRefine: false }
+    )
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+    const stopLayer = byName.get('停止按钮')!
+    const barLayer = byName.get('底部播放控制条')!
+
+    // 1) 停止按钮 2px 金色外圆环完整保留，不会被 refineMaskByPalette 当成噪点删到只剩中心小方块
+    expect(stopLayer.width).toBeGreaterThanOrEqual(stopBtnR * 2 - 1)
+    expect(stopLayer.height).toBeGreaterThanOrEqual(stopBtnR * 2 - 1)
+
+    // 2) 底部播放控制条四角圆弧外侧保持透明（不粘连木桌残片），且停止按钮正下方无金环残留
+    const outerCornerAlpha = pixel({ width: barLayer.width, data: barLayer.rgba }, 0, 0)[3]
+    expect(outerCornerAlpha).toBeLessThanOrEqual(16)
+    const underRingTop = pixel(
+      { width: barLayer.width, data: barLayer.rgba },
+      stopBtnCenter.x - barLayer.left,
+      stopBtnCenter.y - stopBtnR + 1 - barLayer.top
+    )
+    expect(underRingTop[0]).toBeLessThan(60)
+    expect(underRingTop[3]).toBe(255)
+  })
+
+  it('reconstructs voice input bar inner cyan border across symmetric end buttons, prevents button holes, and drops hallucinated border text', async () => {
+    const cw = 320
+    const ch = 150
+    const bubbleRect = { left: 190, top: 12, width: 112, height: 34 }
+    const hallTextRect = { left: 274, top: 10, width: 30, height: 14 }
+    const barRect = { left: 20, top: 76, width: 280, height: 54 }
+    const micBtn = { left: 32, top: 85, width: 36, height: 36 }
+    const micIcon = { left: 45, top: 96, width: 10, height: 14 }
+    const sendBtn = { left: 252, top: 85, width: 36, height: 36 }
+    const sendIcon = { left: 265, top: 96, width: 10, height: 14 }
+    const placeholderBox = { left: 96, top: 97, width: 84, height: 12 }
+
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [38, 28, 22]
+
+        // Top-right user message bubble with 2px cyan border
+        if (inRect(x, y, bubbleRect)) {
+          const onEdge =
+            x - bubbleRect.left < 2 ||
+            bubbleRect.left + bubbleRect.width - x <= 2 ||
+            y - bubbleRect.top < 2 ||
+            bubbleRect.top + bubbleRect.height - y <= 2
+          rgb = onEdge ? [68, 214, 238] : [20, 44, 62]
+        }
+
+        // Bottom voice input bar: outer border + dark margin + inner cyan pill border at dy=10..11 and dy=42..43
+        if (inRect(x, y, barRect)) {
+          const lx = x - barRect.left
+          const ly = y - barRect.top
+          const onOuter = lx < 2 || lx >= barRect.width - 2 || ly < 2 || ly >= barRect.height - 2
+          if (onOuter) {
+            rgb = [62, 178, 204]
+          } else if (
+            lx >= 10 &&
+            lx < barRect.width - 10 &&
+            (ly === 10 || ly === 11 || ly === 42 || ly === 43)
+          ) {
+            rgb = [72, 218, 242]
+          } else if (lx >= 10 && lx < barRect.width - 10 && ly > 11 && ly < 42) {
+            rgb = [28, 40, 58]
+          } else {
+            rgb = [16, 22, 34]
+          }
+        }
+
+        // Placeholder text with 1px soft halo inside pill
+        if (inRect(x, y, placeholderBox)) {
+          const tx = x - placeholderBox.left
+          const ty = y - placeholderBox.top
+          if (ty >= 2 && ty <= 9 && tx % 6 < 3) {
+            rgb = [188, 214, 228]
+          } else if (ty >= 1 && ty <= 10 && tx % 6 === 3) {
+            rgb = [66, 88, 108]
+          }
+        }
+
+        // Symmetric left Mic button & right Send button + crisp white inner icons
+        if (inRect(x, y, micBtn)) rgb = [36, 152, 182]
+        if (inRect(x, y, micIcon)) rgb = [245, 252, 255]
+        if (inRect(x, y, sendBtn)) rgb = [42, 186, 212]
+        if (inRect(x, y, sendIcon)) rgb = [245, 252, 255]
+
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      background_repair: { mode: 'surface' },
+      elements: [
+        {
+          id: 'bubble',
+          name: '用户消息气泡3',
+          kind: 'panel',
+          box_2d: toBox2d(bubbleRect, cw, ch),
+          order: 1
+        },
+        {
+          id: 'hall_ts',
+          name: '消息3时间戳',
+          kind: 'text',
+          parent_id: 'bubble',
+          box_2d: toBox2d(hallTextRect, cw, ch),
+          text: '12:08',
+          order: 2
+        },
+        {
+          id: 'input_bar',
+          name: '底部语音输入条',
+          kind: 'panel',
+          box_2d: toBox2d(barRect, cw, ch),
+          element_repair_mode: 'surface',
+          order: 3
+        },
+        {
+          id: 'mic_btn',
+          name: '麦克风按钮',
+          kind: 'button',
+          parent_id: 'input_bar',
+          box_2d: toBox2d(micBtn, cw, ch),
+          order: 4
+        },
+        {
+          id: 'mic_ic',
+          name: '麦克风图标',
+          kind: 'icon',
+          parent_id: 'mic_btn',
+          box_2d: toBox2d(micIcon, cw, ch),
+          order: 5
+        },
+        {
+          id: 'send_btn',
+          name: '发送按钮',
+          kind: 'button',
+          parent_id: 'input_bar',
+          box_2d: toBox2d(sendBtn, cw, ch),
+          order: 6
+        },
+        {
+          id: 'send_ic',
+          name: '发送箭头图标',
+          kind: 'icon',
+          parent_id: 'send_btn',
+          box_2d: toBox2d(sendIcon, cw, ch),
+          order: 7
+        },
+        {
+          id: 'ph_txt',
+          name: '占位提示语',
+          kind: 'text',
+          parent_id: 'input_bar',
+          box_2d: toBox2d(placeholderBox, cw, ch),
+          ocr: ['T1'],
+          text: 'Listening...',
+          order: 8
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      {
+        vlm: async () => vlmJson,
+        encodePng: async () => 'data:image/png;base64,AAAA',
+        ocr: async () => [{ text: 'Listening...', ...placeholderBox }]
+      },
+      img,
+      { generativePeel: false, zoomRefine: false }
+    )
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+
+    // 1) 无 OCR 支撑且只压在气泡描边上的「消息3时间戳」被拒绝，不会把「用户消息气泡3」右上角咬出缺口
+    expect(byName.has('消息3时间戳')).toBe(false)
+    const bubbleLayer = byName.get('用户消息气泡3')!
+    const bubbleTopRightBorder = pixel(
+      { width: bubbleLayer.width, data: bubbleLayer.rgba },
+      284 - bubbleLayer.left,
+      12 - bubbleLayer.top
+    )
+    expect(bubbleTopRightBorder[2]).toBeGreaterThan(200)
+    expect(bubbleTopRightBorder[3]).toBe(255)
+
+    // 2) 发送按钮与麦克风按钮内部实心无破洞（不生成重复 *_plate），且发送按钮未撕走父容器外框线
+    expect(res.layers.some((l) => l.name.endsWith(' Base'))).toBe(false)
+    const sendBtnLayer = byName.get('发送按钮')!
+    expect(sendBtnLayer.left + sendBtnLayer.width).toBeLessThanOrEqual(
+      barRect.left + barRect.width - 2
+    )
+    const sendBtnCenter = pixel(
+      { width: sendBtnLayer.width, data: sendBtnLayer.rgba },
+      Math.floor(sendBtnLayer.width / 2),
+      Math.floor(sendBtnLayer.height / 2)
+    )
+    expect(sendBtnCenter[3]).toBe(255)
+
+    // 3) 底部语音输入条在左右对称按钮下方完整续接青色内胶囊描边（不出现纵向深色条纹），且占位字无浮雕残影
+    const barLayer = byName.get('底部语音输入条')!
+    for (const gx of [50, 270]) {
+      const innerBorderPx = pixel(
+        { width: barLayer.width, data: barLayer.rgba },
+        gx - barLayer.left,
+        barRect.top + 10 - barLayer.top
+      )
+      expect(innerBorderPx[1]).toBeGreaterThan(195)
+      expect(innerBorderPx[2]).toBeGreaterThan(215)
+    }
+    const phCenterPx = pixel(
+      { width: barLayer.width, data: barLayer.rgba },
+      placeholderBox.left + 12 - barLayer.left,
+      placeholderBox.top + 5 - barLayer.top
+    )
+    expect(Math.abs(phCenterPx[0] - 28)).toBeLessThanOrEqual(6)
+    expect(Math.abs(phCenterPx[1] - 40)).toBeLessThanOrEqual(6)
+  })
+
+  it('orders glowing pedestal below standing hologram, unmixes translucent pedestal glow without dark wood chunks, and excludes protruding acupoint tag box', async () => {
+    const cw = 220
+    const ch = 220
+    const woodRgb: [number, number, number] = [56, 36, 22]
+    const holoBox = { left: 74, top: 28, width: 72, height: 152 }
+    const tagRect = { left: 112, top: 112, width: 54, height: 24 }
+    const pedestalBox = { left: 56, top: 162, width: 108, height: 38 }
+
+    const img = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        let rgb: [number, number, number] = [...woodRgb]
+
+        // Translucent cyan glowing pedestal blended over dark brown wood cabinet
+        if (inRect(x, y, pedestalBox)) {
+          const nx = (x - (pedestalBox.left + pedestalBox.width / 2)) / (pedestalBox.width / 2)
+          const ny = (y - (pedestalBox.top + pedestalBox.height / 2)) / (pedestalBox.height / 2)
+          const r = Math.hypot(nx, ny)
+          if (r <= 1) {
+            const glowA = Math.max(0, (1 - r) * 0.65)
+            rgb = [
+              Math.round(rgb[0] * (1 - glowA) + 48 * glowA),
+              Math.round(rgb[1] * (1 - glowA) + 216 * glowA),
+              Math.round(rgb[2] * (1 - glowA) + 255 * glowA)
+            ]
+          }
+        }
+
+        // Standing cyan hologram figure with arms-torso gaps and legs reaching y=176 inside pedestal
+        const cx = 110
+        const inHead = Math.hypot(x - cx, y - 44) <= 12
+        const inTorso = Math.abs(x - cx) <= 13 && y >= 56 && y <= 114
+        const inArms =
+          y >= 62 &&
+          y <= 98 &&
+          ((x >= 80 && x <= 88) || (x >= 132 && x <= 140) || (y <= 68 && Math.abs(x - cx) <= 30))
+        const inLegs = y >= 115 && y <= 176 && ((x >= 96 && x <= 105) || (x >= 115 && x <= 124))
+        if (inHead || inTorso || inArms || inLegs) {
+          rgb = [86, 228, 252]
+        }
+
+        // Protruding acupoint tag "足三里" overlapping right leg (x=115..124) and protruding to x=166 over wood
+        if (inRect(x, y, tagRect)) {
+          rgb = [24, 58, 76]
+        }
+
+        const i = (y * cw + x) * 4
+        img.data[i] = rgb[0]
+        img.data[i + 1] = rgb[1]
+        img.data[i + 2] = rgb[2]
+        img.data[i + 3] = 255
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      background_repair: { mode: 'surface' },
+      elements: [
+        {
+          id: 'holo',
+          name: '全息人体经络影像',
+          kind: 'illustration',
+          box_2d: toBox2d(holoBox, cw, ch),
+          order: 1
+        },
+        {
+          id: 'pedestal',
+          name: '全息投影发光底座',
+          kind: 'decoration',
+          box_2d: toBox2d(pedestalBox, cw, ch),
+          order: 2
+        },
+        {
+          id: 'tag',
+          name: '足三里穴位标签',
+          kind: 'badge',
+          box_2d: toBox2d(tagRect, cw, ch),
+          order: 3
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      {
+        vlm: async () => vlmJson,
+        encodePng: async () => 'data:image/png;base64,AAAA',
+        ocr: async () => []
+      },
+      img,
+      { generativePeel: false, zoomRefine: false }
+    )
+    const byName = new Map(res.layers.map((l) => [l.name, l]))
+    const holoLayer = byName.get('全息人体经络影像')!
+    const pedLayer = byName.get('全息投影发光底座')!
+
+    // 1) 发光底座排在全息人像下层，不会把全息人像双脚 (y=172) 切掉
+    expect(pedLayer.paintIndex).toBeLessThan(holoLayer.paintIndex)
+    expect(holoLayer.top + holoLayer.height).toBeGreaterThanOrEqual(175)
+    const rightFootPx = pixel(
+      { width: holoLayer.width, data: holoLayer.rgba },
+      120 - holoLayer.left,
+      172 - holoLayer.top
+    )
+    expect(rightFootPx[2]).toBeGreaterThan(200)
+    expect(rightFootPx[3]).toBeGreaterThan(200)
+
+    // 2) 全息人像右臂与躯干之间的背景空隙 (x=92, y=82) 保持透明，且向外伸出的穴位标签区 (x=142, y=124) 未粘进人像
+    const armTorsoGapPx = pixel(
+      { width: holoLayer.width, data: holoLayer.rgba },
+      92 - holoLayer.left,
+      82 - holoLayer.top
+    )
+    expect(armTorsoGapPx[3]).toBeLessThanOrEqual(16)
+    if (142 - holoLayer.left < holoLayer.width) {
+      const protrudingTagPx = pixel(
+        { width: holoLayer.width, data: holoLayer.rgba },
+        142 - holoLayer.left,
+        124 - holoLayer.top
+      )
+      expect(protrudingTagPx[3]).toBeLessThanOrEqual(16)
+    }
+
+    // 3) 全息投影发光底座通过物理去底色反解为半透明青色光晕，绝不夹带 alpha=255 的棕褐色木柜色块
+    const pedGlowSample = pixel(
+      { width: pedLayer.width, data: pedLayer.rgba },
+      82 - pedLayer.left,
+      180 - pedLayer.top
+    )
+    expect(pedGlowSample[3]).toBeGreaterThan(25)
+    expect(pedGlowSample[3]).toBeLessThan(210)
+    expect(pedGlowSample[2]).toBeGreaterThan(pedGlowSample[0] + 90)
+    expect(res.reconstructionError).toBeLessThan(1.8)
+  })
 })

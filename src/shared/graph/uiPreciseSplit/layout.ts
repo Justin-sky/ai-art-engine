@@ -283,6 +283,7 @@ export function parseLayoutResponse(
   }
   const elements: RawLayoutElement[] = []
   const seen = new Set<string>()
+  const canvasArea = width * height
   for (const [index, item] of list.entries()) {
     if (elements.length >= maxElements) break
     if (!item || typeof item !== 'object') continue
@@ -292,6 +293,9 @@ export function parseLayoutResponse(
     let id = typeof rec.id === 'string' || typeof rec.id === 'number' ? String(rec.id).trim() : ''
     if (!id || seen.has(id)) id = `e${index + 1}_${elements.length}`
     seen.add(id)
+    const rawKindText = String(rec.kind ?? rec.type ?? rec.controlType ?? '')
+      .trim()
+      .toLowerCase()
     const kind = normalizeElementKind(rec.kind ?? rec.type ?? rec.controlType)
     const parentRaw = rec.parent ?? rec.parentId ?? rec.parent_id ?? rec.parent_query_id
     const parentRef =
@@ -318,6 +322,27 @@ export function parseLayoutResponse(
       height
     )
     const repairMode = readElementRepairMode(rec.element_repair_mode ?? rec.repairMode)
+    const effectiveParentRef = parentRef === id ? null : parentRef
+    if (
+      !effectiveParentRef &&
+      isFullCanvasBackgroundCandidate({
+        box,
+        canvasArea,
+        kind,
+        rawKindText,
+        name
+      })
+    ) {
+      if (
+        !backgroundRepairMode &&
+        (kind === 'illustration' ||
+          repairMode === 'image' ||
+          /(?:scene|场景|室内|室外|环境|风景)/i.test(`${rawKindText} ${name}`)) // cjk-ok
+      ) {
+        backgroundRepairMode = 'scene'
+      }
+      continue
+    }
     elements.push({
       id,
       name: name.slice(0, 48),
@@ -326,7 +351,7 @@ export function parseLayoutResponse(
       ...(positivePoints.length ? { positivePoints } : {}),
       ...(negativePoints.length ? { negativePoints } : {}),
       ...(repairMode ? { repairMode } : {}),
-      parentRef: parentRef === id ? null : parentRef,
+      parentRef: effectiveParentRef,
       order: Number.isFinite(orderNum) ? orderNum : index,
       ocrRefs: readOcrRefs(rec.ocr ?? rec.ocrIds ?? rec.ocr_ids),
       ...(text ? { text } : {})
@@ -341,6 +366,36 @@ export function parseLayoutResponse(
 }
 
 const CONTAINER_ELEMENT_KINDS = new Set<UiElementKind>(['panel', 'frame', 'banner', 'item-slot'])
+
+function isFullCanvasBackgroundCandidate(input: {
+  box: PixelRect
+  canvasArea: number
+  kind: UiElementKind
+  rawKindText: string
+  name: string
+}): boolean {
+  const area = rectArea(input.box)
+  if (input.canvasArea <= 0) return false
+  const ratio = area / input.canvasArea
+  if (
+    ratio >= 0.92 &&
+    (input.kind === 'panel' || input.kind === 'frame' || input.kind === 'other')
+  ) {
+    return true
+  }
+  if (ratio < 0.8) return false
+  const tag = `${input.rawKindText} ${input.name.trim()}`
+  if (
+    /(?:^|[-_\s])(background|backdrop|wallpaper|canvas[-_\s]?bg|scene[-_\s]?bg|bg[-_\s]?scene)(?:$|[-_\s])/i.test(
+      tag
+    )
+  ) {
+    return true
+  }
+  const bgRe =
+    /(?:全屏|整图|全局|底层|场景).{0,8}(?:背景|底图)|^(?:场景背景|背景底图|底图|背景层|全屏背景)$/ // cjk-ok
+  return bgRe.test(input.name.trim())
+}
 
 /** 判断是否为叠加在槽位/图标上的数量、倍率或等级短文本（如 x5, ×10, +12, Lv.99） */
 function isShortStackOrLevelLabel(text: string | undefined): boolean {
@@ -630,6 +685,42 @@ function siblingZTier(kind: UiElementKind): number {
   }
 }
 
+function isPedestalUnderSiblingFigure(
+  node: UiElementNode,
+  siblings: readonly UiElementNode[]
+): boolean {
+  if (node.kind !== 'decoration' && node.kind !== 'effect' && node.kind !== 'other') {
+    return false
+  }
+  const pedRe =
+    /(?:底座|底盘|光圈|台座|地台|脚底|投影底|光环|pedestal|platform|base|stand|stage|shadow)/i // cjk-ok
+  const hasPedestalHint = node.box.width >= node.box.height * 1.15 || pedRe.test(node.name)
+  if (!hasPedestalHint) return false
+  const nodeArea = rectArea(node.box)
+  const nodeCy = node.box.top + node.box.height * 0.5
+  for (const sib of siblings) {
+    if (sib === node || (sib.kind !== 'illustration' && sib.kind !== 'avatar')) continue
+    if (rectArea(sib.box) <= nodeArea * 1.35) continue
+    const interW =
+      Math.min(sib.box.left + sib.box.width, node.box.left + node.box.width) -
+      Math.max(sib.box.left, node.box.left)
+    if (interW < Math.min(sib.box.width, node.box.width) * 0.35) continue
+    if (
+      node.box.top >= sib.box.top + sib.box.height * 0.45 &&
+      nodeCy >= sib.box.top + sib.box.height * 0.72 &&
+      node.box.top <= sib.box.top + sib.box.height + Math.max(12, node.box.height * 0.35)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+function effectiveSiblingZTier(node: UiElementNode, siblings: readonly UiElementNode[]): number {
+  if (isPedestalUnderSiblingFigure(node, siblings)) return 0.5
+  return siblingZTier(node.kind)
+}
+
 function childrenMap(nodes: UiElementNode[]): Map<string | null, UiElementNode[]> {
   const map = new Map<string | null, UiElementNode[]>()
   for (const n of nodes) {
@@ -640,8 +731,8 @@ function childrenMap(nodes: UiElementNode[]): Map<string | null, UiElementNode[]
   }
   for (const list of map.values()) {
     list.sort((a, b) => {
-      // 1) 文字压在同级图形之上；角标/图标/按钮压在同级立绘/容器底框之上
-      const tierDiff = siblingZTier(a.kind) - siblingZTier(b.kind)
+      // 1) 文字压在同级图形之上；角标/图标/按钮压在同级立绘/容器底框之上；立绘脚底的发光底座垫在立绘之下
+      const tierDiff = effectiveSiblingZTier(a, list) - effectiveSiblingZTier(b, list)
       if (tierDiff !== 0) return tierDiff
       // 2) 若两个同级元素存在明显空间重叠（含跨角压盖），面积大的必定在下层（先绘制），面积小的必定在上层
       const interW =

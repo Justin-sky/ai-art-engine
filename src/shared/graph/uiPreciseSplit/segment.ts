@@ -144,7 +144,8 @@ export function postProcessInstanceMask(
   width: number,
   height: number,
   positivePoints: readonly PixelPoint[] = [],
-  NegativeRadius = 2
+  NegativeRadius = 2,
+  promptBox?: PixelRect
 ): Uint8Array {
   const closed = closeMask3x3(mask, width, height)
   const { labels, stats } = labelComponents8(closed, width, height)
@@ -187,9 +188,41 @@ export function postProcessInstanceMask(
 
   const areaThreshold = maxArea * 0.08
   for (const s of stats) {
-    if (s.area >= areaThreshold) {
-      keepLabels.add(s.label)
+    if (keepLabels.has(s.label) || s.area < areaThreshold) continue
+    // 未命中正向点的次要连通块必须是框内独立部件（如空心圆环外圈、多笔符号），
+    // 严禁把贴着裁图边缘穿过的父面板边框线（如“发送按钮”右侧紧邻的输入框青色外边框）误吸进来！
+    let cropEdgeTouches = 0
+    let sideMask = 0
+    let inBoxCount = 0
+    for (let y = s.minY; y <= s.maxY; y++) {
+      const row = y * width
+      const inY = !promptBox || (y >= promptBox.top && y < promptBox.top + promptBox.height)
+      for (let x = s.minX; x <= s.maxX; x++) {
+        if (labels[row + x] !== s.label) continue
+        if (x <= 1) {
+          cropEdgeTouches++
+          sideMask |= 1
+        } else if (x >= width - 2) {
+          cropEdgeTouches++
+          sideMask |= 2
+        }
+        if (y <= 1) {
+          cropEdgeTouches++
+          sideMask |= 4
+        } else if (y >= height - 2) {
+          cropEdgeTouches++
+          sideMask |= 8
+        }
+        if (inY && (!promptBox || (x >= promptBox.left && x < promptBox.left + promptBox.width))) {
+          inBoxCount++
+        }
+      }
     }
+    const sides =
+      (sideMask & 1) + ((sideMask >> 1) & 1) + ((sideMask >> 2) & 1) + ((sideMask >> 3) & 1)
+    if (sides >= 2 || cropEdgeTouches >= Math.max(4, s.area * 0.08)) continue
+    if (promptBox && inBoxCount < s.area * 0.72) continue
+    keepLabels.add(s.label)
   }
 
   const out = new Uint8Array(closed.length)
@@ -242,7 +275,7 @@ export function generateLocalPromptedCandidates(
   }
 
   for (const pt of positivePoints) {
-    addPosSample(pt.x, pt.y, false)
+    addPosSample(pt.x, pt.y, positivePoints.length > 2)
   }
   const interiorAnchors: ReadonlyArray<[number, number]> = [
     [0.5, 0.5],
@@ -267,9 +300,23 @@ export function generateLocalPromptedCandidates(
     negColors.push(crop.data.slice(i, i + 4))
   }
 
-  // 边界连通背景泛洪排除（Boundary-Seeded Background Flood-Fill）：
-  // 仅从 crop 最外圈 1px 边界（且不属于正向核心颜色的像素）及显式负向点向内泛洪，
-  // 既能剔除五边形斜切角外的背景像素，又绝不会把贴近 localBox 边缘的按钮本体误当成背景种子反向吞噬。
+  // 构建 1px 闭合前景屏障（保护 1~2px 细圆环按钮描边如“停止按钮/音量按钮”金色外圈，防止背景对角线渗漏进环内）
+  const rawContrastBarrier = new Uint8Array(n)
+  const barrierThr = Math.max(20, ring.spread * 2.2)
+  for (let y = Math.max(0, by0 - 1); y < Math.min(H, by1 + 1); y++) {
+    const row = y * W
+    for (let x = Math.max(0, bx0 - 1); x < Math.min(W, bx1 + 1); x++) {
+      const p = row + x
+      if (pixelDistance(crop.data, p * 4, bgRgba, 0) >= barrierThr) {
+        rawContrastBarrier[p] = 1
+      }
+    }
+  }
+  const closedBarrier = closeMask3x3(rawContrastBarrier, W, H)
+
+  // 边界连通背景泛洪排除（Boundary-Seeded 4-Connected Background Flood-Fill）：
+  // 仅从 crop 最外圈 1px 边界（且不属于正向核心颜色的像素）及显式负向点按 4 邻域向内泛洪，
+  // 既能剔除五边形斜切角外的背景像素，又绝不会跨过细圆环描边对角线漏进空心按钮内部。
   const boundaryBg = new Uint8Array(n)
   const seedIdx = new Int32Array(n).fill(-1)
   const queue = new Int32Array(n)
@@ -279,6 +326,7 @@ export function generateLocalPromptedCandidates(
   const trySeedBoundary = (x: number, y: number, force: boolean): void => {
     const p = y * W + x
     if (boundaryBg[p]) return
+    if (!force && closedBarrier[p]) return
     const i = p * 4
     if (!force && posColors.length > 0) {
       let minPos = Infinity
@@ -308,37 +356,39 @@ export function generateLocalPromptedCandidates(
     trySeedBoundary(px, py, true)
   }
 
+  const dirs4: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ]
   while (qHead < qTail) {
     const p = queue[qHead++]!
     const py = Math.floor(p / W)
     const px = p - py * W
     const pi = p * 4
     const sOff = seedIdx[p]!
-    for (let dy = -1; dy <= 1; dy++) {
+    for (const [dx, dy] of dirs4) {
+      const nx = px + dx
       const ny = py + dy
-      if (ny < 0 || ny >= H) continue
-      for (let dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue
-        const nx = px + dx
-        if (nx < 0 || nx >= W) continue
-        const np = ny * W + nx
-        if (boundaryBg[np]) continue
-        const ni = np * 4
-        const stepDist = pixelDistance(crop.data, pi, crop.data, ni)
-        if (stepDist > 15) continue
-        const seedDist = pixelDistance(crop.data, sOff, crop.data, ni)
-        if (seedDist > 32) continue
-        let minPosDist = Infinity
-        for (const pc of posColors) {
-          const pd = pixelDistance(crop.data, ni, pc, 0)
-          if (pd < minPosDist) minPosDist = pd
-        }
-        // 若该像素明显更接近正向锚点颜色（含按钮本体色/角标底板色），立即停止泛洪，保护前景主体
-        if (minPosDist <= seedDist + 10 && minPosDist <= 28) continue
-        boundaryBg[np] = 1
-        seedIdx[np] = sOff
-        queue[qTail++] = np
+      if (nx < 0 || nx >= W || ny < 0 || ny >= H) continue
+      const np = ny * W + nx
+      if (boundaryBg[np] || closedBarrier[np]) continue
+      const ni = np * 4
+      const stepDist = pixelDistance(crop.data, pi, crop.data, ni)
+      if (stepDist > 15) continue
+      const seedDist = pixelDistance(crop.data, sOff, crop.data, ni)
+      if (seedDist > 32) continue
+      let minPosDist = Infinity
+      for (const pc of posColors) {
+        const pd = pixelDistance(crop.data, ni, pc, 0)
+        if (pd < minPosDist) minPosDist = pd
       }
+      // 若该像素明显更接近正向锚点颜色（含按钮本体色/角标底板色），立即停止泛洪，保护前景主体
+      if (minPosDist <= seedDist + 10 && minPosDist <= 28) continue
+      boundaryBg[np] = 1
+      seedIdx[np] = sOff
+      queue[qTail++] = np
     }
   }
 
@@ -456,15 +506,11 @@ export async function segmentElementInstance(
     width: box.width,
     height: box.height
   }
-  const localPos: PixelPoint[] = [
-    ...(node.positivePoints?.length
+  const localPos: PixelPoint[] = (
+    node.positivePoints?.length
       ? node.positivePoints
-      : [{ x: Math.round(box.left + box.width * 0.5), y: Math.round(box.top + box.height * 0.5) }]),
-    { x: Math.round(box.left + box.width * 0.3), y: Math.round(box.top + box.height * 0.3) },
-    { x: Math.round(box.left + box.width * 0.7), y: Math.round(box.top + box.height * 0.3) },
-    { x: Math.round(box.left + box.width * 0.3), y: Math.round(box.top + box.height * 0.7) },
-    { x: Math.round(box.left + box.width * 0.7), y: Math.round(box.top + box.height * 0.7) }
-  ].map((p) => ({
+      : [{ x: Math.round(box.left + box.width * 0.5), y: Math.round(box.top + box.height * 0.5) }]
+  ).map((p) => ({
     x: Math.max(0, Math.min(rw - 1, Math.round(p.x - rect.left))),
     y: Math.max(0, Math.min(rh - 1, Math.round(p.y - rect.top)))
   }))
@@ -513,12 +559,195 @@ export async function segmentElementInstance(
     }
   }
 
-  const finalMask = postProcessInstanceMask(bestCand.mask, rw, rh, localPos)
+  const finalMask = postProcessInstanceMask(bestCand.mask, rw, rh, localPos, 2, localBox)
   return {
     rect,
     mask: finalMask,
     score: bestScore
   }
+}
+
+/**
+ * 提取实心容器（panel / banner / item-slot）的紧致圆角外轮廓掩码：
+ * 仅从框外背景环带按 4 邻域向内泛洪剔除圆角外侧及宽松框边缘的背景像素（如木桌纹理），
+ * 内部 100% 闭合填实，防止生图剥层时框外背景纹理微抖动被差分抠进容器图层或把暗色面板左上角啃缺口。
+ */
+export function segmentContainerSilhouette(
+  img: RgbaImage,
+  containerBox: PixelRect
+): { rect: PixelRect; mask: Uint8Array } | null {
+  const { width: W, height: H } = img
+  const box = clampRect(containerBox, W, H)
+  if (box.width < 16 || box.height < 16) return null
+  const pad = Math.max(3, Math.min(10, Math.round(Math.min(box.width, box.height) * 0.06)))
+  const rect = clampRect(
+    {
+      left: box.left - pad,
+      top: box.top - pad,
+      width: box.width + pad * 2,
+      height: box.height + pad * 2
+    },
+    W,
+    H
+  )
+  const rw = rect.width
+  const rh = rect.height
+  const n = rw * rh
+  const strip = Math.max(1, Math.min(3, pad))
+  const outerRing = ringStats(img, rect, strip)
+  // 框外环境颜色离散度过高（跨多种大反差场景物体）时保守退回，仅在可辨识外背景上裁剪外沿与圆角
+  if (outerRing.spread > 34) return null
+
+  const bx0 = box.left - rect.left
+  const by0 = box.top - rect.top
+  const bx1 = bx0 + box.width
+  const by1 = by0 + box.height
+
+  // 采样容器中心内腔代表色，避免把与外背景同色系的容器边框误种子化
+  const innerSamples: Array<[number, number, number, number]> = []
+  const ix0 = bx0 + Math.floor(box.width * 0.15)
+  const iy0 = by0 + Math.floor(box.height * 0.15)
+  const ix1 = Math.max(ix0 + 1, bx0 + Math.ceil(box.width * 0.85))
+  const iy1 = Math.max(iy0 + 1, by0 + Math.ceil(box.height * 0.85))
+  const stepX = Math.max(1, Math.floor((ix1 - ix0) / 12))
+  const stepY = Math.max(1, Math.floor((iy1 - iy0) / 12))
+  for (let y = iy0; y < iy1; y += stepY) {
+    for (let x = ix0; x < ix1; x += stepX) {
+      const gi = ((rect.top + y) * W + (rect.left + x)) * 4
+      innerSamples.push([img.data[gi]!, img.data[gi + 1]!, img.data[gi + 2]!, img.data[gi + 3]!])
+    }
+  }
+  const innerMed = innerSamples.length
+    ? new Uint8ClampedArray([
+        median(innerSamples.map((c) => c[0])),
+        median(innerSamples.map((c) => c[1])),
+        median(innerSamples.map((c) => c[2])),
+        255
+      ])
+    : outerRing.color
+
+  const bgSeedTol = Math.max(22, Math.min(42, outerRing.spread * 1.8 + 12))
+  const barrier = new Uint8Array(n)
+  for (let y = Math.max(0, by0 - 1); y < Math.min(rh, by1 + 1); y++) {
+    const cy = rect.top + y
+    for (let x = Math.max(0, bx0 - 1); x < Math.min(rw, bx1 + 1); x++) {
+      const gi = (cy * W + (rect.left + x)) * 4
+      const dOut = pixelDistance(img.data, gi, outerRing.color, 0)
+      if (dOut >= Math.max(18, outerRing.spread * 1.6 + 8)) {
+        barrier[y * rw + x] = 1
+      }
+    }
+  }
+  const closedBarrier = closeMask3x3(barrier, rw, rh)
+
+  const outsideBg = new Uint8Array(n)
+  const seedOff = new Int32Array(n).fill(-1)
+  const queue = new Int32Array(n)
+  let qHead = 0
+  let qTail = 0
+  const trySeed = (x: number, y: number): void => {
+    const p = y * rw + x
+    if (outsideBg[p] || closedBarrier[p]) return
+    const gi = ((rect.top + y) * W + (rect.left + x)) * 4
+    const dOut = pixelDistance(img.data, gi, outerRing.color, 0)
+    if (dOut > bgSeedTol) return
+    outsideBg[p] = 1
+    seedOff[p] = gi
+    queue[qTail++] = p
+  }
+  for (let x = 0; x < rw; x++) {
+    trySeed(x, 0)
+    trySeed(x, rh - 1)
+  }
+  for (let y = 1; y < rh - 1; y++) {
+    trySeed(0, y)
+    trySeed(rw - 1, y)
+  }
+
+  const dirs4: ReadonlyArray<readonly [number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1]
+  ]
+  while (qHead < qTail) {
+    const p = queue[qHead++]!
+    const py = Math.floor(p / rw)
+    const px = p - py * rw
+    const pi = ((rect.top + py) * W + (rect.left + px)) * 4
+    const sGi = seedOff[p]!
+    for (const [dx, dy] of dirs4) {
+      const nx = px + dx
+      const ny = py + dy
+      if (nx < 0 || nx >= rw || ny < 0 || ny >= rh) continue
+      const np = ny * rw + nx
+      if (outsideBg[np] || closedBarrier[np]) continue
+      const ni = ((rect.top + ny) * W + (rect.left + nx)) * 4
+      if (pixelDistance(img.data, pi, img.data, ni) > 14) continue
+      const dSeed = pixelDistance(img.data, sGi, img.data, ni)
+      if (dSeed > 28) continue
+      const dInner = pixelDistance(img.data, ni, innerMed, 0)
+      if (
+        pixelDistance(innerMed, 0, outerRing.color, 0) >= 20 &&
+        dInner + 6 < dSeed &&
+        dInner <= 24
+      ) {
+        continue
+      }
+      outsideBg[np] = 1
+      seedOff[np] = sGi
+      queue[qTail++] = np
+    }
+  }
+
+  const rawFg = new Uint8Array(n)
+  for (let y = by0; y < by1; y++) {
+    const row = y * rw
+    for (let x = bx0; x < bx1; x++) {
+      if (!outsideBg[row + x]) rawFg[row + x] = 1
+    }
+  }
+  const solid = fillHoles(closeMask3x3(rawFg, rw, rh), rw, rh)
+  const centerPt: PixelPoint = {
+    x: Math.round(bx0 + box.width * 0.5),
+    y: Math.round(by0 + box.height * 0.5)
+  }
+  const cleaned = postProcessInstanceMask(solid, rw, rh, [centerPt], 2, {
+    left: bx0,
+    top: by0,
+    width: box.width,
+    height: box.height
+  })
+
+  let fgCount = 0
+  let minX = rw
+  let minY = rh
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < rh; y++) {
+    const row = y * rw
+    for (let x = 0; x < rw; x++) {
+      if (!cleaned[row + x]) continue
+      fgCount++
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+  const boxArea = box.width * box.height
+  if (fgCount < boxArea * 0.45 || maxX < minX) return null
+  const tightRect: PixelRect = {
+    left: rect.left + minX,
+    top: rect.top + minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1
+  }
+  const inter = rectIntersection(tightRect, box)
+  const union = rectArea(tightRect) + boxArea - inter
+  if (union <= 0 || inter / union < 0.6) return null
+
+  return { rect, mask: cleaned }
 }
 
 /**

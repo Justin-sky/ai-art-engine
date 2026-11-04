@@ -5217,8 +5217,12 @@ export default {
       fillHolesBtn: '🩹 补洞',
       fillHolesTip: '自动检测并填补当前图层内部的闭合破洞',
       brushRadiusLabel: '半径 {n}px',
-      aiRepairPlaceholder: '输入单层 AI 修补指令（留空自动补全遮挡纹理）',
-      aiRepairBasePlaceholder: '输入底图 AI 修复指令（留空自动消除控件残留与补洞）',
+      aiRepairPlaceholder: '输入单层 AI 修补指令（留空自动补全遮挡纹理，Ctrl+Enter 发送）',
+      aiRepairBasePlaceholder:
+        '输入底图 AI 修复指令（留空自动消除控件残留与补洞，Ctrl+Enter 发送）',
+      aiRepairTransparentBg: '透明背景',
+      aiRepairTransparentBgTip:
+        '开启后自动将修补结果的背景还原为干净的 RGBA 透明通道（含去除纯色垫底与假棋盘格）；关闭则保留不透明背景',
       brushHealBaseActive:
         '已开启底图抹除画笔：在残留处拖拽涂抹即可平滑消除（可点「👁 独显」单独查看底图）',
       brushEraseActive: '已开启擦除画笔：在选中图层上拖拽可擦除多余杂边像素',

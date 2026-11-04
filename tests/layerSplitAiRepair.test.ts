@@ -277,4 +277,108 @@ describe('layerSplitAiRepair', () => {
     expect(finalBase.data[3]).toBe(255)
     expect(finalBase.data[(60 * 160 + 80) * 4 + 3]).toBe(255)
   })
+
+  it('strips fake two-tone gray/white checkerboard & halo residue around a glowing UI panel', () => {
+    const W = 120
+    const H = 90
+    const orig = createImage(W, H)
+    // Build a dark-blue UI panel [18..102, 14..76] with a soft outer glow halo [8..112, 6..84]
+    for (let y = 6; y < 84; y++) {
+      for (let x = 8; x < 112; x++) {
+        const i = (y * W + x) * 4
+        const inCore = x >= 18 && x < 102 && y >= 14 && y < 76
+        if (inCore) {
+          // Leave an internal occlusion hole at [50..62, 40..50]
+          if (x >= 50 && x < 62 && y >= 40 && y < 50) continue
+          const isBorder = x < 21 || x >= 99 || y < 17 || y >= 73
+          orig.data[i] = isBorder ? 45 : 22
+          orig.data[i + 1] = isBorder ? 155 : 68
+          orig.data[i + 2] = isBorder ? 255 : 145
+          orig.data[i + 3] = 255
+        } else {
+          // Soft outer glow / extraction residue (alpha 28..72)
+          orig.data[i] = 40
+          orig.data[i + 1] = 140
+          orig.data[i + 2] = 245
+          orig.data[i + 3] = 48
+        }
+      }
+    }
+
+    const prepared = prepareLayerRepairReference(orig, {
+      nativeTransparent: false,
+      transparentBackground: true
+    })
+    expect(prepared.keepOpaque).toBe(false)
+
+    // Simulate model returning an image where:
+    // - top-left corner has partial transparency (alpha=0),
+    // - the rest of the exterior AND the soft glow halo has a drawn gray-and-white checkerboard (#ffffff / #cccccc),
+    // - the internal hole inside the blue panel is repaired with dark blue.
+    const simWork = createImage(prepared.workWidth, prepared.workHeight)
+    for (let y = 0; y < simWork.height; y++) {
+      for (let x = 0; x < simWork.width; x++) {
+        const i = (y * simWork.width + x) * 4
+        const lx = x - prepared.cropLeft
+        const ly = y - prepared.cropTop
+        const inCore = lx >= 18 && lx < 102 && ly >= 14 && ly < 76
+        if (inCore) {
+          const isBorder = lx < 21 || lx >= 99 || ly < 17 || ly >= 73
+          simWork.data[i] = isBorder ? 45 : 22
+          simWork.data[i + 1] = isBorder ? 155 : 68
+          simWork.data[i + 2] = isBorder ? 255 : 145
+          simWork.data[i + 3] = 255
+        } else if (lx < 25 && ly < 12) {
+          // Partial transparent corner
+          simWork.data[i + 3] = 0
+        } else {
+          // Drawn 6x6 gray/white checkerboard in both exterior and glow ring
+          const isWhiteCell = ((Math.floor(x / 6) + Math.floor(y / 6)) & 1) === 0
+          const c = isWhiteCell ? 252 : 198
+          simWork.data[i] = c
+          simWork.data[i + 1] = c
+          simWork.data[i + 2] = c
+          simWork.data[i + 3] = 255
+        }
+      }
+    }
+
+    const finalRgba = finalizeLayerRepairRgba(simWork, orig, prepared)
+    // Both white and gray checkerboard cells in exterior AND in the old glow ring must be stripped to alpha=0
+    expect(finalRgba.data[(2 * W + 100) * 4 + 3]).toBe(0)
+    expect(finalRgba.data[(2 * W + 106) * 4 + 3]).toBe(0)
+    expect(finalRgba.data[(10 * W + 60) * 4 + 3]).toBe(0)
+    expect(finalRgba.data[(45 * W + 108) * 4 + 3]).toBe(0)
+    expect(finalRgba.data[(80 * W + 60) * 4 + 3]).toBe(0)
+    // Solid blue panel interior and repaired internal hole stay opaque!
+    expect(finalRgba.data[(45 * W + 55) * 4 + 3]).toBe(255)
+    expect(finalRgba.data[(45 * W + 55) * 4 + 2]).toBeGreaterThan(120)
+  })
+
+  it('honors explicit transparentBackground=false option on foreground layers', () => {
+    const orig = createImage(64, 48)
+    for (let y = 8; y < 40; y++) {
+      for (let x = 8; x < 56; x++) {
+        const i = (y * 64 + x) * 4
+        orig.data[i] = 60
+        orig.data[i + 1] = 110
+        orig.data[i + 2] = 200
+        orig.data[i + 3] = 255
+      }
+    }
+    const prepared = prepareLayerRepairReference(orig, {
+      nativeTransparent: false,
+      transparentBackground: false
+    })
+    expect(prepared.keepOpaque).toBe(true)
+    const prompt = buildLayerRepairPrompt({
+      userInstruction: '',
+      layerName: '面板',
+      locale: 'zh-CN',
+      nativeTransparent: false,
+      matteRgb: prepared.matteRgb,
+      transparentBackground: false
+    })
+    expect(prompt).toContain('保持不透明背景')
+  })
 })

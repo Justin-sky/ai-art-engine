@@ -236,7 +236,7 @@ export async function completeOccludedGenerative(input: {
     const W = t.plate.width
     const H = t.plate.height
     const pad = Math.max(8, Math.round(Math.max(rect.width, rect.height) * 0.12))
-    const crop = clampRect(
+    let crop = clampRect(
       {
         left: rect.left - pad,
         top: rect.top - pad,
@@ -246,6 +246,32 @@ export async function completeOccludedGenerative(input: {
       W,
       H
     )
+    const targetAspectStr = nearestAspectRatio(crop.width, crop.height)
+    const [awStr, ahStr] = targetAspectStr.split(':')
+    const targetRatio = Number(awStr) / Math.max(1, Number(ahStr))
+    const curRatio = crop.width / Math.max(1, crop.height)
+    if (Number.isFinite(targetRatio) && Math.abs(Math.log(targetRatio / curRatio)) > 0.05) {
+      // 在画布允许范围内对称外扩裁剪框以贴合生图画幅比，避免生图模型因画幅不合把立绘压扁或拉伸导致对齐失败
+      let nextW = crop.width
+      let nextH = crop.height
+      if (curRatio < targetRatio) {
+        nextW = Math.min(W, Math.round(crop.height * targetRatio))
+      } else {
+        nextH = Math.min(H, Math.round(crop.width / targetRatio))
+      }
+      const cx = crop.left + crop.width / 2
+      const cy = crop.top + crop.height / 2
+      crop = clampRect(
+        {
+          left: Math.round(cx - nextW / 2),
+          top: Math.round(cy - nextH / 2),
+          width: nextW,
+          height: nextH
+        },
+        W,
+        H
+      )
+    }
     const cw = crop.width
     const ch = crop.height
     const hole = new Uint8Array(cw * ch)
@@ -298,7 +324,7 @@ export async function completeOccludedGenerative(input: {
     }
     const resized = gen.width === cw && gen.height === ch ? gen : resizeBilinear(gen, cw, ch)
     const shift = estimateShift(plateCrop, resized, hole)
-    if (!Number.isFinite(shift.error) || shift.error > 18) {
+    if (!Number.isFinite(shift.error) || shift.error > 26) {
       io.log?.(
         `layer completion "${t.name}": rejected (misaligned / recomposed, err=${shift.error.toFixed(1)})`
       )
@@ -315,7 +341,7 @@ export async function completeOccludedGenerative(input: {
       rs += pixelDistance(plateCrop.data, p * 4, aligned.data, p * 4)
       rn++
     }
-    if (rn && rs / rn > 28) {
+    if (rn && rs / rn > 38) {
       io.log?.(
         `layer completion "${t.name}": rejected (seam colour mismatch ${(rs / rn).toFixed(1)})`
       )

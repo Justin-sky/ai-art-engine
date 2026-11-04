@@ -26,6 +26,12 @@ export interface MatteOptions {
   t1?: number
   /** 实心控件：填补主体内部空洞 */
   fillHoles?: boolean
+  /**
+   * 半透明发光/投影物理去底色解混（Color-to-Alpha）：
+   * 按 Porter-Duff 合成方程求令反解前景色落在 [0,255] 内的最小物理不透明度，
+   * 避免把下层深色桌面/背景以 alpha=1 死板烤进发光底座或光晕图层。
+   */
+  unmixTranslucent?: boolean
   /** 实例分割/笔画前景掩码约束：限制前景核心不得越出该掩码（消除框内相邻背景/肩甲粘连） */
   instanceMask?: { rect: PixelRect; mask: Uint8Array }
 }
@@ -80,7 +86,20 @@ export function extractMatte(
       if (ua < 0.004) continue
       const la = lower.data[i + 3]! / 255
       const d = pixelDistance(upper.data, i, lower.data, i)
-      let a = smoothstep(t0, t1, d)
+      let a: number
+      if (options.unmixTranslucent && la >= 0.95) {
+        let aUnmix = 0
+        for (let c = 0; c < 3; c++) {
+          const uc = upper.data[i + c]!
+          const lc = lower.data[i + c]!
+          const req = uc >= lc ? (uc - lc) / Math.max(1, 255 - lc) : (lc - uc) / Math.max(1, lc)
+          if (req > aUnmix) aUnmix = req
+        }
+        const gate = smoothstep(t0 * 0.6, Math.max(t0 * 1.7, t0 + 8), d)
+        a = aUnmix * gate
+      } else {
+        a = smoothstep(t0, t1, d)
+      }
       if (la < 0.999) {
         const minA = Math.max(0, (ua - la) / (1 - la))
         if (minA > a) a = minA
@@ -114,21 +133,27 @@ export function extractMatte(
     }
     if (hit > 0) {
       projectedInstance = proj
-      projectedBand = dilateMask(proj, rw, rh, 1)
+      projectedBand = dilateMask(proj, rw, rh, options.unmixTranslucent ? 4 : 1)
     }
   }
 
-  // 主体：alpha ≥ 0.5 的连通域，去掉与框核心无关的零碎噪点
+  // 主体：alpha ≥ 阈值 的连通域，去掉与框核心无关的零碎噪点
+  const coreThresh = options.unmixTranslucent ? 0.1 : 0.5
   let core: Uint8Array = new Uint8Array(n)
   for (let p = 0; p < n; p++) {
     if (projectedBand && !projectedBand[p]) {
       alpha[p] = 0
       continue
     }
-    if (projectedInstance && projectedInstance[p] && alpha[p]! >= 0.25) {
+    if (
+      !options.unmixTranslucent &&
+      projectedInstance &&
+      projectedInstance[p] &&
+      alpha[p]! >= 0.25
+    ) {
       alpha[p] = Math.max(alpha[p]!, 0.85)
     }
-    core[p] = alpha[p]! >= 0.5 ? 1 : 0
+    core[p] = alpha[p]! >= coreThresh ? 1 : 0
   }
   const { labels, stats } = labelComponents(core, rw, rh)
   if (!stats.length) return null
@@ -175,8 +200,8 @@ export function extractMatte(
   for (let p = 0; p < n; p++) coreCount += core[p]!
   if (!coreCount) return null
 
-  // 软边只保留在主体 3px 内（发光/抗锯齿），远处的弱差异视为补底噪声
-  const band = dilateMask(core, rw, rh, 3)
+  // 软边只保留在主体附近（发光/抗锯齿），远处的弱差异视为补底噪声
+  const band = dilateMask(core, rw, rh, options.unmixTranslucent ? 5 : 3)
   const rgba = new Uint8ClampedArray(n * 4)
   let minX = rw
   let minY = rh
@@ -196,8 +221,11 @@ export function extractMatte(
         const uc = upper.data[i + c]!
         const lc = lower.data[i + c]!
         // 反解元素颜色；alpha 很低时向 upper 原色收敛，避免噪声被放大
-        const solved = ea >= 0.995 ? uc : (uc * ua - lc * la * (1 - ea)) / ea
-        const trust = smoothstep(0.08, 0.35, ea)
+        const rawSolved = ea >= 0.995 ? uc : (uc * ua - lc * la * (1 - ea)) / ea
+        const solved = Math.max(0, Math.min(255, rawSolved))
+        const trust = options.unmixTranslucent
+          ? smoothstep(0.02, 0.08, ea)
+          : smoothstep(0.08, 0.35, ea)
         rgba[o + c] = solved * trust + uc * (1 - trust)
       }
       rgba[o + 3] = Math.round(ea * 255)

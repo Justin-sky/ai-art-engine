@@ -10236,10 +10236,16 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
     }
 
     const origRgba = await uiRgbaCodec.decodeImageRgba(safeInputUrl)
+    const explicitCutout = isExplicitLayerCutoutHint(payload.prompt)
+    const requestedTransparentBg =
+      payload.transparentBackground !== undefined
+        ? payload.transparentBackground
+        : !targetIsBase || explicitCutout
     const nativeTransparent = supportsNativeTransparentImageModel(model)
     const prepared = prepareLayerRepairReference(origRgba, {
       nativeTransparent,
-      isBase: targetIsBase
+      isBase: targetIsBase,
+      transparentBackground: requestedTransparentBg
     })
     const refPngDataUrl = await uiRgbaCodec.encodeRgbaPng(prepared.image)
     const effectivePrompt = buildLayerRepairPrompt({
@@ -10248,7 +10254,8 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
       locale: String(locale.value),
       nativeTransparent,
       matteRgb: prepared.matteRgb,
-      isBase: targetIsBase
+      isBase: targetIsBase,
+      transparentBackground: requestedTransparentBg
     })
     const wantTransparentBg = !prepared.keepOpaque
 
@@ -10325,7 +10332,7 @@ async function repairSelectedLayerSplit(payload: ImageLayerSplitRepairRequest): 
       workHeight: prepared.workHeight,
       matteRgb: prepared.matteRgb,
       keepOpaque: prepared.keepOpaque,
-      forceCutout: isExplicitLayerCutoutHint(payload.prompt)
+      forceCutout: explicitCutout || (requestedTransparentBg && targetIsBase)
     })
     const finalDataUrl = await uiRgbaCodec.encodeRgbaPng(finalRgba)
 

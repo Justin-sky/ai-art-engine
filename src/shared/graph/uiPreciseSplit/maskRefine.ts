@@ -192,10 +192,34 @@ export function refineMaskByPalette(
     }
   }
   if (!removed) return unchanged
-  // 删完后只保留连到核心的连通块，避免留下碎屑
+  // 删完后保留：
+  // 1) 仍连到厚实核心（dIn >= 3）的主连通块；
+  // 2) 原本就独立存在且保留率 >= 55%、面积 >= 12 的细环/多笔图标部件（防止把 2px 金色空心按钮外环误删！），
+  //    仅剔除从厚主体边缘剥落下来的 1~2px 背景残渣碎屑。
+  const origComp = labelComponents(inside, rw, rh)
+  const origAreaByLabel = new Int32Array(origComp.stats.length + 1)
+  for (const os of origComp.stats) origAreaByLabel[os.label] = os.area
+
   const { labels, stats } = labelComponents(out, rw, rh)
   const coreLabels = new Set<number>()
   for (let p = 0; p < n; p++) if (out[p] && dIn[p]! >= 3 && labels[p]) coreLabels.add(labels[p]!)
+  for (const s of stats) {
+    if (coreLabels.has(s.label) || s.area < 12) continue
+    let sampleOrigLabel = 0
+    for (let y = s.minY; y <= s.maxY && !sampleOrigLabel; y++) {
+      const row = y * rw
+      for (let x = s.minX; x <= s.maxX; x++) {
+        if (labels[row + x] === s.label) {
+          sampleOrigLabel = origComp.labels[row + x]!
+          break
+        }
+      }
+    }
+    const origArea = sampleOrigLabel > 0 ? origAreaByLabel[sampleOrigLabel]! : 0
+    if (origArea > 0 && s.area >= origArea * 0.55) {
+      coreLabels.add(s.label)
+    }
+  }
   if (!coreLabels.size && stats.length) {
     const biggest = stats.reduce((a, b) => (b.area > a.area ? b : a))
     coreLabels.add(biggest.label)

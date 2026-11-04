@@ -2147,7 +2147,7 @@ export function visionGroundingScore(modelId: string): number {
   if (/qwen2\.5-vl|qwen-vl/.test(m)) return 80
   if (/doubao.*(vision|seed-1\.[68]|seed-2)|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m))
     return 78
-  if (/gpt-5|gpt-4\.1|gpt-4o|gpt-chat-latest|chatgpt-4o|o3|o4-mini/.test(m)) return 70
+  if (/gpt-[5-9]|gpt-4\.1|gpt-4o|gpt-chat-latest|chatgpt-4o|o[3-9]|o4-mini/.test(m)) return 70
   if (/claude-(opus|sonnet)|claude-3\.[57]|claude-4/.test(m)) return 66
   if (
     /deepseek-(?:v[4-9]|flash)|mimo-v2\.[6-9]|kimi-k2\.[5-9]|qwen3\.[5-9]|glm-4\.[5-9]|glm-5|grok-[3-9]|llama-4/.test(

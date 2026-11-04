@@ -5359,8 +5359,13 @@ export default {
       fillHolesBtn: '🩹 Fill',
       fillHolesTip: 'Fill internal transparent holes on selected layer',
       brushRadiusLabel: 'Radius {n}px',
-      aiRepairPlaceholder: 'Prompt to AI-repair this layer (blank = auto inpaint)',
-      aiRepairBasePlaceholder: 'Prompt to AI-repair base plate (blank = auto clean residue)',
+      aiRepairPlaceholder:
+        'Prompt to AI-repair this layer (blank = auto inpaint, Ctrl+Enter to run)',
+      aiRepairBasePlaceholder:
+        'Prompt to AI-repair base plate (blank = auto clean residue, Ctrl+Enter to run)',
+      aiRepairTransparentBg: 'Transparent BG',
+      aiRepairTransparentBgTip:
+        'Automatically restore clean RGBA transparency on the repaired layer (strips solid matte and fake checkerboards); uncheck to keep an opaque background',
       brushHealBaseActive:
         'Base heal brush active: drag over residue to blend with surrounding background (toggle "👁 Solo" to inspect unobstructed)',
       brushEraseActive: 'Erase brush active: drag on selected layer to erase stray pixels',

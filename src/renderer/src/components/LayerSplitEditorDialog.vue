@@ -796,9 +796,9 @@
               />
             </div>
             <div class="ai-repair-row">
-              <input
+              <textarea
                 v-model="layerRepairPrompt"
-                type="text"
+                rows="3"
                 class="ai-repair-input"
                 :disabled="slicing || splitting || repairing"
                 :placeholder="
@@ -806,21 +806,36 @@
                     ? t('graph.layerSplit.aiRepairBasePlaceholder')
                     : t('graph.layerSplit.aiRepairPlaceholder')
                 "
-                @keydown.enter.prevent="onAiRepairSelectedLayer"
+                @keydown.ctrl.enter.prevent="onAiRepairSelectedLayer"
+                @keydown.meta.enter.prevent="onAiRepairSelectedLayer"
               />
-              <button
-                type="button"
-                class="mini-pill ai-repair-btn"
-                :class="{ running: repairing }"
-                :disabled="slicing || splitting || repairing"
-                @click="onAiRepairSelectedLayer"
-              >
-                {{
-                  repairing
-                    ? t('graph.layerSplit.aiRepairRunning')
-                    : t('graph.layerSplit.aiRepairBtn')
-                }}
-              </button>
+              <div class="ai-repair-actions">
+                <label
+                  class="ai-repair-transparent-opt"
+                  :class="{ disabled: slicing || splitting || repairing }"
+                  :title="t('graph.layerSplit.aiRepairTransparentBgTip')"
+                >
+                  <input
+                    v-model="layerRepairTransparentBg"
+                    type="checkbox"
+                    :disabled="slicing || splitting || repairing"
+                  />
+                  <span>{{ t('graph.layerSplit.aiRepairTransparentBg') }}</span>
+                </label>
+                <button
+                  type="button"
+                  class="mini-pill ai-repair-btn"
+                  :class="{ running: repairing }"
+                  :disabled="slicing || splitting || repairing"
+                  @click="onAiRepairSelectedLayer"
+                >
+                  {{
+                    repairing
+                      ? t('graph.layerSplit.aiRepairRunning')
+                      : t('graph.layerSplit.aiRepairBtn')
+                  }}
+                </button>
+              </div>
             </div>
             <p
               v-if="repairing || activeRepairStatusText"
@@ -2503,6 +2518,16 @@ const brushMode = ref<'none' | 'erase' | 'restore'>('none')
 const brushRadius = ref(14)
 const soloSelectedLayer = ref(false)
 const layerRepairPrompt = ref('')
+const layerRepairTransparentBg = ref(true)
+
+watch(
+  () => selectedLayer.value?.id,
+  () => {
+    const cur = selectedLayer.value
+    layerRepairTransparentBg.value = cur ? !isBase(cur) : true
+  },
+  { immediate: true }
+)
 const brushDrag = reactive<{
   active: boolean
   points: Array<{ x: number; y: number }>
@@ -2826,6 +2851,7 @@ function onAiRepairSelectedLayer(): void {
     generateProviderInstanceId: selectedProviderInstanceId.value,
     visionModel: selectedVisionModel.value,
     visionProviderInstanceId: selectedVisionProviderInstanceId.value,
+    transparentBackground: layerRepairTransparentBg.value,
     layerDataUrl: curUrl,
     imageLayerSplit: normalizeImageLayerSplit(draft),
     ...(extraImages.value.length ? { extraGeneratedImages: [...extraImages.value] } : {})
@@ -4725,23 +4751,57 @@ onBeforeUnmount(() => {
 
 .ai-repair-row {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
 }
 
 .ai-repair-input {
-  flex: 1 1 auto;
+  width: 100%;
+  box-sizing: border-box;
   min-width: 0;
+  min-height: 54px;
+  max-height: 140px;
+  resize: vertical;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
-  padding: 4px 6px;
+  padding: 5px 7px;
   font-size: 11px;
+  line-height: 1.45;
+  font-family: inherit;
 }
 
 .ai-repair-input:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ai-repair-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-repair-transparent-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-repair-transparent-opt input {
+  margin: 0;
+  cursor: pointer;
+}
+
+.ai-repair-transparent-opt.disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
 

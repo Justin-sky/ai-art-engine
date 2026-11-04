@@ -63,6 +63,8 @@ import {
   inpaintPushPull,
   labelComponents,
   meanAbsoluteError,
+  median,
+  pixelDistance,
   rectArea,
   rectIntersection,
   resizeBilinear
@@ -77,6 +79,7 @@ import {
 import {
   decomposeCompositeBadge,
   detectSlotInnerRect,
+  segmentContainerSilhouette,
   segmentElementInstance,
   segmentPortraitInParentSlot
 } from './segment'
@@ -326,10 +329,100 @@ function maskBoundingBox(rect: PixelRect, mask: Uint8Array): PixelRect | null {
 }
 
 /**
- * 自动检测并补拆：
- * 1) 复合角标「碎片底板（五边形/盾形色块）+ 内部高对比符号（如白色拼图 Icon）」；
- * 2) 「槽位底框（item-slot/panel）+ 内部角色人像/立绘（avatar/illustration）」。
+ * 判定一个被标为 avatar/illustration 的包围盒是否真的自带独立矩形槽位外框：
+ * 至少 3 条边在内侧 1px 处呈均匀直线边框（色散小）且与外侧 2px 背景存在显著阶跃，
+ * 防止把无框独立站立的全息人像/角色立绘误包一层虚假的矩形 item-slot 底框。
  */
+function hasEnclosedSlotBorder(img: RgbaImage, box: PixelRect): boolean {
+  const { width: W, height: H } = img
+  if (box.width < 28 || box.height < 28) return false
+  const xStart = box.left + Math.max(3, Math.round(box.width * 0.18))
+  const xEnd = box.left + box.width - Math.max(3, Math.round(box.width * 0.18))
+  const yStart = box.top + Math.max(3, Math.round(box.height * 0.18))
+  const yEnd = box.top + box.height - Math.max(3, Math.round(box.height * 0.18))
+  if (xEnd - xStart < 8 || yEnd - yStart < 8) return false
+
+  const checkEdge = (
+    count: number,
+    inCoord: (k: number) => [number, number],
+    outCoord: (k: number) => [number, number] | null
+  ): boolean => {
+    const rs: number[] = []
+    const gs: number[] = []
+    const bs: number[] = []
+    let jumps = 0
+    let validOut = 0
+    for (let k = 0; k < count; k++) {
+      const [ix, iy] = inCoord(k)
+      const ii = (iy * W + ix) * 4
+      rs.push(img.data[ii]!)
+      gs.push(img.data[ii + 1]!)
+      bs.push(img.data[ii + 2]!)
+      const oc = outCoord(k)
+      if (oc) {
+        const [ox, oy] = oc
+        validOut++
+        if (pixelDistance(img.data, ii, img.data, (oy * W + ox) * 4) >= 18) jumps++
+      }
+    }
+    if (rs.length < 6) return false
+    const mr = median(rs)
+    const mg = median(gs)
+    const mb = median(bs)
+    const devs = rs.map((r, idx) =>
+      Math.max(Math.abs(r - mr), Math.abs(gs[idx]! - mg), Math.abs(bs[idx]! - mb))
+    )
+    if (median(devs) > 16) return false
+    return validOut === 0 ? true : jumps >= validOut * 0.65
+  }
+
+  let borderSides = 0
+  const topInY = Math.min(H - 1, box.top + 1)
+  const topOutY = box.top >= 2 ? box.top - 2 : -1
+  if (
+    checkEdge(
+      xEnd - xStart,
+      (k) => [xStart + k, topInY],
+      (k) => (topOutY >= 0 ? [xStart + k, topOutY] : null)
+    )
+  ) {
+    borderSides++
+  }
+  const botInY = Math.max(0, box.top + box.height - 2)
+  const botOutY = box.top + box.height + 1 < H ? box.top + box.height + 1 : -1
+  if (
+    checkEdge(
+      xEnd - xStart,
+      (k) => [xStart + k, botInY],
+      (k) => (botOutY >= 0 ? [xStart + k, botOutY] : null)
+    )
+  ) {
+    borderSides++
+  }
+  const leftInX = Math.min(W - 1, box.left + 1)
+  const leftOutX = box.left >= 2 ? box.left - 2 : -1
+  if (
+    checkEdge(
+      yEnd - yStart,
+      (k) => [leftInX, yStart + k],
+      (k) => (leftOutX >= 0 ? [leftOutX, yStart + k] : null)
+    )
+  ) {
+    borderSides++
+  }
+  const rightInX = Math.max(0, box.left + box.width - 2)
+  const rightOutX = box.left + box.width + 1 < W ? box.left + box.width + 1 : -1
+  if (
+    checkEdge(
+      yEnd - yStart,
+      (k) => [rightInX, yStart + k],
+      (k) => (rightOutX >= 0 ? [rightOutX, yStart + k] : null)
+    )
+  ) {
+    borderSides++
+  }
+  return borderSides >= 3
+}
 function ensureSlotPortraitDecomposition(img: RgbaImage, nodes: UiElementNode[]): Set<string> {
   const canvasArea = img.width * img.height
   const added: UiElementNode[] = []
@@ -343,7 +436,29 @@ function ensureSlotPortraitDecomposition(img: RgbaImage, nodes: UiElementNode[])
     const comp = decomposeCompositeBadge(img, el.box)
     if (!comp) continue
 
-    // 检查是否已有紧邻的同区域底板节点
+    // 若该图标本来就坐落在某个已检出的独立按钮/槽位内部，只收紧图标为纯符号掩码并挂到该按钮下，
+    // 绝不重复新建 *_plate 把下层按钮掏出一个大洞
+    const existingButtonOrSlot = nodes.find(
+      (o) =>
+        o.id !== el.id &&
+        !o.plainText &&
+        (o.kind === 'button' ||
+          o.kind === 'close-button' ||
+          o.kind === 'tab' ||
+          o.kind === 'item-slot') &&
+        rectIntersection(o.box, comp.plateBox) /
+          Math.max(1, Math.min(rectArea(o.box), rectArea(comp.plateBox))) >=
+          0.55
+    )
+    if (existingButtonOrSlot) {
+      el.box = comp.symbolBox
+      el.parentId = existingButtonOrSlot.id
+      el.instanceMask = { rect: comp.rect, mask: comp.symbolMask }
+      lockedBadgeMaskIds.add(el.id)
+      continue
+    }
+
+    // 检查是否已有紧邻的同区域角标底板节点
     const existingPlate = nodes.find(
       (o) =>
         o.id !== el.id &&
@@ -463,6 +578,7 @@ function ensureSlotPortraitDecomposition(img: RgbaImage, nodes: UiElementNode[])
         (parent.kind === 'panel' || parent.kind === 'item-slot' || parent.kind === 'frame') &&
         rectArea(parent.box) <= elArea * 1.45
       if (hasSlotParent) continue
+      if (aspect < 0.68 || aspect > 1.35 || !hasEnclosedSlotBorder(img, el.box)) continue
 
       const innerRect = detectSlotInnerRect(img, el.box)
       const portSeg = segmentPortraitInParentSlot(img, innerRect, childRects)
@@ -566,7 +682,10 @@ export async function runPreciseUiSplit(
     initialCleanedPreview = cloneImage(source)
     const previewHole = new Uint8Array(W * H)
     for (const b of ocr) {
-      paintLocalMask(previewHole, W, textStrokeMask(source, b, b.text))
+      const lm = textStrokeMask(source, b, b.text, { hasOcrBacking: true })
+      if ((lm.coverage ?? 1) > 0) {
+        paintLocalMask(previewHole, W, { rect: lm.rect, mask: lm.eraseMask ?? lm.mask })
+      }
     }
     inpaintPushPull(initialCleanedPreview, previewHole)
   }
@@ -611,18 +730,74 @@ export async function runPreciseUiSplit(
   if (plainTexts.length) {
     const hole = new Uint8Array(W * H)
     for (const t of plainTexts) {
-      const lm = textStrokeMask(source, t.box, t.text)
+      const lm = textStrokeMask(source, t.box, t.text, {
+        hasOcrBacking: Boolean(t.ocrIndices?.length)
+      })
       textMaskById.set(t.id, lm)
-      paintLocalMask(hole, W, lm)
+      if ((lm.coverage ?? 1) > 0) {
+        paintLocalMask(hole, W, { rect: lm.rect, mask: lm.eraseMask ?? lm.mask })
+      }
     }
     inpaintPushPull(textFree, hole)
   }
 
-  // 在无字底板上做首轮 bbox 边缘吸附（记录 VLM 初始框，供剥层循环中剔除上层突出子件后的回缩参考）
-  const initialVlmBoxById = new Map(tree.elements.map((e) => [e.id, { ...e.box }]))
-  for (const el of tree.elements) {
-    if (el.plainText || el.kind === 'effect') continue
-    el.box = refineElementBox(textFree, el.box)
+  const isContainerKind = (kind: UiElementKind): boolean =>
+    kind === 'panel' || kind === 'frame' || kind === 'item-slot' || kind === 'banner'
+
+  // 在无字底板上做单次精确 bbox 边缘吸附（先父容器后子控件，避免容器内子按钮外扩吸附到父容器外描边上）
+  const rawBoxById = new Map(tree.elements.map((e) => [e.id, { ...e.box }]))
+  const preById = new Map(tree.elements.map((e) => [e.id, e]))
+  const glowElements = tree.elements.filter((e) => !e.plainText && isTranslucentGlowElement(e))
+  const refineOrder = [...tree.elements].sort((a, b) => rectArea(b.box) - rectArea(a.box))
+  for (const el of refineOrder) {
+    if (el.plainText || isTranslucentGlowElement(el)) continue
+    let refined = refineElementBox(textFree, el.box)
+    const rawEl = rawBoxById.get(el.id)
+    // 立绘/人像不得把脚底重叠的半透明发光底座吸进自身包围盒而向下/向两侧恶性外扩
+    if (rawEl && (el.kind === 'illustration' || el.kind === 'avatar')) {
+      for (const glow of glowElements) {
+        if ((glow.paintIndex ?? 0) >= (el.paintIndex ?? 0)) continue
+        if (rectIntersection(refined, glow.box) <= 0) continue
+        if (glow.box.top > rawEl.top + rawEl.height * 0.45) {
+          const x0 = glow.box.left < rawEl.left ? Math.max(refined.left, rawEl.left) : refined.left
+          const x1 =
+            glow.box.left + glow.box.width > rawEl.left + rawEl.width
+              ? Math.min(refined.left + refined.width, rawEl.left + rawEl.width)
+              : refined.left + refined.width
+          const y1 = Math.min(refined.top + refined.height, rawEl.top + rawEl.height)
+          if (x1 - x0 >= 8 && y1 - refined.top >= 8) {
+            refined = { left: x0, top: refined.top, width: x1 - x0, height: y1 - refined.top }
+          }
+        }
+      }
+    }
+    const parent = el.parentId ? preById.get(el.parentId) : undefined
+    const rawParent = parent ? rawBoxById.get(parent.id) : undefined
+    if (
+      parent &&
+      rawEl &&
+      rawParent &&
+      isContainerKind(parent.kind) &&
+      rectIntersection(rawEl, rawParent) >= rectArea(rawEl) * 0.88
+    ) {
+      const pBox = parent.box
+      let x0 = refined.left
+      let y0 = refined.top
+      let x1 = refined.left + refined.width
+      let y1 = refined.top + refined.height
+      if (rawEl.left - rawParent.left >= 4) x0 = Math.max(x0, pBox.left + 2)
+      if (rawEl.top - rawParent.top >= 4) y0 = Math.max(y0, pBox.top + 2)
+      if (rawParent.left + rawParent.width - (rawEl.left + rawEl.width) >= 4) {
+        x1 = Math.min(x1, pBox.left + pBox.width - 2)
+      }
+      if (rawParent.top + rawParent.height - (rawEl.top + rawEl.height) >= 4) {
+        y1 = Math.min(y1, pBox.top + pBox.height - 2)
+      }
+      if (x1 - x0 >= 6 && y1 - y0 >= 6) {
+        refined = { left: x0, top: y0, width: x1 - x0, height: y1 - y0 }
+      }
+    }
+    el.box = refined
   }
 
   // 5.5) 在去字底板 textFree 上执行「复合角标 / 槽位底框 ↔ 角色人像」自动补拆：
@@ -632,8 +807,6 @@ export async function runPreciseUiSplit(
   const byId = new Map(tree.elements.map((e) => [e.id, e]))
   const ordered = [...tree.elements].sort((a, b) => (a.paintIndex ?? 0) - (b.paintIndex ?? 0))
   const levelOf = (el: UiElementNode): number => el.level ?? 1
-  const isContainerKind = (kind: UiElementKind): boolean =>
-    kind === 'panel' || kind === 'frame' || kind === 'item-slot' || kind === 'banner'
 
   const parentIdsWithChildren = new Set<string>()
   for (const el of tree.elements) {
@@ -651,6 +824,7 @@ export async function runPreciseUiSplit(
     for (const el of ordered) {
       if (!el.plainText) continue
       const lm = textMaskById.get(el.id)
+      if (lm && (lm.coverage ?? 1) <= 0) continue
       const tightTextMask =
         lm?.glyphMask && lm.maskQuality === 'estimated_glyphs'
           ? dilateMask(lm.glyphMask, lm.rect.width, lm.rect.height, 1)
@@ -707,20 +881,6 @@ export async function runPreciseUiSplit(
   let silhouetteRestoredPx = 0
   let scrubbedPx = 0
   let scrubbedEls = 0
-  const completion: CompletionReport = {
-    instances: 0,
-    mirror: 0,
-    axis: 0,
-    kept: 0,
-    prefabGroups: []
-  }
-  const rawPrefabGroups: string[][] = []
-  const completedUpperTargets: CompletionTarget[] = []
-  let remainingLayerCompletions = Math.max(0, options.maxLayerCompletions ?? 4)
-  const generativeCompletion: GenerativeCompletionReport | undefined =
-    options.generativePeel !== false && io.editImage
-      ? { attempted: 0, accepted: 0, rejected: 0, pixels: 0 }
-      : undefined
 
   for (let k = maxLevel; k >= 1; k--) {
     throwIfAborted(io.signal)
@@ -731,37 +891,42 @@ export async function runPreciseUiSplit(
       continue
     }
 
-    // 6.1 本轮叶子的上层遮挡物已全部剥离补平：在干净的 currPlate 上重做 bbox 吸附与实例分割
+    // 6.1 本轮叶子实例分割（不再做二次 refineElementBox 重扩框，避免把上层剥离后的桌面补底晕染吸进容器框内）
     for (const el of levelElements) {
       throwIfAborted(io.signal)
-      if (el.kind === 'effect') continue
-
-      if (k < maxLevel && !lockedBadgeMaskIds.has(el.id)) {
-        const candBox = refineElementBox(currPlate, el.box)
-        const keepsSlotInner =
-          !el.slotInnerRect ||
-          (candBox.left <= el.slotInnerRect.left &&
-            candBox.top <= el.slotInnerRect.top &&
-            candBox.left + candBox.width >= el.slotInnerRect.left + el.slotInnerRect.width &&
-            candBox.top + candBox.height >= el.slotInnerRect.top + el.slotInnerRect.height)
-        const refArea = Math.min(rectArea(el.box), rectArea(initialVlmBoxById.get(el.id) ?? el.box))
-        const keepsContainerScale =
-          !parentIdsWithChildren.has(el.id) || rectArea(candBox) >= refArea * 0.78
-        if (keepsSlotInner && keepsContainerScale) {
-          el.box = candBox
-        }
-        if (parentIdsWithChildren.has(el.id) && isContainerKind(el.kind) && !el.slotInnerRect) {
-          el.slotInnerRect = detectSlotInnerRect(currPlate, el.box)
-        }
-      }
+      if (isTranslucentGlowElement(el)) continue
 
       const preSegBox = { ...el.box }
       const parent = el.parentId ? byId.get(el.parentId) : undefined
+      const selfPaint = el.paintIndex ?? 0
+
+      // 检测是否有已剥离的上层非文字元素跨越了当前元素框（若有跨边遮挡则在已剥离干净的 currPlate 上分割，否则在清晰无损的 textFree 上分割）
+      let crossedByUpper = false
+      for (const upper of ordered) {
+        if (upper.plainText || (upper.paintIndex ?? 0) <= selfPaint) continue
+        if (!maskById.has(upper.id)) continue
+        const inter = rectIntersection(upper.box, preSegBox)
+        if (inter <= 0) continue
+        if (inter < rectArea(upper.box) * 0.92) {
+          crossedByUpper = true
+          break
+        }
+      }
+      const segSource = crossedByUpper ? currPlate : textFree
 
       if (lockedBadgeMaskIds.has(el.id) && el.instanceMask && !io.segmentSam2) {
-        // 复合角标（五边形底板 / 拼图符号）保留已精确拆出的实例掩码
-      } else if (isContainerKind(el.kind) && !io.segmentSam2) {
-        // 无 SAM2 时，容器按精修框剥层，再由剥层前后底板差分提取轮廓
+        // 复合角标或按钮内纯符号：保留已精确拆出的实例掩码
+      } else if (
+        (el.kind === 'panel' || el.kind === 'banner' || el.kind === 'item-slot') &&
+        !io.segmentSam2
+      ) {
+        // 实心圆角容器在清晰无损的 textFree 上提取紧致圆角剪影，剔除框外四角桌面残片
+        const contSil = segmentContainerSilhouette(textFree, preSegBox)
+        if (contSil) {
+          el.instanceMask = contSil
+        }
+      } else if (el.kind === 'frame' && !io.segmentSam2) {
+        // 镂空边框交由剥层前后底板差分提取轮廓
       } else if (
         (el.kind === 'avatar' || el.kind === 'illustration') &&
         parent?.slotInnerRect &&
@@ -782,7 +947,6 @@ export async function runPreciseUiSplit(
         }
       } else {
         // 剔除 VLM 当初点在「现已剥离的上层遮挡元素」上的负向提示点，避免在补平区域内误挖空洞
-        const selfPaint = el.paintIndex ?? 0
         const filteredNeg = el.negativePoints?.filter((pt) => {
           const px = Math.max(0, Math.min(W - 1, Math.round(pt.x)))
           const py = Math.max(0, Math.min(H - 1, Math.round(pt.y)))
@@ -799,7 +963,7 @@ export async function runPreciseUiSplit(
           filteredNeg && filteredNeg.length !== (el.negativePoints?.length ?? 0)
             ? { ...el, negativePoints: filteredNeg }
             : el
-        const seg = await segmentElementInstance(currPlate, segNode, io)
+        const seg = await segmentElementInstance(segSource, segNode, io)
         const segTight = maskBoundingBox(seg.rect, seg.mask)
         if (segTight && seg.score.bboxIoU >= 0.35) {
           el.instanceMask = { rect: seg.rect, mask: seg.mask }
@@ -808,27 +972,36 @@ export async function runPreciseUiSplit(
 
       if (el.instanceMask) {
         if (PALETTE_REFINE_KINDS.has(el.kind)) {
-          const refined = refineMaskByPalette(currPlate, el.instanceMask)
+          const refined = refineMaskByPalette(segSource, el.instanceMask)
           if (refined.removed) {
             el.instanceMask = { rect: refined.rect, mask: refined.mask }
             paletteTrimmed += refined.removed
           }
         }
+        el.instanceMask = trimLowerTranslucentGlowFromMask(
+          textFree,
+          el,
+          el.instanceMask,
+          ordered,
+          ownership
+        )
         el.instanceMask = solidifyInstanceMask(el.kind, el.instanceMask)
         let cm: CanvasMask = extendElementMaskUnderOccluders(el, el.instanceMask, ordered, maskById)
-        const sil = completeOccludedSilhouette({
-          box: preSegBox,
-          mask: cm,
-          plate: currPlate,
-          kind: el.kind,
-          repairMode: el.repairMode,
-          ownership,
-          selfPaint: el.paintIndex ?? 0,
-          occluderPad: peelPadPx + 3
-        })
-        if (sil.added > 0) {
-          cm = sil.mask
-          silhouetteRestoredPx += sil.added
+        if (crossedByUpper) {
+          const sil = completeOccludedSilhouette({
+            box: preSegBox,
+            mask: cm,
+            plate: currPlate,
+            kind: el.kind,
+            repairMode: el.repairMode,
+            ownership,
+            selfPaint,
+            occluderPad: peelPadPx + 3
+          })
+          if (sil.added > 0) {
+            cm = sil.mask
+            silhouetteRestoredPx += sil.added
+          }
         }
         el.instanceMask = { rect: cm.rect, mask: cm.mask }
         const tight = maskBoundingBox(cm.rect, cm.mask)
@@ -836,7 +1009,7 @@ export async function runPreciseUiSplit(
       }
     }
 
-    // 6.2 膨胀白洞 + 第一遍补图（本地推拉 / 槽位纯净渐变 / 图集或整版生图剥层），得到下一层底板 plates[k]
+    // 6.2 膨胀白洞 + 补图（本地推拉 / 槽位纯净渐变 / 图集或整版生图剥层），得到下一层底板 plates[k]
     const useGenerative = options.generativePeel !== false && k <= maxGen
     const { plate, report } = await peelLevel({
       io,
@@ -852,8 +1025,9 @@ export async function runPreciseUiSplit(
     peelReport.push(...report)
     log(`peel L${k}: ${report.map((r) => `${r.method}×${r.elementCount}`).join(', ')}`)
 
-    // 6.3 登记本轮叶子完整轮廓（无实例掩码的容器由 currPlate 与 plates[k] 差分抠出并补齐遮挡轮廓），刷新渐进归属图
+    // 6.3 登记本轮叶子完整轮廓，刷新渐进归属图供下一轮下层元素感知遮挡
     for (const el of levelElements) {
+      if (isTranslucentGlowElement(el)) continue
       if (el.instanceMask) {
         maskById.set(el.id, { rect: el.instanceMask.rect, mask: el.instanceMask.mask })
         continue
@@ -881,112 +1055,74 @@ export async function runPreciseUiSplit(
       maskById.set(el.id, cm)
     }
     ownership = rebuildProgressiveOwnership()
+  }
 
-    // 6.4 第二遍精补（继续补图）：
-    //   a) 在 currPlate 上对本轮叶子被上层压住的区域执行结构化精确补全（多实例/镜像/九宫格）+ 按需单图层 AI 补全；
-    //   b) 在 plates[k] 上立即清扫本轮叶子遗留的外发光 / 投影 / 抗锯齿残影，确保下一轮输入图干净无污染。
-    const levelOrdered = [...levelElements].sort(
-      (a, b) => (a.paintIndex ?? 0) - (b.paintIndex ?? 0)
-    )
-    const levelCompletionTargets: CompletionTarget[] = levelOrdered
-      .filter((el) => entryIdx.has(el.id) && maskById.has(el.id))
-      .map((el) => ({
-        id: el.id,
-        kind: el.kind,
-        repairMode: el.repairMode,
-        entryIndex: entryIdx.get(el.id)!,
-        mask: maskById.get(el.id)!,
-        plate: currPlate
-      }))
-    if (levelCompletionTargets.length > 0) {
-      const levelComp = completeOccludedRegions({
+  // 7) 全部层级轮廓与完整归属图确定后：
+  //    a) 清扫各层外发光/抗锯齿残影（拥有 100% 完整归属图，绝不误伤同层或下层兄弟控件）；
+  //    b) 对全部结构类控件执行跨层多实例融合 / 镜像 / 横轴扫描线补全；
+  //    c) 对被遮挡立绘/全息影像执行按需单图层 AI 补全。
+  for (const el of [...ordered].reverse()) {
+    if (!isResidueScrubEligible(el, W, H)) continue
+    const idx = entryIdx.get(el.id)
+    const m = maskById.get(el.id)
+    if (idx === undefined || !m) continue
+    const k = levelOf(el)
+    const scan = scanPlateResidue({
+      plate: plates[k]!,
+      upper: plates[k + 1]!,
+      mask: m,
+      ownership,
+      entryIndex: idx,
+      radius: haloRadiusFor(el)
+    })
+    if (scan.pixels.length < 3) continue
+    scrubbedPx += scrubPlateResidue({ plates, level: k, residue: scan.pixels, mask: m })
+    scrubbedEls++
+  }
+
+  const allCompletionTargets: CompletionTarget[] = ordered
+    .filter((el) => !el.plainText && entryIdx.has(el.id) && maskById.has(el.id))
+    .map((el) => ({
+      id: el.id,
+      kind: el.kind,
+      repairMode: el.repairMode,
+      entryIndex: entryIdx.get(el.id)!,
+      mask: maskById.get(el.id)!,
+      plate: plates[levelOf(el) + 1]!
+    }))
+  const completion: CompletionReport = completeOccludedRegions({
+    ownership,
+    targets: allCompletionTargets
+  })
+  completion.prefabGroups = mergePrefabGroups(completion.prefabGroups)
+
+  let generativeCompletion: GenerativeCompletionReport | undefined
+  if (options.generativePeel !== false && io.editImage) {
+    const maxCalls = Math.max(0, options.maxLayerCompletions ?? 4)
+    if (maxCalls > 0) {
+      generativeCompletion = await completeOccludedGenerative({
+        io,
         ownership,
-        targets: levelCompletionTargets,
-        donors: completedUpperTargets
+        locale: options.locale,
+        maxCalls,
+        targets: ordered
+          .filter((el) => !el.plainText && entryIdx.has(el.id) && maskById.has(el.id))
+          .map((el) => ({
+            id: el.id,
+            name: el.name,
+            kind: el.kind,
+            repairMode: el.repairMode,
+            entryIndex: entryIdx.get(el.id)!,
+            mask: maskById.get(el.id)!,
+            plate: plates[levelOf(el) + 1]!
+          }))
       })
-      completion.instances += levelComp.instances
-      completion.mirror += levelComp.mirror
-      completion.axis += levelComp.axis
-      completion.kept += levelComp.kept
-      rawPrefabGroups.push(...levelComp.prefabGroups)
-      completedUpperTargets.push(...levelCompletionTargets)
-    }
-
-    if (generativeCompletion && io.editImage && remainingLayerCompletions > 0) {
-      const genTargets = levelOrdered
-        .filter((el) => entryIdx.has(el.id) && maskById.has(el.id))
-        .map((el) => ({
-          id: el.id,
-          name: el.name,
-          kind: el.kind,
-          repairMode: el.repairMode,
-          entryIndex: entryIdx.get(el.id)!,
-          mask: maskById.get(el.id)!,
-          plate: currPlate
-        }))
-      if (genTargets.length > 0) {
-        const genRep = await completeOccludedGenerative({
-          io,
-          ownership,
-          locale: options.locale,
-          maxCalls: remainingLayerCompletions,
-          targets: genTargets
-        })
-        generativeCompletion.attempted += genRep.attempted
-        generativeCompletion.accepted += genRep.accepted
-        generativeCompletion.rejected += genRep.rejected
-        generativeCompletion.pixels += genRep.pixels
-        remainingLayerCompletions = Math.max(0, remainingLayerCompletions - genRep.attempted)
-      }
-    }
-
-    const levelSet = new Set(levelElements.map((e) => e.id))
-    for (const el of [...levelOrdered].reverse()) {
-      if (!isResidueScrubEligible(el, W, H)) continue
-      const idx = entryIdx.get(el.id)
-      const m = maskById.get(el.id)
-      if (idx === undefined || !m) continue
-      const scan = scanPlateResidue({
-        plate: plates[k]!,
-        upper: currPlate,
-        mask: m,
-        ownership,
-        entryIndex: idx,
-        radius: haloRadiusFor(el)
-      })
-      if (scan.pixels.length < 3) continue
-      const ancestorIds = new Set<string>()
-      for (let p = el.parentId; p && !ancestorIds.has(p); p = byId.get(p)?.parentId ?? null) {
-        ancestorIds.add(p)
-      }
-      const unpeeledPeers = peelable.filter(
-        (o) =>
-          (o.level ?? 1) < k &&
-          !levelSet.has(o.id) &&
-          !ancestorIds.has(o.id) &&
-          ((o.paintIndex ?? 0) > (el.paintIndex ?? 0) || rectIntersection(o.box, el.box) === 0)
-      )
-      const safeResidue = unpeeledPeers.length
-        ? scan.pixels.filter((g) => {
-            const x = g % W
-            const y = (g / W) | 0
-            return !unpeeledPeers.some(
-              (u) =>
-                x >= u.box.left &&
-                x < u.box.left + u.box.width &&
-                y >= u.box.top &&
-                y < u.box.top + u.box.height
-            )
-          })
-        : scan.pixels
-      if (safeResidue.length < 3) continue
-      scrubbedPx += scrubPlateResidue({ plates, level: k, residue: safeResidue, mask: m })
-      scrubbedEls++
+    } else {
+      generativeCompletion = { attempted: 0, accepted: 0, rejected: 0, pixels: 0 }
     }
   }
 
   const base = plates[1] ?? textFree
-  completion.prefabGroups = mergePrefabGroups(rawPrefabGroups)
 
   if (paletteTrimmed) log(`mask palette refine: trimmed ${paletteTrimmed} background px`)
   if (silhouetteRestoredPx) {
@@ -1044,7 +1180,8 @@ export async function runPreciseUiSplit(
       const k = levelOf(el)
       const idx = entryIdx.get(el.id)
       const m = maskById.get(el.id)
-      if (idx !== undefined && m) {
+      const unmixGlow = isTranslucentGlowElement(el)
+      if (!unmixGlow && idx !== undefined && m) {
         matte = composeOwnedLayer({
           source,
           upper: plates[k + 1]!,
@@ -1059,10 +1196,12 @@ export async function runPreciseUiSplit(
         if (matte) ownedCount++
       }
       if (!matte) {
-        // 半透明面板 / 无轮廓：回退差分抠图（色差反解 alpha，半透明光效不带底色）
+        // 半透明光效/发光底座/无轮廓面板：物理去底色反解 alpha，彻底剥离下层棕色桌面底色
         matte = extractMatte(plates[k + 1]!, plates[k]!, el.box, {
-          fillHoles: OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
-          ...(el.instanceMask ? { instanceMask: el.instanceMask } : {})
+          fillHoles: !unmixGlow && OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
+          unmixTranslucent: unmixGlow,
+          ...(unmixGlow ? { t0: 6, t1: 32 } : {}),
+          ...(!unmixGlow && el.instanceMask ? { instanceMask: el.instanceMask } : {})
         })
         if (matte) fallbackCount++
       }
@@ -1241,6 +1380,17 @@ const HALO_UI_ELEMENT_KINDS: ReadonlySet<UiElementKind> = new Set<UiElementKind>
   'progress-bar'
 ])
 
+const TRANSLUCENT_GLOW_NAME_RE =
+  /(?:发光底座|投影底座|全息底座|全息投影.*底座|光圈|发光|光效|光晕|光束|投影光|glow|halo|light\s*beam|hologram\s*base)/i // cjk-ok
+
+function isTranslucentGlowElement(el: UiElementNode): boolean {
+  if (el.kind === 'effect') return true
+  if ((el.kind === 'decoration' || el.kind === 'other') && TRANSLUCENT_GLOW_NAME_RE.test(el.name)) {
+    return true
+  }
+  return false
+}
+
 function haloRadiusFor(el: UiElementNode): number {
   if (el.plainText || !HALO_UI_ELEMENT_KINDS.has(el.kind)) return 2
   const s = Math.min(el.box.width, el.box.height)
@@ -1248,7 +1398,7 @@ function haloRadiusFor(el: UiElementNode): number {
 }
 
 function isResidueScrubEligible(el: UiElementNode, W: number, H: number): boolean {
-  if (el.plainText) return false
+  if (el.plainText || isTranslucentGlowElement(el)) return false
   if (el.kind === 'avatar' || el.kind === 'illustration' || el.kind === 'effect') return false
   return rectArea(el.box) < W * H * 0.25
 }
@@ -1261,8 +1411,104 @@ function alphaFootprint(rect: PixelRect, rgba: Uint8ClampedArray, threshold: num
 }
 
 /**
- * 实心控件补洞：OPAQUE 类（除 frame）补全部内孔；其余类别只补面积 < 8% 的小孔
- * （符号笔画间隙、高光点），大镂空保持镂空。
+ * 当立绘/全息人像站在下层半透明发光底座（isTranslucentGlowElement）上时，
+ * 实例分割容易把底座光晕与深色背景的混合色误并入人像底部，导致剥离人像时把下层发光底座挖空。
+ * 这里采样发光底座紧邻上方的腿部/下摆真实前景色，在底座重叠区内剔除与人像下端颜色显著偏离的半透明光晕像素。
+ */
+function trimLowerTranslucentGlowFromMask(
+  cleanSource: RgbaImage,
+  el: UiElementNode,
+  im: { rect: PixelRect; mask: Uint8Array },
+  ordered: readonly UiElementNode[],
+  ownership: OwnershipMap
+): { rect: PixelRect; mask: Uint8Array } {
+  if (el.plainText || isTranslucentGlowElement(el) || OPAQUE_UI_ELEMENT_KINDS.has(el.kind)) {
+    return im
+  }
+  const selfPaint = el.paintIndex ?? 0
+  const lowerGlows = ordered.filter(
+    (o) =>
+      (o.paintIndex ?? 0) < selfPaint &&
+      isTranslucentGlowElement(o) &&
+      rectIntersection(o.box, im.rect) > 0 &&
+      o.box.top > im.rect.top + im.rect.height * 0.45
+  )
+  if (!lowerGlows.length) return im
+
+  const { width: rw, height: rh, left: rx, top: ry } = im.rect
+  const W = cleanSource.width
+  const out = new Uint8Array(im.mask)
+  let changed = false
+
+  for (const glow of lowerGlows) {
+    const bandTop = Math.max(0, glow.box.top - Math.max(16, Math.round(rh * 0.25)) - ry)
+    const bandBot = Math.max(0, Math.min(rh, glow.box.top - ry))
+    if (bandBot <= bandTop) continue
+
+    const rs: number[] = []
+    const gs: number[] = []
+    const bs: number[] = []
+    for (let y = bandTop; y < bandBot; y++) {
+      const row = y * rw
+      const cy = ry + y
+      for (let x = 0; x < rw; x++) {
+        if (!out[row + x]) continue
+        const cx = rx + x
+        const own = ownership.owner[cy * W + cx]!
+        if (own >= 0 && (ownership.entries[own]?.paintIndex ?? -1) > selfPaint) continue
+        const gi = (cy * W + cx) * 4
+        rs.push(cleanSource.data[gi]!)
+        gs.push(cleanSource.data[gi + 1]!)
+        bs.push(cleanSource.data[gi + 2]!)
+      }
+    }
+    if (rs.length < 6) continue
+    const refPx = new Uint8ClampedArray([median(rs), median(gs), median(bs), 255])
+    const devs = rs.map((r, idx) =>
+      pixelDistance(new Uint8ClampedArray([r, gs[idx]!, bs[idx]!, 255]), 0, refPx, 0)
+    )
+    const tol = Math.max(32, Math.min(54, median(devs) * 2.2 + 24))
+
+    const gx0 = Math.max(0, glow.box.left - rx)
+    const gy0 = Math.max(0, glow.box.top - ry)
+    const gx1 = Math.min(rw, glow.box.left + glow.box.width - rx)
+    const gy1 = Math.min(rh, glow.box.top + glow.box.height - ry)
+    for (let y = gy0; y < gy1; y++) {
+      const row = y * rw
+      const cy = ry + y
+      for (let x = gx0; x < gx1; x++) {
+        const p = row + x
+        if (!out[p]) continue
+        const cx = rx + x
+        const own = ownership.owner[cy * W + cx]!
+        if (own >= 0 && (ownership.entries[own]?.paintIndex ?? -1) > selfPaint) continue
+        const pi = (cy * W + cx) * 4
+        if (pixelDistance(cleanSource.data, pi, refPx, 0) > tol) {
+          out[p] = 0
+          changed = true
+        }
+      }
+    }
+  }
+
+  if (!changed) return im
+  // 只保留与底座上方主体相连的连通域，剔除底座区域内孤立的高光噪点
+  const minGlowTop = Math.min(...lowerGlows.map((g) => g.box.top - ry))
+  const { labels, stats } = labelComponents(out, rw, rh)
+  const keep = new Set<number>()
+  for (const s of stats) {
+    if (s.minY < minGlowTop) keep.add(s.label)
+  }
+  if (!keep.size) return im
+  for (let p = 0; p < out.length; p++) {
+    if (out[p] && !keep.has(labels[p]!)) out[p] = 0
+  }
+  return { rect: im.rect, mask: out }
+}
+
+/**
+ * 实心控件补洞：OPAQUE 类（除 frame）补全部内孔；
+ * 立绘/全息人像/装饰类只补 ≤ 96px（且 < 1.5%）的细小针孔，保留双臂与躯干、双腿之间的背景镂空。
  */
 function solidifyInstanceMask(
   kind: UiElementKind,
@@ -1279,7 +1525,8 @@ function solidifyInstanceMask(
   }
   const { labels, stats } = labelComponents(holes, w, h)
   if (!stats.length) return im
-  const smallLimit = filledArea * 0.08
+  const isFreeformFigure = kind === 'avatar' || kind === 'illustration' || kind === 'decoration'
+  const smallLimit = isFreeformFigure ? Math.min(96, filledArea * 0.015) : filledArea * 0.08
   const keep = new Set(stats.filter((s) => s.area < smallLimit).map((s) => s.label))
   const out = new Uint8Array(im.mask)
   for (let p = 0; p < out.length; p++) {
@@ -1289,8 +1536,10 @@ function solidifyInstanceMask(
 }
 
 /**
- * 被上层遮挡的部分并入当前下层元素轮廓：已剥离的上层元素 j 的中心落在下层元素 lowerEl 的轮廓框内、
- * 且两者轮廓相接 / 重叠时，把 j 在 lowerEl 框内的像素并入 lowerEl（剥层时这些位置已按 lowerEl 的表面补全）。
+ * 被上层遮挡的部分并入当前下层元素轮廓：
+ * - 规则实心控件（OPAQUE 类）把中心落在其框内且相连的上层元素整块并入；
+ * - 异形元素（立绘 / 全息人像 / 图标）只并入落在上下相邻可见轮廓行横向跨度之内的被遮挡像素，
+ *   绝不把向外伸出人像躯干的穴位标签框（如「足三里 ST36」伸到棕褐色书架上的矩形）硬塞进人像轮廓。
  */
 function extendElementMaskUnderOccluders(
   lowerEl: UiElementNode,
@@ -1298,9 +1547,55 @@ function extendElementMaskUnderOccluders(
   ordered: readonly UiElementNode[],
   maskById: ReadonlyMap<string, CanvasMask>
 ): CanvasMask {
-  if (lowerEl.plainText) return lowerMask
+  if (lowerEl.plainText || isTranslucentGlowElement(lowerEl)) return lowerMask
   const r = lowerMask.rect
+  const isOpaqueKind = OPAQUE_UI_ELEMENT_KINDS.has(lowerEl.kind)
   const grown = dilateMask(lowerMask.mask, r.width, r.height, 1)
+
+  let rowMinX: Int32Array | null = null
+  let rowMaxX: Int32Array | null = null
+  if (!isOpaqueKind) {
+    rowMinX = new Int32Array(r.height).fill(r.width)
+    rowMaxX = new Int32Array(r.height).fill(-1)
+    for (let y = 0; y < r.height; y++) {
+      const row = y * r.width
+      for (let x = 0; x < r.width; x++) {
+        if (!lowerMask.mask[row + x]) continue
+        if (x < rowMinX[y]!) rowMinX[y] = x
+        if (x > rowMaxX[y]!) rowMaxX[y] = x
+      }
+    }
+    // 对被遮挡截断的行，由上下最近 48px 内的可见轮廓行线性插值横向跨度上界
+    for (let y = 0; y < r.height; y++) {
+      if (rowMaxX[y]! >= rowMinX[y]!) continue
+      let topY = -1
+      for (let yy = y - 1; yy >= Math.max(0, y - 48); yy--) {
+        if (rowMaxX[yy]! >= rowMinX[yy]!) {
+          topY = yy
+          break
+        }
+      }
+      let botY = -1
+      for (let yy = y + 1; yy <= Math.min(r.height - 1, y + 48); yy++) {
+        if (rowMaxX[yy]! >= rowMinX[yy]!) {
+          botY = yy
+          break
+        }
+      }
+      if (topY >= 0 && botY >= 0) {
+        const t = (y - topY) / (botY - topY)
+        rowMinX[y] = Math.round(rowMinX[topY]! + (rowMinX[botY]! - rowMinX[topY]!) * t)
+        rowMaxX[y] = Math.round(rowMaxX[topY]! + (rowMaxX[botY]! - rowMaxX[topY]!) * t)
+      } else if (topY >= 0) {
+        rowMinX[y] = rowMinX[topY]!
+        rowMaxX[y] = rowMaxX[topY]!
+      } else if (botY >= 0) {
+        rowMinX[y] = rowMinX[botY]!
+        rowMaxX[y] = rowMaxX[botY]!
+      }
+    }
+  }
+
   let merged: Uint8Array | null = null
   const lowerPaint = lowerEl.paintIndex ?? 0
   for (const upperEl of ordered) {
@@ -1324,6 +1619,11 @@ function extendElementMaskUnderOccluders(
         if (lx < 0 || lx >= r.width) continue
         const lp = ly * r.width + lx
         if (grown[lp]) touches = true
+        if (!isOpaqueKind && rowMinX && rowMaxX) {
+          const minX = rowMinX[ly]!
+          const maxX = rowMaxX[ly]!
+          if (maxX < minX || lx < minX - 2 || lx > maxX + 2) continue
+        }
         add.push(lp)
       }
     }

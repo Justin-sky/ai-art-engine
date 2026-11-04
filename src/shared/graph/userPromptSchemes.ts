@@ -187,7 +187,11 @@ export function appendImageTransparentBgPrompt(
     base.includes(IMAGE_TRANSPARENT_BG_PROMPT_ZH) ||
     base.includes(IMAGE_TRANSPARENT_BG_PROMPT_EN) ||
     base.includes(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_ZH) ||
-    base.includes(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN)
+    base.includes(IMAGE_NATIVE_TRANSPARENT_BG_PROMPT_EN) ||
+    base.includes('单一均匀纯色平涂背景') || // cjk-ok
+    base.includes('flat uniform solid-color exterior background') ||
+    base.includes('RGBA 透明通道') || // cjk-ok
+    base.includes('RGBA alpha channel')
   ) {
     return options?.nativeTransparentModel ? rewriteTransparentBgPromptForNativeModel(base) : base
   }

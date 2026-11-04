@@ -22,8 +22,10 @@ import type { PixelRect, RgbaImage } from './types'
 
 export interface LocalMask {
   rect: PixelRect
-  /** rect.width * rect.height，1 = 命中 */
+  /** rect.width * rect.height，1 = 命中（用于前景提取） */
   mask: Uint8Array
+  /** 专用于底板擦除填洞的略宽蒙版（覆盖抗锯齿灰边与淡投影，消除浮雕字残影） */
+  eraseMask?: Uint8Array
   /** 字形掩码质量：estimated_glyphs = Otsu+闭运算成功分离笔画；coarse = 退化为整框 */
   maskQuality?: 'estimated_glyphs' | 'coarse'
   /** 未膨胀的原始字形掩码（用于字色/字重/描边采样） */
@@ -32,6 +34,11 @@ export interface LocalMask {
   bgColor?: [number, number, number]
   /** 字形像素占文本框面积比例 (0..1) */
   coverage?: number
+}
+
+export interface TextStrokeMaskOptions {
+  /** 是否存在本地 OCR 识别框支撑；为 false 时若框内仅命中外框弧线或为空白则拒绝抠图，防止幻觉框啃破气泡边框 */
+  hasOcrBacking?: boolean
 }
 
 /**
@@ -305,7 +312,12 @@ export function refineElementBox(img: RgbaImage, rawBox: PixelRect): PixelRect {
  * 5. 质量检验：若笔画占比不在 1.5%..68% 之间，说明背景极度复杂，退化为整框（coarse）；
  * 6. 自适应膨胀：单个汉字按 clamp(round(0.16*h), 3, 8) 膨胀，其余文本按 clamp(round(0.09*h), 2, 6) 膨胀，吃掉描边与抗锯齿残影。
  */
-export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): LocalMask {
+export function textStrokeMask(
+  img: RgbaImage,
+  box: PixelRect,
+  text?: string,
+  options?: TextStrokeMaskOptions
+): LocalMask {
   const { width: W, height: H } = img
   const trimmedText = (text ?? '').trim()
   const isSingleCjk = /^\p{Script=Han}$/u.test(trimmedText)
@@ -321,12 +333,28 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
   const strip = Math.max(1, Math.min(3, Math.round(Math.min(rw, rh) / 4)))
   const ring = ringStats(img, rect, strip)
   const bgColor: [number, number, number] = [ring.color[0]!, ring.color[1]!, ring.color[2]!]
+  const unbackedVlm = options?.hasOcrBacking === false
+
+  const empty = (): LocalMask => {
+    const m = new Uint8Array(n)
+    return {
+      rect,
+      mask: m,
+      eraseMask: m,
+      maskQuality: 'coarse',
+      glyphMask: m,
+      bgColor,
+      coverage: 0
+    }
+  }
 
   const full = (): LocalMask => {
+    if (unbackedVlm) return empty()
     const m = new Uint8Array(n).fill(1)
     return {
       rect,
       mask: m,
+      eraseMask: m,
       maskQuality: 'coarse',
       glyphMask: m,
       bgColor,
@@ -400,8 +428,56 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
     }
   }
 
-  // 在复杂背景上，剔除紧贴外框边缘贯通的背景纹理连通块（如 "x5" 左下角贴边的衣领/肩甲块），仅保留内部独立笔画连通域
+  // 剔除穿过扩边外框多条边界的连续容器边框弧线/分割线（如 VLM 误框在气泡圆角边框上的“消息3时间戳”）：
+  // 真实文字位于 box 内部（距 rect 外沿有 pad >= 2px 留白），绝不会同时贯穿扩边窗口的多侧边界。
   let filteredGlyph = closeMask3x3(rawGlyph, rw, rh)
+  {
+    const { labels, stats } = labelComponents8(filteredGlyph, rw, rh)
+    if (stats.length > 0) {
+      const hasLeftPad = box.left - rect.left >= 2
+      const hasRightPad = rect.left + rw - (box.left + box.width) >= 2
+      const hasTopPad = box.top - rect.top >= 2
+      const hasBottomPad = rect.top + rh - (box.top + box.height) >= 2
+      const dropBorderArc = new Set<number>()
+      for (const s of stats) {
+        let sideMask = 0
+        let outerPadHits = 0
+        for (let y = s.minY; y <= s.maxY; y++) {
+          for (let x = s.minX; x <= s.maxX; x++) {
+            const p = y * rw + x
+            if (labels[p] !== s.label) continue
+            if (hasLeftPad && x <= 1) sideMask |= 1
+            if (hasRightPad && x >= rw - 2) sideMask |= 2
+            if (hasTopPad && y <= 1) sideMask |= 4
+            if (hasBottomPad && y >= rh - 2) sideMask |= 8
+            const gx = rect.left + x
+            const gy = rect.top + y
+            if (
+              gx < box.left ||
+              gx >= box.left + box.width ||
+              gy < box.top ||
+              gy >= box.top + box.height
+            ) {
+              outerPadHits++
+            }
+          }
+        }
+        const sides =
+          (sideMask & 1 ? 1 : 0) +
+          ((sideMask >> 1) & 1 ? 1 : 0) +
+          ((sideMask >> 2) & 1 ? 1 : 0) +
+          ((sideMask >> 3) & 1 ? 1 : 0)
+        if (sides >= 2 || (sides >= 1 && outerPadHits >= s.area * 0.35)) {
+          dropBorderArc.add(s.label)
+        }
+      }
+      if (dropBorderArc.size > 0) {
+        for (let p = 0; p < n; p++) {
+          if (dropBorderArc.has(labels[p]!)) filteredGlyph[p] = 0
+        }
+      }
+    }
+  }
   if (complexBg) {
     const { labels, stats } = labelComponents8(filteredGlyph, rw, rh)
     if (stats.length > 0) {
@@ -422,7 +498,7 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
         }
         if (outerEdgeTouches === 0 && ringTouches / Math.max(1, s.area) <= 0.25) {
           nonBorderLabels.add(s.label)
-        } else if (ringTouches / Math.max(1, s.area) <= 0.35) {
+        } else if (!unbackedVlm && ringTouches / Math.max(1, s.area) <= 0.35) {
           moderateLabels.add(s.label)
         }
       }
@@ -433,6 +509,8 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
           if (keep.has(labels[p]!)) nextGlyph[p] = 1
         }
         filteredGlyph = nextGlyph
+      } else if (unbackedVlm) {
+        return empty()
       }
     }
     // 吸收紧贴亮色字芯外围 1~2px 内的深色描边像素（如白色 "x5" 的黑色外描边）
@@ -454,6 +532,10 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
   for (let p = 0; p < n; p++) glyphCount += filteredGlyph[p]!
   const coverage = n > 0 ? glyphCount / n : 0
 
+  if (unbackedVlm && (glyphCount < 6 || coverage < 0.015 || coverage > 0.65)) {
+    return empty()
+  }
+
   if (!complexBg && (coverage < 0.015 || coverage > 0.68)) {
     return full()
   }
@@ -463,9 +545,31 @@ export function textStrokeMask(img: RgbaImage, box: PixelRect, text?: string): L
   for (let i = 0; i < n; i++) grownCount += grown[i]!
   if (!complexBg && grownCount > n * 0.88) return full()
 
+  // 底板去字专用擦除蒙版：在字芯外围多扩 2px 并吞并微弱抗锯齿/文字投影，彻底消除浮雕字残影（如 "Listening..." 暗影）
+  const eraseRadius = complexBg
+    ? Math.max(2, Math.min(4, dilateRadius))
+    : Math.max(3, Math.min(7, dilateRadius + 2))
+  const eraseBand = dilateMask(filteredGlyph, rw, rh, eraseRadius)
+  const eraseMask = new Uint8Array(grown)
+  const bx0 = Math.max(0, box.left - rect.left - 2)
+  const by0 = Math.max(0, box.top - rect.top - 2)
+  const bx1 = Math.min(rw, box.left + box.width - rect.left + 2)
+  const by1 = Math.min(rh, box.top + box.height - rect.top + 2)
+  for (let y = by0; y < by1; y++) {
+    const row = y * rw
+    for (let x = bx0; x < bx1; x++) {
+      const p = row + x
+      if (!eraseBand[p] || eraseMask[p]) continue
+      if (!complexBg || scaledDist[p]! >= 14) {
+        eraseMask[p] = 1
+      }
+    }
+  }
+
   return {
     rect,
     mask: grown,
+    eraseMask,
     maskQuality: 'estimated_glyphs',
     glyphMask: filteredGlyph,
     bgColor,

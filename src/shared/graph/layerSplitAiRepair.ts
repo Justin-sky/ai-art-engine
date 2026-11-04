@@ -178,6 +178,7 @@ export function prepareLayerRepairReference(
   opts: {
     nativeTransparent: boolean
     isBase?: boolean
+    transparentBackground?: boolean
     minSide?: number
     minLongSide?: number
   }
@@ -203,9 +204,12 @@ export function prepareLayerRepairReference(
   const cropLeft = Math.floor((workWidth - W) / 2)
   const cropTop = Math.floor((workHeight - H) / 2)
 
-  // 底图（Base）：若外圈本身是整幅不透明背景图（仅内部存在剥离留下的透明白洞），
-  // 先用推拉金字塔预填内部白洞，避免生图模型把黑洞/透明洞误判为新控件框，并标记保持整图不透明。
-  const keepOpaque = Boolean(opts.isBase && hasOpaqueOuterBorder(orig))
+  // 当显式关闭透明背景，或底图（Base）未显式开启透明背景且外圈本身是不透明背景时，保持整图不透明
+  const keepOpaque =
+    opts.transparentBackground === false ||
+    Boolean(opts.isBase && opts.transparentBackground !== true && hasOpaqueOuterBorder(orig))
+  const origTransparent = !keepOpaque && hasOriginalTransparency(orig)
+
   let sourceForRef = orig
   if (keepOpaque && countTransparentPixels(orig, 240) > 0) {
     sourceForRef = cloneImage(orig)
@@ -224,9 +228,50 @@ export function prepareLayerRepairReference(
         sourceForRef.data[p * 4 + 3] = 255
       }
     }
+  } else if (origTransparent) {
+    // 前景透明层：1) 先用推拉金字塔预填元件轮廓内部因剥离子控件留下的透明孔洞，防止垫底色穿透孔洞误导模型；
+    // 2) 当需垫纯色底送非原生透明模型时，清理元件实心轮廓外的半透明残影/微弱外发光，避免与纯色底混合成灰白斑块触发模型绘制假棋盘格。
+    const n = W * H
+    let maxA = 0
+    for (let p = 0; p < n; p++) {
+      const a = orig.data[p * 4 + 3]!
+      if (a > maxA) maxA = a
+    }
+    const coreThr = maxA >= 160 ? 140 : Math.max(24, Math.round(maxA * 0.65))
+    const coreFg = new Uint8Array(n)
+    for (let p = 0; p < n; p++) {
+      if (orig.data[p * 4 + 3]! >= coreThr) coreFg[p] = 1
+    }
+    const closedCore = fillHoles(coreFg, W, H)
+    const cleanRim = dilateBinaryBox(closedCore, W, H, 1)
+    const internalHole = new Uint8Array(n)
+    let hasInternalHole = false
+    let hasExteriorHaze = false
+    for (let p = 0; p < n; p++) {
+      const a = orig.data[p * 4 + 3]!
+      if (closedCore[p] && a < 220) {
+        internalHole[p] = 1
+        hasInternalHole = true
+      } else if (!opts.nativeTransparent && !cleanRim[p] && a > 0) {
+        hasExteriorHaze = true
+      }
+    }
+    if (hasInternalHole || hasExteriorHaze) {
+      sourceForRef = cloneImage(orig)
+      if (hasInternalHole) {
+        inpaintPushPull(sourceForRef, internalHole)
+        for (let p = 0; p < n; p++) {
+          if (internalHole[p]) sourceForRef.data[p * 4 + 3] = 255
+        }
+      }
+      if (hasExteriorHaze) {
+        for (let p = 0; p < n; p++) {
+          if (!cleanRim[p]) sourceForRef.data[p * 4 + 3] = 0
+        }
+      }
+    }
   }
 
-  const origTransparent = !keepOpaque && hasOriginalTransparency(sourceForRef)
   const useMatte =
     !keepOpaque &&
     !opts.nativeTransparent &&
@@ -288,13 +333,17 @@ export function buildLayerRepairPrompt(input: {
   nativeTransparent: boolean
   matteRgb: [number, number, number] | null
   isBase?: boolean
+  transparentBackground?: boolean
 }): string {
   const isZh = String(input.locale || '')
     .toLowerCase()
     .startsWith('zh')
   const instruction = input.userInstruction.trim()
+  const wantOpaque =
+    input.transparentBackground === false ||
+    Boolean(input.isBase && input.transparentBackground !== true)
 
-  if (input.isBase) {
+  if (input.isBase && wantOpaque) {
     if (instruction) {
       return isZh
         ? `${instruction}。请原位修补这张游戏 UI 界面的底层背景底图（已剥离前景控件），无缝延续周围原有的背景材质、底板纹理与光影过渡，严格保持整张底图的构图、尺寸与色调一致，严禁重新生成无关的按钮、图标或文字控件。` // cjk-ok
@@ -306,6 +355,17 @@ export function buildLayerRepairPrompt(input: {
   }
 
   const name = input.layerName.trim() || (isZh ? 'UI 元件' : 'UI element') // cjk-ok
+
+  if (wantOpaque) {
+    if (instruction) {
+      return isZh
+        ? `${instruction}。请原位修补参考图中的 UI 图层「${name}」，自然延续原有的材质、边框与光影过渡，保持不透明背景与原有构图尺寸不变，不要新增无关文字或装饰。` // cjk-ok
+        : `${instruction}. Repair the UI layer "${name}" strictly in-place, seamlessly continuing its existing material, borders, and lighting while keeping the opaque background and framing unchanged, without adding extra text or decorations.`
+    }
+    return isZh
+      ? `这是游戏 UI 图层「${name}」的参考图。请原位修补该图层因上层子控件剥离留下的残缺孔洞、遮挡痕迹与边缘锯齿，自然延续原有的材质、边框与光影过渡，保持不透明背景与原有构图尺寸不变，不要新增任何文字或图标。` // cjk-ok
+      : `This is a reference image of a game UI layer ("${name}"). Repair any occlusion holes, missing surface texture, and jagged edges strictly in-place, continuing its existing material, borders, and lighting while keeping the opaque background and framing unchanged, without adding any new text or icons.`
+  }
 
   if (input.nativeTransparent) {
     if (instruction) {
@@ -319,10 +379,10 @@ export function buildLayerRepairPrompt(input: {
   }
 
   const matteDescZh = input.matteRgb
-    ? '严格保持参考图外围单一均匀纯色平涂背景不变（严禁添加渐变、投影、场景杂物或灰白棋盘格纹理）' // cjk-ok
+    ? '严格保持参考图外围单一均匀纯色平涂背景不变（严禁添加渐变、投影、场景杂物或绘制任何方格底纹）' // cjk-ok
     : '严格保持元件原有的边界与构图不变' // cjk-ok
   const matteDescEn = input.matteRgb
-    ? 'strictly keep the exact flat uniform solid-color exterior background from the reference image unchanged (no gradients, no cast shadows, no clutter, and strictly no checkerboard pattern)'
+    ? 'strictly keep the exact flat uniform solid-color exterior background from the reference image unchanged (no gradients, no cast shadows, no clutter, and no grid patterns)'
     : 'strictly preserve the original bounds and framing'
 
   if (instruction) {
@@ -336,7 +396,8 @@ export function buildLayerRepairPrompt(input: {
 }
 
 /**
- * 检测模型返回图像是否本身已具备有效的原生外圈透明通道（避免误将原生半透明光效覆盖为不透明）。
+ * 检测模型返回图像是否本身已具备干净完整的原生外圈透明通道（避免误将原生半透明光效覆盖为不透明，
+ * 同时拒绝「仅局部透明、其余外圈绘制了不透明灰白棋盘格」的伪透明图）。
  */
 export function hasNativeExteriorTransparency(img: RgbaImage, orig?: RgbaImage): boolean {
   const { width: W, height: H, data } = img
@@ -345,15 +406,14 @@ export function hasNativeExteriorTransparency(img: RgbaImage, orig?: RgbaImage):
   let borderTransparent = 0
   for (let x = 0; x < W; x++) {
     borderTotal += 2
-    if (data[x * 4 + 3]! < 180) borderTransparent++
-    if (data[((H - 1) * W + x) * 4 + 3]! < 180) borderTransparent++
+    if (data[x * 4 + 3]! < 64) borderTransparent++
+    if (data[((H - 1) * W + x) * 4 + 3]! < 64) borderTransparent++
   }
   for (let y = 1; y < H - 1; y++) {
     borderTotal += 2
-    if (data[y * W * 4 + 3]! < 180) borderTransparent++
-    if (data[(y * W + (W - 1)) * 4 + 3]! < 180) borderTransparent++
+    if (data[y * W * 4 + 3]! < 64) borderTransparent++
+    if (data[(y * W + (W - 1)) * 4 + 3]! < 64) borderTransparent++
   }
-  if (borderTotal > 0 && borderTransparent / borderTotal >= 0.2) return true
 
   if (orig && orig.width === W && orig.height === H) {
     let extTotal = 0
@@ -362,12 +422,17 @@ export function hasNativeExteriorTransparency(img: RgbaImage, orig?: RgbaImage):
     for (let p = 0; p < n; p++) {
       if (orig.data[p * 4 + 3]! < 16) {
         extTotal++
-        if (data[p * 4 + 3]! < 180) extTransparent++
+        if (data[p * 4 + 3]! < 128) extTransparent++
       }
     }
-    if (extTotal >= 8 && extTransparent / extTotal >= 0.25) return true
+    if (extTotal >= 8) {
+      return (
+        extTransparent / extTotal >= 0.85 &&
+        (borderTotal === 0 || borderTransparent / borderTotal >= 0.75)
+      )
+    }
   }
-  return false
+  return borderTotal > 0 && borderTransparent / borderTotal >= 0.85
 }
 
 function dilateBinaryBox(
@@ -406,8 +471,42 @@ function dilateBinaryBox(
   return out
 }
 
+function medianChannel(values: number[], fallback: number): number {
+  if (!values.length) return fallback
+  const sorted = [...values].sort((a, b) => a - b)
+  return sorted[sorted.length >> 1] ?? fallback
+}
+
+function segmentDistanceAndPoint(
+  r: number,
+  g: number,
+  b: number,
+  a: [number, number, number],
+  c: [number, number, number]
+): { dist: number; ref: [number, number, number] } {
+  const dx = c[0] - a[0]
+  const dy = c[1] - a[1]
+  const dz = c[2] - a[2]
+  const lenSq = dx * dx + dy * dy + dz * dz
+  if (lenSq < 1) {
+    return {
+      dist: Math.hypot(r - a[0], g - a[1], b - a[2]),
+      ref: a
+    }
+  }
+  const t = Math.max(0, Math.min(1, ((r - a[0]) * dx + (g - a[1]) * dy + (b - a[2]) * dz) / lenSq))
+  const rx = Math.round(a[0] + t * dx)
+  const ry = Math.round(a[1] + t * dy)
+  const rz = Math.round(a[2] + t * dz)
+  return {
+    dist: Math.hypot(r - rx, g - ry, b - rz),
+    ref: [rx, ry, rz]
+  }
+}
+
 /**
- * 在原地将非原生透明模型返回的不透明底图抠除为干净 RGBA 透明通道，并对 1~2px 边缘做色差反解与软边抗锯齿。
+ * 在原地将非原生透明模型返回的不透明底图（含纯色垫底、双色灰白假棋盘格、或者局部透明+棋盘格）
+ * 抠除为干净 RGBA 透明通道，同时保护元件内部修补好的孔洞，并对边缘做色差反解与软边抗锯齿。
  */
 export function stripOpaqueRepairBackgroundInPlace(
   generated: RgbaImage,
@@ -426,6 +525,180 @@ export function stripOpaqueRepairBackgroundInPlace(
     return
   }
 
+  let closedCore: Uint8Array | null = null
+  let coreZone: Uint8Array | null = null
+  let coreAlphaThr = 140
+  if (origTransparent && orig) {
+    let maxOrigA = 0
+    for (let p = 0; p < n; p++) {
+      const a = orig.data[p * 4 + 3]!
+      if (a > maxOrigA) maxOrigA = a
+    }
+    coreAlphaThr = maxOrigA >= 160 ? 140 : Math.max(24, Math.round(maxOrigA * 0.65))
+    const coreFg = new Uint8Array(n)
+    for (let p = 0; p < n; p++) {
+      if (orig.data[p * 4 + 3]! >= coreAlphaThr) coreFg[p] = 1
+    }
+    closedCore = fillHoles(coreFg, W, H)
+    coreZone = dilateBinaryBox(closedCore, W, H, 2)
+  }
+
+  // 采样外圈已知背景区域的 RGB，支持双聚类（同时覆盖单一纯色底与模型常见的灰白双色假棋盘格）
+  const sampleR: number[] = []
+  const sampleG: number[] = []
+  const sampleB: number[] = []
+  if (origTransparent && orig && coreZone) {
+    for (let p = 0; p < n; p++) {
+      const i = p * 4
+      if (data[i + 3]! < 128) continue
+      const origA = orig.data[i + 3]!
+      if (!coreZone[p] && origA < 24) {
+        sampleR.push(data[i]!)
+        sampleG.push(data[i + 1]!)
+        sampleB.push(data[i + 2]!)
+      }
+    }
+  }
+  if (sampleR.length < 8) {
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (x > 1 && x < W - 2 && y > 1 && y < H - 2) continue
+        const p = y * W + x
+        const i = p * 4
+        if (data[i + 3]! < 128) continue
+        if (origTransparent && orig && orig.data[i + 3]! >= 96) continue
+        sampleR.push(data[i]!)
+        sampleG.push(data[i + 1]!)
+        sampleB.push(data[i + 2]!)
+      }
+    }
+  }
+
+  let c1: [number, number, number] = [
+    medianChannel(sampleR, opts?.matteRgb?.[0] ?? data[0] ?? 246),
+    medianChannel(sampleG, opts?.matteRgb?.[1] ?? data[1] ?? 248),
+    medianChannel(sampleB, opts?.matteRgb?.[2] ?? data[2] ?? 252)
+  ]
+  let c2: [number, number, number] | null = null
+
+  if (sampleR.length >= 8) {
+    const farR: number[] = []
+    const farG: number[] = []
+    const farB: number[] = []
+    for (let k = 0; k < sampleR.length; k++) {
+      const d = Math.hypot(sampleR[k]! - c1[0], sampleG[k]! - c1[1], sampleB[k]! - c1[2])
+      if (d > 16) {
+        farR.push(sampleR[k]!)
+        farG.push(sampleG[k]!)
+        farB.push(sampleB[k]!)
+      }
+    }
+    if (farR.length >= Math.max(4, Math.round(sampleR.length * 0.06))) {
+      c2 = [medianChannel(farR, c1[0]), medianChannel(farG, c1[1]), medianChannel(farB, c1[2])]
+      for (let iter = 0; iter < 3; iter++) {
+        const g1R: number[] = []
+        const g1G: number[] = []
+        const g1B: number[] = []
+        const g2R: number[] = []
+        const g2G: number[] = []
+        const g2B: number[] = []
+        for (let k = 0; k < sampleR.length; k++) {
+          const r = sampleR[k]!
+          const g = sampleG[k]!
+          const b = sampleB[k]!
+          const d1 = Math.hypot(r - c1[0], g - c1[1], b - c1[2])
+          const d2 = Math.hypot(r - c2[0], g - c2[1], b - c2[2])
+          if (d1 <= d2) {
+            g1R.push(r)
+            g1G.push(g)
+            g1B.push(b)
+          } else {
+            g2R.push(r)
+            g2G.push(g)
+            g2B.push(b)
+          }
+        }
+        if (g1R.length > 0 && g2R.length > 0) {
+          c1 = [medianChannel(g1R, c1[0]), medianChannel(g1G, c1[1]), medianChannel(g1B, c1[2])]
+          c2 = [medianChannel(g2R, c2[0]), medianChannel(g2G, c2[1]), medianChannel(g2B, c2[2])]
+        }
+      }
+    }
+  }
+
+  // 检测前景核心边缘是否为高饱和度彩色或深色元件（若是，则外圈中的低饱和浅灰/纯白像素均属假棋盘格或白底残留）
+  let coreEdgeNonNeutralGray = false
+  if (closedCore) {
+    let edgeChecked = 0
+    let edgeDistinct = 0
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        const p = y * W + x
+        if (!closedCore[p]) continue
+        if (closedCore[p - 1] && closedCore[p + 1] && closedCore[p - W] && closedCore[p + W]) {
+          continue
+        }
+        const i = p * 4
+        const r = data[i]!
+        const g = data[i + 1]!
+        const b = data[i + 2]!
+        const maxC = Math.max(r, g, b)
+        const minC = Math.min(r, g, b)
+        edgeChecked++
+        if (maxC - minC >= 30 || maxC < 120) {
+          edgeDistinct++
+        }
+      }
+    }
+    if (edgeChecked >= 4 && edgeDistinct / edgeChecked >= 0.55) {
+      coreEdgeNonNeutralGray = true
+    }
+  }
+
+  const bgPaletteInfo = (
+    r: number,
+    g: number,
+    b: number,
+    inExteriorZone: boolean
+  ): { dist: number; refRgb: [number, number, number] } => {
+    let bestDist = Math.hypot(r - c1[0], g - c1[1], b - c1[2])
+    let bestRef: [number, number, number] = c1
+
+    if (c2) {
+      const seg = segmentDistanceAndPoint(r, g, b, c1, c2)
+      if (seg.dist < bestDist) {
+        bestDist = seg.dist
+        bestRef = seg.ref
+      }
+    }
+    if (opts?.matteRgb) {
+      const dm = Math.hypot(r - opts.matteRgb[0], g - opts.matteRgb[1], b - opts.matteRgb[2])
+      if (dm < bestDist) {
+        bestDist = dm
+        bestRef = opts.matteRgb
+      }
+      if (c2) {
+        const segM = segmentDistanceAndPoint(r, g, b, opts.matteRgb, c2)
+        if (segM.dist < bestDist) {
+          bestDist = segM.dist
+          bestRef = segM.ref
+        }
+      }
+    }
+    if (inExteriorZone && coreEdgeNonNeutralGray) {
+      const maxC = Math.max(r, g, b)
+      const minC = Math.min(r, g, b)
+      const sat = maxC - minC
+      if (sat <= 24 && minC >= 135) {
+        if (sat < bestDist) {
+          bestDist = sat
+          bestRef = [r, g, b]
+        }
+      }
+    }
+    return { dist: bestDist, refRgb: bestRef }
+  }
+
   const isBg = new Uint8Array(n)
   const seedOff = new Int32Array(n).fill(-1)
   const queue = new Int32Array(n)
@@ -439,56 +712,25 @@ export function stripOpaqueRepairBackgroundInPlace(
     queue[qTail++] = p
   }
 
-  let allowedZone: Uint8Array | null = null
-  if (origTransparent && orig) {
-    const rawFg = new Uint8Array(n)
-    for (let p = 0; p < n; p++) {
-      if (orig.data[p * 4 + 3]! >= 16) rawFg[p] = 1
-    }
-    const closedSilhouette = fillHoles(rawFg, W, H)
-    const margin = Math.max(4, Math.min(18, Math.round(Math.min(W, H) * 0.06)))
-    allowedZone = dilateBinaryBox(closedSilhouette, W, H, margin)
-
-    const rList: number[] = []
-    const gList: number[] = []
-    const bList: number[] = []
-    for (let p = 0; p < n; p++) {
-      if (orig.data[p * 4 + 3]! < 16) {
-        const i = p * 4
-        rList.push(data[i]!)
-        gList.push(data[i + 1]!)
-        bList.push(data[i + 2]!)
-      }
-    }
-    rList.sort((a, b) => a - b)
-    gList.sort((a, b) => a - b)
-    bList.sort((a, b) => a - b)
-    const mr = rList[rList.length >> 1] ?? opts?.matteRgb?.[0] ?? 0
-    const mg = gList[gList.length >> 1] ?? opts?.matteRgb?.[1] ?? 0
-    const mb = bList[bList.length >> 1] ?? opts?.matteRgb?.[2] ?? 0
-
+  if (origTransparent && orig && coreZone && closedCore) {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const p = y * W + x
-        if (!allowedZone[p]) {
+        if (closedCore[p]) continue
+        const i = p * 4
+        if (data[i + 3]! < 64) {
           pushSeed(p)
           continue
         }
         const onBorder = x === 0 || x === W - 1 || y === 0 || y === H - 1
-        const origA = orig.data[p * 4 + 3]!
-        if (origA >= 24 && !onBorder) continue
-        const i = p * 4
-        const dMed = Math.hypot(data[i]! - mr, data[i + 1]! - mg, data[i + 2]! - mb)
-        const dMatte = opts?.matteRgb
-          ? Math.hypot(
-              data[i]! - opts.matteRgb[0],
-              data[i + 1]! - opts.matteRgb[1],
-              data[i + 2]! - opts.matteRgb[2]
-            )
-          : Infinity
-        if (onBorder && origA < 64) {
+        const origA = orig.data[i + 3]!
+        const inExt = !coreZone[p]
+        const bg = bgPaletteInfo(data[i]!, data[i + 1]!, data[i + 2]!, inExt)
+        if (inExt && origA < 16 && bg.dist <= 68) {
           pushSeed(p)
-        } else if (origA < 16 && Math.min(dMed, dMatte) <= 52) {
+        } else if (onBorder && origA < 96 && bg.dist <= 68) {
+          pushSeed(p)
+        } else if (inExt && bg.dist <= 52) {
           pushSeed(p)
         }
       }
@@ -508,51 +750,30 @@ export function stripOpaqueRepairBackgroundInPlace(
     for (let x = 0; x < W; x++) {
       const topP = x
       const botP = (H - 1) * W + x
-      for (const cp of corners) {
-        const ci = cp * 4
-        if (
-          Math.hypot(
-            data[topP * 4]! - data[ci]!,
-            data[topP * 4 + 1]! - data[ci + 1]!,
-            data[topP * 4 + 2]! - data[ci + 2]!
-          ) <= 30
-        ) {
-          pushSeed(topP, ci)
-        }
-        if (
-          Math.hypot(
-            data[botP * 4]! - data[ci]!,
-            data[botP * 4 + 1]! - data[ci + 1]!,
-            data[botP * 4 + 2]! - data[ci + 2]!
-          ) <= 30
-        ) {
-          pushSeed(botP, ci)
-        }
+      if (
+        bgPaletteInfo(data[topP * 4]!, data[topP * 4 + 1]!, data[topP * 4 + 2]!, true).dist <= 40
+      ) {
+        pushSeed(topP)
+      }
+      if (
+        bgPaletteInfo(data[botP * 4]!, data[botP * 4 + 1]!, data[botP * 4 + 2]!, true).dist <= 40
+      ) {
+        pushSeed(botP)
       }
     }
     for (let y = 0; y < H; y++) {
       const leftP = y * W
       const rightP = y * W + (W - 1)
-      for (const cp of corners) {
-        const ci = cp * 4
-        if (
-          Math.hypot(
-            data[leftP * 4]! - data[ci]!,
-            data[leftP * 4 + 1]! - data[ci + 1]!,
-            data[leftP * 4 + 2]! - data[ci + 2]!
-          ) <= 30
-        ) {
-          pushSeed(leftP, ci)
-        }
-        if (
-          Math.hypot(
-            data[rightP * 4]! - data[ci]!,
-            data[rightP * 4 + 1]! - data[ci + 1]!,
-            data[rightP * 4 + 2]! - data[ci + 2]!
-          ) <= 30
-        ) {
-          pushSeed(rightP, ci)
-        }
+      if (
+        bgPaletteInfo(data[leftP * 4]!, data[leftP * 4 + 1]!, data[leftP * 4 + 2]!, true).dist <= 40
+      ) {
+        pushSeed(leftP)
+      }
+      if (
+        bgPaletteInfo(data[rightP * 4]!, data[rightP * 4 + 1]!, data[rightP * 4 + 2]!, true).dist <=
+        40
+      ) {
+        pushSeed(rightP)
       }
     }
   }
@@ -572,7 +793,22 @@ export function stripOpaqueRepairBackgroundInPlace(
         if (nx < 0 || nx >= W) continue
         const np = ny * W + nx
         if (isBg[np]) continue
+        if (
+          closedCore &&
+          closedCore[np] &&
+          !(opts?.forceCutout && orig && orig.data[np * 4 + 3]! < 24)
+        ) {
+          continue
+        }
         const ni = np * 4
+        if (data[ni + 3]! < 48) {
+          isBg[np] = 1
+          seedOff[np] = sOff
+          queue[qTail++] = np
+          continue
+        }
+        const inExt = coreZone ? !coreZone[np] : true
+        const bg = bgPaletteInfo(data[ni]!, data[ni + 1]!, data[ni + 2]!, inExt)
         const step = Math.hypot(
           data[pi]! - data[ni]!,
           data[pi + 1]! - data[ni + 1]!,
@@ -583,13 +819,21 @@ export function stripOpaqueRepairBackgroundInPlace(
           data[sOff + 1]! - data[ni + 1]!,
           data[sOff + 2]! - data[ni + 2]!
         )
-        const origA = hasOrig && orig ? orig.data[np * 4 + 3]! : 255
-        const maxStep = origA < 24 ? 32 : 16
-        const maxSeed = origA < 24 ? 58 : 34
-        if (step <= maxStep && seedDist <= maxSeed) {
-          isBg[np] = 1
-          seedOff[np] = sOff
-          queue[qTail++] = np
+        if (inExt && coreZone) {
+          if (bg.dist <= 58 || (step <= 38 && seedDist <= 62)) {
+            isBg[np] = 1
+            seedOff[np] = sOff
+            queue[qTail++] = np
+          }
+        } else {
+          const origA = hasOrig && orig ? orig.data[ni + 3]! : 255
+          const maxStep = origA < 24 ? 32 : 18
+          const maxSeed = origA < 24 ? 58 : 34
+          if (bg.dist <= 34 || (step <= maxStep && seedDist <= maxSeed)) {
+            isBg[np] = 1
+            seedOff[np] = sOff
+            queue[qTail++] = np
+          }
         }
       }
     }
@@ -612,6 +856,36 @@ export function stripOpaqueRepairBackgroundInPlace(
         data[i + 3] = 0
         continue
       }
+
+      // 实心轮廓外圈区域（origTransparent 时）：严禁将原本透明/微弱外发光的外圈提升为 255 不透明色块
+      if (origTransparent && orig && coreZone && !coreZone[p]) {
+        const origA = orig.data[i + 3]!
+        if (origA < 12) {
+          data[i + 3] = 0
+          continue
+        }
+        const bg = bgPaletteInfo(data[i]!, data[i + 1]!, data[i + 2]!, true)
+        if (bg.dist < 56) {
+          const t = Math.max(0, Math.min(1, (bg.dist - 14) / 42))
+          const alpha = t * t * (3 - 2 * t)
+          const finalA = Math.min(origA, Math.round(alpha * 255))
+          if (finalA < 10) {
+            data[i + 3] = 0
+          } else {
+            data[i + 3] = finalA
+            const aNorm = finalA / 255
+            for (let c = 0; c < 3; c++) {
+              const u = data[i + c]!
+              const b = bg.refRgb[c]!
+              data[i + c] = Math.max(0, Math.min(255, Math.round((u - b * (1 - aNorm)) / aNorm)))
+            }
+          }
+        } else {
+          data[i + 3] = Math.min(data[i + 3]!, origA)
+        }
+        continue
+      }
+
       let nearBgOff = -1
       let minBgDist = Infinity
       for (let dy = -1; dy <= 1; dy++) {
@@ -637,7 +911,11 @@ export function stripOpaqueRepairBackgroundInPlace(
       if (nearBgOff >= 0 && minBgDist < 46) {
         const t = Math.max(0.08, Math.min(1, (minBgDist - 6) / 40))
         const alpha = t * t * (3 - 2 * t)
-        data[i + 3] = Math.round(alpha * 255)
+        const softA = Math.round(alpha * 255)
+        data[i + 3] =
+          origTransparent && orig && closedCore && !closedCore[p]
+            ? Math.min(Math.max(orig.data[i + 3]!, softA), softA)
+            : softA
         if (alpha > 0.12 && alpha < 0.98) {
           for (let c = 0; c < 3; c++) {
             const u = data[i + c]!

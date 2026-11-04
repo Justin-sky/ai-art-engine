@@ -173,6 +173,7 @@ export interface ImageLayerSplitRepairRequest {
   generateProviderInstanceId: string
   visionModel?: string
   visionProviderInstanceId?: string
+  transparentBackground?: boolean
   layerDataUrl?: string
   imageLayerSplit: ImageLayerSplitState
   extraGeneratedImages?: GraphImageItem[]

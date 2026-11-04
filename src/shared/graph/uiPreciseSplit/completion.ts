@@ -358,26 +358,101 @@ function anchorDist(a: Anchor, b: Anchor): number {
   return Math.max(Math.abs(a.r - b.r), Math.abs(a.g - b.g), Math.abs(a.b - b.b))
 }
 
+function computeConsistentRowProfile(
+  it: Prepared
+): Array<{ r: number; g: number; b: number } | null> {
+  const { rect } = it.t.mask
+  const PW = it.t.plate.width
+  const data = it.t.plate.data
+  const x0 = it.w >= 16 ? Math.floor(it.w * 0.14) : 0
+  const x1 = it.w >= 16 ? Math.ceil(it.w * 0.86) : it.w
+  const step = Math.max(1, Math.floor((x1 - x0) / 64))
+  const out: Array<{ r: number; g: number; b: number } | null> = new Array(it.h).fill(null)
+  const rs: number[] = []
+  const gs: number[] = []
+  const bs: number[] = []
+  const devs: number[] = []
+  for (let y = 0; y < it.h; y++) {
+    rs.length = 0
+    gs.length = 0
+    bs.length = 0
+    const row = y * it.w
+    const gy = (rect.top + y) * PW
+    for (let x = x0; x < x1; x += step) {
+      if (!it.known[row + x]) continue
+      const gi = (gy + rect.left + x) * 4
+      rs.push(data[gi]!)
+      gs.push(data[gi + 1]!)
+      bs.push(data[gi + 2]!)
+    }
+    if (rs.length < 4) continue
+    const sr = [...rs].sort((a, b) => a - b)
+    const sg = [...gs].sort((a, b) => a - b)
+    const sb = [...bs].sort((a, b) => a - b)
+    const mid = sr.length >> 1
+    const mr = sr[mid]!
+    const mg = sg[mid]!
+    const mb = sb[mid]!
+    devs.length = 0
+    for (let i = 0; i < rs.length; i++) {
+      devs.push(Math.max(Math.abs(rs[i]! - mr), Math.abs(gs[i]! - mg), Math.abs(bs[i]! - mb)))
+    }
+    devs.sort((a, b) => a - b)
+    if (devs[devs.length >> 1]! <= 12) {
+      out[y] = { r: mr, g: mg, b: mb }
+    }
+  }
+  return out
+}
+
 function fillByAxis(it: Prepared): number {
   const { rect } = it.t.mask
   const PW = it.t.plate.width
+  const rowProfile = computeConsistentRowProfile(it)
+  const isWideBar = it.w >= it.h * 1.8
+  const capInset = Math.min(22, Math.max(6, Math.round(it.h * 0.18)))
+  const maxOneSideSpan = Math.max(24, Math.round(it.h * 1.35))
   let filled = 0
   for (let y = 0; y < it.h; y++) {
     for (let x = 0; x < it.w; x++) {
       const p = y * it.w + x
       if (!it.target[p] || it.done[p]) continue
       let best: { r: number; g: number; b: number; cost: number } | null = null
+      let horizLeft: Anchor | null | undefined
+      let horizRight: Anchor | null | undefined
       for (const [dx, dy] of [
         [1, 0],
         [0, 1]
       ] as const) {
         const a0 = findAnchor(it, x, y, -dx, -dy)
         const a1 = findAnchor(it, x, y, dx, dy)
+        if (dx === 1) {
+          horizLeft = a0
+          horizRight = a1
+        }
         if (!a0 || !a1) continue
-        if (a0.flat > 8 || a1.flat > 8) continue
-        const gap = anchorDist(a0, a1)
-        if (gap > 28) continue
+        if (a0.flat > 12 || a1.flat > 12) continue
         const span = a1.pos - a0.pos
+        const gap = anchorDist(a0, a1)
+        const maxGap = Math.min(42, 28 + Math.round(Math.max(0, span) * 0.08))
+        if (gap > maxGap) continue
+        if (dy === 1 && span >= 4) {
+          // 防止把外沿深色边距纵向线性拉穿内部横向描边线或胶囊内腔（如语音输入条的青色内框线）
+          let crossesStructuredRow = false
+          for (let yy = a0.pos + 1; yy < a1.pos; yy++) {
+            const rp = rowProfile[yy]
+            if (!rp) continue
+            const ty = (yy - a0.pos) / span
+            const lr = a0.r + (a1.r - a0.r) * ty
+            const lg = a0.g + (a1.g - a0.g) * ty
+            const lb = a0.b + (a1.b - a0.b) * ty
+            if (Math.max(Math.abs(lr - rp.r), Math.abs(lg - rp.g), Math.abs(lb - rp.b)) > 12) {
+              crossesStructuredRow = true
+              break
+            }
+          }
+          if (crossesStructuredRow) continue
+        }
         const tt = span > 0 ? ((dx ? x : y) - a0.pos) / span : 0.5
         const cost = a0.flat + a1.flat + gap * 0.5
         if (!best || cost < best.cost) {
@@ -387,6 +462,31 @@ function fillByAxis(it: Prepared): number {
             b: a0.b + (a1.b - a0.b) * tt,
             cost
           }
+        }
+      }
+      if (!best && isWideBar && x >= capInset && x <= it.w - 1 - capInset) {
+        // 左右两端对称压了圆形按钮时（镜像互补失效、外侧紧邻圆角端帽）：用内侧一致的横向扫描线向端帽内延展
+        const rp = rowProfile[y]
+        const aInner =
+          x < it.w / 2
+            ? horizRight !== undefined
+              ? horizRight
+              : findAnchor(it, x, y, 1, 0)
+            : horizLeft !== undefined
+              ? horizLeft
+              : findAnchor(it, x, y, -1, 0)
+        if (
+          rp &&
+          aInner &&
+          aInner.flat <= 11 &&
+          Math.abs(aInner.pos - x) <= maxOneSideSpan &&
+          Math.max(
+            Math.abs(aInner.r - rp.r),
+            Math.abs(aInner.g - rp.g),
+            Math.abs(aInner.b - rp.b)
+          ) <= 12
+        ) {
+          best = { r: aInner.r, g: aInner.g, b: aInner.b, cost: aInner.flat }
         }
       }
       if (!best) continue
