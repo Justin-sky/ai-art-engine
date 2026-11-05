@@ -596,10 +596,42 @@ function pushAndOpenDownstreamGameSystem(): void {
           </button>
           <div v-if="exportOpen" class="mx-export-menu">
             <button type="button" @click="exportFormat('png')">
-              🖼 {{ t('mx.top.exportPng') }}
+              <svg class="mx-exp-svg" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <rect
+                  x="1.5"
+                  y="2.5"
+                  width="13"
+                  height="11"
+                  rx="2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.35"
+                />
+                <circle cx="5.4" cy="6.1" r="1.25" fill="currentColor" />
+                <path
+                  d="M2.6 12.2 L6.3 8.5 L9.1 10.9 L11.1 9.1 L13.5 12.2"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.3"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>{{ t('mx.top.exportPng') }}</span>
             </button>
             <button type="button" @click="exportFormat('svg')">
-              📐 {{ t('mx.top.exportSvg') }}
+              <svg class="mx-exp-svg" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                <path
+                  d="M3.2 12.5 C3.5 6.8 9.2 9.2 12.8 3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.35"
+                  stroke-linecap="round"
+                />
+                <rect x="1.8" y="11.1" width="2.8" height="2.8" rx="0.6" fill="currentColor" />
+                <rect x="11.4" y="2.1" width="2.8" height="2.8" rx="0.6" fill="currentColor" />
+              </svg>
+              <span>{{ t('mx.top.exportSvg') }}</span>
             </button>
             <hr />
             <button type="button" @click="exportFormat('gd')">Godot 4 (.gd)</button>
@@ -845,7 +877,8 @@ function pushAndOpenDownstreamGameSystem(): void {
   position: absolute;
   top: calc(100% + 4px);
   right: 0;
-  width: 190px;
+  min-width: 224px;
+  width: max-content;
   padding: 4px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
@@ -856,6 +889,10 @@ function pushAndOpenDownstreamGameSystem(): void {
   z-index: 40;
 }
 .mx-export-menu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
   text-align: left;
   padding: 6px 10px;
   border: none;
@@ -864,6 +901,10 @@ function pushAndOpenDownstreamGameSystem(): void {
   color: var(--text);
   font-size: 12px;
   cursor: pointer;
+}
+.mx-exp-svg {
+  flex-shrink: 0;
+  opacity: 0.88;
 }
 .mx-export-menu button:hover {
   background: var(--accent-12);

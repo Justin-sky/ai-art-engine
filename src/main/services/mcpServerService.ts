@@ -15,6 +15,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import {
+  analyzeMxEconomyHealth,
   buildBitmapFontManifest,
   buildGameBundleManifest,
   buildGameDataTableBundle,
@@ -26,8 +27,11 @@ import {
   generateEngineImporterScript,
   generateProceduralLevelMap,
   generateUnityMetaFile,
+  lintMxDocumentTopology,
+  parseMxDocumentJson,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
+  runMxSimulation,
   type GameBundleInputItem,
   type GameBundleTargetEngine,
   type GameDataTableInput,
@@ -303,6 +307,100 @@ const VIDEO_FRAME_MAX_IMAGES = 6
 
 /** 抽帧数量的上限（均匀抽帧会逐帧跑 ffmpeg，给太大等于让用户干等） */
 const VIDEO_FRAME_EXTRACT_MAX = 24
+
+async function collectTaskRunEconomyDiagnostics(
+  assetId: string,
+  requestedNodeIds: string[],
+  relativePaths: string[]
+): Promise<Array<Record<string, unknown>>> {
+  const diagnostics: Array<Record<string, unknown>> = []
+  const econTextPaths = relativePaths.filter((p) => /(?:^|[/\\])economy_.*\.txt$/i.test(p))
+  for (const rel of econTextPaths) {
+    try {
+      const raw = await projectService.readProjectFile(rel)
+      if (!raw) continue
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      if (parsed.kind !== 'machinations_economy_bundle' || !parsed.document) continue
+      const doc = parseMxDocumentJson(parsed.document)
+      const topo = Array.isArray(parsed.topologyWarnings)
+        ? parsed.topologyWarnings
+        : lintMxDocumentTopology(doc)
+      const play = (parsed.play ?? {}) as Record<string, unknown>
+      const health = (parsed.healthReport ?? analyzeMxEconomyHealth(doc)) as {
+        score?: number
+        grade?: string
+        findings?: Array<Record<string, unknown>>
+      }
+      const starved = (health.findings ?? [])
+        .filter((f) => f.kind === 'starved_converter')
+        .map((f) => ({
+          nodeId: f.nodeId,
+          label: f.nodeLabel,
+          blockedRatioPercent: f.secondaryValue
+        }))
+      diagnostics.push({
+        relativePath: rel,
+        title: doc.title,
+        healthScore: health.score ?? null,
+        healthGrade: health.grade ?? null,
+        stepsRun: play.stepsRun ?? null,
+        ended: play.ended ?? false,
+        endReason: play.endReason ?? null,
+        finalPools: play.final ?? {},
+        starvedConverters: starved,
+        topologyWarnings: topo
+      })
+    } catch {
+      // ignore malformed bundle
+    }
+  }
+  if (diagnostics.length > 0) return diagnostics
+
+  try {
+    const refreshed = projectService.listAssets().find((item) => item.id === assetId)
+    const gDoc = (refreshed?.genParams as Record<string, unknown> | undefined)?.graphJson as
+      GraphDocument | undefined
+    if (!gDoc || !Array.isArray(gDoc.nodes)) return diagnostics
+    const econNodes = gDoc.nodes.filter(
+      (n) =>
+        n.typeId === 'game.economy' &&
+        (requestedNodeIds.length === 0 || requestedNodeIds.includes(n.id))
+    )
+    for (const en of econNodes) {
+      const rawDiag = en.params?.gameEconomyDiagramJson
+      if (typeof rawDiag !== 'string' || !rawDiag.trim()) continue
+      const doc = parseMxDocumentJson(rawDiag, en.params?.gameEconomyPreset, en.title)
+      const sim = runMxSimulation(doc, {
+        steps: Number(en.params?.gameEconomySteps) || doc.settings.steps || 20,
+        seed: Number(en.params?.gameEconomySeed) || doc.settings.seed || 2026
+      })
+      const health = analyzeMxEconomyHealth(doc, sim)
+      const topo = health.topologyWarnings ?? lintMxDocumentTopology(doc)
+      diagnostics.push({
+        nodeId: en.id,
+        title: en.title ?? doc.title,
+        report: en.params?.gameEconomyReport ?? '',
+        healthScore: health.score,
+        healthGrade: health.grade,
+        stepsRun: sim.stepsRun,
+        ended: sim.ended,
+        endReason: sim.endReason ?? null,
+        finalPools: sim.snapshots[sim.snapshots.length - 1] ?? {},
+        starvedConverters: health.findings
+          .filter((f) => f.kind === 'starved_converter')
+          .map((f) => ({
+            nodeId: f.nodeId,
+            label: f.nodeLabel,
+            blockedRatioPercent: f.secondaryValue
+          })),
+        topologyWarnings: topo
+      })
+    }
+  } catch {
+    // ignore fallback diagnostic errors
+  }
+  return diagnostics
+}
 
 interface McpToolDef {
   name: string
@@ -2182,7 +2280,7 @@ const TOOL_DEFS: McpToolDef[] = [
       '在左侧画布上实时运行宿主画布或子图资产的节点（自动打开/聚焦画布，在画布节点上实时显示运行转圈、执行进度日志，生成完成后实时把预览画面/视频/音频/3D模型更新到节点上，同时在对话流弹出产物预览卡）。\n' +
       '- `assetId` 可选：省略或传 `"current"` 时自动使用最近一次 `graph_edit` 编辑的画布或工程内当前画布（若工程尚无画布会自动新建默认自由画布）；\n' +
       '- `nodeId` / `nodeIds` 可选：传入时只精准执行目标节点及其未就绪的上游依赖；省略时优先执行最近一次 `graph_edit` 创建/修改的节点（若无则执行整张图）；\n' +
-      '- `wait` 默认 `true`：阻塞等待画布节点执行完成，并直接返回生成的工程相对路径 `relativePaths` 与视觉预览图 `mcpImages`（无需再调 `task_status` 轮询）；仅在需要后台异步跑时传 `wait: false`。',
+      '- `wait` 默认 `true`：阻塞等待画布节点执行完成，并直接返回生成的工程相对路径 `relativePaths`、视觉预览图 `mcpImages`，以及 `game.economy` 节点的仿真遥测与静态拓扑检查 `economyDiagnostics`（无需再调 `task_status` 轮询）；若 `economyDiagnostics` 中存在 `topologyWarnings`、扣血反加血、核心转化器饥饿阻塞（`>=75%`）或终局条件异常，必须调用 `graph_edit` 修正图结构并重新 `task_run` 自愈，严禁把错误节点改名为“草稿（仿真待修正）”或在 `prompt` 写免责声明敷衍交付！',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2250,6 +2348,11 @@ const TOOL_DEFS: McpToolDef[] = [
             }
             const relativePaths = report.relativePaths ?? []
             const visualImages = readVisualCheckImagesForRelativePaths(relativePaths, 3)
+            const economyDiagnostics = await collectTaskRunEconomyDiagnostics(
+              assetId,
+              requestedNodeIds,
+              relativePaths
+            )
             return {
               mcpTaskId,
               taskId: report.taskId ?? null,
@@ -2260,6 +2363,7 @@ const TOOL_DEFS: McpToolDef[] = [
               status: report.status ?? 'done',
               relativePath: relativePaths[0] ?? null,
               relativePaths,
+              ...(economyDiagnostics.length ? { economyDiagnostics } : {}),
               ...(visualImages.length ? { mcpImages: visualImages } : {})
             }
           }
@@ -2311,6 +2415,11 @@ const TOOL_DEFS: McpToolDef[] = [
           }
           const relativePaths = report.relativePaths ?? []
           const visualImages = readVisualCheckImagesForRelativePaths(relativePaths, 3)
+          const economyDiagnostics = await collectTaskRunEconomyDiagnostics(
+            assetId,
+            requestedNodeIds,
+            relativePaths
+          )
           return {
             mcpTaskId,
             taskId: report.taskId ?? null,
@@ -2321,6 +2430,7 @@ const TOOL_DEFS: McpToolDef[] = [
             status: report.status ?? 'done',
             relativePath: relativePaths[0] ?? null,
             relativePaths,
+            ...(economyDiagnostics.length ? { economyDiagnostics } : {}),
             ...(visualImages.length ? { mcpImages: visualImages } : {})
           }
         }
@@ -2548,7 +2658,7 @@ const TOOL_DEFS: McpToolDef[] = [
       '     * 音乐/BGM 生成：`audio.music`（`params: { prompt, lyrics, instrumental, model, providerInstanceId }`）\n' +
       '     * 3D 模型生成与加工：`asset.model3d`（`params: { prompt, style, model, providerInstanceId, referenceImageUrls }`）、`model3d.rig`（骨骼蒙皮）、`model3d.segment`（部件拆分）、`model3d.postProcess`（重拓扑/补全/重定向/格式转换）\n' +
       '     * 空间世界生成与导出：`spatialWorld.generate`（`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`）、`spatialWorld.export`（导出 HQ GLB 网格或 PLY 泼溅）\n' +
-      '     * 经济系统（Machinations 宏观资源循环）：`game.economy`（`params: { prompt, gameEconomyPreset, gameEconomyDiagramJson, gameEconomySteps, gameEconomyMonteCarloRuns }`；输出端口 `out-text`【经济系统】可连入 `game.numerical` 的 `in-economy`、`novel.outline` 的 `in-economy`、`asset.novel` 的 `in-economy` 或 `asset.gameSystem` 的 `in-economy`）\n' +
+      '     * 经济系统（Machinations 宏观资源与完整玩法机制建模）：`game.economy`（`params: { prompt, gameEconomyPreset, gameEconomyDiagramJson, gameEconomySteps, gameEconomyMonteCarloRuns }`；当用户要求创建**完整机制 / 全套玩法机制**时，严禁只套用简化小图！须在 `gameEconomyDiagramJson`（`schema: "mx@2"`）中尽可能完整构建所有核心玩法子系统（通常 20~32 个节点与配套 `resource`/`state` 边，覆盖回合能量/时间补给、抽弃洗消耗守恒循环、异构出牌/合成转化器、`register` 乘区公式 `if(cond,a,b)`、护甲防御与敌方递增压力、商店遗物养成及胜负双 `end` 节点），并将不同功能分类放入 `layers` 不同图层——`layers[0]` 固定保留 `{ id: "layer_base", name: "Base", visible: true, locked: false }` 作为手动新建默认层，再按子系统划分 4~6 个分类图层并在每个 `node` 上指定对应 `layerId`，省略 `x`/`y` 时自动执行多图层横向泳道排版与分组框对齐。**`mx@2` 四大铁律与仿真自愈门禁**：① `converter/source -> pool` 恒为加法（`+`），任何扣血/漏怪/消耗生命必须写成 `hp_pool -> drain` 减法，严禁写成 `leak_converter -> hp_pool`；② `resource` 边的 `formula` 可直接引用任意 `register`/`pool` 节点 id（如 `"wave_scale"`、`"min(enemy_pool, defense_dps)"`），而 `state` 边做数值修正必须带正负号 `"+1"`/`"-2"`/`"+20%"`，做激活门控必须带比较符 `">=1"`/`"<=0"`，严禁写无符号纯数字 `"1"`；③ `end` 节点的多条入向 `state` 边按 `AND`（全部满足）判定且永远不产出资源（严禁从 `end` 连出 `resource` 边）；④ 避免多个无条件 `automatic` 转化器同池抢占与同回合无条件自动建造+自动拆卖死循环（拆卖用 `interactive` + `botCondition` 或 `state` 门控，单局/每日节点须加 `wave_count <= 1` 等波次门控隔离时间尺度）；运行 `task_run` 后必须检查 `economyDiagnostics`，若有 `topologyWarnings` 或数值曲线反转必须立即 `graph_edit` 修正重跑，严禁改名“草稿（仿真待修正）”敷衍交付！输出端口 `out-text`【经济系统】可连入 `game.numerical`、`novel.outline`、`asset.novel` 或 `asset.gameSystem` 的 `in-economy`）\n' +
       '     * 数值系统（策划案专属数值表 / 战斗仿真与战力包络配表）：`game.numerical`（`params: { prompt, gameNumericalPreset, gameNumericalWorkbenchJson }`；游戏/小说模式支持 `preset: "slay_the_spire_dbg" | "hearthstone_tcg" | "onmyoji_atb" | "balatro_roguelike" | "survivor_brotato" | "short_drama_progression"`；非战斗类策划案如中医教学/实训仿真/数字孪生/工具应用会自动进入纯净「策划案专属数值表（domainTables）」模式——严禁为其传入 `short_drama_progression` 预设，也严禁将同画布上无关的小说/短剧 `game.economy` 节点连入该节点！只需将 `game.numerical` 的 `out-text`【数值系统】连入对应 `asset.gameSystem` 的 `in-numerical`）\n' +
       '     * 小说大纲（World Bible + 分卷总纲 + 逐章细纲）：`novel.outline`（输入端口 `in`、`in-economy`、`in-numerical`；将 `out` 广播连入下游每一个章节 `asset.novel` 的 `in-outline` 端口，各章节点会自动按章号 t 切片提取专属细纲）\n' +
       '     * 创建小说 / 马尔可夫链章节节点：`asset.novel`（推荐每章独立节点串联：第1章 → 第2章 → 第3章；输入端口：`in`【上一章】接 `C_{t-1} (out)`、`in-outline`【小说大纲】接 `novel.outline (out)`、`in-economy`【经济系统】接 `game.economy (out-text)`、`in-numerical`【数值系统】接 `game.numerical (out-text)`；输出端口：`out`【下一章】输出本章正文供下一章串联、`out-all`【全部】汇总第1..t章全部累计章节，在末章连入 `asset.gameSystem (in)` 或 `asset.screenplay (in)`）\n' +

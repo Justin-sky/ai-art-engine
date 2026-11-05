@@ -2,6 +2,7 @@ import { isDraftAssetId, type AssetInfo } from '@shared/domain'
 import {
   auditGameSystemDocument,
   GAME_SYSTEM_ARCHETYPES,
+  lintMxDocumentTopology,
   MX_TEMPLATES,
   MX_WORKBENCH_PRESETS,
   NOVEL_GENRE_PROFILES,
@@ -159,17 +160,21 @@ export function sanitizeNodeParamsForContext(
     if (key === 'gameEconomyDiagramJson' && typeof value === 'string' && value.trim()) {
       try {
         const mx = parseMxDocumentJson(value)
+        const topoWarnings = lintMxDocumentTopology(mx)
         summary.machinationsDiagramSummary = {
           title: mx.title,
           settings: mx.settings,
+          layers: mx.layers,
           resources: mx.resources,
           params: mx.params,
           nodeCount: mx.nodes.length,
           edgeCount: mx.edges.length,
-          nodes: mx.nodes.slice(0, 40).map((n) => ({
+          ...(topoWarnings.length ? { topologyWarnings: topoWarnings } : {}),
+          nodes: mx.nodes.slice(0, 48).map((n) => ({
             id: n.id,
             kind: n.kind,
             label: n.label,
+            layerId: n.layerId,
             trigger: n.trigger,
             pullMode: n.pullMode,
             initial: n.initial,
@@ -178,7 +183,7 @@ export function sanitizeNodeParamsForContext(
             gateMode: n.gateMode,
             delaySteps: n.delaySteps
           })),
-          edges: mx.edges.slice(0, 60).map((e) => ({
+          edges: mx.edges.slice(0, 72).map((e) => ({
             id: e.id,
             kind: e.kind,
             from: e.from,
@@ -454,7 +459,8 @@ export function buildActiveWorkspaceContext(): string | undefined {
           lines.push(
             `  [Machinations Economy Studio & 5-Layer Numerical Workbench Live Protocol]: The user is currently inside the Economy & Numerical Studio for nodeId="${divedNode.id}".`,
             `    * To switch to a built-in Machinations template or Numerical Workbench preset, call \`graph_edit({ assetId: "${hostAssetId}", ops: [{ op: "node_update", nodeId: "${divedNode.id}", preset: "${tplIds}" }] })\`.`,
-            `    * To build or replace the custom Machinations diagram, pass \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42, speed: 1, actionMode: "simultaneous", botMode: "off|greedy|smart" }, resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "x1", value: 1 }], agents: [...], nodes: [...], edges: [...] } }\` (x/y coordinates are optional: topological auto-layout runs automatically when omitted!).`,
+            `    * To build or replace the custom Machinations diagram, pass \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42, speed: 1, actionMode: "simultaneous", botMode: "off|greedy|smart" }, layers: [{ id: "layer_base", name: "Base", visible: true, locked: false }, { id: "ly_energy", name: "能量与回合", visible: true, locked: false }, ...], resources: [{ id: "res_gold", name: "Gold", color: "#2563eb" }], params: [{ id: "p1", name: "x1", value: 1 }], agents: [...], nodes: [{ id: "...", kind: "...", label: "...", layerId: "ly_energy", ... }], edges: [...] } }\` (omit \`x\`/\`y\` so multi-layer swimlane auto-layout and subsystem \`groups\` frames are generated automatically without overlap!).`,
+            `    * **Complete Mechanics & Multi-Layer Mandate**: When the user asks for complete gameplay mechanics ("完整机制" / "全套机制" / "所有机制"), exhaustively model ALL core gameplay subsystems (20–32 nodes across resource supply/reset, conserved draw-discard-reshuffle-exhaust cycles, heterogeneous converters with \`state\` activators, \`register\` multiplier formulas using \`if(cond,a,b)\`, defense/block decay & enemy scaling pressure, shop/relic meta-economy, and win/loss \`end\` nodes) and categorize each subsystem into its own layer in \`layers\` (always keeping \`{ id: "layer_base", name: "Base", visible: true, locked: false }\` first as default layer for manual edits).`,
             `    * To edit the 5 Deep Numerical Workbench modules (Layer 1 Multiplier Pipeline, Layer 2 Entity Budget Table, Layer 3 Gacha Pity & Substat Roll, Layer 4 Roguelike Power vs Enemy Wall Envelope, Layer 5 Combat Kernel ATB/Turn/Deck), pass dot-paths under \`gameEconomyDiagramJson.workbench.*\`, e.g. \`params: { "gameEconomyDiagramJson.workbench.multiplier.finalFormula": "ATK * SkillPct * CritBonus", "gameEconomyDiagramJson.workbench.lootRoll.softPityStart": 65, "gameEconomyDiagramJson.workbench.lootRoll.hardPityPull": 80, "gameEconomyDiagramJson.workbench.combatKernel.kernel": "turn_based|atb_speed|deck_mana|roguelike_mult|survivor_wave" }\`.`,
             `    * To tweak an existing diagram node or edge in-place, pass dot-paths such as \`params: { "gameEconomyDiagramJson.nodes[id=hp].initial": 150, "gameEconomyDiagramJson.edges[id=e1].formula": "2D6+1" }\`, then run \`task_run({ assetId: "${hostAssetId}", nodeIds: ["${divedNode.id}"] })\`.`
           )
@@ -647,7 +653,7 @@ export function buildActiveWorkspaceContext(): string | undefined {
             ...MX_WORKBENCH_PRESETS.map((w) => w.id)
           ].join('|')
           lines.push(
-            `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system or 5-Layer Numerical Workbench on \`game.economy\`, pass \`preset: "${tplIds}"\` or \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, resources: [...], params: [...], nodes: [...], edges: [...] } }\` (or dot-paths under \`gameEconomyDiagramJson.workbench.*\`, plus \`openDive: true\` to enter the workbench) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\`.`
+            `  [Machinations Economy Node Protocol (nodeId="${economyNodeOnCanvas.id}")]: To design a custom game economy system or complete gameplay mechanics on \`game.economy\`, pass \`preset: "${tplIds}"\` or \`params: { gameEconomyDiagramJson: { schema: "mx@2", title: "...", settings: { steps: 30, seed: 42 }, layers: [{ id: "layer_base", name: "Base", visible: true, locked: false }, { id: "ly_...", name: "...", visible: true, locked: false }], resources: [...], params: [...], nodes: [{ ..., layerId: "ly_..." }], edges: [...] } }\` (when asked for complete mechanics / "完整机制", model all core subsystems across 20–32 nodes and assign different subsystem categories to separate \`layers\` while keeping \`Base\` at index 0; omit \`x\`/\`y\` for automatic multi-layer swimlane layout; remember \`converter/source -> pool\` ALWAYS adds \`+\` so HP loss must wire \`hp_pool -> drain\`, \`state\` modifiers need \`+\`/\`-\` signs and \`state\` activators need \`>=\`/\`<=\` comparisons rather than unsigned \`"1"\`, and \`end\` nodes combine state edges via \`AND\` and never emit outgoing \`resource\` edges) in \`graph_edit\`, then call \`task_run({ assetId: "${contextCanvasId}", nodeIds: ["${economyNodeOnCanvas.id}"] })\` and repair any \`topologyWarnings\` or inverted curves before finishing (never leave a broken draft disclaimer).`
           )
         }
         const novelNodeOnCanvas = liveDoc.nodes.find(

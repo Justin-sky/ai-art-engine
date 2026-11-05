@@ -1360,6 +1360,7 @@ export function mergeSmartNodeParams(
     const {
       nodes: incNodes,
       edges: incEdges,
+      layers: incLayers,
       resources: incResources,
       params: incParams,
       agents: incAgents,
@@ -1373,6 +1374,7 @@ export function mergeSmartNodeParams(
       gameEconomyDiagramJson: {
         schema: 'mx@2',
         ...(typeof incoming.title === 'string' ? { title: incoming.title } : {}),
+        ...(Array.isArray(incLayers) ? { layers: incLayers } : {}),
         ...(Array.isArray(incResources) ? { resources: incResources } : {}),
         ...(Array.isArray(incParams) ? { params: incParams } : {}),
         ...(Array.isArray(incAgents) ? { agents: incAgents } : {}),
@@ -1442,10 +1444,17 @@ export function mergeSmartNodeParams(
         Array.isArray((rawVal as Record<string, unknown>).nodes) &&
         Array.isArray((rawVal as Record<string, unknown>).edges)
       ) {
-        // 若传入完整的 nodes + edges 经济图定义，则直接替换图结构并保留缺省元数据
+        // 若传入完整的 nodes + edges 经济图定义，则全新替换拓扑结构（仅保留未显式覆盖的 workbench 工作台数据，避免残留旧模板的 templateId / groups / layers）
+        const prevDoc = isPlainObject(working[normKey])
+          ? (working[normKey] as Record<string, unknown>)
+          : {}
+        const incomingDoc = rawVal as Record<string, unknown>
         working[normKey] = {
-          ...(isPlainObject(working[normKey]) ? (working[normKey] as Record<string, unknown>) : {}),
-          ...(rawVal as Record<string, unknown>)
+          schema: 'mx@2',
+          ...(prevDoc.workbench !== undefined && incomingDoc.workbench === undefined
+            ? { workbench: prevDoc.workbench }
+            : {}),
+          ...incomingDoc
         }
       } else {
         working[normKey] = deepMergeSmartValues(working[normKey], rawVal)

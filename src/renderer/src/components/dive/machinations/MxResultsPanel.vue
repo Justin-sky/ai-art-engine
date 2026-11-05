@@ -10,6 +10,7 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   analyzeMxEconomyHealth,
+  extractMxTunableEdgeNumericValue,
   mxNodeColor,
   runMx2DParameterMatrix,
   runMxGoalSeek,
@@ -580,6 +581,7 @@ interface TunableOption {
   id: string
   label: string
   currentVal: number
+  influencer?: boolean
 }
 
 const tunableOptions = computed<TunableOption[]>(() => {
@@ -595,27 +597,32 @@ const tunableOptions = computed<TunableOption[]>(() => {
   }
   for (const e of s.doc.value.edges) {
     const src = nodeName(e.from)
-    const tgt = nodeName(e.to)
-    const numVal = Number(e.formula)
+    const tgt = e.targetEdgeId ? `#${e.targetEdgeId}` : nodeName(e.to)
+    const numVal = extractMxTunableEdgeNumericValue(e)
+    const isInf = Boolean(e.influencer)
     list.push({
       key: `edge:${e.id}`,
       kind: 'edge',
       id: e.id,
-      label: `[Edge] ${src} -> ${tgt} (${e.formula || '1'})`,
-      currentVal: Number.isFinite(numVal) ? numVal : 1
+      label: `${isInf ? '★ ' : ''}[Edge] ${src} -> ${tgt} (${e.formula || '1'})`,
+      currentVal: Number.isFinite(numVal) ? numVal : 1,
+      influencer: isInf
     })
   }
   for (const n of s.doc.value.nodes) {
     if (n.kind === 'pool' || n.kind === 'register') {
+      const isInf = Boolean(n.influencer)
       list.push({
         key: `node_initial:${n.id}`,
         kind: 'node_initial',
         id: n.id,
-        label: `[Init] ${n.label} (${n.initial ?? 0})`,
-        currentVal: Number(n.initial ?? 0)
+        label: `${isInf ? '★ ' : ''}[Init] ${n.label} (${n.initial ?? 0})`,
+        currentVal: Number(n.initial ?? 0),
+        influencer: isInf
       })
     }
   }
+  list.sort((a, b) => Number(Boolean(b.influencer)) - Number(Boolean(a.influencer)))
   return list
 })
 

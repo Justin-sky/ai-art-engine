@@ -59,6 +59,21 @@ export interface MxParam {
   min?: number
   max?: number
   notes?: string
+  /** Machinations Custom Variable 类型：数值 / 随机区间 / 数组随机抽样 / 数学表达式 / 多维数组表 */
+  varKind?: 'number' | 'random_range' | 'random_array' | 'expr' | 'array'
+  /** 随机区间分布：均匀分布 uniform（默认）或高斯正态分布 gaussian */
+  distribution?: 'uniform' | 'gaussian'
+  /** 高斯分布均值与标准差（缺省时由 min/max 自动推导） */
+  mean?: number
+  std?: number
+  /** 随机区间是否取整（默认 false，若 min/max 均为整数且显式开启则取整） */
+  integerOnly?: boolean
+  /** 1D 或 2D 数组（用于 array / random_array 自定义变量，如 [10, 20, 50] 或 [[1,2],[3,4]]） */
+  values?: number[] | number[][]
+  /** 自定义变量表达式（用于 expr 或数组字面量文本，如 "[100, 250, 500]" 或 "D6 + 2"） */
+  formula?: string
+  /** 更新时机：on_play（开局第 0 步求值一次）或 each_step（每步重新采样/求值） */
+  updateMode?: 'on_play' | 'each_step'
 }
 
 export interface MxScenario {
@@ -90,6 +105,8 @@ export interface MxNode {
   initial?: number
   /** Pool 容量（<=0 或缺省为无限） */
   capacity?: number
+  /** Pool 节点内圆点显示上限（默认 25，-1 表示仅显示数字，对齐 Machinations Display Capacity） */
+  displayCapacity?: number
   /** Pool 容量溢出处理：block（默认，阻塞上游）或 drain（接收并销毁溢出部分） */
   overflow?: 'block' | 'drain'
   /** Register 公式 / End 条件公式 / Delay 延迟步数公式 */
@@ -98,10 +115,14 @@ export interface MxNode {
   min?: number
   max?: number
   step?: number
-  gateMode?: 'random' | 'deterministic' | 'dice'
+  gateMode?: 'random' | 'deterministic' | 'dice' | 'skill'
   conversion?: 'single' | 'multiple'
   /** Delay / Queue 的等待步数 */
   delaySteps?: number
+  /** End 节点多输入条件聚合逻辑：all（默认 AND）或 any（OR） */
+  endMode?: 'all' | 'any'
+  /** 状态触发器（*）响应事件过滤 */
+  triggerOn?: 'any' | 'send' | 'receive' | 'increase' | 'decrease' | 'any_change'
   ignoreDisabledInputs?: boolean
   showAs?: 'number' | 'tokens' | 'both'
   color?: string
@@ -118,6 +139,8 @@ export interface MxNode {
   botProbability?: number
   /** 当 botPolicy === 'condition' 或全局 smart 模式下触发的条件表达式（如 HP <= 40） */
   botCondition?: string
+  /** 是否标记为调平影响因子（Mark as influencer，供 Auto-Balancer 优先选为调优自变量） */
+  influencer?: boolean
 }
 
 export interface MxEdge {
@@ -125,13 +148,29 @@ export interface MxEdge {
   kind: MxEdgeKind
   from: string
   to: string
-  /** 状态连线可直接指向另一条连线（Machinations 边速率修正器 / 边激活器） */
+  /** 状态连线可直接指向另一条连线（Machinations 边速率修正器 / 边激活器，支持指向资源边或状态边） */
   targetEdgeId?: string
   /** 手动弧度控制量（正负像素偏移） */
   bend?: number
-  /** 资源连线：流量公式；状态连线：修改量 / 激活条件 / 触发器 */
+  /** 资源连线：流量公式；状态连线：修改量 / 激活条件 / 触发器 / 覆盖符(=) / 间隔修正(+xi) / 分数修正(+n/d) / 概率权重 */
   formula: string
+  /** 资源连线是否允许小数流转（Allow decimals，默认 true；设为 false 时向下取整为整数） */
+  allowDecimals?: boolean
+  /** 资源连线独立间隔公式（如 "2"、"D6"、"3..6"，等价于 formula 中的 "| interval"） */
+  interval?: string
+  /** 资源连线传输模式：flow / interval（默认，常规流动）或 instant（零延迟步内即时传导并立刻刷新下游激活与触发） */
+  transferMode?: 'flow' | 'interval' | 'instant'
+  /** 资源连线单次传输下限与上限（Limits） */
+  minLimit?: number
+  maxLimit?: number
+  /** 是否启用按 resourceId 颜色过滤（仅拉取/传递/监听匹配颜色的资源 Token） */
+  resourceFilter?: boolean
+  /** 多色资源池随机抽取（Shuffle Source/Origin，默认 false 为 LIFO 后进先出） */
+  shuffleOrigin?: boolean
+  /** 是否标记为调平影响因子（Mark as influencer，供 Auto-Balancer 优先选为调优自变量） */
+  influencer?: boolean
   label?: string
+  notes?: string
   resourceId?: string
   color?: string
   layerId?: string
@@ -253,16 +292,27 @@ type ExprNode =
   | { t: 'num'; v: number }
   | { t: 'id'; name: string }
   | { t: 'dice'; count: number; sides: number }
-  | { t: 'un'; op: '-' | '+'; a: ExprNode }
+  | { t: 'arr'; items: ExprNode[] }
+  | { t: 'idx'; target: ExprNode; indices: ExprNode[] }
+  | { t: 'un'; op: '-' | '+' | '!'; a: ExprNode }
   | { t: 'bin'; op: string; a: ExprNode; b: ExprNode }
+  | { t: 'tern'; cond: ExprNode; a: ExprNode; b: ExprNode }
   | { t: 'call'; fn: string; args: ExprNode[] }
 
 export interface MxExprContext {
   vars: Record<string, number>
+  arrays?: Record<string, number[] | number[][]>
   rng: () => number
 }
 
 const exprCache = new Map<string, ExprNode | null>()
+
+function sampleBoxMullerGaussian(rng: () => number, mean: number, std: number): number {
+  const u1 = Math.max(1e-12, rng())
+  const u2 = rng()
+  const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
+  return mean + z0 * std
+}
 
 function tokenizeExpr(src: string): string[] | null {
   const tokens: string[] = []
@@ -273,27 +323,15 @@ function tokenizeExpr(src: string): string[] | null {
       i++
       continue
     }
-    // dice: 2D6 / D20
-    const diceMatch = /^(\d*)[dD](\d+)/.exec(src.slice(i))
-    if (diceMatch && (i === 0 || !/[A-Za-z0-9_.]/.test(src[i - 1]!))) {
-      tokens.push(`#dice:${diceMatch[1] || '1'}:${diceMatch[2]}`)
-      i += diceMatch[0].length
-      continue
-    }
-    const numMatch = /^(\d+\.?\d*|\.\d+)/.exec(src.slice(i))
-    if (numMatch) {
-      tokens.push(numMatch[0])
-      i += numMatch[0].length
-      continue
-    }
-    const idMatch = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i))
-    if (idMatch) {
-      tokens.push(idMatch[0])
-      i += idMatch[0].length
-      continue
-    }
+    // 优先检查双字符运算符（特别是 '..' 必须在数字小数点之前匹配，防止 '3..6' 被拆成 '3.' 和 '.6'）
     const two = src.slice(i, i + 2)
+    if (two === '<>') {
+      tokens.push('!=')
+      i += 2
+      continue
+    }
     if (
+      two === '..' ||
       two === '>=' ||
       two === '<=' ||
       two === '==' ||
@@ -305,7 +343,26 @@ function tokenizeExpr(src: string): string[] | null {
       i += 2
       continue
     }
-    if ('+-*/%^(),<>'.includes(ch)) {
+    // dice: 2D6 / D20
+    const diceMatch = /^(\d*)[dD](\d+)/.exec(src.slice(i))
+    if (diceMatch && (i === 0 || !/[A-Za-z0-9_.]/.test(src[i - 1]!))) {
+      tokens.push(`#dice:${diceMatch[1] || '1'}:${diceMatch[2]}`)
+      i += diceMatch[0].length
+      continue
+    }
+    const numMatch = /^(\d+(?:\.\d+)?|\.\d+)/.exec(src.slice(i))
+    if (numMatch) {
+      tokens.push(numMatch[0])
+      i += numMatch[0].length
+      continue
+    }
+    const idMatch = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i))
+    if (idMatch) {
+      tokens.push(idMatch[0])
+      i += idMatch[0].length
+      continue
+    }
+    if ('+-*/%^(),<>!?:[]'.includes(ch)) {
       tokens.push(ch)
       i++
       continue
@@ -329,23 +386,63 @@ function parseExprTokens(tokens: string[]): ExprNode | null {
     '>': 4,
     '<=': 4,
     '>=': 4,
-    '+': 5,
-    '-': 5,
-    '*': 6,
-    '/': 6,
-    '%': 6,
-    '^': 7
+    '..': 5,
+    '+': 6,
+    '-': 6,
+    '*': 7,
+    '/': 7,
+    '%': 7,
+    '^': 8
+  }
+
+  function attachSubscripts(base: ExprNode): ExprNode | null {
+    let cur = base
+    while (peek() === '[') {
+      take()
+      const indices: ExprNode[] = []
+      if (peek() === ']') return null
+      for (;;) {
+        const idxExpr = ternary()
+        if (!idxExpr) return null
+        indices.push(idxExpr)
+        if (peek() === ',') {
+          take()
+          continue
+        }
+        break
+      }
+      if (take() !== ']') return null
+      cur = { t: 'idx', target: cur, indices }
+    }
+    return cur
   }
 
   function primary(): ExprNode | null {
     const tk = take()
     if (tk === undefined) return null
     if (tk === '(') {
-      const inner = binary(0)
-      if (take() !== ')') return null
-      return inner
+      const inner = ternary()
+      if (!inner || take() !== ')') return null
+      return attachSubscripts(inner)
     }
-    if (tk === '-' || tk === '+') {
+    if (tk === '[') {
+      const items: ExprNode[] = []
+      if (peek() !== ']') {
+        for (;;) {
+          const item = ternary()
+          if (!item) return null
+          items.push(item)
+          if (peek() === ',') {
+            take()
+            continue
+          }
+          break
+        }
+      }
+      if (take() !== ']') return null
+      return attachSubscripts({ t: 'arr', items })
+    }
+    if (tk === '-' || tk === '+' || tk === '!') {
       const a = primary()
       return a ? { t: 'un', op: tk, a } : null
     }
@@ -360,7 +457,7 @@ function parseExprTokens(tokens: string[]): ExprNode | null {
         const args: ExprNode[] = []
         if (peek() !== ')') {
           for (;;) {
-            const arg = binary(0)
+            const arg = ternary()
             if (!arg) return null
             args.push(arg)
             if (peek() === ',') {
@@ -371,9 +468,9 @@ function parseExprTokens(tokens: string[]): ExprNode | null {
           }
         }
         if (take() !== ')') return null
-        return { t: 'call', fn: tk.toLowerCase(), args }
+        return attachSubscripts({ t: 'call', fn: tk.toLowerCase(), args })
       }
-      return { t: 'id', name: tk }
+      return attachSubscripts({ t: 'id', name: tk })
     }
     return null
   }
@@ -393,7 +490,21 @@ function parseExprTokens(tokens: string[]): ExprNode | null {
     return left
   }
 
-  const root = binary(0)
+  function ternary(): ExprNode | null {
+    const cond = binary(0)
+    if (!cond) return null
+    if (peek() === '?') {
+      take()
+      const tBranch = ternary()
+      if (!tBranch || take() !== ':') return null
+      const fBranch = ternary()
+      if (!fBranch) return null
+      return { t: 'tern', cond, a: tBranch, b: fBranch }
+    }
+    return cond
+  }
+
+  const root = ternary()
   if (!root || pos !== tokens.length) return null
   return root
 }
@@ -408,6 +519,49 @@ export function parseMxExpression(src: string): ExprNode | null {
   return ast
 }
 
+function resolveArrayFromNode(node: ExprNode, ctx: MxExprContext): number[] | number[][] | null {
+  if (node.t === 'id' && ctx.arrays) {
+    if (node.name in ctx.arrays) return ctx.arrays[node.name]!
+    const lower = node.name.toLowerCase()
+    for (const k of Object.keys(ctx.arrays)) {
+      if (k.toLowerCase() === lower) return ctx.arrays[k]!
+    }
+  } else if (node.t === 'arr') {
+    if (node.items.length > 0 && node.items.every((it) => it.t === 'arr')) {
+      return node.items.map((it) =>
+        (it as { t: 'arr'; items: ExprNode[] }).items.map((sub) => evalAst(sub, ctx))
+      )
+    }
+    return node.items.map((it) => evalAst(it, ctx))
+  } else if (node.t === 'idx' && node.indices.length === 1) {
+    const parentArr = resolveArrayFromNode(node.target, ctx)
+    if (parentArr && parentArr.length > 0 && Array.isArray(parentArr[0])) {
+      const rIdx = Math.max(
+        0,
+        Math.min(parentArr.length - 1, Math.round(evalAst(node.indices[0]!, ctx)))
+      )
+      return (parentArr as number[][])[rIdx] ?? null
+    }
+  }
+  return null
+}
+
+function evalFlatValues(args: ExprNode[], ctx: MxExprContext): number[] {
+  const out: number[] = []
+  for (const arg of args) {
+    const arr = resolveArrayFromNode(arg, ctx)
+    if (arr) {
+      for (const item of arr) {
+        if (Array.isArray(item)) out.push(...item)
+        else out.push(item)
+      }
+    } else {
+      out.push(evalAst(arg, ctx))
+    }
+  }
+  return out
+}
+
 function evalAst(node: ExprNode, ctx: MxExprContext): number {
   switch (node.t) {
     case 'num':
@@ -418,8 +572,37 @@ function evalAst(node: ExprNode, ctx: MxExprContext): number {
       const lower = name.toLowerCase()
       if (lower === 'pi') return Math.PI
       if (lower === 'e') return Math.E
+      if (lower === 'true') return 1
+      if (lower === 'false') return 0
       for (const k of Object.keys(ctx.vars)) if (k.toLowerCase() === lower) return ctx.vars[k]!
+      const arr = resolveArrayFromNode(node, ctx)
+      if (arr && arr.length > 0) {
+        const first = arr[0]
+        return Array.isArray(first) ? (first[0] ?? 0) : (first ?? 0)
+      }
       return 0
+    }
+    case 'arr': {
+      if (!node.items.length) return 0
+      return evalAst(node.items[0]!, ctx)
+    }
+    case 'idx': {
+      const arr = resolveArrayFromNode(node.target, ctx)
+      if (!arr || !arr.length) return 0
+      if (Array.isArray(arr[0])) {
+        const mat = arr as number[][]
+        const r = Math.max(0, Math.min(mat.length - 1, Math.round(evalAst(node.indices[0]!, ctx))))
+        const row = mat[r] ?? []
+        if (!row.length) return 0
+        const c =
+          node.indices.length >= 2
+            ? Math.max(0, Math.min(row.length - 1, Math.round(evalAst(node.indices[1]!, ctx))))
+            : 0
+        return row[c] ?? 0
+      }
+      const vec = arr as number[]
+      const i = Math.max(0, Math.min(vec.length - 1, Math.round(evalAst(node.indices[0]!, ctx))))
+      return vec[i] ?? 0
     }
     case 'dice': {
       let sum = 0
@@ -430,12 +613,29 @@ function evalAst(node: ExprNode, ctx: MxExprContext): number {
     }
     case 'un': {
       const a = evalAst(node.a, ctx)
+      if (node.op === '!') return a === 0 ? 1 : 0
       return node.op === '-' ? -a : a
     }
+    case 'tern': {
+      const c = evalAst(node.cond, ctx)
+      return c !== 0 ? evalAst(node.a, ctx) : evalAst(node.b, ctx)
+    }
     case 'bin': {
+      if (node.op === '&&') {
+        return evalAst(node.a, ctx) !== 0 && evalAst(node.b, ctx) !== 0 ? 1 : 0
+      }
+      if (node.op === '||') {
+        return evalAst(node.a, ctx) !== 0 || evalAst(node.b, ctx) !== 0 ? 1 : 0
+      }
       const a = evalAst(node.a, ctx)
       const b = evalAst(node.b, ctx)
       switch (node.op) {
+        case '..': {
+          const lo = Math.ceil(Math.min(a, b))
+          const hi = Math.floor(Math.max(a, b))
+          if (hi <= lo) return lo
+          return lo + Math.floor(ctx.rng() * (hi - lo + 1))
+        }
         case '+':
           return a + b
         case '-':
@@ -460,48 +660,178 @@ function evalAst(node: ExprNode, ctx: MxExprContext): number {
           return Math.abs(a - b) < 1e-9 ? 1 : 0
         case '!=':
           return Math.abs(a - b) >= 1e-9 ? 1 : 0
-        case '&&':
-          return a && b ? 1 : 0
-        case '||':
-          return a || b ? 1 : 0
         default:
           return 0
       }
     }
     case 'call': {
+      // Lazy-evaluated conditional functions
+      if (node.fn === 'if') {
+        const cond = node.args[0] ? evalAst(node.args[0], ctx) : 0
+        return cond !== 0
+          ? node.args[1]
+            ? evalAst(node.args[1], ctx)
+            : 0
+          : node.args[2]
+            ? evalAst(node.args[2], ctx)
+            : 0
+      }
+      // Array-aware Math.js functions
+      if (
+        node.fn === 'min' ||
+        node.fn === 'max' ||
+        node.fn === 'sum' ||
+        node.fn === 'mean' ||
+        node.fn === 'avg' ||
+        node.fn === 'median' ||
+        node.fn === 'std' ||
+        node.fn === 'variance' ||
+        node.fn === 'pickrandom'
+      ) {
+        const vals = evalFlatValues(node.args, ctx)
+        if (!vals.length) return 0
+        switch (node.fn) {
+          case 'min':
+            return Math.min(...vals)
+          case 'max':
+            return Math.max(...vals)
+          case 'sum':
+            return vals.reduce((s, x) => s + x, 0)
+          case 'mean':
+          case 'avg':
+            return vals.reduce((s, x) => s + x, 0) / vals.length
+          case 'median': {
+            const sorted = [...vals].sort((x, y) => x - y)
+            const mid = Math.floor(sorted.length / 2)
+            return sorted.length % 2 === 1
+              ? sorted[mid]!
+              : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+          }
+          case 'variance':
+          case 'std': {
+            if (vals.length <= 1) return 0
+            const mu = vals.reduce((s, x) => s + x, 0) / vals.length
+            const sq = vals.reduce((s, x) => s + (x - mu) * (x - mu), 0) / vals.length
+            return node.fn === 'std' ? Math.sqrt(sq) : sq
+          }
+          case 'pickrandom':
+            return vals[Math.floor(ctx.rng() * vals.length)] ?? 0
+        }
+      }
+
       const args = node.args.map((a) => evalAst(a, ctx))
       switch (node.fn) {
-        case 'min':
-          return args.length ? Math.min(...args) : 0
-        case 'max':
-          return args.length ? Math.max(...args) : 0
+        // Math.js arithmetic & algebraic
+        case 'add':
+          return (args[0] ?? 0) + (args[1] ?? 0)
+        case 'subtract':
+          return (args[0] ?? 0) - (args[1] ?? 0)
+        case 'multiply':
+          return (args[0] ?? 0) * (args[1] ?? 0)
+        case 'divide':
+          return (args[1] ?? 0) === 0 ? 0 : (args[0] ?? 0) / (args[1] ?? 1)
+        case 'mod': {
+          const b = args[1] ?? 0
+          if (b === 0) return 0
+          const a = args[0] ?? 0
+          return ((a % b) + b) % b
+        }
+        case 'sign':
+          return Math.sign(args[0] ?? 0)
+        case 'square': {
+          const x = args[0] ?? 0
+          return x * x
+        }
+        case 'cube': {
+          const x = args[0] ?? 0
+          return x * x * x
+        }
+        case 'cbrt':
+          return Math.cbrt(args[0] ?? 0)
+        case 'hypot':
+          return Math.hypot(...args)
         case 'floor':
           return Math.floor(args[0] ?? 0)
         case 'ceil':
           return Math.ceil(args[0] ?? 0)
-        case 'round':
-          return Math.round(args[0] ?? 0)
+        case 'round': {
+          const decimals = args[1] != null ? Math.max(0, Math.min(8, Math.round(args[1]))) : 0
+          if (decimals === 0) return Math.round(args[0] ?? 0)
+          const f = Math.pow(10, decimals)
+          return Math.round((args[0] ?? 0) * f) / f
+        }
         case 'abs':
           return Math.abs(args[0] ?? 0)
         case 'sqrt':
           return Math.sqrt(Math.max(0, args[0] ?? 0))
         case 'pow':
           return Math.pow(args[0] ?? 0, args[1] ?? 1)
+        case 'exp':
+          return Math.exp(Math.min(80, args[0] ?? 0))
         case 'log':
-          return Math.log(Math.max(1e-9, args[0] ?? 1))
+          return args[1] != null
+            ? Math.log(Math.max(1e-9, args[0] ?? 1)) / Math.log(Math.max(1e-9, args[1] || Math.E))
+            : Math.log(Math.max(1e-9, args[0] ?? 1))
+        case 'log10':
+          return Math.log10(Math.max(1e-9, args[0] ?? 1))
+        case 'log2':
+          return Math.log2(Math.max(1e-9, args[0] ?? 1))
         case 'clamp':
           return Math.max(args[1] ?? 0, Math.min(args[2] ?? 0, args[0] ?? 0))
-        case 'if':
-          return (args[0] ?? 0) ? (args[1] ?? 0) : (args[2] ?? 0)
+        // Math.js relational & logical functions (used in Machinations Combining Conditions: largerEq(a,2)*(c+4))
+        case 'larger':
+          return (args[0] ?? 0) > (args[1] ?? 0) ? 1 : 0
+        case 'largereq':
+          return (args[0] ?? 0) >= (args[1] ?? 0) ? 1 : 0
+        case 'smaller':
+          return (args[0] ?? 0) < (args[1] ?? 0) ? 1 : 0
+        case 'smallereq':
+          return (args[0] ?? 0) <= (args[1] ?? 0) ? 1 : 0
+        case 'equal':
+          return Math.abs((args[0] ?? 0) - (args[1] ?? 0)) < 1e-9 ? 1 : 0
+        case 'unequal':
+          return Math.abs((args[0] ?? 0) - (args[1] ?? 0)) >= 1e-9 ? 1 : 0
+        case 'and':
+          return args.length ? (args.every((v) => v !== 0) ? 1 : 0) : 0
+        case 'or':
+          return args.some((v) => v !== 0) ? 1 : 0
+        case 'not':
+          return (args[0] ?? 0) === 0 ? 1 : 0
+        case 'xor':
+          return ((args[0] ?? 0) !== 0) !== ((args[1] ?? 0) !== 0) ? 1 : 0
+        // Trigonometry
+        case 'sin':
+          return Math.sin(args[0] ?? 0)
+        case 'cos':
+          return Math.cos(args[0] ?? 0)
+        case 'tan':
+          return Math.tan(args[0] ?? 0)
+        case 'asin':
+          return Math.asin(Math.max(-1, Math.min(1, args[0] ?? 0)))
+        case 'acos':
+          return Math.acos(Math.max(-1, Math.min(1, args[0] ?? 0)))
+        case 'atan':
+          return Math.atan(args[0] ?? 0)
+        case 'atan2':
+          return Math.atan2(args[0] ?? 0, args[1] ?? 1)
+        // Randomness & distributions
         case 'random': {
           const lo = args[0] ?? 0
           const hi = args[1] ?? 1
           return lo + ctx.rng() * (hi - lo)
         }
-        case 'randint': {
-          const lo = Math.ceil(args[0] ?? 0)
-          const hi = Math.floor(args[1] ?? 1)
-          return lo + Math.floor(ctx.rng() * (hi - lo + 1))
+        case 'randint':
+        case 'randomint': {
+          const lo = Math.ceil(Math.min(args[0] ?? 0, args[1] ?? 1))
+          const hi = Math.floor(Math.max(args[0] ?? 0, args[1] ?? 1))
+          return lo + Math.floor(ctx.rng() * Math.max(1, hi - lo + 1))
+        }
+        case 'norm':
+        case 'gaussian':
+        case 'normal': {
+          const mean = args[0] ?? 0
+          const std = Math.max(0, args[1] ?? 1)
+          return sampleBoxMullerGaussian(ctx.rng, mean, std)
         }
         case 'lookup': {
           // 1-based 等级查表函数：lookup(level, v1, v2, v3, ...)
@@ -554,17 +884,58 @@ export interface MxFormulaValidation {
 const KNOWN_MX_FUNCTIONS = new Set([
   'min',
   'max',
+  'sum',
+  'mean',
+  'avg',
+  'median',
+  'std',
+  'variance',
+  'pickrandom',
+  'add',
+  'subtract',
+  'multiply',
+  'divide',
+  'mod',
+  'sign',
+  'square',
+  'cube',
+  'cbrt',
+  'hypot',
   'floor',
   'ceil',
   'round',
   'abs',
   'sqrt',
   'pow',
+  'exp',
   'log',
+  'log10',
+  'log2',
   'clamp',
+  'larger',
+  'largereq',
+  'smaller',
+  'smallereq',
+  'equal',
+  'unequal',
+  'and',
+  'or',
+  'not',
+  'xor',
+  'sin',
+  'cos',
+  'tan',
+  'asin',
+  'acos',
+  'atan',
+  'atan2',
   'if',
   'random',
   'randint',
+  'randomint',
+  'norm',
+  'gaussian',
+  'normal',
   'lookup',
   'lookup0',
   'lerp',
@@ -582,38 +953,62 @@ export function validateMxFormula(
   const s = (formula ?? '').trim()
   if (!s) return { valid: true, referencedVars: [] }
 
-  // 检查括号配对
-  let depth = 0
+  // 检查圆括号与方括号配对
+  let depthParen = 0
+  let depthBracket = 0
   for (const ch of s) {
-    if (ch === '(') depth++
+    if (ch === '(') depthParen++
     else if (ch === ')') {
-      depth--
-      if (depth < 0)
+      depthParen--
+      if (depthParen < 0)
         return { valid: false, error: 'Unmatched closing parenthesis ")"', referencedVars: [] }
+    } else if (ch === '[') depthBracket++
+    else if (ch === ']') {
+      depthBracket--
+      if (depthBracket < 0)
+        return { valid: false, error: 'Unmatched closing bracket "]"', referencedVars: [] }
     }
   }
-  if (depth !== 0) {
+  if (depthParen !== 0) {
     return { valid: false, error: 'Unclosed parenthesis "("', referencedVars: [] }
   }
+  if (depthBracket !== 0) {
+    return { valid: false, error: 'Unclosed bracket "["', referencedVars: [] }
+  }
 
-  let exprToCheck = s
+  const exprsToCheck: string[] = []
   if (kind === 'resource') {
+    // Gate 分流资源边支持条件公式（如 "<4", ">=4", "<>1", "1..2"，且允许附带 "|interval"）
     const spec = parseMxFlowFormula(s)
-    if (spec.type === 'all') return { valid: true, referencedVars: [] }
-    exprToCheck = spec.expr
+    const coreRaw = s.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
+    const asGateCond = parseMxStateFormula(coreRaw)
+    if (asGateCond.type === 'activator' || asGateCond.type === 'range') {
+      if (spec.intervalExpr) exprsToCheck.push(spec.intervalExpr)
+      else return { valid: true, referencedVars: [] }
+    } else if (asGateCond.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) {
+      exprsToCheck.push(asGateCond.expr)
+      if (spec.intervalExpr) exprsToCheck.push(spec.intervalExpr)
+    } else {
+      if (spec.type === 'all') {
+        if (spec.intervalExpr) exprsToCheck.push(spec.intervalExpr)
+        else return { valid: true, referencedVars: [] }
+      } else {
+        exprsToCheck.push(spec.expr)
+        if (spec.intervalExpr) exprsToCheck.push(spec.intervalExpr)
+      }
+    }
   } else if (kind === 'state' || kind === 'end') {
     const spec = parseMxStateFormula(s)
     if (spec.type !== 'expr') return { valid: true, referencedVars: [] }
-    exprToCheck = spec.expr
-  }
-
-  const tokens = tokenizeExpr(exprToCheck)
-  if (!tokens || !tokens.length) {
-    return { valid: false, error: 'Invalid formula syntax', referencedVars: [] }
-  }
-  const ast = parseExprTokens(tokens)
-  if (!ast) {
-    return { valid: false, error: 'Incomplete or malformed expression', referencedVars: [] }
+    const signedVarMod =
+      kind === 'state' ? /^[+-]\s*([A-Za-z_][A-Za-z0-9_]*)\s*%?\s*i?$/i.exec(spec.expr) : null
+    if (signedVarMod) {
+      exprsToCheck.push(signedVarMod[1]!)
+    } else {
+      exprsToCheck.push(spec.expr)
+    }
+  } else {
+    exprsToCheck.push(s)
   }
 
   const vars = new Set<string>()
@@ -621,12 +1016,29 @@ export function validateMxFormula(
   const walk = (n: ExprNode): void => {
     if (n.t === 'id') {
       const low = n.name.toLowerCase()
-      if (low !== 'pi' && low !== 'e' && low !== 'step' && low !== 't' && low !== 'self') {
+      if (
+        low !== 'pi' &&
+        low !== 'e' &&
+        low !== 'step' &&
+        low !== 't' &&
+        low !== 'self' &&
+        low !== 'true' &&
+        low !== 'false'
+      ) {
         vars.add(n.name)
       }
+    } else if (n.t === 'arr') {
+      n.items.forEach(walk)
+    } else if (n.t === 'idx') {
+      walk(n.target)
+      n.indices.forEach(walk)
     } else if (n.t === 'un') {
       walk(n.a)
     } else if (n.t === 'bin') {
+      walk(n.a)
+      walk(n.b)
+    } else if (n.t === 'tern') {
+      walk(n.cond)
       walk(n.a)
       walk(n.b)
     } else if (n.t === 'call') {
@@ -634,7 +1046,18 @@ export function validateMxFormula(
       n.args.forEach(walk)
     }
   }
-  walk(ast)
+
+  for (const exprStr of exprsToCheck) {
+    const tokens = tokenizeExpr(exprStr)
+    if (!tokens || !tokens.length) {
+      return { valid: false, error: 'Invalid formula syntax', referencedVars: [] }
+    }
+    const ast = parseExprTokens(tokens)
+    if (!ast) {
+      return { valid: false, error: 'Incomplete or malformed expression', referencedVars: [] }
+    }
+    walk(ast)
+  }
   if (unknownFn) {
     return {
       valid: false,
@@ -666,16 +1089,23 @@ export function validateMxExpression(src: string): boolean {
 // ───────────────────────────── 连线公式 ─────────────────────────────
 
 export type MxFlowSpec =
-  { type: 'all' } | { type: 'expr'; expr: string; probability?: number; every?: number }
+  | { type: 'all'; every?: number; intervalExpr?: string }
+  | {
+      type: 'expr'
+      expr: string
+      probability?: number
+      every?: number
+      intervalExpr?: string
+    }
 
 const flowSpecCache = new Map<string, MxFlowSpec>()
 
 /**
  * 解析资源连线流量：
  * - `` / `1` / `Gold*0.1` → 表达式
- * - `all` → 全部
- * - `50%` → 概率 0.5 传 1 个；`3 50%` 或 `3@50%` → 概率 0.5 传 3 个
- * - `2 every 3` / `2|3` → 每 3 步传 2 个
+ * - `all` / `all|3` → 全部
+ * - `50%` → 概率 0.5 传 1 个；`250%` → 保底传 2 个 + 50% 概率额外传第 3 个；`3 50%` 或 `3@50%` → 概率 0.5 传 3 个
+ * - `2 every 3` / `2|3` / `D6|D6` / `1|3..6` → 支持常数、随机区间、骰子与表达式间隔
  */
 export function parseMxFlowFormula(raw: string | undefined): MxFlowSpec {
   const s = (raw ?? '').trim()
@@ -689,22 +1119,48 @@ export function parseMxFlowFormula(raw: string | undefined): MxFlowSpec {
   } else {
     let rest = s
     let every: number | undefined
-    const everyMatch = /^(.*?)\s*(?:\bevery\b|\|)\s*(\d+)\s*$/i.exec(rest)
-    if (everyMatch) {
-      every = Math.max(1, Number(everyMatch[2]))
-      rest = everyMatch[1]!.trim() || '1'
-    }
-    let probability: number | undefined
-    const probOnly = /^(\d+(?:\.\d+)?)\s*%$/.exec(rest)
-    if (probOnly) {
-      result = { type: 'expr', expr: '1', probability: Number(probOnly[1]) / 100, every }
-    } else {
-      const probSuffix = /^(.*?)\s*@?\s*(\d+(?:\.\d+)?)\s*%$/.exec(rest)
-      if (probSuffix && probSuffix[1]!.trim()) {
-        probability = Number(probSuffix[2]) / 100
-        rest = probSuffix[1]!.trim().replace(/@$/, '').trim()
+    let intervalExpr: string | undefined
+    // 匹配单竖线 `|`（排除逻辑或 `||`）或关键字 `every`
+    const intervalSplit = /^(.*?)\s*(?:\bevery\b|(?<!\|)\|(?!\|))\s*(.+)$/i.exec(rest)
+    if (intervalSplit && intervalSplit[2]!.trim()) {
+      const rawIv = intervalSplit[2]!.trim()
+      intervalExpr = rawIv
+      if (/^\d+$/.test(rawIv)) {
+        every = Math.max(1, Number(rawIv))
       }
-      result = { type: 'expr', expr: rest || '1', probability, every }
+      rest = intervalSplit[1]!.trim() || '1'
+    }
+    if (/^all$/i.test(rest)) {
+      result = {
+        type: 'all',
+        ...(every !== undefined ? { every } : {}),
+        ...(intervalExpr !== undefined ? { intervalExpr } : {})
+      }
+    } else {
+      const probOnly = /^(\d+(?:\.\d+)?)\s*%$/.exec(rest)
+      if (probOnly) {
+        result = {
+          type: 'expr',
+          expr: '1',
+          probability: Number(probOnly[1]) / 100,
+          ...(every !== undefined ? { every } : {}),
+          ...(intervalExpr !== undefined ? { intervalExpr } : {})
+        }
+      } else {
+        let probability: number | undefined
+        const probSuffix = /^(.*?)\s*@?\s*(\d+(?:\.\d+)?)\s*%$/.exec(rest)
+        if (probSuffix && probSuffix[1]!.trim()) {
+          probability = Number(probSuffix[2]) / 100
+          rest = probSuffix[1]!.trim().replace(/@$/, '').trim()
+        }
+        result = {
+          type: 'expr',
+          expr: rest || '1',
+          ...(probability !== undefined ? { probability } : {}),
+          ...(every !== undefined ? { every } : {}),
+          ...(intervalExpr !== undefined ? { intervalExpr } : {})
+        }
+      }
     }
   }
   if (flowSpecCache.size > 4000) flowSpecCache.clear()
@@ -714,6 +1170,10 @@ export function parseMxFlowFormula(raw: string | undefined): MxFlowSpec {
 
 export type MxStateSpec =
   | { type: 'modifier'; delta: number; percent: boolean }
+  | { type: 'fraction_modifier'; numerator: number; denominator: number }
+  | { type: 'interval_modifier'; delta: number; percent: boolean }
+  | { type: 'overwrite' }
+  | { type: 'probability'; pct: number }
   | { type: 'activator'; op: '>' | '<' | '>=' | '<=' | '==' | '!='; value: number }
   | { type: 'range'; lo: number; hi: number }
   | { type: 'trigger' }
@@ -722,7 +1182,18 @@ export type MxStateSpec =
 
 const stateSpecCache = new Map<string, MxStateSpec>()
 
-/** 解析状态连线标签 */
+/**
+ * 解析状态连线标签（对齐 Machinations.io 全部 8 类 State Connection 公式）：
+ * - `*` / 空 → Trigger
+ * - `!` → Reverse Trigger
+ * - `=` → Overwrite（节点值覆盖 / 连线公式值覆盖）
+ * - `+2i` / `-1i` / `+50%i` → Interval Modifier（动态修改资源连线间隔）
+ * - `+1/3` / `-2/4` → Fractional Node Modifier（每满 denominator 步进修改 numerator）
+ * - `+2` / `-0.5` / `+10%` → Node / Formula Modifier
+ * - `20%` → Probability（用于 Trigger Gate / Mixed Gate 状态触发概率）
+ * - `>=5` / `==0` / `=4` / `!=1` / `>=Price` → Condition Activator
+ * - `2..8` → Range Condition
+ */
 export function parseMxStateFormula(raw: string | undefined): MxStateSpec {
   const s = (raw ?? '').trim()
   const cached = stateSpecCache.get(s)
@@ -732,27 +1203,51 @@ export function parseMxStateFormula(raw: string | undefined): MxStateSpec {
     result = { type: 'trigger' }
   } else if (s === '!') {
     result = { type: 'reverse_trigger' }
+  } else if (s === '=') {
+    result = { type: 'overwrite' }
   } else {
-    const range = /^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/.exec(s)
-    if (range) {
-      result = { type: 'range', lo: Number(range[1]), hi: Number(range[2]) }
+    const ivMod = /^([+-])\s*(\d+(?:\.\d+)?)\s*(%?)\s*i$/i.exec(s)
+    if (ivMod) {
+      const delta = Number(ivMod[2]) * (ivMod[1] === '-' ? -1 : 1)
+      result = { type: 'interval_modifier', delta, percent: ivMod[3] === '%' }
     } else {
-      const act = /^(>=|<=|==|!=|>|<|=)\s*(-?\d+(?:\.\d+)?)$/.exec(s)
-      if (act) {
-        const op = act[1] === '=' ? '==' : (act[1] as '>' | '<' | '>=' | '<=' | '==' | '!=')
-        result = { type: 'activator', op, value: Number(act[2]) }
+      const fracMod = /^([+-])\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/.exec(s)
+      if (fracMod && Number(fracMod[3]) > 0) {
+        const numerator = Number(fracMod[2]) * (fracMod[1] === '-' ? -1 : 1)
+        result = { type: 'fraction_modifier', numerator, denominator: Number(fracMod[3]) }
       } else {
-        const mod = /^([+-])\s*(\d+(?:\.\d+)?)\s*(%?)$/.exec(s)
-        if (mod) {
-          const delta = Number(mod[2]) * (mod[1] === '-' ? -1 : 1)
-          result = { type: 'modifier', delta, percent: mod[3] === '%' }
+        const probState = /^(\d+(?:\.\d+)?)\s*%$/.exec(s)
+        if (probState) {
+          result = { type: 'probability', pct: Number(probState[1]) }
         } else {
-          const actExpr = /^(>=|<=|==|!=|>|<|=)\s*(.+)$/.exec(s)
-          if (actExpr && actExpr[2]!.trim()) {
-            const op = actExpr[1] === '=' ? '==' : actExpr[1]!
-            result = { type: 'expr', expr: `a ${op} (${actExpr[2]!.trim()})` }
+          const range = /^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/.exec(s)
+          if (range) {
+            result = { type: 'range', lo: Number(range[1]), hi: Number(range[2]) }
           } else {
-            result = { type: 'expr', expr: s }
+            const act = /^(>=|<=|==|!=|<>|>|<|=)\s*(-?\d+(?:\.\d+)?)$/.exec(s)
+            if (act) {
+              const op =
+                act[1] === '='
+                  ? '=='
+                  : act[1] === '<>'
+                    ? '!='
+                    : (act[1] as '>' | '<' | '>=' | '<=' | '==' | '!=')
+              result = { type: 'activator', op, value: Number(act[2]) }
+            } else {
+              const mod = /^([+-])\s*(\d+(?:\.\d+)?)\s*(%?)$/.exec(s)
+              if (mod) {
+                const delta = Number(mod[2]) * (mod[1] === '-' ? -1 : 1)
+                result = { type: 'modifier', delta, percent: mod[3] === '%' }
+              } else {
+                const actExpr = /^(>=|<=|==|!=|<>|>|<|=)\s*(.+)$/.exec(s)
+                if (actExpr && actExpr[2]!.trim()) {
+                  const op = actExpr[1] === '=' ? '==' : actExpr[1] === '<>' ? '!=' : actExpr[1]!
+                  result = { type: 'expr', expr: `a ${op} (${actExpr[2]!.trim()})` }
+                } else {
+                  result = { type: 'expr', expr: s }
+                }
+              }
+            }
           }
         }
       }
@@ -761,6 +1256,39 @@ export function parseMxStateFormula(raw: string | undefined): MxStateSpec {
   if (stateSpecCache.size > 4000) stateSpecCache.clear()
   stateSpecCache.set(s, result)
   return result
+}
+
+const MX_BOOLEAN_STATE_EXPR_RE =
+  /[<>=!]|(?:\b(?:larger|largereq|smaller|smallereq|equal|unequal|and|or|not|xor)\s*\()/i
+
+/** 判断状态连线 `expr` 公式是否为布尔激活条件（含比较运算符或 Math.js 关系/逻辑函数） */
+export function isMxBooleanStateExpr(expr: string): boolean {
+  return MX_BOOLEAN_STATE_EXPR_RE.test(expr)
+}
+
+function parseSignedVarStateModifier(
+  expr: string
+): { sign: 1 | -1; ident: string; percent: boolean; interval: boolean } | null {
+  const m = /^([+-])\s*([A-Za-z_][A-Za-z0-9_]*)\s*(%?)\s*(i?)$/i.exec(expr.trim())
+  if (!m) return null
+  const ident = m[2]!
+  const low = ident.toLowerCase()
+  if (
+    low === 'a' ||
+    low === 'self' ||
+    low === 'step' ||
+    low === 't' ||
+    low === 'true' ||
+    low === 'false'
+  ) {
+    return null
+  }
+  return {
+    sign: m[1] === '-' ? -1 : 1,
+    ident,
+    percent: m[3] === '%',
+    interval: m[4]?.toLowerCase() === 'i'
+  }
 }
 
 // ───────────────────────────── 标识符 ─────────────────────────────
@@ -802,6 +1330,17 @@ export interface MxEvent {
   detail?: string
 }
 
+export interface MxPoolTokenStackItem {
+  resId: string
+  count: number
+}
+
+export interface MxBufferItem {
+  release: number
+  amount: number
+  resourceId?: string
+}
+
 export interface MxRuntimeState {
   step: number
   /** Pool / Register / Delay / Queue / Converter 缓冲的数值 */
@@ -810,8 +1349,8 @@ export interface MxRuntimeState {
   active: Record<string, boolean>
   /** Gate 确定性分流游标 */
   gateCursor: Record<string, number>
-  /** Delay / Queue 缓冲：[释放步, 数量] */
-  buffers: Record<string, Array<{ release: number; amount: number }>>
+  /** Delay / Queue 缓冲：[释放步, 数量, 资源颜色] */
+  buffers: Record<string, MxBufferItem[]>
   /** 每条边本步实际流量 */
   edgeFlows: Record<string, number>
   /** 本步触发 / 执行过的节点 */
@@ -820,6 +1359,19 @@ export interface MxRuntimeState {
   endReason?: string
   totalProduced: number
   totalConsumed: number
+  /** Node Modifier 状态边上一次已传导的源节点数值（按状态边 ID 追踪 ΔS） */
+  prevEdgeOrigin?: Record<string, number>
+  /** 资源边上次成功触发的步数与当前采样的等待间隔（支持 1|3..6、D6|D6 与 +xi 动态间隔） */
+  edgeLastStep?: Record<string, number>
+  edgeWaitSteps?: Record<string, number>
+  /** Gate 触发计数、配额计数与随机周期剩余配额 */
+  gateTrigCount?: Record<string, number>
+  gateQuotaSent?: Record<string, number>
+  gateLastRoll?: Record<string, number>
+  /** 多色资源池 Token 栈（LIFO 默认，支持按颜色过滤与 shuffleOrigin 随机抽取） */
+  poolTokens?: Record<string, MxPoolTokenStackItem[]>
+  /** 运行时采样的 Custom Variables 参数值 */
+  runtimeParams?: Record<string, number>
 }
 
 export interface MxRunOptions {
@@ -832,19 +1384,103 @@ export interface MxRunOptions {
   skipAgents?: boolean
 }
 
-function capOf(node: MxNode, doc?: MxDocument, state?: MxRuntimeState): number {
+function capOf(node: MxNode): number {
   if (node.capacity == null || node.capacity <= 0) return Number.POSITIVE_INFINITY
-  if (doc && state) {
-    return Math.max(0, node.capacity + modifierBonus(doc, node.id, state, node.capacity))
-  }
   return node.capacity
 }
 
-export function resolveMxParams(doc: MxDocument, scenarioId?: string): Record<string, number> {
-  const out: Record<string, number> = {}
+function parseNumericArrayLiteral(raw: string | undefined): number[] | number[][] | null {
+  if (!raw) return null
+  const s = raw.trim()
+  if (!s.startsWith('[') || !s.endsWith(']')) return null
+  try {
+    const parsed = JSON.parse(s)
+    if (!Array.isArray(parsed) || !parsed.length) return null
+    if (Array.isArray(parsed[0])) {
+      return parsed.map((row) =>
+        Array.isArray(row) ? row.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0)) : [0]
+      )
+    }
+    return parsed.map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0))
+  } catch {
+    return null
+  }
+}
+
+function buildParamArrays(doc: MxDocument): Record<string, number[] | number[][]> | undefined {
+  let out: Record<string, number[] | number[][]> | undefined
   for (const p of doc.params) {
     const name = mxIdentifier(p.name)
-    if (name) out[name] = p.value
+    if (!name) continue
+    const arr =
+      p.values && Array.isArray(p.values) && p.values.length
+        ? p.values
+        : parseNumericArrayLiteral(p.formula)
+    if (arr) {
+      if (!out) out = {}
+      out[name] = arr
+    }
+  }
+  return out
+}
+
+function sampleCustomParamValue(
+  p: MxParam,
+  rng: () => number,
+  scalars: Record<string, number>,
+  arrays?: Record<string, number[] | number[][]>
+): number {
+  const kind = p.varKind ?? 'number'
+  if (kind === 'random_range') {
+    const lo = p.min ?? 0
+    const hi = p.max ?? lo + 10
+    if (p.distribution === 'gaussian') {
+      const mean = p.mean ?? (lo + hi) / 2
+      const std = p.std ?? Math.max(1e-6, Math.abs(hi - lo) / 6)
+      let v = sampleBoxMullerGaussian(rng, mean, std)
+      if (p.min != null) v = Math.max(p.min, v)
+      if (p.max != null) v = Math.min(p.max, v)
+      return p.integerOnly ? Math.round(v) : Math.round(v * 1000) / 1000
+    }
+    if (p.integerOnly) {
+      const ilo = Math.ceil(Math.min(lo, hi))
+      const ihi = Math.floor(Math.max(lo, hi))
+      return ilo + Math.floor(rng() * Math.max(1, ihi - ilo + 1))
+    }
+    return Math.round((lo + rng() * (hi - lo)) * 1000) / 1000
+  }
+  if (kind === 'random_array') {
+    const arr =
+      (p.values && Array.isArray(p.values) ? p.values : parseNumericArrayLiteral(p.formula)) ?? []
+    const flat: number[] = []
+    for (const item of arr) {
+      if (Array.isArray(item)) flat.push(...item)
+      else if (Number.isFinite(item)) flat.push(item)
+    }
+    if (!flat.length) return p.value
+    return flat[Math.floor(rng() * flat.length)] ?? p.value
+  }
+  if (kind === 'expr' && p.formula?.trim() && !p.formula.trim().startsWith('[')) {
+    return evaluateMxExpression(p.formula, { vars: scalars, arrays, rng }, p.value)
+  }
+  return p.value
+}
+
+export function resolveMxParams(
+  doc: MxDocument,
+  scenarioId?: string,
+  rng?: () => number
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  const arrays = buildParamArrays(doc)
+  for (const p of doc.params) {
+    const name = mxIdentifier(p.name)
+    if (!name) continue
+    if (rng && p.varKind && p.varKind !== 'number' && p.varKind !== 'array') {
+      out[name] = sampleCustomParamValue(p, rng, out, arrays)
+    } else {
+      out[name] = p.value
+    }
   }
   const sc = doc.scenarios.find((s) => s.id === (scenarioId ?? doc.activeScenarioId))
   if (sc) {
@@ -857,13 +1493,16 @@ export function resolveMxParams(doc: MxDocument, scenarioId?: string): Record<st
 }
 
 const EMPTY_EDGES: MxEdge[] = []
+const POSITIONAL_LETTERS = 'abcdefghijklmnopqrstuvwxyz'
 
 interface MxGraphIndex {
   byId: Map<string, MxNode>
+  edgeById: Map<string, MxEdge>
   identEntries: Array<{ id: string; ident: string }>
   registers: MxNode[]
   delaysAndQueues: MxNode[]
   endNodes: MxNode[]
+  nodeModTargets: MxNode[]
   nodesByKind: Map<MxNodeKind, MxNode[]>
   outResByNode: Map<string, MxEdge[]>
   inResByNode: Map<string, MxEdge[]>
@@ -871,12 +1510,29 @@ interface MxGraphIndex {
   stateOutByNode: Map<string, MxEdge[]>
   stateInByEdge: Map<string, MxEdge[]>
   resEdgeById: Map<string, MxEdge>
+  paramArrays?: Record<string, number[] | number[][]>
 }
 
 const graphIndexCache = new WeakMap<
   MxDocument,
-  { nodesRef: MxNode[]; edgesRef: MxEdge[]; countN: number; countE: number; idx: MxGraphIndex }
+  {
+    nodesRef: MxNode[]
+    edgesRef: MxEdge[]
+    paramsRef: MxParam[]
+    countN: number
+    countE: number
+    countP: number
+    idx: MxGraphIndex
+  }
 >()
+
+function isFunctionRegisterNode(node: MxNode): boolean {
+  if (node.kind !== 'register') return false
+  const f = (node.formula ?? '').trim()
+  if (!f) return false
+  // 纯常数（如 "10"）且带有状态修改输入时可作为被修改的值寄存器；含变量/运算符则为函数寄存器
+  return !/^-?\d+(?:\.\d+)?$/.test(f)
+}
 
 function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
   const cached = graphIndexCache.get(doc)
@@ -884,12 +1540,15 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     cached &&
     cached.nodesRef === doc.nodes &&
     cached.edgesRef === doc.edges &&
+    cached.paramsRef === doc.params &&
     cached.countN === doc.nodes.length &&
-    cached.countE === doc.edges.length
+    cached.countE === doc.edges.length &&
+    cached.countP === doc.params.length
   ) {
     return cached.idx
   }
   const byId = new Map<string, MxNode>()
+  const edgeById = new Map<string, MxEdge>()
   const identEntries: Array<{ id: string; ident: string }> = []
   const registers: MxNode[] = []
   const delaysAndQueues: MxNode[] = []
@@ -916,6 +1575,7 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     kArr.push(n)
   }
   for (const e of doc.edges) {
+    edgeById.set(e.id, e)
     if (e.kind === 'resource') {
       resEdgeById.set(e.id, e)
       let outArr = outResByNode.get(e.from)
@@ -956,25 +1616,51 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
       }
     }
   }
+
+  const nodeModTargets: MxNode[] = []
+  for (const n of doc.nodes) {
+    if (n.kind !== 'pool' && n.kind !== 'register') continue
+    const sIns = stateInByNode.get(n.id)
+    if (!sIns || !sIns.length) continue
+    const isFuncReg = isFunctionRegisterNode(n)
+    const hasNodeMod = sIns.some((se) => {
+      const sp = parseMxStateFormula(se.formula)
+      if (sp.type === 'overwrite') return true
+      if (isFuncReg) return false
+      if (sp.type === 'modifier' || sp.type === 'fraction_modifier') return true
+      if (sp.type === 'expr') {
+        const sv = parseSignedVarStateModifier(sp.expr)
+        if (sv && !sv.interval) return true
+      }
+      return false
+    })
+    if (hasNodeMod) nodeModTargets.push(n)
+  }
+
   const idx: MxGraphIndex = {
     byId,
+    edgeById,
     identEntries,
     registers,
     delaysAndQueues,
     endNodes,
+    nodeModTargets,
     nodesByKind,
     outResByNode,
     inResByNode,
     stateInByNode,
     stateOutByNode,
     stateInByEdge,
-    resEdgeById
+    resEdgeById,
+    paramArrays: buildParamArrays(doc)
   }
   graphIndexCache.set(doc, {
     nodesRef: doc.nodes,
     edgesRef: doc.edges,
+    paramsRef: doc.params,
     countN: doc.nodes.length,
     countE: doc.edges.length,
+    countP: doc.params.length,
     idx
   })
   return idx
@@ -993,9 +1679,18 @@ function exprNeedsVars(src: string | undefined): boolean {
     if (!n || hasId) return
     if (n.t === 'id') {
       hasId = true
+    } else if (n.t === 'arr') {
+      n.items.forEach(walk)
+    } else if (n.t === 'idx') {
+      walk(n.target)
+      n.indices.forEach(walk)
     } else if (n.t === 'un') {
       walk(n.a)
     } else if (n.t === 'bin') {
+      walk(n.a)
+      walk(n.b)
+    } else if (n.t === 'tern') {
+      walk(n.cond)
       walk(n.a)
       walk(n.b)
     } else if (n.t === 'call') {
@@ -1014,7 +1709,7 @@ function buildVars(
   params: Record<string, number>,
   step: number
 ): Record<string, number> {
-  const vars: Record<string, number> = { ...params, step, t: step }
+  const vars: Record<string, number> = { ...params, step, STEP: step, t: step }
   const idx = getMxGraphIndex(doc)
   for (const entry of idx.identEntries) {
     const val = values[entry.id] ?? 0
@@ -1024,19 +1719,163 @@ function buildVars(
   return vars
 }
 
+// ───────── 多色资源池（LIFO / Shuffle / Color Filter）辅助函数 ─────────
+
+function countPoolTokensByColor(state: MxRuntimeState, poolId: string, resId?: string): number {
+  const totalVal = state.values[poolId] ?? 0
+  if (totalVal <= 0) return 0
+  if (!resId) return totalVal
+  const stack = state.poolTokens?.[poolId]
+  if (!stack || !stack.length) return 0
+  let sum = 0
+  for (const item of stack) {
+    if (item.resId === resId && item.count > 0) sum += item.count
+  }
+  return Math.round(sum * 1000) / 1000
+}
+
+function pushPoolTokens(
+  state: MxRuntimeState,
+  pool: MxNode,
+  positiveAdded: number,
+  resId: string | undefined
+): void {
+  if (positiveAdded <= 0) return
+  const color = resId || pool.resourceId || 'default'
+  state.poolTokens ??= {}
+  const stack = (state.poolTokens[pool.id] ??= [])
+  const top = stack[stack.length - 1]
+  if (top && top.resId === color) {
+    top.count = Math.round((top.count + positiveAdded) * 1000) / 1000
+  } else {
+    stack.push({ resId: color, count: Math.round(positiveAdded * 1000) / 1000 })
+  }
+}
+
+function popPoolTokens(
+  state: MxRuntimeState,
+  pool: MxNode,
+  amount: number,
+  options: { filterResId?: string; shuffle?: boolean; rng: () => number }
+): MxPoolTokenStackItem[] {
+  if (amount <= 0) return []
+  const stack = state.poolTokens?.[pool.id]
+  const fallbackColor = options.filterResId || pool.resourceId || 'default'
+  if (!stack || !stack.length) {
+    return [{ resId: fallbackColor, count: amount }]
+  }
+
+  // 指定颜色过滤：从栈顶向栈底后进先出抽取对应颜色
+  if (options.filterResId) {
+    let rem = amount
+    let taken = 0
+    for (let i = stack.length - 1; i >= 0 && rem > 1e-9; i--) {
+      const it = stack[i]!
+      if (it.resId !== options.filterResId || it.count <= 0) continue
+      const c = Math.min(it.count, rem)
+      it.count = Math.round((it.count - c) * 1000) / 1000
+      rem -= c
+      taken += c
+    }
+    state.poolTokens![pool.id] = stack.filter((x) => x.count > 1e-9)
+    return taken > 0 ? [{ resId: options.filterResId, count: Math.round(taken * 1000) / 1000 }] : []
+  }
+
+  // Shuffle Origin：在存在多种颜色时按存量权重随机无放回抽取
+  const distinctColors = new Set(stack.filter((x) => x.count > 1e-9).map((x) => x.resId))
+  if (options.shuffle && distinctColors.size > 1) {
+    const discreteUnits = Math.max(1, Math.min(64, Math.round(amount)))
+    const unitSize = amount / discreteUnits
+    const takenByColor = new Map<string, number>()
+    for (let u = 0; u < discreteUnits; u++) {
+      let totalPos = 0
+      for (const it of stack) if (it.count > 1e-9) totalPos += it.count
+      if (totalPos <= 1e-9) break
+      const roll = options.rng() * totalPos
+      let acc = 0
+      let picked = stack[stack.length - 1]!
+      for (const it of stack) {
+        if (it.count <= 1e-9) continue
+        acc += it.count
+        if (roll <= acc) {
+          picked = it
+          break
+        }
+      }
+      const c = Math.min(picked.count, unitSize)
+      picked.count = Math.round((picked.count - c) * 1000) / 1000
+      takenByColor.set(picked.resId, (takenByColor.get(picked.resId) ?? 0) + c)
+    }
+    state.poolTokens![pool.id] = stack.filter((x) => x.count > 1e-9)
+    return Array.from(takenByColor.entries()).map(([resId, count]) => ({
+      resId,
+      count: Math.round(count * 1000) / 1000
+    }))
+  }
+
+  // 默认 LIFO 后进先出抽取
+  let rem = amount
+  const out: MxPoolTokenStackItem[] = []
+  while (rem > 1e-9 && stack.length > 0) {
+    const top = stack[stack.length - 1]!
+    if (top.count <= 1e-9) {
+      stack.pop()
+      continue
+    }
+    const c = Math.min(top.count, rem)
+    top.count = Math.round((top.count - c) * 1000) / 1000
+    rem -= c
+    const prevOut = out[out.length - 1]
+    if (prevOut && prevOut.resId === top.resId) {
+      prevOut.count = Math.round((prevOut.count + c) * 1000) / 1000
+    } else {
+      out.push({ resId: top.resId, count: Math.round(c * 1000) / 1000 })
+    }
+    if (top.count <= 1e-9) stack.pop()
+  }
+  if (rem > 1e-6) {
+    out.push({ resId: fallbackColor, count: Math.round(rem * 1000) / 1000 })
+  }
+  return out
+}
+
+function getStateEdgeOriginValue(
+  doc: MxDocument,
+  stateEdge: MxEdge,
+  state: MxRuntimeState
+): number {
+  if (stateEdge.resourceFilter && stateEdge.resourceId) {
+    const src = getMxGraphIndex(doc).byId.get(stateEdge.from)
+    if (src?.kind === 'pool') {
+      return countPoolTokensByColor(state, src.id, stateEdge.resourceId)
+    }
+  }
+  return state.values[stateEdge.from] ?? 0
+}
+
 export function createMxInitialState(
   doc: MxDocument,
-  options: { params?: Record<string, number> } = {}
+  options: { params?: Record<string, number>; seed?: number; scenarioId?: string } = {}
 ): MxRuntimeState {
   const values: Record<string, number> = {}
-  const buffers: Record<string, Array<{ release: number; amount: number }>> = {}
+  const buffers: Record<string, MxBufferItem[]> = {}
+  const poolTokens: Record<string, MxPoolTokenStackItem[]> = {}
   for (const n of doc.nodes) {
-    if (n.kind === 'pool') values[n.id] = Math.min(capOf(n), Math.max(0, Number(n.initial ?? 0)))
-    else if (n.kind === 'register') values[n.id] = Number(n.initial ?? 0)
-    else values[n.id] = 0
+    if (n.kind === 'pool') {
+      const initVal = Math.min(capOf(n), Math.max(0, Number(n.initial ?? 0)))
+      values[n.id] = initVal
+      if (initVal > 0) {
+        poolTokens[n.id] = [{ resId: n.resourceId || 'default', count: initVal }]
+      }
+    } else if (n.kind === 'register') {
+      values[n.id] = Number(n.initial ?? 0)
+    } else {
+      values[n.id] = 0
+    }
     if (n.kind === 'delay' || n.kind === 'queue') buffers[n.id] = []
   }
-  const params = options.params ?? resolveMxParams(doc)
+  const initRng = createMxRng((options.seed ?? doc.settings.seed ?? 1) * 3571 + 17)
+  const params = options.params ?? resolveMxParams(doc, options.scenarioId, initRng)
   const state: MxRuntimeState = {
     step: 0,
     values,
@@ -1047,15 +1886,163 @@ export function createMxInitialState(
     fired: {},
     ended: false,
     totalProduced: 0,
-    totalConsumed: 0
+    totalConsumed: 0,
+    prevEdgeOrigin: {},
+    edgeLastStep: {},
+    edgeWaitSteps: {},
+    gateTrigCount: {},
+    gateQuotaSent: {},
+    gateLastRoll: {},
+    poolTokens,
+    runtimeParams: { ...params }
   }
-  recomputeRegisters(doc, state, params, () => 0.5)
+  recomputeRegisters(doc, state, params, initRng)
   for (const n of doc.nodes) state.active[n.id] = isNodeActive(doc, n, state, params)
   return state
 }
 
 function stateInputs(doc: MxDocument, nodeId: string): MxEdge[] {
   return getMxGraphIndex(doc).stateInByNode.get(nodeId) ?? EMPTY_EDGES
+}
+
+/** 判断任意资源边或状态边是否处于激活态（支持 State-to-State Activators） */
+function isEdgeActive(
+  doc: MxDocument,
+  edge: MxEdge,
+  state: MxRuntimeState,
+  params: Record<string, number>,
+  rng: () => number,
+  sharedVars?: Record<string, number>,
+  depth = 0
+): boolean {
+  if (depth > 4) return true
+  const gIdx = getMxGraphIndex(doc)
+  const ins = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+  if (!ins.length) return true
+  let vars = sharedVars
+  for (const se of ins) {
+    if (!isEdgeActive(doc, se, state, params, rng, vars, depth + 1)) continue
+    const spec = getEffectiveStateSpec(doc, se, state, params, rng, vars, depth + 1)
+    if (spec.type === 'expr' && !vars) {
+      vars = buildVars(doc, state.values, params, state.step)
+    }
+    const srcVal = getStateEdgeOriginValue(doc, se, state)
+    const act = checkActivator(spec, srcVal, vars ?? params, rng, gIdx.paramArrays)
+    if (act === false) return false
+  }
+  return true
+}
+
+function evalArithmeticStateExprBonus(
+  doc: MxDocument,
+  gIdx: MxGraphIndex,
+  expr: string,
+  srcVal: number,
+  state: MxRuntimeState,
+  params: Record<string, number>,
+  rng: () => number,
+  sharedVars?: Record<string, number>
+): number {
+  const trimmed = expr.trim()
+  if (!trimmed || /^\d+(?:\.\d+)?$/.test(trimmed) || isMxBooleanStateExpr(trimmed)) return 0
+  const baseVars = sharedVars ?? buildVars(doc, state.values, params, state.step)
+  return evaluateMxExpression(
+    trimmed,
+    { vars: { ...baseVars, a: srcVal, self: srcVal }, arrays: gIdx.paramArrays, rng },
+    0
+  )
+}
+
+/** 计算经过 State-to-State Formula Modifiers / Overwrite 修正后的状态边有效语义 */
+function getEffectiveStateSpec(
+  doc: MxDocument,
+  stateEdge: MxEdge,
+  state: MxRuntimeState,
+  params: Record<string, number>,
+  rng: () => number,
+  sharedVars?: Record<string, number>,
+  depth = 0
+): MxStateSpec {
+  let baseSpec = parseMxStateFormula(stateEdge.formula)
+  const gIdx = getMxGraphIndex(doc)
+  if (baseSpec.type === 'expr') {
+    const sv = parseSignedVarStateModifier(baseSpec.expr)
+    if (sv) {
+      const v = sharedVars ?? buildVars(doc, state.values, params, state.step)
+      const resolvedDelta =
+        sv.sign * evaluateMxExpression(sv.ident, { vars: v, arrays: gIdx.paramArrays, rng }, 0)
+      baseSpec = sv.interval
+        ? { type: 'interval_modifier', delta: resolvedDelta, percent: sv.percent }
+        : { type: 'modifier', delta: resolvedDelta, percent: sv.percent }
+    }
+  }
+  if (depth > 4) return baseSpec
+  const modEdges = gIdx.stateInByEdge.get(stateEdge.id) ?? EMPTY_EDGES
+  if (!modEdges.length) return baseSpec
+
+  let overwrittenVal: number | null = null
+  let addBonus = 0
+  let pctBonus = 0
+  let lazyVars = sharedVars
+  for (const me of modEdges) {
+    if (!isEdgeActive(doc, me, state, params, rng, lazyVars, depth + 1)) continue
+    const mSpec = getEffectiveStateSpec(doc, me, state, params, rng, lazyVars, depth + 1)
+    const mOrigin = getStateEdgeOriginValue(doc, me, state)
+    if (mSpec.type === 'overwrite') {
+      overwrittenVal = mOrigin
+    } else if (mSpec.type === 'modifier') {
+      if (mSpec.percent) pctBonus += (mSpec.delta * mOrigin) / 100
+      else addBonus += mSpec.delta * mOrigin
+    } else if (mSpec.type === 'fraction_modifier' && mSpec.denominator > 0) {
+      addBonus += Math.trunc(mOrigin / mSpec.denominator) * mSpec.numerator
+    } else if (mSpec.type === 'expr') {
+      if (!lazyVars) lazyVars = buildVars(doc, state.values, params, state.step)
+      addBonus += evalArithmeticStateExprBonus(
+        doc,
+        gIdx,
+        mSpec.expr,
+        mOrigin,
+        state,
+        params,
+        rng,
+        lazyVars
+      )
+    }
+  }
+  if (overwrittenVal === null && addBonus === 0 && pctBonus === 0) return baseSpec
+
+  if (baseSpec.type === 'modifier') {
+    const start = overwrittenVal !== null ? overwrittenVal : baseSpec.delta
+    return {
+      type: 'modifier',
+      delta: start * (1 + pctBonus) + addBonus,
+      percent: overwrittenVal !== null ? false : baseSpec.percent
+    }
+  }
+  if (baseSpec.type === 'interval_modifier') {
+    const start = overwrittenVal !== null ? overwrittenVal : baseSpec.delta
+    return {
+      type: 'interval_modifier',
+      delta: start * (1 + pctBonus) + addBonus,
+      percent: overwrittenVal !== null ? false : baseSpec.percent
+    }
+  }
+  if (baseSpec.type === 'probability') {
+    const start = overwrittenVal !== null ? overwrittenVal : baseSpec.pct
+    return {
+      type: 'probability',
+      pct: Math.max(0, start * (1 + pctBonus) + addBonus)
+    }
+  }
+  if (baseSpec.type === 'activator') {
+    const start = overwrittenVal !== null ? overwrittenVal : baseSpec.value
+    return {
+      type: 'activator',
+      op: baseSpec.op,
+      value: start * (1 + pctBonus) + addBonus
+    }
+  }
+  return baseSpec
 }
 
 function recomputeRegisters(
@@ -1071,19 +2058,63 @@ function recomputeRegisters(
   for (let pass = 0; pass < 2; pass++) {
     let sharedVars: Record<string, number> | null = null
     for (const n of regs) {
-      if (n.trigger === 'interactive' && !n.formula?.trim()) continue
       const inputs = gIdx.stateInByNode.get(n.id) ?? EMPTY_EDGES
-      const expr = n.formula || (inputs.length ? 'a' : String(n.initial ?? 0))
-      let vars: Record<string, number> = params
-      if (exprNeedsVars(expr)) {
-        if (!sharedVars) sharedVars = buildVars(doc, state.values, params, state.step)
-        vars = { ...sharedVars }
-        const letters = 'abcdefgh'
-        for (let idx = 0; idx < inputs.length && idx < letters.length; idx++) {
-          vars[letters[idx]!] = state.values[inputs[idx]!.from] ?? 0
+      const isFuncReg = isFunctionRegisterNode(n)
+      // 若为无公式交互寄存器，或由 Node Modifier (+2 / -1 / +1/3 / =) 直接驱动的数值寄存器，保留其状态值（不在函数求值阶段重置）
+      if (!isFuncReg) {
+        if (n.trigger === 'interactive' && !n.formula?.trim()) continue
+        const drivenByNodeMod = inputs.some((se) => {
+          const sp = parseMxStateFormula(se.formula)
+          if (
+            sp.type === 'modifier' ||
+            sp.type === 'fraction_modifier' ||
+            sp.type === 'overwrite'
+          ) {
+            return true
+          }
+          if (sp.type === 'expr') {
+            const sv = parseSignedVarStateModifier(sp.expr)
+            return Boolean(sv && !sv.interval)
+          }
+          return false
+        })
+        if (drivenByNodeMod) continue
+      }
+
+      // 检查是否有激活的 Overwrite `=` 状态边覆盖该函数寄存器
+      let overwrittenByEdge: number | null = null
+      for (const se of inputs) {
+        if (!isEdgeActive(doc, se, state, params, rng, sharedVars ?? undefined)) continue
+        if (parseMxStateFormula(se.formula).type === 'overwrite') {
+          overwrittenByEdge = getStateEdgeOriginValue(doc, se, state)
         }
       }
-      let v = evaluateMxExpression(expr, { vars, rng }, n.initial ?? 0)
+
+      let v: number
+      if (overwrittenByEdge !== null) {
+        v = overwrittenByEdge
+      } else {
+        const expr = n.formula || (inputs.length ? 'a' : String(n.initial ?? 0))
+        let vars: Record<string, number> = params
+        if (exprNeedsVars(expr)) {
+          if (!sharedVars) sharedVars = buildVars(doc, state.values, params, state.step)
+          vars = { ...sharedVars }
+          for (let idx = 0; idx < inputs.length && idx < POSITIONAL_LETTERS.length; idx++) {
+            const inEdge = inputs[idx]!
+            const srcEnabled = !n.ignoreDisabledInputs || state.active[inEdge.from] !== false
+            const val =
+              srcEnabled && isEdgeActive(doc, inEdge, state, params, rng, sharedVars)
+                ? getStateEdgeOriginValue(doc, inEdge, state)
+                : 0
+            vars[POSITIONAL_LETTERS[idx]!] = val
+            if (inEdge.label?.trim()) {
+              const customVar = mxIdentifier(inEdge.label)
+              if (customVar) vars[customVar] = val
+            }
+          }
+        }
+        v = evaluateMxExpression(expr, { vars, arrays: gIdx.paramArrays, rng }, n.initial ?? 0)
+      }
       if (n.min != null) v = Math.max(n.min, v)
       if (n.max != null) v = Math.min(n.max, v)
       state.values[n.id] = Math.round(v * 1000) / 1000
@@ -1100,7 +2131,8 @@ function checkActivator(
   spec: MxStateSpec,
   v: number,
   vars: Record<string, number>,
-  rng: () => number
+  rng: () => number,
+  arrays?: Record<string, number[] | number[][]>
 ): boolean | null {
   switch (spec.type) {
     case 'activator':
@@ -1122,9 +2154,11 @@ function checkActivator(
     case 'range':
       return v >= spec.lo && v <= spec.hi
     case 'expr': {
-      // 带比较运算符的表达式视为激活条件，用 `a` 代表源节点值
-      if (!/[<>=!]/.test(spec.expr)) return null
-      return evaluateMxExpression(spec.expr, { vars: { ...vars, a: v, self: v }, rng }, 0) !== 0
+      // 带比较运算符或 Math.js 关系/逻辑函数的表达式视为激活条件，用 `a` 代表源节点值
+      if (!isMxBooleanStateExpr(spec.expr)) return null
+      return (
+        evaluateMxExpression(spec.expr, { vars: { ...vars, a: v, self: v }, arrays, rng }, 0) !== 0
+      )
     }
     default:
       return null
@@ -1140,35 +2174,259 @@ function isNodeActive(
 ): boolean {
   const ins = stateInputs(doc, node.id)
   if (!ins.length) return true
+  const gIdx = getMxGraphIndex(doc)
   let vars: Record<string, number> | undefined = sharedVars
+  const nopRng = (): number => 0.5
   for (const e of ins) {
-    const spec = parseMxStateFormula(e.formula)
+    if (!isEdgeActive(doc, e, state, params, nopRng, vars)) continue
+    const spec = getEffectiveStateSpec(doc, e, state, params, nopRng, vars)
     if (spec.type === 'expr' && !vars) {
       vars = buildVars(doc, state.values, params, state.step)
     }
-    const res = checkActivator(spec, state.values[e.from] ?? 0, vars ?? params, () => 0.5)
+    const res = checkActivator(
+      spec,
+      getStateEdgeOriginValue(doc, e, state),
+      vars ?? params,
+      nopRng,
+      gIdx.paramArrays
+    )
     if (res === false) return false
   }
   return true
 }
 
-/** 状态连线修改量：Σ delta × 源节点值（百分比修改量按比例放大） */
+/**
+ * 执行 Node Modifiers（Pool / Register --(+x / -x / +x% / +n/d / =)--> Target Pool / Register）：
+ * - 严格按源节点状态增量 ΔS 触发修改（Step 1 初值传导 + 步内任意状态变化传导）；
+ * - 支持分数修改器（如 +1/3, -2/4：每跨过一个分母倍数步进修改分子）；
+ * - 支持 Overwrite `=` 直接同步覆盖目标节点值；
+ * - 允许目标 Pool 被负向 Node Modifier 扣成负数（负数期间阻塞出向资源流，直至回正）。
+ */
+function applyNodeStateModifiers(
+  doc: MxDocument,
+  state: MxRuntimeState,
+  params: Record<string, number>,
+  rng: () => number
+): void {
+  const gIdx = getMxGraphIndex(doc)
+  if (!gIdx.nodeModTargets.length) return
+  state.prevEdgeOrigin ??= {}
+
+  for (const target of gIdx.nodeModTargets) {
+    const ins = gIdx.stateInByNode.get(target.id) ?? EMPTY_EDGES
+    const isFuncReg = isFunctionRegisterNode(target)
+    for (const se of ins) {
+      if (!isEdgeActive(doc, se, state, params, rng)) continue
+      const spec = getEffectiveStateSpec(doc, se, state, params, rng)
+      const curOrigin = getStateEdgeOriginValue(doc, se, state)
+      const prevOrigin = state.prevEdgeOrigin[se.id] ?? 0
+
+      if (spec.type === 'overwrite') {
+        let nextVal = curOrigin
+        if (target.kind === 'pool') {
+          const prevVal = state.values[target.id] ?? 0
+          nextVal = Math.min(capOf(target), nextVal)
+          if (nextVal > Math.max(0, prevVal)) {
+            pushPoolTokens(state, target, nextVal - Math.max(0, prevVal), se.resourceId)
+          } else if (nextVal < prevVal && nextVal >= 0) {
+            popPoolTokens(state, target, prevVal - nextVal, { rng })
+          } else if (nextVal <= 0 && state.poolTokens?.[target.id]) {
+            state.poolTokens[target.id] = []
+          }
+        } else if (target.kind === 'register') {
+          if (target.min != null) nextVal = Math.max(target.min, nextVal)
+          if (target.max != null) nextVal = Math.min(target.max, nextVal)
+        }
+        state.values[target.id] = Math.round(nextVal * 1000) / 1000
+        state.prevEdgeOrigin[se.id] = curOrigin
+        continue
+      }
+
+      if (isFuncReg) continue
+
+      let deltaTarget = 0
+      if (spec.type === 'modifier') {
+        const dS = curOrigin - prevOrigin
+        if (Math.abs(dS) > 1e-9) {
+          const curTarget = state.values[target.id] ?? 0
+          deltaTarget = spec.percent ? (curTarget * spec.delta * dS) / 100 : spec.delta * dS
+        }
+      } else if (spec.type === 'fraction_modifier' && spec.denominator > 0) {
+        const qNow =
+          curOrigin >= 0
+            ? Math.floor((curOrigin + 1e-9) / spec.denominator)
+            : Math.ceil((curOrigin - 1e-9) / spec.denominator)
+        const qPrev =
+          prevOrigin >= 0
+            ? Math.floor((prevOrigin + 1e-9) / spec.denominator)
+            : Math.ceil((prevOrigin - 1e-9) / spec.denominator)
+        if (qNow !== qPrev) {
+          deltaTarget = spec.numerator * (qNow - qPrev)
+        }
+      } else {
+        continue
+      }
+
+      state.prevEdgeOrigin[se.id] = curOrigin
+      if (Math.abs(deltaTarget) <= 1e-9) continue
+
+      const prevTargetVal = state.values[target.id] ?? 0
+      let nextVal = prevTargetVal + deltaTarget
+      if (target.kind === 'pool') {
+        if (deltaTarget > 0) {
+          nextVal = Math.min(capOf(target), nextVal)
+          const posGain = Math.max(0, nextVal) - Math.max(0, prevTargetVal)
+          if (posGain > 0) pushPoolTokens(state, target, posGain, se.resourceId)
+        } else {
+          // 负向 Node Modifier 允许 Pool 变为负数；同步削减池内正数 Token 栈
+          const posLoss = Math.max(0, prevTargetVal) - Math.max(0, nextVal)
+          if (posLoss > 0) popPoolTokens(state, target, posLoss, { rng })
+        }
+      } else if (target.kind === 'register') {
+        if (target.min != null) nextVal = Math.max(target.min, nextVal)
+        if (target.max != null) nextVal = Math.min(target.max, nextVal)
+      }
+      state.values[target.id] = Math.round(nextVal * 1000) / 1000
+    }
+  }
+}
+
+/** 状态连线对节点（Source / Drain / Gate / Delay）公式速率的修改量 */
 function modifierBonus(
   doc: MxDocument,
   nodeId: string,
   state: MxRuntimeState,
-  base: number
-): number {
+  base: number,
+  params: Record<string, number> = {},
+  rng: () => number = () => 0.5
+): { bonus: number; overwrite: number | null } {
   const ins = stateInputs(doc, nodeId)
-  if (!ins.length) return 0
+  if (!ins.length) return { bonus: 0, overwrite: null }
+  const gIdx = getMxGraphIndex(doc)
+  let sharedVars: Record<string, number> | undefined
   let bonus = 0
+  let overwrite: number | null = null
   for (const e of ins) {
-    const spec = parseMxStateFormula(e.formula)
-    if (spec.type !== 'modifier') continue
-    const src = state.values[e.from] ?? 0
-    bonus += spec.percent ? (base * spec.delta * src) / 100 : spec.delta * src
+    if (!isEdgeActive(doc, e, state, params, rng, sharedVars)) continue
+    const spec = getEffectiveStateSpec(doc, e, state, params, rng, sharedVars)
+    const src = getStateEdgeOriginValue(doc, e, state)
+    if (spec.type === 'overwrite') {
+      overwrite = src
+    } else if (spec.type === 'modifier') {
+      bonus += spec.percent ? (base * spec.delta * src) / 100 : spec.delta * src
+    } else if (spec.type === 'fraction_modifier' && spec.denominator > 0) {
+      bonus += Math.trunc(src / spec.denominator) * spec.numerator
+    } else if (spec.type === 'expr') {
+      if (!sharedVars) sharedVars = buildVars(doc, state.values, params, state.step)
+      bonus += evalArithmeticStateExprBonus(
+        doc,
+        gIdx,
+        spec.expr,
+        src,
+        state,
+        params,
+        rng,
+        sharedVars
+      )
+    }
   }
-  return bonus
+  return { bonus, overwrite }
+}
+
+/** 检查并推进资源连线的触发间隔（支持常数 `3|2`、随机区间 `1|3..6`、骰子 `D6|D6`、`edge.interval` 及 `+xi` 间隔修正器） */
+function checkAndAdvanceEdgeInterval(
+  doc: MxDocument,
+  edge: MxEdge,
+  spec: MxFlowSpec,
+  state: MxRuntimeState,
+  params: Record<string, number>,
+  rng: () => number,
+  ensureVars: () => Record<string, number>,
+  commitFire: boolean
+): boolean {
+  const gIdx = getMxGraphIndex(doc)
+  const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+  const edgeSrcNode = gIdx.byId.get(edge.from)
+  const srcStateIns =
+    edgeSrcNode && edgeSrcNode.kind !== 'pool' && edgeSrcNode.kind !== 'register'
+      ? stateInputs(doc, edge.from)
+      : EMPTY_EDGES
+  const rawIvExpr = spec.intervalExpr ?? edge.interval?.trim()
+
+  // 计算 Interval Modifiers (+xi / -xi / +x%i)
+  let ivAddBonus = 0
+  let ivPctBonus = 0
+  for (const se of edgeStateIns) {
+    if (!isEdgeActive(doc, se, state, params, rng)) continue
+    const sp = getEffectiveStateSpec(doc, se, state, params, rng)
+    if (sp.type === 'interval_modifier') {
+      const originVal = getStateEdgeOriginValue(doc, se, state)
+      if (sp.percent) ivPctBonus += (sp.delta * originVal) / 100
+      else ivAddBonus += sp.delta * originVal
+    }
+  }
+  for (const se of srcStateIns) {
+    if (!isEdgeActive(doc, se, state, params, rng)) continue
+    const sp = getEffectiveStateSpec(doc, se, state, params, rng)
+    if (sp.type === 'interval_modifier') {
+      const originVal = getStateEdgeOriginValue(doc, se, state)
+      if (sp.percent) ivPctBonus += (sp.delta * originVal) / 100
+      else ivAddBonus += sp.delta * originVal
+    }
+  }
+
+  const hasIntervalModifier = Math.abs(ivAddBonus) > 1e-9 || Math.abs(ivPctBonus) > 1e-9
+  if (!rawIvExpr && !hasIntervalModifier) return true
+
+  // 纯常数且无间隔修正器：快速路径
+  if (rawIvExpr && /^\d+$/.test(rawIvExpr) && !hasIntervalModifier) {
+    const fixedIv = Math.max(1, Number(rawIvExpr))
+    return fixedIv <= 1 || state.step % fixedIv === 0
+  }
+
+  state.edgeLastStep ??= {}
+  state.edgeWaitSteps ??= {}
+  const lastStep = state.edgeLastStep[edge.id] ?? 0
+
+  const sampleBaseIv = (): number => {
+    if (!rawIvExpr) return 1
+    if (/^\d+$/.test(rawIvExpr)) return Math.max(1, Number(rawIvExpr))
+    const v = exprNeedsVars(rawIvExpr) ? ensureVars() : params
+    return Math.max(
+      1,
+      Math.round(evaluateMxExpression(rawIvExpr, { vars: v, arrays: gIdx.paramArrays, rng }, 1))
+    )
+  }
+
+  let baseWait = state.edgeWaitSteps[edge.id]
+  if (baseWait == null) {
+    baseWait = sampleBaseIv()
+    state.edgeWaitSteps[edge.id] = baseWait
+  }
+  const effWait = Math.max(1, Math.round(baseWait * (1 + ivPctBonus) + ivAddBonus))
+  if (state.step - lastStep < effWait) return false
+
+  if (commitFire) {
+    state.edgeLastStep[edge.id] = state.step
+    state.edgeWaitSteps[edge.id] = sampleBaseIv()
+  }
+  return true
+}
+
+function applyEdgeLimits(edge: MxEdge, amount: number): number {
+  if (amount <= 0 && (edge.minLimit == null || edge.minLimit <= 0)) return 0
+  let res = amount
+  if (edge.minLimit != null && Number.isFinite(edge.minLimit)) {
+    res = Math.max(edge.minLimit, res)
+  }
+  if (edge.maxLimit != null && Number.isFinite(edge.maxLimit) && edge.maxLimit >= 0) {
+    res = Math.min(edge.maxLimit, res)
+  }
+  res = Math.max(0, res)
+  if (edge.allowDecimals === false) {
+    res = Math.floor(res + 1e-9)
+  }
+  return res
 }
 
 function evalFlowAmount(
@@ -1177,7 +2435,8 @@ function evalFlowAmount(
   state: MxRuntimeState,
   params: Record<string, number>,
   rng: () => number,
-  available: number
+  available: number,
+  commitInterval = true
 ): number {
   const gIdx = getMxGraphIndex(doc)
   const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
@@ -1187,22 +2446,79 @@ function evalFlowAmount(
     return vars
   }
 
-  // 检查直接指向该连线的状态边（Activator / Modifier）
-  let edgeModifierBonus = 0
-  for (const se of edgeStateIns) {
-    const stSpec = parseMxStateFormula(se.formula)
-    const srcVal = state.values[se.from] ?? 0
-    const act = checkActivator(stSpec, srcVal, stSpec.type === 'expr' ? ensureVars() : params, rng)
-    if (act === false) return 0
-  }
+  // 1) 检查直接指向该连线的状态边（Activator，支持 State-to-State 级联）
+  if (!isEdgeActive(doc, edge, state, params, rng)) return 0
+
   const spec = parseMxFlowFormula(edge.formula)
-  if (spec.type === 'all') return available
-  if (spec.every && state.step % spec.every !== 0) return 0
-  if (spec.probability != null && rng() >= spec.probability) return 0
+
+  // 2) 检查并推进间隔（支持 `3|2`、`1|3..6`、`D6|D6`、`edge.interval` 与 `+xi`）
+  if (
+    !checkAndAdvanceEdgeInterval(doc, edge, spec, state, params, rng, ensureVars, commitInterval)
+  ) {
+    return 0
+  }
+
+  if (spec.type === 'all') {
+    return applyEdgeLimits(edge, available)
+  }
+
   const src = gIdx.byId.get(edge.from)
   const dst = gIdx.byId.get(edge.to)
+
+  // 收集指向该连线本身的 Formula Modifiers / Overwrite
+  let edgeOverwrite: number | null = null
+  let edgeAddBonus = 0
+  let edgePctBonus = 0
+  for (const se of edgeStateIns) {
+    if (!isEdgeActive(doc, se, state, params, rng)) continue
+    const stSpec = getEffectiveStateSpec(doc, se, state, params, rng)
+    const srcVal = getStateEdgeOriginValue(doc, se, state)
+    if (stSpec.type === 'overwrite') {
+      edgeOverwrite = srcVal
+    } else if (stSpec.type === 'modifier') {
+      if (stSpec.percent) edgePctBonus += (stSpec.delta * srcVal) / 100
+      else edgeAddBonus += stSpec.delta * srcVal
+    } else if (stSpec.type === 'fraction_modifier' && stSpec.denominator > 0) {
+      edgeAddBonus += Math.trunc(srcVal / stSpec.denominator) * stSpec.numerator
+    } else if (stSpec.type === 'expr') {
+      edgeAddBonus += evalArithmeticStateExprBonus(
+        doc,
+        gIdx,
+        stSpec.expr,
+        srcVal,
+        state,
+        params,
+        rng,
+        ensureVars()
+      )
+    }
+  }
+
+  // 3) 百分比 / 概率型资源边（含 >100% 官方规则：如 250% = 保底 2 个 + 50% 概率额外第 3 个；概率未命中 0 时不受 minLimit 抬升）
+  if (spec.probability != null && spec.expr === '1' && edgeOverwrite === null) {
+    const srcMod =
+      src && src.kind !== 'pool' && src.kind !== 'register'
+        ? modifierBonus(doc, src.id, state, spec.probability * 100, params, rng)
+        : { bonus: 0, overwrite: null }
+    const basePct = srcMod.overwrite !== null ? srcMod.overwrite : spec.probability * 100
+    const effPct = basePct * (1 + edgePctBonus) + edgeAddBonus + srcMod.bonus
+    if (effPct <= 0) return 0
+    const guaranteed = Math.floor((effPct + 1e-9) / 100)
+    const remProb = (effPct - guaranteed * 100) / 100
+    const rolled = guaranteed + (remProb > 1e-9 && rng() < remProb ? 1 : 0)
+    return rolled <= 0 ? 0 : applyEdgeLimits(edge, rolled)
+  }
+
+  if (spec.probability != null && edgeOverwrite === null) {
+    if (spec.probability <= 1) {
+      if (rng() >= spec.probability) return 0
+    }
+  }
+
   let base = 1
-  if (exprNeedsVars(spec.expr)) {
+  if (edgeOverwrite !== null) {
+    base = edgeOverwrite
+  } else if (exprNeedsVars(spec.expr)) {
     const v = ensureVars()
     if (src) v.self = state.values[src.id] ?? 0
     const nodeStateIns = src ? stateInputs(doc, src.id) : EMPTY_EDGES
@@ -1212,31 +2528,45 @@ function evalFlowAmount(
         : edgeStateIns.length
           ? edgeStateIns
           : nodeStateIns
-    const letters = 'abcdefgh'
     combinedStateIns.forEach((se, idx) => {
-      if (idx < letters.length) v[letters[idx]!] = state.values[se.from] ?? 0
+      const originVal = getStateEdgeOriginValue(doc, se, state)
+      if (idx < POSITIONAL_LETTERS.length) {
+        v[POSITIONAL_LETTERS[idx]!] = originVal
+      }
+      if (se.label?.trim()) {
+        const customVar = mxIdentifier(se.label.trim())
+        if (customVar) v[customVar] = originVal
+      }
     })
     if (!('a' in v)) {
       v.a = src && src.kind !== 'source' ? (state.values[src.id] ?? 0) : state.step
     }
-    base = evaluateMxExpression(spec.expr, { vars: v, rng }, 1)
+    base = evaluateMxExpression(spec.expr, { vars: v, arrays: gIdx.paramArrays, rng }, 1)
   } else {
-    base = evaluateMxExpression(spec.expr, { vars: params, rng }, 1)
+    base = evaluateMxExpression(spec.expr, { vars: params, arrays: gIdx.paramArrays, rng }, 1)
   }
-  for (const se of edgeStateIns) {
-    const stSpec = parseMxStateFormula(se.formula)
-    if (stSpec.type === 'modifier') {
-      const srcVal = state.values[se.from] ?? 0
-      edgeModifierBonus += stSpec.percent
-        ? (base * stSpec.delta * srcVal) / 100
-        : stSpec.delta * srcVal
-    }
+
+  if (spec.probability != null && spec.probability > 1 && edgeOverwrite === null) {
+    const mult = Math.floor(spec.probability + 1e-9) + (rng() < spec.probability % 1 ? 1 : 0)
+    base *= mult
   }
-  // 指向本连线源节点的修改量（Source / Converter 产出加成），或指向 Drain 终点节点的修改量
-  const srcBonus = src ? modifierBonus(doc, src.id, state, base) : 0
-  const dstBonus = dst?.kind === 'drain' ? modifierBonus(doc, dst.id, state, base) : 0
-  const bonus = srcBonus + dstBonus + edgeModifierBonus
-  return Math.max(0, Math.round((base + bonus) * 1000) / 1000)
+
+  // 指向本连线源节点的修改量（Source / Converter / Gate / Delay 产出加成；排除 Pool/Register Node Modifier），或指向 Drain 终点节点的修改量
+  const srcMod =
+    src && src.kind !== 'pool' && src.kind !== 'register'
+      ? modifierBonus(doc, src.id, state, base, params, rng)
+      : { bonus: 0, overwrite: null }
+  const dstMod =
+    dst?.kind === 'drain'
+      ? modifierBonus(doc, dst.id, state, base, params, rng)
+      : { bonus: 0, overwrite: null }
+  if (edgeOverwrite === null) {
+    if (srcMod.overwrite !== null) base = srcMod.overwrite
+    else if (dstMod.overwrite !== null) base = dstMod.overwrite
+  }
+  const edgeModifierBonus = base * edgePctBonus + edgeAddBonus
+  const total = base + srcMod.bonus + dstMod.bonus + edgeModifierBonus
+  return applyEdgeLimits(edge, Math.max(0, Math.round(total * 1000) / 1000))
 }
 
 const MX_AGENT_IMPORTANCE_WEIGHTS: Record<MxAgentImportance, number> = {
@@ -1926,9 +3256,38 @@ export function stepMxSimulation(
   prev: MxRuntimeState,
   options: MxRunOptions = {}
 ): { state: MxRuntimeState; events: MxEvent[] } {
-  const params = options.params ?? resolveMxParams(doc)
   const step = prev.step + 1
   const rng = createMxRng((options.seed ?? doc.settings.seed ?? 1) * 7919 + step * 104729)
+  const gIdx = getMxGraphIndex(doc)
+  const baseParams = options.params ?? prev.runtimeParams ?? resolveMxParams(doc, undefined, rng)
+  let params = baseParams
+  for (const p of doc.params) {
+    if (p.updateMode === 'each_step') {
+      if (params === baseParams) params = { ...baseParams }
+      const k = mxIdentifier(p.name)
+      if (k) {
+        params[k] = sampleCustomParamValue(
+          p,
+          rng,
+          { ...params, step, STEP: step, t: step },
+          gIdx.paramArrays
+        )
+      }
+    }
+  }
+
+  const clonedPoolTokens: Record<string, MxPoolTokenStackItem[]> = {}
+  if (prev.poolTokens) {
+    for (const k in prev.poolTokens) {
+      const arr = prev.poolTokens[k]!
+      const copy = new Array<MxPoolTokenStackItem>(arr.length)
+      for (let i = 0; i < arr.length; i++) {
+        copy[i] = { resId: arr[i]!.resId, count: arr[i]!.count }
+      }
+      clonedPoolTokens[k] = copy
+    }
+  }
+
   const state: MxRuntimeState = {
     step,
     values: { ...prev.values },
@@ -1942,40 +3301,112 @@ export function stepMxSimulation(
     ended: prev.ended,
     endReason: prev.endReason,
     totalProduced: prev.totalProduced,
-    totalConsumed: prev.totalConsumed
+    totalConsumed: prev.totalConsumed,
+    prevEdgeOrigin: prev.prevEdgeOrigin ? { ...prev.prevEdgeOrigin } : {},
+    edgeLastStep: prev.edgeLastStep ? { ...prev.edgeLastStep } : {},
+    edgeWaitSteps: prev.edgeWaitSteps ? { ...prev.edgeWaitSteps } : {},
+    gateTrigCount: prev.gateTrigCount ? { ...prev.gateTrigCount } : {},
+    gateQuotaSent: prev.gateQuotaSent ? { ...prev.gateQuotaSent } : {},
+    gateLastRoll: prev.gateLastRoll ? { ...prev.gateLastRoll } : {},
+    poolTokens: clonedPoolTokens,
+    runtimeParams: params
   }
   const events: MxEvent[] = []
   if (prev.ended) return { state, events }
 
-  const gIdx = getMxGraphIndex(doc)
   const byId = gIdx.byId
   const outRes = (id: string): MxEdge[] => gIdx.outResByNode.get(id) ?? EMPTY_EDGES
   const inRes = (id: string): MxEdge[] => gIdx.inResByNode.get(id) ?? EMPTY_EDGES
   const orderedInteractions: string[] = [...(options.interactions ?? [])]
   const interactions = new Set(orderedInteractions)
 
+  // Step 1 起始：按 Machinations Node Modifier 规范将源节点初始状态传导至目标节点，并在激活判定前刷新寄存器（使 STEP 等步变量即时生效）
+  if (step === 1 && gIdx.nodeModTargets.length > 0) {
+    applyNodeStateModifiers(doc, state, params, rng)
+  }
+  if (gIdx.registers.length > 0) {
+    recomputeRegisters(doc, state, params, rng)
+  }
+
   // 1) 激活状态
   const nowActive: Record<string, boolean> = {}
   for (const n of doc.nodes) {
-    nowActive[n.id] = isNodeActive(doc, n, prev, params)
+    nowActive[n.id] = isNodeActive(doc, n, state, params)
     if (nowActive[n.id] !== prev.active[n.id]) {
       events.push({ step, type: nowActive[n.id] ? 'activate' : 'deactivate', nodeId: n.id })
     }
   }
 
+  const startStepValues: Record<string, number> = { ...state.values }
   const receivedResources = new Set<string>()
+  const receivedColorsByNode = new Map<string, Set<string>>()
+  const recordNodeColor = (nodeId: string, color?: string): void => {
+    if (!color) return
+    let s = receivedColorsByNode.get(nodeId)
+    if (!s) {
+      s = new Set()
+      receivedColorsByNode.set(nodeId, s)
+    }
+    s.add(color)
+  }
 
-  const addTo = (targetId: string, amount: number, edge: MxEdge, depth: number): number => {
+  let currentWaveNext: MxNode[] = []
+  const triggered = new Set<string>()
+  const triggeredEdges = new Set<string>()
+  const triggeredEndEdges = new Set<string>()
+
+  const computeDelayOrQueueWait = (target: MxNode): number => {
+    const outs = outRes(target.id)
+    const out0 = outs[0]
+    const out0Raw = out0?.formula?.trim() ?? ''
+    const out0HasEdgeMod = out0 ? (gIdx.stateInByEdge.get(out0.id)?.length ?? 0) > 0 : false
+    let baseWait: number
+    if (out0 && ((out0Raw !== '' && out0Raw !== '1') || out0HasEdgeMod)) {
+      baseWait = evalFlowAmount(doc, out0, state, params, rng, 1, false)
+    } else if (target.formula?.trim()) {
+      const vars = exprNeedsVars(target.formula)
+        ? buildVars(doc, state.values, params, step)
+        : params
+      baseWait = evaluateMxExpression(
+        target.formula,
+        { vars, arrays: gIdx.paramArrays, rng },
+        target.delaySteps ?? 1
+      )
+    } else {
+      baseWait = target.delaySteps ?? 1
+    }
+    const mod = modifierBonus(doc, target.id, state, baseWait, params, rng)
+    return Math.max(0, Math.round(mod.overwrite !== null ? mod.overwrite : baseWait + mod.bonus))
+  }
+
+  const addTo = (
+    targetId: string,
+    amount: number,
+    edge: MxEdge,
+    depth: number,
+    tokenResId?: string
+  ): number => {
     if (amount <= 0) return 0
     const target = byId.get(targetId)
     if (!target) return 0
+    const normalizedTok = tokenResId && tokenResId !== 'default' ? tokenResId : undefined
+    const effColor =
+      normalizedTok || (!edge.resourceFilter ? edge.resourceId : undefined) || target.resourceId
     switch (target.kind) {
       case 'pool': {
-        const room = capOf(target, doc, state) - (state.values[target.id] ?? 0)
+        const prevVal = state.values[target.id] ?? 0
+        const room = capOf(target) - prevVal
         const accepted = Math.max(0, Math.min(room, amount))
-        state.values[target.id] =
-          Math.round(((state.values[target.id] ?? 0) + accepted) * 1000) / 1000
-        if (accepted > 0) receivedResources.add(target.id)
+        const nextVal = Math.round((prevVal + accepted) * 1000) / 1000
+        state.values[target.id] = nextVal
+        const posGain = Math.max(0, nextVal) - Math.max(0, prevVal)
+        if (posGain > 0) {
+          pushPoolTokens(state, target, posGain, effColor)
+        }
+        if (accepted > 0) {
+          receivedResources.add(target.id)
+          recordNodeColor(target.id, effColor)
+        }
         if (target.overflow === 'drain' && amount > accepted) {
           const spilled = Math.round((amount - accepted) * 1000) / 1000
           state.totalConsumed += spilled
@@ -1985,6 +3416,7 @@ export function stepMxSimulation(
             nodeId: target.id,
             edgeId: edge.id,
             amount: spilled,
+            resourceId: effColor,
             detail: 'overflow'
           })
           return amount
@@ -1993,31 +3425,42 @@ export function stepMxSimulation(
       }
       case 'drain':
         state.totalConsumed += amount
-        events.push({ step, type: 'consume', nodeId: target.id, edgeId: edge.id, amount })
+        events.push({
+          step,
+          type: 'consume',
+          nodeId: target.id,
+          edgeId: edge.id,
+          amount,
+          resourceId: effColor
+        })
         receivedResources.add(target.id)
+        recordNodeColor(target.id, effColor)
         return amount
       case 'gate':
         if (!nowActive[target.id]) return 0
         receivedResources.add(target.id)
-        distributeGate(target, amount, depth + 1)
+        recordNodeColor(target.id, effColor)
+        distributeGate(target, amount, depth + 1, effColor)
         return amount
       case 'delay':
       case 'queue': {
-        const baseWait = target.delaySteps ?? 1
-        const wait = Math.max(
-          0,
-          Math.round(baseWait + modifierBonus(doc, target.id, state, baseWait))
-        )
+        const wait = computeDelayOrQueueWait(target)
         state.buffers[target.id] ??= []
-        state.buffers[target.id]!.push({ release: step + wait, amount })
+        state.buffers[target.id]!.push({
+          release: step + wait,
+          amount,
+          resourceId: effColor
+        })
         state.values[target.id] = (state.values[target.id] ?? 0) + amount
         receivedResources.add(target.id)
+        recordNodeColor(target.id, effColor)
         return amount
       }
       case 'converter':
       case 'trader':
         state.values[target.id] = (state.values[target.id] ?? 0) + amount
         receivedResources.add(target.id)
+        recordNodeColor(target.id, effColor)
         return amount
       case 'end':
       case 'register':
@@ -2028,9 +3471,70 @@ export function stepMxSimulation(
     }
   }
 
-  const sendAlong = (edge: MxEdge, amount: number, depth = 0): number => {
+  const instantWoken = new Set<string>()
+  const scheduledRemaining = new Set<string>()
+  const propagateInstantStateUpdate = (changedNodeId: string, originNodeId?: string): void => {
+    if (gIdx.nodeModTargets.length > 0) {
+      applyNodeStateModifiers(doc, state, params, rng)
+    }
+    if (gIdx.registers.length > 0) {
+      recomputeRegisters(doc, state, params, rng)
+    }
+    for (const n of doc.nodes) {
+      const wasActive = nowActive[n.id]
+      const nextActive = isNodeActive(doc, n, state, params)
+      if (nextActive !== wasActive) {
+        nowActive[n.id] = nextActive
+        events.push({ step, type: nextActive ? 'activate' : 'deactivate', nodeId: n.id })
+        if (
+          nextActive &&
+          !instantWoken.has(n.id) &&
+          !scheduledRemaining.has(n.id) &&
+          (n.trigger === 'enabling' || (n.trigger === 'automatic' && !state.fired[n.id]))
+        ) {
+          instantWoken.add(n.id)
+          currentWaveNext.push(n)
+        }
+      }
+    }
+    const wakeDownstreamOf = (nid: string): void => {
+      const downRes = outRes(nid)
+      for (const de of downRes) {
+        const dn = byId.get(de.to)
+        if (
+          dn &&
+          dn.trigger === 'automatic' &&
+          nowActive[dn.id] &&
+          !instantWoken.has(dn.id) &&
+          !scheduledRemaining.has(dn.id) &&
+          state.fired[dn.id] &&
+          (state.edgeFlows[de.id] ?? 0) <= 0
+        ) {
+          instantWoken.add(dn.id)
+          currentWaveNext.push(dn)
+        }
+      }
+    }
+    wakeDownstreamOf(changedNodeId)
+    if (originNodeId && originNodeId !== changedNodeId) {
+      wakeDownstreamOf(originNodeId)
+    }
+  }
+
+  const sendAlong = (
+    edge: MxEdge,
+    amount: number,
+    depth = 0,
+    tokenResId?: string,
+    deferInstant = false
+  ): number => {
     if (amount <= 0 || depth > 8) return 0
-    const moved = addTo(edge.to, amount, edge, depth)
+    const normTok = tokenResId && tokenResId !== 'default' ? tokenResId : undefined
+    if (edge.resourceFilter && edge.resourceId && edge.resourceId !== normTok) {
+      return 0
+    }
+    const effColor = normTok || (!edge.resourceFilter ? edge.resourceId : undefined)
+    const moved = addTo(edge.to, amount, edge, depth, effColor)
     if (moved > 0) {
       state.edgeFlows[edge.id] = (state.edgeFlows[edge.id] ?? 0) + moved
       events.push({
@@ -2040,217 +3544,945 @@ export function stepMxSimulation(
         targetId: edge.to,
         edgeId: edge.id,
         amount: moved,
-        resourceId: edge.resourceId
+        resourceId: effColor
       })
+      if (edge.transferMode === 'instant' && !deferInstant) {
+        propagateInstantStateUpdate(edge.to, edge.from)
+      }
     }
     return moved
   }
 
-  function distributeGate(gate: MxNode, amount: number, depth: number): void {
-    const outs = outRes(gate.id)
-    if (!outs.length) return
-    state.fired[gate.id] = true
-    const vars = buildVars(doc, state.values, params, step)
-    const weights = outs.map((e) => {
-      const f = parseMxFlowFormula(e.formula)
-      if (f.type === 'expr' && f.probability != null) return f.probability * 100
-      if (f.type === 'all') return 1
-      return Math.max(0, evaluateMxExpression(f.expr, { vars, rng }, 1))
-    })
-    // 状态修改量加在第一条输出（保底类设计）
-    weights[0] = Math.max(
-      0,
-      (weights[0] ?? 0) + modifierBonus(doc, gate.id, state, weights[0] ?? 0)
-    )
-    const usesPercent = outs.some((e) => {
-      const f = parseMxFlowFormula(e.formula)
-      return f.type === 'expr' && f.probability != null
-    })
-    const units = Math.max(1, Math.round(amount))
-    const perUnit = amount / units
-    for (let u = 0; u < units; u++) {
-      let idx = -1
-      if (gate.gateMode === 'deterministic') {
-        const total = weights.reduce((a, b) => a + b, 0) || outs.length
-        const cursor = (state.gateCursor[gate.id] ?? 0) % Math.max(1, Math.round(total))
-        state.gateCursor[gate.id] = cursor + 1
-        let acc = 0
-        for (let i = 0; i < weights.length; i++) {
-          acc += weights[i] || (total === outs.length ? 1 : 0)
-          if (cursor < acc) {
-            idx = i
-            break
-          }
+  const fireSingleResourceEdge = (resEdge: MxEdge): boolean => {
+    const srcNode = byId.get(resEdge.from)
+    if (!srcNode || !nowActive[srcNode.id]) return false
+    if (!isEdgeActive(doc, resEdge, state, params, rng)) return false
+    if (srcNode.kind === 'source') {
+      const amt = evalFlowAmount(doc, resEdge, state, params, rng, Number.POSITIVE_INFINITY)
+      if (amt <= 0) return false
+      const color =
+        !resEdge.resourceFilter && resEdge.resourceId
+          ? resEdge.resourceId
+          : srcNode.resourceId || 'default'
+      const moved = sendAlong(resEdge, amt, 0, color)
+      if (moved > 0) {
+        const evColor = color === 'default' ? undefined : color
+        state.totalProduced += moved
+        recordNodeColor(srcNode.id, evColor)
+        events.push({
+          step,
+          type: 'produce',
+          nodeId: srcNode.id,
+          edgeId: resEdge.id,
+          amount: moved,
+          resourceId: evColor
+        })
+      }
+      return moved > 0
+    }
+    const rawAvail =
+      srcNode.kind === 'pool' && resEdge.resourceFilter && resEdge.resourceId
+        ? countPoolTokensByColor(state, srcNode.id, resEdge.resourceId)
+        : Math.max(0, state.values[srcNode.id] ?? 0)
+    const amt = Math.min(rawAvail, evalFlowAmount(doc, resEdge, state, params, rng, rawAvail))
+    if (amt <= 0) return false
+    if (srcNode.kind === 'pool') {
+      const targetNode = byId.get(resEdge.to)
+      const maxAccept =
+        targetNode?.kind === 'pool' && targetNode.overflow !== 'drain'
+          ? Math.max(0, Math.min(amt, capOf(targetNode) - (state.values[targetNode.id] ?? 0)))
+          : amt
+      if (maxAccept <= 0) return false
+      const popped = popPoolTokens(state, srcNode, maxAccept, {
+        filterResId: resEdge.resourceFilter ? resEdge.resourceId : undefined,
+        shuffle: resEdge.shuffleOrigin,
+        rng
+      })
+      let moved = 0
+      for (const seg of popped) {
+        const segMoved = sendAlong(resEdge, seg.count, 0, seg.resId, true)
+        if (segMoved > 0 && seg.resId && seg.resId !== 'default') {
+          recordNodeColor(srcNode.id, seg.resId)
         }
-      } else {
-        const total = usesPercent
-          ? Math.max(
-              100,
-              weights.reduce((a, b) => a + b, 0)
-            )
-          : weights.reduce((a, b) => a + b, 0)
-        const roll = rng() * (total || 1)
-        let acc = 0
-        for (let i = 0; i < weights.length; i++) {
-          acc += weights[i]!
-          if (roll < acc) {
-            idx = i
-            break
-          }
+        moved += segMoved
+      }
+      state.values[srcNode.id] = Math.round(((state.values[srcNode.id] ?? 0) - moved) * 1000) / 1000
+      if (moved > 0 && resEdge.transferMode === 'instant') {
+        propagateInstantStateUpdate(resEdge.to, srcNode.id)
+      }
+      return moved > 0
+    }
+    state.values[srcNode.id] = Math.round((rawAvail - amt) * 1000) / 1000
+    const nonPoolColor =
+      (!resEdge.resourceFilter ? resEdge.resourceId : undefined) || srcNode.resourceId || 'default'
+    const moved = sendAlong(resEdge, amt, 0, nonPoolColor, true)
+    if (moved < amt) {
+      state.values[srcNode.id] =
+        Math.round(((state.values[srcNode.id] ?? 0) + (amt - moved)) * 1000) / 1000
+    }
+    if (moved > 0) {
+      if (nonPoolColor !== 'default') recordNodeColor(srcNode.id, nonPoolColor)
+      if (resEdge.transferMode === 'instant') {
+        propagateInstantStateUpdate(resEdge.to, srcNode.id)
+      }
+    }
+    return moved > 0
+  }
+
+  const dispatchStateTriggerEdge = (e: MxEdge, sourceNodeId: string, nextWave: MxNode[]): void => {
+    if (e.targetEdgeId) {
+      if (triggeredEdges.has(e.targetEdgeId)) return
+      const targetEdge = gIdx.resEdgeById.get(e.targetEdgeId)
+      if (!targetEdge) return
+      triggeredEdges.add(targetEdge.id)
+      events.push({
+        step,
+        type: 'trigger',
+        nodeId: sourceNodeId,
+        targetId: targetEdge.to,
+        edgeId: e.id
+      })
+      fireSingleResourceEdge(targetEdge)
+      return
+    }
+    const target = byId.get(e.to)
+    if (!target) return
+    if (target.kind === 'end') {
+      triggeredEndEdges.add(e.id)
+      events.push({
+        step,
+        type: 'trigger',
+        nodeId: sourceNodeId,
+        targetId: target.id,
+        edgeId: e.id
+      })
+      return
+    }
+    if (triggered.has(target.id)) return
+    triggered.add(target.id)
+    events.push({
+      step,
+      type: 'trigger',
+      nodeId: sourceNodeId,
+      targetId: target.id,
+      edgeId: e.id
+    })
+    nextWave.push(target)
+  }
+
+  const getGateSkillBonus = (gate: MxNode): number => {
+    const mod = modifierBonus(doc, gate.id, state, 0, params, rng)
+    const baseSkill = params.skill ?? params.SKILL ?? 0
+    return (mod.overwrite !== null ? mod.overwrite : mod.bonus) + baseSkill
+  }
+
+  const rollGateTestValue = (gate: MxNode, count: number): number => {
+    if (gate.gateMode === 'deterministic') return count
+    if (gate.gateMode === 'skill') {
+      const skillBonus = getGateSkillBonus(gate)
+      return Math.max(
+        1,
+        Math.min(6, Math.round(sampleBoxMullerGaussian(rng, 3.5 + skillBonus, 1.1)))
+      )
+    }
+    return 1 + Math.floor(rng() * 6)
+  }
+
+  const rollGateUnitFraction = (gate: MxNode): number => {
+    if (gate.gateMode === 'skill') {
+      const skillBonus = getGateSkillBonus(gate)
+      const mean = 0.5 - Math.tanh(skillBonus * 0.25) * 0.35
+      return Math.max(0, Math.min(0.999999, sampleBoxMullerGaussian(rng, mean, 0.22)))
+    }
+    return rng()
+  }
+
+  /**
+   * 触发器门（Trigger Gate / Mixed Gate）出向状态连线分发：
+   * 支持 `*` 直通触发、条件门（`<4`, `>=4`, `1..2`，随机掷 D6 / Skill 正态检定 / 确定性按计数）、
+   * 百分比门（`20%`, `80%`）以及数值权重门（`2`, `3`：随机无放回周期抽样 / Skill 偏置 / 确定性顺序轮询）。
+   */
+  function fireTriggerGateOutputs(gate: MxNode, nextWave: MxNode[]): boolean {
+    const rawOuts = gIdx.stateOutByNode.get(gate.id) ?? EMPTY_EDGES
+    if (!rawOuts.length) return false
+    const activeOuts = rawOuts.filter((e) => isEdgeActive(doc, e, state, params, rng))
+    if (!activeOuts.length) return false
+
+    state.fired[gate.id] = true
+    state.gateTrigCount ??= {}
+    state.gateQuotaSent ??= {}
+    state.gateLastRoll ??= {}
+    const trigCount = (state.gateTrigCount[gate.id] ?? 0) + 1
+    state.gateTrigCount[gate.id] = trigCount
+
+    let anyFired = false
+    const condOuts: Array<{ e: MxEdge; spec: MxStateSpec }> = []
+    const pctOuts: Array<{ e: MxEdge; pct: number }> = []
+    const weightOuts: Array<{ e: MxEdge; w: number }> = []
+
+    for (const e of activeOuts) {
+      const spec = getEffectiveStateSpec(doc, e, state, params, rng)
+      if (spec.type === 'trigger') {
+        dispatchStateTriggerEdge(e, gate.id, nextWave)
+        anyFired = true
+      } else if (spec.type === 'probability') {
+        pctOuts.push({ e, pct: Math.max(0, spec.pct) })
+      } else if (
+        spec.type === 'activator' ||
+        spec.type === 'range' ||
+        (spec.type === 'expr' && isMxBooleanStateExpr(spec.expr))
+      ) {
+        condOuts.push({ e, spec })
+      } else if (spec.type === 'expr' && /^\d+(?:\.\d+)?$/.test(spec.expr.trim())) {
+        weightOuts.push({ e, w: Math.max(0, Number(spec.expr.trim())) })
+      }
+    }
+
+    if (condOuts.length > 0) {
+      const vars = buildVars(doc, state.values, params, step)
+      const testVal = rollGateTestValue(gate, trigCount)
+      state.gateLastRoll[gate.id] = testVal
+      for (const c of condOuts) {
+        if (checkActivator(c.spec, testVal, vars, rng, gIdx.paramArrays) === true) {
+          dispatchStateTriggerEdge(c.e, gate.id, nextWave)
+          anyFired = true
         }
       }
-      if (idx < 0) continue
-      const edge = outs[idx]!
-      sendAlong(edge, perUnit, depth)
-      // 第一条分支命中且有状态修改量时，把源 Pool 归零（保底重置语义）
-      if (
-        idx === 0 &&
-        stateInputs(doc, gate.id).some((s) => parseMxStateFormula(s.formula).type === 'modifier')
-      ) {
-        for (const s of stateInputs(doc, gate.id)) {
-          const srcNode = byId.get(s.from)
-          if (srcNode?.kind === 'pool' && parseMxStateFormula(s.formula).type === 'modifier') {
-            state.values[srcNode.id] = 0
+    }
+
+    if (pctOuts.length > 0) {
+      const gateMod = modifierBonus(doc, gate.id, state, pctOuts[0]!.pct, params, rng)
+      pctOuts[0]!.pct = Math.max(
+        0,
+        gateMod.overwrite !== null ? gateMod.overwrite : pctOuts[0]!.pct + gateMod.bonus
+      )
+      const sumPct = pctOuts.reduce((a, b) => a + b.pct, 0)
+      if (sumPct > 0) {
+        if (gate.gateMode === 'deterministic') {
+          const denom = Math.max(100, sumPct)
+          const entries: Array<{ key: string; pct: number; edge: MxEdge | null }> = pctOuts.map(
+            (p) => ({
+              key: `pct:${gate.id}:${p.e.id}`,
+              pct: p.pct,
+              edge: p.e
+            })
+          )
+          if (sumPct < 100) {
+            entries.push({
+              key: `pct:${gate.id}:__drop__`,
+              pct: 100 - sumPct,
+              edge: null
+            })
+          }
+          let best = entries[0]!
+          let bestDeficit = Number.NEGATIVE_INFINITY
+          for (const ent of entries) {
+            const sent = state.gateQuotaSent[ent.key] ?? 0
+            const deficit = (trigCount * ent.pct) / denom - sent
+            if (deficit > bestDeficit + 1e-9) {
+              bestDeficit = deficit
+              best = ent
+            }
+          }
+          state.gateQuotaSent[best.key] = (state.gateQuotaSent[best.key] ?? 0) + 1
+          if (best.edge) {
+            dispatchStateTriggerEdge(best.edge, gate.id, nextWave)
+            anyFired = true
+          }
+        } else {
+          const roll = rollGateUnitFraction(gate) * Math.max(100, sumPct)
+          let acc = 0
+          for (const p of pctOuts) {
+            acc += p.pct
+            if (roll < acc) {
+              dispatchStateTriggerEdge(p.e, gate.id, nextWave)
+              anyFired = true
+              break
+            }
           }
         }
       }
     }
+
+    if (weightOuts.length > 0) {
+      const gateMod = modifierBonus(doc, gate.id, state, weightOuts[0]!.w, params, rng)
+      weightOuts[0]!.w = Math.max(
+        0,
+        gateMod.overwrite !== null ? gateMod.overwrite : weightOuts[0]!.w + gateMod.bonus
+      )
+      const totalW = weightOuts.reduce((a, b) => a + b.w, 0)
+      if (totalW > 0) {
+        if (gate.gateMode === 'deterministic') {
+          const totInt = Math.max(1, Math.round(totalW))
+          const cursor = (state.gateCursor[gate.id] ?? 0) % totInt
+          state.gateCursor[gate.id] = cursor + 1
+          let acc = 0
+          for (const wItem of weightOuts) {
+            acc += wItem.w
+            if (cursor < acc) {
+              dispatchStateTriggerEdge(wItem.e, gate.id, nextWave)
+              anyFired = true
+              break
+            }
+          }
+        } else if (gate.gateMode === 'skill') {
+          const roll = rollGateUnitFraction(gate) * totalW
+          let acc = 0
+          for (const wItem of weightOuts) {
+            acc += wItem.w
+            if (roll < acc) {
+              dispatchStateTriggerEdge(wItem.e, gate.id, nextWave)
+              anyFired = true
+              break
+            }
+          }
+        } else {
+          // 随机数值权重触发门：按 Machinations 规范在每个周期内无放回抽样（Cycle without replacement）
+          let remSum = 0
+          for (const wItem of weightOuts) {
+            remSum += state.gateQuotaSent[`urn:${gate.id}:${wItem.e.id}`] ?? 0
+          }
+          if (remSum <= 1e-9) {
+            for (const wItem of weightOuts) {
+              state.gateQuotaSent[`urn:${gate.id}:${wItem.e.id}`] = wItem.w
+              remSum += wItem.w
+            }
+          }
+          const roll = rng() * remSum
+          let acc = 0
+          let chosen = weightOuts[weightOuts.length - 1]!
+          for (const wItem of weightOuts) {
+            const rem = state.gateQuotaSent[`urn:${gate.id}:${wItem.e.id}`] ?? 0
+            if (rem <= 1e-9) continue
+            acc += rem
+            if (roll <= acc) {
+              chosen = wItem
+              break
+            }
+          }
+          const cKey = `urn:${gate.id}:${chosen.e.id}`
+          state.gateQuotaSent[cKey] = Math.max(0, (state.gateQuotaSent[cKey] ?? 1) - 1)
+          dispatchStateTriggerEdge(chosen.e, gate.id, nextWave)
+          anyFired = true
+        }
+      }
+    }
+
+    return anyFired
   }
 
-  /** 按拉取模式从输入 Pool / 被动 Source 拉资源。返回是否成功（pull_all 要求全部满足） */
+  function distributeGate(gate: MxNode, amount: number, depth: number, tokenResId?: string): void {
+    const outs = outRes(gate.id)
+    state.fired[gate.id] = true
+    state.gateTrigCount ??= {}
+    state.gateQuotaSent ??= {}
+    state.gateLastRoll ??= {}
+
+    if (outs.length > 0) {
+      const vars = buildVars(doc, state.values, params, step)
+      const normTok = tokenResId && tokenResId !== 'default' ? tokenResId : undefined
+      const intervalOpen = outs.map((e) =>
+        checkAndAdvanceEdgeInterval(
+          doc,
+          e,
+          parseMxFlowFormula(e.formula),
+          state,
+          params,
+          rng,
+          () => vars,
+          true
+        )
+      )
+      const isConditionalGate = outs.some((e) => {
+        const s = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
+        return /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/.test(s)
+      })
+
+      const units = Math.max(1, Math.round(amount))
+      const perUnit = amount / units
+
+      if (isConditionalGate) {
+        for (let u = 0; u < units; u++) {
+          const count = (state.gateTrigCount[gate.id] ?? 0) + 1
+          state.gateTrigCount[gate.id] = count
+          const testVal = rollGateTestValue(gate, count)
+          state.gateLastRoll[gate.id] = testVal
+          const matched: MxEdge[] = []
+          for (let ei = 0; ei < outs.length; ei++) {
+            const e = outs[ei]!
+            if (!intervalOpen[ei]) continue
+            if (!isEdgeActive(doc, e, state, params, rng)) continue
+            if (e.resourceFilter && e.resourceId && e.resourceId !== normTok) {
+              continue
+            }
+            const coreFormula = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
+            const condEdge = coreFormula === e.formula ? e : { ...e, formula: coreFormula }
+            const condSpec = getEffectiveStateSpec(doc, condEdge, state, params, rng, vars)
+            if (checkActivator(condSpec, testVal, vars, rng, gIdx.paramArrays) === true) {
+              matched.push(e)
+            }
+          }
+          if (matched.length === 0) {
+            // 条件门未命中任何分支：按 Machinations 规范销毁该单位资源
+            state.totalConsumed += perUnit
+          } else {
+            if (matched.length > 1) {
+              state.totalProduced += (matched.length - 1) * perUnit
+            }
+            for (const me of matched) {
+              sendAlong(me, perUnit, depth, tokenResId)
+            }
+          }
+        }
+      } else {
+        const weights = outs.map((e, ei) => {
+          if (!intervalOpen[ei]) return 0
+          if (!isEdgeActive(doc, e, state, params, rng)) return 0
+          if (e.resourceFilter && e.resourceId && e.resourceId !== normTok) {
+            return 0
+          }
+          const f = parseMxFlowFormula(e.formula)
+          let w =
+            f.type === 'expr' && f.probability != null
+              ? f.probability * 100
+              : f.type === 'all'
+                ? 1
+                : Math.max(
+                    0,
+                    evaluateMxExpression(f.expr, { vars, arrays: gIdx.paramArrays, rng }, 1)
+                  )
+          const edgeMods = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
+          for (const se of edgeMods) {
+            if (!isEdgeActive(doc, se, state, params, rng)) continue
+            const sp = getEffectiveStateSpec(doc, se, state, params, rng, vars)
+            const sv = getStateEdgeOriginValue(doc, se, state)
+            if (sp.type === 'overwrite') w = Math.max(0, sv)
+            else if (sp.type === 'modifier') {
+              w = Math.max(0, sp.percent ? w * (1 + (sp.delta * sv) / 100) : w + sp.delta * sv)
+            } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
+              w = Math.max(0, w + Math.trunc(sv / sp.denominator) * sp.numerator)
+            } else if (sp.type === 'expr') {
+              w = Math.max(
+                0,
+                w + evalArithmeticStateExprBonus(doc, gIdx, sp.expr, sv, state, params, rng, vars)
+              )
+            }
+          }
+          return w
+        })
+        // 状态修改量加在第一条输出（保底类设计）
+        if (weights.length > 0) {
+          const gateMod = modifierBonus(doc, gate.id, state, weights[0] ?? 0, params, rng)
+          weights[0] = Math.max(
+            0,
+            gateMod.overwrite !== null ? gateMod.overwrite : (weights[0] ?? 0) + gateMod.bonus
+          )
+        }
+        const usesPercent = outs.some((e) => {
+          const f = parseMxFlowFormula(e.formula)
+          return f.type === 'expr' && f.probability != null
+        })
+        for (let u = 0; u < units; u++) {
+          let idx = -1
+          if (gate.gateMode === 'deterministic') {
+            if (usesPercent) {
+              const count = (state.gateTrigCount[gate.id] ?? 0) + 1
+              state.gateTrigCount[gate.id] = count
+              const sumW = weights.reduce((a, b) => a + b, 0)
+              const denom = Math.max(100, sumW)
+              let bestIdx = -1
+              let bestDeficit = Number.NEGATIVE_INFINITY
+              for (let i = 0; i < weights.length; i++) {
+                if (weights[i]! <= 0) continue
+                const qKey = `spct:${gate.id}:${outs[i]!.id}`
+                const sent = state.gateQuotaSent[qKey] ?? 0
+                const deficit = (count * weights[i]!) / denom - sent
+                if (deficit > bestDeficit + 1e-9) {
+                  bestDeficit = deficit
+                  bestIdx = i
+                }
+              }
+              if (sumW < 100) {
+                const dropKey = `spct:${gate.id}:__drop__`
+                const dropSent = state.gateQuotaSent[dropKey] ?? 0
+                const dropDef = (count * (100 - sumW)) / denom - dropSent
+                if (dropDef > bestDeficit + 1e-9) {
+                  state.gateQuotaSent[dropKey] = dropSent + 1
+                  state.totalConsumed += perUnit
+                  continue
+                }
+              }
+              if (bestIdx >= 0) {
+                const qKey = `spct:${gate.id}:${outs[bestIdx]!.id}`
+                state.gateQuotaSent[qKey] = (state.gateQuotaSent[qKey] ?? 0) + 1
+                idx = bestIdx
+              }
+            } else {
+              const sumW = weights.reduce((a, b) => a + b, 0)
+              if (sumW <= 0) {
+                state.totalConsumed += perUnit
+                continue
+              }
+              const cursor = (state.gateCursor[gate.id] ?? 0) % Math.max(1, Math.round(sumW))
+              state.gateCursor[gate.id] = cursor + 1
+              let acc = 0
+              for (let i = 0; i < weights.length; i++) {
+                acc += weights[i]!
+                if (cursor < acc) {
+                  idx = i
+                  break
+                }
+              }
+            }
+          } else {
+            const sumW = weights.reduce((a, b) => a + b, 0)
+            const total = usesPercent ? Math.max(100, sumW) : sumW
+            if (total <= 0) {
+              state.totalConsumed += perUnit
+              continue
+            }
+            const roll = rollGateUnitFraction(gate) * total
+            let acc = 0
+            for (let i = 0; i < weights.length; i++) {
+              acc += weights[i]!
+              if (roll < acc) {
+                idx = i
+                break
+              }
+            }
+            if (idx < 0 && usesPercent && sumW < 100) {
+              state.totalConsumed += perUnit
+              continue
+            }
+          }
+          if (idx < 0) continue
+          const edge = outs[idx]!
+          sendAlong(edge, perUnit, depth, tokenResId)
+          // 第一条分支命中且有状态修改量时，把源 Pool 归零（保底重置语义）
+          if (
+            idx === 0 &&
+            stateInputs(doc, gate.id).some(
+              (s) => parseMxStateFormula(s.formula).type === 'modifier'
+            )
+          ) {
+            for (const s of stateInputs(doc, gate.id)) {
+              const srcNode = byId.get(s.from)
+              if (srcNode?.kind === 'pool' && parseMxStateFormula(s.formula).type === 'modifier') {
+                state.values[srcNode.id] = 0
+                if (state.poolTokens?.[srcNode.id]) state.poolTokens[srcNode.id] = []
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Mixed Gate：在接收并分流资源的同时，同步触发出向状态连线
+    if ((gIdx.stateOutByNode.get(gate.id)?.length ?? 0) > 0) {
+      fireTriggerGateOutputs(gate, currentWaveNext)
+    }
+  }
+
+  /** 按拉取模式从输入 Pool / 被动 Source 拉资源。返回是否成功、拉取总量、短缺标记与各输入抽取的颜色信息 */
   const pullInputs = (
     node: MxNode,
     mode: 'any' | 'all',
     times = 1
-  ): { ok: boolean; pulled: number } => {
+  ): {
+    ok: boolean
+    pulled: number
+    shortfall: boolean
+    pulledByInput: Array<{ edge: MxEdge; amount: number; colors: MxPoolTokenStackItem[] }>
+  } => {
     const ins = inRes(node.id).filter((e) => {
       if (!node.ignoreDisabledInputs) return true
       return nowActive[e.from] !== false
     })
-    if (!ins.length) return { ok: node.kind === 'pool' || node.kind === 'drain', pulled: 0 }
+    if (!ins.length) {
+      return {
+        ok: node.kind === 'pool' || node.kind === 'drain',
+        pulled: 0,
+        shortfall: false,
+        pulledByInput: []
+      }
+    }
     const req = ins.map((e) => {
       const src = byId.get(e.from)
       const isPassiveSource =
         src?.kind === 'source' && src.trigger !== 'automatic' && !state.fired[src.id]
+      const passiveSrcColor =
+        !e.resourceFilter && e.resourceId ? e.resourceId : src?.resourceId || 'default'
+      const passiveFilterBlocked = Boolean(
+        isPassiveSource && e.resourceFilter && e.resourceId && passiveSrcColor !== e.resourceId
+      )
       const avail = isPassiveSource
-        ? nowActive[src.id]
+        ? nowActive[src.id] && !passiveFilterBlocked
           ? Number.POSITIVE_INFINITY
           : 0
-        : src?.kind === 'pool' || src?.kind === 'converter' || src?.kind === 'trader'
-          ? (state.values[e.from] ?? 0)
-          : 0
+        : src?.kind === 'pool'
+          ? e.resourceFilter && e.resourceId
+            ? countPoolTokensByColor(state, src.id, e.resourceId)
+            : Math.max(0, state.values[e.from] ?? 0)
+          : src?.kind === 'converter' || src?.kind === 'trader'
+            ? Math.max(0, state.values[e.from] ?? 0)
+            : 0
       return {
         e,
         src,
         isPassiveSource,
         avail,
-        amount: evalFlowAmount(doc, e, state, params, rng, avail) * times
+        amount: evalFlowAmount(doc, e, state, params, rng, avail, false) * times
       }
     })
     // 自动 Source 作为输入：由 Source 自己推送；但在 pull_all 下若该自动 Source 未推送足够数量，则视为不满足
     const pushedSourceReqs = req.filter(
       (r) => r.src && r.src.kind === 'source' && !r.isPassiveSource
     )
-    if (
-      mode === 'all' &&
-      pushedSourceReqs.some((r) => (state.edgeFlows[r.e.id] ?? 0) + 1e-9 < r.amount)
-    ) {
-      return { ok: false, pulled: 0 }
-    }
+    const pushedShortfall = pushedSourceReqs.some(
+      (r) => r.amount > 0 && (state.edgeFlows[r.e.id] ?? 0) + 1e-9 < r.amount
+    )
     const pullableReqs = req.filter((r) => r.src && (r.src.kind !== 'source' || r.isPassiveSource))
-    if (mode === 'all' && pullableReqs.some((r) => r.avail + 1e-9 < r.amount)) {
-      return { ok: false, pulled: 0 }
+    const pullShortfall = pullableReqs.some((r) => r.amount > 0 && r.avail + 1e-9 < r.amount)
+    const shortfall = pushedShortfall || pullShortfall
+
+    if (mode === 'all' && shortfall) {
+      return { ok: false, pulled: 0, shortfall: true, pulledByInput: [] }
     }
-    let pulled = 0
+
+    // 提交实际生效的资源边动态间隔
+    let sharedIvVars: Record<string, number> | null = null
+    const ensureIvVars = (): Record<string, number> => {
+      if (!sharedIvVars) sharedIvVars = buildVars(doc, state.values, params, step)
+      return sharedIvVars
+    }
     for (const r of pullableReqs) {
-      const take = Math.min(r.avail, r.amount)
+      if (r.amount > 0) {
+        checkAndAdvanceEdgeInterval(
+          doc,
+          r.e,
+          parseMxFlowFormula(r.e.formula),
+          state,
+          params,
+          rng,
+          ensureIvVars,
+          true
+        )
+      }
+    }
+
+    let pulled = 0
+    const pulledByInput: Array<{ edge: MxEdge; amount: number; colors: MxPoolTokenStackItem[] }> =
+      []
+    for (const r of pullableReqs) {
+      let take = Math.min(r.avail, r.amount)
       if (take <= 0) continue
+      if (node.kind === 'pool' && node.overflow !== 'drain') {
+        const room = capOf(node) - (state.values[node.id] ?? 0)
+        take = Math.max(0, Math.min(room, take))
+        if (take <= 0) continue
+      }
+
+      let pulledColors: MxPoolTokenStackItem[] = []
       if (r.isPassiveSource) {
+        const srcColor =
+          !r.e.resourceFilter && r.e.resourceId ? r.e.resourceId : r.src?.resourceId || 'default'
+        const evColor = srcColor === 'default' ? undefined : srcColor
+        pulledColors = [{ resId: srcColor, count: take }]
         state.totalProduced += take
+        recordNodeColor(r.e.from, evColor)
         events.push({
           step,
           type: 'produce',
           nodeId: r.e.from,
           edgeId: r.e.id,
           amount: take,
-          resourceId: r.src?.resourceId
+          resourceId: evColor
         })
+      } else if (r.src?.kind === 'pool') {
+        pulledColors = popPoolTokens(state, r.src, take, {
+          filterResId: r.e.resourceFilter ? r.e.resourceId : undefined,
+          shuffle: r.e.shuffleOrigin,
+          rng
+        })
+        const actualPopped = pulledColors.reduce((a, b) => a + b.count, 0)
+        take = Math.min(take, actualPopped)
+        if (take <= 0) continue
+        for (const seg of pulledColors) {
+          if (seg.resId && seg.resId !== 'default') recordNodeColor(r.e.from, seg.resId)
+        }
+        state.values[r.e.from] = Math.round(((state.values[r.e.from] ?? 0) - take) * 1000) / 1000
       } else {
+        const nonPoolColor =
+          (!r.e.resourceFilter ? r.e.resourceId : undefined) || r.src?.resourceId || 'default'
+        if (r.e.resourceFilter && r.e.resourceId && nonPoolColor !== r.e.resourceId) continue
+        pulledColors = [{ resId: nonPoolColor, count: take }]
+        if (nonPoolColor !== 'default') recordNodeColor(r.e.from, nonPoolColor)
         state.values[r.e.from] = Math.round(((state.values[r.e.from] ?? 0) - take) * 1000) / 1000
       }
+
+      pulledByInput.push({ edge: r.e, amount: take, colors: pulledColors })
       state.edgeFlows[r.e.id] = (state.edgeFlows[r.e.id] ?? 0) + take
       pulled += take
+
       if (node.kind === 'pool') {
-        const room = capOf(node, doc, state) - (state.values[node.id] ?? 0)
-        const accepted = Math.min(room, take)
-        state.values[node.id] = (state.values[node.id] ?? 0) + accepted
-        if (accepted < take && !r.isPassiveSource) {
-          state.values[r.e.from] = (state.values[r.e.from] ?? 0) + (take - accepted)
+        const prevVal = state.values[node.id] ?? 0
+        const room = capOf(node) - prevVal
+        const accepted = Math.max(0, Math.min(room, take))
+        const nextVal = Math.round((prevVal + accepted) * 1000) / 1000
+        state.values[node.id] = nextVal
+        let remAccept = Math.max(0, nextVal) - Math.max(0, prevVal)
+        for (const seg of pulledColors) {
+          if (remAccept <= 1e-9) break
+          const g = Math.min(remAccept, seg.count)
+          const segColor =
+            (seg.resId && seg.resId !== 'default' ? seg.resId : undefined) ||
+            (!r.e.resourceFilter ? r.e.resourceId : undefined) ||
+            node.resourceId
+          pushPoolTokens(state, node, g, segColor)
+          recordNodeColor(node.id, segColor)
+          remAccept -= g
+        }
+        if (node.overflow === 'drain' && take > accepted) {
+          state.totalConsumed += Math.round((take - accepted) * 1000) / 1000
         }
       } else if (node.kind === 'drain') {
         state.totalConsumed += take
+        for (const seg of pulledColors) {
+          if (seg.resId && seg.resId !== 'default') recordNodeColor(node.id, seg.resId)
+        }
       }
+
       events.push({
         step,
         type: node.kind === 'drain' ? 'consume' : 'transfer',
         nodeId: r.e.from,
         targetId: node.id,
         edgeId: r.e.id,
-        amount: take
+        amount: take,
+        resourceId: pulledColors[0]?.resId === 'default' ? undefined : pulledColors[0]?.resId
       })
+      if (r.e.transferMode === 'instant') {
+        propagateInstantStateUpdate(node.id, r.e.from)
+      }
     }
-    return { ok: pullableReqs.length === 0 || pulled > 0 || mode === 'all', pulled }
+    const anyPushed = pushedSourceReqs.some((r) => (state.edgeFlows[r.e.id] ?? 0) > 0)
+    const ok =
+      (pullableReqs.length === 0 && anyPushed) ||
+      pulled > 0 ||
+      (mode === 'all' && !shortfall && (pulled > 0 || anyPushed))
+    return { ok, pulled, shortfall, pulledByInput }
   }
 
-  const fireNode = (node: MxNode): boolean => {
-    if (!nowActive[node.id] && node.kind !== 'end') return false
+  const fireNode = (node: MxNode): { okStar: boolean; okBang: boolean } => {
+    if (!nowActive[node.id] && node.kind !== 'end') return { okStar: false, okBang: false }
     state.fired[node.id] = true
     switch (node.kind) {
       case 'source': {
+        const outs = outRes(node.id)
+        if (node.pullMode === 'push_all') {
+          const reqs = outs.map((e) => ({
+            e,
+            amt: evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false)
+          }))
+          const neededByPool = new Map<string, number>()
+          let blocked = false
+          for (const r of reqs) {
+            if (r.amt <= 0) continue
+            const prodColor =
+              !r.e.resourceFilter && r.e.resourceId ? r.e.resourceId : node.resourceId || 'default'
+            const normProd = prodColor === 'default' ? undefined : prodColor
+            if (r.e.resourceFilter && r.e.resourceId && r.e.resourceId !== normProd) {
+              blocked = true
+              break
+            }
+            const dst = byId.get(r.e.to)
+            if (!dst) continue
+            if (dst.kind === 'gate' && !nowActive[dst.id]) {
+              blocked = true
+              break
+            }
+            if (dst.kind === 'pool' && dst.overflow !== 'drain') {
+              const nextNeed = (neededByPool.get(dst.id) ?? 0) + r.amt
+              neededByPool.set(dst.id, nextNeed)
+              if (capOf(dst) - (state.values[dst.id] ?? 0) + 1e-9 < nextNeed) {
+                blocked = true
+                break
+              }
+            }
+          }
+          if (blocked) {
+            events.push({ step, type: 'blocked', nodeId: node.id })
+            return { okStar: false, okBang: true }
+          }
+          let sharedIvVars: Record<string, number> | null = null
+          const ensureIvVars = (): Record<string, number> => {
+            if (!sharedIvVars) sharedIvVars = buildVars(doc, state.values, params, step)
+            return sharedIvVars
+          }
+          let any = false
+          for (const r of reqs) {
+            if (r.amt <= 0) continue
+            checkAndAdvanceEdgeInterval(
+              doc,
+              r.e,
+              parseMxFlowFormula(r.e.formula),
+              state,
+              params,
+              rng,
+              ensureIvVars,
+              true
+            )
+            const color =
+              !r.e.resourceFilter && r.e.resourceId ? r.e.resourceId : node.resourceId || 'default'
+            const moved = sendAlong(r.e, r.amt, 0, color)
+            if (moved > 0) {
+              const evColor = color === 'default' ? undefined : color
+              state.totalProduced += moved
+              recordNodeColor(node.id, evColor)
+              events.push({
+                step,
+                type: 'produce',
+                nodeId: node.id,
+                edgeId: r.e.id,
+                amount: moved,
+                resourceId: evColor
+              })
+              any = true
+            }
+          }
+          return { okStar: any, okBang: !any && reqs.some((r) => r.amt > 0) }
+        }
+
         let any = false
-        for (const e of outRes(node.id)) {
+        for (const e of outs) {
           const amt = evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY)
           if (amt <= 0) continue
-          state.totalProduced += amt
-          events.push({
-            step,
-            type: 'produce',
-            nodeId: node.id,
-            edgeId: e.id,
-            amount: amt,
-            resourceId: node.resourceId
-          })
-          if (sendAlong(e, amt) > 0) any = true
+          const color =
+            !e.resourceFilter && e.resourceId ? e.resourceId : node.resourceId || 'default'
+          const moved = sendAlong(e, amt, 0, color)
+          if (moved > 0) {
+            const evColor = color === 'default' ? undefined : color
+            state.totalProduced += moved
+            recordNodeColor(node.id, evColor)
+            events.push({
+              step,
+              type: 'produce',
+              nodeId: node.id,
+              edgeId: e.id,
+              amount: moved,
+              resourceId: evColor
+            })
+            any = true
+          }
         }
-        return any
+        return { okStar: any, okBang: !any && outs.length > 0 }
       }
       case 'pool': {
-        const mode = node.pullMode ?? 'pull_any'
+        const hasIn = inRes(node.id).length > 0
+        const hasOut = outRes(node.id).length > 0
+        const mode =
+          !hasIn && hasOut && (!node.pullMode || node.pullMode === 'pull_any')
+            ? 'push_any'
+            : (node.pullMode ?? 'pull_any')
         if (mode === 'push_any' || mode === 'push_all') {
           const outs = outRes(node.id)
-          const req = outs.map((e) => ({
-            e,
-            amount: evalFlowAmount(doc, e, state, params, rng, state.values[node.id] ?? 0)
-          }))
+          const posAvail = Math.max(0, state.values[node.id] ?? 0)
+          const req = outs.map((e) => {
+            const edgeAvail =
+              e.resourceFilter && e.resourceId
+                ? countPoolTokensByColor(state, node.id, e.resourceId)
+                : posAvail
+            return {
+              e,
+              edgeAvail,
+              amount: evalFlowAmount(doc, e, state, params, rng, edgeAvail, false)
+            }
+          })
           const total = req.reduce((a, r) => a + r.amount, 0)
-          if (mode === 'push_all' && total > (state.values[node.id] ?? 0) + 1e-9) return false
+          const neededByDstPool = new Map<string, number>()
+          let dstBlocked = false
+          if (mode === 'push_all') {
+            for (const r of req) {
+              if (r.amount <= 0) continue
+              const dst = byId.get(r.e.to)
+              if (!dst) continue
+              if (dst.kind === 'gate' && !nowActive[dst.id]) {
+                dstBlocked = true
+                break
+              }
+              if (dst.kind === 'pool' && dst.overflow !== 'drain') {
+                const nextNeed = (neededByDstPool.get(dst.id) ?? 0) + r.amount
+                neededByDstPool.set(dst.id, nextNeed)
+                if (capOf(dst) - (state.values[dst.id] ?? 0) + 1e-9 < nextNeed) {
+                  dstBlocked = true
+                  break
+                }
+              }
+            }
+          }
+          const shortfall =
+            total > posAvail + 1e-9 || req.some((r) => r.amount > r.edgeAvail + 1e-9)
+          if (mode === 'push_all' && (shortfall || dstBlocked)) {
+            if (dstBlocked) events.push({ step, type: 'blocked', nodeId: node.id })
+            return { okStar: false, okBang: true }
+          }
+          let sharedIvVars: Record<string, number> | null = null
+          const ensureIvVars = (): Record<string, number> => {
+            if (!sharedIvVars) sharedIvVars = buildVars(doc, state.values, params, step)
+            return sharedIvVars
+          }
           let moved = 0
           for (const r of req) {
-            const take = Math.min(state.values[node.id] ?? 0, r.amount)
+            const curAvail =
+              r.e.resourceFilter && r.e.resourceId
+                ? countPoolTokensByColor(state, node.id, r.e.resourceId)
+                : Math.max(0, state.values[node.id] ?? 0)
+            let take = Math.min(curAvail, r.amount)
             if (take <= 0) continue
-            state.values[node.id] = (state.values[node.id] ?? 0) - take
-            const accepted = sendAlong(r.e, take)
-            if (accepted < take)
-              state.values[node.id] = (state.values[node.id] ?? 0) + (take - accepted)
-            moved += accepted
+            checkAndAdvanceEdgeInterval(
+              doc,
+              r.e,
+              parseMxFlowFormula(r.e.formula),
+              state,
+              params,
+              rng,
+              ensureIvVars,
+              true
+            )
+            const dst = byId.get(r.e.to)
+            if (dst?.kind === 'pool' && dst.overflow !== 'drain') {
+              take = Math.max(0, Math.min(take, capOf(dst) - (state.values[dst.id] ?? 0)))
+              if (take <= 0) continue
+            }
+            const popped = popPoolTokens(state, node, take, {
+              filterResId: r.e.resourceFilter ? r.e.resourceId : undefined,
+              shuffle: r.e.shuffleOrigin,
+              rng
+            })
+            let edgeMoved = 0
+            for (const seg of popped) {
+              const segMoved = sendAlong(r.e, seg.count, 0, seg.resId, true)
+              if (segMoved > 0 && seg.resId && seg.resId !== 'default') {
+                recordNodeColor(node.id, seg.resId)
+              }
+              edgeMoved += segMoved
+            }
+            state.values[node.id] =
+              Math.round(((state.values[node.id] ?? 0) - edgeMoved) * 1000) / 1000
+            if (edgeMoved > 0 && r.e.transferMode === 'instant') {
+              propagateInstantStateUpdate(r.e.to, node.id)
+            }
+            moved += edgeMoved
           }
-          return moved > 0
+          return { okStar: moved > 0, okBang: shortfall || (moved <= 0 && total > 0) }
         }
-        return pullInputs(node, mode === 'pull_all' ? 'all' : 'any').pulled > 0
+        const res = pullInputs(node, mode === 'pull_all' ? 'all' : 'any')
+        return { okStar: res.pulled > 0, okBang: res.shortfall }
       }
       case 'drain': {
         const mode = node.pullMode === 'pull_all' ? 'all' : 'any'
-        return pullInputs(node, mode).pulled > 0
+        const res = pullInputs(node, mode)
+        return { okStar: res.pulled > 0, okBang: res.shortfall || !res.ok }
       }
       case 'converter':
       case 'trader': {
@@ -2258,60 +4490,225 @@ export function stepMxSimulation(
         let times = 0
         const maxTimes = multiple ? 50 : 1
         for (let k = 0; k < maxTimes; k++) {
-          // 先用缓冲中被推入的资源
+          const outs = outRes(node.id)
+          const hasCappedBlockOut = outs.some((oe) => {
+            const dst = byId.get(oe.to)
+            if (!dst) return false
+            if (dst.kind === 'gate' && !nowActive[dst.id]) return true
+            return (
+              dst.kind === 'pool' &&
+              dst.overflow !== 'drain' &&
+              capOf(dst) < Number.POSITIVE_INFINITY
+            )
+          })
+          if (hasCappedBlockOut) {
+            const neededByDst = new Map<string, number>()
+            let outBlocked = false
+            for (const oe of outs) {
+              const dst = byId.get(oe.to)
+              if (!dst) continue
+              if (dst.kind === 'gate' && !nowActive[dst.id]) {
+                outBlocked = true
+                break
+              }
+              if (
+                dst.kind === 'pool' &&
+                dst.overflow !== 'drain' &&
+                capOf(dst) < Number.POSITIVE_INFINITY
+              ) {
+                const rawOut = (oe.formula ?? '').trim()
+                const isStochastic = /(?:\d*[dD]\d+|\.\.|%|random|pickrandom|norm|gaussian)/i.test(
+                  rawOut
+                )
+                const estOut = isStochastic
+                  ? Math.max(1e-9, oe.minLimit ?? 1)
+                  : evalFlowAmount(doc, oe, state, params, rng, Number.POSITIVE_INFINITY, false)
+                if (estOut > 0) {
+                  const nextNeed = (neededByDst.get(dst.id) ?? 0) + estOut
+                  neededByDst.set(dst.id, nextNeed)
+                  if (capOf(dst) - (state.values[dst.id] ?? 0) + 1e-9 < nextNeed) {
+                    outBlocked = true
+                    break
+                  }
+                }
+              }
+            }
+            if (outBlocked) break
+          }
+
           const ins = inRes(node.id)
-          const req = ins.map((e) =>
-            evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY)
-          )
-          const needTotal = req.reduce((a, b) => a + b, 0)
           const buffered = state.values[node.id] ?? 0
-          if (buffered + 1e-9 >= needTotal && needTotal > 0) {
-            state.values[node.id] = buffered - needTotal
+          let pulledByInput: Array<{
+            edge: MxEdge
+            amount: number
+            colors: MxPoolTokenStackItem[]
+          }> = []
+          const effPullMode =
+            node.pullMode === 'pull_any' || node.pullMode === 'push_any' ? 'any' : 'all'
+          if (buffered > 1e-9 && ins.length > 0) {
+            const req = ins.map((e) =>
+              evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false)
+            )
+            const needTotal = req.reduce((a, b) => a + b, 0)
+            if (needTotal > 0 && buffered + 1e-9 >= needTotal) {
+              state.values[node.id] = buffered - needTotal
+            } else {
+              const res = pullInputs(node, effPullMode)
+              if (
+                !res.ok ||
+                (res.pulled <= 0 && ins.some((e) => byId.get(e.from)?.kind !== 'source'))
+              ) {
+                break
+              }
+              pulledByInput = res.pulledByInput
+              state.values[node.id] = 0
+            }
           } else {
-            const res = pullInputs(node, node.pullMode === 'pull_any' ? 'any' : 'all')
+            const res = pullInputs(node, effPullMode)
             if (
               !res.ok ||
               (res.pulled <= 0 && ins.some((e) => byId.get(e.from)?.kind !== 'source'))
-            )
+            ) {
               break
+            }
+            pulledByInput = res.pulledByInput
             state.values[node.id] = 0
           }
           times++
-          for (const e of outRes(node.id)) {
-            const amt = evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY)
+          const allTraderOutsDefault =
+            node.kind === 'trader' &&
+            pulledByInput.length >= 2 &&
+            outs.every((oe) => !oe.formula?.trim() || oe.formula.trim() === '1') &&
+            pulledByInput.some((p) => Math.abs(p.amount - 1) > 1e-6)
+          for (let outIdx = 0; outIdx < outs.length; outIdx++) {
+            const e = outs[outIdx]!
+            const swappedInput =
+              node.kind === 'trader' && pulledByInput.length >= 2
+                ? pulledByInput[pulledByInput.length - 1 - (outIdx % pulledByInput.length)]
+                : pulledByInput[0]
+            const amt =
+              allTraderOutsDefault && swappedInput
+                ? swappedInput.amount
+                : evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY)
             if (amt <= 0) continue
-            events.push({
-              step,
-              type: node.kind === 'trader' ? 'trade' : 'convert',
-              nodeId: node.id,
-              edgeId: e.id,
-              amount: amt,
-              resourceId: node.resourceId ?? e.resourceId
-            })
-            sendAlong(e, amt)
+            let outColor = (!e.resourceFilter ? e.resourceId : undefined) ?? node.resourceId
+            if (!outColor) {
+              if (pulledByInput.length > 0) {
+                if (node.kind === 'trader') {
+                  const amtMatch = !allTraderOutsDefault
+                    ? pulledByInput.find((p) => Math.abs(p.amount - amt) < 1e-6)
+                    : undefined
+                  const cand = (amtMatch ?? swappedInput)?.colors[0]?.resId
+                  if (cand && cand !== 'default') outColor = cand
+                } else if (pulledByInput.length === 1) {
+                  const cand = pulledByInput[0]?.colors[0]?.resId
+                  if (cand && cand !== 'default') outColor = cand
+                }
+              } else if (ins.length === 1) {
+                const seen = receivedColorsByNode.get(node.id)
+                if (seen && seen.size === 1) {
+                  const cand = Array.from(seen)[0]
+                  if (cand && cand !== 'default') outColor = cand
+                }
+              }
+            }
+            const sent = sendAlong(e, amt, 0, outColor || 'default')
+            if (sent > 0) {
+              recordNodeColor(node.id, outColor)
+              events.push({
+                step,
+                type: node.kind === 'trader' ? 'trade' : 'convert',
+                nodeId: node.id,
+                edgeId: e.id,
+                amount: sent,
+                resourceId: outColor
+              })
+            }
           }
         }
         if (times === 0) {
           events.push({ step, type: 'blocked', nodeId: node.id })
-          return false
+          return { okStar: false, okBang: true }
         }
-        return true
+        return { okStar: true, okBang: false }
       }
       case 'gate': {
-        // 自动 Gate：从输入 Pool 拉取后分流
-        const res = pullInputs(node, 'any')
-        if (res.pulled > 0) distributeGate(node, res.pulled, 0)
-        return res.pulled > 0
+        // Trigger Gate（无出向资源边，仅有出向状态边）
+        if (outRes(node.id).length === 0 && (gIdx.stateOutByNode.get(node.id)?.length ?? 0) > 0) {
+          if (inRes(node.id).length > 0) {
+            const res = pullInputs(node, node.pullMode === 'pull_all' ? 'all' : 'any')
+            if (res.pulled <= 0) return { okStar: false, okBang: true }
+          }
+          const ok = fireTriggerGateOutputs(node, currentWaveNext)
+          return { okStar: ok, okBang: !ok }
+        }
+        // 自动 / 交互分流 Gate：从输入拉取资源并分流
+        const res = pullInputs(node, node.pullMode === 'pull_all' ? 'all' : 'any')
+        if (res.pulled > 0) {
+          for (const inp of res.pulledByInput) {
+            for (const seg of inp.colors) {
+              if (seg.count > 0) distributeGate(node, seg.count, 0, seg.resId)
+            }
+          }
+        }
+        return { okStar: res.pulled > 0, okBang: res.shortfall || res.pulled <= 0 }
+      }
+      case 'delay':
+      case 'queue': {
+        const res = pullInputs(node, node.pullMode === 'pull_all' ? 'all' : 'any')
+        if (res.pulled > 0) {
+          const wait = computeDelayOrQueueWait(node)
+          state.buffers[node.id] ??= []
+          for (const inp of res.pulledByInput) {
+            for (const seg of inp.colors) {
+              if (seg.count <= 0) continue
+              state.buffers[node.id]!.push({
+                release: step + wait,
+                amount: seg.count,
+                resourceId: seg.resId
+              })
+            }
+          }
+          state.values[node.id] = (state.values[node.id] ?? 0) + res.pulled
+        }
+        return { okStar: res.pulled > 0, okBang: res.shortfall }
       }
       case 'register':
         if (node.trigger === 'interactive' && !node.formula?.trim()) {
-          state.values[node.id] = (state.values[node.id] ?? 0) + 1
-          if (node.max != null) state.values[node.id] = Math.min(node.max, state.values[node.id]!)
+          const delta = node.step ?? 1
+          let nextV = (state.values[node.id] ?? 0) + delta
+          if (node.min != null) nextV = Math.max(node.min, nextV)
+          if (node.max != null) nextV = Math.min(node.max, nextV)
+          state.values[node.id] = nextV
           events.push({ step, type: 'register', nodeId: node.id, amount: state.values[node.id] })
         }
-        return true
+        return { okStar: true, okBang: false }
       default:
-        return false
+        return { okStar: false, okBang: false }
+    }
+  }
+
+  const propagateStateTriggersFrom = (
+    sourceNodeId: string,
+    okStar: boolean,
+    okBang: boolean,
+    next: MxNode[]
+  ): void => {
+    const srcNode = byId.get(sourceNodeId)
+    // Gate 的状态输出已由 fireTriggerGateOutputs / distributeGate 统一按概率/权重/条件处理（仅传播 `!` 反向触发器）
+    const outStates = gIdx.stateOutByNode.get(sourceNodeId) ?? EMPTY_EDGES
+    for (const e of outStates) {
+      if (!isEdgeActive(doc, e, state, params, rng)) continue
+      if (e.resourceFilter && e.resourceId) {
+        const seenColors = receivedColorsByNode.get(sourceNodeId)
+        if (!seenColors || !seenColors.has(e.resourceId)) continue
+      }
+      const spec = getEffectiveStateSpec(doc, e, state, params, rng)
+      if (srcNode?.kind === 'gate' && spec.type !== 'reverse_trigger') continue
+      const fireIt =
+        (spec.type === 'trigger' && okStar) || (spec.type === 'reverse_trigger' && okBang)
+      if (!fireIt) continue
+      dispatchStateTriggerEdge(e, sourceNodeId, next)
     }
   }
 
@@ -2325,24 +4722,33 @@ export function stepMxSimulation(
       state.buffers[n.id] = buf.filter((b) => b.release > step)
       for (const d of due) {
         state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - d.amount)
-        events.push({ step, type: 'release', nodeId: n.id, amount: d.amount })
-        for (const e of outs) sendAlong(e, d.amount)
+        if (d.resourceId && d.resourceId !== 'default') recordNodeColor(n.id, d.resourceId)
+        events.push({
+          step,
+          type: 'release',
+          nodeId: n.id,
+          amount: d.amount,
+          resourceId: d.resourceId
+        })
+        for (const e of outs) sendAlong(e, d.amount, 0, d.resourceId)
+        propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
       }
     } else {
       const head = buf[0]
       if (head && head.release <= step) {
         const unit = Math.min(1, head.amount)
+        const relColor = head.resourceId
         head.amount -= unit
         if (head.amount <= 1e-9) buf.shift()
         state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - unit)
         // 队列中的下一个从现在开始等待
-        if (buf[0])
-          buf[0].release = Math.max(
-            buf[0].release,
-            step + Math.max(1, Math.round(n.delaySteps ?? 1))
-          )
-        events.push({ step, type: 'release', nodeId: n.id, amount: unit })
-        for (const e of outs) sendAlong(e, unit)
+        if (buf[0]) {
+          buf[0].release = Math.max(buf[0].release, step + Math.max(1, computeDelayOrQueueWait(n)))
+        }
+        if (relColor && relColor !== 'default') recordNodeColor(n.id, relColor)
+        events.push({ step, type: 'release', nodeId: n.id, amount: unit, resourceId: relColor })
+        for (const e of outs) sendAlong(e, unit, 0, relColor)
+        propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
       }
     }
   }
@@ -2372,12 +4778,23 @@ export function stepMxSimulation(
   }
 
   const autoCandidates: MxNode[] = []
-  const immediateFiring: MxNode[] = []
+  const immediateFiring: MxNode[] = [...currentWaveNext]
+  currentWaveNext = []
   for (const id of orderedInteractions) {
     const clickedNode = byId.get(id)
     if (clickedNode) immediateFiring.push(clickedNode)
   }
-  const order: MxNodeKind[] = ['source', 'pool', 'gate', 'converter', 'trader', 'drain', 'register']
+  const order: MxNodeKind[] = [
+    'source',
+    'pool',
+    'gate',
+    'delay',
+    'queue',
+    'converter',
+    'trader',
+    'drain',
+    'register'
+  ]
   const globalBot = doc.settings.botMode ?? 'off'
   let botVars: Record<string, number> | null = null
 
@@ -2386,7 +4803,9 @@ export function stepMxSimulation(
     for (const n of kNodes) {
       const auto = n.trigger === 'automatic'
       const clicked = interactions.has(n.id)
-      const enabling = n.trigger === 'enabling' && nowActive[n.id] && !prev.active[n.id]
+      // Enabling (On Start) 触发模式：在 Step 1 若已处于激活态立即触发一次，之后每次从失活重新变为激活时再次触发一次
+      const enabling =
+        n.trigger === 'enabling' && nowActive[n.id] && (step === 1 || !prev.active[n.id])
       if (clicked) {
         // 已按 orderedInteractions 顺序压入 immediateFiring（支持步内连击与多次点击）
         continue
@@ -2414,7 +4833,10 @@ export function stepMxSimulation(
         } else if (effPolicy === 'condition') {
           if (!botVars) botVars = buildVars(doc, state.values, params, step)
           const condExpr = n.botCondition?.trim() || '1'
-          if (evaluateMxExpression(condExpr, { vars: botVars, rng }, 0) !== 0) {
+          if (
+            evaluateMxExpression(condExpr, { vars: botVars, arrays: gIdx.paramArrays, rng }, 0) !==
+            0
+          ) {
             autoCandidates.push(n)
           }
         }
@@ -2429,77 +4851,30 @@ export function stepMxSimulation(
     firing.push(...autoCandidates)
   }
 
-  const fireSingleResourceEdge = (resEdge: MxEdge): boolean => {
-    const srcNode = byId.get(resEdge.from)
-    if (!srcNode || !nowActive[srcNode.id]) return false
-    if (srcNode.kind === 'source') {
-      const amt = evalFlowAmount(doc, resEdge, state, params, rng, Number.POSITIVE_INFINITY)
-      if (amt <= 0) return false
-      state.totalProduced += amt
-      events.push({
-        step,
-        type: 'produce',
-        nodeId: srcNode.id,
-        edgeId: resEdge.id,
-        amount: amt,
-        resourceId: srcNode.resourceId
-      })
-      return sendAlong(resEdge, amt) > 0
-    }
-    const avail = state.values[srcNode.id] ?? 0
-    const amt = Math.min(avail, evalFlowAmount(doc, resEdge, state, params, rng, avail))
-    if (amt <= 0) return false
-    state.values[srcNode.id] = Math.round((avail - amt) * 1000) / 1000
-    const moved = sendAlong(resEdge, amt)
-    if (moved < amt)
-      state.values[srcNode.id] =
-        Math.round(((state.values[srcNode.id] ?? 0) + (amt - moved)) * 1000) / 1000
-    return moved > 0
-  }
-
-  const triggered = new Set<string>()
-  const triggeredEdges = new Set<string>()
-  const propagateStateTriggersFrom = (sourceNodeId: string, ok: boolean, next: MxNode[]): void => {
-    const outStates = gIdx.stateOutByNode.get(sourceNodeId) ?? EMPTY_EDGES
-    for (const e of outStates) {
-      const spec = parseMxStateFormula(e.formula)
-      const fireIt = (spec.type === 'trigger' && ok) || (spec.type === 'reverse_trigger' && !ok)
-      if (!fireIt) continue
-      if (e.targetEdgeId) {
-        if (triggeredEdges.has(e.targetEdgeId)) continue
-        const targetEdge = gIdx.resEdgeById.get(e.targetEdgeId)
-        if (!targetEdge) continue
-        triggeredEdges.add(targetEdge.id)
-        events.push({
-          step,
-          type: 'trigger',
-          nodeId: sourceNodeId,
-          targetId: targetEdge.to,
-          edgeId: e.id
-        })
-        fireSingleResourceEdge(targetEdge)
-        continue
-      }
-      const target = byId.get(e.to)
-      if (!target || triggered.has(target.id)) continue
-      triggered.add(target.id)
-      events.push({
-        step,
-        type: 'trigger',
-        nodeId: sourceNodeId,
-        targetId: target.id,
-        edgeId: e.id
-      })
-      next.push(target)
-    }
-  }
-
+  for (const fn of firing) scheduledRemaining.add(fn.id)
   const processedPassiveReceivers = new Set<string>()
+  const wavePrevPoolValues: Record<string, number> = { ...startStepValues }
   const runWave = (nodes: MxNode[], wave: number): void => {
     const next: MxNode[] = []
+    currentWaveNext = next
     for (const n of nodes) {
-      const ok = fireNode(n)
-      propagateStateTriggersFrom(n.id, ok, next)
+      if (wave === 0) scheduledRemaining.delete(n.id)
+      const poolBefore = n.kind === 'pool' ? (wavePrevPoolValues[n.id] ?? 0) : 0
+      const res = fireNode(n)
+      let allowStar = res.okStar
+      if (n.kind === 'pool' && n.triggerOn) {
+        const poolAfter = state.values[n.id] ?? 0
+        if (n.triggerOn === 'decrease' || n.triggerOn === 'send') {
+          allowStar = poolAfter < poolBefore - 1e-9
+        } else if (n.triggerOn === 'increase' || n.triggerOn === 'receive') {
+          allowStar = poolAfter > poolBefore + 1e-9
+        }
+        if (allowStar) {
+          processedPassiveReceivers.add(n.id)
+          wavePrevPoolValues[n.id] = poolAfter
+        }
+      }
+      propagateStateTriggersFrom(n.id, allowStar, res.okBang, next)
     }
     // 被动接收了资源的 Pool / Gate / Converter / Trader 若满足条件，也在同波次执行与向后级联触发
     for (const recId of Array.from(receivedResources)) {
@@ -2510,53 +4885,101 @@ export function stepMxSimulation(
         if (recNode.kind === 'converter' || recNode.kind === 'trader') {
           const ins = inRes(recNode.id)
           const needTotal = ins.reduce(
-            (acc, e) => acc + evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY),
+            (acc, e) =>
+              acc + evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false),
             0
           )
           if (needTotal > 0 && (state.values[recNode.id] ?? 0) + 1e-9 >= needTotal) {
-            const ok = fireNode(recNode)
-            propagateStateTriggersFrom(recId, ok, next)
+            const res = fireNode(recNode)
+            propagateStateTriggersFrom(recId, res.okStar, res.okBang, next)
           }
-        } else {
-          propagateStateTriggersFrom(recId, true, next)
+        } else if (
+          !recNode.triggerOn ||
+          recNode.triggerOn === 'increase' ||
+          recNode.triggerOn === 'receive' ||
+          recNode.triggerOn === 'any_change' ||
+          recNode.triggerOn === 'any'
+        ) {
+          if (recNode.kind === 'pool') wavePrevPoolValues[recId] = state.values[recId] ?? 0
+          propagateStateTriggersFrom(recId, true, false, next)
         }
+      }
+    }
+    // 支持任意波次（含交互级联 / 瞬时传导）中 Pool 设置 triggerOn = 'decrease'/'send' 或 'any_change'/'any' 时在池存量减少时发射 `*` 触发器
+    for (const n of doc.nodes) {
+      if (n.kind !== 'pool') continue
+      const before = wavePrevPoolValues[n.id] ?? 0
+      const after = state.values[n.id] ?? 0
+      wavePrevPoolValues[n.id] = after
+      if (!n.triggerOn || n.triggerOn === 'increase' || n.triggerOn === 'receive') {
+        continue
+      }
+      if (processedPassiveReceivers.has(n.id)) continue
+      if (
+        ((n.triggerOn === 'decrease' || n.triggerOn === 'send') && after < before - 1e-9) ||
+        ((n.triggerOn === 'any_change' || n.triggerOn === 'any') && Math.abs(after - before) > 1e-9)
+      ) {
+        processedPassiveReceivers.add(n.id)
+        propagateStateTriggersFrom(n.id, true, false, next)
       }
     }
     if (next.length && wave < 5) runWave(next, wave + 1)
   }
   runWave(firing, 0)
 
-  // 4) 寄存器、激活、终止条件
+  // 4) 寄存器、Node Modifiers 状态传导、激活、终止条件
   recomputeRegisters(doc, state, params, rng)
+  if (gIdx.nodeModTargets.length > 0) {
+    applyNodeStateModifiers(doc, state, params, rng)
+    if (gIdx.registers.length > 0) recomputeRegisters(doc, state, params, rng)
+  }
   state.active = nowActive
   let endSharedVars: Record<string, number> | null = null
   for (const n of gIdx.endNodes) {
     if (!endSharedVars) endSharedVars = buildVars(doc, state.values, params, step)
     const vars = { ...endSharedVars }
     let hit = false
-    const inputs = stateInputs(doc, n.id)
+    const inputs = stateInputs(doc, n.id).filter(
+      (e) =>
+        (!n.ignoreDisabledInputs || nowActive[e.from] !== false) &&
+        isEdgeActive(doc, e, state, params, rng)
+    )
     if (n.formula?.trim()) {
-      const letters = 'abcdefgh'
       inputs.forEach((e, idx) => {
-        if (idx < letters.length) vars[letters[idx]!] = state.values[e.from] ?? 0
+        const originVal = getStateEdgeOriginValue(doc, e, state)
+        if (idx < POSITIONAL_LETTERS.length) {
+          vars[POSITIONAL_LETTERS[idx]!] = originVal
+        }
+        if (e.label?.trim()) {
+          const customVar = mxIdentifier(e.label.trim())
+          if (customVar) vars[customVar] = originVal
+        }
       })
       const stSpec = parseMxStateFormula(n.formula)
       if (stSpec.type === 'activator' || stSpec.type === 'range') {
-        const firstInputVal = inputs.length ? (state.values[inputs[0]!.from] ?? 0) : 0
-        hit = checkActivator(stSpec, firstInputVal, vars, rng) === true
+        const firstInputVal = inputs.length ? getStateEdgeOriginValue(doc, inputs[0]!, state) : 0
+        hit = checkActivator(stSpec, firstInputVal, vars, rng, gIdx.paramArrays) === true
       } else {
-        hit = evaluateMxExpression(n.formula, { vars, rng }, 0) !== 0
+        hit = evaluateMxExpression(n.formula, { vars, arrays: gIdx.paramArrays, rng }, 0) !== 0
       }
     } else if (inputs.length) {
-      hit = inputs.every((e) => {
-        const res = checkActivator(
-          parseMxStateFormula(e.formula),
-          state.values[e.from] ?? 0,
-          vars,
-          rng
+      const evalInput = (e: MxEdge): boolean => {
+        if (triggeredEndEdges.has(e.id)) return true
+        const sp = getEffectiveStateSpec(doc, e, state, params, rng)
+        if (sp.type === 'trigger' || sp.type === 'reverse_trigger') {
+          return triggeredEndEdges.has(e.id)
+        }
+        return (
+          checkActivator(
+            sp,
+            getStateEdgeOriginValue(doc, e, state),
+            vars,
+            rng,
+            gIdx.paramArrays
+          ) === true
         )
-        return res === true
-      })
+      }
+      hit = n.endMode === 'any' ? inputs.some(evalInput) : inputs.every(evalInput)
     }
     // 资源流入 End 节点也视为触发
     if (!hit && inRes(n.id).some((e) => (state.edgeFlows[e.id] ?? 0) > 0)) hit = true
@@ -2589,6 +5012,19 @@ export interface MxRunResult {
   events: MxEvent[]
   totalProduced: number
   totalConsumed: number
+  finalPoolTokens?: Record<string, MxPoolTokenStackItem[]>
+  poolTokensHistory?: Array<Record<string, MxPoolTokenStackItem[]>>
+}
+
+function clonePoolTokensMap(
+  src?: Record<string, MxPoolTokenStackItem[]>
+): Record<string, MxPoolTokenStackItem[]> {
+  if (!src) return {}
+  const out: Record<string, MxPoolTokenStackItem[]> = {}
+  for (const [k, arr] of Object.entries(src)) {
+    if (arr.length > 0) out[k] = arr.map((it) => ({ resId: it.resId, count: it.count }))
+  }
+  return out
 }
 
 export function runMxSimulation(
@@ -2600,14 +5036,20 @@ export function runMxSimulation(
     params?: Record<string, number>
     name?: string
     interactionsByStep?: Record<number, string[]>
+    skipTokenHistory?: boolean
   } = {}
 ): MxRunResult {
   const steps = Math.max(1, Math.min(2000, Math.round(options.steps ?? doc.settings.steps ?? 20)))
   const seed = Math.floor(options.seed ?? doc.settings.seed ?? 1)
-  const params = options.params ?? resolveMxParams(doc, options.scenarioId)
-  let state = createMxInitialState(doc, { params })
+  const initRng = createMxRng(seed * 3571 + 17)
+  const params = options.params ?? resolveMxParams(doc, options.scenarioId, initRng)
+  let state = createMxInitialState(doc, { params, seed })
   const snapshots: Array<Record<string, number>> = [{ ...state.values }]
   const edgeFlows: Array<Record<string, number>> = [{}]
+  const poolTokensHistory =
+    !options.skipTokenHistory && doc.nodes.length <= 300
+      ? [clonePoolTokensMap(state.poolTokens)]
+      : undefined
   const events: MxEvent[] = []
   for (let k = 1; k <= steps; k++) {
     const res = stepMxSimulation(doc, state, {
@@ -2618,6 +5060,7 @@ export function runMxSimulation(
     state = res.state
     snapshots.push({ ...state.values })
     edgeFlows.push({ ...state.edgeFlows })
+    if (poolTokensHistory) poolTokensHistory.push(clonePoolTokensMap(state.poolTokens))
     events.push(...res.events)
     if (state.ended) break
   }
@@ -2635,7 +5078,9 @@ export function runMxSimulation(
     edgeFlows,
     events,
     totalProduced: Math.round(state.totalProduced * 100) / 100,
-    totalConsumed: Math.round(state.totalConsumed * 100) / 100
+    totalConsumed: Math.round(state.totalConsumed * 100) / 100,
+    finalPoolTokens: state.poolTokens,
+    ...(poolTokensHistory ? { poolTokensHistory } : {})
   }
 }
 
@@ -2729,7 +5174,12 @@ export function runMxForecast(
   let produced = 0
   let consumed = 0
   for (let r = 0; r < runs; r++) {
-    const run = runMxSimulation(doc, { steps, seed: seed + r * 7919, params })
+    const run = runMxSimulation(doc, {
+      steps,
+      seed: seed + r * 7919,
+      params,
+      skipTokenHistory: true
+    })
     produced += run.totalProduced
     consumed += run.totalConsumed
     if (run.ended) {
@@ -2923,6 +5373,21 @@ export type MxDiagnosticKind =
   | 'pool_depleted'
   | 'exponential_runaway'
   | 'idle_node'
+  | 'topology_error'
+
+export type MxTopologyWarningCode =
+  | 'end_outgoing_resource'
+  | 'hp_damage_inverted_converter'
+  | 'dangling_unsigned_state_edge'
+  | 'competing_auto_converters_with_auto_sell'
+
+export interface MxTopologyWarning {
+  code: MxTopologyWarningCode
+  severity: 'warn' | 'critical'
+  edgeId?: string
+  nodeId?: string
+  message: string
+}
 
 export interface MxDiagnosticFinding {
   id: string
@@ -2944,6 +5409,161 @@ export interface MxEconomyHealthReport {
   cappedPoolsCount: number
   depletedPoolsCount: number
   findings: MxDiagnosticFinding[]
+  topologyWarnings?: MxTopologyWarning[]
+}
+
+const HP_POOL_RE =
+  /(?:^|[\s_\-/])(hp|base_hp|player_hp|hero_hp|core_hp|nexus_hp|health|life|lives)(?:$|[\s_\-/])|(\u751f\u547d|\u8840\u91cf|\u57fa\u5730\u751f\u547d|\u89d2\u8272\u751f\u547d)/i
+const NON_SURVIVAL_HP_POOL_RE =
+  /(?:^|[\s_\-/])(leaked|leaks|leak_count|enemy|enemies|monster|boss|mob|shield|armor|block|max_hp|dmg_dealt|enemy_dmg|enemy_hp|boss_hp)(?:$|[\s_\-/])|(\u5df2\u6f0f|\u6f0f\u602a\u6570|\u654c\u65b9|\u654c\u4eba|\u602a\u7269|\u62a4\u76fe|\u62a4\u7532|\u683c\u6321)/i
+const DAMAGE_OR_LEAK_NODE_RE =
+  /(?:^|[\s_\-/])(leak|wave_leak|dmg|damage|hurt|take_damage|hit|bleed|burn|poison|corrode)(?:$|[\s_\-/])|(\u6f0f\u602a|\u6263\u8840|\u6263\u751f\u547d|\u53d7\u4f24|\u6389\u8840|\u7834\u9632|\u53cd\u566c)/i
+const HEAL_OR_RECOVERY_NODE_RE =
+  /(?:^|[\s_\-/])(heal|regen|rest|recover|restore|potion|revive|lifesteal|leech|camp|campfire|tavern|medkit)(?:$|[\s_\-/])|(\u56de\u8840|\u6cbb\u7597|\u6062\u590d|\u4f11\u606f|\u836f\u6c34|\u5438\u8840|\u590d\u6d3b|\u8425\u5730|\u9152\u9986)/i
+
+/**
+ * 静态检查 mx@2 经济图中的常见拓扑反模式（方向接反、无效状态边、终局节点外流、无条件自动建卖死循环）。
+ */
+export function lintMxDocumentTopology(doc: MxDocument): MxTopologyWarning[] {
+  const warnings: MxTopologyWarning[] = []
+  const byId = new Map(doc.nodes.map((n) => [n.id, n]))
+  const edgeById = new Map(doc.edges.map((e) => [e.id, e]))
+
+  for (const edge of doc.edges) {
+    const src = byId.get(edge.from)
+    const dst = edge.targetEdgeId ? undefined : byId.get(edge.to)
+
+    if (edge.kind === 'resource') {
+      // 1) End 节点发出资源边（End 仅终止仿真，永远不会产出资源）
+      if (src?.kind === 'end') {
+        warnings.push({
+          code: 'end_outgoing_resource',
+          severity: 'critical',
+          edgeId: edge.id,
+          nodeId: src.id,
+          message: `End node "${src.label || src.id}" (${src.id}) has outgoing resource edge "${edge.id}" -> "${edge.to}". End nodes only terminate simulation and never emit resources; use a state-gated Source/Converter instead.`
+        })
+      }
+
+      // 2) 伤害/漏怪节点把资源推入生命池（mx@2 中 converter/source -> pool 恒为加法 +，扣血必须用 hp_pool -> drain）
+      if ((src?.kind === 'converter' || src?.kind === 'source') && dst?.kind === 'pool') {
+        const dstKey = `${dst.id} ${dst.label || ''}`
+        const srcKey = `${src.id} ${src.label || ''}`
+        if (
+          HP_POOL_RE.test(dstKey) &&
+          !NON_SURVIVAL_HP_POOL_RE.test(dstKey) &&
+          DAMAGE_OR_LEAK_NODE_RE.test(srcKey) &&
+          !HEAL_OR_RECOVERY_NODE_RE.test(srcKey)
+        ) {
+          warnings.push({
+            code: 'hp_damage_inverted_converter',
+            severity: 'critical',
+            edgeId: edge.id,
+            nodeId: src.id,
+            message: `Damage/leak node "${src.label || src.id}" (${src.id}) pushes resources INTO health pool "${dst.label || dst.id}" (${dst.id}) via edge "${edge.id}", which ADDS HP instead of deducting it. Wire "${dst.id}" -> a Drain node to subtract HP.`
+          })
+        }
+      }
+    } else if (edge.kind === 'state') {
+      // 3) 无符号纯数字状态边（如 "1"）：既不是带符号修正量 ("+1"/"-2")，也不是比较激活器 (">=1")
+      // 例外：源节点为 Gate（Trigger Gate 支持无符号数值权重，如 "2", "5"）或目标公式显式引用位置变量 a..z / 自定义边标签变量
+      const rawFormula = (edge.formula ?? '').trim()
+      if (/^\d+(\.\d+)?$/.test(rawFormula) && src?.kind !== 'gate') {
+        let usesPositionalLetter = false
+        const customEdgeVar = edge.label?.trim() ? mxIdentifier(edge.label) : ''
+        const matchesPositional = (f: string): boolean =>
+          /\b[a-z]\b/.test(f) || (!!customEdgeVar && f.includes(customEdgeVar))
+        if (edge.targetEdgeId) {
+          const tgtEdge = edgeById.get(edge.targetEdgeId)
+          if (tgtEdge && matchesPositional(tgtEdge.formula ?? '')) {
+            usesPositionalLetter = true
+          }
+        } else if (dst) {
+          if (dst.kind === 'register' && !dst.formula?.trim()) {
+            usesPositionalLetter = true
+          } else if (dst.formula && matchesPositional(dst.formula)) {
+            usesPositionalLetter = true
+          } else {
+            const outResFormulas = doc.edges
+              .filter((oe) => oe.kind === 'resource' && oe.from === dst.id)
+              .map((oe) => oe.formula ?? '')
+            if (outResFormulas.some((f) => matchesPositional(f))) {
+              usesPositionalLetter = true
+            }
+          }
+        }
+        if (!usesPositionalLetter) {
+          warnings.push({
+            code: 'dangling_unsigned_state_edge',
+            severity: 'warn',
+            edgeId: edge.id,
+            nodeId: edge.from,
+            message: `State edge "${edge.id}" (${edge.from} -> ${edge.targetEdgeId || edge.to}) uses unsigned number "${rawFormula}", which is a no-op in mx@2. Use a signed modifier ("+1", "-2", "+20%"), a comparison activator (">=1", "<=0"), or reference "${edge.from}" directly in the formula.`
+          })
+        }
+      }
+    }
+  }
+
+  // 4) 无条件自动 Converter 同一回合“自动建造 + 自动折旧出售”循环抢占
+  const autoConverters = doc.nodes.filter(
+    (n) => (n.kind === 'converter' || n.kind === 'trader') && n.trigger === 'automatic'
+  )
+  const hasStateActivator = (nodeId: string): boolean =>
+    doc.edges.some((se) => {
+      if (se.kind !== 'state' || se.targetEdgeId || se.to !== nodeId) return false
+      const sp = parseMxStateFormula(se.formula)
+      return (
+        sp.type === 'activator' ||
+        sp.type === 'range' ||
+        (sp.type === 'expr' && isMxBooleanStateExpr(sp.expr))
+      )
+    })
+
+  const poolPairsByAutoConv = autoConverters.map((conv) => {
+    const inPools = doc.edges
+      .filter((e) => e.kind === 'resource' && e.to === conv.id && byId.get(e.from)?.kind === 'pool')
+      .map((e) => e.from)
+    const outPools = doc.edges
+      .filter((e) => e.kind === 'resource' && e.from === conv.id && byId.get(e.to)?.kind === 'pool')
+      .map((e) => e.to)
+    return { conv, inPools, outPools, gated: hasStateActivator(conv.id) }
+  })
+
+  const reportedSellIds = new Set<string>()
+  for (const sellEntry of poolPairsByAutoConv) {
+    if (sellEntry.gated || reportedSellIds.has(sellEntry.conv.id)) continue
+    const sellKey = `${sellEntry.conv.id} ${sellEntry.conv.label || ''}`.toLowerCase()
+    const looksLikeSellOrRefund =
+      /(?:^|[\s_\-/])(sell|salvage|dismantle|recycle|refund|disenchant)(?:$|[\s_\-/])|(\u51fa\u552e|\u5356\u5854|\u62c6\u9664|\u62c6\u5854|\u56de\u6536|\u6298\u65e7|\u5206\u89e3)/.test(
+        sellKey
+      )
+    if (!looksLikeSellOrRefund) continue
+    for (const assetPoolId of sellEntry.inPools) {
+      for (const currencyPoolId of sellEntry.outPools) {
+        if (assetPoolId === currencyPoolId) continue
+        const builder = poolPairsByAutoConv.find(
+          (b) =>
+            b.conv.id !== sellEntry.conv.id &&
+            b.inPools.includes(currencyPoolId) &&
+            b.outPools.includes(assetPoolId)
+        )
+        if (builder) {
+          reportedSellIds.add(sellEntry.conv.id)
+          warnings.push({
+            code: 'competing_auto_converters_with_auto_sell',
+            severity: 'warn',
+            nodeId: sellEntry.conv.id,
+            message: `Automatic sell/refund converter "${sellEntry.conv.label || sellEntry.conv.id}" (${sellEntry.conv.id}) unconditionally recycles "${assetPoolId}" -> "${currencyPoolId}" every step alongside automatic builder "${builder.conv.id}", causing per-step lossy churn. Set "${sellEntry.conv.id}" to trigger: "interactive" (with botCondition) or gate it with a state activator.`
+          })
+          break
+        }
+      }
+      if (reportedSellIds.has(sellEntry.conv.id)) break
+    }
+  }
+
+  return warnings
 }
 
 /**
@@ -2963,6 +5583,19 @@ export function analyzeMxEconomyHealth(
 
   const findings: MxDiagnosticFinding[] = []
   let penalty = 0
+
+  // 0) 静态拓扑反模式检查 (Topology Lint)
+  const topologyWarnings = lintMxDocumentTopology(doc)
+  for (const tw of topologyWarnings) {
+    penalty += tw.severity === 'critical' ? 25 : 12
+    findings.push({
+      id: `diag_topo_${tw.code}_${tw.edgeId || tw.nodeId || findings.length}`,
+      severity: tw.severity,
+      kind: 'topology_error',
+      nodeId: tw.nodeId,
+      nodeLabel: tw.message
+    })
+  }
 
   // 1) 全局产出回收比诊断 (Inflation / Deflation)
   if (
@@ -3132,7 +5765,8 @@ export function analyzeMxEconomyHealth(
     blockedCount,
     cappedPoolsCount,
     depletedPoolsCount,
-    findings
+    findings,
+    ...(topologyWarnings.length ? { topologyWarnings } : {})
   }
 }
 
@@ -3171,6 +5805,46 @@ export interface MxGoalSeekResult {
   candidates: MxGoalSeekCandidate[]
 }
 
+/** 提取连线公式中的主数值，供 Auto-Balancer (Mark as influencer) 初始化搜索区间 */
+export function extractMxTunableEdgeNumericValue(edge: MxEdge): number {
+  const raw = (edge.formula ?? '').trim()
+  if (!raw) return 1
+  const core = raw.replace(/\s*(?:\||every\b).*$/i, '').trim()
+  const direct = Number(core)
+  if (Number.isFinite(direct)) return direct
+  const pct = /^([+-]?\d+(?:\.\d+)?)\s*%$/.exec(core)
+  if (pct) return Number(pct[1])
+  const ivMod = /^([+-]?\d+(?:\.\d+)?)\s*(%?)\s*i$/i.exec(core)
+  if (ivMod) return Number(ivMod[1])
+  const act = /^(?:>=|<=|==|!=|<>|>|<|=)\s*(-?\d+(?:\.\d+)?)$/.exec(core)
+  if (act) return Number(act[1])
+  const dice = /^(\d+)[dD]\d+/.exec(core)
+  if (dice) return Number(dice[1])
+  return 1
+}
+
+/** 将调平数值写回连线公式，同时完整保留 `%`、`>=`、`+xi`、`+x%` 或 `|interval` 语法结构 */
+export function formatMxTunableEdgeFormula(edge: MxEdge, val: number): string {
+  const rounded = edge.allowDecimals === false ? Math.round(val) : Math.round(val * 1000) / 1000
+  const raw = (edge.formula ?? '').trim()
+  if (edge.kind === 'state') {
+    const act = /^(>=|<=|==|!=|<>|>|<|=)\s*-?\d+(?:\.\d+)?$/.exec(raw)
+    if (act) return `${act[1]}${rounded}`
+    const ivMod = /^[+-]?\s*\d+(?:\.\d+)?\s*(%?)\s*i$/i.exec(raw)
+    if (ivMod) return `${rounded >= 0 ? '+' : ''}${rounded}${ivMod[1] ?? ''}i`
+    if (/^\d+(?:\.\d+)?\s*%$/.test(raw)) return `${Math.max(0, rounded)}%`
+    if (/^[+-]\s*\d+(?:\.\d+)?\s*%$/.test(raw)) return `${rounded >= 0 ? '+' : ''}${rounded}%`
+    return `${rounded >= 0 ? '+' : ''}${rounded}`
+  }
+  const pipeMatch = /^([^|]+)\|(.+)$/.exec(raw)
+  const core = pipeMatch ? pipeMatch[1]!.trim() : raw
+  const suffix = pipeMatch ? `|${pipeMatch[2]!.trim()}` : ''
+  if (/^\d+(?:\.\d+)?\s*%$/.test(core)) {
+    return `${Math.max(0, rounded)}%${suffix}`
+  }
+  return `${rounded}${suffix}`
+}
+
 function applyTunableToDocClone(
   baseDoc: MxDocument,
   variableKind: MxTunableKind,
@@ -3189,7 +5863,7 @@ function applyTunableToDocClone(
   } else if (variableKind === 'edge') {
     const e = clone.edges.find((x) => x.id === variableId)
     if (e) {
-      e.formula = e.kind === 'state' ? `${rounded >= 0 ? '+' : ''}${rounded}` : String(rounded)
+      e.formula = formatMxTunableEdgeFormula(e, rounded)
     }
   } else if (variableKind === 'node_initial') {
     const n = clone.nodes.find((x) => x.id === variableId)
@@ -3219,7 +5893,11 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
     const tunedDoc = applyTunableToDocClone(doc, options.variableKind, options.variableId, v)
     let sum = 0
     for (let r = 0; r < runsPerSample; r++) {
-      const run = runMxSimulation(tunedDoc, { steps: atStep, seed: seed + r * 7919 })
+      const run = runMxSimulation(tunedDoc, {
+        steps: atStep,
+        seed: seed + r * 7919,
+        skipTokenHistory: true
+      })
       if (options.goalMetric === 'end_step') {
         sum += run.stepsRun
       } else {
@@ -3540,7 +6218,8 @@ export function createMxNode(kind: MxNodeKind, x: number, y: number, label?: str
     label: label ?? kind.charAt(0).toUpperCase() + kind.slice(1),
     x: Math.round(x),
     y: Math.round(y),
-    trigger: kind === 'source' ? 'automatic' : 'passive'
+    trigger: kind === 'source' ? 'automatic' : 'passive',
+    layerId: 'layer_base'
   }
   if (kind === 'pool') {
     base.initial = 0
@@ -3603,6 +6282,63 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
     user: 'interactive',
     player: 'interactive'
   }
+  const seenLayerIds = new Set<string>()
+  const layers: MxLayer[] = []
+  for (const [idx, l] of (Array.isArray(r.layers) && r.layers.length
+    ? r.layers
+    : base.layers
+  ).entries()) {
+    let lid = typeof l?.id === 'string' && l.id.trim() ? l.id.trim() : `ly_${idx + 1}`
+    if (seenLayerIds.has(lid)) lid = `${lid}_${idx + 1}`
+    seenLayerIds.add(lid)
+    layers.push({
+      id: lid,
+      name: typeof l?.name === 'string' && l.name.trim() ? l.name.trim() : `Layer ${idx + 1}`,
+      visible: l?.visible !== false,
+      locked: Boolean(l?.locked)
+    })
+  }
+  let baseLayer = layers.find(
+    (l) => l.id === 'layer_base' || l.name.trim().toLowerCase() === 'base'
+  )
+  if (!baseLayer) {
+    baseLayer = { id: 'layer_base', name: 'Base', visible: true, locked: false }
+    layers.unshift(baseLayer)
+    seenLayerIds.add(baseLayer.id)
+  }
+  const baseLayerId = baseLayer.id
+
+  const resolveOrCreateLayerId = (rawRef: unknown, fallbackToBase: boolean): string | undefined => {
+    const rawStr = typeof rawRef === 'string' ? rawRef.trim() : ''
+    if (!rawStr) return fallbackToBase ? baseLayerId : undefined
+    const byId = layers.find((l) => l.id === rawStr)
+    if (byId) return byId.id
+    const lower = rawStr.toLowerCase()
+    const byName = layers.find((l) => l.name.trim().toLowerCase() === lower)
+    if (byName) return byName.id
+    const looksLikeId = /^(?:ly|layer)_[a-z0-9_]+$/i.test(rawStr)
+    const slug = rawStr
+      .replace(/[^A-Za-z0-9_]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .toLowerCase()
+    let newId = looksLikeId ? rawStr : `ly_${slug || layers.length + 1}`
+    let suffix = 2
+    while (seenLayerIds.has(newId)) {
+      newId = `${looksLikeId ? rawStr : `ly_${slug || 'cat'}`}_${suffix++}`
+    }
+    seenLayerIds.add(newId)
+    const newName = looksLikeId
+      ? rawStr.replace(/^(?:ly|layer)_/i, '').replace(/_/g, ' ') || rawStr
+      : rawStr
+    layers.push({
+      id: newId,
+      name: newName,
+      visible: true,
+      locked: false
+    })
+    return newId
+  }
+
   const nodes = (Array.isArray(r.nodes) ? r.nodes : [])
     .map((item, idx) => {
       if (!item || typeof item !== 'object') return null
@@ -3662,6 +6398,7 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
           : resolvedKind === 'pool' || resolvedKind === 'drain'
             ? 'pull_any'
             : undefined
+      const rawLayerRef = n.layerId ?? n.layer ?? n.layerName ?? n.category ?? n.subsystem
       return {
         ...(n as unknown as MxNode),
         id,
@@ -3670,6 +6407,7 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
         x: Number.isFinite(n.x) ? Number(n.x) : 0,
         y: Number.isFinite(n.y) ? Number(n.y) : 0,
         trigger: explicitTrig ?? defaultTrig,
+        layerId: resolveOrCreateLayerId(rawLayerRef, true) ?? baseLayerId,
         ...(initialVal !== undefined ? { initial: initialVal } : {}),
         ...(capVal !== undefined ? { capacity: capVal } : {}),
         ...(gateMode ? { gateMode } : {}),
@@ -3724,16 +6462,22 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
     .filter(
       (g): g is MxGroup => !!g && typeof g === 'object' && typeof (g as MxGroup).id === 'string'
     )
-    .map((g) => ({
-      id: g.id,
-      label: String(g.label ?? 'Group'),
-      x: Number.isFinite(g.x) ? g.x : 100,
-      y: Number.isFinite(g.y) ? g.y : 100,
-      width: Math.max(80, Number.isFinite(g.width) ? g.width : 260),
-      height: Math.max(60, Number.isFinite(g.height) ? g.height : 180),
-      color: g.color || '#3b82f6',
-      layerId: g.layerId
-    }))
+    .map((g) => {
+      const gRec = g as unknown as Record<string, unknown>
+      const rawGrpLayer =
+        gRec.layerId ?? gRec.layer ?? gRec.layerName ?? gRec.category ?? gRec.subsystem
+      const resolvedGrpLayerId = resolveOrCreateLayerId(rawGrpLayer, false)
+      return {
+        id: g.id,
+        label: String(g.label ?? 'Group'),
+        x: Number.isFinite(g.x) ? g.x : 100,
+        y: Number.isFinite(g.y) ? g.y : 100,
+        width: Math.max(80, Number.isFinite(g.width) ? g.width : 260),
+        height: Math.max(60, Number.isFinite(g.height) ? g.height : 180),
+        color: g.color || '#3b82f6',
+        ...(resolvedGrpLayerId ? { layerId: resolvedGrpLayerId } : {})
+      }
+    })
   const agents: MxAgent[] = (Array.isArray(r.agents) ? r.agents : [])
     .filter(
       (a): a is MxAgent => !!a && typeof a === 'object' && typeof (a as MxAgent).id === 'string'
@@ -3838,16 +6582,32 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
     }
   }
 
+  const resolvedResources =
+    Array.isArray(r.resources) && r.resources.length ? r.resources : base.resources
+  const validResourceIds = new Set(resolvedResources.map((res) => res.id))
+  for (const n of nodes) {
+    if (n.resourceId) validResourceIds.add(n.resourceId)
+  }
+  for (const e of edges) {
+    if (!e.resourceFilter && e.resourceId) validResourceIds.add(e.resourceId)
+  }
+  for (const e of edges) {
+    if (e.resourceFilter && e.resourceId && !validResourceIds.has(e.resourceId)) {
+      e.resourceFilter = false
+      delete e.resourceId
+    }
+  }
+
   return {
     schema: 'mx@2',
     title: String(r.title ?? base.title),
     description: r.description,
     templateId: isXianxiaLifespanDoc ? 'xianxia_lifespan_alchemy' : r.templateId,
-    resources: Array.isArray(r.resources) && r.resources.length ? r.resources : base.resources,
+    resources: resolvedResources,
     params: Array.isArray(r.params) ? r.params : [],
     scenarios: Array.isArray(r.scenarios) ? r.scenarios : [],
     activeScenarioId: r.activeScenarioId,
-    layers: Array.isArray(r.layers) && r.layers.length ? r.layers : base.layers,
+    layers,
     nodes,
     edges,
     groups,
@@ -3870,7 +6630,7 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
 }
 
 /**
- * 自动按拓扑层级从左向右整理排版所有节点（Sugiyama 风格分层布局）。
+ * 自动按拓扑层级从左向右整理排版所有节点（Sugiyama 风格分层布局；多图层文档自动启用横向分类泳道排版并对齐分组框）。
  */
 export function autoLayoutMxDocument(doc: MxDocument): void {
   const mainNodes = doc.nodes.filter((n) => n.kind !== 'note')
@@ -3917,6 +6677,98 @@ export function autoLayoutMxDocument(doc: MxDocument): void {
       else if (n.kind === 'register') rank.set(n.id, 2)
       else rank.set(n.id, 1)
     }
+  }
+
+  const baseLayerId =
+    doc.layers.find((l) => l.id === 'layer_base' || l.name.trim().toLowerCase() === 'base')?.id ??
+    doc.layers[0]?.id ??
+    'layer_base'
+  const nodesByLayer = new Map<string, MxNode[]>()
+  for (const n of mainNodes) {
+    const lid = n.layerId || baseLayerId
+    const list = nodesByLayer.get(lid) ?? []
+    list.push(n)
+    nodesByLayer.set(lid, list)
+  }
+
+  const orderedLayerIds: string[] = []
+  for (const l of doc.layers) {
+    if (nodesByLayer.has(l.id)) orderedLayerIds.push(l.id)
+  }
+  for (const lid of nodesByLayer.keys()) {
+    if (!orderedLayerIds.includes(lid)) orderedLayerIds.push(lid)
+  }
+
+  if (orderedLayerIds.length >= 2) {
+    const startX = 180
+    const gapX = 185
+    const gapY = 115
+    const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f43f5e']
+    let currentTopY = notes.length ? 150 : 90
+    const shouldAutoCreateGroups = !doc.groups || doc.groups.length === 0
+    if (shouldAutoCreateGroups) doc.groups = []
+
+    orderedLayerIds.forEach((lid, layerIdx) => {
+      const layerNodes = nodesByLayer.get(lid)!
+      const cols = new Map<number, MxNode[]>()
+      for (const n of layerNodes) {
+        const col = rank.get(n.id) ?? 0
+        const arr = cols.get(col) ?? []
+        arr.push(n)
+        cols.set(col, arr)
+      }
+      const sortedCols = [...cols.keys()].sort((a, b) => a - b)
+      const maxRows = Math.max(1, ...sortedCols.map((c) => cols.get(c)!.length))
+      const bandInnerH = (maxRows - 1) * gapY
+      const centerY = currentTopY + 62 + bandInnerH / 2
+
+      sortedCols.forEach((colKey, colIdx) => {
+        const list = cols.get(colKey)!
+        list.sort((a, b) => a.y - b.y)
+        const totalH = (list.length - 1) * gapY
+        list.forEach((node, rowIdx) => {
+          node.x = Math.round(startX + colIdx * gapX)
+          node.y = Math.round(centerY - totalH / 2 + rowIdx * gapY)
+        })
+      })
+
+      const minX = Math.min(...layerNodes.map((n) => n.x))
+      const maxX = Math.max(...layerNodes.map((n) => n.x))
+      const minY = Math.min(...layerNodes.map((n) => n.y))
+      const maxY = Math.max(...layerNodes.map((n) => n.y))
+      const grpX = Math.round(minX - 80)
+      const grpY = Math.round(minY - 62)
+      const grpW = Math.max(340, Math.round(maxX - minX + 160))
+      const grpH = Math.max(145, Math.round(maxY - minY + 125))
+
+      const existingGrp = doc.groups?.find((g) => g.layerId === lid)
+      if (existingGrp) {
+        existingGrp.x = grpX
+        existingGrp.y = grpY
+        existingGrp.width = grpW
+        existingGrp.height = grpH
+      } else if (shouldAutoCreateGroups) {
+        const layerMeta = doc.layers.find((l) => l.id === lid)
+        doc.groups!.push({
+          id: `grp_${lid}`,
+          label: layerMeta?.name || lid,
+          x: grpX,
+          y: grpY,
+          width: grpW,
+          height: grpH,
+          color: palette[layerIdx % palette.length]!,
+          layerId: lid
+        })
+      }
+
+      currentTopY = grpY + grpH + 42
+    })
+
+    notes.forEach((nt, idx) => {
+      nt.x = startX + idx * 220
+      nt.y = 65
+    })
+    return
   }
 
   const columns = new Map<number, MxNode[]>()
@@ -4192,11 +7044,14 @@ export const MX_TEMPLATES: MxTemplateMeta[] = [
     id: 'tower_defense_waves',
     key: 'towerDefense',
     category: 'strategy',
-    nameEn: 'Tower Defense: Waves & Build Economy',
-    nameZh: '\u7b56\u7565\u5854\u9632\uff1a\u6ce2\u6b21\u8d4f\u91d1\u4e0e\u5efa\u5854\u9632\u7ebf',
-    descEn: 'Kill bounty, escalating tower build cost, wave leak pressure, and base HP loss.',
+    nameEn: 'Tower Defense: 20-Wave Obstacles, Multi-Tower Synergy & Base Defense',
+    nameZh:
+      '\u7b56\u7565\u5854\u9632\uff1a20\u6ce2\u6e05\u969c\u8d4f\u91d1\u3001\u5f02\u6784\u5854\u9632\u5347\u7ea7\u4e0e\u57fa\u5730\u9632\u7ebf',
+    descEn:
+      'Multi-layer wave scaling, obstacle clearing, arrow/mage tower build & upgrades, tactical sell, leak HP drain, and win/loss finale.',
     descZh:
-      '\u51fb\u6740\u8d4f\u91d1\u3001\u5efa\u5854\u8d39\u7528\u9012\u589e\u4e0e\u6f0f\u602a\u57fa\u5730\u751f\u547d\u5224\u5b9a'
+      '\u4e94\u56fe\u5c42\u6ce2\u6b21\u9012\u589e\u3001\u573a\u5730\u6e05\u969c\u7206\u91d1\u3001\u5355\u4f53/\u7fa4\u4f24\u5efa\u5854\u5347\u7ea7\u3001\u6f0f\u602a\u6263\u8840\u4e0e20\u6ce2\u80dc\u8d1f\u7ec8\u5c40',
+    workbenchPreset: 'survivor_brotato'
   },
   {
     id: 'crafting_chain',
@@ -4268,13 +7123,60 @@ function ed(
   return { id, kind, from, to, formula, ...extra }
 }
 
+function assignDefaultCategoryLayersToTemplate(doc: MxDocument): MxDocument {
+  if (!doc.layers.some((l) => l.id === 'layer_base' || l.name.trim().toLowerCase() === 'base')) {
+    doc.layers.unshift({ id: 'layer_base', name: 'Base', visible: true, locked: false })
+  }
+  const populatedLayers = new Set(doc.nodes.map((n) => n.layerId).filter(Boolean))
+  if (doc.layers.length > 1 && populatedLayers.size > 1) {
+    return doc
+  }
+  if (doc.nodes.length < 5) {
+    return doc
+  }
+  const faucetNodes = doc.nodes.filter((n) => n.kind === 'source')
+  const sinkEndNodes = doc.nodes.filter((n) => n.kind === 'drain' || n.kind === 'end')
+  const coreNodes = doc.nodes.filter(
+    (n) => n.kind !== 'source' && n.kind !== 'drain' && n.kind !== 'end'
+  )
+  const nextLayers: MxLayer[] = [{ id: 'layer_base', name: 'Base', visible: true, locked: false }]
+  if (faucetNodes.length) {
+    nextLayers.push({
+      id: 'ly_faucet',
+      name: '产出与资源供给 (Faucets)', // cjk-ok
+      visible: true,
+      locked: false
+    })
+    for (const n of faucetNodes) n.layerId = 'ly_faucet'
+  }
+  if (coreNodes.length) {
+    nextLayers.push({
+      id: 'ly_core_loop',
+      name: '核心池与转化机制 (Core Loop)', // cjk-ok
+      visible: true,
+      locked: false
+    })
+    for (const n of coreNodes) n.layerId = 'ly_core_loop'
+  }
+  if (sinkEndNodes.length) {
+    nextLayers.push({
+      id: 'ly_sink_goal',
+      name: '消耗回收与终局判定 (Sinks & Finale)', // cjk-ok
+      visible: true,
+      locked: false
+    })
+    for (const n of sinkEndNodes) n.layerId = 'ly_sink_goal'
+  }
+  doc.layers = nextLayers
+  return doc
+}
+
 /** 创建模板文档 */
 export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
   const v1Ids: MachinationsPresetId[] = [
     'arpg_equipment_economy',
     'gacha_pity_banner',
     'idle_exponential_tycoon',
-    'roguelike_mana_deck',
     'survivor_xp_loop'
   ]
   if ((v1Ids as string[]).includes(id)) {
@@ -4286,7 +7188,7 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
     if (meta?.workbenchPreset) {
       doc.workbench = createMxWorkbenchPreset(meta.workbenchPreset)
     }
-    return doc
+    return assignDefaultCategoryLayersToTemplate(doc)
   }
   const doc = createEmptyMxDocument(title)
   doc.templateId = id
@@ -4295,6 +7197,421 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
     doc.workbench = createMxWorkbenchPreset(meta.workbenchPreset)
   }
   switch (id) {
+    case 'roguelike_mana_deck': {
+      doc.title =
+        title ||
+        '《杀戮尖塔》完整玩法机制：能量回合·抽弃洗消耗牌库·异构卡牌与力量易伤乘区·护甲格挡与Boss意图·遗物经济' // cjk-ok
+      doc.description =
+        '按五大玩法子系统分图层构建的完整 DBG 卡牌构筑动力学模型：覆盖每回合能量补给与清空、抽牌堆→手牌→弃牌堆→洗牌重抽与能力牌消耗（Exhaust）守恒闭环、打击/重锤/能力/防御异构出牌、力量（Strength）与易伤（Vulnerable 1.5x）乘区寄存器、护甲格挡衰减与 Boss 多段递增意图破盾伤血、爬塔金币商店遗物提纯及胜负双终局。' // cjk-ok
+      doc.layers = [
+        { id: 'layer_base', name: 'Base', visible: true, locked: false },
+        {
+          id: 'ly_turn_energy',
+          name: '回合与能量系统 (Turn & Energy)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_deck_cycle',
+          name: '牌库抽弃洗与消耗循环 (Deck Cycle)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_card_combo',
+          name: '异构卡牌与力量易伤乘区 (Cards & Buffs)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_block_boss',
+          name: '护甲格挡与Boss意图反击 (Block & Boss)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_meta_end',
+          name: '遗物商店经济与胜负终局 (Relics & Finale)', // cjk-ok
+          visible: true,
+          locked: false
+        }
+      ]
+      doc.resources = [
+        { id: 'energy', name: '回合能量 (Energy)', color: '#38bdf8' }, // cjk-ok
+        { id: 'card', name: '构筑卡牌 (Cards)', color: '#a855f7' }, // cjk-ok
+        { id: 'dmg', name: '战斗伤害 (Damage)', color: '#f59e0b' }, // cjk-ok
+        { id: 'block', name: '护甲格挡 (Block)', color: '#3b82f6' }, // cjk-ok
+        { id: 'buff', name: '力量/易伤层数 (Buffs)', color: '#ec4899' }, // cjk-ok
+        { id: 'hp', name: '角色生命 (Player HP)', color: '#ef4444' }, // cjk-ok
+        { id: 'gold', name: '爬塔金币 (Gold)', color: '#10b981' } // cjk-ok
+      ]
+      doc.params = [
+        { id: 'p_energy', name: 'TurnEnergy', value: 3 },
+        { id: 'p_draw', name: 'TurnDraw', value: 5 },
+        { id: 'p_strike', name: 'BaseStrike', value: 6 },
+        { id: 'p_bash', name: 'BaseBash', value: 8 },
+        { id: 'p_block', name: 'BaseBlock', value: 6 },
+        { id: 'p_boss', name: 'BossBaseAtk', value: 10 }
+      ]
+      doc.scenarios = [
+        {
+          id: 'sc_asc0',
+          name: '标准进阶0·铁甲战士 (Ascension 0)', // cjk-ok
+          params: {
+            TurnEnergy: 3,
+            TurnDraw: 5,
+            BaseStrike: 6,
+            BaseBash: 8,
+            BaseBlock: 6,
+            BossBaseAtk: 10
+          }
+        },
+        {
+          id: 'sc_str_limit',
+          name: '突破极限·高力量遗物成型流', // cjk-ok
+          params: {
+            TurnEnergy: 4,
+            TurnDraw: 5,
+            BaseStrike: 9,
+            BaseBash: 12,
+            BaseBlock: 7,
+            BossBaseAtk: 11
+          }
+        },
+        {
+          id: 'sc_asc20_heart',
+          name: '进阶20·关底高伤高压测试', // cjk-ok
+          params: {
+            TurnEnergy: 3,
+            TurnDraw: 5,
+            BaseStrike: 6,
+            BaseBash: 8,
+            BaseBlock: 5,
+            BossBaseAtk: 15
+          }
+        }
+      ]
+      doc.groups = [
+        {
+          id: 'grp_sts_energy',
+          label: '图层 1：回合开始能量补给、Boss遗物回能与残余清空 (Turn & Energy)', // cjk-ok
+          x: 40,
+          y: 40,
+          width: 570,
+          height: 250,
+          color: '#38bdf8',
+          layerId: 'ly_turn_energy'
+        },
+        {
+          id: 'grp_sts_deck',
+          label: '图层 2：抽牌堆 → 手牌 → 弃牌堆 → 空库洗牌与能力牌消耗守恒 (Deck Cycle)', // cjk-ok
+          x: 640,
+          y: 40,
+          width: 680,
+          height: 250,
+          color: '#a855f7',
+          layerId: 'ly_deck_cycle'
+        },
+        {
+          id: 'grp_sts_combo',
+          label:
+            '图层 3：异构卡牌出牌（打击/重锤/能力）与力量×易伤 1.5x 乘区 (Cards & Multipliers)', // cjk-ok
+          x: 40,
+          y: 325,
+          width: 780,
+          height: 280,
+          color: '#f59e0b',
+          layerId: 'ly_card_combo'
+        },
+        {
+          id: 'grp_sts_block_boss',
+          label: '图层 4：防御牌叠甲、下回合护甲衰减与 Boss 递增意图破盾伤血 (Block & Boss Intent)', // cjk-ok
+          x: 850,
+          y: 325,
+          width: 470,
+          height: 280,
+          color: '#3b82f6',
+          layerId: 'ly_block_boss'
+        },
+        {
+          id: 'grp_sts_meta_end',
+          label: '图层 5：战斗赏金、商店删牌/遗物提纯与斩杀/阵亡双终局 (Relics, Shop & Finale)', // cjk-ok
+          x: 40,
+          y: 640,
+          width: 1280,
+          height: 200,
+          color: '#10b981',
+          layerId: 'ly_meta_end'
+        }
+      ]
+      doc.nodes = [
+        // ── 图层 1：回合与能量系统 (ly_turn_energy) ──
+        nd('turn_energy_src', 'source', /* cjk-ok */ '回合开始恢复 (+3能量)', 130, 120, {
+          resourceId: 'energy',
+          layerId: 'ly_turn_energy',
+          color: '#38bdf8'
+        }),
+        nd('relic_energy_src', 'source', /* cjk-ok */ '能量遗物额外补给 (+1)', 130, 225, {
+          resourceId: 'energy',
+          layerId: 'ly_turn_energy',
+          color: '#0ea5e9'
+        }),
+        nd('energy_pool', 'pool', /* cjk-ok */ '当前能量池 (Energy)', 335, 170, {
+          resourceId: 'energy',
+          initial: 5,
+          capacity: 8,
+          layerId: 'ly_turn_energy',
+          color: '#38bdf8'
+        }),
+        nd('energy_flush', 'drain', /* cjk-ok */ '回合末溢出能量清空', 520, 170, {
+          trigger: 'automatic',
+          layerId: 'ly_turn_energy',
+          color: '#64748b'
+        }),
+
+        // ── 图层 2：牌库抽弃洗与消耗循环 (ly_deck_cycle) ──
+        nd('draw_pile', 'pool', /* cjk-ok */ '抽牌堆 (Draw Pile)', 725, 120, {
+          resourceId: 'card',
+          initial: 10,
+          capacity: 30,
+          layerId: 'ly_deck_cycle',
+          color: '#a855f7'
+        }),
+        nd('turn_draw_conv', 'converter', /* cjk-ok */ '每回合抽牌 (Draw)', 895, 120, {
+          resourceId: 'card',
+          trigger: 'automatic',
+          layerId: 'ly_deck_cycle',
+          color: '#c084fc'
+        }),
+        nd('hand_pool', 'pool', /* cjk-ok */ '手牌区 (Hand Max 10)', 1070, 120, {
+          resourceId: 'card',
+          initial: 5,
+          capacity: 10,
+          layerId: 'ly_deck_cycle',
+          color: '#a855f7'
+        }),
+        nd('discard_pile', 'pool', /* cjk-ok */ '弃牌堆 (Discard Pile)', 1070, 225, {
+          resourceId: 'card',
+          initial: 4,
+          capacity: 30,
+          layerId: 'ly_deck_cycle',
+          color: '#8b5cf6'
+        }),
+        nd('reshuffle_conv', 'converter', /* cjk-ok */ '空库洗牌重抽 (Reshuffle)', 860, 225, {
+          resourceId: 'card',
+          trigger: 'automatic',
+          layerId: 'ly_deck_cycle',
+          color: '#7c3aed'
+        }),
+        nd('exhaust_pile', 'pool', /* cjk-ok */ '消耗堆 (Exhaust)', 1235, 170, {
+          resourceId: 'card',
+          initial: 0,
+          capacity: 20,
+          layerId: 'ly_deck_cycle',
+          color: '#f43f5e'
+        }),
+
+        // ── 图层 3：异构卡牌与力量易伤乘区 (ly_card_combo) ──
+        nd('play_strike', 'converter', /* cjk-ok */ '打出1费攻击牌 (Strike)', 150, 405, {
+          resourceId: 'dmg',
+          trigger: 'automatic',
+          layerId: 'ly_card_combo',
+          color: '#f59e0b'
+        }),
+        nd('play_bash', 'converter', /* cjk-ok */ '打出2费痛击·挂易伤 (Bash)', 150, 525, {
+          resourceId: 'dmg',
+          trigger: 'automatic',
+          layerId: 'ly_card_combo',
+          color: '#ea580c'
+        }),
+        nd('play_power', 'converter', /* cjk-ok */ '打出能力牌·燃烧 (Exhaust)', 365, 405, {
+          resourceId: 'buff',
+          trigger: 'automatic',
+          layerId: 'ly_card_combo',
+          color: '#ec4899'
+        }),
+        nd('strength_pool', 'pool', /* cjk-ok */ '力量层数 (Strength)', 560, 405, {
+          resourceId: 'buff',
+          initial: 2,
+          capacity: 30,
+          layerId: 'ly_card_combo',
+          color: '#ec4899'
+        }),
+        nd('vuln_pool', 'pool', /* cjk-ok */ '敌方易伤层数 (Vulnerable)', 365, 525, {
+          resourceId: 'buff',
+          initial: 1,
+          capacity: 12,
+          layerId: 'ly_card_combo',
+          color: '#f43f5e'
+        }),
+        nd('vuln_decay', 'drain', /* cjk-ok */ '回合末易伤层数衰减 (-1)', 560, 525, {
+          trigger: 'automatic',
+          layerId: 'ly_card_combo',
+          color: '#fb7185'
+        }),
+        nd('dmg_mult_reg', 'register', /* cjk-ok */ '单卡伤害结算 (攻+力)×易伤1.5x', 725, 465, {
+          formula: 'round((BaseStrike + strength_pool) * if(vuln_pool > 0, 1.5, 1))',
+          layerId: 'ly_card_combo',
+          color: '#f59e0b'
+        }),
+
+        // ── 图层 4：护甲格挡与 Boss 意图反击 (ly_block_boss) ──
+        nd('play_defend', 'converter', /* cjk-ok */ '打出1费防御牌 (Defend)', 935, 405, {
+          resourceId: 'block',
+          trigger: 'automatic',
+          layerId: 'ly_block_boss',
+          color: '#3b82f6'
+        }),
+        nd('block_pool', 'pool', /* cjk-ok */ '当前护甲池 (Block)', 1090, 405, {
+          resourceId: 'block',
+          initial: 6,
+          capacity: 99,
+          layerId: 'ly_block_boss',
+          color: '#3b82f6'
+        }),
+        nd('block_decay', 'drain', /* cjk-ok */ '回合开始护甲清空衰减', 1240, 405, {
+          trigger: 'automatic',
+          layerId: 'ly_block_boss',
+          color: '#60a5fa'
+        }),
+        nd('boss_intent_reg', 'register', /* cjk-ok */ 'Boss多段意图攻击曲线', 935, 525, {
+          formula: 'round(BossBaseAtk + step * 0.75)',
+          layerId: 'ly_block_boss',
+          color: '#ef4444'
+        }),
+        nd('player_hp', 'pool', /* cjk-ok */ '玩家生命值 (HP 80)', 1090, 525, {
+          resourceId: 'hp',
+          initial: 80,
+          capacity: 80,
+          layerId: 'ly_block_boss',
+          color: '#ef4444'
+        }),
+        nd('boss_unblocked_drain', 'drain', /* cjk-ok */ 'Boss破盾贯通扣血', 1240, 525, {
+          trigger: 'automatic',
+          layerId: 'ly_block_boss',
+          color: '#dc2626'
+        }),
+
+        // ── 图层 5：遗物商店经济与胜负终局 (ly_meta_end) ──
+        nd('combat_gold_src', 'source', /* cjk-ok */ '爬塔战斗赏金产出', 150, 745, {
+          resourceId: 'gold',
+          layerId: 'ly_meta_end',
+          color: '#10b981'
+        }),
+        nd('gold_pool', 'pool', /* cjk-ok */ '爬塔金币袋 (Gold)', 355, 745, {
+          resourceId: 'gold',
+          initial: 60,
+          capacity: 999,
+          layerId: 'ly_meta_end',
+          color: '#10b981'
+        }),
+        nd('shop_relic_conv', 'converter', /* cjk-ok */ '商店购遗物/删牌提纯 (75G)', 565, 745, {
+          resourceId: 'buff',
+          trigger: 'automatic',
+          layerId: 'ly_meta_end',
+          color: '#14b8a6'
+        }),
+        nd('boss_dmg', 'pool', /* cjk-ok */ 'Boss累计承受伤害 (HP 320)', 835, 745, {
+          resourceId: 'dmg',
+          initial: 0,
+          capacity: 9999,
+          layerId: 'ly_meta_end',
+          color: '#f59e0b'
+        }),
+        nd('boss_slain', 'end', /* cjk-ok */ '胜利终局: 斩杀关底Boss (>=320)', 1060, 745, {
+          formula: 'a >= 320',
+          layerId: 'ly_meta_end',
+          color: '#22c55e'
+        }),
+        nd('player_dead', 'end', /* cjk-ok */ '败局红线: 角色阵亡 (HP<=0)', 1235, 745, {
+          formula: 'a <= 0',
+          layerId: 'ly_meta_end',
+          color: '#ef4444'
+        })
+      ]
+      doc.edges = [
+        // 图层 1：能量恢复与残余清空
+        ed('e_turn_energy', 'resource', 'turn_energy_src', 'energy_pool', 'TurnEnergy'),
+        ed('e_relic_energy', 'resource', 'relic_energy_src', 'energy_pool', '1'),
+        ed(
+          'e_energy_flush',
+          'resource',
+          'energy_pool',
+          'energy_flush',
+          'if(energy_pool >= 6, 1, 0)'
+        ),
+
+        // 图层 2：抽牌、弃牌洗回与守恒激活门控
+        ed('e_draw_gate', 'state', 'draw_pile', 'turn_draw_conv', '>=3'),
+        ed('e_draw_pull', 'resource', 'draw_pile', 'turn_draw_conv', '3'),
+        ed('e_draw_push', 'resource', 'turn_draw_conv', 'hand_pool', '3'),
+        ed('e_reshuffle_gate', 'state', 'discard_pile', 'reshuffle_conv', '>=4'),
+        ed('e_reshuffle_pull', 'resource', 'discard_pile', 'reshuffle_conv', '4'),
+        ed('e_reshuffle_push', 'resource', 'reshuffle_conv', 'draw_pile', '4'),
+
+        // 图层 3：异构出牌（打击 / 2费痛击挂易伤 / 能力牌消耗叠力量）与乘区结算
+        ed('e_strike_act_e', 'state', 'energy_pool', 'play_strike', '>=1'),
+        ed('e_strike_act_h', 'state', 'hand_pool', 'play_strike', '>=1'),
+        ed('e_strike_cost_e', 'resource', 'energy_pool', 'play_strike', '1'),
+        ed('e_strike_cost_c', 'resource', 'hand_pool', 'play_strike', '1'),
+        ed('e_strike_discard', 'resource', 'play_strike', 'discard_pile', '1'),
+        ed('e_strike_dmg', 'resource', 'play_strike', 'boss_dmg', 'dmg_mult_reg'),
+
+        ed('e_bash_act_e', 'state', 'energy_pool', 'play_bash', '>=2'),
+        ed('e_bash_act_h', 'state', 'hand_pool', 'play_bash', '>=2'),
+        ed('e_bash_cost_e', 'resource', 'energy_pool', 'play_bash', '2'),
+        ed('e_bash_cost_c', 'resource', 'hand_pool', 'play_bash', '1'),
+        ed('e_bash_discard', 'resource', 'play_bash', 'discard_pile', '1'),
+        ed('e_bash_vuln', 'resource', 'play_bash', 'vuln_pool', '2'),
+        ed(
+          'e_bash_dmg',
+          'resource',
+          'play_bash',
+          'boss_dmg',
+          'round((BaseBash + strength_pool) * if(vuln_pool > 0, 1.5, 1))'
+        ),
+
+        ed('e_power_cap', 'state', 'exhaust_pile', 'play_power', '<3'),
+        ed('e_power_act_e', 'state', 'energy_pool', 'play_power', '>=2'),
+        ed('e_power_act_h', 'state', 'hand_pool', 'play_power', '>=2'),
+        ed('e_power_cost_e', 'resource', 'energy_pool', 'play_power', '1'),
+        ed('e_power_cost_c', 'resource', 'hand_pool', 'play_power', '1'),
+        ed('e_power_exhaust', 'resource', 'play_power', 'exhaust_pile', '1'),
+        ed('e_power_str', 'resource', 'play_power', 'strength_pool', '2'),
+
+        ed('e_vuln_decay', 'resource', 'vuln_pool', 'vuln_decay', 'if(vuln_pool > 0, 1, 0)'),
+        ed('e_str_to_reg', 'state', 'strength_pool', 'dmg_mult_reg', '+1'),
+        ed('e_vuln_to_reg', 'state', 'vuln_pool', 'dmg_mult_reg', '+1'),
+
+        // 图层 4：防御牌叠甲、护甲衰减与 Boss 破盾结算
+        ed('e_def_act_e', 'state', 'energy_pool', 'play_defend', '>=1'),
+        ed('e_def_act_h', 'state', 'hand_pool', 'play_defend', '>=1'),
+        ed('e_def_cost_e', 'resource', 'energy_pool', 'play_defend', '1'),
+        ed('e_def_cost_c', 'resource', 'hand_pool', 'play_defend', '1'),
+        ed('e_def_discard', 'resource', 'play_defend', 'discard_pile', '1'),
+        ed('e_def_block', 'resource', 'play_defend', 'block_pool', 'BaseBlock'),
+        ed('e_block_decay', 'resource', 'block_pool', 'block_decay', 'min(block_pool, 4)'),
+        ed(
+          'e_boss_pierce',
+          'resource',
+          'player_hp',
+          'boss_unblocked_drain',
+          'max(1, round(boss_intent_reg - block_pool * 0.75))'
+        ),
+
+        // 图层 5：战斗赏金、商店遗物提纯与双终局判定
+        ed('e_gold_loot', 'resource', 'combat_gold_src', 'gold_pool', '18'),
+        ed('e_shop_act', 'state', 'gold_pool', 'shop_relic_conv', '>=75'),
+        ed('e_shop_cost', 'resource', 'gold_pool', 'shop_relic_conv', '75'),
+        ed('e_shop_str', 'resource', 'shop_relic_conv', 'strength_pool', '1'),
+        ed('e_shop_heal', 'resource', 'shop_relic_conv', 'player_hp', '5'),
+        ed('e_win_boss', 'state', 'boss_dmg', 'boss_slain', '>=320'),
+        ed('e_lose_hp', 'state', 'player_hp', 'player_dead', '<=0')
+      ]
+      doc.settings.steps = 25
+      doc.settings.runs = 50
+      break
+    }
     case 'hearthstone_mana_pack': {
       doc.title = title || 'Hearthstone: 1-10 Mana Tempo & Pack Dust Pity'
       doc.resources = [
@@ -4558,41 +7875,329 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
       break
     }
     case 'tower_defense_waves': {
-      doc.title = title || 'Tower Defense: Waves & Build Economy'
+      doc.title =
+        title || '策略塔防完整玩法机制：20波敌潮·清障赏金·异构建塔与火力升级·基地扣血与终局结算' // cjk-ok
+      doc.description =
+        '按五大塔防子系统分图层构建的 20 波策略塔防动力学闭环：覆盖波次计数与每 5 波精英潮强度寄存器、击杀赏金与地图障碍物清理（额外爆金币并解锁建塔空位）、箭塔/法师塔异构建造与条件紧急拆塔折旧、科技等级递增强化与防线总 DPS 结算、未击杀残余怪物经 Drain 扣减基地生命（绝不反向加血）、单局体力入场门控及 20 波通关/破防双终局。' // cjk-ok
+      doc.layers = [
+        { id: 'layer_base', name: 'Base', visible: true, locked: false },
+        {
+          id: 'ly_wave_enemy',
+          name: '波次推进与敌潮压力 (Waves & Enemy Tide)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_gold_map',
+          name: '赏金经济与场地清障 (Gold & Map Clearing)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_tower_build',
+          name: '异构建塔与战术拆塔 (Towers & Build Slots)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_combat_upg',
+          name: '火力升级与防线清怪 (Upgrades & Defense DPS)', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_meta_finale',
+          name: '基地生命、单局结算与胜负终局 (Base HP & Finale)', // cjk-ok
+          visible: true,
+          locked: false
+        }
+      ]
       doc.resources = [
-        { id: 'gold', name: 'Gold', color: '#f59e0b' },
-        { id: 'tower', name: 'Tower', color: '#3b82f6' },
-        { id: 'lives', name: 'Lives', color: '#ef4444' }
+        { id: 'gold', name: '战术金币 (Gold)', color: '#f59e0b' }, // cjk-ok
+        { id: 'slot', name: '建塔空位 (Build Slots)', color: '#10b981' }, // cjk-ok
+        { id: 'tower', name: '防御塔与科技 (Towers)', color: '#3b82f6' }, // cjk-ok
+        { id: 'enemy', name: '敌潮兵力 (Enemies)', color: '#a855f7' }, // cjk-ok
+        { id: 'lives', name: '基地生命 (Base HP)', color: '#ef4444' }, // cjk-ok
+        { id: 'meta', name: '体力与局外科技 (Meta Tech)', color: '#06b6d4' } // cjk-ok
       ]
       doc.params = [{ id: 'p_wave', name: 'WaveGrowth', value: 0.35 }]
       doc.scenarios = [
-        { id: 'sc_casual', name: 'Casual Wave', params: { WaveGrowth: 0.22 } },
-        { id: 'sc_nightmare', name: 'Nightmare Wave', params: { WaveGrowth: 0.55 } }
+        { id: 'sc_casual', name: 'Casual Wave', params: { WaveGrowth: 0.2 } },
+        { id: 'sc_nightmare', name: 'Nightmare Wave', params: { WaveGrowth: 0.62 } }
       ]
       doc.nodes = [
-        nd('kills', 'source', 'Enemy Kills', 140, 200, { resourceId: 'gold' }),
-        nd('gold', 'pool', 'Gold', 320, 200, { resourceId: 'gold', initial: 30 }),
-        nd('build', 'converter', 'Build Tower', 500, 200, { resourceId: 'tower' }),
-        nd('towers', 'pool', 'Towers', 680, 200, { resourceId: 'tower', initial: 1 }),
-        nd('leak', 'source', 'Wave Leak', 500, 360, { resourceId: 'lives', trigger: 'automatic' }),
-        nd('leaks', 'pool', 'Leaked', 680, 360, { resourceId: 'lives' }),
-        nd('lose', 'end', 'Base Destroyed', 860, 360, {})
+        // ── 图层 1：波次推进与敌潮压力 (ly_wave_enemy) ──
+        nd('wave_tick', 'source', /* cjk-ok */ '波次推进 (+1/波)', 120, 120, {
+          resourceId: 'enemy',
+          trigger: 'automatic',
+          layerId: 'ly_wave_enemy',
+          color: '#6366f1'
+        }),
+        nd('wave_count', 'pool', /* cjk-ok */ '当前波次 (Wave)', 300, 120, {
+          resourceId: 'enemy',
+          initial: 0,
+          capacity: 30,
+          tracked: true,
+          layerId: 'ly_wave_enemy',
+          color: '#6366f1'
+        }),
+        nd('wave_scale', 'register', /* cjk-ok */ '敌潮强度 (含每5波精英潮)', 490, 120, {
+          formula:
+            'round((9 + wave_count * 3.2 * (1 + WaveGrowth)) * if(wave_count > 0 && wave_count % 5 == 0, 1.35, 1))',
+          layerId: 'ly_wave_enemy',
+          color: '#a855f7'
+        }),
+        nd('enemy_spawn', 'source', /* cjk-ok */ '敌潮刷怪口 (Wave Spawn)', 680, 120, {
+          resourceId: 'enemy',
+          trigger: 'automatic',
+          layerId: 'ly_wave_enemy',
+          color: '#a855f7'
+        }),
+        nd('enemy_pool', 'pool', /* cjk-ok */ '在场敌军池 (Active Enemies)', 870, 120, {
+          resourceId: 'enemy',
+          initial: 6,
+          capacity: 200,
+          tracked: true,
+          layerId: 'ly_wave_enemy',
+          color: '#9333ea'
+        }),
+
+        // ── 图层 2：赏金经济与场地清障 (ly_gold_map) ──
+        nd('kill_bounty', 'source', /* cjk-ok */ '击杀赏金结算 (Kill Bounty)', 120, 280, {
+          resourceId: 'gold',
+          trigger: 'automatic',
+          layerId: 'ly_gold_map',
+          color: '#f59e0b'
+        }),
+        nd('gold', 'pool', /* cjk-ok */ '局内金币池 (Gold)', 320, 280, {
+          resourceId: 'gold',
+          initial: 48,
+          capacity: 500,
+          tracked: true,
+          layerId: 'ly_gold_map',
+          color: '#f59e0b'
+        }),
+        nd('obstacles', 'pool', /* cjk-ok */ '场地障碍物 (Obstacles)', 520, 280, {
+          resourceId: 'slot',
+          initial: 6,
+          capacity: 10,
+          layerId: 'ly_gold_map',
+          color: '#84cc16'
+        }),
+        nd('clear_obstacle', 'converter', /* cjk-ok */ '清理障碍爆金开位', 710, 280, {
+          resourceId: 'gold',
+          trigger: 'automatic',
+          layerId: 'ly_gold_map',
+          color: '#10b981'
+        }),
+        nd('build_slots', 'pool', /* cjk-ok */ '可用建塔空位 (Build Slots)', 900, 280, {
+          resourceId: 'slot',
+          initial: 7,
+          capacity: 16,
+          layerId: 'ly_gold_map',
+          color: '#10b981'
+        }),
+
+        // ── 图层 3：异构建塔与战术拆塔 (ly_tower_build) ──
+        nd('build_arrow', 'converter', /* cjk-ok */ '建造速射箭塔 (Arrow)', 320, 440, {
+          resourceId: 'tower',
+          trigger: 'automatic',
+          pullMode: 'pull_all',
+          layerId: 'ly_tower_build',
+          color: '#3b82f6'
+        }),
+        nd('arrow_towers', 'pool', /* cjk-ok */ '速射箭塔数 (Arrow Towers)', 520, 440, {
+          resourceId: 'tower',
+          initial: 2,
+          capacity: 10,
+          tracked: true,
+          layerId: 'ly_tower_build',
+          color: '#3b82f6'
+        }),
+        nd('build_mage', 'converter', /* cjk-ok */ '建造群伤法师塔 (Mage)', 710, 440, {
+          resourceId: 'tower',
+          trigger: 'automatic',
+          pullMode: 'pull_all',
+          layerId: 'ly_tower_build',
+          color: '#0ea5e9'
+        }),
+        nd('mage_towers', 'pool', /* cjk-ok */ '群伤法师塔数 (Mage Towers)', 900, 440, {
+          resourceId: 'tower',
+          initial: 0,
+          capacity: 8,
+          tracked: true,
+          layerId: 'ly_tower_build',
+          color: '#0ea5e9'
+        }),
+        nd('sell_tower', 'converter', /* cjk-ok */ '紧急拆塔折旧回血换位', 520, 560, {
+          resourceId: 'gold',
+          trigger: 'interactive',
+          botPolicy: 'condition',
+          botCondition: 'base_hp <= 6 && arrow_towers >= 3 && gold < 24',
+          layerId: 'ly_tower_build',
+          color: '#f97316'
+        }),
+
+        // ── 图层 4：火力升级与防线清怪 (ly_combat_upg) ──
+        nd('upgrade_tower', 'converter', /* cjk-ok */ '升级炮塔科技等级', 320, 700, {
+          resourceId: 'tower',
+          trigger: 'automatic',
+          layerId: 'ly_combat_upg',
+          color: '#8b5cf6'
+        }),
+        nd('upgrade_level', 'pool', /* cjk-ok */ '炮塔强化等级 (Upgrade Lv)', 520, 700, {
+          resourceId: 'tower',
+          initial: 0,
+          capacity: 12,
+          tracked: true,
+          layerId: 'ly_combat_upg',
+          color: '#8b5cf6'
+        }),
+        nd('defense_dps', 'register', /* cjk-ok */ '防线总火力 (Defense DPS)', 710, 700, {
+          formula:
+            'round((arrow_towers * 5 + mage_towers * 9.5) * (1 + upgrade_level * 0.18) * (1 + meta_tech * 0.06))',
+          layerId: 'ly_combat_upg',
+          color: '#f43f5e'
+        }),
+        nd('kill_drain', 'drain', /* cjk-ok */ '炮塔集火歼灭敌军', 900, 700, {
+          trigger: 'automatic',
+          layerId: 'ly_combat_upg',
+          color: '#ec4899'
+        }),
+
+        // ── 图层 5：基地生命、单局结算与胜负终局 (ly_meta_finale) ──
+        nd('stamina_pool', 'pool', /* cjk-ok */ '局外体力池 (Stamina)', 120, 860, {
+          resourceId: 'meta',
+          initial: 30,
+          capacity: 30,
+          layerId: 'ly_meta_finale',
+          color: '#06b6d4'
+        }),
+        nd('match_entry', 'converter', /* cjk-ok */ '单局开战耗体授印 (首波触发)', 320, 860, {
+          resourceId: 'meta',
+          trigger: 'automatic',
+          layerId: 'ly_meta_finale',
+          color: '#06b6d4'
+        }),
+        nd('meta_tech', 'pool', /* cjk-ok */ '局外科技天赋 (Meta Tech)', 520, 860, {
+          resourceId: 'meta',
+          initial: 1,
+          capacity: 20,
+          tracked: true,
+          layerId: 'ly_meta_finale',
+          color: '#0891b2'
+        }),
+        nd('base_hp', 'pool', /* cjk-ok */ '基地生命 (Base HP)', 710, 860, {
+          resourceId: 'lives',
+          initial: 20,
+          capacity: 20,
+          tracked: true,
+          layerId: 'ly_meta_finale',
+          color: '#ef4444'
+        }),
+        nd('leak_hp_drain', 'drain', /* cjk-ok */ '漏怪突破防线扣血 (-HP)', 900, 860, {
+          trigger: 'automatic',
+          layerId: 'ly_meta_finale',
+          color: '#dc2626'
+        }),
+        nd('despawn_leaked', 'drain', /* cjk-ok */ '已撞击漏怪离场清零', 1080, 700, {
+          trigger: 'automatic',
+          layerId: 'ly_meta_finale',
+          color: '#64748b'
+        }),
+        nd('lose', 'end', /* cjk-ok */ '防线失守失败 (Base Destroyed)', 1080, 820, {
+          layerId: 'ly_meta_finale',
+          color: '#ef4444'
+        }),
+        nd('victory', 'end', /* cjk-ok */ '20波坚守胜利 (20 Waves Cleared)', 1080, 920, {
+          layerId: 'ly_meta_finale',
+          color: '#22c55e'
+        })
       ]
       doc.edges = [
-        ed('e1', 'resource', 'kills', 'gold', '4'),
-        ed('e2', 'state', 'towers', 'kills', '+2'),
-        ed('e3', 'resource', 'gold', 'build', '25 + Towers * 10'),
-        ed('e4', 'resource', 'build', 'towers', '1'),
+        // 波次推进与敌潮生成
+        ed('e_wave_tick', 'resource', 'wave_tick', 'wave_count', '1'),
+        ed('e_spawn', 'resource', 'enemy_spawn', 'enemy_pool', 'wave_scale'),
+
+        // 赏金与清障
         ed(
-          'e5',
+          'e_bounty_gold',
           'resource',
-          'leak',
-          'leaks',
-          'max(0, round(step * WaveGrowth - Towers * 0.8 + random(-1, 1)))'
+          'kill_bounty',
+          'gold',
+          'round(min(wave_scale + 4, defense_dps) * 1.25)'
         ),
-        ed('e6', 'state', 'leaks', 'lose', '>=20')
+        ed('e_obs_gate', 'state', 'obstacles', 'clear_obstacle', '>=1'),
+        ed('e_wave_obs_gate', 'state', 'wave_count', 'clear_obstacle', '>=1'),
+        ed('e_obs_in', 'resource', 'obstacles', 'clear_obstacle', '1 every 2'),
+        ed('e_obs_gold', 'resource', 'clear_obstacle', 'gold', '14'),
+        ed('e_obs_slot', 'resource', 'clear_obstacle', 'build_slots', '1'),
+
+        // 异构建塔（箭塔 + 法师塔）与条件拆塔
+        ed('e_arrow_gold_gate', 'state', 'gold', 'build_arrow', '>=26'),
+        ed('e_arrow_slot_gate', 'state', 'build_slots', 'build_arrow', '>=1'),
+        ed('e_arrow_cap_gate', 'state', 'arrow_towers', 'build_arrow', '<=8'),
+        ed('e_arrow_cost', 'resource', 'gold', 'build_arrow', '18 + arrow_towers * 4'),
+        ed('e_arrow_slot', 'resource', 'build_slots', 'build_arrow', '1'),
+        ed('e_arrow_out', 'resource', 'build_arrow', 'arrow_towers', '1'),
+
+        ed('e_mage_wave_gate', 'state', 'wave_count', 'build_mage', '>=2'),
+        ed('e_mage_gold_gate', 'state', 'gold', 'build_mage', '>=34'),
+        ed('e_mage_slot_gate', 'state', 'build_slots', 'build_mage', '>=1'),
+        ed('e_mage_cap_gate', 'state', 'mage_towers', 'build_mage', '<=6'),
+        ed('e_mage_cost', 'resource', 'gold', 'build_mage', '28 + mage_towers * 6'),
+        ed('e_mage_slot', 'resource', 'build_slots', 'build_mage', '1'),
+        ed('e_mage_out', 'resource', 'build_mage', 'mage_towers', '1'),
+
+        ed('e_sell_in', 'resource', 'arrow_towers', 'sell_tower', '1'),
+        ed('e_sell_gold', 'resource', 'sell_tower', 'gold', '12'),
+        ed('e_sell_slot', 'resource', 'sell_tower', 'build_slots', '1'),
+
+        // 科技升级与防线歼敌
+        ed('e_upg_gold_gate', 'state', 'gold', 'upgrade_tower', '>=28'),
+        ed('e_upg_cap_gate', 'state', 'upgrade_level', 'upgrade_tower', '<=11'),
+        ed('e_upg_cost', 'resource', 'gold', 'upgrade_tower', '22 + upgrade_level * 5'),
+        ed('e_upg_out', 'resource', 'upgrade_tower', 'upgrade_level', '1'),
+
+        ed(
+          'e_kill_enemies',
+          'resource',
+          'enemy_pool',
+          'kill_drain',
+          'min(enemy_pool, defense_dps)'
+        ),
+
+        // 漏怪扣血（严格使用 base_hp -> Drain 减法！）与残怪离场
+        ed(
+          'e_leak_hp',
+          'resource',
+          'base_hp',
+          'leak_hp_drain',
+          'min(base_hp, max(0, ceil((enemy_pool - 1) * 0.4)))'
+        ),
+        ed(
+          'e_despawn_leaked',
+          'resource',
+          'enemy_pool',
+          'despawn_leaked',
+          'max(0, enemy_pool - 2)'
+        ),
+
+        // 单局首波体力入场与胜负双终局（AND 多条件胜利）
+        ed('e_entry_wave_gate', 'state', 'wave_count', 'match_entry', '<=1'),
+        ed('e_entry_stam_gate', 'state', 'stamina_pool', 'match_entry', '>=6'),
+        ed('e_entry_stam_in', 'resource', 'stamina_pool', 'match_entry', '6'),
+        ed('e_entry_tech_out', 'resource', 'match_entry', 'meta_tech', '1'),
+
+        ed('e_defeat_hp', 'state', 'base_hp', 'lose', '<=0'),
+        ed('e_win_wave', 'state', 'wave_count', 'victory', '>=20'),
+        ed('e_win_hp', 'state', 'base_hp', 'victory', '>=1'),
+        ed('e_win_clear', 'state', 'enemy_pool', 'victory', '<=3')
       ]
-      doc.settings.steps = 40
+      doc.settings.steps = 22
+      doc.settings.runs = 50
+      doc.settings.botMode = 'smart'
+      autoLayoutMxDocument(doc)
       break
     }
     case 'crafting_chain': {
@@ -4778,6 +8383,33 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           }
         }
       ]
+      doc.layers = [
+        { id: 'layer_base', name: 'Base', visible: true, locked: false },
+        {
+          id: 'ly_faucet_market',
+          name: '第一层：采药悬赏与黑市开源', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_alchemy_realm',
+          name: '第二层：药经炼丹与太虚破境', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_lifespan_sink',
+          name: '第三层：借命契剥削与阳寿闭环', // cjk-ok
+          visible: true,
+          locked: false
+        },
+        {
+          id: 'ly_alliance_reckon',
+          name: '第四层：寒门同盟与终局清算', // cjk-ok
+          visible: true,
+          locked: false
+        }
+      ]
       doc.groups = [
         {
           id: 'grp_faucet_market',
@@ -4786,7 +8418,8 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           y: 40,
           width: 550,
           height: 320,
-          color: '#10b981'
+          color: '#10b981',
+          layerId: 'ly_faucet_market'
         },
         {
           id: 'grp_alchemy_realm',
@@ -4795,7 +8428,8 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           y: 40,
           width: 630,
           height: 320,
-          color: '#3b82f6'
+          color: '#3b82f6',
+          layerId: 'ly_alchemy_realm'
         },
         {
           id: 'grp_lifespan_sink',
@@ -4804,7 +8438,8 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           y: 400,
           width: 550,
           height: 320,
-          color: '#f43f5e'
+          color: '#f43f5e',
+          layerId: 'ly_lifespan_sink'
         },
         {
           id: 'grp_alliance_reckon',
@@ -4813,34 +8448,40 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           y: 400,
           width: 630,
           height: 320,
-          color: '#a855f7'
+          color: '#a855f7',
+          layerId: 'ly_alliance_reckon'
         }
       ]
       doc.nodes = [
         // ── 象限 I：山林采药、外门悬赏与黑市置换 ──
         nd('src_mine_prod', 'source', /* cjk-ok */ '断魂崖采药与药庐灵田', 130, 130, {
           resourceId: 'res_herbs',
+          layerId: 'ly_faucet_market',
           color: '#fbbf24'
         }),
         nd('pool_herbs', 'pool', /* cjk-ok */ '百年灵药与奇珍储备囊', 330, 130, {
           resourceId: 'res_herbs',
           initial: 45,
           capacity: 9999,
+          layerId: 'ly_faucet_market',
           color: '#fbbf24'
         }),
         nd('src_sect_bounty', 'source', /* cjk-ok */ '外门悬赏与除妖历练', 130, 275, {
           resourceId: 'res_stones',
+          layerId: 'ly_faucet_market',
           color: '#10b981'
         }),
         nd('pool_coins', 'pool', /* cjk-ok */ '沈砚灵石与药材储备囊', 330, 275, {
           resourceId: 'res_stones',
           initial: 80,
           capacity: 999999,
+          layerId: 'ly_faucet_market',
           color: '#10b981'
         }),
         nd('trader_black_market', 'converter', /* cjk-ok */ '坊市黑市·药石置换与秘闻', 510, 200, {
           resourceId: 'res_herbs',
           trigger: 'automatic',
+          layerId: 'ly_faucet_market',
           color: '#f59e0b'
         }),
 
@@ -4848,66 +8489,79 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
         nd('conv_buy_miner', 'converter', /* cjk-ok */ '残缺药经·辨药试药炼丹', 715, 130, {
           resourceId: 'res_elixirs',
           trigger: 'automatic',
+          layerId: 'ly_alchemy_realm',
           color: '#38bdf8'
         }),
         nd('gate_pill_quality', 'gate', /* cjk-ok */ '成丹品阶闸 (75%灵丹/25%丹毒)', 885, 130, {
           gateMode: 'random',
+          layerId: 'ly_alchemy_realm',
           color: '#ec4899'
         }),
         nd('pool_elixirs', 'pool', /* cjk-ok */ '续命灵丹与破境灵丹池', 1055, 130, {
           resourceId: 'res_elixirs',
           initial: 28,
           capacity: 2000,
+          layerId: 'ly_alchemy_realm',
           color: '#38bdf8'
         }),
         nd('pool_canon_insight', 'pool', /* cjk-ok */ '药经残卷与医道感悟池', 715, 275, {
           resourceId: 'res_insight',
           initial: 24,
           capacity: 5000,
+          layerId: 'ly_alchemy_realm',
           color: '#a855f7'
         }),
         nd('conv_realm_break', 'converter', /* cjk-ok */ '太虚引气·淬脉冲关破境', 885, 275, {
           resourceId: 'res_insight',
           trigger: 'automatic',
+          layerId: 'ly_alchemy_realm',
           color: '#6366f1'
         }),
         nd('pool_cultivation', 'pool', /* cjk-ok */ '沈砚修为境界池 (凡人➔大乘)', 1055, 275, {
           resourceId: 'res_insight',
           initial: 1,
           capacity: 500,
+          layerId: 'ly_alchemy_realm',
           color: '#6366f1'
         }),
         nd('reg_miner_cost', 'register', /* cjk-ok */ '突破与借息代价曲线: 50+1.8*N', 1190, 200, {
           formula: 'round(50 + a * 1.8 + step * 0.25)',
+          layerId: 'ly_alchemy_realm',
           color: '#a855f7'
         }),
 
         // ── 象限 III：宗门借命契剥削、丹毒反噬与母子阳寿生死闭环 ──
         nd('drain_upkeep', 'drain', /* cjk-ok */ '宗门寿元契约抽成与折寿反噬', 130, 495, {
           trigger: 'automatic',
+          layerId: 'ly_lifespan_sink',
           color: '#f43f5e'
         }),
         nd('drain_poison_backlash', 'drain', /* cjk-ok */ '试药丹毒淤积与借息损耗', 330, 495, {
           trigger: 'automatic',
+          layerId: 'ly_lifespan_sink',
           color: '#fb7185'
         }),
         nd('conv_lifespan_heal', 'converter', /* cjk-ok */ '服食续命丹·修补母子阳寿', 510, 495, {
           resourceId: 'res_lifespan',
           trigger: 'automatic',
+          layerId: 'ly_lifespan_sink',
           color: '#34d399'
         }),
         nd('reg_contract_pressure', 'register', /* cjk-ok */ '四卷宿敌压迫与催缴强度', 130, 640, {
           formula: 'round(15 + step * 0.45 + a * 1.6)',
+          layerId: 'ly_lifespan_sink',
           color: '#f43f5e'
         }),
         nd('pool_miners', 'pool', /* cjk-ok */ '沈砚与沈母剩余阳寿池', 330, 640, {
           resourceId: 'res_lifespan',
           initial: 32,
           capacity: 500,
+          layerId: 'ly_lifespan_sink',
           color: '#f43f5e'
         }),
         nd('end_lifespan_exhausted', 'end', /* cjk-ok */ '败局红线: 母子阳寿断绝', 510, 640, {
           formula: 'a <= 0',
+          layerId: 'ly_lifespan_sink',
           color: '#ef4444'
         }),
 
@@ -4916,25 +8570,30 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
           resourceId: 'res_alliance',
           initial: 24,
           capacity: 2000,
+          layerId: 'ly_alliance_reckon',
           color: '#ec4899'
         }),
         nd('conv_arc_reckoning', 'converter', /* cjk-ok */ '卷末大高潮·破契反杀与清算', 905, 495, {
           resourceId: 'res_lifespan',
           trigger: 'automatic',
+          layerId: 'ly_alliance_reckon',
           color: '#f59e0b'
         }),
         nd('reg_volume_tier', 'register', /* cjk-ok */ '四卷换地图阶梯与天道威压', 715, 640, {
           formula: 'round(10 + a * 1.5 + floor(step / 50) * 12)',
+          layerId: 'ly_alliance_reckon',
           color: '#38bdf8'
         }),
         nd('pool_primordial_seals', 'pool', /* cjk-ok */ '山海古印与本源借契碎片池', 905, 640, {
           resourceId: 'res_alliance',
           initial: 2,
           capacity: 500,
+          layerId: 'ly_alliance_reckon',
           color: '#fbbf24'
         }),
         nd('end_tycoon_goal', 'end', /* cjk-ok */ '阶段目标: 赎回母命·执掌山海总纲', 1140, 565, {
           formula: 'a >= 225',
+          layerId: 'ly_alliance_reckon',
           color: '#22d3ee'
         })
       ]
@@ -5001,7 +8660,7 @@ export function createMxTemplate(id: MxTemplateId, title?: string): MxDocument {
     id === 'xianxia_lifespan_alchemy'
       ? createXianxia200LifespanWorkbench()
       : createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(id))
-  return doc
+  return assignDefaultCategoryLayersToTemplate(doc)
 }
 
 export const createMxFromTemplate = createMxTemplate
@@ -5113,7 +8772,7 @@ const MX_PROMPT_TEMPLATE_RULES: Array<[RegExp, MxTemplateId]> = [
     'idle_exponential_tycoon'
   ],
   [
-    /deck|card|mana|hand|draw|\u5361\u724c|\u6cd5\u529b|\u6784\u7b51|\u62bd\u724c|\u8d39\u7528/,
+    /slay\s*the\s*spire|spire|\bdbg\b|deck|card|mana|hand|draw|杀戮尖塔|尖塔|遗物|易伤|\u5361\u724c|\u6cd5\u529b|\u6784\u7b51|\u62bd\u724c|\u8d39\u7528/, // cjk-ok
     'roguelike_mana_deck'
   ],
   [
@@ -5189,7 +8848,11 @@ export function synthesizeMxDiagramFromPrompt(
   }
 
   // 若图中包含 Interactive 交互节点，自动挂载与提示词匹配的效用智能体，确保无头运行（运行画布节点）也能驱动交互分支
-  if (doc.nodes.some((n) => n.trigger === 'interactive')) {
+  if (
+    doc.nodes.some((n) => n.trigger === 'interactive') &&
+    (doc.settings.botMode ?? 'off') === 'off' &&
+    !(Array.isArray(doc.agents) && doc.agents.some((a) => a.enabled))
+  ) {
     const agent = generateMxAgentWithAi(doc, { prompt })
     doc.agents = [agent]
   }

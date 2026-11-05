@@ -79,6 +79,8 @@ import {
   exportDomainNumericalSuiteMarkdown,
   generateMxAgentWithAi,
   isNonCombatDomainContext,
+  lintMxDocumentTopology,
+  mapMxTemplateToWorkbenchPreset,
   matchMxTemplateFromPrompt,
   MX_TEMPLATES,
   MX_WORKBENCH_PRESETS,
@@ -2387,8 +2389,28 @@ export async function executeGameEconomyNode(
 
   if (hasExplicitDiagram) {
     doc = parseMxDocumentJson(rawDiagramJson, templateId, ctx.node.title)
-    // 若用户/AI 通过提示词或标题指定了新经济模板（如抽卡/塔防/锻造），而旧图仍是默认未改动的 roguelike_run，自动按提示词合成对应经济图
-    if (doc.templateId === 'roguelike_run' && templateRaw === 'roguelike_run' && promptHint) {
+    // 仅当旧图仍是完全未改动的默认 roguelike_run 初始种子图（10 节点 v2 模板或 7 节点旧种子），且用户/AI 通过提示词或标题指定了新经济类型时，才自动合成对应经济图（绝不覆盖自定义大图）
+    const defaultRoguelikeV2Ids = [
+      'explore',
+      'depth',
+      'gold_found',
+      'monster_dmg',
+      'earn_gold',
+      'gold',
+      'rest',
+      'hp',
+      'take_damage',
+      'death'
+    ]
+    const defaultRoguelikeLegacyIds = ['explore', 'depth', 'gold', 'heal', 'hp', 'dmg', 'dead']
+    const matchesDefaultNodeSet = (expected: string[]): boolean =>
+      doc.nodes.length === expected.length &&
+      expected.every((id) => doc.nodes.some((n) => n.id === id))
+    const isUnmodifiedDefaultRoguelike =
+      doc.templateId === 'roguelike_run' &&
+      (matchesDefaultNodeSet(defaultRoguelikeV2Ids) ||
+        matchesDefaultNodeSet(defaultRoguelikeLegacyIds))
+    if (isUnmodifiedDefaultRoguelike && templateRaw === 'roguelike_run' && promptHint) {
       const matchedTpl = matchMxTemplateFromPrompt(promptHint)
       if (matchedTpl && matchedTpl !== 'roguelike_run') {
         doc = synthesizeMxDiagramFromPrompt(promptHint, matchedTpl, ctx.node.title)
@@ -2429,11 +2451,13 @@ export async function executeGameEconomyNode(
   const forecast = runMxForecast(doc, { runs, steps, seed })
   const playRun = runMxSimulation(doc, { steps, seed, name: 'Play 1' })
   const healthReport = analyzeMxEconomyHealth(doc, playRun)
+  const topologyWarnings = healthReport.topologyWarnings ?? lintMxDocumentTopology(doc)
+  const wbFallbackPreset = mapMxTemplateToWorkbenchPreset(presetId)
   const wb =
     doc.workbench ??
     (promptHint
-      ? synthesizeMxWorkbenchFromPrompt(promptHint, 'slay_the_spire_dbg')
-      : createMxWorkbenchPreset('slay_the_spire_dbg'))
+      ? synthesizeMxWorkbenchFromPrompt(promptHint, wbFallbackPreset)
+      : createMxWorkbenchPreset(wbFallbackPreset))
   doc.workbench = wb
   const wbMultiplier = analyzeMultiplierPipeline(wb.multiplier)
   const wbLoot = runMxLootAndSubstatSimulation({
@@ -2533,6 +2557,7 @@ export async function executeGameEconomyNode(
         final: playRun.snapshots[playRun.snapshots.length - 1]
       },
       healthReport,
+      topologyWarnings,
       workbenchReport: {
         activePresetId: wb.activePresetId,
         multiplier: wbMultiplier,
@@ -2578,7 +2603,8 @@ export async function executeGameEconomyNode(
     forecast.endStepP50 !== null
       ? `End P50: ${forecast.endStepP50} steps (${Math.round(forecast.endHitRate * 100)}%)`
       : 'End: never'
-  const report = `${doc.title} | ${runs}x${steps} steps | Source/Sink: ${forecast.sourceSinkRatio}x | Health: ${healthReport.grade}(${healthReport.score}) | ${goalStat}`
+  const topoTag = topologyWarnings.length ? ` | TopoWarn: ${topologyWarnings.length}` : ''
+  const report = `${doc.title} | ${runs}x${steps} steps | Source/Sink: ${forecast.sourceSinkRatio}x | Health: ${healthReport.grade}(${healthReport.score})${topoTag} | ${goalStat}`
 
   const cleanImages = materialized.map(stripEmbeddedImageData)
   const primaryPath = materialized[0]?.relativePath?.trim()

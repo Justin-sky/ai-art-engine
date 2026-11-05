@@ -85,12 +85,16 @@
 
       <rect class="mx-bg" x="0" y="0" width="100%" height="100%" fill="url(#mx-grid)" />
 
-      <g :transform="`translate(${store.view.x}, ${store.view.y}) scale(${store.view.zoom})`">
+      <g
+        class="mx-world"
+        :transform="`translate(${store.view.x}, ${store.view.y}) scale(${store.view.zoom})`"
+      >
         <!-- ══════════ 子系统分组容器层 (Subsystem Group Frames) ══════════ -->
         <g
-          v-for="grp in store.doc.value.groups ?? []"
+          v-for="grp in visibleGroups"
           :key="grp.id"
           class="mx-group"
+          :class="{ 'is-locked': isGroupLocked(grp) }"
           :transform="`translate(${grp.x}, ${grp.y})`"
           @pointerdown.stop="startGroupDrag(grp, $event)"
         >
@@ -121,6 +125,7 @@
             {{ grp.label }}
           </text>
           <g
+            v-if="!isGroupLocked(grp)"
             :transform="`translate(${grp.width - 16}, 13)`"
             class="mx-group-del"
             @pointerdown.stop="store.deleteGroup(grp.id)"
@@ -130,6 +135,7 @@
           </g>
           <!-- 右下角缩放手柄 -->
           <path
+            v-if="!isGroupLocked(grp)"
             :d="`M ${grp.width - 12},${grp.height - 3} L ${grp.width - 3},${grp.height - 12} M ${grp.width - 7},${grp.height - 3} L ${grp.width - 3},${grp.height - 7}`"
             class="mx-group-resize"
             :stroke="grp.color || '#3b82f6'"
@@ -163,7 +169,7 @@
           @dblclick.stop="startEdgeEdit(geo.edge.id)"
           @contextmenu.prevent.stop="onEdgeContextMenu(geo.edge, $event)"
         >
-          <path :d="geo.path" class="mx-edge-hit" />
+          <path :d="geo.path" fill="none" class="mx-edge-hit" />
           <!-- Sankey 流量热力发光底层 -->
           <path
             v-if="
@@ -204,9 +210,25 @@
             :marker-end="`url(#${geo.marker})`"
           />
 
-          <!-- 激活资源连线的持续流动脉冲虚线流（仅在播放或单步触发动画期间显示） -->
+          <!-- Instant 瞬时传输连线触发时的零延迟全线闪光脉冲 -->
           <path
             v-if="
+              isFlowAnimating &&
+              geo.edge.kind === 'resource' &&
+              geo.edge.transferMode === 'instant' &&
+              (store.displayFlows.value[geo.edge.id] ?? 0) > 0
+            "
+            :d="geo.path"
+            fill="none"
+            :stroke="geo.tokenColor"
+            stroke-width="3.6"
+            stroke-linecap="round"
+            :stroke-opacity="Math.max(0.18, (1 - pulseWave) * 0.92)"
+          />
+
+          <!-- 激活资源连线的持续流动脉冲虚线流（flow 模式在播放或单步触发动画期间显示） -->
+          <path
+            v-else-if="
               isFlowAnimating &&
               geo.edge.kind === 'resource' &&
               (store.displayFlows.value[geo.edge.id] ?? 0) > 0
@@ -221,11 +243,12 @@
             stroke-opacity="0.72"
           />
 
-          <!-- 60fps 贝塞尔曲线真实飞行资源球 (Animated Flow Tokens · 运行结束后立即停止) -->
+          <!-- 60fps 贝塞尔曲线真实飞行资源球 (Animated Flow Tokens · instant 模式跳过飞行直接到达) -->
           <template
             v-if="
               isFlowAnimating &&
               geo.edge.kind === 'resource' &&
+              geo.edge.transferMode !== 'instant' &&
               (store.displayFlows.value[geo.edge.id] ?? 0) > 0
             "
           >
@@ -421,12 +444,12 @@
             <!-- Pool 内部动态液面填充与浮动资源粒子 -->
             <g v-if="node.kind === 'pool' && nodeValue(node) > 0">
               <path :d="poolLiquidPath(node)" :fill="nodeColor(node)" fill-opacity="0.18" />
-              <!-- 默认模式也在池底显示微缩动态资源球（千级大图或低倍率缩放时自动进入 LOD 轻量模式） -->
+              <!-- 默认模式也在池底显示微缩动态资源球（支持多色 LIFO/混洗栈与 Display Cap） -->
               <template
                 v-if="!isLowDetailZoom || node.showAs === 'tokens' || node.showAs === 'both'"
               >
                 <circle
-                  v-for="(pt, ti) in tokenDots(Math.min(12, Math.floor(nodeValue(node))))"
+                  v-for="(pt, ti) in poolTokenDots(node)"
                   :key="`ptok-${ti}`"
                   :cx="pt.x"
                   :cy="
@@ -434,8 +457,8 @@
                     (isFlowAnimating ? Math.sin(streamPhase * Math.PI * 2 + ti * 1.1) * 1.1 : 0)
                   "
                   :r="node.showAs === 'tokens' || node.showAs === 'both' ? 2.3 : 1.75"
-                  :fill="nodeColor(node)"
-                  :fill-opacity="node.showAs === 'tokens' || node.showAs === 'both' ? 0.95 : 0.55"
+                  :fill="pt.color"
+                  :fill-opacity="node.showAs === 'tokens' || node.showAs === 'both' ? 0.95 : 0.62"
                 />
               </template>
             </g>
@@ -492,20 +515,24 @@
             <!-- Pool / Register / Delay / Queue 中心数值 -->
             <text
               v-if="
-                (node.kind === 'pool' && node.showAs !== 'tokens') ||
+                (node.kind === 'pool' && poolShowsNumber(node)) ||
                 node.kind === 'register' ||
                 node.kind === 'delay' ||
                 node.kind === 'queue'
               "
               class="mx-node-value"
               text-anchor="middle"
-              :y="node.kind === 'pool' && node.showAs === 'both' ? -1 : 4"
+              :y="
+                node.kind === 'pool' && node.showAs === 'both' && (node.displayCapacity ?? 25) > 0
+                  ? -1
+                  : 4
+              "
               :fill="isFilled(node) ? '#ffffff' : nodeColor(node)"
             >
               {{ formatValue(nodeValue(node)) }}
             </text>
 
-            <!-- Gate 中心符号 (% / 🎲) -->
+            <!-- Gate 中心符号 (% / ⚖ / ⚡ / 🎯) -->
             <text
               v-else-if="node.kind === 'gate'"
               class="mx-node-glyph"
@@ -513,7 +540,7 @@
               y="3.5"
               :fill="nodeColor(node)"
             >
-              {{ node.gateMode === 'deterministic' ? '⚖' : '%' }}
+              {{ gateGlyph(node) }}
             </text>
 
             <!-- End 终止条件中心符号 -->
@@ -1311,7 +1338,7 @@
         @pointerdown.stop="onMinimapPointerDown"
       >
         <rect
-          v-for="g in store.doc.value.groups ?? []"
+          v-for="g in visibleGroups"
           :key="'mg-' + g.id"
           :x="g.x"
           :y="g.y"
@@ -1361,7 +1388,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
+  computeMxDiagramBounds,
+  estimateMxTextWidth,
   evaluateMxExpression,
+  exportMxDiagramSvg,
+  getMxNodeSubPillWidth,
   mxNodeColor,
   parseMxStateFormula,
   resolveMxParams,
@@ -1443,6 +1474,12 @@ const hintText = computed(() => {
 })
 
 const layerMap = computed(() => new Map(store.doc.value.layers.map((l) => [l.id, l])))
+const visibleGroups = computed(() =>
+  (store.doc.value.groups ?? []).filter((g) => {
+    const layer = g.layerId ? layerMap.value.get(g.layerId) : undefined
+    return !layer || layer.visible
+  })
+)
 const visibleNodes = computed(() =>
   store.doc.value.nodes.filter((n) => {
     const layer = n.layerId ? layerMap.value.get(n.layerId) : undefined
@@ -1487,6 +1524,11 @@ const renderedNodeIds = computed(() => new Set(renderedNodes.value.map((n) => n.
 
 function isLocked(node: MxNode): boolean {
   const layer = node.layerId ? layerMap.value.get(node.layerId) : undefined
+  return !!layer?.locked
+}
+
+function isGroupLocked(grp: MxGroup): boolean {
+  const layer = grp.layerId ? layerMap.value.get(grp.layerId) : undefined
   return !!layer?.locked
 }
 
@@ -1667,11 +1709,37 @@ function pullModeBadge(pm: MxPullMode): string {
   }
 }
 
+const resourceColorMap = computed(
+  () => new Map(store.doc.value.resources.map((r) => [r.id, r.color]))
+)
+
+const triggerGateSet = computed(() => {
+  const resOut = new Set<string>()
+  const stOut = new Set<string>()
+  for (const e of store.doc.value.edges) {
+    if (e.kind === 'resource') resOut.add(e.from)
+    else stOut.add(e.from)
+  }
+  const tg = new Set<string>()
+  for (const n of store.doc.value.nodes) {
+    if (n.kind === 'gate' && !resOut.has(n.id) && stOut.has(n.id)) tg.add(n.id)
+  }
+  return tg
+})
+
+function gateGlyph(node: MxNode): string {
+  if (triggerGateSet.value.has(node.id)) {
+    return node.gateMode === 'deterministic' ? '⚖⚡' : '⚡'
+  }
+  if (node.gateMode === 'skill') return '🎯'
+  return node.gateMode === 'deterministic' ? '⚖' : '%'
+}
+
 function tokenDots(count: number): Array<{ x: number; y: number }> {
   const pts: Array<{ x: number; y: number }> = []
-  const cols = Math.min(4, Math.ceil(Math.sqrt(count)))
+  const cols = Math.min(5, Math.ceil(Math.sqrt(count)))
   const rows = Math.ceil(count / cols)
-  const sp = 5.2
+  const sp = count > 16 ? 4.2 : 5.2
   for (let i = 0; i < count; i++) {
     const r = Math.floor(i / cols)
     const c = i % cols
@@ -1681,6 +1749,46 @@ function tokenDots(count: number): Array<{ x: number; y: number }> {
     })
   }
   return pts
+}
+
+function poolShowsNumber(node: MxNode): boolean {
+  const rawDispCap = node.displayCapacity ?? 25
+  if (rawDispCap <= 0) return true
+  if (node.showAs !== 'tokens') return true
+  return nodeValue(node) > rawDispCap
+}
+
+function poolTokenDots(node: MxNode): Array<{ x: number; y: number; color: string }> {
+  const rawDispCap = node.displayCapacity ?? 25
+  if (rawDispCap <= 0) return []
+  const val = nodeValue(node)
+  if (node.showAs === 'tokens' && val > rawDispCap) return []
+  const maxCap =
+    node.showAs === 'tokens' || node.showAs === 'both'
+      ? Math.max(1, Math.min(49, rawDispCap))
+      : Math.min(12, rawDispCap)
+  const count = Math.min(maxCap, Math.max(0, Math.floor(val)))
+  if (count <= 0) return []
+  const coords = tokenDots(count)
+  const fallback = nodeColor(node)
+  const stack = store.displayPoolTokens.value?.[node.id]
+  if (!stack || !stack.length) {
+    return coords.map((pt) => ({ x: pt.x, y: pt.y, color: fallback }))
+  }
+  const colors: string[] = []
+  for (const seg of stack) {
+    const segCount = Math.max(0, Math.round(seg.count))
+    const segColor = resourceColorMap.value.get(seg.resId) ?? fallback
+    for (let k = 0; k < segCount && colors.length < count; k++) {
+      colors.push(segColor)
+    }
+    if (colors.length >= count) break
+  }
+  return coords.map((pt, idx) => ({
+    x: pt.x,
+    y: pt.y,
+    color: colors[idx] ?? fallback
+  }))
 }
 
 /** 计算 Pool 节点内部底部动态液面弧形路径 */
@@ -1721,7 +1829,7 @@ function sampleEdgePoint(geo: EdgeGeo, tVal: number): { x: number; y: number } {
 }
 
 function edgeFlowTokens(geo: EdgeGeo): Array<{ x: number; y: number }> {
-  if (!isFlowAnimating.value) return []
+  if (!isFlowAnimating.value || geo.edge.transferMode === 'instant') return []
   const flow = store.displayFlows.value[geo.edge.id] ?? 0
   if (flow <= 0) return []
   const count = Math.min(4, Math.max(1, Math.ceil(flow)))
@@ -1792,7 +1900,7 @@ function nodeSubLabel(node: MxNode): string {
 }
 
 function subW(node: MxNode): number {
-  return Math.max(30, nodeSubLabel(node).length * 5.8 + 14)
+  return getMxNodeSubPillWidth(node)
 }
 
 function shapePath(kind: MxNodeKind, r: number): string {
@@ -1852,11 +1960,29 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
     store.doc.value.edges.filter((e) => !e.targetEdgeId).map((e) => `${e.from}>${e.to}`)
   )
 
-  // 第一遍先算普通 Node -> Node 连线，记录中点与胶囊宽度供 Edge -> Edge 状态边精确停靠在胶囊边缘
+  // 第一遍先算普通 Node -> Node 连线，再按拓扑多轮解析 Edge -> Edge（支持多级 State -> State -> Edge 链且与数组顺序无关）
   const firstPass = store.doc.value.edges.filter((e) => !e.targetEdgeId)
-  const secondPass = store.doc.value.edges.filter((e) => !!e.targetEdgeId)
+  const pendingEdgeToEdge = store.doc.value.edges.filter((e) => !!e.targetEdgeId)
+  const orderedEdges: MxEdge[] = [...firstPass]
+  const resolvedIds = new Set(firstPass.map((e) => e.id))
+  let remaining = pendingEdgeToEdge
+  for (let pass = 0; pass < 5 && remaining.length > 0; pass++) {
+    const nextRem: MxEdge[] = []
+    let progressed = false
+    for (const e of remaining) {
+      if (e.targetEdgeId && resolvedIds.has(e.targetEdgeId)) {
+        orderedEdges.push(e)
+        resolvedIds.add(e.id)
+        progressed = true
+      } else {
+        nextRem.push(e)
+      }
+    }
+    remaining = nextRem
+    if (!progressed) break
+  }
 
-  for (const e of [...firstPass, ...secondPass]) {
+  for (const e of orderedEdges) {
     if (!visibleIds.value.has(e.from)) continue
     const a = nodeById.value.get(e.from)
     if (!a) continue
@@ -1930,11 +2056,15 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
         ? { x: (sx + 2 * cx + ex) / 4, y: (sy + 2 * cy + ey) / 4 }
         : { x: (sx + ex) / 2, y: (sy + ey) / 2 }
 
+    const filterColor =
+      e.resourceFilter && e.resourceId ? resourceColorMap.value.get(e.resourceId) : undefined
     const negative = e.kind === 'state' && /^\s*(-|!|<)/.test(e.formula)
     const selected = isEdgeSelected(e.id)
     const color = selected
       ? '#3d8bfd'
-      : e.color || (e.kind === 'state' ? (negative ? '#f87171' : '#38bdf8') : '#94a3b8')
+      : e.color ||
+        filterColor ||
+        (e.kind === 'state' ? (negative ? '#f87171' : '#38bdf8') : '#94a3b8')
     const marker = selected
       ? 'mx-arrow-sel'
       : e.kind === 'state'
@@ -1943,11 +2073,21 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
           : 'mx-arrow-state'
         : 'mx-arrow'
     const flow = store.displayFlows.value[e.id] ?? 0
+    const rawFormula = e.formula || (e.kind === 'state' ? '*' : '1')
+    const withInterval =
+      e.kind === 'resource' &&
+      e.interval?.trim() &&
+      e.interval.trim() !== '1' &&
+      !/\bevery\b|\|/i.test(rawFormula)
+        ? `${rawFormula}|${e.interval.trim()}`
+        : rawFormula
+    const baseNamed = e.label?.trim() ? `${e.label.trim()}: ${withInterval}` : withInterval
+    const namedFormula = e.influencer ? `★ ${baseNamed}` : baseNamed
     const label =
       flow > 0 && e.kind === 'resource'
-        ? `${e.formula || '1'} → ${formatValue(Math.round(flow * 10) / 10)}`
-        : e.formula || (e.kind === 'state' ? '*' : '1')
-    const labelW = Math.max(24, label.length * 6.4 + 14)
+        ? `${namedFormula} → ${formatValue(Math.round(flow * 10) / 10)}`
+        : namedFormula
+    const labelW = Math.max(24, estimateMxTextWidth(label, 10.5, true) + 14)
     midByEdgeId.set(e.id, { x: mid.x, y: mid.y, labelW })
     const src = nodeById.value.get(e.from)
     out.push({
@@ -1963,7 +2103,7 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
       nx,
       ny,
       color,
-      tokenColor: src ? nodeColor(src) : '#3d8bfd',
+      tokenColor: filterColor ?? (src ? nodeColor(src) : '#3d8bfd'),
       marker,
       label,
       labelW
@@ -2178,7 +2318,7 @@ function startBendDrag(edge: MxEdge, ev: PointerEvent): void {
 }
 
 function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
-  if (ev.button !== 0) return
+  if (ev.button !== 0 || isGroupLocked(grp)) return
   const p = toWorld(ev)
   groupDrag.value = {
     groupId: grp.id,
@@ -2193,7 +2333,7 @@ function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
 }
 
 function startGroupResize(grp: MxGroup, ev: PointerEvent): void {
-  if (ev.button !== 0) return
+  if (ev.button !== 0 || isGroupLocked(grp)) return
   const p = toWorld(ev)
   groupResize.value = {
     groupId: grp.id,
@@ -2668,20 +2808,25 @@ function resetZoom(): void {
 }
 
 function fitView(): void {
-  const nodes = visibleNodes.value
   const rect = svgRef.value?.getBoundingClientRect()
-  if (!rect || !nodes.length) return
-  const minX = Math.min(...nodes.map((n) => n.x)) - 90
-  const maxX = Math.max(...nodes.map((n) => n.x)) + 90
-  const minY = Math.min(...nodes.map((n) => n.y)) - 80
-  const maxY = Math.max(...nodes.map((n) => n.y)) + 90
-  const z = Math.max(
-    0.2,
-    Math.min(1.5, Math.min(rect.width / (maxX - minX), rect.height / (maxY - minY)))
-  )
+  if (!rect || (!visibleNodes.value.length && !visibleGroups.value.length)) return
+  const b = computeMxDiagramBounds(store.doc.value, {
+    padding: 48,
+    minWidth: 200,
+    minHeight: 160,
+    displayFlows: store.displayFlows.value,
+    flowHeatmap: store.flowHeatmap.value,
+    edgeCumulativeFlows: store.edgeCumulativeFlows.value,
+    nodeBottlenecks: store.nodeBottlenecks.value
+  })
+  const spanW = b.contentWidth + 96
+  const spanH = b.contentHeight + 96
+  const cx = (b.contentMinX + b.contentMaxX) / 2
+  const cy = (b.contentMinY + b.contentMaxY) / 2
+  const z = Math.max(0.18, Math.min(1.5, Math.min(rect.width / spanW, rect.height / spanH)))
   store.view.zoom = z
-  store.view.x = (rect.width - (maxX - minX) * z) / 2 - minX * z
-  store.view.y = (rect.height - (maxY - minY) * z) / 2 - minY * z
+  store.view.x = rect.width / 2 - cx * z
+  store.view.y = rect.height / 2 - cy * z
 }
 
 // ───────── 连线公式 & 节点名称 & 分组标题内联编辑 ─────────
@@ -2734,6 +2879,7 @@ function startNodeLabelEdit(node: MxNode): void {
 }
 
 function startGroupLabelEdit(grp: MxGroup): void {
+  if (isGroupLocked(grp)) return
   nodeEdit.value = {
     id: grp.id,
     isNote: false,
@@ -2830,22 +2976,15 @@ function focusSearchResult(item: SearchHit): void {
 }
 
 const minimapBounds = computed(() => {
-  const nodes = visibleNodes.value
-  const grps = store.doc.value.groups ?? []
-  let minX = 0
-  let maxX = 1000
-  let minY = 0
-  let maxY = 600
-  if (nodes.length || grps.length) {
-    const xs = [...nodes.map((n) => n.x), ...grps.flatMap((g) => [g.x, g.x + g.width])]
-    const ys = [...nodes.map((n) => n.y), ...grps.flatMap((g) => [g.y, g.y + g.height])]
-    minX = Math.min(...xs) - 100
-    maxX = Math.max(...xs) + 100
-    minY = Math.min(...ys) - 80
-    maxY = Math.max(...ys) + 80
-  }
-  const w = Math.max(300, maxX - minX)
-  const h = Math.max(200, maxY - minY)
+  const b = computeMxDiagramBounds(store.doc.value, {
+    padding: 56,
+    minWidth: 320,
+    minHeight: 200
+  })
+  const minX = (b.contentMinX + b.contentMaxX) / 2 - b.exportWidth / 2
+  const minY = (b.contentMinY + b.contentMaxY) / 2 - b.exportHeight / 2
+  const w = b.exportWidth
+  const h = b.exportHeight
   const rect = svgRef.value?.getBoundingClientRect()
   const cw = rect?.width ?? 800
   const ch = rect?.height ?? 480
@@ -2951,91 +3090,79 @@ onBeforeUnmount(() => {
   }
 })
 
-function buildCleanDiagramSvg(): { svgText: string; width: number; height: number } | null {
-  const srcSvg = svgRef.value
-  if (!srcSvg) return null
-  const b = minimapBounds.value
-  const width = Math.max(480, Math.round(b.w))
-  const height = Math.max(320, Math.round(b.h))
-  const cloned = srcSvg.cloneNode(true) as SVGSVGElement
-  cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-  cloned.setAttribute('width', String(width))
-  cloned.setAttribute('height', String(height))
-  cloned.setAttribute('viewBox', `${b.minX} ${b.minY} ${width} ${height}`)
-
-  const isDark =
-    store.canvasTheme.value === 'dark' ||
-    (store.canvasTheme.value === 'auto' &&
-      !document.documentElement.getAttribute('data-theme')?.includes('light'))
-  const bgFill = isDark ? '#181a1d' : '#f8f9fb'
-  const nodeFill = isDark ? '#25282c' : '#ffffff'
-  const labelFg = isDark ? '#e8eaed' : '#1e293b'
-  const pillBorder = isDark ? '#3c4043' : '#cbd5e1'
-
-  const worldG = cloned.querySelector('.mx-world')
-  if (worldG) {
-    worldG.setAttribute('transform', 'translate(0, 0) scale(1)')
+function resolveExportTheme(): 'dark' | 'light' {
+  if (store.canvasTheme.value === 'light') return 'light'
+  if (store.canvasTheme.value === 'dark') return 'dark'
+  if (typeof document !== 'undefined') {
+    const hostTheme = document.documentElement.getAttribute('data-theme') ?? ''
+    if (hostTheme.includes('light')) return 'light'
   }
+  return 'dark'
+}
 
-  // 插入背景矩形
-  const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-  bgRect.setAttribute('x', String(b.minX))
-  bgRect.setAttribute('y', String(b.minY))
-  bgRect.setAttribute('width', String(width))
-  bgRect.setAttribute('height', String(height))
-  bgRect.setAttribute('fill', bgFill)
-  cloned.insertBefore(bgRect, cloned.firstChild)
+function buildCleanDiagramSvg(): { svgText: string; width: number; height: number } {
+  const rendered = exportMxDiagramSvg(store.doc.value, {
+    theme: resolveExportTheme(),
+    showGrid: true,
+    padding: 56,
+    minWidth: 640,
+    minHeight: 420,
+    displayValues: store.displayValues.value,
+    displayFlows: store.displayFlows.value,
+    flowHeatmap: store.flowHeatmap.value,
+    edgeCumulativeFlows: store.edgeCumulativeFlows.value,
+    nodeBottlenecks: store.nodeBottlenecks.value,
+    playStep: store.playStep.value
+  })
+  return {
+    svgText: rendered.svgText,
+    width: rendered.width,
+    height: rendered.height
+  }
+}
 
-  let raw = new XMLSerializer().serializeToString(cloned)
-  raw = raw
-    .replace(/var\(--mx-node-fill\)/g, nodeFill)
-    .replace(/var\(--mx-label-fg\)/g, labelFg)
-    .replace(/var\(--mx-pill-bg\)/g, nodeFill)
-    .replace(/var\(--mx-pill-border\)/g, pillBorder)
-    .replace(/var\(--mx-pill-fg\)/g, labelFg)
-  return { svgText: raw, width, height }
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
 function exportSvgDiagram(baseName = 'economy-diagram'): void {
   const built = buildCleanDiagramSvg()
-  if (!built) return
   const blob = new Blob([built.svgText], { type: 'image/svg+xml;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${baseName}.svg`
-  a.click()
-  URL.revokeObjectURL(url)
+  triggerBlobDownload(blob, `${baseName}.svg`)
 }
 
 function exportPngDiagram(baseName = 'economy-diagram'): void {
   const built = buildCleanDiagramSvg()
-  if (!built) return
-  const svgBlob = new Blob([built.svgText], { type: 'image/svg+xml;charset=utf-8' })
-  const url = URL.createObjectURL(svgBlob)
+  const maxCanvasSide = 8192
+  const idealScale = Math.max(2, Math.min(3, window.devicePixelRatio || 2))
+  const scale = Math.min(idealScale, maxCanvasSide / Math.max(1, built.width, built.height))
+  const outWidth = Math.max(1, Math.round(built.width * scale))
+  const outHeight = Math.max(1, Math.round(built.height * scale))
+
   const img = new Image()
   img.onload = () => {
-    const scale = 2
     const canvas = document.createElement('canvas')
-    canvas.width = built.width * scale
-    canvas.height = built.height * scale
+    canvas.width = outWidth
+    canvas.height = outHeight
     const ctx = canvas.getContext('2d')
-    if (ctx) {
-      ctx.scale(scale, scale)
-      ctx.drawImage(img, 0, 0, built.width, built.height)
-      canvas.toBlob((pngBlob) => {
-        if (!pngBlob) return
-        const pngUrl = URL.createObjectURL(pngBlob)
-        const a = document.createElement('a')
-        a.href = pngUrl
-        a.download = `${baseName}.png`
-        a.click()
-        URL.revokeObjectURL(pngUrl)
-      }, 'image/png')
-    }
-    URL.revokeObjectURL(url)
+    if (!ctx) return
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(img, 0, 0, outWidth, outHeight)
+    canvas.toBlob((pngBlob) => {
+      if (!pngBlob) return
+      triggerBlobDownload(pngBlob, `${baseName}.png`)
+    }, 'image/png')
   }
-  img.src = url
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(built.svgText)}`
 }
 
 defineExpose({

@@ -672,6 +672,14 @@ function buildKnownSubDocPrototype(key: string): {
         },
         isJsonString: true,
         fieldOverrides: {
+          'gameEconomyDiagramJson.layers': {
+            description:
+              'Machinations 子系统分类图层列表（第 0 项保留 { id: "layer_base", name: "Base", visible: true, locked: false } 供手动新建默认归属，其余按能量/牌库/战斗乘区/护甲Boss/遗物终局等分类建层）' // cjk-ok
+          },
+          'gameEconomyDiagramJson.nodes[].layerId': {
+            description:
+              '节点所属子系统分类图层 ID（对应 layers[].id；构建完整机制时请按不同玩法分类分配到不同图层）' // cjk-ok
+          },
           'gameEconomyDiagramJson.nodes[].kind': {
             type: 'enum',
             enumValues: [
@@ -703,6 +711,10 @@ function buildKnownSubDocPrototype(key: string): {
           'gameEconomyDiagramJson.edges[].kind': {
             type: 'enum',
             enumValues: ['resource', 'state']
+          },
+          'gameEconomyDiagramJson.edges[].formula': {
+            description:
+              'resource 边支持直接引用节点/参数 id 与数学表达式（如 "wave_scale"、"min(enemy_pool, defense_dps)"；converter/source -> pool 恒为加法 +，扣减 HP 必须连 hp_pool -> drain）；state 边做修正量必须带符号 "+1"/"-2"/"+20%"，做激活条件必须带比较符 ">=1"/"<=0"，严禁写无符号数字 "1"' // cjk-ok
           }
         },
         presets: MX_TEMPLATES.map((t) => ({

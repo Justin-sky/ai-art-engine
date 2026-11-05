@@ -1,6 +1,10 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
-import { isNonCombatDomainContext } from '../gameAssets'
+import {
+  isNonCombatDomainContext,
+  lintMxDocumentTopology,
+  parseMxDocumentJson
+} from '../gameAssets'
 import {
   inferExplicitNovelChapterNumber,
   isOutlineNovelNodeTitle,
@@ -1654,6 +1658,27 @@ export function applyGraphEditOps(
   }
   if (uniqueTouchedIds.length > 0) {
     invalidateTouchedRunStates(next, uniqueTouchedIds)
+    for (const tid of uniqueTouchedIds) {
+      const touchedNode = next.nodes.find((n) => n.id === tid)
+      if (
+        touchedNode?.typeId === 'game.economy' &&
+        typeof touchedNode.params?.gameEconomyDiagramJson === 'string' &&
+        touchedNode.params.gameEconomyDiagramJson.trim()
+      ) {
+        try {
+          const mxDoc = parseMxDocumentJson(
+            touchedNode.params.gameEconomyDiagramJson,
+            touchedNode.params.gameEconomyPreset,
+            touchedNode.title
+          )
+          for (const tw of lintMxDocumentTopology(mxDoc)) {
+            warnings.push(`[game.economy:${touchedNode.id}] ${tw.message}`)
+          }
+        } catch {
+          // ignore parse failure here
+        }
+      }
+    }
   }
   // 教学录屏 / 批量建节点后：按连线拓扑左→右分层，避免节点叠在默认原点
   if (

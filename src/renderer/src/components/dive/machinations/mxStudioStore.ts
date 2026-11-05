@@ -1,13 +1,14 @@
 /**
  * Machinations 工作台状态（provide / inject 共享给画布、属性面板、结果面板、抽屉）。
  */
-import { computed, inject, provide, reactive, ref, shallowRef, type InjectionKey } from 'vue'
+import { computed, inject, provide, reactive, ref, shallowRef, watch, type InjectionKey } from 'vue'
 import {
   autoLayoutMxDocument,
   createMxFromTemplate,
   createMxInitialState,
   createMxNode,
   createMxWorkbenchPreset,
+  formatMxTunableEdgeFormula,
   generateMxAgentWithAi,
   mxNewId,
   normalizeMxDocument,
@@ -27,6 +28,7 @@ import {
   type MxNode,
   type MxNodeKind,
   type MxNumericalWorkbench,
+  type MxPoolTokenStackItem,
   type MxRunResult,
   type MxRuntimeState,
   type MxTemplateId,
@@ -63,6 +65,20 @@ export function createMxStudioStore(initial: MxDocument) {
   const snapToGrid = ref(true)
   const flowHeatmap = ref(false)
   const view = reactive({ x: 0, y: 0, zoom: 0.8 })
+  const activeLayerId = ref<string>('')
+
+  watch(
+    () => doc.value.layers,
+    (layers) => {
+      if (!layers?.length) return
+      const baseLayer =
+        layers.find((l) => l.id === 'layer_base' || l.name.toLowerCase() === 'base') || layers[0]
+      if (!activeLayerId.value || !layers.some((l) => l.id === activeLayerId.value)) {
+        activeLayerId.value = baseLayer.id
+      }
+    },
+    { immediate: true }
+  )
 
   // 运行
   const runs = shallowRef<MxRunResult[]>([])
@@ -74,6 +90,7 @@ export function createMxStudioStore(initial: MxDocument) {
   const liveEvents = shallowRef<MxEvent[]>([])
   const liveSnapshots = shallowRef<Array<Record<string, number>>>([])
   const liveFlows = shallowRef<Array<Record<string, number>>>([])
+  const livePoolTokens = shallowRef<Array<Record<string, MxPoolTokenStackItem[]>>>([])
   const forecast = shallowRef<MxForecastResult | null>(null)
   const forecastRuns = ref(50)
   const focusedSeriesId = ref('')
@@ -95,6 +112,21 @@ export function createMxStudioStore(initial: MxDocument) {
       )
     }
     return liveState.value?.values ?? null
+  })
+  const displayPoolTokens = computed<Record<string, MxPoolTokenStackItem[]> | null>(() => {
+    const run = activeRun.value
+    if (run) {
+      if (run.poolTokensHistory?.length) {
+        const idx = Math.min(playStep.value, run.poolTokensHistory.length - 1)
+        return run.poolTokensHistory[idx] ?? run.finalPoolTokens ?? null
+      }
+      return run.finalPoolTokens ?? null
+    }
+    if (livePoolTokens.value.length) {
+      const idx = Math.min(playStep.value, livePoolTokens.value.length - 1)
+      return livePoolTokens.value[idx] ?? liveState.value?.poolTokens ?? null
+    }
+    return liveState.value?.poolTokens ?? null
   })
   const previousStepValues = computed<Record<string, number> | null>(() => {
     const step = playStep.value
@@ -260,8 +292,17 @@ export function createMxStudioStore(initial: MxDocument) {
     const sameKind = doc.value.nodes.filter((n) => n.kind === kind).length
     node.label = `${node.label}${sameKind ? ` ${sameKind + 1}` : ''}`
     if (kind === 'pool' || kind === 'source') node.resourceId = doc.value.resources[0]?.id
-    const layer = doc.value.layers.find((l) => l.visible && !l.locked)
-    if (layer) node.layerId = layer.id
+    const baseLayer =
+      doc.value.layers.find((l) => l.id === 'layer_base' || l.name.toLowerCase() === 'base') ||
+      doc.value.layers[0]
+    const targetLayer =
+      (activeLayerId.value &&
+        doc.value.layers.find((l) => l.id === activeLayerId.value && l.visible && !l.locked)) ||
+      (baseLayer && baseLayer.visible && !baseLayer.locked ? baseLayer : undefined) ||
+      doc.value.layers.find((l) => l.visible && !l.locked) ||
+      baseLayer ||
+      doc.value.layers[0]
+    if (targetLayer) node.layerId = targetLayer.id
     mutate((d) => {
       d.nodes.push(node)
     })
@@ -459,8 +500,7 @@ export function createMxStudioStore(initial: MxDocument) {
         else d.params.push({ id: mxNewId('p'), name: id, value: rounded })
       } else if (kind === 'edge') {
         const e = d.edges.find((x) => x.id === id)
-        if (e)
-          e.formula = e.kind === 'state' ? `${rounded >= 0 ? '+' : ''}${rounded}` : String(rounded)
+        if (e) e.formula = formatMxTunableEdgeFormula(e, rounded)
       } else if (kind === 'node_initial') {
         const n = d.nodes.find((x) => x.id === id)
         if (n) n.initial = rounded
@@ -485,8 +525,7 @@ export function createMxStudioStore(initial: MxDocument) {
         else d.params.push({ id: mxNewId('p'), name: id, value: rounded })
       } else if (kind === 'edge') {
         const e = d.edges.find((x) => x.id === id)
-        if (e)
-          e.formula = e.kind === 'state' ? `${rounded >= 0 ? '+' : ''}${rounded}` : String(rounded)
+        if (e) e.formula = formatMxTunableEdgeFormula(e, rounded)
       } else if (kind === 'node_initial') {
         const n = d.nodes.find((x) => x.id === id)
         if (n) n.initial = rounded
@@ -607,6 +646,37 @@ export function createMxStudioStore(initial: MxDocument) {
     pasteNodes()
   }
 
+  function selectLayer(layerId: string): void {
+    activeLayerId.value = layerId
+    const nodeIds = doc.value.nodes.filter((n) => n.layerId === layerId).map((n) => n.id)
+    select(nodeIds, [])
+  }
+
+  function removeLayer(layerId: string): void {
+    if (doc.value.layers.length <= 1) return
+    mutate((d) => {
+      d.layers = d.layers.filter((l) => l.id !== layerId)
+      const fallbackId = d.layers[0]?.id
+      for (const n of d.nodes) {
+        if (n.layerId === layerId) n.layerId = fallbackId
+      }
+    })
+    if (activeLayerId.value === layerId) {
+      activeLayerId.value = doc.value.layers[0]?.id ?? ''
+    }
+  }
+
+  function assignNodesToLayer(nodeIds: string[], layerId: string | undefined): void {
+    const set = new Set(nodeIds)
+    mutate((d) => {
+      for (const n of d.nodes) {
+        if (set.has(n.id)) {
+          n.layerId = layerId
+        }
+      }
+    })
+  }
+
   // ───────── 运行 ─────────
   function stopTimer(): void {
     if (playTimer) clearInterval(playTimer)
@@ -620,6 +690,7 @@ export function createMxStudioStore(initial: MxDocument) {
     liveEvents.value = []
     liveSnapshots.value = []
     liveFlows.value = []
+    livePoolTokens.value = []
     playStep.value = 0
   }
 
@@ -643,7 +714,9 @@ export function createMxStudioStore(initial: MxDocument) {
       edgeFlows: liveFlows.value,
       events: liveEvents.value,
       totalProduced: liveState.value.totalProduced,
-      totalConsumed: liveState.value.totalConsumed
+      totalConsumed: liveState.value.totalConsumed,
+      finalPoolTokens: liveState.value.poolTokens,
+      poolTokensHistory: livePoolTokens.value
     }
     runs.value = [...runs.value, run]
     activeRunId.value = run.id
@@ -651,6 +724,7 @@ export function createMxStudioStore(initial: MxDocument) {
     liveState.value = null
     liveSnapshots.value = []
     liveFlows.value = []
+    livePoolTokens.value = []
   }
 
   /** 逐步动画播放（新开一条运行记录） */
@@ -661,11 +735,13 @@ export function createMxStudioStore(initial: MxDocument) {
     }
     if (!liveState.value) {
       activeRunId.value = ''
-      const st = createMxInitialState(doc.value)
+      const seed = doc.value.settings.seed + runs.value.length
+      const st = createMxInitialState(doc.value, { seed, scenarioId: scenarioId() })
       liveState.value = st
       liveEvents.value = []
       liveSnapshots.value = [{ ...st.values }]
       liveFlows.value = [{}]
+      livePoolTokens.value = [clone(st.poolTokens ?? {})]
       playStep.value = 0
     }
     playing.value = true
@@ -679,10 +755,12 @@ export function createMxStudioStore(initial: MxDocument) {
   function stepOnce(): void {
     if (!liveState.value) {
       activeRunId.value = ''
-      const st = createMxInitialState(doc.value)
+      const seed = doc.value.settings.seed + runs.value.length
+      const st = createMxInitialState(doc.value, { seed, scenarioId: scenarioId() })
       liveState.value = st
       liveSnapshots.value = [{ ...st.values }]
       liveFlows.value = [{}]
+      livePoolTokens.value = [clone(st.poolTokens ?? {})]
       liveEvents.value = []
     }
     const cur = liveState.value!
@@ -694,12 +772,14 @@ export function createMxStudioStore(initial: MxDocument) {
     const seed = doc.value.settings.seed + runs.value.length
     const res = stepMxSimulation(doc.value, cur, {
       seed,
+      params: cur.runtimeParams,
       interactions: pendingInteractions
     })
     pendingInteractions = []
     liveState.value = res.state
     liveSnapshots.value = [...liveSnapshots.value, { ...res.state.values }]
     liveFlows.value = [...liveFlows.value, { ...res.state.edgeFlows }]
+    livePoolTokens.value = [...livePoolTokens.value, clone(res.state.poolTokens ?? {})]
     liveEvents.value = [...liveEvents.value, ...res.events]
     playStep.value = res.state.step
     if (res.state.ended || res.state.step >= doc.value.settings.steps) {
@@ -1381,10 +1461,15 @@ export function createMxStudioStore(initial: MxDocument) {
     focusedSeriesId,
     hoverStep,
     displayValues,
+    displayPoolTokens,
     previousStepValues,
     displayFlows,
     edgeCumulativeFlows,
     nodeBottlenecks,
+    activeLayerId,
+    selectLayer,
+    removeLayer,
+    assignNodesToLayer,
     canUndo,
     canRedo,
     mutate,

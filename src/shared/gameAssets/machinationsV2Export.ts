@@ -2,15 +2,17 @@
  * Machinations v2 导出与预览渲染：Mermaid / 遥测 CSV / Godot 4 GDScript / Unity C# / RGBA 预览图。
  */
 import {
+  isMxBooleanStateExpr,
   mxIdentifier,
   mxNodeColor,
   parseMxFlowFormula,
   parseMxStateFormula,
   type MxDocument,
+  type MxEdge,
   type MxForecastResult,
   type MxRunResult
 } from './machinationsV2'
-import { createMxWorkbenchPreset } from './gameNumericalWorkbench'
+import { createMxWorkbenchPreset, mapMxTemplateToWorkbenchPreset } from './gameNumericalWorkbench'
 
 export function exportMxToMermaid(doc: MxDocument): string {
   const lines = ['flowchart LR']
@@ -41,7 +43,14 @@ export function exportMxToMermaid(doc: MxDocument): string {
   }
   for (const e of doc.edges) {
     const arrow = e.kind === 'state' ? '-.->' : '-->'
-    lines.push(`  ${e.from} ${arrow}|"${esc(e.formula || '1')}"| ${e.to}`)
+    const baseFormula = e.formula || (e.kind === 'state' ? '*' : '1')
+    const withIv =
+      e.kind === 'resource' && e.interval?.trim() && !baseFormula.includes('|')
+        ? `${baseFormula}|${e.interval.trim()}`
+        : baseFormula
+    const prefix = e.label?.trim() ? `${e.label.trim()}: ` : ''
+    const targetNote = e.targetEdgeId ? ` [->${e.targetEdgeId}]` : ''
+    lines.push(`  ${e.from} ${arrow}|"${esc(`${prefix}${withIv}${targetNote}`)}"| ${e.to}`)
   }
   return lines.join('\n')
 }
@@ -73,14 +82,17 @@ export function exportMxRunCsv(doc: MxDocument, run: MxRunResult): string {
   return rows.join('\n')
 }
 
+const POSITIONAL_LETTERS_26 = 'abcdefghijklmnopqrstuvwxyz'
+
 /**
  * 将 Machinations 公式表达式编译为合法的 Godot 4 GDScript 数学表达式。
- * 支持骰子（2D6 -> roll_dice(2, 6)）、函数（pow, min, max, floor, ceil, round, abs, sqrt, clamp, if, diminish, lerp）与节点/参数引用。
+ * 支持骰子（2D6 -> roll_dice(2, 6)）、区间（3..6 -> float(randi_range(3, 6))）、Math.js 函数集与节点/参数引用。
  */
 export function compileMxFormulaToGd(
   exprRaw: string | undefined,
   doc: MxDocument,
-  aNodeId?: string
+  aNodeId?: string,
+  stateInputFromIds?: string[]
 ): string {
   const raw = (exprRaw ?? '1').trim()
   if (!raw) return '1.0'
@@ -94,8 +106,14 @@ export function compileMxFormulaToGd(
     nodeByIdent.set(n.id, n.id)
   }
 
+  // 替换区间 3..6 -> float(randi_range(3, 6))
+  let out = raw.replace(
+    /(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)/g,
+    (_m, lo, hi) => `float(randi_range(int(${lo}), int(${hi})))`
+  )
+
   // 替换骰子 2D6 / D6
-  let out = raw.replace(/\b(\d*)[dD](\d+)\b/g, (_m, cnt, sides) => {
+  out = out.replace(/\b(\d*)[dD](\d+)\b/g, (_m, cnt, sides) => {
     const c = cnt ? Number(cnt) : 1
     return `roll_dice(${c}, ${Number(sides)})`
   })
@@ -103,16 +121,46 @@ export function compileMxFormulaToGd(
   // 替换幂运算符 ^ 为 pow
   out = out.replace(/([A-Za-z0-9_.)]+)\s*\^\s*([A-Za-z0-9_(.]+)/g, 'pow($1, $2)')
 
+  // 替换逻辑运算符 <> / && / || 为 GDScript 的 != / and / or
+  out = out.replace(/<>/g, '!=').replace(/&&/g, ' and ').replace(/\|\|/g, ' or ')
+
   // 替换内置函数与标识符
   out = out.replace(
     /\b([A-Za-z_][A-Za-z0-9_]*)\s*(\()?/g,
     (full, ident: string, openParen?: string) => {
       if (openParen === '(') {
         const fn = ident.toLowerCase()
-        if (fn === 'if') return 'mx_if('
-        if (fn === 'diminish') return 'mx_diminish('
-        if (fn === 'random') return 'randf_range('
-        if (fn === 'randint') return 'randi_range('
+        const gdFnMap: Record<string, string> = {
+          if: 'mx_if',
+          diminish: 'mx_diminish',
+          random: 'randf_range',
+          randint: 'randi_range',
+          randomint: 'randi_range',
+          norm: 'randfn',
+          gaussian: 'randfn',
+          normal: 'randfn',
+          add: 'mx_add',
+          subtract: 'mx_sub',
+          multiply: 'mx_mul',
+          divide: 'mx_div',
+          mod: 'fposmod',
+          square: 'mx_square',
+          cube: 'mx_cube',
+          cbrt: 'mx_cbrt',
+          larger: 'mx_larger',
+          largereq: 'mx_larger_eq',
+          smaller: 'mx_smaller',
+          smallereq: 'mx_smaller_eq',
+          equal: 'mx_equal',
+          unequal: 'mx_unequal',
+          and: 'mx_and',
+          or: 'mx_or',
+          not: 'mx_not',
+          xor: 'mx_xor',
+          log10: 'mx_log10',
+          log2: 'mx_log2'
+        }
+        if (gdFnMap[fn]) return `${gdFnMap[fn]}(`
         if (
           [
             'min',
@@ -121,21 +169,50 @@ export function compileMxFormulaToGd(
             'ceil',
             'round',
             'abs',
+            'sign',
             'sqrt',
             'pow',
+            'exp',
             'log',
+            'sin',
+            'cos',
+            'tan',
+            'asin',
+            'acos',
+            'atan',
+            'atan2',
             'clamp',
             'lerp',
             'smoothstep',
-            'roll_dice'
+            'roll_dice',
+            'randi_range',
+            'float',
+            'int'
           ].includes(fn)
         ) {
           return `${fn}(`
         }
         return full
       }
-      if (ident === 'step' || ident === 't') return 'float(step)'
-      if ((ident === 'a' || ident === 'self') && aNodeId) return `get_val("${aNodeId}")`
+      if (
+        ident === 'and' ||
+        ident === 'or' ||
+        ident === 'not' ||
+        ident === 'true' ||
+        ident === 'false'
+      ) {
+        return ident
+      }
+      if (ident.toLowerCase() === 'pi') return 'PI'
+      if (ident === 'step' || ident === 'STEP' || ident === 't') return 'float(step)'
+      if (ident === 'self' && aNodeId) return `get_val("${aNodeId}")`
+      if (ident.length === 1) {
+        const letterIdx = POSITIONAL_LETTERS_26.indexOf(ident)
+        if (letterIdx >= 0 && stateInputFromIds?.[letterIdx]) {
+          return `get_val("${stateInputFromIds[letterIdx]}")`
+        }
+      }
+      if (ident === 'a' && aNodeId) return `get_val("${aNodeId}")`
       if (paramNames.has(ident)) return `get_param("${ident}")`
       const mappedId = nodeByIdent.get(ident)
       if (mappedId) return `get_val("${mappedId}")`
@@ -152,7 +229,8 @@ export function compileMxFormulaToGd(
 export function compileMxFormulaToCs(
   exprRaw: string | undefined,
   doc: MxDocument,
-  aNodeId?: string
+  aNodeId?: string,
+  stateInputFromIds?: string[]
 ): string {
   const raw = (exprRaw ?? '1').trim()
   if (!raw) return '1f'
@@ -166,12 +244,19 @@ export function compileMxFormulaToCs(
     nodeByIdent.set(n.id, n.id)
   }
 
-  let out = raw.replace(/\b(\d*)[dD](\d+)\b/g, (_m, cnt, sides) => {
+  let out = raw.replace(
+    /(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)/g,
+    (_m, lo, hi) => `RollRangeInt(${lo}f, ${hi}f)`
+  )
+
+  out = out.replace(/\b(\d*)[dD](\d+)\b/g, (_m, cnt, sides) => {
     const c = cnt ? Number(cnt) : 1
     return `RollDice(${c}, ${Number(sides)})`
   })
 
-  out = out.replace(/([A-Za-z0-9_.)]+)\s*\^\s*([A-Za-z0-9_(.]+)/g, 'Mathf.Pow($1, $2)')
+  out = out
+    .replace(/<>/g, '!=')
+    .replace(/([A-Za-z0-9_.)]+)\s*\^\s*([A-Za-z0-9_(.]+)/g, 'Mathf.Pow($1, $2)')
 
   out = out.replace(
     /\b([A-Za-z_][A-Za-z0-9_]*)\s*(\()?/g,
@@ -185,23 +270,66 @@ export function compileMxFormulaToCs(
           ceil: 'Mathf.Ceil',
           round: 'Mathf.Round',
           abs: 'Mathf.Abs',
+          sign: 'Mathf.Sign',
           sqrt: 'Mathf.Sqrt',
           pow: 'Mathf.Pow',
+          exp: 'Mathf.Exp',
           log: 'Mathf.Log',
+          log10: 'Mathf.Log10',
+          sin: 'Mathf.Sin',
+          cos: 'Mathf.Cos',
+          tan: 'Mathf.Tan',
+          asin: 'Mathf.Asin',
+          acos: 'Mathf.Acos',
+          atan: 'Mathf.Atan',
+          atan2: 'Mathf.Atan2',
           clamp: 'Mathf.Clamp',
           lerp: 'Mathf.Lerp',
           if: 'MxIf',
           diminish: 'MxDiminish',
           random: 'UnityEngine.Random.Range',
           randint: 'RollRangeInt',
+          randomint: 'RollRangeInt',
           roll_dice: 'RollDice',
-          rolldice: 'RollDice'
+          rolldice: 'RollDice',
+          rolldierangeint: 'RollRangeInt',
+          rollrangeint: 'RollRangeInt',
+          norm: 'MxNorm',
+          gaussian: 'MxNorm',
+          normal: 'MxNorm',
+          add: 'MxAdd',
+          subtract: 'MxSub',
+          multiply: 'MxMul',
+          divide: 'MxDiv',
+          mod: 'MxMod',
+          square: 'MxSquare',
+          cube: 'MxCube',
+          cbrt: 'MxCbrt',
+          larger: 'MxLarger',
+          largereq: 'MxLargerEq',
+          smaller: 'MxSmaller',
+          smallereq: 'MxSmallerEq',
+          equal: 'MxEqual',
+          unequal: 'MxUnequal',
+          and: 'MxAnd',
+          or: 'MxOr',
+          not: 'MxNot',
+          xor: 'MxXor'
         }
         if (csFnMap[fn]) return `${csFnMap[fn]}(`
         return full
       }
-      if (ident === 'step' || ident === 't') return '((float)Step)'
-      if ((ident === 'a' || ident === 'self') && aNodeId) return `GetVal("${aNodeId}")`
+      if (ident === 'true' || ident === 'false') return ident
+      if (ident.toLowerCase() === 'pi') return 'Mathf.PI'
+      if (ident === 'step' || ident === 'STEP' || ident === 't') return '((float)Step)'
+      if (ident === 'self' && aNodeId) return `GetVal("${aNodeId}")`
+      if (ident.length === 1) {
+        const letterIdx = POSITIONAL_LETTERS_26.indexOf(ident)
+        if (letterIdx >= 0 && stateInputFromIds?.[letterIdx]) {
+          return `GetVal("${stateInputFromIds[letterIdx]}")`
+        }
+      }
+      if (ident === 'a' && aNodeId) return `GetVal("${aNodeId}")`
       if (paramNames.has(ident)) return `GetParam("${ident}")`
       const mappedId = nodeByIdent.get(ident)
       if (mappedId) return `GetVal("${mappedId}")`
@@ -210,6 +338,174 @@ export function compileMxFormulaToCs(
   )
 
   return out
+}
+
+function compileStateConditionToGd(
+  formulaRaw: string | undefined,
+  fromNodeId: string,
+  doc: MxDocument,
+  forEndNode = false
+): string | null {
+  const raw = (formulaRaw ?? (forEndNode ? '>=1' : '')).trim()
+  if (!raw) return null
+  const spec = parseMxStateFormula(raw)
+  switch (spec.type) {
+    case 'activator':
+      if (spec.op === '==') return `absf(get_val("${fromNodeId}") - ${spec.value}) < 1e-6`
+      if (spec.op === '!=') return `absf(get_val("${fromNodeId}") - ${spec.value}) >= 1e-6`
+      return `get_val("${fromNodeId}") ${spec.op} ${spec.value}`
+    case 'range':
+      return `(get_val("${fromNodeId}") >= ${spec.lo} and get_val("${fromNodeId}") <= ${spec.hi})`
+    case 'expr': {
+      if (!forEndNode && !isMxBooleanStateExpr(spec.expr)) return null
+      const exprGd = compileMxFormulaToGd(spec.expr, doc, fromNodeId)
+      return /[<>=!]/.test(spec.expr) ? `(${exprGd})` : `((${exprGd}) != 0.0)`
+    }
+    case 'trigger':
+      return forEndNode ? `get_val("${fromNodeId}") > 0.0` : null
+    case 'reverse_trigger':
+      return forEndNode ? `get_val("${fromNodeId}") <= 0.0` : null
+    default:
+      return null
+  }
+}
+
+function compileStateConditionToCs(
+  formulaRaw: string | undefined,
+  fromNodeId: string,
+  doc: MxDocument,
+  forEndNode = false
+): string | null {
+  const raw = (formulaRaw ?? (forEndNode ? '>=1' : '')).trim()
+  if (!raw) return null
+  const spec = parseMxStateFormula(raw)
+  switch (spec.type) {
+    case 'activator':
+      if (spec.op === '==') return `Mathf.Abs(GetVal("${fromNodeId}") - ${spec.value}f) < 1e-5f`
+      if (spec.op === '!=') return `Mathf.Abs(GetVal("${fromNodeId}") - ${spec.value}f) >= 1e-5f`
+      return `GetVal("${fromNodeId}") ${spec.op} ${spec.value}f`
+    case 'range':
+      return `(GetVal("${fromNodeId}") >= ${spec.lo}f && GetVal("${fromNodeId}") <= ${spec.hi}f)`
+    case 'expr': {
+      if (!forEndNode && !isMxBooleanStateExpr(spec.expr)) return null
+      const exprCs = compileMxFormulaToCs(spec.expr, doc, fromNodeId)
+      return /[<>=!]/.test(spec.expr) ? `(${exprCs})` : `((${exprCs}) != 0f)`
+    }
+    case 'trigger':
+      return forEndNode ? `GetVal("${fromNodeId}") > 0f` : null
+    case 'reverse_trigger':
+      return forEndNode ? `GetVal("${fromNodeId}") <= 0f` : null
+    default:
+      return null
+  }
+}
+
+function collectNodeStateActivatorsGd(nodeId: string, doc: MxDocument, edgeId?: string): string[] {
+  const conds: string[] = []
+  for (const se of doc.edges) {
+    if (se.kind !== 'state') continue
+    if (!se.targetEdgeId && se.to === nodeId) {
+      const c = compileStateConditionToGd(se.formula, se.from, doc, false)
+      if (c) conds.push(c)
+    } else if (edgeId && se.targetEdgeId === edgeId) {
+      const c = compileStateConditionToGd(se.formula, se.from, doc, false)
+      if (c) conds.push(c)
+    }
+  }
+  return conds
+}
+
+function collectNodeStateActivatorsCs(nodeId: string, doc: MxDocument, edgeId?: string): string[] {
+  const conds: string[] = []
+  for (const se of doc.edges) {
+    if (se.kind !== 'state') continue
+    if (!se.targetEdgeId && se.to === nodeId) {
+      const c = compileStateConditionToCs(se.formula, se.from, doc, false)
+      if (c) conds.push(c)
+    } else if (edgeId && se.targetEdgeId === edgeId) {
+      const c = compileStateConditionToCs(se.formula, se.from, doc, false)
+      if (c) conds.push(c)
+    }
+  }
+  return conds
+}
+
+function applyFlowStateModifiersGd(baseExpr: string, edge: MxEdge, doc: MxDocument): string {
+  const dstNode = doc.nodes.find((n) => n.id === edge.to)
+  const modEdges = doc.edges.filter(
+    (se) =>
+      se.kind === 'state' &&
+      (se.targetEdgeId === edge.id ||
+        (!se.targetEdgeId && se.to === edge.from) ||
+        (!se.targetEdgeId && dstNode?.kind === 'drain' && se.to === edge.to))
+  )
+  let effBase = baseExpr
+  const bonusTerms: string[] = []
+  for (const se of modEdges) {
+    const st = parseMxStateFormula(se.formula)
+    if (st.type === 'overwrite') {
+      effBase = `get_val("${se.from}")`
+    } else if (st.type === 'modifier') {
+      if (st.percent) {
+        bonusTerms.push(`((${effBase}) * (${st.delta} * get_val("${se.from}") / 100.0))`)
+      } else {
+        bonusTerms.push(`(${st.delta} * get_val("${se.from}"))`)
+      }
+    } else if (st.type === 'fraction_modifier' && st.denominator > 0) {
+      bonusTerms.push(`(float(int(get_val("${se.from}") / ${st.denominator})) * ${st.numerator})`)
+    }
+  }
+  let res = bonusTerms.length ? `maxf(0.0, (${effBase}) + ${bonusTerms.join(' + ')})` : effBase
+  if (edge.minLimit != null && Number.isFinite(edge.minLimit)) {
+    res = `maxf(${edge.minLimit}, ${res})`
+  }
+  if (edge.maxLimit != null && Number.isFinite(edge.maxLimit) && edge.maxLimit >= 0) {
+    res = `minf(${edge.maxLimit}, ${res})`
+  }
+  if (edge.allowDecimals === false) {
+    res = `floor(${res})`
+  }
+  return res
+}
+
+function applyFlowStateModifiersCs(baseExpr: string, edge: MxEdge, doc: MxDocument): string {
+  const dstNode = doc.nodes.find((n) => n.id === edge.to)
+  const modEdges = doc.edges.filter(
+    (se) =>
+      se.kind === 'state' &&
+      (se.targetEdgeId === edge.id ||
+        (!se.targetEdgeId && se.to === edge.from) ||
+        (!se.targetEdgeId && dstNode?.kind === 'drain' && se.to === edge.to))
+  )
+  let effBase = baseExpr
+  const bonusTerms: string[] = []
+  for (const se of modEdges) {
+    const st = parseMxStateFormula(se.formula)
+    if (st.type === 'overwrite') {
+      effBase = `GetVal("${se.from}")`
+    } else if (st.type === 'modifier') {
+      if (st.percent) {
+        bonusTerms.push(`((${effBase}) * (${st.delta}f * GetVal("${se.from}") / 100f))`)
+      } else {
+        bonusTerms.push(`(${st.delta}f * GetVal("${se.from}"))`)
+      }
+    } else if (st.type === 'fraction_modifier' && st.denominator > 0) {
+      bonusTerms.push(`(((int)(GetVal("${se.from}") / ${st.denominator}f)) * ${st.numerator}f)`)
+    }
+  }
+  let res = bonusTerms.length
+    ? `Mathf.Max(0f, (float)(${effBase}) + ${bonusTerms.join(' + ')})`
+    : effBase
+  if (edge.minLimit != null && Number.isFinite(edge.minLimit)) {
+    res = `Mathf.Max(${edge.minLimit}f, (float)(${res}))`
+  }
+  if (edge.maxLimit != null && Number.isFinite(edge.maxLimit) && edge.maxLimit >= 0) {
+    res = `Mathf.Min(${edge.maxLimit}f, (float)(${res}))`
+  }
+  if (edge.allowDecimals === false) {
+    res = `Mathf.Floor((float)(${res}))`
+  }
+  return res
 }
 
 export function exportMxGodotGd(doc: MxDocument): string {
@@ -221,11 +517,16 @@ export function exportMxGodotGd(doc: MxDocument): string {
   const sources = doc.nodes.filter((n) => n.kind === 'source' && n.trigger === 'automatic')
   const drains = doc.nodes.filter((n) => n.kind === 'drain' && n.trigger === 'automatic')
   const params = doc.params
-  const wb = doc.workbench ?? createMxWorkbenchPreset('slay_the_spire_dbg')
+  const wb =
+    doc.workbench ?? createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(doc.templateId))
 
   const registerSteps = registers.map((r) => {
-    const stIn = doc.edges.find((e) => e.kind === 'state' && e.to === r.id)
-    const exprGd = compileMxFormulaToGd(r.formula || '0', doc, stIn?.from)
+    const stIns = doc.edges
+      .filter((e) => e.kind === 'state' && !e.targetEdgeId && e.to === r.id)
+      .map((e) => e.from)
+    let exprGd = compileMxFormulaToGd(r.formula || (stIns.length ? 'a' : '0'), doc, stIns[0], stIns)
+    if (r.min != null && Number.isFinite(r.min)) exprGd = `maxf(${r.min}, ${exprGd})`
+    if (r.max != null && Number.isFinite(r.max)) exprGd = `minf(${r.max}, ${exprGd})`
     return `\tregisters["${r.id}"] = ${exprGd} # ${r.label}`
   })
 
@@ -234,18 +535,27 @@ export function exportMxGodotGd(doc: MxDocument): string {
       .filter((e) => e.kind === 'resource' && e.from === s.id)
       .map((e) => {
         const spec = parseMxFlowFormula(e.formula)
-        const exprGd = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, s.id)
-        const conds: string[] = []
-        if (spec.type === 'expr' && spec.every && spec.every > 1)
-          conds.push(`step % ${spec.every} == 0`)
-        if (spec.type === 'expr' && spec.probability != null)
-          conds.push(`randf() < ${spec.probability}`)
+        const baseGd = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, s.id)
+        const exprGd = applyFlowStateModifiersGd(baseGd, e, doc)
+        const conds: string[] = collectNodeStateActivatorsGd(s.id, doc, e.id)
+        const effEvery =
+          spec.every ??
+          (e.interval && /^\d+$/.test(e.interval.trim()) ? Number(e.interval.trim()) : undefined)
+        if (effEvery && effEvery > 1) conds.push(`step % ${effEvery} == 0`)
+        let finalAmountGd = exprGd
+        if (spec.type === 'expr' && spec.probability != null) {
+          if (spec.probability <= 1) {
+            conds.push(`randf() < ${spec.probability}`)
+          } else {
+            finalAmountGd = `((${exprGd}) * (floor(${spec.probability}) + (1.0 if randf() < fposmod(${spec.probability}, 1.0) else 0.0)))`
+          }
+        }
         const prefix = conds.length ? `\tif ${conds.join(' and ')}:\n\t\t` : '\t'
         const targetNode = doc.nodes.find((n) => n.id === e.to)
         if (targetNode?.kind === 'gate') {
-          return `${prefix}route_gate("${targetNode.id}", ${exprGd}) # ${s.label} -> ${targetNode.label}`
+          return `${prefix}route_gate("${targetNode.id}", ${finalAmountGd}) # ${s.label} -> ${targetNode.label}`
         }
-        return `${prefix}add_resource("${e.to}", ${exprGd}) # ${s.label} -> ${e.to}`
+        return `${prefix}add_resource("${e.to}", ${finalAmountGd}) # ${s.label} -> ${e.to}`
       })
   )
 
@@ -254,13 +564,16 @@ export function exportMxGodotGd(doc: MxDocument): string {
       .filter((e) => e.kind === 'resource' && e.to === d.id)
       .map((e) => {
         const spec = parseMxFlowFormula(e.formula)
-        const exprGd =
+        const baseGd =
           spec.type === 'all'
             ? `get_pool("${e.from}")`
             : compileMxFormulaToGd(spec.expr, doc, e.from)
-        const conds: string[] = []
-        if (spec.type === 'expr' && spec.every && spec.every > 1)
-          conds.push(`step % ${spec.every} == 0`)
+        const exprGd = spec.type === 'all' ? baseGd : applyFlowStateModifiersGd(baseGd, e, doc)
+        const conds: string[] = collectNodeStateActivatorsGd(d.id, doc, e.id)
+        const effEvery =
+          spec.every ??
+          (e.interval && /^\d+$/.test(e.interval.trim()) ? Number(e.interval.trim()) : undefined)
+        if (effEvery && effEvery > 1) conds.push(`step % ${effEvery} == 0`)
         if (spec.type === 'expr' && spec.probability != null)
           conds.push(`randf() < ${spec.probability}`)
         const prefix = conds.length ? `\tif ${conds.join(' and ')}:\n\t\t` : '\t'
@@ -269,39 +582,59 @@ export function exportMxGodotGd(doc: MxDocument): string {
   )
 
   const converterCanChecks = converters.map((c) => {
+    const stateConds = collectNodeStateActivatorsGd(c.id, doc)
+    const stateLines = stateConds.map((cond) => `\t\tif not (${cond}): return false`)
     const inEdges = doc.edges.filter((e) => e.kind === 'resource' && e.to === c.id)
-    const checkLines = inEdges.map((e) => {
-      const spec = parseMxFlowFormula(e.formula)
-      const reqExpr = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, e.from)
-      return `\t\tif get_pool("${e.from}") + 1e-6 < (${reqExpr}): return false`
-    })
+    const checkLines = [
+      ...stateLines,
+      ...inEdges.map((e) => {
+        const edgeAct = collectNodeStateActivatorsGd('', doc, e.id)
+        const spec = parseMxFlowFormula(e.formula)
+        const baseReq = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, e.from)
+        const reqExpr = spec.type === 'all' ? baseReq : applyFlowStateModifiersGd(baseReq, e, doc)
+        const actPrefix = edgeAct.map((ac) => `\t\tif not (${ac}): return false\n`).join('')
+        return `${actPrefix}\t\tif get_pool("${e.from}") + 1e-6 < (${reqExpr}): return false`
+      })
+    ]
     return `\tif converter_id == "${c.id}": # ${c.label}
 ${checkLines.length ? checkLines.join('\n') : '\t\tpass'}
 \t\treturn true`
   })
 
   const converterFuncs = converters.map((c) => {
+    const stateConds = collectNodeStateActivatorsGd(c.id, doc)
+    const stateLines = stateConds.map((cond) => `\t\tif not (${cond}): return false`)
     const inEdges = doc.edges.filter((e) => e.kind === 'resource' && e.to === c.id)
     const outEdges = doc.edges.filter((e) => e.kind === 'resource' && e.from === c.id)
-    const checkLines = inEdges.map((e) => {
-      const spec = parseMxFlowFormula(e.formula)
-      const reqExpr = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, e.from)
-      return `\t\tif get_pool("${e.from}") + 1e-6 < (${reqExpr}): return false`
-    })
+    const checkLines = [
+      ...stateLines,
+      ...inEdges.map((e) => {
+        const edgeAct = collectNodeStateActivatorsGd('', doc, e.id)
+        const spec = parseMxFlowFormula(e.formula)
+        const baseReq = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, e.from)
+        const reqExpr = spec.type === 'all' ? baseReq : applyFlowStateModifiersGd(baseReq, e, doc)
+        const actPrefix = edgeAct.map((ac) => `\t\tif not (${ac}): return false\n`).join('')
+        return `${actPrefix}\t\tif get_pool("${e.from}") + 1e-6 < (${reqExpr}): return false`
+      })
+    ]
     const consumeLines = inEdges.map((e) => {
       const spec = parseMxFlowFormula(e.formula)
-      const reqExpr =
+      const baseReq =
         spec.type === 'all' ? `get_pool("${e.from}")` : compileMxFormulaToGd(spec.expr, doc, e.from)
+      const reqExpr = spec.type === 'all' ? baseReq : applyFlowStateModifiersGd(baseReq, e, doc)
       return `\t\tadd_resource("${e.from}", -(${reqExpr}))`
     })
     const produceLines = outEdges.map((e) => {
       const spec = parseMxFlowFormula(e.formula)
-      const outExpr = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, c.id)
+      const baseOut = spec.type === 'all' ? '1.0' : compileMxFormulaToGd(spec.expr, doc, c.id)
+      const outExpr = spec.type === 'all' ? baseOut : applyFlowStateModifiersGd(baseOut, e, doc)
+      const edgeAct = collectNodeStateActivatorsGd('', doc, e.id)
+      const indent = edgeAct.length ? `\t\tif ${edgeAct.join(' and ')}:\n\t\t\t` : '\t\t'
       const tgt = doc.nodes.find((n) => n.id === e.to)
       if (tgt?.kind === 'gate') {
-        return `\t\troute_gate("${tgt.id}", ${outExpr})`
+        return `${indent}route_gate("${tgt.id}", ${outExpr})`
       }
-      return `\t\tadd_resource("${e.to}", ${outExpr})`
+      return `${indent}add_resource("${e.to}", ${outExpr})`
     })
     return `\tif converter_id == "${c.id}": # ${c.label}
 ${checkLines.length ? checkLines.join('\n') : '\t\tpass'}
@@ -325,20 +658,33 @@ ${produceLines.join('\n')}
 \t\treturn`
   })
 
-  const endCheckLines = ends.flatMap((endNode) =>
-    doc.edges
-      .filter((e) => e.kind === 'state' && e.to === endNode.id)
-      .map((e) => {
-        const spec = parseMxStateFormula(e.formula || endNode.formula || '>=1')
-        let condExpr = `get_val("${e.from}") >= 1.0`
-        if (spec.type === 'activator') {
-          condExpr = `get_val("${e.from}") ${spec.op} ${spec.value}`
-        } else if (spec.type === 'expr') {
-          condExpr = compileMxFormulaToGd(spec.expr, doc, e.from)
-        }
-        return `\tif ${condExpr}:\n\t\tended = true\n\t\teconomy_ended.emit("${endNode.label.replace(/"/g, "'")}")\n\t\treturn`
-      })
-  )
+  const endCheckLines = ends.flatMap((endNode) => {
+    const stInputs = doc.edges.filter(
+      (e) => e.kind === 'state' && !e.targetEdgeId && e.to === endNode.id
+    )
+    const fromIds = stInputs.map((e) => e.from)
+    let joinedCond = ''
+    if (endNode.formula?.trim()) {
+      const stSpec = parseMxStateFormula(endNode.formula)
+      if ((stSpec.type === 'activator' || stSpec.type === 'range') && stInputs[0]) {
+        joinedCond = compileStateConditionToGd(endNode.formula, stInputs[0].from, doc, true) ?? ''
+      } else {
+        const exprGd = compileMxFormulaToGd(endNode.formula, doc, stInputs[0]?.from, fromIds)
+        joinedCond = /[<>=!]/.test(endNode.formula) ? `(${exprGd})` : `(${exprGd}) != 0.0`
+      }
+    } else if (stInputs.length > 0) {
+      const conds = stInputs
+        .map((e) => compileStateConditionToGd(e.formula || '>=1', e.from, doc, true))
+        .filter((c): c is string => Boolean(c))
+      if (conds.length > 0) {
+        joinedCond = conds.map((c) => `(${c})`).join(endNode.endMode === 'any' ? ' or ' : ' and ')
+      }
+    }
+    if (!joinedCond) return []
+    return [
+      `\tif ${joinedCond}:\n\t\tended = true\n\t\teconomy_ended.emit("${endNode.label.replace(/"/g, "'")}")\n\t\treturn`
+    ]
+  })
 
   const autoConverterSteps = converters
     .filter((c) => c.trigger === 'automatic')
@@ -392,6 +738,26 @@ func mx_if(cond: Variant, val_true: float, val_false: float) -> float:
 func mx_diminish(x: float, k: float = 100.0, scale: float = 1.0) -> float:
 \tvar pos_x: float = maxf(0.0, x)
 \treturn scale * (pos_x / (pos_x + maxf(0.0001, k)))
+
+func mx_add(a: float, b: float) -> float: return a + b
+func mx_sub(a: float, b: float) -> float: return a - b
+func mx_mul(a: float, b: float) -> float: return a * b
+func mx_div(a: float, b: float) -> float: return 0.0 if absf(b) < 1e-9 else a / b
+func mx_square(x: float) -> float: return x * x
+func mx_cube(x: float) -> float: return x * x * x
+func mx_cbrt(x: float) -> float: return signf(x) * pow(absf(x), 1.0 / 3.0)
+func mx_log10(x: float) -> float: return log(maxf(1e-9, x)) / log(10.0)
+func mx_log2(x: float) -> float: return log(maxf(1e-9, x)) / log(2.0)
+func mx_larger(a: float, b: float) -> float: return 1.0 if a > b else 0.0
+func mx_larger_eq(a: float, b: float) -> float: return 1.0 if a >= b else 0.0
+func mx_smaller(a: float, b: float) -> float: return 1.0 if a < b else 0.0
+func mx_smaller_eq(a: float, b: float) -> float: return 1.0 if a <= b else 0.0
+func mx_equal(a: float, b: float) -> float: return 1.0 if absf(a - b) < 1e-6 else 0.0
+func mx_unequal(a: float, b: float) -> float: return 1.0 if absf(a - b) >= 1e-6 else 0.0
+func mx_and(a: float, b: float) -> float: return 1.0 if (absf(a) > 1e-6 and absf(b) > 1e-6) else 0.0
+func mx_or(a: float, b: float) -> float: return 1.0 if (absf(a) > 1e-6 or absf(b) > 1e-6) else 0.0
+func mx_not(a: float) -> float: return 1.0 if absf(a) <= 1e-6 else 0.0
+func mx_xor(a: float, b: float) -> float: return 1.0 if ((absf(a) > 1e-6) != (absf(b) > 1e-6)) else 0.0
 
 func get_pool(id: String) -> float:
 \treturn float(pools.get(id, 0.0))
@@ -485,11 +851,16 @@ export function exportMxUnityCs(doc: MxDocument): string {
   const ends = doc.nodes.filter((n) => n.kind === 'end')
   const sources = doc.nodes.filter((n) => n.kind === 'source' && n.trigger === 'automatic')
   const drains = doc.nodes.filter((n) => n.kind === 'drain' && n.trigger === 'automatic')
-  const wb = doc.workbench ?? createMxWorkbenchPreset('slay_the_spire_dbg')
+  const wb =
+    doc.workbench ?? createMxWorkbenchPreset(mapMxTemplateToWorkbenchPreset(doc.templateId))
 
   const registerSteps = registers.map((r) => {
-    const stIn = doc.edges.find((e) => e.kind === 'state' && e.to === r.id)
-    const exprCs = compileMxFormulaToCs(r.formula || '0', doc, stIn?.from)
+    const stIns = doc.edges
+      .filter((e) => e.kind === 'state' && !e.targetEdgeId && e.to === r.id)
+      .map((e) => e.from)
+    let exprCs = compileMxFormulaToCs(r.formula || (stIns.length ? 'a' : '0'), doc, stIns[0], stIns)
+    if (r.min != null && Number.isFinite(r.min)) exprCs = `Mathf.Max(${r.min}f, (float)(${exprCs}))`
+    if (r.max != null && Number.isFinite(r.max)) exprCs = `Mathf.Min(${r.max}f, (float)(${exprCs}))`
     return `        Registers["${r.id}"] = (float)(${exprCs}); // ${r.label}`
   })
 
@@ -498,18 +869,27 @@ export function exportMxUnityCs(doc: MxDocument): string {
       .filter((e) => e.kind === 'resource' && e.from === s.id)
       .map((e) => {
         const spec = parseMxFlowFormula(e.formula)
-        const exprCs = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, s.id)
-        const conds: string[] = []
-        if (spec.type === 'expr' && spec.every && spec.every > 1)
-          conds.push(`Step % ${spec.every} == 0`)
-        if (spec.type === 'expr' && spec.probability != null)
-          conds.push(`UnityEngine.Random.value < ${spec.probability}f`)
+        const baseCs = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, s.id)
+        const exprCs = applyFlowStateModifiersCs(baseCs, e, doc)
+        const conds: string[] = collectNodeStateActivatorsCs(s.id, doc, e.id)
+        const effEvery =
+          spec.every ??
+          (e.interval && /^\d+$/.test(e.interval.trim()) ? Number(e.interval.trim()) : undefined)
+        if (effEvery && effEvery > 1) conds.push(`Step % ${effEvery} == 0`)
+        let finalAmountCs = exprCs
+        if (spec.type === 'expr' && spec.probability != null) {
+          if (spec.probability <= 1) {
+            conds.push(`UnityEngine.Random.value < ${spec.probability}f`)
+          } else {
+            finalAmountCs = `((${exprCs}) * (Mathf.Floor(${spec.probability}f) + (UnityEngine.Random.value < (${spec.probability}f % 1f) ? 1f : 0f)))`
+          }
+        }
         const prefix = conds.length ? `        if (${conds.join(' && ')}) ` : '        '
         const targetNode = doc.nodes.find((n) => n.id === e.to)
         if (targetNode?.kind === 'gate') {
-          return `${prefix}RouteGate("${targetNode.id}", (float)(${exprCs})); // ${s.label}`
+          return `${prefix}RouteGate("${targetNode.id}", (float)(${finalAmountCs})); // ${s.label}`
         }
-        return `${prefix}AddResource("${e.to}", (float)(${exprCs})); // ${s.label}`
+        return `${prefix}AddResource("${e.to}", (float)(${finalAmountCs})); // ${s.label}`
       })
   )
 
@@ -518,13 +898,16 @@ export function exportMxUnityCs(doc: MxDocument): string {
       .filter((e) => e.kind === 'resource' && e.to === d.id)
       .map((e) => {
         const spec = parseMxFlowFormula(e.formula)
-        const exprCs =
+        const baseCs =
           spec.type === 'all'
             ? `GetPool("${e.from}")`
             : compileMxFormulaToCs(spec.expr, doc, e.from)
-        const conds: string[] = []
-        if (spec.type === 'expr' && spec.every && spec.every > 1)
-          conds.push(`Step % ${spec.every} == 0`)
+        const exprCs = spec.type === 'all' ? baseCs : applyFlowStateModifiersCs(baseCs, e, doc)
+        const conds: string[] = collectNodeStateActivatorsCs(d.id, doc, e.id)
+        const effEvery =
+          spec.every ??
+          (e.interval && /^\d+$/.test(e.interval.trim()) ? Number(e.interval.trim()) : undefined)
+        if (effEvery && effEvery > 1) conds.push(`Step % ${effEvery} == 0`)
         if (spec.type === 'expr' && spec.probability != null)
           conds.push(`UnityEngine.Random.value < ${spec.probability}f`)
         const prefix = conds.length ? `        if (${conds.join(' && ')}) ` : '        '
@@ -533,12 +916,20 @@ export function exportMxUnityCs(doc: MxDocument): string {
   )
 
   const converterCanBlocks = converters.map((c) => {
+    const stateConds = collectNodeStateActivatorsCs(c.id, doc)
+    const stateChecks = stateConds.map((cond) => `            if (!(${cond})) return false;`)
     const inEdges = doc.edges.filter((e) => e.kind === 'resource' && e.to === c.id)
-    const checks = inEdges.map((e) => {
-      const spec = parseMxFlowFormula(e.formula)
-      const reqCs = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, e.from)
-      return `            if (GetPool("${e.from}") + 1e-5f < (float)(${reqCs})) return false;`
-    })
+    const checks = [
+      ...stateChecks,
+      ...inEdges.map((e) => {
+        const edgeAct = collectNodeStateActivatorsCs('', doc, e.id)
+        const spec = parseMxFlowFormula(e.formula)
+        const baseReq = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, e.from)
+        const reqCs = spec.type === 'all' ? baseReq : applyFlowStateModifiersCs(baseReq, e, doc)
+        const actPrefix = edgeAct.map((ac) => `            if (!(${ac})) return false;\n`).join('')
+        return `${actPrefix}            if (GetPool("${e.from}") + 1e-5f < (float)(${reqCs})) return false;`
+      })
+    ]
     return `        if (converterId == "${c.id}") // ${c.label}
         {
 ${checks.join('\n')}
@@ -547,27 +938,39 @@ ${checks.join('\n')}
   })
 
   const converterBlocks = converters.map((c) => {
+    const stateConds = collectNodeStateActivatorsCs(c.id, doc)
+    const stateChecks = stateConds.map((cond) => `            if (!(${cond})) return false;`)
     const inEdges = doc.edges.filter((e) => e.kind === 'resource' && e.to === c.id)
     const outEdges = doc.edges.filter((e) => e.kind === 'resource' && e.from === c.id)
-    const checks = inEdges.map((e) => {
-      const spec = parseMxFlowFormula(e.formula)
-      const reqCs = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, e.from)
-      return `            if (GetPool("${e.from}") + 1e-5f < (float)(${reqCs})) return false;`
-    })
+    const checks = [
+      ...stateChecks,
+      ...inEdges.map((e) => {
+        const edgeAct = collectNodeStateActivatorsCs('', doc, e.id)
+        const spec = parseMxFlowFormula(e.formula)
+        const baseReq = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, e.from)
+        const reqCs = spec.type === 'all' ? baseReq : applyFlowStateModifiersCs(baseReq, e, doc)
+        const actPrefix = edgeAct.map((ac) => `            if (!(${ac})) return false;\n`).join('')
+        return `${actPrefix}            if (GetPool("${e.from}") + 1e-5f < (float)(${reqCs})) return false;`
+      })
+    ]
     const consumes = inEdges.map((e) => {
       const spec = parseMxFlowFormula(e.formula)
-      const reqCs =
+      const baseReq =
         spec.type === 'all' ? `GetPool("${e.from}")` : compileMxFormulaToCs(spec.expr, doc, e.from)
+      const reqCs = spec.type === 'all' ? baseReq : applyFlowStateModifiersCs(baseReq, e, doc)
       return `            AddResource("${e.from}", -(float)(${reqCs}));`
     })
     const produces = outEdges.map((e) => {
       const spec = parseMxFlowFormula(e.formula)
-      const outCs = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, c.id)
+      const baseOut = spec.type === 'all' ? '1f' : compileMxFormulaToCs(spec.expr, doc, c.id)
+      const outCs = spec.type === 'all' ? baseOut : applyFlowStateModifiersCs(baseOut, e, doc)
+      const edgeAct = collectNodeStateActivatorsCs('', doc, e.id)
+      const prefix = edgeAct.length ? `            if (${edgeAct.join(' && ')}) ` : '            '
       const tgt = doc.nodes.find((n) => n.id === e.to)
       if (tgt?.kind === 'gate') {
-        return `            RouteGate("${tgt.id}", (float)(${outCs}));`
+        return `${prefix}RouteGate("${tgt.id}", (float)(${outCs}));`
       }
-      return `            AddResource("${e.to}", (float)(${outCs}));`
+      return `${prefix}AddResource("${e.to}", (float)(${outCs}));`
     })
     return `        if (converterId == "${c.id}") // ${c.label}
         {
@@ -593,20 +996,33 @@ ${produces.join('\n')}
         }`
   })
 
-  const endCheckBlocks = ends.flatMap((endNode) =>
-    doc.edges
-      .filter((e) => e.kind === 'state' && e.to === endNode.id)
-      .map((e) => {
-        const spec = parseMxStateFormula(e.formula || endNode.formula || '>=1')
-        let condCs = `GetVal("${e.from}") >= 1f`
-        if (spec.type === 'activator') {
-          condCs = `GetVal("${e.from}") ${spec.op} ${spec.value}f`
-        } else if (spec.type === 'expr') {
-          condCs = `(${compileMxFormulaToCs(spec.expr, doc, e.from)}) != 0f`
-        }
-        return `        if (${condCs}) { Ended = true; OnEconomyEnded?.Invoke("${endNode.label.replace(/"/g, "'")}"); return; }`
-      })
-  )
+  const endCheckBlocks = ends.flatMap((endNode) => {
+    const stInputs = doc.edges.filter(
+      (e) => e.kind === 'state' && !e.targetEdgeId && e.to === endNode.id
+    )
+    const fromIds = stInputs.map((e) => e.from)
+    let joinedCond = ''
+    if (endNode.formula?.trim()) {
+      const stSpec = parseMxStateFormula(endNode.formula)
+      if ((stSpec.type === 'activator' || stSpec.type === 'range') && stInputs[0]) {
+        joinedCond = compileStateConditionToCs(endNode.formula, stInputs[0].from, doc, true) ?? ''
+      } else {
+        const exprCs = compileMxFormulaToCs(endNode.formula, doc, stInputs[0]?.from, fromIds)
+        joinedCond = /[<>=!]/.test(endNode.formula) ? `(${exprCs})` : `((${exprCs}) != 0f)`
+      }
+    } else if (stInputs.length > 0) {
+      const conds = stInputs
+        .map((e) => compileStateConditionToCs(e.formula || '>=1', e.from, doc, true))
+        .filter((c): c is string => Boolean(c))
+      if (conds.length > 0) {
+        joinedCond = conds.map((c) => `(${c})`).join(endNode.endMode === 'any' ? ' || ' : ' && ')
+      }
+    }
+    if (!joinedCond) return []
+    return [
+      `        if (${joinedCond}) { Ended = true; OnEconomyEnded?.Invoke("${endNode.label.replace(/"/g, "'")}"); return; }`
+    ]
+  })
 
   const autoConverterSteps = converters
     .filter((c) => c.trigger === 'automatic')
@@ -660,6 +1076,30 @@ ${wb.multiplier.attributes.map((a) => `        Params["${a.name}"] = ${a.value}f
     public float MxIf(float cond, float tVal, float fVal) => Mathf.Abs(cond) > 1e-6f ? tVal : fVal;
     public float MxIf(bool cond, float tVal, float fVal) => cond ? tVal : fVal;
     public float MxDiminish(float x, float k = 100f, float scale = 1f) => scale * (Mathf.Max(0f, x) / (Mathf.Max(0f, x) + Mathf.Max(0.0001f, k)));
+    public float MxNorm(float mean = 0f, float std = 1f)
+    {
+        float u1 = Mathf.Max(1e-7f, UnityEngine.Random.value);
+        float u2 = UnityEngine.Random.value;
+        return mean + std * Mathf.Sqrt(-2f * Mathf.Log(u1)) * Mathf.Cos(2f * Mathf.PI * u2);
+    }
+    public float MxAdd(float a, float b) => a + b;
+    public float MxSub(float a, float b) => a - b;
+    public float MxMul(float a, float b) => a * b;
+    public float MxDiv(float a, float b) => Mathf.Abs(b) < 1e-9f ? 0f : a / b;
+    public float MxMod(float a, float b) => Mathf.Abs(b) < 1e-9f ? 0f : ((a % b) + b) % b;
+    public float MxSquare(float x) => x * x;
+    public float MxCube(float x) => x * x * x;
+    public float MxCbrt(float x) => Mathf.Sign(x) * Mathf.Pow(Mathf.Abs(x), 1f / 3f);
+    public float MxLarger(float a, float b) => a > b ? 1f : 0f;
+    public float MxLargerEq(float a, float b) => a >= b ? 1f : 0f;
+    public float MxSmaller(float a, float b) => a < b ? 1f : 0f;
+    public float MxSmallerEq(float a, float b) => a <= b ? 1f : 0f;
+    public float MxEqual(float a, float b) => Mathf.Abs(a - b) < 1e-5f ? 1f : 0f;
+    public float MxUnequal(float a, float b) => Mathf.Abs(a - b) >= 1e-5f ? 1f : 0f;
+    public float MxAnd(float a, float b) => (Mathf.Abs(a) > 1e-5f && Mathf.Abs(b) > 1e-5f) ? 1f : 0f;
+    public float MxOr(float a, float b) => (Mathf.Abs(a) > 1e-5f || Mathf.Abs(b) > 1e-5f) ? 1f : 0f;
+    public float MxNot(float a) => Mathf.Abs(a) <= 1e-5f ? 1f : 0f;
+    public float MxXor(float a, float b) => ((Mathf.Abs(a) > 1e-5f) != (Mathf.Abs(b) > 1e-5f)) ? 1f : 0f;
 
     public float GetPool(string id) => Pools.TryGetValue(id, out var v) ? v : 0f;
     public float GetParam(string id) => Params.TryGetValue(id, out var v) ? v : 0f;

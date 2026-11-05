@@ -213,7 +213,30 @@ function addResource(): void {
 function removeResource(id: string): void {
   if (s.doc.value.resources.length <= 1) return
   s.mutate((d) => {
+    const removed = d.resources.find((r) => r.id === id)
     d.resources = d.resources.filter((r) => r.id !== id)
+    const fallbackRes = d.resources[0]
+    for (const n of d.nodes) {
+      if (n.resourceId === id) {
+        if (n.kind === 'pool' || n.kind === 'source') {
+          n.resourceId = fallbackRes?.id
+          if (removed && n.color === removed.color) {
+            n.color = fallbackRes?.color
+          }
+        } else {
+          n.resourceId = undefined
+          if (removed && n.color === removed.color) {
+            n.color = undefined
+          }
+        }
+      }
+    }
+    for (const e of d.edges) {
+      if (e.resourceId === id) {
+        e.resourceId = undefined
+        e.resourceFilter = false
+      }
+    }
   })
 }
 
@@ -443,7 +466,16 @@ function handleSaveSnapshot(): void {
               @input="
                 s.mutate((d) => {
                   const target = d.resources.find((x) => x.id === r.id)
-                  if (target) target.color = ($event.target as HTMLInputElement).value
+                  if (target) {
+                    const prevColor = target.color
+                    const nextColor = ($event.target as HTMLInputElement).value
+                    target.color = nextColor
+                    for (const n of d.nodes) {
+                      if (n.resourceId === r.id && n.color === prevColor) {
+                        n.color = nextColor
+                      }
+                    }
+                  }
                 })
               "
             />
@@ -470,32 +502,166 @@ function handleSaveSnapshot(): void {
           <button type="button" class="mx-mini-btn" @click="addParam">+ x</button>
         </div>
         <div class="mx-item-list">
-          <div v-for="p in s.doc.value.params" :key="p.id" class="mx-item-row">
-            <input
-              type="text"
-              class="mx-input mx-mono"
-              style="width: 72px"
-              :value="p.name"
-              @input="
-                s.mutate((d) => {
-                  const target = d.params.find((x) => x.id === p.id)
-                  if (target) target.name = ($event.target as HTMLInputElement).value
-                }, 'pKey')
-              "
-            />
-            <span>=</span>
-            <input
-              type="number"
-              class="mx-input mx-mono"
-              :value="p.value"
-              @input="
-                s.mutate((d) => {
-                  const target = d.params.find((x) => x.id === p.id)
-                  if (target) target.value = Number(($event.target as HTMLInputElement).value) || 0
-                }, 'pVal')
-              "
-            />
-            <button type="button" class="mx-row-del" @click="removeParam(p.id)">×</button>
+          <div
+            v-for="p in s.doc.value.params"
+            :key="p.id"
+            class="mx-scenario-card"
+            style="padding: 6px 8px"
+          >
+            <div class="mx-item-row" style="gap: 4px">
+              <input
+                type="text"
+                class="mx-input mx-mono"
+                style="width: 68px"
+                :value="p.name"
+                @input="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) target.name = ($event.target as HTMLInputElement).value
+                  }, 'pKey')
+                "
+              />
+              <select
+                class="mx-input"
+                style="width: 82px; padding: 2px 4px; font-size: 11px"
+                :value="p.varKind ?? 'number'"
+                @change="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (!target) return
+                    const vk = ($event.target as HTMLSelectElement).value as
+                      'number' | 'random_range' | 'array' | 'expr'
+                    target.varKind = vk
+                    if (vk === 'random_range') {
+                      target.min ??= 1
+                      target.max ??= 6
+                      target.integerOnly ??= true
+                    } else if (vk === 'array' && !target.formula) {
+                      target.formula = '[10, 20, 30]'
+                    } else if (vk === 'expr' && !target.formula) {
+                      target.formula = 'STEP * 2'
+                    }
+                  })
+                "
+              >
+                <option value="number">{{ t('mx.drawer.varKind_number') }}</option>
+                <option value="random_range">{{ t('mx.drawer.varKind_random') }}</option>
+                <option value="array">{{ t('mx.drawer.varKind_array') }}</option>
+                <option value="expr">{{ t('mx.drawer.varKind_expr') }}</option>
+              </select>
+              <input
+                v-if="(p.varKind ?? 'number') === 'number'"
+                type="number"
+                class="mx-input mx-mono"
+                style="flex: 1"
+                :value="p.value"
+                @input="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target)
+                      target.value = Number(($event.target as HTMLInputElement).value) || 0
+                  }, 'pVal')
+                "
+              />
+              <select
+                v-else
+                class="mx-input"
+                style="flex: 1; padding: 2px 4px; font-size: 11px"
+                :value="p.updateMode ?? 'on_play'"
+                @change="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) {
+                      target.updateMode = ($event.target as HTMLSelectElement).value as
+                        'on_play' | 'each_step'
+                    }
+                  })
+                "
+              >
+                <option value="on_play">{{ t('mx.drawer.varOnPlay') }}</option>
+                <option value="each_step">{{ t('mx.drawer.varEachStep') }}</option>
+              </select>
+              <button type="button" class="mx-row-del" @click="removeParam(p.id)">×</button>
+            </div>
+            <div
+              v-if="p.varKind === 'random_range'"
+              class="mx-item-row"
+              style="margin-top: 4px; gap: 4px"
+            >
+              <input
+                type="number"
+                class="mx-input mx-mono"
+                placeholder="min"
+                :value="p.min ?? 1"
+                @input="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) target.min = Number(($event.target as HTMLInputElement).value) || 0
+                  }, 'pMin')
+                "
+              />
+              <span>..</span>
+              <input
+                type="number"
+                class="mx-input mx-mono"
+                placeholder="max"
+                :value="p.max ?? 6"
+                @input="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) target.max = Number(($event.target as HTMLInputElement).value) || 0
+                  }, 'pMax')
+                "
+              />
+              <select
+                class="mx-input"
+                style="width: 68px; padding: 2px 3px; font-size: 11px"
+                :value="p.distribution ?? 'uniform'"
+                @change="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) {
+                      target.distribution = ($event.target as HTMLSelectElement).value as
+                        'uniform' | 'gaussian'
+                    }
+                  })
+                "
+              >
+                <option value="uniform">unif</option>
+                <option value="gaussian">norm</option>
+              </select>
+              <label style="display: flex; align-items: center; gap: 2px; font-size: 11px">
+                <input
+                  type="checkbox"
+                  :checked="Boolean(p.integerOnly)"
+                  @change="
+                    s.mutate((d) => {
+                      const target = d.params.find((x) => x.id === p.id)
+                      if (target) target.integerOnly = ($event.target as HTMLInputElement).checked
+                    })
+                  "
+                />
+                int
+              </label>
+            </div>
+            <div
+              v-else-if="p.varKind === 'array' || p.varKind === 'expr'"
+              class="mx-item-row"
+              style="margin-top: 4px"
+            >
+              <input
+                type="text"
+                class="mx-input mx-mono"
+                :placeholder="p.varKind === 'array' ? '[10, 20, 30]' : 'STEP * 2'"
+                :value="p.formula ?? ''"
+                @input="
+                  s.mutate((d) => {
+                    const target = d.params.find((x) => x.id === p.id)
+                    if (target) target.formula = ($event.target as HTMLInputElement).value
+                  }, 'pExpr')
+                "
+              />
+            </div>
           </div>
         </div>
 
@@ -574,12 +740,19 @@ function handleSaveSnapshot(): void {
           </button>
         </div>
         <div class="mx-item-list">
-          <div v-for="ly in s.doc.value.layers" :key="ly.id" class="mx-item-row">
+          <div
+            v-for="ly in s.doc.value.layers"
+            :key="ly.id"
+            class="mx-item-row mx-layer-row"
+            :class="{ 'is-selected': s.activeLayerId.value === ly.id }"
+            @click="s.selectLayer(ly.id)"
+          >
             <button
               type="button"
               class="mx-icon-toggle"
               :class="{ 'is-off': !ly.visible }"
-              @click="
+              :title="ly.visible ? t('mx.drawer.hideLayer') : t('mx.drawer.showLayer')"
+              @click.stop="
                 s.mutate((d) => {
                   const target = d.layers.find((x) => x.id === ly.id)
                   if (target) target.visible = !target.visible
@@ -592,7 +765,8 @@ function handleSaveSnapshot(): void {
               type="button"
               class="mx-icon-toggle"
               :class="{ 'is-on': ly.locked }"
-              @click="
+              :title="ly.locked ? t('mx.drawer.unlockLayer') : t('mx.drawer.lockLayer')"
+              @click.stop="
                 s.mutate((d) => {
                   const target = d.layers.find((x) => x.id === ly.id)
                   if (target) target.locked = !target.locked
@@ -603,8 +777,9 @@ function handleSaveSnapshot(): void {
             </button>
             <input
               type="text"
-              class="mx-input"
+              class="mx-input mx-layer-input"
               :value="ly.name"
+              @click.stop="s.selectLayer(ly.id)"
               @input="
                 s.mutate((d) => {
                   const target = d.layers.find((x) => x.id === ly.id)
@@ -612,6 +787,25 @@ function handleSaveSnapshot(): void {
                 }, 'lyName')
               "
             />
+            <span
+              class="mx-layer-badge"
+              :title="
+                t('mx.drawer.layerNodeCount', {
+                  n: s.doc.value.nodes.filter((n) => n.layerId === ly.id).length
+                })
+              "
+            >
+              {{ s.doc.value.nodes.filter((n) => n.layerId === ly.id).length }}
+            </span>
+            <button
+              v-if="s.doc.value.layers.length > 1"
+              type="button"
+              class="mx-row-del"
+              :title="t('mx.drawer.deleteLayer')"
+              @click.stop="s.removeLayer(ly.id)"
+            >
+              ×
+            </button>
           </div>
         </div>
       </template>
@@ -703,13 +897,27 @@ function handleSaveSnapshot(): void {
           <h4>{{ t('mx.docs.formulasTitle') }}</h4>
           <ul>
             <li><code>1</code>, <code>5</code> — {{ t('mx.docs.fixed') }}</li>
-            <li><code>D6</code>, <code>2D6+1</code> — {{ t('mx.docs.dice') }}</li>
-            <li><code>50%</code>, <code>0.25</code> — {{ t('mx.docs.prob') }}</li>
+            <li>
+              <code>D6</code>, <code>2D6+1</code>, <code>3..6</code> — {{ t('mx.docs.dice') }}
+            </li>
+            <li><code>50%</code>, <code>250%</code> — {{ t('mx.docs.prob') }}</li>
             <li><code>all</code> — {{ t('mx.docs.all') }}</li>
-            <li><code>1 every 3</code> — {{ t('mx.docs.interval') }}</li>
-            <li><code>+1</code>, <code>-2</code> — {{ t('mx.docs.modifier') }}</li>
-            <li><code>&gt;0</code>, <code>&lt;=0</code> — {{ t('mx.docs.activator') }}</li>
-            <li><code>*</code>, <code>!</code> — {{ t('mx.docs.triggerStar') }}</li>
+            <li>
+              <code>3|2</code>, <code>1|3..6</code>, <code>D6|D6</code> —
+              {{ t('mx.docs.interval') }}
+            </li>
+            <li>
+              <code>+2</code>, <code>+1/3</code>, <code>+1i</code>, <code>=</code> —
+              {{ t('mx.docs.modifier') }}
+            </li>
+            <li>
+              <code>&gt;0</code>, <code>=4</code>, <code>!=1</code>, <code>2..8</code> —
+              {{ t('mx.docs.activator') }}
+            </li>
+            <li>
+              <code>*</code>, <code>!</code>, <code>25%</code> — {{ t('mx.docs.triggerStar') }}
+            </li>
+            <li><code>STEP</code>, <code>largerEq(a,2)</code> — {{ t('mx.docs.mathFns') }}</li>
           </ul>
         </div>
       </template>
@@ -1343,6 +1551,29 @@ function handleSaveSnapshot(): void {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.mx-layer-row {
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.mx-layer-row:hover {
+  background: var(--bg-hover, var(--bg-input));
+}
+.mx-layer-row.is-selected {
+  background: var(--surface-3, var(--bg-input));
+  border-color: var(--accent);
+}
+.mx-layer-badge {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 .mx-color-pick {
   width: 24px;

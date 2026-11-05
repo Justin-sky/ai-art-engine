@@ -521,6 +521,16 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
     usageEn: FILM_PIPELINE_USAGE_EN
   },
   {
+    id: 'game.economy',
+    kind: 'gameplay',
+    titleZh: '经济系统（Machinations 多图层完整机制）',
+    titleEn: 'Game economy & Machinations multi-layer mechanics',
+    usageZh:
+      '对应画布节点 `game.economy`（Machinations 系统动力学建模与蒙特卡洛仿真工作台）：端口 `in`:text → `out`:image（拓扑与曲线图）、`out-text`:text（经济系统遥测与脚本 JSON，可连入 `game.numerical`、`novel.outline`、`asset.novel`、`asset.gameSystem` 的 `in-economy`）。通过 `params.gameEconomyDiagramJson`（`schema: "mx@2"`）构建自定义图：当用户要求创建**完整机制**时，须尽可能把所有核心玩法子系统全部建模出来（通常 20~32 个节点，涵盖能量/时间补给、抽弃洗消耗守恒循环、异构卡牌/技能/建塔转化器、`register` 确定性乘区公式 `if(cond,a,b)`、护甲与 Boss 意图压力、商店遗物养成及胜负双 `end` 节点），并将不同分类放入 `layers` 不同图层（保留 `{ id: "layer_base", name: "Base", visible: true, locked: false }` 为首项默认层，其余按分类建层并在每个 `node` 上设置 `layerId`，省略坐标将自动执行多图层横向泳道排版与分组框对齐）。`mx@2` 建模四铁律：① `converter/source -> pool` 恒为加法（`+`），扣血/漏怪必须连 `hp_pool -> drain`；② `resource` 边可直接写 `register`/`pool` id 公式，而 `state` 边修正量须带符号 `"+1"`/`"-2"`、激活条件须带比较符 `">=1"`/`"<=0"`（严禁写无符号 `"1"`）；③ `end` 节点多入向 `state` 边按 `AND` 判定且不产出资源（严禁 `end` 连出 `resource` 边）；④ 拆卖/紧急回收用 `interactive` + `botCondition` 或 `state` 门控避免每步自动建卖亏损，单局体力/局外结算须加波次门控隔离时间尺度；`task_run` 后若 `economyDiagnostics` 含 `topologyWarnings` 或曲线反转，必须 `graph_edit` 修正并重跑，严禁标为“草稿（仿真待修正）”敷衍交付。',
+    usageEn:
+      'Maps to canvas node `game.economy` (Machinations system dynamics & Monte Carlo simulation studio): ports `in`:text → `out`:image, `out-text`:text (wires into `in-economy` on `game.numerical`, `novel.outline`, `asset.novel`, or `asset.gameSystem`). Configure via `params.gameEconomyDiagramJson` (`schema: "mx@2"`): when asked to build complete gameplay mechanics, exhaustively model all core subsystems (typically 20–32 nodes across resource supply/reset, conserved draw-discard-reshuffle-exhaust cycles, heterogeneous converters, deterministic `register` multipliers via `if(cond,a,b)`, defense/enemy pressure, meta-shop economy, and win/loss `end` nodes) and organize each category into separate `layers` (keeping `{ id: "layer_base", name: "Base", visible: true, locked: false }` at index 0 as the default layer, assigning `layerId` on each node, and omitting `x`/`y` for automatic multi-layer swimlane layout). Strict `mx@2` rules: (1) `converter/source -> pool` always adds (`+`), so HP loss must wire `hp_pool -> drain`; (2) `resource` edges directly evaluate `register`/`pool` IDs, while `state` modifiers require explicit signs (`"+1"`, `"-2"`) and activators require comparisons (`">=1"`, `"<=0"`) — never unsigned `"1"`; (3) `end` nodes combine incoming `state` edges via `AND` and never emit outgoing `resource` edges; (4) gate sell/meta converters to prevent per-step churn or time-scale collisions, and always repair any `topologyWarnings` or inverted curves via `graph_edit` + `task_run` instead of leaving draft disclaimers.'
+  },
+  {
     id: 'game.htmlGen',
     kind: 'gameplay',
     titleZh: '可玩 HTML（程序化资产）',

@@ -10,6 +10,8 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  parseMxFlowFormula,
+  parseMxStateFormula,
   validateMxFormula,
   type MxEdgeKind,
   type MxNodeKind,
@@ -69,6 +71,35 @@ const pullModes: Array<{ id: MxPullMode; code: string; labelKey: string }> = [
   { id: 'push_all', code: 'ps&', labelKey: 'mx.pull.push_all' }
 ]
 
+const availablePullModes = computed(() => {
+  const n = selectedNode.value
+  if (!n) return []
+  if (n.kind === 'source') {
+    return pullModes.filter((p) => p.id === 'push_any' || p.id === 'push_all')
+  }
+  if (n.kind === 'pool') return pullModes
+  if (
+    n.kind === 'drain' ||
+    n.kind === 'converter' ||
+    n.kind === 'trader' ||
+    n.kind === 'gate' ||
+    n.kind === 'delay' ||
+    n.kind === 'queue'
+  ) {
+    return pullModes.filter((p) => p.id === 'pull_any' || p.id === 'pull_all')
+  }
+  return []
+})
+
+const effectiveNodePullMode = computed<MxPullMode>(() => {
+  const n = selectedNode.value
+  if (!n) return 'pull_any'
+  if (n.pullMode) return n.pullMode
+  if (n.kind === 'source') return 'push_any'
+  if (n.kind === 'converter' || n.kind === 'trader') return 'pull_all'
+  return 'pull_any'
+})
+
 const swatches = [
   '#3b82f6',
   '#10b981',
@@ -83,27 +114,199 @@ const swatches = [
 const resourceChips = [
   '1',
   '2',
-  '5',
   'D6',
-  '2D6',
   '50%',
+  '250%',
   'all',
-  '1 every 2',
-  'lookup(a, 10, 25, 60)',
-  'diminish(a, 100)'
+  '1|2',
+  '1|3..6',
+  'D6|D6',
+  '<4',
+  '>=4',
+  '1..3'
 ]
-const stateChips = ['+1', '-1', '+2', '*', '!', '>0', '<=0', '>=5', '==0']
+const stateChips = [
+  '+1',
+  '-1',
+  '+50%',
+  '+1/3',
+  '-2/4',
+  '+1i',
+  '-1i',
+  '=',
+  '*',
+  '!',
+  '25%',
+  '>=5',
+  '==0',
+  '!=0',
+  '2..8'
+]
 const registerFnChips = [
   'lookup(a, 10, 25, 60, 150)',
   'diminish(a, 100, 1)',
-  'lerp(10, 100, a / 10)',
-  'smoothstep(0, 10, a)',
+  'largerEq(a, 2) * (b + 4)',
+  'mod(STEP, 3)',
+  'randomInt(1, 10)',
   'clamp(a, 0, 100)'
 ]
 
+const selectedEdgeFormulaType = computed(() => {
+  const e = selectedEdge.value
+  if (!e) return ''
+  const raw = (e.formula ?? '').trim()
+  if (e.kind === 'state') {
+    const sp = parseMxStateFormula(raw)
+    switch (sp.type) {
+      case 'modifier':
+        return 'st_modifier'
+      case 'fraction_modifier':
+        return 'st_fraction'
+      case 'interval_modifier':
+        return 'st_interval'
+      case 'overwrite':
+        return 'st_overwrite'
+      case 'activator':
+        return 'st_activator'
+      case 'range':
+        return 'st_range'
+      case 'probability':
+        return 'st_prob'
+      case 'trigger':
+        return 'st_trigger'
+      case 'reverse_trigger':
+        return 'st_rev_trigger'
+      case 'expr':
+        return 'st_formula'
+    }
+  }
+  const fp = parseMxFlowFormula(raw)
+  if (fp.type === 'all') return 'all'
+  const coreRaw = raw.replace(/\s*(?:\||every\b).*$/i, '').trim()
+  const fromNode = s.doc.value.nodes.find((n) => n.id === e.from)
+  if (/^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) return 'cond_gate'
+  if (/^-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$/.test(coreRaw) && fromNode?.kind === 'gate') {
+    return 'cond_gate'
+  }
+  if (/^\d+(?:\.\d+)?\s*%$/.test(coreRaw) || (fp.probability !== undefined && fp.expr === '1')) {
+    return 'chance'
+  }
+  if (/^\d*[dD]\d+(?:\s*[+-]\s*\d+)?$/.test(coreRaw)) {
+    return 'dice'
+  }
+  if (coreRaw === '' || /^-?\d+(?:\.\d+)?$/.test(coreRaw)) {
+    return 'number'
+  }
+  return 'formula'
+})
+
+const activeEdgeChips = computed<string[]>(() => {
+  const e = selectedEdge.value
+  if (!e) return resourceChips
+  if (e.kind === 'state') return stateChips
+  switch (selectedEdgeFormulaType.value) {
+    case 'number':
+      return ['1', '2', '5', '10', '25', '100']
+    case 'chance':
+      return ['10%', '25%', '50%', '75%', '100%', '250%']
+    case 'dice':
+      return ['D4', 'D6', 'D8', 'D10', 'D12', 'D20', '2D6', 'D100']
+    case 'cond_gate':
+      return ['<4', '>=4', '==6', '1..2', '3..4', '5..6']
+    case 'all':
+      return ['all']
+    case 'formula':
+    default:
+      return ['a + 1', '1..6', 'D6 + 2', 'min(10, a)', 'STEP', 'lookup(a, 1, 2, 5)']
+  }
+})
+
+const edgeInlineIntervalHint = computed(() => {
+  const e = selectedEdge.value
+  if (!e || e.kind !== 'resource') return '1'
+  const fp = parseMxFlowFormula(e.formula)
+  return fp.intervalExpr || (fp.every ? String(fp.every) : '1')
+})
+
+function onEdgeFormulaTypeChange(ft: string): void {
+  const e = selectedEdge.value
+  if (!e) return
+  if (selectedEdgeFormulaType.value === ft) return
+  const defaults: Record<string, string> = {
+    number: '1',
+    chance: '50%',
+    dice: 'D6',
+    formula: 'a + 1',
+    all: 'all',
+    cond_gate: '<4',
+    st_modifier: '+1',
+    st_fraction: '+1/3',
+    st_interval: '+1i',
+    st_overwrite: '=',
+    st_activator: '>=5',
+    st_range: '2..8',
+    st_prob: '25%',
+    st_trigger: '*',
+    st_rev_trigger: '!',
+    st_formula: 'a >= 5'
+  }
+  const tpl = defaults[ft]
+  if (tpl !== undefined) {
+    const fp = e.kind === 'resource' ? parseMxFlowFormula(e.formula) : null
+    const preservedIv =
+      !e.interval && fp && fp.type !== 'all'
+        ? fp.intervalExpr || (fp.every ? String(fp.every) : undefined)
+        : undefined
+    s.updateEdge(e.id, {
+      formula: tpl,
+      ...(preservedIv ? { interval: preservedIv } : {})
+    })
+  }
+}
+
+function onEdgeIntervalChange(val: string): void {
+  const e = selectedEdge.value
+  if (!e) return
+  const trimmed = val.trim()
+  const nextPatch: { interval?: string; formula?: string } = {
+    interval: trimmed || undefined
+  }
+  if (trimmed && /\|/.test(e.formula)) {
+    nextPatch.formula = e.formula.replace(/\s*\|.*$/, '').trim() || '1'
+  }
+  s.updateEdge(e.id, nextPatch, 'edgeInterval')
+}
+
+function onEdgeResourceFilterSelect(resId: string): void {
+  const e = selectedEdge.value
+  if (!e) return
+  if (!resId) {
+    s.updateEdge(e.id, { resourceFilter: false, resourceId: undefined })
+  } else {
+    s.updateEdge(e.id, { resourceFilter: true, resourceId: resId })
+  }
+}
+
+function toggleSelectedEdgeInfluencer(): void {
+  const e = selectedEdge.value
+  if (!e) return
+  s.updateEdge(e.id, { influencer: !e.influencer })
+}
+
+function toggleSelectedNodeInfluencer(): void {
+  const n = selectedNode.value
+  if (!n) return
+  s.updateNode(n.id, { influencer: !n.influencer })
+}
+
 const selectedNodeFormulaValidation = computed(() => {
   const n = selectedNode.value
-  if (!n || (n.kind !== 'register' && n.kind !== 'end')) return null
+  if (
+    !n ||
+    (n.kind !== 'register' && n.kind !== 'end' && n.kind !== 'delay' && n.kind !== 'queue')
+  ) {
+    return null
+  }
   return validateMxFormula(n.formula, n.kind === 'end' ? 'end' : 'register')
 })
 
@@ -112,6 +315,23 @@ const selectedEdgeFormulaValidation = computed(() => {
   if (!e) return null
   return validateMxFormula(e.formula, e.kind)
 })
+
+const selectedEdgeIntervalValidation = computed(() => {
+  const e = selectedEdge.value
+  if (!e || e.kind !== 'resource' || !e.interval?.trim()) return null
+  return validateMxFormula(e.interval.trim(), 'register')
+})
+
+function onEdgeKindSwitch(ek: MxEdgeKind): void {
+  const e = selectedEdge.value
+  if (!e || e.kind === ek) return
+  s.updateEdge(e.id, {
+    kind: ek,
+    ...(ek === 'resource' ? { targetEdgeId: undefined } : {}),
+    ...(ek === 'state' && e.formula === '1' ? { formula: '+1' } : {}),
+    ...(ek === 'resource' && e.formula === '+1' ? { formula: '1' } : {})
+  })
+}
 
 function kindTitle(kind: MxNodeKind): string {
   return t(`mx.kind.${kind}`)
@@ -125,9 +345,19 @@ function edgeEndpointLabel(nodeId: string): string {
 function onResourceSelect(resId: string): void {
   const n = selectedNode.value
   if (!n) return
+  if (!resId) {
+    const prevRes = n.resourceId
+      ? s.doc.value.resources.find((r) => r.id === n.resourceId)
+      : undefined
+    s.updateNode(n.id, {
+      resourceId: undefined,
+      ...(prevRes && n.color === prevRes.color ? { color: undefined } : {})
+    })
+    return
+  }
   const res = s.doc.value.resources.find((r) => r.id === resId)
   s.updateNode(n.id, {
-    resourceId: resId || undefined,
+    resourceId: resId,
     ...(res ? { color: res.color } : {})
   })
 }
@@ -335,24 +565,15 @@ function addQuickConnectionFromInspector(): void {
               </template>
 
               <!-- Pull Mode -->
-              <template
-                v-if="
-                  selectedNode.kind === 'pool' ||
-                  selectedNode.kind === 'converter' ||
-                  selectedNode.kind === 'trader' ||
-                  selectedNode.kind === 'gate' ||
-                  selectedNode.kind === 'drain' ||
-                  selectedNode.kind === 'source'
-                "
-              >
+              <template v-if="availablePullModes.length > 0">
                 <label class="mx-field-label">{{ t('mx.inspector.pullMode') }}</label>
                 <div class="mx-pull-grid">
                   <button
-                    v-for="pm in pullModes"
+                    v-for="pm in availablePullModes"
                     :key="pm.id"
                     type="button"
                     class="mx-pull-btn"
-                    :class="{ 'is-active': selectedNode.pullMode === pm.id }"
+                    :class="{ 'is-active': effectiveNodePullMode === pm.id }"
                     @click="s.updateNode(selectedNode.id, { pullMode: pm.id })"
                   >
                     <span class="mx-pull-code">{{ pm.code }}</span>
@@ -361,24 +582,29 @@ function addQuickConnectionFromInspector(): void {
                 </div>
               </template>
 
-              <!-- Resources 下拉 -->
-              <label class="mx-field-label">{{ t('mx.inspector.resources') }}</label>
-              <div class="mx-res-select-wrap">
-                <span class="mx-res-dot" :style="{ background: selectedNode.color || '#3b82f6' }" />
-                <select
-                  class="mx-select"
-                  :value="selectedNode.resourceId ?? ''"
-                  @change="onResourceSelect(($event.target as HTMLSelectElement).value)"
-                >
-                  <option value="">{{ t('mx.inspector.anyResource') }}</option>
-                  <option v-for="r in s.doc.value.resources" :key="r.id" :value="r.id">
-                    {{ r.name }}
-                  </option>
-                </select>
-              </div>
+              <!-- Resources 下拉（排除无颜色资源概念的 Register 与 End 节点） -->
+              <template v-if="selectedNode.kind !== 'register' && selectedNode.kind !== 'end'">
+                <label class="mx-field-label">{{ t('mx.inspector.resources') }}</label>
+                <div class="mx-res-select-wrap">
+                  <span
+                    class="mx-res-dot"
+                    :style="{ background: selectedNode.color || '#3b82f6' }"
+                  />
+                  <select
+                    class="mx-select"
+                    :value="selectedNode.resourceId ?? ''"
+                    @change="onResourceSelect(($event.target as HTMLSelectElement).value)"
+                  >
+                    <option value="">{{ t('mx.inspector.anyResource') }}</option>
+                    <option v-for="r in s.doc.value.resources" :key="r.id" :value="r.id">
+                      {{ r.name }}
+                    </option>
+                  </select>
+                </div>
+              </template>
 
-              <!-- Ignore disabled inputs -->
-              <label class="mx-check-row">
+              <!-- Ignore disabled inputs（Source 无入边故隐藏） -->
+              <label v-if="selectedNode.kind !== 'source'" class="mx-check-row">
                 <input
                   type="checkbox"
                   :checked="Boolean(selectedNode.ignoreDisabledInputs)"
@@ -459,6 +685,66 @@ function addQuickConnectionFromInspector(): void {
                     {{ t(`mx.inspector.show_${modeOpt}`) }}
                   </button>
                 </div>
+                <div class="mx-two-col">
+                  <div>
+                    <label class="mx-field-label">{{ t('mx.inspector.displayCapacity') }}</label>
+                    <input
+                      class="mx-input"
+                      type="number"
+                      min="-1"
+                      max="100"
+                      :value="selectedNode.displayCapacity ?? 25"
+                      @input="
+                        s.updateNode(
+                          selectedNode.id,
+                          {
+                            displayCapacity: Math.max(
+                              -1,
+                              Math.min(
+                                100,
+                                Number.isFinite(Number(($event.target as HTMLInputElement).value))
+                                  ? Math.round(Number(($event.target as HTMLInputElement).value))
+                                  : 25
+                              )
+                            )
+                          },
+                          'dispCap'
+                        )
+                      "
+                    />
+                  </div>
+                </div>
+                <template v-if="selectedNode.trigger === 'passive'">
+                  <label class="mx-field-label">{{ t('mx.inspector.triggerOn') }}</label>
+                  <div class="mx-seg-row">
+                    <button
+                      type="button"
+                      class="mx-seg-btn"
+                      :class="{
+                        'is-active': (selectedNode.triggerOn ?? 'increase') === 'increase'
+                      }"
+                      @click="s.updateNode(selectedNode.id, { triggerOn: 'increase' })"
+                    >
+                      {{ t('mx.inspector.trigIncrease') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="mx-seg-btn"
+                      :class="{ 'is-active': selectedNode.triggerOn === 'decrease' }"
+                      @click="s.updateNode(selectedNode.id, { triggerOn: 'decrease' })"
+                    >
+                      {{ t('mx.inspector.trigDecrease') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="mx-seg-btn"
+                      :class="{ 'is-active': selectedNode.triggerOn === 'any_change' }"
+                      @click="s.updateNode(selectedNode.id, { triggerOn: 'any_change' })"
+                    >
+                      {{ t('mx.inspector.trigAnyChange') }}
+                    </button>
+                  </div>
+                </template>
               </template>
 
               <!-- Register 专属：Formula / Initial / Step / Min / Max -->
@@ -588,17 +874,42 @@ function addQuickConnectionFromInspector(): void {
                     type="button"
                     class="mx-seg-btn"
                     :class="{
-                      'is-active': (selectedNode.gateMode ?? 'random') !== 'deterministic'
+                      'is-active': (selectedNode.gateMode ?? 'random') === 'random'
                     }"
                     @click="s.updateNode(selectedNode.id, { gateMode: 'random' })"
                   >
                     🎲 {{ t('mx.inspector.gateDice') }}
                   </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.gateMode === 'skill' }"
+                    @click="s.updateNode(selectedNode.id, { gateMode: 'skill' })"
+                  >
+                    🎯 {{ t('mx.inspector.gateSkill') }}
+                  </button>
                 </div>
               </template>
 
-              <!-- Delay / Queue 专属：Delay Steps -->
+              <!-- Delay / Queue 专属：一键互换 + Delay Steps + 动态延迟公式 -->
               <template v-if="selectedNode.kind === 'delay' || selectedNode.kind === 'queue'">
+                <button
+                  type="button"
+                  class="mx-seg-btn"
+                  style="width: 100%; margin-bottom: 6px"
+                  @click="
+                    s.updateNode(selectedNode.id, {
+                      kind: selectedNode.kind === 'delay' ? 'queue' : 'delay'
+                    })
+                  "
+                >
+                  ⇄
+                  {{
+                    t('mx.inspector.switchDelayQueue', {
+                      target: kindTitle(selectedNode.kind === 'delay' ? 'queue' : 'delay')
+                    })
+                  }}
+                </button>
                 <label class="mx-field-label">{{ t('mx.inspector.delaySteps') }}</label>
                 <input
                   class="mx-input"
@@ -615,10 +926,43 @@ function addQuickConnectionFromInspector(): void {
                     })
                   "
                 />
+                <label class="mx-field-label">{{ t('mx.inspector.delayExpr') }}</label>
+                <input
+                  class="mx-input mx-mono"
+                  type="text"
+                  placeholder="D6"
+                  :value="selectedNode.formula ?? ''"
+                  @input="
+                    s.updateNode(
+                      selectedNode.id,
+                      { formula: ($event.target as HTMLInputElement).value },
+                      'delayExpr'
+                    )
+                  "
+                />
               </template>
 
-              <!-- End 专属：Condition -->
+              <!-- End 专属：Condition + Multi-input AND/OR -->
               <template v-if="selectedNode.kind === 'end'">
+                <label class="mx-field-label">{{ t('mx.inspector.endMode') }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': (selectedNode.endMode ?? 'all') === 'all' }"
+                    @click="s.updateNode(selectedNode.id, { endMode: 'all' })"
+                  >
+                    {{ t('mx.inspector.endAll') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.endMode === 'any' }"
+                    @click="s.updateNode(selectedNode.id, { endMode: 'any' })"
+                  >
+                    {{ t('mx.inspector.endAny') }}
+                  </button>
+                </div>
                 <div class="mx-field-head-row">
                   <label class="mx-field-label">{{ t('mx.inspector.endCondition') }}</label>
                   <span
@@ -768,7 +1112,10 @@ function addQuickConnectionFromInspector(): void {
                   >
                     {{ oe.kind === 'state' ? '╌►' : '──►' }}
                   </button>
-                  <span class="mx-conn-target" @click="s.select([oe.to])">
+                  <span
+                    class="mx-conn-target"
+                    @click="oe.targetEdgeId ? s.select([], [oe.targetEdgeId]) : s.select([oe.to])"
+                  >
                     {{ oe.targetEdgeId ? `#${oe.targetEdgeId}` : edgeEndpointLabel(oe.to) }}
                   </span>
                   <input
@@ -867,6 +1214,7 @@ function addQuickConnectionFromInspector(): void {
                   })
                 "
               >
+                <option value="">{{ t('mx.inspector.layerNone') }}</option>
                 <option v-for="ly in s.doc.value.layers" :key="ly.id" :value="ly.id">
                   {{ ly.name }}
                 </option>
@@ -878,6 +1226,25 @@ function addQuickConnectionFromInspector(): void {
             </div>
           </div>
         </div>
+
+        <!-- Pool / Register 节点底部 Mark as influencer 开关栏 -->
+        <footer
+          v-if="selectedNode.kind === 'pool' || selectedNode.kind === 'register'"
+          class="mx-influencer-footer"
+          @click="toggleSelectedNodeInfluencer"
+        >
+          <span class="mx-influencer-label">{{ t('mx.inspector.markAsInfluencer') }}</span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="Boolean(selectedNode.influencer)"
+            class="mx-switch"
+            :class="{ 'is-on': Boolean(selectedNode.influencer) }"
+            @click.stop="toggleSelectedNodeInfluencer"
+          >
+            <span class="mx-switch-knob" />
+          </button>
+        </footer>
       </template>
 
       <!-- ═════════════ 选中单条连线 ═════════════ -->
@@ -915,6 +1282,7 @@ function addQuickConnectionFromInspector(): void {
         </header>
 
         <div class="mx-insp-body">
+          <!-- 端点 + Label + Notes -->
           <div class="mx-insp-block">
             <div class="mx-edge-endpoints">
               <span>{{ edgeEndpointLabel(selectedEdge.from) }}</span>
@@ -937,100 +1305,326 @@ function addQuickConnectionFromInspector(): void {
               </button>
             </div>
 
-            <label class="mx-field-label">{{ t('mx.inspector.edgeKind') }}</label>
-            <div class="mx-seg-row">
-              <button
-                v-for="ek in ['resource', 'state'] as MxEdgeKind[]"
-                :key="ek"
-                type="button"
-                class="mx-seg-btn"
-                :class="{ 'is-active': selectedEdge.kind === ek }"
-                @click="s.updateEdge(selectedEdge.id, { kind: ek })"
-              >
-                {{
-                  ek === 'resource'
-                    ? '──► ' + t('mx.tool.resource_edge')
-                    : '╌╌► ' + t('mx.tool.state_edge')
-                }}
-              </button>
-            </div>
-
-            <div class="mx-field-head-row">
-              <label class="mx-field-label">{{ t('mx.inspector.formula') }}</label>
-              <span
-                v-if="selectedEdge.formula?.trim() && selectedEdgeFormulaValidation"
-                class="mx-formula-status"
-                :class="selectedEdgeFormulaValidation.valid ? 'is-ok' : 'is-err'"
-                :title="selectedEdgeFormulaValidation.error ?? ''"
-              >
-                {{
-                  selectedEdgeFormulaValidation.valid
-                    ? '✓ OK'
-                    : `⚠ ${selectedEdgeFormulaValidation.error}`
-                }}
-              </span>
-            </div>
+            <label class="mx-field-label">{{ t('mx.inspector.label') }}</label>
             <input
-              class="mx-input mx-mono"
+              class="mx-input"
               type="text"
-              :value="selectedEdge.formula"
+              placeholder="var_name / label"
+              :value="selectedEdge.label ?? ''"
               @input="
                 s.updateEdge(
                   selectedEdge.id,
-                  { formula: ($event.target as HTMLInputElement).value },
-                  'edgeFormula'
+                  { label: ($event.target as HTMLInputElement).value || undefined },
+                  'edgeLabel'
                 )
               "
             />
+            <textarea
+              class="mx-textarea"
+              rows="2"
+              :placeholder="t('mx.inspector.notesPlaceholder')"
+              :value="selectedEdge.notes ?? ''"
+              @input="
+                s.updateEdge(
+                  selectedEdge.id,
+                  { notes: ($event.target as HTMLTextAreaElement).value || undefined },
+                  'edgeNotes'
+                )
+              "
+            />
+          </div>
 
-            <div class="mx-chip-row">
-              <button
-                v-for="ch in selectedEdge.kind === 'state' ? stateChips : resourceChips"
-                :key="ch"
-                type="button"
-                class="mx-chip"
-                @click="s.updateEdge(selectedEdge.id, { formula: ch })"
+          <!-- Functionality 折叠区（1:1 对齐 Machinations Connection Functionality 面板） -->
+          <div class="mx-insp-section">
+            <button type="button" class="mx-sec-head" @click="funcOpen = !funcOpen">
+              <span>{{ t('mx.inspector.functionality') }}</span>
+              <span class="mx-caret">{{ funcOpen ? '▾' : '▸' }}</span>
+            </button>
+
+            <div v-if="funcOpen" class="mx-sec-body">
+              <label class="mx-field-label">{{ t('mx.inspector.edgeKind') }}</label>
+              <div class="mx-seg-row">
+                <button
+                  v-for="ek in ['resource', 'state'] as MxEdgeKind[]"
+                  :key="ek"
+                  type="button"
+                  class="mx-seg-btn"
+                  :class="{ 'is-active': selectedEdge.kind === ek }"
+                  @click="onEdgeKindSwitch(ek)"
+                >
+                  {{
+                    ek === 'resource'
+                      ? '──► ' + t('mx.tool.resource_edge')
+                      : '╌╌► ' + t('mx.tool.state_edge')
+                  }}
+                </button>
+              </div>
+
+              <!-- Type 下拉（123 Number / % Chance / 🎲 Dice roll / fx Formula / All / Gate Condition / State 全类型） -->
+              <div class="mx-field-head-row">
+                <label class="mx-field-label">{{ t('mx.inspector.edgeFormulaType') }}</label>
+                <span
+                  v-if="selectedEdge.formula?.trim() && selectedEdgeFormulaValidation"
+                  class="mx-formula-status"
+                  :class="selectedEdgeFormulaValidation.valid ? 'is-ok' : 'is-err'"
+                  :title="selectedEdgeFormulaValidation.error ?? ''"
+                >
+                  {{
+                    selectedEdgeFormulaValidation.valid
+                      ? '✓ OK'
+                      : `⚠ ${selectedEdgeFormulaValidation.error}`
+                  }}
+                </span>
+              </div>
+              <select
+                class="mx-select"
+                :value="selectedEdgeFormulaType"
+                @change="onEdgeFormulaTypeChange(($event.target as HTMLSelectElement).value)"
               >
-                {{ ch }}
+                <template v-if="selectedEdge.kind === 'resource'">
+                  <option value="number">{{ t('mx.inspector.ft_number') }}</option>
+                  <option value="chance">{{ t('mx.inspector.ft_chance') }}</option>
+                  <option value="dice">{{ t('mx.inspector.ft_dice') }}</option>
+                  <option value="formula">{{ t('mx.inspector.ft_formula') }}</option>
+                  <option value="all">{{ t('mx.inspector.ft_all') }}</option>
+                  <option value="cond_gate">{{ t('mx.inspector.ft_cond_gate') }}</option>
+                </template>
+                <template v-else>
+                  <option value="st_trigger">{{ t('mx.inspector.ft_st_trigger') }}</option>
+                  <option value="st_rev_trigger">{{ t('mx.inspector.ft_st_rev_trigger') }}</option>
+                  <option value="st_activator">{{ t('mx.inspector.ft_st_activator') }}</option>
+                  <option value="st_range">{{ t('mx.inspector.ft_st_range') }}</option>
+                  <option value="st_modifier">{{ t('mx.inspector.ft_st_modifier') }}</option>
+                  <option value="st_fraction">{{ t('mx.inspector.ft_st_fraction') }}</option>
+                  <option value="st_interval">{{ t('mx.inspector.ft_st_interval') }}</option>
+                  <option value="st_overwrite">{{ t('mx.inspector.ft_st_overwrite') }}</option>
+                  <option value="st_prob">{{ t('mx.inspector.ft_st_prob') }}</option>
+                  <option value="st_formula">{{ t('mx.inspector.ft_st_formula') }}</option>
+                </template>
+              </select>
+
+              <!-- 紧跟 Type 下方的数值 / 公式输入框 -->
+              <input
+                class="mx-input mx-mono"
+                type="text"
+                :value="selectedEdge.formula"
+                @input="
+                  s.updateEdge(
+                    selectedEdge.id,
+                    { formula: ($event.target as HTMLInputElement).value },
+                    'edgeFormula'
+                  )
+                "
+              />
+
+              <div class="mx-chip-row">
+                <button
+                  v-for="ch in activeEdgeChips"
+                  :key="ch"
+                  type="button"
+                  class="mx-chip"
+                  @click="s.updateEdge(selectedEdge.id, { formula: ch })"
+                >
+                  {{ ch }}
+                </button>
+              </div>
+
+              <!-- Resource 连接专属：Allow decimals、Interval、Transfer (flow | instant)、Limits、Shuffle Origin -->
+              <template v-if="selectedEdge.kind === 'resource'">
+                <label class="mx-check-row">
+                  <input
+                    type="checkbox"
+                    :checked="selectedEdge.allowDecimals !== false"
+                    @change="
+                      s.updateEdge(selectedEdge.id, {
+                        allowDecimals: ($event.target as HTMLInputElement).checked
+                      })
+                    "
+                  />
+                  <span>{{ t('mx.inspector.allowDecimals') }}</span>
+                </label>
+
+                <div class="mx-field-head-row">
+                  <label class="mx-field-label">{{ t('mx.inspector.edgeInterval') }}</label>
+                  <span
+                    v-if="selectedEdgeIntervalValidation"
+                    class="mx-formula-status"
+                    :class="selectedEdgeIntervalValidation.valid ? 'is-ok' : 'is-err'"
+                    :title="selectedEdgeIntervalValidation.error ?? ''"
+                  >
+                    {{
+                      selectedEdgeIntervalValidation.valid
+                        ? '✓ OK'
+                        : `⚠ ${selectedEdgeIntervalValidation.error}`
+                    }}
+                  </span>
+                </div>
+                <input
+                  class="mx-input mx-mono"
+                  type="text"
+                  :placeholder="edgeInlineIntervalHint"
+                  :value="selectedEdge.interval ?? ''"
+                  @input="onEdgeIntervalChange(($event.target as HTMLInputElement).value)"
+                />
+
+                <label class="mx-field-label">{{ t('mx.inspector.transferMode') }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{
+                      'is-active': (selectedEdge.transferMode ?? 'flow') !== 'instant'
+                    }"
+                    @click="s.updateEdge(selectedEdge.id, { transferMode: 'flow' })"
+                  >
+                    {{ t('mx.inspector.transferFlow') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedEdge.transferMode === 'instant' }"
+                    @click="s.updateEdge(selectedEdge.id, { transferMode: 'instant' })"
+                  >
+                    {{ t('mx.inspector.transferInstant') }}
+                  </button>
+                </div>
+
+                <div class="mx-two-col">
+                  <div>
+                    <label class="mx-field-label">{{ t('mx.inspector.minLimit') }}</label>
+                    <input
+                      class="mx-input"
+                      type="number"
+                      placeholder="0"
+                      :value="selectedEdge.minLimit ?? ''"
+                      @input="
+                        s.updateEdge(selectedEdge.id, {
+                          minLimit:
+                            ($event.target as HTMLInputElement).value === ''
+                              ? undefined
+                              : Number(($event.target as HTMLInputElement).value)
+                        })
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label class="mx-field-label">{{ t('mx.inspector.maxLimit') }}</label>
+                    <input
+                      class="mx-input"
+                      type="number"
+                      placeholder="+∞"
+                      :value="selectedEdge.maxLimit ?? ''"
+                      @input="
+                        s.updateEdge(selectedEdge.id, {
+                          maxLimit:
+                            ($event.target as HTMLInputElement).value === ''
+                              ? undefined
+                              : Number(($event.target as HTMLInputElement).value)
+                        })
+                      "
+                    />
+                  </div>
+                </div>
+
+                <label class="mx-check-row">
+                  <input
+                    type="checkbox"
+                    :checked="Boolean(selectedEdge.shuffleOrigin)"
+                    @change="
+                      s.updateEdge(selectedEdge.id, {
+                        shuffleOrigin: ($event.target as HTMLInputElement).checked || undefined
+                      })
+                    "
+                  />
+                  <span>{{ t('mx.inspector.shuffleOrigin') }}</span>
+                </label>
+              </template>
+
+              <!-- Resource Filter 单一下拉框（None + 各定义资源颜色，支持 Resource 与 State 连接） -->
+              <label class="mx-field-label">{{ t('mx.inspector.resourceFilter') }}</label>
+              <div class="mx-res-select-wrap">
+                <span
+                  v-if="selectedEdge.resourceFilter && selectedEdge.resourceId"
+                  class="mx-res-dot"
+                  :style="{
+                    background:
+                      s.doc.value.resources.find((r) => r.id === selectedEdge?.resourceId)?.color ||
+                      '#3b82f6'
+                  }"
+                />
+                <select
+                  class="mx-select"
+                  :value="selectedEdge.resourceFilter ? (selectedEdge.resourceId ?? '') : ''"
+                  @change="onEdgeResourceFilterSelect(($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="">{{ t('mx.inspector.resourceFilterNone') }}</option>
+                  <option v-for="r in s.doc.value.resources" :key="r.id" :value="r.id">
+                    {{ r.name }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Appearance 折叠区 -->
+          <div class="mx-insp-section">
+            <button type="button" class="mx-sec-head" @click="styleOpen = !styleOpen">
+              <span>{{ t('mx.inspector.appearance') }}</span>
+              <span class="mx-caret">{{ styleOpen ? '▾' : '▸' }}</span>
+            </button>
+            <div v-if="styleOpen" class="mx-sec-body">
+              <label class="mx-field-label">
+                {{ t('mx.inspector.edgeCurvature') }} ({{ selectedEdge.bend ?? 0 }})
+              </label>
+              <input
+                type="range"
+                min="-120"
+                max="120"
+                step="4"
+                :value="selectedEdge.bend ?? 0"
+                @input="
+                  s.updateEdge(
+                    selectedEdge.id,
+                    { bend: Number(($event.target as HTMLInputElement).value) },
+                    'bend'
+                  )
+                "
+              />
+
+              <label class="mx-field-label">{{ t('mx.inspector.color') }}</label>
+              <div class="mx-swatch-row">
+                <button
+                  v-for="c in swatches"
+                  :key="c"
+                  type="button"
+                  class="mx-swatch"
+                  :class="{ 'is-active': selectedEdge.color === c }"
+                  :style="{ background: c }"
+                  @click="s.updateEdge(selectedEdge.id, { color: c })"
+                />
+              </div>
+
+              <button type="button" class="mx-danger-btn" @click="s.deleteSelection()">
+                {{ t('mx.inspector.deleteElement') }}
               </button>
             </div>
-
-            <label class="mx-field-label">
-              {{ t('mx.inspector.edgeCurvature') }} ({{ selectedEdge.bend ?? 0 }})
-            </label>
-            <input
-              type="range"
-              min="-120"
-              max="120"
-              step="4"
-              :value="selectedEdge.bend ?? 0"
-              @input="
-                s.updateEdge(
-                  selectedEdge.id,
-                  { bend: Number(($event.target as HTMLInputElement).value) },
-                  'bend'
-                )
-              "
-            />
-
-            <label class="mx-field-label">{{ t('mx.inspector.color') }}</label>
-            <div class="mx-swatch-row">
-              <button
-                v-for="c in swatches"
-                :key="c"
-                type="button"
-                class="mx-swatch"
-                :class="{ 'is-active': selectedEdge.color === c }"
-                :style="{ background: c }"
-                @click="s.updateEdge(selectedEdge.id, { color: c })"
-              />
-            </div>
-
-            <button type="button" class="mx-danger-btn" @click="s.deleteSelection()">
-              {{ t('mx.inspector.deleteElement') }}
-            </button>
           </div>
         </div>
+
+        <!-- 底部固定栏：Mark as influencer 开关（对齐截图底部） -->
+        <footer class="mx-influencer-footer" @click="toggleSelectedEdgeInfluencer">
+          <span class="mx-influencer-label">{{ t('mx.inspector.markAsInfluencer') }}</span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="Boolean(selectedEdge.influencer)"
+            class="mx-switch"
+            :class="{ 'is-on': Boolean(selectedEdge.influencer) }"
+            @click.stop="toggleSelectedEdgeInfluencer"
+          >
+            <span class="mx-switch-knob" />
+          </button>
+        </footer>
       </template>
 
       <!-- ═════════════ 未选中或选中多个：全局属性 ═════════════ -->
@@ -1169,6 +1763,24 @@ function addQuickConnectionFromInspector(): void {
                 <span class="mx-stat-num">{{ s.doc.value.edges.length }}</span>
                 <span class="mx-stat-lbl">{{ t('mx.inspector.edgesCount') }}</span>
               </div>
+            </div>
+
+            <div v-if="s.selection.nodes.length > 1" class="mx-field" style="margin-top: 12px">
+              <label class="mx-field-label">{{ t('mx.inspector.assignToLayer') }}</label>
+              <select
+                class="mx-select"
+                @change="
+                  s.assignNodesToLayer(
+                    s.selection.nodes,
+                    ($event.target as HTMLSelectElement).value || undefined
+                  )
+                "
+              >
+                <option value="">{{ t('mx.inspector.chooseLayer') }}</option>
+                <option v-for="ly in s.doc.value.layers" :key="ly.id" :value="ly.id">
+                  {{ ly.name }}
+                </option>
+              </select>
             </div>
 
             <button
@@ -1654,5 +2266,55 @@ function addQuickConnectionFromInspector(): void {
 .mx-formula-status.is-err {
   color: #dc2626;
   background: rgba(220, 38, 38, 0.14);
+}
+
+.mx-influencer-footer {
+  flex-shrink: 0;
+  height: 40px;
+  padding: 0 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+.mx-influencer-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text, #e8eaed);
+}
+.mx-switch {
+  position: relative;
+  width: 34px;
+  height: 19px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--wash-08, rgba(148, 163, 184, 0.25));
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease;
+  flex-shrink: 0;
+}
+.mx-switch.is-on {
+  background: var(--accent, #4f46e5);
+  border-color: var(--accent, #4f46e5);
+}
+.mx-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transition: transform 0.18s ease;
+}
+.mx-switch.is-on .mx-switch-knob {
+  transform: translateX(15px);
 }
 </style>
