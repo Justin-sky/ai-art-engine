@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.5.6] — 2026-11-05
+
+8.5.6 补丁版：新增 **GPT Image 2.6 SVG 矢量图与 GIF 动图原生直出支持**、**2D 动画 GIF 动图一键拆解为关键帧时间轴**，大幅强化 **画布粒子流动与连线光效循环的异常自愈机制**，并升级 **UI 图层高精度多图层分割管线**。
+
+- **新增 · GPT Image 2.6 SVG 矢量图生成与全链路适配（`openaiCompat` + `openrouter/adapter` + `imageGenerateParams` + `ImageGenerateParamsSelect`）**：在图片生成节点与参数下拉面板中恢复 `gpt-image-2.6` 系列模型的 `SVG` 矢量图格式选项；请求自动挂载 `svg: { model: 'gpt-6.1-sol' }` 官方向量生成载荷；并对带参考图的编辑端点（`/images/edits`）增加拦截与引导提示，防止非法请求被云端拒绝。
+- **新增 · AI 对话快速直出 GIF 动图与 2D 动画 GIF 解包（`deepseekHarnessService` + `smartPatch` + `unpackAnim2dGif` + `gifDecode` + `EditorDiveAnim2dView`）**：支持在 AI 对话 Copilot 中通过语义直接生成 GIF 动图（自动映射 `outputFormat: 'gif'` 与对应分辨率尺寸），直出 `asset.image` 单节点；2D 动画节点下潜编辑视口新增 GIF 解包功能，可一键将已生成的动图拆解为独立关键帧并导入胶片序列时间轴。
+- **优化 · 节点画布能量连线与粒子动画抗假死自愈（`edgeCanvas` + `NodeGraphEditor`）**：针对长时间执行或复杂工程下的动画帧循环，将 `edgeFlowTick` 重构为高韧性 `try...catch...finally` 保护结构，防止偶发异常中断 rAF 递归调度；补充 `setLineDash` 与几何半径的有限数值守卫以抵御 `NaN`；增加视口手势状态超时自愈与窗口聚焦/可见性恢复监听，避免动画意外休眠。
+- **优化 · UI 多图层精准切片与图层净化管线（`uiPreciseSplit` + `LayerSplitEditorDialog`）**：完善组件库语义识别、透明度抠图精细化边缘、图层重叠互补与净化修复管线。
+
 ## [8.5.5] — 2026-10-25
 
 8.5.5 补丁版：新增 **鬼畜调音与人声歌唱合成管线（TD-PSOLA 时域共振峰保持移调 + 旋律音符序列编排 + 空间电音特效 + `web_fetch_video` 名场面素材一键抓取）**，升级 **「视频拆解与重制」节点命名体系与实时视觉追踪 HUD 叠加层**，并完善 **时间线成片导出在 AI 对话流中的实时视频预览卡展示**。
