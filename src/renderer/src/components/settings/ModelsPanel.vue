@@ -551,6 +551,21 @@ function ensureArkVoiceCatalog(provider: ModelProviderInstance): void {
   }
 }
 
+function sortCatalogWithSelectedFirst(
+  list: CatalogModel[],
+  selectedModelIds: readonly string[]
+): CatalogModel[] {
+  if (!selectedModelIds.length || !list.length) return list
+  const selectedSet = new Set(selectedModelIds)
+  const selected: CatalogModel[] = []
+  const unselected: CatalogModel[] = []
+  for (const item of list) {
+    if (selectedSet.has(item.id)) selected.push(item)
+    else unselected.push(item)
+  }
+  return [...selected, ...unselected]
+}
+
 /** 初始化提供商当前模态的预置模型列表（内置最新目录 + 已保存目录/勾选） */
 function ensureProviderCatalog(
   provider: ModelProviderInstance,
@@ -593,7 +608,7 @@ function ensureProviderCatalog(
     }
   }
   if (next.length > 0) {
-    catalogs[key] = next
+    catalogs[key] = sortCatalogWithSelectedFirst(next, sel.selectedModelIds)
   }
 }
 
@@ -937,7 +952,8 @@ async function refreshModels(
     const list = Array.isArray(listRaw) ? listRaw : []
     // 远端偶发空列表：保留上次成功结果，避免图片页签「第二次拉取为空」
     if (!list.length && previous.length) {
-      catalogs[key] = previous
+      const sel = modalityConfig(latestBefore, modality)
+      catalogs[key] = sortCatalogWithSelectedFirst(previous, sel.selectedModelIds)
       catalogErrors[key] = t('settings.models.emptyRemoteKeepPrevious')
       return
     }
@@ -959,7 +975,8 @@ async function refreshModels(
         seen.add(id)
       }
     }
-    catalogs[key] = next
+    // 拉取模型时将已选中的模型排序到前面；后续用户勾选/取消勾选时不重新排序，避免行跳动
+    catalogs[key] = sortCatalogWithSelectedFirst(next, sel.selectedModelIds)
     // 把分辨率 / 时长 / supported_frame_images 等能力写入设置快照
     syncModalityCatalogEntries(sel, next)
     // 音频页签还要两样：
@@ -1073,19 +1090,11 @@ function filteredCatalog(provider: ModelProviderInstance, modality: ModelModalit
   const onlySelected = Boolean(onlySelectedFilter[key])
   const selectedSet = new Set(modalityConfig(provider, modality).selectedModelIds)
   const list = catalogs[key] ?? []
-  const filtered = list.filter((m) => {
+  return list.filter((m) => {
     if (onlySelected && !selectedSet.has(m.id)) return false
     if (!q) return true
     return m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q)
   })
-  if (onlySelected || selectedSet.size === 0) return filtered
-  const selected: CatalogModel[] = []
-  const unselected: CatalogModel[] = []
-  for (const item of filtered) {
-    if (selectedSet.has(item.id)) selected.push(item)
-    else unselected.push(item)
-  }
-  return [...selected, ...unselected]
 }
 
 function toggleModel(

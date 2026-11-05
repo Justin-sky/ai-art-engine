@@ -4,7 +4,7 @@
     <header class="toolbar">
       <div class="toolbar-group">
         <span class="tb-title">🎞️ {{ displayTitle }}</span>
-        <div class="preset-pills">
+        <div v-if="!isGifSource" class="preset-pills">
           <button
             v-for="p in GRID_PRESETS"
             :key="`${p.rows}x${p.cols}`"
@@ -16,7 +16,7 @@
             {{ p.rows }}×{{ p.cols }}
           </button>
         </div>
-        <div class="dim-inline">
+        <div v-if="!isGifSource" class="dim-inline">
           <label>
             <span>{{ t('graph.anim2d.rows') }}</span>
             <input
@@ -46,6 +46,13 @@
               @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             />
           </label>
+        </div>
+        <div v-else class="gif-source-badge-pill">
+          <span
+            >🎞️ {{ pickBi('GIF 动图源', 'GIF Animation') }} · {{ activeCells.length }}/{{
+              cells.length
+            }}F</span
+          >
         </div>
       </div>
 
@@ -177,17 +184,21 @@
         <section class="panel-card">
           <div class="panel-head">
             <span class="panel-title">{{
-              pickBi('源序列图切格预览', 'Source Sprite Sheet Grid')
+              isGifSource
+                ? pickBi('GIF 动图源', 'GIF Animation Source')
+                : pickBi('源序列图切格预览', 'Source Sprite Sheet Grid')
             }}</span>
-            <span class="panel-badge"
-              >{{ state.rows }}×{{ state.cols }} ({{ state.rows * state.cols }}
-              {{ pickBi('格', 'cells') }})</span
-            >
+            <span class="panel-badge">{{
+              isGifSource
+                ? `${cells.length} ${pickBi('帧', 'frames')}`
+                : `${state.rows}×${state.cols} (${state.rows * state.cols} ${pickBi('格', 'cells')})`
+            }}</span>
           </div>
           <div v-if="sourceSheetUrl" class="sheet-overlay-wrap" :class="`bg-${backdrop}`">
             <div class="sheet-stage">
               <img :src="sourceSheetUrl" alt="" class="sheet-img" draggable="false" />
               <div
+                v-if="!isGifSource"
                 class="sheet-grid-overlay"
                 :style="{
                   gridTemplateRows: `repeat(${state.rows}, 1fr)`,
@@ -214,6 +225,9 @@
                     {{ isCellDisabled(cellKey) ? '🚫' : '✓' }}
                   </button>
                 </div>
+              </div>
+              <div v-else class="gif-source-hint-banner">
+                <span>🎞️ GIF ({{ cells.length }}F · {{ fps }}fps)</span>
               </div>
             </div>
           </div>
@@ -656,6 +670,24 @@
             <div class="film-foot">
               <span class="film-idx">#{{ idx + 1 }}</span>
               <button
+                v-if="idx > 0"
+                type="button"
+                class="film-step-btn"
+                :title="pickBi('前移此帧', 'Move left')"
+                @click.stop="moveCell(cell.key, -1)"
+              >
+                ◀
+              </button>
+              <button
+                v-if="idx < cells.length - 1"
+                type="button"
+                class="film-step-btn"
+                :title="pickBi('后移此帧', 'Move right')"
+                @click.stop="moveCell(cell.key, 1)"
+              >
+                ▶
+              </button>
+              <button
                 type="button"
                 class="film-hold-pill"
                 :class="{ custom: Math.abs(getCellHold(cell.key) - 1) >= 0.01 }"
@@ -713,6 +745,8 @@ import {
   readAnim2dFromNode,
   readAnimCellHoldsFromNode,
   readAnimCellOffsetsFromNode,
+  readAnimCellOrderFromNode,
+  readAnimCellEditsFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGifFpsFromNode,
@@ -753,6 +787,7 @@ import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../../features/graph/model/graphRunHosts'
 import { resolveNodeUpstreamImageUrl } from '../../features/graph/model/resolveNodeUpstreamImageUrl'
 import { resolveNodeUpstreamVideoUrl } from '../../features/graph/model/resolveNodeUpstreamVideoUrl'
+import { tryUnpackSourceGif } from '../../features/graph/model/unpackAnim2dGif'
 import { composeVideoFrameSheet } from '../../features/graph/model/composeVideoFrameSheet'
 import { composeImageGridCell } from '../../features/graph/model/composeImageGridCell'
 import { composeAnim2dGif, type Anim2dGifResult } from '../../features/graph/model/composeAnim2dGif'
@@ -803,7 +838,13 @@ const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readAnim2dFromNode(node.value.params) : { rows: 1, cols: 4 }
 )
-const allCellKeys = computed(() => anim2dCellKeys(state.value.rows, state.value.cols))
+const isGifSource = ref(false)
+const allCellKeys = computed(() => {
+  if (isGifSource.value && cells.value.length > 0) {
+    return cells.value.map((c) => c.key)
+  }
+  return anim2dCellKeys(state.value.rows, state.value.cols)
+})
 const videoRange = computed(() =>
   node.value ? readAnimVideoRangeFromNode(node.value.params) : { startRatio: 0, endRatio: 1 }
 )
@@ -1196,6 +1237,18 @@ function toggleCellDisabled(key: string): void {
     current.push(key)
   }
   patchParams({ animDisabledCells: current })
+}
+
+function moveCell(key: string, dir: -1 | 1): void {
+  const current = cells.value.map((c) => c.key)
+  const idx = current.indexOf(key)
+  if (idx < 0) return
+  const target = idx + dir
+  if (target < 0 || target >= current.length) return
+  const next = [...current]
+  const [removed] = next.splice(idx, 1)
+  next.splice(target, 0, removed!)
+  patchParams({ animCellOrder: next })
 }
 
 type AnimCell = { key: string; dataUrl: string }
@@ -1736,6 +1789,54 @@ async function refreshCells(): Promise<void> {
     const loopBlendVal = readAnimLoopBlendFromNode(current.params)
     const playModeVal = readAnimPlayModeFromNode(current.params)
     const disabledSet = new Set(readAnimDisabledCellsFromNode(current.params))
+
+    const unpackedGif = await tryUnpackSourceGif(sourceUrl)
+    isGifSource.value = Boolean(unpackedGif && unpackedGif.frames.length > 1)
+
+    if (unpackedGif && unpackedGif.frames.length > 1) {
+      if (!current.params.animGifFps && unpackedGif.averageFps) {
+        fps.value = unpackedGif.averageFps
+      }
+      const defaultGifKeys = unpackedGif.frames.map((f) => f.key)
+      const allKeys = readAnimCellOrderFromNode(current.params, defaultGifKeys)
+      const customEdits = readAnimCellEditsFromNode(current.params)
+
+      for (const cell of allKeys) {
+        if (token !== cellToken) return
+        const origFrame = unpackedGif.frames.find((f) => f.key === cell)
+        if (!origFrame) continue
+
+        let frameUrl = customEdits[cell] || origFrame.dataUrl
+        const offset = offsetsMap[cell]
+        if (keyColorValue || stabilizeValue !== 'off' || offset) {
+          try {
+            const composed = await composeImageGridCell({
+              sourceDataUrl: frameUrl,
+              state: { rows: 1, cols: 1, selected: [] },
+              cellKey: '1-1',
+              edgeInset: 0,
+              ...(keyColorValue
+                ? { chromaKey: { color: keyColorValue, threshold: thresholdValue } }
+                : {}),
+              ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {}),
+              ...(offset ? { cellOffset: offset } : {})
+            })
+            if (composed.dataUrl) frameUrl = composed.dataUrl
+          } catch {
+            /* keep frameUrl */
+          }
+        }
+        next.push({ key: cell, dataUrl: frameUrl })
+      }
+      if (token !== cellToken) return
+      cellCombatBoxMap.value = nextCombatBoxes
+      cells.value = next
+      if (next.length > 1) {
+        startPlayback()
+      }
+      return
+    }
+
     const allKeys = anim2dCellKeys(s.rows, s.cols)
     const enabledKeys = allKeys.filter((k) => !disabledSet.has(k))
     const lastEnabledKey = enabledKeys.length >= 3 ? enabledKeys[enabledKeys.length - 1] : ''
@@ -1836,6 +1937,9 @@ watch(
     () => readAnimMotionTrailFromNode(node.value?.params),
     () => readAnimLoopBlendFromNode(node.value?.params),
     () => JSON.stringify(readAnimCellOffsetsFromNode(node.value?.params)),
+    () => JSON.stringify(readAnimCellOrderFromNode(node.value?.params)),
+    () => JSON.stringify(readAnimCellEditsFromNode(node.value?.params)),
+    () => JSON.stringify(readAnimDisabledCellsFromNode(node.value?.params)),
     () => {
       const grid = node.value?.params?.animGridImage as
         { dataUrl?: string; relativePath?: string } | undefined
@@ -2454,6 +2558,52 @@ onBeforeUnmount(stopPlayback)
   cursor: pointer;
   font-size: 10px;
   padding: 0 2px;
+}
+
+.film-step-btn {
+  border: none;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 8px;
+  padding: 1px 3px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.film-step-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.gif-source-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(147, 51, 234, 0.18);
+  border: 1px solid rgba(168, 85, 247, 0.35);
+  color: #d8b4fe;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.gif-source-hint-banner {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .empty-box,

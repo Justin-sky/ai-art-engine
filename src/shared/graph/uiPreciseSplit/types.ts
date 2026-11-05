@@ -10,7 +10,9 @@ import type {
   LocalOcrTextBox,
   UiControlPartRole,
   UiControlType,
-  UiEditableTextMeta
+  UiEditableTextMeta,
+  UiFontStyleCategory,
+  UiLayerBlendMode
 } from '../uiControlSpec'
 
 export interface RgbaImage {
@@ -110,6 +112,10 @@ export interface UiElementNode {
   slotInnerRect?: PixelRect
   /** VLM 预判匹配的共享组件库母本 ID（仍需经像素几何一致性校验） */
   matchedComponentId?: string
+  /** VLM 预判发光混合模式提示（仍需经像素增亮物理一致性校验） */
+  blendModeHint?: UiLayerBlendMode
+  /** VLM 预判文本字体形态提示 */
+  fontStyleHint?: UiFontStyleCategory
 }
 
 export interface UiLayoutTree {
@@ -162,6 +168,10 @@ export interface PreciseSplitLayer {
   componentMatchScore?: number
   /** 组件母本替换前保留的原图提取像素（供编辑器无损切换回原图抠图） */
   originalRgba?: Uint8ClampedArray
+  /** 图层混合模式（'normal' | 'screen' | 'linear dodge'） */
+  blendMode?: UiLayerBlendMode
+  /** 背景毛玻璃模糊半径（px） */
+  backdropBlurRadius?: number
   /** 可选：显式无遮挡有效像素掩码（1 = 未被上层遮挡，长度 = width * height） */
   knownMask?: Uint8Array
 }

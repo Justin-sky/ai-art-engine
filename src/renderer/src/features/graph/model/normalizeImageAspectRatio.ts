@@ -43,13 +43,19 @@ export function aspectRatioCropRect(
   return { x: 0, y: Math.floor((h - ch) / 2), width: w, height: Math.min(h, ch) }
 }
 
-/** 返回裁正后的 dataUrl；无需裁正或失败时返回原 dataUrl */
+/** 返回裁正后的 dataUrl；无需裁正、动态 GIF 或失败时返回原 dataUrl（保护 GIF 帧动画不被 Canvas 压平为静态图） */
 export async function normalizeImageAspectRatio(input: {
   dataUrl: string
   aspectRatio: string
 }): Promise<string> {
   const ratio = parseAspectRatio(input.aspectRatio)
-  if (!ratio || !input.dataUrl.startsWith('data:image/')) return input.dataUrl
+  if (
+    !ratio ||
+    !input.dataUrl.startsWith('data:image/') ||
+    input.dataUrl.startsWith('data:image/gif')
+  ) {
+    return input.dataUrl
+  }
   const img = await loadImage(input.dataUrl)
   const sw = img.naturalWidth || 1
   const sh = img.naturalHeight || 1

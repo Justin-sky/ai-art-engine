@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readPsd } from 'ag-psd'
 import {
   buildBinaryMaskRgba,
   buildLayoutTree,
@@ -27,7 +28,11 @@ import {
   purifySolidBgFallbackSplitLayers,
   runPreciseLayerSplitForNode
 } from '../src/shared/graph/execute/layerSplitPrecise'
-import { prefersPreciseUiLayerSplit } from '../src/shared/graph/imageLayerSplit'
+import {
+  normalizeImageLayerSplit,
+  prefersPreciseUiLayerSplit
+} from '../src/shared/graph/imageLayerSplit'
+import { layerSplitToPsdUint8Array } from '../src/renderer/src/features/graph/model/layerSplitPsd'
 import { pickVisionGroundingProvider, visionGroundingScore } from '../src/shared/modelProvider'
 
 const W = 200
@@ -2370,5 +2375,1222 @@ describe('uiPreciseSplit · bggg-creator-image2psd layerSplit optimizations', ()
         { zoomRefine: false }
       )
     ).rejects.toThrow(/PRECISE_SPLIT_PURIFY_FAILED/)
+  })
+
+  it('recovers 50% translucent glassmorphism HUD bar with opaque gold border and punches enclosed art-text holes', async () => {
+    const cw = 220
+    const ch = 120
+    const hudRect = { left: 20, top: 14, width: 180, height: 34 }
+    const txtRect = { left: 86, top: 24, width: 44, height: 14 }
+    const ringArtRect = { left: 88, top: 64, width: 44, height: 44 }
+
+    const cleanBase = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const t = x / Math.max(1, cw - 1)
+        const i = (y * cw + x) * 4
+        cleanBase.data[i] = Math.round(50 + 180 * t)
+        cleanBase.data[i + 1] = Math.round(120 + 10 * t)
+        cleanBase.data[i + 2] = Math.round(215 - 150 * t)
+        cleanBase.data[i + 3] = 255
+      }
+    }
+
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    // 1) Draw HUD bar: 2px 100%-opaque gold border + 50%-translucent dark glass interior ([18, 22, 34], alpha=0.5)
+    for (let y = hudRect.top; y < hudRect.top + hudRect.height; y++) {
+      for (let x = hudRect.left; x < hudRect.left + hudRect.width; x++) {
+        const lx = x - hudRect.left
+        const ly = y - hudRect.top
+        const i = (y * cw + x) * 4
+        const isBorder = lx < 2 || lx >= hudRect.width - 2 || ly < 2 || ly >= hudRect.height - 2
+        if (isBorder) {
+          scene.data[i] = 228
+          scene.data[i + 1] = 180
+          scene.data[i + 2] = 56
+        } else {
+          scene.data[i] = Math.round(0.5 * 18 + 0.5 * cleanBase.data[i]!)
+          scene.data[i + 1] = Math.round(0.5 * 22 + 0.5 * cleanBase.data[i + 1]!)
+          scene.data[i + 2] = Math.round(0.5 * 34 + 0.5 * cleanBase.data[i + 2]!)
+        }
+        if (inRect(x, y, txtRect) && ((x - txtRect.left) % 5 < 2 || y === 31)) {
+          scene.data[i] = 255
+          scene.data[i + 1] = 255
+          scene.data[i + 2] = 255
+        }
+      }
+    }
+
+    // 2) Draw hollow 'O' art-text with a completely enclosed background hole in its center
+    for (let y = ringArtRect.top; y < ringArtRect.top + ringArtRect.height; y++) {
+      for (let x = ringArtRect.left; x < ringArtRect.left + ringArtRect.width; x++) {
+        const d = Math.hypot(x - (ringArtRect.left + 21.5), y - (ringArtRect.top + 21.5))
+        if (d >= 8 && d <= 18) {
+          const i = (y * cw + x) * 4
+          scene.data[i] = 242
+          scene.data[i + 1] = 76
+          scene.data[i + 2] = 62
+        }
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'hud',
+      background_repair_mode: 'scene',
+      elements: [
+        {
+          id: 'hud1',
+          name: 'Top Glass HUD',
+          kind: 'panel',
+          box_2d: toBox2d(hudRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 't_hud',
+          name: 'Gold Count',
+          kind: 'text',
+          box_2d: toBox2d(txtRect, cw, ch),
+          parent: 'hud1',
+          order: 2,
+          ocr: ['T1'],
+          text: '1250'
+        },
+        {
+          id: 'art_o',
+          name: 'Hollow Ring Emblem',
+          kind: 'art-text',
+          box_2d: toBox2d(ringArtRect, cw, ch),
+          parent: null,
+          order: 3,
+          text: 'O'
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        ocr: async () => [{ ...txtRect, text: '1250', confidence: 0.98 }],
+        editImage: async () => cleanBase,
+        purifyLayerImage: async (req) => {
+          if (req.prompt.includes('Top Glass HUD')) {
+            // AI renders HUD bar as solid opaque slate on #FFFFFF studio bg (losing translucency)
+            const sw = hudRect.width + 16
+            const sh = hudRect.height + 16
+            const studio = createImage(sw, sh)
+            studio.data.fill(255)
+            for (let ly = 0; ly < hudRect.height; ly++) {
+              for (let lx = 0; lx < hudRect.width; lx++) {
+                const isBorder =
+                  lx < 2 || lx >= hudRect.width - 2 || ly < 2 || ly >= hudRect.height - 2
+                const si = ((8 + ly) * sw + (8 + lx)) * 4
+                studio.data[si] = isBorder ? 228 : 80
+                studio.data[si + 1] = isBorder ? 180 : 72
+                studio.data[si + 2] = isBorder ? 56 : 86
+                studio.data[si + 3] = 255
+              }
+            }
+            return studio
+          }
+          // Hollow 'O' on #FFFFFF studio bg: center hole is completely enclosed white #FFFFFF
+          const sw = 64
+          const sh = 64
+          const studio = createImage(sw, sh)
+          studio.data.fill(255)
+          for (let ly = 0; ly < ringArtRect.height; ly++) {
+            for (let lx = 0; lx < ringArtRect.width; lx++) {
+              const d = Math.hypot(lx - 21.5, ly - 21.5)
+              if (d >= 8 && d <= 18) {
+                const si = ((10 + ly) * sw + (10 + lx)) * 4
+                studio.data[si] = 242
+                studio.data[si + 1] = 76
+                studio.data[si + 2] = 62
+                studio.data[si + 3] = 255
+              }
+            }
+          }
+          return studio
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    const hud = res.layers.find((l) => l.elementId === 'hud1')!
+    // 1) Gold border stays 100% opaque
+    const borderOff = (0 * hud.width + 20) * 4
+    expect(hud.rgba[borderOff + 3]!).toBeGreaterThanOrEqual(245)
+    // 2) Right-side interior (over orange sunset bg [210,129,82]) recovers ~50% alpha (~128) and dark glass RGB (no orange bleed!)
+    const glassRightOff = (16 * hud.width + 150) * 4
+    expect(hud.rgba[glassRightOff + 3]!).toBeGreaterThanOrEqual(112)
+    expect(hud.rgba[glassRightOff + 3]!).toBeLessThanOrEqual(144)
+    expect(hud.rgba[glassRightOff]!).toBeLessThan(36)
+    // 3) Occluded center under "1250" text ALSO gets smooth ~50% translucent dark glass (zero white text scar!)
+    const glassUnderTextOff = (17 * hud.width + 86) * 4
+    expect(hud.rgba[glassUnderTextOff + 3]!).toBeGreaterThanOrEqual(110)
+    expect(hud.rgba[glassUnderTextOff + 3]!).toBeLessThanOrEqual(146)
+    expect(hud.rgba[glassUnderTextOff]!).toBeLessThan(40)
+
+    // 4) Hollow 'O' art-text center hole is punched cleanly to alpha = 0 while ring stroke stays opaque crimson
+    const artO = res.layers.find((l) => l.elementId === 'art_o')!
+    const holeCx = 110 - artO.left
+    const holeCy = 86 - artO.top
+    expect(artO.rgba[(holeCy * artO.width + holeCx) * 4 + 3]!).toBe(0)
+    const strokeCx = 110 - artO.left
+    const strokeCy = 73 - artO.top
+    expect(artO.rgba[(strokeCy * artO.width + strokeCx) * 4 + 3]!).toBe(255)
+    expect(artO.rgba[(strokeCy * artO.width + strokeCx) * 4]!).toBe(242)
+  })
+
+  it('preserves singleton panel fine texture, aligns drifted VLM button boxes, and merges zoomRefine non-destructively', async () => {
+    const cw = 240
+    const ch = 150
+    const panelRect = { left: 20, top: 16, width: 200, height: 118 }
+    const closeRect = { left: 204, top: 10, width: 22, height: 22 }
+    const trueBtnRect = { left: 82, top: 96, width: 76, height: 26 }
+    // Intentionally drift VLM button box by (+3px, -2px) to test sub-pixel control registration
+    const driftedBtnRect = { left: 85, top: 94, width: 76, height: 26 }
+    const smallIconRect = { left: 40, top: 36, width: 20, height: 20 }
+
+    const cleanBase = createImage(cw, ch)
+    for (let p = 0; p < cw * ch; p++) {
+      cleanBase.data.set([14, 18, 28, 255], p * 4)
+    }
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    for (let y = panelRect.top; y < panelRect.top + panelRect.height; y++) {
+      for (let x = panelRect.left; x < panelRect.left + panelRect.width; x++) {
+        const checker = ((x + y) & 1) === 0
+        const i = (y * cw + x) * 4
+        scene.data[i] = checker ? 42 : 58
+        scene.data[i + 1] = checker ? 50 : 68
+        scene.data[i + 2] = checker ? 74 : 96
+      }
+    }
+    for (let y = smallIconRect.top; y < smallIconRect.top + smallIconRect.height; y++) {
+      for (let x = smallIconRect.left; x < smallIconRect.left + smallIconRect.width; x++) {
+        scene.data.set([245, 196, 48, 255], (y * cw + x) * 4)
+      }
+    }
+    for (let y = trueBtnRect.top; y < trueBtnRect.top + trueBtnRect.height; y++) {
+      for (let x = trueBtnRect.left; x < trueBtnRect.left + trueBtnRect.width; x++) {
+        const onRim =
+          x - trueBtnRect.left < 2 ||
+          x - trueBtnRect.left >= trueBtnRect.width - 2 ||
+          y - trueBtnRect.top < 2 ||
+          y - trueBtnRect.top >= trueBtnRect.height - 2
+        scene.data.set(onRim ? [230, 182, 58, 255] : [44, 122, 214, 255], (y * cw + x) * 4)
+      }
+    }
+    for (let y = closeRect.top; y < closeRect.top + closeRect.height; y++) {
+      for (let x = closeRect.left; x < closeRect.left + closeRect.width; x++) {
+        scene.data.set([220, 62, 68, 255], (y * cw + x) * 4)
+      }
+    }
+
+    let vlmPass = 0
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => {
+          vlmPass++
+          if (vlmPass === 1) {
+            // Coarse pass: misses `smallIconRect`, includes corner-straddling `closeRect`, and drifts `btn`
+            return JSON.stringify({
+              screenKind: 'popup',
+              background_repair_mode: 'scene',
+              elements: [
+                {
+                  id: 'p_main',
+                  name: 'Main Panel',
+                  kind: 'panel',
+                  box_2d: toBox2d(panelRect, cw, ch),
+                  parent: null,
+                  order: 1
+                },
+                {
+                  id: 'btn_ok',
+                  name: 'OK Button',
+                  kind: 'button',
+                  box_2d: toBox2d(driftedBtnRect, cw, ch),
+                  parent: 'p_main',
+                  order: 2
+                },
+                {
+                  id: 'btn_close',
+                  name: 'Corner Close',
+                  kind: 'close-button',
+                  box_2d: toBox2d(closeRect, cw, ch),
+                  parent: 'p_main',
+                  order: 3
+                }
+              ]
+            })
+          }
+          // Zoomed pass on `p_main` crop: re-detects `p_main` itself (must be deduped!), recalls `smallIconRect`,
+          // and omits `btn_close` (must be preserved by non-destructive union merge!)
+          const pad = Math.round(Math.max(cw, ch) * 0.015)
+          const crop = {
+            left: Math.max(0, panelRect.left - pad),
+            top: Math.max(0, panelRect.top - pad),
+            width:
+              Math.min(cw, panelRect.left + panelRect.width + pad) -
+              Math.max(0, panelRect.left - pad),
+            height:
+              Math.min(ch, panelRect.top + panelRect.height + pad) -
+              Math.max(0, panelRect.top - pad)
+          }
+          const toZoomBox = (r: { left: number; top: number; width: number; height: number }) =>
+            toBox2d(
+              {
+                left: r.left - crop.left,
+                top: r.top - crop.top,
+                width: r.width,
+                height: r.height
+              },
+              crop.width,
+              crop.height
+            )
+          return JSON.stringify({
+            elements: [
+              {
+                id: 'dup_panel',
+                name: 'Main Panel Duplicate',
+                kind: 'panel',
+                box_2d: toZoomBox(panelRect),
+                parent: null,
+                order: 1
+              },
+              {
+                id: 'icon_recalled',
+                name: 'Star Icon',
+                kind: 'icon',
+                box_2d: toZoomBox(smallIconRect),
+                parent: 'dup_panel',
+                order: 2
+              },
+              {
+                id: 'btn_ok_z',
+                name: 'OK Button',
+                kind: 'button',
+                box_2d: toZoomBox(driftedBtnRect),
+                parent: 'dup_panel',
+                order: 3
+              }
+            ]
+          })
+        },
+        editImage: async () => cleanBase,
+        purifyLayerImage: async (req) => {
+          if (req.prompt.includes('Main Panel')) {
+            // Studio redraw smoothed out the checkerboard texture to flat [50, 59, 85]
+            const sw = panelRect.width + 16
+            const sh = panelRect.height + 16
+            const s = createImage(sw, sh)
+            s.data.fill(255)
+            for (let ly = 0; ly < panelRect.height; ly++) {
+              for (let lx = 0; lx < panelRect.width; lx++) {
+                s.data.set([50, 59, 85, 255], ((8 + ly) * sw + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('OK Button')) {
+            const sw = trueBtnRect.width + 16
+            const sh = trueBtnRect.height + 16
+            const s = createImage(sw, sh)
+            s.data.fill(255)
+            for (let ly = 0; ly < trueBtnRect.height; ly++) {
+              for (let lx = 0; lx < trueBtnRect.width; lx++) {
+                const onRim =
+                  lx < 2 || lx >= trueBtnRect.width - 2 || ly < 2 || ly >= trueBtnRect.height - 2
+                s.data.set(
+                  onRim ? [230, 182, 58, 255] : [44, 122, 214, 255],
+                  ((8 + ly) * sw + (8 + lx)) * 4
+                )
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('Corner Close')) {
+            const s = createImage(40, 40)
+            s.data.fill(255)
+            for (let ly = 0; ly < closeRect.height; ly++) {
+              for (let lx = 0; lx < closeRect.width; lx++) {
+                s.data.set([220, 62, 68, 255], ((9 + ly) * 40 + (9 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          const s = createImage(38, 38)
+          s.data.fill(255)
+          for (let ly = 0; ly < smallIconRect.height; ly++) {
+            for (let lx = 0; lx < smallIconRect.width; lx++) {
+              s.data.set([245, 196, 48, 255], ((9 + ly) * 38 + (9 + lx)) * 4)
+            }
+          }
+          return s
+        }
+      }),
+      scene,
+      { zoomRefine: true }
+    )
+
+    // 1) Self-panel duplicate was dropped; zoomed Star Icon was recalled; coarse Corner Close was preserved!
+    expect(res.layers.filter((l) => l.kind === 'panel')).toHaveLength(1)
+    expect(res.layers.some((l) => l.name === 'Star Icon')).toBe(true)
+    expect(res.layers.some((l) => l.name === 'Corner Close')).toBe(true)
+
+    // 2) Singleton Main Panel keeps 100% authentic checkerboard micro-pattern on unoccluded pixels,
+    //    and grafts smooth studio skin [50, 59, 85] cleanly under OK Button!
+    const panel = res.layers.find((l) => l.elementId === 'p_main')!
+    const visEven = ((60 - panel.top) * panel.width + (60 - panel.left)) * 4
+    const visOdd = ((60 - panel.top) * panel.width + (61 - panel.left)) * 4
+    expect([panel.rgba[visEven]!, panel.rgba[visEven + 1]!, panel.rgba[visEven + 2]!]).toEqual([
+      42, 50, 74
+    ])
+    expect([panel.rgba[visOdd]!, panel.rgba[visOdd + 1]!, panel.rgba[visOdd + 2]!]).toEqual([
+      58, 68, 96
+    ])
+    const underBtn = ((108 - panel.top) * panel.width + (116 - panel.left)) * 4
+    expect(panel.rgba[underBtn + 2]!).toBeLessThan(110) // Not OK Button's bright blue 214!
+
+    // 3) Drifted OK Button (+3px, -2px) snapped back to exact `trueBtnRect`!
+    const okBtn = res.layers.find((l) => l.name === 'OK Button')!
+    expect(Math.abs(okBtn.left - trueBtnRect.left)).toBeLessThanOrEqual(1)
+    expect(Math.abs(okBtn.top - trueBtnRect.top)).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('uiPreciseSplit · 5 remaining precision boundaries', () => {
+  it('Boundary 1: unmixes Screen and Linear Dodge emissive glows with clamped-core hue recovery and preserves PSD blendMode', async () => {
+    const cw = 220
+    const ch = 124
+    const screenRect = { left: 18, top: 24, width: 76, height: 76 }
+    const dodgeRect = { left: 120, top: 24, width: 80, height: 76 }
+
+    const cleanBase = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      for (let x = 0; x < cw; x++) {
+        const tx = x / Math.max(1, cw - 1)
+        const ty = y / Math.max(1, ch - 1)
+        const i = (y * cw + x) * 4
+        cleanBase.data[i] = Math.round(28 + 30 * tx)
+        cleanBase.data[i + 1] = Math.round(34 + 18 * ty)
+        cleanBase.data[i + 2] = Math.round(62 + 24 * tx)
+        cleanBase.data[i + 3] = 255
+      }
+    }
+
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    // 1) Soft cyan Screen halo (`S = B + alpha * G * (1 - B/255)`), peak below 240 -> auto-classified as 'screen'
+    const screenColor: [number, number, number] = [36, 212, 246]
+    for (let y = screenRect.top; y < screenRect.top + screenRect.height; y++) {
+      for (let x = screenRect.left; x < screenRect.left + screenRect.width; x++) {
+        const d = Math.hypot(x - (screenRect.left + 37.5), y - (screenRect.top + 37.5))
+        if (d >= 34) continue
+        const a = 0.72 * (1 - d / 34)
+        const i = (y * cw + x) * 4
+        for (let c = 0; c < 3; c++) {
+          const b = cleanBase.data[i + c]! / 255
+          const g = screenColor[c]! / 255
+          scene.data[i + c] = Math.min(255, Math.round((b + a * g * (1 - b)) * 255))
+        }
+      }
+    }
+
+    // 2) Hot golden Linear Dodge beam (`S = min(255, B + alpha * G)`), center clamps to 255 -> 'linear dodge'
+    const dodgeColor: [number, number, number] = [255, 198, 62]
+    for (let y = dodgeRect.top; y < dodgeRect.top + dodgeRect.height; y++) {
+      for (let x = dodgeRect.left; x < dodgeRect.left + dodgeRect.width; x++) {
+        const d = Math.hypot(x - (dodgeRect.left + 39.5), y - (dodgeRect.top + 37.5))
+        if (d >= 35) continue
+        const a = d <= 14 ? 1 : Math.max(0, 1 - (d - 14) / 21)
+        const i = (y * cw + x) * 4
+        for (let c = 0; c < 3; c++) {
+          scene.data[i + c] = Math.min(255, Math.round(cleanBase.data[i + c]! + a * dodgeColor[c]!))
+        }
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'hud',
+      background_repair_mode: 'scene',
+      elements: [
+        {
+          id: 'g_screen',
+          name: 'Cyan Aura',
+          kind: 'glow',
+          box_2d: toBox2d(screenRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'g_dodge',
+          name: 'Golden Burst',
+          kind: 'glow',
+          box_2d: toBox2d(dodgeRect, cw, ch),
+          parent: null,
+          order: 2
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        editImage: async () => cleanBase,
+        purifyLayerImage: async () => null
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    const cyanLayer = res.layers.find((l) => l.elementId === 'g_screen')!
+    const goldLayer = res.layers.find((l) => l.elementId === 'g_dodge')!
+    expect(cyanLayer.blendMode).toBe('screen')
+    expect(goldLayer.blendMode).toBe('linear dodge')
+
+    // Soft cyan halo pixel has translucent alpha & cyan hue without dark navy background chunks
+    const cyanMid = ((56 - cyanLayer.top) * cyanLayer.width + (44 - cyanLayer.left)) * 4
+    expect(cyanLayer.rgba[cyanMid + 3]!).toBeGreaterThan(35)
+    expect(cyanLayer.rgba[cyanMid + 3]!).toBeLessThan(215)
+    expect(cyanLayer.rgba[cyanMid + 2]!).toBeGreaterThan(cyanLayer.rgba[cyanMid]! + 110)
+
+    // Clamped 255 hot core preserves warm golden hue (`R > B + 80`) instead of desaturating to flat grey
+    const goldCore = ((62 - goldLayer.top) * goldLayer.width + (160 - goldLayer.left)) * 4
+    expect(goldLayer.rgba[goldCore + 3]!).toBeGreaterThan(170)
+    expect(goldLayer.rgba[goldCore]!).toBeGreaterThan(goldLayer.rgba[goldCore + 2]! + 80)
+    expect(res.reconstructionError).toBeLessThan(1.5)
+
+    // Verify full normalization + PSD binary round-trip (`ag-psd` write -> read)
+    const store = new Map<string, RgbaImage>()
+    let idSeq = 0
+    const mapped = await mapPreciseResultToLayers(res, {
+      idPrefix: 'b1',
+      encodePng: async (rgba) => {
+        idSeq++
+        const url = `data:image/png;base64,B1_${idSeq}`
+        store.set(url, rgba)
+        return url
+      }
+    })
+    const normalized = normalizeImageLayerSplit({
+      sourceImageId: 'src',
+      canvasWidth: cw,
+      canvasHeight: ch,
+      layers: mapped.layers
+    })!
+    const layerUrls: Record<string, string> = {}
+    for (const item of mapped.batch) layerUrls[item.id] = item.dataUrl
+    const psdBytes = await layerSplitToPsdUint8Array({
+      state: normalized,
+      layerUrls,
+      decodeRgba: async (src) => {
+        const hit = store.get(src)!
+        return { data: hit.data, width: hit.width, height: hit.height }
+      }
+    })
+    const parsedPsd = readPsd(psdBytes, {
+      skipLayerImageData: true,
+      skipCompositeImageData: true,
+      skipThumbnail: true
+    })
+    const psdChildren = parsedPsd.children ?? []
+    expect(psdChildren.find((c) => c.name === 'Cyan Aura')?.blendMode).toBe('screen')
+    expect(psdChildren.find((c) => c.name === 'Golden Burst')?.blendMode).toBe('linear dodge')
+  })
+
+  it('Boundary 2: recovers blurred frosted glass (backdrop-filter: blur) and continuous spatial gradient-alpha scrims', async () => {
+    const cw = 240
+    const ch = 152
+    const frostedRect = { left: 20, top: 14, width: 200, height: 54 }
+    const scrimRect = { left: 20, top: 84, width: 200, height: 52 }
+
+    // Top half: 32px coral-red / sky-blue blocks (sharp step edges + full contrast after R=4 blur)
+    // Bottom half: 10px stripes so local pairs (`dist <= 16px`) inside scrim sample crisp jumps
+    const cleanBase = createImage(cw, ch)
+    for (let y = 0; y < ch; y++) {
+      const stripeW = y < 76 ? 32 : 10
+      for (let x = 0; x < cw; x++) {
+        const isRed = Math.floor(x / stripeW) % 2 === 0
+        const i = (y * cw + x) * 4
+        cleanBase.data[i] = isRed ? 232 : 40
+        cleanBase.data[i + 1] = isRed ? 74 : 176
+        cleanBase.data[i + 2] = isRed ? 58 : 230
+        cleanBase.data[i + 3] = 255
+      }
+    }
+
+    // Build 2-pass R=4 box-blurred backdrop to simulate `backdrop-filter: blur(5px)`
+    const blurPass = (src: Uint8ClampedArray): Uint8ClampedArray => {
+      const tmp = new Uint8ClampedArray(src.length)
+      const dst = new Uint8ClampedArray(src.length)
+      const r = 4
+      for (let y = 0; y < ch; y++) {
+        for (let x = 0; x < cw; x++) {
+          let sr = 0
+          let sg = 0
+          let sb = 0
+          let cnt = 0
+          for (let dx = -r; dx <= r; dx++) {
+            const sx = Math.max(0, Math.min(cw - 1, x + dx))
+            const si = (y * cw + sx) * 4
+            sr += src[si]!
+            sg += src[si + 1]!
+            sb += src[si + 2]!
+            cnt++
+          }
+          const di = (y * cw + x) * 4
+          tmp[di] = Math.round(sr / cnt)
+          tmp[di + 1] = Math.round(sg / cnt)
+          tmp[di + 2] = Math.round(sb / cnt)
+          tmp[di + 3] = 255
+        }
+      }
+      for (let y = 0; y < ch; y++) {
+        for (let x = 0; x < cw; x++) {
+          let sr = 0
+          let sg = 0
+          let sb = 0
+          let cnt = 0
+          for (let dy = -r; dy <= r; dy++) {
+            const sy = Math.max(0, Math.min(ch - 1, y + dy))
+            const si = (sy * cw + x) * 4
+            sr += tmp[si]!
+            sg += tmp[si + 1]!
+            sb += tmp[si + 2]!
+            cnt++
+          }
+          const di = (y * cw + x) * 4
+          dst[di] = Math.round(sr / cnt)
+          dst[di + 1] = Math.round(sg / cnt)
+          dst[di + 2] = Math.round(sb / cnt)
+          dst[di + 3] = 255
+        }
+      }
+      return dst
+    }
+    const blurredBg = blurPass(blurPass(cleanBase.data))
+
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    // 1) Frosted glass card: 2px opaque gold border + 50% dark slate tint over `blurredBg`
+    for (let y = frostedRect.top; y < frostedRect.top + frostedRect.height; y++) {
+      for (let x = frostedRect.left; x < frostedRect.left + frostedRect.width; x++) {
+        const lx = x - frostedRect.left
+        const ly = y - frostedRect.top
+        const onBorder =
+          lx < 2 || lx >= frostedRect.width - 2 || ly < 2 || ly >= frostedRect.height - 2
+        const i = (y * cw + x) * 4
+        if (onBorder) {
+          scene.data.set([228, 182, 56, 255], i)
+        } else {
+          scene.data[i] = Math.round(0.5 * 22 + 0.5 * blurredBg[i]!)
+          scene.data[i + 1] = Math.round(0.5 * 28 + 0.5 * blurredBg[i + 1]!)
+          scene.data[i + 2] = Math.round(0.5 * 46 + 0.5 * blurredBg[i + 2]!)
+        }
+      }
+    }
+
+    // 2) Continuous spatial gradient-alpha scrim: alpha fades smoothly from 0.84 on left to 0.14 on right
+    for (let y = scrimRect.top; y < scrimRect.top + scrimRect.height; y++) {
+      for (let x = scrimRect.left; x < scrimRect.left + scrimRect.width; x++) {
+        const u = (x - scrimRect.left) / Math.max(1, scrimRect.width - 1)
+        const a = 0.84 - 0.7 * u
+        const i = (y * cw + x) * 4
+        scene.data[i] = Math.round(a * 16 + (1 - a) * cleanBase.data[i]!)
+        scene.data[i + 1] = Math.round(a * 20 + (1 - a) * cleanBase.data[i + 1]!)
+        scene.data[i + 2] = Math.round(a * 34 + (1 - a) * cleanBase.data[i + 2]!)
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'hud',
+      background_repair_mode: 'scene',
+      elements: [
+        {
+          id: 'frost1',
+          name: 'Frosted Blur Card',
+          kind: 'panel',
+          box_2d: toBox2d(frostedRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'scrim1',
+          name: 'Fade Scrim Banner',
+          kind: 'banner',
+          box_2d: toBox2d(scrimRect, cw, ch),
+          parent: null,
+          order: 2
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        editImage: async () => cleanBase,
+        purifyLayerImage: async (req) => {
+          if (req.prompt.includes('Frosted Blur Card')) {
+            const sw = frostedRect.width + 16
+            const sh = frostedRect.height + 16
+            const s = createImage(sw, sh)
+            s.data.fill(255)
+            for (let ly = 0; ly < frostedRect.height; ly++) {
+              for (let lx = 0; lx < frostedRect.width; lx++) {
+                const onBorder =
+                  lx < 2 || lx >= frostedRect.width - 2 || ly < 2 || ly >= frostedRect.height - 2
+                s.data.set(
+                  onBorder ? [228, 182, 56, 255] : [88, 96, 114, 255],
+                  ((8 + ly) * sw + (8 + lx)) * 4
+                )
+              }
+            }
+            return s
+          }
+          // Studio renders gradient scrim with horizontal color ramp (breaking single-bucket global slope!)
+          const sw = scrimRect.width + 16
+          const sh = scrimRect.height + 16
+          const s = createImage(sw, sh)
+          s.data.fill(255)
+          for (let ly = 0; ly < scrimRect.height; ly++) {
+            for (let lx = 0; lx < scrimRect.width; lx++) {
+              const u = lx / Math.max(1, scrimRect.width - 1)
+              s.data.set(
+                [Math.round(24 + 140 * u), Math.round(28 + 135 * u), Math.round(44 + 125 * u), 255],
+                ((8 + ly) * sw + (8 + lx)) * 4
+              )
+            }
+          }
+          return s
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    // 1) Frosted glass card detects `backdropBlurRadius >= 2`, keeps gold border opaque, and recovers ~50% dark tint
+    const frost = res.layers.find((l) => l.elementId === 'frost1')!
+    expect(frost.backdropBlurRadius).toBeGreaterThanOrEqual(2)
+    const frostBorder = (0 * frost.width + 24) * 4
+    expect(frost.rgba[frostBorder + 3]!).toBeGreaterThanOrEqual(240)
+    // Sample across the blurred red/blue step boundary (`x = 64` -> `lx = 44`): unblurred would leave huge step ghost!
+    const frostLeftOfEdge = (26 * frost.width + 41) * 4
+    const frostRightOfEdge = (26 * frost.width + 47) * 4
+    expect(frost.rgba[frostLeftOfEdge + 3]!).toBeGreaterThanOrEqual(105)
+    expect(frost.rgba[frostLeftOfEdge + 3]!).toBeLessThanOrEqual(152)
+    expect(
+      Math.abs(frost.rgba[frostLeftOfEdge]! - frost.rgba[frostRightOfEdge]!)
+    ).toBeLessThanOrEqual(18)
+
+    // 2) Continuous spatial gradient-alpha scrim recovers smooth monotonic left->right opacity decay
+    const scrim = res.layers.find((l) => l.elementId === 'scrim1')!
+    const aLeft = scrim.rgba[(26 * scrim.width + 16) * 4 + 3]!
+    const aMid = scrim.rgba[(26 * scrim.width + 100) * 4 + 3]!
+    const aRight = scrim.rgba[(26 * scrim.width + 184) * 4 + 3]!
+    expect(aLeft).toBeGreaterThan(170)
+    expect(aMid).toBeGreaterThan(90)
+    expect(aMid).toBeLessThan(155)
+    expect(aRight).toBeLessThan(70)
+    expect(aLeft).toBeGreaterThan(aMid + 35)
+    expect(aMid).toBeGreaterThan(aRight + 35)
+  })
+
+  it('Boundary 3 & 5b: recovers protruding hair strands + pure soft drop shadows and mirrors symmetric texture into heavy occlusions', async () => {
+    const cw = 248
+    const ch = 148
+    const avatarRect = { left: 20, top: 24, width: 56, height: 56 }
+    const cardRect = { left: 20, top: 96, width: 72, height: 32 }
+    const symBannerRect = { left: 112, top: 28, width: 112, height: 52 }
+    const occGemRect = { left: 188, top: 36, width: 28, height: 36 }
+
+    // Bright warm cream backdrop so neutral dark drop shadows are cleanly measurable
+    const cleanBase = createImage(cw, ch)
+    for (let p = 0; p < cw * ch; p++) {
+      cleanBase.data.set([230, 224, 212, 255], p * 4)
+    }
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    // 1A) Hero avatar (`[188, 42, 64]`) + 2px protruding hair strand extending 2px right of `avatarRect` (`x = 76..77, y = 44..46`)
+    for (let y = avatarRect.top; y < avatarRect.top + avatarRect.height; y++) {
+      for (let x = avatarRect.left; x < avatarRect.left + avatarRect.width; x++) {
+        scene.data.set([188, 42, 64, 255], (y * cw + x) * 4)
+      }
+    }
+    for (let y = 44; y <= 46; y++) {
+      for (let x = 76; x <= 77; x++) {
+        // 80%-alpha fine crimson hair strand over cream backdrop
+        const i = (y * cw + x) * 4
+        scene.data[i] = Math.round(0.8 * 188 + 0.2 * 230)
+        scene.data[i + 1] = Math.round(0.8 * 42 + 0.2 * 224)
+        scene.data[i + 2] = Math.round(0.8 * 64 + 0.2 * 212)
+      }
+    }
+
+    // 1B) Button card (`[44, 118, 212]`) + soft neutral drop shadow extending 4px below `cardRect` (`y = 128..131`)
+    for (let y = cardRect.top; y < cardRect.top + cardRect.height; y++) {
+      for (let x = cardRect.left; x < cardRect.left + cardRect.width; x++) {
+        scene.data.set([44, 118, 212, 255], (y * cw + x) * 4)
+      }
+    }
+    const shAlphas = [0.28, 0.21, 0.14, 0.09]
+    for (let dy = 0; dy < shAlphas.length; dy++) {
+      const aSh = shAlphas[dy]!
+      const y = cardRect.top + cardRect.height + dy
+      for (let x = cardRect.left + 4; x < cardRect.left + cardRect.width - 4; x++) {
+        const i = (y * cw + x) * 4
+        scene.data[i] = Math.round((1 - aSh) * 230)
+        scene.data[i + 1] = Math.round((1 - aSh) * 224)
+        scene.data[i + 2] = Math.round((1 - aSh) * 212)
+      }
+    }
+
+    // 2) Horizontally symmetric striped banner (`f(lx) === f(111 - lx)`) with heavy right-side badge occlusion
+    const bannerPattern = (lx: number): [number, number, number] => {
+      const symX = Math.min(lx, symBannerRect.width - 1 - lx)
+      return symX % 4 < 2 ? [204, 158, 56] : [64, 42, 108]
+    }
+    for (let y = symBannerRect.top; y < symBannerRect.top + symBannerRect.height; y++) {
+      for (let x = symBannerRect.left; x < symBannerRect.left + symBannerRect.width; x++) {
+        const rgb = bannerPattern(x - symBannerRect.left)
+        scene.data.set([rgb[0], rgb[1], rgb[2], 255], (y * cw + x) * 4)
+      }
+    }
+    for (let y = occGemRect.top; y < occGemRect.top + occGemRect.height; y++) {
+      for (let x = occGemRect.left; x < occGemRect.left + occGemRect.width; x++) {
+        scene.data.set([38, 214, 236, 255], (y * cw + x) * 4)
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'popup',
+      background_repair_mode: 'scene',
+      elements: [
+        {
+          id: 'av1',
+          name: 'Hero Avatar',
+          kind: 'avatar',
+          box_2d: toBox2d(avatarRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'btn_sh',
+          name: 'Shadow Button',
+          kind: 'button',
+          box_2d: toBox2d(cardRect, cw, ch),
+          parent: null,
+          order: 2
+        },
+        {
+          id: 'ban_sym',
+          name: 'Ornate Symmetric Banner',
+          kind: 'banner',
+          box_2d: toBox2d(symBannerRect, cw, ch),
+          parent: null,
+          order: 3
+        },
+        {
+          id: 'gem_occ',
+          name: 'Overlay Gem',
+          kind: 'badge',
+          box_2d: toBox2d(occGemRect, cw, ch),
+          parent: 'ban_sym',
+          order: 4
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        editImage: async () => cleanBase,
+        purifyLayerImage: async (req) => {
+          if (req.prompt.includes('Hero Avatar')) {
+            // Studio clips off the protruding right hair strand (`x = 76..77`)
+            const s = createImage(avatarRect.width + 16, avatarRect.height + 16)
+            s.data.fill(255)
+            for (let ly = 0; ly < avatarRect.height; ly++) {
+              for (let lx = 0; lx < avatarRect.width; lx++) {
+                s.data.set([188, 42, 64, 255], ((8 + ly) * s.width + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('Shadow Button')) {
+            const s = createImage(cardRect.width + 16, cardRect.height + 16)
+            s.data.fill(255)
+            for (let ly = 0; ly < cardRect.height; ly++) {
+              for (let lx = 0; lx < cardRect.width; lx++) {
+                s.data.set([44, 118, 212, 255], ((8 + ly) * s.width + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('Ornate Symmetric Banner')) {
+            // Studio loses the fine gold/plum stripes and outputs flat average [134, 100, 82]
+            const s = createImage(symBannerRect.width + 16, symBannerRect.height + 16)
+            s.data.fill(255)
+            for (let ly = 0; ly < symBannerRect.height; ly++) {
+              for (let lx = 0; lx < symBannerRect.width; lx++) {
+                s.data.set([134, 100, 82, 255], ((8 + ly) * s.width + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          const s = createImage(occGemRect.width + 16, occGemRect.height + 16)
+          s.data.fill(255)
+          for (let ly = 0; ly < occGemRect.height; ly++) {
+            for (let lx = 0; lx < occGemRect.width; lx++) {
+              s.data.set([38, 214, 236, 255], ((8 + ly) * s.width + (8 + lx)) * 4)
+            }
+          }
+          return s
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    // 1A) Protruding crimson hair strand (`x = 76, y = 45`) outside `avatarRect` was recovered!
+    const avLayer = res.layers.find((l) => l.elementId === 'av1')!
+    expect(avLayer.left + avLayer.width).toBeGreaterThanOrEqual(78)
+    const hairOff = ((45 - avLayer.top) * avLayer.width + (76 - avLayer.left)) * 4
+    expect(avLayer.rgba[hairOff + 3]!).toBeGreaterThan(150)
+    expect(avLayer.rgba[hairOff]!).toBeGreaterThan(150)
+    expect(avLayer.rgba[hairOff + 1]!).toBeLessThan(80)
+
+    // 1B) Soft drop shadow below `Shadow Button` (`x = 56, y = 129`) was recovered as pure `[0, 0, 0, alpha_sh]`!
+    const btnLayer = res.layers.find((l) => l.elementId === 'btn_sh')!
+    expect(btnLayer.top + btnLayer.height).toBeGreaterThanOrEqual(131)
+    const shOff = ((129 - btnLayer.top) * btnLayer.width + (56 - btnLayer.left)) * 4
+    expect(btnLayer.rgba[shOff]!).toBe(0)
+    expect(btnLayer.rgba[shOff + 1]!).toBe(0)
+    expect(btnLayer.rgba[shOff + 2]!).toBe(0)
+    expect(btnLayer.rgba[shOff + 3]!).toBeGreaterThanOrEqual(35)
+    expect(btnLayer.rgba[shOff + 3]!).toBeLessThanOrEqual(90)
+
+    // 2) Occluded right side of `Ornate Symmetric Banner` (`lx = 88` and `lx = 90`, `y = 52`) recovered
+    //    exact high-contrast gold vs plum bilateral mirror stripes instead of flat [134, 100, 82] studio blur!
+    const banLayer = res.layers.find((l) => l.elementId === 'ban_sym')!
+    const occGold =
+      ((52 - banLayer.top) * banLayer.width + (symBannerRect.left + 88 - banLayer.left)) * 4
+    const occPlum =
+      ((52 - banLayer.top) * banLayer.width + (symBannerRect.left + 90 - banLayer.left)) * 4
+    expect(Math.abs(banLayer.rgba[occGold]! - banLayer.rgba[occPlum]!)).toBeGreaterThan(95)
+  })
+
+  it('Boundary 4 & 5a: exports gradient/stroke/shadow editable text styles to PSD and auto-recovers missed row stars & orphan pips', async () => {
+    const cw = 256
+    const ch = 156
+    const cardRect = { left: 16, top: 14, width: 224, height: 128 }
+    // 4-star rating row (`pitch = 26px`); VLM will omit Star 3 (`left = 88`)!
+    const stars = [
+      { left: 36, top: 34, width: 14, height: 14 },
+      { left: 62, top: 34, width: 14, height: 14 },
+      { left: 88, top: 34, width: 14, height: 14 },
+      { left: 114, top: 34, width: 14, height: 14 }
+    ]
+    // Unreported notification dot pip on smooth `cardRect` interior
+    const orphanPipRect = { left: 196, top: 36, width: 10, height: 10 }
+    // Glossy button + metallic vertical-gradient condensed numeric text `"998"` with dark stroke & SE shadow
+    const btnRect = { left: 56, top: 82, width: 136, height: 42 }
+    const txtRect = { left: 92, top: 90, width: 64, height: 26 }
+
+    const cleanBase = createImage(cw, ch)
+    for (let p = 0; p < cw * ch; p++) {
+      cleanBase.data.set([16, 20, 32, 255], p * 4)
+    }
+    const scene = createImage(cw, ch)
+    scene.data.set(cleanBase.data)
+
+    // Smooth `surface` card (`[38, 44, 66]`)
+    for (let y = cardRect.top; y < cardRect.top + cardRect.height; y++) {
+      for (let x = cardRect.left; x < cardRect.left + cardRect.width; x++) {
+        scene.data.set([38, 44, 66, 255], (y * cw + x) * 4)
+      }
+    }
+    // Draw all 4 golden stars (`[248, 202, 48]`) + crimson orphan pip (`[244, 64, 78]`)
+    for (const st of stars) {
+      for (let y = st.top; y < st.top + st.height; y++) {
+        for (let x = st.left; x < st.left + st.width; x++) {
+          scene.data.set([248, 202, 48, 255], (y * cw + x) * 4)
+        }
+      }
+    }
+    for (let y = orphanPipRect.top; y < orphanPipRect.top + orphanPipRect.height; y++) {
+      for (let x = orphanPipRect.left; x < orphanPipRect.left + orphanPipRect.width; x++) {
+        scene.data.set([244, 64, 78, 255], (y * cw + x) * 4)
+      }
+    }
+
+    // Two-tone glossy teal button (`[36, 152, 168]` top / `[24, 114, 132]` bottom)
+    for (let y = btnRect.top; y < btnRect.top + btnRect.height; y++) {
+      const topHalf = y < btnRect.top + 21
+      for (let x = btnRect.left; x < btnRect.left + btnRect.width; x++) {
+        scene.data.set(topHalf ? [36, 152, 168, 255] : [24, 114, 132, 255], (y * cw + x) * 4)
+      }
+    }
+
+    // Render 3 tall condensed glyphs inside `txtRect` (`lx`: 6..15, 24..33, 42..51; `ly`: 2..22):
+    // - 1px dark outer stroke `[18, 22, 28]`
+    // - Vertical metallic gold-to-amber core gradient (`[255, 248, 205]` top -> `[228, 132, 28]` bottom)
+    // - SE semi-transparent drop shadow (`dx=+1..2, dy=+1..2`)
+    const glyphMask = new Uint8Array(txtRect.width * txtRect.height)
+    const coreMask = new Uint8Array(txtRect.width * txtRect.height)
+    for (const gx0 of [6, 24, 42]) {
+      for (let ly = 2; ly <= 21; ly++) {
+        for (let lx = gx0; lx <= gx0 + 9; lx++) {
+          glyphMask[ly * txtRect.width + lx] = 1
+          if (lx > gx0 && lx < gx0 + 9 && ly > 2 && ly < 21) {
+            coreMask[ly * txtRect.width + lx] = 1
+          }
+        }
+      }
+    }
+    // Paint SE drop shadow first
+    for (let ly = 0; ly < txtRect.height; ly++) {
+      for (let lx = 0; lx < txtRect.width; lx++) {
+        if (!glyphMask[ly * txtRect.width + lx]) continue
+        for (const [sdx, sdy, sa] of [
+          [1, 1, 0.52],
+          [2, 2, 0.36]
+        ] as const) {
+          const sx = lx + sdx
+          const sy = ly + sdy
+          if (sx >= txtRect.width || sy >= txtRect.height) continue
+          if (glyphMask[sy * txtRect.width + sx]) continue
+          const gi = ((txtRect.top + sy) * cw + (txtRect.left + sx)) * 4
+          scene.data[gi] = Math.round(scene.data[gi]! * (1 - sa) + 8 * sa)
+          scene.data[gi + 1] = Math.round(scene.data[gi + 1]! * (1 - sa) + 10 * sa)
+          scene.data[gi + 2] = Math.round(scene.data[gi + 2]! * (1 - sa) + 14 * sa)
+        }
+      }
+    }
+    // Paint dark stroke + vertical metallic gradient core + 50% anti-aliased outer right edge
+    for (let ly = 0; ly < txtRect.height; ly++) {
+      const tGrad = Math.max(0, Math.min(1, (ly - 3) / 17))
+      const coreCol: [number, number, number] = [
+        Math.round(255 - 27 * tGrad),
+        Math.round(248 - 116 * tGrad),
+        Math.round(205 - 177 * tGrad)
+      ]
+      for (let lx = 0; lx < txtRect.width; lx++) {
+        const p = ly * txtRect.width + lx
+        const gi = ((txtRect.top + ly) * cw + (txtRect.left + lx)) * 4
+        if (coreMask[p]) {
+          scene.data.set([coreCol[0], coreCol[1], coreCol[2], 255], gi)
+        } else if (glyphMask[p]) {
+          scene.data.set([18, 22, 28, 255], gi)
+        } else if (lx > 0 && glyphMask[p - 1] && ly >= 4 && ly <= 18) {
+          // 50%-blended anti-aliased edge against teal button to verify color decontamination
+          scene.data[gi] = Math.round(0.5 * 18 + 0.5 * scene.data[gi]!)
+          scene.data[gi + 1] = Math.round(0.5 * 22 + 0.5 * scene.data[gi + 1]!)
+          scene.data[gi + 2] = Math.round(0.5 * 28 + 0.5 * scene.data[gi + 2]!)
+        }
+      }
+    }
+
+    const vlmJson = JSON.stringify({
+      screenKind: 'popup',
+      background_repair_mode: 'surface',
+      elements: [
+        {
+          id: 'card_main',
+          name: 'Reward Card',
+          kind: 'panel',
+          repair: 'surface',
+          box_2d: toBox2d(cardRect, cw, ch),
+          parent: null,
+          order: 1
+        },
+        {
+          id: 'st1',
+          name: 'Star 1',
+          kind: 'icon',
+          box_2d: toBox2d(stars[0]!, cw, ch),
+          parent: 'card_main',
+          order: 2
+        },
+        {
+          id: 'st2',
+          name: 'Star 2',
+          kind: 'icon',
+          box_2d: toBox2d(stars[1]!, cw, ch),
+          parent: 'card_main',
+          order: 3
+        },
+        // Deliberately omit Star 3 (`stars[2]`) AND `orphanPipRect`!
+        {
+          id: 'st4',
+          name: 'Star 4',
+          kind: 'icon',
+          box_2d: toBox2d(stars[3]!, cw, ch),
+          parent: 'card_main',
+          order: 4
+        },
+        {
+          id: 'btn_buy',
+          name: 'Buy Button',
+          kind: 'button',
+          box_2d: toBox2d(btnRect, cw, ch),
+          parent: 'card_main',
+          order: 5
+        },
+        {
+          id: 'txt_price',
+          name: 'Price Label',
+          kind: 'text',
+          font_style: 'condensed',
+          box_2d: toBox2d(txtRect, cw, ch),
+          parent: 'btn_buy',
+          order: 6,
+          ocr: ['T1'],
+          text: '998'
+        }
+      ]
+    })
+
+    const res = await runPreciseUiSplit(
+      mockIo({
+        vlm: async () => vlmJson,
+        ocr: async () => [{ ...txtRect, text: '998', confidence: 0.99 }],
+        editImage: async () => cleanBase,
+        purifyLayerImage: async (req) => {
+          if (req.prompt.includes('Reward Card')) {
+            const s = createImage(cardRect.width + 16, cardRect.height + 16)
+            s.data.fill(255)
+            for (let ly = 0; ly < cardRect.height; ly++) {
+              for (let lx = 0; lx < cardRect.width; lx++) {
+                s.data.set([38, 44, 66, 255], ((8 + ly) * s.width + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('Buy Button')) {
+            const s = createImage(btnRect.width + 16, btnRect.height + 16)
+            s.data.fill(255)
+            for (let ly = 0; ly < btnRect.height; ly++) {
+              const topHalf = ly < 21
+              for (let lx = 0; lx < btnRect.width; lx++) {
+                s.data.set(
+                  topHalf ? [36, 152, 168, 255] : [24, 114, 132, 255],
+                  ((8 + ly) * s.width + (8 + lx)) * 4
+                )
+              }
+            }
+            return s
+          }
+          if (req.prompt.includes('Star')) {
+            const s = createImage(30, 30)
+            s.data.fill(255)
+            for (let ly = 0; ly < 14; ly++) {
+              for (let lx = 0; lx < 14; lx++) {
+                s.data.set([248, 202, 48, 255], ((8 + ly) * 30 + (8 + lx)) * 4)
+              }
+            }
+            return s
+          }
+          // Orphan pip studio render
+          const s = createImage(26, 26)
+          s.data.fill(255)
+          for (let ly = 0; ly < orphanPipRect.height; ly++) {
+            for (let lx = 0; lx < orphanPipRect.width; lx++) {
+              s.data.set([244, 64, 78, 255], ((8 + ly) * 26 + (8 + lx)) * 4)
+            }
+          }
+          return s
+        }
+      }),
+      scene,
+      { zoomRefine: false }
+    )
+
+    // 1) Missed 3rd star (`x ~ 88, y ~ 34`) AND missed orphan pip (`x ~ 196, y ~ 36`) were both recovered!
+    const recoveredStar3 = res.layers.find(
+      (l) => Math.abs(l.left - stars[2]!.left) <= 2 && Math.abs(l.top - stars[2]!.top) <= 2
+    )
+    expect(recoveredStar3).toBeDefined()
+    const recoveredPip = res.layers.find(
+      (l) => Math.abs(l.left - orphanPipRect.left) <= 2 && Math.abs(l.top - orphanPipRect.top) <= 2
+    )
+    expect(recoveredPip).toBeDefined()
+
+    // 2) Plain text layer carries condensed font classification (`DINAlternate-Bold`), vertical gradientStops,
+    //    dark stroke, and clean decontaminated anti-aliased edge (no bright teal G/B > 110 bleed!)
+    const txtLayer = res.layers.find((l) => l.elementId === 'txt_price')!
+    expect(txtLayer.editableText?.fontStyle).toBe('condensed')
+    expect(txtLayer.editableText?.fontName).toBe('DINAlternate-Bold')
+    expect(txtLayer.editableText?.gradientStops).toBeDefined()
+    expect(txtLayer.editableText?.strokeColor).toBeDefined()
+
+    const aaX = txtRect.left + 16 - txtLayer.left
+    const aaY = txtRect.top + 10 - txtLayer.top
+    const aaOff = (aaY * txtLayer.width + aaX) * 4
+    if (txtLayer.rgba[aaOff + 3]! > 0) {
+      // Decontaminated dark stroke edge must NOT carry teal button's G=152 / B=168 bleed!
+      expect(txtLayer.rgba[aaOff + 1]!).toBeLessThan(85)
+      expect(txtLayer.rgba[aaOff + 2]!).toBeLessThan(95)
+    }
+
+    // 3) PSD binary export round-trip preserves `TySh` font (`DINAlternate-Bold`) and `Lefx` (`gradientOverlay` + `stroke`)!
+    const store = new Map<string, RgbaImage>()
+    let idSeq = 0
+    const mapped = await mapPreciseResultToLayers(res, {
+      idPrefix: 'b4',
+      encodePng: async (rgba) => {
+        idSeq++
+        const url = `data:image/png;base64,B4_${idSeq}`
+        store.set(url, rgba)
+        return url
+      }
+    })
+    const normalized = normalizeImageLayerSplit({
+      sourceImageId: 'src',
+      canvasWidth: cw,
+      canvasHeight: ch,
+      layers: mapped.layers
+    })!
+    const layerUrls: Record<string, string> = {}
+    for (const item of mapped.batch) layerUrls[item.id] = item.dataUrl
+    const psdBytes = await layerSplitToPsdUint8Array({
+      state: normalized,
+      layerUrls,
+      decodeRgba: async (src) => {
+        const hit = store.get(src)!
+        return { data: hit.data, width: hit.width, height: hit.height }
+      }
+    })
+    const parsedPsd = readPsd(psdBytes, {
+      skipLayerImageData: true,
+      skipCompositeImageData: true,
+      skipThumbnail: true
+    })
+    const findLayerRecursive = (
+      items: NonNullable<typeof parsedPsd.children>,
+      name: string
+    ): NonNullable<typeof parsedPsd.children>[number] | undefined => {
+      for (const item of items) {
+        if (item.name === name) return item
+        if (item.children) {
+          const hit = findLayerRecursive(item.children, name)
+          if (hit) return hit
+        }
+      }
+      return undefined
+    }
+    const psdPriceLayer = findLayerRecursive(parsedPsd.children ?? [], 'Price Label')
+    expect(psdPriceLayer?.text?.style?.font?.name).toBe('DINAlternate-Bold')
+    expect(psdPriceLayer?.effects?.gradientOverlay?.length).toBe(1)
+    expect(psdPriceLayer?.effects?.stroke?.length).toBe(1)
   })
 })

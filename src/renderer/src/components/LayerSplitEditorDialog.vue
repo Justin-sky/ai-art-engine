@@ -2051,6 +2051,12 @@ function layerStyle(layer: ImageLayerSplitLayer): Record<string, string> {
     width: `${(layer.width / cw) * 100}%`,
     height: `${(layer.height / ch) * 100}%`,
     zIndex: String(layer.zIndex + 1),
+    ...(!exploded3d.value && layer.blendMode && layer.blendMode !== 'normal'
+      ? { mixBlendMode: layer.blendMode === 'linear dodge' ? 'plus-lighter' : 'screen' }
+      : {}),
+    ...(!exploded3d.value && layer.backdropBlurRadius && layer.backdropBlurRadius > 0
+      ? { backdropFilter: `blur(${layer.backdropBlurRadius}px)` }
+      : {}),
     ...(zTranslate ? { transform: zTranslate } : {})
   }
 }

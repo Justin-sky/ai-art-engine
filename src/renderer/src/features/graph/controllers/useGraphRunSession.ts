@@ -54,6 +54,7 @@ import { autoDetectAndFitStage2dRig } from '../model/composeStage2dAutoCut'
 import { composeImageGridCell } from '../model/composeImageGridCell'
 import { composeVideoFrameSheet } from '../model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../model/composeAnim2dGif'
+import { tryUnpackSourceGif } from '../model/unpackAnim2dGif'
 import { renderSvgFrames } from '../model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../model/composeImageIconPackSheet'
 import {
@@ -1675,6 +1676,7 @@ export function useGraphRunSession(options: GraphRunSessionOptions) {
         composeImageGridCell,
         composeVideoFrameSheet,
         composeGifFrames: composeAnim2dGif,
+        unpackGifFrames: tryUnpackSourceGif,
         renderSvgFrames,
         composeImageIconPackSheet,
         composeImageLayerStack,

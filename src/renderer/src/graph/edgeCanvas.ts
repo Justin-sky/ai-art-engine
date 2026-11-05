@@ -674,7 +674,16 @@ function drawSoftBloomOrb(
   coreColor: string,
   alpha: number
 ): void {
-  if (alpha <= 0.01 || radius <= 0.2) return
+  if (
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy) ||
+    !Number.isFinite(radius) ||
+    !Number.isFinite(alpha) ||
+    alpha <= 0.01 ||
+    radius <= 0.2
+  ) {
+    return
+  }
   const sprite = getBloomSprite(glowColor, coreColor)
   if (sprite && typeof ctx.drawImage === 'function') {
     ctx.globalAlpha = alpha
@@ -769,7 +778,16 @@ function drawAnamorphicStarFlare(
   alpha: number,
   rotation: number
 ): void {
-  if (alpha <= 0.01) return
+  if (
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy) ||
+    !Number.isFinite(outerR) ||
+    !Number.isFinite(alpha) ||
+    alpha <= 0.01 ||
+    outerR <= 0.2
+  ) {
+    return
+  }
   // 底层柔光光晕
   drawSoftBloomOrb(ctx, cx, cy, outerR * 0.85, glowColor, coreColor, alpha * 0.75)
 
@@ -818,21 +836,42 @@ function drawCookingNodeEmbers(
 
   for (let rIdx = 0; rIdx < rects.length; rIdx += 1) {
     const rect = rects[rIdx]!
+    if (
+      !rect ||
+      !Number.isFinite(rect.x) ||
+      !Number.isFinite(rect.y) ||
+      !Number.isFinite(rect.w) ||
+      !Number.isFinite(rect.h)
+    ) {
+      continue
+    }
     const sx = toScreenX(rect.x, viewport)
     const sy = toScreenY(rect.y, viewport)
     const sw = rect.w * zoom
     const sh = rect.h * zoom
+    if (
+      !Number.isFinite(sx) ||
+      !Number.isFinite(sy) ||
+      !Number.isFinite(sw) ||
+      !Number.isFinite(sh) ||
+      sw <= 0 ||
+      sh <= 0
+    ) {
+      continue
+    }
     const perimeter = Math.max(120, 2 * (sw + sh))
 
     // 1) 沿卡片圆角边框环绕飞行的双子流光能量弧（Dual Orbiting Perimeter Energy Streams）
-    const cometLen = perimeter * 0.18
-    const gapLen = perimeter * 0.32
+    const cometLen = Math.max(1, perimeter * 0.18)
+    const gapLen = Math.max(1, perimeter * 0.32)
     const speedPxPerMs = (perimeter * 0.55) / 1000
     const dashOffset = -(nowMs * speedPxPerMs) % perimeter
 
     drawRoundedRectPath(ctx, sx, sy, sw, sh, 10 * zoom)
-    ctx.setLineDash([cometLen, gapLen])
-    ctx.lineDashOffset = dashOffset
+    if (Number.isFinite(cometLen) && Number.isFinite(gapLen)) {
+      ctx.setLineDash([cometLen, gapLen])
+      ctx.lineDashOffset = Number.isFinite(dashOffset) ? dashOffset : 0
+    }
     ctx.strokeStyle = forgeA
     ctx.globalAlpha = 0.42
     ctx.lineWidth = Math.max(2.6, 4.2 * zoom)
@@ -844,7 +883,9 @@ function drawCookingNodeEmbers(
     ctx.stroke()
 
     // 第二道反向青蓝流光弧
-    ctx.lineDashOffset = -dashOffset + perimeter * 0.25
+    if (Number.isFinite(dashOffset)) {
+      ctx.lineDashOffset = -dashOffset + perimeter * 0.25
+    }
     ctx.strokeStyle = forgeB
     ctx.globalAlpha = 0.52
     ctx.lineWidth = Math.max(1.6, 2.4 * zoom)

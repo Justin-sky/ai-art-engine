@@ -352,6 +352,8 @@ export async function mapPreciseResultToLayers(
       ...(layer.uiControlType ? { uiControlType: layer.uiControlType } : {}),
       ...(layer.uiPartRole ? { uiPartRole: layer.uiPartRole } : {}),
       ...(layer.editableText ? { editableText: layer.editableText } : {}),
+      ...(layer.blendMode && layer.blendMode !== 'normal' ? { blendMode: layer.blendMode } : {}),
+      ...(layer.backdropBlurRadius ? { backdropBlurRadius: layer.backdropBlurRadius } : {}),
       ...(nineSliceBorders ? { nineSliceBorders } : {}),
       ...(exportName ? { exportName } : {}),
       ...(layer.prefabKey ? { prefabKey: layer.prefabKey } : {}),

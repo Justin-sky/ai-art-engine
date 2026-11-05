@@ -7878,6 +7878,14 @@ export default {
           aspectRatio: '比例',
           count: '生成数量',
           countOption: '{n}张',
+          outputFormat: '输出格式',
+          formatGif: 'GIF 动图',
+          formatPng: 'PNG 静态图',
+          formatSvg: 'SVG 矢量图',
+          gifRatioTip:
+            'GIF 动图为 9 帧拼合，仅支持 1:1 方形（已自动适配为 512×512，避免超出模型像素预算）',
+          svgFormatTip:
+            '生成无损可缩放的 SVG 矢量图形源码，直接落盘为 .svg 并可在画布与资产库无损放大预览',
           seed: '随机种子',
           seedPlaceholder: '留空随机',
           seedRandom: '随机',

@@ -103,10 +103,18 @@ export async function composeImageLayerStack(input: {
     if (!url) continue
     const img = layer.id === base.id ? baseImg : await loadImage(url)
     if (isLayerSplitBase(layer)) {
+      ctx.globalCompositeOperation = 'source-over'
       ctx.drawImage(img, 0, 0, canvasWidth, canvasHeight)
       continue
     }
+    ctx.globalCompositeOperation =
+      layer.blendMode === 'screen'
+        ? 'screen'
+        : layer.blendMode === 'linear dodge'
+          ? 'lighter'
+          : 'source-over'
     ctx.drawImage(img, layer.left, layer.top, Math.max(1, layer.width), Math.max(1, layer.height))
+    ctx.globalCompositeOperation = 'source-over'
   }
 
   let psdDataUrl: string | undefined

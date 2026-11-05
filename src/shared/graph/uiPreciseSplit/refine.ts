@@ -5,11 +5,13 @@
  */
 
 import type { LocalOcrTextBox } from '../uiControlSpec'
+import { bleedTransparentRgb } from './productize'
 import {
   clampRect,
   closeMask3x3,
   computeOtsuThreshold,
   dilateMask,
+  erodeMask,
   expandRect,
   labelComponents,
   labelComponents8,
@@ -596,5 +598,247 @@ export function paintRect(
   const r = clampRect(rect, width, height)
   for (let y = r.top; y < r.top + r.height; y++) {
     target.fill(1, y * width + r.left, y * width + r.left + r.width)
+  }
+}
+
+/**
+ * Closed-form Color-Line foreground-anchored plain text matting:
+ * - Estimates directional clean background `B_loc` from nearby non-erased `source` pixels (falling
+ *   back to `textFree`) so glossy two-tone button bevels and busy backgrounds never blur across glyphs.
+ * - Locks glyph cores to `source` RGB (`alpha = 255`) to preserve vertical metallic gradients & strokes.
+ * - Solves anti-aliased edge `alpha` on the local segment `B_loc <-> F_near` and anchors low-alpha
+ *   edge RGB to `F_near` so 1px glyph edges suffer zero background color bleed.
+ */
+export function extractCrispPlainTextMatte(
+  source: RgbaImage,
+  textFree: RgbaImage,
+  lm: LocalMask
+): { rect: PixelRect; rgba: Uint8ClampedArray } | null {
+  if (lm.maskQuality !== 'estimated_glyphs' || !lm.glyphMask) return null
+  const { rect, glyphMask } = lm
+  const rw = rect.width
+  const rh = rect.height
+  const n = rw * rh
+  const W = source.width
+  const H = source.height
+  if (rw < 3 || rh < 3) return null
+
+  const erase = lm.eraseMask ?? lm.mask
+  const band = dilateMask(glyphMask, rw, rh, 1)
+  const eroded = erodeMask(glyphMask, rw, rh, 1)
+
+  // Ensure thin 1-2px glyphs still have strong foreground anchor pixels even if `eroded` is sparse
+  const anchorMask = new Uint8Array(eroded)
+  let anchorCnt = 0
+  for (let p = 0; p < n; p++) if (anchorMask[p]) anchorCnt++
+  if (anchorCnt < 4) {
+    const glyphDists: number[] = []
+    for (let y = 0; y < rh; y++) {
+      const gy = rect.top + y
+      if (gy < 0 || gy >= H) continue
+      for (let x = 0; x < rw; x++) {
+        const gx = rect.left + x
+        if (gx < 0 || gx >= W) continue
+        const p = y * rw + x
+        if (!glyphMask[p]) continue
+        const gi = (gy * W + gx) * 4
+        glyphDists.push(pixelDistance(source.data, gi, textFree.data, gi))
+      }
+    }
+    if (glyphDists.length === 0) return null
+    glyphDists.sort((a, b) => a - b)
+    const thr = glyphDists[Math.floor(glyphDists.length * 0.45)]!
+    for (let y = 0; y < rh; y++) {
+      const gy = rect.top + y
+      if (gy < 0 || gy >= H) continue
+      for (let x = 0; x < rw; x++) {
+        const gx = rect.left + x
+        if (gx < 0 || gx >= W) continue
+        const p = y * rw + x
+        if (!glyphMask[p]) continue
+        const gi = (gy * W + gx) * 4
+        if (pixelDistance(source.data, gi, textFree.data, gi) >= thr) {
+          anchorMask[p] = 1
+        }
+      }
+    }
+  }
+
+  const fullRgba = new Uint8ClampedArray(n * 4)
+  let minX = rw
+  let minY = rh
+  let maxX = -1
+  let maxY = -1
+
+  for (let y = 0; y < rh; y++) {
+    const gy = rect.top + y
+    if (gy < 0 || gy >= H) continue
+    for (let x = 0; x < rw; x++) {
+      const gx = rect.left + x
+      if (gx < 0 || gx >= W) continue
+      const p = y * rw + x
+      if (!band[p]) continue
+
+      const gi = (gy * W + gx) * 4
+      const obsR = source.data[gi]!
+      const obsG = source.data[gi + 1]!
+      const obsB = source.data[gi + 2]!
+
+      // Estimate local background `B_loc` from clean nearby non-erased `source` pixels within 4px
+      let wSum = 0
+      let bR = 0
+      let bG = 0
+      let bB = 0
+      for (let dy = -4; dy <= 4; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= rh) continue
+        const ngy = rect.top + ny
+        if (ngy < 0 || ngy >= H) continue
+        for (let dx = -4; dx <= 4; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= rw) continue
+          const np = ny * rw + nx
+          if (erase[np]) continue
+          const ngx = rect.left + nx
+          if (ngx < 0 || ngx >= W) continue
+          const d2 = dx * dx + dy * dy
+          if (d2 > 16) continue
+          const wt = 1 / (d2 + 1)
+          const ngi = (ngy * W + ngx) * 4
+          bR += source.data[ngi]! * wt
+          bG += source.data[ngi + 1]! * wt
+          bB += source.data[ngi + 2]! * wt
+          wSum += wt
+        }
+      }
+      const tfR = textFree.data[gi]!
+      const tfG = textFree.data[gi + 1]!
+      const tfB = textFree.data[gi + 2]!
+      const locBgR = wSum >= 0.6 ? Math.round((bR / wSum) * 0.65 + tfR * 0.35) : tfR
+      const locBgG = wSum >= 0.6 ? Math.round((bG / wSum) * 0.65 + tfG * 0.35) : tfG
+      const locBgB = wSum >= 0.6 ? Math.round((bB / wSum) * 0.65 + tfB * 0.35) : tfB
+
+      const dBg = Math.sqrt(
+        ((obsR - locBgR) ** 2 + (obsG - locBgG) ** 2 + (obsB - locBgB) ** 2) / 3
+      )
+      const pi = p * 4
+
+      if (eroded[p] || (glyphMask[p] && dBg >= 48)) {
+        fullRgba[pi] = obsR
+        fullRgba[pi + 1] = obsG
+        fullRgba[pi + 2] = obsB
+        fullRgba[pi + 3] = 255
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        continue
+      }
+
+      // Find nearest core/glyph foreground anchor within 2px minimizing Color-Line residual
+      let bestPerp = Infinity
+      let bestAlpha = 0
+      let bestFg: [number, number, number] | null = null
+      for (let dy = -2; dy <= 2; dy++) {
+        const ny = y + dy
+        if (ny < 0 || ny >= rh) continue
+        const ngy = rect.top + ny
+        if (ngy < 0 || ngy >= H) continue
+        for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx
+          if (nx < 0 || nx >= rw) continue
+          const np = ny * rw + nx
+          if (!anchorMask[np] && !glyphMask[np]) continue
+          const ngx = rect.left + nx
+          if (ngx < 0 || ngx >= W) continue
+          const ngi = (ngy * W + ngx) * 4
+          const fR = source.data[ngi]!
+          const fG = source.data[ngi + 1]!
+          const fB = source.data[ngi + 2]!
+          const vR = fR - locBgR
+          const vG = fG - locBgG
+          const vB = fB - locBgB
+          const vLen2 = vR * vR + vG * vG + vB * vB
+          if (vLen2 < 576) continue
+          const aProj = Math.max(
+            0,
+            Math.min(
+              1,
+              ((obsR - locBgR) * vR + (obsG - locBgG) * vG + (obsB - locBgB) * vB) / vLen2
+            )
+          )
+          const eR = obsR - locBgR - aProj * vR
+          const eG = obsG - locBgG - aProj * vG
+          const eB = obsB - locBgB - aProj * vB
+          const perp = Math.sqrt((eR * eR + eG * eG + eB * eB) / 3) + (anchorMask[np] ? 0 : 1.5)
+          if (perp < bestPerp) {
+            bestPerp = perp
+            bestAlpha = aProj
+            bestFg = [fR, fG, fB]
+          }
+        }
+      }
+
+      let a = 0
+      let outR = obsR
+      let outG = obsG
+      let outB = obsB
+      if (bestFg && bestPerp <= 16) {
+        a = bestAlpha
+        if (a >= 0.03) {
+          const trustDirect = Math.max(0, Math.min(1, (a - 0.35) / 0.4))
+          const dR = Math.max(0, Math.min(255, (obsR - locBgR * (1 - a)) / a))
+          const dG = Math.max(0, Math.min(255, (obsG - locBgG * (1 - a)) / a))
+          const dB = Math.max(0, Math.min(255, (obsB - locBgB * (1 - a)) / a))
+          outR = Math.round(dR * trustDirect + bestFg[0] * (1 - trustDirect))
+          outG = Math.round(dG * trustDirect + bestFg[1] * (1 - trustDirect))
+          outB = Math.round(dB * trustDirect + bestFg[2] * (1 - trustDirect))
+        }
+      } else if (dBg > 7) {
+        const u = Math.max(0, Math.min(1, (dBg - 7) / 28))
+        a = u * u * (3 - 2 * u)
+        if (a >= 0.03) {
+          outR = Math.max(0, Math.min(255, Math.round((obsR - locBgR * (1 - a)) / a)))
+          outG = Math.max(0, Math.min(255, Math.round((obsG - locBgG * (1 - a)) / a)))
+          outB = Math.max(0, Math.min(255, Math.round((obsB - locBgB * (1 - a)) / a)))
+        }
+      }
+
+      const aByte = Math.round(a * 255)
+      if (aByte < 6) continue
+      fullRgba[pi] = outR
+      fullRgba[pi + 1] = outG
+      fullRgba[pi + 2] = outB
+      fullRgba[pi + 3] = aByte
+      if (x < minX) minX = x
+      if (x > maxX) maxX = x
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+  }
+
+  if (maxX < minX || maxY < minY) return null
+  const cw = maxX - minX + 1
+  const ch = maxY - minY + 1
+  const cropped = new Uint8ClampedArray(cw * ch * 4)
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const si = ((minY + y) * rw + (minX + x)) * 4
+      const di = (y * cw + x) * 4
+      cropped[di] = fullRgba[si]!
+      cropped[di + 1] = fullRgba[si + 1]!
+      cropped[di + 2] = fullRgba[si + 2]!
+      cropped[di + 3] = fullRgba[si + 3]!
+    }
+  }
+  bleedTransparentRgb(cropped, cw, ch, 2)
+  return {
+    rect: {
+      left: rect.left + minX,
+      top: rect.top + minY,
+      width: cw,
+      height: ch
+    },
+    rgba: cropped
   }
 }

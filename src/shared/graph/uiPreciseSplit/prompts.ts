@@ -56,6 +56,8 @@ Return ONLY one JSON object, no markdown:
       "parent": "id of the element it sits on, or null when it sits directly on the background",
       "order": 1,
       "element_repair_mode": "image | surface | none",
+      "blend_mode": "normal | screen | linear dodge",
+      "font_style": "sans | serif | rounded | condensed | monospace | display",
       "ocr": ["T3"],
       "text": "exact visible text for text / art-text elements"
     }
@@ -68,9 +70,10 @@ Rules:
 4. "order" is painter's order among siblings: larger = drawn later (on top).
 5. "element_repair_mode": if child elements sit on top of this element, set "surface" when this element has a flat/uniform/simple-gradient surface that can be repaired locally from boundary colors, or "image" when it has complex illustration/texture requiring generative inpainting; set "none" if nothing occludes it.
 6. "background_repair.mode": set "scene" if the full-canvas background is a complex scene/illustration occluded by UI, "surface" if it is a flat/gradient backdrop, or "none" if no repair is needed. Never list the full-screen background scene / wallpaper itself in "elements" (it automatically becomes the Base layer).
-7. Text & "raster_text_ids": use kind "text" for plain UI typography (labels, numbers, stack counts like "x5" / "+10" / "Lv.20", descriptions) and "art-text" ONLY for large stylized title banners / logos. Never put stack counts (like "x5") into "raster_text_ids". Reference matching OCR ids in "ocr" and correct OCR misreads in "text".
-8. Composite Card / Avatar Slot / Item Icon Rule: When a card, avatar frame, or item slot contains a character portrait or item figure, you MUST split it into separate layered elements: (a) the outer slot/card frame & gradient backplate (kind: "item-slot" or "panel", element_repair_mode: "surface"), (b) the character portrait or item illustration inside the slot (kind: "avatar" or "illustration", parent = the slot), (c) any corner badge or puzzle/faction icon (kind: "badge" or "icon", tight box_2d around ONLY the badge), and (d) any stack count / level text (kind: "text", text: "x5"). Never merge the character portrait with the slot frame!
-9. Repeated items (e.g. 4 reward slots) must be listed individually, each with its own icon / count text children. Up to 90 elements.`
+7. Text, "font_style" & "raster_text_ids": use kind "text" for plain UI typography (labels, numbers, stack counts like "x5" / "+10" / "Lv.20", descriptions) and set optional "font_style" ("sans" | "serif" | "rounded" | "condensed" | "monospace" | "display"); use "art-text" ONLY for large stylized title banners / logos. Never put stack counts (like "x5") into "raster_text_ids". Reference matching OCR ids in "ocr" and correct OCR misreads in "text".
+8. Glow & "blend_mode": for kind "effect" (additive light beams, hologram halos, flare particles), set "blend_mode" to "linear dodge" for hot additive beams/sparks or "screen" for soft ambient glow; omit or use "normal" for all regular UI elements.
+9. Composite Card / Avatar Slot / Item Icon Rule: When a card, avatar frame, or item slot contains a character portrait or item figure, you MUST split it into separate layered elements: (a) the outer slot/card frame & gradient backplate (kind: "item-slot" or "panel", element_repair_mode: "surface"), (b) the character portrait or item illustration inside the slot (kind: "avatar" or "illustration", parent = the slot), (c) any corner badge or puzzle/faction icon (kind: "badge" or "icon", tight box_2d around ONLY the badge), and (d) any stack count / level text (kind: "text", text: "x5"). Never merge the character portrait with the slot frame!
+10. Dense & Repeated Element Recall: Repeated items (reward slots, star rating pips, pagination dots, currency icons, red notification dots, lock icons, corner ornaments, thin dividers) MUST each be listed individually without omission. Up to 200 elements.`
   }
   return `你是资深游戏 UI 美术，负责把 UI 效果图切成可直接进 Unity / Cocos / UE 的 PSD 分层。
 你会收到原图（以及可选的第二张「OCR 初步去字图」）。请结合两张图列出画面中**每一个可独立分离的视觉元素**：面板底框、边框、横幅、按钮、关闭按钮、翻页箭头、页签、道具槽、图标、角标徽章、头像、角色立绘、进度条、分割线、装饰花纹、发光特效，以及每一段文字。
@@ -90,6 +93,8 @@ Rules:
       "parent": "它直接叠放在其上的元素 id；直接放在背景上则为 null",
       "order": 1,
       "element_repair_mode": "image | surface | none",
+      "blend_mode": "normal | screen | linear dodge",
+      "font_style": "sans | serif | rounded | condensed | monospace | display",
       "ocr": ["T3"],
       "text": "text / art-text 元素上实际可见的文字"
     }
@@ -102,9 +107,10 @@ Rules:
 4. order 是同级之间的绘制顺序：数字越大越后画（越靠上）。
 5. element_repair_mode：若该元素上方压了子元素，当其底面为纯色/规则渐变/九宫格底板时填 "surface"（本地边缘色彩延续修补），当其为复杂插画/立绘/纹理时填 "image"（生图修补）；无子元素遮挡则填 "none"。
 6. background_repair.mode：底层全屏背景若为复杂场景插画填 "scene"，纯色或简单渐变背景填 "surface"，无需修补填 "none"。严禁把整张全屏场景背景/壁纸本身列进 elements（它会自动作为 Base 底图输出）。
-7. 文字与 raster_text_ids：普通 UI 字体（标签、数值、说明、右下角数量叠数如 "x5" / "+10" / "Lv.20"）一律用 "text"；仅大型立体标题/Logo 用 "art-text"（切勿把 "x5" 等数量文字放入 raster_text_ids）。在元素的 "ocr" 中引用匹配的 OCR 编号，并在 "text" 中纠正 OCR 识别错误。
-8. 头像框 / 道具槽 / 立绘卡牌必拆规则：当画面或槽位中包含「底框/背景板 + 角色人像/物品图标 + 左上角标 + 右下数量文字」时，必须拆成独立的父子多层：（a）底层槽位底框与背景板（kind: "item-slot" 或 "panel"，element_repair_mode: "surface"），（b）框内的角色头像或物品立绘主体（kind: "avatar" 或 "illustration"，parent 指向底框），（c）左上角拼图/属性角标（kind: "badge" 或 "icon"，box_2d 紧贴角标自身，严禁把相邻头发或边框框进去），（d）右下角数量文字（kind: "text"，text: "x5"）。严禁把角色人像与头像底框合并成一个元素！
-9. 重复元素（如 4 个奖励格）必须逐个列出，每个都带自己的图标、数量文字子元素。最多 90 个元素。`
+7. 文字、font_style 与 raster_text_ids：普通 UI 字体（标签、数值、说明、右下角数量叠数如 "x5" / "+10" / "Lv.20"）一律用 "text"，并标注可选字体风格 "font_style"（"sans" 黑体无衬线 / "serif" 宋体衬线 / "rounded" 圆体 / "condensed" 窄体数字 / "monospace" 等宽 / "display" 粗重标题体）；仅大型立体标题/Logo 用 "art-text"（切勿把 "x5" 等数量文字放入 raster_text_ids）。在元素的 "ocr" 中引用匹配的 OCR 编号，并在 "text" 中纠正 OCR 识别错误。
+8. 光效与 blend_mode：对 kind 为 "effect" 的纯增亮光束、粒子耀斑、全息底座光环，高亮过曝型光束填 "linear dodge"，柔和环境辉光填 "screen"；常规不透明/半透明控件一律填 "normal" 或省略。
+9. 头像框 / 道具槽 / 立绘卡牌必拆规则：当画面或槽位中包含「底框/背景板 + 角色人像/物品图标 + 左上角标 + 右下数量文字」时，必须拆成独立的父子多层：（a）底层槽位底框与背景板（kind: "item-slot" 或 "panel"，element_repair_mode: "surface"），（b）框内的角色头像或物品立绘主体（kind: "avatar" 或 "illustration"，parent 指向底框），（c）左上角拼图/属性角标（kind: "badge" 或 "icon"，box_2d 紧贴角标自身，严禁把相邻头发或边框框进去），（d）右下角数量文字（kind: "text"，text: "x5"）。严禁把角色人像与头像底框合并成一个元素！
+10. 密集小元素零遗漏规则：重复元素（如奖励格、星级小星星、轮播分页圆点、货币小图标、小红点、小锁头、边角装饰花纹、细分割线）必须逐一单独列出，严禁漏检或把一排小图标合并成一个大框。最多 200 个元素。`
 }
 
 export function formatComponentCatalogHints(

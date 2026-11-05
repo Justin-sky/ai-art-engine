@@ -119,6 +119,7 @@ import { closeMediaStreamsUnder } from '../studioMediaProtocol'
 
 import {
   detectImportAssetType,
+  isAnimatedImageFilePath,
   isAttachCompatible,
   isAudioFilePath,
   isImageFilePath,
@@ -1389,6 +1390,11 @@ class ProjectService {
     // 矢量图（SVG）：原文件本身就能被 Chromium 渲染，而 nativeImage 解不出它，
     // 没有可生成的位图缩略图，直接给原文件 URL
     if (isVectorImageFilePath(abs)) {
+      return this.getAssetFileUrl(relativePath) ?? ''
+    }
+
+    // 动态图（GIF）：若返回普通缩略图（.png）会把动画压成静态单帧，必须直接返回原文件 URL 播放动画
+    if (isAnimatedImageFilePath(abs)) {
       return this.getAssetFileUrl(relativePath) ?? ''
     }
 

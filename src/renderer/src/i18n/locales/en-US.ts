@@ -8120,6 +8120,14 @@ export default {
           aspectRatio: 'Aspect ratio',
           count: 'Count',
           countOption: '{n}',
+          outputFormat: 'Format',
+          formatGif: 'Animated GIF',
+          formatPng: 'PNG',
+          formatSvg: 'SVG Vector',
+          gifRatioTip:
+            'GIF animation uses 9 tiled frames, requiring 1:1 square (auto-clamped to 512x512 to fit model pixel budget)',
+          svgFormatTip:
+            'Generates lossless scalable SVG vector graphics, saved directly as .svg for infinite zoom and editing',
           seed: 'Seed',
           seedPlaceholder: 'Empty = random',
           seedRandom: 'Random',

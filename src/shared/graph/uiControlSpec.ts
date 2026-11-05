@@ -116,6 +116,11 @@ export type UiControlPartRole =
   // Standalone Icon / Ornament
   | 'icon-graphic'
 
+export type UiLayerBlendMode = 'normal' | 'screen' | 'linear dodge'
+
+export type UiFontStyleCategory =
+  'sans' | 'serif' | 'rounded' | 'condensed' | 'monospace' | 'display'
+
 /**
  * 原生 Photoshop 可编辑文本图层（`TySh`）与引擎文本绑定元数据。
  * 在导出 PSD 时，除保留原艺术字像素外，自动将该图层声明为可在 Photoshop 中双击编辑文字的 Type Layer。
@@ -137,8 +142,20 @@ export interface UiEditableTextMeta {
   glyphCount?: number
   /** 文本对齐方式 */
   align?: 'left' | 'center' | 'right'
-  /** PostScript 字体名（默认 MicrosoftYaHei-Bold） */
+  /** PostScript 字体名（按字体风格与语种自动匹配） */
   fontName?: string
+  /** 识别出的字体形态分类（无衬线 / 衬线 / 圆体 / 窄体数字 / 等宽 / 标题展示） */
+  fontStyle?: UiFontStyleCategory
+  /** 垂直双色/金属渐变色标 [顶部色, 底部色]（存在明显上下渐变时导出 PSD Gradient Overlay） */
+  gradientStops?: [[number, number, number], [number, number, number]]
+  /** 文字投影参数（存在明显暗部投影时导出 PSD Drop Shadow） */
+  dropShadow?: {
+    color: [number, number, number]
+    opacity: number
+    distance: number
+    size: number
+    angle: number
+  }
 }
 
 export interface UiControlSpecMeta {
@@ -827,6 +844,7 @@ export function estimateEditableTextMeta(input: {
   align?: 'left' | 'center' | 'right'
   bgColor?: [number, number, number]
   glyphCoverage?: number
+  fontStyleHint?: UiFontStyleCategory
 }): UiEditableTextMeta {
   const { foregroundRgba, width, height, rawName, ocrText, fallbackText, align } = input
   const w = Math.max(1, Math.round(width))
@@ -994,8 +1012,9 @@ export function estimateEditableTextMeta(input: {
     }
   }
 
-  // 水平投影谷底切分（统计独立字符段个数 glyphCount）
+  // 水平投影谷底切分（统计独立字符段个数 glyphCount 及各段宽度供等宽/窄体形态判别）
   let glyphCount = 0
+  const runWidths: number[] = []
   let inRun = false
   let runLen = 0
   const minGap = Math.max(1, Math.floor(h * 0.06))
@@ -1012,13 +1031,19 @@ export function estimateEditableTextMeta(input: {
     } else if (inRun) {
       gapLen++
       if (gapLen >= minGap) {
-        if (runLen >= 2) glyphCount++
+        if (runLen >= 2) {
+          glyphCount++
+          runWidths.push(runLen)
+        }
         inRun = false
         runLen = 0
       }
     }
   }
-  if (inRun && runLen >= 2) glyphCount++
+  if (inRun && runLen >= 2) {
+    glyphCount++
+    runWidths.push(runLen)
+  }
 
   let candidateName = rawName.replace(/^\[[^\]]+\]\s*/g, '').trim()
   // 先剥离标准部件角色后缀（如 " · 按钮文字 (Label)"、" · 强化等级文字 (+Lv)"）
@@ -1063,6 +1088,200 @@ export function estimateEditableTextMeta(input: {
     else if (centerRatio > 0.64) resolvedAlign = 'right'
   }
 
+  // 1) 垂直金属/双色渐变色标检测（对比上半字芯与下半字芯色彩差异）
+  let gradientStops: [[number, number, number], [number, number, number]] | undefined
+  if (maxY > minY + 5 && coreW > 0) {
+    const midY = (minY + maxY) * 0.5
+    let topR = 0
+    let topG = 0
+    let topB = 0
+    let topCnt = 0
+    let botR = 0
+    let botG = 0
+    let botB = 0
+    let botCnt = 0
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4
+        const a = foregroundRgba[i + 3]!
+        if (a < 168) continue
+        const leftA = x > 0 ? foregroundRgba[i - 4 + 3]! : 0
+        const rightA = x + 1 < w ? foregroundRgba[i + 4 + 3]! : 0
+        const topA = y > 0 ? foregroundRgba[i - w * 4 + 3]! : 0
+        const botA = y + 1 < h ? foregroundRgba[i + w * 4 + 3]! : 0
+        if (leftA < 108 || rightA < 108 || topA < 108 || botA < 108) continue
+        if (y <= midY) {
+          topR += foregroundRgba[i]!
+          topG += foregroundRgba[i + 1]!
+          topB += foregroundRgba[i + 2]!
+          topCnt++
+        } else {
+          botR += foregroundRgba[i]!
+          botG += foregroundRgba[i + 1]!
+          botB += foregroundRgba[i + 2]!
+          botCnt++
+        }
+      }
+    }
+    if (topCnt >= 4 && botCnt >= 4) {
+      const tr = topR / topCnt
+      const tg = topG / topCnt
+      const tb = topB / topCnt
+      const br = botR / botCnt
+      const bgc = botG / botCnt
+      const bb = botB / botCnt
+      if (Math.hypot(tr - br, tg - bgc, tb - bb) >= 26) {
+        gradientStops = [
+          [
+            Math.max(0, Math.min(255, Math.round(tr))),
+            Math.max(0, Math.min(255, Math.round(tg))),
+            Math.max(0, Math.min(255, Math.round(tb)))
+          ],
+          [
+            Math.max(0, Math.min(255, Math.round(br))),
+            Math.max(0, Math.min(255, Math.round(bgc))),
+            Math.max(0, Math.min(255, Math.round(bb)))
+          ]
+        ]
+      }
+    }
+  }
+
+  // 2) 文字下/右侧暗部软投影检测（对比右下侧与左上侧半透明暗影分布）
+  let dropShadow: UiEditableTextMeta['dropShadow']
+  if (h >= 12 && w >= 12) {
+    const bgLuma = 0.2126 * bg[0] + 0.7152 * bg[1] + 0.0722 * bg[2]
+    const fgLuma = 0.2126 * color[0] + 0.7152 * color[1] + 0.0722 * color[2]
+    let seDark = 0
+    let nwDark = 0
+    let darkAlphaSum = 0
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = (y * w + x) * 4
+        const a = foregroundRgba[i + 3]!
+        if (a < 20 || a > 175) continue
+        const luma =
+          0.2126 * foregroundRgba[i]! +
+          0.7152 * foregroundRgba[i + 1]! +
+          0.0722 * foregroundRgba[i + 2]!
+        if (luma > 52 || fgLuma - luma < 65 || bgLuma - luma < 14) continue
+        const solidAboveOrLeft =
+          foregroundRgba[i - w * 4 + 3]! >= 190 || foregroundRgba[i - 4 + 3]! >= 190
+        const solidBelowOrRight =
+          foregroundRgba[i + w * 4 + 3]! >= 190 || foregroundRgba[i + 4 + 3]! >= 190
+        if (solidAboveOrLeft && !solidBelowOrRight) {
+          seDark++
+          darkAlphaSum += a / 255
+        } else if (solidBelowOrRight && !solidAboveOrLeft) {
+          nwDark++
+        }
+      }
+    }
+    if (seDark >= Math.max(4, Math.round(w * 0.1)) && seDark >= nwDark * 2.1) {
+      dropShadow = {
+        color: [0, 0, 0],
+        opacity: Math.max(0.35, Math.min(0.85, Number((darkAlphaSum / seDark).toFixed(2)))),
+        distance: Math.max(1, Math.min(4, Math.round(h * 0.07))),
+        size: Math.max(1, Math.min(6, Math.round(h * 0.09))),
+        angle: 120
+      }
+    }
+  }
+
+  // 3) 字体家族分类与 PostScript 字体名推断（融合 VLM 语义提示 + 语种 + 衬线脚端扩张比 + 窄体/等宽几何特征）
+  const hasCjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(
+    text
+  )
+  const isNumericCounter = /^[+\-xX*$%0-9.,:/\sLv]+$/i.test(text)
+  let fontStyle: UiFontStyleCategory = input.fontStyleHint ?? 'sans'
+  if (!input.fontStyleHint) {
+    let terminalSpan = 0
+    let terminalRows = 0
+    let stemSpan = 0
+    let stemRows = 0
+    if (maxY - minY >= 10) {
+      const spanH = maxY - minY + 1
+      for (let y = minY; y <= maxY; y++) {
+        let rowHits = 0
+        for (let x = 0; x < w; x++) {
+          if (foregroundRgba[(y * w + x) * 4 + 3]! >= 120) rowHits++
+        }
+        const rel = (y - minY) / spanH
+        if (rel <= 0.16 || rel >= 0.84) {
+          terminalSpan += rowHits
+          terminalRows++
+        } else if (rel >= 0.36 && rel <= 0.64) {
+          stemSpan += rowHits
+          stemRows++
+        }
+      }
+    }
+    const avgTerm = terminalRows > 0 ? terminalSpan / terminalRows : 0
+    const avgStem = stemRows > 0 ? stemSpan / stemRows : 0
+    const serifRatio = avgStem > 1 ? avgTerm / avgStem : 1
+
+    const nonSpaceChars = text.replace(/\s+/g, '').length
+    const avgCharWidth =
+      runWidths.length > 0
+        ? runWidths.reduce((s, v) => s + v, 0) / runWidths.length
+        : nonSpaceChars > 0
+          ? w / nonSpaceChars
+          : effectiveGlyphH
+
+    let isUniformMono = false
+    if (!hasCjk && runWidths.length >= 4) {
+      const meanW = avgCharWidth
+      const maxDev = runWidths.reduce((m, v) => Math.max(m, Math.abs(v - meanW)), 0)
+      if (meanW >= 4 && maxDev / meanW <= 0.12 && text.length === runWidths.length) {
+        isUniformMono = true
+      }
+    }
+
+    if (isNumericCounter && avgCharWidth / Math.max(1, effectiveGlyphH) < 0.54) {
+      fontStyle = 'condensed'
+    } else if (isUniformMono) {
+      fontStyle = 'monospace'
+    } else if (
+      !isNumericCounter &&
+      effectiveGlyphH >= 14 &&
+      serifRatio >= 1.28 &&
+      coverage < 0.34
+    ) {
+      fontStyle = 'serif'
+    } else if (coverage >= 0.29 && effectiveGlyphH >= 22) {
+      fontStyle = 'display'
+    }
+  }
+
+  let fontName: string
+  switch (fontStyle) {
+    case 'serif':
+      fontName = hasCjk ? 'SourceHanSerifSC-Bold' : 'Georgia-Bold'
+      break
+    case 'condensed':
+      fontName = 'DINAlternate-Bold'
+      break
+    case 'rounded':
+      fontName = hasCjk ? 'YouYuan' : 'ArialRoundedMTBold'
+      break
+    case 'monospace':
+      fontName = 'Consolas-Bold'
+      break
+    case 'display':
+      fontName = hasCjk ? 'SourceHanSansSC-Heavy' : 'Impact'
+      break
+    case 'sans':
+    default:
+      fontName = hasCjk
+        ? fontWeight === 700
+          ? 'MicrosoftYaHei-Bold'
+          : 'MicrosoftYaHei'
+        : fontWeight === 700
+          ? 'Arial-BoldMT'
+          : 'ArialMT'
+      break
+  }
+
   return {
     text,
     fontSize,
@@ -1071,7 +1290,10 @@ export function estimateEditableTextMeta(input: {
     ...(strokeColor ? { strokeColor, strokeWidth } : {}),
     ...(glyphCount > 0 ? { glyphCount } : {}),
     align: resolvedAlign,
-    fontName: 'MicrosoftYaHei-Bold'
+    fontName,
+    fontStyle,
+    ...(gradientStops ? { gradientStops } : {}),
+    ...(dropShadow ? { dropShadow } : {})
   }
 }
 

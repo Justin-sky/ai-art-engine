@@ -882,10 +882,15 @@ export async function generateOpenAiCompatibleImage(
   input: GenerateImageInput
 ): Promise<GenerateImageResult> {
   const quality = normalizeOpenAiImageQuality(input.quality, modelId)
-  const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio, modelId)
   // 模型不认 `@n`（那是应用内的编号约定），发出去之前转成「图n」与 image[] 顺序对齐；
   // 与火山方舟 / Gemini / OpenRouter 三条链路同一口径（见 shared/modelProviders/imagePromptMentions）
   const prompt = rewriteAtMentionsForImagePrompt(input.prompt)
+  const outputFormat =
+    input.outputFormat?.trim().toLowerCase() ||
+    (/gpt-image-2\.6/i.test(modelId) && /动图|动态|gif|animated|animation|loop/i.test(prompt) // cjk-ok
+      ? 'gif'
+      : undefined)
+  const size = resolveOpenAiImageSize(input.resolution, input.aspectRatio, modelId, outputFormat)
 
   try {
     if (input.inputReferences?.length) {
@@ -910,6 +915,17 @@ export async function generateOpenAiCompatibleImage(
       if (input.n && input.n >= 1) form.append('n', String(Math.floor(input.n)))
       if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
         form.append('background', 'transparent')
+      }
+      if (outputFormat) {
+        if (outputFormat.toLowerCase() === 'svg') {
+          throw fail(PROVIDER_ERRORS.actionFailed, {
+            action: 'imageGenerate',
+            detail:
+              'OpenAI 的 SVG 矢量图格式仅支持纯文本生成（文生图 /images/generations），不支持带参考图的图像编辑（/images/edits）。请断开参考图输入或将输出格式切换为 PNG。' // cjk-ok
+          })
+        }
+        form.append('output_format', outputFormat)
+        if (outputFormat.toLowerCase() === 'gif' && size) form.set('size', '512x512')
       }
 
       const client = createProviderHttpClient(provider, LONG_GENERATE_TIMEOUT_MS)
@@ -942,6 +958,18 @@ export async function generateOpenAiCompatibleImage(
     if (input.n && input.n >= 1) body.n = Math.floor(input.n)
     if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
       body.background = 'transparent'
+    }
+    if (outputFormat) {
+      body.output_format = outputFormat
+      // OpenAI gpt-image 直出 GIF 内部由 9 帧拼合（3×3 序列图）。
+      // 1024x1024 下拼合尺寸为 3072x3072，会报 "Requested resolution exceeds the current pixel budget"。
+      // 因此输出格式为 gif 时，强制将 size 约束为 '512x512'。
+      if (outputFormat.toLowerCase() === 'gif') {
+        body.size = '512x512'
+      } else if (outputFormat.toLowerCase() === 'svg') {
+        // OpenAI gpt-image 系列生成 SVG 时需要指定矢量编写/推理模型 svg.model（官方推荐 gpt-6.1-sol）
+        body.svg = { model: 'gpt-6.1-sol' }
+      }
     }
 
     const { data } = await client.post<{

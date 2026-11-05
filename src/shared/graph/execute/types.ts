@@ -447,6 +447,7 @@ export interface NodeExecuteContext {
     aspectRatio?: string
     resolution?: string
     quality?: string
+    outputFormat?: string
     n?: number
     seed?: number
     inputReferences?: string[]
@@ -1073,6 +1074,23 @@ export interface NodeExecuteContext {
     byteLength: number
   } | null>
   /**
+   * GIF 解码拆帧：将 GIF 动图二进制流或 dataUrl 拆解为逐帧 PNG dataUrl 与时延信息。
+   */
+  unpackGifFrames?: (input: string | Uint8Array | ArrayBuffer) =>
+    | Promise<{
+        width: number
+        height: number
+        frames: Array<{ dataUrl: string; delayCs: number; width: number; height: number }>
+        averageFps: number
+      } | null>
+    | {
+        width: number
+        height: number
+        frames: Array<{ dataUrl: string; delayCs: number; width: number; height: number }>
+        averageFps: number
+      }
+    | null
+  /**
    * SVG 烘焙 → 逐帧位图：把 SVG 文本按动效时间轴采样成 PNG dataUrl 序列。
    * 渲染层负责 DOM 求值 + canvas 栅格化（`renderSvgFrames`），未注入时节点无法执行。
    */
@@ -1627,6 +1645,7 @@ export interface GraphRunOptions {
   composeImageGridCell?: NodeExecuteContext['composeImageGridCell']
   composeVideoFrameSheet?: NodeExecuteContext['composeVideoFrameSheet']
   composeGifFrames?: NodeExecuteContext['composeGifFrames']
+  unpackGifFrames?: NodeExecuteContext['unpackGifFrames']
   renderSvgFrames?: NodeExecuteContext['renderSvgFrames']
   composeImageIconPackSheet?: NodeExecuteContext['composeImageIconPackSheet']
   composeImageLayerStack?: NodeExecuteContext['composeImageLayerStack']

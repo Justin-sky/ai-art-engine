@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   aspectRatioCropRect,
+  normalizeImageAspectRatio,
   parseAspectRatio
 } from '../src/renderer/src/features/graph/model/normalizeImageAspectRatio'
 
@@ -37,5 +38,14 @@ describe('normalizeImageAspectRatio', () => {
       width: 900,
       height: 506
     })
+  })
+
+  it('bypasses normalization for animated GIF dataUrls', async () => {
+    const fakeGif = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+    const result = await normalizeImageAspectRatio({
+      dataUrl: fakeGif,
+      aspectRatio: '16:9'
+    })
+    expect(result).toBe(fakeGif)
   })
 })

@@ -20,12 +20,17 @@ import {
 } from './componentLibrary'
 import { bleedTransparentRgb } from './productize'
 import {
+  boxBlurFloat,
+  clampRect,
   cloneImage,
   createImage,
   cropImage,
   dilateMask,
+  erodeMask,
   expandRect,
   inpaintPushPull,
+  labelComponents,
+  labelComponents8,
   nearestAspectRatio,
   pixelDistance,
   rectArea,
@@ -65,6 +70,28 @@ const PURIFIABLE_CONTROL_KINDS = new Set<string>([
   'banner',
   'frame',
   'panel'
+])
+
+export const PUNCH_ENCLOSED_HOLE_KINDS = new Set<string>([
+  'art-text',
+  'icon',
+  'decoration',
+  'divider',
+  'close-button',
+  'arrow'
+])
+
+const TRANSLUCENT_ELIGIBLE_KINDS = new Set<string>([
+  'panel',
+  'banner',
+  'frame',
+  'item-slot',
+  'button',
+  'tab',
+  'badge',
+  'progress-bar',
+  'decoration',
+  'other'
 ])
 
 export interface CompanionContentEntry {
@@ -134,17 +161,20 @@ function upscaleCropForStudioReference(crop: RgbaImage, minEdge = 320): RgbaImag
 function extractStudioMatteRobust(
   genRgba: RgbaImage,
   expectedBgRgb: [number, number, number],
-  allowHollowCenter: boolean
+  allowHollowCenter: boolean,
+  punchEnclosedBgHoles: boolean
 ): RgbaImage | null {
   const primary = extractCleanComponentMatteFromSolidBg(genRgba, {
     expectedBgRgb,
-    allowHollowCenter
+    allowHollowCenter,
+    punchEnclosedBgHoles
   })
   if (primary) return primary
 
   const relaxed = extractCleanComponentMatteFromSolidBg(genRgba, {
     expectedBgRgb,
     allowHollowCenter,
+    punchEnclosedBgHoles,
     tolerance: 6,
     feather: 16
   })
@@ -192,6 +222,7 @@ async function runStudioPurifyWithRetry(
   },
   expectedBgRgb: [number, number, number],
   allowHollowCenter: boolean,
+  punchEnclosedBgHoles: boolean,
   label: string
 ): Promise<RgbaImage> {
   let lastDetail = 'empty image output'
@@ -203,7 +234,12 @@ async function runStudioPurifyWithRetry(
         lastDetail = 'purifyLayerImage returned null or undersized image'
         continue
       }
-      const cleanMatte = extractStudioMatteRobust(genRgba, expectedBgRgb, allowHollowCenter)
+      const cleanMatte = extractStudioMatteRobust(
+        genRgba,
+        expectedBgRgb,
+        allowHollowCenter,
+        punchEnclosedBgHoles
+      )
       if (cleanMatte) return cleanMatte
       lastDetail = 'unable to extract foreground matte from studio render'
     } catch (err) {
@@ -237,7 +273,7 @@ function measureUnobstructedControlFidelity(
   for (let y = 0; y < h; y++) {
     const isBorderY = y < ry || y >= h - ry
     for (let x = 0; x < w; x++) {
-      const isBorder = isBorderY || x < rx || (x >= rx && x >= w - rx)
+      const isBorder = isBorderY || x < rx || x >= w - rx
       if (borderOnly && !isBorder) continue
       const p = y * w + x
       if (!knownMask[p]) continue
@@ -266,6 +302,214 @@ function measureUnobstructedControlFidelity(
   const trimmedMae = sum / trimN
   const borderMae = borderCnt >= 4 ? borderSum / borderCnt : trimmedMae
   return { trimmedMae, borderMae, samples: errs.length }
+}
+
+/**
+ * Registers a purified control `master` onto `textFree` around `el.box` (searching `dx, dy` shifts
+ * and symmetric border-recovery expansions `[-2..+3]`) so VLM / `refineElementBox` 1..4px drift or
+ * chewed borders snap to the exact pixel coordinates of the control on the canvas.
+ */
+function alignControlInstanceToSource(input: {
+  master: RgbaImage
+  scalePolicy: UiComponentScalePolicy
+  nineSliceBorders?: [number, number, number, number]
+  el: UiElementNode
+  textFree: RgbaImage
+  buildPreSegKnownMask: (box: PixelRect, el: UiElementNode) => Uint8Array
+}): { box: PixelRect; rendered: RgbaImage; patch: RgbaImage; known: Uint8Array } {
+  const { master, scalePolicy, nineSliceBorders, el, textFree, buildPreSegKnownMask } = input
+  const W = textFree.width
+  const H = textFree.height
+  const orig = el.box
+
+  interface ShapeSeed {
+    baseLeft: number
+    baseTop: number
+    width: number
+    height: number
+    maxShift: number
+  }
+  const seeds: ShapeSeed[] = [
+    {
+      baseLeft: orig.left,
+      baseTop: orig.top,
+      width: orig.width,
+      height: orig.height,
+      maxShift: 4
+    }
+  ]
+  const pushSeed = (s: ShapeSeed): void => {
+    if (s.width < 6 || s.height < 6 || s.width > W || s.height > H) return
+    if (
+      !seeds.some(
+        (p) =>
+          p.width === s.width &&
+          p.height === s.height &&
+          Math.abs(p.baseLeft - s.baseLeft) <= 1 &&
+          Math.abs(p.baseTop - s.baseTop) <= 1
+      )
+    ) {
+      seeds.push(s)
+    }
+  }
+  if (
+    el.rawBox &&
+    Math.abs(el.rawBox.width - orig.width) <= 8 &&
+    Math.abs(el.rawBox.height - orig.height) <= 8
+  ) {
+    pushSeed({
+      baseLeft: el.rawBox.left,
+      baseTop: el.rawBox.top,
+      width: el.rawBox.width,
+      height: el.rawBox.height,
+      maxShift: 2
+    })
+  }
+  for (const pad of [-2, -1, 1, 2, 3]) {
+    const exp = expandRect(orig, pad, W, H)
+    pushSeed({
+      baseLeft: exp.left,
+      baseTop: exp.top,
+      width: exp.width,
+      height: exp.height,
+      maxShift: 2
+    })
+  }
+
+  let bestScore = Infinity
+  let bestBox: PixelRect = { ...orig }
+  let bestRendered: RgbaImage | null = null
+  const interiorErrs: number[] = []
+  const rimErrs: number[] = []
+
+  for (const seed of seeds) {
+    const rendered = renderComponentToRect(
+      master,
+      seed.width,
+      seed.height,
+      scalePolicy,
+      nineSliceBorders
+    )
+    const rw = rendered.width
+    const rh = rendered.height
+    const solidMask = new Uint8Array(rw * rh)
+    for (let p = 0; p < rw * rh; p++) {
+      if (rendered.data[p * 4 + 3]! >= 150) solidMask[p] = 1
+    }
+    const eroded2 = erodeMask(solidMask, rw, rh, 2)
+    const eroded1 = erodeMask(solidMask, rw, rh, 1)
+
+    for (let dy = -seed.maxShift; dy <= seed.maxShift; dy++) {
+      const top = seed.baseTop + dy
+      if (top < 0 || top + rh > H) continue
+      for (let dx = -seed.maxShift; dx <= seed.maxShift; dx++) {
+        const left = seed.baseLeft + dx
+        if (left < 0 || left + rw > W) continue
+        const candBox: PixelRect = { left, top, width: rw, height: rh }
+        const known = buildPreSegKnownMask(candBox, el)
+
+        interiorErrs.length = 0
+        rimErrs.length = 0
+        let edgeJumpSum = 0
+        let edgeJumpCnt = 0
+
+        for (let y = 0; y < rh; y++) {
+          const cy = top + y
+          const row = y * rw
+          for (let x = 0; x < rw; x++) {
+            const p = row + x
+            if (!solidMask[p] || !known[p]) continue
+            const cx = left + x
+            const ri = p * 4
+            const ti = (cy * W + cx) * 4
+            const err =
+              (Math.abs(textFree.data[ti]! - rendered.data[ri]!) +
+                Math.abs(textFree.data[ti + 1]! - rendered.data[ri + 1]!) +
+                Math.abs(textFree.data[ti + 2]! - rendered.data[ri + 2]!)) /
+              3
+            if (eroded2[p]) {
+              interiorErrs.push(err)
+            } else {
+              rimErrs.push(err)
+            }
+
+            // Outer 1px foreground rim: measure step contrast to immediate exterior background
+            if (!eroded1[p]) {
+              const outCoords: Array<[number, number]> = []
+              if (x === 0 || !solidMask[p - 1]) outCoords.push([cx - 2, cy])
+              if (x === rw - 1 || !solidMask[p + 1]) outCoords.push([cx + 2, cy])
+              if (y === 0 || !solidMask[p - rw]) outCoords.push([cx, cy - 2])
+              if (y === rh - 1 || !solidMask[p + rw]) outCoords.push([cx, cy + 2])
+              for (const [ox, oy] of outCoords) {
+                if (ox < 0 || ox >= W || oy < 0 || oy >= H) continue
+                const oi = (oy * W + ox) * 4
+                edgeJumpSum += pixelDistance(textFree.data, ti, textFree.data, oi)
+                edgeJumpCnt++
+              }
+            }
+          }
+        }
+
+        if (interiorErrs.length + rimErrs.length < 8) continue
+
+        let intMae = 0
+        if (interiorErrs.length > 0) {
+          interiorErrs.sort((a, b) => a - b)
+          const trimN = Math.max(1, Math.floor(interiorErrs.length * 0.8))
+          let s = 0
+          for (let k = 0; k < trimN; k++) s += interiorErrs[k]!
+          intMae = s / trimN
+        }
+
+        let rimScore = intMae
+        if (rimErrs.length > 0) {
+          rimErrs.sort((a, b) => a - b)
+          const trimRim = Math.max(1, Math.floor(rimErrs.length * 0.9))
+          let s = 0
+          for (let k = 0; k < trimRim; k++) s += rimErrs[k]!
+          rimScore = s / trimRim
+        }
+
+        const edgeContrast = edgeJumpCnt >= 4 ? Math.min(40, edgeJumpSum / edgeJumpCnt) : 0
+        const regPenalty =
+          (Math.abs(left - orig.left) +
+            Math.abs(top - orig.top) +
+            Math.abs(rw - orig.width) +
+            Math.abs(rh - orig.height)) *
+          0.85
+
+        const isSlotOrFrame = el.kind === 'item-slot' || el.kind === 'frame'
+        const score =
+          (isSlotOrFrame ? rimScore * 1.35 : intMae * 0.45 + rimScore * 0.95) -
+          edgeContrast * 0.12 +
+          regPenalty
+
+        if (score < bestScore) {
+          bestScore = score
+          bestBox = candBox
+          bestRendered = rendered
+        }
+      }
+    }
+  }
+
+  if (!bestRendered) {
+    bestRendered = renderComponentToRect(
+      master,
+      orig.width,
+      orig.height,
+      scalePolicy,
+      nineSliceBorders
+    )
+    bestBox = { ...orig }
+  }
+  bleedTransparentRgb(bestRendered.data, bestRendered.width, bestRendered.height, 3)
+  return {
+    box: bestBox,
+    rendered: bestRendered,
+    patch: cropImage(textFree, bestBox),
+    known: buildPreSegKnownMask(bestBox, el)
+  }
 }
 
 /**
@@ -498,13 +742,7 @@ function alignStudioMatteToElementBox(
 
 /**
  * Runs `ui.componentLib`-grade solid-studio purification directly inside `runPreciseUiSplit`
- * with zero per-screen element cap and zero local-segmentation fallback:
- * 1. Purifies all screen UI control families (`button`, `close-button`, `arrow`, `item-slot`, `tab`,
- *    `badge`, `progress-bar`, `banner`, `frame`, `panel`) onto `#FFFFFF` / `#141820` studio backgrounds,
- *    registering shared Smart Object / 9-slice masters in `synthesizedComponents` + `existingMatches`
- *    (and purifying any non-matching sibling variants individually).
- * 2. Purifies all remaining standalone graphical / preserved-raster-text foreground elements onto solid
- *    studio backgrounds for analytical matting and hybrid pixel-locked composition.
+ * with zero per-screen element cap and zero local-segmentation fallback.
  */
 export async function purifySplitLayersOnSolidBg(
   input: PurifySplitLayersInput
@@ -573,8 +811,6 @@ export async function purifySplitLayersOnSolidBg(
     if (existingMatches.has(el.id)) continue
     if (el.box.width < 6 || el.box.height < 6) continue
     if (el.box.width >= W * 0.99 && el.box.height >= H * 0.99 && !el.parentId) continue
-    // Controls carrying intentional baked raster text (`raster_text_ids`) are routed to Part B
-    // so their baked emblem text is preserved while still getting solid-studio matting.
     if (hasPreservedRasterTextOnControl(el)) continue
 
     const patch = cropImage(textFree, el.box)
@@ -622,7 +858,11 @@ export async function purifySplitLayersOnSolidBg(
     const exemplar = cluster[0]!
     const exEl = exemplar.el
     const kind = exEl.kind
-    const padCropRect = expandRect(exEl.box, 3, W, H)
+    const refPad = Math.max(
+      4,
+      Math.min(10, Math.round(Math.min(exEl.box.width, exEl.box.height) * 0.08))
+    )
+    const padCropRect = expandRect(exEl.box, refPad, W, H)
     const rawCrop = cropImage(source, padCropRect)
     const studioRef = upscaleCropForStudioReference(rawCrop, 320)
     const { bgHex, bgRgb } = choosePurificationStudioBg(exemplar.patch)
@@ -649,6 +889,7 @@ export async function purifySplitLayersOnSolidBg(
       },
       bgRgb,
       kind === 'frame',
+      PUNCH_ENCLOSED_HOLE_KINDS.has(kind),
       exEl.name || kind
     )
 
@@ -664,21 +905,22 @@ export async function purifySplitLayersOnSolidBg(
       : undefined
     const scalePolicy: UiComponentScalePolicy = nineSliceBorders ? 'nine-slice' : 'uniform'
 
-    const renderedExemplar = renderComponentToRect(
+    const alignedEx = alignControlInstanceToSource({
       master,
-      exEl.box.width,
-      exEl.box.height,
       scalePolicy,
-      nineSliceBorders
-    )
+      nineSliceBorders,
+      el: exEl,
+      textFree,
+      buildPreSegKnownMask
+    })
     const borderOnlyCheck =
       kind === 'item-slot' ||
       kind === 'frame' ||
       (kind === 'panel' && exemplar.unobstructedRatio < 0.55)
     const fidelity = measureUnobstructedControlFidelity(
-      exemplar.patch,
-      renderedExemplar,
-      exemplar.known,
+      alignedEx.patch,
+      alignedEx.rendered,
+      alignedEx.known,
       borderOnlyCheck
     )
 
@@ -731,19 +973,20 @@ export async function purifySplitLayersOnSolidBg(
     let applied = 0
     for (let i = 0; i < res.cluster.length; i++) {
       const sample = res.cluster[i]!
-      const rendered = renderComponentToRect(
-        res.master,
-        sample.el.box.width,
-        sample.el.box.height,
-        res.scalePolicy,
-        res.nineSliceBorders
-      )
+      const alignedInst = alignControlInstanceToSource({
+        master: res.master,
+        scalePolicy: res.scalePolicy,
+        nineSliceBorders: res.nineSliceBorders,
+        el: sample.el,
+        textFree,
+        buildPreSegKnownMask
+      })
       if (i > 0) {
         const borderOnlyCheck = res.kind === 'item-slot' || res.kind === 'frame'
         const sibFidelity = measureUnobstructedControlFidelity(
-          sample.patch,
-          rendered,
-          sample.known,
+          alignedInst.patch,
+          alignedInst.rendered,
+          alignedInst.known,
           borderOnlyCheck
         )
         if (
@@ -752,10 +995,10 @@ export async function purifySplitLayersOnSolidBg(
         ) {
           const fallbackMatch = matchElementToComponentLibrary({
             elementKind: sample.el.kind,
-            box: sample.el.box,
-            observedPatch: sample.patch,
-            detectedMask: new Uint8Array(sample.el.box.width * sample.el.box.height),
-            knownMask: sample.known,
+            box: alignedInst.box,
+            observedPatch: alignedInst.patch,
+            detectedMask: new Uint8Array(alignedInst.box.width * alignedInst.box.height),
+            knownMask: alignedInst.known,
             candidates: [candidate],
             minScore: 0.68,
             allowMasklessBoxMatch: true
@@ -766,15 +1009,26 @@ export async function purifySplitLayersOnSolidBg(
           }
         }
       }
-      bleedTransparentRgb(rendered.data, rendered.width, rendered.height, 3)
+      sample.el.box = alignedInst.box
+      sample.patch = alignedInst.patch
+      sample.known = alignedInst.known
       const score = Number(Math.max(0.78, Math.min(0.99, 1 - res.fidelityMae / 120)).toFixed(4))
-      existingMatches.set(sample.el.id, { candidate, rendered, score })
+      existingMatches.set(sample.el.id, { candidate, rendered: alignedInst.rendered, score })
       applied++
       purifiedControlInstances++
     }
 
     if (applied > 0) {
       candidate.item.sourceCount = applied
+      // Keep singleton master dimensions synchronized with its sub-pixel aligned instance box
+      if (applied === 1) {
+        const singleMatch = existingMatches.get(repEl.id)
+        if (singleMatch) {
+          candidate.rgba = singleMatch.rendered
+          candidate.item.canonicalWidth = singleMatch.rendered.width
+          candidate.item.canonicalHeight = singleMatch.rendered.height
+        }
+      }
       synthesizeOut.push(candidate)
     }
   }
@@ -850,8 +1104,14 @@ export async function purifySplitLayersOnSolidBg(
 
     const graphicalResults = await mapWithConcurrency(selectedGraphical, 4, async (target) => {
       throwIfAborted(io.signal)
-      const { el, known, occludedMask, occluderDesc } = target
-      const padRect = expandRect(el.box, 3, W, H)
+      const { el, known, occludedMask, occluderDesc, occludedRatio } = target
+      const padScale = occludedRatio >= 0.2 ? 0.22 : 0.1
+      const maxPad = occludedRatio >= 0.2 ? 28 : 12
+      const refPad = Math.max(
+        4,
+        Math.min(maxPad, Math.round(Math.min(el.box.width, el.box.height) * padScale))
+      )
+      const padRect = expandRect(el.box, refPad, W, H)
       const rawCrop = cropImage(source, padRect)
       const studioRef = upscaleCropForStudioReference(rawCrop, 320)
       const sourcePatch = cropImage(source, el.box)
@@ -877,6 +1137,7 @@ export async function purifySplitLayersOnSolidBg(
         },
         bgRgb,
         el.kind === 'frame',
+        PUNCH_ENCLOSED_HOLE_KINDS.has(el.kind),
         el.name || el.kind
       )
 
@@ -912,13 +1173,173 @@ export async function purifySplitLayersOnSolidBg(
 }
 
 /**
- * Hybrid pixel-locked composition for studio-purified graphical layers:
+ * Transfers ground-truth `sourceCrop` pixels across verified horizontal or vertical bilateral
+ * symmetry axes into occluded `hole` pixels before AI push-pull harmonization.
+ * Ensures half-occluded symmetric frames, ornate banners, plaques, and emblems recover exact
+ * original grain/pattern rather than smoothed AI approximations.
+ */
+function transferBilateralMirrorTextureIntoHole(
+  sourceCrop: RgbaImage,
+  companionRgba: RgbaImage,
+  hole: Uint8Array
+): { mirrorRgb: Uint8ClampedArray; mirrorFilled: Uint8Array; filledCount: number } {
+  const w = sourceCrop.width
+  const h = sourceCrop.height
+  const n = w * h
+  const mirrorRgb = new Uint8ClampedArray(n * 4)
+  const mirrorFilled = new Uint8Array(n)
+  let filledCount = 0
+  if (w < 10 || h < 10) return { mirrorRgb, mirrorFilled, filledCount }
+
+  // 1) Test horizontal bilateral symmetry (`mx = w - 1 - x + shift`)
+  let bestHShift: number | null = null
+  let bestHP80 = Infinity
+  for (const shift of [0, -1, 1]) {
+    let alphaInter = 0
+    let alphaUnion = 0
+    const srcDists: number[] = []
+    const compDists: number[] = []
+    for (let y = 0; y < h; y++) {
+      const row = y * w
+      for (let x = 0; x < w; x++) {
+        const mx = w - 1 - x + shift
+        if (mx <= x || mx >= w || mx < 0) continue
+        const p = row + x
+        const mp = row + mx
+        const a1 = companionRgba.data[p * 4 + 3]! >= 180
+        const a2 = companionRgba.data[mp * 4 + 3]! >= 180
+        if (a1 || a2) {
+          alphaUnion++
+          if (a1 && a2) alphaInter++
+        }
+        if (
+          !hole[p] &&
+          !hole[mp] &&
+          companionRgba.data[p * 4 + 3]! >= 200 &&
+          companionRgba.data[mp * 4 + 3]! >= 200
+        ) {
+          srcDists.push(pixelDistance(sourceCrop.data, p * 4, sourceCrop.data, mp * 4))
+          compDists.push(pixelDistance(companionRgba.data, p * 4, companionRgba.data, mp * 4))
+        }
+      }
+    }
+    if (alphaUnion < 24 || alphaInter / alphaUnion < 0.86 || srcDists.length < 24) continue
+    srcDists.sort((a, b) => a - b)
+    compDists.sort((a, b) => a - b)
+    const medSrc = srcDists[srcDists.length >> 1]!
+    const p80Src = srcDists[Math.floor(srcDists.length * 0.8)]!
+    const p80Comp = compDists[Math.floor(compDists.length * 0.8)]!
+    if (medSrc <= 8.5 && p80Src <= 12.5 && p80Comp <= 18 && p80Src < bestHP80) {
+      bestHP80 = p80Src
+      bestHShift = shift
+    }
+  }
+
+  if (bestHShift !== null) {
+    for (let y = 0; y < h; y++) {
+      const row = y * w
+      for (let x = 0; x < w; x++) {
+        const p = row + x
+        if (!hole[p] || mirrorFilled[p]) continue
+        const mx = w - 1 - x + bestHShift
+        if (mx < 0 || mx >= w || mx === x) continue
+        const mp = row + mx
+        if (hole[mp]) continue
+        const pi = p * 4
+        const mpi = mp * 4
+        if (companionRgba.data[pi + 3]! < 196 || companionRgba.data[mpi + 3]! < 216) continue
+        if (pixelDistance(companionRgba.data, pi, companionRgba.data, mpi) > 22) continue
+        mirrorRgb[pi] = sourceCrop.data[mpi]!
+        mirrorRgb[pi + 1] = sourceCrop.data[mpi + 1]!
+        mirrorRgb[pi + 2] = sourceCrop.data[mpi + 2]!
+        mirrorRgb[pi + 3] = 255
+        mirrorFilled[p] = 1
+        filledCount++
+      }
+    }
+  }
+
+  // 2) Test vertical bilateral symmetry (`my = h - 1 - y + shift`) for remaining hole pixels
+  let bestVShift: number | null = null
+  let bestVP80 = Infinity
+  for (const shift of [0, -1, 1]) {
+    let alphaInter = 0
+    let alphaUnion = 0
+    const srcDists: number[] = []
+    const compDists: number[] = []
+    for (let y = 0; y < h; y++) {
+      const my = h - 1 - y + shift
+      if (my <= y || my >= h || my < 0) continue
+      const row = y * w
+      const mrow = my * w
+      for (let x = 0; x < w; x++) {
+        const p = row + x
+        const mp = mrow + x
+        const a1 = companionRgba.data[p * 4 + 3]! >= 180
+        const a2 = companionRgba.data[mp * 4 + 3]! >= 180
+        if (a1 || a2) {
+          alphaUnion++
+          if (a1 && a2) alphaInter++
+        }
+        if (
+          !hole[p] &&
+          !hole[mp] &&
+          companionRgba.data[p * 4 + 3]! >= 200 &&
+          companionRgba.data[mp * 4 + 3]! >= 200
+        ) {
+          srcDists.push(pixelDistance(sourceCrop.data, p * 4, sourceCrop.data, mp * 4))
+          compDists.push(pixelDistance(companionRgba.data, p * 4, companionRgba.data, mp * 4))
+        }
+      }
+    }
+    if (alphaUnion < 24 || alphaInter / alphaUnion < 0.86 || srcDists.length < 24) continue
+    srcDists.sort((a, b) => a - b)
+    compDists.sort((a, b) => a - b)
+    const medSrc = srcDists[srcDists.length >> 1]!
+    const p80Src = srcDists[Math.floor(srcDists.length * 0.8)]!
+    const p80Comp = compDists[Math.floor(compDists.length * 0.8)]!
+    if (medSrc <= 8.5 && p80Src <= 12.5 && p80Comp <= 18 && p80Src < bestVP80) {
+      bestVP80 = p80Src
+      bestVShift = shift
+    }
+  }
+
+  if (bestVShift !== null) {
+    for (let y = 0; y < h; y++) {
+      const my = h - 1 - y + bestVShift
+      if (my < 0 || my >= h || my === y) continue
+      const row = y * w
+      const mrow = my * w
+      for (let x = 0; x < w; x++) {
+        const p = row + x
+        if (!hole[p] || mirrorFilled[p]) continue
+        const mp = mrow + x
+        if (hole[mp]) continue
+        const pi = p * 4
+        const mpi = mp * 4
+        if (companionRgba.data[pi + 3]! < 196 || companionRgba.data[mpi + 3]! < 216) continue
+        if (pixelDistance(companionRgba.data, pi, companionRgba.data, mpi) > 22) continue
+        mirrorRgb[pi] = sourceCrop.data[mpi]!
+        mirrorRgb[pi + 1] = sourceCrop.data[mpi + 1]!
+        mirrorRgb[pi + 2] = sourceCrop.data[mpi + 2]!
+        mirrorRgb[pi + 3] = 255
+        mirrorFilled[p] = 1
+        filledCount++
+      }
+    }
+  }
+
+  return { mirrorRgb, mirrorFilled, filledCount }
+}
+
+/**
+ * Hybrid pixel-locked composition for studio-purified graphical layers AND singleton UI containers:
  * - Uses the studio-purified `companionRgba` alpha as a clean, halo-free outer silhouette.
  * - Locks 100% of unoccluded core pixels (`compA >= 216`) directly to `source` RGB so stylized glyphs,
- *   numbers, and character faces suffer zero AI re-rendering drift.
+ *   numbers, character faces, and complex panel textures suffer zero AI re-rendering drift.
+ * - Transfers exact bilateral mirror `source` texture into occluded holes on symmetric banners/frames.
  * - Uses foreground-harmonized studio-unmixed `harmonizedCompanion` RGB + `compA` along anti-aliased
- *   boundary pixels (`8 <= compA < 216`) and occluded regions (`occludedMask` / `aboveAlpha`), with
- *   zero reliance on locally inpainted intermediate plates.
+ *   boundary pixels (`8 <= compA < 216`) and remaining non-symmetric occluded regions.
  */
 export function composeHybridCompanionContentLayer(input: {
   source: RgbaImage
@@ -955,26 +1376,39 @@ export function composeHybridCompanionContentLayer(input: {
     }
   }
 
+  const mirror =
+    holeCount >= 4 && visibleRingCount >= 24
+      ? transferBilateralMirrorTextureIntoHole(sourceCrop, companionRgba, hole)
+      : { mirrorRgb: new Uint8ClampedArray(0), mirrorFilled: new Uint8Array(w * h), filledCount: 0 }
+
   let harmonizedCompanion = companionRgba
   if (visibleRingCount >= 8) {
-    // Sample (source - companion) RGB offset strictly on unoccluded opaque foreground pixels
-    // (`companionRgba.alpha >= 180`), harmonizing both occluded pixels and anti-aliased edge pixels.
-    const ring = holeCount > 0 ? dilateMask(hole, w, h, 4) : null
+    const remainingHole = new Uint8Array(w * h)
+    let remHoleCnt = 0
+    for (let p = 0; p < w * h; p++) {
+      if (hole[p] && !mirror.mirrorFilled[p]) {
+        remainingHole[p] = 1
+        remHoleCnt++
+      }
+    }
+    const ring = remHoleCnt > 0 ? dilateMask(remainingHole, w, h, 4) : null
     const offset = createImage(w, h)
     const unknown = new Uint8Array(w * h)
     let seedCount = 0
     for (let p = 0; p < w * h; p++) {
       const i = p * 4
-      const inSeedBand = ring ? Boolean(ring[p] && !hole[p]) : !hole[p]
+      const hasKnownRef = !hole[p] || mirror.mirrorFilled[p] === 1
+      const inSeedBand = ring ? Boolean(ring[p] && hasKnownRef) : hasKnownRef
+      const refBuf = mirror.mirrorFilled[p] ? mirror.mirrorRgb : sourceCrop.data
       if (
         inSeedBand &&
         companionRgba.data[i + 3]! >= 180 &&
-        pixelDistance(sourceCrop.data, i, companionRgba.data, i) <= 45
+        pixelDistance(refBuf, i, companionRgba.data, i) <= 45
       ) {
         for (let c = 0; c < 3; c++) {
           offset.data[i + c] = Math.max(
             0,
-            Math.min(255, 128 + sourceCrop.data[i + c]! - companionRgba.data[i + c]!)
+            Math.min(255, 128 + refBuf[i + c]! - companionRgba.data[i + c]!)
           )
         }
         offset.data[i + 3] = 255
@@ -990,12 +1424,27 @@ export function composeHybridCompanionContentLayer(input: {
       for (let p = 0; p < w * h; p++) {
         if (!hole[p] && companionRgba.data[p * 4 + 3]! >= 216) continue
         const i = p * 4
+        if (mirror.mirrorFilled[p]) {
+          harmonizedCompanion.data[i] = mirror.mirrorRgb[i]!
+          harmonizedCompanion.data[i + 1] = mirror.mirrorRgb[i + 1]!
+          harmonizedCompanion.data[i + 2] = mirror.mirrorRgb[i + 2]!
+          continue
+        }
         for (let c = 0; c < 3; c++) {
           harmonizedCompanion.data[i + c] = Math.max(
             0,
             Math.min(255, companionRgba.data[i + c]! + offset.data[i + c]! - 128)
           )
         }
+      }
+    } else if (mirror.filledCount > 0) {
+      harmonizedCompanion = cloneImage(companionRgba)
+      for (let p = 0; p < w * h; p++) {
+        if (!mirror.mirrorFilled[p]) continue
+        const i = p * 4
+        harmonizedCompanion.data[i] = mirror.mirrorRgb[i]!
+        harmonizedCompanion.data[i + 1] = mirror.mirrorRgb[i + 1]!
+        harmonizedCompanion.data[i + 2] = mirror.mirrorRgb[i + 2]!
       }
     }
   }
@@ -1018,6 +1467,15 @@ export function composeHybridCompanionContentLayer(input: {
       const gi = g * 4
       const isOcc = hole[p] === 1
 
+      if (mirror.mirrorFilled[p] && compA >= 216) {
+        out[ci] = mirror.mirrorRgb[ci]!
+        out[ci + 1] = mirror.mirrorRgb[ci + 1]!
+        out[ci + 2] = mirror.mirrorRgb[ci + 2]!
+        out[ci + 3] = 255
+        written++
+        continue
+      }
+
       if (isOcc || compA < 216) {
         out[ci] = harmonizedCompanion.data[ci]!
         out[ci + 1] = harmonizedCompanion.data[ci + 1]!
@@ -1039,4 +1497,1365 @@ export function composeHybridCompanionContentLayer(input: {
   if (written === 0) return null
   bleedTransparentRgb(out, w, h, 3)
   return { rect: { ...rect }, rgba: out }
+}
+
+const RIM_REFINE_KINDS = new Set<string>([
+  'avatar',
+  'illustration',
+  'art-text',
+  'icon',
+  'decoration',
+  'badge',
+  'close-button',
+  'arrow'
+])
+
+const DROP_SHADOW_ELIGIBLE_KINDS = new Set<string>([
+  'panel',
+  'banner',
+  'frame',
+  'button',
+  'tab',
+  'badge',
+  'item-slot',
+  'avatar',
+  'illustration',
+  'art-text',
+  'icon',
+  'close-button'
+])
+
+const CANDIDATE_BLUR_RADII = [0, 2, 5, 10, 16] as const
+
+interface LocalBackdropSampler {
+  radius: number
+  padRect: PixelRect
+  data: Uint8ClampedArray
+}
+
+function buildMultiScaleBlurredBackdrops(
+  backdrop: RgbaImage,
+  rect: PixelRect
+): LocalBackdropSampler[] {
+  const padRect = expandRect(rect, 18, backdrop.width, backdrop.height)
+  const pw = padRect.width
+  const ph = padRect.height
+  const crop = cropImage(backdrop, padRect)
+  const r0 = new Float32Array(pw * ph)
+  const g0 = new Float32Array(pw * ph)
+  const b0 = new Float32Array(pw * ph)
+  for (let p = 0; p < pw * ph; p++) {
+    const i = p * 4
+    r0[p] = crop.data[i]!
+    g0[p] = crop.data[i + 1]!
+    b0[p] = crop.data[i + 2]!
+  }
+
+  const out: LocalBackdropSampler[] = [{ radius: 0, padRect, data: crop.data }]
+  for (let bi = 1; bi < CANDIDATE_BLUR_RADII.length; bi++) {
+    const rad = CANDIDATE_BLUR_RADII[bi]!
+    const boxR = Math.max(1, Math.round(rad * 0.75))
+    // Two-pass separable box blur approximates isotropic Gaussian backdrop-filter blur
+    const rb = boxBlurFloat(boxBlurFloat(r0, pw, ph, boxR), pw, ph, boxR)
+    const gb = boxBlurFloat(boxBlurFloat(g0, pw, ph, boxR), pw, ph, boxR)
+    const bb = boxBlurFloat(boxBlurFloat(b0, pw, ph, boxR), pw, ph, boxR)
+    const buf = new Uint8ClampedArray(pw * ph * 4)
+    for (let p = 0; p < pw * ph; p++) {
+      const i = p * 4
+      buf[i] = Math.round(rb[p]!)
+      buf[i + 1] = Math.round(gb[p]!)
+      buf[i + 2] = Math.round(bb[p]!)
+      buf[i + 3] = 255
+    }
+    out.push({ radius: rad, padRect, data: buf })
+  }
+  return out
+}
+
+function solve3x3Linear(
+  m00: number,
+  m01: number,
+  m02: number,
+  m11: number,
+  m12: number,
+  m22: number,
+  b0: number,
+  b1: number,
+  b2: number
+): [number, number, number] | null {
+  const a = [
+    [m00, m01, m02, b0],
+    [m01, m11, m12, b1],
+    [m02, m12, m22, b2]
+  ]
+  for (let col = 0; col < 3; col++) {
+    let piv = col
+    for (let r = col + 1; r < 3; r++) {
+      if (Math.abs(a[r]![col]!) > Math.abs(a[piv]![col]!)) piv = r
+    }
+    if (Math.abs(a[piv]![col]!) < 1e-7) return null
+    if (piv !== col) {
+      const tmp = a[col]!
+      a[col] = a[piv]!
+      a[piv] = tmp
+    }
+    const diag = a[col]![col]!
+    for (let j = col; j < 4; j++) a[col]![j]! /= diag
+    for (let r = 0; r < 3; r++) {
+      if (r === col) continue
+      const f = a[r]![col]!
+      for (let j = col; j < 4; j++) a[r]![j]! -= f * a[col]![j]!
+    }
+  }
+  return [a[0]![3]!, a[1]![3]!, a[2]![3]!]
+}
+
+/**
+ * Fallback solver for continuous spatially-varying gradient alpha (`alpha(x, y) = c0 + cx*u + cy*v`)
+ * on scrims, fade banners, and glass cards where continuous spatial opacity prevented discrete
+ * studio-color bucket clustering.
+ * Uses strictly local pixel pairs (`dist <= 15px`) across backdrop edges so opaque color gradients
+ * (`t_local ~ 0`) never false-positive.
+ */
+function solveContinuousGradientTranslucency(input: {
+  rect: PixelRect
+  out: Uint8ClampedArray
+  studioSkin: RgbaImage
+  occludedMask: Uint8Array
+  source: RgbaImage
+  samplers: LocalBackdropSampler[]
+}): { applied: boolean; blurRadius: number } {
+  const { rect, out, studioSkin, occludedMask, source, samplers } = input
+  const w = rect.width
+  const h = rect.height
+  const n = w * h
+  const W = source.width
+  const H = source.height
+  if (w < 16 || h < 12) return { applied: false, blurRadius: 0 }
+
+  // Identify optional opaque border rim in `studioSkin` so crisp borders stay at alpha = 255
+  const solidMask = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    if (out[p * 4 + 3]! >= 180 && studioSkin.data[p * 4 + 3]! >= 180) solidMask[p] = 1
+  }
+  const innerMask = erodeMask(solidMask, w, h, 3)
+  const intRs: number[] = []
+  const intGs: number[] = []
+  const intBs: number[] = []
+  for (let p = 0; p < n; p++) {
+    if (!innerMask[p] || occludedMask[p]) continue
+    const si = p * 4
+    intRs.push(studioSkin.data[si]!)
+    intGs.push(studioSkin.data[si + 1]!)
+    intBs.push(studioSkin.data[si + 2]!)
+  }
+  if (intRs.length < 24) return { applied: false, blurRadius: 0 }
+  intRs.sort((a, b) => a - b)
+  intGs.sort((a, b) => a - b)
+  intBs.sort((a, b) => a - b)
+  const medIntStudio = new Uint8ClampedArray([
+    intRs[intRs.length >> 1]!,
+    intGs[intGs.length >> 1]!,
+    intBs[intBs.length >> 1]!,
+    255
+  ])
+
+  const opaqueBorder = new Uint8Array(n)
+  for (let p = 0; p < n; p++) {
+    if (!solidMask[p] || innerMask[p]) continue
+    if (pixelDistance(studioSkin.data, p * 4, medIntStudio, 0) >= 28) {
+      opaqueBorder[p] = 1
+    }
+  }
+
+  // Subsample unobstructed interior pixels on a regular stride for local pair probing
+  const stepX = Math.max(2, Math.floor(w / 24))
+  const stepY = Math.max(2, Math.floor(h / 24))
+  const probePts: number[] = []
+  for (let y = 2; y < h - 2; y += stepY) {
+    const cy = rect.top + y
+    if (cy < 0 || cy >= H) continue
+    for (let x = 2; x < w - 2; x += stepX) {
+      const cx = rect.left + x
+      if (cx < 0 || cx >= W) continue
+      const p = y * w + x
+      if (occludedMask[p] || opaqueBorder[p] || !solidMask[p]) continue
+      probePts.push(p)
+    }
+  }
+  if (probePts.length < 16) return { applied: false, blurRadius: 0 }
+
+  interface PairObs {
+    u: number
+    v: number
+    alpha: number
+    perp: number
+  }
+
+  let bestSampler: LocalBackdropSampler | null = null
+  let bestCoeffs: [number, number, number] | null = null
+  let bestScore = Infinity
+
+  for (const sampler of samplers) {
+    const { padRect, data: bgData } = sampler
+    const pw = padRect.width
+    const obs: PairObs[] = []
+
+    for (let i = 0; i < probePts.length; i++) {
+      const pa = probePts[i]!
+      const ax = pa % w
+      const ay = (pa - ax) / w
+      const ga = ((rect.top + ay) * W + (rect.left + ax)) * 4
+      const ba = ((rect.top + ay - padRect.top) * pw + (rect.left + ax - padRect.left)) * 4
+      for (let j = i + 1; j < probePts.length; j++) {
+        const pb = probePts[j]!
+        const bx = pb % w
+        const by = (pb - bx) / w
+        const dx = ax - bx
+        const dy = ay - by
+        const dist2 = dx * dx + dy * dy
+        if (dist2 > 256 || dist2 < 4) continue
+
+        const bb = ((rect.top + by - padRect.top) * pw + (rect.left + bx - padRect.left)) * 4
+        const dBgR = bgData[ba]! - bgData[bb]!
+        const dBgG = bgData[ba + 1]! - bgData[bb + 1]!
+        const dBgB = bgData[ba + 2]! - bgData[bb + 2]!
+        const bgLen2 = dBgR * dBgR + dBgG * dBgG + dBgB * dBgB
+        if (bgLen2 < 1200) continue
+
+        const gb = ((rect.top + by) * W + (rect.left + bx)) * 4
+        const dObsR = source.data[ga]! - source.data[gb]!
+        const dObsG = source.data[ga + 1]! - source.data[gb + 1]!
+        const dObsB = source.data[ga + 2]! - source.data[gb + 2]!
+
+        const t = (dObsR * dBgR + dObsG * dBgG + dObsB * dBgB) / bgLen2
+        if (t < 0.05 || t > 0.96) continue
+        const resR = dObsR - t * dBgR
+        const resG = dObsG - t * dBgG
+        const resB = dObsB - t * dBgB
+        const perp = Math.sqrt((resR * resR + resG * resG + resB * resB) / 3)
+        if (perp > 13.5) continue
+
+        obs.push({
+          u: (ax + bx + 1) / (2 * w) - 0.5,
+          v: (ay + by + 1) / (2 * h) - 0.5,
+          alpha: 1 - t,
+          perp
+        })
+      }
+    }
+
+    if (obs.length < 16) continue
+
+    // 2-round IRLS plane fit: `alpha(u, v) = c0 + cx * u + cy * v`
+    let coeffs: [number, number, number] | null = null
+    for (let iter = 0; iter < 2; iter++) {
+      let m00 = 0
+      let m01 = 0
+      let m02 = 0
+      let m11 = 1e-3
+      let m12 = 0
+      let m22 = 1e-3
+      let r0 = 0
+      let r1 = 0
+      let r2 = 0
+      for (const o of obs) {
+        const wt =
+          coeffs === null
+            ? 1
+            : 1 /
+              Math.max(0.035, Math.abs(o.alpha - (coeffs[0] + coeffs[1] * o.u + coeffs[2] * o.v)))
+        m00 += wt
+        m01 += wt * o.u
+        m02 += wt * o.v
+        m11 += wt * o.u * o.u
+        m12 += wt * o.u * o.v
+        m22 += wt * o.v * o.v
+        r0 += wt * o.alpha
+        r1 += wt * o.u * o.alpha
+        r2 += wt * o.v * o.alpha
+      }
+      coeffs = solve3x3Linear(m00, m01, m02, m11, m12, m22, r0, r1, r2)
+      if (!coeffs) break
+    }
+    if (!coeffs) continue
+
+    const [c0, cx, cy] = coeffs
+    if (c0 < 0.06 || c0 > 0.92) continue
+
+    const absErrs: number[] = []
+    const perps: number[] = []
+    for (const o of obs) {
+      const pred = Math.max(0.02, Math.min(0.98, c0 + cx * o.u + cy * o.v))
+      absErrs.push(Math.abs(o.alpha - pred))
+      perps.push(o.perp)
+    }
+    absErrs.sort((a, b) => a - b)
+    perps.sort((a, b) => a - b)
+    const medErr = absErrs[absErrs.length >> 1]!
+    const p80Err = absErrs[Math.floor(absErrs.length * 0.8)]!
+    const medPerp = perps[perps.length >> 1]!
+    if (medErr > 0.095 || p80Err > 0.16 || medPerp > 11.5) continue
+
+    const score = medPerp + medErr * 45
+    const allowBlur = sampler.radius === 0 || bestSampler === null || score <= bestScore * 0.72
+    if (allowBlur && score < bestScore) {
+      bestScore = score
+      bestSampler = sampler
+      bestCoeffs = coeffs
+    }
+  }
+
+  if (!bestSampler || !bestCoeffs) return { applied: false, blurRadius: 0 }
+
+  const [c0, cx, cy] = bestCoeffs
+  const { padRect, data: bgData } = bestSampler
+  const pw = padRect.width
+
+  // Estimate clean anchor foreground tint from higher-alpha (`>= 0.28`) unobstructed pixels
+  const tintRs: number[] = []
+  const tintGs: number[] = []
+  const tintBs: number[] = []
+  for (let y = 0; y < h; y++) {
+    const gy = rect.top + y
+    if (gy < 0 || gy >= H) continue
+    const v = (y + 0.5) / h - 0.5
+    for (let x = 0; x < w; x++) {
+      const gx = rect.left + x
+      if (gx < 0 || gx >= W) continue
+      const p = y * w + x
+      if (occludedMask[p] || opaqueBorder[p] || !solidMask[p]) continue
+      const u = (x + 0.5) / w - 0.5
+      const a = Math.max(0.04, Math.min(0.96, c0 + cx * u + cy * v))
+      if (a < 0.28) continue
+      const gi = (gy * W + gx) * 4
+      const bi = ((gy - padRect.top) * pw + (gx - padRect.left)) * 4
+      tintRs.push(
+        Math.max(0, Math.min(255, Math.round((source.data[gi]! - bgData[bi]! * (1 - a)) / a)))
+      )
+      tintGs.push(
+        Math.max(
+          0,
+          Math.min(255, Math.round((source.data[gi + 1]! - bgData[bi + 1]! * (1 - a)) / a))
+        )
+      )
+      tintBs.push(
+        Math.max(
+          0,
+          Math.min(255, Math.round((source.data[gi + 2]! - bgData[bi + 2]! * (1 - a)) / a))
+        )
+      )
+    }
+  }
+  const anchorTint: [number, number, number] =
+    tintRs.length >= 8
+      ? [
+          tintRs.sort((a, b) => a - b)[tintRs.length >> 1]!,
+          tintGs.sort((a, b) => a - b)[tintGs.length >> 1]!,
+          tintBs.sort((a, b) => a - b)[tintBs.length >> 1]!
+        ]
+      : [medIntStudio[0]!, medIntStudio[1]!, medIntStudio[2]!]
+
+  const fgCanvas = createImage(w, h)
+  const unknown = new Uint8Array(n)
+  let seeds = 0
+  for (let y = 0; y < h; y++) {
+    const gy = rect.top + y
+    const v = (y + 0.5) / h - 0.5
+    for (let x = 0; x < w; x++) {
+      const gx = rect.left + x
+      const p = y * w + x
+      const pi = p * 4
+      if (
+        gy < 0 ||
+        gy >= H ||
+        gx < 0 ||
+        gx >= W ||
+        occludedMask[p] ||
+        opaqueBorder[p] ||
+        out[pi + 3]! < 8
+      ) {
+        unknown[p] = 1
+        continue
+      }
+      const u = (x + 0.5) / w - 0.5
+      const planeA = Math.max(0.03, Math.min(0.96, c0 + cx * u + cy * v))
+      const gi = (gy * W + gx) * 4
+      const bi = ((gy - padRect.top) * pw + (gx - padRect.left)) * 4
+      const trustDirect = Math.max(0, Math.min(1, (planeA - 0.14) / 0.24))
+      for (let ch = 0; ch < 3; ch++) {
+        const direct = Math.max(
+          0,
+          Math.min(255, (source.data[gi + ch]! - bgData[bi + ch]! * (1 - planeA)) / planeA)
+        )
+        fgCanvas.data[pi + ch] = Math.round(
+          direct * trustDirect + anchorTint[ch]! * (1 - trustDirect)
+        )
+      }
+      fgCanvas.data[pi + 3] = 255
+      seeds++
+    }
+  }
+  if (seeds >= 8) {
+    inpaintPushPull(fgCanvas, unknown)
+  }
+
+  for (let y = 0; y < h; y++) {
+    const v = (y + 0.5) / h - 0.5
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x
+      if (opaqueBorder[p]) continue
+      const pi = p * 4
+      const curA = Math.min(out[pi + 3]!, studioSkin.data[pi + 3]!)
+      if (curA < 8) {
+        out[pi + 3] = 0
+        continue
+      }
+      const u = (x + 0.5) / w - 0.5
+      const planeA = Math.max(0.03, Math.min(0.96, c0 + cx * u + cy * v))
+      const aByte = Math.min(curA, Math.round(planeA * (curA / 255) * 255))
+      out[pi] = fgCanvas.data[pi]!
+      out[pi + 1] = fgCanvas.data[pi + 1]!
+      out[pi + 2] = fgCanvas.data[pi + 2]!
+      out[pi + 3] = aByte < 6 ? 0 : aByte
+    }
+  }
+
+  bleedTransparentRgb(out, w, h, 3)
+  return { applied: true, blurRadius: bestSampler.radius }
+}
+
+/**
+ * Step C: Closed-form Color-Line fine hair/silhouette matting + neutral soft drop-shadow recovery.
+ * Expands `rect` by up to `6px` ONLY if real protruding hair strands or verified neutral drop shadows
+ * exist outside `rect`; otherwise preserves exact `rect`.
+ */
+function applyRimMattingAndDropShadow(input: {
+  kind: UiElementKind
+  rect: PixelRect
+  rgba: Uint8ClampedArray
+  studioSkin: RgbaImage
+  occludedMask: Uint8Array
+  buildOccMask?: (r: PixelRect) => Uint8Array
+  allowOuterExpansion: boolean
+  source: RgbaImage
+  backdrop: RgbaImage
+}): { rect: PixelRect; rgba: Uint8ClampedArray; rimRefinedPx: number } {
+  const {
+    kind,
+    rect,
+    rgba,
+    studioSkin,
+    occludedMask,
+    buildOccMask,
+    allowOuterExpansion,
+    source,
+    backdrop
+  } = input
+  const doRim = RIM_REFINE_KINDS.has(kind)
+  const doShadow = allowOuterExpansion && DROP_SHADOW_ELIGIBLE_KINDS.has(kind)
+  if (!doRim && !doShadow) {
+    return { rect, rgba, rimRefinedPx: 0 }
+  }
+
+  const W = source.width
+  const H = source.height
+  const pad = allowOuterExpansion ? 6 : 0
+  const workRect = pad > 0 ? expandRect(rect, pad, W, H) : { ...rect }
+  const ww = workRect.width
+  const wh = workRect.height
+  const wn = ww * wh
+  const ox = rect.left - workRect.left
+  const oy = rect.top - workRect.top
+
+  const workRgba = new Uint8ClampedArray(wn * 4)
+  for (let y = 0; y < rect.height; y++) {
+    const wy = oy + y
+    for (let x = 0; x < rect.width; x++) {
+      const si = (y * rect.width + x) * 4
+      const di = (wy * ww + (ox + x)) * 4
+      workRgba[di] = rgba[si]!
+      workRgba[di + 1] = rgba[si + 1]!
+      workRgba[di + 2] = rgba[si + 2]!
+      workRgba[di + 3] = rgba[si + 3]!
+    }
+  }
+
+  const workOcc =
+    pad > 0 && buildOccMask
+      ? buildOccMask(workRect)
+      : (() => {
+          const m = new Uint8Array(wn)
+          for (let y = 0; y < rect.height; y++) {
+            for (let x = 0; x < rect.width; x++) {
+              if (occludedMask[y * rect.width + x]) m[(oy + y) * ww + (ox + x)] = 1
+            }
+          }
+          return m
+        })()
+
+  let rimRefinedPx = 0
+
+  // ---- Part C1: Sub-pixel Rim & Protruding Hair Strand Color-Line Matting ----
+  if (doRim) {
+    const coreMask = new Uint8Array(wn)
+    let coreCnt = 0
+    for (let wp = 0; wp < wn; wp++) {
+      if (!workOcc[wp] && workRgba[wp * 4 + 3]! >= 200) {
+        coreMask[wp] = 1
+        coreCnt++
+      }
+    }
+    if (coreCnt >= 16) {
+      const innerCore = erodeMask(coreMask, ww, wh, 1)
+      const outerBand = dilateMask(coreMask, ww, wh, 3)
+      const strandCand = new Uint8Array(wn)
+      const strandRgba = new Uint8ClampedArray(wn * 4)
+
+      for (let wy = 0; wy < wh; wy++) {
+        const cy = workRect.top + wy
+        if (cy < 0 || cy >= H) continue
+        for (let wx = 0; wx < ww; wx++) {
+          const cx = workRect.left + wx
+          if (cx < 0 || cx >= W) continue
+          const wp = wy * ww + wx
+          if (!outerBand[wp] || innerCore[wp] || workOcc[wp]) continue
+
+          const wpi = wp * 4
+          const curA = workRgba[wpi + 3]!
+          const gi = (cy * W + cx) * 4
+          const dBg = pixelDistance(source.data, gi, backdrop.data, gi)
+
+          // 1) Trim over-grown studio soft fringe where `source` is pure `backdrop`
+          if (curA > 0 && curA < 216 && dBg <= 6) {
+            const lx = wx - ox
+            const ly = wy - oy
+            const dCompBg =
+              lx >= 0 && lx < rect.width && ly >= 0 && ly < rect.height
+                ? pixelDistance(studioSkin.data, (ly * rect.width + lx) * 4, backdrop.data, gi)
+                : pixelDistance(workRgba, wpi, backdrop.data, gi)
+            if (dCompBg >= 36) {
+              workRgba[wpi + 3] = 0
+              rimRefinedPx++
+              continue
+            }
+          }
+
+          // 2) Recover clipped fine hair strand / feather tip outside silhouette (`curA < 24`)
+          if (curA < 24 && dBg >= 22) {
+            const bgR = backdrop.data[gi]!
+            const bgG = backdrop.data[gi + 1]!
+            const bgB = backdrop.data[gi + 2]!
+            const obsR = source.data[gi]!
+            const obsG = source.data[gi + 1]!
+            const obsB = source.data[gi + 2]!
+            // Reject neutral darkening here so drop shadows are handled as `[0,0,0,a]` in Part C2
+            const bgLum = 0.2126 * bgR + 0.7152 * bgG + 0.0722 * bgB
+            const obsLum = 0.2126 * obsR + 0.7152 * obsG + 0.0722 * obsB
+            const bgNorm2 = bgR * bgR + bgG * bgG + bgB * bgB
+            if (bgLum >= 48 && obsLum < bgLum && bgNorm2 >= 6500) {
+              const kSh = (obsR * bgR + obsG * bgG + obsB * bgB) / bgNorm2
+              const rCh = Math.sqrt(
+                ((obsR - kSh * bgR) ** 2 + (obsG - kSh * bgG) ** 2 + (obsB - kSh * bgB) ** 2) / 3
+              )
+              if (kSh >= 0.3 && kSh <= 0.95 && rCh <= 5.5) continue
+            }
+
+            let bestPerp = Infinity
+            let bestAlpha = 0
+            let bestFg: [number, number, number] | null = null
+            for (let dy = -4; dy <= 4; dy++) {
+              const ny = wy + dy
+              if (ny < 0 || ny >= wh) continue
+              for (let dx = -4; dx <= 4; dx++) {
+                const nx = wx + dx
+                if (nx < 0 || nx >= ww) continue
+                const np = ny * ww + nx
+                if (!coreMask[np]) continue
+                const ni = np * 4
+                const fR = workRgba[ni]!
+                const fG = workRgba[ni + 1]!
+                const fB = workRgba[ni + 2]!
+                const vR = fR - bgR
+                const vG = fG - bgG
+                const vB = fB - bgB
+                const vLen2 = vR * vR + vG * vG + vB * vB
+                if (vLen2 < 1936) continue // Euclidean contrast >= 44
+                const aProj = ((obsR - bgR) * vR + (obsG - bgG) * vG + (obsB - bgB) * vB) / vLen2
+                if (aProj < 0.18 || aProj > 1.04) continue
+                const aClamped = Math.min(1, aProj)
+                const eR = obsR - bgR - aClamped * vR
+                const eG = obsG - bgG - aClamped * vG
+                const eB = obsB - bgB - aClamped * vB
+                const perp = Math.sqrt((eR * eR + eG * eG + eB * eB) / 3)
+                if (perp < bestPerp) {
+                  bestPerp = perp
+                  bestAlpha = aClamped
+                  bestFg = [fR, fG, fB]
+                }
+              }
+            }
+
+            if (bestFg && bestPerp <= 7.5 && bestAlpha >= 0.18) {
+              const aByte = Math.max(28, Math.min(255, Math.round(bestAlpha * 255)))
+              const a = aByte / 255
+              const trust = Math.max(0, Math.min(1, (a - 0.35) / 0.45))
+              strandCand[wp] = 1
+              strandRgba[wpi] = Math.round(
+                Math.max(0, Math.min(255, (obsR - bgR * (1 - a)) / a)) * trust +
+                  bestFg[0] * (1 - trust)
+              )
+              strandRgba[wpi + 1] = Math.round(
+                Math.max(0, Math.min(255, (obsG - bgG * (1 - a)) / a)) * trust +
+                  bestFg[1] * (1 - trust)
+              )
+              strandRgba[wpi + 2] = Math.round(
+                Math.max(0, Math.min(255, (obsB - bgB * (1 - a)) / a)) * trust +
+                  bestFg[2] * (1 - trust)
+              )
+              strandRgba[wpi + 3] = aByte
+            }
+          }
+        }
+      }
+
+      // Keep only recovered hair/strand components 8-connected to `coreMask`
+      const coreTouch = dilateMask(coreMask, ww, wh, 1)
+      const comp = labelComponents8(strandCand, ww, wh)
+      if (comp.stats.length > 0) {
+        const keep = new Uint8Array(comp.stats.length + 1)
+        for (let wp = 0; wp < wn; wp++) {
+          const lbl = comp.labels[wp]!
+          if (lbl && coreTouch[wp]) keep[lbl] = 1
+        }
+        for (let wp = 0; wp < wn; wp++) {
+          const lbl = comp.labels[wp]!
+          if (!lbl || !keep[lbl]) continue
+          const wpi = wp * 4
+          workRgba[wpi] = strandRgba[wpi]!
+          workRgba[wpi + 1] = strandRgba[wpi + 1]!
+          workRgba[wpi + 2] = strandRgba[wpi + 2]!
+          workRgba[wpi + 3] = strandRgba[wpi + 3]!
+          rimRefinedPx++
+        }
+      }
+    }
+  }
+
+  // ---- Part C2: Pure Soft Drop Shadow Recovery (`[0, 0, 0, alpha_sh]`) ----
+  if (doShadow) {
+    // Exclude outer 6px rim pixels whose baked `source` RGB is actually a swallowed neutral drop shadow
+    // (`studioSkin` disagrees strongly with `source` while `source` is pure multiplicative `k * backdrop`)
+    const solidMask = new Uint8Array(wn)
+    let solidCnt = 0
+    for (let wy = 0; wy < wh; wy++) {
+      const cy = workRect.top + wy
+      for (let wx = 0; wx < ww; wx++) {
+        const wp = wy * ww + wx
+        if (workRgba[wp * 4 + 3]! < 180) continue
+        const cx = workRect.left + wx
+        const lx = wx - ox
+        const ly = wy - oy
+        const inOuterRim =
+          lx >= 0 &&
+          lx < rect.width &&
+          ly >= 0 &&
+          ly < rect.height &&
+          (lx < 6 || lx >= rect.width - 6 || ly < 6 || ly >= rect.height - 6)
+        if (inOuterRim && !workOcc[wp] && cy >= 0 && cy < H && cx >= 0 && cx < W) {
+          const gi = (cy * W + cx) * 4
+          const si = (ly * rect.width + lx) * 4
+          const bgR = backdrop.data[gi]!
+          const bgG = backdrop.data[gi + 1]!
+          const bgB = backdrop.data[gi + 2]!
+          const obsR = source.data[gi]!
+          const obsG = source.data[gi + 1]!
+          const obsB = source.data[gi + 2]!
+          const bgLum = 0.2126 * bgR + 0.7152 * bgG + 0.0722 * bgB
+          const obsLum = 0.2126 * obsR + 0.7152 * obsG + 0.0722 * obsB
+          const bgNorm2 = bgR * bgR + bgG * bgG + bgB * bgB
+          if (
+            bgLum >= 52 &&
+            bgNorm2 >= 7500 &&
+            obsR <= bgR + 1 &&
+            obsG <= bgG + 1 &&
+            obsB <= bgB + 1 &&
+            bgLum - obsLum >= 8 &&
+            pixelDistance(studioSkin.data, si, source.data, gi) >= 36
+          ) {
+            const k = (obsR * bgR + obsG * bgG + obsB * bgB) / bgNorm2
+            const aSh = 1 - k
+            const rCh = Math.sqrt(
+              ((obsR - k * bgR) ** 2 + (obsG - k * bgG) ** 2 + (obsB - k * bgB) ** 2) / 3
+            )
+            if (aSh >= 0.07 && aSh <= 0.65 && rCh <= 5.0) {
+              continue
+            }
+          }
+        }
+        solidMask[wp] = 1
+        solidCnt++
+      }
+    }
+    if (solidCnt >= 20) {
+      const near1 = dilateMask(solidMask, ww, wh, 2)
+      const near6 = dilateMask(solidMask, ww, wh, 6)
+      const shCand = new Uint8Array(wn)
+      const shAlpha = new Float32Array(wn)
+
+      for (let wy = 0; wy < wh; wy++) {
+        const cy = workRect.top + wy
+        if (cy < 0 || cy >= H) continue
+        for (let wx = 0; wx < ww; wx++) {
+          const cx = workRect.left + wx
+          if (cx < 0 || cx >= W) continue
+          const wp = wy * ww + wx
+          if (!near6[wp] || solidMask[wp] || workOcc[wp]) continue
+          const lx = wx - ox
+          const ly = wy - oy
+          if (workRgba[wp * 4 + 3]! >= 12) {
+            // Only replace opaque/semi-opaque pixels inside `rect` if they were excluded above as swallowed shadow
+            if (lx < 0 || lx >= rect.width || ly < 0 || ly >= rect.height) continue
+          }
+
+          const gi = (cy * W + cx) * 4
+          const bgR = backdrop.data[gi]!
+          const bgG = backdrop.data[gi + 1]!
+          const bgB = backdrop.data[gi + 2]!
+          const bgLum = 0.2126 * bgR + 0.7152 * bgG + 0.0722 * bgB
+          const bgNorm2 = bgR * bgR + bgG * bgG + bgB * bgB
+          if (bgLum < 52 || bgNorm2 < 7500) continue
+
+          const obsR = source.data[gi]!
+          const obsG = source.data[gi + 1]!
+          const obsB = source.data[gi + 2]!
+          if (obsR > bgR + 1 || obsG > bgG + 1 || obsB > bgB + 1) continue
+          const obsLum = 0.2126 * obsR + 0.7152 * obsG + 0.0722 * obsB
+          if (bgLum - obsLum < 8) continue
+
+          const k = (obsR * bgR + obsG * bgG + obsB * bgB) / bgNorm2
+          const aSh = 1 - k
+          if (aSh < 0.07 || aSh > 0.65) continue
+
+          const rChroma = Math.sqrt(
+            ((obsR - k * bgR) ** 2 + (obsG - k * bgG) ** 2 + (obsB - k * bgB) ** 2) / 3
+          )
+          if (rChroma > 5.0) continue
+
+          shCand[wp] = 1
+          shAlpha[wp] = aSh
+        }
+      }
+
+      const comp = labelComponents8(shCand, ww, wh)
+      const minShArea = Math.max(10, Math.round((rect.width + rect.height) * 0.14))
+      for (const cs of comp.stats) {
+        if (cs.area < minShArea) continue
+        let innerSum = 0
+        let innerCnt = 0
+        let outerSum = 0
+        let outerCnt = 0
+        for (let wy = cs.minY; wy <= cs.maxY; wy++) {
+          const row = wy * ww
+          for (let wx = cs.minX; wx <= cs.maxX; wx++) {
+            const wp = row + wx
+            if (comp.labels[wp] !== cs.label) continue
+            if (near1[wp]) {
+              innerSum += shAlpha[wp]!
+              innerCnt++
+            } else {
+              outerSum += shAlpha[wp]!
+              outerCnt++
+            }
+          }
+        }
+        if (innerCnt < 4) continue
+        const innerMean = innerSum / innerCnt
+        const outerMean = outerCnt > 0 ? outerSum / outerCnt : innerMean
+        // Real drop shadows decay or hold steady outward; reject external dark objects growing inward
+        if (outerCnt >= 4 && innerMean + 0.025 < outerMean) continue
+
+        for (let wy = cs.minY; wy <= cs.maxY; wy++) {
+          const row = wy * ww
+          for (let wx = cs.minX; wx <= cs.maxX; wx++) {
+            const wp = row + wx
+            if (comp.labels[wp] !== cs.label) continue
+            const wpi = wp * 4
+            workRgba[wpi] = 0
+            workRgba[wpi + 1] = 0
+            workRgba[wpi + 2] = 0
+            workRgba[wpi + 3] = Math.max(12, Math.min(180, Math.round(shAlpha[wp]! * 255)))
+            rimRefinedPx++
+          }
+        }
+      }
+    }
+  }
+
+  if (rimRefinedPx === 0) {
+    return { rect, rgba, rimRefinedPx: 0 }
+  }
+
+  // Compute tight union of `rect` and any newly recovered outer hair/shadow pixels
+  let minX = ox
+  let minY = oy
+  let maxX = ox + rect.width - 1
+  let maxY = oy + rect.height - 1
+  for (let wy = 0; wy < wh; wy++) {
+    for (let wx = 0; wx < ww; wx++) {
+      if (workRgba[(wy * ww + wx) * 4 + 3]! === 0) continue
+      if (wx < minX) minX = wx
+      if (wx > maxX) maxX = wx
+      if (wy < minY) minY = wy
+      if (wy > maxY) maxY = wy
+    }
+  }
+  const finalRect = clampRect(
+    {
+      left: workRect.left + minX,
+      top: workRect.top + minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1
+    },
+    W,
+    H
+  )
+  const fw = finalRect.width
+  const fh = finalRect.height
+  const finalRgba = new Uint8ClampedArray(fw * fh * 4)
+  const fx0 = finalRect.left - workRect.left
+  const fy0 = finalRect.top - workRect.top
+  for (let y = 0; y < fh; y++) {
+    for (let x = 0; x < fw; x++) {
+      const si = ((fy0 + y) * ww + (fx0 + x)) * 4
+      const di = (y * fw + x) * 4
+      finalRgba[di] = workRgba[si]!
+      finalRgba[di + 1] = workRgba[si + 1]!
+      finalRgba[di + 2] = workRgba[si + 2]!
+      finalRgba[di + 3] = workRgba[si + 3]!
+    }
+  }
+  bleedTransparentRgb(finalRgba, fw, fh, 3)
+  return { rect: finalRect, rgba: finalRgba, rimRefinedPx }
+}
+
+/**
+ * Bottom-to-top backdrop-guided refinement for studio-purified layers:
+ * 1. Punches enclosed counters/holes (`area >= 4px`) in `art-text` / `icon` / `decoration` where
+ *    `source` exposes `backdrop` while `studioSkin` trapped solid studio background.
+ * 2. Recovers semi-transparency (`alpha in 0..255`), multi-scale `backdrop-filter: blur(R)` frosted
+ *    glass unmixing, and continuous spatial gradient alpha (`alpha(x, y)`) while keeping opaque
+ *    borders crisp at `alpha = 255`.
+ * 3. Refines sub-pixel hair/rim silhouettes via closed-form Color-Line matting and recovers pure
+ *    `[0, 0, 0, alpha]` soft drop shadows outside standalone controls/illustrations.
+ */
+export function refineLayerTranslucencyAndHolesAgainstBackdrop(input: {
+  kind: UiElementKind
+  rect: PixelRect
+  rgba: Uint8ClampedArray
+  studioSkin: RgbaImage
+  occludedMask: Uint8Array
+  buildOccMask?: (r: PixelRect) => Uint8Array
+  allowOuterExpansion?: boolean
+  source: RgbaImage
+  backdrop: RgbaImage
+}): {
+  rect: PixelRect
+  rgba: Uint8ClampedArray
+  translucentUnmixed: boolean
+  backdropBlurRadius?: number
+  holesPunched: number
+  rimRefinedPx: number
+} {
+  const {
+    kind,
+    rect,
+    rgba,
+    studioSkin,
+    occludedMask,
+    buildOccMask,
+    allowOuterExpansion = true,
+    source,
+    backdrop
+  } = input
+  const w = rect.width
+  const h = rect.height
+  const n = w * h
+  const W = source.width
+  const H = source.height
+  if (w < 4 || h < 4 || studioSkin.width !== w || studioSkin.height !== h) {
+    return { rect, rgba, translucentUnmixed: false, holesPunched: 0, rimRefinedPx: 0 }
+  }
+
+  const out = new Uint8ClampedArray(rgba)
+  let holesPunched = 0
+
+  // ---- Step A: Backdrop-verified enclosed hole punching (`art-text`, `icon`, `decoration`, etc.) ----
+  if (PUNCH_ENCLOSED_HOLE_KINDS.has(kind)) {
+    const trapped = new Uint8Array(n)
+    let trappedCnt = 0
+    for (let y = 0; y < h; y++) {
+      const cy = rect.top + y
+      if (cy < 0 || cy >= H) continue
+      for (let x = 0; x < w; x++) {
+        const cx = rect.left + x
+        if (cx < 0 || cx >= W) continue
+        const p = y * w + x
+        if (occludedMask[p] || out[p * 4 + 3]! < 64) continue
+        const gi = (cy * W + cx) * 4
+        const pi = p * 4
+        const dBg = pixelDistance(source.data, gi, backdrop.data, gi)
+        const dStudio = pixelDistance(source.data, gi, studioSkin.data, pi)
+        if (dBg <= 10 && dStudio >= 38) {
+          trapped[p] = 1
+          trappedCnt++
+        }
+      }
+    }
+    if (trappedCnt >= 4) {
+      const comp = labelComponents(trapped, w, h)
+      const punchLbl = new Uint8Array(comp.stats.length + 1)
+      for (const cs of comp.stats) {
+        if (cs.area >= 4) punchLbl[cs.label] = 1
+      }
+      const holeMask = new Uint8Array(n)
+      for (let p = 0; p < n; p++) {
+        const lbl = comp.labels[p]!
+        if (lbl && punchLbl[lbl]) {
+          holeMask[p] = 1
+          out[p * 4 + 3] = 0
+          holesPunched++
+        }
+      }
+      if (holesPunched > 0) {
+        const rim = dilateMask(holeMask, w, h, 1)
+        for (let y = 0; y < h; y++) {
+          const cy = rect.top + y
+          if (cy < 0 || cy >= H) continue
+          for (let x = 0; x < w; x++) {
+            const cx = rect.left + x
+            if (cx < 0 || cx >= W) continue
+            const p = y * w + x
+            if (!rim[p] || holeMask[p] || occludedMask[p]) continue
+            const pi = p * 4
+            if (out[pi + 3]! < 16) continue
+            const gi = (cy * W + cx) * 4
+            const dBg = pixelDistance(source.data, gi, backdrop.data, gi)
+            if (dBg < 28) {
+              const newA = Math.max(0, Math.min(out[pi + 3]!, Math.round((dBg / 28) * 255)))
+              out[pi + 3] = newA
+              if (newA >= 16) {
+                const a = newA / 255
+                for (let c = 0; c < 3; c++) {
+                  out[pi + c] = Math.max(
+                    0,
+                    Math.min(
+                      255,
+                      Math.round((source.data[gi + c]! - backdrop.data[gi + c]! * (1 - a)) / a)
+                    )
+                  )
+                }
+              }
+            }
+          }
+        }
+        bleedTransparentRgb(out, w, h, 3)
+      }
+    }
+  }
+
+  let translucentUnmixed = false
+  let detectedBlurRadius = 0
+
+  // ---- Step B: Multi-scale blurred frosted glass + per-stratum & continuous gradient translucency ----
+  if (TRANSLUCENT_ELIGIBLE_KINDS.has(kind) && n >= 36) {
+    const buckets = new Map<number, number[]>()
+    let totalUnoccludedSolid = 0
+    for (let y = 0; y < h; y++) {
+      const cy = rect.top + y
+      if (cy < 0 || cy >= H) continue
+      for (let x = 0; x < w; x++) {
+        const cx = rect.left + x
+        if (cx < 0 || cx >= W) continue
+        const p = y * w + x
+        if (occludedMask[p]) continue
+        const si = p * 4
+        if (out[si + 3]! < 180 || studioSkin.data[si + 3]! < 180) continue
+        totalUnoccludedSolid++
+        const key =
+          ((studioSkin.data[si]! >> 4) << 8) |
+          ((studioSkin.data[si + 1]! >> 4) << 4) |
+          (studioSkin.data[si + 2]! >> 4)
+        let arr = buckets.get(key)
+        if (!arr) {
+          arr = []
+          buckets.set(key, arr)
+        }
+        arr.push(p)
+      }
+    }
+
+    if (totalUnoccludedSolid >= 24) {
+      const samplers = buildMultiScaleBlurredBackdrops(backdrop, rect)
+      const minTransPx = Math.max(20, Math.round(totalUnoccludedSolid * 0.2))
+
+      interface BucketStats {
+        transmission: number
+        confirmedTranslucent: boolean
+        confirmedOpaque: boolean
+        repStudioRgb: [number, number, number]
+        pixelCount: number
+      }
+
+      interface ScaleEval {
+        sampler: LocalBackdropSampler
+        bucketStats: Map<number, BucketStats>
+        translucentPixelCount: number
+        weightedScore: number
+        weightedPerp: number
+      }
+
+      const evalScale = (sampler: LocalBackdropSampler): ScaleEval => {
+        const { padRect, data: bgData } = sampler
+        const pw = padRect.width
+        const bucketStats = new Map<number, BucketStats>()
+        let translucentPixelCount = 0
+        let scoreNum = 0
+        let perpNum = 0
+
+        for (const [key, pixels] of buckets) {
+          const repIdx = pixels[pixels.length >> 1]! * 4
+          const repStudioRgb: [number, number, number] = [
+            studioSkin.data[repIdx]!,
+            studioSkin.data[repIdx + 1]!,
+            studioSkin.data[repIdx + 2]!
+          ]
+          if (pixels.length < 12) {
+            bucketStats.set(key, {
+              transmission: 0,
+              confirmedTranslucent: false,
+              confirmedOpaque: false,
+              repStudioRgb,
+              pixelCount: pixels.length
+            })
+            continue
+          }
+
+          const maxSamples = 72
+          const step = Math.max(1, Math.floor(pixels.length / maxSamples))
+          const sampleP: number[] = []
+          for (let i = 0; i < pixels.length && sampleP.length < maxSamples; i += step) {
+            sampleP.push(pixels[i]!)
+          }
+
+          const slopes: number[] = []
+          const perps: number[] = []
+          for (let i = 0; i < sampleP.length; i++) {
+            const pa = sampleP[i]!
+            const ax = pa % w
+            const ay = (pa - ax) / w
+            const ga = ((rect.top + ay) * W + (rect.left + ax)) * 4
+            const ba = ((rect.top + ay - padRect.top) * pw + (rect.left + ax - padRect.left)) * 4
+            const sa = pa * 4
+            for (let j = i + 1; j < sampleP.length; j++) {
+              const pb = sampleP[j]!
+              const sb = pb * 4
+              if (pixelDistance(studioSkin.data, sa, studioSkin.data, sb) > 14) continue
+              const bx = pb % w
+              const by = (pb - bx) / w
+              const gb = ((rect.top + by) * W + (rect.left + bx)) * 4
+              const bb = ((rect.top + by - padRect.top) * pw + (rect.left + bx - padRect.left)) * 4
+
+              const dBgR = bgData[ba]! - bgData[bb]!
+              const dBgG = bgData[ba + 1]! - bgData[bb + 1]!
+              const dBgB = bgData[ba + 2]! - bgData[bb + 2]!
+              const bgLen2 = dBgR * dBgR + dBgG * dBgG + dBgB * dBgB
+              if (bgLen2 < 1000) continue
+
+              const dObsR = source.data[ga]! - source.data[gb]!
+              const dObsG = source.data[ga + 1]! - source.data[gb + 1]!
+              const dObsB = source.data[ga + 2]! - source.data[gb + 2]!
+
+              const t = (dObsR * dBgR + dObsG * dBgG + dObsB * dBgB) / bgLen2
+              const resR = dObsR - t * dBgR
+              const resG = dObsG - t * dBgG
+              const resB = dObsB - t * dBgB
+              const perp = Math.sqrt((resR * resR + resG * resG + resB * resB) / 3)
+              slopes.push(t)
+              perps.push(perp)
+            }
+          }
+
+          if (slopes.length < 16) {
+            bucketStats.set(key, {
+              transmission: 0,
+              confirmedTranslucent: false,
+              confirmedOpaque: false,
+              repStudioRgb,
+              pixelCount: pixels.length
+            })
+            continue
+          }
+
+          slopes.sort((a, b) => a - b)
+          perps.sort((a, b) => a - b)
+          const medT = slopes[slopes.length >> 1]!
+          const q25 = slopes[Math.floor(slopes.length * 0.25)]!
+          const q75 = slopes[Math.floor(slopes.length * 0.75)]!
+          const iqrT = q75 - q25
+          const medPerp = perps[perps.length >> 1]!
+
+          if (medT >= 0.08 && medT <= 0.92 && iqrT <= 0.28 && medPerp <= 15) {
+            // Measure per-pixel backdrop-subtraction residual `||(source - t*bg_R) - (1-t)*F_med||_1 / 3`
+            // across `sampleP` so collinear 2-color step-edge blur ghosts (`perp == 0`!) are penalized accurately.
+            const remRs: number[] = []
+            const remGs: number[] = []
+            const remBs: number[] = []
+            for (const sp of sampleP) {
+              const sx = sp % w
+              const sy = (sp - sx) / w
+              const gs = ((rect.top + sy) * W + (rect.left + sx)) * 4
+              const bs = ((rect.top + sy - padRect.top) * pw + (rect.left + sx - padRect.left)) * 4
+              remRs.push(source.data[gs]! - medT * bgData[bs]!)
+              remGs.push(source.data[gs + 1]! - medT * bgData[bs + 1]!)
+              remBs.push(source.data[gs + 2]! - medT * bgData[bs + 2]!)
+            }
+            const sortedR = [...remRs].sort((a, b) => a - b)
+            const sortedG = [...remGs].sort((a, b) => a - b)
+            const sortedB = [...remBs].sort((a, b) => a - b)
+            const midRemR = sortedR[sortedR.length >> 1]!
+            const midRemG = sortedG[sortedG.length >> 1]!
+            const midRemB = sortedB[sortedB.length >> 1]!
+            const reconErrs: number[] = []
+            let reconSum = 0
+            for (let k = 0; k < remRs.length; k++) {
+              const e =
+                (Math.abs(remRs[k]! - midRemR) +
+                  Math.abs(remGs[k]! - midRemG) +
+                  Math.abs(remBs[k]! - midRemB)) /
+                3
+              reconErrs.push(e)
+              reconSum += e
+            }
+            reconErrs.sort((a, b) => a - b)
+            const p85Recon = reconErrs[Math.floor(reconErrs.length * 0.85)]!
+            const meanRecon = reconSum / Math.max(1, reconErrs.length)
+            const effErr = p85Recon * 0.65 + meanRecon * 0.35
+
+            bucketStats.set(key, {
+              transmission: medT,
+              confirmedTranslucent: true,
+              confirmedOpaque: false,
+              repStudioRgb,
+              pixelCount: pixels.length
+            })
+            translucentPixelCount += pixels.length
+            scoreNum += pixels.length * (effErr + iqrT * 28)
+            perpNum += pixels.length * effErr
+          } else if (Math.abs(medT) < 0.08 && iqrT <= 0.18) {
+            bucketStats.set(key, {
+              transmission: 0,
+              confirmedTranslucent: false,
+              confirmedOpaque: true,
+              repStudioRgb,
+              pixelCount: pixels.length
+            })
+          } else {
+            bucketStats.set(key, {
+              transmission: 0,
+              confirmedTranslucent: false,
+              confirmedOpaque: false,
+              repStudioRgb,
+              pixelCount: pixels.length
+            })
+          }
+        }
+
+        return {
+          sampler,
+          bucketStats,
+          translucentPixelCount,
+          weightedScore: translucentPixelCount > 0 ? scoreNum / translucentPixelCount : Infinity,
+          weightedPerp: translucentPixelCount > 0 ? perpNum / translucentPixelCount : Infinity
+        }
+      }
+
+      const eval0 = evalScale(samplers[0]!)
+      const eval0Valid = eval0.translucentPixelCount >= minTransPx
+      let chosen: ScaleEval | null = eval0Valid ? eval0 : null
+
+      for (let bi = 1; bi < samplers.length; bi++) {
+        const ev = evalScale(samplers[bi]!)
+        if (ev.translucentPixelCount < minTransPx) continue
+        const beatsZero =
+          !eval0Valid ||
+          (ev.weightedScore <= eval0.weightedScore * 0.78 &&
+            ev.weightedPerp + 1.8 < eval0.weightedPerp)
+        if (beatsZero && (!chosen || ev.weightedScore < chosen.weightedScore)) {
+          chosen = ev
+        }
+      }
+
+      if (chosen) {
+        const { sampler, bucketStats } = chosen
+        const { padRect, data: bgData } = sampler
+        const pw = padRect.width
+        detectedBlurRadius = sampler.radius
+
+        const confirmedBuckets = [...bucketStats.values()].filter((b) => b.confirmedTranslucent)
+        for (const st of bucketStats.values()) {
+          if (st.confirmedTranslucent || st.confirmedOpaque) continue
+          let bestT = 0
+          let bestDist = 22
+          for (const cb of confirmedBuckets) {
+            const d = Math.hypot(
+              st.repStudioRgb[0] - cb.repStudioRgb[0],
+              st.repStudioRgb[1] - cb.repStudioRgb[1],
+              st.repStudioRgb[2] - cb.repStudioRgb[2]
+            )
+            if (d < bestDist) {
+              bestDist = d
+              bestT = cb.transmission
+            }
+          }
+          if (bestT > 0) {
+            st.transmission = bestT
+            st.confirmedTranslucent = true
+          }
+        }
+
+        const allBuckets = [...bucketStats.values()]
+        const resolveStudioStratum = (pi: number): BucketStats | undefined => {
+          const r = studioSkin.data[pi]!
+          const g = studioSkin.data[pi + 1]!
+          const b = studioSkin.data[pi + 2]!
+          const key = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)
+          const direct = bucketStats.get(key)
+          if (direct) return direct
+          let best: BucketStats | undefined
+          let bestDist = 24
+          for (const cand of allBuckets) {
+            const d = Math.hypot(
+              r - cand.repStudioRgb[0],
+              g - cand.repStudioRgb[1],
+              b - cand.repStudioRgb[2]
+            )
+            if (d < bestDist) {
+              bestDist = d
+              best = cand
+            }
+          }
+          return best
+        }
+
+        const fgCanvas = createImage(w, h)
+        const alphaField = createImage(w, h)
+        const unknownMask = new Uint8Array(n)
+        let knownSeedCnt = 0
+
+        for (let y = 0; y < h; y++) {
+          const cy = rect.top + y
+          for (let x = 0; x < w; x++) {
+            const cx = rect.left + x
+            const p = y * w + x
+            const pi = p * 4
+            const curA = Math.min(out[pi + 3]!, studioSkin.data[pi + 3]!)
+            if (curA < 8 || cy < 0 || cy >= H || cx < 0 || cx >= W || occludedMask[p]) {
+              unknownMask[p] = 1
+              continue
+            }
+
+            const st = resolveStudioStratum(pi)
+            if (st?.confirmedTranslucent && st.transmission > 0) {
+              const gi = (cy * W + cx) * 4
+              const bi = ((cy - padRect.top) * pw + (cx - padRect.left)) * 4
+              const effAlpha = Math.max(0.06, Math.min(1, (curA / 255) * (1 - st.transmission)))
+              const aByte = Math.max(8, Math.min(255, Math.round(effAlpha * 255)))
+              for (let c = 0; c < 3; c++) {
+                const solved = Math.max(
+                  0,
+                  Math.min(
+                    255,
+                    Math.round((source.data[gi + c]! - bgData[bi + c]! * (1 - effAlpha)) / effAlpha)
+                  )
+                )
+                fgCanvas.data[pi + c] = solved
+              }
+              fgCanvas.data[pi + 3] = 255
+              alphaField.data[pi] = aByte
+              alphaField.data[pi + 1] = aByte
+              alphaField.data[pi + 2] = aByte
+              alphaField.data[pi + 3] = 255
+              knownSeedCnt++
+            } else {
+              // Keep opaque border strata out of `fgCanvas` / `alphaField` so they never bleed into
+              // occluded translucent interiors during push-pull inpainting.
+              unknownMask[p] = 1
+            }
+          }
+        }
+
+        if (knownSeedCnt >= 8) {
+          inpaintPushPull(fgCanvas, unknownMask)
+          inpaintPushPull(alphaField, unknownMask)
+        }
+
+        for (let p = 0; p < n; p++) {
+          const pi = p * 4
+          const curA = Math.min(out[pi + 3]!, studioSkin.data[pi + 3]!)
+          if (curA < 8) {
+            out[pi + 3] = 0
+            continue
+          }
+          const st = resolveStudioStratum(pi)
+          if (st?.confirmedTranslucent && st.transmission > 0) {
+            const aByte = Math.min(curA, alphaField.data[pi]!)
+            out[pi] = fgCanvas.data[pi]!
+            out[pi + 1] = fgCanvas.data[pi + 1]!
+            out[pi + 2] = fgCanvas.data[pi + 2]!
+            out[pi + 3] = aByte < 6 ? 0 : aByte
+          }
+        }
+
+        bleedTransparentRgb(out, w, h, 3)
+        translucentUnmixed = true
+      } else {
+        // Fallback Step B2: Continuous spatial gradient-alpha plane solver (`alpha(x, y)`)
+        const grad = solveContinuousGradientTranslucency({
+          rect,
+          out,
+          studioSkin,
+          occludedMask,
+          source,
+          samplers
+        })
+        if (grad.applied) {
+          translucentUnmixed = true
+          detectedBlurRadius = grad.blurRadius
+        }
+      }
+    }
+  }
+
+  // ---- Step C: Sub-pixel rim/hair Color-Line matting + pure soft drop-shadow recovery ----
+  const rimRes = applyRimMattingAndDropShadow({
+    kind,
+    rect,
+    rgba: out,
+    studioSkin,
+    occludedMask,
+    buildOccMask,
+    allowOuterExpansion: allowOuterExpansion && !translucentUnmixed,
+    source,
+    backdrop
+  })
+
+  return {
+    rect: rimRes.rect,
+    rgba: rimRes.rgba,
+    translucentUnmixed,
+    ...(detectedBlurRadius > 0 ? { backdropBlurRadius: detectedBlurRadius } : {}),
+    holesPunched,
+    rimRefinedPx: rimRes.rimRefinedPx
+  }
 }

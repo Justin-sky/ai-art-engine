@@ -8,6 +8,7 @@
  */
 
 export const OPENAI_IMAGE_SIZES: ReadonlySet<string> = new Set([
+  '512x512',
   '1024x1024',
   '1536x1024',
   '1024x1536'
@@ -74,8 +75,16 @@ function normalizeResolution(value: string | undefined, isDalle3 = false): strin
 export function resolveOpenAiImageSize(
   resolution: string | undefined,
   aspectRatio: string | undefined,
-  modelId?: string
+  modelId?: string,
+  outputFormat?: string
 ): string | undefined {
+  // OpenAI gpt-image 直出 GIF 内部固定由 9 帧拼合（3×3 序列图）。
+  // 1024x1024 下拼合尺寸为 3072x3072，会触发 OpenAI "Requested resolution exceeds the current pixel budget" 报错。
+  // GIF 动图仅支持 512x512 单帧尺寸（3×512 = 1536x1536，严格处于像素预算内）。
+  if (outputFormat?.trim().toLowerCase() === 'gif') {
+    return '512x512'
+  }
+
   const isDalle3 = Boolean(modelId && /dall-?e-?3/i.test(modelId))
   const pixel = normalizeResolution(resolution, isDalle3)
   if (pixel) return pixel === 'auto' ? undefined : pixel

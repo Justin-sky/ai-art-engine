@@ -551,6 +551,8 @@ export interface SolidBgMatteOptions {
   feather?: number
   /** Allow punching out a large uniform interior window (> 22% area) for hollow `frame` skins. */
   allowHollowCenter?: boolean
+  /** Punch enclosed studio-background holes (e.g. inside '0'/'8'/'O' art-text or hollow ring icons) while keeping highlights opaque. */
+  punchEnclosedBgHoles?: boolean
 }
 
 function smoothstep01(e0: number, e1: number, x: number): number {
@@ -760,11 +762,15 @@ export function extractCleanComponentMatteFromSolidBg(
   }
   if (fgCount < 16 || bMaxX < bMinX || bMaxY < bMinY) return null
 
-  // Exterior flood-fill (`fillHoles`): every enclosed interior cavity stays opaque (`silhouette = 1`)
+  // Exterior flood-fill (`fillHoles`): every enclosed interior cavity starts opaque (`silhouette = 1`)
   const silhouette = fillHoles(fgBody, W, H)
 
-  // Only for hollow `frame` skins: allow genuinely large uniform empty center windows (>= 22% bbox area)
-  if (options?.allowHollowCenter) {
+  // Punch genuine enclosed studio-background cavities:
+  // - `allowHollowCenter` (`frame`): large uniform center windows (>= 22% bbox area)
+  // - `punchEnclosedBgHoles` (`art-text`, `icon`, `decoration`, `divider`, `close-button`, `arrow`):
+  //   enclosed counters/rings (>= 9px) whose pixels match `bgRgb` closely AND whose surrounding
+  //   foreground stroke contrasts sharply with `bgRgb` (protecting soft specular highlights!).
+  if (options?.allowHollowCenter || options?.punchEnclosedBgHoles) {
     const bboxArea = Math.max(1, (bMaxX - bMinX + 1) * (bMaxY - bMinY + 1))
     const cavity = new Uint8Array(n)
     for (let p = 0; p < n; p++) {
@@ -773,7 +779,42 @@ export function extractCleanComponentMatteFromSolidBg(
     const cavComp = labelComponents(cavity, W, H)
     const punchLabel = new Uint8Array(cavComp.stats.length + 1)
     for (const cs of cavComp.stats) {
-      if (cs.area >= bboxArea * 0.22) punchLabel[cs.label] = 1
+      if (options?.allowHollowCenter && cs.area >= bboxArea * 0.22) {
+        punchLabel[cs.label] = 1
+        continue
+      }
+      if (options?.punchEnclosedBgHoles && cs.area >= 9) {
+        let insideDistSum = 0
+        let insideCnt = 0
+        const ringDists: number[] = []
+        for (let y = cs.minY; y <= cs.maxY; y++) {
+          const row = y * W
+          for (let x = cs.minX; x <= cs.maxX; x++) {
+            const p = row + x
+            if (cavComp.labels[p] !== cs.label) continue
+            insideDistSum += dist[p]!
+            insideCnt++
+            for (let dy = -2; dy <= 2; dy++) {
+              const ny = y + dy
+              if (ny < 0 || ny >= H) continue
+              for (let dx = -2; dx <= 2; dx++) {
+                if (!dx && !dy) continue
+                const nx = x + dx
+                if (nx < 0 || nx >= W) continue
+                const np = ny * W + nx
+                if (fgBody[np]) ringDists.push(dist[np]!)
+              }
+            }
+          }
+        }
+        if (insideCnt >= 9 && ringDists.length >= 8) {
+          const meanInside = insideDistSum / insideCnt
+          const medRing = median(ringDists)
+          if (meanInside <= tol * 0.9 && medRing >= 64) {
+            punchLabel[cs.label] = 1
+          }
+        }
+      }
     }
     for (let p = 0; p < n; p++) {
       const cl = cavComp.labels[p]!

@@ -412,6 +412,8 @@ export interface GraphNodeParams {
   generateModelFallbacks?: string[]
   /** 图片/全景生成：宽高比（如 16:9） */
   generateAspectRatio?: string
+  /** 图片生成：输出格式（如 png / gif / svg） */
+  generateOutputFormat?: string
   /** 图片/全景生成：清晰度档位（如 1K / 2K / 4K） */
   generateResolution?: string
   /** 图片/全景生成：画质（low / medium / high / auto） */
@@ -701,6 +703,10 @@ export interface GraphNodeParams {
   animCellHolds?: Record<string, number>
   /** 2D帧动画：单格像素级偏移微调与水平翻转（如 {'1-2': { dx: 4, dy: -2, flipX: false }}） */
   animCellOffsets?: Record<string, { dx: number; dy: number; flipX?: boolean }>
+  /** 2D帧动画：逐帧单帧修补/橡皮擦覆盖数据（{'1-1': 'data:image/png;...'}） */
+  animCellEdits?: Record<string, string>
+  /** 2D帧动画：逐帧自定义播放/显示顺序列表（如 ['1-2', '1-1', '1-3']） */
+  animCellOrder?: string[]
   /** 2D帧动画：PixelOver 级精灵自动外描边颜色（''|black|white|gold|cyan） */
   animOutline?: '' | 'black' | 'white' | 'gold' | 'cyan'
   /** 2D帧动画：PixelOver 级真像素晶格规整块尺寸（0=关闭，2/3/4/6 px） */

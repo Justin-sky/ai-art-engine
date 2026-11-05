@@ -1300,6 +1300,7 @@ export async function executeImageGenerateNode(
     aspectRatio: genParams.aspectRatio,
     resolution: genParams.resolution,
     quality: genParams.quality,
+    outputFormat: genParams.outputFormat,
     n: genParams.count,
     seed: resolveGenerateSeed(node.params, ctx.resolveProjectGenerateSeed?.()),
     ...(useTransparentBg ? { transparentBackground: true } : {}),
@@ -1329,10 +1330,16 @@ export async function executeImageGenerateNode(
   }
 
   // 按设定宽高比裁正画布：宫格画布裁正后每个格子几何上严格按该比例均分
+  // 动态 GIF 与 SVG 矢量图严禁经由 2D Canvas 重绘（否则动图丢帧退化为单帧静态图，SVG 丢失矢量代码被栅格化）
   if (genParams.aspectRatio?.trim() && ctx.normalizeImageAspectRatio) {
     const ratio = genParams.aspectRatio.trim()
     for (const item of batch) {
-      if (!item.dataUrl?.startsWith('data:image/')) continue
+      if (
+        !item.dataUrl?.startsWith('data:image/') ||
+        item.dataUrl.startsWith('data:image/gif') ||
+        item.dataUrl.startsWith('data:image/svg')
+      )
+        continue
       try {
         const normalized = await ctx.normalizeImageAspectRatio({
           dataUrl: item.dataUrl,

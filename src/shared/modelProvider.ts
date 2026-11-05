@@ -1120,6 +1120,8 @@ export interface GenerateImageInput {
   resolution?: string
   /** OpenRouter quality：auto / low / medium / high */
   quality?: string
+  /** 期望输出格式：'png' | 'gif' | 'webp' | 'jpeg'（如 gpt-image-2.6 直出动图传 'gif'） */
+  outputFormat?: string
   n?: number
   /** 随机种子：固定后同参数可复现；缺省由服务端随机 */
   seed?: number

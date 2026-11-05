@@ -6,6 +6,7 @@
  * 3. 去色污染：按 uc·ua = ec·ea + lc·la·(1-ea) 反解元素真实颜色，半透明发光/投影不带底色
  */
 
+import type { UiLayerBlendMode } from '../uiControlSpec'
 import {
   clampRect,
   dilateMask,
@@ -41,6 +42,8 @@ export interface MatteResult {
   rgba: Uint8ClampedArray
   /** 不透明像素占比（诊断用） */
   coverage: number
+  /** 物理反解出的图层混合模式（默认 'normal'，纯增亮光效自动反解为 'screen' 或 'linear dodge'） */
+  blendMode?: UiLayerBlendMode
 }
 
 function smoothstep(e0: number, e1: number, x: number): number {
@@ -249,5 +252,244 @@ export function extractMatte(
     rect: clampRect({ left: rect.left + minX, top: rect.top + minY, width: tw, height: th }, W, H),
     rgba: out,
     coverage: opaque / Math.max(1, tw * th)
+  }
+}
+
+/**
+ * Emissive VFX / glow / hologram matte extraction with native Photoshop `screen` and `linear dodge`
+ * physical inversion:
+ * - Verifies that active pixels genuinely brighten `lower` without dark occluding strokes.
+ * - Separates hot clamped additive beams/sparks (`linear dodge`) from soft ambient halos (`screen`).
+ * - Falls back cleanly to `extractMatte(..., { unmixTranslucent: true })` (`normal`) when the element
+ *   contains dark shadows or mixed opaque pigments.
+ */
+export function extractEmissiveGlowMatte(
+  upper: RgbaImage,
+  lower: RgbaImage,
+  box: PixelRect,
+  options: {
+    nameHint?: string
+    blendModeHint?: UiLayerBlendMode
+    t0?: number
+    instanceMask?: { rect: PixelRect; mask: Uint8Array }
+  } = {}
+): MatteResult | null {
+  if (options.blendModeHint === 'normal') {
+    const fallback = extractMatte(upper, lower, box, { unmixTranslucent: true, t0: 6, t1: 32 })
+    return fallback ? { ...fallback, blendMode: 'normal' } : null
+  }
+
+  const W = upper.width
+  const H = upper.height
+  const rect = expandRect(box, 2, W, H)
+  const rw = rect.width
+  const rh = rect.height
+  const n = rw * rh
+
+  const ringRect = expandRect(box, 6, W, H)
+  const ringD: number[] = []
+  for (let y = ringRect.top; y < ringRect.top + ringRect.height; y++) {
+    for (let x = ringRect.left; x < ringRect.left + ringRect.width; x++) {
+      const inside = x >= rect.left && x < rect.left + rw && y >= rect.top && y < rect.top + rh
+      if (inside) continue
+      const i = (y * W + x) * 4
+      ringD.push(pixelDistance(upper.data, i, lower.data, i))
+    }
+  }
+  const noise = median(ringD)
+  const t0 = (options.t0 ?? 6) + noise * 1.35
+
+  let activeCount = 0
+  let brightenCount = 0
+  let clampedHotCount = 0
+  let hueSumR = 0
+  let hueSumG = 0
+  let hueSumB = 0
+
+  for (let y = 0; y < rh; y++) {
+    for (let x = 0; x < rw; x++) {
+      const i = ((rect.top + y) * W + rect.left + x) * 4
+      if (upper.data[i + 3]! < 16 || lower.data[i + 3]! < 210) continue
+      const d = pixelDistance(upper.data, i, lower.data, i)
+      if (d < Math.max(10, t0 * 1.4)) continue
+      activeCount++
+      const dr = upper.data[i]! - lower.data[i]!
+      const dg = upper.data[i + 1]! - lower.data[i + 1]!
+      const db = upper.data[i + 2]! - lower.data[i + 2]!
+      const maxGain = Math.max(dr, dg, db)
+      const minDelta = Math.min(dr, dg, db)
+      if (maxGain >= 6 && minDelta >= -9) {
+        brightenCount++
+        const hotClamped =
+          (upper.data[i]! >= 250 && lower.data[i]! <= 232 && dr >= 18) ||
+          (upper.data[i + 1]! >= 250 && lower.data[i + 1]! <= 232 && dg >= 18) ||
+          (upper.data[i + 2]! >= 250 && lower.data[i + 2]! <= 232 && db >= 18)
+        if (hotClamped) {
+          clampedHotCount++
+        } else {
+          hueSumR += Math.max(0, dr)
+          hueSumG += Math.max(0, dg)
+          hueSumB += Math.max(0, db)
+        }
+      }
+    }
+  }
+
+  if (activeCount < 8 || brightenCount / activeCount < 0.8) {
+    const fallback = extractMatte(upper, lower, box, { unmixTranslucent: true, t0: 6, t1: 32 })
+    return fallback ? { ...fallback, blendMode: 'normal' } : null
+  }
+
+  const isAdditiveName = /\b(?:beam|laser|spark|flare|additive|linear\s*dodge)\b/i.test(
+    options.nameHint ?? ''
+  )
+  const blendMode: 'screen' | 'linear dodge' =
+    options.blendModeHint === 'linear dodge' ||
+    (options.blendModeHint !== 'screen' &&
+      (clampedHotCount >= Math.max(4, Math.round(activeCount * 0.025)) || isAdditiveName))
+      ? 'linear dodge'
+      : 'screen'
+
+  const maxHue = Math.max(1, hueSumR, hueSumG, hueSumB)
+  const hueNorm: [number, number, number] =
+    hueSumR + hueSumG + hueSumB > 12
+      ? [hueSumR / maxHue, hueSumG / maxHue, hueSumB / maxHue]
+      : [1, 1, 1]
+
+  const alpha = new Float32Array(n)
+  const solvedRgb = new Uint8ClampedArray(n * 3)
+
+  for (let y = 0; y < rh; y++) {
+    for (let x = 0; x < rw; x++) {
+      const p = y * rw + x
+      const i = ((rect.top + y) * W + rect.left + x) * 4
+      if (upper.data[i + 3]! < 4) continue
+      const d = pixelDistance(upper.data, i, lower.data, i)
+      const gate = smoothstep(t0 * 0.55, Math.max(t0 * 1.65, t0 + 7), d)
+      if (gate <= 0.004) continue
+
+      const e0 = Math.min(
+        1,
+        Math.max(0, upper.data[i]! - lower.data[i]!) / Math.max(1, 255 - lower.data[i]!)
+      )
+      const e1 = Math.min(
+        1,
+        Math.max(0, upper.data[i + 1]! - lower.data[i + 1]!) / Math.max(1, 255 - lower.data[i + 1]!)
+      )
+      const e2 = Math.min(
+        1,
+        Math.max(0, upper.data[i + 2]! - lower.data[i + 2]!) / Math.max(1, 255 - lower.data[i + 2]!)
+      )
+      const maxE = Math.max(e0, e1, e2)
+      if (maxE <= 0.005) continue
+
+      if (blendMode === 'screen') {
+        const ea = Math.min(1, maxE * gate)
+        alpha[p] = ea
+        const inv = 255 / Math.max(0.005, maxE)
+        solvedRgb[p * 3] = Math.max(0, Math.min(255, Math.round(e0 * inv)))
+        solvedRgb[p * 3 + 1] = Math.max(0, Math.min(255, Math.round(e1 * inv)))
+        solvedRgb[p * 3 + 2] = Math.max(0, Math.min(255, Math.round(e2 * inv)))
+      } else {
+        const g0 = Math.max(0, upper.data[i]! - lower.data[i]!) / 255
+        const g1 = Math.max(0, upper.data[i + 1]! - lower.data[i + 1]!) / 255
+        const g2 = Math.max(0, upper.data[i + 2]! - lower.data[i + 2]!) / 255
+        const maxG = Math.max(g0, g1, g2)
+        const rawA = Math.min(1, Math.max(maxE, maxG * 1.04))
+        const ea = Math.min(1, rawA * gate)
+        alpha[p] = ea
+        const denom = Math.max(0.01, ea)
+        for (let c = 0; c < 3; c++) {
+          const uc = upper.data[i + c]!
+          const lc = lower.data[i + c]!
+          if (uc >= 252 && lc < 244 && uc - lc >= 12) {
+            const extrap = Math.max(255 - lc, Math.round(255 * hueNorm[c]!))
+            solvedRgb[p * 3 + c] = Math.max(0, Math.min(255, extrap))
+          } else {
+            solvedRgb[p * 3 + c] = Math.max(
+              0,
+              Math.min(255, Math.round(Math.max(0, uc - lc) / denom))
+            )
+          }
+        }
+      }
+    }
+  }
+
+  const core = new Uint8Array(n)
+  for (let p = 0; p < n; p++) core[p] = alpha[p]! >= 0.08 ? 1 : 0
+  const { labels, stats } = labelComponents(core, rw, rh)
+  if (!stats.length) return null
+  const localBox: PixelRect = {
+    left: box.left - rect.left,
+    top: box.top - rect.top,
+    width: box.width,
+    height: box.height
+  }
+  const inner: PixelRect = {
+    left: localBox.left + Math.floor(localBox.width * 0.2),
+    top: localBox.top + Math.floor(localBox.height * 0.2),
+    width: Math.max(1, Math.ceil(localBox.width * 0.6)),
+    height: Math.max(1, Math.ceil(localBox.height * 0.6))
+  }
+  const largest = stats.reduce((m, s) => Math.max(m, s.area), 0)
+  const minArea = Math.max(4, Math.round(n * 0.002))
+  const keep = new Uint8Array(stats.length + 1)
+  for (const s of stats) {
+    const sr: PixelRect = {
+      left: s.minX,
+      top: s.minY,
+      width: s.maxX - s.minX + 1,
+      height: s.maxY - s.minY + 1
+    }
+    if (s.area >= minArea || rectIntersection(sr, inner) > 0 || s.area >= largest * 0.25) {
+      keep[s.label] = 1
+    }
+  }
+  let coreCount = 0
+  for (let p = 0; p < n; p++) {
+    core[p] = labels[p] && keep[labels[p]!] ? 1 : 0
+    coreCount += core[p]!
+  }
+  if (!coreCount) return null
+
+  const band = dilateMask(core, rw, rh, 5)
+  const rgba = new Uint8ClampedArray(n * 4)
+  let minX = rw
+  let minY = rh
+  let maxX = -1
+  let maxY = -1
+  let opaque = 0
+  for (let y = 0; y < rh; y++) {
+    for (let x = 0; x < rw; x++) {
+      const p = y * rw + x
+      const ea = band[p] ? alpha[p]! : 0
+      if (ea < 0.01) continue
+      const o = p * 4
+      rgba[o] = solvedRgb[p * 3]!
+      rgba[o + 1] = solvedRgb[p * 3 + 1]!
+      rgba[o + 2] = solvedRgb[p * 3 + 2]!
+      rgba[o + 3] = Math.max(1, Math.round(ea * 255))
+      if (ea >= 0.5) opaque++
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
+  }
+  if (maxX < 0) return null
+
+  const tw = maxX - minX + 1
+  const th = maxY - minY + 1
+  const out = new Uint8ClampedArray(tw * th * 4)
+  for (let y = 0; y < th; y++) {
+    const start = ((minY + y) * rw + minX) * 4
+    out.set(rgba.subarray(start, start + tw * 4), y * tw * 4)
+  }
+  return {
+    rect: clampRect({ left: rect.left + minX, top: rect.top + minY, width: tw, height: th }, W, H),
+    rgba: out,
+    coverage: opaque / Math.max(1, tw * th),
+    blendMode
   }
 }

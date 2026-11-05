@@ -74,6 +74,7 @@ import { autoDetectAndFitStage2dRig } from '../features/graph/model/composeStage
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeVideoFrameSheet } from '../features/graph/model/composeVideoFrameSheet'
 import { composeAnim2dGif } from '../features/graph/model/composeAnim2dGif'
+import { tryUnpackSourceGif } from '../features/graph/model/unpackAnim2dGif'
 import { renderSvgFrames } from '../features/graph/model/renderSvgFrames'
 import { composeImageIconPackSheet } from '../features/graph/model/composeImageIconPackSheet'
 import {
@@ -1159,6 +1160,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
               aspectRatio: input.aspectRatio,
               resolution: input.resolution,
               quality: input.quality,
+              outputFormat: input.outputFormat || undefined,
               n: input.n,
               seed: input.seed ?? null,
               inputReferenceCount: input.inputReferences?.length || undefined,
@@ -1775,6 +1777,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           composeImageGridCell,
           composeVideoFrameSheet,
           composeGifFrames: composeAnim2dGif,
+          unpackGifFrames: tryUnpackSourceGif,
           renderSvgFrames,
           composeImageIconPackSheet,
           composeImageLayerStack,

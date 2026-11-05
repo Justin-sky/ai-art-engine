@@ -53,6 +53,7 @@ export function resolveOpenAiModelCapabilities(
   if (mod === 'image') {
     if (/dall-?e-?3/i.test(id)) return profileCapabilities('image-dalle3')
     if (/dall-?e-?2/i.test(id)) return profileCapabilities('image-dalle2')
+    if (/gpt-image-2\.6/i.test(id)) return profileCapabilities('image-gpt-2.6')
     return profileCapabilities('image-gpt')
   }
   return null

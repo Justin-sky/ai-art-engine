@@ -3109,6 +3109,16 @@ function renderEdgesNow(): void {
     for (const node of graph.nodes) {
       if (!activeCookingIds.has(node.id)) continue
       const { w, h } = getNodeSize(node)
+      if (
+        !Number.isFinite(node.position?.x) ||
+        !Number.isFinite(node.position?.y) ||
+        !Number.isFinite(w) ||
+        !Number.isFinite(h) ||
+        w <= 0 ||
+        h <= 0
+      ) {
+        continue
+      }
       cookingNodeRects.push({
         x: node.position.x,
         y: node.position.y,
@@ -3119,54 +3129,58 @@ function renderEdgesNow(): void {
   }
 
   const edgeColors = resolveEdgeColors()
-  drawGraphEdges(ctx, geoms, tempScreens.length > 0 ? tempScreens : null, {
-    dpr,
-    width: edgeCanvasCssW,
-    height: edgeCanvasCssH,
-    offsetX: EDGE_CANVAS_OVERSCAN,
-    offsetY: EDGE_CANVAS_OVERSCAN,
-    zoom: liveViewport.zoom,
-    selectedEdgeIds: selectedEdgeIds.value,
-    flowEdgeIds: flowIds,
-    cookingNodeIds: activeCookingIds,
-    cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
-    edgeSpawns: vfxSnap?.edgeSpawns,
-    canvasBursts: vfxSnap?.canvasBursts,
-    skipOverlayVfx: !!vfxCanvasEl.value,
-    viewport: liveViewport,
-    onEdgeDock: (edgeGeom) => {
-      if (liveViewport.zoom <= 0) return
-      const worldX = (edgeGeom.ex - liveViewport.x) / liveViewport.zoom
-      const worldY = (edgeGeom.ey - liveViewport.y) / liveViewport.zoom
-      triggerPortDockBurst(graphHostId.value, worldX, worldY, nowMs)
-    },
-    flowTimeMs: nowMs,
-    reduceEffects: viewportGesturing,
-    colors: edgeColors,
-    pathStyle: edgePathStyle.value
-  })
+  try {
+    drawGraphEdges(ctx, geoms, tempScreens.length > 0 ? tempScreens : null, {
+      dpr,
+      width: edgeCanvasCssW,
+      height: edgeCanvasCssH,
+      offsetX: EDGE_CANVAS_OVERSCAN,
+      offsetY: EDGE_CANVAS_OVERSCAN,
+      zoom: liveViewport.zoom,
+      selectedEdgeIds: selectedEdgeIds.value,
+      flowEdgeIds: flowIds,
+      cookingNodeIds: activeCookingIds,
+      cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
+      edgeSpawns: vfxSnap?.edgeSpawns,
+      canvasBursts: vfxSnap?.canvasBursts,
+      skipOverlayVfx: !!vfxCanvasEl.value,
+      viewport: liveViewport,
+      onEdgeDock: (edgeGeom) => {
+        if (liveViewport.zoom <= 0) return
+        const worldX = (edgeGeom.ex - liveViewport.x) / liveViewport.zoom
+        const worldY = (edgeGeom.ey - liveViewport.y) / liveViewport.zoom
+        triggerPortDockBurst(graphHostId.value, worldX, worldY, nowMs)
+      },
+      flowTimeMs: nowMs,
+      reduceEffects: viewportGesturing,
+      colors: edgeColors,
+      pathStyle: edgePathStyle.value
+    })
 
-  if (vfxCanvas) {
-    const vfxCtx = vfxCanvas.getContext('2d')
-    if (vfxCtx) {
-      const latestBursts = !viewportGesturing
-        ? (getActiveCanvasVfxSnapshot(graphHostId.value, nowMs)?.canvasBursts ??
-          vfxSnap?.canvasBursts)
-        : undefined
-      drawCanvasVfxOverlay(vfxCtx, {
-        dpr,
-        width: edgeCanvasCssW,
-        height: edgeCanvasCssH,
-        offsetX: EDGE_CANVAS_OVERSCAN,
-        offsetY: EDGE_CANVAS_OVERSCAN,
-        viewport: liveViewport,
-        cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
-        canvasBursts: latestBursts,
-        nowMs,
-        reduceEffects: viewportGesturing,
-        colors: edgeColors
-      })
+    if (vfxCanvas) {
+      const vfxCtx = vfxCanvas.getContext('2d')
+      if (vfxCtx) {
+        const latestBursts = !viewportGesturing
+          ? (getActiveCanvasVfxSnapshot(graphHostId.value, nowMs)?.canvasBursts ??
+            vfxSnap?.canvasBursts)
+          : undefined
+        drawCanvasVfxOverlay(vfxCtx, {
+          dpr,
+          width: edgeCanvasCssW,
+          height: edgeCanvasCssH,
+          offsetX: EDGE_CANVAS_OVERSCAN,
+          offsetY: EDGE_CANVAS_OVERSCAN,
+          viewport: liveViewport,
+          cookingNodeRects: cookingNodeRects.length > 0 ? cookingNodeRects : undefined,
+          canvasBursts: latestBursts,
+          nowMs,
+          reduceEffects: viewportGesturing,
+          colors: edgeColors
+        })
+      }
     }
+  } catch (err) {
+    console.warn('[renderEdgesNow] Canvas render exception caught:', err)
   }
 
   // 记录基准视口并把平移 transform 归零：位图已按当前视口绘制
@@ -3192,21 +3206,38 @@ function requestEdgeRender(): void {
 }
 
 function edgeFlowActive(): boolean {
-  if (viewportGesturing) return false
+  if (viewportGesturing) {
+    // 自愈防御：若手势标识被意外卡在 true（如外部中断、失焦丢失 pointerup 等），但既不在拖拽也不在滚动延迟，自动纠正
+    if (!isPanning && !viewportGestureIdleTimer) {
+      viewportGesturing = false
+      rootEl.value?.classList.remove('viewport-gesturing')
+    } else {
+      return false
+    }
+  }
   return (
     hasSelectionFlow.value || cookingNodeIds.value.size > 0 || hasActiveCanvasVfx(graphHostId.value)
   )
 }
 
 function edgeFlowTick(): void {
-  if (!edgeFlowActive()) {
-    edgeFlowRaf = 0
-    // 收尾再画一帧，清掉最后的流动残影
+  try {
+    if (!edgeFlowActive()) {
+      edgeFlowRaf = 0
+      // 收尾再画一帧，清掉最后的流动残影
+      renderEdgesNow()
+      return
+    }
     renderEdgesNow()
-    return
+  } catch (err) {
+    console.warn('[edgeFlowTick] frame render error:', err)
+  } finally {
+    if (edgeFlowActive()) {
+      edgeFlowRaf = requestAnimationFrame(edgeFlowTick)
+    } else {
+      edgeFlowRaf = 0
+    }
   }
-  renderEdgesNow()
-  edgeFlowRaf = requestAnimationFrame(edgeFlowTick)
 }
 
 /** 依据选中节点是否存在相连边（出边 / 入边），启停流动动画循环 */
@@ -3223,7 +3254,7 @@ function syncEdgeFlowLoop(): void {
 }
 
 watch(
-  () => cookingNodeIds.value.size,
+  () => [cookingNodeIds.value.size, ...cookingNodeIds.value],
   () => {
     syncEdgeFlowLoop()
   }
@@ -11148,9 +11179,19 @@ onMounted(() => {
     },
     { passive: false, capture: true }
   )
+  window.addEventListener('focus', onCanvasFocusOrVisible)
+  document.addEventListener('visibilitychange', onCanvasFocusOrVisible)
 })
 
+function onCanvasFocusOrVisible(): void {
+  if (edgeFlowActive() && !edgeFlowRaf) {
+    syncEdgeFlowLoop()
+  }
+}
+
 onBeforeUnmount(() => {
+  window.removeEventListener('focus', onCanvasFocusOrVisible)
+  document.removeEventListener('visibilitychange', onCanvasFocusOrVisible)
   if (dropErrorTimer) clearTimeout(dropErrorTimer)
   if (isPanning) onPanEnd()
   if (props.assetId) unregisterOpenGraphEditor(props.assetId)

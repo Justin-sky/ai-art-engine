@@ -12,11 +12,19 @@ import { modelKey, parseModelKey } from './generateModelOptions'
 const cache = new Map<string, ImageGenerateParamCapabilities>()
 
 function mergeImageGenerateCapabilities(
-  parsed: ImageGenerateParamCapabilities
+  parsed: ImageGenerateParamCapabilities,
+  modelId?: string
 ): ImageGenerateParamCapabilities {
   const base = hasAnyImageGenerateCapability(parsed) ? parsed : DEFAULT_IMAGE_GENERATE_CAPABILITIES
+  const outputFormats = [...(base.outputFormats ?? [])]
+  if (modelId && /gpt-image-2\.6/i.test(modelId)) {
+    if (!outputFormats.includes('png')) outputFormats.unshift('png')
+    if (!outputFormats.includes('svg')) outputFormats.push('svg')
+    if (!outputFormats.includes('gif')) outputFormats.push('gif')
+  }
   return {
     ...base,
+    outputFormats,
     // 未声明时保留 undefined，端口角标显示 *；执行侧仍会回退默认上限
     ...(parsed.maxInputReferences != null
       ? { maxInputReferences: parsed.maxInputReferences }
@@ -93,7 +101,7 @@ export async function loadImageGenerateCapabilities(
 
   const supported = await resolveSupportedParameters(parsedKey.providerInstanceId, parsedKey.model)
   const caps = parseImageGenerateCapabilities(supported)
-  const resolved = mergeImageGenerateCapabilities(caps)
+  const resolved = mergeImageGenerateCapabilities(caps, parsedKey.model)
   cache.set(key, resolved)
   return resolved
 }

@@ -83,7 +83,28 @@ export function isLayeredSourceImageFilePath(filePath: string): boolean {
 
 /** 是否为动画图片（GIF）：预览必须走原文件，缩略图只保留首帧 */
 export function isAnimatedImageFilePath(filePath: string): boolean {
-  return ANIMATED_IMAGE_EXT.has(fileExt(filePath))
+  if (!filePath) return false
+  const clean = filePath.split(/[?#]/)[0] || filePath
+  return ANIMATED_IMAGE_EXT.has(fileExt(clean))
+}
+
+/** 判别是否为 GIF 动图媒体 URL（支持 data:image/gif、studio-media 协议、http(s) 带扩展名或查询参数） */
+export function isAnimatedImageMediaUrl(url: string | null | undefined): boolean {
+  if (!url) return false
+  const trimmed = url.trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('data:image/gif') || trimmed.startsWith('data:application/octet-stream')) {
+    return true
+  }
+  if (trimmed.includes('image/gif')) return true
+  try {
+    const decoded = decodeURIComponent(trimmed)
+    if (/\.gif(?=[?&#]|$)/i.test(decoded)) return true
+  } catch {
+    if (/\.gif(?=[?&#]|$)/i.test(trimmed)) return true
+  }
+  const clean = trimmed.split(/[?#]/)[0] || trimmed
+  return isAnimatedImageFilePath(clean)
 }
 
 /**

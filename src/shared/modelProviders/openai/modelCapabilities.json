@@ -256,6 +256,24 @@
       "profile": "text-gpt"
     },
     {
+      "id": "gpt-image-2.6-sunburst",
+      "name": "GPT Image 2.6 Sunburst",
+      "modality": "image",
+      "profile": "image-gpt-2.6"
+    },
+    {
+      "id": "gpt-image-2.6-flare",
+      "name": "GPT Image 2.6 Flare",
+      "modality": "image",
+      "profile": "image-gpt-2.6"
+    },
+    {
+      "id": "gpt-image-2.6",
+      "name": "GPT Image 2.6",
+      "modality": "image",
+      "profile": "image-gpt-2.6"
+    },
+    {
       "id": "gpt-image-2.5-sunburst",
       "name": "GPT Image 2.5 Sunburst",
       "modality": "image",
@@ -309,6 +327,30 @@
       "modality": "text",
       "label": "OpenAI GPT / o-series",
       "capabilities": {}
+    },
+    "image-gpt-2.6": {
+      "modality": "image",
+      "label": "OpenAI GPT Image 2.6",
+      "capabilities": {
+        "supported_parameters": {
+          "aspect_ratio": {
+            "values": ["1:1", "16:9", "9:16", "3:2", "2:3", "4:3", "3:4"]
+          },
+          "quality": {
+            "values": ["low", "medium", "high"]
+          },
+          "output_format": {
+            "values": ["png", "svg", "gif", "jpeg", "webp"]
+          },
+          "n": {
+            "min": 1,
+            "max": 4
+          },
+          "input_references": {
+            "max": 16
+          }
+        }
+      }
     },
     "image-gpt": {
       "modality": "image",

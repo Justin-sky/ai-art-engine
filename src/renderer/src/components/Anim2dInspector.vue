@@ -3,9 +3,8 @@
     <div class="head">
       <h2>{{ displayTitle }}</h2>
       <span class="frame-badge"
-        >{{ state.rows }}×{{ state.cols }} · {{ activeCells.length }}/{{
-          cells.length || state.rows * state.cols
-        }}F</span
+        >{{ isGifSource ? pickBi('GIF 动图', 'GIF Animation') : `${state.rows}×${state.cols}` }} ·
+        {{ activeCells.length }}/{{ cells.length || state.rows * state.cols }}F</span
       >
     </div>
     <p class="hint">
@@ -310,13 +309,45 @@
             {{ t('graph.anim2d.backdropLight') }}
           </button>
         </div>
+        <div class="edit-toolbar-group">
+          <button
+            type="button"
+            class="mini-btn eraser-btn"
+            :class="{ active: eraserActive }"
+            :title="pickBi('在当前帧上涂抹擦除像素', 'Erase pixels on current frame')"
+            @click="toggleEraser"
+          >
+            🧹 {{ pickBi('橡皮擦', 'Eraser') }}
+          </button>
+          <template v-if="eraserActive">
+            <button
+              v-for="sz in [4, 8, 16, 24]"
+              :key="sz"
+              type="button"
+              class="mini-btn size-btn"
+              :class="{ active: eraserSize === sz }"
+              @click="eraserSize = sz"
+            >
+              {{ sz }}px
+            </button>
+            <button
+              v-if="currentCellHasEdit"
+              type="button"
+              class="mini-btn reset-btn"
+              :title="pickBi('撤销本帧所有橡皮擦修改', 'Reset frame edits')"
+              @click="resetCurrentCellEdit"
+            >
+              ↺ {{ pickBi('重置本帧', 'Reset Frame') }}
+            </button>
+          </template>
+        </div>
         <label class="onion-toggle">
           <input v-model="onionSkin" type="checkbox" />
           <span>{{ t('graph.anim2d.onionSkin') }}</span>
         </label>
       </div>
 
-      <div class="anim-preview" :class="`bg-${backdrop}`">
+      <div class="anim-preview" :class="[`bg-${backdrop}`, { 'eraser-active': eraserActive }]">
         <img
           v-if="onionSkin && prevActiveCell && prevActiveCell.key !== currentActiveCell?.key"
           :src="prevActiveCell.dataUrl"
@@ -334,40 +365,115 @@
           alt=""
           class="onion-ghost onion-next"
         />
-        <img v-if="currentActiveCell" :src="currentActiveCell.dataUrl" alt="" class="main-frame" />
+        <img
+          v-if="currentActiveCell && !eraserActive"
+          :src="currentActiveCell.dataUrl"
+          alt=""
+          class="main-frame"
+        />
+        <canvas
+          v-if="eraserActive && currentActiveCell"
+          ref="eraserCanvasRef"
+          class="eraser-canvas"
+          @pointerdown="onEraserPointerDown"
+          @pointermove="onEraserPointerMove"
+          @pointerup="onEraserPointerUp"
+          @pointercancel="onEraserPointerUp"
+        />
         <div v-if="stabilize === 'ground'" class="guide-line ground" />
         <div v-else-if="stabilize === 'center'" class="guide-line center-h" />
         <div v-if="stabilize !== 'off'" class="guide-line center-v" />
         <span class="anim-frame-badge">
-          {{ activeIndex + 1 }}/{{ activeCells.length }} ({{ currentActiveCell?.key }} ·
-          {{ getCellHold(currentActiveCell?.key) }}x)
+          {{ isGifSource ? 'GIF ' : '' }}{{ activeIndex + 1 }}/{{ activeCells.length }} ({{
+            currentActiveCell?.key
+          }}
+          · {{ getCellHold(currentActiveCell?.key) }}x)
         </span>
       </div>
 
       <div v-if="currentActiveCell" class="nudge-strip">
         <span class="nudge-label"
-          >{{ pickBi('当前帧微调', 'Nudge') }} ({{ currentCellOffset.dx }},{{
-            currentCellOffset.dy
-          }})</span
+          >{{ pickBi('当前帧', 'Frame') }} {{ currentActiveCell.key }} ({{
+            currentCellOffset.dx
+          }},{{ currentCellOffset.dy }})</span
         >
         <div class="nudge-btns">
-          <button type="button" class="icon-step" @click="nudgeCurrentCell(-1, 0, $event)">
+          <button
+            type="button"
+            class="icon-step"
+            :disabled="activeIndex <= 0"
+            :title="pickBi('前移此帧', 'Move frame left')"
+            @click="moveCell(currentActiveCell.key, -1)"
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            class="icon-step"
+            :disabled="activeIndex >= activeCells.length - 1"
+            :title="pickBi('后移此帧', 'Move frame right')"
+            @click="moveCell(currentActiveCell.key, 1)"
+          >
+            ▶
+          </button>
+          <button
+            type="button"
+            class="icon-step"
+            :class="{ active: isCellDisabled(currentActiveCell.key) }"
+            :title="pickBi('禁用/剔除此帧', 'Disable/skip frame')"
+            @click="toggleCellDisabled(currentActiveCell.key)"
+          >
+            🗑
+          </button>
+          <button
+            type="button"
+            class="icon-step"
+            :title="pickBi('向左微移', 'Nudge left')"
+            @click="nudgeCurrentCell(-1, 0, $event)"
+          >
             ←
           </button>
-          <button type="button" class="icon-step" @click="nudgeCurrentCell(0, -1, $event)">
+          <button
+            type="button"
+            class="icon-step"
+            :title="pickBi('向上微移', 'Nudge up')"
+            @click="nudgeCurrentCell(0, -1, $event)"
+          >
             ↑
           </button>
-          <button type="button" class="icon-step" @click="nudgeCurrentCell(0, 1, $event)">↓</button>
-          <button type="button" class="icon-step" @click="nudgeCurrentCell(1, 0, $event)">→</button>
+          <button
+            type="button"
+            class="icon-step"
+            :title="pickBi('向下微移', 'Nudge down')"
+            @click="nudgeCurrentCell(0, 1, $event)"
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            class="icon-step"
+            :title="pickBi('向右微移', 'Nudge right')"
+            @click="nudgeCurrentCell(1, 0, $event)"
+          >
+            →
+          </button>
           <button
             type="button"
             class="icon-step"
             :class="{ active: currentCellOffset.flipX }"
+            :title="pickBi('水平翻转', 'Flip horizontal')"
             @click="toggleCurrentCellFlipX"
           >
             ⇄
           </button>
-          <button type="button" class="icon-step" @click="resetCurrentCellOffset">↺</button>
+          <button
+            type="button"
+            class="icon-step"
+            :title="pickBi('重置微移', 'Reset nudge')"
+            @click="resetCurrentCellOffset"
+          >
+            ↺
+          </button>
         </div>
       </div>
 
@@ -454,6 +560,26 @@
         >
           <img :src="cell.dataUrl" alt="" loading="lazy" decoding="async" />
           <span class="frame-index">#{{ index + 1 }}</span>
+          <div class="frame-reorder-btns" @click.stop>
+            <button
+              v-if="index > 0"
+              type="button"
+              class="frame-reorder-btn"
+              :title="pickBi('前移此帧', 'Move frame left')"
+              @click="moveCell(cell.key, -1)"
+            >
+              ◀
+            </button>
+            <button
+              v-if="index < cells.length - 1"
+              type="button"
+              class="frame-reorder-btn"
+              :title="pickBi('后移此帧', 'Move frame right')"
+              @click="moveCell(cell.key, 1)"
+            >
+              ▶
+            </button>
+          </div>
           <button
             type="button"
             class="frame-hold-btn"
@@ -512,14 +638,17 @@ import {
   anim2dCellKeys,
   animGifFpsToNodePatch,
   buildAnimRhythmPresetHolds,
+  moveAnimCellOrder,
   normalizeAnimMotionTrail,
   normalizeAnimOutlineColor,
   normalizeAnimPaletteLock,
   normalizeAnimPixelSnap,
   normalizeAnimVideoRange,
   readAnim2dFromNode,
+  readAnimCellEditsFromNode,
   readAnimCellHoldsFromNode,
   readAnimCellOffsetsFromNode,
+  readAnimCellOrderFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGifFpsFromNode,
@@ -564,6 +693,7 @@ import { resolveNodeUpstreamVideoUrl } from '../features/graph/model/resolveNode
 import { composeVideoFrameSheet } from '../features/graph/model/composeVideoFrameSheet'
 import { composeImageGridCell } from '../features/graph/model/composeImageGridCell'
 import { composeAnim2dGif, type Anim2dGifResult } from '../features/graph/model/composeAnim2dGif'
+import { tryUnpackSourceGif } from '../features/graph/model/unpackAnim2dGif'
 import {
   composeStage2dFrameSheet,
   type Stage2dFrameSheet
@@ -641,6 +771,11 @@ const onionSkin = ref(false)
 const upstreamVideoUrl = ref('')
 const upstreamVideoRel = ref('')
 const videoExtractBusy = ref(false)
+const isGifSource = ref(false)
+const eraserActive = ref(false)
+const eraserSize = ref<number>(8)
+const eraserCanvasRef = ref<HTMLCanvasElement | null>(null)
+let isErasing = false
 
 watch(
   () => [hostId.value, node.value?.id, graphEditorHosts.revision.value] as const,
@@ -996,6 +1131,109 @@ function resetCurrentCellOffset(): void {
   patchParams({ animCellOffsets: nextMap })
 }
 
+function moveCell(cellKey: string, direction: -1 | 1): void {
+  if (!node.value) return
+  const currentOrder = cells.value.map((c) => c.key)
+  const nextOrder = moveAnimCellOrder(currentOrder, cellKey, direction)
+  patchParams({ animCellOrder: nextOrder })
+  const idx = cells.value.findIndex((c) => c.key === cellKey)
+  const targetIdx = idx + direction
+  if (idx >= 0 && targetIdx >= 0 && targetIdx < cells.value.length) {
+    const temp = cells.value[idx]
+    cells.value[idx] = cells.value[targetIdx]
+    cells.value[targetIdx] = temp
+  }
+}
+
+function toggleEraser(): void {
+  eraserActive.value = !eraserActive.value
+  if (eraserActive.value) {
+    window.setTimeout(() => {
+      initEraserCanvas()
+    }, 50)
+  }
+}
+
+function initEraserCanvas(): void {
+  if (!eraserActive.value || !currentActiveCell.value || !eraserCanvasRef.value) return
+  const canvas = eraserCanvasRef.value
+  const img = new Image()
+  img.onload = () => {
+    canvas.width = img.naturalWidth || 64
+    canvas.height = img.naturalHeight || 64
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.drawImage(img, 0, 0)
+  }
+  img.src = currentActiveCell.value.dataUrl
+}
+
+function onEraserPointerDown(e: PointerEvent): void {
+  isErasing = true
+  try {
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  } catch {
+    /* ignore */
+  }
+  eraseAt(e)
+}
+
+function onEraserPointerMove(e: PointerEvent): void {
+  if (!isErasing) return
+  eraseAt(e)
+}
+
+function onEraserPointerUp(): void {
+  if (!isErasing) return
+  isErasing = false
+  commitEraserCanvas()
+}
+
+function eraseAt(e: PointerEvent): void {
+  const canvas = eraserCanvasRef.value
+  if (!canvas) return
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const rect = canvas.getBoundingClientRect()
+  const x = (e.clientX - rect.left) * (canvas.width / rect.width)
+  const y = (e.clientY - rect.top) * (canvas.height / rect.height)
+  ctx.save()
+  ctx.globalCompositeOperation = 'destination-out'
+  ctx.beginPath()
+  ctx.arc(x, y, eraserSize.value, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+function commitEraserCanvas(): void {
+  const canvas = eraserCanvasRef.value
+  if (!canvas || !currentActiveCell.value || !node.value) return
+  const newUrl = canvas.toDataURL('image/png')
+  currentActiveCell.value.dataUrl = newUrl
+  const existingEdits = readAnimCellEditsFromNode(node.value.params)
+  const nextEdits = { ...existingEdits, [currentActiveCell.value.key]: newUrl }
+  patchParams({ animCellEdits: nextEdits })
+}
+
+const currentCellHasEdit = computed(() => {
+  if (!currentActiveCell.value || !node.value) return false
+  const edits = readAnimCellEditsFromNode(node.value.params)
+  return Boolean(edits[currentActiveCell.value.key])
+})
+
+function resetCurrentCellEdit(): void {
+  if (!currentActiveCell.value || !node.value) return
+  const key = currentActiveCell.value.key
+  const existingEdits = readAnimCellEditsFromNode(node.value.params)
+  if (existingEdits[key]) {
+    const nextEdits = { ...existingEdits }
+    delete nextEdits[key]
+    patchParams({ animCellEdits: nextEdits })
+    void refreshCells()
+  }
+}
+
 let frameTimer: ReturnType<typeof setTimeout> | null = null
 
 function clearFrameTimer(): void {
@@ -1343,11 +1581,61 @@ async function refreshCells(): Promise<void> {
     const loopBlendVal = readAnimLoopBlendFromNode(current.params)
     const playModeVal = readAnimPlayModeFromNode(current.params)
     const disabledSet = new Set(readAnimDisabledCellsFromNode(current.params))
-    const allKeys = anim2dCellKeys(s.rows, s.cols)
+
+    const unpackedGif = await tryUnpackSourceGif(sourceUrl)
+    isGifSource.value = Boolean(unpackedGif && unpackedGif.frames.length > 1)
+
+    if (unpackedGif && unpackedGif.frames.length > 1) {
+      if (!current.params.animGifFps && unpackedGif.averageFps) {
+        fps.value = unpackedGif.averageFps
+      }
+      const defaultGifKeys = unpackedGif.frames.map((f) => f.key)
+      const allKeys = readAnimCellOrderFromNode(current.params, defaultGifKeys)
+      const customEdits = readAnimCellEditsFromNode(current.params)
+
+      for (const cell of allKeys) {
+        if (token !== cellToken) return
+        const origFrame = unpackedGif.frames.find((f) => f.key === cell)
+        if (!origFrame) continue
+
+        let frameUrl = customEdits[cell] || origFrame.dataUrl
+        const offset = offsetsMap[cell]
+        if (keyColorValue || stabilizeValue !== 'off' || offset) {
+          try {
+            const composed = await composeImageGridCell({
+              sourceDataUrl: frameUrl,
+              state: { rows: 1, cols: 1, selected: [] },
+              cellKey: '1-1',
+              edgeInset: 0,
+              ...(keyColorValue
+                ? { chromaKey: { color: keyColorValue, threshold: thresholdValue } }
+                : {}),
+              ...(stabilizeValue !== 'off' ? { stabilize: stabilizeValue } : {}),
+              ...(offset ? { cellOffset: offset } : {})
+            })
+            if (composed.dataUrl) frameUrl = composed.dataUrl
+          } catch {
+            /* keep frameUrl */
+          }
+        }
+        next.push({ key: cell, dataUrl: frameUrl })
+      }
+      if (token !== cellToken) return
+      cells.value = next
+      return
+    }
+
+    const defaultKeys = anim2dCellKeys(s.rows, s.cols)
+    const allKeys = readAnimCellOrderFromNode(current.params, defaultKeys)
+    const customEdits = readAnimCellEditsFromNode(current.params)
     const enabledKeys = allKeys.filter((k) => !disabledSet.has(k))
     const lastEnabledKey = enabledKeys.length >= 3 ? enabledKeys[enabledKeys.length - 1] : ''
     for (const cell of allKeys) {
       if (token !== cellToken) return
+      if (customEdits[cell]) {
+        next.push({ key: cell, dataUrl: customEdits[cell] })
+        continue
+      }
       try {
         const offset = offsetsMap[cell]
         const enabledIdx = enabledKeys.indexOf(cell)
@@ -1400,6 +1688,8 @@ watch(
     () => readAnimMotionTrailFromNode(node.value?.params),
     () => readAnimLoopBlendFromNode(node.value?.params),
     () => JSON.stringify(readAnimCellOffsetsFromNode(node.value?.params)),
+    () => JSON.stringify(readAnimCellEditsFromNode(node.value?.params)),
+    () => JSON.stringify(readAnimCellOrderFromNode(node.value?.params)),
     () => {
       const grid = node.value?.params?.animGridImage as
         { dataUrl?: string; relativePath?: string } | undefined
@@ -1575,6 +1865,47 @@ onBeforeUnmount(stopPlayback)
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.edit-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.eraser-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.size-btn {
+  min-width: 24px;
+  padding: 0 4px;
+  font-size: 10px;
+}
+
+.size-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.reset-btn {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.eraser-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 240px;
+  cursor: crosshair;
+  object-fit: contain;
+  z-index: 5;
+  touch-action: none;
 }
 
 .backdrop-group {
@@ -1820,6 +2151,39 @@ onBeforeUnmount(stopPlayback)
   color: #fff;
   background: rgba(0, 0, 0, 0.6);
   font-variant-numeric: tabular-nums;
+}
+
+.frame-reorder-btns {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  gap: 2px;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+
+.frame-card:hover .frame-reorder-btns {
+  opacity: 1;
+}
+
+.frame-reorder-btn {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  font-size: 8px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame-reorder-btn:hover {
+  background: var(--accent);
 }
 
 .frame-enable-btn {

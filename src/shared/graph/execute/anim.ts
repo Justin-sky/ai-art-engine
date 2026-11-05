@@ -1,4 +1,5 @@
 import type { GraphDocument } from '../types'
+import { isAnimatedImageMediaUrl } from '../../import'
 import {
   graphValueHasPayload,
   softResolveBoundaryOutputValue,
@@ -23,8 +24,10 @@ import {
   buildAnimVideoRestyleInstruction,
   buildAnimViewStylePrompt,
   readAnim2dFromNode,
+  readAnimCellEditsFromNode,
   readAnimCellHoldsFromNode,
   readAnimCellOffsetsFromNode,
+  readAnimCellOrderFromNode,
   readAnimDisabledCellsFromNode,
   readAnimEdgeInsetFromNode,
   readAnimGenModeFromNode,
@@ -378,7 +381,32 @@ export async function executeAnim2dNode(
     throw new DOMException('Aborted', 'AbortError')
   }
 
-  const allCells = anim2dCellKeys(state.rows, state.cols)
+  const cellEdits = readAnimCellEditsFromNode(node.params)
+
+  // 检查是否为 GIF 动图输入（若是动图，优先直接拆帧，无需假定为静态网格切片）
+  const isGifSource = isAnimatedImageMediaUrl(sourceUrl)
+
+  let unpackedGif: {
+    width: number
+    height: number
+    frames: Array<{ dataUrl: string; delayCs: number; width: number; height: number }>
+    averageFps: number
+  } | null = null
+
+  if (isGifSource && ctx.unpackGifFrames) {
+    try {
+      unpackedGif = await ctx.unpackGifFrames(sourceUrl)
+    } catch {
+      /* fallback to grid slice */
+    }
+  }
+
+  const isDecodedGif = Boolean(unpackedGif && unpackedGif.frames.length > 1)
+  const defaultKeys = isDecodedGif
+    ? unpackedGif!.frames.map((_, i) => `f${i + 1}`)
+    : anim2dCellKeys(state.rows, state.cols)
+
+  const allCells = readAnimCellOrderFromNode(node.params, defaultKeys)
   const activeCells = allCells.filter((cell) => !disabledSet.has(cell))
   const targetCells = activeCells.length > 0 ? activeCells : allCells
 
@@ -390,35 +418,60 @@ export async function executeAnim2dNode(
     if (ctx.signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError')
     }
-    const offset = cellOffsetsMap[cell]
-    const prevCellKey = cellIdx > 0 ? targetCells[cellIdx - 1] : undefined
-    const isLastLoopCell =
-      playMode === 'loop' && targetCells.length >= 3 && cellIdx === targetCells.length - 1
-    const composed = await ctx.composeImageGridCell({
-      sourceDataUrl: sourceUrl,
-      state: { rows: state.rows, cols: state.cols, selected: [] },
-      cellKey: cell,
-      // 视频抽帧直拼的序列图无格线，不再额外内缩；AI 生图序列图按設定内缩
-      edgeInset: preProcessedFromVideo ? 0 : edgeInset,
-      // 视频直拼时已在入表前做过键控与稳像，避免二次重复处理
-      ...(!preProcessedFromVideo && keyColor
-        ? {
-            chromaKey: {
-              color: keyColor,
-              ...(node.params.animKeyThreshold !== undefined ? { threshold: keyThreshold } : {})
-            }
+
+    let cellDataUrl = cellEdits[cell] || ''
+    if (!cellDataUrl) {
+      if (isDecodedGif && unpackedGif) {
+        const origIdx = defaultKeys.indexOf(cell)
+        const frame = origIdx >= 0 ? unpackedGif.frames[origIdx] : undefined
+        if (frame?.dataUrl) {
+          if (keyColor || stabilize !== 'off' || cellOffsetsMap[cell]) {
+            const composed = await ctx.composeImageGridCell({
+              sourceDataUrl: frame.dataUrl,
+              state: { rows: 1, cols: 1, selected: [] },
+              cellKey: '1-1',
+              edgeInset: 0,
+              ...(keyColor ? { chromaKey: { color: keyColor, threshold: keyThreshold } } : {}),
+              ...(stabilize !== 'off' ? { stabilize } : {}),
+              ...(cellOffsetsMap[cell] ? { cellOffset: cellOffsetsMap[cell] } : {})
+            })
+            cellDataUrl = composed.dataUrl?.trim() || frame.dataUrl
+          } else {
+            cellDataUrl = frame.dataUrl
           }
-        : {}),
-      ...(!preProcessedFromVideo && stabilize !== 'off' ? { stabilize } : {}),
-      ...(offset ? { cellOffset: offset } : {}),
-      ...(paletteLock > 0 ? { paletteLock } : {}),
-      ...(loopBlend && isLastLoopCell ? { loopBlend: true, isLastLoopCell: true } : {}),
-      ...(pixelSnap > 1 ? { pixelSnap } : {}),
-      ...(outlineColor ? { outlineColor } : {}),
-      ...(motionTrail && prevCellKey ? { motionTrail, prevCellKey } : {}),
-      ...(groundShadow ? { groundShadow: true } : {})
-    })
-    const cellDataUrl = composed.dataUrl?.trim()
+        }
+      } else {
+        const offset = cellOffsetsMap[cell]
+        const prevCellKey = cellIdx > 0 ? targetCells[cellIdx - 1] : undefined
+        const isLastLoopCell =
+          playMode === 'loop' && targetCells.length >= 3 && cellIdx === targetCells.length - 1
+        const composed = await ctx.composeImageGridCell({
+          sourceDataUrl: sourceUrl,
+          state: { rows: state.rows, cols: state.cols, selected: [] },
+          cellKey: cell,
+          // 视频抽帧直拼的序列图无格线，不再额外内缩；AI 生图序列图按設定内缩
+          edgeInset: preProcessedFromVideo ? 0 : edgeInset,
+          // 视频直拼时已在入表前做过键控与稳像，避免二次重复处理
+          ...(!preProcessedFromVideo && keyColor
+            ? {
+                chromaKey: {
+                  color: keyColor,
+                  ...(node.params.animKeyThreshold !== undefined ? { threshold: keyThreshold } : {})
+                }
+              }
+            : {}),
+          ...(!preProcessedFromVideo && stabilize !== 'off' ? { stabilize } : {}),
+          ...(offset ? { cellOffset: offset } : {}),
+          ...(paletteLock > 0 ? { paletteLock } : {}),
+          ...(loopBlend && isLastLoopCell ? { loopBlend: true, isLastLoopCell: true } : {}),
+          ...(pixelSnap > 1 ? { pixelSnap } : {}),
+          ...(outlineColor ? { outlineColor } : {}),
+          ...(motionTrail && prevCellKey ? { motionTrail, prevCellKey } : {}),
+          ...(groundShadow ? { groundShadow: true } : {})
+        })
+        cellDataUrl = composed.dataUrl?.trim()
+      }
+    }
     if (!cellDataUrl) {
       throw fail(SHARED_ERRORS.frameCellSplitFailed, { cell })
     }
@@ -464,8 +517,8 @@ export async function executeAnim2dNode(
     generatedImages,
     materializedBatch[0]?.relativePath?.trim(),
     {
-      animRows: state.rows,
-      animCols: state.cols,
+      animRows: isDecodedGif ? 1 : state.rows,
+      animCols: isDecodedGif ? targetCells.length : state.cols,
       animGridImage: Object.keys(gridImageParams).length ? gridImageParams : undefined,
       ...(keyColor ? { animKeyColor: keyColor } : {}),
       ...gif.params

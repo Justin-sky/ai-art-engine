@@ -229,6 +229,8 @@
               decoding="async"
             />
             <span v-else class="shot-loading">…</span>
+            <span v-if="isGifShot(shot)" class="shot-gif-badge">GIF</span>
+            <span v-else-if="isSvgShot(shot)" class="shot-svg-badge">SVG</span>
             <span class="shot-index">{{ index + 1 }}</span>
           </button>
           <PreviewSaveToLibraryButton
@@ -823,6 +825,7 @@ import { dialogueSpeakers, parseDialogueScript } from '@shared/graph/dialogueScr
 import { generateNodeModality, usesVoiceProfile } from '@shared/graph/generateNodeModality'
 import { useProjectStore } from '../stores/project'
 import { useWorkspaceStore } from '../stores/workspace'
+import { isAnimatedImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { invalidateAssetUrlCache } from '../features/media/assetUrlCache'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
@@ -1177,6 +1180,18 @@ const generatedImages = computed((): StoredGeneratedImage[] => {
 const resolvedGeneratedSrc = ref<Record<string, string>>({})
 let resolveGeneratedToken = 0
 
+function isGifShot(shot: StoredGeneratedImage): boolean {
+  if (shot.relativePath && isAnimatedImageFilePath(shot.relativePath)) return true
+  if (shot.dataUrl?.startsWith('data:image/gif')) return true
+  return false
+}
+
+function isSvgShot(shot: StoredGeneratedImage): boolean {
+  if (shot.relativePath && isVectorImageFilePath(shot.relativePath)) return true
+  if (shot.dataUrl?.startsWith('data:image/svg')) return true
+  return false
+}
+
 async function resolveGeneratedPreviews(): Promise<void> {
   const token = ++resolveGeneratedToken
   const next: Record<string, string> = {}
@@ -1191,7 +1206,11 @@ async function resolveGeneratedPreviews(): Promise<void> {
       const relativePath = item.relativePath?.trim()
       if (!relativePath) return
       try {
-        next[key] = await window.studio.getAssetPreviewUrl(relativePath)
+        if (isAnimatedImageFilePath(relativePath) || isVectorImageFilePath(relativePath)) {
+          next[key] = (await window.studio.getAssetFileUrl(relativePath)) || ''
+        } else {
+          next[key] = await window.studio.getAssetPreviewUrl(relativePath)
+        }
       } catch {
         /* skip */
       }
@@ -2913,6 +2932,38 @@ textarea,
   line-height: 18px;
   text-align: center;
   pointer-events: none;
+}
+
+.shot-gif-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent, #6366f1);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.shot-svg-badge {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #059669;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .shot-save {

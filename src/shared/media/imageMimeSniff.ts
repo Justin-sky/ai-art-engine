@@ -10,7 +10,8 @@
  *    `image/png` 发送给多模态模型时，会被上游图片格式校验器拦截报错。
  */
 
-export type SniffedImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | 'image/bmp'
+export type SniffedImageMime =
+  'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | 'image/bmp' | 'image/svg+xml'
 
 /**
  * 从前 12 字节嗅探真实光栅图 MIME；无法识别时返回 `null`。
@@ -19,6 +20,13 @@ export function sniffImageMimeFromBytes(
   buf: Uint8Array | Buffer | null | undefined
 ): SniffedImageMime | null {
   if (!buf || buf.length < 3) return null
+  // SVG: "<svg" or "<?xml"
+  if (buf.length >= 4) {
+    const textStart = Buffer.from(buf.slice(0, 128)).toString('utf8').trimStart().toLowerCase()
+    if (textStart.startsWith('<svg') || textStart.startsWith('<?xml')) {
+      return 'image/svg+xml'
+    }
+  }
   // JPEG: FF D8 FF
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
     return 'image/jpeg'
@@ -79,12 +87,20 @@ export function sniffImageMimeFromBase64(b64: string): SniffedImageMime | null {
     .replace(/^data:[^,]*,/, '')
     .trimStart()
   if (clean.length < 4) return null
+  if (
+    clean.startsWith('PHN2Zw') ||
+    clean.startsWith('PHN2Zy') ||
+    clean.startsWith('PD94bW') ||
+    clean.startsWith('PD9YTU')
+  ) {
+    return 'image/svg+xml'
+  }
   if (clean.startsWith('/9j/')) return 'image/jpeg'
   if (clean.startsWith('iVBORw0KGgo')) return 'image/png'
   if (clean.startsWith('UklGR')) return 'image/webp'
   if (clean.startsWith('R0lGODdh') || clean.startsWith('R0lGODlh')) return 'image/gif'
   try {
-    const head = clean.slice(0, 24)
+    const head = clean.slice(0, 48)
     const bytes = Buffer.from(head, 'base64')
     return sniffImageMimeFromBytes(bytes)
   } catch {
@@ -93,12 +109,16 @@ export function sniffImageMimeFromBase64(b64: string): SniffedImageMime | null {
 }
 
 /**
- * 将模型返回的 `b64_json` 包装为带真实 MIME 的 Data URL（自动识别 JPEG / PNG / WebP / GIF）。
+ * 将模型返回的 `b64_json` 包装为带真实 MIME 的 Data URL（自动识别 JPEG / PNG / WebP / GIF / SVG）。
  */
 export function b64JsonToImageDataUrl(b64: string, fallbackMime = 'image/png'): string {
   const trimmed = b64.trim()
   if (trimmed.startsWith('data:')) {
     return normalizeImageDataUrlMime(trimmed)
+  }
+  if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml')) {
+    const encoded = Buffer.from(trimmed, 'utf8').toString('base64')
+    return `data:image/svg+xml;base64,${encoded}`
   }
   const mime = sniffImageMimeFromBase64(trimmed) ?? fallbackMime
   return `data:${mime};base64,${trimmed}`
@@ -111,6 +131,10 @@ export function normalizeImageDataUrlMime(dataUrl: string): string {
   const m = /^data:([^;,]+)?(;base64)?,([\s\S]+)$/i.exec(dataUrl.trim())
   if (!m || !m[2]) return dataUrl
   const payload = m[3] ?? ''
+  if (payload.startsWith('<svg') || payload.startsWith('<?xml')) {
+    const encoded = Buffer.from(payload, 'utf8').toString('base64')
+    return `data:image/svg+xml;base64,${encoded}`
+  }
   const sniffed = sniffImageMimeFromBase64(payload)
   if (!sniffed) return dataUrl
   const declared = (m[1] || '').trim().toLowerCase()
@@ -123,9 +147,10 @@ export function normalizeImageDataUrlMime(dataUrl: string): string {
  */
 export function imageExtFromMime(
   mime: string,
-  fallback: 'png' | 'jpg' | 'webp' | 'gif' | 'bmp' = 'png'
-): 'png' | 'jpg' | 'webp' | 'gif' | 'bmp' {
+  fallback: 'png' | 'jpg' | 'webp' | 'gif' | 'bmp' | 'svg' = 'png'
+): 'png' | 'jpg' | 'webp' | 'gif' | 'bmp' | 'svg' {
   const lower = mime.toLowerCase()
+  if (lower.includes('svg')) return 'svg'
   if (lower.includes('jpeg') || lower.includes('jpg')) return 'jpg'
   if (lower.includes('webp')) return 'webp'
   if (lower.includes('gif')) return 'gif'

@@ -13,7 +13,7 @@
  *   ─► 自上而下窄带解混抠图（可见像素锁定原图，半透明边缘反解去底色）─► 质检与叠回误差校验
  */
 
-import { estimateEditableTextMeta } from '../uiControlSpec'
+import { estimateEditableTextMeta, type UiLayerBlendMode } from '../uiControlSpec'
 import {
   assignOcclusionLevels,
   assignPaintOrder,
@@ -26,7 +26,7 @@ import {
   resolveParents,
   type RawLayoutElement
 } from './layout'
-import { extractMatte } from './matting'
+import { extractEmissiveGlowMatte, extractMatte } from './matting'
 import {
   buildOwnershipMap,
   composeOwnedLayer,
@@ -63,9 +63,11 @@ import {
 import {
   composeHybridCompanionContentLayer,
   purifySplitLayersOnSolidBg,
+  refineLayerTranslucencyAndHolesAgainstBackdrop,
   type CompanionContentEntry
 } from './layerPurify'
 import {
+  clampRect,
   cloneImage,
   compositeOver,
   cropImage,
@@ -74,6 +76,7 @@ import {
   fillHoles,
   inpaintPushPull,
   labelComponents,
+  labelComponents8,
   meanAbsoluteError,
   median,
   pixelDistance,
@@ -82,9 +85,11 @@ import {
   resizeBilinear
 } from './pixels'
 import {
+  extractCrispPlainTextMatte,
   filterOcrFalsePositives,
   paintLocalMask,
   refineElementBox,
+  ringStats,
   textStrokeMask,
   type LocalMask
 } from './refine'
@@ -204,13 +209,14 @@ async function runLayoutPass(input: {
     }
   }
   if (!text?.trim()) throw new PreciseSplitError('PRECISE_SPLIT_NO_VLM_RESPONSE')
-  const parsed = parseLayoutResponse(text, image.width, image.height, options.maxElements ?? 120)
+  const parsed = parseLayoutResponse(text, image.width, image.height, options.maxElements ?? 256)
   return parsed
 }
 
 /**
  * 局部放大复检：对占画面比例大、内部有子元素的顶层容器，裁图放大后重新检测其内部元素，
- * 用复检结果替换该容器原有的全部后代（放大后小元素召回与框精度都明显更好）。
+ * 自动剔除容器自身重复检测框，并以非破坏并集方式融合粗检与复检子元素（复检命中的用高精度框替换，
+ * 复检漏掉的边角跨界控件如 Corner Close 原样保留）。
  */
 async function zoomRefine(input: {
   io: PreciseSplitIo
@@ -237,6 +243,12 @@ async function zoomRefine(input: {
     .sort((a, b) => rectArea(b.box) - rectArea(a.box))
     .slice(0, 3)
   if (!containers.length) return input.raw
+
+  const boxIou = (a: PixelRect, b: PixelRect): number => {
+    const inter = rectIntersection(a, b)
+    if (inter <= 0) return 0
+    return inter / Math.max(1, rectArea(a) + rectArea(b) - inter)
+  }
 
   const results = await Promise.all(
     containers.map(async (container, ci) => {
@@ -290,18 +302,44 @@ async function zoomRefine(input: {
             )
           })
           .map(({ i }) => i)
-        const mapped: RawLayoutElement[] = parsed.elements.map((el) => ({
-          ...el,
-          id: `z${ci + 1}_${el.id}`,
-          parentRef: el.parentRef ? `z${ci + 1}_${el.parentRef}` : container.id,
-          box: {
+
+        // Identify zoomed elements that merely re-detected `container` itself so they don't duplicate
+        const selfZoomIds = new Set<string>()
+        const contArea = Math.max(1, rectArea(container.box))
+        for (const el of parsed.elements) {
+          const gBox: PixelRect = {
             left: crop.left + el.box.left / sx,
             top: crop.top + el.box.top / sy,
             width: el.box.width / sx,
             height: el.box.height / sy
-          },
-          ocrRefs: el.ocrRefs.map((i) => localToGlobal[i] ?? -1).filter((i) => i >= 0)
-        }))
+          }
+          if (
+            !isTextKind(el.kind) &&
+            (boxIou(gBox, container.box) >= 0.72 ||
+              (rectArea(gBox) >= contArea * 0.78 &&
+                rectIntersection(gBox, container.box) >= contArea * 0.78))
+          ) {
+            selfZoomIds.add(el.id)
+          }
+        }
+
+        const mapped: RawLayoutElement[] = parsed.elements
+          .filter((el) => !selfZoomIds.has(el.id))
+          .map((el) => ({
+            ...el,
+            id: `z${ci + 1}_${el.id}`,
+            parentRef:
+              el.parentRef && !selfZoomIds.has(el.parentRef)
+                ? `z${ci + 1}_${el.parentRef}`
+                : container.id,
+            box: {
+              left: crop.left + el.box.left / sx,
+              top: crop.top + el.box.top / sy,
+              width: el.box.width / sx,
+              height: el.box.height / sy
+            },
+            ocrRefs: el.ocrRefs.map((i) => localToGlobal[i] ?? -1).filter((i) => i >= 0)
+          }))
         return { container, mapped }
       } catch (err) {
         if ((err as Error)?.name === 'AbortError') throw err
@@ -317,11 +355,29 @@ async function zoomRefine(input: {
   for (const res of results) {
     if (!res) continue
     const drop = collectDescendantIds(tree.elements, res.container.id)
-    // OCR 自动补出来的文字不在 raw 里，无需处理；只替换 VLM 元素
+    // Non-destructive union merge: keep coarse descendants that had zero counterpart in `res.mapped`
+    const preservedCoarse: RawLayoutElement[] = []
+    for (const el of next) {
+      if (!drop.has(el.id)) continue
+      const elArea = Math.max(1, rectArea(el.box))
+      const matchedInZoom = res.mapped.some((zm) => {
+        if (boxIou(el.box, zm.box) >= 0.3) return true
+        const inter = rectIntersection(el.box, zm.box)
+        const zmArea = Math.max(1, rectArea(zm.box))
+        return (
+          inter >= Math.min(elArea, zmArea) * 0.55 &&
+          zmArea >= elArea * 0.25 &&
+          zmArea <= elArea * 4
+        )
+      })
+      if (!matchedInZoom) {
+        preservedCoarse.push(el)
+      }
+    }
     next = next.filter((el) => !drop.has(el.id))
-    next.push(...res.mapped)
+    next.push(...preservedCoarse, ...res.mapped)
     io.log?.(
-      `zoom refine "${res.container.name}": ${drop.size} → ${res.mapped.length} child elements`
+      `zoom refine "${res.container.name}": ${drop.size} coarse -> ${res.mapped.length} zoomed + ${preservedCoarse.length} preserved`
     )
   }
   return next
@@ -671,6 +727,570 @@ function ensureSlotPortraitDecomposition(img: RgbaImage, nodes: UiElementNode[])
   return lockedBadgeMaskIds
 }
 
+const SIBLING_TEMPLATE_KINDS = new Set<UiElementKind>([
+  'icon',
+  'badge',
+  'item-slot',
+  'decoration',
+  'close-button',
+  'arrow',
+  'tab',
+  'button'
+])
+
+/**
+ * Recovers dense small UI elements omitted by VLM on `textFree`:
+ * 1) Row/column repeated sibling template completion (e.g. missed 4th/5th rating star, pagination
+ *    dot, mini buff icon, or inventory slot in a regular array where >= 2 siblings were detected).
+ * 2) High-salience compact orphan icon/pip discovery on ultra-smooth `repairMode === 'surface'`
+ *    containers (`p80 background spread <= 6`), strictly inset from borders and existing elements.
+ */
+function discoverMissedSiblingAndOrphanElements(
+  img: RgbaImage,
+  nodes: UiElementNode[],
+  ocr: readonly LocalOcrTextBox[]
+): number {
+  const W = img.width
+  const H = img.height
+  if (W < 32 || H < 32 || nodes.length === 0) return 0
+
+  const isContainer = (kind: UiElementKind): boolean =>
+    kind === 'panel' || kind === 'frame' || kind === 'item-slot' || kind === 'banner'
+
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const added: UiElementNode[] = []
+  let seq = 1
+
+  const collectAncestors = (pid: string | null): Set<string> => {
+    const out = new Set<string>()
+    let cur = pid
+    while (cur && !out.has(cur)) {
+      out.add(cur)
+      cur = byId.get(cur)?.parentId ?? null
+    }
+    return out
+  }
+
+  const collidesWithKnown = (cand: PixelRect, ancestorIds: ReadonlySet<string>): boolean => {
+    const cArea = Math.max(1, rectArea(cand))
+    for (const other of nodes) {
+      if (ancestorIds.has(other.id)) continue
+      const inter = rectIntersection(cand, other.box)
+      if (inter <= 0) continue
+      const oArea = Math.max(1, rectArea(other.box))
+      if (oArea >= cArea * 4 && inter >= cArea * 0.85 && isContainer(other.kind)) continue
+      if (inter >= Math.min(cArea, oArea) * 0.14) return true
+    }
+    for (const rec of added) {
+      const inter = rectIntersection(cand, rec.box)
+      if (inter >= Math.min(cArea, Math.max(1, rectArea(rec.box))) * 0.14) return true
+    }
+    for (const ob of ocr) {
+      const inter = rectIntersection(cand, ob)
+      if (inter >= cArea * 0.14) return true
+    }
+    return false
+  }
+
+  // ---- Part 1: Row & Column Repeated Sibling Template Completion ----
+  const groupsByParent = new Map<string, UiElementNode[]>()
+  for (const el of nodes) {
+    if (el.plainText || !SIBLING_TEMPLATE_KINDS.has(el.kind)) continue
+    if (el.box.width < 6 || el.box.height < 6 || el.box.width > 96 || el.box.height > 96) continue
+    const key = el.parentId ?? '__root__'
+    let arr = groupsByParent.get(key)
+    if (!arr) {
+      arr = []
+      groupsByParent.set(key, arr)
+    }
+    arr.push(el)
+  }
+
+  interface SiblingTemplate {
+    el: UiElementNode
+    crop: RgbaImage
+    fg: Uint8Array
+    fgCount: number
+  }
+
+  const buildTemplates = (
+    line: readonly UiElementNode[],
+    tw: number,
+    th: number
+  ): SiblingTemplate[] => {
+    const out: SiblingTemplate[] = []
+    const minFg = Math.max(6, Math.round(tw * th * 0.1))
+    for (const m of line) {
+      const resized = resizeBilinear(cropImage(img, m.box), tw, th)
+      const ring = ringStats(img, expandRect(m.box, 3, W, H), 2)
+      const fg = new Uint8Array(tw * th)
+      let fgCount = 0
+      for (let p = 0; p < tw * th; p++) {
+        if (pixelDistance(resized.data, p * 4, ring.color, 0) >= 24) {
+          fg[p] = 1
+          fgCount++
+        }
+      }
+      if (fgCount >= minFg) {
+        out.push({ el: m, crop: resized, fg, fgCount })
+      }
+    }
+    return out
+  }
+
+  const tryMatchCandidateAt = (
+    baseLeft: number,
+    baseTop: number,
+    tw: number,
+    th: number,
+    bounds: PixelRect,
+    ancestorIds: ReadonlySet<string>,
+    templates: readonly SiblingTemplate[]
+  ): { box: PixelRect; tmpl: SiblingTemplate } | null => {
+    const minFg = Math.max(6, Math.round(tw * th * 0.1))
+    let bestBox: PixelRect | null = null
+    let bestTmpl: SiblingTemplate | null = null
+    let bestP80 = Infinity
+
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const left = baseLeft + dx
+        const top = baseTop + dy
+        if (
+          left < bounds.left ||
+          top < bounds.top ||
+          left + tw > bounds.left + bounds.width ||
+          top + th > bounds.top + bounds.height
+        ) {
+          continue
+        }
+        const cb: PixelRect = { left, top, width: tw, height: th }
+        if (collidesWithKnown(cb, ancestorIds)) continue
+
+        const candRing = ringStats(img, expandRect(cb, 3, W, H), 2)
+        if (candRing.spread > 18) continue
+        const candCrop = cropImage(img, cb)
+        const candFg = new Uint8Array(tw * th)
+        let candFgCnt = 0
+        for (let p = 0; p < tw * th; p++) {
+          if (pixelDistance(candCrop.data, p * 4, candRing.color, 0) >= 24) {
+            candFg[p] = 1
+            candFgCnt++
+          }
+        }
+        if (candFgCnt < minFg) continue
+
+        for (const tmpl of templates) {
+          let inter = 0
+          let union = 0
+          const fgDists: number[] = []
+          for (let p = 0; p < tw * th; p++) {
+            const a = candFg[p] === 1
+            const b = tmpl.fg[p] === 1
+            if (a || b) {
+              union++
+              if (a && b) inter++
+              fgDists.push(pixelDistance(candCrop.data, p * 4, tmpl.crop.data, p * 4))
+            }
+          }
+          if (union < minFg || inter / union < 0.56 || fgDists.length < minFg) continue
+          fgDists.sort((u, v) => u - v)
+          const medD = fgDists[fgDists.length >> 1]!
+          const p80D = fgDists[Math.floor(fgDists.length * 0.8)]!
+          if (medD <= 11.5 && p80D <= 16.5 && p80D < bestP80) {
+            bestP80 = p80D
+            bestBox = cb
+            bestTmpl = tmpl
+          }
+        }
+      }
+    }
+    return bestBox && bestTmpl ? { box: bestBox, tmpl: bestTmpl } : null
+  }
+
+  for (const [parentKey, members] of groupsByParent) {
+    if (members.length < 2) continue
+    const parentId = parentKey === '__root__' ? null : parentKey
+    const parentNode = parentId ? byId.get(parentId) : undefined
+    const ancestorIds = collectAncestors(parentId)
+    const bounds: PixelRect = parentNode
+      ? clampRect(
+          {
+            left: parentNode.box.left + 2,
+            top: parentNode.box.top + 2,
+            width: Math.max(4, parentNode.box.width - 4),
+            height: Math.max(4, parentNode.box.height - 4)
+          },
+          W,
+          H
+        )
+      : { left: 2, top: 2, width: W - 4, height: H - 4 }
+
+    // 1A) Horizontal rows
+    const usedH = new Set<string>()
+    for (const seed of members) {
+      if (usedH.has(seed.id)) continue
+      const seedCy = seed.box.top + seed.box.height / 2
+      const row = members.filter((m) => {
+        const mCy = m.box.top + m.box.height / 2
+        const tolY = Math.max(4, Math.round(Math.min(seed.box.height, m.box.height) * 0.25))
+        const tolW = Math.max(5, Math.round(Math.min(seed.box.width, m.box.width) * 0.28))
+        const tolH = Math.max(5, Math.round(Math.min(seed.box.height, m.box.height) * 0.28))
+        return (
+          Math.abs(mCy - seedCy) <= tolY &&
+          Math.abs(m.box.width - seed.box.width) <= tolW &&
+          Math.abs(m.box.height - seed.box.height) <= tolH
+        )
+      })
+      for (const r of row) usedH.add(r.id)
+      if (row.length < 2) continue
+
+      row.sort((a, b) => a.box.left + a.box.width / 2 - (b.box.left + b.box.width / 2))
+      const tw = Math.max(6, Math.round(median(row.map((r) => r.box.width))))
+      const th = Math.max(6, Math.round(median(row.map((r) => r.box.height))))
+      const medTop = Math.round(median(row.map((r) => r.box.top)))
+
+      const cxs = row.map((r) => r.box.left + r.box.width / 2)
+      const deltas: number[] = []
+      for (let i = 0; i + 1 < cxs.length; i++) {
+        const d = cxs[i + 1]! - cxs[i]!
+        if (d >= tw * 0.9) deltas.push(d)
+      }
+      if (!deltas.length) continue
+      const minD = Math.min(...deltas)
+      const unitSteps: number[] = []
+      for (const d of deltas) {
+        const k = Math.max(1, Math.round(d / minD))
+        if (k <= 4 && Math.abs(d - k * minD) <= Math.max(4, minD * 0.16)) {
+          unitSteps.push(d / k)
+        }
+      }
+      if (!unitSteps.length) continue
+      const pitch = median(unitSteps)
+      const templates = buildTemplates(row, tw, th)
+      if (!templates.length) continue
+
+      const registerHit = (hit: { box: PixelRect; tmpl: SiblingTemplate }): void => {
+        const src = hit.tmpl.el
+        added.push({
+          id: `rec_sib_${seq}`,
+          name: `${src.name || src.kind} ${seq}`,
+          kind: src.kind,
+          box: refineElementBox(img, hit.box),
+          rawBox: hit.box,
+          parentId: src.parentId,
+          order: src.order + 1,
+          ...(src.repairMode ? { repairMode: src.repairMode } : {})
+        })
+        seq++
+      }
+
+      for (let i = 0; i + 1 < cxs.length; i++) {
+        const span = cxs[i + 1]! - cxs[i]!
+        const k = Math.round(span / pitch)
+        if (k >= 2 && k <= 4) {
+          for (let s = 1; s < k; s++) {
+            const cx = cxs[i]! + s * pitch
+            const hit = tryMatchCandidateAt(
+              Math.round(cx - tw / 2),
+              medTop,
+              tw,
+              th,
+              bounds,
+              ancestorIds,
+              templates
+            )
+            if (hit) registerHit(hit)
+          }
+        }
+      }
+      for (let s = 1; s <= 5; s++) {
+        const cx = cxs[0]! - s * pitch
+        const hit = tryMatchCandidateAt(
+          Math.round(cx - tw / 2),
+          medTop,
+          tw,
+          th,
+          bounds,
+          ancestorIds,
+          templates
+        )
+        if (!hit) break
+        registerHit(hit)
+      }
+      for (let s = 1; s <= 5; s++) {
+        const cx = cxs[cxs.length - 1]! + s * pitch
+        const hit = tryMatchCandidateAt(
+          Math.round(cx - tw / 2),
+          medTop,
+          tw,
+          th,
+          bounds,
+          ancestorIds,
+          templates
+        )
+        if (!hit) break
+        registerHit(hit)
+      }
+    }
+
+    // 1B) Vertical columns
+    const usedV = new Set<string>()
+    for (const seed of members) {
+      if (usedV.has(seed.id)) continue
+      const seedCx = seed.box.left + seed.box.width / 2
+      const col = members.filter((m) => {
+        const mCx = m.box.left + m.box.width / 2
+        const tolX = Math.max(4, Math.round(Math.min(seed.box.width, m.box.width) * 0.25))
+        const tolW = Math.max(5, Math.round(Math.min(seed.box.width, m.box.width) * 0.28))
+        const tolH = Math.max(5, Math.round(Math.min(seed.box.height, m.box.height) * 0.28))
+        return (
+          Math.abs(mCx - seedCx) <= tolX &&
+          Math.abs(m.box.width - seed.box.width) <= tolW &&
+          Math.abs(m.box.height - seed.box.height) <= tolH
+        )
+      })
+      for (const c of col) usedV.add(c.id)
+      if (col.length < 2) continue
+
+      col.sort((a, b) => a.box.top + a.box.height / 2 - (b.box.top + b.box.height / 2))
+      const tw = Math.max(6, Math.round(median(col.map((c) => c.box.width))))
+      const th = Math.max(6, Math.round(median(col.map((c) => c.box.height))))
+      const medLeft = Math.round(median(col.map((c) => c.box.left)))
+
+      const cys = col.map((c) => c.box.top + c.box.height / 2)
+      const deltas: number[] = []
+      for (let i = 0; i + 1 < cys.length; i++) {
+        const d = cys[i + 1]! - cys[i]!
+        if (d >= th * 0.9) deltas.push(d)
+      }
+      if (!deltas.length) continue
+      const minD = Math.min(...deltas)
+      const unitSteps: number[] = []
+      for (const d of deltas) {
+        const k = Math.max(1, Math.round(d / minD))
+        if (k <= 4 && Math.abs(d - k * minD) <= Math.max(4, minD * 0.16)) {
+          unitSteps.push(d / k)
+        }
+      }
+      if (!unitSteps.length) continue
+      const pitch = median(unitSteps)
+      const templates = buildTemplates(col, tw, th)
+      if (!templates.length) continue
+
+      const registerHit = (hit: { box: PixelRect; tmpl: SiblingTemplate }): void => {
+        const src = hit.tmpl.el
+        added.push({
+          id: `rec_sib_${seq}`,
+          name: `${src.name || src.kind} ${seq}`,
+          kind: src.kind,
+          box: refineElementBox(img, hit.box),
+          rawBox: hit.box,
+          parentId: src.parentId,
+          order: src.order + 1,
+          ...(src.repairMode ? { repairMode: src.repairMode } : {})
+        })
+        seq++
+      }
+
+      for (let i = 0; i + 1 < cys.length; i++) {
+        const span = cys[i + 1]! - cys[i]!
+        const k = Math.round(span / pitch)
+        if (k >= 2 && k <= 4) {
+          for (let s = 1; s < k; s++) {
+            const cy = cys[i]! + s * pitch
+            const hit = tryMatchCandidateAt(
+              medLeft,
+              Math.round(cy - th / 2),
+              tw,
+              th,
+              bounds,
+              ancestorIds,
+              templates
+            )
+            if (hit) registerHit(hit)
+          }
+        }
+      }
+      for (let s = 1; s <= 5; s++) {
+        const cy = cys[0]! - s * pitch
+        const hit = tryMatchCandidateAt(
+          medLeft,
+          Math.round(cy - th / 2),
+          tw,
+          th,
+          bounds,
+          ancestorIds,
+          templates
+        )
+        if (!hit) break
+        registerHit(hit)
+      }
+      for (let s = 1; s <= 5; s++) {
+        const cy = cys[cys.length - 1]! + s * pitch
+        const hit = tryMatchCandidateAt(
+          medLeft,
+          Math.round(cy - th / 2),
+          tw,
+          th,
+          bounds,
+          ancestorIds,
+          templates
+        )
+        if (!hit) break
+        registerHit(hit)
+      }
+    }
+  }
+
+  // ---- Part 2: High-Salience Compact Orphan Icon/Pip Discovery on Smooth Surface Containers ----
+  let orphanAdded = 0
+  for (const cont of nodes) {
+    if (orphanAdded >= 6) break
+    if (cont.plainText || cont.repairMode === 'image' || !isContainer(cont.kind)) continue
+    const contArea = rectArea(cont.box)
+    if (contArea < 2400) continue
+    const inset = Math.max(8, Math.round(Math.min(cont.box.width, cont.box.height) * 0.12))
+    if (cont.box.width <= inset * 2 + 12 || cont.box.height <= inset * 2 + 12) continue
+
+    const inner: PixelRect = {
+      left: cont.box.left + inset,
+      top: cont.box.top + inset,
+      width: cont.box.width - inset * 2,
+      height: cont.box.height - inset * 2
+    }
+    const iw = inner.width
+    const ih = inner.height
+    const inN = iw * ih
+    const contAncestors = collectAncestors(cont.id)
+    contAncestors.add(cont.id)
+
+    const claimed = new Uint8Array(inN)
+    const stampClaimed = (r: PixelRect): void => {
+      const exp = expandRect(r, 5, W, H)
+      const x0 = Math.max(inner.left, exp.left)
+      const y0 = Math.max(inner.top, exp.top)
+      const x1 = Math.min(inner.left + iw, exp.left + exp.width)
+      const y1 = Math.min(inner.top + ih, exp.top + exp.height)
+      for (let cy = y0; cy < y1; cy++) {
+        const row = (cy - inner.top) * iw
+        for (let cx = x0; cx < x1; cx++) {
+          claimed[row + (cx - inner.left)] = 1
+        }
+      }
+    }
+
+    for (const other of [...nodes, ...added]) {
+      if (contAncestors.has(other.id)) continue
+      if (
+        rectArea(other.box) >= contArea * 0.9 &&
+        rectIntersection(other.box, cont.box) >= contArea * 0.85
+      ) {
+        continue
+      }
+      if (rectIntersection(other.box, inner) > 0) stampClaimed(other.box)
+    }
+    for (const ob of ocr) {
+      if (rectIntersection(ob, inner) > 0) stampClaimed(ob)
+    }
+
+    const bgRs: number[] = []
+    const bgGs: number[] = []
+    const bgBs: number[] = []
+    const unclaimedIdx: number[] = []
+    for (let y = 0; y < ih; y++) {
+      const gy = inner.top + y
+      const row = y * iw
+      for (let x = 0; x < iw; x++) {
+        const p = row + x
+        if (claimed[p]) continue
+        const gi = (gy * W + (inner.left + x)) * 4
+        bgRs.push(img.data[gi]!)
+        bgGs.push(img.data[gi + 1]!)
+        bgBs.push(img.data[gi + 2]!)
+        unclaimedIdx.push(gi)
+      }
+    }
+    if (unclaimedIdx.length < Math.max(200, Math.round(inN * 0.35))) continue
+
+    const surfBg = new Uint8ClampedArray([median(bgRs), median(bgGs), median(bgBs), 255])
+    const bgDists = unclaimedIdx.map((gi) => pixelDistance(img.data, gi, surfBg, 0))
+    bgDists.sort((a, b) => a - b)
+    if (bgDists[Math.floor(bgDists.length * 0.8)]! > 6.0) continue
+
+    const salient = new Uint8Array(inN)
+    for (let y = 0; y < ih; y++) {
+      const gy = inner.top + y
+      const row = y * iw
+      for (let x = 0; x < iw; x++) {
+        const p = row + x
+        if (claimed[p]) continue
+        const gi = (gy * W + (inner.left + x)) * 4
+        if (pixelDistance(img.data, gi, surfBg, 0) >= 44) salient[p] = 1
+      }
+    }
+
+    const comp = labelComponents8(salient, iw, ih)
+    const claimedGrown = dilateMask(claimed, iw, ih, 2)
+    for (const cs of comp.stats) {
+      if (orphanAdded >= 6) break
+      if (cs.minX < 2 || cs.maxX > iw - 3 || cs.minY < 2 || cs.maxY > ih - 3) continue
+      const bw = cs.maxX - cs.minX + 1
+      const bh = cs.maxY - cs.minY + 1
+      if (bw < 6 || bw > 56 || bh < 6 || bh > 56 || cs.area < 32) continue
+      if (bw * bh > contArea * 0.05) continue
+      if (Math.max(bw, bh) / Math.min(bw, bh) > 2.8) continue
+      if (cs.area / (bw * bh) < 0.24) continue
+
+      let touchesClaimed = false
+      let distSum = 0
+      for (let y = cs.minY; y <= cs.maxY && !touchesClaimed; y++) {
+        const row = y * iw
+        const gy = inner.top + y
+        for (let x = cs.minX; x <= cs.maxX; x++) {
+          const p = row + x
+          if (comp.labels[p] !== cs.label) continue
+          if (claimedGrown[p]) {
+            touchesClaimed = true
+            break
+          }
+          distSum += pixelDistance(img.data, (gy * W + (inner.left + x)) * 4, surfBg, 0)
+        }
+      }
+      if (touchesClaimed || distSum / cs.area < 56) continue
+
+      const candBox: PixelRect = {
+        left: inner.left + cs.minX,
+        top: inner.top + cs.minY,
+        width: bw,
+        height: bh
+      }
+      const outer = ringStats(img, expandRect(candBox, 3, W, H), 2)
+      if (outer.spread > 5.5 || pixelDistance(outer.color, 0, surfBg, 0) > 8) continue
+
+      added.push({
+        id: `rec_orph_${seq}`,
+        name: `Recovered Icon ${seq}`,
+        kind: Math.max(bw, bh) <= 18 ? 'badge' : 'icon',
+        box: candBox,
+        parentId: cont.id,
+        order: cont.order + 1,
+        repairMode: 'surface'
+      })
+      seq++
+      orphanAdded++
+    }
+  }
+
+  if (added.length > 0) {
+    nodes.push(...added)
+    resolveParents(nodes)
+    assignPaintOrder(nodes)
+    assignOcclusionLevels(nodes, 24)
+  }
+  return added.length
+}
+
 export async function runPreciseUiSplit(
   io: PreciseSplitIo,
   source: RgbaImage,
@@ -826,6 +1446,13 @@ export async function runPreciseUiSplit(
   // 5.5) 在去字底板 textFree 上执行「复合角标 / 槽位底框 ↔ 角色人像」自动补拆：
   // 复合角标锁定精确拆分掩码；槽位内立绘留到其自身剥层轮次（角标已被剥除补好后）再重分割，避免角标切掉发丝。
   const lockedBadgeMaskIds = ensureSlotPortraitDecomposition(textFree, tree.elements)
+  const recoveredMissing = discoverMissedSiblingAndOrphanElements(textFree, tree.elements, ocr)
+  if (recoveredMissing > 0) {
+    for (const el of tree.elements) {
+      if (!rawBoxById.has(el.id)) rawBoxById.set(el.id, el.rawBox ?? el.box)
+    }
+    log(`missing element completion: ${recoveredMissing} sibling/orphan element(s) recovered`)
+  }
 
   const byId = new Map(tree.elements.map((e) => [e.id, e]))
   const ordered = [...tree.elements].sort((a, b) => (a.paintIndex ?? 0) - (b.paintIndex ?? 0))
@@ -848,6 +1475,13 @@ export async function runPreciseUiSplit(
       if (!el.plainText) continue
       const lm = textMaskById.get(el.id)
       if (lm && (lm.coverage ?? 1) <= 0) continue
+      if (lm && lm.maskQuality === 'estimated_glyphs' && lm.glyphMask) {
+        const crisp = extractCrispPlainTextMatte(source, textFree, lm)
+        if (crisp) {
+          out.set(el.id, crisp)
+          continue
+        }
+      }
       const tightTextMask =
         lm?.glyphMask && lm.maskQuality === 'estimated_glyphs'
           ? dilateMask(lm.glyphMask, lm.rect.width, lm.rect.height, 1)
@@ -1565,6 +2199,67 @@ export async function runPreciseUiSplit(
   }
   const matteById = new Map<string, { rect: PixelRect; rgba: Uint8ClampedArray }>()
   const originalRgbaById = new Map<string, Uint8ClampedArray>()
+  const studioSkinById = new Map<string, RgbaImage>()
+  const upperOccMaskById = new Map<string, Uint8Array>()
+  const blendModeById = new Map<string, UiLayerBlendMode>()
+  const backdropBlurById = new Map<string, number>()
+
+  const buildExactUpperOccMask = (rect: PixelRect, el: UiElementNode): Uint8Array => {
+    const rw = rect.width
+    const rh = rect.height
+    const known = buildPreSegKnownMask(rect, el)
+    const rawOcc = new Uint8Array(rw * rh)
+    let hasOcc = false
+    for (let y = 0; y < rh; y++) {
+      const cy = rect.top + y
+      for (let x = 0; x < rw; x++) {
+        const cx = rect.left + x
+        const p = y * rw + x
+        const g = cy >= 0 && cy < H && cx >= 0 && cx < W ? cy * W + cx : -1
+        if (!known[p] || (g >= 0 && aboveAlpha[g]! >= 0.04)) {
+          rawOcc[p] = 1
+          hasOcc = true
+        }
+      }
+    }
+    return hasOcc ? dilateMask(rawOcc, rw, rh, 2) : rawOcc
+  }
+
+  const buildStrictlyUpperOccMask = (rect: PixelRect, selfEl: UiElementNode): Uint8Array => {
+    const rw = rect.width
+    const rh = rect.height
+    const known = buildPreSegKnownMask(rect, selfEl)
+    const rawOcc = new Uint8Array(rw * rh)
+    let hasOcc = false
+    const selfPaint = selfEl.paintIndex ?? 0
+    for (let p = 0; p < rw * rh; p++) {
+      if (!known[p]) {
+        rawOcc[p] = 1
+        hasOcc = true
+      }
+    }
+    for (const upper of ordered) {
+      if ((upper.paintIndex ?? 0) <= selfPaint) continue
+      const um = matteById.get(upper.id)
+      if (!um) continue
+      const x0 = Math.max(rect.left, um.rect.left)
+      const y0 = Math.max(rect.top, um.rect.top)
+      const x1 = Math.min(rect.left + rw, um.rect.left + um.rect.width)
+      const y1 = Math.min(rect.top + rh, um.rect.top + um.rect.height)
+      for (let cy = y0; cy < y1; cy++) {
+        const ly = cy - rect.top
+        const uy = cy - um.rect.top
+        for (let cx = x0; cx < x1; cx++) {
+          if (um.rgba[(uy * um.rect.width + (cx - um.rect.left)) * 4 + 3]! >= 10) {
+            rawOcc[ly * rw + (cx - rect.left)] = 1
+            hasOcc = true
+          }
+        }
+      }
+    }
+    return hasOcc ? dilateMask(rawOcc, rw, rh, 2) : rawOcc
+  }
+
   let ownedCount = 0
   let fallbackCount = 0
   for (const el of [...ordered].reverse()) {
@@ -1587,17 +2282,53 @@ export async function runPreciseUiSplit(
           height: compMatch.rendered.height
         }
         originalRgbaById.set(el.id, cropImage(source, targetRect).data)
-        matte = {
-          rect: targetRect,
-          rgba: new Uint8ClampedArray(compMatch.rendered.data)
+        const occMask = buildExactUpperOccMask(targetRect, el)
+        studioSkinById.set(el.id, compMatch.rendered)
+        upperOccMaskById.set(el.id, occMask)
+
+        const isSingletonSplitControl =
+          compMatch.candidate.item.id.startsWith('comp_split_') &&
+          (compMatch.candidate.item.sourceCount ?? 1) <= 1
+        if (isSingletonSplitControl) {
+          const hybrid = composeHybridCompanionContentLayer({
+            source,
+            lower: base,
+            entry: {
+              rect: targetRect,
+              companionRgba: compMatch.rendered,
+              occludedMask: occMask
+            },
+            aboveAlpha
+          })
+          matte = hybrid ?? {
+            rect: targetRect,
+            rgba: new Uint8ClampedArray(compMatch.rendered.data)
+          }
+          compMatch.candidate.rgba = {
+            width: matte.rect.width,
+            height: matte.rect.height,
+            data: new Uint8ClampedArray(matte.rgba)
+          }
+        } else {
+          matte = {
+            rect: targetRect,
+            rgba: new Uint8ClampedArray(compMatch.rendered.data)
+          }
         }
         ownedCount++
       } else {
         if (!unmixGlow && compContent && !compMatch) {
+          studioSkinById.set(el.id, compContent.companionRgba)
+          const occMask = buildExactUpperOccMask(compContent.rect, el)
+          upperOccMaskById.set(el.id, occMask)
           matte = composeHybridCompanionContentLayer({
             source,
             lower: studioMode ? base : plates[k]!,
-            entry: compContent,
+            entry: {
+              rect: compContent.rect,
+              companionRgba: compContent.companionRgba,
+              occludedMask: occMask
+            },
             aboveAlpha
           })
           if (matte) ownedCount++
@@ -1617,16 +2348,29 @@ export async function runPreciseUiSplit(
           if (matte) ownedCount++
         }
         if (!matte) {
-          // 半透明光效/发光底座/无轮廓面板：物理去底色反解 alpha，彻底剥离下层棕色桌面底色
           const upperForDiff = studioMode && unmixGlow ? source : plates[k + 1]!
           const lowerForDiff = studioMode && unmixGlow ? base : plates[k]!
-          matte = extractMatte(upperForDiff, lowerForDiff, el.box, {
-            fillHoles: !unmixGlow && OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
-            unmixTranslucent: unmixGlow,
-            ...(unmixGlow ? { t0: 6, t1: 32 } : {}),
-            ...(!unmixGlow && el.instanceMask ? { instanceMask: el.instanceMask } : {})
-          })
-          if (matte) fallbackCount++
+          if (unmixGlow) {
+            const glowMatte = extractEmissiveGlowMatte(upperForDiff, lowerForDiff, el.box, {
+              nameHint: el.name,
+              blendModeHint: el.blendModeHint,
+              t0: 6
+            })
+            if (glowMatte) {
+              matte = { rect: glowMatte.rect, rgba: glowMatte.rgba }
+              if (glowMatte.blendMode && glowMatte.blendMode !== 'normal') {
+                blendModeById.set(el.id, glowMatte.blendMode)
+              }
+              fallbackCount++
+            }
+          } else {
+            matte = extractMatte(upperForDiff, lowerForDiff, el.box, {
+              fillHoles: OPAQUE_UI_ELEMENT_KINDS.has(el.kind),
+              unmixTranslucent: false,
+              ...(el.instanceMask ? { instanceMask: el.instanceMask } : {})
+            })
+            if (matte) fallbackCount++
+          }
         }
         if (compMatch) {
           const targetRect = {
@@ -1658,6 +2402,131 @@ export async function runPreciseUiSplit(
     matteById.set(el.id, matte)
     stampAlpha(matte.rect, matte.rgba)
   }
+
+  // 7.5a Bottom-to-top backdrop-guided pass:
+  // Recovers exact `0..255` alpha + multi-scale frosted glass blur + continuous gradient alpha +
+  // fine hair/drop-shadow edges + glow re-unmixing against the true running backdrop (`base` + lower layers).
+  if (studioMode) {
+    const runningBackdrop = cloneImage(base)
+    let translucentLayers = 0
+    let punchedHolePx = 0
+    let rimAndShadowPx = 0
+    for (const el of ordered) {
+      const matte = matteById.get(el.id)
+      if (!matte) continue
+      const studioSkin = studioSkinById.get(el.id)
+      const occMask = upperOccMaskById.get(el.id)
+      if (isTranslucentGlowElement(el)) {
+        let bgDiffSum = 0
+        let bgDiffCnt = 0
+        for (let y = 0; y < el.box.height; y += 2) {
+          const cy = el.box.top + y
+          if (cy < 0 || cy >= H) continue
+          for (let x = 0; x < el.box.width; x += 2) {
+            const cx = el.box.left + x
+            if (cx < 0 || cx >= W) continue
+            const gi = (cy * W + cx) * 4
+            bgDiffSum += pixelDistance(runningBackdrop.data, gi, base.data, gi)
+            bgDiffCnt++
+          }
+        }
+        if (bgDiffCnt > 0 && bgDiffSum / bgDiffCnt >= 1.5) {
+          const upperOcc = buildStrictlyUpperOccMask(el.box, el)
+          const invValid = new Uint8Array(el.box.width * el.box.height)
+          for (let p = 0; p < invValid.length; p++) invValid[p] = upperOcc[p] ? 0 : 1
+          const reGlow = extractEmissiveGlowMatte(source, runningBackdrop, el.box, {
+            nameHint: el.name,
+            blendModeHint: el.blendModeHint,
+            t0: 6,
+            instanceMask: { rect: el.box, mask: invValid }
+          })
+          if (reGlow) {
+            matte.rect = reGlow.rect
+            matte.rgba = reGlow.rgba
+            if (reGlow.blendMode && reGlow.blendMode !== 'normal') {
+              blendModeById.set(el.id, reGlow.blendMode)
+            } else {
+              blendModeById.delete(el.id)
+            }
+          }
+        }
+      } else if (!el.plainText && studioSkin && occMask) {
+        const cm = componentMatchById.get(el.id)
+        const allowOuterExpansion =
+          !cm ||
+          (cm.candidate.item.id.startsWith('comp_split_') &&
+            (cm.candidate.item.sourceCount ?? 1) <= 1)
+        const refined = refineLayerTranslucencyAndHolesAgainstBackdrop({
+          kind: el.kind,
+          rect: matte.rect,
+          rgba: matte.rgba,
+          studioSkin,
+          occludedMask: occMask,
+          buildOccMask: (r) => buildStrictlyUpperOccMask(r, el),
+          allowOuterExpansion,
+          source,
+          backdrop: runningBackdrop
+        })
+        if (refined.translucentUnmixed || refined.holesPunched > 0 || refined.rimRefinedPx > 0) {
+          matte.rect = refined.rect
+          matte.rgba = refined.rgba
+          punchedHolePx += refined.holesPunched
+          rimAndShadowPx += refined.rimRefinedPx
+          if (refined.backdropBlurRadius && refined.backdropBlurRadius > 0) {
+            backdropBlurById.set(el.id, refined.backdropBlurRadius)
+          }
+          if (refined.translucentUnmixed) {
+            translucentLayers++
+          }
+          if (cm && (refined.translucentUnmixed || refined.rimRefinedPx > 0)) {
+            if (
+              cm.candidate.item.id.startsWith('comp_split_') &&
+              (cm.candidate.item.sourceCount ?? 1) <= 1
+            ) {
+              cm.candidate.rgba = {
+                width: matte.rect.width,
+                height: matte.rect.height,
+                data: new Uint8ClampedArray(matte.rgba)
+              }
+              cm.candidate.item.canonicalWidth = matte.rect.width
+              cm.candidate.item.canonicalHeight = matte.rect.height
+            } else if (refined.translucentUnmixed) {
+              componentMatchById.delete(el.id)
+              if (cm.candidate.item.sourceCount && cm.candidate.item.sourceCount > 0) {
+                cm.candidate.item.sourceCount -= 1
+              }
+            }
+          }
+        }
+      }
+      compositeOver(
+        runningBackdrop,
+        { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
+        matte.rect.left,
+        matte.rect.top,
+        blendModeById.get(el.id) ?? 'normal'
+      )
+    }
+    if (synthesizedComponents?.length) {
+      synthesizedComponents = synthesizedComponents.filter((c) => (c.item.sourceCount ?? 0) > 0)
+      if (!synthesizedComponents.length) synthesizedComponents = undefined
+    }
+    if (
+      translucentLayers > 0 ||
+      punchedHolePx > 0 ||
+      rimAndShadowPx > 0 ||
+      blendModeById.size > 0
+    ) {
+      aboveAlpha.fill(0)
+      for (const el of ordered) {
+        const matte = matteById.get(el.id)
+        if (matte) stampAlpha(matte.rect, matte.rgba)
+      }
+      log(
+        `backdrop refinement: ${translucentLayers} translucent layer(s) unmixed, ${punchedHolePx} hole px punched, ${rimAndShadowPx} rim/shadow px refined`
+      )
+    }
+  }
   if (componentMatchById.size > 0) {
     log(
       `component library matched: ${componentMatchById.size} element(s) replaced by clean masters`
@@ -1675,6 +2544,7 @@ export async function runPreciseUiSplit(
     byId,
     levelOf,
     matteById,
+    blendModeById,
     componentMatchById,
     companionContentById,
     ownership,
@@ -1743,6 +2613,10 @@ export async function runPreciseUiSplit(
       height: matte.rect.height,
       rgba: matte.rgba
     }
+    const blendMode = blendModeById.get(el.id)
+    if (blendMode && blendMode !== 'normal') layer.blendMode = blendMode
+    const blurRadius = backdropBlurById.get(el.id)
+    if (blurRadius && blurRadius > 0) layer.backdropBlurRadius = blurRadius
     const controlType = elementControlType(el.kind)
     if (controlType) layer.uiControlType = controlType
     const role = elementPartRole(el, parent?.kind)
@@ -1766,7 +2640,8 @@ export async function runPreciseUiSplit(
         rawName: el.name,
         ocrText: el.text,
         bgColor: lm?.bgColor,
-        glyphCoverage: lm?.coverage
+        glyphCoverage: lm?.coverage,
+        fontStyleHint: el.fontStyleHint
       })
     }
     layers.push(layer)
@@ -1823,7 +2698,8 @@ export async function runPreciseUiSplit(
       recomposed,
       { width: layer.width, height: layer.height, data: layer.rgba },
       layer.left,
-      layer.top
+      layer.top,
+      layer.blendMode ?? 'normal'
     )
   }
   const reconstructionError = meanAbsoluteError(recomposed, source)
@@ -1892,6 +2768,7 @@ const TRANSLUCENT_GLOW_NAME_RE =
   /(?:发光底座|投影底座|全息底座|全息投影.*底座|光圈|发光|光效|光晕|光束|投影光|glow|halo|light\s*beam|hologram\s*base)/i // cjk-ok
 
 function isTranslucentGlowElement(el: UiElementNode): boolean {
+  if (el.blendModeHint === 'screen' || el.blendModeHint === 'linear dodge') return true
   if (el.kind === 'effect') return true
   if ((el.kind === 'decoration' || el.kind === 'other') && TRANSLUCENT_GLOW_NAME_RE.test(el.name)) {
     return true
@@ -2219,6 +3096,7 @@ function healClippedLayersByCompositeDiff(input: {
   byId: ReadonlyMap<string, UiElementNode>
   levelOf: (el: UiElementNode) => number
   matteById: Map<string, { rect: PixelRect; rgba: Uint8ClampedArray }>
+  blendModeById?: ReadonlyMap<string, UiLayerBlendMode>
   componentMatchById: ReadonlyMap<string, unknown>
   companionContentById?: ReadonlyMap<string, unknown>
   ownership: OwnershipMap
@@ -2235,6 +3113,7 @@ function healClippedLayersByCompositeDiff(input: {
     byId,
     levelOf,
     matteById,
+    blendModeById,
     componentMatchById,
     companionContentById,
     ownership,
@@ -2253,12 +3132,15 @@ function healClippedLayersByCompositeDiff(input: {
     const el = ordered[ordIdx]!
     const matte = matteById.get(el.id)
     if (!matte) continue
+    const bm = blendModeById?.get(el.id) ?? 'normal'
     compositeOver(
       preLock,
       { width: matte.rect.width, height: matte.rect.height, data: matte.rgba },
       matte.rect.left,
-      matte.rect.top
+      matte.rect.top,
+      bm
     )
+    if (bm !== 'normal') continue
     const { rect, rgba } = matte
     for (let y = 0; y < rect.height; y++) {
       const cy = rect.top + y

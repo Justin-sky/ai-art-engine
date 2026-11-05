@@ -249,6 +249,18 @@ export const openRouterAdapter: ModelProviderAdapter = {
     if (input.transparentBackground && supportsNativeTransparentImageModel(modelId)) {
       body.background = 'transparent'
     }
+    const outputFormat =
+      input.outputFormat?.trim().toLowerCase() ||
+      (/gpt-image-2\.6/i.test(modelId) &&
+      /动图|动态|gif|animated|animation|loop/i.test(input.prompt) // cjk-ok
+        ? 'gif'
+        : undefined)
+    if (outputFormat) {
+      body.output_format = outputFormat
+      if (outputFormat === 'svg') {
+        body.svg = { model: 'gpt-6.1-sol' }
+      }
+    }
     if (input.inputReferences?.length) {
       body.input_references = input.inputReferences.map((url) => ({
         type: 'image_url',

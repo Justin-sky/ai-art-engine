@@ -1628,6 +1628,10 @@ export function mergeSmartNodeParams(
   if (typeof incoming.transparentBg === 'boolean' && incoming.generateTransparentBg === undefined) {
     merged.generateTransparentBg = incoming.transparentBg
   }
+  const rawFormat = incoming.outputFormat ?? incoming.format
+  if (typeof rawFormat === 'string' && incoming.generateOutputFormat === undefined) {
+    merged.generateOutputFormat = rawFormat.trim().toLowerCase()
+  }
   if (typeof incoming.audio === 'boolean' && incoming.generateAudio === undefined) {
     merged.generateAudio = incoming.audio
   }

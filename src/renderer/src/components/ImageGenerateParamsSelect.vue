@@ -94,6 +94,35 @@
               </div>
             </section>
 
+            <section v-if="availableOutputFormats.length" class="section">
+              <div class="section-title">
+                {{ t('graph.inspector.generate.imageParams.outputFormat') }}
+              </div>
+              <div class="chip-row">
+                <button
+                  v-for="fmt in availableOutputFormats"
+                  :key="fmt"
+                  type="button"
+                  class="chip"
+                  :class="{
+                    active: (local.outputFormat || 'png').toLowerCase() === fmt.toLowerCase()
+                  }"
+                  @click="pickOutputFormat(fmt)"
+                >
+                  {{ formatLabel(fmt) }}
+                </button>
+              </div>
+              <div v-if="(local.outputFormat || '').toLowerCase() === 'gif'" class="field-hint">
+                {{ t('graph.inspector.generate.imageParams.gifRatioTip') }}
+              </div>
+              <div
+                v-else-if="(local.outputFormat || '').toLowerCase() === 'svg'"
+                class="field-hint"
+              >
+                {{ t('graph.inspector.generate.imageParams.svgFormatTip') }}
+              </div>
+            </section>
+
             <section v-if="caps.counts.length" class="section">
               <div class="section-title">
                 {{ t('graph.inspector.generate.imageParams.count') }}
@@ -186,6 +215,8 @@ import {
   clampSeed,
   clampImageGenerateParams,
   hasAnyImageGenerateCapability,
+  supportsGifOutput,
+  supportsSvgOutput,
   type ImageGenerateParamCapabilities,
   type ImageGenerateParams
 } from '@shared/graph'
@@ -217,13 +248,31 @@ const caps = ref<ImageGenerateParamCapabilities>({
   aspectRatios: [],
   resolutions: [],
   qualities: [],
+  outputFormats: [],
   counts: [],
   maxInputReferences: undefined
 })
 const local = ref<ImageGenerateParams>({ ...props.modelValue })
 
+const availableOutputFormats = computed(() => {
+  const formats = [...(caps.value.outputFormats ?? [])]
+  const isGptImage26 = /gpt-image-2\.6/i.test(props.modelKey)
+
+  if (isGptImage26 || supportsSvgOutput(props.modelKey, caps.value)) {
+    if (!formats.includes('png')) formats.unshift('png')
+    if (!formats.includes('svg')) formats.push('svg')
+  }
+  if (isGptImage26 || supportsGifOutput(props.modelKey, caps.value)) {
+    if (!formats.includes('png')) formats.unshift('png')
+    if (!formats.includes('gif')) formats.push('gif')
+  }
+  return formats
+})
+
 const visible = computed(() => Boolean(props.modelKey.trim()))
-const hasSections = computed(() => hasAnyImageGenerateCapability(caps.value))
+const hasSections = computed(
+  () => hasAnyImageGenerateCapability(caps.value) || availableOutputFormats.value.length > 0
+)
 
 const summaryText = computed(() => {
   const parts: string[] = []
@@ -235,6 +284,13 @@ const summaryText = computed(() => {
   }
   if (caps.value.resolutions.length && local.value.resolution) {
     parts.push(local.value.resolution)
+  }
+  if (
+    availableOutputFormats.value.length &&
+    local.value.outputFormat &&
+    local.value.outputFormat.toLowerCase() !== 'png'
+  ) {
+    parts.push(local.value.outputFormat.toUpperCase())
   }
   if (caps.value.counts.length && local.value.count != null) {
     parts.push(t('graph.inspector.generate.imageParams.countOption', { n: local.value.count }))
@@ -259,6 +315,14 @@ function qualityLabel(q: string): string {
   return q
 }
 
+function formatLabel(fmt: string): string {
+  const f = fmt.trim().toLowerCase()
+  if (f === 'gif') return t('graph.inspector.generate.imageParams.formatGif')
+  if (f === 'png') return t('graph.inspector.generate.imageParams.formatPng')
+  if (f === 'svg') return t('graph.inspector.generate.imageParams.formatSvg')
+  return fmt.toUpperCase()
+}
+
 function ratioIcon(ratio: string): string {
   return imageAspectRatioIcon(ratio)
 }
@@ -275,6 +339,16 @@ function pickQuality(q: string): void {
 
 function pickResolution(r: string): void {
   local.value = { ...local.value, resolution: r }
+  emitLocal()
+}
+
+function pickOutputFormat(fmt: string): void {
+  const isGif = fmt.toLowerCase() === 'gif'
+  local.value = {
+    ...local.value,
+    outputFormat: fmt,
+    ...(isGif ? { aspectRatio: '1:1', resolution: '512px' } : {})
+  }
   emitLocal()
 }
 
@@ -314,6 +388,7 @@ function applyCapabilities(nextCaps: ImageGenerateParamCapabilities): void {
     clamped.aspectRatio !== props.modelValue.aspectRatio ||
     clamped.resolution !== props.modelValue.resolution ||
     clamped.quality !== props.modelValue.quality ||
+    clamped.outputFormat !== props.modelValue.outputFormat ||
     clamped.count !== props.modelValue.count
   ) {
     emit('update:modelValue', { ...clamped })
@@ -327,6 +402,7 @@ async function refreshCapabilities(): Promise<void> {
       aspectRatios: [],
       resolutions: [],
       qualities: [],
+      outputFormats: [],
       counts: [],
       maxInputReferences: undefined
     }
@@ -352,6 +428,7 @@ function hydrateCapabilitiesForModelKey(): void {
       aspectRatios: [],
       resolutions: [],
       qualities: [],
+      outputFormats: [],
       counts: [],
       maxInputReferences: undefined
     }

@@ -1,6 +1,7 @@
 import {
   writePsdUint8Array,
   type Layer,
+  type LayerEffectsInfo,
   type LayerTextData,
   type LinkedFile,
   type PlacedLayer,
@@ -109,6 +110,85 @@ export function buildAgPsdLayerTextData(
       justification: et.align === 'center' ? 'center' : et.align === 'right' ? 'right' : 'left'
     }
   }
+}
+
+/**
+ * Builds native Photoshop Layer Style (`Lefx` / `LayerEffectsInfo`) for editable text layers
+ * carrying metallic vertical gradients, outer strokes, or drop shadows.
+ */
+export function buildAgPsdLayerEffects(
+  layerOrText: Pick<ImageLayerSplitLayer, 'editableText'> | UiEditableTextMeta
+): LayerEffectsInfo | undefined {
+  const et: UiEditableTextMeta | undefined =
+    'text' in layerOrText ? layerOrText : layerOrText.editableText
+  if (!et || !et.text?.trim()) return undefined
+
+  const effects: LayerEffectsInfo = { scale: 1 }
+  let hasAny = false
+
+  if (et.strokeColor && et.strokeColor.length === 3 && (et.strokeWidth ?? 0) > 0) {
+    effects.stroke = [
+      {
+        enabled: true,
+        position: 'outside',
+        fillType: 'color',
+        blendMode: 'normal',
+        opacity: 1,
+        size: { units: 'Pixels', value: Math.max(1, Math.round(et.strokeWidth ?? 2)) },
+        color: { r: et.strokeColor[0], g: et.strokeColor[1], b: et.strokeColor[2] }
+      }
+    ]
+    hasAny = true
+  }
+
+  if (et.gradientStops && et.gradientStops.length === 2) {
+    const [topC, botC] = et.gradientStops
+    effects.gradientOverlay = [
+      {
+        enabled: true,
+        blendMode: 'normal',
+        opacity: 1,
+        align: true,
+        scale: 1,
+        type: 'linear',
+        angle: -90,
+        gradient: {
+          name: 'UI Vertical Gradient',
+          type: 'solid',
+          smoothness: 1,
+          colorStops: [
+            { color: { r: topC[0], g: topC[1], b: topC[2] }, location: 0, midpoint: 0.5 },
+            { color: { r: botC[0], g: botC[1], b: botC[2] }, location: 1, midpoint: 0.5 }
+          ],
+          opacityStops: [
+            { opacity: 1, location: 0, midpoint: 0.5 },
+            { opacity: 1, location: 1, midpoint: 0.5 }
+          ]
+        }
+      }
+    ]
+    hasAny = true
+  }
+
+  if (et.dropShadow) {
+    const ds = et.dropShadow
+    effects.dropShadow = [
+      {
+        enabled: true,
+        blendMode: 'multiply',
+        color: { r: ds.color[0], g: ds.color[1], b: ds.color[2] },
+        opacity: Math.max(0.05, Math.min(1, ds.opacity)),
+        angle: ds.angle,
+        useGlobalLight: false,
+        distance: { units: 'Pixels', value: Math.max(1, Math.round(ds.distance)) },
+        choke: { units: 'Pixels', value: 0 },
+        size: { units: 'Pixels', value: Math.max(1, Math.round(ds.size)) }
+      }
+    ]
+    hasAny = true
+  }
+
+  return hasAny ? effects : undefined
 }
 
 export interface PsdDecodedRgba {
@@ -230,7 +310,7 @@ export async function layerSplitToPsdUint8Array(input: {
       name: layerDisplayName(layer, isBase),
       left,
       top,
-      blendMode: 'normal',
+      blendMode: isBase ? 'normal' : (layer.blendMode ?? 'normal'),
       opacity: 1,
       // 分组的可见性由分组节点自身承载，图层只反映自身开关，避免双重隐藏丢失原始状态。
       hidden: !layer.visible,
@@ -239,7 +319,14 @@ export async function layerSplitToPsdUint8Array(input: {
     renderedPixelOnly.set(layer.id, basePsdLayer)
 
     const textData = isBase ? undefined : buildAgPsdLayerTextData(layer, left, top, width, height)
-    const withTextLayer: Layer = textData ? { ...basePsdLayer, text: textData } : basePsdLayer
+    const textEffects = textData ? buildAgPsdLayerEffects(layer) : undefined
+    const withTextLayer: Layer = textData
+      ? {
+          ...basePsdLayer,
+          text: textData,
+          ...(textEffects ? { effects: textEffects } : {})
+        }
+      : basePsdLayer
     renderedWithText.set(layer.id, withTextLayer)
 
     // 共享组件智能对象：当图层绑定了 componentId 且未设为 keepOriginalPixels（且不是纯文字层）时挂载 placedLayer

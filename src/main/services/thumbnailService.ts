@@ -7,6 +7,7 @@ import {
   thumbRelativePathFor
 } from '@shared/media/thumbnailPath'
 import {
+  isAnimatedImageFilePath,
   isImageFilePath,
   isLayeredSourceImageFilePath,
   isModelFilePath,
@@ -71,6 +72,8 @@ function isThumbnailableMediaPath(filePath: string): boolean {
   // 矢量图（SVG）：nativeImage 解不出画面，没有可生成的位图缩略图，
   // 预览一律走原文件（Chromium 能直接渲染）
   if (isVectorImageFilePath(filePath)) return false
+  // 动态图（GIF）：nativeImage 只能提取第一帧，生成静态 PNG 会破坏动图预览，走原文件
+  if (isAnimatedImageFilePath(filePath)) return false
   return isImageFilePath(filePath) || isVideoFilePath(filePath)
 }
 
@@ -81,6 +84,8 @@ function loadNativeImageSync(sourceAbs: string): NativeImage | null {
   if (isLayeredSourceImageFilePath(sourceAbs)) return null
   // 矢量图（SVG）同理：nativeImage 不认矢量格式
   if (isVectorImageFilePath(sourceAbs)) return null
+  // 动态图（GIF）同理：不能当静态图处理
+  if (isAnimatedImageFilePath(sourceAbs)) return null
   try {
     const buf = readFileSync(sourceAbs)
     const fromBuf = nativeImage.createFromBuffer(buf)

@@ -15,7 +15,8 @@ import {
   type LocalOcrTextBox,
   type UiControlPartRole,
   type UiControlType,
-  type UiEditableTextMeta
+  type UiEditableTextMeta,
+  type UiLayerBlendMode
 } from './uiControlSpec'
 
 export const LAYER_SPLIT_MAX_LAYERS = 96
@@ -136,6 +137,10 @@ export interface ImageLayerSplitLayer {
   originalImageId?: string
   /** 组件替换渲染后的图层 imageId（供编辑器切换回组件库母本） */
   componentImageId?: string
+  /** 图层混合模式（默认 'normal'；发光/粒子光束支持原生 PSD 'screen' / 'linear dodge'） */
+  blendMode?: UiLayerBlendMode
+  /** 毛玻璃背景高斯模糊半径（px，存在实时背景模糊面板时记录） */
+  backdropBlurRadius?: number
   /** 精准拆层质检发现的问题（edge_halo / base_residue / occluded_blurry 等），供编辑器标红 */
   qaIssues?: string[]
 }
@@ -388,8 +393,126 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
                 ] as [number, number, number])
               : ([240, 230, 200] as [number, number, number]),
           ...(row.editableText.align ? { align: row.editableText.align } : {}),
-          ...(row.editableText.fontName ? { fontName: row.editableText.fontName } : {})
+          ...(row.editableText.fontWeight === 600 || row.editableText.fontWeight === 700
+            ? { fontWeight: row.editableText.fontWeight as 600 | 700 }
+            : {}),
+          ...(row.editableText.fontStyle ? { fontStyle: row.editableText.fontStyle } : {}),
+          ...(row.editableText.fontName ? { fontName: row.editableText.fontName } : {}),
+          ...(Array.isArray(row.editableText.strokeColor) &&
+          row.editableText.strokeColor.length >= 3
+            ? {
+                strokeColor: [
+                  clampInt(row.editableText.strokeColor[0], 0, 0, 255),
+                  clampInt(row.editableText.strokeColor[1], 0, 0, 255),
+                  clampInt(row.editableText.strokeColor[2], 0, 0, 255)
+                ] as [number, number, number]
+              }
+            : {}),
+          ...(typeof row.editableText.strokeWidth === 'number' &&
+          Number.isFinite(row.editableText.strokeWidth) &&
+          row.editableText.strokeWidth > 0
+            ? { strokeWidth: clampInt(row.editableText.strokeWidth, 1, 1, 32) }
+            : {}),
+          ...(Array.isArray(row.editableText.gradientStops) &&
+          row.editableText.gradientStops.length >= 2 &&
+          Array.isArray(row.editableText.gradientStops[0]) &&
+          Array.isArray(row.editableText.gradientStops[1])
+            ? {
+                gradientStops: [
+                  [
+                    clampInt(row.editableText.gradientStops[0][0], 255, 0, 255),
+                    clampInt(row.editableText.gradientStops[0][1], 255, 0, 255),
+                    clampInt(row.editableText.gradientStops[0][2], 255, 0, 255)
+                  ],
+                  [
+                    clampInt(row.editableText.gradientStops[1][0], 200, 0, 255),
+                    clampInt(row.editableText.gradientStops[1][1], 200, 0, 255),
+                    clampInt(row.editableText.gradientStops[1][2], 200, 0, 255)
+                  ]
+                ] as [[number, number, number], [number, number, number]]
+              }
+            : {}),
+          ...(row.editableText.dropShadow &&
+          typeof row.editableText.dropShadow === 'object' &&
+          Array.isArray((row.editableText.dropShadow as Record<string, unknown>).color) &&
+          ((row.editableText.dropShadow as Record<string, unknown>).color as unknown[]).length >= 3
+            ? {
+                dropShadow: {
+                  color: [
+                    clampInt(
+                      (
+                        (row.editableText.dropShadow as Record<string, unknown>).color as number[]
+                      )[0],
+                      0,
+                      0,
+                      255
+                    ),
+                    clampInt(
+                      (
+                        (row.editableText.dropShadow as Record<string, unknown>).color as number[]
+                      )[1],
+                      0,
+                      0,
+                      255
+                    ),
+                    clampInt(
+                      (
+                        (row.editableText.dropShadow as Record<string, unknown>).color as number[]
+                      )[2],
+                      0,
+                      0,
+                      255
+                    )
+                  ] as [number, number, number],
+                  opacity: Math.max(
+                    0.05,
+                    Math.min(
+                      1,
+                      Number(
+                        (row.editableText.dropShadow as Record<string, unknown>).opacity ?? 0.45
+                      )
+                    )
+                  ),
+                  distance: clampInt(
+                    Number(
+                      (row.editableText.dropShadow as Record<string, unknown>).distance ??
+                        (row.editableText.dropShadow as Record<string, unknown>).offsetY ??
+                        2
+                    ),
+                    2,
+                    0,
+                    64
+                  ),
+                  size: clampInt(
+                    Number(
+                      (row.editableText.dropShadow as Record<string, unknown>).size ??
+                        (row.editableText.dropShadow as Record<string, unknown>).blur ??
+                        3
+                    ),
+                    3,
+                    0,
+                    64
+                  ),
+                  angle: clampInt(
+                    Number((row.editableText.dropShadow as Record<string, unknown>).angle ?? 90),
+                    90,
+                    0,
+                    360
+                  )
+                }
+              }
+            : {})
         }
+      : undefined
+  const blendMode =
+    row.blendMode === 'screen' || row.blendMode === 'linear dodge' || row.blendMode === 'normal'
+      ? row.blendMode
+      : undefined
+  const backdropBlurRadius =
+    typeof row.backdropBlurRadius === 'number' &&
+    Number.isFinite(row.backdropBlurRadius) &&
+    row.backdropBlurRadius > 0
+      ? clampInt(row.backdropBlurRadius, 1, 1, 64)
       : undefined
   const exportName =
     typeof row.exportName === 'string' &&
@@ -436,6 +559,8 @@ function normalizeLayer(raw: unknown, index: number): ImageLayerSplitLayer | nul
     ...(uiControlName ? { uiControlName } : {}),
     ...(uiControlType ? { uiControlType } : {}),
     ...(uiPartRole ? { uiPartRole } : {}),
+    ...(blendMode && blendMode !== 'normal' ? { blendMode } : {}),
+    ...(backdropBlurRadius ? { backdropBlurRadius } : {}),
     ...(editableText ? { editableText } : {}),
     ...(exportName ? { exportName } : {}),
     ...(prefabKey ? { prefabKey } : {}),

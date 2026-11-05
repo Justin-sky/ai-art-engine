@@ -568,8 +568,14 @@ export function inpaintPushPull(img: RgbaImage, hole: Uint8Array): void {
   }
 }
 
-/** 把 top 按 alpha 叠到 base 上（非预乘 RGBA 的标准 over 合成），原地修改 base */
-export function compositeOver(base: RgbaImage, top: RgbaImage, left: number, top0: number): void {
+/** 把 top 按 alpha（及可选 PSD 混合模式 'normal' | 'screen' | 'linear dodge'）叠到 base 上，原地修改 base */
+export function compositeOver(
+  base: RgbaImage,
+  top: RgbaImage,
+  left: number,
+  top0: number,
+  blendMode: 'normal' | 'screen' | 'linear dodge' = 'normal'
+): void {
   for (let y = 0; y < top.height; y++) {
     const by = y + top0
     if (by < 0 || by >= base.height) continue
@@ -584,7 +590,15 @@ export function compositeOver(base: RgbaImage, top: RgbaImage, left: number, top
       const oa = ta + ba * (1 - ta)
       if (oa <= 0) continue
       for (let c = 0; c < 3; c++) {
-        base.data[bi + c] = (top.data[ti + c]! * ta + base.data[bi + c]! * ba * (1 - ta)) / oa
+        const tc = top.data[ti + c]!
+        const bc = base.data[bi + c]!
+        if (blendMode === 'normal') {
+          base.data[bi + c] = (tc * ta + bc * ba * (1 - ta)) / oa
+        } else {
+          const blended =
+            blendMode === 'screen' ? bc + tc - (bc * tc) / 255 : Math.min(255, bc + tc)
+          base.data[bi + c] = (blended * ta * ba + tc * ta * (1 - ba) + bc * ba * (1 - ta)) / oa
+        }
       }
       base.data[bi + 3] = oa * 255
     }

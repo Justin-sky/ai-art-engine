@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_IMAGE_GENERATE_CAPABILITIES,
   DEFAULT_MAX_INPUT_REFERENCES,
+  clampImageGenerateParams,
   parseImageGenerateCapabilities,
   parseInputReferencesMax,
   resolveImageGenerateParamsForApi,
-  resolveMaxInputReferences
+  resolveMaxInputReferences,
+  supportsGifOutput,
+  supportsSvgOutput
 } from '../src/shared/graph'
 
 describe('resolveImageGenerateParamsForApi', () => {
@@ -82,5 +85,65 @@ describe('parseInputReferencesMax / resolveMaxInputReferences', () => {
     expect(resolveMaxInputReferences({})).toBe(DEFAULT_MAX_INPUT_REFERENCES)
     expect(resolveMaxInputReferences({ maxInputReferences: 3 })).toBe(3)
     expect(resolveMaxInputReferences({ maxInputReferences: 0 })).toBe(0)
+  })
+})
+
+describe('outputFormat & GIF direct output capabilities', () => {
+  it('parses output_format / outputFormats from supported_parameters', () => {
+    const caps = parseImageGenerateCapabilities({
+      output_format: { type: 'enum', values: ['png', 'gif', 'jpeg', 'webp'] }
+    })
+    expect(caps.outputFormats).toEqual(['png', 'gif', 'jpeg', 'webp'])
+  })
+
+  it('detects GIF output support from model ID or supported parameters', () => {
+    expect(supportsGifOutput('openai/gpt-image-2.6-flare')).toBe(true)
+    expect(supportsGifOutput('gpt-image-2.6-sunburst')).toBe(true)
+    expect(supportsGifOutput('gpt-image-2.6')).toBe(true)
+    expect(supportsGifOutput('gpt-image-1')).toBe(false)
+    expect(supportsGifOutput('dall-e-3')).toBe(false)
+
+    expect(
+      supportsGifOutput('custom-model', {
+        supported_parameters: {
+          output_format: { values: ['png', 'gif'] }
+        }
+      })
+    ).toBe(true)
+  })
+
+  it('detects SVG output support from model ID or supported parameters', () => {
+    expect(supportsSvgOutput('openai/gpt-image-2.6-flare')).toBe(true)
+    expect(supportsSvgOutput('gpt-image-2.6-sunburst')).toBe(true)
+    expect(supportsSvgOutput('gpt-image-2.6')).toBe(true)
+    expect(supportsSvgOutput('gpt-image-1')).toBe(false)
+    expect(supportsSvgOutput('dall-e-3')).toBe(false)
+
+    expect(
+      supportsSvgOutput('custom-model', {
+        supported_parameters: {
+          output_format: { values: ['png', 'svg'] }
+        }
+      })
+    ).toBe(true)
+  })
+
+  it('clamps outputFormat according to capabilities', () => {
+    const capsWithGif = {
+      ...DEFAULT_IMAGE_GENERATE_CAPABILITIES,
+      outputFormats: ['png', 'gif', 'webp']
+    }
+    const clamped = clampImageGenerateParams({ outputFormat: 'gif' }, capsWithGif)
+    expect(clamped.outputFormat).toBe('gif')
+
+    const clampedInvalid = clampImageGenerateParams({ outputFormat: 'bmp' }, capsWithGif)
+    expect(clampedInvalid.outputFormat).toBe('png')
+  })
+
+  it('resolves outputFormat in resolveImageGenerateParamsForApi', () => {
+    const resolved = resolveImageGenerateParamsForApi({
+      generateOutputFormat: 'gif'
+    })
+    expect(resolved.outputFormat).toBe('gif')
   })
 })

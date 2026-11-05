@@ -7,6 +7,8 @@ export interface ImageGenerateParams {
   aspectRatio?: string
   resolution?: string
   quality?: string
+  /** 期望输出格式：'png' | 'gif' | 'webp' | 'jpeg'（如 gpt-image-2.6 直出动图传 'gif'） */
+  outputFormat?: string
   /** 生成张数 n */
   count?: number
   /** 随机种子：固定可复现；缺省由服务端随机 */
@@ -21,6 +23,7 @@ export interface ImageGenerateParamCapabilities {
   aspectRatios: string[]
   resolutions: string[]
   qualities: string[]
+  outputFormats?: string[]
   counts: number[]
   /**
    * 模型允许的 `input_references` 数量上限。
@@ -81,6 +84,7 @@ export const DEFAULT_IMAGE_GENERATE_CAPABILITIES: ImageGenerateParamCapabilities
     '21:9',
     '9:21'
   ],
+  outputFormats: [],
   counts: [1, 2, 4],
   maxInputReferences: DEFAULT_MAX_INPUT_REFERENCES
 }
@@ -194,6 +198,9 @@ export function parseImageGenerateCapabilities(
   const aspectRatios = parseEnumValues(sp.aspect_ratio ?? sp.aspectRatio)
   const resolutions = parseEnumValues(sp.resolution)
   const qualities = parseEnumValues(sp.quality).map((q) => normalizeImageQuality(q) || q)
+  const outputFormats = parseEnumValues(
+    sp.output_format ?? sp.outputFormat ?? sp.format ?? sp.formats
+  )
   const counts = parseCountOptions(sp.n)
   const maxInputReferences = parseInputReferencesMax(sp.input_references ?? sp.inputReferences)
 
@@ -201,6 +208,7 @@ export function parseImageGenerateCapabilities(
     aspectRatios: uniqueStrings(aspectRatios),
     resolutions: uniqueStrings(resolutions),
     qualities: uniqueStrings(qualities),
+    outputFormats: uniqueStrings(outputFormats),
     counts,
     ...(maxInputReferences != null ? { maxInputReferences } : {})
   }
@@ -223,6 +231,7 @@ export function hasAnyImageGenerateCapability(caps: ImageGenerateParamCapabiliti
     caps.aspectRatios.length > 0 ||
     caps.resolutions.length > 0 ||
     caps.qualities.length > 0 ||
+    (caps.outputFormats?.length ?? 0) > 0 ||
     caps.counts.length > 0
   )
 }
@@ -257,6 +266,11 @@ export function clampImageGenerateParams(
       next.count = pickPreferredNum(caps.counts, [1, 2, 4]) ?? caps.counts[0]
     }
   }
+  if (caps.outputFormats?.length) {
+    if (next.outputFormat && !caps.outputFormats.includes(next.outputFormat)) {
+      next.outputFormat = caps.outputFormats.includes('png') ? 'png' : caps.outputFormats[0]
+    }
+  }
   return next
 }
 
@@ -278,6 +292,7 @@ export function readImageGenerateParamsFromNode(params: {
   generateAspectRatio?: string
   generateResolution?: string
   generateQuality?: string
+  generateOutputFormat?: string
   generateCount?: number
   generateSeed?: number
   generateSeedUseGlobal?: boolean
@@ -287,6 +302,7 @@ export function readImageGenerateParamsFromNode(params: {
     aspectRatio: params.generateAspectRatio?.trim() || undefined,
     resolution: params.generateResolution?.trim() || undefined,
     quality: normalizeImageQuality(params.generateQuality) || undefined,
+    outputFormat: params.generateOutputFormat?.trim().toLowerCase() || undefined,
     count:
       typeof params.generateCount === 'number' && params.generateCount >= 1
         ? Math.floor(params.generateCount)
@@ -306,6 +322,7 @@ export function resolveImageGenerateParamsForApi(
     generateAspectRatio?: string
     generateResolution?: string
     generateQuality?: string
+    generateOutputFormat?: string
     generateCount?: number
     generateSeed?: number
     generateSeedUseGlobal?: boolean
@@ -320,6 +337,7 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
   generateAspectRatio: string
   generateResolution: string
   generateQuality: string
+  generateOutputFormat?: string
   generateCount?: number
   generateSeed?: number
   generateSeedUseGlobal?: boolean
@@ -329,6 +347,7 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
     generateAspectRatio: params.aspectRatio ?? '',
     generateResolution: params.resolution ?? '',
     generateQuality: params.quality ?? '',
+    generateOutputFormat: params.outputFormat ?? '',
     ...(params.count != null && params.count >= 1
       ? { generateCount: Math.floor(params.count) }
       : {}),
@@ -336,4 +355,48 @@ export function imageGenerateParamsToNodePatch(params: ImageGenerateParams): {
     generateSeedUseGlobal: params.seedUseGlobal !== false,
     generateTransparentBg: params.transparentBg !== false
   }
+}
+
+/**
+ * 判断模型是否支持直出动态 GIF（如 gpt-image-2.6 家族或明确声明 output_format 包含 gif 的模型）
+ */
+export function supportsGifOutput(modelId?: string | null, capabilities?: unknown): boolean {
+  const id = (modelId ?? '').trim().toLowerCase()
+  if (id && (/gpt-image-2\.6/i.test(id) || /gif/i.test(id))) {
+    return true
+  }
+  if (capabilities && typeof capabilities === 'object') {
+    const sp = (capabilities as Record<string, unknown>).supported_parameters as
+      Record<string, unknown> | undefined
+    const fmt = sp?.output_format ?? sp?.outputFormat ?? sp?.format
+    if (fmt && typeof fmt === 'object') {
+      const values = (fmt as { values?: unknown }).values
+      if (Array.isArray(values) && values.some((v) => String(v).toLowerCase() === 'gif')) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/**
+ * 判断模型是否支持直出矢量 SVG（如 gpt-image-2.6 家族或明确声明 output_format 包含 svg 的模型）
+ */
+export function supportsSvgOutput(modelId?: string | null, capabilities?: unknown): boolean {
+  const id = (modelId ?? '').trim().toLowerCase()
+  if (id && /gpt-image-2\.6/i.test(id)) {
+    return true
+  }
+  if (capabilities && typeof capabilities === 'object') {
+    const sp = (capabilities as Record<string, unknown>).supported_parameters as
+      Record<string, unknown> | undefined
+    const fmt = sp?.output_format ?? sp?.outputFormat ?? sp?.format
+    if (fmt && typeof fmt === 'object') {
+      const values = (fmt as { values?: unknown }).values
+      if (Array.isArray(values) && values.some((v) => String(v).toLowerCase() === 'svg')) {
+        return true
+      }
+    }
+  }
+  return false
 }

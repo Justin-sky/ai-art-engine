@@ -6,7 +6,13 @@
  * 4. 同级绘制顺序 + DFS 绘制序号 + 遮挡层级（决定逐级剥层的次序）
  */
 
-import type { LocalOcrTextBox, UiControlPartRole, UiControlType } from '../uiControlSpec'
+import type {
+  LocalOcrTextBox,
+  UiControlPartRole,
+  UiControlType,
+  UiFontStyleCategory,
+  UiLayerBlendMode
+} from '../uiControlSpec'
 import { clampRect, rectArea, rectIntersection, rectUnion } from './pixels'
 import {
   UI_ELEMENT_KINDS,
@@ -33,6 +39,8 @@ export interface RawLayoutElement {
   ocrRefs: number[]
   text?: string
   matchedComponentId?: string
+  blendModeHint?: UiLayerBlendMode
+  fontStyleHint?: UiFontStyleCategory
 }
 
 export interface ParsedLayout {
@@ -254,12 +262,46 @@ function readBackgroundRepairMode(raw: unknown): UiBackgroundRepairMode | undefi
   return undefined
 }
 
+function readBlendModeHint(raw: unknown): UiLayerBlendMode | undefined {
+  if (typeof raw !== 'string') return undefined
+  const s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, ' ')
+  if (s === 'screen') return 'screen'
+  if (s === 'linear dodge' || s === 'add' || s === 'additive' || s === 'plus') return 'linear dodge'
+  if (s === 'normal') return 'normal'
+  return undefined
+}
+
+function readFontStyleHint(raw: unknown): UiFontStyleCategory | undefined {
+  if (typeof raw !== 'string') return undefined
+  const s = raw.trim().toLowerCase()
+  if (
+    s === 'sans' ||
+    s === 'serif' ||
+    s === 'rounded' ||
+    s === 'condensed' ||
+    s === 'monospace' ||
+    s === 'display'
+  ) {
+    return s
+  }
+  if (s.includes('serif') && !s.includes('sans')) return 'serif'
+  if (s.includes('round')) return 'rounded'
+  if (s.includes('condens') || s.includes('narrow') || s.includes('din')) return 'condensed'
+  if (s.includes('mono') || s.includes('code')) return 'monospace'
+  if (s.includes('display') || s.includes('heavy') || s.includes('black')) return 'display'
+  if (s.includes('sans')) return 'sans'
+  return undefined
+}
+
 /** 宽容解析 VLM 版面 JSON，坐标换算到给定画布像素 */
 export function parseLayoutResponse(
   raw: string,
   width: number,
   height: number,
-  maxElements = 120
+  maxElements = 256
 ): ParsedLayout {
   const parsed = extractJsonCandidate(raw)
   let list: unknown[] = []
@@ -322,13 +364,17 @@ export function parseLayoutResponse(
       width,
       height
     )
-    const repairMode = readElementRepairMode(rec.element_repair_mode ?? rec.repairMode)
+    const repairMode = readElementRepairMode(
+      rec.element_repair_mode ?? rec.repairMode ?? rec.repair
+    )
     const rawCompId =
       rec.component_id ?? rec.componentId ?? rec.matched_component_id ?? rec.matchedComponentId
     const matchedComponentId =
       typeof rawCompId === 'string' && rawCompId.trim() && rawCompId.trim().toLowerCase() !== 'null'
         ? rawCompId.trim()
         : undefined
+    const blendModeHint = readBlendModeHint(rec.blend_mode ?? rec.blendMode)
+    const fontStyleHint = readFontStyleHint(rec.font_style ?? rec.fontStyle)
     const effectiveParentRef = parentRef === id ? null : parentRef
     if (
       !effectiveParentRef &&
@@ -362,7 +408,9 @@ export function parseLayoutResponse(
       order: Number.isFinite(orderNum) ? orderNum : index,
       ocrRefs: readOcrRefs(rec.ocr ?? rec.ocrIds ?? rec.ocr_ids),
       ...(text ? { text } : {}),
-      ...(matchedComponentId ? { matchedComponentId } : {})
+      ...(matchedComponentId ? { matchedComponentId } : {}),
+      ...(blendModeHint ? { blendModeHint } : {}),
+      ...(fontStyleHint ? { fontStyleHint } : {})
     })
   }
   return {
@@ -529,6 +577,8 @@ export function buildLayoutTree(input: {
       ...(raw.negativePoints?.length ? { negativePoints: raw.negativePoints } : {}),
       ...(raw.repairMode ? { repairMode: raw.repairMode } : {}),
       ...(raw.matchedComponentId ? { matchedComponentId: raw.matchedComponentId } : {}),
+      ...(raw.blendModeHint ? { blendModeHint: raw.blendModeHint } : {}),
+      ...(raw.fontStyleHint ? { fontStyleHint: raw.fontStyleHint } : {}),
       parentId: raw.parentRef,
       order: raw.order
     }

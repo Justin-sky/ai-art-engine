@@ -195,6 +195,69 @@ export function readAnimCellHoldsFromNode(
   return normalizeAnimCellHolds(params?.animCellHolds, s.rows, s.cols)
 }
 
+/** 逐帧编辑自定义覆盖数据（如橡皮擦擦除、局部微修后的 dataUrl） */
+export function normalizeAnimCellEdits(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = k.trim()
+    const url = typeof v === 'string' ? v.trim() : ''
+    if (key && (url.startsWith('data:image/') || url.startsWith('http') || url.length > 20)) {
+      out[key] = url
+    }
+  }
+  return out
+}
+
+export function readAnimCellEditsFromNode(
+  params: { animCellEdits?: unknown } | null | undefined
+): Record<string, string> {
+  return normalizeAnimCellEdits(params?.animCellEdits)
+}
+
+/** 逐帧显示与播放顺序自定义列表（为空则按默认网格顺序） */
+export function normalizeAnimCellOrder(raw: unknown, validKeys: string[]): string[] {
+  if (!Array.isArray(raw) || !raw.length) return validKeys.slice()
+  const validSet = new Set(validKeys)
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const item of raw) {
+    const key = String(item ?? '').trim()
+    if (validSet.has(key) && !seen.has(key)) {
+      seen.add(key)
+      out.push(key)
+    }
+  }
+  for (const key of validKeys) {
+    if (!seen.has(key)) {
+      out.push(key)
+    }
+  }
+  return out
+}
+
+export function readAnimCellOrderFromNode(
+  params: { animCellOrder?: unknown; animRows?: unknown; animCols?: unknown } | null | undefined,
+  fallbackKeys?: string[]
+): string[] {
+  const s = readAnim2dFromNode(params ?? {})
+  const defKeys = fallbackKeys ?? anim2dCellKeys(s.rows, s.cols)
+  return normalizeAnimCellOrder(params?.animCellOrder, defKeys)
+}
+
+/** 移动帧顺序：direction = -1（前移）或 1（后移） */
+export function moveAnimCellOrder(order: string[], cellKey: string, direction: -1 | 1): string[] {
+  const idx = order.indexOf(cellKey)
+  if (idx < 0) return order.slice()
+  const nextIdx = idx + direction
+  if (nextIdx < 0 || nextIdx >= order.length) return order.slice()
+  const next = order.slice()
+  const temp = next[idx]
+  next[idx] = next[nextIdx]
+  next[nextIdx] = temp
+  return next
+}
+
 /**
  * 构建专业游戏动作打击感节奏预设（逐格停留倍率）：
  * - uniform: 全帧等长 1x
