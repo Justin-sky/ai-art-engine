@@ -8,7 +8,7 @@
           @pop-to="diveContext.popTo"
         />
       </div>
-      <div v-if="!embedded && !diving" class="toolbar">
+      <div v-if="!embedded && !diving && !isWorkspaceFullscreen" class="toolbar">
         <span>{{ typeLabel }}</span>
         <span class="spacer" />
         <span class="hint">{{ t('asset.editor.graphHint') }}</span>
@@ -35,9 +35,12 @@
             <span v-if="isDraft" class="draft-mark">*</span>
           </h2>
         </div>
-        <button @click="onAttach">
-          {{ attachLabel }}
-        </button>
+        <div class="head-actions">
+          <button @click="onAttach">
+            {{ attachLabel }}
+          </button>
+          <WorkspaceFullscreenBtn v-if="!embedded" />
+        </div>
       </header>
 
       <div class="preview">
@@ -122,6 +125,7 @@ import {
 } from '@shared/mediaFileExtensions'
 import { persistAssetRecord, useAssetRecord } from '../composables/useAssetRecord'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useProjectStore } from '../stores/project'
@@ -130,6 +134,7 @@ import NodeGraphEditor from './NodeGraphEditor.vue'
 import GraphToolbarCollapseBtn from './GraphToolbarCollapseBtn.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
 import EditorDiveChildHost from './EditorDiveChildHost.vue'
+import WorkspaceFullscreenBtn from './WorkspaceFullscreenBtn.vue'
 import { isEditorDiveViewFrame } from '../features/graph/model/editorDive'
 import { openFullImagePreview } from '../features/media/openFullImagePreview'
 import { resolveAssetPlaybackUrl } from '../features/media/assetUrlCache'
@@ -143,6 +148,7 @@ const props = defineProps<{
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const { t, assetTypeLabel } = useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const error = ref('')
 const previewUrl = ref('')
 const previewLoading = ref(false)
@@ -413,6 +419,12 @@ async function onAttach(): Promise<void> {
 .head h2 {
   font-size: 16px;
   margin-top: 2px;
+}
+
+.head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .preview {

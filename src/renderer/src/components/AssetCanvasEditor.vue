@@ -8,7 +8,7 @@
       />
     </div>
 
-    <div v-if="!diving" class="toolbar">
+    <div v-if="!diving && !isWorkspaceFullscreen" class="toolbar">
       <span>{{ t('studio.editor.canvas') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('canvas.asset.hint') }}</span>
@@ -30,6 +30,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { useAssetRecord } from '../composables/useAssetRecord'
 import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { isEditorDiveViewFrame } from '../features/graph/model/editorDive'
@@ -44,6 +45,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const workspace = useWorkspaceStore()
 const toolbarCollapsed = ref(false)
 const { asset: canvasAsset } = useAssetRecord(props.canvasAssetId)

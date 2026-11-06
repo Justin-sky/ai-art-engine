@@ -3,7 +3,7 @@
     <!-- 插件市场是主进程单独开的窗口：该窗口只放市场视图，不挂主界面与顶栏 -->
     <MarketplaceView v-if="isMarketplace" />
     <template v-else>
-      <header class="topbar">
+      <header v-show="!isNativeHtmlFullscreen" class="topbar">
         <ProjectOpenMenu />
         <div v-if="project.isOpen" class="topbar-meta">
           <span class="muted">{{ project.config?.name }}</span>
@@ -65,17 +65,23 @@ import { executeEditorCommand } from './editor/extensions'
 import { applyEditorPreferences } from './editor/preferences'
 import { invalidateGenerateModelSettingsCache } from './features/graph/model/generateModelOptions'
 import { diveEditorHistory } from './features/graph/ui/diveEditorHistory'
+import {
+  installWorkspaceFullscreenListeners,
+  useWorkspaceFullscreen
+} from './composables/useWorkspaceFullscreen'
 
 const route = useRoute()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const editor = useEditorKernel()
 const mcpActivities = useMcpActivitiesStore()
+const { isNativeHtmlFullscreen } = useWorkspaceFullscreen()
 
 const isSettings = computed(() => route.name === 'settings')
 /** 插件市场窗口：该路由下不渲染主界面（窗口是主进程单独开的） */
 const isMarketplace = computed(() => route.name === 'marketplace')
 const mainView = ref<'home' | 'studio'>('home')
+let stopWorkspaceFullscreen: (() => void) | null = null
 let stopAssetUpdated: (() => void) | null = null
 let stopAssetRemoved: (() => void) | null = null
 let stopFoldersUpdated: (() => void) | null = null
@@ -130,6 +136,9 @@ function onEditorShortcut(event: KeyboardEvent): void {
 
 onMounted(() => {
   window.addEventListener('keydown', onEditorShortcut)
+  if (!isMarketplace.value) {
+    stopWorkspaceFullscreen = installWorkspaceFullscreenListeners()
+  }
   registerMcpTaskRunner()
   registerMcpRenderJobRunner()
   mcpActivities.setup()
@@ -180,6 +189,8 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onEditorShortcut)
+  stopWorkspaceFullscreen?.()
+  stopWorkspaceFullscreen = null
   stopAssetUpdated?.()
   stopAssetUpdated = null
   stopAssetRemoved?.()

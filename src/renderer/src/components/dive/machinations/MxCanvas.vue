@@ -1011,6 +1011,37 @@
       <button type="button" @click="zoomBy(1 / 1.2)">−</button>
       <span class="zoom">{{ Math.round(store.view.zoom * 100) }}%</span>
       <button type="button" @click="zoomBy(1.2)">+</button>
+      <span class="sep" />
+      <button
+        type="button"
+        :class="{ 'is-on': isMxCanvasFullscreenFocus }"
+        :aria-pressed="isMxCanvasFullscreenFocus"
+        :title="
+          isMxCanvasFullscreenFocus
+            ? t('mx.canvas.exitFullscreenFocus')
+            : t('mx.canvas.fullscreenFocus')
+        "
+        @click="toggleMxCanvasFullscreen"
+      >
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" aria-hidden="true">
+          <path
+            v-if="!isMxCanvasFullscreenFocus"
+            d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"
+            stroke="currentColor"
+            stroke-width="1.45"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            v-else
+            d="M6 2.5V6H2.5M10 2.5V6h3.5M13.5 10H10v3.5M2.5 10H6v3.5"
+            stroke="currentColor"
+            stroke-width="1.45"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
     </div>
 
     <!-- ══════════ 多选节点时的顶部悬浮对齐与等距排版工具栏 ══════════ -->
@@ -1487,9 +1518,12 @@ import {
   type MxPullMode
 } from '@shared/gameAssets'
 import { useStudioI18n } from '../../../composables/useStudioI18n'
-import { useMxStudioStore, type MxCanvasTheme, type MxTool } from './mxStudioStore'
+import { useWorkspaceFullscreen } from '../../../composables/useWorkspaceFullscreen'
+import { useMxStudioStore, type MxCanvasTheme, type MxDrawer, type MxTool } from './mxStudioStore'
 
 const { t } = useStudioI18n()
+const { isWorkspaceFullscreen, enterWorkspaceFullscreen, exitWorkspaceFullscreen } =
+  useWorkspaceFullscreen()
 const store = useMxStudioStore()
 
 const rootRef = ref<HTMLDivElement | null>(null)
@@ -1501,6 +1535,65 @@ const hoveredNodeId = ref('')
 const searchOpen = ref(false)
 const searchQuery = ref('')
 const minimapOpen = ref(true)
+const mxCanvasFocusActive = ref(false)
+let savedMxChromeBeforeFocus: {
+  drawer: MxDrawer
+  inspectorOpen: boolean
+  resultsOpen: boolean
+  wasWorkspaceFullscreen: boolean
+} | null = null
+
+const isMxCanvasFullscreenFocus = computed(
+  () => isWorkspaceFullscreen.value && mxCanvasFocusActive.value
+)
+
+function restoreMxChromeAfterFocus(): void {
+  if (!savedMxChromeBeforeFocus) return
+  const snap = savedMxChromeBeforeFocus
+  savedMxChromeBeforeFocus = null
+  store.drawer.value = snap.drawer
+  store.inspectorOpen.value = snap.inspectorOpen
+  store.resultsOpen.value = snap.resultsOpen
+}
+
+function toggleMxCanvasFullscreen(): void {
+  if (isMxCanvasFullscreenFocus.value) {
+    const keepWorkspaceFs = savedMxChromeBeforeFocus?.wasWorkspaceFullscreen ?? false
+    mxCanvasFocusActive.value = false
+    restoreMxChromeAfterFocus()
+    if (!keepWorkspaceFs) {
+      exitWorkspaceFullscreen()
+    }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => fitView())
+    })
+    return
+  }
+  savedMxChromeBeforeFocus = {
+    drawer: store.drawer.value,
+    inspectorOpen: store.inspectorOpen.value,
+    resultsOpen: store.resultsOpen.value,
+    wasWorkspaceFullscreen: isWorkspaceFullscreen.value
+  }
+  store.drawer.value = ''
+  store.inspectorOpen.value = false
+  store.resultsOpen.value = false
+  mxCanvasFocusActive.value = true
+  enterWorkspaceFullscreen()
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => fitView())
+  })
+}
+
+watch(isWorkspaceFullscreen, (fs) => {
+  if (!fs && mxCanvasFocusActive.value) {
+    mxCanvasFocusActive.value = false
+    restoreMxChromeAfterFocus()
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => fitView())
+  })
+})
 const edgeEdit = ref<{ id: string; value: string; sx: number; sy: number } | null>(null)
 const nodeEdit = ref<{
   id: string
@@ -3242,10 +3335,20 @@ function onKeyDown(ev: KeyboardEvent): void {
     )
     ev.preventDefault()
   } else if (ev.key === 'Escape') {
+    const hadActiveInteraction =
+      store.tool.value !== 'select' ||
+      store.selection.nodes.length > 0 ||
+      store.selection.edges.length > 0 ||
+      Boolean(connectDrag.value) ||
+      searchOpen.value
     store.tool.value = 'select'
     store.select([])
     connectDrag.value = null
+    searchOpen.value = false
     closeMenus()
+    if (hadActiveInteraction) {
+      ev.preventDefault()
+    }
   } else if (ev.key === 'v' || ev.key === 'V') {
     store.tool.value = 'select'
   } else if (ev.key === 'f' || ev.key === 'F') {

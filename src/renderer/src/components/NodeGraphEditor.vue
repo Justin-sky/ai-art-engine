@@ -13,6 +13,7 @@
         v-if="diveNavActive && editorDive"
         :root-title="editorDive.rootTitle"
         :frames="editorDive.frames"
+        :show-fullscreen-toggle="false"
         @pop-to="editorDive.popTo"
       />
       <span v-else class="hint">{{ t('graph.toolbar.hint') }}</span>
@@ -221,8 +222,10 @@
           {{ t('graph.qcOverview.open') }}
         </button>
         <span ref="zoomLabelEl" class="zoom">100%</span>
+        <WorkspaceFullscreenBtn />
       </div>
     </div>
+    <WorkspaceFullscreenBtn v-else-if="isWorkspaceFullscreen" class="graph-fs-floating" />
     <div
       v-if="runMessage"
       class="run-banner"
@@ -799,6 +802,7 @@ import GraphLayoutFloatingBar from './GraphLayoutFloatingBar.vue'
 import GraphMinimap from './GraphMinimap.vue'
 import GraphStudioFocusStage from './GraphStudioFocusStage.vue'
 import EditorDiveBar from './EditorDiveBar.vue'
+import WorkspaceFullscreenBtn from './WorkspaceFullscreenBtn.vue'
 import NodeGraphEditorDialogLayer from './NodeGraphEditorDialogLayer.vue'
 import SaveAssetDialog from './SaveAssetDialog.vue'
 import StudioFloatingWindow from './StudioFloatingWindow.vue'
@@ -1069,6 +1073,7 @@ import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { promptAlert } from '../composables/useStudioPrompt'
 import { useEditorKernel } from '../editor/kernel'
 import { editorPreferences } from '../editor/preferences'
@@ -1162,6 +1167,7 @@ import {
 } from '../features/graph/contextMenuGroups'
 
 const { t, graphTypeLabel, assetTypeLabel, locale } = useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const project = useProjectStore()
 const workspace = useWorkspaceStore()
 const taskStore = useGraphTaskStore()
@@ -11267,6 +11273,13 @@ onBeforeUnmount(() => {
 })
 
 const studioFocusMode = ref(false)
+watch(isWorkspaceFullscreen, () => {
+  requestAnimationFrame(() => {
+    refreshGraphRenderWindow(true)
+    requestPreviewVisibilityUpdate()
+    requestEdgeRender()
+  })
+})
 const focusStageRef = ref<{ resetView: () => void } | null>(null)
 const isZhLocale = computed(() =>
   String(locale.value || '')
@@ -11924,6 +11937,14 @@ defineExpose({
   background: var(--bg-elevated);
   flex-shrink: 0;
   min-width: 0;
+}
+
+.graph-fs-floating {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 45;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
 }
 
 .graph-toolbar > .hint {

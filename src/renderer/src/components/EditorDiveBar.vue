@@ -33,17 +33,25 @@
         </button>
       </li>
     </ol>
+    <WorkspaceFullscreenBtn v-if="showFullscreenToggle" class="dive-fullscreen-btn" />
   </nav>
 </template>
 
 <script setup lang="ts">
 import { useStudioI18n } from '../composables/useStudioI18n'
 import type { EditorDiveFrame } from '../features/graph/model/editorDive'
+import WorkspaceFullscreenBtn from './WorkspaceFullscreenBtn.vue'
 
-defineProps<{
-  rootTitle: string
-  frames: EditorDiveFrame[]
-}>()
+withDefaults(
+  defineProps<{
+    rootTitle: string
+    frames: EditorDiveFrame[]
+    showFullscreenToggle?: boolean
+  }>(),
+  {
+    showFullscreenToggle: true
+  }
+)
 
 const emit = defineEmits<{
   popTo: [index: number]
@@ -124,5 +132,9 @@ const { t } = useStudioI18n()
   color: var(--text);
   cursor: default;
   font-weight: 600;
+}
+
+.dive-fullscreen-btn {
+  margin-left: auto;
 }
 </style>

@@ -1068,14 +1068,19 @@ export function validateMxFormula(
   return { valid: true, referencedVars: [...vars] }
 }
 
+const PURE_DECIMAL_LITERAL_RE = /^-?\d{1,15}(?:\.\d{1,15})?$/
+
 /** 求值任意表达式；语法错误返回 fallback */
 export function evaluateMxExpression(
   src: string | undefined,
   ctx: MxExprContext,
   fallback = 0
 ): number {
-  if (!src || !src.trim()) return fallback
-  const ast = parseMxExpression(src)
+  if (!src) return fallback
+  const trimmed = src.trim()
+  if (!trimmed) return fallback
+  if (PURE_DECIMAL_LITERAL_RE.test(trimmed)) return Number(trimmed)
+  const ast = parseMxExpression(trimmed)
   if (!ast) return fallback
   const v = evalAst(ast, ctx)
   return Number.isFinite(v) ? v : fallback
@@ -1503,6 +1508,7 @@ interface MxGraphIndex {
   delaysAndQueues: MxNode[]
   endNodes: MxNode[]
   nodeModTargets: MxNode[]
+  triggerOnPools: MxNode[]
   nodesByKind: Map<MxNodeKind, MxNode[]>
   outResByNode: Map<string, MxEdge[]>
   inResByNode: Map<string, MxEdge[]>
@@ -1554,6 +1560,7 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
   const registers: MxNode[] = []
   const delaysAndQueues: MxNode[] = []
   const endNodes: MxNode[] = []
+  const triggerOnPools: MxNode[] = []
   const nodesByKind = new Map<MxNodeKind, MxNode[]>()
   const outResByNode = new Map<string, MxEdge[]>()
   const inResByNode = new Map<string, MxEdge[]>()
@@ -1568,6 +1575,7 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     if (n.kind === 'register') registers.push(n)
     else if (n.kind === 'delay' || n.kind === 'queue') delaysAndQueues.push(n)
     else if (n.kind === 'end') endNodes.push(n)
+    else if (n.kind === 'pool' && n.triggerOn) triggerOnPools.push(n)
     let kArr = nodesByKind.get(n.kind)
     if (!kArr) {
       kArr = []
@@ -1657,6 +1665,7 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     delaysAndQueues,
     endNodes,
     nodeModTargets,
+    triggerOnPools,
     nodesByKind,
     outResByNode,
     inResByNode,
@@ -2287,11 +2296,25 @@ function recomputeRegisters(
   const gIdx = getMxGraphIndex(doc)
   const regs = gIdx.registers
   if (!regs.length) return
-  // 两遍，允许寄存器链式引用
+  // 两遍，允许寄存器链式引用；若第一遍全部为无输入纯常数寄存器，则无需重复第二遍
   for (let pass = 0; pass < 2; pass++) {
     let sharedVars: Record<string, number> | null = null
+    let allPureConst = true
     for (const n of regs) {
       const inputs = gIdx.stateInByNode.get(n.id) ?? EMPTY_EDGES
+      if (inputs.length === 0) {
+        const rawF = n.formula?.trim()
+        if (!rawF && n.trigger === 'interactive') continue
+        const constStr = rawF || String(n.initial ?? 0)
+        if (PURE_DECIMAL_LITERAL_RE.test(constStr)) {
+          let cv = Number(constStr)
+          if (n.min != null) cv = Math.max(n.min, cv)
+          if (n.max != null) cv = Math.min(n.max, cv)
+          state.values[n.id] = Math.round(cv * 1000) / 1000
+          continue
+        }
+      }
+      allPureConst = false
       const isFuncReg = isFunctionRegisterNode(n)
       // 若为无公式交互寄存器，或由 Node Modifier (+2 / -1 / +1/3 / =) 直接驱动的数值寄存器，保留其状态值（不在函数求值阶段重置）
       if (!isFuncReg) {
@@ -2357,6 +2380,7 @@ function recomputeRegisters(
         if (ident && !(ident in params)) sharedVars[ident] = state.values[n.id]!
       }
     }
+    if (allPureConst) break
   }
 }
 
@@ -2398,6 +2422,8 @@ function checkActivator(
   }
 }
 
+const SHARED_NOP_RNG = (): number => 0.5
+
 function isNodeActive(
   doc: MxDocument,
   node: MxNode,
@@ -2405,14 +2431,13 @@ function isNodeActive(
   params: Record<string, number>,
   sharedVars?: Record<string, number>
 ): boolean {
-  const ins = stateInputs(doc, node.id)
-  if (!ins.length) return true
   const gIdx = getMxGraphIndex(doc)
+  const ins = gIdx.stateInByNode.get(node.id)
+  if (!ins || !ins.length) return true
   let vars: Record<string, number> | undefined = sharedVars
-  const nopRng = (): number => 0.5
   for (const e of ins) {
-    if (!isEdgeActive(doc, e, state, params, nopRng, vars)) continue
-    const spec = getEffectiveStateSpec(doc, e, state, params, nopRng, vars)
+    if (!isEdgeActive(doc, e, state, params, SHARED_NOP_RNG, vars)) continue
+    const spec = getEffectiveStateSpec(doc, e, state, params, SHARED_NOP_RNG, vars)
     if (spec.type === 'expr' && !vars) {
       vars = buildVars(doc, state.values, params, state.step)
     }
@@ -2420,7 +2445,7 @@ function isNodeActive(
       spec,
       getStateEdgeOriginValue(doc, e, state),
       vars ?? params,
-      nopRng,
+      SHARED_NOP_RNG,
       gIdx.paramArrays
     )
     if (res === false) return false
@@ -2524,6 +2549,8 @@ function applyNodeStateModifiers(
   }
 }
 
+const NO_MOD_RESULT = { bonus: 0, overwrite: null } as const
+
 /** 状态连线对节点（Source / Drain / Gate / Delay）公式速率的修改量 */
 function modifierBonus(
   doc: MxDocument,
@@ -2531,11 +2558,11 @@ function modifierBonus(
   state: MxRuntimeState,
   base: number,
   params: Record<string, number> = {},
-  rng: () => number = () => 0.5
+  rng: () => number = SHARED_NOP_RNG
 ): { bonus: number; overwrite: number | null } {
-  const ins = stateInputs(doc, nodeId)
-  if (!ins.length) return { bonus: 0, overwrite: null }
   const gIdx = getMxGraphIndex(doc)
+  const ins = gIdx.stateInByNode.get(nodeId)
+  if (!ins || !ins.length) return NO_MOD_RESULT
   let sharedVars: Record<string, number> | undefined
   let bonus = 0
   let overwrite: number | null = null
@@ -2673,19 +2700,25 @@ function evalFlowAmount(
 ): number {
   const gIdx = getMxGraphIndex(doc)
   const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+
+  // 1) 检查直接指向该连线的状态边（Activator，支持 State-to-State 级联）
+  if (edgeStateIns.length > 0 && !isEdgeActive(doc, edge, state, params, rng)) return 0
+
+  const spec = parseMxFlowFormula(edge.formula)
+  const src = gIdx.byId.get(edge.from)
+  const dst = gIdx.byId.get(edge.to)
+  const srcModEligible = Boolean(src && src.kind !== 'pool' && src.kind !== 'register')
+  const hasSrcStateIns = srcModEligible && gIdx.stateInByNode.has(src!.id)
+
   let vars: Record<string, number> | null = null
   const ensureVars = (): Record<string, number> => {
     if (!vars) vars = buildVars(doc, state.values, params, state.step)
     return vars
   }
 
-  // 1) 检查直接指向该连线的状态边（Activator，支持 State-to-State 级联）
-  if (!isEdgeActive(doc, edge, state, params, rng)) return 0
-
-  const spec = parseMxFlowFormula(edge.formula)
-
   // 2) 检查并推进间隔（支持 `3|2`、`1|3..6`、`D6|D6`、`edge.interval` 与 `+xi`）
   if (
+    (spec.intervalExpr || edge.interval || edgeStateIns.length > 0 || hasSrcStateIns) &&
     !checkAndAdvanceEdgeInterval(doc, edge, spec, state, params, rng, ensureVars, commitInterval)
   ) {
     return 0
@@ -2694,9 +2727,6 @@ function evalFlowAmount(
   if (spec.type === 'all') {
     return applyEdgeLimits(edge, available)
   }
-
-  const src = gIdx.byId.get(edge.from)
-  const dst = gIdx.byId.get(edge.to)
 
   // 收集指向该连线本身的 Formula Modifiers / Overwrite
   let edgeOverwrite: number | null = null
@@ -2729,10 +2759,9 @@ function evalFlowAmount(
 
   // 3) 百分比 / 概率型资源边（含 >100% 官方规则：如 250% = 保底 2 个 + 50% 概率额外第 3 个；概率未命中 0 时不受 minLimit 抬升）
   if (spec.probability != null && spec.expr === '1' && edgeOverwrite === null) {
-    const srcMod =
-      src && src.kind !== 'pool' && src.kind !== 'register'
-        ? modifierBonus(doc, src.id, state, spec.probability * 100, params, rng)
-        : { bonus: 0, overwrite: null }
+    const srcMod = hasSrcStateIns
+      ? modifierBonus(doc, src!.id, state, spec.probability * 100, params, rng)
+      : NO_MOD_RESULT
     const basePct = srcMod.overwrite !== null ? srcMod.overwrite : spec.probability * 100
     const effPct = basePct * (1 + edgePctBonus) + edgeAddBonus + srcMod.bonus
     if (effPct <= 0) return 0
@@ -2754,7 +2783,7 @@ function evalFlowAmount(
   } else if (exprNeedsVars(spec.expr)) {
     const v = ensureVars()
     if (src) v.self = state.values[src.id] ?? 0
-    const nodeStateIns = src ? stateInputs(doc, src.id) : EMPTY_EDGES
+    const nodeStateIns = src ? (gIdx.stateInByNode.get(src.id) ?? EMPTY_EDGES) : EMPTY_EDGES
     const combinedStateIns =
       edgeStateIns.length && nodeStateIns.length
         ? [...edgeStateIns, ...nodeStateIns]
@@ -2785,14 +2814,13 @@ function evalFlowAmount(
   }
 
   // 指向本连线源节点的修改量（Source / Converter / Gate / Delay 产出加成；排除 Pool/Register Node Modifier），或指向 Drain 终点节点的修改量
-  const srcMod =
-    src && src.kind !== 'pool' && src.kind !== 'register'
-      ? modifierBonus(doc, src.id, state, base, params, rng)
-      : { bonus: 0, overwrite: null }
+  const srcMod = hasSrcStateIns
+    ? modifierBonus(doc, src!.id, state, base, params, rng)
+    : NO_MOD_RESULT
   const dstMod =
-    dst?.kind === 'drain'
+    dst?.kind === 'drain' && gIdx.stateInByNode.has(dst.id)
       ? modifierBonus(doc, dst.id, state, base, params, rng)
-      : { bonus: 0, overwrite: null }
+      : NO_MOD_RESULT
   if (edgeOverwrite === null) {
     if (srcMod.overwrite !== null) base = srcMod.overwrite
     else if (dstMod.overwrite !== null) base = dstMod.overwrite
@@ -3522,26 +3550,34 @@ export function stepMxSimulation(
     }
   }
 
+  const cloneNonEmpty = <T extends Record<string, number>>(src?: T): Record<string, number> => {
+    if (!src) return {}
+    for (const _k in src) return { ...src }
+    return {}
+  }
+
   const state: MxRuntimeState = {
     step,
     values: { ...prev.values },
-    active: { ...prev.active },
-    gateCursor: { ...prev.gateCursor },
-    buffers: Object.fromEntries(
-      Object.entries(prev.buffers).map(([k, v]) => [k, v.map((b) => ({ ...b }))])
-    ),
+    active: prev.ended ? { ...prev.active } : prev.active,
+    gateCursor: cloneNonEmpty(prev.gateCursor),
+    buffers: gIdx.delaysAndQueues.length
+      ? Object.fromEntries(
+          Object.entries(prev.buffers).map(([k, v]) => [k, v.map((b) => ({ ...b }))])
+        )
+      : {},
     edgeFlows: {},
     fired: {},
     ended: prev.ended,
     endReason: prev.endReason,
     totalProduced: prev.totalProduced,
     totalConsumed: prev.totalConsumed,
-    prevEdgeOrigin: prev.prevEdgeOrigin ? { ...prev.prevEdgeOrigin } : {},
-    edgeLastStep: prev.edgeLastStep ? { ...prev.edgeLastStep } : {},
-    edgeWaitSteps: prev.edgeWaitSteps ? { ...prev.edgeWaitSteps } : {},
-    gateTrigCount: prev.gateTrigCount ? { ...prev.gateTrigCount } : {},
-    gateQuotaSent: prev.gateQuotaSent ? { ...prev.gateQuotaSent } : {},
-    gateLastRoll: prev.gateLastRoll ? { ...prev.gateLastRoll } : {},
+    prevEdgeOrigin: cloneNonEmpty(prev.prevEdgeOrigin),
+    edgeLastStep: cloneNonEmpty(prev.edgeLastStep),
+    edgeWaitSteps: cloneNonEmpty(prev.edgeWaitSteps),
+    gateTrigCount: cloneNonEmpty(prev.gateTrigCount),
+    gateQuotaSent: cloneNonEmpty(prev.gateQuotaSent),
+    gateLastRoll: cloneNonEmpty(prev.gateLastRoll),
     poolTokens: clonedPoolTokens,
     runtimeParams: params
   }
@@ -3565,17 +3601,17 @@ export function stepMxSimulation(
   // 1) 激活状态
   const nowActive: Record<string, boolean> = {}
   for (const n of doc.nodes) {
-    nowActive[n.id] = isNodeActive(doc, n, state, params)
-    if (nowActive[n.id] !== prev.active[n.id]) {
-      events.push({ step, type: nowActive[n.id] ? 'activate' : 'deactivate', nodeId: n.id })
+    const act = gIdx.stateInByNode.has(n.id) ? isNodeActive(doc, n, state, params) : true
+    nowActive[n.id] = act
+    if (act !== prev.active[n.id]) {
+      events.push({ step, type: act ? 'activate' : 'deactivate', nodeId: n.id })
     }
   }
 
-  const startStepValues: Record<string, number> = { ...state.values }
   const receivedResources = new Set<string>()
   const receivedColorsByNode = new Map<string, Set<string>>()
   const recordNodeColor = (nodeId: string, color?: string): void => {
-    if (!color) return
+    if (!color || color === 'default') return
     let s = receivedColorsByNode.get(nodeId)
     if (!s) {
       s = new Set()
@@ -3714,7 +3750,9 @@ export function stepMxSimulation(
     if (gIdx.registers.length > 0) {
       recomputeRegisters(doc, state, params, rng)
     }
-    for (const n of doc.nodes) {
+    for (const [nid] of gIdx.stateInByNode) {
+      const n = byId.get(nid)
+      if (!n) continue
       const wasActive = nowActive[n.id]
       const nextActive = isNodeActive(doc, n, state, params)
       if (nextActive !== wasActive) {
@@ -4391,16 +4429,15 @@ export function stepMxSimulation(
     }
     for (const r of pullableReqs) {
       if (r.amount > 0) {
-        checkAndAdvanceEdgeInterval(
-          doc,
-          r.e,
-          parseMxFlowFormula(r.e.formula),
-          state,
-          params,
-          rng,
-          ensureIvVars,
-          true
-        )
+        const spec = parseMxFlowFormula(r.e.formula)
+        if (
+          spec.intervalExpr ||
+          r.e.interval ||
+          gIdx.stateInByEdge.has(r.e.id) ||
+          gIdx.stateInByNode.has(r.e.from)
+        ) {
+          checkAndAdvanceEdgeInterval(doc, r.e, spec, state, params, rng, ensureIvVars, true)
+        }
       }
     }
 
@@ -5087,13 +5124,16 @@ export function stepMxSimulation(
 
   for (const fn of firing) scheduledRemaining.add(fn.id)
   const processedPassiveReceivers = new Set<string>()
-  const wavePrevPoolValues: Record<string, number> = { ...startStepValues }
+  const wavePrevPoolValues: Record<string, number> = {}
+  for (const tp of gIdx.triggerOnPools) {
+    wavePrevPoolValues[tp.id] = state.values[tp.id] ?? 0
+  }
   const runWave = (nodes: MxNode[], wave: number): void => {
     const next: MxNode[] = []
     currentWaveNext = next
     for (const n of nodes) {
       if (wave === 0) scheduledRemaining.delete(n.id)
-      const poolBefore = n.kind === 'pool' ? (wavePrevPoolValues[n.id] ?? 0) : 0
+      const poolBefore = n.kind === 'pool' && n.triggerOn ? (wavePrevPoolValues[n.id] ?? 0) : 0
       const res = fireNode(n)
       let allowStar = res.okStar
       if (n.kind === 'pool' && n.triggerOn) {
@@ -5134,14 +5174,15 @@ export function stepMxSimulation(
           recNode.triggerOn === 'any_change' ||
           recNode.triggerOn === 'any'
         ) {
-          if (recNode.kind === 'pool') wavePrevPoolValues[recId] = state.values[recId] ?? 0
+          if (recNode.kind === 'pool' && recNode.triggerOn) {
+            wavePrevPoolValues[recId] = state.values[recId] ?? 0
+          }
           propagateStateTriggersFrom(recId, true, false, next)
         }
       }
     }
     // 支持任意波次（含交互级联 / 瞬时传导）中 Pool 设置 triggerOn = 'decrease'/'send' 或 'any_change'/'any' 时在池存量减少时发射 `*` 触发器
-    for (const n of doc.nodes) {
-      if (n.kind !== 'pool') continue
+    for (const n of gIdx.triggerOnPools) {
       const before = wavePrevPoolValues[n.id] ?? 0
       const after = state.values[n.id] ?? 0
       wavePrevPoolValues[n.id] = after
@@ -5293,9 +5334,11 @@ export function runMxSimulation(
     })
     state = res.state
     snapshots.push({ ...state.values })
-    edgeFlows.push({ ...state.edgeFlows })
+    edgeFlows.push(state.edgeFlows)
     if (poolTokensHistory) poolTokensHistory.push(clonePoolTokensMap(state.poolTokens))
-    events.push(...res.events)
+    for (let ei = 0; ei < res.events.length; ei++) {
+      events.push(res.events[ei]!)
+    }
     if (state.ended) break
   }
   return {

@@ -5,8 +5,8 @@
       {{ t('studio.backHome') }}
     </button>
   </div>
-  <div v-else class="studio">
-    <div class="studio-toolbar">
+  <div v-else class="studio" :class="{ 'is-workspace-fullscreen': isWorkspaceFullscreen }">
+    <div v-show="!isWorkspaceFullscreen" class="studio-toolbar">
       <div class="toolbar-panel-toggles toolbar-panel-toggles-left">
         <button
           type="button"
@@ -171,10 +171,12 @@
           </svg>
           <span class="panel-toggle-label">{{ t('studio.panel.chat') }}</span>
         </button>
+        <span class="toolbar-sep" aria-hidden="true" />
+        <WorkspaceFullscreenBtn />
       </div>
     </div>
     <div class="studio-main">
-      <WorkspaceToolbar class="studio-left-tool-rail" />
+      <WorkspaceToolbar v-show="!isWorkspaceFullscreen" class="studio-left-tool-rail" />
       <DockviewVue
         class="studio-dock"
         :theme="dockTheme"
@@ -185,7 +187,7 @@
         floating-group-bounds="boundedWithinViewport"
         @ready="onReady"
       />
-      <StudioSideToolBar :dock-api="dockApi" />
+      <StudioSideToolBar v-show="!isWorkspaceFullscreen" :dock-api="dockApi" />
     </div>
     <SaveAssetDialog
       :open="saveDialogOpen"
@@ -232,8 +234,10 @@ import { useDraftSave } from '../composables/useDraftSave'
 import SaveAssetDialog from '../components/SaveAssetDialog.vue'
 import EditorDockTab from '../components/EditorDockTab.vue'
 import StudioSideToolBar from '../components/StudioSideToolBar.vue'
+import WorkspaceFullscreenBtn from '../components/WorkspaceFullscreenBtn.vue'
 import WorkspaceToolbar from '../components/WorkspaceToolbar.vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import {
   createEditorWindowComponents,
   executeEditorCommand,
@@ -310,6 +314,7 @@ const editor = useEditorKernel()
 const taskStore = useGraphTaskStore()
 const runLogsStore = useGraphRunLogsStore()
 const mcpActivities = useMcpActivitiesStore()
+const { isWorkspaceFullscreen, exitWorkspaceFullscreen } = useWorkspaceFullscreen()
 
 /**
  * 任务按钮角标：工作流任务 + 运行中的 MCP 旁路活动（外部 Agent 触发的
@@ -374,6 +379,7 @@ let dropDisposable: { dispose: () => void } | null = null
 let willDropDisposable: { dispose: () => void } | null = null
 let willShowOverlayDisposable: { dispose: () => void } | null = null
 let willDragPanelDisposable: { dispose: () => void } | null = null
+let maximizedGroupDisposable: { dispose: () => void } | null = null
 /** Suppress ensureCorePanels / persist while rebuilding layout */
 let layoutMutating = false
 
@@ -474,16 +480,31 @@ function onGlobalKeyDown(e: KeyboardEvent): void {
   if (!e.shiftKey && !e.altKey && !isEditableKeyboardTarget(target)) {
     if (key === 'b') {
       e.preventDefault()
+      if (isWorkspaceFullscreen.value) {
+        exitWorkspaceFullscreen()
+        requestAnimationFrame(() => toggleSidePanel('assets'))
+        return
+      }
       toggleSidePanel('assets')
       return
     }
     if (key === 'i') {
       e.preventDefault()
+      if (isWorkspaceFullscreen.value) {
+        exitWorkspaceFullscreen()
+        requestAnimationFrame(() => toggleSidePanel('inspector'))
+        return
+      }
       toggleSidePanel('inspector')
       return
     }
     if (key === 'j') {
       e.preventDefault()
+      if (isWorkspaceFullscreen.value) {
+        exitWorkspaceFullscreen()
+        requestAnimationFrame(() => toggleChatPanel())
+        return
+      }
       toggleChatPanel()
       return
     }
@@ -678,7 +699,7 @@ function createDefaultLayout(api: DockviewApi): void {
 }
 
 function ensureCorePanels(api: DockviewApi): void {
-  if (layoutMutating) return
+  if (layoutMutating || isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
 
   const legacyTools = api.getPanel(WORKSPACE_TOOLS_PANEL_ID)
   if (legacyTools) api.removePanel(legacyTools)
@@ -776,7 +797,7 @@ function isStoredLayoutCompatible(raw: string): boolean {
 }
 
 function persistLayout(api: DockviewApi): void {
-  if (layoutMutating) return
+  if (layoutMutating || isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     try {
@@ -874,6 +895,7 @@ function onReady(event: DockviewReadyEvent): void {
   willDropDisposable?.dispose()
   willShowOverlayDisposable?.dispose()
   willDragPanelDisposable?.dispose()
+  maximizedGroupDisposable?.dispose()
 
   try {
     if (!tryRestoreLayout(api)) {
@@ -896,11 +918,17 @@ function onReady(event: DockviewReadyEvent): void {
     }
   })
   layoutDisposable = api.onDidLayoutChange(() => {
+    if (isWorkspaceFullscreen.value || api.hasMaximizedGroup()) return
     persistLayout(api)
     handleSidePanelLayoutMaybeStacked(api)
     syncChatPanelState(api)
     // location 变更会重置 drop zones，需维持上下 1/2 激活区
     configureSidePanelStackDropTargets(api)
+  })
+  maximizedGroupDisposable = api.onDidMaximizedGroupChange((event) => {
+    if (!event.isMaximized && isWorkspaceFullscreen.value) {
+      exitWorkspaceFullscreen()
+    }
   })
   willShowOverlayDisposable = api.onWillShowOverlay((event) => {
     const draggingId = event.getData()?.panelId
@@ -1021,6 +1049,72 @@ function onReady(event: DockviewReadyEvent): void {
   panelOpener.openPending()
   panelTitles.apply()
 }
+
+function resolveCenterTargetPanel(api: DockviewApi): IDockviewPanel | undefined {
+  const nonCenterIds = new Set<string>([
+    'assets',
+    'inspector',
+    CHAT_PANEL_ID,
+    WORKSPACE_TOOLS_PANEL_ID
+  ])
+  if (api.activePanel && !nonCenterIds.has(api.activePanel.id)) {
+    return api.activePanel
+  }
+  if (workspace.activeDiveRootKey) {
+    const byDiveRoot = api.getPanel(workspace.activeDiveRootKey)
+    if (byDiveRoot) return byDiveRoot
+  }
+  const centerGroupActive = api.getPanel(CENTER_PANEL_ID)?.group?.activePanel
+  if (centerGroupActive && !nonCenterIds.has(centerGroupActive.id)) {
+    return centerGroupActive
+  }
+  return (
+    api.panels.find((p) => parseEditorPanelId(p.id) && p.api.isActive) ??
+    api.panels.filter((p) => parseEditorPanelId(p.id)).at(-1) ??
+    api.getPanel(CENTER_PANEL_ID)
+  )
+}
+
+function relayoutDockToContainer(api: DockviewApi): void {
+  const dockEl = typeof document !== 'undefined' ? document.querySelector('.studio-dock') : null
+  if (
+    dockEl instanceof HTMLElement &&
+    dockApi.value === api &&
+    dockEl.clientWidth > 0 &&
+    dockEl.clientHeight > 0
+  ) {
+    api.layout(dockEl.clientWidth, dockEl.clientHeight, true)
+  }
+}
+
+watch(isWorkspaceFullscreen, (fs) => {
+  const api = dockApi.value
+  if (!api) return
+  if (fs) {
+    if (!api.hasMaximizedGroup()) {
+      const target = resolveCenterTargetPanel(api)
+      if (target) {
+        try {
+          api.maximizeGroup(target)
+        } catch (err) {
+          console.warn('[studio] maximizeGroup failed', err)
+        }
+      }
+    }
+  } else if (api.hasMaximizedGroup()) {
+    try {
+      api.exitMaximizedGroup()
+    } catch (err) {
+      console.warn('[studio] exitMaximizedGroup failed', err)
+    }
+  }
+  requestAnimationFrame(() => {
+    relayoutDockToContainer(api)
+    if (!fs && dockApi.value === api) {
+      applySidePanelCollapseSync(api)
+    }
+  })
+})
 
 watch(locale, () => {
   const api = dockApi.value
@@ -1191,6 +1285,7 @@ onBeforeUnmount(() => {
   willDropDisposable?.dispose()
   willShowOverlayDisposable?.dispose()
   willDragPanelDisposable?.dispose()
+  maximizedGroupDisposable?.dispose()
   layoutDisposable = null
   activePanelDisposable = null
   removeDisposable = null
@@ -1199,6 +1294,7 @@ onBeforeUnmount(() => {
   willDropDisposable = null
   willShowOverlayDisposable = null
   willDragPanelDisposable = null
+  maximizedGroupDisposable = null
   dockApi.value = null
 })
 </script>
@@ -1487,6 +1583,20 @@ onBeforeUnmount(() => {
   overflow: hidden !important;
   opacity: 0;
   pointer-events: none;
+}
+
+.toolbar-panel-toggles :deep(.ws-fullscreen-btn) {
+  height: 22px;
+  font-size: 11px;
+}
+
+.studio.is-workspace-fullscreen .studio-main :deep(.studio-dock) {
+  --dv-tabs-and-actions-container-height: 0px;
+}
+
+.studio.is-workspace-fullscreen .studio-main :deep(.studio-dock .dv-tabs-and-actions-container) {
+  display: none !important;
+  height: 0 !important;
 }
 
 /* 锚点容器勿用 JS remove（会弄坏 dockview _model）；仅隐藏空壳 */

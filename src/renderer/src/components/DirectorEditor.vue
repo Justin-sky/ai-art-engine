@@ -8,7 +8,7 @@
       />
     </div>
 
-    <div v-if="!embedded && !diving" class="toolbar">
+    <div v-if="!embedded && !diving && !isWorkspaceFullscreen" class="toolbar">
       <span>{{ t('director.title') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('director.hint.graph') }}</span>
@@ -27,6 +27,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useAssetRecord } from '../composables/useAssetRecord'
 import { isEditorDiveViewFrame } from '../features/graph/model/editorDive'
@@ -42,6 +43,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const workspace = useWorkspaceStore()
 const { asset: directorAsset } = useAssetRecord(props.directorAssetId)
 const toolbarCollapsed = ref(false)

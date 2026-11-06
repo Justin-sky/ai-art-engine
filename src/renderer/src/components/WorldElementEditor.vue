@@ -8,7 +8,7 @@
       />
     </div>
 
-    <div v-if="!embedded && !diving" class="toolbar">
+    <div v-if="!embedded && !diving && !isWorkspaceFullscreen" class="toolbar">
       <span>{{ t('studio.editor.world') }}</span>
       <span class="spacer" />
       <span class="hint">{{ t('world.asset.hint') }}</span>
@@ -30,6 +30,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, provide, ref } from 'vue'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { useEditorDocumentSession } from '../composables/useEditorDocumentSession'
 import { useEditorDiveHost } from '../composables/useEditorDiveHost'
 import { useAssetRecord } from '../composables/useAssetRecord'
@@ -48,6 +49,7 @@ const props = defineProps<{
 }>()
 
 const { t } = useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const workspace = useWorkspaceStore()
 const { asset: worldAsset } = useAssetRecord(props.worldAssetId)
 const worldGraphRef = ref<InstanceType<typeof NodeGraphEditor> | null>(null)

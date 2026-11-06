@@ -1,5 +1,6 @@
 <template>
   <div class="workspace-main">
+    <WorkspaceFullscreenBtn v-if="isWorkspaceFullscreen" class="workspace-fs-exit" />
     <div class="workspace-home">
       <header class="home-header">
         <h1 class="home-title">
@@ -73,9 +74,11 @@ import { buildCanvasStarterGraph } from '@shared/graph'
 import { useAssetCreation } from '../composables/useAssetCreation'
 import { useDraftSave } from '../composables/useDraftSave'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { promptAlert, promptText } from '../composables/useStudioPrompt'
 import { listRegisteredToolbarItems } from '../editor/extensions'
 import { useProjectStore } from '../stores/project'
+import WorkspaceFullscreenBtn from './WorkspaceFullscreenBtn.vue'
 import WorkspaceItemIcon from './WorkspaceItemIcon.vue'
 
 /** 空工作区优先展示的创作入口（与左侧工具栏一致，但只保留核心项） */
@@ -87,6 +90,7 @@ const { openAssetEditor, createMotion2dActionAsset } = useAssetCreation()
 const { createDraftAndOpen } = useDraftSave()
 const { t, assetTypeLabel, assetDisplayTypeLabel, assetCreateName, toolbarCreateLabel } =
   useStudioI18n()
+const { isWorkspaceFullscreen } = useWorkspaceFullscreen()
 const busyId = ref<string | null>(null)
 
 const createItems = computed<ResolvedWorkspaceToolbarItem[]>(() =>
@@ -172,6 +176,7 @@ function openAsset(asset: AssetInfo): void {
 
 <style scoped>
 .workspace-main {
+  position: relative;
   height: 100%;
   min-height: 0;
   overflow: auto;
@@ -180,6 +185,13 @@ function openAsset(asset: AssetInfo): void {
   justify-content: center;
   background:
     radial-gradient(ellipse at 50% 28%, var(--accent-06), transparent 52%), var(--bg-panel);
+}
+
+.workspace-fs-exit {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 10;
 }
 
 .workspace-home {

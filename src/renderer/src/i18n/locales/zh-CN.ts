@@ -1275,6 +1275,12 @@ export default {
       collapse: '收起到右侧',
       expand: '展开'
     },
+    fullscreen: {
+      enter: '全屏',
+      exit: '退出全屏',
+      enterTitle: '一键全屏展开当前画布或 Dive 工作台 (F11)',
+      exitTitle: '退出全屏并恢复侧栏布局 (F11 / Esc)'
+    },
     inspector: {
       unsupported: '当前对象没有可用的检查器',
       emptyGlobals: '暂无全局参数',
@@ -8852,6 +8858,8 @@ export default {
       snapGrid: '网格对齐吸附',
       autoLayout: '一键拓扑自动排版 (Auto Layout)',
       cycleTheme: '切换画布主题 (跟随系统 / 浅色 / 深色)',
+      fullscreenFocus: '全屏沉浸展开经济画布并自动收起侧栏 (F11)',
+      exitFullscreenFocus: '退出画布全屏并恢复抽屉与面板 (F11 / Esc)',
       fireNodeNow: '立即触发执行该节点 1 次',
       duplicate: '复制节点 (Ctrl+C / Ctrl+V)',
       reverseEdge: '反转连接线方向',

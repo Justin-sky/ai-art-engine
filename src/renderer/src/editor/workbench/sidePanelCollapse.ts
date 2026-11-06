@@ -307,6 +307,7 @@ function attachExpandedWidthWatchers(dock: DockviewApi): void {
     if (!panel) continue
     widthWatchDisposables.push(
       panel.api.onDidDimensionsChange(({ width }) => {
+        if (dock.hasMaximizedGroup()) return
         if (unlockingConstraints) return
         if (sidePanelCollapsed[id]) return
         if (!(width > 16)) return

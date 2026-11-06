@@ -1302,6 +1302,12 @@ export default {
       collapse: 'Collapse to the right',
       expand: 'Expand'
     },
+    fullscreen: {
+      enter: 'Fullscreen',
+      exit: 'Exit Fullscreen',
+      enterTitle: 'Expand canvas or Dive workbench to fullscreen (F11)',
+      exitTitle: 'Exit fullscreen and restore side panels (F11 / Esc)'
+    },
     inspector: {
       unsupported: 'No inspector is available for the selected object',
       emptyGlobals: 'No global parameters',
@@ -9118,6 +9124,8 @@ export default {
       snapGrid: 'Snap to Grid',
       autoLayout: 'Auto-Layout Diagram',
       cycleTheme: 'Cycle Canvas Theme (Auto / Light / Dark)',
+      fullscreenFocus: 'Fullscreen immersive economy canvas & collapse docks (F11)',
+      exitFullscreenFocus: 'Exit fullscreen & restore docks (F11 / Esc)',
       fireNodeNow: 'Fire node immediately (1 tick)',
       duplicate: 'Duplicate Node (Ctrl+C / Ctrl+V)',
       reverseEdge: 'Reverse Connection Direction',
