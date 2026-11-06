@@ -4,8 +4,10 @@
     class="mx-canvas"
     :class="[
       `theme-${store.canvasTheme.value}`,
+      `is-${resolvedCanvasTheme}`,
       { panning: !!panState, connecting: !!connectDrag || !!reconnectDrag, placing: isNodeTool }
     ]"
+    :data-theme="resolvedCanvasTheme"
     tabindex="0"
     @keydown="onKeyDown"
     @click="closeMenus"
@@ -39,6 +41,19 @@
             :opacity="store.snapToGrid.value ? 1 : 0.26"
           />
         </pattern>
+        <marker
+          v-for="mk in edgeMarkerDefs"
+          :id="mk.id"
+          :key="mk.id"
+          viewBox="0 0 10 10"
+          refX="8.5"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,1.2 L10,5 L0,8.8 z" :fill="mk.color" />
+        </marker>
         <marker
           id="mx-arrow"
           viewBox="0 0 10 10"
@@ -109,7 +124,6 @@
           class="mx-group"
           :class="{ 'is-locked': isGroupLocked(grp) }"
           :transform="`translate(${groupX(grp)}, ${groupY(grp)})`"
-          @pointerdown.stop="startGroupDrag(grp, $event)"
         >
           <rect
             x="0"
@@ -118,6 +132,7 @@
             :height="groupH(grp)"
             rx="10"
             class="mx-group-bg"
+            pointer-events="none"
             :style="{
               stroke: grp.color || '#3b82f6',
               fill: `color-mix(in srgb, ${grp.color || '#3b82f6'} 8%, transparent)`
@@ -133,8 +148,15 @@
             :style="{
               fill: `color-mix(in srgb, ${grp.color || '#3b82f6'} 22%, var(--mx-node-fill))`
             }"
+            @pointerdown.stop="startGroupDrag(grp, $event)"
           />
-          <text x="12" y="17" class="mx-group-title" @dblclick.stop="startGroupLabelEdit(grp)">
+          <text
+            x="12"
+            y="17"
+            class="mx-group-title"
+            @pointerdown.stop="startGroupDrag(grp, $event)"
+            @dblclick.stop="startGroupLabelEdit(grp)"
+          >
             {{ grp.label }}
           </text>
           <g
@@ -176,6 +198,8 @@
           class="mx-edge"
           :class="{
             'is-selected': isEdgeSelected(geo.edge.id),
+            'is-dormant': geo.dormant && !isEdgeSelected(geo.edge.id),
+            'is-gated-off': geo.gatedOff && !isEdgeSelected(geo.edge.id),
             'is-cond-consumer':
               consumerEdgeHitById.has(geo.edge.id) ||
               directConsumerBridgeEdgeIdSet.has(geo.edge.id),
@@ -216,13 +240,7 @@
             :d="geo.path"
             fill="none"
             :stroke="geo.color"
-            :stroke-opacity="
-              !isEdgeSelected(geo.edge.id) &&
-              geo.edge.kind === 'state' &&
-              isStateEdgeDormantCondition(geo.edge)
-                ? 0.42
-                : 1
-            "
+            :stroke-opacity="geo.dormant && !isEdgeSelected(geo.edge.id) ? 0.35 : 1"
             :stroke-width="
               isEdgeSelected(geo.edge.id)
                 ? 2.8
@@ -234,7 +252,13 @@
                     ? 2.3
                     : 1.75
             "
-            :stroke-dasharray="geo.edge.kind === 'state' ? '6 4' : undefined"
+            :stroke-dasharray="
+              geo.edge.kind === 'state'
+                ? '6 4'
+                : geo.gatedOff && !isEdgeSelected(geo.edge.id)
+                  ? '5 4'
+                  : undefined
+            "
             :marker-end="`url(#${geo.marker})`"
           />
 
@@ -334,8 +358,21 @@
             />
           </g>
 
-          <!-- 连线中点公式胶囊 (Formula Pill) -->
-          <g class="mx-edge-pill" :transform="`translate(${geo.mid.x}, ${geo.mid.y})`">
+          <!-- 连线中点公式胶囊 (Machinations 原生风格胶囊 · 支持 10 | 3 ⧗ 频率分栏与上方标题) -->
+          <g
+            class="mx-edge-pill"
+            :transform="`translate(${geo.mid.x}, ${geo.mid.y})`"
+            :style="{ '--edge-c': geo.color }"
+          >
+            <text
+              v-if="geo.caption"
+              text-anchor="middle"
+              y="-13.5"
+              class="mx-edge-caption"
+              :class="{ 'is-selected': isEdgeSelected(geo.edge.id) }"
+            >
+              {{ geo.caption }}
+            </text>
             <rect
               v-if="
                 isStateFlashActive &&
@@ -345,10 +382,10 @@
               "
               :key="`st-pill-flash-${geo.edge.id}-${stateFlashSeq}`"
               :x="-geo.labelW / 2 - 2"
-              y="-11.5"
+              y="-11.25"
               :width="geo.labelW + 4"
-              height="23"
-              rx="11.5"
+              height="22.5"
+              rx="11.25"
               fill="none"
               :stroke="geo.color"
               stroke-width="2"
@@ -356,14 +393,16 @@
             />
             <rect
               :x="-geo.labelW / 2"
-              y="-9.5"
+              y="-9.25"
               :width="geo.labelW"
-              height="19"
-              rx="9.5"
+              height="18.5"
+              rx="9.25"
               class="mx-edge-pill-bg"
               :class="{
                 'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
+                'is-gated-off': geo.gatedOff && !isEdgeSelected(geo.edge.id),
+                'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                 'is-cond-highlight':
                   !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id),
                 'is-drop':
@@ -371,18 +410,83 @@
                   reconnectDrag?.hoverEdgeId === geo.edge.id
               }"
             />
+            <template v-if="geo.intervalText">
+              <line
+                :x1="geo.dividerX"
+                y1="-9"
+                :x2="geo.dividerX"
+                y2="9"
+                class="mx-edge-pill-div"
+                :class="{
+                  'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-cond-highlight':
+                    !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
+                }"
+              />
+              <text
+                class="mx-edge-label"
+                :class="{
+                  'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
+                  'is-cond-highlight':
+                    !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
+                }"
+                text-anchor="middle"
+                :x="geo.leftTextX"
+                y="3.8"
+              >
+                {{ geo.rateText }}
+              </text>
+              <text
+                class="mx-edge-label is-iv-num"
+                :class="{
+                  'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
+                  'is-cond-highlight':
+                    !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
+                }"
+                text-anchor="middle"
+                :x="geo.rightTextX"
+                y="3.7"
+              >
+                {{ geo.intervalText }}
+              </text>
+              <g
+                :transform="`translate(${geo.hourglassX}, 0)`"
+                class="mx-edge-hourglass"
+                :class="{
+                  'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-cond-highlight':
+                    !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
+                }"
+              >
+                <path
+                  d="M-2.4,-3.6 H2.4 L0.4,0 L2.4,3.6 H-2.4 L-0.4,0 Z"
+                  fill="none"
+                  stroke-width="1.1"
+                  stroke-linejoin="round"
+                />
+                <path d="M-1.45,3.05 H1.45 L0,0.95 Z" stroke="none" />
+              </g>
+            </template>
             <text
+              v-else
               class="mx-edge-label"
               :class="{
+                'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
+                'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                 'is-cond-highlight':
                   !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
               }"
               text-anchor="middle"
               y="3.8"
             >
-              {{ geo.label }}
+              {{ geo.rateText }}
             </text>
+            <title v-if="geo.formulaModified">
+              fx: {{ geo.authoredFormula }} ⇒ {{ geo.effectiveFormula }}
+            </title>
             <!-- Sankey 累计总流量徽标 -->
             <text
               v-if="
@@ -400,11 +504,11 @@
             </text>
           </g>
 
-          <!-- 选中连线时的可拖拽弧度控制点 (Curvature Handle) -->
+          <!-- 选中连线时的可拖拽弧度控制点 (Curvature Handle · 含指向连线的状态边) -->
           <g
-            v-if="isEdgeSelected(geo.edge.id) && !geo.edge.targetEdgeId"
+            v-if="isEdgeSelected(geo.edge.id)"
             class="mx-bend-handle"
-            :transform="`translate(${geo.mid.x}, ${geo.mid.y - 16})`"
+            :transform="`translate(${geo.mid.x}, ${geo.mid.y - (geo.caption ? 26 : 16)})`"
             @pointerdown.stop="startBendDrag(geo.edge, $event)"
             @dblclick.stop="store.updateEdge(geo.edge.id, { bend: 0 })"
           >
@@ -1701,27 +1805,56 @@
           :fill="g.color || '#3b82f6'"
           fill-opacity="0.14"
           :stroke="g.color || '#3b82f6'"
-          stroke-width="6"
+          stroke-width="1"
+          vector-effect="non-scaling-stroke"
         />
-        <line
-          v-for="e in store.doc.value.edges"
-          :key="'me-' + e.id"
-          :x1="nodeXById(e.from)"
-          :y1="nodeYById(e.from)"
-          :x2="nodeXById(e.to)"
-          :y2="nodeYById(e.to)"
-          stroke="#94a3b8"
-          stroke-width="5"
-          stroke-opacity="0.6"
+        <path
+          v-for="me in minimapEdges"
+          :key="'me-' + me.id"
+          :d="me.path"
+          fill="none"
+          :stroke="me.stroke"
+          :stroke-width="me.strokeWidth"
+          :stroke-opacity="me.opacity"
+          :stroke-dasharray="me.dasharray"
+          stroke-linecap="round"
+          vector-effect="non-scaling-stroke"
         />
         <circle
-          v-for="n in visibleNodes"
-          :key="'mn-' + n.id"
-          :cx="nodeX(n)"
-          :cy="nodeY(n)"
-          r="16"
-          :fill="nodeColor(n)"
+          v-for="me in minimapEdgeTargetDots"
+          :key="'met-' + me.id"
+          :cx="me.tx"
+          :cy="me.ty"
+          :r="minimapBounds.junctionR"
+          :fill="me.stroke"
+          :fill-opacity="me.opacity"
         />
+        <template v-for="n in visibleNodes" :key="'mn-' + n.id">
+          <rect
+            v-if="n.kind === 'note'"
+            :x="nodeX(n) - (n.width ?? 160) / 2"
+            :y="nodeY(n) - (n.height ?? 80) / 2"
+            :width="n.width ?? 160"
+            :height="n.height ?? 80"
+            rx="4"
+            fill="#eab308"
+            fill-opacity="0.22"
+            stroke="#eab308"
+            stroke-width="0.9"
+            vector-effect="non-scaling-stroke"
+          />
+          <path
+            v-else
+            :d="shapePath(n.kind, minimapBounds.nodeR)"
+            :transform="`translate(${nodeX(n)}, ${nodeY(n)})`"
+            :fill="nodeColor(n)"
+            :stroke="
+              isNodeSelected(n.id) ? '#3d8bfd' : consumerNodeHitById.has(n.id) ? '#f59e0b' : 'none'
+            "
+            :stroke-width="isNodeSelected(n.id) || consumerNodeHitById.has(n.id) ? 1.8 : 0"
+            vector-effect="non-scaling-stroke"
+          />
+        </template>
         <rect
           :x="minimapBounds.vx"
           :y="minimapBounds.vy"
@@ -1729,7 +1862,8 @@
           :height="minimapBounds.vh"
           fill="rgba(61, 139, 253, 0.12)"
           stroke="#3d8bfd"
-          stroke-width="8"
+          stroke-width="1.5"
+          vector-effect="non-scaling-stroke"
         />
       </svg>
     </div>
@@ -1743,6 +1877,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch 
 import {
   computeMxDiagramBounds,
   estimateMxTextWidth,
+  evaluateMxEdgeRuntimeGates,
   evaluateMxExpression,
   exportMxDiagramSvg,
   getMxNodeSubPillWidth,
@@ -1765,12 +1900,17 @@ import {
 } from '@shared/gameAssets'
 import { useStudioI18n } from '../../../composables/useStudioI18n'
 import { useWorkspaceFullscreen } from '../../../composables/useWorkspaceFullscreen'
+import { themePreference } from '../../../editor/preferences'
 import { useMxStudioStore, type MxCanvasTheme, type MxDrawer, type MxTool } from './mxStudioStore'
 
 const { t } = useStudioI18n()
 const { isWorkspaceFullscreen, enterWorkspaceFullscreen, exitWorkspaceFullscreen } =
   useWorkspaceFullscreen()
 const store = useMxStudioStore()
+
+const resolvedCanvasTheme = computed<'light' | 'dark'>(() =>
+  store.canvasTheme.value === 'auto' ? themePreference.value : store.canvasTheme.value
+)
 
 const rootRef = ref<HTMLDivElement | null>(null)
 const svgRef = ref<SVGSVGElement | null>(null)
@@ -1929,18 +2069,6 @@ function nodeY(node: MxNode): number {
   return transientNodePos.value.get(node.id)?.y ?? node.y
 }
 
-function nodeXById(id: string): number {
-  const tp = transientNodePos.value.get(id)
-  if (tp) return tp.x
-  return nodeById.value.get(id)?.x ?? 0
-}
-
-function nodeYById(id: string): number {
-  const tp = transientNodePos.value.get(id)
-  if (tp) return tp.y
-  return nodeById.value.get(id)?.y ?? 0
-}
-
 function groupX(grp: MxGroup): number {
   return transientGroupRect.value.get(grp.id)?.x ?? grp.x
 }
@@ -2083,8 +2211,9 @@ const displayVarsMap = computed<Record<string, number>>(() => {
 })
 
 function evalStateEdgeCondition(edge: MxEdge): boolean | null {
-  const spec = parseMxStateFormula(edge.formula)
   const srcNode = nodeById.value.get(edge.from)
+  if (srcNode?.kind === 'gate') return null
+  const spec = parseMxStateFormula(edge.formula)
   const srcVal =
     store.displayValues.value?.[edge.from] ??
     (srcNode?.kind === 'pool' || srcNode?.kind === 'register' ? (srcNode.initial ?? 0) : 0)
@@ -2131,12 +2260,6 @@ function evalStateEdgeCondition(edge: MxEdge): boolean | null {
     default:
       return null
   }
-}
-
-/** 条件型状态边（如 <=0、>=225）当前尚未满足时，置为半透明静默待命态 */
-function isStateEdgeDormantCondition(edge: MxEdge): boolean {
-  const cond = evalStateEdgeCondition(edge)
-  return cond === false
 }
 
 /** 判断状态边在当前步是否真的发射控制信号脉冲光点（避免未满足的结束条件误发信号） */
@@ -2590,7 +2713,19 @@ interface EdgeGeo {
   tokenColor: string
   marker: string
   label: string
+  caption: string
+  rateText: string
+  intervalText: string
+  dividerX: number
+  leftTextX: number
+  rightTextX: number
+  hourglassX: number
   labelW: number
+  dormant: boolean
+  gatedOff: boolean
+  formulaModified: boolean
+  authoredFormula: string
+  effectiveFormula: string
 }
 
 interface EdgeStaticMeta {
@@ -2598,8 +2733,44 @@ interface EdgeStaticMeta {
   tokenColor: string
   marker: string
   label: string
+  caption: string
+  rateText: string
+  intervalText: string
+  dividerX: number
+  leftTextX: number
+  rightTextX: number
+  hourglassX: number
   labelW: number
   reverse: boolean
+  dormant: boolean
+  gatedOff: boolean
+  formulaModified: boolean
+  authoredFormula: string
+  effectiveFormula: string
+}
+
+function colorToEdgeMarkerId(colorHex: string): string {
+  return `mx-arr-${colorHex.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}`
+}
+
+function splitEdgeIntervalDisplay(
+  kind: MxEdge['kind'],
+  formulaText: string,
+  formulaModified: boolean
+): { rateText: string; intervalText: string } {
+  if (kind !== 'resource') {
+    return { rateText: formulaText, intervalText: '' }
+  }
+  const m = /^(.*?)\s*(?:\||(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
+  if (!m) {
+    return { rateText: formulaText, intervalText: '' }
+  }
+  const rateText = m[1]!.trim() || '1'
+  const ivText = m[2]!.trim()
+  if (!ivText || (ivText === '1' && !formulaModified)) {
+    return { rateText, intervalText: '' }
+  }
+  return { rateText, intervalText: ivText }
 }
 
 function buildSingleEdgeGeo(
@@ -2676,7 +2847,19 @@ function buildSingleEdgeGeo(
     tokenColor: meta.tokenColor,
     marker: meta.marker,
     label: meta.label,
-    labelW: meta.labelW
+    caption: meta.caption,
+    rateText: meta.rateText,
+    intervalText: meta.intervalText,
+    dividerX: meta.dividerX,
+    leftTextX: meta.leftTextX,
+    rightTextX: meta.rightTextX,
+    hourglassX: meta.hourglassX,
+    labelW: meta.labelW,
+    dormant: meta.dormant,
+    gatedOff: meta.gatedOff,
+    formulaModified: meta.formulaModified,
+    authoredFormula: meta.authoredFormula,
+    effectiveFormula: meta.effectiveFormula
   }
 }
 
@@ -2720,6 +2903,16 @@ const orderedVisibleTopology = computed(() => {
   return { orderedEdges, pairs }
 })
 
+const runtimeEdgeGates = computed(() => {
+  void store.topologyRevision.value
+  return evaluateMxEdgeRuntimeGates(store.peekDoc(), {
+    values: store.displayValues.value,
+    poolTokens: store.displayPoolTokens.value,
+    step: store.playStep.value,
+    params: resolvedParamsMap.value
+  })
+})
+
 const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
   void store.topologyRevision.value
   const d = store.peekDoc()
@@ -2727,26 +2920,30 @@ const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
   const { orderedEdges, pairs } = orderedVisibleTopology.value
   const resColors = resourceColorMap.value
   const flows = store.displayFlows.value
+  const gateSnap = runtimeEdgeGates.value
+  const isRuntimeStep = store.playStep.value > 0
+  const showRuntimeMods = isRuntimeStep || store.playing.value || store.liveState.value !== null
   const selEdges = selectedEdgeSet.value
   const map = new Map<string, EdgeStaticMeta>()
 
   for (const e of orderedEdges) {
-    const filterColor = e.resourceFilter && e.resourceId ? resColors.get(e.resourceId) : undefined
-    const negative = e.kind === 'state' && /^\s*(-|!|<)/.test(e.formula)
-    const selected = selEdges.has(e.id)
-    const color = selected
-      ? '#3d8bfd'
-      : e.color ||
-        filterColor ||
-        (e.kind === 'state' ? (negative ? '#f87171' : '#38bdf8') : '#94a3b8')
-    const marker = selected
-      ? 'mx-arrow-sel'
+    const src = nMap.get(e.from)
+    const srcColor = src
+      ? src.kind === 'converter'
+        ? converterOutputColor(src)
+        : nodeColor(src)
       : e.kind === 'state'
-        ? negative
-          ? 'mx-arrow-neg'
-          : 'mx-arrow-state'
-        : 'mx-arrow'
+        ? '#38bdf8'
+        : '#64748b'
+    const filterColor = e.resourceFilter && e.resourceId ? resColors.get(e.resourceId) : undefined
+    const selected = selEdges.has(e.id)
+    const baseColor = e.color || filterColor || srcColor
+    const color = selected ? '#3d8bfd' : baseColor
+    const marker = selected ? 'mx-arrow-sel' : colorToEdgeMarkerId(color)
     const flow = flows[e.id] ?? 0
+    const gatedOff =
+      e.kind === 'resource' && isRuntimeStep && flow <= 0 && gateSnap.gatedOffEdgeIds.has(e.id)
+    const dormant = gatedOff || (e.kind === 'state' && gateSnap.dormantStateEdgeIds.has(e.id))
     const rawFormula = e.formula || (e.kind === 'state' ? '*' : '1')
     const withInterval =
       e.kind === 'resource' &&
@@ -2755,24 +2952,70 @@ const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
       !/\bevery\b|\|/i.test(rawFormula)
         ? `${rawFormula}|${e.interval.trim()}`
         : rawFormula
-    const baseNamed = e.label?.trim() ? `${e.label.trim()}: ${withInterval}` : withInterval
-    const namedFormula = e.influencer ? `★ ${baseNamed}` : baseNamed
-    const label =
-      flow > 0 && e.kind === 'resource'
-        ? `${namedFormula} → ${formatValue(Math.round(flow * 10) / 10)}`
-        : namedFormula
-    const labelW = Math.max(24, estimateMxTextWidth(label, 10.5, true) + 14)
-    const src = nMap.get(e.from)
+    const runtimeModFormula = showRuntimeMods ? gateSnap.modifiedEdgeFormulas.get(e.id) : undefined
+    const formulaModified = runtimeModFormula !== undefined
+    const effectiveFormula = runtimeModFormula ?? withInterval
+    const { rateText: splitRate, intervalText } = splitEdgeIntervalDisplay(
+      e.kind,
+      effectiveFormula,
+      formulaModified
+    )
+    const rateText = e.influencer ? `★ ${splitRate}` : splitRate
+    const caption = e.label?.trim() || ''
+
+    let labelW = 24
+    let dividerX = 0
+    let leftTextX = 0
+    let rightTextX = 0
+    let hourglassX = 0
+
+    if (intervalText) {
+      const leftW = Math.max(24, estimateMxTextWidth(rateText, 10.8, true) + 13)
+      const ivTextW = estimateMxTextWidth(intervalText, 10.2, true)
+      const rightContentW = ivTextW + 9.5
+      const rightW = Math.max(28, rightContentW + 12)
+      labelW = leftW + rightW
+      dividerX = -labelW / 2 + leftW
+      leftTextX = -labelW / 2 + leftW / 2
+      const rightStart = dividerX + (rightW - rightContentW) / 2
+      rightTextX = rightStart + ivTextW / 2
+      hourglassX = rightStart + ivTextW + 6.5
+    } else {
+      labelW = Math.max(24, estimateMxTextWidth(rateText, 10.8, true) + 14)
+    }
+
     map.set(e.id, {
       color,
-      tokenColor: filterColor ?? (src ? nodeColor(src) : '#3d8bfd'),
+      tokenColor: filterColor ?? srcColor,
       marker,
-      label,
+      label: effectiveFormula,
+      caption,
+      rateText,
+      intervalText,
+      dividerX,
+      leftTextX,
+      rightTextX,
+      hourglassX,
       labelW,
-      reverse: !e.targetEdgeId && pairs.has(`${e.to}>${e.from}`)
+      reverse: !e.targetEdgeId && pairs.has(`${e.to}>${e.from}`),
+      dormant,
+      gatedOff,
+      formulaModified,
+      authoredFormula: withInterval,
+      effectiveFormula
     })
   }
   return map
+})
+
+const edgeMarkerDefs = computed(() => {
+  const seen = new Map<string, string>()
+  for (const meta of edgeStaticMetaById.value.values()) {
+    if (meta.marker !== 'mx-arrow-sel' && !seen.has(meta.marker)) {
+      seen.set(meta.marker, meta.color)
+    }
+  }
+  return Array.from(seen.entries()).map(([id, color]) => ({ id, color }))
 })
 
 const baseEdgeGeoById = computed<Map<string, EdgeGeo>>(() => {
@@ -3607,6 +3850,10 @@ function startBendDrag(edge: MxEdge, ev: PointerEvent): void {
 }
 
 function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
+  rootRef.value?.focus()
+  closeMenus()
+  edgeEdit.value = null
+  if (ev.button === 0 && !ev.shiftKey) store.select([])
   if (ev.button !== 0 || isGroupLocked(grp)) return
   captureCanvasPointer(ev)
   const p = clientToWorld(ev.clientX, ev.clientY, true)
@@ -3635,6 +3882,10 @@ function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
 }
 
 function startGroupResize(grp: MxGroup, ev: PointerEvent): void {
+  rootRef.value?.focus()
+  closeMenus()
+  edgeEdit.value = null
+  if (ev.button === 0 && !ev.shiftKey) store.select([])
   if (ev.button !== 0 || isGroupLocked(grp)) return
   captureCanvasPointer(ev)
   const p = clientToWorld(ev.clientX, ev.clientY, true)
@@ -3654,6 +3905,7 @@ function startGroupResize(grp: MxGroup, ev: PointerEvent): void {
 function onBgPointerDown(ev: PointerEvent): void {
   rootRef.value?.focus()
   closeMenus()
+  edgeEdit.value = null
   if (ev.button === 2 && (connectDrag.value || reconnectDrag.value)) {
     connectDrag.value = null
     reconnectDrag.value = null
@@ -3669,7 +3921,10 @@ function onBgPointerDown(ev: PointerEvent): void {
     panState.value = { sx: ev.clientX, sy: ev.clientY, vx: store.view.x, vy: store.view.y }
     return
   }
-  if (ev.button === 2) return
+  if (ev.button === 2) {
+    if (!ev.shiftKey) store.select([])
+    return
+  }
   if (isNodeTool.value) {
     const gx = store.snapToGrid.value ? Math.round(p.x / 20) * 20 : p.x
     const gy = store.snapToGrid.value ? Math.round(p.y / 20) * 20 : p.y
@@ -3677,12 +3932,18 @@ function onBgPointerDown(ev: PointerEvent): void {
     if (!ev.shiftKey) store.tool.value = 'select'
     return
   }
+  if (store.tool.value === 'resource_edge' || store.tool.value === 'state_edge') {
+    if (!ev.shiftKey) {
+      store.tool.value = 'select'
+      store.select([])
+    }
+    return
+  }
   if (store.tool.value === 'select') {
     captureCanvasPointer(ev)
     marquee.value = { x0: p.sx, y0: p.sy, x1: p.sx, y1: p.sy, additive: ev.shiftKey }
     if (!ev.shiftKey) store.select([])
   }
-  edgeEdit.value = null
 }
 
 function onNodePointerDown(node: MxNode, ev: PointerEvent): void {
@@ -4197,6 +4458,7 @@ function onPointerUp(ev: PointerEvent): void {
       connectDrag.value = null
     } else {
       connectDrag.value = null
+      if (!target && !ev.shiftKey) store.select([])
     }
   }
   if (marquee.value) {
@@ -4210,10 +4472,28 @@ function onPointerUp(ev: PointerEvent): void {
         .filter((n) => n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1)
         .map((n) => n.id)
       const idSet = new Set(ids)
-      const edges = store.doc.value.edges
-        .filter((e) => idSet.has(e.from) && idSet.has(e.to))
-        .map((e) => e.id)
-      store.select(ids, edges, m.additive)
+      const selectedEdges = new Set<string>()
+      for (const e of store.doc.value.edges) {
+        if (!e.targetEdgeId && idSet.has(e.from) && idSet.has(e.to)) {
+          selectedEdges.add(e.id)
+        }
+      }
+      for (let pass = 0; pass < 5; pass++) {
+        let added = false
+        for (const e of store.doc.value.edges) {
+          if (
+            e.targetEdgeId &&
+            !selectedEdges.has(e.id) &&
+            idSet.has(e.from) &&
+            selectedEdges.has(e.targetEdgeId)
+          ) {
+            selectedEdges.add(e.id)
+            added = true
+          }
+        }
+        if (!added) break
+      }
+      store.select(ids, Array.from(selectedEdges), m.additive)
     }
     marquee.value = null
   }
@@ -4507,7 +4787,7 @@ const searchResults = computed<SearchHit[]>(() => {
         kind: 'edge',
         badge: e.kind === 'state' ? 'STATE' : 'RES',
         title: e.formula || '1',
-        sub: `${e.from} → ${e.to}`,
+        sub: `${e.from} → ${e.targetEdgeId ? `#${e.targetEdgeId}` : e.to}`,
         wx: geo.mid.x,
         wy: geo.mid.y
       })
@@ -4533,6 +4813,102 @@ function focusSearchResult(item: SearchHit): void {
   store.view.y = ch / 2 - item.wy * store.view.zoom
 }
 
+const MINIMAP_SVG_W = 158
+const MINIMAP_SVG_H = 92
+const MINIMAP_ASPECT = MINIMAP_SVG_W / MINIMAP_SVG_H
+
+interface MinimapEdgeItem {
+  id: string
+  path: string
+  stroke: string
+  strokeWidth: number
+  opacity: number
+  dasharray: string | undefined
+  isEdgeTarget: boolean
+  tx: number
+  ty: number
+}
+
+const minimapEdges = computed<MinimapEdgeItem[]>(() => {
+  const geos = edgeGeometries.value
+  const nMap = nodeById.value
+  const tNodes = transientNodePos.value
+  const tBends = transientEdgeBend.value
+  const selEdges = selectedEdgeSet.value
+  const consumerEdges = consumerEdgeHitById.value
+  const bridgeEdges = directConsumerBridgeEdgeIdSet.value
+  const midByEdgeId = new Map<string, { x: number; y: number }>()
+  const out: MinimapEdgeItem[] = []
+
+  for (const geo of geos) {
+    const e = geo.edge
+    const a = nMap.get(e.from)
+    if (!a) continue
+    const ax = tNodes.get(a.id)?.x ?? a.x
+    const ay = tNodes.get(a.id)?.y ?? a.y
+
+    let bx = 0
+    let by = 0
+    let isEdgeTarget = false
+    if (e.targetEdgeId) {
+      const targetMid = midByEdgeId.get(e.targetEdgeId)
+      if (!targetMid) continue
+      bx = targetMid.x
+      by = targetMid.y
+      isEdgeTarget = true
+    } else {
+      const b = nMap.get(e.to)
+      if (!b) continue
+      bx = tNodes.get(b.id)?.x ?? b.x
+      by = tNodes.get(b.id)?.y ?? b.y
+    }
+
+    const dx = bx - ax
+    const dy = by - ay
+    const len = Math.max(1, Math.hypot(dx, dy))
+    const nx = -dy / len
+    const ny = dx / len
+    const defaultBend = isEdgeTarget
+      ? Math.min(44, len * 0.12)
+      : Math.hypot(geo.cx - (geo.sx + geo.ex) / 2, geo.cy - (geo.sy + geo.ey) / 2) > 0.5
+        ? (geo.cx - (geo.sx + geo.ex) / 2) * nx + (geo.cy - (geo.sy + geo.ey) / 2) * ny
+        : 0
+    const bend = tBends.get(e.id) ?? e.bend ?? defaultBend
+    const curved = Math.abs(bend) > 0.5
+    const mcx = (ax + bx) / 2 + nx * bend
+    const mcy = (ay + by) / 2 + ny * bend
+    const path = curved
+      ? `M ${ax},${ay} Q ${mcx},${mcy} ${bx},${by}`
+      : `M ${ax},${ay} L ${bx},${by}`
+    const midX = curved ? (ax + 2 * mcx + bx) / 4 : (ax + bx) / 2
+    const midY = curved ? (ay + 2 * mcy + by) / 4 : (ay + by) / 2
+    midByEdgeId.set(e.id, { x: midX, y: midY })
+
+    const selected = selEdges.has(e.id)
+    const condHighlight = !selected && (consumerEdges.has(e.id) || bridgeEdges.has(e.id))
+    const stroke = selected ? '#3d8bfd' : condHighlight ? '#f59e0b' : geo.color
+    const isState = e.kind === 'state'
+    const strokeWidth = selected ? 2.2 : condHighlight ? 1.9 : isState ? 1.55 : 1.4
+    const opacity = selected || condHighlight ? 1 : geo.dormant ? 0.38 : isState ? 0.9 : 0.72
+    const dasharray = isState ? '3.5 2.5' : geo.gatedOff ? '3 2.5' : undefined
+
+    out.push({
+      id: e.id,
+      path,
+      stroke,
+      strokeWidth,
+      opacity,
+      dasharray,
+      isEdgeTarget,
+      tx: bx,
+      ty: by
+    })
+  }
+  return out
+})
+
+const minimapEdgeTargetDots = computed(() => minimapEdges.value.filter((me) => me.isEdgeTarget))
+
 let cachedMinimapDiagramBounds: ReturnType<typeof computeMxDiagramBounds> | null = null
 
 const minimapBounds = computed(() => {
@@ -4547,10 +4923,20 @@ const minimapBounds = computed(() => {
     })
   }
   const b = cachedMinimapDiagramBounds
-  const minX = (b.contentMinX + b.contentMaxX) / 2 - b.exportWidth / 2
-  const minY = (b.contentMinY + b.contentMaxY) / 2 - b.exportHeight / 2
-  const w = b.exportWidth
-  const h = b.exportHeight
+  const centerX = (b.contentMinX + b.contentMaxX) / 2
+  const centerY = (b.contentMinY + b.contentMaxY) / 2
+  let w = b.exportWidth
+  let h = b.exportHeight
+  if (w / h < MINIMAP_ASPECT) {
+    w = h * MINIMAP_ASPECT
+  } else {
+    h = w / MINIMAP_ASPECT
+  }
+  const minX = centerX - w / 2
+  const minY = centerY - h / 2
+  const unit = w / MINIMAP_SVG_W
+  const nodeR = Math.max(15, Math.min(26, unit * 2.8))
+  const junctionR = Math.max(6, Math.min(14, unit * 1.7))
   const rect = cachedSvgRect ?? svgRef.value?.getBoundingClientRect()
   const cw = rect?.width ?? 800
   const ch = rect?.height ?? 480
@@ -4563,6 +4949,8 @@ const minimapBounds = computed(() => {
     minY,
     w,
     h,
+    nodeR,
+    junctionR,
     viewBox: `${minX} ${minY} ${w} ${h}`,
     vx,
     vy,
@@ -4571,17 +4959,34 @@ const minimapBounds = computed(() => {
   }
 })
 
-function onMinimapPointerDown(ev: PointerEvent): void {
-  const svg = ev.currentTarget as SVGSVGElement
+function panViewportFromMinimapClient(svg: SVGSVGElement, clientX: number, clientY: number): void {
   const rect = svg.getBoundingClientRect()
   const b = minimapBounds.value
-  const wx = b.minX + ((ev.clientX - rect.left) / Math.max(1, rect.width)) * b.w
-  const wy = b.minY + ((ev.clientY - rect.top) / Math.max(1, rect.height)) * b.h
+  const rx = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)))
+  const ry = Math.max(0, Math.min(1, (clientY - rect.top) / Math.max(1, rect.height)))
+  const wx = b.minX + rx * b.w
+  const wy = b.minY + ry * b.h
   const mainRect = svgRef.value?.getBoundingClientRect()
   const cw = mainRect?.width ?? 800
   const ch = mainRect?.height ?? 480
   store.view.x = cw / 2 - wx * store.view.zoom
   store.view.y = ch / 2 - wy * store.view.zoom
+}
+
+function onMinimapPointerDown(ev: PointerEvent): void {
+  const svg = ev.currentTarget as SVGSVGElement
+  panViewportFromMinimapClient(svg, ev.clientX, ev.clientY)
+  const onMove = (moveEv: PointerEvent): void => {
+    panViewportFromMinimapClient(svg, moveEv.clientX, moveEv.clientY)
+  }
+  const onUp = (): void => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+  }
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
 }
 
 // ───────── 键盘快捷键 ─────────
@@ -4680,13 +5085,7 @@ onBeforeUnmount(() => {
 })
 
 function resolveExportTheme(): 'dark' | 'light' {
-  if (store.canvasTheme.value === 'light') return 'light'
-  if (store.canvasTheme.value === 'dark') return 'dark'
-  if (typeof document !== 'undefined') {
-    const hostTheme = document.documentElement.getAttribute('data-theme') ?? ''
-    if (hostTheme.includes('light')) return 'light'
-  }
-  return 'dark'
+  return resolvedCanvasTheme.value
 }
 
 function buildCleanDiagramSvg(): { svgText: string; width: number; height: number } {
@@ -4765,16 +5164,16 @@ defineExpose({
 
 <style scoped>
 .mx-canvas {
-  /* 默认跟随宿主应用主题 (--graph-viewport-bg / --bg-panel / --text) */
-  --mx-canvas-bg: var(--graph-viewport-bg, #181a1d);
-  --mx-grid-color: var(--wash-16, rgba(148, 163, 184, 0.22));
-  --mx-node-fill: var(--bg-elevated);
-  --mx-label-fg: var(--text, #e8eaed);
+  /* 默认跟随解析后的画布主题（theme-light / theme-dark） */
+  --mx-canvas-bg: var(--graph-viewport-bg);
+  --mx-grid-color: var(--wash-16);
+  --mx-node-fill: var(--graph-node-bg);
+  --mx-label-fg: var(--text);
   --mx-sub-bg: var(--bg-elevated);
-  --mx-sub-fg: var(--text-muted, #9aa0a6);
-  --mx-pill-bg: var(--bg-elevated);
+  --mx-sub-fg: var(--text-muted);
+  --mx-pill-bg: var(--graph-node-bg);
   --mx-pill-border: var(--border);
-  --mx-pill-fg: var(--text, #e8eaed);
+  --mx-pill-fg: var(--text);
 
   position: relative;
   flex: 1;
@@ -4791,7 +5190,7 @@ defineExpose({
   --mx-grid-color: #cbd5e1;
   --mx-node-fill: #ffffff;
   --mx-label-fg: #1e293b;
-  --mx-sub-bg: #e2e8f0;
+  --mx-sub-bg: #f1f5f9;
   --mx-sub-fg: #475569;
   --mx-pill-bg: #ffffff;
   --mx-pill-border: #cbd5e1;
@@ -4863,31 +5262,115 @@ defineExpose({
   stroke-width: 14;
 }
 .mx-edge-pill-bg {
-  fill: var(--mx-pill-bg);
-  stroke: var(--mx-pill-border);
-  stroke-width: 1.2;
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 12%, var(--mx-pill-bg, #1e232d));
+  stroke: var(--edge-c, #3b82f6);
+  stroke-width: 1.3;
   transition:
     stroke 0.12s,
+    fill 0.12s,
     transform 0.12s;
 }
-.mx-edge-pill-bg.is-state {
-  stroke: color-mix(in srgb, #38bdf8 55%, var(--mx-pill-border));
+.mx-canvas.is-light .mx-edge-pill-bg {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 8%, var(--mx-pill-bg, #ffffff));
+  stroke: var(--edge-c, #3b82f6);
+}
+.mx-edge-pill-bg.is-mod-active {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 22%, var(--mx-pill-bg, #1e232d));
+  stroke: var(--edge-c, #3b82f6);
+  stroke-width: 1.65;
+}
+.mx-canvas.is-light .mx-edge-pill-bg.is-mod-active {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 16%, var(--mx-pill-bg, #ffffff));
+}
+.mx-edge-pill-bg.is-gated-off {
+  stroke-dasharray: 3 2;
+}
+.mx-edge.is-dormant:not(:hover) .mx-edge-pill {
+  opacity: 0.44;
+}
+.mx-edge.is-gated-off:not(:hover) .mx-edge-pill {
+  opacity: 0.44;
 }
 .mx-edge-pill-bg.is-selected,
 .mx-edge-pill-bg.is-drop {
-  fill: color-mix(in srgb, var(--accent, #3d8bfd) 18%, var(--mx-pill-bg));
+  fill: color-mix(in srgb, var(--accent, #3d8bfd) 18%, var(--mx-pill-bg, #1e232d));
   stroke: var(--accent, #3d8bfd);
-  stroke-width: 1.8;
+  stroke-width: 1.85;
+}
+.mx-canvas.is-light .mx-edge-pill-bg.is-selected,
+.mx-canvas.is-light .mx-edge-pill-bg.is-drop {
+  fill: color-mix(in srgb, var(--accent, #3d8bfd) 13%, var(--mx-pill-bg, #ffffff));
+}
+.mx-edge-pill-div {
+  stroke: var(--edge-c, #3b82f6);
+  stroke-width: 1.15;
+  pointer-events: none;
+}
+.mx-edge-pill-div.is-selected {
+  stroke: var(--accent, #3d8bfd);
+}
+.mx-edge-pill-div.is-cond-highlight {
+  stroke: #f59e0b;
 }
 .mx-edge-label {
-  font-size: 10.5px;
-  font-family: var(--mono, ui-monospace, monospace);
-  fill: var(--mx-pill-fg);
+  font-size: 10.8px;
+  font-family: var(--sans, system-ui, -apple-system, sans-serif);
+  font-variant-numeric: tabular-nums;
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 72%, #ffffff);
   font-weight: 600;
   pointer-events: none;
 }
-.mx-edge-label.is-state {
-  fill: #38bdf8;
+.mx-edge-label.is-iv-num {
+  font-size: 10.2px;
+}
+.mx-canvas.is-light .mx-edge-label {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 84%, #0f172a);
+}
+.mx-edge-label.is-mod-active {
+  font-weight: 700;
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 58%, #ffffff);
+}
+.mx-canvas.is-light .mx-edge-label.is-mod-active {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 92%, #020617);
+}
+.mx-edge-label.is-selected {
+  fill: #93c5fd;
+}
+.mx-canvas.is-light .mx-edge-label.is-selected {
+  fill: #1d4ed8;
+}
+.mx-edge-caption {
+  font-size: 10px;
+  font-weight: 600;
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 76%, #ffffff);
+  pointer-events: none;
+}
+.mx-canvas.is-light .mx-edge-caption {
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 84%, #0f172a);
+}
+.mx-edge-caption.is-selected {
+  fill: var(--accent, #3d8bfd);
+}
+.mx-edge-hourglass {
+  stroke: color-mix(in srgb, var(--edge-c, #3b82f6) 72%, #ffffff);
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 72%, #ffffff);
+  pointer-events: none;
+}
+.mx-canvas.is-light .mx-edge-hourglass {
+  stroke: color-mix(in srgb, var(--edge-c, #3b82f6) 84%, #0f172a);
+  fill: color-mix(in srgb, var(--edge-c, #3b82f6) 84%, #0f172a);
+}
+.mx-edge-hourglass.is-selected {
+  stroke: #93c5fd;
+  fill: #93c5fd;
+}
+.mx-canvas.is-light .mx-edge-hourglass.is-selected {
+  stroke: #1d4ed8;
+  fill: #1d4ed8;
+}
+.mx-edge-hourglass.is-cond-highlight {
+  stroke: #f59e0b;
+  fill: #f59e0b;
 }
 
 @keyframes mxStateFlashGlow {
@@ -5082,7 +5565,7 @@ defineExpose({
   stroke-width: 1.25;
 }
 .mx-formula-ref-tag-text {
-  fill: #fbbf24;
+  fill: color-mix(in srgb, #f59e0b 76%, var(--mx-pill-fg));
   font-size: 9.5px;
   font-weight: 700;
   font-family: var(--mono, ui-monospace, monospace);
@@ -5103,8 +5586,8 @@ defineExpose({
   fill: color-mix(in srgb, #f59e0b 55%, var(--mx-pill-fg));
   font-weight: 700;
 }
-.mx-canvas.theme-light .mx-edge-label.is-cond-highlight,
-.mx-canvas.theme-light .mx-node-sub.is-cond-highlight {
+.mx-canvas.is-light .mx-edge-label.is-cond-highlight,
+.mx-canvas.is-light .mx-node-sub.is-cond-highlight {
   fill: #92400e;
 }
 .mx-cond-consumer-halo {
@@ -5328,10 +5811,10 @@ defineExpose({
   color: var(--accent, #3d8bfd);
 }
 .mx-nf-btn.is-fire {
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-nf-btn.is-state {
-  color: #38bdf8;
+  color: color-mix(in srgb, #0284c7 78%, var(--text));
 }
 .mx-nf-btn.is-danger:hover {
   background: rgba(227, 93, 106, 0.18);
@@ -5461,8 +5944,8 @@ defineExpose({
   padding: 3px 6px 3px 3px;
   border: 1.5px solid var(--accent);
   border-radius: 12px;
-  background: var(--bg-panel);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  background: var(--bg-input, var(--bg-panel));
+  box-shadow: 0 6px 18px var(--shadow, rgba(0, 0, 0, 0.35));
 }
 .mx-edge-formula-input {
   width: 156px;
@@ -5480,13 +5963,13 @@ defineExpose({
   font-size: 10.5px;
   font-weight: 700;
   font-family: var(--mono, ui-monospace, monospace);
-  background: rgba(16, 185, 129, 0.16);
-  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  color: color-mix(in srgb, #10b981 78%, var(--text));
   white-space: nowrap;
 }
 .mx-edge-edit-preview.is-dice {
-  background: rgba(244, 63, 94, 0.16);
-  color: #fb7185;
+  background: rgba(244, 63, 94, 0.15);
+  color: color-mix(in srgb, #f43f5e 78%, var(--text));
 }
 .mx-edge-edit-pop {
   min-width: 220px;
@@ -5495,7 +5978,7 @@ defineExpose({
   border-radius: 9px;
   border: 1px solid var(--border);
   background: var(--bg-panel);
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 26px var(--shadow, rgba(0, 0, 0, 0.35));
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -5526,26 +6009,26 @@ defineExpose({
 }
 .mx-edge-sym-tag.src-param {
   background: rgba(168, 85, 247, 0.16);
-  color: #a855f7;
+  color: color-mix(in srgb, #9333ea 78%, var(--text));
 }
 .mx-edge-sym-tag.src-node {
   background: rgba(59, 130, 246, 0.16);
-  color: #3b82f6;
+  color: color-mix(in srgb, #2563eb 78%, var(--text));
 }
 .mx-edge-sym-tag.src-state_input {
   background: rgba(14, 165, 233, 0.16);
-  color: #0ea5e9;
+  color: color-mix(in srgb, #0284c7 78%, var(--text));
 }
 .mx-edge-sym-tag.src-unknown {
   background: rgba(245, 158, 11, 0.18);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-edge-sym-add {
   padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid rgba(245, 158, 11, 0.5);
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
   font-size: 10px;
   cursor: pointer;
 }
@@ -5586,27 +6069,36 @@ defineExpose({
   left: 50%;
   transform: translateX(-50%);
   padding: 5px 14px;
-  background: var(--panel-glass, rgba(28, 30, 33, 0.92));
+  background: var(--panel-glass, var(--bg-panel));
   border: 1px solid var(--border);
   color: var(--text, #e8eaed);
   border-radius: 999px;
   font-size: 11px;
+  box-shadow: 0 4px 16px var(--shadow, rgba(0, 0, 0, 0.3));
+  backdrop-filter: blur(8px);
   pointer-events: none;
 }
 
 /* 子系统分组框 (Subsystem Group Frames) */
-.mx-group {
-  cursor: move;
-}
 .mx-group-bg {
   stroke-width: 1.5;
   stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+.mx-group-hdr {
+  cursor: move;
+}
+.mx-group.is-locked .mx-group-hdr {
+  cursor: default;
 }
 .mx-group-title {
   font-size: 11.5px;
   font-weight: 700;
   fill: var(--mx-label-fg);
-  cursor: text;
+  cursor: move;
+}
+.mx-group.is-locked .mx-group-title {
+  cursor: default;
 }
 .mx-group-del {
   cursor: pointer;
@@ -5653,6 +6145,9 @@ defineExpose({
   border-color: var(--accent, #3d8bfd);
 }
 .mx-search-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
   padding: 0;
@@ -5660,6 +6155,7 @@ defineExpose({
   border-radius: 5px;
   background: transparent;
   color: var(--text-muted, #9aa0a6);
+  line-height: 1;
   cursor: pointer;
 }
 .mx-search-list {

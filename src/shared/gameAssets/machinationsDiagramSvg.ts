@@ -7,12 +7,14 @@
  * 3. 精确计算所有可见图元（含中英文标题宽度、底部副标签胶囊、顶部角标、Note 宽高、Group 容器、二次贝塞尔弧线极值点）的真实视觉包围盒，统一留白并将画面像素级居中对齐到 `[0, exportWidth] × [0, exportHeight]`。
  */
 import {
+  evaluateMxEdgeRuntimeGates,
   evaluateMxExpression,
   mxNodeColor,
   parseMxStateFormula,
   resolveMxParams,
   type MxDocument,
   type MxEdge,
+  type MxEdgeRuntimeGateSnapshot,
   type MxGroup,
   type MxNode,
   type MxNodeKind,
@@ -256,6 +258,60 @@ function poolLiquidPath(node: MxNode, val: number): string {
   return `M ${round2(-halfChord)},${round2(yLevel)} A ${r},${r} 0 ${largeArc},0 ${round2(halfChord)},${round2(yLevel)} Z`
 }
 
+function parseHexRgb(hex: string): [number, number, number] {
+  const clean = hex.replace(/^#/, '').trim()
+  if (clean.length === 3) {
+    return [
+      parseInt(clean[0]! + clean[0]!, 16) || 0,
+      parseInt(clean[1]! + clean[1]!, 16) || 0,
+      parseInt(clean[2]! + clean[2]!, 16) || 0
+    ]
+  }
+  if (clean.length >= 6) {
+    return [
+      parseInt(clean.slice(0, 2), 16) || 0,
+      parseInt(clean.slice(2, 4), 16) || 0,
+      parseInt(clean.slice(4, 6), 16) || 0
+    ]
+  }
+  return [59, 130, 246]
+}
+
+function mixHexColor(hexA: string, hexB: string, weightA: number): string {
+  const w = Math.max(0, Math.min(1, weightA))
+  const [r1, g1, b1] = parseHexRgb(hexA)
+  const [r2, g2, b2] = parseHexRgb(hexB)
+  const toHex = (v: number): string =>
+    Math.round(Math.max(0, Math.min(255, v)))
+      .toString(16)
+      .padStart(2, '0')
+  return `#${toHex(r1 * w + r2 * (1 - w))}${toHex(g1 * w + g2 * (1 - w))}${toHex(b1 * w + b2 * (1 - w))}`
+}
+
+function expEdgeMarkerId(colorHex: string): string {
+  return `mx-exp-arr-${colorHex.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}`
+}
+
+function splitExportIntervalFormula(
+  kind: MxEdge['kind'],
+  formulaText: string,
+  formulaModified: boolean
+): { rateText: string; intervalText: string } {
+  if (kind !== 'resource') {
+    return { rateText: formulaText, intervalText: '' }
+  }
+  const m = /^(.*?)\s*(?:\||(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
+  if (!m) {
+    return { rateText: formulaText, intervalText: '' }
+  }
+  const rateText = m[1]!.trim() || '1'
+  const ivText = m[2]!.trim()
+  if (!ivText || (ivText === '1' && !formulaModified)) {
+    return { rateText, intervalText: '' }
+  }
+  return { rateText, intervalText: ivText }
+}
+
 interface DiagramEdgeGeo {
   edge: MxEdge
   path: string
@@ -268,9 +324,17 @@ interface DiagramEdgeGeo {
   curved: boolean
   mid: { x: number; y: number }
   color: string
-  marker: 'mx-exp-arrow' | 'mx-exp-arrow-state' | 'mx-exp-arrow-neg'
+  marker: string
   label: string
+  caption: string
+  rateText: string
+  intervalText: string
+  dividerX: number
+  leftTextX: number
+  rightTextX: number
+  hourglassX: number
   labelW: number
+  formulaModified: boolean
 }
 
 function collectVisibleElements(doc: MxDocument): {
@@ -297,16 +361,42 @@ function buildExportEdgeGeometries(
   doc: MxDocument,
   visibleIds: Set<string>,
   nodeById: Map<string, MxNode>,
-  displayFlows?: Record<string, number> | null
+  gateSnap?: MxEdgeRuntimeGateSnapshot | null,
+  playStep = 0
 ): DiagramEdgeGeo[] {
   const out: DiagramEdgeGeo[] = []
   const midByEdgeId = new Map<string, { x: number; y: number; labelW: number }>()
   const pairs = new Set(doc.edges.filter((e) => !e.targetEdgeId).map((e) => `${e.from}>${e.to}`))
+  const resColorMap = new Map(doc.resources.map((r) => [r.id, r.color]))
+  const convColorById = new Map<string, string>()
+  for (const e of doc.edges) {
+    if (e.kind === 'resource' && !convColorById.has(e.from)) {
+      const tgt = nodeById.get(e.to)
+      if (tgt) convColorById.set(e.from, mxNodeColor(doc, tgt))
+    }
+  }
 
   const firstPass = doc.edges.filter((e) => !e.targetEdgeId)
-  const secondPass = doc.edges.filter((e) => !!e.targetEdgeId)
+  let remainingEdgeTargets = doc.edges.filter((e) => !!e.targetEdgeId)
+  const resolvedIds = new Set(firstPass.map((e) => e.id))
+  const orderedEdges: MxEdge[] = [...firstPass]
+  for (let pass = 0; pass < 5 && remainingEdgeTargets.length > 0; pass++) {
+    const nextRem: MxEdge[] = []
+    let progressed = false
+    for (const e of remainingEdgeTargets) {
+      if (e.targetEdgeId && resolvedIds.has(e.targetEdgeId)) {
+        orderedEdges.push(e)
+        resolvedIds.add(e.id)
+        progressed = true
+      } else {
+        nextRem.push(e)
+      }
+    }
+    remainingEdgeTargets = nextRem
+    if (!progressed) break
+  }
 
-  for (const e of [...firstPass, ...secondPass]) {
+  for (const e of orderedEdges) {
     if (!visibleIds.has(e.from)) continue
     const a = nodeById.get(e.from)
     if (!a) continue
@@ -378,16 +468,52 @@ function buildExportEdgeGeometries(
       ? { x: (sx + 2 * cx + ex) / 4, y: (sy + 2 * cy + ey) / 4 }
       : { x: (sx + ex) / 2, y: (sy + ey) / 2 }
 
-    const negative = e.kind === 'state' && /^\s*(-|!|<)/.test(e.formula)
-    const color = e.color || (e.kind === 'state' ? (negative ? '#f87171' : '#38bdf8') : '#94a3b8')
-    const marker =
-      e.kind === 'state' ? (negative ? 'mx-exp-arrow-neg' : 'mx-exp-arrow-state') : 'mx-exp-arrow'
-    const flow = displayFlows?.[e.id] ?? 0
-    const label =
-      flow > 0 && e.kind === 'resource'
-        ? `${e.formula || '1'} -> ${formatMxValue(Math.round(flow * 10) / 10)}`
-        : e.formula || (e.kind === 'state' ? '*' : '1')
-    const labelW = Math.max(24, estimateMxTextWidth(label, 10.5, true) + 14)
+    const filterColor = e.resourceFilter && e.resourceId ? resColorMap.get(e.resourceId) : undefined
+    const srcColor =
+      a.kind === 'converter'
+        ? (convColorById.get(a.id) ?? mxNodeColor(doc, a))
+        : mxNodeColor(doc, a)
+    const color = e.color || filterColor || srcColor
+    const marker = expEdgeMarkerId(color)
+
+    const rawFormula = e.formula || (e.kind === 'state' ? '*' : '1')
+    const authoredWithIv =
+      e.kind === 'resource' &&
+      e.interval?.trim() &&
+      e.interval.trim() !== '1' &&
+      !/\bevery\b|\|/i.test(rawFormula)
+        ? `${rawFormula}|${e.interval.trim()}`
+        : rawFormula
+    const runtimeModFormula = playStep > 0 ? gateSnap?.modifiedEdgeFormulas.get(e.id) : undefined
+    const formulaModified = runtimeModFormula !== undefined
+    const effectiveFormula = runtimeModFormula ?? authoredWithIv
+    const { rateText: splitRate, intervalText } = splitExportIntervalFormula(
+      e.kind,
+      effectiveFormula,
+      formulaModified
+    )
+    const rateText = e.influencer ? `★ ${splitRate}` : splitRate
+    const caption = e.label?.trim() || ''
+
+    let labelW = 24
+    let dividerX = 0
+    let leftTextX = 0
+    let rightTextX = 0
+    let hourglassX = 0
+    if (intervalText) {
+      const leftW = Math.max(24, estimateMxTextWidth(rateText, 10.8, true) + 13)
+      const ivTextW = estimateMxTextWidth(intervalText, 10.2, true)
+      const rightContentW = ivTextW + 9.5
+      const rightW = Math.max(28, rightContentW + 12)
+      labelW = leftW + rightW
+      dividerX = -labelW / 2 + leftW
+      leftTextX = -labelW / 2 + leftW / 2
+      const rightStart = dividerX + (rightW - rightContentW) / 2
+      rightTextX = rightStart + ivTextW / 2
+      hourglassX = rightStart + ivTextW + 6.5
+    } else {
+      labelW = Math.max(24, estimateMxTextWidth(rateText, 10.8, true) + 14)
+    }
     midByEdgeId.set(e.id, { x: mid.x, y: mid.y, labelW })
 
     out.push({
@@ -403,8 +529,16 @@ function buildExportEdgeGeometries(
       mid,
       color,
       marker,
-      label,
-      labelW
+      label: effectiveFormula,
+      caption,
+      rateText,
+      intervalText,
+      dividerX,
+      leftTextX,
+      rightTextX,
+      hourglassX,
+      labelW,
+      formulaModified
     })
   }
   return out
@@ -454,7 +588,7 @@ export function computeMxDiagramBounds(
   const showNodeLabels = options.showNodeLabels ?? true
 
   const { visibleGroups, visibleNodes, visibleIds, nodeById } = collectVisibleElements(doc)
-  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById, options.displayFlows)
+  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById)
 
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
@@ -504,8 +638,10 @@ export function computeMxDiagramBounds(
       Boolean(options.flowHeatmap) &&
       geo.edge.kind === 'resource' &&
       (options.edgeCumulativeFlows?.[geo.edge.id]?.total ?? 0) > 0
-    expand(geo.mid.x - geo.labelW / 2 - 4, geo.mid.y - 13)
-    expand(geo.mid.x + geo.labelW / 2 + 4, geo.mid.y + (hasCumSum ? 24 : 13))
+    const capHalfW = geo.caption ? estimateMxTextWidth(geo.caption, 10, false) / 2 + 6 : 0
+    const halfW = Math.max(geo.labelW / 2 + 4, capHalfW)
+    expand(geo.mid.x - halfW, geo.mid.y - (geo.caption ? 25 : 13))
+    expand(geo.mid.x + halfW, geo.mid.y + (hasCumSum ? 24 : 13))
   }
 
   if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
@@ -649,8 +785,19 @@ export function exportMxDiagramSvg(
   const bounds = computeMxDiagramBounds(doc, options)
   const { exportWidth: width, exportHeight: height, offsetX, offsetY } = bounds
   const { visibleGroups, visibleNodes, visibleIds, nodeById } = collectVisibleElements(doc)
-  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById, options.displayFlows)
   const resolvedParams = resolveMxParams(doc)
+  const gateSnap = evaluateMxEdgeRuntimeGates(doc, {
+    values: options.displayValues,
+    step: options.playStep ?? 0,
+    params: resolvedParams
+  })
+  const edges = buildExportEdgeGeometries(
+    doc,
+    visibleIds,
+    nodeById,
+    gateSnap,
+    options.playStep ?? 0
+  )
 
   const converterColorById = new Map<string, string>()
   const condGateOutRe = /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
@@ -706,17 +853,19 @@ export function exportMxDiagramSvg(
       '    </pattern>'
     )
   }
-  out.push(
-    '    <marker id="mx-exp-arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">',
-    '      <path d="M0,1.2 L10,5 L0,8.8 z" fill="#94a3b8" />',
-    '    </marker>',
-    '    <marker id="mx-exp-arrow-state" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">',
-    '      <path d="M0,1.2 L10,5 L0,8.8 z" fill="#38bdf8" />',
-    '    </marker>',
-    '    <marker id="mx-exp-arrow-neg" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">',
-    '      <path d="M0,1.2 L10,5 L0,8.8 z" fill="#f87171" />',
-    '    </marker>'
-  )
+  const uniqueEdgeMarkers = new Map<string, string>()
+  for (const geo of edges) {
+    if (!uniqueEdgeMarkers.has(geo.marker)) {
+      uniqueEdgeMarkers.set(geo.marker, geo.color)
+    }
+  }
+  for (const [mId, mColor] of uniqueEdgeMarkers.entries()) {
+    out.push(
+      `    <marker id="${escapeXml(mId)}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">`,
+      `      <path d="M0,1.2 L10,5 L0,8.8 z" fill="${escapeXml(mColor)}" />`,
+      '    </marker>'
+    )
+  }
 
   visibleNodes.forEach((node, idx) => {
     if (node.kind === 'note') {
@@ -757,17 +906,30 @@ export function exportMxDiagramSvg(
   for (const geo of edges) {
     const cumFlow = options.edgeCumulativeFlows?.[geo.edge.id]
     const activeFlow = options.displayFlows?.[geo.edge.id] ?? 0
+    const gatedOffRes =
+      geo.edge.kind === 'resource' &&
+      (options.playStep ?? 0) > 0 &&
+      activeFlow <= 0 &&
+      gateSnap.gatedOffEdgeIds.has(geo.edge.id)
     const dormant =
-      geo.edge.kind === 'state' &&
-      isDormantStateCondition(
-        doc,
-        geo.edge,
-        nodeById,
-        resolvedParams,
-        options.displayValues,
-        options.playStep ?? 0
-      )
-    const strokeOpacity = dormant ? 0.52 : 1
+      gatedOffRes ||
+      (geo.edge.kind === 'state' &&
+        (gateSnap.dormantStateEdgeIds.has(geo.edge.id) ||
+          isDormantStateCondition(
+            doc,
+            geo.edge,
+            nodeById,
+            resolvedParams,
+            options.displayValues,
+            options.playStep ?? 0
+          )))
+    const strokeOpacity = dormant ? 0.36 : 1
+    const dashAttr =
+      geo.edge.kind === 'state'
+        ? ' stroke-dasharray="6 4"'
+        : gatedOffRes
+          ? ' stroke-dasharray="5 4"'
+          : ''
     const strokeWidth =
       options.flowHeatmap && geo.edge.kind === 'resource' && (cumFlow?.total ?? 0) > 0
         ? round2(1.8 + (cumFlow?.share ?? 0) * 3.5)
@@ -782,16 +944,48 @@ export function exportMxDiagramSvg(
       )
     }
     out.push(
-      `      <path d="${geo.path}" fill="none" stroke="${escapeXml(geo.color)}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}"${geo.edge.kind === 'state' ? ' stroke-dasharray="6 4"' : ''} marker-end="url(#${geo.marker})" />`
+      `      <path d="${geo.path}" fill="none" stroke="${escapeXml(geo.color)}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}"${dashAttr} marker-end="url(#${geo.marker})" />`
     )
 
-    const pillBorder = geo.edge.kind === 'state' ? '#2563eb' : palette.pillBorder
-    const pillTextFg = geo.edge.kind === 'state' ? '#38bdf8' : palette.pillFg
+    const pillBg =
+      themeMode === 'light'
+        ? mixHexColor(geo.color, '#ffffff', geo.formulaModified ? 0.18 : 0.09)
+        : mixHexColor(geo.color, palette.canvasBg, geo.formulaModified ? 0.26 : 0.15)
+    const pillBorder = geo.color
+    const pillTextFg =
+      themeMode === 'light'
+        ? mixHexColor(geo.color, '#0f172a', geo.formulaModified ? 0.94 : 0.86)
+        : mixHexColor(geo.color, '#ffffff', geo.formulaModified ? 0.62 : 0.78)
+    const pillStrokeW = geo.formulaModified ? '1.65' : '1.3'
+    const pillFontW = geo.formulaModified ? '700' : '600'
+    const pillOpacityAttr = dormant ? ' opacity="0.45"' : ''
+    const pillDashAttr = gatedOffRes ? ' stroke-dasharray="3 2"' : ''
     out.push(
-      `      <g class="mx-edge-pill" transform="translate(${round2(geo.mid.x)}, ${round2(geo.mid.y)})">`,
-      `        <rect x="${round2(-geo.labelW / 2)}" y="-9.5" width="${round2(geo.labelW)}" height="19" rx="9.5" fill="${palette.pillBg}" stroke="${pillBorder}" stroke-width="1.2" />`,
-      `        <text text-anchor="middle" y="3.8" fill="${pillTextFg}" font-family="${escapeXml(SVG_FONT_MONO)}" font-size="10.5" font-weight="600">${escapeXml(geo.label)}</text>`
+      `      <g class="mx-edge-pill"${pillOpacityAttr} transform="translate(${round2(geo.mid.x)}, ${round2(geo.mid.y)})">`
     )
+    if (geo.caption) {
+      out.push(
+        `        <text text-anchor="middle" y="-13.5" fill="${pillTextFg}" font-size="10" font-weight="600">${escapeXml(geo.caption)}</text>`
+      )
+    }
+    out.push(
+      `        <rect x="${round2(-geo.labelW / 2)}" y="-9.25" width="${round2(geo.labelW)}" height="18.5" rx="9.25" fill="${pillBg}" stroke="${escapeXml(pillBorder)}" stroke-width="${pillStrokeW}"${pillDashAttr} />`
+    )
+    if (geo.intervalText) {
+      out.push(
+        `        <line x1="${round2(geo.dividerX)}" y1="-9" x2="${round2(geo.dividerX)}" y2="9" stroke="${escapeXml(pillBorder)}" stroke-width="1.15" />`,
+        `        <text text-anchor="middle" x="${round2(geo.leftTextX)}" y="3.8" fill="${pillTextFg}" font-size="10.8" font-weight="${pillFontW}">${escapeXml(geo.rateText)}</text>`,
+        `        <text text-anchor="middle" x="${round2(geo.rightTextX)}" y="3.7" fill="${pillTextFg}" font-size="10.2" font-weight="${pillFontW}">${escapeXml(geo.intervalText)}</text>`,
+        `        <g transform="translate(${round2(geo.hourglassX)}, 0)">`,
+        `          <path d="M-2.4,-3.6 H2.4 L0.4,0 L2.4,3.6 H-2.4 L-0.4,0 Z" fill="none" stroke="${pillTextFg}" stroke-width="1.1" stroke-linejoin="round" />`,
+        `          <path d="M-1.45,3.05 H1.45 L0,0.95 Z" fill="${pillTextFg}" />`,
+        '        </g>'
+      )
+    } else {
+      out.push(
+        `        <text text-anchor="middle" y="3.8" fill="${pillTextFg}" font-size="10.8" font-weight="${pillFontW}">${escapeXml(geo.rateText)}</text>`
+      )
+    }
     if (options.flowHeatmap && geo.edge.kind === 'resource' && (cumFlow?.total ?? 0) > 0) {
       out.push(
         `        <text text-anchor="middle" y="19" fill="${escapeXml(geo.color)}" font-size="9" font-weight="700">∑ ${escapeXml(String(cumFlow?.total ?? 0))}</text>`

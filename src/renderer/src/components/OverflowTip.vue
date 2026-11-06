@@ -14,6 +14,7 @@
         ref="popEl"
         class="overflow-tip-pop"
         :class="placementClass"
+        :data-theme="resolvedTheme"
         role="tooltip"
         :style="popStyle"
       >
@@ -49,6 +50,7 @@ let lastMouseY = 0
  * 因此在悬停时（元素已就位于最终文档后）再解析目标 body，并缓存到 ref 供 Teleport 使用。
  */
 const bodyTarget = ref<HTMLElement | null>(null)
+const resolvedTheme = ref<'dark' | 'light' | undefined>(undefined)
 
 function viewportSize(target: HTMLElement | null | undefined): { width: number; height: number } {
   const win = target?.ownerDocument.defaultView ?? window
@@ -85,6 +87,10 @@ function show(mouseX?: number, mouseY?: number): void {
   const rect = el.value?.getBoundingClientRect()
   if (!rect) return
   bodyTarget.value = el.value?.ownerDocument.body ?? null
+  const themeAttr =
+    el.value?.closest('[data-theme]')?.getAttribute('data-theme') ??
+    el.value?.ownerDocument.documentElement.getAttribute('data-theme')
+  resolvedTheme.value = themeAttr === 'light' || themeAttr === 'dark' ? themeAttr : undefined
   const viewportW = viewportSize(el.value).width
   const maxWidth = Math.min(360, Math.max(160, viewportW - 16))
   const anchorX = mouseX ?? rect.left + rect.width / 2
@@ -144,14 +150,15 @@ function hide(): void {
   max-width: min(420px, 80vw);
   white-space: pre-wrap;
   word-break: break-word;
-  background: #1b2230;
-  color: #b8e0ff;
-  border: 2px solid var(--accent, #4aa3ff);
+  background: var(--panel-glass, var(--bg-panel));
+  color: var(--text);
+  border: 1.5px solid var(--accent, #3d8bfd);
   border-radius: 8px;
-  padding: 10px 14px;
-  font-size: 13px;
-  line-height: 1.6;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  padding: 9px 13px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  box-shadow: 0 8px 24px var(--shadow, rgba(0, 0, 0, 0.35));
+  backdrop-filter: blur(8px);
   pointer-events: none;
 }
 .overflow-tip-pop::after {
@@ -160,16 +167,16 @@ function hide(): void {
   left: var(--arrow-left, 16px);
   width: 0;
   height: 0;
-  border: 8px solid transparent;
+  border: 7px solid transparent;
 }
 .overflow-tip-pop.placement-top::after {
-  bottom: -16px;
-  border-top: 10px solid var(--accent, #4aa3ff);
+  bottom: -14px;
+  border-top: 8px solid var(--accent, #3d8bfd);
   border-bottom: none;
 }
 .overflow-tip-pop.placement-bottom::after {
-  top: -16px;
-  border-bottom: 10px solid var(--accent, #4aa3ff);
+  top: -14px;
+  border-bottom: 8px solid var(--accent, #3d8bfd);
   border-top: none;
 }
 </style>

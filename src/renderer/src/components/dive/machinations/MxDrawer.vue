@@ -34,6 +34,7 @@ import {
   type MxTemplateId
 } from '@shared/gameAssets'
 import { useMxStudioStore } from './mxStudioStore'
+import { themePreference } from '../../../editor/preferences'
 import MxFormulaEditor from './MxFormulaEditor.vue'
 
 const emit = defineEmits<{
@@ -366,9 +367,26 @@ function saveSelectionAsClip(): void {
   const set = new Set(s.selection.nodes)
   if (!set.size) return
   const nodes = JSON.parse(JSON.stringify(s.doc.value.nodes.filter((n) => set.has(n.id))))
-  const edges = JSON.parse(
-    JSON.stringify(s.doc.value.edges.filter((e) => set.has(e.from) && set.has(e.to)))
-  )
+  const keptEdgeIds = new Set<string>()
+  for (const e of s.doc.value.edges) {
+    if (!e.targetEdgeId && set.has(e.from) && set.has(e.to)) keptEdgeIds.add(e.id)
+  }
+  for (let pass = 0; pass < 5; pass++) {
+    let added = false
+    for (const e of s.doc.value.edges) {
+      if (
+        e.targetEdgeId &&
+        !keptEdgeIds.has(e.id) &&
+        set.has(e.from) &&
+        keptEdgeIds.has(e.targetEdgeId)
+      ) {
+        keptEdgeIds.add(e.id)
+        added = true
+      }
+    }
+    if (!added) break
+  }
+  const edges = JSON.parse(JSON.stringify(s.doc.value.edges.filter((e) => keptEdgeIds.has(e.id))))
   const name = clipName.value.trim() || `Clip ${s.doc.value.clips.length + 1}`
   s.mutate((d) => {
     d.clips.push({ id: mxNewId('clip'), name, nodes, edges })
@@ -1154,7 +1172,12 @@ function handleSaveSnapshot(): void {
 
     <!-- ═════════════ 3-Step Artificial Agent 配置向导弹窗（1:1 复刻截图 Personality -> Goals -> Control） ═════════════ -->
     <Teleport to="body">
-      <div v-if="editingAgent" class="mx-ag-modal-backdrop" @pointerdown.self="closeAgentWizard">
+      <div
+        v-if="editingAgent"
+        class="mx-ag-modal-backdrop"
+        :data-theme="themePreference"
+        @pointerdown.self="closeAgentWizard"
+      >
         <div class="mx-ag-modal" @pointerdown.stop>
           <!-- 顶部三步进度条（1 Personality — 2 Goals — 3 Control） -->
           <header class="mx-ag-stepper-hdr">
@@ -1797,7 +1820,7 @@ function handleSaveSnapshot(): void {
 }
 .mx-layer-badge {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   padding: 1px 6px;
   border-radius: 999px;
   background: var(--bg-input);
@@ -2025,7 +2048,7 @@ function handleSaveSnapshot(): void {
 .mx-ag-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.48);
+  background: var(--overlay, rgba(15, 23, 42, 0.48));
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -2040,7 +2063,7 @@ function handleSaveSnapshot(): void {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 22px 54px var(--shadow, rgba(0, 0, 0, 0.32));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2485,7 +2508,7 @@ function handleSaveSnapshot(): void {
   align-items: center;
   gap: 4px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text);
 }
 .mx-ag-goal-prog-val {
   color: var(--text-muted);

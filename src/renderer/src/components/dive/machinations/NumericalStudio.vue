@@ -34,6 +34,7 @@ import { diveEditorHistory } from '../../../features/graph/ui/diveEditorHistory'
 import { useWorkspaceStore } from '../../../stores/workspace'
 import { createMxStudioStore, provideMxStudioStore } from './mxStudioStore'
 import MxNumericalWorkbenchPanel from './MxNumericalWorkbenchPanel.vue'
+import MxFloatingTip from './MxFloatingTip.vue'
 
 const props = defineProps<{
   node: GraphNode
@@ -1324,11 +1325,13 @@ function pushAndOpenDownstreamGameSystem(): void {
     <div v-else class="num-main">
       <MxNumericalWorkbenchPanel />
     </div>
+    <MxFloatingTip />
   </div>
 </template>
 
 <style scoped>
 .num-studio {
+  --bg-elev: var(--bg-elevated);
   width: 100%;
   height: 100%;
   display: flex;
@@ -1415,7 +1418,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
 .num-mode-pill.is-active {
   background: rgba(16, 185, 129, 0.18);
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
 }
 
 .num-econ-group {
@@ -1435,14 +1438,14 @@ function pushAndOpenDownstreamGameSystem(): void {
 }
 
 .num-econ-badge.is-clean {
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
   border-color: rgba(16, 185, 129, 0.35);
   background: rgba(16, 185, 129, 0.08);
 }
 
 .num-econ-badge.is-connected {
   cursor: pointer;
-  color: #10b981;
+  color: color-mix(in srgb, #059669 78%, var(--text));
   border-color: rgba(16, 185, 129, 0.4);
   background: rgba(16, 185, 129, 0.1);
 }
@@ -1453,7 +1456,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
 .num-econ-badge.is-warning {
   cursor: pointer;
-  color: #fbbf24;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
   border-color: rgba(245, 158, 11, 0.55);
   background: rgba(245, 158, 11, 0.14);
   font-weight: 600;
@@ -1464,8 +1467,12 @@ function pushAndOpenDownstreamGameSystem(): void {
 }
 
 .num-econ-disconnect {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 20px;
   height: 20px;
+  padding: 0;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--bg);
@@ -1489,7 +1496,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
 .num-toast {
   font-size: 11px;
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(16, 185, 129, 0.12);
@@ -1520,7 +1527,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 .num-top-btn.is-run {
   background: rgba(168, 85, 247, 0.15);
   border-color: rgba(168, 85, 247, 0.45);
-  color: #c084fc;
+  color: color-mix(in srgb, #9333ea 78%, var(--text));
 }
 
 .num-top-btn.is-run:hover {
@@ -1626,7 +1633,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
 .domain-mini-btn:hover {
   border-color: rgba(16, 185, 129, 0.5);
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
 }
 
 .domain-formulas-grid {
@@ -1667,7 +1674,7 @@ function pushAndOpenDownstreamGameSystem(): void {
   width: 155px;
   font-size: 11px;
   font-weight: 600;
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
   background: rgba(16, 185, 129, 0.1);
   border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 4px;
@@ -1677,9 +1684,9 @@ function pushAndOpenDownstreamGameSystem(): void {
 .domain-formula-expr {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11.5px;
-  color: #93c5fd;
-  background: rgba(30, 41, 59, 0.55);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: color-mix(in srgb, #2563eb 78%, var(--text));
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 7px;
 }
@@ -1744,7 +1751,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 .domain-tab-btn.is-active {
   background: rgba(37, 99, 235, 0.16);
   border-color: rgba(59, 130, 246, 0.55);
-  color: #93c5fd;
+  color: color-mix(in srgb, #2563eb 78%, var(--text));
   font-weight: 600;
 }
 
@@ -1864,7 +1871,7 @@ function pushAndOpenDownstreamGameSystem(): void {
   border-radius: 6px;
   border: 1px solid rgba(16, 185, 129, 0.45);
   background: rgba(16, 185, 129, 0.14);
-  color: #34d399;
+  color: color-mix(in srgb, #059669 78%, var(--text));
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1939,7 +1946,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
 .domain-cell-input.is-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color: #93c5fd;
+  color: color-mix(in srgb, #2563eb 78%, var(--text));
   font-size: 11.5px;
 }
 

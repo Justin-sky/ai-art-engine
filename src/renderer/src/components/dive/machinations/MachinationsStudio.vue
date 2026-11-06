@@ -37,6 +37,7 @@ import MxInspector from './MxInspector.vue'
 import MxResultsPanel from './MxResultsPanel.vue'
 import MxDrawer from './MxDrawer.vue'
 import MxFormulaModal from './MxFormulaModal.vue'
+import MxFloatingTip from './MxFloatingTip.vue'
 
 const props = defineProps<{
   node: GraphNode
@@ -834,6 +835,7 @@ function pushAndOpenDownstreamGameSystem(): void {
 
     <!-- 弹出式 Machinations 公式编辑面板（双击画布连线/节点公式胶囊或属性栏输入框触发） -->
     <MxFormulaModal />
+    <MxFloatingTip />
   </div>
 </template>
 

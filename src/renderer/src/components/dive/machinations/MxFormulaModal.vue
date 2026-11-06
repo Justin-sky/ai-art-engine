@@ -8,10 +8,15 @@ import {
   type MxFormulaContextKind,
   type MxFormulaSymbolRef
 } from '@shared/gameAssets'
+import { themePreference } from '../../../editor/preferences'
 import { useMxStudioStore } from './mxStudioStore'
 
 const { t } = useI18n()
 const s = useMxStudioStore()
+
+const resolvedModalTheme = computed<'light' | 'dark'>(() =>
+  s.canvasTheme.value === 'auto' ? themePreference.value : s.canvasTheme.value
+)
 
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const draftFormula = ref('')
@@ -686,7 +691,7 @@ function applyAndClose(): void {
 }
 
 function startHeaderDrag(ev: PointerEvent): void {
-  if ((ev.target as HTMLElement).closest('button')) return
+  if ((ev.target as Element | null)?.closest?.('button')) return
   dragStart = {
     mx: ev.clientX,
     my: ev.clientY,
@@ -717,7 +722,13 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="modalTarget && resolvedContext" class="mx-fm-backdrop" @pointerdown.stop @click.stop>
+  <div
+    v-if="modalTarget && resolvedContext"
+    class="mx-fm-backdrop"
+    :data-theme="resolvedModalTheme"
+    @pointerdown.stop
+    @click.stop="($event) => $event.target === $event.currentTarget && s.closeFormulaModal()"
+  >
     <div
       class="mx-fm-panel"
       :style="{ transform: `translate(${dragOffset.x}px, ${dragOffset.y}px)` }"
@@ -756,7 +767,22 @@ onBeforeUnmount(() => {
             </span>
             <strong>{{ inspection.previewText }}</strong>
           </span>
-          <button type="button" class="mx-fm-close-btn" @click="s.closeFormulaModal()">×</button>
+          <button
+            type="button"
+            class="mx-fm-close-btn"
+            :aria-label="t('mx.formulaEditor.cancelBtn')"
+            @click="s.closeFormulaModal()"
+          >
+            <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+              <path
+                d="M2.5 2.5l7 7M9.5 2.5l-7 7"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1080,7 +1106,7 @@ onBeforeUnmount(() => {
   position: fixed;
   inset: 0;
   z-index: 1200;
-  background: rgba(8, 11, 18, 0.48);
+  background: var(--overlay, rgba(8, 11, 18, 0.45));
   backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
@@ -1095,8 +1121,8 @@ onBeforeUnmount(() => {
   border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow:
-    0 22px 60px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(61, 139, 253, 0.22);
+    0 22px 60px var(--shadow, rgba(0, 0, 0, 0.45)),
+    0 0 0 1px var(--accent-22, rgba(61, 139, 253, 0.22));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1176,12 +1202,12 @@ onBeforeUnmount(() => {
 }
 .mx-fm-syntax-pill.is-ok {
   background: rgba(16, 185, 129, 0.14);
-  color: #10b981;
+  color: color-mix(in srgb, #10b981 80%, var(--text));
   border: 1px solid rgba(16, 185, 129, 0.3);
 }
 .mx-fm-syntax-pill.is-err {
   background: rgba(244, 63, 94, 0.16);
-  color: #f43f5e;
+  color: color-mix(in srgb, #f43f5e 82%, var(--text));
   border: 1px solid rgba(244, 63, 94, 0.38);
 }
 
@@ -1192,13 +1218,13 @@ onBeforeUnmount(() => {
   padding: 3px 9px;
   border-radius: 999px;
   font-size: 11.5px;
-  background: rgba(59, 130, 246, 0.14);
-  color: #3b82f6;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: var(--accent-12, rgba(59, 130, 246, 0.14));
+  color: var(--accent, #3b82f6);
+  border: 1px solid var(--accent-28, rgba(59, 130, 246, 0.3));
 }
 .mx-fm-eval-pill.is-rng {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   border-color: rgba(245, 158, 11, 0.34);
 }
 .mx-fm-eval-lbl {
@@ -1207,15 +1233,24 @@ onBeforeUnmount(() => {
 }
 
 .mx-fm-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
   width: 26px;
   height: 26px;
+  padding: 0;
   border-radius: 6px;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
-  font-size: 17px;
   line-height: 1;
   cursor: pointer;
+}
+.mx-fm-close-btn svg {
+  display: block;
+  pointer-events: none;
 }
 .mx-fm-close-btn:hover {
   background: rgba(244, 63, 94, 0.16);
@@ -1273,7 +1308,7 @@ onBeforeUnmount(() => {
   position: relative;
   border: 1.5px solid var(--border);
   border-radius: 8px;
-  background: var(--bg);
+  background: var(--bg-input, var(--bg));
   transition: border-color 0.15s;
 }
 .mx-fm-textarea-wrap.is-focused {
@@ -1377,7 +1412,7 @@ onBeforeUnmount(() => {
 .mx-fm-mirror-box {
   padding: 6px 10px;
   border-radius: 7px;
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg-elevated) 48%, var(--bg-input, var(--bg-panel)));
   border: 1px dashed var(--border);
   display: flex;
   flex-direction: column;
@@ -1394,34 +1429,34 @@ onBeforeUnmount(() => {
   word-break: break-all;
 }
 .tok-param {
-  color: #a855f7;
+  color: color-mix(in srgb, #a855f7 82%, var(--text));
   font-weight: 700;
 }
 .tok-state {
-  color: #0ea5e9;
+  color: color-mix(in srgb, #0ea5e9 82%, var(--text));
   font-weight: 700;
 }
 .tok-node {
-  color: #3b82f6;
+  color: color-mix(in srgb, #3b82f6 82%, var(--text));
   font-weight: 700;
 }
 .tok-builtin {
-  color: #f59e0b;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   font-weight: 700;
 }
 .tok-fn {
-  color: #d97706;
+  color: color-mix(in srgb, #d97706 80%, var(--text));
   font-weight: 600;
 }
 .tok-dice {
-  color: #f43f5e;
+  color: color-mix(in srgb, #f43f5e 82%, var(--text));
   font-weight: 700;
 }
 .tok-num {
-  color: #10b981;
+  color: color-mix(in srgb, #10b981 80%, var(--text));
 }
 .tok-unknown {
-  color: #f59e0b;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   text-decoration: underline wavy #f59e0b;
 }
 .tok-op {
@@ -1517,7 +1552,7 @@ onBeforeUnmount(() => {
   padding: 1px 5px;
   border-radius: 4px;
   border: 1px solid rgba(168, 85, 247, 0.45);
-  background: var(--bg);
+  background: var(--bg-input, var(--bg));
   color: var(--text);
   font-size: 11.5px;
 }
@@ -1525,8 +1560,8 @@ onBeforeUnmount(() => {
   padding: 1px 6px;
   border-radius: 4px;
   border: 1px solid rgba(245, 158, 11, 0.55);
-  background: rgba(245, 158, 11, 0.18);
-  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.16);
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;
@@ -1548,27 +1583,27 @@ onBeforeUnmount(() => {
 }
 .mx-fm-src-tag.is-param {
   background: rgba(168, 85, 247, 0.16);
-  color: #a855f7;
+  color: color-mix(in srgb, #a855f7 80%, var(--text));
 }
 .mx-fm-src-tag.is-state-in {
   background: rgba(14, 165, 233, 0.16);
-  color: #0ea5e9;
+  color: color-mix(in srgb, #0ea5e9 80%, var(--text));
 }
 .mx-fm-src-tag.is-pool {
   background: rgba(59, 130, 246, 0.16);
-  color: #3b82f6;
+  color: color-mix(in srgb, #3b82f6 80%, var(--text));
 }
 .mx-fm-src-tag.is-register {
   background: rgba(99, 102, 241, 0.18);
-  color: #6366f1;
+  color: color-mix(in srgb, #6366f1 80%, var(--text));
 }
 .mx-fm-src-tag.is-builtin {
   background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
 }
 .mx-fm-src-tag.is-unknown {
   background: rgba(244, 63, 94, 0.18);
-  color: #f43f5e;
+  color: color-mix(in srgb, #f43f5e 80%, var(--text));
 }
 
 /* 4. 2-Column Browser */
@@ -1635,7 +1670,7 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--bg-input, var(--bg));
   color: var(--text);
   font-size: 11.5px;
   box-sizing: border-box;
@@ -1657,7 +1692,7 @@ onBeforeUnmount(() => {
   padding: 3px 6px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--bg-input, var(--bg));
   color: var(--text);
   font-size: 11px;
 }
@@ -1666,7 +1701,7 @@ onBeforeUnmount(() => {
   padding: 3px 5px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--bg-input, var(--bg));
   color: var(--text);
   font-size: 11px;
 }
@@ -1675,7 +1710,7 @@ onBeforeUnmount(() => {
   border-radius: 5px;
   border: 1px solid rgba(168, 85, 247, 0.45);
   background: rgba(168, 85, 247, 0.16);
-  color: #a855f7;
+  color: color-mix(in srgb, #a855f7 80%, var(--text));
   font-size: 10.5px;
   font-weight: 600;
   white-space: nowrap;
@@ -1787,14 +1822,15 @@ onBeforeUnmount(() => {
 .mx-fm-btn-apply {
   padding: 5px 16px;
   border-radius: 6px;
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #ffffff;
+  border: 1px solid var(--accent, #2563eb);
+  background: var(--accent, #2563eb);
+  color: var(--on-accent, #ffffff);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
 }
 .mx-fm-btn-apply:hover {
-  background: #1d4ed8;
+  background: var(--accent-hover, #1d4ed8);
+  border-color: var(--accent-hover, #1d4ed8);
 }
 </style>

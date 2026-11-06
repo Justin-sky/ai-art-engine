@@ -2010,18 +2010,18 @@ const ui = computed(() => ({
 }
 .dl-tag.is-good {
   background: rgba(16, 185, 129, 0.16);
-  color: #10b981;
+  color: color-mix(in srgb, #059669 78%, var(--text));
 }
 .dl-tag.is-warn {
   background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .dl-err {
-  color: #ef4444;
+  color: color-mix(in srgb, #dc2626 78%, var(--text));
   font-size: 10px;
 }
 .dl-feedback {
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
   font-size: 10px;
   font-weight: 600;
 }

@@ -570,17 +570,17 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       'Fills Primary Storage up to 15 first, then routes excess resources into an Overflow Vault.',
     tags: ['overflow', 'spillway', 'cap', 'vault', '溢出', '分流道'], // cjk-ok
     nodes: [
-      bn('inflow_src', 'source', '总收益流入', 0, 80), // cjk-ok
-      bn('split_gate', 'gate', '满仓检测分流', 160, 80, { gateMode: 'deterministic' }), // cjk-ok
-      bn('primary_pool', 'pool', '主背包池 (上限15)', 350, 20, { initial: 8, capacity: 15 }), // cjk-ok
-      bn('overflow_vault', 'pool', '溢流邮箱暂存池', 350, 150, { initial: 0 }) // cjk-ok
+      bn('inflow_src', 'source', '总收益流入', 0, 110), // cjk-ok
+      bn('split_gate', 'gate', '满仓检测分流', 160, 110, { gateMode: 'deterministic' }), // cjk-ok
+      bn('primary_pool', 'pool', '主背包池 (上限15)', 380, 30, { initial: 8, capacity: 15 }), // cjk-ok
+      bn('overflow_vault', 'pool', '溢流邮箱暂存池', 380, 190, { initial: 0 }) // cjk-ok
     ],
     edges: [
       be('e1', 'resource', 'inflow_src', 'split_gate', '3'),
       be('e2', 'resource', 'split_gate', 'primary_pool', '1'),
       be('e3', 'resource', 'split_gate', 'overflow_vault', '1'),
-      be('e4', 'state', 'primary_pool', 'e2', '<15', { targetEdgeId: 'e2', bend: -40 }),
-      be('e5', 'state', 'primary_pool', 'e3', '>=15', { targetEdgeId: 'e3', bend: 40 })
+      be('e4', 'state', 'primary_pool', 'split_gate', '<15', { targetEdgeId: 'e2', bend: 42 }),
+      be('e5', 'state', 'primary_pool', 'split_gate', '>=15', { targetEdgeId: 'e3', bend: -26 })
     ]
   },
   {
@@ -1433,7 +1433,7 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       be('e1', 'resource', 'backlog_src', 'dev_wip', '4'),
       be('e2', 'resource', 'dev_wip', 'qa_wip', '3'),
       be('e3', 'resource', 'qa_wip', 'shipped_done', '3|2'),
-      be('e4', 'state', 'qa_wip', 'e2', '<6', { targetEdgeId: 'e2', bend: -45 })
+      be('e4', 'state', 'qa_wip', 'dev_wip', '<6', { targetEdgeId: 'e2', bend: 45 })
     ]
   },
 
@@ -1954,25 +1954,25 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       'Routes admissions into capped ICU beds first and diverts surge overflow when beds fill up.',
     tags: ['hospital', 'icu', 'triage', 'capacity', 'healthcare', '医疗床位', '分诊挤兑'], // cjk-ok
     nodes: [
-      bn('admit_src', 'source', '新增急诊病患', 0, 80), // cjk-ok
-      bn('triage_gate', 'gate', '分诊台 Triage', 155, 80, { gateMode: 'deterministic' }), // cjk-ok
-      bn('icu_beds', 'pool', /* cjk-ok */ '在院床位 (上限20)', 335, 25, {
+      bn('admit_src', 'source', '新增急诊病患', 0, 110), // cjk-ok
+      bn('triage_gate', 'gate', '分诊台 Triage', 160, 110, { gateMode: 'deterministic' }), // cjk-ok
+      bn('icu_beds', 'pool', /* cjk-ok */ '在院床位 (上限20)', 380, 30, {
         initial: 10,
         capacity: 20,
         color: '#0ea5e9',
         trigger: 'automatic',
         pullMode: 'push_any'
       }),
-      bn('discharged', 'pool', '治愈出院人数', 520, 25, { initial: 0, color: '#10b981' }), // cjk-ok
-      bn('surge_wait', 'pool', '超载外溢候诊池', 335, 150, { initial: 0, color: '#ef4444' }) // cjk-ok
+      bn('discharged', 'pool', '治愈出院人数', 560, 30, { initial: 0, color: '#10b981' }), // cjk-ok
+      bn('surge_wait', 'pool', '超载外溢候诊池', 380, 190, { initial: 0, color: '#ef4444' }) // cjk-ok
     ],
     edges: [
       be('e1', 'resource', 'admit_src', 'triage_gate', '6'),
       be('e2', 'resource', 'triage_gate', 'icu_beds', '1'),
       be('e3', 'resource', 'triage_gate', 'surge_wait', '1'),
       be('e4', 'resource', 'icu_beds', 'discharged', '5|2'),
-      be('e5', 'state', 'icu_beds', 'e2', '<20', { targetEdgeId: 'e2', bend: -40 }),
-      be('e6', 'state', 'icu_beds', 'e3', '>=20', { targetEdgeId: 'e3', bend: 40 })
+      be('e5', 'state', 'icu_beds', 'triage_gate', '<20', { targetEdgeId: 'e2', bend: 42 }),
+      be('e6', 'state', 'icu_beds', 'triage_gate', '>=20', { targetEdgeId: 'e3', bend: -26 })
     ]
   },
 
@@ -2429,15 +2429,22 @@ export function insertMxBuildingBlockIntoDocument(
     edgeIdMap.set(e.id, nextEdgeId)
   }
 
+  const blockEdgeById = new Map(block.edges.map((e) => [e.id, e]))
   const insertedEdgeIds: string[] = []
   const newEdges: MxEdge[] = block.edges.map((srcEdge) => {
     const cloned: MxEdge = JSON.parse(JSON.stringify(srcEdge))
     const newEdgeId = edgeIdMap.get(srcEdge.id)!
     cloned.id = newEdgeId
     cloned.from = nodeIdMap.get(srcEdge.from) ?? srcEdge.from
-    cloned.to = nodeIdMap.get(srcEdge.to) ?? srcEdge.to
     if (cloned.targetEdgeId) {
+      const targetBlockEdge = blockEdgeById.get(cloned.targetEdgeId)
+      cloned.to =
+        nodeIdMap.get(srcEdge.to) ??
+        (targetBlockEdge ? nodeIdMap.get(targetBlockEdge.from) : undefined) ??
+        cloned.from
       cloned.targetEdgeId = edgeIdMap.get(cloned.targetEdgeId) ?? cloned.targetEdgeId
+    } else {
+      cloned.to = nodeIdMap.get(srcEdge.to) ?? srcEdge.to
     }
     if (cloned.resourceId && resMap.has(cloned.resourceId)) {
       cloned.resourceId = resMap.get(cloned.resourceId)

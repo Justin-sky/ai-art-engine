@@ -3751,4 +3751,81 @@ describe('Machinations.io 100% specification parity', () => {
       ).valid
     ).toBe(true)
   })
+
+  it('renders curved dashed state lines and edge-targeted state junctions accurately in minimap, copy-paste, and SVG export', () => {
+    // 1. Every building block edge (including targetEdgeId state edges) resolves `from`, `to` to valid node IDs
+    for (const block of MX_BUILDING_BLOCKS) {
+      const doc = createMxDocumentFromBuildingBlock(block.id)!
+      const nodeIds = new Set(doc.nodes.map((n) => n.id))
+      const edgeIds = new Set(doc.edges.map((e) => e.id))
+      for (const e of doc.edges) {
+        expect(nodeIds.has(e.from), `${block.id}:${e.id}.from=${e.from}`).toBe(true)
+        expect(nodeIds.has(e.to), `${block.id}:${e.id}.to=${e.to}`).toBe(true)
+        if (e.targetEdgeId) {
+          expect(edgeIds.has(e.targetEdgeId), `${block.id}:${e.id}.targetEdgeId`).toBe(true)
+        }
+      }
+    }
+
+    // 2. Copy & paste preserves edge-targeting state connections (`targetEdgeId`) and remaps IDs
+    const overflowDoc = createMxDocumentFromBuildingBlock('bb_overflow_spillway')!
+    const store = createMxStudioStore(overflowDoc)
+    const origEdgeCount = store.doc.value.edges.length
+    const origTargetStateCount = store.doc.value.edges.filter((e) => !!e.targetEdgeId).length
+    expect(origTargetStateCount).toBe(2)
+
+    store.select(store.doc.value.nodes.map((n) => n.id))
+    store.duplicateSelection()
+    expect(store.doc.value.edges.length).toBe(origEdgeCount * 2)
+    const pastedTargetStates = store.doc.value.edges
+      .slice(origEdgeCount)
+      .filter((e) => !!e.targetEdgeId)
+    expect(pastedTargetStates.length).toBe(2)
+    const pastedEdgeIds = new Set(store.doc.value.edges.slice(origEdgeCount).map((e) => e.id))
+    for (const pe of pastedTargetStates) {
+      expect(pastedEdgeIds.has(pe.targetEdgeId!)).toBe(true)
+    }
+
+    // 3. Multi-hop chained targetEdgeId state edges resolve cleanly in SVG export regardless of array order
+    const chainDoc = createEmptyMxDocument('Chained State Modifiers')
+    chainDoc.nodes = [
+      { id: 's1', kind: 'source', label: 'Src', x: 100, y: 120, trigger: 'automatic' },
+      { id: 'p1', kind: 'pool', label: 'PoolA', x: 300, y: 120, trigger: 'passive', initial: 5 },
+      { id: 'p2', kind: 'pool', label: 'PoolB', x: 200, y: 260, trigger: 'passive', initial: 3 },
+      { id: 'p3', kind: 'pool', label: 'PoolC', x: 80, y: 260, trigger: 'passive', initial: 2 }
+    ]
+    chainDoc.edges = [
+      // Outer chained state edge intentionally placed BEFORE inner state edge in doc.edges
+      {
+        id: 'st_outer',
+        kind: 'state',
+        from: 'p3',
+        to: 'p2',
+        targetEdgeId: 'st_inner',
+        formula: '+2'
+      },
+      { id: 'e_base', kind: 'resource', from: 's1', to: 'p1', formula: '2' },
+      {
+        id: 'st_inner',
+        kind: 'state',
+        from: 'p2',
+        to: 's1',
+        targetEdgeId: 'e_base',
+        formula: '+1'
+      }
+    ]
+    const exportedSvg = exportMxDiagramSvg(chainDoc).svgText
+    expect(exportedSvg).toContain('data-edge-id="st_outer"')
+    expect(exportedSvg).toContain('stroke-dasharray="6 4"')
+
+    // 4. Verify MxCanvas minimap renders curved/dashed state paths & edge-target dots instead of raw nodeXById lines
+    const canvasSource = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxCanvas.vue'),
+      'utf8'
+    )
+    expect(canvasSource).toContain('v-for="me in minimapEdges"')
+    expect(canvasSource).toContain(':stroke-dasharray="me.dasharray"')
+    expect(canvasSource).toContain('v-for="me in minimapEdgeTargetDots"')
+    expect(canvasSource).not.toContain('nodeXById(e.to)')
+  })
 })

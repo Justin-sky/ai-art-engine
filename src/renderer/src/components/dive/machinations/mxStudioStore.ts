@@ -925,13 +925,38 @@ export function createMxStudioStore(initial: MxDocument) {
   }
 
   // 剪贴板
+  function collectSelectionEdges(edges: MxEdge[], nodeSet: Set<string>): MxEdge[] {
+    const keptIds = new Set<string>()
+    for (const e of edges) {
+      if (!e.targetEdgeId && nodeSet.has(e.from) && nodeSet.has(e.to)) {
+        keptIds.add(e.id)
+      }
+    }
+    for (let pass = 0; pass < 5; pass++) {
+      let added = false
+      for (const e of edges) {
+        if (
+          e.targetEdgeId &&
+          !keptIds.has(e.id) &&
+          nodeSet.has(e.from) &&
+          keptIds.has(e.targetEdgeId)
+        ) {
+          keptIds.add(e.id)
+          added = true
+        }
+      }
+      if (!added) break
+    }
+    return edges.filter((e) => keptIds.has(e.id))
+  }
+
   let clipboard: { nodes: MxNode[]; edges: MxEdge[] } | null = null
   function copySelection(): void {
     const set = new Set(selection.nodes)
     if (!set.size) return
     clipboard = {
       nodes: clone(doc.value.nodes.filter((n) => set.has(n.id))),
-      edges: clone(doc.value.edges.filter((e) => set.has(e.from) && set.has(e.to)))
+      edges: clone(collectSelectionEdges(doc.value.edges, set))
     }
   }
   function pasteNodes(
@@ -951,19 +976,27 @@ export function createMxStudioStore(initial: MxDocument) {
       botCondition: rewriteMxFormulaIdentifiers(n.botCondition, map)
     }))
     const edgeMap = new Map<string, string>()
-    const validEdges = src.edges.filter((e) => map.has(e.from) && map.has(e.to))
+    const validEdges = collectSelectionEdges(src.edges, new Set(map.keys()))
+    const srcEdgeById = new Map(validEdges.map((e) => [e.id, e]))
     for (const e of validEdges) {
       edgeMap.set(e.id, mxNewId('e'))
     }
-    const edges = validEdges.map((e) => ({
-      ...clone(e),
-      id: edgeMap.get(e.id)!,
-      from: map.get(e.from)!,
-      to: map.get(e.to)!,
-      targetEdgeId: e.targetEdgeId ? (edgeMap.get(e.targetEdgeId) ?? e.targetEdgeId) : undefined,
-      formula: rewriteMxFormulaIdentifiers(e.formula, map) ?? e.formula,
-      interval: rewriteMxFormulaIdentifiers(e.interval, map)
-    }))
+    const edges = validEdges.map((e) => {
+      const fallbackToNode =
+        e.targetEdgeId && !map.has(e.to) ? srcEdgeById.get(e.targetEdgeId)?.from : undefined
+      return {
+        ...clone(e),
+        id: edgeMap.get(e.id)!,
+        from: map.get(e.from)!,
+        to:
+          map.get(e.to) ??
+          (fallbackToNode ? map.get(fallbackToNode) : undefined) ??
+          map.get(e.from)!,
+        targetEdgeId: e.targetEdgeId ? (edgeMap.get(e.targetEdgeId) ?? e.targetEdgeId) : undefined,
+        formula: rewriteMxFormulaIdentifiers(e.formula, map) ?? e.formula,
+        interval: rewriteMxFormulaIdentifiers(e.interval, map)
+      }
+    })
     mutate((d) => {
       d.nodes.push(...nodes)
       d.edges.push(...edges)

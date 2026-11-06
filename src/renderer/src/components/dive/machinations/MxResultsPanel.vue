@@ -1932,11 +1932,11 @@ function sweepSeriesPolyline(nodeId: string): string {
 }
 .mx-diag-pill.is-ok {
   background: rgba(34, 197, 94, 0.18);
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
 }
 .mx-diag-pill.is-warn {
   background: rgba(245, 158, 11, 0.22);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-res-icon-btn {
   border: none;
@@ -2361,7 +2361,7 @@ function sweepSeriesPolyline(nodeId: string): string {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 .mx-diag-kpi-val.is-warn {
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-diag-list {
   display: flex;
@@ -2390,19 +2390,19 @@ function sweepSeriesPolyline(nodeId: string): string {
 }
 .mx-diag-item.sev-ok .mx-diag-badge {
   background: rgba(34, 197, 94, 0.18);
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
 }
 .mx-diag-item.sev-info .mx-diag-badge {
   background: rgba(56, 189, 248, 0.18);
-  color: #38bdf8;
+  color: color-mix(in srgb, #0284c7 78%, var(--text));
 }
 .mx-diag-item.sev-warn .mx-diag-badge {
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-diag-item.sev-critical .mx-diag-badge {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: color-mix(in srgb, #dc2626 78%, var(--text));
 }
 .mx-diag-text {
   flex: 1;
@@ -2478,15 +2478,15 @@ function sweepSeriesPolyline(nodeId: string): string {
 }
 .mx-ev-badge.is-transfer {
   background: rgba(34, 197, 94, 0.16);
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
 }
 .mx-ev-badge.is-gate {
   background: rgba(245, 158, 11, 0.16);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 .mx-ev-badge.is-end {
   background: rgba(239, 68, 68, 0.16);
-  color: #ef4444;
+  color: color-mix(in srgb, #dc2626 78%, var(--text));
 }
 
 /* Transport Bar */

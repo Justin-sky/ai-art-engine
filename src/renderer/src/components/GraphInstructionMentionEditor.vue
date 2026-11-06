@@ -1856,7 +1856,7 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: var(--bg-elevated);
+  background: var(--bg-panel);
   box-shadow: 0 10px 28px var(--shadow);
   overflow: hidden;
   pointer-events: none;
@@ -1886,7 +1886,7 @@ onBeforeUnmount(() => {
   flex: none;
   font-size: 12px;
   line-height: 1.55;
-  color: var(--fg);
+  color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 130px;

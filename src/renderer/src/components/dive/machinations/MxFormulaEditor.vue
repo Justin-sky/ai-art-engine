@@ -292,6 +292,15 @@ function onCreateUnknownAsParam(token: string): void {
   s.upsertParam(token, 1)
 }
 
+function onFxButtonClick(): void {
+  if (canOpenModal.value) {
+    builderOpen.value = false
+    openFullModal()
+  } else {
+    builderOpen.value = !builderOpen.value
+  }
+}
+
 const canOpenModal = computed(() => Boolean(props.edgeId || props.ownerNodeId || props.paramId))
 
 function openFullModal(): void {
@@ -364,20 +373,13 @@ function onCreateAndInsertParam(): void {
       <button
         type="button"
         class="mx-fe-fx-btn"
-        :class="{ 'is-open': builderOpen }"
-        :title="t('mx.formulaEditor.toggleBtnTip')"
-        @click="builderOpen = !builderOpen"
+        :class="{ 'is-open': !canOpenModal && builderOpen }"
+        :title="
+          canOpenModal ? t('mx.formulaEditor.expandModalTip') : t('mx.formulaEditor.toggleBtnTip')
+        "
+        @click="onFxButtonClick"
       >
         fx
-      </button>
-      <button
-        v-if="canOpenModal"
-        type="button"
-        class="mx-fe-fx-btn"
-        :title="t('mx.formulaEditor.expandModalTip')"
-        @click="openFullModal"
-      >
-        ⤢
       </button>
 
       <!-- 2. 输入时自动浮出的智能补全菜单 -->
@@ -601,7 +603,7 @@ function onCreateAndInsertParam(): void {
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--bg-elevated);
+  background: var(--bg-input, var(--bg-panel));
   border: 1px solid var(--border);
   border-radius: 6px;
   transition: border-color 0.14s ease;
@@ -634,13 +636,13 @@ function onCreateAndInsertParam(): void {
   font-size: 10.5px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(59, 130, 246, 0.13);
-  color: #3b82f6;
+  background: var(--accent-12, rgba(59, 130, 246, 0.13));
+  color: var(--accent, #3b82f6);
   margin-right: 3px;
 }
 .mx-fe-preview.is-rng {
   background: rgba(168, 85, 247, 0.15);
-  color: #a855f7;
+  color: color-mix(in srgb, #a855f7 80%, var(--text));
 }
 
 .mx-fe-fx-btn {
@@ -650,7 +652,7 @@ function onCreateAndInsertParam(): void {
   margin-right: 3px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg-panel);
+  background: var(--bg-elevated);
   color: var(--text-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10.5px;
@@ -661,7 +663,7 @@ function onCreateAndInsertParam(): void {
 }
 .mx-fe-fx-btn:hover,
 .mx-fe-fx-btn.is-open {
-  color: #ffffff;
+  color: var(--on-accent, #ffffff);
   background: var(--accent);
   border-color: var(--accent);
 }
@@ -673,10 +675,10 @@ function onCreateAndInsertParam(): void {
   right: 0;
   top: calc(100% + 3px);
   z-index: 40;
-  background: var(--bg-elevated);
+  background: var(--bg-panel);
   border: 1px solid var(--accent);
   border-radius: 7px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 24px var(--shadow, rgba(0, 0, 0, 0.35));
   max-height: 196px;
   overflow-y: auto;
   padding: 3px;
@@ -733,33 +735,33 @@ function onCreateAndInsertParam(): void {
   line-height: 1.35;
 }
 .mx-fe-src-tag.is-param {
-  background: rgba(245, 158, 11, 0.18);
-  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.16);
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 .mx-fe-src-tag.is-pool {
-  background: rgba(16, 185, 129, 0.16);
-  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  color: color-mix(in srgb, #10b981 80%, var(--text));
   border: 1px solid rgba(16, 185, 129, 0.32);
 }
 .mx-fe-src-tag.is-register {
-  background: rgba(139, 92, 246, 0.18);
-  color: #8b5cf6;
+  background: rgba(139, 92, 246, 0.16);
+  color: color-mix(in srgb, #8b5cf6 80%, var(--text));
   border: 1px solid rgba(139, 92, 246, 0.35);
 }
 .mx-fe-src-tag.is-state-in {
-  background: rgba(14, 165, 233, 0.18);
-  color: #0ea5e9;
+  background: rgba(14, 165, 233, 0.16);
+  color: color-mix(in srgb, #0ea5e9 80%, var(--text));
   border: 1px solid rgba(14, 165, 233, 0.35);
 }
 .mx-fe-src-tag.is-builtin {
   background: rgba(6, 182, 212, 0.15);
-  color: #06b6d4;
+  color: color-mix(in srgb, #06b6d4 80%, var(--text));
   border: 1px solid rgba(6, 182, 212, 0.3);
 }
 .mx-fe-src-tag.is-unknown {
-  background: rgba(239, 68, 68, 0.16);
-  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  color: color-mix(in srgb, #ef4444 80%, var(--text));
   border: 1px solid rgba(239, 68, 68, 0.36);
 }
 
@@ -835,7 +837,7 @@ function onCreateAndInsertParam(): void {
   font-size: 11px;
   border-radius: 4px;
   border: 1px solid rgba(245, 158, 11, 0.4);
-  background: var(--bg-elevated);
+  background: var(--bg-input, var(--bg-panel));
   color: var(--text);
   text-align: right;
   outline: none;
@@ -850,7 +852,7 @@ function onCreateAndInsertParam(): void {
   border-radius: 4px;
   border: 1px solid rgba(245, 158, 11, 0.45);
   background: rgba(245, 158, 11, 0.14);
-  color: #f59e0b;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   font-size: 10px;
   font-weight: 600;
   cursor: pointer;
@@ -910,7 +912,7 @@ function onCreateAndInsertParam(): void {
   padding: 4px 7px;
   border-radius: 5px;
   border: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--bg-input, var(--bg-panel));
   color: var(--text);
   font-size: 11px;
   outline: none;
@@ -992,7 +994,7 @@ function onCreateAndInsertParam(): void {
   padding: 3px 6px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--bg-input, var(--bg-panel));
   color: var(--text);
   font-size: 11px;
   outline: none;
@@ -1002,7 +1004,7 @@ function onCreateAndInsertParam(): void {
   padding: 3px 4px;
   border-radius: 4px;
   border: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--bg-input, var(--bg-panel));
   color: var(--text);
   font-size: 11px;
   text-align: right;
@@ -1014,7 +1016,7 @@ function onCreateAndInsertParam(): void {
   border-radius: 4px;
   border: 1px solid rgba(245, 158, 11, 0.45);
   background: rgba(245, 158, 11, 0.16);
-  color: #fbbf24;
+  color: color-mix(in srgb, #f59e0b 78%, var(--text));
   font-size: 10.5px;
   font-weight: 600;
   cursor: pointer;

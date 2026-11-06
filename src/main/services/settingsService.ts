@@ -1,4 +1,4 @@
-import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron'
+import { BrowserWindow, nativeTheme, type BrowserWindowConstructorOptions } from 'electron'
 import Store from 'electron-store'
 import {
   DEFAULT_SETTINGS,
@@ -47,6 +47,16 @@ type StoreSchema = {
   recentProjects: string[]
 }
 
+function syncNativeThemeSource(theme: 'dark' | 'light'): void {
+  try {
+    if (nativeTheme && typeof nativeTheme === 'object' && 'themeSource' in nativeTheme) {
+      nativeTheme.themeSource = theme
+    }
+  } catch {
+    /* 测试环境或未就绪时忽略 */
+  }
+}
+
 class SettingsService {
   private store: Store<StoreSchema> | null = null
 
@@ -58,6 +68,7 @@ class SettingsService {
         recentProjects: [] as string[]
       }
     })
+    syncNativeThemeSource(this.get().theme === 'light' ? 'light' : 'dark')
   }
 
   private ensure(): Store<StoreSchema> {
@@ -182,9 +193,11 @@ class SettingsService {
     }
   }
 
-  /** 按当前设置同步窗口底色 / Win 标题栏叠加色 */
+  /** 按当前设置同步窗口底色 / Win 标题栏叠加色 / 原生系统 Tooltip 主题 */
   syncWindowChrome(): void {
-    const chrome = this.windowChromeColors()
+    const theme = this.get().theme === 'light' ? 'light' : 'dark'
+    syncNativeThemeSource(theme)
+    const chrome = chromeColorsForTheme(theme)
     for (const win of BrowserWindow.getAllWindows()) {
       applyChromeToWindow(win, chrome)
     }

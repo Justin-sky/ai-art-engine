@@ -3492,7 +3492,10 @@ const uiText = computed(() => ({
         <div class="mx-wb-bridge-group" style="flex-wrap: wrap; gap: 6px; width: 100%">
           <span
             class="mx-wb-bridge-tag"
-            style="background: rgba(168, 85, 247, 0.22); color: #c084fc"
+            style="
+              background: rgba(168, 85, 247, 0.18);
+              color: color-mix(in srgb, #9333ea 78%, var(--text));
+            "
           >
             🎬 {{ uiText.dramaViewTag }}
           </span>
@@ -7977,12 +7980,12 @@ const uiText = computed(() => ({
 
 .mx-wb-bridge-tag.is-in {
   background: rgba(34, 197, 94, 0.16);
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
 }
 
 .mx-wb-bridge-tag.is-out {
   background: rgba(59, 130, 246, 0.18);
-  color: #60a5fa;
+  color: color-mix(in srgb, #2563eb 78%, var(--text));
 }
 
 .mx-wb-bridge-arrow {
@@ -8045,7 +8048,7 @@ const uiText = computed(() => ({
 .mx-wb-bridge-feedback {
   font-size: 10px;
   font-weight: 600;
-  color: #22c55e;
+  color: color-mix(in srgb, #16a34a 78%, var(--text));
   margin-left: auto;
 }
 
@@ -8218,9 +8221,10 @@ const uiText = computed(() => ({
   gap: 8px;
   padding: 3px 8px;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--bg-panel) 90%, transparent);
+  background: var(--panel-glass, var(--bg-panel));
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 4px 14px var(--shadow, rgba(0, 0, 0, 0.22));
+  backdrop-filter: blur(6px);
   font-size: 10px;
   color: var(--text);
   pointer-events: none;
@@ -8395,17 +8399,17 @@ const uiText = computed(() => ({
 
 .mx-wb-tag.is-good {
   background: rgba(16, 185, 129, 0.18);
-  color: #10b981;
+  color: color-mix(in srgb, #059669 78%, var(--text));
 }
 
 .mx-wb-tag.is-bad {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: color-mix(in srgb, #dc2626 78%, var(--text));
 }
 
 .mx-wb-tag.is-warn {
   background: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
 }
 
 .mx-wb-bar-track {
@@ -8432,10 +8436,10 @@ const uiText = computed(() => ({
 
 .mx-wb-cascade-btn {
   padding: 3px 8px;
-  border: 1px solid #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.65);
   border-radius: 5px;
   background: rgba(245, 158, 11, 0.16);
-  color: #fbbf24;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
@@ -8456,12 +8460,12 @@ const uiText = computed(() => ({
 
 .mx-wb-delta.is-good {
   background: rgba(16, 185, 129, 0.2);
-  color: #10b981;
+  color: color-mix(in srgb, #059669 78%, var(--text));
 }
 
 .mx-wb-delta.is-bad {
   background: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
+  color: color-mix(in srgb, #dc2626 78%, var(--text));
 }
 
 .mx-wb-delta.is-neutral {
@@ -8540,8 +8544,8 @@ const uiText = computed(() => ({
   padding: 8px;
   border-radius: 8px;
   border: 1.5px solid var(--border);
-  background: linear-gradient(165deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.96));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.28);
+  background: linear-gradient(165deg, var(--bg-elevated), var(--bg-panel));
+  box-shadow: 0 4px 12px var(--shadow, rgba(0, 0, 0, 0.2));
   transition:
     transform 0.14s ease,
     border-color 0.14s ease;
@@ -8602,7 +8606,7 @@ const uiText = computed(() => ({
   border: 1px solid transparent;
   border-radius: 3px;
   background: transparent;
-  color: #f8fafc;
+  color: var(--text);
   font-size: 11px;
   font-weight: 700;
   padding: 1px 3px;
@@ -8617,8 +8621,8 @@ const uiText = computed(() => ({
 .mx-vc-art-box {
   height: 44px;
   border-radius: 6px;
-  background: rgba(15, 23, 42, 0.75);
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -8648,8 +8652,8 @@ const uiText = computed(() => ({
   justify-content: space-between;
   padding: 2px 5px;
   border-radius: 4px;
-  background: rgba(30, 41, 59, 0.75);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   font-size: 9px;
 }
 
@@ -8662,7 +8666,7 @@ const uiText = computed(() => ({
   width: 34px;
   border: none;
   background: transparent;
-  color: #fde047;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
   font-size: 10px;
   font-weight: 700;
   text-align: right;
@@ -8674,7 +8678,7 @@ const uiText = computed(() => ({
   justify-content: space-between;
   font-size: 9px;
   color: var(--text-muted);
-  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  border-top: 1px solid var(--border);
   padding-top: 4px;
 }
 </style>

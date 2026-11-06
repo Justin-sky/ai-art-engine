@@ -3375,6 +3375,587 @@ function isNodeActive(
   return true
 }
 
+const NO_MOD_RESULT = { bonus: 0, overwrite: null } as const
+
+const MX_COND_GATE_OUT_EXPR_RE =
+  /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
+const MX_STOCHASTIC_FLOW_EXPR_RE = /\b\d*[dD]\d+\b|\.\.|random|rand/i
+
+function formatModNum(n: number): string {
+  const rounded = Math.round(n * 1000) / 1000
+  return String(Object.is(rounded, -0) ? 0 : rounded)
+}
+
+function isActiveFormulaModifierSpec(spec: MxStateSpec): boolean {
+  if (spec.type === 'overwrite' || spec.type === 'modifier' || spec.type === 'fraction_modifier') {
+    return true
+  }
+  if (spec.type === 'expr') {
+    const trimmed = spec.expr.trim()
+    return Boolean(trimmed && !/^\d+(?:\.\d+)?$/.test(trimmed) && !isMxBooleanStateExpr(trimmed))
+  }
+  return false
+}
+
+export interface MxEdgeRuntimeGateSnapshot {
+  /** 条件型状态边当前求值为 false（未满足条件，处于静默待命态） */
+  dormantStateEdgeIds: Set<string>
+  /** 资源边或状态边因入向条件状态边（或节点级条件状态边）未满足而被门控关断 */
+  gatedOffEdgeIds: Set<string>
+  /** 运行时因状态修正器（+1 / -2 / +50% / +1/3 / = / +1i 等）生效而动态改变的有效公式文本 */
+  modifiedEdgeFormulas: Map<string, string>
+}
+
+/**
+ * 根据当前画布节点快照数值，评估所有条件状态边的激活真值、被门控关断的资源边集合，
+ * 以及受状态修正器（Formula / Interval Modifiers）动态改写后的连线实时有效公式，
+ * 供实时画布与 SVG/PNG 架构图导出统一渲染运行态开关状态、`→ 0` 锁止提示与动态公式值。
+ */
+export function evaluateMxEdgeRuntimeGates(
+  doc: MxDocument,
+  options: {
+    values?: Record<string, number> | null
+    poolTokens?: Record<string, MxPoolTokenStackItem[]> | null
+    step?: number
+    params?: Record<string, number>
+  } = {}
+): MxEdgeRuntimeGateSnapshot {
+  const dormantStateEdgeIds = new Set<string>()
+  const gatedOffEdgeIds = new Set<string>()
+  const modifiedEdgeFormulas = new Map<string, string>()
+  if (!doc.edges.some((e) => e.kind === 'state')) {
+    return { dormantStateEdgeIds, gatedOffEdgeIds, modifiedEdgeFormulas }
+  }
+
+  const gIdx = getMxGraphIndex(doc)
+  const values: Record<string, number> = {}
+  for (const n of doc.nodes) {
+    if (options.values && n.id in options.values) {
+      values[n.id] = options.values[n.id] ?? 0
+    } else if (n.kind === 'pool') {
+      values[n.id] = Math.min(capOf(n), Math.max(0, Number(n.initial ?? 0)))
+    } else if (n.kind === 'register') {
+      values[n.id] = Number(n.initial ?? 0)
+    } else {
+      values[n.id] = 0
+    }
+  }
+
+  const step = options.step ?? 0
+  const params = options.params ?? resolveMxParams(doc)
+  const state: MxRuntimeState = {
+    step,
+    values,
+    active: {},
+    gateCursor: {},
+    buffers: {},
+    edgeFlows: {},
+    fired: {},
+    ended: false,
+    totalProduced: 0,
+    totalConsumed: 0,
+    poolTokens: options.poolTokens ?? undefined
+  }
+  const vars = buildVars(doc, values, params, step)
+
+  const nodeActiveById = new Map<string, boolean>()
+  const checkNodeActiveCached = (n: MxNode | undefined): boolean => {
+    if (!n) return true
+    const cached = nodeActiveById.get(n.id)
+    if (cached !== undefined) return cached
+    const active = isNodeActive(doc, n, state, params, vars)
+    nodeActiveById.set(n.id, active)
+    return active
+  }
+
+  const hasNodeActiveFormulaMod = (nodeId: string): boolean => {
+    const ins = gIdx.stateInByNode.get(nodeId)
+    if (!ins || !ins.length) return false
+    for (const se of ins) {
+      if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+      const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+      if (isActiveFormulaModifierSpec(sp)) return true
+    }
+    return false
+  }
+
+  for (const e of doc.edges) {
+    const edgeOpen = isEdgeActive(doc, e, state, params, SHARED_NOP_RNG, vars)
+    if (!edgeOpen) {
+      gatedOffEdgeIds.add(e.id)
+    }
+
+    if (e.kind === 'state') {
+      const srcNode = gIdx.byId.get(e.from)
+      const incomingStateMods = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
+      const effSpec = getEffectiveStateSpec(doc, e, state, params, SHARED_NOP_RNG, vars)
+
+      if (incomingStateMods.length > 0) {
+        let hasActiveModOnState = false
+        for (const me of incomingStateMods) {
+          if (!isEdgeActive(doc, me, state, params, SHARED_NOP_RNG, vars)) continue
+          const mSpec = getEffectiveStateSpec(doc, me, state, params, SHARED_NOP_RNG, vars)
+          if (isActiveFormulaModifierSpec(mSpec)) {
+            hasActiveModOnState = true
+            break
+          }
+        }
+        if (hasActiveModOnState) {
+          let nextStateStr: string | null = null
+          if (effSpec.type === 'modifier') {
+            nextStateStr = `${effSpec.delta >= 0 ? '+' : ''}${formatModNum(effSpec.delta)}${effSpec.percent ? '%' : ''}`
+          } else if (effSpec.type === 'interval_modifier') {
+            nextStateStr = `${effSpec.delta >= 0 ? '+' : ''}${formatModNum(effSpec.delta)}${effSpec.percent ? '%' : ''}i`
+          } else if (effSpec.type === 'probability') {
+            nextStateStr = `${formatModNum(effSpec.pct)}%`
+          } else if (effSpec.type === 'activator') {
+            nextStateStr = `${effSpec.op}${formatModNum(effSpec.value)}`
+          }
+          const authoredState = (e.formula || '*').trim()
+          if (nextStateStr !== null && nextStateStr !== authoredState) {
+            modifiedEdgeFormulas.set(e.id, nextStateStr)
+          }
+        }
+      }
+
+      if (srcNode?.kind === 'gate') continue
+      if (!edgeOpen) {
+        dormantStateEdgeIds.add(e.id)
+        continue
+      }
+      const act = checkActivator(
+        effSpec,
+        getStateEdgeOriginValue(doc, e, state),
+        vars,
+        SHARED_NOP_RNG,
+        gIdx.paramArrays
+      )
+      if (act === false) {
+        dormantStateEdgeIds.add(e.id)
+      }
+    } else if (e.kind === 'resource') {
+      const srcNode = gIdx.byId.get(e.from)
+      const dstNode = gIdx.byId.get(e.to)
+      if (edgeOpen) {
+        if (!checkNodeActiveCached(srcNode)) {
+          gatedOffEdgeIds.add(e.id)
+        } else if (dstNode) {
+          const defaultSrcTrigger =
+            srcNode?.kind === 'source' || srcNode?.kind === 'drain' || srcNode?.kind === 'converter'
+              ? 'automatic'
+              : 'passive'
+          const srcTrigger = srcNode?.trigger ?? defaultSrcTrigger
+          const blockedByDst =
+            dstNode.kind === 'gate' ||
+            (srcTrigger === 'passive' &&
+              (dstNode.kind === 'converter' ||
+                dstNode.kind === 'drain' ||
+                dstNode.kind === 'trader'))
+          if (blockedByDst && !checkNodeActiveCached(dstNode)) {
+            gatedOffEdgeIds.add(e.id)
+          }
+        }
+      }
+
+      // 计算状态修正器（+1 / -2 / +50% / +1/3 / = / +1i）对资源边显示公式的实时修正值
+      const edgeStateIns = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
+      const isGateOut = srcNode?.kind === 'gate'
+      const isFirstGateOut = isGateOut && gIdx.outResByNode.get(srcNode.id)?.[0]?.id === e.id
+      const srcModEligible = Boolean(
+        srcNode &&
+        srcNode.kind !== 'pool' &&
+        srcNode.kind !== 'register' &&
+        (!isGateOut || isFirstGateOut)
+      )
+      const srcIntervalEligible = Boolean(
+        srcNode && srcNode.kind !== 'pool' && srcNode.kind !== 'register'
+      )
+      const dstModEligible = Boolean(dstNode?.kind === 'drain')
+
+      const hasCandidateStateIns =
+        edgeStateIns.length > 0 ||
+        (srcIntervalEligible && gIdx.stateInByNode.has(srcNode!.id)) ||
+        (dstModEligible && gIdx.stateInByNode.has(dstNode!.id))
+      if (!hasCandidateStateIns) continue
+
+      const spec = parseMxFlowFormula(e.formula)
+      const strippedCore = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
+      const isCondGateBranch = isGateOut && MX_COND_GATE_OUT_EXPR_RE.test(strippedCore)
+
+      let hasIntervalMod = false
+      let ivAddBonus = 0
+      let ivPctBonus = 0
+      for (const se of edgeStateIns) {
+        if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+        const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+        if (sp.type === 'interval_modifier') {
+          hasIntervalMod = true
+          const originVal = getStateEdgeOriginValue(doc, se, state)
+          if (sp.percent) ivPctBonus += (sp.delta * originVal) / 100
+          else ivAddBonus += sp.delta * originVal
+        }
+      }
+      if (srcIntervalEligible) {
+        const srcIns = gIdx.stateInByNode.get(srcNode!.id) ?? EMPTY_EDGES
+        for (const se of srcIns) {
+          if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+          const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+          if (sp.type === 'interval_modifier') {
+            hasIntervalMod = true
+            const originVal = getStateEdgeOriginValue(doc, se, state)
+            if (sp.percent) ivPctBonus += (sp.delta * originVal) / 100
+            else ivAddBonus += sp.delta * originVal
+          }
+        }
+      }
+
+      let hasDirectFormulaMod = false
+      let edgeOverwrite: number | null = null
+      let edgeAddBonus = 0
+      let edgePctBonus = 0
+      if (!isCondGateBranch && spec.type !== 'all') {
+        for (const se of edgeStateIns) {
+          if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+          const stSpec = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+          if (!isActiveFormulaModifierSpec(stSpec)) continue
+          hasDirectFormulaMod = true
+          const srcVal = getStateEdgeOriginValue(doc, se, state)
+          if (stSpec.type === 'overwrite') {
+            edgeOverwrite = srcVal
+          } else if (stSpec.type === 'modifier') {
+            if (stSpec.percent) edgePctBonus += (stSpec.delta * srcVal) / 100
+            else edgeAddBonus += stSpec.delta * srcVal
+          } else if (stSpec.type === 'fraction_modifier' && stSpec.denominator > 0) {
+            edgeAddBonus += Math.trunc(srcVal / stSpec.denominator) * stSpec.numerator
+          } else if (stSpec.type === 'expr') {
+            edgeAddBonus += evalArithmeticStateExprBonus(
+              doc,
+              gIdx,
+              stSpec.expr,
+              srcVal,
+              state,
+              params,
+              SHARED_NOP_RNG,
+              vars
+            )
+          }
+        }
+      }
+
+      const hasSrcFormulaMod =
+        !isCondGateBranch &&
+        spec.type !== 'all' &&
+        srcModEligible &&
+        hasNodeActiveFormulaMod(srcNode!.id)
+      const hasDstFormulaMod =
+        !isCondGateBranch &&
+        spec.type !== 'all' &&
+        dstModEligible &&
+        hasNodeActiveFormulaMod(dstNode!.id)
+      const hasFormulaMod = hasDirectFormulaMod || hasSrcFormulaMod || hasDstFormulaMod
+
+      if (!hasFormulaMod && !hasIntervalMod) continue
+
+      const rawAuthorFormula = (e.formula || '1').trim()
+      const rawIvExpr = spec.intervalExpr ?? e.interval?.trim()
+      const authoredBaseText = strippedCore || '1'
+      const authoredWithIv =
+        e.interval?.trim() && e.interval.trim() !== '1' && !/\bevery\b|\|/i.test(rawAuthorFormula)
+          ? `${rawAuthorFormula}|${e.interval.trim()}`
+          : rawAuthorFormula
+
+      let effectiveBaseText = authoredBaseText
+      if (hasFormulaMod && spec.type !== 'all') {
+        const isStochasticBase =
+          spec.probability == null && MX_STOCHASTIC_FLOW_EXPR_RE.test(spec.expr)
+        if (isGateOut) {
+          // 严格对齐 distributeGate -> computeGateWeights 权重修正语义
+          if (isStochasticBase && edgeOverwrite === null) {
+            let mult = 1 + edgePctBonus
+            let add = edgeAddBonus
+            if (isFirstGateOut && hasSrcFormulaMod) {
+              const gIns = gIdx.stateInByNode.get(srcNode!.id) ?? EMPTY_EDGES
+              let gOverwrite: number | null = null
+              for (const se of gIns) {
+                if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+                const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+                const sv = getStateEdgeOriginValue(doc, se, state)
+                if (sp.type === 'overwrite') gOverwrite = Math.max(0, sv)
+                else if (sp.type === 'modifier') {
+                  if (sp.percent) mult *= 1 + (sp.delta * sv) / 100
+                  else add += sp.delta * sv
+                } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
+                  add += Math.trunc(sv / sp.denominator) * sp.numerator
+                } else if (sp.type === 'expr') {
+                  add += evalArithmeticStateExprBonus(
+                    doc,
+                    gIdx,
+                    sp.expr,
+                    sv,
+                    state,
+                    params,
+                    SHARED_NOP_RNG,
+                    vars
+                  )
+                }
+              }
+              if (gOverwrite !== null) {
+                effectiveBaseText = formatModNum(gOverwrite)
+              } else {
+                const wrap = /^[a-zA-Z0-9_.]+$/.test(spec.expr.trim())
+                  ? spec.expr.trim()
+                  : `(${spec.expr.trim()})`
+                const scaled =
+                  Math.abs(mult - 1) > 1e-9 ? `${wrap}*${formatModNum(Math.max(0, mult))}` : wrap
+                effectiveBaseText =
+                  Math.abs(add) > 1e-9
+                    ? `${scaled}${add > 0 ? '+' : ''}${formatModNum(add)}`
+                    : scaled
+              }
+            } else {
+              const wrap = /^[a-zA-Z0-9_.]+$/.test(spec.expr.trim())
+                ? spec.expr.trim()
+                : `(${spec.expr.trim()})`
+              const scaled =
+                Math.abs(edgePctBonus) > 1e-9
+                  ? `${wrap}*${formatModNum(Math.max(0, 1 + edgePctBonus))}`
+                  : wrap
+              effectiveBaseText =
+                Math.abs(edgeAddBonus) > 1e-9
+                  ? `${scaled}${edgeAddBonus > 0 ? '+' : ''}${formatModNum(edgeAddBonus)}`
+                  : scaled
+            }
+          } else {
+            let w =
+              spec.probability != null
+                ? spec.probability * 100
+                : Math.max(
+                    0,
+                    evaluateMxExpression(
+                      spec.expr,
+                      { vars, arrays: gIdx.paramArrays, rng: SHARED_NOP_RNG },
+                      1
+                    )
+                  )
+            let hadOverwrite = false
+            for (const se of edgeStateIns) {
+              if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+              const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+              const sv = getStateEdgeOriginValue(doc, se, state)
+              if (sp.type === 'overwrite') {
+                w = Math.max(0, sv)
+                hadOverwrite = true
+              } else if (sp.type === 'modifier') {
+                w = Math.max(0, sp.percent ? w * (1 + (sp.delta * sv) / 100) : w + sp.delta * sv)
+              } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
+                w = Math.max(0, w + Math.trunc(sv / sp.denominator) * sp.numerator)
+              } else if (sp.type === 'expr') {
+                w = Math.max(
+                  0,
+                  w +
+                    evalArithmeticStateExprBonus(
+                      doc,
+                      gIdx,
+                      sp.expr,
+                      sv,
+                      state,
+                      params,
+                      SHARED_NOP_RNG,
+                      vars
+                    )
+                )
+              }
+            }
+            if (isFirstGateOut && hasSrcFormulaMod) {
+              const gateMod = modifierBonus(doc, srcNode!.id, state, w, params, SHARED_NOP_RNG)
+              if (gateMod.overwrite !== null) {
+                w = Math.max(0, gateMod.overwrite)
+                hadOverwrite = true
+              } else {
+                w = Math.max(0, w + gateMod.bonus)
+              }
+            }
+            effectiveBaseText =
+              spec.probability != null && !hadOverwrite ? `${formatModNum(w)}%` : formatModNum(w)
+          }
+        } else if (spec.probability != null && spec.expr === '1' && edgeOverwrite === null) {
+          // 百分比概率资源边（如 50% 被 +10 修正为 60%）
+          const srcMod = hasSrcFormulaMod
+            ? modifierBonus(doc, srcNode!.id, state, spec.probability * 100, params, SHARED_NOP_RNG)
+            : NO_MOD_RESULT
+          const basePct = srcMod.overwrite !== null ? srcMod.overwrite : spec.probability * 100
+          const effPct = Math.max(0, basePct * (1 + edgePctBonus) + edgeAddBonus + srcMod.bonus)
+          effectiveBaseText =
+            srcMod.overwrite !== null ? formatModNum(effPct) : `${formatModNum(effPct)}%`
+        } else if (isStochasticBase && edgeOverwrite === null) {
+          const srcMod = hasSrcFormulaMod
+            ? modifierBonus(doc, srcNode!.id, state, 1, params, SHARED_NOP_RNG)
+            : NO_MOD_RESULT
+          const dstMod = hasDstFormulaMod
+            ? modifierBonus(doc, dstNode!.id, state, 1, params, SHARED_NOP_RNG)
+            : NO_MOD_RESULT
+          if (srcMod.overwrite !== null || dstMod.overwrite !== null) {
+            const ovBase = srcMod.overwrite ?? dstMod.overwrite ?? 0
+            const total =
+              ovBase + srcMod.bonus + dstMod.bonus + ovBase * edgePctBonus + edgeAddBonus
+            effectiveBaseText = formatModNum(
+              applyEdgeLimits(e, Math.max(0, Math.round(total * 1000) / 1000))
+            )
+          } else {
+            let nodePct = 0
+            let nodeAdd = 0
+            const collectNodeStochastic = (nId: string): void => {
+              const ins = gIdx.stateInByNode.get(nId) ?? EMPTY_EDGES
+              for (const se of ins) {
+                if (!isEdgeActive(doc, se, state, params, SHARED_NOP_RNG, vars)) continue
+                const sp = getEffectiveStateSpec(doc, se, state, params, SHARED_NOP_RNG, vars)
+                const sv = getStateEdgeOriginValue(doc, se, state)
+                if (sp.type === 'modifier') {
+                  if (sp.percent) nodePct += (sp.delta * sv) / 100
+                  else nodeAdd += sp.delta * sv
+                } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
+                  nodeAdd += Math.trunc(sv / sp.denominator) * sp.numerator
+                } else if (sp.type === 'expr') {
+                  nodeAdd += evalArithmeticStateExprBonus(
+                    doc,
+                    gIdx,
+                    sp.expr,
+                    sv,
+                    state,
+                    params,
+                    SHARED_NOP_RNG,
+                    vars
+                  )
+                }
+              }
+            }
+            if (hasSrcFormulaMod) collectNodeStochastic(srcNode!.id)
+            if (hasDstFormulaMod) collectNodeStochastic(dstNode!.id)
+            const totalMult = 1 + edgePctBonus + nodePct
+            const totalAdd = edgeAddBonus + nodeAdd
+            const wrap = /^[a-zA-Z0-9_.]+$/.test(spec.expr.trim())
+              ? spec.expr.trim()
+              : `(${spec.expr.trim()})`
+            const scaled =
+              Math.abs(totalMult - 1) > 1e-9
+                ? `${wrap}*${formatModNum(Math.max(0, totalMult))}`
+                : wrap
+            effectiveBaseText =
+              Math.abs(totalAdd) > 1e-9
+                ? `${scaled}${totalAdd > 0 ? '+' : ''}${formatModNum(totalAdd)}`
+                : scaled
+          }
+        } else {
+          // 常规数值/变量公式边（严格对齐 evalFlowAmount）
+          let base = 1
+          if (edgeOverwrite !== null) {
+            base = edgeOverwrite
+          } else if (exprNeedsVars(spec.expr)) {
+            const evalVars: Record<string, number> = { ...vars }
+            if (srcNode) evalVars.self = state.values[srcNode.id] ?? 0
+            const nodeStateIns = srcNode
+              ? (gIdx.stateInByNode.get(srcNode.id) ?? EMPTY_EDGES)
+              : EMPTY_EDGES
+            const combinedStateIns =
+              edgeStateIns.length && nodeStateIns.length
+                ? [...edgeStateIns, ...nodeStateIns]
+                : edgeStateIns.length
+                  ? edgeStateIns
+                  : nodeStateIns
+            combinedStateIns.forEach((se, idx) => {
+              const originVal = getStateEdgeOriginValue(doc, se, state)
+              if (idx < POSITIONAL_LETTERS.length) {
+                evalVars[POSITIONAL_LETTERS[idx]!] = originVal
+              }
+              if (se.label?.trim()) {
+                const customVar = mxIdentifier(se.label.trim())
+                if (customVar) evalVars[customVar] = originVal
+              }
+            })
+            if (!('a' in evalVars)) {
+              evalVars.a =
+                srcNode && srcNode.kind !== 'source' ? (state.values[srcNode.id] ?? 0) : state.step
+            }
+            base = evaluateMxExpression(
+              spec.expr,
+              { vars: evalVars, arrays: gIdx.paramArrays, rng: SHARED_NOP_RNG },
+              1
+            )
+          } else {
+            base = evaluateMxExpression(
+              spec.expr,
+              { vars: params, arrays: gIdx.paramArrays, rng: SHARED_NOP_RNG },
+              1
+            )
+          }
+
+          const srcMod = hasSrcFormulaMod
+            ? modifierBonus(doc, srcNode!.id, state, base, params, SHARED_NOP_RNG)
+            : NO_MOD_RESULT
+          const dstMod = hasDstFormulaMod
+            ? modifierBonus(doc, dstNode!.id, state, base, params, SHARED_NOP_RNG)
+            : NO_MOD_RESULT
+          if (edgeOverwrite === null) {
+            if (srcMod.overwrite !== null) base = srcMod.overwrite
+            else if (dstMod.overwrite !== null) base = dstMod.overwrite
+          }
+          const total = base + srcMod.bonus + dstMod.bonus + base * edgePctBonus + edgeAddBonus
+          const clamped = applyEdgeLimits(e, Math.max(0, Math.round(total * 1000) / 1000))
+          effectiveBaseText = formatModNum(clamped)
+        }
+      }
+
+      let intervalSuffix = ''
+      if (hasIntervalMod) {
+        if (rawIvExpr && MX_STOCHASTIC_FLOW_EXPR_RE.test(rawIvExpr)) {
+          const wrapIv = /^[a-zA-Z0-9_.]+$/.test(rawIvExpr) ? rawIvExpr : `(${rawIvExpr})`
+          const scaledIv =
+            Math.abs(ivPctBonus) > 1e-9
+              ? `${wrapIv}*${formatModNum(Math.max(0, 1 + ivPctBonus))}`
+              : wrapIv
+          const modIv =
+            Math.abs(ivAddBonus) > 1e-9
+              ? `${scaledIv}${ivAddBonus > 0 ? '+' : ''}${formatModNum(ivAddBonus)}`
+              : scaledIv
+          intervalSuffix = `|${modIv}`
+        } else {
+          const baseIv = rawIvExpr
+            ? /^\d+$/.test(rawIvExpr)
+              ? Math.max(1, Number(rawIvExpr))
+              : Math.max(
+                  1,
+                  Math.round(
+                    evaluateMxExpression(
+                      rawIvExpr,
+                      {
+                        vars: exprNeedsVars(rawIvExpr) ? vars : params,
+                        arrays: gIdx.paramArrays,
+                        rng: SHARED_NOP_RNG
+                      },
+                      1
+                    )
+                  )
+                )
+            : 1
+          const effIv = Math.max(1, Math.round(baseIv * (1 + ivPctBonus) + ivAddBonus))
+          if (effIv > 1 || Boolean(rawIvExpr && rawIvExpr !== '1')) {
+            intervalSuffix = `|${effIv}`
+          }
+        }
+      } else if (rawIvExpr && rawIvExpr !== '1') {
+        intervalSuffix = `|${rawIvExpr}`
+      }
+
+      const nextFormulaStr = `${effectiveBaseText}${intervalSuffix}`
+      if (nextFormulaStr !== authoredWithIv) {
+        modifiedEdgeFormulas.set(e.id, nextFormulaStr)
+      }
+    }
+  }
+
+  return { dormantStateEdgeIds, gatedOffEdgeIds, modifiedEdgeFormulas }
+}
+
 /**
  * 执行 Node Modifiers（Pool / Register --(+x / -x / +x% / +n/d / =)--> Target Pool / Register）：
  * - 严格按源节点状态增量 ΔS 触发修改（Step 1 初值传导 + 步内任意状态变化传导）；
@@ -3470,8 +4051,6 @@ function applyNodeStateModifiers(
     }
   }
 }
-
-const NO_MOD_RESULT = { bonus: 0, overwrite: null } as const
 
 /** 状态连线对节点（Source / Drain / Gate / Delay）公式速率的修改量 */
 function modifierBonus(

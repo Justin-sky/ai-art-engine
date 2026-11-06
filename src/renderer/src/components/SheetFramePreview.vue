@@ -496,14 +496,14 @@ onBeforeUnmount(() => {
 .sfp-frame {
   margin: 0;
   font-size: 13px;
-  color: var(--text-strong);
+  color: var(--text-strong, var(--text));
 }
 
 .sfp-tip {
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--text-faint);
+  color: var(--text-faint, var(--text-muted));
 }
 
 .sfp-overview-label {

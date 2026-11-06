@@ -301,36 +301,40 @@ const edgeInlineIntervalHint = computed(() => {
 function onEdgeFormulaTypeChange(ft: string): void {
   const e = selectedEdge.value
   if (!e) return
-  if (selectedEdgeFormulaType.value === ft) return
-  const defaults: Record<string, string> = {
-    number: '1',
-    chance: '50%',
-    dice: 'D6',
-    formula: 'a + 1',
-    all: 'all',
-    cond_gate: '<4',
-    st_modifier: '+1',
-    st_fraction: '+1/3',
-    st_interval: '+1i',
-    st_overwrite: '=',
-    st_activator: '>=5',
-    st_range: '2..8',
-    st_prob: '25%',
-    st_trigger: '*',
-    st_rev_trigger: '!',
-    st_formula: 'a >= 5'
+  if (selectedEdgeFormulaType.value !== ft) {
+    const defaults: Record<string, string> = {
+      number: '1',
+      chance: '50%',
+      dice: 'D6',
+      formula: 'a + 1',
+      all: 'all',
+      cond_gate: '<4',
+      st_modifier: '+1',
+      st_fraction: '+1/3',
+      st_interval: '+1i',
+      st_overwrite: '=',
+      st_activator: '>=5',
+      st_range: '2..8',
+      st_prob: '25%',
+      st_trigger: '*',
+      st_rev_trigger: '!',
+      st_formula: 'a >= 5'
+    }
+    const tpl = defaults[ft]
+    if (tpl !== undefined) {
+      const fp = e.kind === 'resource' ? parseMxFlowFormula(e.formula) : null
+      const preservedIv =
+        !e.interval && fp && fp.type !== 'all'
+          ? fp.intervalExpr || (fp.every ? String(fp.every) : undefined)
+          : undefined
+      s.updateEdge(e.id, {
+        formula: tpl,
+        ...(preservedIv ? { interval: preservedIv } : {})
+      })
+    }
   }
-  const tpl = defaults[ft]
-  if (tpl !== undefined) {
-    const fp = e.kind === 'resource' ? parseMxFlowFormula(e.formula) : null
-    const preservedIv =
-      !e.interval && fp && fp.type !== 'all'
-        ? fp.intervalExpr || (fp.every ? String(fp.every) : undefined)
-        : undefined
-    s.updateEdge(e.id, {
-      formula: tpl,
-      ...(preservedIv ? { interval: preservedIv } : {})
-    })
+  if (ft === 'formula' || ft === 'st_formula') {
+    s.openFormulaModal({ targetType: 'edge', edgeId: e.id, field: 'formula' })
   }
 }
 
@@ -1260,6 +1264,16 @@ function addQuickConnectionFromInspector(): void {
                   />
                   <button
                     type="button"
+                    class="mx-conn-fx"
+                    :title="t('mx.formulaEditor.expandModalTip')"
+                    @click="
+                      s.openFormulaModal({ targetType: 'edge', edgeId: oe.id, field: 'formula' })
+                    "
+                  >
+                    fx
+                  </button>
+                  <button
+                    type="button"
                     class="mx-conn-del"
                     @click="
                       (s.select([], [oe.id]), s.deleteSelection(), s.select([selectedNode.id]))
@@ -1301,6 +1315,16 @@ function addQuickConnectionFromInspector(): void {
                       )
                     "
                   />
+                  <button
+                    type="button"
+                    class="mx-conn-fx"
+                    :title="t('mx.formulaEditor.expandModalTip')"
+                    @click="
+                      s.openFormulaModal({ targetType: 'edge', edgeId: ie.id, field: 'formula' })
+                    "
+                  >
+                    fx
+                  </button>
                 </div>
               </div>
             </div>
@@ -2241,7 +2265,7 @@ function addQuickConnectionFromInspector(): void {
   cursor: pointer;
 }
 .mx-conn-badge.is-state {
-  color: #38bdf8;
+  color: color-mix(in srgb, #0284c7 78%, var(--text));
 }
 .mx-conn-target {
   flex: 1;
@@ -2253,8 +2277,28 @@ function addQuickConnectionFromInspector(): void {
   color: var(--accent, #3d8bfd);
 }
 .mx-conn-rate {
-  width: 68px !important;
+  width: 64px !important;
   padding: 3px 6px !important;
+}
+.mx-conn-fx {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted, #9aa0a6);
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  font-style: italic;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.mx-conn-fx:hover {
+  color: var(--on-accent, #ffffff);
+  background: var(--accent, #3d8bfd);
+  border-color: var(--accent, #3d8bfd);
 }
 .mx-conn-del {
   padding: 0 4px;
@@ -2491,7 +2535,7 @@ function addQuickConnectionFromInspector(): void {
   padding: 1px 5px;
   border-radius: 4px;
   background: rgba(245, 158, 11, 0.22);
-  color: #f59e0b;
+  color: color-mix(in srgb, #d97706 78%, var(--text));
   font-size: 10px;
   font-weight: 700;
   font-family: var(--mono, ui-monospace, monospace);
