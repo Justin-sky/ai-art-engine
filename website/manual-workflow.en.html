@@ -421,8 +421,8 @@
           <h4>Generation / assets</h4>
           <ul>
             <li>
-              Image generation · video generation · audio generation · script generation · Film Workbench · Shot ·
-              planning doc generation · director stage edit · canvas edit · 3D model
+              Image generation · video generation · audio generation · script generation · novel outline · novel serialization · Film Workbench · Shot ·
+              game economy · numerical system · planning doc generation · director stage edit · canvas edit · 3D model
               generation · spatial world generation · 3D mesh processing (rigging / rig check / animation retarget / split / part completion
               / retopology / texture / format convert) · 2D frame animation · 2D stage · SVG generation · SVG bake · decisions · model (reference) ·
               host asset
@@ -841,6 +841,44 @@
             </li>
           </ul>
 
+          <h4 id="game-economy">Game mechanics, economy &amp; design specs</h4>
+          <ul>
+            <li>Game economy · numerical system · planning doc generation · novel outline · novel serialization</li>
+            <li>
+              <strong>Game economy</strong> (<code>game.economy</code>): a <strong>Machinations system-dynamics</strong> gameplay mechanics and macro-resource simulation node.
+              Double-click the node card (or open it from the Inspector) to enter the full-screen <strong>Machinations Economy Dive Studio</strong>:
+              <ul>
+                <li>
+                  <strong>10 node primitives, 8 state modifiers &amp; pool policies</strong>: supports <code>Source</code>, <code>Pool</code> (FIFO / LIFO / Shuffle policies &amp; multi-color resource filters), <code>Converter</code>, <code>Drain</code>, <code>Gate</code> (conditional &amp; per-unit probabilistic / pity gates), <code>Trader</code>, <code>Register</code>, <code>Delay</code>, <code>Queue</code> and <code>End</code> (win / loss conditions), wired with <code>resource</code> edges and <code>state</code> edges (8 modifier semantics including node/label modifiers, range guards, multipliers, <code>*</code>/<code>!</code> triggers and inverse activators; <code>converter/source → pool</code> always adds resources, while HP loss wires <code>hp_pool → drain</code>). Selected edges support dragging either endpoint handle to reconnect freely.
+                </li>
+                <li>
+                  <strong>59 building blocks &amp; draggable formula modal</strong>: ships with <strong>59 validated building blocks</strong> across 7 domains (soft/hard gacha pity, armor mitigation, idle production lines, RPG XP curves, live-stock shops, etc.) that auto-remap IDs and formula variables without collision when dropped repeatedly onto the same canvas; double-click any formula input to open the <strong>draggable Formula Editor modal</strong> (auto-indentation, rainbow bracket matching, variable/function browser, inline variable source inspection and live slider tuning), with automatic downstream condition &amp; cross-node formula reference highlighting when selecting a node.
+                </li>
+                <li>
+                  <strong>Multi-layer organization</strong>: manually added nodes belong to the default <code>Base</code> (<code>layer_base</code>) layer; the left-hand Layers panel lets you create, click to select the active target layer, hide/show or lock subsystem layers (such as turn energy, deck cycle, combat multipliers and meta-progression).
+                </li>
+                <li>
+                  <strong>Step debugging &amp; Monte Carlo simulation</strong>: run interactive step-by-step ticks, utility-driven AI bots (<code>botMode</code>) for <code>interactive</code> nodes, and batch Monte Carlo runs producing <strong>P10 / P50 / P90 confidence-band curves</strong> alongside source/sink inflation, starvation and topology diagnostics (<code>economyDiagnostics</code>).
+                </li>
+                <li>
+                  <strong>Export &amp; downstream wiring</strong>: use “Export / Share” in the top bar to export auto-fitted <strong>HD PNG architecture diagrams (<code>.png</code>)</strong>, <strong>vector SVG diagrams (<code>.svg</code>)</strong>, and <strong>Unity C# / Godot GDScript</strong> runtime economy scripts. On the canvas, <code>out</code> emits a topology + curve preview image, while <code>out-text</code> emits structured telemetry and script JSON (optionally feeding <code>in-economy</code> on <code>game.numerical</code>, <code>novel.outline</code>, <code>asset.novel</code> or <code>asset.gameSystem</code>).
+                </li>
+                <li>
+                  <strong>Focused-by-default AI chat rule</strong>: asking AI chat to design a game mechanic or economy loop creates <strong>a single focused <code>game.economy</code> node</strong> on the <code>Base</code> layer by default — without bundling unrequested full-suite complex diagrams or GDD nodes. Multi-layer full-system diagrams are built only when you explicitly ask for complete mechanics, and <code>asset.gameSystem</code> is created only when you explicitly request a game design document (GDD).
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong>Numerical system</strong> (<code>game.numerical</code>): micro-combat simulation and stat-table workbench covering damage multiplier marginal returns, entity stat budgets, gacha soft/hard pity expectations, power envelopes vs. enemy scaling walls, and turn/ATB/deck combat kernels (automatically switching to clean domain data tables for non-combat specs). Accepts upstream <code>game.economy</code> on <code>in-economy</code> and outputs numerical specs on <code>out-text</code>.
+            </li>
+            <li>
+              <strong>Planning doc generation</strong> (<code>asset.gameSystem</code>): double-click to open the <strong>Game System GDD Dive Workbench</strong> with 8 genre templates and a 100-point engineering QA audit across six sections (Overview, Goals, P0/P1 Features &amp; Edge Cases, UI Wireframes &amp; 9-slice specs, UI Requirements, Data &amp; Formulas). Optionally accepts upstream <code>game.economy</code> (<code>in-economy</code>), <code>game.numerical</code> (<code>in-numerical</code>) or <code>asset.novel</code> (<code>out-all → in</code>), and feeds <code>ui.split</code> → <code>ui.gen</code> to generate multi-screen game UIs.
+            </li>
+            <li>
+              <strong>Novel outline</strong> (<code>novel.outline</code>) &amp; <strong>Novel serialization</strong> (<code>asset.novel</code>): generate a global World Bible, character roster and per-chapter outlines on <code>novel.outline</code>, then broadcast <code>out</code> into Markov-chained chapter nodes (<code>Ch.1 → Ch.2 → Ch.3</code>) combining previous-chapter state transfer (<code>in</code>), chapter outline slices (<code>in-outline</code>), macro economy (<code>in-economy</code>) and numerical power locks (<code>in-numerical</code>).
+            </li>
+          </ul>
+
           <h4>Others</h4>
           <ul>
             <li>Graph plugin sample (loaded only for local debugging; absent from official installers)</li>
@@ -896,6 +934,9 @@
               ports.
             </li>
             <li>
+              <strong>Game mechanics simulation &amp; GDD</strong>: drop a single “Game economy” (<code>game.economy</code>) node to prototype and simulate gacha, tower-defense, deck-building or idle loops in the Machinations studio and export PNG/SVG diagrams or Unity/Godot scripts; when you also need a full specification and multi-screen UIs, wire “Game economy” + “Numerical system” → “Planning doc generation” → “UI screen breakdown” → “UI screen generation”.
+            </li>
+            <li>
               <strong>One-Click Workflow &amp; export to Marketplace</strong>: create a host from the workspace “New” menu → drag it onto the canvas and
               wire it up → Dive to fine-tune → add to tasks; click “Export as Marketplace Workflow” in the top bar to package any saved workflow into a ready-to-publish plugin directory (<code>manifest.json</code> + <code>workflow.json</code> + <code>README.md</code>).
             </li>
@@ -918,8 +959,7 @@
               in larger flows on the canvas.
             </li>
             <li>
-              Dedicated workbenches — Film Workbench, Image Processing (10-in-1), Portrait Retouch, Comic Page Layout and 2D Frame Animation — operate inside Dive and write options back to node parameters in real time; large
-              previews open as dialogs.
+              Dedicated workbenches — Film Workbench, Game Economy (Machinations), Game System GDD, Image Processing (10-in-1), Layer Separation, Portrait Retouch, Comic Page Layout and 2D Frame Animation — operate inside Dive and write options back to node parameters in real time; both complex canvases and any Dive view support one-click immersive fullscreen via the top-right button or <kbd>F11</kbd> (<kbd>Esc</kbd> to exit).
             </li>
           </ul>
         </section>

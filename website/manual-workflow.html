@@ -371,7 +371,7 @@
           <h4>生成 / 资产类</h4>
           <ul>
             <li>
-              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 影视工作台 · 镜头 · 策划案生成 ·
+              图片生成 · 视频生成 · 声音生成 · 剧本生成 · 小说大纲 · 创建小说 · 影视工作台 · 镜头 · 经济系统 · 数值系统 · 策划案生成 ·
               导演台编辑 · 画布编辑 · 3D 模型生成 · 空间世界生成 · 3D 模型加工（蒙皮 / 绑骨检查 / 动画重定向 / 拆分 / 部件补全 /
               重拓扑 / 贴图 / 格式转换）· 2D 帧动画 · 2D 舞台 · SVG 生成 · SVG 烘焙 · 决策判定 · 模型（引用）· 宿主资产
             </li>
@@ -713,6 +713,44 @@
             </li>
           </ul>
 
+          <h4 id="game-economy">游戏机制、经济数值与策划（游戏 / 叙事分组下）</h4>
+          <ul>
+            <li>经济系统 · 数值系统 · 策划案生成 · 小说大纲 · 创建小说</li>
+            <li>
+              <strong>经济系统</strong>（<code>game.economy</code>）：基于 <strong>Machinations 系统动力学</strong>的游戏玩法机制与宏观资源仿真节点。
+              双击节点卡片（或在右侧 Inspector 点击进入工作台）打开全屏 <strong>Machinations 经济仿真 Dive 工作台</strong>：
+              <ul>
+                <li>
+                  <strong>10 类图元、8 类状态修饰与池策略</strong>：内置 <code>Source</code>（产出源）、<code>Pool</code>（资源池，支持 FIFO / LIFO / Shuffle 混洗存取策略与多色资源过滤）、<code>Converter</code>（合成转化器）、<code>Drain</code>（消耗漏斗）、<code>Gate</code>（条件门 / 逐单位概率与动态保底分流门）、<code>Trader</code>（交易）、<code>Register</code>（公式寄存器）、<code>Delay</code>（延迟）、<code>Queue</code>（队列）与 <code>End</code>（胜负终局）10 类节点；支持 <code>resource</code>（资源流）与 <code>state</code>（覆盖节点修正、标签修正、区间守卫、倍率、状态触发 <code>*</code>/<code>!</code>、反向激活等 8 类修饰语义；<code>converter/source → pool</code> 恒为加法，扣血与漏怪通过 <code>hp_pool → drain</code> 表达）两类有向边，选中连线可拖拽起止端圆柄自由重连。
+                </li>
+                <li>
+                  <strong>59 款标准积木库与弹窗式公式编辑器</strong>：抽屉内置按 7 大领域分类的 <strong>59 款经典数值积木</strong>（抽卡软硬保底、护甲减伤、自动挂机产线、RPG 经验成长、实时库存商店等），多次拖入同画布会自动重映射节点 ID 与公式变量、零冲突拼装；双击公式框可唤出<strong>可拖拽公式编辑面板</strong>（支持多行缩进、彩虹括号配对、双栏变量/函数检索、行内变量来源透视与滑块实时调参），选中节点时自动高亮下游关联条件、状态边与跨节点公式引用虚线。
+                </li>
+                <li>
+                  <strong>多图层管理</strong>：手动新建节点默认归属 <code>Base</code>（<code>layer_base</code>）基础图层；左侧图层面板支持新建、单击切换当前激活图层、显隐或锁定分类图层，便于将回合能量、牌库循环、战斗乘区与局外养成拆分到独立图层管理。
+                </li>
+                <li>
+                  <strong>步进调试与蒙特卡洛置信带仿真</strong>：支持单步推演、交互式节点（<code>interactive</code>）与 AI 效用智能体自动博弈（<code>botMode</code>），以及批量蒙特卡洛（Monte Carlo）随机采样，自动绘制核心资源的 <strong>P10 / P50 / P90 置信带曲线</strong>并执行产销通胀、饥饿阻塞与静态拓扑自检（<code>economyDiagnostics</code>）。
+                </li>
+                <li>
+                  <strong>导出与上下游连接</strong>：工作台顶栏「导出 / 分享」支持一键导出自动居中适配的<strong>高清 PNG 架构图（<code>.png</code>）</strong>、<strong>矢量 SVG 架构图（<code>.svg</code>）</strong>，以及 <strong>Unity C# / Godot GDScript</strong> 经济运行时代码。画布端口 <code>out</code> 输出拓扑与曲线预览图，<code>out-text</code> 输出结构化经济遥测与脚本 JSON（可按需连入 <code>game.numerical</code>、<code>novel.outline</code>、<code>asset.novel</code> 或 <code>asset.gameSystem</code> 的 <code>in-economy</code> 口）。
+                </li>
+                <li>
+                  <strong>AI 对话按需创建约定</strong>：在 AI 对话中要求设计某项游戏机制或经济循环时，默认只创建<strong>单个聚焦核心闭环的 <code>game.economy</code> 节点</strong>（位于 <code>Base</code> 图层），不会默认捆绑创建全套复杂机制或策划案节点；仅在明确要求「完整机制 / 全套机制」时才扩展为多图层全子系统大图，仅在明确要求「游戏策划案 / GDD」时才创建 <code>asset.gameSystem</code>。
+                </li>
+              </ul>
+            </li>
+            <li>
+              <strong>数值系统</strong>（<code>game.numerical</code>）：微观战斗仿真与战力配表工作台，涵盖伤害乘区边际收益管线、实体属性预算表、抽卡软硬保底期望、战力成长包络线 vs 怪物膨胀墙以及回合 / ATB / 牌库战斗调度内核（非战斗类系统自动切换为专属结构化数据配表模式）。端口 <code>in-economy</code> 可接入上游 <code>game.economy</code> 的宏观产出率，<code>out-text</code> 输出完整数值规约与配表 JSON。
+            </li>
+            <li>
+              <strong>策划案生成</strong>（<code>asset.gameSystem</code>）：双击进入<strong>游戏系统策划案（GDD）Dive 工作台</strong>，内置 8 大游戏品类模板与 100 分制工程完整度审计，产出六大标准工程章节（概述、设计目标、P0/P1 功能与边界异常、含 ASCII 线框与九宫格切图规范的 UI 布局、UI 需求、数据与公式配表）。可按需接入上游 <code>game.economy</code>（<code>in-economy</code>）、<code>game.numerical</code>（<code>in-numerical</code>）或小说末章 <code>asset.novel</code>（<code>out-all → in</code>），并将 <code>out</code> 连入下游 <code>ui.split</code> → <code>ui.gen</code> 拆解生成整套游戏 UI。
+            </li>
+            <li>
+              <strong>小说大纲</strong>（<code>novel.outline</code>）与 <strong>创建小说</strong>（<code>asset.novel</code>）：支持「小说大纲（世界观宪法 + 角色档案 + 分卷逐章细纲）」广播连入多章串联的马尔可夫链章节节点（<code>第1章 → 第2章 → 第3章</code>），单章节点支持同时接收上一章状态锚点（<code>in</code>）、按章切片细纲（<code>in-outline</code>）、经济系统（<code>in-economy</code>）与数值战力锁（<code>in-numerical</code>），末章 <code>out-all</code> 汇总全书正文。
+            </li>
+          </ul>
+
           <h4>其它</h4>
           <ul>
             <li>图插件示例（仅本地调试可加载，正式安装包默认不出现）</li>
@@ -759,6 +797,9 @@
               <strong>不能跳过导出节点</strong>——空间世界端口不隐式兼容模型端口。
             </li>
             <li>
+              <strong>游戏机制仿真与系统策划</strong>：单个「经济系统」（<code>game.economy</code>）节点即可在 Machinations 工作台验证抽卡、塔防、卡牌或放置循环并导出 PNG/SVG 架构图与 Unity/Godot 代码；需要完整立项文档与多屏界面时，再按需串联「经济系统」+「数值系统」→「策划案生成」→「UI 界面拆分」→「UI 界面生成」。
+            </li>
+            <li>
               <strong>一键工作流与导出市场工作流</strong>：工作区「新建」创建宿主 → 拖入画布接线 → Dive 微调 → 加入任务；
               调好的工作流还可点击画布顶栏「导出为市场工作流」，一键生成含 <code>manifest.json</code>、<code>workflow.json</code> 与 <code>README.md</code> 的插件包目录。
             </li>
@@ -773,7 +814,7 @@
             <li>边界输出按汇点一一对应：多路同类型结果（如多张立绘）会各建一个出口，而不是合并成单口。</li>
             <li>备注类文本节点默认不暴露为宿主出口。</li>
             <li>内图整链可入队任务列表；宿主节点也可作为画布上的黑盒参与更大流程。</li>
-            <li>影视工作台、图像处理（10 合 1）、人像精修、漫画页、2D 帧动画等专业工具均在 Dive 中操作，选项实时写回节点参数；大图预览走弹窗。</li>
+            <li>影视工作台、经济系统（Machinations）、策划案工作台、图像处理（10 合 1）、图层分离、人像精修、漫画页、2D 帧动画等专业工具均在 Dive 中操作，选项实时写回节点参数；复杂画布与所有 Dive 视图均支持右上角按钮或按 <kbd>F11</kbd> 一键沉浸全屏（<kbd>Esc</kbd> 退出）。</li>
           </ul>
         </section>
 

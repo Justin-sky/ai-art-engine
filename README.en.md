@@ -49,11 +49,12 @@ Your wish ─▶ Agent understands intent ─▶ Builds a workflow on the canvas
 
 When the wish is granted, you get **not a picture, but a project that drops straight into your pipeline**:
 
-| Your wish                                                 | What you get                                                |
-| :-------------------------------------------------------- | :---------------------------------------------------------- |
-| _"Split this UI screenshot into a pro-grade layered PSD"_ | Control-level layers, editable text `.psd` + engine UI code |
-| _"Bring this character illustration to life"_             | A rigged, animated Spine project                            |
-| _"Shoot this script as a one-minute short drama"_         | Final MP4 + an editable CapCut / Jianying draft             |
+| Your wish                                                               | What you get                                                                          |
+| :---------------------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| _"Split this UI screenshot into a pro-grade layered PSD"_               | Control-level layers, editable text `.psd` + engine UI code                           |
+| _"Bring this character illustration to life"_                           | A rigged, animated Spine project                                                      |
+| _"Shoot this script as a one-minute short drama"_                       | Final MP4 + an editable CapCut / Jianying draft                                       |
+| _"Design a tower-defense or gacha economy loop and verify its balance"_ | Interactive Machinations diagram + Monte Carlo curves + Unity / Godot economy scripts |
 
 ---
 
