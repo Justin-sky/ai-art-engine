@@ -8594,6 +8594,7 @@ export default {
     top: {
       build: '构建 Build',
       scenarios: '方案 Scenarios',
+      nodeLabels: '节点名',
       export: '导出 / 分享',
       exportPng: '导出高清 PNG 架构图 (.png)',
       exportSvg: '导出矢量 SVG 架构图 (.svg)',
@@ -8862,6 +8863,7 @@ export default {
       searchPlaceholder: '搜索节点名称、类型或公式...',
       minimapToggle: '展开 / 收起右下角鸟瞰小地图',
       flowHeatmap: '开启 / 关闭 Sankey 流量热力与累计流量视图',
+      showNodeLabels: '显示 / 隐藏资源节点名称',
       alignLeft: '左对齐选中节点',
       alignCenterX: '水平居中对齐',
       alignRight: '右对齐选中节点',

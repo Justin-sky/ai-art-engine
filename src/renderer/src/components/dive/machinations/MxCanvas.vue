@@ -81,6 +81,17 @@
         >
           <path d="M0,1.2 L10,5 L0,8.8 z" fill="#f87171" />
         </marker>
+        <marker
+          id="mx-arrow-ref"
+          viewBox="0 0 10 10"
+          refX="8.5"
+          refY="5"
+          markerWidth="7"
+          markerHeight="7"
+          orient="auto-start-reverse"
+        >
+          <path d="M0,1.2 L10,5 L0,8.8 z" fill="#f59e0b" />
+        </marker>
       </defs>
 
       <rect class="mx-bg" x="0" y="0" width="100%" height="100%" fill="url(#mx-grid)" />
@@ -384,7 +395,9 @@
           <!-- 标准 Machinations 图元节点 -->
           <template v-else>
             <!-- 透明连续指针热区（覆盖节点本体与四周 + / S 锚点，消除悬停间隙闪烁） -->
-            <circle r="32" fill="transparent" class="mx-node-hit-area" />
+            <circle r="32" fill="transparent" class="mx-node-hit-area">
+              <title v-if="!store.showNodeLabels.value && node.label">{{ node.label }}</title>
+            </circle>
 
             <!-- 选中/悬停/吸附光环 -->
             <circle
@@ -682,17 +695,28 @@
               </g>
             </g>
 
-            <!-- 节点主标题与副标签（双击主标题直接行内重命名） -->
+            <!-- 节点主标题与副标签（双击主标题直接行内重命名；连线公式引用定位时即使关闭全局节点名也临时高亮显示） -->
             <text
+              v-if="store.showNodeLabels.value || formulaRefNodeIdSet.has(node.id)"
               class="mx-node-label"
               text-anchor="middle"
               y="34"
-              :class="{ sel: isNodeSelected(node.id) }"
+              :class="{
+                sel: isNodeSelected(node.id),
+                'is-ref': !isNodeSelected(node.id) && formulaRefNodeIdSet.has(node.id)
+              }"
               @dblclick.stop="startNodeLabelEdit(node)"
             >
               {{ node.label }}
             </text>
-            <g v-if="nodeSubLabel(node)" :transform="'translate(0, 47)'">
+            <g
+              v-if="nodeSubLabel(node)"
+              :transform="
+                store.showNodeLabels.value || formulaRefNodeIdSet.has(node.id)
+                  ? 'translate(0, 47)'
+                  : 'translate(0, 34)'
+              "
+            >
               <rect
                 :x="-subW(node) / 2"
                 y="-7.5"
@@ -757,6 +781,41 @@
               </g>
             </g>
           </template>
+        </g>
+
+        <!-- ══════════ 选中连线公式引用节点定位虚线层 (Formula -> Referenced Node Dashed Links) ══════════ -->
+        <g v-if="formulaRefLinks.length > 0" class="mx-formula-ref-layer" pointer-events="none">
+          <g v-for="rl in formulaRefLinks" :key="rl.key" class="mx-formula-ref-item">
+            <circle :cx="rl.tx" :cy="rl.ty" :r="rl.haloR" fill="none" class="mx-formula-ref-halo" />
+            <path :d="rl.path" fill="none" class="mx-formula-ref-glow" />
+            <path
+              :d="rl.path"
+              fill="none"
+              class="mx-formula-ref-line"
+              marker-end="url(#mx-arrow-ref)"
+            />
+            <circle
+              :cx="rl.sx"
+              :cy="rl.sy"
+              r="3"
+              fill="#f59e0b"
+              stroke="#ffffff"
+              stroke-width="1.2"
+            />
+            <g :transform="`translate(${rl.tagX}, ${rl.tagY})`" class="mx-formula-ref-tag">
+              <rect
+                :x="-rl.tagW / 2"
+                y="-8"
+                :width="rl.tagW"
+                height="16"
+                rx="8"
+                class="mx-formula-ref-tag-bg"
+              />
+              <text text-anchor="middle" y="3.2" class="mx-formula-ref-tag-text">
+                {{ rl.token }}
+              </text>
+            </g>
+          </g>
         </g>
 
         <!-- ══════════ 实时拖线预览曲线 (置于节点层上方，确保起点紧贴 + 号锚点且不被遮挡) ══════════ -->
@@ -885,6 +944,29 @@
           <circle v-if="store.snapToGrid.value" cx="9.8" cy="9.8" r="2.1" fill="currentColor" />
           <path
             v-else
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            d="M2 14L14 2"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        :class="{ 'is-on': store.showNodeLabels.value }"
+        :aria-pressed="store.showNodeLabels.value"
+        :title="`${t('mx.canvas.showNodeLabels')} (${store.showNodeLabels.value ? 'ON' : 'OFF'})`"
+        @click="store.showNodeLabels.value = !store.showNodeLabels.value"
+      >
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+          <path
+            d="M2.2 12.2L5.1 3.8h1.5l2.9 8.4H8.1l-.65-2.1H4.25l-.65 2.1H2.2zm2.45-3.25h2.4L5.85 5.3l-1.2 3.65zM10.5 7.4c0-1.05.85-1.7 2.15-1.7 1.25 0 2.05.6 2.05 1.75v3.3c0 .55.05 1.05.15 1.45h-1.25l-.1-.75c-.4.55-1.05.85-1.8.85-1.05 0-1.8-.65-1.8-1.6 0-1.05.85-1.6 2.3-1.75l1.25-.12v-.38c0-.5-.35-.8-.95-.8-.55 0-.88.25-.98.65l-1.02-.2zm3 1.75l-1.05.12c-.75.08-1.12.35-1.12.82 0 .42.35.68.88.68.75 0 1.29-.52 1.29-1.25v-.37z"
+            fill="currentColor"
+            :opacity="store.showNodeLabels.value ? 1 : 0.55"
+          />
+          <path
+            v-if="!store.showNodeLabels.value"
             fill="none"
             stroke="currentColor"
             stroke-width="1.5"
@@ -1395,6 +1477,7 @@ import {
   getMxNodeSubPillWidth,
   mxNodeColor,
   parseMxStateFormula,
+  resolveMxEdgeReferencedNodes,
   resolveMxParams,
   type MxEdge,
   type MxEdgeKind,
@@ -1418,6 +1501,15 @@ const hoveredNodeId = ref('')
 const searchOpen = ref(false)
 const searchQuery = ref('')
 const minimapOpen = ref(true)
+const edgeEdit = ref<{ id: string; value: string; sx: number; sy: number } | null>(null)
+const nodeEdit = ref<{
+  id: string
+  isNote: boolean
+  isGroup?: boolean
+  value: string
+  sx: number
+  sy: number
+} | null>(null)
 
 const portOffsets = [
   { dir: 'right', x: 24, y: 0 },
@@ -1513,10 +1605,12 @@ const renderedNodes = computed(() => {
   if (!isLargeGraph.value) return all
   const r = viewportWorldRect.value
   const sel = selectedNodeSet.value
+  const refSet = formulaRefNodeIdSet.value
   return all.filter(
     (n) =>
       (n.x >= r.minX && n.x <= r.maxX && n.y >= r.minY && n.y <= r.maxY) ||
       sel.has(n.id) ||
+      refSet.has(n.id) ||
       hoveredNodeId.value === n.id
   )
 })
@@ -2165,6 +2259,95 @@ const selectedEdgeFloatStyle = computed(() => {
     top: `${Math.max(48, sy)}px`
   }
 })
+
+interface FormulaRefLink {
+  key: string
+  edgeId: string
+  nodeId: string
+  token: string
+  sx: number
+  sy: number
+  tx: number
+  ty: number
+  haloR: number
+  path: string
+  tagX: number
+  tagY: number
+  tagW: number
+}
+
+const formulaRefLinks = computed<FormulaRefLink[]>(() => {
+  const activeIds = new Set<string>(store.selection.edges)
+  if (edgeEdit.value) activeIds.add(edgeEdit.value.id)
+  if (activeIds.size === 0 || activeIds.size > 12) return []
+
+  const geoById = new Map<string, EdgeGeo>()
+  for (const g of edgeGeometries.value) geoById.set(g.edge.id, g)
+
+  const links: FormulaRefLink[] = []
+  for (const edgeId of activeIds) {
+    const geo = geoById.get(edgeId)
+    if (!geo) continue
+    const effEdge =
+      edgeEdit.value?.id === edgeId ? { ...geo.edge, formula: edgeEdit.value.value } : geo.edge
+    const refs = resolveMxEdgeReferencedNodes(store.doc.value, effEdge)
+    for (const refItem of refs) {
+      if (!visibleIds.value.has(refItem.nodeId)) continue
+      const target = nodeById.value.get(refItem.nodeId)
+      if (!target) continue
+
+      const dx = target.x - geo.mid.x
+      const dy = target.y - geo.mid.y
+      const len = Math.hypot(dx, dy)
+      if (len < 4) continue
+      const ux = dx / len
+      const uy = dy / len
+
+      const hw = geo.labelW / 2 + 3
+      const hh = 11.5
+      const pillDist = Math.min(
+        len * 0.36,
+        hw / Math.max(1e-4, Math.abs(ux)),
+        hh / Math.max(1e-4, Math.abs(uy))
+      )
+      const haloR = nodeRadius(target) + 6
+      const nodeStop = Math.min(len * 0.42, haloR + 2)
+
+      const sx = geo.mid.x + ux * pillDist
+      const sy = geo.mid.y + uy * pillDist
+      const ex = target.x - ux * nodeStop
+      const ey = target.y - uy * nodeStop
+      const arcBend = Math.min(30, Math.max(14, len * 0.14))
+      const cx = (sx + ex) / 2 - uy * arcBend
+      const cy = (sy + ey) / 2 + ux * arcBend
+      const path = `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
+      const tagX = (sx + 2 * cx + ex) / 4
+      const tagY = (sy + 2 * cy + ey) / 4
+      const tagW = Math.max(20, estimateMxTextWidth(refItem.token, 9.5, true) + 10)
+
+      links.push({
+        key: `${edgeId}->${refItem.nodeId}`,
+        edgeId,
+        nodeId: refItem.nodeId,
+        token: refItem.token,
+        sx,
+        sy,
+        tx: target.x,
+        ty: target.y,
+        haloR,
+        path,
+        tagX,
+        tagY,
+        tagW
+      })
+    }
+  }
+  return links
+})
+
+const formulaRefNodeIdSet = computed<Set<string>>(
+  () => new Set(formulaRefLinks.value.map((l) => l.nodeId))
+)
 
 // ───────── 坐标换算 ─────────
 function toWorld(ev: PointerEvent | WheelEvent | MouseEvent): {
@@ -2816,6 +2999,7 @@ function fitView(): void {
     minHeight: 160,
     displayFlows: store.displayFlows.value,
     flowHeatmap: store.flowHeatmap.value,
+    showNodeLabels: store.showNodeLabels.value,
     edgeCumulativeFlows: store.edgeCumulativeFlows.value,
     nodeBottlenecks: store.nodeBottlenecks.value
   })
@@ -2830,16 +3014,6 @@ function fitView(): void {
 }
 
 // ───────── 连线公式 & 节点名称 & 分组标题内联编辑 ─────────
-const edgeEdit = ref<{ id: string; value: string; sx: number; sy: number } | null>(null)
-const nodeEdit = ref<{
-  id: string
-  isNote: boolean
-  isGroup?: boolean
-  value: string
-  sx: number
-  sy: number
-} | null>(null)
-
 function startEdgeEdit(id: string): void {
   const geo = edgeGeometries.value.find((g) => g.edge.id === id)
   if (!geo) return
@@ -2979,7 +3153,8 @@ const minimapBounds = computed(() => {
   const b = computeMxDiagramBounds(store.doc.value, {
     padding: 56,
     minWidth: 320,
-    minHeight: 200
+    minHeight: 200,
+    showNodeLabels: store.showNodeLabels.value
   })
   const minX = (b.contentMinX + b.contentMaxX) / 2 - b.exportWidth / 2
   const minY = (b.contentMinY + b.contentMaxY) / 2 - b.exportHeight / 2
@@ -3110,6 +3285,7 @@ function buildCleanDiagramSvg(): { svgText: string; width: number; height: numbe
     displayValues: store.displayValues.value,
     displayFlows: store.displayFlows.value,
     flowHeatmap: store.flowHeatmap.value,
+    showNodeLabels: store.showNodeLabels.value,
     edgeCumulativeFlows: store.edgeCumulativeFlows.value,
     nodeBottlenecks: store.nodeBottlenecks.value,
     playStep: store.playStep.value
@@ -3372,6 +3548,47 @@ defineExpose({
   stroke: var(--accent, #3d8bfd);
   stroke-width: 7px;
   stroke-linejoin: round;
+}
+.mx-node-label.is-ref {
+  fill: #fffbeb;
+  paint-order: stroke;
+  stroke: #d97706;
+  stroke-width: 6px;
+  stroke-linejoin: round;
+}
+@keyframes mxFormulaRefDash {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+.mx-formula-ref-halo {
+  stroke: #f59e0b;
+  stroke-width: 2;
+  stroke-dasharray: 4.5 3.5;
+  filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.45));
+}
+.mx-formula-ref-glow {
+  stroke: rgba(245, 158, 11, 0.22);
+  stroke-width: 5.5;
+  stroke-linecap: round;
+}
+.mx-formula-ref-line {
+  stroke: #f59e0b;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+  animation: mxFormulaRefDash 0.85s linear infinite;
+}
+.mx-formula-ref-tag-bg {
+  fill: var(--mx-pill-bg, #1e232d);
+  stroke: #f59e0b;
+  stroke-width: 1.25;
+}
+.mx-formula-ref-tag-text {
+  fill: #fbbf24;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: var(--mono, ui-monospace, monospace);
 }
 .mx-node-sub-pill {
   fill: var(--mx-sub-bg);

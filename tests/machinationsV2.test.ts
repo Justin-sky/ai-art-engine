@@ -14,6 +14,7 @@ import {
   parseMxDocumentJson,
   parseMxFlowFormula,
   parseMxStateFormula,
+  resolveMxEdgeReferencedNodes,
   runMxForecast,
   runMx2DParameterMatrix,
   runMxGoalSeek,
@@ -2685,5 +2686,159 @@ describe('Machinations.io 100% specification parity', () => {
     const zombieEdge = cleaned.edges.find((e) => e.id === 'e_zombie_filter')!
     expect(zombieEdge.resourceFilter).toBe(false)
     expect(zombieEdge.resourceId).toBeUndefined()
+  })
+
+  it('supports toggling resource node label visibility in SVG rendering and bounds calculation', () => {
+    const doc = createEmptyMxDocument('Label Toggle Test')
+    doc.nodes = [
+      {
+        id: 'p_gold',
+        kind: 'pool',
+        label: 'SuperLongResourcePoolTitleXYZ',
+        x: 100,
+        y: 100,
+        initial: 5,
+        capacity: 20
+      },
+      {
+        id: 'n_memo',
+        kind: 'note',
+        label: 'StickyNoteHeader',
+        text: 'NoteBodyText',
+        x: 280,
+        y: 100,
+        width: 160,
+        height: 80
+      }
+    ]
+    const withLabels = exportMxDiagramSvg(doc, {
+      showNodeLabels: true,
+      minWidth: 100,
+      minHeight: 100
+    })
+    const withoutLabels = exportMxDiagramSvg(doc, {
+      showNodeLabels: false,
+      minWidth: 100,
+      minHeight: 100
+    })
+
+    expect(withLabels.svgText).toContain('SuperLongResourcePoolTitleXYZ')
+    expect(withLabels.svgText).toContain('transform="translate(0, 47)"')
+    expect(withoutLabels.svgText).not.toContain('SuperLongResourcePoolTitleXYZ')
+    expect(withoutLabels.svgText).toContain('NoteBodyText')
+    expect(withoutLabels.svgText).toContain('transform="translate(0, 34)"')
+    expect(withoutLabels.bounds.contentMaxY).toBeLessThan(withLabels.bounds.contentMaxY)
+  })
+
+  it('resolves referenced nodes from resource and state connection formulas for dashed visual guide lines', () => {
+    const doc = createEmptyMxDocument('Formula Ref Guide Test')
+    doc.params = [{ id: 'pm_tax', name: 'GlobalTax', value: 0.2 }]
+    doc.nodes = [
+      { id: 's_prod', kind: 'source', label: 'Mine', x: 60, y: 100 },
+      { id: 'p_gold', kind: 'pool', label: 'Gold', x: 180, y: 100, initial: 10 },
+      { id: 'p_hp', kind: 'pool', label: 'Current HP', x: 180, y: 220, initial: 50 },
+      { id: 'r_max_hp', kind: 'register', label: 'Max HP', x: 320, y: 220, formula: '100' },
+      { id: 'r_atk', kind: 'register', label: 'Atk', x: 320, y: 100, formula: '12' },
+      { id: 'r_cd', kind: 'register', label: 'Cooldown Steps', x: 440, y: 100, formula: '3' },
+      { id: 'p_shadowed', kind: 'pool', label: 'GlobalTax', x: 440, y: 220, initial: 5 },
+      { id: 'p_spirit', kind: 'pool', label: '灵石', x: 560, y: 100, initial: 8 },
+      { id: 'p_max_spirit', kind: 'pool', label: '最大灵石', x: 560, y: 220, initial: 80 },
+      { id: 'd_sink', kind: 'drain', label: 'Sink', x: 700, y: 160 }
+    ]
+    doc.edges = [
+      {
+        id: 'e_res_expr',
+        kind: 'resource',
+        from: 's_prod',
+        to: 'p_gold',
+        formula: 'max(1, Gold * 0.5 + Max_HP * GlobalTax)',
+        interval: 'Cooldown_Steps'
+      },
+      {
+        id: 'st_to_edge_a',
+        kind: 'state',
+        from: 'r_atk',
+        to: 'p_gold',
+        targetEdgeId: 'e_pos_expr',
+        formula: '+1'
+      },
+      {
+        id: 'st_to_edge_custom',
+        kind: 'state',
+        from: 'r_cd',
+        to: 'p_gold',
+        targetEdgeId: 'e_pos_expr',
+        label: 'haste',
+        formula: '+1'
+      },
+      {
+        id: 'e_pos_expr',
+        kind: 'resource',
+        from: 'p_gold',
+        to: 'd_sink',
+        formula: 'a + haste * 2'
+      },
+      {
+        id: 'st_cond',
+        kind: 'state',
+        from: 'p_hp',
+        to: 's_prod',
+        formula: '>= Max_HP'
+      },
+      {
+        id: 'st_mod_var',
+        kind: 'state',
+        from: 'p_hp',
+        to: 's_prod',
+        formula: '+Atk%'
+      },
+      {
+        id: 'e_cjk',
+        kind: 'resource',
+        from: 's_prod',
+        to: 'd_sink',
+        formula: '最大灵石 * 0.1 + 灵石'
+      },
+      {
+        id: 'e_plain_dice',
+        kind: 'resource',
+        from: 's_prod',
+        to: 'p_gold',
+        formula: '2D6 + 3'
+      }
+    ]
+
+    // 1. Direct node names, multi-word sanitized identifiers, dynamic interval, and param shadowing
+    const refs1 = resolveMxEdgeReferencedNodes(doc, doc.edges[0]!)
+    expect(refs1).toEqual([
+      { nodeId: 'p_gold', token: 'Gold' },
+      { nodeId: 'r_max_hp', token: 'Max_HP' },
+      { nodeId: 'r_cd', token: 'Cooldown_Steps' }
+    ])
+
+    // 2. Positional `a` and custom state edge label `haste`
+    const refsPos = resolveMxEdgeReferencedNodes(doc, doc.edges[3]!)
+    expect(refsPos).toEqual([
+      { nodeId: 'r_atk', token: 'a' },
+      { nodeId: 'r_cd', token: 'haste' }
+    ])
+
+    // 3. State conditional `>= Max_HP` only points to `Max_HP` (no synthetic `a` noise)
+    const refsCond = resolveMxEdgeReferencedNodes(doc, doc.edges[4]!)
+    expect(refsCond).toEqual([{ nodeId: 'r_max_hp', token: 'Max_HP' }])
+
+    // 4. Signed variable state modifier `+Atk%`
+    const refsMod = resolveMxEdgeReferencedNodes(doc, doc.edges[5]!)
+    expect(refsMod).toEqual([{ nodeId: 'r_atk', token: 'Atk' }])
+
+    // 5. Longest-first non-overlapping CJK node names (`最大灵石` + `灵石`)
+    const refsCjk = resolveMxEdgeReferencedNodes(doc, doc.edges[6]!)
+    expect(refsCjk).toEqual([
+      { nodeId: 'p_max_spirit', token: '最大灵石' },
+      { nodeId: 'p_spirit', token: '灵石' }
+    ])
+
+    // 6. Plain dice/constant formulas produce zero reference lines
+    expect(resolveMxEdgeReferencedNodes(doc, doc.edges[7]!)).toEqual([])
   })
 })

@@ -64,6 +64,7 @@ export function createMxStudioStore(initial: MxDocument) {
   const canvasTheme = ref<MxCanvasTheme>('auto')
   const snapToGrid = ref(true)
   const flowHeatmap = ref(false)
+  const showNodeLabels = ref(true)
   const view = reactive({ x: 0, y: 0, zoom: 0.8 })
   const activeLayerId = ref<string>('')
 
@@ -1445,6 +1446,7 @@ export function createMxStudioStore(initial: MxDocument) {
     canvasTheme,
     snapToGrid,
     flowHeatmap,
+    showNodeLabels,
     view,
     runs,
     activeRunId,

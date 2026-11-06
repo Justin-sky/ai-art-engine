@@ -37,6 +37,7 @@ export interface MxDiagramBoundsOptions {
   minHeight?: number
   displayFlows?: Record<string, number> | null
   flowHeatmap?: boolean
+  showNodeLabels?: boolean
   edgeCumulativeFlows?: Record<string, MxDiagramEdgeCumulativeFlow>
   nodeBottlenecks?: Record<string, MxDiagramBottleneckBadge>
 }
@@ -446,6 +447,7 @@ export function computeMxDiagramBounds(
   const padding = options.padding ?? 52
   const minWidth = options.minWidth ?? 560
   const minHeight = options.minHeight ?? 360
+  const showNodeLabels = options.showNodeLabels ?? true
 
   const { visibleGroups, visibleNodes, visibleIds, nodeById } = collectVisibleElements(doc)
   const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById, options.displayFlows)
@@ -479,13 +481,14 @@ export function computeMxDiagramBounds(
       continue
     }
 
-    const labelHalfW = estimateMxTextWidth(node.label || '', 11, false) / 2 + 8
+    const labelHalfW = showNodeLabels ? estimateMxTextWidth(node.label || '', 11, false) / 2 + 8 : 0
     const subHalfW = getMxNodeSubPillWidth(node) / 2 + 6
     const hasBottleneck = Boolean(options.nodeBottlenecks?.[node.id])
     const leftExtent = Math.max(30, hasBottleneck ? 42 : 0, labelHalfW, subHalfW)
     const rightExtent = Math.max(30, labelHalfW, subHalfW)
     const topExtent = hasBottleneck ? 32 : 28
-    const bottomExtent = getMxNodeSubLabel(node) ? 58 : 42
+    const hasSub = Boolean(getMxNodeSubLabel(node))
+    const bottomExtent = showNodeLabels ? (hasSub ? 58 : 42) : hasSub ? 45 : 28
 
     expand(node.x - leftExtent, node.y - topExtent)
     expand(node.x + rightExtent, node.y + bottomExtent)
@@ -637,6 +640,7 @@ export function exportMxDiagramSvg(
   const themeMode: MxDiagramThemeMode = options.theme ?? 'dark'
   const palette = themeMode === 'light' ? LIGHT_PALETTE : DARK_PALETTE
   const showGrid = options.showGrid ?? true
+  const showNodeLabels = options.showNodeLabels ?? true
 
   const bounds = computeMxDiagramBounds(doc, options)
   const { exportWidth: width, exportHeight: height, offsetX, offsetY } = bounds
@@ -930,16 +934,19 @@ export function exportMxDiagramSvg(
     }
 
     // 节点主标题（加细微画布背景描边光晕，防止与斜向连线重叠时字迹糊成一团）
-    out.push(
-      `      <text text-anchor="middle" y="34" fill="${palette.labelFg}" stroke="${palette.canvasBg}" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke" font-size="11" font-weight="600">${escapeXml(node.label)}</text>`
-    )
+    if (showNodeLabels) {
+      out.push(
+        `      <text text-anchor="middle" y="34" fill="${palette.labelFg}" stroke="${palette.canvasBg}" stroke-width="3.5" stroke-linejoin="round" paint-order="stroke" font-size="11" font-weight="600">${escapeXml(node.label)}</text>`
+      )
+    }
 
     // 节点副标签胶囊 (max capacity / formula / delay steps)
     const subLabel = getMxNodeSubLabel(node)
     if (subLabel) {
       const sw = getMxNodeSubPillWidth(node)
+      const subY = showNodeLabels ? 47 : 34
       out.push(
-        '      <g transform="translate(0, 47)">',
+        `      <g transform="translate(0, ${subY})">`,
         `        <rect x="${round2(-sw / 2)}" y="-7.5" width="${round2(sw)}" height="15" rx="7.5" fill="${palette.subBg}" stroke="${palette.pillBorder}" stroke-width="0.8" />`,
         `        <text text-anchor="middle" y="3" fill="${palette.subFg}" font-family="${escapeXml(SVG_FONT_MONO)}" font-size="9">${escapeXml(subLabel)}</text>`,
         '      </g>'

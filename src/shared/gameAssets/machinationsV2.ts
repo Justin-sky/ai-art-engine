@@ -1510,6 +1510,7 @@ interface MxGraphIndex {
   stateOutByNode: Map<string, MxEdge[]>
   stateInByEdge: Map<string, MxEdge[]>
   resEdgeById: Map<string, MxEdge>
+  hasMultiColorResources: boolean
   paramArrays?: Record<string, number[] | number[][]>
 }
 
@@ -1637,6 +1638,17 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     if (hasNodeMod) nodeModTargets.push(n)
   }
 
+  const usedResIds = new Set<string>()
+  let hasResourceFilter = false
+  for (const n of doc.nodes) {
+    if (n.resourceId && n.resourceId !== 'default') usedResIds.add(n.resourceId)
+  }
+  for (const e of doc.edges) {
+    if (e.resourceFilter) hasResourceFilter = true
+    if (e.resourceId && e.resourceId !== 'default') usedResIds.add(e.resourceId)
+  }
+  const hasMultiColorResources = hasResourceFilter || usedResIds.size > 1
+
   const idx: MxGraphIndex = {
     byId,
     edgeById,
@@ -1652,6 +1664,7 @@ function getMxGraphIndex(doc: MxDocument): MxGraphIndex {
     stateOutByNode,
     stateInByEdge,
     resEdgeById,
+    hasMultiColorResources,
     paramArrays: buildParamArrays(doc)
   }
   graphIndexCache.set(doc, {
@@ -1719,6 +1732,224 @@ function buildVars(
   return vars
 }
 
+export interface MxEdgeNodeReference {
+  nodeId: string
+  token: string
+}
+
+/**
+ * 解析一条连接线的公式（及动态间隔 `interval`）中引用的所有节点，
+ * 供画布在点击/编辑连线时绘制“公式胶囊 ╌╌► 被引用节点”的快速定位虚线。
+ */
+export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxEdgeNodeReference[] {
+  const gIdx = getMxGraphIndex(doc)
+  const paramNames = new Set<string>()
+  const paramLower = new Set<string>()
+  for (const p of doc.params) {
+    const pk = mxIdentifier(p.name)
+    if (pk) {
+      paramNames.add(pk)
+      paramLower.add(pk.toLowerCase())
+    }
+  }
+
+  const varToNodeId = new Map<string, string>()
+  for (const entry of gIdx.identEntries) {
+    const node = gIdx.byId.get(entry.id)
+    if (!node || node.kind === 'note') continue
+    if (entry.ident && !paramNames.has(entry.ident)) {
+      varToNodeId.set(entry.ident, entry.id)
+    }
+    varToNodeId.set(entry.id, entry.id)
+  }
+
+  const srcNode = gIdx.byId.get(edge.from)
+  if (srcNode && srcNode.kind !== 'note') {
+    varToNodeId.set('self', srcNode.id)
+  }
+
+  if (edge.kind === 'resource') {
+    const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+    const nodeStateIns = gIdx.stateInByNode.get(edge.from) ?? EMPTY_EDGES
+    const combinedStateIns =
+      edgeStateIns.length && nodeStateIns.length
+        ? [...edgeStateIns, ...nodeStateIns]
+        : edgeStateIns.length
+          ? edgeStateIns
+          : nodeStateIns
+    combinedStateIns.forEach((se, idx) => {
+      const originNode = gIdx.byId.get(se.from)
+      if (!originNode || originNode.kind === 'note') return
+      if (idx < POSITIONAL_LETTERS.length) {
+        varToNodeId.set(POSITIONAL_LETTERS[idx]!, se.from)
+      }
+      if (se.label?.trim()) {
+        const customVar = mxIdentifier(se.label.trim())
+        if (customVar) varToNodeId.set(customVar, se.from)
+      }
+    })
+    if (
+      !varToNodeId.has('a') &&
+      !paramNames.has('a') &&
+      srcNode &&
+      srcNode.kind !== 'source' &&
+      srcNode.kind !== 'note'
+    ) {
+      varToNodeId.set('a', srcNode.id)
+    }
+  } else if (edge.kind === 'state') {
+    if (!varToNodeId.has('a') && !paramNames.has('a') && srcNode && srcNode.kind !== 'note') {
+      varToNodeId.set('a', srcNode.id)
+    }
+  }
+
+  const lowerVarToNodeId = new Map<string, string>()
+  for (const [k, nid] of varToNodeId.entries()) {
+    lowerVarToNodeId.set(k.toLowerCase(), nid)
+  }
+
+  const exprSegments: string[] = []
+  const rawF = (edge.formula ?? '').trim()
+  if (rawF) {
+    if (edge.kind === 'resource') {
+      const spec = parseMxFlowFormula(rawF)
+      const coreRaw = rawF.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
+      const asGateCond = parseMxStateFormula(coreRaw)
+      if (asGateCond.type === 'activator' || asGateCond.type === 'range') {
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      } else if (asGateCond.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) {
+        exprSegments.push(coreRaw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      } else {
+        if (spec.type !== 'all') exprSegments.push(spec.expr)
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      }
+    } else {
+      const sv = parseSignedVarStateModifier(rawF)
+      if (sv) {
+        exprSegments.push(sv.ident)
+      } else {
+        const stSpec = parseMxStateFormula(rawF)
+        if (stSpec.type === 'expr') {
+          exprSegments.push(rawF.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+        }
+      }
+    }
+  }
+  if (edge.kind === 'resource' && edge.interval?.trim()) {
+    const iv = edge.interval.trim()
+    if (!/^-?\d+(?:\.\d+)?$/.test(iv)) {
+      exprSegments.push(iv)
+    }
+  }
+
+  const extractedTokens: string[] = []
+  const skipBuiltins = new Set(['pi', 'step', 't', 'true', 'false', 'all', 'every'])
+
+  const walkAst = (n: ExprNode): void => {
+    if (n.t === 'id') {
+      const low = n.name.toLowerCase()
+      if (skipBuiltins.has(low)) return
+      if (low === 'e' && !varToNodeId.has('e')) return
+      extractedTokens.push(n.name)
+    } else if (n.t === 'arr') {
+      n.items.forEach(walkAst)
+    } else if (n.t === 'idx') {
+      walkAst(n.target)
+      n.indices.forEach(walkAst)
+    } else if (n.t === 'un') {
+      walkAst(n.a)
+    } else if (n.t === 'bin') {
+      walkAst(n.a)
+      walkAst(n.b)
+    } else if (n.t === 'tern') {
+      walkAst(n.cond)
+      walkAst(n.a)
+      walkAst(n.b)
+    } else if (n.t === 'call') {
+      n.args.forEach(walkAst)
+    }
+  }
+
+  for (const seg of exprSegments) {
+    const trimmed = seg.trim()
+    if (!trimmed) continue
+    const toks = tokenizeExpr(trimmed)
+    const ast = toks && toks.length ? parseExprTokens(toks) : null
+    if (ast) {
+      walkAst(ast)
+    } else {
+      const re = /([A-Za-z_][A-Za-z0-9_]*)(\s*\()?/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(trimmed)) !== null) {
+        if (m[2]) continue
+        const ident = m[1]!
+        if (/^\d*[dD]\d+$/.test(ident)) continue
+        const low = ident.toLowerCase()
+        if (skipBuiltins.has(low)) continue
+        if (low === 'e' && !varToNodeId.has('e')) continue
+        if (KNOWN_MX_FUNCTIONS.has(low) && !varToNodeId.has(ident) && !lowerVarToNodeId.has(low)) {
+          continue
+        }
+        extractedTokens.push(ident)
+      }
+    }
+  }
+
+  const byNodeId = new Map<string, Set<string>>()
+  const orderedNodeIds: string[] = []
+  const addRef = (nodeId: string, token: string): void => {
+    let set = byNodeId.get(nodeId)
+    if (!set) {
+      set = new Set<string>()
+      byNodeId.set(nodeId, set)
+      orderedNodeIds.push(nodeId)
+    }
+    set.add(token)
+  }
+
+  for (const tok of extractedTokens) {
+    const exact = varToNodeId.get(tok)
+    const resolved =
+      exact ??
+      (!paramLower.has(tok.toLowerCase()) ? lowerVarToNodeId.get(tok.toLowerCase()) : undefined)
+    if (resolved && gIdx.byId.has(resolved)) {
+      addRef(resolved, tok)
+    }
+  }
+
+  // 支持直接书写含中文/非 ASCII 节点标题的公式定位（按标题长度降序匹配，防止子串误命中）
+  const combinedRaw = `${rawF} ${edge.kind === 'resource' ? (edge.interval ?? '') : ''}`.trim()
+  if (/[^\x00-\x7f]/.test(combinedRaw)) {
+    const unicodeNodes = doc.nodes
+      .filter((n) => n.kind !== 'note' && /[^\x00-\x7f]/.test(n.label.trim()))
+      .sort((a, b) => b.label.trim().length - a.label.trim().length)
+    const occupiedSpans: Array<[number, number]> = []
+    for (const n of unicodeNodes) {
+      const lbl = n.label.trim()
+      if (!lbl) continue
+      let searchFrom = 0
+      while (searchFrom < combinedRaw.length) {
+        const idx = combinedRaw.indexOf(lbl, searchFrom)
+        if (idx < 0) break
+        const end = idx + lbl.length
+        const overlaps = occupiedSpans.some(([s, e]) => idx < e && end > s)
+        if (!overlaps) {
+          occupiedSpans.push([idx, end])
+          addRef(n.id, lbl)
+          break
+        }
+        searchFrom = idx + 1
+      }
+    }
+  }
+
+  return orderedNodeIds.map((nodeId) => ({
+    nodeId,
+    token: Array.from(byNodeId.get(nodeId) ?? []).join(', ')
+  }))
+}
+
 // ───────── 多色资源池（LIFO / Shuffle / Color Filter）辅助函数 ─────────
 
 function countPoolTokensByColor(state: MxRuntimeState, poolId: string, resId?: string): number {
@@ -1740,9 +1971,8 @@ function pushPoolTokens(
   positiveAdded: number,
   resId: string | undefined
 ): void {
-  if (positiveAdded <= 0) return
+  if (positiveAdded <= 0 || !state.poolTokens) return
   const color = resId || pool.resourceId || 'default'
-  state.poolTokens ??= {}
   const stack = (state.poolTokens[pool.id] ??= [])
   const top = stack[stack.length - 1]
   if (top && top.resId === color) {
@@ -1857,14 +2087,17 @@ export function createMxInitialState(
   doc: MxDocument,
   options: { params?: Record<string, number>; seed?: number; scenarioId?: string } = {}
 ): MxRuntimeState {
+  const gIdx = getMxGraphIndex(doc)
   const values: Record<string, number> = {}
   const buffers: Record<string, MxBufferItem[]> = {}
-  const poolTokens: Record<string, MxPoolTokenStackItem[]> = {}
+  const poolTokens: Record<string, MxPoolTokenStackItem[]> | undefined = gIdx.hasMultiColorResources
+    ? {}
+    : undefined
   for (const n of doc.nodes) {
     if (n.kind === 'pool') {
       const initVal = Math.min(capOf(n), Math.max(0, Number(n.initial ?? 0)))
       values[n.id] = initVal
-      if (initVal > 0) {
+      if (poolTokens && initVal > 0) {
         poolTokens[n.id] = [{ resId: n.resourceId || 'default', count: initVal }]
       }
     } else if (n.kind === 'register') {
@@ -3276,8 +3509,9 @@ export function stepMxSimulation(
     }
   }
 
-  const clonedPoolTokens: Record<string, MxPoolTokenStackItem[]> = {}
+  let clonedPoolTokens: Record<string, MxPoolTokenStackItem[]> | undefined
   if (prev.poolTokens) {
+    clonedPoolTokens = {}
     for (const k in prev.poolTokens) {
       const arr = prev.poolTokens[k]!
       const copy = new Array<MxPoolTokenStackItem>(arr.length)

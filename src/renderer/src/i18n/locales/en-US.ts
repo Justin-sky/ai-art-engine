@@ -8854,6 +8854,7 @@ export default {
     top: {
       build: 'Build',
       scenarios: 'Scenarios',
+      nodeLabels: 'Node Names',
       export: 'Export / Share',
       exportPng: 'Export HD PNG Diagram (.png)',
       exportSvg: 'Export Vector SVG Diagram (.svg)',
@@ -9128,6 +9129,7 @@ export default {
       searchPlaceholder: 'Search node label, kind, or formula...',
       minimapToggle: 'Toggle bottom-right Minimap',
       flowHeatmap: 'Toggle Sankey Flow Heatmap & Cumulative Flow',
+      showNodeLabels: 'Show / Hide Resource Node Names',
       alignLeft: 'Align Left',
       alignCenterX: 'Align Center Horizontally',
       alignRight: 'Align Right',

@@ -590,6 +590,31 @@ function pushAndOpenDownstreamGameSystem(): void {
 
       <!-- 右侧导出与执行 -->
       <div class="mx-topbar-right">
+        <button
+          type="button"
+          class="mx-top-btn mx-top-toggle"
+          :class="{ 'is-toggle-on': store.showNodeLabels.value }"
+          :aria-pressed="store.showNodeLabels.value"
+          :title="`${t('mx.canvas.showNodeLabels')} (${store.showNodeLabels.value ? 'ON' : 'OFF'})`"
+          @click="store.showNodeLabels.value = !store.showNodeLabels.value"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+            <path
+              d="M2.2 12.2L5.1 3.8h1.5l2.9 8.4H8.1l-.65-2.1H4.25l-.65 2.1H2.2zm2.45-3.25h2.4L5.85 5.3l-1.2 3.65zM10.5 7.4c0-1.05.85-1.7 2.15-1.7 1.25 0 2.05.6 2.05 1.75v3.3c0 .55.05 1.05.15 1.45h-1.25l-.1-.75c-.4.55-1.05.85-1.8.85-1.05 0-1.8-.65-1.8-1.6 0-1.05.85-1.6 2.3-1.75l1.25-.12v-.38c0-.5-.35-.8-.95-.8-.55 0-.88.25-.98.65l-1.02-.2zm3 1.75l-1.05.12c-.75.08-1.12.35-1.12.82 0 .42.35.68.88.68.75 0 1.29-.52 1.29-1.25v-.37z"
+              fill="currentColor"
+            />
+            <path
+              v-if="!store.showNodeLabels.value"
+              d="M2.2 13.8L13.8 2.2"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+          <span>{{ t('mx.top.nodeLabels') }}</span>
+        </button>
+
         <div class="mx-export-wrap" @click.stop>
           <button type="button" class="mx-top-btn" @click="exportOpen = !exportOpen">
             ⇣ {{ t('mx.top.export') }} ▾
@@ -929,6 +954,19 @@ function pushAndOpenDownstreamGameSystem(): void {
 }
 .mx-top-btn:hover {
   background: var(--bg-hover);
+}
+.mx-top-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.mx-top-toggle.is-toggle-on {
+  background: var(--accent-12);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .mx-top-btn.is-run {
   background: var(--accent-12);
