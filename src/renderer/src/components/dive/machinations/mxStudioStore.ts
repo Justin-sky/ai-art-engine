@@ -4,14 +4,19 @@
 import { computed, inject, provide, reactive, ref, shallowRef, watch, type InjectionKey } from 'vue'
 import {
   autoLayoutMxDocument,
+  createMxDocumentFromBuildingBlock,
   createMxFromTemplate,
   createMxInitialState,
   createMxNode,
   createMxWorkbenchPreset,
   formatMxTunableEdgeFormula,
   generateMxAgentWithAi,
+  getMxBuildingBlockById,
+  insertMxBuildingBlockIntoDocument,
+  mxIdentifier,
   mxNewId,
   normalizeMxDocument,
+  rewriteMxFormulaIdentifiers,
   runMxAgentArena,
   runMxForecast,
   runMxSimulation,
@@ -25,6 +30,7 @@ import {
   type MxEvent,
   type MxForecastResult,
   type MxGroup,
+  type MxInsertBuildingBlockResult,
   type MxNode,
   type MxNodeKind,
   type MxNumericalWorkbench,
@@ -38,9 +44,33 @@ import {
 
 export type MxTool = 'select' | MxNodeKind | 'resource_edge' | 'state_edge'
 export type MxDrawer =
-  '' | 'agents' | 'templates' | 'resources' | 'params' | 'layers' | 'clips' | 'history' | 'docs'
+  | ''
+  | 'agents'
+  | 'templates'
+  | 'blocks'
+  | 'resources'
+  | 'params'
+  | 'layers'
+  | 'clips'
+  | 'history'
+  | 'docs'
 export type MxMode = 'build' | 'scenarios' | 'workbench'
 export type MxCanvasTheme = 'auto' | 'light' | 'dark'
+export type MxFormulaModalTarget =
+  | {
+      targetType: 'edge'
+      edgeId: string
+      field: 'formula' | 'interval'
+    }
+  | {
+      targetType: 'node'
+      nodeId: string
+      field: 'formula' | 'botCondition'
+    }
+  | {
+      targetType: 'param'
+      paramId: string
+    }
 
 function clone<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T
@@ -67,6 +97,7 @@ export function createMxStudioStore(initial: MxDocument) {
   const showNodeLabels = ref(true)
   const view = reactive({ x: 0, y: 0, zoom: 0.8 })
   const activeLayerId = ref<string>('')
+  const formulaModal = ref<MxFormulaModalTarget | null>(null)
 
   watch(
     () => doc.value.layers,
@@ -754,14 +785,30 @@ export function createMxStudioStore(initial: MxDocument) {
   ): void {
     if (!src || !src.nodes.length) return
     const map = new Map<string, string>()
-    const nodes = src.nodes.map((n) => {
+    const rawNodes = src.nodes.map((n) => {
       const id = mxNewId(n.kind)
       map.set(n.id, id)
       return { ...clone(n), id, x: n.x + offset, y: n.y + offset }
     })
-    const edges = src.edges
-      .filter((e) => map.has(e.from) && map.has(e.to))
-      .map((e) => ({ ...clone(e), id: mxNewId('e'), from: map.get(e.from)!, to: map.get(e.to)! }))
+    const nodes = rawNodes.map((n) => ({
+      ...n,
+      formula: rewriteMxFormulaIdentifiers(n.formula, map),
+      botCondition: rewriteMxFormulaIdentifiers(n.botCondition, map)
+    }))
+    const edgeMap = new Map<string, string>()
+    const validEdges = src.edges.filter((e) => map.has(e.from) && map.has(e.to))
+    for (const e of validEdges) {
+      edgeMap.set(e.id, mxNewId('e'))
+    }
+    const edges = validEdges.map((e) => ({
+      ...clone(e),
+      id: edgeMap.get(e.id)!,
+      from: map.get(e.from)!,
+      to: map.get(e.to)!,
+      targetEdgeId: e.targetEdgeId ? (edgeMap.get(e.targetEdgeId) ?? e.targetEdgeId) : undefined,
+      formula: rewriteMxFormulaIdentifiers(e.formula, map) ?? e.formula,
+      interval: rewriteMxFormulaIdentifiers(e.interval, map)
+    }))
     mutate((d) => {
       d.nodes.push(...nodes)
       d.edges.push(...edges)
@@ -771,6 +818,54 @@ export function createMxStudioStore(initial: MxDocument) {
   function duplicateSelection(): void {
     copySelection()
     pasteNodes()
+  }
+
+  /**
+   * 将官方 Building Block 模块无冲突插入当前经济系统图，并自动选中新插入的节点与连线。
+   */
+  function insertBuildingBlock(
+    blockId: string,
+    options: {
+      wrapInGroup?: boolean
+      locale?: 'zh' | 'en'
+      anchorX?: number
+      anchorY?: number
+    } = {}
+  ): MxInsertBuildingBlockResult | null {
+    let inserted: MxInsertBuildingBlockResult | null = null
+    mutate((d) => {
+      inserted = insertMxBuildingBlockIntoDocument(d, blockId, {
+        ...options,
+        layerId: activeLayerId.value || undefined
+      })
+    })
+    if (inserted) {
+      const res = inserted as MxInsertBuildingBlockResult
+      select(res.insertedNodeIds, res.insertedEdgeIds)
+    }
+    return inserted
+  }
+
+  /**
+   * 将指定 Building Block 作为独立画布打开并立即运行模拟预览。
+   */
+  function loadBuildingBlockAsDoc(blockId: string, locale: 'zh' | 'en' = 'zh'): void {
+    const nextDoc = createMxDocumentFromBuildingBlock(blockId, locale)
+    replaceDoc(nextDoc)
+    playAgain()
+  }
+
+  /**
+   * 将指定 Building Block 复制到工作台剪贴板（便于 Ctrl+V 或右键粘贴到任意位置）。
+   */
+  function copyBuildingBlock(blockId: string): boolean {
+    const blk = getMxBuildingBlockById(blockId)
+    if (!blk || !blk.nodes.length) return false
+    clipboard = {
+      nodes: clone(blk.nodes),
+      edges: clone(blk.edges)
+    }
+    return true
   }
 
   function selectLayer(layerId: string): void {
@@ -1560,6 +1655,110 @@ export function createMxStudioStore(initial: MxDocument) {
     runForecast()
   }
 
+  function upsertParam(rawName: string, initialValue = 1): string {
+    const cleanName = mxIdentifier(rawName) || `param_${doc.value.params.length + 1}`
+    const existing = doc.value.params.find(
+      (p) => mxIdentifier(p.name).toLowerCase() === cleanName.toLowerCase()
+    )
+    if (existing) {
+      return mxIdentifier(existing.name) || existing.name
+    }
+    const safeVal = Number.isFinite(initialValue) ? initialValue : 1
+    mutate((d) => {
+      d.params.push({
+        id: mxNewId('p'),
+        name: cleanName,
+        value: safeVal,
+        varKind: 'number'
+      })
+      for (const sc of d.scenarios) {
+        if (!(cleanName in sc.params)) {
+          sc.params[cleanName] = safeVal
+        }
+      }
+    }, `upsertParam:${cleanName}`)
+    return cleanName
+  }
+
+  function setParamValue(paramId: string, nextValue: number): void {
+    if (!Number.isFinite(nextValue)) return
+    mutate((d) => {
+      const target = d.params.find((p) => p.id === paramId)
+      if (!target) return
+      target.value = nextValue
+      const key = mxIdentifier(target.name) || target.name
+      if (d.activeScenarioId) {
+        const sc = d.scenarios.find((s) => s.id === d.activeScenarioId)
+        if (sc) sc.params[key] = nextValue
+      }
+    }, `paramVal:${paramId}`)
+  }
+
+  function openFormulaModal(target: MxFormulaModalTarget): void {
+    if (target.targetType === 'edge') {
+      const exists = doc.value.edges.some((e) => e.id === target.edgeId)
+      if (!exists) return
+      if (!(selection.edges.length === 1 && selection.edges[0] === target.edgeId)) {
+        select([], [target.edgeId])
+      }
+    } else if (target.targetType === 'node') {
+      const exists = doc.value.nodes.some((n) => n.id === target.nodeId)
+      if (!exists) return
+      if (!(selection.nodes.length === 1 && selection.nodes[0] === target.nodeId)) {
+        select([target.nodeId], [])
+      }
+    } else if (target.targetType === 'param') {
+      const exists = doc.value.params.some((p) => p.id === target.paramId)
+      if (!exists) return
+    }
+    formulaModal.value = target
+  }
+
+  function closeFormulaModal(): void {
+    formulaModal.value = null
+  }
+
+  function commitFormulaModal(rawFormula: string): void {
+    const t = formulaModal.value
+    if (!t) return
+    // Collapse newlines/tabs into clean spaces so SVG pills & single-line inputs stay tidy
+    const normalized = rawFormula
+      .replace(/\s*\r?\n\s*/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+    if (t.targetType === 'edge') {
+      const e = doc.value.edges.find((x) => x.id === t.edgeId)
+      if (!e) return
+      if (t.field === 'interval') {
+        const nextPatch: { interval?: string; formula?: string } = {
+          interval: normalized || undefined
+        }
+        if (normalized && /\|/.test(e.formula)) {
+          nextPatch.formula = e.formula.replace(/\s*\|.*$/, '').trim() || '1'
+        }
+        updateEdge(e.id, nextPatch)
+      } else {
+        updateEdge(e.id, { formula: normalized })
+      }
+    } else if (t.targetType === 'node') {
+      const n = doc.value.nodes.find((x) => x.id === t.nodeId)
+      if (!n) return
+      if (t.field === 'botCondition') {
+        updateNode(n.id, { botCondition: normalized })
+      } else if (n.kind === 'gate') {
+        updateNode(n.id, { formula: normalized || undefined })
+      } else {
+        updateNode(n.id, { formula: normalized })
+      }
+    } else if (t.targetType === 'param') {
+      mutate((d) => {
+        const p = d.params.find((x) => x.id === t.paramId)
+        if (p) p.formula = normalized
+      }, `paramFormula:${t.paramId}`)
+    }
+    formulaModal.value = null
+  }
+
   return {
     doc,
     selection,
@@ -1628,6 +1827,9 @@ export function createMxStudioStore(initial: MxDocument) {
     copySelection,
     pasteNodes,
     duplicateSelection,
+    insertBuildingBlock,
+    loadBuildingBlockAsDoc,
+    copyBuildingBlock,
     play,
     stepOnce,
     interact,
@@ -1660,6 +1862,12 @@ export function createMxStudioStore(initial: MxDocument) {
     applyWorkbenchPrompt,
     syncWorkbenchToMacroParams,
     injectValueToCanvasNode,
+    upsertParam,
+    setParamValue,
+    formulaModal,
+    openFormulaModal,
+    closeFormulaModal,
+    commitFormulaModal,
     stopTimer
   }
 }

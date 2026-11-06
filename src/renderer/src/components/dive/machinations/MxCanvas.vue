@@ -174,6 +174,9 @@
           class="mx-edge"
           :class="{
             'is-selected': isEdgeSelected(geo.edge.id),
+            'is-cond-consumer':
+              consumerEdgeHitById.has(geo.edge.id) ||
+              directConsumerBridgeEdgeIdSet.has(geo.edge.id),
             'is-reconnecting': reconnectDrag?.edgeId === geo.edge.id,
             'is-drop-target':
               connectDrag?.hoverEdgeId === geo.edge.id || reconnectDrag?.hoverEdgeId === geo.edge.id
@@ -185,6 +188,14 @@
           @contextmenu.prevent.stop="onEdgeContextMenu(geo.edge, $event)"
         >
           <path :d="geo.path" fill="none" class="mx-edge-hit" />
+          <path
+            v-if="
+              consumerEdgeHitById.has(geo.edge.id) || directConsumerBridgeEdgeIdSet.has(geo.edge.id)
+            "
+            :d="geo.path"
+            fill="none"
+            class="mx-edge-cond-glow"
+          />
           <!-- Sankey 流量热力发光底层 -->
           <path
             v-if="
@@ -351,6 +362,8 @@
               :class="{
                 'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
+                'is-cond-highlight':
+                  !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id),
                 'is-drop':
                   connectDrag?.hoverEdgeId === geo.edge.id ||
                   reconnectDrag?.hoverEdgeId === geo.edge.id
@@ -358,7 +371,11 @@
             />
             <text
               class="mx-edge-label"
-              :class="{ 'is-state': geo.edge.kind === 'state' }"
+              :class="{
+                'is-state': geo.edge.kind === 'state',
+                'is-cond-highlight':
+                  !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
+              }"
               text-anchor="middle"
               y="3.8"
             >
@@ -401,6 +418,7 @@
           class="mx-node"
           :class="{
             selected: isNodeSelected(node.id),
+            'is-cond-consumer': !isNodeSelected(node.id) && consumerNodeHitById.has(node.id),
             hovered: hoveredNodeId === node.id,
             'is-runtime-interactive': isSimRuntime && node.trigger === 'interactive',
             'drop-target':
@@ -443,7 +461,7 @@
               <title v-if="!store.showNodeLabels.value && node.label">{{ node.label }}</title>
             </circle>
 
-            <!-- 选中/悬停/吸附光环 -->
+            <!-- 选中/悬停/吸附光环与条件变量引用高亮光环 -->
             <circle
               v-if="
                 isNodeSelected(node.id) ||
@@ -456,6 +474,12 @@
                 'is-snap':
                   connectDrag?.hoverNodeId === node.id || reconnectDrag?.hoverNodeId === node.id
               }"
+            />
+            <circle
+              v-else-if="consumerNodeHitById.has(node.id)"
+              r="28"
+              fill="none"
+              class="mx-cond-consumer-halo"
             />
 
             <!-- Pool 容量进度外环 (Capacity Arc) -->
@@ -746,38 +770,54 @@
               </g>
             </g>
 
-            <!-- 节点主标题与副标签（双击主标题直接行内重命名；连线公式引用定位时即使关闭全局节点名也临时高亮显示） -->
+            <!-- 节点主标题与副标签（双击主标题直接行内重命名；连线或节点条件引用定位时即使关闭全局节点名也临时高亮显示） -->
             <text
-              v-if="store.showNodeLabels.value || formulaRefNodeIdSet.has(node.id)"
+              v-if="
+                store.showNodeLabels.value ||
+                formulaRefNodeIdSet.has(node.id) ||
+                consumerNodeHitById.has(node.id)
+              "
               class="mx-node-label"
               text-anchor="middle"
               y="34"
               :class="{
                 sel: isNodeSelected(node.id),
-                'is-ref': !isNodeSelected(node.id) && formulaRefNodeIdSet.has(node.id)
+                'is-ref':
+                  !isNodeSelected(node.id) &&
+                  (formulaRefNodeIdSet.has(node.id) || consumerNodeHitById.has(node.id))
               }"
               @dblclick.stop="startNodeLabelEdit(node)"
             >
               {{ node.label }}
             </text>
             <g
-              v-if="nodeSubLabel(node)"
+              v-if="effectiveNodeSubLabel(node)"
               :transform="
-                store.showNodeLabels.value || formulaRefNodeIdSet.has(node.id)
+                store.showNodeLabels.value ||
+                formulaRefNodeIdSet.has(node.id) ||
+                consumerNodeHitById.has(node.id)
                   ? 'translate(0, 47)'
                   : 'translate(0, 34)'
               "
+              style="cursor: pointer"
+              @dblclick.stop="onNodeSubPillDblClick(node)"
             >
               <rect
-                :x="-subW(node) / 2"
-                y="-7.5"
-                :width="subW(node)"
-                height="15"
-                rx="7.5"
+                :x="-effectiveSubW(node) / 2"
+                y="-8"
+                :width="effectiveSubW(node)"
+                height="16"
+                rx="8"
                 class="mx-node-sub-pill"
+                :class="{ 'is-cond-highlight': consumerNodeHitById.has(node.id) }"
               />
-              <text class="mx-node-sub" text-anchor="middle" y="3">
-                {{ nodeSubLabel(node) }}
+              <text
+                class="mx-node-sub"
+                :class="{ 'is-cond-highlight': consumerNodeHitById.has(node.id) }"
+                text-anchor="middle"
+                y="3"
+              >
+                {{ effectiveNodeSubLabel(node) }}
               </text>
             </g>
 
@@ -836,10 +876,17 @@
           </template>
         </g>
 
-        <!-- ══════════ 选中连线公式引用节点定位虚线层 (Formula -> Referenced Node Dashed Links) ══════════ -->
+        <!-- ══════════ 选中连线或节点时的条件/公式引用虚线层 (Formula <-> Node Dashed Links) ══════════ -->
         <g v-if="formulaRefLinks.length > 0" class="mx-formula-ref-layer" pointer-events="none">
           <g v-for="rl in formulaRefLinks" :key="rl.key" class="mx-formula-ref-item">
-            <circle :cx="rl.tx" :cy="rl.ty" :r="rl.haloR" fill="none" class="mx-formula-ref-halo" />
+            <circle
+              v-if="rl.haloR > 0"
+              :cx="rl.tx"
+              :cy="rl.ty"
+              :r="rl.haloR"
+              fill="none"
+              class="mx-formula-ref-halo"
+            />
             <path :d="rl.path" fill="none" class="mx-formula-ref-glow" />
             <path
               :d="rl.path"
@@ -1481,6 +1528,13 @@
         <button
           type="button"
           class="mx-ctx-row"
+          @click="(contextMenu.edgeId && startEdgeEdit(contextMenu.edgeId), closeMenus())"
+        >
+          fx {{ t('mx.inspector.formula') }}
+        </button>
+        <button
+          type="button"
+          class="mx-ctx-row"
           @click="(contextMenu.edgeId && store.toggleEdgeKind(contextMenu.edgeId), closeMenus())"
         >
           ──/╌╌ {{ t('mx.inspector.edgeKind') }}
@@ -1508,17 +1562,75 @@
       </template>
     </div>
 
-    <!-- 连线公式行内输入框 -->
-    <input
+    <!-- 连线公式行内输入框 + 实时变量来源与快捷插入浮层 -->
+    <div
       v-if="edgeEdit"
-      ref="edgeInputRef"
-      v-model="edgeEdit.value"
-      class="mx-edge-input"
+      class="mx-edge-edit-wrap"
       :style="{ left: `${edgeEdit.sx}px`, top: `${edgeEdit.sy}px` }"
-      @keydown.enter.prevent="commitEdgeEdit"
-      @keydown.esc.prevent="edgeEdit = null"
-      @blur="commitEdgeEdit"
-    />
+      @pointerdown.stop
+      @click.stop
+    >
+      <div class="mx-edge-edit-bar">
+        <input
+          ref="edgeInputRef"
+          v-model="edgeEdit.value"
+          class="mx-edge-formula-input"
+          @keydown.enter.prevent="commitEdgeEdit"
+          @keydown.esc.prevent="edgeEdit = null"
+          @blur="commitEdgeEdit"
+        />
+        <span
+          v-if="edgeEditInspection?.previewText"
+          class="mx-edge-edit-preview"
+          :class="{ 'is-dice': edgeEditInspection.isStochastic }"
+        >
+          {{ edgeEditInspection.previewText }}
+        </span>
+      </div>
+      <div
+        v-if="
+          edgeEditInspection &&
+          (edgeEditInspection.referencedSymbols.length || edgeEditQuickCatalog.length)
+        "
+        class="mx-edge-edit-pop"
+        @mousedown.prevent
+      >
+        <div v-if="edgeEditInspection.referencedSymbols.length" class="mx-edge-edit-syms">
+          <span
+            v-for="sym in edgeEditInspection.referencedSymbols"
+            :key="sym.token"
+            class="mx-edge-sym-tag"
+            :class="`src-${sym.source}`"
+          >
+            <b>{{ edgeEditSourceTag(sym) }}</b>
+            <span>{{ sym.token }}</span>
+            <em v-if="sym.valueText !== undefined">={{ sym.valueText }}</em>
+            <button
+              v-if="sym.source === 'unknown'"
+              type="button"
+              class="mx-edge-sym-add"
+              @mousedown.prevent="promoteCanvasUnknownParam(sym.token)"
+            >
+              {{ t('mx.formulaEditor.createAsParam') }}
+            </button>
+          </span>
+        </div>
+        <div v-if="edgeEditQuickCatalog.length" class="mx-edge-edit-chips">
+          <button
+            v-for="item in edgeEditQuickCatalog"
+            :key="item.key"
+            type="button"
+            class="mx-edge-qchip"
+            :title="item.subtitle ?? item.title"
+            @mousedown.prevent="insertCanvasEdgeToken(item.insertText)"
+          >
+            <span class="mx-edge-qbadge">{{ edgeEditCatalogBadge(item) }}</span>
+            <span>{{ item.title }}</span>
+            <em v-if="item.valueText !== undefined">={{ item.valueText }}</em>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 节点名称 / Note 行内输入框 -->
     <input
@@ -1632,14 +1744,20 @@ import {
   evaluateMxExpression,
   exportMxDiagramSvg,
   getMxNodeSubPillWidth,
+  inspectMxFormulaContext,
   mxNodeColor,
   parseMxStateFormula,
   resolveMxEdgeReferencedNodes,
+  resolveMxNodeConsumers,
   resolveMxParams,
   type MxEdge,
   type MxEdgeKind,
+  type MxFormulaCatalogItem,
+  type MxFormulaSymbolRef,
   type MxGroup,
   type MxNode,
+  type MxNodeConsumerEdgeHit,
+  type MxNodeConsumerNodeHit,
   type MxNodeKind,
   type MxPullMode
 } from '@shared/gameAssets'
@@ -1826,11 +1944,13 @@ const renderedNodes = computed(() => {
   const r = viewportWorldRect.value
   const sel = selectedNodeSet.value
   const refSet = formulaRefNodeIdSet.value
+  const consumerNodes = consumerNodeHitById.value
   return all.filter(
     (n) =>
       (n.x >= r.minX && n.x <= r.maxX && n.y >= r.minY && n.y <= r.maxY) ||
       sel.has(n.id) ||
       refSet.has(n.id) ||
+      consumerNodes.has(n.id) ||
       hoveredNodeId.value === n.id
   )
 })
@@ -2053,12 +2173,32 @@ const triggerGateSet = computed(() => {
   return tg
 })
 
+const MX_COND_GATE_OUT_RE = /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
+
+const conditionalGateSet = computed(() => {
+  const cg = new Set<string>()
+  for (const n of store.doc.value.nodes) {
+    if (n.kind === 'gate' && n.formula?.trim()) cg.add(n.id)
+  }
+  for (const e of store.doc.value.edges) {
+    const s = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
+    if (MX_COND_GATE_OUT_RE.test(s)) cg.add(e.from)
+  }
+  return cg
+})
+
 function gateGlyph(node: MxNode): string {
   if (triggerGateSet.value.has(node.id)) {
-    return node.gateMode === 'deterministic' ? '⚖⚡' : '⚡'
+    return node.gateMode === 'deterministic'
+      ? '⚖⚡'
+      : conditionalGateSet.value.has(node.id)
+        ? '🎲⚡'
+        : '⚡'
   }
   if (node.gateMode === 'skill') return '🎯'
-  return node.gateMode === 'deterministic' ? '⚖' : '%'
+  if (node.gateMode === 'deterministic') return '⚖'
+  if (conditionalGateSet.value.has(node.id)) return '🎲'
+  return '%'
 }
 
 function tokenDots(count: number): Array<{ x: number; y: number }> {
@@ -2258,13 +2398,50 @@ function nodeSubLabel(node: MxNode): string {
   if (node.kind === 'pool' && node.capacity && node.capacity > 0) return `max ${node.capacity}`
   if (node.kind === 'register' && node.formula)
     return node.formula.length > 18 ? `${node.formula.slice(0, 17)}…` : node.formula
+  if (node.kind === 'gate') {
+    const f = node.formula?.trim() || ''
+    const lastRoll =
+      store.playStep.value > 0 ? store.liveState.value?.gateLastRoll?.[node.id] : undefined
+    if (f && lastRoll !== undefined) {
+      const shortF = f.length > 14 ? `${f.slice(0, 13)}…` : f
+      return `${shortF} → ${formatValue(lastRoll)}`
+    }
+    if (f) return f.length > 18 ? `${f.slice(0, 17)}…` : f
+    if (lastRoll !== undefined && conditionalGateSet.value.has(node.id)) {
+      return `🎲 ${formatValue(lastRoll)}`
+    }
+  }
   if ((node.kind === 'delay' || node.kind === 'queue') && node.delaySteps)
     return `${node.delaySteps} steps`
   if (node.kind === 'end' && node.formula) return node.formula
   return ''
 }
 
-function subW(node: MxNode): number {
+function effectiveNodeSubLabel(node: MxNode): string {
+  const hit = consumerNodeHitById.value.get(node.id)
+  if (hit) {
+    if (hit.sourceField === 'botCondition') {
+      const bc = hit.formula.trim()
+      return `⚡ ${bc.length > 34 ? `${bc.slice(0, 33)}…` : bc}`
+    }
+    const raw = hit.formula.trim()
+    if (raw) {
+      return raw.length > 36 ? `${raw.slice(0, 35)}…` : raw
+    }
+  }
+  return nodeSubLabel(node)
+}
+
+function effectiveSubW(node: MxNode): number {
+  if (
+    consumerNodeHitById.value.has(node.id) ||
+    (node.kind === 'gate' &&
+      store.playStep.value > 0 &&
+      store.liveState.value?.gateLastRoll?.[node.id] !== undefined)
+  ) {
+    const lbl = effectiveNodeSubLabel(node)
+    return lbl ? Math.max(28, estimateMxTextWidth(lbl, 9.2, true) + 16) : 0
+  }
   return getMxNodeSubPillWidth(node)
 }
 
@@ -2482,12 +2659,16 @@ const renderedEdgeGeometries = computed<EdgeGeo[]>(() => {
   if (!isLargeGraph.value) return all
   const rIds = renderedNodeIds.value
   const selE = selectedEdgeSet.value
+  const consumerEdges = consumerEdgeHitById.value
+  const bridgeEdges = directConsumerBridgeEdgeIdSet.value
   const r = viewportWorldRect.value
   return all.filter(
     (g) =>
       rIds.has(g.edge.from) ||
       rIds.has(g.edge.to) ||
       selE.has(g.edge.id) ||
+      consumerEdges.has(g.edge.id) ||
+      bridgeEdges.has(g.edge.id) ||
       (g.mid.x >= r.minX && g.mid.x <= r.maxX && g.mid.y >= r.minY && g.mid.y <= r.maxY)
   )
 })
@@ -2531,6 +2712,53 @@ const selectedEdgeFloatStyle = computed(() => {
   }
 })
 
+const selectedNodeConsumers = computed(() => {
+  if (store.selection.nodes.length === 0 || store.selection.nodes.length > 12) {
+    return { nodes: [], edges: [], params: [] }
+  }
+  return resolveMxNodeConsumers(store.doc.value, store.selection.nodes)
+})
+
+const consumerNodeHitById = computed<Map<string, MxNodeConsumerNodeHit>>(() => {
+  const map = new Map<string, MxNodeConsumerNodeHit>()
+  for (const h of selectedNodeConsumers.value.nodes) {
+    if (!visibleIds.value.has(h.consumerNodeId)) continue
+    const prev = map.get(h.consumerNodeId)
+    if (!prev) {
+      map.set(h.consumerNodeId, h)
+    } else if (!prev.token.includes(h.token)) {
+      map.set(h.consumerNodeId, { ...prev, token: `${prev.token}, ${h.token}` })
+    }
+  }
+  return map
+})
+
+const consumerEdgeHitById = computed<Map<string, MxNodeConsumerEdgeHit>>(() => {
+  const map = new Map<string, MxNodeConsumerEdgeHit>()
+  for (const h of selectedNodeConsumers.value.edges) {
+    const prev = map.get(h.consumerEdgeId)
+    if (!prev) {
+      map.set(h.consumerEdgeId, h)
+    } else if (prev.isDirectStateCondition && !h.isDirectStateCondition) {
+      map.set(h.consumerEdgeId, h)
+    }
+  }
+  return map
+})
+
+const directConsumerBridgeEdgeIdSet = computed<Set<string>>(() => {
+  const set = new Set<string>()
+  const nodeHits = selectedNodeConsumers.value.nodes
+  if (nodeHits.length === 0) return set
+  const pairs = new Set(nodeHits.map((h) => `${h.sourceNodeId}->${h.consumerNodeId}`))
+  for (const e of store.doc.value.edges) {
+    if (!e.targetEdgeId && pairs.has(`${e.from}->${e.to}`)) {
+      set.add(e.id)
+    }
+  }
+  return set
+})
+
 interface FormulaRefLink {
   key: string
   edgeId: string
@@ -2548,64 +2776,185 @@ interface FormulaRefLink {
 }
 
 const formulaRefLinks = computed<FormulaRefLink[]>(() => {
-  const activeIds = new Set<string>(store.selection.edges)
-  if (edgeEdit.value) activeIds.add(edgeEdit.value.id)
-  if (activeIds.size === 0 || activeIds.size > 12) return []
+  const activeEdgeIds = new Set<string>(store.selection.edges)
+  if (edgeEdit.value) activeEdgeIds.add(edgeEdit.value.id)
+  const hasEdgeActive = activeEdgeIds.size > 0 && activeEdgeIds.size <= 12
+  const consumers = selectedNodeConsumers.value
+  const hasNodeConsumers = consumers.nodes.length > 0 || consumers.edges.length > 0
+  if (!hasEdgeActive && !hasNodeConsumers) return []
 
   const geoById = new Map<string, EdgeGeo>()
   for (const g of edgeGeometries.value) geoById.set(g.edge.id, g)
 
   const links: FormulaRefLink[] = []
-  for (const edgeId of activeIds) {
-    const geo = geoById.get(edgeId)
-    if (!geo) continue
-    const effEdge =
-      edgeEdit.value?.id === edgeId ? { ...geo.edge, formula: edgeEdit.value.value } : geo.edge
-    const refs = resolveMxEdgeReferencedNodes(store.doc.value, effEdge)
-    for (const refItem of refs) {
-      if (!visibleIds.value.has(refItem.nodeId)) continue
-      const target = nodeById.value.get(refItem.nodeId)
-      if (!target) continue
+  if (hasEdgeActive) {
+    for (const edgeId of activeEdgeIds) {
+      const geo = geoById.get(edgeId)
+      if (!geo) continue
+      const effEdge =
+        edgeEdit.value?.id === edgeId ? { ...geo.edge, formula: edgeEdit.value.value } : geo.edge
+      const refs = resolveMxEdgeReferencedNodes(store.doc.value, effEdge)
+      for (const refItem of refs) {
+        if (!visibleIds.value.has(refItem.nodeId)) continue
+        const target = nodeById.value.get(refItem.nodeId)
+        if (!target) continue
 
-      const dx = target.x - geo.mid.x
-      const dy = target.y - geo.mid.y
+        const dx = target.x - geo.mid.x
+        const dy = target.y - geo.mid.y
+        const len = Math.hypot(dx, dy)
+        if (len < 4) continue
+        const ux = dx / len
+        const uy = dy / len
+
+        const hw = geo.labelW / 2 + 3
+        const hh = 11.5
+        const pillDist = Math.min(
+          len * 0.36,
+          hw / Math.max(1e-4, Math.abs(ux)),
+          hh / Math.max(1e-4, Math.abs(uy))
+        )
+        const haloR = nodeRadius(target) + 6
+        const nodeStop = Math.min(len * 0.42, haloR + 2)
+
+        const sx = geo.mid.x + ux * pillDist
+        const sy = geo.mid.y + uy * pillDist
+        const ex = target.x - ux * nodeStop
+        const ey = target.y - uy * nodeStop
+        const arcBend = Math.min(30, Math.max(14, len * 0.14))
+        const cx = (sx + ex) / 2 - uy * arcBend
+        const cy = (sy + ey) / 2 + ux * arcBend
+        const path = `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
+        const tagX = (sx + 2 * cx + ex) / 4
+        const tagY = (sy + 2 * cy + ey) / 4
+        const tagW = Math.max(20, estimateMxTextWidth(refItem.token, 9.5, true) + 10)
+
+        links.push({
+          key: `${edgeId}->${refItem.nodeId}`,
+          edgeId,
+          nodeId: refItem.nodeId,
+          token: refItem.token,
+          sx,
+          sy,
+          tx: target.x,
+          ty: target.y,
+          haloR,
+          path,
+          tagX,
+          tagY,
+          tagW
+        })
+      }
+    }
+  }
+
+  if (hasNodeConsumers) {
+    const directNodePairs = new Set<string>()
+    for (const e of store.doc.value.edges) {
+      if (!e.targetEdgeId) directNodePairs.add(`${e.from}->${e.to}`)
+    }
+
+    const seenNodeLinkKeys = new Set<string>()
+    for (const nh of consumers.nodes) {
+      const pairKey = `${nh.sourceNodeId}->${nh.consumerNodeId}`
+      if (directNodePairs.has(pairKey) || seenNodeLinkKeys.has(pairKey)) continue
+      if (!visibleIds.value.has(nh.sourceNodeId) || !visibleIds.value.has(nh.consumerNodeId)) {
+        continue
+      }
+      const src = nodeById.value.get(nh.sourceNodeId)
+      const dst = nodeById.value.get(nh.consumerNodeId)
+      if (!src || !dst) continue
+      seenNodeLinkKeys.add(pairKey)
+
+      const dx = dst.x - src.x
+      const dy = dst.y - src.y
       const len = Math.hypot(dx, dy)
-      if (len < 4) continue
+      if (len < 6) continue
       const ux = dx / len
       const uy = dy / len
 
-      const hw = geo.labelW / 2 + 3
-      const hh = 11.5
-      const pillDist = Math.min(
-        len * 0.36,
+      const srcOut = Math.min(len * 0.36, nodeRadius(src) + 4)
+      const dstStop = Math.min(len * 0.42, nodeRadius(dst) + 9)
+      const sx = src.x + ux * srcOut
+      const sy = src.y + uy * srcOut
+      const ex = dst.x - ux * dstStop
+      const ey = dst.y - uy * dstStop
+      const arcBend = Math.min(34, Math.max(16, len * 0.14))
+      const cx = (sx + ex) / 2 - uy * arcBend
+      const cy = (sy + ey) / 2 + ux * arcBend
+      const path = `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
+      const tagX = (sx + 2 * cx + ex) / 4
+      const tagY = (sy + 2 * cy + ey) / 4
+      const mergedHit = consumerNodeHitById.value.get(nh.consumerNodeId) ?? nh
+      const tagW = Math.max(20, estimateMxTextWidth(mergedHit.token, 9.5, true) + 10)
+
+      links.push({
+        key: `ncons:${pairKey}`,
+        edgeId: '',
+        nodeId: nh.consumerNodeId,
+        token: mergedHit.token,
+        sx,
+        sy,
+        tx: dst.x,
+        ty: dst.y,
+        haloR: 0,
+        path,
+        tagX,
+        tagY,
+        tagW
+      })
+    }
+
+    const seenEdgeLinkKeys = new Set<string>()
+    for (const eh of consumers.edges) {
+      if (eh.isDirectStateCondition) continue
+      const geo = geoById.get(eh.consumerEdgeId)
+      if (!geo || geo.edge.from === eh.sourceNodeId || activeEdgeIds.has(eh.consumerEdgeId)) {
+        continue
+      }
+      if (!visibleIds.value.has(eh.sourceNodeId)) continue
+      const src = nodeById.value.get(eh.sourceNodeId)
+      if (!src) continue
+      const pairKey = `${eh.sourceNodeId}->edge:${eh.consumerEdgeId}`
+      if (seenEdgeLinkKeys.has(pairKey)) continue
+      seenEdgeLinkKeys.add(pairKey)
+
+      const dx = geo.mid.x - src.x
+      const dy = geo.mid.y - src.y
+      const len = Math.hypot(dx, dy)
+      if (len < 6) continue
+      const ux = dx / len
+      const uy = dy / len
+
+      const srcOut = Math.min(len * 0.36, nodeRadius(src) + 4)
+      const hw = geo.labelW / 2 + 4
+      const hh = 12
+      const pillStop = Math.min(
+        len * 0.38,
         hw / Math.max(1e-4, Math.abs(ux)),
         hh / Math.max(1e-4, Math.abs(uy))
       )
-      const haloR = nodeRadius(target) + 6
-      const nodeStop = Math.min(len * 0.42, haloR + 2)
-
-      const sx = geo.mid.x + ux * pillDist
-      const sy = geo.mid.y + uy * pillDist
-      const ex = target.x - ux * nodeStop
-      const ey = target.y - uy * nodeStop
+      const sx = src.x + ux * srcOut
+      const sy = src.y + uy * srcOut
+      const ex = geo.mid.x - ux * pillStop
+      const ey = geo.mid.y - uy * pillStop
       const arcBend = Math.min(30, Math.max(14, len * 0.14))
       const cx = (sx + ex) / 2 - uy * arcBend
       const cy = (sy + ey) / 2 + ux * arcBend
       const path = `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
       const tagX = (sx + 2 * cx + ex) / 4
       const tagY = (sy + 2 * cy + ey) / 4
-      const tagW = Math.max(20, estimateMxTextWidth(refItem.token, 9.5, true) + 10)
+      const tagW = Math.max(20, estimateMxTextWidth(eh.token, 9.5, true) + 10)
 
       links.push({
-        key: `${edgeId}->${refItem.nodeId}`,
-        edgeId,
-        nodeId: refItem.nodeId,
-        token: refItem.token,
+        key: `econs:${pairKey}`,
+        edgeId: eh.consumerEdgeId,
+        nodeId: '',
+        token: eh.token,
         sx,
         sy,
-        tx: target.x,
-        ty: target.y,
-        haloR,
+        tx: geo.mid.x,
+        ty: geo.mid.y,
+        haloR: 0,
         path,
         tagX,
         tagY,
@@ -2616,9 +2965,13 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
   return links
 })
 
-const formulaRefNodeIdSet = computed<Set<string>>(
-  () => new Set(formulaRefLinks.value.map((l) => l.nodeId))
-)
+const formulaRefNodeIdSet = computed<Set<string>>(() => {
+  const s = new Set<string>()
+  for (const l of formulaRefLinks.value) {
+    if (l.nodeId) s.add(l.nodeId)
+  }
+  return s
+})
 
 // ───────── 坐标换算 ─────────
 function toWorld(ev: PointerEvent | WheelEvent | MouseEvent): {
@@ -3051,7 +3404,27 @@ function onNodeDblClick(node: MxNode): void {
     startNodeLabelEdit(node)
     return
   }
+  if (
+    !isSimRuntime.value &&
+    node.trigger !== 'interactive' &&
+    (node.kind === 'register' || node.kind === 'end')
+  ) {
+    store.openFormulaModal({ targetType: 'node', nodeId: node.id, field: 'formula' })
+    return
+  }
   store.interact(node.id)
+}
+
+function onNodeSubPillDblClick(node: MxNode): void {
+  if (
+    node.kind === 'register' ||
+    node.kind === 'end' ||
+    node.kind === 'gate' ||
+    node.kind === 'delay' ||
+    node.kind === 'queue'
+  ) {
+    store.openFormulaModal({ targetType: 'node', nodeId: node.id, field: 'formula' })
+  }
 }
 
 function onEdgePointerDown(id: string, ev: PointerEvent): void {
@@ -3471,20 +3844,12 @@ function fitView(): void {
   store.view.y = rect.height / 2 - cy * z
 }
 
-// ───────── 连线公式 & 节点名称 & 分组标题内联编辑 ─────────
+// ───────── 连线公式 & 节点名称 & 分组标题编辑 ─────────
 function startEdgeEdit(id: string): void {
-  const geo = edgeGeometries.value.find((g) => g.edge.id === id)
-  if (!geo) return
-  edgeEdit.value = {
-    id,
-    value: geo.edge.formula,
-    sx: geo.mid.x * store.view.zoom + store.view.x,
-    sy: geo.mid.y * store.view.zoom + store.view.y
-  }
-  void nextTick(() => {
-    edgeInputRef.value?.focus()
-    edgeInputRef.value?.select()
-  })
+  const edge = store.doc.value.edges.find((e) => e.id === id)
+  if (!edge) return
+  edgeEdit.value = null
+  store.openFormulaModal({ targetType: 'edge', edgeId: id, field: 'formula' })
 }
 
 function commitEdgeEdit(): void {
@@ -3492,6 +3857,71 @@ function commitEdgeEdit(): void {
   if (!ed) return
   edgeEdit.value = null
   store.updateEdge(ed.id, { formula: ed.value.trim() })
+}
+
+const edgeEditInspection = computed(() => {
+  const ed = edgeEdit.value
+  if (!ed) return null
+  const edge = store.doc.value.edges.find((x) => x.id === ed.id)
+  if (!edge) return null
+  return inspectMxFormulaContext(store.doc.value, ed.value, {
+    contextKind: edge.kind,
+    edgeId: edge.id,
+    values: store.displayValues.value,
+    step: store.playStep.value
+  })
+})
+
+const edgeEditQuickCatalog = computed(() => {
+  const insp = edgeEditInspection.value
+  if (!insp) return []
+  return insp.catalog
+    .filter((it) => it.source === 'param' || it.source === 'state_input' || it.source === 'node')
+    .slice(0, 8)
+})
+
+function edgeEditSourceTag(sym: MxFormulaSymbolRef): string {
+  if (sym.source === 'param') return t('mx.formulaEditor.srcParam')
+  if (sym.source === 'state_input') return t('mx.formulaEditor.srcStateIn')
+  if (sym.source === 'node') {
+    return sym.nodeKind === 'register'
+      ? t('mx.formulaEditor.srcRegister')
+      : t('mx.formulaEditor.srcPool')
+  }
+  if (sym.source === 'builtin_var') return t('mx.formulaEditor.srcBuiltin')
+  return t('mx.formulaEditor.srcUnknown')
+}
+
+function edgeEditCatalogBadge(item: MxFormulaCatalogItem): string {
+  if (item.source === 'param') return '(x)'
+  if (item.source === 'state_input') return '╌►'
+  if (item.source === 'node') return item.nodeKind === 'register' ? '[x]' : '◯'
+  return 'fx'
+}
+
+function insertCanvasEdgeToken(insertText: string): void {
+  const ed = edgeEdit.value
+  if (!ed) return
+  const el = edgeInputRef.value
+  const cur = ed.value
+  const start = el?.selectionStart ?? cur.length
+  const end = el?.selectionEnd ?? cur.length
+  const nextVal = cur.slice(0, start) + insertText + cur.slice(end)
+  ed.value = nextVal
+  const nextCaret = start + insertText.length
+  void nextTick(() => {
+    if (edgeInputRef.value) {
+      edgeInputRef.value.focus()
+      edgeInputRef.value.setSelectionRange(nextCaret, nextCaret)
+    }
+  })
+}
+
+function promoteCanvasUnknownParam(token: string): void {
+  store.upsertParam(token, 1)
+  void nextTick(() => {
+    edgeInputRef.value?.focus()
+  })
 }
 
 function startNodeLabelEdit(node: MxNode): void {
@@ -4147,16 +4577,54 @@ defineExpose({
   font-weight: 700;
   font-family: var(--mono, ui-monospace, monospace);
 }
+.mx-edge-cond-glow {
+  stroke: rgba(245, 158, 11, 0.34);
+  stroke-width: 6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.mx-edge-pill-bg.is-cond-highlight {
+  fill: color-mix(in srgb, #f59e0b 24%, var(--mx-pill-bg));
+  stroke: #f59e0b;
+  stroke-width: 1.9;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.42));
+}
+.mx-edge-label.is-cond-highlight {
+  fill: color-mix(in srgb, #f59e0b 55%, var(--mx-pill-fg));
+  font-weight: 700;
+}
+.mx-canvas.theme-light .mx-edge-label.is-cond-highlight,
+.mx-canvas.theme-light .mx-node-sub.is-cond-highlight {
+  fill: #92400e;
+}
+.mx-cond-consumer-halo {
+  fill: rgba(245, 158, 11, 0.12);
+  stroke: #f59e0b;
+  stroke-width: 2;
+  stroke-dasharray: 4.5 3.5;
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.5));
+  pointer-events: none;
+}
 .mx-node-sub-pill {
   fill: var(--mx-sub-bg);
   stroke: var(--mx-pill-border);
   stroke-width: 0.8;
+}
+.mx-node-sub-pill.is-cond-highlight {
+  fill: color-mix(in srgb, #f59e0b 26%, var(--mx-pill-bg, #1e232d));
+  stroke: #f59e0b;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.42));
 }
 .mx-node-sub {
   font-size: 9px;
   fill: var(--mx-sub-fg);
   font-family: var(--mono, ui-monospace, monospace);
   pointer-events: none;
+}
+.mx-node-sub.is-cond-highlight {
+  fill: color-mix(in srgb, #f59e0b 55%, var(--mx-pill-fg));
+  font-weight: 700;
 }
 .mx-note-rect {
   fill: color-mix(in srgb, #facc15 18%, var(--mx-node-fill));
@@ -4466,6 +4934,141 @@ defineExpose({
   box-shadow: 0 4px 14px var(--shadow, rgba(0, 0, 0, 0.4));
   outline: none;
   z-index: 25;
+}
+.mx-edge-edit-wrap {
+  position: absolute;
+  transform: translate(-50%, -16px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+.mx-edge-edit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 6px 3px 3px;
+  border: 1.5px solid var(--accent);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.mx-edge-formula-input {
+  width: 156px;
+  padding: 2px 7px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--mono, ui-monospace, monospace);
+  outline: none;
+}
+.mx-edge-edit-preview {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: var(--mono, ui-monospace, monospace);
+  background: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+  white-space: nowrap;
+}
+.mx-edge-edit-preview.is-dice {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fb7185;
+}
+.mx-edge-edit-pop {
+  min-width: 220px;
+  max-width: 320px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mx-edge-edit-syms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mx-edge-sym-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-family: var(--mono, ui-monospace, monospace);
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text);
+}
+.mx-edge-sym-tag b {
+  font-weight: 700;
+  opacity: 0.9;
+}
+.mx-edge-sym-tag em {
+  font-style: normal;
+  opacity: 0.82;
+}
+.mx-edge-sym-tag.src-param {
+  background: rgba(168, 85, 247, 0.16);
+  color: #a855f7;
+}
+.mx-edge-sym-tag.src-node {
+  background: rgba(59, 130, 246, 0.16);
+  color: #3b82f6;
+}
+.mx-edge-sym-tag.src-state_input {
+  background: rgba(14, 165, 233, 0.16);
+  color: #0ea5e9;
+}
+.mx-edge-sym-tag.src-unknown {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+}
+.mx-edge-sym-add {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  font-size: 10px;
+  cursor: pointer;
+}
+.mx-edge-edit-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+.mx-edge-qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  color: var(--text);
+  font-size: 10.5px;
+  font-family: var(--mono, ui-monospace, monospace);
+  cursor: pointer;
+}
+.mx-edge-qchip:hover {
+  border-color: var(--accent);
+}
+.mx-edge-qbadge {
+  color: var(--accent, #3d8bfd);
+  font-weight: 800;
+}
+.mx-edge-qchip em {
+  font-style: normal;
+  opacity: 0.72;
 }
 .mx-hint {
   position: absolute;

@@ -14,17 +14,27 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   createMxFromTemplate,
+  MX_BUILDING_BLOCK_CATEGORIES,
+  MX_BUILDING_BLOCK_DOMAINS,
+  MX_BUILDING_BLOCK_SHELVES,
+  MX_BUILDING_BLOCKS,
   MX_TEMPLATES,
   mxNewId,
   mxNodeColor,
+  resolveMxNodeConsumers,
   type MxAgent,
   type MxAgentGoalAsset,
   type MxAgentImportance,
   type MxAgentPersonality,
   type MxAgentUtilityCurve,
+  type MxBuildingBlock,
+  type MxBuildingBlockCategoryMeta,
+  type MxBuildingBlockDomain,
+  type MxBuildingBlockShelf,
   type MxTemplateId
 } from '@shared/gameAssets'
 import { useMxStudioStore } from './mxStudioStore'
+import MxFormulaEditor from './MxFormulaEditor.vue'
 
 const emit = defineEmits<{
   (e: 'fitView'): void
@@ -43,6 +53,12 @@ const collapsedGoalIds = ref<Record<string, boolean>>({})
 
 const importanceStops: MxAgentImportance[] = ['min', 'low', 'med', 'high', 'max']
 const utilityCurveOptions: MxAgentUtilityCurve[] = ['linear', 'diminishing', 'urgency', 'step']
+
+const highlightedParamIdSet = computed<Set<string>>(() => {
+  if (s.selection.nodes.length === 0 || s.selection.nodes.length > 12) return new Set()
+  const res = resolveMxNodeConsumers(s.doc.value, s.selection.nodes)
+  return new Set(res.params.map((p) => p.consumerParamId))
+})
 const personalityOptions: MxAgentPersonality[] = [
   'rational',
   'aggressive',
@@ -198,6 +214,79 @@ function applyTemplate(id: MxTemplateId): void {
   setTimeout(() => emit('fitView'), 30)
 }
 
+// ───────── Building Blocks Module State & Filtering ─────────
+const bbSearch = ref('')
+const bbDomain = ref<'all' | MxBuildingBlockDomain>('all')
+const bbShelf = ref<'all' | MxBuildingBlockShelf>('all')
+const bbWrapGroup = ref(true)
+const copiedBlockId = ref('')
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
+
+const filteredBuildingBlocks = computed<MxBuildingBlock[]>(() => {
+  const q = bbSearch.value.trim().toLowerCase()
+  return MX_BUILDING_BLOCKS.filter((b) => {
+    if (bbDomain.value !== 'all' && b.domain !== bbDomain.value) return false
+    if (bbShelf.value !== 'all' && !b.shelves.includes(bbShelf.value)) return false
+    if (!q) return true
+    return (
+      b.nameZh.toLowerCase().includes(q) ||
+      b.nameEn.toLowerCase().includes(q) ||
+      b.descZh.toLowerCase().includes(q) ||
+      b.descEn.toLowerCase().includes(q) ||
+      b.tags.some((tag) => tag.toLowerCase().includes(q))
+    )
+  })
+})
+
+const groupedBuildingBlocks = computed<
+  Array<{ category: MxBuildingBlockCategoryMeta; items: MxBuildingBlock[] }>
+>(() => {
+  const byCat = new Map<string, MxBuildingBlock[]>()
+  for (const blk of filteredBuildingBlocks.value) {
+    const arr = byCat.get(blk.category)
+    if (arr) arr.push(blk)
+    else byCat.set(blk.category, [blk])
+  }
+  const out: Array<{ category: MxBuildingBlockCategoryMeta; items: MxBuildingBlock[] }> = []
+  for (const catMeta of MX_BUILDING_BLOCK_CATEGORIES) {
+    const items = byCat.get(catMeta.id)
+    if (items && items.length > 0) {
+      out.push({ category: catMeta, items })
+    }
+  }
+  return out
+})
+
+function clearBlockFilters(): void {
+  bbSearch.value = ''
+  bbDomain.value = 'all'
+  bbShelf.value = 'all'
+}
+
+function handleInsertBlock(blockId: string): void {
+  const inserted = s.insertBuildingBlock(blockId, {
+    wrapInGroup: bbWrapGroup.value,
+    locale: isZh() ? 'zh' : 'en'
+  })
+  if (inserted) {
+    setTimeout(() => emit('fitView'), 30)
+  }
+}
+
+function handleOpenBlockStandalone(blockId: string): void {
+  s.loadBuildingBlockAsDoc(blockId, isZh() ? 'zh' : 'en')
+  setTimeout(() => emit('fitView'), 30)
+}
+
+function handleCopyBlock(blockId: string): void {
+  if (!s.copyBuildingBlock(blockId)) return
+  copiedBlockId.value = blockId
+  if (copyResetTimer) clearTimeout(copyResetTimer)
+  copyResetTimer = setTimeout(() => {
+    if (copiedBlockId.value === blockId) copiedBlockId.value = ''
+  }, 1500)
+}
+
 function addResource(): void {
   const colors = ['#2563eb', '#16a34a', '#dc2626', '#d97706', '#7c3aed', '#0891b2', '#db2777']
   const color = colors[s.doc.value.resources.length % colors.length]!
@@ -306,7 +395,11 @@ function handleSaveSnapshot(): void {
 </script>
 
 <template>
-  <aside v-if="s.drawer.value" class="mx-drawer">
+  <aside
+    v-if="s.drawer.value"
+    class="mx-drawer"
+    :class="{ 'is-blocks': s.drawer.value === 'blocks' }"
+  >
     <header class="mx-drawer-head">
       <span class="mx-drawer-title">{{ t(`mx.nav.${s.drawer.value}`) }}</span>
       <button type="button" class="mx-drawer-close" @click="s.drawer.value = ''">×</button>
@@ -449,6 +542,128 @@ function handleSaveSnapshot(): void {
         </div>
       </template>
 
+      <!-- ═════════════ 2. BUILDING BLOCKS (my.machinations.io/building-blocks) ═════════════ -->
+      <template v-else-if="s.drawer.value === 'blocks'">
+        <p class="mx-hint">{{ t('mx.blocks.lede') }}</p>
+
+        <div class="mx-bb-search-row">
+          <input
+            v-model="bbSearch"
+            type="text"
+            class="mx-input"
+            :placeholder="t('mx.blocks.searchPlaceholder')"
+          />
+          <button
+            v-if="bbSearch || bbDomain !== 'all' || bbShelf !== 'all'"
+            type="button"
+            class="mx-mini-btn"
+            :title="t('mx.blocks.clearFilter')"
+            @click="clearBlockFilters"
+          >
+            ×
+          </button>
+        </div>
+
+        <!-- 7 Official Domains Filter -->
+        <div class="mx-bb-chips">
+          <button
+            type="button"
+            class="mx-bb-chip"
+            :class="{ 'is-active': bbDomain === 'all' }"
+            @click="bbDomain = 'all'"
+          >
+            {{ t('mx.blocks.allDomains') }} ({{ MX_BUILDING_BLOCKS.length }})
+          </button>
+          <button
+            v-for="dom in MX_BUILDING_BLOCK_DOMAINS"
+            :key="dom.id"
+            type="button"
+            class="mx-bb-chip"
+            :class="{ 'is-active': bbDomain === dom.id }"
+            :title="isZh() ? dom.descZh : dom.descEn"
+            @click="bbDomain = bbDomain === dom.id ? 'all' : dom.id"
+          >
+            <span class="mx-bb-dot" :style="{ background: dom.color }" />
+            <span>{{ isZh() ? dom.nameZh : dom.nameEn }}</span>
+          </button>
+        </div>
+
+        <!-- 6 Official Quick Shelves -->
+        <div class="mx-bb-shelves">
+          <button
+            v-for="sh in MX_BUILDING_BLOCK_SHELVES"
+            :key="sh.id"
+            type="button"
+            class="mx-bb-shelf-pill"
+            :class="{ 'is-active': bbShelf === sh.id }"
+            @click="bbShelf = bbShelf === sh.id ? 'all' : sh.id"
+          >
+            <span>{{ sh.icon }}</span>
+            <span>{{ isZh() ? sh.nameZh : sh.nameEn }}</span>
+          </button>
+        </div>
+
+        <label class="mx-bb-opt-row">
+          <input v-model="bbWrapGroup" type="checkbox" />
+          <span>{{ t('mx.blocks.wrapInGroup') }}</span>
+        </label>
+
+        <div v-if="groupedBuildingBlocks.length === 0" class="mx-bb-empty">
+          <p class="mx-hint">{{ t('mx.blocks.noMatch', { query: bbSearch || bbShelf }) }}</p>
+          <button type="button" class="mx-mini-btn" @click="clearBlockFilters">
+            {{ t('mx.blocks.clearFilter') }}
+          </button>
+        </div>
+
+        <div v-else class="mx-bb-groups">
+          <section v-for="grp in groupedBuildingBlocks" :key="grp.category.id" class="mx-bb-group">
+            <div class="mx-bb-cat-hdr">
+              <span class="mx-bb-cat-title">
+                <span class="mx-bb-dot" :style="{ background: grp.category.color }" />
+                <span>{{ isZh() ? grp.category.nameZh : grp.category.nameEn }}</span>
+              </span>
+              <span class="mx-layer-badge">{{ grp.items.length }}</span>
+            </div>
+
+            <div class="mx-tpl-list">
+              <div v-for="blk in grp.items" :key="blk.id" class="mx-bb-card">
+                <div class="mx-tpl-top">
+                  <span class="mx-tpl-name">{{ isZh() ? blk.nameZh : blk.nameEn }}</span>
+                  <span class="mx-tpl-tag">
+                    {{
+                      t('mx.blocks.statsBadge', {
+                        n: blk.nodes.length,
+                        e: blk.edges.length
+                      })
+                    }}
+                  </span>
+                </div>
+                <div class="mx-tpl-desc">{{ isZh() ? blk.descZh : blk.descEn }}</div>
+                <div class="mx-bb-actions">
+                  <button type="button" class="mx-bb-btn-insert" @click="handleInsertBlock(blk.id)">
+                    {{ t('mx.blocks.insertBtn') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-mini-btn"
+                    @click="handleOpenBlockStandalone(blk.id)"
+                  >
+                    {{ t('mx.blocks.openStandaloneBtn') }}
+                  </button>
+                  <button type="button" class="mx-mini-btn" @click="handleCopyBlock(blk.id)">
+                    {{
+                      copiedBlockId === blk.id
+                        ? t('mx.blocks.copiedBtn')
+                        : t('mx.blocks.copyClipBtn')
+                    }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </template>
+
       <!-- ═════════════ 3. RESOURCES ═════════════ -->
       <template v-else-if="s.drawer.value === 'resources'">
         <div class="mx-list-hdr">
@@ -506,6 +721,7 @@ function handleSaveSnapshot(): void {
             v-for="p in s.doc.value.params"
             :key="p.id"
             class="mx-scenario-card"
+            :class="{ 'is-cond-highlight': highlightedParamIdSet.has(p.id) }"
             style="padding: 6px 8px"
           >
             <div class="mx-item-row" style="gap: 4px">
@@ -644,21 +860,33 @@ function handleSaveSnapshot(): void {
                 int
               </label>
             </div>
-            <div
-              v-else-if="p.varKind === 'array' || p.varKind === 'expr'"
-              class="mx-item-row"
-              style="margin-top: 4px"
-            >
+            <div v-else-if="p.varKind === 'array'" class="mx-item-row" style="margin-top: 4px">
               <input
                 type="text"
                 class="mx-input mx-mono"
-                :placeholder="p.varKind === 'array' ? '[10, 20, 30]' : 'STEP * 2'"
+                placeholder="[10, 20, 30]"
                 :value="p.formula ?? ''"
                 @input="
                   s.mutate((d) => {
                     const target = d.params.find((x) => x.id === p.id)
                     if (target) target.formula = ($event.target as HTMLInputElement).value
                   }, 'pExpr')
+                "
+              />
+            </div>
+            <div v-else-if="p.varKind === 'expr'" style="margin-top: 4px">
+              <MxFormulaEditor
+                :model-value="p.formula ?? ''"
+                placeholder="STEP * 2"
+                context-kind="expr"
+                :param-id="p.id"
+                compact
+                @update:model-value="
+                  (val) =>
+                    s.mutate((d) => {
+                      const target = d.params.find((x) => x.id === p.id)
+                      if (target) target.formula = val
+                    }, 'pExpr')
                 "
               />
             </div>
@@ -2273,5 +2501,161 @@ function handleSaveSnapshot(): void {
   height: 100%;
   border-radius: 999px;
   transition: width 0.2s ease;
+}
+.mx-scenario-card.is-cond-highlight {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 14%, var(--bg-elevated));
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.35);
+}
+
+/* ═════════════ Building Blocks Module ═════════════ */
+.mx-drawer.is-blocks {
+  width: 324px;
+}
+.mx-bb-search-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-bb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mx-bb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.mx-bb-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.mx-bb-chip.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elevated));
+  color: var(--text);
+}
+.mx-bb-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.mx-bb-shelves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-top: 2px;
+}
+.mx-bb-shelf-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.mx-bb-shelf-pill:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.mx-bb-shelf-pill.is-active {
+  border-style: solid;
+  border-color: #6366f1;
+  background: rgba(99, 102, 241, 0.14);
+  color: var(--text);
+  font-weight: 600;
+}
+.mx-bb-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.mx-bb-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+}
+.mx-bb-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mx-bb-cat-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.mx-bb-cat-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+.mx-bb-card {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: border-color 0.14s ease;
+}
+.mx-bb-card:hover {
+  border-color: var(--accent);
+}
+.mx-bb-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+.mx-bb-btn-insert {
+  flex: 1;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.14s ease;
+}
+.mx-bb-btn-insert:hover {
+  opacity: 0.9;
+}
+.mx-bb-empty {
+  padding: 18px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
 }
 </style>

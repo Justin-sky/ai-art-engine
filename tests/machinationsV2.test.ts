@@ -5,18 +5,29 @@ import {
   analyzeMxEconomyHealth,
   autoLayoutMxDocument,
   computeMxDiagramBounds,
+  createMxDocumentFromBuildingBlock,
   createMxFromTemplate,
   createMxInitialState,
   createMxTemplate,
   evaluateMxExpression,
   exportMxDiagramSvg,
+  getMxNodeSubLabel,
   inferMxTemplateFromPrompt,
+  insertMxBuildingBlockIntoDocument,
+  inspectMxFormulaContext,
+  MX_BUILDING_BLOCK_CATEGORIES,
+  MX_BUILDING_BLOCK_DOMAINS,
+  MX_BUILDING_BLOCK_SHELVES,
+  MX_BUILDING_BLOCKS,
   MX_TEMPLATES,
   normalizeMxDocument,
   parseMxDocumentJson,
   parseMxFlowFormula,
   parseMxStateFormula,
   resolveMxEdgeReferencedNodes,
+  resolveMxNodeConsumers,
+  resolveMxNodeReferencedNodes,
+  resolveMxParamReferencedNodes,
   runMxForecast,
   runMx2DParameterMatrix,
   runMxGoalSeek,
@@ -3078,5 +3089,666 @@ describe('Machinations.io 100% specification parity', () => {
     expect(endpointLayerIdx).toBeGreaterThan(nodeLayerIdx)
     expect(canvasSource).toContain("startEdgeEndpointDrag(geo, 'from', $event)")
     expect(canvasSource).toContain("startEdgeEndpointDrag(geo, 'to', $event)")
+  })
+
+  it('resolves and highlights condition variables, node formulas, edge pills, and expr params using a selected node', () => {
+    const doc = createEmptyMxDocument('Condition Variable Consumers')
+    doc.params = [
+      {
+        id: 'prm_dyn',
+        name: 'bonus_mult',
+        value: 1,
+        varKind: 'expr',
+        formula: 'if(round_phase >= 2, 2, 1)'
+      },
+      {
+        id: 'prm_const',
+        name: 'flat_fee',
+        value: 5,
+        varKind: 'number'
+      }
+    ]
+    doc.nodes = [
+      { id: 'round_phase', kind: 'pool', label: '回合阶段', x: 80, y: 80, trigger: 'passive' },
+      { id: 'paper_count', kind: 'pool', label: '布出手次数', x: 80, y: 200, trigger: 'passive' },
+      {
+        id: 'reg_scissors',
+        kind: 'register',
+        label: '本回合出剪刀?',
+        x: 260,
+        y: 120,
+        trigger: 'passive',
+        formula: 'if(round_phase == 2 && a >= 1, 1, 0)'
+      },
+      {
+        id: 'reg_bridged',
+        kind: 'register',
+        label: '阶段倍率寄存器',
+        x: 260,
+        y: 220,
+        trigger: 'passive',
+        formula: 'bonus_mult * 10'
+      },
+      {
+        id: 'conv_act',
+        kind: 'converter',
+        label: '出【剪刀】→ 克布',
+        x: 260,
+        y: 320,
+        trigger: 'interactive',
+        botCondition: '布出手次数 >= 1 && round_phase == 2'
+      },
+      {
+        id: 'end_match',
+        kind: 'end',
+        label: '对局结束',
+        x: 440,
+        y: 80,
+        trigger: 'passive',
+        formula: 'round_phase >= 10'
+      },
+      {
+        id: 'pool_score',
+        kind: 'pool',
+        label: '得分',
+        x: 440,
+        y: 320,
+        trigger: 'passive'
+      }
+    ]
+    doc.edges = [
+      {
+        id: 'se_paper_to_reg',
+        kind: 'state',
+        from: 'paper_count',
+        to: 'reg_scissors',
+        formula: '+0'
+      },
+      {
+        id: 'se_paper_cond',
+        kind: 'state',
+        from: 'paper_count',
+        to: 'conv_act',
+        formula: '>=1'
+      },
+      {
+        id: 're_reward',
+        kind: 'resource',
+        from: 'conv_act',
+        to: 'pool_score',
+        formula: 'if(reg_scissors > 0, round_phase, 0)'
+      }
+    ]
+
+    // 1. Direct node & param reference inspection
+    expect(resolveMxParamReferencedNodes(doc, doc.params[0]!)).toEqual([
+      { nodeId: 'round_phase', token: 'round_phase' }
+    ])
+    const regRefs = resolveMxNodeReferencedNodes(doc, doc.nodes[2]!)
+    expect(regRefs).toEqual([
+      {
+        nodeId: 'round_phase',
+        token: 'round_phase',
+        sourceField: 'formula',
+        formula: 'if(round_phase == 2 && a >= 1, 1, 0)'
+      },
+      {
+        nodeId: 'paper_count',
+        token: 'a',
+        sourceField: 'formula',
+        formula: 'if(round_phase == 2 && a >= 1, 1, 0)'
+      }
+    ])
+
+    // 2. Selecting `round_phase` finds all condition variables, botConditions, End nodes, edges & expr params using it
+    const phaseConsumers = resolveMxNodeConsumers(doc, ['round_phase'])
+    expect(phaseConsumers.nodes.map((n) => n.consumerNodeId)).toEqual([
+      'reg_scissors',
+      'reg_bridged',
+      'conv_act',
+      'end_match'
+    ])
+    expect(phaseConsumers.edges).toEqual([
+      {
+        consumerEdgeId: 're_reward',
+        sourceNodeId: 'round_phase',
+        token: 'round_phase',
+        formula: 'if(reg_scissors > 0, round_phase, 0)',
+        isDirectStateCondition: false
+      }
+    ])
+    expect(phaseConsumers.params).toEqual([
+      {
+        consumerParamId: 'prm_dyn',
+        paramName: 'bonus_mult',
+        sourceNodeId: 'round_phase',
+        token: 'round_phase',
+        formula: 'if(round_phase >= 2, 2, 1)'
+      }
+    ])
+
+    // 3. Selecting `paper_count` (`布出手次数`) matches positional `a` on Register, Chinese title in `botCondition`, and direct state activator `>=1`
+    const paperConsumers = resolveMxNodeConsumers(doc, ['paper_count'])
+    expect(paperConsumers.nodes).toEqual([
+      {
+        consumerNodeId: 'reg_scissors',
+        sourceNodeId: 'paper_count',
+        token: 'a',
+        sourceField: 'formula',
+        formula: 'if(round_phase == 2 && a >= 1, 1, 0)'
+      },
+      {
+        consumerNodeId: 'conv_act',
+        sourceNodeId: 'paper_count',
+        token: '布出手次数',
+        sourceField: 'botCondition',
+        formula: '布出手次数 >= 1 && round_phase == 2'
+      }
+    ])
+    expect(paperConsumers.edges).toEqual([
+      {
+        consumerEdgeId: 'se_paper_cond',
+        sourceNodeId: 'paper_count',
+        token: '>=1',
+        formula: '>=1',
+        isDirectStateCondition: true
+      }
+    ])
+
+    // 4. Selecting `reg_scissors` highlights only downstream consumers (`re_reward`), NOT upstream `round_phase`
+    const regConsumers = resolveMxNodeConsumers(doc, ['reg_scissors'])
+    expect(regConsumers.nodes).toEqual([])
+    expect(regConsumers.edges.map((e) => e.consumerEdgeId)).toEqual(['re_reward'])
+
+    // 5. Verify UI bindings in MxCanvas.vue and MxInspector.vue
+    const canvasSource = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxCanvas.vue'),
+      'utf8'
+    )
+    const inspectorSource = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxInspector.vue'),
+      'utf8'
+    )
+    expect(canvasSource).toContain('class="mx-cond-consumer-halo"')
+    expect(canvasSource).toContain('consumerNodeHitById.has(node.id)')
+    expect(canvasSource).toContain('consumerEdgeHitById.has(geo.edge.id)')
+    expect(inspectorSource).toContain("t('mx.inspector.usedInConditions')")
+  })
+
+  it('validates and simulates all official Machinations Building Blocks across 7 domains, 6 shelves, and 21 categories, plus collision-free multi-insert', () => {
+    expect(MX_BUILDING_BLOCK_DOMAINS).toHaveLength(7)
+    expect(MX_BUILDING_BLOCK_SHELVES).toHaveLength(6)
+    expect(MX_BUILDING_BLOCK_CATEGORIES).toHaveLength(21)
+    expect(MX_BUILDING_BLOCKS.length).toBeGreaterThanOrEqual(55)
+
+    // Every single official domain, shelf, and category has runnable blocks
+    for (const dom of MX_BUILDING_BLOCK_DOMAINS) {
+      expect(MX_BUILDING_BLOCKS.some((b) => b.domain === dom.id)).toBe(true)
+    }
+    for (const sh of MX_BUILDING_BLOCK_SHELVES) {
+      expect(MX_BUILDING_BLOCKS.some((b) => b.shelves.includes(sh.id))).toBe(true)
+    }
+    for (const cat of MX_BUILDING_BLOCK_CATEGORIES) {
+      const inCat = MX_BUILDING_BLOCKS.filter((b) => b.category === cat.id)
+      expect(inCat.length).toBeGreaterThanOrEqual(2)
+    }
+
+    // Every single Building Block builds a valid document, passes topology + formula validation,
+    // flows across EVERY resource edge, and triggers zero idle_node / starved_converter findings
+    const seenIds = new Set<string>()
+    for (const blk of MX_BUILDING_BLOCKS) {
+      expect(seenIds.has(blk.id)).toBe(false)
+      seenIds.add(blk.id)
+
+      const doc = createMxDocumentFromBuildingBlock(blk.id, 'zh')
+      expect(doc.nodes.length).toBe(blk.nodes.length)
+      expect(doc.edges.length).toBe(blk.edges.length)
+      expect(
+        lintMxDocumentTopology(doc),
+        `Block ${blk.id} must have 0 topology warnings`
+      ).toHaveLength(0)
+
+      for (const n of doc.nodes) {
+        if (n.formula) {
+          const v = validateMxFormula(n.formula, n.kind === 'end' ? 'end' : 'register')
+          expect(v.valid, `Block ${blk.id} node ${n.id} formula "${n.formula}": ${v.error}`).toBe(
+            true
+          )
+        }
+      }
+      for (const e of doc.edges) {
+        const v = validateMxFormula(e.formula, e.kind)
+        expect(v.valid, `Block ${blk.id} edge ${e.id} formula "${e.formula}": ${v.error}`).toBe(
+          true
+        )
+      }
+
+      const steps = blk.steps ?? 25
+      const run = runMxSimulation(doc, { steps, seed: 42 })
+      expect(run.snapshots.length).toBeGreaterThanOrEqual(2)
+      const lastSnap = run.snapshots[run.snapshots.length - 1]!
+      for (const [k, val] of Object.entries(lastSnap)) {
+        expect(Number.isFinite(val), `Block ${blk.id} snapshot[${k}] must be finite`).toBe(true)
+      }
+
+      // Every resource edge must carry positive cumulative flow across the standalone run
+      for (const e of doc.edges) {
+        if (e.kind !== 'resource') continue
+        const cumFlow = run.edgeFlows.reduce((sum, ef) => sum + (ef[e.id] ?? 0), 0)
+        expect(
+          cumFlow,
+          `Block ${blk.id} resource edge ${e.id} (${e.from}->${e.to} "${e.formula}") must have >0 flow`
+        ).toBeGreaterThan(0)
+      }
+
+      const diag = analyzeMxEconomyHealth(doc, run)
+      const badFindings = diag.findings.filter(
+        (f) =>
+          f.kind === 'idle_node' || f.kind === 'starved_converter' || f.kind === 'topology_error'
+      )
+      expect(
+        badFindings,
+        `Block ${blk.id} must not have idle_node, starved_converter, or topology_error findings`
+      ).toHaveLength(0)
+    }
+
+    // Domain-level conservation, statistical, timing, and mathematical invariant checks
+    const coinDoc = createMxDocumentFromBuildingBlock('bb_coin_flip_50_50', 'zh')
+    const coinRun = runMxSimulation(coinDoc, { steps: 200, seed: 2026 })
+    const coinEnd = coinRun.snapshots[200]!
+    expect((coinEnd.heads_pool ?? 0) + (coinEnd.tails_pool ?? 0)).toBe(200)
+    expect(coinEnd.heads_pool).toBeGreaterThanOrEqual(75)
+    expect(coinEnd.heads_pool).toBeLessThanOrEqual(125)
+
+    const lootDoc = createMxDocumentFromBuildingBlock('bb_weighted_loot_table', 'zh')
+    const lootRun = runMxSimulation(lootDoc, { steps: 200, seed: 2026 })
+    const lootEnd = lootRun.snapshots[200]!
+    expect((lootEnd.loot_common ?? 0) + (lootEnd.loot_rare ?? 0) + (lootEnd.loot_legend ?? 0)).toBe(
+      200
+    )
+    expect(lootEnd.loot_common ?? 0).toBeGreaterThan(lootEnd.loot_rare ?? 0)
+    expect(lootEnd.loot_rare ?? 0).toBeGreaterThan(lootEnd.loot_legend ?? 0)
+    expect(lootEnd.loot_legend ?? 0).toBeGreaterThan(0)
+
+    const pityDoc = createMxDocumentFromBuildingBlock('bb_pity_timer_guaranteed', 'zh')
+    const pityRun = runMxSimulation(pityDoc, { steps: 100, seed: 42 })
+    const pityEnd = pityRun.snapshots[100]!
+    const sumEdge = (r: ReturnType<typeof runMxSimulation>, edgeSub: string): number => {
+      const eid = Object.keys(r.edgeFlows[0] ?? {})
+        .concat(...r.edgeFlows.map((ef) => Object.keys(ef)))
+        .find((k) => k.endsWith(edgeSub))
+      return eid ? r.edgeFlows.reduce((s, ef) => s + (ef[eid] ?? 0), 0) : 0
+    }
+    expect(sumEdge(pityRun, '_e2') + sumEdge(pityRun, '_e3')).toBe(100)
+    expect(pityEnd.pity_counter ?? 0).toBeLessThan(10)
+    expect(pityEnd.ssr_inventory ?? 0).toBeGreaterThanOrEqual(10)
+
+    // Per-unit dynamic state weight re-evaluation on Gates (zero mid-batch token loss)
+    const spillRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_overflow_spillway', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    const spillEnd = spillRun.snapshots[25]!
+    expect(spillEnd.primary_pool).toBe(15)
+    expect(spillEnd.overflow_vault).toBe(68)
+
+    const icuRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_hospital_surge_triage', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    const icuEnd = icuRun.snapshots[25]!
+    expect((icuEnd.icu_beds ?? 0) - 10 + (icuEnd.discharged ?? 0) + (icuEnd.surge_wait ?? 0)).toBe(
+      150
+    )
+
+    // System dynamics, DeFi x*y=k, cliff/halving epochs, shield priority, peak tracker & star triggers
+    const thermoRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_balancing_thermostat_loop', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    expect(thermoRun.snapshots[10]!.temp_pool).toBeGreaterThan(70)
+    expect(thermoRun.snapshots[25]!.temp_pool).toBe(50)
+
+    const dimRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_diminishing_returns_curve', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    expect(dimRun.snapshots[0]!.eff_bonus_reg).toBe(10)
+    expect(dimRun.snapshots[25]!.eff_bonus_reg).toBe(60)
+    expect(
+      (dimRun.snapshots[5]!.eff_bonus_reg ?? 0) - (dimRun.snapshots[0]!.eff_bonus_reg ?? 0)
+    ).toBeGreaterThan(
+      (dimRun.snapshots[25]!.eff_bonus_reg ?? 0) - (dimRun.snapshots[20]!.eff_bonus_reg ?? 0)
+    )
+
+    for (const seed of [7, 42, 2026]) {
+      const peakRun = runMxSimulation(
+        createMxDocumentFromBuildingBlock('bb_high_water_mark_tracker', 'zh'),
+        { steps: 25, seed }
+      )
+      let runningMax = 0
+      for (const snap of peakRun.snapshots) {
+        runningMax = Math.max(runningMax, snap.live_stock ?? 0)
+        expect(snap.peak_record).toBe(runningMax)
+      }
+    }
+
+    const shieldDoc = createMxDocumentFromBuildingBlock('bb_shield_absorb_regen', 'zh')
+    const shieldRun = runMxSimulation(shieldDoc, { steps: 25, seed: 42 })
+    expect(shieldRun.snapshots[25]!.core_hp).toBe(20)
+    for (let t = 1; t <= 25; t++) {
+      const regenEdge = shieldDoc.edges.find((e) => e.from === 'shield_regen')!
+      const hpEdge = shieldDoc.edges.find((e) => e.to === 'hp_hit')!
+      if ((shieldRun.edgeFlows[t - 1]?.[regenEdge.id] ?? 0) > 0) {
+        expect(shieldRun.edgeFlows[t - 1]?.[hpEdge.id] ?? 0).toBe(0)
+      }
+    }
+
+    const kanbanRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_kanban_wip_bottleneck', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    expect(Math.max(...kanbanRun.snapshots.map((s) => s.qa_wip ?? 0))).toBe(6)
+
+    const vestRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_vesting_cliff_linear_unlock', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    for (let t = 0; t <= 4; t++) expect(vestRun.snapshots[t]!.unlocked_wallet).toBe(0)
+    expect(vestRun.snapshots[5]!.unlocked_wallet).toBe(10)
+    expect(vestRun.snapshots[14]!.unlocked_wallet).toBe(100)
+    for (const snap of vestRun.snapshots) {
+      expect((snap.locked_vault ?? 0) + (snap.unlocked_wallet ?? 0)).toBe(100)
+    }
+
+    const halvingRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_halving_epoch_emission', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    expect(halvingRun.snapshots[1]!.halving_rate).toBe(32)
+    expect(halvingRun.snapshots[6]!.halving_rate).toBe(32)
+    expect(halvingRun.snapshots[7]!.halving_rate).toBe(16)
+    expect(halvingRun.snapshots[13]!.halving_rate).toBe(8)
+    expect(halvingRun.snapshots[19]!.halving_rate).toBe(4)
+    expect(halvingRun.snapshots[25]!.halving_rate).toBe(2)
+
+    const ammRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_amm_constant_product_swap', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    expect(ammRun.snapshots[10]!.reserve_usdc).toBe(400)
+    expect(ammRun.snapshots[10]!.reserve_tok).toBe(100)
+    expect(ammRun.snapshots[10]!.spot_price).toBe(4)
+
+    const sirRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_sir_infection_recovery', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    for (const snap of sirRun.snapshots) {
+      expect((snap.susceptible_s ?? 0) + (snap.infected_i ?? 0) + (snap.recovered_r ?? 0)).toBe(200)
+    }
+    expect(Math.max(...sirRun.snapshots.map((s) => s.infected_i ?? 0))).toBeGreaterThan(40)
+
+    const ecoRun = runMxSimulation(
+      createMxDocumentFromBuildingBlock('bb_predator_prey_lotka', 'zh'),
+      { steps: 25, seed: 42 }
+    )
+    const deerSeries = ecoRun.snapshots.map((s) => s.deer_pop ?? 0)
+    const wolfSeries = ecoRun.snapshots.map((s) => s.wolf_pop ?? 0)
+    expect(Math.min(...deerSeries)).toBeGreaterThan(0)
+    expect(Math.max(...deerSeries)).toBeLessThan(400)
+    expect(Math.min(...wolfSeries)).toBeGreaterThan(0)
+    expect(deerSeries[15]!).toBeGreaterThan(deerSeries[6]!)
+    expect(deerSeries[25]!).toBeLessThan(deerSeries[20]!)
+
+    const starDoc = createMxDocumentFromBuildingBlock('bb_basics_activators_triggers', 'zh')
+    const starRun = runMxSimulation(starDoc, { steps: 25, seed: 42 })
+    expect(starRun.snapshots[25]!.prize_pool).toBe(30)
+
+    // Specific regression check for 2D6 Bell-Curve Roll & Skill Check (`bb_dice_bell_curve_2d6`)
+    const diceDoc = createMxDocumentFromBuildingBlock('bb_dice_bell_curve_2d6', 'zh')
+    const checkGate = diceDoc.nodes.find((n) => n.id === 'check_gate')!
+    expect(checkGate.formula).toBe('2D6')
+    expect(getMxNodeSubLabel(checkGate)).toBe('2D6')
+    const diceSvg = exportMxDiagramSvg(diceDoc).svgText
+    expect(diceSvg).toContain('🎲')
+    expect(diceSvg).toContain('2D6')
+    const diceRun = runMxSimulation(diceDoc, { steps: 25, seed: 42 })
+    const diceEnd = diceRun.snapshots[diceRun.snapshots.length - 1]!
+    expect(diceEnd.check_pass).toBeGreaterThan(0)
+    expect(diceEnd.check_fail).toBeGreaterThan(0)
+    expect((diceEnd.check_pass ?? 0) + (diceEnd.check_fail ?? 0)).toBe(25)
+
+    // Conditional Gate also honors incoming `+bonus` and `=` Overwrite state connections
+    const modGateDoc = createMxDocumentFromBuildingBlock('bb_dice_bell_curve_2d6', 'en')
+    modGateDoc.nodes.push({
+      id: 'attr_bonus',
+      kind: 'pool',
+      label: 'Attr Bonus',
+      x: 180,
+      y: 260,
+      initial: 10,
+      trigger: 'passive'
+    })
+    modGateDoc.edges.push({
+      id: 'st_bonus',
+      kind: 'state',
+      from: 'attr_bonus',
+      to: 'check_gate',
+      formula: '+1'
+    })
+    const boostedRun = runMxSimulation(modGateDoc, { steps: 10, seed: 7 })
+    expect(boostedRun.snapshots[10]!.check_pass).toBe(10)
+    expect(boostedRun.snapshots[10]!.check_fail).toBe(0)
+
+    // Inserting the same block multiple times into a Studio store disambiguates IDs, rewrites formula references & targetEdgeId, and supports undo
+    const store = createMxStudioStore(createEmptyMxDocument('Composite Economy'))
+    const first = store.insertBuildingBlock('bb_xp_level_up_curve', {
+      wrapInGroup: true,
+      locale: 'zh'
+    })
+    const second = store.insertBuildingBlock('bb_xp_level_up_curve', {
+      wrapInGroup: true,
+      locale: 'en'
+    })
+    const third = store.insertBuildingBlock('bb_overflow_spillway', {
+      wrapInGroup: true,
+      locale: 'zh'
+    })
+    const fourth = store.insertBuildingBlock('bb_overflow_spillway', {
+      wrapInGroup: true,
+      locale: 'zh'
+    })
+
+    expect(first).not.toBeNull()
+    expect(second).not.toBeNull()
+    expect(third).not.toBeNull()
+    expect(fourth).not.toBeNull()
+
+    expect(first!.insertedNodeIds).toContain('xp_pool')
+    expect(second!.insertedNodeIds).toContain('xp_pool_2')
+
+    // Second XP block's Register & Resource edge formulas must reference `hero_level_2` and `req_xp_reg_2`
+    const reg2 = store.doc.value.nodes.find((n) => n.id === 'req_xp_reg_2')
+    expect(reg2?.formula).toContain('hero_level_2')
+    const lvlEdge2 = store.doc.value.edges.find(
+      (e) => e.from === 'xp_pool_2' && e.to === 'lvl_up_conv_2'
+    )
+    expect(lvlEdge2?.formula).toBe('req_xp_reg_2')
+
+    // Fourth spillway block's state edge `targetEdgeId` must point to the 4th block's own resource edges
+    const fourthEdges = store.doc.value.edges.filter((e) => fourth!.insertedEdgeIds.includes(e.id))
+    const stateToEdges = fourthEdges.filter((e) => Boolean(e.targetEdgeId))
+    expect(stateToEdges).toHaveLength(2)
+    for (const se of stateToEdges) {
+      expect(fourth!.insertedEdgeIds).toContain(se.targetEdgeId!)
+    }
+
+    expect(store.doc.value.groups).toHaveLength(4)
+
+    // Combined multi-block diagram simulates cleanly with both XP curves levelling up identically
+    const combinedRun = runMxSimulation(store.doc.value, { steps: 18, seed: 99 })
+    const endSnap = combinedRun.snapshots[combinedRun.snapshots.length - 1]!
+    expect(endSnap.hero_level).toBeGreaterThan(1)
+    expect(endSnap.hero_level_2).toBe(endSnap.hero_level)
+
+    // Copy to clipboard + pasteNodes also rewrites formula references cleanly
+    expect(store.copyBuildingBlock('bb_xp_level_up_curve')).toBe(true)
+    store.pasteNodes()
+    expect(store.selection.nodes).toHaveLength(5)
+
+    // Undo restores previous step cleanly
+    const countBeforeUndo = store.doc.value.nodes.length
+    store.undo()
+    expect(store.doc.value.nodes.length).toBe(countBeforeUndo - 5)
+
+    // UI wiring check in MachinationsStudio.vue and MxDrawer.vue
+    const studioSrc = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MachinationsStudio.vue'),
+      'utf8'
+    )
+    const drawerSrc = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxDrawer.vue'),
+      'utf8'
+    )
+    expect(studioSrc).toContain("{ id: 'blocks', icon: '❖', labelKey: 'mx.nav.blocks' }")
+    expect(drawerSrc).toContain("s.drawer.value === 'blocks'")
+  })
+
+  it('inspects formula variable sources (params, pools, registers, state inputs a..z, STEP, dice, unknown) and supports inline param creation & value editing', () => {
+    // 1. Bathtub Stock & Flow block: DrainPlugRate & FaucetTapRate resolve to global params (doc.params)
+    const bathtubDoc = createMxDocumentFromBuildingBlock('bb_lesson_bathtub_stock_flow')!
+    const drainEdge = bathtubDoc.edges.find((e) => e.formula === 'DrainPlugRate')!
+    const drainInsp = inspectMxFormulaContext(bathtubDoc, drainEdge.formula, {
+      contextKind: 'resource',
+      edgeId: drainEdge.id
+    })
+    expect(drainInsp.previewText).toBe('= 5')
+    expect(drainInsp.referencedSymbols).toHaveLength(1)
+    expect(drainInsp.referencedSymbols[0]).toMatchObject({
+      token: 'DrainPlugRate',
+      source: 'param',
+      value: 5,
+      valueText: '5'
+    })
+    expect(drainInsp.catalog.some((c) => c.source === 'param' && c.title === 'FaucetTapRate')).toBe(
+      true
+    )
+
+    // 2. XP Level Up Curve block: Register formula references Pool node `hero_level`
+    const xpDoc = createMxDocumentFromBuildingBlock('bb_xp_level_up_curve')!
+    const xpReg = xpDoc.nodes.find((n) => n.id === 'req_xp_reg')!
+    const regInsp = inspectMxFormulaContext(xpDoc, xpReg.formula ?? '', {
+      contextKind: 'register',
+      ownerNodeId: xpReg.id
+    })
+    const heroSym = regInsp.referencedSymbols.find((s) => s.token === 'hero_level')
+    expect(heroSym).toMatchObject({
+      source: 'node',
+      nodeId: 'hero_level',
+      nodeKind: 'pool',
+      value: 1,
+      valueText: '1'
+    })
+
+    // 3. Positional state input `a` and built-in `STEP` inside function `min(...)` on a Register node
+    const posDoc = createEmptyMxDocument('Formula Context')
+    posDoc.nodes = [
+      { ...createMxNode('pool', 0, 0, 'Mana Pool'), id: 'mana_pool', initial: 40 },
+      {
+        ...createMxNode('register', 180, 0, 'Spell Cost'),
+        id: 'spell_cost',
+        formula: 'min(a + STEP * 2, 100)'
+      }
+    ]
+    posDoc.edges = [
+      { id: 'st_mana', kind: 'state', from: 'mana_pool', to: 'spell_cost', formula: '+1' }
+    ]
+    const posInsp = inspectMxFormulaContext(posDoc, 'min(a + STEP * 2, 100)', {
+      contextKind: 'register',
+      ownerNodeId: 'spell_cost',
+      step: 3
+    })
+    expect(posInsp.previewText).toBe('= 46')
+    expect(posInsp.referencedSymbols.find((s) => s.token === 'a')).toMatchObject({
+      source: 'state_input',
+      nodeId: 'mana_pool',
+      edgeId: 'st_mana',
+      value: 40
+    })
+    expect(posInsp.referencedSymbols.find((s) => s.token === 'STEP')).toMatchObject({
+      source: 'builtin_var',
+      value: 3
+    })
+
+    // 4. Dice stochastic range preview (`2D6 + 3` -> `🎲 5 ~ 15`)
+    const diceInsp = inspectMxFormulaContext(posDoc, '2D6 + 3', {
+      contextKind: 'resource'
+    })
+    expect(diceInsp.isStochastic).toBe(true)
+    expect(diceInsp.previewText).toBe('🎲 5 ~ 15')
+    expect(diceInsp.catalog.some((c) => c.source === 'dice' && c.title === '2D6')).toBe(true)
+
+    // 5. Unknown identifier -> 1-click `upsertParam` & inline `setParamValue` in Studio store
+    const store = createMxStudioStore(bathtubDoc)
+    const beforeUpsert = inspectMxFormulaContext(store.doc.value, 'CustomTaxRate * 2', {
+      contextKind: 'resource'
+    })
+    expect(beforeUpsert.referencedSymbols[0]).toMatchObject({
+      token: 'CustomTaxRate',
+      source: 'unknown'
+    })
+
+    const createdIdent = store.upsertParam('CustomTaxRate', 6)
+    expect(createdIdent).toBe('CustomTaxRate')
+    const afterUpsert = inspectMxFormulaContext(store.doc.value, 'CustomTaxRate * 2', {
+      contextKind: 'resource'
+    })
+    const createdParamId = afterUpsert.referencedSymbols[0]?.paramId
+    expect(createdParamId).toBeTruthy()
+    expect(afterUpsert.referencedSymbols[0]).toMatchObject({
+      token: 'CustomTaxRate',
+      source: 'param',
+      value: 6,
+      valueText: '6'
+    })
+    expect(afterUpsert.previewText).toBe('= 12')
+
+    store.setParamValue(createdParamId!, 9)
+    const afterEdit = inspectMxFormulaContext(store.doc.value, 'CustomTaxRate * 2', {
+      contextKind: 'resource'
+    })
+    expect(afterEdit.previewText).toBe('= 18')
+
+    // 6. Formula Editor Modal workflow (`openFormulaModal`, multiline `commitFormulaModal`, `closeFormulaModal`)
+    const commonsDoc = createMxDocumentFromBuildingBlock('bb_lesson_tragedy_of_commons')!
+    const modalStore = createMxStudioStore(commonsDoc)
+    const regenEdge = modalStore.doc.value.edges.find((e) => e.formula.includes('shared_fishery'))!
+    modalStore.openFormulaModal({
+      targetType: 'edge',
+      edgeId: regenEdge.id,
+      field: 'formula'
+    })
+    expect(modalStore.formulaModal.value).toEqual({
+      targetType: 'edge',
+      edgeId: regenEdge.id,
+      field: 'formula'
+    })
+    expect(modalStore.selection.edges).toEqual([regenEdge.id])
+
+    // Multi-line formatted formula in modal normalizes cleanly into single-line diagram formula upon commit
+    modalStore.commitFormulaModal(
+      'round(\n  max(\n    0,\n    15 * (shared_fishery / 60) * (1 - shared_fishery / 120)\n  )\n)'
+    )
+    expect(modalStore.formulaModal.value).toBeNull()
+    expect(modalStore.doc.value.edges.find((e) => e.id === regenEdge.id)?.formula).toBe(
+      'round( max( 0, 15 * (shared_fishery / 60) * (1 - shared_fishery / 120) ) )'
+    )
+    expect(
+      validateMxFormula(
+        modalStore.doc.value.edges.find((e) => e.id === regenEdge.id)!.formula,
+        'resource'
+      ).valid
+    ).toBe(true)
   })
 })

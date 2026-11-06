@@ -36,6 +36,7 @@ import MxCanvas from './MxCanvas.vue'
 import MxInspector from './MxInspector.vue'
 import MxResultsPanel from './MxResultsPanel.vue'
 import MxDrawer from './MxDrawer.vue'
+import MxFormulaModal from './MxFormulaModal.vue'
 
 const props = defineProps<{
   node: GraphNode
@@ -197,6 +198,7 @@ onBeforeUnmount(() => {
 const navItems: Array<{ id: Exclude<MxDrawerKind, ''>; icon: string; labelKey: string }> = [
   { id: 'agents', icon: '🤖', labelKey: 'mx.nav.agents' },
   { id: 'templates', icon: '⊞', labelKey: 'mx.nav.templates' },
+  { id: 'blocks', icon: '❖', labelKey: 'mx.nav.blocks' },
   { id: 'resources', icon: '◉', labelKey: 'mx.nav.resources' },
   { id: 'params', icon: '(x)', labelKey: 'mx.nav.params' },
   { id: 'layers', icon: '☰', labelKey: 'mx.nav.layers' },
@@ -801,6 +803,9 @@ function pushAndOpenDownstreamGameSystem(): void {
       <!-- ④ 右侧属性检查器 -->
       <MxInspector v-show="store.mode.value !== 'workbench'" />
     </div>
+
+    <!-- 弹出式 Machinations 公式编辑面板（双击画布连线/节点公式胶囊或属性栏输入框触发） -->
+    <MxFormulaModal />
   </div>
 </template>
 

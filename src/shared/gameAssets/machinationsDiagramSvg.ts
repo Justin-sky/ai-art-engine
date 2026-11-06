@@ -181,6 +181,10 @@ export function getMxNodeSubLabel(node: MxNode): string {
   if (node.kind === 'pool' && node.capacity && node.capacity > 0) return `max ${node.capacity}`
   if (node.kind === 'register' && node.formula)
     return node.formula.length > 18 ? `${node.formula.slice(0, 17)}…` : node.formula
+  if (node.kind === 'gate' && node.formula?.trim()) {
+    const f = node.formula.trim()
+    return f.length > 18 ? `${f.slice(0, 17)}…` : f
+  }
   if ((node.kind === 'delay' || node.kind === 'queue') && node.delaySteps)
     return `${node.delaySteps} steps`
   if (node.kind === 'end' && node.formula) return node.formula
@@ -649,11 +653,18 @@ export function exportMxDiagramSvg(
   const resolvedParams = resolveMxParams(doc)
 
   const converterColorById = new Map<string, string>()
+  const condGateOutRe = /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
+  const conditionalGateIds = new Set<string>()
+  for (const n of doc.nodes) {
+    if (n.kind === 'gate' && n.formula?.trim()) conditionalGateIds.add(n.id)
+  }
   for (const e of doc.edges) {
     if (e.kind === 'resource' && !converterColorById.has(e.from)) {
       const tgt = nodeById.get(e.to)
       if (tgt) converterColorById.set(e.from, mxNodeColor(doc, tgt))
     }
+    const s = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
+    if (condGateOutRe.test(s)) conditionalGateIds.add(e.from)
   }
 
   const controllingAgentByNodeId = new Map<string, { id: string; name: string; color?: string }>()
@@ -879,7 +890,14 @@ export function exportMxDiagramSvg(
         `      <text text-anchor="middle" y="${valY}" fill="${filled ? '#ffffff' : escapeXml(color)}" font-size="11" font-weight="700">${escapeXml(formatMxValue(val))}</text>`
       )
     } else if (node.kind === 'gate') {
-      const glyph = node.gateMode === 'deterministic' ? '⚖' : '%'
+      const glyph =
+        node.gateMode === 'skill'
+          ? '🎯'
+          : node.gateMode === 'deterministic'
+            ? '⚖'
+            : conditionalGateIds.has(node.id)
+              ? '🎲'
+              : '%'
       out.push(
         `      <text text-anchor="middle" y="3.5" fill="${escapeXml(color)}" font-size="11" font-weight="700">${glyph}</text>`
       )

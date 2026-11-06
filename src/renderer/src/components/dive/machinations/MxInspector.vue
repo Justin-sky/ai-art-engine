@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 import {
   parseMxFlowFormula,
   parseMxStateFormula,
+  resolveMxNodeConsumers,
   validateMxFormula,
   type MxEdgeKind,
   type MxNodeKind,
@@ -19,11 +20,13 @@ import {
   type MxTrigger
 } from '@shared/gameAssets'
 import { useMxStudioStore } from './mxStudioStore'
+import MxFormulaEditor from './MxFormulaEditor.vue'
 
 const { t } = useI18n()
 const s = useMxStudioStore()
 
 const funcOpen = ref(true)
+const condRefsOpen = ref(true)
 const connOpen = ref(true)
 const styleOpen = ref(true)
 const quickTargetNodeId = ref('')
@@ -32,6 +35,67 @@ const quickTargetEdgeKind = ref<MxEdgeKind>('resource')
 const selectedNode = computed(() => {
   if (s.selection.nodes.length !== 1) return null
   return s.doc.value.nodes.find((n) => n.id === s.selection.nodes[0]) ?? null
+})
+
+const selectedNodeConsumerItems = computed(() => {
+  const n = selectedNode.value
+  if (!n || n.kind === 'note') return []
+  const res = resolveMxNodeConsumers(s.doc.value, [n.id])
+  const items: Array<{
+    key: string
+    badge: string
+    title: string
+    token: string
+    formula: string
+    onClick: () => void
+  }> = []
+  for (const nh of res.nodes) {
+    const cn = s.doc.value.nodes.find((x) => x.id === nh.consumerNodeId)
+    if (!cn) continue
+    const badge =
+      nh.sourceField === 'botCondition'
+        ? '⚡'
+        : cn.kind === 'register'
+          ? '[x]'
+          : cn.kind === 'end'
+            ? '■'
+            : 'fx'
+    items.push({
+      key: `n:${nh.consumerNodeId}:${nh.sourceField}`,
+      badge,
+      title: cn.label || cn.id,
+      token: nh.token,
+      formula: nh.formula,
+      onClick: () => s.select([cn.id], [])
+    })
+  }
+  for (const eh of res.edges) {
+    const ce = s.doc.value.edges.find((x) => x.id === eh.consumerEdgeId)
+    if (!ce) continue
+    const fromLbl = edgeEndpointLabel(ce.from)
+    const toLbl = ce.targetEdgeId ? `#${ce.targetEdgeId}` : edgeEndpointLabel(ce.to)
+    items.push({
+      key: `e:${eh.consumerEdgeId}`,
+      badge: ce.kind === 'state' ? '╌►' : '──►',
+      title: `${fromLbl} → ${toLbl}`,
+      token: eh.token,
+      formula: eh.formula,
+      onClick: () => s.select([], [ce.id])
+    })
+  }
+  for (const ph of res.params) {
+    items.push({
+      key: `p:${ph.consumerParamId}`,
+      badge: 'x=',
+      title: ph.paramName,
+      token: ph.token,
+      formula: ph.formula,
+      onClick: () => {
+        s.drawer.value = 'params'
+      }
+    })
+  }
+  return items
 })
 
 const selectedEdge = computed(() => {
@@ -525,17 +589,15 @@ function addQuickConnectionFromInspector(): void {
                   "
                 >
                   <label class="mx-field-label">{{ t('mx.inspector.botCondExpr') }}</label>
-                  <input
-                    class="mx-input mx-mono"
-                    type="text"
+                  <MxFormulaEditor
+                    :model-value="selectedNode.botCondition ?? ''"
                     placeholder="HP <= 40"
-                    :value="selectedNode.botCondition ?? ''"
-                    @input="
-                      s.updateNode(
-                        selectedNode.id,
-                        { botCondition: ($event.target as HTMLInputElement).value },
-                        'botCond'
-                      )
+                    context-kind="expr"
+                    :owner-node-id="selectedNode.id"
+                    target-field="botCondition"
+                    compact
+                    @update:model-value="
+                      (val) => s.updateNode(selectedNode!.id, { botCondition: val }, 'botCond')
                     "
                   />
                 </div>
@@ -764,17 +826,13 @@ function addQuickConnectionFromInspector(): void {
                     }}
                   </span>
                 </div>
-                <input
-                  class="mx-input mx-mono"
-                  type="text"
+                <MxFormulaEditor
+                  :model-value="selectedNode.formula ?? ''"
                   placeholder="lookup(a, 10, 25, 60) + 2"
-                  :value="selectedNode.formula ?? ''"
-                  @input="
-                    s.updateNode(
-                      selectedNode.id,
-                      { formula: ($event.target as HTMLInputElement).value },
-                      'regFormula'
-                    )
+                  context-kind="register"
+                  :owner-node-id="selectedNode.id"
+                  @update:model-value="
+                    (val) => s.updateNode(selectedNode!.id, { formula: val }, 'regFormula')
                   "
                 />
                 <div class="mx-chip-row">
@@ -858,7 +916,7 @@ function addQuickConnectionFromInspector(): void {
                 </div>
               </template>
 
-              <!-- Gate 专属：Gate Mode -->
+              <!-- Gate 专属：Gate Mode + 条件检定掷骰公式 -->
               <template v-if="selectedNode.kind === 'gate'">
                 <label class="mx-field-label">{{ t('mx.inspector.gateMode') }}</label>
                 <div class="mx-seg-row">
@@ -874,7 +932,9 @@ function addQuickConnectionFromInspector(): void {
                     type="button"
                     class="mx-seg-btn"
                     :class="{
-                      'is-active': (selectedNode.gateMode ?? 'random') === 'random'
+                      'is-active':
+                        (selectedNode.gateMode ?? 'random') === 'random' ||
+                        selectedNode.gateMode === 'dice'
                     }"
                     @click="s.updateNode(selectedNode.id, { gateMode: 'random' })"
                   >
@@ -889,6 +949,39 @@ function addQuickConnectionFromInspector(): void {
                     🎯 {{ t('mx.inspector.gateSkill') }}
                   </button>
                 </div>
+
+                <template
+                  v-if="
+                    selectedNode.gateMode !== 'deterministic' && selectedNode.gateMode !== 'skill'
+                  "
+                >
+                  <label class="mx-field-label">{{ t('mx.inspector.gateRollFormula') }}</label>
+                  <MxFormulaEditor
+                    :model-value="selectedNode.formula ?? ''"
+                    placeholder="D6 / 2D6 / D20"
+                    context-kind="expr"
+                    :owner-node-id="selectedNode.id"
+                    compact
+                    @update:model-value="
+                      (val) => s.updateNode(selectedNode!.id, { formula: val || undefined })
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="preset in ['D6', '2D6', 'D20', 'D100']"
+                      :key="preset"
+                      type="button"
+                      class="mx-chip"
+                      @click="
+                        s.updateNode(selectedNode.id, {
+                          formula: preset === 'D6' ? undefined : preset
+                        })
+                      "
+                    >
+                      {{ preset }}
+                    </button>
+                  </div>
+                </template>
               </template>
 
               <!-- Delay / Queue 专属：一键互换 + Delay Steps + 动态延迟公式 -->
@@ -927,17 +1020,14 @@ function addQuickConnectionFromInspector(): void {
                   "
                 />
                 <label class="mx-field-label">{{ t('mx.inspector.delayExpr') }}</label>
-                <input
-                  class="mx-input mx-mono"
-                  type="text"
+                <MxFormulaEditor
+                  :model-value="selectedNode.formula ?? ''"
                   placeholder="D6"
-                  :value="selectedNode.formula ?? ''"
-                  @input="
-                    s.updateNode(
-                      selectedNode.id,
-                      { formula: ($event.target as HTMLInputElement).value },
-                      'delayExpr'
-                    )
+                  context-kind="expr"
+                  :owner-node-id="selectedNode.id"
+                  compact
+                  @update:model-value="
+                    (val) => s.updateNode(selectedNode!.id, { formula: val }, 'delayExpr')
                   "
                 />
               </template>
@@ -978,16 +1068,12 @@ function addQuickConnectionFromInspector(): void {
                     }}
                   </span>
                 </div>
-                <input
-                  class="mx-input mx-mono"
-                  type="text"
+                <MxFormulaEditor
+                  :model-value="selectedNode.formula ?? ''"
                   placeholder="<=0"
-                  :value="selectedNode.formula ?? ''"
-                  @input="
-                    s.updateNode(selectedNode.id, {
-                      formula: ($event.target as HTMLInputElement).value
-                    })
-                  "
+                  context-kind="end"
+                  :owner-node-id="selectedNode.id"
+                  @update:model-value="(val) => s.updateNode(selectedNode!.id, { formula: val })"
                 />
                 <div class="mx-chip-row">
                   <button
@@ -1066,6 +1152,38 @@ function addQuickConnectionFromInspector(): void {
             </div>
           </div>
 
+          <!-- ═════════════ 引用此节点的条件变量与公式列表 ═════════════ -->
+          <div
+            v-if="selectedNode.kind !== 'note' && selectedNodeConsumerItems.length > 0"
+            class="mx-insp-section mx-cond-refs-section"
+          >
+            <button type="button" class="mx-sec-head" @click="condRefsOpen = !condRefsOpen">
+              <span>
+                {{ t('mx.inspector.usedInConditions') }} ({{ selectedNodeConsumerItems.length }})
+              </span>
+              <span class="mx-caret">{{ condRefsOpen ? '▾' : '▸' }}</span>
+            </button>
+            <div v-if="condRefsOpen" class="mx-sec-body">
+              <div class="mx-cond-ref-hint">{{ t('mx.inspector.usedInConditionsHint') }}</div>
+              <div class="mx-cond-ref-list">
+                <button
+                  v-for="item in selectedNodeConsumerItems"
+                  :key="item.key"
+                  type="button"
+                  class="mx-cond-ref-card"
+                  @click="item.onClick()"
+                >
+                  <div class="mx-cond-ref-top">
+                    <span class="mx-cond-ref-badge">{{ item.badge }}</span>
+                    <span class="mx-cond-ref-title">{{ item.title }}</span>
+                    <span class="mx-cond-ref-tok">{{ item.token }}</span>
+                  </div>
+                  <div class="mx-cond-ref-formula mx-mono">{{ item.formula }}</div>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- ═════════════ 节点关联连线管理 (Connections) ═════════════ -->
           <div v-if="selectedNode.kind !== 'note'" class="mx-insp-section">
             <button type="button" class="mx-sec-head" @click="connOpen = !connOpen">
@@ -1121,7 +1239,11 @@ function addQuickConnectionFromInspector(): void {
                   <input
                     type="text"
                     class="mx-input mx-mono mx-conn-rate"
+                    :title="t('mx.formulaEditor.dblClickHint')"
                     :value="oe.formula"
+                    @dblclick.stop="
+                      s.openFormulaModal({ targetType: 'edge', edgeId: oe.id, field: 'formula' })
+                    "
                     @input="
                       s.updateEdge(
                         oe.id,
@@ -1160,7 +1282,11 @@ function addQuickConnectionFromInspector(): void {
                   <input
                     type="text"
                     class="mx-input mx-mono mx-conn-rate"
+                    :title="t('mx.formulaEditor.dblClickHint')"
                     :value="ie.formula"
+                    @dblclick.stop="
+                      s.openFormulaModal({ targetType: 'edge', edgeId: ie.id, field: 'formula' })
+                    "
                     @input="
                       s.updateEdge(
                         ie.id,
@@ -1404,16 +1530,12 @@ function addQuickConnectionFromInspector(): void {
               </select>
 
               <!-- 紧跟 Type 下方的数值 / 公式输入框 -->
-              <input
-                class="mx-input mx-mono"
-                type="text"
-                :value="selectedEdge.formula"
-                @input="
-                  s.updateEdge(
-                    selectedEdge.id,
-                    { formula: ($event.target as HTMLInputElement).value },
-                    'edgeFormula'
-                  )
+              <MxFormulaEditor
+                :model-value="selectedEdge.formula"
+                :context-kind="selectedEdge.kind"
+                :edge-id="selectedEdge.id"
+                @update:model-value="
+                  (val) => s.updateEdge(selectedEdge!.id, { formula: val }, 'edgeFormula')
                 "
               />
 
@@ -1459,12 +1581,14 @@ function addQuickConnectionFromInspector(): void {
                     }}
                   </span>
                 </div>
-                <input
-                  class="mx-input mx-mono"
-                  type="text"
+                <MxFormulaEditor
+                  :model-value="selectedEdge.interval ?? ''"
                   :placeholder="edgeInlineIntervalHint"
-                  :value="selectedEdge.interval ?? ''"
-                  @input="onEdgeIntervalChange(($event.target as HTMLInputElement).value)"
+                  context-kind="expr"
+                  :edge-id="selectedEdge.id"
+                  target-field="interval"
+                  compact
+                  @update:model-value="onEdgeIntervalChange"
                 />
 
                 <label class="mx-field-label">{{ t('mx.inspector.transferMode') }}</label>
@@ -2315,5 +2439,81 @@ function addQuickConnectionFromInspector(): void {
 }
 .mx-switch.is-on .mx-switch-knob {
   transform: translateX(15px);
+}
+
+.mx-cond-refs-section {
+  border-color: color-mix(in srgb, #f59e0b 45%, var(--border));
+}
+.mx-cond-ref-hint {
+  font-size: 11px;
+  color: var(--text-muted, #9aa0a6);
+  margin-bottom: 4px;
+}
+.mx-cond-ref-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mx-cond-ref-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, #f59e0b 42%, var(--border));
+  background: color-mix(in srgb, #f59e0b 10%, var(--bg-elevated));
+  color: var(--text, #e8eaed);
+  cursor: pointer;
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+.mx-cond-ref-card:hover {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 18%, var(--bg-elevated));
+}
+.mx-cond-ref-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.mx-cond-ref-badge {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.22);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.mx-cond-ref-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.mx-cond-ref-tok {
+  flex-shrink: 0;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+  color: #f59e0b;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.mx-cond-ref-formula {
+  font-size: 10.5px;
+  color: var(--text-muted, #9aa0a6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

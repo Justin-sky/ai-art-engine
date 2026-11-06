@@ -1746,19 +1746,62 @@ export interface MxEdgeNodeReference {
   token: string
 }
 
-/**
- * 解析一条连接线的公式（及动态间隔 `interval`）中引用的所有节点，
- * 供画布在点击/编辑连线时绘制“公式胶囊 ╌╌► 被引用节点”的快速定位虚线。
- */
-export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxEdgeNodeReference[] {
+export interface MxNodeFormulaReference extends MxEdgeNodeReference {
+  sourceField: 'formula' | 'botCondition'
+  formula: string
+}
+
+export interface MxNodeConsumerNodeHit {
+  consumerNodeId: string
+  sourceNodeId: string
+  token: string
+  sourceField: 'formula' | 'botCondition'
+  formula: string
+}
+
+export interface MxNodeConsumerEdgeHit {
+  consumerEdgeId: string
+  sourceNodeId: string
+  token: string
+  formula: string
+  /** 从被选节点直接发出的状态激活条件边或条件门分支（已有实体连线，仅高亮条件胶囊而不重复绘制虚线） */
+  isDirectStateCondition?: boolean
+}
+
+export interface MxNodeConsumerParamHit {
+  consumerParamId: string
+  paramName: string
+  sourceNodeId: string
+  token: string
+  formula: string
+}
+
+export interface MxNodeConsumersResult {
+  nodes: MxNodeConsumerNodeHit[]
+  edges: MxNodeConsumerEdgeHit[]
+  params: MxNodeConsumerParamHit[]
+}
+
+function extractMxFormulaNodeRefsFromSegments(
+  doc: MxDocument,
+  exprSegments: string[],
+  rawTextForUnicode: string,
+  localBindings?: ReadonlyMap<string, string>,
+  allowParamBridge = true
+): MxEdgeNodeReference[] {
   const gIdx = getMxGraphIndex(doc)
   const paramNames = new Set<string>()
   const paramLower = new Set<string>()
+  const exprParamByKey = new Map<string, MxParam>()
   for (const p of doc.params) {
     const pk = mxIdentifier(p.name)
     if (pk) {
       paramNames.add(pk)
       paramLower.add(pk.toLowerCase())
+      if (p.varKind === 'expr' && p.formula?.trim()) {
+        exprParamByKey.set(pk, p)
+        exprParamByKey.set(pk.toLowerCase(), p)
+      }
     }
   }
 
@@ -1771,85 +1814,15 @@ export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxE
     }
     varToNodeId.set(entry.id, entry.id)
   }
-
-  const srcNode = gIdx.byId.get(edge.from)
-  if (srcNode && srcNode.kind !== 'note') {
-    varToNodeId.set('self', srcNode.id)
-  }
-
-  if (edge.kind === 'resource') {
-    const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
-    const nodeStateIns = gIdx.stateInByNode.get(edge.from) ?? EMPTY_EDGES
-    const combinedStateIns =
-      edgeStateIns.length && nodeStateIns.length
-        ? [...edgeStateIns, ...nodeStateIns]
-        : edgeStateIns.length
-          ? edgeStateIns
-          : nodeStateIns
-    combinedStateIns.forEach((se, idx) => {
-      const originNode = gIdx.byId.get(se.from)
-      if (!originNode || originNode.kind === 'note') return
-      if (idx < POSITIONAL_LETTERS.length) {
-        varToNodeId.set(POSITIONAL_LETTERS[idx]!, se.from)
-      }
-      if (se.label?.trim()) {
-        const customVar = mxIdentifier(se.label.trim())
-        if (customVar) varToNodeId.set(customVar, se.from)
-      }
-    })
-    if (
-      !varToNodeId.has('a') &&
-      !paramNames.has('a') &&
-      srcNode &&
-      srcNode.kind !== 'source' &&
-      srcNode.kind !== 'note'
-    ) {
-      varToNodeId.set('a', srcNode.id)
-    }
-  } else if (edge.kind === 'state') {
-    if (!varToNodeId.has('a') && !paramNames.has('a') && srcNode && srcNode.kind !== 'note') {
-      varToNodeId.set('a', srcNode.id)
+  if (localBindings) {
+    for (const [k, nid] of localBindings.entries()) {
+      varToNodeId.set(k, nid)
     }
   }
 
   const lowerVarToNodeId = new Map<string, string>()
   for (const [k, nid] of varToNodeId.entries()) {
     lowerVarToNodeId.set(k.toLowerCase(), nid)
-  }
-
-  const exprSegments: string[] = []
-  const rawF = (edge.formula ?? '').trim()
-  if (rawF) {
-    if (edge.kind === 'resource') {
-      const spec = parseMxFlowFormula(rawF)
-      const coreRaw = rawF.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
-      const asGateCond = parseMxStateFormula(coreRaw)
-      if (asGateCond.type === 'activator' || asGateCond.type === 'range') {
-        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
-      } else if (asGateCond.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) {
-        exprSegments.push(coreRaw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
-        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
-      } else {
-        if (spec.type !== 'all') exprSegments.push(spec.expr)
-        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
-      }
-    } else {
-      const sv = parseSignedVarStateModifier(rawF)
-      if (sv) {
-        exprSegments.push(sv.ident)
-      } else {
-        const stSpec = parseMxStateFormula(rawF)
-        if (stSpec.type === 'expr') {
-          exprSegments.push(rawF.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
-        }
-      }
-    }
-  }
-  if (edge.kind === 'resource' && edge.interval?.trim()) {
-    const iv = edge.interval.trim()
-    if (!/^-?\d+(?:\.\d+)?$/.test(iv)) {
-      exprSegments.push(iv)
-    }
   }
 
   const extractedTokens: string[] = []
@@ -1897,7 +1870,12 @@ export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxE
         const low = ident.toLowerCase()
         if (skipBuiltins.has(low)) continue
         if (low === 'e' && !varToNodeId.has('e')) continue
-        if (KNOWN_MX_FUNCTIONS.has(low) && !varToNodeId.has(ident) && !lowerVarToNodeId.has(low)) {
+        if (
+          KNOWN_MX_FUNCTIONS.has(low) &&
+          !varToNodeId.has(ident) &&
+          !lowerVarToNodeId.has(low) &&
+          !exprParamByKey.has(low)
+        ) {
           continue
         }
         extractedTokens.push(ident)
@@ -1924,11 +1902,21 @@ export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxE
       (!paramLower.has(tok.toLowerCase()) ? lowerVarToNodeId.get(tok.toLowerCase()) : undefined)
     if (resolved && gIdx.byId.has(resolved)) {
       addRef(resolved, tok)
+      continue
+    }
+    if (allowParamBridge) {
+      const bridgedParam = exprParamByKey.get(tok) ?? exprParamByKey.get(tok.toLowerCase())
+      if (bridgedParam) {
+        const innerRefs = resolveMxParamReferencedNodes(doc, bridgedParam)
+        for (const ir of innerRefs) {
+          addRef(ir.nodeId, tok)
+        }
+      }
     }
   }
 
   // 支持直接书写含中文/非 ASCII 节点标题的公式定位（按标题长度降序匹配，防止子串误命中）
-  const combinedRaw = `${rawF} ${edge.kind === 'resource' ? (edge.interval ?? '') : ''}`.trim()
+  const combinedRaw = rawTextForUnicode.trim()
   if (/[^\x00-\x7f]/.test(combinedRaw)) {
     const unicodeNodes = doc.nodes
       .filter((n) => n.kind !== 'note' && /[^\x00-\x7f]/.test(n.label.trim()))
@@ -1957,6 +1945,939 @@ export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxE
     nodeId,
     token: Array.from(byNodeId.get(nodeId) ?? []).join(', ')
   }))
+}
+
+/**
+ * 解析自定义动态变量（`varKind === 'expr'`）公式中引用的所有节点。
+ */
+export function resolveMxParamReferencedNodes(
+  doc: MxDocument,
+  param: MxParam
+): MxEdgeNodeReference[] {
+  if (param.varKind !== 'expr') return []
+  const rawF = (param.formula ?? '').trim()
+  if (!rawF || rawF.startsWith('[')) return []
+  return extractMxFormulaNodeRefsFromSegments(doc, [rawF], rawF, undefined, false)
+}
+
+/**
+ * 解析节点自身条件或公式（`Register` / `Gate` / `End` / `Delay` / `Queue` 的 `formula` 以及任意节点的 `botCondition`）中引用的节点。
+ */
+export function resolveMxNodeReferencedNodes(
+  doc: MxDocument,
+  node: MxNode
+): MxNodeFormulaReference[] {
+  if (node.kind === 'note') return []
+  const gIdx = getMxGraphIndex(doc)
+  const out: MxNodeFormulaReference[] = []
+
+  const paramNames = new Set<string>()
+  for (const p of doc.params) {
+    const pk = mxIdentifier(p.name)
+    if (pk) paramNames.add(pk)
+  }
+
+  const localStateBindings = new Map<string, string>()
+  const stateIns = gIdx.stateInByNode.get(node.id) ?? EMPTY_EDGES
+  stateIns.forEach((se, idx) => {
+    const originNode = gIdx.byId.get(se.from)
+    if (!originNode || originNode.kind === 'note') return
+    if (idx < POSITIONAL_LETTERS.length && !paramNames.has(POSITIONAL_LETTERS[idx]!)) {
+      localStateBindings.set(POSITIONAL_LETTERS[idx]!, se.from)
+    }
+    if (se.label?.trim()) {
+      const customVar = mxIdentifier(se.label.trim())
+      if (customVar && !paramNames.has(customVar)) {
+        localStateBindings.set(customVar, se.from)
+      }
+    }
+  })
+
+  if (
+    node.kind === 'register' ||
+    node.kind === 'gate' ||
+    node.kind === 'end' ||
+    node.kind === 'delay' ||
+    node.kind === 'queue'
+  ) {
+    const rawF = (node.formula ?? '').trim()
+    if (rawF) {
+      if (node.kind === 'end') {
+        const stSpec = parseMxStateFormula(rawF)
+        if (stSpec.type === 'activator' || stSpec.type === 'range') {
+          if (stateIns.length > 0) {
+            const firstFrom = stateIns[0]!.from
+            const originNode = gIdx.byId.get(firstFrom)
+            if (originNode && originNode.kind !== 'note') {
+              out.push({
+                nodeId: firstFrom,
+                token: rawF,
+                sourceField: 'formula',
+                formula: rawF
+              })
+            }
+          }
+        } else {
+          const exprPart = rawF.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, '')
+          const refs = extractMxFormulaNodeRefsFromSegments(
+            doc,
+            [exprPart],
+            rawF,
+            localStateBindings
+          )
+          for (const r of refs) {
+            out.push({ ...r, sourceField: 'formula', formula: rawF })
+          }
+        }
+      } else {
+        const refs = extractMxFormulaNodeRefsFromSegments(doc, [rawF], rawF, localStateBindings)
+        for (const r of refs) {
+          out.push({ ...r, sourceField: 'formula', formula: rawF })
+        }
+      }
+    } else if (node.kind === 'register' && node.trigger !== 'interactive' && stateIns.length > 0) {
+      const drivenByConstMod = stateIns.some((se) => {
+        const sp = parseMxStateFormula(se.formula)
+        return sp.type === 'modifier' || sp.type === 'fraction_modifier' || sp.type === 'overwrite'
+      })
+      if (!drivenByConstMod) {
+        const firstFrom = stateIns[0]!.from
+        const originNode = gIdx.byId.get(firstFrom)
+        if (originNode && originNode.kind !== 'note') {
+          out.push({
+            nodeId: firstFrom,
+            token: 'a',
+            sourceField: 'formula',
+            formula: 'a'
+          })
+        }
+      }
+    }
+  }
+
+  const rawBotCond = (node.botCondition ?? '').trim()
+  if (rawBotCond) {
+    const botBindings = new Map(localStateBindings)
+    botBindings.set('self', node.id)
+    const refs = extractMxFormulaNodeRefsFromSegments(doc, [rawBotCond], rawBotCond, botBindings)
+    for (const r of refs) {
+      out.push({
+        ...r,
+        sourceField: 'botCondition',
+        formula: rawBotCond
+      })
+    }
+  }
+
+  return out
+}
+
+/**
+ * 解析一条连接线的公式（及动态间隔 `interval`）中引用的所有节点，
+ * 供画布在点击/编辑连线时绘制“公式胶囊 ╌╌► 被引用节点”的快速定位虚线。
+ */
+export function resolveMxEdgeReferencedNodes(doc: MxDocument, edge: MxEdge): MxEdgeNodeReference[] {
+  const gIdx = getMxGraphIndex(doc)
+  const paramNames = new Set<string>()
+  for (const p of doc.params) {
+    const pk = mxIdentifier(p.name)
+    if (pk) paramNames.add(pk)
+  }
+
+  const localBindings = new Map<string, string>()
+  const srcNode = gIdx.byId.get(edge.from)
+  if (srcNode && srcNode.kind !== 'note') {
+    localBindings.set('self', srcNode.id)
+  }
+
+  if (edge.kind === 'resource') {
+    const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+    const nodeStateIns = gIdx.stateInByNode.get(edge.from) ?? EMPTY_EDGES
+    const combinedStateIns =
+      edgeStateIns.length && nodeStateIns.length
+        ? [...edgeStateIns, ...nodeStateIns]
+        : edgeStateIns.length
+          ? edgeStateIns
+          : nodeStateIns
+    combinedStateIns.forEach((se, idx) => {
+      const originNode = gIdx.byId.get(se.from)
+      if (!originNode || originNode.kind === 'note') return
+      if (idx < POSITIONAL_LETTERS.length && !paramNames.has(POSITIONAL_LETTERS[idx]!)) {
+        localBindings.set(POSITIONAL_LETTERS[idx]!, se.from)
+      }
+      if (se.label?.trim()) {
+        const customVar = mxIdentifier(se.label.trim())
+        if (customVar && !paramNames.has(customVar)) localBindings.set(customVar, se.from)
+      }
+    })
+    if (
+      !localBindings.has('a') &&
+      !paramNames.has('a') &&
+      srcNode &&
+      srcNode.kind !== 'source' &&
+      srcNode.kind !== 'note' &&
+      !doc.nodes.some((n) => n.kind !== 'note' && (n.id === 'a' || mxIdentifier(n.label) === 'a'))
+    ) {
+      localBindings.set('a', srcNode.id)
+    }
+  } else if (edge.kind === 'state') {
+    if (
+      !localBindings.has('a') &&
+      !paramNames.has('a') &&
+      srcNode &&
+      srcNode.kind !== 'note' &&
+      !doc.nodes.some((n) => n.kind !== 'note' && (n.id === 'a' || mxIdentifier(n.label) === 'a'))
+    ) {
+      localBindings.set('a', srcNode.id)
+    }
+  }
+
+  const exprSegments: string[] = []
+  const rawF = (edge.formula ?? '').trim()
+  if (rawF) {
+    if (edge.kind === 'resource') {
+      const spec = parseMxFlowFormula(rawF)
+      const coreRaw = rawF.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
+      const asGateCond = parseMxStateFormula(coreRaw)
+      if (asGateCond.type === 'activator' || asGateCond.type === 'range') {
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      } else if (asGateCond.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) {
+        exprSegments.push(coreRaw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      } else {
+        if (spec.type !== 'all') exprSegments.push(spec.expr)
+        if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+      }
+    } else {
+      const sv = parseSignedVarStateModifier(rawF)
+      if (sv) {
+        exprSegments.push(sv.ident)
+      } else {
+        const stSpec = parseMxStateFormula(rawF)
+        if (stSpec.type === 'expr') {
+          exprSegments.push(rawF.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+        }
+      }
+    }
+  }
+  if (edge.kind === 'resource' && edge.interval?.trim()) {
+    const iv = edge.interval.trim()
+    if (!/^-?\d+(?:\.\d+)?$/.test(iv)) {
+      exprSegments.push(iv)
+    }
+  }
+
+  const combinedRaw = `${rawF} ${edge.kind === 'resource' ? (edge.interval ?? '') : ''}`.trim()
+  return extractMxFormulaNodeRefsFromSegments(doc, exprSegments, combinedRaw, localBindings)
+}
+
+/**
+ * 反向查找图表中所有“使用了指定节点作为条件或公式变量”的节点（Register / End / Delay / botCondition）、
+ * 连接线公式（含直接状态激活条件胶囊）以及自定义动态变量（`params` `expr`）。
+ */
+export function resolveMxNodeConsumers(
+  doc: MxDocument,
+  targetNodeIds: Iterable<string>
+): MxNodeConsumersResult {
+  const gIdx = getMxGraphIndex(doc)
+  const targetSet = new Set<string>()
+  for (const id of targetNodeIds) {
+    const n = gIdx.byId.get(id)
+    if (n && n.kind !== 'note') targetSet.add(id)
+  }
+  if (targetSet.size === 0) {
+    return { nodes: [], edges: [], params: [] }
+  }
+
+  const nodes: MxNodeConsumerNodeHit[] = []
+  for (const n of doc.nodes) {
+    if (n.kind === 'note' || targetSet.has(n.id)) continue
+    const refs = resolveMxNodeReferencedNodes(doc, n)
+    for (const r of refs) {
+      if (!targetSet.has(r.nodeId)) continue
+      nodes.push({
+        consumerNodeId: n.id,
+        sourceNodeId: r.nodeId,
+        token: r.token,
+        sourceField: r.sourceField,
+        formula: r.formula
+      })
+    }
+  }
+
+  const edges: MxNodeConsumerEdgeHit[] = []
+  const matchedEdgePairs = new Set<string>()
+  for (const e of doc.edges) {
+    const refs = resolveMxEdgeReferencedNodes(doc, e)
+    for (const r of refs) {
+      if (!targetSet.has(r.nodeId)) continue
+      matchedEdgePairs.add(`${e.id}::${r.nodeId}`)
+      edges.push({
+        consumerEdgeId: e.id,
+        sourceNodeId: r.nodeId,
+        token: r.token,
+        formula: (e.formula ?? '').trim() || (e.interval ?? '').trim(),
+        isDirectStateCondition: false
+      })
+    }
+
+    if (targetSet.has(e.from) && !matchedEdgePairs.has(`${e.id}::${e.from}`)) {
+      const rawF = (e.formula ?? '').trim()
+      if (!rawF) continue
+      if (e.kind === 'state') {
+        const stSpec = parseMxStateFormula(rawF)
+        if (
+          stSpec.type === 'activator' ||
+          stSpec.type === 'range' ||
+          (stSpec.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(rawF))
+        ) {
+          edges.push({
+            consumerEdgeId: e.id,
+            sourceNodeId: e.from,
+            token: rawF,
+            formula: rawF,
+            isDirectStateCondition: true
+          })
+        }
+      } else {
+        const fromNode = gIdx.byId.get(e.from)
+        if (fromNode?.kind === 'gate') {
+          const coreRaw = rawF.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
+          const gateSpec = parseMxStateFormula(coreRaw)
+          if (
+            gateSpec.type === 'activator' ||
+            gateSpec.type === 'range' ||
+            (gateSpec.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw))
+          ) {
+            edges.push({
+              consumerEdgeId: e.id,
+              sourceNodeId: e.from,
+              token: coreRaw,
+              formula: rawF,
+              isDirectStateCondition: true
+            })
+          }
+        }
+      }
+    }
+  }
+
+  const params: MxNodeConsumerParamHit[] = []
+  for (const p of doc.params) {
+    const refs = resolveMxParamReferencedNodes(doc, p)
+    for (const r of refs) {
+      if (!targetSet.has(r.nodeId)) continue
+      params.push({
+        consumerParamId: p.id,
+        paramName: p.name,
+        sourceNodeId: r.nodeId,
+        token: r.token,
+        formula: (p.formula ?? '').trim()
+      })
+    }
+  }
+
+  return { nodes, edges, params }
+}
+
+// ───────── 公式编辑器上下文内省与变量来源目录 (Formula Context Inspector) ─────────
+
+export type MxFormulaContextKind = 'resource' | 'state' | 'register' | 'end' | 'expr'
+
+export type MxFormulaSymbolSource = 'param' | 'state_input' | 'node' | 'builtin_var' | 'unknown'
+
+export interface MxFormulaSymbolRef {
+  token: string
+  source: MxFormulaSymbolSource
+  value?: number
+  valueText?: string
+  paramId?: string
+  paramName?: string
+  paramVarKind?: MxParam['varKind']
+  paramFormula?: string
+  nodeId?: string
+  nodeKind?: MxNodeKind
+  nodeLabel?: string
+  edgeId?: string
+}
+
+export interface MxFormulaCatalogItem {
+  key: string
+  insertText: string
+  cursorBackOffset?: number
+  source: 'param' | 'state_input' | 'node' | 'builtin_var' | 'dice' | 'function'
+  title: string
+  subtitle?: string
+  valueText?: string
+  fnId?: string
+  paramId?: string
+  nodeId?: string
+  nodeKind?: MxNodeKind
+}
+
+export interface MxFormulaInspectOptions {
+  contextKind?: MxFormulaContextKind
+  ownerNodeId?: string
+  edgeId?: string
+  values?: Record<string, number> | null
+  step?: number
+}
+
+export interface MxFormulaInspectionResult {
+  referencedSymbols: MxFormulaSymbolRef[]
+  previewText: string | null
+  isStochastic: boolean
+  catalog: MxFormulaCatalogItem[]
+}
+
+const MX_FORMULA_BUILTIN_FUNCTIONS: ReadonlyArray<{
+  fnId: string
+  insertText: string
+  cursorBackOffset: number
+  signature: string
+}> = [
+  { fnId: 'if', insertText: 'if(, 1, 0)', cursorBackOffset: 7, signature: 'if(cond, a, b)' },
+  { fnId: 'min', insertText: 'min(, )', cursorBackOffset: 3, signature: 'min(a, b)' },
+  { fnId: 'max', insertText: 'max(, )', cursorBackOffset: 3, signature: 'max(a, b)' },
+  { fnId: 'round', insertText: 'round()', cursorBackOffset: 1, signature: 'round(x)' },
+  { fnId: 'floor', insertText: 'floor()', cursorBackOffset: 1, signature: 'floor(x)' },
+  { fnId: 'ceil', insertText: 'ceil()', cursorBackOffset: 1, signature: 'ceil(x)' },
+  {
+    fnId: 'clamp',
+    insertText: 'clamp(, 0, 100)',
+    cursorBackOffset: 9,
+    signature: 'clamp(x, lo, hi)'
+  },
+  { fnId: 'pow', insertText: 'pow(, 2)', cursorBackOffset: 4, signature: 'pow(base, exp)' },
+  {
+    fnId: 'diminish',
+    insertText: 'diminish(, 100)',
+    cursorBackOffset: 6,
+    signature: 'diminish(x, k)'
+  },
+  {
+    fnId: 'lookup',
+    insertText: 'lookup(, 10, 25, 60)',
+    cursorBackOffset: 13,
+    signature: 'lookup(idx, v0, v1, ...)'
+  },
+  { fnId: 'lerp', insertText: 'lerp(0, 100, )', cursorBackOffset: 1, signature: 'lerp(a, b, t)' },
+  { fnId: 'mod', insertText: 'mod(STEP, 5)', cursorBackOffset: 1, signature: 'mod(a, b)' },
+  {
+    fnId: 'randomInt',
+    insertText: 'randomInt(1, 10)',
+    cursorBackOffset: 1,
+    signature: 'randomInt(min, max)'
+  },
+  { fnId: 'abs', insertText: 'abs()', cursorBackOffset: 1, signature: 'abs(x)' },
+  { fnId: 'sin', insertText: 'sin(STEP)', cursorBackOffset: 1, signature: 'sin(rad)' }
+]
+
+function formatMxCompactNum(n: number): string {
+  if (!Number.isFinite(n)) return '0'
+  return String(Math.round(n * 1000) / 1000)
+}
+
+/**
+ * 解析任意公式（资源边 / 状态边 / Register / End / 动态参数）内引用的标识符来源、实时预览值与可插入变量目录。
+ */
+export function inspectMxFormulaContext(
+  doc: MxDocument,
+  formula: string | undefined,
+  options: MxFormulaInspectOptions = {}
+): MxFormulaInspectionResult {
+  const gIdx = getMxGraphIndex(doc)
+  const step = Math.max(0, Math.floor(options.step ?? 0))
+  const contextKind = options.contextKind ?? 'expr'
+
+  // 1. 构建有效节点数值表（若尚未运行快照，则回退节点 initial 并试算纯表达式寄存器）
+  const effectiveValues: Record<string, number> = {}
+  for (const n of doc.nodes) {
+    if (n.kind === 'note') continue
+    effectiveValues[n.id] =
+      options.values && n.id in options.values ? (options.values[n.id] ?? 0) : (n.initial ?? 0)
+  }
+
+  const arrays = buildParamArrays(doc)
+  const baseParams = resolveMxParams(doc)
+  const sharedVars = buildVars(doc, effectiveValues, baseParams, step)
+
+  // 对 `varKind === 'expr'` 的动态参数按当前上下文求值
+  const paramByIdent = new Map<
+    string,
+    { param: MxParam; ident: string; value: number; valueText: string }
+  >()
+  const paramLowerMap = new Map<
+    string,
+    { param: MxParam; ident: string; value: number; valueText: string }
+  >()
+  for (const p of doc.params) {
+    const ident = mxIdentifier(p.name)
+    if (!ident) continue
+    let val = baseParams[ident] ?? p.value ?? 0
+    let valueText = formatMxCompactNum(val)
+    if (p.varKind === 'expr' && p.formula?.trim() && !p.formula.trim().startsWith('[')) {
+      val = evaluateMxExpression(
+        p.formula,
+        { vars: sharedVars, arrays, rng: () => 0.5 },
+        p.value ?? 0
+      )
+      sharedVars[ident] = val
+      valueText = `${formatMxCompactNum(val)} (${p.formula.trim()})`
+    } else if (p.varKind === 'array') {
+      valueText = (p.formula ?? '[]').trim()
+    } else if (p.varKind === 'random_range') {
+      valueText = `${p.min ?? 1}..${p.max ?? 6}`
+    }
+    const rec = { param: p, ident, value: val, valueText }
+    paramByIdent.set(ident, rec)
+    paramLowerMap.set(ident.toLowerCase(), rec)
+  }
+
+  // 若无快照，粗略预求值一次无状态输入的公式型 Register，使预览值更准确
+  if (!options.values) {
+    for (const reg of gIdx.registers) {
+      if (reg.formula?.trim()) {
+        const rv = evaluateMxExpression(
+          reg.formula,
+          { vars: sharedVars, arrays, rng: () => 0.5 },
+          reg.initial ?? 0
+        )
+        effectiveValues[reg.id] = Math.round(rv * 1000) / 1000
+        sharedVars[reg.id] = effectiveValues[reg.id]!
+        const rIdent = mxIdentifier(reg.label)
+        if (rIdent && !paramByIdent.has(rIdent)) sharedVars[rIdent] = effectiveValues[reg.id]!
+      }
+    }
+  }
+
+  // 2. 构建局部状态输入绑定（`a..z`、自定义状态边 label、`self`）
+  const localStateMap = new Map<
+    string,
+    {
+      token: string
+      edgeId?: string
+      nodeId: string
+      nodeKind: MxNodeKind
+      nodeLabel: string
+      value: number
+    }
+  >()
+  const bindLocal = (token: string, targetNodeId: string, edgeId?: string): void => {
+    const originNode = gIdx.byId.get(targetNodeId)
+    if (!originNode || originNode.kind === 'note') return
+    if (paramByIdent.has(token)) return
+    const val = effectiveValues[originNode.id] ?? 0
+    localStateMap.set(token, {
+      token,
+      edgeId,
+      nodeId: originNode.id,
+      nodeKind: originNode.kind,
+      nodeLabel: originNode.label || originNode.id,
+      value: val
+    })
+  }
+
+  if (options.ownerNodeId && (contextKind === 'register' || contextKind === 'end')) {
+    const inEdges = gIdx.stateInByNode.get(options.ownerNodeId) ?? EMPTY_EDGES
+    inEdges.forEach((se, idx) => {
+      if (idx < POSITIONAL_LETTERS.length) {
+        bindLocal(POSITIONAL_LETTERS[idx]!, se.from, se.id)
+      }
+      if (se.label?.trim()) {
+        const customVar = mxIdentifier(se.label.trim())
+        if (customVar) bindLocal(customVar, se.from, se.id)
+      }
+    })
+  } else if (options.edgeId) {
+    const edge = gIdx.edgeById.get(options.edgeId)
+    if (edge) {
+      const srcNode = gIdx.byId.get(edge.from)
+      if (srcNode && srcNode.kind !== 'note') {
+        bindLocal('self', srcNode.id, edge.id)
+      }
+      if (edge.kind === 'resource') {
+        const edgeStateIns = gIdx.stateInByEdge.get(edge.id) ?? EMPTY_EDGES
+        const nodeStateIns = gIdx.stateInByNode.get(edge.from) ?? EMPTY_EDGES
+        const combined =
+          edgeStateIns.length && nodeStateIns.length
+            ? [...edgeStateIns, ...nodeStateIns]
+            : edgeStateIns.length
+              ? edgeStateIns
+              : nodeStateIns
+        combined.forEach((se, idx) => {
+          if (idx < POSITIONAL_LETTERS.length) {
+            bindLocal(POSITIONAL_LETTERS[idx]!, se.from, se.id)
+          }
+          if (se.label?.trim()) {
+            const customVar = mxIdentifier(se.label.trim())
+            if (customVar) bindLocal(customVar, se.from, se.id)
+          }
+        })
+        if (
+          !localStateMap.has('a') &&
+          srcNode &&
+          srcNode.kind !== 'source' &&
+          srcNode.kind !== 'note' &&
+          !doc.nodes.some(
+            (n) => n.kind !== 'note' && (n.id === 'a' || mxIdentifier(n.label) === 'a')
+          )
+        ) {
+          bindLocal('a', srcNode.id, edge.id)
+        }
+      } else if (
+        edge.kind === 'state' &&
+        srcNode &&
+        srcNode.kind !== 'note' &&
+        !doc.nodes.some((n) => n.kind !== 'note' && (n.id === 'a' || mxIdentifier(n.label) === 'a'))
+      ) {
+        bindLocal('a', srcNode.id, edge.id)
+      }
+    }
+  }
+
+  const evalVars: Record<string, number> = { ...sharedVars }
+  for (const [k, b] of localStateMap.entries()) {
+    evalVars[k] = b.value
+  }
+
+  // 3. 构建节点变量查找表
+  const nodeByVar = new Map<string, MxNode>()
+  const nodeByLowerVar = new Map<string, MxNode>()
+  for (const entry of gIdx.identEntries) {
+    const n = gIdx.byId.get(entry.id)
+    if (!n || n.kind === 'note') continue
+    nodeByVar.set(entry.id, n)
+    nodeByLowerVar.set(entry.id.toLowerCase(), n)
+    if (entry.ident && !paramByIdent.has(entry.ident)) {
+      nodeByVar.set(entry.ident, n)
+      nodeByLowerVar.set(entry.ident.toLowerCase(), n)
+    }
+  }
+
+  // 4. 提取公式中的表达式片段并扫描标识符
+  const raw = (formula ?? '').trim()
+  const exprSegments: string[] = []
+  if (raw) {
+    if (contextKind === 'resource') {
+      const spec = parseMxFlowFormula(raw)
+      const coreRaw = raw.replace(/\s*(?:\bevery\b|(?<!\|)\|(?!\|)).*$/i, '').trim()
+      if (/^(?:>=|<=|==|!=|<>|>|<|=)/.test(coreRaw)) {
+        const rhs = coreRaw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, '').trim()
+        if (rhs) exprSegments.push(rhs)
+      } else if (spec.type !== 'all' && !(spec.probability !== undefined && spec.expr === '1')) {
+        exprSegments.push(spec.expr)
+      }
+      if (spec.intervalExpr) exprSegments.push(spec.intervalExpr)
+    } else if (contextKind === 'state') {
+      const sv = parseSignedVarStateModifier(raw)
+      if (sv) {
+        exprSegments.push(sv.ident)
+      } else {
+        const sp = parseMxStateFormula(raw)
+        if (sp.type === 'expr') {
+          exprSegments.push(raw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+        }
+      }
+    } else {
+      exprSegments.push(raw.replace(/^(?:>=|<=|==|!=|<>|>|<|=)\s*/, ''))
+    }
+  }
+
+  const orderedTokens: string[] = []
+  const seenTokens = new Set<string>()
+  const pushToken = (tok: string): void => {
+    if (!tok || seenTokens.has(tok)) return
+    const low = tok.toLowerCase()
+    if (low === 'true' || low === 'false' || low === 'all' || low === 'every') return
+    seenTokens.add(tok)
+    orderedTokens.push(tok)
+  }
+
+  const walkTokens = (astNode: ExprNode): void => {
+    switch (astNode.t) {
+      case 'id':
+        pushToken(astNode.name)
+        break
+      case 'arr':
+        astNode.items.forEach(walkTokens)
+        break
+      case 'idx':
+        walkTokens(astNode.target)
+        astNode.indices.forEach(walkTokens)
+        break
+      case 'un':
+        walkTokens(astNode.a)
+        break
+      case 'bin':
+        walkTokens(astNode.a)
+        walkTokens(astNode.b)
+        break
+      case 'tern':
+        walkTokens(astNode.cond)
+        walkTokens(astNode.a)
+        walkTokens(astNode.b)
+        break
+      case 'call':
+        astNode.args.forEach(walkTokens)
+        break
+    }
+  }
+
+  let hasStochasticAst = false
+  const detectStochastic = (astNode: ExprNode | null): void => {
+    if (!astNode || hasStochasticAst) return
+    if (astNode.t === 'dice') {
+      hasStochasticAst = true
+      return
+    }
+    if (astNode.t === 'bin' && astNode.op === '..') {
+      hasStochasticAst = true
+      return
+    }
+    if (astNode.t === 'call') {
+      const fnLow = astNode.fn.toLowerCase()
+      if (fnLow === 'random' || fnLow === 'randomint' || fnLow === 'normal') {
+        hasStochasticAst = true
+        return
+      }
+      astNode.args.forEach(detectStochastic)
+      return
+    }
+    if (astNode.t === 'un') detectStochastic(astNode.a)
+    else if (astNode.t === 'bin') {
+      detectStochastic(astNode.a)
+      detectStochastic(astNode.b)
+    } else if (astNode.t === 'tern') {
+      detectStochastic(astNode.cond)
+      detectStochastic(astNode.a)
+      detectStochastic(astNode.b)
+    } else if (astNode.t === 'arr') astNode.items.forEach(detectStochastic)
+    else if (astNode.t === 'idx') {
+      detectStochastic(astNode.target)
+      astNode.indices.forEach(detectStochastic)
+    }
+  }
+
+  for (const seg of exprSegments) {
+    const trimmed = seg.trim()
+    if (!trimmed) continue
+    const ast = parseMxExpression(trimmed)
+    if (ast) {
+      walkTokens(ast)
+      detectStochastic(ast)
+    } else {
+      const re = /([A-Za-z_][A-Za-z0-9_]*)(\s*\()?/g
+      let m: RegExpExecArray | null
+      while ((m = re.exec(trimmed)) !== null) {
+        if (m[2]) continue
+        const ident = m[1]!
+        if (/^\d*[dD]\d+$/.test(ident)) {
+          hasStochasticAst = true
+          continue
+        }
+        const low = ident.toLowerCase()
+        if (
+          KNOWN_MX_FUNCTIONS.has(low) &&
+          !paramLowerMap.has(low) &&
+          !nodeByLowerVar.has(low) &&
+          !localStateMap.has(ident)
+        ) {
+          continue
+        }
+        pushToken(ident)
+      }
+    }
+  }
+
+  // 5. 为每个引用到的标识符归类来源与实时值
+  const referencedSymbols: MxFormulaSymbolRef[] = orderedTokens.map((tok) => {
+    const low = tok.toLowerCase()
+    const localHit = localStateMap.get(tok)
+    if (localHit) {
+      return {
+        token: tok,
+        source: 'state_input',
+        value: localHit.value,
+        valueText: formatMxCompactNum(localHit.value),
+        nodeId: localHit.nodeId,
+        nodeKind: localHit.nodeKind,
+        nodeLabel: localHit.nodeLabel,
+        edgeId: localHit.edgeId
+      }
+    }
+
+    const pHit = paramByIdent.get(tok) ?? paramLowerMap.get(low)
+    if (pHit) {
+      if (pHit.param.varKind === 'random_range') hasStochasticAst = true
+      return {
+        token: tok,
+        source: 'param',
+        value: pHit.value,
+        valueText: pHit.valueText,
+        paramId: pHit.param.id,
+        paramName: pHit.param.name,
+        paramVarKind: pHit.param.varKind ?? 'number',
+        paramFormula: pHit.param.formula
+      }
+    }
+
+    const nHit = nodeByVar.get(tok) ?? nodeByLowerVar.get(low)
+    if (nHit) {
+      const nv = effectiveValues[nHit.id] ?? 0
+      return {
+        token: tok,
+        source: 'node',
+        value: nv,
+        valueText: formatMxCompactNum(nv),
+        nodeId: nHit.id,
+        nodeKind: nHit.kind,
+        nodeLabel: nHit.label || nHit.id
+      }
+    }
+
+    if (low === 'step' || low === 't') {
+      return {
+        token: tok,
+        source: 'builtin_var',
+        value: step,
+        valueText: String(step)
+      }
+    }
+    if (low === 'pi') {
+      return {
+        token: tok,
+        source: 'builtin_var',
+        value: Math.PI,
+        valueText: '3.142'
+      }
+    }
+    if (low === 'e') {
+      return {
+        token: tok,
+        source: 'builtin_var',
+        value: Math.E,
+        valueText: '2.718'
+      }
+    }
+
+    return {
+      token: tok,
+      source: 'unknown'
+    }
+  })
+
+  // 6. 计算当前公式实时预览文本
+  let previewText: string | null = null
+  if (raw) {
+    const primarySeg = exprSegments[0]?.trim() ?? ''
+    const ast = primarySeg ? parseMxExpression(primarySeg) : null
+    if (ast) {
+      if (hasStochasticAst) {
+        const v0 = evalAst(ast, { vars: evalVars, arrays, rng: () => 0 })
+        const v1 = evalAst(ast, { vars: evalVars, arrays, rng: () => 0.999999 })
+        const lo = Math.min(v0, v1)
+        const hi = Math.max(v0, v1)
+        previewText =
+          Math.abs(hi - lo) < 1e-6
+            ? `= ${formatMxCompactNum(lo)}`
+            : `🎲 ${formatMxCompactNum(lo)} ~ ${formatMxCompactNum(hi)}`
+      } else {
+        const val = evalAst(ast, { vars: evalVars, arrays, rng: () => 0.5 })
+        previewText = `= ${formatMxCompactNum(val)}`
+      }
+    }
+  }
+
+  // 7. 构建完整可点选插入目录（状态输入 -> 全局参数 -> Pool/Register 节点 -> 内置变量/骰子/函数）
+  const catalog: MxFormulaCatalogItem[] = []
+  for (const [tok, lb] of localStateMap.entries()) {
+    if (tok === 'self') continue
+    catalog.push({
+      key: `st:${tok}`,
+      insertText: tok,
+      source: 'state_input',
+      title: tok,
+      subtitle: lb.nodeLabel,
+      valueText: formatMxCompactNum(lb.value),
+      nodeId: lb.nodeId,
+      nodeKind: lb.nodeKind
+    })
+  }
+
+  for (const p of doc.params) {
+    const ident = mxIdentifier(p.name)
+    if (!ident) continue
+    const pRec = paramByIdent.get(ident)
+    catalog.push({
+      key: `param:${p.id}`,
+      insertText: p.varKind === 'array' ? `${ident}[0]` : ident,
+      cursorBackOffset: p.varKind === 'array' ? 1 : 0,
+      source: 'param',
+      title: ident,
+      subtitle: p.varKind && p.varKind !== 'number' ? p.varKind : undefined,
+      valueText: pRec ? pRec.valueText : formatMxCompactNum(p.value),
+      paramId: p.id
+    })
+  }
+
+  const candidateNodes = doc.nodes.filter((n) => n.kind === 'pool' || n.kind === 'register')
+  for (const n of candidateNodes) {
+    const nv = effectiveValues[n.id] ?? 0
+    catalog.push({
+      key: `node:${n.id}`,
+      insertText: n.id,
+      source: 'node',
+      title: n.id,
+      subtitle: n.label && n.label !== n.id ? n.label : undefined,
+      valueText: formatMxCompactNum(nv),
+      nodeId: n.id,
+      nodeKind: n.kind
+    })
+  }
+
+  catalog.push({
+    key: 'builtin:STEP',
+    insertText: 'STEP',
+    source: 'builtin_var',
+    title: 'STEP',
+    fnId: 'STEP',
+    valueText: String(step)
+  })
+
+  for (const dice of [
+    { d: 'D6', range: '1..6' },
+    { d: '2D6', range: '2..12' },
+    { d: 'D20', range: '1..20' },
+    { d: 'D100', range: '1..100' }
+  ]) {
+    catalog.push({
+      key: `dice:${dice.d}`,
+      insertText: dice.d,
+      source: 'dice',
+      title: dice.d,
+      fnId: dice.d,
+      valueText: dice.range
+    })
+  }
+
+  for (const fn of MX_FORMULA_BUILTIN_FUNCTIONS) {
+    catalog.push({
+      key: `fn:${fn.fnId}`,
+      insertText: fn.insertText,
+      cursorBackOffset: fn.cursorBackOffset,
+      source: 'function',
+      title: fn.signature,
+      fnId: fn.fnId
+    })
+  }
+
+  return {
+    referencedSymbols,
+    previewText,
+    isStochastic: hasStochasticAst,
+    catalog
+  }
 }
 
 // ───────── 多色资源池（LIFO / Shuffle / Color Filter）辅助函数 ─────────
@@ -2083,11 +3004,12 @@ function getStateEdgeOriginValue(
   stateEdge: MxEdge,
   state: MxRuntimeState
 ): number {
-  if (stateEdge.resourceFilter && stateEdge.resourceId) {
-    const src = getMxGraphIndex(doc).byId.get(stateEdge.from)
-    if (src?.kind === 'pool') {
-      return countPoolTokensByColor(state, src.id, stateEdge.resourceId)
-    }
+  const src = getMxGraphIndex(doc).byId.get(stateEdge.from)
+  if (stateEdge.resourceFilter && stateEdge.resourceId && src?.kind === 'pool') {
+    return countPoolTokensByColor(state, src.id, stateEdge.resourceId)
+  }
+  if (src?.kind === 'gate' && state.gateLastRoll && stateEdge.from in state.gateLastRoll) {
+    return state.gateLastRoll[stateEdge.from]!
   }
   return state.values[stateEdge.from] ?? 0
 }
@@ -3957,7 +4879,23 @@ export function stepMxSimulation(
         Math.min(6, Math.round(sampleBoxMullerGaussian(rng, 3.5 + skillBonus, 1.1)))
       )
     }
-    return 1 + Math.floor(rng() * 6)
+    const mod = modifierBonus(doc, gate.id, state, 0, params, rng)
+    if (mod.overwrite !== null) {
+      return mod.overwrite + mod.bonus
+    }
+    const rawRollFormula = gate.formula?.trim()
+    if (rawRollFormula) {
+      const vars = exprNeedsVars(rawRollFormula)
+        ? buildVars(doc, state.values, params, step)
+        : params
+      const baseRoll = evaluateMxExpression(
+        rawRollFormula,
+        { vars, arrays: gIdx.paramArrays, rng },
+        1
+      )
+      return baseRoll + mod.bonus
+    }
+    return 1 + Math.floor(rng() * 6) + mod.bonus
   }
 
   const rollGateUnitFraction = (gate: MxNode): number => {
@@ -4151,7 +5089,7 @@ export function stepMxSimulation(
     state.gateLastRoll ??= {}
 
     if (outs.length > 0) {
-      const vars = buildVars(doc, state.values, params, step)
+      let vars = buildVars(doc, state.values, params, step)
       const normTok = tokenResId && tokenResId !== 'default' ? tokenResId : undefined
       const intervalOpen = outs.map((e) =>
         checkAndAdvanceEdgeInterval(
@@ -4207,54 +5145,66 @@ export function stepMxSimulation(
           }
         }
       } else {
-        const weights = outs.map((e, ei) => {
-          if (!intervalOpen[ei]) return 0
-          if (!isEdgeActive(doc, e, state, params, rng)) return 0
-          if (e.resourceFilter && e.resourceId && e.resourceId !== normTok) {
-            return 0
-          }
-          const f = parseMxFlowFormula(e.formula)
-          let w =
-            f.type === 'expr' && f.probability != null
-              ? f.probability * 100
-              : f.type === 'all'
-                ? 1
-                : Math.max(
-                    0,
-                    evaluateMxExpression(f.expr, { vars, arrays: gIdx.paramArrays, rng }, 1)
-                  )
-          const edgeMods = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
-          for (const se of edgeMods) {
-            if (!isEdgeActive(doc, se, state, params, rng)) continue
-            const sp = getEffectiveStateSpec(doc, se, state, params, rng, vars)
-            const sv = getStateEdgeOriginValue(doc, se, state)
-            if (sp.type === 'overwrite') w = Math.max(0, sv)
-            else if (sp.type === 'modifier') {
-              w = Math.max(0, sp.percent ? w * (1 + (sp.delta * sv) / 100) : w + sp.delta * sv)
-            } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
-              w = Math.max(0, w + Math.trunc(sv / sp.denominator) * sp.numerator)
-            } else if (sp.type === 'expr') {
-              w = Math.max(
-                0,
-                w + evalArithmeticStateExprBonus(doc, gIdx, sp.expr, sv, state, params, rng, vars)
-              )
+        const computeGateWeights = (): number[] => {
+          const ws = outs.map((e, ei) => {
+            if (!intervalOpen[ei]) return 0
+            if (!isEdgeActive(doc, e, state, params, rng)) return 0
+            if (e.resourceFilter && e.resourceId && e.resourceId !== normTok) {
+              return 0
             }
+            const f = parseMxFlowFormula(e.formula)
+            let w =
+              f.type === 'expr' && f.probability != null
+                ? f.probability * 100
+                : f.type === 'all'
+                  ? 1
+                  : Math.max(
+                      0,
+                      evaluateMxExpression(f.expr, { vars, arrays: gIdx.paramArrays, rng }, 1)
+                    )
+            const edgeMods = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
+            for (const se of edgeMods) {
+              if (!isEdgeActive(doc, se, state, params, rng)) continue
+              const sp = getEffectiveStateSpec(doc, se, state, params, rng, vars)
+              const sv = getStateEdgeOriginValue(doc, se, state)
+              if (sp.type === 'overwrite') w = Math.max(0, sv)
+              else if (sp.type === 'modifier') {
+                w = Math.max(0, sp.percent ? w * (1 + (sp.delta * sv) / 100) : w + sp.delta * sv)
+              } else if (sp.type === 'fraction_modifier' && sp.denominator > 0) {
+                w = Math.max(0, w + Math.trunc(sv / sp.denominator) * sp.numerator)
+              } else if (sp.type === 'expr') {
+                w = Math.max(
+                  0,
+                  w + evalArithmeticStateExprBonus(doc, gIdx, sp.expr, sv, state, params, rng, vars)
+                )
+              }
+            }
+            return w
+          })
+          // 状态修改量加在第一条输出（保底类设计）
+          if (ws.length > 0) {
+            const gateMod = modifierBonus(doc, gate.id, state, ws[0] ?? 0, params, rng)
+            ws[0] = Math.max(
+              0,
+              gateMod.overwrite !== null ? gateMod.overwrite : (ws[0] ?? 0) + gateMod.bonus
+            )
           }
-          return w
-        })
-        // 状态修改量加在第一条输出（保底类设计）
-        if (weights.length > 0) {
-          const gateMod = modifierBonus(doc, gate.id, state, weights[0] ?? 0, params, rng)
-          weights[0] = Math.max(
-            0,
-            gateMod.overwrite !== null ? gateMod.overwrite : (weights[0] ?? 0) + gateMod.bonus
-          )
+          return ws
         }
+        const recomputeWeightsPerUnit =
+          units > 1 &&
+          ((gIdx.stateInByNode.get(gate.id)?.length ?? 0) > 0 ||
+            outs.some((e) => (gIdx.stateInByEdge.get(e.id)?.length ?? 0) > 0))
+        let weights = computeGateWeights()
         const usesPercent = outs.some((e) => {
           const f = parseMxFlowFormula(e.formula)
           return f.type === 'expr' && f.probability != null
         })
         for (let u = 0; u < units; u++) {
+          if (u > 0 && recomputeWeightsPerUnit) {
+            vars = buildVars(doc, state.values, params, step)
+            weights = computeGateWeights()
+          }
           let idx = -1
           if (gate.gateMode === 'deterministic') {
             if (usesPercent) {
@@ -4818,7 +5768,9 @@ export function stepMxSimulation(
             node.pullMode === 'pull_any' || node.pullMode === 'push_any' ? 'any' : 'all'
           if (buffered > 1e-9 && ins.length > 0) {
             const req = ins.map((e) =>
-              evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false)
+              byId.get(e.from)?.kind === 'gate'
+                ? 1
+                : evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false)
             )
             const needTotal = req.reduce((a, b) => a + b, 0)
             if (needTotal > 0 && buffered + 1e-9 >= needTotal) {
@@ -5160,7 +6112,10 @@ export function stepMxSimulation(
           const ins = inRes(recNode.id)
           const needTotal = ins.reduce(
             (acc, e) =>
-              acc + evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false),
+              acc +
+              (byId.get(e.from)?.kind === 'gate'
+                ? 1
+                : evalFlowAmount(doc, e, state, params, rng, Number.POSITIVE_INFINITY, false)),
             0
           )
           if (needTotal > 0 && (state.values[recNode.id] ?? 0) + 1e-9 >= needTotal) {
