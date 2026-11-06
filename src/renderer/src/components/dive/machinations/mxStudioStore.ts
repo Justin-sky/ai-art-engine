@@ -107,6 +107,7 @@ export function createMxStudioStore(initial: MxDocument) {
   const snapToGrid = ref(true)
   const flowHeatmap = ref(false)
   const showNodeLabels = ref(true)
+  const compactEdgeFormulas = ref(true)
   const view = reactive({ x: 0, y: 0, zoom: 0.8 })
   const activeLayerId = ref<string>('')
   const formulaModal = ref<MxFormulaModalTarget | null>(null)
@@ -1965,6 +1966,7 @@ export function createMxStudioStore(initial: MxDocument) {
     snapToGrid,
     flowHeatmap,
     showNodeLabels,
+    compactEdgeFormulas,
     view,
     runs,
     activeRunId,

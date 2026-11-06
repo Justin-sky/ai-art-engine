@@ -9,11 +9,13 @@
 import {
   evaluateMxEdgeRuntimeGates,
   evaluateMxExpression,
+  formatMxCompactEdgeFormulas,
   mxNodeColor,
   parseMxStateFormula,
   resolveMxParams,
   type MxDocument,
   type MxEdge,
+  type MxEdgeCompactDisplay,
   type MxEdgeRuntimeGateSnapshot,
   type MxGroup,
   type MxNode,
@@ -37,9 +39,12 @@ export interface MxDiagramBoundsOptions {
   padding?: number
   minWidth?: number
   minHeight?: number
+  displayValues?: Record<string, number> | null
   displayFlows?: Record<string, number> | null
+  playStep?: number
   flowHeatmap?: boolean
   showNodeLabels?: boolean
+  compactEdgeFormulas?: boolean
   edgeCumulativeFlows?: Record<string, MxDiagramEdgeCumulativeFlow>
   nodeBottlenecks?: Record<string, MxDiagramBottleneckBadge>
 }
@@ -47,8 +52,6 @@ export interface MxDiagramBoundsOptions {
 export interface MxDiagramRenderOptions extends MxDiagramBoundsOptions {
   theme?: MxDiagramThemeMode
   showGrid?: boolean
-  displayValues?: Record<string, number> | null
-  playStep?: number
 }
 
 export interface MxDiagramBounds {
@@ -150,6 +153,8 @@ export function estimateMxTextWidth(text: string, fontSize = 11, isMono = false)
       code >= 0x1f300
     ) {
       width += fontSize * 1.06
+    } else if (code >= 0x2190 && code <= 0x27bf) {
+      width += fontSize * 0.78
     } else if (!isMono && 'ilI1.,:;!| '.includes(ch)) {
       width += fontSize * 0.36
     } else if (!isMono && ch >= 'A' && ch <= 'Z') {
@@ -300,7 +305,7 @@ function splitExportIntervalFormula(
   if (kind !== 'resource') {
     return { rateText: formulaText, intervalText: '' }
   }
-  const m = /^(.*?)\s*(?:\||(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
+  const m = /^(.*?)\s*(?:(?<!\|)\|(?!\|)|(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
   if (!m) {
     return { rateText: formulaText, intervalText: '' }
   }
@@ -335,6 +340,7 @@ interface DiagramEdgeGeo {
   hourglassX: number
   labelW: number
   formulaModified: boolean
+  tooltipText: string
 }
 
 function collectVisibleElements(doc: MxDocument): {
@@ -362,7 +368,8 @@ function buildExportEdgeGeometries(
   visibleIds: Set<string>,
   nodeById: Map<string, MxNode>,
   gateSnap?: MxEdgeRuntimeGateSnapshot | null,
-  playStep = 0
+  playStep = 0,
+  compactMap?: ReadonlyMap<string, MxEdgeCompactDisplay> | null
 ): DiagramEdgeGeo[] {
   const out: DiagramEdgeGeo[] = []
   const midByEdgeId = new Map<string, { x: number; y: number; labelW: number }>()
@@ -481,18 +488,24 @@ function buildExportEdgeGeometries(
       e.kind === 'resource' &&
       e.interval?.trim() &&
       e.interval.trim() !== '1' &&
-      !/\bevery\b|\|/i.test(rawFormula)
+      !/\bevery\b|(?<!\|)\|(?!\|)/i.test(rawFormula)
         ? `${rawFormula}|${e.interval.trim()}`
         : rawFormula
     const runtimeModFormula = playStep > 0 ? gateSnap?.modifiedEdgeFormulas.get(e.id) : undefined
     const formulaModified = runtimeModFormula !== undefined
     const effectiveFormula = runtimeModFormula ?? authoredWithIv
-    const { rateText: splitRate, intervalText } = splitExportIntervalFormula(
+    const { rateText: splitRate, intervalText: splitIv } = splitExportIntervalFormula(
       e.kind,
       effectiveFormula,
       formulaModified
     )
-    const rateText = e.influencer ? `★ ${splitRate}` : splitRate
+    const compactHit = !formulaModified ? compactMap?.get(e.id) : undefined
+    const displayRate = compactHit ? compactHit.compactRateText : splitRate
+    const intervalText = compactHit ? compactHit.compactIntervalText : splitIv
+    const rateText = e.influencer ? `★ ${displayRate}` : displayRate
+    const tooltipText = formulaModified
+      ? `fx: ${authoredWithIv} ⇒ ${effectiveFormula}`
+      : (compactHit?.tooltipText ?? '')
     const caption = e.label?.trim() || ''
 
     let labelW = 24
@@ -538,7 +551,8 @@ function buildExportEdgeGeometries(
       rightTextX,
       hourglassX,
       labelW,
-      formulaModified
+      formulaModified,
+      tooltipText
     })
   }
   return out
@@ -586,9 +600,27 @@ export function computeMxDiagramBounds(
   const minWidth = options.minWidth ?? 560
   const minHeight = options.minHeight ?? 360
   const showNodeLabels = options.showNodeLabels ?? true
+  const playStep = options.playStep ?? 0
 
   const { visibleGroups, visibleNodes, visibleIds, nodeById } = collectVisibleElements(doc)
-  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById)
+  const resolvedParams = resolveMxParams(doc)
+  const gateSnap =
+    playStep > 0
+      ? evaluateMxEdgeRuntimeGates(doc, {
+          values: options.displayValues,
+          step: playStep,
+          params: resolvedParams
+        })
+      : null
+  const compactMap =
+    options.compactEdgeFormulas !== false
+      ? formatMxCompactEdgeFormulas(doc, {
+          values: options.displayValues,
+          step: playStep,
+          params: resolvedParams
+        })
+      : null
+  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById, gateSnap, playStep, compactMap)
 
   let minX = Number.POSITIVE_INFINITY
   let minY = Number.POSITIVE_INFINITY
@@ -786,18 +818,21 @@ export function exportMxDiagramSvg(
   const { exportWidth: width, exportHeight: height, offsetX, offsetY } = bounds
   const { visibleGroups, visibleNodes, visibleIds, nodeById } = collectVisibleElements(doc)
   const resolvedParams = resolveMxParams(doc)
+  const playStep = options.playStep ?? 0
   const gateSnap = evaluateMxEdgeRuntimeGates(doc, {
     values: options.displayValues,
-    step: options.playStep ?? 0,
+    step: playStep,
     params: resolvedParams
   })
-  const edges = buildExportEdgeGeometries(
-    doc,
-    visibleIds,
-    nodeById,
-    gateSnap,
-    options.playStep ?? 0
-  )
+  const compactMap =
+    options.compactEdgeFormulas !== false
+      ? formatMxCompactEdgeFormulas(doc, {
+          values: options.displayValues,
+          step: playStep,
+          params: resolvedParams
+        })
+      : null
+  const edges = buildExportEdgeGeometries(doc, visibleIds, nodeById, gateSnap, playStep, compactMap)
 
   const converterColorById = new Map<string, string>()
   const condGateOutRe = /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
@@ -985,6 +1020,9 @@ export function exportMxDiagramSvg(
       out.push(
         `        <text text-anchor="middle" y="3.8" fill="${pillTextFg}" font-size="10.8" font-weight="${pillFontW}">${escapeXml(geo.rateText)}</text>`
       )
+    }
+    if (geo.tooltipText) {
+      out.push(`        <title>${escapeXml(geo.tooltipText)}</title>`)
     }
     if (options.flowHeatmap && geo.edge.kind === 'resource' && (cumFlow?.total ?? 0) > 0) {
       out.push(

@@ -401,6 +401,7 @@
               :class="{
                 'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
+                'is-compact-fx': geo.isCompactFormula && !isEdgeSelected(geo.edge.id),
                 'is-gated-off': geo.gatedOff && !isEdgeSelected(geo.edge.id),
                 'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                 'is-cond-highlight':
@@ -427,6 +428,7 @@
                 class="mx-edge-label"
                 :class="{
                   'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-compact-fx': geo.isCompactFormula && !isEdgeSelected(geo.edge.id),
                   'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                   'is-cond-highlight':
                     !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
@@ -441,6 +443,7 @@
                 class="mx-edge-label is-iv-num"
                 :class="{
                   'is-selected': isEdgeSelected(geo.edge.id),
+                  'is-compact-fx': geo.isCompactFormula && !isEdgeSelected(geo.edge.id),
                   'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                   'is-cond-highlight':
                     !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
@@ -475,6 +478,7 @@
               :class="{
                 'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
+                'is-compact-fx': geo.isCompactFormula && !isEdgeSelected(geo.edge.id),
                 'is-mod-active': geo.formulaModified && !isEdgeSelected(geo.edge.id),
                 'is-cond-highlight':
                   !isEdgeSelected(geo.edge.id) && consumerEdgeHitById.has(geo.edge.id)
@@ -484,9 +488,7 @@
             >
               {{ geo.rateText }}
             </text>
-            <title v-if="geo.formulaModified">
-              fx: {{ geo.authoredFormula }} ⇒ {{ geo.effectiveFormula }}
-            </title>
+            <title v-if="geo.tooltipText">{{ geo.tooltipText }}</title>
             <!-- Sankey 累计总流量徽标 -->
             <text
               v-if="
@@ -1256,6 +1258,15 @@
       </button>
       <button
         type="button"
+        :class="{ 'is-on': store.compactEdgeFormulas.value }"
+        :aria-pressed="store.compactEdgeFormulas.value"
+        :title="`${t('mx.canvas.compactEdgeFormulas')} (${store.compactEdgeFormulas.value ? t('mx.canvas.modeCompact') : t('mx.canvas.modeFull')})`"
+        @click="store.compactEdgeFormulas.value = !store.compactEdgeFormulas.value"
+      >
+        <span class="mx-fx-toggle-glyph" aria-hidden="true">ƒx</span>
+      </button>
+      <button
+        type="button"
         :class="{ 'is-on': store.flowHeatmap.value }"
         :title="t('mx.canvas.flowHeatmap')"
         @click="store.flowHeatmap.value = !store.flowHeatmap.value"
@@ -1884,6 +1895,7 @@ import {
   inspectMxFormulaContext,
   mxNodeColor,
   parseMxStateFormula,
+  formatMxCompactEdgeFormulas,
   resolveMxEdgeReferencedNodes,
   resolveMxNodeConsumers,
   resolveMxParams,
@@ -2724,6 +2736,8 @@ interface EdgeGeo {
   dormant: boolean
   gatedOff: boolean
   formulaModified: boolean
+  isCompactFormula: boolean
+  tooltipText: string
   authoredFormula: string
   effectiveFormula: string
 }
@@ -2745,6 +2759,8 @@ interface EdgeStaticMeta {
   dormant: boolean
   gatedOff: boolean
   formulaModified: boolean
+  isCompactFormula: boolean
+  tooltipText: string
   authoredFormula: string
   effectiveFormula: string
 }
@@ -2761,7 +2777,7 @@ function splitEdgeIntervalDisplay(
   if (kind !== 'resource') {
     return { rateText: formulaText, intervalText: '' }
   }
-  const m = /^(.*?)\s*(?:\||(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
+  const m = /^(.*?)\s*(?:(?<!\|)\|(?!\|)|(?:\bevery\b))\s*(.+)$/i.exec(formulaText)
   if (!m) {
     return { rateText: formulaText, intervalText: '' }
   }
@@ -2858,6 +2874,8 @@ function buildSingleEdgeGeo(
     dormant: meta.dormant,
     gatedOff: meta.gatedOff,
     formulaModified: meta.formulaModified,
+    isCompactFormula: meta.isCompactFormula,
+    tooltipText: meta.tooltipText,
     authoredFormula: meta.authoredFormula,
     effectiveFormula: meta.effectiveFormula
   }
@@ -2913,6 +2931,15 @@ const runtimeEdgeGates = computed(() => {
   })
 })
 
+const compactEdgeFormulaMap = computed(() => {
+  void store.topologyRevision.value
+  return formatMxCompactEdgeFormulas(store.peekDoc(), {
+    values: store.displayValues.value,
+    step: store.playStep.value,
+    params: resolvedParamsMap.value
+  })
+})
+
 const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
   void store.topologyRevision.value
   const d = store.peekDoc()
@@ -2921,6 +2948,8 @@ const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
   const resColors = resourceColorMap.value
   const flows = store.displayFlows.value
   const gateSnap = runtimeEdgeGates.value
+  const compactMap = compactEdgeFormulaMap.value
+  const compactMode = store.compactEdgeFormulas.value
   const isRuntimeStep = store.playStep.value > 0
   const showRuntimeMods = isRuntimeStep || store.playing.value || store.liveState.value !== null
   const selEdges = selectedEdgeSet.value
@@ -2949,18 +2978,25 @@ const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
       e.kind === 'resource' &&
       e.interval?.trim() &&
       e.interval.trim() !== '1' &&
-      !/\bevery\b|\|/i.test(rawFormula)
+      !/\bevery\b|(?<!\|)\|(?!\|)/i.test(rawFormula)
         ? `${rawFormula}|${e.interval.trim()}`
         : rawFormula
     const runtimeModFormula = showRuntimeMods ? gateSnap.modifiedEdgeFormulas.get(e.id) : undefined
     const formulaModified = runtimeModFormula !== undefined
     const effectiveFormula = runtimeModFormula ?? withInterval
-    const { rateText: splitRate, intervalText } = splitEdgeIntervalDisplay(
+    const { rateText: splitRate, intervalText: splitIv } = splitEdgeIntervalDisplay(
       e.kind,
       effectiveFormula,
       formulaModified
     )
-    const rateText = e.influencer ? `★ ${splitRate}` : splitRate
+    const compactHit = compactMap.get(e.id)
+    const isCompactFormula = Boolean(compactMode && !selected && !formulaModified && compactHit)
+    const displayRate = isCompactFormula && compactHit ? compactHit.compactRateText : splitRate
+    const intervalText = isCompactFormula && compactHit ? compactHit.compactIntervalText : splitIv
+    const rateText = e.influencer ? `★ ${displayRate}` : displayRate
+    const tooltipText = formulaModified
+      ? `fx: ${withInterval} ⇒ ${effectiveFormula}`
+      : (compactHit?.tooltipText ?? '')
     const caption = e.label?.trim() || ''
 
     let labelW = 24
@@ -3001,6 +3037,8 @@ const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
       dormant,
       gatedOff,
       formulaModified,
+      isCompactFormula,
+      tooltipText,
       authoredFormula: withInterval,
       effectiveFormula
     })
@@ -4607,6 +4645,7 @@ function fitView(): void {
     displayFlows: store.displayFlows.value,
     flowHeatmap: store.flowHeatmap.value,
     showNodeLabels: store.showNodeLabels.value,
+    compactEdgeFormulas: store.compactEdgeFormulas.value,
     edgeCumulativeFlows: store.edgeCumulativeFlows.value,
     nodeBottlenecks: store.nodeBottlenecks.value
   })
@@ -5099,6 +5138,7 @@ function buildCleanDiagramSvg(): { svgText: string; width: number; height: numbe
     displayFlows: store.displayFlows.value,
     flowHeatmap: store.flowHeatmap.value,
     showNodeLabels: store.showNodeLabels.value,
+    compactEdgeFormulas: store.compactEdgeFormulas.value,
     edgeCumulativeFlows: store.edgeCumulativeFlows.value,
     nodeBottlenecks: store.nodeBottlenecks.value,
     playStep: store.playStep.value
@@ -5322,6 +5362,12 @@ defineExpose({
 }
 .mx-edge-label.is-iv-num {
   font-size: 10.2px;
+}
+.mx-edge-label.is-compact-fx {
+  letter-spacing: -0.01em;
+}
+.mx-edge-pill-bg.is-compact-fx {
+  stroke-width: 1.45;
 }
 .mx-canvas.is-light .mx-edge-label {
   fill: color-mix(in srgb, var(--edge-c, #3b82f6) 84%, #0f172a);
@@ -5769,6 +5815,14 @@ defineExpose({
   min-width: 42px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.mx-fx-toggle-glyph {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: -0.03em;
+  line-height: 1;
 }
 
 /* 选中节点/连线悬浮操作条 */

@@ -8,6 +8,8 @@ import {
   createMxNode,
   evaluateMxEdgeRuntimeGates,
   exportMxDiagramSvg,
+  formatMxCompactEdgeFormulas,
+  isSimpleMxEdgeToken,
   runMxSimulation
 } from '../src/shared/gameAssets'
 import { createMxStudioStore } from '../src/renderer/src/components/dive/machinations/mxStudioStore'
@@ -341,5 +343,108 @@ describe('MxStudioStore zero-clone geometry drag & topologyRevision isolation', 
     expect(overflowTipSrc).not.toContain('#1b2230')
     expect(overflowTipSrc).not.toContain('#b8e0ff')
     expect(overflowTipSrc).toContain(':data-theme="resolvedTheme"')
+  })
+
+  it('compacts complex edge formulas to fx · <value> while keeping simple Machinations notations verbatim', () => {
+    for (const tok of ['1', '80%', 'D6', '2D6+1', 'all', '2..8', '>=15', '<=0']) {
+      expect(isSimpleMxEdgeToken('resource', tok)).toBe(true)
+    }
+    for (const tok of ['*', '!', '=', '+1', '-0.5', '+1i', '+1/3', '50%', '>=10', '2..6']) {
+      expect(isSimpleMxEdgeToken('state', tok)).toBe(true)
+    }
+
+    const doc = createEmptyMxDocument('compact-edge-formulas')
+    doc.params = [
+      { id: 'p1', name: 'BaseChips', value: 10 },
+      { id: 'p2', name: 'AddMult', value: 4 },
+      { id: 'p3', name: 'MaxCap', value: 15 }
+    ]
+    doc.nodes = [
+      { ...createMxNode('source', 60, 100, 'Deck'), id: 'src' },
+      { ...createMxNode('pool', 220, 100, 'HP'), id: 'hp_pool', initial: 12 },
+      { ...createMxNode('pool', 220, 220, 'MP'), id: 'mp_pool', initial: 6 },
+      { ...createMxNode('pool', 220, 340, 'Boost'), id: 'boost_pool', initial: 3 },
+      { ...createMxNode('register', 380, 220, 'CD'), id: 'cd_reg', formula: '2', initial: 2 },
+      { ...createMxNode('pool', 520, 100, 'Score'), id: 'score_pool', initial: 0 }
+    ]
+    doc.edges = [
+      { id: 'e_simple', kind: 'resource', from: 'src', to: 'hp_pool', formula: '10|3' },
+      {
+        id: 'e_long',
+        kind: 'resource',
+        from: 'src',
+        to: 'score_pool',
+        formula: 'round((BaseChips + STEP * 18) * (AddMult + STEP * 4))'
+      },
+      {
+        id: 'e_stoch',
+        kind: 'resource',
+        from: 'src',
+        to: 'score_pool',
+        formula: 'D6 + boost_pool'
+      },
+      {
+        id: 'e_split_iv',
+        kind: 'resource',
+        from: 'hp_pool',
+        to: 'score_pool',
+        formula: 'min(10, hp_pool) | max(1, cd_reg)'
+      },
+      {
+        id: 'e_cmp',
+        kind: 'resource',
+        from: 'hp_pool',
+        to: 'score_pool',
+        formula: '>= MaxCap * 2'
+      },
+      {
+        id: 's_var_mod',
+        kind: 'state',
+        from: 'boost_pool',
+        to: 'score_pool',
+        targetEdgeId: 'e_simple',
+        formula: '+boost_pool'
+      },
+      {
+        id: 's_bool',
+        kind: 'state',
+        from: 'hp_pool',
+        to: 'score_pool',
+        formula: 'hp_pool > 10 && mp_pool >= 5'
+      }
+    ]
+
+    const store = createMxStudioStore(doc)
+    expect(store.compactEdgeFormulas.value).toBe(true)
+
+    // Step 0 preview
+    const map0 = formatMxCompactEdgeFormulas(doc, { step: 0 })
+    expect(map0.has('e_simple')).toBe(false)
+    expect(map0.get('e_long')?.compactRateText).toBe('ƒx · 40')
+    expect(map0.get('e_stoch')?.compactRateText).toBe('ƒx · 4~9')
+    expect(map0.get('e_split_iv')?.compactRateText).toBe('ƒx · 10')
+    expect(map0.get('e_split_iv')?.compactIntervalText).toBe('ƒx·2')
+    expect(map0.get('e_cmp')?.compactRateText).toBe('ƒx · ≥30')
+    expect(map0.get('s_var_mod')?.compactRateText).toBe('ƒx · +3')
+    expect(map0.get('s_bool')?.compactRateText).toBe('ƒx · ✓')
+
+    // Dynamic runtime step update (STEP = 2, mp_pool drops to 2 -> boolean condition becomes false)
+    const map2 = formatMxCompactEdgeFormulas(doc, {
+      step: 2,
+      values: { hp_pool: 12, mp_pool: 2, boost_pool: 5, cd_reg: 3, score_pool: 100 }
+    })
+    // (10 + 36) * (4 + 8) = 46 * 12 = 552
+    expect(map2.get('e_long')?.compactRateText).toBe('ƒx · 552')
+    expect(map2.get('s_var_mod')?.compactRateText).toBe('ƒx · +5')
+    expect(map2.get('s_bool')?.compactRateText).toBe('ƒx · ×')
+
+    // Default SVG export uses compact pills + <title> hover tooltip; compactEdgeFormulas: false expands full formula
+    const compactSvg = exportMxDiagramSvg(doc).svgText
+    expect(compactSvg).toContain('>ƒx · 40</text>')
+    expect(compactSvg).toContain('<title>ƒx: round((BaseChips + STEP * 18) * (AddMult + STEP * 4))')
+    expect(compactSvg).not.toContain('>round((BaseChips + STEP * 18)')
+
+    const fullSvg = exportMxDiagramSvg(doc, { compactEdgeFormulas: false }).svgText
+    expect(fullSvg).toContain('>round((BaseChips + STEP * 18) * (AddMult + STEP * 4))</text>')
   })
 })

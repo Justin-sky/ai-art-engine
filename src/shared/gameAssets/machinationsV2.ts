@@ -2880,6 +2880,389 @@ export function inspectMxFormulaContext(
   }
 }
 
+export interface MxEdgeCompactDisplay {
+  /** 精简后的左侧主胶囊文本（若速率段本身为简单字面量而仅间隔段复杂，则保留原简单速率） */
+  compactRateText: string
+  /** 精简后的右侧间隔文本（无间隔为空串；简单间隔保留原文本；复杂间隔显示 `ƒx·N`） */
+  compactIntervalText: string
+  /** 当前求值结果摘要 */
+  valuePreview: string
+  /** 悬停完整公式与实时求值提示文案 */
+  tooltipText: string
+}
+
+const SIMPLE_RES_NUMBER_RE = /^[+-]?\d+(?:\.\d+)?$/
+const SIMPLE_RES_PROB_RE = /^(?:\d+(?:\.\d+)?\s*@?\s*)?\d+(?:\.\d+)?\s*%$/
+const SIMPLE_RES_ALL_RE = /^all$/i
+const SIMPLE_RES_DICE_RE = /^(?:\d+)?[dD]\d+(?:\s*[+-]\s*\d+(?:\.\d+)?)?$/
+const SIMPLE_RES_RANGE_RE = /^-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$/
+const SIMPLE_RES_CMP_RE = /^(?:>=|<=|==|!=|<>|[><=≥≤≠])\s*[+-]?\d+(?:\.\d+)?%?$/
+const SIMPLE_STATE_MULT_MOD_RE = /^[*/]\s*\d+(?:\.\d+)?$/
+const SIMPLE_STATE_UNICODE_CMP_RE = /^[≥≤≠]\s*-?\d+(?:\.\d+)?%?$/
+
+/**
+ * 判断连线上的单段公式 token 是否为无需折叠的原味短记号（如 `5`、`80%`、`D6+1`、`>=15`、`+1`、`+1i`、`*`、`all` 等）。
+ */
+export function isSimpleMxEdgeToken(kind: 'resource' | 'state', rawToken: string): boolean {
+  const s = rawToken.trim()
+  if (!s) return true
+  if (kind === 'state') {
+    const spec = parseMxStateFormula(s)
+    if (spec.type !== 'expr') return true
+    return SIMPLE_STATE_MULT_MOD_RE.test(s) || SIMPLE_STATE_UNICODE_CMP_RE.test(s)
+  }
+  return (
+    SIMPLE_RES_NUMBER_RE.test(s) ||
+    SIMPLE_RES_PROB_RE.test(s) ||
+    SIMPLE_RES_ALL_RE.test(s) ||
+    SIMPLE_RES_DICE_RE.test(s) ||
+    SIMPLE_RES_RANGE_RE.test(s) ||
+    SIMPLE_RES_CMP_RE.test(s)
+  )
+}
+
+function normalizeMxDisplayCmpOp(op: string): string {
+  if (op === '>=') return '≥'
+  if (op === '<=') return '≤'
+  if (op === '!=' || op === '<>') return '≠'
+  if (op === '==') return '='
+  return op
+}
+
+function isAstStochasticWithParams(
+  astNode: ExprNode | null,
+  randomRangeParamLowers: Set<string>
+): boolean {
+  if (!astNode) return false
+  switch (astNode.t) {
+    case 'dice':
+      return true
+    case 'id':
+      return randomRangeParamLowers.has(astNode.name.toLowerCase())
+    case 'un':
+      return isAstStochasticWithParams(astNode.a, randomRangeParamLowers)
+    case 'bin':
+      if (astNode.op === '..') return true
+      return (
+        isAstStochasticWithParams(astNode.a, randomRangeParamLowers) ||
+        isAstStochasticWithParams(astNode.b, randomRangeParamLowers)
+      )
+    case 'tern':
+      return (
+        isAstStochasticWithParams(astNode.cond, randomRangeParamLowers) ||
+        isAstStochasticWithParams(astNode.a, randomRangeParamLowers) ||
+        isAstStochasticWithParams(astNode.b, randomRangeParamLowers)
+      )
+    case 'arr':
+      return astNode.items.some((it) => isAstStochasticWithParams(it, randomRangeParamLowers))
+    case 'idx':
+      return (
+        isAstStochasticWithParams(astNode.target, randomRangeParamLowers) ||
+        astNode.indices.some((ix) => isAstStochasticWithParams(ix, randomRangeParamLowers))
+      )
+    case 'call': {
+      const fnLow = astNode.fn.toLowerCase()
+      if (
+        fnLow === 'random' ||
+        fnLow === 'randint' ||
+        fnLow === 'randomint' ||
+        fnLow === 'norm' ||
+        fnLow === 'gaussian' ||
+        fnLow === 'normal' ||
+        fnLow === 'pickrandom'
+      ) {
+        return true
+      }
+      return astNode.args.some((arg) => isAstStochasticWithParams(arg, randomRangeParamLowers))
+    }
+    default:
+      return false
+  }
+}
+
+/**
+ * 批量将图中包含复杂表达式（含函数、标识符运算或多条件组合）的连线公式求值为紧凑胶囊文案 `ƒx · <当前值>`。
+ * 若整张图均为简单字面量记号，立即返回空 Map（零上下文分配开销）。
+ */
+export function formatMxCompactEdgeFormulas(
+  doc: MxDocument,
+  options: {
+    values?: Record<string, number> | null
+    step?: number
+    params?: Record<string, number>
+  } = {}
+): Map<string, MxEdgeCompactDisplay> {
+  const result = new Map<string, MxEdgeCompactDisplay>()
+  const candidates: Array<{
+    edge: MxEdge
+    authoredFull: string
+    rawRate: string
+    rawIv: string
+    rateComplex: boolean
+    ivComplex: boolean
+  }> = []
+
+  for (const e of doc.edges) {
+    const rawFormula = (e.formula || (e.kind === 'state' ? '*' : '1')).trim()
+    const authoredFull =
+      e.kind === 'resource' &&
+      e.interval?.trim() &&
+      e.interval.trim() !== '1' &&
+      !/\bevery\b|(?<!\|)\|(?!\|)/i.test(rawFormula)
+        ? `${rawFormula}|${e.interval.trim()}`
+        : rawFormula
+
+    let rawRate = authoredFull
+    let rawIv = ''
+    if (e.kind === 'resource') {
+      const ivMatch = /^(.*?)\s*(?:\bevery\b|(?<!\|)\|(?!\|))\s*(.+)$/i.exec(authoredFull)
+      if (ivMatch) {
+        rawRate = ivMatch[1]!.trim() || '1'
+        const ivPart = ivMatch[2]!.trim()
+        rawIv = ivPart === '1' ? '' : ivPart
+      }
+    }
+
+    const rateComplex = !isSimpleMxEdgeToken(e.kind, rawRate)
+    const ivComplex = Boolean(rawIv && !isSimpleMxEdgeToken('resource', rawIv))
+    if (rateComplex || ivComplex) {
+      candidates.push({
+        edge: e,
+        authoredFull,
+        rawRate,
+        rawIv,
+        rateComplex,
+        ivComplex
+      })
+    }
+  }
+
+  if (candidates.length === 0) return result
+
+  const gIdx = getMxGraphIndex(doc)
+  const step = Math.max(0, Math.floor(options.step ?? 0))
+  const effectiveValues: Record<string, number> = {}
+  for (const n of doc.nodes) {
+    if (n.kind === 'note') continue
+    effectiveValues[n.id] =
+      options.values && n.id in options.values ? (options.values[n.id] ?? 0) : (n.initial ?? 0)
+  }
+
+  const arrays = gIdx.paramArrays ?? buildParamArrays(doc)
+  const baseParams = options.params ?? resolveMxParams(doc)
+  const sharedVars = buildVars(doc, effectiveValues, baseParams, step)
+
+  const paramNames = new Set<string>()
+  const randomRangeParamLowers = new Set<string>()
+  for (const p of doc.params) {
+    const ident = mxIdentifier(p.name)
+    if (!ident) continue
+    paramNames.add(ident)
+    if (p.varKind === 'random_range') {
+      randomRangeParamLowers.add(ident.toLowerCase())
+    } else if (p.varKind === 'expr' && p.formula?.trim() && !p.formula.trim().startsWith('[')) {
+      const val = evaluateMxExpression(
+        p.formula,
+        { vars: sharedVars, arrays, rng: () => 0.5 },
+        p.value ?? 0
+      )
+      sharedVars[ident] = val
+    }
+  }
+
+  if (!options.values) {
+    for (const reg of gIdx.registers) {
+      if (reg.formula?.trim()) {
+        const rv = evaluateMxExpression(
+          reg.formula,
+          { vars: sharedVars, arrays, rng: () => 0.5 },
+          reg.initial ?? 0
+        )
+        const rounded = Math.round(rv * 1000) / 1000
+        effectiveValues[reg.id] = rounded
+        sharedVars[reg.id] = rounded
+        const rIdent = mxIdentifier(reg.label)
+        if (rIdent && !paramNames.has(rIdent)) sharedVars[rIdent] = rounded
+      }
+    }
+  }
+
+  const hasExplicitNodeA = doc.nodes.some(
+    (n) => n.kind !== 'note' && (n.id === 'a' || mxIdentifier(n.label) === 'a')
+  )
+
+  const evalSegmentPreview = (
+    exprSrc: string,
+    evalVars: Record<string, number>
+  ): { ok: boolean; text: string; num: number; stochastic: boolean } => {
+    const ast = parseMxExpression(exprSrc.trim())
+    if (!ast) return { ok: false, text: '', num: 0, stochastic: false }
+    const stochastic = isAstStochasticWithParams(ast, randomRangeParamLowers)
+    if (stochastic) {
+      const v0 = evalAst(ast, { vars: evalVars, arrays, rng: () => 0 })
+      const v1 = evalAst(ast, { vars: evalVars, arrays, rng: () => 0.999999 })
+      const lo = Math.min(v0, v1)
+      const hi = Math.max(v0, v1)
+      if (Math.abs(hi - lo) >= 1e-6) {
+        return {
+          ok: true,
+          text: `${formatMxCompactNum(lo)}~${formatMxCompactNum(hi)}`,
+          num: (lo + hi) / 2,
+          stochastic: true
+        }
+      }
+      return { ok: true, text: formatMxCompactNum(lo), num: lo, stochastic: false }
+    }
+    const val = evalAst(ast, { vars: evalVars, arrays, rng: () => 0.5 })
+    return { ok: true, text: formatMxCompactNum(val), num: val, stochastic: false }
+  }
+
+  for (const cand of candidates) {
+    const { edge: e, authoredFull, rawRate, rawIv, rateComplex, ivComplex } = cand
+    const evalVars: Record<string, number> = { ...sharedVars }
+    let boundLocalA = false
+    const bindLocalVar = (token: string, targetNodeId: string): void => {
+      const originNode = gIdx.byId.get(targetNodeId)
+      if (!originNode || originNode.kind === 'note') return
+      if (paramNames.has(token)) return
+      evalVars[token] = effectiveValues[originNode.id] ?? 0
+      if (token === 'a') boundLocalA = true
+    }
+
+    const srcNode = gIdx.byId.get(e.from)
+    if (srcNode && srcNode.kind !== 'note') {
+      bindLocalVar('self', srcNode.id)
+    }
+    if (e.kind === 'resource') {
+      const edgeStateIns = gIdx.stateInByEdge.get(e.id) ?? EMPTY_EDGES
+      const nodeStateIns = gIdx.stateInByNode.get(e.from) ?? EMPTY_EDGES
+      const combined =
+        edgeStateIns.length && nodeStateIns.length
+          ? [...edgeStateIns, ...nodeStateIns]
+          : edgeStateIns.length
+            ? edgeStateIns
+            : nodeStateIns
+      combined.forEach((se, idx) => {
+        if (idx < POSITIONAL_LETTERS.length) {
+          bindLocalVar(POSITIONAL_LETTERS[idx]!, se.from)
+        }
+        if (se.label?.trim()) {
+          const customVar = mxIdentifier(se.label.trim())
+          if (customVar) bindLocalVar(customVar, se.from)
+        }
+      })
+      if (
+        !boundLocalA &&
+        srcNode &&
+        srcNode.kind !== 'source' &&
+        srcNode.kind !== 'note' &&
+        !hasExplicitNodeA
+      ) {
+        bindLocalVar('a', srcNode.id)
+      }
+    } else if (e.kind === 'state' && srcNode && srcNode.kind !== 'note' && !hasExplicitNodeA) {
+      bindLocalVar('a', srcNode.id)
+    }
+
+    let compactRateText = rawRate
+    let rateValSummary = rawRate
+
+    if (rateComplex) {
+      if (e.kind === 'resource') {
+        const cmpMatch = /^(>=|<=|==|!=|<>|[><=≥≤≠])\s*(.+)$/.exec(rawRate)
+        if (cmpMatch && !/&&|\|\|/.test(cmpMatch[2]!)) {
+          const normOp = normalizeMxDisplayCmpOp(cmpMatch[1]!)
+          const ev = evalSegmentPreview(cmpMatch[2]!, evalVars)
+          rateValSummary = ev.ok ? `${normOp}${ev.text}` : normOp
+          compactRateText = ev.ok ? `ƒx · ${rateValSummary}` : 'ƒx'
+        } else {
+          const atProbMatch = /^(.*?)\s*@\s*(\d+(?:\.\d+)?)\s*%$/.exec(rawRate)
+          const pctSuffixMatch = !atProbMatch ? /^(.+?)\s*%$/.exec(rawRate) : null
+          if (atProbMatch && atProbMatch[1]!.trim()) {
+            const ev = evalSegmentPreview(atProbMatch[1]!, evalVars)
+            rateValSummary = ev.ok ? `${ev.text}@${atProbMatch[2]}%` : '?'
+            compactRateText = ev.ok ? `ƒx · ${rateValSummary}` : 'ƒx'
+          } else if (pctSuffixMatch && pctSuffixMatch[1]!.trim()) {
+            const ev = evalSegmentPreview(pctSuffixMatch[1]!, evalVars)
+            rateValSummary = ev.ok ? `${ev.text}%` : '?'
+            compactRateText = ev.ok ? `ƒx · ${rateValSummary}` : 'ƒx'
+          } else {
+            const ev = evalSegmentPreview(rawRate, evalVars)
+            rateValSummary = ev.ok ? ev.text : '?'
+            compactRateText = ev.ok ? `ƒx · ${ev.text}` : 'ƒx'
+          }
+        }
+      } else {
+        const sv = parseSignedVarStateModifier(rawRate)
+        if (sv) {
+          const ev = evalSegmentPreview(sv.ident, evalVars)
+          if (ev.ok) {
+            const delta = sv.sign * ev.num
+            const prefix = delta >= 0 ? '+' : ''
+            const suffix = `${sv.percent ? '%' : ''}${sv.interval ? 'i' : ''}`
+            rateValSummary = `${prefix}${formatMxCompactNum(delta)}${suffix}`
+            compactRateText = `ƒx · ${rateValSummary}`
+          } else {
+            rateValSummary = '?'
+            compactRateText = 'ƒx'
+          }
+        } else {
+          const cmpMatch = /^(>=|<=|==|!=|<>|[><=≥≤≠])\s*(.+)$/.exec(rawRate)
+          if (cmpMatch && !/&&|\|\|/.test(cmpMatch[2]!)) {
+            const normOp = normalizeMxDisplayCmpOp(cmpMatch[1]!)
+            const ev = evalSegmentPreview(cmpMatch[2]!, evalVars)
+            rateValSummary = ev.ok ? `${normOp}${ev.text}` : normOp
+            compactRateText = ev.ok ? `ƒx · ${rateValSummary}` : 'ƒx'
+          } else {
+            const stSpec = parseMxStateFormula(rawRate)
+            const exprStr = stSpec.type === 'expr' ? stSpec.expr : rawRate
+            const ev = evalSegmentPreview(exprStr, evalVars)
+            if (!ev.ok) {
+              rateValSummary = '?'
+              compactRateText = 'ƒx'
+            } else if (isMxBooleanStateExpr(exprStr)) {
+              const pass = Math.abs(ev.num) > 1e-9
+              rateValSummary = pass ? '✓' : '×'
+              compactRateText = `ƒx · ${rateValSummary}`
+            } else {
+              const plusPrefix = rawRate.startsWith('+') && ev.num >= 0 ? '+' : ''
+              rateValSummary = `${plusPrefix}${ev.text}`
+              compactRateText = `ƒx · ${rateValSummary}`
+            }
+          }
+        }
+      }
+    }
+
+    let compactIntervalText = rawIv
+    let ivValSummary = rawIv
+    if (ivComplex) {
+      const ivEv = evalSegmentPreview(rawIv, evalVars)
+      if (ivEv.ok) {
+        ivValSummary = ivEv.stochastic
+          ? ivEv.text
+          : formatMxCompactNum(Math.max(1, Math.round(ivEv.num)))
+        compactIntervalText = `ƒx·${ivValSummary}`
+      } else {
+        ivValSummary = '?'
+        compactIntervalText = 'ƒx'
+      }
+    }
+
+    const valuePreview = rawIv ? `${rateValSummary} | ${ivValSummary}` : rateValSummary
+    const tooltipText = `ƒx: ${authoredFull}  ⇒  ${valuePreview}`
+
+    result.set(e.id, {
+      compactRateText,
+      compactIntervalText,
+      valuePreview,
+      tooltipText
+    })
+  }
+
+  return result
+}
+
 // ───────── 多色资源池（LIFO / Shuffle / Color Filter）辅助函数 ─────────
 
 function countPoolTokensByColor(state: MxRuntimeState, poolId: string, resId?: string): number {
