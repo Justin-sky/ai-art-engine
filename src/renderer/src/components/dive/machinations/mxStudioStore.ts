@@ -77,10 +77,22 @@ function clone<T>(v: T): T {
 }
 
 export function createMxStudioStore(initial: MxDocument) {
-  const doc = ref<MxDocument>(normalizeMxDocument(clone(initial)))
+  const initialDoc = normalizeMxDocument(clone(initial))
+  const doc = ref<MxDocument>(initialDoc)
+  let rawDocSnapshot: MxDocument = initialDoc
   const undoStack: string[] = []
   const redoStack: string[] = []
   const historyRev = ref(0)
+  /** 任意文档变更递增（含几何位移与语义变更），用于轻量持久化监听 */
+  const docRevision = ref(0)
+  /** 仅拓扑/公式/参数/资源/图层/配置等语义变更递增，纯坐标拖拽不递增，避免下游公式与健康度陪跑重算 */
+  const topologyRevision = ref(0)
+  /** 画布节点/分组/连线弧度正在实时指针拖拽中 */
+  const isCanvasDragging = ref(false)
+  /** 不收集 doc Ref 依赖地读取当前文档（配合 topologyRevision 实现纯拓扑计算零坐标陪跑） */
+  function peekDoc(): MxDocument {
+    return rawDocSnapshot
+  }
 
   const selection = reactive<{ nodes: string[]; edges: string[] }>({ nodes: [], edges: [] })
   const tool = ref<MxTool>('select')
@@ -259,20 +271,46 @@ export function createMxStudioStore(initial: MxDocument) {
   /** 修改文档（自动入撤销栈）；coalesceKey 相同的连续修改合并为一次撤销 */
   let lastCoalesce = ''
   let lastCoalesceAt = 0
-  function mutate(fn: (d: MxDocument) => void, coalesceKey = ''): void {
+  function recordUndoWithCoalesce(coalesceKey = ''): void {
     const now = Date.now()
-    if (!coalesceKey || coalesceKey !== lastCoalesce || now - lastCoalesceAt > 800)
+    if (!coalesceKey || coalesceKey !== lastCoalesce || now - lastCoalesceAt > 800) {
       snapshotForUndo()
+    }
     lastCoalesce = coalesceKey
     lastCoalesceAt = now
+  }
+
+  function mutate(fn: (d: MxDocument) => void, coalesceKey = ''): void {
+    recordUndoWithCoalesce(coalesceKey)
     const next = clone(doc.value)
     fn(next)
+    rawDocSnapshot = next
     doc.value = next
+    docRevision.value++
+    topologyRevision.value++
+  }
+
+  /**
+   * 纯几何属性变更（坐标 x/y、尺寸 width/height、连线弧度 bend）：
+   * 仅浅拷贝受影响的数组与图元对象，跳过整份文档（含 workbench/history）的 JSON 序列化深拷贝，
+   * 且不递增 topologyRevision，避免触发无关的公式词法分析与经济健康度诊断。
+   */
+  function mutateGeometry(fn: (d: MxDocument) => void, coalesceKey = ''): void {
+    recordUndoWithCoalesce(coalesceKey)
+    const next: MxDocument = { ...doc.value }
+    fn(next)
+    rawDocSnapshot = next
+    doc.value = next
+    docRevision.value++
   }
 
   function replaceDoc(next: MxDocument, recordUndo = true): void {
     if (recordUndo) snapshotForUndo()
-    doc.value = normalizeMxDocument(clone(next))
+    const normalized = normalizeMxDocument(clone(next))
+    rawDocSnapshot = normalized
+    doc.value = normalized
+    docRevision.value++
+    topologyRevision.value++
     selection.nodes = []
     selection.edges = []
     resetPlayback()
@@ -288,8 +326,12 @@ export function createMxStudioStore(initial: MxDocument) {
     const prev = undoStack.pop()
     if (!prev) return
     redoStack.push(JSON.stringify(doc.value))
-    doc.value = JSON.parse(prev) as MxDocument
+    const parsed = JSON.parse(prev) as MxDocument
+    rawDocSnapshot = parsed
+    doc.value = parsed
     historyRev.value++
+    docRevision.value++
+    topologyRevision.value++
     pruneSelection()
   }
 
@@ -297,8 +339,12 @@ export function createMxStudioStore(initial: MxDocument) {
     const next = redoStack.pop()
     if (!next) return
     undoStack.push(JSON.stringify(doc.value))
-    doc.value = JSON.parse(next) as MxDocument
+    const parsed = JSON.parse(next) as MxDocument
+    rawDocSnapshot = parsed
+    doc.value = parsed
     historyRev.value++
+    docRevision.value++
+    topologyRevision.value++
     pruneSelection()
   }
 
@@ -400,7 +446,10 @@ export function createMxStudioStore(initial: MxDocument) {
   }
 
   function autoLayout(): void {
-    mutate((d) => {
+    mutateGeometry((d) => {
+      d.nodes = d.nodes.map((n) => ({ ...n }))
+      d.edges = d.edges.map((e) => ({ ...e }))
+      if (d.groups) d.groups = d.groups.map((g) => ({ ...g }))
       autoLayoutMxDocument(d)
     })
   }
@@ -422,24 +471,38 @@ export function createMxStudioStore(initial: MxDocument) {
     select([])
   }
 
+  const NODE_GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height'])
+
   function updateNode(id: string, patch: Partial<MxNode>, coalesce = ''): void {
-    mutate(
-      (d) => {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) Object.assign(n, patch)
-      },
-      coalesce || `node:${id}:${Object.keys(patch).join(',')}`
-    )
+    const keys = Object.keys(patch)
+    if (!keys.length) return
+    const key = coalesce || `node:${id}:${keys.join(',')}`
+    if (keys.every((k) => NODE_GEOMETRY_KEYS.has(k))) {
+      mutateGeometry((d) => {
+        d.nodes = d.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n))
+      }, key)
+      return
+    }
+    mutate((d) => {
+      const n = d.nodes.find((x) => x.id === id)
+      if (n) Object.assign(n, patch)
+    }, key)
   }
 
   function updateEdge(id: string, patch: Partial<MxEdge>, coalesce = ''): void {
-    mutate(
-      (d) => {
-        const e = d.edges.find((x) => x.id === id)
-        if (e) Object.assign(e, patch)
-      },
-      coalesce || `edge:${id}:${Object.keys(patch).join(',')}`
-    )
+    const keys = Object.keys(patch)
+    if (!keys.length) return
+    const key = coalesce || `edge:${id}:${keys.join(',')}`
+    if (keys.length === 1 && keys[0] === 'bend') {
+      mutateGeometry((d) => {
+        d.edges = d.edges.map((e) => (e.id === id ? { ...e, bend: patch.bend } : e))
+      }, key)
+      return
+    }
+    mutate((d) => {
+      const e = d.edges.find((x) => x.id === id)
+      if (e) Object.assign(e, patch)
+    }, key)
   }
 
   /**
@@ -534,13 +597,36 @@ export function createMxStudioStore(initial: MxDocument) {
   }
 
   function moveNodes(ids: string[], dx: number, dy: number, coalesce: string): void {
+    if (!ids.length || (dx === 0 && dy === 0)) return
     const set = new Set(ids)
-    mutate((d) => {
-      for (const n of d.nodes) {
-        if (!set.has(n.id)) continue
-        n.x = Math.round(n.x + dx)
-        n.y = Math.round(n.y + dy)
+    mutateGeometry((d) => {
+      d.nodes = d.nodes.map((n) =>
+        set.has(n.id) ? { ...n, x: Math.round(n.x + dx), y: Math.round(n.y + dy) } : n
+      )
+    }, coalesce)
+  }
+
+  /** 拖拽结束时一次性提交节点最终坐标（零深拷贝，无实际位移则不污染撤销栈） */
+  function commitNodePositions(
+    positions: ReadonlyMap<string, { x: number; y: number }>,
+    coalesce = ''
+  ): void {
+    if (!positions.size) return
+    let changed = false
+    for (const n of doc.value.nodes) {
+      const next = positions.get(n.id)
+      if (!next) continue
+      if (n.x !== Math.round(next.x) || n.y !== Math.round(next.y)) {
+        changed = true
+        break
       }
+    }
+    if (!changed) return
+    mutateGeometry((d) => {
+      d.nodes = d.nodes.map((n) => {
+        const next = positions.get(n.id)
+        return next ? { ...n, x: Math.round(next.x), y: Math.round(next.y) } : n
+      })
     }, coalesce)
   }
 
@@ -579,32 +665,100 @@ export function createMxStudioStore(initial: MxDocument) {
   }
 
   function moveGroup(groupId: string, dx: number, dy: number, coalesce: string): void {
-    mutate((d) => {
-      const g = d.groups?.find((x) => x.id === groupId)
-      if (!g) return
-      const x0 = g.x
-      const y0 = g.y
-      const x1 = g.x + g.width
-      const y1 = g.y + g.height
-      g.x = Math.round(g.x + dx)
-      g.y = Math.round(g.y + dy)
-      for (const n of d.nodes) {
-        if (n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1) {
-          n.x = Math.round(n.x + dx)
-          n.y = Math.round(n.y + dy)
+    if (dx === 0 && dy === 0) return
+    const curGrp = doc.value.groups?.find((x) => x.id === groupId)
+    if (!curGrp) return
+    const x0 = curGrp.x
+    const y0 = curGrp.y
+    const x1 = curGrp.x + curGrp.width
+    const y1 = curGrp.y + curGrp.height
+    mutateGeometry((d) => {
+      d.groups = (d.groups ?? []).map((g) =>
+        g.id === groupId ? { ...g, x: Math.round(g.x + dx), y: Math.round(g.y + dy) } : g
+      )
+      d.nodes = d.nodes.map((n) =>
+        n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1
+          ? { ...n, x: Math.round(n.x + dx), y: Math.round(n.y + dy) }
+          : n
+      )
+    }, coalesce)
+  }
+
+  /** 分组拖拽结束时一次性提交分组及组内节点的最终坐标 */
+  function commitGroupMove(
+    groupId: string,
+    nextX: number,
+    nextY: number,
+    movedNodes: ReadonlyMap<string, { x: number; y: number }>,
+    coalesce = ''
+  ): void {
+    const curGrp = doc.value.groups?.find((x) => x.id === groupId)
+    if (!curGrp) return
+    const rx = Math.round(nextX)
+    const ry = Math.round(nextY)
+    let changed = curGrp.x !== rx || curGrp.y !== ry
+    if (!changed && movedNodes.size > 0) {
+      for (const n of doc.value.nodes) {
+        const p = movedNodes.get(n.id)
+        if (p && (n.x !== Math.round(p.x) || n.y !== Math.round(p.y))) {
+          changed = true
+          break
         }
+      }
+    }
+    if (!changed) return
+    mutateGeometry((d) => {
+      d.groups = (d.groups ?? []).map((g) => (g.id === groupId ? { ...g, x: rx, y: ry } : g))
+      if (movedNodes.size > 0) {
+        d.nodes = d.nodes.map((n) => {
+          const p = movedNodes.get(n.id)
+          return p ? { ...n, x: Math.round(p.x), y: Math.round(p.y) } : n
+        })
       }
     }, coalesce)
   }
 
+  /** 分组缩放结束时一次性提交尺寸 */
+  function commitGroupResize(groupId: string, width: number, height: number, coalesce = ''): void {
+    const curGrp = doc.value.groups?.find((x) => x.id === groupId)
+    if (!curGrp) return
+    const rw = Math.round(width)
+    const rh = Math.round(height)
+    if (curGrp.width === rw && curGrp.height === rh) return
+    mutateGeometry((d) => {
+      d.groups = (d.groups ?? []).map((g) =>
+        g.id === groupId ? { ...g, width: rw, height: rh } : g
+      )
+    }, coalesce)
+  }
+
+  /** 连线弧度拖拽结束时一次性提交弧度 */
+  function commitEdgeBend(edgeId: string, bend: number, coalesce = ''): void {
+    const curEdge = doc.value.edges.find((x) => x.id === edgeId)
+    if (!curEdge) return
+    const rb = Math.round(bend)
+    if ((curEdge.bend ?? 0) === rb && curEdge.bend !== undefined) return
+    mutateGeometry((d) => {
+      d.edges = d.edges.map((e) => (e.id === edgeId ? { ...e, bend: rb } : e))
+    }, coalesce)
+  }
+
+  const GROUP_GEOMETRY_KEYS = new Set(['x', 'y', 'width', 'height'])
+
   function updateGroup(id: string, patch: Partial<MxGroup>, coalesce = ''): void {
-    mutate(
-      (d) => {
-        const g = d.groups?.find((x) => x.id === id)
-        if (g) Object.assign(g, patch)
-      },
-      coalesce || `grp:${id}`
-    )
+    const keys = Object.keys(patch)
+    if (!keys.length) return
+    const key = coalesce || `grp:${id}`
+    if (keys.every((k) => GROUP_GEOMETRY_KEYS.has(k))) {
+      mutateGeometry((d) => {
+        d.groups = (d.groups ?? []).map((g) => (g.id === id ? { ...g, ...patch } : g))
+      }, key)
+      return
+    }
+    mutate((d) => {
+      const g = d.groups?.find((x) => x.id === id)
+      if (g) Object.assign(g, patch)
+    }, key)
   }
 
   function deleteGroup(id: string): void {
@@ -674,7 +828,8 @@ export function createMxStudioStore(initial: MxDocument) {
   ): void {
     if (selection.nodes.length < 2) return
     const set = new Set(selection.nodes)
-    mutate((d) => {
+    mutateGeometry((d) => {
+      d.nodes = d.nodes.map((n) => (set.has(n.id) ? { ...n } : n))
       const picked = d.nodes.filter((n) => set.has(n.id))
       if (picked.length < 2) return
       const xs = picked.map((n) => n.x)
@@ -1450,6 +1605,7 @@ export function createMxStudioStore(initial: MxDocument) {
   function ensureWorkbench(): MxNumericalWorkbench {
     if (!doc.value.workbench) {
       doc.value.workbench = createMxWorkbenchPreset('slay_the_spire_dbg')
+      docRevision.value++
     }
     return doc.value.workbench
   }
@@ -1761,6 +1917,10 @@ export function createMxStudioStore(initial: MxDocument) {
 
   return {
     doc,
+    peekDoc,
+    docRevision,
+    topologyRevision,
+    isCanvasDragging,
     selection,
     tool,
     drawer,
@@ -1800,6 +1960,7 @@ export function createMxStudioStore(initial: MxDocument) {
     canUndo,
     canRedo,
     mutate,
+    mutateGeometry,
     replaceDoc,
     undo,
     redo,
@@ -1815,8 +1976,12 @@ export function createMxStudioStore(initial: MxDocument) {
     updateEdge,
     reconnectEdge,
     moveNodes,
+    commitNodePositions,
     createGroupFromSelection,
     moveGroup,
+    commitGroupMove,
+    commitGroupResize,
+    commitEdgeBend,
     updateGroup,
     deleteGroup,
     applyTunableValue,

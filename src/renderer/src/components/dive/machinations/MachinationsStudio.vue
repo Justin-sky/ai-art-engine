@@ -114,23 +114,49 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 let lastPersistedJson = JSON.stringify(store.doc.value)
 let lastSeenPreset = String(props.node.params.gameEconomyPreset ?? '')
 
-// 同步画布内部改动回 GraphNode.params
+// 同步画布内部改动回 GraphNode.params（用轻量版本号替代整棵 MxDocument 深度递归监听，并在拖拽期间挂起落盘）
 let syncTimer: ReturnType<typeof setTimeout> | null = null
+function flushPersistNodeParams(): void {
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+    syncTimer = null
+  }
+  const doc = store.doc.value
+  const runsCount = store.forecastRuns.value
+  const serialized = JSON.stringify(doc)
+  if (serialized === lastPersistedJson) return
+  lastPersistedJson = serialized
+  persistNodeParams({
+    gameEconomyDiagramJson: serialized,
+    gameEconomySteps: doc.settings.steps,
+    gameEconomyMonteCarloRuns: runsCount,
+    gameEconomyRuns: runsCount,
+    gameEconomySeed: doc.settings.seed
+  })
+}
+
+function schedulePersistNodeParams(): void {
+  if (store.isCanvasDragging.value) return
+  if (syncTimer) clearTimeout(syncTimer)
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    if (store.isCanvasDragging.value) return
+    flushPersistNodeParams()
+  }, 180)
+}
+
 watch(
-  () => [store.doc.value, store.forecastRuns.value] as const,
-  ([doc, runsCount]) => {
-    if (syncTimer) clearTimeout(syncTimer)
-    syncTimer = setTimeout(() => {
-      const serialized = JSON.stringify(doc)
-      lastPersistedJson = serialized
-      persistNodeParams({
-        gameEconomyDiagramJson: serialized,
-        gameEconomySteps: doc.settings.steps,
-        gameEconomyMonteCarloRuns: runsCount,
-        gameEconomyRuns: runsCount,
-        gameEconomySeed: doc.settings.seed
-      })
-    }, 180)
+  () => [store.docRevision.value, store.forecastRuns.value, store.isCanvasDragging.value] as const,
+  ([, , dragging]) => {
+    if (!dragging) schedulePersistNodeParams()
+  }
+)
+
+// 仅在切换至数值工作台模式时深度监听 workbench 子树（支持表单 v-model 直绑）；画布构建模式下返回 null 零遍历开销
+watch(
+  () => (store.mode.value === 'workbench' ? store.doc.value.workbench : null),
+  (wb) => {
+    if (wb) schedulePersistNodeParams()
   },
   { deep: true }
 )
@@ -192,7 +218,9 @@ onBeforeUnmount(() => {
   unregisterHistory?.()
   unregisterHistory = null
   store.stopTimer()
-  if (syncTimer) clearTimeout(syncTimer)
+  if (syncTimer) {
+    flushPersistNodeParams()
+  }
 })
 
 const navItems: Array<{ id: Exclude<MxDrawerKind, ''>; icon: string; labelKey: string }> = [

@@ -493,7 +493,10 @@ function onRunAllCompare(): void {
   compareMode.value = true
 }
 
-const healthReport = computed(() => analyzeMxEconomyHealth(s.doc.value, s.activeRun.value))
+const healthReport = computed(() => {
+  void s.topologyRevision.value
+  return analyzeMxEconomyHealth(s.peekDoc(), s.activeRun.value)
+})
 
 const healthIssueCount = computed(
   () =>

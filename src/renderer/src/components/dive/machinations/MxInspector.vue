@@ -38,9 +38,13 @@ const selectedNode = computed(() => {
 })
 
 const selectedNodeConsumerItems = computed(() => {
-  const n = selectedNode.value
+  void s.topologyRevision.value
+  const docSnap = s.peekDoc()
+  const selIds = s.selection.nodes
+  if (selIds.length !== 1) return []
+  const n = docSnap.nodes.find((x) => x.id === selIds[0])
   if (!n || n.kind === 'note') return []
-  const res = resolveMxNodeConsumers(s.doc.value, [n.id])
+  const res = resolveMxNodeConsumers(docSnap, [n.id])
   const items: Array<{
     key: string
     badge: string
@@ -50,7 +54,7 @@ const selectedNodeConsumerItems = computed(() => {
     onClick: () => void
   }> = []
   for (const nh of res.nodes) {
-    const cn = s.doc.value.nodes.find((x) => x.id === nh.consumerNodeId)
+    const cn = docSnap.nodes.find((x) => x.id === nh.consumerNodeId)
     if (!cn) continue
     const badge =
       nh.sourceField === 'botCondition'
@@ -70,10 +74,12 @@ const selectedNodeConsumerItems = computed(() => {
     })
   }
   for (const eh of res.edges) {
-    const ce = s.doc.value.edges.find((x) => x.id === eh.consumerEdgeId)
+    const ce = docSnap.edges.find((x) => x.id === eh.consumerEdgeId)
     if (!ce) continue
-    const fromLbl = edgeEndpointLabel(ce.from)
-    const toLbl = ce.targetEdgeId ? `#${ce.targetEdgeId}` : edgeEndpointLabel(ce.to)
+    const fromNode = docSnap.nodes.find((x) => x.id === ce.from)
+    const toNode = docSnap.nodes.find((x) => x.id === ce.to)
+    const fromLbl = fromNode?.label || ce.from
+    const toLbl = ce.targetEdgeId ? `#${ce.targetEdgeId}` : toNode?.label || ce.to
     items.push({
       key: `e:${eh.consumerEdgeId}`,
       badge: ce.kind === 'state' ? '╌►' : '──►',

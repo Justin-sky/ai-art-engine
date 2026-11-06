@@ -13,10 +13,12 @@
     <svg
       ref="svgRef"
       class="mx-svg"
+      :class="{ 'is-dragging': isActiveGeometryDrag }"
       @pointerdown="onBgPointerDown"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
-      @pointerleave="onPointerUp"
+      @pointercancel="onPointerUp"
+      @pointerleave="onSvgPointerLeave"
       @wheel.prevent="onWheel"
       @contextmenu.prevent="onCanvasContextMenu"
     >
@@ -106,14 +108,14 @@
           :key="grp.id"
           class="mx-group"
           :class="{ 'is-locked': isGroupLocked(grp) }"
-          :transform="`translate(${grp.x}, ${grp.y})`"
+          :transform="`translate(${groupX(grp)}, ${groupY(grp)})`"
           @pointerdown.stop="startGroupDrag(grp, $event)"
         >
           <rect
             x="0"
             y="0"
-            :width="grp.width"
-            :height="grp.height"
+            :width="groupW(grp)"
+            :height="groupH(grp)"
             rx="10"
             class="mx-group-bg"
             :style="{
@@ -124,7 +126,7 @@
           <rect
             x="0"
             y="0"
-            :width="grp.width"
+            :width="groupW(grp)"
             height="26"
             rx="10"
             class="mx-group-hdr"
@@ -137,7 +139,7 @@
           </text>
           <g
             v-if="!isGroupLocked(grp)"
-            :transform="`translate(${grp.width - 16}, 13)`"
+            :transform="`translate(${groupW(grp) - 16}, 13)`"
             class="mx-group-del"
             @pointerdown.stop="store.deleteGroup(grp.id)"
           >
@@ -147,7 +149,7 @@
           <!-- 右下角缩放手柄 -->
           <path
             v-if="!isGroupLocked(grp)"
-            :d="`M ${grp.width - 12},${grp.height - 3} L ${grp.width - 3},${grp.height - 12} M ${grp.width - 7},${grp.height - 3} L ${grp.width - 3},${grp.height - 7}`"
+            :d="`M ${groupW(grp) - 12},${groupH(grp) - 3} L ${groupW(grp) - 3},${groupH(grp) - 12} M ${groupW(grp) - 7},${groupH(grp) - 3} L ${groupW(grp) - 3},${groupH(grp) - 7}`"
             class="mx-group-resize"
             :stroke="grp.color || '#3b82f6'"
             stroke-width="1.8"
@@ -426,7 +428,7 @@
             fired: isFlowAnimating && firedIds.has(node.id),
             locked: isLocked(node)
           }"
-          :transform="`translate(${node.x}, ${node.y})`"
+          :transform="`translate(${nodeX(node)}, ${nodeY(node)})`"
           @pointerenter="hoveredNodeId = node.id"
           @pointerleave="hoveredNodeId = hoveredNodeId === node.id ? '' : hoveredNodeId"
           @pointerdown.stop="onNodePointerDown(node, $event)"
@@ -1304,7 +1306,7 @@
 
     <!-- ══════════ 选中单个节点时的上方悬浮快捷操作栏 ══════════ -->
     <div
-      v-if="selectedSingleNode && !edgeEdit && !quickConnectMenu"
+      v-if="selectedSingleNode && !isActiveGeometryDrag && !edgeEdit && !quickConnectMenu"
       class="mx-node-floatbar"
       :style="selectedNodeFloatStyle"
       @pointerdown.stop
@@ -1366,7 +1368,7 @@
 
     <!-- ══════════ 选中单条连线时的悬浮快捷操作栏 ══════════ -->
     <div
-      v-if="selectedSingleEdgeGeo && !edgeEdit"
+      v-if="selectedSingleEdgeGeo && !isActiveGeometryDrag && !edgeEdit"
       class="mx-node-floatbar"
       :style="selectedEdgeFloatStyle"
       @pointerdown.stop
@@ -1691,10 +1693,10 @@
         <rect
           v-for="g in visibleGroups"
           :key="'mg-' + g.id"
-          :x="g.x"
-          :y="g.y"
-          :width="g.width"
-          :height="g.height"
+          :x="groupX(g)"
+          :y="groupY(g)"
+          :width="groupW(g)"
+          :height="groupH(g)"
           rx="8"
           :fill="g.color || '#3b82f6'"
           fill-opacity="0.14"
@@ -1704,10 +1706,10 @@
         <line
           v-for="e in store.doc.value.edges"
           :key="'me-' + e.id"
-          :x1="nodeById.get(e.from)?.x ?? 0"
-          :y1="nodeById.get(e.from)?.y ?? 0"
-          :x2="nodeById.get(e.to)?.x ?? 0"
-          :y2="nodeById.get(e.to)?.y ?? 0"
+          :x1="nodeXById(e.from)"
+          :y1="nodeYById(e.from)"
+          :x2="nodeXById(e.to)"
+          :y2="nodeYById(e.to)"
           stroke="#94a3b8"
           stroke-width="5"
           stroke-opacity="0.6"
@@ -1715,8 +1717,8 @@
         <circle
           v-for="n in visibleNodes"
           :key="'mn-' + n.id"
-          :cx="n.x"
-          :cy="n.y"
+          :cx="nodeX(n)"
+          :cy="nodeY(n)"
           r="16"
           :fill="nodeColor(n)"
         />
@@ -1737,7 +1739,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import {
   computeMxDiagramBounds,
   estimateMxTextWidth,
@@ -1903,7 +1905,62 @@ const hintText = computed(() => {
   return ''
 })
 
-const layerMap = computed(() => new Map(store.doc.value.layers.map((l) => [l.id, l])))
+// ───────── 拖拽期零克隆瞬态几何层 (Transient Drag Geometry Layer) ─────────
+const EMPTY_NODE_POS_MAP: ReadonlyMap<string, { x: number; y: number }> = new Map()
+const EMPTY_GROUP_RECT_MAP: ReadonlyMap<
+  string,
+  { x: number; y: number; width: number; height: number }
+> = new Map()
+const EMPTY_EDGE_BEND_MAP: ReadonlyMap<string, number> = new Map()
+
+const transientNodePos =
+  shallowRef<ReadonlyMap<string, { x: number; y: number }>>(EMPTY_NODE_POS_MAP)
+const transientGroupRect =
+  shallowRef<ReadonlyMap<string, { x: number; y: number; width: number; height: number }>>(
+    EMPTY_GROUP_RECT_MAP
+  )
+const transientEdgeBend = shallowRef<ReadonlyMap<string, number>>(EMPTY_EDGE_BEND_MAP)
+
+function nodeX(node: MxNode): number {
+  return transientNodePos.value.get(node.id)?.x ?? node.x
+}
+
+function nodeY(node: MxNode): number {
+  return transientNodePos.value.get(node.id)?.y ?? node.y
+}
+
+function nodeXById(id: string): number {
+  const tp = transientNodePos.value.get(id)
+  if (tp) return tp.x
+  return nodeById.value.get(id)?.x ?? 0
+}
+
+function nodeYById(id: string): number {
+  const tp = transientNodePos.value.get(id)
+  if (tp) return tp.y
+  return nodeById.value.get(id)?.y ?? 0
+}
+
+function groupX(grp: MxGroup): number {
+  return transientGroupRect.value.get(grp.id)?.x ?? grp.x
+}
+
+function groupY(grp: MxGroup): number {
+  return transientGroupRect.value.get(grp.id)?.y ?? grp.y
+}
+
+function groupW(grp: MxGroup): number {
+  return transientGroupRect.value.get(grp.id)?.width ?? grp.width
+}
+
+function groupH(grp: MxGroup): number {
+  return transientGroupRect.value.get(grp.id)?.height ?? grp.height
+}
+
+const layerMap = computed(() => {
+  void store.topologyRevision.value
+  return new Map(store.peekDoc().layers.map((l) => [l.id, l]))
+})
 const visibleGroups = computed(() =>
   (store.doc.value.groups ?? []).filter((g) => {
     const layer = g.layerId ? layerMap.value.get(g.layerId) : undefined
@@ -1916,16 +1973,27 @@ const visibleNodes = computed(() =>
     return !layer || layer.visible
   })
 )
-const visibleIds = computed(() => new Set(visibleNodes.value.map((n) => n.id)))
+const visibleIds = computed(() => {
+  void store.topologyRevision.value
+  const lMap = layerMap.value
+  const ids = new Set<string>()
+  for (const n of store.peekDoc().nodes) {
+    const layer = n.layerId ? lMap.get(n.layerId) : undefined
+    if (!layer || layer.visible) ids.add(n.id)
+  }
+  return ids
+})
 const nodeById = computed(() => new Map(store.doc.value.nodes.map((n) => [n.id, n])))
 const selectedNodeSet = computed(() => new Set(store.selection.nodes))
 const selectedEdgeSet = computed(() => new Set(store.selection.edges))
 
 // ───────── 千级节点与连线视口剔除 (Viewport Frustum Culling) 与 LOD 降级 ─────────
-const isLargeGraph = computed(
-  () => visibleNodes.value.length > 200 || store.doc.value.edges.length > 350
-)
-const isLowDetailZoom = computed(() => store.view.zoom < 0.48 || visibleNodes.value.length > 350)
+const isLargeGraph = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
+  return visibleIds.value.size > 200 || d.edges.length > 350
+})
+const isLowDetailZoom = computed(() => store.view.zoom < 0.48 || visibleIds.value.size > 350)
 const viewportWorldRect = computed(() => {
   const cw = svgRef.value?.clientWidth || 1440
   const ch = svgRef.value?.clientHeight || 900
@@ -1945,14 +2013,19 @@ const renderedNodes = computed(() => {
   const sel = selectedNodeSet.value
   const refSet = formulaRefNodeIdSet.value
   const consumerNodes = consumerNodeHitById.value
-  return all.filter(
-    (n) =>
-      (n.x >= r.minX && n.x <= r.maxX && n.y >= r.minY && n.y <= r.maxY) ||
+  const tNodes = transientNodePos.value
+  return all.filter((n) => {
+    const nx = tNodes.get(n.id)?.x ?? n.x
+    const ny = tNodes.get(n.id)?.y ?? n.y
+    return (
+      (nx >= r.minX && nx <= r.maxX && ny >= r.minY && ny <= r.maxY) ||
+      tNodes.has(n.id) ||
       sel.has(n.id) ||
       refSet.has(n.id) ||
       consumerNodes.has(n.id) ||
       hoveredNodeId.value === n.id
-  )
+    )
+  })
 })
 const renderedNodeIds = computed(() => new Set(renderedNodes.value.map((n) => n.id)))
 
@@ -1967,9 +2040,10 @@ function isGroupLocked(grp: MxGroup): boolean {
 }
 
 const firedIds = computed(() => {
+  void store.topologyRevision.value
   const set = new Set<string>()
   const flows = store.displayFlows.value
-  for (const e of store.doc.value.edges) {
+  for (const e of store.peekDoc().edges) {
     if ((flows[e.id] ?? 0) > 0) {
       set.add(e.from)
       set.add(e.to)
@@ -1979,9 +2053,10 @@ const firedIds = computed(() => {
 })
 
 const outgoingFiredIds = computed(() => {
+  void store.topologyRevision.value
   const set = new Set<string>()
   const flows = store.displayFlows.value
-  for (const e of store.doc.value.edges) {
+  for (const e of store.peekDoc().edges) {
     if ((flows[e.id] ?? 0) > 0) {
       set.add(e.from)
     }
@@ -1989,12 +2064,16 @@ const outgoingFiredIds = computed(() => {
   return set
 })
 
-const resolvedParamsMap = computed(() => resolveMxParams(store.doc.value))
+const resolvedParamsMap = computed(() => {
+  void store.topologyRevision.value
+  return resolveMxParams(store.peekDoc())
+})
 
 const displayVarsMap = computed<Record<string, number>>(() => {
+  void store.topologyRevision.value
   const out: Record<string, number> = { ...resolvedParamsMap.value }
   const vals = store.displayValues.value
-  for (const n of store.doc.value.nodes) {
+  for (const n of store.peekDoc().nodes) {
     const v = vals?.[n.id] ?? (n.kind === 'pool' || n.kind === 'register' ? (n.initial ?? 0) : 0)
     out[n.id] = v
     const clean = n.label.trim().replace(/\s+/g, '_')
@@ -2084,15 +2163,29 @@ function isStateEdgePulsing(edge: MxEdge): boolean {
   return firedIds.value.has(edge.from)
 }
 
+const resourceColorMap = computed(() => {
+  void store.topologyRevision.value
+  return new Map(store.peekDoc().resources.map((r) => [r.id, r.color]))
+})
+
 function nodeColor(node: MxNode): string {
-  return mxNodeColor(store.doc.value, node)
+  if (node.color) return node.color
+  if ((node.kind === 'pool' || node.kind === 'source') && node.resourceId) {
+    const rc = resourceColorMap.value.get(node.resourceId)
+    if (rc) return rc
+  }
+  void store.topologyRevision.value
+  return mxNodeColor(store.peekDoc(), node)
 }
 
 const converterColorById = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
+  const nMap = new Map(d.nodes.map((n) => [n.id, n]))
   const map = new Map<string, string>()
-  for (const e of store.doc.value.edges) {
+  for (const e of d.edges) {
     if (e.kind === 'resource' && !map.has(e.from)) {
-      const tgt = nodeById.value.get(e.to)
+      const tgt = nMap.get(e.to)
       if (tgt) map.set(e.from, nodeColor(tgt))
     }
   }
@@ -2100,12 +2193,12 @@ const converterColorById = computed(() => {
 })
 
 const controllingAgentByNodeId = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
   const map = new Map<string, { id: string; name: string; color?: string }>()
-  const activeAgents = (store.doc.value.agents ?? []).filter((a) => a.enabled)
+  const activeAgents = (d.agents ?? []).filter((a) => a.enabled)
   if (!activeAgents.length) return map
-  const interactiveIds = store.doc.value.nodes
-    .filter((n) => n.trigger === 'interactive')
-    .map((n) => n.id)
+  const interactiveIds = d.nodes.filter((n) => n.trigger === 'interactive').map((n) => n.id)
   for (const ag of activeAgents) {
     const targets = ag.controlledNodeIds.length ? ag.controlledNodeIds : interactiveIds
     for (const nid of targets) {
@@ -2155,19 +2248,17 @@ function pullModeBadge(pm: MxPullMode): string {
   }
 }
 
-const resourceColorMap = computed(
-  () => new Map(store.doc.value.resources.map((r) => [r.id, r.color]))
-)
-
 const triggerGateSet = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
   const resOut = new Set<string>()
   const stOut = new Set<string>()
-  for (const e of store.doc.value.edges) {
+  for (const e of d.edges) {
     if (e.kind === 'resource') resOut.add(e.from)
     else stOut.add(e.from)
   }
   const tg = new Set<string>()
-  for (const n of store.doc.value.nodes) {
+  for (const n of d.nodes) {
     if (n.kind === 'gate' && !resOut.has(n.id) && stOut.has(n.id)) tg.add(n.id)
   }
   return tg
@@ -2176,11 +2267,13 @@ const triggerGateSet = computed(() => {
 const MX_COND_GATE_OUT_RE = /^(?:>=|<=|==|!=|<>|>|<|=|-?\d+(?:\.\d+)?\s*\.\.\s*-?\d+(?:\.\d+)?$)/
 
 const conditionalGateSet = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
   const cg = new Set<string>()
-  for (const n of store.doc.value.nodes) {
+  for (const n of d.nodes) {
     if (n.kind === 'gate' && n.formula?.trim()) cg.add(n.id)
   }
-  for (const e of store.doc.value.edges) {
+  for (const e of d.edges) {
     const s = e.formula.replace(/\s*(?:\||every\b).*$/i, '').trim()
     if (MX_COND_GATE_OUT_RE.test(s)) cg.add(e.from)
   }
@@ -2324,14 +2417,16 @@ function startAnimLoop(): void {
   if (rafId !== null) return
   const tick = (now: number): void => {
     const hasActiveFlow = store.playing.value || burstProgress.value < 0.99
-    if (hasActiveFlow) {
-      const speed = Math.max(0.25, store.doc.value.settings.speed || 1)
-      const burstDur = Math.max(180, 480 / speed)
-      const cycleDur = Math.max(450, 1350 / speed)
-      if (now < burstStartMs) burstStartMs = now
-      burstProgress.value = Math.max(0, Math.min(1, (now - burstStartMs) / burstDur))
-      streamPhase.value = Math.max(0, Math.min(1, (now % cycleDur) / cycleDur))
+    if (!hasActiveFlow) {
+      rafId = null
+      return
     }
+    const speed = Math.max(0.25, store.peekDoc().settings.speed || 1)
+    const burstDur = Math.max(180, 480 / speed)
+    const cycleDur = Math.max(450, 1350 / speed)
+    if (now < burstStartMs) burstStartMs = now
+    burstProgress.value = Math.max(0, Math.min(1, (now - burstStartMs) / burstDur))
+    streamPhase.value = Math.max(0, Math.min(1, (now % cycleDur) / cycleDur))
     rafId = requestAnimationFrame(tick)
   }
   rafId = requestAnimationFrame(tick)
@@ -2359,6 +2454,7 @@ watch(
     if (nextStep > 0 && (store.playing.value || Math.abs(nextStep - (prevStep ?? 0)) === 1)) {
       burstStartMs = performance.now()
       burstProgress.value = 0
+      startAnimLoop()
       triggerStateEdgeFlash()
     } else if (!store.playing.value) {
       burstProgress.value = 1
@@ -2374,15 +2470,17 @@ watch(
 watch(
   () => store.playing.value,
   (isPlaying) => {
+    if (isPlaying) {
+      startAnimLoop()
+      return
+    }
     // 播放结束或暂停的瞬间，立即停止连线上的持续流动动画；若最后一帧有状态触发则播完 3 下闪烁后收起
-    if (!isPlaying) {
-      burstProgress.value = 1
-      if (isStateFlashActive.value) {
-        if (stateFlashTimer) clearTimeout(stateFlashTimer)
-        stateFlashTimer = setTimeout(() => {
-          isStateFlashActive.value = false
-        }, 720)
-      }
+    burstProgress.value = 1
+    if (isStateFlashActive.value) {
+      if (stateFlashTimer) clearTimeout(stateFlashTimer)
+      stateFlashTimer = setTimeout(() => {
+        isStateFlashActive.value = false
+      }, 720)
     }
   }
 )
@@ -2495,16 +2593,112 @@ interface EdgeGeo {
   labelW: number
 }
 
-const edgeGeometries = computed<EdgeGeo[]>(() => {
-  const out: EdgeGeo[] = []
-  const midByEdgeId = new Map<string, { x: number; y: number; labelW: number }>()
-  const pairs = new Set(
-    store.doc.value.edges.filter((e) => !e.targetEdgeId).map((e) => `${e.from}>${e.to}`)
-  )
+interface EdgeStaticMeta {
+  color: string
+  tokenColor: string
+  marker: string
+  label: string
+  labelW: number
+  reverse: boolean
+}
 
-  // 第一遍先算普通 Node -> Node 连线，再按拓扑多轮解析 Edge -> Edge（支持多级 State -> State -> Edge 链且与数组顺序无关）
-  const firstPass = store.doc.value.edges.filter((e) => !e.targetEdgeId)
-  const pendingEdgeToEdge = store.doc.value.edges.filter((e) => !!e.targetEdgeId)
+function buildSingleEdgeGeo(
+  e: MxEdge,
+  ax: number,
+  ay: number,
+  ra: number,
+  bx: number,
+  by: number,
+  rb: number,
+  targetPillW: number,
+  bendOverride: number | undefined,
+  meta: EdgeStaticMeta
+): EdgeGeo {
+  const dx = bx - ax
+  const dy = by - ay
+  const len = Math.max(1, Math.hypot(dx, dy))
+  const ux = dx / len
+  const uy = dy / len
+  const defaultBend = meta.reverse ? 28 : e.kind === 'state' ? Math.min(44, len * 0.12) : 0
+  const bend =
+    bendOverride !== undefined ? bendOverride : e.bend !== undefined ? e.bend : defaultBend
+  const nx = -uy
+  const ny = ux
+  const sx = ax + ux * ra
+  const sy = ay + uy * ra
+
+  let ex = bx - ux * rb
+  let ey = by - uy * rb
+  let cx = (sx + ex) / 2 + nx * bend
+  let cy = (sy + ey) / 2 + ny * bend
+
+  if (e.targetEdgeId && targetPillW > 0) {
+    const approxCx = (sx + bx) / 2 + nx * bend
+    const approxCy = (sy + by) / 2 + ny * bend
+    const tdx = bx - approxCx
+    const tdy = by - approxCy
+    const tlen = Math.max(1, Math.hypot(tdx, tdy))
+    const tux = tdx / tlen
+    const tuy = tdy / tlen
+    const hw = targetPillW / 2 + 5
+    const hh = 13.5
+    const pillDist = Math.min(
+      len * 0.45,
+      hw / Math.max(1e-4, Math.abs(tux)),
+      hh / Math.max(1e-4, Math.abs(tuy))
+    )
+    ex = bx - tux * pillDist
+    ey = by - tuy * pillDist
+    cx = approxCx
+    cy = approxCy
+  }
+
+  const path =
+    Math.abs(bend) > 0.5 ? `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}` : `M ${sx},${sy} L ${ex},${ey}`
+  const mid =
+    Math.abs(bend) > 0.5
+      ? { x: (sx + 2 * cx + ex) / 4, y: (sy + 2 * cy + ey) / 4 }
+      : { x: (sx + ex) / 2, y: (sy + ey) / 2 }
+
+  return {
+    edge: e,
+    path,
+    sx,
+    sy,
+    cx,
+    cy,
+    ex,
+    ey,
+    mid,
+    nx,
+    ny,
+    color: meta.color,
+    tokenColor: meta.tokenColor,
+    marker: meta.marker,
+    label: meta.label,
+    labelW: meta.labelW
+  }
+}
+
+const orderedVisibleTopology = computed(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
+  const visIds = visibleIds.value
+  const pairs = new Set<string>()
+  const firstPass: MxEdge[] = []
+  const pendingEdgeToEdge: MxEdge[] = []
+
+  for (const e of d.edges) {
+    if (!e.targetEdgeId) {
+      pairs.add(`${e.from}>${e.to}`)
+      if (visIds.has(e.from) && visIds.has(e.to)) {
+        firstPass.push(e)
+      }
+    } else if (visIds.has(e.from)) {
+      pendingEdgeToEdge.push(e)
+    }
+  }
+
   const orderedEdges: MxEdge[] = [...firstPass]
   const resolvedIds = new Set(firstPass.map((e) => e.id))
   let remaining = pendingEdgeToEdge
@@ -2523,85 +2717,23 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
     remaining = nextRem
     if (!progressed) break
   }
+  return { orderedEdges, pairs }
+})
+
+const edgeStaticMetaById = computed<Map<string, EdgeStaticMeta>>(() => {
+  void store.topologyRevision.value
+  const d = store.peekDoc()
+  const nMap = new Map(d.nodes.map((n) => [n.id, n]))
+  const { orderedEdges, pairs } = orderedVisibleTopology.value
+  const resColors = resourceColorMap.value
+  const flows = store.displayFlows.value
+  const selEdges = selectedEdgeSet.value
+  const map = new Map<string, EdgeStaticMeta>()
 
   for (const e of orderedEdges) {
-    if (!visibleIds.value.has(e.from)) continue
-    const a = nodeById.value.get(e.from)
-    if (!a) continue
-
-    let bx = 0
-    let by = 0
-    let rb = 10
-    let targetPillW = 0
-    if (e.targetEdgeId) {
-      const targetMid = midByEdgeId.get(e.targetEdgeId)
-      if (!targetMid) continue
-      bx = targetMid.x
-      by = targetMid.y
-      targetPillW = targetMid.labelW
-    } else {
-      if (!visibleIds.value.has(e.to)) continue
-      const b = nodeById.value.get(e.to)
-      if (!b) continue
-      bx = b.x
-      by = b.y
-      rb = nodeRadius(b) + 6
-    }
-
-    const dx = bx - a.x
-    const dy = by - a.y
-    const len = Math.max(1, Math.hypot(dx, dy))
-    const ux = dx / len
-    const uy = dy / len
-    const reverse = !e.targetEdgeId && pairs.has(`${e.to}>${e.from}`)
-    const defaultBend = reverse ? 28 : e.kind === 'state' ? Math.min(44, len * 0.12) : 0
-    const bend = e.bend !== undefined ? e.bend : defaultBend
-    const nx = -uy
-    const ny = ux
-    const ra = nodeRadius(a) + 2
-    const sx = a.x + ux * ra
-    const sy = a.y + uy * ra
-
-    let ex = bx - ux * rb
-    let ey = by - uy * rb
-    let cx = (sx + ex) / 2 + nx * bend
-    let cy = (sy + ey) / 2 + ny * bend
-
-    if (e.targetEdgeId && targetPillW > 0) {
-      // 按曲线入向切线（控制点 → 目标胶囊中心）计算与公式胶囊外框的交点，避免虚线箭头穿透覆盖公式文字
-      const approxCx = (sx + bx) / 2 + nx * bend
-      const approxCy = (sy + by) / 2 + ny * bend
-      const tdx = bx - approxCx
-      const tdy = by - approxCy
-      const tlen = Math.max(1, Math.hypot(tdx, tdy))
-      const tux = tdx / tlen
-      const tuy = tdy / tlen
-      const hw = targetPillW / 2 + 5
-      const hh = 13.5
-      const pillDist = Math.min(
-        len * 0.45,
-        hw / Math.max(1e-4, Math.abs(tux)),
-        hh / Math.max(1e-4, Math.abs(tuy))
-      )
-      ex = bx - tux * pillDist
-      ey = by - tuy * pillDist
-      cx = approxCx
-      cy = approxCy
-    }
-
-    const path =
-      Math.abs(bend) > 0.5
-        ? `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
-        : `M ${sx},${sy} L ${ex},${ey}`
-    const mid =
-      Math.abs(bend) > 0.5
-        ? { x: (sx + 2 * cx + ex) / 4, y: (sy + 2 * cy + ey) / 4 }
-        : { x: (sx + ex) / 2, y: (sy + ey) / 2 }
-
-    const filterColor =
-      e.resourceFilter && e.resourceId ? resourceColorMap.value.get(e.resourceId) : undefined
+    const filterColor = e.resourceFilter && e.resourceId ? resColors.get(e.resourceId) : undefined
     const negative = e.kind === 'state' && /^\s*(-|!|<)/.test(e.formula)
-    const selected = isEdgeSelected(e.id)
+    const selected = selEdges.has(e.id)
     const color = selected
       ? '#3d8bfd'
       : e.color ||
@@ -2614,7 +2746,7 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
           ? 'mx-arrow-neg'
           : 'mx-arrow-state'
         : 'mx-arrow'
-    const flow = store.displayFlows.value[e.id] ?? 0
+    const flow = flows[e.id] ?? 0
     const rawFormula = e.formula || (e.kind === 'state' ? '*' : '1')
     const withInterval =
       e.kind === 'resource' &&
@@ -2630,26 +2762,126 @@ const edgeGeometries = computed<EdgeGeo[]>(() => {
         ? `${namedFormula} → ${formatValue(Math.round(flow * 10) / 10)}`
         : namedFormula
     const labelW = Math.max(24, estimateMxTextWidth(label, 10.5, true) + 14)
-    midByEdgeId.set(e.id, { x: mid.x, y: mid.y, labelW })
-    const src = nodeById.value.get(e.from)
-    out.push({
-      edge: e,
-      path,
-      sx,
-      sy,
-      cx,
-      cy,
-      ex,
-      ey,
-      mid,
-      nx,
-      ny,
+    const src = nMap.get(e.from)
+    map.set(e.id, {
       color,
       tokenColor: filterColor ?? (src ? nodeColor(src) : '#3d8bfd'),
       marker,
       label,
-      labelW
+      labelW,
+      reverse: !e.targetEdgeId && pairs.has(`${e.to}>${e.from}`)
     })
+  }
+  return map
+})
+
+const baseEdgeGeoById = computed<Map<string, EdgeGeo>>(() => {
+  const { orderedEdges } = orderedVisibleTopology.value
+  const metaMap = edgeStaticMetaById.value
+  const nMap = nodeById.value
+  const edgeById = new Map(store.doc.value.edges.map((e) => [e.id, e]))
+  const out = new Map<string, EdgeGeo>()
+
+  for (const topoEdge of orderedEdges) {
+    const e = edgeById.get(topoEdge.id) ?? topoEdge
+    const meta = metaMap.get(e.id)
+    const a = nMap.get(e.from)
+    if (!meta || !a) continue
+
+    let bx = 0
+    let by = 0
+    let rb = 10
+    let targetPillW = 0
+    if (e.targetEdgeId) {
+      const targetGeo = out.get(e.targetEdgeId)
+      if (!targetGeo) continue
+      bx = targetGeo.mid.x
+      by = targetGeo.mid.y
+      targetPillW = targetGeo.labelW
+    } else {
+      const b = nMap.get(e.to)
+      if (!b) continue
+      bx = b.x
+      by = b.y
+      rb = nodeRadius(b) + 6
+    }
+
+    out.set(
+      e.id,
+      buildSingleEdgeGeo(e, a.x, a.y, nodeRadius(a) + 2, bx, by, rb, targetPillW, e.bend, meta)
+    )
+  }
+  return out
+})
+
+const edgeGeometries = computed<EdgeGeo[]>(() => {
+  const baseMap = baseEdgeGeoById.value
+  const tNodes = transientNodePos.value
+  const tBends = transientEdgeBend.value
+  if (tNodes.size === 0 && tBends.size === 0) {
+    return Array.from(baseMap.values())
+  }
+
+  const { orderedEdges } = orderedVisibleTopology.value
+  const metaMap = edgeStaticMetaById.value
+  const nMap = nodeById.value
+  const movedEdgeIds = new Set<string>()
+  const resolvedGeoById = new Map<string, EdgeGeo>()
+  const out: EdgeGeo[] = []
+
+  for (const topoEdge of orderedEdges) {
+    const baseGeo = baseMap.get(topoEdge.id)
+    const e = baseGeo?.edge ?? topoEdge
+    const isAffected =
+      tNodes.has(e.from) ||
+      (e.targetEdgeId ? movedEdgeIds.has(e.targetEdgeId) : tNodes.has(e.to)) ||
+      tBends.has(e.id)
+
+    if (!isAffected && baseGeo) {
+      resolvedGeoById.set(e.id, baseGeo)
+      out.push(baseGeo)
+      continue
+    }
+
+    const meta = metaMap.get(e.id)
+    const a = nMap.get(e.from)
+    if (!meta || !a) continue
+
+    const ax = tNodes.get(a.id)?.x ?? a.x
+    const ay = tNodes.get(a.id)?.y ?? a.y
+    let bx = 0
+    let by = 0
+    let rb = 10
+    let targetPillW = 0
+    if (e.targetEdgeId) {
+      const targetGeo = resolvedGeoById.get(e.targetEdgeId)
+      if (!targetGeo) continue
+      bx = targetGeo.mid.x
+      by = targetGeo.mid.y
+      targetPillW = targetGeo.labelW
+    } else {
+      const b = nMap.get(e.to)
+      if (!b) continue
+      bx = tNodes.get(b.id)?.x ?? b.x
+      by = tNodes.get(b.id)?.y ?? b.y
+      rb = nodeRadius(b) + 6
+    }
+
+    const geo = buildSingleEdgeGeo(
+      e,
+      ax,
+      ay,
+      nodeRadius(a) + 2,
+      bx,
+      by,
+      rb,
+      targetPillW,
+      tBends.get(e.id),
+      meta
+    )
+    movedEdgeIds.add(e.id)
+    resolvedGeoById.set(e.id, geo)
+    out.push(geo)
   }
   return out
 })
@@ -2688,8 +2920,8 @@ const selectedSingleNode = computed<MxNode | null>(() => {
 const selectedNodeFloatStyle = computed(() => {
   const n = selectedSingleNode.value
   if (!n) return {}
-  const sx = n.x * store.view.zoom + store.view.x
-  const sy = (n.y - nodeRadius(n) - 18) * store.view.zoom + store.view.y
+  const sx = nodeX(n) * store.view.zoom + store.view.x
+  const sy = (nodeY(n) - nodeRadius(n) - 18) * store.view.zoom + store.view.y
   return {
     left: `${sx}px`,
     top: `${Math.max(48, sy)}px`
@@ -2713,10 +2945,11 @@ const selectedEdgeFloatStyle = computed(() => {
 })
 
 const selectedNodeConsumers = computed(() => {
+  void store.topologyRevision.value
   if (store.selection.nodes.length === 0 || store.selection.nodes.length > 12) {
     return { nodes: [], edges: [], params: [] }
   }
-  return resolveMxNodeConsumers(store.doc.value, store.selection.nodes)
+  return resolveMxNodeConsumers(store.peekDoc(), store.selection.nodes)
 })
 
 const consumerNodeHitById = computed<Map<string, MxNodeConsumerNodeHit>>(() => {
@@ -2747,11 +2980,12 @@ const consumerEdgeHitById = computed<Map<string, MxNodeConsumerEdgeHit>>(() => {
 })
 
 const directConsumerBridgeEdgeIdSet = computed<Set<string>>(() => {
+  void store.topologyRevision.value
   const set = new Set<string>()
   const nodeHits = selectedNodeConsumers.value.nodes
   if (nodeHits.length === 0) return set
   const pairs = new Set(nodeHits.map((h) => `${h.sourceNodeId}->${h.consumerNodeId}`))
-  for (const e of store.doc.value.edges) {
+  for (const e of store.peekDoc().edges) {
     if (!e.targetEdgeId && pairs.has(`${e.from}->${e.to}`)) {
       set.add(e.id)
     }
@@ -2775,10 +3009,35 @@ interface FormulaRefLink {
   tagW: number
 }
 
-const formulaRefLinks = computed<FormulaRefLink[]>(() => {
+const activeEdgeReferencedNodesMap = computed(() => {
+  void store.topologyRevision.value
   const activeEdgeIds = new Set<string>(store.selection.edges)
-  if (edgeEdit.value) activeEdgeIds.add(edgeEdit.value.id)
-  const hasEdgeActive = activeEdgeIds.size > 0 && activeEdgeIds.size <= 12
+  const ed = edgeEdit.value
+  if (ed) activeEdgeIds.add(ed.id)
+  const out = new Map<string, Array<{ nodeId: string; token: string; tagW: number }>>()
+  if (activeEdgeIds.size === 0 || activeEdgeIds.size > 12) return out
+  const d = store.peekDoc()
+  const edgeById = new Map(d.edges.map((e) => [e.id, e]))
+  for (const edgeId of activeEdgeIds) {
+    const rawEdge = edgeById.get(edgeId)
+    if (!rawEdge) continue
+    const effEdge = ed?.id === edgeId ? { ...rawEdge, formula: ed.value } : rawEdge
+    const refs = resolveMxEdgeReferencedNodes(d, effEdge)
+    out.set(
+      edgeId,
+      refs.map((r) => ({
+        nodeId: r.nodeId,
+        token: r.token,
+        tagW: Math.max(20, estimateMxTextWidth(r.token, 9.5, true) + 10)
+      }))
+    )
+  }
+  return out
+})
+
+const formulaRefLinks = computed<FormulaRefLink[]>(() => {
+  const edgeRefsMap = activeEdgeReferencedNodesMap.value
+  const hasEdgeActive = edgeRefsMap.size > 0
   const consumers = selectedNodeConsumers.value
   const hasNodeConsumers = consumers.nodes.length > 0 || consumers.edges.length > 0
   if (!hasEdgeActive && !hasNodeConsumers) return []
@@ -2788,19 +3047,18 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
 
   const links: FormulaRefLink[] = []
   if (hasEdgeActive) {
-    for (const edgeId of activeEdgeIds) {
+    for (const [edgeId, refs] of edgeRefsMap.entries()) {
       const geo = geoById.get(edgeId)
       if (!geo) continue
-      const effEdge =
-        edgeEdit.value?.id === edgeId ? { ...geo.edge, formula: edgeEdit.value.value } : geo.edge
-      const refs = resolveMxEdgeReferencedNodes(store.doc.value, effEdge)
       for (const refItem of refs) {
         if (!visibleIds.value.has(refItem.nodeId)) continue
         const target = nodeById.value.get(refItem.nodeId)
         if (!target) continue
+        const tx = nodeX(target)
+        const ty = nodeY(target)
 
-        const dx = target.x - geo.mid.x
-        const dy = target.y - geo.mid.y
+        const dx = tx - geo.mid.x
+        const dy = ty - geo.mid.y
         const len = Math.hypot(dx, dy)
         if (len < 4) continue
         const ux = dx / len
@@ -2818,15 +3076,14 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
 
         const sx = geo.mid.x + ux * pillDist
         const sy = geo.mid.y + uy * pillDist
-        const ex = target.x - ux * nodeStop
-        const ey = target.y - uy * nodeStop
+        const ex = tx - ux * nodeStop
+        const ey = ty - uy * nodeStop
         const arcBend = Math.min(30, Math.max(14, len * 0.14))
         const cx = (sx + ex) / 2 - uy * arcBend
         const cy = (sy + ey) / 2 + ux * arcBend
         const path = `M ${sx},${sy} Q ${cx},${cy} ${ex},${ey}`
         const tagX = (sx + 2 * cx + ex) / 4
         const tagY = (sy + 2 * cy + ey) / 4
-        const tagW = Math.max(20, estimateMxTextWidth(refItem.token, 9.5, true) + 10)
 
         links.push({
           key: `${edgeId}->${refItem.nodeId}`,
@@ -2835,13 +3092,13 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
           token: refItem.token,
           sx,
           sy,
-          tx: target.x,
-          ty: target.y,
+          tx,
+          ty,
           haloR,
           path,
           tagX,
           tagY,
-          tagW
+          tagW: refItem.tagW
         })
       }
     }
@@ -2849,7 +3106,7 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
 
   if (hasNodeConsumers) {
     const directNodePairs = new Set<string>()
-    for (const e of store.doc.value.edges) {
+    for (const e of store.peekDoc().edges) {
       if (!e.targetEdgeId) directNodePairs.add(`${e.from}->${e.to}`)
     }
 
@@ -2865,8 +3122,12 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
       if (!src || !dst) continue
       seenNodeLinkKeys.add(pairKey)
 
-      const dx = dst.x - src.x
-      const dy = dst.y - src.y
+      const srcX = nodeX(src)
+      const srcY = nodeY(src)
+      const dstX = nodeX(dst)
+      const dstY = nodeY(dst)
+      const dx = dstX - srcX
+      const dy = dstY - srcY
       const len = Math.hypot(dx, dy)
       if (len < 6) continue
       const ux = dx / len
@@ -2874,10 +3135,10 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
 
       const srcOut = Math.min(len * 0.36, nodeRadius(src) + 4)
       const dstStop = Math.min(len * 0.42, nodeRadius(dst) + 9)
-      const sx = src.x + ux * srcOut
-      const sy = src.y + uy * srcOut
-      const ex = dst.x - ux * dstStop
-      const ey = dst.y - uy * dstStop
+      const sx = srcX + ux * srcOut
+      const sy = srcY + uy * srcOut
+      const ex = dstX - ux * dstStop
+      const ey = dstY - uy * dstStop
       const arcBend = Math.min(34, Math.max(16, len * 0.14))
       const cx = (sx + ex) / 2 - uy * arcBend
       const cy = (sy + ey) / 2 + ux * arcBend
@@ -2894,8 +3155,8 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
         token: mergedHit.token,
         sx,
         sy,
-        tx: dst.x,
-        ty: dst.y,
+        tx: dstX,
+        ty: dstY,
         haloR: 0,
         path,
         tagX,
@@ -2908,7 +3169,7 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
     for (const eh of consumers.edges) {
       if (eh.isDirectStateCondition) continue
       const geo = geoById.get(eh.consumerEdgeId)
-      if (!geo || geo.edge.from === eh.sourceNodeId || activeEdgeIds.has(eh.consumerEdgeId)) {
+      if (!geo || geo.edge.from === eh.sourceNodeId || edgeRefsMap.has(eh.consumerEdgeId)) {
         continue
       }
       if (!visibleIds.value.has(eh.sourceNodeId)) continue
@@ -2918,8 +3179,10 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
       if (seenEdgeLinkKeys.has(pairKey)) continue
       seenEdgeLinkKeys.add(pairKey)
 
-      const dx = geo.mid.x - src.x
-      const dy = geo.mid.y - src.y
+      const srcX = nodeX(src)
+      const srcY = nodeY(src)
+      const dx = geo.mid.x - srcX
+      const dy = geo.mid.y - srcY
       const len = Math.hypot(dx, dy)
       if (len < 6) continue
       const ux = dx / len
@@ -2933,8 +3196,8 @@ const formulaRefLinks = computed<FormulaRefLink[]>(() => {
         hw / Math.max(1e-4, Math.abs(ux)),
         hh / Math.max(1e-4, Math.abs(uy))
       )
-      const sx = src.x + ux * srcOut
-      const sy = src.y + uy * srcOut
+      const sx = srcX + ux * srcOut
+      const sy = srcY + uy * srcOut
       const ex = geo.mid.x - ux * pillStop
       const ey = geo.mid.y - uy * pillStop
       const arcBend = Math.min(30, Math.max(14, len * 0.14))
@@ -2973,22 +3236,67 @@ const formulaRefNodeIdSet = computed<Set<string>>(() => {
   return s
 })
 
-// ───────── 坐标换算 ─────────
-function toWorld(ev: PointerEvent | WheelEvent | MouseEvent): {
+// ───────── 坐标换算（拖拽期间缓存 SVG 视口矩形，消除高频 pointermove 强制同步布局回流） ─────────
+let cachedSvgRect: DOMRect | null = null
+let activeCapturedPointerId: number | null = null
+
+function refreshSvgRect(): DOMRect {
+  cachedSvgRect = svgRef.value?.getBoundingClientRect() ?? null
+  return cachedSvgRect ?? ({ left: 0, top: 0, width: 800, height: 600 } as DOMRect)
+}
+
+function clientToWorld(
+  clientX: number,
+  clientY: number,
+  useCache = false
+): {
   x: number
   y: number
   sx: number
   sy: number
 } {
-  const rect = svgRef.value!.getBoundingClientRect()
-  const sx = ev.clientX - rect.left
-  const sy = ev.clientY - rect.top
+  const rect = useCache && cachedSvgRect ? cachedSvgRect : refreshSvgRect()
+  const sx = clientX - rect.left
+  const sy = clientY - rect.top
   return {
     sx,
     sy,
     x: (sx - store.view.x) / store.view.zoom,
     y: (sy - store.view.y) / store.view.zoom
   }
+}
+
+function toWorld(ev: PointerEvent | WheelEvent | MouseEvent): {
+  x: number
+  y: number
+  sx: number
+  sy: number
+} {
+  return clientToWorld(ev.clientX, ev.clientY, false)
+}
+
+function captureCanvasPointer(ev: PointerEvent): void {
+  refreshSvgRect()
+  if (typeof ev.pointerId === 'number') {
+    try {
+      svgRef.value?.setPointerCapture?.(ev.pointerId)
+      activeCapturedPointerId = ev.pointerId
+    } catch {
+      activeCapturedPointerId = null
+    }
+  }
+}
+
+function releaseCanvasPointer(): void {
+  if (activeCapturedPointerId !== null) {
+    try {
+      svgRef.value?.releasePointerCapture?.(activeCapturedPointerId)
+    } catch {
+      // ignore if already released
+    }
+    activeCapturedPointerId = null
+  }
+  cachedSvgRect = null
 }
 
 // ───────── 交互状态 ─────────
@@ -2999,6 +3307,7 @@ const dragState = ref<{
   startX: number
   startY: number
   origins: Record<string, { x: number; y: number }>
+  snapCandidates: Array<{ x: number; y: number }>
   key: string
   moved: boolean
 } | null>(null)
@@ -3009,6 +3318,7 @@ const bendDrag = ref<{
   nx: number
   ny: number
   initialBend: number
+  key: string
 } | null>(null)
 const groupDrag = ref<{
   groupId: string
@@ -3016,17 +3326,22 @@ const groupDrag = ref<{
   startY: number
   originX: number
   originY: number
-  lastX: number
-  lastY: number
+  width: number
+  height: number
+  memberOrigins: Array<{ id: string; x: number; y: number }>
   key: string
+  moved: boolean
 } | null>(null)
 const groupResize = ref<{
   groupId: string
   startX: number
   startY: number
+  originX: number
+  originY: number
   initW: number
   initH: number
   key: string
+  moved: boolean
 } | null>(null)
 const marquee = ref<{ x0: number; y0: number; x1: number; y1: number; additive: boolean } | null>(
   null
@@ -3194,7 +3509,8 @@ function startEdgeEndpointDrag(geo: EdgeGeo, end: 'from' | 'to', ev: PointerEven
   if (!isEdgeSelected(geo.edge.id)) {
     store.select([], [geo.edge.id])
   }
-  const p = toWorld(ev)
+  captureCanvasPointer(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
   const srcNode = nodeById.value.get(geo.edge.from)
   const tgtNode = !geo.edge.targetEdgeId ? nodeById.value.get(geo.edge.to) : undefined
   const fixedAnchorX =
@@ -3239,8 +3555,9 @@ function startPortConnect(
   if (!isNodeSelected(node.id)) {
     store.select([node.id], [])
   }
+  captureCanvasPointer(ev)
   const actualKind: MxEdgeKind = ev.altKey ? 'state' : kind
-  const p = toWorld(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
   const startX = node.x + offsetX
   const startY = node.y + offsetY
   connectDrag.value = {
@@ -3256,45 +3573,81 @@ function startPortConnect(
   }
 }
 
+const isActiveGeometryDrag = computed(() =>
+  Boolean(
+    (dragState.value && dragState.value.moved) ||
+    (groupDrag.value && groupDrag.value.moved) ||
+    (groupResize.value && groupResize.value.moved) ||
+    bendDrag.value
+  )
+)
+
+watch(
+  isActiveGeometryDrag,
+  (dragging) => {
+    store.isCanvasDragging.value = dragging
+  },
+  { immediate: true }
+)
+
 function startBendDrag(edge: MxEdge, ev: PointerEvent): void {
   const geo = edgeGeometries.value.find((g) => g.edge.id === edge.id)
   if (!geo) return
-  const p = toWorld(ev)
+  captureCanvasPointer(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
   bendDrag.value = {
     edgeId: edge.id,
     startX: p.x,
     startY: p.y,
     nx: geo.nx,
     ny: geo.ny,
-    initialBend: edge.bend ?? 0
+    initialBend: edge.bend ?? 0,
+    key: `bend:${edge.id}:${Date.now()}`
   }
 }
 
 function startGroupDrag(grp: MxGroup, ev: PointerEvent): void {
   if (ev.button !== 0 || isGroupLocked(grp)) return
-  const p = toWorld(ev)
+  captureCanvasPointer(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
+  const x0 = grp.x
+  const y0 = grp.y
+  const x1 = grp.x + grp.width
+  const y1 = grp.y + grp.height
+  const memberOrigins: Array<{ id: string; x: number; y: number }> = []
+  for (const n of store.doc.value.nodes) {
+    if (!isLocked(n) && n.x >= x0 && n.x <= x1 && n.y >= y0 && n.y <= y1) {
+      memberOrigins.push({ id: n.id, x: n.x, y: n.y })
+    }
+  }
   groupDrag.value = {
     groupId: grp.id,
     startX: p.x,
     startY: p.y,
     originX: grp.x,
     originY: grp.y,
-    lastX: Math.round(grp.x),
-    lastY: Math.round(grp.y),
-    key: `grpDrag:${grp.id}:${Date.now()}`
+    width: grp.width,
+    height: grp.height,
+    memberOrigins,
+    key: `grpDrag:${grp.id}:${Date.now()}`,
+    moved: false
   }
 }
 
 function startGroupResize(grp: MxGroup, ev: PointerEvent): void {
   if (ev.button !== 0 || isGroupLocked(grp)) return
-  const p = toWorld(ev)
+  captureCanvasPointer(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
   groupResize.value = {
     groupId: grp.id,
     startX: p.x,
     startY: p.y,
+    originX: grp.x,
+    originY: grp.y,
     initW: grp.width,
     initH: grp.height,
-    key: `grpRes:${grp.id}:${Date.now()}`
+    key: `grpRes:${grp.id}:${Date.now()}`,
+    moved: false
   }
 }
 
@@ -3312,6 +3665,7 @@ function onBgPointerDown(ev: PointerEvent): void {
   }
   const p = toWorld(ev)
   if (ev.button === 1 || spaceDown) {
+    captureCanvasPointer(ev)
     panState.value = { sx: ev.clientX, sy: ev.clientY, vx: store.view.x, vy: store.view.y }
     return
   }
@@ -3324,6 +3678,7 @@ function onBgPointerDown(ev: PointerEvent): void {
     return
   }
   if (store.tool.value === 'select') {
+    captureCanvasPointer(ev)
     marquee.value = { x0: p.sx, y0: p.sy, x1: p.sx, y1: p.sy, additive: ev.shiftKey }
     if (!ev.shiftKey) store.select([])
   }
@@ -3338,6 +3693,7 @@ function onNodePointerDown(node: MxNode, ev: PointerEvent): void {
     return
   }
   if (ev.button === 1) {
+    captureCanvasPointer(ev)
     panState.value = { sx: ev.clientX, sy: ev.clientY, vx: store.view.x, vy: store.view.y }
     return
   }
@@ -3346,6 +3702,7 @@ function onNodePointerDown(node: MxNode, ev: PointerEvent): void {
   // Alt + 拖拽节点：直接拖出连线（Shift+Alt 为状态边，Alt 为资源边）
   const tl = store.tool.value
   if (ev.altKey || tl === 'resource_edge' || tl === 'state_edge') {
+    captureCanvasPointer(ev)
     const kind: MxEdgeKind =
       tl === 'state_edge' || (ev.altKey && ev.shiftKey) ? 'state' : 'resource'
     connectDrag.value = {
@@ -3387,13 +3744,21 @@ function onNodePointerDown(node: MxNode, ev: PointerEvent): void {
     if (n) origins[id] = { x: n.x, y: n.y }
   }
   const leadId = ids.includes(node.id) ? node.id : ids[0]!
-  const p = toWorld(ev)
+  const snapCandidates: Array<{ x: number; y: number }> = []
+  if (ids.length === 1) {
+    for (const other of visibleNodes.value) {
+      if (other.id !== leadId) snapCandidates.push({ x: other.x, y: other.y })
+    }
+  }
+  captureCanvasPointer(ev)
+  const p = clientToWorld(ev.clientX, ev.clientY, true)
   dragState.value = {
     ids,
     leadId,
     startX: p.x,
     startY: p.y,
     origins,
+    snapCandidates,
     key: `drag:${Date.now()}`,
     moved: false
   }
@@ -3450,20 +3815,50 @@ function hitEdgeMidpoint(x: number, y: number): EdgeGeo | null {
   return null
 }
 
-function onPointerMove(ev: PointerEvent): void {
+let pointerRafId: number | null = null
+let pendingPointer: { clientX: number; clientY: number } | null = null
+
+function cancelPendingPointerRaf(): void {
+  if (pointerRafId !== null) {
+    cancelAnimationFrame(pointerRafId)
+    pointerRafId = null
+  }
+  pendingPointer = null
+}
+
+function cancelActiveTransientDrag(): void {
+  cancelPendingPointerRaf()
+  if (alignGuides.value.length > 0) alignGuides.value = []
+  dragState.value = null
+  groupDrag.value = null
+  groupResize.value = null
+  bendDrag.value = null
+  panState.value = null
+  marquee.value = null
+  transientNodePos.value = EMPTY_NODE_POS_MAP
+  transientGroupRect.value = EMPTY_GROUP_RECT_MAP
+  transientEdgeBend.value = EMPTY_EDGE_BEND_MAP
+  releaseCanvasPointer()
+}
+
+function processPointerMove(clientX: number, clientY: number): void {
   if (panState.value) {
-    store.view.x = panState.value.vx + (ev.clientX - panState.value.sx)
-    store.view.y = panState.value.vy + (ev.clientY - panState.value.sy)
+    store.view.x = panState.value.vx + (clientX - panState.value.sx)
+    store.view.y = panState.value.vy + (clientY - panState.value.sy)
     return
   }
-  const p = toWorld(ev)
+
+  const p = clientToWorld(clientX, clientY, activeCapturedPointerId !== null)
 
   if (bendDrag.value) {
     const b = bendDrag.value
     const dx = p.x - b.startX
     const dy = p.y - b.startY
     const proj = (dx * b.nx + dy * b.ny) * 2
-    store.updateEdge(b.edgeId, { bend: Math.round(b.initialBend + proj) }, `bend:${b.edgeId}`)
+    const nextBend = Math.round(b.initialBend + proj)
+    if (transientEdgeBend.value.get(b.edgeId) !== nextBend) {
+      transientEdgeBend.value = new Map([[b.edgeId, nextBend]])
+    }
     return
   }
 
@@ -3479,22 +3874,40 @@ function onPointerMove(ev: PointerEvent): void {
       100,
       store.snapToGrid.value ? Math.round(rawH / 20) * 20 : Math.round(rawH)
     )
-    store.updateGroup(gr.groupId, { width: nextW, height: nextH }, gr.key)
+    gr.moved = true
+    const cur = transientGroupRect.value.get(gr.groupId)
+    if (!cur || cur.width !== nextW || cur.height !== nextH) {
+      transientGroupRect.value = new Map([
+        [gr.groupId, { x: gr.originX, y: gr.originY, width: nextW, height: nextH }]
+      ])
+    }
     return
   }
 
   if (groupDrag.value) {
     const gd = groupDrag.value
-    const rawX = gd.originX + (p.x - gd.startX)
-    const rawY = gd.originY + (p.y - gd.startY)
+    const rawDx = p.x - gd.startX
+    const rawDy = p.y - gd.startY
+    if (!gd.moved && Math.hypot(rawDx, rawDy) < 2) return
+    gd.moved = true
+    const rawX = gd.originX + rawDx
+    const rawY = gd.originY + rawDy
     const targetX = store.snapToGrid.value ? Math.round(rawX / 20) * 20 : Math.round(rawX)
     const targetY = store.snapToGrid.value ? Math.round(rawY / 20) * 20 : Math.round(rawY)
-    const stepDx = targetX - gd.lastX
-    const stepDy = targetY - gd.lastY
-    if (stepDx !== 0 || stepDy !== 0) {
-      gd.lastX = targetX
-      gd.lastY = targetY
-      store.moveGroup(gd.groupId, stepDx, stepDy, gd.key)
+    const dx = targetX - Math.round(gd.originX)
+    const dy = targetY - Math.round(gd.originY)
+    const curGrp = transientGroupRect.value.get(gd.groupId)
+    if (!curGrp || curGrp.x !== targetX || curGrp.y !== targetY) {
+      transientGroupRect.value = new Map([
+        [gd.groupId, { x: targetX, y: targetY, width: gd.width, height: gd.height }]
+      ])
+      if (gd.memberOrigins.length > 0) {
+        const nextNodePos = new Map<string, { x: number; y: number }>()
+        for (const m of gd.memberOrigins) {
+          nextNodePos.set(m.id, { x: Math.round(m.x + dx), y: Math.round(m.y + dy) })
+        }
+        transientNodePos.value = nextNodePos
+      }
     }
     return
   }
@@ -3516,12 +3929,10 @@ function onPointerMove(ev: PointerEvent): void {
       let targetLeadX = Math.round(rawLeadX / 20) * 20
       let targetLeadY = Math.round(rawLeadY / 20) * 20
 
-      const guides: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
-      if (ds.ids.length === 1) {
+      if (ds.ids.length === 1 && ds.snapCandidates.length > 0) {
         let bestXDist = 7
         let bestYDist = 7
-        for (const other of visibleNodes.value) {
-          if (other.id === ds.leadId) continue
+        for (const other of ds.snapCandidates) {
           const distX = Math.abs(other.x - rawLeadX)
           if (distX < bestXDist) {
             bestXDist = distX
@@ -3533,8 +3944,8 @@ function onPointerMove(ev: PointerEvent): void {
             targetLeadY = other.y
           }
         }
-        for (const other of visibleNodes.value) {
-          if (other.id === ds.leadId) continue
+        const guides: Array<{ x1: number; y1: number; x2: number; y2: number }> = []
+        for (const other of ds.snapCandidates) {
           if (Math.abs(other.x - targetLeadX) < 0.5) {
             guides.push({
               x1: other.x,
@@ -3552,37 +3963,43 @@ function onPointerMove(ev: PointerEvent): void {
             })
           }
         }
+        if (guides.length > 0 || alignGuides.value.length > 0) {
+          alignGuides.value = guides
+        }
+      } else if (alignGuides.value.length > 0) {
+        alignGuides.value = []
       }
-      alignGuides.value = guides
       effDx = targetLeadX - leadOrig.x
       effDy = targetLeadY - leadOrig.y
-    } else {
+    } else if (alignGuides.value.length > 0) {
       alignGuides.value = []
     }
 
     let changed = false
     for (const id of ds.ids) {
       const orig = ds.origins[id]
-      const cur = nodeById.value.get(id)
-      if (!orig || !cur) continue
+      if (!orig) continue
       const nx = Math.round(orig.x + effDx)
       const ny = Math.round(orig.y + effDy)
-      if (cur.x !== nx || cur.y !== ny) {
+      const prev = transientNodePos.value.get(id)
+      const curX = prev ? prev.x : orig.x
+      const curY = prev ? prev.y : orig.y
+      if (curX !== nx || curY !== ny) {
         changed = true
         break
       }
     }
     if (changed) {
-      const idSet = new Set(ds.ids)
-      store.mutate((d) => {
-        for (const n of d.nodes) {
-          if (!idSet.has(n.id)) continue
-          const orig = ds.origins[n.id]
-          if (!orig) continue
-          n.x = Math.round(orig.x + effDx)
-          n.y = Math.round(orig.y + effDy)
-        }
-      }, ds.key)
+      const nextPos = new Map<string, { x: number; y: number }>()
+      for (const id of ds.ids) {
+        const orig = ds.origins[id]
+        if (!orig) continue
+        nextPos.set(id, {
+          x: Math.round(orig.x + effDx),
+          y: Math.round(orig.y + effDy)
+        })
+      }
+      transientNodePos.value = nextPos
     }
     return
   }
@@ -3646,20 +4063,99 @@ function onPointerMove(ev: PointerEvent): void {
   }
 }
 
+function flushPendingPointerMove(): void {
+  if (pointerRafId !== null) {
+    cancelAnimationFrame(pointerRafId)
+    pointerRafId = null
+  }
+  if (pendingPointer) {
+    const pt = pendingPointer
+    pendingPointer = null
+    processPointerMove(pt.clientX, pt.clientY)
+  }
+}
+
+function onPointerMove(ev: PointerEvent): void {
+  if (
+    !panState.value &&
+    !bendDrag.value &&
+    !groupResize.value &&
+    !groupDrag.value &&
+    !dragState.value &&
+    !reconnectDrag.value &&
+    !connectDrag.value &&
+    !marquee.value
+  ) {
+    return
+  }
+  pendingPointer = { clientX: ev.clientX, clientY: ev.clientY }
+  if (pointerRafId === null) {
+    pointerRafId = requestAnimationFrame(() => {
+      pointerRafId = null
+      const pt = pendingPointer
+      pendingPointer = null
+      if (pt) {
+        processPointerMove(pt.clientX, pt.clientY)
+      }
+    })
+  }
+}
+
+function onSvgPointerLeave(ev: PointerEvent): void {
+  if (activeCapturedPointerId !== null) return
+  if (connectDrag.value?.sticky) return
+  onPointerUp(ev)
+}
+
 function onPointerUp(ev: PointerEvent): void {
-  alignGuides.value = []
+  flushPendingPointerMove()
+  if (alignGuides.value.length > 0) alignGuides.value = []
+
   if (bendDrag.value) {
+    const b = bendDrag.value
+    const nextBend = transientEdgeBend.value.get(b.edgeId)
     bendDrag.value = null
+    transientEdgeBend.value = EMPTY_EDGE_BEND_MAP
+    if (nextBend !== undefined) {
+      store.commitEdgeBend(b.edgeId, nextBend, b.key)
+    }
   }
+
   if (groupDrag.value) {
+    const gd = groupDrag.value
+    const nextGrp = transientGroupRect.value.get(gd.groupId)
+    const nextMembers = transientNodePos.value
     groupDrag.value = null
+    transientGroupRect.value = EMPTY_GROUP_RECT_MAP
+    transientNodePos.value = EMPTY_NODE_POS_MAP
+    if (gd.moved && nextGrp) {
+      store.commitGroupMove(gd.groupId, nextGrp.x, nextGrp.y, nextMembers, gd.key)
+    }
   }
+
   if (groupResize.value) {
+    const gr = groupResize.value
+    const nextGrp = transientGroupRect.value.get(gr.groupId)
     groupResize.value = null
+    transientGroupRect.value = EMPTY_GROUP_RECT_MAP
+    if (gr.moved && nextGrp) {
+      store.commitGroupResize(gr.groupId, nextGrp.width, nextGrp.height, gr.key)
+    }
   }
+
+  if (dragState.value) {
+    const ds = dragState.value
+    const nextPos = transientNodePos.value
+    dragState.value = null
+    transientNodePos.value = EMPTY_NODE_POS_MAP
+    if (ds.moved && nextPos.size > 0) {
+      store.commitNodePositions(nextPos, ds.key)
+    }
+  }
+
   if (reconnectDrag.value) {
     const rd = reconnectDrag.value
-    const p = toWorld(ev)
+    const p = clientToWorld(ev.clientX, ev.clientY, true)
     const targetNode = hitNode(p.x, p.y)
     const targetEdge = !targetNode ? hitEdgeMidpoint(p.x, p.y) : null
     if (targetNode && canReconnectToNode(rd, targetNode)) {
@@ -3672,7 +4168,7 @@ function onPointerUp(ev: PointerEvent): void {
 
   if (connectDrag.value) {
     const cd = connectDrag.value
-    const p = toWorld(ev)
+    const p = clientToWorld(ev.clientX, ev.clientY, true)
     const target = hitNode(p.x, p.y)
     const targetEdge = !target ? hitEdgeMidpoint(p.x, p.y) : null
     const distFromSource = Math.hypot(p.x - cd.fromX, p.y - cd.fromY)
@@ -3722,7 +4218,7 @@ function onPointerUp(ev: PointerEvent): void {
     marquee.value = null
   }
   panState.value = null
-  dragState.value = null
+  releaseCanvasPointer()
 }
 
 function confirmQuickConnectSpawn(kind: MxNodeKind): void {
@@ -4037,18 +4533,25 @@ function focusSearchResult(item: SearchHit): void {
   store.view.y = ch / 2 - item.wy * store.view.zoom
 }
 
+let cachedMinimapDiagramBounds: ReturnType<typeof computeMxDiagramBounds> | null = null
+
 const minimapBounds = computed(() => {
-  const b = computeMxDiagramBounds(store.doc.value, {
-    padding: 56,
-    minWidth: 320,
-    minHeight: 200,
-    showNodeLabels: store.showNodeLabels.value
-  })
+  const showLabels = store.showNodeLabels.value
+  if (!isActiveGeometryDrag.value || !cachedMinimapDiagramBounds) {
+    void store.docRevision.value
+    cachedMinimapDiagramBounds = computeMxDiagramBounds(store.peekDoc(), {
+      padding: 56,
+      minWidth: 320,
+      minHeight: 200,
+      showNodeLabels: showLabels
+    })
+  }
+  const b = cachedMinimapDiagramBounds
   const minX = (b.contentMinX + b.contentMaxX) / 2 - b.exportWidth / 2
   const minY = (b.contentMinY + b.contentMaxY) / 2 - b.exportHeight / 2
   const w = b.exportWidth
   const h = b.exportHeight
-  const rect = svgRef.value?.getBoundingClientRect()
+  const rect = cachedSvgRect ?? svgRef.value?.getBoundingClientRect()
   const cw = rect?.width ?? 800
   const ch = rect?.height ?? 480
   const vx = -store.view.x / store.view.zoom
@@ -4100,13 +4603,16 @@ function onKeyDown(ev: KeyboardEvent): void {
     return
   }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
+    cancelActiveTransientDrag()
     store.deleteSelection()
     ev.preventDefault()
   } else if (mod && ev.key.toLowerCase() === 'z') {
+    cancelActiveTransientDrag()
     if (ev.shiftKey) store.redo()
     else store.undo()
     ev.preventDefault()
   } else if (mod && ev.key.toLowerCase() === 'y') {
+    cancelActiveTransientDrag()
     store.redo()
     ev.preventDefault()
   } else if (mod && ev.key.toLowerCase() === 'c') {
@@ -4134,9 +4640,11 @@ function onKeyDown(ev: KeyboardEvent): void {
       store.tool.value !== 'select' ||
       store.selection.nodes.length > 0 ||
       store.selection.edges.length > 0 ||
+      isActiveGeometryDrag.value ||
       Boolean(connectDrag.value) ||
       Boolean(reconnectDrag.value) ||
       searchOpen.value
+    cancelActiveTransientDrag()
     store.tool.value = 'select'
     store.select([])
     connectDrag.value = null
@@ -4159,6 +4667,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  cancelActiveTransientDrag()
+  store.isCanvasDragging.value = false
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
     rafId = null
@@ -5260,5 +5770,23 @@ defineExpose({
 }
 .mx-bottleneck-badge {
   pointer-events: none;
+}
+
+/* 拖拽期间禁用高开销 SVG drop-shadow 光栅化滤镜、过渡插值与虚线重绘动画，确保 60fps 丝滑跟随 */
+.mx-svg.is-dragging .mx-node.fired path,
+.mx-svg.is-dragging .mx-formula-ref-halo,
+.mx-svg.is-dragging .mx-edge-pill-bg.is-cond-highlight,
+.mx-svg.is-dragging .mx-cond-consumer-halo,
+.mx-svg.is-dragging .mx-node-sub-pill.is-cond-highlight,
+.mx-svg.is-dragging .mx-edge-endpoint .mx-ep-vis {
+  filter: none !important;
+}
+.mx-svg.is-dragging .mx-edge-pill-bg,
+.mx-svg.is-dragging .mx-reg-step-btn circle,
+.mx-svg.is-dragging .mx-port-dot .mx-port-vis {
+  transition: none !important;
+}
+.mx-svg.is-dragging .mx-formula-ref-line {
+  animation: none !important;
 }
 </style>

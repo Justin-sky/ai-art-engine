@@ -49,15 +49,16 @@ const newParamName = ref('')
 const newParamVal = ref<number>(1)
 const caretPos = ref<{ start: number; end: number }>({ start: 0, end: 0 })
 
-const inspection = computed(() =>
-  inspectMxFormulaContext(s.doc.value, props.modelValue, {
+const inspection = computed(() => {
+  void s.topologyRevision.value
+  return inspectMxFormulaContext(s.peekDoc(), props.modelValue, {
     contextKind: props.contextKind,
     ownerNodeId: props.ownerNodeId,
     edgeId: props.edgeId,
     values: s.displayValues.value,
     step: s.playStep.value
   })
-)
+})
 
 const hasStateInputsInCatalog = computed(() =>
   inspection.value.catalog.some((it) => it.source === 'state_input')

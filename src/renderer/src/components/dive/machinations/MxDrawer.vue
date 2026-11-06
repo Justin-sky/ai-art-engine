@@ -55,8 +55,9 @@ const importanceStops: MxAgentImportance[] = ['min', 'low', 'med', 'high', 'max'
 const utilityCurveOptions: MxAgentUtilityCurve[] = ['linear', 'diminishing', 'urgency', 'step']
 
 const highlightedParamIdSet = computed<Set<string>>(() => {
+  void s.topologyRevision.value
   if (s.selection.nodes.length === 0 || s.selection.nodes.length > 12) return new Set()
-  const res = resolveMxNodeConsumers(s.doc.value, s.selection.nodes)
+  const res = resolveMxNodeConsumers(s.peekDoc(), s.selection.nodes)
   return new Set(res.params.map((p) => p.consumerParamId))
 })
 const personalityOptions: MxAgentPersonality[] = [
