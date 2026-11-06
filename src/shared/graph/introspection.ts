@@ -674,11 +674,11 @@ function buildKnownSubDocPrototype(key: string): {
         fieldOverrides: {
           'gameEconomyDiagramJson.layers': {
             description:
-              'Machinations 子系统分类图层列表（第 0 项保留 { id: "layer_base", name: "Base", visible: true, locked: false } 供手动新建默认归属，其余按能量/牌库/战斗乘区/护甲Boss/遗物终局等分类建层）' // cjk-ok
+              'Machinations 图层列表（默认仅需保留第 0 项 { id: "layer_base", name: "Base", visible: true, locked: false }；仅在用户明确要求创建完整全套机制或分图层时，才按子系统分类新增图层）' // cjk-ok
           },
           'gameEconomyDiagramJson.nodes[].layerId': {
             description:
-              '节点所属子系统分类图层 ID（对应 layers[].id；构建完整机制时请按不同玩法分类分配到不同图层）' // cjk-ok
+              '节点所属图层 ID（默认归属 "layer_base"；仅在用户明确要求创建完整多图层机制时按分类分配到不同图层）' // cjk-ok
           },
           'gameEconomyDiagramJson.nodes[].kind': {
             type: 'enum',

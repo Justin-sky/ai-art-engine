@@ -411,6 +411,97 @@ export function createMxStudioStore(initial: MxDocument) {
     )
   }
 
+  /**
+   * 拖拽连线端点（起点 from 或终点 to）重连到其他节点，或将状态边终点重连到另一条连线的公式胶囊。
+   * 完整保留原连线的公式、间隔、传输模式与全部配置参数。
+   */
+  function reconnectEdge(
+    edgeId: string,
+    end: 'from' | 'to',
+    target: { nodeId?: string; targetEdgeId?: string }
+  ): boolean {
+    const curEdge = doc.value.edges.find((x) => x.id === edgeId)
+    if (!curEdge) return false
+
+    if (end === 'from') {
+      const nextFromId = target.nodeId
+      if (!nextFromId) return false
+      const nextFromNode = doc.value.nodes.find((n) => n.id === nextFromId)
+      if (!nextFromNode || nextFromNode.kind === 'note') return false
+      if (curEdge.targetEdgeId) {
+        const tgtEdge = doc.value.edges.find((e) => e.id === curEdge.targetEdgeId)
+        if (!tgtEdge || tgtEdge.from === nextFromId) return false
+      } else if (nextFromId === curEdge.to) {
+        return false
+      }
+      if (doc.value.edges.some((dep) => dep.targetEdgeId === edgeId && dep.from === nextFromId)) {
+        return false
+      }
+      if (nextFromId === curEdge.from) {
+        select([], [edgeId])
+        return false
+      }
+      mutate((d) => {
+        const e = d.edges.find((x) => x.id === edgeId)
+        if (e) {
+          e.from = nextFromId
+          for (const dep of d.edges) {
+            if (dep.targetEdgeId === edgeId) {
+              dep.to = nextFromId
+            }
+          }
+        }
+      })
+      select([], [edgeId])
+      return true
+    }
+
+    if (target.targetEdgeId) {
+      if (curEdge.kind !== 'state' || target.targetEdgeId === edgeId) return false
+      const tgtEdge = doc.value.edges.find((e) => e.id === target.targetEdgeId)
+      if (!tgtEdge || tgtEdge.from === curEdge.from) return false
+      let cursor: MxEdge | undefined = tgtEdge
+      const visited = new Set<string>([edgeId])
+      while (cursor?.targetEdgeId) {
+        if (visited.has(cursor.targetEdgeId)) return false
+        visited.add(cursor.targetEdgeId)
+        cursor = doc.value.edges.find((e) => e.id === cursor!.targetEdgeId)
+      }
+      if (curEdge.targetEdgeId === target.targetEdgeId) {
+        select([], [edgeId])
+        return false
+      }
+      mutate((d) => {
+        const e = d.edges.find((x) => x.id === edgeId)
+        if (e) {
+          e.to = tgtEdge.from
+          e.targetEdgeId = target.targetEdgeId
+        }
+      })
+      select([], [edgeId])
+      return true
+    }
+
+    const nextToId = target.nodeId
+    if (!nextToId) return false
+    const nextToNode = doc.value.nodes.find((n) => n.id === nextToId)
+    if (!nextToNode || nextToNode.kind === 'note') return false
+    if (nextToId === curEdge.from) return false
+    if (!curEdge.targetEdgeId && nextToId === curEdge.to) {
+      select([], [edgeId])
+      return false
+    }
+    mutate((d) => {
+      const e = d.edges.find((x) => x.id === edgeId)
+      if (e) {
+        e.to = nextToId
+        e.targetEdgeId = undefined
+      }
+    })
+    select([], [edgeId])
+    return true
+  }
+
   function moveNodes(ids: string[], dx: number, dy: number, coalesce: string): void {
     const set = new Set(ids)
     mutate((d) => {
@@ -603,13 +694,48 @@ export function createMxStudioStore(initial: MxDocument) {
     })
   }
 
-  function cycleBotMode(): void {
-    const cur = doc.value.settings.botMode ?? 'off'
-    const next = cur === 'off' ? 'greedy' : cur === 'greedy' ? 'smart' : 'off'
+  function setBotMode(next: 'off' | 'greedy' | 'smart'): void {
     mutate((d) => {
       d.settings.botMode = next
-    })
-    playAgain()
+      if (next === 'off') {
+        // 切为「手动 Off」时同步停用后台自动代点的效用智能体（Agents）并归位单节点自动策略
+        if (d.agents?.length) {
+          for (const ag of d.agents) {
+            ag.enabled = false
+          }
+        }
+        for (const n of d.nodes) {
+          if (
+            n.trigger === 'interactive' &&
+            n.botPolicy &&
+            n.botPolicy !== 'inherit' &&
+            n.botPolicy !== 'off'
+          ) {
+            n.botPolicy = 'inherit'
+          }
+        }
+      }
+    }, 'botMode')
+    if (next === 'off') {
+      resetPlayback()
+      activeRunId.value = ''
+    } else {
+      playAgain()
+    }
+  }
+
+  function cycleBotMode(): void {
+    const cur = doc.value.settings.botMode ?? 'off'
+    const hasActiveAgent = (doc.value.agents ?? []).some((a) => a.enabled)
+    const next =
+      cur === 'off' && hasActiveAgent
+        ? 'off'
+        : cur === 'off'
+          ? 'greedy'
+          : cur === 'greedy'
+            ? 'smart'
+            : 'off'
+    setBotMode(next)
   }
 
   // 剪贴板
@@ -1488,6 +1614,7 @@ export function createMxStudioStore(initial: MxDocument) {
     deleteSelection,
     updateNode,
     updateEdge,
+    reconnectEdge,
     moveNodes,
     createGroupFromSelection,
     moveGroup,
@@ -1496,6 +1623,7 @@ export function createMxStudioStore(initial: MxDocument) {
     applyTunableValue,
     applyTunablePair,
     alignSelection,
+    setBotMode,
     cycleBotMode,
     copySelection,
     pasteNodes,

@@ -1776,11 +1776,22 @@ function sweepSeriesPolyline(nodeId: string): string {
         <button
           type="button"
           class="mx-tp-pill"
-          :class="{ 'is-bot-on': (s.doc.value.settings.botMode ?? 'off') !== 'off' }"
+          :class="{
+            'is-bot-on':
+              (s.doc.value.settings.botMode ?? 'off') !== 'off' ||
+              (s.doc.value.agents ?? []).some((a) => a.enabled)
+          }"
           :title="t('mx.transport.botToggleTip')"
           @click="s.cycleBotMode()"
         >
-          🤖 {{ t(`mx.inspector.botMode_${s.doc.value.settings.botMode ?? 'off'}`) }}
+          🤖
+          {{
+            (s.doc.value.settings.botMode ?? 'off') !== 'off'
+              ? t(`mx.inspector.botMode_${s.doc.value.settings.botMode ?? 'off'}`)
+              : (s.doc.value.agents ?? []).some((a) => a.enabled)
+                ? 'Agent'
+                : t('mx.inspector.botMode_off')
+          }}
         </button>
         <label class="mx-tp-steps-box" :title="t('mx.inspector.steps')">
           <input

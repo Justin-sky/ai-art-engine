@@ -8854,6 +8854,8 @@ export default {
       hintPlace: '点击画布空白处放置该节点（按 ESC 返回选择模式）',
       dragResourcePortTip: '拖拽拉出资源流连接 (──►)，松开在空白处可快速新建节点',
       dragStatePortTip: '拖拽拉出状态控制连接 (╌╌►)，可连向节点或另一条边胶囊',
+      dragEdgeSourceTip: '拖动起点改连到其他源节点',
+      dragEdgeTargetTip: '拖动箭头终点改连到其他目标节点（状态线也可连向另一条连线）',
       bendHandleTip: '上下拖动调整连接线弧度（双击复位直线）',
       snapGrid: '网格对齐吸附',
       autoLayout: '一键拓扑自动排版 (Auto Layout)',

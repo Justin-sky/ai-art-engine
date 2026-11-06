@@ -9120,6 +9120,9 @@ export default {
         'Drag to create Resource Connection (──►); drop on blank canvas to spawn node',
       dragStatePortTip:
         'Drag to create State Connection (╌╌►) to a node or another edge formula pill',
+      dragEdgeSourceTip: 'Drag source endpoint to reconnect to another origin node',
+      dragEdgeTargetTip:
+        'Drag target arrowhead to reconnect to another node (or another edge pill for State links)',
       bendHandleTip: 'Drag to curve connection (double-click to reset straight)',
       snapGrid: 'Snap to Grid',
       autoLayout: 'Auto-Layout Diagram',

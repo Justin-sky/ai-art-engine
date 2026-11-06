@@ -4,7 +4,7 @@
     class="mx-canvas"
     :class="[
       `theme-${store.canvasTheme.value}`,
-      { panning: !!panState, connecting: !!connectDrag, placing: isNodeTool }
+      { panning: !!panState, connecting: !!connectDrag || !!reconnectDrag, placing: isNodeTool }
     ]"
     tabindex="0"
     @keydown="onKeyDown"
@@ -174,8 +174,12 @@
           class="mx-edge"
           :class="{
             'is-selected': isEdgeSelected(geo.edge.id),
-            'is-drop-target': connectDrag?.hoverEdgeId === geo.edge.id
+            'is-reconnecting': reconnectDrag?.edgeId === geo.edge.id,
+            'is-drop-target':
+              connectDrag?.hoverEdgeId === geo.edge.id || reconnectDrag?.hoverEdgeId === geo.edge.id
           }"
+          @pointerenter="hoveredEdgeId = geo.edge.id"
+          @pointerleave="hoveredEdgeId = hoveredEdgeId === geo.edge.id ? '' : hoveredEdgeId"
           @pointerdown.stop="onEdgePointerDown(geo.edge.id, $event)"
           @dblclick.stop="startEdgeEdit(geo.edge.id)"
           @contextmenu.prevent.stop="onEdgeContextMenu(geo.edge, $event)"
@@ -286,21 +290,57 @@
             </g>
           </template>
 
-          <!-- 状态控制边触发时的信号脉冲光点（仅当条件满足、触发器激活或修正器实际生效时发射） -->
+          <!-- 状态控制边条件满足/触发时的原地闪烁（闪 3 下后静止，不使用资源球/菱形流动） -->
           <g
-            v-else-if="isFlowAnimating && geo.edge.kind === 'state' && isStateEdgePulsing(geo.edge)"
-            :transform="`translate(${sampleEdgePoint(geo, streamPhase).x}, ${sampleEdgePoint(geo, streamPhase).y})`"
+            v-if="
+              isStateFlashActive &&
+              store.playStep.value > 0 &&
+              geo.edge.kind === 'state' &&
+              isStateEdgePulsing(geo.edge)
+            "
+            :key="`st-flash-${geo.edge.id}-${stateFlashSeq}`"
+            class="mx-state-flash-group"
+            pointer-events="none"
           >
-            <polygon
-              points="0,-4.5 4.5,0 0,4.5 -4.5,0"
-              :fill="geo.color"
+            <path
+              :d="geo.path"
+              fill="none"
+              :stroke="geo.color"
+              stroke-width="6.5"
+              stroke-linecap="round"
+              class="mx-state-flash-glow"
+            />
+            <path
+              :d="geo.path"
+              fill="none"
               stroke="#ffffff"
-              stroke-width="1"
+              stroke-width="2.6"
+              stroke-dasharray="6 4"
+              stroke-linecap="round"
+              class="mx-state-flash-core"
             />
           </g>
 
           <!-- 连线中点公式胶囊 (Formula Pill) -->
           <g class="mx-edge-pill" :transform="`translate(${geo.mid.x}, ${geo.mid.y})`">
+            <rect
+              v-if="
+                isStateFlashActive &&
+                store.playStep.value > 0 &&
+                geo.edge.kind === 'state' &&
+                isStateEdgePulsing(geo.edge)
+              "
+              :key="`st-pill-flash-${geo.edge.id}-${stateFlashSeq}`"
+              :x="-geo.labelW / 2 - 2"
+              y="-11.5"
+              :width="geo.labelW + 4"
+              height="23"
+              rx="11.5"
+              fill="none"
+              :stroke="geo.color"
+              stroke-width="2"
+              class="mx-state-flash-pill"
+            />
             <rect
               :x="-geo.labelW / 2"
               y="-9.5"
@@ -311,7 +351,9 @@
               :class="{
                 'is-selected': isEdgeSelected(geo.edge.id),
                 'is-state': geo.edge.kind === 'state',
-                'is-drop': connectDrag?.hoverEdgeId === geo.edge.id
+                'is-drop':
+                  connectDrag?.hoverEdgeId === geo.edge.id ||
+                  reconnectDrag?.hoverEdgeId === geo.edge.id
               }"
             />
             <text
@@ -360,7 +402,9 @@
           :class="{
             selected: isNodeSelected(node.id),
             hovered: hoveredNodeId === node.id,
-            'drop-target': connectDrag?.hoverNodeId === node.id,
+            'is-runtime-interactive': isSimRuntime && node.trigger === 'interactive',
+            'drop-target':
+              connectDrag?.hoverNodeId === node.id || reconnectDrag?.hoverNodeId === node.id,
             fired: isFlowAnimating && firedIds.has(node.id),
             locked: isLocked(node)
           }"
@@ -401,10 +445,17 @@
 
             <!-- 选中/悬停/吸附光环 -->
             <circle
-              v-if="isNodeSelected(node.id) || connectDrag?.hoverNodeId === node.id"
+              v-if="
+                isNodeSelected(node.id) ||
+                connectDrag?.hoverNodeId === node.id ||
+                reconnectDrag?.hoverNodeId === node.id
+              "
               r="29"
               class="mx-sel-halo"
-              :class="{ 'is-snap': connectDrag?.hoverNodeId === node.id }"
+              :class="{
+                'is-snap':
+                  connectDrag?.hoverNodeId === node.id || reconnectDrag?.hoverNodeId === node.id
+              }"
             />
 
             <!-- Pool 容量进度外环 (Capacity Arc) -->
@@ -730,9 +781,11 @@
               </text>
             </g>
 
-            <!-- ══════════ 四向快捷连线端口 (Hover Connection Ports) ══════════ -->
+            <!-- ══════════ 四向快捷连线端口 (Hover Connection Ports · 运行时隐藏) ══════════ -->
             <g
               v-if="
+                !isSimRuntime &&
+                !reconnectDrag &&
                 (hoveredNodeId === node.id ||
                   (isNodeSelected(node.id) && store.selection.nodes.length <= 12) ||
                   connectDrag?.from === node.id) &&
@@ -818,6 +871,46 @@
           </g>
         </g>
 
+        <!-- ══════════ 连线两端可拖拽重连锚点层 (置于节点层上方，确保不被节点热区遮挡) ══════════ -->
+        <g v-if="endpointHandleGeos.length > 0" class="mx-edge-endpoints-layer">
+          <g v-for="geo in endpointHandleGeos" :key="`ep-${geo.edge.id}`" class="mx-edge-endpoints">
+            <g
+              :transform="`translate(${geo.sx}, ${geo.sy})`"
+              class="mx-edge-endpoint is-source"
+              @pointerenter="hoveredEdgeId = geo.edge.id"
+              @pointerleave="hoveredEdgeId = hoveredEdgeId === geo.edge.id ? '' : hoveredEdgeId"
+              @pointerdown.stop="startEdgeEndpointDrag(geo, 'from', $event)"
+            >
+              <circle r="9.5" fill="transparent" class="mx-ep-hit" />
+              <circle
+                r="4.5"
+                fill="#ffffff"
+                :stroke="geo.color"
+                stroke-width="2"
+                class="mx-ep-vis"
+              />
+              <title>{{ t('mx.canvas.dragEdgeSourceTip') }}</title>
+            </g>
+            <g
+              :transform="`translate(${geo.ex}, ${geo.ey})`"
+              class="mx-edge-endpoint is-target"
+              @pointerenter="hoveredEdgeId = geo.edge.id"
+              @pointerleave="hoveredEdgeId = hoveredEdgeId === geo.edge.id ? '' : hoveredEdgeId"
+              @pointerdown.stop="startEdgeEndpointDrag(geo, 'to', $event)"
+            >
+              <circle r="9.5" fill="transparent" class="mx-ep-hit" />
+              <circle
+                r="4.8"
+                :fill="geo.color"
+                stroke="#ffffff"
+                stroke-width="1.8"
+                class="mx-ep-vis"
+              />
+              <title>{{ t('mx.canvas.dragEdgeTargetTip') }}</title>
+            </g>
+          </g>
+        </g>
+
         <!-- ══════════ 实时拖线预览曲线 (置于节点层上方，确保起点紧贴 + 号锚点且不被遮挡) ══════════ -->
         <g v-if="connectDrag" class="mx-connect-preview" pointer-events="none">
           <circle
@@ -843,6 +936,39 @@
             :cy="connectDrag.toY"
             r="4.5"
             :fill="connectDrag.kind === 'state' ? '#38bdf8' : '#3d8bfd'"
+            fill-opacity="0.35"
+          />
+        </g>
+
+        <!-- ══════════ 拖拽连线端点重连实时预览 ══════════ -->
+        <g
+          v-if="reconnectPreview"
+          class="mx-connect-preview mx-reconnect-preview"
+          pointer-events="none"
+        >
+          <circle
+            :cx="reconnectPreview.fromX"
+            :cy="reconnectPreview.fromY"
+            r="4.2"
+            fill="#ffffff"
+            :stroke="reconnectPreview.kind === 'state' ? '#38bdf8' : '#3d8bfd'"
+            stroke-width="2"
+          />
+          <path
+            :d="reconnectPreview.path"
+            fill="none"
+            :stroke="reconnectPreview.kind === 'state' ? '#38bdf8' : '#3d8bfd'"
+            stroke-width="2.4"
+            :stroke-dasharray="reconnectPreview.kind === 'state' ? '6 4' : undefined"
+            :marker-end="
+              reconnectPreview.kind === 'state' ? 'url(#mx-arrow-state)' : 'url(#mx-arrow-sel)'
+            "
+          />
+          <circle
+            :cx="reconnectPreview.toX"
+            :cy="reconnectPreview.toY"
+            r="4.5"
+            :fill="reconnectPreview.kind === 'state' ? '#38bdf8' : '#3d8bfd'"
             fill-opacity="0.35"
           />
         </g>
@@ -1532,6 +1658,7 @@ const edgeInputRef = ref<HTMLInputElement | null>(null)
 const nodeInputRef = ref<HTMLInputElement | null>(null)
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const hoveredNodeId = ref('')
+const hoveredEdgeId = ref('')
 const searchOpen = ref(false)
 const searchQuery = ref('')
 const minimapOpen = ref(true)
@@ -1652,7 +1779,7 @@ const isNodeTool = computed(() => {
 
 const hintText = computed(() => {
   const tl = store.tool.value
-  if (connectDrag.value) return t('mx.canvas.hintConnecting')
+  if (connectDrag.value || reconnectDrag.value) return t('mx.canvas.hintConnecting')
   if (tl === 'resource_edge' || tl === 'state_edge') return t('mx.canvas.hintConnect')
   if (isNodeTool.value) return t('mx.canvas.hintPlace')
   return ''
@@ -1744,6 +1871,18 @@ const outgoingFiredIds = computed(() => {
 
 const resolvedParamsMap = computed(() => resolveMxParams(store.doc.value))
 
+const displayVarsMap = computed<Record<string, number>>(() => {
+  const out: Record<string, number> = { ...resolvedParamsMap.value }
+  const vals = store.displayValues.value
+  for (const n of store.doc.value.nodes) {
+    const v = vals?.[n.id] ?? (n.kind === 'pool' || n.kind === 'register' ? (n.initial ?? 0) : 0)
+    out[n.id] = v
+    const clean = n.label.trim().replace(/\s+/g, '_')
+    if (clean && !(clean in out)) out[clean] = v
+  }
+  return out
+})
+
 function evalStateEdgeCondition(edge: MxEdge): boolean | null {
   const spec = parseMxStateFormula(edge.formula)
   const srcNode = nodeById.value.get(edge.from)
@@ -1777,9 +1916,9 @@ function evalStateEdgeCondition(edge: MxEdge): boolean | null {
           spec.expr,
           {
             vars: {
-              ...resolvedParamsMap.value,
-              ...(store.displayValues.value ?? {}),
+              ...displayVarsMap.value,
               step: store.playStep.value,
+              STEP: store.playStep.value,
               t: store.playStep.value,
               a: srcVal,
               self: srcVal
@@ -2000,6 +2139,11 @@ let burstStartMs = performance.now()
 /** 仅在正在连续播放（playing）或单步触发的飞行动画窗口内（burstProgress < 0.98）显示资源流动动画 */
 const isFlowAnimating = computed(() => store.playing.value || burstProgress.value < 0.98)
 
+/** 运行时态（正在播放、单步/交互运行中未重置、或步进飞行动画窗口内）：隐藏节点悬停连线端口，避免遮挡与误触拖线 */
+const isSimRuntime = computed(
+  () => store.playing.value || store.liveState.value !== null || isFlowAnimating.value
+)
+
 const pulseWave = computed(() => {
   // 在单步触发窗口内使用 burstProgress，否则使用柔和的周期脉动（严格钳制在 0..1）
   const raw = burstProgress.value < 0.99 ? burstProgress.value : streamPhase.value
@@ -2053,15 +2197,36 @@ function startAnimLoop(): void {
   rafId = requestAnimationFrame(tick)
 }
 
+const stateFlashSeq = ref(0)
+const isStateFlashActive = ref(false)
+let stateFlashTimer: ReturnType<typeof setTimeout> | null = null
+
+function triggerStateEdgeFlash(): void {
+  stateFlashSeq.value++
+  isStateFlashActive.value = true
+  if (stateFlashTimer) clearTimeout(stateFlashTimer)
+  stateFlashTimer = setTimeout(() => {
+    if (!store.playing.value) {
+      isStateFlashActive.value = false
+    }
+  }, 720)
+}
+
 watch(
   () => store.playStep.value,
   (nextStep, prevStep) => {
-    // 正在播放或手动单步前进（Step +1 / 点击交互节点）时触发一次资源球飞行；若运行已结束或重置到 0 则静止
+    // 正在播放或手动单步前进（Step +1 / 点击交互节点）时触发一次资源球飞行与状态线原地闪烁；若重置到 0 则静止
     if (nextStep > 0 && (store.playing.value || Math.abs(nextStep - (prevStep ?? 0)) === 1)) {
       burstStartMs = performance.now()
       burstProgress.value = 0
+      triggerStateEdgeFlash()
     } else if (!store.playing.value) {
       burstProgress.value = 1
+      if (nextStep <= 0) {
+        if (stateFlashTimer) clearTimeout(stateFlashTimer)
+        isStateFlashActive.value = false
+        stateFlashSeq.value = 0
+      }
     }
   }
 )
@@ -2069,12 +2234,25 @@ watch(
 watch(
   () => store.playing.value,
   (isPlaying) => {
-    // 播放结束或暂停的瞬间，立即停止连线上的持续流动动画
+    // 播放结束或暂停的瞬间，立即停止连线上的持续流动动画；若最后一帧有状态触发则播完 3 下闪烁后收起
     if (!isPlaying) {
       burstProgress.value = 1
+      if (isStateFlashActive.value) {
+        if (stateFlashTimer) clearTimeout(stateFlashTimer)
+        stateFlashTimer = setTimeout(() => {
+          isStateFlashActive.value = false
+        }, 720)
+      }
     }
   }
 )
+
+watch(isSimRuntime, (running) => {
+  if (running) {
+    connectDrag.value = null
+    reconnectDrag.value = null
+  }
+})
 
 function nodeSubLabel(node: MxNode): string {
   if (node.kind === 'pool' && node.capacity && node.capacity > 0) return `max ${node.capacity}`
@@ -2511,6 +2689,18 @@ const connectDrag = ref<{
   hoverEdgeId: string
   sticky?: boolean
 } | null>(null)
+const reconnectDrag = ref<{
+  edgeId: string
+  end: 'from' | 'to'
+  kind: MxEdgeKind
+  fixedAnchorX: number
+  fixedAnchorY: number
+  fixedRadius: number
+  pointerX: number
+  pointerY: number
+  hoverNodeId: string
+  hoverEdgeId: string
+} | null>(null)
 const alignGuides = ref<Array<{ x1: number; y1: number; x2: number; y2: number }>>([])
 const quickConnectMenu = ref<{
   fromNodeId: string
@@ -2545,6 +2735,140 @@ const connectPreviewPath = computed(() => {
   }
   return `M ${c.fromX},${c.fromY} L ${c.toX},${c.toY}`
 })
+
+function isEdgeLocked(edge: MxEdge): boolean {
+  const a = nodeById.value.get(edge.from)
+  const b = nodeById.value.get(edge.to)
+  return Boolean((a && isLocked(a)) || (b && isLocked(b)))
+}
+
+const endpointHandleGeos = computed<EdgeGeo[]>(() => {
+  if (isSimRuntime.value || connectDrag.value || reconnectDrag.value) return []
+  return renderedEdgeGeometries.value.filter(
+    (geo) =>
+      (isEdgeSelected(geo.edge.id) || hoveredEdgeId.value === geo.edge.id) &&
+      !isEdgeLocked(geo.edge)
+  )
+})
+
+const reconnectPreview = computed(() => {
+  const rd = reconnectDrag.value
+  if (!rd) return null
+  let fromX = 0
+  let fromY = 0
+  let toX = 0
+  let toY = 0
+  if (rd.end === 'to') {
+    const dx = rd.pointerX - rd.fixedAnchorX
+    const dy = rd.pointerY - rd.fixedAnchorY
+    const dist = Math.hypot(dx, dy) || 1
+    fromX = rd.fixedAnchorX + (dx / dist) * rd.fixedRadius
+    fromY = rd.fixedAnchorY + (dy / dist) * rd.fixedRadius
+    toX = rd.pointerX
+    toY = rd.pointerY
+  } else {
+    const dx = rd.fixedAnchorX - rd.pointerX
+    const dy = rd.fixedAnchorY - rd.pointerY
+    const dist = Math.hypot(dx, dy) || 1
+    fromX = rd.pointerX
+    fromY = rd.pointerY
+    toX = rd.fixedAnchorX - (dx / dist) * rd.fixedRadius
+    toY = rd.fixedAnchorY - (dy / dist) * rd.fixedRadius
+  }
+  const dx = toX - fromX
+  const dy = toY - fromY
+  const len = Math.hypot(dx, dy)
+  const path =
+    rd.kind === 'state' && len > 30
+      ? `M ${fromX},${fromY} Q ${(fromX + toX) / 2 - (dy / len) * 24},${(fromY + toY) / 2 + (dx / len) * 24} ${toX},${toY}`
+      : `M ${fromX},${fromY} L ${toX},${toY}`
+  return {
+    kind: rd.kind,
+    fromX,
+    fromY,
+    toX,
+    toY,
+    path
+  }
+})
+
+function canReconnectToNode(
+  rd: NonNullable<typeof reconnectDrag.value>,
+  candidate: MxNode
+): boolean {
+  if (candidate.kind === 'note' || isLocked(candidate)) return false
+  const curEdge = store.doc.value.edges.find((e) => e.id === rd.edgeId)
+  if (!curEdge) return false
+  if (rd.end === 'from') {
+    if (
+      store.doc.value.edges.some(
+        (dep) => dep.targetEdgeId === rd.edgeId && dep.from === candidate.id
+      )
+    ) {
+      return false
+    }
+    if (curEdge.targetEdgeId) {
+      const tgtEdge = store.doc.value.edges.find((e) => e.id === curEdge.targetEdgeId)
+      return Boolean(tgtEdge && tgtEdge.from !== candidate.id)
+    }
+    return candidate.id !== curEdge.to
+  }
+  return candidate.id !== curEdge.from
+}
+
+function canReconnectToEdge(
+  rd: NonNullable<typeof reconnectDrag.value>,
+  candidateGeo: EdgeGeo
+): boolean {
+  if (rd.end !== 'to' || rd.kind !== 'state') return false
+  if (candidateGeo.edge.id === rd.edgeId) return false
+  const curEdge = store.doc.value.edges.find((e) => e.id === rd.edgeId)
+  if (!curEdge || candidateGeo.edge.from === curEdge.from) return false
+  let cursor: MxEdge | undefined = candidateGeo.edge
+  const visited = new Set<string>([rd.edgeId])
+  while (cursor?.targetEdgeId) {
+    if (visited.has(cursor.targetEdgeId)) return false
+    visited.add(cursor.targetEdgeId)
+    cursor = store.doc.value.edges.find((e) => e.id === cursor!.targetEdgeId)
+  }
+  return true
+}
+
+function startEdgeEndpointDrag(geo: EdgeGeo, end: 'from' | 'to', ev: PointerEvent): void {
+  if (ev.button !== 0 || isEdgeLocked(geo.edge)) return
+  rootRef.value?.focus()
+  closeMenus()
+  if (!isEdgeSelected(geo.edge.id)) {
+    store.select([], [geo.edge.id])
+  }
+  const p = toWorld(ev)
+  const srcNode = nodeById.value.get(geo.edge.from)
+  const tgtNode = !geo.edge.targetEdgeId ? nodeById.value.get(geo.edge.to) : undefined
+  const fixedAnchorX =
+    end === 'to' ? (srcNode?.x ?? geo.sx) : geo.edge.targetEdgeId ? geo.ex : (tgtNode?.x ?? geo.ex)
+  const fixedAnchorY =
+    end === 'to' ? (srcNode?.y ?? geo.sy) : geo.edge.targetEdgeId ? geo.ey : (tgtNode?.y ?? geo.ey)
+  const fixedRadius =
+    end === 'to'
+      ? srcNode
+        ? nodeRadius(srcNode) + 2
+        : 0
+      : !geo.edge.targetEdgeId && tgtNode
+        ? nodeRadius(tgtNode) + 6
+        : 0
+  reconnectDrag.value = {
+    edgeId: geo.edge.id,
+    end,
+    kind: geo.edge.kind,
+    fixedAnchorX,
+    fixedAnchorY,
+    fixedRadius,
+    pointerX: p.x,
+    pointerY: p.y,
+    hoverNodeId: '',
+    hoverEdgeId: ''
+  }
+}
 
 function closeMenus(): void {
   quickConnectMenu.value = null
@@ -2624,8 +2948,9 @@ function startGroupResize(grp: MxGroup, ev: PointerEvent): void {
 function onBgPointerDown(ev: PointerEvent): void {
   rootRef.value?.focus()
   closeMenus()
-  if (ev.button === 2 && connectDrag.value) {
+  if (ev.button === 2 && (connectDrag.value || reconnectDrag.value)) {
     connectDrag.value = null
+    reconnectDrag.value = null
     return
   }
   if (connectDrag.value?.sticky) {
@@ -2889,6 +3214,33 @@ function onPointerMove(ev: PointerEvent): void {
     return
   }
 
+  if (reconnectDrag.value) {
+    const rd = reconnectDrag.value
+    const targetNode = hitNode(p.x, p.y)
+    const targetEdge = !targetNode ? hitEdgeMidpoint(p.x, p.y) : null
+    if (targetNode && canReconnectToNode(rd, targetNode)) {
+      const dx = targetNode.x - rd.fixedAnchorX
+      const dy = targetNode.y - rd.fixedAnchorY
+      const dist = Math.hypot(dx, dy) || 1
+      const r = nodeRadius(targetNode) + (rd.end === 'to' ? 4 : 2)
+      rd.pointerX = targetNode.x - (dx / dist) * r
+      rd.pointerY = targetNode.y - (dy / dist) * r
+      rd.hoverNodeId = targetNode.id
+      rd.hoverEdgeId = ''
+    } else if (targetEdge && canReconnectToEdge(rd, targetEdge)) {
+      rd.pointerX = targetEdge.mid.x
+      rd.pointerY = targetEdge.mid.y
+      rd.hoverNodeId = ''
+      rd.hoverEdgeId = targetEdge.edge.id
+    } else {
+      rd.pointerX = p.x
+      rd.pointerY = p.y
+      rd.hoverNodeId = ''
+      rd.hoverEdgeId = ''
+    }
+    return
+  }
+
   if (connectDrag.value) {
     const targetNode = hitNode(p.x, p.y)
     const targetEdge = !targetNode ? hitEdgeMidpoint(p.x, p.y) : null
@@ -2932,6 +3284,19 @@ function onPointerUp(ev: PointerEvent): void {
   if (groupResize.value) {
     groupResize.value = null
   }
+  if (reconnectDrag.value) {
+    const rd = reconnectDrag.value
+    const p = toWorld(ev)
+    const targetNode = hitNode(p.x, p.y)
+    const targetEdge = !targetNode ? hitEdgeMidpoint(p.x, p.y) : null
+    if (targetNode && canReconnectToNode(rd, targetNode)) {
+      store.reconnectEdge(rd.edgeId, rd.end, { nodeId: targetNode.id })
+    } else if (targetEdge && canReconnectToEdge(rd, targetEdge)) {
+      store.reconnectEdge(rd.edgeId, 'to', { targetEdgeId: targetEdge.edge.id })
+    }
+    reconnectDrag.value = null
+  }
+
   if (connectDrag.value) {
     const cd = connectDrag.value
     const p = toWorld(ev)
@@ -3340,10 +3705,12 @@ function onKeyDown(ev: KeyboardEvent): void {
       store.selection.nodes.length > 0 ||
       store.selection.edges.length > 0 ||
       Boolean(connectDrag.value) ||
+      Boolean(reconnectDrag.value) ||
       searchOpen.value
     store.tool.value = 'select'
     store.select([])
     connectDrag.value = null
+    reconnectDrag.value = null
     searchOpen.value = false
     closeMenus()
     if (hadActiveInteraction) {
@@ -3365,6 +3732,10 @@ onBeforeUnmount(() => {
   if (rafId !== null) {
     cancelAnimationFrame(rafId)
     rafId = null
+  }
+  if (stateFlashTimer) {
+    clearTimeout(stateFlashTimer)
+    stateFlashTimer = null
   }
 })
 
@@ -3527,6 +3898,25 @@ defineExpose({
 .mx-edge {
   cursor: pointer;
 }
+.mx-edge.is-reconnecting {
+  opacity: 0.25;
+  pointer-events: none;
+}
+.mx-edge-endpoint {
+  cursor: grab;
+}
+.mx-edge-endpoint:active {
+  cursor: grabbing;
+}
+.mx-edge-endpoint .mx-ep-vis {
+  transition:
+    stroke-width 0.12s,
+    filter 0.12s;
+}
+.mx-edge-endpoint:hover .mx-ep-vis {
+  stroke-width: 2.6;
+  filter: drop-shadow(0 0 5px var(--accent, #3d8bfd));
+}
 .mx-edge-hit {
   fill: none;
   stroke: transparent;
@@ -3560,6 +3950,67 @@ defineExpose({
   fill: #38bdf8;
 }
 
+@keyframes mxStateFlashGlow {
+  0% {
+    stroke-opacity: 0;
+  }
+  15% {
+    stroke-opacity: 0.55;
+  }
+  32% {
+    stroke-opacity: 0.08;
+  }
+  50% {
+    stroke-opacity: 0.55;
+  }
+  67% {
+    stroke-opacity: 0.08;
+  }
+  84% {
+    stroke-opacity: 0.55;
+  }
+  100% {
+    stroke-opacity: 0;
+  }
+}
+
+@keyframes mxStateFlashCore {
+  0% {
+    stroke-opacity: 0;
+  }
+  15% {
+    stroke-opacity: 0.95;
+  }
+  32% {
+    stroke-opacity: 0.12;
+  }
+  50% {
+    stroke-opacity: 0.95;
+  }
+  67% {
+    stroke-opacity: 0.12;
+  }
+  84% {
+    stroke-opacity: 0.95;
+  }
+  100% {
+    stroke-opacity: 0;
+  }
+}
+
+.mx-state-flash-glow {
+  animation: mxStateFlashGlow 0.66s ease-in-out 1 forwards;
+}
+
+.mx-state-flash-core {
+  animation: mxStateFlashCore 0.66s ease-in-out 1 forwards;
+}
+
+.mx-state-flash-pill {
+  pointer-events: none;
+  animation: mxStateFlashCore 0.66s ease-in-out 1 forwards;
+}
+
 .mx-bend-handle {
   cursor: ns-resize;
 }
@@ -3571,6 +4022,9 @@ defineExpose({
 
 .mx-node {
   cursor: grab;
+}
+.mx-node.is-runtime-interactive {
+  cursor: pointer;
 }
 .mx-node.locked {
   cursor: default;

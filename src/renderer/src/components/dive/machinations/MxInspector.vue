@@ -1740,15 +1740,14 @@ function addQuickConnectionFromInspector(): void {
                 :key="bm"
                 type="button"
                 class="mx-seg-btn"
-                :class="{ 'is-active': (s.doc.value.settings.botMode ?? 'off') === bm }"
-                @click="
-                  () => {
-                    s.mutate((d) => {
-                      d.settings.botMode = bm
-                    })
-                    s.playAgain()
-                  }
-                "
+                :class="{
+                  'is-active':
+                    bm === 'off'
+                      ? (s.doc.value.settings.botMode ?? 'off') === 'off' &&
+                        !(s.doc.value.agents ?? []).some((a) => a.enabled)
+                      : (s.doc.value.settings.botMode ?? 'off') === bm
+                }"
+                @click="s.setBotMode(bm)"
               >
                 {{ t(`mx.inspector.botMode_${bm}`) }}
               </button>

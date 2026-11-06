@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   analyzeMxEconomyHealth,
@@ -84,6 +86,7 @@ import {
   type GraphDocument,
   type NodeExecuteContext
 } from '../src/shared/graph'
+import { createMxStudioStore } from '../src/renderer/src/components/dive/machinations/mxStudioStore'
 
 describe('Machinations v2 expression & formula parsing', () => {
   it('evaluates arithmetic, functions, dice and variables', () => {
@@ -2844,5 +2847,236 @@ describe('Machinations.io 100% specification parity', () => {
 
     // 6. Plain dice/constant formulas produce zero reference lines
     expect(resolveMxEdgeReferencedNodes(doc, doc.edges[7]!)).toEqual([])
+  })
+
+  it('hides hover connection ports on MxCanvas during simulation runtime while keeping them enabled in Build idle state', () => {
+    const canvasSource = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxCanvas.vue'),
+      'utf8'
+    )
+    expect(canvasSource).toMatch(
+      /const\s+isSimRuntime\s*=\s*computed\(\s*\(\)\s*=>\s*store\.playing\.value\s*\|\|\s*store\.liveState\.value\s*!==\s*null\s*\|\|\s*isFlowAnimating\.value\s*\)/
+    )
+    const portsTag = canvasSource.match(/<g\s+v-if="([^"]+)"\s+class="mx-node-ports"\s*>/)?.[1]
+    expect(portsTag).toBeDefined()
+    expect(portsTag?.trim().startsWith('!isSimRuntime &&')).toBe(true)
+
+    // State connections must flash in-place (`mx-state-flash-group` 3-peak keyframes) instead of moving tokens via `sampleEdgePoint`
+    expect(canvasSource).not.toContain('sampleEdgePoint(geo, streamPhase)')
+    expect(canvasSource).toContain('class="mx-state-flash-group"')
+    expect(canvasSource).toContain('@keyframes mxStateFlashCore')
+
+    const doc = createEmptyMxDocument('Runtime Port Guard')
+    doc.settings.steps = 3
+    doc.nodes = [
+      { id: 's_in', kind: 'source', label: 'Source', x: 80, y: 100, trigger: 'interactive' },
+      { id: 'p_out', kind: 'pool', label: 'Pool', x: 220, y: 100, initial: 0 }
+    ]
+    doc.edges = [{ id: 'e_1', kind: 'resource', from: 's_in', to: 'p_out', formula: '2' }]
+
+    const store = createMxStudioStore(doc)
+    // Auto-preview playAgain() on mount must NOT activate runtime lock
+    store.playAgain()
+    expect(store.playing.value).toBe(false)
+    expect(store.liveState.value).toBeNull()
+
+    // Continuous Play enters runtime; Pause stays in mid-run liveState until Reset
+    store.play()
+    expect(store.playing.value).toBe(true)
+    expect(store.liveState.value).not.toBeNull()
+    store.play() // pause
+    expect(store.playing.value).toBe(false)
+    expect(store.liveState.value).not.toBeNull()
+    store.resetPlayback()
+    expect(store.playing.value).toBe(false)
+    expect(store.liveState.value).toBeNull()
+
+    // Interactive click / Step Once enters liveState until steps complete
+    store.interact('s_in')
+    expect(store.liveState.value?.step).toBe(1)
+    expect(store.liveState.value?.values.p_out).toBe(2)
+    store.stepOnce()
+    expect(store.liveState.value?.step).toBe(2)
+    store.stepOnce() // reaches step 3 === doc.settings.steps -> finalizes run
+    expect(store.liveState.value).toBeNull()
+    expect(store.playing.value).toBe(false)
+  })
+
+  it('switching to Manual Off mode stops auto-execution, disables background Agents/botPolicy, and waits for manual interaction', () => {
+    const rpsDoc = createEmptyMxDocument('Manual RPS')
+    rpsDoc.settings.steps = 5
+    rpsDoc.nodes = [
+      { id: 'p_energy', kind: 'pool', label: 'Energy', x: 60, y: 100, initial: 20 },
+      {
+        id: 'c_rock',
+        kind: 'converter',
+        label: 'Play Rock',
+        x: 180,
+        y: 80,
+        trigger: 'interactive'
+      },
+      {
+        id: 'c_paper',
+        kind: 'converter',
+        label: 'Play Paper',
+        x: 180,
+        y: 160,
+        trigger: 'interactive',
+        botPolicy: 'greedy'
+      },
+      { id: 'p_score', kind: 'pool', label: 'Score', x: 300, y: 120, initial: 0 }
+    ]
+    rpsDoc.edges = [
+      { id: 'e_cost1', kind: 'resource', from: 'p_energy', to: 'c_rock', formula: '1' },
+      { id: 'e_win1', kind: 'resource', from: 'c_rock', to: 'p_score', formula: '1' },
+      { id: 'e_cost2', kind: 'resource', from: 'p_energy', to: 'c_paper', formula: '1' },
+      { id: 'e_win2', kind: 'resource', from: 'c_paper', to: 'p_score', formula: '1' }
+    ]
+
+    const store = createMxStudioStore(rpsDoc)
+    store.addAgent({
+      controlledNodeIds: ['c_rock'],
+      goals: [
+        {
+          id: 'g_score',
+          nodeId: 'p_score',
+          targetFormula: '20',
+          importance: 'high',
+          continuePastTarget: true,
+          trajectory: 'upwards',
+          utilityCurve: 'linear'
+        }
+      ]
+    })
+    expect(store.doc.value.agents?.some((a) => a.enabled)).toBe(true)
+    expect(store.playStep.value).toBe(5)
+    expect(store.displayValues.value?.p_score).toBe(10)
+
+    // Since botMode is 'off' while an Agent is enabled, cycleBotMode() switches directly to pure Manual Off:
+    // disables Agents, resets per-node botPolicy, and resets to step 0 without auto-running playAgain()
+    store.cycleBotMode()
+    expect(store.doc.value.settings.botMode).toBe('off')
+    expect((store.doc.value.agents ?? []).every((a) => !a.enabled)).toBe(true)
+    expect(store.doc.value.nodes.find((n) => n.id === 'c_paper')?.botPolicy).toBe('inherit')
+    expect(store.playStep.value).toBe(0)
+    expect(store.activeRun.value).toBeNull()
+
+    // Stepping in Manual Off does NOT auto-fire either interactive converter
+    store.stepOnce()
+    expect(store.liveState.value?.values.p_score).toBe(0)
+    // Only explicit manual click triggers the clicked interactive converter
+    store.interact('c_rock')
+    expect(store.liveState.value?.values.p_score).toBe(1)
+  })
+
+  it('supports dragging and reconnecting both Resource and State edge endpoints (from/to/targetEdgeId) with full property preservation and Undo/Redo', () => {
+    const doc = createEmptyMxDocument('Reconnect Endpoints')
+    doc.nodes = [
+      { id: 's_a', kind: 'source', label: 'Source A', x: 80, y: 100, trigger: 'automatic' },
+      { id: 's_b', kind: 'source', label: 'Source B', x: 80, y: 220, trigger: 'automatic' },
+      { id: 'p_1', kind: 'pool', label: 'Pool 1', x: 240, y: 100, initial: 10 },
+      { id: 'p_2', kind: 'pool', label: 'Pool 2', x: 240, y: 220, initial: 5 },
+      { id: 'c_1', kind: 'converter', label: 'Conv 1', x: 400, y: 160, trigger: 'passive' },
+      { id: 'n_note', kind: 'note', label: 'Doc Note', x: 400, y: 40 }
+    ]
+    doc.edges = [
+      {
+        id: 'e_res',
+        kind: 'resource',
+        from: 's_a',
+        to: 'p_1',
+        formula: '3',
+        interval: '2',
+        transferMode: 'all_or_nothing',
+        allowDecimals: true,
+        resourceFilter: 'gold',
+        bend: 24,
+        label: 'income'
+      },
+      {
+        id: 'e_res_2',
+        kind: 'resource',
+        from: 'p_2',
+        to: 'c_1',
+        formula: '1'
+      },
+      {
+        id: 'e_state',
+        kind: 'state',
+        from: 'p_1',
+        to: 'c_1',
+        formula: '>5',
+        bend: -18
+      }
+    ]
+
+    const store = createMxStudioStore(doc)
+
+    // 1. Reconnect Resource edge target ('to') from p_1 -> p_2, then source ('from') from s_a -> s_b
+    expect(store.reconnectEdge('e_res', 'to', { nodeId: 'p_2' })).toBe(true)
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.to).toBe('p_2')
+
+    expect(store.reconnectEdge('e_res', 'from', { nodeId: 's_b' })).toBe(true)
+    const updatedRes = store.doc.value.edges.find((e) => e.id === 'e_res')!
+    expect(updatedRes.from).toBe('s_b')
+    expect(updatedRes.to).toBe('p_2')
+    expect(updatedRes.formula).toBe('3')
+    expect(updatedRes.interval).toBe('2')
+    expect(updatedRes.transferMode).toBe('all_or_nothing')
+    expect(updatedRes.allowDecimals).toBe(true)
+    expect(updatedRes.resourceFilter).toBe('gold')
+    expect(updatedRes.bend).toBe(24)
+    expect(updatedRes.label).toBe('income')
+
+    // Discrete Undo / Redo for each endpoint drop
+    store.undo()
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.from).toBe('s_a')
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.to).toBe('p_2')
+    store.undo()
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.to).toBe('p_1')
+    store.redo()
+    store.redo()
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.from).toBe('s_b')
+    expect(store.doc.value.edges.find((e) => e.id === 'e_res')?.to).toBe('p_2')
+
+    // 2. Reconnect State edge 'to' -> edge pill (targetEdgeId), update dependent edge when target's 'from' moves, then reconnect State edge back to a node
+    expect(store.reconnectEdge('e_state', 'to', { targetEdgeId: 'e_res_2' })).toBe(true)
+    let stEdge = store.doc.value.edges.find((e) => e.id === 'e_state')!
+    expect(stEdge.targetEdgeId).toBe('e_res_2')
+    expect(stEdge.to).toBe('p_2')
+    expect(stEdge.formula).toBe('>5')
+
+    // Moving e_res_2's 'from' from p_2 -> s_a updates dependent e_state.to automatically
+    expect(store.reconnectEdge('e_res_2', 'from', { nodeId: 's_a' })).toBe(true)
+    expect(store.doc.value.edges.find((e) => e.id === 'e_state')?.to).toBe('s_a')
+    // Cannot move e_res_2's 'from' onto e_state's own origin ('p_1')
+    expect(store.reconnectEdge('e_res_2', 'from', { nodeId: 'p_1' })).toBe(false)
+
+    // Reconnecting State edge 'to' back onto node c_1 clears targetEdgeId
+    expect(store.reconnectEdge('e_state', 'to', { nodeId: 'c_1' })).toBe(true)
+    stEdge = store.doc.value.edges.find((e) => e.id === 'e_state')!
+    expect(stEdge.to).toBe('c_1')
+    expect(stEdge.targetEdgeId).toBeUndefined()
+
+    // 3. Guard rails: reject self-loops, Note nodes, Resource -> targetEdgeId, and targetEdgeId cycles
+    expect(store.reconnectEdge('e_res', 'to', { nodeId: 's_b' })).toBe(false)
+    expect(store.reconnectEdge('e_res', 'from', { nodeId: 'p_2' })).toBe(false)
+    expect(store.reconnectEdge('e_res', 'to', { nodeId: 'n_note' })).toBe(false)
+    expect(store.reconnectEdge('e_res', 'to', { targetEdgeId: 'e_res_2' })).toBe(false)
+
+    const st2 = store.addEdgeToEdge('p_2', 'e_state')!
+    expect(store.reconnectEdge('e_state', 'to', { targetEdgeId: st2.id })).toBe(false)
+
+    // 4. Verify MxCanvas SVG layer ordering & source/target handle bindings
+    const canvasSource = readFileSync(
+      resolve('src/renderer/src/components/dive/machinations/MxCanvas.vue'),
+      'utf8'
+    )
+    const nodeLayerIdx = canvasSource.indexOf('v-for="node in renderedNodes"')
+    const endpointLayerIdx = canvasSource.indexOf('class="mx-edge-endpoints-layer"')
+    expect(nodeLayerIdx).toBeGreaterThan(0)
+    expect(endpointLayerIdx).toBeGreaterThan(nodeLayerIdx)
+    expect(canvasSource).toContain("startEdgeEndpointDrag(geo, 'from', $event)")
+    expect(canvasSource).toContain("startEdgeEndpointDrag(geo, 'to', $event)")
   })
 })
