@@ -1,3 +1,4 @@
+import { execFileSync } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -33,10 +34,32 @@ import {
   probeMediaFacts
 } from '../src/main/services/semanticTimeline/mediaFacts'
 import {
+  resolveFfmpegForSemantic,
+  resolveFfprobeForSemantic
+} from '../src/main/services/semanticTimeline/resolveFfmpeg'
+import {
   buildAspectAwareVNorm,
   rebuildVideoFromSegments,
   snapSliceBoundsToCuts
 } from '../src/main/services/semanticTimeline/segmentRebuild'
+
+const hasFfmpeg = (() => {
+  try {
+    execFileSync(resolveFfmpegForSemantic(), ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 10_000
+    })
+    execFileSync(resolveFfprobeForSemantic(), ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 10_000
+    })
+    return true
+  } catch {
+    return false
+  }
+})()
 
 function encodeTestJpeg(
   width: number,
@@ -620,7 +643,7 @@ describe('rea-video 3-step remake optimizations (perception, clean-plate/adapt, 
     )
   })
 
-  it('Step 3: drives avatar_tts units via lip-sync audio_url+image_url, attaches video_url for reference_video, and burns ASS packaging overlays via FFmpeg', async () => {
+  it('Step 3: drives avatar_tts units via lip-sync audio_url+image_url, attaches video_url for reference_video, and builds ASS packaging script', async () => {
     const raw = migrateSemanticTimeline(
       {
         id: 'stl.step3',
@@ -817,7 +840,7 @@ describe('rea-video 3-step remake optimizations (perception, clean-plate/adapt, 
       url: 'file:///Assets/src.mp4'
     })
 
-    // Verify ASS subtitle script generation (Dialogue + TitleTop + animated Huazi) & real FFmpeg burn
+    // Verify ASS subtitle script generation (Dialogue + TitleTop + animated Huazi)
     const overlays = collectTimelinePackagingOverlays(avatarDoc)
     const assBuilt = buildAssSubtitles({
       width: 640,
@@ -830,42 +853,47 @@ describe('rea-video 3-step remake optimizations (perception, clean-plate/adapt, 
     expect(assBuilt.assText).toContain('\\fscx108\\fscy108')
     expect(assBuilt.assText).toContain('限时秒杀 ¥99')
     expect(assBuilt.assText).toContain('官方旗舰店直发')
-
-    const dir = makeTempDir()
-    const srcRel = 'Assets/src.mp4'
-    const srcAbs = join(dir, srcRel)
-    mkdirSync(join(dir, 'Assets'), { recursive: true })
-    await generateHardCutFixture(srcAbs)
-
-    const ffmpegOut = await rebuildVideoFromSegments({
-      projectRoot: dir,
-      workDirRelativePath: 'Semantic/stl.step3/rebuilds/r1/work',
-      outputRelativePath: 'Semantic/stl.step3/rebuilds/r1/output.mp4',
-      sourceRelativePath: srcRel,
-      segments: [
-        { key: 's1', kind: 'source', durationSec: 2.0, sourceStartSec: 0, sourceEndSec: 2.0 }
-      ],
-      subtitles: [{ sourceStartSec: 0.2, sourceEndSec: 1.8, text: '今天下单立省五十元' }],
-      packagingOverlays: [
-        {
-          sourceStartSec: 0.2,
-          sourceEndSec: 1.8,
-          text: '限时秒杀 ¥99',
-          kind: 'huazi',
-          position: 'middle'
-        }
-      ],
-      burnSubtitles: true,
-      keepAudio: false,
-      width: 320,
-      height: 180,
-      fps: 24
-    })
-    expect(ffmpegOut.ok).toBe(true)
-    expect(existsSync(join(dir, 'Semantic/stl.step3/rebuilds/r1/work/subtitles.ass'))).toBe(true)
-    const probed = await probeMediaFacts(join(dir, ffmpegOut.outputRelativePath))
-    expect(probed.width).toBe(320)
-    expect(probed.height).toBe(180)
-    expect(probed.durationSec).toBeGreaterThan(1.5)
   })
+
+  it.runIf(hasFfmpeg)(
+    'Step 3 (ffmpeg): burns ASS packaging overlays into output video via FFmpeg',
+    async () => {
+      const dir = makeTempDir()
+      const srcRel = 'Assets/src.mp4'
+      const srcAbs = join(dir, srcRel)
+      mkdirSync(join(dir, 'Assets'), { recursive: true })
+      await generateHardCutFixture(srcAbs)
+
+      const ffmpegOut = await rebuildVideoFromSegments({
+        projectRoot: dir,
+        workDirRelativePath: 'Semantic/stl.step3/rebuilds/r1/work',
+        outputRelativePath: 'Semantic/stl.step3/rebuilds/r1/output.mp4',
+        sourceRelativePath: srcRel,
+        segments: [
+          { key: 's1', kind: 'source', durationSec: 2.0, sourceStartSec: 0, sourceEndSec: 2.0 }
+        ],
+        subtitles: [{ sourceStartSec: 0.2, sourceEndSec: 1.8, text: '今天下单立省五十元' }],
+        packagingOverlays: [
+          {
+            sourceStartSec: 0.2,
+            sourceEndSec: 1.8,
+            text: '限时秒杀 ¥99',
+            kind: 'huazi',
+            position: 'middle'
+          }
+        ],
+        burnSubtitles: true,
+        keepAudio: false,
+        width: 320,
+        height: 180,
+        fps: 24
+      })
+      expect(ffmpegOut.ok).toBe(true)
+      expect(existsSync(join(dir, 'Semantic/stl.step3/rebuilds/r1/work/subtitles.ass'))).toBe(true)
+      const probed = await probeMediaFacts(join(dir, ffmpegOut.outputRelativePath))
+      expect(probed.width).toBe(320)
+      expect(probed.height).toBe(180)
+      expect(probed.durationSec).toBeGreaterThan(1.5)
+    }
+  )
 })

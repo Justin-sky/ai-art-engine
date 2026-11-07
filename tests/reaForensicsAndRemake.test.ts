@@ -13,9 +13,30 @@ import {
   generateHardCutFixture,
   probeMediaFacts
 } from '../src/main/services/semanticTimeline/mediaFacts'
-import { resolveFfmpegForSemantic } from '../src/main/services/semanticTimeline/resolveFfmpeg'
+import {
+  resolveFfmpegForSemantic,
+  resolveFfprobeForSemantic
+} from '../src/main/services/semanticTimeline/resolveFfmpeg'
 import { rebuildVideoFromSegments } from '../src/main/services/semanticTimeline/segmentRebuild'
 import { separateAudioStems } from '../src/main/services/audioSeparationService'
+
+const hasFfmpeg = (() => {
+  try {
+    execFileSync(resolveFfmpegForSemantic(), ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 10_000
+    })
+    execFileSync(resolveFfprobeForSemantic(), ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 10_000
+    })
+    return true
+  } catch {
+    return false
+  }
+})()
 
 function makeSyntheticMonoWav(options: {
   sampleRate?: number
@@ -98,191 +119,195 @@ describe('rea-video Phase 2: provenance, visual/audio forensics, mono stems & lo
     expect(audio.voice.f0MedianHz).toBeLessThanOrEqual(235)
   })
 
-  it('runs end-to-end deterministic forensics, writes storyboard.jpg + report.md, avoids mono stem silence, and renders local Ken Burns + compare.mp4', async () => {
-    const root = makeTempDir()
-    const videoRel = 'Assets/sample-cut.mp4'
-    const videoAbs = join(root, ...videoRel.split('/'))
-    mkdirSync(join(root, 'Assets'), { recursive: true })
-    await generateHardCutFixture(videoAbs, { partSec: 1.2, fps: 24 })
+  it.runIf(hasFfmpeg)(
+    'runs end-to-end deterministic forensics, writes storyboard.jpg + report.md, avoids mono stem silence, and renders local Ken Burns + compare.mp4',
+    async () => {
+      const root = makeTempDir()
+      const videoRel = 'Assets/sample-cut.mp4'
+      const videoAbs = join(root, ...videoRel.split('/'))
+      mkdirSync(join(root, 'Assets'), { recursive: true })
+      await generateHardCutFixture(videoAbs, { partSec: 1.2, fps: 24 })
 
-    // 1. Full semantic analysis with forensics + mono stem separation
-    const res = await analyzeSemanticTimeline(root, 'asset.cut.1', videoAbs, {
-      videoRelativePath: videoRel,
-      separateAudio: true,
-      detectEntities: false
-    })
+      // 1. Full semantic analysis with forensics + mono stem separation
+      const res = await analyzeSemanticTimeline(root, 'asset.cut.1', videoAbs, {
+        videoRelativePath: videoRel,
+        separateAudio: true,
+        detectEntities: false
+      })
 
-    expect(res.timeline.shots?.length).toBeGreaterThanOrEqual(2)
-    expect(res.timeline.breakdown).toBeDefined()
-    expect(res.timeline.breakdown?.summary.shotCount).toBe(res.timeline.shots?.length)
+      expect(res.timeline.shots?.length).toBeGreaterThanOrEqual(2)
+      expect(res.timeline.breakdown).toBeDefined()
+      expect(res.timeline.breakdown?.summary.shotCount).toBe(res.timeline.shots?.length)
 
-    // Verify storyboard.jpg and report.md were written
-    const storyboardRel = res.timeline.breakdown?.summary.storyboardRelativePath
-    expect(storyboardRel).toBeTruthy()
-    expect(existsSync(join(root, ...storyboardRel!.split('/')))).toBe(true)
+      // Verify storyboard.jpg and report.md were written
+      const storyboardRel = res.timeline.breakdown?.summary.storyboardRelativePath
+      expect(storyboardRel).toBeTruthy()
+      expect(existsSync(join(root, ...storyboardRel!.split('/')))).toBe(true)
 
-    const reportRel = res.timeline.breakdown?.summary.reportRelativePath
-    expect(reportRel).toBeTruthy()
-    const reportMd = readFileSync(join(root, ...reportRel!.split('/')), 'utf8')
-    expect(reportMd).toContain('# 视频逆向拆解与复刻报告')
+      const reportRel = res.timeline.breakdown?.summary.reportRelativePath
+      expect(reportRel).toBeTruthy()
+      const reportMd = readFileSync(join(root, ...reportRel!.split('/')), 'utf8')
+      expect(reportMd).toContain('# 视频逆向拆解与复刻报告')
 
-    // 2. Verify mono/dual-mono stem separation does NOT cancel instrumental.wav to silence!
-    const sep = await separateAudioStems({ projectRoot: root, relativePath: videoRel })
-    const instWav = parsePcm16WavBuffer(
-      readFileSync(join(root, ...sep.instrumentalRelativePath.split('/')))
-    )
-    expect(instWav).not.toBeNull()
-    let maxAbs = 0
-    for (let i = 0; i < instWav!.samples.length; i += 1) {
-      maxAbs = Math.max(maxAbs, Math.abs(instWav!.samples[i]!))
-    }
-    expect(maxAbs).toBeGreaterThan(0.01)
+      // 2. Verify mono/dual-mono stem separation does NOT cancel instrumental.wav to silence!
+      const sep = await separateAudioStems({ projectRoot: root, relativePath: videoRel })
+      const instWav = parsePcm16WavBuffer(
+        readFileSync(join(root, ...sep.instrumentalRelativePath.split('/')))
+      )
+      expect(instWav).not.toBeNull()
+      let maxAbs = 0
+      for (let i = 0; i < instWav!.samples.length; i += 1) {
+        maxAbs = Math.max(maxAbs, Math.abs(instWav!.samples[i]!))
+      }
+      expect(maxAbs).toBeGreaterThan(0.01)
 
-    // 3. Render zero-API-cost local Ken Burns + static hold + side-by-side compare.mp4
-    const firstShot = res.timeline.shots![0]!
-    const secondShot = res.timeline.shots![1]!
-    const anchor1 = `Semantic/${res.timeline.id}/${firstShot.keyframes.first ?? firstShot.keyframes.middle}`
-    const anchor2 = `Semantic/${res.timeline.id}/${secondShot.keyframes.first ?? secondShot.keyframes.middle}`
-    writeFileSync(join(root, 'dummy.txt'), 'ok', 'utf8')
+      // 3. Render zero-API-cost local Ken Burns + static hold + side-by-side compare.mp4
+      const firstShot = res.timeline.shots![0]!
+      const secondShot = res.timeline.shots![1]!
+      const anchor1 = `Semantic/${res.timeline.id}/${firstShot.keyframes.first ?? firstShot.keyframes.middle}`
+      const anchor2 = `Semantic/${res.timeline.id}/${secondShot.keyframes.first ?? secondShot.keyframes.middle}`
+      writeFileSync(join(root, 'dummy.txt'), 'ok', 'utf8')
 
-    const rebuild = await rebuildVideoFromSegments({
-      projectRoot: root,
-      sourceRelativePath: videoRel,
-      workDirRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_local`,
-      outputRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_local/output.mp4`,
-      renderCompare: true,
-      width: 320,
-      height: 240,
-      fps: 24,
-      localMotionClips: [
-        {
-          key: firstShot.id,
-          shotId: firstShot.id,
-          anchorImageRelativePath: anchor1,
-          durationSec: 1.2,
-          mode: 'ken_burns',
-          zoomPerSec: 0.04,
-          panPxPerSec: 0.02,
-          panDirDeg: 0
-        },
-        {
-          key: secondShot.id,
-          shotId: secondShot.id,
-          anchorImageRelativePath: anchor2,
-          durationSec: 1.2,
-          mode: 'static_hold'
-        }
-      ],
-      segments: [
-        {
-          key: firstShot.id,
-          kind: 'generate',
-          durationSec: 1.2,
-          sourceStartSec: 0,
-          sourceEndSec: 1.2
-        },
-        {
-          key: secondShot.id,
-          kind: 'generate',
-          durationSec: 1.2,
-          sourceStartSec: 1.2,
-          sourceEndSec: 2.4
-        }
-      ]
-    })
+      const rebuild = await rebuildVideoFromSegments({
+        projectRoot: root,
+        sourceRelativePath: videoRel,
+        workDirRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_local`,
+        outputRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_local/output.mp4`,
+        renderCompare: true,
+        width: 320,
+        height: 240,
+        fps: 24,
+        localMotionClips: [
+          {
+            key: firstShot.id,
+            shotId: firstShot.id,
+            anchorImageRelativePath: anchor1,
+            durationSec: 1.2,
+            mode: 'ken_burns',
+            zoomPerSec: 0.04,
+            panPxPerSec: 0.02,
+            panDirDeg: 0
+          },
+          {
+            key: secondShot.id,
+            shotId: secondShot.id,
+            anchorImageRelativePath: anchor2,
+            durationSec: 1.2,
+            mode: 'static_hold'
+          }
+        ],
+        segments: [
+          {
+            key: firstShot.id,
+            kind: 'generate',
+            durationSec: 1.2,
+            sourceStartSec: 0,
+            sourceEndSec: 1.2
+          },
+          {
+            key: secondShot.id,
+            kind: 'generate',
+            durationSec: 1.2,
+            sourceStartSec: 1.2,
+            sourceEndSec: 2.4
+          }
+        ]
+      })
 
-    expect(rebuild.ok).toBe(true)
-    expect(rebuild.localClipCount).toBe(2)
-    expect(rebuild.compareRelativePath).toBe(
-      `Semantic/${res.timeline.id}/rebuilds/test_local/compare.mp4`
-    )
-    expect(existsSync(join(root, ...rebuild.outputRelativePath.split('/')))).toBe(true)
-    expect(existsSync(join(root, ...rebuild.compareRelativePath!.split('/')))).toBe(true)
+      expect(rebuild.ok).toBe(true)
+      expect(rebuild.localClipCount).toBe(2)
+      expect(rebuild.compareRelativePath).toBe(
+        `Semantic/${res.timeline.id}/rebuilds/test_local/compare.mp4`
+      )
+      expect(existsSync(join(root, ...rebuild.outputRelativePath.split('/')))).toBe(true)
+      expect(existsSync(join(root, ...rebuild.compareRelativePath!.split('/')))).toBe(true)
 
-    // 4. Multi-shot G1 proportional slicing across a bridged K1 local motion insert!
-    const ffmpeg = resolveFfmpegForSemantic()
-    const g1Rel = 'Assets/g1_batched.mp4'
-    execFileSync(
-      ffmpeg,
-      [
-        '-y',
-        '-f',
-        'lavfi',
-        '-i',
-        'color=c=red:s=320x240:d=2.0:r=24',
-        '-f',
-        'lavfi',
-        '-i',
-        'color=c=blue:s=320x240:d=2.0:r=24',
-        '-filter_complex',
-        '[0:v][1:v]concat=n=2:v=1:a=0[v]',
-        '-map',
-        '[v]',
-        '-c:v',
-        'libx264',
-        '-pix_fmt',
-        'yuv420p',
-        join(root, ...g1Rel.split('/'))
-      ],
-      { stdio: 'ignore', windowsHide: true }
-    )
+      // 4. Multi-shot G1 proportional slicing across a bridged K1 local motion insert!
+      const ffmpeg = resolveFfmpegForSemantic()
+      const g1Rel = 'Assets/g1_batched.mp4'
+      execFileSync(
+        ffmpeg,
+        [
+          '-y',
+          '-f',
+          'lavfi',
+          '-i',
+          'color=c=red:s=320x240:d=2.0:r=24',
+          '-f',
+          'lavfi',
+          '-i',
+          'color=c=blue:s=320x240:d=2.0:r=24',
+          '-filter_complex',
+          '[0:v][1:v]concat=n=2:v=1:a=0[v]',
+          '-map',
+          '[v]',
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          join(root, ...g1Rel.split('/'))
+        ],
+        { stdio: 'ignore', windowsHide: true }
+      )
 
-    const bridgedRebuild = await rebuildVideoFromSegments({
-      projectRoot: root,
-      sourceRelativePath: videoRel,
-      workDirRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_bridged_g1`,
-      outputRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_bridged_g1/output.mp4`,
-      keepAudio: false,
-      width: 320,
-      height: 240,
-      fps: 24,
-      localMotionClips: [
-        {
-          key: 'K1',
-          shotId: 'shot.insert',
-          anchorImageRelativePath: anchor1,
-          durationSec: 1.0,
-          mode: 'ken_burns',
-          zoomPerSec: 0.03
-        }
-      ],
-      segments: [
-        {
-          key: 'shot.1',
-          kind: 'generate',
-          relativePath: g1Rel,
-          clipOffsetRatio: 0,
-          clipDurationRatio: 0.5,
-          durationSec: 1.5,
-          sourceStartSec: 0,
-          sourceEndSec: 1.5
-        },
-        {
-          key: 'K1',
-          kind: 'generate',
-          durationSec: 1.0,
-          sourceStartSec: 1.5,
-          sourceEndSec: 2.5
-        },
-        {
-          key: 'shot.3',
-          kind: 'generate',
-          relativePath: g1Rel,
-          clipOffsetRatio: 0.5,
-          clipDurationRatio: 0.5,
-          durationSec: 1.5,
-          sourceStartSec: 2.5,
-          sourceEndSec: 4.0
-        }
-      ]
-    })
+      const bridgedRebuild = await rebuildVideoFromSegments({
+        projectRoot: root,
+        sourceRelativePath: videoRel,
+        workDirRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_bridged_g1`,
+        outputRelativePath: `Semantic/${res.timeline.id}/rebuilds/test_bridged_g1/output.mp4`,
+        keepAudio: false,
+        width: 320,
+        height: 240,
+        fps: 24,
+        localMotionClips: [
+          {
+            key: 'K1',
+            shotId: 'shot.insert',
+            anchorImageRelativePath: anchor1,
+            durationSec: 1.0,
+            mode: 'ken_burns',
+            zoomPerSec: 0.03
+          }
+        ],
+        segments: [
+          {
+            key: 'shot.1',
+            kind: 'generate',
+            relativePath: g1Rel,
+            clipOffsetRatio: 0,
+            clipDurationRatio: 0.5,
+            durationSec: 1.5,
+            sourceStartSec: 0,
+            sourceEndSec: 1.5
+          },
+          {
+            key: 'K1',
+            kind: 'generate',
+            durationSec: 1.0,
+            sourceStartSec: 1.5,
+            sourceEndSec: 2.5
+          },
+          {
+            key: 'shot.3',
+            kind: 'generate',
+            relativePath: g1Rel,
+            clipOffsetRatio: 0.5,
+            clipDurationRatio: 0.5,
+            durationSec: 1.5,
+            sourceStartSec: 2.5,
+            sourceEndSec: 4.0
+          }
+        ]
+      })
 
-    expect(bridgedRebuild.ok).toBe(true)
-    expect(bridgedRebuild.generatedCount).toBe(3)
-    expect(bridgedRebuild.localClipCount).toBe(1)
-    const bridgedFacts = await probeMediaFacts(
-      join(root, ...bridgedRebuild.outputRelativePath.split('/'))
-    )
-    expect(Math.abs(bridgedFacts.durationSec - 4.0)).toBeLessThan(0.2)
-  }, 60_000)
+      expect(bridgedRebuild.ok).toBe(true)
+      expect(bridgedRebuild.generatedCount).toBe(3)
+      expect(bridgedRebuild.localClipCount).toBe(1)
+      const bridgedFacts = await probeMediaFacts(
+        join(root, ...bridgedRebuild.outputRelativePath.split('/'))
+      )
+      expect(Math.abs(bridgedFacts.durationSec - 4.0)).toBeLessThan(0.2)
+    },
+    60_000
+  )
 })
