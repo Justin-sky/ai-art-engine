@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.7.0] — 2026-11-07
+
+8.7.0 功能版：**「视频拆解与重制」** 全面重构为 **双节点 `rea-video` 逆向取证与智能复刻引擎（`semantic.analyze` → `semantic.rebuild`）**，支持 **四轴视听取证、三联帧时序感知、多模态大模型（如 DeepSeek V4.1 Flash）角色实体抽取、DP 最优多镜合批、零 API 成本本地推拉运镜、首帧包装去字净化、口播对口型（Lip-Sync）与 ASS 动态花字烧录**；同时 **Machinations 数值沙盘** 升级 **`fx` 紧凑实时胶囊、起点染色流量标签、瞬态几何高帧率拖拽与明暗主题原生同步**。
+
+- **重构 · 双节点 `rea-video` 视频拆解与复刻闭环（`semantic.analyze` + `semantic.rebuild` + `SemanticTimelineInspector`）**：移除旧版冗余的中间规划节点与词表/规则包配置，收敛为「视频拆解」→「视频重制」两步直连管线；支持高还原复刻（`fidelity`）、换品改编（`adapt`）、局部精修（`edit`）与零 API 成本本地渲染四种策略，检查器内嵌逆向拆解与复刻报告 Markdown 渲染视图及并排对比视频（`compare.mp4`）直出。
+- **新增 · 四轴视听取证、三联帧 VLM 感知与多模态大模型角色/实体提取（`visualForensics` + `audioForensics` + `reaVlm` + `entityDetectVlm` + `modelProvider`）**：内置 GB 45438-2025 隐式 AIGC 容器溯源、镜头级推拉摇移/噪点/重复帧取证、冻结包装图层框（`frozenOverlayBoxes`）检测、三联帧时序拼接条（`strip`）以及基于 44.1kHz 分离干声降采样的基频 $F_0$ 与 BPM 精化；视觉理解全面打通 `DeepSeek V4.1 Flash`、Gemini、Qwen-VL、Doubao Seed 等多模态大语言模型路由与故障回退，自动聚合全片 `cast` 与镜头主体回填角色/场景/道具实体轨。
+- **新增 · DP 最优多镜合批、首帧包装净化、构图锁定换品、对口型与 ASS 动态花字还原（`reaPlan` + `segmentRebuild` + `localRemakeRenderer` + `assSubtitles`）**：基于动态规划自动编排多镜连续生成单元（`G1..Gk`）与零成本本地 Ken Burns 运镜（`K1..Kk`），支持按模型最大时长切分、尾帧接力（`chainFromUnitKey`）、切点吸附对齐与单元指纹缓存；I2V 前自动擦除首帧烧录花字生成干净底板（`clean-plate`），`adapt` 模式双参考图锁定原镜机位构图，`avatar_tts` 单元支持 `image_url + audio_url` 口播对口型及 `reference_video` 动作参考，导出阶段通过 ASS 字幕脚本还原顶部标题、底部对白与中部微弹花字。
+- **优化 · Machinations 数值沙盘 `fx` 实时公式胶囊、高帧率拖拽与明暗主题同步（`MxCanvas` + `MxFormulaModal` + `MachinationsStudio`）**：长公式连线自动折叠为紧凑 `fx` 实时胶囊并支持悬停预览与一键展开，新增源节点染色流量胶囊、沙漏间隔胶囊与加权轮询条件门分发；引入瞬态几何层（Transient Geometry Layer）与增量连线重算大幅提升节点/分组/折点拖拽帧率，并同步 Electron 原生明暗主题与弹窗/浮窗对比度。
+- **说明（发版提示）**：8.7.0 涉及主进程、共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.6.0] — 2026-11-06
 
 8.6.0 功能版：**游戏经济数值沙盘（`game.economy` Machinations Studio）** 全面升级 **Machinations.io 100% 机制对齐引擎**、内置 **59 款官方标准积木模块库** 与 **可拖拽弹窗式公式编辑面板（变量来源透视 + 彩虹括号配对 + 实时调参）**，新增 **连线双端自由重连、选中节点下游条件变量联动高亮与公式引用虚线引导**；同时 **主画布与全部 Dive 子工作台** 新增 **一键沉浸全屏模式**。
