@@ -14,6 +14,8 @@ import {
   AI_WORKFLOW_IMAGE_MODEL_KEY,
   AI_WORKFLOW_MODEL_KEY,
   AI_WORKFLOW_VIDEO_MODEL_KEY,
+  BUILTIN_VIDEO_BREAKDOWN_REMAKE_PRESET_ID,
+  buildVideoBreakdownRemakeSeedPlan,
   type AiWorkflowPresetId,
   type AiWorkflowPresetOption
 } from '../features/aiWorkflow/presets'
@@ -82,6 +84,11 @@ export function useAiCreateWorkflow() {
   const saveDefaultFolderId = ref<string | null>(null)
 
   const presetIds = computed<readonly AiWorkflowPresetOption[]>(() => [
+    {
+      id: BUILTIN_VIDEO_BREAKDOWN_REMAKE_PRESET_ID,
+      title: t('aiWorkflow.presets.videoBreakdownRemake.title'),
+      desc: t('aiWorkflow.presets.videoBreakdownRemake.desc')
+    },
     ...installedWorkflows.value
       .filter((w) => !w.broken)
       .map((w) => ({
@@ -157,6 +164,15 @@ export function useAiCreateWorkflow() {
     if (id === 'custom') {
       draftPrompt.value = ''
       error.value = ''
+      return
+    }
+    if (id === BUILTIN_VIDEO_BREAKDOWN_REMAKE_PRESET_ID) {
+      error.value = ''
+      selectedSeedPlan.value = toPlain(
+        buildVideoBreakdownRemakeSeedPlan(t('aiWorkflow.presets.videoBreakdownRemake.title'))
+      )
+      draftPrompt.value = t('aiWorkflow.presets.videoBreakdownRemake.prompt')
+      await planPreview('seed')
       return
     }
     try {

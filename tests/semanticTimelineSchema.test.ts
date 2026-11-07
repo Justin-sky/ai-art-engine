@@ -1,28 +1,20 @@
 import { describe, expect, it } from 'vitest'
 import {
-  BUILTIN_DIRECTOR_RULES,
-  COMMERCE_VOCABULARY,
   SEMANTIC_TIMELINE_SCHEMA,
   adaptiveSceneThreshold,
   buildShotsFromCutPoints,
-  compileDirectorCommands,
   createEmptySemanticTimeline,
-  filterEventsRequiringEvidence,
   makeTimeRange,
-  matchStableEventId,
   parseSceneCutPtsTimes,
-  rebuildTracks,
   roundtripDurationOk,
   shortHash,
   singleShot,
   timelineId,
-  validateSemanticPack,
-  validateSemanticTimeline,
-  type SemanticEvent
+  validateSemanticTimeline
 } from '../src/shared/semanticTimeline'
 
 describe('semanticTimeline schema', () => {
-  it('creates a valid empty document', () => {
+  it('creates a valid empty v2 document', () => {
     const doc = createEmptySemanticTimeline('vid-1', {
       durationSec: 60,
       fps: 30,
@@ -32,12 +24,13 @@ describe('semanticTimeline schema', () => {
     })
     expect(doc.schema).toBe(SEMANTIC_TIMELINE_SCHEMA)
     expect(doc.id).toBe(timelineId('vid-1'))
-    expect(doc.tracks).toHaveLength(8)
+    expect(doc.shots).toEqual([])
+    expect(doc.dialogue).toEqual([])
     const v = validateSemanticTimeline(doc)
     expect(v.ok).toBe(true)
   })
 
-  it('rejects analysis events without evidence', () => {
+  it('rejects malformed source dimensions or invalid dialogue ranges', () => {
     const doc = createEmptySemanticTimeline('vid-1', {
       durationSec: 10,
       fps: 30,
@@ -45,34 +38,20 @@ describe('semanticTimeline schema', () => {
       height: 720,
       hasAudio: false
     })
-    const bad: SemanticEvent = {
-      id: 'ev.x',
-      timeRange: makeTimeRange(0, 1, 30),
-      type: 'story',
-      label: 'hook',
-      description: 'x',
-      importance: 0.5,
-      entities: [],
-      evidence: [],
-      intents: [],
-      confidence: 0.9,
-      origin: 'analysis'
-    }
-    doc.events = [bad]
-    expect(validateSemanticTimeline(doc).ok).toBe(false)
-    expect(filterEventsRequiringEvidence(doc.events)).toEqual([])
-  })
-
-  it('keeps stable event ids across re-analysis', () => {
-    const prev = [
+    doc.dialogue = [
       {
-        id: 'ev.keep',
-        label: 'price_announce',
-        timeRange: makeTimeRange(10, 14, 30)
+        id: 'dlg.bad',
+        range: makeTimeRange(5, 2, 30),
+        text: 'bad range',
+        sourceText: 'bad range',
+        granularity: 'sentence',
+        confidence: 0.9,
+        origin: 'analysis'
       }
     ]
-    const id = matchStableEventId('price_announce', makeTimeRange(10.2, 13.8, 30), prev)
-    expect(id).toBe('ev.keep')
+    // Invalid reversed range (start > end) is flagged by validator
+    doc.dialogue[0]!.range = { start: 5, end: 2, startFrame: 150, endFrame: 60 }
+    expect(validateSemanticTimeline(doc).ok).toBe(false)
   })
 
   it('shortHash is stable', () => {
@@ -105,64 +84,5 @@ describe('shots + L0 roundtrip', () => {
   it('adaptive threshold clamps by duration', () => {
     expect(adaptiveSceneThreshold(10)).toBeLessThan(0.35)
     expect(adaptiveSceneThreshold(120)).toBeGreaterThan(0.35)
-  })
-})
-
-describe('compiler + packs', () => {
-  it('compiles price_announce to push_in', () => {
-    const doc = createEmptySemanticTimeline('vid', {
-      durationSec: 20,
-      fps: 30,
-      width: 1080,
-      height: 1920,
-      hasAudio: true
-    })
-    doc.events = [
-      {
-        id: 'ev.1',
-        timeRange: makeTimeRange(8, 12, 30),
-        type: 'product',
-        label: 'price_announce',
-        description: 'price',
-        importance: 0.9,
-        entities: [],
-        evidence: ['shot.001'],
-        intents: [],
-        confidence: 0.8,
-        origin: 'analysis'
-      }
-    ]
-    const cmds = compileDirectorCommands(rebuildTracks(doc), {
-      rulePacks: [BUILTIN_DIRECTOR_RULES]
-    })
-    expect(cmds.some((c) => c.kind === 'camera.push_in')).toBe(true)
-  })
-
-  it('validates semantic packs', () => {
-    expect(
-      validateSemanticPack({
-        schemaVersion: 1,
-        id: 'commerce-vocab',
-        title: 'Commerce',
-        kind: 'vocabulary',
-        vocabulary: COMMERCE_VOCABULARY
-      }).ok
-    ).toBe(true)
-  })
-
-  /**
-   * 配方包（`kind='recipe'`）随变体节点一起退役：官方三个包只剩 vocabulary / rules / persona。
-   * 校验器要**主动拒收** recipe —— 否则旧配方包被重新装进来会静默通过，而它带来的
-   * `editTemplates` / `targetLevel` 已经没有类型与消费者承接，等于留一个「看着能用」的坑。
-   */
-  it('rejects the retired recipe pack kind', () => {
-    const v = validateSemanticPack({
-      schemaVersion: 1,
-      id: 'commerce-variant-recipe',
-      title: 'Variant recipe',
-      kind: 'recipe'
-    })
-    expect(v.ok).toBe(false)
-    expect(v.issues.join(' ')).toContain('kind')
   })
 })

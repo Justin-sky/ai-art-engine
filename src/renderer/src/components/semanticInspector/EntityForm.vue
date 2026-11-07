@@ -302,7 +302,7 @@ const activeShotId = computed(() => {
   return entityShots.value[0]?.shot.id ?? ''
 })
 const activeEntry = computed(() => entityShots.value.find((s) => s.shot.id === activeShotId.value))
-/** 与重建首帧同源：中帧优先，其次首帧（见 buildPromptPlan 的 firstFrameRelativePath） */
+/** 与重建首帧同源：中帧优先，其次首帧 */
 const activeKeyframe = computed(() => {
   const kf = activeEntry.value?.shot.keyframes
   return keyframeProjectPath(props.timeline.id, kf?.middle ?? kf?.first) ?? ''

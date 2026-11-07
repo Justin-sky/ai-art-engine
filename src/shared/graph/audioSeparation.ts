@@ -14,7 +14,15 @@ export const VOCAL_PAN_FILTER = 'pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1'
 /** 侧声道提取（伴奏近似）：(L-R)/2，抵消居中的人声 */
 export const INSTRUMENTAL_PAN_FILTER = 'pan=stereo|c0=0.5*c0-0.5*c1|c1=0.5*c1-0.5*c0'
 
-export function buildAudioSeparationFilter(kind: AudioStemKind): string {
+/** 单声道 / 双声道同相（L≈R）回退滤镜：避免 (L-R)/2 相消成全静音，改用语音频段带通 / 陷波分离 */
+export const MONO_VOCAL_BAND_FILTER = 'highpass=f=130,lowpass=f=3600'
+export const MONO_INSTRUMENTAL_BAND_FILTER =
+  'equalizer=f=320:t=q:w=1.1:g=-11,equalizer=f=1150:t=q:w=1.0:g=-14,equalizer=f=2600:t=q:w=1.2:g=-11'
+
+export function buildAudioSeparationFilter(kind: AudioStemKind, monoFallback = false): string {
+  if (monoFallback) {
+    return kind === 'vocal' ? MONO_VOCAL_BAND_FILTER : MONO_INSTRUMENTAL_BAND_FILTER
+  }
   return kind === 'vocal' ? VOCAL_PAN_FILTER : INSTRUMENTAL_PAN_FILTER
 }
 

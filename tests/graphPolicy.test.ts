@@ -124,7 +124,6 @@ describe('graph policy', () => {
         'video.lipSync',
         'video.framePull',
         'semantic.analyze',
-        'semantic.compile',
         'semantic.rebuild',
         'image.toPrompt',
         'decisions.judge',

@@ -33,16 +33,14 @@ import { hydrateTextItems, resolveGalleryOutputsFromNodeParams } from './helpers
 import { executeAssetHostInnerGraph } from './host'
 import { resolveNodeExecutor } from './registry'
 import { semanticTimelineValue } from './semanticTimelineValue'
-import { videoPromptsValue } from './videoPromptsValue'
-import { parsePromptPlan } from '../../semanticTimeline'
 
 /**
  * 端口边界的值投影：结构化值落到 **text 口**时转成它的规范 JSON 文本。
  *
- * 端口兼容规则允许 `semanticTimeline → text` 与 `videoPrompts → text`
- * （把文档/提示词喂给 LLM 指令节点或文本消费者），而各处文本消费都按 `kind === 'text'` 取 ——
+ * 端口兼容规则允许 `semanticTimeline → text`（把文档喂给 LLM 指令节点或文本消费者），
+ * 而各处文本消费都按 `kind === 'text'` 取 ——
  * 所以这条兼容必须在装配 inputs 时做实，否则「连得上但读不到」。
- * 同类型的口自己拿到的仍是结构化值（含 doc/plan，不再 JSON.parse）。
+ * 同类型的口自己拿到的仍是结构化值（含 doc，不再 JSON.parse）。
  */
 function projectValueForPort(
   value: GraphValue,
@@ -51,7 +49,6 @@ function projectValueForPort(
   if (targetPortType !== GraphPortType.text) return value
   if (
     value.kind === 'semanticTimeline' ||
-    value.kind === 'videoPrompts' ||
     value.kind === 'storyboard' ||
     value.kind === 'filmCast' ||
     value.kind === 'uiComponents'
@@ -223,63 +220,35 @@ function resolveLockedOutputs(
 }
 
 /**
- * 语义链路自愈：把**丢失的上游语义值**补回来。
+ * 语义链路自愈：把**丢失的上游语义时间线文档**从磁盘补回来。
  *
- * 为什么需要：语义节点的产物（时间线文档 / 提示词计划）只在运行态 outputs 里，
- * 落盘、撤销、任务快照、旧版存档都可能让它变空 —— 此时「仅跑语义重建（Cook）」
- * 只会拿到空计划，既不出片也不报错（实测踩到）。这里按节点参数/磁盘把值复原：
- *
- * - 语义分析：按参数里的 `semanticTimelineId` 从磁盘读回整份文档（不重跑分析）；
- * - 语义编译：优先用参数里的计划缓存；没有缓存就把上游时间线取回来后**就地重编译**。
- *   开了 `semanticLlm` 时不自动重编（那会走模型、可能产生费用），交给用户显式运行。
+ * 存档、撤销或任务快照导致运行态 outputs 为空时，单独 Cook `semantic.rebuild`
+ * 可按上游 `semantic.analyze` 参数里的 `semanticTimelineId` 从磁盘恢复整份文档。
  */
 async function restoreSemanticSourceOutput(
   node: GraphNode,
-  graph: GraphDocument,
-  options: Pick<
-    GraphRunOptions,
-    'locale' | 'loadSemanticTimeline' | 'loadSemanticEvidence' | 'listSemanticPacks' | 'onLog'
-  >,
-  priorNodeStates: Record<string, GraphNodeRunState> | undefined,
+  _graph: GraphDocument,
+  options: Pick<GraphRunOptions, 'loadSemanticTimeline'>,
+  _priorNodeStates: Record<string, GraphNodeRunState> | undefined,
   sourcePort: string
 ): Promise<GraphValue | undefined> {
   if (sourcePort && sourcePort !== 'out') return undefined
-
-  if (node.typeId === 'semantic.analyze') {
-    const id = String(node.params.semanticTimelineId ?? '').trim()
-    if (!id.startsWith('stl.') || !options.loadSemanticTimeline) return undefined
-    const doc = await options.loadSemanticTimeline(id).catch(() => null)
-    return doc ? semanticTimelineValue(doc) : undefined
+  if (node.typeId !== 'semantic.analyze') return undefined
+  const rawJson = String(node.params.timelineJson ?? '').trim()
+  if (rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson) as { id?: unknown; source?: unknown }
+      if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string' && parsed.source) {
+        return semanticTimelineValue(parsed as Parameters<typeof semanticTimelineValue>[0])
+      }
+    } catch {
+      /* ignore invalid timelineJson */
+    }
   }
-
-  if (node.typeId !== 'semantic.compile') return undefined
-  const cached = parsePromptPlan(node.params.planJson)
-  if (cached) return videoPromptsValue(cached)
-  if (node.params.semanticLlm === true) return undefined
-
-  const edge = graph.edges.find((e) => e.target === node.id)
-  const source = edge ? graph.nodes.find((n) => n.id === edge.source) : undefined
-  if (!edge || !source) return undefined
-  const upstreamPort = edge.sourcePort ?? 'out'
-  const fromPrior = priorNodeStates?.[source.id]?.outputs?.[upstreamPort]
-  const timeline = graphValueHasPayload(fromPrior)
-    ? fromPrior
-    : await restoreSemanticSourceOutput(source, graph, options, priorNodeStates, upstreamPort)
-  if (!timeline || timeline.kind !== 'semanticTimeline') return undefined
-
-  const def = resolveNodeType(node)
-  const execute = resolveNodeExecutor(node, def)
-  const restored = await execute({
-    node,
-    inputs: { [edge.targetPort ?? 'in']: [timeline] },
-    locale: options.locale,
-    ...(options.onLog ? { log: (message, level) => options.onLog?.(node.id, message, level) } : {}),
-    loadSemanticTimeline: options.loadSemanticTimeline,
-    loadSemanticEvidence: options.loadSemanticEvidence,
-    listSemanticPacks: options.listSemanticPacks
-  })
-  const value = restored.out
-  return value && graphValueHasPayload(value) ? value : undefined
+  const id = String(node.params.semanticTimelineId ?? '').trim()
+  if (!id.startsWith('stl.') || !options.loadSemanticTimeline) return undefined
+  const doc = await options.loadSemanticTimeline(id).catch(() => null)
+  return doc ? semanticTimelineValue(doc) : undefined
 }
 
 /** 单节点执行时：用缓存 outputs，或对上游做无 generate* 快照（仍解析资产正文） */
@@ -297,7 +266,6 @@ async function softSnapshotOutputs(
     | 'readRunText'
     | 'loadSemanticTimeline'
     | 'loadSemanticEvidence'
-    | 'listSemanticPacks'
     | 'onLog'
   >,
   softCtx?: {
@@ -571,7 +539,6 @@ async function executeOneNode(
     loadSemanticTimeline: options.loadSemanticTimeline,
     saveSemanticTimeline: options.saveSemanticTimeline,
     rebuildSemanticVideo: options.rebuildSemanticVideo,
-    listSemanticPacks: options.listSemanticPacks,
     composeImageExpandCanvas: options.composeImageExpandCanvas,
     composeImageRedrawCanvas: options.composeImageRedrawCanvas,
     composeImageCropCanvas: options.composeImageCropCanvas,

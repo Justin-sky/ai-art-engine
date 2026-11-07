@@ -119,23 +119,14 @@ export const GraphPortType = {
   /**
    * 语义时间线文档（`SemanticTimeline`，schema `aiart.semantic-timeline@1`，id 形如 `stl.*`）。
    *
-   * 语义分析那条管线（分析 / 时间线 / 触发 / 编译 / 修复 / 多版本）传递的是**这份文档**，
-   * 而不是随便一段文本。以前它们共用 `text` 口，后果是：任何文本产地（提示词、剧本、OCR）
-   * 都能接进语义口，且要等运行期解析才报「不是合法 JSON / 不是语义时间线文档」。
+   * 视频拆解与重制管线（`semantic.analyze` → `semantic.rebuild`）传递的是**这份结构化四轴文档**，
+   * 而不是随便一段文本。
    *
    * 连接规则**单向放宽**：`semanticTimeline → text` 允许（展示、交给文本消费者、给 agent 读），
    * 反向不允许 —— 普通文本没有 schema，也没有 `stl.` id。手写 JSON 请走节点参数
    * `timelineJson`，或先过语义分析节点。
    */
   semanticTimeline: 'semanticTimeline',
-  /**
-   * 视频生成提示词计划（`VideoPromptPlan`，schema `aiart.video-prompts@1`）。
-   *
-   * 语义编译的产物、语义重建的输入 —— 每一镜一条提示词 + 该镜首帧（来自分析证据的关键帧），
-   * 所以重建是**图生视频**而不是凭空文生视频。与 `semanticTimeline` 同一套路：
-   * 单向放宽 `videoPrompts → text`（交给文本消费者/agent 读），反向不允许。
-   */
-  videoPrompts: 'videoPrompts',
   /**
    * 影视分镜文档（`FilmStoryboard`，schema `aiart.film-storyboard@1`）：
    * 剧本拆出的场 / 镜头 / 角色场景实体 / 审核结论 / 每镜产物，一整份结构化 JSON。
@@ -322,8 +313,6 @@ export interface GraphNodeParams {
   decisionProvider?: string
   /** Semantic Timeline：源视频资产 id */
   sourceAssetId?: string
-  /** Semantic Timeline：节拍词表 id */
-  vocabulary?: string
   /** Semantic Timeline：分析用帧率 / 时长（无探测时的兜底） */
   semanticFps?: number
   semanticDuration?: number
@@ -339,42 +328,34 @@ export interface GraphNodeParams {
   semanticTranscribe?: boolean
   semanticSeparateAudio?: boolean
   semanticDetectEntities?: boolean
-  /** Semantic Timeline：分析后跑 LLM 镜头描述 / 事件抽取 / 导演意图（默认 false） */
+  /** Semantic Timeline：分析后跑多模态深度鉴别（默认 true） */
   semanticLlm?: boolean
-  /** 语义重建：是否真正调模型出片（默认 true；false 只产出清单，可以先看再开） */
+  /** 视频重制：是否真正调模型出片（默认 true；false 只产出清单，可以先看再开） */
   semanticExecute?: boolean
-  /** Semantic Timeline：只启用这些导演规则包（逗号分隔；空 = 内置 + 全部已装） */
-  rulePackIds?: string
-  /**
-   * 语义编译：人工改过的提示词（按 shotId 覆盖）。
-   * 紧凑格式 `{"shot.1":"提示词"}`，也接受 `[{shotId,prompt,negativePrompt?}]`。
-   */
-  promptOverridesJson?: string
-  /**
-   * 语义编译：上次编译产出的提示词计划（规范 JSON）。**节点参数随图落盘**，
-   * 是运行态 outputs 之外的第二份缓存 —— 运行态丢了（旧存档 / 撤销 / 任务快照）时，
-   * 下游「语义重建」仍能从这里把计划复原，无需重跑编译、更不用重跑分析。
-   */
-  planJson?: string
-  /** 语义重建：生成粒度（`shots` 逐镜头，默认；`full` 整片一次） */
-  rebuildMode?: string
-  /** 语义重建：每镜生成时长（秒；空 = 跟随镜头时长） */
+  /** 视频重制：复刻策略（`edit` 局部改片，默认；`fidelity` 1:1 分流复刻；`adapt` 换品仿拍） */
+  remakeStrategy?: 'edit' | 'fidelity' | 'adapt'
+  /** 视频重制：生成首帧锚点图（调用图片模型按 `imagePrompt` + 参考图生成锚点帧后再送图生视频） */
+  rebuildGenerateAnchors?: boolean
+  /** 视频重制：送入图生视频或静态运镜前自动擦除首帧上的硬字幕/花字包装为去字净板（默认 true） */
+  rebuildCleanOverlays?: boolean
+  /** 视频重制：启用确定性单元指纹缓存，重跑时跳过未改动的生成单元（默认 true） */
+  rebuildUseCache?: boolean
+  /** 视频重制：已成功生成的单元指纹 → 工程相对路径映射 JSON（节点持久缓存） */
+  rebuildUnitCacheJson?: string
+  /** 视频重制：单镜定向重跑目标镜头 ID 列表（逗号分隔，对比视图点击「仅重跑此镜」时写入） */
+  rebuildOnlyShotIds?: string
+  /** 视频重制：每单元固定生成时长（秒；0/空 = 按单元时长自动匹配模型档位） */
   rebuildDurationSec?: number
-  /** 语义重建：分辨率 / 画幅（空 = 跟随源片设置与模型默认） */
+  /** 视频重制：分辨率 / 画幅（空 = 跟随源片设置与模型默认） */
   rebuildResolution?: string
   rebuildAspectRatio?: string
-  /** 语义重建：逐镜头模式的上限（默认 12，防误点跑几十次生成） */
+  /** 视频重制：单次运行最大 AI 生成单元数（默认 24，防误点超长片连续调用） */
   rebuildMaxShots?: number
-  /** 语义重建：保留原片音轨（默认 true） */
+  /** 视频重制：保留原片音轨（默认 true） */
   rebuildKeepAudio?: boolean
-  /** 语义重建：烧录转写字幕（默认 true） */
+  /** 视频重制：烧录转写字幕（默认 true） */
   rebuildBurnSubtitles?: boolean
-  /**
-   * 语义重建：全部镜头重新生成（默认 false）。
-   * false = 只生成**改过**的镜头，未改镜头直通原片段（零修改即还原原片）。
-   */
-  rebuildRegenerateAll?: boolean
-  /** 语义重建：改过的台词重新配音（默认 true） */
+  /** 视频重制：改过的台词重新配音（默认 true） */
   rebuildDub?: boolean
   /** 语义重建：配音没有指定音色时，用原片分离出的人声做声音克隆参考（默认 true） */
   rebuildDubClone?: boolean
@@ -389,6 +370,10 @@ export interface GraphNodeParams {
   rebuildLastReport?: string
   /** 语义重建：上次成片（工程相对路径），Inspector 预览用 */
   rebuildLastOutput?: string
+  /** 语义重建：是否同时导出原片与复刻成片的同步并排对比视频（默认 true） */
+  rebuildRenderCompare?: boolean
+  /** 语义重建：上次并排对比视频（工程相对路径） */
+  rebuildLastCompare?: string
   /** 加工节点模型 id（剧本=文本，图片/全景=图片，视频=视频，声音=音频） */
   generateModel?: string
   /** 加工节点提供商实例 id */

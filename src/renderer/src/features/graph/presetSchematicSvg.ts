@@ -1472,18 +1472,6 @@ export function buildPresetSchematicSvg(input: {
       fullKey
     )
   }
-  if (kind === 'semanticCompile' || fullKey.startsWith('semanticCompile.')) {
-    return wrapSvg(
-      `
-      ${viewfinderFrame(16, 6, 88, 40)}
-      ${personSilhouette(46, 14, 0.78, true)}
-      <line x1="68" y1="18" x2="94" y2="18" stroke="${C_ACCENT}" stroke-width="1.6" stroke-linecap="round" />
-      <line x1="68" y1="26" x2="90" y2="26" stroke="${C_STROKE}" stroke-width="1.5" stroke-linecap="round" />
-      <line x1="68" y1="34" x2="84" y2="34" stroke="${C_MUTED}" stroke-width="1.5" stroke-linecap="round" />
-      `,
-      fullKey
-    )
-  }
 
   // 11. 通用 visual.kind 兜底示意图
   const v = input.visual

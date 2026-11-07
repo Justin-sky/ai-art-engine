@@ -120,21 +120,10 @@ describe('run state persist', () => {
       schema: 'aiart.semantic-timeline@1',
       source: { assetId: 'a1', fps: 30, duration: 3, width: 640, height: 360 },
       entities: [],
-      events: [],
-      beats: [],
-      intents: [],
-      tracks: [],
+      shots: [],
+      utterances: [],
       updatedAt: '2026-01-01T00:00:00.000Z',
       createdAt: '2026-01-01T00:00:00.000Z'
-    }
-    const plan = {
-      schema: 'aiart.video-prompt-plan@1',
-      timelineId: 'stl.keep.1',
-      sourceAssetId: 'a1',
-      lang: 'zh',
-      shots: [{ shotId: 'shot.1', prompt: '推近', durationSec: 3, strategy: 'generate' }],
-      fullPrompt: '整片',
-      settings: { width: 640, height: 360, fps: 30, durationSec: 3 }
     }
     const snap = exportPersistedRunStates(
       {
@@ -143,10 +132,6 @@ describe('run state persist', () => {
           outputs: {
             out: { kind: 'semanticTimeline', doc: timeline, text: JSON.stringify(timeline) }
           }
-        },
-        compile: {
-          status: 'done',
-          outputs: { out: { kind: 'videoPrompts', plan, text: JSON.stringify(plan) } }
         },
         world: { status: 'done', outputs: { out: { kind: 'world', text: '{"a":1}' } } },
         beat: { status: 'done', outputs: { out: { kind: 'beat', text: '{"b":1}' } } },
@@ -159,10 +144,9 @@ describe('run state persist', () => {
           outputs: { out: { kind: 'project', relativePath: 'Cache/game/project', gameMode: '2d' } }
         }
       },
-      ['analyze', 'compile', 'world', 'beat', 'voice', 'project']
+      ['analyze', 'world', 'beat', 'voice', 'project']
     )
     expect(snap?.analyze?.outputs?.out).toMatchObject({ kind: 'semanticTimeline' })
-    expect(snap?.compile?.outputs?.out).toMatchObject({ kind: 'videoPrompts' })
     expect(snap?.world?.outputs?.out).toMatchObject({ kind: 'world' })
     expect(snap?.beat?.outputs?.out).toMatchObject({ kind: 'beat' })
     expect(snap?.voice?.outputs?.out).toMatchObject({ kind: 'voice', id: 'v1' })

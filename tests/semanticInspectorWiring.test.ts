@@ -3,8 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * 语义 dive「轨道选中 → 右侧检查器编辑」的接线守卫。
- * 组件在 node 环境渲染不了（无 jsdom），按仓库既有做法做源码守卫；注释先剥掉，免得假通过。
+ * 语义 dive「轨道选中 / 复刻规划编辑 → 右侧检查器与落盘」的接线守卫。
  */
 const read = (rel: string): string =>
   readFileSync(join(process.cwd(), rel), 'utf8')
@@ -13,17 +12,20 @@ const read = (rel: string): string =>
 
 const dive = read('src/renderer/src/components/dive/EditorDiveSemanticTimelineView.vue')
 const editor = read('src/renderer/src/components/SemanticTimelineEditor.vue')
+const panels = read('src/renderer/src/components/dive/SemanticBreakdownWorkspacePanels.vue')
 const inspector = read(
   'src/renderer/src/components/semanticInspector/SemanticSelectionInspector.vue'
 )
 
 describe('语义 dive 检查器接线', () => {
-  it('单一编辑入口：全量修改面板已下线，修改经编辑器上抛到 dive 应用', () => {
+  it('单一编辑入口：轨道与复刻规划面板的修改均上抛到 dive 的 applyEdit', () => {
     expect(
       existsSync(join(process.cwd(), 'src/renderer/src/components/SemanticEditPanel.vue'))
     ).toBe(false)
     expect(dive).not.toContain('SemanticEditPanel')
     expect(dive).toMatch(/<SemanticTimelineEditor[\s\S]*?@edit="applyEdit"/)
+    expect(dive).toMatch(/<SemanticBreakdownWorkspacePanels[\s\S]*?@edit="applyEdit"/)
+    expect(panels).toContain("op: 'unit.prompt'")
     expect(editor).toMatch(/<SemanticSelectionInspector[\s\S]*?@edit="onEdit"/)
     expect(editor).toContain("emit('edit', input)")
   })
@@ -35,21 +37,23 @@ describe('语义 dive 检查器接线', () => {
     expect(dive).not.toContain('useProjectStore')
   })
 
-  it('六类对象都由检查器分发到各自表单', () => {
-    for (const form of [
-      'ShotForm',
-      'DialogueForm',
-      'EventForm',
-      'BeatForm',
-      'IntentForm',
-      'EntityForm'
-    ]) {
+  it('三类核心对象由检查器分发到各自表单，旧事件/节拍/意图表单已彻底移除', () => {
+    for (const form of ['ShotForm', 'DialogueForm', 'EntityForm']) {
       expect(inspector, `缺少 ${form}`).toContain(`<${form}`)
+    }
+    for (const removed of ['EventForm', 'BeatForm', 'IntentForm']) {
+      expect(inspector).not.toContain(removed)
+      expect(
+        existsSync(
+          join(process.cwd(), `src/renderer/src/components/semanticInspector/${removed}.vue`)
+        )
+      ).toBe(false)
     }
   })
 
-  it('镜头轨与台词轨可点选（重建的直接单位）', () => {
+  it('镜头轨、合批单元轨与台词轨均可点选', () => {
     expect(editor).toContain('@click="selectShot(shot)"')
+    expect(editor).toContain('@click="selectUnitBlock(ub)"')
     expect(editor).toContain('@click="selectDialogue(line)"')
     expect(editor).toContain('dirty: diff.dirtyShots.has(shot.id)')
     expect(editor).toContain('dirty: diff.dirtyDialogue.has(line.id)')
@@ -62,12 +66,11 @@ describe('语义 dive 检查器接线', () => {
     expect(dive).not.toContain('timeline.value = before')
   })
 
-  it('键盘：输入控件里不拦截；Delete 对事件 / 意图只请求确认，不直接删', () => {
+  it('键盘：输入控件里不拦截；Delete 在镜头删除与恢复间切换', () => {
     expect(editor).toContain('@keydown="onKeydown"')
     expect(editor).toContain(
       'target?.closest(\'input, textarea, select, [contenteditable="true"]\')'
     )
-    expect(editor).toContain('armDelete.value += 1')
-    expect(editor).not.toMatch(/op: 'event\.remove'/)
+    expect(editor).toContain("op: s.item.removed ? 'shot.restore' : 'shot.remove'")
   })
 })

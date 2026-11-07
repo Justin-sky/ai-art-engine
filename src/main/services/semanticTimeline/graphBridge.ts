@@ -4,13 +4,12 @@
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import {
-  findVocabularyInPacks,
+  collectTimelinePackagingOverlays,
   migrateSemanticTimeline,
   validateSemanticTimeline,
   type SemanticAnalyzeRequest,
   type SemanticAnalyzeResponse,
   type SemanticEvidenceResponse,
-  type SemanticPack,
   type SemanticRebuildRequest,
   type SemanticTimeline,
   type ShotEvidence,
@@ -20,7 +19,6 @@ import { normalizeProjectRelativePath } from '@shared/mcpAssetWrite'
 import type { AssetInfo } from '@shared/domain'
 import { projectService } from '../projectService'
 import { modelProviderFacade } from '../modelProviders'
-import { installedWorkflowsDir } from '../skillMarketService'
 import { broadcastToAllWindows } from '../../broadcast'
 import { IpcChannels } from '@shared/ipc'
 import {
@@ -34,7 +32,6 @@ import {
 } from './SemanticTimelineService'
 import { rebuildVideo } from './rebuildService'
 import { rebuildVideoFromSegments } from './segmentRebuild'
-import { listAllSemanticPacks } from './packLoader'
 
 function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -57,22 +54,14 @@ function toAbs(root: string, rel: string): string {
   return join(root, ...rel.split('/'))
 }
 
-/** 关键帧路径相对 Semantic/<id>/ → 工程相对路径 */
+/** 关键帧路径相对 Semantic/<id>/ → 工程相对路径（优先首中尾三联帧 strip，供多模态看动态与转场） */
 function keyframeIndex(timelineId: string, shots: ShotEvidence[]): Record<string, string> {
   const out: Record<string, string> = {}
   for (const s of shots) {
-    const rel = s.keyframes?.middle ?? s.keyframes?.first
+    const rel = s.keyframes?.strip ?? s.keyframes?.middle ?? s.keyframes?.first
     if (rel) out[s.id] = `Semantic/${timelineId}/${rel}`
   }
   return out
-}
-
-export function listSemanticPacksForGraph(): SemanticPack[] {
-  try {
-    return listAllSemanticPacks(installedWorkflowsDir())
-  } catch {
-    return listAllSemanticPacks()
-  }
 }
 
 export async function semanticAnalyzeForGraph(
@@ -106,13 +95,9 @@ export async function semanticAnalyzeForGraph(
     }
   }
 
-  const vocabularyId = input.vocabulary || 'commerce.v1'
-  const vocabularyDef = findVocabularyInPacks(listSemanticPacksForGraph(), vocabularyId)
   // 无资产的视频文件按路径生成稳定 id，重复分析覆盖同一目录
   const sourceId = asset?.id ?? `path:${rel}`
   const result = await analyzeSemanticTimeline(root, sourceId, videoAbs, {
-    vocabulary: vocabularyId,
-    vocabularyDef,
     videoRelativePath: rel,
     transcriptSegments,
     transcriptGranularity,
@@ -225,10 +210,18 @@ async function rebuildFromSegmentsForGraph(args: {
           sourceEndSec: utt.range.end,
           text: utt.text
         })))
+  const passthroughKeys = new Set(segments.filter((s) => s.kind === 'source').map((s) => s.key))
+  const packagingOverlays =
+    input.burnSubtitles === false
+      ? []
+      : (input.packagingOverlays ??
+        collectTimelinePackagingOverlays(doc, { excludeShotIds: passthroughKeys }))
   const result = await rebuildVideoFromSegments({
     projectRoot: root,
     segments,
     dubs: input.dubs,
+    localMotionClips: input.localMotionClips,
+    renderCompare: input.renderCompare,
     sourceRelativePath,
     stems: {
       vocals: doc?.evidence?.stems?.vocals ?? null,
@@ -237,6 +230,7 @@ async function rebuildFromSegmentsForGraph(args: {
     keepAudio: input.keepAudio !== false,
     burnSubtitles: input.burnSubtitles !== false,
     subtitles,
+    packagingOverlays,
     width: input.width,
     height: input.height,
     fps: input.fps,
@@ -254,8 +248,10 @@ async function rebuildFromSegmentsForGraph(args: {
         runId,
         createdAt: new Date().toISOString(),
         outputRelativePath: result.ok ? outputRelativePath : undefined,
+        compareRelativePath: result.compareRelativePath,
         sourceRelativePath,
         segments,
+        localMotionClips: input.localMotionClips ?? [],
         dubs: input.dubs ?? [],
         keepAudio: result.keptAudio,
         burnedSubtitles: result.burnedSubtitles,
@@ -270,8 +266,10 @@ async function rebuildFromSegmentsForGraph(args: {
   return {
     ok: result.ok,
     ...(result.ok ? { outputRelativePath } : {}),
+    ...(result.compareRelativePath ? { compareRelativePath: result.compareRelativePath } : {}),
     manifestRelativePath,
     clipCount: result.generatedCount,
+    ...(result.localClipCount !== undefined ? { localClipCount: result.localClipCount } : {}),
     passthroughCount: result.passthroughCount,
     dubCount: result.dubCount,
     burnedSubtitles: result.burnedSubtitles,
@@ -292,7 +290,10 @@ export interface SemanticRebuildForGraphInput {
   clips: Array<{ key: string; relativePath: string }>
   segments?: SemanticRebuildRequest['segments']
   dubs?: SemanticRebuildRequest['dubs']
+  localMotionClips?: SemanticRebuildRequest['localMotionClips']
+  renderCompare?: boolean
   subtitles?: SemanticRebuildRequest['subtitles']
+  packagingOverlays?: SemanticRebuildRequest['packagingOverlays']
   /** 输出文件名后缀（多版本/重跑时区分），已由调用方 sanitize */
   label?: string
   keepAudio?: boolean
@@ -306,8 +307,10 @@ export interface SemanticRebuildForGraphInput {
 export interface SemanticRebuildForGraphResult {
   ok: boolean
   outputRelativePath?: string
+  compareRelativePath?: string
   manifestRelativePath: string
   clipCount: number
+  localClipCount?: number
   passthroughCount?: number
   dubCount?: number
   burnedSubtitles: number
@@ -332,7 +335,8 @@ export async function semanticRebuildForGraph(
 
   const clips = (input.clips ?? []).filter((clip) => !!clip?.relativePath?.trim())
   const segments = input.segments ?? []
-  if (clips.length === 0 && segments.length === 0) {
+  const localMotionClips = input.localMotionClips ?? []
+  if (clips.length === 0 && segments.length === 0 && localMotionClips.length === 0) {
     throw new Error('rebuild requires at least one clip')
   }
 

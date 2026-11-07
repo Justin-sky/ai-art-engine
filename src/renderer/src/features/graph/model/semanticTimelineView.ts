@@ -85,14 +85,13 @@ export function sourceAspectRatio(source: { width?: number; height?: number }): 
   return `${w} / ${h}`
 }
 
-export type EvidenceRefKind =
-  'event' | 'beat' | 'intent' | 'entity' | 'shot' | 'utterance' | 'ocr' | 'unknown'
+export type EvidenceRefKind = 'entity' | 'shot' | 'utterance' | 'ocr' | 'unknown'
 
 export interface ResolvedEvidenceRef {
   /** 原始 id（放进 tooltip 供排查） */
   raw: string
   kind: EvidenceRefKind
-  /** 人读的短标签（不含类型前缀）：事件 label / 实体名 / 镜头序号… */
+  /** 人读的短标签（不含类型前缀）：实体名 / 镜头序号… */
   detail: string
   /** 已知时间（给了就能点着跳播放条） */
   startSec?: number
@@ -100,13 +99,6 @@ export interface ResolvedEvidenceRef {
 }
 
 export interface EvidenceRefContext {
-  events?: ReadonlyArray<{
-    id: string
-    label?: string
-    timeRange?: { start: number; end: number }
-  }>
-  beats?: ReadonlyArray<{ id: string; type?: string; timeRange?: { start: number; end: number } }>
-  intents?: ReadonlyArray<{ id: string; goal?: string }>
   entities?: ReadonlyArray<{ id: string; name?: string }>
   /** 话语证据（来自 `evidence/utterances.json`，用于显示原句与时间） */
   utterances?: ReadonlyMap<string, { text?: string; start?: number; end?: number }>
@@ -115,19 +107,10 @@ export interface EvidenceRefContext {
   fps?: number
 }
 
-function timeOf(range?: { start: number; end: number }): { startSec?: number; endSec?: number } {
-  if (!range) return {}
-  return {
-    ...(Number.isFinite(range.start) ? { startSec: range.start } : {}),
-    ...(Number.isFinite(range.end) ? { endSec: range.end } : {})
-  }
-}
-
 /**
  * 证据 id → 人读标签。
  *
- * 这些 id 是内容哈希（`ev.c732c3a6d0` / `utt.007.49529d7876`），直接摆在面板上没人看得懂。
- * 能在时间线文档里查到就查（事件 / 节拍 / 意图 / 实体）；查不到就**从 id 自身解析**：
+ * 能在时间线文档里查到就查（实体）；查不到就从 id 自身解析：
  * `shot.<序号>.<起始帧>` 能算出镜头号与时间，`utt.<序号>.<hash>` 至少给出序号。
  * 全都解析不出来时退回原始 id（绝不显示"未知"把信息丢掉）。
  */
@@ -136,28 +119,6 @@ export function resolveEvidenceRef(raw: string, ctx: EvidenceRefContext = {}): R
   const fps = Number(ctx.fps) > 0 ? Number(ctx.fps) : 30
   if (!id) return { raw: id, kind: 'unknown', detail: '' }
 
-  if (id.startsWith('ev.')) {
-    const hit = ctx.events?.find((e) => e.id === id)
-    return {
-      raw: id,
-      kind: 'event',
-      detail: hit?.label?.trim() || id.slice(3, 9),
-      ...timeOf(hit?.timeRange)
-    }
-  }
-  if (id.startsWith('beat.')) {
-    const hit = ctx.beats?.find((b) => b.id === id)
-    return {
-      raw: id,
-      kind: 'beat',
-      detail: hit?.type?.trim() || id.slice(5, 11),
-      ...timeOf(hit?.timeRange)
-    }
-  }
-  if (id.startsWith('intent.')) {
-    const hit = ctx.intents?.find((i) => i.id === id)
-    return { raw: id, kind: 'intent', detail: hit?.goal?.trim() || id.slice(7, 13) }
-  }
   if (id.startsWith('ent.')) {
     const hit = ctx.entities?.find((e) => e.id === id)
     return {
@@ -216,34 +177,22 @@ export function resolveEvidenceRef(raw: string, ctx: EvidenceRefContext = {}): R
 }
 
 /**
- * 轨道 id → i18n 键后缀。
+ * 轨道 / 层 id → i18n 键后缀。
  *
- * 文档里的 track 是**机器 id**（camera / character / audio / text / vfx / emotion / edit…），
- * 直接显示就会在中文界面里露出英文（手法列表里踩到过）。返回 undefined 表示不认识的 id ——
- * 调用方应原样显示（别把信息丢了）。
+ * 返回 undefined 表示不认识的 id —— 调用方应原样显示（别把信息丢了）。
  */
 export function trackLabelKey(track: string): string | undefined {
   switch (track?.trim().toLowerCase()) {
-    case 'camera':
-      return 'trackCamera'
-    case 'audio':
-      return 'trackAudio'
-    case 'text':
-      return 'trackText'
-    case 'vfx':
-      return 'trackVfx'
-    case 'character':
-      return 'trackCharacter'
-    case 'emotion':
-      return 'trackEmotion'
-    case 'edit':
-      return 'trackEdit'
-    // 规则包产出的画面轨（不在 SemanticTrackKind 里，但会进提示词）
-    case 'light':
-      return 'trackLight'
-    // 层名复用（story / entity 既是轨道 id 也是层标题）
-    case 'story':
-      return 'layerStory'
+    case 'shots':
+      return 'trackShots'
+    case 'units':
+      return 'trackUnits'
+    case 'dialogue':
+      return 'trackDialogue'
+    case 'overlays':
+      return 'trackOverlays'
+    case 'footage':
+      return 'layerFootage'
     case 'entity':
       return 'layerEntity'
     default:
@@ -347,32 +296,10 @@ interface TimelineCounts {
 }
 
 /**
- * 制作层片段（机位/声音/字幕/特效）的落点：由 `intent.trigger` 指向的事件决定。
- *
- * 事件可能按 **id** 或 **label** 触发（生成侧两种都出现过）；都找不到时给 0–1 的兜底，
- * 免得片段宽度变成负值 / NaN 而整块消失。
- */
-export function resolveTriggerRange(
-  events: ReadonlyArray<{
-    id: string
-    label?: string
-    timeRange: { start: number; end: number }
-  }>,
-  trigger: string
-): { start: number; end: number } {
-  const key = trigger?.trim() ?? ''
-  const hit = key ? events.find((e) => e.id === key || e.label === key) : undefined
-  if (!hit) return { start: 0, end: 1 }
-  const start = Number.isFinite(hit.timeRange.start) ? hit.timeRange.start : 0
-  const end = Number.isFinite(hit.timeRange.end) ? hit.timeRange.end : start + 1
-  return { start, end: end > start ? end : start + 1 }
-}
-
-/**
  * 点选 clip 时播放条要跳到的时刻：负数归零，并夹在视频时长内。
  *
  * 不夹的话 `video.currentTime = 超出时长` 会被浏览器拒绝或产生 NaN ——
- * 事件时间来自证据，偶尔会略长于 `source.duration`（转写尾段/末帧取整）。
+ * 时间来自证据，偶尔会略长于 `source.duration`（转写尾段/末帧取整）。
  */
 export function clampSeekSeconds(sec: number, duration: number | undefined): number {
   const value = Number.isFinite(sec) ? sec : 0
@@ -381,7 +308,7 @@ export function clampSeekSeconds(sec: number, duration: number | undefined): num
   return max > 0 ? Math.min(nonNegative, max) : nonNegative
 }
 
-/** 一眼判断产出是否正常：id + 规模。计数从 `evidence.hashes` 取（那里存的就是计数） */
+/** 一眼判断产出是否正常：id + 逆向结论 + 规模。计数从 `evidence.hashes` 或文档本身取 */
 export function semanticTimelineSummaryText(value: GraphValue | undefined): string {
   if (!value || value.kind !== 'semanticTimeline') return ''
   const doc = value.doc
@@ -398,13 +325,17 @@ export function semanticTimelineSummaryText(value: GraphValue | undefined): stri
     const n = Number(hashes?.[key])
     if (Number.isFinite(n)) counts[field] = n
   }
+  const shotCount = counts.shots ?? doc.shots?.length
+  const unitCount = doc.breakdown?.productionPlan?.units?.length ?? 0
+  const localCount = doc.breakdown?.productionPlan?.localUnits?.length ?? 0
   const parts: string[] = [doc.id]
-  if (counts.shots != null) parts.push(`镜头 ${counts.shots}`) // cjk-ok
+  if (doc.breakdown?.summary?.verdict) parts.push(doc.breakdown.summary.verdict)
+  if (shotCount != null) parts.push(`镜头 ${shotCount}`) // cjk-ok
   if (counts.utterances != null) parts.push(`话语 ${counts.utterances}`) // cjk-ok
   if (counts.entities != null) parts.push(`实体 ${counts.entities}`) // cjk-ok
   if (counts.ocr != null) parts.push(`OCR ${counts.ocr}`)
-  parts.push(`事件 ${doc.events.length}`) // cjk-ok
-  parts.push(`节拍 ${doc.beats.length}`) // cjk-ok
-  parts.push(`意图 ${doc.intents.length}`) // cjk-ok
+  if (unitCount > 0 || localCount > 0) {
+    parts.push(`单元 ${unitCount}+${localCount}`) // cjk-ok
+  }
   return parts.join(' · ')
 }

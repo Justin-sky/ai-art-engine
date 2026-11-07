@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { entitiesFromVlmResponse } from '../src/main/services/semanticTimeline/entityDetectVlm'
-import type { ShotEvidence } from '../src/shared/semanticTimeline'
+import { normalizeDeepSeekOfficialModelId } from '../src/main/services/modelProviders/deepseek/adapter'
+import {
+  supportsVisionTextModel,
+  visionGroundingScore,
+  type ModelProviderInstance
+} from '../src/shared/modelProvider'
+import {
+  createEmptySemanticTimeline,
+  ensureSemanticStructure,
+  finalizeSemanticBreakdown,
+  parseReaWholeVideoResponse,
+  type ShotEvidence
+} from '../src/shared/semanticTimeline'
 
 /**
  * 实体检测从本地 YOLO 换成多模态大模型后，**解析与归并规则**成了新的正确性边界：
@@ -107,5 +119,133 @@ describe('entitiesFromVlmResponse', () => {
     expect(entities).toHaveLength(2)
     for (const e of entities) expect(e.id).toMatch(/^ent\.product\.[a-z0-9-]+$/)
     expect(new Set(entities.map((e) => e.id)).size).toBe(2)
+  })
+
+  it('兼容多模态大语言模型返回 1-based 序号、[1, 2]、S1 与简写 shot.1', () => {
+    const paddedShots = [shot('shot.0001', 0, 3), shot('shot.0002', 3, 6)]
+    const entities = entitiesFromVlmResponse(
+      JSON.stringify([
+        { name: '男主播', kind: 'person', shots: [1, 'S2'] },
+        { name: '运动鞋', kind: 'product', shots: ['shot.1'] }
+      ]),
+      paddedShots
+    )
+    expect(entities).toHaveLength(2)
+    expect(entities.find((e) => e.name === '男主播')?.appearances.map((a) => a.shotId)).toEqual([
+      'shot.0001',
+      'shot.0002'
+    ])
+    expect(entities.find((e) => e.name === '运动鞋')?.appearances.map((a) => a.shotId)).toEqual([
+      'shot.0001'
+    ])
+  })
+})
+
+describe('多模态大语言模型（DeepSeek V4.1 Flash 等）路由与整片实体回填', () => {
+  it('识别 DeepSeek V4.1 Flash 及其各渠道别名作为多模态视觉模型，并归一化官方模型 ID', () => {
+    for (const modelId of [
+      'deepseek-flash',
+      'deepseek/deepseek-v4.1-flash',
+      'deepseekv4.1-flash',
+      'deepseek-v4-flash',
+      'deepseek-v4-pro',
+      'deepseek-vl2'
+    ]) {
+      expect(visionGroundingScore(modelId), modelId).toBeGreaterThan(0)
+    }
+    expect(normalizeDeepSeekOfficialModelId('deepseek-v4.1-flash')).toBe('deepseek-flash')
+    expect(normalizeDeepSeekOfficialModelId('deepseekv4.1-flash')).toBe('deepseek-flash')
+    expect(normalizeDeepSeekOfficialModelId('deepseek-v4-flash')).toBe('deepseek-flash')
+    expect(normalizeDeepSeekOfficialModelId('deepseek-flash')).toBe('deepseek-flash')
+
+    const customProvider = {
+      id: 'p1',
+      label: 'OpenRouter',
+      providerKind: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      apiKey: 'k',
+      enabled: true,
+      modalities: {
+        text: {
+          selectedModelIds: ['vendor/custom-multimodal-x'],
+          defaultModelId: 'vendor/custom-multimodal-x',
+          catalog: {
+            'vendor/custom-multimodal-x': {
+              id: 'vendor/custom-multimodal-x',
+              name: 'Custom Multimodal X',
+              capabilities: {
+                architecture: { modality: 'text+image->text' }
+              }
+            }
+          }
+        }
+      }
+    } as unknown as ModelProviderInstance
+    expect(supportsVisionTextModel(customProvider, 'vendor/custom-multimodal-x')).toBe(true)
+  })
+
+  it('parseReaWholeVideoResponse 解析 cast 并由 finalizeSemanticBreakdown 回填角色实体轨道', () => {
+    const whole = parseReaWholeVideoResponse(
+      JSON.stringify({
+        summary: '双人口播带货',
+        cast: {
+          characters: [
+            { id: 'C1', name: '男主播', kind: 'human', look: '眼镜短发', shotIds: ['1', '2'] }
+          ],
+          props: [{ id: 'P1', name: '新款耳机', realMaterial: true, shotIds: ['2'] }]
+        }
+      })
+    )
+    expect(whole?.cast?.characters).toHaveLength(1)
+    expect(whole?.cast?.props).toHaveLength(1)
+
+    const s1 = shot('shot.0001', 0, 3)
+    const s2 = shot('shot.0002', 3, 6)
+    let doc = createEmptySemanticTimeline('asset.1', {
+      durationSec: 6,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      hasAudio: true
+    })
+    doc = ensureSemanticStructure(doc, { shots: [s1, s2] })
+    doc = finalizeSemanticBreakdown(doc, { wholeVideo: whole ?? undefined })
+
+    expect(doc.entities.map((e) => e.name)).toEqual(['男主播', '新款耳机'])
+    expect(doc.entities[0]!.appearances.map((a) => a.shotId)).toEqual(['shot.0001', 'shot.0002'])
+    expect(doc.shots?.[0]?.subjects[0]?.entityId).toBe(doc.entities[0]!.id)
+  })
+
+  it('无视觉模型产出时按确定性人脸特征与口播台词兜底生成实体轨道', () => {
+    const s1: ShotEvidence = {
+      ...shot('shot.0001', 0, 4),
+      forensics: {
+        hsvHist: [0.5, 0.3, 0.2, 0, 0, 0, 0, 0],
+        aspects: { framing: { subjectKind: 'face', area: 0.18, shotSize: 'mcu' } }
+      }
+    }
+    let doc = createEmptySemanticTimeline('asset.2', {
+      durationSec: 4,
+      fps: 30,
+      width: 1280,
+      height: 720,
+      hasAudio: true
+    })
+    doc = ensureSemanticStructure(doc, {
+      shots: [s1],
+      utterances: [
+        {
+          id: 'utt.1',
+          range: { start: 0.2, end: 3.5, startFrame: 6, endFrame: 105 },
+          text: '大家好',
+          granularity: 'sentence',
+          confidence: 0.9
+        }
+      ]
+    })
+    doc = finalizeSemanticBreakdown(doc, { synthesizeFallbackEntities: true })
+
+    expect(doc.entities.some((e) => e.kind === 'person')).toBe(true)
+    expect(doc.entities.some((e) => e.kind === 'voice')).toBe(true)
   })
 })

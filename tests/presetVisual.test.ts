@@ -42,8 +42,7 @@ const ALL_PRESET_KINDS: InstructionPresetKind[] = [
   'modelTexture',
   'modelAnimation',
   'mediaReview',
-  'mediaRework',
-  'semanticCompile'
+  'mediaRework'
 ]
 
 describe('presetVisual', () => {

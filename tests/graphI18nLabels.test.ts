@@ -32,8 +32,7 @@ describe('graph processing menu labels', () => {
     expect(t('graph.types.image.select')).toBe('选取图片')
     expect(t('graph.types.video.select')).toBe('选取视频')
     expect(t('graph.types.semantic.analyze')).toBe('视频拆解')
-    // 「视频拆解与重制」组内统一影视后期直白命名（typeId 仍是 semantic.*）
-    expect(t('graph.types.semantic.compile')).toBe('重制规划')
+    // 「视频拆解与重制」二节点直连管线（typeId 为 semantic.analyze / semantic.rebuild）
     expect(t('graph.types.semantic.rebuild')).toBe('视频重制')
     expect(t('graph.types.voice.select')).toBe('选取声音')
     expect(t('graph.types.image.toPrompt')).toBe('图片反推提示词')
@@ -147,5 +146,45 @@ describe('节点端口 labelKey 文案', () => {
       if (i18n.global.t(key) === key) missing.push(`resolve:${key}`)
     }
     expect(missing).toEqual([])
+  })
+
+  it('全量中英文案均能通过 vue-i18n 消息编译（防止未转义 { } @ 导致检查器渲染崩溃）', () => {
+    const silentI18n = createI18n({
+      legacy: false,
+      locale: 'zh-CN',
+      messages: { 'zh-CN': zhCN, 'en-US': enUS },
+      missingWarn: false,
+      fallbackWarn: false,
+      warnHtmlMessage: false
+    })
+    const errors: string[] = []
+    function walk(obj: unknown, prefix: string, lang: 'zh-CN' | 'en-US'): void {
+      if (!obj || typeof obj !== 'object') return
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        const path = prefix ? `${prefix}.${k}` : k
+        if (typeof v === 'string') {
+          try {
+            silentI18n.global.t(path)
+          } catch (err) {
+            errors.push(`${lang}:${path} -> ${err instanceof Error ? err.message : String(err)}`)
+          }
+        } else if (v && typeof v === 'object') {
+          walk(v, path, lang)
+        }
+      }
+    }
+    silentI18n.global.locale.value = 'zh-CN'
+    walk(zhCN, '', 'zh-CN')
+    silentI18n.global.locale.value = 'en-US'
+    walk(enUS, '', 'en-US')
+    expect(errors).toEqual([])
+
+    silentI18n.global.locale.value = 'zh-CN'
+    expect(silentI18n.global.t('graph.inspector.semantic.batchVariantsPlaceholder')).toBe(
+      '[{"id":"v1","title":"幽默口播版","instruction":"轻松脱口秀风格","dubVoice":"male-humorous"}]'
+    )
+    expect(silentI18n.global.t('graph.inspector.semantic.rebuildInstructionPlaceholder')).toContain(
+      '@1'
+    )
   })
 })

@@ -52,7 +52,27 @@ const REMOVED_FROM_BARREL = [
   'manifestPath',
   'buildDir',
   'BUILDS_DIR',
-  'MANIFEST_FILE'
+  'MANIFEST_FILE',
+  // 旧重制规划（VideoPromptPlan / 词表 / 规则包 / 四轨语义事件）API
+  'buildPromptPlan',
+  'applyPromptOverrides',
+  'parsePromptPlan',
+  'summarizePromptPlan',
+  'planRebuildClips',
+  'collectRulePacks',
+  'parseSemanticPack',
+  'compileDirectorCommands',
+  'assignBeatsHeuristic',
+  'heuristicEventsFromUtterances',
+  'inferIntentsFromEvents',
+  'rebuildTracks',
+  'filterEventsRequiringEvidence',
+  'isSemanticLayerOp',
+  'shotSemanticSignature',
+  'findVocabularyInPacks',
+  'listVocabularies',
+  'BUILTIN_VOCABULARIES',
+  'BUILTIN_PACKS'
 ] as const
 
 const REMOVED_FROM_TIMELINE_SERVICE = [
@@ -85,14 +105,11 @@ describe('编辑时代 API 已从导出面移除', () => {
     const barrelKeys = Object.keys(semanticBarrel)
     expect(barrelKeys.length).toBeGreaterThan(20)
     for (const name of [
-      'buildPromptPlan',
-      'applyPromptOverrides',
-      'parsePromptPlan',
-      'summarizePromptPlan',
-      'planRebuildClips',
-      'collectRulePacks',
-      'validateSemanticTimeline',
-      'parseSemanticPack'
+      'planRemakeExecution',
+      'resolveShotDisplayPrompts',
+      'applyBatchVariantToTimeline',
+      'finalizeSemanticBreakdown',
+      'validateSemanticTimeline'
     ]) {
       expect(typeof (semanticBarrel as Record<string, unknown>)[name], `缺少 ${name}`).not.toBe(
         'undefined'

@@ -1,73 +1,74 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  executeSemanticCompileNode,
-  executeSemanticRebuildNode
-} from '../src/shared/graph/execute/semanticTimeline'
+import { executeSemanticRebuildNode } from '../src/shared/graph/execute/semanticTimeline'
+import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
 import { SEMANTIC_TIMELINE_NODE_TYPES } from '../src/shared/graph/semanticTimelineNodes'
-import { createNodeFromType, GraphPortType, type NodeExecuteContext } from '../src/shared/graph'
+import { createNodeFromType, type NodeExecuteContext } from '../src/shared/graph'
 import {
   applySemanticEdit,
-  buildPromptPlan,
   carryOverSemanticEdits,
+  finalizeSemanticBreakdown,
   migrateSemanticTimeline,
+  planRemakeExecution,
   rebaselineSemanticTimeline,
   summarizeSemanticDiff,
-  type SemanticTimeline,
-  type VideoPromptPlan
+  type SemanticTimeline
 } from '../src/shared/semanticTimeline'
 
-/**
- * 语义重建执行器的行为守卫。
- *
- * 这条路径会**花钱**（逐镜调用视频模型），所以最要紧的不是"能跑通"，而是：
- * - `semanticExecute=false` 时**一次模型都不调**（先看清单再开）；
- * - 每镜上限截断、无提示词的镜头跳过，都要在日志与输出里写明白；
- * - 单镜失败跳过、全部失败才报错；
- * - 首帧能取到时走图生视频，取不到时必须显式说明退化成文生视频。
- */
+const range = (start: number, end: number) => ({
+  start,
+  end,
+  startFrame: Math.round(start * 30),
+  endFrame: Math.round(end * 30)
+})
 
-const range = (start: number, end: number) => ({ start, end, startFrame: 0, endFrame: 0 })
-
-function makePlan(shots = 2): VideoPromptPlan {
-  return makePlanWithShotSeconds(Array.from({ length: shots }, () => 6))
-}
-
-/** 每镜时长可控的计划：短镜头（1–3s）是「模型档位不合法」那条 400 的触发条件 */
-function makePlanWithShotSeconds(shotSeconds: number[]): VideoPromptPlan {
+function makeFidelityTimeline(shotSeconds: number[]): SemanticTimeline {
   const total = shotSeconds.reduce((sum, sec) => sum + sec, 0)
-  const timeline = {
-    id: 'stl.rebuild.1',
-    schema: 'aiart.semantic-timeline@1',
-    source: { assetId: 'asset-1', fps: 30, duration: total, width: 1080, height: 1920 },
-    entities: [],
-    events: [],
-    beats: [],
-    intents: [],
-    tracks: [],
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z'
-  } as unknown as SemanticTimeline
   let cursor = 0
   const spans = shotSeconds.map((sec) => {
     const span = { start: cursor, end: cursor + sec }
     cursor += sec
     return span
   })
-  return buildPromptPlan({
-    timeline,
-    shots: spans.map((span, i) => ({
-      id: `shot.${i + 1}`,
-      range: range(span.start, span.end),
-      keyframes: i === 0 ? { middle: 'evidence/keyframes/shot1.jpg' } : {},
-      confidence: 1
-    })),
-    commands: spans.map((span) => ({
-      kind: 'camera.pushIn',
-      start: span.start,
-      end: span.end,
-      params: {},
-      reason: ''
-    }))
+  const migrated = migrateSemanticTimeline(
+    {
+      id: 'stl.rebuild.1',
+      schema: 'aiart.semantic-timeline@2',
+      source: { assetId: 'asset-1', fps: 30, duration: total, width: 1080, height: 1920 },
+      entities: [
+        {
+          id: 'ent.host',
+          kind: 'person',
+          name: '主播',
+          appearances: spans.map((sp, i) => ({
+            shotId: `shot.${i + 1}`,
+            range: range(sp.start, sp.end)
+          })),
+          pixelEditable: false
+        }
+      ],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z'
+    },
+    {
+      shots: spans.map((span, i) => ({
+        id: `shot.${i + 1}`,
+        range: range(span.start, span.end),
+        keyframes: i === 0 ? { first: 'evidence/keyframes/shot1.jpg' } : {},
+        confidence: 0.92,
+        forensics: {
+          noiseSigma: 0.55,
+          flatRatio: 0.12,
+          meanFrameDiff: 6.2,
+          dupRatio: 0.02,
+          cameraMotionKind: 'smooth_move',
+          // Distinct histograms so each shot becomes its own G1, G2... unit
+          hsvHist: Array.from({ length: 24 }, (_, k) => (k === i * 4 ? 0.8 : 0.01))
+        }
+      }))
+    }
+  )
+  return finalizeSemanticBreakdown(migrated, {
+    provenance: { aigcImplicitLabel: { label: '1' }, evidence: [] }
   })
 }
 
@@ -81,34 +82,27 @@ interface Harness {
 }
 
 function harness(
-  plan: VideoPromptPlan | null,
+  timeline: SemanticTimeline | null,
   options: {
     params?: Record<string, unknown>
     failKeys?: string[]
     withRebuild?: boolean
     firstFrameUrl?: string | undefined
-    /** 模拟只认 4..15 档的模型：小于 4s 的提交被**提交前校验**拒绝（不产生费用） */
     enforceModelDurations?: boolean
   } = {}
 ): Harness {
   const node = createNodeFromType('semantic.rebuild', { x: 0, y: 0 })
-  node.params = { ...node.params, ...(options.params ?? {}) }
+  node.params = {
+    ...node.params,
+    sourceRelativePath: 'Assets/src.mp4',
+    ...(options.params ?? {})
+  }
   const generated: Array<Record<string, unknown>> = []
   const rebuilt: Array<Record<string, unknown>> = []
   const spoken: Array<Record<string, unknown>> = []
   const patches: Array<Record<string, unknown>> = []
   const logs: Array<{ text: string; level?: string }> = []
-  const inputs = plan
-    ? {
-        in: [
-          {
-            kind: GraphPortType.videoPrompts,
-            plan,
-            text: JSON.stringify(plan)
-          }
-        ]
-      }
-    : {}
+  const inputs = timeline ? { in: [semanticTimelineValue(timeline)] } : {}
   const ctx = {
     node,
     locale: 'zh-CN',
@@ -161,30 +155,25 @@ function harness(
   return { ctx, generated, rebuilt, spoken, patches, logs }
 }
 
-/** 节点没有文本输出口了：清单写在节点参数 `rebuildLastReport` 上 */
 function payloadOf(h: Harness): Record<string, unknown> {
   const last = [...h.patches].reverse().find((p) => typeof p.rebuildLastReport === 'string')
   expect(last, 'rebuildLastReport 没有写回节点').toBeTruthy()
   return JSON.parse(String(last!.rebuildLastReport)) as Record<string, unknown>
 }
 
-describe('语义重建节点', () => {
-  it('逐镜头模式：每镜一次生成（首帧走图生视频），再交给本地拼接出成片', async () => {
-    const plan = makePlan(2)
-    const h = harness(plan)
+describe('视频重制节点（1:1 分流复刻与批量单元生成）', () => {
+  it('按 G1..Gk 单元调用视频生成（有首帧走图生视频），再交给本地拼接出成片', async () => {
+    const doc = makeFidelityTimeline([6, 6])
+    const h = harness(doc, { params: { remakeStrategy: 'fidelity' } })
     const out = await executeSemanticRebuildNode(h.ctx)
 
     expect(h.generated).toHaveLength(2)
-    expect(h.generated.map((g) => g.key)).toEqual(['shot.1', 'shot.2'])
-    // 参数来自计划：提示词、时长、每镜名字
-    expect(String(h.generated[0]!.prompt)).toBe(plan.shots[0]!.prompt)
+    expect(h.generated.map((g) => g.key)).toEqual(['G1', 'G2'])
     expect(h.generated[0]!.duration).toBe(6)
-    // 第一镜有首帧 → 图生视频；第二镜没有 → 不发首帧（日志里也要说明退化）
     expect(h.generated[0]!.firstFrameImageUrl).toBe('file:///kf.jpg')
     expect(h.generated[1]!.firstFrameImageUrl).toBeUndefined()
-    expect(h.logs.some((l) => l.text.includes('shot.2') && l.text.includes('文生视频'))).toBe(true)
+    expect(h.logs.some((l) => l.text.includes('G2') && l.text.includes('文生视频'))).toBe(true)
 
-    // 拼接收到两段 + 音轨/字幕开关
     expect(h.rebuilt).toHaveLength(1)
     const rebuildInput = h.rebuilt[0]!
     expect((rebuildInput.clips as unknown[]).length).toBe(2)
@@ -192,43 +181,43 @@ describe('语义重建节点', () => {
     expect(rebuildInput.burnSubtitles).toBe(true)
     expect(rebuildInput.timelineId).toBe('stl.rebuild.1')
 
-    // 成片从视频口输出
     expect((out['out-video'] as { relativePath: string }).relativePath).toContain('output.mp4')
-    // 拼接服务的 notes 会转成 warn 日志
     expect(h.logs.some((l) => l.text.includes('note-from-service'))).toBe(true)
   })
 
-  it('semanticExecute=false：一次模型都不调，只产出清单', async () => {
-    const h = harness(makePlan(2), { params: { semanticExecute: false } })
+  it('semanticExecute=false：一次模型都不调，只产出预演清单', async () => {
+    const h = harness(makeFidelityTimeline([6, 6]), {
+      params: { remakeStrategy: 'fidelity', semanticExecute: false }
+    })
     const out = await executeSemanticRebuildNode(h.ctx)
     expect(h.generated).toHaveLength(0)
     expect(h.rebuilt).toHaveLength(0)
     expect(out).toEqual({})
     const payload = payloadOf(h)
     expect(payload.execute).toBe(false)
-    expect(payload.generate).toEqual(['shot.1', 'shot.2'])
+    expect(payload.generate).toEqual(['G1', 'G2'])
   })
 
-  it('每镜上限截断：只生成上限内的镜头，并在日志里说明跳过多少', async () => {
-    const h = harness(makePlan(3), { params: { rebuildMaxShots: 1 } })
+  it('单元上限截断：只生成上限内的单元，并在日志里说明跳过多少', async () => {
+    const h = harness(makeFidelityTimeline([6, 6, 6]), {
+      params: { remakeStrategy: 'fidelity', rebuildMaxShots: 1 }
+    })
     await executeSemanticRebuildNode(h.ctx)
     expect(h.generated).toHaveLength(1)
     expect(h.logs.some((l) => l.text.includes('已跳过 2 镜') && l.level === 'warn')).toBe(true)
     expect(payloadOf(h).skippedByLimit).toBe(2)
   })
 
-  /**
-   * 实测踩到：9 镜里 6 镜因为 1s / 2s 不在模型的 4..15 档位内被 400 打回，
-   * 整趟跑完只剩 2 镜。上游的拒绝里写清了合法档位，就按它重试一次（提交前校验，不产生费用）。
-   */
-  it('时长不被模型接受时，按上游给出的档位重试一次（而不是白丢一镜）', async () => {
-    const h = harness(makePlanWithShotSeconds([2, 6]), { enforceModelDurations: true })
+  it('时长不被模型接受时，按上游给出的档位重试一次（而不是白丢一单元）', async () => {
+    const h = harness(makeFidelityTimeline([2, 6]), {
+      params: { remakeStrategy: 'fidelity' },
+      enforceModelDurations: true
+    })
     await executeSemanticRebuildNode(h.ctx)
 
-    // 2s 的镜头被拒 → 用 4s 重试成功；6s 的镜头本来就在档位内
     expect(h.generated.map((g) => [g.key, g.duration])).toEqual([
-      ['shot.1', 4],
-      ['shot.2', 6]
+      ['G1', 4],
+      ['G2', 6]
     ])
     expect(h.logs.some((l) => l.text.includes('模型不接受 2s') && l.text.includes('改用 4s'))).toBe(
       true
@@ -241,7 +230,7 @@ describe('语义重建节点', () => {
     const def = SEMANTIC_TIMELINE_NODE_TYPES.find((d) => d.typeId === 'semantic.rebuild')!
     const outs = def.ports.filter((p) => p.direction === 'out')
     expect(outs.map((p) => `${p.id}:${p.dataType}`)).toEqual(['out-video:video'])
-    const h = harness(makePlan(1))
+    const h = harness(makeFidelityTimeline([6]), { params: { remakeStrategy: 'fidelity' } })
     const out = await executeSemanticRebuildNode(h.ctx)
     expect(Object.keys(out)).toEqual(['out-video'])
     expect(h.patches.some((p) => String(p.rebuildLastOutput ?? '').endsWith('output.mp4'))).toBe(
@@ -249,140 +238,114 @@ describe('语义重建节点', () => {
     )
   })
 
-  it('指令面板的整片指令追加到每镜提示词；分辨率 / 画幅读 generate* 参数', async () => {
-    const plan = makePlan(1)
-    const h = harness(plan, {
+  it('指令面板的整片指令追加到提示词；分辨率 / 画幅读 generate* 参数', async () => {
+    const doc = makeFidelityTimeline([6])
+    const h = harness(doc, {
       params: {
+        remakeStrategy: 'adapt',
         generateInstruction: '保持写实风格',
         generateResolution: '720p',
         generateAspectRatio: '9:16'
       }
     })
     await executeSemanticRebuildNode(h.ctx)
-    expect(String(h.generated[0]!.prompt)).toContain(plan.shots[0]!.prompt)
     expect(String(h.generated[0]!.prompt)).toContain('保持写实风格')
     expect(h.generated[0]!.resolution).toBe('720p')
     expect(h.generated[0]!.aspectRatio).toBe('9:16')
   })
 
-  it('整片模式：只生成一次，用整片提示词与总时长', async () => {
-    const plan = makePlan(2)
-    const h = harness(plan, { params: { rebuildMode: 'full' } })
+  it('单单元失败：自动退回原片段兜底，其余照常拼接', async () => {
+    const h = harness(makeFidelityTimeline([6, 6]), {
+      params: { remakeStrategy: 'fidelity' },
+      failKeys: ['G1']
+    })
     await executeSemanticRebuildNode(h.ctx)
-    expect(h.generated).toHaveLength(1)
-    expect(h.generated[0]!.key).toBe('full')
-    expect(String(h.generated[0]!.prompt)).toBe(plan.fullPrompt)
-    expect(h.generated[0]!.duration).toBe(12)
-  })
-
-  it('单镜失败：跳过并记录，其余照常拼接', async () => {
-    const h = harness(makePlan(2), { failKeys: ['shot.1'] })
-    await executeSemanticRebuildNode(h.ctx)
-    expect(h.generated.map((g) => g.key)).toEqual(['shot.2'])
+    expect(h.generated.map((g) => g.key)).toEqual(['G2'])
     expect((h.rebuilt[0]!.clips as unknown[]).length).toBe(1)
     const failures = payloadOf(h).failures as Array<{ key: string }>
-    expect(failures.map((f) => f.key)).toEqual(['shot.1'])
-    expect(h.logs.some((l) => l.text.includes('shot.1 生成失败'))).toBe(true)
+    expect(failures.map((f) => f.key)).toEqual(['G1'])
+    const segments = h.rebuilt[0]!.segments as Array<{ key: string; kind: string }>
+    expect(segments.map((s) => `${s.key}:${s.kind}`)).toEqual(['shot.1:source', 'shot.2:generate'])
   })
 
   it('全部失败：抛错（节点要红，不能假装成功）', async () => {
-    const h = harness(makePlan(2), { failKeys: ['shot.1', 'shot.2'] })
-    await expect(executeSemanticRebuildNode(h.ctx)).rejects.toThrow(/所有镜头都生成失败/)
+    const h = harness(makeFidelityTimeline([6, 6]), {
+      params: { remakeStrategy: 'fidelity' },
+      failKeys: ['G1', 'G2']
+    })
+    await expect(executeSemanticRebuildNode(h.ctx)).rejects.toThrow(/所有镜头单元均生成失败/)
   })
 
-  it('没有提示词计划 / 没有拼接能力：都要有明确反应，不能静默', async () => {
+  it('没有语义时间线 / 没有拼接能力：都要有明确反应，不能静默', async () => {
     const empty = harness(null)
     const out = await executeSemanticRebuildNode(empty.ctx)
     expect(out).toEqual({})
-    expect(empty.logs.some((l) => l.text.includes('没有收到提示词计划'))).toBe(true)
+    expect(empty.logs.some((l) => l.text.includes('没有收到语义时间线'))).toBe(true)
 
-    // 没有拼接能力：**生成前**就报错（不能先花钱生成、最后拼不出片）
-    const noRebuild = harness(makePlan(1), { withRebuild: false })
+    const noRebuild = harness(makeFidelityTimeline([6]), {
+      params: { remakeStrategy: 'fidelity' },
+      withRebuild: false
+    })
     await expect(executeSemanticRebuildNode(noRebuild.ctx)).rejects.toThrow(/没有成片拼接能力/)
     expect(noRebuild.generated).toHaveLength(0)
   })
 })
 
-/**
- * v2 逆向工程闭环：分析 → （修改）→ 编译 → 重建。
- * 不变量：零修改时**一次生成都不调**，成片全由原片段直通拼成；只有改过的镜头才生成，
- * 改过的台词才配音，删掉的镜头不进成片。
- */
-describe('语义重建 v2：直通 / 修改 / 配音', () => {
-  function makeDoc(): SemanticTimeline {
-    const base = {
-      id: 'stl.v2.1',
-      schema: 'aiart.semantic-timeline@1',
-      source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
-      evidence: { mediaFacts: {}, hashes: {} },
-      entities: [
-        {
-          id: 'ent.person.host',
-          kind: 'person',
-          name: '主播',
-          appearances: [{ shotId: 'shot.1', range: range(0, 4) }],
-          pixelEditable: false
-        }
-      ],
-      events: [],
-      beats: [],
-      intents: [],
-      tracks: [],
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      createdAt: '2026-01-01T00:00:00.000Z'
-    } as unknown as SemanticTimeline
-    return migrateSemanticTimeline(base, {
-      shots: [
-        {
-          id: 'shot.1',
-          range: range(0, 4),
-          keyframes: { middle: 'evidence/keyframes/1.jpg' },
-          confidence: 1
-        },
-        { id: 'shot.2', range: range(4, 8), keyframes: {}, confidence: 1 },
-        { id: 'shot.3', range: range(8, 12), keyframes: {}, confidence: 1 }
-      ],
-      utterances: [
-        {
-          id: 'utt.1',
-          range: range(1, 3),
-          text: '这个包很能装',
-          granularity: 'sentence',
-          confidence: 0.8
-        },
-        {
-          id: 'utt.2',
-          range: range(9, 11),
-          text: '现在下单九十九',
-          granularity: 'sentence',
-          confidence: 0.8
-        }
-      ]
-    })
-  }
-
-  function planOf(doc: SemanticTimeline): VideoPromptPlan {
-    return buildPromptPlan({ timeline: doc, shots: [], sourceRelativePath: 'Assets/src.mp4' })
-  }
-
-  it('迁移：v1 文档升到 @2，内联镜头树 / 台词并打基线', () => {
-    const doc = makeDoc()
-    expect(doc.schema).toBe('aiart.semantic-timeline@2')
-    expect(doc.shots?.map((s) => s.id)).toEqual(['shot.1', 'shot.2', 'shot.3'])
-    expect(doc.shots?.[0]!.subjects[0]!.entityId).toBe('ent.person.host')
-    expect(doc.dialogue?.map((d) => d.sourceText)).toEqual(['这个包很能装', '现在下单九十九'])
-    expect(Object.keys(doc.baseline?.shots ?? {})).toHaveLength(3)
-    expect(summarizeSemanticDiff(doc)).toEqual({ dirtyShots: 0, removedShots: 0, dirtyDialogue: 0 })
-    // 首帧路径统一成工程相对
-    expect(planOf(doc).shots[0]!.firstFrameRelativePath).toBe(
-      'Semantic/stl.v2.1/evidence/keyframes/1.jpg'
+describe('局部改片策略（remakeStrategy="edit"）：直通 / 修改 / 配音 / 单镜重跑', () => {
+  function makeEditDoc(): SemanticTimeline {
+    return migrateSemanticTimeline(
+      {
+        id: 'stl.v2.1',
+        schema: 'aiart.semantic-timeline@2',
+        source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
+        evidence: { mediaFacts: {}, hashes: {} },
+        entities: [
+          {
+            id: 'ent.person.host',
+            kind: 'person',
+            name: '主播',
+            appearances: [{ shotId: 'shot.1', range: range(0, 4) }],
+            pixelEditable: false
+          }
+        ],
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        createdAt: '2026-01-01T00:00:00.000Z'
+      } as unknown as SemanticTimeline,
+      {
+        shots: [
+          {
+            id: 'shot.1',
+            range: range(0, 4),
+            keyframes: { middle: 'evidence/keyframes/1.jpg' },
+            confidence: 1
+          },
+          { id: 'shot.2', range: range(4, 8), keyframes: {}, confidence: 1 },
+          { id: 'shot.3', range: range(8, 12), keyframes: {}, confidence: 1 }
+        ],
+        utterances: [
+          {
+            id: 'utt.1',
+            range: range(1, 3),
+            text: '这个包很能装',
+            granularity: 'sentence',
+            confidence: 0.8
+          },
+          {
+            id: 'utt.2',
+            range: range(9, 11),
+            text: '现在下单九十九',
+            granularity: 'sentence',
+            confidence: 0.8
+          }
+        ]
+      }
     )
-  })
+  }
 
-  it('零修改：全部直通原片，一次模型都不调（还原原片）', async () => {
-    const plan = planOf(makeDoc())
-    expect(plan.shots.every((s) => s.strategy === 'passthrough')).toBe(true)
-    const h = harness(plan)
+  it('零修改：全部直通原片，一次模型都不调', async () => {
+    const doc = makeEditDoc()
+    expect(summarizeSemanticDiff(doc)).toEqual({ dirtyShots: 0, removedShots: 0, dirtyDialogue: 0 })
+    const h = harness(doc, { params: { remakeStrategy: 'edit' } })
     const out = await executeSemanticRebuildNode(h.ctx)
     expect(h.generated).toHaveLength(0)
     expect(h.spoken).toHaveLength(0)
@@ -392,18 +355,18 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
     expect(out['out-video']).toBeTruthy()
   })
 
-  it('改一镜：只生成这一镜，其余直通；换风格的原因写进计划', async () => {
-    const doc = applySemanticEdit(makeDoc(), {
+  it('改一镜：只生成这一镜，其余直通', async () => {
+    const doc = applySemanticEdit(makeEditDoc(), {
       op: 'shot.update',
       target: 'shot.2',
       patch: { visual: { style: '赛博朋克霓虹' } }
     })
-    const plan = planOf(doc)
-    const shot2 = plan.shots.find((s) => s.shotId === 'shot.2')!
-    expect(shot2.strategy).toBe('regenerate')
-    expect(shot2.changeReasons).toContain('visual')
-    expect(shot2.prompt).toContain('赛博朋克霓虹')
-    const h = harness(plan)
+    const planned = planRemakeExecution(doc, { strategy: 'edit' })
+    expect(planned.units).toHaveLength(1)
+    expect(planned.units[0]!.changeReasons).toContain('visual')
+    expect(planned.units[0]!.videoPrompt).toContain('赛博朋克霓虹')
+
+    const h = harness(doc, { params: { remakeStrategy: 'edit' } })
     await executeSemanticRebuildNode(h.ctx)
     expect(h.generated.map((g) => g.key)).toEqual(['shot.2'])
     const segments = h.rebuilt[0]!.segments as Array<{ key: string; kind: string }>
@@ -414,28 +377,13 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
     ])
   })
 
-  it('换实体（主播改名 / 换参考）：它出现的镜头都要重新生成', () => {
-    const doc = applySemanticEdit(makeDoc(), {
-      op: 'entity.update',
-      target: 'ent.person.host',
-      patch: { name: '虚拟主播' }
-    })
-    const plan = planOf(doc)
-    expect(plan.shots.find((s) => s.shotId === 'shot.1')!.strategy).toBe('regenerate')
-    expect(plan.shots.find((s) => s.shotId === 'shot.1')!.prompt).toContain('虚拟主播')
-    expect(plan.shots.find((s) => s.shotId === 'shot.2')!.strategy).toBe('passthrough')
-  })
-
   it('改台词：画面直通，只给这一句重新配音，字幕用新台词', async () => {
-    const doc = applySemanticEdit(makeDoc(), {
+    const doc = applySemanticEdit(makeEditDoc(), {
       op: 'dialogue.update',
       target: 'utt.2',
       patch: { text: '今天下单只要七十九' }
     })
-    const plan = planOf(doc)
-    expect(plan.dubs?.map((d) => d.id)).toEqual(['utt.2'])
-    expect(plan.subtitles?.map((s) => s.text)).toContain('今天下单只要七十九')
-    const h = harness(plan)
+    const h = harness(doc, { params: { remakeStrategy: 'edit' } })
     await executeSemanticRebuildNode(h.ctx)
     expect(h.generated).toHaveLength(0)
     expect(h.spoken.map((s) => s.input)).toEqual(['今天下单只要七十九'])
@@ -449,38 +397,25 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
     ])
   })
 
-  it('删镜：不进成片；全部重新生成开关打开时每镜都生成', async () => {
-    const doc = applySemanticEdit(makeDoc(), { op: 'shot.remove', target: 'shot.3' })
-    const plan = planOf(doc)
-    expect(plan.removedShotIds).toEqual(['shot.3'])
-    expect(plan.shots.map((s) => s.shotId)).toEqual(['shot.1', 'shot.2'])
-    const h = harness(plan, { params: { rebuildRegenerateAll: true } })
+  it('删镜：被删镜头不进入拼接段；单镜重跑参数 rebuildOnlyShotIds 只重跑目标镜头并自动清空', async () => {
+    const doc = applySemanticEdit(makeEditDoc(), { op: 'shot.remove', target: 'shot.3' })
+    const h = harness(doc, {
+      params: { remakeStrategy: 'adapt', rebuildOnlyShotIds: 'shot.1' }
+    })
     await executeSemanticRebuildNode(h.ctx)
-    // shot.1 有主体 → 生成；shot.2 没有任何可写进提示词的内容 → 不能凭空生成，退回原片段
     expect(h.generated.map((g) => g.key)).toEqual(['shot.1'])
     const segments = h.rebuilt[0]!.segments as Array<{ key: string; kind: string }>
     expect(segments.map((s) => `${s.key}:${s.kind}`)).toEqual(['shot.1:generate', 'shot.2:source'])
-    expect(payloadOf(h).skippedEmpty).toBe(1)
+    expect(h.patches.some((p) => p.rebuildOnlyShotIds === '')).toBe(true)
   })
 
-  it('换参考资产（旧字段，没有点选目标）：兜底参考图生视频，参考图编号写进提示词', async () => {
-    const doc = applySemanticEdit(makeDoc(), {
+  it('换参考资产（没有掩码）：兜底走参考图生视频，参考图编号写进提示词', async () => {
+    const doc = applySemanticEdit(makeEditDoc(), {
       op: 'entity.update',
       target: 'ent.person.host',
       patch: { referenceAssetId: 'asset-ref' }
     })
-    const plan = planOf(doc)
-    // 计划里是显式绑定的替换（实体 → 参考图），不再是无序的 referenceAssetIds
-    expect(plan.shots[0]!.referenceAssetIds).toBeUndefined()
-    expect(plan.shots[0]!.replacements).toEqual([
-      {
-        entityId: 'ent.person.host',
-        entityName: '主播',
-        instruction: '',
-        references: [{ assetId: 'asset-ref' }]
-      }
-    ])
-    const h = harness(plan)
+    const h = harness(doc, { params: { remakeStrategy: 'edit' } })
     ;(h.ctx as { resolveAssetImageUrl?: unknown }).resolveAssetImageUrl = async (id: string) =>
       `data:image/png;base64,${id}`
     await executeSemanticRebuildNode(h.ctx)
@@ -494,61 +429,19 @@ describe('语义重建 v2：直通 / 修改 / 配音', () => {
 
   it('重新分析：上一版的修改带到新文档上，重设基线也不会吞掉修改', () => {
     const edited = applySemanticEdit(
-      applySemanticEdit(makeDoc(), {
+      applySemanticEdit(makeEditDoc(), {
         op: 'dialogue.update',
         target: 'utt.1',
         patch: { text: '这个包超能装' }
       }),
       { op: 'shot.update', target: 'shot.3', patch: { camera: { motion: '环绕' } } }
     )
-    const carried = rebaselineSemanticTimeline(carryOverSemanticEdits(edited, makeDoc()))
+    const carried = rebaselineSemanticTimeline(carryOverSemanticEdits(edited, makeEditDoc()))
     expect(carried.dialogue?.find((d) => d.id === 'utt.1')?.text).toBe('这个包超能装')
     expect(summarizeSemanticDiff(carried)).toEqual({
       dirtyShots: 1,
       removedShots: 0,
       dirtyDialogue: 1
     })
-  })
-
-  it('编译要求（指令面板）追加到每镜提示词，整片提示词随之重算', async () => {
-    const node = createNodeFromType('semantic.compile', { x: 0, y: 0 })
-    node.params = { ...node.params, generateInstruction: '写实质感' }
-    const doc = applySemanticEdit(makeDoc(), {
-      op: 'shot.update',
-      target: 'shot.2',
-      patch: { visual: { style: '霓虹' } }
-    })
-    const ctx = {
-      node,
-      locale: 'zh-CN',
-      inputs: { in: [{ kind: 'semanticTimeline', doc, text: JSON.stringify(doc) }] },
-      log: () => undefined
-    } as unknown as NodeExecuteContext
-    const out = await executeSemanticCompileNode(ctx)
-    const plan = (out.out as { plan: VideoPromptPlan }).plan
-    for (const shot of plan.shots.filter((s) => s.prompt.trim())) {
-      expect(shot.prompt.endsWith('写实质感')).toBe(true)
-    }
-    expect(plan.fullPrompt).toContain('写实质感')
-    // 脏检测不受编译要求影响：只有改过的那一镜重新生成
-    expect(plan.shots.filter((s) => s.strategy === 'regenerate').map((s) => s.shotId)).toEqual([
-      'shot.2'
-    ])
-  })
-
-  it('生成失败的镜头退回原片段（成片不缺镜）', async () => {
-    const doc = applySemanticEdit(makeDoc(), {
-      op: 'shot.prompt',
-      target: 'shot.1',
-      patch: { prompt: '主播在海边' }
-    })
-    const h = harness(planOf(doc), { failKeys: ['shot.1'] })
-    await executeSemanticRebuildNode(h.ctx)
-    const segments = h.rebuilt[0]!.segments as Array<{ key: string; kind: string }>
-    expect(segments.map((s) => `${s.key}:${s.kind}`)).toEqual([
-      'shot.1:source',
-      'shot.2:source',
-      'shot.3:source'
-    ])
   })
 })

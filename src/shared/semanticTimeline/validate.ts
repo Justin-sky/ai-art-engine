@@ -1,4 +1,4 @@
-import { SEMANTIC_TIMELINE_SCHEMA, type SemanticTimeline } from './types'
+import { SEMANTIC_TIMELINE_SCHEMA } from './types'
 
 export interface ValidationIssue {
   path: string
@@ -54,27 +54,8 @@ export function validateSemanticTimeline(doc: unknown): ValidationResult {
     }
   }
   if (!isRecord(doc.evidence)) issues.push(issue('evidence', 'required object'))
-  if (!Array.isArray(doc.events)) issues.push(issue('events', 'required array'))
-  else {
-    doc.events.forEach((ev, i) => {
-      if (!isRecord(ev)) {
-        issues.push(issue(`events[${i}]`, 'must be object'))
-        return
-      }
-      if (typeof ev.id !== 'string') issues.push(issue(`events[${i}].id`, 'required'))
-      if (typeof ev.label !== 'string') issues.push(issue(`events[${i}].label`, 'required'))
-      validateTimeRange(`events[${i}].timeRange`, ev.timeRange, issues)
-      if (!Array.isArray(ev.evidence)) {
-        issues.push(issue(`events[${i}].evidence`, 'required array'))
-      }
-    })
-  }
-  if (!Array.isArray(doc.beats)) issues.push(issue('beats', 'required array'))
   if (!Array.isArray(doc.entities)) issues.push(issue('entities', 'required array'))
-  if (!Array.isArray(doc.intents)) issues.push(issue('intents', 'required array'))
-  if (!Array.isArray(doc.tracks)) issues.push(issue('tracks', 'required array'))
 
-  // v2 结构（可选字段；给了就要合法，并且镜头 / 台词 id 唯一）
   for (const key of ['shots', 'dialogue', 'textLayers', 'speakers', 'edits'] as const) {
     if (doc[key] !== undefined && !Array.isArray(doc[key])) {
       issues.push(issue(key, 'must be an array'))
@@ -106,23 +87,5 @@ export function validateSemanticTimeline(doc: unknown): ValidationResult {
     })
   }
 
-  // 事件必须引用至少一个证据（分析产出的硬约束）
-  if (Array.isArray(doc.events)) {
-    for (let i = 0; i < doc.events.length; i++) {
-      const ev = doc.events[i]
-      if (!isRecord(ev)) continue
-      if (Array.isArray(ev.evidence) && ev.evidence.length === 0 && ev.origin === 'analysis') {
-        issues.push(issue(`events[${i}].evidence`, 'analysis events require evidence refs'))
-      }
-    }
-  }
-
   return { ok: issues.length === 0, issues }
-}
-
-/** 丢弃无证据的分析事件 */
-export function filterEventsRequiringEvidence(
-  events: SemanticTimeline['events']
-): SemanticTimeline['events'] {
-  return events.filter((ev) => ev.origin !== 'analysis' || (ev.evidence?.length ?? 0) > 0)
 }

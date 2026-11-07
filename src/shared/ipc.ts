@@ -318,7 +318,6 @@ export const IpcChannels = {
   SEMANTIC_SAVE_TIMELINE: 'semantic:saveTimeline',
   /** 语义重建：把生成的镜头片段接成成片（拼接 + 混原音轨 + 烧转写字幕） */
   SEMANTIC_REBUILD: 'semantic:rebuild',
-  SEMANTIC_LIST_PACKS: 'semantic:listPacks',
 
   // 应用界面录制：把「界面上的操作过程」录成视频，供教学视频合成使用。
   // 应用此前没有任何屏幕/窗口录制能力（desktopCapturer 零出现），这一段是教学视频唯一缺的素材来源。
@@ -2092,8 +2091,6 @@ export interface StudioApi {
   semanticRebuild: (
     input: import('./semanticTimeline').SemanticRebuildRequest
   ) => Promise<import('./semanticTimeline').SemanticRebuildResponse>
-  /** 列出内置 + 已安装的语义市场包（词表 / 规则 / 人设） */
-  semanticListPacks: () => Promise<import('./semanticTimeline').SemanticPack[]>
   /** AI 自由构图：仅规划预览 */
   planAiWorkflow: (input: PlanAiWorkflowInput) => Promise<PlanAiWorkflowResult>
   /** AI 自由构图：确认计划后落盘 */

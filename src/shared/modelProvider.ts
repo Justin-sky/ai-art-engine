@@ -2145,26 +2145,51 @@ export function visionGroundingScore(modelId: string): number {
   if (/gemini-3/.test(m)) return 96
   if (/gemini-2\.5-flash/.test(m)) return 92
   if (/gemini/.test(m)) return 85
-  if (/qwen3-vl|qwen3\.\d+-vl|qwen-vl-max/.test(m)) return 88
-  if (/qwen2\.5-vl|qwen-vl/.test(m)) return 80
-  if (/doubao.*(vision|seed-1\.[68]|seed-2)|seed-1\.[68].*vision|doubao-1\.5-vision/.test(m))
+  if (/qwen3-vl|qwen3[-.]\d+-vl|qwen-vl-max/.test(m)) return 88
+  if (/qwen2[-.]5-vl|qwen-vl|qwen.*omni/.test(m)) return 80
+  if (/doubao.*(vision|seed-1[-.][68]|seed-2)|seed-1[-.][68].*vision|doubao-1[-.]5.*vision/.test(m))
     return 78
+  if (/deepseek-?(?:v[4-9]|flash|vl)/.test(m)) return 72
   if (/gpt-[5-9]|gpt-4\.1|gpt-4o|gpt-chat-latest|chatgpt-4o|o[3-9]|o4-mini/.test(m)) return 70
   if (/claude-(opus|sonnet)|claude-3\.[57]|claude-4/.test(m)) return 66
   if (
-    /deepseek-(?:v[4-9]|flash)|mimo-v2\.[6-9]|kimi-k2\.[5-9]|qwen3\.[5-9]|glm-4\.[5-9]|glm-5|grok-[3-9]|llama-4/.test(
+    /mimo-v2[-.][6-9]|kimi-k2[-.][5-9]|kimi-latest|qwen3[-.][5-9]|glm-4[-.][5-9]|glm-5|grok-[3-9]|llama-4/.test(
       m
     )
   )
     return 64
-  if (/glm-4\.\dv|glm-4v|internvl|minicpm-v|llava|pixtral|grok-.*vision|vision|-vl\b|-vl-/.test(m))
+  if (
+    /glm-4[-.]\dv|glm-4v|step-1v|yi-vision|internvl|minicpm-v|llava|pixtral|grok-.*vision|vision|-vl\b|-vl-/.test(
+      m
+    )
+  )
     return 55
   return 0
 }
 
+/** 判断指定提供商实例下的文本模型是否支持图像多模态输入（结合模型名规则与目录 architecture 元数据） */
+export function supportsVisionTextModel(provider: ModelProviderInstance, modelId: string): boolean {
+  const clean = modelId.trim()
+  if (!clean) return false
+  if (visionGroundingScore(clean) > 0) return true
+  const entry = modalityConfig(provider, 'text').catalog?.[clean]
+  const caps = entry?.capabilities
+  if (!caps || typeof caps !== 'object') return false
+  if (Array.isArray(caps.input_modalities) && caps.input_modalities.includes('image')) return true
+  const arch = caps.architecture as { input_modalities?: unknown; modality?: unknown } | undefined
+  if (arch && typeof arch === 'object') {
+    if (Array.isArray(arch.input_modalities) && arch.input_modalities.includes('image')) return true
+    if (typeof arch.modality === 'string' && arch.modality.length > 0) {
+      const left = arch.modality.split('->')[0] ?? arch.modality
+      if (/(^|\+|\/)image(\+|\/|$)/i.test(left) || left.toLowerCase().includes('image')) return true
+    }
+  }
+  return false
+}
+
 /**
  * 列出所有已启用、有密钥的提供商下的视觉定位候选模型（按定位得分降序排列）。
- * 供精准 UI 拆层在首选模型配额耗尽（429）或不可用时自动跨模型/跨提供商降级。
+ * 供精准 UI 拆层与视频多模态拆解在首选模型配额耗尽（429）或不可用时自动跨模型/跨提供商降级。
  */
 export function listVisionGroundingCandidates(
   providers: ModelProviderInstance[]
@@ -2176,7 +2201,10 @@ export function listVisionGroundingCandidates(
     const isOpenRouter =
       provider.providerKind === 'openrouter' || /openrouter\.ai/i.test(provider.baseUrl || '')
     for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
-      const rawScore = visionGroundingScore(modelId)
+      let rawScore = visionGroundingScore(modelId)
+      if (rawScore <= 0 && supportsVisionTextModel(provider, modelId)) {
+        rawScore = 60
+      }
       if (rawScore <= 0) continue
       // OpenRouter 下 openai/* 路由常受隐私策略/区域 ToS 限制，自动将非 OpenAI 视觉模型排在其前面
       const score =

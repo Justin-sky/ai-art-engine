@@ -276,9 +276,6 @@ export function resolveInstructionVisual(input: {
   if (kind === 'spatialWorld') {
     return { kind: 'shotSize', shotSize: 'extremeWide', diagram: `spatialWorld.${id}` }
   }
-  if (kind === 'semanticCompile') {
-    return { kind: 'shotSize', shotSize: 'medium', diagram: `semanticCompile.${id}` }
-  }
 
   return { kind: 'icon', icon: '✦', diagram: kind ? `${kind}.${id}` : id }
 }

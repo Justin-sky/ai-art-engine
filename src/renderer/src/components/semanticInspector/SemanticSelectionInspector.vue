@@ -19,35 +19,14 @@
       :key="selection.item.id"
       :shot="selection.item"
       :prompt="promptByShot?.[selection.item.id]"
+      :playhead-sec="playheadSec"
+      :can-merge-next="canMergeNextShot"
       @edit="forward"
     />
     <DialogueForm
       v-else-if="selection.kind === 'dialogue'"
       :key="selection.item.id"
       :line="selection.item"
-      @edit="forward"
-    />
-    <EventForm
-      v-else-if="selection.kind === 'event'"
-      :key="selection.item.id"
-      :event="selection.item"
-      :timeline="timeline"
-      :arm-delete="armDelete"
-      @edit="forward"
-    />
-    <BeatForm
-      v-else-if="selection.kind === 'beat'"
-      :key="selection.item.id"
-      :beat="selection.item"
-      :beat-types="beatTypes"
-      @edit="forward"
-    />
-    <IntentForm
-      v-else-if="selection.kind === 'intent'"
-      :key="selection.item.id"
-      :intent="selection.item"
-      :timeline="timeline"
-      :arm-delete="armDelete"
       @edit="forward"
     />
     <EntityForm
@@ -105,11 +84,8 @@ import {
   type ResolvedSelection
 } from '../../features/graph/model/semanticSelection'
 import type { ReferenceCandidate } from '../../features/graph/model/semanticReferenceCandidates'
-import BeatForm from './BeatForm.vue'
 import DialogueForm from './DialogueForm.vue'
 import EntityForm from './EntityForm.vue'
-import EventForm from './EventForm.vue'
-import IntentForm from './IntentForm.vue'
 import ShotForm from './ShotForm.vue'
 import { fmtSec } from './formUtils'
 
@@ -123,13 +99,10 @@ const props = defineProps<{
   timeline: SemanticTimeline
   selection: ResolvedSelection
   promptByShot?: Record<string, string>
-  beatTypes: Array<{ type: string; label: string }>
-  /** 递增即请求删除确认（Delete 快捷键） */
-  armDelete?: number
-  /** 节拍类型 → 显示名（与轨道同一口径） */
-  beatLabel: (type: string) => string
-  /** 实体替换的参考图候选（只来自分析节点「参考图」端口的上游） */
+  /** 实体替换的参考图候选（来自拆解节点「参考图」端口的上游） */
   referenceCandidates?: ReferenceCandidate[]
+  /** Current video playhead seconds (for split-at-playhead) */
+  playheadSec?: number
 }>()
 const emit = defineEmits<{
   edit: [input: SemanticEditInput]
@@ -147,12 +120,6 @@ const title = computed(() => {
       return shotLabel(props.timeline, s.item.id)
     case 'dialogue':
       return s.item.text
-    case 'event':
-      return s.item.label
-    case 'beat':
-      return props.beatLabel(s.item.type)
-    case 'intent':
-      return s.item.goal
     case 'entity':
       return s.item.name
   }
@@ -166,6 +133,13 @@ const dialogueDirty = computed(
     props.selection.kind === 'dialogue' &&
     diffAgainstBaseline(props.timeline).dirtyDialogue.has(props.selection.item.id)
 )
+
+const canMergeNextShot = computed(() => {
+  if (props.selection.kind !== 'shot') return false
+  const list = props.timeline.shots ?? []
+  const idx = list.findIndex((s) => s.id === props.selection.item.id)
+  return idx >= 0 && idx + 1 < list.length
+})
 
 function forward(input: SemanticEditInput): void {
   emit('edit', input)
@@ -539,6 +513,126 @@ button.si-ref {
   font-size: 12px;
   color: var(--text-muted);
   cursor: pointer;
+}
+.si-rea-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-elevated);
+}
+.si-rea-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+}
+.si-rea-badges,
+.si-rea-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.si-rea-route-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.si-rea-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+}
+.si-rea-pill.accent {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.si-rea-pill.warn {
+  border-color: color-mix(in srgb, #f4a261 65%, var(--border));
+  color: #f4a261;
+}
+.si-rea-pill.muted {
+  color: var(--text-muted);
+}
+.si-rea-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pill-color, var(--accent));
+}
+.si-rea-probs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.si-prob-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.si-prob-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+.si-prob-track {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.si-prob-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+.si-prob-pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.si-rea-alert {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, #f4a261 60%, var(--border));
+  background: color-mix(in srgb, #f4a261 10%, var(--bg-panel));
+  font-size: 11px;
+  color: var(--text);
+}
+.si-rea-evidence summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.si-rea-evidence ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.si-btn-xs {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.si-btn-xs:hover {
+  border-color: var(--accent);
 }
 .si-field input:focus-visible,
 .si-field textarea:focus-visible,

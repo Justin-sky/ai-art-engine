@@ -19,7 +19,7 @@ const SCAN_EXT = /\.(ts|mts|vue)$/
 /** 守卫自己当然要写出这些字面量 */
 const SELF_PATH = 'tests/semanticLegacyNodesRemoved.test.ts'
 const ALLOW_MARKER = 'view-id-keep'
-const VIEW_ID_LINE = /viewId:\s*'semantic\.(timeline|event|edit|variant)'/
+const VIEW_ID_LINE = /viewId:\s*'semantic\.(timeline|event|edit|variant|compile)'/
 
 /**
  * 匹配**裸 token**（带引号、或写在注释 / 文案里都算）。
@@ -29,7 +29,7 @@ const VIEW_ID_LINE = /viewId:\s*'semantic\.(timeline|event|edit|variant)'/
  * —— 变异验证时实测：加一行裸 token 注释，带引号的断言照样是绿的。
  * `\b` 保证 `semantic.editXxx` 这类更长标识符不会误伤。
  */
-const RESIDUE_RE = /\bsemantic\.(timeline|event|edit|variant)\b/
+const RESIDUE_RE = /\bsemantic\.(timeline|event|edit|variant|compile)\b/
 
 function toPosix(path: string): string {
   return path.split(sep).join('/')
@@ -79,7 +79,7 @@ describe('旧语义节点零残留', () => {
       join(process.cwd(), 'src/shared/graph/semanticTimelineNodes.ts'),
       'utf8'
     )
-    expect(nodes).toContain("'semantic.compile'")
+    expect(nodes).toContain("'semantic.rebuild'")
 
     const dive = readFileSync(
       join(process.cwd(), 'src/renderer/src/features/graph/model/editorDive.ts'),

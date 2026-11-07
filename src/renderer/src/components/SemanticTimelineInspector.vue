@@ -22,16 +22,6 @@
     </label>
 
     <section v-if="isAnalyze" class="fields">
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.vocabulary') }}</span>
-        <select v-model="vocabulary" @change="persistAnalyze">
-          <option v-for="v in vocabularyOptions" :key="v.id" :value="v.id">
-            {{ v.title }}
-          </option>
-        </select>
-        <span class="field-hint">{{ t('graph.inspector.semantic.vocabularyHint') }}</span>
-      </label>
-
       <div class="checks">
         <label class="check">
           <input v-model="transcribe" type="checkbox" @change="persistAnalyze" />
@@ -137,54 +127,17 @@
       </details>
     </section>
 
-    <section v-else-if="isCompile" class="fields">
-      <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.sourceRelativePath') }}</span>
-        <input
-          v-model="sourceRelativePath"
-          type="text"
-          :placeholder="t('graph.inspector.semantic.sourceRelativePathPlaceholder')"
-          @change="persistCompile"
-        />
-        <span class="field-hint">{{ t('graph.inspector.semantic.sourceRelativePathHint') }}</span>
-      </label>
-
-      <!-- 文本模型 / 用模型写提示词 / 规则包 / 编译要求都在指令面板里（双击节点）；这里只显示 -->
-      <div class="readonly-field">
-        <span class="field-label">{{ t('graph.inspector.semantic.compilePanelSummary') }}</span>
-        <span class="readonly-value">{{ compileSettingsLabel }}</span>
-        <span class="field-hint">{{ t('graph.inspector.semantic.compileInPanelHint') }}</span>
-      </div>
-
-      <dl v-if="compileSummary" class="meta">
-        <div>
-          <dt>{{ t('graph.inspector.semantic.rebuildReportGenerate') }}</dt>
-          <dd>{{ compileSummary.regenerate }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('graph.inspector.semantic.rebuildReportPassthrough') }}</dt>
-          <dd>{{ compileSummary.passthrough }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('graph.inspector.semantic.rebuildReportRemoved') }}</dt>
-          <dd>{{ compileSummary.removed }}</dd>
-        </div>
-        <div>
-          <dt>{{ t('graph.inspector.semantic.rebuildReportDubs') }}</dt>
-          <dd>{{ compileSummary.dubs }}</dd>
-        </div>
-      </dl>
-      <span class="field-hint">{{ t('graph.inspector.semantic.compileEditPointer') }}</span>
-    </section>
-
     <section v-if="isRebuild" class="fields">
       <label>
-        <span class="field-label">{{ t('graph.inspector.semantic.rebuildMode') }}</span>
-        <select v-model="rebuildMode" @change="persistRebuild">
-          <option value="shots">{{ t('graph.inspector.semantic.rebuildModeShots') }}</option>
-          <option value="full">{{ t('graph.inspector.semantic.rebuildModeFull') }}</option>
+        <span class="field-label">{{ t('graph.inspector.semantic.remakeStrategy') }}</span>
+        <select v-model="remakeStrategy" @change="persistRebuild">
+          <option value="fidelity">
+            {{ t('graph.inspector.semantic.remakeStrategyFidelity') }}
+          </option>
+          <option value="adapt">{{ t('graph.inspector.semantic.remakeStrategyAdapt') }}</option>
+          <option value="edit">{{ t('graph.inspector.semantic.remakeStrategyEdit') }}</option>
         </select>
-        <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModeHint') }}</span>
+        <span class="field-hint">{{ remakeStrategyHintText }}</span>
       </label>
 
       <!-- 视频模型 / 画面参数在指令面板里选（双击节点）；这里只显示当前选择 -->
@@ -194,11 +147,30 @@
         <span class="field-hint">{{ t('graph.inspector.semantic.rebuildModelInPanelHint') }}</span>
       </div>
 
+      <dl v-if="remakeLiveEstimate" class="meta estimate-box">
+        <div>
+          <dt>{{ t('graph.inspector.semantic.remakeEstimateUnits') }}</dt>
+          <dd>{{ remakeLiveEstimate.units }} ({{ remakeLiveEstimate.generatedShots }})</dd>
+        </div>
+        <div v-if="remakeLiveEstimate.localClips > 0">
+          <dt>{{ t('graph.inspector.semantic.rebuildReportLocal') }}</dt>
+          <dd>{{ remakeLiveEstimate.localClips }}</dd>
+        </div>
+        <div>
+          <dt>{{ t('graph.inspector.semantic.rebuildReportPassthrough') }}</dt>
+          <dd>{{ remakeLiveEstimate.passthroughShots }}</dd>
+        </div>
+        <div v-if="remakeLiveEstimate.dubs > 0">
+          <dt>{{ t('graph.inspector.semantic.rebuildReportDubs') }}</dt>
+          <dd>{{ remakeLiveEstimate.dubs }}</dd>
+        </div>
+      </dl>
+
       <label class="check">
-        <input v-model="rebuildRegenerateAll" type="checkbox" @change="persistRebuild" />
-        <span>{{ t('graph.inspector.semantic.rebuildRegenerateAll') }}</span>
+        <input v-model="rebuildGenerateAnchors" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildGenerateAnchors') }}</span>
       </label>
-      <span class="field-hint">{{ t('graph.inspector.semantic.rebuildRegenerateAllHint') }}</span>
+      <span class="field-hint">{{ t('graph.inspector.semantic.rebuildGenerateAnchorsHint') }}</span>
 
       <label class="check">
         <input v-model="rebuildExecute" type="checkbox" @change="persistRebuild" />
@@ -225,6 +197,18 @@
       <label class="check">
         <input v-model="rebuildBurnSubtitles" type="checkbox" @change="persistRebuild" />
         <span>{{ t('graph.inspector.semantic.rebuildBurnSubtitles') }}</span>
+      </label>
+      <label class="check">
+        <input v-model="rebuildCleanOverlays" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildCleanOverlays') }}</span>
+      </label>
+      <label class="check">
+        <input v-model="rebuildUseCache" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildUseCache') }}</span>
+      </label>
+      <label class="check">
+        <input v-model="rebuildRenderCompare" type="checkbox" @change="persistRebuild" />
+        <span>{{ t('graph.inspector.semantic.rebuildRenderCompare') }}</span>
       </label>
 
       <label class="check">
@@ -278,17 +262,17 @@
         />
       </label>
 
-      <!-- 1-to-N 批量变体矩阵（Hypit Batch Variants） -->
       <details class="advanced batch-variants-box">
         <summary>
-          🔀 批量变体矩阵 (1-to-N Variants)
+          {{ t('graph.inspector.semantic.batchVariantsTitle') }}
           <span v-if="parsedBatchVariants.length" class="variant-badge">
-            {{ parsedBatchVariants.length }} 组变体
+            {{
+              t('graph.inspector.semantic.batchVariantsCount', { n: parsedBatchVariants.length })
+            }}
           </span>
         </summary>
         <p class="field-hint">
-          一份语义脚本一键并发生成多组人设 / 音色 / 黄金前3秒钩子 /
-          视觉分镜变体（未改动的镜头自动复用缓存）。
+          {{ t('graph.inspector.semantic.batchVariantsHint') }}
         </p>
         <div class="variant-preset-bar">
           <button
@@ -298,7 +282,7 @@
             class="variant-preset-btn"
             @click="applyBatchVariantTemplate(tpl.id)"
           >
-            + {{ tpl.titleZh }}
+            + {{ isEn ? tpl.titleEn : tpl.titleZh }}
           </button>
           <button
             v-if="rebuildVariantsJson.trim()"
@@ -306,24 +290,45 @@
             class="variant-preset-btn danger"
             @click="clearBatchVariants"
           >
-            清空变体
+            {{ t('graph.inspector.semantic.batchVariantsClear') }}
           </button>
         </div>
         <ExpandableTextarea
           :key="`variants-${node.id}`"
           v-model="rebuildVariantsJson"
-          title="批量变体矩阵 JSON (SemanticBatchVariantSpec[])"
+          :title="t('graph.inspector.semantic.batchVariantsJsonTitle')"
           :rows="5"
-          placeholder='[{"id":"v1","label":"幽默老哥版","instructionOverride":"夸张脱口秀语气","dubVoice":"male-humorous"}]'
+          :placeholder="t('graph.inspector.semantic.batchVariantsPlaceholder')"
           @change="persistRebuild"
         />
       </details>
 
       <p class="field-hint">{{ t('graph.inspector.semantic.rebuildPromptPointer') }}</p>
 
-      <!-- 成片预览 + 重建清单（节点没有文本输出口；清单来自 rebuildLastReport） -->
       <div class="rebuild-result">
         <span class="field-label">{{ t('graph.inspector.semantic.rebuildPreview') }}</span>
+        <div
+          v-if="rebuildCompareRel && !rebuildReport?.variants?.length"
+          class="variant-output-tabs"
+        >
+          <button
+            type="button"
+            class="variant-tab-btn"
+            :class="{ active: activePreviewRel === rebuildOutputRel }"
+            :disabled="!rebuildOutputRel"
+            @click="selectedVariantRel = ''"
+          >
+            {{ t('graph.inspector.semantic.rebuildPreviewOutput') }}
+          </button>
+          <button
+            type="button"
+            class="variant-tab-btn"
+            :class="{ active: activePreviewRel === rebuildCompareRel }"
+            @click="selectedVariantRel = rebuildCompareRel"
+          >
+            {{ t('graph.inspector.semantic.rebuildPreviewCompare') }}
+          </button>
+        </div>
         <div v-if="rebuildReport?.variants?.length" class="variant-output-tabs">
           <button
             v-for="v in rebuildReport.variants"
@@ -346,6 +351,10 @@
             <dt>{{ t('graph.inspector.semantic.rebuildReportGenerate') }}</dt>
             <dd>{{ rebuildReport.generate }}</dd>
           </div>
+          <div v-if="rebuildReport.localRendered > 0">
+            <dt>{{ t('graph.inspector.semantic.rebuildReportLocal') }}</dt>
+            <dd>{{ rebuildReport.localRendered }}</dd>
+          </div>
           <div>
             <dt>{{ t('graph.inspector.semantic.rebuildReportPassthrough') }}</dt>
             <dd>{{ rebuildReport.passthrough }}</dd>
@@ -359,7 +368,7 @@
             <dd>{{ rebuildReport.dubs }}</dd>
           </div>
           <div v-if="rebuildReport.variants.length">
-            <dt>裂变变体数</dt>
+            <dt>{{ t('graph.inspector.semantic.rebuildReportVariants') }}</dt>
             <dd>{{ rebuildReport.variants.length }}</dd>
           </div>
         </dl>
@@ -373,6 +382,16 @@
     <section v-if="showTimelineFallback" class="fields">
       <details class="advanced">
         <summary>{{ t('graph.inspector.semantic.timelineJson') }}</summary>
+        <label>
+          <span class="field-label">{{ t('graph.inspector.semantic.sourceRelativePath') }}</span>
+          <input
+            v-model="sourceRelativePath"
+            type="text"
+            :placeholder="t('graph.inspector.semantic.sourceRelativePathPlaceholder')"
+            @change="persistRebuild"
+          />
+          <span class="field-hint">{{ t('graph.inspector.semantic.sourceRelativePathHint') }}</span>
+        </label>
         <ExpandableTextarea
           :key="`tl-${node.id}`"
           v-model="timelineJson"
@@ -390,17 +409,25 @@
         <dt>{{ t('graph.inspector.semantic.summaryId') }}</dt>
         <dd>{{ timelineSummary.id }}</dd>
       </div>
-      <div>
-        <dt>{{ t('graph.inspector.semantic.summaryEvents') }}</dt>
-        <dd>{{ timelineSummary.events }}</dd>
+      <div v-if="timelineSummary.verdict">
+        <dt>{{ t('graph.inspector.semantic.summaryVerdict') }}</dt>
+        <dd>{{ timelineSummary.verdict }}</dd>
+      </div>
+      <div v-if="timelineSummary.confidencePct != null">
+        <dt>{{ t('graph.inspector.semantic.summaryConfidence') }}</dt>
+        <dd>{{ timelineSummary.confidencePct }}%</dd>
       </div>
       <div>
-        <dt>{{ t('graph.inspector.semantic.summaryBeats') }}</dt>
-        <dd>{{ timelineSummary.beats }}</dd>
+        <dt>{{ t('graph.inspector.semantic.summaryShots') }}</dt>
+        <dd>{{ timelineSummary.shots }}</dd>
       </div>
       <div>
-        <dt>{{ t('graph.inspector.semantic.summaryIntents') }}</dt>
-        <dd>{{ timelineSummary.intents }}</dd>
+        <dt>{{ t('graph.inspector.semantic.summaryUnits') }}</dt>
+        <dd>{{ timelineSummary.units }} + {{ timelineSummary.localUnits }}</dd>
+      </div>
+      <div>
+        <dt>{{ t('graph.inspector.semantic.summaryEntities') }}</dt>
+        <dd>{{ timelineSummary.entities }}</dd>
       </div>
     </dl>
   </div>
@@ -418,13 +445,16 @@ import {
   preferredModelKey,
   type GenerateModelOption
 } from '../features/graph/model/generateModelOptions'
-import type { ModelProviderInstance } from '@shared/modelProvider'
+import {
+  supportsVisionTextModel,
+  visionGroundingScore,
+  type ModelProviderInstance
+} from '@shared/modelProvider'
 import {
   BUILTIN_BATCH_VARIANT_TEMPLATES,
-  collectRulePacks,
-  listVocabularies,
   parseBatchVariantSpecs,
-  type SemanticPack,
+  planRemakeExecution,
+  type RemakeStrategy,
   type SemanticTimeline
 } from '@shared/semanticTimeline'
 import GraphNodeRunControl from './GraphNodeRunControl.vue'
@@ -438,9 +468,10 @@ import { useEditorKernel } from '../editor/kernel'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import { graphRunHosts } from '../features/graph/model/graphRunHosts'
 
-const SEMANTIC_TYPE_IDS = new Set(['semantic.analyze', 'semantic.compile', 'semantic.rebuild'])
+const SEMANTIC_TYPE_IDS = new Set(['semantic.analyze', 'semantic.rebuild'])
 
-const { t, graphTypeLabel } = useStudioI18n()
+const { t, locale, graphTypeLabel } = useStudioI18n()
+const isEn = computed(() => locale.value.toLowerCase().startsWith('en'))
 const editor = useEditorKernel()
 
 const node = computed(() => {
@@ -465,15 +496,13 @@ const typeLabel = computed(() => (typeId.value ? graphTypeLabel(typeId.value) : 
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 
 const isAnalyze = computed(() => typeId.value === 'semantic.analyze')
-const isCompile = computed(() => typeId.value === 'semantic.compile')
-const showTimelineFallback = computed(() => isCompile.value)
+const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
+const showTimelineFallback = computed(() => isRebuild.value)
 
 const hintText = computed(() => {
   switch (typeId.value) {
     case 'semantic.analyze':
       return t('graph.inspector.semantic.analyzeHint')
-    case 'semantic.compile':
-      return t('graph.inspector.semantic.compileHint')
     case 'semantic.rebuild':
       return t('graph.inspector.semantic.rebuildHint')
     default:
@@ -481,37 +510,33 @@ const hintText = computed(() => {
   }
 })
 
-const packs = ref<SemanticPack[]>([])
-/** 富化（文本）模型可选项；转写可选实例清单 */
+/** 富化（视觉/文本）模型可选项；转写可选实例清单 */
 const enrichModelOptions = ref<GenerateModelOption[]>([])
 const providerInstances = ref<ModelProviderInstance[]>([])
 onMounted(async () => {
+  let providers: ModelProviderInstance[] = []
   try {
-    packs.value = (await window.studio.semanticListPacks()) ?? []
+    providers = await loadAllProviders()
+    providerInstances.value = providers
   } catch {
-    packs.value = []
+    providerInstances.value = []
   }
   try {
     const loaded = await loadGenerateModelOptions('text')
-    enrichModelOptions.value = loaded.options
+    const byId = new Map(providers.map((p) => [p.id, p]))
+    const isMultimodal = (opt: GenerateModelOption): number => {
+      if (visionGroundingScore(opt.model) > 0) return 1
+      const inst = byId.get(opt.providerInstanceId)
+      return inst && supportsVisionTextModel(inst, opt.model) ? 1 : 0
+    }
+    enrichModelOptions.value = [...loaded.options].sort((a, b) => isMultimodal(b) - isMultimodal(a))
   } catch {
     enrichModelOptions.value = []
-  }
-  try {
-    providerInstances.value = await loadAllProviders()
-  } catch {
-    providerInstances.value = []
   }
   await loadRebuildModels()
 })
 
-const vocabularyOptions = computed(() => listVocabularies(packs.value))
-const rulePackOptions = computed(() =>
-  collectRulePacks(packs.value).map((p) => ({ id: p.id, title: p.title || p.id }))
-)
-
 const localTitle = ref('')
-const vocabulary = ref('commerce.v1')
 const transcribe = ref(true)
 const separateAudio = ref(true)
 const detectEntities = ref(true)
@@ -519,14 +544,7 @@ const useLlm = ref(false)
 const semanticFps = ref(30)
 const semanticDuration = ref(60)
 const sourceAssetId = ref('')
-/**
- * 富化（三步 LLM）用哪个模型：`providerInstanceId::model` 的 key，空 = 应用默认文本模型。
- *
- * 这两个参数以前没在节点上声明，`runSkill` 却一直在读 —— 用户只能吃「设置里第一个合格实例」，
- * 撞上未开通的模型就三步全失败（实测踩过）。这里把选择权交给用户。
- */
 const enrichModelKey = ref('')
-/** 转写用哪个提供商实例：空 = 首个支持转写的已配置实例（老行为） */
 const transcribeInstanceId = ref('')
 const shotsJson = ref('')
 const utterancesJson = ref('')
@@ -536,30 +554,24 @@ const loadedNodeId = ref<string | null>(null)
 const loadedHostId = ref<string | null>(null)
 
 /**
- * 语义重建：模式 / 模型 / 上限 / 音轨字幕 / 时长与画面参数。
- *
- * 必须声明在下面那个 `watch(..., { immediate: true })` **之前**：该 watch 会在 setup
- * 期间同步调用 `loadConfig` → `syncRebuildFromNode`，而 `const` 不提升 —— 声明在后面
- * 就是 TDZ，选中语义节点时整个检查器直接抛
- * `Cannot access 'rebuildMode' before initialization`（面板只剩一句渲染失败）。
+ * 语义重建状态：必须声明在下面 `watch(..., { immediate: true })` 之前，防止同步回填 TDZ。
  */
-const isRebuild = computed(() => typeId.value === 'semantic.rebuild')
-/** 视频模型清单只用来把当前选择显示成可读名字（选择本身在指令面板里） */
 const rebuildModelOptions = ref<GenerateModelOption[]>([])
 const rebuildModelKey = ref('')
-const rebuildMode = ref<'shots' | 'full'>('shots')
+const remakeStrategy = ref<RemakeStrategy>('fidelity')
+const rebuildGenerateAnchors = ref(false)
 const rebuildExecute = ref(true)
-const rebuildRegenerateAll = ref(false)
-const rebuildMaxShots = ref(12)
+const rebuildMaxShots = ref(24)
 const rebuildKeepAudio = ref(true)
 const rebuildBurnSubtitles = ref(true)
+const rebuildCleanOverlays = ref(true)
+const rebuildUseCache = ref(true)
+const rebuildRenderCompare = ref(true)
 const rebuildDuration = ref('')
-/** 重新配音：开关 / TTS 模型 / 音色 / 用原人声克隆 */
 const rebuildDub = ref(true)
 const rebuildDubClone = ref(true)
 const dubModelOptions = ref<GenerateModelOption[]>([])
 const dubModelKey = ref('')
-/** 实体局部替换：首帧重绘用的图片模型 */
 const imageModelOptions = ref<GenerateModelOption[]>([])
 const replaceImageModelKey = ref('')
 const dubVoice = ref('')
@@ -567,6 +579,17 @@ const rebuildVariantsJson = ref('')
 const selectedVariantRel = ref('')
 const batchVariantTemplates = BUILTIN_BATCH_VARIANT_TEMPLATES
 const parsedBatchVariants = computed(() => parseBatchVariantSpecs(rebuildVariantsJson.value))
+
+const remakeStrategyHintText = computed(() => {
+  switch (remakeStrategy.value) {
+    case 'edit':
+      return t('graph.inspector.semantic.remakeStrategyEditHint')
+    case 'adapt':
+      return t('graph.inspector.semantic.remakeStrategyAdaptHint')
+    default:
+      return t('graph.inspector.semantic.remakeStrategyFidelityHint')
+  }
+})
 
 function applyBatchVariantTemplate(templateId: string): void {
   const tpl = BUILTIN_BATCH_VARIANT_TEMPLATES.find((t) => t.id === templateId)
@@ -585,11 +608,10 @@ function loadConfig(current: NonNullable<typeof node.value>): void {
   loadedHostId.value = hostId.value
   const p = current.params
   localTitle.value = current.title ?? ''
-  vocabulary.value = p.vocabulary?.trim() || 'commerce.v1'
   transcribe.value = p.semanticTranscribe !== false
   separateAudio.value = p.semanticSeparateAudio !== false
   detectEntities.value = p.semanticDetectEntities !== false
-  useLlm.value = p.semanticLlm === true
+  useLlm.value = p.semanticLlm !== false
   semanticFps.value = Number(p.semanticFps) > 0 ? Number(p.semanticFps) : 30
   semanticDuration.value = Number(p.semanticDuration) > 0 ? Number(p.semanticDuration) : 60
   sourceAssetId.value = p.sourceAssetId?.trim() || ''
@@ -634,7 +656,6 @@ function persistTitle(): void {
 function persistAnalyze(): void {
   const enrich = parseModelKey(enrichModelKey.value)
   patch({
-    vocabulary: vocabulary.value.trim() || 'commerce.v1',
     semanticTranscribe: transcribe.value,
     semanticSeparateAudio: separateAudio.value,
     semanticDetectEntities: detectEntities.value,
@@ -644,7 +665,6 @@ function persistAnalyze(): void {
     sourceAssetId: sourceAssetId.value.trim(),
     shotsJson: shotsJson.value,
     utterancesJson: utterancesJson.value,
-    // 富化模型：key 拆成「实例 + 模型」两个参数（与其它加工节点同一套口径）
     generateModel: enrich?.model ?? '',
     generateProviderInstanceId: enrich?.providerInstanceId ?? '',
     transcribeProviderInstanceId: transcribeInstanceId.value.trim()
@@ -653,12 +673,16 @@ function persistAnalyze(): void {
 
 function syncRebuildFromNode(): void {
   const p = node.value?.params
-  rebuildMode.value = p?.rebuildMode === 'full' ? 'full' : 'shots'
+  remakeStrategy.value =
+    p?.remakeStrategy === 'edit' || p?.remakeStrategy === 'adapt' ? p.remakeStrategy : 'fidelity'
+  rebuildGenerateAnchors.value = p?.rebuildGenerateAnchors === true
   rebuildExecute.value = p?.semanticExecute !== false
-  rebuildRegenerateAll.value = p?.rebuildRegenerateAll === true
-  rebuildMaxShots.value = Number(p?.rebuildMaxShots) || 12
+  rebuildMaxShots.value = Number(p?.rebuildMaxShots) || 24
   rebuildKeepAudio.value = p?.rebuildKeepAudio !== false
   rebuildBurnSubtitles.value = p?.rebuildBurnSubtitles !== false
+  rebuildCleanOverlays.value = p?.rebuildCleanOverlays !== false
+  rebuildUseCache.value = p?.rebuildUseCache !== false
+  rebuildRenderCompare.value = p?.rebuildRenderCompare !== false
   rebuildDuration.value = Number(p?.rebuildDurationSec) ? String(p?.rebuildDurationSec) : ''
   rebuildModelKey.value = preferredModelKey(p?.generateProviderInstanceId, p?.generateModel)
   rebuildDub.value = p?.rebuildDub !== false
@@ -681,12 +705,15 @@ function persistRebuild(): void {
   const dub = parseModelKey(dubModelKey.value)
   const replaceImage = parseModelKey(replaceImageModelKey.value)
   patch({
-    rebuildMode: rebuildMode.value,
+    remakeStrategy: remakeStrategy.value,
+    rebuildGenerateAnchors: rebuildGenerateAnchors.value,
     semanticExecute: rebuildExecute.value,
-    rebuildRegenerateAll: rebuildRegenerateAll.value,
-    rebuildMaxShots: Math.max(1, Number(rebuildMaxShots.value) || 12),
+    rebuildMaxShots: Math.max(1, Number(rebuildMaxShots.value) || 24),
     rebuildKeepAudio: rebuildKeepAudio.value,
     rebuildBurnSubtitles: rebuildBurnSubtitles.value,
+    rebuildCleanOverlays: rebuildCleanOverlays.value,
+    rebuildUseCache: rebuildUseCache.value,
+    rebuildRenderCompare: rebuildRenderCompare.value,
     rebuildDurationSec: Number(rebuildDuration.value) || 0,
     rebuildDub: rebuildDub.value,
     rebuildDubClone: rebuildDubClone.value,
@@ -695,7 +722,8 @@ function persistRebuild(): void {
     dubVoice: dubVoice.value.trim(),
     replaceImageModel: replaceImage?.model ?? '',
     replaceImageProviderInstanceId: replaceImage?.providerInstanceId ?? '',
-    rebuildVariantsJson: rebuildVariantsJson.value.trim()
+    rebuildVariantsJson: rebuildVariantsJson.value.trim(),
+    sourceRelativePath: sourceRelativePath.value.trim()
   })
 }
 
@@ -731,12 +759,16 @@ const rebuildModelLabel = computed(() => {
   return rebuildModelOptions.value.find((o) => o.key === key)?.label ?? key
 })
 
-/** 上次成片：本次运行的视频输出优先，否则节点参数里记的上次成片 */
 const rebuildOutputRel = computed(() => {
   if (!isRebuild.value || !node.value) return ''
   const out = graphRunHosts.get(hostId.value)?.runStates?.[node.value.id]?.outputs?.['out-video']
   if (out && out.kind === 'video' && out.relativePath?.trim()) return out.relativePath.trim()
   return String(node.value.params?.rebuildLastOutput ?? '').trim()
+})
+
+const rebuildCompareRel = computed(() => {
+  if (!isRebuild.value || !node.value) return ''
+  return String(node.value.params?.rebuildLastCompare ?? '').trim()
 })
 
 const activePreviewRel = computed(() => selectedVariantRel.value || rebuildOutputRel.value)
@@ -761,13 +793,13 @@ const rebuildReportText = computed(() =>
   isRebuild.value ? String(node.value?.params?.rebuildLastReport ?? '').trim() : ''
 )
 
-/** 清单摘要：生成几镜 / 直通几镜 / 删几镜 / 配音几句 / 变体列表 */
 const rebuildReport = computed(() => {
   const text = rebuildReportText.value
   if (!text) return null
   try {
     const r = JSON.parse(text) as {
       generate?: unknown[]
+      localRendered?: unknown[]
       passthrough?: unknown[]
       removed?: unknown[]
       dubs?: unknown[]
@@ -781,6 +813,7 @@ const rebuildReport = computed(() => {
     const n = (v: unknown[] | undefined): number => (Array.isArray(v) ? v.length : 0)
     return {
       generate: n(r.generate),
+      localRendered: n(r.localRendered),
       passthrough: n(r.passthrough),
       removed: n(r.removed),
       dubs: n(r.dubs),
@@ -791,57 +824,6 @@ const rebuildReport = computed(() => {
   }
 })
 
-/**
- * 编译节点在检查器里只写原视频路径；文本模型 / 用模型写提示词 / 规则包 / 编译要求
- * 都由指令面板写（两处同时写会互相覆盖）。
- */
-function persistCompile(): void {
-  patch({ sourceRelativePath: sourceRelativePath.value.trim() })
-}
-
-/** 指令面板里的设置摘要：文本模型 · 是否用模型写 · 规则包 · 有无编译要求 */
-const compileSettingsLabel = computed(() => {
-  void graphEditorHosts.revision.value
-  const p = node.value?.params
-  if (!p || !isCompile.value) return ''
-  const key = preferredModelKey(p.generateProviderInstanceId, p.generateModel)
-  const model = key
-    ? (enrichModelOptions.value.find((o) => o.key === key)?.label ?? key)
-    : t('graph.inspector.semantic.modelAuto')
-  const packIds = String(p.rulePackIds || '')
-    .split(/[,，\s]+/)
-    .filter(Boolean)
-  const titles = packIds.map(
-    (id) => rulePackOptions.value.find((pack) => pack.id === id)?.title ?? id
-  )
-  return [
-    model,
-    p.semanticLlm === true
-      ? t('graph.inspector.semantic.promptsWithModel')
-      : t('graph.inspector.semantic.promptsByRules'),
-    titles.length ? titles.join('、') : t('graph.inspector.semantic.rulePacksAll'),
-    String(p.generateInstruction ?? '').trim()
-      ? t('graph.inspector.semantic.compileHasInstruction')
-      : ''
-  ]
-    .filter(Boolean)
-    .join(' · ')
-})
-
-/** 编译结果摘要（来自运行输出的提示词计划）：重新生成 / 直通 / 删除 / 配音 */
-const compileSummary = computed(() => {
-  if (!isCompile.value || !node.value) return null
-  const out = graphRunHosts.get(hostId.value)?.runStates?.[node.value.id]?.outputs?.out
-  const plan = out && out.kind === 'videoPrompts' ? out.plan : null
-  if (!plan) return null
-  return {
-    regenerate: plan.shots.filter((s) => s.strategy !== 'passthrough').length,
-    passthrough: plan.shots.filter((s) => s.strategy === 'passthrough').length,
-    removed: plan.removedShotIds?.length ?? 0,
-    dubs: plan.dubs?.length ?? 0
-  }
-})
-
 function persistTimelineJson(): void {
   patch({ timelineJson: timelineJson.value })
 }
@@ -849,16 +831,9 @@ function persistTimelineJson(): void {
 const runOutText = computed(() => {
   if (!node.value) return ''
   const out = graphRunHosts.get(hostId.value)?.runStates?.[node.value.id]?.outputs?.out
-  return out && out.kind === 'text' ? out.text : ''
+  return out && (out.kind === 'text' || out.kind === 'semanticTimeline') ? out.text : ''
 })
 
-/**
- * 上游时间线文档（原始 JSON 文本）。
- *
- * 编译节点的入边是整份时间线文档，所以「本节点 JSON / 本节点输出 / 上游」三处都要找：
- * 否则用户在编译节点上直接改 `timelineJson` 时看不到任何摘要。这里按入边逐个尝试：
- * 上游的运行输出 → 上游的 `timelineJson` → 上游的 `semanticTimelineId` 读盘。
- */
 const upstreamTimelineJson = ref('')
 
 async function loadUpstreamTimeline(): Promise<void> {
@@ -889,7 +864,7 @@ async function loadUpstreamTimeline(): Promise<void> {
           return
         }
       } catch {
-        /* 读不到就继续找其它入边 */
+        /* continue */
       }
     }
   }
@@ -903,7 +878,6 @@ watch(
   { immediate: true }
 )
 
-/** 时间线文档：本节点 JSON / 本节点输出 / 上游（三者取第一个能解析成文档的） */
 const timelineDoc = computed((): SemanticTimeline | null => {
   for (const raw of [timelineJson.value, runOutText.value, upstreamTimelineJson.value]) {
     const text = raw.trim()
@@ -918,14 +892,40 @@ const timelineDoc = computed((): SemanticTimeline | null => {
   return null
 })
 
+const remakeLiveEstimate = computed(() => {
+  if (!isRebuild.value || !timelineDoc.value) return null
+  try {
+    const plan = planRemakeExecution(timelineDoc.value, {
+      strategy: remakeStrategy.value,
+      instruction: String(node.value?.params?.generateInstruction ?? '').trim(),
+      maxUnits: Math.max(1, Number(rebuildMaxShots.value) || 24),
+      lang: isEn.value ? 'en' : 'zh'
+    })
+    return {
+      units: plan.units.length,
+      generatedShots: plan.generatedShots,
+      localClips: plan.localClips.length,
+      passthroughShots: plan.passthroughShots,
+      dubs: plan.dubs.length
+    }
+  } catch {
+    return null
+  }
+})
+
 const timelineSummary = computed(() => {
   const doc = timelineDoc.value
   if (!doc) return null
+  const s = doc.breakdown?.summary
+  const plan = doc.breakdown?.productionPlan
   return {
     id: doc.id,
-    events: Array.isArray(doc.events) ? doc.events.length : 0,
-    beats: Array.isArray(doc.beats) ? doc.beats.length : 0,
-    intents: Array.isArray(doc.intents) ? doc.intents.length : 0
+    verdict: s ? (isEn.value ? s.verdictEn : s.verdict) : '',
+    confidencePct: s ? Math.round(s.confidence * 100) : null,
+    shots: Array.isArray(doc.shots) ? doc.shots.length : 0,
+    units: plan?.units?.length ?? 0,
+    localUnits: plan?.localUnits?.length ?? 0,
+    entities: Array.isArray(doc.entities) ? doc.entities.length : 0
   }
 })
 </script>
@@ -1041,6 +1041,13 @@ input[type='checkbox'] {
   flex-direction: column;
   gap: 6px;
   font-size: 12px;
+}
+
+.estimate-box {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
 }
 
 .meta div {

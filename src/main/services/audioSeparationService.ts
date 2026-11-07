@@ -7,7 +7,7 @@
  */
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { basename, extname, join } from 'path'
 import {
   buildAudioSeparationFilter,
@@ -16,6 +16,15 @@ import {
   type AudioStemKind
 } from '@shared/graph/audioSeparation'
 import { findFfmpegBin } from './videoFrameService'
+import { resolveFfmpegForSemantic } from './semanticTimeline/resolveFfmpeg'
+
+function resolveAudioFfmpegBin(): string {
+  try {
+    return findFfmpegBin()
+  } catch {
+    return resolveFfmpegForSemantic()
+  }
+}
 
 const execFileAsync = promisify(execFile)
 
@@ -52,25 +61,78 @@ export async function separateAudioStems(params: {
   return separateViaFfmpegCenter({ abs, outDir, outRel })
 }
 
-async function separateViaFfmpegCenter(params: {
-  abs: string
-  outDir: string
-  outRel: string
-}): Promise<AudioSeparationResult> {
-  const bin = findFfmpegBin()
+function findWavDataOffset(buf: Buffer): number {
+  if (buf.length < 44) return -1
+  let offset = 12
+  while (offset + 8 <= buf.length) {
+    const id = buf.toString('ascii', offset, offset + 4)
+    const size = buf.readUInt32LE(offset + 4)
+    if (id === 'data') return offset + 8
+    offset += 8 + size + (size % 2)
+  }
+  return 44
+}
+
+/**
+ * 检测是否需要退回单声道频段陷波分离：
+ * - 双声道同相 (L≈R)：`instrumental` 左声道相消为 ~0（`rmsInst < 0.03 * rmsVoc`）
+ * - 单声道输入 (无 c1)：`pan` 把 c1 当 0，导致 `inst_L === voc_L`（未消掉任何中置人声且右声道反相）
+ */
+function needsMonoBandFallback(instAbs: string, vocAbs: string): boolean {
+  try {
+    if (!existsSync(instAbs) || !existsSync(vocAbs)) return false
+    const instBuf = readFileSync(instAbs)
+    const vocBuf = readFileSync(vocAbs)
+    const instStart = findWavDataOffset(instBuf)
+    const vocStart = findWavDataOffset(vocBuf)
+    if (instStart < 0 || vocStart < 0) return false
+    const maxBytes = Math.min(instBuf.length - instStart, vocBuf.length - vocStart)
+    if (maxBytes < 64) return false
+    // Step by multiples of 4 bytes (stereo 16-bit frame: L=0..1, R=2..3)
+    const frameStep = Math.max(1, Math.floor(maxBytes / 4 / 3000)) * 4
+    let vocSq = 0
+    let instSq = 0
+    let diffSq = 0
+    let count = 0
+    for (let rel = 0; rel + 4 <= maxBytes; rel += frameStep) {
+      const vL = vocBuf.readInt16LE(vocStart + rel) / 32768
+      const iL = instBuf.readInt16LE(instStart + rel) / 32768
+      vocSq += vL * vL
+      instSq += iL * iL
+      const d = vL - iL
+      diffSq += d * d
+      count += 1
+    }
+    if (count === 0) return false
+    const rmsVoc = Math.sqrt(vocSq / count)
+    const rmsInst = Math.sqrt(instSq / count)
+    const rmsDiff = Math.sqrt(diffSq / count)
+    if (rmsVoc < 4e-4) return false
+    return rmsInst < Math.max(4e-4, 0.03 * rmsVoc) || rmsDiff < 0.02 * rmsVoc
+  } catch {
+    return false
+  }
+}
+
+async function runStemSeparationPass(
+  bin: string,
+  abs: string,
+  outDir: string,
+  monoFallback: boolean
+): Promise<void> {
   const kinds: AudioStemKind[] = ['vocal', 'instrumental']
   for (const kind of kinds) {
-    const outAbs = join(params.outDir, buildAudioSeparationOutputName(kind))
+    const outAbs = join(outDir, buildAudioSeparationOutputName(kind))
     try {
       await execFileAsync(
         bin,
         [
           '-y',
           '-i',
-          params.abs,
+          abs,
           '-vn',
           '-af',
-          buildAudioSeparationFilter(kind),
+          buildAudioSeparationFilter(kind, monoFallback),
           '-ac',
           '2',
           '-ar',
@@ -87,6 +149,21 @@ async function separateViaFfmpegCenter(params: {
         `ffmpeg 分离 ${kind === 'vocal' ? '人声' : '伴奏'} 失败：${stderr.slice(0, 300)}`
       )
     }
+  }
+}
+
+async function separateViaFfmpegCenter(params: {
+  abs: string
+  outDir: string
+  outRel: string
+}): Promise<AudioSeparationResult> {
+  const bin = resolveAudioFfmpegBin()
+  await runStemSeparationPass(bin, params.abs, params.outDir, false)
+  // 单声道或双声道同相视频经 (L-R)/2 会相消为死寂静音；自动切换为语音频段陷波分离
+  const instAbs = join(params.outDir, buildAudioSeparationOutputName('instrumental'))
+  const vocAbs = join(params.outDir, buildAudioSeparationOutputName('vocal'))
+  if (needsMonoBandFallback(instAbs, vocAbs)) {
+    await runStemSeparationPass(bin, params.abs, params.outDir, true)
   }
   return {
     vocalRelativePath: `${params.outRel}/vocal.wav`,

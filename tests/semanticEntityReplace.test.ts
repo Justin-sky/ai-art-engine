@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { executeSemanticRebuildNode } from '../src/shared/graph/execute/semanticTimeline'
-import { createNodeFromType, GraphPortType, type NodeExecuteContext } from '../src/shared/graph'
+import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
+import { createNodeFromType, type NodeExecuteContext } from '../src/shared/graph'
 import {
   applySemanticEdit,
   buildEntityRedrawPrompt,
-  buildPromptPlan,
   carryOverSemanticEdits,
   collectShotReplacements,
   diffAgainstBaseline,
@@ -15,8 +15,7 @@ import {
   referenceLegend,
   rewriteMentions,
   type EntityReplacement,
-  type SemanticTimeline,
-  type VideoPromptPlan
+  type SemanticTimeline
 } from '../src/shared/semanticTimeline'
 
 /**
@@ -239,7 +238,7 @@ describe('按镜收集：有序、显式绑定', () => {
 
 // ─── 重建：首帧逐个重绘 → 图生视频 ───────────────────────────────────────────
 
-function twoEntityPlan(): VideoPromptPlan {
+function twoEntityTimeline(): SemanticTimeline {
   let doc = applySemanticEdit(makeDoc(), {
     op: 'entity.replace',
     target: 'ent.person.a',
@@ -250,14 +249,19 @@ function twoEntityPlan(): VideoPromptPlan {
     target: 'ent.person.b',
     patch: { replacement: replacement('B', ['shot.3'], { x: 0.5, y: 0.1, w: 0.3, h: 0.6 }) }
   })
-  return buildPromptPlan({ timeline: doc, shots: [], sourceRelativePath: 'Assets/src.mp4' })
+  return doc
 }
 
 function harness(
-  plan: VideoPromptPlan,
+  doc: SemanticTimeline,
   options: { failImageAt?: number; noRedraw?: boolean } = {}
 ) {
   const node = createNodeFromType('semantic.rebuild', { x: 0, y: 0 })
+  node.params = {
+    ...node.params,
+    remakeStrategy: 'edit',
+    sourceRelativePath: 'Assets/src.mp4'
+  }
   const images: Array<{ prompt: string; inputReferences?: string[] }> = []
   const masks: Array<{ maskDataUrl: string; protectMaskDataUrls: string[] }> = []
   const videos: Array<Record<string, unknown>> = []
@@ -265,7 +269,7 @@ function harness(
   const ctx = {
     node,
     locale: 'zh-CN',
-    inputs: { in: [{ kind: GraphPortType.videoPrompts, plan, text: JSON.stringify(plan) }] },
+    inputs: { in: [semanticTimelineValue(doc)] },
     log: () => {},
     patchNode: () => {},
     resolveProjectMediaUrl: async (rel: string) => `file:///${rel}`,
@@ -314,23 +318,20 @@ function harness(
 
 describe('重建：同镜换两个实体', () => {
   it('逐个重绘：每遍只带自己的参考图，第二遍以第一遍结果为底图、扣掉 A 的区域；最后图生视频', async () => {
-    const h = harness(twoEntityPlan())
+    const h = harness(twoEntityTimeline())
     await executeSemanticRebuildNode(h.ctx)
 
     const shot3Images = h.images.slice(-2)
-    // 第一遍：原关键帧挖空 + 掩码 + A 的参考图（只有 A 的）
     expect(shot3Images[0]!.inputReferences).toEqual([
       `holed:data:${KF3}`,
       'mask:eff:data:Semantic/stl.rep.1/evidence/masks/A.shot.3.png',
       'data:Assets/refs/A.png'
     ])
-    // 第二遍：底图是第一遍落盘后的结果；只带 B 的参考图
     expect(shot3Images[1]!.inputReferences![0]).toMatch(
       /^holed:data:Semantic\/stl\.rep\.1\/replace\/pass\d\.png$/
     )
     expect(shot3Images[1]!.inputReferences![2]).toBe('data:Assets/refs/B.png')
     expect(shot3Images[1]!.inputReferences).not.toContain('data:Assets/refs/A.png')
-    // 保护区：处理 B 时扣掉 A 的原始掩码
     const lastMask = h.masks.at(-1)!
     expect(lastMask.protectMaskDataUrls).toEqual([
       'data:Semantic/stl.rep.1/evidence/masks/A.shot.3.png'
@@ -343,7 +344,7 @@ describe('重建：同镜换两个实体', () => {
   })
 
   it('任一遍失败：整镜放弃首帧编辑，参考图按实体顺序兜底并写明编号', async () => {
-    const h = harness(twoEntityPlan(), { failImageAt: 2 })
+    const h = harness(twoEntityTimeline(), { failImageAt: 2 })
     await executeSemanticRebuildNode(h.ctx)
     const video3 = h.videos.find((v) => v.name === 'rebuild-shot.3')!
     expect(video3.firstFrameImageUrl).toBeUndefined()
@@ -355,7 +356,7 @@ describe('重建：同镜换两个实体', () => {
   })
 
   it('环境没有重绘能力：直接兜底，不调用图片模型', async () => {
-    const h = harness(twoEntityPlan(), { noRedraw: true })
+    const h = harness(twoEntityTimeline(), { noRedraw: true })
     await executeSemanticRebuildNode(h.ctx)
     expect(h.images).toHaveLength(0)
     const video3 = h.videos.find((v) => v.name === 'rebuild-shot.3')!

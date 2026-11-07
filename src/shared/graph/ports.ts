@@ -48,10 +48,10 @@ function shouldHideAssetRefInputs(
  * 必须先过「空间世界导出」节点 —— 它的出口是 `model`（HQ 网格 GLB），从那里接导演台 / 3D 加工。
  * 反过来 `model` 也进不了 `spatialWorld` 口：普通模型没有 world_id。
  *
- * 例外之二：`semanticTimeline → text` 与 `videoPrompts → text`（都是**单向**）。
- * 语义时间线文档 / 提示词计划可以交给文本消费者展示或给 agent 读；反向不允许 ——
+ * 例外之二：`semanticTimeline → text`（**单向**）。
+ * 语义时间线文档可以交给文本消费者展示或给 agent 读；反向不允许 ——
  * 文本口什么都可能产（提示词、剧本、OCR），既没有 schema 也没有 `stl.` id，
- * 接进语义口只会在运行期才报「输入不是语义时间线文档 / 不是提示词计划」。
+ * 接进语义口只会在运行期才报「输入不是语义时间线文档」。
  */
 export function portsCompatible(source: GraphPortDataType, target: GraphPortDataType): boolean {
   if (source === target) return true
@@ -61,7 +61,6 @@ export function portsCompatible(source: GraphPortDataType, target: GraphPortData
   return (
     source === GraphPortType.texts ||
     source === GraphPortType.semanticTimeline ||
-    source === GraphPortType.videoPrompts ||
     source === GraphPortType.storyboard ||
     source === GraphPortType.filmCast ||
     source === GraphPortType.uiComponents

@@ -8,75 +8,64 @@ import {
   type GraphPersistedRunState,
   type GraphValue
 } from '../src/shared/graph'
-import { videoPromptsValue } from '../src/shared/graph/execute/videoPromptsValue'
+import { semanticTimelineValue } from '../src/shared/graph/execute/semanticTimelineValue'
 import {
-  buildPromptPlan,
+  finalizeSemanticBreakdown,
   makeTimeRange,
-  type SemanticTimeline,
-  type VideoPromptPlan
+  migrateSemanticTimeline,
+  type SemanticTimeline
 } from '../src/shared/semanticTimeline'
 
 /**
- * 「在语义重建节点上 Cook（执行当前）」这条路为什么不出片 —— 引擎侧回归守卫。
- *
- * 实测踩到：**只跑重建节点**时上游不执行，引擎走软快照向上游要值。而
- * `graphValueHasPayload` 不认 `videoPrompts`，编译节点的计划被判定成「无载荷」，
- * 于是引擎用**空输入**兜底执行了一次编译节点 → 重建节点拿到的是**空计划** →
- * 日志只有「没有可拼接的镜头，未出片」，既不出片也不报错。
- *
- * 这条链路要覆盖三种「计划从哪来」，缺任何一种都会退化成"点了没反应"：
- *   1. 运行态 outputs（同一次会话里刚编译过）；
- *   2. 节点参数 `planJson`（存档/撤销/任务快照把运行态冲掉之后）；
- *   3. 都没有的旧存档：按分析节点参数里的 `semanticTimelineId` 从磁盘读回时间线，
- *      **就地重编译**一次拿到计划。
+ * 「在视频重制节点上单独 Cook（执行当前）」二节点直连引擎守卫：
+ * 1. 运行态 outputs 在内存里（刚跑过视频拆解）；
+ * 2. 运行态已冲掉，但节点参数留有 `timelineJson`；
+ * 3. 运行态与 `timelineJson` 都没有，按上游 `semantic.analyze` 参数里的 `semanticTimelineId` 从磁盘恢复；
+ * 4. 控制组：上游确实没有时间线或镜头时，不出片并给出清晰原因；
+ * 5. 上游时间线为 Vue `reactive` 代理时，传给主进程 IPC 的拼接请求仍可通过 `structuredClone`。
  */
 
-const makePlan = (shots = 2): VideoPromptPlan => {
-  const timeline = {
-    id: 'stl.cook.1',
-    schema: 'aiart.semantic-timeline@1',
-    source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
-    entities: [],
-    events: [],
-    beats: [],
-    intents: [],
-    tracks: [],
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z'
-  } as unknown as SemanticTimeline
-  return buildPromptPlan({
-    timeline,
-    shots: Array.from({ length: shots }, (_, i) => ({
-      id: `shot.${i + 1}`,
-      range: makeTimeRange(i * 6, (i + 1) * 6, 30),
-      keyframes: {},
-      confidence: 1
-    })),
-    // 有镜头语言，提示词才非空（否则测的就不是"引擎有没有把计划送到"了）
-    commands: Array.from({ length: shots }, (_, i) => ({
-      kind: 'camera.pushIn',
-      start: i * 6,
-      end: (i + 1) * 6,
-      params: {},
-      reason: ''
-    }))
+function makeCookTimeline(shots = 2): SemanticTimeline {
+  const raw = migrateSemanticTimeline(
+    {
+      id: 'stl.cook.1',
+      schema: 'aiart.semantic-timeline@2',
+      source: { assetId: 'asset-1', fps: 30, duration: shots * 5, width: 1080, height: 1920 },
+      entities: [],
+      dialogue: [
+        {
+          id: 'dlg.1',
+          range: makeTimeRange(0.5, 2.5, 30),
+          text: '口播一句',
+          sourceText: '口播一句',
+          granularity: 'sentence',
+          confidence: 0.95,
+          origin: 'analysis'
+        }
+      ],
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      createdAt: '2026-01-01T00:00:00.000Z'
+    },
+    {
+      shots: Array.from({ length: shots }, (_, i) => ({
+        id: `shot.${i + 1}`,
+        range: makeTimeRange(i * 5, (i + 1) * 5, 30),
+        keyframes: { first: `evidence/keyframes/s${i + 1}.jpg` },
+        confidence: 0.9,
+        forensics: {
+          noiseSigma: 0.5,
+          flatRatio: 0.12,
+          meanFrameDiff: 6.0,
+          dupRatio: 0.02,
+          cameraMotionKind: 'smooth_move'
+        }
+      }))
+    }
+  )
+  return finalizeSemanticBreakdown(raw, {
+    provenance: { aigcImplicitLabel: { label: '1' }, evidence: [] }
   })
 }
-
-/** 磁盘上的时间线文档（v1 也认：编译会按证据内联镜头树） */
-const makeDiskTimeline = (): SemanticTimeline =>
-  ({
-    id: 'stl.cook.1',
-    schema: 'aiart.semantic-timeline@1',
-    source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
-    entities: [],
-    events: [{ id: 'ev.1', timeRange: makeTimeRange(0, 6, 30), label: 'hook' }],
-    beats: [],
-    intents: [],
-    tracks: [],
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    createdAt: '2026-01-01T00:00:00.000Z'
-  }) as unknown as SemanticTimeline
 
 function node(typeId: string, id: string, params: Record<string, unknown> = {}): GraphNode {
   const created = createNodeFromType(typeId, { x: 0, y: 0 })
@@ -85,31 +74,21 @@ function node(typeId: string, id: string, params: Record<string, unknown> = {}):
   return created
 }
 
-/** 编译 → 重建 */
-function graphCompileToRebuild(compileParams: Record<string, unknown> = {}): GraphDocument {
+function graphAnalyzeToRebuild(
+  analyzeParams: Record<string, unknown> = {},
+  rebuildParams: Record<string, unknown> = {}
+): GraphDocument {
   return {
     nodes: [
-      node('semantic.compile', 'n-compile', compileParams),
-      node('semantic.rebuild', 'n-rebuild')
+      node('semantic.analyze', 'n-analyze', analyzeParams),
+      node('semantic.rebuild', 'n-rebuild', {
+        remakeStrategy: 'fidelity',
+        sourceRelativePath: 'Assets/src.mp4',
+        ...rebuildParams
+      })
     ],
     edges: [
-      { id: 'e1', source: 'n-compile', sourcePort: 'out', target: 'n-rebuild', targetPort: 'in' }
-    ],
-    viewport: { x: 0, y: 0, zoom: 1 }
-  }
-}
-
-/** 分析 → 编译 → 重建（旧存档：两个上游都是 done 但没有产物） */
-function graphAnalyzeToRebuild(): GraphDocument {
-  return {
-    nodes: [
-      node('semantic.analyze', 'n-analyze', { semanticTimelineId: 'stl.cook.1' }),
-      node('semantic.compile', 'n-compile'),
-      node('semantic.rebuild', 'n-rebuild')
-    ],
-    edges: [
-      { id: 'e1', source: 'n-analyze', sourcePort: 'out', target: 'n-compile', targetPort: 'in' },
-      { id: 'e2', source: 'n-compile', sourcePort: 'out', target: 'n-rebuild', targetPort: 'in' }
+      { id: 'e1', source: 'n-analyze', sourcePort: 'out', target: 'n-rebuild', targetPort: 'in' }
     ],
     viewport: { x: 0, y: 0, zoom: 1 }
   }
@@ -152,15 +131,9 @@ async function cook(
       }
     }),
     resolveProjectMediaUrl: async () => undefined,
-    listSemanticPacks: async () => [],
     loadSemanticTimeline: async () => diskTimeline,
     loadSemanticEvidence: async () => ({
-      shots: Array.from({ length: 2 }, (_, i) => ({
-        id: `shot.${i + 1}`,
-        range: makeTimeRange(i * 6, (i + 1) * 6, 30),
-        keyframes: {},
-        confidence: 1
-      })),
+      shots: [],
       utterances: [],
       keyframes: {}
     })
@@ -168,66 +141,55 @@ async function cook(
   return { output: result.states['n-rebuild']?.outputs?.['out-video'], rebuilt, logs }
 }
 
-describe('语义重建节点 Cook（只跑当前节点）', () => {
-  it('计划在运行态里 → 真的送到重建节点并出片', async () => {
-    const run = await cook(graphCompileToRebuild(), {
-      'n-compile': { status: 'done', outputs: { out: videoPromptsValue(makePlan(2)) } }
+describe('视频重制节点 Cook（二节点直连只跑当前节点）', () => {
+  it('时间线在运行态里 → 直接送到视频重制节点并出片', async () => {
+    const doc = makeCookTimeline(2)
+    const run = await cook(graphAnalyzeToRebuild(), {
+      'n-analyze': { status: 'done', outputs: { out: semanticTimelineValue(doc) } }
     })
     expect(run.rebuilt).toHaveLength(1)
     expect(run.output).toMatchObject({ kind: 'video', relativePath: 'Output/cook.mp4' })
   })
 
-  it('运行态丢了、但节点参数还留着 planJson → 照样出片', async () => {
-    const plan = makePlan(2)
-    const run = await cook(graphCompileToRebuild({ planJson: JSON.stringify(plan) }), {
-      // 存档把 outputs 冲没了，节点状态还是 done
-      'n-compile': { status: 'done' }
+  it('运行态丢了、但上游节点参数留着 timelineJson → 照样出片', async () => {
+    const doc = makeCookTimeline(2)
+    const run = await cook(graphAnalyzeToRebuild({ timelineJson: JSON.stringify(doc) }), {
+      'n-analyze': { status: 'done' }
     })
     expect(run.rebuilt).toHaveLength(1)
     expect(run.output).toMatchObject({ relativePath: 'Output/cook.mp4' })
   })
 
-  it('旧存档（运行态与参数缓存都没有）→ 按 id 从磁盘读回时间线重编译后出片', async () => {
+  it('运行态与参数缓存都没有 → 按上游 semanticTimelineId 从磁盘读回时间线后出片', async () => {
+    const disk = makeCookTimeline(2)
     const run = await cook(
-      graphAnalyzeToRebuild(),
-      { 'n-analyze': { status: 'done' }, 'n-compile': { status: 'done' } },
-      makeDiskTimeline()
+      graphAnalyzeToRebuild({ semanticTimelineId: 'stl.cook.1' }),
+      { 'n-analyze': { status: 'done' } },
+      disk
     )
     expect(run.rebuilt).toHaveLength(1)
     expect(run.output).toMatchObject({ relativePath: 'Output/cook.mp4' })
   })
 
-  it('控制组：上游确实没有计划时不出片，而且日志要说清原因与下一步', async () => {
-    const run = await cook(graphCompileToRebuild(), { 'n-compile': { status: 'done' } })
+  it('控制组：上游尚未产出有效时间线镜头时不出片，并给出清晰原因', async () => {
+    const run = await cook(graphAnalyzeToRebuild(), { 'n-analyze': { status: 'done' } })
     expect(run.rebuilt).toHaveLength(0)
-    expect(run.logs.join('\n')).toContain('上游提示词计划是空的')
     expect(run.logs.join('\n')).toContain('没有可拼接的镜头')
   })
 
-  /**
-   * 实测踩到（7.5.1 之后仍未修）：成片前的拼接请求带上了**响应式代理**，
-   * 过 contextBridge / IPC 结构化克隆直接失败 —— 整趟跑了 4 分半、生成成功 2 镜，
-   * 最后一步报 `An object could not be cloned.`，一段成片都拿不到。
-   *
-   * 代理来自运行态：`priorNodeStates` 是会话的 `reactive(runStates)`，取出来的计划是 Proxy，
-   * 而计划里的 `subtitles` 会原样进拼接请求。这里用 `structuredClone` 复现 IPC 的判定。
-   */
-  it('上游计划是响应式代理时，拼接请求仍必须是可结构化克隆的纯数据', async () => {
-    const plan = {
-      ...makePlan(2),
-      subtitles: [{ sourceStartSec: 0, sourceEndSec: 2, text: '口播一句' }]
-    }
-    const livePlan = reactive(plan) as unknown as VideoPromptPlan
-    const run = await cook(graphCompileToRebuild(), {
-      'n-compile': {
+  it('上游时间线是 Vue reactive 代理时，拼接请求仍必须是可结构化克隆的纯数据', async () => {
+    const doc = makeCookTimeline(2)
+    const liveDoc = reactive(doc) as unknown as SemanticTimeline
+    const run = await cook(graphAnalyzeToRebuild(), {
+      'n-analyze': {
         status: 'done',
-        outputs: { out: { kind: 'videoPrompts', plan: livePlan, text: JSON.stringify(plan) } }
+        outputs: { out: { kind: 'semanticTimeline', doc: liveDoc, text: JSON.stringify(doc) } }
       }
     })
     expect(run.rebuilt).toHaveLength(1)
     expect(() => structuredClone(run.rebuilt[0])).not.toThrow()
     expect(run.rebuilt[0]?.subtitles).toEqual([
-      { sourceStartSec: 0, sourceEndSec: 2, text: '口播一句' }
+      { sourceStartSec: 0.5, sourceEndSec: 2.5, text: '口播一句' }
     ])
   })
 })

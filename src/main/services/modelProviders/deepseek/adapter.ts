@@ -37,9 +37,24 @@ function notSupported(kind: keyof typeof NOT_SUPPORTED_FEATURES): Promise<never>
   return Promise.reject(fail(E_NOT_SUPPORTED, { kind }))
 }
 
-/** DeepSeek 官方仅提供对话模型（deepseek-flash / deepseek-v4-pro，旧名 deepseek-v4-flash 等已下线仅作路由） */
+/** DeepSeek 官方对话/多模态模型（deepseek-flash = V4.1 Flash / deepseek-v4-pro；旧别名自动映射至 deepseek-flash） */
 function isDeepSeekTextModelId(modelId: string): boolean {
-  return /^deepseek-/i.test(modelId.trim())
+  return /^deepseek/i.test(modelId.trim())
+}
+
+export function normalizeDeepSeekOfficialModelId(modelId: string): string {
+  const trimmed = modelId.trim()
+  if (
+    /^(?:deepseek\/)?deepseek-?(?:v4(?:\.1)?-flash(?:-vision(?:-exp)?)?|flash-latest)$/i.test(
+      trimmed
+    )
+  ) {
+    return 'deepseek-flash'
+  }
+  if (/^deepseek\//i.test(trimmed)) {
+    return trimmed.replace(/^deepseek\//i, '')
+  }
+  return trimmed
 }
 
 export const deepSeekAdapter: ModelProviderAdapter = {
@@ -89,7 +104,11 @@ export const deepSeekAdapter: ModelProviderAdapter = {
     modelId: string,
     input: GenerateTextInput
   ): Promise<GenerateTextResult> {
-    return generateOpenAiCompatibleText(provider, modelId, input)
+    const resolvedModelId =
+      provider.baseUrl && !/api\.deepseek\.com/i.test(provider.baseUrl)
+        ? modelId.trim()
+        : normalizeDeepSeekOfficialModelId(modelId)
+    return generateOpenAiCompatibleText(provider, resolvedModelId, input)
   },
 
   generateImage(

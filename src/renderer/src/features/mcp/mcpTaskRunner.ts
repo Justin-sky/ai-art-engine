@@ -1017,7 +1017,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
                     ? eObj.op
                     : 'shot.update'
             const target = String(
-              eObj.target ?? eObj.shotId ?? eObj.utteranceId ?? eObj.entityId ?? ''
+              eObj.target ?? eObj.shotId ?? eObj.unitId ?? eObj.utteranceId ?? eObj.entityId ?? ''
             )
             const patch =
               eObj.patch && typeof eObj.patch === 'object'

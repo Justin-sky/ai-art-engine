@@ -227,6 +227,12 @@ export default {
         prompt:
           'Create a narrated picture-book workflow: start from a multi-page story script, generate a protagonist & watercolor style anchor image wired via in-image into all 3 storybook spread illustrations; generate warm per-page storytelling voiceovers, night-forest SFX, and music-box lullaby BGM, and wire them into the cut timeline (output.timeline) to compose an animated audiobook video.'
       },
+      videoBreakdownRemake: {
+        title: 'Video breakdown & remake',
+        desc: 'Source video + ref images → 4-axis forensic breakdown → direct batched AI / local FFmpeg remake & compare',
+        prompt:
+          'Create a video reverse-engineering & multi-route remake workflow: wire a source video (video.select) and identity/product reference images (image.select) into Video Breakdown (semantic.analyze) for 11-class production forensics, vertical packaging layer separation, real-material protection, audio source attribution, and DP-optimal G1..Gk batch planning; connect directly to Video Remake (semantic.rebuild) to execute hybrid batched AI video generation + zero-cost local FFmpeg Ken Burns/static clips and export both the remade video and side-by-side comparison.'
+      },
       custom: {
         title: 'Custom',
         desc: 'Clear and write your own',
@@ -6116,7 +6122,6 @@ export default {
         spatialWorld: 'Spatial world',
         project: 'Project',
         semanticTimeline: 'Breakdown timeline',
-        videoPrompts: 'Remake prompt plan',
         storyboard: 'Storyboard',
         filmCast: 'Cast library',
         uiComponents: 'UI component library'
@@ -6315,8 +6320,7 @@ export default {
       },
       semantic: {
         analyze: 'Video breakdown',
-        rebuild: 'Video remake',
-        compile: 'Remake plan'
+        rebuild: 'Video remake'
       },
       script: {
         run: 'Script'
@@ -6459,9 +6463,11 @@ export default {
       trackVfx: 'VFX',
       trackLight: 'Light',
       trackEvents: 'Events',
-      layerFootage: 'Shots / Lines',
+      layerFootage: 'Shots / Units / Lines',
       trackShots: 'Shots',
+      trackUnits: 'Remake units',
       trackDialogue: 'Lines',
+      trackOverlays: 'Packaging',
       refEvent: 'Event',
       refBeat: 'Beat',
       refIntent: 'Intent',
@@ -6474,7 +6480,7 @@ export default {
       resizePanes: 'Drag to resize panes (or ← →)',
       evidence: 'Evidence',
       selectHint:
-        'Select a shot, line, event, beat, entity or production clip on the tracks to edit it here',
+        'Select a shot, remake unit, line, or entity on the tracks to inspect forensics and edit it here',
       noEntities: 'No entities',
       noTimelineHint: 'This node has no timeline yet',
       noTimelineHintSub:
@@ -6503,6 +6509,99 @@ export default {
         conflict: 'Conflict',
         climax: 'Climax',
         resolution: 'Resolution'
+      },
+      rea: {
+        verdictLabel: 'Verdict',
+        confidenceLabel: 'Confidence {pct}%',
+        disputedBadge: 'Disputed',
+        uncertainBadge: 'Uncertain',
+        overrideBadge: 'Overridden',
+        editedPromptBadge: 'Edited prompt',
+        openQuestionsTitle: 'Open questions ({n})',
+        tabTimeline: 'Tracks & Shot Forensics',
+        tabRemakePlan: 'Remake Plan',
+        tabAudioLayers: 'Sound & Packaging',
+        tabReportCompare: 'Report & Compare',
+        provenanceAigc: 'AIGC Implicit Label',
+        provenanceC2pa: 'C2PA Provenance',
+        provenanceGen: 'Generator: {v}',
+        provenanceEditor: 'Editor: {v}',
+        provenanceCamera: 'Camera: {v}',
+        provenancePlatform: 'Platform: {v}',
+        prodTypeLabel: 'Base production type',
+        autoDetected: 'Auto-detected ({label})',
+        resetOverride: 'Reset auto',
+        probTopTitle: 'Posterior probabilities',
+        aiEditsTitle: 'AI edits on footage',
+        evidenceToggle: 'Signal & visual evidence ({n})',
+        measuredSpecs: 'Measured cinematography',
+        realMaterialAlert:
+          'Real recorded/filmed asset detected — protected from AI overwrite by default',
+        remakeRouteLabel: 'Remake route',
+        copyPrompt: 'Copy prompt',
+        copied: 'Copied',
+        splitAtPlayhead: 'Split at playhead ({sec}s)',
+        splitMidpoint: 'Split shot at midpoint',
+        mergeNextShot: 'Merge with next shot',
+        exec_video_gen: 'AI video gen',
+        exec_local_ffmpeg: 'Zero-cost local FFmpeg',
+        exec_reshoot: 'Live-action shoot',
+        exec_screen_record: 'Screen recording',
+        exec_code_render: 'Code / MG render',
+        exec_avatar_tts: 'Avatar + TTS',
+        exec_passthrough: 'Original passthrough',
+        planSummaryTitle: 'Multi-Route Remake Overview',
+        genUnitsTitle: 'AI Video Generation Units (DP-batched)',
+        localUnitsTitle: 'Zero-Cost Local FFmpeg Clips',
+        shootingSetupsTitle: 'Live-Action Shooting Setups',
+        codeSpecsTitle: 'Code / Motion-Graphics Specs',
+        realAssetsTitle: 'Real User Assets Needed',
+        castTitle: 'Cross-Shot Cast, Scenes & Props',
+        imagePromptLabel: 'Anchor image prompt',
+        videoPromptLabel: 'Video motion prompt',
+        unitShots: 'Shots: {shots} · {sec}s',
+        kenBurnsSpec: 'Zoom {zoom}%/s · Pan {pan}%/s ({deg}°)',
+        staticHoldSpec: 'Static hold {sec}s (0 API calls)',
+        noUnitsHint: 'None required for this video',
+        audioOverviewTitle: 'Audio Loudness & Cut-Boundary Forensics',
+        noAudioTrack: 'Source video has no audio track',
+        loudnessSpec: 'Mean {rms} dBFS · Peak {peak} dBFS',
+        cutJumpReset:
+          'Sharp noise-floor jump at cuts ({ratio}x): characteristic of per-clip AI native audio',
+        cutJumpContinuous:
+          'Continuous noise floor across cuts ({ratio}x): unified post-mixed bed or continuous recording',
+        soundSourcesTitle: 'Probabilistic Sound Source Attribution',
+        trackVoice: 'Voice track',
+        trackMusic: 'Music track',
+        trackSfx: 'SFX track',
+        howToConfirm: 'How to confirm',
+        musicMetrics: 'BPM {bpm} · Key {key} · Beat-synced cuts {beat}%',
+        voiceMetrics: 'Speech ratio {speech}% · Median F0 {f0} Hz',
+        packagingTitle: 'Vertical Packaging & Overlay Layers ({n})',
+        exportSrt: 'Export .srt subtitles',
+        copySrt: 'Copy .srt',
+        noPackaging: 'No separate overlay packaging layers detected',
+        layerColTime: 'Time',
+        layerColKind: 'Layer kind',
+        layerColText: 'Content',
+        layerColPos: 'Position',
+        storyboardTitle: 'Forensic Storyboard Contact Sheet',
+        reportTitle: 'Full Reverse-Engineering & Remake Report',
+        reportViewReadme: 'README view',
+        reportViewSource: 'Markdown source',
+        copyReportMd: 'Copy Markdown report',
+        copyNleJson: 'Copy NLE timeline JSON',
+        compareTitle: 'Original vs Remake Synchronized Comparison',
+        compareEmptyHint:
+          'Run the downstream Video Remake node to automatically load the remade video and side-by-side comparison here.',
+        compareModeDual: 'Dual synchronized players',
+        compareModeSideBySide: 'Rendered side-by-side (compare.mp4)',
+        playBoth: 'Play both',
+        pauseBoth: 'Pause both',
+        originalLabel: 'Original',
+        remakeResultLabel: 'Remake Result',
+        selectShotPlaceholder: 'Select shot…',
+        rerunShot: 'Re-run shot'
       }
     },
     /** Edit summary bar + shot / line / entity form fields (dive inspector) */
@@ -6552,7 +6651,7 @@ export default {
       status_removed: 'Removed',
       status_passthrough: 'Passthrough',
       impactHint:
-        'Edits save right away. When you rerun Remake plan and Video remake, only shots marked "Will regenerate" go to the model.',
+        'Edits save right away. When you rerun Video remake in Edit-only mode, only shots marked "Will regenerate" go to the model.',
       eventLabel: 'Label',
       eventType: 'Type',
       eventDescription: 'Description',
@@ -7304,20 +7403,16 @@ export default {
       },
       semantic: {
         analyzeHint:
-          'Connect an upstream video (or set a source asset id) and run: shot detection, keyframes, transcript, vocal separation and entity detection are written to the project Semantic/ folder, and the Breakdown Timeline JSON is emitted. Double-click to inspect the result.',
-        compileHint:
-          'Turn the Breakdown Timeline into a **per-shot remake prompt plan**: compares against the breakdown baseline to mark which shots pass through, which are regenerated and which lines are re-dubbed. Double-click the node to open the instruction panel: pick a text model, toggle "Write prompts with a model", choose rule packs and write plan requirements.',
-        vocabulary: 'Beat vocabulary',
-        vocabularyHint: 'Controls beat labels; market packs can add more vocabularies',
+          'Connect an upstream video (or set a source asset id) and run: performs 4-axis forensic breakdown (11-class production attribution, vertical packaging separation, real-asset protection, sound source attribution) plus DP-optimal G1..Gk batch planning, emitting the Breakdown Timeline. Double-click to open the 4-tab workspace.',
         transcribe: 'Transcribe speech (utterances)',
         separateAudio: 'Separate vocals / background',
-        detectEntities: 'Detect people and objects (vision model)',
-        llm: 'LLM understanding',
+        detectEntities: 'Detect people and objects (vision)',
+        llm: 'VLM 4-axis forensic enrichment',
         llmHint:
-          'When on, a text model looks at keyframes to describe shots, extracts evidenced events and infers director intents (incurs model cost). Off = rule heuristics only.',
-        understandModel: 'Understanding model',
+          'When on, a multimodal VLM inspects the storyboard contact sheet to enrich cross-shot cast/scene anchors, packaging layers, and G1..Gk image/video prompts. Off = zero-cost deterministic signal forensics.',
+        understandModel: 'Multimodal LLM (vision understanding)',
         understandModelHint:
-          'The model that "watches" the video: describes shots, extracts events and director intents, and detects people/objects on screen. Keyframes are sent as images, so pick a vision-capable model; empty = the app default text model.',
+          'Multimodal LLM used to detect cast/product entities, inspect keyframes, and synthesize G1..Gk remake prompts (e.g. DeepSeek V4.1 Flash, Gemini, Qwen-VL, Doubao Seed); empty = auto-select default multimodal text model.',
         transcribeInstance: 'Transcription provider',
         transcribeInstanceHint:
           'Empty = first configured instance that supports transcription. When set, it is used strictly and an incapable instance errors out (only the OpenAI / ElevenLabs adapters transcribe).',
@@ -7338,38 +7433,30 @@ export default {
         sourceRelativePath: 'Source video relative path',
         sourceRelativePathPlaceholder: 'e.g. Assets/foo.mp4',
         sourceRelativePathHint: 'Leave empty to resolve from the timeline source asset',
-        rulePacks: 'Director rule packs',
-        rulePacksHint: 'None checked = built-in rules + every installed rule pack',
         execute: 'Generate video on run',
-        promptsWithModel: 'Write prompts with a model',
-        promptsWithModelHint:
-          'When on, a text model first describes the picture (shot description / events / intents); the final prompt is still rule-assembled. Falls back to pure rules on failure.',
-        promptsByRules: 'Rule-assembled',
-        rulePacksAll: 'All rule packs',
-        compileHasInstruction: 'Has plan requirements',
-        compilePanelSummary: 'Plan settings',
-        compileInPanelHint:
-          'Double-click the node to change them in the instruction panel (text model / write with a model / rule packs / requirements)',
-        compileEditPointer:
-          'To change shot content, lines, entities or a single shot prompt: double-click the upstream Video breakdown node, edit in the Edit panel below the timeline, then rerun this node.',
-        compileInstructionPlaceholder:
-          'Plan requirements (optional): appended to every shot prompt, e.g. "keep the original framing and look, realistic"',
-        rebuildMode: 'Generation granularity',
-        rebuildModeShots: 'Per shot (one clip each, then concatenated)',
-        rebuildModeFull: 'Single full pass (one long prompt)',
-        rebuildModeHint:
-          'Per shot is controllable and lets you redo a single shot; a full pass is cheaper but cannot be partially redone',
+        remakeStrategy: 'Remake strategy',
+        remakeStrategyFidelity:
+          '1:1 multi-route remake (batched AI + zero-cost local FFmpeg + real-asset protection)',
+        remakeStrategyAdapt:
+          'Creative adaptation (inject global instruction / cast & product ref images)',
+        remakeStrategyEdit: 'Edit-only remake (regenerate modified shots, passthrough the rest)',
+        remakeStrategyFidelityHint:
+          'Executes G1..Gk batched AI video generation (including bridged same-setup shots), renders K1..Kk Ken Burns/static holds locally at zero cost, and protects real screen/camera assets.',
+        remakeStrategyAdaptHint:
+          'Best for swapping characters, products, or global style: blends the card instruction and reference images into G1..Gk batch prompts.',
+        remakeStrategyEditHint:
+          'Precision touch-up mode: only shots, entities, or unit prompts edited in the upstream Video breakdown workspace call AI models; zero edits = 0 API calls.',
+        remakeEstimateUnits: 'Est. AI batch units (covered shots)',
+        rebuildGenerateAnchors: 'Generate anchor first-frame images from imagePrompt first',
+        rebuildGenerateAnchorsHint:
+          'When enabled, generates anchor first-frame images via the image model for each G1..Gk unit before image-to-video; when off, reuses source keyframes or reference images.',
         rebuildModel: 'Video model',
         rebuildModelHint: 'Default: the video model configured in settings',
         rebuildHint:
-          'Rebuilds the video from the upstream Remake plan: unchanged shots pass through from the original, changed shots are regenerated with a video model, edited lines are re-dubbed, then everything is concatenated locally with ffmpeg. No edits = the original video. Double-click the node to open the instruction panel and pick a video model.',
-        rebuildInstructionPlaceholder:
-          'Optional instruction for the whole video: appended to every regenerated shot prompt, e.g. "keep a realistic look, natural light"',
+          'Connects directly to Video breakdown: executes G1..Gk batched AI video generation, K1..Kk zero-cost local FFmpeg motion, re-dubbing, and subtitle burn-in according to the chosen remake strategy, outputting both the remake and side-by-side comparison. Double-click to pick the video model and global instruction.',
+        rebuildInstructionPlaceholder: `Global adaptation / extra instruction (optional): appended to each AI batch prompt, e.g. "cyberpunk neon night, swap product with sneaker in {'@'}1"`,
         rebuildModelInPanelHint:
           'Double-click the node to open the instruction panel and pick the video model and picture params (resolution / aspect ratio)',
-        rebuildRegenerateAll: 'Regenerate every shot',
-        rebuildRegenerateAllHint:
-          'Off (default): only changed shots are generated, the rest pass through from the original. On: every shot calls the video model (style remake).',
         rebuildDub: 'Re-dub edited lines',
         rebuildDubHint:
           'Only the edited lines get a new voice; background audio is kept when vocal separation is available',
@@ -7377,37 +7464,53 @@ export default {
         rebuildDubVoice: 'Dubbing voice',
         rebuildDubVoicePlaceholder: 'Empty = speaker profile / model default voice',
         rebuildDubClone: 'Clone the original vocals when no voice is set',
-        replaceImageModel: 'Image model for entity replacement',
+        replaceImageModel: 'Image model for anchor / entity replacement',
         replaceImageModelHint:
-          'For shots where an entity has a picked target in the Dive: redraws the first frame entity by entity with this model, then hands it to the video model as image-to-video.',
+          'Used to generate G1..Gk anchor first-frame images or redraw masked entity targets picked in the Dive workspace.',
         rebuildPreview: 'Result preview',
         rebuildPreviewEmpty: 'No video yet: run this node to preview it here',
-        rebuildReportGenerate: 'Regenerated',
+        rebuildReportGenerate: 'AI generated shots',
         rebuildReportPassthrough: 'Passthrough',
         rebuildReportRemoved: 'Removed shots',
         rebuildReportDubs: 'Re-dubbed lines',
         rebuildReportJson: 'Remake report (JSON)',
         rebuildExecuteHint:
-          'Turn off to emit the plan only (no model calls at all), then enable after checking the list',
-        rebuildMaxShots: 'Max shots',
+          'Turn off to emit the execution report only (no model calls), then enable after checking',
+        rebuildMaxShots: 'Max AI batch units',
         rebuildMaxShotsHint:
-          'How many clips the per-shot mode generates at most (default 12), so a stray click cannot burn dozens of calls',
+          'Maximum G1..Gk generation batches executed per run (default 24) to prevent accidental overspend',
         rebuildKeepAudio: 'Keep original audio',
-        rebuildBurnSubtitles: 'Burn transcript subtitles',
-        rebuildDuration: 'Clip duration (s)',
-        rebuildDurationPlaceholder: 'Empty = follow shot duration',
+        rebuildBurnSubtitles: 'Burn layered packaging & subtitles (ASS)',
+        rebuildCleanOverlays: 'Strip burned-in overlays from first frames (clean plate)',
+        rebuildUseCache: 'Reuse cached clips for unchanged generation units',
+        rebuildRenderCompare: 'Also render side-by-side Original | Remake video (compare.mp4)',
+        rebuildReportLocal: 'Zero-cost local clips',
+        rebuildPreviewOutput: 'Remake output',
+        rebuildPreviewCompare: 'Side-by-side compare',
+        batchVariantsTitle: 'Batch Variant Matrix (1-to-N)',
+        batchVariantsCount: '{n} variant(s)',
+        batchVariantsHint:
+          'Generate multiple persona / voice / 3s-hook / visual shot variants from one breakdown timeline (unchanged segments reuse cache).',
+        batchVariantsClear: 'Clear variants',
+        batchVariantsJsonTitle: 'Batch Variant Matrix JSON (SemanticBatchVariantSpec[])',
+        batchVariantsPlaceholder: `[{'{'}"id":"v1","title":"Humorous host","instruction":"Light stand-up tone","dubVoice":"male-humorous"{'}'}]`,
+        rebuildReportVariants: 'Generated variants',
+        summaryVerdict: 'Breakdown verdict',
+        summaryConfidence: 'Forensic confidence',
+        rebuildDuration: 'Fixed batch duration (s)',
+        rebuildDurationPlaceholder: 'Empty = follow unit duration',
         rebuildResolution: 'Resolution',
         rebuildAspectRatio: 'Aspect ratio',
         rebuildPromptPointer:
-          'Shot content, lines and single-shot prompts are edited in the Edit panel of the upstream Video breakdown timeline (double-click the breakdown node).',
-        timelineJson: 'Timeline JSON (no upstream)',
+          'Per-shot content, lines, entity swaps, and G1..Gk batch prompts are edited directly in the upstream Video breakdown workspace (double-click the breakdown node).',
+        timelineJson: 'Timeline & source path fallback (advanced)',
         timelineJsonPlaceholder: 'Paste Semantic Timeline JSON',
         timelineJsonHint:
-          'Used only when the text input is unwired; with upstream text, run reads the upstream payload',
+          'Used only when the upstream Breakdown Timeline port is unwired; upstream output takes precedence when wired',
         summaryId: 'Timeline id',
-        summaryEvents: 'Events',
-        summaryBeats: 'Beats',
-        summaryIntents: 'Intents'
+        summaryShots: 'Shots',
+        summaryUnits: 'Remake units (AI + local)',
+        summaryEntities: 'Cast / entities'
       },
       reshoot: {
         hint: 'Connect a source video and double-click the node to open the reshoot desk: locate the start and end times to edit, write the change, and run — only that segment is regenerated while the rest stays intact. Works best with Seedance 2.5 (timestamp-level video editing)',
@@ -7816,11 +7919,6 @@ export default {
             uiButton: 'UI button',
             animIcon: 'Icon motion',
             illustFlat: 'Flat illustration'
-          },
-          semanticCompile: {
-            keepOriginal: 'Stay close to the original',
-            productDetail: 'Highlight product details',
-            cinematic: 'Cinematic upgrade'
           },
           spatialWorld: {
             interior: 'Interior scene',

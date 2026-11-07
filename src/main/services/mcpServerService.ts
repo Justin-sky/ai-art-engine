@@ -1472,62 +1472,76 @@ const TOOL_DEFS: McpToolDef[] = [
   },
   {
     name: 'semantic_analyze_video',
-    title: '视频拆解',
+    title: '视频逆向拆解',
     description:
-      '对视频资产跑 Semantic Timeline 切镜分析（媒体事实 + 场景切镜 + 关键帧），写入工程 Semantic/<id>/。返回 timelineId 与镜头列表。完整事件/转写需后续步骤。',
+      '对工程内视频资产或视频相对路径跑四轴逆向拆解分析（容器溯源 GB 45438/C2PA + 切镜与转场精修 + 11 类制作类型贝叶斯判定 + 多轨声音取证 + 分流复刻方案 + report.md），写入 Semantic/<id>/。',
     inputSchema: {
       type: 'object',
       properties: {
-        assetId: { type: 'string', description: '视频资产 id' },
-        vocabulary: {
+        assetId: { type: 'string', description: '视频资产 id（与 videoRelativePath 二选一）' },
+        videoRelativePath: {
           type: 'string',
-          description: '节拍词表 id，默认 commerce.v1'
+          description: '工程内视频相对路径（无资产记录时可直接传路径）'
         },
         transcribe: {
           type: 'boolean',
           description: '是否调转写模型拿话语证据（默认 true；失败降级并写入 notes）'
         }
-      },
-      required: ['assetId']
+      }
     },
     handler: async (args) => {
       assertProjectOpen()
-      const assetId = readString(args, 'assetId')
-      const vocabulary = optionalString(args, 'vocabulary') || 'commerce.v1'
-      const asset = findAssetOrThrow(assetId)
-      if (asset.type !== 'video') throw new Error('assetId must be a video asset')
+      const assetId = optionalString(args, 'assetId')
+      const videoRelativePath = optionalString(args, 'videoRelativePath')
+      if (!assetId && !videoRelativePath) {
+        throw new Error('assetId or videoRelativePath is required')
+      }
+      if (assetId) {
+        const asset = findAssetOrThrow(assetId)
+        if (asset.type !== 'video') throw new Error('assetId must be a video asset')
+      }
       const { semanticAnalyzeForGraph } = await import('./semanticTimeline/graphBridge')
       const result = await semanticAnalyzeForGraph({
         sourceAssetId: assetId,
-        vocabulary,
+        videoRelativePath,
         transcribe: args.transcribe !== false,
         separateAudio: true,
         detectEntities: true
       })
+      const bd = result.timeline.breakdown
       return {
         timelineId: result.timeline.id,
         method: result.method,
         durationSec: result.timeline.evidence.mediaFacts.durationSec,
         fps: result.timeline.evidence.mediaFacts.fps,
+        verdict: bd?.summary.verdict,
+        confidence: bd?.summary.confidence,
+        productionMix: bd?.summary.productionMix,
+        reportRelativePath: bd?.summary.reportRelativePath,
+        storyboardRelativePath: bd?.summary.storyboardRelativePath,
         shotCount: result.shots.length,
-        eventCount: result.timeline.events.length,
-        beatCount: result.timeline.beats.length,
+        unitCount: bd?.productionPlan.units.length ?? 0,
+        localUnitCount: bd?.productionPlan.localUnits.length ?? 0,
         entityCount: result.timeline.entities.length,
         utteranceCount: result.utterances.length,
         notes: result.notes,
-        shots: result.shots.map((s) => ({
+        shots: (result.timeline.shots ?? []).map((s) => ({
           id: s.id,
           start: s.range.start,
-          end: s.range.end
+          end: s.range.end,
+          productionLabel: s.base?.label,
+          confidence: s.base?.confidence,
+          executor: s.replication?.executor,
+          unitId: s.replication?.unitId
         }))
       }
     }
   },
   {
     name: 'semantic_timeline_read',
-    title: '读取语义时间线',
+    title: '读取语义拆解时间线',
     description:
-      '读取 Semantic/<timelineId>/timeline.json 摘要：事件、节拍、实体、意图数量与列表。',
+      '读取 Semantic/<timelineId>/timeline.json 完整摘要：四轴拆解结论、11 类制作占比、分流复刻方案（G1/K1/S1/C1）、逐镜取证分类、台词与实体。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1558,22 +1572,58 @@ const TOOL_DEFS: McpToolDef[] = [
         id: doc.id,
         schema: doc.schema,
         source: doc.source,
-        eventCount: doc.events.length,
-        beatCount: doc.beats.length,
+        breakdown: doc.breakdown
+          ? {
+              verdict: doc.breakdown.summary.verdict,
+              confidence: doc.breakdown.summary.confidence,
+              decidedBy: doc.breakdown.summary.decidedBy,
+              productionMix: doc.breakdown.summary.productionMix,
+              reportRelativePath: doc.breakdown.summary.reportRelativePath,
+              storyboardRelativePath: doc.breakdown.summary.storyboardRelativePath,
+              provenance: doc.breakdown.provenance,
+              soundSources: doc.breakdown.audioAnalysis?.soundSources,
+              openQuestions: doc.breakdown.wholeVideo?.openQuestions ?? [],
+              productionPlan: {
+                summaryZh: doc.breakdown.productionPlan.summaryZh,
+                summaryEn: doc.breakdown.productionPlan.summaryEn,
+                units: doc.breakdown.productionPlan.units,
+                localUnits: doc.breakdown.productionPlan.localUnits,
+                shootingSetups: doc.breakdown.productionPlan.shootingSetups,
+                codeSpecs: doc.breakdown.productionPlan.codeSpecs,
+                userAssetsNeeded: doc.breakdown.productionPlan.userAssetsNeeded
+              }
+            }
+          : undefined,
+        shotCount: doc.shots?.length ?? 0,
+        unitCount: doc.breakdown?.productionPlan.units.length ?? 0,
+        localUnitCount: doc.breakdown?.productionPlan.localUnits.length ?? 0,
         entityCount: doc.entities.length,
-        intentCount: doc.intents.length,
-        events: doc.events.map((e) => ({
-          id: e.id,
-          label: e.label,
-          start: e.timeRange.start,
-          end: e.timeRange.end,
-          evidence: e.evidence
+        shots: (doc.shots ?? []).map((s) => ({
+          id: s.id,
+          start: s.range.start,
+          end: s.range.end,
+          removed: s.removed ?? false,
+          productionLabel: s.base?.label,
+          confidence: s.base?.confidence,
+          disputed: s.base?.disputed,
+          evidence: s.base?.evidence,
+          executor: s.replication?.executor,
+          unitId: s.replication?.unitId,
+          videoPrompt: s.replication?.videoPrompt,
+          description: s.visual?.description
         })),
-        beats: doc.beats.map((b) => ({
-          id: b.id,
-          type: b.type,
-          start: b.timeRange.start,
-          end: b.timeRange.end
+        dialogue: (doc.dialogue ?? []).map((d) => ({
+          id: d.id,
+          start: d.range.start,
+          end: d.range.end,
+          speaker: d.speaker,
+          text: d.text
+        })),
+        entities: doc.entities.map((e) => ({
+          id: e.id,
+          kind: e.kind,
+          name: e.name,
+          appearances: e.appearances.length
         }))
       }
     }

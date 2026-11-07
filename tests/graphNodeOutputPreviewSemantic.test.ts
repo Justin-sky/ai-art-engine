@@ -18,4 +18,13 @@ describe('GraphNodeOutputPreview semanticTimeline', () => {
       "into.push({ key: `semanticTimeline:${value.doc?.id ?? ''}`, kind: 'text', text: value.text })"
     )
   })
+
+  it('视频/声音引用节点回退预览不会同时压入 node-preview 与 bound 两条重复项', () => {
+    expect(source).toContain(
+      '!into.some((item) => item.kind === kind || (!!node.assetId && item.assetId === node.assetId))'
+    )
+    expect(source).toContain(
+      'if (!source.assetId || !source.assetType || into.length > beforeFallback) return'
+    )
+  })
 })

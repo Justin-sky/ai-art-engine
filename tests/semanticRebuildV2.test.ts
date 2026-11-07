@@ -8,8 +8,7 @@ import {
   dubTempo,
   layoutSegments,
   mapCuesToOutput,
-  muteVolumeExpression,
-  normalizeCommandKind
+  muteVolumeExpression
 } from '../src/shared/semanticTimeline'
 import {
   generateHardCutFixture,
@@ -47,15 +46,12 @@ describe('重建输出时间轴（纯函数）', () => {
     ])
   })
 
-  it('静音表达式 / 配音变速 / 命令名规范化', () => {
+  it('静音表达式与配音变速', () => {
     expect(muteVolumeExpression([])).toBe('1')
     expect(muteVolumeExpression([{ start: 1, end: 2 }])).toBe('if(between(t,1.000,2.000),0,1)')
     expect(dubTempo(2, 2)).toBe(1)
     expect(dubTempo(3, 2)).toBe(1.5)
     expect(dubTempo(10, 2)).toBe(2)
-    expect(normalizeCommandKind('camera.push_in')).toBe('camera.pushIn')
-    expect(normalizeCommandKind('vfx.brighten')).toBe('light.brighten')
-    expect(normalizeCommandKind('grade.warm')).toBe('grade.warm')
   })
 })
 

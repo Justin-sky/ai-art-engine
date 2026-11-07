@@ -6,20 +6,16 @@
 import {
   diffAgainstBaseline,
   type DialogueLine,
-  type DirectorIntent,
   type Entity,
-  type SemanticEvent,
   type SemanticShot,
-  type SemanticTimeline,
-  type StoryBeat
+  type SemanticTimeline
 } from '@shared/semanticTimeline'
-import { resolveTriggerRange } from './semanticTimelineView'
 
-export type SemanticSelectionKind = 'shot' | 'dialogue' | 'event' | 'beat' | 'intent' | 'entity'
+export type SemanticSelectionKind = 'shot' | 'dialogue' | 'entity'
 
 /**
- * 选中项。`clip` 区分同一对象的多个片段：实体＝第几次出现，意图＝哪条制作轨道。
- * 高亮按片段算（点一个片段不让整行亮），编辑按对象算（改的是同一个实体 / 意图）。
+ * 选中项。`clip` 区分同一对象的多个片段（实体＝第几次出现）。
+ * 高亮按片段算（点一个片段不让整行亮），编辑按对象算（改的是同一个实体）。
  */
 export interface SemanticSelection {
   kind: SemanticSelectionKind
@@ -30,9 +26,6 @@ export interface SemanticSelection {
 export type ResolvedSelection =
   | { kind: 'shot'; item: SemanticShot; index: number }
   | { kind: 'dialogue'; item: DialogueLine }
-  | { kind: 'event'; item: SemanticEvent }
-  | { kind: 'beat'; item: StoryBeat }
-  | { kind: 'intent'; item: DirectorIntent; track?: string }
   | { kind: 'entity'; item: Entity; appearance: number }
 
 export interface TimeSpan {
@@ -66,23 +59,6 @@ export function resolveSelection(
       const item = arr(doc.dialogue).find((d) => d.id === id)
       return item ? { kind: 'dialogue', item } : null
     }
-    case 'event': {
-      const item = arr(doc.events).find((e) => e.id === id)
-      return item ? { kind: 'event', item } : null
-    }
-    case 'beat': {
-      const item = arr(doc.beats).find((b) => b.id === id)
-      return item ? { kind: 'beat', item } : null
-    }
-    case 'intent': {
-      const item = arr(doc.intents).find((i) => i.id === id)
-      if (!item) return null
-      return {
-        kind: 'intent',
-        item,
-        ...(typeof selection.clip === 'string' ? { track: selection.clip } : {})
-      }
-    }
     case 'entity': {
       const item = arr(doc.entities).find((e) => e.id === id)
       if (!item) return null
@@ -90,22 +66,24 @@ export function resolveSelection(
       const appearance = Number.isInteger(n) && n >= 0 && n < arr(item.appearances).length ? n : 0
       return { kind: 'entity', item, appearance }
     }
+    default:
+      return null
   }
 }
 
-/** 选中对象占据的时间（实体＝被点的那次出现；意图＝触发事件的时间） */
-export function selectionSpan(doc: SemanticTimeline, resolved: ResolvedSelection): TimeSpan | null {
+/** 选中对象占据的时间（实体＝被点的那次出现） */
+export function selectionSpan(
+  _doc: SemanticTimeline,
+  resolved: ResolvedSelection
+): TimeSpan | null {
   switch (resolved.kind) {
     case 'shot':
     case 'dialogue':
       return resolved.item.range ?? null
-    case 'event':
-    case 'beat':
-      return resolved.item.timeRange ?? null
-    case 'intent':
-      return resolveTriggerRange(arr(doc.events), resolved.item.trigger)
     case 'entity':
       return arr(resolved.item.appearances)[resolved.appearance]?.range ?? null
+    default:
+      return null
   }
 }
 

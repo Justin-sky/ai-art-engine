@@ -258,16 +258,6 @@ function extractSemanticNodeVideos(node: GraphNode): GraphVideoItem[] {
     typeof params.sourceRelativePath === 'string' ? params.sourceRelativePath.trim() : ''
   if (sourceRel) push(sourceRel)
 
-  const planRaw = typeof params.planJson === 'string' ? params.planJson.trim() : ''
-  if (planRaw) {
-    try {
-      const plan = JSON.parse(planRaw) as { sourceRelativePath?: string }
-      if (plan?.sourceRelativePath) push(plan.sourceRelativePath)
-    } catch {
-      // ignore
-    }
-  }
-
   const timelineRaw = typeof params.timelineJson === 'string' ? params.timelineJson.trim() : ''
   if (timelineRaw) {
     try {
@@ -978,7 +968,6 @@ function collectFromVideoNodes(doc: GraphDocument, hostId: string): ScriptTimeli
       node.typeId === 'film.workbench' ||
       node.typeId === 'film.render' ||
       node.typeId === 'semantic.rebuild' ||
-      node.typeId === 'semantic.compile' ||
       node.typeId === 'semantic.analyze' ||
       Boolean(node.params?.rebuildLastOutput?.trim()) ||
       Boolean(node.params?.sourceRelativePath?.trim()) ||

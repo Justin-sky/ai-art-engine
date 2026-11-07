@@ -332,14 +332,6 @@ describe('collectScriptTimelineSources', () => {
           params: {}
         },
         {
-          id: 'sem-compile',
-          typeId: 'semantic.compile',
-          category: 'note',
-          title: 'Compile',
-          position: { x: 200, y: 0 },
-          params: {}
-        },
-        {
           id: 'sem-rebuild',
           typeId: 'semantic.rebuild',
           category: 'note',
@@ -362,18 +354,11 @@ describe('collectScriptTimelineSources', () => {
           source: 'src-video',
           sourcePort: 'out',
           target: 'sem-analyze',
-          targetPort: 'in-video'
+          targetPort: 'in'
         },
         {
           id: 'e2',
           source: 'sem-analyze',
-          sourcePort: 'out',
-          target: 'sem-compile',
-          targetPort: 'in'
-        },
-        {
-          id: 'e3',
-          source: 'sem-compile',
           sourcePort: 'out',
           target: 'sem-rebuild',
           targetPort: 'in'

@@ -482,6 +482,20 @@ function pushLocalMediaPreview(
   const rel = opts.relativePath?.trim()
   if (rel) {
     if (kind === 'video' && isImageFilePath(rel)) {
+      const boundVideoAsset = assetById(opts.assetId)
+      if (
+        boundVideoAsset?.type === 'video' &&
+        isVideoFilePath(boundVideoAsset.relativePath || '')
+      ) {
+        into.push({
+          key,
+          kind: 'video',
+          src: `asset:${boundVideoAsset.id}`,
+          label: opts.label,
+          assetId
+        })
+        return
+      }
       into.push({ key, kind: 'image', src: `rel:${rel}`, label: opts.label, assetId })
       return
     }
@@ -752,7 +766,10 @@ function collectFallback(into: PreviewItem[]): void {
           assetId: node.assetId
         })
       }
-    } else if (kind) {
+    } else if (
+      kind &&
+      !into.some((item) => item.kind === kind || (!!node.assetId && item.assetId === node.assetId))
+    ) {
       into.push({
         key: `bound:${node.assetId}`,
         kind,
@@ -873,6 +890,7 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
     return
   }
 
+  const beforeFallback = into.length
   const mediaKind = mediaKindFromNode(source) ?? assetPreviewKind(source.assetType)
   const previewRel = source.params.previewRelativePath?.trim()
   const previewData = source.params.previewDataUrl?.trim()
@@ -897,7 +915,7 @@ function pushNodeLocalPreview(source: GraphNode, into: PreviewItem[]): void {
       }
     }
   }
-  if (!source.assetId || !source.assetType) return
+  if (!source.assetId || !source.assetType || into.length > beforeFallback) return
   const kind = assetPreviewKind(source.assetType)
   if (kind === 'text') {
     const asset = assetById(source.assetId)

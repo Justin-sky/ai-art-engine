@@ -45,9 +45,8 @@ const CANVAS_ADDABLE_NODE_TYPES = [
   'voice.select',
   'video.lipSync',
   'video.framePull',
-  // 视频语义分组
+  // 视频语义分组（两节点直连：视频拆解 -> 视频重制）
   'semantic.analyze',
-  'semantic.compile',
   'semantic.rebuild',
   'image.toPrompt',
   'decisions.judge',

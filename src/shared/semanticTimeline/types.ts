@@ -1,17 +1,21 @@
 /**
- * Semantic Timeline — `aiart.semantic-timeline@2`（视频语义中间表示，VSIR）
+ * Semantic Timeline — `aiart.semantic-timeline@2`（四轴逆向拆解与分流复刻 IR）
  *
- * 借鉴编译原理的逆向视频工程：
- *   前端（语义分析）  原视频 → 证据层（Evidence）+ 结构化镜头树（shots / dialogue / textLayers）
- *   中间表示          本文档；用户/agent 的修改直接改字段，并记一条 `edits` 审计
- *   中端（语义编译）  与 `baseline`（分析时的内容哈希）比对得出**脏镜头 / 脏台词**
- *   后端（语义重建）  未改镜头直通原片段、改过的镜头生成、改过的台词重新配音
+ * 两节点直连管线：
+ *   1. `semantic.analyze`（视频拆解）：原片 → 确定性信号取证 + 多模态 VLM 四轴拆解 → `SemanticTimeline`
+ *   2. `semantic.rebuild`（视频重制）：`SemanticTimeline` + 参考图 → 按 `G1..Gk` 单元合批生成 + `K1..Kk` 零成本运镜 + 原片直通拼接
  *
- * 不变量：零修改时 `rebuild(compile(analyze(V)))` 逐镜直通，还原原片。
- *
- * v1 → v2：v1 文档没有内联镜头树 / 台词 / 基线；读入时由 `migrateSemanticTimeline`
- * 自动补齐（见 `migrate.ts`）。本文件只含类型。
+ * 不变量：局部改片模式（`edit`）下零修改时逐镜直通还原原片。
  */
+
+import type {
+  BreakdownAnalysis,
+  ShotBaseClassification,
+  ShotForensicFeatures,
+  ShotLayerItem,
+  ShotMaterialProvenance,
+  ShotReplicationRoute
+} from './reaTypes'
 
 export const SEMANTIC_TIMELINE_SCHEMA = 'aiart.semantic-timeline@2' as const
 export const SEMANTIC_TIMELINE_SCHEMA_V1 = 'aiart.semantic-timeline@1' as const
@@ -29,15 +33,7 @@ export interface TimeRange {
 
 export type Origin = 'analysis' | 'agent' | 'user'
 
-export type SemanticEventType =
-  'story' | 'character' | 'camera' | 'emotion' | 'audio' | 'text' | 'product'
-
-export type SemanticTrackKind =
-  'story' | 'character' | 'camera' | 'emotion' | 'audio' | 'text' | 'vfx' | 'edit'
-
 export type EntityKind = 'person' | 'product' | 'object' | 'text' | 'logo' | 'background' | 'voice'
-
-export type DirectorGoal = 'emphasize' | 'reveal' | 'build_tension' | 'clarify' | 'sell' | string
 
 export type CameraAction =
   | 'push_in'
@@ -66,10 +62,14 @@ export interface MediaFacts {
 export interface ShotEvidence {
   id: string
   range: TimeRange
-  /** 相对 semantic 根的关键帧路径（首/中/尾） */
-  keyframes: { first?: string; middle?: string; last?: string }
+  /** 相对 semantic 根的关键帧路径（首/中/尾 + 三联帧时序拼图 strip） */
+  keyframes: { first?: string; middle?: string; last?: string; strip?: string }
   /** 切镜置信度 0..1 */
   confidence: number
+  /** 入点转场类型（硬切 / 淡入 / 叠化 / 闪白 / 版式切换） */
+  transitionIn?: ShotTransition
+  /** 确定性信号取证特征（噪点 / 推拉 / 调色 / 布光 / 纯色块 / 轴向边缘） */
+  forensics?: ShotForensicFeatures
 }
 
 export interface WordTiming {
@@ -106,7 +106,7 @@ export interface Entity {
   kind: EntityKind
   name: string
   appearances: EntityAppearance[]
-  /** 旧版"参考资产 id"（换人 / 换商品）；新代码写 `replacement`，读取时两者都认 */
+  /** 身份参考资产 id（兼容单资产引用；局部替换优先写 `replacement`） */
   reference?: { assetId: string }
   /** 只有带检测框或掩码的实体才允许像素级替换 */
   pixelEditable: boolean
@@ -195,17 +195,13 @@ export interface OcrEvidenceFile {
   regions: OcrRegion[]
 }
 
-// ─── Structured shot tree (v2) ──────────────────────────────────────────────
+// ─── Structured 4-axis shot tree ────────────────────────────────────────────
 
-/** 镜头语言（结构化；以前只在 LLM 富化时拼成一句话、用完即丢） */
+/** 镜头语言（景别 / 机位角度 / 运镜 / 焦段） */
 export interface ShotCamera {
-  /** 景别：特写 / 近景 / 中景 / 全景 … */
   shotSize?: string
-  /** 机位角度：平视 / 俯拍 / 仰拍 … */
   angle?: string
-  /** 运镜 */
   motion?: CameraAction
-  /** 焦段 / 镜头提示 */
   lens?: string
 }
 
@@ -229,10 +225,8 @@ export interface ShotSubject {
 export type ShotTransition = 'cut' | 'fade' | 'dissolve' | 'wipe' | string
 
 /**
- * 结构化镜头节点（VSIR 的"语句"）。
- *
- * `sourceSegment` 指向原片的入/出点 —— 未修改的镜头在重建时**直接裁原片**，这是
- * "零修改还原原片"的根据；被修改的镜头才交给生成模型。
+ * 结构化镜头节点。
+ * `sourceSegment` 指向原片的入/出点 —— 未修改镜头或受保护真实素材在重制时直接裁原片。
  */
 export interface SemanticShot {
   id: string
@@ -240,7 +234,7 @@ export interface SemanticShot {
   /** 原片入/出点（秒）；删镜 / 重排后仍指向原片 */
   sourceSegment: { start: number; end: number }
   /** 相对 semantic 根的关键帧路径（同 ShotEvidence） */
-  keyframes: { first?: string; middle?: string; last?: string }
+  keyframes: { first?: string; middle?: string; last?: string; strip?: string }
   transitionIn?: ShotTransition
   camera: ShotCamera
   visual: ShotVisual
@@ -249,12 +243,22 @@ export interface SemanticShot {
   dialogueIds: string[]
   /** 本镜内的画面文字 id（`textLayers[].id`） */
   textLayerIds: string[]
-  /** 人工补充 / 覆盖本镜画面提示词（非空 = 视作修改，重建时重新生成） */
+  /** 人工补充 / 覆盖本镜画面提示词（非空 = 视作修改，重制时重新生成） */
   promptOverride?: string
-  /** 删除本镜（重建时跳过） */
+  /** 删除本镜（重制时跳过） */
   removed?: boolean
   origin: Origin
   locked?: boolean
+  /** `rea-video` 确定性信号取证特征 */
+  forensics?: ShotForensicFeatures
+  /** `rea-video` 11 类底层制作分类 + 贝叶斯证据融合结果 */
+  base?: ShotBaseClassification
+  /** `rea-video` 素材真伪溯源（真实录屏/实拍素材 vs 可生成参考元素） */
+  material?: ShotMaterialProvenance
+  /** `rea-video` 纵向剪辑包装层（字幕 / 花字 / 标题 / 贴纸 / 画中画） */
+  layers?: ShotLayerItem[]
+  /** `rea-video` 分流复刻路由（video_gen / local_ffmpeg / reshoot / code_render / screen_record） */
+  replication?: ShotReplicationRoute
 }
 
 /** 台词（结构化；`sourceText` 是分析时的原文，`text` 被改 → 重新配音） */
@@ -286,17 +290,14 @@ export type SemanticEditOp =
   | 'shot.remove'
   | 'shot.restore'
   | 'shot.prompt'
+  | 'shot.split'
+  | 'shot.merge'
+  | 'unit.prompt'
   | 'dialogue.update'
   | 'entity.update'
   /** 局部替换：`patch.replacement`（null = 清除） */
   | 'entity.replace'
   | 'speaker.update'
-  /** 语义层：改了会经语义指纹让覆盖的镜头重新生成（见 shotSemantics.ts） */
-  | 'event.update'
-  | 'event.remove'
-  | 'beat.update'
-  | 'intent.update'
-  | 'intent.remove'
 
 /** 修改审计（文档字段已是修改后的状态；这里只记录"谁在何时改了什么"） */
 export interface SemanticEdit {
@@ -306,77 +307,16 @@ export interface SemanticEdit {
   patch: Record<string, unknown>
   origin: Origin
   at: string
-  /**
-   * 语义层修改：这次修改改变了哪些镜头的语义输入（应用时算好）。
-   * 用于解释"为什么要重新生成"，以及重设基线时保留这些镜头的旧指纹。
-   */
-  affectedShots?: string[]
 }
 
 /**
  * 基线：分析时（含富化）每个镜头 / 台词的内容哈希。
- * 编译把当前内容哈希与它比对，得到脏集合；没有基线的镜头一律视作未改。
+ * 重制时把当前内容哈希与它比对，得到脏集合；没有基线的镜头一律视作未改。
  */
 export interface SemanticBaseline {
   shots: Record<string, string>
   dialogue: Record<string, string>
-  /**
-   * 每镜的**语义输入**指纹（覆盖本镜的事件 / 节拍 / 意图，见 `shotSemanticSignature`）。
-   * 可选：旧文档没有它，加载时补齐；缺省时语义层改动不参与脏检测。
-   */
-  semantic?: Record<string, string>
   createdAt: string
-}
-
-// ─── Semantic layer ─────────────────────────────────────────────────────────
-
-export interface SemanticEvent {
-  id: string
-  timeRange: TimeRange
-  type: SemanticEventType
-  /** 机器可读标签，如 dramatic_reveal / price_announce */
-  label: string
-  description: string
-  importance: number
-  entities: string[]
-  evidence: string[]
-  intents: string[]
-  confidence: number
-  origin: Origin
-  locked?: boolean
-}
-
-export interface StoryBeat {
-  id: string
-  type: string
-  vocabulary: string
-  timeRange: TimeRange
-  emotion: { label: string; intensity: number }
-  description: string
-  events: string[]
-  /** 缺省 = 分析产出；用户改过为 'user'（重新分析时据此保留修改） */
-  origin?: Origin
-}
-
-export interface IntentTechnique {
-  track: SemanticTrackKind
-  action: string
-  params?: Record<string, unknown>
-}
-
-export interface DirectorIntent {
-  id: string
-  /** 事件 ID 或事件 label */
-  trigger: string
-  goal: DirectorGoal
-  techniques: IntentTechnique[]
-  reason: string
-  origin: Origin
-}
-
-export interface SemanticTrack {
-  kind: SemanticTrackKind
-  items: string[]
 }
 
 // ─── Document ───────────────────────────────────────────────────────────────
@@ -395,58 +335,20 @@ export interface SemanticTimeline {
   source: SemanticTimelineSource
   evidence: EvidenceIndex
   entities: Entity[]
-  events: SemanticEvent[]
-  beats: StoryBeat[]
-  intents: DirectorIntent[]
-  tracks: SemanticTrack[]
-  vocabulary?: string
-  /** v2：结构化镜头树（迁移 / 分析时由证据内联） */
+  /** 结构化镜头树 */
   shots?: SemanticShot[]
-  /** v2：全部台词（来自转写，可修改） */
+  /** 全部台词（来自转写，可修改） */
   dialogue?: DialogueLine[]
-  /** v2：画面文字层（OCR） */
+  /** 画面文字层（OCR） */
   textLayers?: OcrRegion[]
-  /** v2：说话人符号表 */
+  /** 说话人符号表 */
   speakers?: SpeakerProfile[]
-  /** v2：修改审计 */
+  /** 修改审计 */
   edits?: SemanticEdit[]
-  /** v2：分析基线（脏检测） */
+  /** 分析基线（脏检测） */
   baseline?: SemanticBaseline
+  /** `rea-video` 四轴逆向工程总表（容器溯源 + 声源取证 + 整片角色道具 + 分流复刻方案） */
+  breakdown?: BreakdownAnalysis
   updatedAt: string
   createdAt: string
-}
-
-// ─── Market packs (data only) ───────────────────────────────────────────────
-
-export interface BeatVocabulary {
-  id: string
-  title: string
-  beats: { type: string; label: string; description?: string }[]
-}
-
-export interface DirectorRule {
-  id: string
-  when: {
-    eventLabel?: string
-    beatType?: string
-    emotion?: string
-  }
-  then: IntentTechnique[]
-  reason?: string
-}
-
-export interface DirectorRulePack {
-  id: string
-  title: string
-  rules: DirectorRule[]
-}
-
-export interface SemanticPack {
-  schemaVersion: 1
-  id: string
-  title: string
-  kind: 'vocabulary' | 'rules' | 'persona'
-  vocabulary?: BeatVocabulary
-  rules?: DirectorRulePack
-  persona?: { id: string; title: string; systemPrompt: string }
 }

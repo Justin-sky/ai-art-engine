@@ -93,15 +93,10 @@ function sanitizeGraphValue(value: GraphValue): GraphValue | undefined {
     case 'camera':
       return value
     /**
-     * 语义链路的两个一等值：**必须落盘**。
-     *
-     * 漏掉它们时，存档 / 重开工程后节点状态还是 `done` 但 outputs 已空：
-     * 分析节点的时间线没了 → 编译节点读不到上游；编译节点的提示词计划没了 →
-     * 在重建节点上 Cook 只会拿到空计划，既不出片也不报错（实测踩到）。
-     * 两个 kind 都是纯 JSON（体积与图库节点同量级），没有 dataUrl 需要剥离。
+     * 语义时间线文档值：**必须落盘**。
+     * 存档 / 重开工程后保留 outputs，避免下游重制节点单独 Cook 时丢失上游时间线。
      */
     case 'semanticTimeline':
-    case 'videoPrompts':
     /** 影视分镜文档 / 设定库：纯 JSON（设定图只存相对路径），同样必须落盘 */
     case 'storyboard':
     case 'filmCast':

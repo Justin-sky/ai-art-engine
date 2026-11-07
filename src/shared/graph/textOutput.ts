@@ -78,12 +78,8 @@ export function isNodeTextCapable(node: GraphNode): boolean {
   if (isGameProductionNode(node)) return false
   // 可玩 HTML：cook 后 params 可能残留整页 HTML，绝不能当记事本/卡片正文预览
   if (node.typeId === 'asset.gamePlay' || node.assetType === 'gamePlay') return false
-  // Semantic Timeline 工具：category=note 但产出 JSON 管线，双击应进语义视图 / 结果预览，不是记事本
-  if (
-    node.typeId === 'semantic.analyze' ||
-    node.typeId === 'semantic.compile' ||
-    node.typeId === 'semantic.rebuild'
-  ) {
+  // Semantic Timeline 工具：category=note 但产出 JSON/视频管线，双击应进语义工作台 / 结果预览，不是记事本
+  if (node.typeId === 'semantic.analyze' || node.typeId === 'semantic.rebuild') {
     return false
   }
   // 脚本节点：category=note 但双击应打开代码编辑器，不是记事本

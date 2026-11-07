@@ -65,7 +65,7 @@ import {
   resolveDefaultVoice,
   supportsModel3dRig,
   supportsModel3dSegment,
-  visionGroundingScore
+  supportsVisionTextModel
 } from '@shared/modelProvider'
 import { describeDecisionVerdicts, resolveDecisionVerdicts } from '@shared/decisionQuestion'
 import {
@@ -488,29 +488,42 @@ class ModelProviderFacade {
     const providers = settingsService.get()?.models?.providers ?? []
     const isVisionTask = Boolean(visionGrounding || rest.images?.length)
     const wantedModel = rest.model?.trim() || ''
-    // 视觉定位/多模态任务且未指定实例：优先路由到定位能力最强的已启用视觉模型；
-    // 只指定了模型 id（未指定实例）时，找真正勾选了该模型的实例，而不是第一个文本实例
-    const grounding =
-      !isVisionTask || rest.providerInstanceId?.trim()
-        ? null
-        : wantedModel
-          ? (() => {
-              const provider = providers.find(
-                (p) => p.enabled && modalityConfig(p, 'text').selectedModelIds.includes(wantedModel)
-              )
-              return provider ? { provider, modelId: wantedModel } : null
-            })()
-          : pickVisionGroundingProvider(providers)
-    const primary = grounding
-      ? grounding
-      : resolveActiveProvider('text', rest.providerInstanceId, rest.model)
+    // 1) visionGrounding=true（精准坐标定位）：未指定模型时优先选 box_2d 定位最强的模型；
+    // 2) 普通附图多模态理解（如视频拆解实体识别与四轴取证）：若用户默认文本模型本身支持多模态（如 DeepSeek V4.1 Flash），
+    //    优先尊重用户当前激活的多模态大语言模型；仅当默认文本模型为纯文本（如旧版 deepseek-chat）时才自动切到已启用的多模态模型。
+    let primary: { provider: ModelProviderInstance; modelId: string } | null = null
+    if (isVisionTask && !rest.providerInstanceId?.trim()) {
+      if (wantedModel) {
+        const matched = providers.find(
+          (p) => p.enabled && modalityConfig(p, 'text').selectedModelIds.includes(wantedModel)
+        )
+        if (matched) primary = { provider: matched, modelId: wantedModel }
+      } else if (visionGrounding) {
+        primary = pickVisionGroundingProvider(providers)
+      } else {
+        try {
+          const active = resolveActiveProvider('text', undefined, undefined)
+          if (supportsVisionTextModel(active.provider, active.modelId)) {
+            primary = active
+          }
+        } catch {
+          /* fall through to pickVisionGroundingProvider */
+        }
+        if (!primary) {
+          primary = pickVisionGroundingProvider(providers)
+        }
+      }
+    }
+    if (!primary) {
+      primary = resolveActiveProvider('text', rest.providerInstanceId, rest.model)
+    }
     const images = rest.images?.length ? ensureApiImageUrls(rest.images) : rest.images
     const payload = { ...rest, images }
 
     // 构建跨模型/跨提供商候选链：
-    // - 视觉定位/多模态任务：按 visionGroundingScore 降序遍历所有已启用视觉模型；
+    // - 视觉定位/多模态任务：遍历所有已启用的多模态大语言模型（含 DeepSeek V4.1 Flash / Gemini / Qwen-VL / Doubao Seed 等）；
     // - 常规文本任务：当首选模型因 OpenRouter ToS/隐私策略拒绝、配额耗尽或网关异常失败时，
-    //   自动回退到其余已启用的非 OpenAI / 国内文本模型（DeepSeek / 方舟 / 通义 / Gemini 等）
+    //   自动回退到其余已启用的非 OpenAI / 国内文本模型
     const attemptChain: Array<{ provider: ModelProviderInstance; modelId: string }> = [primary]
     const seen = new Set<string>([`${primary.provider.id}::${primary.modelId}`])
     const pushCandidate = (provider: ModelProviderInstance, modelId: string): void => {
@@ -531,7 +544,7 @@ class ModelProviderFacade {
       if (!provider.enabled) continue
       if (!provider.apiKey.trim() && !allowsEmptyApiKey(provider)) continue
       for (const modelId of modalityConfig(provider, 'text').selectedModelIds) {
-        if (isVisionTask && visionGroundingScore(modelId) <= 0) continue
+        if (isVisionTask && !supportsVisionTextModel(provider, modelId)) continue
         pushCandidate(provider, modelId)
       }
     }
@@ -559,9 +572,10 @@ class ModelProviderFacade {
         if (/Request was aborted|AbortError|请求被中断/i.test(msg)) {
           throw err
         }
-        // 非视觉任务仅在遇到上游 ToS/隐私策略拒绝、403/404/429/5xx 等路由故障时才跨实例降级
+        // 非视觉任务仅在遇到上游 ToS/隐私策略拒绝、403/404/429/5xx 等路由故障时才跨实例降级；
+        // 视觉/多模态任务（isVisionTask）遇到首选模型不支持图片（400）或失败时，自动继续尝试候选链中的下一个多模态模型
         if (
-          !visionGrounding &&
+          !isVisionTask &&
           i === 0 &&
           !/Terms of Service|数据策略|隐私设置|拒绝了该请求|429|403|404|500|502|503|504|quota|rate limit|网关超时|内部错误/i.test(
             msg

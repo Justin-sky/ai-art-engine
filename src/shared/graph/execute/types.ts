@@ -19,7 +19,7 @@ import type {
 } from '../types'
 import type { GraphImageReferenceMeta } from '../../modelProvider'
 import type { RigQaReport } from '../../blenderRigSkinPipeline'
-import type { SemanticTimeline, VideoPromptPlan } from '../../semanticTimeline'
+import type { SemanticTimeline } from '../../semanticTimeline'
 
 export type GraphNodeRunStatus =
   'idle' | 'pending' | 'running' | 'done' | 'error' | 'degraded' | 'skipped'
@@ -254,7 +254,7 @@ export interface GraphVideoValue {
 }
 
 /**
- * 语义时间线文档值（`semantic.analyze` 的出口、`semantic.compile` 的入口）。
+ * 语义时间线文档值（`semantic.analyze` 的出口、`semantic.rebuild` 的入口）。
  *
  * 为什么要**同时**带 `text`：
  * - 端口兼容规则允许 `semanticTimeline → text`（把整份文档喂给 LLM 指令节点或文本消费者），
@@ -262,24 +262,11 @@ export interface GraphVideoValue {
  * - 所以投影放在**端口边界**做（引擎装配 inputs 时按目标端口类型转换，见 execute/engine.ts），
  *   值本身把规范 JSON 文本一起带好，避免消费侧再序列化一次。
  *
- * 时间线专属的消费侧（语义事件/编译/修复/多版本）走 `doc`，不再 JSON.parse。
+ * 时间线专属的消费侧（视频重制）直接走 `doc`，不再 JSON.parse。
  */
 export interface GraphSemanticTimelineValue {
   kind: 'semanticTimeline'
   doc: SemanticTimeline
-  /** 规范 JSON 文本（2 空格缩进）：落到 text 口时由引擎投影过去 */
-  text: string
-}
-
-/**
- * 视频生成提示词计划值（语义编译 → 语义重建）。
- *
- * 与语义时间线值同理：结构化 `plan` 给重建节点用，`text` 是它的规范 JSON，
- * 落 `text` 口时由**端口边界**投影（见 execute/engine.ts 的 projectValueForPort）。
- */
-export interface GraphVideoPromptsValue {
-  kind: 'videoPrompts'
-  plan: VideoPromptPlan
   /** 规范 JSON 文本（2 空格缩进）：落到 text 口时由引擎投影过去 */
   text: string
 }
@@ -337,7 +324,6 @@ export interface GraphUiComponentsValue {
 
 export type GraphValue =
   | GraphSemanticTimelineValue
-  | GraphVideoPromptsValue
   | GraphFilmStoryboardValue
   | GraphFilmCastValue
   | GraphUiComponentsValue
@@ -896,8 +882,6 @@ export interface NodeExecuteContext {
   rebuildSemanticVideo?: (
     input: import('../../semanticTimeline').SemanticRebuildRequest
   ) => Promise<import('../../semanticTimeline').SemanticRebuildResponse>
-  /** 内置 + 已安装的语义市场包 */
-  listSemanticPacks?: () => Promise<import('../../semanticTimeline').SemanticPack[]>
   /**
    * 扩图：将原图按锚点合成到扩展画布（透明底），返回 PNG data URL。
    * 未注入时退回直接用原图作参考。
@@ -1631,7 +1615,6 @@ export interface GraphRunOptions {
   loadSemanticTimeline?: NodeExecuteContext['loadSemanticTimeline']
   saveSemanticTimeline?: NodeExecuteContext['saveSemanticTimeline']
   rebuildSemanticVideo?: NodeExecuteContext['rebuildSemanticVideo']
-  listSemanticPacks?: NodeExecuteContext['listSemanticPacks']
   composeImageExpandCanvas?: NodeExecuteContext['composeImageExpandCanvas']
   composeImageRedrawCanvas?: NodeExecuteContext['composeImageRedrawCanvas']
   composeImageCropCanvas?: NodeExecuteContext['composeImageCropCanvas']

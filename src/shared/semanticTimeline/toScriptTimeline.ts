@@ -1,6 +1,5 @@
 /**
- * 语义层 → ScriptTimeline（生产层首期目标）。
- * 镜头直映射视频轨；话语 → 字幕；导演命令可写进 clip 元数据（title/note）。
+ * 四轴语义时间线 → ScriptTimeline（镜头映射视频轨；台词映射字幕轨；纵向包装花字映射 overlay 轨）。
  */
 import type { ScriptTimelineClip, ScriptTimelineDocument } from '../graph/scriptTimeline'
 import {
@@ -8,25 +7,32 @@ import {
   hasInlineCueMarkup,
   syncTimelineCueAnchors
 } from '../graph/timelineWordCue'
-import type { ProductionCommand } from './compiler'
 import type { SemanticTimeline, ShotEvidence, UtteranceEvidence } from './types'
 
 export interface ToScriptTimelineInput {
   timeline: SemanticTimeline
   shots: ShotEvidence[]
   utterances?: UtteranceEvidence[]
-  commands?: ProductionCommand[]
   /** 源视频相对工程路径 */
   sourceRelativePath: string
   sourceAssetId?: string
 }
 
 export function semanticToScriptTimeline(input: ToScriptTimelineInput): ScriptTimelineDocument {
-  const { timeline, shots, utterances = [], commands = [], sourceRelativePath } = input
+  const { timeline, shots, utterances = [], sourceRelativePath } = input
   const sourceId = `src.${timeline.source.assetId}`
   const clips: ScriptTimelineClip[] = []
 
-  for (const shot of shots) {
+  const activeShots = timeline.shots?.length
+    ? timeline.shots.filter((s) => !s.removed)
+    : shots.map((s) => ({
+        id: s.id,
+        range: s.range,
+        sourceSegment: { start: s.range.start, end: s.range.end },
+        layers: undefined
+      }))
+
+  for (const shot of activeShots) {
     const dur = Math.max(0.01, shot.range.end - shot.range.start)
     clips.push({
       id: `clip.${shot.id}`,
@@ -37,11 +43,34 @@ export function semanticToScriptTimeline(input: ToScriptTimelineInput): ScriptTi
       assetId: input.sourceAssetId ?? timeline.source.assetId,
       startSec: shot.range.start,
       durationSec: dur,
-      sourceOffsetSec: shot.range.start
+      sourceOffsetSec: shot.sourceSegment?.start ?? shot.range.start
     })
+
+    for (const layer of shot.layers ?? []) {
+      if (layer.kind === 'subtitle') continue
+      const layerDur = Math.max(0.05, layer.end - layer.start)
+      clips.push({
+        id: `clip.layer.${shot.id}.${layer.id}`,
+        track: 'overlay',
+        sourceId,
+        title: layer.text ? `[${layer.kind}] ${layer.text}` : `[${layer.kind}]`,
+        ...(layer.text ? { text: layer.text } : {}),
+        startSec: layer.start,
+        durationSec: layerDur
+      })
+    }
   }
 
-  for (const utt of utterances) {
+  const lines = timeline.dialogue?.length
+    ? timeline.dialogue.map((d) => ({
+        id: d.id,
+        range: d.range,
+        text: d.text,
+        words: d.words
+      }))
+    : utterances
+
+  for (const utt of lines) {
     const dur = Math.max(0.05, utt.range.end - utt.range.start)
     const relWords = utt.words?.map((w) => ({
       text: w.text,
@@ -65,26 +94,6 @@ export function semanticToScriptTimeline(input: ToScriptTimelineInput): ScriptTi
       ...(aligned.words.length ? { words: aligned.words } : {}),
       startSec: utt.range.start,
       durationSec: dur
-    })
-  }
-
-  // 数字运镜等命令：用 overlay 轨占位标记（执行器读 title 前缀）
-  for (const cmd of commands) {
-    if (
-      !cmd.kind.startsWith('camera.') &&
-      !cmd.kind.startsWith('light.') &&
-      !cmd.kind.startsWith('grade.')
-    ) {
-      continue
-    }
-    clips.push({
-      id: `clip.cmd.${cmd.kind}.${cmd.start}`,
-      track: 'overlay',
-      sourceId,
-      title: `${cmd.kind}|${JSON.stringify(cmd.params)}`,
-      startSec: cmd.start,
-      durationSec: Math.max(0.05, cmd.end - cmd.start),
-      opacity: 0
     })
   }
 

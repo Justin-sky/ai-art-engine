@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applySemanticEdit,
   migrateSemanticTimeline,
+  type SemanticSelection,
   type SemanticTimeline
 } from '../src/shared/semanticTimeline'
 import {
@@ -24,7 +25,7 @@ function makeDoc(): SemanticTimeline {
   return migrateSemanticTimeline(
     {
       id: 'stl.sel.1',
-      schema: 'aiart.semantic-timeline@1',
+      schema: 'aiart.semantic-timeline@2',
       source: { assetId: 'asset-1', fps: 30, duration: 12, width: 1080, height: 1920 },
       evidence: { mediaFacts: {}, hashes: {} },
       entities: [
@@ -39,33 +40,17 @@ function makeDoc(): SemanticTimeline {
           pixelEditable: false
         }
       ],
-      events: [
+      dialogue: [
         {
-          id: 'ev.price',
-          timeRange: range(9, 11),
-          type: 'product',
-          label: 'price_announce',
-          description: '',
-          importance: 0.9,
-          entities: [],
-          evidence: ['utt.1'],
-          intents: ['intent.price'],
-          confidence: 0.8,
+          id: 'dlg.1',
+          range: range(8.5, 11.5),
+          text: '现在下单立省五十',
+          sourceText: '现在下单立省五十',
+          granularity: 'sentence',
+          confidence: 0.9,
           origin: 'analysis'
         }
       ],
-      beats: [],
-      intents: [
-        {
-          id: 'intent.price',
-          trigger: 'ev.price',
-          goal: 'sell',
-          techniques: [{ track: 'camera', action: 'push_in' }],
-          reason: '',
-          origin: 'analysis'
-        }
-      ],
-      tracks: [],
       updatedAt: '2026-01-01T00:00:00.000Z',
       createdAt: '2026-01-01T00:00:00.000Z'
     } as unknown as SemanticTimeline,
@@ -80,43 +65,47 @@ function makeDoc(): SemanticTimeline {
 }
 
 describe('语义 dive 选中模型', () => {
-  it('片段键：实体带出现序号、意图带轨道，其余只用 id', () => {
-    expect(selectionClipKey({ kind: 'event', id: 'ev.price' })).toBe('ev.price')
+  it('片段键：实体带出现序号，镜头与台词只用 id', () => {
+    expect(selectionClipKey({ kind: 'shot', id: 'shot.1' })).toBe('shot.1')
+    expect(selectionClipKey({ kind: 'dialogue', id: 'dlg.1' })).toBe('dlg.1')
     expect(selectionClipKey({ kind: 'entity', id: 'ent.a', clip: 1 })).toBe('ent.a#1')
-    expect(selectionClipKey({ kind: 'intent', id: 'intent.a', clip: 'camera' })).toBe(
-      'intent.a#camera'
-    )
     expect(selectionClipKey(null)).toBeNull()
   })
 
-  it('解析选中：实体出现序号越界时退回第一次；不存在的对象给 null', () => {
+  it('解析选中：实体出现序号越界时退回第一次；不存在的对象或未知 kind 给 null', () => {
     const doc = makeDoc()
     const entity = resolveSelection(doc, { kind: 'entity', id: 'ent.person.host', clip: 9 })
     expect(entity?.kind === 'entity' && entity.appearance).toBe(0)
-    expect(resolveSelection(doc, { kind: 'event', id: 'ev.none' })).toBeNull()
+    expect(resolveSelection(doc, { kind: 'shot', id: 'shot.none' })).toBeNull()
+    expect(
+      resolveSelection(doc, {
+        kind: 'legacy' as never,
+        id: 'ev.none'
+      } as unknown as SemanticSelection)
+    ).toBeNull()
     const shot = resolveSelection(doc, { kind: 'shot', id: 'shot.2' })
     expect(shot?.kind === 'shot' && shot.index).toBe(1)
     expect(shotLabel(doc, 'shot.2')).toBe('S2')
   })
 
-  it('时间范围：意图取触发事件，实体取被点的那次出现', () => {
+  it('时间范围：镜头与台词取自身区间，实体取被点的那次出现', () => {
     const doc = makeDoc()
-    const intent = resolveSelection(doc, { kind: 'intent', id: 'intent.price', clip: 'camera' })!
-    expect(selectionSpan(doc, intent)).toEqual({ start: 9, end: 11 })
+    const dlg = resolveSelection(doc, { kind: 'dialogue', id: 'dlg.1' })!
+    expect(selectionSpan(doc, dlg)).toMatchObject({ start: 8.5, end: 11.5 })
     const entity = resolveSelection(doc, { kind: 'entity', id: 'ent.person.host', clip: 1 })!
     expect(selectionSpan(doc, entity)).toMatchObject({ start: 8, end: 12 })
   })
 
-  it('影响范围：改完意图，覆盖的镜头立刻显示为将重新生成', () => {
+  it('影响范围：改完镜头或实体后，覆盖的镜头立刻显示为将重新生成', () => {
     const before = makeDoc()
-    const sel = { kind: 'intent' as const, id: 'intent.price' }
+    const sel = { kind: 'shot' as const, id: 'shot.3' }
     expect(selectionImpact(before, resolveSelection(before, sel)!)).toEqual([
       { shotId: 'shot.3', label: 'S3', status: 'passthrough' }
     ])
     const after = applySemanticEdit(before, {
-      op: 'intent.update',
-      target: 'intent.price',
-      patch: { techniques: [{ track: 'camera', action: 'orbit' }] }
+      op: 'shot.update',
+      target: 'shot.3',
+      patch: { visual: { style: '胶片复古' } }
     })
     expect(selectionImpact(after, resolveSelection(after, sel)!)).toEqual([
       { shotId: 'shot.3', label: 'S3', status: 'regenerate' }
@@ -132,11 +121,12 @@ describe('语义 dive 选中模型', () => {
     expect(impact.map((i) => i.label)).toEqual(['S1', 'S3'])
   })
 
-  it('删除后选中自动清空；对象还在就保持', () => {
+  it('对象不存在时自动清空选中；对象仍在（包括软删除镜头）则保持选中供恢复', () => {
     const doc = makeDoc()
-    const sel = { kind: 'event' as const, id: 'ev.price' }
+    const sel = { kind: 'shot' as const, id: 'shot.2' }
     expect(keepSelection(doc, sel)).toBe(sel)
-    const removed = applySemanticEdit(doc, { op: 'event.remove', target: 'ev.price' })
-    expect(keepSelection(removed, sel)).toBeNull()
+    const softRemoved = applySemanticEdit(doc, { op: 'shot.remove', target: 'shot.2' })
+    expect(keepSelection(softRemoved, sel)).toBe(sel)
+    expect(keepSelection(doc, { kind: 'entity', id: 'ent.missing' })).toBeNull()
   })
 })

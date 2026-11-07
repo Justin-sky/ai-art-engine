@@ -530,13 +530,6 @@
             :model-key="selectedModelKey"
             @change="persistImageGenerateParams"
           />
-          <SemanticCompileControls
-            v-if="instructionKind === 'semanticCompile'"
-            :semantic-llm="node.params.semanticLlm === true"
-            :rule-pack-ids="String(node.params.rulePackIds ?? '')"
-            @update:semantic-llm="persistCompileParams({ semanticLlm: $event })"
-            @update:rule-pack-ids="persistCompileParams({ rulePackIds: $event })"
-          />
           <VideoGenerateParamsSelect
             v-if="showVideoGenerateParams"
             v-model="videoGenerateParams"
@@ -643,7 +636,6 @@ import Model3dRigControls from './Model3dRigControls.vue'
 import Model3dSegmentControls from './Model3dSegmentControls.vue'
 import ImageGenerateParamsSelect from './ImageGenerateParamsSelect.vue'
 import VideoGenerateParamsSelect from './VideoGenerateParamsSelect.vue'
-import SemanticCompileControls from './SemanticCompileControls.vue'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
   loadGenerateModelOptions,
@@ -1103,9 +1095,6 @@ const instructionKind = computed((): InstructionPresetKind | null => {
     // 语义重建：指令面板选视频模型 / 画面参数；指令文本追加到每镜提示词（复用视频预设）
     case 'semantic.rebuild':
       return 'video'
-    // 语义编译：文本模型（用模型写提示词时的三步理解）+ 编译要求（追加到每镜提示词）
-    case 'semantic.compile':
-      return 'semanticCompile'
     case 'media.review':
       return 'mediaReview'
     case 'media.rework':
@@ -1267,9 +1256,6 @@ const instructionPlaceholder = computed(() => {
   }
   if (props.node.typeId === 'semantic.rebuild') {
     return t('graph.inspector.semantic.rebuildInstructionPlaceholder')
-  }
-  if (instructionKind.value === 'semanticCompile') {
-    return t('graph.inspector.semantic.compileInstructionPlaceholder')
   }
   if (instructionKind.value === 'video') {
     return t('graph.inspector.generate.videoInstructionPlaceholder')
@@ -2451,12 +2437,6 @@ function persistInstruction(): void {
   graphEditorHosts.updateNode(props.hostId, props.node.id, next)
 }
 
-/** 语义编译：指令面板里的「用模型写提示词」与规则包 */
-function persistCompileParams(patch: Partial<GraphNodeParams>): void {
-  if (!props.hostId || instructionKind.value !== 'semanticCompile') return
-  graphEditorHosts.updateNode(props.hostId, props.node.id, patch)
-}
-
 function persistGenerateModel(): void {
   if (!props.hostId || !instructionKind.value) return
   const parsed = parseModelKey(selectedModelKey.value)
@@ -3037,16 +3017,6 @@ function onPreviewDblClick(): void {
       const raw = resolveSemanticOutText(props.node, props.runState)
       // 没有结果也要有反应（说明情况），不能静默什么都不做
       await openSemanticResultTextDive(title, raw || semanticNoResultHint())
-      return
-    }
-    /**
-     * 语义编译：双击开关**指令面板**（文本模型 / 用模型写提示词 / 规则包 / 编译要求）。
-     *
-     * 逐镜内容与提示词的修改统一在分析节点的 dive「修改」面板里做 —— 编译节点只管"怎么编"，
-     * 不再是第二个修改入口（以前双击进 dive 的逐镜提示词页签，与修改面板重复）。
-     */
-    if (props.node.typeId === 'semantic.compile') {
-      instructionOpen.value = !instructionOpen.value
       return
     }
     if (isSemanticTimelineToolNode(props.node)) {

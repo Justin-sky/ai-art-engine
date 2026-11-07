@@ -55,10 +55,37 @@ interface RawEntity {
   shotId?: unknown
 }
 
+function resolveVlmShotId(
+  raw: unknown,
+  shots: ShotEvidence[],
+  byShot: Map<string, ShotEvidence>
+): string | undefined {
+  if (typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= shots.length) {
+    return shots[raw - 1]?.id
+  }
+  if (typeof raw !== 'string') return undefined
+  const s = raw.trim()
+  if (!s) return undefined
+  if (byShot.has(s)) return s
+  // 容忍模型输出序号 "1" / "#1" / "S1"（不带 shot. 前缀）
+  const idxMatch = /^(?:#|s)?(\d+)$/i.exec(s)
+  if (idxMatch) {
+    const idx = Number(idxMatch[1])
+    if (idx >= 1 && idx <= shots.length) return shots[idx - 1]?.id
+  }
+  // 容忍模型把 shot.0001 简写成 shot.1（不带小数点后缀）
+  const unpadded = /^shot\.0*(\d+)$/i.exec(s)
+  if (unpadded) {
+    const padded = `shot.${unpadded[1]!.padStart(4, '0')}`
+    if (byShot.has(padded)) return padded
+  }
+  return undefined
+}
+
 /**
  * 视觉模型的 JSON 文本 → `Entity[]`（**纯函数**，便于把解析/归并规则钉住）。
  *
- * 容忍常见偏差：`kind` 给了未知值就用 `kindOfLabel(label)` 兜；`shots` 给成单个字符串也认；
+ * 容忍常见偏差：`kind` 给了未知值就用 `kindOfLabel(label)` 兜；`shots` 给成单个字符串或 1-based 序号也认；
  * 认不出的镜头 id 直接丢弃（不能让证据指向不存在的镜头）；同名同类型跨镜头合并。
  */
 export function entitiesFromVlmResponse(text: string, shots: ShotEvidence[]): Entity[] {
@@ -76,8 +103,8 @@ export function entitiesFromVlmResponse(text: string, shots: ShotEvidence[]): En
       : kindOfLabel(label || name)
     const shotField = raw.shots ?? raw.shotId
     const shotIds = (Array.isArray(shotField) ? shotField : [shotField])
-      .map((value) => (typeof value === 'string' ? value.trim() : ''))
-      .filter((id) => id && byShot.has(id))
+      .map((value) => resolveVlmShotId(value, shots, byShot))
+      .filter((id): id is string => Boolean(id))
     if (shotIds.length === 0) continue
 
     const key = `${kind}::${name.toLowerCase()}`
@@ -157,16 +184,28 @@ export async function detectEntitiesViaVisionModel(input: {
   providerInstanceId?: string
 }): Promise<{ entities: Entity[]; notes: string[]; imageCount: number }> {
   const notes: string[] = []
-  const images: string[] = []
-  const usedShots: ShotEvidence[] = []
+  const available: Array<{ shot: ShotEvidence; abs: string }> = []
   for (const shot of input.shots) {
-    if (images.length >= MAX_ENTITY_KEYFRAMES) break
-    const rel = input.keyframes?.[shot.id] ?? shot.keyframes?.middle ?? shot.keyframes?.first
+    const rel =
+      input.keyframes?.[shot.id] ??
+      shot.keyframes?.strip ??
+      shot.keyframes?.middle ??
+      shot.keyframes?.first
     const abs = keyframeAbs(input.projectRoot, input.timelineId, rel)
-    if (!abs) continue
-    images.push(abs)
-    usedShots.push(shot)
+    if (abs) available.push({ shot, abs })
   }
+  const sampled =
+    available.length <= MAX_ENTITY_KEYFRAMES
+      ? available
+      : Array.from({ length: MAX_ENTITY_KEYFRAMES }, (_, i) => {
+          const idx = Math.min(
+            available.length - 1,
+            Math.floor((i * available.length) / MAX_ENTITY_KEYFRAMES)
+          )
+          return available[idx]!
+        })
+  const images = sampled.map((x) => x.abs)
+  const usedShots = sampled.map((x) => x.shot)
   if (images.length === 0) {
     notes.push('entity detect: no keyframes available')
     return { entities: [], notes, imageCount: 0 }

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-/**
- * 原片 / 构建结果并排对比；可选掩码高亮与逐镜头重跑入口。
- */
 import { computed, ref, watch } from 'vue'
+import { useStudioI18n } from '../composables/useStudioI18n'
 
 const props = defineProps<{
   originalUrl: string
   resultUrl: string
-  /** 掩码叠加图（可选 data URL / 文件 URL） */
+  /** Optional pre-rendered synchronized side-by-side compare.mp4 URL */
+  compareVideoUrl?: string
+  /** Optional mask overlay data/file URL */
   maskOverlayUrl?: string
   shotIds?: string[]
   qcNotes?: string[]
@@ -18,12 +18,25 @@ const emit = defineEmits<{
   seek: [sec: number]
 }>()
 
+const { t } = useStudioI18n()
+
 const leftEl = ref<HTMLVideoElement | null>(null)
 const rightEl = ref<HTMLVideoElement | null>(null)
+const compareEl = ref<HTMLVideoElement | null>(null)
 const syncing = ref(false)
 const selectedShot = ref<string | null>(null)
+const viewMode = ref<'dual' | 'rendered'>('dual')
 
 const notes = computed(() => props.qcNotes ?? [])
+const hasCompareMp4 = computed(() => Boolean(props.compareVideoUrl?.trim()))
+
+watch(
+  hasCompareMp4,
+  (ok) => {
+    if (!ok && viewMode.value === 'rendered') viewMode.value = 'dual'
+  },
+  { immediate: true }
+)
 
 function onTimeUpdate(side: 'left' | 'right'): void {
   if (syncing.value) return
@@ -38,6 +51,10 @@ function onTimeUpdate(side: 'left' | 'right'): void {
   emit('seek', src.currentTime)
 }
 
+function onCompareTimeUpdate(): void {
+  if (compareEl.value) emit('seek', compareEl.value.currentTime)
+}
+
 watch(
   () => props.resultUrl,
   () => {
@@ -46,11 +63,19 @@ watch(
 )
 
 function playBoth(): void {
+  if (viewMode.value === 'rendered') {
+    void compareEl.value?.play()
+    return
+  }
   void leftEl.value?.play()
   void rightEl.value?.play()
 }
 
 function pauseBoth(): void {
+  if (viewMode.value === 'rendered') {
+    compareEl.value?.pause()
+    return
+  }
   leftEl.value?.pause()
   rightEl.value?.pause()
 }
@@ -63,27 +88,79 @@ function rerun(): void {
 <template>
   <div class="scv">
     <div class="scv-toolbar">
-      <button type="button" @click="playBoth">Play</button>
-      <button type="button" @click="pauseBoth">Pause</button>
-      <select v-model="selectedShot">
-        <option :value="null">Shot…</option>
-        <option v-for="id in shotIds ?? []" :key="id" :value="id">{{ id }}</option>
-      </select>
-      <button type="button" :disabled="!selectedShot" @click="rerun">Re-run shot</button>
+      <button type="button" class="scv-btn" @click="playBoth">
+        {{ t('graph.semanticTimeline.rea.playBoth') }}
+      </button>
+      <button type="button" class="scv-btn" @click="pauseBoth">
+        {{ t('graph.semanticTimeline.rea.pauseBoth') }}
+      </button>
+      <div v-if="hasCompareMp4" class="scv-mode-switch">
+        <button
+          type="button"
+          class="scv-btn"
+          :class="{ active: viewMode === 'dual' }"
+          @click="viewMode = 'dual'"
+        >
+          {{ t('graph.semanticTimeline.rea.compareModeDual') }}
+        </button>
+        <button
+          type="button"
+          class="scv-btn"
+          :class="{ active: viewMode === 'rendered' }"
+          @click="viewMode = 'rendered'"
+        >
+          {{ t('graph.semanticTimeline.rea.compareModeSideBySide') }}
+        </button>
+      </div>
+      <template v-if="(shotIds?.length ?? 0) > 0">
+        <select v-model="selectedShot" class="scv-select">
+          <option :value="null">
+            {{ t('graph.semanticTimeline.rea.selectShotPlaceholder') }}
+          </option>
+          <option v-for="id in shotIds ?? []" :key="id" :value="id">{{ id }}</option>
+        </select>
+        <button type="button" class="scv-btn" :disabled="!selectedShot" @click="rerun">
+          {{ t('graph.semanticTimeline.rea.rerunShot') }}
+        </button>
+      </template>
     </div>
-    <div class="scv-pair">
+
+    <div v-if="viewMode === 'rendered' && compareVideoUrl" class="scv-single">
+      <video
+        ref="compareEl"
+        :src="compareVideoUrl"
+        controls
+        playsinline
+        @timeupdate="onCompareTimeUpdate"
+      />
+    </div>
+
+    <div v-else class="scv-pair">
       <div class="scv-pane">
-        <header>Original</header>
-        <video ref="leftEl" :src="originalUrl" controls @timeupdate="onTimeUpdate('left')" />
+        <header>{{ t('graph.semanticTimeline.rea.originalLabel') }}</header>
+        <video
+          ref="leftEl"
+          :src="originalUrl"
+          controls
+          playsinline
+          @timeupdate="onTimeUpdate('left')"
+        />
       </div>
       <div class="scv-pane">
-        <header>Result</header>
+        <header>{{ t('graph.semanticTimeline.rea.remakeResultLabel') }}</header>
         <div class="scv-stack">
-          <video ref="rightEl" :src="resultUrl" controls @timeupdate="onTimeUpdate('right')" />
+          <video
+            ref="rightEl"
+            :src="resultUrl"
+            controls
+            playsinline
+            @timeupdate="onTimeUpdate('right')"
+          />
           <img v-if="maskOverlayUrl" class="scv-mask" :src="maskOverlayUrl" alt="mask" />
         </div>
       </div>
     </div>
+
     <ul v-if="notes.length" class="scv-notes">
       <li v-for="(n, i) in notes" :key="i">{{ n }}</li>
     </ul>
@@ -95,7 +172,7 @@ function rerun(): void {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 240px;
+  min-height: 220px;
 }
 .scv-toolbar {
   display: flex;
@@ -103,20 +180,49 @@ function rerun(): void {
   align-items: center;
   flex-wrap: wrap;
 }
+.scv-mode-switch {
+  display: inline-flex;
+  gap: 4px;
+}
+.scv-btn,
+.scv-select {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.scv-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.scv-btn.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.scv-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .scv-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
+}
+.scv-single video,
+.scv-pane video {
+  display: block;
+  width: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 .scv-pane header {
   font-size: 12px;
-  opacity: 0.7;
+  color: var(--text-muted);
   margin-bottom: 4px;
-}
-.scv-pane video {
-  width: 100%;
-  background: #111;
-  border-radius: 6px;
 }
 .scv-stack {
   position: relative;
@@ -135,6 +241,6 @@ function rerun(): void {
   margin: 0;
   padding-left: 18px;
   font-size: 12px;
-  opacity: 0.8;
+  color: var(--text-muted);
 }
 </style>

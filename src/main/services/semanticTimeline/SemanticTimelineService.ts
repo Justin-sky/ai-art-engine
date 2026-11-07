@@ -5,23 +5,21 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { dirname, join } from 'path'
 import {
   SEMANTIC_TIMELINE_SCHEMA,
-  assignBeatsHeuristic,
   createEmptySemanticTimeline,
   evidenceDir,
-  heuristicEventsFromUtterances,
-  inferIntentsFromEvents,
   keyframesDir,
-  rebuildTracks,
   segmentsToUtterances,
   timelineJsonPath,
   validateSemanticTimeline,
   ensureSemanticStructure,
+  finalizeSemanticBreakdown,
   migrateSemanticTimeline,
   rebaselineSemanticTimeline,
   carryOverSemanticEdits,
+  renderBreakdownReportMd,
   timelineId,
+  type ContainerProvenance,
   type OcrRegion,
-  type BeatVocabulary,
   type MediaFacts,
   type SemanticTimeline,
   type ShotEvidence,
@@ -43,6 +41,15 @@ import { buildAudioStems, extractMixedAudio } from './audioStem'
 import { detectEntitiesViaVisionModel } from './entityDetectVlm'
 import { heuristicOcrFromUtterances } from './ocrRegions'
 import { separateAudioStems } from '../audioSeparationService'
+import { probeContainerProvenance } from './forensics/probeProvenance'
+import {
+  decodeSampledRgbTrack,
+  extractAllShotForensics,
+  refineShotsWithVisualTrack,
+  renderShotTriptychStrips,
+  renderStoryboardContactSheet
+} from './forensics/visualForensics'
+import { analyzeMixedWavFile, refineAudioAnalysisWithStems } from './forensics/audioForensics'
 
 export function resolveTimelineJson(projectRoot: string, timelineId: string): string {
   return join(projectRoot, ...timelineJsonPath(timelineId).split('/'))
@@ -84,6 +91,14 @@ export function saveSemanticTimeline(projectRoot: string, doc: SemanticTimeline)
   mkdirSync(dirname(path), { recursive: true })
   mkdirSync(join(projectRoot, ...evidenceDir(doc.id).split('/')), { recursive: true })
   writeFileSync(path, JSON.stringify(doc, null, 2), 'utf8')
+  if (doc.breakdown) {
+    try {
+      const reportAbs = join(dirname(path), 'report.md')
+      writeFileSync(reportAbs, renderBreakdownReportMd(doc, 'zh'), 'utf8')
+    } catch {
+      /* markdown report failure never blocks timeline persistence */
+    }
+  }
 }
 
 function writeEvidenceJson(projectRoot: string, relPath: string, data: unknown): void {
@@ -158,24 +173,41 @@ export interface AnalyzeShotsOnlyResult {
   shots: ShotEvidence[]
   facts: MediaFacts
   method: 'scene' | 'fallback-single'
+  provenance?: ContainerProvenance
+  storyboardRel?: string
 }
 
 /**
- * 阶段 0/1 入口：探测媒体事实 + 切镜 + 关键帧，落盘骨架文档。
+ * 阶段 0/1 入口：探测媒体事实 + 容器溯源 + 切镜（含渐隐/叠化精修）+ 像素运动取证 + 关键帧，落盘骨架文档。
  */
 export async function analyzeShotsOnly(
   projectRoot: string,
   sourceAssetId: string,
-  videoAbs: string,
-  vocabulary = 'commerce.v1'
+  videoAbs: string
 ): Promise<AnalyzeShotsOnlyResult> {
   const facts = await probeMediaFacts(videoAbs)
-  let doc = createEmptySemanticTimeline(sourceAssetId, facts, vocabulary)
-  const detected = await detectShots(videoAbs, facts)
+  let doc = createEmptySemanticTimeline(sourceAssetId, facts)
+  const [detected, provenance, rgbTrack] = await Promise.all([
+    detectShots(videoAbs, facts),
+    probeContainerProvenance(videoAbs),
+    decodeSampledRgbTrack(videoAbs, facts)
+  ])
+  const refinedShots = rgbTrack
+    ? extractAllShotForensics(refineShotsWithVisualTrack(detected.shots, rgbTrack, facts), rgbTrack)
+    : detected.shots
+  const semanticDirAbs = join(projectRoot, 'Semantic', doc.id)
   const kfDir = join(projectRoot, ...keyframesDir(doc.id).split('/'))
-  const shots = await extractShotKeyframes(videoAbs, detected.shots, kfDir)
+  const extractedShots = await extractShotKeyframes(videoAbs, refinedShots, kfDir)
+  const shots = renderShotTriptychStrips(semanticDirAbs, extractedShots, {
+    width: facts.width,
+    height: facts.height
+  })
   saveShotsEvidence(projectRoot, doc.id, shots)
-  doc = rebuildTracks({
+  const storyboardRel = renderStoryboardContactSheet(semanticDirAbs, shots, {
+    width: facts.width,
+    height: facts.height
+  })
+  doc = {
     ...doc,
     evidence: {
       ...doc.evidence,
@@ -183,19 +215,29 @@ export async function analyzeShotsOnly(
       hashes: { ...doc.evidence.hashes, shots: String(shots.length) }
     },
     updatedAt: new Date().toISOString()
+  }
+  doc = ensureSemanticStructure(doc, { shots })
+  doc = finalizeSemanticBreakdown(doc, {
+    provenance,
+    storyboardRelativePath: storyboardRel ? `Semantic/${doc.id}/${storyboardRel}` : undefined,
+    reportRelativePath: `Semantic/${doc.id}/report.md`
   })
-  doc = rebaselineSemanticTimeline(ensureSemanticStructure(doc, { shots }))
+  doc = rebaselineSemanticTimeline(doc)
   saveSemanticTimeline(projectRoot, doc)
-  return { timeline: doc, shots, facts, method: detected.method }
+  return {
+    timeline: doc,
+    shots,
+    facts,
+    method: shots.length > 1 ? 'scene' : detected.method,
+    provenance,
+    storyboardRel
+  }
 }
 
 export interface AnalyzeSemanticOptions {
-  vocabulary?: string
-  /** 市场包词表（id 不在内置词表时由调用方解析后传入） */
-  vocabularyDef?: BeatVocabulary
   /** 相对工程根的视频路径（人声分离用） */
   videoRelativePath?: string
-  /** 转写分段；缺省则跳过话语/启发式事件 */
+  /** 转写分段；缺省则跳过话语转写 */
   transcriptSegments?: TranscribeLikeSegment[]
   transcriptGranularity?: 'word' | 'sentence'
   /** 是否尝试人声分离（默认 true） */
@@ -213,7 +255,7 @@ export interface AnalyzeSemanticResult extends AnalyzeShotsOnlyResult {
 }
 
 /**
- * 阶段 1 完整分析：切镜 + 音轨/人声 + 转写落盘 + 实体 + OCR 启发式 + 事件/节拍/意图。
+ * 阶段 1 完整分析：切镜 + 音轨/人声 + 转写落盘 + 实体 + OCR 启发式 + 四轴拆解。
  */
 export async function analyzeSemanticTimeline(
   projectRoot: string,
@@ -221,11 +263,10 @@ export async function analyzeSemanticTimeline(
   videoAbs: string,
   options: AnalyzeSemanticOptions = {}
 ): Promise<AnalyzeSemanticResult> {
-  const vocabulary = options.vocabulary ?? 'commerce.v1'
   const notes: string[] = []
   // 重新分析前先读上一版（下一步就会被骨架覆盖）：用户修改要带到新文档上
   const previous = loadSemanticTimeline(projectRoot, timelineId(sourceAssetId))
-  const base = await analyzeShotsOnly(projectRoot, sourceAssetId, videoAbs, vocabulary)
+  const base = await analyzeShotsOnly(projectRoot, sourceAssetId, videoAbs)
   let doc = base.timeline
   const { shots, facts } = base
   const fps = facts.fps
@@ -315,22 +356,9 @@ export async function analyzeSemanticTimeline(
   const ocrRegions = heuristicOcrFromUtterances(utterances, shots, fps)
   saveOcr(projectRoot, doc.id, { schema: SEMANTIC_TIMELINE_SCHEMA, regions: ocrRegions })
 
-  // 理解：启发式事件 / 节拍 / 意图（GraphSkill 解析结果可后续合并）
-  const events = heuristicEventsFromUtterances(utterances, shots, fps)
-  const beats = assignBeatsHeuristic(
-    events,
-    facts.durationSec,
-    fps,
-    options.vocabularyDef ?? vocabulary
-  )
-  const intents = inferIntentsFromEvents(events)
-
-  doc = rebuildTracks({
+  doc = {
     ...doc,
     entities,
-    events,
-    beats,
-    intents,
     evidence: {
       ...doc.evidence,
       mediaFacts: facts,
@@ -344,18 +372,87 @@ export async function analyzeSemanticTimeline(
       }
     },
     updatedAt: new Date().toISOString()
-  })
-  // v2：内联结构化镜头树 / 台词 / 文字层，并以分析结果为基线（重新分析 = 新基线）
-  doc = rebaselineSemanticTimeline(
-    ensureSemanticStructure(
-      { ...doc, shots: [], dialogue: [], textLayers: [], edits: [], baseline: undefined },
-      { shots, utterances, ocr: ocrRegions }
-    )
+  }
+  // v2：内联结构化镜头树 / 台词 / 文字层，合入四轴取证与多轨音频分析，并以分析结果为基线
+  const cutTimes = shots.slice(1).map((s) => s.range.start)
+  const rawAudioAnalysis = mixedOk ? analyzeMixedWavFile(mixedAbs, cutTimes, utterances) : undefined
+  const audioAnalysis = rawAudioAnalysis
+    ? refineAudioAnalysisWithStems(rawAudioAnalysis, {
+        vocalsWavAbs: vocalsRel ? join(projectRoot, ...vocalsRel.split('/')) : undefined,
+        accompanimentWavAbs: accompanimentRel
+          ? join(projectRoot, ...accompanimentRel.split('/'))
+          : undefined,
+        cutTimesSec: cutTimes,
+        utterances
+      })
+    : undefined
+  doc = ensureSemanticStructure(
+    { ...doc, shots: [], dialogue: [], textLayers: [], edits: [], baseline: undefined },
+    { shots, utterances, ocr: ocrRegions }
   )
+  // 若确定性取证检出了冻结包装区域（字幕条 / 顶栏标题 / 花字框），预先挂载到 shot.layers 供去字净板与 ASS 还原使用
+  if (doc.shots?.some((s) => s.forensics?.frozenOverlayBoxes?.length)) {
+    const dialogueById = new Map((doc.dialogue ?? []).map((d) => [d.id, d]))
+    doc = {
+      ...doc,
+      shots: doc.shots.map((s) => {
+        const boxes = s.forensics?.frozenOverlayBoxes
+        if (!boxes?.length || s.layers?.length) return s
+        const firstLine = s.dialogueIds
+          .map((id) => dialogueById.get(id))
+          .find((d) => d?.text?.trim())
+        return {
+          ...s,
+          layers: boxes.map((fb, idx) => ({
+            id: `lyr.${s.id}.det.${idx + 1}`,
+            kind:
+              fb.band === 'bottom'
+                ? ('subtitle' as const)
+                : fb.band === 'top'
+                  ? ('title' as const)
+                  : ('huazi' as const),
+            ...(fb.band === 'bottom' && firstLine?.text?.trim()
+              ? { text: firstLine.text.trim() }
+              : {}),
+            start: s.range.start,
+            end: s.range.end,
+            position: fb.band,
+            box: { x: fb.x, y: fb.y, w: fb.w, h: fb.h }
+          }))
+        }
+      })
+    }
+  }
+  doc = finalizeSemanticBreakdown(doc, {
+    provenance: base.provenance,
+    audioAnalysis,
+    storyboardRelativePath: base.storyboardRel
+      ? `Semantic/${doc.id}/${base.storyboardRel}`
+      : undefined,
+    reportRelativePath: `Semantic/${doc.id}/report.md`,
+    synthesizeFallbackEntities: options.detectEntities !== false
+  })
+  if (doc.entities.length !== entities.length) {
+    saveEntities(projectRoot, doc.id, {
+      schema: SEMANTIC_TIMELINE_SCHEMA,
+      entities: doc.entities
+    })
+    doc = {
+      ...doc,
+      evidence: {
+        ...doc.evidence,
+        hashes: {
+          ...doc.evidence.hashes,
+          entities: String(doc.entities.length)
+        }
+      }
+    }
+  }
+  doc = rebaselineSemanticTimeline(doc)
   const carried = carryOverSemanticEdits(previous, doc)
   if (carried !== doc) {
     notes.push(`kept ${carried.edits?.length ?? 0} user edit(s) from the previous analysis`)
-    doc = carried
+    doc = carried.breakdown ? finalizeSemanticBreakdown(carried) : carried
   }
   saveSemanticTimeline(projectRoot, doc)
   return { ...base, timeline: doc, utterances, notes }
@@ -371,12 +468,13 @@ export function buildSemanticPreview(
   shots: Array<{ id: string; start: number; end: number; label: string }>
   utterances: Array<{ id: string; start: number; end: number; label: string }>
 } {
+  const segments = doc.breakdown?.wholeVideo?.segments ?? []
   return {
-    beats: doc.beats.map((b) => ({
-      id: b.id,
-      start: b.timeRange.start,
-      end: b.timeRange.end,
-      label: b.type
+    beats: segments.map((seg, i) => ({
+      id: `seg.${i + 1}`,
+      start: seg.start,
+      end: seg.end,
+      label: seg.beat || `P${i + 1}`
     })),
     shots: shots.map((s, i) => ({
       id: s.id,

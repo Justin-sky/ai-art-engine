@@ -73,7 +73,7 @@ describe.runIf(hasFfmpeg)('analyzeShotsOnly 落盘（ffmpeg）', () => {
       id: string
       schema: string
       source: { assetId: string; fps: number; duration: number; width: number; height: number }
-      tracks: unknown[]
+      shots?: unknown[]
     }
     expect(doc.schema).toBe(SEMANTIC_TIMELINE_SCHEMA)
     expect(doc.id).toBe(result.timeline.id)
@@ -81,7 +81,7 @@ describe.runIf(hasFfmpeg)('analyzeShotsOnly 落盘（ffmpeg）', () => {
     expect(doc.source.fps).toBeGreaterThan(0)
     expect(doc.source.duration).toBeGreaterThan(1)
     expect(doc.source.width).toBeGreaterThan(0)
-    expect(doc.tracks).toHaveLength(8)
+    expect(Array.isArray(doc.shots)).toBe(true)
 
     // 另一半产出：同目录的 shots 证据
     expect(

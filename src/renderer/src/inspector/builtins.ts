@@ -296,11 +296,6 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
     nodeTypeId: 'semantic.analyze'
   },
   {
-    id: 'studio.graph.semanticCompile',
-    component: SemanticTimelineInspector,
-    nodeTypeId: 'semantic.compile'
-  },
-  {
     id: 'studio.graph.semanticRebuild',
     component: SemanticTimelineInspector,
     nodeTypeId: 'semantic.rebuild'

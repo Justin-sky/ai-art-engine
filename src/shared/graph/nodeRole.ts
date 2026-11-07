@@ -112,11 +112,7 @@ export function isReshootNode(node: Pick<GraphNode, 'typeId'>): boolean {
   return node.typeId === 'video.reshoot'
 }
 
-const SEMANTIC_TIMELINE_TOOL_TYPE_IDS = new Set([
-  'semantic.analyze',
-  'semantic.compile',
-  'semantic.rebuild'
-])
+const SEMANTIC_TIMELINE_TOOL_TYPE_IDS = new Set(['semantic.analyze', 'semantic.rebuild'])
 
 /** Semantic Timeline 工具节点（媒体卡；勿当记事本） */
 export function isSemanticTimelineToolNode(node: Pick<GraphNode, 'typeId'>): boolean {

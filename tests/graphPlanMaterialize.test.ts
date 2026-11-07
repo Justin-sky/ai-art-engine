@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   applyDefaultGenerateModels,
+  BUILTIN_NODE_TYPES,
   ensureBoundaryProxyNodes,
   inferHostInterfaceFromGraph,
   materializeGraphPlan,
@@ -360,6 +361,7 @@ describe('graphPlan materialize', () => {
 
     const skillsWorkflowsDir = resolve(process.cwd(), '../ai-art-engine-skills/workflows')
     if (existsSync(skillsWorkflowsDir)) {
+      const builtinIds = new Set(BUILTIN_NODE_TYPES.map((d) => d.typeId))
       const slugs = readdirSync(skillsWorkflowsDir, { withFileTypes: true })
         .filter((d) => d.isDirectory())
         .map((d) => d.name)
@@ -367,8 +369,12 @@ describe('graphPlan materialize', () => {
       for (const slug of slugs) {
         const wfPath = resolve(skillsWorkflowsDir, slug, 'workflow.json')
         if (!existsSync(wfPath)) continue
-        const wf = JSON.parse(readFileSync(wfPath, 'utf8')) as { plan?: GraphPlan }
+        const wf = JSON.parse(readFileSync(wfPath, 'utf8')) as {
+          requires?: { nodeTypes?: string[] }
+          plan?: GraphPlan
+        }
         expect(wf.plan, slug).toBeTruthy()
+        if (wf.requires?.nodeTypes?.some((t) => !builtinIds.has(t))) continue
         const result = materializeGraphPlan(wf.plan!, {
           scope: 'subgraphAsset',
           assetType: 'subgraph'

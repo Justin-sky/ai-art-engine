@@ -64,11 +64,10 @@ describe('instruction mentions', () => {
     // 输出文本的图片节点不保留 @n
     expect(shouldKeepInstructionMentionToken({ typeId: 'image.toPrompt' })).toBe(false)
     expect(shouldKeepInstructionMentionToken({ typeId: 'text.plain' })).toBe(false)
-    // 语义管线：带媒体产物的（语义重建）保留 @n —— 它的 typeId 从 video.* 改名后
-    // 不再被前缀命中，靠显式列表兜住；产出文档 / 提示词计划的（语义分析 / 语义编译）不保留
+    // 语义管线：带媒体产物的（视频重制）保留 @n —— 它的 typeId 从 video.* 改名后
+    // 不再被前缀命中，靠显式列表兜住；产出拆解文档的（视频拆解）不保留
     expect(shouldKeepInstructionMentionToken({ typeId: 'semantic.rebuild' })).toBe(true)
     expect(shouldKeepInstructionMentionToken({ typeId: 'semantic.analyze' })).toBe(false)
-    expect(shouldKeepInstructionMentionToken({ typeId: 'semantic.compile' })).toBe(false)
     // 预览展开：图片加工节点引用保留 @n
     expect(
       expandInstructionMentions('基于参考图@1 与剧本@2', [

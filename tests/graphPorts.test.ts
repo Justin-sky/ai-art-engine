@@ -28,10 +28,8 @@ describe('GraphPortType', () => {
       GraphPortType.model,
       GraphPortType.spatialWorld,
       GraphPortType.project,
-      // 语义时间线文档（整份 SemanticTimeline，不是普通文本）
+      // 语义时间线文档（整份 SemanticTimeline，视频拆解 → 视频重制直连）
       GraphPortType.semanticTimeline,
-      // 视频生成提示词计划（语义编译 → 语义重建）
-      GraphPortType.videoPrompts,
       GraphPortType.storyboard,
       GraphPortType.filmCast,
       GraphPortType.uiComponents

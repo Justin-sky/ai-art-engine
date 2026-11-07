@@ -75,8 +75,6 @@ const presetKind = computed((): InstructionPresetKind | null => {
       return 'lipSync'
     case 'video.reshoot':
       return 'reshoot'
-    case 'semantic.compile':
-      return 'semanticCompile'
     case 'asset.voice':
       return 'voice'
     case 'asset.dialogue':

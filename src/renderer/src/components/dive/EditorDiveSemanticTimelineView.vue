@@ -1,28 +1,19 @@
 <script setup lang="ts">
-/**
- * Dive：Semantic Timeline 三层编辑器 + 结构化「修改」面板（镜头 / 台词 / 实体 / 逐镜提示词覆盖）
- * + 对比面板。修改是本工作流**唯一**的修改入口：直接落盘时间线，编译据基线判断要重做什么。
- * 与其它 dive 视图一致：接收 EditorDiveChildHost 展开的扁平 props（勿再包一层 meta）。
- */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import {
+  PRODUCTION_LABEL_META,
   applySemanticEdit,
-  buildPromptPlan,
-  collectRulePacks,
-  compileDirectorCommands,
-  findVocabularyInPacks,
-  listVocabularies,
   migrateSemanticTimeline,
+  resolveShotDisplayPrompts,
   summarizeSemanticDiff,
   type SemanticEditInput,
-  type SemanticPack,
   type SemanticTimeline,
   type ShotEvidence,
-  type UtteranceEvidence,
-  type VideoPromptPlan
+  type UtteranceEvidence
 } from '@shared/semanticTimeline'
 import SemanticTimelineEditor from '../SemanticTimelineEditor.vue'
 import SemanticCompareView from '../SemanticCompareView.vue'
+import SemanticBreakdownWorkspacePanels from './SemanticBreakdownWorkspacePanels.vue'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { SEMANTIC_REFERENCE_IMAGES_PORT_ID } from '@shared/graph/semanticTimelineNodes'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
@@ -34,7 +25,7 @@ import {
   type ReferenceCandidate
 } from '../../features/graph/model/semanticReferenceCandidates'
 
-const { t, te, locale } = useStudioI18n()
+const { t, locale } = useStudioI18n()
 
 const props = defineProps<{
   frameKey: string
@@ -43,20 +34,23 @@ const props = defineProps<{
   sourceRelativePath?: string
   resultRelativePath?: string
   timelineJson?: string
-  /** 打开它的分析节点（读「参考图」端口上游的图片） */
   graphHostId?: string
   graphNodeId?: string
 }>()
 
-const timeline = ref<SemanticTimeline | null>(null)
+type WorkspaceTab = 'timeline' | 'remake' | 'audio' | 'report'
+const activeTab = ref<WorkspaceTab>('timeline')
+const editorRef = ref<InstanceType<typeof SemanticTimelineEditor> | null>(null)
 
+const timeline = ref<SemanticTimeline | null>(null)
 const error = ref('')
-/** 「还没有时间线」不是错误：透传节点未接上游时就是这种状态，给提示而不是报错 */
 const hint = ref('')
 const missingPath = ref('')
 const originalUrl = ref('')
 const resultUrl = ref('')
+const compareVideoUrl = ref('')
 
+const isEn = computed(() => locale.value.toLowerCase().startsWith('en'))
 const timelineId = computed(() => props.timelineId?.trim() ?? '')
 
 function parseInline(raw: string | undefined): SemanticTimeline | null {
@@ -71,6 +65,75 @@ function parseInline(raw: string | undefined): SemanticTimeline | null {
   return null
 }
 
+function resolvedSourceRelativePath(doc: SemanticTimeline | null): string {
+  const explicit = props.sourceRelativePath?.trim()
+  if (explicit) return explicit
+  const assetId = (doc?.source?.assetId ?? props.sourceAssetId ?? '').trim()
+  if (assetId.startsWith('path:')) return assetId.slice('path:'.length).trim()
+  const host = props.graphHostId?.trim()
+  const nodeId = props.graphNodeId?.trim()
+  if (host && nodeId) {
+    const selfNode = graphEditorHosts.getNode(host, nodeId)
+    const ownRel = String(selfNode?.params?.sourceRelativePath ?? '').trim()
+    if (ownRel) return ownRel
+    const runStates = graphRunHosts.get(host)?.runStates
+    for (const edge of graphEditorHosts.listIncomingEdges(host, nodeId, 'in')) {
+      const source = graphEditorHosts.getNode(host, edge.sourceNodeId)
+      if (!source) continue
+      const out = runStates?.[source.id]?.outputs?.[edge.sourcePort || 'out']
+      if (out && out.kind === 'video' && out.relativePath?.trim()) return out.relativePath.trim()
+      const previewRel = String(
+        source.params?.previewRelativePath ?? source.params?.sourceRelativePath ?? ''
+      ).trim()
+      if (previewRel) return previewRel
+    }
+  }
+  return ''
+}
+
+function findDownstreamRebuildNodeId(): string | null {
+  const host = props.graphHostId?.trim()
+  const startId = props.graphNodeId?.trim()
+  if (!host || !startId) return null
+  const selfNode = graphEditorHosts.getNode(host, startId)
+  if (selfNode?.typeId === 'semantic.rebuild') return selfNode.id
+  const edges = graphEditorHosts.listEdges(host)
+  const nodes = graphEditorHosts.listNodes(host)
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const visited = new Set<string>([startId])
+  const queue = [startId]
+  while (queue.length > 0) {
+    const curr = queue.shift()!
+    for (const edge of edges) {
+      if (edge.source !== curr || visited.has(edge.target)) continue
+      visited.add(edge.target)
+      queue.push(edge.target)
+      const targetNode = byId.get(edge.target)
+      if (targetNode?.typeId === 'semantic.rebuild') return targetNode.id
+    }
+  }
+  return null
+}
+
+function discoverDownstreamRemakePaths(): { outputRel: string; compareRel: string } {
+  const explicitOut = props.resultRelativePath?.trim() ?? ''
+  const host = props.graphHostId?.trim()
+  const rebuildId = findDownstreamRebuildNodeId()
+  if (!host || !rebuildId) {
+    return { outputRel: explicitOut, compareRel: '' }
+  }
+  const targetNode = graphEditorHosts.getNode(host, rebuildId)
+  if (!targetNode) return { outputRel: explicitOut, compareRel: '' }
+  const runOut = graphRunHosts.get(host)?.runStates?.[targetNode.id]?.outputs?.['out-video']
+  const outputRel =
+    explicitOut ||
+    (runOut && runOut.kind === 'video' && runOut.relativePath?.trim()
+      ? runOut.relativePath.trim()
+      : String(targetNode.params?.rebuildLastOutput ?? '').trim())
+  const compareRel = String(targetNode.params?.rebuildLastCompare ?? '').trim()
+  return { outputRel, compareRel }
+}
+
 async function load(): Promise<void> {
   error.value = ''
   hint.value = ''
@@ -78,24 +141,16 @@ async function load(): Promise<void> {
   timeline.value = null
   originalUrl.value = ''
   resultUrl.value = ''
+  compareVideoUrl.value = ''
 
   const inline = parseInline(props.timelineJson)
   if (inline) {
     timeline.value = inline
-    /**
-     * 内联文档来自上游节点的运行输出（修改**前**的那份）；修改是直接落盘的。
-     * 磁盘上有更新的版本就用磁盘的 —— 否则重开 dive 看不到之前的修改，再改一次还会把它们覆盖掉。
-     */
     const disk = await readDiskTimeline(inline.id)
     if (disk && isNewerDoc(disk, inline)) timeline.value = disk
   } else {
     const id = timelineId.value
     if (!id) {
-      /**
-       * 没有 id 也没有内联 JSON：**不是错误**。
-       * 上游还没产出时间线时就是这个状态 ——
-       * 以前这种情况会被塞一个假 id 进来，然后报 `timeline not found`，让人以为是坏了。
-       */
       hint.value = t('graph.semanticTimeline.noTimelineHint')
       return
     }
@@ -115,15 +170,19 @@ async function load(): Promise<void> {
     }
   }
 
-  // v1 → v2：内联镜头树 / 台词（需要证据）；修改面板靠它
   if (timeline.value) timeline.value = await toV2(timeline.value)
 
   try {
-    if (props.resultRelativePath) {
-      resultUrl.value = (await window.studio.getAssetFileUrl(props.resultRelativePath)) ?? ''
+    const srcRel = resolvedSourceRelativePath(timeline.value)
+    if (srcRel) {
+      originalUrl.value = (await window.studio.getAssetFileUrl(srcRel)) ?? ''
     }
-    if (props.sourceRelativePath) {
-      originalUrl.value = (await window.studio.getAssetFileUrl(props.sourceRelativePath)) ?? ''
+    const { outputRel, compareRel } = discoverDownstreamRemakePaths()
+    if (outputRel) {
+      resultUrl.value = (await window.studio.getAssetFileUrl(outputRel)) ?? ''
+    }
+    if (compareRel) {
+      compareVideoUrl.value = (await window.studio.getAssetFileUrl(compareRel)) ?? ''
     }
   } catch {
     /* preview urls optional */
@@ -158,13 +217,11 @@ async function toV2(doc: SemanticTimeline): Promise<SemanticTimeline> {
       const ev = await window.studio.semanticLoadEvidence(doc.id)
       evidence = { shots: ev?.shots ?? [], utterances: ev?.utterances ?? [] }
     } catch {
-      /* 没有证据：只迁 schema，修改面板给"没有镜头"的提示 */
+      /* fallback without evidence */
     }
   }
   return migrateSemanticTimeline(doc, evidence)
 }
-
-// ─── 修改（检查器 → 文档 → 落盘） ────────────────────────────────────────────────
 
 const editError = ref('')
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
@@ -174,10 +231,6 @@ function errorText(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
-/**
- * 应用一次修改：**立即**更新界面（乐观），再排队落盘。
- * 校验失败（空标签、触发事件不存在…）时文档不动，把原因显示出来。
- */
 function applyEdit(input: SemanticEditInput): void {
   const current = timeline.value
   if (!current) return
@@ -191,12 +244,6 @@ function applyEdit(input: SemanticEditInput): void {
   scheduleSave()
 }
 
-/**
- * 串行落盘，只存**最新**状态。
- *
- * 连续快速修改时不并发写盘、不乱序；正在写的那次结束后，若期间又有修改，再写一次最新版。
- * 失败时**从磁盘重载**而不是回滚到某个旧快照 —— 回滚会把失败那次之后的修改一起冲掉。
- */
 let saveChain: Promise<void> = Promise.resolve()
 let saveQueued = false
 
@@ -209,7 +256,6 @@ function scheduleSave(): void {
     const doc = timeline.value
     if (!doc) return
     try {
-      // 文档是响应式代理（`timeline.value`），直接过 IPC 会 DataCloneError → 拍成纯数据再存
       await window.studio.semanticSaveTimeline(semanticTimelineSavePayload(doc))
       if (!saveQueued) saveState.value = 'saved'
     } catch (e) {
@@ -239,36 +285,9 @@ const saveLabel = computed(() =>
       : ''
 )
 
-// ─── 语义市场包（词表 / 规则）：加载一次，提示词参照与节拍下拉共用 ──────────────────
-
-const packs = ref<SemanticPack[]>([])
-
-async function loadPacks(): Promise<void> {
-  try {
-    packs.value = (await window.studio.semanticListPacks()) ?? []
-  } catch {
-    packs.value = []
-  }
-}
-
-/** 节拍下拉：当前时间线所用词表的类型（内置类型本地化；市场包类型用包里的名字） */
-const beatTypes = computed(() => {
-  const vocab =
-    findVocabularyInPacks(packs.value, timeline.value?.vocabulary) ??
-    listVocabularies(packs.value)[0]
-  return (vocab?.beats ?? []).map((b) => {
-    const key = `graph.semanticTimeline.beat.${b.type}`
-    return { type: b.type, label: te(key) ? t(key) : b.label || b.type }
-  })
-})
-
 onMounted(() => {
   void load()
-  void loadPacks().then(() => buildLocalPlan())
 })
-
-// ─── 实体替换的参考图候选：**只取**分析节点「参考图」端口上游的图片 ─────────────────
-// 不列资产库：候选来源与图上的连线一致，换什么形象由图决定，菜单也不会被整个资产库淹没
 
 const referenceCandidates = computed(() => {
   const host = props.graphHostId?.trim()
@@ -286,9 +305,9 @@ const referenceCandidates = computed(() => {
       fromPort.push(...candidatesFromSourceNode(source, runStates?.[source.id], edge.sourcePort))
     }
   }
-  // 多条入边可能指向同一张图：去重
   return mergeCandidates(fromPort)
 })
+
 watch(
   () => [
     props.timelineId,
@@ -302,65 +321,67 @@ watch(
   }
 )
 
-// ─── 当前提示词（只读，给修改面板做参照） ────────────────────────────────────────
+const promptByShot = computed((): Record<string, string> =>
+  timeline.value ? resolveShotDisplayPrompts(timeline.value) : {}
+)
 
-/**
- * 渲染侧用 `buildPromptPlan` 按当前时间线（含修改）重算一份计划，只用来在修改面板里
- * **显示每镜现在会用的提示词**（提示词覆盖框的参照）。口径与编译执行器一致
- * （导演规则 + 结构化镜头）；真正的计划仍以编译节点的运行结果为准。
- */
-const localPlan = ref<VideoPromptPlan | null>(null)
+const activeShotIds = computed(() =>
+  (timeline.value?.shots ?? []).filter((s) => !s.removed).map((s) => s.id)
+)
 
-async function buildLocalPlan(): Promise<void> {
-  const doc = timeline.value
-  if (!doc) {
-    localPlan.value = null
-    return
-  }
-  try {
-    let shots: ShotEvidence[] = []
-    let utterances: UtteranceEvidence[] = []
-    if (!doc.shots?.length && doc.id && window.studio.semanticLoadEvidence) {
-      try {
-        const evidence = await window.studio.semanticLoadEvidence(doc.id)
-        shots = evidence?.shots ?? []
-        utterances = evidence?.utterances ?? []
-      } catch {
-        /* 读不到证据：没有参照提示词，不影响修改 */
-      }
-    }
-    const commands = compileDirectorCommands(doc, { rulePacks: collectRulePacks(packs.value) })
-    localPlan.value = buildPromptPlan({
-      timeline: doc,
-      shots,
-      utterances,
-      commands,
-      sourceRelativePath: props.sourceRelativePath,
-      lang: locale.value.toLowerCase().startsWith('en') ? 'en' : 'zh'
-    })
-  } catch {
-    localPlan.value = null
-  }
+function handleRerunShot(shotId: string): void {
+  const id = shotId.trim()
+  if (!id) return
+  const host = props.graphHostId?.trim()
+  const rebuildNodeId = findDownstreamRebuildNodeId()
+  if (!host || !rebuildNodeId) return
+  const runHost = graphRunHosts.get(host)
+  if (!runHost || runHost.isRunning.value) return
+  graphEditorHosts.updateNode(host, rebuildNodeId, { rebuildOnlyShotIds: id })
+  void runHost.runToNode(rebuildNodeId)
 }
 
-watch([() => timeline.value?.id, () => timeline.value?.updatedAt], () => void buildLocalPlan(), {
-  immediate: true
+const breakdownSummary = computed(() => timeline.value?.breakdown?.summary)
+const provenanceBadges = computed(() => {
+  const p = timeline.value?.breakdown?.provenance
+  if (!p) return []
+  const list: string[] = []
+  if (p.aigcImplicitLabel?.label) {
+    list.push(
+      `${t('graph.semanticTimeline.rea.provenanceAigc')}${p.aigcImplicitLabel.contentProducer ? ` (${p.aigcImplicitLabel.contentProducer})` : ''}`
+    )
+  }
+  if (p.hasC2pa) list.push(t('graph.semanticTimeline.rea.provenanceC2pa'))
+  if (p.generatorHint) {
+    list.push(t('graph.semanticTimeline.rea.provenanceGen', { v: p.generatorHint }))
+  }
+  if (p.editorHint) {
+    list.push(t('graph.semanticTimeline.rea.provenanceEditor', { v: p.editorHint }))
+  }
+  if (p.make || p.model) {
+    list.push(
+      t('graph.semanticTimeline.rea.provenanceCamera', {
+        v: [p.make, p.model].filter(Boolean).join(' ')
+      })
+    )
+  }
+  if (p.platformTranscode) {
+    list.push(t('graph.semanticTimeline.rea.provenancePlatform', { v: p.platformTranscode }))
+  }
+  return list
 })
 
-/** shotId → 当前会用的提示词 */
-const promptByShot = computed((): Record<string, string> => {
-  const out: Record<string, string> = {}
-  for (const shot of localPlan.value?.shots ?? []) out[shot.shotId] = shot.prompt
-  return out
-})
+const openQuestions = computed(() => timeline.value?.breakdown?.wholeVideo?.openQuestions ?? [])
+
+function handleSeekFromSubPanel(sec: number): void {
+  activeTab.value = 'timeline'
+  void nextTick(() => {
+    editorRef.value?.seekTo(sec)
+  })
+}
 </script>
 
 <template>
-  <!--
-    与其它 dive 视图一致：**就地**渲染在宿主编辑器的位置上（只占画布区），
-    面包屑/返回条由宿主统一渲染（`.dive-shell-bar` + EditorDiveBar）——
-    本视图不自带返回条、也不做全屏浮层。
-  -->
   <div class="dive-semantic dive-view">
     <p v-if="error" class="err">
       {{ error }}
@@ -370,27 +391,137 @@ const promptByShot = computed((): Record<string, string> => {
       <p>{{ hint }}</p>
       <p class="hint-sub">{{ t('graph.semanticTimeline.noTimelineHintSub') }}</p>
     </div>
-    <!-- 修改摘要条：改了多少、保存状态、校验 / 保存失败原因（编辑本身在右侧检查器里） -->
-    <div v-if="timeline && editSummary" class="edit-bar" role="status" aria-live="polite">
-      <span class="edit-bar-title">{{ t('graph.semanticEdit.title') }}</span>
-      <span class="edit-bar-summary">{{ t('graph.semanticEdit.summary', editSummary) }}</span>
-      <span v-if="saveLabel" class="edit-bar-save">{{ saveLabel }}</span>
-      <span v-if="editError" class="edit-bar-err" role="alert">{{ editError }}</span>
-    </div>
-    <SemanticTimelineEditor
-      v-if="timeline"
-      :timeline="timeline"
-      :prompt-by-shot="promptByShot"
-      :beat-types="beatTypes"
-      :reference-candidates="referenceCandidates"
-      @edit="applyEdit"
-    />
-    <SemanticCompareView
-      v-if="originalUrl && resultUrl"
-      class="compare"
-      :original-url="originalUrl"
-      :result-url="resultUrl"
-    />
+
+    <template v-if="timeline">
+      <!-- Top 4-Axis Forensic Verdict & Mode Tabs -->
+      <div class="verdict-shell">
+        <div v-if="breakdownSummary" class="verdict-top">
+          <span class="verdict-badge">{{ t('graph.semanticTimeline.rea.verdictLabel') }}</span>
+          <strong class="verdict-text">
+            {{ isEn ? breakdownSummary.verdictEn : breakdownSummary.verdict }}
+          </strong>
+          <span class="verdict-conf">
+            {{
+              t('graph.semanticTimeline.rea.confidenceLabel', {
+                pct: Math.round(breakdownSummary.confidence * 100)
+              })
+            }}
+          </span>
+
+          <div class="mix-pills">
+            <span
+              v-for="m in breakdownSummary.productionMix"
+              :key="m.label"
+              class="mix-pill"
+              :style="{
+                '--mix-color': PRODUCTION_LABEL_META[m.label]?.color ?? '#457b9d'
+              }"
+            >
+              <i class="mix-dot" />
+              {{ isEn ? m.labelEn : m.labelZh }} {{ Math.round(m.ratio * 100) }}%
+            </span>
+          </div>
+
+          <div v-if="provenanceBadges.length" class="prov-pills">
+            <span v-for="(badge, idx) in provenanceBadges" :key="idx" class="prov-pill">
+              {{ badge }}
+            </span>
+          </div>
+        </div>
+
+        <details v-if="openQuestions.length" class="open-questions">
+          <summary>
+            {{ t('graph.semanticTimeline.rea.openQuestionsTitle', { n: openQuestions.length }) }}
+          </summary>
+          <ul>
+            <li v-for="(q, idx) in openQuestions" :key="idx">{{ q }}</li>
+          </ul>
+        </details>
+
+        <div class="workspace-bar">
+          <nav class="mode-tabs" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              class="mode-tab"
+              :class="{ active: activeTab === 'timeline' }"
+              @click="activeTab = 'timeline'"
+            >
+              {{ t('graph.semanticTimeline.rea.tabTimeline') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="mode-tab"
+              :class="{ active: activeTab === 'remake' }"
+              @click="activeTab = 'remake'"
+            >
+              {{ t('graph.semanticTimeline.rea.tabRemakePlan') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="mode-tab"
+              :class="{ active: activeTab === 'audio' }"
+              @click="activeTab = 'audio'"
+            >
+              {{ t('graph.semanticTimeline.rea.tabAudioLayers') }}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              class="mode-tab"
+              :class="{ active: activeTab === 'report' }"
+              @click="activeTab = 'report'"
+            >
+              {{ t('graph.semanticTimeline.rea.tabReportCompare') }}
+            </button>
+          </nav>
+
+          <div v-if="editSummary" class="edit-status" role="status" aria-live="polite">
+            <span class="edit-bar-title">{{ t('graph.semanticEdit.title') }}</span>
+            <span class="edit-bar-summary">{{ t('graph.semanticEdit.summary', editSummary) }}</span>
+            <span v-if="saveLabel" class="edit-bar-save">{{ saveLabel }}</span>
+          </div>
+        </div>
+
+        <p v-if="editError" class="edit-bar-err" role="alert">{{ editError }}</p>
+      </div>
+
+      <!-- Mode 1: Multi-Track Editor & Per-Shot Forensic Inspector -->
+      <template v-if="activeTab === 'timeline'">
+        <SemanticTimelineEditor
+          ref="editorRef"
+          :timeline="timeline"
+          :prompt-by-shot="promptByShot"
+          :reference-candidates="referenceCandidates"
+          @edit="applyEdit"
+        />
+        <SemanticCompareView
+          v-if="originalUrl && resultUrl"
+          class="compare"
+          :original-url="originalUrl"
+          :result-url="resultUrl"
+          :compare-video-url="compareVideoUrl"
+          :shot-ids="activeShotIds"
+          @rerun-shot="handleRerunShot"
+        />
+      </template>
+
+      <!-- Modes 2-4: Remake Plan / Sound & Packaging / Report & Compare -->
+      <SemanticBreakdownWorkspacePanels
+        v-else
+        :mode="activeTab"
+        :timeline="timeline"
+        :source-relative-path="resolvedSourceRelativePath(timeline)"
+        :original-url="originalUrl"
+        :result-url="resultUrl"
+        :compare-video-url="compareVideoUrl"
+        @seek-and-switch-timeline="handleSeekFromSubPanel"
+        @edit="applyEdit"
+        @rerun-shot="handleRerunShot"
+      />
+    </template>
   </div>
 </template>
 
@@ -398,15 +529,13 @@ const promptByShot = computed((): Record<string, string> => {
 .dive-semantic {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   height: 100%;
-  /* 外层只在「窗口太矮、编辑器到 min-height 还放不下」时兜底滚动；
-     正常情况下高度由编辑器内部的滚动区承担，横向滚动条就贴在可见区底部 */
   overflow: auto;
   padding: 8px;
 }
 .err {
-  color: #f88;
+  color: #f87171;
   font-size: 13px;
 }
 .err .path {
@@ -416,7 +545,6 @@ const promptByShot = computed((): Record<string, string> => {
   font-family: Consolas, monospace;
   font-size: 12px;
 }
-/* 「还没有时间线」是提示，不是错误：用常规色 + 说明下一步怎么做 */
 .hint {
   color: var(--text);
   font-size: 13px;
@@ -426,17 +554,125 @@ const promptByShot = computed((): Record<string, string> => {
   color: var(--text-muted);
   font-size: 12px;
 }
-.edit-bar {
+.verdict-shell {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-panel);
   font-size: 12px;
+}
+.verdict-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.verdict-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  color: var(--text);
+  font-weight: 600;
+  font-size: 11px;
+}
+.verdict-text {
+  color: var(--text);
+  font-size: 13px;
+}
+.verdict-conf {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.mix-pills,
+.prov-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.mix-pill,
+.prov-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 11px;
+}
+.mix-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mix-color);
+}
+.prov-pill {
+  color: var(--text-muted);
+}
+.open-questions {
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px dashed var(--border);
+  padding-top: 6px;
+}
+.open-questions summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #f4a261;
+}
+.open-questions ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.workspace-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
+.mode-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mode-tab {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mode-tab:hover {
+  color: var(--text);
+}
+.mode-tab.active {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elevated));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.edit-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
 .edit-bar-title {
   font-weight: 600;
@@ -446,16 +682,12 @@ const promptByShot = computed((): Record<string, string> => {
 .edit-bar-save {
   color: var(--text-muted);
 }
-.edit-bar-save {
-  margin-left: auto;
-}
 .edit-bar-err {
-  flex-basis: 100%;
-  color: #f88;
+  margin: 0;
+  color: #f87171;
 }
 .compare {
   min-height: 220px;
-  /* 比对面板不参与挤压编辑器的高度 */
   flex: 0 0 auto;
 }
 </style>

@@ -4017,7 +4017,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
   },
   {
     id: 'videoSemantic',
-    typeIds: ['semantic.analyze', 'semantic.compile', 'semantic.rebuild']
+    typeIds: ['semantic.analyze', 'semantic.rebuild']
   },
   {
     id: 'voice',

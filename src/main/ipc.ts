@@ -479,9 +479,6 @@ export function registerIpcHandlers(): void {
     async (input: import('@shared/semanticTimeline').SemanticRebuildRequest) =>
       (await import('./services/semanticTimeline/graphBridge')).semanticRebuildForGraph(input)
   )
-  handle(IpcChannels.SEMANTIC_LIST_PACKS, async () =>
-    (await import('./services/semanticTimeline/graphBridge')).listSemanticPacksForGraph()
-  )
   handle(IpcChannels.GEN_MODEL3D, async (input: GenerateModel3dInput) => {
     const result = await modelProviderFacade.generateModel3d(input)
     const asset = projectService.listAssets().find((item) => item.id === result.assetId)

@@ -39,11 +39,16 @@ import { buildSubtitleClipsFromTranscription } from '../src/shared/graph/timelin
 import { applyTimelineEdits } from '../src/shared/graph/timelineEdit'
 import { synthesizeVocalShifterSinging } from '../src/main/services/vocalSingingService'
 import {
-  applyVariantToPromptPlan,
+  applyBatchVariantToTimeline,
   buildScriptTimelineBatchVariants,
   BUILTIN_BATCH_VARIANT_TEMPLATES,
-  parseBatchVariantSpecs
-} from '../src/shared/semanticTimeline/batchVariants'
+  createEmptySemanticTimeline,
+  ensureSemanticStructure,
+  finalizeSemanticBreakdown,
+  parseBatchVariantSpecs,
+  planRemakeExecution,
+  rebaselineSemanticTimeline
+} from '../src/shared/semanticTimeline'
 import {
   buildClipPitchAndVoiceFilter,
   buildFilterGraph,
@@ -359,56 +364,36 @@ describe('Capability 4: 1-to-N Batch Variant Matrix', () => {
     const specs = parseBatchVariantSpecs(JSON.stringify(tpl.specs))
     expect(specs.length).toBe(tpl.specs.length)
 
-    const basePlan = {
-      schema: 'aiart.video-prompts@1' as const,
-      timelineId: 'stl.demo',
-      sourceAssetId: 'asset.demo',
-      createdAt: new Date().toISOString(),
-      lang: 'zh' as const,
-      fullPrompt: 'Original visual prompt',
-      settings: {
-        width: 1080,
-        height: 1920,
-        fps: 30,
-        durationSec: 3
-      },
-      source: { durationSec: 3, fps: 30 },
+    let baseDoc = createEmptySemanticTimeline('asset.demo', {
+      durationSec: 3,
+      fps: 30,
+      width: 1080,
+      height: 1920,
+      hasAudio: true
+    })
+    baseDoc = ensureSemanticStructure(baseDoc, {
       shots: [
         {
-          shotId: 'sh.1',
-          sourceRange: { start: 0, end: 3 },
-          startSec: 0,
-          durationSec: 3,
-          targetDurationSec: 3,
-          strategy: 'regenerate' as const,
-          prompt: 'Original visual prompt',
-          negativePrompt: '',
-          entities: [],
-          eventLabels: [],
-          sourceIntentIds: [],
-          changeReasons: ['hook']
+          id: 'sh.1',
+          range: { start: 0, end: 3, startFrame: 0, endFrame: 90 },
+          keyframes: { first: 'evidence/keyframes/sh.1.first.jpg' },
+          confidence: 0.9,
+          forensics: { meanFrameDiff: 12, cameraMotionKind: 'smooth_move' }
         }
       ],
-      subtitles: [
-        {
-          sourceStartSec: 0.2,
-          sourceEndSec: 2.8,
-          text: '原始台词'
-        }
-      ],
-      dubs: [
+      utterances: [
         {
           id: 'utt.1',
-          sourceStartSec: 0.2,
-          sourceEndSec: 2.8,
-          sourceText: '原始台词',
-          text: '原始台词'
+          range: { start: 0.2, end: 2.8, startFrame: 6, endFrame: 84 },
+          text: '原始台词',
+          granularity: 'sentence',
+          confidence: 0.95
         }
-      ],
-      removedShotIds: []
-    }
+      ]
+    })
+    baseDoc = rebaselineSemanticTimeline(finalizeSemanticBreakdown(baseDoc))
 
-    const vPlan = applyVariantToPromptPlan(basePlan, {
+    const vRes = applyBatchVariantToTimeline(baseDoc, {
       id: 'v-custom',
       title: '脱口秀版',
       instruction: '夸张霓虹赛博风',
@@ -417,8 +402,12 @@ describe('Capability 4: 1-to-N Batch Variant Matrix', () => {
         'utt.1': '全新@{boom}爆梗开场@{/boom}！'
       }
     })
-    expect(vPlan.shots[0]!.prompt).toContain('夸张霓虹赛博风')
-    expect(vPlan.dubs![0]!.text).toBe('全新爆梗开场！')
+    const vPlanned = planRemakeExecution(vRes.timeline, {
+      strategy: 'adapt',
+      instruction: vRes.instruction
+    })
+    expect(vPlanned.units[0]!.videoPrompt).toContain('夸张霓虹赛博风')
+    expect(vPlanned.dubs[0]!.text).toBe('全新爆梗开场！')
 
     const baseTimeline: ScriptTimelineDocument = {
       clips: [

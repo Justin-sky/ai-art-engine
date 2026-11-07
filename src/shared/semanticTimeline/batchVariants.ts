@@ -1,26 +1,19 @@
 /**
  * 1-to-N 视频批量变体矩阵编译器（Batch Variant Matrix）
  *
- * 对标并超越 hypit-ai/hypit 的「1 条工作流 → 100 条变体」能力：
- * - 支持在 `semantic.rebuild`（语义重建节点）与 `ScriptTimeline`（成片时间线）上传入多组变体配置 `SemanticBatchVariantSpec[]`；
- * - 每个变体可独立覆盖：
- *   1. `instruction`：整片角色/画风/场景补充指令（如「把主播换成穿黑色哥特裙的女孩」）
- *   2. `dubVoice`：配音音色覆盖
- *   3. `dialogueOverrides`：按台词 ID / 镜头序号 / 原台词子串替换新文案（支持 `@{tag}关键词@{/tag}` 词级锚点自动重对齐）
- *   4. `shotPromptOverrides`：按镜头 ID 覆盖生成提示词
- *   5. `entityReferenceOverrides`：按实体 ID 或实体名称替换参考图（资产 ID 或工程相对路径）
- * - 智能增量编译：仅被变体修改波及的镜头自动转为 `regenerate`，未波及的镜头保持 `passthrough` 直通或复用缓存，最大化降低出片成本。
+ * 直接基于 `SemanticTimeline` 与 `ScriptTimelineDocument` 派生多组变体配置：
+ * - `instruction`：整片角色/画风/场景补充指令
+ * - `dubVoice`：配音音色覆盖
+ * - `dialogueOverrides`：按台词 ID / 镜头序号 `#1` / 原台词子串替换新文案（自动剥离 `@{tag}` 词级锚点）
+ * - `shotPromptOverrides`：按镜头 ID 覆盖生成提示词
+ * - `entityReferenceOverrides`：按实体 ID 或实体名称替换参考图（资产 ID 或工程相对路径）
  */
 
 import type { ScriptTimelineDocument } from '../graph/scriptTimeline'
 import type { TimelineSubtitleKaraokeMode } from '../graph/timelineWordCue'
 import { parseInlineCueText, syncTimelineCueAnchors } from '../graph/timelineWordCue'
-import {
-  combinePlanFullPrompt,
-  type DubLine,
-  type PlanSubtitle,
-  type VideoPromptPlan
-} from './promptPlan'
+import { finalizeSemanticBreakdown } from './reaPlan'
+import type { Entity, SemanticTimeline } from './types'
 
 export interface SemanticBatchVariantSpec {
   /** 变体唯一标识（如 "goth-persona"、"hook-b"、"en-us"） */
@@ -58,46 +51,46 @@ export const BUILTIN_BATCH_VARIANT_TEMPLATES: ReadonlyArray<{
 }> = [
   {
     id: 'persona-swap',
-    titleZh: '主播人设裂变（3 组风格）',
+    titleZh: '主播人设裂变（3 组风格）', // cjk-ok
     titleEn: 'Persona Swap (3 Styles)',
     specs: [
       {
         id: 'persona-cyber',
-        title: '赛博霓虹科技博主',
-        instruction: '主持人变为赛博朋克霓虹风格的科技博主，背景带全息发光屏幕',
+        title: '赛博霓虹科技博主', // cjk-ok
+        instruction: '主持人变为赛博朋克霓虹风格的科技博主，背景带全息发光屏幕', // cjk-ok
         dubVoice: 'alloy'
       },
       {
         id: 'persona-anime',
-        title: '二次元动漫主理人',
-        instruction: '画面转为高品质二次元新海诚动画风格，角色表情生动鲜明',
+        title: '二次元动漫主理人', // cjk-ok
+        instruction: '画面转为高品质二次元新海诚动画风格，角色表情生动鲜明', // cjk-ok
         dubVoice: 'nova'
       },
       {
         id: 'persona-cat',
-        title: '萌宠猫咪拟人主播',
-        instruction: '主持人替换为穿连帽衫的拟人化可爱橘猫主播，对着麦克风认真讲解',
+        title: '萌宠猫咪拟人主播', // cjk-ok
+        instruction: '主持人替换为穿连帽衫的拟人化可爱橘猫主播，对着麦克风认真讲解', // cjk-ok
         dubVoice: 'shimmer'
       }
     ]
   },
   {
     id: 'hook-ab-test',
-    titleZh: '黄金前 3 秒钩子 A/B 裂变',
+    titleZh: '黄金前 3 秒钩子 A/B 裂变', // cjk-ok
     titleEn: '3-Second Hook A/B Test',
     specs: [
       {
         id: 'hook-painpoint',
-        title: '痛点暴击版钩子',
+        title: '痛点暴击版钩子', // cjk-ok
         dialogueOverrides: {
-          '#1': '别再花冤枉钱了！@{highlight}90%的人@{/highlight}第一步就选错了！'
+          '#1': '别再花冤枉钱了！@{highlight}90%的人@{/highlight}第一步就选错了！' // cjk-ok
         }
       },
       {
         id: 'hook-ranking',
-        title: '悬念榜单版钩子',
+        title: '悬念榜单版钩子', // cjk-ok
         dialogueOverrides: {
-          '#1': '今天把市面上最火的几款放到 @{highlight}S到D级梯度榜@{/highlight} 真实处刑！'
+          '#1': '今天把市面上最火的几款放到 @{highlight}S到D级梯度榜@{/highlight} 真实处刑！' // cjk-ok
         }
       }
     ]
@@ -207,135 +200,113 @@ function matchDialogueOverride(
   return undefined
 }
 
+export interface VariantTimelineResult {
+  timeline: SemanticTimeline
+  instruction?: string
+  dubVoice?: string
+  /** True when the variant supplies a whole-video persona/style instruction without targeting single shots */
+  promotesToAdapt: boolean
+}
+
 /**
- * 将单条变体规格应用到基础 `VideoPromptPlan`，生成独立可执行的派生提示词计划。
+ * 将单条变体规格直接应用到 `SemanticTimeline`，保留原 `baseline` 以便自动精准识别脏镜头与脏台词。
  */
-export function applyVariantToPromptPlan(
-  basePlan: VideoPromptPlan,
+export function applyBatchVariantToTimeline(
+  baseDoc: SemanticTimeline,
   variant: SemanticBatchVariantSpec
-): VideoPromptPlan {
-  const sep = basePlan.lang === 'zh' ? '。' : '. '
-  const extraInst = variant.instruction?.trim() ?? ''
+): VariantTimelineResult {
+  const baseline = baseDoc.baseline
+  let touchedVisual = false
 
-  const shots = basePlan.shots.map((shot) => {
-    let prompt = shot.prompt
-    let changed = false
-    const reasons = [...(shot.changeReasons ?? [])]
-
-    const shotOverride = variant.shotPromptOverrides?.[shot.shotId]
-    if (shotOverride) {
-      prompt = shotOverride
-      changed = true
-      if (!reasons.includes('variant:prompt')) reasons.push('variant:prompt')
+  const entities: Entity[] = (baseDoc.entities ?? []).map((ent) => {
+    const refOverride =
+      variant.entityReferenceOverrides?.[ent.id] ?? variant.entityReferenceOverrides?.[ent.name]
+    if (!refOverride) return ent
+    touchedVisual = true
+    const isAsset =
+      !refOverride.includes('/') &&
+      !refOverride.includes('\\') &&
+      !/\.[a-z0-9]+$/i.test(refOverride)
+    const refItem = isAsset
+      ? { assetId: refOverride, label: ent.name }
+      : { relativePath: refOverride, label: ent.name }
+    return {
+      ...ent,
+      replacement: {
+        instruction: ent.replacement?.instruction ?? '',
+        references: [refItem],
+        masks: ent.replacement?.masks ?? []
+      }
     }
+  })
 
-    if (extraInst && prompt && !prompt.includes(extraInst)) {
-      prompt = `${prompt}${sep}${extraInst}`
-      changed = true
-      if (!reasons.includes('variant:instruction')) reasons.push('variant:instruction')
-    }
-
-    let replacements = shot.replacements ? shot.replacements.map((r) => ({ ...r })) : undefined
-    if (variant.entityReferenceOverrides && replacements?.length) {
-      replacements = replacements.map((rep) => {
-        const refOverride =
-          variant.entityReferenceOverrides?.[rep.entityId] ??
-          variant.entityReferenceOverrides?.[rep.entityName]
-        if (!refOverride) return rep
-        changed = true
-        if (!reasons.includes('variant:entity')) reasons.push('variant:entity')
-        const isAsset =
-          !refOverride.includes('/') &&
-          !refOverride.includes('\\') &&
-          !/\.[a-z0-9]+$/i.test(refOverride)
-        return {
-          ...rep,
-          references: [
-            isAsset
-              ? { assetId: refOverride, label: rep.entityName }
-              : { relativePath: refOverride, label: rep.entityName }
-          ]
-        }
-      })
-    }
-
+  const shots = (baseDoc.shots ?? []).map((shot) => {
+    const shotOverride = variant.shotPromptOverrides?.[shot.id]
+    if (!shotOverride) return shot
+    touchedVisual = true
     return {
       ...shot,
-      prompt,
-      ...(replacements ? { replacements } : {}),
-      strategy: changed ? ('regenerate' as const) : shot.strategy,
-      ...(reasons.length ? { changeReasons: reasons } : {})
+      promptOverride: shotOverride,
+      origin: 'user' as const
     }
   })
 
-  // 处理字幕与配音覆盖（自动剥离 @{tag} 内联标记作为纯净 TTS 输入与字幕展示文本）
-  const baseSubs: PlanSubtitle[] = (basePlan.subtitles ?? []).map((s) => ({ ...s }))
-  const dubByRangeKey = new Map<string, DubLine>()
-  for (const d of basePlan.dubs ?? []) {
-    const key = `${d.sourceStartSec.toFixed(2)}:${d.sourceEndSec.toFixed(2)}`
-    dubByRangeKey.set(key, {
-      ...d,
-      ...(variant.dubVoice ? { voice: variant.dubVoice } : {})
-    })
-  }
-
-  const nextSubtitles: PlanSubtitle[] = baseSubs.map((sub, idx) => {
-    const lineId = `utt.${idx + 1}`
-    const overrideRaw = matchDialogueOverride(variant.dialogueOverrides, lineId, idx, sub.text)
-    if (!overrideRaw) {
-      const clean = parseInlineCueText(sub.text).cleanText || sub.text
-      return { ...sub, text: clean }
-    }
+  const dialogue = (baseDoc.dialogue ?? []).map((line, idx) => {
+    const overrideRaw = matchDialogueOverride(variant.dialogueOverrides, line.id, idx, line.text)
+    if (!overrideRaw) return line
     const cleanText = parseInlineCueText(overrideRaw).cleanText || overrideRaw
-    const key = `${sub.sourceStartSec.toFixed(2)}:${sub.sourceEndSec.toFixed(2)}`
-    const existingDub = dubByRangeKey.get(key)
-    dubByRangeKey.set(key, {
-      id: existingDub?.id ?? lineId,
-      sourceStartSec: sub.sourceStartSec,
-      sourceEndSec: sub.sourceEndSec,
-      text: cleanText,
-      sourceText: existingDub?.sourceText ?? sub.text,
-      ...(variant.dubVoice
-        ? { voice: variant.dubVoice }
-        : existingDub?.voice
-          ? { voice: existingDub.voice }
-          : {}),
-      ...(existingDub?.referenceAudio ? { referenceAudio: existingDub.referenceAudio } : {})
-    })
     return {
-      ...sub,
-      text: cleanText
+      ...line,
+      text: cleanText,
+      origin: 'user' as const
     }
   })
 
-  // 若 basePlan 没有 subtitles 但有 dubs，同样应用 dialogueOverrides
-  for (const [idx, d] of [...dubByRangeKey.values()].entries()) {
-    const overrideRaw = matchDialogueOverride(variant.dialogueOverrides, d.id, idx, d.text)
-    if (overrideRaw) {
-      const cleanText = parseInlineCueText(overrideRaw).cleanText || overrideRaw
-      const key = `${d.sourceStartSec.toFixed(2)}:${d.sourceEndSec.toFixed(2)}`
-      dubByRangeKey.set(key, {
-        ...d,
-        text: cleanText,
-        ...(variant.dubVoice ? { voice: variant.dubVoice } : {})
-      })
+  const edits = [...(baseDoc.edits ?? [])]
+  if (variant.entityReferenceOverrides) {
+    for (const ent of entities) {
+      if (variant.entityReferenceOverrides[ent.id] || variant.entityReferenceOverrides[ent.name]) {
+        edits.push({
+          id: `edit.var.${variant.id}.${ent.id}`,
+          op: 'entity.replace',
+          target: ent.id,
+          patch: {},
+          origin: 'user',
+          at: baseDoc.updatedAt
+        })
+      }
     }
   }
 
-  const nextDubs = [...dubByRangeKey.values()].sort((a, b) => a.sourceStartSec - b.sourceStartSec)
+  let nextDoc: SemanticTimeline = {
+    ...baseDoc,
+    entities,
+    shots,
+    dialogue,
+    edits
+  }
+  if (nextDoc.breakdown) {
+    nextDoc = finalizeSemanticBreakdown(nextDoc)
+  }
+  if (baseline) {
+    nextDoc = { ...nextDoc, baseline }
+  }
+
+  const instruction = variant.instruction?.trim() || undefined
+  const dubVoice = variant.dubVoice?.trim() || undefined
+  const promotesToAdapt = Boolean(instruction && !touchedVisual)
 
   return {
-    ...basePlan,
-    shots,
-    fullPrompt: combinePlanFullPrompt(shots, basePlan.lang),
-    ...(nextSubtitles.length ? { subtitles: nextSubtitles } : {}),
-    ...(nextDubs.length ? { dubs: nextDubs } : {})
+    timeline: nextDoc,
+    ...(instruction ? { instruction } : {}),
+    ...(dubVoice ? { dubVoice } : {}),
+    promotesToAdapt
   }
 }
 
 /**
  * 将批量变体配置应用到 `ScriptTimelineDocument`（成片时间线）：
- * 替换带 `@{tag}` 的新台词后，自动调用 `syncTimelineCueAnchors` 重新对齐所有 B-Roll 弹窗、动态组件与音效！
+ * 替换带 `@{tag}` 的新台词后，自动调用 `syncTimelineCueAnchors` 重新对齐所有 B-Roll 弹窗、动态组件与音效。
  */
 export function buildScriptTimelineBatchVariants(
   baseDoc: ScriptTimelineDocument,
