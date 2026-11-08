@@ -4,6 +4,8 @@
 import { computed, inject, provide, reactive, ref, shallowRef, watch, type InjectionKey } from 'vue'
 import {
   autoLayoutMxDocument,
+  applyAllMxDiagnosticQuickFixes,
+  applyMxDiagnosticQuickFixInPlace,
   createMxDocumentFromBuildingBlock,
   createMxFromTemplate,
   createMxInitialState,
@@ -24,6 +26,7 @@ import {
   suggestMxAgentGoalsWithAi,
   synthesizeMxWorkbenchFromPrompt,
   type MxAgent,
+  type MxDiagnosticFinding,
   type MxDocument,
   type MxEdge,
   type MxEdgeKind,
@@ -814,6 +817,53 @@ export function createMxStudioStore(initial: MxDocument) {
       applyOne(d, k2, id2, v2)
     })
     playAgain()
+  }
+
+  function applyDiagnosticQuickFix(finding: MxDiagnosticFinding, sinkLabel?: string): boolean {
+    let changed = false
+    let focusNodeId: string | undefined
+    let focusEdgeId: string | undefined
+    const nextSeed = doc.value.settings.seed + runs.value.length
+    const activeScenarioId = scenarioId()
+    mutate((d) => {
+      const res = applyMxDiagnosticQuickFixInPlace(d, finding, {
+        sinkLabel,
+        run: activeRun.value,
+        seed: nextSeed,
+        scenarioId: activeScenarioId
+      })
+      changed = res.changed
+      focusNodeId = res.focusNodeId
+      focusEdgeId = res.focusEdgeId
+    })
+    if (changed) {
+      if (focusEdgeId) select([], [focusEdgeId])
+      else if (focusNodeId) select([focusNodeId], [])
+      playAgain()
+    }
+    return changed
+  }
+
+  function applyAllDiagnosticQuickFixes(sinkLabel?: string): number {
+    const nextSeed = doc.value.settings.seed + runs.value.length
+    const activeScenarioId = scenarioId()
+    const res = applyAllMxDiagnosticQuickFixes(peekDoc(), {
+      sinkLabel,
+      run: activeRun.value,
+      seed: nextSeed,
+      scenarioId: activeScenarioId
+    })
+    if (res.fixedCount > 0) {
+      mutate((d) => {
+        d.nodes = res.doc.nodes
+        d.edges = res.doc.edges
+        d.params = res.doc.params
+      })
+      if (res.focusEdgeId) select([], [res.focusEdgeId])
+      else if (res.focusNodeId) select([res.focusNodeId], [])
+      playAgain()
+    }
+    return res.fixedCount
   }
 
   function alignSelection(
@@ -2021,6 +2071,8 @@ export function createMxStudioStore(initial: MxDocument) {
     deleteGroup,
     applyTunableValue,
     applyTunablePair,
+    applyDiagnosticQuickFix,
+    applyAllDiagnosticQuickFixes,
     alignSelection,
     setBotMode,
     cycleBotMode,

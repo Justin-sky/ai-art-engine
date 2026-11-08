@@ -10,15 +10,18 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   analyzeMxEconomyHealth,
+  canQuickFixMxDiagnosticFinding,
   extractMxTunableEdgeNumericValue,
   mxNodeColor,
   runMx2DParameterMatrix,
   runMxGoalSeek,
   runMxParameterSweep,
+  suggestMxBalancerTargetForFinding,
   summarizeMxSeries,
   type Mx2DMatrixCell,
   type Mx2DMatrixResult,
   type MxDiagnosticFinding,
+  type MxGoalSeekMetric,
   type MxGoalSeekResult,
   type MxParamSweepResult,
   type MxSeriesSummary,
@@ -506,7 +509,15 @@ const healthIssueCount = computed(
 
 function formatFindingText(f: MxDiagnosticFinding): string {
   switch (f.kind) {
+    case 'topology_error':
+      return `⚠ ${f.nodeLabel ?? ''}`
     case 'inflation':
+      if (f.id === 'diag_inflation_nosink') {
+        return t('mx.diag.inflationNoSink', {
+          produced: f.value ?? 0,
+          net: f.secondaryValue ?? 0
+        })
+      }
       return t('mx.diag.inflation', {
         ratio: f.value ?? 1,
         net: f.secondaryValue ?? 0
@@ -560,6 +571,32 @@ function jumpToFinding(f: MxDiagnosticFinding): void {
     s.select([f.nodeId])
     s.focusedSeriesId.value = f.nodeId
   }
+}
+
+function onQuickFixFinding(f: MxDiagnosticFinding): void {
+  s.applyDiagnosticQuickFix(f, t('mx.diag.autoSinkLabel'))
+}
+
+function onQuickFixAllFindings(): void {
+  s.applyAllDiagnosticQuickFixes(t('mx.diag.autoSinkLabel'))
+}
+
+function openFindingInBalancer(f: MxDiagnosticFinding): void {
+  const hint = suggestMxBalancerTargetForFinding(s.peekDoc(), f)
+  if (hint) {
+    const key = `${hint.kind}:${hint.id}`
+    if (tunableOptions.value.some((o) => o.key === key)) {
+      selectedTunableKey.value = key
+    }
+    tuneMin.value = hint.minVal
+    tuneMax.value = hint.maxVal
+  }
+  balancerMode.value = 'goal_seek'
+  goalMetric.value = 'health_score'
+  goalTargetValue.value = 100
+  s.resultsTab.value = 'balancer'
+  s.resultsOpen.value = true
+  executeGoalSeek()
 }
 
 const debugEvents = computed(() => {
@@ -647,7 +684,7 @@ const tuneMin = ref(0)
 const tuneMax = ref(20)
 const tuneMinY = ref(0)
 const tuneMaxY = ref(20)
-const goalMetric = ref<'node_value' | 'end_step'>('node_value')
+const goalMetric = ref<MxGoalSeekMetric>('health_score')
 const goalTargetNodeId = ref('')
 const goalTargetStep = ref(30)
 const goalTargetValue = ref(50)
@@ -746,7 +783,7 @@ function executeMatrix(): void {
     minY: Number(tuneMinY.value),
     maxY: Number(tuneMaxY.value),
     stepsY: 5,
-    metric: goalMetric.value,
+    metric: goalMetric.value === 'end_step' ? 'end_step' : 'node_value',
     targetNodeId: activeTargetNodeId.value,
     runsPerCell: 2
   })
@@ -1309,6 +1346,14 @@ function sweepSeriesPolyline(nodeId: string): string {
                 {{ healthReport.cappedPoolsCount }} / {{ healthReport.depletedPoolsCount }}
               </span>
             </div>
+            <button
+              v-if="healthIssueCount > 0"
+              type="button"
+              class="mx-diag-fix-all-btn"
+              @click="onQuickFixAllFindings"
+            >
+              ⚡ {{ t('mx.diag.fixAllBtn', { count: healthIssueCount }) }}
+            </button>
           </div>
 
           <div class="mx-diag-list">
@@ -1322,6 +1367,22 @@ function sweepSeriesPolyline(nodeId: string): string {
               <span class="mx-diag-badge">{{ f.severity.toUpperCase() }}</span>
               <span class="mx-diag-text">{{ formatFindingText(f) }}</span>
               <span v-if="f.step !== undefined" class="mx-diag-jump"> Step #{{ f.step }} → </span>
+              <div v-if="canQuickFixMxDiagnosticFinding(f)" class="mx-diag-actions">
+                <button
+                  type="button"
+                  class="mx-diag-action-btn is-primary"
+                  @click.stop="onQuickFixFinding(f)"
+                >
+                  ⚡ {{ t('mx.diag.quickFixBtn') }}
+                </button>
+                <button
+                  type="button"
+                  class="mx-diag-action-btn"
+                  @click.stop="openFindingInBalancer(f)"
+                >
+                  🎯 {{ t('mx.diag.tuneInBalancerBtn') }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1386,6 +1447,9 @@ function sweepSeriesPolyline(nodeId: string): string {
                 <label class="mx-bal-field">
                   <span>{{ t('mx.balancer.metric') }}</span>
                   <select v-model="goalMetric" class="mx-bal-select">
+                    <option value="health_score">
+                      🩺 {{ t('mx.balancer.metricHealthScore') }}
+                    </option>
                     <option value="node_value">{{ t('mx.balancer.metricNodeVal') }}</option>
                     <option value="end_step">{{ t('mx.balancer.metricEndStep') }}</option>
                   </select>
@@ -1414,7 +1478,7 @@ function sweepSeriesPolyline(nodeId: string): string {
                   />
                 </label>
 
-                <label class="mx-bal-field mx-bal-field--sm">
+                <label v-if="goalMetric !== 'health_score'" class="mx-bal-field mx-bal-field--sm">
                   <span>{{ t('mx.balancer.targetVal') }}</span>
                   <input
                     v-model.number="goalTargetValue"
@@ -2414,6 +2478,59 @@ function sweepSeriesPolyline(nodeId: string): string {
   font-weight: 700;
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mx-diag-fix-all-btn {
+  margin-left: auto;
+  align-self: center;
+  padding: 7px 13px;
+  border-radius: 7px;
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.16);
+  color: color-mix(in srgb, #10b981 82%, var(--text));
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.mx-diag-fix-all-btn:hover {
+  background: rgba(16, 185, 129, 0.26);
+  border-color: rgba(16, 185, 129, 0.72);
+}
+.mx-diag-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.mx-diag-action-btn {
+  padding: 3px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel, var(--bg));
+  color: var(--text);
+  font-size: 10.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.mx-diag-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+}
+.mx-diag-action-btn.is-primary {
+  border-color: rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.14);
+  color: color-mix(in srgb, #10b981 82%, var(--text));
+}
+.mx-diag-action-btn.is-primary:hover {
+  background: rgba(16, 185, 129, 0.24);
+  border-color: rgba(16, 185, 129, 0.7);
 }
 
 /* Runtime Debugger */

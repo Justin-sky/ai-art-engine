@@ -7769,8 +7769,39 @@ export function analyzeMxEconomyHealth(
 ): MxEconomyHealthReport {
   const activeRun = run ?? runMxSimulation(doc)
   const steps = Math.max(1, activeRun.stepsRun)
-  const produced = activeRun.totalProduced
-  const consumed = activeRun.totalConsumed
+  let conversionFaucet = 0
+  let conversionSink = 0
+  if (activeRun.edgeFlows && activeRun.edgeFlows.length > 0) {
+    const cumByEdge = new Map<string, number>()
+    for (const stepFlows of activeRun.edgeFlows) {
+      for (const [eid, amt] of Object.entries(stepFlows)) {
+        if (amt > 0) cumByEdge.set(eid, (cumByEdge.get(eid) ?? 0) + amt)
+      }
+    }
+    const firstSnap = activeRun.snapshots[0] ?? {}
+    const lastSnap = activeRun.snapshots[activeRun.snapshots.length - 1] ?? {}
+    for (const n of doc.nodes) {
+      if (n.kind !== 'converter' && n.kind !== 'trader') continue
+      let inFlow = 0
+      let outFlow = 0
+      for (const e of doc.edges) {
+        if (e.kind !== 'resource' || e.targetEdgeId) continue
+        const f = cumByEdge.get(e.id) ?? 0
+        if (f <= 0) continue
+        if (e.to === n.id) inFlow += f
+        if (e.from === n.id) outFlow += f
+      }
+      const bufferedDelta = Math.max(0, (lastSnap[n.id] ?? 0) - (firstSnap[n.id] ?? 0))
+      const usedIn = Math.max(0, inFlow - bufferedDelta)
+      if (usedIn > outFlow + 1e-6) {
+        conversionSink += usedIn - outFlow
+      } else if (outFlow > usedIn + 1e-6) {
+        conversionFaucet += outFlow - usedIn
+      }
+    }
+  }
+  const produced = Math.round((activeRun.totalProduced + conversionFaucet) * 100) / 100
+  const consumed = Math.round((activeRun.totalConsumed + conversionSink) * 100) / 100
   const faucetSinkRatio =
     consumed > 0 ? Math.round((produced / consumed) * 100) / 100 : produced > 0 ? 99 : 1
   const netFlowPerStep = Math.round(((produced - consumed) / steps) * 100) / 100
@@ -7802,8 +7833,8 @@ export function analyzeMxEconomyHealth(
       id: 'diag_inflation_nosink',
       severity: 'warn',
       kind: 'inflation',
-      value: produced,
-      secondaryValue: 0
+      value: Math.round(produced * 100) / 100,
+      secondaryValue: netFlowPerStep
     })
   } else if (faucetSinkRatio > 2.6 && produced > 15) {
     penalty += 15
@@ -7968,13 +7999,15 @@ export function analyzeMxEconomyHealth(
 
 export type MxTunableKind = 'param' | 'edge' | 'node_initial'
 
+export type MxGoalSeekMetric = 'node_value' | 'end_step' | 'health_score'
+
 export interface MxGoalSeekOptions {
   variableKind: MxTunableKind
   /** param.name | edge.id | node.id */
   variableId: string
   minVal: number
   maxVal: number
-  goalMetric: 'node_value' | 'end_step'
+  goalMetric: MxGoalSeekMetric
   goalNodeId?: string
   atStep?: number
   targetValue: number
@@ -8075,24 +8108,49 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
   const hi = Math.max(options.minVal, options.maxVal)
   const samples = Math.max(5, Math.min(60, Math.round(options.samples ?? 21)))
   const runsPerSample = Math.max(1, Math.min(20, Math.round(options.runsPerSample ?? 3)))
-  const atStep = Math.max(1, Math.min(500, Math.round(options.atStep ?? doc.settings.steps ?? 20)))
+  const isHealthMetric = options.goalMetric === 'health_score'
+  const effectiveTarget = isHealthMetric ? 100 : options.targetValue
+  const atStep = Math.max(
+    1,
+    Math.min(
+      500,
+      Math.round(
+        isHealthMetric ? (doc.settings.steps ?? 20) : (options.atStep ?? doc.settings.steps ?? 20)
+      )
+    )
+  )
   const seed = Math.floor(options.seed ?? doc.settings.seed ?? 2026)
   const goalNodeId =
     options.goalNodeId ??
     doc.nodes.find((n) => n.kind === 'pool' || n.kind === 'register')?.id ??
     ''
 
-  const evalAt = (val: number): MxGoalSeekCandidate => {
+  interface RankedCandidate extends MxGoalSeekCandidate {
+    rankCost: number
+  }
+
+  const evalAt = (val: number): RankedCandidate => {
     const v = Math.round(val * 1000) / 1000
     const tunedDoc = applyTunableToDocClone(doc, options.variableKind, options.variableId, v)
     let sum = 0
+    let tiePenaltySum = 0
     for (let r = 0; r < runsPerSample; r++) {
       const run = runMxSimulation(tunedDoc, {
         steps: atStep,
         seed: seed + r * 7919,
         skipTokenHistory: true
       })
-      if (options.goalMetric === 'end_step') {
+      if (isHealthMetric) {
+        const health = analyzeMxEconomyHealth(tunedDoc, run)
+        sum += health.score
+        const warnCount = health.findings.filter(
+          (f) => f.severity === 'warn' || f.severity === 'critical'
+        ).length
+        const ratioDist = Math.abs(
+          Math.log(Math.max(0.05, Math.min(50, health.faucetSinkRatio || 1)) / 1.15)
+        )
+        tiePenaltySum += warnCount * 0.25 + Math.min(2, ratioDist * 0.15)
+      } else if (options.goalMetric === 'end_step') {
         sum += run.stepsRun
       } else {
         const snap = run.snapshots[Math.min(atStep, run.snapshots.length - 1)] ?? {}
@@ -8100,19 +8158,20 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
       }
     }
     const achieved = Math.round((sum / runsPerSample) * 100) / 100
-    const error = Math.round(Math.abs(achieved - options.targetValue) * 100) / 100
-    return { variableValue: v, achievedValue: achieved, error }
+    const error = Math.round(Math.abs(achieved - effectiveTarget) * 100) / 100
+    const rankCost = error + (isHealthMetric ? tiePenaltySum / runsPerSample : 0)
+    return { variableValue: v, achievedValue: achieved, error, rankCost }
   }
 
   // 第一阶段：均匀网格扫描
-  const coarse: MxGoalSeekCandidate[] = []
+  const coarseRanked: RankedCandidate[] = []
   const span = Math.max(1e-6, hi - lo)
   for (let i = 0; i < samples; i++) {
     const val = lo + (span * i) / Math.max(1, samples - 1)
-    coarse.push(evalAt(val))
+    coarseRanked.push(evalAt(val))
   }
 
-  let best = coarse.reduce((a, b) => (b.error < a.error ? b : a), coarse[0]!)
+  let best = coarseRanked.reduce((a, b) => (b.rankCost < a.rankCost ? b : a), coarseRanked[0]!)
 
   // 第二阶段：在最优值邻域内做 9 点精细插值搜索
   const stepSize = span / Math.max(1, samples - 1)
@@ -8122,7 +8181,7 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
     for (let j = 1; j < 8; j++) {
       const val = fineLo + ((fineHi - fineLo) * j) / 8
       const cand = evalAt(val)
-      if (cand.error < best.error) best = cand
+      if (cand.rankCost < best.rankCost) best = cand
     }
   }
 
@@ -8131,10 +8190,941 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
     variableId: options.variableId,
     bestValue: best.variableValue,
     achievedValue: best.achievedValue,
-    targetValue: options.targetValue,
+    targetValue: effectiveTarget,
     error: best.error,
-    candidates: coarse
+    candidates: coarseRanked.map(({ variableValue, achievedValue, error }) => ({
+      variableValue,
+      achievedValue,
+      error
+    }))
   }
+}
+
+export interface MxDiagnosticQuickFixOptions {
+  sinkLabel?: string
+  run?: MxRunResult | null
+  seed?: number
+  scenarioId?: string
+}
+
+export interface MxDiagnosticQuickFixResult {
+  changed: boolean
+  focusNodeId?: string
+  focusEdgeId?: string
+}
+
+function extractEdgeThresholdExpr(edge: MxEdge): { expr: string; numeric?: number } {
+  const core = (edge.formula ?? '').replace(/\s*(?:\||every\b).*$/i, '').trim()
+  if (!core || core === '1') return { expr: '1', numeric: 1 }
+  const direct = Number(core)
+  if (Number.isFinite(direct)) {
+    const v = Math.max(1, Math.round(direct * 1000) / 1000)
+    return { expr: String(v), numeric: v }
+  }
+  const dice = /^(\d*)[dD](\d+)$/.exec(core)
+  if (dice) {
+    const count = Math.max(1, Number(dice[1] || '1'))
+    const sides = Math.max(1, Number(dice[2]))
+    const maxRoll = count * sides
+    return { expr: String(maxRoll), numeric: maxRoll }
+  }
+  const range = /^(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)$/.exec(core)
+  if (range) {
+    const hi = Math.max(1, Number(range[1]), Number(range[2]))
+    return { expr: String(hi), numeric: hi }
+  }
+  if (/^\d+(?:\.\d+)?\s*%$/.test(core)) {
+    return { expr: '1', numeric: 1 }
+  }
+  return { expr: core }
+}
+
+function isSimpleNumericEdge(edge: MxEdge): boolean {
+  const core = (edge.formula ?? '').replace(/\s*(?:\||every\b).*$/i, '').trim()
+  return !core || Number.isFinite(Number(core))
+}
+
+export function canQuickFixMxDiagnosticFinding(finding: MxDiagnosticFinding): boolean {
+  return finding.severity !== 'ok' && finding.kind !== 'balanced'
+}
+
+/**
+ * 针对单条经济诊断警告就地修复 `doc`（拓扑补边 / 容量扩容 / Sink 均衡 / 拓扑反模式修正）。
+ */
+export function applyMxDiagnosticQuickFixInPlace(
+  doc: MxDocument,
+  finding: MxDiagnosticFinding,
+  options: MxDiagnosticQuickFixOptions = {}
+): MxDiagnosticQuickFixResult {
+  if (!canQuickFixMxDiagnosticFinding(finding)) return { changed: false }
+  const byId = new Map(doc.nodes.map((n) => [n.id, n]))
+  const sinkLabel = options.sinkLabel?.trim() || 'Upkeep Sink'
+
+  if (finding.kind === 'starved_converter' && finding.nodeId) {
+    const target = byId.get(finding.nodeId)
+    if (!target) return { changed: false }
+
+    // 1) 从上游 Pool / Register 入边自动补齐 `>=消耗阈值` 状态激活边
+    const inResEdges = doc.edges.filter(
+      (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === target.id
+    )
+    const poolReqs = new Map<string, { numerics: number[]; exprs: string[]; edges: MxEdge[] }>()
+    for (const e of inResEdges) {
+      const src = byId.get(e.from)
+      if (!src || (src.kind !== 'pool' && src.kind !== 'register')) continue
+      const th = extractEdgeThresholdExpr(e)
+      const cur = poolReqs.get(src.id) ?? { numerics: [], exprs: [], edges: [] }
+      if (th.numeric !== undefined) cur.numerics.push(th.numeric)
+      else cur.exprs.push(th.expr)
+      cur.edges.push(e)
+      poolReqs.set(src.id, cur)
+    }
+
+    let changed = false
+    let focusEdgeId: string | undefined
+
+    if (poolReqs.size > 0) {
+      const reqEntries = Array.from(poolReqs.entries()).map(([poolId, info]) => {
+        const numSum = info.numerics.reduce((a, b) => a + b, 0)
+        let thresholdExpr: string
+        if (info.exprs.length === 0) {
+          thresholdExpr = String(Math.max(1, Math.round(numSum * 1000) / 1000))
+        } else {
+          const parts = [...info.exprs.map((x) => `(${x})`)]
+          if (numSum > 0) parts.push(String(Math.round(numSum * 1000) / 1000))
+          thresholdExpr = parts.join(' + ')
+        }
+        return { poolId, thresholdExpr, numericTotal: info.exprs.length === 0 ? numSum : undefined }
+      })
+
+      if (target.pullMode === 'pull_any' && reqEntries.length >= 2) {
+        const firstPoolId = reqEntries[0]!.poolId
+        let condExpr = '0'
+        for (let i = reqEntries.length - 1; i >= 0; i--) {
+          const item = reqEntries[i]!
+          condExpr = `if(${item.poolId} >= (${item.thresholdExpr}), 1, ${condExpr})`
+        }
+        const formula = `${condExpr} >= 1`
+        const existing = doc.edges.find(
+          (e) =>
+            e.kind === 'state' && !e.targetEdgeId && e.from === firstPoolId && e.to === target.id
+        )
+        if (existing) {
+          if (existing.formula !== formula) {
+            existing.formula = formula
+            changed = true
+            focusEdgeId = existing.id
+          }
+        } else {
+          const eid = mxNewId('e')
+          doc.edges.push({
+            id: eid,
+            kind: 'state',
+            from: firstPoolId,
+            to: target.id,
+            formula,
+            bend: -28
+          })
+          changed = true
+          focusEdgeId = eid
+        }
+      } else {
+        for (const item of reqEntries) {
+          const desiredFormula = `>=${item.thresholdExpr}`
+          const existing = doc.edges.find((e) => {
+            if (
+              e.kind !== 'state' ||
+              e.targetEdgeId ||
+              e.from !== item.poolId ||
+              e.to !== target.id
+            ) {
+              return false
+            }
+            const sp = parseMxStateFormula(e.formula)
+            return sp.type === 'activator' || sp.type === 'expr' || sp.type === 'range'
+          })
+          if (existing) {
+            const sp = parseMxStateFormula(existing.formula)
+            const needsRaise =
+              sp.type !== 'activator' ||
+              sp.op !== '>=' ||
+              item.numericTotal === undefined ||
+              sp.value < item.numericTotal
+            if (needsRaise && existing.formula !== desiredFormula) {
+              existing.formula = desiredFormula
+              changed = true
+              focusEdgeId = existing.id
+            }
+          } else {
+            const eid = mxNewId('e')
+            doc.edges.push({
+              id: eid,
+              kind: 'state',
+              from: item.poolId,
+              to: target.id,
+              formula: desiredFormula,
+              bend: -28
+            })
+            changed = true
+            focusEdgeId = eid
+          }
+
+          // 若同一上游池同时喂给多个自动节点，将该池所有出向资源边设为 instant，避免先触发节点扣空库存后晚触发节点在同一拍发生饥饿阻塞
+          const siblingAutoEdges = doc.edges.filter((e) => {
+            if (e.kind !== 'resource' || e.targetEdgeId || e.from !== item.poolId) return false
+            const dst = byId.get(e.to)
+            return dst && dst.id !== target.id && dst.trigger === 'automatic'
+          })
+          if (siblingAutoEdges.length > 0) {
+            for (const se of doc.edges) {
+              if (se.kind === 'resource' && !se.targetEdgeId && se.from === item.poolId) {
+                if (se.transferMode !== 'instant') {
+                  se.transferMode = 'instant'
+                  changed = true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // 2) 若下游存在容量封顶的阻塞池导致 Converter/Source 被反压阻塞，扩容或开启溢出回收
+    const outResEdges = doc.edges.filter(
+      (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === target.id
+    )
+    for (const oe of outResEdges) {
+      const dst = byId.get(oe.to)
+      if (dst?.kind === 'pool' && dst.capacity && dst.capacity > 0 && dst.overflow !== 'drain') {
+        if (!changed) {
+          dst.capacity = Math.max(dst.capacity + 20, Math.ceil((dst.capacity * 2.5) / 10) * 10)
+          changed = true
+        }
+      }
+    }
+
+    // 3) 兜底验证：若因非池入边（如直连未激活节点或区间限流）仍阻塞，将触发器降为按需触发或扩容下游
+    const verifyHealth = analyzeMxEconomyHealth(doc)
+    const stillStarved = verifyHealth.findings.some(
+      (x) => x.kind === 'starved_converter' && x.nodeId === target.id
+    )
+    if (stillStarved) {
+      for (const oe of outResEdges) {
+        const dst = byId.get(oe.to)
+        if (dst?.kind === 'pool' && dst.capacity && dst.capacity > 0 && dst.overflow !== 'drain') {
+          dst.overflow = 'drain'
+          changed = true
+        }
+      }
+      const recheck = analyzeMxEconomyHealth(doc)
+      if (
+        recheck.findings.some((x) => x.kind === 'starved_converter' && x.nodeId === target.id) &&
+        target.trigger === 'automatic'
+      ) {
+        target.trigger = 'passive'
+        for (const ie of inResEdges) {
+          const src = byId.get(ie.from)
+          if (src?.kind === 'source' && src.trigger === 'passive') {
+            src.trigger = 'automatic'
+          }
+        }
+        changed = true
+      }
+    }
+
+    return { changed, focusNodeId: target.id, focusEdgeId }
+  }
+
+  if (finding.kind === 'inflation') {
+    const activeRun = options.run ?? runMxSimulation(doc)
+    const steps = Math.max(1, activeRun.stepsRun)
+    const firstSnap = activeRun.snapshots[0] ?? {}
+    const lastSnap = activeRun.snapshots[activeRun.snapshots.length - 1] ?? {}
+
+    // 优先调优已有的活跃数值型 Drain 入边
+    const drainEdges = doc.edges.filter((e) => {
+      if (e.kind !== 'resource' || e.targetEdgeId || !isSimpleNumericEdge(e)) return false
+      const dst = byId.get(e.to)
+      const src = byId.get(e.from)
+      if (dst?.kind !== 'drain' || src?.kind !== 'pool') return false
+      const srcKey = `${src.id} ${src.label || ''}`
+      return !HP_POOL_RE.test(srcKey) && (lastSnap[src.id] ?? 0) > (firstSnap[src.id] ?? 0)
+    })
+
+    const curHealth = analyzeMxEconomyHealth(doc, activeRun)
+    if (finding.id !== 'diag_inflation_nosink' && drainEdges.length > 0) {
+      const scale = Math.min(8, Math.max(1.5, curHealth.faucetSinkRatio / 1.35))
+      let focusEdgeId: string | undefined
+      for (const de of drainEdges) {
+        const dstDrain = byId.get(de.to)
+        if (dstDrain && dstDrain.trigger === 'passive') dstDrain.trigger = 'automatic'
+        const curVal = Math.max(0.5, extractMxTunableEdgeNumericValue(de))
+        const nextVal = Math.max(1, Math.round(curVal * scale * 10) / 10)
+        de.formula = formatMxTunableEdgeFormula(de, nextVal)
+        focusEdgeId = de.id
+      }
+      return { changed: true, focusEdgeId, focusNodeId: drainEdges[0]!.to }
+    }
+
+    // 零回收或现有 Drain 无源可抽：定位净堆积最大的非生命池，自动挂载 Drain 消耗节点
+    const candidatePools = doc.nodes
+      .filter((n) => {
+        if (n.kind !== 'pool') return false
+        const key = `${n.id} ${n.label || ''}`
+        if (HP_POOL_RE.test(key) && !NON_SURVIVAL_HP_POOL_RE.test(key)) return false
+        return true
+      })
+      .map((n) => {
+        const delta = (lastSnap[n.id] ?? 0) - (firstSnap[n.id] ?? 0)
+        const isTerminal = !doc.edges.some(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === n.id
+        )
+        return { node: n, delta, isTerminal }
+      })
+      .sort((a, b) => {
+        if (a.delta > 0 !== b.delta > 0) return b.delta - a.delta
+        if (a.isTerminal !== b.isTerminal) return Number(b.isTerminal) - Number(a.isTerminal)
+        return b.delta - a.delta
+      })
+
+    const targetPool = candidatePools[0]?.node
+    if (!targetPool) return { changed: false }
+
+    const poolDeltaPerStep = Math.max(
+      0.5,
+      ((lastSnap[targetPool.id] ?? 0) - (firstSnap[targetPool.id] ?? 0)) / steps
+    )
+    const targetNetPerStep = Math.max(0.5, curHealth.netFlowPerStep * 0.65)
+    const rawRate = Math.min(poolDeltaPerStep * 0.85, targetNetPerStep)
+    const drainRate =
+      rawRate >= 2 ? Math.round(rawRate) : Math.max(0.5, Math.round(rawRate * 2) / 2)
+
+    const drainId = mxNewId('drain')
+    const drainNode: MxNode = {
+      ...createMxNode('drain', targetPool.x + 150, targetPool.y + 56, sinkLabel),
+      id: drainId,
+      trigger: 'automatic',
+      ...(targetPool.layerId ? { layerId: targetPool.layerId } : {})
+    }
+    const edgeId = mxNewId('e')
+    doc.nodes.push(drainNode)
+    doc.edges.push({
+      id: edgeId,
+      kind: 'resource',
+      from: targetPool.id,
+      to: drainId,
+      formula: String(drainRate)
+    })
+    return { changed: true, focusNodeId: drainId, focusEdgeId: edgeId }
+  }
+
+  if (finding.kind === 'deflation') {
+    const drainEdges = doc.edges.filter(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        byId.get(e.to)?.kind === 'drain' &&
+        isSimpleNumericEdge(e)
+    )
+    if (drainEdges.length > 0) {
+      for (const de of drainEdges) {
+        const curVal = Math.max(0.5, extractMxTunableEdgeNumericValue(de))
+        de.formula = formatMxTunableEdgeFormula(
+          de,
+          Math.max(0.5, Math.round(curVal * 0.45 * 10) / 10)
+        )
+      }
+      return { changed: true, focusEdgeId: drainEdges[0]!.id }
+    }
+    const sourceEdges = doc.edges.filter(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        byId.get(e.from)?.kind === 'source' &&
+        isSimpleNumericEdge(e)
+    )
+    if (sourceEdges.length > 0) {
+      for (const se of sourceEdges) {
+        const curVal = Math.max(1, extractMxTunableEdgeNumericValue(se))
+        se.formula = formatMxTunableEdgeFormula(se, Math.round(curVal * 2.2 * 10) / 10)
+      }
+      return { changed: true, focusEdgeId: sourceEdges[0]!.id }
+    }
+    return { changed: false }
+  }
+
+  if (finding.kind === 'pool_capped' && finding.nodeId) {
+    const pool = byId.get(finding.nodeId)
+    if (!pool || pool.kind !== 'pool') return { changed: false }
+    const curCap = Math.max(10, pool.capacity ?? 20)
+    pool.capacity = Math.ceil((curCap * 2.2) / 10) * 10
+    return { changed: true, focusNodeId: pool.id }
+  }
+
+  if (finding.kind === 'pool_depleted' && finding.nodeId) {
+    const pool = byId.get(finding.nodeId)
+    if (!pool || pool.kind !== 'pool') return { changed: false }
+    const boost = Math.max(10, Math.ceil((finding.value ?? 10) * 0.6))
+    pool.initial = Math.round(((pool.initial ?? 0) + boost) * 10) / 10
+    if (pool.capacity && pool.capacity > 0 && pool.capacity < pool.initial) {
+      pool.capacity = Math.ceil((pool.initial * 1.5) / 10) * 10
+    }
+    return { changed: true, focusNodeId: pool.id }
+  }
+
+  if (finding.kind === 'exponential_runaway' && finding.nodeId) {
+    const node = byId.get(finding.nodeId)
+    if (!node || (node.kind !== 'pool' && node.kind !== 'register')) return { changed: false }
+
+    const activeRun =
+      options.run ??
+      runMxSimulation(doc, {
+        seed: options.seed ?? doc.settings.seed,
+        scenarioId: options.scenarioId
+      })
+    const baselineHealth = analyzeMxEconomyHealth(doc, activeRun)
+    const baselineWarnIds = new Set(
+      baselineHealth.findings
+        .filter(
+          (f) => f.severity === 'warn' || f.severity === 'critical' || f.kind === 'pool_depleted'
+        )
+        .map((f) => f.id)
+    )
+    const series = activeRun.snapshots.map((s) => s[node.id] ?? 0)
+    const mid = Math.max(1, Math.floor(series.length / 2))
+    const delta1 =
+      series.length >= 2 ? Math.max(0.5, ((series[mid] ?? 0) - (series[0] ?? 0)) / mid) : 1
+
+    const verifySeeds = Array.from(
+      new Set([doc.settings.seed, ...(options.seed != null ? [options.seed] : [])])
+    )
+    const fallbackBox: {
+      best: { doc: MxDocument; res: MxDiagnosticQuickFixResult; score: number } | null
+    } = { best: null }
+
+    const dampenStateModifierEdge = (se: MxEdge, factor: number): boolean => {
+      const sp = parseMxStateFormula(se.formula)
+      if (sp.type === 'modifier' && sp.delta > 0) {
+        const nextDelta = Math.max(0.1, Math.round(sp.delta * factor * 100) / 100)
+        const nextFormula = `+${nextDelta}${sp.percent ? '%' : ''}`
+        if (nextFormula !== se.formula) {
+          se.formula = nextFormula
+          return true
+        }
+      } else if (sp.type === 'fraction_modifier' && sp.numerator > 0 && sp.denominator > 0) {
+        const nextDen = Math.max(2, Math.round(sp.denominator / factor))
+        const nextFormula = `+${sp.numerator}/${nextDen}`
+        if (nextFormula !== se.formula) {
+          se.formula = nextFormula
+          return true
+        }
+      }
+      return false
+    }
+
+    const tryCandidate = (
+      mutateCand: (cand: MxDocument) => MxDiagnosticQuickFixResult | null
+    ): MxDiagnosticQuickFixResult | null => {
+      const cand: MxDocument = JSON.parse(JSON.stringify(doc))
+      const res = mutateCand(cand)
+      if (!res || !res.changed) return null
+
+      let minScore = 100
+      let hasNewSideEffect = false
+      for (const sd of verifySeeds) {
+        const sim = runMxSimulation(cand, { seed: sd, scenarioId: options.scenarioId })
+        const h = analyzeMxEconomyHealth(cand, sim)
+        if (h.findings.some((f) => f.kind === 'exponential_runaway' && f.nodeId === node.id)) {
+          return null
+        }
+        if (
+          h.findings.some(
+            (f) => f.kind === 'pool_capped' && f.nodeId === node.id && !baselineWarnIds.has(f.id)
+          )
+        ) {
+          return null
+        }
+        const sideEffects = h.findings.some(
+          (f) =>
+            (f.severity === 'warn' ||
+              f.severity === 'critical' ||
+              (f.kind === 'pool_depleted' && f.nodeId === node.id)) &&
+            !baselineWarnIds.has(f.id)
+        )
+        if (sideEffects) hasNewSideEffect = true
+        if (h.score < minScore) minScore = h.score
+      }
+
+      if (!hasNewSideEffect) {
+        doc.nodes = cand.nodes
+        doc.edges = cand.edges
+        doc.params = cand.params
+        return res
+      }
+      if (!fallbackBox.best || minScore > fallbackBox.best.score) {
+        fallbackBox.best = { doc: cand, res, score: minScore }
+      }
+      return null
+    }
+
+    if (node.kind === 'register') {
+      const origFormula = (node.formula ?? '').trim()
+      if (origFormula) {
+        for (const k of [0.1, 0.2, 0.35, 0.6, 1.0]) {
+          const hit = tryCandidate((cand) => {
+            const rn = cand.nodes.find((x) => x.id === node.id)
+            if (!rn) return null
+            rn.formula = `round(((${origFormula}) / (1 + step * ${k})) * 10) / 10`
+            return { changed: true, focusNodeId: rn.id }
+          })
+          if (hit) return hit
+        }
+      }
+
+      for (const factor of [0.4, 0.2]) {
+        const hit = tryCandidate((cand) => {
+          let modChanged = false
+          let focusEdgeId: string | undefined
+          for (const se of cand.edges) {
+            if (se.kind === 'state' && !se.targetEdgeId && se.to === node.id) {
+              if (dampenStateModifierEdge(se, factor)) {
+                modChanged = true
+                focusEdgeId = se.id
+              }
+            }
+          }
+          return modChanged ? { changed: true, focusEdgeId, focusNodeId: node.id } : null
+        })
+        if (hit) return hit
+      }
+
+      const safeCeil = Math.max(
+        12,
+        Math.round(((series[0] ?? 0) + delta1 * Math.max(8, activeRun.stepsRun) * 1.8) * 10) / 10
+      )
+      const capHit = tryCandidate((cand) => {
+        const rn = cand.nodes.find((x) => x.id === node.id)
+        if (!rn) return null
+        rn.formula = origFormula ? `min(${safeCeil}, ${origFormula})` : `min(${safeCeil}, a)`
+        return { changed: true, focusNodeId: rn.id }
+      })
+      if (capHit) return capHit
+    } else {
+      // 1) 若该池自身发出了正反馈状态修正边（如复利自激 Pool --(+25%)--> Source），优先收敛正反馈增益
+      for (const factor of [0.35, 0.15, 0.05]) {
+        const hit = tryCandidate((cand) => {
+          let modChanged = false
+          let focusEdgeId: string | undefined
+          for (const se of cand.edges) {
+            if (se.kind === 'state' && se.from === node.id) {
+              if (dampenStateModifierEdge(se, factor)) {
+                modChanged = true
+                focusEdgeId = se.id
+              }
+            }
+          }
+          return modChanged ? { changed: true, focusEdgeId, focusNodeId: node.id } : null
+        })
+        if (hit) return hit
+      }
+
+      const inResIds = doc.edges
+        .filter((e) => e.kind === 'resource' && !e.targetEdgeId && e.to === node.id)
+        .map((e) => e.id)
+
+      // 2) 为入向资源边设置平滑单步流量上限 maxLimit（保留前期曲线不变，抑制后半程陡增且不触发池爆仓警告）
+      if (inResIds.length > 0) {
+        for (const mult of [2.0, 1.65, 1.35, 1.05, 0.8]) {
+          const perEdgeCap = Math.max(1, Math.round(((delta1 * mult) / inResIds.length) * 2) / 2)
+          const hit = tryCandidate((cand) => {
+            let limChanged = false
+            for (const eid of inResIds) {
+              const ce = cand.edges.find((x) => x.id === eid)
+              if (!ce) continue
+              const nextLim =
+                ce.maxLimit != null && ce.maxLimit > 0
+                  ? Math.min(ce.maxLimit, perEdgeCap)
+                  : perEdgeCap
+              if (ce.maxLimit !== nextLim) {
+                ce.maxLimit = nextLim
+                limChanged = true
+              }
+            }
+            return limChanged
+              ? { changed: true, focusEdgeId: inResIds[0], focusNodeId: node.id }
+              : null
+          })
+          if (hit) return hit
+        }
+
+        // 3) 渐进随步数衰减入边增速（应对前半程被门控、后半程高频触发的累积陡增）
+        for (const k of [0.12, 0.25, 0.45, 0.8]) {
+          const hit = tryCandidate((cand) => {
+            let exprChanged = false
+            for (const eid of inResIds) {
+              const ce = cand.edges.find((x) => x.id === eid)
+              if (!ce) continue
+              const raw = (ce.formula ?? '').trim()
+              const ivMatch = /^(.+?)(\s*(?:\||every\b).+)$/i.exec(raw)
+              const core = ivMatch ? ivMatch[1]!.trim() : raw
+              const suffix = ivMatch ? ivMatch[2]! : ''
+              if (/^all$/i.test(core) || /%\s*$/.test(core)) continue
+              ce.formula = `round(((${core || '1'}) / (1 + step * ${k})) * 10) / 10${suffix}`
+              exprChanged = true
+            }
+            return exprChanged
+              ? { changed: true, focusEdgeId: inResIds[0], focusNodeId: node.id }
+              : null
+          })
+          if (hit) return hit
+        }
+      }
+
+      // 4) 兜底：挂载与当前库存成比例的负反馈衰减 Drain（`round(self * rate * 10) / 10`），渐近收敛且不触碰容量上限
+      for (const rate of [0.18, 0.28, 0.4, 0.55]) {
+        const hit = tryCandidate((cand) => {
+          const cp = cand.nodes.find((x) => x.id === node.id)
+          if (!cp) return null
+          const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+          const existingDrainEdge = cand.edges.find(
+            (e) =>
+              e.kind === 'resource' &&
+              !e.targetEdgeId &&
+              e.from === cp.id &&
+              candById.get(e.to)?.kind === 'drain'
+          )
+          const formula = `round(self * ${rate} * 10) / 10`
+          if (existingDrainEdge) {
+            const dn = candById.get(existingDrainEdge.to)
+            if (dn && dn.trigger === 'passive') dn.trigger = 'automatic'
+            existingDrainEdge.formula = formula
+            return {
+              changed: true,
+              focusNodeId: existingDrainEdge.to,
+              focusEdgeId: existingDrainEdge.id
+            }
+          }
+          const drainId = mxNewId('drain')
+          cand.nodes.push({
+            ...createMxNode('drain', cp.x + 150, cp.y + 56, sinkLabel),
+            id: drainId,
+            trigger: 'automatic',
+            ...(cp.layerId ? { layerId: cp.layerId } : {})
+          })
+          const eid = mxNewId('e')
+          cand.edges.push({
+            id: eid,
+            kind: 'resource',
+            from: cp.id,
+            to: drainId,
+            formula
+          })
+          return { changed: true, focusNodeId: drainId, focusEdgeId: eid }
+        })
+        if (hit) return hit
+      }
+    }
+
+    if (fallbackBox.best) {
+      doc.nodes = fallbackBox.best.doc.nodes
+      doc.edges = fallbackBox.best.doc.edges
+      doc.params = fallbackBox.best.doc.params
+      return fallbackBox.best.res
+    }
+    return { changed: false }
+  }
+
+  if (finding.kind === 'idle_node' && finding.nodeId) {
+    const node = byId.get(finding.nodeId)
+    if (!node) return { changed: false }
+    const inEdges = doc.edges.filter((e) => !e.targetEdgeId && e.to === node.id)
+    for (const ie of inEdges) {
+      const src = byId.get(ie.from)
+      if (src && (src.kind === 'source' || src.kind === 'converter') && src.trigger === 'passive') {
+        src.trigger = 'automatic'
+        return { changed: true, focusNodeId: src.id }
+      }
+    }
+    if (node.trigger === 'passive') {
+      node.trigger = 'automatic'
+      return { changed: true, focusNodeId: node.id }
+    }
+    return { changed: false }
+  }
+
+  if (finding.kind === 'topology_error') {
+    const tws = lintMxDocumentTopology(doc)
+    const matched =
+      tws.find(
+        (w) => finding.id.includes(w.code) && (!finding.nodeId || w.nodeId === finding.nodeId)
+      ) ?? tws[0]
+    if (!matched) return { changed: false }
+    if (matched.code === 'end_outgoing_resource' && matched.edgeId) {
+      doc.edges = doc.edges.filter((e) => e.id !== matched.edgeId)
+      return { changed: true, focusNodeId: matched.nodeId }
+    }
+    if (matched.code === 'dangling_unsigned_state_edge' && matched.edgeId) {
+      const e = doc.edges.find((x) => x.id === matched.edgeId)
+      if (e) {
+        e.formula = `+${(e.formula ?? '1').trim()}`
+        return { changed: true, focusEdgeId: e.id }
+      }
+    }
+    if (matched.code === 'competing_auto_converters_with_auto_sell' && matched.nodeId) {
+      const sellNode = byId.get(matched.nodeId)
+      if (sellNode) {
+        sellNode.trigger = 'interactive'
+        return { changed: true, focusNodeId: sellNode.id }
+      }
+    }
+    if (matched.code === 'hp_damage_inverted_converter' && matched.edgeId) {
+      const badEdge = doc.edges.find((x) => x.id === matched.edgeId)
+      if (badEdge) {
+        const hpPool = byId.get(badEdge.to)
+        const dmgFormula = badEdge.formula || '1'
+        doc.edges = doc.edges.filter((x) => x.id !== badEdge.id)
+        if (hpPool) {
+          const drainId = mxNewId('drain')
+          doc.nodes.push({
+            ...createMxNode('drain', hpPool.x + 140, hpPool.y + 50, sinkLabel),
+            id: drainId,
+            trigger: 'automatic',
+            ...(hpPool.layerId ? { layerId: hpPool.layerId } : {})
+          })
+          const eid = mxNewId('e')
+          doc.edges.push({
+            id: eid,
+            kind: 'resource',
+            from: hpPool.id,
+            to: drainId,
+            formula: dmgFormula
+          })
+          return { changed: true, focusNodeId: drainId, focusEdgeId: eid }
+        }
+      }
+    }
+  }
+
+  return { changed: false }
+}
+
+export function applyMxDiagnosticQuickFix(
+  doc: MxDocument,
+  finding: MxDiagnosticFinding,
+  options: MxDiagnosticQuickFixOptions = {}
+): { doc: MxDocument; result: MxDiagnosticQuickFixResult } {
+  const clone: MxDocument = JSON.parse(JSON.stringify(doc))
+  const result = applyMxDiagnosticQuickFixInPlace(clone, finding, options)
+  return { doc: clone, result }
+}
+
+/**
+ * 一键批量修复当前经济图中的全部可修复警告（先修拓扑与饥饿门控，重算模拟后再按最新流量修通胀/爆仓）。
+ */
+export function applyAllMxDiagnosticQuickFixes(
+  doc: MxDocument,
+  options: MxDiagnosticQuickFixOptions = {}
+): { doc: MxDocument; fixedCount: number; focusNodeId?: string; focusEdgeId?: string } {
+  const clone: MxDocument = JSON.parse(JSON.stringify(doc))
+  let fixedCount = 0
+  let focusNodeId: string | undefined
+  let focusEdgeId: string | undefined
+  const visitedIds = new Set<string>()
+
+  // 最多 4 轮迭代：先处理拓扑、转化器饥饿门控与指数失控，再基于最新模拟结果校准爆仓/通胀/枯竭
+  for (let pass = 0; pass < 4; pass++) {
+    const run = runMxSimulation(clone, {
+      seed: options.seed ?? clone.settings.seed,
+      scenarioId: options.scenarioId
+    })
+    const health = analyzeMxEconomyHealth(clone, run)
+    const actionable = health.findings
+      .filter((f) => canQuickFixMxDiagnosticFinding(f) && !visitedIds.has(`${pass}:${f.id}`))
+      .sort((a, b) => {
+        const order = (k: MxDiagnosticKind): number =>
+          k === 'topology_error'
+            ? 0
+            : k === 'starved_converter'
+              ? 1
+              : k === 'exponential_runaway'
+                ? 2
+                : k === 'pool_capped'
+                  ? 3
+                  : k === 'inflation' || k === 'deflation'
+                    ? 4
+                    : 5
+        return order(a.kind) - order(b.kind)
+      })
+    if (actionable.length === 0) break
+
+    let passChanged = false
+    for (const f of actionable) {
+      visitedIds.add(`${pass}:${f.id}`)
+      // 若本轮已修改过饥饿转化器或指数失控，通胀放到下一轮基于最新模拟流量再修，避免过度加 Sink
+      if (passChanged && (f.kind === 'inflation' || f.kind === 'deflation')) {
+        break
+      }
+      const res = applyMxDiagnosticQuickFixInPlace(clone, f, {
+        ...options,
+        run: passChanged ? undefined : run
+      })
+      if (res.changed) {
+        fixedCount++
+        passChanged = true
+        if (res.focusNodeId) focusNodeId = res.focusNodeId
+        if (res.focusEdgeId) focusEdgeId = res.focusEdgeId
+      }
+    }
+    if (!passChanged) break
+  }
+
+  return { doc: clone, fixedCount, focusNodeId, focusEdgeId }
+}
+
+/**
+ * 为单条诊断警告推荐最相关的待调优变量（边速率 / 初始值 / 参数）及搜索区间，供「🎯 智能调参」直达调平器。
+ */
+export function suggestMxBalancerTargetForFinding(
+  doc: MxDocument,
+  finding: MxDiagnosticFinding
+): { kind: MxTunableKind; id: string; minVal: number; maxVal: number } | null {
+  const byId = new Map(doc.nodes.map((n) => [n.id, n]))
+  const makeRange = (cur: number, minFloor = 0): { minVal: number; maxVal: number } => {
+    const base = Math.max(1, Math.abs(cur))
+    return {
+      minVal: Math.max(minFloor, Math.round((cur - base * 0.8) * 10) / 10),
+      maxVal: Math.max(minFloor + 5, Math.round((cur + base * 3 + 6) * 10) / 10)
+    }
+  }
+
+  if (finding.kind === 'starved_converter' && finding.nodeId) {
+    // 优先选喂给上游池的 Source 出边或转化器自身的消耗入边
+    const inRes = doc.edges.filter(
+      (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === finding.nodeId
+    )
+    for (const ie of inRes) {
+      const feeder = doc.edges.find(
+        (fe) =>
+          fe.kind === 'resource' && !fe.targetEdgeId && fe.to === ie.from && isSimpleNumericEdge(fe)
+      )
+      if (feeder) {
+        const v = extractMxTunableEdgeNumericValue(feeder)
+        return { kind: 'edge', id: feeder.id, ...makeRange(v, 1) }
+      }
+      if (isSimpleNumericEdge(ie)) {
+        const v = extractMxTunableEdgeNumericValue(ie)
+        return { kind: 'edge', id: ie.id, ...makeRange(v, 1) }
+      }
+    }
+  }
+
+  if (finding.kind === 'inflation' || finding.kind === 'deflation') {
+    const drainEdge = doc.edges.find(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        byId.get(e.to)?.kind === 'drain' &&
+        isSimpleNumericEdge(e)
+    )
+    if (drainEdge) {
+      const v = extractMxTunableEdgeNumericValue(drainEdge)
+      return { kind: 'edge', id: drainEdge.id, ...makeRange(v, 0.5) }
+    }
+    const srcEdge = doc.edges.find(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        byId.get(e.from)?.kind === 'source' &&
+        isSimpleNumericEdge(e)
+    )
+    if (srcEdge) {
+      const v = extractMxTunableEdgeNumericValue(srcEdge)
+      return { kind: 'edge', id: srcEdge.id, ...makeRange(v, 0.5) }
+    }
+  }
+
+  if (finding.kind === 'exponential_runaway' && finding.nodeId) {
+    const targetNode = byId.get(finding.nodeId)
+    const formulaTexts = [
+      targetNode?.formula ?? '',
+      ...doc.edges
+        .filter((e) => e.to === finding.nodeId || e.from === finding.nodeId)
+        .map((e) => e.formula ?? '')
+    ].join(' ')
+    for (const p of doc.params) {
+      const esc = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (esc && new RegExp(`\\b${esc}\\b`).test(formulaTexts)) {
+        return { kind: 'param', id: p.name, ...makeRange(Number(p.value) || 1, 0) }
+      }
+    }
+    const outDrain = doc.edges.find(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        e.from === finding.nodeId &&
+        byId.get(e.to)?.kind === 'drain' &&
+        isSimpleNumericEdge(e)
+    )
+    if (outDrain) {
+      const v = extractMxTunableEdgeNumericValue(outDrain)
+      return { kind: 'edge', id: outDrain.id, ...makeRange(v, 0.5) }
+    }
+    const selfMod = doc.edges.find((e) => e.kind === 'state' && e.from === finding.nodeId)
+    if (selfMod) {
+      const sp = parseMxStateFormula(selfMod.formula)
+      if (sp.type === 'modifier') {
+        return { kind: 'edge', id: selfMod.id, ...makeRange(sp.delta, 0) }
+      }
+    }
+    const inNumeric = doc.edges.find(
+      (e) =>
+        e.kind === 'resource' &&
+        !e.targetEdgeId &&
+        e.to === finding.nodeId &&
+        isSimpleNumericEdge(e)
+    )
+    if (inNumeric) {
+      const v = extractMxTunableEdgeNumericValue(inNumeric)
+      return { kind: 'edge', id: inNumeric.id, ...makeRange(v, 0.5) }
+    }
+  }
+
+  if (finding.kind === 'pool_depleted' && finding.nodeId) {
+    const pool = byId.get(finding.nodeId)
+    if (pool && (pool.kind === 'pool' || pool.kind === 'register')) {
+      const cur = Number(pool.initial ?? 0)
+      return {
+        kind: 'node_initial',
+        id: pool.id,
+        minVal: Math.max(0, cur),
+        maxVal: Math.max(30, cur * 3 + 20)
+      }
+    }
+  }
+
+  if (finding.nodeId) {
+    const linkedEdge = doc.edges.find(
+      (e) =>
+        !e.targetEdgeId &&
+        (e.to === finding.nodeId || e.from === finding.nodeId) &&
+        isSimpleNumericEdge(e)
+    )
+    if (linkedEdge) {
+      const v = extractMxTunableEdgeNumericValue(linkedEdge)
+      return { kind: 'edge', id: linkedEdge.id, ...makeRange(v, 0.5) }
+    }
+  }
+
+  if (doc.params.length > 0) {
+    const p = doc.params[0]!
+    return { kind: 'param', id: p.name, ...makeRange(Number(p.value) || 1, 0) }
+  }
+  const firstEdge = doc.edges.find((e) => !e.targetEdgeId && isSimpleNumericEdge(e))
+  if (firstEdge) {
+    const v = extractMxTunableEdgeNumericValue(firstEdge)
+    return { kind: 'edge', id: firstEdge.id, ...makeRange(v, 0.5) }
+  }
+  return null
 }
 
 export interface MxParamSweepPoint {

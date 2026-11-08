@@ -9023,6 +9023,8 @@ export default {
       balanced: '✓ 产出与回收闭环均衡（Faucet/Sink 比值 {ratio}x，每步净流 {net}）',
       inflation:
         '⚠ 通胀预警：产出高于回收（比值 {ratio}x，每步净堆积 +{net}），建议增加 Sink 回收或调高转化消耗',
+      inflationNoSink:
+        '⚠ 零回收预警：全程累计产出 {produced}，但总回收 (Drain / 转化净消耗) 为 0（每步净堆积 +{net}），建议接入 Drain 回收或提高转化消耗',
       deflation:
         'ℹ 紧缩预警：回收快于产出（比值 {ratio}x，每步净流失 {net}），玩家可能遭遇资源紧缺卡点',
       starvedConverter:
@@ -9031,7 +9033,11 @@ export default {
       poolDepleted: 'ℹ 资源枯竭：「{node}」在第 {step} 步耗尽归零，请确认是否符合预期心流节奏',
       exponentialRunaway:
         '⚠ 指数失控：「{node}」后半程增速为前半程的 {mult} 倍（终值 {final}），存在数值膨胀风险',
-      idleNode: 'ℹ 闲置节点：「{node}」全程保持在 {val} 未发生任何流转，请检查触发模式或激活条件'
+      idleNode: 'ℹ 闲置节点：「{node}」全程保持在 {val} 未发生任何流转，请检查触发模式或激活条件',
+      quickFixBtn: '一键修复',
+      tuneInBalancerBtn: '智能调参',
+      fixAllBtn: '一键修复全部 ({count})',
+      autoSinkLabel: '消耗回收'
     },
     balancer: {
       modeGoalSeek: '逆向目标求解 (Goal-Seek)',
@@ -9041,6 +9047,7 @@ export default {
       minVal: '下限',
       maxVal: '上限',
       metric: '优化目标',
+      metricHealthScore: '经济健康度最高分 (0-100)',
       metricNodeVal: '指定步数的池/寄存器存量',
       metricEndStep: 'End 结束触发步数',
       targetNode: '目标节点',

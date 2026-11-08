@@ -9296,6 +9296,8 @@ export default {
       balanced: '✓ Faucets and sinks are well-balanced (ratio {ratio}x, net {net}/step)',
       inflation:
         '⚠ Inflation warning: production exceeds sinks (ratio {ratio}x, net +{net}/step); consider adding sinks or raising costs',
+      inflationNoSink:
+        '⚠ Zero-sink warning: produced {produced} total with 0 net sink (net +{net}/step); add a Drain or raise conversion costs',
       deflation:
         'ℹ Deflation notice: sinks exceed production (ratio {ratio}x, net {net}/step); players may face resource scarcity',
       starvedConverter:
@@ -9304,7 +9306,11 @@ export default {
       poolDepleted: 'ℹ Pool depleted: "{node}" dropped to 0 at step #{step}',
       exponentialRunaway:
         '⚠ Exponential runaway: "{node}" growth accelerated {mult}x in the second half (final {final})',
-      idleNode: 'ℹ Idle node: "{node}" stayed at {val} with zero flow throughout the run'
+      idleNode: 'ℹ Idle node: "{node}" stayed at {val} with zero flow throughout the run',
+      quickFixBtn: 'Quick Fix',
+      tuneInBalancerBtn: 'Auto-Tune',
+      fixAllBtn: 'Quick-Fix All ({count})',
+      autoSinkLabel: 'Upkeep Sink'
     },
     balancer: {
       modeGoalSeek: 'Goal-Seek Solver',
@@ -9314,6 +9320,7 @@ export default {
       minVal: 'Min',
       maxVal: 'Max',
       metric: 'Target Metric',
+      metricHealthScore: 'Max Economy Health Score (0-100)',
       metricNodeVal: 'Node Value at Step',
       metricEndStep: 'End Condition Step',
       targetNode: 'Target Node',

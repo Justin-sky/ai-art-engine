@@ -3,6 +3,8 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   analyzeMxEconomyHealth,
+  applyAllMxDiagnosticQuickFixes,
+  applyMxDiagnosticQuickFix,
   autoLayoutMxDocument,
   computeMxDiagramBounds,
   createMxDocumentFromBuildingBlock,
@@ -34,6 +36,7 @@ import {
   runMxParameterSweep,
   runMxSimulation,
   stepMxSimulation,
+  suggestMxBalancerTargetForFinding,
   summarizeMxSeries,
   validateMxFormula,
   createEmptyMxDocument,
@@ -3827,5 +3830,210 @@ describe('Machinations.io 100% specification parity', () => {
     expect(canvasSource).toContain(':stroke-dasharray="me.dasharray"')
     expect(canvasSource).toContain('v-for="me in minimapEdgeTargetDots"')
     expect(canvasSource).not.toContain('nodeXById(e.to)')
+  })
+
+  it('one-click quick-fixes starved converters, zero-sink inflation, shared-pool sibling races, and health_score Goal-Seek', () => {
+    // 1. Reproduce Roguelike room-clearing diagram with ungated automatic converters + zero Drain
+    const rogue = createEmptyMxDocument('Roguelike QuickFix')
+    rogue.settings.steps = 9
+    rogue.nodes = [
+      { ...createMxNode('source', 40, 60, 'XP Drop'), id: 'src_xp', trigger: 'automatic' },
+      { ...createMxNode('pool', 180, 60, 'XP'), id: 'xp', initial: 0 },
+      {
+        ...createMxNode('converter', 340, 40, 'Upgrade Choice'),
+        id: 'conv_upg',
+        trigger: 'automatic'
+      },
+      { ...createMxNode('pool', 500, 40, 'Skill Tier'), id: 'skills', initial: 0 },
+      { ...createMxNode('source', 40, 180, 'Kill Gen'), id: 'src_kill', trigger: 'automatic' },
+      { ...createMxNode('pool', 180, 180, 'Kills'), id: 'kills', initial: 0 },
+      {
+        ...createMxNode('converter', 340, 180, 'Clear Room'),
+        id: 'conv_room',
+        trigger: 'automatic'
+      },
+      { ...createMxNode('pool', 500, 180, 'Room Cleared'), id: 'rooms', initial: 0 },
+      { ...createMxNode('source', 40, 300, 'Gold Loot'), id: 'src_gold', trigger: 'automatic' },
+      { ...createMxNode('pool', 180, 300, 'Gold'), id: 'gold', initial: 0 }
+    ]
+    rogue.edges = [
+      { id: 'e1', kind: 'resource', from: 'src_xp', to: 'xp', formula: '1' },
+      { id: 'e2', kind: 'resource', from: 'xp', to: 'conv_upg', formula: '3' },
+      { id: 'e3', kind: 'resource', from: 'conv_upg', to: 'skills', formula: '3' },
+      { id: 'e4', kind: 'resource', from: 'src_kill', to: 'kills', formula: '1' },
+      { id: 'e5', kind: 'resource', from: 'kills', to: 'conv_room', formula: '3' },
+      { id: 'e6', kind: 'resource', from: 'conv_room', to: 'rooms', formula: '3' },
+      { id: 'e7', kind: 'resource', from: 'src_gold', to: 'gold', formula: '10' }
+    ]
+
+    const beforeHealth = analyzeMxEconomyHealth(rogue)
+    const noSinkFinding = beforeHealth.findings.find((f) => f.id === 'diag_inflation_nosink')
+    expect(noSinkFinding).toBeDefined()
+    // Zero-sink warning reports actual netFlowPerStep (> 0) instead of 0
+    expect(noSinkFinding!.secondaryValue).toBeGreaterThan(0)
+    expect(
+      beforeHealth.findings.filter((f) => f.kind === 'starved_converter').length
+    ).toBeGreaterThanOrEqual(2)
+
+    // Suggest balancer target points directly to upstream feeder edge
+    const suggested = suggestMxBalancerTargetForFinding(
+      rogue,
+      beforeHealth.findings.find((f) => f.kind === 'starved_converter')!
+    )
+    expect(suggested?.kind).toBe('edge')
+
+    // Apply all quick-fixes in 1 click -> 0 warnings, blockedCount === 0, S-grade health
+    const fixedAll = applyAllMxDiagnosticQuickFixes(rogue, { sinkLabel: 'Upkeep Sink' })
+    expect(fixedAll.fixedCount).toBeGreaterThanOrEqual(3)
+    const afterRun = runMxSimulation(fixedAll.doc)
+    const afterHealth = analyzeMxEconomyHealth(fixedAll.doc, afterRun)
+    expect(afterHealth.blockedCount).toBe(0)
+    expect(
+      afterHealth.findings.filter((f) => f.severity === 'warn' || f.severity === 'critical')
+    ).toHaveLength(0)
+    expect(afterHealth.score).toBeGreaterThanOrEqual(90)
+    expect(afterRun.snapshots[afterRun.snapshots.length - 1]!.skills).toBeGreaterThan(0)
+    expect(afterRun.snapshots[afterRun.snapshots.length - 1]!.rooms).toBeGreaterThan(0)
+
+    // 2. Shared-pool sibling automatic converters do not starve each other after quick-fix
+    const sharedDoc = createEmptyMxDocument('Shared Pool Sibling Race')
+    sharedDoc.settings.steps = 12
+    sharedDoc.nodes = [
+      { ...createMxNode('source', 40, 100, 'Gen'), id: 'gen', trigger: 'automatic' },
+      { ...createMxNode('pool', 180, 100, 'Energy'), id: 'energy', initial: 0 },
+      { ...createMxNode('converter', 340, 40, 'Skill A'), id: 'ca', trigger: 'automatic' },
+      { ...createMxNode('converter', 340, 160, 'Skill B'), id: 'cb', trigger: 'automatic' },
+      { ...createMxNode('pool', 500, 100, 'Out'), id: 'out', initial: 0 },
+      { ...createMxNode('drain', 640, 100, 'Sink'), id: 'drn', trigger: 'automatic' }
+    ]
+    sharedDoc.edges = [
+      { id: 's_in', kind: 'resource', from: 'gen', to: 'energy', formula: '2' },
+      { id: 'c_a', kind: 'resource', from: 'energy', to: 'ca', formula: '4' },
+      { id: 'c_b', kind: 'resource', from: 'energy', to: 'cb', formula: '4' },
+      { id: 'o_a', kind: 'resource', from: 'ca', to: 'out', formula: '2' },
+      { id: 'o_b', kind: 'resource', from: 'cb', to: 'out', formula: '2' },
+      { id: 'o_d', kind: 'resource', from: 'out', to: 'drn', formula: '1' }
+    ]
+    const sharedFixed = applyAllMxDiagnosticQuickFixes(sharedDoc)
+    const sharedHealth = analyzeMxEconomyHealth(sharedFixed.doc)
+    expect(sharedHealth.blockedCount).toBe(0)
+
+    // 3. Goal-Seek with goalMetric='health_score' solves optimal Drain rate to eliminate inflation
+    const infDoc = createEmptyMxDocument('Health Score GoalSeek')
+    infDoc.settings.steps = 15
+    infDoc.nodes = [
+      { ...createMxNode('source', 40, 80, 'Gold Faucet'), id: 'faucet', trigger: 'automatic' },
+      { ...createMxNode('pool', 200, 80, 'Treasury'), id: 'treasury', initial: 10 },
+      { ...createMxNode('drain', 360, 80, 'Tax Sink'), id: 'sink', trigger: 'automatic' }
+    ]
+    infDoc.edges = [
+      { id: 'ef', kind: 'resource', from: 'faucet', to: 'treasury', formula: '10' },
+      { id: 'es', kind: 'resource', from: 'treasury', to: 'sink', formula: '1' }
+    ]
+    expect(analyzeMxEconomyHealth(infDoc).findings.some((f) => f.kind === 'inflation')).toBe(true)
+
+    const solved = runMxGoalSeek(infDoc, {
+      variableKind: 'edge',
+      variableId: 'es',
+      minVal: 1,
+      maxVal: 15,
+      goalMetric: 'health_score',
+      targetValue: 100
+    })
+    expect(solved.achievedValue).toBe(100)
+    expect(solved.bestValue).toBeGreaterThanOrEqual(4)
+    expect(solved.bestValue).toBeLessThanOrEqual(12)
+
+    // Applying solved edge value yields S-grade balanced economy with 0 warnings
+    infDoc.edges.find((e) => e.id === 'es')!.formula = String(solved.bestValue)
+    const tunedHealth = analyzeMxEconomyHealth(infDoc)
+    expect(tunedHealth.score).toBe(100)
+    expect(tunedHealth.findings[0]?.kind).toBe('balanced')
+
+    // 4. Single-finding quick-fix repairs topology warnings too
+    const topoDoc = createEmptyMxDocument('Topo Fix')
+    topoDoc.nodes = [
+      { ...createMxNode('pool', 40, 80, 'P'), id: 'p', initial: 5 },
+      { ...createMxNode('converter', 200, 80, 'C'), id: 'c', trigger: 'automatic' }
+    ]
+    topoDoc.edges = [{ id: 'bad_st', kind: 'state', from: 'p', to: 'c', formula: '2' }]
+    const topoFinding = analyzeMxEconomyHealth(topoDoc).findings.find(
+      (f) => f.kind === 'topology_error'
+    )!
+    expect(topoFinding).toBeDefined()
+    const topoFixed = applyMxDiagnosticQuickFix(topoDoc, topoFinding)
+    expect(topoFixed.result.changed).toBe(true)
+    expect(topoFixed.doc.edges[0]!.formula).toBe('+2')
+
+    // 5. Exponential runaway quick-fix covers final < 50 (e.g. final=48, 2.6x at Step #7), positive feedback, gated bursts & registers without triggering pool_capped
+    const expPoolDoc = createEmptyMxDocument('Cumulative Damage Runaway 48')
+    expPoolDoc.settings.steps = 14
+    expPoolDoc.nodes = [
+      { ...createMxNode('source', 40, 60, 'Enemy Hit'), id: 'src_hit', trigger: 'automatic' },
+      { ...createMxNode('pool', 200, 60, '累计受伤'), id: 'dmg_taken', initial: 0 },
+      { ...createMxNode('source', 40, 180, 'Gold Gen'), id: 'src_g', trigger: 'automatic' },
+      { ...createMxNode('pool', 200, 180, 'Gold'), id: 'gold_p', initial: 40 },
+      { ...createMxNode('drain', 360, 180, 'Shop Sink'), id: 'drn_g', trigger: 'automatic' }
+    ]
+    expPoolDoc.edges = [
+      {
+        id: 'e_hit',
+        kind: 'resource',
+        from: 'src_hit',
+        to: 'dmg_taken',
+        formula: 'if(step <= 7, if(step == 7, 1, 2), 5)'
+      },
+      { id: 'e_gf', kind: 'resource', from: 'src_g', to: 'gold_p', formula: '6' },
+      { id: 'e_gs', kind: 'resource', from: 'gold_p', to: 'drn_g', formula: '8' }
+    ]
+    const expBefore = analyzeMxEconomyHealth(expPoolDoc)
+    const expFinding = expBefore.findings.find(
+      (f) => f.kind === 'exponential_runaway' && f.nodeId === 'dmg_taken'
+    )!
+    expect(expFinding).toBeDefined()
+    expect(expFinding.step).toBe(7)
+    expect(expFinding.secondaryValue).toBe(48)
+    expect(expBefore.score).toBe(90)
+
+    const expSingleFixed = applyMxDiagnosticQuickFix(expPoolDoc, expFinding, {
+      seed: expPoolDoc.settings.seed + 1
+    })
+    expect(expSingleFixed.result.changed).toBe(true)
+    const expAfterHealth = analyzeMxEconomyHealth(expSingleFixed.doc)
+    expect(expAfterHealth.findings.some((f) => f.kind === 'exponential_runaway')).toBe(false)
+    expect(expAfterHealth.findings.some((f) => f.kind === 'pool_capped')).toBe(false)
+    expect(expAfterHealth.cappedPoolsCount).toBe(0)
+    expect(expAfterHealth.score).toBe(100)
+
+    const expBatchFixed = applyAllMxDiagnosticQuickFixes(expPoolDoc)
+    expect(expBatchFixed.fixedCount).toBeGreaterThanOrEqual(1)
+    expect(analyzeMxEconomyHealth(expBatchFixed.doc).score).toBe(100)
+
+    // 5b. Positive self-feedback pool (compound interest) + gated late-burst pool + accelerating Register
+    const feedbackDoc = createEmptyMxDocument('Compound Interest & Register Runaway')
+    feedbackDoc.settings.steps = 12
+    feedbackDoc.nodes = [
+      { ...createMxNode('source', 40, 60, 'Yield'), id: 's_y', trigger: 'automatic' },
+      { ...createMxNode('pool', 200, 60, 'Capital'), id: 'cap', initial: 4 },
+      { ...createMxNode('drain', 360, 60, 'Fee'), id: 'fee', trigger: 'automatic' },
+      {
+        ...createMxNode('register', 200, 180, 'Wave Mult'),
+        id: 'reg_mult',
+        formula: '1 + round((step ^ 2) * 0.5)'
+      }
+    ]
+    feedbackDoc.edges = [
+      { id: 'ey', kind: 'resource', from: 's_y', to: 'cap', formula: '1' },
+      { id: 'efee', kind: 'resource', from: 'cap', to: 'fee', formula: '2' },
+      { id: 'emod', kind: 'state', from: 'cap', to: 's_y', formula: '+35%' }
+    ]
+    const fbBefore = analyzeMxEconomyHealth(feedbackDoc)
+    expect(
+      fbBefore.findings.filter((f) => f.kind === 'exponential_runaway').length
+    ).toBeGreaterThanOrEqual(2)
+    const fbFixed = applyAllMxDiagnosticQuickFixes(feedbackDoc)
+    const fbAfter = analyzeMxEconomyHealth(fbFixed.doc)
+    expect(fbAfter.findings.some((f) => f.kind === 'exponential_runaway')).toBe(false)
+    expect(fbAfter.findings.some((f) => f.kind === 'pool_capped')).toBe(false)
   })
 })
