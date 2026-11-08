@@ -5929,7 +5929,7 @@ export default {
       novelPremiseIn: '创意设定',
       novelPrevChapterIn: '上一章',
       novelOutlineIn: '小说大纲',
-      novelEconomyIn: '经济系统',
+      novelEconomyIn: '机制设计',
       numericalIn: '数值系统',
       numericalOut: '数值系统',
       novelOutlineOut: '大纲',
@@ -6190,7 +6190,7 @@ export default {
         vfxAlpha: '2D特效去黑底',
         audioDsp: '游戏音频工坊',
         levelMap: '2D关卡地图生成',
-        economy: '经济系统',
+        economy: '机制设计',
         numerical: '数值系统',
         playable: '可玩游戏沙盒'
       },
@@ -8576,9 +8576,9 @@ export default {
       walkableStat: '可通行率: {pct}%'
     },
     economy: {
-      sectionTitle: '⚖️ Machinations 游戏经济与数值平衡系统',
-      hint: '受 Machinations.io 启发的可视化系统动力学建模与蒙特卡洛（Monte Carlo）数值平衡模拟器：支持 Source（产出）、Pool（货币/资源池）、Converter（合成/抽卡转化）、Drain（回收黑洞 Sink）、Gate（动态保底概率分流）与 Register（指数公式），实时检验通胀率、产出回收比与卡点步数。',
-      presetLabel: '经济系统品类蓝图预设 (Economy Archetype)',
+      sectionTitle: '⚖️ 游戏机制设计与系统动力学模拟',
+      hint: '支持「🧩 3图元极简创造 ⇄ 📐 10图元专业蓝图」双向转换的机制设计与蒙特卡洛（Monte Carlo）平衡模拟器：涵盖状态池（Pool/Register）、动作合成（Converter）、概率与保底判定（Gate）、产出（Source）、消耗（Drain）与延迟冷却（Delay），实时检验机制闭环、产销比与卡点步数。',
+      presetLabel: '机制设计品类蓝图预设 (Mechanics Archetype)',
       presetArpg: '⚔️ ARPG 刷宝掉落与铁匠强化回收闭环 (Loot & Blacksmith Sink-Source)',
       presetGacha: '🌟 二次元祈愿抽卡与大小保底概率机 (Gacha Banner & Soft/Hard Pity)',
       presetIdle: '🏰 放置大亨产能指数增长与转生墙模拟 (Idle Tycoon Exponential Loop)',
@@ -8602,8 +8602,8 @@ export default {
       addEdgeState: '+ ╌╌► 状态反馈修正线',
       deleteSelectedBtn: '🗑️ 删除选中节点',
       chartTitle: '📈 蒙特卡洛时序演化曲线 (实线 P50 中位数 · 阴影带 P10~P90 置信区间)',
-      diagnosticsTitle: '🩺 经济系统健康度与数值平衡自动诊断',
-      exportTitle: '📦 引擎经济脚本与遥测导出 (Godot 4 .gd / Unity .cs / Mermaid / CSV)',
+      diagnosticsTitle: '🩺 机制闭环健康度与数值平衡自动诊断',
+      exportTitle: '📦 引擎机制脚本与遥测导出 (Godot 4 .gd / Unity .cs / Mermaid / CSV)',
       downloadCsvBtn: '💾 下载遥测 .csv',
       downloadJsonBtn: '💾 下载拓扑 .json',
       selectedNodeTitle: '🎯 选中图元属性',
@@ -8715,7 +8715,7 @@ export default {
       docs: '语法手册'
     },
     blocks: {
-      lede: '一个机制，可直接粘贴进你既有的经济系统模型。',
+      lede: '一个机制积木，可直接粘贴进你既有的机制设计模型。',
       searchPlaceholder: '搜索机制积木名称、公式或标签…',
       allDomains: '全部领域',
       allShelves: '全部快捷架',
@@ -8893,7 +8893,7 @@ export default {
       deleteElement: '删除选中图元 (Delete)',
       edgeKind: '连接线类型',
       diagramSettings: '图表与模拟全局设置',
-      diagramTitle: '经济系统图标题',
+      diagramTitle: '机制设计图标题',
       steps: '模拟步数 (Steps)',
       seed: '随机种子 (Seed)',
       actionMode: '步进执行顺序',
@@ -9091,9 +9091,9 @@ export default {
     },
     drawer: {
       agentHint:
-        '输入你想设计的游戏经济玩法（如：肉鸽局内战利品与回血、抽卡保底、放置挂机、通行证等），一键生成完整可运行的 Machinations 图：',
+        '输入你想设计的游戏玩法机制（如：肉鸽局内战利品与回血、抽卡保底、技能冷却、放置挂机、短剧爽点循环等），一键生成完整可运行的机制图：',
       agentPlaceholder: '例如：设计一套 Roguelike 闯关冒险、受伤回血与击败数成长循环...',
-      agentGenerate: '一键生成经济系统图',
+      agentGenerate: '一键生成机制设计图',
       templatesHint: '点击任意内置模板即可直接载入画布并自动运行：',
       resourcesHint: '定义图表中流转的资源类型与代表色：',
       add: '新增',

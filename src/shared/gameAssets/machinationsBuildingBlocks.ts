@@ -1603,9 +1603,13 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       }),
       bn('cliff_gate_reg', 'register', /* cjk-ok */ '当前步解锁额', 150, 165, {
         formula: 'if(STEP >= 5, 10, 0)'
-      })
+      }),
+      bn('vest_done_end', 'end', /* cjk-ok */ '全额解锁完成', 440, 60, {})
     ],
-    edges: [be('e1', 'resource', 'locked_vault', 'unlocked_wallet', 'cliff_gate_reg')]
+    edges: [
+      be('e1', 'resource', 'locked_vault', 'unlocked_wallet', 'cliff_gate_reg'),
+      be('e2', 'state', 'unlocked_wallet', 'vest_done_end', '>=100')
+    ]
   },
   {
     id: 'bb_halving_epoch_emission',
@@ -1823,12 +1827,14 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       bn('adopt_rate', 'register', /* cjk-ok */ '当步口碑转化数', 170, 165, {
         formula:
           'min(potential_mkt, max(1, round(potential_mkt * (0.02 + 0.35 * (adopted_users / 205)))))'
-      })
+      }),
+      bn('market_sat_end', 'end', /* cjk-ok */ '市场饱和达成', 480, 60, {})
     ],
     edges: [
       be('e1', 'resource', 'potential_mkt', 'adopted_users', 'adopt_rate'),
       be('e2', 'state', 'potential_mkt', 'adopt_rate', '+1'),
-      be('e3', 'state', 'adopted_users', 'adopt_rate', '+1')
+      be('e3', 'state', 'adopted_users', 'adopt_rate', '+1'),
+      be('e4', 'state', 'adopted_users', 'market_sat_end', '>=205')
     ]
   },
 
@@ -1922,7 +1928,8 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
       bn('recovered_r', 'pool', /* cjk-ok */ '康复免疫人群 R', 420, 60, {
         initial: 0,
         color: '#10b981'
-      })
+      }),
+      bn('herd_end', 'end', /* cjk-ok */ '群体免疫终结', 420, 165, {})
     ],
     edges: [
       be(
@@ -1938,7 +1945,8 @@ export const MX_BUILDING_BLOCKS: MxBuildingBlock[] = [
         'infected_i',
         'recovered_r',
         'min(infected_i, max(if(infected_i > 0, 1, 0), round(infected_i * RecoveryGamma)))'
-      )
+      ),
+      be('e3', 'state', 'recovered_r', 'herd_end', '>=200')
     ]
   },
   {

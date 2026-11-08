@@ -3631,11 +3631,11 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
   {
     typeId: 'game.economy',
     category: 'note',
-    label: '经济系统', // cjk-ok
+    label: '机制设计', // cjk-ok
     icon: '⚖️',
-    defaultTitle: '经济系统', // cjk-ok
+    defaultTitle: '机制设计', // cjk-ok
     description:
-      'Machinations 风格游戏经济系统动力学建模与蒙特卡洛（Monte Carlo）数值平衡节点：支持 Source（产出）/ Pool（资源池）/ Converter（合成转化）/ Drain（消耗回收）/ Gate（动态保底概率分流）/ Register（指数数值公式）可视化拓扑编辑、步进模拟与 P10/P50/P90 置信带曲线分析，输出可视化拓扑曲线图（out）与 Godot/Unity 经济脚本及遥测 JSON（out-text）。', // cjk-ok
+      '游戏机制设计与系统动力学模拟节点（支持「🧩 3图元极简创造模式 ⇄ 📐 10图元专业蓝图模式」双向无损转换）：可设计核心玩法循环、战斗技能冷却、合成转化、抽卡软硬保底、资源经济供需与短剧冲突张力闭环，支持步进模拟与 P10/P50/P90 蒙特卡洛置信带分析，输出可视化拓扑曲线图（out）与 Godot/Unity 运行时脚本及遥测 JSON（out-text）。', // cjk-ok
     defaultSize: { ...ASSET_SIZE },
     sizeLimits: { ...ASSET_LIMITS },
     ports: [
@@ -3646,7 +3646,7 @@ export const BUILTIN_NODE_TYPES: NodeTypeDefinition[] = [
         direction: 'out',
         dataType: GraphPortType.text,
         multiple: false,
-        label: 'Economy',
+        label: 'Mechanics',
         labelKey: 'graph.port.novelEconomyIn'
       }
     ],

@@ -184,13 +184,45 @@ function pullModeBadge(pm?: MxPullMode): string {
   }
 }
 
+export function formatMxNodeMacroBadges(node: MxNode): string {
+  const parts: string[] = []
+  if (node.kind === 'pool') {
+    if (node.autoInflow?.trim()) parts.push(`+${node.autoInflow.trim()}`)
+    if (node.autoOutflow?.trim()) parts.push(`-${node.autoOutflow.trim()}`)
+    if (node.endWhen?.trim()) parts.push(`🏁${node.endWhen.trim()}`)
+  } else if (node.kind === 'register') {
+    if (node.endWhen?.trim()) parts.push(`🏁${node.endWhen.trim()}`)
+  } else if (node.kind === 'converter') {
+    if (node.cooldownSteps && node.cooldownSteps > 0) parts.push(`⏱${node.cooldownSteps}`)
+  } else if (node.kind === 'gate') {
+    if (node.pityEnabled) {
+      parts.push(`🎯${node.pitySoftStart ?? 50}/${node.pityHardMax ?? 80}`)
+    }
+  }
+  return parts.join(' · ')
+}
+
 export function getMxNodeSubLabel(node: MxNode): string {
-  if (node.kind === 'pool' && node.capacity && node.capacity > 0) return `max ${node.capacity}`
-  if (node.kind === 'register' && node.formula)
-    return node.formula.length > 18 ? `${node.formula.slice(0, 17)}…` : node.formula
-  if (node.kind === 'gate' && node.formula?.trim()) {
-    const f = node.formula.trim()
-    return f.length > 18 ? `${f.slice(0, 17)}…` : f
+  const macroBadge = formatMxNodeMacroBadges(node)
+  if (node.kind === 'pool') {
+    const capPart = node.capacity && node.capacity > 0 ? `max ${node.capacity}` : ''
+    return [capPart, macroBadge].filter(Boolean).join(' · ')
+  }
+  if (node.kind === 'register') {
+    const fPart = node.formula
+      ? node.formula.length > 18
+        ? `${node.formula.slice(0, 17)}…`
+        : node.formula
+      : ''
+    return [fPart, macroBadge].filter(Boolean).join(' · ')
+  }
+  if (node.kind === 'converter' && macroBadge) {
+    return macroBadge
+  }
+  if (node.kind === 'gate') {
+    const f = node.formula?.trim() || ''
+    const fPart = f ? (f.length > 18 ? `${f.slice(0, 17)}…` : f) : ''
+    return [macroBadge, fPart].filter(Boolean).join(' · ')
   }
   if ((node.kind === 'delay' || node.kind === 'queue') && node.delaySteps)
     return `${node.delaySteps} steps`

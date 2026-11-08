@@ -6093,7 +6093,7 @@ export default {
       novelPremiseIn: 'Premise',
       novelPrevChapterIn: 'Prev chap',
       novelOutlineIn: 'Outline',
-      novelEconomyIn: 'Economy',
+      novelEconomyIn: 'Mechanics',
       numericalIn: 'Numerical',
       numericalOut: 'Numerical',
       novelOutlineOut: 'Outline',
@@ -6358,7 +6358,7 @@ export default {
         vfxAlpha: '2D VFX Alpha Demult',
         audioDsp: 'Game Audio DSP',
         levelMap: '2D Level Map Gen',
-        economy: 'Economy System',
+        economy: 'Mechanics Design',
         numerical: 'Numerical System',
         playable: 'Playable Game Sandbox'
       },
@@ -8836,9 +8836,9 @@ export default {
       walkableStat: 'Walkable: {pct}%'
     },
     economy: {
-      sectionTitle: '⚖️ Machinations Game Economy & Balance Simulator',
-      hint: 'Machinations.io-inspired visual system dynamics & Monte Carlo economy balancing simulator: model Sources, Pools, Converters, Drains (Sinks), Probabilistic Gates (Soft/Hard Pity), and Registers with P10/P50/P90 confidence bands.',
-      presetLabel: 'Economy Archetype Blueprint Preset',
+      sectionTitle: '⚖️ Game Mechanics Design & System Dynamics Simulator',
+      hint: 'Visual game mechanics & Monte Carlo balance simulator with 3-node Simple Creation Mode ⇄ 10-node Pro Blueprint Mode: model Pools, Converters, Gates (Soft/Hard Pity), Sources, Drains, Delays, and Registers with P10/P50/P90 confidence bands.',
+      presetLabel: 'Mechanics Archetype Blueprint Preset',
       presetArpg: '⚔️ ARPG Loot Drop & Blacksmith Upgrade Sink-Source',
       presetGacha: '🌟 Gacha Banner & Soft/Hard Pity Probability Loop',
       presetIdle: '🏰 Idle Tycoon Exponential Generator & Prestige Loop',

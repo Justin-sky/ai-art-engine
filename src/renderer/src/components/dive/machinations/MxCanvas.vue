@@ -750,9 +750,13 @@
               ■
             </text>
 
-            <!-- Pull Mode 角标 (p& / ps / ps&) -->
+            <!-- Pull Mode 角标 (p& / ps / ps&)，极简模式下隐藏避免新手困惑 -->
             <text
-              v-if="node.pullMode && node.pullMode !== 'pull_any'"
+              v-if="
+                store.complexityMode.value !== 'simple' &&
+                node.pullMode &&
+                node.pullMode !== 'pull_any'
+              "
               class="mx-node-pull-badge"
               x="-16"
               y="-13"
@@ -808,6 +812,13 @@
               v-if="nodeStepDelta(node.id) !== 0"
               :transform="`translate(22, ${-18 - burstProgress * 7})`"
               class="mx-delta-badge"
+              @pointerenter="hoveredBadgeTip = { nodeId: node.id, kind: 'delta' }"
+              @pointerleave="
+                hoveredBadgeTip =
+                  hoveredBadgeTip?.nodeId === node.id && hoveredBadgeTip?.kind === 'delta'
+                    ? null
+                    : hoveredBadgeTip
+              "
             >
               <rect
                 x="-14"
@@ -824,6 +835,7 @@
                     : formatValue(nodeStepDelta(node.id))
                 }}
               </text>
+              <title>{{ nodeStepDeltaTip(node) }}</title>
             </g>
 
             <!-- 瓶颈告警徽标（Converter 饥饿阻塞 / Pool 爆仓 MAX / Pool 枯竭 0!） -->
@@ -831,6 +843,13 @@
               v-if="store.nodeBottlenecks.value[node.id]"
               transform="translate(-22, -20)"
               class="mx-bottleneck-badge"
+              @pointerenter="hoveredBadgeTip = { nodeId: node.id, kind: 'bottleneck' }"
+              @pointerleave="
+                hoveredBadgeTip =
+                  hoveredBadgeTip?.nodeId === node.id && hoveredBadgeTip?.kind === 'bottleneck'
+                    ? null
+                    : hoveredBadgeTip
+              "
             >
               <rect
                 x="-17"
@@ -849,6 +868,7 @@
               <text text-anchor="middle" y="2.5" fill="#ffffff" font-size="8" font-weight="800">
                 {{ store.nodeBottlenecks.value[node.id]?.badge }}
               </text>
+              <title>{{ nodeBottleneckTip(node) }}</title>
             </g>
 
             <!-- Interactive Register 画布步进微调按钮 (- / +) -->
@@ -1161,7 +1181,7 @@
       </button>
       <div class="mx-tool-divider" />
       <button
-        v-for="tb in toolButtons"
+        v-for="tb in visibleToolButtons"
         :key="tb.id"
         type="button"
         class="mx-tool"
@@ -1462,6 +1482,15 @@
       >
         ╌╌►
       </button>
+      <button
+        v-if="hasMxNodeSimpleMacros(selectedSingleNode)"
+        type="button"
+        class="mx-nf-btn"
+        :title="expandMacroFloatTip"
+        @click="store.expandNodeSimpleMacros(selectedSingleNode.id)"
+      >
+        📐
+      </button>
       <span class="sep" />
       <button
         type="button"
@@ -1533,7 +1562,7 @@
       <div class="mx-qm-title">{{ t('mx.canvas.quickConnectTitle') }}</div>
       <div class="mx-qm-grid">
         <button
-          v-for="qk in quickSpawnKinds"
+          v-for="qk in visibleQuickSpawnKinds"
           :key="qk.kind"
           type="button"
           class="mx-qm-item"
@@ -1557,7 +1586,7 @@
         <div class="mx-qm-title">{{ t('mx.canvas.addNodeHere') }}</div>
         <div class="mx-qm-grid">
           <button
-            v-for="qk in quickSpawnKinds"
+            v-for="qk in visibleQuickSpawnKinds"
             :key="qk.kind"
             type="button"
             class="mx-qm-item"
@@ -1789,6 +1818,17 @@
       </div>
     </div>
 
+    <!-- ══════════ 节点右上角单步变化量 / 左上角瓶颈徽章即时悬停提示气泡 ══════════ -->
+    <div
+      v-if="activeBadgeTooltip"
+      class="mx-badge-hover-tip"
+      :class="`tone-${activeBadgeTooltip.tone}`"
+      :style="{ left: activeBadgeTooltip.left, top: activeBadgeTooltip.top }"
+    >
+      <div class="mx-bht-title">{{ activeBadgeTooltip.title }}</div>
+      <div class="mx-bht-detail">{{ activeBadgeTooltip.detail }}</div>
+    </div>
+
     <!-- ══════════ 右下可折叠鸟瞰小地图 (Interactive Minimap) ══════════ -->
     <div class="mx-minimap-dock" :class="{ 'is-collapsed': !minimapOpen }" @pointerdown.stop>
       <button
@@ -1892,6 +1932,7 @@ import {
   evaluateMxExpression,
   exportMxDiagramSvg,
   getMxNodeSubPillWidth,
+  hasMxNodeSimpleMacros,
   inspectMxFormulaContext,
   mxNodeColor,
   parseMxStateFormula,
@@ -1915,7 +1956,12 @@ import { useWorkspaceFullscreen } from '../../../composables/useWorkspaceFullscr
 import { themePreference } from '../../../editor/preferences'
 import { useMxStudioStore, type MxCanvasTheme, type MxDrawer, type MxTool } from './mxStudioStore'
 
-const { t } = useStudioI18n()
+const { t, locale } = useStudioI18n()
+const isEn = computed(() => locale.value === 'en-US')
+const expandMacroFloatTip = computed(
+  () =>
+    isEn.value ? 'Expand inline rules to Pro Blueprint nodes' : '将此节点内联规则展开为专业蓝图节点' // cjk-ok
+)
 const { isWorkspaceFullscreen, enterWorkspaceFullscreen, exitWorkspaceFullscreen } =
   useWorkspaceFullscreen()
 const store = useMxStudioStore()
@@ -2022,6 +2068,14 @@ const quickSpawnKinds: Array<{ kind: MxNodeKind; icon: string }> = [
   { kind: 'end', icon: '■' }
 ]
 
+const visibleQuickSpawnKinds = computed(() =>
+  store.complexityMode.value === 'simple'
+    ? quickSpawnKinds.filter(
+        (q) => q.kind === 'pool' || q.kind === 'converter' || q.kind === 'gate'
+      )
+    : quickSpawnKinds
+)
+
 const toolButtons: Array<{
   id: MxTool
   shape?: MxNodeKind
@@ -2034,7 +2088,7 @@ const toolButtons: Array<{
   { id: 'pool', shape: 'pool', color: '#3b82f6' },
   { id: 'gate', shape: 'gate', color: '#ec4899' },
   { id: 'trader', shape: 'trader', color: '#14b8a6' },
-  { id: 'converter', shape: 'converter', color: '#8b5cf6' },
+  { id: 'converter', shape: 'converter', color: '#8b55f6' },
   { id: 'register', shape: 'register', color: '#a855f7', filled: true, glyph: 'x' },
   { id: 'delay', shape: 'delay', color: '#64748b', glyph: '⏱' },
   { id: 'queue', shape: 'queue', color: '#64748b', glyph: 'Q' },
@@ -2043,6 +2097,22 @@ const toolButtons: Array<{
   { id: 'state_edge', color: '#38bdf8' },
   { id: 'note', shape: 'note', color: '#eab308', filled: false }
 ]
+
+const SIMPLE_TOOL_ORDER: ReadonlyArray<MxTool> = [
+  'pool',
+  'converter',
+  'gate',
+  'resource_edge',
+  'state_edge',
+  'note'
+]
+
+const visibleToolButtons = computed(() => {
+  if (store.complexityMode.value !== 'simple') return toolButtons
+  return SIMPLE_TOOL_ORDER.map((id) => toolButtons.find((tb) => tb.id === id)).filter(
+    (tb): tb is NonNullable<typeof tb> => Boolean(tb)
+  )
+})
 
 const isNodeTool = computed(() => {
   const tl = store.tool.value
@@ -2370,6 +2440,111 @@ function formatValue(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1)
 }
 
+const hoveredBadgeTip = ref<{
+  nodeId: string
+  kind: 'delta' | 'bottleneck'
+} | null>(null)
+
+function nodeStepDeltaTip(node: MxNode): string {
+  const delta = nodeStepDelta(node.id)
+  if (delta === 0) return ''
+  const cur = store.displayValues.value?.[node.id] ?? 0
+  const prev = store.previousStepValues.value?.[node.id] ?? 0
+  const step = store.playStep.value
+  const sign = delta > 0 ? `+${formatValue(delta)}` : formatValue(delta)
+  if (isEn.value) {
+    return `Step ${step} Delta: ${sign} (Prev step ${formatValue(prev)} → Current ${formatValue(cur)})`
+  }
+  return `第 ${step} 步单步变化量：${sign}（上一步 ${formatValue(prev)} → 当前 ${formatValue(cur)}）` // cjk-ok
+}
+
+function nodeBottleneckTip(node: MxNode): string {
+  const bn = store.nodeBottlenecks.value[node.id]
+  if (!bn) return ''
+  if (bn.kind === 'blocked') {
+    return isEn.value
+      ? `Starved / Blocked (${bn.badge}): insufficient input resources to fire`
+      : `资源不足阻塞 (${bn.badge})：前置输入不足导致未能触发` // cjk-ok
+  }
+  if (bn.kind === 'capped') {
+    return isEn.value
+      ? `Capacity Full (MAX = ${node.capacity ?? 0}): excess inflow will block or overflow`
+      : `容量已满 (MAX = ${node.capacity ?? 0})：继续注入将阻塞或溢出` // cjk-ok
+  }
+  return isEn.value
+    ? 'Pool Depleted (0!): resource stock exhausted'
+    : '资源池已耗尽 (0!)：存量已归零' // cjk-ok
+}
+
+const activeBadgeTooltip = computed<{
+  left: string
+  top: string
+  title: string
+  detail: string
+  tone: 'pos' | 'neg' | 'warn'
+} | null>(() => {
+  const hb = hoveredBadgeTip.value
+  if (!hb) return null
+  const node = nodeById.value.get(hb.nodeId)
+  if (!node) return null
+  const nx = nodeX(node)
+  const ny = nodeY(node)
+  if (hb.kind === 'delta') {
+    const delta = nodeStepDelta(node.id)
+    if (delta === 0) return null
+    const cur = store.displayValues.value?.[node.id] ?? 0
+    const prev = store.previousStepValues.value?.[node.id] ?? 0
+    const step = store.playStep.value
+    const sign = delta > 0 ? `+${formatValue(delta)}` : formatValue(delta)
+    const sx = (nx + 22) * store.view.zoom + store.view.x
+    const sy = (ny - 28) * store.view.zoom + store.view.y
+    return {
+      left: `${Math.round(sx)}px`,
+      top: `${Math.round(Math.max(42, sy))}px`,
+      title: isEn.value
+        ? `${node.label} · Step ${step} Delta: ${sign}`
+        : `${node.label} · 第 ${step} 步变化量：${sign}`, // cjk-ok
+      detail: isEn.value
+        ? `Previous step: ${formatValue(prev)} → Current step: ${formatValue(cur)}`
+        : `上一步数值 ${formatValue(prev)} → 当前步数值 ${formatValue(cur)}`, // cjk-ok
+      tone: delta > 0 ? 'pos' : 'neg'
+    }
+  }
+  const bn = store.nodeBottlenecks.value[node.id]
+  if (!bn) return null
+  const sx = (nx - 22) * store.view.zoom + store.view.x
+  const sy = (ny - 28) * store.view.zoom + store.view.y
+  return {
+    left: `${Math.round(sx)}px`,
+    top: `${Math.round(Math.max(42, sy))}px`,
+    title:
+      bn.kind === 'blocked'
+        ? isEn.value
+          ? `${node.label} · Starved / Blocked (${bn.badge})`
+          : `${node.label} · 资源不足阻塞 (${bn.badge})` // cjk-ok
+        : bn.kind === 'capped'
+          ? isEn.value
+            ? `${node.label} · Capacity Full (MAX = ${node.capacity ?? 0})`
+            : `${node.label} · 容量已满 (MAX = ${node.capacity ?? 0})` // cjk-ok
+          : isEn.value
+            ? `${node.label} · Pool Depleted (0!)`
+            : `${node.label} · 资源池已耗尽 (0!)`, // cjk-ok
+    detail:
+      bn.kind === 'blocked'
+        ? isEn.value
+          ? 'Upstream inputs were insufficient when this node tried to fire.'
+          : '该节点尝试触发时上游输入资源不足。' // cjk-ok
+        : bn.kind === 'capped'
+          ? isEn.value
+            ? 'Pool has reached its capacity ceiling.'
+            : '该资源池已达到容量上限。' // cjk-ok
+          : isEn.value
+            ? 'Pool stock dropped from positive initial value to 0.'
+            : '该资源池存量已从初始正值耗尽归零。', // cjk-ok
+    tone: 'warn'
+  }
+})
+
 function pullModeBadge(pm: MxPullMode): string {
   switch (pm) {
     case 'pull_all':
@@ -2627,22 +2802,75 @@ watch(isSimRuntime, (running) => {
   }
 })
 
+function compactMacroRateText(raw: string): string {
+  const s = raw.trim()
+  const m =
+    /^if\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<>|<|>)\s*(-?\d+(?:\.\d+)?)\s*,\s*(.+)\s*,\s*0\s*\)(?:\|(.+))?$/.exec(
+      s
+    )
+  if (m) {
+    const [, condId, op, val, rate, iv] = m
+    const core = iv?.trim() ? `${rate!.trim()}|${iv.trim()}` : rate!.trim()
+    return `${core} (${condId}${op}${val})`
+  }
+  return s.length > 22 ? `${s.slice(0, 21)}…` : s
+}
+
+function formatNodeMacroBadges(node: MxNode): string {
+  const parts: string[] = []
+  if (node.kind === 'pool') {
+    if (node.autoInflow?.trim()) parts.push(`+${compactMacroRateText(node.autoInflow)}`)
+    if (node.autoOutflow?.trim()) parts.push(`-${compactMacroRateText(node.autoOutflow)}`)
+    if (node.cooldownSteps && node.cooldownSteps > 0) parts.push(`⏱${node.cooldownSteps}`)
+    if (node.endWhen?.trim()) parts.push(`🏁${node.endWhen.trim()}`)
+  } else if (node.kind === 'register') {
+    if (node.endWhen?.trim()) parts.push(`🏁${node.endWhen.trim()}`)
+  } else if (node.kind === 'converter' || node.kind === 'trader') {
+    if (node.autoInflow?.trim()) parts.push(`+${compactMacroRateText(node.autoInflow)}`)
+    if (node.autoOutflow?.trim()) parts.push(`-${compactMacroRateText(node.autoOutflow)}`)
+    if (node.cooldownSteps && node.cooldownSteps > 0) parts.push(`⏱${node.cooldownSteps}`)
+  } else if (node.kind === 'gate') {
+    if (node.autoInflow?.trim()) parts.push(`+${compactMacroRateText(node.autoInflow)}`)
+    if (node.pityEnabled) {
+      parts.push(`🎯${node.pitySoftStart ?? 50}/${node.pityHardMax ?? 80}`)
+    }
+  }
+  return parts.join(' · ')
+}
+
 function nodeSubLabel(node: MxNode): string {
-  if (node.kind === 'pool' && node.capacity && node.capacity > 0) return `max ${node.capacity}`
-  if (node.kind === 'register' && node.formula)
-    return node.formula.length > 18 ? `${node.formula.slice(0, 17)}…` : node.formula
+  const macroBadge = formatNodeMacroBadges(node)
+  if (node.kind === 'pool') {
+    const capPart = node.capacity && node.capacity > 0 ? `max ${node.capacity}` : ''
+    return [capPart, macroBadge].filter(Boolean).join(' · ')
+  }
+  if (node.kind === 'register') {
+    const fPart = node.formula
+      ? node.formula.length > 18
+        ? `${node.formula.slice(0, 17)}…`
+        : node.formula
+      : ''
+    return [fPart, macroBadge].filter(Boolean).join(' · ')
+  }
+  if ((node.kind === 'converter' || node.kind === 'trader') && macroBadge) {
+    return macroBadge
+  }
   if (node.kind === 'gate') {
     const f = node.formula?.trim() || ''
     const lastRoll =
       store.playStep.value > 0 ? store.liveState.value?.gateLastRoll?.[node.id] : undefined
     if (f && lastRoll !== undefined) {
       const shortF = f.length > 14 ? `${f.slice(0, 13)}…` : f
-      return `${shortF} → ${formatValue(lastRoll)}`
+      return [macroBadge, `${shortF} → ${formatValue(lastRoll)}`].filter(Boolean).join(' · ')
     }
-    if (f) return f.length > 18 ? `${f.slice(0, 17)}…` : f
+    if (f) {
+      const fPart = f.length > 18 ? `${f.slice(0, 17)}…` : f
+      return [macroBadge, fPart].filter(Boolean).join(' · ')
+    }
     if (lastRoll !== undefined && conditionalGateSet.value.has(node.id)) {
-      return `🎲 ${formatValue(lastRoll)}`
+      return [macroBadge, `🎲 ${formatValue(lastRoll)}`].filter(Boolean).join(' · ')
     }
+    if (macroBadge) return macroBadge
   }
   if ((node.kind === 'delay' || node.kind === 'queue') && node.delaySteps)
     return `${node.delaySteps} steps`
@@ -2667,6 +2895,7 @@ function effectiveNodeSubLabel(node: MxNode): string {
 
 function effectiveSubW(node: MxNode): number {
   if (
+    hasMxNodeSimpleMacros(node) ||
     consumerNodeHitById.value.has(node.id) ||
     (node.kind === 'gate' &&
       store.playStep.value > 0 &&
@@ -5534,6 +5763,61 @@ defineExpose({
   font-size: 13px;
   font-weight: 800;
   pointer-events: none;
+}
+.mx-delta-badge,
+.mx-bottleneck-badge {
+  cursor: help;
+}
+.mx-delta-badge:hover rect,
+.mx-bottleneck-badge:hover rect {
+  stroke: #ffffff;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.45));
+}
+.mx-badge-hover-tip {
+  position: absolute;
+  transform: translate(-50%, -100%) translateY(-8px);
+  z-index: 38;
+  pointer-events: none;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+  color: var(--text);
+  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mx-badge-hover-tip.tone-pos {
+  border-color: rgba(22, 163, 74, 0.65);
+}
+.mx-badge-hover-tip.tone-neg {
+  border-color: rgba(220, 38, 38, 0.65);
+}
+.mx-badge-hover-tip.tone-warn {
+  border-color: rgba(217, 119, 6, 0.65);
+}
+.mx-bht-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.mx-badge-hover-tip.tone-pos .mx-bht-title {
+  color: #4ade80;
+}
+.mx-badge-hover-tip.tone-neg .mx-bht-title {
+  color: #f87171;
+}
+.mx-badge-hover-tip.tone-warn .mx-bht-title {
+  color: #fbbf24;
+}
+.mx-bht-detail {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: var(--mono, ui-monospace, monospace);
+  line-height: 1.3;
 }
 .mx-node-label {
   font-size: 11px;

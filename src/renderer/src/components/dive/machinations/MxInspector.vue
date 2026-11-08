@@ -7,9 +7,10 @@
  *  - Connections 折叠区：直接查看/修改该节点的所有入边与出边公式，或一键新增连向目标节点的资源边/状态边
  *  - 选中连线时：编辑公式、快速筹码、实线/虚线切换、反转方向、弧度滑杆、颜色
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  hasMxNodeSimpleMacros,
   parseMxFlowFormula,
   parseMxStateFormula,
   resolveMxNodeConsumers,
@@ -22,9 +23,156 @@ import {
 import { useMxStudioStore } from './mxStudioStore'
 import MxFormulaEditor from './MxFormulaEditor.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const s = useMxStudioStore()
 
+const isEn = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('en')
+)
+
+const simpleRuleUi = computed(() =>
+  isEn.value
+    ? {
+        sectionTitle: '🧩 Simple Rule Config',
+        poolRole: 'State Role',
+        rolePool: '🔵 Value Pool',
+        roleRegister: '📐 Formula State',
+        autoInflow: '📥 Auto Inflow / Step',
+        autoInflowPh: 'e.g. 5, 2|3, D6',
+        autoOutflow: '📤 Auto Decay / Step',
+        autoOutflowPh: 'e.g. 2, 10%',
+        endWhen: '🏁 Win/Loss Condition',
+        endWhenPh: 'e.g. <=0 (Death/Bankrupt), >=100 (Clear)',
+        clearBtn: 'Clear',
+        actionRole: 'Action Role',
+        roleConverter: '🔄 Recipe (In➔Out)',
+        roleSource: '🌱 Pure Output',
+        roleDrain: '🔥 Pure Sink',
+        actionTrigger: 'Execution Mode',
+        trigAuto: '⚡ Auto / Step',
+        trigClick: '👆 Player Click / AI',
+        trigPassive: '· Wait for Signal',
+        cooldownSteps: '⏱ Cooldown / Craft Delay (steps)',
+        cooldownHint: '0 = instant output; >0 = expands to a Delay node in Pro Blueprint',
+        gateRule: 'Branching Mode',
+        gateRandom: '🎲 Weighted / Random %',
+        gateDet: '⚖ Sequential / Condition',
+        pityCheck: '🎯 Enable Soft/Hard Pity Counter (auto-boosts 1st branch rate)',
+        pityPresets: '1-Click Pity Presets',
+        pityPresetGacha: '🎰 Gacha (2% / 50 / 80)',
+        pityPresetCrit: '⚔ PRD Crit (20% / 2 / 5)',
+        pityPresetLoot: '📦 Loot Quota (10% / 8 / 10)',
+        pityBase: 'Base Rate %',
+        pitySoft: 'Soft Pity Step',
+        pityHard: 'Hard Pity Step',
+        expandNodeBtn: '📐 Expand Inline Macros to Pro Blueprint Nodes',
+        proFuncHeader: '⚙ Advanced Pro Parameters',
+        edgeSectionTitle: '🧩 Simple Connection Rule',
+        edgeKindLabel: 'Connection Purpose',
+        edgeResKind: '──► Resource Flow (Move Value)',
+        edgeStateKind: '╌╌► Condition / Buff / Trigger',
+        resFlowMode: 'Transfer Rule',
+        resModeFixed: '🔢 Fixed Amount',
+        resModeChance: '🎲 Chance / %',
+        resModeDice: '🎯 Random Dice',
+        resModeAll: '📦 Move All',
+        resValueLabel: 'Amount / Rate Formula',
+        resIntervalLabel: '⏱ Execute Every N Steps (Interval)',
+        resEvery1: 'Every Step',
+        resEveryN: (n: number) => `Every ${n} Steps`,
+        stateIntentLabel: 'What does this dashed line do?',
+        stateIntentCond: '🔒 Condition Gate',
+        stateIntentTrig: '⚡ Chain Trigger',
+        stateIntentBuff: '📈 Value Buff / Debuff',
+        stateIntentSync: '🎯 Sync Value (=)',
+        stateCondDesc: 'Target works ONLY when Source meets condition:',
+        stateTrigDesc: 'When Source executes, automatically fire Target:',
+        stateTrigSuccess: '⚡ Fire on Success (*)',
+        stateTrigFail: '💥 Fire on Fail / Blocked (!)',
+        stateBuffDesc: 'For each +1 in Source, modify Target value/rate by:',
+        stateSyncDesc: 'Directly set Target value or branch rate equal to Source (=).'
+      }
+    : {
+        sectionTitle: '🧩 极简规则卡片 (内置宏)', // cjk-ok
+        poolRole: '状态形态', // cjk-ok
+        rolePool: '🔵 数值存储池', // cjk-ok
+        roleRegister: '📐 公式实时计算', // cjk-ok
+        autoInflow: '📥 每步自动增加 (内置产出源)', // cjk-ok
+        autoInflowPh: '如 5, 2|3, D6（留空为无）', // cjk-ok
+        autoOutflow: '📤 每步自然消耗/衰减 (内置黑洞)', // cjk-ok
+        autoOutflowPh: '如 2, 10%（留空为无）', // cjk-ok
+        endWhen: '🏁 胜负/终局条件 (内置终局判定)', // cjk-ok
+        endWhenPh: '如 <=0 (阵亡/破产), >=100 (通关)', // cjk-ok
+        clearBtn: '清空', // cjk-ok
+        actionRole: '动作功能定位', // cjk-ok
+        roleConverter: '🔄 配方合成 (消耗➔产出)', // cjk-ok
+        roleSource: '🌱 直接产出 (无消耗)', // cjk-ok
+        roleDrain: '🔥 纯消耗销毁', // cjk-ok
+        actionTrigger: '动作触发方式', // cjk-ok
+        trigAuto: '⚡ 每步自动执行', // cjk-ok
+        trigClick: '👆 玩家点击 / AI触发', // cjk-ok
+        trigPassive: '· 被动等待信号', // cjk-ok
+        cooldownSteps: '⏱ 动作耗时 / 冷却步数', // cjk-ok
+        cooldownHint: '0 = 当步立即产出；>0 = 专业蓝图中自动展开为 Delay 延迟节点', // cjk-ok
+        gateRule: '分流判定模式', // cjk-ok
+        gateRandom: '🎲 概率 / 权重随机', // cjk-ok
+        gateDet: '⚖ 顺序 / 条件分流', // cjk-ok
+        pityCheck: '🎯 启用抽卡/掉落软硬保底递增（自动为首条出边叠加保底概率）', // cjk-ok
+        pityPresets: '一键套用高频保底模型', // cjk-ok
+        pityPresetGacha: '🎰 抽卡大小保底 (2%/50/80)', // cjk-ok
+        pityPresetCrit: '⚔ 暴击伪随机 PRD (20%/2/5)', // cjk-ok
+        pityPresetLoot: '📦 刷宝必掉配额 (10%/8/10)', // cjk-ok
+        pityBase: '基础概率%', // cjk-ok
+        pitySoft: '软保底起始', // cjk-ok
+        pityHard: '硬保底必中', // cjk-ok
+        expandNodeBtn: '📐 将此节点内联规则展开为专业蓝图节点', // cjk-ok
+        proFuncHeader: '⚙ 底层高级参数 (Machinations Pro)', // cjk-ok
+        edgeSectionTitle: '🧩 极简连线规则卡片', // cjk-ok
+        edgeKindLabel: '连线作用类型', // cjk-ok
+        edgeResKind: '──► 实线 · 搬运数值/资源', // cjk-ok
+        edgeStateKind: '╌╌► 虚线 · 条件/加成/触发', // cjk-ok
+        resFlowMode: '搬运数量规则', // cjk-ok
+        resModeFixed: '🔢 固定数量', // cjk-ok
+        resModeChance: '🎲 概率或比例%', // cjk-ok
+        resModeDice: '🎯 随机骰子', // cjk-ok
+        resModeAll: '📦 全部搬空', // cjk-ok
+        resValueLabel: '每次搬运数值 / 表达式', // cjk-ok
+        resIntervalLabel: '⏱ 每几步执行一次 (间隔步数)', // cjk-ok
+        resEvery1: '每步执行', // cjk-ok
+        resEveryN: (n: number) => `每 ${n} 步`, // cjk-ok
+        stateIntentLabel: '这条虚线的作用是什么？（一键选择）', // cjk-ok
+        stateIntentCond: '🔒 条件开关', // cjk-ok
+        stateIntentTrig: '⚡ 联动触发', // cjk-ok
+        stateIntentBuff: '📈 数值加成/削弱', // cjk-ok
+        stateIntentSync: '🎯 强制同步 (=)', // cjk-ok
+        stateCondDesc: '当来源满足以下条件时，才允许目标工作或判定：', // cjk-ok
+        stateTrigDesc: '当来源动作执行时，顺便自动触发目标：', // cjk-ok
+        stateTrigSuccess: '⚡ 成功时触发 (*)', // cjk-ok
+        stateTrigFail: '💥 失败/不足时触发 (!)', // cjk-ok
+        stateBuffDesc: '来源每拥有 1 点数值，对目标数值或流量产生增减：', // cjk-ok
+        stateSyncDesc: '将目标的数值或分支概率直接强制设为来源当前值 (=)。' // cjk-ok
+      }
+)
+
+const showSimpleRuleCard = computed(() => {
+  const n = selectedNode.value
+  if (!n || n.kind === 'note') return false
+  if (hasMxNodeSimpleMacros(n)) return true
+  if (s.complexityMode.value !== 'simple') return false
+  return (
+    n.kind === 'pool' ||
+    n.kind === 'register' ||
+    n.kind === 'converter' ||
+    n.kind === 'source' ||
+    n.kind === 'drain' ||
+    n.kind === 'gate'
+  )
+})
+
+const simpleCardOpen = ref(true)
+const simpleEdgeCardOpen = ref(true)
 const funcOpen = ref(true)
 const condRefsOpen = ref(true)
 const connOpen = ref(true)
@@ -443,10 +591,71 @@ function addQuickConnectionFromInspector(): void {
   s.select([n.id])
   quickTargetNodeId.value = ''
 }
+
+const inspectorWidth = ref(296)
+const isResizingInspector = ref(false)
+let inspResizeCleanup: (() => void) | null = null
+
+function startResizeInspector(ev: PointerEvent): void {
+  if (ev.button !== 0) return
+  ev.preventDefault()
+  const startX = ev.clientX
+  const startW = s.inspectorOpen.value ? inspectorWidth.value : 296
+  isResizingInspector.value = true
+
+  const onMove = (me: PointerEvent): void => {
+    const deltaX = startX - me.clientX
+    const nextW = startW + deltaX
+    if (nextW < 140) {
+      s.inspectorOpen.value = false
+      return
+    }
+    if (!s.inspectorOpen.value) {
+      s.inspectorOpen.value = true
+    }
+    inspectorWidth.value = Math.max(256, Math.min(460, Math.round(nextW)))
+  }
+
+  const onUp = (): void => {
+    isResizingInspector.value = false
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+    inspResizeCleanup = null
+  }
+
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
+  inspResizeCleanup = onUp
+}
+
+function toggleInspectorWidthPreset(): void {
+  if (!s.inspectorOpen.value) {
+    s.inspectorOpen.value = true
+    inspectorWidth.value = 296
+    return
+  }
+  inspectorWidth.value = inspectorWidth.value < 340 ? 380 : 296
+}
+
+onBeforeUnmount(() => {
+  inspResizeCleanup?.()
+})
 </script>
 
 <template>
-  <aside class="mx-inspector" :class="{ 'is-collapsed': !s.inspectorOpen.value }">
+  <aside
+    class="mx-inspector"
+    :class="{ 'is-collapsed': !s.inspectorOpen.value }"
+    :style="s.inspectorOpen.value ? { width: `${inspectorWidth}px` } : undefined"
+  >
+    <div
+      class="mx-insp-resize-handle"
+      :class="{ 'is-dragging': isResizingInspector }"
+      @pointerdown="startResizeInspector"
+      @dblclick="toggleInspectorWidthPreset"
+    />
     <button
       v-if="!s.inspectorOpen.value"
       type="button"
@@ -531,10 +740,628 @@ function addQuickConnectionFromInspector(): void {
             />
           </div>
 
+          <!-- 🧩 极简创造模式：内联规则与宏配置卡片 -->
+          <div v-if="showSimpleRuleCard" class="mx-insp-section mx-simple-rule-section">
+            <button type="button" class="mx-sec-head" @click="simpleCardOpen = !simpleCardOpen">
+              <span>{{ simpleRuleUi.sectionTitle }}</span>
+              <span class="mx-caret">{{ simpleCardOpen ? '▾' : '▸' }}</span>
+            </button>
+
+            <div v-if="simpleCardOpen" class="mx-sec-body">
+              <!-- ① 状态池 / 公式状态 (Pool ⇄ Register) -->
+              <template v-if="selectedNode.kind === 'pool' || selectedNode.kind === 'register'">
+                <label class="mx-field-label">{{ simpleRuleUi.poolRole }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.kind === 'pool' }"
+                    @click="s.updateNode(selectedNode.id, { kind: 'pool' })"
+                  >
+                    {{ simpleRuleUi.rolePool }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.kind === 'register' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        kind: 'register',
+                        formula: selectedNode.formula || 'a + b'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.roleRegister }}
+                  </button>
+                </div>
+
+                <template v-if="selectedNode.kind === 'pool'">
+                  <div class="mx-two-col">
+                    <div>
+                      <label class="mx-field-label">{{ t('mx.inspector.initial') }}</label>
+                      <input
+                        class="mx-input"
+                        type="number"
+                        :value="selectedNode.initial ?? 0"
+                        @input="
+                          s.updateNode(
+                            selectedNode.id,
+                            { initial: Number(($event.target as HTMLInputElement).value) || 0 },
+                            'initial'
+                          )
+                        "
+                      />
+                    </div>
+                    <div>
+                      <label class="mx-field-label">{{ t('mx.inspector.capacity') }}</label>
+                      <input
+                        class="mx-input"
+                        type="number"
+                        :value="selectedNode.capacity ?? -1"
+                        @input="
+                          s.updateNode(
+                            selectedNode.id,
+                            { capacity: Number(($event.target as HTMLInputElement).value) },
+                            'cap'
+                          )
+                        "
+                      />
+                    </div>
+                  </div>
+
+                  <div class="mx-field-head-row">
+                    <label class="mx-field-label">{{ simpleRuleUi.autoInflow }}</label>
+                    <button
+                      v-if="selectedNode.autoInflow"
+                      type="button"
+                      class="mx-macro-clear"
+                      @click="s.updateNode(selectedNode.id, { autoInflow: undefined })"
+                    >
+                      {{ simpleRuleUi.clearBtn }}
+                    </button>
+                  </div>
+                  <input
+                    class="mx-input"
+                    type="text"
+                    :placeholder="simpleRuleUi.autoInflowPh"
+                    :value="selectedNode.autoInflow ?? ''"
+                    @input="
+                      s.updateNode(
+                        selectedNode.id,
+                        {
+                          autoInflow: ($event.target as HTMLInputElement).value.trim() || undefined
+                        },
+                        'autoInflow'
+                      )
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="ic in ['1', '2', '5', '10', 'D6', '2|3']"
+                      :key="ic"
+                      type="button"
+                      class="mx-chip"
+                      @click="s.updateNode(selectedNode.id, { autoInflow: ic })"
+                    >
+                      +{{ ic }}
+                    </button>
+                  </div>
+
+                  <div class="mx-field-head-row">
+                    <label class="mx-field-label">{{ simpleRuleUi.autoOutflow }}</label>
+                    <button
+                      v-if="selectedNode.autoOutflow"
+                      type="button"
+                      class="mx-macro-clear"
+                      @click="s.updateNode(selectedNode.id, { autoOutflow: undefined })"
+                    >
+                      {{ simpleRuleUi.clearBtn }}
+                    </button>
+                  </div>
+                  <input
+                    class="mx-input"
+                    type="text"
+                    :placeholder="simpleRuleUi.autoOutflowPh"
+                    :value="selectedNode.autoOutflow ?? ''"
+                    @input="
+                      s.updateNode(
+                        selectedNode.id,
+                        {
+                          autoOutflow: ($event.target as HTMLInputElement).value.trim() || undefined
+                        },
+                        'autoOutflow'
+                      )
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="oc in ['1', '2', '5%', '10%']"
+                      :key="oc"
+                      type="button"
+                      class="mx-chip"
+                      @click="s.updateNode(selectedNode.id, { autoOutflow: oc })"
+                    >
+                      -{{ oc }}
+                    </button>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <label class="mx-field-label">{{ t('mx.inspector.formula') }}</label>
+                  <MxFormulaEditor
+                    :model-value="selectedNode.formula ?? ''"
+                    placeholder="a + b * 2"
+                    context-kind="register"
+                    :owner-node-id="selectedNode.id"
+                    @update:model-value="
+                      (val) => s.updateNode(selectedNode!.id, { formula: val }, 'regFormula')
+                    "
+                  />
+                </template>
+
+                <div class="mx-field-head-row">
+                  <label class="mx-field-label">{{ simpleRuleUi.endWhen }}</label>
+                  <button
+                    v-if="selectedNode.endWhen"
+                    type="button"
+                    class="mx-macro-clear"
+                    @click="s.updateNode(selectedNode.id, { endWhen: undefined })"
+                  >
+                    {{ simpleRuleUi.clearBtn }}
+                  </button>
+                </div>
+                <input
+                  class="mx-input"
+                  type="text"
+                  :placeholder="simpleRuleUi.endWhenPh"
+                  :value="selectedNode.endWhen ?? ''"
+                  @input="
+                    s.updateNode(
+                      selectedNode.id,
+                      { endWhen: ($event.target as HTMLInputElement).value.trim() || undefined },
+                      'endWhen'
+                    )
+                  "
+                />
+                <div class="mx-chip-row">
+                  <button
+                    v-for="ec in ['<=0', '>=100', '>=1000']"
+                    :key="ec"
+                    type="button"
+                    class="mx-chip"
+                    @click="s.updateNode(selectedNode.id, { endWhen: ec })"
+                  >
+                    🏁 {{ ec }}
+                  </button>
+                </div>
+              </template>
+
+              <!-- ② 动作/合成/产出/销毁框 (Converter / Source / Drain) -->
+              <template
+                v-else-if="
+                  selectedNode.kind === 'converter' ||
+                  selectedNode.kind === 'source' ||
+                  selectedNode.kind === 'drain'
+                "
+              >
+                <label class="mx-field-label">{{ simpleRuleUi.actionRole }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.kind === 'converter' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        kind: 'converter',
+                        pullMode: 'pull_all'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.roleConverter }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.kind === 'source' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        kind: 'source',
+                        pullMode: 'push_any'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.roleSource }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.kind === 'drain' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        kind: 'drain',
+                        pullMode: 'pull_any'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.roleDrain }}
+                  </button>
+                </div>
+
+                <label class="mx-field-label">{{ simpleRuleUi.actionTrigger }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.trigger === 'automatic' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        trigger: 'automatic',
+                        pullMode:
+                          selectedNode.kind === 'source'
+                            ? 'push_any'
+                            : selectedNode.kind === 'drain'
+                              ? 'pull_any'
+                              : 'pull_all'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.trigAuto }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.trigger === 'interactive' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        trigger: 'interactive',
+                        pullMode:
+                          selectedNode.kind === 'source'
+                            ? 'push_any'
+                            : selectedNode.kind === 'drain'
+                              ? 'pull_any'
+                              : 'pull_all'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.trigClick }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.trigger === 'passive' }"
+                    @click="
+                      s.updateNode(selectedNode.id, {
+                        trigger: 'passive',
+                        pullMode:
+                          selectedNode.kind === 'source'
+                            ? 'push_any'
+                            : selectedNode.kind === 'drain'
+                              ? 'pull_any'
+                              : 'pull_all'
+                      })
+                    "
+                  >
+                    {{ simpleRuleUi.trigPassive }}
+                  </button>
+                </div>
+
+                <template v-if="selectedNode.kind === 'converter'">
+                  <div class="mx-field-head-row">
+                    <label class="mx-field-label">{{ simpleRuleUi.autoInflow }}</label>
+                    <button
+                      v-if="selectedNode.autoInflow"
+                      type="button"
+                      class="mx-macro-clear"
+                      @click="s.updateNode(selectedNode.id, { autoInflow: undefined })"
+                    >
+                      {{ simpleRuleUi.clearBtn }}
+                    </button>
+                  </div>
+                  <input
+                    class="mx-input"
+                    type="text"
+                    :placeholder="simpleRuleUi.autoInflowPh"
+                    :value="selectedNode.autoInflow ?? ''"
+                    @input="
+                      s.updateNode(
+                        selectedNode.id,
+                        {
+                          autoInflow: ($event.target as HTMLInputElement).value.trim() || undefined
+                        },
+                        'autoInflow'
+                      )
+                    "
+                  />
+
+                  <div class="mx-field-head-row">
+                    <label class="mx-field-label">{{ simpleRuleUi.autoOutflow }}</label>
+                    <button
+                      v-if="selectedNode.autoOutflow"
+                      type="button"
+                      class="mx-macro-clear"
+                      @click="s.updateNode(selectedNode.id, { autoOutflow: undefined })"
+                    >
+                      {{ simpleRuleUi.clearBtn }}
+                    </button>
+                  </div>
+                  <input
+                    class="mx-input"
+                    type="text"
+                    :placeholder="simpleRuleUi.autoOutflowPh"
+                    :value="selectedNode.autoOutflow ?? ''"
+                    @input="
+                      s.updateNode(
+                        selectedNode.id,
+                        {
+                          autoOutflow: ($event.target as HTMLInputElement).value.trim() || undefined
+                        },
+                        'autoOutflow'
+                      )
+                    "
+                  />
+
+                  <label class="mx-field-label">{{ simpleRuleUi.cooldownSteps }}</label>
+                  <input
+                    class="mx-input"
+                    type="number"
+                    min="0"
+                    max="99"
+                    :value="selectedNode.cooldownSteps ?? 0"
+                    @input="
+                      s.updateNode(
+                        selectedNode.id,
+                        {
+                          cooldownSteps:
+                            Math.max(
+                              0,
+                              Math.round(Number(($event.target as HTMLInputElement).value) || 0)
+                            ) || undefined
+                        },
+                        'cooldownSteps'
+                      )
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="cd in [0, 1, 2, 3, 5]"
+                      :key="cd"
+                      type="button"
+                      class="mx-chip"
+                      @click="
+                        s.updateNode(selectedNode.id, {
+                          cooldownSteps: cd > 0 ? cd : undefined
+                        })
+                      "
+                    >
+                      ⏱ {{ cd }}
+                    </button>
+                  </div>
+                  <div class="mx-cond-ref-hint">{{ simpleRuleUi.cooldownHint }}</div>
+                </template>
+              </template>
+
+              <!-- ③ 分支判定 (Gate) -->
+              <template v-else-if="selectedNode.kind === 'gate'">
+                <label class="mx-field-label">{{ simpleRuleUi.gateRule }}</label>
+                <div class="mx-seg-row">
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': (selectedNode.gateMode ?? 'random') === 'random' }"
+                    @click="s.updateNode(selectedNode.id, { gateMode: 'random' })"
+                  >
+                    {{ simpleRuleUi.gateRandom }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-seg-btn"
+                    :class="{ 'is-active': selectedNode.gateMode === 'deterministic' }"
+                    @click="s.updateNode(selectedNode.id, { gateMode: 'deterministic' })"
+                  >
+                    {{ simpleRuleUi.gateDet }}
+                  </button>
+                </div>
+
+                <div class="mx-field-head-row">
+                  <label class="mx-field-label">{{ simpleRuleUi.autoInflow }}</label>
+                  <button
+                    v-if="selectedNode.autoInflow"
+                    type="button"
+                    class="mx-macro-clear"
+                    @click="s.updateNode(selectedNode.id, { autoInflow: undefined })"
+                  >
+                    {{ simpleRuleUi.clearBtn }}
+                  </button>
+                </div>
+                <input
+                  class="mx-input"
+                  type="text"
+                  :placeholder="simpleRuleUi.autoInflowPh"
+                  :value="selectedNode.autoInflow ?? ''"
+                  @input="
+                    s.updateNode(
+                      selectedNode.id,
+                      {
+                        autoInflow: ($event.target as HTMLInputElement).value.trim() || undefined
+                      },
+                      'autoInflow'
+                    )
+                  "
+                />
+                <div class="mx-chip-row">
+                  <button
+                    v-for="ic in ['1', '2', '5', '10', '1|2']"
+                    :key="ic"
+                    type="button"
+                    class="mx-chip"
+                    @click="s.updateNode(selectedNode.id, { autoInflow: ic })"
+                  >
+                    +{{ ic }}
+                  </button>
+                </div>
+
+                <label class="mx-check-row">
+                  <input
+                    type="checkbox"
+                    :checked="Boolean(selectedNode.pityEnabled)"
+                    @change="
+                      s.updateNode(selectedNode.id, {
+                        pityEnabled: ($event.target as HTMLInputElement).checked,
+                        ...(($event.target as HTMLInputElement).checked
+                          ? {
+                              pityBaseRate: selectedNode.pityBaseRate ?? 2,
+                              pitySoftStart: selectedNode.pitySoftStart ?? 50,
+                              pityHardMax: selectedNode.pityHardMax ?? 80
+                            }
+                          : {})
+                      })
+                    "
+                  />
+                  <span>{{ simpleRuleUi.pityCheck }}</span>
+                </label>
+
+                <template v-if="selectedNode.pityEnabled">
+                  <label class="mx-field-label">{{ simpleRuleUi.pityPresets }}</label>
+                  <div class="mx-chip-row">
+                    <button
+                      type="button"
+                      class="mx-chip"
+                      @click="
+                        s.updateNode(selectedNode.id, {
+                          pityEnabled: true,
+                          pityBaseRate: 2,
+                          pitySoftStart: 50,
+                          pityHardMax: 80
+                        })
+                      "
+                    >
+                      {{ simpleRuleUi.pityPresetGacha }}
+                    </button>
+                    <button
+                      type="button"
+                      class="mx-chip"
+                      @click="
+                        s.updateNode(selectedNode.id, {
+                          pityEnabled: true,
+                          pityBaseRate: 20,
+                          pitySoftStart: 2,
+                          pityHardMax: 5
+                        })
+                      "
+                    >
+                      {{ simpleRuleUi.pityPresetCrit }}
+                    </button>
+                    <button
+                      type="button"
+                      class="mx-chip"
+                      @click="
+                        s.updateNode(selectedNode.id, {
+                          pityEnabled: true,
+                          pityBaseRate: 10,
+                          pitySoftStart: 8,
+                          pityHardMax: 10
+                        })
+                      "
+                    >
+                      {{ simpleRuleUi.pityPresetLoot }}
+                    </button>
+                  </div>
+
+                  <div class="mx-three-col">
+                    <div>
+                      <label class="mx-field-label">{{ simpleRuleUi.pityBase }}</label>
+                      <input
+                        class="mx-input"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.5"
+                        :value="selectedNode.pityBaseRate ?? 2"
+                        @input="
+                          s.updateNode(
+                            selectedNode.id,
+                            {
+                              pityBaseRate: Math.max(
+                                0,
+                                Math.min(
+                                  100,
+                                  Number(($event.target as HTMLInputElement).value) || 0
+                                )
+                              )
+                            },
+                            'pityBase'
+                          )
+                        "
+                      />
+                    </div>
+                    <div>
+                      <label class="mx-field-label">{{ simpleRuleUi.pitySoft }}</label>
+                      <input
+                        class="mx-input"
+                        type="number"
+                        min="1"
+                        max="999"
+                        :value="selectedNode.pitySoftStart ?? 50"
+                        @input="
+                          s.updateNode(
+                            selectedNode.id,
+                            {
+                              pitySoftStart: Math.max(
+                                1,
+                                Math.round(Number(($event.target as HTMLInputElement).value) || 50)
+                              )
+                            },
+                            'pitySoft'
+                          )
+                        "
+                      />
+                    </div>
+                    <div>
+                      <label class="mx-field-label">{{ simpleRuleUi.pityHard }}</label>
+                      <input
+                        class="mx-input"
+                        type="number"
+                        min="1"
+                        max="999"
+                        :value="selectedNode.pityHardMax ?? 80"
+                        @input="
+                          s.updateNode(
+                            selectedNode.id,
+                            {
+                              pityHardMax: Math.max(
+                                1,
+                                Math.round(Number(($event.target as HTMLInputElement).value) || 80)
+                              )
+                            },
+                            'pityHard'
+                          )
+                        "
+                      />
+                    </div>
+                  </div>
+                </template>
+              </template>
+
+              <!-- 一键将该节点内联宏展开为专业蓝图节点 -->
+              <button
+                v-if="hasMxNodeSimpleMacros(selectedNode)"
+                type="button"
+                class="mx-expand-macro-btn"
+                @click="s.expandNodeSimpleMacros(selectedNode.id)"
+              >
+                {{ simpleRuleUi.expandNodeBtn }}
+              </button>
+            </div>
+          </div>
+
           <!-- Functionality 折叠区（Note 节点除外） -->
           <div v-if="selectedNode.kind !== 'note'" class="mx-insp-section">
             <button type="button" class="mx-sec-head" @click="funcOpen = !funcOpen">
-              <span>{{ t('mx.inspector.functionality') }}</span>
+              <span>{{
+                s.complexityMode.value === 'simple'
+                  ? simpleRuleUi.proFuncHeader
+                  : t('mx.inspector.functionality')
+              }}</span>
               <span class="mx-caret">{{ funcOpen ? '▾' : '▸' }}</span>
             </button>
 
@@ -1490,10 +2317,287 @@ function addQuickConnectionFromInspector(): void {
             />
           </div>
 
+          <!-- 🧩 极简创造模式：零术语连线规则卡片 -->
+          <div
+            v-if="s.complexityMode.value === 'simple'"
+            class="mx-insp-section mx-simple-rule-section"
+          >
+            <button
+              type="button"
+              class="mx-sec-head is-simple-card"
+              @click="simpleEdgeCardOpen = !simpleEdgeCardOpen"
+            >
+              <span>{{ simpleRuleUi.edgeSectionTitle }}</span>
+              <span class="mx-caret">{{ simpleEdgeCardOpen ? '▾' : '▸' }}</span>
+            </button>
+
+            <div v-if="simpleEdgeCardOpen" class="mx-sec-body">
+              <label class="mx-field-label">{{ simpleRuleUi.edgeKindLabel }}</label>
+              <div class="mx-seg-row">
+                <button
+                  type="button"
+                  class="mx-seg-btn"
+                  :class="{ 'is-active': selectedEdge.kind === 'resource' }"
+                  @click="onEdgeKindSwitch('resource')"
+                >
+                  {{ simpleRuleUi.edgeResKind }}
+                </button>
+                <button
+                  type="button"
+                  class="mx-seg-btn"
+                  :class="{ 'is-active': selectedEdge.kind === 'state' }"
+                  @click="onEdgeKindSwitch('state')"
+                >
+                  {{ simpleRuleUi.edgeStateKind }}
+                </button>
+              </div>
+
+              <!-- 实线：资源/数值搬运极简卡片 -->
+              <template v-if="selectedEdge.kind === 'resource'">
+                <label class="mx-field-label">{{ simpleRuleUi.resFlowMode }}</label>
+                <div class="mx-trigger-grid">
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{ 'is-active': selectedEdgeFormulaType === 'number' }"
+                    @click="onEdgeFormulaTypeChange('number')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.resModeFixed }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{ 'is-active': selectedEdgeFormulaType === 'chance' }"
+                    @click="onEdgeFormulaTypeChange('chance')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.resModeChance }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{ 'is-active': selectedEdgeFormulaType === 'dice' }"
+                    @click="onEdgeFormulaTypeChange('dice')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.resModeDice }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{ 'is-active': selectedEdgeFormulaType === 'all' }"
+                    @click="onEdgeFormulaTypeChange('all')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.resModeAll }}</span>
+                  </button>
+                </div>
+
+                <label class="mx-field-label">{{ simpleRuleUi.resValueLabel }}</label>
+                <input
+                  class="mx-input mx-mono"
+                  type="text"
+                  :value="selectedEdge.formula"
+                  @input="
+                    s.updateEdge(
+                      selectedEdge.id,
+                      { formula: ($event.target as HTMLInputElement).value },
+                      'edgeFormula'
+                    )
+                  "
+                />
+                <div class="mx-chip-row">
+                  <button
+                    v-for="ch in activeEdgeChips"
+                    :key="'se-' + ch"
+                    type="button"
+                    class="mx-chip"
+                    @click="s.updateEdge(selectedEdge.id, { formula: ch })"
+                  >
+                    {{ ch }}
+                  </button>
+                </div>
+
+                <label class="mx-field-label">{{ simpleRuleUi.resIntervalLabel }}</label>
+                <div class="mx-chip-row">
+                  <button
+                    type="button"
+                    class="mx-chip"
+                    :class="{
+                      'is-active': !selectedEdge.interval || selectedEdge.interval === '1'
+                    }"
+                    @click="onEdgeIntervalChange('')"
+                  >
+                    {{ simpleRuleUi.resEvery1 }}
+                  </button>
+                  <button
+                    v-for="iv in [2, 3, 5, 10]"
+                    :key="iv"
+                    type="button"
+                    class="mx-chip"
+                    :class="{ 'is-active': selectedEdge.interval === String(iv) }"
+                    @click="onEdgeIntervalChange(String(iv))"
+                  >
+                    {{ simpleRuleUi.resEveryN(iv) }}
+                  </button>
+                </div>
+              </template>
+
+              <!-- 虚线：条件/联动/加成/同步 4 大直觉意图卡片 -->
+              <template v-else>
+                <label class="mx-field-label">{{ simpleRuleUi.stateIntentLabel }}</label>
+                <div class="mx-trigger-grid">
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{
+                      'is-active':
+                        selectedEdgeFormulaType === 'st_activator' ||
+                        selectedEdgeFormulaType === 'st_range'
+                    }"
+                    @click="onEdgeFormulaTypeChange('st_activator')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.stateIntentCond }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{
+                      'is-active':
+                        selectedEdgeFormulaType === 'st_trigger' ||
+                        selectedEdgeFormulaType === 'st_rev_trigger'
+                    }"
+                    @click="onEdgeFormulaTypeChange('st_trigger')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.stateIntentTrig }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{
+                      'is-active':
+                        selectedEdgeFormulaType === 'st_modifier' ||
+                        selectedEdgeFormulaType === 'st_fraction' ||
+                        selectedEdgeFormulaType === 'st_prob'
+                    }"
+                    @click="onEdgeFormulaTypeChange('st_modifier')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.stateIntentBuff }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-trigger-tile"
+                    :class="{ 'is-active': selectedEdgeFormulaType === 'st_overwrite' }"
+                    @click="onEdgeFormulaTypeChange('st_overwrite')"
+                  >
+                    <span class="mx-trigger-name">{{ simpleRuleUi.stateIntentSync }}</span>
+                  </button>
+                </div>
+
+                <!-- 意图 1：条件开关 -->
+                <template
+                  v-if="
+                    selectedEdgeFormulaType === 'st_activator' ||
+                    selectedEdgeFormulaType === 'st_range'
+                  "
+                >
+                  <div class="mx-cond-ref-hint">{{ simpleRuleUi.stateCondDesc }}</div>
+                  <input
+                    class="mx-input mx-mono"
+                    type="text"
+                    placeholder=">=1"
+                    :value="selectedEdge.formula"
+                    @input="
+                      s.updateEdge(
+                        selectedEdge.id,
+                        { formula: ($event.target as HTMLInputElement).value },
+                        'edgeFormula'
+                      )
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="cc in ['>=1', '>=5', '>=10', '<=0', '==0', '!=0', '1..5']"
+                      :key="cc"
+                      type="button"
+                      class="mx-chip"
+                      @click="s.updateEdge(selectedEdge.id, { formula: cc })"
+                    >
+                      🔒 {{ cc }}
+                    </button>
+                  </div>
+                </template>
+
+                <!-- 意图 2：联动触发 (* / !) -->
+                <template
+                  v-else-if="
+                    selectedEdgeFormulaType === 'st_trigger' ||
+                    selectedEdgeFormulaType === 'st_rev_trigger'
+                  "
+                >
+                  <div class="mx-cond-ref-hint">{{ simpleRuleUi.stateTrigDesc }}</div>
+                  <div class="mx-seg-row">
+                    <button
+                      type="button"
+                      class="mx-seg-btn"
+                      :class="{ 'is-active': selectedEdge.formula.trim() !== '!' }"
+                      @click="s.updateEdge(selectedEdge.id, { formula: '*' })"
+                    >
+                      {{ simpleRuleUi.stateTrigSuccess }}
+                    </button>
+                    <button
+                      type="button"
+                      class="mx-seg-btn"
+                      :class="{ 'is-active': selectedEdge.formula.trim() === '!' }"
+                      @click="s.updateEdge(selectedEdge.id, { formula: '!' })"
+                    >
+                      {{ simpleRuleUi.stateTrigFail }}
+                    </button>
+                  </div>
+                </template>
+
+                <!-- 意图 3：数值加成 / 削弱 -->
+                <template v-else-if="selectedEdgeFormulaType === 'st_overwrite'">
+                  <div class="mx-cond-ref-hint">{{ simpleRuleUi.stateSyncDesc }}</div>
+                </template>
+
+                <!-- 默认 / 意图 3：数值加成/削弱 -->
+                <template v-else>
+                  <div class="mx-cond-ref-hint">{{ simpleRuleUi.stateBuffDesc }}</div>
+                  <input
+                    class="mx-input mx-mono"
+                    type="text"
+                    placeholder="+1"
+                    :value="selectedEdge.formula"
+                    @input="
+                      s.updateEdge(
+                        selectedEdge.id,
+                        { formula: ($event.target as HTMLInputElement).value },
+                        'edgeFormula'
+                      )
+                    "
+                  />
+                  <div class="mx-chip-row">
+                    <button
+                      v-for="bc in ['+1', '-1', '+2', '+10%', '-10%', '+50%', '+1/2']"
+                      :key="bc"
+                      type="button"
+                      class="mx-chip"
+                      @click="s.updateEdge(selectedEdge.id, { formula: bc })"
+                    >
+                      📈 {{ bc }}
+                    </button>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </div>
+
           <!-- Functionality 折叠区（1:1 对齐 Machinations Connection Functionality 面板） -->
           <div class="mx-insp-section">
             <button type="button" class="mx-sec-head" @click="funcOpen = !funcOpen">
-              <span>{{ t('mx.inspector.functionality') }}</span>
+              <span>{{
+                s.complexityMode.value === 'simple'
+                  ? simpleRuleUi.proFuncHeader
+                  : t('mx.inspector.functionality')
+              }}</span>
               <span class="mx-caret">{{ funcOpen ? '▾' : '▸' }}</span>
             </button>
 
@@ -1953,7 +3057,8 @@ function addQuickConnectionFromInspector(): void {
 
 <style scoped>
 .mx-inspector {
-  width: 278px;
+  position: relative;
+  width: 296px;
   flex-shrink: 0;
   background: var(--bg-panel);
   border-left: 1px solid var(--border);
@@ -1968,6 +3073,21 @@ function addQuickConnectionFromInspector(): void {
   width: 36px;
   align-items: center;
   padding-top: 8px;
+}
+.mx-insp-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: ew-resize;
+  z-index: 15;
+  background: transparent;
+  transition: background 0.14s ease;
+}
+.mx-insp-resize-handle:hover,
+.mx-insp-resize-handle.is-dragging {
+  background: var(--accent-18);
 }
 .mx-insp-expand {
   width: 26px;
@@ -2561,9 +3681,53 @@ function addQuickConnectionFromInspector(): void {
 }
 .mx-cond-ref-formula {
   font-size: 10.5px;
-  color: var(--text-muted, #9aa0a6);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.mx-simple-rule-section {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg-panel));
+}
+
+.mx-three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mx-macro-clear {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+.mx-macro-clear:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.mx-expand-macro-btn {
+  margin-top: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+.mx-expand-macro-btn:hover {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg-elevated));
 }
 </style>

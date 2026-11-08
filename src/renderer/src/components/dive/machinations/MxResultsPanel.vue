@@ -6,11 +6,13 @@
  *  - Runtime Debugger 标签页：逐步事件流表格，点击事件定位画布节点并跳转到对应 Step
  *  - 最底部 Transport Bar：Reset / Play / Step / Speed / Play again / Steps 输入 / 进度滑杆 / Forecast
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   analyzeMxEconomyHealth,
+  autoSolveMxCurveTarget,
   canQuickFixMxDiagnosticFinding,
+  extractMxPlayableHudSnapshot,
   extractMxTunableEdgeNumericValue,
   mxNodeColor,
   runMx2DParameterMatrix,
@@ -20,25 +22,44 @@ import {
   summarizeMxSeries,
   type Mx2DMatrixCell,
   type Mx2DMatrixResult,
+  type MxCurveTargetSolution,
   type MxDiagnosticFinding,
   type MxGoalSeekMetric,
   type MxGoalSeekResult,
   type MxParamSweepResult,
+  type MxPlayableActionCard,
+  type MxPlayableHudSnapshot,
+  type MxPlayableMacroStep,
   type MxSeriesSummary,
   type MxTunableKind
 } from '@shared/gameAssets'
 import { useMxStudioStore } from './mxStudioStore'
 import MxNumericalWorkbenchPanel from './MxNumericalWorkbenchPanel.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const isEn = computed(() =>
+  String(locale.value || '')
+    .toLowerCase()
+    .startsWith('en')
+)
 const s = useMxStudioStore()
 
 const compareMode = ref(false)
 const showForecastBand = ref(true)
+const showTrendCardsStrip = ref(true)
 const debugFilterStep = ref<number | ''>('')
 const dockHeight = ref(320)
 const isResizingDock = ref(false)
 let resizeCleanup: (() => void) | null = null
+
+watch(
+  () => s.resultsTab.value,
+  (tab) => {
+    if (tab === 'playable' && dockHeight.value < 360) {
+      dockHeight.value = 380
+    }
+  }
+)
 
 function startResizeDock(ev: PointerEvent): void {
   if (ev.button !== 0) return
@@ -309,7 +330,29 @@ const yBounds = computed(() => {
   // 当用户聚焦某条图例序列时，Y 轴自动适配该序列自身的 [min, max]，使其波形与下方趋势卡片完全一致，不被大数值节点压平
   if (s.focusedSeriesId.value) {
     const focused = seriesList.value.find((sr) => sr.id === s.focusedSeriesId.value)
-    if (focused) return getSingleSeriesBounds(focused)
+    if (focused) {
+      const b = getSingleSeriesBounds(focused)
+      if (curveDragActive.value && Number.isFinite(curveTargetVal.value)) {
+        b.min = Math.min(b.min, curveTargetVal.value)
+        b.max = Math.max(b.max, curveTargetVal.value * 1.15)
+      }
+      if (
+        curveDragActive.value &&
+        curveDualPinActive.value &&
+        Number.isFinite(curveTargetVal2.value)
+      ) {
+        b.min = Math.min(b.min, curveTargetVal2.value)
+        b.max = Math.max(b.max, curveTargetVal2.value * 1.15)
+      }
+      if (activeCurveSolution.value?.predictedSeries.length) {
+        for (const pv of activeCurveSolution.value.predictedSeries) {
+          if (pv < b.min) b.min = pv
+          if (pv > b.max) b.max = pv
+        }
+      }
+      if (b.max === b.min) b.max = b.min + 10
+      return b
+    }
   }
   let min = 0
   let max = 10
@@ -398,6 +441,103 @@ function sparklinePoints(values: number[]): string {
     .map((v, i) => `${((i / n) * 68 + 2).toFixed(1)},${(26 - ((v - min) / span) * 22).toFixed(1)}`)
     .join(' ')
 }
+
+interface CursorIntersectionPill {
+  id: string
+  color: string
+  valText: string
+  cx: number
+  cy: number
+  labelY: number
+  rectX: number
+  rectY: number
+  pillW: number
+  pillH: number
+  textX: number
+  side: 'left' | 'right'
+  highlighted: boolean
+}
+
+const inspectedIntersectionLabels = computed<CursorIntersectionPill[]>(() => {
+  const step = inspectedStep.value
+  const cx = xAt(step, maxSteps.value)
+  const canUseLeft = cx >= PAD_L + 44
+  const canUseRight = cx <= CW - PAD_R - 44
+
+  const activeList = visibleSeries.value.filter((sr) => !isSeriesDimmed(sr.id))
+  const rawItems = activeList.map((sr) => {
+    const rawVal = sr.values[Math.min(step, sr.values.length - 1)] ?? 0
+    const rounded = Math.round(rawVal * 100) / 100
+    const valText =
+      Math.abs(rounded) >= 10000
+        ? `${(rounded / 1000).toFixed(1).replace(/\.0$/, '')}k`
+        : String(rounded)
+    const cy = yAtForSeries(sr, rawVal)
+    return {
+      id: sr.id,
+      color: sr.color,
+      valText,
+      cx,
+      cy,
+      labelY: cy,
+      side: (canUseRight ? 'right' : 'left') as 'left' | 'right',
+      highlighted: isSeriesHighlighted(sr.id)
+    }
+  })
+
+  rawItems.sort((a, b) => a.cy - b.cy)
+
+  // 当两条折线在交点处高度接近且左右两侧均有空间时，自动交错分列在虚线左右两侧，避免数字胶囊重叠
+  if (canUseLeft && canUseRight) {
+    for (let i = 1; i < rawItems.length; i++) {
+      const prev = rawItems[i - 1]!
+      const cur = rawItems[i]!
+      if (Math.abs(cur.cy - prev.cy) < 12.5 && prev.side === 'right') {
+        cur.side = 'left'
+      }
+    }
+  }
+
+  // 对同侧标签执行一维纵向防重叠松弛
+  const minY = PAD_T + 5.5
+  const maxY = CH - PAD_B - 5.5
+  const minGap = 12
+  for (const side of ['right', 'left'] as const) {
+    const group = rawItems.filter((it) => it.side === side)
+    if (!group.length) continue
+    for (let i = 0; i < group.length; i++) {
+      group[i]!.labelY = Math.max(minY, Math.min(maxY, group[i]!.cy))
+      if (i > 0) {
+        group[i]!.labelY = Math.max(group[i]!.labelY, group[i - 1]!.labelY + minGap)
+      }
+    }
+    if (group[group.length - 1]!.labelY > maxY) {
+      group[group.length - 1]!.labelY = maxY
+      for (let i = group.length - 2; i >= 0; i--) {
+        group[i]!.labelY = Math.min(group[i]!.labelY, group[i + 1]!.labelY - minGap)
+      }
+      if (group[0]!.labelY < minY) {
+        group[0]!.labelY = minY
+      }
+    }
+  }
+
+  return rawItems.map((it) => {
+    const pillH = 11.5
+    const pillW = Math.max(18, Math.round(it.valText.length * 5.4 + 8))
+    const rectX = it.side === 'right' ? it.cx + 6 : it.cx - 6 - pillW
+    const rectY = it.labelY - pillH / 2
+    const textX = rectX + pillW / 2
+    return {
+      ...it,
+      rectX,
+      rectY,
+      pillW,
+      pillH,
+      textX
+    }
+  })
+})
 
 function onChartMouseMove(e: MouseEvent): void {
   const svg = e.currentTarget as SVGSVGElement
@@ -828,6 +968,504 @@ function sweepSeriesPolyline(nodeId: string): string {
     })
     .join(' ')
 }
+
+// ═════════════ 下一代演进 1：🎯 图表直接拖拽曲线反推配平 (Direct Curve Drag Goal-Seek) ═════════════
+const curveDragActive = ref(false)
+const isDraggingCurvePin = ref(false)
+const curveTargetStep = ref(20)
+const curveTargetVal = ref(50)
+const curveDualPinActive = ref(false)
+const curveTargetStep2 = ref(8)
+const curveTargetVal2 = ref(25)
+const curveSolutions = ref<MxCurveTargetSolution[]>([])
+const selectedCurveSolutionIdx = ref(0)
+let curvePinDragCleanup: (() => void) | null = null
+
+const nextGenUi = computed(() =>
+  isEn.value
+    ? {
+        tabPlayable: '🎮 Playable Deck',
+        curveDragBtn: '🎯 Drag Curve to Balance',
+        curveDragTip:
+          'Drag the target pin on the curve to set your desired value — engine auto-solves upstream rates/macros!',
+        curveBarTitle: '🎯 Curve Goal-Seek:',
+        dualPinBtn: '📌 Dual-Pin Shaping',
+        dualPinTip:
+          'Add a 2nd anchor pin to shape both early-game slope and late-game cap simultaneously!',
+        atStepLabel: 'At Step',
+        targetValLabel: 'Target =',
+        atStep2Label: '& Step',
+        targetVal2Label: 'Target =',
+        solveBtn: 'Re-Solve',
+        applySolBtn: '⚡ Apply Balance',
+        noSolHint: 'Drag the 🎯 pin on the chart or edit Target to auto-solve upstream parameters.',
+        hudTitle: '🔵 Live State & Resource HUD',
+        deckTitle: '🃏 Interactive Action & Recipe Cards',
+        turnTitle: '⚔ Turn Controls & Battle Log',
+        stepBadge: (n: number) => `Turn / Step ${n}`,
+        endedBanner: (r: string) => `🏁 Ended: ${r}`,
+        nextTurnBtn: '▶ End Turn (+1 Step)',
+        fast5Btn: '⏩ Fast-Forward (+5 Steps)',
+        resetRunBtn: '↺ Restart Run',
+        playCardBtn: '🃏 Play Card (Instant)',
+        forceFireBtn: '⚡ Test',
+        zeroCostTag: '🌱 Free Action (0 Cost)',
+        trigClickBadge: '👆 Click Card',
+        trigAutoBadge: '⚡ Auto/Turn',
+        trigPassiveBadge: '· Passive',
+        aiBestMoveBadge: '💡 AI Best Move',
+        cdLockedBadge: (n: number) => `⏳ CD ${n}T`,
+        cdConfigBadge: (n: number) => `⏱ CD:${n}`,
+        playedBannerPrefix: '🃏 Played',
+        aiAutoPlayBtn: '🤖 AI Auto-Play',
+        aiAutoPlayStopBtn: '⏸ Stop AI Spectator',
+        macroTapeTitle: (n: number) => `📼 Recorded Sequence (${n})`,
+        macroReplayBtn: '📼 Replay & Compare',
+        macroClearTip: 'Clear recorded sequence',
+        macroReplayedPrefix: (n: number) => `📼 Replayed ${n} actions`,
+        trendCardsBtn: '📊 Cards',
+        trendCardsTip:
+          'Show or hide bottom node trend summary cards to give the line chart more vertical space',
+        toggleMaxDockTip: 'Expand / restore bottom panel height',
+        emptyLogHint:
+          'Click any Action Card to play within the current turn, then click "End Turn"!'
+      }
+    : {
+        tabPlayable: '🎮 卡片试玩', // cjk-ok
+        curveDragBtn: '🎯 拖拽曲线反推', // cjk-ok
+        curveDragTip: '在折线图上直接上下拖拽目标靶心，引擎自动反推上游产出/消耗/连线公式参数！', // cjk-ok
+        curveBarTitle: '🎯 曲线反推配平：', // cjk-ok
+        dualPinBtn: '📌 双锚点塑形', // cjk-ok
+        dualPinTip: '开启第 2 个前期/中期靶心锚点，双参数联合反推前期斜率与后期上限！', // cjk-ok
+        atStepLabel: '在第', // cjk-ok
+        targetValLabel: '步期望 =', // cjk-ok
+        atStep2Label: '且第', // cjk-ok
+        targetVal2Label: '步 =', // cjk-ok
+        solveBtn: '反推计算', // cjk-ok
+        applySolBtn: '⚡ 一键应用配平', // cjk-ok
+        noSolHint: '在折线图上上下拖拽 🎯 靶心或输入期望数值，自动反推最优参数。', // cjk-ok
+        hudTitle: '🔵 实时状态与资源槽 (HUD)', // cjk-ok
+        deckTitle: '🃏 可点击动作与合成卡牌台', // cjk-ok
+        turnTitle: '⚔ 回合控制与实时战报', // cjk-ok
+        stepBadge: (n: number) => `第 ${n} 回合 (Step ${n})`, // cjk-ok
+        endedBanner: (r: string) => `🏁 已触发终局：${r}`, // cjk-ok
+        nextTurnBtn: '▶ 结束回合 / 推进 1 步', // cjk-ok
+        fast5Btn: '⏩ 连跑 5 回合', // cjk-ok
+        resetRunBtn: '↺ 重新开局', // cjk-ok
+        playCardBtn: '🃏 打出卡牌 (本回合立即结算)', // cjk-ok
+        forceFireBtn: '⚡ 强行触发', // cjk-ok
+        zeroCostTag: '🌱 零消耗直接触发', // cjk-ok
+        trigClickBadge: '👆 玩家点击卡', // cjk-ok
+        trigAutoBadge: '⚡ 每回合自动', // cjk-ok
+        trigPassiveBadge: '· 被动触发', // cjk-ok
+        aiBestMoveBadge: '💡 AI 推荐最优手', // cjk-ok
+        cdLockedBadge: (n: number) => `⏳ 冷却剩余 ${n} 回合`, // cjk-ok
+        cdConfigBadge: (n: number) => `⏱ 冷却:${n}步`, // cjk-ok
+        playedBannerPrefix: '🃏 已打出', // cjk-ok
+        aiAutoPlayBtn: '🤖 AI 自动观战打牌', // cjk-ok
+        aiAutoPlayStopBtn: '⏸ 停止 AI 观战', // cjk-ok
+        macroTapeTitle: (n: number) => `📼 已录制操作序列 (${n}步)`, // cjk-ok
+        macroReplayBtn: '📼 一键重放对比', // cjk-ok
+        macroClearTip: '清空录制序列', // cjk-ok
+        macroReplayedPrefix: (n: number) => `📼 已重放 ${n} 步操作`, // cjk-ok
+        trendCardsBtn: '📊 趋势卡', // cjk-ok
+        trendCardsTip: '展开或收起底部节点趋势卡片条，为折线图与靶心拖拽腾出更大垂直空间', // cjk-ok
+        toggleMaxDockTip: '展开大图 / 恢复分屏高度', // cjk-ok
+        emptyLogHint:
+          '点击中间「🃏 打出卡牌」在当前回合内连打操作，再点右侧「▶ 结束回合」结算自然增长！' // cjk-ok
+      }
+)
+
+const focusedSeriesObj = computed<SeriesItem | null>(() => {
+  if (!s.focusedSeriesId.value) return null
+  return seriesList.value.find((sr) => sr.id === s.focusedSeriesId.value) ?? null
+})
+
+const activeCurveSolution = computed<MxCurveTargetSolution | null>(
+  () => curveSolutions.value[selectedCurveSolutionIdx.value] ?? curveSolutions.value[0] ?? null
+)
+
+function runCurveTargetSolve(): void {
+  const sr = focusedSeriesObj.value
+  if (!sr) return
+  const sols = autoSolveMxCurveTarget(s.doc.value, {
+    targetNodeId: sr.id,
+    atStep: curveTargetStep.value,
+    targetValue: curveTargetVal.value,
+    ...(curveDualPinActive.value
+      ? {
+          secondTarget: {
+            atStep: curveTargetStep2.value,
+            targetValue: curveTargetVal2.value
+          }
+        }
+      : {})
+  })
+  curveSolutions.value = sols
+  selectedCurveSolutionIdx.value = 0
+}
+
+function toggleCurveDualPin(): void {
+  curveDualPinActive.value = !curveDualPinActive.value
+  if (curveDualPinActive.value) {
+    const sr = focusedSeriesObj.value
+    const st2 = Math.max(1, Math.min(maxSteps.value - 1, Math.round(maxSteps.value * 0.4)))
+    curveTargetStep2.value = st2 === curveTargetStep.value ? Math.max(1, st2 - 1) : st2
+    const curVal2 = sr
+      ? (sr.values[Math.min(curveTargetStep2.value, sr.values.length - 1)] ?? 10)
+      : 10
+    curveTargetVal2.value = Math.max(1, Math.round((curVal2 * 1.15 + 3) * 10) / 10)
+  }
+  runCurveTargetSolve()
+}
+
+function toggleCurveDragMode(): void {
+  if (!curveDragActive.value) {
+    if (!s.focusedSeriesId.value && seriesList.value[0]) {
+      s.focusedSeriesId.value = seriesList.value[0].id
+    }
+    const sr = focusedSeriesObj.value
+    const st = Math.max(1, maxSteps.value)
+    curveTargetStep.value = st
+    const curVal = sr ? (sr.values[Math.min(st, sr.values.length - 1)] ?? 10) : 10
+    curveTargetVal.value = Math.max(1, Math.round((curVal * 1.25 + 5) * 10) / 10)
+    curveDragActive.value = true
+    showTrendCardsStrip.value = false
+    if (dockHeight.value < 320) dockHeight.value = 340
+    runCurveTargetSolve()
+  } else {
+    curveDragActive.value = false
+    showTrendCardsStrip.value = true
+    curveSolutions.value = []
+  }
+}
+
+watch(
+  () => s.focusedSeriesId.value,
+  (nextId) => {
+    if (curveDragActive.value && nextId) {
+      const sr = seriesList.value.find((x) => x.id === nextId)
+      if (sr) {
+        const st = Math.min(curveTargetStep.value, Math.max(1, sr.values.length - 1))
+        curveTargetStep.value = st
+        curveTargetVal.value = Math.round(((sr.values[st] ?? 10) * 1.2 + 5) * 10) / 10
+        runCurveTargetSolve()
+      }
+    }
+  }
+)
+
+function startCurvePinDrag(ev: PointerEvent, pinIndex: 1 | 2 = 1): void {
+  const sr = focusedSeriesObj.value
+  if (!sr) return
+  ev.preventDefault()
+  ev.stopPropagation()
+  const svg = (ev.currentTarget as Element).closest('svg') as SVGSVGElement | null
+  if (!svg) return
+  const rect = svg.getBoundingClientRect()
+  const frozenBounds = { ...yBounds.value }
+  isDraggingCurvePin.value = true
+
+  const onMove = (me: PointerEvent): void => {
+    const relX = ((me.clientX - rect.left) / Math.max(1, rect.width)) * CW
+    const relY = ((me.clientY - rect.top) / Math.max(1, rect.height)) * CH
+    const stepRatio = Math.max(0, Math.min(1, (relX - PAD_L) / PW))
+    const valRatio = Math.max(0, Math.min(1, 1 - (relY - PAD_T) / PH))
+    const nextStep = Math.max(1, Math.round(stepRatio * Math.max(1, maxSteps.value)))
+    const rawVal = frozenBounds.min + valRatio * (frozenBounds.max - frozenBounds.min)
+    const nextVal = Math.max(0, Math.round(rawVal * 10) / 10)
+    if (pinIndex === 2) {
+      curveTargetStep2.value = nextStep
+      curveTargetVal2.value = nextVal
+    } else {
+      curveTargetStep.value = nextStep
+      curveTargetVal.value = nextVal
+    }
+  }
+
+  const onUp = (): void => {
+    isDraggingCurvePin.value = false
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    window.removeEventListener('pointercancel', onUp)
+    curvePinDragCleanup = null
+    runCurveTargetSolve()
+  }
+
+  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointerup', onUp)
+  window.addEventListener('pointercancel', onUp)
+  curvePinDragCleanup = onUp
+}
+
+function applySelectedCurveSolution(): void {
+  const sol = activeCurveSolution.value
+  if (!sol) return
+  if (
+    sol.isPair &&
+    sol.secondVariableKind &&
+    sol.secondVariableId &&
+    sol.secondBestValue !== undefined
+  ) {
+    s.applyTunablePair(
+      sol.variableKind,
+      sol.variableId,
+      sol.bestValue,
+      sol.secondVariableKind,
+      sol.secondVariableId,
+      sol.secondBestValue
+    )
+  } else {
+    s.applyTunableValue(sol.variableKind, sol.variableId, sol.bestValue)
+  }
+  runCurveTargetSolve()
+}
+
+onBeforeUnmount(() => {
+  curvePinDragCleanup?.()
+  if (cardFeedbackTimer) clearTimeout(cardFeedbackTimer)
+  stopAiSpectator()
+})
+
+// ═════════════ 下一代演进 2：🎮 机制一键试玩卡片台 (Playable Card & HUD Prototype) ═════════════
+const justChangedNodeIds = ref<string[]>([])
+const lastPlayedCardBanner = ref<string>('')
+let cardFeedbackTimer: ReturnType<typeof setTimeout> | null = null
+
+// 🤖 AI 自动观战打牌状态与 📼 操作序列录制/回归重放状态
+const aiSpectatorActive = ref(false)
+const aiCardsPlayedInTurn = ref(0)
+let aiSpectatorTimer: ReturnType<typeof setInterval> | null = null
+const recordedMacroSteps = ref<MxPlayableMacroStep[]>([...(s.doc.value.playableMacroSteps ?? [])])
+const recordedBaselineValues = ref<Record<string, number>>({})
+
+watch(
+  () => s.doc.value.playableMacroSteps,
+  (next) => {
+    const incoming = next ?? []
+    if (JSON.stringify(incoming) !== JSON.stringify(recordedMacroSteps.value)) {
+      recordedMacroSteps.value = [...incoming]
+    }
+  }
+)
+
+function isNumericFormula(v?: string | number): boolean {
+  if (v === undefined || v === null) return false
+  return /^\s*\d+(\.\d+)?\s*$/.test(String(v))
+}
+
+function canTuneEdgeExpr(expr?: string): boolean {
+  if (!expr) return false
+  if (isNumericFormula(expr)) return true
+  const trimmed = expr.trim()
+  return s.doc.value.params.some((p) => p.name === trimmed)
+}
+
+function nudgePlayableTunable(
+  kind: MxTunableKind,
+  id: string,
+  rawVal: number | string | undefined,
+  dir: -1 | 1
+): void {
+  const num = Number(rawVal)
+  if (!Number.isFinite(num)) return
+  const step = num >= 20 ? 5 : num >= 10 ? 2 : 1
+  const minVal = kind === 'edge' ? 1 : 0
+  const nextVal = Math.max(minVal, Math.round((num + dir * step) * 100) / 100)
+  if (nextVal === num) return
+  const prevStep = s.playStep.value
+  s.applyTunableValue(kind, id, nextVal)
+  if (recordedMacroSteps.value.length > 0) {
+    onReplayRecordedMacro()
+  } else {
+    s.playStep.value = Math.min(prevStep, s.activeRun.value?.stepsRun ?? prevStep)
+  }
+}
+
+function nudgePlayableEdgeExpr(edgeId: string, expr: string | undefined, dir: -1 | 1): void {
+  if (!expr) return
+  const trimmed = expr.trim()
+  const matchedParam = s.doc.value.params.find((p) => p.name === trimmed)
+  if (matchedParam) {
+    nudgePlayableTunable('param', matchedParam.name, matchedParam.value, dir)
+    return
+  }
+  if (isNumericFormula(trimmed)) {
+    nudgePlayableTunable('edge', edgeId, trimmed, dir)
+  }
+}
+
+function stopAiSpectator(): void {
+  if (aiSpectatorTimer) {
+    clearInterval(aiSpectatorTimer)
+    aiSpectatorTimer = null
+  }
+  aiSpectatorActive.value = false
+}
+
+const playableHud = computed<MxPlayableHudSnapshot>(() => {
+  const curVals = s.displayValues.value ?? {}
+  const prevVals = s.previousStepValues.value ?? {}
+  const isLive = s.liveState.value !== null
+  const step = s.playStep.value
+  const ended = isLive
+    ? Boolean(s.liveState.value?.ended)
+    : Boolean(s.activeRun.value?.ended && step >= (s.activeRun.value?.stepsRun ?? 0))
+  const endReason = isLive ? s.liveState.value?.endReason : s.activeRun.value?.endReason
+  return extractMxPlayableHudSnapshot(s.doc.value, curVals, prevVals, {
+    step,
+    ended,
+    endReason,
+    liveState: s.liveState.value
+  })
+})
+
+const playableBattleLog = computed(() => {
+  const evs = s.liveState.value
+    ? s.liveEvents.value
+    : (s.activeRun.value?.events ?? []).filter((e) => e.step <= s.playStep.value)
+  return [...evs].reverse().slice(0, 24)
+})
+
+function snapshotMacroBaseline(): void {
+  recordedBaselineValues.value = { ...(s.displayValues.value ?? {}) }
+}
+
+function onPlayCard(card: MxPlayableActionCard): void {
+  s.select([card.id])
+  const beforeVals = { ...(s.displayValues.value ?? {}) }
+  const { changedNodeIds } = s.playCardInstant(card.id)
+  recordedMacroSteps.value = [
+    ...recordedMacroSteps.value,
+    { kind: 'card', nodeId: card.id, label: card.label }
+  ]
+  s.setPlayableMacroSteps(recordedMacroSteps.value)
+  snapshotMacroBaseline()
+  const afterVals = s.displayValues.value ?? {}
+  justChangedNodeIds.value = [card.id, ...changedNodeIds]
+  const deltaParts: string[] = []
+  for (const nid of changedNodeIds) {
+    const nd = s.doc.value.nodes.find((x) => x.id === nid)
+    if (!nd || (nd.kind !== 'pool' && nd.kind !== 'register')) continue
+    const diff = Math.round(((afterVals[nid] ?? 0) - (beforeVals[nid] ?? 0)) * 100) / 100
+    if (diff !== 0) {
+      deltaParts.push(`${nd.label || nd.id} ${diff > 0 ? `+${diff}` : diff}`)
+    }
+  }
+  lastPlayedCardBanner.value = `${nextGenUi.value.playedBannerPrefix} [${card.label}]${
+    deltaParts.length ? `：${deltaParts.join(' · ')}` : ''
+  }` // cjk-ok
+  if (cardFeedbackTimer) clearTimeout(cardFeedbackTimer)
+  cardFeedbackTimer = setTimeout(() => {
+    justChangedNodeIds.value = []
+    lastPlayedCardBanner.value = ''
+  }, 2200)
+}
+
+function onNextTurnClick(): void {
+  aiCardsPlayedInTurn.value = 0
+  s.stepOnce()
+  const prevLast = recordedMacroSteps.value[recordedMacroSteps.value.length - 1]
+  if (prevLast && prevLast.kind === 'end_turn') {
+    const copy = [...recordedMacroSteps.value]
+    copy[copy.length - 1] = { kind: 'end_turn', steps: (prevLast.steps ?? 1) + 1 }
+    recordedMacroSteps.value = copy
+  } else {
+    recordedMacroSteps.value = [...recordedMacroSteps.value, { kind: 'end_turn', steps: 1 }]
+  }
+  s.setPlayableMacroSteps(recordedMacroSteps.value)
+  snapshotMacroBaseline()
+}
+
+function onFastForward5Click(): void {
+  aiCardsPlayedInTurn.value = 0
+  s.stepMultiple(5)
+  recordedMacroSteps.value = [...recordedMacroSteps.value, { kind: 'end_turn', steps: 5 }]
+  s.setPlayableMacroSteps(recordedMacroSteps.value)
+  snapshotMacroBaseline()
+}
+
+function onResetPlayClick(): void {
+  stopAiSpectator()
+  aiCardsPlayedInTurn.value = 0
+  curveDragActive.value = false
+  curveSolutions.value = []
+  debugFilterStep.value = ''
+  s.resetPlayback()
+}
+
+function clearRecordedMacro(): void {
+  recordedMacroSteps.value = []
+  recordedBaselineValues.value = {}
+  s.setPlayableMacroSteps([])
+}
+
+function onReplayRecordedMacro(): void {
+  if (!recordedMacroSteps.value.length) return
+  stopAiSpectator()
+  const prevBase = { ...recordedBaselineValues.value }
+  const res = s.replayActionMacro(recordedMacroSteps.value)
+  const newVals = res.finalState.values
+  const diffs: string[] = []
+  const changedIds: string[] = []
+  for (const nd of s.doc.value.nodes) {
+    if (nd.kind !== 'pool' && nd.kind !== 'register') continue
+    const nv = Math.round((newVals[nd.id] ?? 0) * 100) / 100
+    const pv = Math.round((prevBase[nd.id] ?? nv) * 100) / 100
+    const delta = Math.round((nv - pv) * 100) / 100
+    if (delta !== 0) {
+      changedIds.push(nd.id)
+      diffs.push(`${nd.label || nd.id}: ${nv} (${delta > 0 ? `+${delta}` : delta})`)
+    } else if (nv > 0 && diffs.length < 3) {
+      diffs.push(`${nd.label || nd.id}: ${nv}`)
+    }
+  }
+  recordedBaselineValues.value = { ...newVals }
+  justChangedNodeIds.value = changedIds
+  lastPlayedCardBanner.value = `${nextGenUi.value.macroReplayedPrefix(
+    recordedMacroSteps.value.length
+  )}${diffs.length ? `：${diffs.slice(0, 4).join(' · ')}` : ''}` // cjk-ok
+  if (cardFeedbackTimer) clearTimeout(cardFeedbackTimer)
+  cardFeedbackTimer = setTimeout(() => {
+    justChangedNodeIds.value = []
+    lastPlayedCardBanner.value = ''
+  }, 3000)
+}
+
+function stepAiSpectatorOnce(): void {
+  if (playableHud.value.ended || playableHud.value.step >= maxSteps.value) {
+    stopAiSpectator()
+    return
+  }
+  const cards = playableHud.value.actionCards
+  const rec =
+    cards.find((c) => c.canPlay && c.aiRecommended) ??
+    cards.find((c) => c.canPlay && c.costs.length > 0)
+  if (rec && aiCardsPlayedInTurn.value < 2) {
+    if (rec.costs.length === 0 && aiCardsPlayedInTurn.value >= 1) {
+      onNextTurnClick()
+      return
+    }
+    aiCardsPlayedInTurn.value++
+    onPlayCard(rec)
+  } else {
+    onNextTurnClick()
+  }
+}
+
+function toggleAiSpectator(): void {
+  if (aiSpectatorActive.value) {
+    stopAiSpectator()
+    return
+  }
+  if (playableHud.value.ended) {
+    s.resetPlayback()
+  }
+  aiSpectatorActive.value = true
+  aiCardsPlayedInTurn.value = 0
+  stepAiSpectatorOnce()
+  aiSpectatorTimer = setInterval(stepAiSpectatorOnce, 520)
+}
 </script>
 
 <template>
@@ -858,6 +1496,22 @@ function sweepSeriesPolyline(nodeId: string): string {
           "
         >
           {{ t('mx.results.tabResults') }}
+        </button>
+        <button
+          type="button"
+          class="mx-res-tab is-playable-tab"
+          :class="{ 'is-active': s.resultsTab.value === 'playable' }"
+          @click="
+            () => {
+              s.resultsTab.value = 'playable'
+              s.resultsOpen.value = true
+            }
+          "
+        >
+          {{ nextGenUi.tabPlayable }}
+          <span class="mx-diag-pill is-ok">
+            {{ playableHud.actionCards.length }}
+          </span>
         </button>
         <button
           type="button"
@@ -916,6 +1570,14 @@ function sweepSeriesPolyline(nodeId: string): string {
           <input v-model="showForecastBand" type="checkbox" />
           <span>P10–P90 ({{ s.forecast.value.runs }})</span>
         </label>
+        <button
+          type="button"
+          class="mx-res-icon-btn"
+          :title="nextGenUi.toggleMaxDockTip"
+          @click="toggleDockHeight"
+        >
+          ⛶
+        </button>
         <button
           type="button"
           class="mx-res-icon-btn"
@@ -1035,6 +1697,113 @@ function sweepSeriesPolyline(nodeId: string): string {
               >
                 {{ chartScaleMode === 'norm' ? 'NORM %' : 'Y1 RAW' }}
               </button>
+              <button
+                type="button"
+                class="mx-crumb-pill mx-curve-drag-btn"
+                :class="{ 'is-active': curveDragActive }"
+                :title="nextGenUi.curveDragTip"
+                @click="toggleCurveDragMode"
+              >
+                {{ nextGenUi.curveDragBtn }}
+              </button>
+              <button
+                type="button"
+                class="mx-crumb-pill"
+                :class="{ 'is-active': showTrendCardsStrip }"
+                :title="nextGenUi.trendCardsTip"
+                @click="showTrendCardsStrip = !showTrendCardsStrip"
+              >
+                {{ nextGenUi.trendCardsBtn }}
+              </button>
+            </div>
+
+            <!-- 🎯 拖拽曲线反推配平交互控制栏 -->
+            <div v-if="curveDragActive && focusedSeriesObj" class="mx-curve-solver-bar">
+              <div class="mx-cs-left">
+                <span class="mx-cs-title">{{ nextGenUi.curveBarTitle }}</span>
+                <span class="mx-cs-node-tag" :style="{ borderColor: focusedSeriesObj.color }">
+                  <span class="mx-dot" :style="{ background: focusedSeriesObj.color }" />
+                  {{ focusedSeriesObj.label }}
+                </span>
+                <label class="mx-cs-field">
+                  <span>{{ nextGenUi.atStepLabel }}</span>
+                  <input
+                    v-model.number="curveTargetStep"
+                    type="number"
+                    min="1"
+                    :max="Math.max(1, maxSteps)"
+                    class="mx-cs-input is-step"
+                    @change="runCurveTargetSolve"
+                  />
+                  <span>{{ nextGenUi.targetValLabel }}</span>
+                  <input
+                    v-model.number="curveTargetVal"
+                    type="number"
+                    step="0.5"
+                    class="mx-cs-input is-val"
+                    @change="runCurveTargetSolve"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="mx-cs-mini-btn"
+                  :class="{ 'is-active': curveDualPinActive }"
+                  :title="nextGenUi.dualPinTip"
+                  @click="toggleCurveDualPin"
+                >
+                  {{ nextGenUi.dualPinBtn }}
+                </button>
+                <label v-if="curveDualPinActive" class="mx-cs-field">
+                  <span>{{ nextGenUi.atStep2Label }}</span>
+                  <input
+                    v-model.number="curveTargetStep2"
+                    type="number"
+                    min="1"
+                    :max="Math.max(1, maxSteps)"
+                    class="mx-cs-input is-step"
+                    @change="runCurveTargetSolve"
+                  />
+                  <span>{{ nextGenUi.targetVal2Label }}</span>
+                  <input
+                    v-model.number="curveTargetVal2"
+                    type="number"
+                    step="0.5"
+                    class="mx-cs-input is-val"
+                    @change="runCurveTargetSolve"
+                  />
+                </label>
+                <button type="button" class="mx-cs-mini-btn" @click="runCurveTargetSolve">
+                  {{ nextGenUi.solveBtn }}
+                </button>
+              </div>
+              <div v-if="curveSolutions.length" class="mx-cs-right">
+                <div class="mx-cs-sol-pills">
+                  <button
+                    v-for="(sol, idx) in curveSolutions.slice(0, 3)"
+                    :key="
+                      sol.variableKind + ':' + sol.variableId + ':' + (sol.secondVariableId || '')
+                    "
+                    type="button"
+                    class="mx-cs-sol-pill"
+                    :class="{ 'is-selected': selectedCurveSolutionIdx === idx }"
+                    @click="selectedCurveSolutionIdx = idx"
+                  >
+                    <span class="mx-cs-sol-lbl">{{ sol.variableLabel }}</span>
+                    <span class="mx-cs-sol-arrow">
+                      {{ sol.currentValue }}→{{ sol.bestValue }}
+                      <template v-if="sol.isPair && sol.secondBestValue !== undefined">
+                        &amp; {{ sol.secondCurrentValue }}→{{ sol.secondBestValue }}
+                      </template>
+                    </span>
+                  </button>
+                </div>
+                <button type="button" class="mx-cs-apply-btn" @click="applySelectedCurveSolution">
+                  {{ nextGenUi.applySolBtn }}
+                </button>
+              </div>
+              <div v-else class="mx-cs-empty">
+                {{ nextGenUi.noSolHint }}
+              </div>
             </div>
 
             <svg
@@ -1139,7 +1908,109 @@ function sweepSeriesPolyline(nodeId: string): string {
                 />
               </template>
 
-              <!-- 当前/悬停 Step 竖向游标线与圆点 -->
+              <!-- 🎯 曲线反推预测虚线与可拖拽靶心手柄 -->
+              <template v-if="curveDragActive && focusedSeriesObj">
+                <polyline
+                  v-if="activeCurveSolution?.predictedSeries?.length"
+                  fill="none"
+                  :stroke="focusedSeriesObj.color"
+                  stroke-width="2.4"
+                  stroke-dasharray="5 3"
+                  stroke-opacity="0.9"
+                  pointer-events="none"
+                  :points="
+                    polylinePointsForSeries(focusedSeriesObj, activeCurveSolution.predictedSeries)
+                  "
+                />
+                <line
+                  :x1="xAt(curveTargetStep, maxSteps)"
+                  :x2="xAt(curveTargetStep, maxSteps)"
+                  :y1="PAD_T"
+                  :y2="CH - PAD_B"
+                  :stroke="focusedSeriesObj.color"
+                  stroke-width="1.2"
+                  stroke-dasharray="3 3"
+                  stroke-opacity="0.55"
+                  pointer-events="none"
+                />
+                <g
+                  class="mx-curve-target-pin"
+                  :transform="`translate(${xAt(curveTargetStep, maxSteps)}, ${yAtForSeries(focusedSeriesObj, curveTargetVal)})`"
+                  @pointerdown.stop="startCurvePinDrag($event, 1)"
+                  @click.stop
+                >
+                  <circle
+                    r="11"
+                    :fill="focusedSeriesObj.color"
+                    fill-opacity="0.18"
+                    :stroke="focusedSeriesObj.color"
+                    stroke-width="1.5"
+                    stroke-dasharray="2 2"
+                  />
+                  <circle
+                    r="5.5"
+                    :fill="focusedSeriesObj.color"
+                    stroke="var(--bg-panel)"
+                    stroke-width="2"
+                  />
+                  <text
+                    x="0"
+                    y="-14"
+                    text-anchor="middle"
+                    font-size="9.5"
+                    font-weight="700"
+                    :fill="focusedSeriesObj.color"
+                  >
+                    🎯 {{ curveTargetVal }} (T={{ curveTargetStep }})
+                  </text>
+                </g>
+                <template v-if="curveDualPinActive">
+                  <line
+                    :x1="xAt(curveTargetStep2, maxSteps)"
+                    :x2="xAt(curveTargetStep2, maxSteps)"
+                    :y1="PAD_T"
+                    :y2="CH - PAD_B"
+                    :stroke="focusedSeriesObj.color"
+                    stroke-width="1.2"
+                    stroke-dasharray="2 3"
+                    stroke-opacity="0.45"
+                    pointer-events="none"
+                  />
+                  <g
+                    class="mx-curve-target-pin"
+                    :transform="`translate(${xAt(curveTargetStep2, maxSteps)}, ${yAtForSeries(focusedSeriesObj, curveTargetVal2)})`"
+                    @pointerdown.stop="startCurvePinDrag($event, 2)"
+                    @click.stop
+                  >
+                    <circle
+                      r="10"
+                      :fill="focusedSeriesObj.color"
+                      fill-opacity="0.15"
+                      :stroke="focusedSeriesObj.color"
+                      stroke-width="1.5"
+                      stroke-dasharray="2 2"
+                    />
+                    <circle
+                      r="5"
+                      :fill="focusedSeriesObj.color"
+                      stroke="var(--bg-panel)"
+                      stroke-width="2"
+                    />
+                    <text
+                      x="0"
+                      y="-13"
+                      text-anchor="middle"
+                      font-size="9"
+                      font-weight="700"
+                      :fill="focusedSeriesObj.color"
+                    >
+                      📌 {{ curveTargetVal2 }} (T={{ curveTargetStep2 }})
+                    </text>
+                  </g>
+                </template>
+              </template>
+
+              <!-- 当前/悬停 Step 竖向游标线与圆点 + 交点数值胶囊 -->
               <line
                 :x1="xAt(inspectedStep, maxSteps)"
                 :x2="xAt(inspectedStep, maxSteps)"
@@ -1162,6 +2033,44 @@ function sweepSeriesPolyline(nodeId: string): string {
                 stroke="var(--bg-panel)"
                 :stroke-width="isSeriesHighlighted(sr.id) ? 2 : 1.5"
               />
+              <g
+                v-for="pt in inspectedIntersectionLabels"
+                :key="'val-' + pt.id"
+                pointer-events="none"
+              >
+                <line
+                  v-if="Math.abs(pt.labelY - pt.cy) > 1.5"
+                  :x1="pt.cx"
+                  :y1="pt.cy"
+                  :x2="pt.side === 'right' ? pt.rectX : pt.rectX + pt.pillW"
+                  :y2="pt.labelY"
+                  :stroke="pt.color"
+                  stroke-width="1"
+                  stroke-opacity="0.65"
+                />
+                <rect
+                  :x="pt.rectX"
+                  :y="pt.rectY"
+                  :width="pt.pillW"
+                  :height="pt.pillH"
+                  rx="3.5"
+                  fill="var(--bg-panel)"
+                  fill-opacity="0.9"
+                  :stroke="pt.color"
+                  :stroke-width="pt.highlighted ? 1.4 : 0.9"
+                  stroke-opacity="0.8"
+                />
+                <text
+                  :x="pt.textX"
+                  :y="pt.labelY + 3.1"
+                  text-anchor="middle"
+                  :font-size="pt.highlighted ? 9.2 : 8.5"
+                  font-weight="700"
+                  :fill="pt.color"
+                >
+                  {{ pt.valText }}
+                </text>
+              </g>
 
               <!-- X 轴刻度 -->
               <text :x="PAD_L" :y="CH - 5" font-size="9" fill="var(--text-muted)">0</text>
@@ -1229,7 +2138,7 @@ function sweepSeriesPolyline(nodeId: string): string {
         </div>
 
         <!-- 底部横向滚动的节点自然语言趋势卡片（复刻截图下半部分） -->
-        <div class="mx-cards-strip">
+        <div v-if="showTrendCardsStrip" class="mx-cards-strip">
           <!-- 总览卡片（含全序列微缩折线图） -->
           <div
             class="mx-summary-card is-overview"
@@ -1306,6 +2215,377 @@ function sweepSeriesPolyline(nodeId: string): string {
             <div class="mx-card-line">{{ formatTrendLine1(sr.summary) }}</div>
             <div class="mx-card-line is-muted">{{ formatTrendLine2(sr.summary) }}</div>
           </div>
+        </div>
+      </template>
+
+      <!-- ─── TAB 1.5: PLAYABLE CARD & HUD PROTOTYPE (🎮 机制一键试玩卡片台) ─── -->
+      <template v-else-if="s.resultsTab.value === 'playable'">
+        <div class="mx-playable-wrap">
+          <!-- 左栏：实时状态与资源槽 HUD -->
+          <aside class="mx-playable-hud-col">
+            <div class="mx-playable-sec-hdr">
+              <span>{{ nextGenUi.hudTitle }}</span>
+              <span class="mx-playable-cnt">{{ playableHud.gauges.length }}</span>
+            </div>
+            <div class="mx-hud-gauge-list">
+              <div
+                v-for="g in playableHud.gauges"
+                :key="g.id"
+                class="mx-hud-gauge"
+                :class="{
+                  'is-danger': g.isDanger,
+                  'is-selected': s.selection.nodes.includes(g.id),
+                  'is-just-changed': justChangedNodeIds.includes(g.id)
+                }"
+                @click="s.select([g.id])"
+              >
+                <div class="mx-hud-top">
+                  <span class="mx-hud-name">
+                    <span class="mx-dot" :style="{ background: g.color }" />
+                    {{ g.label }}
+                  </span>
+                  <span class="mx-hud-val-group">
+                    <strong class="mx-hud-val">{{ g.value }}</strong>
+                    <span v-if="g.capacity && g.capacity > 0" class="mx-hud-cap"
+                      >/ {{ g.capacity }}</span
+                    >
+                    <span
+                      v-if="g.delta !== 0"
+                      class="mx-hud-delta"
+                      :class="g.delta > 0 ? 'is-pos' : 'is-neg'"
+                    >
+                      {{ g.delta > 0 ? `+${g.delta}` : g.delta }}
+                    </span>
+                  </span>
+                </div>
+                <div class="mx-hud-bar-track">
+                  <div
+                    class="mx-hud-bar-fill"
+                    :style="{ width: `${g.fillPercent}%`, background: g.color }"
+                  />
+                </div>
+                <div v-if="g.autoInflow || g.autoOutflow || g.endWhen" class="mx-hud-badges">
+                  <span v-if="g.autoInflow" class="mx-hud-badge is-in">
+                    <button
+                      v-if="isNumericFormula(g.autoInflow)"
+                      type="button"
+                      class="mx-inline-nudge-btn"
+                      @click.stop="nudgePlayableTunable('node_auto_inflow', g.id, g.autoInflow, -1)"
+                    >
+                      -
+                    </button>
+                    <span>+{{ g.autoInflow }}/T</span>
+                    <button
+                      v-if="isNumericFormula(g.autoInflow)"
+                      type="button"
+                      class="mx-inline-nudge-btn"
+                      @click.stop="nudgePlayableTunable('node_auto_inflow', g.id, g.autoInflow, 1)"
+                    >
+                      +
+                    </button>
+                  </span>
+                  <span v-if="g.autoOutflow" class="mx-hud-badge is-out">
+                    <button
+                      v-if="isNumericFormula(g.autoOutflow)"
+                      type="button"
+                      class="mx-inline-nudge-btn"
+                      @click.stop="
+                        nudgePlayableTunable('node_auto_outflow', g.id, g.autoOutflow, -1)
+                      "
+                    >
+                      -
+                    </button>
+                    <span>-{{ g.autoOutflow }}/T</span>
+                    <button
+                      v-if="isNumericFormula(g.autoOutflow)"
+                      type="button"
+                      class="mx-inline-nudge-btn"
+                      @click.stop="
+                        nudgePlayableTunable('node_auto_outflow', g.id, g.autoOutflow, 1)
+                      "
+                    >
+                      +
+                    </button>
+                  </span>
+                  <span v-if="g.endWhen" class="mx-hud-badge is-end">🏁 {{ g.endWhen }}</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- 中栏：可点击动作与合成卡牌台 -->
+          <main class="mx-playable-deck-col">
+            <div class="mx-playable-sec-hdr">
+              <span>{{ nextGenUi.deckTitle }}</span>
+              <span class="mx-playable-cnt">{{ playableHud.actionCards.length }} cards</span>
+            </div>
+            <div v-if="lastPlayedCardBanner" class="mx-played-feedback-banner">
+              {{ lastPlayedCardBanner }}
+            </div>
+            <div class="mx-play-cards-grid">
+              <div
+                v-for="card in playableHud.actionCards"
+                :key="card.id"
+                class="mx-play-card"
+                :class="{
+                  'is-playable': card.canPlay,
+                  'is-disabled': !card.canPlay,
+                  'is-selected': s.selection.nodes.includes(card.id),
+                  'is-ai-recommended': card.aiRecommended,
+                  'is-just-changed': justChangedNodeIds.includes(card.id)
+                }"
+                :style="{ '--card-accent': card.color }"
+                @click="s.select([card.id])"
+              >
+                <div class="mx-pc-header">
+                  <span class="mx-pc-title">{{ card.label }}</span>
+                  <div class="mx-pc-hdr-badges">
+                    <span v-if="card.aiRecommended" class="mx-pc-ai-badge">
+                      {{ nextGenUi.aiBestMoveBadge }}
+                    </span>
+                    <span
+                      v-if="card.cooldownRemaining && card.cooldownRemaining > 0"
+                      class="mx-pc-cd-badge is-locked"
+                    >
+                      {{ nextGenUi.cdLockedBadge(card.cooldownRemaining) }}
+                    </span>
+                    <span
+                      v-else-if="card.cooldownSteps && card.cooldownSteps > 0"
+                      class="mx-pc-cd-badge"
+                    >
+                      {{ nextGenUi.cdConfigBadge(card.cooldownSteps) }}
+                    </span>
+                    <span class="mx-pc-trig-badge" :class="`trig-${card.trigger}`">
+                      {{
+                        card.trigger === 'interactive'
+                          ? nextGenUi.trigClickBadge
+                          : card.trigger === 'automatic'
+                            ? nextGenUi.trigAutoBadge
+                            : nextGenUi.trigPassiveBadge
+                      }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 消耗 Costs -->
+                <div class="mx-pc-body">
+                  <div v-if="card.costs.length" class="mx-pc-section">
+                    <div
+                      v-for="c in card.costs"
+                      :key="c.edgeId"
+                      class="mx-pc-cost-chip"
+                      :class="c.affordable ? 'is-ok' : 'is-lack'"
+                    >
+                      <span class="mx-pc-chip-main">
+                        <button
+                          v-if="canTuneEdgeExpr(c.requiredExpr)"
+                          type="button"
+                          class="mx-inline-nudge-btn"
+                          @click.stop="nudgePlayableEdgeExpr(c.edgeId, c.requiredExpr, -1)"
+                        >
+                          -
+                        </button>
+                        <span
+                          >{{ c.affordable ? '✓' : '✗' }} -{{ c.requiredExpr }}
+                          {{ c.sourceLabel }}</span
+                        >
+                        <button
+                          v-if="canTuneEdgeExpr(c.requiredExpr)"
+                          type="button"
+                          class="mx-inline-nudge-btn"
+                          @click.stop="nudgePlayableEdgeExpr(c.edgeId, c.requiredExpr, 1)"
+                        >
+                          +
+                        </button>
+                      </span>
+                      <span class="mx-pc-chip-sub">({{ c.available }})</span>
+                    </div>
+                  </div>
+                  <div v-else class="mx-pc-free-tag">
+                    {{ nextGenUi.zeroCostTag }}
+                  </div>
+
+                  <!-- 状态守卫条件 -->
+                  <div v-if="card.conditions.length" class="mx-pc-section">
+                    <div
+                      v-for="cond in card.conditions"
+                      :key="cond.edgeId"
+                      class="mx-pc-cond-chip"
+                      :class="cond.met ? 'is-ok' : 'is-lack'"
+                    >
+                      🔒 {{ cond.sourceLabel }} {{ cond.condition }} ({{ cond.currentValue }})
+                    </div>
+                  </div>
+
+                  <!-- 产出与暴击/掉落分支 -->
+                  <div v-if="card.rewards.length" class="mx-pc-section is-rewards">
+                    <div v-for="rw in card.rewards" :key="rw.edgeId" class="mx-pc-reward-row">
+                      <template v-if="rw.isGate && rw.gateBranches?.length">
+                        <div class="mx-pc-gate-box">
+                          <div class="mx-pc-gate-hdr">
+                            <span>🎲 {{ rw.targetLabel }}</span>
+                            <span v-if="rw.gatePityInfo" class="mx-pc-pity-pill">
+                              🎯 {{ rw.gatePityInfo }}
+                            </span>
+                          </div>
+                          <div v-if="rw.pityHardMax && rw.pityHardMax > 0" class="mx-pc-pity-track">
+                            <div
+                              class="mx-pc-pity-fill"
+                              :style="{
+                                width: `${Math.min(100, Math.round(((rw.pityCurrentPulls ?? 0) / rw.pityHardMax) * 100))}%`
+                              }"
+                            />
+                          </div>
+                          <div class="mx-pc-gate-branches">
+                            <span
+                              v-for="(br, bIdx) in rw.gateBranches"
+                              :key="bIdx"
+                              class="mx-pc-branch-chip"
+                            >
+                              {{ br.weightLabel }} → {{ br.targetLabel }}
+                            </span>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <span class="mx-pc-reward-chip">
+                          <button
+                            v-if="canTuneEdgeExpr(rw.amountExpr)"
+                            type="button"
+                            class="mx-inline-nudge-btn"
+                            @click.stop="nudgePlayableEdgeExpr(rw.edgeId, rw.amountExpr, -1)"
+                          >
+                            -
+                          </button>
+                          <span>✨ +{{ rw.amountExpr }} {{ rw.targetLabel }}</span>
+                          <button
+                            v-if="canTuneEdgeExpr(rw.amountExpr)"
+                            type="button"
+                            class="mx-inline-nudge-btn"
+                            @click.stop="nudgePlayableEdgeExpr(rw.edgeId, rw.amountExpr, 1)"
+                          >
+                            +
+                          </button>
+                        </span>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 底部动作按钮与不可用原因 -->
+                <div class="mx-pc-footer">
+                  <button
+                    type="button"
+                    class="mx-pc-play-btn"
+                    :disabled="playableHud.ended"
+                    @click.stop="onPlayCard(card)"
+                  >
+                    {{ card.canPlay ? nextGenUi.playCardBtn : nextGenUi.forceFireBtn }}
+                  </button>
+                  <span v-if="card.disabledReason" class="mx-pc-reason">
+                    {{ card.disabledReason }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <!-- 右栏：回合控制与实时战报 -->
+          <aside class="mx-playable-turn-col">
+            <div class="mx-playable-sec-hdr">
+              <span>{{ nextGenUi.turnTitle }}</span>
+              <span class="mx-playable-step-pill">{{ nextGenUi.stepBadge(playableHud.step) }}</span>
+            </div>
+
+            <div v-if="playableHud.ended" class="mx-playable-ended-banner">
+              {{ nextGenUi.endedBanner(playableHud.endReason || 'Done') }}
+            </div>
+
+            <div class="mx-playable-turn-btns">
+              <button
+                type="button"
+                class="mx-turn-btn is-primary"
+                :disabled="playableHud.ended"
+                @click="onNextTurnClick"
+              >
+                {{ nextGenUi.nextTurnBtn }}
+              </button>
+              <button
+                type="button"
+                class="mx-turn-btn is-ai-spectator"
+                :class="{ 'is-active': aiSpectatorActive }"
+                @click="toggleAiSpectator"
+              >
+                {{ aiSpectatorActive ? nextGenUi.aiAutoPlayStopBtn : nextGenUi.aiAutoPlayBtn }}
+              </button>
+              <div class="mx-turn-btn-row">
+                <button
+                  type="button"
+                  class="mx-turn-btn"
+                  :disabled="playableHud.ended"
+                  @click="onFastForward5Click"
+                >
+                  {{ nextGenUi.fast5Btn }}
+                </button>
+                <button type="button" class="mx-turn-btn" @click="onResetPlayClick">
+                  {{ nextGenUi.resetRunBtn }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 📼 已录制出牌操作序列与一键回归重放 -->
+            <div v-if="recordedMacroSteps.length" class="mx-macro-tape-box">
+              <div class="mx-macro-hdr">
+                <span class="mx-macro-title">
+                  {{ nextGenUi.macroTapeTitle(recordedMacroSteps.length) }}
+                </span>
+                <div class="mx-macro-hdr-btns">
+                  <button type="button" class="mx-macro-replay-btn" @click="onReplayRecordedMacro">
+                    {{ nextGenUi.macroReplayBtn }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-macro-clear-btn"
+                    :title="nextGenUi.macroClearTip"
+                    @click="clearRecordedMacro"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div class="mx-macro-chips">
+                <span
+                  v-for="(mStep, mIdx) in recordedMacroSteps.slice(-8)"
+                  :key="mIdx"
+                  class="mx-macro-chip"
+                >
+                  {{
+                    mStep.kind === 'card'
+                      ? `🃏 ${mStep.label || mStep.nodeId}`
+                      : `▶ +${mStep.steps ?? 1}T`
+                  }}
+                </span>
+              </div>
+            </div>
+
+            <div class="mx-playable-log-list">
+              <div
+                v-for="(ev, idx) in playableBattleLog"
+                :key="idx"
+                class="mx-playable-log-item"
+                :class="`kind-${ev.type}`"
+              >
+                <span class="mx-plog-step">T{{ ev.step }}</span>
+                <span class="mx-plog-msg">
+                  {{ nodeName(ev.nodeId) }}{{ ev.targetId ? ` → ${nodeName(ev.targetId)}` : '' }}
+                  {{ ev.amount ?? '' }} {{ ev.detail ?? '' }}
+                </span>
+              </div>
+              <div v-if="!playableBattleLog.length" class="mx-playable-log-empty">
+                {{ nextGenUi.emptyLogHint }}
+              </div>
+            </div>
+          </aside>
         </div>
       </template>
 
@@ -1813,7 +3093,7 @@ function sweepSeriesPolyline(nodeId: string): string {
           type="button"
           class="mx-tp-btn"
           :title="t('mx.transport.reset')"
-          @click="s.resetPlayback()"
+          @click="onResetPlayClick"
         >
           ↺
         </button>
@@ -2990,6 +4270,634 @@ function sweepSeriesPolyline(nodeId: string): string {
   z-index: 1;
 }
 .mx-tp-pill.is-bot-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-12);
+}
+
+/* ═════════════ 下一代演进 1：🎯 拖拽曲线反推配平 ═════════════ */
+.mx-curve-drag-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-12);
+  font-weight: 700;
+}
+.mx-curve-solver-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 5px 10px;
+  margin-bottom: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.mx-cs-left,
+.mx-cs-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mx-cs-title {
+  font-weight: 700;
+  color: var(--text);
+}
+.mx-cs-node-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  font-weight: 600;
+}
+.mx-cs-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+}
+.mx-cs-input {
+  width: 52px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.mx-cs-input.is-step {
+  width: 44px;
+}
+.mx-cs-mini-btn {
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.mx-cs-mini-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.mx-cs-sol-pills {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.mx-cs-sol-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.mx-cs-sol-pill.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font-weight: 600;
+}
+.mx-cs-sol-arrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+}
+.mx-cs-apply-btn {
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg-panel);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mx-cs-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.mx-curve-target-pin {
+  cursor: ns-resize;
+}
+
+/* ═════════════ 下一代演进 2：🎮 机制一键试玩卡片台 ═════════════ */
+.mx- playable-wrap,
+.mx-playable-wrap {
+  display: grid;
+  grid-template-columns: 250px 1fr 265px;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 10px;
+  overflow: hidden;
+}
+.mx-playable-hud-col,
+.mx-playable-deck-col,
+.mx-playable-turn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  overflow: hidden;
+}
+.mx-playable-sec-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.mx-playable-cnt,
+.mx-playable-step-pill {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mx-hud-gauge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.mx-hud-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.mx-hud-gauge.is-selected {
+  border-color: var(--accent);
+}
+.mx-hud-gauge.is-danger {
+  border-style: dashed;
+}
+.mx-hud-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+}
+.mx-hud-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mx-hud-val-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.mx-hud-val {
+  font-size: 13px;
+  color: var(--text);
+}
+.mx-hud-cap {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.mx-hud-delta {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.mx-hud-delta.is-pos {
+  color: var(--accent);
+}
+.mx-hud-delta.is-neg {
+  color: var(--text-muted);
+}
+.mx-hud-bar-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+.mx-hud-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.mx-hud-badges {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.mx-hud-badge {
+  font-size: 9.5px;
+  padding: 0 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mx-play-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 8px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  align-content: start;
+}
+.mx-play-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--card-accent, var(--accent));
+  transition:
+    transform 0.12s ease,
+    border-color 0.12s ease;
+}
+.mx-play-card.is-selected {
+  border-color: var(--accent);
+}
+.mx-play-card.is-disabled {
+  opacity: 0.78;
+}
+.mx-pc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.mx-pc-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.mx-pc-trig-badge {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mx-pc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+}
+.mx-pc-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mx-pc-cost-chip,
+.mx-pc-cond-chip,
+.mx-pc-reward-chip,
+.mx-pc-free-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-size: 10.5px;
+  color: var(--text);
+}
+.mx-pc-cost-chip.is-lack,
+.mx-pc-cond-chip.is-lack {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+.mx-pc-chip-sub {
+  font-size: 9.5px;
+  color: var(--text-muted);
+}
+.mx-pc-gate-box {
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px dashed var(--border);
+  background: var(--bg-elevated);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mx-pc-gate-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+}
+.mx-pc-pity-pill {
+  font-size: 9.5px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+.mx-pc-gate-branches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.mx-pc-branch-chip {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+}
+.mx-pc-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mx-pc-play-btn {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mx-pc-play-btn:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg-panel);
+}
+.mx-pc-play-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mx-pc-reason {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.mx-playable-ended-banner {
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mx-playable-turn-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.mx-turn-btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.mx-turn-btn {
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mx-turn-btn.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg-panel);
+  font-weight: 700;
+}
+.mx-turn-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.mx-playable-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.mx-playable-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text);
+}
+.mx-plog-step {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.mx-playable-log-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 12px 6px;
+  text-align: center;
+}
+.mx-cs-mini-btn.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-12);
+  font-weight: 700;
+}
+.mx-played-feedback-banner {
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.mx-hud-gauge.is-just-changed,
+.mx-play-card.is-just-changed {
+  border-color: var(--accent);
+  background: var(--accent-12);
+}
+.mx-play-card.is-ai-recommended {
+  border-color: var(--accent);
+}
+.mx-pc-hdr-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.mx-pc-ai-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+}
+.mx-pc-cd-badge {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mx-pc-cd-badge.is-locked {
+  border-style: dashed;
+  font-weight: 700;
+}
+.mx-pc-pity-track {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.mx-pc-pity-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.mx-turn-btn.is-ai-spectator {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--bg-panel);
+  font-weight: 700;
+}
+.mx-turn-btn.is-ai-spectator.is-active {
+  background: var(--accent-12);
+}
+.mx-macro-tape-box {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border);
+}
+.mx-macro-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.mx-macro-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text);
+}
+.mx-macro-hdr-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mx-macro-replay-btn {
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--accent-12);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mx-macro-clear-btn {
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.mx-macro-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.mx-macro-chip {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.mx-pc-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mx-hud-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mx-pc-reward-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.mx-inline-nudge-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.mx-inline-nudge-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-12);

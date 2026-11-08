@@ -2,6 +2,7 @@
  * Machinations v2 导出与预览渲染：Mermaid / 遥测 CSV / Godot 4 GDScript / Unity C# / RGBA 预览图。
  */
 import {
+  getMxSimulationDoc,
   isMxBooleanStateExpr,
   mxIdentifier,
   mxNodeColor,
@@ -14,7 +15,8 @@ import {
 } from './machinationsV2'
 import { createMxWorkbenchPreset, mapMxTemplateToWorkbenchPreset } from './gameNumericalWorkbench'
 
-export function exportMxToMermaid(doc: MxDocument): string {
+export function exportMxToMermaid(rawDoc: MxDocument): string {
+  const doc = getMxSimulationDoc(rawDoc)
   const lines = ['flowchart LR']
   const esc = (s: string): string => s.replace(/"/g, "'")
   for (const n of doc.nodes) {
@@ -508,7 +510,8 @@ function applyFlowStateModifiersCs(baseExpr: string, edge: MxEdge, doc: MxDocume
   return res
 }
 
-export function exportMxGodotGd(doc: MxDocument): string {
+export function exportMxGodotGd(rawDoc: MxDocument): string {
+  const doc = getMxSimulationDoc(rawDoc)
   const pools = doc.nodes.filter((n) => n.kind === 'pool')
   const registers = doc.nodes.filter((n) => n.kind === 'register')
   const converters = doc.nodes.filter((n) => n.kind === 'converter' || n.kind === 'trader')
@@ -843,7 +846,8 @@ ${endCheckLines.join('\n')}
 `
 }
 
-export function exportMxUnityCs(doc: MxDocument): string {
+export function exportMxUnityCs(rawDoc: MxDocument): string {
+  const doc = getMxSimulationDoc(rawDoc)
   const pools = doc.nodes.filter((n) => n.kind === 'pool')
   const registers = doc.nodes.filter((n) => n.kind === 'register')
   const converters = doc.nodes.filter((n) => n.kind === 'converter' || n.kind === 'trader')

@@ -6,14 +6,19 @@ import {
   applyAllMxDiagnosticQuickFixes,
   applyMxDiagnosticQuickFix,
   autoLayoutMxDocument,
+  autoSolveMxCurveTarget,
+  collapseMxProToSimple,
   computeMxDiagramBounds,
   createMxDocumentFromBuildingBlock,
   createMxFromTemplate,
   createMxInitialState,
   createMxTemplate,
   evaluateMxExpression,
+  expandMxSimpleMacrosToPro,
   exportMxDiagramSvg,
+  extractMxPlayableHudSnapshot,
   getMxNodeSubLabel,
+  hasMxSimpleMacros,
   inferMxTemplateFromPrompt,
   insertMxBuildingBlockIntoDocument,
   inspectMxFormulaContext,
@@ -26,6 +31,8 @@ import {
   parseMxDocumentJson,
   parseMxFlowFormula,
   parseMxStateFormula,
+  pickMxPlayableAiSpectatorMove,
+  replayMxPlayableActionMacro,
   resolveMxEdgeReferencedNodes,
   resolveMxNodeConsumers,
   resolveMxNodeReferencedNodes,
@@ -4035,5 +4042,451 @@ describe('Machinations.io 100% specification parity', () => {
     const fbAfter = analyzeMxEconomyHealth(fbFixed.doc)
     expect(fbAfter.findings.some((f) => f.kind === 'exponential_runaway')).toBe(false)
     expect(fbAfter.findings.some((f) => f.kind === 'pool_capped')).toBe(false)
+  })
+
+  it('compiles Simple Creation Mode inline macros to Pro Blueprints bidirectionally with 100% simulation & codegen parity', () => {
+    const simpleDoc = createEmptyMxDocument('Simple Mode Macro Test')
+    simpleDoc.settings.steps = 12
+    simpleDoc.settings.seed = 42
+    simpleDoc.nodes = [
+      {
+        ...createMxNode('pool', 160, 120, 'Gold'),
+        id: 'p_gold',
+        initial: 10,
+        autoInflow: '5',
+        autoOutflow: '1'
+      },
+      {
+        ...createMxNode('converter', 320, 120, 'Forge Ticket'),
+        id: 'c_forge',
+        trigger: 'automatic',
+        pullMode: 'pull_all',
+        cooldownSteps: 2
+      },
+      {
+        ...createMxNode('gate', 480, 120, 'Gacha Roll'),
+        id: 'g_roll',
+        trigger: 'passive',
+        gateMode: 'random',
+        pityEnabled: true,
+        pityBaseRate: 10,
+        pitySoftStart: 3,
+        pityHardMax: 5
+      },
+      {
+        ...createMxNode('pool', 660, 60, 'SSR Hero'),
+        id: 'p_ssr',
+        initial: 0,
+        endWhen: '>=2'
+      },
+      {
+        ...createMxNode('pool', 660, 180, 'Shards'),
+        id: 'p_shard',
+        initial: 0
+      }
+    ]
+    simpleDoc.edges = [
+      { id: 'e_in', kind: 'resource', from: 'p_gold', to: 'c_forge', formula: '4' },
+      { id: 'e_out', kind: 'resource', from: 'c_forge', to: 'g_roll', formula: '1' },
+      { id: 'e_ssr', kind: 'resource', from: 'g_roll', to: 'p_ssr', formula: '10%' },
+      { id: 'e_shd', kind: 'resource', from: 'g_roll', to: 'p_shard', formula: '90%' }
+    ]
+
+    expect(hasMxSimpleMacros(simpleDoc)).toBe(true)
+
+    // 1. Expand Simple Mode inline macros into explicit Pro Blueprint nodes
+    const proDoc = expandMxSimpleMacrosToPro(simpleDoc)
+    expect(hasMxSimpleMacros(proDoc)).toBe(false)
+    // Verify expanded node kinds exist: Source, Drain, Delay, End, and Pity Counter Loop (Source + Pool + Register + Drain)
+    expect(proDoc.nodes.some((n) => n.id === 'src_in_p_gold' && n.kind === 'source')).toBe(true)
+    expect(proDoc.nodes.some((n) => n.id === 'drn_out_p_gold' && n.kind === 'drain')).toBe(true)
+    expect(proDoc.nodes.some((n) => n.id === 'end_when_p_ssr' && n.kind === 'end')).toBe(true)
+    expect(
+      proDoc.nodes.some(
+        (n) => n.id === 'dly_cd_c_forge' && n.kind === 'delay' && n.delaySteps === 2
+      )
+    ).toBe(true)
+    expect(proDoc.nodes.some((n) => n.id === 'pool_pity_g_roll' && n.kind === 'pool')).toBe(true)
+    expect(proDoc.nodes.some((n) => n.id === 'reg_pity_rate_g_roll' && n.kind === 'register')).toBe(
+      true
+    )
+
+    // 2. Direct simulation on Simple Mode document matches Pro Blueprint simulation 1:1
+    const simSimple = runMxSimulation(simpleDoc, { steps: 12, seed: 42 })
+    const simPro = runMxSimulation(proDoc, { steps: 12, seed: 42 })
+    expect(simSimple.endedAtStep).toBe(simPro.endedAtStep)
+    for (let s = 0; s < simSimple.snapshots.length; s++) {
+      expect(simSimple.snapshots[s]!.p_gold).toBe(simPro.snapshots[s]!.p_gold)
+      expect(simSimple.snapshots[s]!.p_ssr).toBe(simPro.snapshots[s]!.p_ssr)
+      expect(simSimple.snapshots[s]!.p_shard).toBe(simPro.snapshots[s]!.p_shard)
+    }
+
+    // 3. Collapse Pro Blueprint back into Simple Mode inline macros (round-trip)
+    const { doc: collapsedDoc, foldedCount } = collapseMxProToSimple(proDoc)
+    expect(foldedCount).toBeGreaterThanOrEqual(5)
+    expect(collapsedDoc.nodes.length).toBe(simpleDoc.nodes.length)
+    expect(collapsedDoc.edges.length).toBe(simpleDoc.edges.length)
+    const goldCollapsed = collapsedDoc.nodes.find((n) => n.id === 'p_gold')!
+    expect(goldCollapsed.autoInflow).toBe('5')
+    expect(goldCollapsed.autoOutflow).toBe('1')
+    const forgeCollapsed = collapsedDoc.nodes.find((n) => n.id === 'c_forge')!
+    expect(forgeCollapsed.cooldownSteps).toBe(2)
+    const gateCollapsed = collapsedDoc.nodes.find((n) => n.id === 'g_roll')!
+    expect(gateCollapsed.pityEnabled).toBe(true)
+    expect(gateCollapsed.pitySoftStart).toBe(3)
+    expect(gateCollapsed.pityHardMax).toBe(5)
+    expect(gateCollapsed.pityBaseRate).toBe(10)
+    const ssrCollapsed = collapsedDoc.nodes.find((n) => n.id === 'p_ssr')!
+    expect(ssrCollapsed.endWhen).toBe('>=2')
+
+    // 4. Hard pity guarantee: with baseRate=1%, softStart=4, hardMax=4, 4th pull must guarantee SSR
+    const pityDoc = createEmptyMxDocument('Hard Pity Guarantee')
+    pityDoc.nodes = [
+      { ...createMxNode('source', 80, 100, 'Pull'), id: 'src_pull', trigger: 'automatic' },
+      {
+        ...createMxNode('gate', 220, 100, 'Banner'),
+        id: 'g_banner',
+        trigger: 'passive',
+        gateMode: 'random',
+        pityEnabled: true,
+        pityBaseRate: 1,
+        pitySoftStart: 4,
+        pityHardMax: 4
+      },
+      { ...createMxNode('pool', 380, 60, 'SSR'), id: 'p_win', initial: 0 },
+      { ...createMxNode('pool', 380, 140, 'R'), id: 'p_lose', initial: 0 }
+    ]
+    pityDoc.edges = [
+      { id: 'ep1', kind: 'resource', from: 'src_pull', to: 'g_banner', formula: '1' },
+      { id: 'ep2', kind: 'resource', from: 'g_banner', to: 'p_win', formula: '1%' },
+      { id: 'ep3', kind: 'resource', from: 'g_banner', to: 'p_lose', formula: '99%' }
+    ]
+    const pityRun = runMxSimulation(pityDoc, { steps: 5, seed: 7 })
+    expect(pityRun.snapshots[5]!.p_win).toBeGreaterThanOrEqual(1)
+
+    // 5. Unity C# & Godot GDScript exports transparently include expanded macro logic
+    const csCode = exportMxUnityCs(simpleDoc)
+    const gdCode = exportMxGodotGd(simpleDoc)
+    expect(csCode).toContain('Gold Inflow')
+    expect(csCode).toContain('SSR Hero >=2')
+    expect(csCode).toContain('reg_pity_rate_g_roll')
+    expect(gdCode).toContain('Gold Inflow')
+    expect(gdCode).toContain('SSR Hero >=2')
+    expect(gdCode).toContain('reg_pity_rate_g_roll')
+
+    // 6. Zero-input Converter fires as a zero-cost action generator in Simple Mode
+    const zeroCostDoc = createEmptyMxDocument('Zero Cost Action Converter')
+    zeroCostDoc.nodes = [
+      {
+        ...createMxNode('converter', 120, 120, 'Work Action'),
+        id: 'c_work',
+        trigger: 'automatic',
+        conversion: 'multiple'
+      },
+      {
+        ...createMxNode('pool', 300, 120, 'Wage'),
+        id: 'p_wage',
+        initial: 0
+      }
+    ]
+    zeroCostDoc.edges = [
+      { id: 'e_work_wage', kind: 'resource', from: 'c_work', to: 'p_wage', formula: '10' }
+    ]
+    const zeroRun = runMxSimulation(zeroCostDoc, { steps: 3, seed: 1 })
+    expect(zeroRun.snapshots[3]!.p_wage).toBe(30)
+  })
+
+  it('supports Next-Gen Direct Curve Drag Goal-Seek (autoSolveMxCurveTarget) & Playable Card Prototype HUD (extractMxPlayableHudSnapshot)', () => {
+    const doc = createEmptyMxDocument('Next-Gen Curve Drag & Playable HUD')
+    doc.settings.steps = 10
+    doc.nodes = [
+      {
+        ...createMxNode('pool', 80, 120, 'Gold'),
+        id: 'p_gold',
+        initial: 20,
+        capacity: 500,
+        autoInflow: '5',
+        autoOutflow: '1'
+      },
+      {
+        ...createMxNode('converter', 260, 120, 'Summon Hero'),
+        id: 'c_summon',
+        trigger: 'interactive',
+        pullMode: 'pull_all'
+      },
+      {
+        ...createMxNode('gate', 420, 120, 'Gacha Roll'),
+        id: 'g_roll',
+        trigger: 'passive',
+        gateMode: 'random',
+        pityEnabled: true,
+        pityBaseRate: 10,
+        pitySoftStart: 50,
+        pityHardMax: 90
+      },
+      {
+        ...createMxNode('pool', 580, 80, 'SSR Hero'),
+        id: 'p_ssr',
+        initial: 0,
+        endWhen: '>=1'
+      },
+      {
+        ...createMxNode('pool', 580, 160, 'Hero Shard'),
+        id: 'p_shard',
+        initial: 0
+      }
+    ]
+    doc.edges = [
+      { id: 'e_cost', kind: 'resource', from: 'p_gold', to: 'c_summon', formula: '30' },
+      { id: 'e_roll', kind: 'resource', from: 'c_summon', to: 'g_roll', formula: '1' },
+      { id: 'e_ssr', kind: 'resource', from: 'g_roll', to: 'p_ssr', formula: '10%' },
+      { id: 'e_shard', kind: 'resource', from: 'g_roll', to: 'p_shard', formula: '90%' }
+    ]
+
+    // 1. Direct Curve Drag Goal-Seek: want Gold at step 10 to reach 110 (currently 20 + 10*(5-1) = 60)
+    // autoSolveMxCurveTarget should automatically discover Gold's inline autoInflow ('5' -> 10) or initial value
+    const solutions = autoSolveMxCurveTarget(doc, {
+      targetNodeId: 'p_gold',
+      atStep: 10,
+      targetValue: 110
+    })
+    expect(solutions.length).toBeGreaterThan(0)
+    const inflowSol = solutions.find(
+      (s) => s.variableKind === 'node_auto_inflow' && s.variableId === 'p_gold'
+    )
+    expect(inflowSol).toBeDefined()
+    expect(inflowSol!.bestValue).toBeCloseTo(10, 0)
+    expect(inflowSol!.achievedValue).toBeCloseTo(110, 0)
+    expect(inflowSol!.predictedSeries.length).toBeGreaterThanOrEqual(11)
+    expect(inflowSol!.predictedSeries[10]).toBeCloseTo(110, 0)
+
+    // 2. Playable Card & HUD Prototype: at initial state (Gold = 20 < 30 cost), Summon Hero card is disabled with clear reason
+    const hudInitial = extractMxPlayableHudSnapshot(
+      doc,
+      { p_gold: 20, p_ssr: 0, p_shard: 0 },
+      { p_gold: 20, p_ssr: 0, p_shard: 0 },
+      { step: 0, ended: false }
+    )
+    expect(hudInitial.gauges.length).toBe(3)
+    const goldGauge = hudInitial.gauges.find((g) => g.id === 'p_gold')!
+    expect(goldGauge.value).toBe(20)
+    expect(goldGauge.autoInflow).toBe('5')
+    expect(goldGauge.autoOutflow).toBe('1')
+    expect(hudInitial.actionCards.length).toBe(1)
+    const summonCard0 = hudInitial.actionCards[0]!
+    expect(summonCard0.id).toBe('c_summon')
+    expect(summonCard0.canPlay).toBe(false)
+    expect(summonCard0.costs[0]!.affordable).toBe(false)
+    expect(summonCard0.rewards[0]!.isGate).toBe(true)
+    expect(summonCard0.rewards[0]!.gatePityInfo).toContain('90')
+    expect(summonCard0.rewards[0]!.gateBranches?.length).toBe(2)
+
+    // When Gold reaches 35 (>= 30 cost), Summon Hero card becomes playable and AI recommends it!
+    const hudReady = extractMxPlayableHudSnapshot(
+      doc,
+      { p_gold: 35, p_ssr: 0, p_shard: 0 },
+      { p_gold: 20, p_ssr: 0, p_shard: 0 },
+      { step: 3, ended: false }
+    )
+    expect(hudReady.gauges.find((g) => g.id === 'p_gold')!.delta).toBe(15)
+    expect(hudReady.actionCards[0]!.canPlay).toBe(true)
+    expect(hudReady.actionCards[0]!.costs[0]!.affordable).toBe(true)
+    expect(hudReady.actionCards[0]!.aiRecommended).toBe(true)
+
+    // 3. Instant Card Play (instantOnly: true) within the current turn without advancing step or firing autoInflow/autoOutflow
+    const st0 = createMxInitialState(doc, { seed: 99 })
+    st0.values.p_gold = 65
+    const instantPlay = stepMxSimulation(doc, st0, {
+      seed: 99,
+      interactions: ['c_summon'],
+      instantOnly: true
+    })
+    expect(instantPlay.state.step).toBe(0)
+    // Gold spent 30 (65 -> 35), autoInflow (+5) and autoOutflow (-1) did NOT fire!
+    expect(instantPlay.state.values.p_gold).toBe(35)
+    expect((instantPlay.state.values.p_ssr ?? 0) + (instantPlay.state.values.p_shard ?? 0)).toBe(1)
+
+    // 4. Dual-Pin Curve Shaping (secondTarget): simultaneously shape Step 4 = 50 and Step 10 = 110 via 2-variable joint solve
+    const dualSolutions = autoSolveMxCurveTarget(doc, {
+      targetNodeId: 'p_gold',
+      atStep: 10,
+      targetValue: 110,
+      secondTarget: {
+        atStep: 4,
+        targetValue: 50
+      }
+    })
+    const pairSol = dualSolutions.find((s) => s.isPair)
+    expect(pairSol).toBeDefined()
+    expect(pairSol!.predictedSeries[4]).toBeCloseTo(50, 0)
+    expect(pairSol!.predictedSeries[10]).toBeCloseTo(110, 0)
+
+    // 5. AI Spectator Move Picker & Action Macro Replay (🤖 AI 自动观战打牌 + 📼 出牌序列回归重放)
+    // At st0 (Gold = 65 >= 30), AI Spectator picks 'play_card' on 'c_summon'
+    const move1 = pickMxPlayableAiSpectatorMove(doc, st0, 0, 2)
+    expect(move1.action).toBe('play_card')
+    if (move1.action === 'play_card') {
+      expect(move1.card.id).toBe('c_summon')
+    }
+    // When Gold is insufficient (e.g. 15 < 30), AI Spectator automatically picks 'end_turn'
+    const stLow = createMxInitialState(doc, { seed: 99 })
+    stLow.values.p_gold = 15
+    const moveEnd = pickMxPlayableAiSpectatorMove(doc, stLow, 0, 2)
+    expect(moveEnd.action).toBe('end_turn')
+
+    // Replay a recorded macro sequence: [end_turn(3 steps -> Gold 20 + 12 = 32), card('c_summon' -> Gold 2, +1 pull), end_turn(2 steps -> Gold 10)]
+    const replayRes = replayMxPlayableActionMacro(
+      doc,
+      [
+        { kind: 'end_turn', steps: 3 },
+        { kind: 'card', nodeId: 'c_summon', label: 'Summon Hero' },
+        { kind: 'end_turn', steps: 2 }
+      ],
+      { seed: 77 }
+    )
+    expect(replayRes.cardsPlayed).toBe(1)
+    expect(replayRes.turnsRun).toBe(5)
+    expect(replayRes.finalState.values.p_gold).toBe(10)
+    expect(
+      (replayRes.finalState.values.p_ssr ?? 0) + (replayRes.finalState.values.p_shard ?? 0)
+    ).toBe(1)
+
+    // 6. Document persistence of recorded playable macro steps (normalizeMxDocument round-trip)
+    doc.playableMacroSteps = [
+      { kind: 'end_turn', steps: 3 },
+      { kind: 'card', nodeId: 'c_summon', label: 'Summon Hero' },
+      { kind: 'end_turn', steps: 2 }
+    ]
+    const roundTripped = normalizeMxDocument(JSON.parse(JSON.stringify(doc)))
+    expect(roundTripped.playableMacroSteps).toEqual([
+      { kind: 'end_turn', steps: 3 },
+      { kind: 'card', nodeId: 'c_summon', label: 'Summon Hero' },
+      { kind: 'end_turn', steps: 2 }
+    ])
+  })
+
+  it('collapses all 58 Building Blocks in Simple Mode and expands back in Pro Mode (both loadBuildingBlockAsDoc and insertBuildingBlock)', () => {
+    for (const block of MX_BUILDING_BLOCKS) {
+      const proDoc = createMxDocumentFromBuildingBlock(block.id, 'zh')
+      const collapsed = collapseMxProToSimple(proDoc)
+      expect(
+        collapsed.foldedCount,
+        `block ${block.id} should fold >= 1 node`
+      ).toBeGreaterThanOrEqual(1)
+      expect(collapsed.doc.nodes.length).toBeLessThan(proDoc.nodes.length)
+      expect(hasMxSimpleMacros(collapsed.doc)).toBe(true)
+
+      const store = createMxStudioStore(createEmptyMxDocument('Test Block Mode'))
+      expect(store.complexityMode.value).toBe('simple')
+      store.loadBuildingBlockAsDoc(block.id, 'zh')
+      const simpleNodeCount = store.doc.value.nodes.length
+      expect(simpleNodeCount).toBe(collapsed.doc.nodes.length)
+      expect(hasMxSimpleMacros(store.doc.value)).toBe(true)
+
+      store.switchComplexityMode('pro', true)
+      const expandedNodeCount = store.doc.value.nodes.length
+      expect(expandedNodeCount).toBeGreaterThan(simpleNodeCount)
+      expect(hasMxSimpleMacros(store.doc.value)).toBe(false)
+
+      store.switchComplexityMode('simple', true)
+      expect(store.doc.value.nodes.length).toBe(simpleNodeCount)
+    }
+
+    // Also verify insertBuildingBlock collapses in Simple Mode even when canvas already has Simple macros
+    const insertStore = createMxStudioStore(createEmptyMxDocument('Insert Simple Test'))
+    insertStore.loadBuildingBlockAsDoc('bb_basics_source_pool_drain', 'zh')
+    expect(insertStore.doc.value.nodes.length).toBe(1) // basic_src & basic_drain folded into basic_pool
+    insertStore.insertBuildingBlock('bb_shield_absorb_regen', { locale: 'zh' })
+    // bb_shield_absorb_regen has 5 Pro nodes -> folds 3 (shield_regen, shield_hit, hp_hit) into 2 Pools
+    expect(insertStore.doc.value.nodes.length).toBe(3)
+  })
+
+  it('autoLayoutMxDocument breaks resource cycles, separates isolated registers, curves back-edges, and prevents vertical column stacking/overlap', () => {
+    const doc = createEmptyMxDocument('Balatro Closed Loop')
+    doc.nodes = [
+      {
+        ...createMxNode('register', 0, 0, '每手筹码 Chips'),
+        id: 'reg_chips',
+        formula: '20 + 12 * pool_joker'
+      },
+      {
+        ...createMxNode('register', 0, 0, '每手倍率 Mult'),
+        id: 'reg_mult',
+        formula: '4 + 3 * pool_joker'
+      },
+      {
+        ...createMxNode('register', 0, 0, '盲注需求'),
+        id: 'reg_blind',
+        formula: '200 + 400 * (pool_ante - 1)'
+      },
+      { ...createMxNode('pool', 0, 0, '底注 Ante'), id: 'pool_ante', initial: 1, capacity: 10 },
+      { ...createMxNode('pool', 0, 0, '剩余出牌数'), id: 'pool_hands', initial: 3, capacity: 6 },
+      { ...createMxNode('pool', 0, 0, '本轮得分'), id: 'pool_score', initial: 0, capacity: 99999 },
+      { ...createMxNode('converter', 0, 0, '出牌结算 Chips×Mult'), id: 'conv_play' },
+      { ...createMxNode('pool', 0, 0, '金币'), id: 'pool_gold', initial: 0, capacity: 999 },
+      { ...createMxNode('converter', 0, 0, '盲注通过 Blind Clear'), id: 'conv_clear' },
+      { ...createMxNode('pool', 0, 0, '小丑牌数量'), id: 'pool_joker', initial: 0, capacity: 12 },
+      { ...createMxNode('converter', 0, 0, '商店买小丑牌'), id: 'conv_shop' }
+    ]
+    doc.edges = [
+      { id: 'e1', kind: 'resource', from: 'pool_hands', to: 'conv_play', formula: '1' },
+      {
+        id: 'e2',
+        kind: 'resource',
+        from: 'conv_play',
+        to: 'pool_score',
+        formula: 'reg_chips * reg_mult'
+      },
+      { id: 'e3', kind: 'resource', from: 'pool_score', to: 'conv_clear', formula: 'reg_blind' },
+      { id: 'e4', kind: 'resource', from: 'conv_clear', to: 'pool_hands', formula: '3' },
+      { id: 'e5', kind: 'resource', from: 'conv_clear', to: 'pool_ante', formula: '1' },
+      { id: 'e6', kind: 'resource', from: 'conv_clear', to: 'pool_gold', formula: '12' },
+      { id: 'e7', kind: 'resource', from: 'pool_gold', to: 'conv_shop', formula: '7' },
+      { id: 'e8', kind: 'resource', from: 'conv_shop', to: 'pool_joker', formula: '1' }
+    ]
+
+    autoLayoutMxDocument(doc)
+
+    // Flow nodes must spread across at least 6 horizontal columns instead of collapsing into 1 vertical column
+    const flowNodes = doc.nodes.filter((n) => n.kind !== 'register')
+    const distinctFlowX = new Set(flowNodes.map((n) => n.x))
+    expect(distinctFlowX.size).toBeGreaterThanOrEqual(6)
+
+    // Isolated registers must spread horizontally along a dedicated bottom row
+    const regNodes = doc.nodes.filter((n) => n.kind === 'register')
+    const distinctRegX = new Set(regNodes.map((n) => n.x))
+    expect(distinctRegX.size).toBe(3)
+
+    // Zero node-to-node overlaps: every pair of nodes must be at least 140px apart
+    for (let i = 0; i < doc.nodes.length; i++) {
+      for (let j = i + 1; j < doc.nodes.length; j++) {
+        const a = doc.nodes[i]!
+        const b = doc.nodes[j]!
+        const dist = Math.hypot(a.x - b.x, a.y - b.y)
+        expect(dist, `nodes ${a.id} and ${b.id} are too close (${dist}px)`).toBeGreaterThanOrEqual(
+          140
+        )
+      }
+    }
+
+    // Back-edge conv_clear -> pool_hands must receive a non-zero bend so it arches around intermediate nodes
+    const backEdge = doc.edges.find((e) => e.id === 'e4')!
+    expect(Math.abs(backEdge.bend ?? 0)).toBeGreaterThanOrEqual(42)
+
+    // Verify resetPlayback clears activeRunId, activeRun, compareRunIds, forecast, and playStep so the line chart resets to Step 0
+    const store = createMxStudioStore(doc)
+    store.playAgain()
+    store.runForecast()
+    expect(store.activeRun.value).not.toBeNull()
+    expect(store.forecast.value).not.toBeNull()
+    expect(store.playStep.value).toBeGreaterThan(0)
+
+    store.resetPlayback()
+    expect(store.activeRunId.value).toBe('')
+    expect(store.activeRun.value).toBeNull()
+    expect(store.compareRunIds.value).toEqual([])
+    expect(store.forecast.value).toBeNull()
+    expect(store.liveSnapshots.value).toEqual([])
+    expect(store.playStep.value).toBe(0)
   })
 })

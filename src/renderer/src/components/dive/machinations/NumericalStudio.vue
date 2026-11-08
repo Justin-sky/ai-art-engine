@@ -73,12 +73,12 @@ const ui = computed(() => {
       modeDomainTip: 'Pure GDD parameter, tolerance & schema tables (no combat/novel presets)',
       modeCombatTip: 'Game combat kernel, progression envelope & multiplier simulation',
       unwantedEconBadge: (name: string) =>
-        `⚠️ Unrelated Economy Linked: ${name} · Click to Disconnect`,
+        `⚠️ Unrelated Mechanics Linked: ${name} · Click to Disconnect`,
       unwantedEconTip:
-        'This Economy node appears unrelated to your non-combat GDD. Click to remove the edge.',
-      econConnectedBadge: (name: string) => `⚖️ Economy: ${name}`,
-      econConnectedTip: 'Connected to upstream Economy System — click to inspect',
-      disconnectShortTip: 'Disconnect upstream Economy edge',
+        'This Mechanics node appears unrelated to your non-combat GDD. Click to remove the edge.',
+      econConnectedBadge: (name: string) => `⚖️ Mechanics: ${name}`,
+      econConnectedTip: 'Connected to upstream Mechanics Design — click to inspect',
+      disconnectShortTip: 'Disconnect upstream Mechanics edge',
       domainStandaloneBadge: '🌿 Clean GDD Spec Tables Mode (Zero Novel/Combat Pollution)',
       combatStandaloneBadge: 'Standalone Numerical Mode (optional in-economy input)',
       outlineBtn: 'Outline',
@@ -94,7 +94,7 @@ const ui = computed(() => {
       copyMdBtn: 'Copy Markdown',
       copiedToast: 'Copied Markdown',
       syncedToast: 'Synced from GDD',
-      disconnectedToast: 'Disconnected Economy edge',
+      disconnectedToast: 'Disconnected Mechanics edge',
       statTables: (n: number) => `${n} Data Tables`,
       statRows: (n: number) => `${n} Spec Rows`,
       statFormulas: (n: number) => `${n} Core Formulas`,
@@ -121,7 +121,7 @@ const ui = computed(() => {
       defaultNovelTitle: 'Novel · Ch.1',
       defaultNovelStudioTitle: 'Novel Studio',
       defaultGddTitle: 'Game System Plan',
-      defaultEconTitle: 'Economy System'
+      defaultEconTitle: 'Mechanics Design'
     }
   }
   return {
@@ -131,13 +131,13 @@ const ui = computed(() => {
     modeCombatSim: '⚔️ 游戏战斗数值仿真', // cjk-ok
     modeDomainTip: '纯粹面向教学/医疗/仿真/工具类策划案的参数阈值、实训容差与数据字典配表模式', // cjk-ok
     modeCombatTip: '面向战斗与数值成长类项目的牌库内核、战力包络、伤害乘区与掉落仿真模式', // cjk-ok
-    unwantedEconBadge: (name: string) => `⚠️ 误连无关经济节点：${name} · ✂️ 点击一键断开`, // cjk-ok
-    unwantedEconTip: '检测到该经济系统节点属于其他小说/游戏链路，点击即可断开连线并消除污染', // cjk-ok
-    econConnectedBadge: (name: string) => `⚖️ 已连经济系统：${name}`, // cjk-ok
-    econConnectedTip: '已通过连线接入上游「经济系统」节点（点击跳转查看）', // cjk-ok
-    disconnectShortTip: '断开与上游经济系统节点的连线', // cjk-ok
+    unwantedEconBadge: (name: string) => `⚠️ 误连无关机制节点：${name} · ✂️ 点击一键断开`, // cjk-ok
+    unwantedEconTip: '检测到该机制设计节点属于其他小说/游戏链路，点击即可断开连线并消除污染', // cjk-ok
+    econConnectedBadge: (name: string) => `⚖️ 已连机制设计：${name}`, // cjk-ok
+    econConnectedTip: '已通过连线接入上游「机制设计」节点（点击跳转查看）', // cjk-ok
+    disconnectShortTip: '断开与上游机制设计节点的连线', // cjk-ok
     domainStandaloneBadge: '🌿 纯净策划案配表模式（已隔离无关小说与战斗预设）', // cjk-ok
-    combatStandaloneBadge: '独立数值配表模式（可从 in-economy 端口连入经济系统）', // cjk-ok
+    combatStandaloneBadge: '独立数值配表模式（可从 in-economy 端口连入机制设计）', // cjk-ok
     outlineBtn: '小说大纲', // cjk-ok
     outlineTip: '连接或创建下游「小说大纲」节点', // cjk-ok
     novelBtn: '创建小说', // cjk-ok
@@ -151,7 +151,7 @@ const ui = computed(() => {
     copyMdBtn: '复制全套 Markdown', // cjk-ok
     copiedToast: '已复制全套 Markdown 数值表', // cjk-ok
     syncedToast: '已对齐策划案专属数值表', // cjk-ok
-    disconnectedToast: '已断开误连的经济系统连线', // cjk-ok
+    disconnectedToast: '已断开误连的机制设计连线', // cjk-ok
     statTables: (n: number) => `${n} 张核心数值表`, // cjk-ok
     statRows: (n: number) => `${n} 条配置参数`, // cjk-ok
     statFormulas: (n: number) => `${n} 条计分与性能公式`, // cjk-ok
@@ -178,7 +178,7 @@ const ui = computed(() => {
     defaultNovelTitle: '小说 · 第1章', // cjk-ok
     defaultNovelStudioTitle: '创建小说', // cjk-ok
     defaultGddTitle: '策划案生成', // cjk-ok
-    defaultEconTitle: '经济系统' // cjk-ok
+    defaultEconTitle: '机制设计' // cjk-ok
   }
 })
 

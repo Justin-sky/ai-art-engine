@@ -70,7 +70,15 @@ const pipelineUi = computed(() =>
         pushNovelTip: 'Create or connect downstream Novel Generator and open its Dive workbench',
         pushGameSystemBtn: 'GDD Studio',
         pushGameSystemTip:
-          'Create or connect downstream Game System Plan and open its Dive workbench'
+          'Create or connect downstream Game System Plan and open its Dive workbench',
+        complexityTip:
+          'Switch between 3-element Simple Creation Mode and full 10-element Pro Blueprint Mode (auto-converts inline macros ⇄ explicit nodes)',
+        simpleModeBtn: 'Simple Create',
+        proModeBtn: 'Pro Blueprint',
+        playableDeckBtn: 'Playable Deck',
+        playableDeckTip:
+          'Open the Interactive Playable Card & HUD Prototype to test your mechanics like a real card/RPG game',
+        downstreamMenuBtn: 'Downstream'
       }
     : {
         pushNumericalBtn: '数值系统', // cjk-ok
@@ -78,7 +86,14 @@ const pipelineUi = computed(() =>
         pushNovelBtn: '创建小说', // cjk-ok
         pushNovelTip: '自动创建或连接下游「创建小说」节点并进入连载小说工作台', // cjk-ok
         pushGameSystemBtn: '策划案生成', // cjk-ok
-        pushGameSystemTip: '自动创建或连接下游「策划案生成」节点并进入游戏策划案工作台' // cjk-ok
+        pushGameSystemTip: '自动创建或连接下游「策划案生成」节点并进入游戏策划案工作台', // cjk-ok
+        complexityTip:
+          '在「3图元极简创造模式」与「10图元专业蓝图模式」间双向切换（自动折叠/展开底层 Source/Drain/End/Delay/保底闭环）', // cjk-ok
+        simpleModeBtn: '极简创造', // cjk-ok
+        proModeBtn: '专业蓝图', // cjk-ok
+        playableDeckBtn: '卡片试玩', // cjk-ok
+        playableDeckTip: '将画布机制实时转化为可点击的「RPG状态槽 + 技能/合成卡牌」直接上手试玩', // cjk-ok
+        downstreamMenuBtn: '下游联动' // cjk-ok
       }
 )
 
@@ -102,6 +117,9 @@ function loadInitialDoc(): MxDocument {
 }
 
 const store = createMxStudioStore(loadInitialDoc())
+if (store.complexityMode.value === 'simple') {
+  store.switchComplexityMode('simple', true)
+}
 const initialRunsParam = Number(props.node.params.gameEconomyMonteCarloRuns)
 if (initialRunsParam >= 5) {
   store.forecastRuns.value = Math.min(500, Math.round(initialRunsParam))
@@ -110,6 +128,7 @@ provideMxStudioStore(store)
 
 const canvasRef = ref<InstanceType<typeof MxCanvas> | null>(null)
 const exportOpen = ref(false)
+const downstreamOpen = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 let lastPersistedJson = JSON.stringify(store.doc.value)
@@ -549,7 +568,15 @@ function pushAndOpenDownstreamGameSystem(): void {
 </script>
 
 <template>
-  <div class="mx-studio" @click="exportOpen = false">
+  <div
+    class="mx-studio"
+    @click="
+      () => {
+        exportOpen = false
+        downstreamOpen = false
+      }
+    "
+  >
     <!-- ═════════════ ① 顶部导航栏 ═════════════ -->
     <header class="mx-topbar">
       <div class="mx-topbar-left">
@@ -571,8 +598,46 @@ function pushAndOpenDownstreamGameSystem(): void {
         />
       </div>
 
-      <!-- 中央 Build | Scenarios 模式切换胶囊 -->
+      <!-- 中央 Build | Scenarios 模式切换胶囊 + 极简创造 ⇄ 专业蓝图 双向编译切换 -->
       <div class="mx-topbar-center">
+        <div class="mx-mode-pill mx-complexity-pill" :title="pipelineUi.complexityTip">
+          <button
+            type="button"
+            class="mx-mode-btn"
+            :class="{ 'is-active': store.complexityMode.value === 'simple' }"
+            @click="store.switchComplexityMode('simple', true)"
+          >
+            🧩 {{ pipelineUi.simpleModeBtn }}
+          </button>
+          <button
+            type="button"
+            class="mx-mode-btn"
+            :class="{ 'is-active': store.complexityMode.value === 'pro' }"
+            @click="store.switchComplexityMode('pro', true)"
+          >
+            📐 {{ pipelineUi.proModeBtn }}
+          </button>
+        </div>
+
+        <button
+          type="button"
+          class="mx-top-btn"
+          :class="{ 'is-active': store.resultsOpen.value && store.resultsTab.value === 'playable' }"
+          :title="pipelineUi.playableDeckTip"
+          @click="
+            () => {
+              if (store.resultsOpen.value && store.resultsTab.value === 'playable') {
+                store.resultsTab.value = 'results'
+              } else {
+                store.resultsTab.value = 'playable'
+                store.resultsOpen.value = true
+              }
+            }
+          "
+        >
+          🎮 {{ pipelineUi.playableDeckBtn }}
+        </button>
+
         <div class="mx-mode-pill">
           <button
             type="button"
@@ -647,7 +712,16 @@ function pushAndOpenDownstreamGameSystem(): void {
         </button>
 
         <div class="mx-export-wrap" @click.stop>
-          <button type="button" class="mx-top-btn" @click="exportOpen = !exportOpen">
+          <button
+            type="button"
+            class="mx-top-btn"
+            @click="
+              () => {
+                exportOpen = !exportOpen
+                downstreamOpen = false
+              }
+            "
+          >
             ⇣ {{ t('mx.top.export') }} ▾
           </button>
           <div v-if="exportOpen" class="mx-export-menu">
@@ -708,35 +782,58 @@ function pushAndOpenDownstreamGameSystem(): void {
           />
         </div>
 
-        <button
-          v-if="props.hostId"
-          type="button"
-          class="mx-top-btn"
-          :title="pipelineUi.pushNumericalTip"
-          @click="pushAndOpenDownstreamNumerical"
-        >
-          ⚔️ {{ pipelineUi.pushNumericalBtn }}
-        </button>
-
-        <button
-          v-if="props.hostId"
-          type="button"
-          class="mx-top-btn"
-          :title="pipelineUi.pushNovelTip"
-          @click="pushAndOpenDownstreamNovel"
-        >
-          📚 {{ pipelineUi.pushNovelBtn }}
-        </button>
-
-        <button
-          v-if="props.hostId"
-          type="button"
-          class="mx-top-btn"
-          :title="pipelineUi.pushGameSystemTip"
-          @click="pushAndOpenDownstreamGameSystem"
-        >
-          🕹️ {{ pipelineUi.pushGameSystemBtn }}
-        </button>
+        <div v-if="props.hostId" class="mx-export-wrap" @click.stop>
+          <button
+            type="button"
+            class="mx-top-btn"
+            @click="
+              () => {
+                downstreamOpen = !downstreamOpen
+                exportOpen = false
+              }
+            "
+          >
+            🔗 {{ pipelineUi.downstreamMenuBtn }} ▾
+          </button>
+          <div v-if="downstreamOpen" class="mx-export-menu">
+            <button
+              type="button"
+              :title="pipelineUi.pushNumericalTip"
+              @click="
+                () => {
+                  downstreamOpen = false
+                  pushAndOpenDownstreamNumerical()
+                }
+              "
+            >
+              <span>⚔️ {{ pipelineUi.pushNumericalBtn }}</span>
+            </button>
+            <button
+              type="button"
+              :title="pipelineUi.pushNovelTip"
+              @click="
+                () => {
+                  downstreamOpen = false
+                  pushAndOpenDownstreamNovel()
+                }
+              "
+            >
+              <span>📚 {{ pipelineUi.pushNovelBtn }}</span>
+            </button>
+            <button
+              type="button"
+              :title="pipelineUi.pushGameSystemTip"
+              @click="
+                () => {
+                  downstreamOpen = false
+                  pushAndOpenDownstreamGameSystem()
+                }
+              "
+            >
+              <span>🕹️ {{ pipelineUi.pushGameSystemBtn }}</span>
+            </button>
+          </div>
+        </div>
 
         <button type="button" class="mx-top-btn is-run" @click="runGraphNode">
           ⚡ {{ t('mx.top.bakeToNode') }}
@@ -880,7 +977,8 @@ function pushAndOpenDownstreamGameSystem(): void {
   justify-content: center;
 }
 .mx-title-input {
-  min-width: 240px;
+  width: clamp(120px, 15vw, 220px);
+  min-width: 0;
   padding: 4px 8px;
   border: 1px solid transparent;
   border-radius: 5px;

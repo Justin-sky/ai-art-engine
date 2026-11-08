@@ -141,6 +141,22 @@ export interface MxNode {
   botCondition?: string
   /** 是否标记为调平影响因子（Mark as influencer，供 Auto-Balancer 优先选为调优自变量） */
   influencer?: boolean
+  /** 极简创造模式宏：Pool 每步自动产出速率或公式（如 "5", "2|3", "D6"），展开为自动 Source + 资源边 */
+  autoInflow?: string
+  /** 极简创造模式宏：Pool 每步自然消耗/衰减速率或公式（如 "2", "10%"），展开为自动 Drain + 资源边 */
+  autoOutflow?: string
+  /** 极简创造模式宏：Pool / Register 胜负/终局触发条件（如 "<=0", ">=100"），展开为 End 节点 + 状态激活边 */
+  endWhen?: string
+  /** 极简创造模式宏：Converter 动作冷却/延迟生效步数（>0 时展开为出向 Delay 节点） */
+  cooldownSteps?: number
+  /** 极简创造模式宏：Gate 是否启用保底递增（如抽卡/掉落软硬保底） */
+  pityEnabled?: boolean
+  /** 极简创造模式宏：Gate 软保底起始次数（默认 50） */
+  pitySoftStart?: number
+  /** 极简创造模式宏：Gate 硬保底必中次数（默认 80） */
+  pityHardMax?: number
+  /** 极简创造模式宏：Gate 第一分支基础概率百分比（默认取第一条出边百分比或 2） */
+  pityBaseRate?: number
 }
 
 export interface MxEdge {
@@ -273,6 +289,8 @@ export interface MxDocument {
   settings: MxSettings
   /** 通用游戏数值与肉鸽/卡牌/回合制微观仿真工作台配置 */
   workbench?: MxNumericalWorkbench
+  /** 卡片试玩台录制的黄金测试出牌操作序列（随文档持久化保存，供一键回归重放对比） */
+  playableMacroSteps?: MxPlayableMacroStep[]
 }
 
 // ───────────────────────────── 随机数 ─────────────────────────────
@@ -1377,6 +1395,8 @@ export interface MxRuntimeState {
   poolTokens?: Record<string, MxPoolTokenStackItem[]>
   /** 运行时采样的 Custom Variables 参数值 */
   runtimeParams?: Record<string, number>
+  /** 当前步内已执行的即时交互卡牌动作计数（供同回合连续出牌保持独立确定性随机种子） */
+  subActionCount?: number
 }
 
 export interface MxRunOptions {
@@ -1387,6 +1407,8 @@ export interface MxRunOptions {
   interactions?: string[]
   /** 内部前瞻试算（Lookahead Rollout）时跳过 Agent 递归调用 */
   skipAgents?: boolean
+  /** 仅即时执行 interactions 指定的卡牌动作与级联，不推进全局步数、不触发每步自动节点与延时释放 */
+  instantOnly?: boolean
 }
 
 function capOf(node: MxNode): number {
@@ -3397,10 +3419,831 @@ function getStateEdgeOriginValue(
   return state.values[stateEdge.from] ?? 0
 }
 
-export function createMxInitialState(
+// ───────── 极简创造模式 (Simple Creation Mode) ⇄ 专业蓝图模式 (Pro Blueprint Mode) 双向编译器 ─────────
+
+/**
+ * 规范化极简终局触发条件（如 "0" -> "<=0", "100" -> ">=100", "<=0" -> "<=0"）。
+ */
+export function normalizeMxEndWhenFormula(raw: string | undefined): string {
+  const s = (raw ?? '').trim()
+  if (!s) return ''
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) {
+    const n = Number(s)
+    return n <= 0 ? `<=${s}` : `>=${s}`
+  }
+  return s
+}
+
+/**
+ * 判断单个节点是否挂载了任何尚未展开的极简模式内联宏属性。
+ */
+export function hasMxNodeSimpleMacros(node: MxNode): boolean {
+  if (node.kind === 'pool') {
+    if (
+      node.autoInflow?.trim() ||
+      node.autoOutflow?.trim() ||
+      node.endWhen?.trim() ||
+      Number(node.cooldownSteps ?? 0) > 0
+    ) {
+      return true
+    }
+  } else if (node.kind === 'register') {
+    if (node.endWhen?.trim()) return true
+  } else if (node.kind === 'converter' || node.kind === 'trader') {
+    if (
+      node.autoInflow?.trim() ||
+      node.autoOutflow?.trim() ||
+      Number(node.cooldownSteps ?? 0) > 0
+    ) {
+      return true
+    }
+  } else if (node.kind === 'gate') {
+    if (node.autoInflow?.trim() || node.pityEnabled) return true
+  }
+  return false
+}
+
+/**
+ * 判断整个文档是否包含极简模式内联宏（autoInflow / autoOutflow / endWhen / cooldownSteps / pityEnabled）。
+ */
+export function hasMxSimpleMacros(doc: MxDocument): boolean {
+  for (let i = 0; i < doc.nodes.length; i++) {
+    if (hasMxNodeSimpleMacros(doc.nodes[i]!)) return true
+  }
+  return false
+}
+
+/**
+ * 将极简模式的内联宏（autoInflow、autoOutflow、endWhen、cooldownSteps、pityEnabled）
+ * 确定性地展开为完整的专业 Machinations 图元（Source / Drain / End / Delay / 保底计数器闭环）。
+ * 支持仅展开指定节点（`options.onlyNodeId`）或展开整张图。
+ */
+export function expandMxSimpleMacrosToPro(
   doc: MxDocument,
+  options: { onlyNodeId?: string } = {}
+): MxDocument {
+  if (!options.onlyNodeId && !hasMxSimpleMacros(doc)) {
+    return doc
+  }
+
+  const nextNodes: MxNode[] = doc.nodes.map((n) => ({ ...n }))
+  const nextEdges: MxEdge[] = doc.edges.map((e) => ({ ...e }))
+  const usedNodeIds = new Set(nextNodes.map((n) => n.id))
+  const usedEdgeIds = new Set(nextEdges.map((e) => e.id))
+
+  const allocNodeId = (baseId: string): string => {
+    const clean = baseId.replace(/[^A-Za-z0-9_]/g, '_')
+    if (!usedNodeIds.has(clean)) {
+      usedNodeIds.add(clean)
+      return clean
+    }
+    let idx = 2
+    while (usedNodeIds.has(`${clean}_${idx}`)) idx++
+    const id = `${clean}_${idx}`
+    usedNodeIds.add(id)
+    return id
+  }
+
+  const allocEdgeId = (baseId: string): string => {
+    const clean = baseId.replace(/[^A-Za-z0-9_]/g, '_')
+    if (!usedEdgeIds.has(clean)) {
+      usedEdgeIds.add(clean)
+      return clean
+    }
+    let idx = 2
+    while (usedEdgeIds.has(`${clean}_${idx}`)) idx++
+    const id = `${clean}_${idx}`
+    usedEdgeIds.add(id)
+    return id
+  }
+
+  const placeWithoutOverlap = (prefX: number, prefY: number): { x: number; y: number } => {
+    const base = { x: Math.round(prefX), y: Math.round(prefY) }
+    const isFree = (cx: number, cy: number): boolean =>
+      !nextNodes.some(
+        (ex) => ex.kind !== 'note' && Math.abs(ex.x - cx) < 76 && Math.abs(ex.y - cy) < 58
+      )
+    if (isFree(base.x, base.y)) return base
+    const offsets: Array<[number, number]> = [
+      [0, -72],
+      [0, 72],
+      [-90, 0],
+      [90, 0],
+      [-90, -72],
+      [90, -72],
+      [-90, 72],
+      [90, 72],
+      [0, -144],
+      [0, 144]
+    ]
+    for (const [dx, dy] of offsets) {
+      if (isFree(base.x + dx, base.y + dy)) {
+        return { x: base.x + dx, y: base.y + dy }
+      }
+    }
+    return base
+  }
+
+  const targetList = options.onlyNodeId
+    ? nextNodes.filter((n) => n.id === options.onlyNodeId)
+    : [...nextNodes]
+
+  const COND_GUARD_RE =
+    /^if\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*(<=|>=|==|!=|<>|<|>)\s*(-?\d+(?:\.\d+)?)\s*,\s*(.+)\s*,\s*0\s*\)(?:\|(.+))?$/
+
+  for (const n of targetList) {
+    const hasCjk = /[^\x00-\x7f]/.test(n.label)
+    const createdInflowEdgeIds = new Set<string>()
+    const createdOutflowEdgeIds = new Set<string>()
+
+    // 1. Pool / Gate / Converter 每步自动产出 (autoInflow) -> Source(automatic) + Resource Edge (+ 可选 State Activator)
+    if (
+      (n.kind === 'pool' || n.kind === 'gate' || n.kind === 'converter') &&
+      n.autoInflow?.trim()
+    ) {
+      const inFormula = n.autoInflow.trim()
+      const srcId = allocNodeId(`src_in_${n.id}`)
+      const edgeId = allocEdgeId(`e_in_${n.id}`)
+      createdInflowEdgeIds.add(edgeId)
+      const pos = placeWithoutOverlap(n.x - 135, n.y - 46)
+      nextNodes.push({
+        id: srcId,
+        kind: 'source',
+        label: hasCjk ? `${n.label}产出` : `${n.label} Inflow`, // cjk-ok
+        x: pos.x,
+        y: pos.y,
+        trigger: 'automatic',
+        ...(n.resourceId ? { resourceId: n.resourceId } : {}),
+        ...(n.color ? { color: n.color } : {}),
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      const condMatch = COND_GUARD_RE.exec(inFormula)
+      if (condMatch && usedNodeIds.has(condMatch[1]!)) {
+        const [, condNodeId, op, val, rateExpr, ivPart] = condMatch
+        const cleanRate = ivPart?.trim() ? `${rateExpr!.trim()}|${ivPart.trim()}` : rateExpr!.trim()
+        nextEdges.push({
+          id: edgeId,
+          kind: 'resource',
+          from: srcId,
+          to: n.id,
+          formula: cleanRate
+        })
+        nextEdges.push({
+          id: allocEdgeId(`e_in_act_${n.id}`),
+          kind: 'state',
+          from: condNodeId!,
+          to: srcId,
+          formula: `${op}${val}`
+        })
+      } else {
+        nextEdges.push({
+          id: edgeId,
+          kind: 'resource',
+          from: srcId,
+          to: n.id,
+          formula: inFormula
+        })
+      }
+      delete n.autoInflow
+    }
+
+    // 2. Pool / Converter 每步自然消耗/衰减 (autoOutflow) -> Drain + Resource Edge (+ 可选 State Activator)
+    if ((n.kind === 'pool' || n.kind === 'converter') && n.autoOutflow?.trim()) {
+      const outFormula = n.autoOutflow.trim()
+      const drnId = allocNodeId(`drn_out_${n.id}`)
+      const edgeId = allocEdgeId(`e_out_${n.id}`)
+      createdOutflowEdgeIds.add(edgeId)
+      const pos = placeWithoutOverlap(n.x + 135, n.y - 46)
+      nextNodes.push({
+        id: drnId,
+        kind: 'drain',
+        label: hasCjk ? `${n.label}消耗` : `${n.label} Outflow`, // cjk-ok
+        x: pos.x,
+        y: pos.y,
+        trigger: n.kind === 'converter' ? 'passive' : 'automatic',
+        pullMode: 'pull_any',
+        ...(n.color ? { color: n.color } : {}),
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      const condMatch = COND_GUARD_RE.exec(outFormula)
+      if (condMatch && usedNodeIds.has(condMatch[1]!)) {
+        const [, condNodeId, op, val, rateExpr, ivPart] = condMatch
+        const cleanRate = ivPart?.trim() ? `${rateExpr!.trim()}|${ivPart.trim()}` : rateExpr!.trim()
+        nextEdges.push({
+          id: edgeId,
+          kind: 'resource',
+          from: n.id,
+          to: drnId,
+          formula: cleanRate
+        })
+        nextEdges.push({
+          id: allocEdgeId(`e_out_act_${n.id}`),
+          kind: 'state',
+          from: condNodeId!,
+          to: drnId,
+          formula: `${op}${val}`
+        })
+      } else {
+        nextEdges.push({
+          id: edgeId,
+          kind: 'resource',
+          from: n.id,
+          to: drnId,
+          formula: outFormula
+        })
+      }
+      delete n.autoOutflow
+    }
+
+    // 3. Pool / Register 胜负/终局触发条件 (endWhen) -> End + State Activator Edge
+    if ((n.kind === 'pool' || n.kind === 'register') && n.endWhen?.trim()) {
+      const condFormula = normalizeMxEndWhenFormula(n.endWhen)
+      const endId = allocNodeId(`end_when_${n.id}`)
+      const edgeId = allocEdgeId(`e_end_${n.id}`)
+      const pos = placeWithoutOverlap(n.x + 135, n.y + 52)
+      nextNodes.push({
+        id: endId,
+        kind: 'end',
+        label: `${n.label} ${condFormula}`,
+        x: pos.x,
+        y: pos.y,
+        trigger: 'passive',
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      nextEdges.push({
+        id: edgeId,
+        kind: 'state',
+        from: n.id,
+        to: endId,
+        formula: condFormula
+      })
+      delete n.endWhen
+    }
+
+    // 4. Converter / Trader / Pool 冷却/物流延迟步数 (cooldownSteps) -> 串联 Delay 节点
+    if (
+      (n.kind === 'converter' || n.kind === 'trader' || n.kind === 'pool') &&
+      Number(n.cooldownSteps ?? 0) > 0
+    ) {
+      const cd = Math.max(1, Math.round(Number(n.cooldownSteps)))
+      const outResEdges = nextEdges.filter(
+        (e) =>
+          e.kind === 'resource' &&
+          !e.targetEdgeId &&
+          e.from === n.id &&
+          !createdOutflowEdgeIds.has(e.id)
+      )
+      const inResSources = new Set(
+        nextEdges
+          .filter(
+            (e) =>
+              e.kind === 'resource' &&
+              !e.targetEdgeId &&
+              e.to === n.id &&
+              !createdInflowEdgeIds.has(e.id)
+          )
+          .map((e) => e.from)
+      )
+      const feedbackEdges =
+        outResEdges.length > 1 ? outResEdges.filter((e) => inResSources.has(e.to)) : []
+      let targetEdges = feedbackEdges.length > 0 ? feedbackEdges : outResEdges
+      let insertOnIncoming = false
+      if (targetEdges.length === 0 && n.kind === 'pool') {
+        targetEdges = nextEdges.filter(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === n.id
+        )
+        insertOnIncoming = true
+      }
+
+      targetEdges.forEach((oe, idx) => {
+        const peer = nextNodes.find((x) => x.id === (insertOnIncoming ? oe.from : oe.to))
+        const dlyId = allocNodeId(
+          targetEdges.length === 1 ? `dly_cd_${n.id}` : `dly_cd_${n.id}_${idx + 1}`
+        )
+        const relEdgeId = allocEdgeId(`e_cd_rel_${oe.id}`)
+        const prefX = peer
+          ? Math.round((n.x + peer.x) / 2)
+          : Math.round(n.x + (insertOnIncoming ? -100 : 100))
+        const prefY = peer ? Math.round((n.y + peer.y) / 2 - 36) : Math.round(n.y - 36)
+        const pos = placeWithoutOverlap(prefX, prefY)
+        nextNodes.push({
+          id: dlyId,
+          kind: 'delay',
+          label: `${n.label} CD`,
+          x: pos.x,
+          y: pos.y,
+          trigger: 'passive',
+          delaySteps: cd,
+          ...(n.layerId ? { layerId: n.layerId } : {})
+        })
+        const origTo = oe.to
+        oe.to = dlyId
+        nextEdges.push({
+          id: relEdgeId,
+          kind: 'resource',
+          from: dlyId,
+          to: origTo,
+          formula: n.kind === 'pool' ? 'all' : '1',
+          ...(oe.resourceId ? { resourceId: oe.resourceId } : {})
+        })
+      })
+      delete n.cooldownSteps
+    }
+
+    // 5. Gate 抽卡/掉落软硬保底递增宏 (pityEnabled) -> 4 节点软硬保底动态概率闭环
+    if (n.kind === 'gate' && n.pityEnabled) {
+      const outResEdges = nextEdges.filter(
+        (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === n.id
+      )
+      const soft = Math.max(1, Math.round(Number(n.pitySoftStart ?? 50)))
+      const hard = Math.max(soft, Math.round(Number(n.pityHardMax ?? 80)))
+      let baseRate = Number(n.pityBaseRate ?? 0)
+      if (!(baseRate > 0) && outResEdges[0]) {
+        const m = /^(\d+(?:\.\d+)?)\s*%?$/.exec(outResEdges[0].formula.trim())
+        if (m) baseRate = Number(m[1])
+      }
+      if (!(baseRate > 0) || baseRate >= 100) baseRate = 2
+
+      const stepSpan = Math.max(1, hard - soft + 1)
+      const stepInc = Math.round(((100 - baseRate) / stepSpan) * 100) / 100
+      const srcStepId = allocNodeId(`src_pity_step_${n.id}`)
+      const poolCntId = allocNodeId(`pool_pity_${n.id}`)
+      const regRateId = allocNodeId(`reg_pity_rate_${n.id}`)
+      const drnResetId = allocNodeId(`drn_pity_reset_${n.id}`)
+
+      const posSrc = placeWithoutOverlap(n.x - 125, n.y + 112)
+      nextNodes.push({
+        id: srcStepId,
+        kind: 'source',
+        label: hasCjk ? '垫抽+1' : 'Pity +1', // cjk-ok
+        x: posSrc.x,
+        y: posSrc.y,
+        trigger: 'passive',
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      const posPool = placeWithoutOverlap(n.x, n.y + 112)
+      nextNodes.push({
+        id: poolCntId,
+        kind: 'pool',
+        label: hasCjk ? `${n.label}保底计数` : `${n.label} Pity`, // cjk-ok
+        x: posPool.x,
+        y: posPool.y,
+        trigger: 'passive',
+        initial: 0,
+        capacity: hard,
+        tracked: true,
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      const posReg = placeWithoutOverlap(n.x - 115, n.y + 46)
+      nextNodes.push({
+        id: regRateId,
+        kind: 'register',
+        label: hasCjk ? `${n.label}动态概率%` : `${n.label} Pity %`, // cjk-ok
+        x: posReg.x,
+        y: posReg.y,
+        trigger: 'passive',
+        formula: `if(a >= ${hard - 1}, 100, if(a >= ${soft - 1}, min(100, round(${baseRate} + (a - ${soft - 2}) * ${stepInc})), ${baseRate}))`,
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+      const posDrn = placeWithoutOverlap(n.x + 125, n.y + 112)
+      nextNodes.push({
+        id: drnResetId,
+        kind: 'drain',
+        label: hasCjk ? '出金重置' : 'Pity Reset', // cjk-ok
+        x: posDrn.x,
+        y: posDrn.y,
+        trigger: 'passive',
+        pullMode: 'pull_any',
+        ...(n.layerId ? { layerId: n.layerId } : {})
+      })
+
+      nextEdges.push(
+        {
+          id: allocEdgeId(`e_pity_trig_${n.id}`),
+          kind: 'state',
+          from: n.id,
+          to: srcStepId,
+          formula: '*'
+        },
+        {
+          id: allocEdgeId(`e_pity_inc_${n.id}`),
+          kind: 'resource',
+          from: srcStepId,
+          to: poolCntId,
+          formula: '1'
+        },
+        {
+          id: allocEdgeId(`e_pity_to_reg_${n.id}`),
+          kind: 'state',
+          from: poolCntId,
+          to: regRateId,
+          formula: '+1'
+        },
+        {
+          id: allocEdgeId(`e_pity_drain_${n.id}`),
+          kind: 'resource',
+          from: poolCntId,
+          to: drnResetId,
+          formula: 'all'
+        }
+      )
+
+      if (outResEdges[0]) {
+        const hitEdge = outResEdges[0]
+        hitEdge.formula = `${baseRate}%`
+        nextEdges.push({
+          id: allocEdgeId(`e_pity_ov_${n.id}`),
+          kind: 'state',
+          from: regRateId,
+          to: n.id,
+          targetEdgeId: hitEdge.id,
+          formula: '='
+        })
+        const hitTarget = nextNodes.find((x) => x.id === hitEdge.to)
+        if (hitTarget) {
+          if (hitTarget.kind === 'pool' && !hitTarget.triggerOn) {
+            hitTarget.triggerOn = 'increase'
+          }
+          nextEdges.push({
+            id: allocEdgeId(`e_pity_hit_rst_${n.id}`),
+            kind: 'state',
+            from: hitTarget.id,
+            to: drnResetId,
+            formula: '*'
+          })
+        }
+        if (outResEdges.length === 2) {
+          outResEdges[1]!.formula = `max(0, 100 - ${regRateId})`
+        }
+      } else {
+        nextEdges.push({
+          id: allocEdgeId(`e_pity_ov_${n.id}`),
+          kind: 'state',
+          from: regRateId,
+          to: n.id,
+          formula: '='
+        })
+      }
+
+      delete n.pityEnabled
+      delete n.pitySoftStart
+      delete n.pityHardMax
+      delete n.pityBaseRate
+    }
+  }
+
+  return {
+    ...doc,
+    nodes: nextNodes,
+    edges: nextEdges
+  }
+}
+
+/**
+ * 将专业蓝图模式（Pro Blueprint Mode）中的叶子级 Source -> Pool/Gate/Converter、Pool/Converter -> Drain、Pool/Register -> End、
+ * Converter/Trader/Pool -> Delay 以及 Gate 软硬保底闭环自动折叠回极简创造模式的内联宏属性（autoInflow / autoOutflow / endWhen / cooldownSteps / pityEnabled）。
+ */
+export function collapseMxProToSimple(doc: MxDocument): {
+  doc: MxDocument
+  foldedCount: number
+} {
+  const nextNodes: MxNode[] = doc.nodes.map((n) => ({ ...n }))
+  let nextEdges: MxEdge[] = doc.edges.map((e) => ({ ...e }))
+  const byId = new Map(nextNodes.map((n) => [n.id, n]))
+  const removedNodeIds = new Set<string>()
+  const removedEdgeIds = new Set<string>()
+  let foldedCount = 0
+
+  // 1. 折叠 Gate 软硬保底闭环 (src_pity_step_ / pool_pity_ / reg_pity_rate_ / drn_pity_reset_)
+  for (const gate of nextNodes) {
+    if (gate.kind !== 'gate' || gate.pityEnabled) continue
+    const poolCnt = nextNodes.find(
+      (n) => !removedNodeIds.has(n.id) && n.id.startsWith(`pool_pity_${gate.id}`)
+    )
+    const regRate = nextNodes.find(
+      (n) => !removedNodeIds.has(n.id) && n.id.startsWith(`reg_pity_rate_${gate.id}`)
+    )
+    const srcStep = nextNodes.find(
+      (n) => !removedNodeIds.has(n.id) && n.id.startsWith(`src_pity_step_${gate.id}`)
+    )
+    const drnReset = nextNodes.find(
+      (n) => !removedNodeIds.has(n.id) && n.id.startsWith(`drn_pity_reset_${gate.id}`)
+    )
+    if (!poolCnt || !regRate) continue
+
+    let hard = poolCnt.capacity && poolCnt.capacity > 0 ? poolCnt.capacity : 80
+    let soft = Math.max(1, Math.round(hard * 0.65))
+    let baseRate = 2
+    const m =
+      /if\(\s*a\s*>=\s*(\d+)\s*,\s*100\s*,\s*if\(\s*a\s*>=\s*(\d+)\s*,\s*(?:min\(100,\s*)?round\(\s*(\d+(?:\.\d+)?)/i.exec(
+        regRate.formula ?? ''
+      )
+    if (m) {
+      hard = Number(m[1]) + 1
+      soft = Number(m[2]) + 1
+      baseRate = Number(m[3])
+    }
+
+    gate.pityEnabled = true
+    gate.pitySoftStart = soft
+    gate.pityHardMax = hard
+    gate.pityBaseRate = baseRate
+
+    const outRes = nextEdges.filter(
+      (e) =>
+        !removedEdgeIds.has(e.id) && e.kind === 'resource' && !e.targetEdgeId && e.from === gate.id
+    )
+    if (outRes[0]) {
+      outRes[0].formula = `${baseRate}%`
+    }
+    if (outRes.length === 2 && outRes[1]!.formula.includes(regRate.id)) {
+      outRes[1]!.formula = `${Math.max(0, Math.round((100 - baseRate) * 100) / 100)}%`
+    }
+
+    removedNodeIds.add(poolCnt.id)
+    removedNodeIds.add(regRate.id)
+    if (srcStep) removedNodeIds.add(srcStep.id)
+    if (drnReset) removedNodeIds.add(drnReset.id)
+    for (const e of nextEdges) {
+      if (
+        removedNodeIds.has(e.from) ||
+        removedNodeIds.has(e.to) ||
+        (e.targetEdgeId && outRes[0] && e.targetEdgeId === outRes[0].id && e.from === regRate.id)
+      ) {
+        removedEdgeIds.add(e.id)
+      }
+    }
+    foldedCount++
+  }
+
+  // 2. 折叠单进单出 Delay 冷却/在途管线节点 -> 宿主节点 cooldownSteps
+  for (const dly of nextNodes) {
+    if (
+      removedNodeIds.has(dly.id) ||
+      dly.kind !== 'delay' ||
+      dly.formula?.trim() ||
+      !(Number(dly.delaySteps ?? 0) > 0)
+    ) {
+      continue
+    }
+    const dlyIn = nextEdges.filter(
+      (e) => !removedEdgeIds.has(e.id) && e.to === dly.id && !e.targetEdgeId
+    )
+    const dlyOut = nextEdges.filter(
+      (e) => !removedEdgeIds.has(e.id) && e.from === dly.id && !e.targetEdgeId
+    )
+    if (dlyIn.length !== 1 || dlyOut.length !== 1) continue
+    const ie = dlyIn[0]!
+    const oe = dlyOut[0]!
+    if (ie.kind !== 'resource' || oe.kind !== 'resource') continue
+    const outF = (oe.formula || '1').trim().toLowerCase()
+    if (outF !== '1' && outF !== 'all') continue
+    if (
+      nextEdges.some(
+        (e) => !removedEdgeIds.has(e.id) && (e.targetEdgeId === ie.id || e.targetEdgeId === oe.id)
+      )
+    ) {
+      continue
+    }
+
+    const u = byId.get(ie.from)
+    const v = byId.get(oe.to)
+    if (!u || !v || removedNodeIds.has(u.id) || removedNodeIds.has(v.id)) continue
+    const steps = Math.max(1, Math.round(Number(dly.delaySteps)))
+
+    let host: MxNode | null = null
+    if (u.kind === 'converter' || u.kind === 'trader' || u.kind === 'pool') {
+      host = u
+    } else if (u.kind === 'source' && v.kind === 'pool') {
+      host = v
+    }
+    if (!host) continue
+    if (Number(host.cooldownSteps ?? 0) > 0 && Number(host.cooldownSteps) !== steps) continue
+
+    host.cooldownSteps = steps
+    ie.to = oe.to
+    removedNodeIds.add(dly.id)
+    removedEdgeIds.add(oe.id)
+    foldedCount++
+  }
+
+  // 3. 折叠叶子自动 Source -> Pool / Gate / Converter (autoInflow，支持可选单条状态激活线与多源累加)
+  for (const src of nextNodes) {
+    if (removedNodeIds.has(src.id) || src.kind !== 'source') continue
+    if ((src.trigger ?? 'automatic') !== 'automatic') continue
+    const connected = nextEdges.filter(
+      (e) => !removedEdgeIds.has(e.id) && (e.from === src.id || e.to === src.id)
+    )
+    const outRes = connected.filter(
+      (e) => e.from === src.id && e.kind === 'resource' && !e.targetEdgeId && !e.resourceFilter
+    )
+    const inStates = connected.filter(
+      (e) => e.to === src.id && e.kind === 'state' && !e.targetEdgeId
+    )
+    if (outRes.length !== 1 || inStates.length > 1) continue
+    if (connected.length !== outRes.length + inStates.length) continue
+
+    const oe = outRes[0]!
+    if (nextEdges.some((se) => !removedEdgeIds.has(se.id) && se.targetEdgeId === oe.id)) {
+      continue
+    }
+    const dst = byId.get(oe.to)
+    if (
+      !dst ||
+      removedNodeIds.has(dst.id) ||
+      (dst.kind !== 'pool' && dst.kind !== 'gate' && dst.kind !== 'converter')
+    ) {
+      continue
+    }
+    if ((dst.kind === 'gate' || dst.kind === 'converter') && dst.autoInflow?.trim()) continue
+    if (src.resourceId && dst.resourceId && src.resourceId !== dst.resourceId) continue
+
+    const baseF = (oe.formula || '1').trim()
+    let rateCore = baseF
+    let ivPart = ''
+    const pipeIdx = baseF.indexOf('|')
+    if (pipeIdx >= 0) {
+      rateCore = baseF.slice(0, pipeIdx).trim() || '1'
+      ivPart = baseF.slice(pipeIdx + 1).trim()
+    } else if (oe.interval?.trim() && oe.interval.trim() !== '1') {
+      ivPart = oe.interval.trim()
+    }
+
+    let termFormula = ivPart ? `${rateCore}|${ivPart}` : rateCore
+    if (inStates.length === 1) {
+      const se = inStates[0]!
+      if (nextEdges.some((x) => !removedEdgeIds.has(x.id) && x.targetEdgeId === se.id)) continue
+      const condRaw = (se.formula ?? '').trim()
+      const sp = parseMxStateFormula(condRaw)
+      if (sp.type !== 'activator') continue
+      if (ivPart && dst.autoInflow?.trim()) continue
+      termFormula = ivPart
+        ? `if(${se.from} ${condRaw}, ${rateCore}, 0)|${ivPart}`
+        : `if(${se.from} ${condRaw}, ${rateCore}, 0)`
+      removedEdgeIds.add(se.id)
+    } else if (ivPart && dst.autoInflow?.trim()) {
+      continue
+    }
+
+    if (dst.autoInflow?.trim()) {
+      if (dst.autoInflow.includes('|')) continue
+      dst.autoInflow = `${dst.autoInflow.trim()} + ${termFormula}`
+    } else {
+      dst.autoInflow = termFormula
+    }
+    removedNodeIds.add(src.id)
+    removedEdgeIds.add(oe.id)
+    foldedCount++
+  }
+
+  // 4. 折叠叶子 Drain <- Pool / Converter (autoOutflow，支持可选单条状态激活线)
+  for (const drn of nextNodes) {
+    if (removedNodeIds.has(drn.id) || drn.kind !== 'drain') continue
+    const connected = nextEdges.filter(
+      (e) => !removedEdgeIds.has(e.id) && (e.from === drn.id || e.to === drn.id)
+    )
+    const inRes = connected.filter(
+      (e) => e.to === drn.id && e.kind === 'resource' && !e.targetEdgeId && !e.resourceFilter
+    )
+    const inStates = connected.filter(
+      (e) => e.to === drn.id && e.kind === 'state' && !e.targetEdgeId
+    )
+    if (inRes.length !== 1 || inStates.length > 1) continue
+    if (connected.length !== inRes.length + inStates.length) continue
+
+    const ie = inRes[0]!
+    if (nextEdges.some((se) => !removedEdgeIds.has(se.id) && se.targetEdgeId === ie.id)) {
+      continue
+    }
+    const srcNode = byId.get(ie.from)
+    if (
+      !srcNode ||
+      removedNodeIds.has(srcNode.id) ||
+      (srcNode.kind !== 'pool' && srcNode.kind !== 'converter') ||
+      srcNode.autoOutflow?.trim()
+    ) {
+      continue
+    }
+    if (srcNode.kind === 'pool' && (drn.trigger ?? 'automatic') !== 'automatic') continue
+
+    const baseF = (ie.formula || '1').trim()
+    let rateCore = baseF
+    let ivPart = ''
+    const pipeIdx = baseF.indexOf('|')
+    if (pipeIdx >= 0) {
+      rateCore = baseF.slice(0, pipeIdx).trim() || '1'
+      ivPart = baseF.slice(pipeIdx + 1).trim()
+    } else if (ie.interval?.trim() && ie.interval.trim() !== '1') {
+      ivPart = ie.interval.trim()
+    }
+
+    let termFormula = ivPart ? `${rateCore}|${ivPart}` : rateCore
+    if (inStates.length === 1) {
+      const se = inStates[0]!
+      if (nextEdges.some((x) => !removedEdgeIds.has(x.id) && x.targetEdgeId === se.id)) continue
+      const condRaw = (se.formula ?? '').trim()
+      const sp = parseMxStateFormula(condRaw)
+      if (sp.type !== 'activator') continue
+      termFormula = ivPart
+        ? `if(${se.from} ${condRaw}, ${rateCore}, 0)|${ivPart}`
+        : `if(${se.from} ${condRaw}, ${rateCore}, 0)`
+      removedEdgeIds.add(se.id)
+    }
+
+    srcNode.autoOutflow = termFormula
+    removedNodeIds.add(drn.id)
+    removedEdgeIds.add(ie.id)
+    foldedCount++
+  }
+
+  // 5. 折叠叶子 Pool / Register -> End (endWhen)
+  for (const endNode of nextNodes) {
+    if (removedNodeIds.has(endNode.id) || endNode.kind !== 'end') continue
+    const connected = nextEdges.filter(
+      (e) => !removedEdgeIds.has(e.id) && (e.from === endNode.id || e.to === endNode.id)
+    )
+    if (connected.length !== 1) continue
+    const se = connected[0]!
+    if (se.to !== endNode.id || se.kind !== 'state' || se.targetEdgeId) continue
+    if (nextEdges.some((x) => !removedEdgeIds.has(x.id) && x.targetEdgeId === se.id)) continue
+    const origin = byId.get(se.from)
+    if (
+      !origin ||
+      removedNodeIds.has(origin.id) ||
+      (origin.kind !== 'pool' && origin.kind !== 'register') ||
+      origin.endWhen?.trim()
+    ) {
+      continue
+    }
+
+    const rawCond = endNode.formula?.trim()
+      ? endNode.formula.trim().replace(/^a\s*(?=[<>=!])/, '')
+      : (se.formula ?? '').trim()
+    if (!rawCond) continue
+    const sp = parseMxStateFormula(rawCond)
+    const isSimpleCond =
+      sp.type === 'activator' ||
+      sp.type === 'range' ||
+      (sp.type === 'expr' && /^(?:>=|<=|==|!=|<>|>|<|=)/.test(rawCond))
+    if (!isSimpleCond) continue
+
+    origin.endWhen = rawCond
+    removedNodeIds.add(endNode.id)
+    removedEdgeIds.add(se.id)
+    foldedCount++
+  }
+
+  nextEdges = nextEdges.filter(
+    (e) =>
+      !removedEdgeIds.has(e.id) &&
+      !removedNodeIds.has(e.from) &&
+      (e.targetEdgeId ? !removedEdgeIds.has(e.targetEdgeId) : !removedNodeIds.has(e.to))
+  )
+
+  return {
+    doc: {
+      ...doc,
+      nodes: nextNodes.filter((n) => !removedNodeIds.has(n.id)),
+      edges: nextEdges
+    },
+    foldedCount
+  }
+}
+
+const simpleMacroSimCache = new WeakMap<MxDocument, { sig: string; expanded: MxDocument }>()
+
+function computeSimpleMacroDocSig(doc: MxDocument): string {
+  let s = `${doc.nodes.length}:${doc.edges.length}:${doc.params.length}`
+  for (let i = 0; i < doc.nodes.length; i++) {
+    const n = doc.nodes[i]!
+    s += `|${n.id},${n.kind},${n.initial ?? ''},${n.capacity ?? ''},${n.trigger ?? ''},${n.pullMode ?? ''},${n.gateMode ?? ''},${n.formula ?? ''},${n.autoInflow ?? ''},${n.autoOutflow ?? ''},${n.endWhen ?? ''},${n.cooldownSteps ?? ''},${n.pityEnabled ? 1 : 0},${n.pitySoftStart ?? ''},${n.pityHardMax ?? ''},${n.pityBaseRate ?? ''}`
+  }
+  for (let i = 0; i < doc.edges.length; i++) {
+    const e = doc.edges[i]!
+    s += `|${e.id},${e.from},${e.to},${e.formula},${e.interval ?? ''},${e.targetEdgeId ?? ''}`
+  }
+  return s
+}
+
+/**
+ * 获取供仿真引擎（stepMxSimulation / createMxInitialState / evaluateMxEdgeRuntimeGates）直接执行的展开态文档。
+ * 若文档未含极简内联宏，零开销直接返回原文档；若含内联宏，则透明展开并按签名缓存。
+ */
+export function getMxSimulationDoc(doc: MxDocument): MxDocument {
+  if (!hasMxSimpleMacros(doc)) return doc
+  const sig = computeSimpleMacroDocSig(doc)
+  const cached = simpleMacroSimCache.get(doc)
+  if (cached && cached.sig === sig) return cached.expanded
+  const expanded = expandMxSimpleMacrosToPro(doc)
+  simpleMacroSimCache.set(doc, { sig, expanded })
+  return expanded
+}
+
+export function createMxInitialState(
+  rawDoc: MxDocument,
   options: { params?: Record<string, number>; seed?: number; scenarioId?: string } = {}
 ): MxRuntimeState {
+  const doc = getMxSimulationDoc(rawDoc)
   const gIdx = getMxGraphIndex(doc)
   const values: Record<string, number> = {}
   const buffers: Record<string, MxBufferItem[]> = {}
@@ -3795,7 +4638,7 @@ export interface MxEdgeRuntimeGateSnapshot {
  * 供实时画布与 SVG/PNG 架构图导出统一渲染运行态开关状态、`→ 0` 锁止提示与动态公式值。
  */
 export function evaluateMxEdgeRuntimeGates(
-  doc: MxDocument,
+  rawDoc: MxDocument,
   options: {
     values?: Record<string, number> | null
     poolTokens?: Record<string, MxPoolTokenStackItem[]> | null
@@ -3803,6 +4646,7 @@ export function evaluateMxEdgeRuntimeGates(
     params?: Record<string, number>
   } = {}
 ): MxEdgeRuntimeGateSnapshot {
+  const doc = getMxSimulationDoc(rawDoc)
   const dormantStateEdgeIds = new Set<string>()
   const gatedOffEdgeIds = new Set<string>()
   const modifiedEdgeFormulas = new Map<string, string>()
@@ -5397,26 +6241,33 @@ export function generateMxAgentWithAi(
   }
 }
 export function stepMxSimulation(
-  doc: MxDocument,
+  rawDoc: MxDocument,
   prev: MxRuntimeState,
   options: MxRunOptions = {}
 ): { state: MxRuntimeState; events: MxEvent[] } {
-  const step = prev.step + 1
-  const rng = createMxRng((options.seed ?? doc.settings.seed ?? 1) * 7919 + step * 104729)
+  const doc = getMxSimulationDoc(rawDoc)
+  const isInstant = Boolean(options.instantOnly && options.interactions?.length)
+  const step = isInstant ? prev.step : prev.step + 1
+  const subActionCount = isInstant ? (prev.subActionCount ?? 0) + 1 : 0
+  const rng = createMxRng(
+    (options.seed ?? doc.settings.seed ?? 1) * 7919 + step * 104729 + subActionCount * 65537
+  )
   const gIdx = getMxGraphIndex(doc)
   const baseParams = options.params ?? prev.runtimeParams ?? resolveMxParams(doc, undefined, rng)
   let params = baseParams
-  for (const p of doc.params) {
-    if (p.updateMode === 'each_step') {
-      if (params === baseParams) params = { ...baseParams }
-      const k = mxIdentifier(p.name)
-      if (k) {
-        params[k] = sampleCustomParamValue(
-          p,
-          rng,
-          { ...params, step, STEP: step, t: step },
-          gIdx.paramArrays
-        )
+  if (!isInstant) {
+    for (const p of doc.params) {
+      if (p.updateMode === 'each_step') {
+        if (params === baseParams) params = { ...baseParams }
+        const k = mxIdentifier(p.name)
+        if (k) {
+          params[k] = sampleCustomParamValue(
+            p,
+            rng,
+            { ...params, step, STEP: step, t: step },
+            gIdx.paramArrays
+          )
+        }
       }
     }
   }
@@ -5463,7 +6314,8 @@ export function stepMxSimulation(
     gateQuotaSent: cloneNonEmpty(prev.gateQuotaSent),
     gateLastRoll: cloneNonEmpty(prev.gateLastRoll),
     poolTokens: clonedPoolTokens,
-    runtimeParams: params
+    runtimeParams: params,
+    subActionCount
   }
   const events: MxEvent[] = []
   if (prev.ended) return { state, events }
@@ -6728,7 +7580,10 @@ export function stepMxSimulation(
           }> = []
           const effPullMode =
             node.pullMode === 'pull_any' || node.pullMode === 'push_any' ? 'any' : 'all'
-          if (buffered > 1e-9 && ins.length > 0) {
+          if (ins.length === 0 && node.kind === 'converter' && outs.length > 0) {
+            // 极简创造模式自适应：无入向资源消耗边的动作框允许作为零消耗动作直接产出 1 次
+            if (times > 0) break
+          } else if (buffered > 1e-9 && ins.length > 0) {
             const req = ins.map((e) =>
               byId.get(e.from)?.kind === 'gate'
                 ? 1
@@ -6897,50 +7752,55 @@ export function stepMxSimulation(
     }
   }
 
-  // 2) Delay / Queue 释放
-  for (const n of gIdx.delaysAndQueues) {
-    const buf = state.buffers[n.id] ?? []
-    const outs = outRes(n.id)
-    if (!outs.length) continue
-    if (n.kind === 'delay') {
-      const due = buf.filter((b) => b.release <= step)
-      state.buffers[n.id] = buf.filter((b) => b.release > step)
-      for (const d of due) {
-        state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - d.amount)
-        if (d.resourceId && d.resourceId !== 'default') recordNodeColor(n.id, d.resourceId)
-        events.push({
-          step,
-          type: 'release',
-          nodeId: n.id,
-          amount: d.amount,
-          resourceId: d.resourceId
-        })
-        for (const e of outs) sendAlong(e, d.amount, 0, d.resourceId)
-        propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
-      }
-    } else {
-      const head = buf[0]
-      if (head && head.release <= step) {
-        const unit = Math.min(1, head.amount)
-        const relColor = head.resourceId
-        head.amount -= unit
-        if (head.amount <= 1e-9) buf.shift()
-        state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - unit)
-        // 队列中的下一个从现在开始等待
-        if (buf[0]) {
-          buf[0].release = Math.max(buf[0].release, step + Math.max(1, computeDelayOrQueueWait(n)))
+  // 2) Delay / Queue 释放（仅在正常推进回合时释放）
+  if (!isInstant) {
+    for (const n of gIdx.delaysAndQueues) {
+      const buf = state.buffers[n.id] ?? []
+      const outs = outRes(n.id)
+      if (!outs.length) continue
+      if (n.kind === 'delay') {
+        const due = buf.filter((b) => b.release <= step)
+        state.buffers[n.id] = buf.filter((b) => b.release > step)
+        for (const d of due) {
+          state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - d.amount)
+          if (d.resourceId && d.resourceId !== 'default') recordNodeColor(n.id, d.resourceId)
+          events.push({
+            step,
+            type: 'release',
+            nodeId: n.id,
+            amount: d.amount,
+            resourceId: d.resourceId
+          })
+          for (const e of outs) sendAlong(e, d.amount, 0, d.resourceId)
+          propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
         }
-        if (relColor && relColor !== 'default') recordNodeColor(n.id, relColor)
-        events.push({ step, type: 'release', nodeId: n.id, amount: unit, resourceId: relColor })
-        for (const e of outs) sendAlong(e, unit, 0, relColor)
-        propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
+      } else {
+        const head = buf[0]
+        if (head && head.release <= step) {
+          const unit = Math.min(1, head.amount)
+          const relColor = head.resourceId
+          head.amount -= unit
+          if (head.amount <= 1e-9) buf.shift()
+          state.values[n.id] = Math.max(0, (state.values[n.id] ?? 0) - unit)
+          // 队列中的下一个从现在开始等待
+          if (buf[0]) {
+            buf[0].release = Math.max(
+              buf[0].release,
+              step + Math.max(1, computeDelayOrQueueWait(n))
+            )
+          }
+          if (relColor && relColor !== 'default') recordNodeColor(n.id, relColor)
+          events.push({ step, type: 'release', nodeId: n.id, amount: unit, resourceId: relColor })
+          for (const e of outs) sendAlong(e, unit, 0, relColor)
+          propagateStateTriggersFrom(n.id, true, false, currentWaveNext)
+        }
       }
     }
   }
 
   // 3) 决定本步触发的节点（支持 simultaneous 与 turn_based 两种步进模式 + Artificial Agents 效用智能体 + Player AI Bot 自动触发）
   let agentControlledIds = new Set<string>()
-  if (!options.skipAgents && doc.agents && doc.agents.some((a) => a.enabled)) {
+  if (!isInstant && !options.skipAgents && doc.agents && doc.agents.some((a) => a.enabled)) {
     const agentRes = selectMxAgentActions(
       doc,
       prev,
@@ -6983,46 +7843,51 @@ export function stepMxSimulation(
   const globalBot = doc.settings.botMode ?? 'off'
   let botVars: Record<string, number> | null = null
 
-  for (const kind of order) {
-    const kNodes = gIdx.nodesByKind.get(kind) ?? []
-    for (const n of kNodes) {
-      const auto = n.trigger === 'automatic'
-      const clicked = interactions.has(n.id)
-      // Enabling (On Start) 触发模式：在 Step 1 若已处于激活态立即触发一次，之后每次从失活重新变为激活时再次触发一次
-      const enabling =
-        n.trigger === 'enabling' && nowActive[n.id] && (step === 1 || !prev.active[n.id])
-      if (clicked) {
-        // 已按 orderedInteractions 顺序压入 immediateFiring（支持步内连击与多次点击）
-        continue
-      } else if (enabling) {
-        immediateFiring.push(n)
-      } else if (auto) {
-        autoCandidates.push(n)
-      } else if (n.trigger === 'interactive' && !agentControlledIds.has(n.id)) {
-        const effPolicy =
-          n.botPolicy && n.botPolicy !== 'inherit'
-            ? n.botPolicy
-            : globalBot === 'greedy'
-              ? 'greedy'
-              : globalBot === 'smart'
-                ? n.botCondition?.trim()
-                  ? 'condition'
-                  : 'greedy'
-                : 'off'
-        if (effPolicy === 'greedy') {
+  if (!isInstant) {
+    for (const kind of order) {
+      const kNodes = gIdx.nodesByKind.get(kind) ?? []
+      for (const n of kNodes) {
+        const auto = n.trigger === 'automatic'
+        const clicked = interactions.has(n.id)
+        // Enabling (On Start) 触发模式：在 Step 1 若已处于激活态立即触发一次，之后每次从失活重新变为激活时再次触发一次
+        const enabling =
+          n.trigger === 'enabling' && nowActive[n.id] && (step === 1 || !prev.active[n.id])
+        if (clicked) {
+          // 已按 orderedInteractions 顺序压入 immediateFiring（支持步内连击与多次点击）
+          continue
+        } else if (enabling) {
+          immediateFiring.push(n)
+        } else if (auto) {
           autoCandidates.push(n)
-        } else if (effPolicy === 'probabilistic') {
-          const rawProb = n.botProbability ?? 50
-          const p = rawProb > 1 ? rawProb / 100 : rawProb
-          if (rng() < Math.max(0, Math.min(1, p))) autoCandidates.push(n)
-        } else if (effPolicy === 'condition') {
-          if (!botVars) botVars = buildVars(doc, state.values, params, step)
-          const condExpr = n.botCondition?.trim() || '1'
-          if (
-            evaluateMxExpression(condExpr, { vars: botVars, arrays: gIdx.paramArrays, rng }, 0) !==
-            0
-          ) {
+        } else if (n.trigger === 'interactive' && !agentControlledIds.has(n.id)) {
+          const effPolicy =
+            n.botPolicy && n.botPolicy !== 'inherit'
+              ? n.botPolicy
+              : globalBot === 'greedy'
+                ? 'greedy'
+                : globalBot === 'smart'
+                  ? n.botCondition?.trim()
+                    ? 'condition'
+                    : 'greedy'
+                  : 'off'
+          if (effPolicy === 'greedy') {
             autoCandidates.push(n)
+          } else if (effPolicy === 'probabilistic') {
+            const rawProb = n.botProbability ?? 50
+            const p = rawProb > 1 ? rawProb / 100 : rawProb
+            if (rng() < Math.max(0, Math.min(1, p))) autoCandidates.push(n)
+          } else if (effPolicy === 'condition') {
+            if (!botVars) botVars = buildVars(doc, state.values, params, step)
+            const condExpr = n.botCondition?.trim() || '1'
+            if (
+              evaluateMxExpression(
+                condExpr,
+                { vars: botVars, arrays: gIdx.paramArrays, rng },
+                0
+              ) !== 0
+            ) {
+              autoCandidates.push(n)
+            }
           }
         }
       }
@@ -7764,9 +8629,10 @@ export function lintMxDocumentTopology(doc: MxDocument): MxTopologyWarning[] {
  * 深度诊断当前 Machinations 经济图在运行后的数值健康度、瓶颈、爆仓、枯竭与指数失控点。
  */
 export function analyzeMxEconomyHealth(
-  doc: MxDocument,
+  rawDoc: MxDocument,
   run?: MxRunResult | null
 ): MxEconomyHealthReport {
+  const doc = getMxSimulationDoc(rawDoc)
   const activeRun = run ?? runMxSimulation(doc)
   const steps = Math.max(1, activeRun.stepsRun)
   let conversionFaucet = 0
@@ -7997,7 +8863,8 @@ export function analyzeMxEconomyHealth(
 
 // ───────────────────────────── 逆向目标求解器 (Goal-Seek) & 参数敏感度扫描 (Parameter Sweep) ─────────────────────────────
 
-export type MxTunableKind = 'param' | 'edge' | 'node_initial'
+export type MxTunableKind =
+  'param' | 'edge' | 'node_initial' | 'node_auto_inflow' | 'node_auto_outflow'
 
 export type MxGoalSeekMetric = 'node_value' | 'end_step' | 'health_score'
 
@@ -8095,6 +8962,12 @@ function applyTunableToDocClone(
   } else if (variableKind === 'node_initial') {
     const n = clone.nodes.find((x) => x.id === variableId)
     if (n) n.initial = rounded
+  } else if (variableKind === 'node_auto_inflow') {
+    const n = clone.nodes.find((x) => x.id === variableId)
+    if (n) n.autoInflow = String(Math.max(0, rounded))
+  } else if (variableKind === 'node_auto_outflow') {
+    const n = clone.nodes.find((x) => x.id === variableId)
+    if (n) n.autoOutflow = String(Math.max(0, rounded))
   }
   return clone
 }
@@ -8198,6 +9071,1029 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
       error
     }))
   }
+}
+
+export interface MxCurveTargetSolution {
+  variableKind: MxTunableKind
+  variableId: string
+  variableLabel: string
+  labelZh: string
+  labelEn: string
+  currentValue: number
+  fromValue: number
+  bestValue: number
+  achievedValue: number
+  targetValue: number
+  error: number
+  predictedSeries: number[]
+  /** 是否为双锚点双参数联合配平方案 */
+  isPair?: boolean
+  secondVariableKind?: MxTunableKind
+  secondVariableId?: string
+  secondVariableLabel?: string
+  secondCurrentValue?: number
+  secondBestValue?: number
+  secondAchievedValue?: number
+}
+
+export interface MxCurveTargetSolveOptions {
+  targetNodeId: string
+  atStep?: number
+  targetValue: number
+  /** 可选第二靶心锚点（用于同时控制前期斜率与后期上限的双锚点曲线塑形） */
+  secondTarget?: {
+    atStep: number
+    targetValue: number
+  }
+  maxCandidates?: number
+  runsPerSample?: number
+  seed?: number
+}
+
+/**
+ * 下一代曲线反推配平引擎（Direct Curve Drag Goal-Seek）：
+ * 用户在图表上直接拖拽目标节点在 atStep 的期望值 targetValue，
+ * 引擎自动沿上游拓扑溯源（内置宏 autoInflow/autoOutflow、入向资源边、上游合成速率、全局参数），
+ * 并行求解并按误差最小排序返回 Top 配平方案及预测曲线序列。
+ */
+export function autoSolveMxCurveTarget(
+  doc: MxDocument,
+  options: MxCurveTargetSolveOptions
+): MxCurveTargetSolution[] {
+  const targetNode = doc.nodes.find((n) => n.id === options.targetNodeId)
+  if (!targetNode) return []
+  const totalSteps = Math.max(1, doc.settings.steps ?? 20)
+  const atStep = Math.max(1, Math.min(totalSteps, Math.round(options.atStep ?? totalSteps)))
+  const targetValue = Math.round(Number(options.targetValue) * 100) / 100
+  const seed = Math.floor(options.seed ?? doc.settings.seed ?? 2026)
+  const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+
+  // 基准运行：获取当前在 atStep 的数值以智能设定搜索上下界
+  const baseRun = runMxSimulation(doc, { steps: totalSteps, seed, skipTokenHistory: true })
+  const curAtStep =
+    baseRun.snapshots[Math.min(atStep, baseRun.snapshots.length - 1)]?.[targetNode.id] ??
+    targetNode.initial ??
+    0
+  const deltaNeeded = targetValue - curAtStep
+  const stepSpan = Math.max(1, atStep)
+  const perStepHint = Math.max(2, Math.ceil((Math.abs(deltaNeeded) / stepSpan) * 2.5))
+
+  interface CandidateTunable {
+    kind: MxTunableKind
+    id: string
+    labelZh: string
+    labelEn: string
+    fromVal: number
+    minVal: number
+    maxVal: number
+    priority: number
+  }
+
+  const cands: CandidateTunable[] = []
+  const seenKeys = new Set<string>()
+  const pushCand = (c: CandidateTunable): void => {
+    const key = `${c.kind}:${c.id}`
+    if (seenKeys.has(key)) return
+    seenKeys.add(key)
+    cands.push(c)
+  }
+
+  // 1) 目标节点自身的极简内联宏 (autoInflow / autoOutflow)
+  if (targetNode.kind === 'pool') {
+    const rawIn = Number(targetNode.autoInflow?.trim() ?? NaN)
+    if (
+      Number.isFinite(rawIn) ||
+      (deltaNeeded > 0 && !doc.edges.some((e) => e.to === targetNode.id))
+    ) {
+      const fromVal = Number.isFinite(rawIn) ? rawIn : 0
+      pushCand({
+        kind: 'node_auto_inflow',
+        id: targetNode.id,
+        labelZh: `📥 [${targetNode.label}] 每步自动增加`, // cjk-ok
+        labelEn: `📥 [${targetNode.label}] Auto Inflow/Step`,
+        fromVal,
+        minVal: 0,
+        maxVal: Math.max(fromVal * 3 + 10, fromVal + perStepHint * 2),
+        priority: 1
+      })
+    }
+    const rawOut = Number(targetNode.autoOutflow?.trim() ?? NaN)
+    if (Number.isFinite(rawOut) && rawOut > 0) {
+      pushCand({
+        kind: 'node_auto_outflow',
+        id: targetNode.id,
+        labelZh: `📤 [${targetNode.label}] 每步自然消耗`, // cjk-ok
+        labelEn: `📤 [${targetNode.label}] Auto Decay/Step`,
+        fromVal: rawOut,
+        minVal: 0,
+        maxVal: Math.max(rawOut * 3 + 10, rawOut + perStepHint * 2),
+        priority: 2
+      })
+    }
+  }
+
+  // 2) 直接连入或流出目标节点的资源边，以及向上游溯源 1 跳的资源边
+  const directEdges = doc.edges.filter(
+    (e) =>
+      e.kind === 'resource' &&
+      !e.targetEdgeId &&
+      (e.to === targetNode.id || e.from === targetNode.id)
+  )
+  const upstreamNodeIds = new Set(directEdges.map((e) => e.from))
+  const hopEdges = doc.edges.filter(
+    (e) =>
+      e.kind === 'resource' &&
+      !e.targetEdgeId &&
+      e.to !== targetNode.id &&
+      upstreamNodeIds.has(e.to)
+  )
+
+  for (const [idx, e] of [...directEdges, ...hopEdges].entries()) {
+    const fromN = nodeById.get(e.from)
+    const toN = nodeById.get(e.to)
+    const fromVal = extractMxTunableEdgeNumericValue(e)
+    if (!Number.isFinite(fromVal)) continue
+    const isPct = (e.formula ?? '').includes('%')
+    pushCand({
+      kind: 'edge',
+      id: e.id,
+      labelZh: `──► 连线 [${fromN?.label || e.from} ➔ ${toN?.label || e.to}]`, // cjk-ok
+      labelEn: `──► Edge [${fromN?.label || e.from} ➔ ${toN?.label || e.to}]`,
+      fromVal,
+      minVal: 0,
+      maxVal: isPct ? 100 : Math.max(fromVal * 3 + 10, fromVal + perStepHint * 2),
+      priority: idx < directEdges.length ? 1 : 3
+    })
+  }
+
+  // 3) 全局参数 (Params) 与目标池初始值 (Initial)
+  for (const p of doc.params ?? []) {
+    const fv = Number(p.value) || 0
+    pushCand({
+      kind: 'param',
+      id: p.name,
+      labelZh: `(x) 全局参数 [${p.name}]`, // cjk-ok
+      labelEn: `(x) Param [${p.name}]`,
+      fromVal: fv,
+      minVal: 0,
+      maxVal: Math.max(fv * 3 + 15, fv + Math.abs(deltaNeeded)),
+      priority: 4
+    })
+  }
+  if (targetNode.kind === 'pool') {
+    const initV = Number(targetNode.initial ?? 0)
+    pushCand({
+      kind: 'node_initial',
+      id: targetNode.id,
+      labelZh: `🔵 [${targetNode.label}] 初始存量`, // cjk-ok
+      labelEn: `🔵 [${targetNode.label}] Initial Value`,
+      fromVal: initV,
+      minVal: 0,
+      maxVal: Math.max(initV + Math.abs(deltaNeeded) * 1.5 + 20, targetValue * 1.5 + 10),
+      priority: 5
+    })
+  }
+
+  cands.sort((a, b) => a.priority - b.priority)
+  const picked = cands.slice(0, Math.max(1, options.maxCandidates ?? 4))
+  const solutions: MxCurveTargetSolution[] = []
+
+  for (const c of picked) {
+    const gs = runMxGoalSeek(doc, {
+      variableKind: c.kind,
+      variableId: c.id,
+      minVal: c.minVal,
+      maxVal: c.maxVal,
+      goalMetric: 'node_value',
+      goalNodeId: targetNode.id,
+      atStep,
+      targetValue,
+      samples: 21,
+      runsPerSample: options.runsPerSample ?? 2,
+      seed
+    })
+    let bestVal = Math.round(gs.bestValue * 100) / 100
+    let achievedVal = gs.achievedValue
+    let errVal = gs.error
+
+    // 若四舍五入到整数能获得更小或相等误差，则优先采用干净整数值
+    const nearInt = Math.round(bestVal)
+    if (nearInt >= c.minVal && nearInt <= c.maxVal && Math.abs(nearInt - bestVal) <= 0.35) {
+      const intDoc = applyTunableToDocClone(doc, c.kind, c.id, nearInt)
+      const intRun = runMxSimulation(intDoc, {
+        steps: totalSteps,
+        seed,
+        skipTokenHistory: true
+      })
+      const intAchieved =
+        intRun.snapshots[Math.min(atStep, intRun.snapshots.length - 1)]?.[targetNode.id] ?? 0
+      const intErr = Math.abs(intAchieved - targetValue)
+      if (intErr <= errVal + 1e-6) {
+        bestVal = nearInt
+        achievedVal = Math.round(intAchieved * 100) / 100
+        errVal = Math.round(intErr * 1000) / 1000
+      }
+    }
+
+    if (Math.abs(bestVal - c.fromVal) < 1e-6 && errVal > Math.abs(deltaNeeded) * 0.95) {
+      continue
+    }
+    const previewDoc = applyTunableToDocClone(doc, c.kind, c.id, bestVal)
+    const previewRun = runMxSimulation(previewDoc, {
+      steps: totalSteps,
+      seed,
+      skipTokenHistory: true
+    })
+    const predictedSeries = previewRun.snapshots.map(
+      (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
+    )
+    const fromRounded = Math.round(c.fromVal * 100) / 100
+    let combinedErr = errVal
+    let secondAchieved: number | undefined
+    if (options.secondTarget) {
+      const st2 = Math.max(
+        1,
+        Math.min(totalSteps, Math.round(options.secondTarget.atStep || Math.ceil(totalSteps / 2)))
+      )
+      const tv2 = Math.round(Number(options.secondTarget.targetValue) * 100) / 100
+      secondAchieved =
+        Math.round(
+          (previewRun.snapshots[Math.min(st2, previewRun.snapshots.length - 1)]?.[targetNode.id] ??
+            0) * 100
+        ) / 100
+      combinedErr = Math.round((errVal + Math.abs(secondAchieved - tv2)) * 1000) / 1000
+    }
+    solutions.push({
+      variableKind: c.kind,
+      variableId: c.id,
+      variableLabel: c.labelZh,
+      labelZh: c.labelZh,
+      labelEn: c.labelEn,
+      currentValue: fromRounded,
+      fromValue: fromRounded,
+      bestValue: bestVal,
+      achievedValue: achievedVal,
+      targetValue,
+      error: combinedErr,
+      predictedSeries,
+      ...(secondAchieved !== undefined ? { secondAchievedValue: secondAchieved } : {})
+    })
+  }
+
+  // 若启用了双锚点塑形（secondTarget），且候选变量 >= 2，则自动运行双变量联合交替寻优以同时拟合 (T1, V1) 与 (T2, V2)
+  if (options.secondTarget && picked.length >= 2) {
+    const st2 = Math.max(
+      1,
+      Math.min(totalSteps, Math.round(options.secondTarget.atStep || Math.ceil(totalSteps / 2)))
+    )
+    const tv2 = Math.round(Number(options.secondTarget.targetValue) * 100) / 100
+    if (st2 !== atStep) {
+      const pairs: Array<[CandidateTunable, CandidateTunable]> = []
+      const initCand = cands.find((x) => x.kind === 'node_initial')
+      const inflowCand = cands.find((x) => x.kind !== 'node_initial')
+      if (initCand && inflowCand) {
+        pairs.push([initCand, inflowCand])
+      }
+      if (
+        picked[0] &&
+        picked[1] &&
+        !pairs.some(
+          ([a, b]) =>
+            (a.id === picked[0]!.id &&
+              a.kind === picked[0]!.kind &&
+              b.id === picked[1]!.id &&
+              b.kind === picked[1]!.kind) ||
+            (b.id === picked[0]!.id &&
+              b.kind === picked[0]!.kind &&
+              a.id === picked[1]!.id &&
+              a.kind === picked[1]!.kind)
+        )
+      ) {
+        pairs.push([picked[0], picked[1]])
+      }
+
+      for (const [cA, cB] of pairs.slice(0, 2)) {
+        const evalPair = (vA: number, vB: number): { a1: number; a2: number; err: number } => {
+          const docAB = applyTunableToDocClone(
+            applyTunableToDocClone(doc, cA.kind, cA.id, vA),
+            cB.kind,
+            cB.id,
+            vB
+          )
+          const r = runMxSimulation(docAB, {
+            steps: totalSteps,
+            seed,
+            skipTokenHistory: true
+          })
+          const a1 = r.snapshots[Math.min(atStep, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+          const a2 = r.snapshots[Math.min(st2, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+          return { a1, a2, err: Math.abs(a1 - targetValue) + Math.abs(a2 - tv2) }
+        }
+
+        let bestA = cA.fromVal
+        let bestB = cB.fromVal
+        let bestErr = evalPair(bestA, bestB).err
+
+        // 1) 粗网格采样寻找最优初值盆地
+        const gridN = 5
+        for (let i = 0; i < gridN; i++) {
+          const vA =
+            Math.round((cA.minVal + ((cA.maxVal - cA.minVal) * i) / (gridN - 1)) * 100) / 100
+          for (let j = 0; j < gridN; j++) {
+            const vB =
+              Math.round((cB.minVal + ((cB.maxVal - cB.minVal) * j) / (gridN - 1)) * 100) / 100
+            const ev = evalPair(vA, vB)
+            if (ev.err < bestErr) {
+              bestErr = ev.err
+              bestA = vA
+              bestB = vB
+            }
+          }
+        }
+
+        // 2) 2x2 有限差分雅可比割线法（沿对角线耦合山谷直接收敛到精确解）
+        let curA = bestA
+        let curB = bestB
+        for (let iter = 0; iter < 5; iter++) {
+          const baseEv = evalPair(curA, curB)
+          if (baseEv.err < bestErr) {
+            bestErr = baseEv.err
+            bestA = curA
+            bestB = curB
+          }
+          if (baseEv.err < 1e-4) break
+          const dA = Math.max(0.5, (cA.maxVal - cA.minVal) * 0.04)
+          const dB = Math.max(0.5, (cB.maxVal - cB.minVal) * 0.04)
+          const pA = curA + dA <= cA.maxVal ? curA + dA : Math.max(cA.minVal, curA - dA)
+          const pB = curB + dB <= cB.maxVal ? curB + dB : Math.max(cB.minVal, curB - dB)
+          const stepA = pA - curA || 1
+          const stepB = pB - curB || 1
+          const evA = evalPair(pA, curB)
+          const evB = evalPair(curA, pB)
+          const j11 = (evA.a1 - baseEv.a1) / stepA
+          const j21 = (evA.a2 - baseEv.a2) / stepA
+          const j12 = (evB.a1 - baseEv.a1) / stepB
+          const j22 = (evB.a2 - baseEv.a2) / stepB
+          const det = j11 * j22 - j12 * j21
+          if (Math.abs(det) < 1e-8) break
+          const rhs1 = targetValue - baseEv.a1
+          const rhs2 = tv2 - baseEv.a2
+          const deltaA = (j22 * rhs1 - j12 * rhs2) / det
+          const deltaB = (-j21 * rhs1 + j11 * rhs2) / det
+          const nextA = Math.max(
+            cA.minVal,
+            Math.min(cA.maxVal, Math.round((curA + deltaA) * 100) / 100)
+          )
+          const nextB = Math.max(
+            cB.minVal,
+            Math.min(cB.maxVal, Math.round((curB + deltaB) * 100) / 100)
+          )
+          const nextEv = evalPair(nextA, nextB)
+          if (nextEv.err < bestErr) {
+            bestErr = nextEv.err
+            bestA = nextA
+            bestB = nextB
+          }
+          curA = nextA
+          curB = nextB
+        }
+
+        // 3) 整数邻域吸附检查
+        const intA = Math.round(bestA)
+        const intB = Math.round(bestB)
+        if (
+          intA >= cA.minVal &&
+          intA <= cA.maxVal &&
+          intB >= cB.minVal &&
+          intB <= cB.maxVal &&
+          Math.abs(intA - bestA) <= 0.5 &&
+          Math.abs(intB - bestB) <= 0.5
+        ) {
+          const iEv = evalPair(intA, intB)
+          if (iEv.err <= bestErr + 1e-6) {
+            bestA = intA
+            bestB = intB
+            bestErr = iEv.err
+          }
+        }
+        const finalDoc = applyTunableToDocClone(
+          applyTunableToDocClone(doc, cA.kind, cA.id, bestA),
+          cB.kind,
+          cB.id,
+          bestB
+        )
+        const finalRun = runMxSimulation(finalDoc, {
+          steps: totalSteps,
+          seed,
+          skipTokenHistory: true
+        })
+        const ach1 =
+          Math.round(
+            (finalRun.snapshots[Math.min(atStep, finalRun.snapshots.length - 1)]?.[targetNode.id] ??
+              0) * 100
+          ) / 100
+        const ach2 =
+          Math.round(
+            (finalRun.snapshots[Math.min(st2, finalRun.snapshots.length - 1)]?.[targetNode.id] ??
+              0) * 100
+          ) / 100
+        const predSeries = finalRun.snapshots.map(
+          (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
+        )
+        solutions.push({
+          variableKind: cA.kind,
+          variableId: cA.id,
+          variableLabel: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
+          labelZh: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
+          labelEn: `🔗 ${cA.labelEn} + ${cB.labelEn}`,
+          currentValue: Math.round(cA.fromVal * 100) / 100,
+          fromValue: Math.round(cA.fromVal * 100) / 100,
+          bestValue: Math.round(bestA * 100) / 100,
+          achievedValue: ach1,
+          targetValue,
+          error: Math.round(bestErr * 1000) / 1000,
+          predictedSeries: predSeries,
+          isPair: true,
+          secondVariableKind: cB.kind,
+          secondVariableId: cB.id,
+          secondVariableLabel: cB.labelZh,
+          secondCurrentValue: Math.round(cB.fromVal * 100) / 100,
+          secondBestValue: Math.round(bestB * 100) / 100,
+          secondAchievedValue: ach2
+        })
+      }
+    }
+  }
+
+  solutions.sort((a, b) => a.error - b.error)
+  return solutions.slice(0, 4)
+}
+
+export interface MxPlayableGaugeItem {
+  id: string
+  label: string
+  kind: 'pool' | 'register'
+  color: string
+  value: number
+  delta: number
+  capacity?: number
+  fillPercent: number
+  autoInflow?: string
+  autoOutflow?: string
+  endWhen?: string
+  isDanger: boolean
+}
+
+export interface MxPlayableActionCostItem {
+  edgeId: string
+  nodeId: string
+  label: string
+  sourceLabel: string
+  required: number
+  requiredExpr: string
+  current: number
+  available: number
+  affordable: boolean
+}
+
+export interface MxPlayableActionRewardItem {
+  edgeId: string
+  nodeId: string
+  label: string
+  targetLabel: string
+  formula: string
+  amountExpr: string
+  isGate?: boolean
+  isGateBranch?: boolean
+  pityInfo?: string
+  gatePityInfo?: string
+  /** 当前累计垫刀抽数（运行态） */
+  pityCurrentPulls?: number
+  /** 硬保底上限抽数 */
+  pityHardMax?: number
+  /** 当前动态出金概率%（运行态） */
+  pityCurrentRate?: number
+  gateBranches?: Array<{ weightLabel: string; targetLabel: string }>
+}
+
+export interface MxPlayableActionCard {
+  id: string
+  label: string
+  kind: MxNodeKind
+  trigger: MxTrigger
+  color: string
+  cooldownSteps?: number
+  /** 运行态当前剩余冷却步数（>0 时卡牌处于冷却锁定中） */
+  cooldownRemaining?: number
+  costs: MxPlayableActionCostItem[]
+  rewards: MxPlayableActionRewardItem[]
+  conditions: Array<{
+    edgeId: string
+    label: string
+    sourceLabel: string
+    formula: string
+    condition: string
+    currentValue: number
+    met: boolean
+  }>
+  canPlay: boolean
+  disabledReason?: string
+  blockedReasonZh?: string
+  blockedReasonEn?: string
+  /** 是否为当前状态下 AI 军师推荐的最优手卡牌 */
+  aiRecommended?: boolean
+  aiUtilityGain?: number
+  aiHintZh?: string
+  aiHintEn?: string
+}
+
+export interface MxPlayableHudSnapshot {
+  step: number
+  ended: boolean
+  endReason?: string
+  gauges: MxPlayableGaugeItem[]
+  actionCards: MxPlayableActionCard[]
+}
+
+/**
+ * 下一代机制一键试玩卡片台提取器（Playable Card Deck & HUD Snapshot）：
+ * 将抽象图元实时编译为直观的 RPG/卡牌试玩界面数据（顶部状态槽 Gauges + 中部可点击动作卡牌 ActionCards + 消耗/产出/保底实时读数/冷却倒计时/AI最优手推荐）。
+ */
+export function extractMxPlayableHudSnapshot(
+  doc: MxDocument,
+  currentValues: Record<string, number>,
+  prevValues?: Record<string, number>,
+  runtimeInfo?: {
+    step?: number
+    ended?: boolean
+    endReason?: string
+    liveState?: MxRuntimeState | null
+  }
+): MxPlayableHudSnapshot {
+  const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+  const liveVals = runtimeInfo?.liveState?.values ?? currentValues
+  const curStep = runtimeInfo?.step ?? runtimeInfo?.liveState?.step ?? 0
+  const valOf = (id: string): number => {
+    if (id in currentValues) return Number(currentValues[id] ?? 0)
+    if (id in liveVals) return Number(liveVals[id] ?? 0)
+    const nd = nodeById.get(id)
+    return Number(nd?.initial ?? 0)
+  }
+
+  const readGatePityRuntime = (
+    gate: MxNode
+  ): {
+    pityInfo?: string
+    pityCurrentPulls?: number
+    pityHardMax?: number
+    pityCurrentRate?: number
+  } => {
+    if (!gate.pityEnabled) return {}
+    const soft = gate.pitySoftStart ?? 50
+    const hard = gate.pityHardMax ?? 80
+    const baseRate = gate.pityBaseRate ?? 10
+    const pullsRaw = liveVals[`pool_pity_${gate.id}`] ?? currentValues[`pool_pity_${gate.id}`]
+    const rateRaw =
+      liveVals[`reg_pity_rate_${gate.id}`] ?? currentValues[`reg_pity_rate_${gate.id}`]
+    const pulls = Number.isFinite(Number(pullsRaw)) ? Math.max(0, Math.round(Number(pullsRaw))) : 0
+    const curRate = Number.isFinite(Number(rateRaw))
+      ? Math.round(Number(rateRaw) * 10) / 10
+      : pulls >= hard - 1
+        ? 100
+        : pulls >= soft - 1
+          ? Math.min(
+              100,
+              Math.round(
+                (baseRate +
+                  ((pulls - (soft - 2)) * (100 - baseRate)) / Math.max(1, hard - soft + 1)) *
+                  10
+              ) / 10
+            )
+          : baseRate
+    const pityInfo = `${pulls}/${hard} (软${soft} · ${curRate}%)` // cjk-ok
+    return {
+      pityInfo,
+      pityCurrentPulls: pulls,
+      pityHardMax: hard,
+      pityCurrentRate: curRate
+    }
+  }
+
+  const gauges: MxPlayableGaugeItem[] = []
+  for (const n of doc.nodes) {
+    if (n.kind !== 'pool' && n.kind !== 'register') continue
+    const val = Math.round(valOf(n.id) * 100) / 100
+    const prev = prevValues && n.id in prevValues ? Number(prevValues[n.id] ?? val) : val
+    const delta = Math.round((val - prev) * 100) / 100
+    const cap = n.capacity && n.capacity > 0 ? n.capacity : undefined
+    const fillPercent = cap
+      ? Math.min(100, Math.max(0, Math.round((val / cap) * 100)))
+      : val <= 0
+        ? 0
+        : Math.min(100, Math.max(12, Math.round((val / Math.max(25, val * 1.35)) * 100)))
+    const isDanger =
+      ((n.initial ?? 0) > 0 && val <= 0) ||
+      Boolean(n.endWhen?.includes('<=0') && val <= Math.max(1, (n.initial ?? 10) * 0.2))
+    gauges.push({
+      id: n.id,
+      label: n.label || n.id,
+      kind: n.kind,
+      color: n.color || mxNodeColor(doc, n),
+      value: val,
+      delta,
+      capacity: cap,
+      fillPercent,
+      autoInflow: n.autoInflow?.trim() || undefined,
+      autoOutflow: n.autoOutflow?.trim() || undefined,
+      endWhen: n.endWhen?.trim() || undefined,
+      isDanger
+    })
+  }
+
+  const checkStateCondition = (formula: string, srcVal: number): boolean => {
+    const sp = parseMxStateFormula(formula)
+    if (sp.type === 'activator') {
+      switch (sp.op) {
+        case '>':
+          return srcVal > sp.value
+        case '>=':
+          return srcVal >= sp.value
+        case '<':
+          return srcVal < sp.value
+        case '<=':
+          return srcVal <= sp.value
+        case '==':
+          return Math.abs(srcVal - sp.value) < 1e-6
+        case '!=':
+          return Math.abs(srcVal - sp.value) >= 1e-6
+      }
+    }
+    if (sp.type === 'range') {
+      return srcVal >= sp.lo && srcVal <= sp.hi
+    }
+    return true
+  }
+
+  const actionNodes = doc.nodes.filter(
+    (n) =>
+      n.kind === 'converter' ||
+      n.kind === 'trader' ||
+      (n.trigger === 'interactive' &&
+        (n.kind === 'source' || n.kind === 'drain' || n.kind === 'gate'))
+  )
+  // 若画布中没有任何 converter/interactive 节点，则把 automatic source/gate 也作为试玩卡牌展示
+  const effectiveActionNodes =
+    actionNodes.length > 0
+      ? actionNodes
+      : doc.nodes.filter((n) => n.kind === 'source' || n.kind === 'gate')
+
+  const actionCards: MxPlayableActionCard[] = []
+  for (const n of effectiveActionNodes) {
+    const costs: MxPlayableActionCostItem[] = []
+    const rewards: MxPlayableActionRewardItem[] = []
+    const conditions: MxPlayableActionCard['conditions'] = []
+
+    for (const e of doc.edges) {
+      if (e.targetEdgeId) continue
+      if (e.kind === 'resource' && e.to === n.id) {
+        const src = nodeById.get(e.from)
+        if (src && src.kind === 'pool') {
+          const reqNum = extractMxTunableEdgeNumericValue(e)
+          const req = Number.isFinite(reqNum) && reqNum > 0 ? reqNum : 1
+          const cur = Math.round(valOf(src.id) * 100) / 100
+          const srcLbl = src.label || src.id
+          costs.push({
+            edgeId: e.id,
+            nodeId: src.id,
+            label: srcLbl,
+            sourceLabel: srcLbl,
+            required: req,
+            requiredExpr: e.formula || String(req),
+            current: cur,
+            available: cur,
+            affordable: cur + 1e-6 >= req
+          })
+        }
+      } else if (e.kind === 'state' && e.to === n.id) {
+        const sp = parseMxStateFormula(e.formula)
+        if (sp.type === 'activator' || sp.type === 'range') {
+          const src = nodeById.get(e.from)
+          const cur = Math.round(valOf(e.from) * 100) / 100
+          const srcLbl = src?.label || e.from
+          conditions.push({
+            edgeId: e.id,
+            label: srcLbl,
+            sourceLabel: srcLbl,
+            formula: e.formula,
+            condition: e.formula,
+            currentValue: cur,
+            met: checkStateCondition(e.formula, cur)
+          })
+        }
+      } else if (e.kind === 'resource' && e.from === n.id) {
+        const dst = nodeById.get(e.to)
+        if (!dst) continue
+        if (dst.kind === 'gate') {
+          const gateOuts = doc.edges.filter(
+            (ge) => ge.kind === 'resource' && !ge.targetEdgeId && ge.from === dst.id
+          )
+          const pityRt = readGatePityRuntime(dst)
+          const gateBranches = gateOuts.map((ge, gIdx) => {
+            const gDst = nodeById.get(ge.to)
+            const weightLabel =
+              gIdx === 0 && dst.pityEnabled && pityRt.pityCurrentRate !== undefined
+                ? `${pityRt.pityCurrentRate}%`
+                : ge.formula || '1'
+            return {
+              weightLabel,
+              targetLabel: gDst?.label || ge.to
+            }
+          })
+          const dstLbl = dst.label || dst.id
+          rewards.push({
+            edgeId: e.id,
+            nodeId: dst.id,
+            label: dstLbl,
+            targetLabel: dstLbl,
+            formula: e.formula || '1',
+            amountExpr: e.formula || '1',
+            isGate: true,
+            isGateBranch: true,
+            pityInfo: pityRt.pityInfo,
+            gatePityInfo: pityRt.pityInfo,
+            pityCurrentPulls: pityRt.pityCurrentPulls,
+            pityHardMax: pityRt.pityHardMax,
+            pityCurrentRate: pityRt.pityCurrentRate,
+            gateBranches
+          })
+        } else {
+          const dstLbl = dst.label || dst.id
+          rewards.push({
+            edgeId: e.id,
+            nodeId: dst.id,
+            label: dstLbl,
+            targetLabel: dstLbl,
+            formula: e.formula || '1',
+            amountExpr: e.formula || '1'
+          })
+        }
+      }
+    }
+
+    // 如果当前卡牌本身是 Gate
+    if (n.kind === 'gate' && rewards.length === 0) {
+      const gateOuts = doc.edges.filter(
+        (ge) => ge.kind === 'resource' && !ge.targetEdgeId && ge.from === n.id
+      )
+      const pityRt = readGatePityRuntime(n)
+      const gateBranches = gateOuts.map((ge, gIdx) => {
+        const gDst = nodeById.get(ge.to)
+        const weightLabel =
+          gIdx === 0 && n.pityEnabled && pityRt.pityCurrentRate !== undefined
+            ? `${pityRt.pityCurrentRate}%`
+            : ge.formula || '1'
+        return {
+          weightLabel,
+          targetLabel: gDst?.label || ge.to
+        }
+      })
+      const nLbl = n.label || n.id
+      rewards.push({
+        edgeId: n.id,
+        nodeId: n.id,
+        label: nLbl,
+        targetLabel: nLbl,
+        formula: '1',
+        amountExpr: '1',
+        isGate: true,
+        isGateBranch: true,
+        pityInfo: pityRt.pityInfo,
+        gatePityInfo: pityRt.pityInfo,
+        pityCurrentPulls: pityRt.pityCurrentPulls,
+        pityHardMax: pityRt.pityHardMax,
+        pityCurrentRate: pityRt.pityCurrentRate,
+        gateBranches
+      })
+    }
+
+    // 检查运行态冷却剩余步数（dly_cd_<nodeId> 缓冲区）
+    let cooldownRemaining = 0
+    if ((n.kind === 'converter' || n.kind === 'trader') && n.cooldownSteps && n.cooldownSteps > 0) {
+      const bufs = runtimeInfo?.liveState?.buffers
+      if (bufs) {
+        const prefix = `dly_cd_${n.id}`
+        for (const [bKey, items] of Object.entries(bufs)) {
+          if (bKey === prefix || bKey.startsWith(`${prefix}_`)) {
+            for (const it of items ?? []) {
+              if (it.amount > 0 && it.release > curStep) {
+                cooldownRemaining = Math.max(cooldownRemaining, it.release - curStep)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    const missingCost = costs.find((c) => !c.affordable)
+    const failedCond = conditions.find((c) => !c.met)
+    const onCooldown = cooldownRemaining > 0
+    const canPlay = !missingCost && !failedCond && !onCooldown
+    let blockedReasonZh: string | undefined
+    let blockedReasonEn: string | undefined
+    if (onCooldown) {
+      blockedReasonZh = `⏳ 冷却中 (剩余 ${cooldownRemaining} 回合)` // cjk-ok
+      blockedReasonEn = `⏳ Cooldown (${cooldownRemaining} turns left)`
+    } else if (missingCost) {
+      blockedReasonZh = `${missingCost.label}不足 (需 ${missingCost.required} / 现 ${missingCost.current})` // cjk-ok
+      blockedReasonEn = `Need ${missingCost.required} ${missingCost.label} (have ${missingCost.current})`
+    } else if (failedCond) {
+      blockedReasonZh = `需满足条件: ${failedCond.label} ${failedCond.formula}` // cjk-ok
+      blockedReasonEn = `Requires: ${failedCond.label} ${failedCond.formula}`
+    }
+
+    actionCards.push({
+      id: n.id,
+      label: n.label || n.id,
+      kind: n.kind,
+      trigger: n.trigger,
+      color: n.color || mxNodeColor(doc, n),
+      cooldownSteps: n.cooldownSteps,
+      ...(cooldownRemaining > 0 ? { cooldownRemaining } : {}),
+      costs,
+      rewards,
+      conditions,
+      canPlay,
+      disabledReason: blockedReasonZh,
+      blockedReasonZh,
+      blockedReasonEn
+    })
+  }
+
+  // 💡 AI 军师实时推荐最优手 (Live AI Best-Move Advisor)
+  const playableCards = actionCards.filter((c) => c.canPlay)
+  if (!runtimeInfo?.ended && playableCards.length > 0) {
+    const activeAgent = doc.agents?.find((a) => a.enabled && a.goals.length > 0)
+    const goals = activeAgent?.goals ?? suggestMxAgentGoalsWithAi(doc, 'rational')
+    const weightByImp: Record<MxAgentImportance, number> = {
+      min: 0.25,
+      low: 0.6,
+      med: 1.0,
+      high: 1.8,
+      max: 3.2
+    }
+    let bestCard: MxPlayableActionCard | null = null
+    let bestScore = -1e9
+    for (const card of playableCards) {
+      let score = 1.0
+      // 评估产出与目标的契合度（按目标重要度加权，不因中间货币名义面额大而扣成负分）
+      for (const rw of card.rewards) {
+        if (rw.isGate && rw.gateBranches?.length) {
+          score += 4.0 + (rw.pityCurrentRate ?? 10) * 0.05
+        } else {
+          const amt = Math.max(1, Number(rw.amountExpr) || 1)
+          const g = goals.find((x) => x.nodeId === rw.nodeId)
+          const w = g ? weightByImp[g.importance] : 1.0
+          score += Math.log2(amt + 1) * w * 2.0
+        }
+      }
+      if (card.costs.length > 0) {
+        // 优先推荐资源充足的高阶合成/抽卡转化卡，其次才是零消耗采集卡
+        score += 2.0
+      }
+      if (score > bestScore) {
+        bestScore = score
+        bestCard = card
+      }
+    }
+    if (bestCard && bestScore > 0) {
+      bestCard.aiRecommended = true
+      bestCard.aiUtilityGain = Math.round(bestScore * 10) / 10
+      bestCard.aiHintZh = '💡 AI 推荐最优手' // cjk-ok
+      bestCard.aiHintEn = '💡 AI Best Move'
+    }
+  }
+
+  return {
+    step: curStep,
+    ended: Boolean(runtimeInfo?.ended),
+    endReason: runtimeInfo?.endReason,
+    gauges,
+    actionCards
+  }
+}
+
+export type MxPlayableMacroStep =
+  | {
+      kind: 'card'
+      nodeId: string
+      label?: string
+    }
+  | {
+      kind: 'end_turn'
+      steps?: number
+    }
+
+export interface MxPlayableMacroReplayResult {
+  finalState: MxRuntimeState
+  snapshots: Array<Record<string, number>>
+  edgeFlows: Array<Record<string, number>>
+  events: MxEvent[]
+  cardsPlayed: number
+  turnsRun: number
+}
+
+/**
+ * 📼 试玩操作序列重放引擎（Action Macro Replay）：
+ * 从初始状态出发，按录制顺序确定性重放玩家的「回合内出牌 (card)」与「结束回合 (end_turn)」操作序列，
+ * 供策划在修改参数/公式后一键回归对比同一套打牌套路的数值变化。
+ */
+export function replayMxPlayableActionMacro(
+  doc: MxDocument,
+  macroSteps: MxPlayableMacroStep[],
+  options: { seed?: number; scenarioId?: string } = {}
+): MxPlayableMacroReplayResult {
+  const seed = options.seed ?? doc.settings.seed ?? 2026
+  let state = createMxInitialState(doc, { seed, scenarioId: options.scenarioId })
+  const snapshots: Array<Record<string, number>> = [{ ...state.values }]
+  const edgeFlows: Array<Record<string, number>> = [{}]
+  const events: MxEvent[] = []
+  let cardsPlayed = 0
+  let turnsRun = 0
+
+  for (const act of macroSteps) {
+    if (state.ended) break
+    if (act.kind === 'card') {
+      const res = stepMxSimulation(doc, state, {
+        seed,
+        params: state.runtimeParams,
+        interactions: [act.nodeId],
+        instantOnly: true
+      })
+      state = res.state
+      cardsPlayed++
+      snapshots[snapshots.length - 1] = { ...state.values }
+      edgeFlows[edgeFlows.length - 1] = {
+        ...(edgeFlows[edgeFlows.length - 1] ?? {}),
+        ...state.edgeFlows
+      }
+      events.push(...res.events)
+    } else if (act.kind === 'end_turn') {
+      const count = Math.max(1, Math.min(50, Math.round(act.steps ?? 1)))
+      for (let i = 0; i < count; i++) {
+        if (state.ended) break
+        const res = stepMxSimulation(doc, state, {
+          seed,
+          params: state.runtimeParams
+        })
+        state = res.state
+        turnsRun++
+        snapshots.push({ ...state.values })
+        edgeFlows.push({ ...state.edgeFlows })
+        events.push(...res.events)
+      }
+    }
+  }
+
+  return {
+    finalState: state,
+    snapshots,
+    edgeFlows,
+    events,
+    cardsPlayed,
+    turnsRun
+  }
+}
+
+/**
+ * 🤖 卡片试玩台 AI 自动观战决策器（AI Spectator Next Move）：
+ * 判断在当前运行态下 AI 应该继续在回合内打出哪张最优卡牌，还是结束当前回合推进下一步。
+ */
+export function pickMxPlayableAiSpectatorMove(
+  doc: MxDocument,
+  state: MxRuntimeState,
+  cardsPlayedInTurn = 0,
+  maxCardsPerTurn = 2
+): { action: 'play_card'; card: MxPlayableActionCard } | { action: 'end_turn' } {
+  if (state.ended || cardsPlayedInTurn >= maxCardsPerTurn) {
+    return { action: 'end_turn' }
+  }
+  const hud = extractMxPlayableHudSnapshot(doc, state.values, state.values, {
+    step: state.step,
+    ended: state.ended,
+    endReason: state.endReason,
+    liveState: state
+  })
+  const rec =
+    hud.actionCards.find((c) => c.canPlay && c.aiRecommended) ??
+    hud.actionCards.find((c) => c.canPlay && c.costs.length > 0)
+  if (rec) {
+    // 若是零消耗卡牌，每回合最多自动打 1 次，防止观战时在同一回合无限刷免费卡
+    if (rec.costs.length === 0 && cardsPlayedInTurn >= 1) {
+      return { action: 'end_turn' }
+    }
+    return { action: 'play_card', card: rec }
+  }
+  return { action: 'end_turn' }
 }
 
 export interface MxDiagnosticQuickFixOptions {
@@ -9809,57 +11705,270 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
           ? r.settings.botMode
           : 'off'
     },
-    ...(normalizedWb ? { workbench: normalizedWb } : {})
+    ...(normalizedWb ? { workbench: normalizedWb } : {}),
+    ...(Array.isArray(r.playableMacroSteps) && r.playableMacroSteps.length
+      ? { playableMacroSteps: r.playableMacroSteps }
+      : {})
   }
 }
 
 /**
- * 自动按拓扑层级从左向右整理排版所有节点（Sugiyama 风格分层布局；多图层文档自动启用横向分类泳道排版并对齐分组框）。
+ * 自动按拓扑层级从左向右整理排版所有节点（Sugiyama 风格分层布局；支持闭环反馈破环、防同列重叠折行、独立公式寄存器行与自动避障弧线；多图层文档自动启用横向分类泳道排版并对齐分组框）。
  */
 export function autoLayoutMxDocument(doc: MxDocument): void {
   const mainNodes = doc.nodes.filter((n) => n.kind !== 'note')
   const notes = doc.nodes.filter((n) => n.kind === 'note')
   if (!mainNodes.length) return
 
-  const inDeg = new Map<string, number>()
-  const adj = new Map<string, string[]>()
-  for (const n of mainNodes) {
-    inDeg.set(n.id, 0)
-    adj.set(n.id, [])
-  }
+  const nodeById = new Map(mainNodes.map((n) => [n.id, n]))
+
+  // 区分无任何连线的独立公式寄存器（如纯变量引用型 Register），避免其因入度为 0 霸占第 0 列导致主流程节点挤在同列
+  const incidentEdgeCount = new Map<string, number>()
+  for (const n of mainNodes) incidentEdgeCount.set(n.id, 0)
   for (const e of doc.edges) {
-    if (e.kind === 'resource' && inDeg.has(e.from) && inDeg.has(e.to)) {
-      adj.get(e.from)!.push(e.to)
-      inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1)
+    if (e.from === e.to) continue
+    if (incidentEdgeCount.has(e.from)) {
+      incidentEdgeCount.set(e.from, (incidentEdgeCount.get(e.from) ?? 0) + 1)
+    }
+    if (incidentEdgeCount.has(e.to)) {
+      incidentEdgeCount.set(e.to, (incidentEdgeCount.get(e.to) ?? 0) + 1)
     }
   }
 
-  // 计算拓扑层（Rank）
-  const rank = new Map<string, number>()
-  const queue: string[] = []
-  for (const n of mainNodes) {
-    if (n.kind === 'source' || (inDeg.get(n.id) ?? 0) === 0) {
-      rank.set(n.id, 0)
-      queue.push(n.id)
+  const isolatedRegisters = mainNodes.filter(
+    (n) => n.kind === 'register' && (incidentEdgeCount.get(n.id) ?? 0) === 0
+  )
+  const isolatedRegSet = new Set(isolatedRegisters.map((n) => n.id))
+  const flowNodes = mainNodes.filter((n) => !isolatedRegSet.has(n.id))
+
+  const resInDeg = new Map<string, number>()
+  const resAdj = new Map<string, string[]>()
+  const allInDeg = new Map<string, number>()
+  const allAdj = new Map<string, string[]>()
+  for (const n of flowNodes) {
+    resInDeg.set(n.id, 0)
+    resAdj.set(n.id, [])
+    allInDeg.set(n.id, 0)
+    allAdj.set(n.id, [])
+  }
+
+  for (const e of doc.edges) {
+    if (e.from === e.to || !allInDeg.has(e.from) || !allInDeg.has(e.to)) continue
+    if (e.kind === 'resource') {
+      resAdj.get(e.from)!.push(e.to)
+      resInDeg.set(e.to, (resInDeg.get(e.to) ?? 0) + 1)
+      allAdj.get(e.from)!.push(e.to)
+      allInDeg.set(e.to, (allInDeg.get(e.to) ?? 0) + 1)
+    } else if (e.kind === 'state') {
+      allAdj.get(e.from)!.push(e.to)
+      allInDeg.set(e.to, (allInDeg.get(e.to) ?? 0) + 1)
     }
   }
-  while (queue.length) {
-    const u = queue.shift()!
-    const r = rank.get(u) ?? 0
-    for (const v of adj.get(u) ?? []) {
-      const nextR = Math.min(8, r + 1)
-      if (!rank.has(v) || (rank.get(v) ?? 0) < nextR) {
-        rank.set(v, nextR)
-        queue.push(v)
+
+  // 计算拓扑层（Rank）：支持带反馈闭环（Cycle）的有向图破环分层
+  const rank = new Map<string, number>()
+  const ancestors = new Map<string, Set<string>>()
+  const backEdgePairs = new Set<string>()
+
+  const propagateFromSeeds = (seeds: string[]): void => {
+    const queue: string[] = [...seeds]
+    while (queue.length) {
+      const u = queue.shift()!
+      const r = rank.get(u) ?? 0
+      const uAnc = ancestors.get(u) ?? new Set([u])
+      for (const v of allAdj.get(u) ?? []) {
+        // 若 v 已是 u 的祖先，说明 u -> v 是闭环反馈回边（Back-Edge），跳过层级递增以打破循环折叠
+        if (uAnc.has(v)) {
+          backEdgePairs.add(`${u}->${v}`)
+          continue
+        }
+        const nextR = Math.min(12, r + 1)
+        const vAnc = ancestors.get(v) ?? new Set([v])
+        for (const a of uAnc) vAnc.add(a)
+        vAnc.add(u)
+        ancestors.set(v, vAnc)
+        if (!rank.has(v) || (rank.get(v) ?? 0) < nextR) {
+          rank.set(v, nextR)
+          queue.push(v)
+        }
       }
     }
   }
-  // 状态边关联或未访问节点归入就近列
-  for (const n of mainNodes) {
+
+  // 1A. 自然起点（Source 或入度为 0 的驱动节点）
+  const initialSeeds: string[] = []
+  for (const n of flowNodes) {
+    const rIn = resInDeg.get(n.id) ?? 0
+    const rOut = resAdj.get(n.id)?.length ?? 0
+    const aIn = allInDeg.get(n.id) ?? 0
+    const aOut = allAdj.get(n.id)?.length ?? 0
+    if (
+      n.kind === 'source' ||
+      (aIn === 0 && aOut > 0) ||
+      (rIn === 0 && rOut > 0 && n.kind !== 'end' && n.kind !== 'drain' && n.kind !== 'register')
+    ) {
+      rank.set(n.id, 0)
+      ancestors.set(n.id, new Set([n.id]))
+      initialSeeds.push(n.id)
+    }
+  }
+  if (initialSeeds.length) {
+    propagateFromSeeds(initialSeeds)
+  }
+
+  // 1B. 闭环强连通分量起点推选（例如极简模式下无独立 Source、且出牌->结算->得分->盲注通过->补充出牌形成闭环）
+  const scoreCycleRootCandidate = (n: MxNode): number => {
+    let score = 0
+    if (n.kind === 'source') score += 1000
+    else if (n.kind === 'pool') {
+      score += 200
+      if (n.autoInflow) score += 450
+      if ((n.initial ?? 0) > 0) score += 300 + Math.min(60, n.initial ?? 0)
+    } else if (n.kind === 'converter') {
+      score += 100
+    } else if (n.kind === 'gate') {
+      score += 60
+    }
+    const rOut = resAdj.get(n.id)?.length ?? 0
+    const rIn = resInDeg.get(n.id) ?? 0
+    score += rOut * 40 - rIn * 15
+    return score
+  }
+
+  while (true) {
+    const unvisitedWithOut = flowNodes.filter(
+      (n) => !rank.has(n.id) && (allAdj.get(n.id)?.length ?? 0) > 0
+    )
+    if (!unvisitedWithOut.length) break
+    unvisitedWithOut.sort((a, b) => scoreCycleRootCandidate(b) - scoreCycleRootCandidate(a))
+    const root = unvisitedWithOut[0]!
+    rank.set(root.id, 0)
+    ancestors.set(root.id, new Set([root.id]))
+    propagateFromSeeds([root.id])
+  }
+
+  // 1C. 仅作为终点的未访问节点或完全孤立节点：根据前驱节点就近推算，杜绝全部塞进同一列
+  let fallbackSpreadIdx = 0
+  for (const n of flowNodes) {
     if (!rank.has(n.id)) {
-      if (n.kind === 'end' || n.kind === 'drain') rank.set(n.id, 4)
-      else if (n.kind === 'register') rank.set(n.id, 2)
-      else rank.set(n.id, 1)
+      let maxPredRank = -1
+      for (const e of doc.edges) {
+        if (e.to === n.id && rank.has(e.from)) {
+          maxPredRank = Math.max(maxPredRank, rank.get(e.from) ?? 0)
+        }
+      }
+      if (maxPredRank >= 0) {
+        rank.set(n.id, Math.min(12, maxPredRank + 1))
+      } else if (n.kind === 'end' || n.kind === 'drain') {
+        rank.set(n.id, 4 + (fallbackSpreadIdx++ % 2))
+      } else {
+        rank.set(n.id, fallbackSpreadIdx++ % 4)
+      }
+    }
+  }
+
+  // 1D. 确保正向连线的首尾节点不落在同一列（避免同列垂直连线穿过节点标签）
+  for (const e of doc.edges) {
+    if (e.from === e.to || backEdgePairs.has(`${e.from}->${e.to}`)) continue
+    const rFrom = rank.get(e.from)
+    const rTo = rank.get(e.to)
+    if (rFrom !== undefined && rTo !== undefined && rFrom === rTo) {
+      rank.set(e.to, Math.min(12, rFrom + 1))
+    }
+  }
+
+  // 独立公式寄存器按顺序分布在各列
+  isolatedRegisters.forEach((reg, idx) => {
+    rank.set(reg.id, idx)
+  })
+
+  // 将同列过多节点自动拆分为多列（每列最多 MAX_ROWS_PER_COL 个节点），防止单列过高或重叠
+  const MAX_ROWS_PER_COL = 3
+  const buildWrappedColumns = (nodesToPlace: MxNode[]): MxNode[][] => {
+    const rawCols = new Map<number, MxNode[]>()
+    for (const n of nodesToPlace) {
+      const col = rank.get(n.id) ?? 0
+      const arr = rawCols.get(col) ?? []
+      arr.push(n)
+      rawCols.set(col, arr)
+    }
+    const sortedColKeys = [...rawCols.keys()].sort((a, b) => a - b)
+    const wrapped: MxNode[][] = []
+    const kindOrder: Record<string, number> = {
+      source: 0,
+      pool: 1,
+      converter: 2,
+      gate: 3,
+      delay: 4,
+      drain: 5,
+      end: 6,
+      register: 7
+    }
+    for (const colKey of sortedColKeys) {
+      const list = rawCols.get(colKey)!
+      list.sort((a, b) => {
+        const ka = kindOrder[a.kind] ?? 4
+        const kb = kindOrder[b.kind] ?? 4
+        if (ka !== kb) return ka - kb
+        return a.y - b.y
+      })
+      for (let i = 0; i < list.length; i += MAX_ROWS_PER_COL) {
+        wrapped.push(list.slice(i, i + MAX_ROWS_PER_COL))
+      }
+    }
+    return wrapped
+  }
+
+  // 自动为同列垂直边、反向回边及穿越中间节点的长横边设置避障弧度 bend
+  const autoCurveEdges = (): void => {
+    let verticalFlip = 1
+    for (const e of doc.edges) {
+      const a = nodeById.get(e.from)
+      const b = nodeById.get(e.to)
+      if (!a || !b || a.id === b.id) continue
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+
+      // 同列垂直连线：自动向侧面弯曲，避开节点底部 max/公式胶囊与中间节点
+      if (Math.abs(dx) < 28) {
+        if (!e.bend || Math.abs(e.bend) < 38) {
+          const spanFactor = Math.abs(dy) > 180 ? 64 : 46
+          e.bend = spanFactor * verticalFlip
+          verticalFlip *= -1
+        }
+        continue
+      }
+
+      // 反向闭环回边（从右向左，如 盲注通过 -> 剩余出牌数）：自动向上/下大弧度绕行
+      if (dx < -30) {
+        if (!e.bend || Math.abs(e.bend) < 42) {
+          e.bend = dy <= 0 ? -72 : 72
+        }
+        continue
+      }
+
+      // 正向跨列连线：检查直线上是否有其它节点阻挡
+      const dist = Math.hypot(dx, dy)
+      if (dist > 220) {
+        const ux = dx / dist
+        const uy = dy / dist
+        let blocked = false
+        for (const m of mainNodes) {
+          if (m.id === a.id || m.id === b.id) continue
+          const vx = m.x - a.x
+          const vy = m.y - a.y
+          const proj = vx * ux + vy * uy
+          if (proj <= 32 || proj >= dist - 32) continue
+          const perp = Math.abs(vx * -uy + vy * ux)
+          if (perp < 44) {
+            blocked = true
+            break
+          }
+        }
+        if (blocked && (!e.bend || Math.abs(e.bend) < 40)) {
+          e.bend = -56
+        }
+      }
     }
   }
 
@@ -9885,8 +11994,8 @@ export function autoLayoutMxDocument(doc: MxDocument): void {
 
   if (orderedLayerIds.length >= 2) {
     const startX = 180
-    const gapX = 185
-    const gapY = 115
+    const gapX = 205
+    const gapY = 148
     const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#06b6d4', '#f43f5e']
     let currentTopY = notes.length ? 150 : 90
     const shouldAutoCreateGroups = !doc.groups || doc.groups.length === 0
@@ -9894,21 +12003,12 @@ export function autoLayoutMxDocument(doc: MxDocument): void {
 
     orderedLayerIds.forEach((lid, layerIdx) => {
       const layerNodes = nodesByLayer.get(lid)!
-      const cols = new Map<number, MxNode[]>()
-      for (const n of layerNodes) {
-        const col = rank.get(n.id) ?? 0
-        const arr = cols.get(col) ?? []
-        arr.push(n)
-        cols.set(col, arr)
-      }
-      const sortedCols = [...cols.keys()].sort((a, b) => a - b)
-      const maxRows = Math.max(1, ...sortedCols.map((c) => cols.get(c)!.length))
+      const wrappedCols = buildWrappedColumns(layerNodes)
+      const maxRows = Math.max(1, ...wrappedCols.map((c) => c.length))
       const bandInnerH = (maxRows - 1) * gapY
-      const centerY = currentTopY + 62 + bandInnerH / 2
+      const centerY = currentTopY + 66 + bandInnerH / 2
 
-      sortedCols.forEach((colKey, colIdx) => {
-        const list = cols.get(colKey)!
-        list.sort((a, b) => a.y - b.y)
+      wrappedCols.forEach((list, colIdx) => {
         const totalH = (list.length - 1) * gapY
         list.forEach((node, rowIdx) => {
           node.x = Math.round(startX + colIdx * gapX)
@@ -9952,37 +12052,44 @@ export function autoLayoutMxDocument(doc: MxDocument): void {
       nt.x = startX + idx * 220
       nt.y = 65
     })
+    autoCurveEdges()
     return
   }
 
-  const columns = new Map<number, MxNode[]>()
-  for (const n of mainNodes) {
-    const col = rank.get(n.id) ?? 0
-    const arr = columns.get(col) ?? []
-    arr.push(n)
-    columns.set(col, arr)
-  }
-
-  const sortedCols = [...columns.keys()].sort((a, b) => a - b)
   const startX = 180
-  const gapX = 165
-  const centerY = 270
-  const gapY = 115
+  const gapX = 205
+  const centerY = 250
+  const gapY = 152
 
-  sortedCols.forEach((colKey, colIdx) => {
-    const list = columns.get(colKey)!
-    list.sort((a, b) => a.y - b.y)
-    const totalH = (list.length - 1) * gapY
-    list.forEach((node, rowIdx) => {
-      node.x = Math.round(startX + colIdx * gapX)
-      node.y = Math.round(centerY - totalH / 2 + rowIdx * gapY)
+  if (flowNodes.length > 0) {
+    const wrappedCols = buildWrappedColumns(flowNodes)
+    wrappedCols.forEach((list, colIdx) => {
+      const totalH = (list.length - 1) * gapY
+      list.forEach((node, rowIdx) => {
+        node.x = Math.round(startX + colIdx * gapX)
+        node.y = Math.round(centerY - totalH / 2 + rowIdx * gapY)
+      })
     })
-  })
+    if (isolatedRegisters.length > 0) {
+      const maxFlowY = Math.max(...flowNodes.map((n) => n.y))
+      const regRowY = Math.round(maxFlowY + gapY)
+      isolatedRegisters.forEach((reg, idx) => {
+        reg.x = Math.round(startX + idx * gapX)
+        reg.y = regRowY
+      })
+    }
+  } else {
+    isolatedRegisters.forEach((reg, idx) => {
+      reg.x = Math.round(startX + idx * gapX)
+      reg.y = centerY
+    })
+  }
 
   notes.forEach((nt, idx) => {
     nt.x = startX + idx * 220
-    nt.y = 85
+    nt.y = 75
   })
+  autoCurveEdges()
 }
 
 /** v1 MachinationsDiagram → v2 文档 */
@@ -12017,7 +14124,10 @@ export function synthesizeMxDiagramFromPrompt(
     customTitle &&
     customTitle.trim() &&
     customTitle.trim() !== '\u6e38\u620f\u7ecf\u6d4e\u7cfb\u7edf' &&
-    customTitle.trim().toLowerCase() !== 'game economy'
+    customTitle.trim() !== '\u7ecf\u6d4e\u7cfb\u7edf' &&
+    customTitle.trim() !== '\u673a\u5236\u8bbe\u8ba1' &&
+    customTitle.trim().toLowerCase() !== 'game economy' &&
+    customTitle.trim().toLowerCase() !== 'mechanics design'
       ? customTitle.trim()
       : undefined
   const doc = createMxTemplate(matchedTpl, cleanTitle)

@@ -2216,7 +2216,7 @@ const ui = computed(() => {
     portPrevChapLabel: en ? 'Prev Chap' : '上一章', // cjk-ok
     portPrevChapEmpty: en ? '(Ch.1 Start Node)' : '（首章起点 · 无前置章节）', // cjk-ok
     portOutlineLabel: en ? 'Novel Outline' : '小说大纲', // cjk-ok
-    portEconomyLabel: en ? 'Economy System' : '经济系统', // cjk-ok
+    portEconomyLabel: en ? 'Mechanics Design' : '机制设计', // cjk-ok
     portNextChapLabel: en ? 'Next Chap' : '下一章', // cjk-ok
     portOutlineOutLabel: en ? 'Outline Out' : '大纲输出', // cjk-ok
     portAllChapsLabel: en ? 'All' : '全部', // cjk-ok
@@ -2338,7 +2338,7 @@ const ui = computed(() => {
       en
         ? `Ch.${cur}/${tot} Numerical Quota Lock`
         : `第 ${cur}/${tot} 章 · 数值围栏与${gp.unlockTermZh}锁`, // cjk-ok
-    openEconomyBtn: en ? 'Open Economy System' : '打开经济系统', // cjk-ok
+    openEconomyBtn: en ? 'Open Mechanics Design' : '打开机制设计', // cjk-ok
     arcRangeLabel: (arc: number, totArcs: number, start: number, end: number) =>
       en
         ? `Conflict Arc ${arc}/${totArcs} (Ch.${start}~${end})`

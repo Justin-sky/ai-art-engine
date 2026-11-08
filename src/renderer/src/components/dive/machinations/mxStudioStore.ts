@@ -6,14 +6,17 @@ import {
   autoLayoutMxDocument,
   applyAllMxDiagnosticQuickFixes,
   applyMxDiagnosticQuickFixInPlace,
+  collapseMxProToSimple,
   createMxDocumentFromBuildingBlock,
   createMxFromTemplate,
   createMxInitialState,
   createMxNode,
   createMxWorkbenchPreset,
+  expandMxSimpleMacrosToPro,
   formatMxTunableEdgeFormula,
   generateMxAgentWithAi,
   getMxBuildingBlockById,
+  hasMxSimpleMacros,
   insertMxBuildingBlockIntoDocument,
   mxIdentifier,
   mxNewId,
@@ -25,6 +28,7 @@ import {
   stepMxSimulation,
   suggestMxAgentGoalsWithAi,
   synthesizeMxWorkbenchFromPrompt,
+  replayMxPlayableActionMacro,
   type MxAgent,
   type MxDiagnosticFinding,
   type MxDocument,
@@ -37,6 +41,8 @@ import {
   type MxNode,
   type MxNodeKind,
   type MxNumericalWorkbench,
+  type MxPlayableMacroReplayResult,
+  type MxPlayableMacroStep,
   type MxPoolTokenStackItem,
   type MxRunResult,
   type MxRuntimeState,
@@ -58,6 +64,7 @@ export type MxDrawer =
   | 'history'
   | 'docs'
 export type MxMode = 'build' | 'scenarios' | 'workbench'
+export type MxComplexityMode = 'simple' | 'pro'
 export type MxCanvasTheme = 'auto' | 'light' | 'dark'
 export type MxFormulaModalTarget =
   | {
@@ -101,11 +108,12 @@ export function createMxStudioStore(initial: MxDocument) {
   const tool = ref<MxTool>('select')
   const drawer = ref<MxDrawer>('')
   const mode = ref<MxMode>('build')
+  const complexityMode = ref<MxComplexityMode>('simple')
   const inspectorOpen = ref(true)
   const resultsOpen = ref(true)
-  const resultsTab = ref<'results' | 'diagnostics' | 'balancer' | 'workbench' | 'debugger'>(
-    'results'
-  )
+  const resultsTab = ref<
+    'results' | 'playable' | 'diagnostics' | 'balancer' | 'workbench' | 'debugger'
+  >('results')
   const canvasTheme = ref<MxCanvasTheme>('auto')
   const snapToGrid = ref(true)
   const flowHeatmap = ref(false)
@@ -310,7 +318,10 @@ export function createMxStudioStore(initial: MxDocument) {
 
   function replaceDoc(next: MxDocument, recordUndo = true): void {
     if (recordUndo) snapshotForUndo()
-    const normalized = normalizeMxDocument(clone(next))
+    let normalized = normalizeMxDocument(clone(next))
+    if (complexityMode.value === 'simple') {
+      normalized = collapseMxProToSimple(normalized).doc
+    }
     rawDocSnapshot = normalized
     doc.value = normalized
     docRevision.value++
@@ -394,18 +405,94 @@ export function createMxStudioStore(initial: MxDocument) {
 
   function addEdge(kind: MxEdgeKind, from: string, to: string): MxEdge | null {
     if (from === to) return null
+    let defaultFormula = '1'
+    if (kind === 'state') {
+      const srcNode = doc.value.nodes.find((n) => n.id === from)
+      const dstNode = doc.value.nodes.find((n) => n.id === to)
+      if (
+        srcNode?.kind === 'converter' ||
+        srcNode?.kind === 'trader' ||
+        srcNode?.kind === 'drain' ||
+        srcNode?.kind === 'gate'
+      ) {
+        defaultFormula = '*'
+      } else if (dstNode?.kind === 'end') {
+        defaultFormula = '<=0'
+      } else {
+        defaultFormula = '+1'
+      }
+    }
     const edge: MxEdge = {
       id: mxNewId(kind === 'state' ? 'st' : 'rs'),
       kind,
       from,
       to,
-      formula: kind === 'state' ? '+1' : '1'
+      formula: defaultFormula
     }
     mutate((d) => {
       d.edges.push(edge)
     })
     select([], [edge.id])
     return edge
+  }
+
+  /**
+   * 在「🧩 极简创造模式 (simple)」与「📐 专业蓝图模式 (pro)」之间双向切换，
+   * 自动执行 Pro -> Simple 叶子节点折叠或 Simple -> Pro 内联宏展开。
+   */
+  function switchComplexityMode(target: MxComplexityMode, autoConvert = true): number {
+    complexityMode.value = target
+    if (target === 'simple') {
+      const simpleTools: MxTool[] = [
+        'select',
+        'pool',
+        'converter',
+        'gate',
+        'resource_edge',
+        'state_edge',
+        'note'
+      ]
+      if (!simpleTools.includes(tool.value)) {
+        tool.value = 'select'
+      }
+      if (autoConvert) {
+        const res = collapseMxProToSimple(doc.value)
+        if (res.foldedCount > 0) {
+          mutate((d) => {
+            d.nodes = res.doc.nodes
+            d.edges = res.doc.edges
+          })
+          pruneSelection()
+          playAgain()
+        }
+        return res.foldedCount
+      }
+      return 0
+    }
+
+    if (autoConvert && hasMxSimpleMacros(doc.value)) {
+      const expanded = expandMxSimpleMacrosToPro(doc.value)
+      mutate((d) => {
+        d.nodes = expanded.nodes
+        d.edges = expanded.edges
+      })
+      playAgain()
+      return 1
+    }
+    return 0
+  }
+
+  /**
+   * 将当前选中节点的极简内联宏单独展开为专业蓝图节点，并自动切换到专业蓝图模式查看。
+   */
+  function expandNodeSimpleMacros(nodeId: string): void {
+    const expanded = expandMxSimpleMacrosToPro(doc.value, { onlyNodeId: nodeId })
+    mutate((d) => {
+      d.nodes = expanded.nodes
+      d.edges = expanded.edges
+    })
+    complexityMode.value = 'pro'
+    playAgain()
   }
 
   /** 状态边直接连向另一条连线的公式标签（边修饰器 / 边激活器） */
@@ -785,6 +872,12 @@ export function createMxStudioStore(initial: MxDocument) {
       } else if (kind === 'node_initial') {
         const n = d.nodes.find((x) => x.id === id)
         if (n) n.initial = rounded
+      } else if (kind === 'node_auto_inflow') {
+        const n = d.nodes.find((x) => x.id === id)
+        if (n) n.autoInflow = String(Math.max(0, rounded))
+      } else if (kind === 'node_auto_outflow') {
+        const n = d.nodes.find((x) => x.id === id)
+        if (n) n.autoOutflow = String(Math.max(0, rounded))
       }
     })
     playAgain()
@@ -810,6 +903,12 @@ export function createMxStudioStore(initial: MxDocument) {
       } else if (kind === 'node_initial') {
         const n = d.nodes.find((x) => x.id === id)
         if (n) n.initial = rounded
+      } else if (kind === 'node_auto_inflow') {
+        const n = d.nodes.find((x) => x.id === id)
+        if (n) n.autoInflow = String(Math.max(0, rounded))
+      } else if (kind === 'node_auto_outflow') {
+        const n = d.nodes.find((x) => x.id === id)
+        if (n) n.autoOutflow = String(Math.max(0, rounded))
       }
     }
     mutate((d) => {
@@ -1077,6 +1176,15 @@ export function createMxStudioStore(initial: MxDocument) {
         ...options,
         layerId: activeLayerId.value || undefined
       })
+      if (inserted && complexityMode.value === 'simple') {
+        const collapsed = collapseMxProToSimple(d).doc
+        d.nodes = collapsed.nodes
+        d.edges = collapsed.edges
+        const keptNodeIds = new Set(d.nodes.map((n) => n.id))
+        const keptEdgeIds = new Set(d.edges.map((e) => e.id))
+        inserted.insertedNodeIds = inserted.insertedNodeIds.filter((id) => keptNodeIds.has(id))
+        inserted.insertedEdgeIds = inserted.insertedEdgeIds.filter((id) => keptEdgeIds.has(id))
+      }
     })
     if (inserted) {
       const res = inserted as MxInsertBuildingBlockResult
@@ -1145,8 +1253,15 @@ export function createMxStudioStore(initial: MxDocument) {
     playing.value = false
   }
 
-  function resetPlayback(): void {
+  function resetPlayback(clearForecast = true): void {
     stopTimer()
+    pendingInteractions = []
+    activeRunId.value = ''
+    compareRunIds.value = []
+    hoverStep.value = null
+    if (clearForecast) {
+      forecast.value = null
+    }
     liveState.value = null
     liveEvents.value = []
     liveSnapshots.value = []
@@ -1255,6 +1370,99 @@ export function createMxStudioStore(initial: MxDocument) {
     if (!playing.value) stepOnce()
   }
 
+  /**
+   * 卡片试玩台专用：在当前回合内即时打出指定卡牌（仅执行该卡牌与下游级联，不推进全局回合、不触发每步自动收支），
+   * 返回本次出牌产生的事件列表与发生数值变化的节点 ID 列表。
+   */
+  function playCardInstant(nodeId: string): { events: MxEvent[]; changedNodeIds: string[] } {
+    if (!liveState.value) {
+      activeRunId.value = ''
+      const seed = doc.value.settings.seed + runs.value.length
+      const st = createMxInitialState(doc.value, { seed, scenarioId: scenarioId() })
+      liveState.value = st
+      liveSnapshots.value = [{ ...st.values }]
+      liveFlows.value = [{}]
+      livePoolTokens.value = [clone(st.poolTokens ?? {})]
+      liveEvents.value = []
+      playStep.value = 0
+    }
+    const cur = liveState.value!
+    if (cur.ended) return { events: [], changedNodeIds: [] }
+    const beforeVals = { ...cur.values }
+    const seed = doc.value.settings.seed + runs.value.length
+    const res = stepMxSimulation(doc.value, cur, {
+      seed,
+      params: cur.runtimeParams,
+      interactions: [nodeId],
+      instantOnly: true
+    })
+    liveState.value = res.state
+    if (liveSnapshots.value.length > 0) {
+      const nextSnaps = [...liveSnapshots.value]
+      nextSnaps[nextSnaps.length - 1] = { ...res.state.values }
+      liveSnapshots.value = nextSnaps
+    } else {
+      liveSnapshots.value = [{ ...res.state.values }]
+    }
+    if (liveFlows.value.length > 0) {
+      const nextFlows = [...liveFlows.value]
+      nextFlows[nextFlows.length - 1] = {
+        ...(nextFlows[nextFlows.length - 1] ?? {}),
+        ...res.state.edgeFlows
+      }
+      liveFlows.value = nextFlows
+    }
+    liveEvents.value = [...liveEvents.value, ...res.events]
+    const changedNodeIds: string[] = []
+    for (const [k, v] of Object.entries(res.state.values)) {
+      if (Math.abs((beforeVals[k] ?? 0) - v) > 1e-6) {
+        changedNodeIds.push(k)
+      }
+    }
+    if (res.state.ended) {
+      stopTimer()
+      finalizeLiveRun()
+    }
+    return { events: res.events, changedNodeIds }
+  }
+
+  /** 连续推进多步（供交互试玩台连跑 N 回合使用） */
+  function stepMultiple(count: number): void {
+    const n = Math.max(1, Math.min(50, Math.round(count)))
+    for (let i = 0; i < n; i++) {
+      if (liveState.value?.ended) break
+      stepOnce()
+    }
+  }
+
+  /**
+   * 📼 一键重放录制好的卡片试玩操作序列（从第 0 回合按相同随机种子重新执行所有出牌与回合推进）
+   */
+  function replayActionMacro(macroSteps: MxPlayableMacroStep[]): MxPlayableMacroReplayResult {
+    stopTimer()
+    activeRunId.value = ''
+    const seed = doc.value.settings.seed
+    const res = replayMxPlayableActionMacro(doc.value, macroSteps, {
+      seed,
+      scenarioId: scenarioId()
+    })
+    liveState.value = res.finalState
+    liveSnapshots.value = res.snapshots
+    liveFlows.value = res.edgeFlows
+    livePoolTokens.value = [clone(res.finalState.poolTokens ?? {})]
+    liveEvents.value = res.events
+    playStep.value = res.finalState.step
+    return res
+  }
+
+  /** 将录制的试玩操作序列持久化写入文档（触发保存但不冲刷 Undo 栈） */
+  function setPlayableMacroSteps(steps: MxPlayableMacroStep[]): void {
+    const nextSteps = steps.length ? steps.map((s) => ({ ...s })) : undefined
+    doc.value.playableMacroSteps = nextSteps
+    rawDocSnapshot.playableMacroSteps = nextSteps
+    docRevision.value++
+  }
+
   /** 画布上直接微调 Interactive Register 的值（- / + 按钮） */
   function adjustRegisterValue(nodeId: string, delta: number): void {
     const node = doc.value.nodes.find((n) => n.id === nodeId)
@@ -1291,7 +1499,7 @@ export function createMxStudioStore(initial: MxDocument) {
 
   /** 立即跑完整一次（Play again） */
   function playAgain(): void {
-    resetPlayback()
+    resetPlayback(false)
     const sc = doc.value.scenarios.find((s) => s.id === scenarioId())
     const run = runMxSimulation(doc.value, {
       steps: doc.value.settings.steps,
@@ -2009,6 +2217,9 @@ export function createMxStudioStore(initial: MxDocument) {
     tool,
     drawer,
     mode,
+    complexityMode,
+    switchComplexityMode,
+    expandNodeSimpleMacros,
     inspectorOpen,
     resultsOpen,
     resultsTab,
@@ -2084,7 +2295,11 @@ export function createMxStudioStore(initial: MxDocument) {
     copyBuildingBlock,
     play,
     stepOnce,
+    stepMultiple,
     interact,
+    playCardInstant,
+    replayActionMacro,
+    setPlayableMacroSteps,
     adjustRegisterValue,
     playAgain,
     ensureScenariosReady,

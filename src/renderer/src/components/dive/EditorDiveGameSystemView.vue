@@ -177,11 +177,11 @@
               >
             </div>
 
-            <!-- Port: in-economy (经济系统) -->
+            <!-- Port: in-economy (机制设计) -->
             <div class="bridge-node-box" style="margin-top: 6px">
               <div class="card-header-row">
                 <span class="bridge-node-name">
-                  📊 {{ isEn ? 'Port [Economy System]' : '端口【经济系统】' }}:
+                  📊 {{ ui.portEconomyLabel }}:
                   {{
                     upstreamEconomyNode
                       ? upstreamEconomyNode.title || 'game.economy'
@@ -1202,7 +1202,7 @@ const ui = computed(() => {
       pushToUiSplitBtn: 'Push to UI Split',
       backToCanvas: 'Canvas',
       tabArchetypes: 'Archetypes',
-      tabEconomyBridge: 'Economy',
+      tabEconomyBridge: 'Mechanics',
       tabNovelBridge: 'Novel IP',
       archetypeSectionTitle: '8 Game System Archetypes',
       unitFeatures: 'Features',
@@ -1210,16 +1210,18 @@ const ui = computed(() => {
       coreLoopTitle: 'Core Gameplay Loop',
       designGoalTitle: 'Deliverable Goal',
       applyArchetypeTemplateBtn: 'Synthesize Full GDD with Archetype & Upstream',
-      economyBridgeTitle: 'Upstream Economy System (game.economy)',
+      portEconomyLabel: 'Port [Mechanics Design]',
+      economyBridgeTitle: 'Upstream Mechanics Design (game.economy)',
       novelBridgeTitle: 'Upstream Novel IP (asset.novel)',
       connectedLabel: 'Connected',
       unconnectedLabel: 'Not Linked',
       injectEconomyBtn: 'Inject Formulas & Tables',
-      openEconomyWorkbenchBtn: 'Open Economy Studio',
+      openEconomyWorkbenchBtn: 'Open Mechanics Studio',
       economyEmptyDesc:
-        'Connect a game.economy node to bind multiplier formulas, entity stat tables, gacha pity, and resource sinks/sources.',
-      linkExistingEconomyBtn: (name?: string) => `Link Canvas Economy (${name || 'game.economy'})`,
-      createEconomyNodeBtn: 'Create & Link Upstream game.economy',
+        'Connect a game.economy (Mechanics Design) node to bind multiplier formulas, entity stat tables, gacha pity, and resource sinks/sources.',
+      linkExistingEconomyBtn: (name?: string) =>
+        `Link Canvas Mechanics (${name || 'game.economy'})`,
+      createEconomyNodeBtn: 'Create & Link Upstream Mechanics Design',
       injectNovelBtn: 'Inject Novel IP & Roster',
       openNovelWorkbenchBtn: 'Open Novel Workbench',
       novelEmptyDesc:
@@ -1262,19 +1264,19 @@ const ui = computed(() => {
     }
   }
   return {
-    telemetryEconomy: (ok: boolean) => (ok ? '已连经济数值' : '未连经济系统'), // cjk-ok
+    telemetryEconomy: (ok: boolean) => (ok ? '已连机制数值' : '未连机制设计'), // cjk-ok
     telemetryNovel: (ok: boolean) => (ok ? '已连小说 IP' : '未连小说节点'), // cjk-ok
     telemetryScreens: (n: number) => `${n} 屏可拆分 UI`, // cjk-ok
     telemetryQa: (s: number) => `完备度 ${s}/100`, // cjk-ok
     synthesizeOfflineBtn: '融合上游合成标准策划案', // cjk-ok
     synthesizeOfflineHint:
-      '一键融合上游经济系统数值、小说IP设定与当前系统原型，生成完整可交付策划案', // cjk-ok
+      '一键融合上游机制设计数值、小说IP设定与当前系统原型，生成完整可交付策划案', // cjk-ok
     generateBtn: 'AI 生成策划案', // cjk-ok
     generatingBtn: '生成中...', // cjk-ok
     pushToUiSplitBtn: '推送至 UI 拆分 (ui.split)', // cjk-ok
     backToCanvas: '返回画布', // cjk-ok
     tabArchetypes: '系统原型', // cjk-ok
-    tabEconomyBridge: '经济桥接', // cjk-ok
+    tabEconomyBridge: '机制桥接', // cjk-ok
     tabNovelBridge: '小说IP桥接', // cjk-ok
     archetypeSectionTitle: '8 大游戏系统策划案原型矩阵', // cjk-ok
     unitFeatures: '项功能', // cjk-ok
@@ -1282,17 +1284,18 @@ const ui = computed(() => {
     coreLoopTitle: '核心玩法与体验闭环', // cjk-ok
     designGoalTitle: '系统策划案交付目标', // cjk-ok
     applyArchetypeTemplateBtn: '按此原型 + 上游数据生成完整策划案骨架', // cjk-ok
-    economyBridgeTitle: '上游经济系统 (game.economy) 数值契约', // cjk-ok
+    portEconomyLabel: '端口【机制设计】', // cjk-ok
+    economyBridgeTitle: '上游机制设计 (game.economy) 数值契约', // cjk-ok
     novelBridgeTitle: '上游小说 IP (asset.novel) 设定转化', // cjk-ok
     connectedLabel: '已连接', // cjk-ok
     unconnectedLabel: '未连接', // cjk-ok
     injectEconomyBtn: '注入乘区公式与配置表', // cjk-ok
-    openEconomyWorkbenchBtn: '打开数值工作台', // cjk-ok
+    openEconomyWorkbenchBtn: '打开机制工作台', // cjk-ok
     economyEmptyDesc:
-      '连接上游「经济系统 (game.economy)」后，可自动提取伤害乘区公式、实体属性预算表、抽卡软硬保底概率与资源产销比写入策划案。', // cjk-ok
+      '连接上游「机制设计 (game.economy)」后，可自动提取伤害乘区公式、实体属性预算表、抽卡软硬保底概率与资源产销比写入策划案。', // cjk-ok
     linkExistingEconomyBtn: (name?: string) =>
-      `一键连接画布中的经济系统 (${name || 'game.economy'})`, // cjk-ok
-    createEconomyNodeBtn: '新建并连接上游经济系统节点', // cjk-ok
+      `一键连接画布中的机制设计 (${name || 'game.economy'})`, // cjk-ok
+    createEconomyNodeBtn: '新建并连接上游机制设计节点', // cjk-ok
     injectNovelBtn: '注入小说境界/角色/法宝设定', // cjk-ok
     openNovelWorkbenchBtn: '打开小说工作台', // cjk-ok
     novelEmptyDesc:
@@ -1309,7 +1312,7 @@ const ui = computed(() => {
     toggleLeftPanelHint: '展开/收起左侧原型与桥接栏', // cjk-ok
     toggleRightPanelHint: '展开/收起右侧 UI 预演与体检栏', // cjk-ok
     presetLabel: '指令预设：', // cjk-ok
-    instructionPlaceholder: '输入策划案生成指令（支持 @引用上游经济系统与小说节点）...', // cjk-ok
+    instructionPlaceholder: '输入策划案生成指令（支持 @引用上游机制设计与小说节点）...', // cjk-ok
     versionHistoryLabel: '版本记录：', // cjk-ok
     editorPlaceholder:
       '点击上方「📐 融合上游合成标准策划案」或「⚡ AI 生成策划案」，一键生成含功能点、数值配置表、ASCII 界面框线与 9-slice PSD 规范的完整策划案...', // cjk-ok

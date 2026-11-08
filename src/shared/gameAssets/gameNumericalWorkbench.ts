@@ -8329,7 +8329,7 @@ export function synthesizeMxWorkbenchFromPrompt(
       .trim()
 
     const isGenericWord =
-      /* cjk-ok */ /^(?:卡牌|小丑牌|杀戮尖塔|炉石|炉石传说|阴阳师|土豆兄弟|幸存者|肉鸽|数值|游戏|游戏经济|游戏经济系统|经济系统|经济|全套|一套|balatro|spire|hearthstone|onmyoji|game\s*economy|economy)$/i.test(
+      /* cjk-ok */ /^(?:卡牌|小丑牌|杀戮尖塔|炉石|炉石传说|阴阳师|土豆兄弟|幸存者|肉鸽|数值|游戏|游戏经济|游戏经济系统|经济系统|经济|机制设计|游戏机制|机制|全套|一套|balatro|spire|hearthstone|onmyoji|game\s*economy|economy|mechanics\s*design|mechanics)$/i.test(
         topicCandidate
       )
 
@@ -10284,7 +10284,10 @@ export function exportMxNarrativeProgressionBrief(
   const bossFloors = envRes.floorSeries.filter((f) => f.isBoss).map((f) => f.floor)
   const wallFloors = envRes.difficultyWallFloors
   const customTitle =
-    docMeta?.title && docMeta.title !== '游戏经济系统' && docMeta.title !== '经济系统' // cjk-ok
+    docMeta?.title &&
+    docMeta.title !== '游戏经济系统' && // cjk-ok
+    docMeta.title !== '经济系统' && // cjk-ok
+    docMeta.title !== '机制设计' // cjk-ok
       ? `${docMeta.title} · ${wb.multiplier.title}`
       : wb.multiplier.title
   const canvasNodesSummary = (docMeta?.nodes ?? [])
