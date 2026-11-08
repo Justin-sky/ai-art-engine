@@ -2,6 +2,16 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.8.0] — 2026-11-08
+
+8.8.0 功能版：**游戏机制沙盘（`game.economy` Machinations Studio）** 全面升级 **「极简创造 / 专业蓝图」双模无损折叠与展开引擎（4 积木极简宏属性 ↔ 9 节点完整拓扑）**、**零代码「一键卡片试玩台（Playable Card & HUD Prototype + AI 自动观战 + 操作序列录制重放）」**、**「折线图直接拖拽曲线反推配平（单锚点 & 双锚点塑形 Goal-Seek）」** 与 **「经济健康度体检一键自动修复（Quick-Fix）」**，并升级 **闭环破环自动排版引擎与折线图游标交点数值胶囊**。
+
+- **新增 · 极简创造 / 专业蓝图双模式无损切换（`collapseMxProToSimple` + `expandMxSimpleMacrosToPro` + `MxInspector` + `MxCanvas`）**：新增「🧩 极简创造」与「📐 专业蓝图」一键互转；极简模式将全库 58 款标准积木与预设模板的外围源点（`Source`）、漏点（`Drain`）、延迟（`Delay`）及胜负判据（`End`）自动折叠为资源池与转化器的内聚宏属性（自然产出 `autoInflow`、每步消耗 `autoDrain`、冷却回合 `cooldownSteps`、胜负阈值 `winAtOrAbove` / `loseAtOrBelow`），专业蓝图模式一键无损展开还原完整拓扑。
+- **新增 · 零代码一键卡片试玩台与 AI 观战/操作录制重放（`extractMxPlayableHudSnapshot` + `replayMxPlayableActionMacro` + `MxResultsPanel`）**：将画布机制实时转化为可交互的 RPG 状态槽（HUD）与可点击技能/合成卡牌台，支持回合内即时出牌结算（`playCardInstant`）、冷却回合锁、AI 最优手推荐、AI 自动观战打牌以及操作序列录制与调参后同种子一键回归重放对比。
+- **新增 · 折线图直接拖拽曲线反推（Direct Curve Drag Goal-Seek）与诊断一键修复（`autoSolveMxCurveTarget` + `applyMxDiagnosticQuickFixInPlace`）**：支持在折线图上直接上下拖拽期望靶心（含双锚点前期斜率 + 后期上限联合反推），实时逆向求解上游参数、连线速率与极简宏属性并提供 TOP 候选配平方案一键应用；健康度体检支持对饥饿阻塞、爆仓/枯竭与孤立节点执行单条或全量一键自动修复。
+- **优化 · 闭环反馈破环自动排版、当步净变化悬浮提示与折线图交点数值胶囊（`autoLayoutMxDocument` + `MxCanvas` + `MxResultsPanel`）**：自动排版引擎支持闭环强连通分量起点智能推选、祖先集反馈回边破环、独立公式寄存器底栏分行、单列高度折行与自动避障弧度 `bend`；画布节点右上角当步净变化徽章与左上角瓶颈徽章新增即时悬浮详情提示；折线图竖向游标线与各序列交点新增防重叠双侧交错数值胶囊，重置按钮同步清空已选运行与预测带回到第 0 步初始态。
+- **说明（发版提示）**：8.8.0 涉及共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.7.0] — 2026-11-07
 
 8.7.0 功能版：**「视频拆解与重制」** 全面重构为 **双节点 `rea-video` 逆向取证与智能复刻引擎（`semantic.analyze` → `semantic.rebuild`）**，支持 **四轴视听取证、三联帧时序感知、多模态大模型（如 DeepSeek V4.1 Flash）角色实体抽取、DP 最优多镜合批、零 API 成本本地推拉运镜、首帧包装去字净化、口播对口型（Lip-Sync）与 ASS 动态花字烧录**；同时 **Machinations 数值沙盘** 升级 **`fx` 紧凑实时胶囊、起点染色流量标签、瞬态几何高帧率拖拽与明暗主题原生同步**。
