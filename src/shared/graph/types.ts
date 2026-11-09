@@ -257,6 +257,7 @@ export type GraphNodeTypeId =
   | 'image.gridSplit'
   | 'image.layerSplit'
   | 'ui.componentLib'
+  | 'ui.atlasCompose'
   | 'image.toPrompt'
   | 'decisions.judge'
   | 'svg.gen'

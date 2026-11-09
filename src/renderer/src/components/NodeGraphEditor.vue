@@ -874,6 +874,7 @@ import {
   type SnapConnectCandidate,
   canScopeAcceptDraggedAsset,
   cloneGraphDocument,
+  collectProjectUiAtlasResources,
   buildGraphClipboardPayload,
   applyGraphClipboardPayload,
   serializeGraphClipboardPayload,
@@ -1058,6 +1059,7 @@ import {
   parseFilmCast,
   parseFilmRenderCache,
   parseUiComponentLibrary,
+  resolveChatUiAtlasSearchDirs,
   summarizeReferenceListForLog,
   GraphPortType,
   PORTRAIT_FACES_VERSION,
@@ -1073,6 +1075,7 @@ import { isVideoJobActive, type VideoJobRecord } from '@shared/videoJob'
 import { SHARED_ERRORS } from '@shared/errors/catalog'
 import { fail } from '@shared/errors/appError'
 import { useStudioI18n } from '../composables/useStudioI18n'
+import { getActiveChatProjectScopeSnapshot } from '../composables/useChatHistory'
 import { useWorkspaceFullscreen } from '../composables/useWorkspaceFullscreen'
 import { promptAlert } from '../composables/useStudioPrompt'
 import { useEditorKernel } from '../editor/kernel'
@@ -2067,6 +2070,39 @@ const {
   resolveHostAssetName: () => graphAsset.value?.name?.trim() || undefined,
   resolveHostAssetId: () => props.assetId?.trim() || undefined,
   resolveProjectStyleImages: () => normalizeProjectStyleImages(project.config?.styleImages),
+  resolveProjectUiAtlasResources: async (input) => {
+    const scopeSnap = getActiveChatProjectScopeSnapshot(project.rootPath)
+    const base = collectProjectUiAtlasResources({
+      graphs: [buildGraphJson()],
+      assets: scopeSnap.activeProject ? [] : project.assets,
+      folders: project.folders
+    })
+    const searchDirs = resolveChatUiAtlasSearchDirs({
+      activeProject: scopeSnap.activeProject,
+      allProjects: scopeSnap.allProjects,
+      workspaceRootPath: scopeSnap.workspaceRootPath || project.rootPath,
+      prompt: input?.prompt
+    })
+    if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
+      try {
+        const scanned = await window.studio.scanProjectOutputs({
+          sinceMs: 0,
+          uiAtlasSearchDirs: searchDirs,
+          uiAtlasPrompt: input?.prompt
+        })
+        const diskImages = scanned?.uiAtlasImages ?? []
+        if (diskImages.length > 0) {
+          return {
+            componentLibraries: base.componentLibraries,
+            images: [...diskImages, ...base.images].slice(0, 16)
+          }
+        }
+      } catch {
+        // Ignore disk scan failure
+      }
+    }
+    return base
+  },
   resolveWorldElementOutputs: (node) => {
     const worldId = props.assetId?.trim()
     if (!worldId || !isWorldElementPipelineHost.value) return []
@@ -2177,6 +2213,12 @@ function applyVideoJobToNode(job: VideoJobRecord): void {
   const prev = runStates[nodeId]
   if (isVideoJobActive(job.status)) {
     if (prev?.status === 'done') return
+    if (
+      prev?.status === 'error' &&
+      (prev.error === 'GRAPH_CANCELLED' || prev.error === t('graph.run.stopped'))
+    ) {
+      return
+    }
     runStates[nodeId] = { status: 'running' }
   } else if (job.status === 'succeeded') {
     if (prev?.status === 'done' && prev.outputs) return
@@ -4062,6 +4104,7 @@ const CONTEXT_MENU_RESOURCE_GROUPS: Array<{
       'ui.split',
       'ui.gen',
       'ui.componentLib',
+      'ui.atlasCompose',
       'image.layerSplit'
     ]
   },
@@ -4171,36 +4214,51 @@ const rootAddableMenuItems = computed(() => {
       : linkSource?.typeId === 'asset.novel'
         ? ['asset.novel', 'asset.screenplay', 'asset.gameSystem', 'text.translate']
         : linkSource?.typeId === 'game.economy'
-          ? ['game.numerical', 'novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
+          ? [
+              'game.numerical',
+              'novel.outline',
+              'asset.novel',
+              'asset.gameSystem',
+              'ui.split',
+              'ui.atlasCompose'
+            ]
           : linkSource?.typeId === 'game.numerical'
-            ? ['novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split']
+            ? ['novel.outline', 'asset.novel', 'asset.gameSystem', 'ui.split', 'ui.atlasCompose']
             : linkSource?.typeId === 'asset.gameSystem'
-              ? ['ui.split', 'asset.novel', 'asset.screenplay']
-              : linkTarget?.typeId === 'game.numerical'
-                ? menu.linkToPortId === 'in-economy'
-                  ? ['game.economy', 'text.plain']
-                  : ['game.economy', 'text.plain']
-                : linkTarget?.typeId === 'asset.gameSystem'
-                  ? menu.linkToPortId === 'in-economy'
-                    ? ['game.economy', 'text.plain']
-                    : menu.linkToPortId === 'in-numerical'
-                      ? ['game.numerical', 'text.plain']
-                      : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
-                  : linkTarget?.typeId === 'novel.outline'
+              ? ['ui.split', 'ui.atlasCompose', 'asset.novel', 'asset.screenplay']
+              : linkSource?.typeId === 'ui.componentLib'
+                ? ['ui.atlasCompose', 'image.layerSplit']
+                : linkTarget?.typeId === 'ui.atlasCompose'
+                  ? menu.linkToPortId === 'in-components'
+                    ? ['ui.componentLib', 'image.layerSplit']
+                    : menu.linkToPortId === 'in-text'
+                      ? ['asset.gameSystem', 'ui.split', 'text.plain']
+                      : ['image.plain', 'asset.image', 'ui.componentLib']
+                  : linkTarget?.typeId === 'game.numerical'
                     ? menu.linkToPortId === 'in-economy'
                       ? ['game.economy', 'text.plain']
-                      : menu.linkToPortId === 'in-numerical'
-                        ? ['game.numerical', 'text.plain']
-                        : ['text.plain', 'game.economy', 'game.numerical']
-                    : linkTarget?.typeId === 'asset.novel'
+                      : ['game.economy', 'text.plain']
+                    : linkTarget?.typeId === 'asset.gameSystem'
                       ? menu.linkToPortId === 'in-economy'
                         ? ['game.economy', 'text.plain']
                         : menu.linkToPortId === 'in-numerical'
                           ? ['game.numerical', 'text.plain']
-                          : menu.linkToPortId === 'in-outline'
-                            ? ['novel.outline', 'text.plain']
-                            : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
-                      : []
+                          : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                      : linkTarget?.typeId === 'novel.outline'
+                        ? menu.linkToPortId === 'in-economy'
+                          ? ['game.economy', 'text.plain']
+                          : menu.linkToPortId === 'in-numerical'
+                            ? ['game.numerical', 'text.plain']
+                            : ['text.plain', 'game.economy', 'game.numerical']
+                        : linkTarget?.typeId === 'asset.novel'
+                          ? menu.linkToPortId === 'in-economy'
+                            ? ['game.economy', 'text.plain']
+                            : menu.linkToPortId === 'in-numerical'
+                              ? ['game.numerical', 'text.plain']
+                              : menu.linkToPortId === 'in-outline'
+                                ? ['novel.outline', 'text.plain']
+                                : ['asset.novel', 'novel.outline', 'game.economy', 'game.numerical']
+                          : []
   if (!promotedOrder.length) return base
   const byType = new Map(addableMenuItems.value.map((item) => [item.typeId, item]))
   const promoted = promotedOrder
@@ -9718,10 +9776,130 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   layerSplit.nodeId = nodeId
-  layerSplit.setup = readImageLayerSplitFromNode(node.params)
+  const initialSetup = readImageLayerSplitFromNode(node.params)
+  const upstreamComponentUrls: Record<string, string> = {}
+
+  // Hydrate componentLibrary from upstream ui.componentLib nodes or project-wide UI atlas resources if not yet embedded
+  if (!initialSetup.componentLibrary?.length) {
+    const incomingCompItems: NonNullable<ImageLayerSplitState['componentLibrary']> = []
+    for (const edge of graph.edges) {
+      if (edge.target !== nodeId) continue
+      const srcNode = graph.nodes.find((n) => n.id === edge.source)
+      if (!srcNode) continue
+      const parsedLib = parseUiComponentLibrary(srcNode.params.uiComponentLibrary ?? '')
+      if (parsedLib?.items?.length) {
+        incomingCompItems.push(...parsedLib.items)
+        const srcUrls = await resolveGeneratedImageUrls(srcNode.id)
+        Object.assign(upstreamComponentUrls, srcUrls)
+      }
+    }
+    if (!incomingCompItems.length && node.typeId === 'ui.atlasCompose') {
+      const scopeSnap = getActiveChatProjectScopeSnapshot(project.rootPath)
+      const discovered = collectProjectUiAtlasResources({
+        graphs: [buildGraphJson()],
+        assets: scopeSnap.activeProject ? [] : project.assets,
+        folders: project.folders,
+        excludeNodeId: nodeId
+      })
+      for (const lib of discovered.componentLibraries) {
+        incomingCompItems.push(...lib.items)
+      }
+      const promptHint =
+        initialSetup.prompt?.trim() ||
+        node.params.generateInstruction?.trim() ||
+        node.params.text?.trim() ||
+        ''
+      const searchDirs = resolveChatUiAtlasSearchDirs({
+        activeProject: scopeSnap.activeProject,
+        allProjects: scopeSnap.allProjects,
+        workspaceRootPath: scopeSnap.workspaceRootPath || project.rootPath,
+        prompt: promptHint
+      })
+      let diskImages: GraphImageItem[] = []
+      if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
+        try {
+          const scanned = await window.studio.scanProjectOutputs({
+            sinceMs: 0,
+            uiAtlasSearchDirs: searchDirs,
+            uiAtlasPrompt: promptHint
+          })
+          diskImages = scanned?.uiAtlasImages ?? []
+        } catch {
+          // Ignore disk scan failure
+        }
+      }
+      const combinedImages = [...diskImages, ...discovered.images].slice(0, 16)
+      for (let i = 0; i < combinedImages.length; i++) {
+        const img = combinedImages[i]!
+        const resolved = await resolveGraphImageUrls([img])
+        const url = resolved[0]?.trim() || img.dataUrl?.trim() || ''
+        if (!url) continue
+        const compId = `proj_atlas_img_${i + 1}`
+        upstreamComponentUrls[compId] = url
+        incomingCompItems.push({
+          id: compId,
+          psdGuid: `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`,
+          name: img.title?.trim() || `Atlas_${i + 1}`,
+          exportName: `Atlas_${i + 1}`,
+          kind: 'panel',
+          canonicalWidth: 160,
+          canonicalHeight: 96,
+          scalePolicy: 'nine-slice',
+          nineSliceBorders: [16, 16, 16, 16],
+          imageId: compId,
+          imageUrl: url,
+          ...(img.relativePath ? { imageRelativePath: img.relativePath } : {}),
+          sourceCount: 1
+        })
+      }
+    }
+    if (incomingCompItems.length > 0) {
+      initialSetup.componentLibrary = incomingCompItems
+    }
+  }
+
+  // For ui.atlasCompose, ensure an initial 1920x1080 canvas base layer exists when opened before first run
+  if (node.typeId === 'ui.atlasCompose' && initialSetup.layers.length === 0) {
+    const cw = initialSetup.canvasWidth > 0 ? initialSetup.canvasWidth : 1920
+    const ch = initialSetup.canvasHeight > 0 ? initialSetup.canvasHeight : 1080
+    const baseId = `atlasBase:${nodeId}`
+    const canvas = document.createElement('canvas')
+    canvas.width = cw
+    canvas.height = ch
+    const c2d = canvas.getContext('2d')
+    if (c2d) {
+      const grad = c2d.createRadialGradient(cw * 0.5, ch * 0.45, 40, cw * 0.5, ch * 0.5, cw * 0.65)
+      grad.addColorStop(0, '#22283a')
+      grad.addColorStop(1, '#121521')
+      c2d.fillStyle = grad
+      c2d.fillRect(0, 0, cw, ch)
+      upstreamComponentUrls[baseId] = canvas.toDataURL('image/png')
+    }
+    initialSetup.canvasWidth = cw
+    initialSetup.canvasHeight = ch
+    initialSetup.layers = [
+      {
+        id: baseId,
+        imageId: baseId,
+        zIndex: 0,
+        name: 'Base',
+        description: 'Canvas Base Backdrop',
+        visible: true,
+        left: 0,
+        top: 0,
+        width: cw,
+        height: ch,
+        role: 'canvas-base',
+        originalAbsolute: [0, 0, cw, ch],
+        originalNormalized: [0, 0, 1000, 1000]
+      }
+    ]
+  }
+
+  layerSplit.setup = initialSetup
   layerSplit.sourceUrl = ''
   layerSplit.sourceLoading = true
-  layerSplit.layerUrls = {}
+  layerSplit.layerUrls = { ...upstreamComponentUrls }
   layerSplit.generateModel = node.params.generateModel ?? ''
   layerSplit.generateProviderInstanceId = node.params.generateProviderInstanceId ?? ''
   layerSplit.visionModel = node.params.visionModel ?? ''
@@ -9744,7 +9922,7 @@ async function onLayerSplitOpen(nodeId: string): Promise<void> {
   )
   const urls = await resolveGeneratedImageUrls(nodeId)
   if (layerSplit.open && layerSplit.nodeId === nodeId) {
-    layerSplit.layerUrls = urls
+    layerSplit.layerUrls = { ...upstreamComponentUrls, ...urls }
     layerSplit.sourceLoading = false
   }
 }
@@ -11143,7 +11321,7 @@ onMounted(() => {
     blockedNodeIds,
     activeRunNodeIds,
     runToNode: guardedRunToNode,
-    stopWorkflow,
+    stopWorkflow: stopAllWorkflows,
     toggleNodeRun: onNodeRunToggle
   })
   unsubscribeHostVfx = subscribeHostVfxWakeup(graphHostId.value, onHostVfxWakeup)
@@ -11695,7 +11873,7 @@ function onFocusDiveNode(nodeId: string): void {
   const node = graph.nodes.find((n) => n.id === nodeId)
   if (!node) return
   onFocusSelectNode(nodeId)
-  if (node.typeId === 'image.layerSplit') {
+  if (node.typeId === 'image.layerSplit' || node.typeId === 'ui.atlasCompose') {
     void onLayerSplitOpen(nodeId)
     return
   }

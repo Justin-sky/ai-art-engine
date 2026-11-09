@@ -8,7 +8,7 @@ import {
 import { createEmptyModelsSettings, type ModelsSettings } from './modelProvider'
 import { createEmptyObjectStorageSettings, type ObjectStorageSettings } from './objectStorage'
 import { createEmptySearchSettings, type SearchSettings } from './searchProvider'
-import { type ExternalMcpServer } from './externalMcp'
+import { createBuiltinReaMcpServer, type ExternalMcpServer } from './externalMcp'
 import type { ProjectStyleImage } from './stylePresets'
 import type { VideoBeatTags } from './videoBeats'
 import type { VisionAssetTags } from './visionTags'
@@ -2622,7 +2622,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     language: ''
   },
   blenderMcp: createDefaultBlenderMcpSettings(),
-  externalMcp: [],
+  externalMcp: [createBuiltinReaMcpServer(true)],
   skillMarket: { source: '' },
   gameOneSentenceAutoRun: false
 }

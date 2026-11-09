@@ -6147,6 +6147,9 @@ export default {
       uiComponentImages: 'Component sheets',
       uiScreenImage: 'UI screen',
       uiScreenImages: 'UI screens',
+      uiAtlasImage: 'Atlas / Slice',
+      uiAtlasImages: 'Slices',
+      uiComposePrompt: 'UI spec',
       types: {
         image: 'Image',
         images: 'Images',
@@ -6384,7 +6387,8 @@ export default {
       ui: {
         split: 'UI screen split',
         gen: 'UI screen gen',
-        componentLib: 'UI component library'
+        componentLib: 'UI component library',
+        atlasCompose: 'UI atlas compose'
       },
       anim: {
         '2d': '2D Frame Animation'
@@ -7604,6 +7608,9 @@ export default {
       },
       uiComponentLib: {
         hint: 'Connect one or more UI screens to extract clean shared component masters, then wire into UI Layer Split to replace repeated controls and export shared PSD Smart Objects.'
+      },
+      atlasCompose: {
+        hint: 'Connect existing UI Sprite Atlas / slice images or a UI Component Library plus a UI layout specification to assemble a multi-layer UI screen; double-click to open the PS-like layer editor, insert or resize atlas elements, and export directly to PSD.'
       },
       camera: {
         hint: 'Edits sync to the director deck edit preview; orbiting in the preview updates it live.',

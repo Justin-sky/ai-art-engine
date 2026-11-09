@@ -187,7 +187,11 @@ const api: StudioApi = {
     return () => ipcRenderer.removeListener(IpcChannels.SETTINGS_UPDATED, listener)
   },
   openMarketplaceWindow: () => ipcRenderer.invoke(IpcChannels.MARKETPLACE_OPEN_WINDOW),
-  probeExternalMcp: (server) => ipcRenderer.invoke(IpcChannels.MCP_EXTERNAL_PROBE, server),
+  probeExternalMcp: (server) =>
+    ipcRenderer.invoke(
+      IpcChannels.MCP_EXTERNAL_PROBE,
+      server ? JSON.parse(JSON.stringify(server)) : server
+    ),
 
   fetchSkillMarket: (input) => ipcRenderer.invoke(IpcChannels.SKILL_MARKET_FETCH, input),
   fetchSkillCover: (id) => ipcRenderer.invoke(IpcChannels.SKILL_MARKET_COVER, id),

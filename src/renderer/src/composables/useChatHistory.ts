@@ -439,6 +439,32 @@ function titleFromMessages(messages: ChatMsg[]): string {
   return text.length > MAX_TITLE_LENGTH ? text.slice(0, MAX_TITLE_LENGTH) + '…' : text
 }
 
+export interface ActiveChatProjectScopeSnapshot {
+  /** 当前 AI 会话聚焦的子工程（如 Client_Harmmy）；若处于全局工作空间会话（Conversations）则为 null */
+  activeProject: ChatProjectEntry | null
+  /** 工作空间中挂载的全部子工程列表 */
+  allProjects: ChatProjectEntry[]
+  /** 全局工作空间根目录 */
+  workspaceRootPath: string
+}
+
+let latestChatScopeSnapshot: ActiveChatProjectScopeSnapshot = {
+  activeProject: null,
+  allProjects: [],
+  workspaceRootPath: ''
+}
+
+export function getActiveChatProjectScopeSnapshot(
+  fallbackWorkspaceRootPath?: string | null
+): ActiveChatProjectScopeSnapshot {
+  return {
+    activeProject: latestChatScopeSnapshot.activeProject,
+    allProjects: latestChatScopeSnapshot.allProjects,
+    workspaceRootPath:
+      latestChatScopeSnapshot.workspaceRootPath || (fallbackWorkspaceRootPath ?? '').trim()
+  }
+}
+
 export function useChatHistory() {
   const sessions = ref<ChatSession[]>([])
   const activeId = ref('')
@@ -446,12 +472,18 @@ export function useChatHistory() {
   /** 当前工作空间作用域标识：工作空间本身的会话显示在下方 Conversations，不混入 Projects 工程树 */
   const workspaceScope = ref('')
   const workspaceRootPath = ref('')
+  const rawWorkspaceRootPath = ref('')
   const projects = ref<ChatProjectEntry[]>([])
   const automations = ref<ChatAutomationItem[]>(readChatAutomations())
   const treeRevision = ref(0)
 
   function bumpTree(): void {
     treeRevision.value++
+    latestChatScopeSnapshot = {
+      activeProject: projects.value.find((p) => p.scope === scope.value) ?? null,
+      allProjects: [...projects.value],
+      workspaceRootPath: rawWorkspaceRootPath.value || workspaceRootPath.value
+    }
   }
 
   function isWorkspaceSelfEntry(p: Pick<ChatProjectEntry, 'scope' | 'rootPath'>): boolean {
@@ -472,7 +504,8 @@ export function useChatHistory() {
   ): void {
     const norm = nextWorkspaceScope.trim()
     workspaceScope.value = norm
-    workspaceRootPath.value = (nextWorkspaceRootPath ?? '')
+    rawWorkspaceRootPath.value = (nextWorkspaceRootPath ?? '').trim()
+    workspaceRootPath.value = rawWorkspaceRootPath.value
       .replace(/\\/g, '/')
       .replace(/\/+$/, '')
       .toLowerCase()

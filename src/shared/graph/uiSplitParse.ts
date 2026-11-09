@@ -435,6 +435,8 @@ export interface BuildUiSplitInnerGraphOptions {
   generateTransparentBg?: boolean
   stylePreset?: UiGenStylePresetId
   styleImagesUseGlobal?: boolean
+  /** UI 生成模式：'ai_generate'（默认，使用 asset.image）或 'atlas_compose'（使用 ui.componentLib + ui.atlasCompose） */
+  composeMode?: 'ai_generate' | 'atlas_compose'
   generatedImages?: Array<{
     id?: string
     title?: string
@@ -474,11 +476,28 @@ export function buildUiSplitInnerGraph(
       : {})
   }
   const existingImages = Array.isArray(options?.generatedImages) ? options!.generatedImages! : []
+  const isAtlasComposeMode = options?.composeMode === 'atlas_compose'
+  const sharedLibId = 'ui-atlas-lib'
+
+  if (isAtlasComposeMode && cap > 0) {
+    nodes.push(
+      createNodeFromType(
+        'ui.componentLib',
+        { x: 40, y: 40 },
+        {
+          id: sharedLibId,
+          title: locale?.toLowerCase().startsWith('en')
+            ? 'Existing UI Atlas / Component Lib'
+            : '已有 UI 图集 / 组件库' // cjk-ok
+        }
+      )
+    )
+  }
 
   for (let i = 0; i < cap; i += 1) {
     const screen = screens[i]!
     const slot = i + 1
-    const y = 80 * i + 40
+    const y = isAtlasComposeMode ? 140 * i + 180 : 80 * i + 40
     const screenAspectRatio =
       normalizeUiScreenAspectRatio(screen.aspectRatio, screen.prompt, screen.title) ?? defaultAspect
     const styledPrompt = applyUiGenStylePreset(screen.prompt, options?.stylePreset, locale)
@@ -521,6 +540,68 @@ export function buildUiSplitInnerGraph(
         text: styledPrompt
       }
     })
+
+    if (isAtlasComposeMode) {
+      nodes.push(
+        createNodeFromType(
+          'ui.atlasCompose',
+          { x: 320, y },
+          {
+            id: imgId,
+            title: previewTitle,
+            params: {
+              text: styledPrompt,
+              generateAspectRatio: screenAspectRatio,
+              styleImagesUseGlobal: options?.styleImagesUseGlobal !== false,
+              ...(options?.generateModel?.trim()
+                ? { generateModel: options.generateModel.trim() }
+                : {}),
+              ...(options?.generateProviderInstanceId?.trim()
+                ? { generateProviderInstanceId: options.generateProviderInstanceId.trim() }
+                : {})
+            }
+          }
+        )
+      )
+      nodes.push({
+        id: outId,
+        typeId: GRAPH_BOUNDARY_OUTPUT_TYPE_ID,
+        category: 'note',
+        position: { x: 620, y },
+        title: previewTitle,
+        params: {
+          previewCollapsed: true,
+          hostBoundaryPort: {
+            portId: portOut,
+            dataType: GraphPortType.image,
+            multiple: false
+          }
+        }
+      })
+      edges.push({
+        id: `ui-e-in-${slot}`,
+        source: inId,
+        target: imgId,
+        sourcePort: 'out',
+        targetPort: 'in-text'
+      })
+      edges.push({
+        id: `ui-e-lib-${slot}`,
+        source: sharedLibId,
+        target: imgId,
+        sourcePort: 'out',
+        targetPort: 'in-components'
+      })
+      edges.push({
+        id: `ui-e-out-${slot}`,
+        source: imgId,
+        target: outId,
+        sourcePort: 'out',
+        targetPort: 'in'
+      })
+      continue
+    }
+
     // 标题对齐输出口 label（wireDanglingOutsToBoundaryOutputs 按标题配对出口，
     // 双轨同屏两个图片口时避免跨轨串线）
     nodes.push(

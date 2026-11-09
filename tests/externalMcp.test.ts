@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  BUILTIN_REA_MCP_ID,
   EXTERNAL_MCP_DEFAULT_TIMEOUT_MS,
   EXTERNAL_MCP_MAX_TIMEOUT_MS,
   EXTERNAL_MCP_MIN_TIMEOUT_MS,
+  createBuiltinReaMcpServer,
   createDefaultExternalMcpServer,
   deriveExternalMcpId,
+  ensureBuiltinExternalMcpServers,
   externalMcpIdFromPath,
   externalMcpPath,
   externalMcpToolPrefix,
@@ -306,5 +309,27 @@ describe('normalizeToolList：工具清单形状兼容', () => {
     expect(normalizeToolList({})).toEqual([])
     expect(normalizeToolList(null)).toEqual([])
     expect(normalizeToolList({ tools: 'nope' })).toEqual([])
+  })
+})
+
+describe('ensureBuiltinExternalMcpServers：内置预置 REA MCP 服务', () => {
+  it('空列表或旧版配置自动注入内置 rea 服务且默认启用', () => {
+    const ensured = ensureBuiltinExternalMcpServers([])
+    expect(ensured).toHaveLength(1)
+    expect(ensured[0]).toEqual(createBuiltinReaMcpServer(true))
+    expect(ensured[0]?.id).toBe(BUILTIN_REA_MCP_ID)
+    expect(ensured[0]?.command).toBe('npx')
+    expect(ensured[0]?.args).toEqual(['-y', 'rea-agents@latest', 'mcp'])
+  })
+
+  it('当用户已自定义 rea 配置（如停用或追加 env）时保留用户设置', () => {
+    const customRea: ExternalMcpServer = {
+      ...createBuiltinReaMcpServer(false),
+      env: { REA_CLEAN_ROOM: 'true', REA_JADX_MCP_JAR: 'D:\\jadx.jar' }
+    }
+    const ensured = ensureBuiltinExternalMcpServers([customRea])
+    expect(ensured).toHaveLength(1)
+    expect(ensured[0]?.enabled).toBe(false)
+    expect(ensured[0]?.env.REA_JADX_MCP_JAR).toBe('D:\\jadx.jar')
   })
 })

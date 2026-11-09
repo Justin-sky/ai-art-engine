@@ -10,7 +10,7 @@ import {
 import { normalizeModelsSettings } from '@shared/modelProvider'
 import { normalizeObjectStorageSettings } from '@shared/objectStorage'
 import { normalizeSearchSettings } from '@shared/searchProvider'
-import { normalizeExternalMcpServers } from '@shared/externalMcp'
+import { ensureBuiltinExternalMcpServers, normalizeExternalMcpServers } from '@shared/externalMcp'
 
 export type WindowChromeColors = {
   background: string
@@ -117,8 +117,8 @@ class SettingsService {
         ...(saved.whisper ?? {})
       },
       blenderMcp: normalizeBlenderMcpSettings(saved.blenderMcp),
-      // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层
-      externalMcp: normalizeExternalMcpServers(saved.externalMcp),
+      // 读盘也归一：手改 settings.json 的脏值（非法 id / 重复 id / 越界超时）不该进渲染层，并确保内置预置 MCP（如 rea）就位
+      externalMcp: ensureBuiltinExternalMcpServers(normalizeExternalMcpServers(saved.externalMcp)),
       skillMarket: {
         source: typeof rawMarketSource === 'string' ? rawMarketSource.trim() : ''
       },
@@ -156,7 +156,9 @@ class SettingsService {
         ...(settings.whisper ?? {})
       },
       blenderMcp: normalizeBlenderMcpSettings(settings.blenderMcp),
-      externalMcp: normalizeExternalMcpServers(settings.externalMcp),
+      externalMcp: ensureBuiltinExternalMcpServers(
+        normalizeExternalMcpServers(settings.externalMcp)
+      ),
       skillMarket: {
         source:
           typeof settings.skillMarket?.source === 'string' ? settings.skillMarket.source.trim() : ''

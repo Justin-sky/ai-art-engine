@@ -25,6 +25,7 @@ import { executeDirectorStageEdit } from '../director/mcpDirectorStageOps'
 import { IconRefineError, runIconRefine } from '../graph/model/runIconRefine'
 import { editorDiveRootKey } from '../graph/model/editorDive'
 import { graphEditorHosts } from '../graph/model/graphEditorHosts'
+import { graphRunHosts } from '../graph/model/graphRunHosts'
 import { semanticTimelineSavePayload } from '../graph/model/semanticTimelineSave'
 import { isGraphEditorOpen } from './openGraphEditors'
 import { clearLiveCanvasRunStates, openMcpWorkflowAssetEditor } from './mcpGraphLiveCanvas'
@@ -38,6 +39,19 @@ let lastEditedAssetId = ''
 const lastEditedNodeIdsByAsset = new Map<string, string[]>()
 const handledMcpTaskIds = new Set<string>()
 const handledGraphEditRequestIds = new Set<string>()
+let mcpTaskAbortEpoch = 0
+
+/**
+ * AI 会话点击停止或中断时同步中止所有画布后台任务与前台运行态：
+ * 1. 递增 mcpTaskAbortEpoch，拦截仍在等待编辑器打开的在途 task_run；
+ * 2. 终止 useGraphTaskStore 中所有进行中的节点图任务并同步画布为已取消；
+ * 3. 停止所有已挂载画布上的前台运行与残留 running/pending 状态。
+ */
+export function abortPendingMcpTasks(): void {
+  mcpTaskAbortEpoch += 1
+  useGraphTaskStore().stopAllActiveTasks()
+  graphRunHosts.stopAllRunning()
+}
 
 function findProjectOrDraftAsset(assetId: string): AssetInfo | undefined {
   if (!assetId) return undefined
@@ -79,11 +93,16 @@ function collectDownstreamAndTargetIds(
   }
 }
 
-async function waitForGraphEditorOpen(assetId: string): Promise<boolean> {
+async function waitForGraphEditorOpen(
+  assetId: string,
+  abortEpoch = mcpTaskAbortEpoch
+): Promise<boolean> {
   for (let elapsed = 0; elapsed < GRAPH_EDITOR_OPEN_WAIT_MS; elapsed += GRAPH_EDITOR_OPEN_POLL_MS) {
+    if (mcpTaskAbortEpoch !== abortEpoch) return false
     if (isGraphEditorOpen(assetId) && graphEditorHosts.getLiveAssetDocument(assetId)) return true
     await new Promise<void>((resolve) => window.setTimeout(resolve, GRAPH_EDITOR_OPEN_POLL_MS))
   }
+  if (mcpTaskAbortEpoch !== abortEpoch) return false
   return isGraphEditorOpen(assetId) && !!graphEditorHosts.getLiveAssetDocument(assetId)
 }
 
@@ -138,6 +157,7 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     handledMcpTaskIds.add(payload.mcpTaskId)
   }
 
+  const startAbortEpoch = mcpTaskAbortEpoch
   const taskStore = useGraphTaskStore()
   const activeTargets = resolveActiveWorkspaceTargets()
   const rawAssetId = payload.assetId?.trim() ?? ''
@@ -150,8 +170,16 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
   if (asset) {
     openMcpWorkflowAssetEditor(payload.assetId || effectiveAssetId)
     if (!isGraphEditorOpen(effectiveAssetId)) {
-      await waitForGraphEditorOpen(effectiveAssetId)
+      await waitForGraphEditorOpen(effectiveAssetId, startAbortEpoch)
     }
+  }
+
+  if (mcpTaskAbortEpoch !== startAbortEpoch) {
+    report(payload.mcpTaskId, 'finished', {
+      status: 'stopped',
+      error: 'GRAPH_CANCELLED'
+    })
+    return
   }
 
   const liveGraph = graphEditorHosts.getLiveAssetDocument(effectiveAssetId)

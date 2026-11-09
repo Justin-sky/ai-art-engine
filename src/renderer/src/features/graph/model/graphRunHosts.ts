@@ -45,6 +45,28 @@ class GraphRunHostRegistry {
     return false
   }
 
+  /** 停止所有已挂载画布上的运行态与残留 running/pending 节点状态 */
+  stopAllRunning(): boolean {
+    let stopped = false
+    for (const [, api] of this.hosts) {
+      if (api.isRunning.value) {
+        api.stopWorkflow()
+        stopped = true
+      }
+      for (const [nodeId, state] of Object.entries(api.runStates)) {
+        if (state?.status === 'running' || state?.status === 'pending') {
+          api.runStates[nodeId] = {
+            ...(state.outputs ? { outputs: state.outputs } : {}),
+            status: 'error',
+            error: 'GRAPH_CANCELLED'
+          }
+          stopped = true
+        }
+      }
+    }
+    return stopped
+  }
+
   reset(): void {
     this.hosts.clear()
   }

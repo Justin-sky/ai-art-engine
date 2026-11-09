@@ -2437,6 +2437,19 @@ const TOOL_DEFS: McpToolDef[] = [
       let lastTaskId: string | null = null
       while (Date.now() - startedWaitAt < maxWaitMs) {
         if (ctx?.signal?.aborted) {
+          const existing = pendingMcpTaskReports.get(mcpTaskId)
+          if (!existing || existing.phase === 'accepted') {
+            const stoppedReport: McpTaskReportPayload = {
+              ...existing,
+              mcpTaskId,
+              phase: 'finished',
+              status: 'stopped',
+              error: '调用已取消'
+            }
+            pendingMcpTaskReports.set(mcpTaskId, stoppedReport)
+            settleMcpTaskActivity(stoppedReport)
+            scheduleTaskReportCleanup(mcpTaskId)
+          }
           throw new Error('调用已取消')
         }
         await sleep(300)
@@ -2769,7 +2782,8 @@ const TOOL_DEFS: McpToolDef[] = [
       '     * 数值系统（仅在用户明确要求战斗数值配表或策划案专属数值表时创建）：`game.numerical`（`params: { prompt, gameNumericalPreset, gameNumericalWorkbenchJson }`；游戏/小说模式支持 `preset: "slay_the_spire_dbg" | "hearthstone_tcg" | "onmyoji_atb" | "balatro_roguelike" | "survivor_brotato" | "short_drama_progression"`；非战斗类策划案如中医教学/实训仿真/数字孪生/工具应用会自动进入纯净「策划案专属数值表（domainTables）」模式——严禁为其传入 `short_drama_progression` 预设，也严禁将同画布上无关的小说/短剧 `game.economy` 节点连入该节点！只需将 `game.numerical` 的 `out-text`【数值系统】连入对应 `asset.gameSystem` 的 `in-numerical`）\n' +
       '     * 小说大纲（World Bible + 分卷总纲 + 逐章细纲）：`novel.outline`（输入端口 `in`、`in-economy`、`in-numerical`；将 `out` 广播连入下游每一个章节 `asset.novel` 的 `in-outline` 端口，各章节点会自动按章号 t 切片提取专属细纲）\n' +
       '     * 创建小说 / 马尔可夫链章节节点：`asset.novel`（推荐每章独立节点串联：第1章 → 第2章 → 第3章；输入端口：`in`【上一章】接 `C_{t-1} (out)`、`in-outline`【小说大纲】接 `novel.outline (out)`、`in-economy`【经济系统】接 `game.economy (out-text)`、`in-numerical`【数值系统】接 `game.numerical (out-text)`；输出端口：`out`【下一章】输出本章正文供下一章串联、`out-all`【全部】汇总第1..t章全部累计章节，在用户明确要求改编下游策划案或剧本时可在末章连入 `asset.gameSystem (in)` 或 `asset.screenplay (in)`）\n' +
-      '     * 策划案生成（游戏系统与模块规格 GDD，**仅在用户明确要求生成游戏策划案 / 系统策划案 / GDD 时创建，创建游戏机制时严禁默认附带创建**）：`asset.gameSystem`（输入端口：`in`【文本】接收末章小说 `out-all` 或立项文本、`in-economy`【经济系统】接收 `game.economy (out-text)`、`in-numerical`【数值系统】接收 `game.numerical (out-text)`；输出端口 `out` / `out-all` 可按需连 `ui.split` 的 `in`）\n' +
+      '     * 策划案生成（游戏系统与模块规格 GDD，**仅在用户明确要求生成游戏策划案 / 系统策划案 / GDD 时创建，创建游戏机制时严禁默认附带创建**）：`asset.gameSystem`（输入端口：`in`【文本】接收末章小说 `out-all` 或立项文本、`in-economy`【经济系统】接收 `game.economy (out-text)`、`in-numerical`【数值系统】接收 `game.numerical (out-text)`；输出端口 `out` / `out-all` 可按需连 `ui.split` 的 `in` 或 `ui.atlasCompose` 的 `in-text`）\n' +
+      '     * 游戏 UI 生成模式选择与图集拼装（**当用户要求生成 UI 界面且未明确说明是“完全 AI 生成”还是“使用已有图集拼装”时，必须先调用 `ask_user_question` 提示用户选择**）：① 若用户选择「完全 AI 生成」：单张界面用 `asset.image -> image.layerSplit`，多界面系统用 `asset.gameSystem -> ui.split -> ui.gen -> image.layerSplit`；② 若用户选择「使用已有图集拼装」：使用 `ui.atlasCompose`（图集拼装 UI 节点，双击进入类 PS 分层编辑台，所有元素分层排放并直接导出 `.psd`），将工程内已有图集 `asset.image` 连入 `ui.atlasCompose` 的 `in` / `in-images`（或经 `ui.componentLib (out)` 连入 `in-components`），并将界面说明或策划案连入 `in-text`\n' +
       '   - 在 `params` 中传入 `referenceImageUrls` / `firstFrameImageUrl` / `lastFrameImageUrl` / `referenceVideoUrl` 时，系统会自动在画布上创建锁定的上游参考媒体节点并连线到对应端口；\n' +
       '   - 省略 `assetId` 时自动作用于当前左侧打开的画布（若工程尚无画布会自动创建并打开默认自由画布）；返回值包含 `assetId` 与本次触达的 `nodeIds`，可直接传给 `task_run` 执行。\n' +
       '2. **3D 导演台实时操作**：当左侧打开了 3D 导演台 / 3D 分镜预演时，可直接在 `ops` 中传入 3D 舞台操作：`object_update` / `hide_object` / `show_object` / `lock_object` / `unlock_object` / `object_add` / `object_delete` / `object_duplicate` / `object_copy` / `object_paste` / `object_select` / `camera_update` / `camera_add` / `camera_delete` / `lighting_preset` / `environment_update` / `viewport_update` / `ai_blocking` / `cinemachine_pack` / `storyboard_previz` / `capture_shot` / `anim_control`；\n' +
@@ -5880,13 +5894,19 @@ const TOOL_DEFS: McpToolDef[] = [
     name: 'game_ui_suite_create',
     title: '一句话生成全套游戏UI工作流', // cjk-ok
     description:
-      'Turn a one-sentence game UI request (e.g. "生成原神风格全套UI", "P5红黑风格全套UI", "明日方舟极简战术全套UI", "暗黑哥特全套UI") into a complete high-resolution AI Game UI canvas workflow: `asset.gameSystem` (Game System & UI Spec) → `ui.split` (UI Screen Breakdown) → `ui.gen` (High-Res AI UI Screen Generation) → `image.layerSplit` (UI Layer Split with 9-Slice Resizer, Button Multi-State Generation & Multi-Engine Export).', // cjk-ok
+      'Turn a one-sentence game UI request (e.g. "生成原神风格全套UI", "P5红黑风格全套UI", "明日方舟极简战术全套UI", "暗黑哥特全套UI") into a complete Game UI canvas workflow. IMPORTANT: If the user has not explicitly specified whether to use full AI generation (`ai_generate`) or assemble from existing project sprite atlases (`atlas_compose`), ask the user first via `ask_user_question` before calling this tool! When `uiMode: "ai_generate"` (default), builds `asset.gameSystem` → `ui.split` → `ui.gen` → `image.layerSplit`; when `uiMode: "atlas_compose"`, builds `asset.gameSystem` + `ui.componentLib` → `ui.atlasCompose` (PS-like layered atlas assembly & direct PSD export).', // cjk-ok
     inputSchema: {
       type: 'object',
       properties: {
         prompt: {
           type: 'string',
           description: "The user's original one-sentence UI suite request (required)."
+        },
+        uiMode: {
+          type: 'string',
+          enum: ['ai_generate', 'atlas_compose'],
+          description:
+            'UI generation mode chosen by the user: "ai_generate" for full AI screen generation (`ui.split -> ui.gen -> image.layerSplit`), or "atlas_compose" for assembling UI from existing project sprite atlases (`ui.componentLib -> ui.atlasCompose`).'
         },
         title: {
           type: 'string',
@@ -7280,6 +7300,34 @@ function settleMcpTaskActivity(report: McpTaskReportPayload): void {
   }
 }
 
+/**
+ * 对话中止时主动结算所有进行中的 MCP 画布运行任务与旁路活动，
+ * 避免 dsh 进程被强杀后 `activeMcpTaskByAssetId` 或 `pendingMcpTaskActivities` 残留。
+ */
+export function abortActiveMcpCanvasRuns(reason = '已中止'): void {
+  const activeIds = new Set<string>([
+    ...pendingMcpTaskActivities.keys(),
+    ...activeMcpTaskByAssetId.values()
+  ])
+  for (const [mcpTaskId, report] of pendingMcpTaskReports.entries()) {
+    if (report.phase === 'accepted') activeIds.add(mcpTaskId)
+  }
+  for (const mcpTaskId of activeIds) {
+    const existing = pendingMcpTaskReports.get(mcpTaskId)
+    const stoppedReport: McpTaskReportPayload = {
+      ...existing,
+      mcpTaskId,
+      phase: 'finished',
+      status: 'stopped',
+      error: reason
+    }
+    pendingMcpTaskReports.set(mcpTaskId, stoppedReport)
+    settleMcpTaskActivity(stoppedReport)
+    scheduleTaskReportCleanup(mcpTaskId)
+  }
+  activeMcpTaskByAssetId.clear()
+}
+
 /** MCP graph_edit 的渲染层回报（应用结果），graph_edit 等待并返回 */
 const pendingMcpGraphEditResults = new Map<string, McpGraphEditResultPayload>()
 const graphEditResultCleanups = new Map<string, NodeJS.Timeout>()
@@ -7708,8 +7756,15 @@ function externalMcpHandlerFor(
     },
     listTools: async (ctx) => {
       const view = accessViewFor(ctx)
-      const session = getExternalMcpSession(server)
-      const tools = await session.listTools()
+      let tools: Awaited<ReturnType<ReturnType<typeof getExternalMcpSession>['listTools']>> = []
+      try {
+        const session = getExternalMcpSession(server)
+        tools = await session.listTools()
+      } catch (err) {
+        dropExternalMcpSession(server.id)
+        console.warn(`[mcp] external server "${server.id}" listTools failed:`, err)
+        return []
+      }
       return (
         tools
           .map((tool) => ({

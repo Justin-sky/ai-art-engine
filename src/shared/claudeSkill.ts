@@ -1047,6 +1047,26 @@ const CURATED_ONLINE_SKILLS_SHARED: ReadonlyArray<CuratedOnlineSkillItem> = [
     description: 'Guide for creating effective Claude Code skills (SKILL.md) and workflows.',
     url: 'https://github.com/anthropics/skills/tree/main/skills/skill-creator',
     keywords: ['skill-creator', 'create skill', '编写技能', '制作技能', '创建技能']
+  },
+  {
+    name: 'reverse-engineer-anything',
+    description:
+      'Reverse engineer Android APKs, native binaries, Electron/JS apps, and .NET assemblies with REA.',
+    url: 'https://github.com/morluto/rea/tree/main/.agents/skills/reverse-engineer-anything',
+    keywords: [
+      'rea',
+      'morluto/rea',
+      'reverse-engineer-anything',
+      'reverse engineering',
+      'apk',
+      'jadx',
+      'ghidra',
+      'decompile',
+      '逆向',
+      '反编译',
+      '安卓分析',
+      '二进制分析'
+    ]
   }
 ]
 
@@ -1075,7 +1095,7 @@ export function detectChatSkillInstallOrSearchIntent(rawTask: string): ChatOnlin
   ]
   const mentionsSkillOrInstall =
     /(?:技能|skill|安装|install|导入|添加|装上|装一下|装个|SKILL\.md)/i.test(rawTask) ||
-    githubUrls.some((u) => /\/skills?\b|SKILL\.md/i.test(u))
+    githubUrls.some((u) => /\/skills?\b|SKILL\.md|morluto\/rea\b/i.test(u))
   const isOnlineSearchIntent =
     githubUrls.length === 0 &&
     /(?:搜索|搜一下|找一下|查找|上网|联网|在线|github|安装|install|search|find)[^。！？\n]{0,30}(?:技能|skill)|(?:技能|skill)[^。！？\n]{0,30}(?:搜索|搜一下|找一下|查找|上网|联网|在线|github|安装|install|search|find)/i.test(

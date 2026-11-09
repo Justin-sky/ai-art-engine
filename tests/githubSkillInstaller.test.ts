@@ -106,6 +106,43 @@ describe('GitHub 技能 URL 解析与在线搜索/安装（githubSkillInstaller�
     const gifRes = await searchOnlineSkills({ query: 'gif 动图', skillsRoot: tempSkillsDir })
     expect(gifRes.ok).toBe(true)
     expect(gifRes.items.some((i) => i.name === 'slack-gif-creator')).toBe(true)
+
+    const reaRes = await searchOnlineSkills({ query: 'rea apk 逆向', skillsRoot: tempSkillsDir })
+    expect(reaRes.ok).toBe(true)
+    expect(reaRes.items.some((i) => i.name === 'reverse-engineer-anything')).toBe(true)
+  })
+
+  it('当 GitHub API 限流（403）且传入 morluto/rea 仓库根地址时，仍能通过精选子路径回退探测 SKILL.md', async () => {
+    const reaSkillMd = [
+      '---',
+      'name: reverse-engineer-anything',
+      'description: Reverse engineer Android APKs and binaries with REA.',
+      '---',
+      '',
+      '# REA'
+    ].join('\n')
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.startsWith('https://api.github.com/')) {
+        return new Response(JSON.stringify({ message: 'API rate limit exceeded' }), { status: 403 })
+      }
+      if (
+        url ===
+        'https://raw.githubusercontent.com/morluto/rea/main/.agents/skills/reverse-engineer-anything/SKILL.md'
+      ) {
+        return new Response(reaSkillMd, { status: 200 })
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    const inspected = await inspectGitHubSkillSource({
+      url: 'https://github.com/morluto/rea',
+      skillsRoot: tempSkillsDir
+    })
+    expect(inspected.ok).toBe(true)
+    expect(inspected.skills?.[0]?.name).toBe('reverse-engineer-anything')
+    expect(inspected.skills?.[0]?.repoSubpath).toBe('.agents/skills/reverse-engineer-anything')
   })
 
   it('inspectGitHubSkillSource 与 installGitHubSkills 能从 GitHub URL 发现并落盘技能（含跳过脚本提示与元数据记账）', async () => {

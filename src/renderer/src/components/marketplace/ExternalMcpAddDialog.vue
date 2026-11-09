@@ -69,6 +69,16 @@
           />
           <small class="hint">{{ t('marketplace.ext.argsHint') }}</small>
         </label>
+        <label class="field">
+          <span>{{ t('marketplace.ext.env') }}</span>
+          <textarea
+            v-model="draft.envText"
+            rows="2"
+            spellcheck="false"
+            :placeholder="t('marketplace.ext.envPlaceholder')"
+          />
+          <small class="hint">{{ t('marketplace.ext.envHint') }}</small>
+        </label>
         <!-- stdio 会在本机执行第三方代码：这句必须显眼，别让用户顺手就点添加 -->
         <p class="warning">{{ t('marketplace.ext.stdioWarning') }}</p>
       </template>

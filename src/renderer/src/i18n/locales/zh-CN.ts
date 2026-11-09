@@ -5983,6 +5983,9 @@ export default {
       uiComponentImages: '组件切图',
       uiScreenImage: 'UI 画面',
       uiScreenImages: 'UI 画面组',
+      uiAtlasImage: '图集 / 切图',
+      uiAtlasImages: '切图组',
+      uiComposePrompt: '界面说明',
       types: {
         image: '图片',
         images: '图片组',
@@ -6216,7 +6219,8 @@ export default {
       ui: {
         split: 'UI 界面拆分',
         gen: 'UI 界面生成',
-        componentLib: 'UI 共享组件库'
+        componentLib: 'UI 共享组件库',
+        atlasCompose: '图集拼装 UI'
       },
       anim: {
         '2d': '2D帧动画'
@@ -7383,6 +7387,9 @@ export default {
       },
       uiComponentLib: {
         hint: '接入 1 张或多张 UI 画面提取干净共享组件母版，连入「UI 图层分离」即可自动替换同款控件并导出为共享 PSD 智能对象。'
+      },
+      atlasCompose: {
+        hint: '直接连入工程内的 UI 图集 / 切图或「UI 共享组件库」以及界面需求说明，自动将图集元素分层排版组装为完整 UI 界面；双击节点进入类 PS 分层工作台调整元素层级、九宫格与可编辑文字层，并直接导出 PSD 文件。'
       },
       camera: {
         hint: '修改参数会同步到导演台编辑预览；在预览中环视也会实时更新。',

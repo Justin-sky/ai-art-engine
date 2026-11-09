@@ -57,6 +57,7 @@ import {
   resolveDroppedChatAssetPaths
 } from '../features/chat/chatAssetDrop'
 import { buildActiveWorkspaceContext } from '../features/mcp/buildActiveWorkspaceContext'
+import { abortPendingMcpTasks } from '../features/mcp/mcpTaskRunner'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
@@ -553,6 +554,7 @@ async function onClearCommand(): Promise<void> {
   ignoreHarnessEvents = true
   try {
     if (running.value) {
+      abortPendingMcpTasks()
       await window.studio.abortHarnessTask()
       running.value = false
     }
@@ -2771,6 +2773,7 @@ watch(currentProjectChatScope, (nextScope, prevScope) => {
   commitGoal(sessionGoal.value)
   persistHistory()
   if (running.value) {
+    abortPendingMcpTasks()
     void window.studio?.abortHarnessTask?.()
     running.value = false
   }
@@ -3436,11 +3439,33 @@ function expirePendingApprovals(): void {
 }
 
 /**
- * 采集当前左侧窗口打开的画布、Dive 面包屑栈、3D 导演台、分镜台、时间线、节点工具及工程内画布资产的完整上下文摘要。
+ * 采集当前左侧窗口打开的画布、Dive 面包屑栈、3D 导演台、分镜台、时间线、节点工具及工程内画布资产的完整上下文摘要，
+ * 并附带当前 AI 会话所属工程作用域与「工程数据优先检索规范」。
  * 仅随 HarnessRunInput.canvasContext 下发给主进程 Agent，不污染用户的聊天输入气泡。
  */
 function buildActiveCanvasContext(): string | undefined {
-  return buildActiveWorkspaceContext()
+  const wsCtx = buildActiveWorkspaceContext()
+  const activeProj = activeChatProject.value
+  const wsRoot = (project.rootPath ?? status.value?.workspace ?? '').replace(/[\\/]+$/, '').trim()
+  const cacheDir = wsRoot ? `${wsRoot}${wsRoot.includes('\\') ? '\\' : '/'}Cache` : 'Cache'
+  const mountedList = chatProjectTree.value
+    .filter((g) => g.rootPath?.trim())
+    .map((g) => `  - ${g.name}: ${g.rootPath.trim()}`)
+  const scopeLines: string[] = [
+    '[Chat Session Scope & Project Directory Context]',
+    'Standing Rule: 在工程中对话时所有上下文需要的数据都优先在本工程中去找。', // cjk-ok
+    activeProj?.rootPath
+      ? `sessionScope: Project Session (当前对话工程: ${activeProj.name}, activeProjectRoot: ${activeProj.rootPath.trim()})` // cjk-ok
+      : `sessionScope: Global Workspace Session (全局工作空间中的会话, workspaceRoot: ${wsRoot || '.'}, defaultCacheDir: ${cacheDir})`, // cjk-ok
+    activeProj?.rootPath
+      ? `UI Atlas Lookup Rule: 当前在「${activeProj.name}」工程会话中，要求拼装 UI 时默认从 ${activeProj.name} (${activeProj.rootPath.trim()}) 中查找对应图片进行拼装；若用户还指定了其它项目，则除了当前项目外也去其它项目目录中查找。` // cjk-ok
+      : `UI Atlas Lookup Rule: 当前在全局工作空间会话中，要求拼装 UI 时默认去 Cache 目录 (${cacheDir}) 中查找对应图片进行拼装（若用户指定了具体项目则同时去该项目目录中查找）。` // cjk-ok
+  ]
+  if (mountedList.length > 0) {
+    scopeLines.push('mountedProjects:', ...mountedList)
+  }
+  const scopeBlock = scopeLines.join('\n')
+  return wsCtx ? `${wsCtx}\n\n${scopeBlock}` : scopeBlock
 }
 
 /**
@@ -3729,7 +3754,7 @@ function onLaunchZeroKeyDemo(): void {
 }
 
 async function onClickShowcaseStarter(card: ChatShowcaseStarter): Promise<void> {
-  if (!buildActiveCanvasContext()) {
+  if (!buildActiveWorkspaceContext()) {
     createDraftAndOpen('canvas', {
       name: isEnChat.value ? card.titleEn : card.titleZh,
       genParams: {
@@ -3786,6 +3811,7 @@ async function abortCurrentRun(): Promise<void> {
   clientAbortSeq++
   abortIgnoreUntil = Date.now() + 600
   preparingTask = false
+  abortPendingMcpTasks()
   for (let i = messages.value.length - 1; i >= sessionStart; i--) {
     const m = messages.value[i]
     if (m?.kind === 'tool' && m.state === 'start') {
@@ -3795,6 +3821,7 @@ async function abortCurrentRun(): Promise<void> {
   try {
     await window.studio.abortHarnessTask()
   } finally {
+    abortPendingMcpTasks()
     preparingTask = false
     running.value = false
     void captureRoundOutputs()

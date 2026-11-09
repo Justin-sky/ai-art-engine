@@ -751,6 +751,16 @@ const BUILTIN_NODE_CAPABILITIES: NodeCapabilityDef[] = [
       'Maps to canvas node `ui.componentLib` (clusters, de-texts, and de-occludes 1 or multiple UI mockups into clean canonical UI component masters with 9-slice metadata and PSD Smart Object GUIDs): ports `in`:image (multi-image), `in-images`:images (batch from `ui.gen` `out`), `in-components`:uiComponents (optional base library) → `out`:uiComponents (connect to `image.layerSplit` `in-components` for clean master replacement and shared PSD Smart Objects), `out-images`:images (clean master PNGs).'
   },
   {
+    id: 'ui.atlasCompose',
+    kind: 'node',
+    titleZh: '图集拼装 UI / PSD 组装',
+    titleEn: 'UI atlas compose & PSD assembly',
+    usageZh:
+      '对应画布节点 `ui.atlasCompose`（图集拼装 UI 工作台 & PSD 导出，双击进入类 PS 分层编辑界面）：直接用工程中已有的 UI 图集/切图或共享组件库拼装成完整分层 UI 界面，无需先重新绘制整张界面图。端口 `in-components`:uiComponents（连入 `ui.componentLib` 共享组件库）、`in`:image（支持多连整张 Sprite Sheet 图集或单张 UI 切图，节点会自动切分图集连通域并识别九宫格）、`in-images`:images（批量切图序列）、`in-text`:text（可选，界面需求描述或系统策划案）→ `out`:image（拼装合成预览图）、`out-all`:images（全部分层 PNG 序列）、`out-psd`:text（自动生成的 `.psd` 分层源文件路径，写入 `params.layerSplitPsdRelativePath`，包含全部独立元素图层、游戏 UI 分组文件夹、共享智能对象与可编辑文字层）。双击节点可进入类 PS 界面手动拖拽/缩放/新增图集元素并直接导出 PSD。',
+    usageEn:
+      'Maps to canvas node `ui.atlasCompose` (UI Atlas Compose & PSD Assembly workbench; double-click to open the PS-like layered editor): assembles a multi-layer UI screen directly from existing Sprite Atlas images or `ui.componentLib` components without AI-regenerating a flat mockup. Ports `in-components`:uiComponents (from `ui.componentLib`), `in`:image (sprite sheet or UI slice images; auto-slices sprite sheets and detects 9-slice borders), `in-images`:images (batch slices), `in-text`:text (optional UI layout prompt or GDD) → `out`:image (composite preview), `out-all`:images (all layered PNGs), `out-psd`:text (auto-generated `.psd` file path saved to `params.layerSplitPsdRelativePath` with separate element layers, Smart Objects, and editable text layers).'
+  },
+  {
     id: 'image.layerSplit',
     kind: 'node',
     titleZh: '图层分离 / PSD 拆分',

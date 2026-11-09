@@ -3,11 +3,13 @@ import { defineStore } from 'pinia'
 import {
   applyEpisodeReviewMarks,
   cloneGraphDocument,
+  collectProjectUiAtlasResources,
   collectUpstreamNodeIds,
   findAllOutputNodes,
   getNodeType,
   mapHostInnerStatesToOutputs,
   mapHostBoundaryStatesToOutputs,
+  resolveChatUiAtlasSearchDirs,
   resolveNodeHostInterface,
   resolveNodeType,
   runGraph,
@@ -25,6 +27,7 @@ import {
 } from '@shared/graph'
 import { isDraftAssetId, normalizeProjectStyleImages, resolveMediaOutputDir } from '@shared/domain'
 import { persistAssetRecord } from '../composables/useAssetRecord'
+import { getActiveChatProjectScopeSnapshot } from '../composables/useChatHistory'
 import { graphEditorHosts } from '../features/graph/model/graphEditorHosts'
 import {
   seedLiveCanvasRunStates,
@@ -175,6 +178,8 @@ interface GraphTaskInternal extends GraphTask {
   liveCanvasSync?: boolean
   /** 本次任务实际执行或 patch 过的节点 id，写回底图时避免用 skipped 旧快照覆盖已完成上游 */
   touchedNodeIds?: Set<string>
+  /** 收尾写回互斥 Promise：避免 stopAndRemove 与 runTask 异常出口重复执行 writeBack */
+  settlePromise?: Promise<void>
 }
 
 function nodeIcon(node: GraphNode): string {
@@ -485,6 +490,89 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     return true
   }
 
+  function stopAllActiveTasks(): boolean {
+    const matching = activeTasks.value.filter((t) => isActiveStatus(t.status))
+    if (!matching.length) return false
+    for (const task of matching) {
+      void stopAndRemove(task.id)
+    }
+    return true
+  }
+
+  function cancelBoundVideoJobs(assetId: string, nodeIds: Iterable<string>): void {
+    if (
+      !assetId ||
+      typeof window === 'undefined' ||
+      typeof window.studio?.listVideoJobs !== 'function' ||
+      typeof window.studio?.cancelVideoJob !== 'function'
+    ) {
+      return
+    }
+    const targetNodes = new Set(nodeIds)
+    void window.studio
+      .listVideoJobs()
+      .then((jobs) => {
+        if (!Array.isArray(jobs)) return
+        for (const job of jobs) {
+          if (
+            job &&
+            (job.status === 'submitted' || job.status === 'running') &&
+            job.graphBinding?.assetId === assetId &&
+            (!job.graphBinding.nodeId || targetNodes.has(job.graphBinding.nodeId))
+          ) {
+            void window.studio.cancelVideoJob(job.localJobId).catch(() => undefined)
+          }
+        }
+      })
+      .catch(() => undefined)
+  }
+
+  function markTaskNodesCancelled(task: GraphTaskInternal, errorCode = 'GRAPH_CANCELLED'): void {
+    const cancelledIds = new Set<string>()
+    for (const node of task.nodes) {
+      if (node.status === 'pending' || node.status === 'running') {
+        cancelledIds.add(node.nodeId)
+      }
+    }
+    for (const [nodeId, st] of Object.entries(task.runStates)) {
+      if (st?.status === 'pending' || st?.status === 'running') {
+        cancelledIds.add(nodeId)
+      }
+    }
+    if (!task.touchedNodeIds) task.touchedNodeIds = new Set<string>()
+    for (const nodeId of cancelledIds) {
+      task.touchedNodeIds.add(nodeId)
+      const prev = task.runStates[nodeId]
+      const cancelledState: GraphNodeRunState = {
+        ...(prev?.outputs ? { outputs: prev.outputs } : {}),
+        status: 'error',
+        error: errorCode
+      }
+      task.runStates[nodeId] = cancelledState
+      if (task.liveCanvasSync !== false) {
+        syncLiveCanvasRunState(task.target.hostId, nodeId, cancelledState)
+      }
+    }
+    applyRunStateToNodes(task.nodes, task.runStates)
+    cancelBoundVideoJobs(
+      taskHostAssetId(task.target),
+      cancelledIds.size ? cancelledIds : task.order
+    )
+  }
+
+  function settleTask(task: GraphTaskInternal): Promise<void> {
+    if (!task.settlePromise) {
+      task.settlePromise = (async () => {
+        try {
+          await writeBack(task)
+        } finally {
+          moveToCompleted(task)
+        }
+      })()
+    }
+    return task.settlePromise
+  }
+
   async function runWriteBackExclusive(
     targetKey: string,
     work: () => Promise<void>
@@ -548,19 +636,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       task.abort.abort()
       task.status = 'stopped'
       task.message = 'stopped'
-      for (const node of task.nodes) {
-        if (node.status === 'pending' || node.status === 'running') {
-          node.status = 'error'
-          node.error = 'GRAPH_CANCELLED'
-          const cancelledState: GraphNodeRunState = { status: 'error', error: 'GRAPH_CANCELLED' }
-          task.runStates[node.nodeId] = cancelledState
-          if (task.liveCanvasSync) {
-            syncLiveCanvasRunState(task.target.hostId, node.nodeId, cancelledState)
-          }
-        }
-      }
+      markTaskNodesCancelled(task, 'GRAPH_CANCELLED')
       bump()
-      await writeBack(task)
+      await settleTask(task)
+      return
     }
     moveToCompleted(task)
   }
@@ -943,7 +1022,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         bump()
       }
       if (task.liveCanvasSync) {
-        await waitForLiveCanvasHost(task.target.hostId)
+        await waitForLiveCanvasHost(task.target.hostId, task.abort.signal)
+        if (task.abort.signal.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
         if (task.priorNodeStates) {
           seedLiveCanvasRunStates(task.target.hostId, task.priorNodeStates)
         }
@@ -1755,6 +1837,41 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
           resolveStyleImageUrls,
           resolveProjectStyleImages: () =>
             normalizeProjectStyleImages(useProjectStore().config?.styleImages),
+          resolveProjectUiAtlasResources: async (input) => {
+            const proj = useProjectStore()
+            const scopeSnap = getActiveChatProjectScopeSnapshot(proj.rootPath)
+            const base = collectProjectUiAtlasResources({
+              graphs: [task.graph],
+              // When in a specific project session (e.g. Client_Harmmy), do not mix in unrelated global workspace assets
+              assets: scopeSnap.activeProject ? [] : proj.assets,
+              folders: proj.folders
+            })
+            const searchDirs = resolveChatUiAtlasSearchDirs({
+              activeProject: scopeSnap.activeProject,
+              allProjects: scopeSnap.allProjects,
+              workspaceRootPath: scopeSnap.workspaceRootPath || proj.rootPath,
+              prompt: input?.prompt
+            })
+            if (searchDirs.length > 0 && typeof window.studio?.scanProjectOutputs === 'function') {
+              try {
+                const scanned = await window.studio.scanProjectOutputs({
+                  sinceMs: 0,
+                  uiAtlasSearchDirs: searchDirs,
+                  uiAtlasPrompt: input?.prompt
+                })
+                const diskImages = scanned?.uiAtlasImages ?? []
+                if (diskImages.length > 0) {
+                  return {
+                    componentLibraries: base.componentLibraries,
+                    images: [...diskImages, ...base.images].slice(0, 16)
+                  }
+                }
+              } catch {
+                // Ignore disk scan failure
+              }
+            }
+            return base
+          },
           resolveProjectGenerateSeed: () => useProjectStore().config?.generateSeed,
           enrichStyleImages: (images) =>
             enrichStyleImagesWithLibraryPrompts(images, String(i18n.global.locale.value)),
@@ -1851,20 +1968,10 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       if (task.abort.signal.aborted || result.error === 'GRAPH_CANCELLED') {
         task.status = 'stopped'
         task.message = 'GRAPH_CANCELLED'
-        for (const [id, st] of Object.entries(task.runStates)) {
-          if (st?.status === 'pending' || st?.status === 'running') {
-            const cancelledState: GraphNodeRunState = { status: 'error', error: 'GRAPH_CANCELLED' }
-            task.runStates[id] = cancelledState
-            if (task.liveCanvasSync !== false) {
-              syncLiveCanvasRunState(task.target.hostId, id, cancelledState)
-            }
-          }
-        }
-        applyRunStateToNodes(task.nodes, task.runStates)
+        markTaskNodesCancelled(task, 'GRAPH_CANCELLED')
         logBridge.endFromResult(result, { aborted: true })
         bump()
-        await writeBack(task)
-        moveToCompleted(task)
+        await settleTask(task)
         return
       }
 
@@ -1918,8 +2025,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
       }
       logBridge.endFromResult(result, { message: task.message })
       bump()
-      await writeBack(task)
-      moveToCompleted(task)
+      await settleTask(task)
     } catch (error) {
       if (task.abort.signal.aborted) {
         task.status = 'stopped'
@@ -1930,22 +2036,9 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
         task.message = error instanceof Error ? error.message : String(error)
         logBridge.endFromResult(null, { message: task.message })
       }
-      for (const [id, st] of Object.entries(task.runStates)) {
-        if (st?.status === 'pending' || st?.status === 'running') {
-          const fallbackState: GraphNodeRunState = {
-            status: 'error',
-            error: task.message || 'GRAPH_CANCELLED'
-          }
-          task.runStates[id] = fallbackState
-          if (task.liveCanvasSync !== false) {
-            syncLiveCanvasRunState(task.target.hostId, id, fallbackState)
-          }
-        }
-      }
-      applyRunStateToNodes(task.nodes, task.runStates)
+      markTaskNodesCancelled(task, task.message || 'GRAPH_CANCELLED')
       bump()
-      await writeBack(task)
-      moveToCompleted(task)
+      await settleTask(task)
     }
   }
 
@@ -1974,6 +2067,7 @@ export const useGraphTaskStore = defineStore('graphTasks', () => {
     hasActiveTaskForTarget,
     getActiveTaskRunStatesForTarget,
     stopActiveTasksForTarget,
+    stopAllActiveTasks,
     openDialog,
     closeDialog,
     enqueueWorkflow,

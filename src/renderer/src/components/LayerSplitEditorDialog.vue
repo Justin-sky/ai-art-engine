@@ -539,6 +539,19 @@
               <button
                 type="button"
                 class="icon-btn psd-btn"
+                :disabled="!hasCanvas || exporting"
+                :title="
+                  isZhLocale
+                    ? /* cjk-ok */ '新建 Photoshop 原生可编辑文字图层（TySh）'
+                    : 'Add native Photoshop editable text layer (TySh)'
+                "
+                @click="addEditableTextLayer"
+              >
+                +T
+              </button>
+              <button
+                type="button"
+                class="icon-btn psd-btn"
                 :disabled="!canExportAll"
                 :title="t('graph.layerSplit.exportPsd')"
                 :aria-label="t('graph.layerSplit.exportPsd')"
@@ -609,6 +622,20 @@
                 "
                 >🔗 ×{{ prefabSiblingCount(selectedLayer) }}</span
               >
+            </div>
+            <div v-if="selectedLayer.editableText" class="side-export-name">
+              <span class="export-name-label">
+                {{ isZhLocale ? '文案' : 'Text' }}<!-- cjk-ok -->
+              </span>
+              <input
+                type="text"
+                class="rename-input export-name-input"
+                :value="selectedLayer.editableText.text"
+                :placeholder="
+                  isZhLocale ? /* cjk-ok */ '输入 PSD 可编辑文字内容' : 'Editable PSD text'
+                "
+                @change="onEditableTextChange"
+              />
             </div>
             <div v-if="draft.componentLibrary?.length" class="side-component-lib">
               <div class="nine-slice-head">
@@ -898,6 +925,37 @@
           <p v-if="exportMessage" class="side-export" :class="{ error: exportFailed }">
             {{ exportMessage }}
           </p>
+          <div v-if="draft.componentLibrary?.length" class="atlas-palette">
+            <div class="atlas-palette-head">
+              <span class="atlas-palette-title">
+                🧩
+                {{
+                  isZhLocale
+                    ? /* cjk-ok */ `图集元素库 (${draft.componentLibrary.length}) · 点击插入图层`
+                    : `Atlas Library (${draft.componentLibrary.length}) · Click to Add Layer`
+                }}
+              </span>
+            </div>
+            <div class="atlas-palette-grid">
+              <button
+                v-for="comp in draft.componentLibrary"
+                :key="comp.id"
+                type="button"
+                class="atlas-palette-item"
+                :title="`${comp.name} (${comp.canonicalWidth}×${comp.canonicalHeight})`"
+                @click="addLayerFromAtlasComponent(comp)"
+              >
+                <img
+                  v-if="componentThumbUrl(comp)"
+                  :src="componentThumbUrl(comp)"
+                  :alt="comp.name"
+                  class="atlas-palette-thumb"
+                />
+                <span v-else class="atlas-palette-placeholder">🧩</span>
+                <span class="atlas-palette-name">{{ comp.name }}</span>
+              </button>
+            </div>
+          </div>
           <div ref="sideListEl" class="side-list">
             <p v-if="!draft.layers.length" class="side-empty">
               {{ t('graph.layerSplit.emptyLayers') }}
@@ -1106,7 +1164,8 @@ import {
   type ImageLayerSplitState,
   type LayerSplitExplode2dMode,
   type UiLayerSplitMode,
-  type UiLayerSplitPresetId
+  type UiLayerSplitPresetId,
+  type UiSharedComponentItem
 } from '@shared/graph'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
@@ -1687,6 +1746,195 @@ function onToggleSelectedLayerComponent(): void {
   if (!layer || !layer.componentId) return
   pushDraftHistory()
   Object.assign(draft, toggleLayerComponentReplacement(draft, layer.id, !layer.keepOriginalPixels))
+}
+
+function componentThumbUrl(comp: UiSharedComponentItem): string {
+  const key = comp.imageId?.trim() || comp.id
+  return (
+    localLayerUrls[key]?.trim() ||
+    localLayerUrls[comp.id]?.trim() ||
+    props.layerUrls[key]?.trim() ||
+    props.layerUrls[comp.id]?.trim() ||
+    comp.imageUrl?.trim() ||
+    ''
+  )
+}
+
+function addLayerFromAtlasComponent(comp: UiSharedComponentItem): void {
+  if (!hasCanvas.value) return
+  const url = componentThumbUrl(comp)
+  if (!url) return
+  pushDraftHistory()
+  const cw = Math.max(320, draft.canvasWidth || 1920)
+  const ch = Math.max(320, draft.canvasHeight || 1080)
+  const maxZ = draft.layers.reduce((m, l) => Math.max(m, l.zIndex || 0), 0)
+  const nextZ = maxZ + 1
+  const layerId = `atlasInsert:${Date.now()}:${nextZ}`
+  const compImgId = comp.imageId?.trim() || comp.id
+  localLayerUrls[compImgId] = url
+  localLayerUrls[layerId] = url
+  extraImages.value.push({
+    id: compImgId,
+    title: comp.name,
+    dataUrl: url,
+    createdAt: new Date().toISOString()
+  })
+  const w = Math.max(24, Math.min(cw - 32, comp.canonicalWidth || 160))
+  const h = Math.max(24, Math.min(ch - 32, comp.canonicalHeight || 120))
+  const offset = ((nextZ - 1) % 6) * 24
+  const left = Math.max(0, Math.min(cw - w, Math.round((cw - w) * 0.5) + offset))
+  const top = Math.max(0, Math.min(ch - h, Math.round((ch - h) * 0.5) + offset))
+  const nineSliceBorders: [number, number, number, number] | undefined = comp.nineSliceBorders
+    ? [
+        comp.nineSliceBorders[3],
+        comp.nineSliceBorders[0],
+        comp.nineSliceBorders[1],
+        comp.nineSliceBorders[2]
+      ]
+    : undefined
+
+  const newLayer: ImageLayerSplitLayer = {
+    id: layerId,
+    imageId: compImgId,
+    zIndex: nextZ,
+    name: `${comp.name}_${nextZ}`,
+    description: `${comp.kind} (${comp.name})`,
+    visible: true,
+    left,
+    top,
+    width: w,
+    height: h,
+    role: 'layer',
+    originalAbsolute: [left, top, left + w, top + h],
+    originalNormalized: [
+      Math.round((left / cw) * 1000),
+      Math.round((top / ch) * 1000),
+      Math.round(((left + w) / cw) * 1000),
+      Math.round(((top + h) / ch) * 1000)
+    ],
+    exportName: comp.exportName,
+    prefabKey: comp.exportName,
+    componentId: comp.id,
+    componentMatchScore: 1,
+    originalImageId: compImgId,
+    componentImageId: compImgId,
+    ...(nineSliceBorders ? { nineSliceBorders } : {})
+  }
+  draft.layers = [...draft.layers, newLayer]
+  draft.selectedId = layerId
+  selectedIds.value = [layerId]
+}
+
+function renderEditableTextCanvasDataUrl(
+  text: string,
+  width: number,
+  height: number,
+  fontSize: number
+): string {
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(32, Math.round(width))
+  canvas.height = Math.max(24, Math.round(height))
+  const c2d = canvas.getContext('2d')
+  if (!c2d) return ''
+  c2d.clearRect(0, 0, canvas.width, canvas.height)
+  c2d.font = `bold ${Math.max(12, Math.round(fontSize))}px "Microsoft YaHei", sans-serif`
+  c2d.textAlign = 'center'
+  c2d.textBaseline = 'middle'
+  c2d.lineWidth = 3
+  c2d.strokeStyle = 'rgba(32, 20, 12, 0.92)'
+  c2d.strokeText(text, canvas.width * 0.5, canvas.height * 0.52)
+  c2d.fillStyle = '#fff2cc'
+  c2d.fillText(text, canvas.width * 0.5, canvas.height * 0.52)
+  return canvas.toDataURL('image/png')
+}
+
+function addEditableTextLayer(): void {
+  if (!hasCanvas.value) return
+  pushDraftHistory()
+  const cw = Math.max(320, draft.canvasWidth || 1920)
+  const ch = Math.max(320, draft.canvasHeight || 1080)
+  const maxZ = draft.layers.reduce((m, l) => Math.max(m, l.zIndex || 0), 0)
+  const nextZ = maxZ + 1
+  const layerId = `textLayer:${Date.now()}:${nextZ}`
+  const defaultText = isZhLocale.value ? '界面标题文字' : 'UI Title Text' // cjk-ok
+  const w = 280
+  const h = 56
+  const fontSize = 28
+  const dataUrl = renderEditableTextCanvasDataUrl(defaultText, w, h, fontSize)
+  localLayerUrls[layerId] = dataUrl
+  extraImages.value.push({
+    id: layerId,
+    title: defaultText,
+    dataUrl,
+    createdAt: new Date().toISOString()
+  })
+  const left = Math.round((cw - w) * 0.5)
+  const top = Math.round((ch - h) * 0.5)
+  const newLayer: ImageLayerSplitLayer = {
+    id: layerId,
+    imageId: layerId,
+    zIndex: nextZ,
+    name: `Txt_${defaultText}`,
+    description: 'Editable PSD Text Layer',
+    visible: true,
+    left,
+    top,
+    width: w,
+    height: h,
+    role: 'layer',
+    exportName: `Txt_Layer_${nextZ}`,
+    originalAbsolute: [left, top, left + w, top + h],
+    originalNormalized: [
+      Math.round((left / cw) * 1000),
+      Math.round((top / ch) * 1000),
+      Math.round(((left + w) / cw) * 1000),
+      Math.round(((top + h) / ch) * 1000)
+    ],
+    editableText: {
+      text: defaultText,
+      fontSize,
+      color: [255, 242, 204],
+      strokeColor: [32, 20, 12],
+      strokeWidth: 2,
+      align: 'center'
+    }
+  }
+  draft.layers = [...draft.layers, newLayer]
+  draft.selectedId = layerId
+  selectedIds.value = [layerId]
+}
+
+function onEditableTextChange(event: Event): void {
+  const layer = selectedLayer.value
+  if (!layer || !layer.editableText) return
+  const nextText = (event.target as HTMLInputElement).value.trim()
+  if (!nextText || nextText === layer.editableText.text) return
+  pushDraftHistory()
+  const fontSize = layer.editableText.fontSize || Math.max(14, Math.round(layer.height * 0.5))
+  const dataUrl = renderEditableTextCanvasDataUrl(nextText, layer.width, layer.height, fontSize)
+  const nextImgId = `textLayer:${Date.now()}`
+  if (dataUrl) {
+    localLayerUrls[nextImgId] = dataUrl
+    extraImages.value.push({
+      id: nextImgId,
+      title: nextText,
+      dataUrl,
+      createdAt: new Date().toISOString()
+    })
+  }
+  draft.layers = draft.layers.map((item) =>
+    item.id === layer.id
+      ? {
+          ...item,
+          name: `Txt_${nextText}`,
+          ...(dataUrl ? { imageId: nextImgId } : {}),
+          editableText: {
+            ...item.editableText!,
+            text: nextText
+          }
+        }
+      : item
+  )
 }
 
 function onBindSelectedLayerComponent(event: Event): void {
@@ -5007,5 +5255,72 @@ onBeforeUnmount(() => {
   min-width: 0;
   font-size: 11px;
   padding: 4px 6px;
+}
+
+.atlas-palette {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.atlas-palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.atlas-palette-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.atlas-palette-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  max-height: 132px;
+  overflow-y: auto;
+}
+
+.atlas-palette-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.atlas-palette-item:hover {
+  border-color: var(--accent);
+}
+
+.atlas-palette-thumb {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+}
+
+.atlas-palette-placeholder {
+  font-size: 16px;
+  line-height: 36px;
+}
+
+.atlas-palette-name {
+  width: 100%;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
 }
 </style>

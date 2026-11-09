@@ -616,9 +616,32 @@
           <div class="panel-card">
             <div class="card-header-row">
               <span class="card-title">{{ ui.uiSplitPreFlightTitle }}</span>
-              <button type="button" class="mini-action-btn" @click="pushAndOpenUiSplitNode">
+              <button
+                type="button"
+                class="mini-action-btn"
+                @click="showUiModeChooser = !showUiModeChooser"
+              >
                 🚀 {{ ui.openUiSplitShortBtn }}
               </button>
+            </div>
+            <div v-if="showUiModeChooser" class="quick-screens-box" style="margin-bottom: 8px">
+              <div class="sub-label">{{ ui.uiModeChooserPrompt }}</div>
+              <div class="quick-screen-chips">
+                <button
+                  type="button"
+                  class="preset-chip"
+                  @click="pushAndOpenUiNodeByMode('ai_generate')"
+                >
+                  ✨ {{ ui.uiModeAiGenerateBtn }}
+                </button>
+                <button
+                  type="button"
+                  class="preset-chip"
+                  @click="pushAndOpenUiNodeByMode('atlas_compose')"
+                >
+                  🧱 {{ ui.uiModeAtlasComposeBtn }}
+                </button>
+              </div>
             </div>
             <p class="card-desc">{{ ui.uiSplitPreFlightDesc }}</p>
 
@@ -1264,8 +1287,11 @@ const ui = computed(() => {
       tabUiPreview: 'UI Split Preview',
       tabFeatures: 'Features & Data',
       tabQa: 'QA Doctor',
-      uiSplitPreFlightTitle: 'Downstream ui.split Pre-Flight',
-      openUiSplitShortBtn: 'Open ui.split',
+      uiSplitPreFlightTitle: 'Downstream UI Generation Pre-Flight',
+      openUiSplitShortBtn: 'Generate UI',
+      uiModeChooserPrompt: 'Choose UI Generation Mode:',
+      uiModeAiGenerateBtn: 'Full AI Generate (ui.split → ui.gen)',
+      uiModeAtlasComposeBtn: 'Compose from Existing Atlas (ui.atlasCompose)',
       uiSplitPreFlightDesc:
         'Each screen under # UI Layout Design with screenKind, aspectRatio, ASCII wireframe, and 9-slice PSD spec will become an independent UI generation card.',
       quickInsertScreensLabel: '1-Click Append Standard UI Screen:',
@@ -1338,10 +1364,13 @@ const ui = computed(() => {
     tabUiPreview: 'UI 拆图预演', // cjk-ok
     tabFeatures: '功能与数值表', // cjk-ok
     tabQa: '策划案体检', // cjk-ok
-    uiSplitPreFlightTitle: '下游 UI 界面拆分 (ui.split) 预检', // cjk-ok
-    openUiSplitShortBtn: '推送拆图', // cjk-ok
+    uiSplitPreFlightTitle: '下游 UI 生成与拼装预检', // cjk-ok
+    openUiSplitShortBtn: '推送生成 UI', // cjk-ok
+    uiModeChooserPrompt: '请选择 UI 生成方式（将根据选择连接不同节点）：', // cjk-ok
+    uiModeAiGenerateBtn: '完全 AI 生成 (ui.split → ui.gen)', // cjk-ok
+    uiModeAtlasComposeBtn: '使用已有图集拼装 (ui.atlasCompose)', // cjk-ok
     uiSplitPreFlightDesc:
-      '「# UI 布局设计」下的每个子界面（含 screenKind、aspectRatio、ASCII 框线图与 9-slice 九宫格图层规范）将被下游 ui.split 精确拆分为独立出图卡片。', // cjk-ok
+      '「# UI 布局设计」下的每个子界面（含 screenKind、aspectRatio、ASCII 框线图与 9-slice 九宫格图层规范）将被下游 ui.split 或 ui.atlasCompose 解析。', // cjk-ok
     quickInsertScreensLabel: '一键向正文追加标准 UI 界面模块：', // cjk-ok
     noScreensDetectedDesc: '当前正文中尚未检测到「# UI 布局设计」下的可拆分界面模块。', // cjk-ok
     appendAllArchetypeScreensBtn: '一键补全当前原型的全部标准 UI 界面', // cjk-ok
@@ -1564,7 +1593,7 @@ function injectNovelIpIntoDoc(): void {
 
 async function switchToPeerNodeDive(
   meta: {
-    viewId: 'game.workbench' | 'novel.workbench' | 'ui.split'
+    viewId: 'game.workbench' | 'novel.workbench' | 'ui.split' | 'node.layerSplit'
     hostId: string
     nodeId: string
   },
@@ -1581,6 +1610,65 @@ async function switchToPeerNodeDive(
   if (rootKey) {
     workspace.divePopTo(rootKey, -1)
     workspace.diveIntoView(rootKey, meta, title)
+  }
+}
+
+const showUiModeChooser = ref(false)
+
+async function pushAndOpenUiNodeByMode(mode: 'ai_generate' | 'atlas_compose'): Promise<void> {
+  showUiModeChooser.value = false
+  if (mode === 'atlas_compose') {
+    await pushAndOpenUiAtlasComposeNode()
+    return
+  }
+  await pushAndOpenUiSplitNode()
+}
+
+async function pushAndOpenUiAtlasComposeNode(): Promise<void> {
+  if (!localText.value.trim()) {
+    synthesizeStandardDocFromContext()
+  } else if (dirtyText.value) {
+    persistDocText()
+  }
+  const hid = resolvedHostId.value
+  const g = graphDoc.value
+  const cur = realNode.value
+  if (!g || !cur || !hid) return
+
+  const outgoingTargetIds = new Set(
+    (g.edges ?? []).filter((e) => e.source === cur.id).map((e) => e.target)
+  )
+  let atlasNode =
+    (g.nodes ?? []).find((n) => n.typeId === 'ui.atlasCompose' && outgoingTargetIds.has(n.id)) ??
+    (g.nodes ?? []).find((n) => n.typeId === 'ui.atlasCompose')
+
+  if (!atlasNode) {
+    const newId = graphEditorHosts.addNode(hid, {
+      typeId: 'ui.atlasCompose',
+      title: isEn.value ? 'Atlas Compose UI' : '图集拼装 UI', // cjk-ok
+      position: {
+        x: (cur.position?.x ?? 400) + 380,
+        y: (cur.position?.y ?? 200) + 120
+      },
+      linkFrom: [{ nodeId: cur.id, portId: 'out', targetPort: 'in-text' }]
+    })
+    if (newId) {
+      atlasNode = graphEditorHosts.getNode(hid, newId) ?? undefined
+    }
+  } else {
+    graphEditorHosts.connectNodes(hid, cur.id, atlasNode.id, 'out', 'in-text')
+  }
+  const existingLib = (g.nodes ?? []).find((n) => n.typeId === 'ui.componentLib')
+  if (existingLib && atlasNode) {
+    graphEditorHosts.connectNodes(hid, existingLib.id, atlasNode.id, 'out', 'in-components')
+  }
+  updateTargetNode({ text: localText.value })
+
+  if (atlasNode) {
+    await switchToPeerNodeDive(
+      { viewId: 'node.layerSplit', hostId: hid, nodeId: atlasNode.id },
+      atlasNode.title || 'Atlas Compose UI'
+    )
   }
 }
 

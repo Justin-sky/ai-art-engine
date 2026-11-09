@@ -260,19 +260,45 @@ async function resolveGitHubTree(parsed: GitHubSkillSourceRef): Promise<{
   }
 
   // Fallback: 当 GitHub API 不可用或限流时，直接探测 raw.githubusercontent.com 上的 SKILL.md
-  for (const ref of candidateRefs) {
-    const skillMdRel = parsed.subpath ? `${parsed.subpath}/SKILL.md` : 'SKILL.md'
-    const rawUrl = buildRawGitHubUrl(parsed.owner, parsed.repo, ref, skillMdRel)
-    try {
-      const resp = await fetchWithTimeout(rawUrl)
-      if (resp.ok) {
-        return {
-          resolvedRef: ref,
-          tree: [{ path: skillMdRel, type: 'blob' }]
-        }
+  const fallbackSkillPaths: string[] = []
+  if (parsed.subpath) {
+    fallbackSkillPaths.push(`${parsed.subpath}/SKILL.md`)
+  } else {
+    fallbackSkillPaths.push('SKILL.md')
+    const repoKey = `${parsed.owner}/${parsed.repo}`.toLowerCase()
+    for (const curated of CURATED_CLAUDE_SKILLS) {
+      if (curated.repo.toLowerCase() !== repoKey) continue
+      const curatedParsed = parseGitHubSkillSourceUrl(curated.url)
+      if (curatedParsed?.subpath) {
+        const rel = `${curatedParsed.subpath}/SKILL.md`
+        if (!fallbackSkillPaths.includes(rel)) fallbackSkillPaths.push(rel)
       }
-    } catch {
-      // continue
+    }
+    for (const candidateRel of [
+      `skills/${parsed.repo}/SKILL.md`,
+      `.agents/skills/${parsed.repo}/SKILL.md`,
+      `.claude/skills/${parsed.repo}/SKILL.md`
+    ]) {
+      if (!fallbackSkillPaths.includes(candidateRel)) {
+        fallbackSkillPaths.push(candidateRel)
+      }
+    }
+  }
+
+  for (const ref of candidateRefs) {
+    for (const skillMdRel of fallbackSkillPaths) {
+      const rawUrl = buildRawGitHubUrl(parsed.owner, parsed.repo, ref, skillMdRel)
+      try {
+        const resp = await fetchWithTimeout(rawUrl)
+        if (resp.ok) {
+          return {
+            resolvedRef: ref,
+            tree: [{ path: skillMdRel, type: 'blob' }]
+          }
+        }
+      } catch {
+        // continue
+      }
     }
   }
 
@@ -797,6 +823,29 @@ const CURATED_CLAUDE_SKILLS: ReadonlyArray<{
     repo: 'anthropics/skills',
     url: 'https://github.com/anthropics/skills/tree/main/skills/slack-gif-creator',
     hasScripts: true
+  },
+  {
+    name: 'reverse-engineer-anything',
+    title: 'REA Reverse Engineer Anything (APK/二进制/应用逆向分析)',
+    description:
+      'Reverse engineer Android APKs, native binaries, Electron/JavaScript apps, and .NET assemblies with REA evidence workflows.',
+    keywords: [
+      'rea',
+      'morluto/rea',
+      'reverse-engineer-anything',
+      'reverse',
+      'apk',
+      'jadx',
+      'ghidra',
+      'decompile',
+      '逆向',
+      '反编译',
+      '安卓分析',
+      '二进制分析'
+    ],
+    repo: 'morluto/rea',
+    url: 'https://github.com/morluto/rea/tree/main/.agents/skills/reverse-engineer-anything',
+    hasScripts: false
   }
 ]
 
@@ -837,7 +886,8 @@ const ZH_TO_GITHUB_SEARCH_TERMS: ReadonlyArray<[RegExp, string]> = [
   [/品牌|视觉规范|logo/i, 'brand guidelines'],
   [/主题|配色|字体/i, 'theme palette'],
   [/分镜|短剧|影视|剧本|电影/i, 'storyboard film script'],
-  [/3d|建模|骨骼|blender/i, 'blender 3d']
+  [/3d|建模|骨骼|blender/i, 'blender 3d'],
+  [/逆向|反编译|apk|二进制|jadx|ghidra/i, 'reverse engineering apk binary']
 ]
 
 /**

@@ -4,7 +4,11 @@
       <h2>{{ displayTitle }}</h2>
     </div>
     <p class="hint">
-      {{ t('graph.inspector.layerSplit.hint') }}
+      {{
+        isAtlasCompose
+          ? t('graph.inspector.atlasCompose.hint')
+          : t('graph.inspector.layerSplit.hint')
+      }}
     </p>
 
     <GraphNodeRunControl
@@ -17,7 +21,7 @@
 
     <GraphNodeOutputPreview v-if="node && hostId" :node="node" :host-id="hostId" />
 
-    <label class="field-block">
+    <label v-if="!isAtlasCompose" class="field-block">
       <span class="field-label">{{ t('graph.layerSplit.splitMode') }}</span>
       <select class="select" :value="state.splitMode || 'auto'" @change="onSplitModeChange">
         <option v-for="mode in splitModeOptions" :key="mode.id" :value="mode.id">
@@ -192,8 +196,12 @@ const node = computed(() => {
   const id = selection.kind === 'graph.node' ? selection.id : null
   if (!id) return null
   const current = graphEditorHosts.getNode(selection.hostId, id)
-  return current?.typeId === 'image.layerSplit' ? current : null
+  return current?.typeId === 'image.layerSplit' || current?.typeId === 'ui.atlasCompose'
+    ? current
+    : null
 })
+
+const isAtlasCompose = computed(() => node.value?.typeId === 'ui.atlasCompose')
 
 const hostId = computed(() => {
   const selection = editor.selection.current.value
@@ -201,7 +209,9 @@ const hostId = computed(() => {
 })
 
 const { hasInPort, runStatus, isGraphRunning, blocked, toggleRun } = useGraphNodeRun(node)
-const typeLabel = computed(() => graphTypeLabel('image.layerSplit'))
+const typeLabel = computed(() =>
+  graphTypeLabel(node.value?.typeId === 'ui.atlasCompose' ? 'ui.atlasCompose' : 'image.layerSplit')
+)
 const displayTitle = useNodeDisplayTitle(node, typeLabel)
 const state = computed(() =>
   node.value ? readImageLayerSplitFromNode(node.value.params) : readImageLayerSplitFromNode({})

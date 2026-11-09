@@ -1723,11 +1723,26 @@ export interface McpRestartInput {
 /** 对话产物扫盘：只收该时刻（本轮开始时刻，毫秒）之后写入 / 更新的产物 */
 export interface ProjectScanOutputsInput {
   sinceMs: number
+  /**
+   * 可选：图集拼装 UI（`ui.atlasCompose`）按会话作用域扫描指定目录中的 UI/图集图片：
+   * - 在具体项目会话（如 `Client_Harmmy`）中传入 `[activeProject.rootPath, ...otherSpecifiedProjectPaths]`
+   * - 在全局工作空间会话中传入 `[...otherSpecifiedProjectPaths, '<workspaceRoot>/Cache']`
+   */
+  uiAtlasSearchDirs?: string[]
+  /** 可选：根据提示词关键字为候选图集图片打分排序 */
+  uiAtlasPrompt?: string
 }
 
 export interface ProjectScanOutputsResult {
   /** 命中的产物候选（未截断；出卡上限与「已展示过」去重在渲染层按会话状态再筛） */
   files: ProjectOutputFile[]
+  /** `uiAtlasSearchDirs` 扫描出的候选 UI/图集图片（含 `studio-media://local/?path=...` 安全地址） */
+  uiAtlasImages?: Array<{
+    id: string
+    title: string
+    dataUrl: string
+    relativePath?: string
+  }>
 }
 
 export interface AttachAssetRelativeInput {

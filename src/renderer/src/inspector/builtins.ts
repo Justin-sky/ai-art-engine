@@ -390,7 +390,11 @@ export const BUILTIN_INSPECTORS: InspectorDefinition[] = [
   {
     id: 'studio.graph.layerSplit',
     component: LayerSplitInspector,
-    nodeTypeId: 'image.layerSplit'
+    match: (target) => {
+      if (target.kind !== 'graph.node') return false
+      const n = target.subject as GraphNode | null
+      return n?.typeId === 'image.layerSplit' || n?.typeId === 'ui.atlasCompose'
+    }
   },
   {
     id: 'studio.graph.camera',

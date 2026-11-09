@@ -257,13 +257,28 @@ function probeErrorText(result: ExternalMcpProbeResult): string {
   return detail ? `${label}（${detail}）` : label
 }
 
+function toPlainServer(server: ExternalMcpServer): ExternalMcpServer {
+  return {
+    id: server.id,
+    name: server.name,
+    transport: server.transport,
+    enabled: server.enabled,
+    url: server.url,
+    headers: { ...server.headers },
+    command: server.command,
+    args: [...server.args],
+    env: { ...server.env },
+    timeoutMs: server.timeoutMs
+  }
+}
+
 async function runProbe(): Promise<void> {
   if (testing.value) return
   testing.value = true
   probeError.value = ''
   probedTools.value = null
   try {
-    const result = await window.studio.probeExternalMcp(props.server)
+    const result = await window.studio.probeExternalMcp(toPlainServer(props.server))
     if (result.ok) {
       probedTools.value = result.tools ?? []
     } else {

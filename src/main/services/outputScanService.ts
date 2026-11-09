@@ -19,7 +19,7 @@ import {
   utimesSync,
   type Dirent
 } from 'fs'
-import { dirname, join } from 'path'
+import { basename, dirname, extname, join, relative, resolve } from 'path'
 import {
   SCANNED_OUTPUT_DIRS,
   isPreviewableOutputFileName,
@@ -143,4 +143,227 @@ export function scanProjectOutputFiles(input: { sinceMs?: number }): ProjectOutp
     walk(join(root, dir), dir, 1)
   }
   return files
+}
+
+const IGNORED_ATLAS_SCAN_DIRS = new Set<string>([
+  '.git',
+  '.svn',
+  '.hg',
+  '.idea',
+  '.vscode',
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  'temp',
+  'tmp',
+  'library',
+  'obj',
+  'logs',
+  'thumbnails'
+])
+
+const ATLAS_IMAGE_EXTENSIONS = new Set<string>(['.png', '.webp', '.jpg', '.jpeg'])
+
+const UI_PATH_HINT_RE =
+  /ui|atlas|sprite|slice|9slice|common|comm|gui|hud|skin|icon|btn|button|slot|cell|tab|panel|frame|bar|banner|window|dialog|badge|图集|界面|组件|切片|按钮|底板|面板|边框|图标|背包|道具|槽位|页签/i // cjk-ok
+
+const PROMPT_CONCEPT_EXPANSIONS: Array<{ test: RegExp; tokens: string[] }> = [
+  {
+    test: /背包|bag|backpack|inventory/i, // cjk-ok
+    tokens: ['bag', 'backpack', 'inventory', 'pack', '背包'] // cjk-ok
+  },
+  {
+    test: /道具|物品|item|prop/i, // cjk-ok
+    tokens: ['item', 'prop', 'goods', '道具', '物品'] // cjk-ok
+  },
+  {
+    test: /装备|武器|equip|weapon|gear/i, // cjk-ok
+    tokens: ['equip', 'weapon', 'armor', 'gear', '装备'] // cjk-ok
+  },
+  {
+    test: /碎片|晶石|舰炮|shard|gem|cannon/i, // cjk-ok
+    tokens: ['shard', 'piece', 'gem', 'stone', 'cannon', '碎片', '晶石', '舰炮'] // cjk-ok
+  },
+  {
+    test: /金币|体力|钻石|资源|coin|gold|diamond|energy|stamina/i, // cjk-ok
+    tokens: ['coin', 'gold', 'diamond', 'gem', 'energy', 'stamina', 'res', '金币', '体力', '钻石'] // cjk-ok
+  },
+  {
+    test: /按钮|整理|筛选|升品|多选|btn|button/i, // cjk-ok
+    tokens: ['btn', 'button', '按钮'] // cjk-ok
+  },
+  {
+    test: /页签|导航|tab|nav/i, // cjk-ok
+    tokens: ['tab', 'nav', 'menu', '页签', '导航'] // cjk-ok
+  },
+  {
+    test: /道具格|格子|槽|slot|cell|grid/i, // cjk-ok
+    tokens: ['slot', 'cell', 'grid', 'box', 'frame', '格', '槽'] // cjk-ok
+  },
+  {
+    test: /进度条|容量|bar|progress|slider/i, // cjk-ok
+    tokens: ['bar', 'progress', 'slider', 'gauge', 'fill', '进度条'] // cjk-ok
+  },
+  {
+    test: /红点|角标|锁定|badge|dot|lock/i, // cjk-ok
+    tokens: ['badge', 'dot', 'reddot', 'lock', 'tag', '红点', '角标'] // cjk-ok
+  },
+  {
+    test: /窗口|底板|面板|弹窗|panel|window|dialog|bg/i, // cjk-ok
+    tokens: ['panel', 'window', 'dialog', 'bg', 'frame', 'board', '底板', '面板', '窗口'] // cjk-ok
+  }
+]
+
+function extractPromptAtlasKeywords(prompt?: string): string[] {
+  const raw = (prompt ?? '').trim()
+  if (!raw) return []
+  const set = new Set<string>()
+  for (const rule of PROMPT_CONCEPT_EXPANSIONS) {
+    if (rule.test.test(raw)) {
+      for (const tk of rule.tokens) set.add(tk.toLowerCase())
+    }
+  }
+  const enWords = raw.toLowerCase().match(/[a-z][a-z0-9_]{2,18}/g) ?? []
+  for (const w of enWords) {
+    set.add(w)
+  }
+  return [...set]
+}
+
+/**
+ * 按会话作用域扫描指定目录（如当前项目 `Client_Harmmy`、用户指定的其它项目、或全局会话下的 `Cache` 目录）中的 UI / 图集图片。
+ * 返回可直接供 Canvas 解码的 `studio-media://local/?path=...` 条目列表。
+ */
+export function scanUiAtlasImagesFromDirectories(
+  searchDirs?: string[],
+  prompt?: string
+): Array<{
+  id: string
+  title: string
+  dataUrl: string
+  relativePath?: string
+}> {
+  if (!Array.isArray(searchDirs) || searchDirs.length === 0) return []
+  const normalizedDirs: string[] = []
+  const seenDirs = new Set<string>()
+  for (const d of searchDirs) {
+    const cleaned = (d ?? '').trim()
+    if (!cleaned) continue
+    const abs = resolve(cleaned)
+    const key = process.platform === 'win32' ? abs.toLowerCase() : abs
+    if (seenDirs.has(key)) continue
+    seenDirs.add(key)
+    normalizedDirs.push(abs)
+  }
+  if (!normalizedDirs.length) return []
+
+  const workspaceRoot = projectService.isOpen() ? projectService.getRoot() : ''
+  const workspaceRootNorm = workspaceRoot
+    ? process.platform === 'win32'
+      ? resolve(workspaceRoot).toLowerCase()
+      : resolve(workspaceRoot)
+    : ''
+
+  const promptKeywords = extractPromptAtlasKeywords(prompt)
+  const candidates: Array<{
+    id: string
+    title: string
+    dataUrl: string
+    relativePath?: string
+    score: number
+    mtimeMs: number
+  }> = []
+
+  const maxDepth = 7
+  const maxVisitedPerDir = 2000
+
+  for (let dirIdx = 0; dirIdx < normalizedDirs.length; dirIdx++) {
+    const rootDir = normalizedDirs[dirIdx]!
+    if (!existsSync(rootDir)) continue
+    let visited = 0
+    const dirPriorityScore = (normalizedDirs.length - dirIdx) * 12
+
+    const walk = (dirAbs: string, relPrefix: string, depth: number): void => {
+      if (depth > maxDepth || visited >= maxVisitedPerDir) return
+      let entries: Dirent[]
+      try {
+        entries = readdirSync(dirAbs, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const entry of entries) {
+        if (visited >= maxVisitedPerDir) return
+        const name = entry.name
+        if (name.startsWith('.')) continue
+        const rel = relPrefix ? `${relPrefix}/${name}` : name
+        if (entry.isDirectory()) {
+          if (IGNORED_ATLAS_SCAN_DIRS.has(name.toLowerCase())) continue
+          walk(join(dirAbs, name), rel, depth + 1)
+          continue
+        }
+        if (!entry.isFile()) continue
+        const ext = extname(name).toLowerCase()
+        if (!ATLAS_IMAGE_EXTENSIONS.has(ext)) continue
+        const fileAbs = join(dirAbs, name)
+        let st
+        try {
+          st = statSync(fileAbs)
+        } catch {
+          continue
+        }
+        visited += 1
+        if (st.size < 120 || st.size > 25 * 1024 * 1024) continue
+
+        const lowerRel = rel.toLowerCase()
+        let score = dirPriorityScore
+        if (ext === '.png' || ext === '.webp') score += 8
+        if (UI_PATH_HINT_RE.test(lowerRel)) score += 18
+        for (const kw of promptKeywords) {
+          if (kw && lowerRel.includes(kw)) {
+            score += 12
+          }
+        }
+        // Skip composite/preview full-screen exports from previous runs so we pick actual source sprites/atlases first
+        if (/composite|preview_full|screenshot/i.test(name)) {
+          score -= 20
+        }
+
+        const baseTitle = basename(name, ext).trim() || 'UI_Atlas'
+        const dataUrl = `studio-media://local/?path=${encodeURIComponent(fileAbs)}`
+        let workspaceRel: string | undefined
+        if (workspaceRootNorm) {
+          const fileAbsNorm =
+            process.platform === 'win32' ? resolve(fileAbs).toLowerCase() : resolve(fileAbs)
+          if (
+            fileAbsNorm.startsWith(workspaceRootNorm + (process.platform === 'win32' ? '\\' : '/'))
+          ) {
+            workspaceRel = relative(workspaceRoot, fileAbs).replace(/\\/g, '/')
+          }
+        }
+        candidates.push({
+          id: `disk-atlas:${dirIdx}:${rel}`,
+          title: baseTitle,
+          dataUrl,
+          ...(workspaceRel ? { relativePath: workspaceRel } : {}),
+          score,
+          mtimeMs: st.mtimeMs
+        })
+      }
+    }
+
+    walk(rootDir, '', 0)
+  }
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return b.mtimeMs - a.mtimeMs
+  })
+
+  return candidates.slice(0, 24).map(({ id, title, dataUrl, relativePath }) => ({
+    id,
+    title,
+    dataUrl,
+    ...(relativePath ? { relativePath } : {})
+  }))
 }

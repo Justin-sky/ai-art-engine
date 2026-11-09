@@ -252,6 +252,12 @@ describe('第三方 MCP：中继与注入', () => {
     expect(DIALOG).not.toMatch(/window\.studio\.setSettings\(/)
     expect(MARKETPLACE).toMatch(/onExternalAdded[\s\S]{0,600}persistExternal\(\)/)
   })
+
+  it('卡片详情点击「测试连接」前必须剥离响应式代理（防止 Electron IPC 抛 DataCloneError）', () => {
+    const CONFIG = read('src/renderer/src/components/marketplace/ExternalMcpConfig.vue')
+    expect(CONFIG).toContain('toPlainServer(props.server)')
+    expect(CONFIG).not.toContain('probeExternalMcp(props.server)')
+  })
 })
 
 describe('市场视图：窗口样式与任务列表一致', () => {

@@ -157,6 +157,41 @@ export function createDefaultExternalMcpServer(
   }
 }
 
+export const BUILTIN_REA_MCP_ID = 'rea'
+
+/**
+ * 内置预置的 REA（Reverse Engineer Anything）MCP 服务配置。
+ *
+ * 开箱即挂载 `npx -y rea-agents@latest mcp`（stdio 传输，默认超时 180s 适配首次 APK/二进制反编译建索引）。
+ */
+export function createBuiltinReaMcpServer(enabled = true): ExternalMcpServer {
+  return {
+    id: BUILTIN_REA_MCP_ID,
+    name: 'REA (Reverse Engineer Anything)',
+    transport: 'stdio',
+    enabled,
+    url: '',
+    headers: {},
+    command: 'npx',
+    args: ['-y', 'rea-agents@latest', 'mcp'],
+    env: { REA_CLEAN_ROOM: 'true' },
+    timeoutMs: 180_000
+  }
+}
+
+/**
+ * 确保列表中包含内置预置的外部 MCP 服务（`rea`）：
+ * - 若已有 `id === 'rea'` 的配置（例如用户调整了 `enabled`、`env` 或 `timeoutMs`），保留用户配置；
+ * - 若尚不存在（全新安装或旧版 `settings.json` 升级），自动注入内置默认配置。
+ */
+export function ensureBuiltinExternalMcpServers(raw: unknown): ExternalMcpServer[] {
+  const normalized = normalizeExternalMcpServers(raw)
+  if (normalized.some((s) => s.id === BUILTIN_REA_MCP_ID)) {
+    return normalized
+  }
+  return [createBuiltinReaMcpServer(true), ...normalized]
+}
+
 function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }

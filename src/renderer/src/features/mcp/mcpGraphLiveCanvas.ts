@@ -12,11 +12,16 @@ export function openMcpWorkflowAssetEditor(assetId: string): void {
 const LIVE_CANVAS_HOST_WAIT_MS = 4_000
 const LIVE_CANVAS_HOST_POLL_MS = 50
 
-export async function waitForLiveCanvasHost(hostId: string): Promise<boolean> {
+export async function waitForLiveCanvasHost(
+  hostId: string,
+  signal?: AbortSignal
+): Promise<boolean> {
   for (let elapsed = 0; elapsed < LIVE_CANVAS_HOST_WAIT_MS; elapsed += LIVE_CANVAS_HOST_POLL_MS) {
+    if (signal?.aborted) return false
     if (graphRunHosts.get(hostId)) return true
     await new Promise<void>((resolve) => window.setTimeout(resolve, LIVE_CANVAS_HOST_POLL_MS))
   }
+  if (signal?.aborted) return false
   return !!graphRunHosts.get(hostId)
 }
 
@@ -54,7 +59,11 @@ export function syncLiveCanvasRunState(
     }
     return
   }
-  host.runStates[nodeId] = uiRunStateFromEngine(state)
+  const nextUiState = uiRunStateFromEngine(state)
+  if (state.status === 'error' && !nextUiState.outputs && prev?.outputs) {
+    nextUiState.outputs = prev.outputs
+  }
+  host.runStates[nodeId] = nextUiState
   if (!options?.seed && prevStatus !== state.status) {
     emitNodeCookVfx(hostId, nodeId, prevStatus, state.status)
   }

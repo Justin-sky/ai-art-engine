@@ -1,4 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { existsSync, statSync } from 'node:fs'
+import { isAbsolute, join } from 'node:path'
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline'
 import { EXTERNAL_MCP_DEFAULT_TIMEOUT_MS, type ExternalMcpServer } from '@shared/externalMcp'
 import type { McpToolDescriptor } from '@shared/mcpProtocol'
@@ -183,21 +185,232 @@ export function normalizeToolList(raw: unknown): McpToolDescriptor[] {
 // ─────────────────────────────────────────────────────────────
 
 /**
+ * stdio 子进程默认允许继承的宿主系统与工具链基础环境变量白名单。
+ *
+ * 既避免泄露主进程中的第三方模型 API Key / 鉴权密钥，又保证 Windows / macOS / Linux 下
+ * `npx`、`node`、`python`、`uvx`、`java`、JADX、Ghidra 以及 `rea-agents` 等工具能正常定位
+ * 系统目录（如 Windows Winsock 必需的 `SystemRoot`、npm 缓存所需的 `APPDATA` / `LOCALAPPDATA`）
+ * 与本地静态分析引擎（如 `JAVA_HOME`、`REA_JADX_MCP_JAR`）。
+ */
+const SAFE_STDIO_HOST_ENV_KEYS = [
+  'PATH',
+  'Path',
+  'PATHEXT',
+  'SystemRoot',
+  'SYSTEMROOT',
+  'SystemDrive',
+  'ComSpec',
+  'COMSPEC',
+  'windir',
+  'WINDIR',
+  'USERPROFILE',
+  'HOME',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMDATA',
+  'ProgramData',
+  'ProgramFiles',
+  'ProgramFiles(x86)',
+  'CommonProgramFiles',
+  'TEMP',
+  'TMP',
+  'TMPDIR',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'LANG',
+  'LC_ALL',
+  'NODE_PATH',
+  'NPM_CONFIG_CACHE',
+  'npm_config_cache',
+  'UV_CACHE_DIR',
+  'JAVA_HOME',
+  'JDK_HOME',
+  'ANDROID_HOME',
+  'ANDROID_SDK_ROOT',
+  'GHIDRA_INSTALL_DIR',
+  'JADX_HOME',
+  'REA_JADX_MCP_JAR',
+  'REA_GHIDRA_INSTALL_DIR',
+  'REA_IDA_INSTALL_DIR',
+  'REA_HOPPER_PATH',
+  'REA_CLEAN_ROOM',
+  'REA_MCP_INPUT_SCHEMA_PROFILE'
+] as const
+
+function isExistingFile(filePath: string): boolean {
+  try {
+    return existsSync(filePath) && statSync(filePath).isFile()
+  } catch {
+    return false
+  }
+}
+
+function isExistingDir(dirPath: string): boolean {
+  try {
+    return existsSync(dirPath) && statSync(dirPath).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 构建 stdio 子进程的环境变量：
+ * 1. 仅从宿主 `process.env` 复制白名单内的基础系统路径与工具链变量（不透传主进程 API Key）；
+ * 2. Windows 下自动将存在的 `%APPDATA%\npm` 与 `%ProgramFiles%\nodejs` 补入 `PATH`，
+ *    确保从桌面快捷方式启动应用时仍能找到 `npx` 与全局 npm 命令（如 `rea`）；
+ * 3. 用户在 MCP 卡片中显式配置的 `serverEnv` 优先级最高，覆盖同名项。
+ */
+export function buildStdioEnv(
+  serverEnv: Record<string, string>,
+  hostEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const key of SAFE_STDIO_HOST_ENV_KEYS) {
+    const val = hostEnv[key]
+    if (typeof val === 'string' && val.length > 0) {
+      out[key] = val
+    }
+  }
+
+  let pathValue = hostEnv.PATH ?? hostEnv.Path ?? ''
+  if (platform === 'win32') {
+    const extraDirs: string[] = []
+    if (hostEnv.APPDATA) extraDirs.push(join(hostEnv.APPDATA, 'npm'))
+    if (hostEnv.ProgramFiles) extraDirs.push(join(hostEnv.ProgramFiles, 'nodejs'))
+    const existingLower = new Set(
+      pathValue
+        .split(';')
+        .map((p) =>
+          p
+            .trim()
+            .replace(/^"+|"+$/g, '')
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    )
+    for (const dir of extraDirs) {
+      if (!existingLower.has(dir.toLowerCase()) && isExistingDir(dir)) {
+        pathValue = pathValue ? `${pathValue};${dir}` : dir
+        existingLower.add(dir.toLowerCase())
+      }
+    }
+    if (!out.PATHEXT) {
+      out.PATHEXT = hostEnv.PATHEXT || '.COM;.EXE;.BAT;.CMD'
+    }
+    delete out.Path
+  }
+  out.PATH = pathValue
+
+  for (const [k, v] of Object.entries(serverEnv)) {
+    if (typeof v === 'string') {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+function resolveWindowsExecutable(rawCommand: string, pathEnv: string): string | null {
+  const trimmed = rawCommand.trim().replace(/^"+|"+$/g, '')
+  if (!trimmed) return null
+
+  const hasSep = trimmed.includes('\\') || trimmed.includes('/') || isAbsolute(trimmed)
+  const hasExt = /\.[A-Za-z0-9]+$/.test(trimmed)
+  const winExts = ['.exe', '.com', '.cmd', '.bat']
+
+  if (hasSep) {
+    const candidates = hasExt ? [trimmed] : [trimmed, ...winExts.map((ext) => `${trimmed}${ext}`)]
+    for (const candidate of candidates) {
+      if (isExistingFile(candidate)) return candidate
+    }
+    return /\.(?:cmd|bat)$/i.test(trimmed) ? trimmed : null
+  }
+
+  const dirs = pathEnv
+    .split(';')
+    .map((dir) => dir.trim().replace(/^"+|"+$/g, ''))
+    .filter(Boolean)
+
+  for (const dir of dirs) {
+    const candidates = hasExt
+      ? [join(dir, trimmed)]
+      : winExts.map((ext) => join(dir, `${trimmed}${ext}`))
+    for (const candidate of candidates) {
+      if (isExistingFile(candidate)) return candidate
+    }
+  }
+
+  return /\.(?:cmd|bat)$/i.test(trimmed) ? trimmed : null
+}
+
+function quoteWindowsCmdToken(token: string): string {
+  if (token.length > 0 && /^[A-Za-z0-9_./:\\@=-]+$/.test(token)) {
+    return token
+  }
+  const escaped = token.replace(/%/g, '%%').replace(/"/g, '""')
+  return `"${escaped}"`
+}
+
+/**
+ * 解析 stdio 子进程的启动命令与参数。
+ *
+ * 在 Windows + Node 20.12+/22+/24+ 下：
+ * - 直接 `spawn('npx', ...)` 会因为 `shell: false` 不查 `.cmd` 而报 `ENOENT`；
+ * - 直接 `spawn('npx.cmd', ...)` 会因为 CVE-2024-27980 安全限制同步抛出 `EINVAL`。
+ *
+ * 因此在 Windows 上先按 `PATH` 解析目标文件：
+ * - 若命中 `.exe` / `.com`（或未命中任何脚本），直接走原生 `spawn`（无额外 shell，且不存在命令仍报 `ENOENT`）；
+ * - 若命中 `.cmd` / `.bat` 批处理包装器（如 `npx`、`npm`、`pnpm`、`rea`），则通过 `ComSpec /d /s /c`
+ *   配合 `windowsVerbatimArguments: true` 安全拉起。
+ */
+export function resolveStdioSpawnSpec(
+  command: string,
+  args: readonly string[],
+  env: Record<string, string>,
+  platform: NodeJS.Platform = process.platform
+): {
+  command: string
+  args: string[]
+  windowsVerbatimArguments: boolean
+} {
+  const trimmed = command.trim()
+  if (platform !== 'win32') {
+    return { command: trimmed, args: [...args], windowsVerbatimArguments: false }
+  }
+
+  const resolved = resolveWindowsExecutable(trimmed, env.PATH ?? env.Path ?? '')
+  const target = resolved ?? trimmed
+
+  if (/\.(?:cmd|bat)$/i.test(target)) {
+    const comSpec = env.ComSpec || env.COMSPEC || process.env.ComSpec || 'cmd.exe'
+    const inner = [quoteWindowsCmdToken(target), ...args.map(quoteWindowsCmdToken)].join(' ')
+    return {
+      command: comSpec,
+      args: ['/d', '/s', '/c', `"${inner}"`],
+      windowsVerbatimArguments: true
+    }
+  }
+
+  return { command: target, args: [...args], windowsVerbatimArguments: false }
+}
+
+/**
  * stdio 子进程会话。
  *
  * 用 readline 按行切而不是手写缓冲：**最后一行可能跨 chunk**，手写缓冲是这类实现
  * 最经典的丢消息点（表现是「偶尔少一个工具的响应」，极难复现）。
  */
 function openStdioSession(server: ExternalMcpServer): ExternalMcpSession {
-  const child: ChildProcessWithoutNullStreams = spawn(server.command, server.args, {
-    // 收窄环境：只给最小 PATH 与用户显式声明的项，不继承主进程杂项 env
-    env: {
-      PATH: process.env.PATH ?? '',
-      ...(process.platform === 'win32' ? { PATHEXT: process.env.PATHEXT ?? '' } : {}),
-      ...server.env
-    },
+  const childEnv = buildStdioEnv(server.env)
+  const spawnSpec = resolveStdioSpawnSpec(server.command, server.args, childEnv)
+  const child: ChildProcessWithoutNullStreams = spawn(spawnSpec.command, spawnSpec.args, {
+    env: childEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true
+    windowsHide: true,
+    ...(spawnSpec.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {})
   })
 
   let closed = false

@@ -495,10 +495,26 @@ export interface ExternalMcpDraft {
   command: string
   /** 参数以「每行一个」的文本形式编辑，提交时按行拆成数组 */
   argsText: string
+  /** 环境变量以「每行 KEY=VALUE」的文本形式编辑（可选） */
+  envText?: string
 }
 
 export function createEmptyExternalMcpDraft(): ExternalMcpDraft {
-  return { name: '', transport: 'http', url: '', command: '', argsText: '' }
+  return { name: '', transport: 'http', url: '', command: '', argsText: '', envText: '' }
+}
+
+function parseKeyValueLines(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eq = trimmed.indexOf('=')
+    if (eq <= 0) continue
+    const key = trimmed.slice(0, eq).trim()
+    if (!key) continue
+    out[key] = trimmed.slice(eq + 1).trim()
+  }
+  return out
 }
 
 /**
@@ -540,7 +556,8 @@ export function draftToExternalMcpServer(
               .split('\n')
               .map((line) => line.trim())
               .filter(Boolean)
-          : []
+          : [],
+      env: draft.transport === 'stdio' && draft.envText ? parseKeyValueLines(draft.envText) : {}
     }
   }
 }

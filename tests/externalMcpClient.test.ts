@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createDefaultExternalMcpServer, type ExternalMcpServer } from '../src/shared/externalMcp'
 import {
+  buildStdioEnv,
   dropExternalMcpSession,
-  probeExternalMcpServer
+  probeExternalMcpServer,
+  resolveStdioSpawnSpec
 } from '../src/main/services/externalMcpClient'
 
 /**
@@ -316,4 +318,47 @@ describe('外部 MCP 客户端：stdio 子进程', () => {
     await expect(getExternalMcpSession(broken).listTools()).rejects.toThrow()
     dropExternalMcpSession('other')
   }, 20_000)
+
+  it('buildStdioEnv 保留系统/Java/REA 基础环境但过滤主进程 API 密钥', () => {
+    const env = buildStdioEnv(
+      { REA_CLEAN_ROOM: 'true' },
+      {
+        PATH: 'C:\\Windows\\System32',
+        SystemRoot: 'C:\\Windows',
+        APPDATA: 'C:\\Users\\Admin\\AppData\\Roaming',
+        JAVA_HOME: 'C:\\jdk-17',
+        REA_JADX_MCP_JAR: 'D:\\jadx-mcp.jar',
+        DEEPSEEK_API_KEY: 'sk-secret-must-not-leak',
+        OPENAI_API_KEY: 'sk-openai-secret'
+      },
+      'win32'
+    )
+    expect(env.SystemRoot).toBe('C:\\Windows')
+    expect(env.JAVA_HOME).toBe('C:\\jdk-17')
+    expect(env.REA_JADX_MCP_JAR).toBe('D:\\jadx-mcp.jar')
+    expect(env.REA_CLEAN_ROOM).toBe('true')
+    expect(env.DEEPSEEK_API_KEY).toBeUndefined()
+    expect(env.OPENAI_API_KEY).toBeUndefined()
+  })
+
+  it('resolveStdioSpawnSpec 在 Windows 下自动将 .cmd 包装命令转为 ComSpec 调用', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aae-cmd-mcp-'))
+    const fakeCmd = join(dir, 'rea.cmd')
+    writeFileSync(fakeCmd, '@echo off\r\n', 'utf8')
+    try {
+      const spec = resolveStdioSpawnSpec(
+        'rea',
+        ['mcp'],
+        { PATH: dir, ComSpec: 'C:\\Windows\\System32\\cmd.exe' },
+        'win32'
+      )
+      expect(spec.command).toBe('C:\\Windows\\System32\\cmd.exe')
+      expect(spec.windowsVerbatimArguments).toBe(true)
+      expect(spec.args[0]).toBe('/d')
+      expect(spec.args[2]).toBe('/c')
+      expect(spec.args[3]).toContain('rea.cmd')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

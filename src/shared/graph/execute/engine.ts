@@ -525,6 +525,7 @@ async function executeOneNode(
     resolveVideoFrameImageUrls: options.resolveVideoFrameImageUrls,
     resolveStyleImageUrls: options.resolveStyleImageUrls,
     resolveProjectStyleImages: options.resolveProjectStyleImages,
+    resolveProjectUiAtlasResources: options.resolveProjectUiAtlasResources,
     resolveProjectGenerateSeed: options.resolveProjectGenerateSeed,
     enrichStyleImages: options.enrichStyleImages,
     resolveImageGenerateCapabilities: options.resolveImageGenerateCapabilities,
