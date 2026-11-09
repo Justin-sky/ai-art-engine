@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isDeepSeekOfficialProvider,
   isKnownVisionModelId,
+  normalizeDeepSeekMessagesBaseUrl,
   resolveDshChatInputModalities,
-  resolveDshChatInputModalitiesForProvider
+  resolveDshChatInputModalitiesForProvider,
+  resolveDshRouteId
 } from '../src/shared/dshChatModelModalities'
 import {
   isGoogleTextModelId,
@@ -270,5 +273,44 @@ describe('Google Gemini chat compatibility & model normalization', () => {
     ])
     const unwrapped = JSON.parse(unwrapJsonArrayErrorBody(googleArrError))
     expect(unwrapped.error.message).toContain('Unknown name "thinking"')
+  })
+})
+
+describe('dsh 0.2.2+ LLM 路由分流与 DeepSeek Anthropic 端点规范化', () => {
+  it('DeepSeek 官方走 deepseek-official 并把 api.deepseek.com 规范化为 /anthropic', () => {
+    const dsProvider = createProviderInstance('deepseek', {
+      baseUrl: 'https://api.deepseek.com'
+    })
+    expect(isDeepSeekOfficialProvider(dsProvider, dsProvider.baseUrl)).toBe(true)
+    expect(resolveDshRouteId(dsProvider, dsProvider.baseUrl)).toBe('deepseek-official')
+    expect(normalizeDeepSeekMessagesBaseUrl('https://api.deepseek.com')).toBe(
+      'https://api.deepseek.com/anthropic'
+    )
+    expect(normalizeDeepSeekMessagesBaseUrl('https://api.deepseek.com/v1/')).toBe(
+      'https://api.deepseek.com/anthropic'
+    )
+    expect(normalizeDeepSeekMessagesBaseUrl('https://api.deepseek.com/anthropic')).toBe(
+      'https://api.deepseek.com/anthropic'
+    )
+  })
+
+  it('OpenRouter / OpenAI / Gemini 走 aiart-openai-compat (llm-pi-ai openai-completions)，避免打向 /v1/messages 触发 Invalid Anthropic Messages API request', () => {
+    const orProvider = createProviderInstance('openrouter', {
+      baseUrl: 'https://openrouter.ai/api/v1'
+    })
+    expect(isDeepSeekOfficialProvider(orProvider, orProvider.baseUrl)).toBe(false)
+    expect(resolveDshRouteId(orProvider, orProvider.baseUrl)).toBe('aiart-openai-compat')
+
+    const sanitized = JSON.parse(
+      sanitizeOpenAiChatPayload(
+        JSON.stringify({
+          model: 'deepseek/deepseek-v4.1-flash',
+          max_completion_tokens: 128000,
+          messages: [{ role: 'user', content: 'hi' }]
+        }),
+        'https://openrouter.ai/api/v1/chat/completions'
+      ).body
+    )
+    expect(sanitized.max_completion_tokens).toBeUndefined()
   })
 })

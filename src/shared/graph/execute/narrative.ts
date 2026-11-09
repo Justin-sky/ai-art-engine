@@ -52,6 +52,7 @@ import {
   normalizeUiGenStylePreset,
   normalizeUiGenTrackMode,
   normalizeUiScreenAspectRatio,
+  normalizeStoredUiScreens,
   parseUiScreenPrompts,
   screensFromUiGenIncoming,
   UI_SPLIT_INNER_GRAPH_VERSION,
@@ -1048,7 +1049,7 @@ export async function executeUiGenNode(
 ): Promise<Record<string, GraphValue>> {
   const { node } = ctx
   const incoming = screensFromUiGenIncoming(Object.values(ctx.inputs).flat())
-  const previousScreens = Array.isArray(node.params.uiScreens) ? node.params.uiScreens : []
+  const previousScreens = normalizeStoredUiScreens(node.params.uiScreens)
   // 端口无输入时保留已存界面列表，避免上游未运行就把 dive 提示词清空；若有输入则保留用户在面板上勾选的 enabled 状态
   let screens: UiScreenPromptItem[] = incoming.length
     ? incoming.map((item) => {
@@ -1283,7 +1284,7 @@ export async function executeUiGenNode(
 /** ui.gen：从 dive 子图资产软解析所有输出边界，合并为图片组（保留边界标题以区分「图片·」与「底图·」） */
 function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefined {
   const assetId = ctx.node.params.uiSplitAssetId?.trim()
-  if (!assetId) return undefined
+  if (!assetId || ctx.cookAssetIdStack?.includes(assetId)) return undefined
   const liveDoc = ctx.resolveLiveAssetGraph?.(assetId)
   const gen = ctx.resolveAssetGenParams?.(assetId)
   const raw = liveDoc ?? gen?.graphJson
@@ -1291,6 +1292,9 @@ function collectUiGenInnerOutputs(ctx: NodeExecuteContext): GraphValue | undefin
     return undefined
   }
   const doc = raw as GraphDocument
+  if (doc.nodes.some((n) => n.id === ctx.node.id && n.typeId === 'ui.gen')) {
+    return undefined
+  }
   const collected: GraphValue[] = []
   const softOptions: ResolveHostInputSlotsOptions = {
     resolveLiveAssetGraph: ctx.resolveLiveAssetGraph,

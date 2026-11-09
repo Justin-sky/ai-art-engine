@@ -315,11 +315,20 @@ function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureC
     }
     // Let Gemini use its native dynamic thinking budget instead of forcing high latency or failing on non-thinking models.
     delete parsed.reasoning_effort
+    delete parsed.store
     if (
       parsed.max_tokens === 256000 ||
+      parsed.max_tokens === 128000 ||
       (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 65536)
     ) {
       delete parsed.max_tokens
+    }
+    if (
+      parsed.max_completion_tokens === 256000 ||
+      parsed.max_completion_tokens === 128000 ||
+      (typeof parsed.max_completion_tokens === 'number' && parsed.max_completion_tokens > 65536)
+    ) {
+      delete parsed.max_completion_tokens
     }
   } else {
     const isOpenAi = isOpenAiEndpoint(urlStr, parsed.model)
@@ -346,11 +355,17 @@ function sanitizeOpenAiChatPayload(rawBody, urlStr, sigCache = thoughtSignatureC
       /^(?:gpt-(?:[5-9]|\d{2,})|o\d+)/i.test(parsed.model)
     ) {
       delete parsed.max_tokens
+      delete parsed.max_completion_tokens
       if (hasTools && /^gpt-(?:[5-9]|\d{2,})/i.test(parsed.model)) {
         parsed.reasoning_effort = 'none'
       }
-    } else if (parsed.max_tokens === 256000) {
-      delete parsed.max_tokens
+    } else {
+      if (parsed.max_tokens === 256000 || parsed.max_tokens === 128000) {
+        delete parsed.max_tokens
+      }
+      if (parsed.max_completion_tokens === 256000 || parsed.max_completion_tokens === 128000) {
+        delete parsed.max_completion_tokens
+      }
     }
   }
 

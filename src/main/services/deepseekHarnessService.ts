@@ -59,7 +59,12 @@ import {
   OPENAI_CHAT_FALLBACK_MODELS,
   normalizeOpenAiTextModelId
 } from '@shared/modelProviders/openai/modelCapabilities'
-import { resolveDshChatInputModalitiesForProvider } from '@shared/dshChatModelModalities'
+import {
+  isDeepSeekOfficialProvider,
+  normalizeDeepSeekMessagesBaseUrl,
+  resolveDshChatInputModalitiesForProvider,
+  resolveDshRouteId
+} from '@shared/dshChatModelModalities'
 import { PROJECT_MEMORY_INJECT_LIMIT, PROJECT_MEMORY_RELATIVE_PATH } from '@shared/projectMemory'
 import { broadcastToAllWindows } from '../broadcast'
 import {
@@ -511,6 +516,7 @@ function getBlenderClientForHarness(): { endpoint: string } | null {
 function externalMcpEndpoint(port: number, id: string): string {
   return `http://127.0.0.1:${port}${EXTERNAL_MCP_PATH_PREFIX}${id}`
 }
+
 function buildDshCatalogModelEntries(llm: {
   baseUrl?: string
   modelId: string
@@ -675,27 +681,57 @@ function writeDshConfig(
     )
   }
 
-  // 同步修补 llm-deepseek / agent-default-model：不能只靠 settings.yaml。
-  // settings-file 异步 publish；首轮 LLM 若仍读到内置 DEFAULT_MODELS，会把附图投影成
-  // 「image omitted because this model accepts text only」，模型就回「不支持图片输入」。
+  // 同步修补 llm-deepseek / llm-pi-ai / agent-default-model：不能只靠 settings.yaml。
+  // dsh 0.2.2+ 起 llm-deepseek 切换为纯 Anthropic Messages 协议（https://api.deepseek.com/anthropic）；
+  // DeepSeek 官方走 deepseek-official (llm-deepseek)，其余 OpenAI 兼容提供商（OpenRouter / OpenAI / Gemini / 百炼等）
+  // 统一走 llm-pi-ai 的 openai-completions 路由（aiart-openai-compat）。
   if (llm?.modelId) {
     const catalogEntries = buildDshCatalogModelEntries(llm)
+    const isDeepSeek = isDeepSeekOfficialProvider(llm.provider, llm.baseUrl)
+    const routeId = resolveDshRouteId(llm.provider, llm.baseUrl)
     patch.push(
       '- id: agent-default-model',
       '  config:',
-      '    provider: deepseek-official',
-      `    model: ${yamlScalar(llm.modelId)}`,
-      '- id: llm-deepseek',
-      '  config:',
-      ...(llm.baseUrl?.trim() ? [`    baseURL: ${yamlScalar(llm.baseUrl.trim())}`] : []),
-      '    models:',
-      ...catalogEntries.flatMap((entry) => [
-        `      - id: ${yamlScalar(entry.id)}`,
-        `        name: ${yamlScalar(entry.name)}`,
-        '        inputModalities:',
-        ...entry.inputModalities.map((m) => `          - ${m}`)
-      ])
+      `    provider: ${routeId}`,
+      `    model: ${yamlScalar(llm.modelId)}`
     )
+    if (isDeepSeek) {
+      const dsBaseUrl = normalizeDeepSeekMessagesBaseUrl(llm.baseUrl)
+      patch.push(
+        '- id: llm-deepseek',
+        '  config:',
+        `    baseURL: ${yamlScalar(dsBaseUrl)}`,
+        '    models:',
+        ...catalogEntries.flatMap((entry) => [
+          `      - id: ${yamlScalar(entry.id)}`,
+          `        name: ${yamlScalar(entry.name)}`,
+          '        inputModalities:',
+          ...entry.inputModalities.map((m) => `          - ${m}`)
+        ])
+      )
+    } else {
+      const openAiBaseUrl =
+        (llm.baseUrl ?? '').trim().replace(/\/+$/, '') || 'https://api.openai.com/v1'
+      patch.push(
+        '- id: llm-pi-ai',
+        '  config:',
+        '    providers:',
+        `      ${routeId}:`,
+        '        apiKeyEnv: DEEPSEEK_API_KEY',
+        '        api: openai-completions',
+        `        baseURL: ${yamlScalar(openAiBaseUrl)}`,
+        '        compat:',
+        '          supportsStore: false',
+        '          supportsDeveloperRole: false',
+        '        models:',
+        ...catalogEntries.flatMap((entry) => [
+          `          - id: ${yamlScalar(entry.id)}`,
+          `            name: ${yamlScalar(entry.name)}`,
+          '            input:',
+          ...entry.inputModalities.map((m) => `              - ${m}`)
+        ])
+      )
+    }
   }
 
   writeFileSync(join(home, 'cordis.patch.yml'), patch.join('\n') + '\n', 'utf8')
@@ -709,17 +745,9 @@ function yamlScalar(value: string): string {
 /**
  * 写入 dsh 的 settings 文档（`$DSH_HOME/settings.yaml`），覆盖默认模型与端点。
  *
- * 背景：dsh 的模型选择不读取 `DSH_MODEL` 环境变量——`agentDefaultModel.currentSelection()`
- * 只从 settings 的 `agent-default-model` 一节读取；未设置时回落到 dsh-base 插件配置里的
- * 默认值 `deepseek-v4-flash`（provider `deepseek-official`）。该模型 ID 在 DeepSeek 官方
- * 以外的 OpenAI 兼容端点（或前缀裁剪后）多不存在，导致每次对话都报 HTTP_404，且与用户
- * 在面板里选中的模型无关。这里在每次任务前把用户选择的模型/端点写入 settings，覆盖默认值；
- * API Key 仍经 `DEEPSEEK_API_KEY` 环境变量透传（dsh 的 llm-deepseek 默认读它）。
- *
- * 另须写入 `llm-deepseek.models`：适配器对「不在内置目录」的模型默认 inputModalities=["text"]，
- * 附图时会被 LlmRuntime 投影成 text-only placeholder。OpenRouter 多模态模型须显式声明 text+image。
- * 仅写 settings.yaml 不够：settings-file 异步 publish，首轮可能仍用 composition 默认目录；
- * 同步修补见 writeDshConfig 对 `llm-deepseek` 的 cordis.patch.yml 条目。
+ * 背景：dsh 0.2.2+ 起 `llm-deepseek` 专用于 DeepSeek 官方 Anthropic Messages 端点
+ * （`https://api.deepseek.com/anthropic`），而 OpenRouter / OpenAI / Gemini / 自定义网关等
+ * OpenAI `/chat/completions` 兼容端点由 `llm-pi-ai` 的 `openai-completions` 适配器承载。
  */
 function writeDshSettings(provider: {
   baseUrl?: string
@@ -731,21 +759,49 @@ function writeDshSettings(provider: {
   const home = dshHome()
   mkdirSync(home, { recursive: true })
   const catalogEntries = buildDshCatalogModelEntries(provider)
+  const isDeepSeek = isDeepSeekOfficialProvider(provider.provider, provider.baseUrl)
+  const routeId = resolveDshRouteId(provider.provider, provider.baseUrl)
   const lines = [
     '# AIArtEngine 生成的 dsh 设置（模型选择/端点），请勿手改。',
     'agent-default-model:',
-    '  provider: deepseek-official',
-    `  model: ${yamlScalar(provider.modelId)}`,
-    'llm-deepseek:',
-    ...(provider.baseUrl?.trim() ? [`  baseURL: ${yamlScalar(provider.baseUrl.trim())}`] : []),
-    '  models:',
-    ...catalogEntries.flatMap((entry) => [
-      `    - id: ${yamlScalar(entry.id)}`,
-      `      name: ${yamlScalar(entry.name)}`,
-      '      inputModalities:',
-      ...entry.inputModalities.map((m) => `        - ${m}`)
-    ])
+    `  provider: ${routeId}`,
+    `  model: ${yamlScalar(provider.modelId)}`
   ]
+  if (isDeepSeek) {
+    const dsBaseUrl = normalizeDeepSeekMessagesBaseUrl(provider.baseUrl)
+    lines.push(
+      'llm-deepseek:',
+      `  baseURL: ${yamlScalar(dsBaseUrl)}`,
+      '  models:',
+      ...catalogEntries.flatMap((entry) => [
+        `    - id: ${yamlScalar(entry.id)}`,
+        `      name: ${yamlScalar(entry.name)}`,
+        '      inputModalities:',
+        ...entry.inputModalities.map((m) => `        - ${m}`)
+      ])
+    )
+  } else {
+    const openAiBaseUrl =
+      (provider.baseUrl ?? '').trim().replace(/\/+$/, '') || 'https://api.openai.com/v1'
+    lines.push(
+      'llm-pi-ai:',
+      '  providers:',
+      `    ${routeId}:`,
+      '      apiKeyEnv: DEEPSEEK_API_KEY',
+      '      api: openai-completions',
+      `      baseURL: ${yamlScalar(openAiBaseUrl)}`,
+      '      compat:',
+      '        supportsStore: false',
+      '        supportsDeveloperRole: false',
+      '      models:',
+      ...catalogEntries.flatMap((entry) => [
+        `        - id: ${yamlScalar(entry.id)}`,
+        `          name: ${yamlScalar(entry.name)}`,
+        '          input:',
+        ...entry.inputModalities.map((m) => `            - ${m}`)
+      ])
+    )
+  }
   const content = lines.join('\n') + '\n'
   const hash = createHash('sha1').update(content).digest('hex')
   if (hash === lastSettingsWriteHash) {
@@ -1597,7 +1653,7 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '12'
+const WORKER_PROTOCOL = '13'
 const RUNNER_TEMPLATE_FP = createHash('sha1')
   .update(AIART_RUNNER_TEMPLATE)
   .digest('hex')
@@ -2697,7 +2753,11 @@ async function ensurePersistentWorkerUnlocked(opts: {
       DSH_HOME: dshHome(),
       DEEPSEEK_API_KEY: opts.provider.apiKey,
       DSH_MODEL: modelId,
-      ...(opts.provider.baseUrl ? { DEEPSEEK_BASE_URL: opts.provider.baseUrl } : {}),
+      ...(isDeepSeekOfficialProvider(opts.provider.provider, opts.provider.baseUrl)
+        ? { DEEPSEEK_BASE_URL: normalizeDeepSeekMessagesBaseUrl(opts.provider.baseUrl) }
+        : opts.provider.baseUrl
+          ? { DEEPSEEK_BASE_URL: opts.provider.baseUrl }
+          : {}),
       STUDIO_MCP_TOKEN: mcp.token,
       AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
       AIART_RUN_ID: bootRunId,
@@ -3281,7 +3341,11 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
         DSH_HOME: dshHome(),
         DEEPSEEK_API_KEY: provider.apiKey,
         DSH_MODEL: modelId,
-        ...(provider.baseUrl ? { DEEPSEEK_BASE_URL: provider.baseUrl } : {}),
+        ...(isDeepSeekOfficialProvider(provider.provider, provider.baseUrl)
+          ? { DEEPSEEK_BASE_URL: normalizeDeepSeekMessagesBaseUrl(provider.baseUrl) }
+          : provider.baseUrl
+            ? { DEEPSEEK_BASE_URL: provider.baseUrl }
+            : {}),
         STUDIO_MCP_TOKEN: mcp.token,
         ...(effectiveSessionId ? { AIART_SESSION_ID: effectiveSessionId } : {}),
         AIART_ASK_DIR: join(app.getPath('temp'), 'aiart-harness-ask'),
@@ -3627,16 +3691,18 @@ interface DiskSessionData {
 }
 
 function readDiskSession(sessionDir: string): DiskSessionData | null {
-  const zstdPath = join(sessionDir, 'session.v3.jsonl.zstd')
-  const plainPath = join(sessionDir, 'session.v3.jsonl')
+  const zstdCandidates = ['session.v4.jsonl.zstd', 'session.v3.jsonl.zstd']
+  const plainCandidates = ['session.v4.jsonl', 'session.v3.jsonl']
   let rawText = ''
   let filePath = ''
   let compressed = false
   try {
-    if (existsSync(zstdPath)) {
-      filePath = zstdPath
+    const zstdHit = zstdCandidates.map((f) => join(sessionDir, f)).find((p) => existsSync(p))
+    const plainHit = plainCandidates.map((f) => join(sessionDir, f)).find((p) => existsSync(p))
+    if (zstdHit) {
+      filePath = zstdHit
       compressed = true
-      const buf = readFileSync(zstdPath)
+      const buf = readFileSync(zstdHit)
       const frames = scanZstdFrames(buf)
       const parts: string[] = []
       for (const frame of frames) {
@@ -3644,10 +3710,10 @@ function readDiskSession(sessionDir: string): DiskSessionData | null {
         parts.push(decompressed.toString('utf8'))
       }
       rawText = parts.join('')
-    } else if (existsSync(plainPath)) {
-      filePath = plainPath
+    } else if (plainHit) {
+      filePath = plainHit
       compressed = false
-      rawText = readFileSync(plainPath, 'utf8')
+      rawText = readFileSync(plainHit, 'utf8')
     } else {
       return null
     }
@@ -3686,15 +3752,19 @@ function writeDiskSession(
   compressed = true
 ): void {
   mkdirSync(targetDir, { recursive: true })
+  const ver = typeof header.version === 'number' && header.version >= 4 ? 4 : 3
+  const baseName = `session.v${ver}`
   const headerLine = `${JSON.stringify(header)}\n`
   const eventsBody = events.map((ev, idx) => JSON.stringify({ ...ev, seq: idx })).join('\n')
   const eventsPayload = eventsBody ? `${eventsBody}\n` : ''
-  const checkpointPath = join(targetDir, 'session.v3.checkpoint.json')
-  if (existsSync(checkpointPath)) {
-    try {
-      rm(checkpointPath, { force: true }).catch(() => {})
-    } catch {
-      /* ignore */
+  for (const ckName of ['session.v4.checkpoint.json', 'session.v3.checkpoint.json']) {
+    const checkpointPath = join(targetDir, ckName)
+    if (existsSync(checkpointPath)) {
+      try {
+        rm(checkpointPath, { force: true }).catch(() => {})
+      } catch {
+        /* ignore */
+      }
     }
   }
   if (compressed) {
@@ -3704,9 +3774,9 @@ function writeDiskSession(
     if (eventsPayload) {
       chunks.push(zstdCompressSync(Buffer.from(eventsPayload, 'utf8'), zstdParams))
     }
-    writeFileSync(join(targetDir, 'session.v3.jsonl.zstd'), Buffer.concat(chunks))
+    writeFileSync(join(targetDir, `${baseName}.jsonl.zstd`), Buffer.concat(chunks))
   } else {
-    writeFileSync(join(targetDir, 'session.v3.jsonl'), headerLine + eventsPayload, 'utf8')
+    writeFileSync(join(targetDir, `${baseName}.jsonl`), headerLine + eventsPayload, 'utf8')
   }
 }
 

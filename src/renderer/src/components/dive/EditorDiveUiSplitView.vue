@@ -15,6 +15,7 @@ import { defineAsyncComponent, onMounted, ref } from 'vue'
 import {
   buildUiSplitHostInterface,
   buildUiSplitInnerGraph,
+  normalizeStoredUiScreens,
   screensFromUiGenIncoming,
   softResolveSourceOutput,
   UI_SPLIT_INNER_GRAPH_VERSION,
@@ -24,6 +25,7 @@ import {
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useProjectStore } from '../../stores/project'
+import { toPlain } from '../../utils/toPlain'
 
 const AssetEditor = defineAsyncComponent(() => import('../AssetEditor.vue'))
 
@@ -58,49 +60,64 @@ function resolveScreensFromIncomingPort(nodeId: string): UiScreenPromptItem[] {
 onMounted(async () => {
   try {
     const node = graphEditorHosts.getNode(props.hostId, props.nodeId)
+    const hostAssetId = props.hostId.startsWith('asset:') ? props.hostId.slice('asset:'.length) : ''
     // 直接按输入端口数组展开（无需先 cook）；端口无输出时回退已存提示词
     let screens = resolveScreensFromIncomingPort(props.nodeId)
+    const storedScreens = normalizeStoredUiScreens(node?.params?.uiScreens)
     if (!screens.length) {
-      screens = Array.isArray(node?.params?.uiScreens)
-        ? node!.params.uiScreens!.filter((item) => !!item?.prompt?.trim())
-        : []
+      screens = storedScreens
+    } else if (storedScreens.length) {
+      screens = screens.map((item) => {
+        const prev = storedScreens.find(
+          (p) => (p.id && p.id === item.id) || (p.title && p.title === item.title)
+        )
+        return prev && prev.enabled === false ? { ...item, enabled: false } : item
+      })
     }
-    const existing = node?.params?.uiSplitAssetId
+    const existing = node?.params?.uiSplitAssetId?.trim() || ''
+    const existingSubgraphAsset = existing
+      ? project.assets.find(
+          (asset) => asset.id === existing && asset.type === 'subgraph' && asset.id !== hostAssetId
+        )
+      : undefined
     const sameScreens =
       screens.length > 0 &&
       JSON.stringify(screens) === JSON.stringify(node?.params?.uiScreens ?? [])
     const sameVersion = node?.params?.uiSplitGraphVersion === UI_SPLIT_INNER_GRAPH_VERSION
     if (screens.length && node && !sameScreens) {
-      graphEditorHosts.updateNode(props.hostId, props.nodeId, { uiScreens: screens })
+      const summary = screens.map((s, i) => `${i + 1}. ${s.title}`).join('\n')
+      graphEditorHosts.updateNode(props.hostId, props.nodeId, {
+        uiScreens: toPlain(screens),
+        text: summary
+      })
     }
-    if (
-      existing &&
-      sameScreens &&
-      sameVersion &&
-      project.assets.some((asset) => asset.id === existing)
-    ) {
-      innerAssetId.value = existing
+    if (existingSubgraphAsset && sameScreens && sameVersion) {
+      innerAssetId.value = existingSubgraphAsset.id
       return
     }
     if (!screens.length) {
       errorText.value = t('divePipeline.uiSplit.error.noScreens')
       return
     }
+    const plainGraphJson = toPlain(
+      buildUiSplitInnerGraph(toPlain(screens), locale.value, {
+        generateModel: node?.params?.generateModel,
+        generateProviderInstanceId: node?.params?.generateProviderInstanceId,
+        defaultAspectRatio: node?.params?.generateAspectRatio as never,
+        generateTransparentBg: node?.params?.generateTransparentBg !== false,
+        stylePreset: node?.params?.uiGenStylePreset as never,
+        styleImagesUseGlobal: node?.params?.styleImagesUseGlobal !== false,
+        generatedImages: toPlain(node?.params?.generatedImages)
+      })
+    )
+    const plainHostInterface = toPlain(buildUiSplitHostInterface(toPlain(screens)))
     const created = await window.studio.createAsset({
       type: 'subgraph',
       name: `UI拆分·${node?.title?.trim() || props.nodeId}`, // cjk-ok 持久化资产名前缀（存的是名字不是标签）
       folderId: null,
       genParams: {
-        graphJson: buildUiSplitInnerGraph(screens, locale.value, {
-          generateModel: node?.params?.generateModel,
-          generateProviderInstanceId: node?.params?.generateProviderInstanceId,
-          defaultAspectRatio: node?.params?.generateAspectRatio as never,
-          generateTransparentBg: node?.params?.generateTransparentBg !== false,
-          stylePreset: node?.params?.uiGenStylePreset as never,
-          styleImagesUseGlobal: node?.params?.styleImagesUseGlobal !== false,
-          generatedImages: node?.params?.generatedImages
-        }),
-        hostInterface: buildUiSplitHostInterface(screens)
+        graphJson: plainGraphJson,
+        hostInterface: plainHostInterface
       } as never
     })
     innerAssetId.value = created.id

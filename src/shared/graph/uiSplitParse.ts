@@ -240,6 +240,7 @@ export function buildTextlessUiPrompt(prompt: string): string {
  */
 export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[] {
   const raw: Array<{
+    id?: string
     title: string
     prompt: string
     cleanPrompt?: string
@@ -247,12 +248,44 @@ export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[
     aspectRatio?: UiScreenAspectRatio
     layerPrompt?: string
   }> = []
+  const pushOrUnpackPrompt = (item: {
+    id?: string
+    title: string
+    prompt: string
+    cleanPrompt?: string
+    screenKind?: UiScreenKind
+    aspectRatio?: UiScreenAspectRatio
+    layerPrompt?: string
+  }): void => {
+    const trimmed = item.prompt.trim()
+    if (!trimmed) return
+    if (trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('```')) {
+      const unpacked = parseUiScreenPrompts(trimmed)
+      if (unpacked.length > 0) {
+        for (const sub of unpacked) {
+          raw.push({
+            id: sub.id,
+            title: sub.title,
+            prompt: sub.prompt,
+            cleanPrompt: sub.cleanPrompt,
+            ...(sub.screenKind ? { screenKind: sub.screenKind } : {}),
+            ...(sub.aspectRatio ? { aspectRatio: sub.aspectRatio } : {}),
+            ...(sub.layerPrompt ? { layerPrompt: sub.layerPrompt } : {})
+          })
+        }
+        return
+      }
+    }
+    raw.push(item)
+  }
+
   for (const value of values) {
     if (!value || typeof value !== 'object') continue
     const entry = value as { kind?: unknown; text?: unknown; items?: unknown }
     if (entry.kind === 'texts' && Array.isArray(entry.items)) {
       for (const item of entry.items) {
         const rec = (item ?? {}) as {
+          id?: unknown
           title?: unknown
           text?: unknown
           cleanPrompt?: unknown
@@ -269,7 +302,8 @@ export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[
             typeof rec.layerPrompt === 'string' && rec.layerPrompt.trim()
               ? rec.layerPrompt.trim()
               : undefined
-          raw.push({
+          pushOrUnpackPrompt({
+            ...(typeof rec.id === 'string' && rec.id.trim() ? { id: rec.id.trim() } : {}),
             title,
             prompt,
             cleanPrompt: typeof rec.cleanPrompt === 'string' ? rec.cleanPrompt.trim() : undefined,
@@ -281,12 +315,27 @@ export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[
       }
     } else if (entry.kind === 'text' && typeof entry.text === 'string' && entry.text.trim()) {
       const prompt = entry.text.trim()
-      const aspectRatio = normalizeUiScreenAspectRatio(undefined, prompt)
-      raw.push({ title: '', prompt, ...(aspectRatio ? { aspectRatio } : {}) })
+      const parsed = parseUiScreenPrompts(prompt)
+      if (parsed.length > 0) {
+        for (const sub of parsed) {
+          raw.push({
+            id: sub.id,
+            title: sub.title,
+            prompt: sub.prompt,
+            cleanPrompt: sub.cleanPrompt,
+            ...(sub.screenKind ? { screenKind: sub.screenKind } : {}),
+            ...(sub.aspectRatio ? { aspectRatio: sub.aspectRatio } : {}),
+            ...(sub.layerPrompt ? { layerPrompt: sub.layerPrompt } : {})
+          })
+        }
+      } else {
+        const aspectRatio = normalizeUiScreenAspectRatio(undefined, prompt)
+        raw.push({ title: '', prompt, ...(aspectRatio ? { aspectRatio } : {}) })
+      }
     }
   }
   return raw.map((item, index) => ({
-    id: `ui-${index + 1}`,
+    id: item.id || `ui-${index + 1}`,
     title: item.title || `界面 ${index + 1}`,
     prompt: item.prompt,
     cleanPrompt: item.cleanPrompt,
@@ -294,6 +343,35 @@ export function screensFromUiGenIncoming(values: unknown[]): UiScreenPromptItem[
     ...(item.aspectRatio ? { aspectRatio: item.aspectRatio } : {}),
     ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {})
   }))
+}
+
+/**
+ * 归一化已存储在 node.params.uiScreens 中的界面列表：
+ * 若某一项的 prompt 实际上是未展开的 JSON 数组字符串（如 [{"id":"bag-main",...}]），自动展开为多屏条目。
+ */
+export function normalizeStoredUiScreens(
+  stored: readonly UiScreenPromptItem[] | undefined
+): UiScreenPromptItem[] {
+  if (!Array.isArray(stored) || stored.length === 0) return []
+  const out: UiScreenPromptItem[] = []
+  for (const item of stored) {
+    const prompt = item?.prompt?.trim() ?? ''
+    if (!prompt) continue
+    if (prompt.startsWith('[') || prompt.startsWith('{') || prompt.startsWith('```')) {
+      const unpacked = parseUiScreenPrompts(prompt)
+      if (unpacked.length > 0) {
+        for (const sub of unpacked) {
+          out.push({
+            ...sub,
+            ...(item.enabled === false ? { enabled: false } : {})
+          })
+        }
+        continue
+      }
+    }
+    out.push(item)
+  }
+  return out
 }
 
 /** UI界面拆分 dive 内图槽位上限（按屏数计，每屏双轨输出：带字精修 + 空字底图） */

@@ -223,6 +223,7 @@
 import { computed, ref, watch } from 'vue'
 import {
   buildDefaultUiLayerSplitPrompt,
+  normalizeStoredUiScreens,
   normalizeUiGenStylePreset,
   normalizeUiGenTrackMode,
   normalizeUiScreenAspectRatio,
@@ -338,8 +339,8 @@ function resolveIncomingScreens(hid: string, nodeId: string): UiScreenPromptItem
 }
 
 const screens = computed<UiScreenPromptItem[]>(() => {
-  const stored = node.value?.params.uiScreens
-  if (Array.isArray(stored) && stored.length > 0) {
+  const stored = normalizeStoredUiScreens(node.value?.params.uiScreens)
+  if (stored.length > 0) {
     return stored
   }
   if (node.value && hostId.value) {

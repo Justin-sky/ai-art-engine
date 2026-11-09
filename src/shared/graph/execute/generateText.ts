@@ -3399,6 +3399,16 @@ export async function executeGameSystemGenerateNode(
     localDraft,
     node.params.generatedTexts
   )
+  // 若 Agent/用户已直接把完整 Markdown 策划案写入 params.text（非上次生成缓存且具备多级标题与正文的成稿），
+  // 直接持久化落盘到 Cache/Texts 并返回，避免无意义地再跑一次 5 分钟的 LLM 重生覆盖掉已写好的 GDD。
+  if (
+    localDraft &&
+    !draftIsPreviousOutput &&
+    localDraft.length >= 600 &&
+    /^#{1,3}\s+\S/m.test(localDraft)
+  ) {
+    return await persistScreenplayGeneration(ctx, localDraft)
+  }
   let userPrompt: string
   if (customInstruction) {
     userPrompt = customInstruction

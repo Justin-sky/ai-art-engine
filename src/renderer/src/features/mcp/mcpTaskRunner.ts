@@ -191,20 +191,38 @@ async function handleTaskRun(payload: McpTaskRunPayload): Promise<void> {
     Object.entries(graphJson.runStates ?? {}).filter(([nodeId]) => !invalidatedSet.has(nodeId))
   )
   const priorPathSet = new Set<string>(collectRunMediaPaths(graphJson, priorRunStates))
-  if (invalidatedSet.size) {
+  const targetSpec = {
+    kind: 'asset' as const,
+    assetId: effectiveAssetId,
+    hostId: `asset:${effectiveAssetId}`
+  }
+  if (invalidatedSet.size && !taskStore.hasActiveTaskForTarget(targetSpec)) {
     clearLiveCanvasRunStates(`asset:${effectiveAssetId}`, [...invalidatedSet])
   }
 
-  const result = taskStore.enqueueWorkflow({
+  const enqueued = taskStore.enqueueWorkflow({
     title: `${asset.name} · MCP`,
     graph: graphJson,
-    target: { kind: 'asset', assetId: effectiveAssetId, hostId: `asset:${effectiveAssetId}` },
+    target: targetSpec,
     priorNodeStates: priorRunStates,
     skipCompletedNodes: true,
     liveCanvasSync: true,
     ...(targetNodeIds.length ? { targetNodeIds } : {}),
     ...(invalidatedSet.size ? { invalidatedNodeIds: [...invalidatedSet] } : {})
   })
+  const existingActiveTask = !enqueued.ok
+    ? taskStore.tasks.find(
+        (item) =>
+          item.target?.kind === 'asset' &&
+          (item.target.assetId === effectiveAssetId ||
+            item.target.hostId === `asset:${effectiveAssetId}`)
+      )
+    : undefined
+  const result = enqueued.ok
+    ? enqueued
+    : existingActiveTask
+      ? { ok: true as const, id: existingActiveTask.id }
+      : enqueued
 
   if (!result.ok) {
     report(payload.mcpTaskId, 'failed', { error: '该图已有进行中的同目标任务' })
@@ -1282,7 +1300,7 @@ async function handleGraphEdit(payload: McpGraphEditPayload): Promise<void> {
                 ? ('novel.workbench' as const)
                 : diveNode.typeId === 'asset.gameSystem'
                   ? ('gameSystem.workbench' as const)
-                  : diveNode.typeId === 'ui.split'
+                  : diveNode.typeId === 'ui.split' || diveNode.typeId === 'ui.gen'
                     ? ('ui.split' as const)
                     : diveNode.typeId === 'ui.componentLib'
                       ? ('ui.componentLib' as const)

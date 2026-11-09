@@ -99,3 +99,42 @@ export function resolveDshChatInputModalitiesForProvider(
     readCatalogImageInput(provider, modelId)
   )
 }
+
+/**
+ * 判定当前对话供应商是否为 DeepSeek 官方（走 dsh 0.2.2+ 的 `llm-deepseek` Anthropic Messages 端点）。
+ * 非 DeepSeek 官方（如 OpenRouter、OpenAI、Gemini、百炼、火山引擎、自定义 OpenAI 兼容网关）
+ * 一律走 `llm-pi-ai` 的 `openai-completions` 路由（`/chat/completions`），避免将 DeepSeek 专用的
+ * Anthropic Messages 载荷打向其他网关的 `/v1/messages` 而报 `Invalid Anthropic Messages API request`。
+ */
+export function isDeepSeekOfficialProvider(
+  provider?: ModelProviderInstance,
+  baseUrl?: string
+): boolean {
+  if (provider?.providerKind && provider.providerKind !== 'deepseek') {
+    return false
+  }
+  const url = (baseUrl ?? provider?.baseUrl ?? '').trim()
+  if (!url) return provider?.providerKind === 'deepseek'
+  return /(?:^|https?:\/\/)(?:[a-z0-9-]+\.)*deepseek\.com(?:\/|$)/i.test(url)
+}
+
+/**
+ * dsh 0.2.2+ 的 `llm-deepseek` 使用 Anthropic Messages API（`POST ${messagesApiRoot(baseURL)}/messages`）。
+ * DeepSeek 官方的 Messages 根路径为 `https://api.deepseek.com/anthropic`（对应 `/anthropic/v1/messages`），
+ * 而旧版 OpenAI 兼容配置存的是 `https://api.deepseek.com`（直打 `/v1/messages` 会 404）。
+ */
+export function normalizeDeepSeekMessagesBaseUrl(rawBaseUrl?: string): string {
+  const trimmed = (rawBaseUrl ?? '').trim().replace(/\/+$/, '')
+  if (!trimmed) return 'https://api.deepseek.com/anthropic'
+  if (/^https?:\/\/api\.deepseek\.com(?:\/v1)?$/i.test(trimmed)) {
+    return 'https://api.deepseek.com/anthropic'
+  }
+  return trimmed
+}
+
+export function resolveDshRouteId(
+  provider?: ModelProviderInstance,
+  baseUrl?: string
+): 'deepseek-official' | 'aiart-openai-compat' {
+  return isDeepSeekOfficialProvider(provider, baseUrl) ? 'deepseek-official' : 'aiart-openai-compat'
+}

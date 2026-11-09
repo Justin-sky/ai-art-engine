@@ -2430,10 +2430,11 @@ const TOOL_DEFS: McpToolDef[] = [
         }
       }
 
-      // 默认等待画布节点执行完成（最长 30 分钟，每 300ms 检查一次终态与取消信号）
-      const maxWaitMs = 30 * 60 * 1000
+      // 默认等待画布节点执行完成（单次阻塞窗口 240s，低于 Node undici 300s headersTimeout，避免触发 fetch failed）
+      const maxWaitMs = 4 * 60 * 1000
       const startedWaitAt = Date.now()
       let acceptedSeen = false
+      let lastTaskId: string | null = null
       while (Date.now() - startedWaitAt < maxWaitMs) {
         if (ctx?.signal?.aborted) {
           throw new Error('调用已取消')
@@ -2454,6 +2455,7 @@ const TOOL_DEFS: McpToolDef[] = [
         }
         if (report.phase === 'accepted') {
           acceptedSeen = true
+          if (report.taskId) lastTaskId = report.taskId
           continue
         }
         if (report.phase === 'failed') {
@@ -2485,7 +2487,16 @@ const TOOL_DEFS: McpToolDef[] = [
           }
         }
       }
-      throw new Error('等待画布节点执行完成超时，可用 task_status 继续查询')
+      return {
+        mcpTaskId,
+        taskId: lastTaskId,
+        assetId,
+        nodeIds: requestedNodeIds,
+        phase: 'accepted',
+        state: 'running',
+        status: 'running',
+        note: '画布节点仍在后台执行中；请调用 task_status({ mcpTaskId }) 查询结果，切勿重复调用 task_run'
+      }
     }
   },
   {
@@ -2673,6 +2684,50 @@ const TOOL_DEFS: McpToolDef[] = [
         throw new Error('资产不存在或不含图文档（仅支持宿主资产子图）')
       }
       const includeParams = args.includeParams === true
+      const hydrateNodeParams = (
+        params: Record<string, unknown> | undefined
+      ): Record<string, unknown> | undefined => {
+        if (!params || !projectService.isOpen()) return params
+        let root = ''
+        try {
+          root = projectService.getRoot()
+        } catch {
+          return params
+        }
+        const readOffloadedText = (relPath: unknown): string => {
+          if (typeof relPath !== 'string' || !relPath.trim()) return ''
+          const norm = normalizeProjectRelativePath(relPath)
+          if (!norm) return ''
+          try {
+            const abs = join(root, norm)
+            if (existsSync(abs) && statSync(abs).isFile()) {
+              return readFileSync(abs, 'utf8')
+            }
+          } catch {
+            /* ignore */
+          }
+          return ''
+        }
+        const copy: Record<string, unknown> = { ...params }
+        const inlineText = typeof copy.text === 'string' ? copy.text.trim() : ''
+        if (!inlineText && typeof copy.previewRelativePath === 'string') {
+          const loaded = readOffloadedText(copy.previewRelativePath)
+          if (loaded) copy.text = loaded
+        }
+        if (Array.isArray(copy.generatedTexts)) {
+          copy.generatedTexts = copy.generatedTexts.map((item) => {
+            if (!item || typeof item !== 'object') return item
+            const entry = item as Record<string, unknown>
+            const entryText = typeof entry.text === 'string' ? entry.text.trim() : ''
+            if (!entryText && typeof entry.relativePath === 'string') {
+              const loaded = readOffloadedText(entry.relativePath)
+              if (loaded) return { ...entry, text: loaded }
+            }
+            return entry
+          })
+        }
+        return copy
+      }
       return {
         assetId: asset.id,
         assetName: asset.name,
@@ -2682,7 +2737,9 @@ const TOOL_DEFS: McpToolDef[] = [
           id: node.id,
           typeId: node.typeId ?? '',
           title: node.title ?? '',
-          ...(includeParams ? { params: node.params } : {})
+          ...(includeParams
+            ? { params: hydrateNodeParams(node.params as Record<string, unknown> | undefined) }
+            : {})
         })),
         edges: graphJson.edges.map((edge) => ({
           from: edge.source,
@@ -7024,6 +7081,8 @@ const taskReportCleanups = new Map<string, NodeJS.Timeout>()
 
 /** mcpTaskId → 旁路活动 id：task_run 的产物路径随终态回报到达时据此收尾活动 */
 const pendingMcpTaskActivities = new Map<string, string>()
+/** assetId → 当前正在执行中的 mcpTaskId，避免 Agent 重复调用 task_run 产生多条失败活动卡片 */
+const activeMcpTaskByAssetId = new Map<string, string>()
 
 /**
  * 派发一次画布运行（task_run 与「一句话生成游戏」的自动运行 / 游戏卡「运行」按钮共用）：
@@ -7031,8 +7090,16 @@ const pendingMcpTaskActivities = new Map<string, string>()
  * 任务列表 / 执行日志 / AI 对话流三处共用这一条记录出预览。返回 mcpTaskId。
  */
 function dispatchMcpCanvasRun(asset: { id: string; name: string }, nodeIds: string[] = []): string {
+  const existingTaskId = activeMcpTaskByAssetId.get(asset.id)
+  if (existingTaskId && pendingMcpTaskActivities.has(existingTaskId)) {
+    const existingReport = pendingMcpTaskReports.get(existingTaskId)
+    if (!existingReport || existingReport.phase === 'accepted') {
+      return existingTaskId
+    }
+  }
   const mcpTaskId = randomUUID()
   pendingMcpTaskReports.delete(mcpTaskId)
+  activeMcpTaskByAssetId.set(asset.id, mcpTaskId)
   pendingMcpTaskActivities.set(
     mcpTaskId,
     mcpActivityService.begin({
@@ -7186,6 +7253,11 @@ export function setMcpToolSettledHook(hook: ((event: McpToolSettledEvent) => voi
  * 受理失败 / 停止等异常路径同样收尾，避免活动一直挂在「运行中」。
  */
 function settleMcpTaskActivity(report: McpTaskReportPayload): void {
+  for (const [assetId, activeTaskId] of activeMcpTaskByAssetId.entries()) {
+    if (activeTaskId === report.mcpTaskId) {
+      activeMcpTaskByAssetId.delete(assetId)
+    }
+  }
   const activityId = pendingMcpTaskActivities.get(report.mcpTaskId)
   if (activityId) {
     pendingMcpTaskActivities.delete(report.mcpTaskId)

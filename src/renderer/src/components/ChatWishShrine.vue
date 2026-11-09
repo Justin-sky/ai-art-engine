@@ -712,6 +712,10 @@ function startRoamingLoop(): void {
 
   const step = (now: number): void => {
     if (!visible.value) return
+    if (!isAnyActive.value && hideTimer === null) {
+      stopPrayingWithOutcome(props.outcome === 'error' ? 'error' : 'success')
+      return
+    }
     const dt = Math.min(0.08, Math.max(0, (now - roamLastTime) / 1000))
     roamLastTime = now
     actionBeatTick.value = Math.floor(now / 420)
@@ -1084,7 +1088,11 @@ function stopPrayingWithOutcome(outcome: 'idle' | 'success' | 'error'): void {
     spawnBurstParticles(currentFairy.value.burstSymbols)
     latestChantText.value = props.isEn ? '✌️ Wish Granted! All Green!' : '✌️ 许愿灵验！功德圆满！' // cjk-ok
   }
+  if (hideTimer !== null) {
+    window.clearTimeout(hideTimer)
+  }
   hideTimer = window.setTimeout(() => {
+    hideTimer = null
     visible.value = false
     displayPhase.value = 'idle'
     activeChants.value = []
@@ -1112,9 +1120,10 @@ function applyTemporaryReaction(
 }
 
 function extendPostRunVisibility(): void {
-  if (!props.running && visible.value && hideTimer !== null) {
+  if (!isAnyActive.value && visible.value && hideTimer !== null) {
     window.clearTimeout(hideTimer)
     hideTimer = window.setTimeout(() => {
+      hideTimer = null
       visible.value = false
       displayPhase.value = 'idle'
       activeChants.value = []
