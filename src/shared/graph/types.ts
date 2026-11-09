@@ -289,6 +289,8 @@ export interface GraphNodeParams {
   label?: string
   notes?: string
   text?: string
+  /** 兼容 Agent / SmartPatch 传入的 prompt 别名 */
+  prompt?: string
   /** 加工节点生成指令（剧本/图片/视频/声音/全景等） */
   generateInstruction?: string
   /** 加工节点系统提示词（可编辑；空则用该类型内置默认） */

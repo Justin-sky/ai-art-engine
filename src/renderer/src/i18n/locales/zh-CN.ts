@@ -98,7 +98,7 @@ export default {
     generate: '生成工作流',
     generating: '生成中…',
     emptyPrompt: '请先填写工作流描述或选择预设',
-    needProject: '请先打开工程',
+    needProject: '请先打开工作空间',
     needModel: '请先选择可用的文本模型',
     needPresetForSeed: '请先选择带固化拓扑的预设模板',
     needPreview: '请先生成预览再创建',
@@ -243,22 +243,22 @@ export default {
       settings: '设置'
     },
     menu: {
-      openAria: '工程菜单：新建、打开与最近工程',
-      recentEmpty: '暂无最近工程',
-      closeProject: '关闭工程'
+      openAria: '工作空间菜单：新建、打开与最近工作空间',
+      recentEmpty: '暂无最近工作空间',
+      closeProject: '关闭工作空间'
     }
   },
   home: {
     tagline: 'AI 创作工具',
-    createProject: '新建工程',
-    openProject: '打开工程',
-    recentProjects: '最近工程',
+    createProject: '新建工作空间',
+    openProject: '打开工作空间',
+    recentProjects: '最近工作空间',
     removeRecent: '从最近列表移除',
     apiUnavailable:
       '应用接口未就绪：请关闭所有 Electron 窗口后重新运行 npm run dev（不要用浏览器直接打开 localhost）',
     dialog: {
-      title: '新建工程',
-      projectName: '工程名称',
+      title: '新建工作空间',
+      projectName: '工作空间名称',
       storageDir: '存储目录',
       selectDirPlaceholder: '选择目录…'
     }
@@ -1240,7 +1240,7 @@ export default {
     }
   },
   studio: {
-    noProject: '尚未打开工程',
+    noProject: '尚未打开工作空间',
     backHome: '返回首页',
     toolbar: {
       hint: '拖动标签可停靠 / 右键可浮动或分离 · 未保存 * · Ctrl+S 保存',
@@ -1364,6 +1364,48 @@ export default {
       queueForcing: '正在中断…',
       scrollToBottom: '回到底部',
       sessionSelect: '历史会话',
+      newConversationBtn: '新建对话',
+      automationsNav: '定时任务',
+      automationUntitled: '未命名任务',
+      automationCancel: '取消',
+      automationCreate: '创建',
+      automationThisComputer: '本机执行',
+      automationSubtitle: '使用本地文件与工具，仅按计划定时运行。',
+      automationTriggerLabel: '触发条件',
+      automationScheduledTitle: '定时计划',
+      automationFreqEveryDay: '每天',
+      automationFreqWeekdays: '工作日（周一至周五）',
+      automationFreqEveryMonday: '每周一',
+      automationFreqEveryHour: '每小时',
+      automationFreqEvery30m: '每 30 分钟',
+      automationAtLabel: '于',
+      automationInstructionsLabel: '执行指令',
+      automationInstructionsPlaceholder:
+        '每次定时运行时需要 Agent 做什么？例如：汇总今日新增问题与隔夜变更。',
+      automationSavedListTitle: '已创建的定时任务',
+      automationRunNow: '立即运行',
+      automationPause: '暂停',
+      automationResume: '启用',
+      automationCreatedStatus: '已创建定时任务：{title}',
+      automationTriggeredStatus: '正在执行定时任务：{title}',
+      customizationsNav: '技能与配置',
+      conversationsTitle: '会话列表',
+      toggleSidebar: '展开/收起左侧项目与会话栏',
+      pinSession: '置顶该会话',
+      unpinSession: '取消置顶',
+      projectsTitle: '工程列表',
+      addProjectFolder: '添加工程到此工作空间',
+      filterProjects: '筛选工作空间内的工程与对话',
+      filterProjectsPlaceholder: '筛选工程或对话标题…',
+      untitledConversation: '未命名对话',
+      newProjectConversation: '在此工程下新建对话',
+      analyzeProjectAction: '一键分析该工程架构与代码',
+      analyzeProjectPrompt:
+        '请帮我全面分析当前工程（{name}）：梳理其目录结构、技术栈、核心模块与关键业务/玩法机制，并给出架构摘要与优化或转化建议。',
+      removeProjectFolder: '从当前工作空间移除此工程',
+      projectAddedStatus: '已添加工程到当前工作空间：{name}',
+      projectSwitchedStatus: '已切换当前工程会话至：{name}',
+      projectsEmptyHint: '点击右上角「文件夹+」可将任意其它工程添加到当前工作空间进行 AI 深度分析',
       newChat: '新会话',
       newSession: '新建',
       deleteSession: '删除',
@@ -1622,9 +1664,9 @@ export default {
   },
   project: {
     globals: {
-      type: '工程',
+      type: '工作空间',
       title: '全局参数',
-      name: '工程名称',
+      name: '工作空间名称',
       stylePreset: '画面风格',
       stylePresetPlaceholder: '画风、色调、材质、镜头气质…',
       styleImagesHint: '最多 4 张风格参考图（计入图片输入口数量），可从默认库选择或上传自定义图片',
@@ -1635,8 +1677,8 @@ export default {
         '图片/视频生成节点默认使用此种子（节点可关闭跟随）；固定后同提示词与参考图可复现',
       cacheOutputDir: '生成缓存根目录',
       cacheOutputDirHint:
-        '相对工程根；生成结果默认写入 Cache/Images、Cache/Videos、Cache/Texts、Cache/Voices，不自动登记进资产库',
-      empty: '未打开工程'
+        '相对工作空间根；生成结果默认写入 Cache/Images、Cache/Videos、Cache/Texts、Cache/Voices，不自动登记进资产库',
+      empty: '未打开工作空间'
     }
   },
   stylePicker: {
@@ -1720,7 +1762,7 @@ export default {
     open: '打开资产',
     import: {
       extensionsLabel: '图片 · 视频 · 声音 · 模型 · 文件夹',
-      needProject: '请先打开工程',
+      needProject: '请先打开工作空间',
       noneImported: '未能导入任何文件',
       importedOk: '已导入 {ok} 个文件',
       partial: '已导入 {ok} 个文件，跳过 {skip} 个',
@@ -1739,11 +1781,12 @@ export default {
       noteSeparator: ' · '
     },
     browser: {
-      title: '资产',
-      refreshHint: '可拖入文件或文件夹导入 · 刷新同步磁盘',
+      title: '工作空间资产',
+      currentWorkspaceBadge: '当前工作空间：{name}',
+      refreshHint: '可拖入文件或文件夹导入当前工作空间 · 刷新同步磁盘',
       refresh: '刷新',
       refreshing: '刷新中…',
-      refreshTitle: '重新扫描工程资产与文件夹',
+      refreshTitle: '重新扫描当前工作空间资产与文件夹',
       importHint: '拖入文件或文件夹导入',
       screenplayMissingFile: '该剧本没有旁挂文本文件，无法用记事本打开',
       import: '导入',

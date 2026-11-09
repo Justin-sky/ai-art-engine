@@ -666,8 +666,12 @@ h2 {
   background: #8b93a3;
 }
 
+.flow-node[data-status='running'] {
+  border-color: rgba(90, 157, 255, 0.55);
+}
+
 .flow-node[data-status='running'] .flow-dot {
-  background: #5ecf8a;
+  background: #5a9dff;
   animation: flow-dot-blink 1s ease-in-out infinite;
 }
 
@@ -677,10 +681,10 @@ h2 {
     opacity: 1;
     box-shadow:
       0 0 0 1px #12151a,
-      0 0 4px 1px rgba(94, 207, 138, 0.7);
+      0 0 5px 1px rgba(90, 157, 255, 0.8);
   }
   50% {
-    opacity: 0.3;
+    opacity: 0.35;
     box-shadow: 0 0 0 1px #12151a;
   }
 }

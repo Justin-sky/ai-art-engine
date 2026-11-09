@@ -101,7 +101,7 @@ export default {
     generate: 'Generate workflow',
     generating: 'Generating…',
     emptyPrompt: 'Enter a description or pick a preset first',
-    needProject: 'Open a project first',
+    needProject: 'Open a workspace first',
     needModel: 'Select an available text model first',
     needPresetForSeed: 'Pick a preset that has a fixed topology',
     needPreview: 'Generate a preview before creating',
@@ -246,22 +246,22 @@ export default {
       settings: 'Settings'
     },
     menu: {
-      openAria: 'Project menu: new, open, and recent projects',
-      recentEmpty: 'No recent projects',
-      closeProject: 'Close Project'
+      openAria: 'Workspace menu: new, open, and recent workspaces',
+      recentEmpty: 'No recent workspaces',
+      closeProject: 'Close Workspace'
     }
   },
   home: {
     tagline: 'AI creation tool',
-    createProject: 'New Project',
-    openProject: 'Open Project',
-    recentProjects: 'Recent Projects',
+    createProject: 'New Workspace',
+    openProject: 'Open Workspace',
+    recentProjects: 'Recent Workspaces',
     removeRecent: 'Remove from recent list',
     apiUnavailable:
       'App API unavailable: quit all Electron windows and run npm run dev again (do not open localhost in a browser)',
     dialog: {
-      title: 'New Project',
-      projectName: 'Project name',
+      title: 'New Workspace',
+      projectName: 'Workspace name',
       storageDir: 'Storage folder',
       selectDirPlaceholder: 'Choose a folder…'
     }
@@ -1267,7 +1267,7 @@ export default {
     }
   },
   studio: {
-    noProject: 'No project open',
+    noProject: 'No workspace open',
     backHome: 'Back to home',
     toolbar: {
       hint: 'Drag tabs to dock / right-click to float or detach · Unsaved * · Ctrl+S to save',
@@ -1396,6 +1396,48 @@ export default {
       queueForcing: 'Interrupting…',
       scrollToBottom: 'Scroll to bottom',
       sessionSelect: 'Chat sessions',
+      newConversationBtn: 'New Conversation',
+      automationsNav: 'Automations',
+      automationUntitled: 'Untitled',
+      automationCancel: 'Cancel',
+      automationCreate: 'Create',
+      automationThisComputer: 'This computer',
+      automationSubtitle: 'Uses your local files and tools. Schedules only.',
+      automationTriggerLabel: 'Trigger',
+      automationScheduledTitle: 'Scheduled',
+      automationFreqEveryDay: 'Every day',
+      automationFreqWeekdays: 'Weekdays (Mon–Fri)',
+      automationFreqEveryMonday: 'Every Monday',
+      automationFreqEveryHour: 'Every hour',
+      automationFreqEvery30m: 'Every 30 minutes',
+      automationAtLabel: 'at',
+      automationInstructionsLabel: 'Instructions',
+      automationInstructionsPlaceholder:
+        'What should the agent do on each run? For example: summarize new bugs assigned to me and anything that changed overnight.',
+      automationSavedListTitle: 'Scheduled Automations',
+      automationRunNow: 'Run now',
+      automationPause: 'Pause',
+      automationResume: 'Enable',
+      automationCreatedStatus: 'Created automation: {title}',
+      automationTriggeredStatus: 'Running automation: {title}',
+      customizationsNav: 'Customizations',
+      conversationsTitle: 'Conversations',
+      toggleSidebar: 'Toggle Projects & Conversations sidebar',
+      pinSession: 'Pin conversation',
+      unpinSession: 'Unpin conversation',
+      projectsTitle: 'Projects',
+      addProjectFolder: 'Add project to workspace',
+      filterProjects: 'Filter projects & conversations in workspace',
+      filterProjectsPlaceholder: 'Filter projects or conversations…',
+      untitledConversation: 'Untitled Conversation',
+      newProjectConversation: 'New conversation in this project',
+      analyzeProjectAction: 'Analyze project architecture & code',
+      analyzeProjectPrompt:
+        'Please analyze this project ({name}): inspect its directory structure, tech stack, core modules, and key mechanics, and summarize the architecture.',
+      removeProjectFolder: 'Remove project from workspace',
+      projectAddedStatus: 'Added project to workspace: {name}',
+      projectSwitchedStatus: 'Switched project conversation to: {name}',
+      projectsEmptyHint: 'Click Folder+ to add any local project to this workspace for AI analysis',
       newChat: 'New chat',
       newSession: 'New',
       deleteSession: 'Delete',
@@ -1663,9 +1705,9 @@ export default {
   },
   project: {
     globals: {
-      type: 'Project',
+      type: 'Workspace',
       title: 'Global parameters',
-      name: 'Project name',
+      name: 'Workspace name',
       stylePreset: 'Visual style',
       stylePresetPlaceholder: 'Art style, palette, materials, camera mood…',
       styleImagesHint:
@@ -1677,8 +1719,8 @@ export default {
         'Image/video generation nodes use this seed by default (nodes can opt out); fixed seed reproduces same prompt + references',
       cacheOutputDir: 'Generation cache root',
       cacheOutputDirHint:
-        'Relative to project root; outputs default to Cache/Images, Cache/Videos, Cache/Texts, Cache/Voices and are not auto-registered in the asset library',
-      empty: 'No project open'
+        'Relative to workspace root; outputs default to Cache/Images, Cache/Videos, Cache/Texts, Cache/Voices and are not auto-registered in the asset library',
+      empty: 'No workspace open'
     }
   },
   stylePicker: {
@@ -1763,7 +1805,7 @@ export default {
     open: 'Open asset',
     import: {
       extensionsLabel: 'Images · Videos · Voice · Models · Folders',
-      needProject: 'Open a project first',
+      needProject: 'Open a workspace first',
       noneImported: 'No files were imported',
       importedOk: 'Imported {ok} file(s)',
       partial: 'Imported {ok} file(s), skipped {skip}',
@@ -1782,11 +1824,12 @@ export default {
       noteSeparator: ' · '
     },
     browser: {
-      title: 'Assets',
-      refreshHint: 'Drop files or folders to import · refresh to sync disk',
+      title: 'Workspace Assets',
+      currentWorkspaceBadge: 'Workspace: {name}',
+      refreshHint: 'Drop files or folders to import into workspace · refresh to sync disk',
       refresh: 'Refresh',
       refreshing: 'Refreshing…',
-      refreshTitle: 'Rescan project assets and folders',
+      refreshTitle: 'Rescan current workspace assets and folders',
       importHint: 'Drop files or folders to import',
       screenplayMissingFile: 'This screenplay has no text file and cannot open in Notepad',
       import: 'Import',

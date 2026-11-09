@@ -397,8 +397,8 @@ class ProjectService {
       genParams: { canvasKind: 'free', graphJson: buildCanvasStarterGraph() }
     })
 
-    const projectJson = join(root, 'project.json')
-    settingsService.addRecent(projectJson)
+    const workspaceJson = projectRepository.configPath(root)
+    settingsService.addRecent(workspaceJson)
     this.startAssetWatcher(root)
 
     return {
@@ -411,15 +411,20 @@ class ProjectService {
 
   openProject(projectJsonPath: string): OpenProjectResult {
     const abs = resolve(projectJsonPath)
-    if (!existsSync(abs) || basename(abs) !== 'project.json') {
+    const fileName = basename(abs).toLowerCase()
+    if (fileName !== 'workspace.json' && fileName !== 'project.json') {
       throw fail(E_PROJECT_INVALID_FILE)
     }
     const root = dirname(abs)
+    const resolvedConfigPath = existsSync(abs) ? abs : projectRepository.configPath(root)
+    if (!existsSync(resolvedConfigPath)) {
+      throw fail(E_PROJECT_INVALID_FILE)
+    }
     const config = projectRepository.read(root)
     this.rootPath = root
     this.config = config
     this.ensureProjectMemory(root, config)
-    settingsService.addRecent(abs)
+    settingsService.addRecent(resolvedConfigPath)
 
     const assets = this.listAssets()
     this.scheduleMissingThumbnails(assets)

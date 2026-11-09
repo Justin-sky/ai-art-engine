@@ -1501,6 +1501,7 @@ export function mergeSmartNodeParams(
   const beforeRec = before as Record<string, unknown>
 
   // 保持 text / note / content 的既有向后兼容同步
+  const isPlainOrNoteNode = node.typeId === 'text.plain' || node.typeId === 'note.text'
   const incomingText =
     typeof incoming.text === 'string'
       ? incoming.text
@@ -1508,11 +1509,34 @@ export function mergeSmartNodeParams(
         ? incoming.note
         : typeof incoming.content === 'string'
           ? incoming.content
-          : undefined
+          : isPlainOrNoteNode
+            ? typeof incoming.prompt === 'string'
+              ? incoming.prompt
+              : typeof incoming.generateInstruction === 'string'
+                ? incoming.generateInstruction
+                : typeof incoming.instruction === 'string'
+                  ? incoming.instruction
+                  : typeof incoming.input === 'string'
+                    ? incoming.input
+                    : typeof incoming.script === 'string'
+                      ? incoming.script
+                      : undefined
+            : undefined
   if (incomingText !== undefined) {
     merged.text = incomingText
     if (typeof beforeRec.note === 'string' || typeof incoming.note === 'string') {
       working.note = incomingText
+    }
+  } else if (isPlainOrNoteNode) {
+    const curText = typeof merged.text === 'string' ? merged.text.trim() : ''
+    if (!curText || curText === '…' || curText === '...' || curText === 'Note…') {
+      const fallbackText =
+        (typeof working.prompt === 'string' && working.prompt.trim()) ||
+        (typeof merged.generateInstruction === 'string' && merged.generateInstruction.trim()) ||
+        ''
+      if (fallbackText) {
+        merged.text = fallbackText
+      }
     }
   }
 

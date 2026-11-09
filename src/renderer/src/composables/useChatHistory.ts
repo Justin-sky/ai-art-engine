@@ -144,14 +144,146 @@ export interface ChatSession {
   todos?: HarnessTodoItem[]
   /** 会话内持久化的多轮 Goal 状态 */
   goal?: HarnessGoalView | null
+  /** 是否在左侧栏中置顶该会话 */
+  pinned?: boolean
+}
+
+/** Codex 风格 Projects 树中的单个本地项目记录 */
+export interface ChatProjectEntry {
+  /** 会话隔离作用域标识（id:xxx 或 path:xxx） */
+  scope: string
+  /** 项目显示名称（默认取目录名，如 ai-art-engine / clientdev_2021） */
+  name: string
+  /** 本地目录绝对路径 */
+  rootPath: string
+  /** Studio 工程 ID（若为外部代码/游戏目录则缺省） */
+  projectId?: string
+  /** 最近活动时间戳 */
+  updatedAt: number
+  /** 是否在 Projects 树中折叠该项目的会话列表 */
+  collapsed?: boolean
+}
+
+/** Projects 树中的分组视图：项目信息 + 该项目下的会话列表与激活会话 */
+export interface ChatProjectTreeGroup extends ChatProjectEntry {
+  sessions: ChatSession[]
+  activeSessionId: string
+}
+
+/** 工作空间下跨工程聚合可见的单条会话（携带所属工程标识、名称与根目录） */
+export interface ChatWorkspaceSessionItem extends ChatSession {
+  projectScope: string
+  projectName: string
+  projectRootPath: string
+}
+
+export type ChatAutomationFrequency =
+  'every_day' | 'weekdays' | 'every_monday' | 'every_hour' | 'every_30m'
+
+/** Codex 风格 Automations 定时任务配置 */
+export interface ChatAutomationItem {
+  id: string
+  title: string
+  modelId: string
+  frequency: ChatAutomationFrequency
+  /** 24小时制 HH:mm，如 "09:00" 表示 9:00 AM */
+  timeOfDay: string
+  instructions: string
+  projectScope: string
+  workspaceScope: string
+  enabled: boolean
+  createdAt: number
+  updatedAt: number
+  nextRunAt: number
+  lastRunAt?: number
 }
 
 const SESSIONS_KEY = 'studio.chat.sessions.v1'
 const ACTIVE_KEY = 'studio.chat.activeSessionId.v1'
+const PROJECTS_KEY = 'studio.chat.projects.v1'
+const AUTOMATIONS_KEY = 'studio.chat.automations.v1'
 /** 持久化上限：单会话最多保留的消息条数（超出丢弃最旧的 status / 历史轮次，避免无限膨胀） */
 const MAX_MESSAGES_PER_SESSION = 600
 /** 会话标题长度上限 */
 const MAX_TITLE_LENGTH = 24
+
+/** 从目录绝对路径提取紧凑项目文件夹名（如 `F:\work\clientdev_2021` -> `clientdev_2021`） */
+export function extractProjectFolderName(
+  rootPath?: string | null,
+  fallbackName?: string | null
+): string {
+  const cleaned = (rootPath ?? '').replace(/\\/g, '/').replace(/\/+$/, '').trim()
+  if (cleaned) {
+    const parts = cleaned.split('/').filter(Boolean)
+    const last = parts[parts.length - 1]
+    if (last) return last
+  }
+  const fb = (fallbackName ?? '').trim()
+  return fb || 'workspace'
+}
+
+/**
+ * 将时间戳格式化为 Codex 风格紧凑相对时间（如 `6d`、`3d`、`5h`、`12m`、`1m`）。
+ */
+export function formatChatSessionRelativeAge(updatedAt: number, now = Date.now()): string {
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return ''
+  const diffMs = Math.max(0, now - updatedAt)
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 1) return '1m'
+  if (mins < 60) return `${mins}m`
+  const hours = Math.floor(diffMs / 3_600_000)
+  if (hours < 24) return `${hours}h`
+  const days = Math.floor(diffMs / 86_400_000)
+  if (days < 30) return `${days}d`
+  const months = Math.max(1, Math.floor(days / 30))
+  return `${months}mo`
+}
+
+/** 判断会话是否为尚未命名的空白草稿会话（Codex 风格显示 `Untitled Conversation` + 蓝点指示器） */
+export function isUntitledDraftSession(
+  session: Pick<ChatSession, 'title' | 'messages'> | null | undefined
+): boolean {
+  if (!session) return false
+  return !session.title.trim() && session.messages.length === 0
+}
+
+/** 将 "HH:mm"（如 "09:00"、"13:30"）格式化为 12 小时制文案（如 "9:00 AM"、"1:30 PM"） */
+export function formatTimeOfDay12h(timeOfDay: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec((timeOfDay ?? '').trim())
+  const rawHour = match ? Math.min(23, Math.max(0, Number(match[1]))) : 9
+  const minute = match ? match[2]! : '00'
+  const period = rawHour >= 12 ? 'PM' : 'AM'
+  const hour12 = rawHour % 12 === 0 ? 12 : rawHour % 12
+  return `${hour12}:${minute} ${period}`
+}
+
+/** 计算定时任务（Automation）的下一次触发时间戳 */
+export function computeNextAutomationRunAt(
+  frequency: ChatAutomationFrequency,
+  timeOfDay: string,
+  now = Date.now()
+): number {
+  if (frequency === 'every_30m') return now + 30 * 60_000
+  if (frequency === 'every_hour') return now + 60 * 60_000
+  const match = /^(\d{1,2}):(\d{2})$/.exec((timeOfDay ?? '').trim())
+  const hours = match ? Math.min(23, Math.max(0, Number(match[1]))) : 9
+  const mins = match ? Math.min(59, Math.max(0, Number(match[2]))) : 0
+  const candidate = new Date(now)
+  candidate.setHours(hours, mins, 0, 0)
+  if (candidate.getTime() <= now) {
+    candidate.setDate(candidate.getDate() + 1)
+  }
+  if (frequency === 'weekdays') {
+    while (candidate.getDay() === 0 || candidate.getDay() === 6) {
+      candidate.setDate(candidate.getDate() + 1)
+    }
+  } else if (frequency === 'every_monday') {
+    while (candidate.getDay() !== 1) {
+      candidate.setDate(candidate.getDate() + 1)
+    }
+  }
+  return candidate.getTime()
+}
 
 /**
  * 计算工程级会话隔离作用域标识：
@@ -178,6 +310,11 @@ export function sessionsStorageKey(scope = ''): string {
 export function activeSessionStorageKey(scope = ''): string {
   const normalized = scope.trim()
   return normalized ? `${ACTIVE_KEY}:${normalized}` : ACTIVE_KEY
+}
+
+export function projectsStorageKey(workspaceScope = ''): string {
+  const normalized = workspaceScope.trim()
+  return normalized ? `${PROJECTS_KEY}:${normalized}` : PROJECTS_KEY
 }
 
 function readSessions(scope = ''): ChatSession[] {
@@ -222,6 +359,73 @@ function writeSessions(sessions: ChatSession[], scope = ''): void {
   }
 }
 
+function readChatProjects(workspaceScope = ''): ChatProjectEntry[] {
+  try {
+    const raw = localStorage.getItem(projectsStorageKey(workspaceScope))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter(
+        (item): item is ChatProjectEntry =>
+          !!item &&
+          typeof item === 'object' &&
+          typeof (item as ChatProjectEntry).scope === 'string' &&
+          typeof (item as ChatProjectEntry).rootPath === 'string' &&
+          Boolean((item as ChatProjectEntry).scope.trim()) &&
+          Boolean((item as ChatProjectEntry).rootPath.trim())
+      )
+      .map((item) => ({
+        scope: item.scope.trim(),
+        name: extractProjectFolderName(item.rootPath, item.name),
+        rootPath: item.rootPath.trim(),
+        ...(item.projectId?.trim() ? { projectId: item.projectId.trim() } : {}),
+        updatedAt:
+          typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt)
+            ? item.updatedAt
+            : Date.now(),
+        ...(item.collapsed ? { collapsed: true } : {})
+      }))
+  } catch {
+    return []
+  }
+}
+
+function writeChatProjects(projects: ChatProjectEntry[], workspaceScope = ''): void {
+  try {
+    localStorage.setItem(projectsStorageKey(workspaceScope), JSON.stringify(projects))
+  } catch {
+    // ignore quota error
+  }
+}
+
+function readChatAutomations(): ChatAutomationItem[] {
+  try {
+    const raw = localStorage.getItem(AUTOMATIONS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (item): item is ChatAutomationItem =>
+        !!item &&
+        typeof item === 'object' &&
+        typeof (item as ChatAutomationItem).id === 'string' &&
+        typeof (item as ChatAutomationItem).instructions === 'string' &&
+        Boolean((item as ChatAutomationItem).instructions.trim())
+    )
+  } catch {
+    return []
+  }
+}
+
+function writeChatAutomations(list: ChatAutomationItem[]): void {
+  try {
+    localStorage.setItem(AUTOMATIONS_KEY, JSON.stringify(list))
+  } catch {
+    // ignore quota error
+  }
+}
+
 function createSessionId(): string {
   return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
 }
@@ -239,11 +443,73 @@ export function useChatHistory() {
   const sessions = ref<ChatSession[]>([])
   const activeId = ref('')
   const scope = ref('')
+  /** 当前工作空间作用域标识：工作空间本身的会话显示在下方 Conversations，不混入 Projects 工程树 */
+  const workspaceScope = ref('')
+  const workspaceRootPath = ref('')
+  const projects = ref<ChatProjectEntry[]>([])
+  const automations = ref<ChatAutomationItem[]>(readChatAutomations())
+  const treeRevision = ref(0)
+
+  function bumpTree(): void {
+    treeRevision.value++
+  }
+
+  function isWorkspaceSelfEntry(p: Pick<ChatProjectEntry, 'scope' | 'rootPath'>): boolean {
+    const ws = workspaceScope.value
+    const wsRoot = workspaceRootPath.value
+    if (ws && p.scope === ws) return true
+    if (wsRoot) {
+      const pRoot = p.rootPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+      if (pRoot && pRoot === wsRoot) return true
+    }
+    return false
+  }
+
+  /** 切换顶层工作空间作用域，加载该工作空间下挂载的其它工程列表（自动剔除工作空间自身） */
+  function setWorkspaceScope(
+    nextWorkspaceScope: string,
+    nextWorkspaceRootPath?: string | null
+  ): void {
+    const norm = nextWorkspaceScope.trim()
+    workspaceScope.value = norm
+    workspaceRootPath.value = (nextWorkspaceRootPath ?? '')
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '')
+      .toLowerCase()
+    const rawList = readChatProjects(norm)
+    const filtered = rawList.filter((p) => !isWorkspaceSelfEntry(p))
+    projects.value = filtered
+    if (filtered.length !== rawList.length) {
+      writeChatProjects(filtered, norm)
+    }
+    bumpTree()
+  }
+
+  function ensureProjectHasInitialSession(targetScope: string): ChatSession[] {
+    const existing = readSessions(targetScope)
+    if (existing.length > 0) return existing
+    const now = Date.now()
+    const initial: ChatSession = {
+      id: createSessionId(),
+      title: '',
+      createdAt: now,
+      updatedAt: now,
+      messages: []
+    }
+    writeSessions([initial], targetScope)
+    localStorage.setItem(activeSessionStorageKey(targetScope), initial.id)
+    return [initial]
+  }
 
   /** 打开面板或切换工程时加载对应工程作用域下的本地历史，恢复上次会话；无任何历史则创建一个空会话 */
   function load(projectScope?: string): void {
     if (projectScope !== undefined) {
       scope.value = projectScope.trim()
+    }
+    if (!projects.value.length) {
+      projects.value = readChatProjects(workspaceScope.value).filter(
+        (p) => !isWorkspaceSelfEntry(p)
+      )
     }
     const activeKey = activeSessionStorageKey(scope.value)
     sessions.value = readSessions(scope.value)
@@ -265,13 +531,216 @@ export function useChatHistory() {
       ]
     }
     localStorage.setItem(activeKey, activeId.value)
+    bumpTree()
   }
+
+  /**
+   * 在当前工作空间的 Projects 树中登记或更新一个本地工程目录。
+   * 若该工程已有同 rootPath 的旧条目（例如先作为外部目录添加，后作为主工程打开），自动合并去重。
+   */
+  function registerProject(input: {
+    projectId?: string | null
+    rootPath?: string | null
+    name?: string | null
+    activate?: boolean
+  }): ChatProjectEntry | null {
+    const rootPath = (input.rootPath ?? '').trim()
+    if (!rootPath) return null
+    const targetScope = resolveProjectChatScope(input.projectId, rootPath)
+    if (!targetScope) return null
+    const normalizedRoot = rootPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+    // 工作空间自身的会话归属于工作空间（Conversations），不作为子工程挂在 Projects 树下
+    if (isWorkspaceSelfEntry({ scope: targetScope, rootPath })) {
+      ensureProjectHasInitialSession(workspaceScope.value || targetScope)
+      if (input.activate) {
+        load(workspaceScope.value || targetScope)
+      } else {
+        bumpTree()
+      }
+      return null
+    }
+    const folderName = extractProjectFolderName(rootPath, input.name)
+    if (!projects.value.length) {
+      projects.value = readChatProjects(workspaceScope.value).filter(
+        (p) => !isWorkspaceSelfEntry(p)
+      )
+    }
+    const existingIdx = projects.value.findIndex(
+      (p) =>
+        p.scope === targetScope ||
+        p.rootPath.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === normalizedRoot
+    )
+    const now = Date.now()
+    let entry: ChatProjectEntry
+    if (existingIdx >= 0) {
+      const prev = projects.value[existingIdx]!
+      entry = {
+        ...prev,
+        scope: prev.scope || targetScope,
+        name: folderName || prev.name,
+        rootPath,
+        ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+        updatedAt: now
+      }
+      const nextList = [...projects.value]
+      nextList[existingIdx] = entry
+      projects.value = nextList
+    } else {
+      entry = {
+        scope: targetScope,
+        name: folderName,
+        rootPath,
+        ...(input.projectId?.trim() ? { projectId: input.projectId.trim() } : {}),
+        updatedAt: now
+      }
+      projects.value = [entry, ...projects.value]
+    }
+    writeChatProjects(projects.value, workspaceScope.value)
+    ensureProjectHasInitialSession(entry.scope)
+    if (input.activate) {
+      load(entry.scope)
+    } else {
+      bumpTree()
+    }
+    return entry
+  }
+
+  /** 添加其它本地工程目录（如 `clientdev_2021` / `ai-art-engine`）到当前工作空间并切换到该工程 */
+  function addExternalProject(rootPath: string, name?: string): ChatProjectEntry | null {
+    return registerProject({
+      rootPath,
+      name,
+      activate: true
+    })
+  }
+
+  /** 从当前工作空间的 Projects 树中移除一个工程（不影响磁盘文件） */
+  function removeProject(targetScope: string, fallbackScope?: string): void {
+    const norm = targetScope.trim()
+    if (!norm) return
+    projects.value = projects.value.filter((p) => p.scope !== norm)
+    writeChatProjects(projects.value, workspaceScope.value)
+    if (scope.value === norm) {
+      const nextScope = fallbackScope?.trim() || projects.value[0]?.scope || ''
+      load(nextScope)
+    } else {
+      bumpTree()
+    }
+  }
+
+  /** 折叠 / 展开某个项目文件夹下的会话列表 */
+  function toggleProjectCollapsed(targetScope: string): void {
+    const norm = targetScope.trim()
+    const idx = projects.value.findIndex((p) => p.scope === norm)
+    if (idx < 0) return
+    const cur = projects.value[idx]!
+    const nextList = [...projects.value]
+    nextList[idx] = {
+      ...cur,
+      collapsed: !cur.collapsed
+    }
+    projects.value = nextList
+    writeChatProjects(projects.value, workspaceScope.value)
+    bumpTree()
+  }
+
+  /** 当前激活的项目条目 */
+  const activeProject = computed<ChatProjectEntry | null>(() => {
+    void treeRevision.value
+    return projects.value.find((p) => p.scope === scope.value) ?? null
+  })
+
+  /** Codex 风格 Projects -> Conversations 树视图（仅展示添加到此工作空间的其它工程，不含工作空间自身） */
+  const projectTree = computed<ChatProjectTreeGroup[]>(() => {
+    void treeRevision.value
+    return projects.value
+      .filter((proj) => !isWorkspaceSelfEntry(proj))
+      .map((proj) => {
+        if (proj.scope === scope.value) {
+          return {
+            ...proj,
+            sessions: sessions.value,
+            activeSessionId: activeId.value
+          }
+        }
+        const list = ensureProjectHasInitialSession(proj.scope)
+        const savedActive = localStorage.getItem(activeSessionStorageKey(proj.scope)) ?? ''
+        const resolvedActive = list.some((s) => s.id === savedActive)
+          ? savedActive
+          : (list[0]?.id ?? '')
+        return {
+          ...proj,
+          sessions: list,
+          activeSessionId: resolvedActive
+        }
+      })
+  })
+
+  /**
+   * 属于当前工作空间自身的会话列表（显示在左侧栏下方 Conversations 区，不显示在 Projects 工程文件夹下）：
+   * 即使当前切换到某个外部工程的会话，工作空间自身的会话依然直接可见。
+   */
+  const workspaceSessions = computed<ChatSession[]>(() => {
+    void treeRevision.value
+    const ws = workspaceScope.value
+    if (scope.value === ws) {
+      return sessions.value
+    }
+    return ensureProjectHasInitialSession(ws)
+  })
+
+  /**
+   * 当前工作空间自身会话 + 工作空间下所有已添加工程的全部会话（汇总列表）：
+   * 无论当前聚焦在工作空间还是某个外部工程，所有会话都直接可见。
+   */
+  const allWorkspaceSessions = computed<ChatWorkspaceSessionItem[]>(() => {
+    void treeRevision.value
+    const aggregated: ChatWorkspaceSessionItem[] = []
+    const coveredScopes = new Set<string>()
+    const ws = workspaceScope.value
+    coveredScopes.add(ws)
+    for (const s of workspaceSessions.value) {
+      aggregated.push({
+        ...s,
+        projectScope: ws,
+        projectName: '',
+        projectRootPath: ''
+      })
+    }
+    for (const group of projectTree.value) {
+      coveredScopes.add(group.scope)
+      for (const s of group.sessions) {
+        aggregated.push({
+          ...s,
+          projectScope: group.scope,
+          projectName: group.name,
+          projectRootPath: group.rootPath
+        })
+      }
+    }
+    if (!coveredScopes.has(scope.value)) {
+      for (const s of sessions.value) {
+        aggregated.push({
+          ...s,
+          projectScope: scope.value,
+          projectName: '',
+          projectRootPath: ''
+        })
+      }
+    }
+    return aggregated.sort((a, b) => {
+      const pinDiff = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+      if (pinDiff !== 0) return pinDiff
+      return b.updatedAt - a.updatedAt
+    })
+  })
 
   /** 当前会话（始终存在；调用前需先 load） */
   const activeSession = computed(() => sessions.value.find((s) => s.id === activeId.value) ?? null)
 
   function persist(): void {
     writeSessions(sessions.value, scope.value)
+    bumpTree()
   }
 
   /** 新建空会话并激活 */
@@ -288,6 +757,101 @@ export function useChatHistory() {
     activeId.value = session.id
     localStorage.setItem(activeSessionStorageKey(scope.value), session.id)
     persist()
+  }
+
+  /** 在工作空间自身（Conversations 区）下新建会话并切换到该会话 */
+  function createWorkspaceSession(): ChatSession {
+    if (scope.value !== workspaceScope.value) {
+      persist()
+      load(workspaceScope.value)
+    }
+    create()
+    return activeSession.value!
+  }
+
+  /** 在指定项目文件夹下新建会话并切换到该会话 */
+  function createSessionInProject(targetScope: string): ChatSession {
+    const norm = targetScope.trim()
+    if (norm && norm !== scope.value) {
+      persist()
+      load(norm)
+    }
+    // 展开目标项目文件夹
+    const pIdx = projects.value.findIndex((p) => p.scope === scope.value)
+    if (pIdx >= 0 && projects.value[pIdx]?.collapsed) {
+      const copy = [...projects.value]
+      copy[pIdx] = { ...copy[pIdx]!, collapsed: false, updatedAt: Date.now() }
+      projects.value = copy
+      writeChatProjects(projects.value, workspaceScope.value)
+    }
+    create()
+    return activeSession.value!
+  }
+
+  /** 激活任意项目文件夹下的指定会话 */
+  function activateProjectSession(targetScope: string, sessionId: string): void {
+    const norm = targetScope.trim()
+    if (norm && norm !== scope.value) {
+      persist()
+      load(norm)
+    }
+    activate(sessionId)
+    bumpTree()
+  }
+
+  /** 删除任意项目文件夹下的指定会话 */
+  function removeProjectSession(targetScope: string, sessionId: string): void {
+    const norm = targetScope.trim()
+    if (!norm || norm === scope.value) {
+      remove(sessionId)
+      return
+    }
+    const activeKey = activeSessionStorageKey(norm)
+    const remaining = readSessions(norm).filter((s) => s.id !== sessionId)
+    if (remaining.length === 0) {
+      const now = Date.now()
+      const fresh: ChatSession = {
+        id: createSessionId(),
+        title: '',
+        createdAt: now,
+        updatedAt: now,
+        messages: []
+      }
+      writeSessions([fresh], norm)
+      localStorage.setItem(activeKey, fresh.id)
+    } else {
+      writeSessions(remaining, norm)
+      const savedActive = localStorage.getItem(activeKey)
+      if (!savedActive || savedActive === sessionId) {
+        localStorage.setItem(activeKey, remaining[0]!.id)
+      }
+    }
+    bumpTree()
+  }
+
+  /** 置顶 / 取消置顶任意项目下的指定会话 */
+  function togglePinProjectSession(targetScope: string, sessionId: string): void {
+    const norm = targetScope.trim()
+    if (!norm || norm === scope.value) {
+      const idx = sessions.value.findIndex((s) => s.id === sessionId)
+      if (idx < 0) return
+      const cur = sessions.value[idx]!
+      const next = { ...cur, pinned: !cur.pinned }
+      const copy = [...sessions.value]
+      copy[idx] = next
+      copy.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+      sessions.value = copy
+      persist()
+      return
+    }
+    const list = readSessions(norm)
+    const idx = list.findIndex((s) => s.id === sessionId)
+    if (idx < 0) return
+    const cur = list[idx]!
+    list[idx] = { ...cur, pinned: !cur.pinned }
+    list.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)))
+    writeSessions(list, norm)
+    bumpTree()
   }
 
   /**
@@ -399,17 +963,112 @@ export function useChatHistory() {
     persist()
   }
 
+  /** 新建 Codex 风格 Automation 定时任务 */
+  function createAutomation(input: {
+    title?: string
+    modelId?: string
+    frequency: ChatAutomationFrequency
+    timeOfDay?: string
+    instructions: string
+    projectScope?: string
+    now?: number
+  }): ChatAutomationItem | null {
+    const instructions = input.instructions.trim()
+    if (!instructions) return null
+    const now = input.now ?? Date.now()
+    const timeOfDay = (input.timeOfDay ?? '09:00').trim() || '09:00'
+    const item: ChatAutomationItem = {
+      id: `auto_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      title: (input.title ?? '').trim() || 'Untitled',
+      modelId: (input.modelId ?? '').trim(),
+      frequency: input.frequency,
+      timeOfDay,
+      instructions,
+      projectScope: (input.projectScope ?? scope.value).trim(),
+      workspaceScope: workspaceScope.value,
+      enabled: true,
+      createdAt: now,
+      updatedAt: now,
+      nextRunAt: computeNextAutomationRunAt(input.frequency, timeOfDay, now)
+    }
+    automations.value = [item, ...automations.value]
+    writeChatAutomations(automations.value)
+    return item
+  }
+
+  /** 删除指定 Automation 定时任务 */
+  function removeAutomation(id: string): void {
+    automations.value = automations.value.filter((a) => a.id !== id)
+    writeChatAutomations(automations.value)
+  }
+
+  /** 启用 / 暂停指定 Automation 定时任务 */
+  function toggleAutomationEnabled(id: string, now = Date.now()): void {
+    automations.value = automations.value.map((a) => {
+      if (a.id !== id) return a
+      const nextEnabled = !a.enabled
+      return {
+        ...a,
+        enabled: nextEnabled,
+        updatedAt: now,
+        nextRunAt: nextEnabled
+          ? computeNextAutomationRunAt(a.frequency, a.timeOfDay, now)
+          : a.nextRunAt
+      }
+    })
+    writeChatAutomations(automations.value)
+  }
+
+  /** 标记某条 Automation 已触发执行并推进其下一次运行时间 */
+  function markAutomationTriggered(id: string, now = Date.now()): ChatAutomationItem | null {
+    let found: ChatAutomationItem | null = null
+    automations.value = automations.value.map((a) => {
+      if (a.id !== id) return a
+      const updated: ChatAutomationItem = {
+        ...a,
+        lastRunAt: now,
+        updatedAt: now,
+        nextRunAt: computeNextAutomationRunAt(a.frequency, a.timeOfDay, now)
+      }
+      found = updated
+      return updated
+    })
+    writeChatAutomations(automations.value)
+    return found
+  }
+
   return {
     sessions,
     activeId,
     activeSession,
     scope,
+    workspaceScope,
+    projects,
+    automations,
+    activeProject,
+    projectTree,
+    workspaceSessions,
+    allWorkspaceSessions,
+    setWorkspaceScope,
     load,
     persist,
     create,
+    createWorkspaceSession,
+    createSessionInProject,
     rotateActive,
     remove,
+    removeProjectSession,
+    togglePinProjectSession,
     activate,
+    activateProjectSession,
+    registerProject,
+    addExternalProject,
+    removeProject,
+    toggleProjectCollapsed,
+    createAutomation,
+    removeAutomation,
+    toggleAutomationEnabled,
+    markAutomationTriggered,
     commitMessages,
     commitContextUsed,
     commitTodos,

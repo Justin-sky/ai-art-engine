@@ -2,11 +2,12 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProjectStore } from '../stores/project'
 
-/** 从 project.json 路径取工程文件夹名，供菜单短标签 */
+/** 从 workspace.json（或旧版 project.json）路径取工作空间文件夹名，供菜单短标签 */
 export function projectRecentLabel(projectJsonPath: string): string {
   const normalized = projectJsonPath.replace(/\\/g, '/').replace(/\/+$/, '')
   const parts = normalized.split('/').filter(Boolean)
-  if (parts.length >= 2 && parts[parts.length - 1]!.toLowerCase() === 'project.json') {
+  const lastLower = parts[parts.length - 1]?.toLowerCase()
+  if (parts.length >= 2 && (lastLower === 'workspace.json' || lastLower === 'project.json')) {
     return parts[parts.length - 2]!
   }
   return parts[parts.length - 1] || projectJsonPath

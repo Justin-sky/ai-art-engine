@@ -6,9 +6,12 @@ import { readJsonFile, writeJsonAtomic } from './jsonFile'
 
 const E_PROJECT_JSON_MISSING = defErrSimple(
   'project.jsonMissing',
-  'project.json 不存在',
-  'project.json does not exist'
+  'workspace.json 不存在',
+  'workspace.json does not exist'
 )
+
+export const WORKSPACE_CONFIG_FILE = 'workspace.json'
+export const LEGACY_PROJECT_CONFIG_FILE = 'project.json'
 
 const PROJECT_DIRECTORIES = [
   'Assets',
@@ -24,7 +27,11 @@ const PROJECT_DIRECTORIES = [
 
 export class ProjectRepository {
   configPath(root: string): string {
-    return join(root, 'project.json')
+    const workspaceFile = join(root, WORKSPACE_CONFIG_FILE)
+    if (existsSync(workspaceFile)) return workspaceFile
+    const legacyFile = join(root, LEGACY_PROJECT_CONFIG_FILE)
+    if (existsSync(legacyFile)) return legacyFile
+    return workspaceFile
   }
 
   ensureScaffold(root: string): void {
@@ -41,7 +48,7 @@ export class ProjectRepository {
   }
 
   write(root: string, config: ProjectConfig): void {
-    writeJsonAtomic(this.configPath(root), config)
+    writeJsonAtomic(join(root, WORKSPACE_CONFIG_FILE), config)
   }
 }
 

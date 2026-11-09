@@ -14,15 +14,27 @@ import {
   flattenVoicesValues
 } from './gallery'
 
+function resolveNoteLikeNodeText(params: Record<string, unknown> | undefined): string {
+  const rawText = typeof params?.text === 'string' ? params.text.trim() : ''
+  if (rawText && rawText !== '…' && rawText !== '...' && rawText !== 'Note…') {
+    return rawText
+  }
+  const fallback =
+    (typeof params?.prompt === 'string' && params.prompt.trim()) ||
+    (typeof params?.generateInstruction === 'string' && params.generateInstruction.trim()) ||
+    ''
+  return fallback || rawText
+}
+
 export function executeNoteNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const text = ctx.node.params.text?.trim() ?? ''
+  const text = resolveNoteLikeNodeText(ctx.node.params as Record<string, unknown> | undefined)
   return {
     out: { kind: 'text', text }
   }
 }
 
 export function executePlainTextNode(ctx: NodeExecuteContext): Record<string, GraphValue> {
-  const text = ctx.node.params.text?.trim() ?? ''
+  const text = resolveNoteLikeNodeText(ctx.node.params as Record<string, unknown> | undefined)
   return {
     out: { kind: 'text', text }
   }

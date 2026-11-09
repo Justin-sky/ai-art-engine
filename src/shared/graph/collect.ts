@@ -6,7 +6,9 @@ import type { GraphDocument, GraphNode } from './types'
 function directTextFromNode(node: GraphNode): string | undefined {
   if (node.typeId !== 'text.plain') return undefined
   const text = node.params.text?.trim()
-  return text || undefined
+  if (text && text !== '…' && text !== '...') return text
+  const fallback = node.params.prompt?.trim() || node.params.generateInstruction?.trim()
+  return fallback || text || undefined
 }
 
 /** 收集节点直接连入的 text.plain 文本（与执行器 flattenTextValues 对齐） */

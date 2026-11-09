@@ -141,6 +141,17 @@
       >
         <div class="crumbs">
           <div class="crumb-trail">
+            <span
+              v-if="project.isOpen"
+              class="workspace-scope-pill"
+              :title="project.rootPath ?? ''"
+            >
+              {{
+                t('asset.browser.currentWorkspaceBadge', {
+                  name: project.config?.name || t('asset.browser.assetsRoot')
+                })
+              }}
+            </span>
             <button type="button" class="crumb" @click="selectFolder(null)">
               {{ t('asset.browser.assetsRoot') }}
             </button>
@@ -3565,6 +3576,20 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
+}
+
+.workspace-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .crumb {

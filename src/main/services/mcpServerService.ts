@@ -584,7 +584,7 @@ const TOOL_DEFS: McpToolDef[] = [
       }
       const result = projectService.createProject(input)
       return {
-        projectJsonPath: join(result.rootPath, 'project.json'),
+        projectJsonPath: join(result.rootPath, 'workspace.json'),
         rootPath: result.rootPath,
         projectName: result.config.name
       }

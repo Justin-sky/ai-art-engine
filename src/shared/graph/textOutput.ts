@@ -140,7 +140,15 @@ export function resolveNodeTextContent(
     return { text: normalizeNodeTextValue(node.params.resultText), field }
   }
   if (field === 'text') {
-    return { text: normalizeNodeTextValue(node.params.text), field }
+    const primary = normalizeNodeTextValue(node.params.text)
+    if (primary) return { text: primary, field }
+    if (node.typeId === 'text.plain' || node.typeId === 'note.text' || node.category === 'note') {
+      const fallbackPrompt =
+        normalizeNodeTextValue(node.params.prompt) ||
+        normalizeNodeTextValue(node.params.generateInstruction)
+      if (fallbackPrompt) return { text: fallbackPrompt, field }
+    }
+    return { text: primary, field }
   }
 
   const fallback = node.params.resultText ?? node.params.text

@@ -1078,6 +1078,11 @@ export interface HarnessRunInput {
   model?: string
   /** 可选：所选模型所属的 provider 实例 id（默认 DeepSeek 或首个可用文本 provider） */
   providerId?: string
+  /**
+   * 可选：指定本次 AI 对话绑定的本地项目工作区目录（Codex 风格多项目切换）。
+   * 传入时 dsh 的文件读写 / glob / grep / 终端命令在该目录下执行；缺省则使用当前打开的 Studio 工程根目录。
+   */
+  workspace?: string
   /** 可选：当前工作区打开的画布与选中节点上下文摘要（不对用户气泡展示，仅注入给 Agent） */
   canvasContext?: string
 }

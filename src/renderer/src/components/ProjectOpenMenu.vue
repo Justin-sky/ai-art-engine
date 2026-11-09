@@ -104,7 +104,7 @@
             ref="nameInputEl"
             v-model="newName"
             required
-            placeholder="MyShortFilm"
+            placeholder="workspace"
             @keydown.esc.prevent="closeCreateDialog"
           />
         </label>
@@ -185,7 +185,7 @@ const menuStyle = computed(() => ({
 }))
 
 function shortRecentPath(path: string): string {
-  const normalized = path.replace(/\\/g, '/')
+  const normalized = path.replace(/\\/g, '/').replace(/\/project\.json$/i, '/workspace.json')
   if (normalized.length <= 42) return normalized
   return `…${normalized.slice(-40)}`
 }

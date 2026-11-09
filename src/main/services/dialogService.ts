@@ -7,8 +7,8 @@ import { defErrSimple, fail } from '@shared/errors/appError'
 
 const E_SELECT_PROJECT_JSON = defErrSimple(
   'dialog.selectProjectJson',
-  '请选择工程根目录下的 project.json',
-  'Choose project.json inside the project root directory'
+  '请选择工作空间根目录下的 workspace.json（或旧版 project.json）',
+  'Choose workspace.json (or legacy project.json) inside the workspace root directory'
 )
 
 class DialogService {
@@ -35,11 +35,12 @@ class DialogService {
   async selectProject(): Promise<string | null> {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'AIArtEngine Project', extensions: ['json'] }]
+      filters: [{ name: 'AIArtEngine Workspace', extensions: ['json'] }]
     })
     const path = result.filePaths[0]
     if (result.canceled || !path) return null
-    if (basename(path) !== 'project.json') {
+    const fileName = basename(path).toLowerCase()
+    if (fileName !== 'workspace.json' && fileName !== 'project.json') {
       throw fail(E_SELECT_PROJECT_JSON)
     }
     return path

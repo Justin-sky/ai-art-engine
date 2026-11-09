@@ -24,7 +24,7 @@
       <ul>
         <li v-for="path in recent" :key="path" class="recent-row">
           <button type="button" class="linkish" @click="openProjectPath(path)">
-            {{ path }}
+            {{ path.replace(/\\/g, '/').replace(/\/project\.json$/i, '/workspace.json') }}
           </button>
           <button
             type="button"
@@ -56,7 +56,7 @@
             ref="nameInputEl"
             v-model="newName"
             required
-            placeholder="MyShortFilm"
+            placeholder="workspace"
             @keydown.esc.prevent="closeCreateDialog"
           />
         </label>

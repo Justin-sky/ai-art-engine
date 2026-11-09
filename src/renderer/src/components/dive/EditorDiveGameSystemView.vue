@@ -39,7 +39,11 @@
         <span class="stat-pill" :class="upstreamNovelNode ? 'stat-ok' : 'stat-muted'">
           📖 {{ ui.telemetryNovel(Boolean(upstreamNovelNode)) }}
         </span>
-        <span class="stat-pill stat-accent" style="cursor: pointer" @click="rightTab = 'uiPreview'">
+        <span
+          class="stat-pill stat-accent"
+          style="cursor: pointer"
+          @click="selectRightTab('uiPreview')"
+        >
           🖥️ {{ ui.telemetryScreens(docAudit.uiScreens.length) }}
         </span>
         <span
@@ -49,7 +53,7 @@
             'stat-warn': docAudit.overallScore > 0 && docAudit.overallScore < 80
           }"
           style="cursor: pointer"
-          @click="rightTab = 'qa'"
+          @click="selectRightTab('qa')"
         >
           🩺 {{ ui.telemetryQa(docAudit.overallScore) }}
         </span>
@@ -571,14 +575,14 @@
       </main>
 
       <!-- Right Column: Live ui.split Wireframe Preview, Feature Table & QA Doctor -->
-      <aside v-show="showRightCol" class="col-right">
+      <aside v-show="showRightCol" ref="rightColRef" class="col-right">
         <div class="right-tabs" role="tablist">
           <button
             type="button"
             class="right-tab"
             :class="{ active: rightTab === 'uiPreview' }"
             :title="`${ui.tabUiPreview} (${docAudit.uiScreens.length})`"
-            @click="rightTab = 'uiPreview'"
+            @click="selectRightTab('uiPreview')"
           >
             <span class="tab-icon">🖥️</span>
             <span class="tab-label">{{ ui.tabUiPreview }}</span>
@@ -589,7 +593,7 @@
             class="right-tab"
             :class="{ active: rightTab === 'features' }"
             :title="ui.tabFeatures"
-            @click="rightTab = 'features'"
+            @click="selectRightTab('features')"
           >
             <span class="tab-icon">⚙️</span>
             <span class="tab-label">{{ ui.tabFeatures }}</span>
@@ -599,7 +603,7 @@
             class="right-tab"
             :class="{ active: rightTab === 'qa' }"
             :title="`${ui.tabQa} (${docAudit.overallScore})`"
-            @click="rightTab = 'qa'"
+            @click="selectRightTab('qa')"
           >
             <span class="tab-icon">🩺</span>
             <span class="tab-label">{{ ui.tabQa }}</span>
@@ -608,7 +612,7 @@
         </div>
 
         <!-- Right Tab 1: Live ui.split Screen Wireframe Preview & Quick Screen Builder -->
-        <div v-if="rightTab === 'uiPreview'" class="right-panel-scroll">
+        <div v-if="rightTab === 'uiPreview'" ref="rightScrollRef" class="right-panel-scroll">
           <div class="panel-card">
             <div class="card-header-row">
               <span class="card-title">{{ ui.uiSplitPreFlightTitle }}</span>
@@ -666,7 +670,7 @@
         </div>
 
         <!-- Right Tab 2: Feature Matrix & Bound Economy Metrics -->
-        <div v-else-if="rightTab === 'features'" class="right-panel-scroll">
+        <div v-else-if="rightTab === 'features'" ref="rightScrollRef" class="right-panel-scroll">
           <div class="panel-card">
             <div class="card-title">{{ ui.archetypeFeaturesTitle }}</div>
             <p class="card-desc">{{ ui.archetypeFeaturesDesc }}</p>
@@ -702,7 +706,7 @@
         </div>
 
         <!-- Right Tab 3: 6-Dimension GDD QA Doctor -->
-        <div v-else class="right-panel-scroll">
+        <div v-else ref="rightScrollRef" class="right-panel-scroll">
           <div class="panel-card">
             <div class="card-header-row">
               <span class="card-title">{{ ui.qaCardTitle }}</span>
@@ -823,6 +827,19 @@ const showInstructionDrawer = ref(false)
 const statusBanner = ref('')
 const docTextareaRef = ref<HTMLTextAreaElement | null>(null)
 const mdPreviewScrollRef = ref<HTMLElement | null>(null)
+const rightColRef = ref<HTMLElement | null>(null)
+const rightScrollRef = ref<HTMLElement | null>(null)
+
+function selectRightTab(tab: 'uiPreview' | 'features' | 'qa'): void {
+  showRightCol.value = true
+  rightTab.value = tab
+  void nextTick(() => {
+    if (rightScrollRef.value) {
+      rightScrollRef.value.scrollTop = 0
+    }
+    rightColRef.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
+}
 
 const displayName = ref('')
 const localInstruction = ref('')
@@ -3043,17 +3060,26 @@ function popDive(): void {
 
 @container gdd-workbench (max-width: 900px) {
   .workbench-body {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
     overflow-y: auto;
   }
   .col-left,
   .col-right {
+    flex-shrink: 0;
     border-right: none;
     border-left: none;
     border-bottom: 1px solid rgba(148, 163, 184, 0.08);
-    max-height: 280px;
+    min-height: 300px;
+    max-height: 440px;
+  }
+  .left-panel-scroll,
+  .right-panel-scroll {
+    min-height: 240px;
+    max-height: 390px;
   }
   .col-center {
+    flex: 1 0 460px;
     min-height: 460px;
   }
 }

@@ -32,8 +32,14 @@ import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
 import { detectChatSkillInstallOrSearchIntent } from '@shared/claudeSkill'
 import { useStudioI18n } from '../composables/useStudioI18n'
 import {
+  extractProjectFolderName,
+  formatChatSessionRelativeAge,
+  formatTimeOfDay12h,
+  isUntitledDraftSession,
   resolveProjectChatScope,
   useChatHistory,
+  type ChatAutomationFrequency,
+  type ChatAutomationItem,
   type ChatMsg
 } from '../composables/useChatHistory'
 import { attachAnimatedImagePlayback } from '../features/media/animatedImagePlayback'
@@ -163,23 +169,110 @@ const isEnChat = computed(() => /^en/i.test(locale.value))
 const { createDraftAndOpen } = useDraftSave()
 const showcaseStarters = CHAT_SHOWCASE_STARTERS
 
-/** 历史会话：多会话持久化 + 输入框上方工具栏切换 */
+/** 历史会话与 Codex 风格多项目树：多项目/多会话持久化 + 顶栏 Projects 树与工具栏切换 */
 const {
   sessions,
   activeId,
   activeSession,
+  scope: activeChatScope,
+  automations: chatAutomations,
+  activeProject: activeChatProject,
+  projectTree: chatProjectTree,
+  workspaceSessions,
+  allWorkspaceSessions,
+  setWorkspaceScope,
   load: loadHistory,
   persist: persistHistory,
   create: createSession,
+  createWorkspaceSession,
+  createSessionInProject,
   rotateActive: rotateActiveSession,
   remove: removeSession,
+  removeProjectSession,
+  togglePinProjectSession,
   activate: activateSession,
+  activateProjectSession,
+  addExternalProject: addExternalChatProject,
+  removeProject: removeChatProject,
+  toggleProjectCollapsed,
+  createAutomation: createChatAutomation,
+  removeAutomation: removeChatAutomation,
+  toggleAutomationEnabled,
+  markAutomationTriggered,
   commitMessages,
   commitContextUsed,
   commitTodos,
   commitGoal,
   forkSession
 } = useChatHistory()
+
+/** Codex 风格 Automations 定时任务面板状态与表单草稿 */
+const automationsViewOpen = ref(false)
+const automationTitleInputRef = ref<HTMLInputElement | null>(null)
+const automationDraft = reactive<{
+  title: string
+  modelId: string
+  frequency: ChatAutomationFrequency
+  timeOfDay: string
+  instructions: string
+}>({
+  title: '',
+  modelId: '',
+  frequency: 'every_day',
+  timeOfDay: '09:00',
+  instructions: ''
+})
+
+const automationTimeOptions = Array.from({ length: 48 }, (_, idx) => {
+  const h = String(Math.floor(idx / 2)).padStart(2, '0')
+  const m = idx % 2 === 0 ? '00' : '30'
+  const value = `${h}:${m}`
+  return {
+    value,
+    label: formatTimeOfDay12h(value)
+  }
+})
+
+const localTimezoneLabel = computed(() => {
+  const offsetMin = -new Date().getTimezoneOffset()
+  const sign = offsetMin >= 0 ? '+' : '-'
+  const absMin = Math.abs(offsetMin)
+  const hours = Math.floor(absMin / 60)
+  const mins = absMin % 60
+  return mins > 0 ? `GMT${sign}${hours}:${String(mins).padStart(2, '0')}` : `GMT${sign}${hours}`
+})
+
+let automationTimer: number | null = null
+
+/** Codex 风格左侧栏（Projects & Conversations）开合、筛选开合与搜索词 */
+const projectsPanelOpen = ref(true)
+const projectsFilterOpen = ref(false)
+const projectsFilterQuery = ref('')
+const conversationsSectionOpen = ref(true)
+
+const filteredSidebarSessions = computed(() => {
+  const q = projectsFilterQuery.value.trim().toLowerCase()
+  if (!q) return workspaceSessions.value
+  return workspaceSessions.value.filter((s) =>
+    (s.title || t('studio.chat.untitledConversation')).toLowerCase().includes(q)
+  )
+})
+
+const filteredChatProjectTree = computed(() => {
+  const q = projectsFilterQuery.value.trim().toLowerCase()
+  if (!q) return chatProjectTree.value
+  return chatProjectTree.value
+    .map((group) => {
+      const nameHit =
+        group.name.toLowerCase().includes(q) || group.rootPath.toLowerCase().includes(q)
+      if (nameHit) return group
+      const matchedSessions = group.sessions.filter((s) =>
+        (s.title || t('studio.chat.untitledConversation')).toLowerCase().includes(q)
+      )
+      return matchedSessions.length > 0 ? { ...group, sessions: matchedSessions } : null
+    })
+    .filter((g): g is NonNullable<typeof g> => g !== null)
+})
 
 /** 当前会话的 Todo 进度看板（由 dsh todo_write 工具实时推送） */
 const sessionTodos = ref<HarnessTodoItem[]>([])
@@ -198,6 +291,9 @@ const scheduleMenuOpen = ref(false)
 const scheduleDropdownRef = ref<HTMLElement | null>(null)
 const activeSchedules = computed(() =>
   sessionSchedules.value.filter((item) => item.status === 'active')
+)
+const totalActiveAutomationsCount = computed(
+  () => chatAutomations.value.filter((a) => a.enabled).length + activeSchedules.value.length
 )
 
 /** 跨会话全文搜索与会话导出状态 */
@@ -280,6 +376,7 @@ function onSessionChange(id: string): void {
 }
 
 function onNewSession(): void {
+  automationsViewOpen.value = false
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
   commitTodos([...sessionTodos.value])
@@ -292,6 +389,159 @@ function onNewSession(): void {
   composing.value = false
   scrollToBottom()
   void nextTick(() => inputRef.value?.focus())
+}
+
+/** 在当前工作空间自身（Conversations 区）新建会话，不归入任何外部子工程下 */
+function onNewWorkspaceSession(): void {
+  automationsViewOpen.value = false
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+  persistHistory()
+  createWorkspaceSession()
+  loadActiveMessages()
+  clearSendQueue()
+  resetEditor()
+  composing.value = false
+  conversationsSectionOpen.value = true
+  scrollToBottom()
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/** Codex 风格：添加本地项目文件夹（如 clientdev_2021 / ai-art-engine）到 Projects 树并绑定为 AI 分析工作区 */
+async function onAddChatProjectFolder(): Promise<void> {
+  if (running.value) return
+  try {
+    const dir = await window.studio?.selectDirectory?.()
+    if (!dir?.trim()) return
+    commitMessages([...messages.value])
+    commitContextUsed(harnessContextUsed.value)
+    commitTodos([...sessionTodos.value])
+    commitGoal(sessionGoal.value)
+    persistHistory()
+    const entry = addExternalChatProject(dir.trim())
+    if (!entry) return
+    loadActiveMessages()
+    clearSendQueue()
+    resetEditor()
+    composing.value = false
+    projectsPanelOpen.value = true
+    scrollToBottom()
+    pushStatus(t('studio.chat.projectAddedStatus', { name: entry.name }), 'waiting')
+    void nextTick(() => inputRef.value?.focus())
+  } catch {
+    // ignore cancel
+  }
+}
+
+/** Codex 风格：切换任意项目文件夹下的指定会话，同时切换 AI 工作区到该项目根目录 */
+function onSelectProjectSession(targetScope: string, sessionId: string): void {
+  if (running.value) return
+  automationsViewOpen.value = false
+  const scopeChanged = targetScope.trim() !== activeChatScope.value
+  if (!scopeChanged && sessionId === activeId.value) return
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+  persistHistory()
+  activateProjectSession(targetScope, sessionId)
+  loadActiveMessages()
+  clearSendQueue()
+  composing.value = false
+  scrollToBottom()
+  if (scopeChanged && activeChatProject.value) {
+    pushStatus(
+      t('studio.chat.projectSwitchedStatus', { name: activeChatProject.value.name }),
+      'waiting'
+    )
+  }
+}
+
+/** Codex 风格：在指定项目文件夹下新建对话并切换过去 */
+function onNewSessionInProject(targetScope: string): void {
+  if (running.value) return
+  commitMessages([...messages.value])
+  commitContextUsed(harnessContextUsed.value)
+  commitTodos([...sessionTodos.value])
+  commitGoal(sessionGoal.value)
+  persistHistory()
+  createSessionInProject(targetScope)
+  loadActiveMessages()
+  clearSendQueue()
+  resetEditor()
+  composing.value = false
+  scrollToBottom()
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/** Codex 风格：一键发起对指定项目架构与代码的 AI 深度分析 */
+async function onAnalyzeChatProject(targetScope: string, projectName: string): Promise<void> {
+  if (running.value || preparingTask) return
+  if (targetScope.trim() !== activeChatScope.value) {
+    commitMessages([...messages.value])
+    commitContextUsed(harnessContextUsed.value)
+    commitTodos([...sessionTodos.value])
+    commitGoal(sessionGoal.value)
+    persistHistory()
+    const group = chatProjectTree.value.find((g) => g.scope === targetScope.trim())
+    const targetSessionId = group?.activeSessionId || group?.sessions[0]?.id || ''
+    if (targetSessionId) {
+      activateProjectSession(targetScope, targetSessionId)
+    } else {
+      createSessionInProject(targetScope)
+    }
+    loadActiveMessages()
+    clearSendQueue()
+  }
+  const promptText = t('studio.chat.analyzeProjectPrompt', { name: projectName })
+  await runTask(promptText)
+}
+
+/** Codex 风格：删除指定项目下的某条会话 */
+async function onDeleteProjectSession(targetScope: string, sessionId: string): Promise<void> {
+  if (running.value) return
+  const wasOpen = sessionOpen.value
+  const ok = await promptConfirm({
+    title: t('studio.chat.deleteSession'),
+    message: t('studio.chat.deleteConfirm'),
+    confirmLabel: t('common.delete')
+  })
+  sessionOpen.value = wasOpen
+  if (!ok) return
+  const wasActive = targetScope.trim() === activeChatScope.value && sessionId === activeId.value
+  removeProjectSession(targetScope, sessionId)
+  window.studio?.deleteHarnessSession?.(sessionId).catch(() => undefined)
+  if (wasActive) {
+    loadActiveMessages()
+    clearSendQueue()
+    resetEditor()
+    composing.value = false
+    scrollToBottom()
+  }
+  void nextTick(() => inputRef.value?.focus())
+}
+
+/** Codex 风格：从 Projects 树中移除某个外部项目文件夹（不删除磁盘文件） */
+function onRemoveChatProjectFolder(targetScope: string): void {
+  if (running.value) return
+  const wasActiveScope = targetScope.trim() === activeChatScope.value
+  if (wasActiveScope) {
+    commitMessages([...messages.value])
+    commitContextUsed(harnessContextUsed.value)
+    commitTodos([...sessionTodos.value])
+    commitGoal(sessionGoal.value)
+    persistHistory()
+  }
+  removeChatProject(targetScope, currentProjectChatScope.value)
+  if (wasActiveScope) {
+    loadActiveMessages()
+    clearSendQueue()
+    resetEditor()
+    composing.value = false
+    scrollToBottom()
+  }
 }
 
 /**
@@ -1960,13 +2210,18 @@ const statusText = computed(() => {
   return s.message ?? t('studio.chat.unavailable')
 })
 const statusWarn = computed(() => !!status.value && !ready.value)
-/** dsh 工作区：当前打开的工程根目录（未打开工程时为空） */
-const workspace = computed(() => status.value?.workspace?.trim() ?? '')
+/** dsh 工作区：优先当前在 Projects 树中选中的项目根目录，其次当前打开的 Studio 工程根目录 */
+const workspace = computed(
+  () =>
+    activeChatProject.value?.rootPath?.trim() ||
+    project.rootPath?.trim() ||
+    status.value?.workspace?.trim() ||
+    ''
+)
 const workspaceLabel = computed(() => {
   const w = workspace.value
   if (!w) return ''
-  const parts = w.split(/[\\/]/).filter((s) => s.length > 0)
-  return parts[parts.length - 1] ?? w
+  return extractProjectFolderName(w, activeChatProject.value?.name)
 })
 
 function scrollToBottom(): void {
@@ -2256,9 +2511,9 @@ async function onOpenPresentFile(filePath: string, revealInFolder = false): Prom
   await window.studio.openHarnessFile({ path: filePath, revealInFolder }).catch(() => undefined)
 }
 
-/** 导出当前会话为 dsh .zip 归档包 */
-async function onExportCurrentSession(): Promise<void> {
-  const sid = activeSession.value?.id
+/** 导出指定会话或当前会话为 dsh .zip 归档包 */
+async function onExportSessionById(sessionId?: string): Promise<void> {
+  const sid = (sessionId ?? activeSession.value?.id ?? '').trim()
   if (!sid || exportBusy.value || typeof window.studio?.exportHarnessSession !== 'function') return
   exportBusy.value = true
   try {
@@ -2273,6 +2528,95 @@ async function onExportCurrentSession(): Promise<void> {
     pushStatus(err instanceof Error ? err.message : String(err), 'error')
   } finally {
     exportBusy.value = false
+  }
+}
+
+async function onExportCurrentSession(): Promise<void> {
+  await onExportSessionById(activeSession.value?.id)
+}
+
+/** 左侧栏 Automations 入口：打开/收起 Codex 风格定时任务创建与管理视图 */
+function onClickSidebarAutomations(): void {
+  automationsViewOpen.value = !automationsViewOpen.value
+  if (automationsViewOpen.value) {
+    if (!automationDraft.modelId && selectedKey.value) {
+      automationDraft.modelId = selectedKey.value
+    }
+    if (!automationDraft.title.trim()) {
+      automationDraft.title = t('studio.chat.automationUntitled')
+    }
+    void nextTick(() => automationTitleInputRef.value?.focus())
+  }
+}
+
+function onCancelAutomationEditor(): void {
+  automationsViewOpen.value = false
+}
+
+function formatAutomationFrequencySummary(item: ChatAutomationItem): string {
+  const tz = localTimezoneLabel.value
+  const timeText = formatTimeOfDay12h(item.timeOfDay)
+  switch (item.frequency) {
+    case 'every_day':
+      return `${t('studio.chat.automationFreqEveryDay')} ${t('studio.chat.automationAtLabel')} ${timeText} ${tz}`
+    case 'weekdays':
+      return `${t('studio.chat.automationFreqWeekdays')} ${t('studio.chat.automationAtLabel')} ${timeText} ${tz}`
+    case 'every_monday':
+      return `${t('studio.chat.automationFreqEveryMonday')} ${t('studio.chat.automationAtLabel')} ${timeText} ${tz}`
+    case 'every_hour':
+      return t('studio.chat.automationFreqEveryHour')
+    case 'every_30m':
+      return t('studio.chat.automationFreqEvery30m')
+  }
+}
+
+function onCreateAutomation(): void {
+  const instructions = automationDraft.instructions.trim()
+  if (!instructions) return
+  const created = createChatAutomation({
+    title: automationDraft.title.trim() || t('studio.chat.automationUntitled'),
+    modelId: automationDraft.modelId || selectedKey.value,
+    frequency: automationDraft.frequency,
+    timeOfDay: automationDraft.timeOfDay,
+    instructions,
+    projectScope: activeChatScope.value
+  })
+  if (!created) return
+  automationDraft.title = t('studio.chat.automationUntitled')
+  automationDraft.instructions = ''
+  pushStatus(t('studio.chat.automationCreatedStatus', { title: created.title }), 'waiting')
+}
+
+function onRunAutomationItemNow(item: ChatAutomationItem): void {
+  if (running.value || preparingTask) return
+  markAutomationTriggered(item.id)
+  automationsViewOpen.value = false
+  const targetScope = item.projectScope?.trim() || currentProjectChatScope.value
+  if (targetScope && targetScope !== activeChatScope.value) {
+    commitMessages([...messages.value])
+    commitContextUsed(harnessContextUsed.value)
+    commitTodos([...sessionTodos.value])
+    commitGoal(sessionGoal.value)
+    persistHistory()
+    loadHistory(targetScope)
+    loadActiveMessages()
+  }
+  if (
+    item.modelId &&
+    modelOptions.value.some((m) => modelKey(m.providerId, m.id) === item.modelId)
+  ) {
+    selectedKey.value = item.modelId
+  }
+  pushStatus(t('studio.chat.automationTriggeredStatus', { title: item.title }), 'waiting')
+  void runTask(item.instructions)
+}
+
+function checkDueAutomations(): void {
+  if (running.value) return
+  const now = Date.now()
+  const due = chatAutomations.value.find((item) => item.enabled && now >= item.nextRunAt)
+  if (due) {
+    onRunAutomationItemNow(due)
   }
 }
 
@@ -2335,7 +2679,7 @@ async function onRewindAtMessage(msgIndex: number, fork: boolean): Promise<void>
   }
 }
 
-/** 跨会话全文检索（搜索本地前端会话 + 底层 dsh SQLite / .jsonl.zstd 归档） */
+/** 跨会话全文检索（搜索当前工作空间全部工程的前端会话 + 底层 dsh SQLite / .jsonl.zstd 归档） */
 async function onRunSessionSearch(): Promise<void> {
   const q = searchQuery.value.trim()
   if (!q) {
@@ -2347,15 +2691,16 @@ async function onRunSessionSearch(): Promise<void> {
     const hits: HarnessSessionSearchHit[] = []
     const seen = new Set<string>()
     const lower = q.toLowerCase()
-    for (const s of sessions.value) {
+    for (const s of allWorkspaceSessions.value) {
       for (const m of s.messages) {
         if ((m.kind === 'user' || m.kind === 'assistant') && m.text.toLowerCase().includes(lower)) {
           const idx = m.text.toLowerCase().indexOf(lower)
           const start = Math.max(0, idx - 30)
           const snippet = m.text.slice(start, idx + q.length + 60).replace(/\s+/g, ' ')
+          const baseTitle = s.title || t('studio.chat.newChat')
           hits.push({
             sessionId: s.id,
-            title: s.title || t('studio.chat.newChat'),
+            title: s.projectName ? `[${s.projectName}] ${baseTitle}` : baseTitle,
             snippet,
             updatedAt: new Date(s.updatedAt).toISOString()
           })
@@ -2368,11 +2713,12 @@ async function onRunSessionSearch(): Promise<void> {
       const remote = await window.studio.searchHarnessSessions({ query: q, limit: 20 })
       for (const h of remote.hits ?? []) {
         if (seen.has(h.sessionId)) continue
-        const localMatch = sessions.value.find((s) => s.id === h.sessionId)
+        const localMatch = allWorkspaceSessions.value.find((s) => s.id === h.sessionId)
         if (!localMatch) continue
+        const baseTitle = localMatch.title || h.title || h.sessionId.slice(0, 8)
         hits.push({
           ...h,
-          title: localMatch.title || h.title || h.sessionId.slice(0, 8)
+          title: localMatch.projectName ? `[${localMatch.projectName}] ${baseTitle}` : baseTitle
         })
         seen.add(h.sessionId)
       }
@@ -2387,6 +2733,11 @@ async function onRunSessionSearch(): Promise<void> {
 
 function onSelectSearchHit(hit: HarnessSessionSearchHit): void {
   searchModalOpen.value = false
+  const wsMatch = allWorkspaceSessions.value.find((s) => s.id === hit.sessionId)
+  if (wsMatch) {
+    onSelectProjectSession(wsMatch.projectScope, wsMatch.id)
+    return
+  }
   if (sessions.value.some((s) => s.id === hit.sessionId)) {
     onSessionChange(hit.sessionId)
   }
@@ -2433,6 +2784,7 @@ watch(currentProjectChatScope, (nextScope, prevScope) => {
   todoBoardOpen.value = false
   subagentBoardOpen.value = false
   scheduleMenuOpen.value = false
+  setWorkspaceScope(nextScope, project.rootPath)
   loadHistory(nextScope)
   loadActiveMessages()
   void nextTick(() => retryUnresolvedChatImages())
@@ -3314,6 +3666,7 @@ async function runTask(text: string, options: { sourceIndex?: number } = {}): Pr
     sessionId: activeSession.value?.id,
     model: modelId.trim() || undefined,
     ...(providerId ? { providerId } : {}),
+    ...(workspace.value ? { workspace: workspace.value } : {}),
     // 当前 agent 模式：main 进程按 craft/ask/plan 切换 dsh 的 system-prompt
     mode: mode.value,
     ...(canvasContext ? { canvasContext } : {})
@@ -3711,9 +4064,11 @@ watch(running, (isRunning) => {
 })
 
 onMounted(async () => {
-  // 按当前工程作用域恢复历史会话（新建工程自动创建独立空白会话），再订阅事件流
+  setWorkspaceScope(currentProjectChatScope.value, project.rootPath)
+  // 按当前工作空间作用域恢复历史会话（新建工作空间自动创建独立空白会话，显示在 Conversations 区），再订阅事件流
   loadHistory(currentProjectChatScope.value)
   loadActiveMessages()
+  await refreshStatus()
   window.addEventListener('dragend', clearAssetDragOver)
   void refreshSessionSkills()
   void refreshInstalledWorkflows()
@@ -3728,9 +4083,8 @@ onMounted(async () => {
   // 模式选择下拉：点外部或 ESC 收起；用 document 监听，trigger 用 .stop 防止冒泡立即关
   document.addEventListener('click', onModeOutside)
   document.addEventListener('keydown', onModeOutside)
-  // 打开面板即做一次环境预检，未就绪时在面板顶部与空状态区给出具体原因
-  await refreshStatus()
   await loadModels()
+  automationTimer = window.setInterval(checkDueAutomations, 15_000)
   // 闲时预热常驻 dsh：就绪后首条消息跳过 Cordis/MCP 冷启动
   if (typeof window.studio?.prewarmHarness === 'function') {
     void window.studio.prewarmHarness()
@@ -3753,6 +4107,7 @@ onBeforeUnmount(() => {
   if (copyTimer !== null) window.clearTimeout(copyTimer)
   if (historyTimer !== null) window.clearTimeout(historyTimer)
   if (activityTimer !== null) window.clearTimeout(activityTimer)
+  if (automationTimer !== null) window.clearInterval(automationTimer)
   // 卸载前把当前消息与上下文用量落盘，避免切换面板丢失最后一段对话与真实用量
   commitMessages([...messages.value])
   commitContextUsed(harnessContextUsed.value)
@@ -3765,1591 +4120,1873 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="chat-panel"
-    :class="{ 'asset-drag-over': assetDragOver }"
+    :class="{ 'asset-drag-over': assetDragOver, 'sidebar-open': projectsPanelOpen }"
     @dragenter="onChatDragEnter"
     @dragover="onChatDragOver"
     @dragleave="onChatDragLeave"
     @drop="onChatDrop"
   >
-    <div class="chat-status" :class="{ warn: statusWarn }">
-      <!--
-        当前会话标题放在面板最上方：它回答的是「我在看哪段对话」，
-        属于整块面板的上下文，而不该被塞进输入框旁边一个小按钮里。
-      -->
-      <span
-        v-if="activeSession"
-        class="chat-session-title"
-        :title="activeSession.title || t('studio.chat.newChat')"
-      >
-        {{ activeSession.title || t('studio.chat.newChat') }}
-      </span>
-      <span class="dot" />
-      <span class="status-text">{{ statusText }}</span>
-      <!-- 瞬时状态：正在启动 / 已提交给模型 / 仍在等待…，只在状态栏出现，不进消息流 -->
-      <span
-        v-if="activity"
-        class="chat-activity"
-        :class="activityPhase"
-        :title="activity"
-        aria-live="polite"
-      >
-        {{ activity }}
-      </span>
-      <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
-    </div>
-
-    <!-- 自主目标状态条（dsh goal 工具或 /goal 激活时呈现，支持暂停 / 恢复 / 结束） -->
-    <div
-      v-if="sessionGoal && !goalDismissed"
-      class="harness-goal-bar"
-      :class="[sessionGoal.phase, sessionGoal.activation]"
-    >
-      <div class="goal-bar-main">
-        <span class="goal-badge">
-          {{
-            sessionGoal.phase === 'completed'
-              ? t('studio.chat.goalCompleted')
-              : sessionGoal.activation === 'paused'
-                ? t('studio.chat.goalPaused')
-                : t('studio.chat.goalActive')
-          }}
-        </span>
-        <span class="goal-objective" :title="sessionGoal.objective">
-          {{ sessionGoal.objective }}
-        </span>
-        <span v-if="(sessionGoal.roundsSinceUser ?? 0) > 0" class="goal-rounds">
-          {{ t('studio.chat.goalRound', { round: sessionGoal.roundsSinceUser ?? 0 }) }}
-        </span>
-      </div>
-      <div class="goal-bar-actions">
-        <button
-          v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'armed'"
-          type="button"
-          class="goal-btn"
-          @click="onControlGoal('pause')"
-        >
-          {{ t('studio.chat.goalPause') }}
-        </button>
-        <button
-          v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'paused'"
-          type="button"
-          class="goal-btn primary"
-          @click="onControlGoal('resume')"
-        >
-          {{ t('studio.chat.goalResume') }}
-        </button>
-        <button
-          v-if="sessionGoal.phase === 'active'"
-          type="button"
-          class="goal-btn"
-          @click="onControlGoal('complete')"
-        >
-          {{ t('studio.chat.goalComplete') }}
-        </button>
-        <button
-          v-if="sessionGoal.phase === 'completed'"
-          type="button"
-          class="goal-btn icon"
-          @click="goalDismissed = true"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-
-    <!-- Todo 进度看板（dsh todo_write 工具实时驱动，可折叠） -->
-    <div v-if="sessionTodos.length" class="harness-todo-board">
-      <button type="button" class="todo-board-head" @click="todoBoardOpen = !todoBoardOpen">
-        <span class="todo-board-title">{{ t('studio.chat.todoBoardTitle') }}</span>
-        <span class="todo-board-progress">
-          {{
-            t('studio.chat.todoBoardProgress', {
-              done: todoDoneCount,
-              total: sessionTodos.length
-            })
-          }}
-        </span>
-        <span class="todo-board-chevron" :class="{ open: todoBoardOpen }">▾</span>
-      </button>
-      <ul v-if="todoBoardOpen" class="todo-board-list">
-        <li
-          v-for="item in sessionTodos"
-          :key="item.id"
-          class="todo-board-item"
-          :class="item.status"
-        >
-          <span class="todo-status-icon">
-            {{
-              item.status === 'completed'
-                ? '✓'
-                : item.status === 'in_progress'
-                  ? '●'
-                  : item.status === 'cancelled'
-                    ? '✕'
-                    : '○'
-            }}
-          </span>
-          <span class="todo-item-content">{{ item.content }}</span>
-          <span v-if="item.priority" class="todo-priority" :class="item.priority">
-            {{ item.priority }}
-          </span>
-        </li>
-      </ul>
-    </div>
-
-    <!-- Stage 3：子代理并发实时监控看板（Subagent Concurrency Board） -->
-    <div v-if="sessionSubagents.length" class="harness-subagent-board">
+    <!-- 左侧栏：Codex 风格 New Conversation + Automations/Customizations + Projects 工程树 + 下方重构后的 Conversations 历史会话 -->
+    <aside v-show="projectsPanelOpen" class="chat-sidebar codex-projects-panel">
+      <!-- 顶部主操作：+ New Conversation（在当前工作空间 Conversations 下新建对话） -->
       <button
         type="button"
-        class="subagent-board-head"
-        @click="subagentBoardOpen = !subagentBoardOpen"
+        class="codex-new-conv-btn"
+        :disabled="running"
+        :title="t('studio.chat.newConversationBtn')"
+        :aria-label="t('studio.chat.newConversationBtn')"
+        @click="onNewWorkspaceSession"
       >
-        <span class="subagent-board-title">{{ t('studio.chat.subagentBoardTitle') }}</span>
-        <span class="subagent-board-summary">
-          {{
-            t('studio.chat.subagentBoardSummary', {
-              running: runningSubagentsCount,
-              total: sessionSubagents.length
-            })
-          }}
-        </span>
-        <span class="todo-board-chevron" :class="{ open: subagentBoardOpen }">▾</span>
+        <svg
+          viewBox="0 0 16 16"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <path d="M8 3.5V12.5" />
+          <path d="M3.5 8H12.5" />
+        </svg>
+        <span>{{ t('studio.chat.newConversationBtn') }}</span>
       </button>
-      <ul v-if="subagentBoardOpen" class="subagent-board-list">
-        <li
-          v-for="sub in sessionSubagents"
-          :key="sub.sessionId"
-          class="subagent-board-item"
-          :class="sub.status"
+
+      <!-- 快捷导航项：Automations & Customizations -->
+      <div class="codex-sidebar-nav">
+        <button
+          type="button"
+          class="codex-nav-item"
+          :class="{ active: automationsViewOpen || totalActiveAutomationsCount > 0 }"
+          @click.stop="onClickSidebarAutomations"
         >
-          <div class="subagent-item-top">
-            <span class="subagent-status-badge" :class="sub.status">
-              {{
-                sub.status === 'running'
-                  ? t('studio.chat.subagentStatusRunning')
-                  : sub.status === 'idle'
-                    ? t('studio.chat.subagentStatusIdle')
-                    : sub.status === 'error'
-                      ? t('studio.chat.subagentStatusError')
-                      : t('studio.chat.subagentStatusCompleted')
-              }}
-            </span>
-            <code class="subagent-type-tag">@{{ sub.agentType }}</code>
-            <span class="subagent-desc" :title="sub.description">{{ sub.description }}</span>
-            <span class="subagent-calls">
-              {{ t('studio.chat.subagentCalls', { count: sub.toolCount }) }}
-            </span>
-            <button
-              type="button"
-              class="subagent-followup-toggle"
-              @click.stop="
-                subagentFollowupTarget =
-                  subagentFollowupTarget === sub.sessionId ? null : sub.sessionId
-              "
-            >
-              {{ t('studio.chat.subagentFollowupBtn') }}
-            </button>
-          </div>
-          <div v-if="sub.activeTool" class="subagent-active-tool">
-            {{ t('studio.chat.subagentActiveTool', { tool: sub.activeTool }) }}
-          </div>
-          <div
-            v-if="subagentFollowupTarget === sub.sessionId"
-            class="subagent-followup-row"
-            @click.stop
+          <svg
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
           >
-            <input
-              v-model="subagentFollowupDraft"
-              type="text"
-              class="subagent-followup-input"
-              :placeholder="t('studio.chat.subagentFollowupPlaceholder')"
-              @keydown.stop
-              @keydown.enter.prevent="onSteerSubagent(sub)"
-            />
+            <circle cx="8" cy="8" r="5.5" />
+            <path d="M8 5.2V8l2 1.4" />
+          </svg>
+          <span>{{ t('studio.chat.automationsNav') }}</span>
+          <span v-if="totalActiveAutomationsCount > 0" class="codex-nav-badge">{{
+            totalActiveAutomationsCount
+          }}</span>
+        </button>
+
+        <button
+          type="button"
+          class="codex-nav-item"
+          :class="{ active: skillsOpen }"
+          @click.stop="onSkillsCommand"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="14"
+            height="14"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="2.2" y="5" width="11.6" height="8" rx="1.5" />
+            <path d="M5.5 5V3.8A1.3 1.3 0 0 1 6.8 2.5h2.4a1.3 1.3 0 0 1 1.3 1.3V5" />
+            <path d="M2.2 8.5h11.6" />
+          </svg>
+          <span>{{ t('studio.chat.customizationsNav') }}</span>
+          <span v-if="unifiedSkillsCount > 0" class="codex-nav-badge">{{
+            unifiedSkillsCount
+          }}</span>
+        </button>
+      </div>
+
+      <!-- Projects 工程区头部 -->
+      <div class="codex-projects-header">
+        <span class="codex-projects-title">{{ t('studio.chat.projectsTitle') }}</span>
+        <div class="codex-projects-header-actions">
+          <button
+            type="button"
+            class="codex-header-icon-btn"
+            :class="{ active: projectsFilterOpen || Boolean(projectsFilterQuery.trim()) }"
+            :title="t('studio.chat.filterProjects')"
+            :aria-label="t('studio.chat.filterProjects')"
+            @click.stop="projectsFilterOpen = !projectsFilterOpen"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M2.5 4.5h11" />
+              <path d="M4.5 8h7" />
+              <path d="M6.5 11.5h3" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            class="codex-header-icon-btn"
+            :disabled="running"
+            :title="t('studio.chat.addProjectFolder')"
+            :aria-label="t('studio.chat.addProjectFolder')"
+            @click.stop="onAddChatProjectFolder"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M2 4.2A1.2 1.2 0 0 1 3.2 3h2.8l1.3 1.5h5.5A1.2 1.2 0 0 1 14 5.7v2.8" />
+              <path d="M2 5.5v6.3A1.2 1.2 0 0 0 3.2 13h5.3" />
+              <path d="M12 9.5v4" />
+              <path d="M10 11.5h4" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="projectsFilterOpen" class="codex-projects-filter-row">
+        <input
+          v-model="projectsFilterQuery"
+          type="text"
+          class="codex-projects-filter-input"
+          :placeholder="t('studio.chat.filterProjectsPlaceholder')"
+          @keydown.stop
+        />
+      </div>
+
+      <!-- 滚动内容区：上半部分为 Projects 树，紧接其下方为重构后的 Conversations 历史会话 -->
+      <div class="codex-sidebar-scroll">
+        <div v-if="!filteredChatProjectTree.length" class="codex-projects-empty">
+          <span>{{ t('studio.chat.projectsEmptyHint') }}</span>
+        </div>
+
+        <div v-else class="codex-projects-tree">
+          <div
+            v-for="group in filteredChatProjectTree"
+            :key="group.scope"
+            class="codex-project-group"
+            :class="{ 'is-active-project': group.scope === activeChatScope }"
+          >
+            <div class="codex-project-folder-row" :title="group.rootPath">
+              <button
+                type="button"
+                class="codex-project-folder-btn"
+                @click.stop="toggleProjectCollapsed(group.scope)"
+              >
+                <svg
+                  class="codex-folder-icon"
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h5.2A1.2 1.2 0 0 1 14 5.8v6A1.2 1.2 0 0 1 12.8 13H3.2A1.2 1.2 0 0 1 2 11.8V4.2Z"
+                  />
+                </svg>
+                <span class="codex-project-name">{{ group.name }}</span>
+              </button>
+              <div class="codex-project-folder-actions">
+                <button
+                  type="button"
+                  class="codex-folder-action-btn"
+                  :disabled="running"
+                  :title="t('studio.chat.analyzeProjectAction')"
+                  :aria-label="t('studio.chat.analyzeProjectAction')"
+                  @click.stop="onAnalyzeChatProject(group.scope, group.name)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="7" cy="7" r="4" />
+                    <path d="M10.2 10.2 13.5 13.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="codex-folder-action-btn"
+                  :disabled="running"
+                  :title="t('studio.chat.newProjectConversation')"
+                  :aria-label="t('studio.chat.newProjectConversation')"
+                  @click.stop="onNewSessionInProject(group.scope)"
+                >
+                  +
+                </button>
+                <button
+                  v-if="group.scope !== currentProjectChatScope"
+                  type="button"
+                  class="codex-folder-action-btn danger"
+                  :disabled="running"
+                  :title="t('studio.chat.removeProjectFolder')"
+                  :aria-label="t('studio.chat.removeProjectFolder')"
+                  @click.stop="onRemoveChatProjectFolder(group.scope)"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            <ul v-if="!group.collapsed" class="codex-session-list">
+              <li
+                v-for="s in group.sessions"
+                :key="s.id"
+                class="codex-conv-entry"
+                :class="{
+                  active: group.scope === activeChatScope && s.id === activeId,
+                  pinned: Boolean(s.pinned)
+                }"
+              >
+                <button
+                  type="button"
+                  class="codex-session-btn"
+                  :disabled="running"
+                  @click.stop="onSelectProjectSession(group.scope, s.id)"
+                >
+                  <span class="codex-session-title">
+                    {{ s.title || t('studio.chat.untitledConversation') }}
+                  </span>
+                </button>
+                <!-- 悬停操作组：归档导出 (📥) + 置顶 (📌) + 更多/删除 (⋮)，还原截图悬停工具条 -->
+                <div class="codex-conv-hover-tools">
+                  <button
+                    type="button"
+                    class="codex-conv-tool-btn"
+                    :disabled="running || exportBusy"
+                    :title="t('studio.chat.exportSession')"
+                    @click.stop="onExportSessionById(s.id)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <rect x="2.5" y="2.5" width="11" height="11" rx="1.8" />
+                      <path d="M8 5.2v4.8" />
+                      <path d="m5.8 8 2.2 2.2L10.2 8" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="codex-conv-tool-btn"
+                    :class="{ active: Boolean(s.pinned) }"
+                    :title="s.pinned ? t('studio.chat.unpinSession') : t('studio.chat.pinSession')"
+                    @click.stop="togglePinProjectSession(group.scope, s.id)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M5.5 2.8h5l-.8 3.6 1.8 1.6v1.2H4.5V8l1.8-1.6-.8-3.6Z" />
+                      <path d="M8 9.2v4.2" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="codex-conv-tool-btn danger"
+                    :disabled="running"
+                    :title="t('studio.chat.deleteSession')"
+                    @click.stop="onDeleteProjectSession(group.scope, s.id)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="12"
+                      height="12"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <circle cx="8" cy="3.8" r="1.15" />
+                      <circle cx="8" cy="8" r="1.15" />
+                      <circle cx="8" cy="12.2" r="1.15" />
+                    </svg>
+                  </button>
+                </div>
+                <!-- 选中态默认显示 Codex 风格四点图标 (::) -->
+                <button
+                  v-if="group.scope === activeChatScope && s.id === activeId"
+                  type="button"
+                  class="codex-session-dots-btn"
+                  :disabled="running"
+                  :title="t('studio.chat.deleteSession')"
+                  :aria-label="t('studio.chat.deleteSession')"
+                  @click.stop="onDeleteProjectSession(group.scope, s.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <circle cx="5.5" cy="5.5" r="1.35" />
+                    <circle cx="10.5" cy="5.5" r="1.35" />
+                    <circle cx="5.5" cy="10.5" r="1.35" />
+                    <circle cx="10.5" cy="10.5" r="1.35" />
+                  </svg>
+                </button>
+                <!-- 未命名空白草稿会话：右侧显示蓝点指示器 -->
+                <span
+                  v-else-if="isUntitledDraftSession(s)"
+                  class="codex-session-unread-dot"
+                  aria-hidden="true"
+                />
+                <!-- 历史会话：显示 3d / 6d / 13d 紧凑相对时间 -->
+                <span v-else class="codex-session-age-label">
+                  {{ formatChatSessionRelativeAge(s.updatedAt) }}
+                </span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- 在工程下方添加 Conversations 会话区（重构自底部历史会话） -->
+        <div class="codex-conversations-section">
+          <div class="codex-conversations-header">
             <button
               type="button"
-              class="subagent-followup-send"
-              :disabled="!subagentFollowupDraft.trim()"
-              @click.stop="onSteerSubagent(sub)"
+              class="codex-conversations-toggle"
+              @click.stop="conversationsSectionOpen = !conversationsSectionOpen"
             >
-              {{ t('studio.chat.steerNow') }}
+              <span class="codex-conversations-title">{{
+                t('studio.chat.conversationsTitle')
+              }}</span>
+              <svg
+                class="codex-conversations-chevron"
+                :class="{ open: conversationsSectionOpen }"
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m6 4 4 4-4 4" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              class="codex-header-icon-btn"
+              :disabled="running"
+              :title="t('studio.chat.newConversationBtn')"
+              :aria-label="t('studio.chat.newConversationBtn')"
+              @click.stop="onNewWorkspaceSession"
+            >
+              +
             </button>
           </div>
-        </li>
-      </ul>
-    </div>
 
-    <!-- Stage 2：画布异步事件触发器横幅（Reactive Canvas Event Hook） -->
-    <div v-if="latestCanvasEvent" class="harness-canvas-event-bar" :class="latestCanvasEvent.kind">
-      <div class="canvas-event-main">
-        <span class="canvas-event-badge">
-          {{ t('studio.chat.canvasEventBannerTitle') }}
-        </span>
-        <span class="canvas-event-summary" :title="latestCanvasEvent.summary">
-          {{ latestCanvasEvent.summary }}
-        </span>
-      </div>
-      <div class="canvas-event-actions">
-        <button
-          v-if="latestCanvasEvent.kind === 'node_error'"
-          type="button"
-          class="canvas-event-btn danger"
-          @click="onHandleCanvasEvent('diagnose')"
-        >
-          {{ t('studio.chat.canvasEventDiagnoseBtn') }}
-        </button>
-        <button
-          v-else
-          type="button"
-          class="canvas-event-btn primary"
-          @click="onHandleCanvasEvent('review')"
-        >
-          {{ t('studio.chat.canvasEventReviewBtn') }}
-        </button>
-        <button
-          type="button"
-          class="canvas-event-dismiss"
-          :title="t('studio.chat.canvasEventDismiss')"
-          @click="latestCanvasEvent = null"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-
-    <div class="chat-messages-wrap">
-      <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
-        <div v-if="!messages.length" class="chat-empty">
-          <div class="chat-empty-hero">
-            <div class="chat-empty-title">{{ t('studio.chat.empty') }}</div>
-            <div v-if="statusWarn && status?.message" class="chat-empty-hint">
-              {{ status.message }}
-            </div>
-            <div class="zero-key-demo-banner">
-              <div class="zero-key-demo-info">
-                <span class="zero-key-demo-badge">⚡ ZERO-KEY LIVE DEMO</span>
-                <strong class="zero-key-demo-title">
-                  {{
-                    isEnChat
-                      ? 'Instant 6-Layer Xianxia UI + 3D Exploded PSD Workbench'
-                      : '免配 Key 秒开：仙侠装备 UI · 6 层 3D 爆炸拆解样板间'
-                  }}
-                </strong>
-                <span class="zero-key-demo-desc">
-                  {{
-                    isEnChat
-                      ? 'Pre-loaded with 6 transparent UI layers & auto-grouped folders. Test 3D exploded view, PSD export, and HTML5/Godot/Unity exporters in 1 click.'
-                      : '内置 6 张高清矢量透明图层与游戏 UI 自动分组，一键体验「🧊 3D 全息层叠爆炸视图」、导出真实 PSD 与可点击 HTML5/Godot/Unity 预制体。'
-                  }}
-                </span>
-              </div>
-              <button type="button" class="zero-key-demo-btn" @click="onLaunchZeroKeyDemo">
-                {{ isEnChat ? '🚀 Open Live Demo' : '🚀 秒开样板间' }}
-              </button>
-            </div>
-          </div>
-
-          <div class="showcase-starter-section">
-            <div class="showcase-starter-header">
-              <span>{{
-                isEnChat
-                  ? '✨ 1-Click Blockbuster Workflows'
-                  : '✨ 一句话爆款创作配方（点击即在当前画布搭图运行）'
-              }}</span>
-            </div>
-            <div class="showcase-starter-grid">
+          <ul v-show="conversationsSectionOpen" class="codex-session-list codex-flat-conversations">
+            <li
+              v-for="s in filteredSidebarSessions"
+              :key="s.id"
+              class="codex-conv-entry flat"
+              :class="{
+                active: activeChatScope === currentProjectChatScope && s.id === activeId,
+                pinned: Boolean(s.pinned)
+              }"
+            >
               <button
-                v-for="card in showcaseStarters"
-                :key="card.id"
                 type="button"
-                class="showcase-starter-card"
-                @click="onClickShowcaseStarter(card)"
+                class="codex-session-btn"
+                :disabled="running"
+                @click.stop="onSelectProjectSession(currentProjectChatScope, s.id)"
               >
-                <div class="showcase-card-top">
-                  <span class="showcase-card-icon" :style="{ background: card.accent }">
-                    {{ card.icon }}
-                  </span>
-                  <span class="showcase-card-badge">
-                    {{ isEnChat ? card.badgeEn : card.badgeZh }}
-                  </span>
-                </div>
-                <div class="showcase-card-title">
-                  {{ isEnChat ? card.titleEn : card.titleZh }}
-                </div>
-                <div class="showcase-card-desc">
-                  {{ isEnChat ? card.descEn : card.descZh }}
-                </div>
-                <div class="showcase-card-foot">
-                  <code class="showcase-card-pipeline">{{ card.pipelineTag }}</code>
-                  <span class="showcase-card-go">▶</span>
-                </div>
+                <span class="codex-session-title">
+                  {{ s.title || t('studio.chat.untitledConversation') }}
+                </span>
               </button>
+              <div class="codex-conv-hover-tools">
+                <button
+                  type="button"
+                  class="codex-conv-tool-btn"
+                  :disabled="running || exportBusy"
+                  :title="t('studio.chat.exportSession')"
+                  @click.stop="onExportSessionById(s.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <rect x="2.5" y="2.5" width="11" height="11" rx="1.8" />
+                    <path d="M8 5.2v4.8" />
+                    <path d="m5.8 8 2.2 2.2L10.2 8" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="codex-conv-tool-btn"
+                  :class="{ active: Boolean(s.pinned) }"
+                  :title="s.pinned ? t('studio.chat.unpinSession') : t('studio.chat.pinSession')"
+                  @click.stop="togglePinProjectSession(currentProjectChatScope, s.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M5.5 2.8h5l-.8 3.6 1.8 1.6v1.2H4.5V8l1.8-1.6-.8-3.6Z" />
+                    <path d="M8 9.2v4.2" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="codex-conv-tool-btn danger"
+                  :disabled="running"
+                  :title="t('studio.chat.deleteSession')"
+                  @click.stop="onDeleteProjectSession(currentProjectChatScope, s.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="12"
+                    height="12"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <circle cx="8" cy="3.8" r="1.15" />
+                    <circle cx="8" cy="8" r="1.15" />
+                    <circle cx="8" cy="12.2" r="1.15" />
+                  </svg>
+                </button>
+              </div>
+              <button
+                v-if="activeChatScope === currentProjectChatScope && s.id === activeId"
+                type="button"
+                class="codex-session-dots-btn"
+                :disabled="running"
+                :title="t('studio.chat.deleteSession')"
+                @click.stop="onDeleteProjectSession(currentProjectChatScope, s.id)"
+              >
+                <svg
+                  viewBox="0 0 16 16"
+                  width="13"
+                  height="13"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <circle cx="5.5" cy="5.5" r="1.35" />
+                  <circle cx="10.5" cy="5.5" r="1.35" />
+                  <circle cx="5.5" cy="10.5" r="1.35" />
+                  <circle cx="10.5" cy="10.5" r="1.35" />
+                </svg>
+              </button>
+              <span
+                v-else-if="isUntitledDraftSession(s)"
+                class="codex-session-unread-dot"
+                aria-hidden="true"
+              />
+              <span v-else class="codex-session-age-label">
+                {{ formatChatSessionRelativeAge(s.updatedAt) }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧主栏：AI 对话工作区 -->
+    <div class="chat-main">
+      <div class="chat-status" :class="{ warn: statusWarn }">
+        <button
+          type="button"
+          class="chat-projects-toggle"
+          :class="{ active: projectsPanelOpen }"
+          :title="t('studio.chat.toggleSidebar')"
+          :aria-label="t('studio.chat.toggleSidebar')"
+          @click.stop="projectsPanelOpen = !projectsPanelOpen"
+        >
+          <svg
+            viewBox="0 0 16 16"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect x="2" y="2.5" width="12" height="11" rx="1.8" />
+            <path d="M6.2 2.5v11" />
+          </svg>
+        </button>
+        <!--
+          当前会话标题放在面板最上方：它回答的是「我在看哪段对话」，
+          属于整块面板的上下文，而不该被塞进输入框旁边一个小按钮里。
+        -->
+        <span
+          v-if="activeSession"
+          class="chat-session-title"
+          :title="activeSession.title || t('studio.chat.newChat')"
+        >
+          {{ activeSession.title || t('studio.chat.newChat') }}
+        </span>
+        <span class="dot" />
+        <span class="status-text">{{ statusText }}</span>
+        <!-- 瞬时状态：正在启动 / 已提交给模型 / 仍在等待…，只在状态栏出现，不进消息流 -->
+        <span
+          v-if="activity"
+          class="chat-activity"
+          :class="activityPhase"
+          :title="activity"
+          aria-live="polite"
+        >
+          {{ activity }}
+        </span>
+        <span v-if="workspace" class="chat-workspace" :title="workspace">{{ workspaceLabel }}</span>
+      </div>
+
+      <!-- Codex 风格 Automations 定时任务创建与管理视图 -->
+      <div v-if="automationsViewOpen" class="codex-automations-view">
+        <div class="codex-auto-header">
+          <input
+            ref="automationTitleInputRef"
+            v-model="automationDraft.title"
+            type="text"
+            class="codex-auto-title-input"
+            :placeholder="t('studio.chat.automationUntitled')"
+            @keydown.stop
+          />
+          <div class="codex-auto-header-actions">
+            <button type="button" class="codex-auto-btn cancel" @click="onCancelAutomationEditor">
+              {{ t('studio.chat.automationCancel') }}
+            </button>
+            <button
+              type="button"
+              class="codex-auto-btn create"
+              :disabled="!automationDraft.instructions.trim()"
+              @click="onCreateAutomation"
+            >
+              {{ t('studio.chat.automationCreate') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="codex-auto-env-row">
+          <span class="codex-auto-env-label">{{ t('studio.chat.automationThisComputer') }}</span>
+          <select
+            v-model="automationDraft.modelId"
+            class="codex-auto-select"
+            :aria-label="t('studio.chat.model')"
+          >
+            <option v-if="!modelOptions.length" value="">Flash</option>
+            <option
+              v-for="m in modelOptions"
+              :key="modelKey(m.providerId, m.id)"
+              :value="modelKey(m.providerId, m.id)"
+            >
+              {{ m.label }}
+            </option>
+          </select>
+        </div>
+        <p class="codex-auto-subtitle">{{ t('studio.chat.automationSubtitle') }}</p>
+
+        <div class="codex-auto-section">
+          <div class="codex-auto-section-label">{{ t('studio.chat.automationTriggerLabel') }}</div>
+          <div class="codex-auto-card">
+            <div class="codex-auto-trigger-title">
+              <svg
+                viewBox="0 0 16 16"
+                width="15"
+                height="15"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="8" cy="8" r="5.5" />
+                <path d="M8 5.2V8l2 1.4" />
+              </svg>
+              <span>{{ t('studio.chat.automationScheduledTitle') }}</span>
+            </div>
+            <div class="codex-auto-schedule-controls">
+              <select v-model="automationDraft.frequency" class="codex-auto-select">
+                <option value="every_day">{{ t('studio.chat.automationFreqEveryDay') }}</option>
+                <option value="weekdays">{{ t('studio.chat.automationFreqWeekdays') }}</option>
+                <option value="every_monday">
+                  {{ t('studio.chat.automationFreqEveryMonday') }}
+                </option>
+                <option value="every_hour">{{ t('studio.chat.automationFreqEveryHour') }}</option>
+                <option value="every_30m">{{ t('studio.chat.automationFreqEvery30m') }}</option>
+              </select>
+              <template
+                v-if="
+                  automationDraft.frequency === 'every_day' ||
+                  automationDraft.frequency === 'weekdays' ||
+                  automationDraft.frequency === 'every_monday'
+                "
+              >
+                <span class="codex-auto-at-text">{{ t('studio.chat.automationAtLabel') }}</span>
+                <select v-model="automationDraft.timeOfDay" class="codex-auto-select">
+                  <option
+                    v-for="slot in automationTimeOptions"
+                    :key="slot.value"
+                    :value="slot.value"
+                  >
+                    {{ slot.label }}
+                  </option>
+                </select>
+              </template>
+              <span class="codex-auto-tz-label">{{ localTimezoneLabel }}</span>
             </div>
           </div>
         </div>
-        <template v-for="(msg, i) in messages" :key="`${activeId}:${i}`">
-          <template v-if="msg.kind === 'user'">
-            <div class="msg-row user">
-              <!-- 操作条：常显在气泡上方，动作均用图标 -->
-              <div class="bubble-actions">
-                <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
-                <!-- 重发本条：执行中入队（见 onResend），空闲时直接再发一轮 -->
-                <button
-                  class="bubble-action"
-                  :class="{ done: resendIndex === i }"
-                  :title="
-                    resendIndex === i ? t('studio.chat.resendQueued') : t('studio.chat.resendTitle')
-                  "
-                  @click.stop="onResend(i)"
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="13"
-                    height="13"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M13 8 A5 5 0 1 1 11 4" />
-                    <path d="M13 2.4 V5 H10.4" />
-                  </svg>
-                </button>
-                <!-- 会话回退：截断此轮及之后的消息，并恢复本条到输入框 -->
-                <button
-                  class="bubble-action"
-                  :disabled="running"
-                  :title="t('studio.chat.rewindTitle')"
-                  @click.stop="onRewindAtMessage(i, false)"
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="13"
-                    height="13"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M6.5 4 L2.5 8 L6.5 12" />
-                    <path d="M3 8 H11 A2.5 2.5 0 0 1 13.5 10.5 V12" />
-                  </svg>
-                </button>
-                <!-- 会话分叉：从此处克隆出一个独立新会话分支 -->
-                <button
-                  class="bubble-action"
-                  :disabled="running"
-                  :title="t('studio.chat.forkTitle')"
-                  @click.stop="onRewindAtMessage(i, true)"
-                >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="13"
-                    height="13"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.6"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle cx="5" cy="3.5" r="1.5" />
-                    <circle cx="11" cy="3.5" r="1.5" />
-                    <circle cx="8" cy="12.5" r="1.5" />
-                    <path d="M5 5 V7.5 C5 9 8 9 8 11" />
-                    <path d="M11 5 V7.5 C11 9 8 9 8 11" />
-                  </svg>
-                </button>
-              </div>
-              <div class="bubble user" :class="{ steered: msg.steered }">
-                <span v-if="msg.steered" class="steered-badge">{{
-                  t('studio.chat.steeredBadge')
-                }}</span>
-                <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
-              </div>
-            </div>
-            <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），默认展开以直接呈现 MCP 操作 -->
-            <details v-if="taskToolsAt(i).length" class="task-list-card" open>
-              <summary class="task-list-title">
-                {{ t('studio.chat.taskList') }}
-                <span class="task-list-summary">{{ taskToolsSummary(i) }}</span>
-              </summary>
-              <ul class="task-list">
-                <li
-                  v-for="tm in taskToolsAt(i)"
-                  :key="tm.key"
-                  class="task-item"
-                  :class="tm.state"
-                  :title="tm.detail"
-                >
-                  <span class="task-dot" />
-                  <span class="task-name">{{ toolDisplayName(tm) }}</span>
-                  <span v-if="toolShortCode(tm)" class="task-code-badge">{{
-                    toolShortCode(tm)
-                  }}</span>
-                  <span class="task-state">
-                    {{
-                      tm.state === 'start'
-                        ? t('studio.chat.toolRunning')
-                        : tm.state === 'done'
-                          ? t('studio.chat.toolDone')
-                          : t('studio.chat.toolFailed')
-                    }}
-                  </span>
-                  <ul v-if="toolSteps(tm).length" class="task-step-list">
-                    <li
-                      v-for="(step, sIdx) in toolSteps(tm)"
-                      :key="sIdx"
-                      class="task-step-item"
-                      :class="`step-${stepKind(step)}`"
-                    >
-                      <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
-                      <span class="tool-step-text">{{ step }}</span>
-                    </li>
-                  </ul>
-                  <!-- 详细参数/摘要：执行中自动展开，命令完成后折叠为一行摘要，可手动点开展开 -->
-                  <details
-                    v-if="toolArgs(tm).length || tm.detail"
-                    class="task-params"
-                    :open="tm.state === 'start'"
-                  >
-                    <summary class="task-params-summary">
-                      {{ tm.detail || t('studio.chat.toolParams') }}
-                    </summary>
-                    <div v-if="toolArgs(tm).length" class="task-param-list">
-                      <span
-                        v-for="p in toolArgs(tm)"
-                        :key="p.key"
-                        class="task-param"
-                        :title="`${p.key}: ${p.value}`"
-                      >
-                        <span class="task-param-key">{{ p.key }}</span>
-                        <span class="task-param-value">{{ p.value }}</span>
-                      </span>
-                    </div>
-                    <div v-else-if="tm.detail" class="task-detail" :title="tm.detail">
-                      {{ tm.detail }}
-                    </div>
-                  </details>
-                  <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
-                  <ChatAssetPreview
-                    v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
-                    :relative-path="tm.relativePath"
-                  />
-                  <!-- 子代理活动：嵌套在发起它的 subagent 卡片下，执行中展开 -->
-                  <details
-                    v-if="subagentToolsOf(i, tm).length"
-                    class="subagent-tools"
-                    :open="tm.state === 'start'"
-                  >
-                    <summary class="subagent-tools-summary">
-                      {{
-                        t('studio.chat.subagentSteps', {
-                          done: subagentToolsOf(i, tm).filter((c) => c.state === 'done').length,
-                          total: subagentToolsOf(i, tm).length
-                        })
-                      }}
-                    </summary>
-                    <ul class="subagent-tool-list">
-                      <li
-                        v-for="ct in subagentToolsOf(i, tm)"
-                        :key="ct.key"
-                        class="subagent-tool"
-                        :class="ct.state"
-                        :title="ct.detail"
-                      >
-                        <span class="task-dot" />
-                        <span class="task-name">{{ ct.name }}</span>
-                        <span v-if="ct.detail" class="subagent-tool-detail">{{ ct.detail }}</span>
-                      </li>
-                    </ul>
-                  </details>
-                </li>
-              </ul>
-            </details>
-          </template>
-          <div v-else-if="msg.kind === 'assistant'" class="msg-row assistant">
-            <div class="bubble assistant">
-              <div class="bubble-actions">
-                <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
-              </div>
-              <details v-if="msg.reasoning" class="reasoning">
-                <summary>{{ t('studio.chat.thinking') }}</summary>
-                <pre>{{ msg.reasoning }}</pre>
-              </details>
-              <div
-                v-chat-img
-                class="md-body"
-                @click="onCodeCopyClick"
-                v-html="renderChatBody(msg.text)"
-              />
-            </div>
+
+        <div class="codex-auto-section">
+          <div class="codex-auto-section-label">
+            {{ t('studio.chat.automationInstructionsLabel') }}
           </div>
-          <!-- 可玩 HTML 产物卡：只有一个「试玩」按钮，点击直接开试玩窗口 -->
-          <div v-else-if="msg.kind === 'game'" class="msg-row asset">
-            <div class="asset-card game-card">
-              <div class="game-card-head">
-                <span class="game-card-icon" aria-hidden="true">🎮</span>
-                <span class="game-card-title" :title="msg.title">{{ msg.title }}</span>
+          <div class="codex-auto-card instructions">
+            <textarea
+              v-model="automationDraft.instructions"
+              class="codex-auto-textarea"
+              rows="5"
+              :placeholder="t('studio.chat.automationInstructionsPlaceholder')"
+              @keydown.stop
+            />
+          </div>
+        </div>
+
+        <div v-if="chatAutomations.length > 0" class="codex-auto-section">
+          <div class="codex-auto-section-label">
+            {{ t('studio.chat.automationSavedListTitle') }} ({{ chatAutomations.length }})
+          </div>
+          <ul class="codex-auto-saved-list">
+            <li
+              v-for="item in chatAutomations"
+              :key="item.id"
+              class="codex-auto-saved-item"
+              :class="{ paused: !item.enabled }"
+            >
+              <div class="codex-auto-saved-main">
+                <div class="codex-auto-saved-head">
+                  <span class="codex-auto-saved-title">{{ item.title }}</span>
+                  <span class="codex-auto-saved-schedule">
+                    {{ formatAutomationFrequencySummary(item) }}
+                  </span>
+                </div>
+                <p class="codex-auto-saved-prompt">{{ item.instructions }}</p>
               </div>
-              <button type="button" class="play-btn" @click.stop="playGame(msg)">
-                ▶ {{ t('studio.chat.gamePlay.play') }}
+              <div class="codex-auto-saved-actions">
+                <button
+                  type="button"
+                  class="codex-auto-item-btn primary"
+                  :disabled="running"
+                  @click="onRunAutomationItemNow(item)"
+                >
+                  {{ t('studio.chat.automationRunNow') }}
+                </button>
+                <button
+                  type="button"
+                  class="codex-auto-item-btn"
+                  @click="toggleAutomationEnabled(item.id)"
+                >
+                  {{
+                    item.enabled
+                      ? t('studio.chat.automationPause')
+                      : t('studio.chat.automationResume')
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="codex-auto-item-btn danger"
+                  @click="removeChatAutomation(item.id)"
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 自主目标状态条（dsh goal 工具或 /goal 激活时呈现，支持暂停 / 恢复 / 结束） -->
+      <div
+        v-if="sessionGoal && !goalDismissed"
+        class="harness-goal-bar"
+        :class="[sessionGoal.phase, sessionGoal.activation]"
+      >
+        <div class="goal-bar-main">
+          <span class="goal-badge">
+            {{
+              sessionGoal.phase === 'completed'
+                ? t('studio.chat.goalCompleted')
+                : sessionGoal.activation === 'paused'
+                  ? t('studio.chat.goalPaused')
+                  : t('studio.chat.goalActive')
+            }}
+          </span>
+          <span class="goal-objective" :title="sessionGoal.objective">
+            {{ sessionGoal.objective }}
+          </span>
+          <span v-if="(sessionGoal.roundsSinceUser ?? 0) > 0" class="goal-rounds">
+            {{ t('studio.chat.goalRound', { round: sessionGoal.roundsSinceUser ?? 0 }) }}
+          </span>
+        </div>
+        <div class="goal-bar-actions">
+          <button
+            v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'armed'"
+            type="button"
+            class="goal-btn"
+            @click="onControlGoal('pause')"
+          >
+            {{ t('studio.chat.goalPause') }}
+          </button>
+          <button
+            v-if="sessionGoal.phase === 'active' && sessionGoal.activation === 'paused'"
+            type="button"
+            class="goal-btn primary"
+            @click="onControlGoal('resume')"
+          >
+            {{ t('studio.chat.goalResume') }}
+          </button>
+          <button
+            v-if="sessionGoal.phase === 'active'"
+            type="button"
+            class="goal-btn"
+            @click="onControlGoal('complete')"
+          >
+            {{ t('studio.chat.goalComplete') }}
+          </button>
+          <button
+            v-if="sessionGoal.phase === 'completed'"
+            type="button"
+            class="goal-btn icon"
+            @click="goalDismissed = true"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      <!-- Todo 进度看板（dsh todo_write 工具实时驱动，可折叠） -->
+      <div v-if="sessionTodos.length" class="harness-todo-board">
+        <button type="button" class="todo-board-head" @click="todoBoardOpen = !todoBoardOpen">
+          <span class="todo-board-title">{{ t('studio.chat.todoBoardTitle') }}</span>
+          <span class="todo-board-progress">
+            {{
+              t('studio.chat.todoBoardProgress', {
+                done: todoDoneCount,
+                total: sessionTodos.length
+              })
+            }}
+          </span>
+          <span class="todo-board-chevron" :class="{ open: todoBoardOpen }">▾</span>
+        </button>
+        <ul v-if="todoBoardOpen" class="todo-board-list">
+          <li
+            v-for="item in sessionTodos"
+            :key="item.id"
+            class="todo-board-item"
+            :class="item.status"
+          >
+            <span class="todo-status-icon">
+              {{
+                item.status === 'completed'
+                  ? '✓'
+                  : item.status === 'in_progress'
+                    ? '●'
+                    : item.status === 'cancelled'
+                      ? '✕'
+                      : '○'
+              }}
+            </span>
+            <span class="todo-item-content">{{ item.content }}</span>
+            <span v-if="item.priority" class="todo-priority" :class="item.priority">
+              {{ item.priority }}
+            </span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Stage 3：子代理并发实时监控看板（Subagent Concurrency Board） -->
+      <div v-if="sessionSubagents.length" class="harness-subagent-board">
+        <button
+          type="button"
+          class="subagent-board-head"
+          @click="subagentBoardOpen = !subagentBoardOpen"
+        >
+          <span class="subagent-board-title">{{ t('studio.chat.subagentBoardTitle') }}</span>
+          <span class="subagent-board-summary">
+            {{
+              t('studio.chat.subagentBoardSummary', {
+                running: runningSubagentsCount,
+                total: sessionSubagents.length
+              })
+            }}
+          </span>
+          <span class="todo-board-chevron" :class="{ open: subagentBoardOpen }">▾</span>
+        </button>
+        <ul v-if="subagentBoardOpen" class="subagent-board-list">
+          <li
+            v-for="sub in sessionSubagents"
+            :key="sub.sessionId"
+            class="subagent-board-item"
+            :class="sub.status"
+          >
+            <div class="subagent-item-top">
+              <span class="subagent-status-badge" :class="sub.status">
+                {{
+                  sub.status === 'running'
+                    ? t('studio.chat.subagentStatusRunning')
+                    : sub.status === 'idle'
+                      ? t('studio.chat.subagentStatusIdle')
+                      : sub.status === 'error'
+                        ? t('studio.chat.subagentStatusError')
+                        : t('studio.chat.subagentStatusCompleted')
+                }}
+              </span>
+              <code class="subagent-type-tag">@{{ sub.agentType }}</code>
+              <span class="subagent-desc" :title="sub.description">{{ sub.description }}</span>
+              <span class="subagent-calls">
+                {{ t('studio.chat.subagentCalls', { count: sub.toolCount }) }}
+              </span>
+              <button
+                type="button"
+                class="subagent-followup-toggle"
+                @click.stop="
+                  subagentFollowupTarget =
+                    subagentFollowupTarget === sub.sessionId ? null : sub.sessionId
+                "
+              >
+                {{ t('studio.chat.subagentFollowupBtn') }}
               </button>
             </div>
-          </div>
-          <!-- 一句话游戏卡：节点图已建好，可打开画布 / 运行整图 / 试玩，并可勾选「生成后自动运行」 -->
-          <div v-else-if="msg.kind === 'oneSentenceGame'" class="msg-row asset">
-            <div class="asset-card">
-              <ChatOneSentenceGameCard :info="msg.info" />
+            <div v-if="sub.activeTool" class="subagent-active-tool">
+              {{ t('studio.chat.subagentActiveTool', { tool: sub.activeTool }) }}
+            </div>
+            <div
+              v-if="subagentFollowupTarget === sub.sessionId"
+              class="subagent-followup-row"
+              @click.stop
+            >
+              <input
+                v-model="subagentFollowupDraft"
+                type="text"
+                class="subagent-followup-input"
+                :placeholder="t('studio.chat.subagentFollowupPlaceholder')"
+                @keydown.stop
+                @keydown.enter.prevent="onSteerSubagent(sub)"
+              />
+              <button
+                type="button"
+                class="subagent-followup-send"
+                :disabled="!subagentFollowupDraft.trim()"
+                @click.stop="onSteerSubagent(sub)"
+              >
+                {{ t('studio.chat.steerNow') }}
+              </button>
+            </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Stage 2：画布异步事件触发器横幅（Reactive Canvas Event Hook） -->
+      <div
+        v-if="latestCanvasEvent"
+        class="harness-canvas-event-bar"
+        :class="latestCanvasEvent.kind"
+      >
+        <div class="canvas-event-main">
+          <span class="canvas-event-badge">
+            {{ t('studio.chat.canvasEventBannerTitle') }}
+          </span>
+          <span class="canvas-event-summary" :title="latestCanvasEvent.summary">
+            {{ latestCanvasEvent.summary }}
+          </span>
+        </div>
+        <div class="canvas-event-actions">
+          <button
+            v-if="latestCanvasEvent.kind === 'node_error'"
+            type="button"
+            class="canvas-event-btn danger"
+            @click="onHandleCanvasEvent('diagnose')"
+          >
+            {{ t('studio.chat.canvasEventDiagnoseBtn') }}
+          </button>
+          <button
+            v-else
+            type="button"
+            class="canvas-event-btn primary"
+            @click="onHandleCanvasEvent('review')"
+          >
+            {{ t('studio.chat.canvasEventReviewBtn') }}
+          </button>
+          <button
+            type="button"
+            class="canvas-event-dismiss"
+            :title="t('studio.chat.canvasEventDismiss')"
+            @click="latestCanvasEvent = null"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      <div class="chat-messages-wrap">
+        <div ref="listRef" class="chat-messages" @scroll="onChatScroll">
+          <div v-if="!messages.length" class="chat-empty">
+            <div class="chat-empty-hero">
+              <div class="chat-empty-title">{{ t('studio.chat.empty') }}</div>
+              <div v-if="statusWarn && status?.message" class="chat-empty-hint">
+                {{ status.message }}
+              </div>
+              <div class="zero-key-demo-banner">
+                <div class="zero-key-demo-info">
+                  <span class="zero-key-demo-badge">⚡ ZERO-KEY LIVE DEMO</span>
+                  <strong class="zero-key-demo-title">
+                    {{
+                      isEnChat
+                        ? 'Instant 6-Layer Xianxia UI + 3D Exploded PSD Workbench'
+                        : '免配 Key 秒开：仙侠装备 UI · 6 层 3D 爆炸拆解样板间'
+                    }}
+                  </strong>
+                  <span class="zero-key-demo-desc">
+                    {{
+                      isEnChat
+                        ? 'Pre-loaded with 6 transparent UI layers & auto-grouped folders. Test 3D exploded view, PSD export, and HTML5/Godot/Unity exporters in 1 click.'
+                        : '内置 6 张高清矢量透明图层与游戏 UI 自动分组，一键体验「🧊 3D 全息层叠爆炸视图」、导出真实 PSD 与可点击 HTML5/Godot/Unity 预制体。'
+                    }}
+                  </span>
+                </div>
+                <button type="button" class="zero-key-demo-btn" @click="onLaunchZeroKeyDemo">
+                  {{ isEnChat ? '🚀 Open Live Demo' : '🚀 秒开样板间' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="showcase-starter-section">
+              <div class="showcase-starter-header">
+                <span>{{
+                  isEnChat
+                    ? '✨ 1-Click Blockbuster Workflows'
+                    : '✨ 一句话爆款创作配方（点击即在当前画布搭图运行）'
+                }}</span>
+              </div>
+              <div class="showcase-starter-grid">
+                <button
+                  v-for="card in showcaseStarters"
+                  :key="card.id"
+                  type="button"
+                  class="showcase-starter-card"
+                  @click="onClickShowcaseStarter(card)"
+                >
+                  <div class="showcase-card-top">
+                    <span class="showcase-card-icon" :style="{ background: card.accent }">
+                      {{ card.icon }}
+                    </span>
+                    <span class="showcase-card-badge">
+                      {{ isEnChat ? card.badgeEn : card.badgeZh }}
+                    </span>
+                  </div>
+                  <div class="showcase-card-title">
+                    {{ isEnChat ? card.titleEn : card.titleZh }}
+                  </div>
+                  <div class="showcase-card-desc">
+                    {{ isEnChat ? card.descEn : card.descZh }}
+                  </div>
+                  <div class="showcase-card-foot">
+                    <code class="showcase-card-pipeline">{{ card.pipelineTag }}</code>
+                    <span class="showcase-card-go">▶</span>
+                  </div>
+                </button>
+              </div>
             </div>
           </div>
-          <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D/HTML）时追加到对话末尾，与任务清单的状态卡分离 -->
-          <div v-else-if="msg.kind === 'asset'" class="msg-row asset">
-            <div class="asset-card">
-              <ChatAssetPreview :relative-path="msg.relativePath" />
-              <!-- 同批次产物（矢量源 / 烘焙位图 / 帧序列等）折叠在同一张卡里：展开后逐份仍可单独入库 -->
-              <ul v-if="isAssetGroupOpen(msg.key)" class="asset-card-group">
-                <li v-for="path in msg.relatedPaths ?? []" :key="path">
-                  <span class="asset-group-name" :title="path">{{ assetFileName(path) }}</span>
-                  <template v-if="isHtmlMediaPath(path)">
-                    <button type="button" class="save-btn" @click.stop="openHtmlSandbox(path)">
+          <template v-for="(msg, i) in messages" :key="`${activeId}:${i}`">
+            <template v-if="msg.kind === 'user'">
+              <div class="msg-row user">
+                <!-- 操作条：常显在气泡上方，动作均用图标 -->
+                <div class="bubble-actions">
+                  <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
+                  <!-- 重发本条：执行中入队（见 onResend），空闲时直接再发一轮 -->
+                  <button
+                    class="bubble-action"
+                    :class="{ done: resendIndex === i }"
+                    :title="
+                      resendIndex === i
+                        ? t('studio.chat.resendQueued')
+                        : t('studio.chat.resendTitle')
+                    "
+                    @click.stop="onResend(i)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M13 8 A5 5 0 1 1 11 4" />
+                      <path d="M13 2.4 V5 H10.4" />
+                    </svg>
+                  </button>
+                  <!-- 会话回退：截断此轮及之后的消息，并恢复本条到输入框 -->
+                  <button
+                    class="bubble-action"
+                    :disabled="running"
+                    :title="t('studio.chat.rewindTitle')"
+                    @click.stop="onRewindAtMessage(i, false)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M6.5 4 L2.5 8 L6.5 12" />
+                      <path d="M3 8 H11 A2.5 2.5 0 0 1 13.5 10.5 V12" />
+                    </svg>
+                  </button>
+                  <!-- 会话分叉：从此处克隆出一个独立新会话分支 -->
+                  <button
+                    class="bubble-action"
+                    :disabled="running"
+                    :title="t('studio.chat.forkTitle')"
+                    @click.stop="onRewindAtMessage(i, true)"
+                  >
+                    <svg
+                      viewBox="0 0 16 16"
+                      width="13"
+                      height="13"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="5" cy="3.5" r="1.5" />
+                      <circle cx="11" cy="3.5" r="1.5" />
+                      <circle cx="8" cy="12.5" r="1.5" />
+                      <path d="M5 5 V7.5 C5 9 8 9 8 11" />
+                      <path d="M11 5 V7.5 C11 9 8 9 8 11" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="bubble user" :class="{ steered: msg.steered }">
+                  <span v-if="msg.steered" class="steered-badge">{{
+                    t('studio.chat.steeredBadge')
+                  }}</span>
+                  <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
+                </div>
+              </div>
+              <!-- 任务清单：跟随任务消息内嵌展示（agent 风格），默认展开以直接呈现 MCP 操作 -->
+              <details v-if="taskToolsAt(i).length" class="task-list-card" open>
+                <summary class="task-list-title">
+                  {{ t('studio.chat.taskList') }}
+                  <span class="task-list-summary">{{ taskToolsSummary(i) }}</span>
+                </summary>
+                <ul class="task-list">
+                  <li
+                    v-for="tm in taskToolsAt(i)"
+                    :key="tm.key"
+                    class="task-item"
+                    :class="tm.state"
+                    :title="tm.detail"
+                  >
+                    <span class="task-dot" />
+                    <span class="task-name">{{ toolDisplayName(tm) }}</span>
+                    <span v-if="toolShortCode(tm)" class="task-code-badge">{{
+                      toolShortCode(tm)
+                    }}</span>
+                    <span class="task-state">
+                      {{
+                        tm.state === 'start'
+                          ? t('studio.chat.toolRunning')
+                          : tm.state === 'done'
+                            ? t('studio.chat.toolDone')
+                            : t('studio.chat.toolFailed')
+                      }}
+                    </span>
+                    <ul v-if="toolSteps(tm).length" class="task-step-list">
+                      <li
+                        v-for="(step, sIdx) in toolSteps(tm)"
+                        :key="sIdx"
+                        class="task-step-item"
+                        :class="`step-${stepKind(step)}`"
+                      >
+                        <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
+                        <span class="tool-step-text">{{ step }}</span>
+                      </li>
+                    </ul>
+                    <!-- 详细参数/摘要：执行中自动展开，命令完成后折叠为一行摘要，可手动点开展开 -->
+                    <details
+                      v-if="toolArgs(tm).length || tm.detail"
+                      class="task-params"
+                      :open="tm.state === 'start'"
+                    >
+                      <summary class="task-params-summary">
+                        {{ tm.detail || t('studio.chat.toolParams') }}
+                      </summary>
+                      <div v-if="toolArgs(tm).length" class="task-param-list">
+                        <span
+                          v-for="p in toolArgs(tm)"
+                          :key="p.key"
+                          class="task-param"
+                          :title="`${p.key}: ${p.value}`"
+                        >
+                          <span class="task-param-key">{{ p.key }}</span>
+                          <span class="task-param-value">{{ p.value }}</span>
+                        </span>
+                      </div>
+                      <div v-else-if="tm.detail" class="task-detail" :title="tm.detail">
+                        {{ tm.detail }}
+                      </div>
+                    </details>
+                    <!-- 旧会话数据无独立资产卡时回退到卡内预览；新数据一律走对话末尾的独立预览卡 -->
+                    <ChatAssetPreview
+                      v-if="tm.state === 'done' && tm.relativePath && !hasAssetCard(tm.key)"
+                      :relative-path="tm.relativePath"
+                    />
+                    <!-- 子代理活动：嵌套在发起它的 subagent 卡片下，执行中展开 -->
+                    <details
+                      v-if="subagentToolsOf(i, tm).length"
+                      class="subagent-tools"
+                      :open="tm.state === 'start'"
+                    >
+                      <summary class="subagent-tools-summary">
+                        {{
+                          t('studio.chat.subagentSteps', {
+                            done: subagentToolsOf(i, tm).filter((c) => c.state === 'done').length,
+                            total: subagentToolsOf(i, tm).length
+                          })
+                        }}
+                      </summary>
+                      <ul class="subagent-tool-list">
+                        <li
+                          v-for="ct in subagentToolsOf(i, tm)"
+                          :key="ct.key"
+                          class="subagent-tool"
+                          :class="ct.state"
+                          :title="ct.detail"
+                        >
+                          <span class="task-dot" />
+                          <span class="task-name">{{ ct.name }}</span>
+                          <span v-if="ct.detail" class="subagent-tool-detail">{{ ct.detail }}</span>
+                        </li>
+                      </ul>
+                    </details>
+                  </li>
+                </ul>
+              </details>
+            </template>
+            <div v-else-if="msg.kind === 'assistant'" class="msg-row assistant">
+              <div class="bubble assistant">
+                <div class="bubble-actions">
+                  <ChatCopyIcon :copied="copiedIndex === i" @copy="copyMessage(i, msg.text)" />
+                </div>
+                <details v-if="msg.reasoning" class="reasoning">
+                  <summary>{{ t('studio.chat.thinking') }}</summary>
+                  <pre>{{ msg.reasoning }}</pre>
+                </details>
+                <div
+                  v-chat-img
+                  class="md-body"
+                  @click="onCodeCopyClick"
+                  v-html="renderChatBody(msg.text)"
+                />
+              </div>
+            </div>
+            <!-- 可玩 HTML 产物卡：只有一个「试玩」按钮，点击直接开试玩窗口 -->
+            <div v-else-if="msg.kind === 'game'" class="msg-row asset">
+              <div class="asset-card game-card">
+                <div class="game-card-head">
+                  <span class="game-card-icon" aria-hidden="true">🎮</span>
+                  <span class="game-card-title" :title="msg.title">{{ msg.title }}</span>
+                </div>
+                <button type="button" class="play-btn" @click.stop="playGame(msg)">
+                  ▶ {{ t('studio.chat.gamePlay.play') }}
+                </button>
+              </div>
+            </div>
+            <!-- 一句话游戏卡：节点图已建好，可打开画布 / 运行整图 / 试玩，并可勾选「生成后自动运行」 -->
+            <div v-else-if="msg.kind === 'oneSentenceGame'" class="msg-row asset">
+              <div class="asset-card">
+                <ChatOneSentenceGameCard :info="msg.info" />
+              </div>
+            </div>
+            <!-- 独立资产预览卡：生成完成（图片/视频/音频/3D/HTML）时追加到对话末尾，与任务清单的状态卡分离 -->
+            <div v-else-if="msg.kind === 'asset'" class="msg-row asset">
+              <div class="asset-card">
+                <ChatAssetPreview :relative-path="msg.relativePath" />
+                <!-- 同批次产物（矢量源 / 烘焙位图 / 帧序列等）折叠在同一张卡里：展开后逐份仍可单独入库 -->
+                <ul v-if="isAssetGroupOpen(msg.key)" class="asset-card-group">
+                  <li v-for="path in msg.relatedPaths ?? []" :key="path">
+                    <span class="asset-group-name" :title="path">{{ assetFileName(path) }}</span>
+                    <template v-if="isHtmlMediaPath(path)">
+                      <button type="button" class="save-btn" @click.stop="openHtmlSandbox(path)">
+                        {{ t('studio.chat.gamePlay.previewWindow') }}
+                      </button>
+                      <button type="button" class="save-btn" @click.stop="openHtmlInBrowser(path)">
+                        {{ t('studio.chat.gamePlay.openBrowser') }}
+                      </button>
+                    </template>
+                    <span v-else-if="isLibraryRelativePath(path)" class="library-tag">
+                      {{ t('studio.chat.alreadyInLibrary') }}
+                    </span>
+                    <button
+                      v-else
+                      class="save-btn"
+                      :class="{ saved: isAssetSaved(path) }"
+                      :disabled="savingAssetPath === path || isAssetSaved(path)"
+                      :title="t('studio.chat.saveToLibraryTitle')"
+                      @click.stop="openSaveAsset(path)"
+                    >
+                      {{
+                        isAssetSaved(path)
+                          ? t('studio.chat.savedToLibrary')
+                          : savingAssetPath === path
+                            ? t('common.saving')
+                            : t('studio.chat.saveToLibrary')
+                      }}
+                    </button>
+                  </li>
+                </ul>
+                <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口（HTML 提供浮窗预览与浏览器打开） -->
+                <div class="asset-card-actions">
+                  <button
+                    v-if="msg.relatedPaths?.length"
+                    class="group-btn"
+                    :class="{ open: isAssetGroupOpen(msg.key) }"
+                    :title="t('studio.chat.assetGroupTitle')"
+                    @click.stop="toggleAssetGroup(msg.key)"
+                  >
+                    {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
+                  </button>
+                  <button
+                    v-if="isDeliverableMediaPath(msg.relativePath)"
+                    type="button"
+                    class="save-btn"
+                    @click.stop="openDeliverableFile(msg.relativePath)"
+                  >
+                    🚀 {{ isEnChat ? 'Open' : '打开文件' }}
+                  </button>
+                  <template v-if="isHtmlMediaPath(msg.relativePath)">
+                    <button
+                      type="button"
+                      class="save-btn"
+                      @click.stop="openHtmlSandbox(msg.relativePath)"
+                    >
                       {{ t('studio.chat.gamePlay.previewWindow') }}
                     </button>
-                    <button type="button" class="save-btn" @click.stop="openHtmlInBrowser(path)">
+                    <button
+                      type="button"
+                      class="save-btn"
+                      @click.stop="openHtmlInBrowser(msg.relativePath)"
+                    >
                       {{ t('studio.chat.gamePlay.openBrowser') }}
                     </button>
                   </template>
-                  <span v-else-if="isLibraryRelativePath(path)" class="library-tag">
+                  <span
+                    v-else-if="isLibraryRelativePath(msg.relativePath)"
+                    class="library-tag"
+                    :title="t('studio.chat.alreadyInLibraryTitle')"
+                  >
                     {{ t('studio.chat.alreadyInLibrary') }}
                   </span>
                   <button
                     v-else
                     class="save-btn"
-                    :class="{ saved: isAssetSaved(path) }"
-                    :disabled="savingAssetPath === path || isAssetSaved(path)"
+                    :class="{ saved: isAssetSaved(msg.relativePath) }"
+                    :disabled="
+                      savingAssetPath === msg.relativePath || isAssetSaved(msg.relativePath)
+                    "
                     :title="t('studio.chat.saveToLibraryTitle')"
-                    @click.stop="openSaveAsset(path)"
+                    @click.stop="openSaveAsset(msg.relativePath)"
                   >
                     {{
-                      isAssetSaved(path)
+                      isAssetSaved(msg.relativePath)
                         ? t('studio.chat.savedToLibrary')
-                        : savingAssetPath === path
+                        : savingAssetPath === msg.relativePath
                           ? t('common.saving')
                           : t('studio.chat.saveToLibrary')
                     }}
                   </button>
-                </li>
-              </ul>
-              <!-- 生成产物默认落 Cache/ 不进资产库：提供手动保存登记入口（HTML 提供浮窗预览与浏览器打开） -->
-              <div class="asset-card-actions">
-                <button
-                  v-if="msg.relatedPaths?.length"
-                  class="group-btn"
-                  :class="{ open: isAssetGroupOpen(msg.key) }"
-                  :title="t('studio.chat.assetGroupTitle')"
-                  @click.stop="toggleAssetGroup(msg.key)"
-                >
-                  {{ t('studio.chat.assetGroupCount', { count: assetGroupCount(msg) }) }}
-                </button>
-                <button
-                  v-if="isDeliverableMediaPath(msg.relativePath)"
-                  type="button"
-                  class="save-btn"
-                  @click.stop="openDeliverableFile(msg.relativePath)"
-                >
-                  🚀 {{ isEnChat ? 'Open' : '打开文件' }}
-                </button>
-                <template v-if="isHtmlMediaPath(msg.relativePath)">
+                </div>
+                <!-- 上下文追击胶囊（Next-Action Pills）：一键拆 PSD / 2x 超分 / 3D 打光 / 动效延展 -->
+                <div v-if="nextActionsForAsset(msg).length" class="asset-next-pills">
                   <button
+                    v-for="pill in nextActionsForAsset(msg)"
+                    :key="pill.id"
                     type="button"
-                    class="save-btn"
-                    @click.stop="openHtmlSandbox(msg.relativePath)"
+                    class="next-action-pill"
+                    :disabled="running && !pill.localAction"
+                    @click.stop="onClickNextActionPill(msg, pill)"
                   >
-                    {{ t('studio.chat.gamePlay.previewWindow') }}
+                    <span class="next-pill-icon" aria-hidden="true">{{ pill.icon }}</span>
+                    <span class="next-pill-label">
+                      {{ isEnChat ? pill.labelEn : pill.labelZh }}
+                    </span>
                   </button>
-                  <button
-                    type="button"
-                    class="save-btn"
-                    @click.stop="openHtmlInBrowser(msg.relativePath)"
-                  >
-                    {{ t('studio.chat.gamePlay.openBrowser') }}
-                  </button>
-                </template>
-                <span
-                  v-else-if="isLibraryRelativePath(msg.relativePath)"
-                  class="library-tag"
-                  :title="t('studio.chat.alreadyInLibraryTitle')"
-                >
-                  {{ t('studio.chat.alreadyInLibrary') }}
-                </span>
+                </div>
+              </div>
+            </div>
+            <!-- Git 变更预览卡：一轮运行结束且确有改动时追加，展示 agent 改了哪些文件 -->
+            <div v-else-if="msg.kind === 'changes'" class="msg-row changes">
+              <ChatChangesCard
+                :files="msg.files"
+                :at="msg.at"
+                :branch="msg.branch"
+                @refresh="refreshGitChanges(msg)"
+              />
+            </div>
+            <!-- present 交付物卡：dsh present 工具显式向用户交付的关键产物或文档 -->
+            <div v-else-if="msg.kind === 'present'" class="msg-row present">
+              <div class="present-card">
+                <div class="present-card-head">
+                  <span class="present-card-icon" aria-hidden="true">📦</span>
+                  <span class="present-card-title">{{ t('studio.chat.presentTitle') }}</span>
+                  <span class="present-card-count">{{ msg.files.length }}</span>
+                </div>
+                <ul class="present-file-list">
+                  <li v-for="file in msg.files" :key="file.path" class="present-file-item">
+                    <div class="present-file-info" :title="file.path">
+                      <span class="present-file-name">{{ assetFileName(file.path) }}</span>
+                      <span v-if="file.caption" class="present-file-caption">{{
+                        file.caption
+                      }}</span>
+                      <span class="present-file-path">{{ file.path }}</span>
+                    </div>
+                    <div class="present-file-actions">
+                      <button
+                        type="button"
+                        class="present-btn"
+                        @click.stop="onOpenPresentFile(file.path, false)"
+                      >
+                        {{ t('studio.chat.presentOpenFile') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="present-btn"
+                        @click.stop="onOpenPresentFile(file.path, true)"
+                      >
+                        {{ t('studio.chat.presentRevealFile') }}
+                      </button>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div v-else-if="msg.kind === 'status'" class="msg-status">
+              <ChatCopyIcon
+                class="status-copy"
+                :copied="copiedIndex === i"
+                @copy="copyMessage(i, msg.text)"
+              />
+              <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
+            </div>
+            <div v-else-if="msg.kind === 'prompt'" class="msg-prompt">
+              <div class="prompt-question" v-chat-img v-html="renderInlineChatRefs(msg.question)" />
+              <div
+                v-if="msg.hint"
+                class="prompt-hint"
+                v-chat-img
+                v-html="renderInlineChatRefs(msg.hint)"
+              />
+              <div class="prompt-options">
                 <button
-                  v-else
-                  class="save-btn"
-                  :class="{ saved: isAssetSaved(msg.relativePath) }"
-                  :disabled="savingAssetPath === msg.relativePath || isAssetSaved(msg.relativePath)"
-                  :title="t('studio.chat.saveToLibraryTitle')"
-                  @click.stop="openSaveAsset(msg.relativePath)"
+                  v-for="opt in promptOptions(msg)"
+                  :key="opt"
+                  class="prompt-option"
+                  :class="{ chosen: msg.answered === opt }"
+                  :disabled="msg.answered !== null && msg.answered !== undefined"
+                  @click="answerPrompt(msg, opt)"
                 >
-                  {{
-                    isAssetSaved(msg.relativePath)
-                      ? t('studio.chat.savedToLibrary')
-                      : savingAssetPath === msg.relativePath
-                        ? t('common.saving')
-                        : t('studio.chat.saveToLibrary')
-                  }}
+                  {{ opt }}
                 </button>
               </div>
-              <!-- 上下文追击胶囊（Next-Action Pills）：一键拆 PSD / 2x 超分 / 3D 打光 / 动效延展 -->
-              <div v-if="nextActionsForAsset(msg).length" class="asset-next-pills">
-                <button
-                  v-for="pill in nextActionsForAsset(msg)"
-                  :key="pill.id"
-                  type="button"
-                  class="next-action-pill"
-                  :disabled="running && !pill.localAction"
-                  @click.stop="onClickNextActionPill(msg, pill)"
-                >
-                  <span class="next-pill-icon" aria-hidden="true">{{ pill.icon }}</span>
-                  <span class="next-pill-label">
-                    {{ isEnChat ? pill.labelEn : pill.labelZh }}
-                  </span>
-                </button>
-              </div>
-            </div>
-          </div>
-          <!-- Git 变更预览卡：一轮运行结束且确有改动时追加，展示 agent 改了哪些文件 -->
-          <div v-else-if="msg.kind === 'changes'" class="msg-row changes">
-            <ChatChangesCard
-              :files="msg.files"
-              :at="msg.at"
-              :branch="msg.branch"
-              @refresh="refreshGitChanges(msg)"
-            />
-          </div>
-          <!-- present 交付物卡：dsh present 工具显式向用户交付的关键产物或文档 -->
-          <div v-else-if="msg.kind === 'present'" class="msg-row present">
-            <div class="present-card">
-              <div class="present-card-head">
-                <span class="present-card-icon" aria-hidden="true">📦</span>
-                <span class="present-card-title">{{ t('studio.chat.presentTitle') }}</span>
-                <span class="present-card-count">{{ msg.files.length }}</span>
-              </div>
-              <ul class="present-file-list">
-                <li v-for="file in msg.files" :key="file.path" class="present-file-item">
-                  <div class="present-file-info" :title="file.path">
-                    <span class="present-file-name">{{ assetFileName(file.path) }}</span>
-                    <span v-if="file.caption" class="present-file-caption">{{ file.caption }}</span>
-                    <span class="present-file-path">{{ file.path }}</span>
-                  </div>
-                  <div class="present-file-actions">
-                    <button
-                      type="button"
-                      class="present-btn"
-                      @click.stop="onOpenPresentFile(file.path, false)"
-                    >
-                      {{ t('studio.chat.presentOpenFile') }}
-                    </button>
-                    <button
-                      type="button"
-                      class="present-btn"
-                      @click.stop="onOpenPresentFile(file.path, true)"
-                    >
-                      {{ t('studio.chat.presentRevealFile') }}
-                    </button>
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div v-else-if="msg.kind === 'status'" class="msg-status">
-            <ChatCopyIcon
-              class="status-copy"
-              :copied="copiedIndex === i"
-              @copy="copyMessage(i, msg.text)"
-            />
-            <div class="bubble-text" v-chat-img v-html="renderInlineChatRefs(msg.text)" />
-          </div>
-          <div v-else-if="msg.kind === 'prompt'" class="msg-prompt">
-            <div class="prompt-question" v-chat-img v-html="renderInlineChatRefs(msg.question)" />
-            <div
-              v-if="msg.hint"
-              class="prompt-hint"
-              v-chat-img
-              v-html="renderInlineChatRefs(msg.hint)"
-            />
-            <div class="prompt-options">
-              <button
-                v-for="opt in promptOptions(msg)"
-                :key="opt"
-                class="prompt-option"
-                :class="{ chosen: msg.answered === opt }"
-                :disabled="msg.answered !== null && msg.answered !== undefined"
-                @click="answerPrompt(msg, opt)"
-              >
-                {{ opt }}
-              </button>
-            </div>
-            <!--
+              <!--
               自定义回答：模型给的选项就那几条，覆盖不到用户意图时不该被迫二选一。
               只在未答时出现；Enter 与按钮走**同一条**回传路径（含「未答才回传」的守卫）。
               `@keydown.stop` 是必须的：面板上还有全局键盘处理（斜杠菜单、快捷键），
               回车与方向键在输入框里不该被它们截走。
             -->
-            <div v-if="msg.answered === null || msg.answered === undefined" class="prompt-custom">
-              <input
-                v-model="msg.draft"
-                class="prompt-custom-input"
-                type="text"
-                :placeholder="t('studio.chat.promptCustomPlaceholder')"
-                :aria-label="t('studio.chat.promptCustomPlaceholder')"
-                @keydown.stop
-                @keydown.enter.prevent="submitPromptDraft(msg)"
-              />
-              <button
-                type="button"
-                class="prompt-custom-send"
-                :disabled="!(msg.draft ?? '').trim()"
-                @click="submitPromptDraft(msg)"
+              <div v-if="msg.answered === null || msg.answered === undefined" class="prompt-custom">
+                <input
+                  v-model="msg.draft"
+                  class="prompt-custom-input"
+                  type="text"
+                  :placeholder="t('studio.chat.promptCustomPlaceholder')"
+                  :aria-label="t('studio.chat.promptCustomPlaceholder')"
+                  @keydown.stop
+                  @keydown.enter.prevent="submitPromptDraft(msg)"
+                />
+                <button
+                  type="button"
+                  class="prompt-custom-send"
+                  :disabled="!(msg.draft ?? '').trim()"
+                  @click="submitPromptDraft(msg)"
+                >
+                  {{ t('studio.chat.promptCustomSend') }}
+                </button>
+              </div>
+              <div
+                v-if="msg.answered !== null && msg.answered !== undefined"
+                class="prompt-answered"
               >
-                {{ t('studio.chat.promptCustomSend') }}
-              </button>
+                {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
+              </div>
             </div>
-            <div v-if="msg.answered !== null && msg.answered !== undefined" class="prompt-answered">
-              {{ t('studio.chat.promptAnswered', { answer: msg.answered }) }}
-            </div>
-          </div>
-          <!--
+            <!--
             审批卡：dsh 请求越过沙箱边界时出现。只有「允许一次 / 拒绝」两个选项 ——
             没有「总是允许」（dsh 的授权设计成一次性，持久化会静默放宽 agent 的权限面）。
           -->
-          <div v-else-if="msg.kind === 'approval'" class="msg-prompt approval">
-            <div class="prompt-question">{{ t('studio.chat.approvalTitle') }}</div>
-            <div class="prompt-hint">
-              {{ t('studio.chat.approvalTool', { tool: msg.toolName }) }}
+            <div v-else-if="msg.kind === 'approval'" class="msg-prompt approval">
+              <div class="prompt-question">{{ t('studio.chat.approvalTitle') }}</div>
+              <div class="prompt-hint">
+                {{ t('studio.chat.approvalTool', { tool: msg.toolName }) }}
+              </div>
+              <div v-if="msg.reason" class="prompt-hint approval-reason">{{ msg.reason }}</div>
+              <div class="prompt-options">
+                <button
+                  type="button"
+                  class="prompt-option"
+                  :class="{ chosen: msg.decision === 'allow-once' }"
+                  :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
+                  @click="answerApprovalRequest(msg, 'allow-once')"
+                >
+                  {{ t('studio.chat.approvalAllowOnce') }}
+                </button>
+                <button
+                  type="button"
+                  class="prompt-option"
+                  :class="{ chosen: msg.decision === 'reject' }"
+                  :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
+                  @click="answerApprovalRequest(msg, 'reject')"
+                >
+                  {{ t('studio.chat.approvalReject') }}
+                </button>
+              </div>
+              <div v-if="msg.decision === 'allow-once'" class="prompt-answered">
+                {{ t('studio.chat.approvalAllowedOnce') }}
+              </div>
+              <div v-else-if="msg.decision === 'reject'" class="prompt-answered">
+                {{ t('studio.chat.approvalRejected') }}
+              </div>
+              <div v-else-if="msg.expired" class="prompt-answered">
+                {{ t('studio.chat.approvalExpired') }}
+              </div>
+              <div class="prompt-hint">{{ t('studio.chat.approvalOnceHint') }}</div>
             </div>
-            <div v-if="msg.reason" class="prompt-hint approval-reason">{{ msg.reason }}</div>
-            <div class="prompt-options">
-              <button
-                type="button"
-                class="prompt-option"
-                :class="{ chosen: msg.decision === 'allow-once' }"
-                :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
-                @click="answerApprovalRequest(msg, 'allow-once')"
-              >
-                {{ t('studio.chat.approvalAllowOnce') }}
-              </button>
-              <button
-                type="button"
-                class="prompt-option"
-                :class="{ chosen: msg.decision === 'reject' }"
-                :disabled="msg.expired || (msg.decision !== null && msg.decision !== undefined)"
-                @click="answerApprovalRequest(msg, 'reject')"
-              >
-                {{ t('studio.chat.approvalReject') }}
-              </button>
+            <!-- MCP 与工具操作流卡片：按实际调用时序在对话流中直接展示创建节点、删除节点、连线等操作 -->
+            <div
+              v-else-if="msg.kind === 'tool' && isInlineStreamTool(msg)"
+              class="msg-row tool-stream-row"
+            >
+              <div class="tool-stream-card" :class="msg.state">
+                <div class="tool-stream-head">
+                  <span class="task-dot" />
+                  <span class="tool-stream-title">{{ toolDisplayName(msg) }}</span>
+                  <span v-if="toolShortCode(msg)" class="task-code-badge">{{
+                    toolShortCode(msg)
+                  }}</span>
+                  <span class="tool-stream-state">
+                    {{
+                      msg.state === 'start'
+                        ? t('studio.chat.toolRunning')
+                        : msg.state === 'done'
+                          ? t('studio.chat.toolDone')
+                          : t('studio.chat.toolFailed')
+                    }}
+                  </span>
+                </div>
+                <ul v-if="toolSteps(msg).length" class="tool-stream-steps">
+                  <li
+                    v-for="(step, sIdx) in toolSteps(msg)"
+                    :key="sIdx"
+                    class="tool-stream-step"
+                    :class="`step-${stepKind(step)}`"
+                  >
+                    <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
+                    <span class="tool-step-text">{{ step }}</span>
+                  </li>
+                </ul>
+                <div v-else-if="msg.detail" class="tool-stream-detail">
+                  {{ msg.detail }}
+                </div>
+              </div>
             </div>
-            <div v-if="msg.decision === 'allow-once'" class="prompt-answered">
-              {{ t('studio.chat.approvalAllowedOnce') }}
-            </div>
-            <div v-else-if="msg.decision === 'reject'" class="prompt-answered">
-              {{ t('studio.chat.approvalRejected') }}
-            </div>
-            <div v-else-if="msg.expired" class="prompt-answered">
-              {{ t('studio.chat.approvalExpired') }}
-            </div>
-            <div class="prompt-hint">{{ t('studio.chat.approvalOnceHint') }}</div>
+          </template>
+          <div v-if="running" class="msg-status running">
+            <span class="dots"><i /><i /><i /></span>
           </div>
-          <!-- MCP 与工具操作流卡片：按实际调用时序在对话流中直接展示创建节点、删除节点、连线等操作 -->
-          <div
-            v-else-if="msg.kind === 'tool' && isInlineStreamTool(msg)"
-            class="msg-row tool-stream-row"
+        </div>
+
+        <button
+          v-show="showScrollToBottom"
+          type="button"
+          class="chat-scroll-bottom"
+          :title="t('studio.chat.scrollToBottom')"
+          @click="scrollToBottomSmooth"
+        >
+          <svg
+            class="chat-scroll-bottom-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            <div class="tool-stream-card" :class="msg.state">
-              <div class="tool-stream-head">
-                <span class="task-dot" />
-                <span class="tool-stream-title">{{ toolDisplayName(msg) }}</span>
-                <span v-if="toolShortCode(msg)" class="task-code-badge">{{
-                  toolShortCode(msg)
-                }}</span>
-                <span class="tool-stream-state">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="chat-input">
+        <div
+          class="chat-input-resize"
+          role="separator"
+          :aria-orientation="'horizontal'"
+          :aria-valuemin="COMPOSER_HEIGHT_MIN"
+          :aria-valuemax="COMPOSER_HEIGHT_MAX"
+          :aria-valuenow="composerHeight"
+          :aria-label="t('studio.chat.resizeComposer')"
+          :title="t('studio.chat.resizeComposer')"
+          @pointerdown="onComposerResizePointerDown"
+          @pointermove="onComposerResizePointerMove"
+          @pointerup="onComposerResizePointerUp"
+          @pointercancel="onComposerResizePointerUp"
+        />
+        <!-- 发送队列：置于工具栏之上，执行中排队的消息在此列出，可立即发送（中断当前轮）或移除 -->
+        <div v-if="sendQueue.length" class="send-queue">
+          <div class="send-queue-head">
+            <span class="send-queue-title">{{ t('studio.chat.queueTitle') }}</span>
+            <span class="send-queue-count">{{ sendQueue.length }}</span>
+            <span class="send-queue-hint">{{ t('studio.chat.queueHint') }}</span>
+          </div>
+          <ul class="send-queue-list">
+            <li
+              v-for="item in sendQueue"
+              :key="item.id"
+              class="send-queue-item"
+              :class="{ forcing: item.forcing }"
+            >
+              <span class="send-queue-text" :title="item.text">{{ queuePreview(item.text) }}</span>
+              <span v-if="item.forcing" class="send-queue-forcing">
+                {{ t('studio.chat.queueForcing') }}
+              </span>
+              <span class="send-queue-actions">
+                <!-- Stage 1：盘中实时转向（不中断当前轮次，直接注入） -->
+                <button
+                  v-if="running"
+                  type="button"
+                  class="queue-btn steer"
+                  :disabled="item.forcing"
+                  :title="t('studio.chat.queueSteerNowTitle')"
+                  @click.stop="onSteerQueued(item.id)"
+                >
+                  ⚡
+                </button>
+                <!-- 立即发送：中断当前轮，马上发这条。向上箭头与输入框的发送按钮同一隐喻 -->
+                <button
+                  type="button"
+                  class="queue-btn"
+                  :disabled="item.forcing"
+                  :title="t('studio.chat.queueSendNowTitle')"
+                  @click.stop="forceQueuedSend(item.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.6"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 13 V3.5" />
+                    <path d="M4 7.5 L8 3.5 L12 7.5" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  class="queue-btn danger"
+                  :title="t('studio.chat.queueRemoveTitle')"
+                  @click.stop="removeQueued(item.id)"
+                >
+                  <svg
+                    viewBox="0 0 16 16"
+                    width="13"
+                    height="13"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M4.5 4.5 L11.5 11.5" />
+                    <path d="M11.5 4.5 L4.5 11.5" />
+                  </svg>
+                </button>
+              </span>
+            </li>
+          </ul>
+        </div>
+        <div class="chat-toolbar">
+          <!-- 统一技能面板：展示已安装的市场技能（含画布工作流模板）、GitHub 技能、项目技能与自定义技能 -->
+          <div
+            ref="skillsDropdownRef"
+            class="skills-dropdown workflows-dropdown"
+            :class="{ open: skillsOpen }"
+          >
+            <button
+              type="button"
+              class="skills-trigger"
+              :class="{ active: skillsOpen }"
+              :title="t('studio.chat.skillsTitle')"
+              :aria-label="t('studio.chat.skills')"
+              @click.stop="toggleSkills()"
+            >
+              <svg
+                class="skills-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m22 2-2 6-2-6h4Z" />
+                <path d="M14 8 6 3l-4 4 5 8" />
+                <path d="M8 8 3 12" />
+                <circle cx="15" cy="19" r="4" />
+                <circle cx="19" cy="15" r="4" />
+                <path d="M3 21l3-3" />
+              </svg>
+              <span v-if="loadedSkillTotal > 0 || unifiedSkillsCount > 0" class="skills-badge">
+                {{ loadedSkillTotal > 0 ? loadedSkillTotal : unifiedSkillsCount }}
+              </span>
+            </button>
+            <div v-show="skillsOpen" class="skills-menu workflows-menu">
+              <div class="skills-menu-head">
+                <span>{{ t('studio.chat.skillsTitle') }}</span>
+                <span v-if="unifiedSkillsCount > 0" class="skills-menu-meta">
                   {{
-                    msg.state === 'start'
-                      ? t('studio.chat.toolRunning')
-                      : msg.state === 'done'
-                        ? t('studio.chat.toolDone')
-                        : t('studio.chat.toolFailed')
+                    t('studio.chat.skillsMeta', {
+                      loaded: loadedSkillCount,
+                      total: unifiedSkillsCount
+                    })
                   }}
                 </span>
               </div>
-              <ul v-if="toolSteps(msg).length" class="tool-stream-steps">
-                <li
-                  v-for="(step, sIdx) in toolSteps(msg)"
-                  :key="sIdx"
-                  class="tool-stream-step"
-                  :class="`step-${stepKind(step)}`"
-                >
-                  <span class="tool-step-icon" aria-hidden="true">{{ stepIcon(step) }}</span>
-                  <span class="tool-step-text">{{ step }}</span>
-                </li>
-              </ul>
-              <div v-else-if="msg.detail" class="tool-stream-detail">
-                {{ msg.detail }}
-              </div>
-            </div>
-          </div>
-        </template>
-        <div v-if="running" class="msg-status running">
-          <span class="dots"><i /><i /><i /></span>
-        </div>
-      </div>
-
-      <button
-        v-show="showScrollToBottom"
-        type="button"
-        class="chat-scroll-bottom"
-        :title="t('studio.chat.scrollToBottom')"
-        @click="scrollToBottomSmooth"
-      >
-        <svg
-          class="chat-scroll-bottom-icon"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-    </div>
-
-    <div class="chat-input">
-      <div
-        class="chat-input-resize"
-        role="separator"
-        :aria-orientation="'horizontal'"
-        :aria-valuemin="COMPOSER_HEIGHT_MIN"
-        :aria-valuemax="COMPOSER_HEIGHT_MAX"
-        :aria-valuenow="composerHeight"
-        :aria-label="t('studio.chat.resizeComposer')"
-        :title="t('studio.chat.resizeComposer')"
-        @pointerdown="onComposerResizePointerDown"
-        @pointermove="onComposerResizePointerMove"
-        @pointerup="onComposerResizePointerUp"
-        @pointercancel="onComposerResizePointerUp"
-      />
-      <!-- 发送队列：置于工具栏之上，执行中排队的消息在此列出，可立即发送（中断当前轮）或移除 -->
-      <div v-if="sendQueue.length" class="send-queue">
-        <div class="send-queue-head">
-          <span class="send-queue-title">{{ t('studio.chat.queueTitle') }}</span>
-          <span class="send-queue-count">{{ sendQueue.length }}</span>
-          <span class="send-queue-hint">{{ t('studio.chat.queueHint') }}</span>
-        </div>
-        <ul class="send-queue-list">
-          <li
-            v-for="item in sendQueue"
-            :key="item.id"
-            class="send-queue-item"
-            :class="{ forcing: item.forcing }"
-          >
-            <span class="send-queue-text" :title="item.text">{{ queuePreview(item.text) }}</span>
-            <span v-if="item.forcing" class="send-queue-forcing">
-              {{ t('studio.chat.queueForcing') }}
-            </span>
-            <span class="send-queue-actions">
-              <!-- Stage 1：盘中实时转向（不中断当前轮次，直接注入） -->
-              <button
-                v-if="running"
-                type="button"
-                class="queue-btn steer"
-                :disabled="item.forcing"
-                :title="t('studio.chat.queueSteerNowTitle')"
-                @click.stop="onSteerQueued(item.id)"
-              >
-                ⚡
-              </button>
-              <!-- 立即发送：中断当前轮，马上发这条。向上箭头与输入框的发送按钮同一隐喻 -->
-              <button
-                type="button"
-                class="queue-btn"
-                :disabled="item.forcing"
-                :title="t('studio.chat.queueSendNowTitle')"
-                @click.stop="forceQueuedSend(item.id)"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="13"
-                  height="13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.6"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M8 13 V3.5" />
-                  <path d="M4 7.5 L8 3.5 L12 7.5" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                class="queue-btn danger"
-                :title="t('studio.chat.queueRemoveTitle')"
-                @click.stop="removeQueued(item.id)"
-              >
-                <svg
-                  viewBox="0 0 16 16"
-                  width="13"
-                  height="13"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.7"
-                  stroke-linecap="round"
-                  aria-hidden="true"
-                >
-                  <path d="M4.5 4.5 L11.5 11.5" />
-                  <path d="M11.5 4.5 L4.5 11.5" />
-                </svg>
-              </button>
-            </span>
-          </li>
-        </ul>
-      </div>
-      <div class="chat-toolbar">
-        <!-- 统一技能面板：展示已安装的市场技能（含画布工作流模板）、GitHub 技能、项目技能与自定义技能 -->
-        <div
-          ref="skillsDropdownRef"
-          class="skills-dropdown workflows-dropdown"
-          :class="{ open: skillsOpen }"
-        >
-          <button
-            type="button"
-            class="skills-trigger"
-            :class="{ active: skillsOpen }"
-            :title="t('studio.chat.skillsTitle')"
-            :aria-label="t('studio.chat.skills')"
-            @click.stop="toggleSkills()"
-          >
-            <svg
-              class="skills-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="m22 2-2 6-2-6h4Z" />
-              <path d="M14 8 6 3l-4 4 5 8" />
-              <path d="M8 8 3 12" />
-              <circle cx="15" cy="19" r="4" />
-              <circle cx="19" cy="15" r="4" />
-              <path d="M3 21l3-3" />
-            </svg>
-            <span v-if="loadedSkillTotal > 0 || unifiedSkillsCount > 0" class="skills-badge">
-              {{ loadedSkillTotal > 0 ? loadedSkillTotal : unifiedSkillsCount }}
-            </span>
-          </button>
-          <div v-show="skillsOpen" class="skills-menu workflows-menu">
-            <div class="skills-menu-head">
-              <span>{{ t('studio.chat.skillsTitle') }}</span>
-              <span v-if="unifiedSkillsCount > 0" class="skills-menu-meta">
-                {{
-                  t('studio.chat.skillsMeta', {
-                    loaded: loadedSkillCount,
-                    total: unifiedSkillsCount
-                  })
-                }}
-              </span>
-            </div>
-            <p v-if="workflowsLoading && unifiedSkillsCount === 0" class="skills-empty">
-              {{ t('studio.chat.workflowsLoading') }}
-            </p>
-            <p v-else-if="unifiedSkillsCount === 0" class="skills-empty">
-              {{ t('studio.chat.skillsEmpty') }}
-            </p>
-            <template v-else>
-              <ul v-if="installedWorkflows.length" class="workflow-cards">
-                <li
-                  v-for="workflow in installedWorkflows"
-                  :key="workflow.id"
-                  class="workflow-card"
-                  :class="{ broken: workflow.broken, loaded: workflowLoadedHits(workflow) > 0 }"
-                  :title="workflow.broken ? t('studio.chat.workflowBroken') : workflow.summary"
-                  @click="insertWorkflowReference(workflow)"
-                >
-                  <span class="workflow-card-main">
-                    <span class="workflow-card-title">
-                      {{ workflow.title }}
-                      <code>{{ workflow.id }}</code>
-                      <span v-if="workflowLoadedHits(workflow) > 0" class="skill-hit-count">
-                        ×{{ workflowLoadedHits(workflow) }}
+              <p v-if="workflowsLoading && unifiedSkillsCount === 0" class="skills-empty">
+                {{ t('studio.chat.workflowsLoading') }}
+              </p>
+              <p v-else-if="unifiedSkillsCount === 0" class="skills-empty">
+                {{ t('studio.chat.skillsEmpty') }}
+              </p>
+              <template v-else>
+                <ul v-if="installedWorkflows.length" class="workflow-cards">
+                  <li
+                    v-for="workflow in installedWorkflows"
+                    :key="workflow.id"
+                    class="workflow-card"
+                    :class="{ broken: workflow.broken, loaded: workflowLoadedHits(workflow) > 0 }"
+                    :title="workflow.broken ? t('studio.chat.workflowBroken') : workflow.summary"
+                    @click="insertWorkflowReference(workflow)"
+                  >
+                    <span class="workflow-card-main">
+                      <span class="workflow-card-title">
+                        {{ workflow.title }}
+                        <code>{{ workflow.id }}</code>
+                        <span v-if="workflowLoadedHits(workflow) > 0" class="skill-hit-count">
+                          ×{{ workflowLoadedHits(workflow) }}
+                        </span>
+                      </span>
+                      <span class="workflow-card-summary">
+                        {{
+                          workflow.broken
+                            ? t('studio.chat.workflowBroken')
+                            : workflow.summary || t('studio.chat.workflowNoSummary')
+                        }}
+                      </span>
+                      <span class="workflow-card-meta">
+                        {{
+                          t('studio.chat.workflowNodes', {
+                            nodes: workflow.nodeCount,
+                            edges: workflow.edgeCount
+                          })
+                        }}
+                        · v{{ workflow.version }}
                       </span>
                     </span>
-                    <span class="workflow-card-summary">
-                      {{
-                        workflow.broken
-                          ? t('studio.chat.workflowBroken')
-                          : workflow.summary || t('studio.chat.workflowNoSummary')
-                      }}
+                    <span class="workflow-card-insert">{{
+                      t('studio.chat.workflowInsertAction')
+                    }}</span>
+                  </li>
+                </ul>
+                <ul v-if="standaloneSessionSkills.length" class="skills-list">
+                  <li
+                    v-for="skill in standaloneSessionSkills"
+                    :key="skill.name"
+                    class="skill-item"
+                    :class="{
+                      loaded: (loadedSkills[skill.name] ?? 0) > 0,
+                      invocable: skill.userInvocable !== false
+                    }"
+                    @click="insertSkillSlashCommand(skill)"
+                  >
+                    <span class="skill-check">
+                      {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
                     </span>
-                    <span class="workflow-card-meta">
-                      {{
-                        t('studio.chat.workflowNodes', {
-                          nodes: workflow.nodeCount,
-                          edges: workflow.edgeCount
-                        })
-                      }}
-                      · v{{ workflow.version }}
+                    <span class="skill-item-main">
+                      <span class="skill-item-name">
+                        {{ skill.titleZh || skill.name }}
+                        <code v-if="skill.userInvocable !== false"
+                          >/{{ skill.name
+                          }}{{ skill.argumentHint ? ` ${skill.argumentHint}` : '' }}</code
+                        >
+                        <code v-else>{{ skill.name }}</code>
+                        <code v-if="skill.context === 'fork'">fork</code>
+                        <code v-if="skill.model">{{ skill.model }}</code>
+                      </span>
+                      <span class="skill-item-desc">{{ skill.description }}</span>
                     </span>
-                  </span>
-                  <span class="workflow-card-insert">{{
-                    t('studio.chat.workflowInsertAction')
-                  }}</span>
-                </li>
-              </ul>
-              <ul v-if="standaloneSessionSkills.length" class="skills-list">
-                <li
-                  v-for="skill in standaloneSessionSkills"
-                  :key="skill.name"
-                  class="skill-item"
-                  :class="{
-                    loaded: (loadedSkills[skill.name] ?? 0) > 0,
-                    invocable: skill.userInvocable !== false
-                  }"
-                  @click="insertSkillSlashCommand(skill)"
-                >
-                  <span class="skill-check">
-                    {{ (loadedSkills[skill.name] ?? 0) > 0 ? '✓' : '' }}
-                  </span>
-                  <span class="skill-item-main">
-                    <span class="skill-item-name">
-                      {{ skill.titleZh || skill.name }}
-                      <code v-if="skill.userInvocable !== false"
-                        >/{{ skill.name
-                        }}{{ skill.argumentHint ? ` ${skill.argumentHint}` : '' }}</code
-                      >
-                      <code v-else>{{ skill.name }}</code>
-                      <code v-if="skill.context === 'fork'">fork</code>
-                      <code v-if="skill.model">{{ skill.model }}</code>
+                    <span v-if="(loadedSkills[skill.name] ?? 0) > 0" class="skill-hit-count">
+                      ×{{ loadedSkills[skill.name] }}
                     </span>
-                    <span class="skill-item-desc">{{ skill.description }}</span>
-                  </span>
-                  <span v-if="(loadedSkills[skill.name] ?? 0) > 0" class="skill-hit-count">
-                    ×{{ loadedSkills[skill.name] }}
-                  </span>
-                </li>
-              </ul>
-            </template>
+                  </li>
+                </ul>
+              </template>
+            </div>
           </div>
-        </div>
-        <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->
-        <div
-          ref="modeDropdownRef"
-          class="mode-dropdown"
-          :class="{ open: modeOpen }"
-          :title="t('studio.chat.modeTitle')"
-        >
-          <button
-            type="button"
-            class="mode-trigger"
-            :disabled="running"
-            @click.stop="modeOpen = !modeOpen"
-          >
-            <span class="mode-icon-box" :class="`mode-icon-${mode}`">
-              <svg
-                v-if="mode === 'craft'"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-                <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-                <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-                <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-                <path
-                  d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
-                />
-              </svg>
-              <svg
-                v-else-if="mode === 'ask'"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
-              </svg>
-              <svg
-                v-else
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-                <path
-                  d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
-                />
-                <path d="m9 14 2 2 4-4" />
-              </svg>
-            </span>
-            <span class="mode-trigger-label">{{ currentModeLabel }}</span>
-            <svg
-              class="mode-chevron"
-              :class="{ rotated: modeOpen }"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <ul v-show="modeOpen" class="mode-menu">
-            <li v-for="m in modeOptions" :key="m.value">
-              <button
-                type="button"
-                class="mode-item"
-                :class="{ active: mode === m.value }"
-                @click.stop="selectMode(m.value)"
-              >
-                <span class="mode-icon-box" :class="`mode-icon-${m.value}`">
-                  <svg
-                    v-if="m.value === 'craft'"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
-                    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
-                    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
-                    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
-                    <path
-                      d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
-                    />
-                  </svg>
-                  <svg
-                    v-else-if="m.value === 'ask'"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
-                  </svg>
-                  <svg
-                    v-else
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
-                    <path
-                      d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
-                    />
-                    <path d="m9 14 2 2 4-4" />
-                  </svg>
-                </span>
-                <span class="mode-item-label">{{ m.label }}</span>
-                <svg
-                  v-if="mode === m.value"
-                  class="mode-check"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <path d="M20 6 9 17l-5-5" />
-                </svg>
-              </button>
-            </li>
-          </ul>
-        </div>
-        <span class="toolbar-spacer" />
-        <!--
-          用量环与引用资产按钮**合成一个不可拆分的单元**。
-          工具栏是 `flex-wrap: wrap`（面板由 dockview 承载、可拖窄），
-          两者若各占一个 flex 项，窄面板下会被折到两行去。
-          包成一个 flex 项后，要么都在第一行，要么整体折到下一行 —— 始终同行。
-        -->
-        <div class="toolbar-end">
-          <!-- 会话定时提醒：当 dsh schedule 插件创建了会话内提醒时展示，支持查看与取消 -->
+          <!-- 三模式选择：下拉式（Craft/Ask/Plan），触发按钮显示当前模式图标+名称+箭头 -->
           <div
-            v-if="sessionSchedules.length > 0"
-            ref="scheduleDropdownRef"
-            class="schedule-dropdown"
+            ref="modeDropdownRef"
+            class="mode-dropdown"
+            :class="{ open: modeOpen }"
+            :title="t('studio.chat.modeTitle')"
           >
             <button
               type="button"
-              class="tool-btn schedule-trigger"
-              :class="{ active: activeSchedules.length > 0 }"
-              :title="t('studio.chat.scheduleTitle')"
-              @click.stop="scheduleMenuOpen = !scheduleMenuOpen"
+              class="mode-trigger"
+              :disabled="running"
+              @click.stop="modeOpen = !modeOpen"
             >
-              <span aria-hidden="true">⏰</span>
-              <span class="schedule-badge">{{ activeSchedules.length }}</span>
-            </button>
-            <div v-show="scheduleMenuOpen" class="schedule-menu">
-              <div class="schedule-menu-head">{{ t('studio.chat.scheduleTitle') }}</div>
-              <p v-if="!sessionSchedules.length" class="schedule-empty">
-                {{ t('studio.chat.scheduleEmpty') }}
-              </p>
-              <ul v-else class="schedule-list">
-                <li
-                  v-for="sch in sessionSchedules"
-                  :key="sch.id"
-                  class="schedule-item"
-                  :class="sch.status"
-                >
-                  <div class="schedule-item-main">
-                    <span class="schedule-item-summary">{{ sch.summary }}</span>
-                    <span class="schedule-item-meta">
-                      {{ sch.timing }}
-                      <template v-if="sch.nextRunAt">
-                        · {{ new Date(sch.nextRunAt).toLocaleTimeString() }}
-                      </template>
-                    </span>
-                  </div>
-                  <button
-                    v-if="sch.status === 'active'"
-                    type="button"
-                    class="schedule-cancel-btn"
-                    @click.stop="onCancelSchedule(sch.id)"
-                  >
-                    {{ t('studio.chat.scheduleCancel') }}
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div
-            v-if="contextUsageText"
-            class="context-usage"
-            :class="{ warn: usageRatio >= 0.85, active: running }"
-            :title="contextUsageText"
-          >
-            <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
-          </div>
-          <button
-            class="tool-btn mention"
-            :title="t('studio.chat.mentionTitle')"
-            @click="mentionOpen = true"
-          >
-            {{ t('studio.chat.mentionButton') }}
-          </button>
-        </div>
-      </div>
-      <div v-if="referenced.length" class="mention-chips">
-        <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
-          <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
-          <span v-else-if="item.type === 'video'" class="chip-icon">🎬</span>
-          <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
-          <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
-            >🧊</span
-          >
-          <span v-else class="chip-icon">📄</span>
-          <span class="chip-name">{{ item.name }}</span>
-          <button
-            class="chip-remove"
-            :title="t('studio.chat.removeMention')"
-            @click="removeMention(item.path)"
-          >
-            ×
-          </button>
-        </span>
-      </div>
-      <div class="composer">
-        <div
-          v-show="slashOpen"
-          class="slash-menu"
-          role="listbox"
-          :aria-label="t('studio.chat.slashMenu')"
-        >
-          <div class="slash-menu-title">{{ t('studio.chat.slashMenu') }}</div>
-          <button
-            v-for="(cmd, i) in slashItems"
-            :key="cmd.id"
-            type="button"
-            class="slash-item"
-            role="option"
-            :class="{ active: i === slashIndex }"
-            :aria-selected="i === slashIndex"
-            @mousedown.prevent="applySlashCommand(cmd)"
-            @mouseenter="slashIndex = i"
-          >
-            <span class="slash-name">
-              {{ cmd.name }}
-              <code v-if="'argumentHint' in cmd && cmd.argumentHint" class="slash-hint">{{
-                cmd.argumentHint
-              }}</code>
-              <code v-if="'skillContext' in cmd && cmd.skillContext === 'fork'" class="slash-hint"
-                >fork</code
-              >
-            </span>
-            <span class="slash-desc">{{
-              'descKey' in cmd ? t(`studio.chat.${cmd.descKey}`) : cmd.descText
-            }}</span>
-          </button>
-          <div v-if="!slashItems.length" class="slash-empty">{{ t('studio.chat.slashEmpty') }}</div>
-        </div>
-        <div v-if="assetDragOver" class="composer-drop-hint" aria-hidden="true">
-          {{ t('studio.chat.dropMediaHint') }}
-        </div>
-        <div
-          ref="inputRef"
-          class="composer-editor"
-          :class="{ composing }"
-          :style="{ height: `${composerHeight}px` }"
-          contenteditable="true"
-          role="textbox"
-          :aria-label="t('studio.chat.placeholder')"
-          :data-placeholder="t('studio.chat.placeholder')"
-          @input="onComposerInput"
-          @paste="onComposerPaste"
-          @compositionstart="composing = true"
-          @compositionend="onCompositionEnd"
-          @keydown.enter.exact.prevent="onComposerEnter"
-          @keydown.escape.prevent="onComposerEscape"
-          @keydown.arrow-down.exact="onSlashArrowKey($event, 1)"
-          @keydown.arrow-up.exact="onSlashArrowKey($event, -1)"
-          @keydown.tab.exact="onComposerTabKey"
-        />
-      </div>
-      <!--
-        会话管理与「模型」同一行。触发器是「历史」按钮而不是当前会话标题 ——
-        标题已移到面板最上方的状态栏（那里才是「我在看哪段对话」该出现的位置），
-        按钮因此可以做得紧凑，把宽度让给模型名。
-      -->
-      <div class="chat-actions">
-        <div
-          ref="sessionDropdownRef"
-          class="session-dropdown"
-          :class="{ open: sessionOpen }"
-          :title="t('studio.chat.sessionSelect')"
-        >
-          <button
-            type="button"
-            class="tool-btn"
-            :title="t('studio.chat.sessionSelect')"
-            :aria-label="t('studio.chat.sessionSelect')"
-            :disabled="running || !sessions.length"
-            @click.stop="sessionOpen = !sessionOpen"
-          >
-            <span class="session-trigger-label">
-              {{ t('studio.chat.sessionSelect') }}
-            </span>
-            <svg
-              class="session-chevron"
-              :class="{ rotated: sessionOpen }"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <ul v-show="sessionOpen" class="session-menu">
-            <li v-for="s in sessions" :key="s.id" class="session-list-item">
-              <button
-                type="button"
-                class="session-item"
-                :class="{ active: s.id === activeId }"
-                @click.stop="selectSession(s.id)"
-              >
-                <span class="session-item-label">{{ s.title || t('studio.chat.newChat') }}</span>
+              <span class="mode-icon-box" :class="`mode-icon-${mode}`">
                 <svg
-                  v-if="s.id === activeId"
-                  class="session-check"
+                  v-if="mode === 'craft'"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="2.5"
+                  stroke-width="2"
                   stroke-linecap="round"
                   stroke-linejoin="round"
                 >
-                  <path d="M20 6 9 17l-5-5" />
+                  <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                  <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                  <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                  <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                  <path
+                    d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                  />
                 </svg>
-              </button>
-              <!--
-                删除做成每项后面的 ×，而不是工具栏上一个「删当前会话」按钮 ——
-                后者只能删当前那条，要先切过去才能删，且分不清删的是哪一个。
-                注意：按钮不能嵌套，所以这一项是 li 里的两个并排按钮。
-              -->
-              <button
-                type="button"
-                class="session-item-remove"
-                :title="t('studio.chat.deleteSession')"
-                :aria-label="t('studio.chat.deleteSession')"
-                :disabled="running"
-                @click.stop="onDeleteSessionById(s.id)"
-              >
-                ×
-              </button>
-            </li>
-          </ul>
-        </div>
-        <!-- 新建会话：纯图标（+），省下文字宽度；含义靠 title / aria-label 说明 -->
-        <button
-          class="tool-btn icon-only"
-          :title="t('studio.chat.newSession')"
-          :aria-label="t('studio.chat.newSession')"
-          :disabled="running"
-          @click="onNewSession"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            width="12"
-            height="12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            aria-hidden="true"
-          >
-            <path d="M8 3.5 V12.5" />
-            <path d="M3.5 8 H12.5" />
-          </svg>
-        </button>
-        <!-- 跨会话搜索：检索前端历史与底层 dsh SQLite / .jsonl.zstd 会话日志 -->
-        <div ref="searchDropdownRef" class="search-dropdown">
-          <button
-            type="button"
-            class="tool-btn icon-only"
-            :title="t('studio.chat.searchSessionsTitle')"
-            :aria-label="t('studio.chat.searchSessionsTitle')"
-            @click.stop="searchModalOpen = !searchModalOpen"
-          >
-            <svg
-              viewBox="0 0 16 16"
-              width="12"
-              height="12"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="7" cy="7" r="4.2" />
-              <path d="M10.2 10.2 L13.5 13.5" />
-            </svg>
-          </button>
-          <div v-show="searchModalOpen" class="search-popover" @click.stop>
-            <div class="search-input-row">
-              <input
-                v-model="searchQuery"
-                type="text"
-                class="search-input"
-                :placeholder="t('studio.chat.searchSessionsPlaceholder')"
-                @keydown.stop
-                @keydown.enter.prevent="onRunSessionSearch"
-              />
-              <button
-                type="button"
-                class="search-go-btn"
-                :disabled="searchBusy"
-                @click="onRunSessionSearch"
-              >
-                {{ t('studio.chat.searchSessionsTitle') }}
-              </button>
-            </div>
-            <div
-              v-if="!searchHits.length && searchQuery.trim() && !searchBusy"
-              class="search-empty"
-            >
-              {{ t('studio.chat.searchSessionsEmpty') }}
-            </div>
-            <ul v-else-if="searchHits.length" class="search-hit-list">
-              <li
-                v-for="hit in searchHits"
-                :key="hit.sessionId"
-                class="search-hit-item"
-                @click="onSelectSearchHit(hit)"
-              >
-                <span class="search-hit-title">{{ hit.title || hit.sessionId }}</span>
-                <span class="search-hit-snippet">{{ hit.snippet }}</span>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <!-- 导出当前会话为 dsh .zip 归档包 -->
-        <button
-          type="button"
-          class="tool-btn icon-only"
-          :disabled="!messages.length || exportBusy"
-          :title="t('studio.chat.exportSession')"
-          :aria-label="t('studio.chat.exportSession')"
-          @click="onExportCurrentSession"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            width="12"
-            height="12"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M8 2.5 V10.5" />
-            <path d="M5 7.5 L8 10.5 L11 7.5" />
-            <path d="M3 13 H13" />
-          </svg>
-        </button>
-        <div class="model-select-wrap">
-          <span class="model-label">{{ t('studio.chat.model') }}</span>
-          <div
-            ref="modelDropdownRef"
-            class="model-dropdown"
-            :class="{ open: modelOpen }"
-            :title="currentModel ? `${currentModel.providerLabel} · ${currentModel.label}` : ''"
-          >
-            <button
-              type="button"
-              class="model-trigger"
-              :disabled="running || !modelOptions.length"
-              @click.stop="modelOpen = !modelOpen"
-              @focus="loadModels"
-            >
-              <span class="model-trigger-label">
-                {{
-                  currentModel
-                    ? `${currentModel.providerLabel} · ${currentModel.label}`
-                    : t('studio.chat.noModel')
-                }}
+                <svg
+                  v-else-if="mode === 'ask'"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
+                </svg>
+                <svg
+                  v-else
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                  <path
+                    d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                  />
+                  <path d="m9 14 2 2 4-4" />
+                </svg>
               </span>
+              <span class="mode-trigger-label">{{ currentModeLabel }}</span>
               <svg
-                class="model-chevron"
-                :class="{ rotated: modelOpen }"
+                class="mode-chevron"
+                :class="{ rotated: modeOpen }"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -5360,18 +5997,63 @@ onBeforeUnmount(() => {
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <ul v-show="modelOpen" class="model-menu">
-              <li v-for="m in modelOptions" :key="modelKey(m.providerId, m.id)">
+            <ul v-show="modeOpen" class="mode-menu">
+              <li v-for="m in modeOptions" :key="m.value">
                 <button
                   type="button"
-                  class="model-item"
-                  :class="{ active: selectedKey === modelKey(m.providerId, m.id) }"
-                  @click.stop="selectModel(modelKey(m.providerId, m.id))"
+                  class="mode-item"
+                  :class="{ active: mode === m.value }"
+                  @click.stop="selectMode(m.value)"
                 >
-                  <span class="model-item-label">{{ m.providerLabel }} · {{ m.label }}</span>
+                  <span class="mode-icon-box" :class="`mode-icon-${m.value}`">
+                    <svg
+                      v-if="m.value === 'craft'"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+                      <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+                      <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+                      <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+                      <path
+                        d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"
+                      />
+                    </svg>
+                    <svg
+                      v-else-if="m.value === 'ask'"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
+                    </svg>
+                    <svg
+                      v-else
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                      <path
+                        d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+                      />
+                      <path d="m9 14 2 2 4-4" />
+                    </svg>
+                  </span>
+                  <span class="mode-item-label">{{ m.label }}</span>
                   <svg
-                    v-if="selectedKey === modelKey(m.providerId, m.id)"
-                    class="model-check"
+                    v-if="mode === m.value"
+                    class="mode-check"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -5385,51 +6067,449 @@ onBeforeUnmount(() => {
               </li>
             </ul>
           </div>
-          <span v-if="!modelOptions.length" class="model-empty">{{
-            t('studio.chat.noModel')
-          }}</span>
+          <span class="toolbar-spacer" />
+          <!--
+          用量环与引用资产按钮**合成一个不可拆分的单元**。
+          工具栏是 `flex-wrap: wrap`（面板由 dockview 承载、可拖窄），
+          两者若各占一个 flex 项，窄面板下会被折到两行去。
+          包成一个 flex 项后，要么都在第一行，要么整体折到下一行 —— 始终同行。
+        -->
+          <div class="toolbar-end">
+            <!-- 会话定时提醒：当 dsh schedule 插件创建了会话内提醒时展示，支持查看与取消 -->
+            <div
+              v-if="sessionSchedules.length > 0"
+              ref="scheduleDropdownRef"
+              class="schedule-dropdown"
+            >
+              <button
+                type="button"
+                class="tool-btn schedule-trigger"
+                :class="{ active: activeSchedules.length > 0 }"
+                :title="t('studio.chat.scheduleTitle')"
+                @click.stop="scheduleMenuOpen = !scheduleMenuOpen"
+              >
+                <span aria-hidden="true">⏰</span>
+                <span class="schedule-badge">{{ activeSchedules.length }}</span>
+              </button>
+              <div v-show="scheduleMenuOpen" class="schedule-menu">
+                <div class="schedule-menu-head">{{ t('studio.chat.scheduleTitle') }}</div>
+                <p v-if="!sessionSchedules.length" class="schedule-empty">
+                  {{ t('studio.chat.scheduleEmpty') }}
+                </p>
+                <ul v-else class="schedule-list">
+                  <li
+                    v-for="sch in sessionSchedules"
+                    :key="sch.id"
+                    class="schedule-item"
+                    :class="sch.status"
+                  >
+                    <div class="schedule-item-main">
+                      <span class="schedule-item-summary">{{ sch.summary }}</span>
+                      <span class="schedule-item-meta">
+                        {{ sch.timing }}
+                        <template v-if="sch.nextRunAt">
+                          · {{ new Date(sch.nextRunAt).toLocaleTimeString() }}
+                        </template>
+                      </span>
+                    </div>
+                    <button
+                      v-if="sch.status === 'active'"
+                      type="button"
+                      class="schedule-cancel-btn"
+                      @click.stop="onCancelSchedule(sch.id)"
+                    >
+                      {{ t('studio.chat.scheduleCancel') }}
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div
+              v-if="contextUsageText"
+              class="context-usage"
+              :class="{ warn: usageRatio >= 0.85, active: running }"
+              :title="contextUsageText"
+            >
+              <div class="ctx-ring" :style="{ '--ctx-pct': ringPct }" aria-hidden="true" />
+            </div>
+            <button
+              class="tool-btn mention"
+              :title="t('studio.chat.mentionTitle')"
+              @click="mentionOpen = true"
+            >
+              {{ t('studio.chat.mentionButton') }}
+            </button>
+          </div>
         </div>
-        <button
-          v-if="running"
-          class="btn icon-btn abort"
-          :title="t('studio.chat.stop')"
-          @click="onAbort"
-        >
-          <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
-            <rect x="4" y="4" width="8" height="8" rx="1.5" />
-          </svg>
-        </button>
-        <button
-          v-if="running && draft.trim()"
-          type="button"
-          class="btn steer-btn"
-          :title="t('studio.chat.steerNowTitle')"
-          @click="onSteerNow"
-        >
-          {{ t('studio.chat.steerNow') }}
-        </button>
-        <button
-          v-if="!running || draft.trim()"
-          class="btn icon-btn send"
-          :disabled="!draft.trim()"
-          :title="t('studio.chat.send')"
-          @click="onSend"
-        >
-          <svg
-            viewBox="0 0 16 16"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
+        <div v-if="referenced.length" class="mention-chips">
+          <span v-for="item in referenced" :key="item.path" class="mention-chip" :title="item.path">
+            <img v-if="item.thumbUrl" class="chip-thumb" :src="item.thumbUrl" alt="" />
+            <span v-else-if="item.type === 'video'" class="chip-icon">🎬</span>
+            <span v-else-if="item.type === 'voice'" class="chip-icon">🎵</span>
+            <span v-else-if="item.type === 'model' || item.type === 'model3d'" class="chip-icon"
+              >🧊</span
+            >
+            <span v-else class="chip-icon">📄</span>
+            <span class="chip-name">{{ item.name }}</span>
+            <button
+              class="chip-remove"
+              :title="t('studio.chat.removeMention')"
+              @click="removeMention(item.path)"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+        <div class="composer">
+          <div
+            v-show="slashOpen"
+            class="slash-menu"
+            role="listbox"
+            :aria-label="t('studio.chat.slashMenu')"
           >
-            <path d="M8 12 V4" />
-            <path d="M4.5 7.5 L8 4 L11.5 7.5" />
-          </svg>
-        </button>
+            <div class="slash-menu-title">{{ t('studio.chat.slashMenu') }}</div>
+            <button
+              v-for="(cmd, i) in slashItems"
+              :key="cmd.id"
+              type="button"
+              class="slash-item"
+              role="option"
+              :class="{ active: i === slashIndex }"
+              :aria-selected="i === slashIndex"
+              @mousedown.prevent="applySlashCommand(cmd)"
+              @mouseenter="slashIndex = i"
+            >
+              <span class="slash-name">
+                {{ cmd.name }}
+                <code v-if="'argumentHint' in cmd && cmd.argumentHint" class="slash-hint">{{
+                  cmd.argumentHint
+                }}</code>
+                <code v-if="'skillContext' in cmd && cmd.skillContext === 'fork'" class="slash-hint"
+                  >fork</code
+                >
+              </span>
+              <span class="slash-desc">{{
+                'descKey' in cmd ? t(`studio.chat.${cmd.descKey}`) : cmd.descText
+              }}</span>
+            </button>
+            <div v-if="!slashItems.length" class="slash-empty">
+              {{ t('studio.chat.slashEmpty') }}
+            </div>
+          </div>
+          <div v-if="assetDragOver" class="composer-drop-hint" aria-hidden="true">
+            {{ t('studio.chat.dropMediaHint') }}
+          </div>
+          <div
+            ref="inputRef"
+            class="composer-editor"
+            :class="{ composing }"
+            :style="{ height: `${composerHeight}px` }"
+            contenteditable="true"
+            role="textbox"
+            :aria-label="t('studio.chat.placeholder')"
+            :data-placeholder="t('studio.chat.placeholder')"
+            @input="onComposerInput"
+            @paste="onComposerPaste"
+            @compositionstart="composing = true"
+            @compositionend="onCompositionEnd"
+            @keydown.enter.exact.prevent="onComposerEnter"
+            @keydown.escape.prevent="onComposerEscape"
+            @keydown.arrow-down.exact="onSlashArrowKey($event, 1)"
+            @keydown.arrow-up.exact="onSlashArrowKey($event, -1)"
+            @keydown.tab.exact="onComposerTabKey"
+          />
+        </div>
+        <!--
+        会话管理与「模型」同一行。触发器是「历史」按钮而不是当前会话标题 ——
+        标题已移到面板最上方的状态栏（那里才是「我在看哪段对话」该出现的位置），
+        按钮因此可以做得紧凑，把宽度让给模型名。
+      -->
+        <div class="chat-actions">
+          <div
+            ref="sessionDropdownRef"
+            class="session-dropdown"
+            :class="{ open: sessionOpen }"
+            :title="t('studio.chat.sessionSelect')"
+          >
+            <button
+              type="button"
+              class="tool-btn"
+              :title="t('studio.chat.sessionSelect')"
+              :aria-label="t('studio.chat.sessionSelect')"
+              :disabled="running || !sessions.length"
+              @click.stop="sessionOpen = !sessionOpen"
+            >
+              <span class="session-trigger-label">
+                {{ t('studio.chat.sessionSelect') }}
+              </span>
+              <svg
+                class="session-chevron"
+                :class="{ rotated: sessionOpen }"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <ul v-show="sessionOpen" class="session-menu">
+              <li v-for="s in sessions" :key="s.id" class="session-list-item">
+                <button
+                  type="button"
+                  class="session-item"
+                  :class="{ active: s.id === activeId }"
+                  @click.stop="selectSession(s.id)"
+                >
+                  <span class="session-item-label">{{ s.title || t('studio.chat.newChat') }}</span>
+                  <svg
+                    v-if="s.id === activeId"
+                    class="session-check"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </button>
+                <!--
+                删除做成每项后面的 ×，而不是工具栏上一个「删当前会话」按钮 ——
+                后者只能删当前那条，要先切过去才能删，且分不清删的是哪一个。
+                注意：按钮不能嵌套，所以这一项是 li 里的两个并排按钮。
+              -->
+                <button
+                  type="button"
+                  class="session-item-remove"
+                  :title="t('studio.chat.deleteSession')"
+                  :aria-label="t('studio.chat.deleteSession')"
+                  :disabled="running"
+                  @click.stop="onDeleteSessionById(s.id)"
+                >
+                  ×
+                </button>
+              </li>
+            </ul>
+          </div>
+          <!-- 新建会话：纯图标（+），省下文字宽度；含义靠 title / aria-label 说明 -->
+          <button
+            class="tool-btn icon-only"
+            :title="t('studio.chat.newSession')"
+            :aria-label="t('studio.chat.newSession')"
+            :disabled="running"
+            @click="onNewSession"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M8 3.5 V12.5" />
+              <path d="M3.5 8 H12.5" />
+            </svg>
+          </button>
+          <!-- 跨会话搜索：检索前端历史与底层 dsh SQLite / .jsonl.zstd 会话日志 -->
+          <div ref="searchDropdownRef" class="search-dropdown">
+            <button
+              type="button"
+              class="tool-btn icon-only"
+              :title="t('studio.chat.searchSessionsTitle')"
+              :aria-label="t('studio.chat.searchSessionsTitle')"
+              @click.stop="searchModalOpen = !searchModalOpen"
+            >
+              <svg
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="7" cy="7" r="4.2" />
+                <path d="M10.2 10.2 L13.5 13.5" />
+              </svg>
+            </button>
+            <div v-show="searchModalOpen" class="search-popover" @click.stop>
+              <div class="search-input-row">
+                <input
+                  v-model="searchQuery"
+                  type="text"
+                  class="search-input"
+                  :placeholder="t('studio.chat.searchSessionsPlaceholder')"
+                  @keydown.stop
+                  @keydown.enter.prevent="onRunSessionSearch"
+                />
+                <button
+                  type="button"
+                  class="search-go-btn"
+                  :disabled="searchBusy"
+                  @click="onRunSessionSearch"
+                >
+                  {{ t('studio.chat.searchSessionsTitle') }}
+                </button>
+              </div>
+              <div
+                v-if="!searchHits.length && searchQuery.trim() && !searchBusy"
+                class="search-empty"
+              >
+                {{ t('studio.chat.searchSessionsEmpty') }}
+              </div>
+              <ul v-else-if="searchHits.length" class="search-hit-list">
+                <li
+                  v-for="hit in searchHits"
+                  :key="hit.sessionId"
+                  class="search-hit-item"
+                  @click="onSelectSearchHit(hit)"
+                >
+                  <span class="search-hit-title">{{ hit.title || hit.sessionId }}</span>
+                  <span class="search-hit-snippet">{{ hit.snippet }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <!-- 导出当前会话为 dsh .zip 归档包 -->
+          <button
+            type="button"
+            class="tool-btn icon-only"
+            :disabled="!messages.length || exportBusy"
+            :title="t('studio.chat.exportSession')"
+            :aria-label="t('studio.chat.exportSession')"
+            @click="onExportCurrentSession"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8 2.5 V10.5" />
+              <path d="M5 7.5 L8 10.5 L11 7.5" />
+              <path d="M3 13 H13" />
+            </svg>
+          </button>
+          <div class="model-select-wrap">
+            <span class="model-label">{{ t('studio.chat.model') }}</span>
+            <div
+              ref="modelDropdownRef"
+              class="model-dropdown"
+              :class="{ open: modelOpen }"
+              :title="currentModel ? `${currentModel.providerLabel} · ${currentModel.label}` : ''"
+            >
+              <button
+                type="button"
+                class="model-trigger"
+                :disabled="running || !modelOptions.length"
+                @click.stop="modelOpen = !modelOpen"
+                @focus="loadModels"
+              >
+                <span class="model-trigger-label">
+                  {{
+                    currentModel
+                      ? `${currentModel.providerLabel} · ${currentModel.label}`
+                      : t('studio.chat.noModel')
+                  }}
+                </span>
+                <svg
+                  class="model-chevron"
+                  :class="{ rotated: modelOpen }"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              <ul v-show="modelOpen" class="model-menu">
+                <li v-for="m in modelOptions" :key="modelKey(m.providerId, m.id)">
+                  <button
+                    type="button"
+                    class="model-item"
+                    :class="{ active: selectedKey === modelKey(m.providerId, m.id) }"
+                    @click.stop="selectModel(modelKey(m.providerId, m.id))"
+                  >
+                    <span class="model-item-label">{{ m.providerLabel }} · {{ m.label }}</span>
+                    <svg
+                      v-if="selectedKey === modelKey(m.providerId, m.id)"
+                      class="model-check"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  </button>
+                </li>
+              </ul>
+            </div>
+            <span v-if="!modelOptions.length" class="model-empty">{{
+              t('studio.chat.noModel')
+            }}</span>
+          </div>
+          <button
+            v-if="running"
+            class="btn icon-btn abort"
+            :title="t('studio.chat.stop')"
+            @click="onAbort"
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+              <rect x="4" y="4" width="8" height="8" rx="1.5" />
+            </svg>
+          </button>
+          <button
+            v-if="running && draft.trim()"
+            type="button"
+            class="btn steer-btn"
+            :title="t('studio.chat.steerNowTitle')"
+            @click="onSteerNow"
+          >
+            {{ t('studio.chat.steerNow') }}
+          </button>
+          <button
+            v-if="!running || draft.trim()"
+            class="btn icon-btn send"
+            :disabled="!draft.trim()"
+            :title="t('studio.chat.send')"
+            @click="onSend"
+          >
+            <svg
+              viewBox="0 0 16 16"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M8 12 V4" />
+              <path d="M4.5 7.5 L8 4 L11.5 7.5" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -5458,11 +6538,25 @@ onBeforeUnmount(() => {
 .chat-panel {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   height: 100%;
   min-height: 0;
   background: var(--bg-panel);
   color: var(--text);
+}
+
+.chat-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* 当左侧栏展开时，历史会话已整合至左侧栏（Projects 下方的 Conversations），底部工具栏隐藏旧下拉 */
+.chat-panel.sidebar-open .session-dropdown {
+  display: none;
 }
 
 .chat-panel.asset-drag-over {
@@ -5545,7 +6639,7 @@ onBeforeUnmount(() => {
 .chat-status .chat-workspace {
   flex: none;
   margin-left: auto;
-  max-width: 40%;
+  max-width: 35%;
   padding: 0 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5555,6 +6649,780 @@ onBeforeUnmount(() => {
   background: var(--bg-elevated);
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.chat-projects-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.14s ease,
+    border-color 0.14s ease,
+    background 0.14s ease;
+}
+
+.chat-projects-toggle:hover,
+.chat-projects-toggle.active {
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Codex 风格左侧栏（New Conversation + Automations/Customizations + Projects + 下方 Conversations） */
+.codex-projects-panel {
+  width: 226px;
+  min-width: 196px;
+  max-width: 44%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 92%, #08090d);
+  user-select: none;
+  flex: none;
+}
+
+.codex-new-conv-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease;
+}
+
+.codex-new-conv-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.codex-new-conv-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.codex-sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: 6px;
+}
+
+.codex-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.codex-nav-item:hover,
+.codex-nav-item.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.codex-nav-badge {
+  margin-left: auto;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+.codex-sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 2px;
+}
+
+.codex-projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 2px;
+}
+
+.codex-projects-title {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.codex-projects-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.codex-header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.codex-header-icon-btn:hover:not(:disabled),
+.codex-header-icon-btn.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.codex-header-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.codex-projects-filter-row {
+  padding: 0 4px 2px;
+}
+
+.codex-projects-filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.codex-projects-filter-input:focus {
+  border-color: var(--accent);
+}
+
+.codex-projects-empty {
+  padding: 8px 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.codex-projects-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.codex-project-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.codex-project-folder-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+}
+
+.codex-project-folder-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.codex-project-folder-btn {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.codex-project-group.is-active-project .codex-project-folder-btn,
+.codex-project-folder-btn:hover {
+  color: var(--text);
+}
+
+.codex-folder-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.codex-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-project-folder-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.codex-project-folder-row:hover .codex-project-folder-actions,
+.codex-project-group.is-active-project .codex-project-folder-actions {
+  opacity: 1;
+}
+
+.codex-folder-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.codex-folder-action-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.codex-folder-action-btn.danger:hover:not(:disabled) {
+  color: var(--danger, #ff5c5c);
+}
+
+.codex-session-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.codex-conv-entry {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 5px 8px 5px 22px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.codex-conv-entry.flat {
+  padding-left: 10px;
+}
+
+.codex-conv-entry:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.codex-conv-entry.active {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.13);
+}
+
+.codex-session-btn {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+
+.codex-conv-entry.active .codex-session-btn,
+.codex-conv-entry:hover .codex-session-btn {
+  color: var(--text);
+}
+
+.codex-session-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-session-project-badge {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 1px;
+  font-size: 10.5px;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.42);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 悬停时右侧浮现的 [📥 归档] [📌 置顶] [⋮ 删除] 图标组 */
+.codex-conv-hover-tools {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.codex-conv-entry:hover .codex-conv-hover-tools {
+  display: inline-flex;
+}
+
+.codex-conv-entry:hover .codex-session-dots-btn,
+.codex-conv-entry:hover .codex-session-unread-dot,
+.codex-conv-entry:hover .codex-session-age-label {
+  display: none;
+}
+
+.codex-conv-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.codex-conv-tool-btn:hover:not(:disabled),
+.codex-conv-tool-btn.active {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.codex-conv-tool-btn.danger:hover:not(:disabled) {
+  color: var(--danger, #ff5c5c);
+}
+
+.codex-session-dots-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.codex-session-unread-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.codex-session-age-label {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 工程下方的 Conversations 会话列表区（重构自底部历史会话） */
+.codex-conversations-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.codex-conversations-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px;
+}
+
+.codex-conversations-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.codex-conversations-toggle:hover {
+  color: var(--text);
+}
+
+.codex-conversations-chevron {
+  transition: transform 0.16s ease;
+}
+
+.codex-conversations-chevron.open {
+  transform: rotate(90deg);
+}
+
+/* Codex 风格 Automations 定时任务面板（参考用户截图还原） */
+.codex-automations-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--bg-panel);
+}
+
+.codex-automations-view ~ * {
+  display: none !important;
+}
+
+.codex-auto-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.codex-auto-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 22px;
+  font-weight: 500;
+  outline: none;
+}
+
+.codex-auto-title-input::placeholder {
+  color: var(--text-muted);
+}
+
+.codex-auto-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.codex-auto-btn {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    opacity 0.14s ease;
+}
+
+.codex-auto-btn.cancel {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.codex-auto-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.codex-auto-btn.create {
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: #2563eb;
+  color: #fff;
+}
+
+.codex-auto-btn.create:hover:not(:disabled) {
+  background: #3b82f6;
+}
+
+.codex-auto-btn.create:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.codex-auto-env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.codex-auto-env-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.codex-auto-subtitle {
+  margin: -6px 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.codex-auto-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.codex-auto-section-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.codex-auto-card {
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.codex-auto-card.instructions {
+  padding: 12px 14px;
+}
+
+.codex-auto-trigger-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.codex-auto-schedule-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codex-auto-select {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+.codex-auto-select:hover,
+.codex-auto-select:focus {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.codex-auto-at-text,
+.codex-auto-tz-label {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.codex-auto-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+
+.codex-auto-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.codex-auto-saved-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.codex-auto-saved-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.codex-auto-saved-item.paused {
+  opacity: 0.6;
+}
+
+.codex-auto-saved-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.codex-auto-saved-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codex-auto-saved-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.codex-auto-saved-schedule {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+  font-size: 11px;
+}
+
+.codex-auto-saved-prompt {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.codex-auto-saved-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.codex-auto-item-btn {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.codex-auto-item-btn.primary {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.codex-auto-item-btn.danger:hover {
+  color: var(--danger, #ff5c5c);
+  border-color: rgba(255, 92, 92, 0.4);
 }
 
 /* 任务清单：内嵌在消息流中跟随任务消息展示（agent 风格 todo 卡），状态实时更新 */

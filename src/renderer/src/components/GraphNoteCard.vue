@@ -576,6 +576,10 @@ const displayText = computed(() => {
     return t('graph.inspector.boundary.previewEmpty')
   }
   const text = props.node.params.text?.trim()
+  if (text && text !== '…' && text !== '...' && text !== 'Note…') return text
+  const fallbackPrompt =
+    props.node.params.prompt?.trim() || props.node.params.generateInstruction?.trim()
+  if (fallbackPrompt) return fallbackPrompt
   if (text) return text
   const key = presentation.value?.textPlaceholderKey
   return key ? t(key) : t('graph.note.placeholder')

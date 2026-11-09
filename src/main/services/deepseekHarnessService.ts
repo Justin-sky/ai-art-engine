@@ -252,11 +252,16 @@ function stripAnsi(text: string): string {
   return text.replace(/\u001b\[[0-9;]*m/g, '').replace(/\r/g, '')
 }
 
+/** 用户在 AI 对话面板 Projects 树中选中的外部/自定义项目工作区目录（为空时跟随当前打开的 Studio 工程） */
+let activeWorkspaceOverride = ''
+
 /**
- * dsh 工作区：优先当前打开的工程根目录（agent 在工程内读写资产），
+ * dsh 工作区：优先用户在对话 Projects 树中选中的项目目录，其次当前打开的 Studio 工程根目录，
  * 未打开工程时回退应用数据目录（仅可做纯对话）。
  */
-function resolveWorkspace(): string {
+function resolveWorkspace(preferredWorkspace?: string): string {
+  const explicit = preferredWorkspace?.trim() || activeWorkspaceOverride.trim()
+  if (explicit && existsSync(explicit)) return explicit
   const root = projectService.getOpenProjectState()?.rootPath?.trim()
   if (root && existsSync(root)) return root
   return app.getPath('userData')
@@ -3145,7 +3150,11 @@ async function startHarnessNow(input: HarnessRunInput): Promise<HarnessRunResult
     return { started: false, message: '未配置可用文本模型，请先在模型设置中添加' }
   }
 
-  const workspace = resolveWorkspace()
+  if (typeof input.workspace === 'string') {
+    const candidate = input.workspace.trim()
+    activeWorkspaceOverride = candidate && existsSync(candidate) ? candidate : ''
+  }
+  const workspace = resolveWorkspace(input.workspace)
   const mode = normalizeChatMode(input.mode)
   const isNativeSlashCommand = /^\/(compact|goal|feedback)(?=$|\s)/i.test(rawInputTask)
   const skillPreprocessed = isNativeSlashCommand
