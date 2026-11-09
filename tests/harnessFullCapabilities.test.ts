@@ -51,7 +51,7 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
   })
 
   it('5. 接入外部子代理、Hooks 与可续跑 fork 子代理 (claude-code / codex / continuable fork)', () => {
-    expect(SERVICE_SRC).toContain('backgroundMode: continuable')
+    expect(SERVICE_SRC).toContain('toolName: subagent_fork')
     expect(SERVICE_SRC).toContain("hasPkg('@deepseek-ai/dsh-hooks-claude-code')")
     expect(SERVICE_SRC).toContain("hasPkg('@deepseek-ai/dsh-hooks-codex')")
     expect(SERVICE_SRC).toContain("hasPkg('@deepseek-ai/dsh-subagent-claude-code')")

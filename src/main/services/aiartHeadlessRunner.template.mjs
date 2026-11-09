@@ -1793,7 +1793,30 @@ async function runOneTurn(ctx, io, opts) {
 
   const sessionId = (rawSessionId || '').trim() || 'session-' + randomUUID()
   const agentOptions = { provider: selection.provider, model: selection.model }
-  const setup = (agentCtx) => {
+  const setup = (agentCtx, agent) => {
+    if (
+      agent?.model &&
+      typeof agent.model.select === 'function' &&
+      selection?.provider &&
+      selection?.model
+    ) {
+      const previous = typeof agent.model.current === 'function' ? agent.model.current() : undefined
+      const configured = {
+        provider: selection.provider,
+        model: selection.model,
+        ...(selection.reasoningEffort ? { reasoningEffort: selection.reasoningEffort } : {})
+      }
+      if (
+        configured.reasoningEffort === void 0 &&
+        previous !== void 0 &&
+        previous.provider === configured.provider &&
+        previous.model === configured.model &&
+        previous.reasoningEffort !== void 0
+      ) {
+        configured.reasoningEffort = previous.reasoningEffort
+      }
+      agent.model.select(configured)
+    }
     installModelSelection(agentCtx, {
       current: selection,
       assembled: void 0

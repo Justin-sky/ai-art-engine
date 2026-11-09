@@ -1373,7 +1373,6 @@ function writeAiartHarness(
       '  config:',
       '    provider: fork',
       '    toolName: subagent_fork',
-      '    backgroundMode: continuable',
       '- id: system-prompt',
       '  config:',
       // dsh 0.1.5 起 system-prompt 的配置键由 persona 改名为 personaPrefix（旧键会被 schema 丢弃）
@@ -1598,7 +1597,7 @@ function sendWorkerCommand(payload: Record<string, unknown>): boolean {
 }
 
 /** 常驻 worker 协议版本：改 runner 交互或 MCP 核心工具集时递增，强制热进程重建 */
-const WORKER_PROTOCOL = '11'
+const WORKER_PROTOCOL = '12'
 const RUNNER_TEMPLATE_FP = createHash('sha1')
   .update(AIART_RUNNER_TEMPLATE)
   .digest('hex')

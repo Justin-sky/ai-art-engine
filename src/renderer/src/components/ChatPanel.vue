@@ -6676,8 +6676,8 @@ onBeforeUnmount(() => {
 .chat-projects-toggle:hover,
 .chat-projects-toggle.active {
   color: var(--text);
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border));
+  background: var(--bg-hover);
 }
 
 /* Codex 风格左侧栏（New Conversation + Automations/Customizations + Projects + 下方 Conversations） */
@@ -6693,7 +6693,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 10px 8px;
   border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-panel) 92%, #08090d);
+  background: color-mix(in srgb, var(--bg-panel) 92%, var(--bg));
   user-select: none;
   flex: none;
 }
@@ -6704,9 +6704,9 @@ onBeforeUnmount(() => {
   gap: 8px;
   width: 100%;
   padding: 8px 11px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-elevated);
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
@@ -6719,8 +6719,8 @@ onBeforeUnmount(() => {
 }
 
 .codex-new-conv-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.22);
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--text) 22%, var(--border));
 }
 
 .codex-new-conv-btn:disabled {
@@ -6757,14 +6757,14 @@ onBeforeUnmount(() => {
 .codex-nav-item:hover,
 .codex-nav-item.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
 }
 
 .codex-nav-badge {
   margin-left: auto;
   padding: 0 5px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-elevated);
   color: var(--text-muted);
   font-size: 10px;
   line-height: 16px;
@@ -6822,7 +6822,7 @@ onBeforeUnmount(() => {
 .codex-header-icon-btn:hover:not(:disabled),
 .codex-header-icon-btn.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--bg-hover);
 }
 
 .codex-header-icon-btn:disabled {
@@ -6879,7 +6879,7 @@ onBeforeUnmount(() => {
 }
 
 .codex-project-folder-row:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-hover);
 }
 
 .codex-project-folder-btn {
@@ -6946,11 +6946,11 @@ onBeforeUnmount(() => {
 
 .codex-folder-action-btn:hover:not(:disabled) {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-hover);
 }
 
 .codex-folder-action-btn.danger:hover:not(:disabled) {
-  color: var(--danger, #ff5c5c);
+  color: var(--danger);
 }
 
 .codex-session-list {
@@ -6981,12 +6981,12 @@ onBeforeUnmount(() => {
 }
 
 .codex-conv-entry:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-hover);
 }
 
 .codex-conv-entry.active {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.13);
+  background: var(--bg-elevated);
+  border-color: var(--border);
 }
 
 .codex-session-btn {
@@ -7021,7 +7021,7 @@ onBeforeUnmount(() => {
   margin-top: 1px;
   font-size: 10.5px;
   line-height: 1.2;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7062,11 +7062,11 @@ onBeforeUnmount(() => {
 .codex-conv-tool-btn:hover:not(:disabled),
 .codex-conv-tool-btn.active {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-hover);
 }
 
 .codex-conv-tool-btn.danger:hover:not(:disabled) {
-  color: var(--danger, #ff5c5c);
+  color: var(--danger);
 }
 
 .codex-session-dots-btn {
@@ -7108,7 +7108,7 @@ onBeforeUnmount(() => {
   gap: 4px;
   margin-top: 6px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid var(--border);
 }
 
 .codex-conversations-header {
@@ -7206,13 +7206,13 @@ onBeforeUnmount(() => {
 }
 
 .codex-auto-btn.cancel {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
   color: var(--text);
 }
 
 .codex-auto-btn.cancel:hover {
-  background: rgba(255, 255, 255, 0.11);
+  background: var(--bg-hover);
 }
 
 .codex-auto-btn.create {
@@ -7262,9 +7262,9 @@ onBeforeUnmount(() => {
 
 .codex-auto-card {
   padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--bg-elevated);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -7293,9 +7293,9 @@ onBeforeUnmount(() => {
 .codex-auto-select {
   height: 30px;
   padding: 0 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-input);
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
@@ -7306,7 +7306,7 @@ onBeforeUnmount(() => {
 
 .codex-auto-select:hover,
 .codex-auto-select:focus {
-  border-color: rgba(255, 255, 255, 0.24);
+  border-color: color-mix(in srgb, var(--text) 24%, var(--border));
 }
 
 .codex-auto-at-text,
@@ -7348,9 +7348,9 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-elevated);
 }
 
 .codex-auto-saved-item.paused {
@@ -7406,9 +7406,9 @@ onBeforeUnmount(() => {
 .codex-auto-item-btn {
   height: 24px;
   padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-input);
   color: var(--text);
   font: inherit;
   font-size: 11.5px;
@@ -7421,7 +7421,7 @@ onBeforeUnmount(() => {
 }
 
 .codex-auto-item-btn.danger:hover {
-  color: var(--danger, #ff5c5c);
+  color: var(--danger);
   border-color: rgba(255, 92, 92, 0.4);
 }
 

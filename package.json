@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@cordisjs/core": "^3.18.1",
-    "@deepseek-ai/dsh": "0.1.5-rc.2",
+    "@deepseek-ai/dsh": "^0.2.2-rc.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@jitl/quickjs-singlefile-browser-release-asyncify": "0.31.0",
@@ -95,6 +95,7 @@
   },
   "allowScripts": {
     "@deepseek-ai/dsh-subprocess-local@0.1.5-rc.2": true,
+    "@deepseek-ai/dsh-subprocess-local@0.2.2-rc.1": true,
     "@google/genai@1.52.0": true,
     "electron@35.2.1": true,
     "esbuild@0.25.12": true,
