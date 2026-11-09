@@ -1934,6 +1934,7 @@ import {
   getMxNodeSubPillWidth,
   hasMxNodeSimpleMacros,
   inspectMxFormulaContext,
+  isMxBooleanStateExpr,
   mxNodeColor,
   parseMxStateFormula,
   formatMxCompactEdgeFormulas,
@@ -2320,7 +2321,7 @@ function evalStateEdgeCondition(edge: MxEdge): boolean | null {
     case 'range':
       return srcVal >= spec.lo && srcVal <= spec.hi
     case 'expr': {
-      if (!/[<>=!]/.test(spec.expr)) return null
+      if (!isMxBooleanStateExpr(spec.expr)) return null
       return (
         evaluateMxExpression(
           spec.expr,
@@ -2344,28 +2345,102 @@ function evalStateEdgeCondition(edge: MxEdge): boolean | null {
   }
 }
 
-/** 判断状态边在当前步是否真的发射控制信号脉冲光点（避免未满足的结束条件误发信号） */
+const currentStepTriggerEdgeIds = computed<Set<string>>(() => {
+  const step = store.playStep.value
+  const out = new Set<string>()
+  if (step <= 0) return out
+  const evs = store.activeRun.value ? store.activeRun.value.events : store.liveEvents.value
+  for (const ev of evs) {
+    if (ev.step === step && ev.type === 'trigger' && ev.edgeId) {
+      out.add(ev.edgeId)
+    }
+  }
+  return out
+})
+
+/** 判断状态边在当前步是否真的发射控制信号脉冲（未达条件的状态线、未满足 End 节点其余条件的状态线、未触发的 Gate 分支均保持静默不闪烁） */
 function isStateEdgePulsing(edge: MxEdge): boolean {
+  const gateSnap = runtimeEdgeGates.value
+  // 1. 若该状态边自身处于休眠态（条件未满足）或被上游状态边门控关断，绝不闪烁
+  if (gateSnap.dormantStateEdgeIds.has(edge.id) || gateSnap.gatedOffEdgeIds.has(edge.id)) {
+    return false
+  }
+
+  // 2. 若源节点是 Gate（Trigger Gate / Mixed Gate），仅当引擎在本步实际触发了该条状态分支（产生 trigger 事件）时才闪烁
+  const srcNode = nodeById.value.get(edge.from)
+  if (srcNode?.kind === 'gate') {
+    return currentStepTriggerEdgeIds.value.has(edge.id)
+  }
+
   const cond = evalStateEdgeCondition(edge)
   if (cond !== null) {
-    // 比较条件边（Activator / End 条件）：仅当条件成立（true）时才发射信号菱形
-    return cond
+    if (!cond) return false
+    // 3. 若该条件状态边指向另一条连线（targetEdgeId），仅当被控目标连线未休眠/未被门控关断时才闪烁
+    if (edge.targetEdgeId) {
+      if (
+        gateSnap.dormantStateEdgeIds.has(edge.targetEdgeId) ||
+        gateSnap.gatedOffEdgeIds.has(edge.targetEdgeId)
+      ) {
+        return false
+      }
+      return true
+    }
+    const dstNode = nodeById.value.get(edge.to)
+    if (!dstNode) return false
+    // 4. 若指向 End 终局节点（如 e40: 累计暗伤 <=320 -> 封侯），默认 End 需满足全部入向条件（endMode !== 'any'）：
+    //    当其它条件（如官阶 >=16、战功 >=320）尚未达成时，单条 <=320 不应每步都闪烁，仅在 End 全部条件达成时闪烁
+    if (dstNode.kind === 'end') {
+      if (dstNode.endMode === 'any') return true
+      const siblingStateEdges = store
+        .peekDoc()
+        .edges.filter((se) => se.kind === 'state' && !se.targetEdgeId && se.to === dstNode.id)
+      return siblingStateEdges.every(
+        (se) => !gateSnap.dormantStateEdgeIds.has(se.id) && !gateSnap.gatedOffEdgeIds.has(se.id)
+      )
+    }
+    // 5. 若指向 Converter / Drain / Trader / Source 等节点，且该节点被其它并联状态边门控关断，或本步并未实际工作（无流量且未触发），则保持静默不每步空闪
+    const siblingGated = store
+      .peekDoc()
+      .edges.some(
+        (se) =>
+          se.kind === 'state' &&
+          !se.targetEdgeId &&
+          se.to === dstNode.id &&
+          (gateSnap.dormantStateEdgeIds.has(se.id) || gateSnap.gatedOffEdgeIds.has(se.id))
+      )
+    if (siblingGated) return false
+    if (
+      dstNode.kind === 'converter' ||
+      dstNode.kind === 'trader' ||
+      dstNode.kind === 'drain' ||
+      dstNode.kind === 'source'
+    ) {
+      return firedIds.value.has(dstNode.id)
+    }
+    return true
   }
+
   const spec = parseMxStateFormula(edge.formula)
   if (spec.type === 'trigger') {
-    return outgoingFiredIds.value.has(edge.from)
+    return currentStepTriggerEdgeIds.value.has(edge.id) || outgoingFiredIds.value.has(edge.from)
   }
   if (spec.type === 'reverse_trigger') {
-    return store.nodeBottlenecks.value[edge.from]?.kind === 'blocked'
+    return (
+      currentStepTriggerEdgeIds.value.has(edge.id) ||
+      store.nodeBottlenecks.value[edge.from]?.kind === 'blocked'
+    )
   }
-  // 数值修正边（如 +0.1、+1）：源节点值非 0，且目标实线有流量或源节点本步活跃时显示脉冲
-  const srcNode = nodeById.value.get(edge.from)
+  // 数值修正边（如 +0.1、+1、+1/3、=）：源节点本步有实际变化或目标实线有流量时显示脉冲
   const srcVal = store.displayValues.value?.[edge.from] ?? srcNode?.initial ?? 0
   if (Math.abs(srcVal) < 1e-9) return false
   if (edge.targetEdgeId) {
     return (store.displayFlows.value[edge.targetEdgeId] ?? 0) > 0
   }
-  return firedIds.value.has(edge.from)
+  const dstNode = nodeById.value.get(edge.to)
+  if (dstNode?.kind === 'pool' || dstNode?.kind === 'register') {
+    return Math.abs(nodeStepDelta(edge.from)) > 1e-9
+  }
+  return firedIds.value.has(edge.to) || firedIds.value.has(edge.from)
 }
 
 const resourceColorMap = computed(() => {

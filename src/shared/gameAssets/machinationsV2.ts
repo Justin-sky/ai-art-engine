@@ -10460,7 +10460,166 @@ export function applyMxDiagnosticQuickFixInPlace(
   if (finding.kind === 'pool_depleted' && finding.nodeId) {
     const pool = byId.get(finding.nodeId)
     if (!pool || pool.kind !== 'pool') return { changed: false }
-    const boost = Math.max(10, Math.ceil((finding.value ?? 10) * 0.6))
+
+    const activeRun =
+      options.run ??
+      runMxSimulation(doc, {
+        seed: options.seed ?? doc.settings.seed,
+        scenarioId: options.scenarioId
+      })
+    const baselineHealth = analyzeMxEconomyHealth(doc, activeRun)
+    const baselineWarnIds = new Set(
+      baselineHealth.findings
+        .filter(
+          (f) => f.severity === 'warn' || f.severity === 'critical' || f.kind === 'pool_depleted'
+        )
+        .map((f) => f.id)
+    )
+    const verifySeeds = Array.from(
+      new Set([doc.settings.seed, ...(options.seed != null ? [options.seed] : [])])
+    )
+    const fallbackBox: {
+      best: { doc: MxDocument; res: MxDiagnosticQuickFixResult; score: number } | null
+    } = { best: null }
+
+    const tryDepletedCandidate = (
+      mutateCand: (cand: MxDocument) => MxDiagnosticQuickFixResult | null
+    ): MxDiagnosticQuickFixResult | null => {
+      const cand: MxDocument = JSON.parse(JSON.stringify(doc))
+      const res = mutateCand(cand)
+      if (!res || !res.changed) return null
+
+      let minScore = 100
+      let hasNewSideEffect = false
+      for (const sd of verifySeeds) {
+        const sim = runMxSimulation(cand, { seed: sd, scenarioId: options.scenarioId })
+        const h = analyzeMxEconomyHealth(cand, sim)
+        if (h.findings.some((f) => f.kind === 'pool_depleted' && f.nodeId === pool.id)) {
+          return null
+        }
+        if (
+          h.findings.some(
+            (f) => f.kind === 'pool_capped' && f.nodeId === pool.id && !baselineWarnIds.has(f.id)
+          )
+        ) {
+          return null
+        }
+        const sideEffects = h.findings.some(
+          (f) =>
+            (f.severity === 'warn' || f.severity === 'critical' || f.kind === 'pool_depleted') &&
+            !baselineWarnIds.has(f.id)
+        )
+        if (sideEffects) hasNewSideEffect = true
+        if (h.score < minScore) minScore = h.score
+      }
+
+      if (!hasNewSideEffect) {
+        doc.nodes = cand.nodes
+        doc.edges = cand.edges
+        doc.params = cand.params
+        return res
+      }
+      if (!fallbackBox.best || minScore > fallbackBox.best.score) {
+        fallbackBox.best = { doc: cand, res, score: minScore }
+      }
+      return null
+    }
+
+    const peak = Math.max(10, finding.value ?? 10)
+    const steps = Math.max(10, activeRun.stepsRun)
+
+    // 1) 渐进抬高初始库存（若设置了容量上限则同步扩容，防止容量上限将初始库存截断导致后期照样耗尽）
+    for (const boost of [
+      Math.max(12, Math.ceil(peak * 0.7)),
+      Math.max(30, Math.ceil(peak * 1.6 + steps)),
+      Math.max(75, Math.ceil(peak * 3.2 + steps * 2.5)),
+      Math.max(180, Math.ceil(peak * 6 + steps * 6))
+    ]) {
+      const hit = tryDepletedCandidate((cand) => {
+        const cp = cand.nodes.find((x) => x.id === pool.id)
+        if (!cp) return null
+        cp.initial = Math.round(((cp.initial ?? 0) + boost) * 10) / 10
+        if (cp.capacity && cp.capacity > 0 && cp.capacity < cp.initial + peak) {
+          cp.capacity = Math.ceil(((cp.initial + peak) * 1.6) / 10) * 10
+        }
+        return { changed: true, focusNodeId: cp.id }
+      })
+      if (hit) return hit
+    }
+
+    // 2) 若下游存在 `all` 一次性抽空边，或下游 Converter/Drain 阈值恰好等于消耗量导致每次触发都把池子扣成 0，为其保留安全底线库存
+    const hitReserve = tryDepletedCandidate((cand) => {
+      const cp = cand.nodes.find((x) => x.id === pool.id)
+      if (!cp) return null
+      const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+      let changed = false
+      if ((cp.initial ?? 0) < 5) {
+        cp.initial = Math.max(10, Math.ceil(peak * 0.6))
+        if (cp.capacity && cp.capacity > 0 && cp.capacity < cp.initial + peak) {
+          cp.capacity = Math.ceil(((cp.initial + peak) * 1.6) / 10) * 10
+        }
+        changed = true
+      }
+      if (cp.autoOutflow?.trim()) {
+        const rawOut = cp.autoOutflow.trim()
+        if (!rawOut.startsWith('if(')) {
+          const ivIdx = rawOut.indexOf('|')
+          const core = ivIdx >= 0 ? rawOut.slice(0, ivIdx).trim() : rawOut
+          const suf = ivIdx >= 0 ? `|${rawOut.slice(ivIdx + 1).trim()}` : ''
+          cp.autoOutflow = `if(${cp.id} > (${core || '1'}) + 1, ${core || '1'}, 0)${suf}`
+          changed = true
+        }
+      }
+      const outRes = cand.edges.filter(
+        (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === cp.id
+      )
+      for (const oe of outRes) {
+        if (/^all$/i.test((oe.formula ?? '').trim())) {
+          oe.formula = 'round(self * 0.5)'
+          changed = true
+          continue
+        }
+        const th = extractEdgeThresholdExpr(oe)
+        const reserveNum = (th.numeric ?? 2) + 2
+        const existingState = cand.edges.find(
+          (se) =>
+            se.kind === 'state' &&
+            se.from === cp.id &&
+            (se.to === oe.to || se.targetEdgeId === oe.id)
+        )
+        if (existingState) {
+          const sp = parseMxStateFormula(existingState.formula)
+          if (sp.type === 'activator' && (sp.op === '>=' || sp.op === '>')) {
+            existingState.formula = `>=${Math.max(reserveNum, sp.value + 2)}`
+            changed = true
+          }
+        } else {
+          const dst = candById.get(oe.to)
+          if (dst?.kind === 'drain' || dst?.kind === 'converter') {
+            cand.edges.push({
+              id: mxNewId('e'),
+              kind: 'state',
+              from: cp.id,
+              to: dst.id,
+              ...(dst.kind === 'drain' ? { targetEdgeId: oe.id } : {}),
+              formula: `>=${reserveNum}`,
+              bend: -24
+            })
+            changed = true
+          }
+        }
+      }
+      return changed ? { changed: true, focusNodeId: cp.id } : null
+    })
+    if (hitReserve) return hitReserve
+
+    if (fallbackBox.best) {
+      doc.nodes = fallbackBox.best.doc.nodes
+      doc.edges = fallbackBox.best.doc.edges
+      doc.params = fallbackBox.best.doc.params
+      return fallbackBox.best.res
+    }
+    const boost = Math.max(15, Math.ceil(peak * 0.8))
     pool.initial = Math.round(((pool.initial ?? 0) + boost) * 10) / 10
     if (pool.capacity && pool.capacity > 0 && pool.capacity < pool.initial) {
       pool.capacity = Math.ceil((pool.initial * 1.5) / 10) * 10
@@ -10733,17 +10892,323 @@ export function applyMxDiagnosticQuickFixInPlace(
   if (finding.kind === 'idle_node' && finding.nodeId) {
     const node = byId.get(finding.nodeId)
     if (!node) return { changed: false }
-    const inEdges = doc.edges.filter((e) => !e.targetEdgeId && e.to === node.id)
-    for (const ie of inEdges) {
-      const src = byId.get(ie.from)
-      if (src && (src.kind === 'source' || src.kind === 'converter') && src.trigger === 'passive') {
-        src.trigger = 'automatic'
-        return { changed: true, focusNodeId: src.id }
+
+    const activeRun =
+      options.run ??
+      runMxSimulation(doc, {
+        seed: options.seed ?? doc.settings.seed,
+        scenarioId: options.scenarioId
+      })
+    const baselineHealth = analyzeMxEconomyHealth(doc, activeRun)
+    const baselineWarnIds = new Set(
+      baselineHealth.findings
+        .filter(
+          (f) => f.severity === 'warn' || f.severity === 'critical' || f.kind === 'pool_depleted'
+        )
+        .map((f) => f.id)
+    )
+    const verifySeeds = Array.from(
+      new Set([doc.settings.seed, ...(options.seed != null ? [options.seed] : [])])
+    )
+    const fallbackBox: {
+      best: { doc: MxDocument; res: MxDiagnosticQuickFixResult; score: number } | null
+    } = { best: null }
+
+    const tryIdleCandidate = (
+      mutateCand: (cand: MxDocument) => MxDiagnosticQuickFixResult | null
+    ): MxDiagnosticQuickFixResult | null => {
+      const cand: MxDocument = JSON.parse(JSON.stringify(doc))
+      const res = mutateCand(cand)
+      if (!res || !res.changed) return null
+
+      let minScore = 100
+      let hasNewSideEffect = false
+      for (const sd of verifySeeds) {
+        const sim = runMxSimulation(cand, { seed: sd, scenarioId: options.scenarioId })
+        const h = analyzeMxEconomyHealth(cand, sim)
+        if (h.findings.some((f) => f.kind === 'idle_node' && f.nodeId === node.id)) {
+          return null
+        }
+        const sideEffects = h.findings.some(
+          (f) =>
+            (f.severity === 'warn' || f.severity === 'critical' || f.kind === 'pool_depleted') &&
+            !baselineWarnIds.has(f.id)
+        )
+        if (sideEffects) hasNewSideEffect = true
+        if (h.score < minScore) minScore = h.score
       }
+
+      if (!hasNewSideEffect) {
+        doc.nodes = cand.nodes
+        doc.edges = cand.edges
+        doc.params = cand.params
+        return res
+      }
+      if (!fallbackBox.best || minScore > fallbackBox.best.score) {
+        fallbackBox.best = { doc: cand, res, score: minScore }
+      }
+      return null
     }
-    if (node.trigger === 'passive') {
-      node.trigger = 'automatic'
-      return { changed: true, focusNodeId: node.id }
+
+    // 0) 步内「同进同出」净增归零场景（例如该 Pool 每步自动流入 +X，但被下游自动 Converter/Drain 在同一波次全额抽干，导致每步末快照恒为 0）
+    if (node.kind === 'pool') {
+      const hitSameStepDrain = tryIdleCandidate((cand) => {
+        const cp = cand.nodes.find((x) => x.id === node.id)
+        if (!cp || cp.kind !== 'pool') return null
+        const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+        const outRes = cand.edges.filter(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === cp.id
+        )
+        const autoConsumers = outRes.filter((oe) => {
+          const dst = candById.get(oe.to)
+          return (
+            dst &&
+            (dst.kind === 'converter' ||
+              dst.kind === 'drain' ||
+              dst.kind === 'trader' ||
+              dst.kind === 'gate') &&
+            dst.trigger === 'automatic'
+          )
+        })
+        if (autoConsumers.length === 0 && cp.trigger !== 'automatic' && !cp.autoOutflow?.trim()) {
+          return null
+        }
+
+        let changed = false
+        let focusEdgeId: string | undefined
+        let focusNodeId: string | undefined = cp.id
+        if (cp.trigger === 'automatic') {
+          cp.trigger = 'passive'
+          changed = true
+        }
+        if ((cp.initial ?? 0) <= 0) {
+          cp.initial = 4
+          changed = true
+        }
+        for (const oe of autoConsumers) {
+          const dst = candById.get(oe.to)!
+          const rawF = (oe.formula ?? '').trim()
+          const ivIdx = rawF.indexOf('|')
+          const coreF = ivIdx >= 0 ? rawF.slice(0, ivIdx).trim() : rawF
+          const sufF = ivIdx >= 0 ? `|${rawF.slice(ivIdx + 1).trim()}` : '|2'
+
+          // 若连线写成了 `min(K, pool_id / self)` 这种有多少抽多少的贪婪公式，将其收敛为保留半数底池或固定小步长 + 2 步间隔
+          if (
+            /^all$/i.test(coreF) ||
+            (/\bmin\s*\(/i.test(coreF) && (coreF.includes(cp.id) || /\b(?:self|a)\b/.test(coreF)))
+          ) {
+            oe.formula = `max(1, floor(self * 0.5))${sufF}`
+            changed = true
+            focusEdgeId = oe.id
+          } else if (!ivIdx || ivIdx < 0) {
+            oe.formula = `${coreF || '1'}|2`
+            changed = true
+            focusEdgeId = oe.id
+          }
+
+          const hasGuard = cand.edges.some(
+            (se) =>
+              se.kind === 'state' &&
+              se.from === cp.id &&
+              (se.to === dst.id || se.targetEdgeId === oe.id)
+          )
+          if (!hasGuard) {
+            const gid = mxNewId('e')
+            cand.edges.push({
+              id: gid,
+              kind: 'state',
+              from: cp.id,
+              to: dst.id,
+              ...(dst.kind === 'drain' ? { targetEdgeId: oe.id } : {}),
+              formula: '>=6',
+              bend: -24
+            })
+            changed = true
+            if (!focusEdgeId) focusEdgeId = gid
+          }
+        }
+        return changed ? { changed: true, focusEdgeId, focusNodeId } : null
+      })
+      if (hitSameStepDrain) return hitSameStepDrain
+    }
+
+    // 1) 唤醒指向该节点的上游非自动节点（含 passive / interactive / enabling 以及二级 Gate/Converter）
+    const hitWakeUpstream = tryIdleCandidate((cand) => {
+      const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+      const inRes = cand.edges.filter(
+        (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === node.id
+      )
+      let changed = false
+      let focusNodeId: string | undefined
+      for (const ie of inRes) {
+        const src = candById.get(ie.from)
+        if (!src) continue
+        if (
+          (src.kind === 'source' ||
+            src.kind === 'converter' ||
+            src.kind === 'trader' ||
+            src.kind === 'gate') &&
+          src.trigger !== 'automatic'
+        ) {
+          src.trigger = 'automatic'
+          changed = true
+          focusNodeId = src.id
+        }
+        const upEdges = cand.edges.filter(
+          (ue) => ue.kind === 'resource' && !ue.targetEdgeId && ue.to === src.id
+        )
+        for (const ue of upEdges) {
+          const upSrc = candById.get(ue.from)
+          if (
+            upSrc &&
+            (upSrc.kind === 'source' || upSrc.kind === 'converter' || upSrc.kind === 'trader') &&
+            upSrc.trigger !== 'automatic'
+          ) {
+            upSrc.trigger = 'automatic'
+            changed = true
+            if (!focusNodeId) focusNodeId = upSrc.id
+          }
+        }
+      }
+      return changed ? { changed: true, focusNodeId: focusNodeId ?? node.id } : null
+    })
+    if (hitWakeUpstream) return hitWakeUpstream
+
+    // 2) 解锁指向该节点上游链路中永远无法满足的状态激活条件（如 `<=0` 或过高的 `>=X`），并补充饥饿上游池初始值
+    const hitUnblockUpstream = tryIdleCandidate((cand) => {
+      const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+      const inRes = cand.edges.filter(
+        (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === node.id
+      )
+      let changed = false
+      let focusEdgeId: string | undefined
+      let focusNodeId: string | undefined
+
+      for (const ie of inRes) {
+        const src = candById.get(ie.from)
+        if (
+          src &&
+          (src.kind === 'source' || src.kind === 'converter' || src.kind === 'trader') &&
+          src.trigger !== 'automatic'
+        ) {
+          src.trigger = 'automatic'
+          changed = true
+          focusNodeId = src.id
+        }
+        const stateGates = cand.edges.filter(
+          (se) =>
+            se.kind === 'state' &&
+            (se.targetEdgeId === ie.id || (src && !se.targetEdgeId && se.to === src.id))
+        )
+        for (const se of stateGates) {
+          const origSeries = activeRun.snapshots.map((s) => s[se.from] ?? 0)
+          const origMin = origSeries.length ? Math.min(...origSeries) : 0
+          const origMax = origSeries.length ? Math.max(...origSeries) : 0
+          const targetTh =
+            origMax > origMin
+              ? Math.round((origMin + (origMax - origMin) * 0.3) * 10) / 10
+              : origMin
+          const nextF = `>=${targetTh}`
+          if (se.formula !== nextF) {
+            se.formula = nextF
+            changed = true
+            focusEdgeId = se.id
+          }
+        }
+        if (src && (src.kind === 'converter' || src.kind === 'trader' || src.kind === 'pool')) {
+          const upRes = cand.edges.filter(
+            (ue) => ue.kind === 'resource' && !ue.targetEdgeId && ue.to === src.id
+          )
+          for (const ue of upRes) {
+            const upPool = candById.get(ue.from)
+            if (upPool?.kind === 'pool') {
+              const req = extractEdgeThresholdExpr(ue).numeric ?? 5
+              const upMax = Math.max(0, ...activeRun.snapshots.map((s) => s[upPool.id] ?? 0))
+              if (upMax < req) {
+                upPool.initial = Math.max(upPool.initial ?? 0, req * 3)
+                changed = true
+                focusNodeId = upPool.id
+              }
+            }
+          }
+        }
+      }
+      return changed ? { changed: true, focusEdgeId, focusNodeId: focusNodeId ?? node.id } : null
+    })
+    if (hitUnblockUpstream) return hitUnblockUpstream
+
+    // 3) 若是 Register 节点，赋予随步数或输入动态演进的公式
+    if (node.kind === 'register') {
+      const hitReg = tryIdleCandidate((cand) => {
+        const rn = cand.nodes.find((x) => x.id === node.id)
+        if (!rn) return null
+        const hasStateIn = cand.edges.some(
+          (e) => e.kind === 'state' && !e.targetEdgeId && e.to === rn.id
+        )
+        rn.formula = hasStateIn ? 'a + 1 + floor(step / 3)' : '1 + floor(step / 2)'
+        return { changed: true, focusNodeId: rn.id }
+      })
+      if (hitReg) return hitReg
+    }
+
+    // 4) 兜底：若该 Pool 无有效入流（仅连了出向边/状态边，或入流恒为 0），为其注入平缓自动流入（`1|2`）使其参与全局流转
+    if (node.kind === 'pool') {
+      const hitInflow = tryIdleCandidate((cand) => {
+        const cp = cand.nodes.find((x) => x.id === node.id)
+        if (!cp) return null
+        const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+        const inRes = cand.edges.filter(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === cp.id
+        )
+        if (hasMxSimpleMacros(cand) || Boolean(cp.autoInflow?.trim()) || inRes.length === 0) {
+          cp.autoInflow = '1|2'
+          return { changed: true, focusNodeId: cp.id }
+        }
+        const existingSrcEdge = inRes.find((e) => candById.get(e.from)?.kind === 'source')
+        if (existingSrcEdge) {
+          const srcNode = candById.get(existingSrcEdge.from)!
+          srcNode.trigger = 'automatic'
+          existingSrcEdge.formula = '1|2'
+          cand.edges = cand.edges.filter(
+            (se) =>
+              !(
+                se.kind === 'state' &&
+                (se.to === srcNode.id || se.targetEdgeId === existingSrcEdge.id)
+              )
+          )
+          return { changed: true, focusEdgeId: existingSrcEdge.id, focusNodeId: cp.id }
+        }
+        const srcId = mxNewId('src')
+        const hasCjk = /[^\x00-\x7f]/.test(cp.label || '')
+        cand.nodes.push({
+          ...createMxNode(
+            'source',
+            cp.x - 140,
+            cp.y - 44,
+            hasCjk ? `${cp.label}产出` : `${cp.label || cp.id} Inflow` // cjk-ok
+          ),
+          id: srcId,
+          trigger: 'automatic',
+          ...(cp.layerId ? { layerId: cp.layerId } : {})
+        })
+        const eid = mxNewId('e')
+        cand.edges.push({
+          id: eid,
+          kind: 'resource',
+          from: srcId,
+          to: cp.id,
+          formula: '1|2'
+        })
+        return { changed: true, focusEdgeId: eid, focusNodeId: cp.id }
+      })
+      if (hitInflow) return hitInflow
+    }
+
+    if (fallbackBox.best) {
+      doc.nodes = fallbackBox.best.doc.nodes
+      doc.edges = fallbackBox.best.doc.edges
+      doc.params = fallbackBox.best.doc.params
+      return fallbackBox.best.res
     }
     return { changed: false }
   }
@@ -10842,13 +11307,17 @@ export function applyAllMxDiagnosticQuickFixes(
             ? 0
             : k === 'starved_converter'
               ? 1
-              : k === 'exponential_runaway'
+              : k === 'idle_node'
                 ? 2
-                : k === 'pool_capped'
+                : k === 'exponential_runaway'
                   ? 3
-                  : k === 'inflation' || k === 'deflation'
+                  : k === 'pool_depleted'
                     ? 4
-                    : 5
+                    : k === 'pool_capped'
+                      ? 5
+                      : k === 'inflation' || k === 'deflation'
+                        ? 6
+                        : 7
         return order(a.kind) - order(b.kind)
       })
     if (actionable.length === 0) break

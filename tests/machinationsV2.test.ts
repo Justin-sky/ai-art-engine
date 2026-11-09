@@ -4489,4 +4489,126 @@ describe('Machinations.io 100% specification parity', () => {
     expect(store.liveSnapshots.value).toEqual([])
     expect(store.playStep.value).toBe(0)
   })
+
+  it('quick-fixes INFO-level pool_depleted (Step #33) and idle_node (gated/interactive/source-less pools) to 100/100 S-grade', () => {
+    const songDoc = createEmptyMxDocument('Song Dynasty Prestige & Idle Pools')
+    songDoc.settings.steps = 36
+    songDoc.nodes = [
+      { ...createMxNode('source', 40, 60, 'Battle Win'), id: 'src_win', trigger: 'automatic' },
+      {
+        ...createMxNode('pool', 200, 60, '立威敬畏'),
+        id: 'p_prestige',
+        initial: 33,
+        capacity: 35
+      },
+      { ...createMxNode('drain', 360, 60, 'Court Decay'), id: 'drn_decay', trigger: 'automatic' },
+      // Idle node 1: fed by an automatic converter whose state activator >=999 is unreachable
+      {
+        ...createMxNode('converter', 40, 180, 'Ambush Event'),
+        id: 'conv_ambush',
+        trigger: 'automatic'
+      },
+      { ...createMxNode('pool', 200, 180, '敌意威胁'), id: 'p_threat', initial: 0 },
+      // Idle node 2: pool with only an outgoing state edge and zero active inflow
+      { ...createMxNode('pool', 200, 300, '累计暗伤'), id: 'p_injury', initial: 0 },
+      { ...createMxNode('end', 380, 300, 'Defeat'), id: 'end_defeat', trigger: 'passive' }
+    ]
+    songDoc.edges = [
+      { id: 'e_w', kind: 'resource', from: 'src_win', to: 'p_prestige', formula: '2' },
+      { id: 'e_d', kind: 'resource', from: 'p_prestige', to: 'drn_decay', formula: '3' },
+      { id: 'e_unreach', kind: 'state', from: 'p_prestige', to: 'conv_ambush', formula: '>=999' },
+      { id: 'e_amb', kind: 'resource', from: 'conv_ambush', to: 'p_threat', formula: '1' },
+      { id: 'e_inj_end', kind: 'state', from: 'p_injury', to: 'end_defeat', formula: '>=50' }
+    ]
+
+    const beforeHealth = analyzeMxEconomyHealth(songDoc)
+    expect(beforeHealth.score).toBe(82)
+    expect(beforeHealth.grade).toBe('A')
+    expect(
+      beforeHealth.findings.some((f) => f.kind === 'pool_depleted' && f.nodeId === 'p_prestige')
+    ).toBe(true)
+    expect(
+      beforeHealth.findings.some((f) => f.kind === 'idle_node' && f.nodeId === 'p_threat')
+    ).toBe(true)
+    expect(
+      beforeHealth.findings.some((f) => f.kind === 'idle_node' && f.nodeId === 'p_injury')
+    ).toBe(true)
+
+    const fixedAll = applyAllMxDiagnosticQuickFixes(songDoc)
+    expect(fixedAll.fixedCount).toBeGreaterThanOrEqual(3)
+    const afterHealth = analyzeMxEconomyHealth(fixedAll.doc)
+    expect(afterHealth.findings.some((f) => f.kind === 'pool_depleted')).toBe(false)
+    expect(afterHealth.findings.some((f) => f.kind === 'idle_node')).toBe(false)
+    expect(afterHealth.score).toBe(100)
+    expect(afterHealth.grade).toBe('S')
+
+    // Same-step net-zero cancellation: pool_threat has autoInflow "3 + round(reg_scale / 2)" (~4..7/step),
+    // while automatic conv_damage pulls "min(6, pool_threat)" in the exact same step wave, leaving end-of-step snapshot at 0
+    const sameStepDoc = createEmptyMxDocument('Same-Step Net-Zero Threat & Wound')
+    sameStepDoc.settings.steps = 30
+    sameStepDoc.nodes = [
+      {
+        ...createMxNode('pool', 60, 60, '集数进度'),
+        id: 'pool_ep',
+        initial: 0,
+        capacity: 90,
+        autoInflow: '1'
+      },
+      {
+        ...createMxNode('register', 60, 140, '反派与战事膨胀系数'),
+        id: 'reg_scale',
+        formula: '1 + round(pool_ep / 10)'
+      },
+      {
+        ...createMxNode('pool', 220, 140, '敌意威胁'),
+        id: 'pool_threat',
+        initial: 0,
+        capacity: 600,
+        autoInflow: '3 + round(reg_scale / 2)'
+      },
+      {
+        ...createMxNode('converter', 380, 140, '敌军反噬·暗伤累积'),
+        id: 'conv_damage',
+        trigger: 'automatic',
+        pullMode: 'pull_all'
+      },
+      {
+        ...createMxNode('pool', 540, 140, '累计暗伤'),
+        id: 'pool_wound',
+        initial: 0,
+        capacity: 400
+      }
+    ]
+    sameStepDoc.edges = [
+      {
+        id: 'e22',
+        kind: 'resource',
+        from: 'pool_threat',
+        to: 'conv_damage',
+        formula: 'min(6, pool_threat)'
+      },
+      {
+        id: 'e23',
+        kind: 'resource',
+        from: 'conv_damage',
+        to: 'pool_wound',
+        formula: '3 + round(reg_scale / 2)'
+      }
+    ]
+    const beforeSameStep = analyzeMxEconomyHealth(sameStepDoc)
+    const threatIdleFinding = beforeSameStep.findings.find(
+      (f) => f.kind === 'idle_node' && f.nodeId === 'pool_threat'
+    )
+    expect(threatIdleFinding).toBeDefined()
+
+    const fixedThreat = applyMxDiagnosticQuickFix(sameStepDoc, threatIdleFinding!)
+    expect(fixedThreat.result.changed).toBe(true)
+    const afterSameStep = analyzeMxEconomyHealth(fixedThreat.doc)
+    expect(
+      afterSameStep.findings.some((f) => f.kind === 'idle_node' && f.nodeId === 'pool_threat')
+    ).toBe(false)
+    expect(
+      afterSameStep.findings.some((f) => f.kind === 'pool_depleted' && f.nodeId === 'pool_threat')
+    ).toBe(false)
+  })
 })

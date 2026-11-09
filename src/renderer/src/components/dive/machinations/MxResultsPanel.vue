@@ -647,6 +647,10 @@ const healthIssueCount = computed(
       .length
 )
 
+const fixableIssueCount = computed(
+  () => healthReport.value.findings.filter((f) => canQuickFixMxDiagnosticFinding(f)).length
+)
+
 function formatFindingText(f: MxDiagnosticFinding): string {
   switch (f.kind) {
     case 'topology_error':
@@ -2627,12 +2631,12 @@ function toggleAiSpectator(): void {
               </span>
             </div>
             <button
-              v-if="healthIssueCount > 0"
+              v-if="fixableIssueCount > 0"
               type="button"
               class="mx-diag-fix-all-btn"
               @click="onQuickFixAllFindings"
             >
-              ⚡ {{ t('mx.diag.fixAllBtn', { count: healthIssueCount }) }}
+              ⚡ {{ t('mx.diag.fixAllBtn', { count: fixableIssueCount }) }}
             </button>
           </div>
 
