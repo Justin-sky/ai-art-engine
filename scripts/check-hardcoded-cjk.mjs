@@ -31,10 +31,12 @@ const EXEMPT_FILES = new Set([
   'src/main/services/claudeSkillRuntime.ts',
   'src/main/services/githubSkillInstaller.ts',
   // 影视流水线：双语提示词 / 模型输出中文键宽容解析 / 提示词合成与执行日志（AI 域数据）
+  'src/shared/graph/film/manjuGenres.ts',
   'src/shared/graph/film/prompts.ts',
   'src/shared/graph/film/storyboard.ts',
   'src/shared/graph/screenplayFormat.ts',
   'src/shared/graph/execute/film.ts',
+  'src/shared/graph/execute/uiAtlasCompose.ts',
   'src/shared/graph/mediaReviewPrompts.ts',
   'src/shared/graph/instructionPresets.ts',
   'src/shared/graph/adVariantMatrix.ts',

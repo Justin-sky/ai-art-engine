@@ -1,5 +1,6 @@
 import { readFileSync } from 'fs'
-import { join } from 'path'
+import { isAbsolute, join } from 'path'
+import { fileURLToPath } from 'url'
 import { sniffImageMimeFromBytes } from '@shared/media/imageMimeSniff'
 
 function toDataUrlFromFile(absPath: string): string {
@@ -35,15 +36,28 @@ function toDataUrlFromFile(absPath: string): string {
 
 /** 将本地路径转为 data URL；已是 http(s)/data 则原样返回 */
 export function toMediaUrl(pathOrUrl: string, projectRoot?: string): string {
-  if (
-    pathOrUrl.startsWith('data:') ||
-    pathOrUrl.startsWith('http://') ||
-    pathOrUrl.startsWith('https://')
-  ) {
-    return pathOrUrl
+  const s = String(pathOrUrl ?? '').trim()
+  if (s.startsWith('data:') || s.startsWith('http://') || s.startsWith('https://')) {
+    return s
   }
-  const abs =
-    projectRoot && !pathOrUrl.match(/^[A-Za-z]:\\|^\//) ? join(projectRoot, pathOrUrl) : pathOrUrl
+  let targetPath = s
+  if (s.startsWith('studio-media://')) {
+    try {
+      const parsed = new URL(s)
+      const p = parsed.searchParams.get('path')?.trim()
+      if (p) targetPath = p
+    } catch {
+      // keep original
+    }
+  } else if (s.startsWith('file://')) {
+    try {
+      targetPath = fileURLToPath(s)
+    } catch {
+      // keep original
+    }
+  }
+  const isAbs = isAbsolute(targetPath) || /^[A-Za-z]:[\\/]/.test(targetPath)
+  const abs = projectRoot && !isAbs ? join(projectRoot, targetPath) : targetPath
   return toDataUrlFromFile(abs)
 }
 

@@ -191,7 +191,8 @@ function resolveLockedOutputs(
   softOptions?: ResolveHostInputSlotsOptions
 ): Record<string, GraphValue> | null {
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
-    typeId: node.typeId
+    typeId: node.typeId,
+    nodeTitle: node.title
   })
   if (gallery && hasUsableOutputRecord(gallery)) {
     const merged: Record<string, GraphValue> = hasUsablePriorOutputs(prior)
@@ -282,7 +283,8 @@ async function softSnapshotOutputs(
   }
   // 图库选中可能已在 Inspector 变更：始终用 params 覆盖 out / out-all
   const gallery = resolveGalleryOutputsFromNodeParams(node.params, {
-    typeId: node.typeId
+    typeId: node.typeId,
+    nodeTitle: node.title
   })
   if (hasUsablePriorOutputs(prior)) {
     const merged = gallery ? { ...prior!.outputs!, ...gallery } : { ...prior!.outputs! }

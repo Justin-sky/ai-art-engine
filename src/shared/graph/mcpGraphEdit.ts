@@ -689,13 +689,15 @@ function isDataOrHttpUrl(raw: string): boolean {
 
 function buildLockedMediaRefParams(
   typeId: 'asset.image' | 'asset.video' | 'asset.model3d' | 'asset.voice',
-  rawUrl: string
+  rawUrl: string,
+  title?: string
 ): GraphNodeParams {
   const rawTrimmed = rawUrl.trim()
   const isInline = isDataOrHttpUrl(rawTrimmed)
   const url = isInline ? rawTrimmed : rawTrimmed.replace(/^@+/, '').trim()
   const now = new Date().toISOString()
   const refItemId = `ref:${isInline ? now : url || now}`
+  const cleanTitle = title?.trim()
   if (typeId === 'asset.image') {
     return {
       locked: true,
@@ -703,6 +705,7 @@ function buildLockedMediaRefParams(
       generatedImages: [
         {
           id: refItemId,
+          ...(cleanTitle ? { title: cleanTitle } : {}),
           dataUrl: isInline ? url : '',
           ...(isInline ? {} : { relativePath: url }),
           createdAt: now
@@ -765,7 +768,7 @@ function upsertLockedMediaRefNodeAndConnect(
   yOffset = 0
 ): void {
   let refNode = findNode(graph, refNodeId)
-  const refParams = buildLockedMediaRefParams(refTypeId, rawUrl)
+  const refParams = buildLockedMediaRefParams(refTypeId, rawUrl, refTitle)
   if (!refNode) {
     refNode = createNodeFromType(
       refTypeId,
@@ -840,7 +843,10 @@ function wireInlineReferenceMedia(
               targetNode.typeId === 'asset.dialogue'
             ? 'asset.voice'
             : 'asset.image'
-    Object.assign(combinedParams, buildLockedMediaRefParams(selfType, rawSelfPath))
+    Object.assign(
+      combinedParams,
+      buildLockedMediaRefParams(selfType, rawSelfPath, targetNode.title)
+    )
   } else if (rawSelfPath && !isAssetNode) {
     delete combinedParams.sourceRelativePath
     delete combinedParams.relativePath

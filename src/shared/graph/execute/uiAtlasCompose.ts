@@ -76,6 +76,7 @@ const NINE_SLICE_KINDS = new Set([
   'tab',
   'item-slot',
   'progress-bar',
+  'progress-fill',
   'card',
   'bar'
 ])
@@ -91,19 +92,42 @@ function inferAtlasSliceKind(
   width: number,
   height: number,
   canvasW: number,
-  canvasH: number
+  canvasH: number,
+  hasTransparency = true
 ): string {
   const lower = title.toLowerCase()
-  if (/panel|dialog|window|modal|bg_frame|底板|面板|主框|弹窗/.test(lower)) return 'panel' // cjk-ok
+  if (
+    /common_bg1|(?:^|[_.\s·])bg1(?:$|[_.\s])|background|backdrop|登录背景|全屏背景|背景底图|底图/.test(
+      lower
+    )
+  ) {
+    // cjk-ok
+    return 'background'
+  }
+  if (/logo|游戏logo|主标题|title_logo/.test(lower)) return 'logo' // cjk-ok
+  if (/close|关闭|equip_close|btn_close/.test(lower)) return 'close-button' // cjk-ok
+  if (/progress_fill|bar_fill|slider_fill|填充/.test(lower)) return 'progress-fill' // cjk-ok
+  if (/progress_bg|bar|progress|slider|血条|进度条|资源条|底栏/.test(lower)) return 'bar' // cjk-ok
+  if (/protocol|协议|隐私|适龄|cadpa|badge|tag|角标|红点|徽章/.test(lower)) return 'badge' // cjk-ok
+  if (/panel|dialog|window|modal|bg_frame|common_bg2|popup|底板|面板|底框|主框|弹窗/.test(lower)) {
+    // cjk-ok
+    return 'panel'
+  }
   if (/frame|border|边框|外框/.test(lower)) return 'frame' // cjk-ok
   if (/header|banner|title_bar|标题栏|横幅|顶栏/.test(lower)) return 'banner' // cjk-ok
-  if (/bar|progress|slider|血条|进度条|资源条|底栏/.test(lower)) return 'bar' // cjk-ok
   if (/tab|页签|标签/.test(lower)) return 'tab' // cjk-ok
   if (/slot|cell|grid|card|格|槽|背包格|道具框|卡片/.test(lower)) return 'item-slot' // cjk-ok
-  if (/btn|button|按钮/.test(lower)) return 'button' // cjk-ok
-  if (/close|关闭/.test(lower)) return 'close-button' // cjk-ok
-  if (/badge|tag|角标|红点|徽章/.test(lower)) return 'badge' // cjk-ok
+  if (/btn|button|common_login|按钮/.test(lower)) return 'button' // cjk-ok
   if (/icon|item|prop|gem|sword|coin|图标|道具|装备/.test(lower)) return 'icon' // cjk-ok
+
+  if (
+    !hasTransparency &&
+    width >= 400 &&
+    height >= 400 &&
+    (height / Math.max(1, width) >= 1.35 || width / Math.max(1, height) >= 1.35)
+  ) {
+    return 'background'
+  }
 
   const areaRatio = (width * height) / Math.max(1, canvasW * canvasH)
   const ar = width / Math.max(1, height)
@@ -140,7 +164,52 @@ export function extractAtlasCandidatesFromRgba(
     if (rgba.data[i]! < 32) transparentCount++
   }
   const hasTransparency = transparentCount > totalPx * 0.08
+
+  const isExplicitSingleAsset =
+    /background|common_bg|bg\d+|登录背景|全屏背景|底图|logo|游戏logo|common_login|按钮底|面板底框|关闭按钮|equip_close|btn_close|protocol|协议|隐私|progress_bg|progress_fill|进度条/i.test(
+      // cjk-ok
+      baseTitle
+    ) && !/spritesheet|atlas_sheet|图集表|合集/i.test(baseTitle) // cjk-ok
+
+  const buildCandidate = (
+    subRgba: RgbaImage,
+    title: string,
+    seqIndex: number
+  ): PreciseSplitComponentCandidate => {
+    bleedTransparentRgb(subRgba.data, subRgba.width, subRgba.height)
+    const cleaned = subRgba
+    const kind = inferAtlasSliceKind(title, cleaned.width, cleaned.height, w, h, hasTransparency)
+    const raw9s = NINE_SLICE_KINDS.has(kind)
+      ? computeNineSliceFromRgbaBuffer(cleaned.data, cleaned.width, cleaned.height)
+      : undefined
+    // Convert [left, top, right, bottom] from computeNineSliceFromRgbaBuffer to CSS [top, right, bottom, left]
+    const nineSliceBorders: [number, number, number, number] | undefined =
+      raw9s && raw9s.some((v) => v > 0) ? [raw9s[1], raw9s[2], raw9s[3], raw9s[0]] : undefined
+    const scalePolicy: UiComponentScalePolicy = nineSliceBorders ? 'nine-slice' : 'uniform'
+    const id = `atlas_comp_${String(seqIndex).padStart(2, '0')}`
+    const exportName = sanitizeComponentExportName(`${kind}_${title || id}`, seqIndex)
+    const item: UiSharedComponentItem = {
+      id,
+      psdGuid: componentIdToPsdGuid(id),
+      name: title || exportName,
+      exportName,
+      kind,
+      canonicalWidth: cleaned.width,
+      canonicalHeight: cleaned.height,
+      scalePolicy,
+      ...(nineSliceBorders ? { nineSliceBorders } : {}),
+      sourceCount: 1,
+      descriptor: computeComponentVisualDescriptor(cleaned)
+    }
+    return { item, rgba: cleaned }
+  }
+
+  if (isExplicitSingleAsset) {
+    return [buildCandidate(rgba, baseTitle || `Component_${startIndex}`, startIndex)]
+  }
+
   const mask = new Uint8Array(totalPx)
+  let canSliceOpaqueSheet = true
 
   if (hasTransparency) {
     for (let p = 0; p < totalPx; p++) {
@@ -160,6 +229,15 @@ export function extractAtlasCandidatesFromRgba(
     bgR = Math.round(bgR / 4)
     bgG = Math.round(bgG / 4)
     bgB = Math.round(bgB / 4)
+    let maxCornerDiff = 0
+    for (const c of corners) {
+      const cd =
+        Math.abs(rgba.data[c]! - bgR) +
+        Math.abs(rgba.data[c + 1]! - bgG) +
+        Math.abs(rgba.data[c + 2]! - bgB)
+      if (cd > maxCornerDiff) maxCornerDiff = cd
+    }
+    let bgMatchCount = 0
     for (let p = 0; p < totalPx; p++) {
       const idx = p * 4
       const diff =
@@ -167,7 +245,17 @@ export function extractAtlasCandidatesFromRgba(
         Math.abs(rgba.data[idx + 1]! - bgG) +
         Math.abs(rgba.data[idx + 2]! - bgB)
       if (diff > 36) mask[p] = 1
+      else bgMatchCount++
     }
+    // Only slice an opaque image as a sprite sheet if its 4 corners share a uniform solid color
+    // and at least 22% of the canvas is that background color (prevents punching holes in opaque backgrounds/art)
+    if (maxCornerDiff > 24 || bgMatchCount < totalPx * 0.22) {
+      canSliceOpaqueSheet = false
+    }
+  }
+
+  if (!canSliceOpaqueSheet) {
+    return [buildCandidate(rgba, baseTitle || `Component_${startIndex}`, startIndex)]
   }
 
   const { stats } = labelComponents(mask, w, h)
@@ -193,39 +281,6 @@ export function extractAtlasCandidatesFromRgba(
       )
     })
     .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)
-
-  const buildCandidate = (
-    subRgba: RgbaImage,
-    title: string,
-    seqIndex: number
-  ): PreciseSplitComponentCandidate => {
-    bleedTransparentRgb(subRgba.data, subRgba.width, subRgba.height)
-    const cleaned = subRgba
-    const kind = inferAtlasSliceKind(title, cleaned.width, cleaned.height, w, h)
-    const raw9s = NINE_SLICE_KINDS.has(kind)
-      ? computeNineSliceFromRgbaBuffer(cleaned.data, cleaned.width, cleaned.height)
-      : undefined
-    // Convert [left, top, right, bottom] from computeNineSliceFromRgbaBuffer to CSS [top, right, bottom, left]
-    const nineSliceBorders: [number, number, number, number] | undefined =
-      raw9s && raw9s.some((v) => v > 0) ? [raw9s[1], raw9s[2], raw9s[3], raw9s[0]] : undefined
-    const scalePolicy: UiComponentScalePolicy = nineSliceBorders ? 'nine-slice' : 'uniform'
-    const id = `atlas_comp_${String(seqIndex).padStart(2, '0')}`
-    const exportName = sanitizeComponentExportName(`${kind}_${title || id}`, seqIndex)
-    const item: UiSharedComponentItem = {
-      id,
-      psdGuid: componentIdToPsdGuid(id),
-      name: title || exportName,
-      exportName,
-      kind,
-      canonicalWidth: cleaned.width,
-      canonicalHeight: cleaned.height,
-      scalePolicy,
-      ...(nineSliceBorders ? { nineSliceBorders } : {}),
-      sourceCount: 1,
-      descriptor: computeComponentVisualDescriptor(cleaned)
-    }
-    return { item, rgba: cleaned }
-  }
 
   // If 2 or more distinct islands were found on the sheet, slice each island out!
   if (validBoxes.length >= 2 && validBoxes.length <= 48) {
@@ -591,11 +646,83 @@ export function renderTextLayerPreviewRgba(
   const w = Math.max(16, Math.round(width))
   const h = Math.max(16, Math.round(height))
   const img = createImage(w, h)
+  const text = (meta.text ?? '').trim() || 'UI'
   const [r, g, b] = meta.color ?? [248, 236, 200]
   const [sr, sg, sb] = meta.strokeColor ?? [24, 20, 16]
-  const textLen = Math.max(1, [...(meta.text?.trim() || 'UI')].length)
+
+  // In browser / Electron renderer, use real Canvas2D typography so individual text layer PNGs are crisp and legible
+  if (typeof document !== 'undefined') {
+    try {
+      const c = document.createElement('canvas')
+      c.width = w
+      c.height = h
+      const tctx = c.getContext('2d')
+      if (tctx && typeof tctx.fillText === 'function' && typeof tctx.getImageData === 'function') {
+        const lines = text
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter(Boolean)
+        const fontFamily = meta.fontName?.trim()
+          ? `"${meta.fontName.trim()}", "Microsoft YaHei", "PingFang SC", sans-serif`
+          : '"Microsoft YaHei", "PingFang SC", "SimHei", sans-serif'
+        let fontSize = Math.max(
+          12,
+          Math.min(
+            Math.round((h / Math.max(1, lines.length)) * 0.72),
+            meta.fontSize || Math.round(h * 0.56)
+          )
+        )
+        tctx.font = `bold ${fontSize}px ${fontFamily}`
+        if (typeof tctx.measureText === 'function' && lines.length > 0) {
+          const longest = lines.reduce((acc, l) => (l.length > acc.length ? l : acc), lines[0]!)
+          const measured = tctx.measureText(longest).width
+          if (measured > w - 8 && measured > 0) {
+            fontSize = Math.max(11, Math.floor((fontSize * (w - 8)) / measured))
+            tctx.font = `bold ${fontSize}px ${fontFamily}`
+          }
+        }
+        const align = meta.align === 'left' || meta.align === 'right' ? meta.align : 'center'
+        tctx.textAlign = align
+        tctx.textBaseline = 'middle'
+        const strokeW = Math.max(1.5, Math.min(6, meta.strokeWidth ?? Math.round(fontSize * 0.1)))
+        const lineH = Math.round(fontSize * 1.24)
+        const totalTextH = lines.length * lineH
+        const startY = Math.round((h - totalTextH) * 0.5 + lineH * 0.5)
+        const anchorX = align === 'left' ? 6 : align === 'right' ? w - 6 : Math.round(w * 0.5)
+
+        tctx.lineJoin = 'round'
+        tctx.miterLimit = 2
+        tctx.lineWidth = strokeW * 2
+        tctx.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, 0.9)`
+        tctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+        for (let i = 0; i < lines.length; i++) {
+          const y = startY + i * lineH
+          if (typeof tctx.strokeText === 'function') {
+            tctx.strokeText(lines[i]!, anchorX, y)
+          }
+          tctx.fillText(lines[i]!, anchorX, y)
+        }
+        const imgData = tctx.getImageData(0, 0, w, h)
+        let nonZero = 0
+        for (let i = 3; i < imgData.data.length; i += 4) {
+          if (imgData.data[i]! > 0) {
+            nonZero++
+            break
+          }
+        }
+        if (nonZero > 0) {
+          img.data.set(imgData.data)
+          return img
+        }
+      }
+    } catch {
+      // Fall back to software glyph bars in headless test environments
+    }
+  }
+
+  const textLen = Math.max(1, [...text].length)
   const charW = Math.max(8, Math.min(Math.floor(w / textLen), Math.round(h * 0.68)))
-  const charH = Math.max(10, Math.round(h * 0.62))
+  const charH = Math.max(10, Math.round(h * 0.52))
   const totalW = Math.min(w - 4, textLen * charW)
   const startX =
     meta.align === 'right'
@@ -608,23 +735,15 @@ export function renderTextLayerPreviewRgba(
   for (let c = 0; c < textLen; c++) {
     const cx0 = startX + c * charW + 2
     const cx1 = Math.min(w - 2, cx0 + Math.max(4, charW - 4))
-    const cy0 = startY
-    const cy1 = Math.min(h - 2, startY + charH)
-    for (let y = cy0; y < cy1; y++) {
+    const cyMid = Math.round(startY + charH * 0.5)
+    for (let y = Math.max(1, cyMid - 2); y <= Math.min(h - 2, cyMid + 2); y++) {
       for (let x = cx0; x < cx1; x++) {
-        const isBorder = x === cx0 || x === cx1 - 1 || y === cy0 || y === cy1 - 1
-        const isBar =
-          y === cy0 + 2 ||
-          y === Math.round((cy0 + cy1) * 0.5) ||
-          y === cy1 - 3 ||
-          x === cx0 + 2 ||
-          x === cx1 - 3
-        if (!isBorder && !isBar) continue
+        const isEdge = y === cyMid - 2 || y === cyMid + 2 || x === cx0 || x === cx1 - 1
         const idx = (y * w + x) * 4
-        img.data[idx] = isBorder ? sr : r
-        img.data[idx + 1] = isBorder ? sg : g
-        img.data[idx + 2] = isBorder ? sb : b
-        img.data[idx + 3] = isBorder ? 210 : 245
+        img.data[idx] = isEdge ? sr : r
+        img.data[idx + 1] = isEdge ? sg : g
+        img.data[idx + 2] = isEdge ? sb : b
+        img.data[idx + 3] = isEdge ? 190 : 235
       }
     }
   }
@@ -647,21 +766,282 @@ export function solveUiAtlasLayoutDeterministic(
   const isZh = !locale || locale.toLowerCase().startsWith('zh')
   const items = candidates.map((c) => c.item)
 
+  const backgrounds = items.filter((it) => it.kind === 'background')
+  const logos = items.filter((it) => it.kind === 'logo')
   const panels = items.filter((it) => it.kind === 'panel' || it.kind === 'frame')
   const banners = items.filter((it) => it.kind === 'banner' || it.kind === 'bar')
+  const progressFills = items.filter((it) => it.kind === 'progress-fill')
   const tabs = items.filter((it) => it.kind === 'tab')
   const slots = items.filter((it) => it.kind === 'item-slot' || it.kind === 'card')
-  const buttons = items.filter((it) => it.kind === 'button' || it.kind === 'close-button')
+  const closeButtons = items.filter((it) => it.kind === 'close-button')
+  const buttons = items.filter((it) => it.kind === 'button')
   const icons = items.filter((it) => it.kind === 'icon' || it.kind === 'badge')
   const others = items.filter(
     (it) =>
+      !backgrounds.includes(it) &&
+      !logos.includes(it) &&
       !panels.includes(it) &&
       !banners.includes(it) &&
+      !progressFills.includes(it) &&
       !tabs.includes(it) &&
       !slots.includes(it) &&
+      !closeButtons.includes(it) &&
       !buttons.includes(it) &&
       !icons.includes(it)
   )
+
+  const isLoginOrLaunchScreen =
+    (/登录|login|进入游戏|开始游戏|游客|账号|验证|preload|launch/i.test(userPrompt) && // cjk-ok
+      !/背包|装备槽|道具格|inventory|backpack/i.test(userPrompt)) || // cjk-ok
+    ((logos.length > 0 || backgrounds.length > 0) && slots.length === 0 && tabs.length === 0)
+
+  if (isLoginOrLaunchScreen) {
+    const groups = [
+      { id: 'grp_panel', name: isZh ? '01_面板与容器底框' : '01_Panels_Containers' }, // cjk-ok
+      { id: 'grp_header', name: isZh ? '02_顶栏与LOGO' : '02_Header_Logo' }, // cjk-ok
+      { id: 'grp_buttons', name: isZh ? '04_交互按钮与控件' : '04_Buttons_Controls' }, // cjk-ok
+      { id: 'grp_texts', name: isZh ? '05_可编辑文字层' : '05_Editable_Texts' } // cjk-ok
+    ]
+    const placements: UiAtlasPlacementSpec[] = []
+    let z = 1
+
+    const bgComp = backgrounds[0]
+    if (bgComp) {
+      placements.push({
+        name: isZh ? '登录全屏背景' : 'Bg_Fullscreen', // cjk-ok
+        exportName: 'Bg_Login_Fullscreen',
+        componentId: bgComp.id,
+        groupId: 'grp_panel',
+        left: 0,
+        top: 0,
+        width: canvasWidth,
+        height: canvasHeight,
+        zIndex: z++
+      })
+    }
+
+    const logoComp = logos[0]
+    if (logoComp) {
+      const logoAr = logoComp.canonicalWidth / Math.max(1, logoComp.canonicalHeight)
+      const logoW = Math.min(Math.round(canvasWidth * 0.76), Math.max(320, logoComp.canonicalWidth))
+      const logoH = Math.max(96, Math.round(logoW / Math.max(0.5, logoAr)))
+      const logoLeft = Math.round((canvasWidth - logoW) * 0.5)
+      const logoTop = Math.round(canvasHeight * 0.085)
+      placements.push({
+        name: isZh ? '顶部游戏LOGO' : 'Logo_Main_Title', // cjk-ok
+        exportName: 'Logo_Game_Title',
+        componentId: logoComp.id,
+        groupId: 'grp_header',
+        left: logoLeft,
+        top: logoTop,
+        width: logoW,
+        height: logoH,
+        zIndex: z++
+      })
+    }
+
+    const loginPanel = panels[0]
+    const panelW = Math.round(canvasWidth * (canvasHeight > canvasWidth ? 0.82 : 0.46))
+    const panelH = Math.round(canvasHeight * (canvasHeight > canvasWidth ? 0.39 : 0.56))
+    const panelLeft = Math.round((canvasWidth - panelW) * 0.5)
+    const panelTop = Math.round(canvasHeight * (canvasHeight > canvasWidth ? 0.31 : 0.25))
+
+    if (loginPanel) {
+      placements.push({
+        name: isZh ? '中心登录面板底框' : 'Panel_Login_Center', // cjk-ok
+        exportName: 'Panel_Login_Frame',
+        componentId: loginPanel.id,
+        groupId: 'grp_panel',
+        left: panelLeft,
+        top: panelTop,
+        width: panelW,
+        height: panelH,
+        zIndex: z++
+      })
+      placements.push({
+        name: isZh ? '面板标题_账号登录' : 'Txt_Panel_Title', // cjk-ok
+        exportName: 'Txt_Panel_Title',
+        groupId: 'grp_texts',
+        left: panelLeft + Math.round(panelW * 0.2),
+        top: panelTop + Math.round(panelH * 0.055),
+        width: Math.round(panelW * 0.6),
+        height: Math.max(44, Math.round(panelH * 0.08)),
+        zIndex: z + 40,
+        editableText: {
+          text: isZh ? '账号登录' : 'Account Login', // cjk-ok
+          fontSize: 38,
+          color: [240, 248, 255],
+          strokeColor: [16, 28, 48],
+          strokeWidth: 2,
+          align: 'center'
+        }
+      })
+    }
+
+    const closeComp = closeButtons[0]
+    if (closeComp && loginPanel) {
+      const closeW = Math.max(48, Math.min(76, closeComp.canonicalWidth || 64))
+      const closeH = Math.max(44, Math.min(72, closeComp.canonicalHeight || 56))
+      placements.push({
+        name: isZh ? '面板右上角关闭按钮' : 'Btn_Panel_Close', // cjk-ok
+        exportName: 'Btn_Close',
+        componentId: closeComp.id,
+        groupId: 'grp_buttons',
+        left: panelLeft + panelW - closeW - 22,
+        top: panelTop + 20,
+        width: closeW,
+        height: closeH,
+        zIndex: z++
+      })
+    }
+
+    const primaryBtn = buttons[0] ?? closeButtons[0] ?? others[0]
+    if (primaryBtn) {
+      const loginBtnLabels = isZh
+        ? ['手机号登录', '游客登录', '进入游戏'] // cjk-ok
+        : ['Phone Login', 'Guest Login', 'Start Game']
+      const btnW = Math.min(Math.round(panelW * 0.74), 640)
+      const btnH = Math.max(84, Math.min(114, Math.round(panelH * 0.145)))
+      const btnLeft = Math.round((canvasWidth - btnW) * 0.5)
+      const startTop = loginPanel
+        ? panelTop + Math.round(panelH * 0.2)
+        : Math.round(canvasHeight * 0.52)
+      const stepY = btnH + Math.round(panelH * 0.045)
+
+      for (let i = 0; i < loginBtnLabels.length; i++) {
+        const top = startTop + i * stepY
+        placements.push({
+          name: isZh ? `${loginBtnLabels[i]}按钮底` : `Btn_Login_${i + 1}`, // cjk-ok
+          exportName: `Btn_Login_0${i + 1}`,
+          componentId: primaryBtn.id,
+          groupId: 'grp_buttons',
+          left: btnLeft,
+          top,
+          width: btnW,
+          height: btnH,
+          zIndex: z++
+        })
+        placements.push({
+          name: isZh ? `按钮文字_${loginBtnLabels[i]}` : `Txt_Login_Btn_${i + 1}`, // cjk-ok
+          exportName: `Txt_Btn_Login_0${i + 1}`,
+          groupId: 'grp_texts',
+          left: btnLeft + 24,
+          top: top + Math.round(btnH * 0.2),
+          width: btnW - 48,
+          height: Math.round(btnH * 0.6),
+          zIndex: z + 45,
+          editableText: {
+            text: loginBtnLabels[i]!,
+            fontSize: Math.max(28, Math.round(btnH * 0.36)),
+            color: [255, 250, 235],
+            strokeColor: [18, 36, 62],
+            strokeWidth: 2,
+            align: 'center'
+          }
+        })
+      }
+    }
+
+    const badgeComp = icons[0]
+    const agreeTop = loginPanel
+      ? panelTop + panelH - Math.round(panelH * 0.14)
+      : Math.round(canvasHeight * 0.72)
+    const agreeLeft = panelLeft + Math.round(panelW * 0.14)
+    if (badgeComp) {
+      placements.push({
+        name: isZh ? '协议与隐私图标' : 'Icon_Protocol', // cjk-ok
+        exportName: 'Icon_Protocol_Badge',
+        componentId: badgeComp.id,
+        groupId: 'grp_buttons',
+        left: agreeLeft,
+        top: agreeTop - 8,
+        width: 46,
+        height: 54,
+        zIndex: z++
+      })
+    }
+    placements.push({
+      name: isZh ? '用户协议提示文字' : 'Txt_Agreement_Hint', // cjk-ok
+      exportName: 'Txt_Agreement_Hint',
+      groupId: 'grp_texts',
+      left: agreeLeft + (badgeComp ? 58 : 0),
+      top: agreeTop,
+      width: Math.round(panelW * 0.66),
+      height: 40,
+      zIndex: z + 46,
+      editableText: {
+        text: isZh ? '已阅读并同意《用户协议》与《隐私政策》' : 'Agree to Terms & Privacy Policy', // cjk-ok
+        fontSize: 22,
+        color: [210, 232, 255],
+        strokeColor: [12, 20, 34],
+        strokeWidth: 2,
+        align: 'left'
+      }
+    })
+
+    const progBg = banners[0]
+    const progFill = progressFills[0]
+    if (progBg) {
+      const barW = Math.min(Math.round(canvasWidth * 0.74), 802)
+      const barH = Math.max(28, Math.min(48, progBg.canonicalHeight || 36))
+      const barLeft = Math.round((canvasWidth - barW) * 0.5)
+      const barTop = Math.round(canvasHeight * 0.81)
+      placements.push({
+        name: isZh ? '底部加载进度条底' : 'Bar_Progress_Bg', // cjk-ok
+        exportName: 'Bar_Progress_Bg',
+        componentId: progBg.id,
+        groupId: 'grp_buttons',
+        left: barLeft,
+        top: barTop,
+        width: barW,
+        height: barH,
+        zIndex: z++
+      })
+      if (progFill) {
+        const pad = 4
+        placements.push({
+          name: isZh ? '底部加载进度条填充' : 'Bar_Progress_Fill', // cjk-ok
+          exportName: 'Bar_Progress_Fill',
+          componentId: progFill.id,
+          groupId: 'grp_buttons',
+          left: barLeft + pad,
+          top: barTop + pad,
+          width: Math.round((barW - pad * 2) * 0.72),
+          height: Math.max(12, barH - pad * 2),
+          zIndex: z++
+        })
+      }
+    }
+
+    placements.push({
+      name: isZh ? '底部版号与健康游戏忠告' : 'Txt_Version_Copyright', // cjk-ok
+      exportName: 'Txt_Version_Info',
+      groupId: 'grp_texts',
+      left: Math.round(canvasWidth * 0.1),
+      top: Math.round(canvasHeight * 0.91),
+      width: Math.round(canvasWidth * 0.8),
+      height: 44,
+      zIndex: z + 48,
+      editableText: {
+        text: isZh
+          ? 'v1.0.0 抵制不良游戏 拒绝盗版游戏 注意自我保护 谨防受骗上当' // cjk-ok
+          : 'v1.0.0 All Rights Reserved',
+        fontSize: 21,
+        color: [196, 214, 236],
+        strokeColor: [10, 16, 28],
+        strokeWidth: 2,
+        align: 'center'
+      }
+    })
+
+    return {
+      canvasWidth,
+      canvasHeight,
+      baseColor: [16, 24, 42],
+      groups,
+      placements
+    }
+  }
 
   // Fallbacks so every category has a reasonable candidate if the atlas is small
   const mainPanel =
@@ -671,7 +1051,7 @@ export function solveUiAtlasLayoutDeterministic(
     )[0]
   const headerBar = banners[0] ?? panels[1]
   const slotComp = slots[0] ?? panels[1] ?? others[0] ?? mainPanel
-  const btnComp = buttons[0] ?? tabs[0] ?? others[0] ?? mainPanel
+  const btnComp = buttons[0] ?? closeButtons[0] ?? tabs[0] ?? others[0] ?? mainPanel
   const tabComp = tabs[0] ?? buttons[1] ?? buttons[0]
 
   const groups = [
@@ -1019,9 +1399,11 @@ function buildAtlasComposeSystemPrompt(): string {
     '}',
     'Rules:',
     '1. Every visual widget placement MUST reference a valid `componentId` from the provided catalog.',
-    '2. Components with `scalePolicy: "nine-slice"` can be stretched to larger containers/panels/bars/buttons while keeping crisp corners.',
-    '3. Order `zIndex` from back to front: main panels (1..5) -> headers/sub-panels (6..15) -> tabs/slots (16..40) -> icons/badges (41..60) -> buttons (61..80) -> editable text layers (81..120).',
-    '4. For titles, tab labels, item counts, and button captions, emit separate text layers with `editableText` (`componentId` omitted) placed accurately over their parent control.'
+    '2. If a `background` component exists in the catalog, place it first (`zIndex: 1`, `left: 0, top: 0, width: canvasWidth, height: canvasHeight`).',
+    '3. If a `logo` component exists in the catalog, place it near the top-center preserving its aspect ratio (`width / height`).',
+    '4. Components with `scalePolicy: "nine-slice"` (`panel`, `frame`, `button`, `bar`, `progress-fill`) can be stretched to containers/bars/buttons; keep `close-button`, `badge`, `icon`, and `logo` near their natural aspect ratio.',
+    '5. Order `zIndex` from back to front: background (1) -> main panels (2..5) -> logo/headers/sub-panels (6..15) -> tabs/slots/bars (16..40) -> icons/badges/close-button (41..60) -> action buttons (61..80) -> editable text layers (81..120).',
+    '6. For titles, tab labels, item counts, and button captions, emit separate text layers with `editableText` (`componentId` omitted) placed accurately over their parent control.'
   ].join('\n')
 }
 
@@ -1394,11 +1776,66 @@ export async function executeUiAtlasComposeNode(
   const stamp = Date.now()
   const prev = readImageLayerSplitFromNode(ctx.node.params)
 
-  // 1) Collect upstream component library candidates
+  // 1) Collect upstream component library candidates (`in-components`)
   const { candidates: compCandidates } = await resolveUpstreamComponentCandidates(ctx, stamp)
   const allCandidates: PreciseSplitComponentCandidate[] = [...compCandidates]
 
-  // Also check local stored componentLibrary if no upstream `in-components`
+  // 2) Collect raw atlas / slice images from `in`, `in-image`, `in-images`, `in-style`
+  const imagePortValues: GraphValue[] = [
+    ...(ctx.inputs.in ?? []),
+    ...(ctx.inputs['in-image'] ?? []),
+    ...(ctx.inputs['in-images'] ?? []),
+    ...(ctx.inputs['in-style'] ?? [])
+  ]
+  const rawImageItems: GraphImageItem[] = []
+  for (const val of imagePortValues) {
+    const items = await collectImageItemsFromValue(val, ctx)
+    rawImageItems.push(...items)
+  }
+
+  // Deduplicate raw images by path/url
+  const deriveRawImageTitle = (item: GraphImageItem, index: number): string => {
+    const explicit = item.title?.trim() || ''
+    let rawPath = item.relativePath?.trim() || ''
+    if (!rawPath && item.dataUrl?.startsWith('studio-media://')) {
+      try {
+        rawPath = new URL(item.dataUrl).searchParams.get('path')?.trim() || ''
+      } catch {
+        rawPath = ''
+      }
+    }
+    const fileName = rawPath.replace(/\\/g, '/').split('/').pop() || ''
+    const stem = fileName.replace(/\.[a-z0-9]+$/i, '').trim()
+    if (explicit && stem && !explicit.toLowerCase().includes(stem.toLowerCase())) {
+      return `${explicit} ${stem}`
+    }
+    return explicit || stem || `Atlas_${index}`
+  }
+
+  const seenImgKeys = new Set<string>()
+  for (let i = 0; i < rawImageItems.length; i++) {
+    const imgItem = rawImageItems[i]!
+    const key = imgItem.relativePath?.trim() || imgItem.dataUrl?.trim() || ''
+    if (!key || seenImgKeys.has(key)) continue
+    seenImgKeys.add(key)
+    const safeUrl = await resolveSafeAtlasImageUrl(ctx, imgItem, stamp, `raw${i}`)
+    if (!safeUrl) continue
+    try {
+      const rgba = await codec.decodeImageRgba(safeUrl)
+      if (rgba.width > 0 && rgba.height > 0) {
+        const extracted = extractAtlasCandidatesFromRgba(
+          rgba,
+          deriveRawImageTitle(imgItem, i + 1),
+          allCandidates.length + 1
+        )
+        allCandidates.push(...extracted)
+      }
+    } catch {
+      // Skip unreadable image
+    }
+  }
+
+  // Fallback to stored `params.uiComponentLibrary` / `prev.componentLibrary` only when neither `in-components` nor `in-images` provided inputs
   if (!allCandidates.length) {
     const localLib =
       parseUiComponentLibrary(ctx.node.params.uiComponentLibrary ?? '') ??
@@ -1420,45 +1857,8 @@ export async function executeUiAtlasComposeNode(
           allCandidates.push({ item, rgba })
         }
       } catch {
-        // Ignore unreadable local component
+        // Ignore unreadable cached component
       }
-    }
-  }
-
-  // 2) Collect raw atlas / slice images from `in`, `in-image`, `in-images`, `in-style`
-  const imagePortValues: GraphValue[] = [
-    ...(ctx.inputs.in ?? []),
-    ...(ctx.inputs['in-image'] ?? []),
-    ...(ctx.inputs['in-images'] ?? []),
-    ...(ctx.inputs['in-style'] ?? [])
-  ]
-  const rawImageItems: GraphImageItem[] = []
-  for (const val of imagePortValues) {
-    const items = await collectImageItemsFromValue(val, ctx)
-    rawImageItems.push(...items)
-  }
-
-  // Deduplicate raw images by path/url
-  const seenImgKeys = new Set<string>()
-  for (let i = 0; i < rawImageItems.length; i++) {
-    const imgItem = rawImageItems[i]!
-    const key = imgItem.relativePath?.trim() || imgItem.dataUrl?.trim() || ''
-    if (!key || seenImgKeys.has(key)) continue
-    seenImgKeys.add(key)
-    const safeUrl = await resolveSafeAtlasImageUrl(ctx, imgItem, stamp, `raw${i}`)
-    if (!safeUrl) continue
-    try {
-      const rgba = await codec.decodeImageRgba(safeUrl)
-      if (rgba.width > 0 && rgba.height > 0) {
-        const extracted = extractAtlasCandidatesFromRgba(
-          rgba,
-          imgItem.title?.trim() || `Atlas_${i + 1}`,
-          allCandidates.length + 1
-        )
-        allCandidates.push(...extracted)
-      }
-    } catch {
-      // Skip unreadable image
     }
   }
 
@@ -1573,10 +1973,29 @@ export async function executeUiAtlasComposeNode(
     allCandidates.push(...synthesizeProceduralUiAtlasKit(effectivePrompt))
   }
 
-  const portraitRe = /竖屏|竖版|9\s*[:：]\s*16|portrait|mobile\s*vertical/i // cjk-ok
-  const isPortraitPrompt = portraitRe.test(effectivePrompt)
-  const targetCanvasW = prev.canvasWidth > 0 ? prev.canvasWidth : isPortraitPrompt ? 1080 : 1920
-  const targetCanvasH = prev.canvasHeight > 0 ? prev.canvasHeight : isPortraitPrompt ? 1920 : 1080
+  const portraitRe = /竖屏|竖版|9\s*[:：]\s*16|1080\s*[x×*]\s*1920|portrait|mobile\s*vertical/i // cjk-ok
+  const landscapeRe = /横屏|横版|16\s*[:：]\s*9|1920\s*[x×*]\s*1080|landscape/i // cjk-ok
+  const nodeOrientationHint = [
+    ctx.node.title?.trim(),
+    ctx.node.params.generateAspectRatio?.trim(),
+    (ctx.node.params as Record<string, unknown>).aspectRatio as string | undefined,
+    ctx.node.params.generateInstruction?.trim(),
+    ctx.node.params.text?.trim()
+  ]
+    .filter(Boolean)
+    .join(' ')
+  const isPortraitPrompt =
+    portraitRe.test(nodeOrientationHint) ||
+    (!landscapeRe.test(nodeOrientationHint) && portraitRe.test(effectivePrompt))
+  const hasPreviousCustomCanvas =
+    prev.layers.length > 0 &&
+    prev.canvasWidth > 0 &&
+    prev.canvasHeight > 0 &&
+    (isPortraitPrompt
+      ? prev.canvasHeight >= prev.canvasWidth
+      : prev.canvasWidth >= prev.canvasHeight)
+  const targetCanvasW = hasPreviousCustomCanvas ? prev.canvasWidth : isPortraitPrompt ? 1080 : 1920
+  const targetCanvasH = hasPreviousCustomCanvas ? prev.canvasHeight : isPortraitPrompt ? 1920 : 1080
 
   // 4) Solve UI layout (AI LLM solver with deterministic fallback)
   const candidateById = new Map<string, PreciseSplitComponentCandidate>()
@@ -1644,6 +2063,22 @@ export async function executeUiAtlasComposeNode(
       targetCanvasH,
       ctx.locale
     )
+  } else {
+    // Ensure any full-screen background candidate in allCandidates is placed at the bottom of the stack if AI omitted it
+    const bgCand = allCandidates.find((c) => c.item.kind === 'background')
+    if (bgCand && !layoutPlan.placements.some((p) => p.componentId === bgCand.item.id)) {
+      layoutPlan.placements.unshift({
+        name: '登录全屏背景', // cjk-ok
+        exportName: 'Bg_Fullscreen',
+        componentId: bgCand.item.id,
+        groupId: 'grp_panel',
+        left: 0,
+        top: 0,
+        width: layoutPlan.canvasWidth,
+        height: layoutPlan.canvasHeight,
+        zIndex: 0
+      })
+    }
   }
 
   // 5) Render canonical component masters + all placed layers into ImageLayerSplitState

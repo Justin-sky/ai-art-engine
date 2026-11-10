@@ -157,4 +157,41 @@ describe('DeepSeek Harness (@deepseek-ai/dsh) 全能力接入校验', () => {
     expect(CHAT_PANEL_SRC).toContain('async function abortCurrentRun(): Promise<void>')
     expect(CHAT_PANEL_SRC).not.toContain('if (!isFirst) return')
   })
+
+  it('12. 交付物卡片「打开」在工作区打开、「定位文件」在系统资源管理器打开（支持外部项目目录与工作区文件编辑器）', () => {
+    const WORKSPACE_STORE_SRC = readFileSync(
+      resolve('src/renderer/src/stores/workspace.ts'),
+      'utf8'
+    )
+    const PANEL_OPENER_SRC = readFileSync(
+      resolve('src/renderer/src/editor/workbench/useEditorPanelOpener.ts'),
+      'utf8'
+    )
+    const BUILTINS_SRC = readFileSync(
+      resolve('src/renderer/src/editor/extensions/builtins.ts'),
+      'utf8'
+    )
+    const FILE_EDITOR_SRC = readFileSync(
+      resolve('src/renderer/src/components/WorkspaceFileEditor.vue'),
+      'utf8'
+    )
+
+    // 主进程 openHarnessFile 支持 reveal / read / write 与多工作区候选目录解析
+    expect(SERVICE_SRC).toContain('export function classifyHarnessFileKind')
+    expect(SERVICE_SRC).toContain('shell.showItemInFolder(absPath)')
+    expect(SERVICE_SRC).toContain("if (input.mode === 'read')")
+    expect(SERVICE_SRC).toContain('extraWorkspaces: input?.extraWorkspaces')
+
+    // ChatPanel: 定位文件 -> revealInFolder: true, mode: 'reveal'；打开 -> mode: 'read' + workspaceStore.openWorkspaceFile
+    expect(CHAT_PANEL_SRC).toContain("revealInFolder: true,\n        mode: 'reveal'")
+    expect(CHAT_PANEL_SRC).toContain("mode: 'read'")
+    expect(CHAT_PANEL_SRC).toContain('workspaceStore.openWorkspaceFile({')
+
+    // 工作区 Store 与 Dockview 面板注册 file-editor-*
+    expect(WORKSPACE_STORE_SRC).toContain('function openWorkspaceFile(')
+    expect(PANEL_OPENER_SRC).toContain("panelPrefix: 'file-editor-'")
+    expect(PANEL_OPENER_SRC).toContain("component: 'fileEditor'")
+    expect(BUILTINS_SRC).toContain("id: 'fileEditor'")
+    expect(FILE_EDITOR_SRC).toContain('class="workspace-file-editor"')
+  })
 })

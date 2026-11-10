@@ -15,8 +15,10 @@ import type {
   GraphFilmCastValue,
   GraphFilmStoryboardValue,
   GraphImageItem,
+  GraphTimelineVisualItem,
   GraphValue,
   GraphVideoItem,
+  GraphVoiceItem,
   NodeExecuteContext
 } from './types'
 import { fail } from '@shared/errors/appError'
@@ -36,6 +38,8 @@ import {
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   deriveFilmCast,
+  deriveManjuPublishPack,
+  enrichStoryboardFromScreenplayText,
   filmBaseEntityName,
   filmCastEntryImage,
   filmCastSummary,
@@ -44,6 +48,7 @@ import {
   filmStoryboardSummary,
   filmStoryboardToMarkdown,
   findPrevSameSceneShot,
+  inferDefaultCharacterVoicePreset,
   isFilmShotLocked,
   matchFilmCastForShot,
   mergeFilmCasts,
@@ -58,6 +63,7 @@ import {
   resolveFilmDirectorStage,
   resolveFilmShotPrevizCinematography,
   resolveFilmShotPrevizMediaFromStage,
+  runManjuContinuityAudit,
   selectFilmShot,
   stringifyFilmCast,
   stringifyFilmStoryboard,
@@ -67,9 +73,12 @@ import {
   type FilmShot,
   type FilmStoryboard
 } from '../film/storyboard'
+import { resolveManjuGenre } from '../film/manjuGenres'
 import {
+  buildManjuBreakdownSystemPrompt,
+  buildManjuCastCardPrompt,
+  buildManjuGenreDirective,
   FILM_BREAKDOWN_SYSTEM,
-  FILM_CAST_IMAGE,
   FILM_FRAME_QC_SYSTEM,
   FILM_JSON_REPAIR,
   FILM_REVIEW_SYSTEM,
@@ -176,6 +185,39 @@ function castFromInputs(values: GraphValue[] | undefined): FilmCast | null {
     }
   }
   return mergeFilmCasts(...found)
+}
+
+/**
+ * 解析当前节点的上游或全剧共享设定库（Series Bible Cast）：
+ * - 优先读取显式连线的 `in-cast`；
+ * - 若未禁用 `filmUseSharedCast` 且画布中存在其他已生成设定图的 `film.workbench` / `film.cast` 节点
+ *   （优先读取标记了 `filmIsSeriesBibleCast` 的节点），免连线自动继承其全剧角色/场景/道具资产与配音音色。
+ */
+function resolveUpstreamOrSharedCast(ctx: NodeExecuteContext): FilmCast | null {
+  const explicit = castFromInputs(ctx.inputs['in-cast'])
+  if (ctx.node.params.filmUseSharedCast === false || !ctx.document?.nodes?.length) {
+    return explicit
+  }
+  const sharedCasts: FilmCast[] = []
+  const candidates = ctx.document.nodes.filter(
+    (n) =>
+      n.id !== ctx.node.id &&
+      (n.typeId === 'film.workbench' || n.typeId === 'film.cast') &&
+      typeof n.params?.filmCast === 'string' &&
+      n.params.filmCast.trim().length > 0
+  )
+  candidates.sort((a, b) => {
+    const aBible = a.params.filmIsSeriesBibleCast === true ? 0 : 1
+    const bBible = b.params.filmIsSeriesBibleCast === true ? 0 : 1
+    return aBible - bBible
+  })
+  for (const other of candidates) {
+    const parsed = parseFilmCast(other.params.filmCast)
+    if (parsed && parsed.entries.some((e) => !!filmCastEntryImage(e) || !!e.voicePreset)) {
+      sharedCasts.push(parsed)
+    }
+  }
+  return mergeFilmCasts(...sharedCasts, explicit)
 }
 
 function formatSeriesCastDirective(cast: FilmCast, en: boolean): string {
@@ -351,9 +393,40 @@ export async function executeFilmBreakdownNode(
   }
   const aspect = node.params.filmAspectRatio?.trim()
   if (aspect) directives.push(en ? `Aspect ratio: ${aspect}.` : `画幅：${aspect}。`)
-  const style = node.params.filmStyle?.trim()
+  const upstreamGenreFromDoc = (() => {
+    const doc = ctx.document
+    if (!doc?.edges?.length || !doc?.nodes?.length) return ''
+    const visited = new Set<string>()
+    const queue = [node.id]
+    while (queue.length) {
+      const cur = queue.shift()!
+      if (visited.has(cur)) continue
+      visited.add(cur)
+      for (const edge of doc.edges) {
+        if (edge.target !== cur) continue
+        const src = doc.nodes.find((n) => n.id === edge.source)
+        if (!src) continue
+        const g = src.params.filmGenre?.trim()
+        if (g && g !== 'auto') return g
+        queue.push(src.id)
+      }
+    }
+    return ''
+  })()
+  const scriptExplicitGenreMatch = script.match(/\b([a-z]{3,16}-manju)\b/i)
+  const rawGenreParam =
+    upstreamGenreFromDoc ||
+    (scriptExplicitGenreMatch?.[1] ? scriptExplicitGenreMatch[1].toLowerCase() : '') ||
+    node.params.filmGenre?.trim() ||
+    ''
+  const explicitGenre = rawGenreParam ? resolveManjuGenre(rawGenreParam, script) : null
+  const style = node.params.filmStyle?.trim() || explicitGenre?.visualStyleZh || ''
   if (style) directives.push(en ? `Visual style: ${style}.` : `视觉风格：${style}。`)
-  const upstreamCast = castFromInputs(ctx.inputs['in-cast'])
+  if (explicitGenre) {
+    const genreDirective = buildManjuGenreDirective(explicitGenre.id, ctx.locale)
+    if (genreDirective) directives.push(genreDirective)
+  }
+  const upstreamCast = resolveUpstreamOrSharedCast(ctx)
   if (upstreamCast?.entries.length) {
     const castDirective = formatSeriesCastDirective(upstreamCast, en)
     if (castDirective) directives.push(castDirective)
@@ -364,7 +437,10 @@ export async function executeFilmBreakdownNode(
   )?.trim()
   if (extra) directives.push(extra)
   const system =
-    node.params.generateSystemPrompt?.trim() || pickFilmPrompt(FILM_BREAKDOWN_SYSTEM, ctx.locale)
+    node.params.generateSystemPrompt?.trim() ||
+    (explicitGenre
+      ? buildManjuBreakdownSystemPrompt(explicitGenre.id, ctx.locale)
+      : pickFilmPrompt(FILM_BREAKDOWN_SYSTEM, ctx.locale))
   const textModelKey =
     node.params.filmTextModel?.trim() ||
     (node.typeId !== 'film.workbench' ? node.params.generateModel?.trim() : '') ||
@@ -416,24 +492,49 @@ export async function executeFilmBreakdownNode(
     (upstreamCast?.entries ?? []).map((e) => [`${e.kind}:${filmNameKey(e.name)}`, e])
   )
   const enrichedEntities: FilmEntity[] = value.entities.map((entity) => {
-    if (entity.description?.trim()) return entity
     const exact = upstreamByKey.get(`${entity.kind}:${filmNameKey(entity.name)}`)
-    if (exact?.description) return { ...entity, description: exact.description }
     const base = filmBaseEntityName(entity.name)
-    if (base) {
-      const baseEntry = upstreamByKey.get(`${entity.kind}:${filmNameKey(base)}`)
-      if (baseEntry?.description) return { ...entity, description: baseEntry.description }
+    const baseEntry = base ? upstreamByKey.get(`${entity.kind}:${filmNameKey(base)}`) : undefined
+    const ref = exact ?? baseEntry
+    if (!ref) return entity
+    return {
+      ...entity,
+      description: entity.description?.trim() ? entity.description : ref.description,
+      ...(ref.voicePreset && !entity.voicePreset ? { voicePreset: ref.voicePreset } : {}),
+      ...(ref.heightCm && !entity.heightCm ? { heightCm: ref.heightCm } : {}),
+      ...(ref.consistencyAnchors?.length && !entity.consistencyAnchors?.length
+        ? { consistencyAnchors: [...ref.consistencyAnchors] }
+        : {}),
+      ...(ref.dimensions && !entity.dimensions ? { dimensions: ref.dimensions } : {}),
+      ...(ref.worldLightDirection && !entity.worldLightDirection
+        ? { worldLightDirection: ref.worldLightDirection }
+        : {})
     }
-    return entity
   })
+  const inferredGenre =
+    explicitGenre ??
+    resolveManjuGenre(value.genreId || 'auto', `${script}\n${value.title}\n${value.logline}`)
   const next: FilmStoryboard = {
     ...value,
+    ...(inferredGenre?.id || value.genreId
+      ? { genreId: explicitGenre?.id || value.genreId || inferredGenre?.id }
+      : {}),
     entities: enrichedEntities,
     shots: normalizedShots,
-    style: style || value.style || upstreamCast?.style || '',
+    style: style || value.style || upstreamCast?.style || inferredGenre?.visualStyleZh || '',
     aspectRatio: aspect || value.aspectRatio
   }
-  const merged = mergeFilmStoryboards(previous, next)
+  const mergedBase = enrichStoryboardFromScreenplayText(
+    mergeFilmStoryboards(previous, next),
+    script
+  )
+  const continuityAudit = runManjuContinuityAudit(mergedBase, upstreamCast, inferredGenre)
+  const publishPack = mergedBase.publishPack ?? deriveManjuPublishPack(mergedBase, ctx.locale)
+  const merged: FilmStoryboard = {
+    ...mergedBase,
+    continuityAudit,
+    publishPack
+  }
   patch(ctx, {
     filmStoryboard: stringifyFilmStoryboard(merged),
     filmSourceHash: sourceHash,
@@ -443,7 +544,7 @@ export async function executeFilmBreakdownNode(
   return storyboardOutputs(ctx, merged)
 }
 
-// ─── film.review 导演审核（自动修订闭环） ───────────────────────────────
+// ─── film.review 导演审核（自动修订闭环 + 11 项连续性审计） ───────────────────
 
 interface ReviewRound {
   round: number
@@ -472,6 +573,19 @@ function reviewReportMarkdown(
         : `- 第 ${row.round} 轮：${row.verdict} · ${row.score} 分 · ${row.failed} 镜不通过`
     )
   }
+  if (doc.continuityAudit?.items.length) {
+    lines.push(
+      '',
+      en
+        ? `### 11-Point Continuity & Logic Audit (${doc.continuityAudit.score}/100)`
+        : `### 11 项工业连续性审计（${doc.continuityAudit.score}/100）`
+    )
+    for (const item of doc.continuityAudit.items) {
+      const badge = item.passed ? 'PASS' : 'FAIL'
+      const label = en ? item.labelEn : item.labelZh
+      lines.push(`- **[${badge}] ${label}**: ${item.detail}`)
+    }
+  }
   if (review?.notes.length) {
     lines.push('', en ? '### Global notes' : '### 全局意见')
     for (const note of review.notes) lines.push(`- ${note}`)
@@ -494,6 +608,10 @@ export async function executeFilmReviewNode(
   const script =
     (await collectScriptText(ctx, ctx.inputs['in-script'] ?? ctx.inputs.in ?? [])) ||
     (node.typeId === 'film.workbench' ? node.params.text?.trim() || '' : '')
+  const upstreamCast = mergeFilmCasts(
+    castFromInputs(ctx.inputs['in-cast']),
+    parseFilmCast(node.params.filmCast ?? '')
+  )
   const en = isEn(ctx)
   const maxRounds = Math.min(
     5,
@@ -511,10 +629,25 @@ export async function executeFilmReviewNode(
   for (let round = 1; round <= maxRounds + 1; round++) {
     checkAbort(ctx)
     ctx.log?.(pickLogBi(ctx, `导演审核：第 ${round} 轮`, `Director review: round ${round}`))
+    const resolvedGenre = resolveManjuGenre(
+      node.params.filmGenre || doc.genreId,
+      `${doc.title} ${doc.logline} ${doc.style}`
+    )
+    const audit = runManjuContinuityAudit(doc, upstreamCast, resolvedGenre)
+    doc = { ...doc, continuityAudit: audit }
+    const auditWarnings = audit.items
+      .filter((c) => !c.passed)
+      .map((c) => `[FAIL] ${en ? c.labelEn : c.labelZh}: ${c.detail}`)
+      .join('\n')
     const prompt = [
       criteria ? (en ? `Extra criteria: ${criteria}` : `额外审核标准：${criteria}`) : '',
+      auditWarnings
+        ? en
+          ? `Automated 11-Point Continuity Audit findings:\n${auditWarnings}`
+          : `程序化 11 项连续性审计发现项：\n${auditWarnings}`
+        : '',
       script ? `${en ? 'Original script' : '原剧本'}:\n${script}` : '',
-      `${en ? 'Storyboard' : '分镜文档'}:\n${stringifyFilmStoryboard({ ...doc, review: undefined })}`
+      `${en ? 'Storyboard' : '分镜文档'}:\n${stringifyFilmStoryboard({ ...doc, review: undefined, continuityAudit: undefined })}`
     ]
       .filter(Boolean)
       .join('\n\n')
@@ -644,7 +777,7 @@ export async function executeFilmCastNode(
   if (onlyId) patch(ctx, { filmCastOnlyId: '' })
   const storyboard =
     storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
-  const upstreamCast = castFromInputs(ctx.inputs['in-cast'])
+  const upstreamCast = resolveUpstreamOrSharedCast(ctx)
   const localPrev = parseFilmCast(node.params.filmCast ?? '')
   const previous = mergeFilmCasts(upstreamCast, localPrev)
   if (!storyboard && !previous?.entries.length) {
@@ -652,6 +785,18 @@ export async function executeFilmCastNode(
   }
   const kinds = parseFilmCastKinds(node.params.filmCastKinds)
   const cast = storyboard ? deriveFilmCast(storyboard, previous, kinds) : previous!
+  if (
+    node.params.filmEnableStyleAnchor === true &&
+    !cast.entries.some((entry) => entry.kind === 'style')
+  ) {
+    cast.entries.unshift({
+      id: 'style-anchor-1',
+      code: 'STYLE01',
+      kind: 'style',
+      name: isEn(ctx) ? 'STYLE01 Visual Style Anchor' : 'STYLE01 视觉风格定调图',
+      description: storyboard?.bible?.colorScheme || cast.style || storyboard?.style || ''
+    })
+  }
   const persistCast = (): void => {
     patch(ctx, { filmCast: stringifyFilmCast(cast), text: filmCastSummary(cast, ctx.locale) })
   }
@@ -729,15 +874,11 @@ export async function executeFilmCastNode(
           ? `Identity reference: keep the exact facial features, bone structure and core identity of reference @1 (${baseEntry.name}), changing only the outfit or state as described below.`
           : `角色基底参考：人物面部五官、骨相与核心特征严格继承参考图@1（${baseEntry.name}），仅按以下描述更换服装、造型或状态。`
         : ''
-    const prompt = [
-      cast.style ? (isEn(ctx) ? `Visual style: ${cast.style}` : `视觉风格：${cast.style}`) : '',
-      pickFilmPrompt(FILM_CAST_IMAGE[entry.kind], ctx.locale),
+    const prompt = buildManjuCastCardPrompt(entry, cast, ctx.locale, {
+      genreId: node.params.filmGenre || storyboard?.genreId,
       variantRefLine,
-      `${entry.name}${entry.description ? `: ${entry.description}` : ''}`,
-      extra ?? ''
-    ]
-      .filter(Boolean)
-      .join('\n')
+      extra
+    })
     const imageSeed =
       node.params.generateSeedUseGlobal === false ? node.params.generateSeed : undefined
     const baseImgKey = baseHasImg && baseEntry ? filmCastEntryImage(baseEntry) : ''
@@ -828,7 +969,7 @@ export async function executeFilmShotNode(
       }
     })
   }
-  const cast = castFromInputs(ctx.inputs['in-cast'])
+  const cast = resolveUpstreamOrSharedCast(ctx)
   const refs = matchFilmCastForShot(cast, shot)
   const prevShot = findPrevSameSceneShot(storyboard, shot)
   const prevKeyframe = prevShot?.media?.keyframe?.trim() || ''
@@ -840,7 +981,11 @@ export async function executeFilmShotNode(
     prevKeyframeRefIndex,
     previzRefIndex
   })
-  const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale, { prevShot })
+  const videoPrompt = composeFilmShotVideoPrompt(shot, ctx.locale, {
+    prevShot,
+    castRefs: refs,
+    storyboard
+  })
   const refItems: GraphImageItem[] = [
     ...refs.map((entry) => ({
       id: `cast:${entry.id}`,
@@ -884,6 +1029,8 @@ export interface FilmRenderEntry {
   keyframeHash?: string
   video?: string
   videoHash?: string
+  voice?: string
+  voiceHash?: string
   qc?: { pass: boolean; issues: string }
   error?: string
 }
@@ -949,7 +1096,7 @@ export async function executeFilmRenderNode(
     storyboardFromInputs(ctx.inputs.in) || parseFilmStoryboard(node.params.filmStoryboard ?? '')
   if (!input) throw new Error('GRAPH_PROCESS_NO_INPUT')
   const cast = mergeFilmCasts(
-    castFromInputs(ctx.inputs['in-cast']),
+    resolveUpstreamOrSharedCast(ctx),
     parseFilmCast(node.params.filmCast ?? '')
   )
   const cache = parseFilmRenderCache(node.params.filmRenders)
@@ -958,6 +1105,7 @@ export async function executeFilmRenderNode(
   const continuityOn = node.params.filmRenderContinuity !== false
   const previzVideoRefOn = node.params.filmRenderPrevizVideoRef !== false
   const qcOn = node.params.filmRenderQc === true && !!ctx.generateText
+  const audioOn = node.params.filmRenderAudio !== false && !!ctx.generateSpeech
   const maxRetries = Math.min(
     3,
     Math.max(0, Math.round(Number(node.params.filmRenderMaxRetries ?? 1)))
@@ -978,6 +1126,7 @@ export async function executeFilmRenderNode(
   const generateImage = ctx.generateImage
   const generateVideo = ctx.generateVideo
   const generateText = ctx.generateText
+  const generateSpeech = ctx.generateSpeech
 
   let videoCaps: VideoGenerateParamCapabilities | null = null
   let videoPortLimits: VideoGeneratePortLimits | null = null
@@ -1105,6 +1254,89 @@ export async function executeFilmRenderNode(
   const chainLimiter = createConcurrencyLimiter(concurrency)
   const videoLimiter = createConcurrencyLimiter(concurrency)
   const videoTasks: Promise<void>[] = []
+  const voiceTasks: Promise<void>[] = []
+
+  const resolveShotVoiceSpec = (
+    shot: FilmShot
+  ): { spokenText: string; voice: string; speaker: string } | null => {
+    if (!shot.dialogue?.length) return null
+    const lines = shot.dialogue.filter((item) => item.line?.trim())
+    if (!lines.length) return null
+    const primary = lines[0]!
+    const speaker = primary.speaker?.trim() || ''
+    const speakerKey = filmNameKey(speaker)
+    const baseName = speaker ? filmBaseEntityName(speaker) : null
+    const baseKey = baseName ? filmNameKey(baseName) : ''
+    const castChar = cast?.entries.find(
+      (e) =>
+        e.kind === 'character' &&
+        (filmNameKey(e.name) === speakerKey || (baseKey && filmNameKey(e.name) === baseKey))
+    )
+    const entityChar = input.entities.find(
+      (e) =>
+        e.kind === 'character' &&
+        (filmNameKey(e.name) === speakerKey || (baseKey && filmNameKey(e.name) === baseKey))
+    )
+    const voice =
+      castChar?.voicePreset?.trim() ||
+      entityChar?.voicePreset?.trim() ||
+      (primary.mode === 'vo'
+        ? 'alloy'
+        : inferDefaultCharacterVoicePreset(
+            speaker,
+            castChar?.description || entityChar?.description || '',
+            0
+          ))
+    const spokenText = lines.map((item) => item.line.trim()).join(' ')
+    return spokenText ? { spokenText, voice, speaker: speaker || 'VO' } : null
+  }
+
+  const runShotVoice = async (
+    shot: FilmShot,
+    entry: FilmRenderEntry,
+    forceVoice: boolean,
+    progress: string
+  ): Promise<void> => {
+    if (!audioOn || !generateSpeech) return
+    const spec = resolveShotVoiceSpec(shot)
+    if (!spec) return
+    const voiceHash = filmHash(`${shot.id}|${spec.spokenText}|${spec.voice}|${spec.speaker}`)
+    if (!forceVoice && entry.voice && entry.voiceHash === voiceHash) return
+    try {
+      checkAbort(ctx)
+      ctx.log?.(
+        pickLogBi(
+          ctx,
+          `${progress} 合成角色配音（${spec.speaker} · ${spec.voice}）`,
+          `${progress} synthesizing dialogue voice (${spec.speaker} · ${spec.voice})`
+        )
+      )
+      const speech = await generateSpeech({
+        input: spec.spokenText,
+        voice: spec.voice,
+        outputDir: node.params.mediaOutputDir?.trim() || undefined,
+        name: `${ctx.resolveHostAssetName?.() || input.title || 'film'}_${shot.id}_voice`
+      })
+      checkAbort(ctx)
+      const voicePath = speech.relativePath?.trim() || ''
+      if (!voicePath) return
+      entry.voice = voicePath
+      entry.voiceHash = voiceHash
+      cache[shot.id] = entry
+      persist()
+    } catch (voiceErr) {
+      if ((voiceErr as Error)?.name === 'AbortError') throw voiceErr
+      const msg = voiceErr instanceof Error ? voiceErr.message : String(voiceErr)
+      ctx.log?.(
+        pickLogBi(
+          ctx,
+          `${progress} 配音合成未完成（${msg}），已跳过该镜配音`,
+          `${progress} voice synthesis skipped (${msg})`
+        ),
+        'warn'
+      )
+    }
+  }
 
   const runShotVideo = async (
     shot: FilmShot,
@@ -1128,21 +1360,20 @@ export async function executeFilmRenderNode(
         videoPortLimits.maxVideos == null ||
         videoPortLimits.maxVideos > 0
       const wantPrevizVideoRef = previzVideoRefOn && Boolean(previzVideoRaw) && modelAllowsVideoRef
-      const videoPromptFallback = composeFilmShotVideoPrompt(
-        shot,
-        ctx.locale,
-        prevShot || previzVideoSpec
-          ? {
-              ...(prevShot ? { prevShot } : {}),
-              ...(previzVideoSpec ? { previzVideoSpec } : {})
-            }
-          : undefined
-      )
+      const shotRefs = matchFilmCastForShot(cast, shot)
+      const videoPromptFallback = composeFilmShotVideoPrompt(shot, ctx.locale, {
+        ...(prevShot ? { prevShot } : {}),
+        ...(previzVideoSpec ? { previzVideoSpec } : {}),
+        castRefs: shotRefs,
+        storyboard: input
+      })
       const videoPrompt = wantPrevizVideoRef
         ? composeFilmShotVideoPrompt(shot, ctx.locale, {
             ...(prevShot ? { prevShot } : {}),
             ...(previzVideoSpec ? { previzVideoSpec } : {}),
-            hasPrevizVideoRef: true
+            hasPrevizVideoRef: true,
+            castRefs: shotRefs,
+            storyboard: input
           })
         : videoPromptFallback
       const fallbackShotSec =
@@ -1500,6 +1731,10 @@ export async function executeFilmRenderNode(
                 videoLimiter(() => runShotVideo(shot, prevShot, entry, forceVideo, progress))
               )
             }
+            // ④ 多角色台词配音（TTS）：按角色绑定音色自动合成单镜台词语音
+            if (audioOn && generateSpeech && shot.dialogue?.length) {
+              voiceTasks.push(videoLimiter(() => runShotVoice(shot, entry, forceVideo, progress)))
+            }
           } catch (err) {
             if ((err as Error)?.name === 'AbortError') throw err
             const message = err instanceof Error ? err.message : String(err)
@@ -1514,23 +1749,25 @@ export async function executeFilmRenderNode(
     )
   )
 
-  if (videoTasks.length) {
-    await Promise.all(videoTasks)
+  if (videoTasks.length || voiceTasks.length) {
+    await Promise.all([...videoTasks, ...voiceTasks])
   }
 
-  // 产物回写进分镜文档（下游 / agent 读一份文档即可拿到每镜关键帧与视频）
+  // 产物回写进分镜文档（下游 / agent 读一份文档即可拿到每镜关键帧、视频与配音）
   for (const shot of shots) {
     const entry = cache[shot.id]
-    if (!entry?.keyframe && !entry?.video) continue
+    if (!entry?.keyframe && !entry?.video && !entry?.voice) continue
     shot.media = {
       ...shot.media,
       ...(entry.keyframe ? { keyframe: entry.keyframe } : {}),
-      ...(entry.video ? { video: entry.video } : {})
+      ...(entry.video ? { video: entry.video } : {}),
+      ...(entry.voice ? { voice: entry.voice } : {})
     }
   }
   const doc: FilmStoryboard = { ...input, shots }
   const images: GraphImageItem[] = []
   const videos: GraphVideoItem[] = []
+  const voices: GraphVoiceItem[] = []
   for (const shot of shots) {
     const keyframe = shot.media?.keyframe
     if (keyframe) {
@@ -1543,6 +1780,16 @@ export async function executeFilmRenderNode(
       })
     }
     if (shot.media?.video) videos.push({ id: `film:${shot.id}`, relativePath: shot.media.video })
+    const voicePath = shot.media?.voice?.trim() || ''
+    if (voicePath) {
+      const spec = resolveShotVoiceSpec(shot)
+      voices.push({
+        id: `film:${shot.id}`,
+        relativePath: voicePath,
+        ...(spec?.spokenText ? { text: spec.spokenText } : {}),
+        ...(spec?.voice ? { voice: spec.voice } : {})
+      })
+    }
   }
   patch(ctx, {
     text: filmStoryboardSummary(doc, ctx.locale),
@@ -1565,26 +1812,162 @@ export async function executeFilmRenderNode(
   return {
     out: filmStoryboardValue(doc),
     'out-images': { kind: 'images', items: images },
-    'out-videos': { kind: 'videos', items: videos }
+    'out-videos': { kind: 'videos', items: videos },
+    'out-voices': { kind: 'voices', items: voices }
   }
 }
 
-// ─── film.workbench 影视工作台（四阶段合一节点） ─────────────────────────
+// ─── film.workbench 影视工作台（五阶段合一节点） ─────────────────────────
+
+async function composeWorkbenchEpisodeVideo(
+  ctx: NodeExecuteContext,
+  storyboard: FilmStoryboard,
+  cache: FilmRenderCache
+): Promise<{
+  composedVideoPath?: string
+  composedShotCount: number
+  composedVoiceCount: number
+}> {
+  if (!ctx.composeTimelineVideo) {
+    return { composedShotCount: 0, composedVoiceCount: 0 }
+  }
+  const visuals: GraphTimelineVisualItem[] = []
+  const videos: GraphVideoItem[] = []
+  const images: GraphImageItem[] = []
+  const voices: Array<GraphVoiceItem & { text?: string; title?: string; trackKind?: 'voice' }> = []
+  const subtitles: string[] = []
+
+  storyboard.shots.forEach((shot, index) => {
+    const entry = cache[shot.id]
+    const videoPath = (entry?.video || shot.media?.video || '').trim()
+    const keyframePath = (entry?.keyframe || shot.media?.keyframe || '').trim()
+    const voicePath = (entry?.voice || shot.media?.voice || '').trim()
+    const shotTitle = `Shot ${index + 1}`
+    if (!videoPath && !keyframePath) return
+
+    const dialogueText = (shot.dialogue ?? [])
+      .map((item) => {
+        const txt = item.line?.trim() || ''
+        if (!txt) return ''
+        return item.speaker?.trim() ? `${item.speaker.trim()}：${txt}` : txt
+      })
+      .filter(Boolean)
+      .join(' ')
+    const spokenText = (shot.dialogue ?? [])
+      .map((item) => item.line?.trim() || '')
+      .filter(Boolean)
+      .join(' ')
+    const cardText = shot.productionInfo?.subtitleCard?.trim() || ''
+    const subtitleLine = [cardText ? `【${cardText}】` : '', dialogueText || spokenText]
+      .filter(Boolean)
+      .join(' ')
+
+    if (videoPath) {
+      visuals.push({
+        id: `film:${shot.id}`,
+        kind: 'video',
+        title: shotTitle,
+        relativePath: videoPath
+      })
+      videos.push({
+        id: `film:${shot.id}`,
+        relativePath: videoPath
+      })
+    } else if (keyframePath) {
+      const inline = keyframePath.startsWith('data:')
+      visuals.push({
+        id: `film:${shot.id}`,
+        kind: 'image',
+        title: shotTitle,
+        ...(inline ? { dataUrl: keyframePath } : { relativePath: keyframePath })
+      })
+      images.push({
+        id: `film:${shot.id}`,
+        title: shotTitle,
+        dataUrl: inline ? keyframePath : '',
+        ...(inline ? {} : { relativePath: keyframePath })
+      })
+    }
+    subtitles.push(subtitleLine)
+
+    if (voicePath) {
+      voices.push({
+        id: `film:${shot.id}:voice`,
+        title: shotTitle,
+        relativePath: voicePath,
+        text: spokenText || subtitleLine,
+        trackKind: 'voice'
+      })
+    }
+  })
+
+  if (!visuals.length) {
+    return { composedShotCount: 0, composedVoiceCount: voices.length }
+  }
+
+  try {
+    ctx.log?.(
+      pickLogBi(
+        ctx,
+        `正在自动合成单集完整成片（${visuals.length} 镜画面 / ${voices.length} 镜配音）…`,
+        `Composing full-episode video (${visuals.length} shot(s) / ${voices.length} voice track(s))…`
+      )
+    )
+    const composed = await ctx.composeTimelineVideo({
+      nodeId: ctx.node.id,
+      document: ctx.document,
+      videos,
+      images,
+      visuals,
+      voices,
+      subtitles
+    })
+    const composedVideoPath = composed?.relativePath?.trim() || undefined
+    if (composedVideoPath) {
+      ctx.log?.(
+        pickLogBi(
+          ctx,
+          `单集完整成片合成完成：${composedVideoPath}`,
+          `Full-episode video composed: ${composedVideoPath}`
+        )
+      )
+    }
+    return {
+      ...(composedVideoPath ? { composedVideoPath } : {}),
+      composedShotCount: visuals.length,
+      composedVoiceCount: voices.length
+    }
+  } catch (composeErr) {
+    if ((composeErr as Error)?.name === 'AbortError') throw composeErr
+    const msg = composeErr instanceof Error ? composeErr.message : String(composeErr)
+    ctx.log?.(
+      pickLogBi(
+        ctx,
+        `单集完整成片自动合成未完成（${msg}）`,
+        `Full-episode video composition skipped (${msg})`
+      ),
+      'warn'
+    )
+    return { composedShotCount: visuals.length, composedVoiceCount: voices.length }
+  }
+}
 
 function collectWorkbenchOutputs(ctx: NodeExecuteContext): Record<string, GraphValue> {
   const { node } = ctx
   const doc = parseFilmStoryboard(node.params.filmStoryboard ?? '')
   const cast = mergeFilmCasts(
-    castFromInputs(ctx.inputs['in-cast']),
+    resolveUpstreamOrSharedCast(ctx),
     parseFilmCast(node.params.filmCast ?? '')
   )
   const cache = parseFilmRenderCache(node.params.filmRenders)
   const shotIds = doc?.shots.map((shot) => shot.id) ?? Object.keys(cache)
   const images: GraphImageItem[] = []
   const videos: GraphVideoItem[] = []
+  const voices: GraphVoiceItem[] = []
   for (const shotId of shotIds) {
     const entry = cache[shotId]
-    const kf = entry?.keyframe?.trim() ?? ''
+    const shotObj = doc?.shots.find((s) => s.id === shotId)
+    const kf = (entry?.keyframe ?? shotObj?.media?.keyframe ?? '').trim()
     if (kf) {
       const inline = kf.startsWith('data:')
       images.push({
@@ -1594,8 +1977,28 @@ function collectWorkbenchOutputs(ctx: NodeExecuteContext): Record<string, GraphV
         ...(inline ? {} : { relativePath: kf })
       })
     }
-    const vid = entry?.video?.trim() ?? ''
+    const vid = (entry?.video ?? shotObj?.media?.video ?? '').trim()
     if (vid) videos.push({ id: `film:${shotId}`, relativePath: vid })
+    const vo = (entry?.voice ?? shotObj?.media?.voice ?? '').trim()
+    if (vo) {
+      const spokenText = (shotObj?.dialogue ?? [])
+        .map((item) => item.line?.trim() || '')
+        .filter(Boolean)
+        .join(' ')
+      voices.push({
+        id: `film:${shotId}`,
+        relativePath: vo,
+        ...(spokenText ? { text: spokenText } : {})
+      })
+    }
+  }
+  const composedVideoPath =
+    doc?.publishPack?.composedVideoPath?.trim() || node.params.filmComposedVideoPath?.trim() || ''
+  if (composedVideoPath && !videos.some((v) => v.relativePath === composedVideoPath)) {
+    videos.unshift({
+      id: `film:${node.id}:episode`,
+      relativePath: composedVideoPath
+    })
   }
   return {
     ...(doc
@@ -1611,7 +2014,8 @@ function collectWorkbenchOutputs(ctx: NodeExecuteContext): Record<string, GraphV
         }
       : {}),
     'out-images': { kind: 'images', items: images },
-    'out-videos': { kind: 'videos', items: videos }
+    'out-videos': { kind: 'videos', items: videos },
+    'out-voices': { kind: 'voices', items: voices }
   }
 }
 
@@ -1624,14 +2028,15 @@ export async function executeFilmWorkbenchNode(
   const rawMode = node.params.filmWorkbenchRunMode?.trim() || ''
   if (rawMode) patch(ctx, { filmWorkbenchRunMode: '' })
 
-  const runTarget: 'all' | 'breakdown' | 'review' | 'cast' | 'render' = onlyCastId
+  const runTarget: 'all' | 'breakdown' | 'review' | 'cast' | 'render' | 'publish' = onlyCastId
     ? 'cast'
     : onlyShotId
       ? 'render'
       : rawMode === 'breakdown' ||
           rawMode === 'review' ||
           rawMode === 'cast' ||
-          rawMode === 'render'
+          rawMode === 'render' ||
+          rawMode === 'publish'
         ? rawMode
         : 'all'
 
@@ -1640,6 +2045,45 @@ export async function executeFilmWorkbenchNode(
   if (runTarget === 'breakdown' || runTarget === 'all' || !storyboard) {
     await executeFilmBreakdownNode(ctx)
     storyboard = parseFilmStoryboard(node.params.filmStoryboard ?? '')
+  }
+
+  if (runTarget === 'publish' && storyboard) {
+    const upstreamCast = mergeFilmCasts(
+      resolveUpstreamOrSharedCast(ctx),
+      parseFilmCast(node.params.filmCast ?? '')
+    )
+    const resolvedGenre = resolveManjuGenre(
+      node.params.filmGenre || storyboard.genreId,
+      `${storyboard.title} ${storyboard.logline} ${storyboard.style}`
+    )
+    const cache = parseFilmRenderCache(node.params.filmRenders)
+    const composedResult = await composeWorkbenchEpisodeVideo(ctx, storyboard, cache)
+    const basePack = deriveManjuPublishPack(storyboard, ctx.locale)
+    const composedVideoPath =
+      composedResult.composedVideoPath ||
+      storyboard.publishPack?.composedVideoPath ||
+      node.params.filmComposedVideoPath?.trim() ||
+      undefined
+    const updated: FilmStoryboard = {
+      ...storyboard,
+      continuityAudit: runManjuContinuityAudit(storyboard, upstreamCast, resolvedGenre),
+      publishPack: {
+        ...basePack,
+        ...(composedVideoPath ? { composedVideoPath } : {}),
+        ...(composedResult.composedShotCount > 0
+          ? { composedShotCount: composedResult.composedShotCount }
+          : {}),
+        ...(composedResult.composedVoiceCount > 0
+          ? { composedVoiceCount: composedResult.composedVoiceCount }
+          : {})
+      }
+    }
+    patch(ctx, {
+      filmStoryboard: stringifyFilmStoryboard(updated),
+      ...(composedVideoPath ? { filmComposedVideoPath: composedVideoPath } : {}),
+      text: filmStoryboardSummary(updated, ctx.locale)
+    })
+    return collectWorkbenchOutputs(ctx)
   }
 
   // 2) 导演审核（显式单跑审核，或全流程开启了审核且当前未 PASS / 强制重跑）
@@ -1684,7 +2128,7 @@ export async function executeFilmWorkbenchNode(
     storyboard
   ) {
     const cast = mergeFilmCasts(
-      castFromInputs(ctx.inputs['in-cast']),
+      resolveUpstreamOrSharedCast(ctx),
       parseFilmCast(node.params.filmCast ?? '')
     )
     await executeFilmRenderNode({
@@ -1694,6 +2138,52 @@ export async function executeFilmWorkbenchNode(
         in: [filmStoryboardValue(storyboard)],
         'in-cast': cast ? [filmCastValue(cast)] : (ctx.inputs['in-cast'] ?? [])
       }
+    })
+  }
+
+  // 5) 刷新 11 项一致性审计与 Stage 5 发布包（包含刚生成的设定图资产、最新分镜状态与单集完整成片合成）
+  const latestStoryboard = parseFilmStoryboard(node.params.filmStoryboard ?? '') ?? storyboard
+  if (latestStoryboard && (runTarget === 'all' || runTarget === 'cast' || runTarget === 'render')) {
+    const mergedCast = mergeFilmCasts(
+      resolveUpstreamOrSharedCast(ctx),
+      parseFilmCast(node.params.filmCast ?? '')
+    )
+    const resolvedGenre = resolveManjuGenre(
+      node.params.filmGenre || latestStoryboard.genreId,
+      `${latestStoryboard.title} ${latestStoryboard.logline} ${latestStoryboard.style}`
+    )
+    const cache = parseFilmRenderCache(node.params.filmRenders)
+    const shouldAutoCompose =
+      (runTarget === 'all' || (runTarget === 'render' && !onlyShotId)) &&
+      Boolean(ctx.composeTimelineVideo)
+    const composedResult = shouldAutoCompose
+      ? await composeWorkbenchEpisodeVideo(ctx, latestStoryboard, cache)
+      : { composedShotCount: 0, composedVoiceCount: 0 }
+    const basePack =
+      latestStoryboard.publishPack ?? deriveManjuPublishPack(latestStoryboard, ctx.locale)
+    const composedVideoPath =
+      composedResult.composedVideoPath ||
+      latestStoryboard.publishPack?.composedVideoPath ||
+      node.params.filmComposedVideoPath?.trim() ||
+      undefined
+    const finalized: FilmStoryboard = {
+      ...latestStoryboard,
+      continuityAudit: runManjuContinuityAudit(latestStoryboard, mergedCast, resolvedGenre),
+      publishPack: {
+        ...basePack,
+        ...(composedVideoPath ? { composedVideoPath } : {}),
+        ...(composedResult.composedShotCount > 0
+          ? { composedShotCount: composedResult.composedShotCount }
+          : {}),
+        ...(composedResult.composedVoiceCount > 0
+          ? { composedVoiceCount: composedResult.composedVoiceCount }
+          : {})
+      }
+    }
+    patch(ctx, {
+      filmStoryboard: stringifyFilmStoryboard(finalized),
+      ...(composedVideoPath ? { filmComposedVideoPath: composedVideoPath } : {}),
+      text: filmStoryboardSummary(finalized, ctx.locale)
     })
   }
 

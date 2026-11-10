@@ -22,6 +22,9 @@ const WorldElementEditor = defineAsyncComponent(
   () => import('../../components/WorldElementEditor.vue')
 )
 const BeatAssetEditor = defineAsyncComponent(() => import('../../components/BeatAssetEditor.vue'))
+const WorkspaceFileEditor = defineAsyncComponent(
+  () => import('../../components/WorkspaceFileEditor.vue')
+)
 import { BUILTIN_INSPECTORS } from '../../inspector/builtins'
 import type { EditorWindowDefinition } from './types'
 import type { AssetImporterDefinition, EditorCommandContribution } from './contributions'
@@ -108,6 +111,13 @@ export const BUILTIN_WINDOWS: EditorWindowDefinition[] = [
     createComponent: () =>
       panel('DockDirectorEditor', (params) =>
         h(DirectorEditor, { directorAssetId: readParam(params, 'directorAssetId') })
+      )
+  },
+  {
+    id: 'fileEditor',
+    createComponent: () =>
+      panel('DockFileEditor', (params) =>
+        h(WorkspaceFileEditor, { fileId: readParam(params, 'fileId') })
       )
   }
 ]

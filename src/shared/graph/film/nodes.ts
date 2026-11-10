@@ -120,6 +120,13 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
         labelKey: 'graph.port.filmClips'
       },
       {
+        id: 'out-voices',
+        direction: 'out',
+        dataType: GraphPortType.voices,
+        multiple: true,
+        label: 'Voices'
+      },
+      {
         id: 'out-text',
         direction: 'out',
         dataType: GraphPortType.text,
@@ -158,6 +165,8 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmShotRange: '',
       filmRenderContinuity: true,
       filmRenderPrevizVideoRef: true,
+      filmRenderAudio: true,
+      filmUseSharedCast: true,
       filmRenderQc: false,
       filmRenderMaxRetries: 1,
       filmRenderConcurrency: 3,
@@ -388,6 +397,13 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
         multiple: true,
         label: 'Clips',
         labelKey: 'graph.port.filmClips'
+      },
+      {
+        id: 'out-voices',
+        direction: 'out',
+        dataType: GraphPortType.voices,
+        multiple: true,
+        label: 'Voices'
       }
     ],
     defaultParams: () => ({
@@ -403,6 +419,8 @@ export const FILM_NODE_TYPES: NodeTypeDefinition[] = [
       filmShotRange: '',
       filmRenderContinuity: true,
       filmRenderPrevizVideoRef: true,
+      filmRenderAudio: true,
+      filmUseSharedCast: true,
       filmRenderQc: false,
       filmRenderMaxRetries: 1,
       filmRenderConcurrency: 3,

@@ -9,7 +9,8 @@ const PANEL_DEFINITIONS: Array<{ prefix: string; kind: EditorPanelKind }> = [
   { prefix: 'canvas-editor-', kind: 'canvas' },
   { prefix: 'world-editor-', kind: 'world' },
   { prefix: 'beat-editor-', kind: 'beat' },
-  { prefix: 'director-editor-', kind: 'director' }
+  { prefix: 'director-editor-', kind: 'director' },
+  { prefix: 'file-editor-', kind: 'file' }
 ]
 
 function resolveAsset(assetId: string): AssetInfo | null {
@@ -33,6 +34,8 @@ function kindFallbackIcon(kind: EditorPanelKind): string {
       return ASSET_TYPE_ICONS.beat
     case 'director':
       return ASSET_TYPE_ICONS.motion
+    case 'file':
+      return ASSET_TYPE_ICONS.screenplay
     case 'asset':
       return '◆'
   }

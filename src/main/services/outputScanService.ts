@@ -211,9 +211,48 @@ const PROMPT_CONCEPT_EXPANSIONS: Array<{ test: RegExp; tokens: string[] }> = [
   },
   {
     test: /窗口|底板|面板|弹窗|panel|window|dialog|bg/i, // cjk-ok
-    tokens: ['panel', 'window', 'dialog', 'bg', 'frame', 'board', '底板', '面板', '窗口'] // cjk-ok
+    tokens: [
+      'panel',
+      'window',
+      'dialog',
+      'bg',
+      'common_bg2',
+      'popup',
+      'frame',
+      'board',
+      '底板', // cjk-ok
+      '面板', // cjk-ok
+      '窗口' // cjk-ok
+    ]
+  },
+  {
+    test: /登录|账号|验证|进入游戏|游客|login|auth|verify|sign/i, // cjk-ok
+    tokens: ['login', 'common_login', 'common_bg', 'verify', 'auth', 'btn', '登录'] // cjk-ok
+  },
+  {
+    test: /logo|标题|标志|徽标|title/i, // cjk-ok
+    tokens: ['logo', 'logo1', 'title', 'banner', '标题'] // cjk-ok
+  },
+  {
+    test: /协议|隐私|条款|勾选|适龄|protocol|privacy|agree|check/i, // cjk-ok
+    tokens: ['protocol', 'privacy', 'agree', 'check', '协议'] // cjk-ok
+  },
+  {
+    test: /关闭|返回|退出|叉号|close|back|exit/i, // cjk-ok
+    tokens: ['close', 'btn_close', 'equip_close', 'back', '关闭'] // cjk-ok
+  },
+  {
+    test: /背景|底图|壁纸|background|wallpaper/i, // cjk-ok
+    tokens: ['common_bg1', 'common_bg', 'bg1', 'bg', 'background', '背景'] // cjk-ok
   }
 ]
+
+const UI_DIR_PRIORITY_HIGH_RE =
+  /^(preloadres|ui|uiprefabs|textures|sprites|atlas|resources|common|popup|icons?|hud|gui|login)$/i
+const UI_DIR_PRIORITY_LOW_RE =
+  /^(effects?|fx|vfx|particles?|shaders?|models?|meshes|scenes?|anna|audio|sounds?|fonts?|animations?|anims?|bundleassets|bundleres)$/i
+const VFX_OR_NON_UI_TEX_RE =
+  /(?:^|[/_\\])fx_|_fx_|fx_tex|particle|vfx|shader|lightmap|normalmap|_normal\.|_mask\.|trail|slash|melee/i
 
 function extractPromptAtlasKeywords(prompt?: string): string[] {
   const raw = (prompt ?? '').trim()
@@ -276,13 +315,21 @@ export function scanUiAtlasImagesFromDirectories(
   }> = []
 
   const maxDepth = 7
-  const maxVisitedPerDir = 2000
+  const maxVisitedPerDir = 5000
 
   for (let dirIdx = 0; dirIdx < normalizedDirs.length; dirIdx++) {
     const rootDir = normalizedDirs[dirIdx]!
     if (!existsSync(rootDir)) continue
     let visited = 0
     const dirPriorityScore = (normalizedDirs.length - dirIdx) * 12
+
+    const dirEntryRank = (entry: Dirent): number => {
+      if (!entry.isDirectory()) return 1
+      const n = entry.name.toLowerCase()
+      if (UI_DIR_PRIORITY_HIGH_RE.test(n)) return 0
+      if (UI_DIR_PRIORITY_LOW_RE.test(n)) return 3
+      return 2
+    }
 
     const walk = (dirAbs: string, relPrefix: string, depth: number): void => {
       if (depth > maxDepth || visited >= maxVisitedPerDir) return
@@ -292,6 +339,7 @@ export function scanUiAtlasImagesFromDirectories(
       } catch {
         return
       }
+      entries.sort((a, b) => dirEntryRank(a) - dirEntryRank(b))
       for (const entry of entries) {
         if (visited >= maxVisitedPerDir) return
         const name = entry.name
@@ -319,9 +367,15 @@ export function scanUiAtlasImagesFromDirectories(
         let score = dirPriorityScore
         if (ext === '.png' || ext === '.webp') score += 8
         if (UI_PATH_HINT_RE.test(lowerRel)) score += 18
+        if (/(?:^|\/)(preloadres|uiprefabs|textures|sprites|popup|ui)\//i.test(lowerRel)) {
+          score += 20
+        }
+        if (VFX_OR_NON_UI_TEX_RE.test(lowerRel)) {
+          score -= 65
+        }
         for (const kw of promptKeywords) {
           if (kw && lowerRel.includes(kw)) {
-            score += 12
+            score += 14
           }
         }
         // Skip composite/preview full-screen exports from previous runs so we pick actual source sprites/atlases first

@@ -1380,10 +1380,22 @@ export interface GraphNodeParams {
   /** 批量拍摄：质检用视觉文本模型（缺省 = 设置里默认文本模型） */
   filmQcModel?: string
   filmQcProviderInstanceId?: string
+  /** 影视流水线（AI 漫剧 21 题材 Skill）：题材流派 ID（如 'auto' | 'xuanhuan-upgrade' | 'sweet-ceo' 等，见 film/manjuGenres.ts） */
+  filmGenre?: string
+  /** 影视流水线：设定库阶段是否自动生成 STYLE01 风格定调图 */
+  filmEnableStyleAnchor?: boolean
+  /** 影视工作台：批量拍摄时是否按角色绑定音色自动合成每镜对白配音（默认 true） */
+  filmRenderAudio?: boolean
+  /** 影视工作台：多集连载时是否免连线自动继承画布中的全剧共享设定库（默认 true） */
+  filmUseSharedCast?: boolean
+  /** 影视工作台：标记当前设定库为全剧共享基准设定库（Series Bible Cast） */
+  filmIsSeriesBibleCast?: boolean
+  /** 影视工作台：阶段5一键合成后的单集完整成片 MP4 工程相对路径 */
+  filmComposedVideoPath?: string
   /** 影视工作台（film.workbench）：当前选中的阶段 Tab */
-  filmWorkbenchStage?: 'breakdown' | 'review' | 'cast' | 'render'
+  filmWorkbenchStage?: 'breakdown' | 'review' | 'cast' | 'render' | 'publish'
   /** 影视工作台：单次执行的阶段目标（空或 all = 按顺序执行全流程；执行后自动清空） */
-  filmWorkbenchRunMode?: 'all' | 'breakdown' | 'review' | 'cast' | 'render' | ''
+  filmWorkbenchRunMode?: 'all' | 'breakdown' | 'review' | 'cast' | 'render' | 'publish' | ''
   /** 影视工作台：分镜拆解与导演审核使用的文本模型（与图片生成模型 generateModel 独立存储） */
   filmTextModel?: string
   filmTextProviderInstanceId?: string

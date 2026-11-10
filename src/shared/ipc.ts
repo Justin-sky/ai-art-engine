@@ -1547,12 +1547,30 @@ export interface DeleteHarnessScheduleInput {
   scheduleId: string
 }
 
+export type HarnessFileViewerKind =
+  'markdown' | 'text' | 'image' | 'video' | 'audio' | 'html' | 'binary'
+
 export interface OpenHarnessFileInput {
   path?: string
   filePath?: string
   revealInFolder?: boolean
   reveal?: boolean
-  mode?: 'open' | 'reveal'
+  mode?: 'open' | 'reveal' | 'read' | 'write'
+  workspace?: string
+  extraWorkspaces?: string[]
+  writeContent?: string
+}
+
+export interface OpenHarnessFileResult {
+  ok: boolean
+  error?: string
+  absPath?: string
+  fileName?: string
+  ext?: string
+  kind?: HarnessFileViewerKind
+  content?: string
+  mediaUrl?: string
+  sizeBytes?: number
 }
 
 /** 盘中实时转向（Mid-Turn Live Steering）请求 */
@@ -2497,8 +2515,8 @@ export interface StudioApi {
     input: DeleteHarnessScheduleInput
   ) => Promise<{ ok: boolean; schedules?: HarnessScheduleView[]; error?: string }>
 
-  /** Harness：打开或定位交付物文件 */
-  openHarnessFile: (input: OpenHarnessFileInput) => Promise<{ ok: boolean; error?: string }>
+  /** Harness：打开、定位、读取或保存交付物文件 */
+  openHarnessFile: (input: OpenHarnessFileInput) => Promise<OpenHarnessFileResult>
 
   /** Harness：盘中实时转向（向正在运行的 Turn / 子代理立即注入纠偏指令） */
   steerHarnessTurn: (input: SteerHarnessTurnInput) => Promise<SteerHarnessTurnResult>

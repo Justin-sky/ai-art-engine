@@ -1000,6 +1000,9 @@ function onReady(event: DockviewReadyEvent): void {
       case 'director':
         bumpIfPresent(workspace.openDirectorEditorIds, parsed.assetId)
         break
+      case 'file':
+        bumpIfPresent(workspace.openWorkspaceFileIds, parsed.assetId)
+        break
     }
     if (
       workspace.selectedGraphHostId &&
@@ -1026,6 +1029,9 @@ function onReady(event: DockviewReadyEvent): void {
     }
     if (panel.id.startsWith('director-editor-')) {
       cleanupDraftEditor(panel.id, 'director-editor-', workspace.consumeDirectorEditor)
+    }
+    if (panel.id.startsWith('file-editor-')) {
+      workspace.consumeWorkspaceFile(panel.id.slice('file-editor-'.length))
     }
     if (parseEditorPanelId(panel.id)) {
       const remainingActiveEditor =

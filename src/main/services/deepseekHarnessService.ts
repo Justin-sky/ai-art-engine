@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { readdir, rm } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { constants as zlibConstants, zstdCompressSync, zstdDecompressSync } from 'node:zlib'
 import {
@@ -21,6 +21,7 @@ import {
   type HarnessCanvasEventResult,
   type HarnessCanvasEventView,
   type HarnessEvent,
+  type HarnessFileViewerKind,
   type HarnessGoalView,
   type HarnessJobWaitInput,
   type HarnessJobWaitResult,
@@ -33,6 +34,7 @@ import {
   type HarnessSubagentView,
   type HarnessTodoItem,
   type OpenHarnessFileInput,
+  type OpenHarnessFileResult,
   type RewindHarnessSessionInput,
   type RewindHarnessSessionResult,
   type SearchHarnessSessionsInput,
@@ -4123,38 +4125,275 @@ export async function deleteHarnessSchedule(
   return { ok: true, schedules: lastSchedulesSnapshot }
 }
 
+interface ResolveHarnessFilePathOptions {
+  workspace?: string
+  extraWorkspaces?: string[]
+  forWrite?: boolean
+}
+
+function normalizeRawHarnessPath(rawPath: string): string {
+  let cleaned = String(rawPath ?? '')
+    .trim()
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .trim()
+  if (cleaned.startsWith('@')) cleaned = cleaned.slice(1).trim()
+  if (/^file:\/\//i.test(cleaned)) {
+    try {
+      const url = new URL(cleaned)
+      cleaned = decodeURIComponent(url.pathname)
+      if (/^\/[A-Za-z]:/.test(cleaned)) cleaned = cleaned.slice(1)
+    } catch {
+      cleaned = cleaned.replace(/^file:\/\/\/?/i, '')
+    }
+  }
+  return cleaned.trim()
+}
+
+function isPathInsideRoot(targetAbs: string, baseRoot?: string | null): boolean {
+  const base = String(baseRoot ?? '').trim()
+  if (!base) return false
+  const resolvedBase = resolve(base)
+  const resolvedTarget = resolve(targetAbs)
+  if (process.platform === 'win32') {
+    const normBase = resolvedBase.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+    const normTarget = resolvedTarget.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+    return normTarget === normBase || normTarget.startsWith(`${normBase}\\`)
+  }
+  const rel = relative(resolvedBase, resolvedTarget)
+  return !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+const HARNESS_MARKDOWN_EXTS = new Set(['.md', '.markdown', '.mdx'])
+const HARNESS_HTML_EXTS = new Set(['.html', '.htm'])
+const HARNESS_IMAGE_EXTS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.bmp',
+  '.svg',
+  '.ico',
+  '.avif'
+])
+const HARNESS_VIDEO_EXTS = new Set(['.mp4', '.webm', '.mov', '.mkv', '.avi', '.m4v'])
+const HARNESS_AUDIO_EXTS = new Set(['.mp3', '.wav', '.ogg', '.m4a', '.flac', '.aac'])
+const HARNESS_TEXT_EXTS = new Set([
+  '.txt',
+  '.json',
+  '.jsonl',
+  '.yaml',
+  '.yml',
+  '.toml',
+  '.xml',
+  '.csv',
+  '.tsv',
+  '.ini',
+  '.conf',
+  '.env',
+  '.log',
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.vue',
+  '.css',
+  '.scss',
+  '.less',
+  '.py',
+  '.sh',
+  '.bat',
+  '.ps1',
+  '.sql',
+  '.lua',
+  '.cs',
+  '.cpp',
+  '.c',
+  '.h',
+  '.hpp',
+  '.java',
+  '.go',
+  '.rs',
+  '.ets'
+])
+
+export function classifyHarnessFileKind(ext: string): HarnessFileViewerKind {
+  const lower = String(ext ?? '').toLowerCase()
+  if (HARNESS_MARKDOWN_EXTS.has(lower)) return 'markdown'
+  if (HARNESS_HTML_EXTS.has(lower)) return 'html'
+  if (HARNESS_IMAGE_EXTS.has(lower)) return 'image'
+  if (HARNESS_VIDEO_EXTS.has(lower)) return 'video'
+  if (HARNESS_AUDIO_EXTS.has(lower)) return 'audio'
+  if (HARNESS_TEXT_EXTS.has(lower)) return 'text'
+  return 'binary'
+}
+
 /**
- * 打开或定位交付物文件（供 present 卡片与导出压缩包卡片直接调用）。
+ * 解析并校验工作区 / 工程根 / 外部项目 / Harness 目录内的安全文件路径。
  */
-export async function openHarnessFile(
-  input: OpenHarnessFileInput
-): Promise<{ ok: boolean; error?: string }> {
+function resolveAllowedHarnessFilePath(
+  rawPath: string,
+  options?: ResolveHarnessFilePathOptions
+): string | null {
+  const cleaned = normalizeRawHarnessPath(rawPath)
+  if (!cleaned || cleaned.includes('\0')) return null
+
+  const candidateRoots = Array.from(
+    new Set(
+      [
+        options?.workspace,
+        ...(options?.extraWorkspaces ?? []),
+        activeWorkspaceOverride,
+        projectService.getOpenProjectState()?.rootPath,
+        resolveWorkspace(),
+        dshHome(),
+        (() => {
+          try {
+            return app.getPath('userData')
+          } catch {
+            return ''
+          }
+        })()
+      ]
+        .map((r) => String(r ?? '').trim())
+        .filter(Boolean)
+    )
+  )
+
+  const isWinAbs = /^[A-Za-z]:[\\/]/.test(cleaned)
+  if (isAbsolute(cleaned) || isWinAbs) {
+    return resolve(cleaned)
+  }
+
+  for (const root of candidateRoots) {
+    const candidate = resolve(root, cleaned)
+    if (!isPathInsideRoot(candidate, root)) {
+      return null
+    }
+    if (existsSync(candidate)) {
+      return candidate
+    }
+    if (options?.forWrite && existsSync(dirname(candidate))) {
+      return candidate
+    }
+  }
+
+  const fallbackRoot = candidateRoots[0] || resolveWorkspace()
+  const fallbackCandidate = resolve(fallbackRoot, cleaned)
+  if (!isPathInsideRoot(fallbackCandidate, fallbackRoot)) {
+    return null
+  }
+  return fallbackCandidate
+}
+
+/**
+ * 读取工作区或 Harness 目录内的文本文件（供工作区打开 AI 对话生成的 .md 文档）。
+ */
+export async function readHarnessTextFile(rawPath: string): Promise<string | null> {
+  try {
+    const absPath = resolveAllowedHarnessFilePath(rawPath)
+    if (!absPath || !existsSync(absPath) || statSync(absPath).isDirectory()) return null
+    return readFileSync(absPath, 'utf-8')
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 写入工作区或 Harness 目录内的文本文件（供工作区保存编辑后的 .md 文档）。
+ */
+export async function writeHarnessTextFile(rawPath: string, content: string): Promise<boolean> {
+  try {
+    const absPath = resolveAllowedHarnessFilePath(rawPath, { forWrite: true })
+    if (!absPath) return false
+    mkdirSync(dirname(absPath), { recursive: true })
+    writeFileSync(absPath, String(content ?? ''), 'utf-8')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 打开、定位、读取或保存交付物文件（供 present 卡片、工作区文件编辑器与导出压缩包卡片直接调用）。
+ */
+export async function openHarnessFile(input: OpenHarnessFileInput): Promise<OpenHarnessFileResult> {
   const rawPath = String(input?.path ?? input?.filePath ?? '').trim()
-  if (!rawPath) return { ok: false, error: '文件路径为空' }
-  const workspace = resolveWorkspace()
-  const absPath = isAbsolute(rawPath) ? resolve(rawPath) : resolve(workspace, rawPath)
-  const relToWorkspace = relative(workspace, absPath)
-  const relToHome = relative(dshHome(), absPath)
-  const insideAllowed =
-    (!relToWorkspace.startsWith('..') && !isAbsolute(relToWorkspace)) ||
-    (!relToHome.startsWith('..') && !isAbsolute(relToHome))
-  if (!insideAllowed) {
-    return { ok: false, error: '仅允许打开工作区或 Harness 目录下的文件' }
+  if (!rawPath) return { ok: false, error: '文件路径为空' } // cjk-ok
+  const isWrite = input?.mode === 'write'
+  const absPath = resolveAllowedHarnessFilePath(rawPath, {
+    workspace: input?.workspace,
+    extraWorkspaces: input?.extraWorkspaces,
+    forWrite: isWrite
+  })
+  if (!absPath) {
+    return { ok: false, error: '仅允许打开工作区或 Harness 目录下的文件' } // cjk-ok
+  }
+  if (isWrite) {
+    try {
+      mkdirSync(dirname(absPath), { recursive: true })
+      writeFileSync(absPath, String(input?.writeContent ?? ''), 'utf-8')
+      const ext = extname(absPath).toLowerCase()
+      return {
+        ok: true,
+        absPath,
+        fileName: basename(absPath),
+        ext,
+        kind: classifyHarnessFileKind(ext)
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        absPath,
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
   }
   if (!existsSync(absPath)) {
-    return { ok: false, error: `文件不存在：${absPath}` }
+    return { ok: false, absPath, error: `文件不存在：${absPath}` } // cjk-ok
   }
   try {
+    const stat = statSync(absPath)
+    const fileName = basename(absPath)
+    const ext = extname(absPath).toLowerCase()
+    const kind = classifyHarnessFileKind(ext)
     const shouldReveal = Boolean(input.revealInFolder || input.reveal || input.mode === 'reveal')
-    if (shouldReveal || statSync(absPath).isDirectory()) {
+    if (shouldReveal) {
       shell.showItemInFolder(absPath)
-      return { ok: true }
+      return { ok: true, absPath, fileName, ext, kind }
+    }
+    if (stat.isDirectory()) {
+      if (input.mode === 'read') {
+        return { ok: false, absPath, error: `无法在工作区直接打开文件夹：${absPath}` } // cjk-ok
+      }
+      shell.showItemInFolder(absPath)
+      return { ok: true, absPath, fileName, ext, kind: 'binary' }
+    }
+    if (input.mode === 'read') {
+      const mediaUrl = `studio-media://asset?path=${encodeURIComponent(absPath)}`
+      const isTextLike = kind === 'markdown' || kind === 'text' || kind === 'html' || ext === '.svg'
+      let content: string | undefined
+      if (isTextLike && stat.size <= 4 * 1024 * 1024) {
+        content = readFileSync(absPath, 'utf-8')
+      }
+      return {
+        ok: true,
+        absPath,
+        fileName,
+        ext,
+        kind,
+        content,
+        mediaUrl,
+        sizeBytes: stat.size
+      }
     }
     const err = await shell.openPath(absPath)
-    if (err) return { ok: false, error: err }
-    return { ok: true }
+    if (err) return { ok: false, absPath, error: err }
+    return { ok: true, absPath, fileName, ext, kind }
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    return { ok: false, absPath, error: error instanceof Error ? error.message : String(error) }
   }
 }
 

@@ -372,4 +372,212 @@ describe('ui.atlasCompose (图集拼装 UI -> 类 PS 分层工作台 & PSD 导�
       })
     ).toEqual(['F:\\workspace\\Cache'])
   })
+
+  it('keeps standalone sprites (multi-character logo, opaque background, login button, close button) intact instead of fragmenting them', async () => {
+    // 1) Multi-character logo (4 disconnected character islands on transparent background)
+    const logoImg = createImage(880, 236)
+    for (let ch = 0; ch < 4; ch++) {
+      const startX = 40 + ch * 200
+      for (let y = 30; y < 200; y++) {
+        for (let x = startX; x < startX + 140; x++) {
+          const idx = (y * 880 + x) * 4
+          logoImg.data[idx] = 80
+          logoImg.data[idx + 1] = 200
+          logoImg.data[idx + 2] = 255
+          logoImg.data[idx + 3] = 255
+        }
+      }
+    }
+    const logoCandidates = extractAtlasCandidatesFromRgba(logoImg, '登录大标题 Logo · logo1', 1)
+    expect(logoCandidates).toHaveLength(1)
+    expect(logoCandidates[0]!.item.kind).toBe('logo')
+    expect(logoCandidates[0]!.rgba.width).toBeGreaterThanOrEqual(700)
+
+    // 2) Full-bleed opaque background image with varied colors (common_bg1)
+    const bgImg = createImage(590, 1280)
+    for (let y = 0; y < 1280; y++) {
+      for (let x = 0; x < 590; x++) {
+        const idx = (y * 590 + x) * 4
+        bgImg.data[idx] = (x * 3 + y) % 256
+        bgImg.data[idx + 1] = (y * 2) % 256
+        bgImg.data[idx + 2] = (x + y * 5) % 256
+        bgImg.data[idx + 3] = 255
+      }
+    }
+    const bgCandidates = extractAtlasCandidatesFromRgba(bgImg, '主视觉背景 · common_bg1', 1)
+    expect(bgCandidates).toHaveLength(1)
+    expect(bgCandidates[0]!.item.kind).toBe('background')
+    expect(bgCandidates[0]!.rgba.width).toBe(590)
+    expect(bgCandidates[0]!.rgba.height).toBe(1280)
+
+    // 3) Close button is classified as close-button rather than generic button
+    const closeImg = createImage(86, 72)
+    for (let y = 8; y < 64; y++) {
+      for (let x = 10; x < 76; x++) {
+        const idx = (y * 86 + x) * 4
+        closeImg.data[idx] = 240
+        closeImg.data[idx + 1] = 90
+        closeImg.data[idx + 2] = 90
+        closeImg.data[idx + 3] = 255
+      }
+    }
+    const closeCandidates = extractAtlasCandidatesFromRgba(closeImg, '关闭按钮 · Equip_close', 1)
+    expect(closeCandidates).toHaveLength(1)
+    expect(closeCandidates[0]!.item.kind).toBe('close-button')
+  })
+
+  it('assembles a complete portrait Login UI when fed standalone login sprites', async () => {
+    const encodedMap = new Map<string, RgbaImage>()
+    let seq = 0
+    const makeSolidSprite = (w: number, h: number, r: number, g: number, b: number): string => {
+      const img = createImage(w, h)
+      for (let i = 0; i < w * h * 4; i += 4) {
+        img.data[i] = r
+        img.data[i + 1] = g
+        img.data[i + 2] = b
+        img.data[i + 3] = 255
+      }
+      const url = `data:image/png;base64,SPRITE_${++seq}_${w}x${h}`
+      encodedMap.set(url, img)
+      return url
+    }
+
+    const node = createNodeFromType('ui.atlasCompose', { x: 0, y: 0 })
+    node.title = '登录主界面拼装（竖屏 1080×1920）'
+    node.params.generateAspectRatio = '9:16'
+    node.params.generateInstruction =
+      '竖屏手游登录主界面（1080×1920），包含全屏背景 common_bg1、顶部大标题 logo1、居中登录面板 common_bg2、右上角关闭按钮 Equip_close、三个登录主按钮 common_login、协议勾选框 Protocol 及底部进度条 progress_bg / progress_fill'
+
+    await executeUiAtlasComposeNode({
+      node,
+      inputs: {
+        'in-images': [
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(590, 1280, 30, 80, 45),
+            title: '主视觉背景 · common_bg1',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/common_bg1.jpg'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(880, 236, 60, 200, 255),
+            title: '游戏大标题 Logo · logo1',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/logo1.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(300, 280, 20, 40, 80),
+            title: '登录面板底框 · common_bg2',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/common_bg2.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(420, 120, 240, 240, 240),
+            title: '登录主按钮 · common_login',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/common_login.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(96, 123, 50, 50, 50),
+            title: '协议勾选框 · Protocol',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/Protocol.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(86, 72, 220, 80, 80),
+            title: '关闭按钮 · Equip_close',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/Equip_close.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(802, 51, 30, 30, 30),
+            title: '加载进度条底槽 · progress_bg',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/progress_bg.png'
+          },
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(794, 43, 80, 220, 120),
+            title: '加载进度条填充 · progress_fill',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/progress_fill.png'
+          }
+        ]
+      },
+      locale: 'zh-CN',
+      onNodePatch: (_id, patch) => {
+        if (patch.params) {
+          node.params = { ...node.params, ...patch.params }
+        }
+      },
+      uiRgbaCodec: {
+        decodeImageRgba: async (src: string) => encodedMap.get(src) ?? createImage(64, 64),
+        encodeRgbaPng: async (img: RgbaImage) => {
+          const fakeUrl = `data:image/png;base64,ENC_${++seq}_${img.width}x${img.height}`
+          encodedMap.set(fakeUrl, img)
+          return fakeUrl
+        }
+      },
+      composeImageLayerStack: async () => ({
+        dataUrl: 'data:image/png;base64,COMPOSITE_PREVIEW',
+        psdDataUrl: 'data:image/vnd.adobe.photoshop;base64,FAKE_PSD'
+      }),
+      saveRunMedia: async ({ key }) => `Cache/Images/${key}.png`
+    } as never)
+
+    const state = (
+      node.params as unknown as {
+        imageLayerSplit: import('../src/shared/graph').ImageLayerSplitState
+      }
+    ).imageLayerSplit
+    expect(state.canvasWidth).toBe(1080)
+    expect(state.canvasHeight).toBe(1920)
+    expect(state.componentLibrary).toHaveLength(8)
+    const names = state.layers.map((l) => l.name)
+    expect(names.some((n) => n.includes('背景'))).toBe(true)
+    expect(names.some((n) => /logo/i.test(n))).toBe(true)
+    expect(names.some((n) => n.includes('登录面板'))).toBe(true)
+    expect(names.some((n) => n.includes('关闭按钮'))).toBe(true)
+    expect(names.some((n) => n.includes('进度条'))).toBe(true)
+
+    // Verify re-running with new in-images replaces previous cached componentLibrary instead of keeping stale items
+    await executeUiAtlasComposeNode({
+      node,
+      inputs: {
+        'in-images': [
+          {
+            kind: 'image',
+            dataUrl: makeSolidSprite(880, 236, 60, 200, 255),
+            title: '新大标题 Logo · logo1',
+            relativePath: 'Assets/PreloadRes/Resources/Textures/logo1.png'
+          }
+        ]
+      },
+      locale: 'zh-CN',
+      onNodePatch: (_id, patch) => {
+        if (patch.params) {
+          node.params = { ...node.params, ...patch.params }
+        }
+      },
+      uiRgbaCodec: {
+        decodeImageRgba: async (src: string) => encodedMap.get(src) ?? createImage(64, 64),
+        encodeRgbaPng: async (img: RgbaImage) => {
+          const fakeUrl = `data:image/png;base64,ENC_${++seq}_${img.width}x${img.height}`
+          encodedMap.set(fakeUrl, img)
+          return fakeUrl
+        }
+      },
+      composeImageLayerStack: async () => ({
+        dataUrl: 'data:image/png;base64,COMPOSITE_PREVIEW_2',
+        psdDataUrl: 'data:image/vnd.adobe.photoshop;base64,FAKE_PSD_2'
+      }),
+      saveRunMedia: async ({ key }) => `Cache/Images/${key}.png`
+    } as never)
+
+    const updatedState = (
+      node.params as unknown as {
+        imageLayerSplit: import('../src/shared/graph').ImageLayerSplitState
+      }
+    ).imageLayerSplit
+    expect(updatedState.componentLibrary).toHaveLength(1)
+    expect(updatedState.componentLibrary?.[0]?.kind).toBe('logo')
+  })
 })

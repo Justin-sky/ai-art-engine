@@ -70,6 +70,74 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
+function renderEditableTextCanvas(
+  width: number,
+  height: number,
+  meta: UiEditableTextMeta
+): HTMLCanvasElement | null {
+  const text = (meta.text ?? '').trim()
+  if (!text || typeof document === 'undefined') return null
+  const w = Math.max(8, Math.round(width))
+  const h = Math.max(8, Math.round(height))
+  const c = document.createElement('canvas')
+  c.width = w
+  c.height = h
+  const tctx = c.getContext('2d')
+  if (!tctx || typeof tctx.fillText !== 'function') return null
+
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+  if (!lines.length) return null
+  const fontFamily = meta.fontName?.trim()
+    ? `"${meta.fontName.trim()}", "Microsoft YaHei", "PingFang SC", sans-serif`
+    : '"Microsoft YaHei", "PingFang SC", "SimHei", sans-serif'
+  let fontSize = Math.max(
+    12,
+    Math.min(
+      Math.round((h / Math.max(1, lines.length)) * 0.72),
+      meta.fontSize || Math.round(h * 0.56)
+    )
+  )
+  tctx.font = `bold ${fontSize}px ${fontFamily}`
+  if (typeof tctx.measureText === 'function') {
+    const longest = lines.reduce((acc, l) => (l.length > acc.length ? l : acc), lines[0]!)
+    const measured = tctx.measureText(longest).width
+    if (measured > w - 8 && measured > 0) {
+      fontSize = Math.max(11, Math.floor((fontSize * (w - 8)) / measured))
+      tctx.font = `bold ${fontSize}px ${fontFamily}`
+    }
+  }
+
+  const align = meta.align === 'left' || meta.align === 'right' ? meta.align : 'center'
+  tctx.textAlign = align
+  tctx.textBaseline = 'middle'
+  const [r, g, b] = meta.color ?? [255, 245, 214]
+  const [sr, sg, sb] = meta.strokeColor ?? [24, 20, 16]
+  const strokeW = Math.max(1.5, Math.min(6, meta.strokeWidth ?? Math.round(fontSize * 0.1)))
+
+  const lineH = Math.round(fontSize * 1.24)
+  const totalTextH = lines.length * lineH
+  const startY = Math.round((h - totalTextH) * 0.5 + lineH * 0.5)
+  const anchorX = align === 'left' ? 6 : align === 'right' ? w - 6 : Math.round(w * 0.5)
+
+  tctx.lineJoin = 'round'
+  tctx.miterLimit = 2
+  tctx.lineWidth = strokeW * 2
+  tctx.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, 0.9)`
+  tctx.fillStyle = `rgb(${r}, ${g}, ${b})`
+
+  for (let i = 0; i < lines.length; i++) {
+    const y = startY + i * lineH
+    if (typeof tctx.strokeText === 'function') {
+      tctx.strokeText(lines[i]!, anchorX, y)
+    }
+    tctx.fillText(lines[i]!, anchorX, y)
+  }
+  return c
+}
+
 export async function composeImageLayerStack(input: {
   state: ImageLayerSplitState
   layerUrls: Record<string, string>
@@ -95,11 +163,40 @@ export async function composeImageLayerStack(input: {
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('LAYER_SPLIT_CANVAS_UNAVAILABLE')
 
+  const effectiveLayerUrls: Record<string, string> = { ...input.layerUrls }
+
   for (const layer of layers) {
+    if (layer.editableText?.text?.trim() && !layer.componentId && !isLayerSplitBase(layer)) {
+      const textCanvas = renderEditableTextCanvas(
+        Math.max(1, layer.width),
+        Math.max(1, layer.height),
+        layer.editableText
+      )
+      if (textCanvas) {
+        ctx.globalCompositeOperation = 'source-over'
+        ctx.drawImage(
+          textCanvas,
+          layer.left,
+          layer.top,
+          Math.max(1, layer.width),
+          Math.max(1, layer.height)
+        )
+        try {
+          const textPng = textCanvas.toDataURL('image/png')
+          if (textPng.startsWith('data:image/')) {
+            effectiveLayerUrls[layer.imageId] = textPng
+            effectiveLayerUrls[layer.id] = textPng
+          }
+        } catch {
+          // ignore toDataURL failure in mock environments
+        }
+        continue
+      }
+    }
     const url =
       layer.id === base.id
         ? baseUrl
-        : input.layerUrls[layer.imageId]?.trim() || input.layerUrls[layer.id]?.trim()
+        : effectiveLayerUrls[layer.imageId]?.trim() || effectiveLayerUrls[layer.id]?.trim()
     if (!url) continue
     const img = layer.id === base.id ? baseImg : await loadImage(url)
     if (isLayerSplitBase(layer)) {
@@ -121,7 +218,7 @@ export async function composeImageLayerStack(input: {
   try {
     const psdBytes = await layerSplitToPsdUint8Array({
       state: input.state,
-      layerUrls: input.layerUrls
+      layerUrls: effectiveLayerUrls
     })
     psdDataUrl = uint8ArrayToDataUrl(psdBytes, 'image/vnd.adobe.photoshop')
   } catch {

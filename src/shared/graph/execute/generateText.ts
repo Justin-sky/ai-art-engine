@@ -5,6 +5,7 @@ import {
   extractSharedScreenplayHeader,
   splitScreenplayByExplicitEpisodeMarkers
 } from '../screenplayFormat'
+import { buildManjuScreenplayDirective, resolveManjuGenre } from '../film/manjuGenres'
 import {
   resolveGameSystemSystemPrompt,
   resolveNovelOutlineSystemPrompt,
@@ -716,7 +717,10 @@ function synthesizeNovelFromProgressionBriefOffline(
   ].join('\n')
 }
 
-function synthesizeScreenplayFromNovelOffline(novelText: string): string {
+function synthesizeScreenplayFromNovelOffline(
+  novelText: string,
+  explicitGenreId?: string | null
+): string {
   const trimmed = novelText.trim()
   if (!trimmed.startsWith('小说名：') && !/第\s*\d+\s*章/.test(trimmed)) {
     // cjk-ok
@@ -727,13 +731,23 @@ function synthesizeScreenplayFromNovelOffline(novelText: string): string {
   const title = titleMatch?.[1]?.trim() || '潜龙出渊' // cjk-ok
   const chapNum = chapMatch?.[1] || '1'
   const chapTitle = chapMatch?.[2]?.trim() || '退婚宴受辱与百倍觉醒' // cjk-ok
+  const genre = resolveManjuGenre(explicitGenreId, trimmed)
   return [
     `剧本名：${title}`, // cjk-ok
     ``,
+    `【项目圣经 · 阶段1】`, // cjk-ok
+    `- 题材流派：${genre.nameZh}（${genre.id}）`, // cjk-ok
+    `- 视觉定调（STYLE01）：${genre.visualStyleZh}`, // cjk-ok
+    `- 核心爽点闭环：当众受辱压抑 → 底牌觉醒蓄势 → 首富接驾高能反转 → 断章钩子`, // cjk-ok
+    `- 全局主光定律：同场戏锁定唯一世界主光方向与 180° 轴线站位`, // cjk-ok
+    ``,
     `【人物小传】`, // cjk-ok
-    `林玄：24岁，男，表面寒素却眼神冷冽如渊，身着剪裁利落的深色风衣，手握黑金龙卡，隐忍果决。`, // cjk-ok
-    `苏清雪：23岁，女，妆容精致高傲，身穿定制白色晚礼服，势利虚荣。`, // cjk-ok
-    `赵天豪：50岁，男，江城首富，唐装金丝眼镜，气场威严却对林玄恭敬如神。`, // cjk-ok
+    `- 林玄（24岁，男，185cm）：表面寒素却眼神冷冽如渊；外观锚点：利落黑发、修身深色风衣、黑金龙卡、左腕古铜暗纹护腕。`, // cjk-ok
+    `- 苏清雪（23岁，女，167cm）：妆容精致高傲，势利虚荣；外观锚点：微卷长发、定制白色晚礼服、碎钻项链。`, // cjk-ok
+    `- 赵天豪（50岁，男，178cm）：江城首富，气场威严却对林玄恭敬如神；外观锚点：背头银丝、暗金唐装、金丝眼镜、翡翠扳指。`, // cjk-ok
+    ``,
+    `【场景设定】`, // cjk-ok
+    `- 江城大酒店宴会厅（32m×20m×8m）：世界主光方向为穹顶水晶吊灯暖金顶光 + 大门方向冷白追光。`, // cjk-ok
     ``,
     `第${chapNum}集：${chapTitle}`, // cjk-ok
     `第1场 【内景 · 江城大酒店宴会厅 - 夜】`, // cjk-ok
@@ -742,12 +756,22 @@ function synthesizeScreenplayFromNovelOffline(novelText: string): string {
     `△ 林玄眼底金芒一闪（境界突破异象），缓步弯腰拾起纸页，嘴角勾起一抹冷冽弧度。`, // cjk-ok
     `林玄：这婚书，是我休你。三分钟后，你会跪着求我回头。`, // cjk-ok
     ``,
+    `【本集卡点与进度 · 阶段3】`, // cjk-ok
+    `- 黄金前3秒冷开场：苏清雪当众将退婚协议甩在林玄胸口，纸页漫天散落`, // cjk-ok
+    `- 本集进度：${genre.episodeProgressTemplateZh}`, // cjk-ok
+    `- 结尾钩子：林玄撕碎婚书立下三分钟赌约，宴会厅外传来百辆豪车轰鸣！`, // cjk-ok
+    ``,
     `第${Number(chapNum) + 1}集：首富接驾·底牌连环亮出`, // cjk-ok
     `第1场 【内景 · 江城大酒店宴会厅大门 - 夜】`, // cjk-ok
     `△ 宴会厅大门轰然推开，两排黑衣保镖分列两侧，江城首富赵天豪快步入场。`, // cjk-ok
     `△ 苏清雪满脸堆笑迎上前，赵天豪却看都不看她一眼，径直走到林玄面前九十度躬身行礼！`, // cjk-ok
     `赵天豪：赵某救驾来迟，恭迎龙王尊上！百亿黑金卡与收购铁证已全部备妥！`, // cjk-ok
-    `△ 林玄随手亮出至尊黑卡扔在主桌上，清脆金属声响彻死寂的大厅，苏清雪面如死灰瘫软在地。` // cjk-ok
+    `△ 林玄随手亮出至尊黑卡扔在主桌上，清脆金属声响彻死寂的大厅，苏清雪面如死灰瘫软在地。`, // cjk-ok
+    ``,
+    `【本集卡点与进度 · 阶段3】`, // cjk-ok
+    `- 黄金前3秒冷开场：宴会厅大门轰然洞开，两排黑衣保镖气势如虹分列两侧`, // cjk-ok
+    `- 本集进度：${genre.episodeProgressTemplateZh}`, // cjk-ok
+    `- 结尾钩子：百亿黑卡拍碎苏家防线，暗处省城大族的加密战帖却骤然亮起！` // cjk-ok
   ].join('\n')
 }
 export async function executeTextAssetRefNode(
@@ -814,7 +838,10 @@ export async function executeScreenplayGenerateNode(
 
   if (!ctx.generateText) {
     const localText = normalizeLocalScreenplayText(node.params.text)
-    const adaptedFromNovel = synthesizeScreenplayFromNovelOffline(incomingText || instruction)
+    const adaptedFromNovel = synthesizeScreenplayFromNovelOffline(
+      incomingText || instruction,
+      node.params.filmGenre
+    )
     const text = adaptedFromNovel || instruction.trim() || incomingText || localText
     if (!text.trim()) return dualTextGalleryOutputs([], '')
     return await persistScreenplayGeneration(ctx, text)
@@ -841,9 +868,17 @@ export async function executeScreenplayGenerateNode(
     prompt = `${prompt.trim()}\n\n${lead}\n\n${localDraft}`
   }
 
+  const activeManjuGenre = resolveManjuGenre(
+    node.params.filmGenre,
+    [instruction, incomingText, localDraft, node.title].filter(Boolean).join('\n')
+  )
+  const baseSystem = resolveScreenplaySystemPrompt(node.params.generateSystemPrompt, ctx.locale)
+  const genreDirective = buildManjuScreenplayDirective(activeManjuGenre, ctx.locale)
+  const system = `${baseSystem.trim()}\n\n${genreDirective}`
+
   const result = await ctx.generateText({
     prompt,
-    system: resolveScreenplaySystemPrompt(node.params.generateSystemPrompt, ctx.locale),
+    system,
     model: node.params.generateModel || undefined,
     providerInstanceId: node.params.generateProviderInstanceId || undefined
   })

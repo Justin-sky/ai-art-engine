@@ -239,7 +239,14 @@ const SEMANTIC_KEY_ALIASES: Record<string, string> = {
   参考3d白模视频: 'filmRenderPrevizVideoRef',
   参考3D白模视频: 'filmRenderPrevizVideoRef',
   '3d白模视频参考': 'filmRenderPrevizVideoRef',
-  '3D白模视频参考': 'filmRenderPrevizVideoRef'
+  '3D白模视频参考': 'filmRenderPrevizVideoRef',
+  manjuGenre: 'filmGenre',
+  shortDramaGenre: 'filmGenre',
+  漫剧题材: 'filmGenre', // cjk-ok
+  短剧题材: 'filmGenre', // cjk-ok
+  漫剧流派: 'filmGenre', // cjk-ok
+  enableStyleAnchor: 'filmEnableStyleAnchor',
+  风格定调图: 'filmEnableStyleAnchor' // cjk-ok
 }
 
 /** 常见中文/口语枚举值到标准枚举值的映射 */

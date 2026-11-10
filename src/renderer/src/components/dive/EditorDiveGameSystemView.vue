@@ -12,33 +12,21 @@
           :placeholder="typeLabel"
           @change="persistTitle"
         />
-        <span class="archetype-pill">
-          {{ activeArchetype.icon }} {{ isEn ? activeArchetype.labelEn : activeArchetype.labelZh }}
-        </span>
-        <span class="aspect-pill">
-          {{ targetAspect }}
-        </span>
+        <div class="aspect-group" :title="ui.aspectSectionTitle">
+          <button
+            v-for="asp in ['16:9', '9:16', '1:1'] as const"
+            :key="asp"
+            type="button"
+            class="mini-pill-btn"
+            :class="{ active: targetAspect === asp }"
+            @click="setTargetAspect(asp)"
+          >
+            {{ asp }}
+          </button>
+        </div>
       </div>
 
       <div class="header-telemetry">
-        <span class="stat-pill" :class="upstreamEconomyNode ? 'stat-ok' : 'stat-muted'">
-          📊 {{ ui.telemetryEconomy(Boolean(upstreamEconomyNode)) }}
-        </span>
-        <span class="stat-pill" :class="upstreamNumericalNode ? 'stat-ok' : 'stat-muted'">
-          ⚔️
-          {{
-            isEn
-              ? upstreamNumericalNode
-                ? 'Numerical Linked'
-                : 'No Numerical'
-              : upstreamNumericalNode
-                ? '已连数值系统'
-                : '未连数值系统'
-          }}
-        </span>
-        <span class="stat-pill" :class="upstreamNovelNode ? 'stat-ok' : 'stat-muted'">
-          📖 {{ ui.telemetryNovel(Boolean(upstreamNovelNode)) }}
-        </span>
         <span
           class="stat-pill stat-accent"
           style="cursor: pointer"
@@ -58,49 +46,6 @@
           🩺 {{ ui.telemetryQa(docAudit.overallScore) }}
         </span>
       </div>
-
-      <div class="header-right">
-        <div class="panel-toggle-group">
-          <button
-            type="button"
-            class="hdr-icon-btn"
-            :class="{ active: showLeftCol }"
-            :title="ui.toggleLeftPanelHint"
-            @click="showLeftCol = !showLeftCol"
-          >
-            ◧
-          </button>
-          <button
-            type="button"
-            class="hdr-icon-btn"
-            :class="{ active: showRightCol }"
-            :title="ui.toggleRightPanelHint"
-            @click="showRightCol = !showRightCol"
-          >
-            ◨
-          </button>
-        </div>
-        <button
-          type="button"
-          class="hdr-btn"
-          :title="ui.synthesizeOfflineHint"
-          @click="synthesizeStandardDocFromContext"
-        >
-          📐 <span class="hdr-btn-text">{{ ui.synthesizeOfflineBtn }}</span>
-        </button>
-        <button
-          type="button"
-          class="hdr-btn hdr-btn-accent"
-          :disabled="isRunningNode"
-          @click="runGameSystemGeneration"
-        >
-          ⚡
-          <span class="hdr-btn-text">{{ isRunningNode ? ui.generatingBtn : ui.generateBtn }}</span>
-        </button>
-        <button type="button" class="hdr-btn" @click="popDive">
-          ← <span class="hdr-btn-text">{{ ui.backToCanvas }}</span>
-        </button>
-      </div>
     </header>
 
     <div v-if="statusBanner" class="status-banner">
@@ -108,163 +53,7 @@
       <button type="button" class="banner-close" @click="statusBanner = ''">×</button>
     </div>
 
-    <div
-      class="workbench-body"
-      :class="{
-        'hide-left': !showLeftCol,
-        'hide-right': !showRightCol
-      }"
-    >
-      <!-- Left Column: Unified System Archetype Selector + Port-Scoped Upstream Input Summary -->
-      <aside v-show="showLeftCol" class="col-left">
-        <div class="left-panel-scroll">
-          <!-- Card 1: 8 Game System Archetypes & Aspect Ratio -->
-          <div class="panel-card">
-            <div class="card-header-row">
-              <span class="card-title">{{ ui.archetypeSectionTitle }}</span>
-              <div class="aspect-group">
-                <button
-                  v-for="asp in ['16:9', '9:16', '1:1'] as const"
-                  :key="asp"
-                  type="button"
-                  class="mini-pill-btn"
-                  :class="{ active: targetAspect === asp }"
-                  @click="setTargetAspect(asp)"
-                >
-                  {{ asp }}
-                </button>
-              </div>
-            </div>
-            <div class="archetype-grid">
-              <button
-                v-for="arch in archetypes"
-                :key="arch.id"
-                type="button"
-                class="archetype-card"
-                :class="{ active: activeArchetype.id === arch.id }"
-                @click="selectArchetype(arch.id)"
-              >
-                <span class="arch-icon">{{ arch.icon }}</span>
-                <div class="arch-meta">
-                  <div class="arch-name">{{ isEn ? arch.labelEn : arch.labelZh }}</div>
-                  <div class="arch-sub">
-                    {{ arch.defaultFeatures.length }} {{ ui.unitFeatures }} ·
-                    {{ arch.defaultScreens.length }} {{ ui.unitScreens }}
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          <!-- Card 2: Core Gameplay Loop & One-Click Synthesize -->
-          <div class="panel-card">
-            <div class="card-title">{{ ui.coreLoopTitle }}</div>
-            <p class="card-desc">
-              {{ isEn ? activeArchetype.coreLoopEn : activeArchetype.coreLoopZh }}
-            </p>
-            <div class="btn-row" style="margin-top: 8px">
-              <button
-                type="button"
-                class="action-btn action-btn-primary"
-                @click="synthesizeStandardDocFromContext"
-              >
-                📐 {{ ui.applyArchetypeTemplateBtn }}
-              </button>
-            </div>
-          </div>
-
-          <!-- Card 3: Connected Input Ports Status (in-economy & in) -->
-          <div class="panel-card">
-            <div class="card-header-row">
-              <span class="card-title"
-                >🔌 {{ isEn ? 'Connected Input Ports' : '上游端口输入感知' }}</span
-              >
-            </div>
-
-            <!-- Port: in-economy (机制设计) -->
-            <div class="bridge-node-box" style="margin-top: 6px">
-              <div class="card-header-row">
-                <span class="bridge-node-name">
-                  📊 {{ ui.portEconomyLabel }}:
-                  {{
-                    upstreamEconomyNode
-                      ? upstreamEconomyNode.title || 'game.economy'
-                      : ui.unconnectedLabel
-                  }}
-                </span>
-                <button
-                  v-if="upstreamEconomyNode || upstreamNumericalNode"
-                  type="button"
-                  class="mini-action-btn"
-                  @click="injectEconomySpecIntoDoc"
-                >
-                  💉 {{ ui.injectEconomyBtn }}
-                </button>
-              </div>
-              <div class="card-header-row" style="margin-top: 6px">
-                <span class="bridge-node-name">
-                  ⚔️ {{ isEn ? 'Port [Numerical System]' : '端口【数值系统】' }}:
-                  {{
-                    upstreamNumericalNode
-                      ? upstreamNumericalNode.title || 'game.numerical'
-                      : ui.unconnectedLabel
-                  }}
-                </span>
-              </div>
-              <details
-                v-if="(upstreamEconomyNode || upstreamNumericalNode) && unwrappedEconomySpecPreview"
-                style="margin-top: 6px"
-              >
-                <summary class="card-desc" style="cursor: pointer">
-                  {{
-                    isEn
-                      ? 'View parsed multiplier formula & tables'
-                      : '展开已解析的乘区公式与数值预算表'
-                  }}
-                </summary>
-                <pre class="bridge-preview-pre" style="margin-top: 6px">{{
-                  unwrappedEconomySpecPreview
-                }}</pre>
-              </details>
-            </div>
-
-            <!-- Port: in (文本 / 小说IP) -->
-            <div class="bridge-node-box" style="margin-top: 8px">
-              <div class="card-header-row">
-                <span class="bridge-node-name">
-                  📖 {{ isEn ? 'Port [Text / Novel IP]' : '端口【文本 / 小说IP】' }}:
-                  {{
-                    upstreamNovelNode
-                      ? upstreamNovelNode.title || 'asset.novel'
-                      : ui.unconnectedLabel
-                  }}
-                </span>
-                <button
-                  v-if="upstreamNovelNode"
-                  type="button"
-                  class="mini-action-btn"
-                  @click="injectNovelIpIntoDoc"
-                >
-                  💉 {{ ui.injectNovelBtn }}
-                </button>
-              </div>
-              <details v-if="upstreamNovelNode && extractedNovelIpPreview" style="margin-top: 6px">
-                <summary class="card-desc" style="cursor: pointer">
-                  {{
-                    isEn
-                      ? 'View extracted IP stages, roster & chapters'
-                      : '展开已提取的境界阶梯、角色卡池与章节关卡'
-                  }}
-                </summary>
-                <pre class="bridge-preview-pre" style="margin-top: 6px">{{
-                  extractedNovelIpPreview
-                }}</pre>
-              </details>
-            </div>
-          </div>
-        </div>
-      </aside>
-
+    <div class="workbench-body" :class="{ 'hide-right': !showRightCol }">
       <!-- Center Column: Structured Game System Document Editor & Markdown Viewer -->
       <main class="col-center">
         <div class="center-toolbar">
@@ -786,7 +575,6 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, reactive, ref, watch } from 'vue'
 import {
-  GAME_SYSTEM_ARCHETYPES,
   auditGameSystemDocument,
   autoCompleteGameSystemDocument,
   buildDomainNumericalSuiteFromContext,
@@ -805,7 +593,6 @@ import {
   serializeMxNumericContextForDownstream,
   synthesizeGameSystemDocOffline,
   unwrapEconomyBundleForGameSystem,
-  type GameSystemArchetypeId,
   type GameSystemFeatureModuleSpec,
   type GameSystemUiScreenSpec,
   type GddSectionKey,
@@ -819,7 +606,6 @@ import WorkspaceItemIcon from '../WorkspaceItemIcon.vue'
 import { editorDiveKey } from '../../features/graph/model/editorDive'
 import { graphEditorHosts } from '../../features/graph/model/graphEditorHosts'
 import { saveGraphRunTextForNode } from '../../features/graph/saveGraphRunTextForNode'
-import { useGraphNodeRun } from '../../composables/useGraphNodeRun'
 import { useEditorDiveFrameFlush } from '../../composables/useEditorDiveFrameFlush'
 import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useWorkspaceStore } from '../../stores/workspace'
@@ -839,12 +625,10 @@ const isEn = computed(() =>
 const editorDive = inject(editorDiveKey, null)
 const workspace = useWorkspaceStore()
 
-const archetypes = GAME_SYSTEM_ARCHETYPES
 const gameSystemPresets = listInstructionPresets('gameSystem')
 
 const rightTab = ref<'uiPreview' | 'features' | 'qa'>('uiPreview')
 const docViewMode = ref<'preview' | 'split' | 'edit'>('preview')
-const showLeftCol = ref(true)
 const showRightCol = ref(true)
 const showInstructionDrawer = ref(false)
 const statusBanner = ref('')
@@ -912,11 +696,6 @@ const graphDoc = computed(() => {
   void graphEditorHosts.revision.value
   return graphEditorHosts.getDocument(resolvedHostId.value)
 })
-const { runStatus, isGraphRunning, toggleRun } = useGraphNodeRun(
-  realNode,
-  () => resolvedHostId.value
-)
-const isRunningNode = computed(() => runStatus.value === 'running' || isGraphRunning.value)
 
 const typeLabel = computed(() =>
   node.value?.typeId ? graphTypeLabel(node.value.typeId) : t('graph.defaultNode')
@@ -1244,9 +1023,7 @@ const ui = computed(() => {
       tabArchetypes: 'Archetypes',
       tabEconomyBridge: 'Mechanics',
       tabNovelBridge: 'Novel IP',
-      archetypeSectionTitle: '8 Game System Archetypes',
-      unitFeatures: 'Features',
-      unitScreens: 'Screens',
+      aspectSectionTitle: 'UI Aspect Ratio',
       coreLoopTitle: 'Core Gameplay Loop',
       designGoalTitle: 'Deliverable Goal',
       applyArchetypeTemplateBtn: 'Synthesize Full GDD with Archetype & Upstream',
@@ -1321,9 +1098,7 @@ const ui = computed(() => {
     tabArchetypes: '系统原型', // cjk-ok
     tabEconomyBridge: '机制桥接', // cjk-ok
     tabNovelBridge: '小说IP桥接', // cjk-ok
-    archetypeSectionTitle: '8 大游戏系统策划案原型矩阵', // cjk-ok
-    unitFeatures: '项功能', // cjk-ok
-    unitScreens: '屏UI', // cjk-ok
+    aspectSectionTitle: 'UI 画幅比例', // cjk-ok
     coreLoopTitle: '核心玩法与体验闭环', // cjk-ok
     designGoalTitle: '系统策划案交付目标', // cjk-ok
     applyArchetypeTemplateBtn: '按此原型 + 上游数据生成完整策划案骨架', // cjk-ok
@@ -1495,16 +1270,6 @@ useEditorDiveFrameFlush(
   }
 )
 
-function selectArchetype(id: GameSystemArchetypeId): void {
-  updateTargetNode({
-    gameSystemArchetype: id
-  })
-  const arch = resolveGameSystemArchetype(id)
-  statusBanner.value = isEn.value
-    ? `Switched system archetype to ${arch.labelEn}. Click "Synthesize Standard GDD" to rebuild document.`
-    : `已切换系统原型为「${arch.icon} ${arch.labelZh}」，可点击「📐 融合上游合成标准策划案」刷新全文结构。` // cjk-ok
-}
-
 function setTargetAspect(asp: '16:9' | '9:16' | '1:1'): void {
   updateTargetNode({
     gameSystemTargetAspect: asp
@@ -1553,42 +1318,6 @@ function synthesizeStandardDocFromContext(): void {
   statusBanner.value = isEn.value
     ? 'Synthesized full GDD combining Archetype + Upstream Economy + Novel IP.'
     : '已融合当前系统原型、上游经济系统数值与小说 IP 设定，合成完整系统策划案！' // cjk-ok
-}
-
-async function runGameSystemGeneration(): Promise<void> {
-  persistInstruction()
-  if (dirtyText.value) persistDocText()
-  toggleRun()
-}
-
-function injectEconomySpecIntoDoc(): void {
-  const spec = unwrappedEconomySpecPreview.value
-  if (!spec) return
-  const dcSpan = findGddSectionSpan(localText.value, 'dataConfig')
-  if (dcSpan) {
-    localText.value = `${localText.value.slice(0, dcSpan.headingEnd)}\n\n${spec}\n${localText.value.slice(dcSpan.headingEnd)}`
-  } else {
-    localText.value = `${localText.value.trim()}\n\n# 数据与配置（核心数值公式与配置表）\n\n${spec}\n` // cjk-ok
-  }
-  persistDocText()
-  statusBanner.value = isEn.value
-    ? 'Injected upstream Economy multiplier formulas & entity tables into # Data & Configuration.'
-    : '已将上游经济系统的乘区公式、属性预算表与保底参数注入「# 数据与配置」章节！' // cjk-ok
-}
-
-function injectNovelIpIntoDoc(): void {
-  const ip = extractedNovelIpPreview.value
-  if (!ip) return
-  const ovSpan = findGddSectionSpan(localText.value, 'overview')
-  if (ovSpan) {
-    localText.value = `${localText.value.slice(0, ovSpan.headingEnd)}\n\n${ip}\n${localText.value.slice(ovSpan.headingEnd)}`
-  } else {
-    localText.value = `# 系统概述\n\n${ip}\n\n${localText.value.trim()}` // cjk-ok
-  }
-  persistDocText()
-  statusBanner.value = isEn.value
-    ? 'Injected upstream Novel IP stage ladder, roster & chapters into # System Overview.'
-    : '已将上游小说 IP 的境界阶梯、人物卡池、底牌道具与章节关卡注入策划案！' // cjk-ok
 }
 
 async function switchToPeerNodeDive(
@@ -2132,19 +1861,6 @@ function autoFixMissingGddSections(): void {
     : `已自动补全：${itemsText}（完备度 ${newScore}/100）` // cjk-ok
   statusBanner.value = qaLastFixSummary.value
 }
-
-function popDive(): void {
-  if (dirtyText.value) persistDocText()
-  if (editorDive) {
-    const idx = editorDive.frames.findIndex((f) => f.key === props.frameKey)
-    editorDive.popTo(idx < 0 ? -1 : idx - 1)
-    return
-  }
-  const rootKey = workspace.activeDiveRootKey?.trim()
-  if (rootKey) {
-    workspace.divePopTo(rootKey, -1)
-  }
-}
 </script>
 
 <style scoped>
@@ -2345,22 +2061,13 @@ function popDive(): void {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(250px, 21vw, 310px) minmax(0, 1fr) clamp(270px, 24vw, 350px);
-}
-
-.workbench-body.hide-left:not(.hide-right) {
   grid-template-columns: minmax(0, 1fr) clamp(270px, 25vw, 360px);
 }
 
-.workbench-body.hide-right:not(.hide-left) {
-  grid-template-columns: clamp(250px, 21vw, 310px) minmax(0, 1fr);
-}
-
-.workbench-body.hide-left.hide-right {
+.workbench-body.hide-right {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.col-left,
 .col-right {
   display: flex;
   flex-direction: column;
@@ -2495,45 +2202,6 @@ function popDive(): void {
   font-size: 11px;
   line-height: 1.5;
   margin: 4px 0;
-}
-
-.archetype-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.archetype-card {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 9px;
-  border-radius: 7px;
-  border: 1px solid rgba(148, 163, 184, 0.08);
-  background: rgba(148, 163, 184, 0.02);
-  color: #e6edf3;
-  text-align: left;
-  cursor: pointer;
-}
-
-.archetype-card.active {
-  border-color: rgba(99, 102, 241, 0.65);
-  background: rgba(99, 102, 241, 0.16);
-}
-
-.arch-icon {
-  font-size: 16px;
-}
-
-.arch-name {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.arch-sub {
-  font-size: 10px;
-  color: #9ca3af;
 }
 
 .aspect-group {
@@ -3133,8 +2801,8 @@ function popDive(): void {
 
 /* Container Queries for Adaptive Responsive Layout */
 @container gdd-workbench (max-width: 1180px) {
-  .workbench-body {
-    grid-template-columns: 235px minmax(0, 1fr) 260px;
+  .workbench-body:not(.hide-right) {
+    grid-template-columns: minmax(0, 1fr) 260px;
   }
   .editor-wrap.mode-split {
     grid-template-columns: minmax(0, 1fr);
@@ -3152,7 +2820,6 @@ function popDive(): void {
     flex-direction: column;
     overflow-y: auto;
   }
-  .col-left,
   .col-right {
     flex-shrink: 0;
     border-right: none;
@@ -3161,7 +2828,6 @@ function popDive(): void {
     min-height: 300px;
     max-height: 440px;
   }
-  .left-panel-scroll,
   .right-panel-scroll {
     min-height: 240px;
     max-height: 390px;

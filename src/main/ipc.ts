@@ -81,12 +81,14 @@ import {
   openDshSkillsDir,
   openHarnessFile,
   prewarmHarness,
+  readHarnessTextFile,
   rewindHarnessSession,
   runHarnessJobWait,
   runHarnessTask,
   searchHarnessSessions,
   steerHarnessTurn,
-  writeDshSkillsTemplate
+  writeDshSkillsTemplate,
+  writeHarnessTextFile
 } from './services/deepseekHarnessService'
 import {
   inspectGitHubSkillSource,
@@ -866,11 +868,26 @@ export function registerIpcHandlers(): void {
     }
     return result.relativePath
   })
-  handle(IpcChannels.PROJECT_READ_FILE, (relativePath: string) =>
-    projectService.readProjectFile(relativePath)
-  )
-  handle(IpcChannels.PROJECT_WRITE_FILE, (input: { relativePath: string; content: string }) =>
-    projectService.writeProjectFile(input)
+  handle(IpcChannels.PROJECT_READ_FILE, async (relativePath: string) => {
+    try {
+      const text = await projectService.readProjectFile(relativePath)
+      if (text !== null) return text
+    } catch {
+      // fall through to harness workspace
+    }
+    return readHarnessTextFile(relativePath)
+  })
+  handle(
+    IpcChannels.PROJECT_WRITE_FILE,
+    async (input: { relativePath: string; content: string }) => {
+      try {
+        const ok = await projectService.writeProjectFile(input)
+        if (ok) return true
+      } catch {
+        // fall through to harness workspace
+      }
+      return writeHarnessTextFile(input?.relativePath, input?.content)
+    }
   )
   handle(IpcChannels.PROJECT_FILE_EXISTS, (relativePath: string) =>
     projectService.checkProjectFileExists(relativePath)

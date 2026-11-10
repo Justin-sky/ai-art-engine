@@ -119,6 +119,72 @@
           </template>
         </section>
 
+        <!-- AI 漫剧 21 题材 Skill（自上游剧本同步） -->
+        <section v-if="kind !== 'shot' && activeManjuGenreSpec" class="group manju-genre-section">
+          <h3>{{ t('graph.inspector.film.manjuGenre.title') }}</h3>
+          <div class="manju-genre-card">
+            <div class="manju-genre-synced-badge">
+              🎭
+              {{
+                isEnLocale
+                  ? `${activeManjuGenreSpec.nameEn} (${activeManjuGenreSpec.nameZh})`
+                  : activeManjuGenreSpec.nameZh
+              }}
+            </div>
+            <div class="manju-genre-tags">
+              <span class="tag">{{
+                t('graph.inspector.film.manjuGenre.shotRange', {
+                  min: activeManjuGenreSpec.shotCountRange[0],
+                  max: activeManjuGenreSpec.shotCountRange[1]
+                })
+              }}</span>
+              <span class="tag">{{
+                t('graph.inspector.film.manjuGenre.durationRange', {
+                  min: activeManjuGenreSpec.shotDurationRangeSec[0],
+                  max: activeManjuGenreSpec.shotDurationRangeSec[1]
+                })
+              }}</span>
+              <span class="tag">{{
+                t('graph.inspector.film.manjuGenre.dialogueRange', {
+                  min: activeManjuGenreSpec.dialogueCharsRange[0],
+                  max: activeManjuGenreSpec.dialogueCharsRange[1]
+                })
+              }}</span>
+            </div>
+            <p class="hint">
+              {{
+                t('graph.inspector.film.manjuGenre.progressRule', {
+                  rule: activeManjuGenreSpec.episodeProgressTemplateZh
+                })
+              }}
+            </p>
+            <button
+              type="button"
+              class="ghost-btn compact-btn"
+              :class="{ applied: genreDefaultsApplied }"
+              @click="applyManjuGenreDefaults"
+            >
+              {{
+                genreDefaultsApplied
+                  ? t('graph.inspector.film.manjuGenre.appliedDefaults', {
+                      name: isEnLocale ? activeManjuGenreSpec.nameEn : activeManjuGenreSpec.nameZh,
+                      shots: Math.round(
+                        (activeManjuGenreSpec.shotCountRange[0] +
+                          activeManjuGenreSpec.shotCountRange[1]) /
+                          2
+                      ),
+                      dur: Math.round(
+                        (activeManjuGenreSpec.shotDurationRangeSec[0] +
+                          activeManjuGenreSpec.shotDurationRangeSec[1]) /
+                          2
+                      )
+                    })
+                  : t('graph.inspector.film.manjuGenre.applyDefaults')
+              }}
+            </button>
+          </div>
+        </section>
+
         <!-- 分镜拆解选项 -->
         <section v-if="kind === 'breakdown'" class="group">
           <h3>{{ t('graph.inspector.film.breakdownOptions') }}</h3>
@@ -229,6 +295,22 @@
           <label class="check">
             <input
               type="checkbox"
+              :checked="params.filmEnableStyleAnchor === true"
+              @change="patchBool('filmEnableStyleAnchor', $event)"
+            />
+            {{ t('graph.inspector.film.manjuGenre.enableStyleAnchor') }}
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
+              :checked="params.filmUseSharedCast !== false"
+              @change="patchBool('filmUseSharedCast', $event)"
+            />
+            {{ t('graph.inspector.film.castManju.useSharedCastToggle') }}
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
               :checked="params.filmForce === true"
               @change="patchBool('filmForce', $event)"
             />
@@ -330,6 +412,14 @@
           <label class="check">
             <input
               type="checkbox"
+              :checked="params.filmRenderAudio !== false"
+              @change="patchBool('filmRenderAudio', $event)"
+            />
+            {{ t('graph.inspector.film.renderAudioToggle') }}
+          </label>
+          <label class="check">
+            <input
+              type="checkbox"
               :checked="params.filmRenderQc === true"
               @change="patchBool('filmRenderQc', $event)"
             />
@@ -357,7 +447,7 @@
         </section>
 
         <!-- 导演 / 补充指令 -->
-        <section v-if="kind !== 'shot'" class="group">
+        <section v-if="kind !== 'shot' && kind !== 'publish'" class="group">
           <h3>{{ t(`graph.inspector.film.instruction.${kind}`) }}</h3>
           <textarea
             rows="4"
@@ -397,12 +487,99 @@
           <pre v-if="params.filmReviewReport" class="report">{{ params.filmReviewReport }}</pre>
         </section>
 
-        <!-- ① 分镜拆解 / 导演审核：实体条 + 大屏分镜卡片网格 -->
+        <!-- 阶段四第3部分 · 11 项工业连戏与逻辑自动审计面板 -->
+        <section
+          v-if="(kind === 'review' || kind === 'breakdown') && liveContinuityAudit"
+          class="manju-audit-panel"
+        >
+          <div class="section-head">
+            <div class="manju-audit-title-row">
+              <h3>{{ t('graph.inspector.film.auditPanel.title') }}</h3>
+              <span class="verdict" :class="liveContinuityAudit.passed ? 'pass' : 'fail'">
+                {{ liveContinuityAudit.passed ? 'PASS' : 'FAIL' }}
+              </span>
+              <span class="score-chip">{{ liveContinuityAudit.score }} / 100</span>
+            </div>
+            <span class="tag">
+              {{
+                t('graph.inspector.film.auditPanel.spokenStats', {
+                  ratio: Math.round(liveContinuityAudit.spokenRatio * 100),
+                  spoken: liveContinuityAudit.spokenDialogueChars,
+                  total: liveContinuityAudit.totalDialogueChars
+                })
+              }}
+            </span>
+          </div>
+          <div class="manju-audit-grid">
+            <div
+              v-for="chk in liveContinuityAudit.items"
+              :key="chk.id"
+              class="manju-audit-item"
+              :class="chk.passed ? 'pass' : 'fail'"
+            >
+              <span class="manju-audit-status" :class="chk.passed ? 'pass' : 'fail'">
+                {{ chk.passed ? 'PASS' : 'FAIL' }}
+              </span>
+              <div class="manju-audit-body">
+                <strong>{{ isEnLocale ? chk.labelEn : chk.labelZh }}</strong>
+                <span>{{ chk.detail }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ① 分镜拆解 / 导演审核：项目圣经 + 实体条 + 大屏分镜卡片网格 -->
         <template v-if="kind === 'breakdown' || kind === 'review'">
           <template v-if="displayStoryboard && displayStoryboard.shots.length">
             <p v-if="kind === 'review' && !storyboard?.shots?.length" class="draft-banner">
               {{ t('graph.inspector.film.upstreamDraftHint') }}
             </p>
+
+            <!-- 阶段一 · 项目圣经 & 阶段三 · 单集爽点钩子 -->
+            <section
+              v-if="displayStoryboard.bible || displayStoryboard.episodeMeta"
+              class="manju-bible-panel"
+            >
+              <div class="section-head">
+                <h3>{{ t('graph.inspector.film.biblePanel.title') }}</h3>
+                <div class="manju-bible-badges">
+                  <span v-if="activeManjuGenreSpec" class="badge accent">
+                    {{ isEnLocale ? activeManjuGenreSpec.nameEn : activeManjuGenreSpec.nameZh }}
+                  </span>
+                  <span v-if="displayStoryboard.episodeMeta?.episodeProgress" class="tag">
+                    {{ t('graph.inspector.film.biblePanel.episodeProgress') }}:
+                    {{ displayStoryboard.episodeMeta.episodeProgress }}
+                  </span>
+                </div>
+              </div>
+              <div v-if="displayStoryboard.episodeMeta" class="manju-hook-row">
+                <div v-if="displayStoryboard.episodeMeta.coldOpen" class="manju-hook-card">
+                  <span class="manju-hook-label">
+                    ⚡ {{ t('graph.inspector.film.biblePanel.coldOpen') }}
+                  </span>
+                  <span>{{ displayStoryboard.episodeMeta.coldOpen }}</span>
+                </div>
+                <div v-if="displayStoryboard.episodeMeta.cliffhangerHook" class="manju-hook-card">
+                  <span class="manju-hook-label">
+                    🪝 {{ t('graph.inspector.film.biblePanel.cliffhanger') }}
+                  </span>
+                  <span>{{ displayStoryboard.episodeMeta.cliffhangerHook }}</span>
+                </div>
+              </div>
+              <div v-if="displayStoryboard.bible" class="manju-bible-meta">
+                <span v-if="displayStoryboard.bible.worldAndPowerSystem" class="tag">
+                  💡 {{ displayStoryboard.bible.worldAndPowerSystem }}
+                </span>
+                <span v-if="displayStoryboard.bible.colorScheme" class="tag">
+                  🎨 {{ displayStoryboard.bible.colorScheme }}
+                </span>
+                <span v-if="displayStoryboard.bible.continuityRules?.length" class="tag danger-tag">
+                  🚫 {{ t('graph.inspector.film.biblePanel.redlines') }}:
+                  {{ displayStoryboard.bible.continuityRules.join(' · ') }}
+                </span>
+              </div>
+            </section>
+
             <section v-if="displayStoryboard.entities.length" class="entities-bar">
               <div class="section-head">
                 <h3>
@@ -427,8 +604,11 @@
                     class="entity-mini-thumb"
                     @click.stop="previewMedia(entityThumbUrl(ent.kind, ent.name), ent.name)"
                   />
+                  <span v-if="ent.code" class="badge code-badge">{{ ent.code }}</span>
                   <span class="badge">{{ t(`graph.inspector.film.kind.${ent.kind}`) }}</span>
                   <strong>{{ ent.name }}</strong>
+                  <span v-if="ent.stateCode" class="tag">{{ ent.stateCode }}</span>
+                  <span v-if="ent.heightCm" class="tag">{{ ent.heightCm }}cm</span>
                   <span class="tag">{{
                     t('graph.inspector.film.usedInShots', {
                       n: shotsUsingEntity(ent.kind, ent.name).length
@@ -482,11 +662,31 @@
                   <div class="shot-card-head">
                     <span class="shot-index">#{{ idx + 1 }}</span>
                     <span class="sid">{{ shot.id }}</span>
+                    <span v-if="shot.timeRange" class="tag">{{ shot.timeRange }}</span>
                     <span class="meta">
-                      {{ [shot.shotSize, shot.angle, shot.cameraMove].filter(Boolean).join(' · ') }}
+                      {{
+                        [shot.shotSize, shot.angle, shot.cameraMove, shot.focalLength]
+                          .filter(Boolean)
+                          .join(' · ')
+                      }}
                       · {{ shot.durationSec }}s
                     </span>
+                    <span class="status-pill" :class="isShotLipSync(shot) ? 'ok' : ''">
+                      {{
+                        isShotLipSync(shot)
+                          ? `🗣️ ${t('graph.inspector.film.shotManju.lipSyncShot')}`
+                          : `🤐 ${t('graph.inspector.film.shotManju.closedMouthShot')}`
+                      }}
+                    </span>
                     <span class="spacer" />
+                    <button
+                      type="button"
+                      class="ghost-btn compact-btn"
+                      :class="{ active: isShotAbExpanded(shot.id) }"
+                      @click="toggleShotAbDrawer(shot.id)"
+                    >
+                      🎬 {{ t('graph.inspector.film.shotManju.abSectionToggle') }}
+                    </button>
                     <button
                       type="button"
                       class="ghost-btn compact-btn"
@@ -556,7 +756,7 @@
                           v-if="shotKeyframeThumbUrl(prevSameSceneShot(shot)!)"
                           :src="shotKeyframeThumbUrl(prevSameSceneShot(shot)!)"
                           :alt="prevSameSceneShot(shot)!.id"
-                          class="binding-thumb"
+                          :class="'binding-thumb'"
                           @click.stop="
                             previewMedia(
                               shotKeyframeThumbUrl(prevSameSceneShot(shot)!),
@@ -695,6 +895,73 @@
                     </label>
                   </div>
 
+                  <!-- 阶段四 · A段 5 行静态规格 & B段 7 行动态视频节拍抽屉 -->
+                  <div v-if="isShotAbExpanded(shot.id)" class="shot-ab-drawer">
+                    <div class="grid2">
+                      <label>
+                        {{ t('graph.inspector.film.shotManju.focalLength') }}
+                        <input
+                          type="text"
+                          :value="shot.focalLength ?? ''"
+                          :readonly="!storyboard?.shots?.length"
+                          @change="patchShotManjuField(shot.id, 'focalLength', $event)"
+                        />
+                      </label>
+                      <label>
+                        {{ t('graph.inspector.film.shotManju.subjectPosition') }}
+                        <input
+                          type="text"
+                          :value="shot.subjectPosition ?? ''"
+                          :readonly="!storyboard?.shots?.length"
+                          @change="patchShotManjuField(shot.id, 'subjectPosition', $event)"
+                        />
+                      </label>
+                    </div>
+                    <label>
+                      {{ t('graph.inspector.film.shotManju.blockingAndPose') }}
+                      <input
+                        type="text"
+                        :value="shot.blockingAndPose ?? ''"
+                        :readonly="!storyboard?.shots?.length"
+                        @change="patchShotManjuField(shot.id, 'blockingAndPose', $event)"
+                      />
+                    </label>
+                    <div class="grid2">
+                      <label>
+                        {{ t('graph.inspector.film.shotManju.expression') }}
+                        <input
+                          type="text"
+                          :value="shot.expression ?? ''"
+                          :readonly="!storyboard?.shots?.length"
+                          @change="patchShotManjuField(shot.id, 'expression', $event)"
+                        />
+                      </label>
+                      <label>
+                        {{ t('graph.inspector.film.shotManju.lighting') }}
+                        <input
+                          type="text"
+                          :value="shot.lighting ?? ''"
+                          :readonly="!storyboard?.shots?.length"
+                          @change="patchShotManjuField(shot.id, 'lighting', $event)"
+                        />
+                      </label>
+                    </div>
+                    <div v-if="shotVideoBeats(shot).length" class="shot-beats-box">
+                      <strong class="shot-beats-title">
+                        {{ t('graph.inspector.film.shotManju.videoBeatsTitle') }}
+                      </strong>
+                      <div
+                        v-for="(beat, bIdx) in shotVideoBeats(shot)"
+                        :key="bIdx"
+                        class="shot-beat-row"
+                      >
+                        <span class="badge code-badge">{{ beat.timeRange }}</span>
+                        <span>{{ beat.cameraMove }} · {{ beat.visual }}</span>
+                        <span v-if="beat.sound" class="tag">🔊 {{ beat.sound }}</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <label>
                     {{ t('graph.inspector.film.field.action') }}
                     <textarea
@@ -729,6 +996,14 @@
                       :key="lineIdx"
                       class="dialogue-line"
                     >
+                      <span class="badge">
+                        {{
+                          t(`graph.inspector.film.shotManju.dialogueMode.${line.mode || 'spoken'}`)
+                        }}
+                      </span>
+                      <span v-if="line.startSec != null && line.endSec != null" class="tag">
+                        {{ line.startSec }}-{{ line.endSec }}s
+                      </span>
                       <strong>{{ line.speaker }}:</strong> {{ line.line }}
                     </div>
                   </div>
@@ -753,7 +1028,30 @@
         <template v-else-if="kind === 'cast'">
           <section v-if="castEntries.length" class="shots-section">
             <div class="section-head">
-              <h3>{{ t('graph.inspector.film.entitiesTitle', { n: castEntries.length }) }}</h3>
+              <div class="manju-audit-title-row">
+                <h3>{{ t('graph.inspector.film.entitiesTitle', { n: castEntries.length }) }}</h3>
+                <span v-if="sharedSeriesBibleCastCount > 0" class="badge accent">
+                  {{
+                    t('graph.inspector.film.castManju.sharedCastActiveBadge', {
+                      n: sharedSeriesBibleCastCount
+                    })
+                  }}
+                </span>
+              </div>
+              <div class="batch-actions">
+                <button
+                  type="button"
+                  class="ghost-btn previz-stage-btn"
+                  :class="{ active: params.filmIsSeriesBibleCast === true }"
+                  @click="syncCurrentCastAsSeriesBible"
+                >
+                  {{
+                    params.filmIsSeriesBibleCast === true
+                      ? t('graph.inspector.film.castManju.syncedSeriesBibleBtn')
+                      : t('graph.inspector.film.castManju.syncSeriesBibleBtn')
+                  }}
+                </button>
+              </div>
             </div>
             <div class="cast-grid">
               <article
@@ -763,8 +1061,12 @@
                 :class="{ locked: entry.locked }"
               >
                 <div class="cast-card-head">
+                  <span v-if="entry.code" class="badge code-badge">{{ entry.code }}</span>
                   <span class="badge">{{ t(`graph.inspector.film.kind.${entry.kind}`) }}</span>
                   <strong class="cast-name">{{ entry.name }}</strong>
+                  <span v-if="entry.stateCode" class="tag">{{ entry.stateCode }}</span>
+                  <span v-if="entry.heightCm" class="tag">{{ entry.heightCm }}cm</span>
+                  <span v-if="entry.voicePreset" class="tag">🎙️ {{ entry.voicePreset }}</span>
                   <span
                     class="state"
                     :class="{ ok: !!(entry.imageRelativePath || entry.imageUrl) }"
@@ -811,6 +1113,63 @@
                     :src="mediaThumbUrl(entry.imageRelativePath || entry.imageUrl)"
                     :alt="entry.name"
                   />
+                </div>
+
+                <!-- 阶段二 · 资产工业标尺与锚点元数据 -->
+                <div v-if="entry.kind === 'character'" class="grid2">
+                  <label>
+                    {{ t('graph.inspector.film.castManju.stateCode') }}
+                    <input
+                      type="text"
+                      :value="entry.stateCode ?? ''"
+                      placeholder="LOOK-A / LOOK-B"
+                      @change="patchCastField(entry.id, 'stateCode', $event)"
+                    />
+                  </label>
+                  <label>
+                    {{ t('graph.inspector.film.castManju.heightCm') }}
+                    <input
+                      type="number"
+                      min="40"
+                      max="300"
+                      :value="entry.heightCm ?? ''"
+                      placeholder="178"
+                      @change="patchCastHeight(entry.id, $event)"
+                    />
+                  </label>
+                  <label class="cast-voice-label">
+                    {{ t('graph.inspector.film.castManju.voicePreset') }}
+                    <select
+                      :value="entry.voicePreset ?? 'alloy'"
+                      @change="patchCastVoicePreset(entry.id, $event)"
+                    >
+                      <option
+                        v-for="preset in FILM_TTS_VOICE_PRESETS"
+                        :key="preset.id"
+                        :value="preset.id"
+                      >
+                        {{ isEnLocale ? preset.labelEn : preset.labelZh }}
+                      </option>
+                    </select>
+                  </label>
+                </div>
+                <div v-else-if="entry.kind === 'location' || entry.kind === 'prop'" class="grid2">
+                  <label>
+                    {{ t('graph.inspector.film.castManju.dimensions') }}
+                    <input
+                      type="text"
+                      :value="entry.dimensions ?? ''"
+                      @change="patchCastField(entry.id, 'dimensions', $event)"
+                    />
+                  </label>
+                  <label v-if="entry.kind === 'location'">
+                    {{ t('graph.inspector.film.castManju.worldLightDirection') }}
+                    <input
+                      type="text"
+                      :value="entry.worldLightDirection ?? ''"
+                      @change="patchCastField(entry.id, 'worldLightDirection', $event)"
+                    />
+                  </label>
                 </div>
 
                 <label>
@@ -1093,6 +1452,9 @@
                   <span v-if="shotRawVideo(shot)" class="status-pill ok">
                     {{ t('graph.inspector.film.renderedVideo') }}
                   </span>
+                  <span v-if="shotRawVoice(shot)" class="status-pill ok">
+                    🎙️ {{ t('graph.inspector.film.renderedVoice') }}
+                  </span>
                   <span
                     v-if="renderCache[shot.id]?.qc"
                     class="status-pill"
@@ -1172,6 +1534,15 @@
                 >
                   <img :src="shotKeyframeThumbUrl(shot)" :alt="shot.id" />
                 </div>
+
+                <!-- 单镜角色配音音频直出预览 -->
+                <audio
+                  v-if="shotVoiceUrl(shot)"
+                  :src="shotVoiceUrl(shot)"
+                  controls
+                  preload="metadata"
+                  class="card-audio-player"
+                />
 
                 <!-- 本镜绑定的角色与场景设定参考（含 @1/@2 编号与缩略图） -->
                 <div
@@ -1350,7 +1721,172 @@
               :host-id="hostId"
               port-id="out-videos"
             />
+            <GraphNodeOutputPreview
+              v-if="hostId"
+              :node="node"
+              :host-id="hostId"
+              port-id="out-voices"
+            />
           </section>
+        </template>
+
+        <!-- ⑤ 成片发布包（阶段五）：单集完整成片 (.mp4) + 双规格封面提示词、片尾钩子卡、下集预告与平台元数据 -->
+        <template v-else-if="kind === 'publish'">
+          <section v-if="effectivePublishPack" class="manju-publish-panel">
+            <!-- 单集完整成片 (.mp4) 一键合成与预览卡片 -->
+            <div class="manju-composed-video-card">
+              <div class="section-head">
+                <div class="manju-audit-title-row">
+                  <h3>{{ t('graph.inspector.film.publishPanel.composedVideoTitle') }}</h3>
+                  <span v-if="composedShotCount > 0" class="badge accent">
+                    {{
+                      t('graph.inspector.film.publishPanel.composedVideoStats', {
+                        shots: composedShotCount,
+                        voices: composedVoiceCount
+                      })
+                    }}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="full-pipeline-btn"
+                  :disabled="runStatus === 'running' || blocked"
+                  @click="runComposeEpisodeVideo"
+                >
+                  {{
+                    runStatus === 'running'
+                      ? t('graph.inspector.film.publishPanel.composingVideoBtn')
+                      : t('graph.inspector.film.publishPanel.composeVideoBtn')
+                  }}
+                </button>
+              </div>
+              <div v-if="composedEpisodeVideoUrl" class="composed-video-player-wrap">
+                <video
+                  :src="composedEpisodeVideoUrl"
+                  controls
+                  preload="metadata"
+                  playsinline
+                  class="composed-episode-video"
+                />
+              </div>
+              <p v-else class="hint">
+                {{ t('graph.inspector.film.publishPanel.composedVideoEmptyHint') }}
+              </p>
+            </div>
+
+            <div class="section-head">
+              <div>
+                <h3>{{ t('graph.inspector.film.publishPanel.title') }}</h3>
+                <p class="hint">{{ t('graph.inspector.film.publishPanel.subtitle') }}</p>
+              </div>
+              <button
+                type="button"
+                class="ghost-btn previz-stage-btn"
+                @click="copyPublishPackMarkdown"
+              >
+                📋
+                {{
+                  publishCopied
+                    ? t('graph.inspector.film.publishPanel.copied')
+                    : t('graph.inspector.film.publishPanel.copyAll')
+                }}
+              </button>
+            </div>
+
+            <div class="manju-publish-grid">
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.coverVertical') }}
+                  <textarea
+                    rows="3"
+                    :value="effectivePublishPack.verticalCoverPrompt"
+                    @change="patchPublishField('verticalCoverPrompt', $event)"
+                  />
+                </label>
+              </div>
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.coverHorizontal') }}
+                  <textarea
+                    rows="3"
+                    :value="effectivePublishPack.horizontalCoverPrompt"
+                    @change="patchPublishField('horizontalCoverPrompt', $event)"
+                  />
+                </label>
+              </div>
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.endCardText') }}
+                  <input
+                    type="text"
+                    :value="effectivePublishPack.endCardPlan"
+                    @change="patchPublishField('endCardPlan', $event)"
+                  />
+                </label>
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.nextTeaser') }}
+                  <textarea
+                    rows="2"
+                    :value="effectivePublishPack.nextEpisodeTeaser"
+                    @change="patchPublishField('nextEpisodeTeaser', $event)"
+                  />
+                </label>
+              </div>
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.titles') }}
+                  <input
+                    v-for="(titleItem, tIdx) in effectivePublishPack.titles"
+                    :key="tIdx"
+                    type="text"
+                    :value="titleItem"
+                    @change="patchPublishTitle(tIdx, $event)"
+                  />
+                </label>
+              </div>
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.synopsis') }}
+                  <textarea
+                    rows="2"
+                    :value="effectivePublishPack.synopsis"
+                    @change="patchPublishField('synopsis', $event)"
+                  />
+                </label>
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.hashtags') }}
+                  <input
+                    type="text"
+                    :value="effectivePublishPack.hashtags.join(' ')"
+                    @change="patchPublishHashtags($event)"
+                  />
+                </label>
+              </div>
+              <div class="manju-publish-card">
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.pinnedComment') }}
+                  <textarea
+                    rows="2"
+                    :value="effectivePublishPack.pinnedComment"
+                    @change="patchPublishField('pinnedComment', $event)"
+                  />
+                </label>
+                <label>
+                  {{ t('graph.inspector.film.publishPanel.compliance') }}
+                  <input
+                    type="text"
+                    :value="effectivePublishPack.complianceNotice"
+                    @change="patchPublishField('complianceNotice', $event)"
+                  />
+                </label>
+              </div>
+            </div>
+          </section>
+          <div v-else class="empty-panel">
+            <strong class="empty-title">{{ activeTabLabel }}</strong>
+            <span>{{ t('graph.inspector.film.publishPanel.empty') }}</span>
+            <span class="empty-sub">{{ t('graph.inspector.film.hint.publish') }}</span>
+          </div>
         </template>
       </main>
     </div>
@@ -1360,9 +1896,12 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import {
+  FILM_TTS_VOICE_PRESETS,
+  buildDefaultVideoBeatsForShot,
   composeFilmShotImagePrompt,
   composeFilmShotVideoPrompt,
   deriveFilmCast,
+  deriveManjuPublishPack,
   filmBaseEntityName,
   filmCastEntryImage,
   filmNameKey,
@@ -1383,7 +1922,9 @@ import {
   resolveFilmDirectorStage,
   resolveFilmShotPrevizCinematography,
   resolveFilmShotPrevizMediaFromStage,
+  resolveManjuGenre,
   resolveNodeType,
+  runManjuContinuityAudit,
   selectFilmShot,
   stringifyFilmCast,
   stringifyFilmStoryboard,
@@ -1392,10 +1933,13 @@ import {
   type FilmEntityKind,
   type FilmShot,
   type FilmStoryboard,
+  type FilmVideoBeat,
   type GraphNode,
   type GraphNodeParams,
   type GraphNodeRunStatus,
   type ImageGenerateParams,
+  type ManjuGenreSpec,
+  type ManjuPublishPack,
   type VideoGenerateParams
 } from '@shared/graph'
 import GraphNodeRunControl from '../GraphNodeRunControl.vue'
@@ -1428,13 +1972,13 @@ import {
   type GenerateModelOption
 } from '../../features/graph/model/generateModelOptions'
 
-type FilmKind = 'breakdown' | 'review' | 'cast' | 'shot' | 'render'
-type WorkbenchStage = 'breakdown' | 'review' | 'cast' | 'render'
-const WORKBENCH_STAGES: WorkbenchStage[] = ['breakdown', 'review', 'cast', 'render']
+type FilmKind = 'breakdown' | 'review' | 'cast' | 'shot' | 'render' | 'publish'
+type WorkbenchStage = 'breakdown' | 'review' | 'cast' | 'render' | 'publish'
+const WORKBENCH_STAGES: WorkbenchStage[] = ['breakdown', 'review', 'cast', 'render', 'publish']
 
 const ASPECT_RATIOS = ['16:9', '9:16', '2.39:1', '4:3', '1:1', '3:4']
 const SHOT_DURATION_PRESETS = [0, 4, 8, 10, 15] as const
-const CAST_KINDS: FilmEntityKind[] = ['character', 'location', 'prop']
+const CAST_KINDS: FilmEntityKind[] = ['character', 'location', 'prop', 'vfx', 'style']
 const RENDER_MODES = ['keyframe', 'video'] as const
 
 const props = defineProps<{
@@ -1444,6 +1988,7 @@ const props = defineProps<{
 }>()
 
 const { t, locale, graphTypeLabel } = useStudioI18n()
+const isEnLocale = computed(() => String(locale.value).toLowerCase().startsWith('en'))
 const diveCtx = inject(editorDiveKey, null)
 const hostAssetId = computed(() =>
   props.hostId.startsWith('asset:')
@@ -1480,7 +2025,13 @@ const activeTabLabel = computed(() => {
 const kind = computed((): FilmKind => {
   if (isWorkbenchNode.value) {
     const stage = params.value.filmWorkbenchStage
-    if (stage === 'breakdown' || stage === 'review' || stage === 'cast' || stage === 'render') {
+    if (
+      stage === 'breakdown' ||
+      stage === 'review' ||
+      stage === 'cast' ||
+      stage === 'render' ||
+      stage === 'publish'
+    ) {
       return stage
     }
     return 'breakdown'
@@ -1499,7 +2050,11 @@ function stageBadge(stage: WorkbenchStage): string {
     return n > 0 ? String(n) : ''
   }
   if (stage === 'review') {
-    return params.value.filmReviewVerdict || effectiveStoryboard.value?.review?.verdict || ''
+    return (
+      params.value.filmReviewVerdict ||
+      effectiveStoryboard.value?.review?.verdict ||
+      (liveContinuityAudit.value ? (liveContinuityAudit.value.passed ? 'PASS' : 'FAIL') : '')
+    )
   }
   if (stage === 'cast') {
     const total = castEntries.value.length
@@ -1508,6 +2063,9 @@ function stageBadge(stage: WorkbenchStage): string {
       (e) => !!(e.imageRelativePath?.trim() || e.imageUrl?.trim())
     ).length
     return `${ready}/${total}`
+  }
+  if (stage === 'publish') {
+    return effectiveStoryboard.value?.publishPack ? '✓' : ''
   }
   const shots = effectiveStoryboard.value?.shots ?? []
   if (!shots.length) return ''
@@ -1742,7 +2300,8 @@ function handleToggleRun(): void {
       (kind.value === 'breakdown' ||
         kind.value === 'review' ||
         kind.value === 'cast' ||
-        kind.value === 'render')
+        kind.value === 'render' ||
+        kind.value === 'publish')
     ) {
       patchParams({ filmWorkbenchRunMode: kind.value })
     }
@@ -1769,6 +2328,234 @@ watch(
   },
   { immediate: true }
 )
+
+// ─── AI 漫剧 21 题材 Skill 决策树与实时工业审计（自上游剧本自动同步） ───
+function findUpstreamScriptText(startNodeId: string): { text: string; genreId: string } {
+  const visited = new Set<string>()
+  const queue = [startNodeId]
+  let foundText = ''
+  let foundGenreId = ''
+  while (queue.length) {
+    const cur = queue.shift()!
+    if (visited.has(cur)) continue
+    visited.add(cur)
+    const edges = graphEditorHosts.listIncomingEdges(props.hostId, cur)
+    for (const edge of edges) {
+      const src = graphEditorHosts.getNode(props.hostId, edge.sourceNodeId)
+      if (!src) continue
+      if (!foundGenreId && src.params.filmGenre?.trim() && src.params.filmGenre.trim() !== 'auto') {
+        foundGenreId = src.params.filmGenre.trim()
+      }
+      if (!foundText) {
+        const text = (src.params.text ?? src.params.generateInstruction ?? '').trim()
+        if (text && text !== '…') foundText = text
+      }
+      if (foundText && foundGenreId) return { text: foundText, genreId: foundGenreId }
+      queue.push(src.id)
+    }
+  }
+  return { text: foundText, genreId: foundGenreId }
+}
+
+const activeManjuGenreSpec = computed((): ManjuGenreSpec | null => {
+  void graphEditorHosts.revision.value
+  const sb = displayStoryboard.value ?? effectiveStoryboard.value
+  const upstream = node.value ? findUpstreamScriptText(node.value.id) : { text: '', genreId: '' }
+  const scriptExplicitMatch = upstream.text.match(/\b([a-z]{3,16}-manju)\b/i)
+  const explicitId =
+    upstream.genreId ||
+    (scriptExplicitMatch?.[1] ? scriptExplicitMatch[1].toLowerCase() : '') ||
+    sb?.genreId ||
+    params.value.filmGenre
+  const hint =
+    explicitId ||
+    `${upstream.text} ${sb?.title || ''} ${sb?.logline || ''} ${params.value.filmStyle || ''}`
+  return resolveManjuGenre(explicitId, hint)
+})
+
+const genreDefaultsApplied = ref(false)
+let genreDefaultsTimer: ReturnType<typeof setTimeout> | null = null
+
+function applyManjuGenreDefaults(): void {
+  const spec = activeManjuGenreSpec.value
+  if (!spec) return
+  const midShots = Math.round((spec.shotCountRange[0] + spec.shotCountRange[1]) / 2)
+  const midDur = Math.round((spec.shotDurationRangeSec[0] + spec.shotDurationRangeSec[1]) / 2)
+  const styleText = isEnLocale.value ? spec.visualStyleEn : spec.visualStyleZh
+  const nextPatch: Partial<GraphNodeParams> = {
+    filmGenre: spec.id,
+    filmAspectRatio: '9:16',
+    generateAspectRatio: '9:16',
+    filmVideoAspectRatio: '9:16',
+    filmTargetShots: midShots,
+    filmShotDurationSec: midDur,
+    filmStyle: styleText
+  }
+  const sb = storyboard.value ?? effectiveStoryboard.value
+  if (sb) {
+    const nextSb: FilmStoryboard = {
+      ...sb,
+      genreId: spec.id,
+      aspectRatio: '9:16',
+      style: styleText,
+      bible: {
+        ...sb.bible,
+        colorScheme: sb.bible?.colorScheme || styleText,
+        episodeProgressRule: sb.bible?.episodeProgressRule || spec.episodeProgressTemplateZh
+      },
+      episodeMeta: {
+        ...sb.episodeMeta,
+        episodeProgress: sb.episodeMeta?.episodeProgress || spec.episodeProgressTemplateZh
+      }
+    }
+    nextSb.continuityAudit = runManjuContinuityAudit(nextSb, graphCast.value, spec)
+    nextSb.publishPack = deriveManjuPublishPack(nextSb, String(locale.value))
+    nextPatch.filmStoryboard = stringifyFilmStoryboard(nextSb)
+  }
+  const currentCast = cast.value ?? effectiveCast.value
+  if (currentCast) {
+    nextPatch.filmCast = stringifyFilmCast({
+      ...currentCast,
+      style: styleText
+    })
+  }
+  imageGenerateParams.value = { ...imageGenerateParams.value, aspectRatio: '9:16' }
+  videoGenerateParams.value = { ...videoGenerateParams.value, aspectRatio: '9:16' }
+  patchParams(nextPatch)
+  genreDefaultsApplied.value = true
+  if (genreDefaultsTimer) clearTimeout(genreDefaultsTimer)
+  genreDefaultsTimer = setTimeout(() => {
+    genreDefaultsApplied.value = false
+  }, 2200)
+}
+
+const liveContinuityAudit = computed(() => {
+  const sb = displayStoryboard.value ?? effectiveStoryboard.value
+  if (!sb || !sb.shots.length) return null
+  return (
+    sb.continuityAudit ?? runManjuContinuityAudit(sb, graphCast.value, activeManjuGenreSpec.value)
+  )
+})
+
+const effectivePublishPack = computed((): ManjuPublishPack | null => {
+  const sb = effectiveStoryboard.value
+  if (!sb || !sb.shots.length) return null
+  return sb.publishPack ?? deriveManjuPublishPack(sb, String(locale.value))
+})
+
+function writePublishPack(mutate: (pack: ManjuPublishPack) => ManjuPublishPack): void {
+  const doc = storyboard.value ?? effectiveStoryboard.value
+  const currentPack = effectivePublishPack.value
+  if (!doc || !currentPack) return
+  patchParams({
+    filmStoryboard: stringifyFilmStoryboard({
+      ...doc,
+      publishPack: mutate(currentPack)
+    })
+  })
+}
+
+function patchPublishField(
+  field:
+    | 'verticalCoverPrompt'
+    | 'horizontalCoverPrompt'
+    | 'endCardPlan'
+    | 'nextEpisodeTeaser'
+    | 'synopsis'
+    | 'pinnedComment'
+    | 'complianceNotice',
+  event: Event
+): void {
+  const value = inputValue(event).trim()
+  writePublishPack((pack) => ({ ...pack, [field]: value }))
+}
+
+function patchPublishTitle(idx: number, event: Event): void {
+  const value = inputValue(event).trim()
+  writePublishPack((pack) => {
+    const nextTitles = [...pack.titles]
+    nextTitles[idx] = value
+    return { ...pack, titles: nextTitles }
+  })
+}
+
+function patchPublishHashtags(event: Event): void {
+  const tags = inputValue(event)
+    .split(/\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  writePublishPack((pack) => ({ ...pack, hashtags: tags }))
+}
+
+const publishCopied = ref(false)
+async function copyPublishPackMarkdown(): Promise<void> {
+  const pack = effectivePublishPack.value
+  if (!pack) return
+  const md = [
+    `# ${t('graph.inspector.film.publishPanel.title')}`,
+    `## 1. ${t('graph.inspector.film.publishPanel.coverVertical')}`,
+    pack.verticalCoverPrompt,
+    `## 2. ${t('graph.inspector.film.publishPanel.coverHorizontal')}`,
+    pack.horizontalCoverPrompt,
+    `## 3. ${t('graph.inspector.film.publishPanel.endCardText')}`,
+    pack.endCardPlan,
+    `## 4. ${t('graph.inspector.film.publishPanel.nextTeaser')}`,
+    pack.nextEpisodeTeaser,
+    `## 5. ${t('graph.inspector.film.publishPanel.titles')}`,
+    ...pack.titles.map((item, i) => `${i + 1}. ${item}`),
+    `## 6. ${t('graph.inspector.film.publishPanel.synopsis')}`,
+    pack.synopsis,
+    `## 7. ${t('graph.inspector.film.publishPanel.hashtags')}`,
+    pack.hashtags.join(' '),
+    `## 8. ${t('graph.inspector.film.publishPanel.pinnedComment')}`,
+    pack.pinnedComment,
+    `## 9. ${t('graph.inspector.film.publishPanel.compliance')}`,
+    pack.complianceNotice
+  ].join('\n\n')
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(md)
+      publishCopied.value = true
+      setTimeout(() => {
+        publishCopied.value = false
+      }, 2000)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+const expandedShotAbIds = ref<Record<string, boolean>>({})
+function isShotAbExpanded(shotId: string): boolean {
+  return !!expandedShotAbIds.value[shotId]
+}
+function toggleShotAbDrawer(shotId: string): void {
+  expandedShotAbIds.value = {
+    ...expandedShotAbIds.value,
+    [shotId]: !expandedShotAbIds.value[shotId]
+  }
+}
+function isShotLipSync(shot: FilmShot): boolean {
+  return Boolean(
+    shot.isLipSyncShot ||
+    shot.dialogue.some((d) => (d.mode ?? 'spoken') === 'spoken' && d.line.trim().length > 0)
+  )
+}
+function shotVideoBeats(shot: FilmShot): FilmVideoBeat[] {
+  return shot.videoBeats?.length ? shot.videoBeats : buildDefaultVideoBeatsForShot(shot)
+}
+function patchShotManjuField(
+  id: string,
+  field: 'focalLength' | 'subjectPosition' | 'blockingAndPose' | 'expression' | 'lighting',
+  event: Event
+): void {
+  const value = inputValue(event).trim()
+  writeStoryboard((shots) =>
+    shots.map((shot) =>
+      shot.id === id ? { ...shot, [field]: value, locked: true, status: 'approved' as const } : shot
+    )
+  )
+}
 
 // ─── 上游分镜与设定解析（供 review / shot / render 实时回退预览） ───
 function findUpstreamStoryboard(startNodeId: string): FilmStoryboard | null {
@@ -1807,7 +2594,22 @@ function findUpstreamCast(startNodeId: string): FilmCast | null {
       queue.push(src.id)
     }
   }
-  return mergeFilmCasts(...found.reverse())
+  const direct = mergeFilmCasts(...found.reverse())
+  if (direct?.entries?.length) return direct
+  if (params.value.filmUseSharedCast === false) return null
+  const sharedCasts: FilmCast[] = []
+  for (const item of pipelineNodes.value) {
+    if (item.id === startNodeId) continue
+    if (item.typeId !== 'film.workbench' && item.typeId !== 'film.cast') continue
+    const parsed = parseFilmCast(item.params?.filmCast ?? '')
+    if (!parsed?.entries?.length) continue
+    if (item.params?.filmIsSeriesBibleCast === true) {
+      sharedCasts.unshift(parsed)
+    } else if (parsed.entries.some((e) => !!(e.imageRelativePath?.trim() || e.imageUrl?.trim()))) {
+      sharedCasts.push(parsed)
+    }
+  }
+  return sharedCasts.length ? mergeFilmCasts(...sharedCasts) : null
 }
 
 const storyboard = computed(() => {
@@ -1973,6 +2775,60 @@ const castEntries = computed(() => effectiveCast.value?.entries ?? [])
 const hasCastOutputs = computed(() =>
   castEntries.value.some((entry) => !!(entry.imageRelativePath?.trim() || entry.imageUrl?.trim()))
 )
+const sharedSeriesBibleCastCount = computed(() => {
+  return incomingCast.value?.entries?.length ?? 0
+})
+
+function syncCurrentCastAsSeriesBible(): void {
+  const current = node.value
+  const doc = effectiveCast.value
+  if (!current || !doc || !props.hostId) return
+  const serialized = stringifyFilmCast(doc)
+  patchParams({
+    filmCast: serialized,
+    filmIsSeriesBibleCast: true
+  })
+  for (const item of pipelineNodes.value) {
+    if (item.id === current.id) continue
+    if (item.typeId !== 'film.workbench' && item.typeId !== 'film.cast') continue
+    const otherLocal = parseFilmCast(item.params?.filmCast ?? '')
+    const synced = mergeFilmCasts(doc, otherLocal)
+    graphEditorHosts.updateNode(props.hostId, item.id, {
+      ...(synced ? { filmCast: stringifyFilmCast(synced) } : {}),
+      filmIsSeriesBibleCast: false
+    })
+  }
+}
+
+function patchCastVoicePreset(id: string, event: Event): void {
+  const doc = effectiveCast.value
+  if (!doc) return
+  const voicePreset = inputValue(event).trim() || 'alloy'
+  const targetEntry = doc.entries.find((e) => e.id === id)
+  const targetKey = targetEntry ? filmNameKey(targetEntry.name) : ''
+  const nextCast: FilmCast = {
+    ...doc,
+    entries: doc.entries.map((entry) => (entry.id === id ? { ...entry, voicePreset } : entry))
+  }
+  const sb = storyboard.value
+  const nextSbPatch =
+    sb && targetKey
+      ? {
+          filmStoryboard: stringifyFilmStoryboard({
+            ...sb,
+            entities: sb.entities.map((ent) =>
+              ent.kind === 'character' && filmNameKey(ent.name) === targetKey
+                ? { ...ent, voicePreset }
+                : ent
+            )
+          })
+        }
+      : {}
+  patchParams({
+    filmCast: stringifyFilmCast(nextCast),
+    ...nextSbPatch
+  })
+}
 
 function toggleCastKind(castKind: FilmEntityKind): void {
   const next = castKinds.value.includes(castKind)
@@ -2002,6 +2858,35 @@ function patchCastDescription(id: string, event: Event): void {
     filmCast: stringifyFilmCast({
       ...doc,
       entries: doc.entries.map((entry) => (entry.id === id ? { ...entry, description } : entry))
+    })
+  })
+}
+
+function patchCastField(
+  id: string,
+  field: 'stateCode' | 'dimensions' | 'worldLightDirection',
+  event: Event
+): void {
+  const doc = effectiveCast.value
+  if (!doc) return
+  const val = inputValue(event).trim()
+  patchParams({
+    filmCast: stringifyFilmCast({
+      ...doc,
+      entries: doc.entries.map((entry) => (entry.id === id ? { ...entry, [field]: val } : entry))
+    })
+  })
+}
+
+function patchCastHeight(id: string, event: Event): void {
+  const doc = effectiveCast.value
+  if (!doc) return
+  const n = Math.round(Number(inputValue(event)))
+  const heightCm = Number.isFinite(n) && n >= 40 && n <= 300 ? n : undefined
+  patchParams({
+    filmCast: stringifyFilmCast({
+      ...doc,
+      entries: doc.entries.map((entry) => (entry.id === id ? { ...entry, heightCm } : entry))
     })
   })
 }
@@ -2095,6 +2980,51 @@ function shotRawVideo(shot: FilmShot | null | undefined): string {
   ).trim()
 }
 
+function shotRawVoice(shot: FilmShot | null | undefined): string {
+  if (!shot) return ''
+  return (
+    renderCache.value[shot.id]?.voice ||
+    graphRenderCache.value[shot.id]?.voice ||
+    shot.media?.voice ||
+    ''
+  ).trim()
+}
+
+const composedEpisodeVideoRelPath = computed((): string => {
+  return (
+    effectivePublishPack.value?.composedVideoPath?.trim() ||
+    params.value.filmComposedVideoPath?.trim() ||
+    ''
+  )
+})
+
+const composedEpisodeVideoUrl = computed((): string => {
+  return mediaThumbUrl(composedEpisodeVideoRelPath.value)
+})
+
+const composedShotCount = computed((): number => {
+  if (effectivePublishPack.value?.composedShotCount) {
+    return effectivePublishPack.value.composedShotCount
+  }
+  const shots = effectiveStoryboard.value?.shots ?? []
+  return shots.filter((s) => !!(shotRawVideo(s) || shotRawKeyframe(s))).length
+})
+
+const composedVoiceCount = computed((): number => {
+  if (effectivePublishPack.value?.composedVoiceCount) {
+    return effectivePublishPack.value.composedVoiceCount
+  }
+  const shots = effectiveStoryboard.value?.shots ?? []
+  return shots.filter((s) => !!shotRawVoice(s)).length
+})
+
+function runComposeEpisodeVideo(): void {
+  if (runStatus.value === 'running' || blocked.value) return
+  syncSelectedModelsToParams()
+  patchParams({ filmWorkbenchRunMode: 'publish' })
+  toggleRun()
+}
+
 const stageRunStatus = computed((): GraphNodeRunStatus | undefined => {
   if (!isWorkbenchNode.value) return runStatus.value
   if (runStatus.value === 'running' || runStatus.value === 'pending') return runStatus.value
@@ -2119,6 +3049,9 @@ const stageRunStatus = computed((): GraphNodeRunStatus | undefined => {
         (s) => !!(shotRawKeyframe(s) || shotRawVideo(s))
       )
     return hasAnyRender ? 'done' : 'idle'
+  }
+  if (kind.value === 'publish') {
+    return effectiveStoryboard.value?.publishPack ? 'done' : 'idle'
   }
   return runStatus.value
 })
@@ -2335,17 +3268,13 @@ const composedSelectedVideoPrompt = computed(() => {
   const { previzVideoSpec } = shotPrevizSpecs(shot)
   const hasPrevizVideoRef =
     params.value.filmRenderPrevizVideoRef !== false && Boolean(shotRawPrevizVideo(shot))
-  return composeFilmShotVideoPrompt(
-    shot,
-    String(locale.value),
-    prevShot || previzVideoSpec || hasPrevizVideoRef
-      ? {
-          ...(prevShot ? { prevShot } : {}),
-          ...(previzVideoSpec ? { previzVideoSpec } : {}),
-          ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {})
-        }
-      : undefined
-  )
+  return composeFilmShotVideoPrompt(shot, String(locale.value), {
+    ...(prevShot ? { prevShot } : {}),
+    ...(previzVideoSpec ? { previzVideoSpec } : {}),
+    ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {}),
+    castRefs: matchedShotCastRefs.value,
+    storyboard: doc ?? undefined
+  })
 })
 
 function runSingleRenderShot(shotId: string): void {
@@ -2415,22 +3344,19 @@ function composeRenderFinalImagePrompt(shot: FilmShot): string {
 
 function composeRenderFinalVideoPrompt(shot: FilmShot): string {
   const doc = effectiveStoryboard.value
+  const refs = matchFilmCastForShot(graphCast.value, shot)
   const continuityOn = params.value.filmRenderContinuity !== false
   const prevShot = continuityOn ? findPrevSameSceneShot(doc, shot) : null
   const { previzVideoSpec } = shotPrevizSpecs(shot)
   const hasPrevizVideoRef =
     params.value.filmRenderPrevizVideoRef !== false && Boolean(shotRawPrevizVideo(shot))
-  return composeFilmShotVideoPrompt(
-    shot,
-    String(locale.value),
-    prevShot || previzVideoSpec || hasPrevizVideoRef
-      ? {
-          ...(prevShot ? { prevShot } : {}),
-          ...(previzVideoSpec ? { previzVideoSpec } : {}),
-          ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {})
-        }
-      : undefined
-  )
+  return composeFilmShotVideoPrompt(shot, String(locale.value), {
+    ...(prevShot ? { prevShot } : {}),
+    ...(previzVideoSpec ? { previzVideoSpec } : {}),
+    ...(hasPrevizVideoRef ? { hasPrevizVideoRef: true } : {}),
+    castRefs: refs,
+    storyboard: doc ?? undefined
+  })
 }
 
 // ─── 卡片可视化绑定与缩略图解析 ───
@@ -2447,12 +3373,14 @@ const allMediaRelativePaths = computed((): string[] => {
   for (const shot of displayStoryboard.value?.shots ?? []) {
     push(shot.media?.keyframe)
     push(shot.media?.video)
+    push(shot.media?.voice)
     push(shot.media?.previzKeyframe)
     push(shot.media?.previzVideo)
   }
   for (const shot of effectiveStoryboard.value?.shots ?? []) {
     push(shot.media?.keyframe)
     push(shot.media?.video)
+    push(shot.media?.voice)
     push(shot.media?.previzKeyframe)
     push(shot.media?.previzVideo)
   }
@@ -2465,11 +3393,14 @@ const allMediaRelativePaths = computed((): string[] => {
   for (const entry of Object.values(renderCache.value)) {
     push(entry?.keyframe)
     push(entry?.video)
+    push(entry?.voice)
   }
   for (const entry of Object.values(graphRenderCache.value)) {
     push(entry?.keyframe)
     push(entry?.video)
+    push(entry?.voice)
   }
+  push(composedEpisodeVideoRelPath.value)
   return [...set]
 })
 
@@ -2537,6 +3468,10 @@ function shotKeyframeThumbUrl(shot: FilmShot): string {
 
 function shotVideoUrl(shot: FilmShot): string {
   return mediaThumbUrl(shotRawVideo(shot))
+}
+
+function shotVoiceUrl(shot: FilmShot): string {
+  return mediaThumbUrl(shotRawVoice(shot))
 }
 
 function shotsUsingEntity(entityKind: FilmEntityKind, name: string): FilmShot[] {
@@ -3458,5 +4393,257 @@ textarea {
 .binding-chip.previz {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   background: color-mix(in srgb, var(--accent) 10%, var(--bg-elevated, var(--bg)));
+}
+
+.manju-genre-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+.manju-genre-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.manju-genre-card .compact-btn.applied {
+  border-color: color-mix(in srgb, var(--success, #2a9d6f) 65%, var(--border));
+  background: color-mix(in srgb, var(--success, #2a9d6f) 18%, var(--bg));
+  color: var(--success, #2a9d6f);
+  font-weight: 600;
+}
+
+.manju-audit-panel,
+.manju-bible-panel,
+.manju-publish-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--bg-elevated, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.manju-audit-title-row,
+.manju-bible-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.verdict.warn {
+  background: color-mix(in srgb, var(--warning, #d99b26) 22%, transparent);
+  color: var(--warning, #d99b26);
+}
+
+.manju-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.manju-audit-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 11px;
+}
+
+.manju-audit-item.fail {
+  border-color: color-mix(in srgb, var(--danger, #d0583a) 55%, var(--border));
+}
+
+.manju-audit-item.warn {
+  border-color: color-mix(in srgb, var(--warning, #d99b26) 55%, var(--border));
+}
+
+.manju-audit-status {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.manju-audit-status.pass {
+  background: color-mix(in srgb, var(--success, #2e9e5b) 20%, transparent);
+  color: var(--success, #2e9e5b);
+}
+
+.manju-audit-status.warn {
+  background: color-mix(in srgb, var(--warning, #d99b26) 20%, transparent);
+  color: var(--warning, #d99b26);
+}
+
+.manju-audit-status.fail {
+  background: color-mix(in srgb, var(--danger, #d0583a) 20%, transparent);
+  color: var(--danger, #d0583a);
+}
+
+.manju-audit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.manju-audit-body span {
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.manju-hook-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.manju-hook-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+}
+
+.manju-hook-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.manju-bible-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.badge.code-badge,
+.badge.accent {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tag.danger-tag {
+  border-color: color-mix(in srgb, var(--danger, #d0583a) 45%, var(--border));
+  color: var(--danger, #d0583a);
+}
+
+.shot-ab-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--bg));
+}
+
+.shot-beats-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.shot-beats-title {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.shot-beat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+.dialogue-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.manju-genre-synced-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.manju-publish-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.manju-publish-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cast-voice-label {
+  grid-column: 1 / -1;
+}
+
+.card-audio-player {
+  width: 100%;
+  height: 32px;
+  margin-top: 4px;
+}
+
+.manju-composed-video-card {
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.composed-video-player-wrap {
+  display: flex;
+  justify-content: center;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+  max-height: 440px;
+}
+
+.composed-episode-video {
+  max-width: 100%;
+  max-height: 440px;
+  display: block;
 }
 </style>

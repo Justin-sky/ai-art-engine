@@ -1,5 +1,58 @@
 import { useProjectStore } from '../../../stores/project'
+import { getActiveChatProjectScopeSnapshot } from '../../../composables/useChatHistory'
 import { thumbRelativePathFor } from '@shared/media/thumbnailPath'
+
+/**
+ * 解析相对路径或本地媒体地址为 data URL：
+ * 1. 先按当前工作空间根目录解析（或直接解析 studio-media:// / file:// / 绝对路径）
+ * 2. 若工作空间下不存在该相对路径，则回退尝试当前挂载的聊天子工程根目录（如 D:\aircraft\Client_Harmony）
+ */
+export async function resolveMediaDataUrlWithSubProjects(
+  pathOrUrl: string
+): Promise<string | undefined> {
+  const clean = pathOrUrl.trim()
+  if (!clean) return undefined
+  if (clean.startsWith('data:') || /^https?:\/\//i.test(clean)) return clean
+  try {
+    const direct = await window.studio.getAssetMediaDataUrl(clean)
+    if (direct) return direct
+  } catch {
+    // 尝试子工程根目录回退
+  }
+  if (
+    clean.startsWith('studio-media:') ||
+    clean.startsWith('file:') ||
+    /^[A-Za-z]:[\\/]|^\//.test(clean)
+  ) {
+    return undefined
+  }
+  let rootPath = ''
+  try {
+    rootPath = useProjectStore().rootPath ?? ''
+  } catch {
+    /* Pinia 未激活时忽略 */
+  }
+  const snap = getActiveChatProjectScopeSnapshot(rootPath)
+  const candidateRoots: string[] = []
+  if (snap.activeProject?.rootPath?.trim()) {
+    candidateRoots.push(snap.activeProject.rootPath.trim())
+  }
+  for (const p of snap.allProjects) {
+    const r = p.rootPath?.trim()
+    if (r && !candidateRoots.includes(r)) candidateRoots.push(r)
+  }
+  const relClean = clean.replace(/^[\\/]+/, '')
+  for (const subRoot of candidateRoots) {
+    const absCandidate = `${subRoot.replace(/[\\/]+$/, '')}/${relClean}`
+    try {
+      const subDataUrl = await window.studio.getAssetMediaDataUrl(absCandidate)
+      if (subDataUrl) return subDataUrl
+    } catch {
+      /* 尝试下一个子工程 */
+    }
+  }
+  return undefined
+}
 
 /** 将图执行输出解析为 API 可用的 data URL / http(s)（不含 studio-media / file） */
 export async function resolveGraphImageUrls(
@@ -12,24 +65,26 @@ export async function resolveGraphImageUrls(
       urls.push(dataUrl)
       continue
     }
-    // studio-media / file 预览地址不能直接给远端 API
+    const relativePath = item.relativePath?.trim()
+    // studio-media / file 预览地址不能直接给远端 API，优先用 relativePath 或 studio-media 自身转 data URL
     if (dataUrl && (dataUrl.startsWith('studio-media:') || dataUrl.startsWith('file:'))) {
-      const relativePath = item.relativePath?.trim()
       if (relativePath) {
-        try {
-          urls.push(await window.studio.getAssetMediaDataUrl(relativePath))
+        const resolved = await resolveMediaDataUrlWithSubProjects(relativePath)
+        if (resolved) {
+          urls.push(resolved)
           continue
-        } catch {
-          /* fall through */
         }
       }
+      const fromStudioMedia = await resolveMediaDataUrlWithSubProjects(dataUrl)
+      if (fromStudioMedia) {
+        urls.push(fromStudioMedia)
+        continue
+      }
     }
-    const relativePath = item.relativePath?.trim()
     if (!relativePath) continue
-    try {
-      urls.push(await window.studio.getAssetMediaDataUrl(relativePath))
-    } catch {
-      /* 跳过无法读取的路径 */
+    const resolved = await resolveMediaDataUrlWithSubProjects(relativePath)
+    if (resolved) {
+      urls.push(resolved)
     }
   }
   return urls

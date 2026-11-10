@@ -40,6 +40,16 @@
             s: screenplayAnalysis.estimatedDurationSec
           })
         }}</span>
+        <span
+          v-if="screenplayAnalysis.dialogueCount > 0"
+          class="stat-pill"
+          :class="screenplayAnalysis.spokenRatio >= 67 ? 'stat-accent' : ''"
+        >
+          🗣️ {{ screenplayAnalysis.spokenRatio }}%
+        </span>
+        <span class="stat-pill stat-accent">
+          🎭 {{ isEnLocale ? activeManjuGenreSpec.nameEn : activeManjuGenreSpec.nameZh }}
+        </span>
       </div>
 
       <div class="header-right">
@@ -291,21 +301,18 @@
             @change="persistEpisodeTitle"
           />
 
-          <select class="tpl-select" value="" @change="onSelectScreenplayTemplate">
-            <option value="" disabled>
-              {{ t('graph.scriptNode.toolbar.templatePlaceholder') }}
-            </option>
-            <option v-for="tpl in screenplayTemplates" :key="tpl.id" :value="tpl.id">
-              {{ t(`graph.scriptNode.templates.${tpl.id}`) }}
-            </option>
-          </select>
-
           <div class="tool-btns">
             <button type="button" class="tool-chip" @click="insertNextScene">
               {{ t('graph.scriptNode.toolbar.addScene') }}
             </button>
             <button type="button" class="tool-chip" @click="insertCharacterBio">
               {{ t('graph.scriptNode.toolbar.addBio') }}
+            </button>
+            <button type="button" class="tool-chip" @click="insertManjuBible">
+              {{ t('graph.scriptNode.toolbar.addBible') }}
+            </button>
+            <button type="button" class="tool-chip" @click="insertManjuHookFooter">
+              {{ t('graph.scriptNode.toolbar.addHookFooter') }}
             </button>
             <button type="button" class="tool-chip" @click="insertActionBeat">
               {{ t('graph.scriptNode.toolbar.addAction') }}
@@ -353,6 +360,63 @@
 
       <!-- 右栏：AI 编剧助手与模型参数 -->
       <aside class="ai-sidebar">
+        <section class="sidebar-group">
+          <div class="group-head">
+            <h3>🎭 {{ t('graph.inspector.film.manjuGenre.title') }}</h3>
+          </div>
+          <select v-model="filmGenre" class="genre-select" @change="persistGenerateConfig">
+            <option value="auto">
+              {{ t('graph.inspector.film.manjuGenre.auto') }} ({{
+                isEnLocale ? activeManjuGenreSpec.nameEn : activeManjuGenreSpec.nameZh
+              }})
+            </option>
+            <optgroup
+              v-for="cat in MANJU_CATEGORIES"
+              :key="cat.id"
+              :label="isEnLocale ? cat.labelEn : cat.labelZh"
+            >
+              <option
+                v-for="g in MANJU_GENRE_SPECS.filter((s) => s.category === cat.id)"
+                :key="g.id"
+                :value="g.id"
+              >
+                {{ isEnLocale ? `${g.nameEn} (${g.nameZh})` : g.nameZh }}
+              </option>
+            </optgroup>
+          </select>
+
+          <div class="genre-spec-card">
+            <div class="genre-spec-row">
+              <span class="genre-spec-tag">{{
+                t('graph.inspector.film.manjuGenre.shotRange', {
+                  min: activeManjuGenreSpec.shotCountRange[0],
+                  max: activeManjuGenreSpec.shotCountRange[1]
+                })
+              }}</span>
+              <span class="genre-spec-tag">{{
+                t('graph.inspector.film.manjuGenre.dialogueRange', {
+                  min: activeManjuGenreSpec.dialogueCharsRange[0],
+                  max: activeManjuGenreSpec.dialogueCharsRange[1]
+                })
+              }}</span>
+              <span class="genre-spec-tag">🗣️ ≥67%</span>
+            </div>
+            <p class="genre-spec-line">
+              {{
+                t('graph.inspector.film.manjuGenre.progressRule', {
+                  rule: activeManjuGenreSpec.episodeProgressTemplateZh
+                })
+              }}
+            </p>
+            <p
+              v-if="activeManjuGenreSpec.pitfallRulesZh[0]"
+              class="genre-spec-line genre-spec-warn"
+            >
+              ⚠️ {{ activeManjuGenreSpec.pitfallRulesZh[0] }}
+            </p>
+          </div>
+        </section>
+
         <section class="sidebar-group">
           <div class="group-head">
             <h3>{{ t('graph.scriptNode.workbench.modelSectionTitle') }}</h3>
@@ -429,6 +493,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   analyzeScreenplay,
   buildCharacterBioSnippet,
+  buildManjuEpisodeFooterSnippet,
+  buildManjuProjectBibleSnippet,
   buildNextEpisodeInstruction,
   buildNextSceneSnippet,
   buildVoiceoverSnippet,
@@ -438,8 +504,10 @@ import {
   extractScreenplayScenes,
   extractSharedScreenplayHeader,
   formatScreenplayText,
+  MANJU_CATEGORIES,
+  MANJU_GENRE_SPECS,
+  resolveManjuGenre,
   resolveNodeType,
-  SCREENPLAY_TEMPLATES,
   splitScreenplayByExplicitEpisodeMarkers,
   splitScreenplayIntoEpisodes,
   type GraphNode,
@@ -520,16 +588,24 @@ const localText = ref('')
 const currentEpisodeTitle = ref('')
 const instruction = ref('')
 const systemPrompt = ref('')
+const filmGenre = ref('auto')
 const modelOptions = ref<GenerateModelOption[]>([])
 const selectedModelKey = ref('')
 const editorTextareaRef = ref<HTMLTextAreaElement | null>(null)
+
+const isEnLocale = computed(() => String(locale.value).toLowerCase().startsWith('en'))
+const activeManjuGenreSpec = computed(() =>
+  resolveManjuGenre(
+    filmGenre.value,
+    [localText.value, instruction.value, displayName.value].filter(Boolean).join('\n')
+  )
+)
 
 const splitMode = ref<'auto' | 'markers' | 'scenes'>('auto')
 const scenesPerEpisode = ref(2)
 const includeSharedBios = ref(true)
 const splitDoneCount = ref(0)
 const screenplayFormatFlash = ref(false)
-const screenplayTemplates = SCREENPLAY_TEMPLATES
 
 const generatedTexts = computed((): StoredGeneratedText[] => {
   void graphEditorHosts.revision.value
@@ -650,6 +726,7 @@ function loadFromNode(): void {
   const rawText = current.params.text ?? ''
   localText.value = rawText.trim() === '…' ? '' : rawText
   instruction.value = current.params.generateInstruction ?? ''
+  filmGenre.value = current.params.filmGenre?.trim() || 'auto'
   const storedSys = current.params.generateSystemPrompt?.trim()
   systemPrompt.value = storedSys || defaultScreenplaySystemPrompt(String(locale.value))
   const preferred = preferredModelKey(
@@ -765,6 +842,7 @@ function persistGenerateConfig(): void {
   if (!current || !props.hostId) return
   const parsed = parseModelKey(selectedModelKey.value)
   graphEditorHosts.updateNode(props.hostId, current.id, {
+    filmGenre: filmGenre.value === 'auto' ? '' : filmGenre.value,
     generateInstruction: instruction.value,
     generateSystemPrompt: systemPrompt.value,
     generateModel: parsed?.model ?? '',
@@ -1233,6 +1311,27 @@ function insertCharacterBio(): void {
   persistScreenplayBody()
 }
 
+function insertManjuBible(): void {
+  const snippet = buildManjuProjectBibleSnippet(activeManjuGenreSpec.value.id, String(locale.value))
+  if (!localText.value.trim()) {
+    localText.value = snippet.trim()
+  } else {
+    localText.value = `${snippet.trim()}\n\n${localText.value.trimStart()}`
+  }
+  persistScreenplayBody()
+}
+
+function insertManjuHookFooter(): void {
+  const snippet = buildManjuEpisodeFooterSnippet(
+    activeManjuGenreSpec.value.id,
+    String(locale.value)
+  )
+  localText.value = !localText.value.trim()
+    ? snippet.trimStart()
+    : `${localText.value.trimEnd()}\n\n${snippet.trimStart()}`
+  persistScreenplayBody()
+}
+
 function insertActionBeat(): void {
   const isEn = String(locale.value).toLowerCase().startsWith('en')
   insertAtCursorOrAppend(
@@ -1251,18 +1350,6 @@ function insertSpeakerLine(name: string): void {
   insertAtCursorOrAppend(
     isEn ? `${name}: (emotion) [Dialogue line]` : `${name}：（情绪）[台词内容]` // cjk-ok
   )
-}
-
-function onSelectScreenplayTemplate(event: Event): void {
-  const select = event.target as HTMLSelectElement
-  const tplId = select.value
-  select.value = ''
-  if (!tplId) return
-  const tpl = screenplayTemplates.find((item) => item.id === tplId)
-  if (!tpl) return
-  const isEn = String(locale.value).toLowerCase().startsWith('en')
-  localText.value = isEn ? tpl.textEn : tpl.textZh
-  persistScreenplayBody()
 }
 
 function formatScreenplay(): void {
@@ -1865,6 +1952,53 @@ useEditorDiveFrameFlush(() => props.frameKey, flushAll)
 }
 
 /* 右栏：AI 助手 */
+.genre-select {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.genre-spec-card {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.genre-spec-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.genre-spec-tag {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.genre-spec-line {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.genre-spec-warn {
+  color: var(--warning, #f59e0b);
+}
+
 .ai-presets {
   display: flex;
   flex-wrap: wrap;

@@ -1717,6 +1717,10 @@ watch(
 )
 
 const cardImageGridSources = computed((): CardImageGridSource[] => {
+  // 图集拼装 UI 节点的 generatedImages 存放内部图层切片与主件缓存，卡片封面直接全幅展示合成后的完整 UI 画面（selectImagePreview）
+  if (props.node.typeId === 'ui.atlasCompose') {
+    return []
+  }
   if (filmCardImageSources.value.length > 1) {
     return filmCardImageSources.value
   }

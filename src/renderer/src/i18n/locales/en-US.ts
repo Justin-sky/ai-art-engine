@@ -5804,6 +5804,8 @@ export default {
       toolbar: {
         addScene: '+ Scene',
         addBio: '+ Cast Bio',
+        addBible: '+ Manju Bible',
+        addHookFooter: '+ Hook Footer',
         addAction: '+ Action △',
         addVo: '+ VO / OS',
         format: '✨ Auto-Format',
@@ -6930,19 +6932,23 @@ export default {
           cast: 'Generates a design sheet for every character / location in the storyboard; shooting attaches them per shot to lock consistency. Unchanged descriptions are never redrawn.',
           shot: 'Picks one shot: outputs its keyframe prompt, motion prompt and cast reference images to wire straight into image / video generation for fine-tuning.',
           render:
-            'Shoots a keyframe per shot (cast sheets attached automatically) → optional vision QC with automatic retakes → optional image-to-video from the keyframe. Fingerprint cache: editing one shot reshoots only that shot.'
+            'Shoots a keyframe per shot (cast sheets attached automatically) → optional vision QC with automatic retakes → optional image-to-video from the keyframe. Fingerprint cache: editing one shot reshoots only that shot.',
+          publish:
+            'Stage 5 Episode Publish Pack: generates 3:4 vertical & 4:3 horizontal cover prompts, cliffhanger end card, next-episode teaser, 3 viral title candidates, synopsis, hashtags, and compliance notice.'
         },
         stageTabs: {
           breakdown: '1. Breakdown',
           review: '2. Review',
           cast: '3. Cast & Scenes',
-          render: '4. Batch Shoot'
+          render: '4. Batch Shoot',
+          publish: '5. Publish Pack'
         },
         runCurrentStage: {
           breakdown: 'Run Breakdown',
           review: 'Run Review',
           cast: 'Run Cast',
-          render: 'Run Shoot'
+          render: 'Run Shoot',
+          publish: 'Refresh Publish Pack'
         },
         runFullPipeline: 'Run All Stages',
         runFullPipelineHint:
@@ -6971,7 +6977,9 @@ export default {
         kind: {
           character: 'Character',
           location: 'Location',
-          prop: 'Prop'
+          prop: 'Prop',
+          style: 'Style',
+          vfx: 'VFX'
         },
         force: 'Force regenerate (ignore cache)',
         lockHint: 'Lock: AI will not rewrite / redraw',
@@ -7001,14 +7009,16 @@ export default {
           breakdown: 'Director notes',
           review: 'Extra review criteria',
           cast: 'Design sheet notes',
-          render: 'Extra notes'
+          render: 'Extra notes',
+          publish: 'Publish pack notes'
         },
         instructionPlaceholder: {
           breakdown: 'e.g. set up the mystery within 3 shots; favor close-ups for emotion',
           review: 'e.g. every scene needs an establishing shot; dialogue shots ≤ 5 s',
           cast: 'e.g. three-view turnaround on white; realistic costumes',
           render:
-            'e.g. consistent cinematic rim light; realistic proportions; shallow depth of field'
+            'e.g. consistent cinematic rim light; realistic proportions; shallow depth of field',
+          publish: 'e.g. highlight the reversal payoff and cliffhanger hook'
         },
         shots: 'Shots ({n})',
         shotsHint:
@@ -7042,6 +7052,8 @@ export default {
         qcFail: 'QC fail',
         renderedKeyframe: 'Keyframe ready',
         renderedVideo: 'Video ready',
+        renderedVoice: 'Voice ready',
+        renderAudioToggle: 'Auto-synthesize character dialogue voice (TTS)',
         pendingRender: 'Pending',
         runCastEntry: 'Generate sheet',
         rerunCastEntry: 'Regenerate',
@@ -7088,7 +7100,88 @@ export default {
           '3D white-box camera & blocking reference captured from the 3D Director Stage; keyframe and video generation will follow its framing and blocking',
         previzVideoRefLabel: '3D Motion Video',
         previzVideoRefHint:
-          "3D white-box camera motion video rendered from the 3D Director Stage; passed as {'@'}2 reference video during video generation"
+          "3D white-box camera motion video rendered from the 3D Director Stage; passed as {'@'}2 reference video during video generation",
+        manjuGenre: {
+          title: 'AI Manju 21-Genre Skill',
+          auto: '✨ Auto-Detect Genre (from script)',
+          applyDefaults: '⚡ Apply Genre Style & 9:16',
+          appliedDefaults: '✓ Applied "{name}" 9:16 · {shots} shots · {dur}s/shot',
+          shotRange: 'Shots: {min}–{max}',
+          durationRange: 'Shot Sec: {min}–{max}s',
+          dialogueRange: 'Dialogue: {min}–{max} chars',
+          progressRule: 'Progress Formula: {rule}',
+          enableStyleAnchor: 'Generate STYLE01 Visual Style Anchor'
+        },
+        biblePanel: {
+          title: 'Stage 1 · Project Bible & Stage 3 · Episode Hook',
+          coldOpen: '3-Sec Cold Open',
+          climax: 'Episode Climax',
+          cliffhanger: 'Cliffhanger Hook',
+          progress: 'Episode Progress',
+          episodeProgress: 'Episode Progress',
+          worldLight: 'World Key-Light Law',
+          redlines: 'Genre Taboos & Redlines'
+        },
+        auditPanel: {
+          title: 'Stage 4 · 11-Point Continuity & Logic Audit',
+          spokenStats: 'Spoken {spoken} chars ({ratio}% · req ≥67%) · Inner & VO {inner} chars'
+        },
+        shotManju: {
+          lipSyncBadge: '🗣️ Lip-Sync',
+          lipSyncShot: 'Lip-Sync',
+          closedMouthBadge: '🤐 Closed-Mouth (Inner/VO)',
+          closedMouthShot: 'Closed-Mouth (Inner/VO)',
+          toggleAB: 'A/B Segment Spec',
+          abSectionToggle: 'A/B Segment Spec',
+          focalLength: 'Focal Length',
+          subjectPosition: 'Subject Position',
+          blockingAndPose: 'A-Seg · Frozen Pose (Frame 0 Only)',
+          expression: 'A-Seg · Micro-Expression & Gaze',
+          lighting: 'A-Seg · Key Light Direction',
+          videoBeatsTitle: 'B-Segment · 7-Line Video Beats ({n})',
+          addVideoBeat: '+ Add Time Segment',
+          modeSpoken: 'Spoken',
+          modeInner: 'Inner',
+          modeVo: 'VO'
+        },
+        castManju: {
+          heightCm: 'Height(cm)',
+          stateCode: 'State Code',
+          voicePreset: 'Character Voice (TTS)',
+          consistencyAnchors: 'Consistency Anchors',
+          worldLightDirection: 'World Key-Light Direction',
+          dimensions: 'Dimensions',
+          syncSeriesBibleBtn: '📌 Set as Series Bible Cast',
+          syncedSeriesBibleBtn: '📌 Active Series Bible Cast',
+          useSharedCastToggle: 'Auto-inherit canvas Series Bible Cast across episodes',
+          sharedCastActiveBadge: '🔗 Inherited Series Bible Cast ({n})'
+        },
+        publishPanel: {
+          title: 'Stage 5 · Episode Publish Pack (Covers / Titles / Teaser)',
+          subtitle:
+            'Auto-compiled dual-aspect cover prompts, cliffhanger end card, next-episode teaser & platform copy',
+          copyAll: '📋 Copy Full Publish Pack Markdown',
+          copied: '✓ Copied',
+          composedVideoTitle: '🎬 Full-Episode Composed Video (.mp4)',
+          composedVideoStats: 'Composed {shots} shot(s) · {voices} voice track(s)',
+          composeVideoBtn: '🎬 Compose Full-Episode Video (.mp4)',
+          composingVideoBtn: '⏳ Composing episode video…',
+          composedVideoEmptyHint:
+            'After "4. Batch Shoot", click Compose or run this stage to automatically assemble all shot videos/keyframes, character TTS voices, and subtitles into a single .mp4 episode.',
+          verticalCover: '3:4 Vertical Cover Prompt',
+          coverVertical: '3:4 Vertical Cover Prompt',
+          horizontalCover: '4:3 Horizontal Cover Prompt',
+          coverHorizontal: '4:3 Horizontal Cover Prompt',
+          endCard: 'End Card Cliffhanger Text',
+          endCardText: 'End Card Cliffhanger Text',
+          nextTeaser: 'Next Episode Teaser',
+          titles: '3 Viral Title Candidates (one per line)',
+          synopsis: 'Episode Synopsis',
+          hashtags: 'Hashtags',
+          pinnedComment: 'Pinned Comment Hook',
+          compliance: 'AI Compliance Notice',
+          empty: 'Run "1. Breakdown" first to automatically generate the episode publish pack.'
+        }
       },
       episode: {
         anchorHint:

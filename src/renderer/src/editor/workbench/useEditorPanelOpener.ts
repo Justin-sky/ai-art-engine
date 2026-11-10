@@ -41,6 +41,11 @@ const PANEL_DEFINITIONS = {
     panelPrefix: 'director-editor-',
     component: 'directorEditor',
     param: 'directorAssetId'
+  },
+  file: {
+    panelPrefix: 'file-editor-',
+    component: 'fileEditor',
+    param: 'fileId'
   }
 } as const
 
@@ -56,7 +61,9 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     if (existing) {
       existing.api.setActive()
       // 已打开面板再次切入：重新注入外层输入到宿主编辑器
-      workspace.requestHostInputSlotSync(assetId)
+      if (kind !== 'file') {
+        workspace.requestHostInputSlotSync(assetId)
+      }
       return
     }
     api.addPanel({
@@ -79,7 +86,8 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
       ['canvas', workspace.openCanvasEditorIds],
       ['world', workspace.openWorldEditorIds],
       ['beat', workspace.openBeatEditorIds],
-      ['director', workspace.openDirectorEditorIds]
+      ['director', workspace.openDirectorEditorIds],
+      ['file', workspace.openWorkspaceFileIds]
     ]
     for (const [kind, ids] of groups) {
       const latest = ids.at(-1)
@@ -127,6 +135,13 @@ export function useEditorPanelOpener(options: EditorPanelOpenerOptions) {
     (ids) => {
       const id = ids.at(-1)
       if (id) open('director', id)
+    }
+  )
+  watch(
+    () => workspace.openWorkspaceFileIds.slice(),
+    (ids) => {
+      const id = ids.at(-1)
+      if (id) open('file', id)
     }
   )
 

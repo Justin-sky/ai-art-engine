@@ -843,7 +843,71 @@ export function rebalanceHorizontalColumns(
   }
 }
 
+export const CHAT_SIDEBAR_WIDTH = 226
+
 let lastChatExpandedWidth = 0
+let chatSidebarExpanded = false
+let chatWidthBeforeSidebar = 0
+let chatExpandedTargetWidth = 0
+
+/**
+ * 切换 AI 对话面板内左侧栏（工程/历史会话栏）展开态时，
+ * 同步向左扩展或收缩 Dockview 的 `chat` 面板宽度（由中心 `workspace` 画布让出/回收空间，保持 `assets` 与 `inspector` 宽度不变），
+ * 避免展开内侧栏时挤压右侧主对话区域。
+ */
+export function setChatSidebarExpanded(expanded: boolean, sidebarWidth = CHAT_SIDEBAR_WIDTH): void {
+  const dock = dockApiRef
+  if (!dock) {
+    chatSidebarExpanded = expanded
+    return
+  }
+  const chatPanel = dock.getPanel('chat')
+  if (!chatPanel || chatPanel.api.isVisible === false) {
+    chatSidebarExpanded = expanded
+    return
+  }
+  if (expanded === chatSidebarExpanded) return
+
+  const assetsPanel = dock.getPanel('assets')
+  const inspectorPanel = dock.getPanel('inspector')
+  const assetsPreW = assetsPanel && !sidePanelCollapsed.assets ? readPanelWidth(assetsPanel.api) : 0
+  const inspectorPreW =
+    inspectorPanel && !sidePanelCollapsed.inspector ? readPanelWidth(inspectorPanel.api) : 0
+  const liveChatW = readPanelWidth(chatPanel.api)
+  const totalW = readDockContainerWidth(dock)
+  const fallbackBaseW = Math.min(420, Math.max(260, Math.round(totalW * 0.21)))
+
+  let targetChatW: number
+  if (expanded) {
+    const baseW = liveChatW >= 200 ? liveChatW : fallbackBaseW
+    chatWidthBeforeSidebar = baseW
+    targetChatW = Math.round(
+      Math.min(Math.max(totalW * 0.58, baseW + sidebarWidth), baseW + sidebarWidth)
+    )
+    // 在极窄窗口下给中心画布至少留出 320px
+    const maxAllowedChatW = Math.max(240 + sidebarWidth, totalW - assetsPreW - inspectorPreW - 320)
+    targetChatW = Math.round(Math.min(targetChatW, maxAllowedChatW))
+    chatExpandedTargetWidth = targetChatW
+  } else {
+    const userResizedWhileOpen =
+      chatExpandedTargetWidth > 0 && Math.abs(liveChatW - chatExpandedTargetWidth) > 6
+    if (!userResizedWhileOpen && chatWidthBeforeSidebar >= 200) {
+      targetChatW = Math.round(chatWidthBeforeSidebar)
+    } else {
+      targetChatW = Math.round(Math.max(240, liveChatW - sidebarWidth))
+    }
+    chatExpandedTargetWidth = 0
+  }
+
+  chatSidebarExpanded = expanded
+  lastChatExpandedWidth = targetChatW
+
+  rebalanceHorizontalColumns(dock, {
+    ...(assetsPreW > 16 ? { assets: assetsPreW } : {}),
+    ...(inspectorPreW > 16 ? { inspector: inspectorPreW } : {}),
+    chat: targetChatW
+  })
+}
 
 /**
  * 切换右侧 AI 对话面板显隐：
@@ -862,14 +926,17 @@ export function setChatPanelVisible(
   const assetsPreW = assetsPanel && !sidePanelCollapsed.assets ? readPanelWidth(assetsPanel.api) : 0
   const inspectorPreW =
     inspectorPanel && !sidePanelCollapsed.inspector ? readPanelWidth(inspectorPanel.api) : 0
+  const maxRememberedChatW = chatSidebarExpanded ? 480 + CHAT_SIDEBAR_WIDTH : 480
   if (!visible) {
     const liveChatW = readPanelWidth(chatPanel.api)
     if (liveChatW >= 200) {
-      lastChatExpandedWidth = Math.round(Math.min(480, liveChatW))
+      lastChatExpandedWidth = Math.round(Math.min(maxRememberedChatW, liveChatW))
     }
   }
-  const targetChatW =
-    lastChatExpandedWidth >= 200 ? lastChatExpandedWidth : Math.round(defaultChatWidth)
+  const fallbackChatW = chatSidebarExpanded
+    ? Math.round(defaultChatWidth + CHAT_SIDEBAR_WIDTH)
+    : Math.round(defaultChatWidth)
+  const targetChatW = lastChatExpandedWidth >= 200 ? lastChatExpandedWidth : fallbackChatW
   const prevUnlocking = unlockingConstraints
   unlockingConstraints = true
   try {

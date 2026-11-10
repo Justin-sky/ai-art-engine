@@ -26,6 +26,7 @@ import type {
   InstalledWorkflowRecordView,
   McpActivity,
   OneSentenceGameCardInfo,
+  OpenHarnessFileResult,
   SessionSkill
 } from '@shared/ipc'
 import { modalityConfig, providerModelDisplayName } from '@shared/modelProvider'
@@ -58,6 +59,7 @@ import {
 } from '../features/chat/chatAssetDrop'
 import { buildActiveWorkspaceContext } from '../features/mcp/buildActiveWorkspaceContext'
 import { abortPendingMcpTasks } from '../features/mcp/mcpTaskRunner'
+import { setChatSidebarExpanded } from '../editor/workbench/sidePanelCollapse'
 import { promptConfirm } from '../composables/useStudioPrompt'
 import { estimateTokenCount } from '@shared/textTokens'
 import { isImageLikePath, renderChatMarkdown, renderInlineChatRefs } from '@shared/chatMarkdown'
@@ -246,10 +248,14 @@ const localTimezoneLabel = computed(() => {
 let automationTimer: number | null = null
 
 /** Codex 风格左侧栏（Projects & Conversations）开合、筛选开合与搜索词 */
-const projectsPanelOpen = ref(true)
+const projectsPanelOpen = ref(false)
 const projectsFilterOpen = ref(false)
 const projectsFilterQuery = ref('')
 const conversationsSectionOpen = ref(true)
+
+watch(projectsPanelOpen, (open) => {
+  setChatSidebarExpanded(open)
+})
 
 const filteredSidebarSessions = computed(() => {
   const q = projectsFilterQuery.value.trim().toLowerCase()
@@ -1440,7 +1446,19 @@ function renderChatBody(text: string): string {
  * 代码原文直接取同组 <code> 的文本，不必把内容再塞进属性。
  */
 async function onCodeCopyClick(event: MouseEvent): Promise<void> {
-  const button = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-copy-code]')
+  const target = event.target as HTMLElement | null
+  const inlineRef = target?.closest<HTMLElement>('.inline-ref')
+  if (inlineRef) {
+    const rawText = (inlineRef.dataset.chatImgFallback || inlineRef.textContent || '')
+      .trim()
+      .replace(/^@+(?:image:\s*)?/i, '')
+      .trim()
+    if (rawText) {
+      await onOpenPresentFile(rawText, false)
+      return
+    }
+  }
+  const button = target?.closest<HTMLElement>('[data-copy-code]')
   if (!button) return
   const code = button.closest('.md-code')?.querySelector('code')?.textContent ?? ''
   if (!code) return
@@ -2507,10 +2525,89 @@ async function onCancelSchedule(scheduleId: string): Promise<void> {
   )
 }
 
-/** 打开或定位 present 工具交付的文件 */
-async function onOpenPresentFile(filePath: string, revealInFolder = false): Promise<void> {
-  if (typeof window.studio?.openHarnessFile !== 'function') return
-  await window.studio.openHarnessFile({ path: filePath, revealInFolder }).catch(() => undefined)
+/** 打开或定位 present 工具交付的文件：定位文件在系统资源管理器打开，打开在工作区打开 */
+async function onOpenPresentFile(
+  filePath: string,
+  revealInFolder = false,
+  caption?: string
+): Promise<void> {
+  const cleanedPath = String(filePath ?? '').trim()
+  if (!cleanedPath || typeof window.studio?.openHarnessFile !== 'function') return
+  const extraWorkspaces = chatProjectTree.value
+    .map((g) => g.rootPath?.trim())
+    .filter((p): p is string => Boolean(p))
+
+  if (revealInFolder) {
+    const res = await window.studio
+      .openHarnessFile({
+        path: cleanedPath,
+        workspace: workspace.value,
+        extraWorkspaces,
+        revealInFolder: true,
+        mode: 'reveal'
+      })
+      .catch((err): OpenHarnessFileResult => ({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err)
+      }))
+    if (!res?.ok && res?.error) {
+      pushStatus(res.error, 'error')
+    }
+    return
+  }
+
+  // 在工作区打开：若匹配当前 Studio 工程内具备专用编辑器的资产（画布/剧本/世界观/节拍/导演台），直接打开对应资产编辑器
+  const normInput = cleanedPath.replace(/\\/g, '/').toLowerCase()
+  const projRootNorm = (project.rootPath ?? '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase()
+  const matchedAsset = project.assets.find((a) => {
+    const rel = (a.relativePath ?? '').trim().replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase()
+    if (!rel) return false
+    if (rel === normInput) return true
+    if (projRootNorm && `${projRootNorm}/${rel}` === normInput) return true
+    return false
+  })
+  if (
+    matchedAsset &&
+    workspaceStore.canOpenEditorForAssetId(matchedAsset.id) &&
+    ['canvas', 'screenplay', 'world', 'beat', 'director'].includes(matchedAsset.type)
+  ) {
+    workspaceStore.openEditorForAssetId(matchedAsset.id)
+    return
+  }
+
+  const res = await window.studio
+    .openHarnessFile({
+      path: cleanedPath,
+      workspace: workspace.value,
+      extraWorkspaces,
+      mode: 'read'
+    })
+    .catch((err): OpenHarnessFileResult => ({
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    }))
+
+  if (!res?.ok || !res.absPath) {
+    if (res?.error) {
+      pushStatus(res.error, 'error')
+    }
+    return
+  }
+
+  workspaceStore.openWorkspaceFile({
+    absPath: res.absPath,
+    fileName: res.fileName || assetFileName(res.absPath),
+    ext: res.ext || '',
+    kind: res.kind || 'text',
+    content: res.content,
+    mediaUrl: res.mediaUrl,
+    sizeBytes: res.sizeBytes,
+    caption
+  })
 }
 
 /** 导出指定会话或当前会话为 dsh .zip 归档包 */
@@ -3793,7 +3890,11 @@ async function onClickNextActionPill(
 ): Promise<void> {
   const allPaths = [msg.relativePath, ...(msg.relatedPaths ?? [])].filter(Boolean)
   const psdOrTarget = allPaths.find((p) => p.toLowerCase().endsWith('.psd')) || msg.relativePath
-  if (pill.localAction === 'open-default-app' || pill.localAction === 'reveal-in-folder') {
+  if (pill.localAction === 'reveal-in-folder') {
+    await onOpenPresentFile(psdOrTarget, true)
+    return
+  }
+  if (pill.localAction === 'open-default-app') {
     await openDeliverableFile(psdOrTarget)
     return
   }
@@ -4312,12 +4413,16 @@ onBeforeUnmount(() => {
             v-for="group in filteredChatProjectTree"
             :key="group.scope"
             class="codex-project-group"
-            :class="{ 'is-active-project': group.scope === activeChatScope }"
+            :class="{
+              'is-active-project': group.scope === activeChatScope,
+              'is-expanded': !group.collapsed
+            }"
           >
             <div class="codex-project-folder-row" :title="group.rootPath">
               <button
                 type="button"
                 class="codex-project-folder-btn"
+                :aria-expanded="!group.collapsed"
                 @click.stop="toggleProjectCollapsed(group.scope)"
               >
                 <svg
@@ -4327,14 +4432,23 @@ onBeforeUnmount(() => {
                   height="14"
                   fill="none"
                   stroke="currentColor"
-                  stroke-width="1.4"
+                  stroke-width="1.35"
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   aria-hidden="true"
                 >
                   <path
+                    v-if="group.collapsed"
                     d="M2 4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h5.2A1.2 1.2 0 0 1 14 5.8v6A1.2 1.2 0 0 1 12.8 13H3.2A1.2 1.2 0 0 1 2 11.8V4.2Z"
                   />
+                  <template v-else>
+                    <path
+                      d="M2 11.8V4.2A1.2 1.2 0 0 1 3.2 3h3l1.4 1.6h4.6A1.2 1.2 0 0 1 13.4 5.8v1.7"
+                    />
+                    <path
+                      d="M2.1 12.1 3.5 8.3a1 1 0 0 1 .94-.65h9.2a.8.8 0 0 1 .76 1.05l-1.25 3.6a1.1 1.1 0 0 1-1.04.7H3.1a1 1 0 0 1-1-.9Z"
+                    />
+                  </template>
                 </svg>
                 <span class="codex-project-name">{{ group.name }}</span>
               </button>
@@ -5539,7 +5653,12 @@ onBeforeUnmount(() => {
                 </div>
                 <ul class="present-file-list">
                   <li v-for="file in msg.files" :key="file.path" class="present-file-item">
-                    <div class="present-file-info" :title="file.path">
+                    <div
+                      class="present-file-info"
+                      style="cursor: pointer"
+                      :title="file.path"
+                      @click.stop="onOpenPresentFile(file.path, false, file.caption)"
+                    >
                       <span class="present-file-name">{{ assetFileName(file.path) }}</span>
                       <span v-if="file.caption" class="present-file-caption">{{
                         file.caption
@@ -5550,14 +5669,14 @@ onBeforeUnmount(() => {
                       <button
                         type="button"
                         class="present-btn"
-                        @click.stop="onOpenPresentFile(file.path, false)"
+                        @click.stop="onOpenPresentFile(file.path, false, file.caption)"
                       >
                         {{ t('studio.chat.presentOpenFile') }}
                       </button>
                       <button
                         type="button"
                         class="present-btn"
-                        @click.stop="onOpenPresentFile(file.path, true)"
+                        @click.stop="onOpenPresentFile(file.path, true, file.caption)"
                       >
                         {{ t('studio.chat.presentRevealFile') }}
                       </button>
@@ -6573,8 +6692,8 @@ onBeforeUnmount(() => {
 }
 
 .chat-main {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 220px;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -6711,7 +6830,7 @@ onBeforeUnmount(() => {
 .codex-projects-panel {
   width: 226px;
   min-width: 196px;
-  max-width: 44%;
+  max-width: calc(100% - 220px);
   height: 100%;
   min-height: 0;
   box-sizing: border-box;
@@ -6926,13 +7045,14 @@ onBeforeUnmount(() => {
 }
 
 .codex-project-group.is-active-project .codex-project-folder-btn,
+.codex-project-group.is-expanded .codex-project-folder-btn,
 .codex-project-folder-btn:hover {
   color: var(--text);
 }
 
 .codex-folder-icon {
   flex: none;
-  color: var(--text-muted);
+  color: currentColor;
 }
 
 .codex-project-name {
@@ -10498,6 +10618,7 @@ onBeforeUnmount(() => {
   border-radius: 3px;
   padding: 0 3px;
   word-break: break-all;
+  cursor: pointer;
 }
 
 /* 图片卡片本体是 span（避免块级元素出现在 <p> 里被浏览器拆包），卡片名要显式占一行 */

@@ -10,6 +10,7 @@ import {
   isBeatAsset,
   type AssetInfo
 } from '@shared/domain'
+import type { HarnessFileViewerKind } from '@shared/ipc'
 import { isLayeredSourceImageFilePath, isVectorImageFilePath } from '@shared/import'
 import { parseGraphHostContext } from '@shared/editorGlobals'
 import { useEditorKernel } from '../editor/kernel'
@@ -33,6 +34,32 @@ export type {
 } from '../features/graph/model/editorDive'
 
 export type CloseEditorsForAssetsResult = { ok: true } | { ok: false; reason: 'graph-running' }
+
+export interface WorkspaceOpenedFile {
+  id: string
+  absPath: string
+  fileName: string
+  ext: string
+  kind: HarnessFileViewerKind
+  content?: string
+  mediaUrl?: string
+  sizeBytes?: number
+  caption?: string
+  dirty?: boolean
+  nonce: number
+}
+
+function workspaceFileIdForPath(absPath: string): string {
+  const normalized = absPath.trim().replace(/\\/g, '/').toLowerCase()
+  let h1 = 0x811c9dc5
+  let h2 = 0x01000193
+  for (let i = 0; i < normalized.length; i++) {
+    const code = normalized.charCodeAt(i)
+    h1 = Math.imul(h1 ^ code, 0x01000193) >>> 0
+    h2 = Math.imul(h2 ^ (code + i), 0x85ebca6b) >>> 0
+  }
+  return `${h1.toString(36)}_${h2.toString(36)}`
+}
 
 type CloseEditorsForAssetsFn = (assetIds: string[]) => CloseEditorsForAssetsResult
 
@@ -58,6 +85,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const openWorldEditorIds = ref<string[]>([])
   const openBeatEditorIds = ref<string[]>([])
   const openDirectorEditorIds = ref<string[]>([])
+  const openWorkspaceFileIds = ref<string[]>([])
+  const workspaceFilesById = ref<Record<string, WorkspaceOpenedFile>>({})
   const selectedAssetId = computed(() =>
     editor.selection.current.value.kind === 'asset'
       ? (editor.selection.current.value.id ?? null)
@@ -360,6 +389,43 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     focusEditorGlobalsForAsset(directorAssetId)
   }
 
+  function openWorkspaceFile(
+    file: Omit<WorkspaceOpenedFile, 'id' | 'nonce'> & { id?: string }
+  ): string {
+    const id = file.id?.trim() || workspaceFileIdForPath(file.absPath)
+    const prev = workspaceFilesById.value[id]
+    workspaceFilesById.value = {
+      ...workspaceFilesById.value,
+      [id]: {
+        ...prev,
+        ...file,
+        id,
+        dirty: prev?.dirty ? prev.dirty : Boolean(file.dirty),
+        content: prev?.dirty && prev.content !== undefined ? prev.content : file.content,
+        nonce: (prev?.nonce ?? 0) + 1
+      }
+    }
+    openWorkspaceFileIds.value = bumpOpenId(openWorkspaceFileIds.value, id)
+    focusProjectGlobals()
+    return id
+  }
+
+  function updateWorkspaceFile(id: string, patch: Partial<WorkspaceOpenedFile>): void {
+    const cur = workspaceFilesById.value[id]
+    if (!cur) return
+    workspaceFilesById.value = {
+      ...workspaceFilesById.value,
+      [id]: {
+        ...cur,
+        ...patch
+      }
+    }
+  }
+
+  function resolveWorkspaceFileById(id: string): WorkspaceOpenedFile | null {
+    return workspaceFilesById.value[id] ?? null
+  }
+
   function clearInspectorForClosedEditor(assetId: string): void {
     const sel = editor.selection.current.value
     if (sel.kind === 'asset' && sel.id === assetId) {
@@ -407,6 +473,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     clearInspectorForClosedEditor(directorAssetId)
   }
 
+  function consumeWorkspaceFile(fileId: string): void {
+    openWorkspaceFileIds.value = openWorkspaceFileIds.value.filter((id) => id !== fileId)
+    if (fileId in workspaceFilesById.value) {
+      const { [fileId]: _removed, ...rest } = workspaceFilesById.value
+      workspaceFilesById.value = rest
+    }
+  }
+
   /** 从所有打开列表中移除该资产（面板未挂载时的兜底） */
   function consumeEditorsForAsset(assetId: string): void {
     consumeAssetEditor(assetId)
@@ -425,6 +499,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds.value = []
     openBeatEditorIds.value = []
     openDirectorEditorIds.value = []
+    openWorkspaceFileIds.value = []
+    workspaceFilesById.value = {}
     draggingAsset.value = null
     assetBrowserReveal.value = null
     diveClearAll()
@@ -581,6 +657,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditorIds,
     openBeatEditorIds,
     openDirectorEditorIds,
+    openWorkspaceFileIds,
+    workspaceFilesById,
     selectedAssetId,
     selectedAsset,
     openAssetEditor,
@@ -591,12 +669,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     openWorldEditor,
     openBeatEditor,
     openDirectorEditor,
+    openWorkspaceFile,
+    updateWorkspaceFile,
+    resolveWorkspaceFileById,
     consumeAssetEditor,
     consumeScreenplayEditor,
     consumeCanvasEditor,
     consumeWorldEditor,
     consumeBeatEditor,
     consumeDirectorEditor,
+    consumeWorkspaceFile,
     consumeEditorsForAsset,
     resetSession,
     prepareProjectSwitch,

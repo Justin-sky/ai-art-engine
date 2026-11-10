@@ -5644,6 +5644,8 @@ export default {
       toolbar: {
         addScene: '+ 场次',
         addBio: '+ 人物小传',
+        addBible: '+ 漫剧圣经',
+        addHookFooter: '+ 卡点尾栏',
         addAction: '+ 动作 △',
         addVo: '+ 旁白/OS',
         format: '✨ 规范排版',
@@ -6747,19 +6749,23 @@ export default {
           cast: '按分镜实体表为每个角色 / 地点生成设定图，供拍摄时按镜头出场名单自动带参考图锁一致性。描述不变不重画。',
           shot: '取分镜中的一镜：输出关键帧提示词、动态提示词与该镜出场设定图，直接接图片 / 视频生成节点精修。',
           render:
-            '逐镜拍摄关键帧（自动带出场角色 / 地点设定图）→ 可选视觉质检不合格自动重拍 → 可选以关键帧为首帧图生视频。按提示词指纹增量缓存，改一镜只重拍一镜。'
+            '逐镜拍摄关键帧（自动带出场角色 / 地点设定图）→ 可选视觉质检不合格自动重拍 → 可选以关键帧为首帧图生视频。按提示词指纹增量缓存，改一镜只重拍一镜。',
+          publish:
+            '阶段 5 分集发布包：自动汇总本集 3:4 竖版与 4:3 横版封面提示词、片尾悬念定格卡、下集预告、3 组爆款标题、简介、话题标签与合规声明。'
         },
         stageTabs: {
           breakdown: '① 分镜拆解',
           review: '② 导演审核',
           cast: '③ 角色场景设定',
-          render: '④ 批量拍摄'
+          render: '④ 批量拍摄',
+          publish: '⑤ 分集发布包'
         },
         runCurrentStage: {
           breakdown: '运行分镜拆解',
           review: '运行导演审核',
           cast: '运行角色设定',
-          render: '运行批量拍摄'
+          render: '运行批量拍摄',
+          publish: '刷新分集发布包'
         },
         runFullPipeline: '全流程运行',
         runFullPipelineHint:
@@ -6787,7 +6793,9 @@ export default {
         kind: {
           character: '角色',
           location: '地点',
-          prop: '道具'
+          prop: '道具',
+          style: '风格定调',
+          vfx: '特效'
         },
         force: '强制重新生成（忽略缓存）',
         lockHint: '锁定：AI 不再改写 / 重画',
@@ -6816,13 +6824,15 @@ export default {
           breakdown: '补充导演要求',
           review: '额外审核标准',
           cast: '设定图补充要求',
-          render: '补充要求'
+          render: '补充要求',
+          publish: '发布包补充要求'
         },
         instructionPlaceholder: {
           breakdown: '如：开场 3 镜内抛出悬念；多用特写表现情绪',
           review: '如：每场必须有建立镜头；对白镜头不超过 5 秒',
           cast: '如：统一三视图白底；服装偏写实',
-          render: '如：统一电影感侧逆光；人物比例写实；浅景深'
+          render: '如：统一电影感侧逆光；人物比例写实；浅景深',
+          publish: '如：突出大女主反杀爽点与悬念钩子'
         },
         shots: '分镜（{n} 镜）',
         shotsHint: '点击镜头展开编辑；修改过的镜头自动锁定，重新拆解 / 审核修订都不会改写。',
@@ -6854,6 +6864,8 @@ export default {
         qcFail: '质检未过',
         renderedKeyframe: '关键帧已就绪',
         renderedVideo: '视频已就绪',
+        renderedVoice: '配音已就绪',
+        renderAudioToggle: '自动合成角色台词配音 (TTS)',
         pendingRender: '待拍摄',
         runCastEntry: '生成设定图',
         rerunCastEntry: '重绘此项',
@@ -6898,7 +6910,87 @@ export default {
         previzRefHint:
           '来自 3D 导演台抓拍回写的白模机位构图参考图，生图与生视频时将严格遵循其机位透视与人物站位',
         previzVideoRefLabel: '3D 运镜视频',
-        previzVideoRefHint: "3D 白模运镜视频（生成视频时作为 {'@'}2 运镜参考视频传入）"
+        previzVideoRefHint: "3D 白模运镜视频（生成视频时作为 {'@'}2 运镜参考视频传入）",
+        manjuGenre: {
+          title: 'AI 漫剧 21 题材 Skill',
+          auto: '✨ 自动识别题材（按剧本内容）',
+          applyDefaults: '⚡ 套用题材画幅与视觉风格',
+          appliedDefaults: '✓ 已套用「{name}」9:16 · {shots}镜 · {dur}s/镜',
+          shotRange: '推荐镜数：{min}~{max} 镜',
+          durationRange: '单镜时长：{min}~{max}s',
+          dialogueRange: '对白预算：{min}~{max} 字',
+          progressRule: '进度公式：{rule}',
+          enableStyleAnchor: '自动生成 STYLE01 风格定调图'
+        },
+        biblePanel: {
+          title: '阶段 1 · 项目圣经 & 阶段 3 · 分集卡点',
+          coldOpen: '黄金前3秒冷开场',
+          climax: '本集爽点 / 高潮',
+          cliffhanger: '结尾断章钩子',
+          progress: '本集推进进度',
+          episodeProgress: '本集推进进度',
+          worldLight: '全局世界主光定律',
+          redlines: '题材穿帮与避坑红线'
+        },
+        auditPanel: {
+          title: '阶段 4 · 11 项工业连续性与逻辑审计',
+          spokenStats: '出声对白 {spoken} 字（占比 {ratio}% · 要求 ≥67%） · 内心与旁白 {inner} 字'
+        },
+        shotManju: {
+          lipSyncBadge: '🗣️ 口型镜',
+          lipSyncShot: '口型镜',
+          closedMouthBadge: '🤐 闭嘴镜（内心/旁白）',
+          closedMouthShot: '闭嘴镜（内心/旁白）',
+          toggleAB: 'A/B段工业详情',
+          abSectionToggle: 'A/B段工业详情',
+          focalLength: '焦段',
+          subjectPosition: '主体构图位置',
+          blockingAndPose: 'A段 · 首帧定格姿态（禁写连续动作）',
+          expression: 'A段 · 微表情与视线方向',
+          lighting: 'A段 · 受光与世界主光方向',
+          videoBeatsTitle: 'B段 · 7行分时段动态拍点（{n} 段）',
+          addVideoBeat: '+ 新增时间段',
+          modeSpoken: '出声',
+          modeInner: '内心',
+          modeVo: '画外'
+        },
+        castManju: {
+          heightCm: '身高(cm)',
+          stateCode: '状态码',
+          voicePreset: '角色专属音色 (TTS)',
+          consistencyAnchors: '外观一致性硬锚点',
+          worldLightDirection: '固定世界主光方向',
+          dimensions: '空间/道具尺寸',
+          syncSeriesBibleBtn: '📌 设为全剧共享设定库',
+          syncedSeriesBibleBtn: '📌 已设为全剧共享设定库',
+          useSharedCastToggle: '自动继承画布全剧共享设定库（跨集免连线）',
+          sharedCastActiveBadge: '🔗 已继承全剧共享设定（{n} 项）'
+        },
+        publishPanel: {
+          title: '阶段 5 · 分集发布包（封面 / 标题 / 预告 / 合规）',
+          subtitle: '自动汇总双规格封面提示词、片尾悬念卡、下集预告与平台分发文案',
+          copyAll: '📋 一键复制完整发布包 Markdown',
+          copied: '✓ 已复制',
+          composedVideoTitle: '🎬 单集完整成片 (.mp4)',
+          composedVideoStats: '已合入 {shots} 镜画面 · {voices} 镜角色配音',
+          composeVideoBtn: '🎬 一键合成单集完整成片 (.mp4)',
+          composingVideoBtn: '⏳ 正在合成成片…',
+          composedVideoEmptyHint:
+            '完成「④ 批量拍摄」后，点击右侧按钮或运行本阶段即可自动把所有分镜视频/关键帧、角色 TTS 配音与花字字幕合成为单集完整 .mp4 成片。',
+          verticalCover: '竖版 3:4 爆款封面提示词',
+          coverVertical: '竖版 3:4 爆款封面提示词',
+          horizontalCover: '横版 4:3 信息流封面提示词',
+          coverHorizontal: '横版 4:3 信息流封面提示词',
+          endCard: '片尾悬念定格卡文案',
+          endCardText: '片尾悬念定格卡文案',
+          nextTeaser: '下集高能预告钩子',
+          titles: '3 组爆款备选标题（每行一条）',
+          synopsis: '分集简介（80~120字）',
+          hashtags: '话题标签（空格或逗号分隔）',
+          pinnedComment: '置顶评论互动话术',
+          compliance: 'AI 创作合规声明',
+          empty: '请先完成「① 分镜拆解」，系统将自动为您生成完整分集发布包。'
+        }
       },
       episode: {
         anchorHint: '从上游 9宫格分镜表选择要提取的宫格（1~9）；运行后输出该格提示词。',

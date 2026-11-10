@@ -5,11 +5,14 @@ import { useStudioI18n } from '../../composables/useStudioI18n'
 import { useEditorKernel } from '../kernel'
 import { draftToAssetInfo, useDraftStore } from '../../stores/drafts'
 import { useProjectStore } from '../../stores/project'
+import { useWorkspaceStore } from '../../stores/workspace'
 
-export type EditorPanelKind = 'asset' | 'screenplay' | 'canvas' | 'world' | 'beat' | 'director'
+export type EditorPanelKind =
+  'asset' | 'screenplay' | 'canvas' | 'world' | 'beat' | 'director' | 'file'
 
 export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
   const project = useProjectStore()
+  const workspace = useWorkspaceStore()
   const editor = useEditorKernel()
   const { t, locale, assetTypeLabel } = useStudioI18n()
 
@@ -22,6 +25,11 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
   }
 
   function baseTitle(kind: EditorPanelKind, assetId: string): string {
+    if (kind === 'file') {
+      const opened = workspace.resolveWorkspaceFileById(assetId)
+      if (!opened) return '文档' // cjk-ok
+      return opened.dirty ? `${opened.fileName} *` : opened.fileName
+    }
     const asset = resolveEditorAsset(assetId)
     const prefix =
       kind === 'asset'
@@ -35,6 +43,8 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
 
   function documentIds(kind: EditorPanelKind, assetId: string): string[] {
     switch (kind) {
+      case 'file':
+        return []
       case 'asset':
       case 'screenplay':
         return [`asset:${assetId}`, `graph:asset:${assetId}`]
@@ -68,7 +78,8 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
         ['canvas-editor-', 'canvas'],
         ['world-editor-', 'world'],
         ['beat-editor-', 'beat'],
-        ['director-editor-', 'director']
+        ['director-editor-', 'director'],
+        ['file-editor-', 'file']
       ]
       const match = definitions.find(([prefix]) => panel.id.startsWith(prefix))
       if (!match) continue
@@ -80,6 +91,13 @@ export function usePanelTitles(dockApi: ShallowRef<DockviewApi | null>) {
   watch(
     () =>
       editor.documents.sessions.value.map((session) => `${session.id}:${session.status}`).join('|'),
+    apply
+  )
+  watch(
+    () =>
+      Object.values(workspace.workspaceFilesById)
+        .map((f) => `${f.id}:${f.fileName}:${f.dirty ? 1 : 0}`)
+        .join('|'),
     apply
   )
 

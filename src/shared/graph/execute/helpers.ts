@@ -55,20 +55,25 @@ export async function hydrateTextItems(
  */
 export function resolveGalleryOutputsFromNodeParams(
   params: GraphNodeParams | undefined | null,
-  options?: { typeId?: string | null }
+  options?: { typeId?: string | null; nodeTitle?: string | null }
 ): Record<string, GraphValue> | null {
   if (!params) return null
 
   const generatedImages = params.generatedImages
   if (Array.isArray(generatedImages) && generatedImages.length) {
-    const items: GraphImageItem[] = generatedImages.map((item) => ({
-      id: item.id,
-      ...(item.title ? { title: item.title } : {}),
-      ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
-      dataUrl: item.dataUrl ?? '',
-      relativePath: item.relativePath,
-      createdAt: item.createdAt
-    }))
+    const fallbackNodeTitle =
+      generatedImages.length === 1 ? options?.nodeTitle?.trim() || undefined : undefined
+    const items: GraphImageItem[] = generatedImages.map((item) => {
+      const resolvedTitle = item.title?.trim() || fallbackNodeTitle
+      return {
+        id: item.id,
+        ...(resolvedTitle ? { title: resolvedTitle } : {}),
+        ...(item.layerPrompt ? { layerPrompt: item.layerPrompt } : {}),
+        dataUrl: item.dataUrl ?? '',
+        relativePath: item.relativePath,
+        createdAt: item.createdAt
+      }
+    })
     if (options?.typeId === 'ui.componentLib') {
       const lib = parseUiComponentLibrary(params.uiComponentLibrary ?? '')
       if (lib?.items?.length) {

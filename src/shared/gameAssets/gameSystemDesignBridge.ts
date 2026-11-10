@@ -1433,7 +1433,81 @@ export function synthesizeGameSystemDocOffline(opts: SynthesizeGameSystemDocOpti
       .join('\n')
   }
 
-  const wb = opts.wb ?? createMxWorkbenchPreset('short_drama_progression')
+  // 未连接上游机制设计 / 数值系统时：只按系统原型输出题材中立的数值占位，
+  // 绝不回落到某个具体 IP 预设（如短剧逆袭的「至尊黑卡 / 江城首富」）污染无关策划案。
+  if (!opts.wb) {
+    const featureBlocksNoWb = arch.defaultFeatures
+      .map((f, idx) =>
+        [
+          `## 3.${idx + 1} [${f.id}] ${f.nameZh}（优先级：${f.priority}）`,
+          `- **功能编号与名称**：\`${f.id}\` · ${f.nameZh} (${f.nameEn})`,
+          `- **触发方式与入口**：${f.triggerZh}`,
+          `- **规则描述（流程、条件、结算公式）**：`,
+          `  - ${f.rulesZh}`,
+          `  - 结算公式：待接入上游「机制设计 / 数值系统」后自动绑定（当前为占位）`,
+          `- **优先级**：\`${f.priority}\``,
+          `- **边界与异常处理**：${f.edgeCasesZh}`
+        ].join('\n')
+      )
+      .join('\n\n')
+
+    const metricRows = Array.from(
+      new Map(
+        arch.defaultScreens.flatMap((scr) => scr.boundMetrics.map((m) => [m, scr.titleZh] as const))
+      ).entries()
+    )
+      .map(
+        ([metric, screenTitle]) => `| \`${metric}\` | ${screenTitle} | 待配置 | 待接入数值系统 |`
+      )
+      .join('\n')
+
+    return [
+      `# 系统概述`,
+      `- **系统名称与品类定位**：${arch.icon} **${arch.labelZh}**（\`${arch.id}\`）`,
+      ...(instr ? [`- **定制策划要求**：${instr}`] : []),
+      `- **核心玩法循环（Core Loop）**：${arch.coreLoopZh}`,
+      `- **上下游系统耦合关系**：`,
+      `  - 上游可选接入 **机制设计 (\`game.economy\`)**、**数值系统 (\`game.numerical\`)** 与 **小说 IP (\`asset.novel\`)**，接入后自动注入结算公式、配表与世界观设定；`,
+      `  - 下游驱动 **UI 界面拆分 (\`ui.split\`) ➔ UI 界面生成 (\`ui.gen\`) ➔ UI 图层分离 (\`image.layerSplit\`)** 或 **图集拼装 UI (\`ui.atlasCompose\`)**。`,
+      ``,
+      `# 系统目标`,
+      `- **玩家体验目标**：${arch.playerGoalZh}`,
+      `- **设计目标**：${arch.designGoalZh}`,
+      `- **可验证验收标准（Acceptance Criteria）**：`,
+      `  1. 核心结算公式与数值配表一致，结算精度误差 \`< 0.01%\`；`,
+      `  2. 概率类玩法（掉落 / 抽取）的保底与期望参数需与数值配表对齐并可复现；`,
+      `  3. 核心流程首次独立完成率期望 \`>= 90%\`，空态与错误态覆盖率 \`100%\`。`,
+      ``,
+      `# 功能点设计`,
+      featureBlocksNoWb,
+      ``,
+      `# UI 布局设计`,
+      screenBlocks,
+      ``,
+      `# UI 要求`,
+      `- **视觉层级与一致性**：严格区分底层环境背景（Backdrop）、九宫格可拉伸容器面板（9-Slice Containers）、顶栏装饰横幅（Ornaments）与高频交互控件（Interactive Controls），不要指定颜色，由下游统一美术风格参考图决定色板。`,
+      `- **栅格与多分辨率安全区**：采用 8pt 基准栅格；竖屏（9:16）顶部预留 44px 刘海安全区、底部预留 34px 手势条安全区；横屏（16:9）左右两侧预留 48px 安全边距。`,
+      `- **交互触控与动效反馈**：所有可点击按钮最小热区不小于 \`48×48px\`；按下态 80ms 缩放反馈，同命令 300ms 去重防抖。`,
+      ``,
+      `# 数据与配置`,
+      `## 6.0 核心结算公式与概率参数`,
+      `- **核心结算公式**：待接入上游机制设计 / 数值系统后自动注入`,
+      `- **概率与保底参数**：待配置（如存在掉落 / 抽取玩法，需给出基础概率、软保底起点与硬保底抽数）`,
+      ``,
+      `## 6.1 界面绑定数值指标配置表`,
+      `| 指标ID | 所属界面 | 默认值 | 来源 |`,
+      `| :--- | :--- | :--- | :--- |`,
+      metricRows,
+      extraContextBlock,
+      `# 开放问题与风险`,
+      `- **数值配表缺失**：当前未连接上游数值系统，公式与配表为占位，正式交付前需接入或补全。`,
+      `- **UI 图层切分规范**：下游 \`image.layerSplit\` 进行九宫格切图时，需确保 \`03_Panels_Containers\` 层边框四角装饰与中间拉伸区边界清晰无遮挡。`
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  const wb = opts.wb
   const multAnalysis = analyzeMultiplierPipeline(wb.multiplier)
   const lootSim = runMxLootAndSubstatSimulation({ ...wb.lootRoll, runs: 60 })
   const combatSim = runMxCombatKernelSimulation({ ...wb.combatKernel, runs: 60 })
