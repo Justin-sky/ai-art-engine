@@ -89,6 +89,11 @@ const READ_TOOLS = new Set([
   'skill_search',
   'skill_inspect_github',
   'web_extract_article',
+  'project_git_status',
+  'project_git_diff',
+  'vision_local_ocr',
+  'vision_local_yolo',
+  'schedule_list',
   'ask_user'
 ])
 

@@ -9212,7 +9212,7 @@ function relaxTargetNodeCapInPlace(
   }
 }
 
-function applyTunableToDocClone(
+export function applyTunableToDocClone(
   baseDoc: MxDocument,
   variableKind: MxTunableKind,
   variableId: string,

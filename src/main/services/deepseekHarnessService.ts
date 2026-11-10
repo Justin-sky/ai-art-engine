@@ -104,6 +104,7 @@ import {
   releaseHarnessRunAccess,
   setActiveHarnessRun,
   setCanvasTaskSettledHook,
+  setHarnessScheduleHandlers,
   setMcpToolSettledHook,
   syncActiveCanvasFromWorkspaceContext
 } from './mcpServerService'
@@ -4105,6 +4106,13 @@ export async function controlHarnessGoal(
 }
 
 /**
+ * 获取当前会话内待触发的定时提醒快照。
+ */
+export function listHarnessSchedules(): HarnessScheduleView[] {
+  return [...lastSchedulesSnapshot]
+}
+
+/**
  * 取消会话内待触发的定时提醒。
  */
 export async function deleteHarnessSchedule(
@@ -4513,6 +4521,11 @@ setMcpToolSettledHook((ev) => {
       at: Date.now()
     })
   }
+})
+
+setHarnessScheduleHandlers({
+  list: () => listHarnessSchedules(),
+  delete: (input) => deleteHarnessSchedule(input)
 })
 
 setCanvasTaskSettledHook((report) => {

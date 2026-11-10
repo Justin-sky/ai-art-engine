@@ -86,6 +86,14 @@ const TOOL_TITLE_ZH: Record<string, string> = {
   ask_user_question: '向用户提问确认',
   web_extract_article: '提取网页正文',
   web_fetch_video: '检索下载影视名场面素材',
+  machinations_building_blocks: '机制设计官方积木库',
+  machinations_studio: '机制设计高阶算子与导出',
+  schedule_list: '查询定时提醒列表',
+  schedule_delete: '取消定时提醒',
+  vision_local_ocr: '本地离线文字识别 (OCR)',
+  vision_local_yolo: '本地离线视觉检测 (YOLO/SAM2)',
+  project_git_status: '查询工程 Git 变更状态',
+  project_git_diff: '读取工程 Git 文件差异',
   web_search: '联网搜索',
   web_fetch: '读取网页',
   read: '读取文件',
@@ -138,7 +146,15 @@ const TOOL_TITLE_EN: Record<string, string> = {
   skill_search: 'Search Skills',
   skill_install: 'Install Skill',
   skill_uninstall: 'Uninstall Skill',
-  skill: 'Load Skill'
+  skill: 'Load Skill',
+  machinations_building_blocks: 'Machinations Building Blocks',
+  machinations_studio: 'Machinations Studio Operators',
+  schedule_list: 'List Scheduled Tasks',
+  schedule_delete: 'Cancel Scheduled Task',
+  vision_local_ocr: 'Local OCR Text Recognition',
+  vision_local_yolo: 'Local Vision Detection (YOLO/SAM2)',
+  project_git_status: 'Project Git Status',
+  project_git_diff: 'Project Git Diff'
 }
 
 /** 获取工具在对话流中的友好显示名称 */
@@ -471,6 +487,46 @@ export function extractMcpToolStepsFromArgs(rawName: string, rawArgs: unknown): 
     case 'web_fetch_video': {
       const q = str(args, 'query') || str(args, 'url')
       return [`检索并下载名场面视频${q ? `「${q}」` : ''}`]
+    }
+    case 'machinations_building_blocks': {
+      const op = str(args, 'op') || 'list'
+      const bid = str(args, 'blockId')
+      const q = str(args, 'query')
+      if (op === 'insert') return [`向机制图嵌入官方积木${bid ? `「${bid}」` : ''}`]
+      if (op === 'create_doc') return [`由官方积木${bid ? `「${bid}」` : ''}创建机制图`]
+      return [`检索机制设计积木库${q ? `「${q}」` : ''}`]
+    }
+    case 'machinations_studio': {
+      const op = str(args, 'op')
+      if (op === 'quick_fix') return ['一键诊断并闭环修复机制图拓扑与数值警告']
+      if (op === 'goal_seek') return ['运行逆向目标求解器 (Goal-Seek)']
+      if (op === 'curve_solve') return ['运行曲线反推配平引擎 (Curve Target Solver)']
+      if (op === 'parameter_sweep') return ['运行单变量敏感度扫描 (Parameter Sweep)']
+      if (op === 'matrix_2d') return ['运行双变量正交热力矩阵 (2D Parameter Matrix)']
+      if (op === 'export') {
+        const fmt = str(args, 'format') || 'godot'
+        return [`导出机制图代码与图表（${fmt}）`]
+      }
+      return ['执行机制设计高阶算子']
+    }
+    case 'schedule_delete': {
+      const id = str(args, 'scheduleId')
+      return [`取消定时任务 ${id}`.trim()]
+    }
+    case 'vision_local_ocr': {
+      const p = str(args, 'relativePath') || str(args, 'assetId')
+      return [`本地离线 OCR 识别图片文字${p ? `（${p}）` : ''}`]
+    }
+    case 'vision_local_yolo': {
+      const task = str(args, 'task') || 'detect'
+      const p = str(args, 'relativePath') || str(args, 'assetId')
+      return [`本地视觉推理（${task}）${p ? ` · ${p}` : ''}`]
+    }
+    case 'project_git_status':
+      return ['查询工程 Git 变更列表']
+    case 'project_git_diff': {
+      const p = str(args, 'path')
+      return [`读取文件 Git 差异${p ? `（${p}）` : ''}`]
     }
     default:
       return []

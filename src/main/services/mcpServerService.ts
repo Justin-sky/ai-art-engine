@@ -16,6 +16,9 @@ import { app, ipcMain } from 'electron'
 import { AsyncSemaphore } from '@shared/asyncSemaphore'
 import {
   analyzeMxEconomyHealth,
+  applyAllMxDiagnosticQuickFixes,
+  applyTunableToDocClone,
+  autoSolveMxCurveTarget,
   buildBitmapFontManifest,
   buildGameBundleManifest,
   buildGameDataTableBundle,
@@ -24,13 +27,30 @@ import {
   buildSeamlessLoopBgmFfmpegArgs,
   buildSfxVariantFfmpegArgs,
   compilePlayableGameSandboxHtml,
+  createEmptyMxDocument,
+  createMxDocumentFromBuildingBlock,
+  exportMxDiagramSvg,
+  exportMxForecastCsv,
+  exportMxGodotGd,
+  exportMxRunCsv,
+  exportMxToMermaid,
+  exportMxUnityCs,
   generateEngineImporterScript,
   generateProceduralLevelMap,
   generateUnityMetaFile,
+  insertMxBuildingBlockIntoDocument,
   lintMxDocumentTopology,
+  MX_BUILDING_BLOCKS,
+  MX_BUILDING_BLOCK_CATEGORIES,
+  MX_BUILDING_BLOCK_DOMAINS,
+  MX_BUILDING_BLOCK_SHELVES,
   parseMxDocumentJson,
   planIncrementalBundleSync,
   planSfxVariantMatrix,
+  runMx2DParameterMatrix,
+  runMxForecast,
+  runMxGoalSeek,
+  runMxParameterSweep,
   runMxSimulation,
   type GameBundleInputItem,
   type GameBundleTargetEngine,
@@ -39,6 +59,9 @@ import {
   type GameplaySystemsInput,
   type GameShaderPresetId,
   type LevelGeneratorAlgorithm,
+  type MxDocument,
+  type MxGoalSeekMetric,
+  type MxTunableKind,
   type PlayableSandboxMode
 } from '@shared/gameAssets'
 import {
@@ -270,6 +293,9 @@ import {
   queryTutorialUiBounds
 } from './tutorialUiService'
 import { TUTORIAL_POST_DBLCLICK_FOCUS_IDS, TUTORIAL_UI_ID_HINT } from '@shared/tutorialUi'
+import { readGitFileDiff, readGitStatus } from './gitService'
+import { recognizeImageTextFromDataUrl } from './localOcrService'
+import { yoloService } from '../yolo/yoloService'
 
 /**
  * 本地 MCP 工具服务：在 127.0.0.1 上暴露一组工具端点，供 stdio MCP 桥
@@ -6116,8 +6142,1056 @@ const TOOL_DEFS: McpToolDef[] = [
         htmlRelativePath: htmlRelPath
       }
     }
+  },
+  // ── Machinations 官方机制积木库与高阶工作室算子 ──────────────────────────────
+  {
+    name: 'machinations_building_blocks',
+    title: '机制设计官方积木库 (Building Blocks)',
+    description:
+      '查询、搜索或向画布上的 `game.economy` 节点一键插入 Machinations 官方 58 个机制设计积木块（覆盖 7 大领域、6 大货架、21 个细分分类，如抽卡软硬保底、体力恢复与每日赠送、逻辑斯蒂增长、战令等级成长、波次递进、战斗暴击闪避、MMO通缩水池、装备强化风险等）。操作 `op`：\n' +
+      '- `list` / `search`：按关键词 `query`、领域 `domain`、分类 `category` 或货架 `shelf` 检索积木库，返回匹配积木的 `id`、中英文名称与描述、节点/连线数及分类目录；\n' +
+      '- `insert`：将 1 个或多个积木（`blockId` 或 `blockIds`）无冲突嵌入当前画布的 `game.economy` 节点（自动消歧重名 ID、重写公式引用、计算不重叠包围盒并包裹分组框、自动执行拓扑自愈与模拟健康度检验）；\n' +
+      '- `create_doc`：将单个 `blockId` 创建为独立可运行的完整 `MxDocument`（当 `apply: true` 时同步写入画布上的 `game.economy` 节点）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        op: {
+          type: 'string',
+          enum: ['list', 'search', 'insert', 'create_doc'],
+          description:
+            '操作类型：list / search（检索积木库）、insert（无冲突插入到画布节点）、create_doc（由积木创建新机制文档）'
+        },
+        query: {
+          type: 'string',
+          description:
+            'search/list 模式下的关键词（支持中英文，如 "体力"、"抽卡"、"保底"、"stamina"、"gacha"、"pity"、"progression"）'
+        },
+        domain: {
+          type: 'string',
+          enum: ['generic', 'games', 'business', 'tokenomics', 'economy', 'nature', 'teaching'],
+          description: '按所属领域筛选'
+        },
+        category: {
+          type: 'string',
+          description:
+            '按 21 个细分分类筛选（如 chance / flow / dynamics / measure / progression / combat / game_economy / liveops 等）'
+        },
+        shelf: {
+          type: 'string',
+          enum: ['progression', 'combat', 'economy', 'chance', 'time', 'players'],
+          description: '按快捷货架筛选'
+        },
+        blockId: {
+          type: 'string',
+          description: 'insert / create_doc 模式下要插入的积木 ID（如 "bb_gacha_soft_pity"）'
+        },
+        blockIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'insert 模式下批量依次插入的多个积木 ID 列表'
+        },
+        assetId: {
+          type: 'string',
+          description: '可选：目标画布资产 ID（默认 "current" 取当前活动画布）'
+        },
+        nodeId: {
+          type: 'string',
+          description:
+            '可选：画布上的 `game.economy` 节点 ID（省略时自动定位画布上的 `game.economy` 节点；若无则自动新建）'
+        },
+        wrapInGroup: {
+          type: 'boolean',
+          description: 'insert 时是否自动包裹带标题的子系统分组框（默认 true）'
+        },
+        locale: {
+          type: 'string',
+          enum: ['zh', 'en'],
+          description: '积木分组标题语言（默认 zh）'
+        },
+        apply: {
+          type: 'boolean',
+          description: 'insert / create_doc 是否直接写回画布上的 `game.economy` 节点（默认 true）'
+        }
+      }
+    },
+    handler: async (args) => {
+      const op = optionalString(args, 'op') ?? 'list'
+      if (op === 'list' || op === 'search') {
+        const q = (optionalString(args, 'query') ?? '').trim().toLowerCase()
+        const domain = optionalString(args, 'domain')?.trim()
+        const category = optionalString(args, 'category')?.trim()
+        const shelf = optionalString(args, 'shelf')?.trim()
+        const tokens = q.split(/[\s,，、/|-]+/).filter(Boolean)
+        const matched = MX_BUILDING_BLOCKS.filter((b) => {
+          if (domain && b.domain !== domain) return false
+          if (category && b.category !== category) return false
+          if (shelf && !b.shelves.includes(shelf as never)) return false
+          if (!tokens.length) return true
+          const hay = [
+            b.id,
+            b.domain,
+            b.category,
+            ...b.shelves,
+            b.nameZh,
+            b.nameEn,
+            b.descZh,
+            b.descEn,
+            ...b.tags
+          ]
+            .join(' ')
+            .toLowerCase()
+          return tokens.every((t) => hay.includes(t))
+        })
+        return {
+          total: matched.length,
+          catalogTotal: MX_BUILDING_BLOCKS.length,
+          domains: MX_BUILDING_BLOCK_DOMAINS,
+          shelves: MX_BUILDING_BLOCK_SHELVES,
+          categories: MX_BUILDING_BLOCK_CATEGORIES,
+          blocks: matched.map((b) => ({
+            id: b.id,
+            domain: b.domain,
+            category: b.category,
+            shelves: b.shelves,
+            nameZh: b.nameZh,
+            nameEn: b.nameEn,
+            descZh: b.descZh,
+            descEn: b.descEn,
+            tags: b.tags,
+            nodeCount: b.nodes.length,
+            edgeCount: b.edges.length
+          }))
+        }
+      }
+
+      const locale: 'zh' | 'en' = optionalString(args, 'locale') === 'en' ? 'en' : 'zh'
+      const shouldApply = args.apply !== false
+
+      if (op === 'create_doc') {
+        const blockId = readString(args, 'blockId')
+        const doc = createMxDocumentFromBuildingBlock(blockId, locale)
+        if (!doc.nodes.length) {
+          throw new Error(`未找到积木 ID：${blockId}（请先用 op="search" 查询可用 blockId）`)
+        }
+        const run = runMxSimulation(doc)
+        const health = analyzeMxEconomyHealth(doc, run)
+        let appliedInfo: { assetId: string; nodeId: string } | null = null
+        if (shouldApply && projectService.isOpen()) {
+          appliedInfo = await applyMxDocToCanvasNode(
+            optionalString(args, 'assetId'),
+            optionalString(args, 'nodeId'),
+            doc,
+            doc.title
+          )
+        }
+        return {
+          ok: true,
+          op: 'create_doc',
+          blockId,
+          applied: Boolean(appliedInfo),
+          ...(appliedInfo ?? {}),
+          health: {
+            score: health.score,
+            grade: health.grade,
+            findingsCount: health.findings.length
+          },
+          mxDocJson: JSON.stringify(doc)
+        }
+      }
+
+      if (op === 'insert') {
+        const ids = [
+          ...(optionalString(args, 'blockId') ? [optionalString(args, 'blockId')!] : []),
+          ...readStringList(args, 'blockIds')
+        ]
+        if (!ids.length) {
+          throw new Error('insert 模式需传入 blockId 或 blockIds')
+        }
+        const resolved = resolveMxDocFromArgsOrCanvas(args, { allowEmptyCreate: true })
+        const doc = resolved.doc
+        const inserted: Array<{
+          blockId: string
+          insertedNodeIds: string[]
+          insertedEdgeIds: string[]
+          groupId?: string
+        }> = []
+        for (const bid of ids) {
+          const res = insertMxBuildingBlockIntoDocument(doc, bid, {
+            wrapInGroup: args.wrapInGroup !== false,
+            locale
+          })
+          if (!res) {
+            throw new Error(`未找到积木 ID：${bid}（请先用 op="search" 查询可用 blockId）`)
+          }
+          inserted.push({
+            blockId: res.blockId,
+            insertedNodeIds: res.insertedNodeIds,
+            insertedEdgeIds: res.insertedEdgeIds,
+            groupId: res.groupId
+          })
+        }
+        const healed = applyAllMxDiagnosticQuickFixes(doc)
+        const finalDoc = healed.doc
+        const run = runMxSimulation(finalDoc)
+        const health = analyzeMxEconomyHealth(finalDoc, run)
+        let appliedInfo: { assetId: string; nodeId: string } | null = null
+        if (shouldApply && projectService.isOpen()) {
+          appliedInfo = await applyMxDocToCanvasNode(
+            resolved.assetId ?? optionalString(args, 'assetId'),
+            resolved.nodeId ?? optionalString(args, 'nodeId'),
+            finalDoc,
+            finalDoc.title
+          )
+        }
+        return {
+          ok: true,
+          op: 'insert',
+          inserted,
+          fixedCount: healed.fixedCount,
+          applied: Boolean(appliedInfo),
+          ...(appliedInfo ?? {}),
+          nodeCount: finalDoc.nodes.length,
+          edgeCount: finalDoc.edges.length,
+          health: {
+            score: health.score,
+            grade: health.grade,
+            findings: health.findings
+          }
+        }
+      }
+
+      throw new Error(`未知 op：${op}`)
+    }
+  },
+  {
+    name: 'machinations_studio',
+    title: '机制设计高阶算子与导出 (Machinations Studio)',
+    description:
+      '对画布上的 `game.economy` 节点（或直接传入的 `mxDocJson`）运行 Machinations 工作室高阶算子。支持 `op`：\n' +
+      '- `quick_fix`：一键自动诊断并闭环修复当前机制图的全部拓扑错误、饥饿转化器、死区门控锁、封顶池爆仓、资源枯竭与通胀失控（默认 `apply: true` 写回画布）；\n' +
+      '- `goal_seek`：逆向目标求解器（Auto-Balancer），在 `[minVal, maxVal]` 内自动搜索令目标节点在指定回合达到 `targetValue` 的最优参数/连线速率/初始值/容量；\n' +
+      '- `curve_solve`：曲线拖拽反推配平引擎（Direct Curve Drag Goal-Seek），给定目标节点 `targetNodeId` 在第 `atStep` 回合的期望值 `targetValue`（及可选第二锚点 `secondTarget`），自动沿上游全链路溯源并返回误差最小的 Top 配平方案；\n' +
+      '- `parameter_sweep`：单变量敏感度扫描（1D Sensitivity Sweep），沿 `[minVal, maxVal]` 采样计算各追踪池终值、存活步数与产出回收比响应曲线；\n' +
+      '- `matrix_2d`：双变量正交参数热力矩阵（2D Parameter Matrix Heatmap），计算 X × Y 二维参数网格下的目标池终值、存活步数或通胀比矩阵；\n' +
+      '- `export`：将机制图一键编译导出为 `godot`（Godot 4 GDScript）、`unity`（Unity C#）、`mermaid`（Mermaid 流程图）、`svg`（高清矢量图）或 `csv`（模拟数据表），传 `outputRelativePath` 时自动落盘到工程目录。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        op: {
+          type: 'string',
+          enum: ['quick_fix', 'goal_seek', 'curve_solve', 'parameter_sweep', 'matrix_2d', 'export'],
+          description: '算子类型'
+        },
+        assetId: {
+          type: 'string',
+          description: '可选：宿主画布资产 ID（默认 "current" 取当前活动画布）'
+        },
+        nodeId: {
+          type: 'string',
+          description:
+            '可选：画布上的 `game.economy` 节点 ID（省略时自动定位画布上的 `game.economy` 节点）'
+        },
+        mxDocJson: {
+          type: 'string',
+          description: '可选：直接传入 mx@2 JSON 字符串（省略时从画布上的 `game.economy` 节点读取）'
+        },
+        apply: {
+          type: 'boolean',
+          description:
+            'quick_fix / goal_seek / curve_solve 是否将求解或修复结果写回画布节点（quick_fix 默认 true，goal_seek / curve_solve 默认 false）'
+        },
+        variableKind: {
+          type: 'string',
+          enum: [
+            'param',
+            'edge',
+            'node_initial',
+            'node_auto_inflow',
+            'node_auto_outflow',
+            'node_capacity'
+          ],
+          description: 'goal_seek / parameter_sweep 待调优变量类型'
+        },
+        variableId: {
+          type: 'string',
+          description: 'goal_seek / parameter_sweep 待调优变量 ID（参数名、边 ID 或节点 ID）'
+        },
+        minVal: { type: 'number', description: 'goal_seek / parameter_sweep 搜索区间下限' },
+        maxVal: { type: 'number', description: 'goal_seek / parameter_sweep 搜索区间上限' },
+        goalMetric: {
+          type: 'string',
+          enum: ['node_value', 'end_step', 'health_score'],
+          description: 'goal_seek 目标指标（默认 node_value）'
+        },
+        goalNodeId: {
+          type: 'string',
+          description: 'goal_seek / curve_solve / matrix_2d 目标节点 ID'
+        },
+        targetNodeId: {
+          type: 'string',
+          description: 'curve_solve / matrix_2d 目标节点 ID（与 goalNodeId 等价）'
+        },
+        atStep: { type: 'number', description: 'goal_seek / curve_solve 目标观测回合步数' },
+        targetValue: { type: 'number', description: 'goal_seek / curve_solve 期望达成的目标数值' },
+        secondTarget: {
+          type: 'object',
+          description: 'curve_solve 可选第二锚点 { atStep, targetValue }（用于双锚点曲线塑形）',
+          properties: {
+            atStep: { type: 'number' },
+            targetValue: { type: 'number' }
+          }
+        },
+        stepsCount: { type: 'number', description: 'parameter_sweep 采样梯度点数（3~25，默认 9）' },
+        varXKind: {
+          type: 'string',
+          enum: [
+            'param',
+            'edge',
+            'node_initial',
+            'node_auto_inflow',
+            'node_auto_outflow',
+            'node_capacity'
+          ],
+          description: 'matrix_2d X 轴变量类型'
+        },
+        varXId: { type: 'string', description: 'matrix_2d X 轴变量 ID' },
+        minX: { type: 'number', description: 'matrix_2d X 轴下限' },
+        maxX: { type: 'number', description: 'matrix_2d X 轴上限' },
+        stepsX: { type: 'number', description: 'matrix_2d X 轴网格数（2~12，默认 6）' },
+        varYKind: {
+          type: 'string',
+          enum: [
+            'param',
+            'edge',
+            'node_initial',
+            'node_auto_inflow',
+            'node_auto_outflow',
+            'node_capacity'
+          ],
+          description: 'matrix_2d Y 轴变量类型'
+        },
+        varYId: { type: 'string', description: 'matrix_2d Y 轴变量 ID' },
+        minY: { type: 'number', description: 'matrix_2d Y 轴下限' },
+        maxY: { type: 'number', description: 'matrix_2d Y 轴上限' },
+        stepsY: { type: 'number', description: 'matrix_2d Y 轴网格数（2~12，默认 6）' },
+        metric: {
+          type: 'string',
+          enum: ['node_value', 'end_step', 'faucet_sink_ratio'],
+          description: 'matrix_2d 评估指标（默认 node_value）'
+        },
+        format: {
+          type: 'string',
+          enum: ['godot', 'unity', 'mermaid', 'svg', 'csv', 'forecast_csv'],
+          description: 'export 导出格式（默认 godot）'
+        },
+        outputRelativePath: {
+          type: 'string',
+          description: 'export 可选：写入工程内的相对文件路径（如 "Assets/GameData/economy.gd"）'
+        }
+      },
+      required: ['op']
+    },
+    handler: async (args) => {
+      const op = readString(args, 'op')
+      const resolved = resolveMxDocFromArgsOrCanvas(args, { allowEmptyCreate: false })
+      let doc = resolved.doc
+
+      if (op === 'quick_fix') {
+        const beforeRun = runMxSimulation(doc)
+        const beforeHealth = analyzeMxEconomyHealth(doc, beforeRun)
+        const fixed = applyAllMxDiagnosticQuickFixes(doc)
+        doc = fixed.doc
+        const afterRun = runMxSimulation(doc)
+        const afterHealth = analyzeMxEconomyHealth(doc, afterRun)
+        const shouldApply = args.apply !== false
+        let appliedInfo: { assetId: string; nodeId: string } | null = null
+        if (shouldApply && projectService.isOpen() && fixed.fixedCount > 0) {
+          appliedInfo = await applyMxDocToCanvasNode(
+            resolved.assetId ?? optionalString(args, 'assetId'),
+            resolved.nodeId ?? optionalString(args, 'nodeId'),
+            doc,
+            doc.title
+          )
+        }
+        return {
+          ok: true,
+          op: 'quick_fix',
+          fixedCount: fixed.fixedCount,
+          applied: Boolean(appliedInfo),
+          ...(appliedInfo ?? {}),
+          beforeHealth: {
+            score: beforeHealth.score,
+            grade: beforeHealth.grade,
+            findings: beforeHealth.findings
+          },
+          afterHealth: {
+            score: afterHealth.score,
+            grade: afterHealth.grade,
+            findings: afterHealth.findings
+          }
+        }
+      }
+
+      if (op === 'goal_seek') {
+        const variableKind = (optionalString(args, 'variableKind') ?? 'edge') as MxTunableKind
+        const variableId = readString(args, 'variableId')
+        const minVal = optionalNumber(args, 'minVal') ?? 0
+        const maxVal = optionalNumber(args, 'maxVal') ?? 100
+        const goalMetric = (optionalString(args, 'goalMetric') ?? 'node_value') as MxGoalSeekMetric
+        const goalNodeId =
+          optionalString(args, 'goalNodeId') ?? optionalString(args, 'targetNodeId')
+        const atStep = optionalNumber(args, 'atStep')
+        const targetValue = optionalNumber(args, 'targetValue') ?? 100
+        const result = runMxGoalSeek(doc, {
+          variableKind,
+          variableId,
+          minVal,
+          maxVal,
+          goalMetric,
+          ...(goalNodeId ? { goalNodeId } : {}),
+          ...(atStep !== undefined ? { atStep } : {}),
+          targetValue,
+          ensureTargetCapacity: true
+        })
+        let appliedInfo: { assetId: string; nodeId: string } | null = null
+        if (args.apply === true && projectService.isOpen()) {
+          doc = applyTunableToDocClone(
+            doc,
+            variableKind,
+            variableId,
+            result.bestValue,
+            goalNodeId,
+            targetValue
+          )
+          appliedInfo = await applyMxDocToCanvasNode(
+            resolved.assetId ?? optionalString(args, 'assetId'),
+            resolved.nodeId ?? optionalString(args, 'nodeId'),
+            doc,
+            doc.title
+          )
+        }
+        return {
+          ok: true,
+          op: 'goal_seek',
+          applied: Boolean(appliedInfo),
+          ...(appliedInfo ?? {}),
+          result
+        }
+      }
+
+      if (op === 'curve_solve') {
+        const targetNodeId =
+          optionalString(args, 'targetNodeId') ?? optionalString(args, 'goalNodeId') ?? ''
+        if (!targetNodeId) {
+          throw new Error('curve_solve 需指定 targetNodeId（或 goalNodeId）')
+        }
+        const targetValue = optionalNumber(args, 'targetValue') ?? 100
+        const atStep = optionalNumber(args, 'atStep')
+        const rawSecond = args.secondTarget as
+          { atStep?: unknown; targetValue?: unknown } | undefined
+        const secondTarget =
+          rawSecond &&
+          Number.isFinite(Number(rawSecond.atStep)) &&
+          Number.isFinite(Number(rawSecond.targetValue))
+            ? {
+                atStep: Number(rawSecond.atStep),
+                targetValue: Number(rawSecond.targetValue)
+              }
+            : undefined
+        const solutions = autoSolveMxCurveTarget(doc, {
+          targetNodeId,
+          ...(atStep !== undefined ? { atStep } : {}),
+          targetValue,
+          ...(secondTarget ? { secondTarget } : {})
+        })
+        let appliedInfo: { assetId: string; nodeId: string } | null = null
+        const best = solutions[0]
+        if (args.apply === true && best && projectService.isOpen()) {
+          doc = applyTunableToDocClone(
+            doc,
+            best.variableKind,
+            best.variableId,
+            best.bestValue,
+            targetNodeId,
+            Math.max(targetValue, secondTarget?.targetValue ?? 0),
+            best.formulaOverride
+          )
+          if (
+            best.isPair &&
+            best.secondVariableKind &&
+            best.secondVariableId &&
+            best.secondBestValue !== undefined
+          ) {
+            doc = applyTunableToDocClone(
+              doc,
+              best.secondVariableKind,
+              best.secondVariableId,
+              best.secondBestValue
+            )
+          }
+          appliedInfo = await applyMxDocToCanvasNode(
+            resolved.assetId ?? optionalString(args, 'assetId'),
+            resolved.nodeId ?? optionalString(args, 'nodeId'),
+            doc,
+            doc.title
+          )
+        }
+        return {
+          ok: true,
+          op: 'curve_solve',
+          targetNodeId,
+          targetValue,
+          applied: Boolean(appliedInfo),
+          ...(appliedInfo ?? {}),
+          solutions
+        }
+      }
+
+      if (op === 'parameter_sweep') {
+        const variableKind = (optionalString(args, 'variableKind') ?? 'edge') as MxTunableKind
+        const variableId = readString(args, 'variableId')
+        const minVal = optionalNumber(args, 'minVal') ?? 1
+        const maxVal = optionalNumber(args, 'maxVal') ?? 20
+        const stepsCount = optionalNumber(args, 'stepsCount')
+        const sweep = runMxParameterSweep(doc, {
+          variableKind,
+          variableId,
+          minVal,
+          maxVal,
+          ...(stepsCount !== undefined ? { stepsCount } : {})
+        })
+        return {
+          ok: true,
+          op: 'parameter_sweep',
+          sweep
+        }
+      }
+
+      if (op === 'matrix_2d') {
+        const varXKind = (optionalString(args, 'varXKind') ?? 'edge') as MxTunableKind
+        const varXId = readString(args, 'varXId')
+        const minX = optionalNumber(args, 'minX') ?? 1
+        const maxX = optionalNumber(args, 'maxX') ?? 10
+        const varYKind = (optionalString(args, 'varYKind') ?? 'edge') as MxTunableKind
+        const varYId = readString(args, 'varYId')
+        const minY = optionalNumber(args, 'minY') ?? 1
+        const maxY = optionalNumber(args, 'maxY') ?? 10
+        const targetNodeId =
+          optionalString(args, 'targetNodeId') ?? optionalString(args, 'goalNodeId')
+        const metricRaw = optionalString(args, 'metric')
+        const metric: 'node_value' | 'end_step' | 'faucet_sink_ratio' =
+          metricRaw === 'end_step' || metricRaw === 'faucet_sink_ratio' ? metricRaw : 'node_value'
+        const matrix = runMx2DParameterMatrix(doc, {
+          varXKind,
+          varXId,
+          minX,
+          maxX,
+          ...(optionalNumber(args, 'stepsX') !== undefined
+            ? { stepsX: optionalNumber(args, 'stepsX') }
+            : {}),
+          varYKind,
+          varYId,
+          minY,
+          maxY,
+          ...(optionalNumber(args, 'stepsY') !== undefined
+            ? { stepsY: optionalNumber(args, 'stepsY') }
+            : {}),
+          metric,
+          ...(targetNodeId ? { targetNodeId } : {})
+        })
+        return {
+          ok: true,
+          op: 'matrix_2d',
+          matrix
+        }
+      }
+
+      if (op === 'export') {
+        const format = optionalString(args, 'format') ?? 'godot'
+        let content = ''
+        let extraMeta: Record<string, unknown> = {}
+        if (format === 'godot') {
+          content = exportMxGodotGd(doc)
+        } else if (format === 'unity') {
+          content = exportMxUnityCs(doc)
+        } else if (format === 'mermaid') {
+          content = exportMxToMermaid(doc)
+        } else if (format === 'svg') {
+          const svgRes = exportMxDiagramSvg(doc)
+          content = svgRes.svgText
+          extraMeta = { width: svgRes.width, height: svgRes.height }
+        } else if (format === 'forecast_csv') {
+          const fc = runMxForecast(doc)
+          content = exportMxForecastCsv(doc, fc)
+        } else if (format === 'csv') {
+          const run = runMxSimulation(doc)
+          content = exportMxRunCsv(doc, run)
+        } else {
+          throw new Error(`不支持的导出格式：${format}`)
+        }
+
+        const outRel = normalizeProjectRelativePath(
+          optionalString(args, 'outputRelativePath') ?? ''
+        )
+        let writtenRelativePath: string | null = null
+        if (outRel && projectService.isOpen()) {
+          const abs = join(projectService.getRoot(), outRel)
+          mkdirSync(dirname(abs), { recursive: true })
+          writeFileSync(abs, content, 'utf8')
+          writtenRelativePath = outRel
+        }
+        return {
+          ok: true,
+          op: 'export',
+          format,
+          ...(writtenRelativePath ? { relativePath: writtenRelativePath } : {}),
+          ...extraMeta,
+          content
+        }
+      }
+
+      throw new Error(`未知 machinations_studio op：${op}`)
+    }
+  },
+  // ── 定时提醒管理（Schedule List / Delete）──────────────────────────────────────
+  {
+    name: 'schedule_list',
+    title: '查看定时提醒列表',
+    description:
+      '列出当前会话中所有待触发的定时提醒/周期任务（包含每个定时任务的 `id`、`summary`、`cron` 表达式或触发时间 `fireAt`、下一次触发时间 `nextFireAt` 与剩余次数）。只读操作。',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    },
+    handler: () => {
+      const schedules = harnessScheduleHandlers ? harnessScheduleHandlers.list() : []
+      return {
+        total: schedules.length,
+        schedules
+      }
+    }
+  },
+  {
+    name: 'schedule_delete',
+    title: '取消定时提醒',
+    description: '按 `scheduleId` 取消并移除当前会话中待触发的定时提醒或周期任务。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        scheduleId: {
+          type: 'string',
+          description: '要取消的定时提醒 ID（可通过 schedule_list 查询）'
+        },
+        sessionId: {
+          type: 'string',
+          description: '可选：所属会话 ID'
+        }
+      },
+      required: ['scheduleId']
+    },
+    handler: async (args) => {
+      const scheduleId = readString(args, 'scheduleId')
+      const sessionId = optionalString(args, 'sessionId')
+      if (!harnessScheduleHandlers) {
+        return { ok: true, schedules: [] }
+      }
+      return await harnessScheduleHandlers.delete({
+        scheduleId,
+        ...(sessionId ? { sessionId } : {})
+      })
+    }
+  },
+  // ── 本地离线视觉算子直调（OCR & YOLO / SAM2 / Face / Pose）──────────────────────
+  {
+    name: 'vision_local_ocr',
+    title: '本地离线文字识别 (OCR)',
+    description:
+      '使用本机离线 OCR 引擎识别工程图片资产（`assetId` 或 `relativePath`）中的所有文字框及像素坐标（`text`、`left`、`top`、`width`、`height`、`confidence`）。适用于 UI 截图文字提取、海报排版检查、漫画台词识别与图标文字质检。只读操作，不消耗云端模型额度。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        assetId: {
+          type: 'string',
+          description: '图片资产 ID（与 relativePath 二选一）'
+        },
+        relativePath: {
+          type: 'string',
+          description: '工程内图片相对路径（与 assetId 二选一）'
+        }
+      }
+    },
+    handler: async (args) => {
+      assertProjectOpen()
+      const { relativePath, assetId } = resolveProjectRelativePath(args, '图片')
+      const abs = join(projectService.getRoot(), relativePath)
+      if (!existsSync(abs)) {
+        throw new Error(`图片文件不存在：${relativePath}`)
+      }
+      const buf = readFileSync(abs)
+      const mime = sniffImageMimeFromBytes(buf) || 'image/png'
+      const dataUrl = `data:${mime};base64,${buf.toString('base64')}`
+      const boxes = await recognizeImageTextFromDataUrl({ dataUrl })
+      return {
+        assetId: assetId ?? null,
+        relativePath,
+        count: boxes.length,
+        fullText: boxes.map((b) => b.text).join('\n'),
+        boxes
+      }
+    }
+  },
+  {
+    name: 'vision_local_yolo',
+    title: '本地离线视觉检测与分割 (YOLO / SAM2 / Face)',
+    description:
+      '使用本地 ONNX 视觉引擎对工程图片（`assetId` 或 `relativePath`）执行目标检测、实例分割、人体姿态关键点、人脸 468 点网格或 SAM2 点框提示分割。支持 `task`：\n' +
+      '- `status`：查询本地已安装的 YOLO / SAM2 / 抠图 ONNX 模型列表与推理后端状态；\n' +
+      '- `detect`：通用目标检测（返回类别 `label`、置信度 `score` 与包围盒 `box`）；\n' +
+      '- `segment`：实例分割或高精度前景抠图（`useMatting: true`）；\n' +
+      '- `pose`：人体 17 关键点骨骼姿态估计；\n' +
+      '- `face`：BlazeFace + FaceMesh 468 点人脸关键点检测；\n' +
+      '- `sam2`：SAM 2 交互式点/框提示精确掩码分割（传入 `points` 或 `box`）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          enum: ['status', 'detect', 'segment', 'pose', 'face', 'sam2'],
+          description: '视觉任务类型（默认 detect）'
+        },
+        assetId: {
+          type: 'string',
+          description: '图片资产 ID（task != "status" 时与 relativePath 二选一）'
+        },
+        relativePath: {
+          type: 'string',
+          description: '工程内图片相对路径（task != "status" 时与 assetId 二选一）'
+        },
+        modelId: {
+          type: 'string',
+          description: '可选：指定本地模型 ID（省略时自动按任务类型挑选已安装模型）'
+        },
+        confThreshold: {
+          type: 'number',
+          description: '可选：检测置信度阈值（0.05~0.95，默认 0.25）'
+        },
+        iouThreshold: {
+          type: 'number',
+          description: '可选：NMS IoU 阈值（0.1~0.9，默认 0.45）'
+        },
+        useMatting: {
+          type: 'boolean',
+          description: 'segment 任务下是否优先启用高精度 Matting 模型'
+        },
+        points: {
+          type: 'array',
+          description:
+            'sam2 任务下的提示点数组 [{ x, y, label: 1(前景)|0(背景) }]（归一化 0~1 或像素坐标）',
+          items: {
+            type: 'object',
+            properties: {
+              x: { type: 'number' },
+              y: { type: 'number' },
+              label: { type: 'number', enum: [0, 1] }
+            },
+            required: ['x', 'y', 'label']
+          }
+        },
+        box: {
+          type: 'object',
+          description: 'sam2 任务下的提示框 { x1, y1, x2, y2 }',
+          properties: {
+            x1: { type: 'number' },
+            y1: { type: 'number' },
+            x2: { type: 'number' },
+            y2: { type: 'number' }
+          }
+        }
+      }
+    },
+    handler: async (args) => {
+      const task = optionalString(args, 'task') ?? 'detect'
+      if (task === 'status') {
+        return await yoloService.status()
+      }
+      assertProjectOpen()
+      const { relativePath, assetId } = resolveProjectRelativePath(args, '图片')
+      const image = { kind: 'file' as const, path: relativePath }
+      const modelId = optionalString(args, 'modelId')
+      const confThreshold = optionalNumber(args, 'confThreshold')
+      const iouThreshold = optionalNumber(args, 'iouThreshold')
+      const baseInput = {
+        image,
+        ...(modelId ? { modelId } : {}),
+        ...(confThreshold !== undefined ? { confThreshold } : {}),
+        ...(iouThreshold !== undefined ? { iouThreshold } : {}),
+        ...(args.useMatting === true ? { useMatting: true } : {})
+      }
+
+      if (task === 'detect') {
+        const res = await yoloService.detect(baseInput)
+        return { assetId: assetId ?? null, relativePath, ...res }
+      }
+      if (task === 'segment') {
+        const res = await yoloService.segment(baseInput)
+        const { masks: _masks, ...summary } = res as unknown as Record<string, unknown>
+        return {
+          assetId: assetId ?? null,
+          relativePath,
+          ...summary,
+          maskCount: Array.isArray((res as { masks?: unknown[] }).masks)
+            ? (res as { masks: unknown[] }).masks.length
+            : 0
+        }
+      }
+      if (task === 'pose') {
+        const res = await yoloService.pose(baseInput)
+        return { assetId: assetId ?? null, relativePath, ...res }
+      }
+      if (task === 'face') {
+        const res = await yoloService.face(baseInput)
+        return { assetId: assetId ?? null, relativePath, ...res }
+      }
+      if (task === 'sam2') {
+        const rawPoints = Array.isArray(args.points) ? args.points : []
+        const points = rawPoints
+          .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object'))
+          .map((p) => ({
+            x: Number(p.x) || 0,
+            y: Number(p.y) || 0,
+            label: (Number(p.label) === 0 ? 0 : 1) as 0 | 1
+          }))
+        const rawBox =
+          args.box && typeof args.box === 'object'
+            ? (args.box as Record<string, unknown>)
+            : undefined
+        const box =
+          rawBox &&
+          Number.isFinite(Number(rawBox.x0 ?? rawBox.x1)) &&
+          Number.isFinite(Number(rawBox.y0 ?? rawBox.y1)) &&
+          Number.isFinite(Number(rawBox.x2 ?? rawBox.x1)) &&
+          Number.isFinite(Number(rawBox.y2 ?? rawBox.y1))
+            ? {
+                x0: Number(rawBox.x0 ?? rawBox.x1),
+                y0: Number(rawBox.y0 ?? rawBox.y1),
+                x1: Number(rawBox.x0 !== undefined ? rawBox.x1 : rawBox.x2),
+                y1: Number(rawBox.y0 !== undefined ? rawBox.y1 : rawBox.y2)
+              }
+            : undefined
+        const res = await yoloService.sam2({
+          image,
+          ...(modelId ? { modelId } : {}),
+          ...(points.length ? { points } : {}),
+          ...(box ? { box } : {})
+        })
+        return {
+          assetId: assetId ?? null,
+          relativePath,
+          width: res.width,
+          height: res.height,
+          maskCount: res.masks.length,
+          scores: res.scores,
+          inferenceMs: res.inferenceMs,
+          modelId: res.modelId
+        }
+      }
+      throw new Error(`未知视觉任务类型：${task}`)
+    }
+  },
+  // ── 工程 Git 状态与差异只读查询 ────────────────────────────────────────────────
+  {
+    name: 'project_git_status',
+    title: '工程 Git 变更状态查询',
+    description:
+      '只读查询当前打开工程的 Git 仓库状态（分支名、仓库根目录、已修改/新增/删除/未跟踪文件列表及每个文件的增删行数统计）。只读操作，不修改仓库。',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    },
+    handler: async () => {
+      return await readGitStatus()
+    }
+  },
+  {
+    name: 'project_git_diff',
+    title: '工程 Git 单文件差异查询',
+    description:
+      '只读读取当前打开工程内指定相对路径文件（相对于 HEAD）的统一 Diff 内容（未跟踪新文件自动合成全文新增 Diff）。只读操作。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: '工程内相对文件路径（由 project_git_status 返回的 path）'
+        }
+      },
+      required: ['path']
+    },
+    handler: async (args) => {
+      const path = readString(args, 'path')
+      return await readGitFileDiff({ path })
+    }
   }
 ]
+
+function resolveMxDocFromArgsOrCanvas(
+  args: Record<string, unknown>,
+  options: { allowEmptyCreate: boolean }
+): { doc: MxDocument; assetId?: string; nodeId?: string } {
+  const rawMxJson = optionalString(args, 'mxDocJson')?.trim()
+  if (rawMxJson) {
+    const doc = parseMxDocumentJson(rawMxJson)
+    return {
+      doc,
+      assetId: optionalString(args, 'assetId'),
+      nodeId: optionalString(args, 'nodeId')
+    }
+  }
+
+  assertProjectOpen()
+  const rawAssetId = optionalString(args, 'assetId')?.trim()
+  const rawNodeId = optionalString(args, 'nodeId')?.trim()
+  const canvasAsset = resolveOrEnsureCanvasAsset(rawAssetId || undefined, {
+    autoCreateCanvas: options.allowEmptyCreate
+  })
+  if (!canvasAsset) {
+    if (options.allowEmptyCreate) {
+      return { doc: createEmptyMxDocument('Game Economy System') }
+    }
+    throw new Error('未找到活动画布资产（请先打开画布，或传入 assetId / mxDocJson）')
+  }
+
+  const graphJson = (canvasAsset.genParams as Record<string, unknown> | undefined)?.graphJson as
+    GraphDocument | undefined
+  const nodes = Array.isArray(graphJson?.nodes) ? graphJson.nodes : []
+  const targetNode = rawNodeId
+    ? nodes.find((n) => n.id === rawNodeId)
+    : ([...nodes].reverse().find((n) => n.typeId === 'game.economy') ?? nodes[0])
+
+  if (!targetNode) {
+    if (options.allowEmptyCreate) {
+      return {
+        doc: createEmptyMxDocument('Game Economy System'),
+        assetId: canvasAsset.id,
+        nodeId: rawNodeId || 'economy_main'
+      }
+    }
+    throw new Error('当前画布上未找到 game.economy 节点（请先创建节点或传入 mxDocJson）')
+  }
+
+  const nodeMxJson =
+    typeof (targetNode.params as Record<string, unknown> | undefined)?.mxDocJson === 'string'
+      ? ((targetNode.params as Record<string, unknown>).mxDocJson as string).trim()
+      : ''
+  if (!nodeMxJson) {
+    return {
+      doc: createEmptyMxDocument(targetNode.title || 'Game Economy System'),
+      assetId: canvasAsset.id,
+      nodeId: targetNode.id
+    }
+  }
+  const doc = parseMxDocumentJson(nodeMxJson, 'roguelike_run', targetNode.title)
+  return {
+    doc,
+    assetId: canvasAsset.id,
+    nodeId: targetNode.id
+  }
+}
+
+async function applyMxDocToCanvasNode(
+  rawAssetId: string | undefined,
+  rawNodeId: string | undefined,
+  doc: MxDocument,
+  nodeTitle?: string
+): Promise<{ assetId: string; nodeId: string }> {
+  const canvasAsset = resolveOrEnsureCanvasAsset(rawAssetId, { autoCreateCanvas: true })
+  if (!canvasAsset) {
+    throw new Error('无法定位或创建目标画布资产')
+  }
+  const graphJson = (canvasAsset.genParams as Record<string, unknown> | undefined)?.graphJson as
+    GraphDocument | undefined
+  const nodes = Array.isArray(graphJson?.nodes) ? graphJson.nodes : []
+  const existingNode = rawNodeId
+    ? nodes.find((n) => n.id === rawNodeId)
+    : [...nodes].reverse().find((n) => n.typeId === 'game.economy')
+  const nodeId = existingNode?.id || rawNodeId?.trim() || 'economy_main'
+  const mxDocJson = JSON.stringify(doc)
+  const ops: McpGraphEditOp[] = [
+    {
+      op: 'node_upsert',
+      nodeId,
+      typeId: 'game.economy',
+      ...(nodeTitle ? { title: nodeTitle } : {}),
+      params: {
+        ...(existingNode?.params ?? {}),
+        mxDocJson
+      }
+    }
+  ]
+
+  const requestId = randomUUID()
+  pendingMcpGraphEditResults.delete(requestId)
+  broadcastToAllWindows(IpcChannels.MCP_GRAPH_EDIT, {
+    requestId,
+    assetId: canvasAsset.id,
+    ops,
+    openEditor: true
+  })
+
+  let handledByRenderer = false
+  try {
+    for (let i = 0; i < 15; i++) {
+      await sleep(200)
+      const report = pendingMcpGraphEditResults.get(requestId)
+      if (!report) continue
+      if (report.ok) {
+        handledByRenderer = true
+      }
+      break
+    }
+  } finally {
+    pendingMcpGraphEditResults.delete(requestId)
+  }
+
+  if (isDraftAssetId(canvasAsset.id)) {
+    const draftAsset = getOrEnsureDraftCanvasSnapshot(canvasAsset.id)
+    const prevGraph = ((draftAsset.genParams as Record<string, unknown> | undefined)?.graphJson ?? {
+      nodes: [],
+      edges: []
+    }) as GraphDocument
+    const editRes = applyGraphEditOps(prevGraph, ops)
+    uiDraftCanvasCache.set(canvasAsset.id, {
+      ...draftAsset,
+      genParams: {
+        ...(draftAsset.genParams ?? {}),
+        graphJson: editRes.graph
+      }
+    })
+  } else if (!handledByRenderer) {
+    const latestAsset = findAssetOrThrow(canvasAsset.id)
+    const prevGraph = ((latestAsset.genParams as Record<string, unknown> | undefined)
+      ?.graphJson ?? {
+      nodes: [],
+      edges: []
+    }) as GraphDocument
+    const editRes = applyGraphEditOps(prevGraph, ops)
+    const updated = projectService.updateAsset({
+      ...latestAsset,
+      genParams: {
+        ...(latestAsset.genParams ?? {}),
+        graphJson: editRes.graph
+      }
+    })
+    broadcastToAllWindows(IpcChannels.ASSET_UPDATED, updated)
+  }
+
+  uiActiveCanvasAssetId = canvasAsset.id
+  lastMcpGraphEditTarget = {
+    assetId: canvasAsset.id,
+    nodeIds: [nodeId]
+  }
+  return { assetId: canvasAsset.id, nodeId }
+}
 
 function readTutorialAlignment(value: unknown): StepAlignment[] {
   if (!Array.isArray(value) || !value.length) {
@@ -7282,6 +8356,17 @@ let mcpToolSettledHook: ((event: McpToolSettledEvent) => void) | null = null
 
 export function setMcpToolSettledHook(hook: ((event: McpToolSettledEvent) => void) | null): void {
   mcpToolSettledHook = hook
+}
+
+export interface HarnessScheduleHandlers {
+  list: () => unknown[]
+  delete: (input: { scheduleId: string; sessionId?: string }) => Promise<unknown>
+}
+
+let harnessScheduleHandlers: HarnessScheduleHandlers | null = null
+
+export function setHarnessScheduleHandlers(handlers: HarnessScheduleHandlers | null): void {
+  harnessScheduleHandlers = handlers
 }
 
 /**
