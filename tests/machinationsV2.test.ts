@@ -54,7 +54,9 @@ import {
   exportMxToMermaid,
   exportMxUnityCs,
   extractMxTunableEdgeNumericValue,
+  extractMxTunableMacroNumericValue,
   formatMxTunableEdgeFormula,
+  formatMxTunableMacroFormula,
   exportMxWorkbenchRuntimeCode,
   exportWorkbenchToGameDataTables,
   generateMxBattlePassAndPackTable,
@@ -4363,6 +4365,177 @@ describe('Machinations.io 100% specification parity', () => {
       { kind: 'card', nodeId: 'c_summon', label: 'Summon Hero' },
       { kind: 'end_turn', steps: 2 }
     ])
+  })
+
+  it('preserves complex formulas, solves multi-hop converter costs, and relaxes capped pools during curve drag', () => {
+    // 1. Complex formula & interval preservation
+    expect(
+      formatMxTunableEdgeFormula(
+        {
+          id: 'e1',
+          kind: 'resource',
+          from: 'a',
+          to: 'b',
+          formula: 'round(50 * pow(2, floor(tier / 4)))'
+        },
+        120
+      )
+    ).toBe('round(120 * pow(2, floor(tier / 4)))')
+
+    expect(
+      formatMxTunableEdgeFormula(
+        {
+          id: 'e2',
+          kind: 'resource',
+          from: 'a',
+          to: 'b',
+          formula: '10 every 3'
+        },
+        25
+      )
+    ).toBe('25 every 3')
+
+    expect(
+      formatMxTunableEdgeFormula(
+        {
+          id: 'e3',
+          kind: 'resource',
+          from: 'a',
+          to: 'b',
+          formula: '18 + arrow_towers * 4'
+        },
+        30
+      )
+    ).toBe('30 + arrow_towers * 4')
+
+    expect(extractMxTunableMacroNumericValue('round(50 * pow(2, floor(tier / 4)))')).toBe(50)
+    expect(formatMxTunableMacroFormula('round(50 * pow(2, floor(tier / 4)))', 80)).toBe(
+      'round(80 * pow(2, floor(tier / 4)))'
+    )
+
+    // 2. Multi-hop converter cost + capped target pool (max 25, self-gate <=24)
+    const doc = createEmptyMxDocument('Shard Tier Progression')
+    doc.settings.steps = 10
+    doc.nodes = [
+      {
+        ...createMxNode('pool', 80, 120, 'Shard Pool'),
+        id: 'p_shards',
+        initial: 500,
+        autoInflow: '100'
+      },
+      {
+        ...createMxNode('converter', 260, 120, 'Shard Upgrade'),
+        id: 'c_upgrade',
+        trigger: 'automatic'
+      },
+      {
+        ...createMxNode('pool', 460, 120, 'Talent Tier'),
+        id: 'p_tier',
+        initial: 20,
+        capacity: 25
+      }
+    ]
+    doc.edges = [
+      {
+        id: 'e_shard_cost',
+        kind: 'resource',
+        from: 'p_shards',
+        to: 'c_upgrade',
+        formula: '3200'
+      },
+      {
+        id: 'e_tier_out',
+        kind: 'resource',
+        from: 'c_upgrade',
+        to: 'p_tier',
+        formula: '1'
+      },
+      {
+        id: 'e_cap_gate',
+        kind: 'state',
+        from: 'p_tier',
+        to: 'c_upgrade',
+        formula: '<=24'
+      }
+    ]
+
+    // Initially, cost is 3200 so c_upgrade never fires in 10 steps (p_tier stays 20).
+    // Even if it fired, p_tier is capped at capacity=25 and state gate <=24.
+    // Dragging p_tier at step 10 up to 28 should:
+    // - automatically relax p_tier capacity & <=24 gate in the solver preview
+    // - discover reducing converter cost e_shard_cost (from 3200 down to <= 150) or adjusting initial/capacity!
+    const sols = autoSolveMxCurveTarget(doc, {
+      targetNodeId: 'p_tier',
+      atStep: 10,
+      targetValue: 28
+    })
+    expect(sols.length).toBeGreaterThan(0)
+    const costSol = sols.find((s) => s.variableKind === 'edge' && s.variableId === 'e_shard_cost')
+    expect(costSol).toBeDefined()
+    expect(costSol!.bestValue).toBeLessThan(300)
+    expect(costSol!.achievedValue).toBeCloseTo(28, 0)
+    expect(costSol!.predictedSeries[10]).toBeCloseTo(28, 0)
+
+    // 3. Fast preview mode for 60fps live drag
+    const fastSols = autoSolveMxCurveTarget(doc, {
+      targetNodeId: 'p_tier',
+      atStep: 10,
+      targetValue: 28,
+      fastPreview: true
+    })
+    expect(fastSols.length).toBeGreaterThan(0)
+    expect(fastSols[0]!.achievedValue).toBeCloseTo(28, 0)
+
+    // 4. Bezier Slope Control Point (◆ 斜率控制点): concave exponential (γ > 1) and convex logarithmic (γ < 1)
+    const slopeDoc = createEmptyMxDocument('Bezier Slope Control')
+    slopeDoc.settings.steps = 10
+    slopeDoc.nodes = [
+      {
+        ...createMxNode('pool', 160, 120, 'Gold'),
+        id: 'p_gold',
+        initial: 0,
+        autoInflow: '10'
+      }
+    ]
+    // 4a. Concave exponential slope (Step 5 = 25, Step 10 = 100 from 0 -> γ = 2.0)
+    const expSols = autoSolveMxCurveTarget(slopeDoc, {
+      targetNodeId: 'p_gold',
+      atStep: 10,
+      targetValue: 100,
+      secondTarget: { atStep: 5, targetValue: 25 }
+    })
+    const expFormulaSol = expSols.find((x) => Boolean(x.formulaOverride))
+    expect(expFormulaSol).toBeDefined()
+    expect(expFormulaSol!.formulaOverride).toContain('pow(STEP,')
+    expect(expFormulaSol!.curvatureGamma).toBeGreaterThan(1.5)
+    expect(expFormulaSol!.predictedSeries[0]).toBe(0)
+    expect(expFormulaSol!.predictedSeries[5]).toBeLessThan(35)
+    expect(expFormulaSol!.predictedSeries[10]).toBeGreaterThan(95)
+
+    // 4b. Convex logarithmic slope (Step 5 = 70, Step 10 = 100 from 0 -> γ ≈ 0.5)
+    const logSols = autoSolveMxCurveTarget(slopeDoc, {
+      targetNodeId: 'p_gold',
+      atStep: 10,
+      targetValue: 100,
+      secondTarget: { atStep: 5, targetValue: 70 }
+    })
+    const logFormulaSol = logSols.find((x) => Boolean(x.formulaOverride))
+    expect(logFormulaSol).toBeDefined()
+    expect(logFormulaSol!.formulaOverride).toContain('pow(STEP,')
+    expect(logFormulaSol!.curvatureGamma).toBeLessThan(0.75)
+    expect(logFormulaSol!.predictedSeries[0]).toBe(0)
+    expect(logFormulaSol!.predictedSeries[5]).toBeGreaterThan(60)
+    expect(logFormulaSol!.predictedSeries[10]).toBeGreaterThan(95)
+
+    // 4c. Store applyTunableValue writes formulaOverride and updates simulated trajectory
+    const slopeStore = createMxStudioStore(slopeDoc)
+    slopeStore.applyTunableValue(
+      expFormulaSol!.variableKind,
+      expFormulaSol!.variableId,
+      expFormulaSol!.bestValue,
+      { formulaOverride: expFormulaSol!.formulaOverride }
+    )
+    expect(slopeStore.doc.value.nodes[0]!.autoInflow).toBe(expFormulaSol!.formulaOverride)
   })
 
   it('collapses all 58 Building Blocks in Simple Mode and expands back in Pro Mode (both loadBuildingBlockAsDoc and insertBuildingBlock)', () => {

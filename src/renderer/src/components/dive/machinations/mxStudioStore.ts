@@ -14,6 +14,7 @@ import {
   createMxWorkbenchPreset,
   expandMxSimpleMacrosToPro,
   formatMxTunableEdgeFormula,
+  formatMxTunableMacroFormula,
   generateMxAgentWithAi,
   getMxBuildingBlockById,
   hasMxSimpleMacros,
@@ -858,27 +859,86 @@ export function createMxStudioStore(initial: MxDocument) {
     })
   }
 
-  /** 将 Goal-Seek 求解出的最优变量值一键回写到文档并立即重新运行模拟 */
-  function applyTunableValue(kind: MxTunableKind, id: string, val: number): void {
+  function applyOneTunableInPlace(
+    d: MxDocument,
+    kind: MxTunableKind,
+    id: string,
+    val: number,
+    opts?: { targetNodeId?: string; ensureTargetCap?: number; formulaOverride?: string }
+  ): void {
     const rounded = Math.round(val * 1000) / 1000
-    mutate((d) => {
-      if (kind === 'param') {
-        const p = d.params.find((x) => x.name === id || x.id === id)
-        if (p) p.value = rounded
-        else d.params.push({ id: mxNewId('p'), name: id, value: rounded })
-      } else if (kind === 'edge') {
-        const e = d.edges.find((x) => x.id === id)
-        if (e) e.formula = formatMxTunableEdgeFormula(e, rounded)
-      } else if (kind === 'node_initial') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.initial = rounded
-      } else if (kind === 'node_auto_inflow') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.autoInflow = String(Math.max(0, rounded))
-      } else if (kind === 'node_auto_outflow') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.autoOutflow = String(Math.max(0, rounded))
+    if (
+      opts?.targetNodeId &&
+      opts.ensureTargetCap !== undefined &&
+      Number.isFinite(opts.ensureTargetCap)
+    ) {
+      const targetNode = d.nodes.find((x) => x.id === opts.targetNodeId)
+      if (
+        targetNode &&
+        targetNode.kind === 'pool' &&
+        targetNode.capacity !== undefined &&
+        targetNode.capacity > 0 &&
+        opts.ensureTargetCap > targetNode.capacity
+      ) {
+        const nextCap = Math.max(targetNode.capacity, Math.ceil(opts.ensureTargetCap))
+        targetNode.capacity = nextCap
+        for (const se of d.edges) {
+          if (se.kind === 'state' && se.from === opts.targetNodeId) {
+            const m = /^(<=|<)\s*(\d+(?:\.\d+)?)$/.exec((se.formula ?? '').trim())
+            if (m) {
+              se.formula = `${m[1]}${m[1] === '<=' ? Math.max(0, nextCap - 1) : nextCap}`
+            }
+          }
+        }
       }
+    }
+    if (kind === 'param') {
+      const p = d.params.find((x) => x.name === id || x.id === id)
+      if (p) p.value = rounded
+      else d.params.push({ id: mxNewId('p'), name: id, value: rounded })
+      for (const sc of d.scenarios ?? []) {
+        if (id in sc.params) sc.params[id] = rounded
+      }
+    } else if (kind === 'edge') {
+      const e = d.edges.find((x) => x.id === id)
+      if (e) e.formula = opts?.formulaOverride ?? formatMxTunableEdgeFormula(e, rounded)
+    } else if (kind === 'node_initial') {
+      const n = d.nodes.find((x) => x.id === id)
+      if (n) n.initial = rounded
+    } else if (kind === 'node_auto_inflow') {
+      const n = d.nodes.find((x) => x.id === id)
+      if (n)
+        n.autoInflow = opts?.formulaOverride ?? formatMxTunableMacroFormula(n.autoInflow, rounded)
+    } else if (kind === 'node_auto_outflow') {
+      const n = d.nodes.find((x) => x.id === id)
+      if (n)
+        n.autoOutflow = opts?.formulaOverride ?? formatMxTunableMacroFormula(n.autoOutflow, rounded)
+    } else if (kind === 'node_capacity') {
+      const n = d.nodes.find((x) => x.id === id)
+      if (n) {
+        const nextCap = Math.max(1, Math.round(rounded))
+        n.capacity = nextCap
+        for (const se of d.edges) {
+          if (se.kind === 'state' && se.from === id) {
+            const m = /^(<=|<)\s*(\d+(?:\.\d+)?)$/.exec((se.formula ?? '').trim())
+            if (m) {
+              se.formula = `${m[1]}${m[1] === '<=' ? Math.max(0, nextCap - 1) : nextCap}`
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** 将 Goal-Seek 求解出的最优变量值一键回写到文档并立即重新运行模拟 */
+  function applyTunableValue(
+    kind: MxTunableKind,
+    id: string,
+    val: number,
+    opts?: { targetNodeId?: string; ensureTargetCap?: number; formulaOverride?: string }
+  ): void {
+    mutate((d) => {
+      applyOneTunableInPlace(d, kind, id, val, opts)
     })
     playAgain()
   }
@@ -889,31 +949,12 @@ export function createMxStudioStore(initial: MxDocument) {
     v1: number,
     k2: MxTunableKind,
     id2: string,
-    v2: number
+    v2: number,
+    opts?: { targetNodeId?: string; ensureTargetCap?: number; formulaOverride?: string }
   ): void {
-    const applyOne = (d: MxDocument, kind: MxTunableKind, id: string, val: number): void => {
-      const rounded = Math.round(val * 1000) / 1000
-      if (kind === 'param') {
-        const p = d.params.find((x) => x.name === id || x.id === id)
-        if (p) p.value = rounded
-        else d.params.push({ id: mxNewId('p'), name: id, value: rounded })
-      } else if (kind === 'edge') {
-        const e = d.edges.find((x) => x.id === id)
-        if (e) e.formula = formatMxTunableEdgeFormula(e, rounded)
-      } else if (kind === 'node_initial') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.initial = rounded
-      } else if (kind === 'node_auto_inflow') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.autoInflow = String(Math.max(0, rounded))
-      } else if (kind === 'node_auto_outflow') {
-        const n = d.nodes.find((x) => x.id === id)
-        if (n) n.autoOutflow = String(Math.max(0, rounded))
-      }
-    }
     mutate((d) => {
-      applyOne(d, k1, id1, v1)
-      applyOne(d, k2, id2, v2)
+      applyOneTunableInPlace(d, k1, id1, v1, opts)
+      applyOneTunableInPlace(d, k2, id2, v2)
     })
     playAgain()
   }

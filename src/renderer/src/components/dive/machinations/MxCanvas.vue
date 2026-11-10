@@ -252,13 +252,7 @@
                     ? 2.3
                     : 1.75
             "
-            :stroke-dasharray="
-              geo.edge.kind === 'state'
-                ? '6 4'
-                : geo.gatedOff && !isEdgeSelected(geo.edge.id)
-                  ? '5 4'
-                  : undefined
-            "
+            :stroke-dasharray="geo.edge.kind === 'state' ? '6 4' : undefined"
             :marker-end="`url(#${geo.marker})`"
           />
 
@@ -5233,7 +5227,7 @@ const minimapEdges = computed<MinimapEdgeItem[]>(() => {
     const isState = e.kind === 'state'
     const strokeWidth = selected ? 2.2 : condHighlight ? 1.9 : isState ? 1.55 : 1.4
     const opacity = selected || condHighlight ? 1 : geo.dormant ? 0.38 : isState ? 0.9 : 0.72
-    const dasharray = isState ? '3.5 2.5' : geo.gatedOff ? '3 2.5' : undefined
+    const dasharray = isState ? '3.5 2.5' : undefined
 
     out.push({
       id: e.id,
@@ -5626,7 +5620,7 @@ defineExpose({
 .mx-canvas.is-light .mx-edge-pill-bg.is-mod-active {
   fill: color-mix(in srgb, var(--edge-c, #3b82f6) 16%, var(--mx-pill-bg, #ffffff));
 }
-.mx-edge-pill-bg.is-gated-off {
+.mx-edge-pill-bg.is-state {
   stroke-dasharray: 3 2;
 }
 .mx-edge.is-dormant:not(:hover) .mx-edge-pill {

@@ -235,7 +235,8 @@ function seriesColorForNode(nodeId: string): string {
 
 const chartScaleMode = ref<'raw' | 'norm'>('raw')
 
-const seriesList = computed<SeriesItem[]>(() => {
+// 底层序列快照与统计摘要（不依赖 hoverStep / inspectedStep，避免鼠标移动或拖拽时重复遍历快照与重算趋势摘要）
+const baseSeriesList = computed<Omit<SeriesItem, 'currentVal'>[]>(() => {
   const snaps = currentSnapshots.value
   const allNodes = trackedNodes.value
   let nodesToBuild = allNodes
@@ -253,19 +254,28 @@ const seriesList = computed<SeriesItem[]>(() => {
       ? snaps.map((snap) => Number(snap[n.id] ?? 0))
       : [Number(s.displayValues.value?.[n.id] ?? n.initial ?? 0)]
     const summary = summarizeMxSeries(vals)
-    const idx = Math.min(inspectedStep.value, vals.length - 1)
     return {
       id: n.id,
       label: n.label || n.id,
       color: seriesColorForNode(n.id),
       values: vals,
-      summary,
-      currentVal: Number((vals[idx] ?? 0).toFixed(2))
+      summary
     }
   })
 })
 
-const visibleSeries = computed(() => {
+const seriesList = computed<SeriesItem[]>(() => {
+  const step = inspectedStep.value
+  return baseSeriesList.value.map((sr) => {
+    const idx = Math.min(step, sr.values.length - 1)
+    return {
+      ...sr,
+      currentVal: Number((sr.values[idx] ?? 0).toFixed(2))
+    }
+  })
+})
+
+const visibleSeries = computed<SeriesItem[]>(() => {
   const focusId = s.focusedSeriesId.value
   if (!focusId) return seriesList.value
   return [...seriesList.value].sort((a, b) => {
@@ -326,28 +336,34 @@ function getSingleSeriesBounds(sr: SeriesItem): { min: number; max: number } {
   return { min, max }
 }
 
+// 拖拽曲线靶心期间锁定的 Y 轴量程（保证鼠标与靶心 1:1 绝对跟手，并在拖过顶边时平滑向上扩容）
+const dragLockedYBounds = ref<{ min: number; max: number } | null>(null)
+
 const yBounds = computed(() => {
+  if (dragLockedYBounds.value) {
+    return dragLockedYBounds.value
+  }
   // 当用户聚焦某条图例序列时，Y 轴自动适配该序列自身的 [min, max]，使其波形与下方趋势卡片完全一致，不被大数值节点压平
   if (s.focusedSeriesId.value) {
-    const focused = seriesList.value.find((sr) => sr.id === s.focusedSeriesId.value)
+    const focused = baseSeriesList.value.find((sr) => sr.id === s.focusedSeriesId.value)
     if (focused) {
-      const b = getSingleSeriesBounds(focused)
-      if (curveDragActive.value && Number.isFinite(curveTargetVal.value)) {
-        b.min = Math.min(b.min, curveTargetVal.value)
-        b.max = Math.max(b.max, curveTargetVal.value * 1.15)
-      }
-      if (
-        curveDragActive.value &&
-        curveDualPinActive.value &&
-        Number.isFinite(curveTargetVal2.value)
-      ) {
-        b.min = Math.min(b.min, curveTargetVal2.value)
-        b.max = Math.max(b.max, curveTargetVal2.value * 1.15)
+      const b = getSingleSeriesBounds(focused as SeriesItem)
+      if (curveDragActive.value) {
+        // 开启拖拽反推时预留充足上方操作余量，无需在拖动中途动态缩放坐标轴
+        b.max = Math.max(b.max * 1.25, b.min + 10)
+        if (Number.isFinite(curveTargetVal.value)) {
+          b.min = Math.min(b.min, curveTargetVal.value)
+          b.max = Math.max(b.max, curveTargetVal.value * 1.22)
+        }
+        if (curveDualPinActive.value && Number.isFinite(curveTargetVal2.value)) {
+          b.min = Math.min(b.min, curveTargetVal2.value)
+          b.max = Math.max(b.max, curveTargetVal2.value * 1.22)
+        }
       }
       if (activeCurveSolution.value?.predictedSeries.length) {
         for (const pv of activeCurveSolution.value.predictedSeries) {
           if (pv < b.min) b.min = pv
-          if (pv > b.max) b.max = pv
+          if (pv > b.max * 0.92) b.max = Math.max(b.max, pv * 1.12)
         }
       }
       if (b.max === b.min) b.max = b.min + 10
@@ -356,14 +372,14 @@ const yBounds = computed(() => {
   }
   let min = 0
   let max = 10
-  for (const sr of visibleSeries.value) {
+  for (const sr of baseSeriesList.value) {
     for (const v of sr.values) {
       if (v < min) min = v
       if (v > max) max = v
     }
   }
   if (showForecastBand.value && s.forecast.value) {
-    for (const sr of visibleSeries.value) {
+    for (const sr of baseSeriesList.value) {
       const f = s.forecast.value.series.find((x) => x.nodeId === sr.id)
       if (!f) continue
       for (const v of f.p90) if (v > max) max = v
@@ -384,18 +400,18 @@ function yAt(val: number): number {
   return PAD_T + PH - ((val - min) / Math.max(1e-6, max - min)) * PH
 }
 
-function yAtForSeries(sr: SeriesItem, val: number): number {
+function yAtForSeries(sr: Pick<SeriesItem, 'id' | 'values'>, val: number): number {
   // 1) 若选中了某条图例：选中的折线按自身真实 yBounds 撑满显示，未选中的背景折线各自归一化在视口内作为参考上下文
   if (s.focusedSeriesId.value) {
     if (sr.id === s.focusedSeriesId.value) {
       return yAt(val)
     }
-    const { min, max } = getSingleSeriesBounds(sr)
+    const { min, max } = getSingleSeriesBounds(sr as SeriesItem)
     return PAD_T + 4 + (PH - 8) - ((val - min) / Math.max(1e-6, max - min)) * (PH - 8)
   }
   // 2) 总览 Summary 模式下：若开启独立趋势归一化（Norm），每条折线按自身 [min, max] 映射，与下方卡片波形一致
   if (chartScaleMode.value === 'norm') {
-    const { min, max } = getSingleSeriesBounds(sr)
+    const { min, max } = getSingleSeriesBounds(sr as SeriesItem)
     return PAD_T + 2 + (PH - 4) - ((val - min) / Math.max(1e-6, max - min)) * (PH - 4)
   }
   // 3) 默认统一绝对量纲（Y1）
@@ -403,7 +419,7 @@ function yAtForSeries(sr: SeriesItem, val: number): number {
 }
 
 function polylinePointsForSeries(
-  sr: SeriesItem,
+  sr: Pick<SeriesItem, 'id' | 'values'>,
   values = sr.values,
   totalSteps = maxSteps.value
 ): string {
@@ -412,6 +428,16 @@ function polylinePointsForSeries(
     .map((v, i) => `${xAt(i, total).toFixed(1)},${yAtForSeries(sr, v).toFixed(1)}`)
     .join(' ')
 }
+
+// 预计算并缓存所有背景折线的 SVG points 字符串（拖拽或悬停期间 yBounds 不变时完全零重算）
+const seriesPolylineMap = computed<Record<string, string>>(() => {
+  const total = Math.max(1, maxSteps.value)
+  const out: Record<string, string> = {}
+  for (const sr of baseSeriesList.value) {
+    out[sr.id] = polylinePointsForSeries(sr, sr.values, total)
+  }
+  return out
+})
 
 function forecastAreaPath(nodeId: string): string {
   const f = s.forecast.value?.series.find((x) => x.nodeId === nodeId)
@@ -459,6 +485,7 @@ interface CursorIntersectionPill {
 }
 
 const inspectedIntersectionLabels = computed<CursorIntersectionPill[]>(() => {
+  if (isDraggingCurvePin.value) return []
   const step = inspectedStep.value
   const cx = xAt(step, maxSteps.value)
   const canUseLeft = cx >= PAD_L + 44
@@ -540,6 +567,7 @@ const inspectedIntersectionLabels = computed<CursorIntersectionPill[]>(() => {
 })
 
 function onChartMouseMove(e: MouseEvent): void {
+  if (isDraggingCurvePin.value) return
   const svg = e.currentTarget as SVGSVGElement
   const rect = svg.getBoundingClientRect()
   const relX = ((e.clientX - rect.left) / rect.width) * CW
@@ -976,14 +1004,20 @@ function sweepSeriesPolyline(nodeId: string): string {
 // ═════════════ 下一代演进 1：🎯 图表直接拖拽曲线反推配平 (Direct Curve Drag Goal-Seek) ═════════════
 const curveDragActive = ref(false)
 const isDraggingCurvePin = ref(false)
+const curveAutoApply = ref(true)
+const curveAppliedToast = ref('')
 const curveTargetStep = ref(20)
 const curveTargetVal = ref(50)
-const curveDualPinActive = ref(false)
+const curveDualPinActive = ref(true)
 const curveTargetStep2 = ref(8)
 const curveTargetVal2 = ref(25)
+const curveSlopeGamma = ref(1)
+const lastDraggedPinIndex = ref<1 | 2>(1)
 const curveSolutions = ref<MxCurveTargetSolution[]>([])
 const selectedCurveSolutionIdx = ref(0)
 let curvePinDragCleanup: (() => void) | null = null
+let dragSolveRafId: number | null = null
+let curveToastTimer: ReturnType<typeof setTimeout> | null = null
 
 const nextGenUi = computed(() =>
   isEn.value
@@ -991,18 +1025,29 @@ const nextGenUi = computed(() =>
         tabPlayable: '🎮 Playable Deck',
         curveDragBtn: '🎯 Drag Curve to Balance',
         curveDragTip:
-          'Drag the target pin on the curve to set your desired value — engine auto-solves upstream rates/macros!',
+          'Grab any point on a curve and drag up/down — engine live-solves and updates upstream rates!',
         curveBarTitle: '🎯 Curve Goal-Seek:',
-        dualPinBtn: '📌 Dual-Pin Shaping',
+        dualPinBtn: '◆ Slope Handle',
         dualPinTip:
-          'Add a 2nd anchor pin to shape both early-game slope and late-game cap simultaneously!',
-        atStepLabel: 'At Step',
+          'Show/hide the Bezier-style ◆ Slope Control Point to bend curve curvature (Exponential / Linear / Logarithmic)!',
+        slopeExpBtn: '📈 Slow→Fast',
+        slopeLinearBtn: '📏 Linear',
+        slopeLogBtn: '📉 Fast→Slow',
+        slopeExpTip: 'Concave exponential growth (γ=2.0: slow early, steep late)',
+        slopeLinearTip: 'Constant linear slope (γ=1.0)',
+        slopeLogTip: 'Convex logarithmic convergence (γ=0.45: fast early, tapering late)',
+        autoApplyBtn: '⚡ Auto-Apply on Drop',
+        autoApplyTip:
+          'When enabled, releasing the dragged curve immediately applies the best parameter to the diagram (Ctrl+Z to undo)',
+        undoBtn: '↩ Undo',
+        atStepLabel: 'Step',
         targetValLabel: 'Target =',
-        atStep2Label: '& Step',
-        targetVal2Label: 'Target =',
+        atStep2Label: '◆ Step',
+        targetVal2Label: 'Ctrl =',
         solveBtn: 'Re-Solve',
         applySolBtn: '⚡ Apply Balance',
-        noSolHint: 'Drag the 🎯 pin on the chart or edit Target to auto-solve upstream parameters.',
+        noSolHint:
+          'Grab and drag 🎯 Endpoint or ◆ Slope Control Point to live-solve upstream parameters.',
         hudTitle: '🔵 Live State & Resource HUD',
         deckTitle: '🃏 Interactive Action & Recipe Cards',
         turnTitle: '⚔ Turn Controls & Battle Log',
@@ -1037,17 +1082,28 @@ const nextGenUi = computed(() =>
     : {
         tabPlayable: '🎮 卡片试玩', // cjk-ok
         curveDragBtn: '🎯 拖拽曲线反推', // cjk-ok
-        curveDragTip: '在折线图上直接上下拖拽目标靶心，引擎自动反推上游产出/消耗/连线公式参数！', // cjk-ok
-        curveBarTitle: '🎯 曲线反推配平：', // cjk-ok
-        dualPinBtn: '📌 双锚点塑形', // cjk-ok
-        dualPinTip: '开启第 2 个前期/中期靶心锚点，双参数联合反推前期斜率与后期上限！', // cjk-ok
-        atStepLabel: '在第', // cjk-ok
-        targetValLabel: '步期望 =', // cjk-ok
-        atStep2Label: '且第', // cjk-ok
+        curveDragTip:
+          '在折线图直接拖动「🎯 终点靶心」或「◆ 斜率控制点」，像调节贝塞尔曲线一样实时弯曲斜率并反推公式！', // cjk-ok
+        curveBarTitle: '🎯 曲线反推：', // cjk-ok
+        dualPinBtn: '◆ 斜率控制点', // cjk-ok
+        dualPinTip:
+          '开启贝塞尔式「◆ 斜率控制点」，直接拖动线身中段弯曲斜率（先慢后快 / 线性匀速 / 先快后慢）！', // cjk-ok
+        slopeExpBtn: '📈 先慢后快', // cjk-ok
+        slopeLinearBtn: '📏 线性', // cjk-ok
+        slopeLogBtn: '📉 先快后慢', // cjk-ok
+        slopeExpTip: '切换为下凹指数加速斜率 (γ=2.0：前期平缓蓄力、后期陡峭爆发)', // cjk-ok
+        slopeLinearTip: '切换为恒定斜率直线增长 (γ=1.0：每步匀速产出)', // cjk-ok
+        slopeLogTip: '切换为上凸对数收敛斜率 (γ=0.45：前期快速拉升、后期平缓收敛)', // cjk-ok
+        autoApplyBtn: '⚡ 松手即应用', // cjk-ok
+        autoApplyTip: '开启后，拖动曲线松开鼠标即刻将最优参数写回画布并重算（支持 Ctrl+Z 撤销）', // cjk-ok
+        undoBtn: '↩ 撤销', // cjk-ok
+        atStepLabel: '第', // cjk-ok
+        targetValLabel: '步 =', // cjk-ok
+        atStep2Label: '◆ 第', // cjk-ok
         targetVal2Label: '步 =', // cjk-ok
-        solveBtn: '反推计算', // cjk-ok
-        applySolBtn: '⚡ 一键应用配平', // cjk-ok
-        noSolHint: '在折线图上上下拖拽 🎯 靶心或输入期望数值，自动反推最优参数。', // cjk-ok
+        solveBtn: '重算', // cjk-ok
+        applySolBtn: '⚡ 立即应用', // cjk-ok
+        noSolHint: '直接拖动「🎯 终点靶心」或「◆ 斜率控制点」，实时弯曲斜率并反推上游参数。', // cjk-ok
         hudTitle: '🔵 实时状态与资源槽 (HUD)', // cjk-ok
         deckTitle: '🃏 可点击动作与合成卡牌台', // cjk-ok
         turnTitle: '⚔ 回合控制与实时战报', // cjk-ok
@@ -1082,21 +1138,178 @@ const nextGenUi = computed(() =>
 
 const focusedSeriesObj = computed<SeriesItem | null>(() => {
   if (!s.focusedSeriesId.value) return null
-  return seriesList.value.find((sr) => sr.id === s.focusedSeriesId.value) ?? null
+  const base = baseSeriesList.value.find((sr) => sr.id === s.focusedSeriesId.value)
+  if (!base) return null
+  return {
+    ...base,
+    currentVal: Number((base.values[base.values.length - 1] ?? 0).toFixed(2))
+  }
 })
 
 const activeCurveSolution = computed<MxCurveTargetSolution | null>(
   () => curveSolutions.value[selectedCurveSolutionIdx.value] ?? curveSolutions.value[0] ?? null
 )
 
-function runCurveTargetSolve(): void {
+function syncSlopeControlPointFromGamma(gammaVal: number): void {
+  const sr = focusedSeriesObj.value
+  const v0 = sr?.values[0] ?? 0
+  const tEnd = Math.max(2, curveTargetStep.value)
+  const yEnd = curveTargetVal.value
+  const st2 = Math.max(1, Math.min(tEnd - 1, Math.round(tEnd * 0.45)))
+  curveTargetStep2.value = st2
+  const u = st2 / tEnd
+  const g = Math.max(0.25, Math.min(3.5, gammaVal))
+  curveSlopeGamma.value = Math.round(g * 100) / 100
+  const rawY2 = v0 + (yEnd - v0) * Math.pow(u, g)
+  curveTargetVal2.value = Math.max(0, Math.round(rawY2 * 10) / 10)
+}
+
+function updateSlopeGammaFromControlPoint(): void {
+  const sr = focusedSeriesObj.value
+  const v0 = sr?.values[0] ?? 0
+  const [tMid, yMid, tEnd, yEnd] =
+    curveTargetStep2.value < curveTargetStep.value
+      ? [curveTargetStep2.value, curveTargetVal2.value, curveTargetStep.value, curveTargetVal.value]
+      : [curveTargetStep.value, curveTargetVal.value, curveTargetStep2.value, curveTargetVal2.value]
+  const deltaEnd = yEnd - v0
+  const uMid = tMid / Math.max(1, tEnd)
+  if (Math.abs(deltaEnd) > 0.5 && uMid > 0.04 && uMid < 0.96) {
+    const wMid = Math.max(0.03, Math.min(0.97, (yMid - v0) / deltaEnd))
+    const g = Math.max(0.25, Math.min(3.5, Math.log(wMid) / Math.log(uMid)))
+    curveSlopeGamma.value = Math.round(g * 100) / 100
+  } else {
+    curveSlopeGamma.value = 1
+  }
+}
+
+const curveSlopeBadgeText = computed<string>(() => {
+  const g = curveSlopeGamma.value
+  if (g >= 1.15) return isEn.value ? `Exp γ=${g}` : `先慢后快 γ=${g}` // cjk-ok
+  if (g <= 0.85) return isEn.value ? `Log γ=${g}` : `先快后慢 γ=${g}` // cjk-ok
+  return isEn.value ? 'Linear γ=1' : '线性 γ=1' // cjk-ok
+})
+
+// 贝塞尔控制柄切线导引折线：(0, Y0) ---> (Tc, Yc) ---> (T1, Y1)
+const curveTangentGuidePoints = computed<string>(() => {
+  const sr = focusedSeriesObj.value
+  if (!sr || !sr.values.length || !curveDualPinActive.value) return ''
+  const v0 = sr.values[0] ?? 0
+  const x0 = xAt(0, maxSteps.value)
+  const y0 = yAtForSeries(sr, v0)
+  const xc = xAt(curveTargetStep2.value, maxSteps.value)
+  const yc = yAtForSeries(sr, curveTargetVal2.value)
+  const x1 = xAt(curveTargetStep.value, maxSteps.value)
+  const y1 = yAtForSeries(sr, curveTargetVal.value)
+  return `${x0.toFixed(1)},${y0.toFixed(1)} ${xc.toFixed(1)},${yc.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`
+})
+
+// 拖动过程中使用 <0.01ms 零仿真开销的贝塞尔/幂律平滑形变曲线实时预览；松手后使用真实仿真预测序列
+const curvePreviewPolylinePoints = computed<string>(() => {
+  const sr = focusedSeriesObj.value
+  if (!sr || !sr.values.length) return ''
+  if (isDraggingCurvePin.value) {
+    const baseVals = sr.values
+    const n = baseVals.length
+    const v0 = baseVals[0] ?? 0
+    const t1 = Math.max(1, Math.min(n - 1, curveTargetStep.value))
+    const y1 = curveTargetVal.value
+    const baseAtT1 = baseVals[t1] ?? v0
+    const baseDelta1 = baseAtT1 - v0
+    const targetDelta1 = y1 - v0
+
+    const warped = new Array<number>(n)
+    if (!curveDualPinActive.value) {
+      const useScale = Math.abs(baseDelta1) > 0.5
+      const scale = useScale ? targetDelta1 / baseDelta1 : 1
+      const slopeShift = (y1 - baseAtT1) / Math.max(1, t1)
+      for (let i = 0; i < n; i++) {
+        const bv = baseVals[i] ?? v0
+        const wv = useScale ? v0 + (bv - v0) * scale : bv + slopeShift * i
+        warped[i] = Math.max(0, wv)
+      }
+    } else {
+      const t2 = Math.max(1, Math.min(n - 1, curveTargetStep2.value))
+      const y2 = curveTargetVal2.value
+      const [tMid, yMid, tEnd, yEnd] = t2 < t1 ? [t2, y2, t1, y1] : [t1, y1, t2, y2]
+      const deltaEnd = yEnd - v0
+      const uMid = tMid / Math.max(1, tEnd)
+      const rawRatio = Math.abs(deltaEnd) > 0.5 ? (yMid - v0) / deltaEnd : 0.5
+      if (
+        Math.abs(deltaEnd) > 0.5 &&
+        uMid > 0.04 &&
+        uMid < 0.96 &&
+        rawRatio > 0.03 &&
+        rawRatio < 0.97
+      ) {
+        const g = Math.max(0.25, Math.min(3.5, Math.log(rawRatio) / Math.log(uMid)))
+        for (let i = 0; i < n; i++) {
+          const u = i / Math.max(1, tEnd)
+          warped[i] = Math.max(0, v0 + deltaEnd * Math.pow(u, g))
+        }
+      } else {
+        // 三点拉格朗日二次平滑抛物线插值（过 (0,v0), (tMid,yMid), (tEnd,yEnd)）
+        const a0 = tMid * tEnd
+        const a1 = tMid * (tMid - tEnd)
+        const a2 = tEnd * (tEnd - tMid)
+        for (let i = 0; i < n; i++) {
+          const l0 = a0 !== 0 ? ((i - tMid) * (i - tEnd)) / a0 : 0
+          const l1 = a1 !== 0 ? (i * (i - tEnd)) / a1 : 0
+          const l2 = a2 !== 0 ? (i * (i - tMid)) / a2 : 1
+          warped[i] = Math.max(0, v0 * l0 + yMid * l1 + yEnd * l2)
+        }
+      }
+    }
+    return polylinePointsForSeries(sr, warped, maxSteps.value)
+  }
+  const pred = activeCurveSolution.value?.predictedSeries
+  if (!pred?.length) return ''
+  return polylinePointsForSeries(sr, pred, maxSteps.value)
+})
+
+const curveOriginalValAtStep = computed<number>(() => {
+  const sr = focusedSeriesObj.value
+  if (!sr || !sr.values.length) return 0
+  const idx = Math.max(0, Math.min(curveTargetStep.value, sr.values.length - 1))
+  return Math.round((sr.values[idx] ?? 0) * 10) / 10
+})
+
+function focusSolutionOnCanvas(sol: MxCurveTargetSolution | null): void {
+  if (!sol) return
+  if (sol.variableKind === 'edge') {
+    s.selection.edges = [sol.variableId]
+    s.selection.nodes = []
+  } else if (
+    sol.variableKind === 'node_auto_inflow' ||
+    sol.variableKind === 'node_auto_outflow' ||
+    sol.variableKind === 'node_initial' ||
+    sol.variableKind === 'node_capacity'
+  ) {
+    s.selection.nodes = [sol.variableId]
+    s.selection.edges = []
+  }
+}
+
+function selectCurveSolution(idx: number): void {
+  selectedCurveSolutionIdx.value = idx
+  focusSolutionOnCanvas(curveSolutions.value[idx] ?? null)
+}
+
+function runCurveTargetSolve(fastPreview = false): void {
   const sr = focusedSeriesObj.value
   if (!sr) return
+  const prevSelected = curveSolutions.value[selectedCurveSolutionIdx.value]
+  const prevKey = prevSelected
+    ? `${prevSelected.variableKind}:${prevSelected.variableId}:${prevSelected.secondVariableId ?? ''}:${prevSelected.formulaOverride ? 'fx' : ''}`
+    : ''
+  const useSecondAnchor =
+    curveDualPinActive.value &&
+    (Math.abs(curveSlopeGamma.value - 1) > 0.08 || lastDraggedPinIndex.value === 2)
   const sols = autoSolveMxCurveTarget(s.doc.value, {
     targetNodeId: sr.id,
     atStep: curveTargetStep.value,
     targetValue: curveTargetVal.value,
-    ...(curveDualPinActive.value
+    fastPreview,
+    ...(useSecondAnchor
       ? {
           secondTarget: {
             atStep: curveTargetStep2.value,
@@ -1106,19 +1319,41 @@ function runCurveTargetSolve(): void {
       : {})
   })
   curveSolutions.value = sols
-  selectedCurveSolutionIdx.value = 0
+  if (useSecondAnchor) {
+    const slopeIdx = sols.findIndex((x) => Boolean(x.formulaOverride))
+    if (slopeIdx >= 0) {
+      selectedCurveSolutionIdx.value = slopeIdx
+      return
+    }
+  }
+  if (prevKey && sols.length > 1) {
+    const matchedIdx = sols.findIndex(
+      (x) =>
+        `${x.variableKind}:${x.variableId}:${x.secondVariableId ?? ''}:${x.formulaOverride ? 'fx' : ''}` ===
+        prevKey
+    )
+    selectedCurveSolutionIdx.value = matchedIdx >= 0 ? matchedIdx : 0
+  } else {
+    selectedCurveSolutionIdx.value = 0
+  }
+}
+
+function applyCurveSlopePreset(gammaVal: number): void {
+  curveDualPinActive.value = true
+  lastDraggedPinIndex.value = 2
+  syncSlopeControlPointFromGamma(gammaVal)
+  runCurveTargetSolve(false)
+  if (curveAutoApply.value && activeCurveSolution.value) {
+    applySelectedCurveSolution(true)
+  } else if (activeCurveSolution.value) {
+    focusSolutionOnCanvas(activeCurveSolution.value)
+  }
 }
 
 function toggleCurveDualPin(): void {
   curveDualPinActive.value = !curveDualPinActive.value
   if (curveDualPinActive.value) {
-    const sr = focusedSeriesObj.value
-    const st2 = Math.max(1, Math.min(maxSteps.value - 1, Math.round(maxSteps.value * 0.4)))
-    curveTargetStep2.value = st2 === curveTargetStep.value ? Math.max(1, st2 - 1) : st2
-    const curVal2 = sr
-      ? (sr.values[Math.min(curveTargetStep2.value, sr.values.length - 1)] ?? 10)
-      : 10
-    curveTargetVal2.value = Math.max(1, Math.round((curVal2 * 1.15 + 3) * 10) / 10)
+    syncSlopeControlPointFromGamma(curveSlopeGamma.value)
   }
   runCurveTargetSolve()
 }
@@ -1129,16 +1364,25 @@ function toggleCurveDragMode(): void {
       s.focusedSeriesId.value = seriesList.value[0].id
     }
     const sr = focusedSeriesObj.value
-    const st = Math.max(1, maxSteps.value)
-    curveTargetStep.value = st
-    const curVal = sr ? (sr.values[Math.min(st, sr.values.length - 1)] ?? 10) : 10
-    curveTargetVal.value = Math.max(1, Math.round((curVal * 1.25 + 5) * 10) / 10)
+    // 默认锚定在曲线 80% 步数位置（避开最右侧边缘裁切，且靶心直接落在当前曲线上，不发生突兀跳变）
+    const defaultStep = Math.max(2, Math.round(maxSteps.value * 0.8))
+    curveTargetStep.value = defaultStep
+    const curVal = sr ? (sr.values[Math.min(defaultStep, sr.values.length - 1)] ?? 10) : 10
+    curveTargetVal.value = Math.max(0, Math.round(curVal * 10) / 10)
+    curveDualPinActive.value = true
+    lastDraggedPinIndex.value = 1
+    const st2 = Math.max(1, Math.min(defaultStep - 1, Math.round(defaultStep * 0.45)))
+    curveTargetStep2.value = st2
+    const curVal2 = sr ? (sr.values[Math.min(st2, sr.values.length - 1)] ?? curVal * 0.45) : 5
+    curveTargetVal2.value = Math.max(0, Math.round(curVal2 * 10) / 10)
+    updateSlopeGammaFromControlPoint()
     curveDragActive.value = true
     showTrendCardsStrip.value = false
     if (dockHeight.value < 320) dockHeight.value = 340
     runCurveTargetSolve()
   } else {
     curveDragActive.value = false
+    dragLockedYBounds.value = null
     showTrendCardsStrip.value = true
     curveSolutions.value = []
   }
@@ -1150,61 +1394,217 @@ watch(
     if (curveDragActive.value && nextId) {
       const sr = seriesList.value.find((x) => x.id === nextId)
       if (sr) {
-        const st = Math.min(curveTargetStep.value, Math.max(1, sr.values.length - 1))
+        const st = Math.min(curveTargetStep.value, Math.max(2, sr.values.length - 1))
         curveTargetStep.value = st
-        curveTargetVal.value = Math.round(((sr.values[st] ?? 10) * 1.2 + 5) * 10) / 10
+        curveTargetVal.value = Math.round((sr.values[st] ?? 10) * 10) / 10
+        const st2 = Math.max(1, Math.min(st - 1, Math.round(st * 0.45)))
+        curveTargetStep2.value = st2
+        curveTargetVal2.value = Math.round((sr.values[st2] ?? 5) * 10) / 10
+        lastDraggedPinIndex.value = 1
+        updateSlopeGammaFromControlPoint()
         runCurveTargetSolve()
       }
     }
   }
 )
 
-function startCurvePinDrag(ev: PointerEvent, pinIndex: 1 | 2 = 1): void {
+function startCurvePinDrag(
+  ev: PointerEvent,
+  pinIndex: 1 | 2 = 1,
+  svgOverride?: SVGSVGElement
+): void {
   const sr = focusedSeriesObj.value
   if (!sr) return
   ev.preventDefault()
   ev.stopPropagation()
-  const svg = (ev.currentTarget as Element).closest('svg') as SVGSVGElement | null
+  const svg =
+    svgOverride ?? ((ev.currentTarget as Element | null)?.closest('svg') as SVGSVGElement | null)
   if (!svg) return
   const rect = svg.getBoundingClientRect()
-  const frozenBounds = { ...yBounds.value }
+  const curB = yBounds.value
+  const lockedMin = curB.min
+  const lockedMax = Math.max(curB.max, curB.min + 10)
+  // 整个单次拖拽手势期间严格固定 Y 轴量程（零重缩放、零背景折线重算、100% 像素级跟手）
+  dragLockedYBounds.value = { min: lockedMin, max: lockedMax }
   isDraggingCurvePin.value = true
+  lastDraggedPinIndex.value = pinIndex
+  let hasMoved = false
+  let pendingClientX = ev.clientX
+  let pendingClientY = ev.clientY
+
+  const flushPointerFrame = (): void => {
+    dragSolveRafId = null
+    if (!isDraggingCurvePin.value) return
+    const relX = ((pendingClientX - rect.left) / Math.max(1, rect.width)) * CW
+    const relY = ((pendingClientY - rect.top) / Math.max(1, rect.height)) * CH
+    const stepRatio = Math.max(0, Math.min(1, (relX - PAD_L) / PW))
+    const rawValRatio = 1 - (relY - PAD_T) / PH
+    const nextStep = Math.max(1, Math.round(stepRatio * Math.max(1, maxSteps.value)))
+    const clampedRatio = Math.max(0, Math.min(1.06, rawValRatio))
+    const rawVal = lockedMin + clampedRatio * (lockedMax - lockedMin)
+    const nextVal = Math.max(0, Math.round(rawVal * 10) / 10)
+
+    if (pinIndex === 2) {
+      const safeStep2 = nextStep === curveTargetStep.value ? Math.max(1, nextStep - 1) : nextStep
+      if (curveTargetStep2.value !== safeStep2 || curveTargetVal2.value !== nextVal) {
+        hasMoved = true
+      }
+      curveTargetStep2.value = safeStep2
+      curveTargetVal2.value = nextVal
+      updateSlopeGammaFromControlPoint()
+    } else {
+      const safeStep1 = Math.max(2, nextStep)
+      if (curveTargetStep.value !== safeStep1 || curveTargetVal.value !== nextVal) {
+        hasMoved = true
+      }
+      curveTargetStep.value = safeStep1
+      curveTargetVal.value = nextVal
+      if (curveDualPinActive.value) {
+        syncSlopeControlPointFromGamma(curveSlopeGamma.value)
+      }
+    }
+  }
 
   const onMove = (me: PointerEvent): void => {
-    const relX = ((me.clientX - rect.left) / Math.max(1, rect.width)) * CW
-    const relY = ((me.clientY - rect.top) / Math.max(1, rect.height)) * CH
-    const stepRatio = Math.max(0, Math.min(1, (relX - PAD_L) / PW))
-    const valRatio = Math.max(0, Math.min(1, 1 - (relY - PAD_T) / PH))
-    const nextStep = Math.max(1, Math.round(stepRatio * Math.max(1, maxSteps.value)))
-    const rawVal = frozenBounds.min + valRatio * (frozenBounds.max - frozenBounds.min)
-    const nextVal = Math.max(0, Math.round(rawVal * 10) / 10)
-    if (pinIndex === 2) {
-      curveTargetStep2.value = nextStep
-      curveTargetVal2.value = nextVal
-    } else {
-      curveTargetStep.value = nextStep
-      curveTargetVal.value = nextVal
+    pendingClientX = me.clientX
+    pendingClientY = me.clientY
+    if (dragSolveRafId === null) {
+      dragSolveRafId = requestAnimationFrame(flushPointerFrame)
     }
   }
 
   const onUp = (): void => {
+    if (dragSolveRafId !== null) {
+      cancelAnimationFrame(dragSolveRafId)
+      dragSolveRafId = null
+      flushPointerFrame()
+    }
     isDraggingCurvePin.value = false
+    dragLockedYBounds.value = null
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
     window.removeEventListener('pointercancel', onUp)
     curvePinDragCleanup = null
-    runCurveTargetSolve()
+    runCurveTargetSolve(false)
+    const sol = activeCurveSolution.value
+    if (
+      hasMoved &&
+      curveAutoApply.value &&
+      sol &&
+      (Boolean(sol.formulaOverride) || Math.abs(sol.bestValue - sol.fromValue) > 1e-4)
+    ) {
+      applySelectedCurveSolution(true)
+    } else if (sol) {
+      focusSolutionOnCanvas(sol)
+    }
   }
 
-  window.addEventListener('pointermove', onMove)
+  window.addEventListener('pointermove', onMove, { passive: true })
   window.addEventListener('pointerup', onUp)
   window.addEventListener('pointercancel', onUp)
   curvePinDragCleanup = onUp
 }
 
-function applySelectedCurveSolution(): void {
+/**
+ * 在开启「🎯 拖拽曲线反推」时，点击/按住图表任意位置即可直接抓取终点靶心或斜率控制点并上下拖动
+ */
+function onChartPointerDown(ev: PointerEvent): void {
+  if (!curveDragActive.value || !focusedSeriesObj.value || ev.button !== 0) return
+  const svg = ev.currentTarget as SVGSVGElement
+  const rect = svg.getBoundingClientRect()
+  const relX = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * CW
+  const relY = ((ev.clientY - rect.top) / Math.max(1, rect.height)) * CH
+  if (relX < PAD_L - 6 || relX > CW - PAD_R + 6 || relY < PAD_T - 8 || relY > CH - PAD_B + 8) {
+    return
+  }
+  const stepRatio = Math.max(0, Math.min(1, (relX - PAD_L) / PW))
+  const clickedStep = Math.max(1, Math.round(stepRatio * Math.max(1, maxSteps.value)))
+  const lb = yBounds.value
+  const valRatio = Math.max(0, Math.min(1, 1 - (relY - PAD_T) / PH))
+  const clickedVal = Math.max(0, Math.round((lb.min + valRatio * (lb.max - lb.min)) * 10) / 10)
+
+  let pinIdx: 1 | 2 = 1
+  if (curveDualPinActive.value) {
+    const dist1 = Math.abs(clickedStep - curveTargetStep.value)
+    const dist2 = Math.abs(clickedStep - curveTargetStep2.value)
+    if (dist2 < dist1) pinIdx = 2
+  }
+  if (pinIdx === 2) {
+    curveTargetStep2.value =
+      clickedStep === curveTargetStep.value ? Math.max(1, clickedStep - 1) : clickedStep
+    curveTargetVal2.value = clickedVal
+    updateSlopeGammaFromControlPoint()
+  } else {
+    curveTargetStep.value = Math.max(2, clickedStep)
+    curveTargetVal.value = clickedVal
+    if (curveDualPinActive.value) {
+      syncSlopeControlPointFromGamma(curveSlopeGamma.value)
+    }
+  }
+  startCurvePinDrag(ev, pinIdx, svg)
+}
+
+/**
+ * 直接在任意折线上按住上下拖动（无需预先点按钮）即可自动聚焦该折线并启动曲线反推；
+ * 若只是轻点未拖动（|dy| <= 5px），则保持原有的切换聚焦图例行为。
+ */
+function onSeriesPointerDown(ev: PointerEvent, sr: SeriesItem): void {
+  if (ev.button !== 0) return
+  const svg = (ev.currentTarget as Element).closest('svg') as SVGSVGElement | null
+  if (!svg) return
+  if (curveDragActive.value) {
+    if (s.focusedSeriesId.value !== sr.id) {
+      s.focusedSeriesId.value = sr.id
+    }
+    onChartPointerDown(Object.assign(ev, { currentTarget: svg }) as unknown as PointerEvent)
+    return
+  }
+  const startY = ev.clientY
+  const rect = svg.getBoundingClientRect()
+  const relX = ((ev.clientX - rect.left) / Math.max(1, rect.width)) * CW
+  const stepRatio = Math.max(0, Math.min(1, (relX - PAD_L) / PW))
+  const grabStep = Math.max(2, Math.round(stepRatio * Math.max(1, maxSteps.value)))
+
+  const onCheckMove = (me: PointerEvent): void => {
+    if (Math.abs(me.clientY - startY) > 5) {
+      cleanupCheck()
+      s.focusedSeriesId.value = sr.id
+      curveDragActive.value = true
+      curveDualPinActive.value = true
+      showTrendCardsStrip.value = false
+      if (dockHeight.value < 320) dockHeight.value = 340
+      curveTargetStep.value = grabStep
+      const curVal = sr.values[Math.min(grabStep, sr.values.length - 1)] ?? 10
+      curveTargetVal.value = Math.max(0, Math.round(curVal * 10) / 10)
+      syncSlopeControlPointFromGamma(1)
+      startCurvePinDrag(me, 1, svg)
+    }
+  }
+  const cleanupCheck = (): void => {
+    window.removeEventListener('pointermove', onCheckMove)
+    window.removeEventListener('pointerup', cleanupCheck)
+    window.removeEventListener('pointercancel', cleanupCheck)
+  }
+  window.addEventListener('pointermove', onCheckMove)
+  window.addEventListener('pointerup', cleanupCheck)
+  window.addEventListener('pointercancel', cleanupCheck)
+}
+
+function applySelectedCurveSolution(fromAutoRelease = false): void {
   const sol = activeCurveSolution.value
+  const sr = focusedSeriesObj.value
   if (!sol) return
+  const capOpts = sr
+    ? {
+        targetNodeId: sr.id,
+        ensureTargetCap: curveDualPinActive.value
+          ? Math.max(curveTargetVal.value, curveTargetVal2.value)
+          : curveTargetVal.value,
+        ...(sol.formulaOverride ? { formulaOverride: sol.formulaOverride } : {})
+      }
+    : sol.formulaOverride
+      ? { formulaOverride: sol.formulaOverride }
+      : undefined
   if (
     sol.isPair &&
     sol.secondVariableKind &&
@@ -1217,16 +1617,32 @@ function applySelectedCurveSolution(): void {
       sol.bestValue,
       sol.secondVariableKind,
       sol.secondVariableId,
-      sol.secondBestValue
+      sol.secondBestValue,
+      capOpts
     )
   } else {
-    s.applyTunableValue(sol.variableKind, sol.variableId, sol.bestValue)
+    s.applyTunableValue(sol.variableKind, sol.variableId, sol.bestValue, capOpts)
   }
-  runCurveTargetSolve()
+  focusSolutionOnCanvas(sol)
+  if (curveToastTimer) clearTimeout(curveToastTimer)
+  curveAppliedToast.value = sol.formulaOverride
+    ? `${sol.variableLabel}: ƒx ➔ ${sol.formulaOverride}`
+    : `${sol.variableLabel}: ${sol.currentValue} ➔ ${sol.bestValue}`
+  curveToastTimer = setTimeout(() => {
+    curveAppliedToast.value = ''
+  }, 2800)
+  if (!fromAutoRelease) {
+    runCurveTargetSolve(false)
+  } else {
+    // 松手自动应用后刷新候选基准值，便于继续连续拖动微调
+    runCurveTargetSolve(false)
+  }
 }
 
 onBeforeUnmount(() => {
   curvePinDragCleanup?.()
+  if (dragSolveRafId !== null) cancelAnimationFrame(dragSolveRafId)
+  if (curveToastTimer) clearTimeout(curveToastTimer)
   if (cardFeedbackTimer) clearTimeout(cardFeedbackTimer)
   stopAiSpectator()
 })
@@ -1737,7 +2153,7 @@ function toggleAiSpectator(): void {
                     min="1"
                     :max="Math.max(1, maxSteps)"
                     class="mx-cs-input is-step"
-                    @change="runCurveTargetSolve"
+                    @change="runCurveTargetSolve()"
                   />
                   <span>{{ nextGenUi.targetValLabel }}</span>
                   <input
@@ -1745,7 +2161,7 @@ function toggleAiSpectator(): void {
                     type="number"
                     step="0.5"
                     class="mx-cs-input is-val"
-                    @change="runCurveTargetSolve"
+                    @change="runCurveTargetSolve()"
                   />
                 </label>
                 <button
@@ -1757,51 +2173,99 @@ function toggleAiSpectator(): void {
                 >
                   {{ nextGenUi.dualPinBtn }}
                 </button>
-                <label v-if="curveDualPinActive" class="mx-cs-field">
-                  <span>{{ nextGenUi.atStep2Label }}</span>
-                  <input
-                    v-model.number="curveTargetStep2"
-                    type="number"
-                    min="1"
-                    :max="Math.max(1, maxSteps)"
-                    class="mx-cs-input is-step"
-                    @change="runCurveTargetSolve"
-                  />
-                  <span>{{ nextGenUi.targetVal2Label }}</span>
-                  <input
-                    v-model.number="curveTargetVal2"
-                    type="number"
-                    step="0.5"
-                    class="mx-cs-input is-val"
-                    @change="runCurveTargetSolve"
-                  />
-                </label>
-                <button type="button" class="mx-cs-mini-btn" @click="runCurveTargetSolve">
-                  {{ nextGenUi.solveBtn }}
+                <template v-if="curveDualPinActive">
+                  <button
+                    type="button"
+                    class="mx-cs-mini-btn"
+                    :class="{ 'is-active': curveSlopeGamma >= 1.2 }"
+                    :title="nextGenUi.slopeExpTip"
+                    @click="applyCurveSlopePreset(2.0)"
+                  >
+                    {{ nextGenUi.slopeExpBtn }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-cs-mini-btn"
+                    :class="{
+                      'is-active': curveSlopeGamma > 0.85 && curveSlopeGamma < 1.2
+                    }"
+                    :title="nextGenUi.slopeLinearTip"
+                    @click="applyCurveSlopePreset(1.0)"
+                  >
+                    {{ nextGenUi.slopeLinearBtn }}
+                  </button>
+                  <button
+                    type="button"
+                    class="mx-cs-mini-btn"
+                    :class="{ 'is-active': curveSlopeGamma <= 0.85 }"
+                    :title="nextGenUi.slopeLogTip"
+                    @click="applyCurveSlopePreset(0.45)"
+                  >
+                    {{ nextGenUi.slopeLogBtn }}
+                  </button>
+                </template>
+                <button
+                  type="button"
+                  class="mx-cs-mini-btn"
+                  :class="{ 'is-active': curveAutoApply }"
+                  :title="nextGenUi.autoApplyTip"
+                  @click="curveAutoApply = !curveAutoApply"
+                >
+                  {{ nextGenUi.autoApplyBtn }}
                 </button>
+                <button
+                  v-if="s.canUndo.value"
+                  type="button"
+                  class="mx-cs-mini-btn"
+                  @click="
+                    () => {
+                      s.undo()
+                      runCurveTargetSolve()
+                    }
+                  "
+                >
+                  {{ nextGenUi.undoBtn }}
+                </button>
+                <span v-if="curveAppliedToast" class="mx-cs-toast">
+                  ✓ {{ curveAppliedToast }}
+                </span>
               </div>
               <div v-if="curveSolutions.length" class="mx-cs-right">
                 <div class="mx-cs-sol-pills">
                   <button
                     v-for="(sol, idx) in curveSolutions.slice(0, 3)"
                     :key="
-                      sol.variableKind + ':' + sol.variableId + ':' + (sol.secondVariableId || '')
+                      sol.variableKind +
+                      ':' +
+                      sol.variableId +
+                      ':' +
+                      (sol.secondVariableId || '') +
+                      ':' +
+                      (sol.formulaOverride || '')
                     "
                     type="button"
                     class="mx-cs-sol-pill"
                     :class="{ 'is-selected': selectedCurveSolutionIdx === idx }"
-                    @click="selectedCurveSolutionIdx = idx"
+                    @mouseenter="focusSolutionOnCanvas(sol)"
+                    @click="selectCurveSolution(idx)"
                   >
                     <span class="mx-cs-sol-lbl">{{ sol.variableLabel }}</span>
                     <span class="mx-cs-sol-arrow">
-                      {{ sol.currentValue }}→{{ sol.bestValue }}
-                      <template v-if="sol.isPair && sol.secondBestValue !== undefined">
-                        &amp; {{ sol.secondCurrentValue }}→{{ sol.secondBestValue }}
+                      <template v-if="sol.formulaOverride"> ƒx→{{ sol.formulaOverride }} </template>
+                      <template v-else>
+                        {{ sol.currentValue }}→{{ sol.bestValue }}
+                        <template v-if="sol.isPair && sol.secondBestValue !== undefined">
+                          &amp; {{ sol.secondCurrentValue }}→{{ sol.secondBestValue }}
+                        </template>
                       </template>
                     </span>
                   </button>
                 </div>
-                <button type="button" class="mx-cs-apply-btn" @click="applySelectedCurveSolution">
+                <button
+                  type="button"
+                  class="mx-cs-apply-btn"
+                  @click="applySelectedCurveSolution(false)"
+                >
                   {{ nextGenUi.applySolBtn }}
                 </button>
               </div>
@@ -1812,8 +2276,13 @@ function toggleAiSpectator(): void {
 
             <svg
               class="mx-chart-svg"
+              :class="{
+                'is-curve-drag-mode': curveDragActive,
+                'is-dragging-pin': isDraggingCurvePin
+              }"
               :viewBox="`0 0 ${CW} ${CH}`"
               preserveAspectRatio="none"
+              @pointerdown="onChartPointerDown"
               @mousemove="onChartMouseMove"
               @mouseleave="s.hoverStep.value = null"
               @click="onChartClick"
@@ -1895,7 +2364,20 @@ function toggleAiSpectator(): void {
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   pointer-events="none"
-                  :points="polylinePointsForSeries(sr)"
+                  :points="seriesPolylineMap[sr.id]"
+                />
+                <!-- 宽热区隐形折线：让鼠标无需精确瞄准 2px 细线即可轻松按住上下拖动曲线 -->
+                <polyline
+                  v-if="isSeriesHighlighted(sr.id)"
+                  class="mx-chart-polyline-hit"
+                  fill="none"
+                  stroke="transparent"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  :points="seriesPolylineMap[sr.id]"
+                  @pointerdown.stop="onSeriesPointerDown($event, sr)"
+                  @click.stop="toggleFocusSeries(sr.id)"
                 />
                 <polyline
                   class="mx-chart-polyline"
@@ -1907,24 +2389,35 @@ function toggleAiSpectator(): void {
                   :stroke-opacity="isSeriesDimmed(sr.id) ? 0.2 : 1"
                   stroke-linecap="round"
                   stroke-linejoin="round"
-                  :points="polylinePointsForSeries(sr)"
+                  :points="seriesPolylineMap[sr.id]"
+                  @pointerdown.stop="onSeriesPointerDown($event, sr)"
                   @click.stop="toggleFocusSeries(sr.id)"
                 />
               </template>
 
-              <!-- 🎯 曲线反推预测虚线与可拖拽靶心手柄 -->
+              <!-- 🎯 曲线反推预测虚线与可拖拽靶心手柄 + ◆ 贝塞尔斜率控制点 -->
               <template v-if="curveDragActive && focusedSeriesObj">
+                <!-- 贝塞尔控制柄切线导引虚线：(0, Y0) --->
+                (Tc, Yc) ---> (T1, Y1) -->
                 <polyline
-                  v-if="activeCurveSolution?.predictedSeries?.length"
+                  v-if="curveDualPinActive && curveTangentGuidePoints"
                   fill="none"
                   :stroke="focusedSeriesObj.color"
-                  stroke-width="2.4"
-                  stroke-dasharray="5 3"
-                  stroke-opacity="0.9"
+                  stroke-width="1.3"
+                  stroke-dasharray="3 4"
+                  stroke-opacity="0.5"
                   pointer-events="none"
-                  :points="
-                    polylinePointsForSeries(focusedSeriesObj, activeCurveSolution.predictedSeries)
-                  "
+                  :points="curveTangentGuidePoints"
+                />
+                <polyline
+                  v-if="curvePreviewPolylinePoints"
+                  fill="none"
+                  :stroke="focusedSeriesObj.color"
+                  stroke-width="2.6"
+                  stroke-dasharray="5 3"
+                  stroke-opacity="0.92"
+                  pointer-events="none"
+                  :points="curvePreviewPolylinePoints"
                 />
                 <line
                   :x1="xAt(curveTargetStep, maxSteps)"
@@ -1932,9 +2425,32 @@ function toggleAiSpectator(): void {
                   :y1="PAD_T"
                   :y2="CH - PAD_B"
                   :stroke="focusedSeriesObj.color"
-                  stroke-width="1.2"
+                  stroke-width="1"
                   stroke-dasharray="3 3"
-                  stroke-opacity="0.55"
+                  stroke-opacity="0.4"
+                  pointer-events="none"
+                />
+                <!-- 原始值到目标靶心的橡皮筋牵引线与基线锚点 -->
+                <line
+                  v-if="Math.abs(curveTargetVal - curveOriginalValAtStep) > 0.2"
+                  :x1="xAt(curveTargetStep, maxSteps)"
+                  :x2="xAt(curveTargetStep, maxSteps)"
+                  :y1="yAtForSeries(focusedSeriesObj, curveOriginalValAtStep)"
+                  :y2="yAtForSeries(focusedSeriesObj, curveTargetVal)"
+                  :stroke="focusedSeriesObj.color"
+                  stroke-width="2.2"
+                  stroke-opacity="0.75"
+                  pointer-events="none"
+                />
+                <circle
+                  v-if="Math.abs(curveTargetVal - curveOriginalValAtStep) > 0.2"
+                  :cx="xAt(curveTargetStep, maxSteps)"
+                  :cy="yAtForSeries(focusedSeriesObj, curveOriginalValAtStep)"
+                  r="3.5"
+                  fill="var(--bg-panel)"
+                  :stroke="focusedSeriesObj.color"
+                  stroke-width="1.6"
+                  stroke-opacity="0.75"
                   pointer-events="none"
                 />
                 <g
@@ -1943,27 +2459,44 @@ function toggleAiSpectator(): void {
                   @pointerdown.stop="startCurvePinDrag($event, 1)"
                   @click.stop
                 >
+                  <!-- 扩大的透明抓取热区 -->
+                  <circle r="18" fill="transparent" />
                   <circle
-                    r="11"
+                    r="11.5"
                     :fill="focusedSeriesObj.color"
-                    fill-opacity="0.18"
+                    fill-opacity="0.2"
                     :stroke="focusedSeriesObj.color"
                     stroke-width="1.5"
                     stroke-dasharray="2 2"
                   />
                   <circle
-                    r="5.5"
+                    r="6"
                     :fill="focusedSeriesObj.color"
                     stroke="var(--bg-panel)"
                     stroke-width="2"
                   />
                   <text
-                    x="0"
-                    y="-14"
-                    text-anchor="middle"
+                    :x="
+                      curveTargetStep > maxSteps * 0.78
+                        ? -13
+                        : curveTargetStep < maxSteps * 0.18
+                          ? 13
+                          : 0
+                    "
+                    :y="yAtForSeries(focusedSeriesObj, curveTargetVal) < PAD_T + 20 ? 19 : -13"
+                    :text-anchor="
+                      curveTargetStep > maxSteps * 0.78
+                        ? 'end'
+                        : curveTargetStep < maxSteps * 0.18
+                          ? 'start'
+                          : 'middle'
+                    "
                     font-size="9.5"
                     font-weight="700"
                     :fill="focusedSeriesObj.color"
+                    stroke="var(--bg-panel)"
+                    stroke-width="3"
+                    paint-order="stroke"
                   >
                     🎯 {{ curveTargetVal }} (T={{ curveTargetStep }})
                   </text>
@@ -1975,40 +2508,61 @@ function toggleAiSpectator(): void {
                     :y1="PAD_T"
                     :y2="CH - PAD_B"
                     :stroke="focusedSeriesObj.color"
-                    stroke-width="1.2"
+                    stroke-width="1.1"
                     stroke-dasharray="2 3"
-                    stroke-opacity="0.45"
+                    stroke-opacity="0.38"
                     pointer-events="none"
                   />
                   <g
-                    class="mx-curve-target-pin"
+                    class="mx-curve-target-pin mx-curve-slope-pin"
                     :transform="`translate(${xAt(curveTargetStep2, maxSteps)}, ${yAtForSeries(focusedSeriesObj, curveTargetVal2)})`"
                     @pointerdown.stop="startCurvePinDrag($event, 2)"
                     @click.stop
                   >
+                    <circle r="18" fill="transparent" />
                     <circle
-                      r="10"
+                      r="10.5"
                       :fill="focusedSeriesObj.color"
-                      fill-opacity="0.15"
+                      fill-opacity="0.16"
                       :stroke="focusedSeriesObj.color"
-                      stroke-width="1.5"
+                      stroke-width="1.4"
                       stroke-dasharray="2 2"
                     />
-                    <circle
-                      r="5"
+                    <rect
+                      x="-5.2"
+                      y="-5.2"
+                      width="10.4"
+                      height="10.4"
+                      rx="1.8"
+                      transform="rotate(45)"
                       :fill="focusedSeriesObj.color"
                       stroke="var(--bg-panel)"
                       stroke-width="2"
                     />
                     <text
-                      x="0"
-                      y="-13"
-                      text-anchor="middle"
+                      :x="
+                        curveTargetStep2 > maxSteps * 0.78
+                          ? -12
+                          : curveTargetStep2 < maxSteps * 0.18
+                            ? 12
+                            : 0
+                      "
+                      :y="yAtForSeries(focusedSeriesObj, curveTargetVal2) < PAD_T + 20 ? 18 : -13"
+                      :text-anchor="
+                        curveTargetStep2 > maxSteps * 0.78
+                          ? 'end'
+                          : curveTargetStep2 < maxSteps * 0.18
+                            ? 'start'
+                            : 'middle'
+                      "
                       font-size="9"
                       font-weight="700"
                       :fill="focusedSeriesObj.color"
+                      stroke="var(--bg-panel)"
+                      stroke-width="3"
+                      paint-order="stroke"
                     >
-                      📌 {{ curveTargetVal2 }} (T={{ curveTargetStep2 }})
+                      ◆ {{ curveTargetVal2 }} ({{ curveSlopeBadgeText }})
                     </text>
                   </g>
                 </template>
@@ -4348,9 +4902,22 @@ function toggleAiSpectator(): void {
   font-size: 11px;
   cursor: pointer;
 }
-.mx-cs-mini-btn:hover {
+.mx-cs-mini-btn:hover,
+.mx-cs-mini-btn.is-active {
   border-color: var(--accent);
   color: var(--accent);
+  background: var(--accent-12);
+}
+.mx-cs-toast {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #4ade80;
+  font-size: 10.5px;
+  font-weight: 600;
 }
 .mx-cs-sol-pills {
   display: inline-flex;
@@ -4394,8 +4961,13 @@ function toggleAiSpectator(): void {
   color: var(--text-muted);
   font-size: 11px;
 }
+.mx-chart-svg.is-curve-drag-mode,
+.mx-chart-svg.is-dragging-pin,
+.mx-chart-polyline-hit,
 .mx-curve-target-pin {
   cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
 }
 
 /* ═════════════ 下一代演进 2：🎮 机制一键试玩卡片台 ═════════════ */

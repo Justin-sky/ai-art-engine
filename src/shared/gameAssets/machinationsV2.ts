@@ -8094,25 +8094,31 @@ export function runMxSimulation(
     name?: string
     interactionsByStep?: Record<number, string[]>
     skipTokenHistory?: boolean
+    skipAgents?: boolean
   } = {}
 ): MxRunResult {
-  const steps = Math.max(1, Math.min(2000, Math.round(options.steps ?? doc.settings.steps ?? 20)))
-  const seed = Math.floor(options.seed ?? doc.settings.seed ?? 1)
+  const simDoc = getMxSimulationDoc(doc)
+  const steps = Math.max(
+    1,
+    Math.min(2000, Math.round(options.steps ?? simDoc.settings.steps ?? 20))
+  )
+  const seed = Math.floor(options.seed ?? simDoc.settings.seed ?? 1)
   const initRng = createMxRng(seed * 3571 + 17)
-  const params = options.params ?? resolveMxParams(doc, options.scenarioId, initRng)
-  let state = createMxInitialState(doc, { params, seed })
+  const params = options.params ?? resolveMxParams(simDoc, options.scenarioId, initRng)
+  let state = createMxInitialState(simDoc, { params, seed })
   const snapshots: Array<Record<string, number>> = [{ ...state.values }]
   const edgeFlows: Array<Record<string, number>> = [{}]
   const poolTokensHistory =
-    !options.skipTokenHistory && doc.nodes.length <= 300
+    !options.skipTokenHistory && simDoc.nodes.length <= 300
       ? [clonePoolTokensMap(state.poolTokens)]
       : undefined
   const events: MxEvent[] = []
   for (let k = 1; k <= steps; k++) {
-    const res = stepMxSimulation(doc, state, {
+    const res = stepMxSimulation(simDoc, state, {
       seed,
       params,
-      interactions: options.interactionsByStep?.[k]
+      interactions: options.interactionsByStep?.[k],
+      skipAgents: options.skipAgents
     })
     state = res.state
     snapshots.push({ ...state.values })
@@ -8864,7 +8870,7 @@ export function analyzeMxEconomyHealth(
 // ───────────────────────────── 逆向目标求解器 (Goal-Seek) & 参数敏感度扫描 (Parameter Sweep) ─────────────────────────────
 
 export type MxTunableKind =
-  'param' | 'edge' | 'node_initial' | 'node_auto_inflow' | 'node_auto_outflow'
+  'param' | 'edge' | 'node_initial' | 'node_auto_inflow' | 'node_auto_outflow' | 'node_capacity'
 
 export type MxGoalSeekMetric = 'node_value' | 'end_step' | 'health_score'
 
@@ -8881,6 +8887,8 @@ export interface MxGoalSeekOptions {
   samples?: number
   runsPerSample?: number
   seed?: number
+  /** 当目标值高于目标池当前 capacity 时，是否自动放宽目标池容量上限以防截断 */
+  ensureTargetCapacity?: boolean
 }
 
 export interface MxGoalSeekCandidate {
@@ -8899,7 +8907,7 @@ export interface MxGoalSeekResult {
   candidates: MxGoalSeekCandidate[]
 }
 
-/** 提取连线公式中的主数值，供 Auto-Balancer (Mark as influencer) 初始化搜索区间 */
+/** 提取连线公式中的主数值，供 Auto-Balancer 与拖拽曲线反推初始化搜索区间（支持复合公式首常数、骰子与倍率包装） */
 export function extractMxTunableEdgeNumericValue(edge: MxEdge): number {
   const raw = (edge.formula ?? '').trim()
   if (!raw) return 1
@@ -8908,16 +8916,27 @@ export function extractMxTunableEdgeNumericValue(edge: MxEdge): number {
   if (Number.isFinite(direct)) return direct
   const pct = /^([+-]?\d+(?:\.\d+)?)\s*%$/.exec(core)
   if (pct) return Number(pct[1])
+  const numWithChance = /^([+-]?\d+(?:\.\d+)?)\s+\d+(?:\.\d+)?\s*%$/.exec(core)
+  if (numWithChance) return Number(numWithChance[1])
   const ivMod = /^([+-]?\d+(?:\.\d+)?)\s*(%?)\s*i$/i.exec(core)
   if (ivMod) return Number(ivMod[1])
   const act = /^(?:>=|<=|==|!=|<>|>|<|=)\s*(-?\d+(?:\.\d+)?)$/.exec(core)
   if (act) return Number(act[1])
   const dice = /^(\d+)[dD]\d+/.exec(core)
   if (dice) return Number(dice[1])
+  const singleDieOffset = /^[dD]\d+\s*[+-]\s*(\d+(?:\.\d+)?)$/.exec(core)
+  if (singleDieOffset) return Number(singleDieOffset[1])
+  const wrappedScale =
+    /^round\s*\(\s*\(.+\)\s*\*\s*(\d+(?:\.\d+)?)\s*(?:\*\s*100\s*\)\s*\/\s*100|\))$/i.exec(core)
+  if (wrappedScale) return Number(wrappedScale[1])
+  const fnLeadConst = /^[+-]?\s*(?:round|floor|ceil)\s*\(\s*(\d+(?:\.\d+)?)\s*[*+]/i.exec(core)
+  if (fnLeadConst) return Number(fnLeadConst[1])
+  const bareLeadConst = /^(\d+(?:\.\d+)?)\s*[*+]/.exec(core)
+  if (bareLeadConst) return Number(bareLeadConst[1])
   return 1
 }
 
-/** 将调平数值写回连线公式，同时完整保留 `%`、`>=`、`+xi`、`+x%` 或 `|interval` 语法结构 */
+/** 将调平数值写回连线公式，同时完整保留 `%`、`>=`、`+xi`、`+x%`、`|interval`、`every N` 及复合公式结构 */
 export function formatMxTunableEdgeFormula(edge: MxEdge, val: number): string {
   const rounded = edge.allowDecimals === false ? Math.round(val) : Math.round(val * 1000) / 1000
   const raw = (edge.formula ?? '').trim()
@@ -8928,25 +8947,136 @@ export function formatMxTunableEdgeFormula(edge: MxEdge, val: number): string {
     if (ivMod) return `${rounded >= 0 ? '+' : ''}${rounded}${ivMod[1] ?? ''}i`
     if (/^\d+(?:\.\d+)?\s*%$/.test(raw)) return `${Math.max(0, rounded)}%`
     if (/^[+-]\s*\d+(?:\.\d+)?\s*%$/.test(raw)) return `${rounded >= 0 ? '+' : ''}${rounded}%`
+    const stateFnLead =
+      /^([+-]?\s*(?:round|floor|ceil)\s*\(\s*)\d+(?:\.\d+)?(\s*[*+]\s*.+\))$/i.exec(raw)
+    if (stateFnLead) return `${stateFnLead[1]}${Math.max(0, rounded)}${stateFnLead[2]}`
     return `${rounded >= 0 ? '+' : ''}${rounded}`
   }
-  const pipeMatch = /^([^|]+)\|(.+)$/.exec(raw)
-  const core = pipeMatch ? pipeMatch[1]!.trim() : raw
-  const suffix = pipeMatch ? `|${pipeMatch[2]!.trim()}` : ''
+  const ivMatch = /^(.+?)(\s*(?:\||every\b).+)$/i.exec(raw)
+  const core = ivMatch ? ivMatch[1]!.trim() : raw
+  const suffix = ivMatch ? ivMatch[2]! : ''
+  if (!core || /^[+-]?\d+(?:\.\d+)?$/.test(core)) {
+    return `${rounded}${suffix}`
+  }
   if (/^\d+(?:\.\d+)?\s*%$/.test(core)) {
     return `${Math.max(0, rounded)}%${suffix}`
   }
+  const numWithChance = /^([+-]?\d+(?:\.\d+)?)(\s+\d+(?:\.\d+)?\s*%)$/.exec(core)
+  if (numWithChance) {
+    return `${Math.max(0, rounded)}${numWithChance[2]}${suffix}`
+  }
+  const diceLead = /^(\d+)([dD]\d+.*)$/.exec(core)
+  if (diceLead) {
+    return `${Math.max(1, Math.round(rounded))}${diceLead[2]}${suffix}`
+  }
+  const singleDieOffset = /^([dD]\d+\s*[+-]\s*)\d+(?:\.\d+)?$/.exec(core)
+  if (singleDieOffset) {
+    return `${singleDieOffset[1]}${Math.max(0, rounded)}${suffix}`
+  }
+  const wrappedScale =
+    /^(round\s*\(\s*\(.+\)\s*\*\s*)\d+(?:\.\d+)?(\s*(?:\*\s*100\s*\)\s*\/\s*100|\)))$/i.exec(core)
+  if (wrappedScale) {
+    return `${wrappedScale[1]}${Math.max(0, rounded)}${wrappedScale[2]}${suffix}`
+  }
+  const fnLeadConst = /^((?:round|floor|ceil)\s*\(\s*)\d+(?:\.\d+)?(\s*[*+]\s*.+\))$/i.exec(core)
+  if (fnLeadConst) {
+    return `${fnLeadConst[1]}${Math.max(0, rounded)}${fnLeadConst[2]}${suffix}`
+  }
+  const bareLeadConst = /^\d+(?:\.\d+)?(\s*[*+]\s*.+)$/.exec(core)
+  if (bareLeadConst) {
+    return `${Math.max(0, rounded)}${bareLeadConst[1]}${suffix}`
+  }
+  // 对于不含首常数的动态表达式（如 min(enemy_pool, defense_dps)），无损包裹倍率而不破坏原表达式
+  if (Math.abs(rounded - 1) < 1e-6) {
+    return `${core}${suffix}`
+  }
+  return `round((${core}) * ${Math.max(0, rounded)} * 100) / 100${suffix}`
+}
+
+export function extractMxTunableMacroNumericValue(expr?: string): number {
+  const raw = (expr ?? '').trim()
+  if (!raw) return NaN
+  const core = raw.replace(/\s*(?:\||every\b).*$/i, '').trim()
+  const direct = Number(core)
+  if (Number.isFinite(direct)) return direct
+  const fnLeadConst = /^[+-]?\s*(?:round|floor|ceil)\s*\(\s*(\d+(?:\.\d+)?)\s*[*+]/i.exec(core)
+  if (fnLeadConst) return Number(fnLeadConst[1])
+  const lead = /^(\d+(?:\.\d+)?)\s*[*+]/.exec(core)
+  if (lead) return Number(lead[1])
+  return NaN
+}
+
+export function formatMxTunableMacroFormula(expr: string | undefined, val: number): string {
+  const rounded = Math.max(0, Math.round(val * 1000) / 1000)
+  const raw = (expr ?? '').trim()
+  if (!raw) return String(rounded)
+  const ivMatch = /^(.+?)(\s*(?:\||every\b).+)$/i.exec(raw)
+  const core = ivMatch ? ivMatch[1]!.trim() : raw
+  const suffix = ivMatch ? ivMatch[2]! : ''
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(core)) {
+    return `${rounded}${suffix}`
+  }
+  const fnLeadConst = /^([+-]?\s*(?:round|floor|ceil)\s*\(\s*)\d+(?:\.\d+)?(\s*[*+]\s*.+\))$/i.exec(
+    core
+  )
+  if (fnLeadConst) {
+    return `${fnLeadConst[1]}${rounded}${fnLeadConst[2]}${suffix}`
+  }
+  const bareLead = /^\d+(?:\.\d+)?(\s*[*+]\s*.+)$/.exec(core)
+  if (bareLead) {
+    return `${rounded}${bareLead[1]}${suffix}`
+  }
   return `${rounded}${suffix}`
+}
+
+function relaxTargetNodeCapInPlace(
+  doc: MxDocument,
+  targetNodeId: string,
+  requiredCap: number
+): void {
+  const tn = doc.nodes.find((x) => x.id === targetNodeId)
+  if (!tn || tn.kind !== 'pool') return
+  const safeCap = Math.max(1, Math.ceil(requiredCap))
+  if (tn.capacity !== undefined && tn.capacity > 0 && safeCap > tn.capacity) {
+    tn.capacity = safeCap
+  }
+  for (const se of doc.edges) {
+    if (se.kind === 'state' && se.from === targetNodeId) {
+      const m = /^(<=|<)\s*(\d+(?:\.\d+)?)$/.exec((se.formula ?? '').trim())
+      if (m) {
+        const curLim = Number(m[2])
+        const neededLim = m[1] === '<=' ? safeCap - 1 : safeCap
+        if (neededLim > curLim) {
+          se.formula = `${m[1]}${neededLim}`
+        }
+      }
+    }
+  }
 }
 
 function applyTunableToDocClone(
   baseDoc: MxDocument,
   variableKind: MxTunableKind,
   variableId: string,
-  val: number
+  val: number,
+  ensureTargetNodeId?: string,
+  ensureTargetCap?: number,
+  formulaOverride?: string
 ): MxDocument {
-  const clone: MxDocument = JSON.parse(JSON.stringify(baseDoc))
+  // 轻量结构化浅克隆（仅复制 nodes/edges/params 数组元素，避免 JSON.parse(JSON.stringify) 全量深拷贝开销）
+  const clone: MxDocument = {
+    ...baseDoc,
+    nodes: baseDoc.nodes.map((n) => ({ ...n })),
+    edges: baseDoc.edges.map((e) => ({ ...e })),
+    params: baseDoc.params.map((p) => ({ ...p })),
+    ...(baseDoc.scenarios
+      ? { scenarios: baseDoc.scenarios.map((sc) => ({ ...sc, params: { ...sc.params } })) }
+      : {})
+  }
   const rounded = Math.round(val * 1000) / 1000
+  if (ensureTargetNodeId && ensureTargetCap !== undefined && Number.isFinite(ensureTargetCap)) {
+    relaxTargetNodeCapInPlace(clone, ensureTargetNodeId, ensureTargetCap)
+  }
   if (variableKind === 'param') {
     const p = clone.params.find((x) => x.name === variableId || x.id === variableId)
     if (p) p.value = rounded
@@ -8957,17 +9087,49 @@ function applyTunableToDocClone(
   } else if (variableKind === 'edge') {
     const e = clone.edges.find((x) => x.id === variableId)
     if (e) {
-      e.formula = formatMxTunableEdgeFormula(e, rounded)
+      e.formula = formulaOverride ?? formatMxTunableEdgeFormula(e, rounded)
     }
   } else if (variableKind === 'node_initial') {
     const n = clone.nodes.find((x) => x.id === variableId)
     if (n) n.initial = rounded
   } else if (variableKind === 'node_auto_inflow') {
     const n = clone.nodes.find((x) => x.id === variableId)
-    if (n) n.autoInflow = String(Math.max(0, rounded))
+    const synEdge = clone.edges.find(
+      (x) =>
+        x.id === `e_in_${variableId}` ||
+        (x.kind === 'resource' && x.to === variableId && x.from === `src_in_${variableId}`)
+    )
+    if (synEdge) {
+      synEdge.formula = formulaOverride ?? formatMxTunableMacroFormula(synEdge.formula, rounded)
+    } else if (n) {
+      n.autoInflow = formulaOverride ?? formatMxTunableMacroFormula(n.autoInflow, rounded)
+    }
   } else if (variableKind === 'node_auto_outflow') {
     const n = clone.nodes.find((x) => x.id === variableId)
-    if (n) n.autoOutflow = String(Math.max(0, rounded))
+    const synEdge = clone.edges.find(
+      (x) =>
+        x.id === `e_out_${variableId}` ||
+        (x.kind === 'resource' && x.from === variableId && x.to === `drn_out_${variableId}`)
+    )
+    if (synEdge) {
+      synEdge.formula = formulaOverride ?? formatMxTunableMacroFormula(synEdge.formula, rounded)
+    } else if (n) {
+      n.autoOutflow = formulaOverride ?? formatMxTunableMacroFormula(n.autoOutflow, rounded)
+    }
+  } else if (variableKind === 'node_capacity') {
+    const n = clone.nodes.find((x) => x.id === variableId)
+    if (n) {
+      const nextCap = Math.max(1, Math.round(rounded))
+      n.capacity = nextCap
+      for (const se of clone.edges) {
+        if (se.kind === 'state' && se.from === variableId) {
+          const m = /^(<=|<)\s*(\d+(?:\.\d+)?)$/.exec((se.formula ?? '').trim())
+          if (m) {
+            se.formula = `${m[1]}${m[1] === '<=' ? Math.max(0, nextCap - 1) : nextCap}`
+          }
+        }
+      }
+    }
   }
   return clone
 }
@@ -8997,6 +9159,12 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
     options.goalNodeId ??
     doc.nodes.find((n) => n.kind === 'pool' || n.kind === 'register')?.id ??
     ''
+  const ensureTargetCapNodeId =
+    options.ensureTargetCapacity && !isHealthMetric && options.goalMetric !== 'end_step'
+      ? goalNodeId
+      : undefined
+  // 预先展开一次极简宏文档（非健康度评分模式下直接对展开态文档做轻量参数替换，省去几十次重复宏展开）
+  const baseWorkDoc = isHealthMetric ? doc : getMxSimulationDoc(doc)
 
   interface RankedCandidate extends MxGoalSeekCandidate {
     rankCost: number
@@ -9004,14 +9172,22 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
 
   const evalAt = (val: number): RankedCandidate => {
     const v = Math.round(val * 1000) / 1000
-    const tunedDoc = applyTunableToDocClone(doc, options.variableKind, options.variableId, v)
+    const tunedDoc = applyTunableToDocClone(
+      baseWorkDoc,
+      options.variableKind,
+      options.variableId,
+      v,
+      ensureTargetCapNodeId,
+      effectiveTarget
+    )
     let sum = 0
     let tiePenaltySum = 0
     for (let r = 0; r < runsPerSample; r++) {
       const run = runMxSimulation(tunedDoc, {
         steps: atStep,
         seed: seed + r * 7919,
-        skipTokenHistory: true
+        skipTokenHistory: true,
+        skipAgents: !isHealthMetric
       })
       if (isHealthMetric) {
         const health = analyzeMxEconomyHealth(tunedDoc, run)
@@ -9036,23 +9212,67 @@ export function runMxGoalSeek(doc: MxDocument, options: MxGoalSeekOptions): MxGo
     return { variableValue: v, achievedValue: achieved, error, rankCost }
   }
 
-  // 第一阶段：均匀网格扫描
+  // 第一阶段：均匀网格扫描 + 对数低端加密采样（针对大跨度阈值/单价区间如 [0, 3200] 精准捕捉低值区）
   const coarseRanked: RankedCandidate[] = []
   const span = Math.max(1e-6, hi - lo)
+  const probePoints = new Set<number>()
   for (let i = 0; i < samples; i++) {
     const val = lo + (span * i) / Math.max(1, samples - 1)
+    probePoints.add(Math.round(val * 1000) / 1000)
+  }
+  if (hi >= 80 && hi / Math.max(1, lo) > 20) {
+    for (const logStep of [1, 3, 8, 20, 50]) {
+      const p = lo + logStep
+      if (p > lo && p < hi) probePoints.add(Math.round(p * 1000) / 1000)
+    }
+  }
+  const sortedProbes = Array.from(probePoints).sort((a, b) => a - b)
+  for (const val of sortedProbes) {
     coarseRanked.push(evalAt(val))
   }
 
   let best = coarseRanked.reduce((a, b) => (b.rankCost < a.rankCost ? b : a), coarseRanked[0]!)
 
-  // 第二阶段：在最优值邻域内做 9 点精细插值搜索
+  // 第二阶段：过零点区间割线逼近（Secant / False-Position Refinement）+ 局部邻域精细插值
+  if (!isHealthMetric) {
+    for (let i = 0; i < coarseRanked.length - 1; i++) {
+      const a = coarseRanked[i]!
+      const b = coarseRanked[i + 1]!
+      const diffA = a.achievedValue - effectiveTarget
+      const diffB = b.achievedValue - effectiveTarget
+      if (diffA * diffB <= 0 && Math.abs(b.variableValue - a.variableValue) > 1e-4) {
+        let leftV = a.variableValue
+        let rightV = b.variableValue
+        let leftDiff = diffA
+        let rightDiff = diffB
+        for (let iter = 0; iter < 3; iter++) {
+          const denom = rightDiff - leftDiff
+          const ratio = Math.abs(denom) > 1e-6 ? -leftDiff / denom : 0.5
+          const clampedRatio = Math.max(0.15, Math.min(0.85, ratio))
+          const midV = leftV + (rightV - leftV) * clampedRatio
+          const midCand = evalAt(midV)
+          if (midCand.rankCost < best.rankCost) best = midCand
+          if (midCand.error < 1e-3) break
+          const midDiff = midCand.achievedValue - effectiveTarget
+          if (leftDiff * midDiff <= 0) {
+            rightV = midV
+            rightDiff = midDiff
+          } else {
+            leftV = midV
+            leftDiff = midDiff
+          }
+        }
+      }
+    }
+  }
+
   const stepSize = span / Math.max(1, samples - 1)
   const fineLo = Math.max(lo, best.variableValue - stepSize)
   const fineHi = Math.min(hi, best.variableValue + stepSize)
   if (fineHi - fineLo > 1e-5) {
-    for (let j = 1; j < 8; j++) {
-      const val = fineLo + ((fineHi - fineLo) * j) / 8
+    const finePts = samples <= 11 ? 5 : 8
+    for (let j = 1; j < finePts; j++) {
+      const val = fineLo + ((fineHi - fineLo) * j) / finePts
       const cand = evalAt(val)
       if (cand.rankCost < best.rankCost) best = cand
     }
@@ -9094,6 +9314,10 @@ export interface MxCurveTargetSolution {
   secondCurrentValue?: number
   secondBestValue?: number
   secondAchievedValue?: number
+  /** 通过贝塞尔斜率控制点合成的动态步进速率表达式（如 0.48 * pow(STEP, 1)） */
+  formulaOverride?: string
+  /** 拟合出的幂律曲率指数 γ（γ>1 先慢后快指数加速，γ=1 线性匀速，γ<1 先快后慢对数收敛） */
+  curvatureGamma?: number
 }
 
 export interface MxCurveTargetSolveOptions {
@@ -9108,12 +9332,14 @@ export interface MxCurveTargetSolveOptions {
   maxCandidates?: number
   runsPerSample?: number
   seed?: number
+  /** 拖拽过程中的实时高频预览模式（减少采样与随机轮次，确保 60fps 丝滑跟随） */
+  fastPreview?: boolean
 }
 
 /**
  * 下一代曲线反推配平引擎（Direct Curve Drag Goal-Seek）：
  * 用户在图表上直接拖拽目标节点在 atStep 的期望值 targetValue，
- * 引擎自动沿上游拓扑溯源（内置宏 autoInflow/autoOutflow、入向资源边、上游合成速率、全局参数），
+ * 引擎自动沿上游拓扑溯源（内置宏 autoInflow/autoOutflow、入向资源边、多跳上游合成成本与速率、全局参数），
  * 并行求解并按误差最小排序返回 Top 配平方案及预测曲线序列。
  */
 export function autoSolveMxCurveTarget(
@@ -9126,10 +9352,17 @@ export function autoSolveMxCurveTarget(
   const atStep = Math.max(1, Math.min(totalSteps, Math.round(options.atStep ?? totalSteps)))
   const targetValue = Math.round(Number(options.targetValue) * 100) / 100
   const seed = Math.floor(options.seed ?? doc.settings.seed ?? 2026)
+  const isFast = Boolean(options.fastPreview)
   const nodeById = new Map(doc.nodes.map((n) => [n.id, n]))
+  const baseWorkDoc = getMxSimulationDoc(doc)
 
   // 基准运行：获取当前在 atStep 的数值以智能设定搜索上下界
-  const baseRun = runMxSimulation(doc, { steps: totalSteps, seed, skipTokenHistory: true })
+  const baseRun = runMxSimulation(baseWorkDoc, {
+    steps: totalSteps,
+    seed,
+    skipTokenHistory: true,
+    skipAgents: true
+  })
   const curAtStep =
     baseRun.snapshots[Math.min(atStep, baseRun.snapshots.length - 1)]?.[targetNode.id] ??
     targetNode.initial ??
@@ -9158,9 +9391,9 @@ export function autoSolveMxCurveTarget(
     cands.push(c)
   }
 
-  // 1) 目标节点自身的极简内联宏 (autoInflow / autoOutflow)
+  // 1) 目标节点自身的极简内联宏 (autoInflow / autoOutflow) 与容量上限 (capacity)
   if (targetNode.kind === 'pool') {
-    const rawIn = Number(targetNode.autoInflow?.trim() ?? NaN)
+    const rawIn = extractMxTunableMacroNumericValue(targetNode.autoInflow)
     if (
       Number.isFinite(rawIn) ||
       (deltaNeeded > 0 && !doc.edges.some((e) => e.to === targetNode.id))
@@ -9173,11 +9406,11 @@ export function autoSolveMxCurveTarget(
         labelEn: `📥 [${targetNode.label}] Auto Inflow/Step`,
         fromVal,
         minVal: 0,
-        maxVal: Math.max(fromVal * 3 + 10, fromVal + perStepHint * 2),
+        maxVal: Math.max(fromVal * 4 + 10, fromVal + perStepHint * 3),
         priority: 1
       })
     }
-    const rawOut = Number(targetNode.autoOutflow?.trim() ?? NaN)
+    const rawOut = extractMxTunableMacroNumericValue(targetNode.autoOutflow)
     if (Number.isFinite(rawOut) && rawOut > 0) {
       pushCand({
         kind: 'node_auto_outflow',
@@ -9186,49 +9419,123 @@ export function autoSolveMxCurveTarget(
         labelEn: `📤 [${targetNode.label}] Auto Decay/Step`,
         fromVal: rawOut,
         minVal: 0,
-        maxVal: Math.max(rawOut * 3 + 10, rawOut + perStepHint * 2),
+        maxVal: Math.max(rawOut * 4 + 10, rawOut + perStepHint * 3),
+        priority: 2
+      })
+    }
+    if (
+      targetNode.capacity !== undefined &&
+      targetNode.capacity > 0 &&
+      curAtStep >= targetNode.capacity * 0.95 &&
+      Math.abs(targetValue - curAtStep) > 0.5
+    ) {
+      const capVal = targetNode.capacity
+      pushCand({
+        kind: 'node_capacity',
+        id: targetNode.id,
+        labelZh: `🔒 [${targetNode.label}] 容量上限`, // cjk-ok
+        labelEn: `🔒 [${targetNode.label}] Max Capacity`,
+        fromVal: capVal,
+        minVal: Math.max(1, Math.floor(Math.min(targetValue, capVal) * 0.5)),
+        maxVal: Math.max(capVal * 2, Math.ceil(targetValue * 1.5) + 10),
         priority: 2
       })
     }
   }
 
-  // 2) 直接连入或流出目标节点的资源边，以及向上游溯源 1 跳的资源边
+  // 2) 直接连入或流出目标节点的资源边，以及向上游溯源最多 3 跳的资源边（覆盖 Source -> 碎片池 -> 转换器 -> 目标池）
   const directEdges = doc.edges.filter(
     (e) =>
       e.kind === 'resource' &&
       !e.targetEdgeId &&
       (e.to === targetNode.id || e.from === targetNode.id)
   )
-  const upstreamNodeIds = new Set(directEdges.map((e) => e.from))
-  const hopEdges = doc.edges.filter(
+  const hop1NodeIds = new Set(directEdges.filter((e) => e.to === targetNode.id).map((e) => e.from))
+  const hop1Edges = doc.edges.filter(
+    (e) =>
+      e.kind === 'resource' && !e.targetEdgeId && e.to !== targetNode.id && hop1NodeIds.has(e.to)
+  )
+  const hop2NodeIds = new Set(hop1Edges.map((e) => e.from))
+  const hop2Edges = doc.edges.filter(
     (e) =>
       e.kind === 'resource' &&
       !e.targetEdgeId &&
       e.to !== targetNode.id &&
-      upstreamNodeIds.has(e.to)
+      !hop1NodeIds.has(e.to) &&
+      hop2NodeIds.has(e.to)
   )
 
-  for (const [idx, e] of [...directEdges, ...hopEdges].entries()) {
+  const referencedParamNames = new Set<string>()
+  const paramNameSet = new Set((doc.params ?? []).map((p) => p.name))
+  const allUpstreamEdges = [...directEdges, ...hop1Edges, ...hop2Edges]
+  for (const e of allUpstreamEdges) {
+    const f = (e.formula ?? '').trim()
+    for (const p of doc.params ?? []) {
+      if (f.includes(p.name)) referencedParamNames.add(p.name)
+    }
+  }
+
+  for (const [idx, e] of allUpstreamEdges.entries()) {
+    const rawTrimmed = (e.formula ?? '').trim()
+    // 若该边的公式直接等于某个全局参数名（如 inflow_rate），优先直接调节该全局参数而非覆写连线公式
+    if (paramNameSet.has(rawTrimmed)) continue
     const fromN = nodeById.get(e.from)
     const toN = nodeById.get(e.to)
     const fromVal = extractMxTunableEdgeNumericValue(e)
     if (!Number.isFinite(fromVal)) continue
-    const isPct = (e.formula ?? '').includes('%')
+    const isPct = rawTrimmed.includes('%')
+    const isConverterCostEdge = toN?.kind === 'converter' && e.to !== targetNode.id
+    const isDrainEdge = e.from === targetNode.id
+
+    let minVal = 0
+    let maxVal = isPct ? 100 : Math.max(fromVal * 4 + 10, fromVal + perStepHint * 3)
+    if (isConverterCostEdge || isDrainEdge) {
+      // 转换器消耗成本边或流出边：与目标池存量呈负相关（降低消耗成本 -> 加速升阶产出；提高消耗成本 -> 抑制产出）
+      minVal = isConverterCostEdge ? 1 : 0
+      maxVal =
+        deltaNeeded > 0
+          ? Math.max(fromVal * 1.25, 10)
+          : Math.max(fromVal * 5 + 50, fromVal + perStepHint * 10)
+    }
+
+    const hopPriority =
+      idx < directEdges.length ? 1 : idx < directEdges.length + hop1Edges.length ? 2 : 3
     pushCand({
       kind: 'edge',
       id: e.id,
       labelZh: `──► 连线 [${fromN?.label || e.from} ➔ ${toN?.label || e.to}]`, // cjk-ok
       labelEn: `──► Edge [${fromN?.label || e.from} ➔ ${toN?.label || e.to}]`,
       fromVal,
-      minVal: 0,
-      maxVal: isPct ? 100 : Math.max(fromVal * 3 + 10, fromVal + perStepHint * 2),
-      priority: idx < directEdges.length ? 1 : 3
+      minVal,
+      maxVal,
+      priority: hopPriority
     })
+  }
+
+  // 同时收集上游节点上的内联 autoInflow 宏（如上游碎片池配置了 +round(50 * pow(...))）
+  for (const upNodeId of [...hop1NodeIds, ...hop2NodeIds]) {
+    const upNode = nodeById.get(upNodeId)
+    if (upNode && upNode.kind === 'pool') {
+      const upIn = extractMxTunableMacroNumericValue(upNode.autoInflow)
+      if (Number.isFinite(upIn) && upIn > 0) {
+        pushCand({
+          kind: 'node_auto_inflow',
+          id: upNode.id,
+          labelZh: `📥 上游 [${upNode.label}] 每步自动增加`, // cjk-ok
+          labelEn: `📥 Upstream [${upNode.label}] Auto Inflow`,
+          fromVal: upIn,
+          minVal: 0,
+          maxVal: Math.max(upIn * 5 + 20, upIn + perStepHint * 5),
+          priority: 3
+        })
+      }
+    }
   }
 
   // 3) 全局参数 (Params) 与目标池初始值 (Initial)
   for (const p of doc.params ?? []) {
     const fv = Number(p.value) || 0
+    const isRef = referencedParamNames.has(p.name)
     pushCand({
       kind: 'param',
       id: p.name,
@@ -9236,8 +9543,8 @@ export function autoSolveMxCurveTarget(
       labelEn: `(x) Param [${p.name}]`,
       fromVal: fv,
       minVal: 0,
-      maxVal: Math.max(fv * 3 + 15, fv + Math.abs(deltaNeeded)),
-      priority: 4
+      maxVal: Math.max(fv * 4 + 15, fv + Math.abs(deltaNeeded) * 1.5),
+      priority: isRef ? 1 : 4
     })
   }
   if (targetNode.kind === 'pool') {
@@ -9255,8 +9562,15 @@ export function autoSolveMxCurveTarget(
   }
 
   cands.sort((a, b) => a.priority - b.priority)
-  const picked = cands.slice(0, Math.max(1, options.maxCandidates ?? 4))
+  const maxCands = options.maxCandidates ?? (isFast ? 4 : 5)
+  const picked = cands.slice(0, Math.max(1, maxCands))
   const solutions: MxCurveTargetSolution[] = []
+  const ensureCapNodeId =
+    targetNode.capacity !== undefined &&
+    targetNode.capacity > 0 &&
+    targetValue > targetNode.capacity
+      ? targetNode.id
+      : undefined
 
   for (const c of picked) {
     const gs = runMxGoalSeek(doc, {
@@ -9268,9 +9582,10 @@ export function autoSolveMxCurveTarget(
       goalNodeId: targetNode.id,
       atStep,
       targetValue,
-      samples: 21,
-      runsPerSample: options.runsPerSample ?? 2,
-      seed
+      samples: isFast ? 9 : 21,
+      runsPerSample: options.runsPerSample ?? (isFast ? 1 : 2),
+      seed,
+      ensureTargetCapacity: Boolean(ensureCapNodeId)
     })
     let bestVal = Math.round(gs.bestValue * 100) / 100
     let achievedVal = gs.achievedValue
@@ -9279,11 +9594,19 @@ export function autoSolveMxCurveTarget(
     // 若四舍五入到整数能获得更小或相等误差，则优先采用干净整数值
     const nearInt = Math.round(bestVal)
     if (nearInt >= c.minVal && nearInt <= c.maxVal && Math.abs(nearInt - bestVal) <= 0.35) {
-      const intDoc = applyTunableToDocClone(doc, c.kind, c.id, nearInt)
+      const intDoc = applyTunableToDocClone(
+        baseWorkDoc,
+        c.kind,
+        c.id,
+        nearInt,
+        ensureCapNodeId,
+        targetValue
+      )
       const intRun = runMxSimulation(intDoc, {
         steps: totalSteps,
         seed,
-        skipTokenHistory: true
+        skipTokenHistory: true,
+        skipAgents: true
       })
       const intAchieved =
         intRun.snapshots[Math.min(atStep, intRun.snapshots.length - 1)]?.[targetNode.id] ?? 0
@@ -9295,14 +9618,26 @@ export function autoSolveMxCurveTarget(
       }
     }
 
-    if (Math.abs(bestVal - c.fromVal) < 1e-6 && errVal > Math.abs(deltaNeeded) * 0.95) {
+    if (
+      Math.abs(deltaNeeded) > 1e-4 &&
+      Math.abs(bestVal - c.fromVal) < 1e-6 &&
+      errVal > Math.abs(deltaNeeded) * 0.95
+    ) {
       continue
     }
-    const previewDoc = applyTunableToDocClone(doc, c.kind, c.id, bestVal)
+    const previewDoc = applyTunableToDocClone(
+      baseWorkDoc,
+      c.kind,
+      c.id,
+      bestVal,
+      ensureCapNodeId,
+      targetValue
+    )
     const previewRun = runMxSimulation(previewDoc, {
       steps: totalSteps,
       seed,
-      skipTokenHistory: true
+      skipTokenHistory: true,
+      skipAgents: true
     })
     const predictedSeries = previewRun.snapshots.map(
       (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
@@ -9340,193 +9675,375 @@ export function autoSolveMxCurveTarget(
     })
   }
 
-  // 若启用了双锚点塑形（secondTarget），且候选变量 >= 2，则自动运行双变量联合交替寻优以同时拟合 (T1, V1) 与 (T2, V2)
-  if (options.secondTarget && picked.length >= 2) {
+  // 若启用了双锚点/贝塞尔斜率控制点（secondTarget）：
+  // 1) 自动合成基于 STEP 幂律的动态斜率速率表达式（k * pow(STEP, p)），真正将折线弯曲为「先慢后快」指数曲线或「先快后慢」对数曲线；
+  // 2) 同时若候选变量 >= 2，运行双变量联合交替寻优以同时拟合 (T1, V1) 与 (T2, V2)
+  if (options.secondTarget) {
     const st2 = Math.max(
       1,
       Math.min(totalSteps, Math.round(options.secondTarget.atStep || Math.ceil(totalSteps / 2)))
     )
     const tv2 = Math.round(Number(options.secondTarget.targetValue) * 100) / 100
+    const maxTargetCap = Math.max(targetValue, tv2)
+    const pairEnsureCapNodeId =
+      targetNode.capacity !== undefined &&
+      targetNode.capacity > 0 &&
+      maxTargetCap > targetNode.capacity
+        ? targetNode.id
+        : undefined
     if (st2 !== atStep) {
-      const pairs: Array<[CandidateTunable, CandidateTunable]> = []
-      const initCand = cands.find((x) => x.kind === 'node_initial')
-      const inflowCand = cands.find((x) => x.kind !== 'node_initial')
-      if (initCand && inflowCand) {
-        pairs.push([initCand, inflowCand])
-      }
-      if (
-        picked[0] &&
-        picked[1] &&
-        !pairs.some(
-          ([a, b]) =>
-            (a.id === picked[0]!.id &&
-              a.kind === picked[0]!.kind &&
-              b.id === picked[1]!.id &&
-              b.kind === picked[1]!.kind) ||
-            (b.id === picked[0]!.id &&
-              b.kind === picked[0]!.kind &&
-              a.id === picked[1]!.id &&
-              a.kind === picked[1]!.kind)
-        )
-      ) {
-        pairs.push([picked[0], picked[1]])
+      const v0 = baseRun.snapshots[0]?.[targetNode.id] ?? targetNode.initial ?? 0
+      const [tMid, yMid, tEnd, yEnd] =
+        st2 < atStep ? [st2, tv2, atStep, targetValue] : [atStep, targetValue, st2, tv2]
+      const deltaEnd = yEnd - v0
+      const deltaMid = yMid - v0
+      const uMid = tMid / Math.max(1, tEnd)
+
+      if (Math.abs(deltaEnd) > 0.5 && uMid > 0.04 && uMid < 0.96) {
+        const wMid = Math.max(0.03, Math.min(0.97, deltaMid / deltaEnd))
+        const gamma = Math.max(0.25, Math.min(3.5, Math.log(wMid) / Math.log(uMid)))
+        const p = Math.max(-0.75, Math.min(2.5, Math.round((gamma - 1) * 100) / 100))
+
+        // 寻找主速率候选（正向增长优先流入边或 autoInflow；负向衰减优先流出边或 autoOutflow）
+        const slopeCand =
+          deltaEnd >= 0
+            ? cands.find(
+                (c) =>
+                  (c.kind === 'node_auto_inflow' && c.id === targetNode.id) ||
+                  (c.kind === 'edge' &&
+                    doc.edges.some((e) => e.id === c.id && e.to === targetNode.id))
+              )
+            : cands.find(
+                (c) =>
+                  (c.kind === 'node_auto_outflow' && c.id === targetNode.id) ||
+                  (c.kind === 'edge' &&
+                    doc.edges.some((e) => e.id === c.id && e.from === targetNode.id))
+              )
+
+        if (slopeCand) {
+          const origFormula =
+            slopeCand.kind === 'edge'
+              ? (doc.edges.find((e) => e.id === slopeCand.id)?.formula ?? '')
+              : slopeCand.kind === 'node_auto_inflow'
+                ? (targetNode.autoInflow ?? '')
+                : (targetNode.autoOutflow ?? '')
+          const alreadyHasStepPow = origFormula.includes('pow(STEP')
+          if (Math.abs(p) >= 0.08 || alreadyHasStepPow) {
+            const ivMatch = /^(.+?)(\s*(?:\||every\b).+)$/i.exec(origFormula.trim())
+            const ivSuffix = ivMatch ? ivMatch[2]! : ''
+            const isLinearReset = Math.abs(p) < 0.08
+            let sumStepPow = 0
+            for (let sIdx = 1; sIdx <= tEnd; sIdx++) {
+              sumStepPow += isLinearReset ? 1 : Math.pow(sIdx, p)
+            }
+            const buildFormula = (kVal: number): string => {
+              const kr = Math.max(0.01, Math.round(kVal * 100) / 100)
+              return isLinearReset ? `${kr}${ivSuffix}` : `${kr} * pow(STEP, ${p})${ivSuffix}`
+            }
+            const evalSlopeK = (
+              kVal: number
+            ): {
+              a1: number
+              a2: number
+              aEnd: number
+              err: number
+              snapshots: Array<Record<string, number>>
+            } => {
+              const fStr = buildFormula(kVal)
+              const sDoc = applyTunableToDocClone(
+                baseWorkDoc,
+                slopeCand.kind,
+                slopeCand.id,
+                kVal,
+                pairEnsureCapNodeId,
+                maxTargetCap,
+                fStr
+              )
+              const r = runMxSimulation(sDoc, {
+                steps: totalSteps,
+                seed,
+                skipTokenHistory: true,
+                skipAgents: true
+              })
+              const a1 = r.snapshots[Math.min(atStep, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+              const a2 = r.snapshots[Math.min(st2, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+              const aEnd = r.snapshots[Math.min(tEnd, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+              return {
+                a1,
+                a2,
+                aEnd,
+                err: Math.abs(a1 - targetValue) + Math.abs(a2 - tv2),
+                snapshots: r.snapshots
+              }
+            }
+
+            let bestK = Math.max(
+              0.02,
+              Math.round((Math.abs(deltaEnd) / Math.max(1e-6, sumStepPow)) * 100) / 100
+            )
+            let bestEv = evalSlopeK(bestK)
+            let curK = bestK
+            let curEv = bestEv
+            for (let iter = 0; iter < 3; iter++) {
+              const simDelta = Math.abs(curEv.aEnd - v0)
+              if (simDelta < 1e-3) break
+              const nextK = Math.max(
+                0.01,
+                Math.round(curK * (Math.abs(deltaEnd) / simDelta) * 100) / 100
+              )
+              if (Math.abs(nextK - curK) < 1e-3) break
+              const nextEv = evalSlopeK(nextK)
+              if (nextEv.err < bestEv.err) {
+                bestK = nextK
+                bestEv = nextEv
+              }
+              curK = nextK
+              curEv = nextEv
+            }
+            const tenthK = Math.round(bestK * 10) / 10
+            if (tenthK >= 0.1 && Math.abs(tenthK - bestK) <= 0.05) {
+              const tenthEv = evalSlopeK(tenthK)
+              if (tenthEv.err <= bestEv.err + 0.25) {
+                bestK = tenthK
+                bestEv = tenthEv
+              }
+            }
+            const gammaRounded = Math.round(gamma * 100) / 100
+            const curveTagZh =
+              p >= 0.08
+                ? `📈 指数加速 (γ=${gammaRounded})` // cjk-ok
+                : p <= -0.08
+                  ? `📉 对数收敛 (γ=${gammaRounded})` // cjk-ok
+                  : '📏 线性匀速 (γ=1)' // cjk-ok
+            const curveTagEn =
+              p >= 0.08
+                ? `📈 Exp Curve (γ=${gammaRounded})`
+                : p <= -0.08
+                  ? `📉 Log Curve (γ=${gammaRounded})`
+                  : '📏 Linear (γ=1)'
+            const finalFormula = buildFormula(bestK)
+            solutions.push({
+              variableKind: slopeCand.kind,
+              variableId: slopeCand.id,
+              variableLabel: `${curveTagZh} · ${slopeCand.labelZh}`,
+              labelZh: `${curveTagZh} · ${slopeCand.labelZh}`,
+              labelEn: `${curveTagEn} · ${slopeCand.labelEn}`,
+              currentValue: Math.round(slopeCand.fromVal * 100) / 100,
+              fromValue: Math.round(slopeCand.fromVal * 100) / 100,
+              bestValue: bestK,
+              achievedValue: Math.round(bestEv.a1 * 100) / 100,
+              targetValue,
+              error: Math.round(bestEv.err * 1000) / 1000,
+              predictedSeries: bestEv.snapshots.map(
+                (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
+              ),
+              secondAchievedValue: Math.round(bestEv.a2 * 100) / 100,
+              formulaOverride: finalFormula,
+              curvatureGamma: gammaRounded
+            })
+          }
+        }
       }
 
-      for (const [cA, cB] of pairs.slice(0, 2)) {
-        const evalPair = (vA: number, vB: number): { a1: number; a2: number; err: number } => {
-          const docAB = applyTunableToDocClone(
-            applyTunableToDocClone(doc, cA.kind, cA.id, vA),
-            cB.kind,
-            cB.id,
-            vB
+      if (picked.length >= 2) {
+        const pairs: Array<[CandidateTunable, CandidateTunable]> = []
+        const initCand = cands.find((x) => x.kind === 'node_initial')
+        const inflowCand = cands.find((x) => x.kind !== 'node_initial')
+        if (initCand && inflowCand) {
+          pairs.push([initCand, inflowCand])
+        }
+        if (
+          picked[0] &&
+          picked[1] &&
+          !pairs.some(
+            ([a, b]) =>
+              (a.id === picked[0]!.id &&
+                a.kind === picked[0]!.kind &&
+                b.id === picked[1]!.id &&
+                b.kind === picked[1]!.kind) ||
+              (b.id === picked[0]!.id &&
+                b.kind === picked[0]!.kind &&
+                a.id === picked[1]!.id &&
+                a.kind === picked[1]!.kind)
           )
-          const r = runMxSimulation(docAB, {
-            steps: totalSteps,
-            seed,
-            skipTokenHistory: true
-          })
-          const a1 = r.snapshots[Math.min(atStep, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
-          const a2 = r.snapshots[Math.min(st2, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
-          return { a1, a2, err: Math.abs(a1 - targetValue) + Math.abs(a2 - tv2) }
+        ) {
+          pairs.push([picked[0], picked[1]])
         }
 
-        let bestA = cA.fromVal
-        let bestB = cB.fromVal
-        let bestErr = evalPair(bestA, bestB).err
+        for (const [cA, cB] of pairs.slice(0, isFast ? 1 : 2)) {
+          const evalPair = (vA: number, vB: number): { a1: number; a2: number; err: number } => {
+            const docAB = applyTunableToDocClone(
+              applyTunableToDocClone(
+                baseWorkDoc,
+                cA.kind,
+                cA.id,
+                vA,
+                pairEnsureCapNodeId,
+                maxTargetCap
+              ),
+              cB.kind,
+              cB.id,
+              vB
+            )
+            const r = runMxSimulation(docAB, {
+              steps: totalSteps,
+              seed,
+              skipTokenHistory: true,
+              skipAgents: true
+            })
+            const a1 = r.snapshots[Math.min(atStep, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+            const a2 = r.snapshots[Math.min(st2, r.snapshots.length - 1)]?.[targetNode.id] ?? 0
+            return { a1, a2, err: Math.abs(a1 - targetValue) + Math.abs(a2 - tv2) }
+          }
 
-        // 1) 粗网格采样寻找最优初值盆地
-        const gridN = 5
-        for (let i = 0; i < gridN; i++) {
-          const vA =
-            Math.round((cA.minVal + ((cA.maxVal - cA.minVal) * i) / (gridN - 1)) * 100) / 100
-          for (let j = 0; j < gridN; j++) {
-            const vB =
-              Math.round((cB.minVal + ((cB.maxVal - cB.minVal) * j) / (gridN - 1)) * 100) / 100
-            const ev = evalPair(vA, vB)
-            if (ev.err < bestErr) {
-              bestErr = ev.err
-              bestA = vA
-              bestB = vB
+          let bestA = cA.fromVal
+          let bestB = cB.fromVal
+          let bestErr = evalPair(bestA, bestB).err
+
+          // 1) 粗网格采样寻找最优初值盆地
+          const gridN = isFast ? 4 : 5
+          for (let i = 0; i < gridN; i++) {
+            const vA =
+              Math.round((cA.minVal + ((cA.maxVal - cA.minVal) * i) / (gridN - 1)) * 100) / 100
+            for (let j = 0; j < gridN; j++) {
+              const vB =
+                Math.round((cB.minVal + ((cB.maxVal - cB.minVal) * j) / (gridN - 1)) * 100) / 100
+              const ev = evalPair(vA, vB)
+              if (ev.err < bestErr) {
+                bestErr = ev.err
+                bestA = vA
+                bestB = vB
+              }
             }
           }
-        }
 
-        // 2) 2x2 有限差分雅可比割线法（沿对角线耦合山谷直接收敛到精确解）
-        let curA = bestA
-        let curB = bestB
-        for (let iter = 0; iter < 5; iter++) {
-          const baseEv = evalPair(curA, curB)
-          if (baseEv.err < bestErr) {
-            bestErr = baseEv.err
-            bestA = curA
-            bestB = curB
+          // 2) 2x2 有限差分雅可比割线法（沿对角线耦合山谷直接收敛到精确解）
+          let curA = bestA
+          let curB = bestB
+          const maxIter = isFast ? 3 : 5
+          for (let iter = 0; iter < maxIter; iter++) {
+            const baseEv = evalPair(curA, curB)
+            if (baseEv.err < bestErr) {
+              bestErr = baseEv.err
+              bestA = curA
+              bestB = curB
+            }
+            if (baseEv.err < 1e-4) break
+            const dA = Math.max(0.5, (cA.maxVal - cA.minVal) * 0.04)
+            const dB = Math.max(0.5, (cB.maxVal - cB.minVal) * 0.04)
+            const pA = curA + dA <= cA.maxVal ? curA + dA : Math.max(cA.minVal, curA - dA)
+            const pB = curB + dB <= cB.maxVal ? curB + dB : Math.max(cB.minVal, curB - dB)
+            const stepA = pA - curA || 1
+            const stepB = pB - curB || 1
+            const evA = evalPair(pA, curB)
+            const evB = evalPair(curA, pB)
+            const j11 = (evA.a1 - baseEv.a1) / stepA
+            const j21 = (evA.a2 - baseEv.a2) / stepA
+            const j12 = (evB.a1 - baseEv.a1) / stepB
+            const j22 = (evB.a2 - baseEv.a2) / stepB
+            const det = j11 * j22 - j12 * j21
+            if (Math.abs(det) < 1e-8) break
+            const rhs1 = targetValue - baseEv.a1
+            const rhs2 = tv2 - baseEv.a2
+            const deltaA = (j22 * rhs1 - j12 * rhs2) / det
+            const deltaB = (-j21 * rhs1 + j11 * rhs2) / det
+            const nextA = Math.max(
+              cA.minVal,
+              Math.min(cA.maxVal, Math.round((curA + deltaA) * 100) / 100)
+            )
+            const nextB = Math.max(
+              cB.minVal,
+              Math.min(cB.maxVal, Math.round((curB + deltaB) * 100) / 100)
+            )
+            const nextEv = evalPair(nextA, nextB)
+            if (nextEv.err < bestErr) {
+              bestErr = nextEv.err
+              bestA = nextA
+              bestB = nextB
+            }
+            curA = nextA
+            curB = nextB
           }
-          if (baseEv.err < 1e-4) break
-          const dA = Math.max(0.5, (cA.maxVal - cA.minVal) * 0.04)
-          const dB = Math.max(0.5, (cB.maxVal - cB.minVal) * 0.04)
-          const pA = curA + dA <= cA.maxVal ? curA + dA : Math.max(cA.minVal, curA - dA)
-          const pB = curB + dB <= cB.maxVal ? curB + dB : Math.max(cB.minVal, curB - dB)
-          const stepA = pA - curA || 1
-          const stepB = pB - curB || 1
-          const evA = evalPair(pA, curB)
-          const evB = evalPair(curA, pB)
-          const j11 = (evA.a1 - baseEv.a1) / stepA
-          const j21 = (evA.a2 - baseEv.a2) / stepA
-          const j12 = (evB.a1 - baseEv.a1) / stepB
-          const j22 = (evB.a2 - baseEv.a2) / stepB
-          const det = j11 * j22 - j12 * j21
-          if (Math.abs(det) < 1e-8) break
-          const rhs1 = targetValue - baseEv.a1
-          const rhs2 = tv2 - baseEv.a2
-          const deltaA = (j22 * rhs1 - j12 * rhs2) / det
-          const deltaB = (-j21 * rhs1 + j11 * rhs2) / det
-          const nextA = Math.max(
-            cA.minVal,
-            Math.min(cA.maxVal, Math.round((curA + deltaA) * 100) / 100)
-          )
-          const nextB = Math.max(
-            cB.minVal,
-            Math.min(cB.maxVal, Math.round((curB + deltaB) * 100) / 100)
-          )
-          const nextEv = evalPair(nextA, nextB)
-          if (nextEv.err < bestErr) {
-            bestErr = nextEv.err
-            bestA = nextA
-            bestB = nextB
-          }
-          curA = nextA
-          curB = nextB
-        }
 
-        // 3) 整数邻域吸附检查
-        const intA = Math.round(bestA)
-        const intB = Math.round(bestB)
-        if (
-          intA >= cA.minVal &&
-          intA <= cA.maxVal &&
-          intB >= cB.minVal &&
-          intB <= cB.maxVal &&
-          Math.abs(intA - bestA) <= 0.5 &&
-          Math.abs(intB - bestB) <= 0.5
-        ) {
-          const iEv = evalPair(intA, intB)
-          if (iEv.err <= bestErr + 1e-6) {
-            bestA = intA
-            bestB = intB
-            bestErr = iEv.err
+          // 3) 整数邻域吸附检查
+          const intA = Math.round(bestA)
+          const intB = Math.round(bestB)
+          if (
+            intA >= cA.minVal &&
+            intA <= cA.maxVal &&
+            intB >= cB.minVal &&
+            intB <= cB.maxVal &&
+            Math.abs(intA - bestA) <= 0.5 &&
+            Math.abs(intB - bestB) <= 0.5
+          ) {
+            const iEv = evalPair(intA, intB)
+            if (iEv.err <= bestErr + 1e-6) {
+              bestA = intA
+              bestB = intB
+              bestErr = iEv.err
+            }
           }
+          const finalDoc = applyTunableToDocClone(
+            applyTunableToDocClone(
+              baseWorkDoc,
+              cA.kind,
+              cA.id,
+              bestA,
+              pairEnsureCapNodeId,
+              maxTargetCap
+            ),
+            cB.kind,
+            cB.id,
+            bestB
+          )
+          const finalRun = runMxSimulation(finalDoc, {
+            steps: totalSteps,
+            seed,
+            skipTokenHistory: true,
+            skipAgents: true
+          })
+          const ach1 =
+            Math.round(
+              (finalRun.snapshots[Math.min(atStep, finalRun.snapshots.length - 1)]?.[
+                targetNode.id
+              ] ?? 0) * 100
+            ) / 100
+          const ach2 =
+            Math.round(
+              (finalRun.snapshots[Math.min(st2, finalRun.snapshots.length - 1)]?.[targetNode.id] ??
+                0) * 100
+            ) / 100
+          const predSeries = finalRun.snapshots.map(
+            (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
+          )
+          solutions.push({
+            variableKind: cA.kind,
+            variableId: cA.id,
+            variableLabel: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
+            labelZh: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
+            labelEn: `🔗 ${cA.labelEn} + ${cB.labelEn}`,
+            currentValue: Math.round(cA.fromVal * 100) / 100,
+            fromValue: Math.round(cA.fromVal * 100) / 100,
+            bestValue: Math.round(bestA * 100) / 100,
+            achievedValue: ach1,
+            targetValue,
+            error: Math.round(bestErr * 1000) / 1000,
+            predictedSeries: predSeries,
+            isPair: true,
+            secondVariableKind: cB.kind,
+            secondVariableId: cB.id,
+            secondVariableLabel: cB.labelZh,
+            secondCurrentValue: Math.round(cB.fromVal * 100) / 100,
+            secondBestValue: Math.round(bestB * 100) / 100,
+            secondAchievedValue: ach2
+          })
         }
-        const finalDoc = applyTunableToDocClone(
-          applyTunableToDocClone(doc, cA.kind, cA.id, bestA),
-          cB.kind,
-          cB.id,
-          bestB
-        )
-        const finalRun = runMxSimulation(finalDoc, {
-          steps: totalSteps,
-          seed,
-          skipTokenHistory: true
-        })
-        const ach1 =
-          Math.round(
-            (finalRun.snapshots[Math.min(atStep, finalRun.snapshots.length - 1)]?.[targetNode.id] ??
-              0) * 100
-          ) / 100
-        const ach2 =
-          Math.round(
-            (finalRun.snapshots[Math.min(st2, finalRun.snapshots.length - 1)]?.[targetNode.id] ??
-              0) * 100
-          ) / 100
-        const predSeries = finalRun.snapshots.map(
-          (sn) => Math.round((sn[targetNode.id] ?? 0) * 100) / 100
-        )
-        solutions.push({
-          variableKind: cA.kind,
-          variableId: cA.id,
-          variableLabel: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
-          labelZh: `🔗 ${cA.labelZh} + ${cB.labelZh}`,
-          labelEn: `🔗 ${cA.labelEn} + ${cB.labelEn}`,
-          currentValue: Math.round(cA.fromVal * 100) / 100,
-          fromValue: Math.round(cA.fromVal * 100) / 100,
-          bestValue: Math.round(bestA * 100) / 100,
-          achievedValue: ach1,
-          targetValue,
-          error: Math.round(bestErr * 1000) / 1000,
-          predictedSeries: predSeries,
-          isPair: true,
-          secondVariableKind: cB.kind,
-          secondVariableId: cB.id,
-          secondVariableLabel: cB.labelZh,
-          secondCurrentValue: Math.round(cB.fromVal * 100) / 100,
-          secondBestValue: Math.round(bestB * 100) / 100,
-          secondAchievedValue: ach2
-        })
       }
     }
   }
 
   solutions.sort((a, b) => a.error - b.error)
-  return solutions.slice(0, 4)
+  return solutions.slice(0, 5)
 }
 
 export interface MxPlayableGaugeItem {
@@ -12007,6 +12524,45 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
   const edges = normalizedRawEdges.filter(
     (e) => ids.has(e.from) && (ids.has(e.to) || (!!e.targetEdgeId && edgeIdSet.has(e.targetEdgeId)))
   )
+  // 规范化转换器/交易器连线：转换器本身不持有数值状态，其产物输出边（非 * / ! 触发器）与无资源入边时的资源消耗入边必须为 resource 实线
+  const nodeKindById = new Map(nodes.map((n) => [n.id, n.kind]))
+  for (const e of edges) {
+    if (e.kind !== 'state' || e.targetEdgeId) continue
+    const srcKind = nodeKindById.get(e.from)
+    const dstKind = nodeKindById.get(e.to)
+    const fTrim = (e.formula || '').trim()
+    const isTriggerFormula = fTrim === '*' || fTrim === '!'
+    if (
+      (srcKind === 'converter' || srcKind === 'trader') &&
+      (dstKind === 'pool' ||
+        dstKind === 'drain' ||
+        dstKind === 'gate' ||
+        dstKind === 'delay' ||
+        dstKind === 'queue') &&
+      !isTriggerFormula
+    ) {
+      e.kind = 'resource'
+    }
+  }
+  for (const n of nodes) {
+    if (n.kind !== 'converter' && n.kind !== 'trader') continue
+    const hasResIn = edges.some((e) => e.to === n.id && e.kind === 'resource')
+    if (hasResIn) continue
+    for (const e of edges) {
+      if (e.to !== n.id || e.kind !== 'state' || e.targetEdgeId) continue
+      const srcKind = nodeKindById.get(e.from)
+      if (srcKind !== 'pool' && srcKind !== 'source' && srcKind !== 'gate') continue
+      const fTrim = (e.formula || '').trim()
+      const isActivatorOrTriggerOrMod =
+        fTrim === '*' ||
+        fTrim === '!' ||
+        /^(?:>=|<=|==|!=|<>|>|<|=|\+|-)/.test(fTrim) ||
+        /\.\.|%/.test(fTrim)
+      if (!isActivatorOrTriggerOrMod) {
+        e.kind = 'resource'
+      }
+    }
+  }
   const groups: MxGroup[] = (Array.isArray(r.groups) ? r.groups : [])
     .filter(
       (g): g is MxGroup => !!g && typeof g === 'object' && typeof (g as MxGroup).id === 'string'

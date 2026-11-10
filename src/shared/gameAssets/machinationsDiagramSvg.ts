@@ -991,12 +991,7 @@ export function exportMxDiagramSvg(
             options.playStep ?? 0
           )))
     const strokeOpacity = dormant ? 0.36 : 1
-    const dashAttr =
-      geo.edge.kind === 'state'
-        ? ' stroke-dasharray="6 4"'
-        : gatedOffRes
-          ? ' stroke-dasharray="5 4"'
-          : ''
+    const dashAttr = geo.edge.kind === 'state' ? ' stroke-dasharray="6 4"' : ''
     const strokeWidth =
       options.flowHeatmap && geo.edge.kind === 'resource' && (cumFlow?.total ?? 0) > 0
         ? round2(1.8 + (cumFlow?.share ?? 0) * 3.5)
@@ -1026,7 +1021,7 @@ export function exportMxDiagramSvg(
     const pillStrokeW = geo.formulaModified ? '1.65' : '1.3'
     const pillFontW = geo.formulaModified ? '700' : '600'
     const pillOpacityAttr = dormant ? ' opacity="0.45"' : ''
-    const pillDashAttr = gatedOffRes ? ' stroke-dasharray="3 2"' : ''
+    const pillDashAttr = geo.edge.kind === 'state' ? ' stroke-dasharray="3 2"' : ''
     out.push(
       `      <g class="mx-edge-pill"${pillOpacityAttr} transform="translate(${round2(geo.mid.x)}, ${round2(geo.mid.y)})">`
     )
