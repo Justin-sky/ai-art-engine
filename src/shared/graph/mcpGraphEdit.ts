@@ -1,6 +1,7 @@
 import { canConnectNodes, getNodePorts } from './ports'
 import { createNodeFromType } from './create'
 import {
+  applyMxDiagnosticQuickFixInPlace,
   isNonCombatDomainContext,
   lintMxDocumentTopology,
   parseMxDocumentJson
@@ -1677,8 +1678,25 @@ export function applyGraphEditOps(
             touchedNode.params.gameEconomyPreset,
             touchedNode.title
           )
+          let autoHealed = false
           for (const tw of lintMxDocumentTopology(mxDoc)) {
             warnings.push(`[game.economy:${touchedNode.id}] ${tw.message}`)
+            if (
+              tw.code === 'capped_pool_missing_headroom_gate' ||
+              tw.code === 'pool_gate_deadzone_lock'
+            ) {
+              const fixRes = applyMxDiagnosticQuickFixInPlace(mxDoc, {
+                id: `diag_topo_${tw.code}_${tw.edgeId ?? tw.nodeId ?? 'x'}`,
+                severity: tw.severity,
+                kind: 'topology_error',
+                nodeId: tw.nodeId,
+                nodeLabel: tw.message
+              })
+              if (fixRes.changed) autoHealed = true
+            }
+          }
+          if (autoHealed) {
+            touchedNode.params.gameEconomyDiagramJson = JSON.stringify(mxDoc)
           }
         } catch {
           // ignore parse failure here

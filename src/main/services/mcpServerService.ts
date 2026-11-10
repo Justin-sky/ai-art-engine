@@ -336,7 +336,15 @@ async function collectTaskRunEconomyDiagnostics(
         .map((f) => ({
           nodeId: f.nodeId,
           label: f.nodeLabel,
+          blockedSteps: f.value,
           blockedRatioPercent: f.secondaryValue
+        }))
+      const idleNodes = (health.findings ?? [])
+        .filter((f) => f.kind === 'idle_node')
+        .map((f) => ({
+          nodeId: f.nodeId,
+          label: f.nodeLabel,
+          constantValue: f.value
         }))
       diagnostics.push({
         relativePath: rel,
@@ -348,6 +356,7 @@ async function collectTaskRunEconomyDiagnostics(
         endReason: play.endReason ?? null,
         finalPools: play.final ?? {},
         starvedConverters: starved,
+        idleNodes,
         topologyWarnings: topo
       })
     } catch {
@@ -391,7 +400,15 @@ async function collectTaskRunEconomyDiagnostics(
           .map((f) => ({
             nodeId: f.nodeId,
             label: f.nodeLabel,
+            blockedSteps: f.value,
             blockedRatioPercent: f.secondaryValue
+          })),
+        idleNodes: health.findings
+          .filter((f) => f.kind === 'idle_node')
+          .map((f) => ({
+            nodeId: f.nodeId,
+            label: f.nodeLabel,
+            constantValue: f.value
           })),
         topologyWarnings: topo
       })
@@ -2778,7 +2795,7 @@ const TOOL_DEFS: McpToolDef[] = [
       '     * 音乐/BGM 生成：`audio.music`（`params: { prompt, lyrics, instrumental, model, providerInstanceId }`）\n' +
       '     * 3D 模型生成与加工：`asset.model3d`（`params: { prompt, style, model, providerInstanceId, referenceImageUrls }`）、`model3d.rig`（骨骼蒙皮）、`model3d.segment`（部件拆分）、`model3d.postProcess`（重拓扑/补全/重定向/格式转换）\n' +
       '     * 空间世界生成与导出：`spatialWorld.generate`（`params: { prompt, model, seed, panoMode, disableRecaption, referenceImageUrls, referenceVideoUrl }`）、`spatialWorld.export`（导出 HQ GLB 网格或 PLY 泼溅）\n' +
-      '     * 经济系统（Machinations 游戏机制与宏观资源建模）：`game.economy`（`params: { prompt, gameEconomyPreset, gameEconomyDiagramJson, gameEconomySteps, gameEconomyMonteCarloRuns }`；**默认按需精简原则**：当用户要求创建游戏机制或经济系统时，默认**只创建单个 `game.economy` 节点**，在默认 `Base` 图层 `{ id: "layer_base", name: "Base", visible: true, locked: false }` 上构建简洁聚焦的核心机制闭环（6~12 个节点或直接选用匹配的 `gameEconomyPreset`），**严禁默认创建全套复杂多图层机制，也严禁擅自附带创建 `asset.gameSystem`（策划案生成）或 `game.numerical`（数值系统）节点**！**仅在用户明确要求**创建“完整机制 / 全套机制 / 所有机制”时，才在 `gameEconomyDiagramJson`（`schema: "mx@2"`）中构建覆盖各核心子系统的完整复杂机制（20~32 个节点）并按功能分类放入不同 `layers` 图层——`layers[0]` 固定保留 `Base` 默认层，每个 `node` 指定对应 `layerId`，省略 `x`/`y` 自动执行多图层横向泳道排版。**`mx@2` 四大铁律与仿真自愈门禁**：① `converter/source -> pool` 恒为加法（`+`），任何扣血/漏怪/消耗生命必须写成 `hp_pool -> drain` 减法，严禁写成 `leak_converter -> hp_pool`；② `resource` 边的 `formula` 可直接引用任意 `register`/`pool` 节点 id（如 `"wave_scale"`、`"min(enemy_pool, defense_dps)"`），而 `state` 边做数值修正必须带正负号 `"+1"`/`"-2"`/`"+20%"`，做激活门控必须带比较符 `">=1"`/`"<=0"`，严禁写无符号纯数字 `"1"`；③ `end` 节点的多条入向 `state` 边按 `AND`（全部满足）判定且永远不产出资源（严禁从 `end` 连出 `resource` 边）；④ 避免多个无条件 `automatic` 转化器同池抢占与同回合无条件自动建造+自动拆卖死循环（拆卖用 `interactive` + `botCondition` 或 `state` 门控，单局/每日节点须加 `wave_count <= 1` 等波次门控隔离时间尺度）；运行 `task_run` 后必须检查 `economyDiagnostics`，若有 `topologyWarnings` 或数值曲线反转必须立即 `graph_edit` 修正重跑，严禁改名“草稿（仿真待修正）”敷衍交付！仅在用户明确要求串联下游时，输出端口 `out-text`【经济系统】可连入 `game.numerical`、`novel.outline`、`asset.novel` 或 `asset.gameSystem` 的 `in-economy`）\n' +
+      '     * 经济系统（Machinations 游戏机制与宏观资源建模）：`game.economy`（`params: { prompt, gameEconomyPreset, gameEconomyDiagramJson, gameEconomySteps, gameEconomyMonteCarloRuns }`；**默认按需精简原则**：当用户要求创建游戏机制或经济系统时，默认**只创建单个 `game.economy` 节点**，在默认 `Base` 图层 `{ id: "layer_base", name: "Base", visible: true, locked: false }` 上构建简洁聚焦的核心机制闭环（6~12 个节点或直接选用匹配的 `gameEconomyPreset`），**严禁默认创建全套复杂多图层机制，也严禁擅自附带创建 `asset.gameSystem`（策划案生成）或 `game.numerical`（数值系统）节点**！**仅在用户明确要求**创建“完整机制 / 全套机制 / 所有机制”时，才在 `gameEconomyDiagramJson`（`schema: "mx@2"`）中构建覆盖各核心子系统的完整复杂机制（20~32 个节点）并按功能分类放入不同 `layers` 图层——`layers[0]` 固定保留 `Base` 默认层，每个 `node` 指定对应 `layerId`，省略 `x`/`y` 自动执行多图层横向泳道排版。**`mx@2` 六大铁律与仿真自愈门禁**：① `converter/source -> pool` 恒为加法（`+`），任何扣血/漏怪/消耗生命必须写成 `hp_pool -> drain` 减法，严禁写成 `leak_converter -> hp_pool`；② `resource` 边的 `formula` 可直接引用任意 `register`/`pool` 节点 id（如 `"wave_scale"`、`"min(enemy_pool, defense_dps)"`），而 `state` 边做数值修正必须带正负号 `"+1"`/`"-2"`/`"+20%"`，做激活门控必须带比较符 `">=1"`/`"<=0"`，严禁写无符号纯数字 `"1"`；③ `end` 节点的多条入向 `state` 边按 `AND`（全部满足）判定且永远不产出资源（严禁从 `end` 连出 `resource` 边）；④ 避免多个无条件 `automatic` 转化器同池抢占与同回合无条件自动建造+自动拆卖死循环（拆卖用 `interactive` + `botCondition` 或 `state` 门控，单局/每日节点须加 `wave_count <= 1` 等波次门控隔离时间尺度）；⑤ 自动补给/赠送转化器向封顶池（`capacity = C`）推送 `+A` 时必须加 `pool -> converter` 的 `"<=C-A"` 余量状态门控（如向 `cap 120` 体力池赠 `+60` 须加 `"<=60"`），避免池满时连续容量阻塞；⑥ 高消耗转化器（如 `-40` 精英关）与低阈值补给分支（如 `<=40` 道具补体力）共用同一池时，高消耗门控须设为实际成本 `">=40"`（严禁设为 `">=80"` 造成池值卡在死区导致道具分支 0 次触发）；运行 `task_run` 后必须检查 `economyDiagnostics`（`topologyWarnings` / `starvedConverters` / `idleNodes`），若有告警或死分支必须立即 `graph_edit` 修正重跑，严禁改名“草稿（仿真待修正）”敷衍交付！仅在用户明确要求串联下游时，输出端口 `out-text`【经济系统】可连入 `game.numerical`、`novel.outline`、`asset.novel` 或 `asset.gameSystem` 的 `in-economy`）\n' +
       '     * 数值系统（仅在用户明确要求战斗数值配表或策划案专属数值表时创建）：`game.numerical`（`params: { prompt, gameNumericalPreset, gameNumericalWorkbenchJson }`；游戏/小说模式支持 `preset: "slay_the_spire_dbg" | "hearthstone_tcg" | "onmyoji_atb" | "balatro_roguelike" | "survivor_brotato" | "short_drama_progression"`；非战斗类策划案如中医教学/实训仿真/数字孪生/工具应用会自动进入纯净「策划案专属数值表（domainTables）」模式——严禁为其传入 `short_drama_progression` 预设，也严禁将同画布上无关的小说/短剧 `game.economy` 节点连入该节点！只需将 `game.numerical` 的 `out-text`【数值系统】连入对应 `asset.gameSystem` 的 `in-numerical`）\n' +
       '     * 小说大纲（World Bible + 分卷总纲 + 逐章细纲）：`novel.outline`（输入端口 `in`、`in-economy`、`in-numerical`；将 `out` 广播连入下游每一个章节 `asset.novel` 的 `in-outline` 端口，各章节点会自动按章号 t 切片提取专属细纲）\n' +
       '     * 创建小说 / 马尔可夫链章节节点：`asset.novel`（推荐每章独立节点串联：第1章 → 第2章 → 第3章；输入端口：`in`【上一章】接 `C_{t-1} (out)`、`in-outline`【小说大纲】接 `novel.outline (out)`、`in-economy`【经济系统】接 `game.economy (out-text)`、`in-numerical`【数值系统】接 `game.numerical (out-text)`；输出端口：`out`【下一章】输出本章正文供下一章串联、`out-all`【全部】汇总第1..t章全部累计章节，在用户明确要求改编下游策划案或剧本时可在末章连入 `asset.gameSystem (in)` 或 `asset.screenplay (in)`）\n' +

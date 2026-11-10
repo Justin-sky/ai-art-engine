@@ -73,6 +73,7 @@ import {
   type LevelGeneratorAlgorithm,
   analyzeMxEconomyHealth,
   analyzeMultiplierPipeline,
+  applyMxDiagnosticQuickFixInPlace,
   buildDomainNumericalSuiteFromContext,
   createMxWorkbenchPreset,
   createXianxia200LifespanWorkbench,
@@ -2447,6 +2448,27 @@ export async function executeGameEconomyNode(
   const seed = Math.floor(Number(ctx.node.params.gameEconomySeed ?? doc.settings.seed ?? 2026))
   doc.settings = { ...doc.settings, steps, runs, seed }
   const presetId = doc.templateId ?? templateId
+
+  // 若自定义图存在拓扑反模式（6 类拓扑错误）或转换器饥饿阻塞（starved_converter），在仿真前自动自愈
+  if (hasExplicitDiagram) {
+    const preLint = lintMxDocumentTopology(doc)
+    for (const tw of preLint) {
+      applyMxDiagnosticQuickFixInPlace(doc, {
+        id: `diag_topo_${tw.code}_${tw.edgeId ?? tw.nodeId ?? 'x'}`,
+        severity: tw.severity,
+        kind: 'topology_error',
+        nodeId: tw.nodeId,
+        nodeLabel: tw.message
+      })
+    }
+    const preRun = runMxSimulation(doc, { steps, seed })
+    const preHealth = analyzeMxEconomyHealth(doc, preRun)
+    for (const f of preHealth.findings) {
+      if (f.kind === 'starved_converter') {
+        applyMxDiagnosticQuickFixInPlace(doc, f, { seed })
+      }
+    }
+  }
 
   const forecast = runMxForecast(doc, { runs, steps, seed })
   const playRun = runMxSimulation(doc, { steps, seed, name: 'Play 1' })

@@ -4784,4 +4784,114 @@ describe('Machinations.io 100% specification parity', () => {
       afterSameStep.findings.some((f) => f.kind === 'pool_depleted' && f.nodeId === 'pool_threat')
     ).toBe(false)
   })
+
+  it('detects and self-heals capped_pool_missing_headroom_gate and pool_gate_deadzone_lock on Stamina loop diagrams', () => {
+    const staminaDoc = parseMxDocumentJson({
+      schema: 'mx@2',
+      title: '体力机制（上限120·每小时回20·关卡消耗·道具补满）',
+      settings: {
+        steps: 24,
+        runs: 20,
+        seed: 2026,
+        speed: 1,
+        actionMode: 'simultaneous',
+        botMode: 'smart'
+      },
+      nodes: [
+        { id: 'hour', kind: 'pool', label: '在线时长', initial: 0, capacity: 96, autoInflow: '1' },
+        {
+          id: 'energy',
+          kind: 'pool',
+          label: '体力池',
+          initial: 120,
+          capacity: 120,
+          autoInflow: '20'
+        },
+        {
+          id: 'play_normal',
+          kind: 'converter',
+          label: '普通关消耗 (-20)',
+          trigger: 'automatic',
+          pullMode: 'pull_all'
+        },
+        {
+          id: 'play_elite',
+          kind: 'converter',
+          label: '精英关消耗 (-40)',
+          trigger: 'automatic',
+          pullMode: 'pull_all'
+        },
+        { id: 'clears', kind: 'pool', label: '累计通关', initial: 0, capacity: 200 },
+        { id: 'daily_token', kind: 'pool', label: '每日赠送次数', initial: 1, capacity: 1 },
+        {
+          id: 'daily_gift',
+          kind: 'converter',
+          label: '每日登录赠体力 (+60)',
+          trigger: 'automatic',
+          pullMode: 'pull_all'
+        },
+        { id: 'items', kind: 'pool', label: '体力道具存量', initial: 3, capacity: 10 },
+        {
+          id: 'use_item',
+          kind: 'converter',
+          label: '道具补满 (+60)',
+          trigger: 'interactive',
+          pullMode: 'pull_all',
+          botPolicy: 'condition',
+          botCondition: 'energy <= 40 && items >= 1'
+        },
+        { id: 'end_day', kind: 'end', label: '24小时观察结束' }
+      ],
+      edges: [
+        { id: 'e_play_n_in', kind: 'resource', from: 'energy', to: 'play_normal', formula: '20' },
+        { id: 'e_play_n_out', kind: 'resource', from: 'play_normal', to: 'clears', formula: '1' },
+        { id: 'e_play_n_gate', kind: 'state', from: 'energy', to: 'play_normal', formula: '>=20' },
+        { id: 'e_play_e_in', kind: 'resource', from: 'energy', to: 'play_elite', formula: '40' },
+        { id: 'e_play_e_out', kind: 'resource', from: 'play_elite', to: 'clears', formula: '2' },
+        {
+          id: 'e_play_e_gate_energy',
+          kind: 'state',
+          from: 'energy',
+          to: 'play_elite',
+          formula: '>=80'
+        },
+        { id: 'e_play_e_gate_hour', kind: 'state', from: 'hour', to: 'play_elite', formula: '>=8' },
+        { id: 'e_gift_in', kind: 'resource', from: 'daily_token', to: 'daily_gift', formula: '1' },
+        { id: 'e_gift_out', kind: 'resource', from: 'daily_gift', to: 'energy', formula: '60' },
+        { id: 'e_gift_gate', kind: 'state', from: 'daily_token', to: 'daily_gift', formula: '>=1' },
+        { id: 'e_item_in', kind: 'resource', from: 'items', to: 'use_item', formula: '1' },
+        { id: 'e_item_out', kind: 'resource', from: 'use_item', to: 'energy', formula: '60' },
+        {
+          id: 'e_item_gate_energy',
+          kind: 'state',
+          from: 'energy',
+          to: 'use_item',
+          formula: '<=40'
+        },
+        { id: 'e_item_gate_count', kind: 'state', from: 'items', to: 'use_item', formula: '>=1' },
+        { id: 'e_end_hour', kind: 'state', from: 'hour', to: 'end_day', formula: '>=24' },
+        { id: 'e_end_clear', kind: 'state', from: 'clears', to: 'end_day', formula: '>=8' }
+      ]
+    })
+
+    const topoWarnings = lintMxDocumentTopology(staminaDoc)
+    const codes = topoWarnings.map((w) => w.code)
+    expect(codes).toContain('capped_pool_missing_headroom_gate')
+    expect(codes).toContain('pool_gate_deadzone_lock')
+
+    const fixed = applyAllMxDiagnosticQuickFixes(staminaDoc)
+    expect(fixed.fixedCount).toBe(2)
+    expect(lintMxDocumentTopology(fixed.doc)).toEqual([])
+
+    const afterRun = runMxSimulation(fixed.doc)
+    const afterHealth = analyzeMxEconomyHealth(fixed.doc, afterRun)
+    expect(afterHealth.score).toBe(100)
+    expect(afterHealth.grade).toBe('S')
+    const finalSnap = afterRun.snapshots[afterRun.snapshots.length - 1]!
+    expect(finalSnap.items).toBe(0)
+    expect(finalSnap.daily_token).toBe(0)
+    expect(finalSnap.clears).toBeGreaterThanOrEqual(36)
+    expect(fixed.doc.nodes.find((n) => n.id === 'energy')?.capacity).toBe(120)
+    expect(fixed.doc.nodes.find((n) => n.id === 'items')?.autoInflow).toBeUndefined()
+  })
 })

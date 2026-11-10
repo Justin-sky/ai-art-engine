@@ -8445,6 +8445,8 @@ export type MxTopologyWarningCode =
   | 'hp_damage_inverted_converter'
   | 'dangling_unsigned_state_edge'
   | 'competing_auto_converters_with_auto_sell'
+  | 'capped_pool_missing_headroom_gate'
+  | 'pool_gate_deadzone_lock'
 
 export interface MxTopologyWarning {
   code: MxTopologyWarningCode
@@ -8628,6 +8630,143 @@ export function lintMxDocumentTopology(doc: MxDocument): MxTopologyWarning[] {
     }
   }
 
+  // 5) 自动转换器向满初始容量的封顶池推送大额资源但缺少剩余容量门控（导致连续多步容量阻塞 ⚠）
+  for (const conv of autoConverters) {
+    const inResEdges = doc.edges.filter(
+      (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === conv.id
+    )
+    if (inResEdges.length === 0) continue
+    const allInputsReadyAtStart = inResEdges.every((ie) => {
+      const src = byId.get(ie.from)
+      if (!src || src.kind !== 'pool') return false
+      const req = Number((ie.formula ?? '1').trim())
+      const cost = Number.isFinite(req) && req > 0 ? req : 1
+      return (src.initial ?? 0) >= cost
+    })
+    if (!allInputsReadyAtStart) continue
+
+    const inStateEdges = doc.edges.filter(
+      (se) => se.kind === 'state' && !se.targetEdgeId && se.to === conv.id
+    )
+    const allGatesReadyAtStart = inStateEdges.every((se) => {
+      const src = byId.get(se.from)
+      if (!src || src.kind !== 'pool') return false
+      const sp = parseMxStateFormula(se.formula)
+      if (sp.type !== 'activator') return true
+      const initVal = src.initial ?? 0
+      if (sp.op === '>=') return initVal >= sp.value
+      if (sp.op === '>') return initVal > sp.value
+      if (sp.op === '<=') return initVal <= sp.value
+      if (sp.op === '<') return initVal < sp.value
+      if (sp.op === '==') return initVal === sp.value
+      return false
+    })
+    if (!allGatesReadyAtStart) continue
+
+    const outEdges = doc.edges.filter(
+      (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === conv.id
+    )
+    if (outEdges.length !== 1) continue
+    const oe = outEdges[0]!
+    const dst = byId.get(oe.to)
+    if (!dst || dst.kind !== 'pool' || !dst.capacity || dst.capacity <= 0) continue
+    if (dst.overflow === 'drain') continue
+    const outAmt = Number((oe.formula ?? '').trim())
+    if (!Number.isFinite(outAmt) || outAmt <= 0 || outAmt > dst.capacity) continue
+    if ((dst.initial ?? 0) + outAmt <= dst.capacity) continue
+    const hasHeadroomGate = doc.edges.some(
+      (se) => se.kind === 'state' && !se.targetEdgeId && se.from === dst.id && se.to === conv.id
+    )
+    if (!hasHeadroomGate) {
+      const headroom = Math.max(0, Math.round((dst.capacity - outAmt) * 1000) / 1000)
+      warnings.push({
+        code: 'capped_pool_missing_headroom_gate',
+        severity: 'warn',
+        edgeId: oe.id,
+        nodeId: conv.id,
+        message: `Automatic converter "${conv.label || conv.id}" (${conv.id}) pushes +${outAmt} into capped pool "${dst.label || dst.id}" (${dst.id}, initial=${dst.initial ?? 0}, capacity=${dst.capacity}) without a headroom state gate, causing repeated capacity blocking. Add a state edge "${dst.id} -> ${conv.id}" with formula "<=${headroom}".`
+      })
+    }
+  }
+
+  // 6) 同一池上高消耗转换器门控高于实际消耗 + 常驻恢复与基础消耗对冲，导致池值卡在死区使低阈值补给分支永不触发
+  for (const pool of doc.nodes) {
+    if (pool.kind !== 'pool') continue
+    const autoIn = Number((pool.autoInflow ?? '').trim())
+    const sourceIn = doc.edges
+      .filter(
+        (e) =>
+          e.kind === 'resource' &&
+          !e.targetEdgeId &&
+          e.to === pool.id &&
+          byId.get(e.from)?.kind === 'source' &&
+          byId.get(e.from)?.trigger === 'automatic'
+      )
+      .reduce((acc, e) => {
+        const v = Number((e.formula ?? '').trim())
+        return acc + (Number.isFinite(v) && v > 0 ? v : 0)
+      }, 0)
+    const totalAutoIn = (Number.isFinite(autoIn) && autoIn > 0 ? autoIn : 0) + sourceIn
+    if (totalAutoIn <= 0) continue
+
+    // 查找低阈值补给节点（如 energy <= 40 触发 use_item -> energy）
+    const lowRefillGates = doc.edges.filter((se) => {
+      if (se.kind !== 'state' || se.targetEdgeId || se.from !== pool.id) return false
+      const sp = parseMxStateFormula(se.formula)
+      if (sp.type !== 'activator' || (sp.op !== '<=' && sp.op !== '<')) return false
+      return doc.edges.some(
+        (re) => re.kind === 'resource' && !re.targetEdgeId && re.from === se.to && re.to === pool.id
+      )
+    })
+    if (lowRefillGates.length === 0) continue
+
+    const lowGate = lowRefillGates[0]!
+    const lowSpec = parseMxStateFormula(lowGate.formula)
+    const lowThresh = lowSpec.type === 'activator' ? lowSpec.value : 0
+    const refillNode = byId.get(lowGate.to)
+
+    // 查找从该池抽取资源的自动转换器
+    const consumerOutEdges = doc.edges.filter((e) => {
+      if (e.kind !== 'resource' || e.targetEdgeId || e.from !== pool.id) return false
+      const dst = byId.get(e.to)
+      return (
+        dst && (dst.kind === 'converter' || dst.kind === 'drain') && dst.trigger === 'automatic'
+      )
+    })
+
+    for (const ce of consumerOutEdges) {
+      const cost = Number((ce.formula ?? '').trim())
+      if (!Number.isFinite(cost) || cost <= 0) continue
+      const highGate = doc.edges.find((se) => {
+        if (se.kind !== 'state' || se.targetEdgeId || se.from !== pool.id || se.to !== ce.to) {
+          return false
+        }
+        const sp = parseMxStateFormula(se.formula)
+        return sp.type === 'activator' && (sp.op === '>=' || sp.op === '>') && sp.value > cost
+      })
+      if (!highGate) continue
+      const highSpec = parseMxStateFormula(highGate.formula)
+      const highThresh = highSpec.type === 'activator' ? highSpec.value : 0
+      const otherAutoDrain = consumerOutEdges
+        .filter((oe) => oe.id !== ce.id)
+        .reduce((acc, oe) => {
+          const v = Number((oe.formula ?? '').trim())
+          return acc + (Number.isFinite(v) && v > 0 ? v : 0)
+        }, 0)
+      if (highThresh - cost >= lowThresh && totalAutoIn >= otherAutoDrain) {
+        const consumerNode = byId.get(ce.to)
+        warnings.push({
+          code: 'pool_gate_deadzone_lock',
+          severity: 'warn',
+          edgeId: highGate.id,
+          nodeId: ce.to,
+          message: `State gate "${highGate.id}" (${pool.id} -> ${ce.to}, "${highGate.formula}") exceeds actual resource cost (${cost}) while inflow (+${totalAutoIn}/step) offsets base consumption (-${otherAutoDrain}/step), trapping "${pool.id}" above "${lowGate.formula}" and permanently locking "${refillNode?.label || lowGate.to}" (${lowGate.to}). Lower "${highGate.id}" to ">=${cost}".`
+        })
+        if (consumerNode) break
+      }
+    }
+  }
+
   return warnings
 }
 
@@ -8766,9 +8905,20 @@ export function analyzeMxEconomyHealth(
     if (series.length < 2) continue
     const sum = summarizeMxSeries(series)
 
-    // 3a) Pool 触及容量上限 (Capacity Bottleneck)
+    // 3a) Pool 触及容量上限 (Capacity Bottleneck：排除无任何入流的纯初始一次性令牌池，以及初始满值但后续未再回满的消耗池)
     if (n.kind === 'pool' && n.capacity && n.capacity > 0) {
-      const firstCapStep = series.findIndex((v, i) => i > 0 && v >= n.capacity! - 1e-6)
+      const hasInflow =
+        Boolean(n.autoInflow?.trim()) ||
+        doc.edges.some((e) => e.kind === 'resource' && !e.targetEdgeId && e.to === n.id)
+      const startedAtCap = (series[0] ?? 0) >= n.capacity - 1e-6
+      const firstCapStep = hasInflow
+        ? series.findIndex(
+            (v, i) =>
+              i > 0 &&
+              v >= n.capacity! - 1e-6 &&
+              (!startedAtCap || (series[i - 1] ?? 0) < n.capacity! - 1e-6)
+          )
+        : -1
       if (firstCapStep > 0) {
         cappedPoolsCount++
         penalty += 8
@@ -8784,8 +8934,16 @@ export function analyzeMxEconomyHealth(
       }
     }
 
-    // 3b) Pool 枯竭归零 (Pool Depleted)
-    if (n.kind === 'pool' && (sum.initial > 0 || sum.max > 0)) {
+    // 3b) Pool 枯竭归零 (Pool Depleted：排除无任何入流的纯一次性初始消耗品/令牌池，除非是生命值生存池)
+    const hasPoolInflow =
+      Boolean(n.autoInflow?.trim()) ||
+      doc.edges.some((e) => e.kind === 'resource' && !e.targetEdgeId && e.to === n.id)
+    const isSurvivalPool = HP_POOL_RE.test(`${n.id} ${n.label || ''}`)
+    if (
+      n.kind === 'pool' &&
+      (sum.initial > 0 || sum.max > 0) &&
+      (hasPoolInflow || isSurvivalPool)
+    ) {
       const firstZeroStep = series.findIndex(
         (v, i) => i > 0 && v <= 1e-6 && (series[i - 1] ?? 0) > 1e-6
       )
@@ -10802,14 +10960,32 @@ export function applyMxDiagnosticQuickFixInPlace(
       }
     }
 
-    // 2) 若下游存在容量封顶的阻塞池导致 Converter/Source 被反压阻塞，扩容或开启溢出回收
+    // 2) 若下游存在容量封顶的阻塞池导致 Converter/Source 被反压阻塞，优先补齐剩余容量门控 `<= capacity - outAmt`，仍不满足再扩容
     const outResEdges = doc.edges.filter(
       (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === target.id
     )
     for (const oe of outResEdges) {
       const dst = byId.get(oe.to)
       if (dst?.kind === 'pool' && dst.capacity && dst.capacity > 0 && dst.overflow !== 'drain') {
-        if (!changed) {
+        const outAmt = extractEdgeThresholdExpr(oe).numeric
+        const hasDstHeadroomGate = doc.edges.some(
+          (se) =>
+            se.kind === 'state' && !se.targetEdgeId && se.from === dst.id && se.to === target.id
+        )
+        if (outAmt !== undefined && dst.capacity >= outAmt && !hasDstHeadroomGate) {
+          const headroom = Math.max(0, Math.round((dst.capacity - outAmt) * 1000) / 1000)
+          const gid = mxNewId('e')
+          doc.edges.push({
+            id: gid,
+            kind: 'state',
+            from: dst.id,
+            to: target.id,
+            formula: `<=${headroom}`,
+            bend: 32
+          })
+          changed = true
+          focusEdgeId = gid
+        } else if (!changed) {
           dst.capacity = Math.max(dst.capacity + 20, Math.ceil((dst.capacity * 2.5) / 10) * 10)
           changed = true
         }
@@ -11547,6 +11723,84 @@ export function applyMxDiagnosticQuickFixInPlace(
         return changed ? { changed: true, focusEdgeId, focusNodeId } : null
       })
       if (hitSameStepDrain) return hitSameStepDrain
+
+      // 0b) 有限初始库存池（initial > 0，无入边，仅有出向消费边，如体力道具池 items -> use_item）：唤醒下游消费节点或解除其无法达成的状态门控
+      const hitUnblockDownstream = tryIdleCandidate((cand) => {
+        const cp = cand.nodes.find((x) => x.id === node.id)
+        if (!cp || cp.kind !== 'pool' || (cp.initial ?? 0) <= 0) return null
+        const candById = new Map(cand.nodes.map((x) => [x.id, x]))
+        const inRes = cand.edges.filter(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.to === cp.id
+        )
+        const outRes = cand.edges.filter(
+          (e) => e.kind === 'resource' && !e.targetEdgeId && e.from === cp.id
+        )
+        if (inRes.length > 0 || outRes.length === 0) return null
+
+        let changed = false
+        let focusEdgeId: string | undefined
+        let focusNodeId: string | undefined
+        for (const oe of outRes) {
+          const consumer = candById.get(oe.to)
+          if (!consumer) continue
+          const consumerGates = cand.edges.filter(
+            (se) =>
+              se.kind === 'state' && !se.targetEdgeId && se.to === consumer.id && se.from !== cp.id
+          )
+          for (const cg of consumerGates) {
+            const sp = parseMxStateFormula(cg.formula)
+            if (sp.type === 'activator' && (sp.op === '<=' || sp.op === '<')) {
+              const gatedPool = candById.get(cg.from)
+              if (gatedPool?.kind === 'pool') {
+                // 检查该目标池上是否有其他消耗节点的 `>=` 门控高于其实际消耗成本导致池值卡死在死区
+                for (const sibEdge of cand.edges) {
+                  if (
+                    sibEdge.kind !== 'resource' ||
+                    sibEdge.targetEdgeId ||
+                    sibEdge.from !== gatedPool.id
+                  ) {
+                    continue
+                  }
+                  const sibCost = extractEdgeThresholdExpr(sibEdge).numeric
+                  if (sibCost === undefined || sibCost <= 0) continue
+                  const sibGate = cand.edges.find((se) => {
+                    if (
+                      se.kind !== 'state' ||
+                      se.targetEdgeId ||
+                      se.from !== gatedPool.id ||
+                      se.to !== sibEdge.to
+                    ) {
+                      return false
+                    }
+                    const s = parseMxStateFormula(se.formula)
+                    return (
+                      s.type === 'activator' && (s.op === '>=' || s.op === '>') && s.value > sibCost
+                    )
+                  })
+                  if (sibGate) {
+                    sibGate.formula = `>=${sibCost}`
+                    changed = true
+                    focusEdgeId = sibGate.id
+                    focusNodeId = sibEdge.to
+                  }
+                }
+                if (!changed) {
+                  const series = activeRun.snapshots.map((s) => s[gatedPool.id] ?? 0)
+                  const minV = series.length ? Math.min(...series) : sp.value
+                  if (minV > sp.value) {
+                    cg.formula = `<=${minV}`
+                    changed = true
+                    focusEdgeId = cg.id
+                    focusNodeId = consumer.id
+                  }
+                }
+              }
+            }
+          }
+        }
+        return changed ? { changed: true, focusEdgeId, focusNodeId } : null
+      })
+      if (hitUnblockDownstream) return hitUnblockDownstream
     }
 
     // 1) 唤醒指向该节点的上游非自动节点（含 passive / interactive / enabling 以及二级 Gate/Converter）
@@ -11755,6 +12009,39 @@ export function applyMxDiagnosticQuickFixInPlace(
         return { changed: true, focusNodeId: sellNode.id }
       }
     }
+    if (matched.code === 'capped_pool_missing_headroom_gate' && matched.edgeId && matched.nodeId) {
+      const oe = doc.edges.find((x) => x.id === matched.edgeId)
+      const dst = oe ? byId.get(oe.to) : undefined
+      if (oe && dst && dst.kind === 'pool' && dst.capacity && dst.capacity > 0) {
+        const outAmt = extractEdgeThresholdExpr(oe).numeric ?? 1
+        const headroom = Math.max(0, Math.round((dst.capacity - outAmt) * 1000) / 1000)
+        const eid = mxNewId('e')
+        doc.edges.push({
+          id: eid,
+          kind: 'state',
+          from: dst.id,
+          to: matched.nodeId,
+          formula: `<=${headroom}`,
+          bend: 32
+        })
+        return { changed: true, focusNodeId: matched.nodeId, focusEdgeId: eid }
+      }
+    }
+    if (matched.code === 'pool_gate_deadzone_lock' && matched.edgeId) {
+      const highGate = doc.edges.find((x) => x.id === matched.edgeId)
+      if (highGate) {
+        const costEdge = doc.edges.find(
+          (x) =>
+            x.kind === 'resource' &&
+            !x.targetEdgeId &&
+            x.from === highGate.from &&
+            x.to === highGate.to
+        )
+        const cost = costEdge ? (extractEdgeThresholdExpr(costEdge).numeric ?? 1) : 1
+        highGate.formula = `>=${cost}`
+        return { changed: true, focusNodeId: highGate.to, focusEdgeId: highGate.id }
+      }
+    }
     if (matched.code === 'hp_damage_inverted_converter' && matched.edgeId) {
       const badEdge = doc.edges.find((x) => x.id === matched.edgeId)
       if (badEdge) {
@@ -11809,8 +12096,8 @@ export function applyAllMxDiagnosticQuickFixes(
   let focusEdgeId: string | undefined
   const visitedIds = new Set<string>()
 
-  // 最多 4 轮迭代：先处理拓扑、转化器饥饿门控与指数失控，再基于最新模拟结果校准爆仓/通胀/枯竭
-  for (let pass = 0; pass < 4; pass++) {
+  // 最多 5 轮迭代：先处理拓扑、转化器饥饿门控与指数失控，再基于最新模拟结果校准闲置节点/爆仓/通胀/枯竭
+  for (let pass = 0; pass < 5; pass++) {
     const run = runMxSimulation(clone, {
       seed: options.seed ?? clone.settings.seed,
       scenarioId: options.scenarioId
@@ -11840,12 +12127,24 @@ export function applyAllMxDiagnosticQuickFixes(
     if (actionable.length === 0) break
 
     let passChanged = false
+    let topoChangedInPass = false
     for (const f of actionable) {
-      visitedIds.add(`${pass}:${f.id}`)
-      // 若本轮已修改过饥饿转化器或指数失控，通胀放到下一轮基于最新模拟流量再修，避免过度加 Sink
-      if (passChanged && (f.kind === 'inflation' || f.kind === 'deflation')) {
+      // 若本轮已修复过静态拓扑错误（如补齐余量门控、解除死区门控锁），立即重跑模拟再评估所有动态告警
+      if (topoChangedInPass && f.kind !== 'topology_error') {
         break
       }
+      // 若本轮已修改过饥饿转化器或指数失控，闲置节点、枯竭、爆仓与通胀放到下一轮基于最新模拟流量再判定，避免误修已解锁的节点
+      if (
+        passChanged &&
+        (f.kind === 'idle_node' ||
+          f.kind === 'pool_depleted' ||
+          f.kind === 'pool_capped' ||
+          f.kind === 'inflation' ||
+          f.kind === 'deflation')
+      ) {
+        break
+      }
+      visitedIds.add(`${pass}:${f.id}`)
       const res = applyMxDiagnosticQuickFixInPlace(clone, f, {
         ...options,
         run: passChanged ? undefined : run
@@ -11853,6 +12152,7 @@ export function applyAllMxDiagnosticQuickFixes(
       if (res.changed) {
         fixedCount++
         passChanged = true
+        if (f.kind === 'topology_error') topoChangedInPass = true
         if (res.focusNodeId) focusNodeId = res.focusNodeId
         if (res.focusEdgeId) focusEdgeId = res.focusEdgeId
       }
@@ -12484,6 +12784,9 @@ export function normalizeMxDocument(raw: unknown): MxDocument {
             : {}),
         ...(resolvedKind === 'converter' || resolvedKind === 'trader'
           ? { conversion: n.conversion === 'multiple' ? 'multiple' : 'single' }
+          : {}),
+        ...(typeof n.botCondition === 'string' && n.botCondition.trim() && !n.botPolicy
+          ? { botPolicy: 'condition' as const }
           : {})
       } as MxNode
     })
