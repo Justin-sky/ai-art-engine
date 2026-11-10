@@ -1411,6 +1411,8 @@ export default {
       automationFreqEveryHour: 'Every hour',
       automationFreqEvery30m: 'Every 30 minutes',
       automationAtLabel: 'at',
+      automationTimePlaceholder: '00:00 - 23:59',
+      automationTimeInputHint: 'Type any 24-hour time (e.g. 18:05) or pick from 00:00–23:59',
       automationInstructionsLabel: 'Instructions',
       automationInstructionsPlaceholder:
         'What should the agent do on each run? For example: summarize new bugs assigned to me and anything that changed overnight.',

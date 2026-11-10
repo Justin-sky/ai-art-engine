@@ -1379,6 +1379,8 @@ export default {
       automationFreqEveryHour: '每小时',
       automationFreqEvery30m: '每 30 分钟',
       automationAtLabel: '于',
+      automationTimePlaceholder: '00:00 - 23:59',
+      automationTimeInputHint: '可直接输入 24 小时制时间（如 18:05），或展开下拉选择 00:00–23:59',
       automationInstructionsLabel: '执行指令',
       automationInstructionsPlaceholder:
         '每次定时运行时需要 Agent 做什么？例如：汇总今日新增问题与隔夜变更。',

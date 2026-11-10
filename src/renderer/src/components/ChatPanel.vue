@@ -35,8 +35,9 @@ import { useStudioI18n } from '../composables/useStudioI18n'
 import {
   extractProjectFolderName,
   formatChatSessionRelativeAge,
-  formatTimeOfDay12h,
+  formatTimeOfDay24h,
   isUntitledDraftSession,
+  normalizeTimeOfDay,
   resolveProjectChatScope,
   useChatHistory,
   type ChatAutomationFrequency,
@@ -226,15 +227,22 @@ const automationDraft = reactive<{
   instructions: ''
 })
 
-const automationTimeOptions = Array.from({ length: 48 }, (_, idx) => {
-  const h = String(Math.floor(idx / 2)).padStart(2, '0')
-  const m = idx % 2 === 0 ? '00' : '30'
-  const value = `${h}:${m}`
-  return {
-    value,
-    label: formatTimeOfDay12h(value)
-  }
-})
+const automationTimeDropdownOpen = ref(false)
+const automationTimeComboRef = ref<HTMLElement | null>(null)
+const automationTimeListRef = ref<HTMLElement | null>(null)
+
+const automationTimeOptions = [
+  ...Array.from({ length: 48 }, (_, idx) => {
+    const h = String(Math.floor(idx / 2)).padStart(2, '0')
+    const m = idx % 2 === 0 ? '00' : '30'
+    const value = `${h}:${m}`
+    return {
+      value,
+      label: value
+    }
+  }),
+  { value: '23:59', label: '23:59' }
+]
 
 const localTimezoneLabel = computed(() => {
   const offsetMin = -new Date().getTimezoneOffset()
@@ -1680,7 +1688,8 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
     !sessionOpen.value &&
     !skillsOpen.value &&
     !scheduleMenuOpen.value &&
-    !searchModalOpen.value
+    !searchModalOpen.value &&
+    !automationTimeDropdownOpen.value
   ) {
     return
   }
@@ -1692,6 +1701,7 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
       skillsOpen.value = false
       scheduleMenuOpen.value = false
       searchModalOpen.value = false
+      automationTimeDropdownOpen.value = false
     }
     return
   }
@@ -1712,6 +1722,9 @@ function onModeOutside(e: MouseEvent | KeyboardEvent): void {
   }
   if (searchDropdownRef.value && !searchDropdownRef.value.contains(e.target as Node)) {
     searchModalOpen.value = false
+  }
+  if (automationTimeComboRef.value && !automationTimeComboRef.value.contains(e.target as Node)) {
+    automationTimeDropdownOpen.value = false
   }
 }
 const draft = ref('')
@@ -2649,12 +2662,55 @@ function onClickSidebarAutomations(): void {
 }
 
 function onCancelAutomationEditor(): void {
+  automationTimeDropdownOpen.value = false
   automationsViewOpen.value = false
+}
+
+function scrollAutomationTimeDropdownToActive(): void {
+  void nextTick(() => {
+    const listEl = automationTimeListRef.value
+    if (!listEl) return
+    const normalized = normalizeTimeOfDay(automationDraft.timeOfDay, '09:00')
+    const [targetH] = normalized.split(':')
+    const exactEl = listEl.querySelector<HTMLElement>(`[data-time-slot="${normalized}"]`)
+    const fallbackEl =
+      exactEl ?? listEl.querySelector<HTMLElement>(`[data-time-slot="${targetH}:00"]`)
+    if (fallbackEl && typeof fallbackEl.scrollIntoView === 'function') {
+      fallbackEl.scrollIntoView({ block: 'center' })
+    }
+  })
+}
+
+function openAutomationTimeDropdown(): void {
+  automationTimeDropdownOpen.value = true
+  scrollAutomationTimeDropdownToActive()
+}
+
+function toggleAutomationTimeDropdown(): void {
+  automationTimeDropdownOpen.value = !automationTimeDropdownOpen.value
+  if (automationTimeDropdownOpen.value) {
+    scrollAutomationTimeDropdownToActive()
+  }
+}
+
+function selectAutomationTimeSlot(slotValue: string): void {
+  automationDraft.timeOfDay = normalizeTimeOfDay(slotValue, '09:00')
+  automationTimeDropdownOpen.value = false
+}
+
+function onBlurAutomationTimeInput(): void {
+  automationDraft.timeOfDay = normalizeTimeOfDay(automationDraft.timeOfDay, '09:00')
+  automationTimeDropdownOpen.value = false
+}
+
+function onCommitAutomationTimeInput(): void {
+  automationDraft.timeOfDay = normalizeTimeOfDay(automationDraft.timeOfDay, '09:00')
+  automationTimeDropdownOpen.value = false
 }
 
 function formatAutomationFrequencySummary(item: ChatAutomationItem): string {
   const tz = localTimezoneLabel.value
-  const timeText = formatTimeOfDay12h(item.timeOfDay)
+  const timeText = formatTimeOfDay24h(item.timeOfDay)
   switch (item.frequency) {
     case 'every_day':
       return `${t('studio.chat.automationFreqEveryDay')} ${t('studio.chat.automationAtLabel')} ${timeText} ${tz}`
@@ -2672,11 +2728,14 @@ function formatAutomationFrequencySummary(item: ChatAutomationItem): string {
 function onCreateAutomation(): void {
   const instructions = automationDraft.instructions.trim()
   if (!instructions) return
+  const normalizedTime = normalizeTimeOfDay(automationDraft.timeOfDay, '09:00')
+  automationDraft.timeOfDay = normalizedTime
+  automationTimeDropdownOpen.value = false
   const created = createChatAutomation({
     title: automationDraft.title.trim() || t('studio.chat.automationUntitled'),
     modelId: automationDraft.modelId || selectedKey.value,
     frequency: automationDraft.frequency,
-    timeOfDay: automationDraft.timeOfDay,
+    timeOfDay: normalizedTime,
     instructions,
     projectScope: activeChatScope.value
   })
@@ -4920,15 +4979,65 @@ onBeforeUnmount(() => {
                 "
               >
                 <span class="codex-auto-at-text">{{ t('studio.chat.automationAtLabel') }}</span>
-                <select v-model="automationDraft.timeOfDay" class="codex-auto-select">
-                  <option
-                    v-for="slot in automationTimeOptions"
-                    :key="slot.value"
-                    :value="slot.value"
+                <div ref="automationTimeComboRef" class="codex-auto-time-combo">
+                  <input
+                    v-model="automationDraft.timeOfDay"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="8"
+                    class="codex-auto-time-input"
+                    :placeholder="t('studio.chat.automationTimePlaceholder')"
+                    :title="t('studio.chat.automationTimeInputHint')"
+                    @focus="openAutomationTimeDropdown"
+                    @blur="onBlurAutomationTimeInput"
+                    @keydown.enter.prevent="onCommitAutomationTimeInput"
+                    @keydown.escape.prevent="automationTimeDropdownOpen = false"
+                    @keydown.stop
+                  />
+                  <button
+                    type="button"
+                    class="codex-auto-time-toggle"
+                    tabindex="-1"
+                    :title="t('studio.chat.automationTimeInputHint')"
+                    :aria-label="t('studio.chat.automationTimeInputHint')"
+                    @mousedown.prevent="toggleAutomationTimeDropdown"
                   >
-                    {{ slot.label }}
-                  </option>
-                </select>
+                    <svg
+                      viewBox="0 0 12 12"
+                      width="11"
+                      height="11"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.6"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 4.5L6 7.5L9 4.5" />
+                    </svg>
+                  </button>
+                  <div
+                    v-if="automationTimeDropdownOpen"
+                    ref="automationTimeListRef"
+                    class="codex-auto-time-dropdown"
+                    role="listbox"
+                  >
+                    <button
+                      v-for="slot in automationTimeOptions"
+                      :key="slot.value"
+                      type="button"
+                      role="option"
+                      class="codex-auto-time-option"
+                      :class="{
+                        active: normalizeTimeOfDay(automationDraft.timeOfDay) === slot.value
+                      }"
+                      :data-time-slot="slot.value"
+                      @mousedown.prevent="selectAutomationTimeSlot(slot.value)"
+                    >
+                      {{ slot.label }}
+                    </button>
+                  </div>
+                </div>
               </template>
               <span class="codex-auto-tz-label">{{ localTimezoneLabel }}</span>
             </div>
@@ -7454,6 +7563,103 @@ onBeforeUnmount(() => {
 .codex-auto-select:hover,
 .codex-auto-select:focus {
   border-color: color-mix(in srgb, var(--text) 24%, var(--border));
+}
+
+.codex-auto-time-combo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-input);
+  transition: border-color 0.14s ease;
+}
+
+.codex-auto-time-combo:hover,
+.codex-auto-time-combo:focus-within {
+  border-color: color-mix(in srgb, var(--text) 24%, var(--border));
+}
+
+.codex-auto-time-input {
+  width: 78px;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.codex-auto-time-input::placeholder {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.codex-auto-time-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.codex-auto-time-toggle:hover {
+  color: var(--text);
+}
+
+.codex-auto-time-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  min-width: 100%;
+  max-height: 224px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.36);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.codex-auto-time-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.codex-auto-time-option:hover {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.codex-auto-time-option.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .codex-auto-at-text,

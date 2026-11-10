@@ -247,11 +247,69 @@ export function isUntitledDraftSession(
   return !session.title.trim() && session.messages.length === 0
 }
 
+/**
+ * 将用户输入的任意时间文本归一化为 24 小时制 "HH:mm"（00:00 ~ 23:59）。
+ * 支持：
+ * - 标准 24 小时制："09:00"、"9:5" -> "09:05"、"18:05"、"23:59"、"18：05"（全角冒号/点号）
+ * - 12 小时制后缀："1:30 PM" -> "13:30"、"12:00 AM" -> "00:00"
+ * - 纯数字简写："930" -> "09:30"、"1805" -> "18:05"、"18" -> "18:00"
+ */
+export function normalizeTimeOfDay(raw: string | null | undefined, fallback = '09:00'): string {
+  const cleaned = (raw ?? '').trim().replace(/[：.]/g, ':')
+  if (!cleaned) return fallback
+
+  // 1. 匹配带冒号的 H:m (+ 可选 AM/PM)
+  const colonMatch =
+    /^(\u4e0a\u5348|\u4e0b\u5348)?\s*(\d{1,2}):(\d{1,2})\s*(am|pm|\u4e0a\u5348|\u4e0b\u5348)?$/i.exec(
+      cleaned
+    )
+  if (colonMatch) {
+    let hour = Number(colonMatch[2])
+    const minute = Math.min(59, Math.max(0, Number(colonMatch[3])))
+    const meridiem = (colonMatch[1] || colonMatch[4] || '').toLowerCase()
+    if (meridiem === 'pm' || meridiem === '\u4e0b\u5348') {
+      if (hour < 12) hour += 12
+    } else if (meridiem === 'am' || meridiem === '\u4e0a\u5348') {
+      if (hour === 12) hour = 0
+    }
+    if (hour === 24 && minute === 0) hour = 0
+    hour = Math.min(23, Math.max(0, hour))
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  }
+
+  // 2. 匹配 3~4 位纯数字简写（如 "930" -> "09:30", "1805" -> "18:05"）
+  const compactMatch = /^(\d{1,2})(\d{2})$/.exec(cleaned)
+  if (compactMatch) {
+    let hour = Number(compactMatch[1])
+    const minute = Math.min(59, Math.max(0, Number(compactMatch[2])))
+    if (hour === 24 && minute === 0) hour = 0
+    hour = Math.min(23, Math.max(0, hour))
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+  }
+
+  // 3. 匹配 1~2 位纯小时数字（如 "9" -> "09:00", "18" -> "18:00"）
+  const hourOnlyMatch = /^(\d{1,2})$/.exec(cleaned)
+  if (hourOnlyMatch) {
+    let hour = Number(hourOnlyMatch[1])
+    if (hour === 24) hour = 0
+    hour = Math.min(23, Math.max(0, hour))
+    return `${String(hour).padStart(2, '0')}:00`
+  }
+
+  return fallback
+}
+
+/** 将时间文本格式化为 24 小时制 "HH:mm"（00:00 ~ 23:59） */
+export function formatTimeOfDay24h(timeOfDay: string): string {
+  return normalizeTimeOfDay(timeOfDay, '09:00')
+}
+
 /** 将 "HH:mm"（如 "09:00"、"13:30"）格式化为 12 小时制文案（如 "9:00 AM"、"1:30 PM"） */
 export function formatTimeOfDay12h(timeOfDay: string): string {
-  const match = /^(\d{1,2}):(\d{2})$/.exec((timeOfDay ?? '').trim())
-  const rawHour = match ? Math.min(23, Math.max(0, Number(match[1]))) : 9
-  const minute = match ? match[2]! : '00'
+  const normalized = normalizeTimeOfDay(timeOfDay, '09:00')
+  const [hStr, mStr] = normalized.split(':')
+  const rawHour = Math.min(23, Math.max(0, Number(hStr)))
+  const minute = mStr ?? '00'
   const period = rawHour >= 12 ? 'PM' : 'AM'
   const hour12 = rawHour % 12 === 0 ? 12 : rawHour % 12
   return `${hour12}:${minute} ${period}`
@@ -265,9 +323,10 @@ export function computeNextAutomationRunAt(
 ): number {
   if (frequency === 'every_30m') return now + 30 * 60_000
   if (frequency === 'every_hour') return now + 60 * 60_000
-  const match = /^(\d{1,2}):(\d{2})$/.exec((timeOfDay ?? '').trim())
-  const hours = match ? Math.min(23, Math.max(0, Number(match[1]))) : 9
-  const mins = match ? Math.min(59, Math.max(0, Number(match[2]))) : 0
+  const normalized = normalizeTimeOfDay(timeOfDay, '09:00')
+  const [hStr, mStr] = normalized.split(':')
+  const hours = Math.min(23, Math.max(0, Number(hStr)))
+  const mins = Math.min(59, Math.max(0, Number(mStr)))
   const candidate = new Date(now)
   candidate.setHours(hours, mins, 0, 0)
   if (candidate.getTime() <= now) {
@@ -1009,7 +1068,7 @@ export function useChatHistory() {
     const instructions = input.instructions.trim()
     if (!instructions) return null
     const now = input.now ?? Date.now()
-    const timeOfDay = (input.timeOfDay ?? '09:00').trim() || '09:00'
+    const timeOfDay = normalizeTimeOfDay(input.timeOfDay, '09:00')
     const item: ChatAutomationItem = {
       id: `auto_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       title: (input.title ?? '').trim() || 'Untitled',

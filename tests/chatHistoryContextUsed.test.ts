@@ -15,7 +15,9 @@ import {
   extractProjectFolderName,
   formatChatSessionRelativeAge,
   formatTimeOfDay12h,
+  formatTimeOfDay24h,
   isUntitledDraftSession,
+  normalizeTimeOfDay,
   resolveProjectChatScope,
   useChatHistory
 } from '../src/renderer/src/composables/useChatHistory'
@@ -320,6 +322,16 @@ describe('useChatHistory 的上下文用量持久化', () => {
     expect(formatTimeOfDay12h('13:30')).toBe('1:30 PM')
     expect(formatTimeOfDay12h('00:00')).toBe('12:00 AM')
     expect(formatTimeOfDay12h('12:00')).toBe('12:00 PM')
+
+    expect(normalizeTimeOfDay('18:05')).toBe('18:05')
+    expect(normalizeTimeOfDay('18：05')).toBe('18:05')
+    expect(normalizeTimeOfDay('9:5')).toBe('09:05')
+    expect(normalizeTimeOfDay('930')).toBe('09:30')
+    expect(normalizeTimeOfDay('1805')).toBe('18:05')
+    expect(normalizeTimeOfDay('23:59')).toBe('23:59')
+    expect(normalizeTimeOfDay('18')).toBe('18:00')
+    expect(normalizeTimeOfDay('1:30 PM')).toBe('13:30')
+    expect(formatTimeOfDay24h('9:05')).toBe('09:05')
 
     const baseMorning = new Date(2026, 10, 9, 8, 15, 0, 0).getTime()
     const next9am = computeNextAutomationRunAt('every_day', '09:00', baseMorning)
