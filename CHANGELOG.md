@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.9.0] — 2026-11-10
+
+8.9.0 功能版：**影视短剧全链路（`asset.screenplay` + `film.workbench`）** 深度重构升级 **「AI 漫剧 21 题材 Skill 引擎（P01~P21）+ 五阶段工业级制作与成片合成闭环」**；新增 **「图集拼装 UI（`ui.atlasCompose`）」确定性分层组装与 PSD 导出节点**；升级 **多工程工作区（Workspace）、AI 会话多工程侧栏（向左自适应扩展）与 `@deepseek-ai/dsh` 0.2.2-rc.1 运行时**。
+
+- **重构 · AI 漫剧 21 题材 Skill 引擎与五阶段影视工作台全闭环（`manjuGenres` + `EditorDiveScreenplayView` + `EditorDiveFilmView` + `execute/film`）**：内置 P01~P21 共 21 类爆款漫剧/短剧题材基因库（黄金前 3 秒冷开场、高潮爽点、断章悬念钩子、推进公式、穿帮红线与专属视觉定调）；剧本生成节点选定题材后下游影视工作台自动继承并锁定；影视工作台升级为五阶段闭环（① 分镜拆解 A 段首帧静帧 + B 段 7 行分时段动态拍点 → ② 11 项工业连续性与出声对白占比 ≥67% 审计 → ③ 角色/场景/道具/STYLE01 设定图 + 角色专属 TTS 音色绑定 + 跨集全剧共享设定库免连线继承 → ④ 批量关键帧、视频与角色台词 TTS 自动配音 → ⑤ 分集发布包双规格封面提示词、爆款标题与单集完整 `.mp4` 成片一键合成）。
+- **新增 · 图集拼装 UI 节点与确定性分层排版引擎（`ui.atlasCompose` + `uiAtlasCompose` + `EditorDiveLayerSplitView`）**：支持直接连入工程内的 UI 图集/切图或「UI 共享组件库」及界面需求说明，智能识别全屏背景、标题 Logo、弹窗底板、关闭按钮、交互按钮、协议复选栏与底部加载进度条，零幻觉 100% 保留原始像素分层组装为完整游戏 UI 界面，支持双击进入类 PS 分层工作台微调层级、九宫格与原生可编辑文字层并直接导出 PSD。
+- **升级 · 多工程工作区（Workspace）、AI 会话侧栏向左扩展与 `dsh` 0.2.2-rc.1（`ChatPanel` + `sidePanelCollapse` + `WorkspaceFileEditor` + `deepseekHarnessService`）**：工程管理全面升级为工作区模式，AI 会话支持跨工程历史会话检索、定时自动化任务与工程源码文件直接内嵌编辑；展开 AI 会话左侧工程/历史栏时自动向左扩展 Dockview 面板宽度（由中心画布让出空间，不挤压右侧主对话区）；升级 `@deepseek-ai/dsh` 至 `0.2.2-rc.1` 并修复模型路由与 MCP `task_run` 并发去重。
+- **说明（发版提示）**：8.9.0 涉及主进程、共享层与渲染进程多项能力升级，升级后请**重启应用**。
+
 ## [8.8.0] — 2026-11-08
 
 8.8.0 功能版：**游戏机制沙盘（`game.economy` Machinations Studio）** 全面升级 **「极简创造 / 专业蓝图」双模无损折叠与展开引擎（4 积木极简宏属性 ↔ 9 节点完整拓扑）**、**零代码「一键卡片试玩台（Playable Card & HUD Prototype + AI 自动观战 + 操作序列录制重放）」**、**「折线图直接拖拽曲线反推配平（单锚点 & 双锚点塑形 Goal-Seek）」** 与 **「经济健康度体检一键自动修复（Quick-Fix）」**，并升级 **闭环破环自动排版引擎与折线图游标交点数值胶囊**。
