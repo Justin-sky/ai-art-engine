@@ -528,20 +528,6 @@
 
     <!-- 4. game.economy: Machinations 游戏经济与数值平衡模拟 -->
     <section v-else-if="node.typeId === 'game.economy'" class="panel-card">
-      <div class="section-title">{{ t('gameNodes.economy.sectionTitle') }}</div>
-
-      <label class="field">
-        <span>{{ t('gameNodes.economy.presetLabel') }}</span>
-        <select
-          :value="node.params.gameEconomyPreset ?? 'roguelike_run'"
-          @change="onStringParam('gameEconomyPreset', $event)"
-        >
-          <option v-for="tpl in MX_TEMPLATES" :key="tpl.id" :value="tpl.id">
-            {{ tpl.nameEn }}
-          </option>
-        </select>
-      </label>
-
       <div class="grid-2">
         <label class="field">
           <span>{{ t('gameNodes.economy.stepsLabel') }}</span>
@@ -619,11 +605,8 @@
 import { computed } from 'vue'
 import {
   buildThemedArtboardSuitePayload,
-  createMxFromTemplate,
   createMxWorkbenchPreset,
-  MX_TEMPLATES,
   MX_WORKBENCH_PRESETS,
-  type MxTemplateId,
   type MxWorkbenchPresetId,
   type UiStylePreset
 } from '@shared/gameAssets'
@@ -750,16 +733,6 @@ function onStringParam(key: keyof GraphNodeParams, event: Event): void {
       [key]: val,
       gameUiArtboardPreviewDataUrl: undefined
     } as Partial<GraphNodeParams>)
-    return
-  }
-  if (key === 'gameEconomyPreset') {
-    const presetDiagram = createMxFromTemplate(val as MxTemplateId)
-    patchParams({
-      gameEconomyPreset: val as MxTemplateId,
-      gameEconomyDiagramJson: JSON.stringify(presetDiagram),
-      gameEconomySteps: presetDiagram.settings.steps,
-      gameEconomySeed: presetDiagram.settings.seed
-    })
     return
   }
   if (key === 'gameNumericalPreset') {
