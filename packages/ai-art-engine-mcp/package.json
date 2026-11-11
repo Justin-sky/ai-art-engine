@@ -1,0 +1,47 @@
+{
+  "name": "ai-art-engine-mcp",
+  "version": "8.9.3",
+  "description": "Zero-dependency MCP stdio bridge for AI Art Engine — 102 local tools for editable Photoshop PSD (TySh), Unity/Godot UI, Spine 2D rigging, Machinations game economy solver, short-drama CapCut timeline, Blender 3D, offline ONNX vision & playable HTML5",
+  "type": "module",
+  "bin": {
+    "ai-art-engine-mcp": "bin/cli.mjs"
+  },
+  "files": [
+    "bin",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "ai-art-engine",
+    "claude-code",
+    "cursor",
+    "game-development",
+    "game-ui",
+    "psd",
+    "unity",
+    "godot",
+    "spine-2d",
+    "machinations",
+    "blender-mcp",
+    "comfyui",
+    "short-drama",
+    "capcut",
+    "onnx"
+  ],
+  "homepage": "https://justin-sky.github.io/ai-art-engine/guide-mcp.html",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Justin-sky/ai-art-engine.git",
+    "directory": "packages/ai-art-engine-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/Justin-sky/ai-art-engine/issues"
+  },
+  "author": "AIArtEngine",
+  "license": "GPL-3.0-only"
+}

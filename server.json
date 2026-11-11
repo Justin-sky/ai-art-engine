@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.Justin-sky/ai-art-engine",
+  "description": "102 local MCP tools for editable PSD (TySh), Unity/Godot UI, Spine 2D, Machinations & Blender 3D.",
+  "repository": {
+    "url": "https://github.com/Justin-sky/ai-art-engine",
+    "source": "github",
+    "subfolder": "packages/ai-art-engine-mcp"
+  },
+  "version": "8.9.3",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "ai-art-engine-mcp",
+      "version": "8.9.3",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

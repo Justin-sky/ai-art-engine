@@ -12,6 +12,7 @@ export default tseslint.config(
       'website/**',
       'resources/**',
       'scripts/**',
+      'packages/**',
       '.aiartengine-tmp/**'
     ]
   },
