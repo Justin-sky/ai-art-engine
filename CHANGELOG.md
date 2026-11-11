@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.9.3] — 2026-11-11
+
+8.9.3 体验与安全控制升级版：**AI 对话（`ChatPanel` + `deepseekHarnessService`）** 新增 **「受限模式 / 完全访问」用户自主沙箱模式切换器**、**受限模式受阻自动检测提示卡** 与 **工程级「总是允许」一键放行机制**，支持外部桌面工具（如 IDA Pro、外部引擎 CLI）与跨目录操作按工程粒度灵活授权并实时双向联动切换。
+
+- **新增 · AI 对话「受限模式 / 完全访问」实时切换器（`ChatPanel` + `aiartHeadlessRunner` + `deepseekHarnessService`）**：输入框下方工具栏新增 `🛡️ 受限模式` / `🔓 完全访问`（`workspace-write` / `danger-full-access`）一键切换按钮，支持对话空闲或运行盘中随时切换，实时同步主代理与活跃子代理会话的 `permissionPresets` 沙箱策略，并在盘中切换时自动向运行中的 Agent 注入即时系统通知。
+- **新增 · 工程级「总是允许」授权与底部模式按钮双向联动（`ChatPanel` + `dshApproval`）**：沙箱审批卡、受限受阻提示卡与授权类提问卡统一支持 **「允许一次 / 总是允许 / 拒绝」**；选择「总是允许」后按当前工程独立持久化记忆，此后该工程内所有授权请求均自动放行，同时底部工具栏 `🛡️ 受限模式` 按钮立即同步切换为 `🔓 完全访问`（各工程互不影响，也可随时切回受限模式）。
+- **新增 · 受限模式受阻智能检测与审批通道稳定性修复（`aiartHeadlessRunner` + `aiartApprovalAnswerer` + `dshApproval`）**：自动识别沙箱拒绝（`[sandbox: file access denied ...]`、子代理自动拒批、`EPERM` / `UnauthorizedAccessException`）以及受限令牌下外部桌面程序异常退出（如 IDA 退出码 `255` / 提权通道不可用诊断）并弹出交互切换卡；修复思考流（`inReasoning`）未闭合期间到达的 `===BEGIN_APPROVAL===` 标记被吞入思考文本的问题，并支持 `dsh-sandbox` 多语言对象 `displayReason` 提取与 IPC 直通双通道上报。
+- **说明（发版提示）**：8.9.3 涉及主进程常驻 runner 与渲染进程对话面板升级，升级后请**重启应用**。
+
 ## [8.9.2] — 2026-11-11
 
 8.9.2 功能与体验升级版：**本地 MCP 服务（`mcpServerService`）** 全面开放 **102 项全栈生产工具**（涵盖 Machinations 官方积木库装配、沙盘曲线反推求解器、本地离线视觉/OCR、会话定时调度与 Git 工具链）；**AI 对话与多工程工作区** 升级 **工程树右键菜单、双击行内重命名、Tab 栏最右侧专属全屏按钮与 24 小时制全时段定时自动化**；**游戏机制沙盘（`game.economy`）** 新增 **满容量池余量门控与死区门锁自动检测及自愈引擎**；并全面重构升级 **中英双语 README、官方站点与 `llms.txt` 结构化文档体系**。
