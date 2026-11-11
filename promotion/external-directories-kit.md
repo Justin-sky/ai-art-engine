@@ -1,4 +1,4 @@
-# AI Art Engine 外部榜单冲榜与 PR 截流全套作战包（v8.9.3）
+# AI Art Engine 外部榜单冲榜与 PR 截流全套作战包（v8.9.4）
 
 > **核心策略**：零广告预算下，外部榜单是最高杠杆的被动流量机器。本作战包按**投入产出比（单次提交带来的真实 Star / 下载量 / 搜索引擎权重）**分为四大梯队，所有 PR 行、Issue 投稿与表单字段均已严格对齐各榜单维护者的格式规范（字母序、Emoji 标签、字数上限、反营销审查规则），**可直接复制粘贴提交**。
 
@@ -93,7 +93,7 @@ claude mcp add ai-art-engine -- npx -y ai-art-engine-mcp
 ```markdown
 大家用 AI 生图/做独立游戏或短剧时，最头疼的往往不是“画不出来”，而是**画出来的是一张扁平死图**：想改按钮上的两个字要重抽，想进 Unity/Godot 得手切九宫格，配游戏数值买不起几千块一年的 Machinations，做短剧导不出剪映分轨草稿。
 
-索性自己动手用 Electron + Vue 3 + 本地 ONNX 撸了一套完全开源、数据 100% 落本地硬盘的桌面工作站 **AI Art Engine**（目前迭代到 v8.9.3，内置免 Key 样板间，不填 Key 也能直接把玩核心工作台）：
+索性自己动手用 Electron + Vue 3 + 本地 ONNX 撸了一套完全开源、数据 100% 落本地硬盘的桌面工作站 **AI Art Engine**（目前迭代到 v8.9.4，内置免 Key 样板间，不填 Key 也能直接把玩核心工作台）：
 
 ### 几个最硬核的实用能力：
 
@@ -287,7 +287,7 @@ Happy to answer any questions about the PSD binary writer, the economy solver, o
 
 ---
 
-### 11. Product Hunt（v8.9.3 全面升级版文案，替换旧版短视频单一叙事）
+### 11. Product Hunt（v8.9.4 全面升级版文案，替换旧版短视频单一叙事）
 
 - **发布时间**：北京时间 **15:05**（美西时间 00:05，吃满整整 24 小时计票周期！）
 - **Name**: `AI Art Engine`

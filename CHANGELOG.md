@@ -2,6 +2,15 @@
 
 本项目遵循 [Semantic Versioning](https://semver.org/)。版本号以 [`package.json`](./package.json) 为准；发版时打 `vX.Y.Z` tag，由 GitHub Actions 构建并上传安装包。预发布（如 `4.0.0-alpha.0`）会标为 GitHub prerelease，**不会**作为 `latest` 推给 3.x 稳定版自动更新。
 
+## [8.9.4] — 2026-11-11
+
+8.9.4 功能与生态升级版：**AI 对话（`ChatPanel` + `deepseekHarnessService` + `mcpServerService`）** 全面支持 **多会话跨工程并行执行（最高 6 路并发槽位独立隔离）** 与 **会话列表实时行内状态指示灯**；**画布祈福仙子与动态天气（`ChatWishShrine` + `wishShrineBridge`）** 升级 **多仙子伴飞护法与错峰谢幕庆典编排**；并新增零依赖标准桥接包 **`ai-art-engine-mcp`** 及官方 MCP Registry / Glama 认证清单。
+
+- **新增 · AI 对话多会话跨工程并行执行与实时状态指示灯（`deepseekHarnessService` + `mcpServerService` + `harnessActiveRunAccess` + `ChatPanel` + `useChatHistory`）**：支持最多 6 路会话同时在不同或同一工程内并行执行，基于 `x-aiart-worker-slot` 实现各并发槽位的 `Agent / Plan / Ask` 模式、Plan 确认放行状态、工程根目录与 MCP 活动流完全隔离、互不串扰；左侧工程会话树与历史列表新增运行中脉冲灯、等待审批琥珀灯与未读完成绿点实时指示。
+- **升级 · 多会话祈福仙子伴飞护法与错峰完工庆典编排（`ChatWishShrine` + `wishShrineBridge` + `NodeGraphEditor`）**：多会话并行时主仙子领衔当前聚焦会话、伴飞仙子同步展示后台并发任务；切往空白新会话时自动由后台活跃会话无缝接棒领衔，单个会话率先完成时触发阶段庆典接力而不中断其余在跑会话与动态天气，直至全部任务圆满收工谢幕。
+- **新增 · 零依赖 `ai-art-engine-mcp` 桥接包与官方 MCP 目录清单（`packages/ai-art-engine-mcp` + `server.json` + `glama.json`）**：提供免手抄 Token、自动发现本机 `mcp.json` 的零依赖 `stdio` 桥接 CLI（支持 `npx -y ai-art-engine-mcp` 一行命令接入 93 项主工作台工具及 `--blender` 9 项实时 3D 建模工具），配套 Official MCP Registry 与 Glama 规范清单及 REA APK 静态分析还原策划案实战教程。
+- **说明（发版提示）**：8.9.4 涉及主进程多槽位 runner 调度、MCP 鉴权隔离与渲染进程对话面板升级，升级后请**重启应用**。
+
 ## [8.9.3] — 2026-11-11
 
 8.9.3 体验与安全控制升级版：**AI 对话（`ChatPanel` + `deepseekHarnessService`）** 新增 **「受限模式 / 完全访问」用户自主沙箱模式切换器**、**受限模式受阻自动检测提示卡** 与 **工程级「总是允许」一键放行机制**，支持外部桌面工具（如 IDA Pro、外部引擎 CLI）与跨目录操作按工程粒度灵活授权并实时双向联动切换。

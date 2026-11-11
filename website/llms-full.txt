@@ -1,4 +1,4 @@
-# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v8.9.3)
+# AI Art Engine (AIArtEngine) — Complete Technical & Product Reference (v8.9.4)
 
 > Canonical Origin: https://justin-sky.github.io/ai-art-engine/
 > GitHub: https://github.com/Justin-sky/ai-art-engine
